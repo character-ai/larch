@@ -4,6 +4,7 @@
 set -uo pipefail
 
 export WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.05
+export LARCH_QUIET_DISABLE=1
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 COLLECTOR="$REPO_ROOT/scripts/collect-agent-results.sh"
@@ -112,9 +113,30 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 [[ -n "$out" ]] || exit 40
-printf 'retry produced usable reviewer output\n' > "$out"
+printf 'NO_ISSUES_FOUND\n' > "$out"
 SUCCESS_HELPER_EOF
 chmod +x "$SUCCESS_HELPER"
+
+STRUCTURED_SUCCESS_HELPER="$TMPROOT/retry-structured-success.sh"
+cat > "$STRUCTURED_SUCCESS_HELPER" <<'STRUCTURED_SUCCESS_HELPER_EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+out=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --output)
+            out="${2:?--output requires a value}"
+            shift 2
+            ;;
+        *)
+            shift
+            ;;
+    esac
+done
+[[ -n "$out" ]] || exit 40
+printf 'NO_ISSUES_FOUND\n' > "$out"
+STRUCTURED_SUCCESS_HELPER_EOF
+chmod +x "$STRUCTURED_SUCCESS_HELPER"
 
 FAIL_HELPER="$TMPROOT/retry-fail.sh"
 cat > "$FAIL_HELPER" <<'FAIL_HELPER_EOF'
@@ -126,7 +148,7 @@ chmod +x "$FAIL_HELPER"
 json_array() {
     local helper="$1"
     local output="$2"
-    jq -cn --args '$ARGS.positional' -- cursor agent --workspace "$TMPROOT" --helper "$helper" --output "$output"
+    jq -cn --args '$ARGS.positional' -- cursor agent --workspace "$TMPROOT" --helper "$helper" --output "$output" "Review the diff and emit findings only."
 }
 
 write_meta() {
@@ -254,6 +276,50 @@ printf 'Read-only: we cannot write the sidecar file.\n' > "$OUT_IT2"
 printf '0\n' > "${OUT_IT2}.done"
 RESULT_IT2=$(RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 bash "$COLLECTOR" --timeout 5 --substantive-validation --validation-mode "$OUT_IT2" 2>/dev/null)
 assert_line "C_IT2 status is NOT_SUBSTANTIVE" "STATUS=NOT_SUBSTANTIVE" "$RESULT_IT2"
+
+# C_NS_RETRY: NOT_SUBSTANTIVE output with a valid .meta triggers a retry attempt.
+# The harness uses a deterministic CMD_JSON replay stub and requires the retry
+# artifact/result instead of treating launch as best-effort.
+echo "# Case: NOT_SUBSTANTIVE output with CMD_JSON .meta — retry succeeds"
+OUT_NSR="$TMPROOT/cursor-specialist-structure-output.txt"
+printf 'Reading the ballot file and gathering diff context.\n' > "$OUT_NSR"
+printf '0\n' > "${OUT_NSR}.done"
+write_meta "$OUT_NSR" "$SUCCESS_HELPER"
+RESULT_NSR=$(RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.05 \
+    bash "$COLLECTOR" --timeout 5 --substantive-validation --validation-mode "$OUT_NSR" 2>/dev/null)
+assert_line "C_NSR retry file selected" "REVIEWER_FILE=${OUT_NSR%.txt}-ns-retry.txt" "$RESULT_NSR"
+assert_line "C_NSR retry status OK" "STATUS=OK" "$RESULT_NSR"
+NS_RETRY_SENTINEL="${OUT_NSR%.txt}-ns-retry.txt.done"
+if [[ -f "$NS_RETRY_SENTINEL" ]]; then
+    ok "C_NSR retry sentinel created"
+else
+    fail "C_NSR retry sentinel missing"
+fi
+
+# C_NS_STRUCTURED: section 3.6 downgrade must re-run structured validation
+# before restoring STATUS=OK, and should emit the retry sidecar path.
+echo "# Case: structured-reviewer downgrade retries through structured validation"
+OUT_NSS="$TMPROOT/cursor-specialist-structured-output.txt"
+cat > "$OUT_NSS" <<'EOF'
+This response stays narrative-only so it clears the short-response floor, but it
+still omits any JSONL or TSV reviewer records. The retry path must therefore
+re-run structured validation instead of only checking for generic substantive
+text after the replay completes successfully. Source anchor:
+scripts/collect-agent-results.sh:1 documents the collector contract this prose
+is discussing, but the body still refuses to emit structured reviewer records.
+EOF
+printf '0\n' > "${OUT_NSS}.done"
+write_meta "$OUT_NSS" "$STRUCTURED_SUCCESS_HELPER"
+RESULT_NSS=$(RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.05 \
+    bash "$COLLECTOR" --timeout 5 --substantive-validation --validation-mode --structured-reviewer-validation "$OUT_NSS" 2>/dev/null)
+assert_line "C_NSS retry file selected" "REVIEWER_FILE=${OUT_NSS%.txt}-ns-retry.txt" "$RESULT_NSS"
+assert_line "C_NSS retry status OK" "STATUS=OK" "$RESULT_NSS"
+assert_line "C_NSS structured sidecar emitted" "STRUCTURED_SIDECAR=${OUT_NSS%.txt}-ns-retry.txt.tsv" "$RESULT_NSS"
+if [[ -f "${OUT_NSS%.txt}-ns-retry.txt.done" ]]; then
+    ok "C_NSS retry sentinel created"
+else
+    fail "C_NSS retry sentinel missing"
+fi
 
 if [[ "$FAIL" -ne 0 ]]; then
     printf '\nFAIL: test-collect-agent-results.sh (%d failure(s))\n' "$FAIL" >&2

@@ -11,6 +11,8 @@ Regression harness for `skills/review/scripts/tally-code-votes.sh`.
 - `--both-down true`: bypass voting, all findings auto-accepted.
 - Security-tag filter: accepted OOS with `focus-area = security` is counted but NOT written to `oos-accepted-review.md` (held locally).
 - `--manifest-file`: writes `scout-archetype-yield.tsv`, maps static/dynamic/generalist rows, and normalizes fallback suffixes such as `-phase2`.
+- `--collector-results-file` + `--manifest-file`: panel-manifest with 7 slots and only 5 ballots shows all 7 rows in the scoreboard; the 2 dead slots carry `STATUS=NOT_SUBSTANTIVE` annotation.
+- `--not-substantive-count N`: degraded-panel banner appears in `voting-tally.md` when N > 0.
 
 ## Invocation
 

@@ -1,0 +1,50 @@
+Gathering the branch diff and commit history for a read-only review focused on tests, CI, and regression risk.
+
+Searching the precomputed diff for changed files and reading critical hunks.
+
+Checking whether `tally-code-votes.sh` `usage()` was updated in the diff and scanning for other callers of `tally-code-votes.sh`.
+
+Commits on this branch vs `main` (from `git log $(git merge-base HEAD main)..HEAD --oneline`):
+
+- `a2e2df06` — Fix NOT_SUBSTANTIVE silent slot drops: retry + scoreboard dead-slot rows + degraded banner  
+- `1b0742f8` — Bump version to 29.3.12 (#2332)
+
+### In-Scope Findings
+
+1. **`**Important**` (`risk-integration`, `plan`) — [scripts/collect-agent-results.sh](scripts/collect-agent-results.sh) (NOT_SUBSTANTIVE retry block ~892–1035)**  
+   The implementation plan required a fallback when only `CMD_JSON` is present (re-launch via `run-external-agent.sh` like the empty-output retry path). The diff only retries when `.meta` has `OUTER_LAUNCHER*` fields; reviewers that only have `CMD_JSON` metadata never get a NOT_SUBSTANTIVE retry. **Scenario:** a slot that still uses the inner `CMD_JSON` launch path can remain `NOT_SUBSTANTIVE` with no retry even though the plan promised one. **Fix:** implement the `CMD_JSON` branch (mirroring section 3 empty-output retry) and add a harness case that proves it runs.
+
+2. **`**Important**` (`risk-integration`, `plan`) — [scripts/test-collect-agent-results.sh](scripts/test-collect-agent-results.sh):266-290**  
+   `C_NSR` only asserts the initial `STATUS=NOT_SUBSTANTIVE` and then treats either presence or absence of `-ns-retry.txt.done` as success, so the test cannot fail on a broken retry pipeline. The plan called for verifying the retry path including validation and outcome. **Scenario:** regressions in `wait-for-reviewers`, launcher wiring, or `validate-research-output` on retry output could ship unnoticed. **Fix:** stub a minimal launcher that writes non-empty `*-ns-retry.txt` + `.done` with `0` and structured-valid content, then assert `STATUS=OK` and `REVIEWER_FILE=…-ns-retry.txt`; add a negative case where retry output still fails validation.
+
+3. **`**Latent**` (`correctness`) — [skills/review/scripts/tally-code-votes.sh](skills/review/scripts/tally-code-votes.sh):434-437**  
+   Dead-slot rows use `collector_status[normed]` when present, otherwise hard-code `NOT_SUBSTANTIVE`. **Scenario:** a manifest slot missing from `collector-results.env` (dispatch skip, parsing gap, or partial file) is labeled `NOT_SUBSTANTIVE` even when the real reason is not narrative-only output. **Fix:** use a distinct default such as `UNKNOWN` / `NO_COLLECTOR_STATUS` or omit the row until a status is known.
+
+4. **`**Latent**` (`risk-integration`) — [skills/review/scripts/tally-code-votes.sh](skills/review/scripts/tally-code-votes.sh):351-377 vs 382-437**  
+   Live scoreboard rows end the table with a numeric `Score` column; appended dead rows put `STATUS=…` in that column instead of an integer. **Scenario:** any script or dashboard that assumes the last column is numeric for all body rows can mis-parse or break. **Fix:** add a dedicated `Status` column for all rows, or keep `Score` numeric and move status into a new column / footnote.
+
+5. **`**Nit**` (`code-quality`) — [skills/review/scripts/tally-code-votes.sh](skills/review/scripts/tally-code-votes.sh):16-17**  
+   `usage()` was not updated for `--collector-results-file` and `--not-substantive-count`, so `--help` / unknown-flag paths document the wrong CLI. **Fix:** extend the usage string to list the new optional flags.
+
+6. **`**Nit**` (`risk-integration`, `plan`) — [skills/review/scripts/review-core.md](skills/review/scripts/review-core.md)**  
+   The implementation plan listed this file for updates (threshold → tally wiring). It does not appear in the diff, so operator-facing docs for the new env/kv flow are incomplete. **Fix:** document `NOT_SUBSTANTIVE_SLOTS`, tally flags, and when `collector-results.env` is passed.
+
+7. **`**Nit**` (`code-quality`) — [scripts/test-collect-agent-results.sh](scripts/test-collect-agent-results.sh):266-271**  
+   The comment claims a “non-executable” fake launcher to skip launch, but the script `chmod +x` the launcher. **Fix:** align comment with behavior (or use a non-executable file if the intent is to skip launch).
+
+### Out-of-Scope Observations
+
+1. **`**Nit**` (`architecture`) — Branch composition**  
+   The same branch diff bundles large `larch-logs/implement/…` artifacts plus `.agnix.toml` / `github-remote-repo.sh` / `CHANGELOG` entries that read as a separate AS-014 thread from the #2323 review/tally work. Per repo guidance, committed `larch-logs/` is intentional; this is only a review-scope note that PR narrative and bisect clarity are mixed across concerns.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	risk-integration	scripts/collect-agent-results.sh:892-1035	NOT_SUBSTANTIVE retry implements only OUTER_LAUNCHER .meta path; no CMD_JSON / run-external-agent fallback from plan	CMD_JSON-only slots stay NOT_SUBSTANTIVE with no retry despite plan promising inner-path retry	Add CMD_JSON retry mirroring empty-output retry plus a harness case
+1	in_scope	important	risk-integration	scripts/test-collect-agent-results.sh:266-290	C_NSR allows success whether or not -ns-retry.txt.done exists; does not assert validator or OK promotion	Retry regressions in wait/launch/validate can slip past CI because the test never fails	Stub launcher writing valid retry output and assert STATUS=OK and REVIEWER_FILE=*-ns-retry.txt; add failing-validation case
+1	in_scope	latent	correctness	skills/review/scripts/tally-code-votes.sh:434-437	Dead-slot default STATUS=NOT_SUBSTANTIVE when collector lacks that basename	Missing or partial collector file mis-labels never-launched or unknown slots as narrative-only	Use explicit unknown status or require collector row before emitting dead slot
+1	in_scope	latent	risk-integration	skills/review/scripts/tally-code-votes.sh:351-377 vs 382-437	Dead-slot rows replace numeric Score with STATUS=… string	Downstream parsers expecting numeric last column break or mis-tally	Add Status column or keep Score numeric and move annotation elsewhere
+1	in_scope	nit	code-quality	skills/review/scripts/tally-code-votes.sh:16-17	usage() omits --collector-results-file and --not-substantive-count	Operators see incomplete --help on unknown flags	Update usage string to include new optional flags
+1	in_scope	nit	risk-integration	skills/review/scripts/review-core.md (missing)	Plan listed review-core.md update; file not changed	Undocumented threshold-to-tally wiring for NOT_SUBSTANTIVE banner and collector handoff	Update review-core.md per plan
+1	in_scope	nit	code-quality	scripts/test-collect-agent-results.sh:266-271	Comment says non-executable fake launcher but chmod +x makes it executable	Confuses future maintainers about test intent	Fix comment or chmod to match stated intent
+1	out_of_scope	nit	architecture	Branch diff composition	larch-logs plus agnix/github-remote changes intermixed with #2323 panel fixes	PR story and bisect span multiple unrelated themes	Accept per policy or split PRs for clarity
+```

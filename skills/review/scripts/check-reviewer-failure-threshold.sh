@@ -51,6 +51,7 @@ is_dynamic_reviewer_basename() {
 SUCCEEDED_SLOTS=0
 FAILED_SLOTS=0
 COUNTED_SLOTS=0
+NOT_SUBSTANTIVE_SLOTS=0
 
 if [[ -n "$COLLECTOR_RESULTS_FILE" && -f "$COLLECTOR_RESULTS_FILE" ]]; then
     # Parse blank-line-separated records; each has STATUS=<value>.
@@ -67,6 +68,10 @@ if [[ -n "$COLLECTOR_RESULTS_FILE" && -f "$COLLECTOR_RESULTS_FILE" ]]; then
                 COUNTED_SLOTS=$((COUNTED_SLOTS + 1))
                 case "$current_status" in
                     OK|cap_hit) SUCCEEDED_SLOTS=$((SUCCEEDED_SLOTS + 1)) ;;
+                    NOT_SUBSTANTIVE)
+                        FAILED_SLOTS=$((FAILED_SLOTS + 1))
+                        NOT_SUBSTANTIVE_SLOTS=$((NOT_SUBSTANTIVE_SLOTS + 1))
+                        ;;
                     *)          FAILED_SLOTS=$((FAILED_SLOTS + 1)) ;;
                 esac
             fi
@@ -86,6 +91,10 @@ if [[ -n "$COLLECTOR_RESULTS_FILE" && -f "$COLLECTOR_RESULTS_FILE" ]]; then
             COUNTED_SLOTS=$((COUNTED_SLOTS + 1))
             case "$current_status" in
                 OK|cap_hit) SUCCEEDED_SLOTS=$((SUCCEEDED_SLOTS + 1)) ;;
+                NOT_SUBSTANTIVE)
+                    FAILED_SLOTS=$((FAILED_SLOTS + 1))
+                    NOT_SUBSTANTIVE_SLOTS=$((NOT_SUBSTANTIVE_SLOTS + 1))
+                    ;;
                 *)          FAILED_SLOTS=$((FAILED_SLOTS + 1)) ;;
             esac
         fi
@@ -113,5 +122,6 @@ emit_kv INTENDED_SLOTS "$INTENDED_SLOTS"
 emit_kv SUCCEEDED_SLOTS "$SUCCEEDED_SLOTS"
 emit_kv FAILED_SLOTS "$FAILED_SLOTS"
 emit_kv COUNTED_SLOTS "$COUNTED_SLOTS"
+emit_kv NOT_SUBSTANTIVE_SLOTS "$NOT_SUBSTANTIVE_SLOTS"
 emit_kv THRESHOLD_OK "$THRESHOLD_OK"
 emit_kv THRESHOLD_REASON "$THRESHOLD_REASON"

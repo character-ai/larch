@@ -2,6 +2,7 @@
 # Regression harness skeleton for review-core.sh.
 
 set -euo pipefail
+export LARCH_QUIET_DISABLE=1
 
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)
 SCRIPT="$REPO_ROOT/skills/review/scripts/review-core.sh"
@@ -80,6 +81,10 @@ printf 'SCOUT_MANIFEST=%s/scout-round%s-manifest.json\n' "$tmp" "$round_num"
 printf 'SLOT_COUNT=2\n'
 printf 'PANEL_MANIFEST=%s/panel-manifest.ndjson\n' "$tmp"
 printf 'DISPATCH_OK=true\n'
+cat > "$tmp/panel-manifest.ndjson" <<EOF
+{"slot":"structure","tool":"cursor","output":"$external","agent":"agents/reviewer-structure.md"}
+{"slot":"generic","tool":"claude","output":"$claude","agent":"agents/reviewer-generic.md"}
+EOF
 STUB
     cat > "$TMP/collect.sh" <<'STUB'
 #!/usr/bin/env bash
@@ -114,9 +119,15 @@ cat > "$TMP/tally.sh" <<'STUB'
 set -euo pipefail
 tmp=""
 voter_count=0
+manifest=""
+collector=""
+not_substantive=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --review-tmpdir) tmp="$2"; shift 2 ;;
+    --manifest-file) manifest="$2"; shift 2 ;;
+    --collector-results-file) collector="$2"; shift 2 ;;
+    --not-substantive-count) not_substantive="$2"; shift 2 ;;
     --voter-files)
       shift
       while [[ $# -gt 0 && "$1" != --* ]]; do
@@ -136,13 +147,19 @@ if [[ "$voter_count" -eq 0 ]]; then
   rejected=0
 fi
 printf 'FINDING_1_ACCEPTED=%s\n' "$([[ "$accepted" -gt 0 ]] && printf true || printf false)" > "$tmp/review-tally.env"
+{
+  printf '# tally\n'
+  [[ -n "$manifest" ]] && printf 'manifest=%s\n' "$manifest"
+  [[ -n "$collector" ]] && printf 'collector=%s\n' "$collector"
+  printf 'not_substantive=%s\n' "$not_substantive"
+} > "$tmp/voting-tally.md"
 if [[ "$accepted" -gt 0 ]]; then
   printf '### FINDING_1: Example\n- **Concern**: concern\n' > "$tmp/accepted-findings.md"
 else
   : > "$tmp/accepted-findings.md"
 fi
 : > "$tmp/rejected-findings.md"
-printf 'TALLY_STATUS=%s\nACCEPTED_COUNT=%s\nREJECTED_COUNT=%s\nTALLY_FILE=%s/review-tally.env\nACCEPTED_FINDINGS_FILE=%s/accepted-findings.md\nREJECTED_FINDINGS_FILE=%s/rejected-findings.md\nTALLY_OK=true\n' "$status" "$accepted" "$rejected" "$tmp" "$tmp" "$tmp"
+printf 'TALLY_STATUS=%s\nACCEPTED_COUNT=%s\nREJECTED_COUNT=%s\nTALLY_FILE=%s/review-tally.env\nACCEPTED_FINDINGS_FILE=%s/accepted-findings.md\nREJECTED_FINDINGS_FILE=%s/rejected-findings.md\nVOTING_TALLY_FILE=%s/voting-tally.md\nTALLY_OK=true\n' "$status" "$accepted" "$rejected" "$tmp" "$tmp" "$tmp" "$tmp"
 STUB
     cat > "$TMP/emit.sh" <<'STUB'
 #!/usr/bin/env bash
@@ -180,7 +197,7 @@ STUB
 set -euo pipefail
 # Test stub: emit the threshold result from TEST_THRESHOLD_OK (default true).
 ok="${TEST_THRESHOLD_OK:-true}"
-printf 'INTENDED_SLOTS=12\nSUCCEEDED_SLOTS=12\nFAILED_SLOTS=0\nCOUNTED_SLOTS=12\nTHRESHOLD_OK=%s\nTHRESHOLD_REASON=\n' "$ok"
+printf 'INTENDED_SLOTS=12\nSUCCEEDED_SLOTS=12\nFAILED_SLOTS=0\nCOUNTED_SLOTS=12\nTHRESHOLD_OK=%s\nTHRESHOLD_REASON=\nNOT_SUBSTANTIVE_SLOTS=%s\n' "$ok" "${TEST_NOT_SUBSTANTIVE_SLOTS:-0}"
 STUB
     cat > "$TMP/dispatch-voters.sh" <<'STUB'
 #!/usr/bin/env bash
@@ -262,12 +279,18 @@ assert_contains "$out" 'REVIEW_CORE_STATUS=zero-findings'
 assert_contains "$out" 'PANEL_SHAPE=simple'
 assert_contains "$out" 'SCOUT_STATUS=na'
 assert_contains "$out" 'DYNAMIC_SLOTS=0'
+assert_contains "$out" "VOTING_TALLY_FILE=$TMP/zero/voting-tally.md"
 [[ -f "$TMP/zero/review-dirty-tree-summary.env" ]] || { echo "FAIL: missing review-dirty-tree-summary.env" >&2; exit 1; }
+[[ -f "$TMP/zero/voting-tally.md" ]] || { echo "FAIL: missing zero-findings voting-tally.md" >&2; exit 1; }
 
 out=$(TEST_FINDINGS=0 TEST_SCOUT_STATUS=ok TEST_DYNAMIC_SLOTS=3 run_core "$TMP/zero-scout")
 assert_contains "$out" 'REVIEW_CORE_STATUS=zero-findings'
 assert_contains "$out" 'SCOUT_STATUS=ok'
 assert_contains "$out" 'DYNAMIC_SLOTS=3'
+
+out=$(TEST_FINDINGS=0 TEST_NOT_SUBSTANTIVE_SLOTS=2 run_core "$TMP/zero-degraded")
+assert_contains "$out" 'REVIEW_CORE_STATUS=zero-findings'
+grep -Fq 'not_substantive=2' "$TMP/zero-degraded/voting-tally.md" || { echo "FAIL: zero-findings tally missing degraded slot count" >&2; exit 1; }
 
 out=$(TEST_FINDINGS=1 TEST_ACCEPTED=1 TEST_REJECTED=0 run_core "$TMP/fix")
 assert_contains "$out" 'REVIEW_CORE_STATUS=fix-required'

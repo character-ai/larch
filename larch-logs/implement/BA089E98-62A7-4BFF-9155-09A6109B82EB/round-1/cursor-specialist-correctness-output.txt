@@ -1,0 +1,35 @@
+Gathering the branch diff and commit list for a read-only correctness review.
+
+Searching the large diff for planned files and reading key sections.
+
+Reading diff hunks for implementation files and the full modified shell scripts for correctness analysis.
+
+Reading `collect-agent-results.sh` around NS retry and emit logic, and `tally-code-votes.sh` for scoreboard formatting.
+
+Here is the read-only review. Commits on the branch since merge-base with `main`: `a2e2df06` (NOT_SUBSTANTIVE retry + scoreboard + threshold), `1b0742f8` (version bump to 29.3.12). The cached diff also includes `.agnix.toml`, `github-remote-repo.sh`, and `CHANGELOG` edits alongside `larch-logs/...` artifacts.
+
+### In-Scope Findings
+
+1. **Important** (`correctness`, plan + both) — [`scripts/collect-agent-results.sh`](scripts/collect-agent-results.sh): Fix A in the implementation plan requires a second retry path: when `.meta` has **only** `CMD_JSON` (no `OUTER_LAUNCHER`), re-launch via `run-external-agent.sh` like section 3. Section 3.7 only handles `OUTER_LAUNCHER` and silently skips all other `NOT_SUBSTANTIVE` rows (lines ~913–947, ~980). **Scenario:** A reviewer slot written with inner `CMD_JSON` metadata (no outer launcher fields) is marked `NOT_SUBSTANTIVE` after validation; it never gets the one-shot stronger-prompt retry the plan calls for. **Fix:** Add the `CMD_JSON` branch mirroring section 3’s deserializer/launch path, or narrow the plan/docs to “outer-launcher slots only” if that is intentional.
+
+2. **Important** (`correctness`, plan + both) — [`scripts/collect-agent-results.sh`](scripts/collect-agent-results.sh): NOT_SUBSTANTIVE retry is implemented as **section 3.7 after section 3.6 structured validation** (~857–1043). On success it only runs `validate-research-output.sh` without `--structured-reviewer-mode` (~1027–1035). **Scenario:** Caller passes both `--substantive-validation` and `--structured-reviewer-validation` (plan-review wiring in your own docs). A slot is `OK` after substantive, then downgraded to `NOT_SUBSTANTIVE` in 3.6 because TSV/JSONL sidecar validation fails. The NS retry passes substantive checks on `*-ns-retry.txt` but still has no valid structured sidecar; the row is upgraded to `STATUS=OK` and never re-validated structurally. Downstream consumers see `OK` for output that is still invalid under structured rules. **Fix:** Run NS retry before structured validation, or after a successful NS upgrade re-run the structured validator (and only emit `OK` if that passes too).
+
+3. **Latent** (`correctness`, requirements) — [`skills/review/scripts/tally-code-votes.sh`](skills/review/scripts/tally-code-votes.sh): Dead-slot rows use `collector_status[normed]` when present; otherwise the last column defaults to `NOT_SUBSTANTIVE` (~434–437). **Scenario:** A manifest slot never produced a collector record (dispatch skipped, path mismatch, or collector file from an older run). The scoreboard still shows a row labeled `STATUS=NOT_SUBSTANTIVE`, which reads as “narrative-only” even when the true state was “never ran” or another failure. **Fix:** Default to a distinct label such as `UNKNOWN` or `NO_COLLECTOR_ROW` unless `STATUS` was read from the collector map.
+
+4. **Nit** (`code-quality`, plan) — [`skills/review/scripts/tally-code-votes.sh`](skills/review/scripts/tally-code-votes.sh): `usage()` (~16–18) was not updated to mention `--collector-results-file` or `--not-substantive-count`, while the markdown contract was. **Fix:** Extend the usage string to match the real CLI.
+
+5. **Nit** (`code-quality`, plan) — [`scripts/test-collect-agent-results.sh`](scripts/test-collect-agent-results.sh): C_NSR comment says the fake launcher is “non-executable” (~2075–2076 in diff) but the harness runs `chmod +x` on it (~2079–2080). **Fix:** Align the comment with behavior (or drop the misleading clause).
+
+### Out-of-Scope Observations
+
+1. **Latent** (`risk-integration`) — The merge-base…HEAD diff bundles **agnix AS-014** suppression (`.agnix.toml`), **regex edits** in [`scripts/github-remote-repo.sh`](scripts/github-remote-repo.sh), **CHANGELOG** entries, version bump, and a large **`larch-logs/implement/...`** tree. None of that appears in the #2323 implementation plan you supplied; it widens PR scope and bisect surface. Per your rules, committed `larch-logs/implement/` is intentional noise and not flagged as a defect—only called out as review scope creep for the human reviewer.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/collect-agent-results.sh:892-1043	NOT_SUBSTANTIVE retry implements only OUTER_LAUNCHER relaunch; no CMD_JSON path from plan A	CMD_JSON-only .meta after NOT_SUBSTANTIVE never receives the one-shot stronger-prompt retry	Add run-external-agent.sh retry branch when OUTER_LAUNCHER missing but CMD_JSON valid (mirror section 3)
+1	in_scope	important	correctness	scripts/collect-agent-results.sh:857-1035	NS retry runs after structured validation and only re-validates substantively	With both --substantive-validation and --structured-reviewer-validation a structured-failure NOT_SUBSTANTIVE can become OK after retry without passing structured validation again	Reorder passes (retry before 3.6) or re-run structured validator on successful NS retry before marking OK
+1	in_scope	latent	correctness	skills/review/scripts/tally-code-votes.sh:434-437	Dead-slot rows default STATUS=NOT_SUBSTANTIVE when collector has no basename entry	Manifest slot with no collector row mislabeled as narrative-only NOT_SUBSTANTIVE	Use a distinct default (e.g. UNKNOWN) unless STATUS is parsed from collector results
+1	in_scope	nit	code-quality	skills/review/scripts/tally-code-votes.sh:16-18	usage() omits new tally flags	Operators see incomplete --help-style text	Update usage() to list --collector-results-file and --not-substantive-count
+1	in_scope	nit	code-quality	scripts/test-collect-agent-results.sh:2067-2080	C_NSR comment contradicts chmod +x on fake launcher	Misleading test documentation	Fix comment to describe executable stub launcher
+1	out_of_scope	latent	risk-integration	.claude-plugin/plugin.json;CHANGELOG.md;.agnix.toml;scripts/github-remote-repo.sh;larch-logs/implement/B4EC9C2D-9849-4DE1-BC6C-B52A4D731F70/**	Branch mixes #2323 behavior with unrelated agnix/regex/version/log artifacts	Harder review and rollback attribution	Split unrelated changes into separate commits/PRs when feasible
+```

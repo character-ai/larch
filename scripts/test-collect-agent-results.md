@@ -18,6 +18,10 @@ Cases:
   once and recovers.
 - **C_T5**: `STATUS=SENTINEL_TIMEOUT` without a transient diagnostic remains a
   timeout and creates no retry artifact.
+- **C_NSR**: narrative-only output (detected as `STATUS=NOT_SUBSTANTIVE` by the
+  substantive validator) with a valid `.meta` triggers a section 3.7 retry
+  attempt; the test verifies `STATUS=NOT_SUBSTANTIVE` is emitted and the retry
+  sentinel is written (when the outer launcher executes in the test environment).
 
 The full collector contract lives in `scripts/collect-agent-results.md`. This
 harness is wired through the `test-collect-agent-results` Makefile target and a

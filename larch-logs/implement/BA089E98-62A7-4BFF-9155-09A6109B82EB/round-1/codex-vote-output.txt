@@ -1,0 +1,48 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: EXONERATE -- Legitimate branch hygiene concern, but not worth a future tracking issue.
+FINDING_6: EXONERATE -- Pre-existing minor fixture hygiene, not issue-worthy.
+FINDING_7: EXONERATE -- Legitimate PR-scope concern, but not useful as a future issue.
+FINDING_8: EXONERATE -- Legitimate branch hygiene concern, but not issue-worthy.
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: EXONERATE -- Duplication is real, but extracting shell meta parsing adds more churn than this nit warrants.
+FINDING_13: YES
+FINDING_14: NO -- The C_IT1 conversational fixture text is pre-existing, not introduced by this branch.
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: YES
+FINDING_18: YES
+FINDING_19: YES
+FINDING_20: YES
+FINDING_21: YES
+FINDING_22: YES
+FINDING_23: YES
+FINDING_24: YES
+FINDING_25: YES
+FINDING_26: EXONERATE -- Numbering mismatch is real but cosmetic and not worth renumbering churn.
+FINDING_27: YES
+FINDING_28: YES
+FINDING_29: YES
+FINDING_30: YES
+FINDING_31: YES
+FINDING_32: YES
+FINDING_33: YES
+FINDING_34: YES
+FINDING_35: EXONERATE -- Dynamic-slot visibility is a plausible gap, but the explicit dyn exclusion makes this too ambiguous for a code finding.
+FINDING_36: EXONERATE -- The awk parser is fragile in theory, but manifest formatting is controlled and a jq rewrite is more complexity than warranted.
+FINDING_37: YES
+FINDING_38: YES
+FINDING_39: YES
+FINDING_40: YES
+FINDING_41: EXONERATE -- Masking wait errors matches the existing retry pattern and sentinel checks still preserve the degraded status.
+FINDING_42: YES
+FINDING_43: YES
+FINDING_44: EXONERATE -- Legitimate PR-scope noise, but reverting or splitting is process cleanup rather than a code-review fix.
+FINDING_45: YES
+FINDING_46: YES
+FINDING_47: YES
+FINDING_48: YES

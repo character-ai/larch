@@ -281,6 +281,28 @@ with_structured_sidecar_field() {
         "${entry##*|FAILURE_REASON=}"
 }
 
+result_field_value() {
+    local entry="$1"
+    local key="$2"
+    local field=""
+    while [[ -n "$entry" ]]; do
+        if [[ "$entry" == *"|"* ]]; then
+            field="${entry%%|*}"
+            entry="${entry#*|}"
+        else
+            field="$entry"
+            entry=""
+        fi
+        case "$field" in
+            "$key"=*)
+                printf '%s' "${field#*=}"
+                return 0
+                ;;
+        esac
+    done
+    return 1
+}
+
 # --- Helper: build failure reason from .diag file or status ---
 build_failure_reason() {
     local output_file="$1"
@@ -358,6 +380,232 @@ cmd_json_shape_valid_for_tool() {
             return 2
             ;;
     esac
+    return 0
+}
+
+parse_retry_meta() {
+    local meta_path="$1"
+    META_TOOL=""
+    META_TIMEOUT=""
+    META_CAPTURE=""
+    META_CAPTURE_STDOUT_ONLY=""
+    META_CMD_JSON=""
+    META_ORIG_OUTPUT=""
+    META_OUTER_LAUNCHER=""
+    META_OUTER_LAUNCHER_PROMPT_FILE=""
+    META_OUTER_LAUNCHER_WORKDIR=""
+    META_OUTER_LAUNCHER_RISK=""
+    while IFS= read -r meta_line || [[ -n "$meta_line" ]]; do
+        meta_key="${meta_line%%=*}"
+        meta_val="${meta_line#*=}"
+        case "$meta_key" in
+            TOOL)           META_TOOL="$meta_val" ;;
+            TIMEOUT)        META_TIMEOUT="$meta_val" ;;
+            CAPTURE_STDOUT) META_CAPTURE="$meta_val" ;;
+            CAPTURE_STDOUT_ONLY) META_CAPTURE_STDOUT_ONLY="$meta_val" ;;
+            OUTPUT_FILE)    META_ORIG_OUTPUT="$meta_val" ;;
+            CMD_JSON)       META_CMD_JSON="$meta_val" ;;
+            OUTER_LAUNCHER) META_OUTER_LAUNCHER="$meta_val" ;;
+            OUTER_LAUNCHER_PROMPT_FILE) META_OUTER_LAUNCHER_PROMPT_FILE="$meta_val" ;;
+            OUTER_LAUNCHER_WORKDIR) META_OUTER_LAUNCHER_WORKDIR="$meta_val" ;;
+            OUTER_LAUNCHER_RISK) META_OUTER_LAUNCHER_RISK="$meta_val" ;;
+        esac
+    done < "$meta_path"
+}
+
+validate_retry_timeout_or_mark() {
+    local idx="$1"
+    local orig_output="$2"
+    local timeout_value="$3"
+    local invalid_reason=""
+    if [[ -z "$timeout_value" ]]; then
+        invalid_reason="Retry metadata invalid: TIMEOUT missing"
+    else
+        case "$timeout_value" in
+            ''|*[!0-9]*) invalid_reason="Retry metadata invalid: TIMEOUT not a positive integer" ;;
+            *) if (( 10#$timeout_value < 1 )); then
+                   invalid_reason="Retry metadata invalid: TIMEOUT not a positive integer"
+               fi ;;
+        esac
+    fi
+    if [[ -n "$invalid_reason" ]]; then
+        mark_retry_metadata_invalid "$idx" "$orig_output" "$invalid_reason"
+        return 1
+    fi
+    META_TIMEOUT=$((10#$timeout_value))
+    return 0
+}
+
+launch_outer_retry_or_mark() {
+    local idx="$1"
+    local orig_output="$2"
+    local retry_output="$3"
+    local prompt_file="$4"
+    local timeout_value="$5"
+    local launched_var="$6"
+    local sentinels_var="$7"
+
+    if [[ -z "$META_OUTER_LAUNCHER" ]]; then
+        mark_retry_metadata_invalid "$idx" "$orig_output" "Retry metadata invalid: missing OUTER_LAUNCHER"
+        return 1
+    fi
+    if [[ -z "$META_OUTER_LAUNCHER_PROMPT_FILE" ]]; then
+        mark_retry_metadata_invalid "$idx" "$orig_output" "Retry metadata invalid: missing OUTER_LAUNCHER_PROMPT_FILE"
+        return 1
+    fi
+    if [[ -z "$META_OUTER_LAUNCHER_WORKDIR" ]]; then
+        mark_retry_metadata_invalid "$idx" "$orig_output" "Retry metadata invalid: missing OUTER_LAUNCHER_WORKDIR"
+        return 1
+    fi
+    case "$META_OUTER_LAUNCHER" in
+        *..*) mark_retry_metadata_invalid "$idx" "$orig_output" "Retry metadata invalid: OUTER_LAUNCHER contains .."; return 1 ;;
+    esac
+    _launcher_base=$(basename "$META_OUTER_LAUNCHER")
+    case "$META_TOOL:$_launcher_base" in
+        cursor:launch-review.sh|codex:launch-review.sh) _expected_launcher="$SCRIPT_DIR/launch-review.sh" ;;
+        cursor:*|codex:*) _expected_launcher="$SCRIPT_DIR/launch-review.sh" ;;
+        *) mark_retry_metadata_invalid "$idx" "$orig_output" "Retry metadata invalid: OUTER_LAUNCHER not canonical launch-review.sh"; return 1 ;;
+    esac
+    if ! _expected_launcher_dir=$(cd "$(dirname "$_expected_launcher")" 2>/dev/null && pwd -P 2>/dev/null); then
+        mark_retry_metadata_invalid "$idx" "$orig_output" "Retry metadata invalid: OUTER_LAUNCHER not canonical $(basename "$_expected_launcher")"
+        return 1
+    fi
+    if ! _candidate_launcher_dir=$(cd "$(dirname "$META_OUTER_LAUNCHER")" 2>/dev/null && pwd -P 2>/dev/null); then
+        mark_retry_metadata_invalid "$idx" "$orig_output" "Retry metadata invalid: OUTER_LAUNCHER not canonical $(basename "$_expected_launcher")"
+        return 1
+    fi
+    _expected_launcher_canonical="$_expected_launcher_dir/$(basename "$_expected_launcher")"
+    _candidate_canonical="$_candidate_launcher_dir/$(basename "$META_OUTER_LAUNCHER")"
+    if [[ "$_candidate_canonical" != "$_expected_launcher_canonical" ]]; then
+        mark_retry_metadata_invalid "$idx" "$orig_output" "Retry metadata invalid: OUTER_LAUNCHER not canonical $(basename "$_expected_launcher")"
+        return 1
+    fi
+    if [[ ! -f "$META_OUTER_LAUNCHER" || -L "$META_OUTER_LAUNCHER" || ! -x "$META_OUTER_LAUNCHER" ]]; then
+        mark_retry_metadata_invalid "$idx" "$orig_output" "Retry metadata invalid: OUTER_LAUNCHER not a regular non-symlink executable file"
+        return 1
+    fi
+    _expected_prompt="${orig_output}.prompt"
+    case "$META_OUTER_LAUNCHER_PROMPT_FILE" in
+        *..*) mark_retry_metadata_invalid "$idx" "$orig_output" "Retry metadata invalid: OUTER_LAUNCHER_PROMPT_FILE contains .."; return 1 ;;
+    esac
+    if [[ "$META_OUTER_LAUNCHER_PROMPT_FILE" != "$_expected_prompt" ]]; then
+        mark_retry_metadata_invalid "$idx" "$orig_output" "Retry metadata invalid: OUTER_LAUNCHER_PROMPT_FILE not the expected sidecar"
+        return 1
+    fi
+    if [[ ! -f "$META_OUTER_LAUNCHER_PROMPT_FILE" || -L "$META_OUTER_LAUNCHER_PROMPT_FILE" || ! -r "$META_OUTER_LAUNCHER_PROMPT_FILE" ]]; then
+        mark_retry_metadata_invalid "$idx" "$orig_output" "Retry metadata invalid: OUTER_LAUNCHER_PROMPT_FILE not a readable regular non-symlink file"
+        return 1
+    fi
+    case "$META_OUTER_LAUNCHER_WORKDIR" in
+        *..*) mark_retry_metadata_invalid "$idx" "$orig_output" "Retry metadata invalid: OUTER_LAUNCHER_WORKDIR contains .."; return 1 ;;
+    esac
+    if [[ ! -d "$META_OUTER_LAUNCHER_WORKDIR" ]]; then
+        mark_retry_metadata_invalid "$idx" "$orig_output" "Retry metadata invalid: OUTER_LAUNCHER_WORKDIR not a directory"
+        return 1
+    fi
+    case "$META_OUTER_LAUNCHER_RISK" in
+        high|low) ;;
+        *) META_OUTER_LAUNCHER_RISK=high ;;
+    esac
+    (
+        cd "$META_OUTER_LAUNCHER_WORKDIR" || exit 1
+        env -u LARCH_ALLOW_TEST_HOOKS \
+            -u LARCH_TEST_TRAP_AFTER_INNER_DONE_FILE \
+            -u LARCH_TEST_TRAP_AFTER_INNER_DONE \
+            -- "$META_OUTER_LAUNCHER" \
+                --tool "$META_TOOL" \
+                --output "$retry_output" \
+                --timeout "$timeout_value" \
+                --risk "$META_OUTER_LAUNCHER_RISK" \
+                --prompt-file "$prompt_file"
+    ) >/dev/null 2>&1 &
+    eval "$launched_var=1"
+    eval "$sentinels_var+=(\"\${retry_output}.done\")"
+    return 0
+}
+
+launch_cmd_json_retry_or_mark() {
+    local idx="$1"
+    local orig_output="$2"
+    local retry_output="$3"
+    local launched_var="$4"
+    local sentinels_var="$5"
+
+    if [[ -z "$META_CMD_JSON" && -z "$META_TOOL" ]]; then
+        mark_retry_metadata_invalid "$idx" "$orig_output" "Retry metadata invalid: missing CMD_JSON and TOOL"
+        return 1
+    fi
+    if [[ -z "$META_CMD_JSON" ]]; then
+        mark_retry_metadata_invalid "$idx" "$orig_output" "Retry metadata invalid: missing CMD_JSON"
+        return 1
+    fi
+    if [[ -z "$META_TOOL" ]]; then
+        mark_retry_metadata_invalid "$idx" "$orig_output" "Retry metadata invalid: missing TOOL"
+        return 1
+    fi
+    if ! printf '%s' "$META_CMD_JSON" | jq -e 'type=="array" and length>0 and all(.[]; type=="string")' >/dev/null 2>&1; then
+        mark_retry_metadata_invalid "$idx" "$orig_output" "Retry metadata invalid: malformed CMD_JSON"
+        return 1
+    fi
+
+    RETRY_ARGS=(--tool "$META_TOOL" --output "$retry_output" --timeout "$META_TIMEOUT")
+    if [[ "$META_CAPTURE" == "true" ]]; then
+        RETRY_ARGS+=(--capture-stdout)
+    elif [[ "$META_CAPTURE_STDOUT_ONLY" == "true" ]]; then
+        RETRY_ARGS+=(--capture-stdout-only)
+    fi
+    RETRY_ARGS+=(--)
+
+    CMD_ARR=()
+    _decode_failed=false
+    _b64_stream=$(printf '%s' "$META_CMD_JSON" | jq -r '.[] | @base64')
+    while IFS= read -r _b64 || [[ -n "${_b64:-}" ]]; do
+        [[ -z "$_b64" ]] && continue
+        if ! _decoded=$({ printf '%s\n' "$_b64" | base64 -d; _decode_status=$?; printf X; exit "$_decode_status"; }); then
+            mark_retry_metadata_invalid "$idx" "$orig_output" "Retry metadata invalid: CMD_JSON decode failed"
+            _decode_failed=true
+            break
+        fi
+        CMD_ARR+=("${_decoded%X}")
+    done <<< "$_b64_stream"
+    if [[ "$_decode_failed" == "true" ]]; then
+        return 1
+    fi
+    if [[ ${#CMD_ARR[@]} -eq 0 ]]; then
+        mark_retry_metadata_invalid "$idx" "$orig_output" "Retry metadata invalid: empty CMD_JSON array after decode"
+        return 1
+    fi
+
+    _expected_len=$(printf '%s' "$META_CMD_JSON" | jq 'length')
+    if [[ "${#CMD_ARR[@]}" -ne "$_expected_len" ]]; then
+        mark_retry_metadata_invalid "$idx" "$orig_output" "Retry metadata invalid: CMD_JSON decode length mismatch"
+        return 1
+    fi
+
+    if [[ -n "$META_ORIG_OUTPUT" ]]; then
+        for _i in "${!CMD_ARR[@]}"; do
+            if [[ "${CMD_ARR[$_i]}" == "$META_ORIG_OUTPUT" ]]; then
+                CMD_ARR[_i]="$retry_output"
+            fi
+        done
+    fi
+    cmd_json_shape_valid_for_tool "$META_TOOL" "${CMD_ARR[@]}"
+    _shape_rc=$?
+    if [[ "$_shape_rc" == "2" ]]; then
+        mark_retry_metadata_invalid "$idx" "$orig_output" "Retry metadata invalid: unknown TOOL for CMD_JSON"
+        return 1
+    fi
+    if [[ "$_shape_rc" != "0" ]]; then
+        mark_retry_metadata_invalid "$idx" "$orig_output" "Retry metadata invalid: CMD_JSON argv shape rejected for $META_TOOL"
+        return 1
+    fi
+
+    _last_idx=$((${#CMD_ARR[@]} - 1))
+    CMD_ARR[_last_idx]="${NS_STRONG_HEADER}${CMD_ARR[_last_idx]}"
+
+    "$SCRIPT_DIR/run-external-agent.sh" "${RETRY_ARGS[@]}" "${CMD_ARR[@]}" >/dev/null 2>&1 &
+    eval "$launched_var=1"
+    eval "$sentinels_var+=(\"\${retry_output}.done\")"
     return 0
 }
 
@@ -848,7 +1096,7 @@ if [[ "$SUBSTANTIVE_VALIDATION" == "true" ]]; then
             if [[ "$VAL_EXIT" -eq 5 ]]; then
                 RESULTS[j]="REVIEWER_FILE=$REVIEWER_FILE|TOOL=$ENTRY_TOOL|STATUS=CURSOR_EMPTY_RESPONSE|EXIT_CODE=0|FAILURE_REASON=$DIAG_SAN"
             else
-                RESULTS[j]="REVIEWER_FILE=$REVIEWER_FILE|TOOL=$ENTRY_TOOL|STATUS=NOT_SUBSTANTIVE|EXIT_CODE=0|FAILURE_REASON=$DIAG_SAN"
+                RESULTS[j]="REVIEWER_FILE=$REVIEWER_FILE|TOOL=$ENTRY_TOOL|STATUS=NOT_SUBSTANTIVE|EXIT_CODE=0|NS_RETRY_MODE=substantive|FAILURE_REASON=$DIAG_SAN"
             fi
         fi
     done
@@ -884,9 +1132,129 @@ if [[ "$STRUCTURED_REVIEWER_VALIDATION" == "true" ]]; then
             RESULTS[j]=$(with_structured_sidecar_field "$entry" "$STRUCTURED_SIDECAR")
         else
             DIAG_SAN=$(printf '%s' "$DIAG" | tr '|\n' '/ ' | tr -s '[:space:]' ' ' | sed 's/^ //; s/ $//' | cut -c1-200)
-            RESULTS[j]="REVIEWER_FILE=$REVIEWER_FILE|TOOL=$ENTRY_TOOL|STATUS=NOT_SUBSTANTIVE|EXIT_CODE=0|STRUCTURED_SIDECAR=|FAILURE_REASON=$DIAG_SAN"
+            RESULTS[j]="REVIEWER_FILE=$REVIEWER_FILE|TOOL=$ENTRY_TOOL|STATUS=NOT_SUBSTANTIVE|EXIT_CODE=0|NS_RETRY_MODE=structured|STRUCTURED_SIDECAR=|FAILURE_REASON=$DIAG_SAN"
         fi
     done
+fi
+
+# --- 3.7. Retry NOT_SUBSTANTIVE entries once with a structured-output demand ---
+# For each entry downgraded to NOT_SUBSTANTIVE in sections 3.5 or 3.6, preserve
+# the reason for the downgrade so the retry can re-run the matching validator.
+# Retry metadata reuses the same canonical outer-launcher / CMD_JSON checks as
+# the empty-output path before any replay is attempted.
+if [[ "$SUBSTANTIVE_VALIDATION" == "true" ]]; then
+    NS_RETRY_FILES=()
+    NS_RETRY_INDICES=()
+    NS_RETRY_TIMEOUTS=()
+    NS_RETRY_MODES=()
+
+    for j in "${!RESULTS[@]}"; do
+        entry="${RESULTS[$j]}"
+        rf_field="${entry%%|*}"
+        REVIEWER_FILE="${rf_field#REVIEWER_FILE=}"
+        rest1="${entry#*|}"
+        tool_field="${rest1%%|*}"
+        ENTRY_TOOL="${tool_field#TOOL=}"
+        rest2="${rest1#*|}"
+        status_field="${rest2%%|*}"
+        ENTRY_STATUS="${status_field#STATUS=}"
+        NS_RETRY_MODE=$(result_field_value "$entry" "NS_RETRY_MODE" || true)
+
+        [[ "$ENTRY_STATUS" == "NOT_SUBSTANTIVE" ]] || continue
+        [[ -n "$NS_RETRY_MODE" ]] || continue
+        META="${REVIEWER_FILE}.meta"
+        [[ -f "$META" ]] || continue
+        parse_retry_meta "$META"
+        validate_retry_timeout_or_mark "$j" "$REVIEWER_FILE" "$META_TIMEOUT" || continue
+
+        NS_RETRY_FILES+=("$REVIEWER_FILE")
+        NS_RETRY_INDICES+=("$j")
+        NS_RETRY_TIMEOUTS+=("$META_TIMEOUT")
+        NS_RETRY_MODES+=("$NS_RETRY_MODE")
+    done
+
+    if [[ ${#NS_RETRY_FILES[@]} -gt 0 ]]; then
+        NS_RETRY_SENTINELS=()
+        NS_RETRY_LAUNCHED=()
+        NS_RETRY_PROMPTS=()
+        NS_MAX_RETRY_TIMEOUT=30
+        # Structured-output demand prepended to the reviewer prompt on retry.
+        NS_STRONG_HEADER="IMPORTANT: Your previous response was not structured correctly. You MUST output findings in the required format (### FINDING_N: title / bullet fields), or the literal NO_ISSUES_FOUND if no issues exist. Do NOT output narrative, process descriptions, or reading logs. Begin your response directly with findings or NO_ISSUES_FOUND.
+
+"
+        for j in "${!NS_RETRY_FILES[@]}"; do
+            ORIG_OUTPUT="${NS_RETRY_FILES[$j]}"
+            META="${ORIG_OUTPUT}.meta"
+            NS_RETRY_OUTPUT="${ORIG_OUTPUT%.txt}-ns-retry.txt"
+            IDX="${NS_RETRY_INDICES[$j]}"
+            parse_retry_meta "$META"
+            validate_retry_timeout_or_mark "$IDX" "$ORIG_OUTPUT" "$META_TIMEOUT" || continue
+
+            NS_RETRY_WAIT=$(( META_TIMEOUT + 60 ))
+            [[ $NS_RETRY_WAIT -gt $NS_MAX_RETRY_TIMEOUT ]] && NS_MAX_RETRY_TIMEOUT=$NS_RETRY_WAIT
+
+            if [[ -n "$META_OUTER_LAUNCHER" || -n "$META_OUTER_LAUNCHER_PROMPT_FILE" || -n "$META_OUTER_LAUNCHER_WORKDIR" ]]; then
+                _ns_strong_prompt=$(mktemp "${TMPDIR:-/tmp}/larch-ns-retry-prompt.XXXXXX") || continue
+                { printf '%s' "$NS_STRONG_HEADER"; cat "$META_OUTER_LAUNCHER_PROMPT_FILE"; } > "$_ns_strong_prompt" 2>/dev/null || {
+                    rm -f "$_ns_strong_prompt"; continue
+                }
+                launch_outer_retry_or_mark "$IDX" "$ORIG_OUTPUT" "$NS_RETRY_OUTPUT" "$_ns_strong_prompt" "$META_TIMEOUT" "NS_RETRY_LAUNCHED[$j]" "NS_RETRY_SENTINELS" || {
+                    rm -f "$_ns_strong_prompt"
+                    continue
+                }
+                NS_RETRY_PROMPTS+=("$_ns_strong_prompt")
+                continue
+            fi
+
+            launch_cmd_json_retry_or_mark "$IDX" "$ORIG_OUTPUT" "$NS_RETRY_OUTPUT" "NS_RETRY_LAUNCHED[$j]" "NS_RETRY_SENTINELS" || continue
+        done
+
+        if [[ ${#NS_RETRY_SENTINELS[@]} -gt 0 ]]; then
+            "$SCRIPT_DIR/wait-for-reviewers.sh" --timeout "$NS_MAX_RETRY_TIMEOUT" \
+                "${NS_RETRY_SENTINELS[@]}" >/dev/null 2>&1 || true
+
+            VAL_ARGS_NS=()
+            [[ "$VALIDATION_MODE" == "true" ]] && VAL_ARGS_NS+=(--validation-mode)
+
+            for j in "${!NS_RETRY_FILES[@]}"; do
+                [[ "${NS_RETRY_LAUNCHED[$j]:-0}" == "1" ]] || continue
+                ORIG_OUTPUT="${NS_RETRY_FILES[$j]}"
+                NS_RETRY_OUTPUT="${ORIG_OUTPUT%.txt}-ns-retry.txt"
+                NS_RETRY_SENTINEL="${NS_RETRY_OUTPUT}.done"
+                IDX="${NS_RETRY_INDICES[$j]}"
+
+                if [[ -f "$NS_RETRY_SENTINEL" && -s "$NS_RETRY_OUTPUT" ]]; then
+                    NS_EXIT=$(cat "$NS_RETRY_SENTINEL" 2>/dev/null || echo "99")
+                    case "$NS_EXIT" in ''|*[!0-9]*) NS_EXIT=99 ;; esac
+                    if [[ "$NS_EXIT" == "0" ]]; then
+                        entry="${RESULTS[$IDX]}"
+                        ENTRY_TOOL=$(result_field_value "$entry" "TOOL" || true)
+                        NS_RETRY_MODE="${NS_RETRY_MODES[$j]}"
+                        if [[ "$NS_RETRY_MODE" == "structured" ]]; then
+                            case "$ENTRY_TOOL" in
+                                cursor|codex) STRUCTURED_SIDECAR="${NS_RETRY_OUTPUT}.tsv" ;;
+                                *) STRUCTURED_SIDECAR="${NS_RETRY_OUTPUT}.jsonl" ;;
+                            esac
+                            "$SCRIPT_DIR/validate-research-output.sh" \
+                                --structured-reviewer-mode --write-structured "$STRUCTURED_SIDECAR" "$NS_RETRY_OUTPUT" >/dev/null 2>&1
+                            NS_VAL_EXIT=$?
+                            if [[ "$NS_VAL_EXIT" -eq 0 ]]; then
+                                RESULTS[IDX]="REVIEWER_FILE=$NS_RETRY_OUTPUT|TOOL=$ENTRY_TOOL|STATUS=OK|EXIT_CODE=0|STRUCTURED_SIDECAR=$STRUCTURED_SIDECAR|FAILURE_REASON="
+                            fi
+                        else
+                            "$SCRIPT_DIR/validate-research-output.sh" \
+                                "${VAL_ARGS_NS[@]+"${VAL_ARGS_NS[@]}"}" "$NS_RETRY_OUTPUT" >/dev/null 2>&1
+                            NS_VAL_EXIT=$?
+                            if [[ "$NS_VAL_EXIT" -eq 0 ]]; then
+                                RESULTS[IDX]="REVIEWER_FILE=$NS_RETRY_OUTPUT|TOOL=$ENTRY_TOOL|STATUS=OK|EXIT_CODE=0|FAILURE_REASON="
+                            fi
+                        fi
+                    fi
+                fi
+            done
+        fi
+        rm -f "${NS_RETRY_PROMPTS[@]+"${NS_RETRY_PROMPTS[@]}"}"
+    fi
 fi
 
 # --- 4. Emit structured results ---
