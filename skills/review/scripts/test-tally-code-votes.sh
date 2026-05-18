@@ -211,6 +211,78 @@ else
     printf '  ok   security OOS held locally (oos-accepted-review.md empty)\n'
 fi
 
+echo "# Case: scope-fit gate — finding about file NOT in diff is reclassified to OOS"
+TMP="$WORKDIR/case6a"
+mkdir -p "$TMP"
+cat > "$TMP/ballot.md" <<'EOF'
+### FINDING_1: **Important** — `code-quality` — `docs/linting.md:22`
+- **Reviewer**: Cursor-Correctness
+- **Concern**: Usage CI bullet still documents harnesses-1 through harnesses-10 after eleven-way sharding.
+- **Suggested revision**: Update to reflect 11 shards.
+
+### FINDING_2: **Important** — `correctness` — `scripts/dispatch-code-voters.sh:42`
+- **Reviewer**: Codex-Structure
+- **Concern**: Null check missing on return path.
+- **Suggested revision**: Add nil guard.
+EOF
+printf 'scripts/dispatch-code-voters.sh\n' > "$TMP/scope-files.txt"
+printf 'FINDING_1: YES\nFINDING_2: YES\n' > "$TMP/cursor-vote-output.txt"
+printf 'FINDING_1: YES\nFINDING_2: YES\n' > "$TMP/codex-vote-output.txt"
+printf 'FINDING_1: YES\nFINDING_2: YES\n' > "$TMP/claude-vote-output.txt"
+out="$TMP/out.env"
+"$SCRIPT" --ballot-file "$TMP/ballot.md" \
+    --voter-files "$TMP/cursor-vote-output.txt" "$TMP/codex-vote-output.txt" "$TMP/claude-vote-output.txt" \
+    --scope-files "$TMP/scope-files.txt" \
+    --review-tmpdir "$TMP" > "$out"
+got=$(awk -F= '$1=="OUT_OF_SCOPE_DRIFT_COUNT"{print $2}' "$out"); assert_eq "scope gate: docs/linting.md drifted → count=1" "$got" "1"
+got=$(awk -F= '$1=="ACCEPTED_COUNT"{print $2}' "$out"); assert_eq "scope gate: only in-diff finding accepted (FINDING_2)" "$got" "1"
+if grep -Fq 'docs/linting.md' "$TMP/accepted-findings.md" 2>/dev/null; then
+    FAIL=1; printf '  FAIL docs/linting.md finding must not be in accepted-findings.md\n'
+else
+    printf '  ok   docs/linting.md finding absent from accepted-findings.md\n'
+fi
+grep -Fq 'docs/linting.md' "$TMP/oos.md" || { FAIL=1; printf '  FAIL docs/linting.md finding missing from oos.md\n'; }
+
+echo "# Case: scope-fit gate — finding about file IN diff is NOT reclassified"
+TMP="$WORKDIR/case6b"
+mkdir -p "$TMP"
+cat > "$TMP/ballot.md" <<'EOF'
+### FINDING_1: **Important** — `correctness` — `scripts/dispatch-code-voters.sh:42`
+- **Reviewer**: Codex-Structure
+- **Concern**: Null check missing on return path.
+- **Suggested revision**: Add nil guard.
+EOF
+printf 'scripts/dispatch-code-voters.sh\n' > "$TMP/scope-files.txt"
+printf 'FINDING_1: YES\n' > "$TMP/cursor-vote-output.txt"
+printf 'FINDING_1: YES\n' > "$TMP/codex-vote-output.txt"
+printf 'FINDING_1: YES\n' > "$TMP/claude-vote-output.txt"
+out="$TMP/out.env"
+"$SCRIPT" --ballot-file "$TMP/ballot.md" \
+    --voter-files "$TMP/cursor-vote-output.txt" "$TMP/codex-vote-output.txt" "$TMP/claude-vote-output.txt" \
+    --scope-files "$TMP/scope-files.txt" \
+    --review-tmpdir "$TMP" > "$out"
+got=$(awk -F= '$1=="OUT_OF_SCOPE_DRIFT_COUNT"{print $2}' "$out"); assert_eq "scope gate: file in diff → no drift" "$got" "0"
+got=$(awk -F= '$1=="ACCEPTED_COUNT"{print $2}' "$out"); assert_eq "scope gate: in-diff finding accepted normally" "$got" "1"
+
+echo "# Case: scope-fit gate — no --scope-files → gate is no-op"
+TMP="$WORKDIR/case6c"
+mkdir -p "$TMP"
+cat > "$TMP/ballot.md" <<'EOF'
+### FINDING_1: **Important** — `code-quality` — `docs/linting.md:22`
+- **Reviewer**: Cursor-Correctness
+- **Concern**: Stale shard reference.
+- **Suggested revision**: Update.
+EOF
+printf 'FINDING_1: YES\n' > "$TMP/cursor-vote-output.txt"
+printf 'FINDING_1: YES\n' > "$TMP/codex-vote-output.txt"
+printf 'FINDING_1: YES\n' > "$TMP/claude-vote-output.txt"
+out="$TMP/out.env"
+"$SCRIPT" --ballot-file "$TMP/ballot.md" \
+    --voter-files "$TMP/cursor-vote-output.txt" "$TMP/codex-vote-output.txt" "$TMP/claude-vote-output.txt" \
+    --review-tmpdir "$TMP" > "$out"
+got=$(awk -F= '$1=="OUT_OF_SCOPE_DRIFT_COUNT"{print $2}' "$out"); assert_eq "no scope-files → gate no-op, drift=0" "$got" "0"
+got=$(awk -F= '$1=="ACCEPTED_COUNT"{print $2}' "$out"); assert_eq "no scope-files → finding accepted normally" "$got" "1"
+
 if [[ "$FAIL" -eq 0 ]]; then
     printf 'PASS: test-tally-code-votes.sh\n'
     exit 0

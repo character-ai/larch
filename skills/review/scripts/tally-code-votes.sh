@@ -14,13 +14,15 @@ larch_quiet_init
 source "$PLUGIN_ROOT/scripts/lib-vote-tally.sh"
 
 usage() {
-    larch_err "Usage: tally-code-votes.sh --ballot-file FILE --voter-files FILE... --review-tmpdir DIR [--session-env-path FILE] [--cursor-available true|false] [--codex-available true|false] [--both-down true|false]"
+    larch_err "Usage: tally-code-votes.sh --ballot-file FILE --voter-files FILE... --review-tmpdir DIR [--session-env-path FILE] [--scope-files FILE] [--plan-file FILE] [--cursor-available true|false] [--codex-available true|false] [--both-down true|false]"
 }
 
 BALLOT_FILE=""
 VOTER_FILES=()
 REVIEW_TMPDIR=""
 SESSION_ENV_PATH=""
+SCOPE_FILES=""
+PLAN_FILE=""
 CURSOR_AVAILABLE=""
 CODEX_AVAILABLE=""
 BOTH_DOWN="false"
@@ -31,6 +33,8 @@ while [[ $# -gt 0 ]]; do
         --voter-files) shift; while [[ $# -gt 0 && "$1" != --* ]]; do VOTER_FILES+=("$1"); shift; done ;;
         --review-tmpdir) REVIEW_TMPDIR="${2:?--review-tmpdir requires a value}"; shift 2 ;;
         --session-env-path) SESSION_ENV_PATH="${2:?--session-env-path requires a value}"; shift 2 ;;
+        --scope-files) SCOPE_FILES="${2:?--scope-files requires a value}"; shift 2 ;;
+        --plan-file) PLAN_FILE="${2:?--plan-file requires a value}"; shift 2 ;;
         --cursor-available) CURSOR_AVAILABLE="${2:?--cursor-available requires a value}"; shift 2 ;;
         --codex-available) CODEX_AVAILABLE="${2:?--codex-available requires a value}"; shift 2 ;;
         --both-down) BOTH_DOWN="${2:?--both-down requires a value}"; shift 2 ;;
@@ -82,6 +86,38 @@ EXONERATED_COUNT=0
 NEUTRAL_COUNT=0
 OOS_ACCEPTED_COUNT=0
 OOS_REJECTED_COUNT=0
+OUT_OF_SCOPE_DRIFT_COUNT=0
+
+# scope_drift_check: returns 0 (drift detected, reclassify as OOS) or 1 (keep in-scope).
+# Fires only when SCOPE_FILES is a non-empty readable file. Logic:
+#   1. Extract path-looking tokens from the block's first (heading) line.
+#   2. If no parseable paths found → keep in-scope (conservative).
+#   3. If any parseable path appears in SCOPE_FILES or PLAN_FILE → keep in-scope.
+#   4. Otherwise → scope drift, reclassify as OOS.
+scope_drift_check() {
+    local block="$1"
+    [[ -n "$SCOPE_FILES" && -s "$SCOPE_FILES" ]] || return 1
+    local heading
+    heading=$(head -n1 "$block" | tr -d '`*_')
+    # Extract file paths: tokens matching path/file.ext[:digits] patterns.
+    local paths
+    paths=$(printf '%s' "$heading" | grep -oE '[a-zA-Z0-9_./-]+\.[a-zA-Z0-9]+:[0-9]+' | sed 's/:[0-9]*$//' || true)
+    if [[ -z "$paths" ]]; then
+        # Also try without line number
+        paths=$(printf '%s' "$heading" | grep -oE '[a-zA-Z][a-zA-Z0-9_./-]+\.[a-zA-Z][a-zA-Z0-9]*' || true)
+    fi
+    [[ -n "$paths" ]] || return 1  # no parseable path → keep in-scope
+    while IFS= read -r fpath; do
+        [[ -n "$fpath" ]] || continue
+        if grep -Fxq "$fpath" "$SCOPE_FILES" 2>/dev/null; then
+            return 1  # file in diff → in-scope
+        fi
+        if [[ -n "$PLAN_FILE" && -f "$PLAN_FILE" ]] && grep -Fq "$fpath" "$PLAN_FILE" 2>/dev/null; then
+            return 1  # file mentioned in plan → in-scope
+        fi
+    done <<< "$paths"
+    return 0  # all paths outside diff and plan → scope drift
+}
 
 record_tally_outcome() {
     local id="$1" accepted="$2" outcome="$3"
@@ -164,6 +200,12 @@ score_rows="$WORKDIR/score-rows.tsv"
         is_oos=false
         if head -n1 "$block" | grep -Fq '[OUT_OF_SCOPE]'; then
             is_oos=true
+        fi
+        # Scope-fit gate: reclassify in-scope findings whose locations are all
+        # outside the diff and the plan as OUT_OF_SCOPE_DRIFT.
+        if [[ "$is_oos" == "false" ]] && scope_drift_check "$block"; then
+            is_oos=true
+            OUT_OF_SCOPE_DRIFT_COUNT=$((OUT_OF_SCOPE_DRIFT_COUNT + 1))
         fi
         kind="finding"
         [[ "$is_oos" == "true" ]] && kind="oos"
@@ -273,6 +315,7 @@ emit_kv EXONERATED_COUNT "$EXONERATED_COUNT"
 emit_kv NEUTRAL_COUNT "$NEUTRAL_COUNT"
 emit_kv OOS_ACCEPTED_COUNT "$OOS_ACCEPTED_COUNT"
 emit_kv OOS_REJECTED_COUNT "$OOS_REJECTED_COUNT"
+emit_kv OUT_OF_SCOPE_DRIFT_COUNT "$OUT_OF_SCOPE_DRIFT_COUNT"
 emit_kv VOTING_TALLY_FILE "$VOTING_TALLY_FILE"
 emit_kv TALLY_FILE "$TALLY_ENV_FILE"
 emit_kv ACCEPTED_FINDINGS_FILE "$ACCEPTED_FINDINGS_FILE"

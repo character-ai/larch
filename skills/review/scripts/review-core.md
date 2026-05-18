@@ -35,6 +35,7 @@ Emitted keys:
 - `PANEL_MODE=waterfall|normal` (`waterfall` is the current value; `normal` may appear on the zero-scope early-exit path)
 - `PANEL_SHAPE=simple|hard`
 - `VOTING_SKIPPED_WARNING=<text>` — emitted only on the 0-judge main-agent-required path; callers should parse and display it as a user-visible warning
+- `OUT_OF_SCOPE_DRIFT_COUNT=N` — number of in-scope findings reclassified to OOS by the scope-fit gate in `tally-code-votes.sh`; forwarded from the tally stdout; zero when `--scope-files` is absent or the diff mode is description-only
 
 Diff-mode convergence note: `REVIEW_CORE_STATUS=ok` is also the expected outcome when voting leaves `ACCEPTED_COUNT=0` and one or more findings were rejected. Callers that need to distinguish "nothing left to fix after voting" from a benign no-follow-up outcome should monitor `ACCEPTED_COUNT` together with `REJECTED_COUNT`, `EXONERATED_COUNT`, and `NEUTRAL_COUNT`, not the status string alone.
 

@@ -36,7 +36,7 @@ Briefly scan for correctness bugs (nil dereference, logic errors) and security v
 
 ## Do NOT report
 
-- Pre-existing issues not introduced or amplified by this change (report under Out-of-Scope if worth surfacing).
+- Pre-existing issues not introduced or amplified by this change — route to Out-of-Scope if worth surfacing. **Scope check**: a finding is in-scope ONLY when at least one of: (a) the file is modified by the diff; (b) the file is named in the plan; (c) the finding is a regression directly caused by the diff.
 - Style nits, lint-territory concerns, generated code, lockfiles, vendored deps.
 - Speculative future risks.
 - Committed `larch-logs/implement/` directories added by a `chore(larch-logs)` flush commit. These are intentional plugin run-logs per `docs/run-logs.md` that ship with every `/implement`-merge PR by design. Do NOT flag them as scope drift, plan violation, unrelated commit, or PR noise. Review content quality only if directly relevant to the feature.

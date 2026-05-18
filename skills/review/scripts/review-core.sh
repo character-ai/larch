@@ -324,6 +324,8 @@ tally_args=(
     --codex-available "$CODEX_AVAILABLE"
 )
 [[ -n "$SESSION_ENV_PATH" ]] && tally_args+=(--session-env-path "$SESSION_ENV_PATH")
+[[ -n "$SCOPE_FILES" && -s "$SCOPE_FILES" ]] && tally_args+=(--scope-files "$SCOPE_FILES")
+[[ -n "$PLAN_FILE" && -f "$PLAN_FILE" ]] && tally_args+=(--plan-file "$PLAN_FILE")
 if [[ "${#voter_files[@]}" -gt 0 ]]; then
     tally_args+=(--voter-files "${voter_files[@]}")
 fi
