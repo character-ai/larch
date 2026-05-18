@@ -19,7 +19,7 @@ It copies the state-machine script into disposable git repositories with stubbed
 - postmerge manifest recovery when the run-log directory exists but `manifest.json` is missing
 - design-plan forwarding from `session-env.sh` to CI-fix and rebase-conflict vendor launchers
 - `--no-logs-commit` is exported as `LARCH_NO_LOGS_COMMIT` for child lifecycle helpers invoked by `ship-pr.sh`
-- inner local fix loop: exit `0` when first 2 of 3 attempts fail but 3rd succeeds; exit `4` (stall) when all 3 fail
+- inner local fix loop: exit `0` when first 2 vendor attempts fail but the 3rd succeeds; exit `4` (stall) when all 5 vendor attempts fail
 - transient-network routing through `scripts/lib-net.sh`: matching create-PR, merge, CI-bail, and rebase signatures exit `6`, while non-network errors stall normally
 
 Wired as `make test-ship-pr`.
