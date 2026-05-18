@@ -218,32 +218,32 @@
       {
         "step": "Step 8b — rebase",
         "totals": {
-          "input": 54,
-          "cache_read": 9875772,
-          "cache_create": 196093,
-          "output": 17784,
-          "total": 10089703
+          "input": 77,
+          "cache_read": 14469656,
+          "cache_create": 209486,
+          "output": 23141,
+          "total": 14702360
         },
         "skills": [
           {
             "skill": "larch:implement",
             "totals": {
-              "input": 54,
-              "cache_read": 9875772,
-              "cache_create": 196093,
-              "output": 17784,
-              "total": 10089703
+              "input": 77,
+              "cache_read": 14469656,
+              "cache_create": 209486,
+              "output": 23141,
+              "total": 14702360
             }
           }
         ]
       }
     ],
     "totals": {
-      "input": 176,
-      "cache_read": 28629728,
-      "cache_create": 308876,
-      "output": 83985,
-      "total": 29022765
+      "input": 199,
+      "cache_read": 33223612,
+      "cache_create": 322269,
+      "output": 89342,
+      "total": 33635422
     }
   },
   "codex": {
