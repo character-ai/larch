@@ -185,6 +185,54 @@ if [ -f "$_mf" ]; then pass "commit copies manifest to repo"; else fail "commit 
 if git -C "$_repo" log -1 --format=%s | grep -qF "larch-logs"; then pass "commit creates git commit in repo"; else fail "commit creates git commit in repo"; fi
 export LARCH_LOG_ROOT="$_saved_log_root"
 
+echo "=== commit does not include orphan stale-run directories ==="
+_saved_log_root="$LARCH_LOG_ROOT"
+unset LARCH_LOG_ROOT
+_stale_repo="$TMP/stale-repo"
+_stale_staging="$TMP/stale-staging"
+_fresh_run="freshrun-abc123"
+_stale_run="stalerun-old999"
+mkdir -p "$_stale_staging"
+git init "$_stale_repo" >/dev/null 2>&1
+git -C "$_stale_repo" config user.email "ci@test"
+git -C "$_stale_repo" config user.name "Test CI"
+touch "$_stale_repo/.gitkeep"
+git -C "$_stale_repo" add .
+git -C "$_stale_repo" commit -q -m "init"
+git -C "$_stale_repo" checkout -q -b feature-stale-isolation
+# Pre-populate stale run dir in staging (simulates PREV_IMPLEMENT_TMPDIR handoff)
+mkdir -p "$_stale_staging/larch-logs/implement/$_stale_run"
+printf '{"schema_version":2,"skill":"implement","run_id":"%s","status":"in-progress"}\n' "$_stale_run" \
+    > "$_stale_staging/larch-logs/implement/$_stale_run/manifest.json"
+# Init + write fresh run using same staging root that contains the stale dir
+(cd "$_stale_repo" && "$LARCH_LOG" init --log-root "$_stale_staging/larch-logs" \
+    --skill implement --run-id "$_fresh_run" --issue 99) >/dev/null
+(cd "$_stale_repo" && "$LARCH_LOG" write --log-root "$_stale_staging/larch-logs" \
+    --skill implement --run-id "$_fresh_run" --batch plan-goals-test \
+    --input-file "$_cpayload") >/dev/null
+(cd "$_stale_repo" && "$LARCH_LOG" commit --log-root "$_stale_staging/larch-logs" \
+    --skill implement --run-id "$_fresh_run") >/dev/null
+# Assert: fresh run files exist in repo
+if [ -f "$_stale_repo/larch-logs/implement/$_fresh_run/plan-goals-test.md" ]; then
+    pass "commit includes fresh run plan-goals-test.md"
+else
+    fail "commit did not include fresh run plan-goals-test.md"
+fi
+# Assert: stale run dir was NOT copied or staged into the repo
+if [ ! -e "$_stale_repo/larch-logs/implement/$_stale_run" ]; then
+    pass "commit does not copy stale run directory to repo"
+else
+    fail "commit must not copy stale run directory to repo (found $_stale_repo/larch-logs/implement/$_stale_run)"
+fi
+# Assert: commit message references only the fresh run-id
+_stale_commit_msg=$(git -C "$_stale_repo" log -1 --format=%s)
+if printf '%s' "$_stale_commit_msg" | grep -qF "$_fresh_run" && ! printf '%s' "$_stale_commit_msg" | grep -qF "$_stale_run"; then
+    pass "commit message references only fresh run-id"
+else
+    fail "commit message should reference only fresh run-id (got: $_stale_commit_msg)"
+fi
+export LARCH_LOG_ROOT="$_saved_log_root"
+
 echo "=== flush no-ops after post-merge sentinel ==="
 _saved_log_root="$LARCH_LOG_ROOT"
 unset LARCH_LOG_ROOT

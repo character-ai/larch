@@ -73,7 +73,10 @@ a descriptive error in that case.
 `larch_log_repo_run_dir` (always `$LARCH_LOG_REPO_ROOT/larch-logs/<skill>/<run-id>/`).
 When the two paths differ, `commit` copies the staging tree into the repo path before
 running `git add` / `git commit`. When they are equal (the explicit log root already
-points at the canonical repo subtree), no copy is performed.
+points at the canonical repo subtree), no copy is performed. The `rel` pathspec passed
+to all git operations is built explicitly as `larch-logs/<skill>/<run-id>` (not derived
+by stripping the repo root prefix from `repo_path`) so the commit is always scoped to
+exactly the current run's directory regardless of symlink resolution differences.
 
 **Batch registry**: all slugs, extensions, modes, and sanitizer hooks live in
 `scripts/larch-log-batches.sh`. See `scripts/larch-log-batches.md` for the full

@@ -70,6 +70,8 @@ sidecar into `larch-logs/`.
 
 Created by `scripts/larch-log.sh init` at Step 0.5 when the tracking issue is first resolved. Updated by `larch-log.sh manifest` calls throughout the run. Contains: skill name, run ID, operator CWD, operator repo root, tracking-issue number, PR number (once created), final run status, and optional routing flags such as `coder_fallback=true` when omitted-`--coder` routing fell past Codex. Authoritative contract: `scripts/larch-log.md`.
 
+`status` in committed manifests is always `"in-progress"`. The `"done"` transition happens post-merge inside `$IMPLEMENT_TMPDIR` and is not committed (no commit window after merge). To check run completion, look at PR merge state, not committed manifest `status`.
+
 ## Batch files
 
 ### plan-goals-test.md

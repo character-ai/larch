@@ -427,16 +427,18 @@ case "$cmd" in
             mkdir -p "$repo_path" || larch_log_fail 3 "cannot create repo log directory"
             cp -rp "$src_path/." "$repo_path/" || larch_log_fail 3 "cannot copy logs from temp to repo"
         fi
-        path="$repo_path"
-        rel="${path#"$REPO_ROOT"/}"
+        # Scope all git operations to exactly this run's directory, not the broader
+        # skill/ parent. Building explicitly avoids string-strip failures when
+        # LARCH_LOG_REPO_ROOT and REPO_ROOT have different symlink resolution.
+        rel="larch-logs/$SKILL/$RUN_ID"
         # Check status first: git diff alone misses untracked files.
         if ! git -C "$REPO_ROOT" status --porcelain -- "$rel" | grep -q .; then
-            larch_log_emit_success "$path" false true
+            larch_log_emit_success "$repo_path" false true
             exit 0
         fi
         git -C "$REPO_ROOT" add -- "$rel" || larch_log_fail 3 "git add failed"
         if git -C "$REPO_ROOT" diff --cached --quiet -- "$rel"; then
-            larch_log_emit_success "$path" false true
+            larch_log_emit_success "$repo_path" false true
             exit 0
         fi
         git -C "$REPO_ROOT" commit -m "chore(larch-logs): flush $SKILL run $RUN_ID" -- "$rel" >/dev/null || {
@@ -444,7 +446,7 @@ case "$cmd" in
             larch_log_fail 3 "git commit failed"
         }
         commit_sha="$(git -C "$REPO_ROOT" rev-parse HEAD)"
-        larch_log_emit_success "$path" true false "$commit_sha"
+        larch_log_emit_success "$repo_path" true false "$commit_sha"
         ;;
 
     *)
