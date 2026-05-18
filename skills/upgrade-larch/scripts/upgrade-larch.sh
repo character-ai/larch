@@ -292,7 +292,7 @@ if [ "$VERIFIED_TARGET" = true ]; then
             fi
             for active_version in "${ACTIVE_SESSION_VERSIONS[@]}"; do
                 if [ "$version" = "$active_version" ]; then
-                    larch_err "Warning: preserving cached larch version '${version}' because session-env pins or stale session metadata still reference it."
+                    larch_err "Warning: preserving cached larch version '${version}' because an active session, stale session metadata, or the executing cached plugin root still references it."
                     continue 2
                 fi
             done

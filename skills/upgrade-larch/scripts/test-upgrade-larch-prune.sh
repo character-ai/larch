@@ -220,7 +220,7 @@ run_case active-session-keeps-version
 [[ -d "$CASE_CACHE_ROOT/29.1.20" ]] || fail "active-session-keeps-version should keep active in-use version"
 [[ -d "$CASE_CACHE_ROOT/29.1.21" ]] || fail "active-session-keeps-version should keep predecessor"
 [[ -d "$CASE_CACHE_ROOT/29.1.22" ]] || fail "active-session-keeps-version should keep latest"
-assert_contains "$CASE_OUTPUT" "Warning: preserving cached larch version '29.1.20' because session-env pins or stale session metadata still reference it." "active-session-keeps-version warning"
+assert_contains "$CASE_OUTPUT" "Warning: preserving cached larch version '29.1.20' because an active session, stale session metadata, or the executing cached plugin root still references it." "active-session-keeps-version warning"
 
 GH_OUTPUT=$'29.1.22\n29.1.21\n'
 INITIAL_INSTALLED_VERSION="29.1.20"
@@ -268,7 +268,7 @@ run_case crlf-session-root-keeps-version
 [[ -d "$CASE_CACHE_ROOT/29.1.20" ]] || fail "crlf-session-root-keeps-version should keep CRLF-pinned version"
 [[ -d "$CASE_CACHE_ROOT/29.1.21" ]] || fail "crlf-session-root-keeps-version should keep predecessor"
 [[ -d "$CASE_CACHE_ROOT/29.1.22" ]] || fail "crlf-session-root-keeps-version should keep latest"
-assert_contains "$CASE_OUTPUT" "Warning: preserving cached larch version '29.1.20' because session-env pins or stale session metadata still reference it." "crlf-session-root-keeps-version warning"
+assert_contains "$CASE_OUTPUT" "Warning: preserving cached larch version '29.1.20' because an active session, stale session metadata, or the executing cached plugin root still references it." "crlf-session-root-keeps-version warning"
 
 GH_OUTPUT=$'29.1.22\n29.1.21\n'
 INITIAL_INSTALLED_VERSION="29.1.21"
@@ -285,7 +285,7 @@ run_case xdg-default-sessions-root-keeps-version
 [[ -d "$CASE_CACHE_ROOT/29.1.20" ]] || fail "xdg-default-sessions-root-keeps-version should keep XDG-pinned version"
 [[ -d "$CASE_CACHE_ROOT/29.1.21" ]] || fail "xdg-default-sessions-root-keeps-version should keep predecessor"
 [[ -d "$CASE_CACHE_ROOT/29.1.22" ]] || fail "xdg-default-sessions-root-keeps-version should keep latest"
-assert_contains "$CASE_OUTPUT" "Warning: preserving cached larch version '29.1.20' because session-env pins or stale session metadata still reference it." "xdg-default-sessions-root-keeps-version warning"
+assert_contains "$CASE_OUTPUT" "Warning: preserving cached larch version '29.1.20' because an active session, stale session metadata, or the executing cached plugin root still references it." "xdg-default-sessions-root-keeps-version warning"
 
 GH_OUTPUT=$'29.1.22\n29.1.21\n'
 INITIAL_INSTALLED_VERSION="29.1.21"
@@ -301,6 +301,6 @@ run_case tmp-fallback-sessions-root-keeps-version
 [[ -d "$CASE_CACHE_ROOT/29.1.20" ]] || fail "tmp-fallback-sessions-root-keeps-version should keep /tmp-pinned version"
 [[ -d "$CASE_CACHE_ROOT/29.1.21" ]] || fail "tmp-fallback-sessions-root-keeps-version should keep predecessor"
 [[ -d "$CASE_CACHE_ROOT/29.1.22" ]] || fail "tmp-fallback-sessions-root-keeps-version should keep latest"
-assert_contains "$CASE_OUTPUT" "Warning: preserving cached larch version '29.1.20' because session-env pins or stale session metadata still reference it." "tmp-fallback-sessions-root-keeps-version warning"
+assert_contains "$CASE_OUTPUT" "Warning: preserving cached larch version '29.1.20' because an active session, stale session metadata, or the executing cached plugin root still references it." "tmp-fallback-sessions-root-keeps-version warning"
 
 printf 'PASS: test-upgrade-larch-prune.sh\n'
