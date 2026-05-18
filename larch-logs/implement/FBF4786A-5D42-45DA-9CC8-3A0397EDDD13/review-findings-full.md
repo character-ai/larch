@@ -374,3 +374,123 @@
 - **Concern**: [important] derive_scout_status_from_manifest treats any {"archetypes":[]} manifest as SCOUT_STATUS=empty when scout-roundN-status.env is absent. Second dispatch-panel run without the sidecar mis-labels prior parse-failed/claude-failed/timeout runs (all write the same empty JSON) as empty scout success. Persist authoritative SCOUT_STATUS beside the manifest whenever scout runs, or embed status in the manifest JSON so reuse does not collapse failure modes to empty.
 - **Suggested revision**: Address the concern above.
 
+### FINDING_10: panel [code-review/accepted]
+
+## correctness: scripts/ship-pr.sh:454-470
+
+- **Reviewer**: codex-specialist-correctness-output.txt
+- **Concern**: [important] New lint-fix path leaves errexit enabled in ship-pr.sh, which is intentionally written to capture helper failures manually. After LINT_FIX_STATUS=applied, a still-failing run-relevant-checks-captured.sh aborts at out=$(...) before rc capture and stateful stall handling. Restore the original shell options after the lint-fix subprocess or avoid set -e entirely while capturing fix_rc.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_11: panel [code-review/accepted]
+
+## correctness: scripts/ship-pr.sh:532-555 scripts/ship-pr.sh:915-928
+
+- **Reviewer**: codex-specialist-correctness-output.txt
+- **Concern**: [important] Only the final successful lint-fix delta file is staged after multi-attempt CI repair. If attempt 1 creates fixture-a.txt and attempt 2 creates fixture-b.txt, only fixture-b.txt is staged, so the pushed commit can omit files required by the local passing check run. Accumulate all lint-fix delta path files across attempts or recapture all dirty paths after the passing verification before git add.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_12: panel [code-review/accepted]
+
+## correctness: scripts/ship-pr.sh:532-557; scripts/ship-pr.sh:911-931
+
+- **Reviewer**: codex-specialist-plan-fidelity-output.txt
+- **Concern**: [important] CI lint-fix staging can omit current dirty files. Multiple lint-fix attempts or untracked-only fixes can pass local checks, but earlier deltas or untracked files are not staged before the CI fix commit/push. After checks pass, recapture all current dirty paths including untracked files and stage that complete set.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_13: panel [code-review/accepted]
+
+## correctness: skills/review/scripts/collect-findings.sh:330-380
+
+- **Reviewer**: codex-specialist-edge-cases-output.txt
+- **Concern**: [important] Fallback retry reviewer labels with combined suffixes are not normalized before validation. A recovered phase2 reviewer output named dyn-foo-output-phase2-retry.txt keeps that label, fails the *-output.txt validation, and all of its findings are silently skipped. Strip repeated -phase2, -phase3, and -retry suffixes before reattaching .txt, matching tally-code-votes.sh normalization.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_16: panel [code-review/accepted]
+
+## correctness: skills/review/scripts/dispatch-panel.sh:227-245; scripts/scout-dynamic-archetypes.sh:69-75
+
+- **Reviewer**: codex-specialist-plan-fidelity-output.txt
+- **Concern**: [important] Scout invocation is fail-hard for validation failures despite the non-fatal scout contract. Dynamic archetypes on a diff over 256 KB make scout-dynamic-archetypes.sh exit 2, causing dispatch-panel.sh to abort before launching the static panel. Wrap scout execution with set +e, write an empty manifest/status on nonzero scout exits, and continue static dispatch.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_17: panel [code-review/accepted]
+
+## correctness: skills/review/scripts/review-core.sh:258-263; scripts/dispatch-with-waterfall.sh:316-323
+
+- **Reviewer**: codex-specialist-structure-output.txt
+- **Concern**: [important] Dynamic reviewer waterfall failures still trip global DISPATCH_OK=false and abort the round. A single failed dyn-foo-output-phase3.txt can produce REVIEW_CORE_STATUS=panel-failed even when every static reviewer succeeded. Emit failed slot IDs or static/dynamic dispatch status and only hard-fail for static dispatch failures or static threshold failures.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_19: panel [code-review/accepted]
+
+## correctness: skills/review/scripts/tally-code-votes.sh:400-415
+
+- **Reviewer**: cursor-specialist-edge-cases-output.txt
+- **Concern**: [important] Yield TSV second pass increments totals for all score_rows rows without filtering kind/terminal outcomes OOS rows and exonerated/neutral in-scope outcomes inflate findings_total while leaving findings_accepted low, so yield_ratio mis-ranks archetypes and misreports “findings” volume Restrict aggregation to kind=finding and align ratio with documented semantics (or add explicit columns for OOS/neutral/exon)
+- **Suggested revision**: Address the concern above.
+
+### FINDING_20: panel [code-review/accepted]
+
+## risk-integration: scripts/scout-dynamic-archetypes.sh:138-141
+
+- **Reviewer**: cursor-specialist-security-output.txt
+- **Concern**: [latent] Unbounded DESCRIPTION_TEXT is embedded into the scout prompt in description mode. A huge description can balloon memory/CPU/time for the Sonnet scout subprocess and degrade or stall the review host. Apply a byte cap with truncate-or-fail and align with other context size limits.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_21: panel [code-review/accepted]
+
+## risk-integration: scripts/scout-dynamic-archetypes.sh:69-75; skills/review/scripts/dispatch-panel.sh:235-245
+
+- **Reviewer**: codex-specialist-testing-output.txt
+- **Concern**: [important] Scout input validation can hard-exit before publishing a non-fatal scout status, and dispatch-panel does not catch that failure. With --dynamic-archetypes enabled on a branch whose diff or plan exceeds 256 KB, the scout exits 2 and the entire review panel aborts before static reviewers run. Catch scout nonzero exits in dispatch-panel, write an empty scout manifest/status, and add an oversized-diff regression harness proving static slots still dispatch.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_22: panel [code-review/accepted]
+
+## risk-integration: scripts/ship-pr.sh:504-557; scripts/ship-pr.sh:915-928
+
+- **Reviewer**: codex-specialist-edge-cases-output.txt
+- **Concern**: [latent] Only the final lint-fix delta is staged after multi-attempt CI repair. Attempt 1 creates an untracked file required for checks, attempt 2 makes the final tracked fix, checks pass locally, but the attempt-1 file is omitted from the commit and CI fails again. Accumulate all applied lint-fix delta files or recapture the full post-success dirty path set, including untracked files, before staging.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_24: panel [code-review/accepted]
+
+## risk-integration: scripts/test-scout-dynamic-archetypes.sh
+
+- **Reviewer**: cursor-specialist-testing-output.txt
+- **Concern**: [latent] Scout harness only exercises --mode diff; description mode is untested despite contract support. A bad change to description-mode argv handling or prompt wrapping could ship with green CI until a real /review description run. Add at least one description-mode success and one validation-failure case mirroring diff-mode coverage.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_25: panel [code-review/accepted]
+
+## risk-integration: skills/review/SKILL.md:59-85
+
+- **Reviewer**: codex-specialist-structure-output.txt
+- **Concern**: [important] review-scout-manifest is logged under $REVIEW_TMPDIR/larch-logs instead of the canonical larch-log root. The scout batch can be deleted during cleanup or never appear under larch-logs/review/<RUN_ID>/ despite the run-log contract. Use the same canonical log root as the other review batches or rely on LARCH_LOG_ROOT instead of overriding with REVIEW_TMPDIR.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_29: panel [code-review/accepted]
+
+## security: scripts/ship-pr.sh:25-33,scripts/ship-pr.sh:903-928
+
+- **Reviewer**: codex-specialist-security-output.txt
+- **Concern**: [important] CI-fix commit path stages untracked dirty files from external fixers A CI fixer leaves an untracked .env, debug log, raw test artifact, or token-bearing file; capture_dirty_paths includes it and git add -- commits/pushes it during ship-pr Keep vendor CI commits to tracked modifications by default, or require an explicit allowlist/manifest plus secret/path-deny checks before staging untracked files
+- **Suggested revision**: Address the concern above.
+
+### FINDING_30: panel [code-review/accepted]
+
+## security: skills/review/scripts/dispatch-panel.sh:144-161,skills/review/scripts/dispatch-panel.sh:197-261
+
+- **Reviewer**: codex-specialist-security-output.txt
+- **Concern**: [latent] Cached scout manifests bypass the scout validator before prompt synthesis A resumed or corrupted review tmpdir contains an invalid scout-roundN-manifest.json; dispatch-panel trusts it and writes invalid YAML/frontmatter or prompt content into a dynamic reviewer agent Validate cached manifests with the same schema rules before synthesis and synthesize only validated ok manifests
+- **Suggested revision**: Address the concern above.
+
+### FINDING_8: panel [code-review/accepted]
+
+## architecture: skills/review/SKILL.md:5314-5315
+
+- **Reviewer**: cursor-specialist-edge-cases-output.txt
+- **Concern**: [nit] Wrapper prose about scout reuse/sentinel is easy to misread vs per-round scout-round<N> filenames Operators may misunderstand whether multi-round standalone /review re-scouts when ROUND_NUM increments Align wording with dispatch-panel.md filenames and per-round semantics
+- **Suggested revision**: Address the concern above.
+
