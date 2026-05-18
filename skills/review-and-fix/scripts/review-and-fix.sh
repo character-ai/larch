@@ -697,11 +697,11 @@ run_implement_round() {
         CURSOR_AVAILABLE="$cursor_present"
     fi
 
-    # Resolve dynamic-archetypes cap: CLI > process env > session-env > 4 (implement mode) > 0
+    # Resolve dynamic-archetypes cap: CLI > non-empty process env > session-env > 4 (implement mode) > 0
     local DYNAMIC_ARCHETYPES
     if [[ -n "$DYNAMIC_ARCHETYPES_CLI" ]]; then
         DYNAMIC_ARCHETYPES="$DYNAMIC_ARCHETYPES_CLI"
-    elif [[ ${LARCH_DYNAMIC_ARCHETYPES_MAX+x} ]]; then
+    elif [[ -n "${LARCH_DYNAMIC_ARCHETYPES_MAX:-}" ]]; then
         DYNAMIC_ARCHETYPES="$LARCH_DYNAMIC_ARCHETYPES_MAX"
     else
         local _da_env

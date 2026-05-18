@@ -166,6 +166,7 @@ Canonical producers and consumers in the live tree:
 
 - `skills/fix-issue/SKILL.md § Step 1 — Setup` writes `$FIX_ISSUE_TMPDIR/session-env.sh` and passes it to `/implement` (Step 0 acquires the `IN PROGRESS` comment lock and applies the `[IN PROGRESS]` title prefix before the tmpdir / session-env exist).
 - `skills/implement/SKILL.md § Step 0 — Session Setup` accepts `--session-env` from its parent and propagates a fresh `$IMPLEMENT_TMPDIR/session-env.sh` to `/design` and `/review` via `--session-env` on each invocation. It also writes `PREV_IMPLEMENT_TMPDIR=$IMPLEMENT_TMPDIR` so a future `/implement` session can copy the previous session's `larch-logs` subtree into its fresh tmpdir, and `LARCH_CLAUDE_PLUGIN_ROOT` so later Bash blocks can recover `${CLAUDE_PLUGIN_ROOT}` without sourcing the file.
+- The same `/implement` handoff may also carry `LARCH_DYNAMIC_ARCHETYPES_MAX=<0..4>` when the parent operator selected `--dynamic-archetypes <N>` or `--no-dynamic-archetypes`; nested review launchers should preserve that validated key through `session-setup.sh --caller-env` / `--write-session-env` so Step 5 can replay the chosen cap.
 - `skills/design/SKILL.md § Step 0 — Session Setup` and `skills/review/SKILL.md § Step 0 — Session Setup` both accept `--session-env` as an `--caller-env` forward; their Bash blocks also read `LARCH_CLAUDE_PLUGIN_ROOT` directly from that file when `${CLAUDE_PLUGIN_ROOT}` needs rehydration before helper invocation.
 
 <a id="artifact-only-return"></a>

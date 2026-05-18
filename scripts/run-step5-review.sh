@@ -108,7 +108,9 @@ CURSOR_PRESENT="$(session_get "$SESSION_ENV_PATH" CURSOR_PRESENT false)"
 LARCH_TOKEN_SESSION_ID="$(session_get "$SESSION_ENV_PATH" LARCH_TOKEN_SESSION_ID "$RUN_ID")"
 LARCH_CLAUDE_SOURCE_FILE="$(session_get "$SESSION_ENV_PATH" LARCH_CLAUDE_SOURCE_FILE "")"
 LARCH_TIMING_LEDGER="$(session_get "$SESSION_ENV_PATH" LARCH_TIMING_LEDGER "")"
+DYNAMIC_ARCHETYPES="$(session_get "$SESSION_ENV_PATH" LARCH_DYNAMIC_ARCHETYPES_MAX "")"
 export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
+REVIEW_AND_FIX_ARGS=()
 
 if [[ -z "$PLAN_FILE" ]]; then
     # Belt-and-braces fallback: see run-step1-plan-log.sh for the rationale (#2326).
@@ -142,15 +144,19 @@ case "$CURSOR_PRESENT" in true|false) ;; *) fail "CURSOR_PRESENT must be true or
 REVIEW_AND_FIX_SH="${RUN_STEP5_REVIEW_SH:-$PLUGIN_ROOT/skills/review-and-fix/scripts/review-and-fix.sh}"
 [[ -x "$REVIEW_AND_FIX_SH" ]] || fail "review-and-fix.sh not executable: $REVIEW_AND_FIX_SH"
 
-"$REVIEW_AND_FIX_SH" \
-    --implement-tmpdir "$IMPLEMENT_TMPDIR" \
-    --mode diff \
-    --panel "$REVIEW_PANEL" \
-    --round-num "$ROUND_NUM" \
-    --round-cap "$ROUND_CAP" \
-    --session-env-path "$SESSION_ENV_PATH" \
-    --codex-available "$CODEX_PRESENT" \
-    --cursor-available "$CURSOR_PRESENT" \
-    --plan-file "$PLAN_FILE" \
-    --feature-file "$FEATURE_FILE" \
-    --run-id "$RUN_ID"
+REVIEW_AND_FIX_ARGS=(
+    --implement-tmpdir "$IMPLEMENT_TMPDIR"
+    --mode diff
+    --panel "$REVIEW_PANEL"
+    --round-num "$ROUND_NUM"
+    --round-cap "$ROUND_CAP"
+    --session-env-path "$SESSION_ENV_PATH"
+    --codex-available "$CODEX_PRESENT"
+    --cursor-available "$CURSOR_PRESENT"
+    --plan-file "$PLAN_FILE"
+    --feature-file "$FEATURE_FILE"
+)
+[[ -n "$DYNAMIC_ARCHETYPES" ]] && REVIEW_AND_FIX_ARGS+=(--dynamic-archetypes "$DYNAMIC_ARCHETYPES")
+REVIEW_AND_FIX_ARGS+=(--run-id "$RUN_ID")
+
+"$REVIEW_AND_FIX_SH" "${REVIEW_AND_FIX_ARGS[@]}"

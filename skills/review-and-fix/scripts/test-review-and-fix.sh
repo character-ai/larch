@@ -262,6 +262,53 @@ run_orchestrator_case() {
 run_orchestrator_case codex-case codex-success codex
 run_orchestrator_case cursor-case cursor-success cursor
 
+cat > "$TMP/review-core-capture-dynamic-stub.sh" <<'EOF_CORE_DYNAMIC'
+#!/usr/bin/env bash
+set -euo pipefail
+out=""
+dynamic=""
+round="1"
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --output-dir) out="$2"; shift 2 ;;
+    --dynamic-archetypes) dynamic="$2"; shift 2 ;;
+    --round-num) round="$2"; shift 2 ;;
+    *) shift; [[ $# -gt 0 && "$1" != --* ]] && shift || true ;;
+  esac
+done
+mkdir -p "$out"
+printf 'DYNAMIC_ARCHETYPES=%s\n' "$dynamic" > "${CAPTURE_DYNAMIC_FILE:?}"
+: > "$out/accepted-findings.md"
+: > "$out/rejected-findings.md"
+printf '{"schema_version":1,"rounds_completed":%s,"accepted_count":0,"rejected_count":0}\n' "$round" > "$out/review-summary.json"
+printf '# Review Round %s\n' "$round" > "$out/review-round-summary.md"
+printf 'REVIEW_CORE_STATUS=zero-findings\nROUND_NUM=%s\nACCEPTED_COUNT=0\nREJECTED_COUNT=0\nACCEPTED_FINDINGS_FILE=%s/accepted-findings.md\nREJECTED_FINDINGS_FILE=%s/rejected-findings.md\nPANEL_MODE=normal\nPANEL_SHAPE=simple\n' "$round" "$out" "$out"
+EOF_CORE_DYNAMIC
+chmod +x "$TMP/review-core-capture-dynamic-stub.sh"
+work_empty_env="$TMP/empty-dynamic-env"
+make_work_repo "$work_empty_env"
+implement_tmp="$work_empty_env/implement"
+mkdir -p "$implement_tmp"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\nLARCH_DYNAMIC_ARCHETYPES_MAX=3\n' > "$implement_tmp/session-env.sh"
+capture_dynamic="$TMP/review-core-dynamic.env"
+set +e
+out=$(
+    cd "$work_empty_env" && \
+    CAPTURE_DYNAMIC_FILE="$capture_dynamic" \
+    LARCH_DYNAMIC_ARCHETYPES_MAX='' \
+    CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+    CURSOR_API_KEY=test-cursor-key \
+    REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-capture-dynamic-stub.sh" \
+    REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
+    REVIEW_AND_FIX_SCRUB_SUBMODULE_PATHS_SH="${REVIEW_AND_FIX_SCRUB_SUBMODULE_PATHS_SH:-$REPO_ROOT/scripts/scrub-submodule-paths.sh}" \
+    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 --session-env-path "$implement_tmp/session-env.sh" --run-id empty-env-run
+)
+rc=$?
+set -e
+[[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "empty dynamic env expected exit 0 got $rc"; }
+grep -Fq 'REVIEW_AND_FIX_STATUS=complete' <<< "$out" || fail "empty dynamic env status"
+grep -Fq 'DYNAMIC_ARCHETYPES=3' "$capture_dynamic" || fail "empty dynamic env should fall through to session-env dynamic cap"
+
 work_no_changes="$TMP/no-changes"
 make_work_repo "$work_no_changes"
 implement_tmp="$work_no_changes/implement"
