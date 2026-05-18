@@ -66,6 +66,12 @@ Each wrapped `bash` invocation emits one row. Most targets produce one row;
 multi-bash targets emit multiple rows with the same target name, and those rows
 should be summed before rebalancing.
 
+The third tab-separated column is the parser contract from
+`scripts/harness-timer.md`: strip the trailing `s`, then parse the remaining
+value as decimal seconds. Current output is emitted with exactly two fractional
+digits (for example `0.34s` or `7.62s`), while older committed logs may still
+contain integer-only seconds.
+
 If you are working on an older branch that predates `scripts/harness-timer.sh`,
 or debugging a wrapper-emission issue, the old manual `date +%s` loop remains a
 fallback only.
