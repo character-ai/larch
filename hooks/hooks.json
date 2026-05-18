@@ -40,6 +40,11 @@
             "type": "command",
             "command": "${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/hook-post-design.sh",
             "timeout": 30
+          },
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/hook-post-bump-version.sh",
+            "timeout": 10
           }
         ]
       },
