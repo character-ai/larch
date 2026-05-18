@@ -109,8 +109,12 @@ def content_to_text(value: Any) -> str:
         parts: list[str] = []
         for item in value:
             if isinstance(item, dict):
+                block_type = str(item.get("type") or "")
                 if "text" in item and isinstance(item["text"], str):
                     parts.append(item["text"])
+                elif block_type in ("tool_result", "tool_use"):
+                    # Serialize full block to preserve tool_use_id and structural metadata
+                    parts.append(json.dumps(item, sort_keys=True, ensure_ascii=False))
                 elif "content" in item:
                     parts.append(content_to_text(item["content"]))
                 else:
@@ -271,6 +275,22 @@ def is_initial_user_message(entry: TranscriptEntry, before_first_assistant: bool
     return True
 
 
+def _is_attachment_bearing(entry: TranscriptEntry) -> bool:
+    """Return True if entry content has any non-text attachment blocks."""
+    raw = entry.raw
+    message = raw.get("message")
+    content = (
+        message.get("content") if isinstance(message, dict)
+        else raw.get("content")
+    )
+    if not isinstance(content, list):
+        return False
+    for block in content:
+        if isinstance(block, dict) and str(block.get("type") or "") not in ("", "text"):
+            return True
+    return False
+
+
 def prefix_records(chain: list[TranscriptEntry]) -> list[PrefixRecord]:
     records: list[PrefixRecord] = []
     # chain comes from chain_to_root which walks parent->grandparent and never
@@ -290,6 +310,9 @@ def prefix_records(chain: list[TranscriptEntry]) -> list[PrefixRecord]:
         elif entry.entry_type == "user" and entry.raw.get("isMeta") is True:
             include = True
             reason = "user:isMeta"
+        elif entry.entry_type == "user" and _is_attachment_bearing(entry):
+            include = True
+            reason = "user:attachment"
         elif not included_initial and is_initial_user_message(entry, True):
             include = True
             reason = "user:initial"

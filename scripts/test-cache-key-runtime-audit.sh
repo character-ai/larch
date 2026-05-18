@@ -72,6 +72,42 @@ write_cache_invalidating_fixture() {
 JSONL
 }
 
+write_tool_result_mutation_fixture() {
+  local root="$1"
+  mkdir -p "$root/run1"
+  cat >"$root/run1/session-transcript.jsonl" <<'JSONL'
+{"type":"system","uuid":"sys1","parentUuid":null,"subtype":"init","message":{"content":"system prompt"}}
+{"type":"user","uuid":"usr1","parentUuid":"sys1","message":{"content":[{"type":"tool_result","tool_use_id":"T1","content":"result-A"}]}}
+{"type":"assistant","uuid":"ast1","parentUuid":"usr1","requestId":"req1","message":{"content":"response one"}}
+{"type":"user","uuid":"usr2","parentUuid":"ast1","message":{"content":[{"type":"tool_result","tool_use_id":"T1","content":"result-B"}]}}
+{"type":"assistant","uuid":"ast2","parentUuid":"usr2","requestId":"req2","message":{"content":"response two"}}
+JSONL
+}
+
+write_image_mutation_fixture() {
+  local root="$1"
+  mkdir -p "$root/run1"
+  cat >"$root/run1/session-transcript.jsonl" <<'JSONL'
+{"type":"system","uuid":"sys1","parentUuid":null,"subtype":"init","message":{"content":"system prompt"}}
+{"type":"user","uuid":"usr1","parentUuid":"sys1","message":{"content":[{"type":"image","source":{"type":"url","url":"http://example.com/img1.png"}}]}}
+{"type":"assistant","uuid":"ast1","parentUuid":"usr1","requestId":"req1","message":{"content":"response one"}}
+{"type":"user","uuid":"usr2","parentUuid":"ast1","message":{"content":[{"type":"image","source":{"type":"url","url":"http://example.com/img2.png"}}]}}
+{"type":"assistant","uuid":"ast2","parentUuid":"usr2","requestId":"req2","message":{"content":"response two"}}
+JSONL
+}
+
+write_attachment_stable_fixture() {
+  local root="$1"
+  mkdir -p "$root/run1"
+  cat >"$root/run1/session-transcript.jsonl" <<'JSONL'
+{"type":"system","uuid":"sys1","parentUuid":null,"subtype":"init","message":{"content":"system prompt"}}
+{"type":"user","uuid":"usr1","parentUuid":"sys1","message":{"content":[{"type":"tool_result","tool_use_id":"T1","content":"stable-result"}]}}
+{"type":"assistant","uuid":"ast1","parentUuid":"usr1","requestId":"req1","message":{"content":"response one"}}
+{"type":"user","uuid":"usr2","parentUuid":"ast1","message":{"content":"follow-up text"}}
+{"type":"assistant","uuid":"ast2","parentUuid":"usr2","requestId":"req2","message":{"content":"response two"}}
+JSONL
+}
+
 run_audit() {
   local root="$1"
 
@@ -130,6 +166,32 @@ if [[ "$(classification_sequence "$invalidating_root/run1/session-transcript.jso
   pass "cache-invalidating classification sequence"
 else
   fail "cache-invalidating classification sequence"
+fi
+
+tool_result_mutation_root="$TMPDIR/tool-result-mutation"
+image_mutation_root="$TMPDIR/image-mutation"
+attachment_stable_root="$TMPDIR/attachment-stable"
+
+write_tool_result_mutation_fixture "$tool_result_mutation_root"
+write_image_mutation_fixture "$image_mutation_root"
+write_attachment_stable_fixture "$attachment_stable_root"
+
+if [[ "$(classification_sequence "$tool_result_mutation_root/run1/session-transcript.jsonl")" == "BASELINE,CACHE-INVALIDATING" ]]; then
+  pass "tool_result mutation detected as CACHE-INVALIDATING"
+else
+  fail "tool_result mutation detected as CACHE-INVALIDATING"
+fi
+
+if [[ "$(classification_sequence "$image_mutation_root/run1/session-transcript.jsonl")" == "BASELINE,CACHE-INVALIDATING" ]]; then
+  pass "image attachment mutation detected as CACHE-INVALIDATING"
+else
+  fail "image attachment mutation detected as CACHE-INVALIDATING"
+fi
+
+if [[ "$(classification_sequence "$attachment_stable_root/run1/session-transcript.jsonl")" == "BASELINE,EXPECTED-GROWTH" ]]; then
+  pass "stable tool_result prefix produces EXPECTED-GROWTH"
+else
+  fail "stable tool_result prefix produces EXPECTED-GROWTH"
 fi
 
 missing_root="$TMPDIR/does-not-exist"

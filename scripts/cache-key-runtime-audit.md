@@ -21,6 +21,8 @@
 - Parent chains are cycle-guarded; missing or cyclic parent links are reported as warnings, and the reachable chain is still audited.
 - Content blocks are normalized through structured JSON handling rather than ad hoc line splitting.
 - Per-finding diffs are truncated so large skill prompts do not dominate the report.
+- User entries containing `tool_result`, `tool_use`, image, document, file, or other non-text content blocks (`type != "text"`) are classified as `user:attachment` and included in the stable-prefix set. This prevents false-negative EXPECTED-GROWTH classifications when attachment content mutates between turns.
+- `tool_result` and `tool_use` content blocks are serialized as full JSON (preserving `tool_use_id` and structural metadata) rather than recursing into nested content only.
 
 **Makefile wiring**: `make audit-cache-keys-runtime RUNS=10` invokes this script against `larch-logs/implement`. The target is standalone operator instrumentation and is not part of `make lint`.
 
