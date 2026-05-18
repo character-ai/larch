@@ -1,12 +1,12 @@
 # Version Bump Reasoning
 
 - **Base commit**: `5cbcbb23` (Add review panel scope-fit gate to auto-route OOS drift findings (#2282))
-- **Current version**: `29.1.33`
+- **Current version**: `29.1.34`
 - **Classification scope**: `skills/**` and `agents/**` only (public plugin surface).
 
 ## Result: PATCH
 
-- **New version**: `29.1.34`
+- **New version**: `29.1.35`
 
 ### PATCH rationale
 

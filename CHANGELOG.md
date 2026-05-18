@@ -11,6 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Document the `review-and-fix.sh` applied-fixes contract change: accepted findings applied by the coder now complete with exit `0` plus `REVIEW_AND_FIX_STATUS=fix-applied`, and `review-and-fix-summary.json` now records `.status = "fix-applied"` instead of the old `fix-required`/exit-3 checkpoint shape. External wrappers, jq filters, and dashboards must key on the new status fields rather than exit `3`.
 
+## [29.1.35] - 2026-05-17
+
+### Changed
+
+- Derived code-review tally accepted/rejected counts from the composed review-findings-full markers and added a mismatched-count regression.
+- Removed unconditional larch-log flush tail calls from git commit/amend primitives and synchronized lifecycle/logging documentation, including SECURITY.md.
+- Added Step 8a no-summary-bullets diagnostics for manifest path, manifest existence, and implementer tool.
+
 ## [29.1.34] - 2026-05-17
 
 ### Changed
