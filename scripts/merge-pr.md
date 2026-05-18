@@ -55,6 +55,8 @@ As part of OID mismatch handling for step 1, the script checks whether local HEA
 
 When the condition holds, the script calls `git-force-push.sh --expected-remote-oid <old-pr-head-oid>` so the force-push is leased against the PR head OID that was actually reviewed. This prevents the recovery path from overwriting a newer remote commit that landed after the initial `gh pr view`. After a successful push, the script re-reads PR metadata via `gh pr view` and re-runs `gh pr checks` for the updated head before any merge attempt. If the force-push fails or the OID still doesn't match after the push, `MERGE_RESULT=error` is emitted with a "force-push failed" or "after force-push recovery" suffix respectively.
 
+GitHub's API often returns `mergeStateStatus=UNKNOWN` immediately after a push due to propagation delay. When the post-force-push `gh pr view` returns `UNKNOWN` (or empty), the script sleeps 5 seconds and re-reads PR metadata, up to 3 times, before treating `UNKNOWN` as a hard error. If the state resolves to a non-UNKNOWN value (including `BEHIND` or a non-admin-eligible state), the existing post-recovery routing applies. If it remains `UNKNOWN` after all 3 retries, `MERGE_RESULT=error` is emitted with `ERROR=mergeStateStatus still UNKNOWN after 3 retries post-force-push (state="...")`.
+
 Non-recoverable divergence (any non-flush commit in the ahead range, any changed path outside `larch-logs/`, more than 5 ahead commits, or local HEAD behind the PR head OID) preserves the original `MERGE_RESULT=error` with "refusing to evaluate same-version gate".
 
 ## Batched discovery

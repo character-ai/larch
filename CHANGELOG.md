@@ -11,6 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Document the `review-and-fix.sh` applied-fixes contract change: accepted findings applied by the coder now complete with exit `0` plus `REVIEW_AND_FIX_STATUS=fix-applied`, and `review-and-fix-summary.json` now records `.status = "fix-applied"` instead of the old `fix-required`/exit-3 checkpoint shape. External wrappers, jq filters, and dashboards must key on the new status fields rather than exit `3`.
 
+## [29.6.1] - 2026-05-18
+
+### Fixed
+
+- `merge-pr.sh` no longer stalls Step 12d when `mergeStateStatus=UNKNOWN` immediately after the flush-commit force-push recovery. The post-force-push path now retries `gh pr view` up to 3 times (5s sleep) to absorb GitHub's transient post-push `UNKNOWN` propagation delay before failing closed (closes #2342).
+
 ## [29.6.0] - 2026-05-18
 
 ### Changed
