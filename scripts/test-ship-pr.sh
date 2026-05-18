@@ -175,6 +175,25 @@ case "$(basename "$0")" in
 esac
 SH
     done
+    cat > "$root/scripts/lint-fix-loop.sh" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+site=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --site) site="$2"; shift 2 ;;
+    --checks-log) shift 2 ;;
+    --tmpdir) shift 2 ;;
+    *) shift ;;
+  esac
+done
+if [[ -n "${SHIP_PR_LAUNCH_SENTINEL_DIR:-}" ]]; then
+  mkdir -p "$SHIP_PR_LAUNCH_SENTINEL_DIR"
+  printf '%s\n' "${site:-unknown}" >> "$SHIP_PR_LAUNCH_SENTINEL_DIR/lint-fix-sites.txt"
+fi
+echo "LINT_FIX_STATUS=${STUB_LINT_FIX_STATUS:-failed}"
+echo "LINT_FIX_SITE=${site:-unknown}"
+SH
     cat > "$root/scripts/read-session-env-key.sh" <<'SH'
 #!/usr/bin/env bash
 while [[ $# -gt 0 ]]; do
@@ -771,7 +790,10 @@ count_file="$call_dir/checks-count"
 count=\$(cat "\$count_file" 2>/dev/null || echo 0)
 printf '%s\n' "\$((count + 1))" > "\$count_file"
 if [ "\$count" -lt 2 ]; then
+    log_file="$call_dir/redacted-\$count.log"
+    : > "\$log_file"
     echo "STATUS=fail FAILURE_REASON=stubbed"
+    echo "REDACTED_LOG_FILE=\$log_file"
     exit 1
 fi
 echo "RELEVANT_CHECKS_OK=true SITE=step10 COVERAGE=full"
@@ -783,13 +805,24 @@ awk '/^TRANSIENT_RETRIES=/ {print "TRANSIENT_RETRIES=1"; next}
      /^FAILED_RUN_ID=/ {print "FAILED_RUN_ID=run123"; next}
      {print}' "$tmp/ship-pr-state.sh" > "$tmp/ship-pr-state.sh.new" \
     && mv "$tmp/ship-pr-state.sh.new" "$tmp/ship-pr-state.sh"
-run_subject "$root" "$tmp" "$tmp/rc"
+set +e
+(cd "$root" && PATH="$root/scripts:$PATH" STUB_LINT_FIX_STATUS=applied \
+    SHIP_PR_LAUNCH_SENTINEL_DIR="$call_dir" CLAUDE_PLUGIN_ROOT="$root" \
+    "$root/scripts/ship-pr.sh" --state-file "$tmp/ship-pr-state.sh" --implement-tmpdir "$tmp" \
+    --merge true --draft false --forked false --repo owner/repo > "$tmp/stdout" 2>&1)
+printf '%s' "$?" > "$tmp/rc"
+set -e
 assert_rc "$tmp/rc" 0 "local fix loop: 2 failures then success exits 0"
 check_count=$(cat "$call_dir/checks-count" 2>/dev/null || echo 0)
 if [ "$check_count" -eq 3 ]; then
     ok "local fix loop: ran 3 local check attempts before succeeding"
 else
     fail "local fix loop: expected 3 check attempts, got $check_count"
+fi
+if grep -qx 'ship-pr-ci-initial' "$call_dir/lint-fix-sites.txt" 2>/dev/null; then
+    ok "local fix loop: initial CI failures route through ship-pr-ci-initial lint-fix-loop site"
+else
+    fail "local fix loop: expected ship-pr-ci-initial lint-fix-loop site"
 fi
 rm -rf "$call_dir"
 
@@ -808,7 +841,10 @@ set -euo pipefail
 count_file="$call_dir/checks-count"
 count=\$(cat "\$count_file" 2>/dev/null || echo 0)
 printf '%s\n' "\$((count + 1))" > "\$count_file"
+log_file="$call_dir/redacted-\$count.log"
+: > "\$log_file"
 echo "STATUS=fail FAILURE_REASON=stubbed"
+echo "REDACTED_LOG_FILE=\$log_file"
 exit 1
 STUB
 chmod +x "$root/scripts/run-relevant-checks-captured.sh"
@@ -817,14 +853,20 @@ awk '/^TRANSIENT_RETRIES=/ {print "TRANSIENT_RETRIES=1"; next}
      /^FAILED_RUN_ID=/ {print "FAILED_RUN_ID=run123"; next}
      {print}' "$tmp/ship-pr-state.sh" > "$tmp/ship-pr-state.sh.new" \
     && mv "$tmp/ship-pr-state.sh.new" "$tmp/ship-pr-state.sh"
-run_subject "$root" "$tmp" "$tmp/rc"
+set +e
+(cd "$root" && PATH="$root/scripts:$PATH" STUB_LINT_FIX_STATUS=applied \
+    SHIP_PR_LAUNCH_SENTINEL_DIR="$call_dir" CLAUDE_PLUGIN_ROOT="$root" \
+    "$root/scripts/ship-pr.sh" --state-file "$tmp/ship-pr-state.sh" --implement-tmpdir "$tmp" \
+    --merge true --draft false --forked false --repo owner/repo > "$tmp/stdout" 2>&1)
+printf '%s' "$?" > "$tmp/rc"
+set -e
 assert_rc "$tmp/rc" 4 "local fix loop: all 3 attempts exhausted stalls (exits 4)"
 assert_state_line "$tmp/ship-pr-state.sh" "STALL_TRACKING=true" "local fix loop exhausted marks stall"
 check_count=$(cat "$call_dir/checks-count" 2>/dev/null || echo 0)
-if [ "$check_count" -eq 3 ]; then
-    ok "local fix loop exhausted: ran all 3 check attempts"
+if [ "$check_count" -eq 4 ]; then
+    ok "local fix loop exhausted: ran a final verification after the third applied fix"
 else
-    fail "local fix loop exhausted: expected 3 check attempts, got $check_count"
+    fail "local fix loop exhausted: expected 4 check attempts, got $check_count"
 fi
 rm -rf "$call_dir"
 

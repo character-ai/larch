@@ -17,7 +17,7 @@ CHECKS_LOG=""
 RUN_EXTERNAL_AGENT_SH="${LINT_FIX_LOOP_RUN_EXTERNAL_AGENT_SH:-$SCRIPT_DIR/run-external-agent.sh}"
 
 usage() {
-    larch_err "Usage: lint-fix-loop.sh --tmpdir IMPLEMENT_TMPDIR --site step3|step5|step6|ship-pr-ci-initial --checks-log REDACTED_LOG_FILE"
+    larch_err "Usage: lint-fix-loop.sh --tmpdir IMPLEMENT_TMPDIR --site step3|step5|step6|ship-pr-ci-initial|ship-pr-ci-merge --checks-log REDACTED_LOG_FILE"
 }
 
 fail_status() {
@@ -178,7 +178,8 @@ case "$SITE" in
     step5) SITE_LABEL="Step 5" ;;
     step6) SITE_LABEL="Step 6" ;;
     ship-pr-ci-initial) SITE_LABEL="ship-pr CI initial" ;;
-    *) larch_err "lint-fix-loop.sh: --site must be step3, step5, step6, or ship-pr-ci-initial"; exit 2 ;;
+    ship-pr-ci-merge) SITE_LABEL="ship-pr CI merge" ;;
+    *) larch_err "lint-fix-loop.sh: --site must be step3, step5, step6, ship-pr-ci-initial, or ship-pr-ci-merge"; exit 2 ;;
 esac
 [[ -n "$CHECKS_LOG" && -f "$CHECKS_LOG" && ! -L "$CHECKS_LOG" ]] || {
     larch_err "lint-fix-loop.sh: --checks-log must name a non-symlink file"

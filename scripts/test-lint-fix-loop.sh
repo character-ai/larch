@@ -214,4 +214,21 @@ case4_result=$(run_case "$SCRIPTS4" "$REPO4" "$SESSION4" "$CHECKS4" "$WRAPPER4" 
 assert_contains "$case4_result" 'LINT_FIX_STATUS=no-changes' "case4 status"
 assert_contains "$case4_result" 'LINT_FIX_SITE=ship-pr-ci-initial' "case4 site"
 
+# Case 5: ship-pr-ci-merge site — success path (coder modifies file).
+CASE5="$TMPROOT/case5"
+REPO5="$CASE5/repo"
+SCRIPTS5="$CASE5/scripts"
+SESSION5="$CASE5/session"
+CHECKS5="$CASE5/checks.log"
+WRAPPER5="$CASE5/wrapper.sh"
+make_repo "$REPO5"
+make_fixture_scripts "$SCRIPTS5"
+make_session "$SESSION5"
+printf 'synthetic checks failure\n' > "$CHECKS5"
+write_wrapper_modify_only "$WRAPPER5"
+
+case5_result=$(run_case "$SCRIPTS5" "$REPO5" "$SESSION5" "$CHECKS5" "$WRAPPER5" ship-pr-ci-merge)
+assert_contains "$case5_result" 'LINT_FIX_STATUS=applied' "case5 status"
+assert_contains "$case5_result" 'LINT_FIX_SITE=ship-pr-ci-merge' "case5 site"
+
 echo "test-lint-fix-loop: ok"

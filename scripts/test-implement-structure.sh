@@ -154,11 +154,17 @@ grep -q 'ship-pr-ci-initial' "$SHIP_PR_SH" \
   || fail "ship-pr.sh run_checks_phase must pass --site ship-pr-ci-initial to lint-fix-loop.sh"
 grep -q 'ship-pr-ci-initial' "$LINT_FIX_LOOP_SH" \
   || fail "lint-fix-loop.sh must accept --site ship-pr-ci-initial"
+grep -q 'ship-pr-ci-merge' "$SHIP_PR_SH" \
+  || fail "ship-pr.sh CI failure recovery must pass --site ship-pr-ci-merge to lint-fix-loop.sh"
+grep -q 'ship-pr-ci-merge' "$LINT_FIX_LOOP_SH" \
+  || fail "lint-fix-loop.sh must accept --site ship-pr-ci-merge"
 
 # Ensure SKILL.md Step 10/12 prose does not suggest main-agent Edit/Write for ship-pr CI fixes.
 stall6_prose_status=0
 awk '
-  /STALL_STEP=6/ && /Edit.*Write|Write.*Edit|main.agent.*Edit|repair via main-agent/ { found = 1 }
+  /STALL_STEP=6/ { window = 5 }
+  window > 0 && /Edit.*Write|Write.*Edit|main.agent.*Edit|repair via main-agent/ { found = 1 }
+  window > 0 { window-- }
   END { if (found) exit 1 }
 ' "$SKILL_MD" || stall6_prose_status=$?
 [[ "$stall6_prose_status" == "0" ]] || fail "SKILL.md STALL_STEP=6 prose must not suggest main-agent Edit/Write for CI fixes"
