@@ -43,7 +43,7 @@ Local ordering changed: under `make test-harnesses` and therefore `make lint`, h
 
 ### Refreshing harness shard balance
 
-Capture timings:
+Capture timings from the emitted `LARCH_HARNESS_TIMING` rows:
 
 ```bash
 awk '/^test-harnesses-[1-9][0-9]*:/ {
@@ -51,12 +51,24 @@ awk '/^test-harnesses-[1-9][0-9]*:/ {
       if ($i != "test-harness-shards-coverage") print $i
   }' Makefile \
   | while IFS= read -r target; do
-      start=$(date +%s)
-      make "$target" >/tmp/larch-harness-"$target".log 2>&1
-      end=$(date +%s)
-      printf '%s %s\n' "$target" "$((end - start))"
+      log=/tmp/larch-harness-"$target".log
+      make "$target" >"$log" 2>&1
+      awk -F '\t' '
+        $1 == "LARCH_HARNESS_TIMING" {
+          gsub(/s$/, "", $3)
+          printf "%s %s\n", $2, $3
+        }
+      ' "$log"
     done > /tmp/larch-harness-timings.txt
 ```
+
+Each wrapped `bash` invocation emits one row. Most targets produce one row;
+multi-bash targets emit multiple rows with the same target name, and those rows
+should be summed before rebalancing.
+
+If you are working on an older branch that predates `scripts/harness-timer.sh`,
+or debugging a wrapper-emission issue, the old manual `date +%s` loop remains a
+fallback only.
 
 Feed the results to an LPT bin-packer:
 

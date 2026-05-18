@@ -57,624 +57,624 @@ test-harnesses-12: test-harness-shards-coverage test-dispatch-code-voters test-r
 test-harnesses-13: test-dispatch-panel test-oos-file-conflict-deps
 
 test-pipe-sigpipe-safety:
-	bash scripts/test-pipe-sigpipe-safety.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-pipe-sigpipe-safety.sh
 
 test-redact:
-	bash scripts/test-redact-secrets.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-redact-secrets.sh
 
 test-redact-tmpdir-paths:
-	bash scripts/test-redact-tmpdir-paths.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-redact-tmpdir-paths.sh
 
 test-append-tool-failure:
-	bash scripts/test-append-tool-failure.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-append-tool-failure.sh
 
 test-validate-research-output:
-	bash scripts/test-validate-research-output.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-validate-research-output.sh
 
 test-validate-citations:
-	bash skills/research/scripts/test-validate-citations.sh
+	bash scripts/harness-timer.sh $@ bash skills/research/scripts/test-validate-citations.sh
 
 test-validate-citations-budget:
-	bash skills/research/scripts/test-validate-citations-budget.sh
+	bash scripts/harness-timer.sh $@ bash skills/research/scripts/test-validate-citations-budget.sh
 
 test-collect-agent-bash32:
-	bash scripts/test-collect-agent-bash32.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-collect-agent-bash32.sh
 
 test-collect-agent-retry:
-	bash scripts/test-collect-agent-retry.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-collect-agent-retry.sh
 
 test-collect-agent-results:
-	bash scripts/test-collect-agent-results.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-collect-agent-results.sh
 
 test-parse-input:
-	bash skills/issue/scripts/test-parse-input.sh
+	bash scripts/harness-timer.sh $@ bash skills/issue/scripts/test-parse-input.sh
 
 test-allocate-candidates:
-	bash skills/issue/scripts/test-allocate-candidates.sh
+	bash scripts/harness-timer.sh $@ bash skills/issue/scripts/test-allocate-candidates.sh
 
 test-add-blocked-by:
-	bash skills/issue/scripts/test-add-blocked-by.sh
+	bash scripts/harness-timer.sh $@ bash skills/issue/scripts/test-add-blocked-by.sh
 
 test-list-issues:
-	bash skills/issue/scripts/test-list-issues.sh
+	bash scripts/harness-timer.sh $@ bash skills/issue/scripts/test-list-issues.sh
 
 test-analyze:
-	bash .claude/skills/analyze-issues/scripts/test-analyze.sh
+	bash scripts/harness-timer.sh $@ bash .claude/skills/analyze-issues/scripts/test-analyze.sh
 
 test-rate-assertions:
-	bash skills/report-tokens/scripts/test-rate-assertions.sh
+	bash scripts/harness-timer.sh $@ bash skills/report-tokens/scripts/test-rate-assertions.sh
 
 test-parse-args:
-	bash scripts/test-parse-args.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-parse-args.sh
 
 test-prepare-description:
-	bash scripts/test-prepare-description.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-prepare-description.sh
 
 test-parse-prose-blockers:
-	bash skills/fix-issue/scripts/test-parse-prose-blockers.sh
+	bash scripts/harness-timer.sh $@ bash skills/fix-issue/scripts/test-parse-prose-blockers.sh
 
 test-issue-lifecycle:
-	bash skills/fix-issue/scripts/test-issue-lifecycle.sh
+	bash scripts/harness-timer.sh $@ bash skills/fix-issue/scripts/test-issue-lifecycle.sh
 
 test-fix-issue-bail-detection:
-	bash skills/fix-issue/scripts/test-fix-issue-bail-detection.sh
+	bash scripts/harness-timer.sh $@ bash skills/fix-issue/scripts/test-fix-issue-bail-detection.sh
 
 test-anti-improvised-wakeup:
-	bash scripts/test-anti-improvised-wakeup.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-anti-improvised-wakeup.sh
 
 test-fix-issue-step-order:
-	bash skills/fix-issue/scripts/test-fix-issue-step-order.sh
+	bash scripts/harness-timer.sh $@ bash skills/fix-issue/scripts/test-fix-issue-step-order.sh
 
 test-find-lock-issue:
-	bash skills/fix-issue/scripts/test-find-lock-issue.sh
+	bash scripts/harness-timer.sh $@ bash skills/fix-issue/scripts/test-find-lock-issue.sh
 
 test-umbrella-handler:
-	bash skills/fix-issue/scripts/test-umbrella-handler.sh
+	bash scripts/harness-timer.sh $@ bash skills/fix-issue/scripts/test-umbrella-handler.sh
 
 test-finalize-umbrella:
-	bash skills/fix-issue/scripts/test-finalize-umbrella.sh
+	bash scripts/harness-timer.sh $@ bash skills/fix-issue/scripts/test-finalize-umbrella.sh
 
 test-sentinel-write:
-	bash skills/issue/scripts/test-sentinel-write.sh
+	bash scripts/harness-timer.sh $@ bash skills/issue/scripts/test-sentinel-write.sh
 
 test-sessionstart:
-	bash scripts/test-sessionstart-health.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-sessionstart-health.sh
 
 test-keepalive-sentinel:
-	bash scripts/test-keepalive-sentinel.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-keepalive-sentinel.sh
 
 test-preflight-args:
-	bash scripts/test-preflight-args.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-preflight-args.sh
 
 test-check-clean-tree:
-	bash scripts/test-check-clean-tree.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-check-clean-tree.sh
 
 test-cleanup-tmpdir:
-	bash scripts/test-cleanup-tmpdir.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-cleanup-tmpdir.sh
 
 test-cache-root-validation:
-	bash scripts/test-cache-root-validation.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-cache-root-validation.sh
 
 test-cache-key-discipline:
-	bash scripts/test-cache-key-discipline.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-cache-key-discipline.sh
 
 test-cache-key-runtime-audit:
-	bash scripts/test-cache-key-runtime-audit.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-cache-key-runtime-audit.sh
 
 test-finalize-sanity-check:
-	bash scripts/test-finalize-sanity-check.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-finalize-sanity-check.sh
 
 test-set-up-forked-open-source-repo:
-	bash skills/set-up-forked-open-source-repo/scripts/test-setup-forked-open-source-repo.sh
+	bash scripts/harness-timer.sh $@ bash skills/set-up-forked-open-source-repo/scripts/test-setup-forked-open-source-repo.sh
 
 test-session-entry-gate:
-	bash scripts/test-session-entry-gate.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-session-entry-gate.sh
 
 test-session-setup-presence-defaults:
-	bash scripts/test-session-setup-presence-defaults.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-session-setup-presence-defaults.sh
 
 test-session-setup-repo-fallback:
-	bash scripts/test-session-setup-repo-fallback.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-session-setup-repo-fallback.sh
 
 test-session-env-roundtrip:
-	bash scripts/test-session-env-roundtrip.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-session-env-roundtrip.sh
 
 test-audit-edit-write:
-	bash scripts/test-audit-edit-write.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-audit-edit-write.sh
 
 test-block-submodule:
-	bash scripts/test-block-submodule-edit.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-block-submodule-edit.sh
 
 test-deny-edit-write:
-	bash scripts/test-deny-edit-write.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-deny-edit-write.sh
 
 test-post-scaffold-hints:
-	bash scripts/test-post-scaffold-hints.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-post-scaffold-hints.sh
 
 test-render-skill:
-	bash skills/create-skill/scripts/test-render-skill-md.sh
-	bash skills/show-skill/scripts/test-show-skill.sh
+	bash scripts/harness-timer.sh $@ bash skills/create-skill/scripts/test-render-skill-md.sh
+	bash scripts/harness-timer.sh $@ bash skills/show-skill/scripts/test-show-skill.sh
 
 test-show-skill:
-	bash skills/show-skill/scripts/test-show-skill.sh
+	bash scripts/harness-timer.sh $@ bash skills/show-skill/scripts/test-show-skill.sh
 
 test-render-lane-status:
-	bash scripts/test-render-lane-status.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-render-lane-status.sh
 
 test-token-tally:
-	bash scripts/test-token-tally.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-token-tally.sh
 
 test-token-ledger:
-	bash scripts/test-token-ledger.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-token-ledger.sh
 
 test-token-report:
-	bash scripts/test-token-report.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-token-report.sh
 
 test-timing-ledger:
-	bash scripts/test-timing-ledger.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-timing-ledger.sh
 
 test-timing-report:
-	bash scripts/test-timing-report.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-timing-report.sh
 
 test-token-vendor-scrapers:
-	bash scripts/test-token-vendor-scrapers.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-token-vendor-scrapers.sh
 
 test-token-claude-source:
-	bash scripts/test-token-claude-source.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-token-claude-source.sh
 
 test-verify-skill-called:
-	bash scripts/test-verify-skill-called.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-verify-skill-called.sh
 
 test-check-bump-version:
-	bash scripts/test-check-bump-version.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-check-bump-version.sh
 
 test-run-checks:
-	bash .claude/skills/relevant-checks/scripts/test-run-checks.sh
+	bash scripts/harness-timer.sh $@ bash .claude/skills/relevant-checks/scripts/test-run-checks.sh
 
 test-relevant-checks-byte-budget:
-	bash scripts/test-relevant-checks-byte-budget.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-relevant-checks-byte-budget.sh
 
 test-relevant-checks-validation:
-	bash scripts/test-relevant-checks-validation.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-relevant-checks-validation.sh
 
 test-relevant-checks-helper-failure:
-	bash scripts/test-relevant-checks-helper-failure.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-relevant-checks-helper-failure.sh
 
 test-hook-block-skill-relevant-checks:
-	bash scripts/test-hook-block-skill-relevant-checks.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-hook-block-skill-relevant-checks.sh
 
 test-review-relevant-checks-helper:
-	bash scripts/test-review-relevant-checks-helper.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-review-relevant-checks-helper.sh
 
 test-lint-fix-loop:
-	bash scripts/test-lint-fix-loop.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-lint-fix-loop.sh
 
 test-drop-bump-commit:
-	bash scripts/test-drop-bump-commit.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-drop-bump-commit.sh
 
 test-ci-wait-exit-trap:
-	bash scripts/test-ci-wait-exit-trap.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-ci-wait-exit-trap.sh
 
 test-ci-rerun-failed:
-	bash scripts/test-ci-rerun-failed.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-ci-rerun-failed.sh
 
 test-ci-status:
-	bash scripts/test-ci-status.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-ci-status.sh
 
 test-merge-pr:
-	bash scripts/test-merge-pr.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-merge-pr.sh
 
 test-apply-bump:
-	bash scripts/test-apply-bump.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-apply-bump.sh
 
 test-lint-skill-invocations:
-	bash scripts/test-lint-skill-invocations.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-lint-skill-invocations.sh
 
 test-lint-literal-counts:
-	bash scripts/test-lint-literal-counts.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-lint-literal-counts.sh
 
 test-lint-no-raw-stderr-after-quiet-init:
-	bash scripts/test-lint-no-raw-stderr-after-quiet-init.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-lint-no-raw-stderr-after-quiet-init.sh
 
 test-mermaid-fragments:
-	bash scripts/test-mermaid-fragments.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-mermaid-fragments.sh
 
 test-anti-halt:
-	bash scripts/test-anti-halt-banners.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-anti-halt-banners.sh
 
 test-orchestrator-scope-sync:
-	bash scripts/test-orchestrator-scope-sync.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-orchestrator-scope-sync.sh
 
 test-alias-target-resolution:
-	bash scripts/test-alias-target-resolution.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-alias-target-resolution.sh
 
 test-alias-structure:
-	bash scripts/test-alias-structure.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-alias-structure.sh
 
 test-design-structure:
-	bash scripts/test-design-structure.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-design-structure.sh
 
 test-design-manifest:
-	bash skills/design/scripts/test-design-manifest.sh
+	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-design-manifest.sh
 
 test-design-driver:
-	bash skills/design/scripts/test-design-driver.sh
+	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-design-driver.sh
 
 test-classify-issue:
-	bash skills/design/scripts/test-classify-issue.sh
+	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-classify-issue.sh
 
 test-emit-plan:
-	bash skills/design/scripts/test-emit-plan.sh
+	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-emit-plan.sh
 
 test-tally-plan-review:
-	bash skills/design/scripts/test-tally-plan-review.sh
+	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-tally-plan-review.sh
 
 test-finalize-plan:
-	bash skills/design/scripts/test-finalize-plan.sh
+	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-finalize-plan.sh
 
 test-write-run-params:
-	bash scripts/test-write-run-params.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-write-run-params.sh
 test-plan-review-prompt:
-	bash skills/design/scripts/test-plan-review-prompt.sh
+	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-plan-review-prompt.sh
 
 test-implement-rebase-macro:
-	bash scripts/test-implement-rebase-macro.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-implement-rebase-macro.sh
 
 test-implement-step2-routing:
-	bash scripts/test-implement-step2-routing.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-implement-step2-routing.sh
 
 test-rebase-push-keep-on-conflict:
-	bash scripts/test-rebase-push-keep-on-conflict.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-rebase-push-keep-on-conflict.sh
 
 test-implement-structure:
-	bash scripts/test-implement-structure.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-implement-structure.sh
 
 test-implement-timing-rehydration:
-	bash scripts/test-implement-timing-rehydration.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-implement-timing-rehydration.sh
 
 test-implement-cleanup-roundtrip:
-	bash scripts/test-implement-cleanup-roundtrip.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-implement-cleanup-roundtrip.sh
 
 test-implement-anti-polling-rule:
-	bash scripts/test-implement-anti-polling-rule.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-implement-anti-polling-rule.sh
 
 test-implement-relevant-checks-anti-halt:
-	bash skills/implement/scripts/test-implement-relevant-checks-anti-halt.sh
+	bash scripts/harness-timer.sh $@ bash skills/implement/scripts/test-implement-relevant-checks-anti-halt.sh
 
 test-implement-anti-halt:
-	bash scripts/test-implement-anti-halt.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-implement-anti-halt.sh
 
 test-post-design-boundary:
-	bash skills/implement/scripts/test-post-design-boundary.sh
+	bash scripts/harness-timer.sh $@ bash skills/implement/scripts/test-post-design-boundary.sh
 
 test-implement-post-design-boundary: test-post-design-boundary
-	bash scripts/test-implement-post-design-boundary.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-implement-post-design-boundary.sh
 
 test-implement-review-token-propagation:
-	bash skills/implement/scripts/test-implement-review-token-propagation.sh
+	bash scripts/harness-timer.sh $@ bash skills/implement/scripts/test-implement-review-token-propagation.sh
 
 test-run-step2-dispatch:
-	bash skills/implement/scripts/test-run-step2-dispatch.sh
+	bash scripts/harness-timer.sh $@ bash skills/implement/scripts/test-run-step2-dispatch.sh
 
 test-step2-dispatch:
-	bash skills/implement/scripts/test-step2-dispatch.sh
+	bash scripts/harness-timer.sh $@ bash skills/implement/scripts/test-step2-dispatch.sh
 
 test-cursor-implementer:
-	bash skills/implement/scripts/test-cursor-implementer.sh
+	bash scripts/harness-timer.sh $@ bash skills/implement/scripts/test-cursor-implementer.sh
 
 test-codex-implementer:
-	bash skills/implement/scripts/test-codex-implementer.sh
+	bash scripts/harness-timer.sh $@ bash skills/implement/scripts/test-codex-implementer.sh
 
 test-refresh-run-logs:
-	bash scripts/test-refresh-run-logs.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-refresh-run-logs.sh
 
 test-ship-pr:
-	bash scripts/test-ship-pr.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-ship-pr.sh
 
 test-ci-wait:
-	bash scripts/test-ci-wait.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-ci-wait.sh
 
 test-launch-cursor-ci:
-	bash scripts/test-launch-cursor-ci.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-launch-cursor-ci.sh
 
 test-launch-codex-ci:
-	bash scripts/test-launch-codex-ci.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-launch-codex-ci.sh
 
 test-run-external-agent-args:
-	bash scripts/test-run-external-agent-args.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-run-external-agent-args.sh
 
 test-quick-mode-docs-sync:
-	bash scripts/test-quick-mode-docs-sync.sh
-	bash scripts/test-quick-mode-docs-sync.sh --self-test
+	bash scripts/harness-timer.sh $@ bash scripts/test-quick-mode-docs-sync.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-quick-mode-docs-sync.sh --self-test
 
 test-implement-finalize:
-	bash scripts/test-implement-finalize.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-implement-finalize.sh
 
 test-flush-execution-issues:
-	bash skills/implement/scripts/test-flush-execution-issues.sh
+	bash scripts/harness-timer.sh $@ bash skills/implement/scripts/test-flush-execution-issues.sh
 
 test-post-tracking-issue:
-	bash skills/implement/scripts/test-post-tracking-issue.sh
+	bash scripts/harness-timer.sh $@ bash skills/implement/scripts/test-post-tracking-issue.sh
 
 test-commit-implementation:
-	bash skills/implement/scripts/test-commit-implementation.sh
+	bash scripts/harness-timer.sh $@ bash skills/implement/scripts/test-commit-implementation.sh
 
 test-commit-review-fixes:
-	bash skills/implement/scripts/test-commit-review-fixes.sh
+	bash scripts/harness-timer.sh $@ bash skills/implement/scripts/test-commit-review-fixes.sh
 
 test-generate-code-flow-diagram:
-	bash skills/implement/scripts/test-generate-code-flow-diagram.sh
+	bash scripts/harness-timer.sh $@ bash skills/implement/scripts/test-generate-code-flow-diagram.sh
 
 test-refresh-execution-issues:
-	bash skills/implement/scripts/test-refresh-execution-issues.sh
+	bash scripts/harness-timer.sh $@ bash skills/implement/scripts/test-refresh-execution-issues.sh
 
 test-write-rejected-findings:
-	bash skills/implement/scripts/test-write-rejected-findings.sh
+	bash scripts/harness-timer.sh $@ bash skills/implement/scripts/test-write-rejected-findings.sh
 
 test-slack-issue-announce:
-	bash skills/implement/scripts/test-slack-issue-announce.sh
+	bash scripts/harness-timer.sh $@ bash skills/implement/scripts/test-slack-issue-announce.sh
 
 test-write-final-report:
-	bash skills/implement/scripts/test-write-final-report.sh
+	bash scripts/harness-timer.sh $@ bash skills/implement/scripts/test-write-final-report.sh
 
 test-implement-cleanup-script:
-	bash skills/implement/scripts/test-cleanup.sh
+	bash scripts/harness-timer.sh $@ bash skills/implement/scripts/test-cleanup.sh
 
 test-restore-finalize-state:
-	bash scripts/test-restore-finalize-state.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-restore-finalize-state.sh
 
 test-harness-shards-coverage:
-	bash scripts/test-harness-shards-coverage.sh
-	bash scripts/test-harness-shards-coverage.sh --self-test
+	bash scripts/harness-timer.sh $@ bash scripts/test-harness-shards-coverage.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-harness-shards-coverage.sh --self-test
 
 test-references-headers:
-	bash scripts/test-references-headers.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-references-headers.sh
 
 test-render-reviewer-prompt:
-	bash scripts/test-render-reviewer-prompt.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-render-reviewer-prompt.sh
 
 test-render-specialist-prompt:
-	bash scripts/test-render-specialist-prompt.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-render-specialist-prompt.sh
 
 test-research-structure:
-	bash scripts/test-research-structure.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-research-structure.sh
 
 test-review-structure:
-	bash scripts/test-review-structure.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-review-structure.sh
 
 test-gather-context:
-	bash skills/review/scripts/test-gather-context.sh
+	bash scripts/harness-timer.sh $@ bash skills/review/scripts/test-gather-context.sh
 
 test-review-core:
-	bash skills/review/scripts/test-review-core.sh
+	bash scripts/harness-timer.sh $@ bash skills/review/scripts/test-review-core.sh
 
 test-dispatch-panel:
-	bash skills/review/scripts/test-dispatch-panel.sh
+	bash scripts/harness-timer.sh $@ bash skills/review/scripts/test-dispatch-panel.sh
 
 test-dispatch-plan-voters:
-	bash scripts/test-dispatch-plan-voters.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-dispatch-plan-voters.sh
 
 test-collect-findings:
-	bash skills/review/scripts/test-collect-findings.sh
+	bash scripts/harness-timer.sh $@ bash skills/review/scripts/test-collect-findings.sh
 
 test-tally-code-votes:
-	bash skills/review/scripts/test-tally-code-votes.sh
+	bash scripts/harness-timer.sh $@ bash skills/review/scripts/test-tally-code-votes.sh
 
 .PHONY: test-check-reviewer-failure-threshold
 test-check-reviewer-failure-threshold:
-	bash skills/review/scripts/test-check-reviewer-failure-threshold.sh
+	bash scripts/harness-timer.sh $@ bash skills/review/scripts/test-check-reviewer-failure-threshold.sh
 
 .PHONY: test-lib-vote-tally
 test-lib-vote-tally:
-	bash scripts/test-lib-vote-tally.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-lib-vote-tally.sh
 
 .PHONY: test-dispatch-code-voters
 test-dispatch-code-voters:
-	bash scripts/test-dispatch-code-voters.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-dispatch-code-voters.sh
 
 test-emit-tally:
-	bash skills/review/scripts/test-emit-tally.sh
+	bash scripts/harness-timer.sh $@ bash skills/review/scripts/test-emit-tally.sh
 
 test-log-phase:
-	bash skills/review/scripts/test-log-phase.sh
+	bash scripts/harness-timer.sh $@ bash skills/review/scripts/test-log-phase.sh
 
 test-review-and-fix:
-	bash skills/review-and-fix/scripts/test-review-and-fix.sh
+	bash scripts/harness-timer.sh $@ bash skills/review-and-fix/scripts/test-review-and-fix.sh
 
 test-run-step5-review:
-	bash scripts/test-run-step5-review.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-run-step5-review.sh
 
 test-scrub-submodule-paths:
-	bash scripts/test-scrub-submodule-paths.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-scrub-submodule-paths.sh
 
 test-ballot-parse:
-	bash skills/shared/scripts/test-ballot-parse.sh
+	bash scripts/harness-timer.sh $@ bash skills/shared/scripts/test-ballot-parse.sh
 
 test-tally-vote:
-	bash skills/shared/scripts/test-tally-vote.sh
+	bash scripts/harness-timer.sh $@ bash skills/shared/scripts/test-tally-vote.sh
 
 test-scoreboard:
-	bash skills/shared/scripts/test-scoreboard.sh
+	bash scripts/harness-timer.sh $@ bash skills/shared/scripts/test-scoreboard.sh
 
 test-oos-serialize:
-	bash skills/shared/scripts/test-oos-serialize.sh
+	bash scripts/harness-timer.sh $@ bash skills/shared/scripts/test-oos-serialize.sh
 
 test-run-research-planner:
-	bash skills/research/scripts/test-run-research-planner.sh
+	bash scripts/harness-timer.sh $@ bash skills/research/scripts/test-run-research-planner.sh
 
 test-render-findings-batch:
-	bash skills/research/scripts/test-render-findings-batch.sh
+	bash scripts/harness-timer.sh $@ bash skills/research/scripts/test-render-findings-batch.sh
 
 test-research-banner:
-	bash skills/research/scripts/test-research-banner.sh
+	bash scripts/harness-timer.sh $@ bash skills/research/scripts/test-research-banner.sh
 
 test-synthesis-subagent:
-	bash skills/research/scripts/test-synthesis-subagent.sh
+	bash scripts/harness-timer.sh $@ bash skills/research/scripts/test-synthesis-subagent.sh
 
 test-research-angle-prompts:
-	bash skills/research/scripts/test-research-angle-prompts.sh
+	bash scripts/harness-timer.sh $@ bash skills/research/scripts/test-research-angle-prompts.sh
 
 test-subskill-anchors:
-	bash scripts/test-subskill-anchors.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-subskill-anchors.sh
 
 test-tracking-issue-write:
-	bash scripts/test-tracking-issue-write.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-tracking-issue-write.sh
 
 test-larch-log:
-	bash scripts/test-larch-log.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-larch-log.sh
 
 test-capture-session-transcript:
-	bash scripts/test-capture-session-transcript.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-capture-session-transcript.sh
 
 test-local-cleanup:
-	bash scripts/test-local-cleanup.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-local-cleanup.sh
 
 test-larch-logs-manifest:
-	bash scripts/test-larch-logs-manifest.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-larch-logs-manifest.sh
 
 test-larch-logs-batches:
-	bash scripts/test-larch-logs-batches.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-larch-logs-batches.sh
 
 test-compose-plan-goals-test:
-	bash scripts/test-compose-plan-goals-test.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-compose-plan-goals-test.sh
 
 test-run-step1-plan-log:
-	bash scripts/test-run-step1-plan-log.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-run-step1-plan-log.sh
 
 test-write-tally:
-	bash scripts/test-write-tally.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-write-tally.sh
 
 test-compose-collector-failure-log:
-	bash scripts/test-compose-collector-failure-log.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-compose-collector-failure-log.sh
 
 test-compose-pr-summary:
-	bash scripts/test-compose-pr-summary.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-compose-pr-summary.sh
 
 test-compose-architecture-sketch:
-	bash scripts/test-compose-architecture-sketch.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-compose-architecture-sketch.sh
 
 test-tracking-issue-summary:
-	bash scripts/test-tracking-issue-summary.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-tracking-issue-summary.sh
 
 test-false-positive-keywords:
-	bash scripts/test-false-positive-keywords.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-false-positive-keywords.sh
 
 test-round-trip-detect:
-	bash scripts/test-round-trip-detect.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-round-trip-detect.sh
 
 test-tracking-issue-read-sentinel:
-	bash scripts/test-tracking-issue-read-sentinel.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-tracking-issue-read-sentinel.sh
 
 test-compose-review-findings:
-	bash scripts/test-compose-review-findings.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-compose-review-findings.sh
 
 test-umbrella-helpers:
-	bash skills/umbrella/scripts/test-helpers.sh
+	bash scripts/harness-timer.sh $@ bash skills/umbrella/scripts/test-helpers.sh
 
 test-umbrella-parse-args:
-	bash skills/umbrella/scripts/test-umbrella-parse-args.sh
+	bash scripts/harness-timer.sh $@ bash skills/umbrella/scripts/test-umbrella-parse-args.sh
 
 test-umbrella-blocked-by-issue:
-	bash skills/umbrella/scripts/test-umbrella-blocked-by-issue.sh
+	bash scripts/harness-timer.sh $@ bash skills/umbrella/scripts/test-umbrella-blocked-by-issue.sh
 
 test-umbrella-emit-output-contract:
-	bash skills/umbrella/scripts/test-umbrella-emit-output-contract.sh
+	bash scripts/harness-timer.sh $@ bash skills/umbrella/scripts/test-umbrella-emit-output-contract.sh
 
 test-umbrella-render-batch-input:
-	bash skills/umbrella/scripts/test-render-batch-input.sh
+	bash scripts/harness-timer.sh $@ bash skills/umbrella/scripts/test-render-batch-input.sh
 
 test-render-umbrella-body:
-	bash skills/umbrella/scripts/test-render-umbrella-body.sh
+	bash scripts/harness-timer.sh $@ bash skills/umbrella/scripts/test-render-umbrella-body.sh
 
 test-check-review-changes:
-	bash skills/implement/scripts/test-check-review-changes.sh
+	bash scripts/harness-timer.sh $@ bash skills/implement/scripts/test-check-review-changes.sh
 
 test-check-mid-run-dirty-tree:
-	bash scripts/test-check-mid-run-dirty-tree.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-check-mid-run-dirty-tree.sh
 
 test-check-phantom-dirty:
-	bash scripts/test-check-phantom-dirty.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-check-phantom-dirty.sh
 
 test-check-reviewers:
-	bash scripts/test-check-reviewers.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-check-reviewers.sh
 
 test-check-generators:
-	bash scripts/test-check-generators.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-check-generators.sh
 
 test-check-topology-rule-paths:
-	bash scripts/test-check-topology-rule-paths.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-check-topology-rule-paths.sh
 
 test-generate-topology-docs:
-	bash scripts/test-generate-topology-docs.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-generate-topology-docs.sh
 
 test-external-tool-registry:
-	bash scripts/test-external-tool-registry.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-external-tool-registry.sh
 
 test-launch-review:
-	bash scripts/test-launch-review.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-launch-review.sh
 
 test-launch-claude-subprocess:
-	bash scripts/test-launch-claude-subprocess.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-launch-claude-subprocess.sh
 
 test-launch-claude-review:
-	bash scripts/test-launch-claude-review.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-launch-claude-review.sh
 
 test-dispatch-with-waterfall:
-	bash scripts/test-dispatch-with-waterfall.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-dispatch-with-waterfall.sh
 
 test-agent-model-args:
-	bash scripts/test-agent-model-args.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-agent-model-args.sh
 
 test-effort-prose:
-	bash scripts/test-effort-prose.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-effort-prose.sh
 
 test-lib-cursor-auth:
-	bash scripts/test-lib-cursor-auth.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-lib-cursor-auth.sh
 
 test-lib-quiet:
-	bash scripts/test-lib-quiet.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-lib-quiet.sh
 
 test-github-remote-repo:
-	bash scripts/test-github-remote-repo.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-github-remote-repo.sh
 
 test-implement-fork-env:
-	bash scripts/test-implement-fork-env.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-implement-fork-env.sh
 
 test-get-issue-context:
-	bash scripts/test-get-issue-context.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-get-issue-context.sh
 
 test-create-pr:
-	bash scripts/test-create-pr.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-create-pr.sh
 
 test-resolve-repo:
-	bash scripts/test-resolve-repo.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-resolve-repo.sh
 
 test-gh-pr-body-update:
-	bash scripts/test-gh-pr-body-update.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-gh-pr-body-update.sh
 
 test-wait-for-reviewers:
-	bash scripts/test-wait-for-reviewers.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-wait-for-reviewers.sh
 
 test-run-external-agent:
-	bash scripts/test-run-external-agent.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-run-external-agent.sh
 
 test-validate-pieces-json:
-	bash skills/umbrella/scripts/test-validate-pieces-json.sh
+	bash scripts/harness-timer.sh $@ bash skills/umbrella/scripts/test-validate-pieces-json.sh
 
 test-body-file-title:
-	bash skills/issue/scripts/test-body-file-title.sh
+	bash scripts/harness-timer.sh $@ bash skills/issue/scripts/test-body-file-title.sh
 
 test-intra-batch-deps:
-	bash skills/issue/scripts/test-intra-batch-deps.sh
+	bash scripts/harness-timer.sh $@ bash skills/issue/scripts/test-intra-batch-deps.sh
 
 test-oos-file-conflict-deps:
-	bash skills/implement/scripts/test-oos-file-conflict-deps.sh
+	bash scripts/harness-timer.sh $@ bash skills/implement/scripts/test-oos-file-conflict-deps.sh
 
 test-oos-issue-cap:
-	bash skills/implement/scripts/test-oos-issue-cap.sh
+	bash scripts/harness-timer.sh $@ bash skills/implement/scripts/test-oos-issue-cap.sh
 
 test-blocked-by-issue:
-	bash skills/issue/scripts/test-blocked-by-issue.sh
+	bash scripts/harness-timer.sh $@ bash skills/issue/scripts/test-blocked-by-issue.sh
 
 smoke-dialectic:
 	bash scripts/dialectic-smoke-test.sh
@@ -694,7 +694,7 @@ eval-research:
 # from CI. The structural test is itself cheap (no API cost) but kept
 # standalone for symmetry. See scripts/test-eval-set-structure.md.
 test-eval-set-structure:
-	bash scripts/test-eval-set-structure.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-eval-set-structure.sh
 
 # Standalone offline regression harness for the `--baseline` flag handling
 # in scripts/eval-research.sh (closes #441). NOT a `test-harnesses`
@@ -705,7 +705,7 @@ test-eval-set-structure:
 # so it works on machines without the real binaries.
 # See scripts/test-eval-research-baseline-flag.md.
 test-eval-research-baseline-flag:
-	bash scripts/test-eval-research-baseline-flag.sh
+	bash scripts/harness-timer.sh $@ bash scripts/test-eval-research-baseline-flag.sh
 
 shellcheck:
 	pre-commit run shellcheck --all-files
