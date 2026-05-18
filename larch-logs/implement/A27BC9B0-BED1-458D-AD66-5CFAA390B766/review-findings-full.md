@@ -222,3 +222,19 @@
 - **Concern**: [nit] Sibling contract omits description of new Step 8a execution-issue fields while shell+tests encode them. Operators and editors lack a single SSOT sentence for the diagnostic shape. Document manifest_path manifest_exists coder substrings in the postbump/changelog section of implement-finalize.md.
 - **Suggested revision**: Address the concern above.
 
+### FINDING_10: panel [code-review/accepted]
+
+## code-quality: scripts/larch-log-flush.md:2483-2485
+
+- **Reviewer**: cursor-specialist-testing-output.txt
+- **Concern**: [nit] Doc invariant still framed around protecting a preceding business commit. Operators misread flush semantics after removing commit-primitive tail calls. Rephrase the invariant to describe explicit lifecycle flush without implying a paired business commit.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_15: panel [code-review/accepted]
+
+## correctness: skills/review-and-fix/scripts/review-and-fix.sh:458-541
+
+- **Reviewer**: cursor-specialist-edge-cases-output.txt
+- **Concern**: [important] flush_review_batches returns 0 on mkdir cp or body redirect failures without breadcrumb Disk full chmod error or cp failure skips tally and findings batch writes while round exits success leaving stale or missing code-review-tally.json with no operator-visible warning unlike compose failure path Emit warning breadcrumb and avoid treating cp mkdir or body redirect errors as silent success return non zero or dedicated partial status
+- **Suggested revision**: Address the concern above.
+
