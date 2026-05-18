@@ -170,15 +170,14 @@ else
     fi
 fi
 
+mv "$OUTPUT_TMP" "$OUTPUT_CANON"
+mv "${OUTPUT_TMP}.stderr" "${OUTPUT_CANON}.stderr" 2>/dev/null || true
 # Fail-loud guard: a 0-byte output with a 0 exit code means the CLI likely
 # rejected an unknown flag silently; treat as ERROR so callers see a real failure.
-if [[ ! -s "$OUTPUT_TMP" && "$exit_code" -eq 0 ]]; then
+if [[ ! -s "$OUTPUT_CANON" && "$exit_code" -eq 0 ]]; then
     exit_code=99
     status="ERROR"
 fi
-
-mv "$OUTPUT_TMP" "$OUTPUT_CANON"
-mv "${OUTPUT_TMP}.stderr" "${OUTPUT_CANON}.stderr" 2>/dev/null || true
 printf '%s\n' "$exit_code" > "${OUTPUT_CANON}.done"
 printf 'STATUS=clean\nMODE=baseline\nREASON=claude-subprocess-prompt-read-only\n' > "${OUTPUT_CANON}.dirty-tree"
 
