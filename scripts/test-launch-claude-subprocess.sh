@@ -101,4 +101,50 @@ if PATH="$BIN:$PATH" "$SCRIPT" \
     fail "fail-loud: empty-output with exit 0 should have been treated as ERROR (non-zero exit)"
 fi
 
+# Restore the happy-path stub for the context-file boundary checks below.
+cat > "$BIN/claude" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+grep -q 'You are a read-only reviewer' || exit 7
+printf 'stub reviewer output\n'
+STUB
+chmod +x "$BIN/claude"
+
+# Context-file size: 1 MB boundary accepted (#2292 raised the cap from 256 KB to 1 MB
+# after PR #2289's 274 KB diff tripped the old cap silently).
+ctx_under="$TMP/ctx-1MB.txt"
+# 1 MB minus 1 byte → must be accepted.
+dd if=/dev/zero bs=1024 count=1023 2>/dev/null | tr '\0' 'x' > "$ctx_under"
+printf 'x%.0s' {1..1023} >> "$ctx_under"
+[[ "$(wc -c < "$ctx_under" | tr -d ' ')" == "1048575" ]] || fail "1 MB-1 fixture wrong size: $(wc -c < "$ctx_under" | tr -d ' ')"
+out_under="$TMP/out-under-cap.txt"
+PATH="$BIN:$PATH" "$SCRIPT" \
+        --prompt-file "$prompt" \
+        --output-file "$out_under" \
+        --timeout 5 \
+        --context-files "$ctx_under" \
+        --timing-task-kind claude-review \
+        > "$TMP/under-stdout" 2>"$TMP/under-err" \
+    || fail "1 MB-1 context-file rejected (should be accepted; exit=$?, stderr: $(cat "$TMP/under-err"))"
+grep -Fq 'STATUS=OK' "$TMP/under-stdout" || fail "1 MB-1 context-file path: missing STATUS=OK"
+
+# Context-file size: 1 MB + 1 byte rejected with the new "1 MB" wording.
+ctx_over="$TMP/ctx-over-1MB.txt"
+dd if=/dev/zero bs=1024 count=1024 2>/dev/null | tr '\0' 'x' > "$ctx_over"
+printf 'x' >> "$ctx_over"
+[[ "$(wc -c < "$ctx_over" | tr -d ' ')" == "1048577" ]] || fail "1 MB+1 fixture wrong size: $(wc -c < "$ctx_over" | tr -d ' ')"
+out_over="$TMP/out-over-cap.txt"
+if PATH="$BIN:$PATH" "$SCRIPT" \
+        --prompt-file "$prompt" \
+        --output-file "$out_over" \
+        --timeout 5 \
+        --context-files "$ctx_over" \
+        --timing-task-kind claude-review \
+        >/dev/null 2>"$TMP/over-err"; then
+    fail "1 MB+1 context-file accepted (should be rejected)"
+fi
+grep -Fq 'context file exceeds 1 MB' "$TMP/over-err" || fail "over-cap rejection message must say 'context file exceeds 1 MB' (got: $(cat "$TMP/over-err"))"
+# Pin against the stale 256 KB wording to prevent reverts.
+grep -Fq '256 KB' "$TMP/over-err" && fail "stale '256 KB' wording in rejection message; #2292 wording regressed"
+
 echo "All assertions passed."

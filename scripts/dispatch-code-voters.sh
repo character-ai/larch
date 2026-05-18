@@ -133,7 +133,7 @@ set +e
     --mode "$mode" \
     --timeout 1200 \
     --timing-task-kind claude-code-voter \
-    "${ctx_args[@]+"${ctx_args[@]}"}" >/dev/null 2>&1
+    "${ctx_args[@]+"${ctx_args[@]}"}" >/dev/null 2> "${VOTER_1_PATH}.launcher-stderr"
 voter1_rc=$?
 set -e
 [[ -f "$VOTER_1_PATH.done" ]] || printf '%s\n' "$voter1_rc" > "$VOTER_1_PATH.done"
@@ -147,6 +147,11 @@ if [[ "$voter1_rc" -ne 0 || ! -s "$VOTER_1_PATH" ]]; then
         if [[ -s "${VOTER_1_PATH}.diag" ]]; then
             printf -- '--- first 200 bytes of .diag ---\n'
             head -c 200 "${VOTER_1_PATH}.diag"
+            printf '\n'
+        fi
+        if [[ -s "${VOTER_1_PATH}.launcher-stderr" ]]; then
+            printf -- '--- launcher stderr (first 500 bytes) ---\n'
+            head -c 500 "${VOTER_1_PATH}.launcher-stderr"
             printf '\n'
         fi
     } > "$_voter1_diag" || true

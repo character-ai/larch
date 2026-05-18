@@ -118,7 +118,7 @@ for ctx in "${CONTEXT_FILES[@]+"${CONTEXT_FILES[@]}"}"; do
     ctx_canon=$(canonical_existing_file "$ctx") || fail "invalid context file: $ctx"
     ctx_under_allowed_root "$ctx_canon" || fail "context file outside allowed roots: $ctx"
     size=$(wc -c < "$ctx_canon" | tr -d ' ')
-    (( size <= 262144 )) || fail "context file exceeds 256 KB: $ctx"
+    (( size <= 1048576 )) || fail "context file exceeds 1 MB: $ctx"
     CONTEXT_CANON+=("$ctx_canon")
 done
 

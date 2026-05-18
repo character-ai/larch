@@ -57,9 +57,11 @@ src_count=0
 
 mkdir -p "$(dirname "$OUTPUT")"
 TEMP_PROMPT=""
+SUBPROCESS_STDERR=""
 # shellcheck disable=SC2317
 cleanup() {
     [[ -n "$TEMP_PROMPT" ]] && rm -f "$TEMP_PROMPT"
+    [[ -n "$SUBPROCESS_STDERR" ]] && rm -f "$SUBPROCESS_STDERR"
     return 0
 }
 trap cleanup EXIT
@@ -100,6 +102,7 @@ append_context_file "$SCOPE_FILES"
 append_context_file "$PLAN_FILE"
 append_context_file "$FEATURE_FILE"
 
+SUBPROCESS_STDERR=$(mktemp "$(dirname "$OUTPUT")/claude-subprocess-stderr.XXXXXX")
 set +e
 "$SCRIPT_DIR/launch-claude-subprocess.sh" \
     --prompt-file "$PROMPT_FILE" \
@@ -107,9 +110,23 @@ set +e
     --timeout "$TIMEOUT" \
     --timing-task-kind "$TIMING_TASK_KIND" \
     ${allow_root_args[@]+"${allow_root_args[@]}"} \
-    ${ctx_args[@]+"${ctx_args[@]}"}
+    ${ctx_args[@]+"${ctx_args[@]}"} 2> "$SUBPROCESS_STDERR"
 rc=$?
 set -e
+
+# launch-claude-subprocess.sh's larch_quiet_init clobbers its FD 4 with its
+# own log file, so the subprocess's larch_err output is normally lost in a
+# nested invocation. Capture stderr to a temp file and re-emit each line via
+# this script's larch_err so validation failures (--prompt-file outside
+# allowed roots, context file exceeds N bytes, etc.) reach the caller's
+# stderr — used by dispatch-code-voters.sh to surface the specific failing
+# check in execution-issues.md Warnings.
+if [[ -s "$SUBPROCESS_STDERR" ]]; then
+    while IFS= read -r _line; do
+        larch_err "$_line"
+    done < "$SUBPROCESS_STDERR"
+    unset _line
+fi
 
 if [[ ! -f "${OUTPUT}.done" ]]; then
     printf '%s\n' "$rc" > "${OUTPUT}.done"
