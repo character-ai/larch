@@ -1,0 +1,26 @@
+Gathering the diff and commit list for a read-only review focused on tests, CI, and regression risk.
+
+Verifying the regression test harness: whether `run_subject` resumes `ci-merge`, whether `make_repo stale_stall_state_cleared_on_merge` exists, and whether `assert_state_line` matches empty values.
+
+Reviewed the cached diff, commit `3e504356`, and the test harness (`run_subject`, `write_state`, stubs). Here is the testing and regression-focused review.
+
+### In-Scope Findings
+
+1. **Nit** (`risk-integration`, `plan`): [scripts/test-ship-pr.sh](scripts/test-ship-pr.sh) `283-290` and `444-459` — The plan calls for `ship-pr.sh --resume-phase ci-merge`, but `run_subject` only invokes `ship-pr.sh` with `--state-file` / `--implement-tmpdir` / merge flags and never passes `--resume-phase`. With the current `write_state` template (`CI_PASSED=false` at `262`), this is effectively the same as the resume preamble today (`state_set CI_PASSED false` then `advance_phase ci-merge`), so the regression still exercises `run_ci_phase ci-merge` and the fixed `state_set_many`. Suggested fix: extend the harness (e.g. optional args to `run_subject` or a one-off invocation) so this scenario passes `--resume-phase ci-merge` and stays aligned with the documented operator recovery path if `write_state` defaults ever change.
+
+2. **Latent** (`risk-integration`, `plan`): [scripts/test-ship-pr.sh](scripts/test-ship-pr.sh) `444-459` — The new regression only drives the default stub path (`STUB_MERGE_RESULT` defaults to `merged` in `116-121`, `ACTION` defaults to `merge` in `105-115`). The same clearing keys were added on the `version_already_published`+MERGED and `already_merged` branches in [scripts/ship-pr.sh](scripts/ship-pr.sh) `1305-1310` and `1349-1353`, but those branches are not run with a stale `BAIL_REASON` / `STALL_TRACKING` / `STALL_STEP` precondition, so a partial revert on one branch would not fail CI. Suggested fix: add two small cases (or one table-driven block) mirroring existing coverage at `397-401` and the `ACTION=already_merged` stub pattern, with the same awk precondition on state.
+
+3. **Nit** (`risk-integration`): [scripts/test-ship-pr.sh](scripts/test-ship-pr.sh) `444-459` — Assertions stop at `ship-pr-state.sh` lines; they do not assert that `$IMPLEMENT_TMPDIR/final-bail-reason.txt` is empty after `write_finalize_state()` in `run_postmerge_phase` ([scripts/ship-pr.sh](scripts/ship-pr.sh) `1374-1378`), which is the artifact tied to `bail_reason_nonempty()` in the failure narrative. Suggested fix: after `assert_rc` / `PHASE=done`, assert the file is missing or zero-length so the test fails if state and finalize output diverge in the future.
+
+### Out-of-Scope Observations
+
+None. Remaining notes are covered above as in-scope test gaps; no separate pre-existing production defect is called out.
+
+---
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	nit	risk-integration	scripts/test-ship-pr.sh:283-290,444-459	Regression harness does not pass --resume-phase ci-merge as specified in the plan; it relies on initial PHASE=ci-merge only.	If resume handling ever diverges from a cold start at ci-merge (e.g. different state normalization), the test could pass while the operator path regresses.	Have run_subject (or this case) invoke ship-pr.sh with --resume-phase ci-merge.
+1	in_scope	latent	risk-integration	scripts/test-ship-pr.sh:444-459	Stale stall-state regression is exercised only for MERGE_RESULT=merged; version_already_published+MERGED and ci-wait already_merged success paths are not tested with the same precondition.	A mistaken edit removing clears from only one branch would not be caught by this test.	Add compact tests for those branches with the same awk-injected stall keys.
+1	in_scope	nit	risk-integration	scripts/test-ship-pr.sh:444-459	Test does not assert final-bail-reason.txt is empty after postmerge.	If read_state and finalize file output ever diverged, state assertions alone might not catch a regression in write_finalize_state behavior.	Assert IMPLEMENT_TMPDIR/final-bail-reason.txt is absent or empty after a successful run.
+```

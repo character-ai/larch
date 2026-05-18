@@ -1,0 +1,20 @@
+Now I have the information needed. Key confirmations from the code:
+
+1. `write_finalize_state()` in `restore-finalize-state.sh:71` writes `BAIL_REASON` to `$BAIL_REASON_FILE` = `$IMPLEMENT_TMPDIR/final-bail-reason.txt` — not into `finalize-state.sh`. This confirms FINDING_6.
+
+2. Lines 1246-1256 in `ship-pr.sh` show real skip-to-postmerge paths (`REPO_UNAVAILABLE=true` and `MERGE!=true`/`DRAFT=true`/`FORKED_TARGET=true`) that don't clear stale bail/stall keys. This confirms FINDING_1 and FINDING_2 are real latent bugs, not speculation.
+
+3. `run_subject` at line 286 never passes `--resume-phase`, only pre-sets `PHASE=ci-merge` in the state file.
+
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: EXONERATE -- reviewer self-rates "low risk today, mostly documentation fidelity"; pre-setting PHASE=ci-merge in state is functionally equivalent for this code path
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: EXONERATE -- same concern as FINDING_4 with reviewer confirming "no demonstrated functional miss"; duplicate vote
+FINDING_8: YES
+FINDING_9: EXONERATE -- comment-alignment framing of FINDING_8's concern; covered if FINDING_8 files an issue
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES

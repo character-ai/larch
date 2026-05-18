@@ -1290,7 +1290,7 @@ EOF
             fi
             case "$merge_result" in
                 merged|admin_merged)
-                    state_set_many PR_CLOSED true MERGE_RESULT "$merge_result"
+                    state_set_many PR_CLOSED true MERGE_RESULT "$merge_result" BAIL_REASON "" STALL_TRACKING false STALL_STEP ""
                     rename_done_best_effort
                     write_post_merge_sentinel
                     advance_phase postmerge
@@ -1306,7 +1306,7 @@ EOF
                         pr_state=$(gh pr view "$pr_number" --repo "$pr_repo" --json state --jq '.state' 2>/dev/null || true)
                     fi
                     if [ "$pr_state" = "MERGED" ]; then
-                        state_set_many PR_CLOSED true MERGE_RESULT already_merged
+                        state_set_many PR_CLOSED true MERGE_RESULT already_merged BAIL_REASON "" STALL_TRACKING false STALL_STEP ""
                         rename_done_best_effort
                         write_post_merge_sentinel
                         advance_phase postmerge
@@ -1347,7 +1347,7 @@ EOF
             run_evaluate_failure "$phase"
             ;;
         already_merged)
-            state_set_many PR_CLOSED true MERGE_RESULT already_merged
+            state_set_many PR_CLOSED true MERGE_RESULT already_merged BAIL_REASON "" STALL_TRACKING false STALL_STEP ""
             rename_done_best_effort
             write_post_merge_sentinel
             advance_phase postmerge

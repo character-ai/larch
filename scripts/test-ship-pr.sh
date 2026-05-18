@@ -283,7 +283,7 @@ EOF
 run_subject() {
     local root=$1 tmpdir=$2 rc_file=$3
     set +e
-    (cd "$root" && CLAUDE_PLUGIN_ROOT="$root" IMPLEMENT_TMPDIR="$tmpdir" "$root/scripts/ship-pr.sh" --state-file "$tmpdir/ship-pr-state.sh" --implement-tmpdir "$tmpdir" --merge true --draft false --forked false --repo owner/repo > "$tmpdir/stdout" 2> "$tmpdir/stderr")
+    (cd "$root" && CLAUDE_PLUGIN_ROOT="$root" IMPLEMENT_TMPDIR="$tmpdir" "$root/scripts/ship-pr.sh" --state-file "$tmpdir/ship-pr-state.sh" --implement-tmpdir "$tmpdir" --merge true --draft false --forked false --repo owner/repo "${@:4}" > "$tmpdir/stdout" 2> "$tmpdir/stderr")
     local rc=$?
     set -e
     printf '%s' "$rc" > "$rc_file"
@@ -318,6 +318,27 @@ assert_stdout_max_bytes() {
         fail "$label (expected <= $max_bytes bytes, got $actual)"
         sed 's/^/    stdout: /' "$file"
     fi
+}
+
+assert_file_absent_or_empty() {
+    local file=$1 label=$2
+    if [ ! -e "$file" ] || [ ! -s "$file" ]; then
+        ok "$label"
+    else
+        fail "$label"
+        sed 's/^/    file: /' "$file"
+    fi
+}
+
+seed_stale_stall_state() {
+    local file=$1
+    awk '
+      /^BAIL_REASON=/ { print "BAIL_REASON=local HEAD does not match PR head OID"; next }
+      /^STALL_TRACKING=/ { print "STALL_TRACKING=true"; next }
+      /^STALL_STEP=/ { print "STALL_STEP=12d"; next }
+      { print }
+    ' "$file" > "$file.new" \
+        && mv "$file.new" "$file"
 }
 
 root=$(make_repo checks_fail)
@@ -436,6 +457,49 @@ else
     fail "version_already_published + open PR should fall through to run_rebase_rebump"
 fi
 rm -rf "$sentinel_dir"
+
+# Regression: stale BAIL_REASON and STALL_TRACKING from a prior stall are cleared
+# when the ci-merge resume succeeds. Without the fix, write_finalize_state() would
+# copy the stale BAIL_REASON into final-bail-reason.txt, causing
+# implement-finalize.sh postmerge to skip local branch cleanup.
+root=$(make_repo stale_stall_state_cleared_on_merge)
+tmp=$(make_tmpdir)
+write_state "$tmp/ship-pr-state.sh" ci-merge
+seed_stale_stall_state "$tmp/ship-pr-state.sh"
+run_subject "$root" "$tmp" "$tmp/rc" --resume-phase ci-merge
+assert_rc "$tmp/rc" 0 "stale stall state: resume exits 0 after successful merge"
+assert_state_line "$tmp/ship-pr-state.sh" "PHASE=done" "stale stall state: PHASE=done after resume"
+assert_state_line "$tmp/ship-pr-state.sh" "BAIL_REASON=" "stale stall state: BAIL_REASON cleared on merge success"
+assert_state_line "$tmp/ship-pr-state.sh" "STALL_TRACKING=false" "stale stall state: STALL_TRACKING cleared on merge success"
+assert_state_line "$tmp/ship-pr-state.sh" "STALL_STEP=" "stale stall state: STALL_STEP cleared on merge success"
+assert_file_absent_or_empty "$tmp/final-bail-reason.txt" "stale stall state: final-bail-reason.txt empty after merge success"
+
+root=$(make_repo stale_stall_state_cleared_on_version_published_merged)
+tmp=$(make_tmpdir)
+write_state "$tmp/ship-pr-state.sh" ci-merge
+seed_stale_stall_state "$tmp/ship-pr-state.sh"
+PATH="$root/scripts:$PATH" STUB_MERGE_RESULT=version_already_published STUB_GH_PR_VIEW_STATE=MERGED \
+    run_subject "$root" "$tmp" "$tmp/rc" --resume-phase ci-merge
+assert_rc "$tmp/rc" 0 "stale stall state: version_already_published + merged PR exits 0"
+assert_state_line "$tmp/ship-pr-state.sh" "MERGE_RESULT=already_merged" "stale stall state: version_already_published + merged PR records already_merged"
+assert_state_line "$tmp/ship-pr-state.sh" "PHASE=done" "stale stall state: version_already_published + merged PR completes postmerge"
+assert_state_line "$tmp/ship-pr-state.sh" "BAIL_REASON=" "stale stall state: version_already_published + merged PR clears BAIL_REASON"
+assert_state_line "$tmp/ship-pr-state.sh" "STALL_TRACKING=false" "stale stall state: version_already_published + merged PR clears STALL_TRACKING"
+assert_state_line "$tmp/ship-pr-state.sh" "STALL_STEP=" "stale stall state: version_already_published + merged PR clears STALL_STEP"
+assert_file_absent_or_empty "$tmp/final-bail-reason.txt" "stale stall state: version_already_published + merged PR leaves final-bail-reason.txt empty"
+
+root=$(make_repo stale_stall_state_cleared_on_already_merged)
+tmp=$(make_tmpdir)
+write_state "$tmp/ship-pr-state.sh" ci-merge
+seed_stale_stall_state "$tmp/ship-pr-state.sh"
+STUB_CI_ACTION=already_merged run_subject "$root" "$tmp" "$tmp/rc" --resume-phase ci-merge
+assert_rc "$tmp/rc" 0 "stale stall state: ci-wait already_merged exits 0"
+assert_state_line "$tmp/ship-pr-state.sh" "MERGE_RESULT=already_merged" "stale stall state: ci-wait already_merged records already_merged"
+assert_state_line "$tmp/ship-pr-state.sh" "PHASE=done" "stale stall state: ci-wait already_merged completes postmerge"
+assert_state_line "$tmp/ship-pr-state.sh" "BAIL_REASON=" "stale stall state: ci-wait already_merged clears BAIL_REASON"
+assert_state_line "$tmp/ship-pr-state.sh" "STALL_TRACKING=false" "stale stall state: ci-wait already_merged clears STALL_TRACKING"
+assert_state_line "$tmp/ship-pr-state.sh" "STALL_STEP=" "stale stall state: ci-wait already_merged clears STALL_STEP"
+assert_file_absent_or_empty "$tmp/final-bail-reason.txt" "stale stall state: ci-wait already_merged leaves final-bail-reason.txt empty"
 
 root=$(make_repo malformed)
 tmp=$(make_tmpdir)
