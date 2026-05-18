@@ -142,3 +142,107 @@
 - **Concern**: [nit] code-review-tally body header omits exonerated/neutral while JSON includes those fields. Human skim of body vs JSON suggests inconsistent tallies. Add exonerated/neutral to the summary line or document the split.
 - **Suggested revision**: Address the concern above.
 
+### FINDING_1: panel [code-review/accepted]
+
+## **Important** risk-integration — `larch-logs/implement/5FB5F976-7F82-491A-9A44-028AA1CD3DDF/plan-review-tally.json:1`, `larch-logs/implement/5FB5F976-7F82-491A-9A44-028AA1CD3DDF/code-review-tally.json:1`: the newly committed tally artifacts do not match the new contract in `docs/run-logs.md:55-75`. `plan-review-tally.json` and `code-review-tally.json` both omit `exonerated_count` and `neutral_count`; the code-review body also still reports rejected totals using old mixed semantics (`Rejected: 15` / `Rejected findings: 17`) while the embedded vote table includes exonerated outcomes. Concrete scenario: a run-log consumer validating this branch’s committed artifacts against the documented envelope fails required-field checks or aggregates exonerated findings as rejected. Regenerate or patch the committed run-log tally files so they include the new fields and strict rejected/exonerated/neutral counts.
+
+- **Reviewer**: codex-generalist-output.txt
+- **Concern**: 1. **Important** risk-integration — `larch-logs/implement/5FB5F976-7F82-491A-9A44-028AA1CD3DDF/plan-review-tally.json:1`, `larch-logs/implement/5FB5F976-7F82-491A-9A44-028AA1CD3DDF/code-review-tally.json:1`: the newly committed tally artifacts do not match the new contract in `docs/run-logs.md:55-75`. `plan-review-tally.json` and `code-review-tally.json` both omit `exonerated_count` and `neutral_count`; the code-review body also still reports rejected totals using old mixed semantics (`Rejected: 15` / `Rejected findings: 17`) while the embedded vote table includes exonerated outcomes. Concrete scenario: a run-log consumer validating this branch’s committed artifacts against the documented envelope fails required-field checks or aggregates exonerated findings as rejected. Regenerate or patch the committed run-log tally files so they include the new fields and strict rejected/exonerated/neutral counts.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_10: panel [code-review/accepted]
+
+## code-quality: scripts/test-write-tally.sh:63-76
+
+- **Reviewer**: cursor-specialist-structure-output.txt
+- **Concern**: [nit] Plan-review JSON assertions omit exonerated_count and neutral_count Asymmetric coverage vs code-review assertions allows plan-only envelope regressions Add jq field asserts for exonerated_count and neutral_count on plan JSON like the code-review case
+- **Suggested revision**: Address the concern above.
+
+### FINDING_11: panel [code-review/accepted]
+
+## correctness: larch-logs/implement/5FB5F976-7F82-491A-9A44-028AA1CD3DDF/plan-review-tally.json (committed example)
+
+- **Reviewer**: cursor-specialist-correctness-output.txt
+- **Concern**: [nit] Example plan-review-tally.json lacks exonerated_count/neutral_count keys while docs claim a shared envelope. Operators or schema checks comparing docs to committed example see a contract mismatch. Regenerate the example via updated compose-tally-record or adjust docs for optional fields on older artifacts.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_12: panel [code-review/accepted]
+
+## correctness: scripts/implement-finalize.sh:484-498
+
+- **Reviewer**: cursor-specialist-edge-cases-output.txt
+- **Concern**: [important] set -e after postbump larch-log commit persists into run_postbump which began with set +e Postbump tail may exit early or classify failures differently if a later command returns non-zero under errexit Restore prior errexit state or isolate commit in a subshell
+- **Suggested revision**: Address the concern above.
+
+### FINDING_13: panel [code-review/accepted]
+
+## correctness: scripts/redact-tmpdir-paths.sh:12-20 (diff hunks)
+
+- **Reviewer**: cursor-specialist-correctness-output.txt
+- **Concern**: [important] Operator-repo path redaction uses [A-Za-z0-9_-]+ for the repo segment, missing many valid directory names. Concrete scenario: /Users/alice/work/my.repo/larch3/scripts/foo.sh stays unredacted (or partially unredacted), leaking operator-local paths into published GitHub text. Widen the repo-segment pattern to real path characters or narrow the documented guarantee to match the regex.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_15: panel [code-review/accepted]
+
+## correctness: skills/review/scripts/review-core.sh:161-170,243-253,264-273,357-366
+
+- **Reviewer**: cursor-specialist-plan-fidelity-output.txt
+- **Concern**: [important] Plan 1d pass-through of EXONERATED_COUNT/NEUTRAL_COUNT incomplete on early exits Callers or strict parsers reading review-core stdout on zero-findings, panel-failed, or main-agent-vote-required paths never receive EXONERATED_COUNT/NEUTRAL_COUNT keys; downstream jq/kv logic may treat missing as error or wrong default vs main path. Emit EXONERATED_COUNT=0 and NEUTRAL_COUNT=0 on every exit branch that already emits ACCEPTED_COUNT/REJECTED_COUNT.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_17: panel [code-review/accepted]
+
+## risk-integration: scripts/test-write-tally.sh
+
+- **Reviewer**: cursor-specialist-testing-output.txt
+- **Concern**: [nit] write-tally harness never exercises non-zero --exonerated/--neutral through the real compose+write pipeline. Integration bugs in flag parsing or jq composition only show with non-zero counters. Add one code-review write case with non-zero exonerated/neutral and assert JSON output.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_18: panel [code-review/accepted]
+
+## risk-integration: scripts/test-write-tally.sh:163-170
+
+- **Reviewer**: cursor-specialist-edge-cases-output.txt
+- **Concern**: [nit] Plan-review defaults test omits exonerated_count/neutral_count assertions JSON shape regression for plan tallies may go undetected Add jq field checks for the new envelope keys
+- **Suggested revision**: Address the concern above.
+
+### FINDING_2: panel [code-review/accepted]
+
+## **Nit** risk-integration — `scripts/larch-log-batches.md:33-42`: this batch contract still documents the old tally schema and example without `exonerated_count` / `neutral_count`, even though `scripts/compose-tally-record.sh:80-101` now emits them and `docs/run-logs.md:55-75` documents them. Update the example and schema prose so the canonical batch reference stays in sync.
+
+- **Reviewer**: codex-generalist-output.txt
+- **Concern**: 2. **Nit** risk-integration — `scripts/larch-log-batches.md:33-42`: this batch contract still documents the old tally schema and example without `exonerated_count` / `neutral_count`, even though `scripts/compose-tally-record.sh:80-101` now emits them and `docs/run-logs.md:55-75` documents them. Update the example and schema prose so the canonical batch reference stays in sync.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_22: panel [code-review/accepted]
+
+## risk-integration: skills/review/references/heavy-worker.md:63-79
+
+- **Reviewer**: cursor-specialist-testing-output.txt
+- **Concern**: [important] Heavy-worker review-summary JSON contract still documents only accepted/rejected totals without exonerated/neutral semantics while emit-tally now sources strict REJECTED_COUNT from tally summary keys. Subagent-written review-summary.json can disagree with Bash emit-tally output for the same round (e.g., neutral findings counted as rejected in JSON but not in tally), breaking any merge or audit that assumes one meaning. Update heavy-worker schema prose (and examples) to match tally/emit-tally semantics or bump schema_version and add explicit fields so both producers align.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_27: panel [code-review/accepted]
+
+## security: scripts/redact-tmpdir-paths.sh:13-21 scripts/redact-tmpdir-paths.md:3-4
+
+- **Reviewer**: cursor-specialist-security-output.txt
+- **Concern**: [latent] Operator-repo path redaction is limited to /Users/.../ paths with a strict repo-dir character class while docs describe broader scrubbing of operator working-tree roots. Committed run logs or outbound publisher text from a Linux home directory or a repo path whose directory name falls outside [A-Za-z0-9_-] can still contain the operator’s absolute path after redaction. Extend sed coverage (e.g. /home/ mirror), relax repo segment matching to real clone names, or narrow the documented guarantee to match the regex.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_6: panel [code-review/accepted]
+
+## architecture: skills/review/scripts/emit-tally.sh:102-116
+
+- **Reviewer**: cursor-specialist-correctness-output.txt
+- **Concern**: [nit] review-summary.json omits exonerated/neutral dimensions introduced for code-review-tally. Consumers of only review-summary.json cannot see exonerated/neutral totals without reading other artifacts. Extend JSON or document that those counts live elsewhere.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_9: panel [code-review/accepted]
+
+## code-quality: larch-logs/implement/5FB5F976-7F82-491A-9A44-028AA1CD3DDF/plan-review-tally.json:1 larch-logs/implement/5FB5F976-7F82-491A-9A44-028AA1CD3DDF/code-review-tally.json:1
+
+- **Reviewer**: cursor-specialist-structure-output.txt
+- **Concern**: [important] Shipped tally JSON omits exonerated_count neutral_count and body headline predates new counters while docs and composer require the shared envelope Contract completeness audit against committed logs disagrees with updated run-logs.md and compose-tally-record in the same PR Re-flush run logs with current write-tally path or remove stale snapshot until it matches the documented envelope
+- **Suggested revision**: Address the concern above.
+
