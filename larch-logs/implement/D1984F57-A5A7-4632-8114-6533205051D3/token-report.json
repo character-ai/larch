@@ -185,32 +185,43 @@
       {
         "step": "Step 8 — version bump",
         "totals": {
-          "input": 1,
-          "cache_read": 275922,
-          "cache_create": 597,
-          "output": 651,
-          "total": 277171
+          "input": 6,
+          "cache_read": 1665801,
+          "cache_create": 15422,
+          "output": 4923,
+          "total": 1686152
         },
         "skills": [
           {
             "skill": "larch:implement",
             "totals": {
-              "input": 1,
-              "cache_read": 275922,
-              "cache_create": 597,
-              "output": 651,
-              "total": 277171
+              "input": 6,
+              "cache_read": 1665801,
+              "cache_create": 15422,
+              "output": 4923,
+              "total": 1686152
             }
           }
         ]
+      },
+      {
+        "step": "Step 6 — checks second pass",
+        "totals": {
+          "input": 0,
+          "cache_read": 0,
+          "cache_create": 0,
+          "output": 0,
+          "total": 0
+        },
+        "skills": []
       }
     ],
     "totals": {
-      "input": 150,
-      "cache_read": 36695106,
-      "cache_create": 117025,
-      "output": 56272,
-      "total": 36868553
+      "input": 155,
+      "cache_read": 38084985,
+      "cache_create": 131850,
+      "output": 60544,
+      "total": 38277534
     }
   },
   "codex": {
@@ -281,6 +292,14 @@
       },
       {
         "step": "Step 8 — version bump",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 6 — checks second pass",
         "totals": {
           "input": 0,
           "output": 0,
@@ -363,6 +382,14 @@
       {
         "step": "Step 8 — version bump",
         "totals": {
+          "input": 11391,
+          "output": 3049,
+          "total": 37992
+        }
+      },
+      {
+        "step": "Step 6 — checks second pass",
+        "totals": {
           "input": 0,
           "output": 0,
           "total": 0
@@ -370,9 +397,9 @@
       }
     ],
     "totals": {
-      "input": 461385,
-      "output": 93062,
-      "total": 3686607
+      "input": 472776,
+      "output": 96111,
+      "total": 3724599
     }
   }
 }
