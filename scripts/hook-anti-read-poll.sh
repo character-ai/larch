@@ -27,9 +27,15 @@ WINDOW_SECS=30
 
 state_dir="${TMPDIR:-/tmp}/larch-read-poll"
 mkdir -p "$state_dir" 2>/dev/null || exit 0
+chmod 700 "$state_dir" 2>/dev/null || true
 state_file="$state_dir/state-${cwd_hash}.tsv"
 
-now=$(date +%s 2>/dev/null) || exit 0
+if [ -n "${HOOK_ANTI_READ_POLL_NOW:-}" ]; then
+    now=$HOOK_ANTI_READ_POLL_NOW
+    case "$now" in ''|*[!0-9]*) exit 0 ;; esac
+else
+    now=$(date +%s 2>/dev/null) || exit 0
+fi
 
 last_path="" last_offset="0" count=0 first_ts=0
 if [ -f "$state_file" ]; then
@@ -39,13 +45,20 @@ if [ -f "$state_file" ]; then
 fi
 
 if [ "$file_path" = "$last_path" ] && [ "$offset" = "$last_offset" ]; then
-    count=$((count + 1))
+    age=$(( now - first_ts ))
+    if [ "$age" -gt "$WINDOW_SECS" ]; then
+        count=1
+        first_ts=$now
+    else
+        count=$((count + 1))
+    fi
 else
     count=1
     first_ts=$now
 fi
 
 printf '%s\t%s\t%s\t%s\n' "$file_path" "$offset" "$count" "$first_ts" > "$state_file" 2>/dev/null || true
+chmod 600 "$state_file" 2>/dev/null || true
 
 age=$(( now - first_ts ))
 if [ "$count" -ge "$POLL_THRESHOLD" ] && [ "$age" -le "$WINDOW_SECS" ]; then

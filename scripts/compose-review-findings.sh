@@ -125,11 +125,11 @@ parse_artifact() {
                 fi
                 ;;
             code-review-rejected)
-                if [[ "$line" =~ ^###[[:space:]]+\[rejected\][[:space:]]+(.+)$ ]]; then
+                if [[ "$line" =~ ^###[[:space:]]+\[(rejected|Code[[:space:]]+Review)\][[:space:]]+(.+)$ ]]; then
                     flush_pending
                     counter=$((counter + 1))
                     pending_id="${id_prefix}${counter}"
-                    pending_reviewer="${BASH_REMATCH[1]}"
+                    pending_reviewer="${BASH_REMATCH[2]}"
                     continue
                 fi
                 # Inner FINDING_/OOS_ headings inside a rejected block are body lines.

@@ -80,6 +80,20 @@ grep -Fq 'Suggested revision' "$out" || fail "full rejected artifact body was no
 grep -qF '&lt;config&gt;' "$out" || fail "angle brackets in body were not HTML-escaped"
 grep -qF '&amp; test' "$out" || fail "ampersand in body was not HTML-escaped"
 
+echo "=== legacy code review rejected header is accepted ==="
+mkdir -p "$TMP/e-impl"
+cat > "$TMP/e-impl/rejected-findings-full.md" <<'EOF'
+### [Code Review] Legacy-Reviewer
+**Finding**: Legacy rejected body.
+**Reason not implemented**: Kept for compatibility.
+EOF
+out="$TMP/e.md"
+stdout="$("$COMPOSE" --implement-tmpdir "$TMP/e-impl" --issue 44 --output "$out")"
+[[ "$stdout" == *"FINDINGS_TOTAL=1"* ]] || fail "legacy rejected total: $stdout"
+grep -Fq '### REJ_C1: Legacy-Reviewer [code-review/rejected]' "$out" \
+    || fail "legacy code-review rejected header missing"
+grep -Fq 'Legacy rejected body.' "$out" || fail "legacy rejected body missing"
+
 echo "=== HTML-escape XML-like tags in finding body ==="
 mkdir -p "$TMP/c-impl/round-1"
 cat > "$TMP/c-impl/round-1/accepted-findings.md" <<'EOF'
