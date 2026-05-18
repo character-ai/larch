@@ -1,0 +1,22 @@
+Reading the ballot file and producing votes for each finding.
+
+Verifying key claims in the implementation so votes are grounded (read-only).
+
+Votes below are grounded in [`scripts/harness-timer.sh`](scripts/harness-timer.sh), [`scripts/test-harness-timer.sh`](scripts/test-harness-timer.sh), [`scripts/test-harness-timer.md`](scripts/test-harness-timer.md), and [`scripts/harness-timer.md`](scripts/harness-timer.md). Plan mode does not require a separate plan artifact for this read-only ballot task; the required output is the vote lines.
+
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: EXONERATE -- `N.NNs` shape is already enforced by `timing_in_range` in tests 1–2; extra assertion on `false` is low leverage.
+FINDING_6: EXONERATE -- Same regex-vs-wide-band issue as FINDING_3; no need to track twice.
+FINDING_7: EXONERATE -- Pre-existing wrapper contract; not worth a standalone tracking issue.
+FINDING_8: EXONERATE -- Same python-subprocess failure / malformed timing thread as FINDING_1.
+FINDING_9: YES
+FINDING_10: EXONERATE -- Duplicate of FINDING_3’s plan-vs-harness contract gap.
+FINDING_11: EXONERATE -- Duplicate of FINDING_3 (half-second regex vs band).
+FINDING_12: EXONERATE -- Duplicate of FINDING_3 (two-second regex vs band).
+FINDING_13: EXONERATE -- Duplicate of FINDING_5.
+FINDING_14: EXONERATE -- Optional consolidation of three `python3` calls trades clarity for marginal noise reduction; not worth mandating.
+FINDING_15: EXONERATE -- Regex-vs-band mismatch is already covered by FINDING_3; flake angle by FINDING_2.
+FINDING_16: EXONERATE -- Duplicate of FINDING_3 / FINDING_12 on the `sleep 2` upper-range problem.

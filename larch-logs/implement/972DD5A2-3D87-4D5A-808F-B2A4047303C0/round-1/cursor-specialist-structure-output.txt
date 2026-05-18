@@ -1,0 +1,39 @@
+Gathering the branch diff and commit list for a read-only review.
+
+Reading the full scripts to verify the `false` exit-code capture, Python string interpolation, and peer-harness structure.
+
+Checking bash behavior for function/variable name `fail` and whether similar test harnesses use the same pattern:
+
+Here is the read-only review. I read the precomputed diff and the full current copies of `scripts/harness-timer.sh` and `scripts/test-harness-timer.sh`; `git log $(git merge-base HEAD main)..HEAD --oneline` shows one commit: `2d2ba51a harness-timer.sh: emit fractional-second timings via Python time.time()`.
+
+### Plan and requirements verification (structure)
+
+- **Requirements**: Fractional timings via Python `time.time()`, two decimal places in output, `scripts/test-harness-timer.sh` with the three specified behaviors/regexes, and `scripts/harness-timer.md` documenting `^[0-9]+(\.[0-9]+)?s$` — all present in the diff.
+- **Plan**: `scripts/test-harness-timer.md` (sibling stub) and `harness-timer.md` updates match the plan. The plan’s “peer harness” boilerplate (`REPO_ROOT`, `cleanup_tmpdir`) is not used; this harness does not need a temp dir or repo scan, so omitting that is reasonable KISS, with a small deviation from the plan’s literal checklist (**code-quality** / `plan`).
+
+### In-Scope Findings
+
+1. **Nit** (`code-quality`) [scripts/test-harness-timer.sh:10-11](scripts/test-harness-timer.sh) — The helper function is named `fail` while the failure counter is also `fail`. Bash resolves the arithmetic update to the variable in practice, but this shadows the name and is harder to read than peers that use names like `bump_fail` / `record_fail` / `fail_case`, and it may trip maintainers or static analysis. **Suggested fix**: Rename the function (or the counter) so the two are distinct.
+
+2. **Latent** (`correctness`) [scripts/test-harness-timer.sh:27-33](scripts/test-harness-timer.sh) — The `sleep 2` assertion allows only `^[12]\.[0-9]{2}s$`, so a wall time of `3.00s` or higher (slow/overloaded CI) fails even though the timer is correct. **Scenario**: Shard host stalls; measured elapsed crosses 3s → harness fails despite valid behavior. **Suggested fix**: Loosen the upper bound (e.g. allow `2\.`–`4\.` or a bounded range) or assert a minimum near 2s plus a generous ceiling.
+
+3. **Latent** (`correctness`) [scripts/test-harness-timer.sh:18-25](scripts/test-harness-timer.sh) — The `sleep 0.5` window is `0.40s`–`0.69s` via `^0\.[4-6][0-9]s$`. A fast finish around `0.38s`–`0.39s` is unlikely but possible relative to nominal 500ms. **Scenario**: Scheduler returns early vs expectation → flake. **Suggested fix**: Widen the lower tenths digit (e.g. include `3`) or document/encode a slightly wider tolerance.
+
+4. **Nit** (`code-quality`) [scripts/harness-timer.sh:8-12](scripts/harness-timer.sh) — Each invocation starts three separate `python3` processes for timing. Matches the attached implementation plan and is correct; it is just heavier than a single `python3 -c` that records start, runs the inner command via `os.exec`/`subprocess` (not requested). **Suggested fix**: Optional consolidation if cold-start cost matters on large harness matrices.
+
+5. **Nit** (`risk-integration`) [scripts/test-harness-timer.sh:18-29](scripts/test-harness-timer.sh) — The first two cases only assert the timing token, not that `harness-timer.sh` exited 0 when the inner `sleep` succeeds. A hypothetical regression that still printed a plausible timing line with a non-zero wrapper exit would not be caught. **Suggested fix**: Capture and assert `rc=0` for the sleep cases similarly to the `false` case.
+
+No **Important** or **blocking** issues identified; `harness-timer.sh`’s `printf` + `f'{...:.2f}'` with bash-expanded `$start`/`$end` is consistent with typical `time.time()` string output and preserves the prior exit-code mirroring pattern.
+
+### Out-of-Scope Observations
+
+None. Nothing outside the changed/added files warrants a finding under the stated scope rules.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	nit	code-quality	scripts/test-harness-timer.sh:10-11	Function name `fail` shadows the `fail` counter variable.	Maintainers or linters may misread increment logic; some shells/tooling treat function vs variable name collisions poorly.	Rename the function or the counter for clarity.
+1	in_scope	latent	correctness	scripts/test-harness-timer.sh:27-33	`sleep 2` test only accepts 1.xx–2.xx seconds.	Heavily loaded CI can report 3.00s+ while timing logic is still correct.	Widen the regex upper bound or assert min plus generous max.
+1	in_scope	latent	correctness	scripts/test-harness-timer.sh:18-25	`sleep 0.5` tolerance window starts at 0.40s.	Rare fast scheduling could yield ~0.38s–0.39s and fail.	Widen low bound (e.g. allow 0.3x s) or increase slop slightly.
+1	in_scope	nit	code-quality	scripts/harness-timer.sh:8-12	Three `python3` invocations per wrapped test.	Higher per-test overhead on large harness matrices vs one Python snippet.	Optional single-process timing if performance becomes material.
+1	in_scope	nit	risk-integration	scripts/test-harness-timer.sh:18-29	Success-path cases do not assert harness exit status 0.	A future bug that prints plausible timing but exits non-zero for successful inner commands could slip through.	Assert exit code 0 for sleep cases alongside timing regex.
+```

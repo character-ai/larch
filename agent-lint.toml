@@ -775,6 +775,13 @@ exclude = [
   # rule does not follow Makefile invocation refs, so both files are excluded.
   "scripts/harness-timer.sh",
   "scripts/harness-timer.md",
+  # scripts/test-harness-timer.sh is the regression harness for
+  # scripts/harness-timer.sh. It is referenced only from Makefile
+  # (test-harness-timer target) and scripts/test-harness-timer.md (sibling
+  # contract), matching the same Makefile-only pattern as the other test-*
+  # harnesses above.
+  "scripts/test-harness-timer.sh",
+  "scripts/test-harness-timer.md",
   "scripts/test-lint-skill-invocations.sh",
   "scripts/test-lint-literal-counts.sh",
   "scripts/lint-no-raw-stderr-after-quiet-init.md",

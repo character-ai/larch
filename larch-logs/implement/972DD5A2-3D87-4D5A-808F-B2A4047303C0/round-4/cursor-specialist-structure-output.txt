@@ -1,0 +1,29 @@
+Gathering the pre-computed diff and commit list for a read-only review.
+
+Checking a peer harness for structure comparison and verifying bash `fail`/`fail` interaction.
+
+Here is the read-only review. I read the precomputed diff and the full current copies of [`scripts/harness-timer.sh`](scripts/harness-timer.sh) and [`scripts/test-harness-timer.sh`](scripts/test-harness-timer.sh); I also sampled [`scripts/test-refresh-run-logs.sh`](scripts/test-refresh-run-logs.sh) and [`scripts/test-mermaid-fragments.sh`](scripts/test-mermaid-fragments.sh) for harness conventions. Commits since merge-base with `main`: `2d2ba51a` (feature), then three “Address code review feedback” commits.
+
+### In-Scope Findings
+
+1. **Nit** `code-quality` [scripts/test-harness-timer.sh:8-20](scripts/test-harness-timer.sh) — The pass/fail counter pattern uses a variable named `fail` alongside a function named `fail()`, unlike the established accumulating harness in [scripts/test-refresh-run-logs.sh:10-14](scripts/test-refresh-run-logs.sh), which uses `FAIL` for the counter and `fail()` for the helper. That avoids the same identifier for two different symbols and matches the repo’s “accumulate then exit on total” style. **Suggested fix:** Rename the counter to `FAIL` (and optionally `PASS` for symmetry), and increment `FAIL` inside `fail()` the same way as `test-refresh-run-logs.sh`.
+
+2. **Latent** `code-quality` [scripts/test-harness-timer.sh:90-91](scripts/test-harness-timer.sh) and [scripts/harness-timer.sh:8-11](scripts/harness-timer.sh) — The backward-clock regression depends on an exact match of the inner `python3 -c` string (`import time; print(time.time())`). If `harness-timer.sh` is refactored (quotes, spacing, `import time as t`, etc.), the shim stops intercepting wall-clock reads, the counter assertion can fail, or the case can stop exercising the clamp without an obvious reason in the failure message. **Suggested fix:** Add a short comment in `harness-timer.sh` next to the `-c` snippets that the string is pinned by `test-harness-timer.sh`, or loosen the shim (e.g. match `-c` with a case on `import time` only) and assert clamp behavior without over-fitting the literal.
+
+3. **Nit** `code-quality` [scripts/test-harness-timer.sh:1-6](scripts/test-harness-timer.sh) — Many sibling `scripts/test-*.sh` files open with a one-line description and/or `pwd -P` for `SCRIPT_DIR`. This file jumps straight into logic. **Suggested fix:** Add a one-line header comment (and optionally `pwd -P`) for consistency with peers like [scripts/test-refresh-run-logs.sh:1-4](scripts/test-refresh-run-logs.sh).
+
+### Out-of-Scope Observations
+
+1. **Nit** `code-quality` [Makefile:9-10](Makefile) — Adding `test-harness-timer` extends an already enormous `.PHONY` line; that churn is pre-existing project style whenever a new harness target appears, not introduced as a new pattern by this branch alone.
+
+---
+
+**Verdict:** The branch matches the stated objective (fractional timing via `time.time()`, docs contract, Makefile and agent-lint wiring, regression coverage including exit-code mirroring). The items above are maintainability/consistency nits plus one latent coupling on the extra backward-clock test.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	nit	code-quality	scripts/test-harness-timer.sh:8-20	Counter variable `fail` shares its name with helper `fail()`, diverging from the repo pattern that uses `FAIL` for the counter in accumulating harnesses.	Maintenance and future edits to `fail()` risk confusion or subtle mistakes; harder to grep and inconsistent with scripts/test-refresh-run-logs.sh.	Rename counter to `FAIL` (and optionally `PASS`/`pass` to `PASS`) following scripts/test-refresh-run-logs.sh:10-14.
+1	in_scope	latent	code-quality	scripts/test-harness-timer.sh:90-91;scripts/harness-timer.sh:8-11	Backward-clock test’s fake `python3` matches the wall-clock probe via an exact `-c` string equality.	Refactoring the one-liner in harness-timer.sh can break or hollow out the regression without changing clamp logic.	Document the coupling in harness-timer.sh or generalize the shim’s match so refactors are less brittle.
+1	in_scope	nit	code-quality	scripts/test-harness-timer.sh:1-6	New harness lacks the short header comment (and optional `pwd -P`) common on other scripts/test-*.sh files.	Minor discoverability inconsistency for contributors scanning harnesses.	Add a one-line purpose comment (and align SCRIPT_DIR resolution with peers if desired).
+1	out_of_scope	nit	code-quality	Makefile:9-10	`.PHONY` line is huge; any new target inflates the same line.	Pre-existing Makefile convention; not specific to this feature’s correctness.	No change required for this review scope.
+```

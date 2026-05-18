@@ -1,0 +1,25 @@
+Reading the ballot file to vote on each finding.
+
+Votes only (read the ballot at the path you gave; no repo edits or shell mutations).
+
+FINDING_1: YES  
+FINDING_2: EXONERATE -- pre-existing wrapper contract; tracking via issue adds process without hardening scope.  
+FINDING_3: YES  
+FINDING_4: EXONERATE -- optional style-only boilerplate with no behavioral win.  
+FINDING_5: YES  
+FINDING_6: YES  
+FINDING_7: EXONERATE -- backward-clock coverage outweighs small maintenance cost.  
+FINDING_8: EXONERATE -- low-risk bash pattern; rename churn for marginal clarity.  
+FINDING_9: NO -- duplicate of FINDING_8.  
+FINDING_10: EXONERATE -- hypothetical without evidence; extra guards risk noise vs. payoff.  
+FINDING_11: YES  
+FINDING_12: YES  
+FINDING_13: NO -- same doc-vs-harness mismatch as FINDING_12.  
+FINDING_14: NO -- same doc-vs-harness mismatch as FINDING_12.  
+FINDING_15: NO -- satisfied if FINDING_5 and FINDING_6 are addressed.  
+FINDING_16: EXONERATE -- documenting the shim coupling suffices; stronger coupling adds complexity.  
+FINDING_17: NO -- same stub-vs-harness window issue as FINDING_12.  
+FINDING_18: EXONERATE -- intentional CI slack is plausible; prefer documenting bands over more harness logic.  
+FINDING_19: NO -- same loose-range vs. regex concern as FINDING_5 and FINDING_6.  
+FINDING_20: EXONERATE -- stable-contract/env-hook fix is heavier than the test’s value here.  
+FINDING_21: EXONERATE -- assumes trojaned `python3`; refactor cost outruns this harness’s threat model.

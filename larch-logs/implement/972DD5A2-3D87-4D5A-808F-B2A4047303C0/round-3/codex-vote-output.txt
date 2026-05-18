@@ -1,0 +1,21 @@
+FINDING_1: YES
+FINDING_2: NO -- forwarding the supplied command is the wrapper's documented purpose, not a hardening issue worth tracking.
+FINDING_3: YES
+FINDING_4: EXONERATE -- `SCRIPT_DIR` already gives the needed sibling lookup; adding `REPO_ROOT` is convention-only churn.
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: EXONERATE -- the backward-clock case covers newly documented clamp behavior; the coupling is worth documenting, not dropping the test.
+FINDING_8: EXONERATE -- Bash separates variable and function namespaces, and the readability risk is too small for a required change.
+FINDING_9: EXONERATE -- Bash separates variable and function namespaces, and the readability risk is too small for a required change.
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: YES
+FINDING_18: YES
+FINDING_19: YES
+FINDING_20: YES
+FINDING_21: NO -- parameter expansion is not recursively shell-evaluated as command substitution; a malicious `python3` is already arbitrary code execution.

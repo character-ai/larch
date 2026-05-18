@@ -1,0 +1,38 @@
+Gathering the pre-computed diff and commit list for a read-only review.
+
+Reading the implemented files for accurate line references (diff was capped).
+
+Here is the review. `git log $(git merge-base HEAD main)..HEAD --oneline` returned:
+
+- `cace2273` Address code review feedback (round 2)
+- `dc26f9b2` Address code review feedback (round 1)
+- `2d2ba51a` harness-timer.sh: emit fractional-second timings via Python time.time()
+
+### In-Scope Findings
+
+1. **Important** (`code-quality`, `requirements`) [scripts/test-harness-timer.sh:44-51](scripts/test-harness-timer.sh) — The `sleep 0.5` case asserts a numeric window `0.40`–`1.20` instead of the agreed shape `^0\.[4-6][0-9]s$` from the feature text (tenths digit 4–6, i.e. ~0.40s–0.69s). A severely slow or mis-timed run could report ~1.10s and still pass, so the harness would not catch regressions that the spec’s regex was meant to flag. Tighten the assertion to match that regex (or an equivalent narrow numeric band consistent with it).
+
+2. **Important** (`code-quality`, `requirements`) [scripts/test-harness-timer.sh:53-60](scripts/test-harness-timer.sh) — The `sleep 2` case only checks `1.90`–`4.99` seconds, which accepts values like `3.50s` or `4.00s` that violate the required pattern `^[12]\.[0-9]{2}s$` (major whole second must be 1 or 2). CI slop can be handled with a **1.x–2.x** window (or explicit regex), not by widening into 3.x–4.x. Add a major-second constraint or use the specified regex.
+
+3. **Important** (`correctness`) [scripts/test-harness-timer.md:8-9](scripts/test-harness-timer.md) vs [scripts/test-harness-timer.sh:47-48](scripts/test-harness-timer.sh) — The sibling doc says test 1 allows `0.40s-0.79s`, but the script allows `0.40s-1.20s`. Operators reading the stub will believe a tighter contract than CI enforces. Align the doc with the script or align the script with the doc and the product spec.
+
+4. **Nit** (`code-quality`, `plan`) [scripts/test-harness-timer.sh:76-108](scripts/test-harness-timer.sh) — A fourth “backward clock” test with a `PATH`-shadowed `python3` shim was added; it was not in the stated three-case requirement and increases harness surface (brittle coupling to the exact `python3 -c 'import time; print(time.time())'` snippets). Prefer keeping the harness to the three specified cases unless you explicitly want to lock the clamp behavior—then document it next to the primary contract.
+
+5. **Nit** (`code-quality`) [scripts/test-harness-timer.sh:1-6](scripts/test-harness-timer.sh) — The script omits a `REPO_ROOT`-style layout used by some peer harnesses mentioned in the plan; functionally fine here, but slightly inconsistent if maintainers expect that boilerplate for tmpdir/repo-relative conventions.
+
+### Out-of-Scope Observations
+
+None identified. Wiring changes in [Makefile](Makefile) and [agent-lint.toml](agent-lint.toml) are reasonable integration for a new harness and were not contradicted by the feature text.
+
+---
+
+**Summary:** [scripts/harness-timer.sh](scripts/harness-timer.sh) correctly moves timing to `time.time()`, clamps negative deltas, and keeps exit-code mirroring; [scripts/harness-timer.md](scripts/harness-timer.md) matches the broader parser contract. The main gaps are **test strictness vs the written acceptance criteria** and **stub doc vs script** for the half-second case.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	code-quality	scripts/test-harness-timer.sh:44-51	sleep 0.5 assertion uses 0.40-1.20s instead of feature regex ^0\.[4-6][0-9]s$	A timing like 1.10s passes the harness but would fail the specified regex; sub-second shard signal quality regressions could slip through.	Match ^0\.[4-6][0-9]s$ (or an equivalent tight numeric band) for the half-second case.
+1	in_scope	important	code-quality	scripts/test-harness-timer.sh:53-60	sleep 2 assertion uses 1.90-4.99s without constraining the leading second digit	Values like 3.50s pass but violate ^[12]\.[0-9]{2}s$ from the feature description.	Add regex or a range that only allows 1.xx–2.xx (with documented slop), not 3.x–4.x.
+1	in_scope	important	correctness	scripts/test-harness-timer.md:8-9 vs scripts/test-harness-timer.sh:47-48	Doc says 0.40s-0.79s for test 1; script allows up to 1.20s	Readers trust the stub and misjudge what CI enforces.	Align ranges (and ideally align both with the feature regex).
+1	in_scope	nit	code-quality	scripts/test-harness-timer.sh:76-108	Extra backward-clock test and PATH-shim python3 not in the three-case requirement	Added maintenance and coupling to exact python -c strings.	Drop or fold into docs; if kept, treat as optional and document the coupling.
+1	in_scope	nit	code-quality	scripts/test-harness-timer.sh:1-6	No REPO_ROOT peer-harness boilerplate	Slight inconsistency with other scripts only.	Add REPO_ROOT if repo convention matters; otherwise ignore.
+```

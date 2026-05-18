@@ -1,0 +1,21 @@
+FINDING_1: YES
+FINDING_2: NO -- pre-existing design not introduced by this change; filing an issue adds no value for a deliberate architecture choice
+FINDING_3: YES
+FINDING_4: EXONERATE -- REPO_ROOT is only needed when the script references the repo root; SCRIPT_DIR is sufficient here
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: EXONERATE -- extra backward-clock test adds real coverage for the `max(0.0, ...)` clamp; removing it reduces quality
+FINDING_8: EXONERATE -- function call vs variable dereference (`fail "msg"` vs `$fail`) is unambiguous in Bash; risk is theoretical
+FINDING_9: EXONERATE -- same as FINDING_8; syntactically unambiguous in practice
+FINDING_10: EXONERATE -- python3 is a hard dependency; adding probe-failure guards adds complexity for a near-impossible scenario in a test harness
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: YES
+FINDING_18: EXONERATE -- concern is real but the actionable core (doc/code mismatch) is already captured by YES votes on FINDING_12–15,17
+FINDING_19: EXONERATE -- same reasoning as FINDING_18; already captured by FINDING_15
+FINDING_20: YES
+FINDING_21: EXONERATE -- threat model requires a compromised python3 binary; adding argv-based quoting hardening is excessive for a CI test-timer script
