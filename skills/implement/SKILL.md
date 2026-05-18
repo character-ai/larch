@@ -1327,7 +1327,7 @@ Untracked Probe with `--step 4.r-post-rebase`.
 
 > **Continue to Step 5 IMMEDIATELY.** The implementation commit is not the end of the run — code review, checks (2), commit, code flow diagram, bump, and PR still must run.
 
-<!-- step:5 — Code Review -->
+<!-- step:5 — Code Review: run-step5-review.sh → review-and-fix.sh (dynamic-archetypes cap=4 by default in implement tmpdir mode) -->
 ## Step 5 — Code Review
 
 If `quick_mode=false`, print: `> **🔶 /implement 5: code review**`
