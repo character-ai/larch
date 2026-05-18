@@ -126,6 +126,7 @@ Exclude the following from your In-Scope findings (surface pre-existing issues o
 - Lockfiles (`package-lock.json`, `go.sum`, `Cargo.lock`, etc.).
 - Vendored dependencies.
 - CI-enforced mechanical concerns that will fail the pipeline regardless (e.g., lint rules that already block merge). This exclusion does NOT cover CI coverage gaps — new files missing from test globs, CLI changes needing E2E updates, or workflow YAML issues that don't yet fail — those remain in-scope for §2 Risk/Integration.
+- Committed `larch-logs/implement/` directories added by a `chore(larch-logs)` flush commit. These are intentional plugin run-logs per `docs/run-logs.md` that ship with every `/implement`-merge PR by design. Do NOT flag them as scope drift, plan violation, unrelated commit, or PR noise. Review content quality only if directly relevant to the feature.
 
 ## Review priorities (in order, not a sequence)
 
@@ -267,6 +268,7 @@ Briefly note implementation choices that directly contradict a plan constraint, 
 - Pre-existing issues not introduced or amplified by this change (report under Out-of-Scope if worth surfacing).
 - Style nits, lint-territory concerns, generated code, lockfiles, vendored deps.
 - Speculative future risks.
+- Committed `larch-logs/implement/` directories added by a `chore(larch-logs)` flush commit. These are intentional plugin run-logs per `docs/run-logs.md` that ship with every `/implement`-merge PR by design. Do NOT flag them as scope drift, plan violation, unrelated commit, or PR noise.
 
 ## Output format
 
@@ -286,11 +288,11 @@ Numbered list. Each finding: severity (`**Important**` / `**Nit**` / `**Latent**
 ### Out-of-Scope Observations
 Numbered list of pre-existing issues worth surfacing. Same format plus why it is out of scope.
 
-## Structured Output (TSV Sidecar)
+## Structured Output (TSV)
 
-In addition to the prose output above, write one TSV record per finding to a sidecar file derived from the primary output path by appending `.tsv`. Write structured records only to the sidecar; do not append them to the prose output. If there are no findings or observations, leave the sidecar empty.
+In addition to the prose output above, write one TSV record per finding. Always embed the TSV inline at the very end of your response inside a fenced `tsv` block — the inline block is the primary delivery mechanism and works regardless of session constraints. If your session allows file writes, also write the same records to a sidecar file derived from the primary output path by appending `.tsv`. If there are no findings or observations, omit the inline block entirely.
 
-The TSV sidecar must start with this exact header:
+The TSV must start with this exact header line:
 ```
 schema_version\tscope\tseverity\tfocus_area\tlocation\twhat\tscenario_or_breakage\tsuggested_fix
 ```
@@ -356,6 +358,7 @@ Briefly scan for logic errors and security issues that are clearly critical, esp
 - Pre-existing issues not introduced or amplified by this change (report under Out-of-Scope if worth surfacing).
 - Style nits, lint-territory concerns, generated code, lockfiles, vendored deps.
 - Speculative future risks.
+- Committed `larch-logs/implement/` directories added by a `chore(larch-logs)` flush commit. These are intentional plugin run-logs per `docs/run-logs.md` that ship with every `/implement`-merge PR. Do NOT flag them as scope drift, robustness concern, or PR noise.
 
 ## Output format
 
@@ -375,11 +378,11 @@ Numbered list. Each finding: severity (`**Important**` / `**Nit**` / `**Latent**
 ### Out-of-Scope Observations
 Numbered list of pre-existing issues worth surfacing. Same format plus why it is out of scope.
 
-## Structured Output (TSV Sidecar)
+## Structured Output (TSV)
 
-In addition to the prose output above, write one TSV record per finding to a sidecar file derived from the primary output path by appending `.tsv`. Write structured records only to the sidecar; do not append them to the prose output. If there are no findings or observations, leave the sidecar empty.
+In addition to the prose output above, write one TSV record per finding. Always embed the TSV inline at the very end of your response inside a fenced `tsv` block — the inline block is the primary delivery mechanism and works regardless of session constraints. If your session allows file writes, also write the same records to a sidecar file derived from the primary output path by appending `.tsv`. If there are no findings or observations, omit the inline block entirely.
 
-The TSV sidecar must start with this exact header:
+The TSV must start with this exact header line:
 ```
 schema_version\tscope\tseverity\tfocus_area\tlocation\twhat\tscenario_or_breakage\tsuggested_fix
 ```
@@ -441,6 +444,7 @@ Briefly scan for correctness bugs (nil dereference, off-by-one, race conditions)
 - Pre-existing issues not introduced or amplified by this change (report under Out-of-Scope if worth surfacing).
 - Lint-territory concerns, generated code, lockfiles, vendored deps.
 - Speculative future risks.
+- Committed `larch-logs/implement/` directories added by a `chore(larch-logs)` flush commit. These are intentional plugin run-logs per `docs/run-logs.md` that ship with every `/implement`-merge PR. Do NOT flag them as scope drift, CI regression risk, or PR noise.
 
 ## Output format
 
@@ -460,11 +464,11 @@ Numbered list. Each finding: severity (`**Important**` / `**Nit**` / `**Latent**
 ### Out-of-Scope Observations
 Numbered list of pre-existing issues worth surfacing. Same format plus why it is out of scope.
 
-## Structured Output (TSV Sidecar)
+## Structured Output (TSV)
 
-In addition to the prose output above, write one TSV record per finding to a sidecar file derived from the primary output path by appending `.tsv`. Write structured records only to the sidecar; do not append them to the prose output. If there are no findings or observations, leave the sidecar empty.
+In addition to the prose output above, write one TSV record per finding. Always embed the TSV inline at the very end of your response inside a fenced `tsv` block — the inline block is the primary delivery mechanism and works regardless of session constraints. If your session allows file writes, also write the same records to a sidecar file derived from the primary output path by appending `.tsv`. If there are no findings or observations, omit the inline block entirely.
 
-The TSV sidecar must start with this exact header:
+The TSV must start with this exact header line:
 ```
 schema_version\tscope\tseverity\tfocus_area\tlocation\twhat\tscenario_or_breakage\tsuggested_fix
 ```

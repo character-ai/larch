@@ -292,8 +292,10 @@ parse_output() {
     ' "$file"
 }
 
-# parse_output_tsv: fallback for cursor plan-mode responses where the TSV
-# sidecar could not be written and TSV rows were inlined in the text response.
+# parse_output_tsv: extracts inline TSV records from reviewer responses.
+# Inline embedding is now the primary TSV delivery protocol for session-
+# constrained reviewers (e.g. Cursor no-file-write sessions); the sidecar
+# write is an optional supplement when the session allows file writes.
 # Extracts structured records via validate-research-output.sh --structured-
 # reviewer-mode, then converts each TSV row to the title\tlabel\tbody format
 # expected by the main findings loop.
@@ -328,12 +330,7 @@ per_tmp=$(mktemp "${TMPDIR:-/tmp}/review-per-file.XXXXXX") || exit 1
 for f in "${EXTERNAL_OUTPUT_FILES[@]+"${EXTERNAL_OUTPUT_FILES[@]}"}"; do
     : > "$per_tmp"
     parse_output_tsv "$f" "$(basename "$f")" > "$per_tmp"
-    if [[ -s "$per_tmp" ]]; then
-        larch_err "**⚠ Reviewer $(basename "$f"): recovered inline TSV findings (plan-mode prevented sidecar write)**"
-        append_review_failure "review Step 3a tsv-fallback" \
-            "collect-findings.sh inline-TSV recovery $(basename "$f")" \
-            0 "$f" "warning" || true
-    else
+    if [[ ! -s "$per_tmp" ]]; then
         parse_output "$f" "$(basename "$f")" > "$per_tmp"
     fi
     cat "$per_tmp" >> "$tmp"
@@ -344,12 +341,6 @@ for f in "${CLAUDE_OUTPUT_FILES[@]+"${CLAUDE_OUTPUT_FILES[@]}"}"; do
     parse_output "$f" "$(basename "$f")" > "$per_tmp"
     if [[ ! -s "$per_tmp" ]]; then
         parse_output_tsv "$f" "$(basename "$f")" > "$per_tmp"
-        if [[ -s "$per_tmp" ]]; then
-            larch_err "**⚠ Reviewer $(basename "$f"): no prose findings; recovered inline TSV findings (plan-mode prevented sidecar write)**"
-            append_review_failure "review Step 3a tsv-fallback" \
-                "collect-findings.sh inline-TSV recovery $(basename "$f")" \
-                0 "$f" "warning" || true
-        fi
     fi
     if [[ ! -s "$per_tmp" && -s "$f" ]] && ! file_has_no_findings_sentinel "$f"; then
         record_claude_non_substantive "$f" "$(basename "$f")"

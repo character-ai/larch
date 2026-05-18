@@ -83,6 +83,7 @@ Exclude the following from your In-Scope findings (surface pre-existing issues o
 - Lockfiles (`package-lock.json`, `go.sum`, `Cargo.lock`, etc.).
 - Vendored dependencies.
 - CI-enforced mechanical concerns that will fail the pipeline regardless (e.g., lint rules that already block merge). This exclusion does NOT cover CI coverage gaps — new files missing from test globs, CLI changes needing E2E updates, or workflow YAML issues that don't yet fail — those remain in-scope for §2 Risk/Integration.
+- Committed `larch-logs/implement/` directories added by a `chore(larch-logs)` flush commit. These are intentional plugin run-logs per `docs/run-logs.md` that ship with every `/implement`-merge PR by design. Do NOT flag them as scope drift, plan violation, unrelated commit, or PR noise. Review content quality only if directly relevant to the feature.
 
 ## Review priorities (in order, not a sequence)
 
