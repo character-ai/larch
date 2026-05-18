@@ -38,6 +38,18 @@ fail() {
   exit 1
 }
 
+semver_lt() {
+  local a_maj a_min a_pat b_maj b_min b_pat
+  IFS='.' read -r a_maj a_min a_pat <<< "$1"
+  IFS='.' read -r b_maj b_min b_pat <<< "$2"
+  if [[ $a_maj -lt $b_maj ]]; then return 0; fi
+  if [[ $a_maj -gt $b_maj ]]; then return 1; fi
+  if [[ $a_min -lt $b_min ]]; then return 0; fi
+  if [[ $a_min -gt $b_min ]]; then return 1; fi
+  if [[ $a_pat -lt $b_pat ]]; then return 0; fi
+  return 1
+}
+
 NEW_VERSION=""
 
 while [[ $# -gt 0 ]]; do
@@ -109,6 +121,11 @@ fi
 if [[ "$ORIGIN_VERSION" == "$NEW_VERSION" ]]; then
   rollback_before_commit
   fail "origin/main has already bumped to $NEW_VERSION; re-classify needed"
+fi
+
+if semver_lt "$NEW_VERSION" "$ORIGIN_VERSION"; then
+  rollback_before_commit
+  fail "version regression: $NEW_VERSION < origin/main $ORIGIN_VERSION; rebase conflict may have been resolved to branch stale version — re-resolve and re-bump"
 fi
 
 COMMIT_MSG="Bump version to $NEW_VERSION"

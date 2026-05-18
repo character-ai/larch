@@ -34,7 +34,7 @@ The script exits 0 only when the bump commit was created. It exits 1 for invalid
   `IMPLEMENT_TMPDIR`.
 - `.claude-plugin/plugin.json` must parse as JSON before rewrite.
 - The rewrite is atomic: `jq` writes to a temp file, then `mv` replaces `plugin.json`.
-- The pre-commit same-version probe runs after `git add` and before `git commit`: fetch `origin main`, read `origin/main:.claude-plugin/plugin.json`, require strict `^[0-9]+\.[0-9]+\.[0-9]+$`, and fail closed if the origin version equals `NEW_VERSION`.
+- The pre-commit version probes run after `git add` and before `git commit`: fetch `origin main`, read `origin/main:.claude-plugin/plugin.json`, require strict `^[0-9]+\.[0-9]+\.[0-9]+$`; fail closed if the origin version equals `NEW_VERSION` (same-version race); also fail closed if `NEW_VERSION < ORIGIN_VERSION` (regression guard — catches cases where a rebase conflict was resolved to the branch's stale version rather than main's).
 - Every pre-commit probe failure rolls back by restoring from `$BACKUP` and unstaging `plugin.json` with `git reset HEAD "$PLUGIN_JSON"`.
 - No `larch-log-flush.sh` tail-call after the bump commit: the rebase+re-bump machinery (`drop-bump-commit.sh`) requires the bump commit to remain at HEAD.
 - Commit failure uses the existing post-commit rollback path: restore from `$BACKUP`, unstage `plugin.json`, and emit `ERROR=git commit failed; rolled back ...`.
@@ -53,7 +53,7 @@ test-apply-bump:
 
 ## Test Harness
 
-`scripts/test-apply-bump.sh` creates temporary repos and PATH-stubs selected `git fetch` / `git show` calls while delegating normal git operations to the real binary. It covers success, fetch failure rollback, same-version rollback, differing-origin success, malformed-origin rollback, dirty worktree rejection including the phantom-file guidance text, and commit-failure rollback.
+`scripts/test-apply-bump.sh` creates temporary repos and PATH-stubs selected `git fetch` / `git show` calls while delegating normal git operations to the real binary. It covers success, fetch failure rollback, same-version rollback, differing-origin success, malformed-origin rollback, dirty worktree rejection including the phantom-file guidance text, commit-failure rollback, and regression-guard rollback (NEW_VERSION < ORIGIN_VERSION).
 
 ## Edit-in-sync Rules
 

@@ -51,6 +51,7 @@ The script also writes `$IMPLEMENT_TMPDIR/postbump-state.sh` before `implement-f
 - `create-pr.sh` emits `PR_NUMBER`, `PR_URL`, `PR_TITLE`, and `PR_STATUS`; existing PRs trigger `gh-pr-body-update.sh`.
 - `ci-wait.sh` emits `ACTION`, counters, `FAILED_RUN_ID`, and `BAIL_REASON`.
 - `merge-pr.sh` emits `MERGE_RESULT` and `ERROR`.
+- `run_rebase_rebump` version-regression correction: after `classify-bump.sh` emits `NEW_VERSION`, the function reads `origin/main:.claude-plugin/plugin.json` and checks whether `NEW_VERSION < origin/main version` (semver). When true — the conflict resolver chose the branch's stale version instead of main's — `new_version` is recomputed as `BUMP_TYPE` applied to origin/main's version (e.g., `29.1.39 → 29.3.1` when origin/main is `29.3.0` and `BUMP_TYPE=PATCH`). The correction is recorded as a `WARN:` line in `$fail_file`. `apply-bump.sh` also rejects `NEW_VERSION < ORIGIN_VERSION` as a belt-and-suspenders guard.
 - Failing helper/tool invocations capture stdout/stderr into
   `$IMPLEMENT_TMPDIR/ship-pr-fail-<phase>-<n>.log` and call
   `append-tool-failure.sh --redact` before the existing retry/stall/continue

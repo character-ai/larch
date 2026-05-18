@@ -382,6 +382,18 @@ resolve_checks_log_path() {
     esac
 }
 
+semver_lt() {
+    local a_maj a_min a_pat b_maj b_min b_pat
+    IFS='.' read -r a_maj a_min a_pat <<< "$1"
+    IFS='.' read -r b_maj b_min b_pat <<< "$2"
+    if [[ $a_maj -lt $b_maj ]]; then return 0; fi
+    if [[ $a_maj -gt $b_maj ]]; then return 1; fi
+    if [[ $a_min -lt $b_min ]]; then return 0; fi
+    if [[ $a_min -gt $b_min ]]; then return 1; fi
+    if [[ $a_pat -lt $b_pat ]]; then return 0; fi
+    return 1
+}
+
 FAILURE_LOG_SEQ=0
 
 failure_capture_path() {
@@ -1184,6 +1196,25 @@ run_rebase_rebump() {
         new_version=$(kv_value NEW_VERSION "$classify_out")
         bump_type=$(kv_value BUMP_TYPE "$classify_out")
         reasoning_file=$(kv_value REASONING_FILE "$classify_out")
+        # Version-regression guard: when rebase conflict was resolved to the branch's
+        # stale version instead of origin/main's, classify-bump produces NEW_VERSION <
+        # ORIGIN_VERSION. Correct by applying bump_type to origin/main's version.
+        if [ "$bump_type" != "NONE" ] && [ -n "$new_version" ]; then
+            _origin_ver=$(git show origin/main:.claude-plugin/plugin.json 2>/dev/null \
+                | jq -r '.version // empty' 2>/dev/null || echo "")
+            if [[ "$_origin_ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] && semver_lt "$new_version" "$_origin_ver"; then
+                IFS='.' read -r _ov_maj _ov_min _ov_pat <<< "$_origin_ver"
+                case "$bump_type" in
+                    MAJOR) _corrected="$(( _ov_maj + 1 )).0.0" ;;
+                    MINOR) _corrected="${_ov_maj}.$(( _ov_min + 1 )).0" ;;
+                    PATCH) _corrected="${_ov_maj}.${_ov_min}.$(( _ov_pat + 1 ))" ;;
+                    *)     _corrected="$new_version" ;;
+                esac
+                printf 'WARN: run_rebase_rebump: version regression detected: classify-bump produced %s < origin/main %s; corrected to %s\n' \
+                    "$new_version" "$_origin_ver" "$_corrected" >> "$fail_file"
+                new_version="$_corrected"
+            fi
+        fi
         state_set_many BUMP_TYPE "$bump_type" NEW_VERSION "$new_version" BUMP_REASONING_FILE "$reasoning_file"
         if [ "$bump_type" != "NONE" ] && [ -n "$new_version" ]; then
             fail_file=$(failure_capture_path rebase)
