@@ -3,6 +3,9 @@
 
 set -euo pipefail
 
+export WAIT_FOR_REVIEWERS_POLL_INTERVAL="${WAIT_FOR_REVIEWERS_POLL_INTERVAL:-0.05}"
+export RUN_EXTERNAL_AGENT_POLL_INTERVAL="${RUN_EXTERNAL_AGENT_POLL_INTERVAL:-0.05}"
+
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)
 SCRIPT="$REPO_ROOT/skills/review/scripts/dispatch-panel.sh"
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/test-dispatch-panel.XXXXXX")
@@ -278,9 +281,15 @@ if grep -q '"prompt_file"' "$TMP/reuse-invalid-manifest/panel-manifest.ndjson"; 
 fi
 
 seed_case_inputs "$TMP/oversized-diff"
+# Multi-line padding just over the 256 KiB scout context cap (avoids one 270k-line bash read in classify/render paths).
 python3 - <<'PY' > "$TMP/oversized-diff/review.diff"
 print("diff --git a/a b/a")
-print("+" + "x" * 270000)
+line = "+" + ("x" * 71)
+need = 262200
+written = 0
+while written < need:
+    print(line)
+    written += len(line) + 1
 PY
 out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" \
     --mode diff \

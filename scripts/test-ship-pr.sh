@@ -940,6 +940,10 @@ printf 'untracked vendor fixture\n' > fixture.txt
 printf 'TOKENS=1\n' > "${output}.token-record"
 STUB
 chmod +x "$root/scripts/launch-cursor-ci.sh"
+# CI runners often lack a `cursor` binary; ship-pr falls back to launch-codex-ci.sh
+# for the vendor fix path — mirror the cursor stub so dirty-tree staging is deterministic.
+cp "$root/scripts/launch-cursor-ci.sh" "$root/scripts/launch-codex-ci.sh"
+chmod +x "$root/scripts/launch-codex-ci.sh"
 cat > "$root/scripts/git-commit.sh" <<STUB
 #!/usr/bin/env bash
 set -euo pipefail

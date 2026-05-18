@@ -298,9 +298,17 @@ if [[ "$DYNAMIC_ARCHETYPES" != "0" && "$SCOUT_STATUS" == "na" ]]; then
                 write_empty_scout_manifest "$SCOUT_MANIFEST"
             fi
         else
-            SCOUT_STATUS="parse-failed"
-            write_empty_scout_manifest "$SCOUT_MANIFEST"
-            write_scout_status_file
+            # Missing status sidecar: stale cache unless the manifest is a valid
+            # empty scout result (reuse-empty-no-status harness).
+            if scout_manifest_is_valid "$SCOUT_MANIFEST" "$DYNAMIC_ARCHETYPES" \
+                && [[ "$(jq -r '.archetypes | length' "$SCOUT_MANIFEST" 2>/dev/null)" == "0" ]]; then
+                SCOUT_STATUS="empty"
+                write_scout_status_file
+            else
+                SCOUT_STATUS="parse-failed"
+                write_empty_scout_manifest "$SCOUT_MANIFEST"
+                write_scout_status_file
+            fi
         fi
     fi
     if [[ "$SCOUT_STATUS" == "ok" && -n "$SCOUT_MANIFEST" ]] && scout_manifest_is_valid "$SCOUT_MANIFEST" "$DYNAMIC_ARCHETYPES"; then
