@@ -1028,9 +1028,9 @@ cp "$SANDBOX/original-CHANGELOG.md" "$SANDBOX/repo/CHANGELOG.md"
 write_postbump_state "$POSTBUMP_STATE" MANIFEST_PATH= TOOL_LABEL=codex
 OUT=$(run_subject postbump --state-file "$POSTBUMP_STATE" --implement-tmpdir "$SANDBOX/tmp")
 assert_contains "CHANGELOG_STATUS=skipped-no-bullets" "$OUT" "postbump: missing bullets skips changelog amend"
-assert_file_contains "manifest_path='\${manifest_path}'" "$REAL_SCRIPT" "postbump: skipped-no-bullets message includes manifest path"
-assert_file_contains "manifest_exists=\$manifest_exists" "$REAL_SCRIPT" "postbump: skipped-no-bullets message includes manifest presence"
-assert_file_contains "coder='\${tool_label}'" "$REAL_SCRIPT" "postbump: skipped-no-bullets message includes coder"
+assert_file_contains "manifest_path=''" "$SANDBOX/tmp/execution-issues.md" "postbump: skipped-no-bullets execution issue resolves manifest path"
+assert_file_contains "manifest_exists=false" "$SANDBOX/tmp/execution-issues.md" "postbump: skipped-no-bullets execution issue resolves manifest presence"
+assert_file_contains "coder='codex'" "$SANDBOX/tmp/execution-issues.md" "postbump: skipped-no-bullets execution issue resolves coder"
 
 # Regression: when target version header already exists (replacement path), no double blank before next header.
 cat > "$SANDBOX/repo/CHANGELOG.md" <<'CHANGELOG_REPLACE'

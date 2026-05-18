@@ -984,10 +984,12 @@ run_evaluate_failure() {
     "$SCRIPT_DIR/gh-run-logs.sh" --run-id "$failed_run" --repo "$(read_state REPO)" > "$fail_file" 2>&1
     rc=$?
     [ "$rc" -eq 0 ] || record_failure "$phase" "gh-run-logs.sh" "$rc" "$fail_file" "CI Issues"
-    run_ci_fix_vendor "$phase" "$failed_run" && {
-        state_set_many TRANSIENT_RETRIES 0 FIX_ATTEMPTS "$(( $(read_state FIX_ATTEMPTS) + 1 ))"
-        return 0
-    }
+    for _ in 1 2 3; do
+        run_ci_fix_vendor "$phase" "$failed_run" && {
+            state_set_many TRANSIENT_RETRIES 0 FIX_ATTEMPTS "$(( $(read_state FIX_ATTEMPTS) + 1 ))"
+            return 0
+        }
+    done
     exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12c)"
 }
 

@@ -355,6 +355,8 @@ jq -e '.accepted_count == 3 and .rejected_count == 2' \
 jq -e '.accepted_count == 3 and .rejected_count == 2' \
     "$implement_tmp/review-and-fix-summary.json" >/dev/null \
     || fail "tally-fidelity summary matches composed tally"
+grep -Fq 'ACCEPTED_COUNT=3' <<< "$out" || fail "tally-fidelity stdout accepted kv matches composed tally"
+grep -Fq 'REJECTED_COUNT=2' <<< "$out" || fail "tally-fidelity stdout rejected kv matches composed tally"
 [[ "$(grep -cE '^### .+ \[code-review/accepted\]$' "$implement_tmp/larch-logs/implement/tally-fidelity-run/review-findings-full.md")" == "3" ]] \
     || fail "tally-fidelity accepted header count"
 
