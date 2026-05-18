@@ -78,4 +78,33 @@ grep -Fq 'dispatch-code-voters.sh voter1' "$issues_log"
 grep -Fq 'launch-claude-review.sh (claude voter) failed (exit 99)' "$issues_log"
 grep -Fq 'voter1_rc=99' "$issues_log"
 
+# #2292: when the Claude voter fails because launch-claude-subprocess.sh's
+# validation rejects an input, the launcher stderr must appear in the
+# Warning entry — not just voter1_rc and output_bytes. Trigger the rejection
+# by passing a --diff-file that is a symlink (canonical_existing_file rejects
+# symlinks). The stub claude never runs in this case because the validation
+# fires before the claude --print invocation.
+sym_review_tmpdir="$TMP/sym-diff"
+mkdir -p "$sym_review_tmpdir"
+sym_diff="$TMP/diff-symlink.patch"
+ln -s "$DIFF_FILE" "$sym_diff"
+issues_log_sym="$TMP/execution-issues-sym.md"
+out=$(PATH="$STUB_BIN:$PATH" LARCH_EXECUTION_ISSUES_LOG="$issues_log_sym" "$SCRIPT" \
+    --ballot-file "$BALLOT" \
+    --review-tmpdir "$sym_review_tmpdir" \
+    --codex-available true \
+    --cursor-available true \
+    --diff-file "$sym_diff" \
+    --plan-file "$PLAN_FILE")
+grep -Fq 'VOTER_1_STATUS=failed' <<< "$out" \
+    || { echo "FAIL: symlink-diff scenario expected VOTER_1_STATUS=failed" >&2; exit 1; }
+[[ -s "$sym_review_tmpdir/claude-vote-output.txt.launcher-stderr" ]] \
+    || { echo "FAIL: symlink-diff scenario expected non-empty .launcher-stderr sidecar" >&2; exit 1; }
+grep -Fq 'invalid context file' "$sym_review_tmpdir/claude-vote-output.txt.launcher-stderr" \
+    || { echo "FAIL: launcher-stderr sidecar missing 'invalid context file' message (got: $(cat "$sym_review_tmpdir/claude-vote-output.txt.launcher-stderr"))" >&2; exit 1; }
+grep -Fq 'launcher stderr' "$issues_log_sym" \
+    || { echo "FAIL: execution-issues.md missing 'launcher stderr' section header" >&2; exit 1; }
+grep -Fq 'invalid context file' "$issues_log_sym" \
+    || { echo "FAIL: execution-issues.md missing the validation message from launcher-stderr" >&2; exit 1; }
+
 echo "PASS: test-dispatch-code-voters.sh"

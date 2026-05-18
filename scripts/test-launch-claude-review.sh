@@ -51,4 +51,34 @@ PATH="$STUB_BIN:$PATH" "$REPO_ROOT/scripts/launch-claude-review.sh" \
 [[ "$(cat "$agent_output")" == "claude review ok" ]] || { echo "FAIL: agent-file output passthrough" >&2; exit 1; }
 [[ -f "$agent_output.done" ]] || { echo "FAIL: agent-file done sentinel" >&2; exit 1; }
 
+# #2292: subprocess validation errors (launch-claude-subprocess.sh's fail()
+# via larch_err) must propagate up to this launcher's stderr. Without the
+# tempfile-capture-and-re-emit dance, the subprocess's larch_quiet_init
+# clobbers FD 4 with its own log file and validation messages are lost.
+# Symlink prompt triggers canonical_existing_file's [[ ! -L "$p" ]] reject.
+sym_prompt="$TMPROOT/prompt-symlink.txt"
+ln -s "$prompt" "$sym_prompt"
+sym_out="$TMPROOT/sym-out.txt"
+set +e
+PATH="$STUB_BIN:$PATH" "$REPO_ROOT/scripts/launch-claude-review.sh" \
+    --output "$sym_out" \
+    --prompt-file "$sym_prompt" \
+    --mode description \
+    --timeout 5 >/dev/null 2>"$TMPROOT/sym-err"
+sym_rc=$?
+set -e
+[[ "$sym_rc" -eq 2 ]] || { echo "FAIL: symlink prompt should yield exit 2, got $sym_rc" >&2; exit 1; }
+grep -Fq 'invalid --prompt-file' "$TMPROOT/sym-err" \
+    || { echo "FAIL: subprocess validation 'invalid --prompt-file' did not propagate to launch-claude-review.sh stderr (got: $(cat "$TMPROOT/sym-err"))" >&2; exit 1; }
+grep -Fq 'launch-claude-subprocess.sh' "$TMPROOT/sym-err" \
+    || { echo "FAIL: subprocess prefix missing from propagated stderr (got: $(cat "$TMPROOT/sym-err"))" >&2; exit 1; }
+
+# Cleanup invariant: the subprocess-stderr tempfile under $(dirname OUTPUT) must
+# not persist after launch-claude-review.sh exits — protects against tmpdir
+# bloat in long /implement runs that loop through the launcher many times.
+shopt -s nullglob
+leaked=( "$(dirname "$sym_out")"/claude-subprocess-stderr.* )
+shopt -u nullglob
+(( ${#leaked[@]} == 0 )) || { echo "FAIL: subprocess-stderr tempfile leaked: ${leaked[*]}" >&2; exit 1; }
+
 echo "PASS: test-launch-claude-review.sh"
