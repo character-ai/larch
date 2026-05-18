@@ -22,6 +22,27 @@ DEFAULT_RUNS = 10
 DEFAULT_MAX_DIFF_CHARS = 2000
 
 
+def stable_json_text(value: Any) -> str:
+    return json.dumps(
+        stable_json(value),
+        sort_keys=True,
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
+
+
+def digest_text(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8", errors="replace")).hexdigest()
+
+
+def summarize_attachment_block(item: dict[str, Any]) -> str:
+    summary = {
+        "type": str(item.get("type") or "unknown"),
+        "payload_sha256": digest_text(stable_json_text(item)),
+    }
+    return json.dumps(summary, sort_keys=True, ensure_ascii=False)
+
+
 @dataclass(frozen=True)
 class TranscriptEntry:
     index: int
@@ -110,24 +131,26 @@ def content_to_text(value: Any) -> str:
         for item in value:
             if isinstance(item, dict):
                 block_type = str(item.get("type") or "")
-                if "text" in item and isinstance(item["text"], str):
+                if block_type not in ("", "text"):
+                    parts.append(summarize_attachment_block(item))
+                elif "text" in item and isinstance(item["text"], str):
                     parts.append(item["text"])
-                elif block_type in ("tool_result", "tool_use"):
-                    # Serialize full block to preserve tool_use_id and structural metadata
-                    parts.append(json.dumps(item, sort_keys=True, ensure_ascii=False))
                 elif "content" in item:
                     parts.append(content_to_text(item["content"]))
                 else:
-                    parts.append(json.dumps(item, sort_keys=True, ensure_ascii=False))
+                    parts.append(stable_json_text(item))
             else:
                 parts.append(content_to_text(item))
         return "\n".join(part for part in parts if part != "")
     if isinstance(value, dict):
         if "text" in value and isinstance(value["text"], str):
             return value["text"]
+        block_type = str(value.get("type") or "")
+        if block_type not in ("", "text"):
+            return summarize_attachment_block(value)
         if "content" in value:
             return content_to_text(value["content"])
-        return json.dumps(value, sort_keys=True, ensure_ascii=False)
+        return stable_json_text(value)
     return str(value)
 
 
@@ -138,12 +161,7 @@ def entry_content(entry: TranscriptEntry) -> str:
         return content_to_text(message.get("content"))
     if "content" in raw:
         return content_to_text(raw.get("content"))
-    return json.dumps(
-        stable_json(raw),
-        sort_keys=True,
-        ensure_ascii=False,
-        separators=(",", ":"),
-    )
+    return stable_json_text(raw)
 
 
 def stable_json(value: Any) -> Any:

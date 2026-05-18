@@ -79,7 +79,7 @@ write_tool_result_mutation_fixture() {
 {"type":"system","uuid":"sys1","parentUuid":null,"subtype":"init","message":{"content":"system prompt"}}
 {"type":"user","uuid":"usr1","parentUuid":"sys1","message":{"content":[{"type":"tool_result","tool_use_id":"T1","content":"result-A"}]}}
 {"type":"assistant","uuid":"ast1","parentUuid":"usr1","requestId":"req1","message":{"content":"response one"}}
-{"type":"user","uuid":"usr2","parentUuid":"ast1","message":{"content":[{"type":"tool_result","tool_use_id":"T1","content":"result-B"}]}}
+{"type":"user","uuid":"usr2","parentUuid":"sys1","message":{"content":[{"type":"tool_result","tool_use_id":"T1","content":"result-B"}]}}
 {"type":"assistant","uuid":"ast2","parentUuid":"usr2","requestId":"req2","message":{"content":"response two"}}
 JSONL
 }
@@ -91,7 +91,7 @@ write_image_mutation_fixture() {
 {"type":"system","uuid":"sys1","parentUuid":null,"subtype":"init","message":{"content":"system prompt"}}
 {"type":"user","uuid":"usr1","parentUuid":"sys1","message":{"content":[{"type":"image","source":{"type":"url","url":"http://example.com/img1.png"}}]}}
 {"type":"assistant","uuid":"ast1","parentUuid":"usr1","requestId":"req1","message":{"content":"response one"}}
-{"type":"user","uuid":"usr2","parentUuid":"ast1","message":{"content":[{"type":"image","source":{"type":"url","url":"http://example.com/img2.png"}}]}}
+{"type":"user","uuid":"usr2","parentUuid":"sys1","message":{"content":[{"type":"image","source":{"type":"url","url":"http://example.com/img2.png"}}]}}
 {"type":"assistant","uuid":"ast2","parentUuid":"usr2","requestId":"req2","message":{"content":"response two"}}
 JSONL
 }
@@ -103,7 +103,7 @@ write_attachment_stable_fixture() {
 {"type":"system","uuid":"sys1","parentUuid":null,"subtype":"init","message":{"content":"system prompt"}}
 {"type":"user","uuid":"usr1","parentUuid":"sys1","message":{"content":[{"type":"tool_result","tool_use_id":"T1","content":"stable-result"}]}}
 {"type":"assistant","uuid":"ast1","parentUuid":"usr1","requestId":"req1","message":{"content":"response one"}}
-{"type":"user","uuid":"usr2","parentUuid":"ast1","message":{"content":"follow-up text"}}
+{"type":"user","uuid":"usr2","parentUuid":"ast1","message":{"content":[{"type":"tool_result","tool_use_id":"T1","content":"stable-result"}]}}
 {"type":"assistant","uuid":"ast2","parentUuid":"usr2","requestId":"req2","message":{"content":"response two"}}
 JSONL
 }
