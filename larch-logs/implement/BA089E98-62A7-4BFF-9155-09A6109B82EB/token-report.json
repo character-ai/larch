@@ -257,14 +257,36 @@
             }
           }
         ]
+      },
+      {
+        "step": "Step 8b — rebase",
+        "totals": {
+          "input": 14,
+          "cache_read": 2755874,
+          "cache_create": 8521,
+          "output": 3318,
+          "total": 2767727
+        },
+        "skills": [
+          {
+            "skill": "inferred:Step 8b — rebase",
+            "totals": {
+              "input": 14,
+              "cache_read": 2755874,
+              "cache_create": 8521,
+              "output": 3318,
+              "total": 2767727
+            }
+          }
+        ]
       }
     ],
     "totals": {
-      "input": 246,
-      "cache_read": 50733704,
-      "cache_create": 1059497,
-      "output": 132953,
-      "total": 51926400
+      "input": 260,
+      "cache_read": 53489578,
+      "cache_create": 1068018,
+      "output": 136271,
+      "total": 54694127
     }
   },
   "codex": {
@@ -351,6 +373,14 @@
       },
       {
         "step": "Step 6 — checks second pass",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 8b — rebase",
         "totals": {
           "input": 0,
           "output": 0,
@@ -448,6 +478,14 @@
       },
       {
         "step": "Step 6 — checks second pass",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 8b — rebase",
         "totals": {
           "input": 0,
           "output": 0,

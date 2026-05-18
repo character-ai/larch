@@ -1,12 +1,12 @@
 # Version Bump Reasoning
 
-- **Base commit**: `f7a2a733` (Persist post-plan session-env keys via sanctioned writer (closes #2326) (#2330))
-- **Current version**: `29.3.14`
+- **Base commit**: `e9a74a2d` (Bump version to 29.3.14 (#2334))
+- **Current version**: `29.3.15`
 - **Classification scope**: `skills/**` and `agents/**` only (public plugin surface).
 
 ## Result: PATCH
 
-- **New version**: `29.3.15`
+- **New version**: `29.3.16`
 
 ### PATCH rationale
 
