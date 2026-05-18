@@ -163,32 +163,43 @@
       {
         "step": "Step 8 — version bump",
         "totals": {
-          "input": 1,
-          "cache_read": 161257,
-          "cache_create": 508,
-          "output": 1356,
-          "total": 163122
+          "input": 4,
+          "cache_read": 648510,
+          "cache_create": 5007,
+          "output": 2841,
+          "total": 656362
         },
         "skills": [
           {
             "skill": "larch:implement",
             "totals": {
-              "input": 1,
-              "cache_read": 161257,
-              "cache_create": 508,
-              "output": 1356,
-              "total": 163122
+              "input": 4,
+              "cache_read": 648510,
+              "cache_create": 5007,
+              "output": 2841,
+              "total": 656362
             }
           }
         ]
+      },
+      {
+        "step": "Step 6 — checks second pass",
+        "totals": {
+          "input": 0,
+          "cache_read": 0,
+          "cache_create": 0,
+          "output": 0,
+          "total": 0
+        },
+        "skills": []
       }
     ],
     "totals": {
-      "input": 47,
-      "cache_read": 7158207,
-      "cache_create": 30448,
-      "output": 23623,
-      "total": 7212325
+      "input": 50,
+      "cache_read": 7645460,
+      "cache_create": 34947,
+      "output": 25108,
+      "total": 7705565
     }
   },
   "codex": {
@@ -251,6 +262,14 @@
       },
       {
         "step": "Step 8 — version bump",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 6 — checks second pass",
         "totals": {
           "input": 0,
           "output": 0,
@@ -324,6 +343,14 @@
       },
       {
         "step": "Step 8 — version bump",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 6 — checks second pass",
         "totals": {
           "input": 0,
           "output": 0,
