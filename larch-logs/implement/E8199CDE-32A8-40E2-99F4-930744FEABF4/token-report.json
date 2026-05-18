@@ -294,32 +294,32 @@
       {
         "step": "Step 8b — rebase",
         "totals": {
-          "input": 17,
-          "cache_read": 3817975,
-          "cache_create": 11718,
-          "output": 10499,
-          "total": 3840209
+          "input": 21,
+          "cache_read": 4519026,
+          "cache_create": 228643,
+          "output": 10914,
+          "total": 4758604
         },
         "skills": [
           {
             "skill": "inferred:Step 8b — rebase",
             "totals": {
-              "input": 17,
-              "cache_read": 3817975,
-              "cache_create": 11718,
-              "output": 10499,
-              "total": 3840209
+              "input": 21,
+              "cache_read": 4519026,
+              "cache_create": 228643,
+              "output": 10914,
+              "total": 4758604
             }
           }
         ]
       }
     ],
     "totals": {
-      "input": 190,
-      "cache_read": 33900928,
-      "cache_create": 555203,
-      "output": 103377,
-      "total": 34559698
+      "input": 194,
+      "cache_read": 34601979,
+      "cache_create": 772128,
+      "output": 103792,
+      "total": 35478093
     }
   },
   "codex": {
@@ -552,16 +552,16 @@
       {
         "step": "Step 8b — rebase",
         "totals": {
-          "input": 0,
-          "output": 0,
-          "total": 0
+          "input": 108,
+          "output": 108,
+          "total": 216
         }
       }
     ],
     "totals": {
-      "input": 877465,
-      "output": 100987,
-      "total": 7733780
+      "input": 877573,
+      "output": 101095,
+      "total": 7733996
     }
   }
 }
