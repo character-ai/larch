@@ -217,32 +217,43 @@
       {
         "step": "Step 7a — code flow diagram",
         "totals": {
-          "input": 4,
-          "cache_read": 1032492,
-          "cache_create": 2149,
-          "output": 1246,
-          "total": 1035891
+          "input": 9,
+          "cache_read": 2333281,
+          "cache_create": 5108,
+          "output": 4080,
+          "total": 2342478
         },
         "skills": [
           {
             "skill": "inferred:Step 7a — code flow diagram",
             "totals": {
-              "input": 4,
-              "cache_read": 1032492,
-              "cache_create": 2149,
-              "output": 1246,
-              "total": 1035891
+              "input": 9,
+              "cache_read": 2333281,
+              "cache_create": 5108,
+              "output": 4080,
+              "total": 2342478
             }
           }
         ]
+      },
+      {
+        "step": "Step 6 — checks second pass",
+        "totals": {
+          "input": 0,
+          "cache_read": 0,
+          "cache_create": 0,
+          "output": 0,
+          "total": 0
+        },
+        "skills": []
       }
     ],
     "totals": {
-      "input": 158,
-      "cache_read": 30022352,
-      "cache_create": 905383,
-      "output": 97049,
-      "total": 31024942
+      "input": 163,
+      "cache_read": 31323141,
+      "cache_create": 908342,
+      "output": 99883,
+      "total": 32331529
     }
   },
   "codex": {
@@ -321,6 +332,14 @@
       },
       {
         "step": "Step 7a — code flow diagram",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 6 — checks second pass",
         "totals": {
           "input": 0,
           "output": 0,
@@ -410,6 +429,14 @@
       },
       {
         "step": "Step 7a — code flow diagram",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 6 — checks second pass",
         "totals": {
           "input": 0,
           "output": 0,
