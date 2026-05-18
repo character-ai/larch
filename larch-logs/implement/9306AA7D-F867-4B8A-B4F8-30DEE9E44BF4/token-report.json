@@ -239,32 +239,43 @@
       {
         "step": "Step 8 — version bump",
         "totals": {
-          "input": 1,
-          "cache_read": 240894,
-          "cache_create": 275,
-          "output": 1219,
-          "total": 242389
+          "input": 5,
+          "cache_read": 1209602,
+          "cache_create": 4687,
+          "output": 3128,
+          "total": 1217422
         },
         "skills": [
           {
             "skill": "inferred:Step 8 — version bump",
             "totals": {
-              "input": 1,
-              "cache_read": 240894,
-              "cache_create": 275,
-              "output": 1219,
-              "total": 242389
+              "input": 5,
+              "cache_read": 1209602,
+              "cache_create": 4687,
+              "output": 3128,
+              "total": 1217422
             }
           }
         ]
+      },
+      {
+        "step": "Step 6 — checks second pass",
+        "totals": {
+          "input": 0,
+          "cache_read": 0,
+          "cache_create": 0,
+          "output": 0,
+          "total": 0
+        },
+        "skills": []
       }
     ],
     "totals": {
-      "input": 216,
-      "cache_read": 36125349,
-      "cache_create": 1774224,
-      "output": 115238,
-      "total": 38015027
+      "input": 220,
+      "cache_read": 37094057,
+      "cache_create": 1778636,
+      "output": 117147,
+      "total": 38990060
     }
   },
   "codex": {
@@ -351,6 +362,14 @@
       },
       {
         "step": "Step 8 — version bump",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 6 — checks second pass",
         "totals": {
           "input": 0,
           "output": 0,
@@ -448,6 +467,14 @@
       },
       {
         "step": "Step 8 — version bump",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 6 — checks second pass",
         "totals": {
           "input": 0,
           "output": 0,
