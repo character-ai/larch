@@ -27,7 +27,7 @@ Four invariants enforced across multiple steps. Anchor cross-step questions here
 
 3. **Degraded-Git Fail-Closed** — `check-bump-version.sh STATUS != ok` MUST force `VERIFIED=false` at Step 12 regardless of `COMMITS_AFTER`. **Enforcement**: STATUS-first evaluation ordering in the Rebase + Re-bump Sub-procedure step 4 (see `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/bump-verification.md` Block β); Step 8 permissive, Step 12 strict (bail to 12d). **Why**: a coerced 0 baseline from a transient git error routes to a bogus "wrong commit count" mis-diagnosis — the fail-closed rule prevents silently wrong merged versions.
 
-4. **Tracking-Issue Sentinel Idempotency** (umbrella #348) — re-running `/implement` in the same session MUST NOT double-create a tracking issue or double-adopt the wrong issue. **Enforcement**: the `$IMPLEMENT_TMPDIR/parent-issue.md` sentinel detected at Step 0.5 entry; prior `ISSUE_NUMBER` and `RUN_ID` are recovered from it so no `tracking-issue-write.sh create-issue` call (Branch 4 path, which runs at Step 0.5 on first remote write) runs twice. Ordering invariant on Branch 4 first-creation: `create-issue` -> `larch-log.sh init` -> `post-tracking-issue.sh` for the `larch:metadata` comment -> write sentinel last. The sentinel is written ONLY after `ISSUE_NUMBER`, `RUN_ID`, and the metadata summary comment have resolved successfully. If create-issue fails: `deferred=true`, skip sentinel. If `larch-log.sh init` (manifest write) fails: `deferred=true`, `STALL_TRACKING=true`, skip sentinel, skip to Step 18 — **preserve `$ISSUE_NUMBER`** so Step 18 can rename the created issue to `[STALLED]`. If metadata summary upsert fails: `deferred=true`, skip sentinel, proceed to Step 1. **Why**: `tracking-issue-summary.sh` searches by the marker literal for each of the four slim comments, but the local sentinel is still the byte-exact session-scope guard against double-creation on retry or resume. Parallel to Invariant #2 — sentinel-based byte-exact idempotency guards for distinct session artifacts.
+4. **Tracking-Issue Sentinel Idempotency** (umbrella #348) — re-running `/implement` in the same session MUST NOT double-create a tracking issue or double-adopt the wrong issue. **Enforcement**: the `$IMPLEMENT_TMPDIR/parent-issue.md` sentinel detected at Step 0.5 entry; prior `ISSUE_NUMBER` and `RUN_ID` are recovered from it so no `tracking-issue-write.sh create-issue` call (Branch 4 path, which runs at Step 0.5 on first remote write) runs twice. Ordering invariant on Branch 4 first-creation: `create-issue` -> `larch-log.sh init` -> `post-tracking-issue.sh` for the `larch:metadata` comment -> sentinel written inside `post-tracking-issue.sh` on success. The sentinel is written ONLY after `ISSUE_NUMBER`, `RUN_ID`, and the metadata summary comment have resolved successfully. If create-issue fails: `deferred=true`, skip sentinel. If `larch-log.sh init` (manifest write) fails: `deferred=true`, `STALL_TRACKING=true`, skip sentinel, skip to Step 18 — **preserve `$ISSUE_NUMBER`** so Step 18 can rename the created issue to `[STALLED]`. If metadata summary upsert fails: `deferred=true`, skip sentinel, proceed to Step 1. **Why**: `tracking-issue-summary.sh` searches by the marker literal for each of the four slim comments, but the local sentinel is still the byte-exact session-scope guard against double-creation on retry or resume. Parallel to Invariant #2 — sentinel-based byte-exact idempotency guards for distinct session artifacts.
 
 ## NEVER List
 
@@ -558,10 +558,12 @@ if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$
 fi
 export CLAUDE_PLUGIN_ROOT
 ${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh init --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --issue "$ISSUE_ARG"
-${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/post-tracking-issue.sh --implement-tmpdir "$IMPLEMENT_TMPDIR"
+${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/post-tracking-issue.sh --implement-tmpdir "$IMPLEMENT_TMPDIR" --issue-number "$ISSUE_ARG" --adopted true
 ```
 
 On `LOG_WRITTEN=false` with `ERROR=` from `larch-log.sh`, or `POSTED=false` / non-zero exit from `post-tracking-issue.sh`, print `**⚠ 0.5: tracking issue — metadata publication failed: $ERROR. Aborting.**` and skip to Step 18.
+
+`post-tracking-issue.sh` writes `$IMPLEMENT_TMPDIR/parent-issue.md` (with `ISSUE_NUMBER=$ISSUE_ARG`, `RUN_ID=$RUN_ID`, `ADOPTED=true`) after the metadata post succeeds. Set `ISSUE_NUMBER=$ISSUE_ARG`.
 
 On either sub-branch, **rename the adopted issue to `[IN PROGRESS]`** so the title reflects the active run (matches the title-prefix lifecycle applied to fresh-created issues in Branch 4 — see `scripts/tracking-issue-write.md` "Title-prefix lifecycle"):
 
@@ -581,15 +583,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh rename --issue $ISSUE_ARG 
 
 Best-effort: on `FAILED=true` or non-zero exit, log `Step 0.5 — Branch 2 rename to in-progress failed: $ERROR` to `Tool Failures` and continue. The rename is idempotent (`RENAMED=false` when the title already starts with the target lifecycle prefix and the round-trip marker state already matches the desired `--round-trip` value after sticky preservation; see `scripts/tracking-issue-write.md`); failure does not affect adoption correctness — it only loses the visual-indicator benefit. Step 12a/12b's terminal rename to `[DONE]` and Step 18's stalled-rename apply to adopted issues uniformly (no `ADOPTED=` guard).
 
-Then write `$IMPLEMENT_TMPDIR/parent-issue.md`:
-
-```
-ISSUE_NUMBER=$ISSUE_ARG
-RUN_ID=$RUN_ID
-ADOPTED=true
-```
-
-`ADOPTED=true` per the `scripts/tracking-issue-read.md` contract: Phase 3 Branch 2 adopts an existing open issue. Set `ISSUE_NUMBER=$ISSUE_ARG`. Proceed to Step 1.
+Proceed to Step 1.
 
 **Branch 3 — PR on current branch with `Closes #<N>`** (no sentinel, no `--issue`):
 
@@ -613,10 +607,12 @@ if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$
 fi
 export CLAUDE_PLUGIN_ROOT
 ${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh init --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --issue "$RECOVERED_N"
-${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/post-tracking-issue.sh --implement-tmpdir "$IMPLEMENT_TMPDIR"
+${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/post-tracking-issue.sh --implement-tmpdir "$IMPLEMENT_TMPDIR" --issue-number "$RECOVERED_N" --adopted true
 ```
 
 On `LOG_WRITTEN=false` with `ERROR=` from `larch-log.sh`, or `POSTED=false` / non-zero exit from `post-tracking-issue.sh`, print `**⚠ 0.5: tracking issue — metadata publication failed: $ERROR. Aborting.**` and skip to Step 18.
+
+`post-tracking-issue.sh` writes `$IMPLEMENT_TMPDIR/parent-issue.md` (with `ISSUE_NUMBER=$RECOVERED_N`, `RUN_ID=$RUN_ID`, `ADOPTED=true`) after the metadata post succeeds. Set `ISSUE_NUMBER=$RECOVERED_N`.
 
 Then **rename the recovered issue to `[IN PROGRESS]`** so the title reflects the active run (matches Branch 2 / Branch 4):
 
@@ -636,7 +632,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh rename --issue $RECOVERED_
 
 Best-effort: on `FAILED=true` or non-zero exit, log `Step 0.5 — Branch 3 rename to in-progress failed: $ERROR` to `Tool Failures` and continue. Idempotent (`RENAMED=false` when the title already starts with the target lifecycle prefix and the round-trip marker state already matches the desired `--round-trip` value after sticky preservation; see `scripts/tracking-issue-write.md`).
 
-Then write sentinel with `ADOPTED=true` (Phase 3 Branch 3 adopts an existing open issue via PR-body recovery; per the `scripts/tracking-issue-read.md` contract). Set `ISSUE_NUMBER=$RECOVERED_N`. Proceed to Step 1.
+Proceed to Step 1.
 
 If no PR exists, no `Closes #<N>` match, or the match is not a valid adoptable issue: fall through to Branch 4.
 
@@ -688,23 +684,17 @@ Create the tracking issue **immediately** so subsequent summary comments and com
 5. **Initialize larch-log manifest and publish metadata summary** as a marker-keyed comment on the newly-created issue:
    ```bash
    ${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh init --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --issue "$ISSUE_NUMBER"
-   ${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/post-tracking-issue.sh --implement-tmpdir "$IMPLEMENT_TMPDIR"
+   ${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/post-tracking-issue.sh --implement-tmpdir "$IMPLEMENT_TMPDIR" --issue-number "$ISSUE_NUMBER" --adopted false
    ```
-   On `LOG_WRITTEN=false` with `ERROR=` from `larch-log.sh init`, print `**⚠ 0.5: tracking issue — Branch 4 manifest initialization failed: $ERROR. Stalling to Step 18.**`, log to `Tool Failures`, set `deferred=true`, set `STALL_TRACKING=true`, and skip to Step 18 (skipping the sentinel write in step 6). **Do NOT clear `$ISSUE_NUMBER`** — the tracking issue was already created on GitHub at step 4, and Step 18 teardown needs `$ISSUE_NUMBER` to rename it from `[IN PROGRESS]` to `[STALLED]`.
+   On `LOG_WRITTEN=false` with `ERROR=` from `larch-log.sh init`, print `**⚠ 0.5: tracking issue — Branch 4 manifest initialization failed: $ERROR. Stalling to Step 18.**`, log to `Tool Failures`, set `deferred=true`, set `STALL_TRACKING=true`, and skip to Step 18. **Do NOT clear `$ISSUE_NUMBER`** — the tracking issue was already created on GitHub at step 4, and Step 18 teardown needs `$ISSUE_NUMBER` to rename it from `[IN PROGRESS]` to `[STALLED]`.
 
-   On `POSTED=false` or non-zero exit from `post-tracking-issue.sh`, print `**⚠ 0.5: tracking issue — Branch 4 metadata publication failed: $ERROR. Continuing with deferred/absent tracking issue.**`, log to `Tool Failures`, set `deferred=true`, clear `$ISSUE_NUMBER`, and proceed to Step 1 (skipping the sentinel write in step 6).
+   On `POSTED=false` or non-zero exit from `post-tracking-issue.sh`, print `**⚠ 0.5: tracking issue — Branch 4 metadata publication failed: $ERROR. Continuing with deferred/absent tracking issue.**`, log to `Tool Failures`, set `deferred=true`, clear `$ISSUE_NUMBER`, and proceed to Step 1.
 
-6. **Write the sentinel LAST**, only after `$ISSUE_NUMBER` and `$RUN_ID` are non-empty and step 5 succeeded (Load-Bearing Invariant #4 ordering):
-   ```
-   ISSUE_NUMBER=$ISSUE_NUMBER
-   RUN_ID=$RUN_ID
-   ADOPTED=false
-   ```
-   Write to `$IMPLEMENT_TMPDIR/parent-issue.md`. `ADOPTED=false` per the `scripts/tracking-issue-read.md` contract: Branch 4 CREATED a fresh tracking issue, not adopted an existing one. Skip this step on any step-4/step-5 failure per the deferred-fallback wiring above.
+   `post-tracking-issue.sh` writes `$IMPLEMENT_TMPDIR/parent-issue.md` (with `ISSUE_NUMBER=$ISSUE_NUMBER`, `RUN_ID=$RUN_ID`, `ADOPTED=false`) after the metadata post succeeds, preserving the Load-Bearing Invariant #4 ordering: `create-issue` → `larch-log.sh init` → `post-tracking-issue.sh` → sentinel written. `ADOPTED=false` per the `scripts/tracking-issue-read.md` contract: Branch 4 CREATED a fresh tracking issue, not adopted an existing one.
 
-7. **Leave `deferred=false`** (the Step 0.5 entry default is unchanged on Branch 4 success — larch-log writes and summary updates in subsequent steps are enabled) and proceed to Step 1.
+6. **Leave `deferred=false`** (the Step 0.5 entry default is unchanged on Branch 4 success — larch-log writes and summary updates in subsequent steps are enabled) and proceed to Step 1.
 
-**Orphan-issue recovery note**: if a session crashes between step 4 (issue created on GitHub) and step 6 (sentinel written locally), a rerun will Branch-4 again and create a duplicate. Recovery: the operator passes `--issue <N>` on rerun to adopt the originally-created issue via Branch 2 (same behavior as the pre-change deferred-creation orphan case — not a regression).
+**Orphan-issue recovery note**: if a session crashes between step 4 (issue created on GitHub) and step 5 (sentinel written inside `post-tracking-issue.sh`), a rerun will Branch-4 again and create a duplicate. Recovery: the operator passes `--issue <N>` on rerun to adopt the originally-created issue via Branch 2 (same behavior as the pre-change deferred-creation orphan case — not a regression).
 
 ### repo_unavailable=true
 
@@ -1283,10 +1273,6 @@ LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh"
 LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
 LARCH_TIMING_LEDGER=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
 export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
-"${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 4 — commit implementation" || true
-"${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 4 — commit implementation" || true
-# token-mark Step 4 — commit implementation
-# timing-mark Step 4 — commit implementation
 ```
 
 **On the external implementer path** (`$MANIFEST_PATH` is non-empty, i.e. Step 2 returned `STATUS=complete`): the dispatcher has already committed `$TOOL_LABEL`'s working-tree edits using `manifest.commit_message` (`git add -A && git commit -F …`, with `commit_message` piped through `scripts/redact-secrets.sh` first so secrets do not land in git history). There is no Claude-side diff verification — `commit_message` is consumed as-is modulo the secrets-family redaction; the canonical on-disk manifest is sanitized by the same scrubber for downstream Steps 8a / 9a / 9a.1. Skip the `git-commit.sh` invocation. Print `⏩ 4: commit (impl) status=skip reason=dispatcher-committed sha=$(git rev-parse --short HEAD) elapsed=<elapsed>`.
@@ -1489,10 +1475,6 @@ LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh"
 LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
 LARCH_TIMING_LEDGER=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
 export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
-"${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 7 — commit review fixes" || true
-"${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 7 — commit review fixes" || true
-# token-mark Step 7 — commit review fixes
-# timing-mark Step 7 — commit review fixes
 ```
 
 If any files changed during review / checks (Steps 5–6):
@@ -1531,10 +1513,6 @@ LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh"
 LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
 LARCH_TIMING_LEDGER=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
 export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
-"${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 7a — code flow diagram" || true
-"${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 7a — code flow diagram" || true
-# token-mark Step 7a — code flow diagram
-# timing-mark Step 7a — code flow diagram
 ```
 
 Print: `> **🔶 /implement 7a: code flow**`

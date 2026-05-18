@@ -203,4 +203,7 @@ done
 mv "$TMP" "$MANIFEST"
 trap - EXIT
 rm -rf "$STAGE_DIR"
+if [[ -f "$DESIGN_TMPDIR/feature-description.txt" ]]; then
+    cp "$DESIGN_TMPDIR/feature-description.txt" "$IMPLEMENT_TMPDIR/feature-description.txt"
+fi
 emit_kv MANIFEST_WRITTEN "$MANIFEST"

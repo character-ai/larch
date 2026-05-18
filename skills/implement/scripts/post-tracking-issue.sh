@@ -15,7 +15,7 @@ source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
 
 usage() {
-    larch_err "Usage: post-tracking-issue.sh --implement-tmpdir PATH"
+    larch_err "Usage: post-tracking-issue.sh --implement-tmpdir PATH [--issue-number N] [--adopted true|false]"
 }
 
 fail_usage() {
@@ -33,9 +33,13 @@ read_kv() {
 }
 
 IMPLEMENT_TMPDIR=""
+ISSUE_NUMBER_ARG=""
+ADOPTED_ARG=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --implement-tmpdir) [ $# -ge 2 ] || fail_usage "--implement-tmpdir requires a value"; IMPLEMENT_TMPDIR=$2; shift 2 ;;
+        --issue-number) [ $# -ge 2 ] || fail_usage "--issue-number requires a value"; ISSUE_NUMBER_ARG=$2; shift 2 ;;
+        --adopted) [ $# -ge 2 ] || fail_usage "--adopted requires a value"; ADOPTED_ARG=$2; shift 2 ;;
         --help) usage; exit 0 ;;
         *) fail_usage "unknown option: $1" ;;
     esac
@@ -44,10 +48,16 @@ done
 [ -n "$IMPLEMENT_TMPDIR" ] || fail_usage "--implement-tmpdir is required"
 [ -d "$IMPLEMENT_TMPDIR" ] || fail_usage "--implement-tmpdir not found"
 
+case "${ADOPTED_ARG:-true}" in true|false) ;; *) fail_usage "--adopted must be true or false" ;; esac
+
 SESSION_ENV="$IMPLEMENT_TMPDIR/session-env.sh"
 PARENT_ISSUE="$IMPLEMENT_TMPDIR/parent-issue.md"
 
-ISSUE="$(read_kv ISSUE_NUMBER "$PARENT_ISSUE")"
+if [ -n "$ISSUE_NUMBER_ARG" ]; then
+    ISSUE="$ISSUE_NUMBER_ARG"
+else
+    ISSUE="$(read_kv ISSUE_NUMBER "$PARENT_ISSUE")"
+fi
 RUN_ID="$(read_kv RUN_ID "$PARENT_ISSUE")"
 [ -n "$RUN_ID" ] || RUN_ID="$(tr -d '\r\n' < "$IMPLEMENT_TMPDIR/session-id" 2>/dev/null || true)"
 REPO="$(read_kv REPO "$SESSION_ENV")"
@@ -83,6 +93,13 @@ args=(upsert-summary --issue "$ISSUE" --marker "$marker" --content-file "$summar
 [ -z "$REPO" ] || args+=(--repo "$REPO")
 
 if "$PLUGIN_ROOT/scripts/tracking-issue-summary.sh" "${args[@]}" >"$out_file" 2>"$err_file"; then
+    # When --issue-number was provided, write the sentinel now that the post
+    # succeeded — co-locating the write with success so the sentinel is never
+    # present without a confirmed metadata comment.
+    if [ -n "$ISSUE_NUMBER_ARG" ]; then
+        _adopted="${ADOPTED_ARG:-true}"
+        printf 'ISSUE_NUMBER=%s\nRUN_ID=%s\nADOPTED=%s\n' "$ISSUE" "$RUN_ID" "$_adopted" > "$PARENT_ISSUE"
+    fi
     emit_kv POSTED true
     emit_kv COMMENT_URL "$(awk -F= '$1=="COMMENT_URL"{print substr($0,index($0,"=")+1); exit}' "$out_file")"
     exit 0

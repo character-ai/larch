@@ -98,6 +98,21 @@ fi
 
 WARNINGS=""
 
+# Persist PLAN_FILE and FEATURE_FILE to session-env so run-step2-dispatch.sh
+# finds them regardless of whether the orchestrator runs the prose block.
+_PLAN_FILE_PARSED=$(printf '%s\n' "$READER_OUT" | awk -F= '/^PLAN_FILE=/{print substr($0, index($0,"=")+1); exit}')
+if [[ -n "$_PLAN_FILE_PARSED" && -n "$SESSION_ENV_PATH" && -f "$SESSION_ENV_PATH" ]]; then
+    _FEATURE_FILE_PATH="$IMPLEMENT_TMPDIR/feature-description.txt"
+    _SE_TMP=$(mktemp "${SESSION_ENV_PATH}.tmp.XXXXXX")
+    if { grep -v '^PLAN_FILE=' "$SESSION_ENV_PATH" | grep -v '^FEATURE_FILE='; \
+         printf 'PLAN_FILE=%s\n' "$_PLAN_FILE_PARSED"; \
+         printf 'FEATURE_FILE=%s\n' "$_FEATURE_FILE_PATH"; } > "$_SE_TMP"; then
+        mv "$_SE_TMP" "$SESSION_ENV_PATH"
+    else
+        rm -f "$_SE_TMP"
+    fi
+fi
+
 append_warning() {
     WARNINGS+="WARN=$1"$'\n'
 }

@@ -160,4 +160,20 @@ grep -Fq 'When `hard_mode=true`, skip the plan-size evaluation and always persis
 grep -Fq 'When `hard_mode=false`, use plan size' "$SKILL_MD" \
   || fail "Post-plan router must gate plan-size heuristic under hard_mode=false"
 
+COMMIT_IMPL_SH="$REPO_ROOT/skills/implement/scripts/commit-implementation.sh"
+COMMIT_REVIEW_SH="$REPO_ROOT/skills/implement/scripts/commit-review-fixes.sh"
+GEN_DIAGRAM_SH="$REPO_ROOT/skills/implement/scripts/generate-code-flow-diagram.sh"
+
+[[ -f "$COMMIT_IMPL_SH" ]] || fail "skills/implement/scripts/commit-implementation.sh missing"
+grep -qF 'timing-ledger.sh" mark "Step 4 — commit implementation"' "$COMMIT_IMPL_SH" \
+  || fail "commit-implementation.sh must contain Step 4 timing-ledger mark"
+
+[[ -f "$COMMIT_REVIEW_SH" ]] || fail "skills/implement/scripts/commit-review-fixes.sh missing"
+grep -qF 'timing-ledger.sh" mark "Step 7 — commit review fixes"' "$COMMIT_REVIEW_SH" \
+  || fail "commit-review-fixes.sh must contain Step 7 timing-ledger mark"
+
+[[ -f "$GEN_DIAGRAM_SH" ]] || fail "skills/implement/scripts/generate-code-flow-diagram.sh missing"
+grep -qF 'timing-ledger.sh" mark "Step 7a — code flow diagram"' "$GEN_DIAGRAM_SH" \
+  || fail "generate-code-flow-diagram.sh must contain Step 7a timing-ledger mark"
+
 echo "All assertions passed."
