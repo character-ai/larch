@@ -1,0 +1,24 @@
+Reading the ballot file to vote on each finding.
+
+Votes only (read-only review of the ballot). No file or git changes.
+
+FINDING_1: YES  
+FINDING_2: EXONERATE -- Changelog is historical; a GitHub issue would not clarify current layout better than release notes.  
+FINDING_3: EXONERATE -- Doc-example algorithmic nit; not worth a tracking issue or blocking this work.  
+FINDING_4: EXONERATE -- Accurate scope note; broad Makefile sync belongs in one doc-fix effort, not a separate issue for “pre-PR drift.”  
+FINDING_5: EXONERATE -- Same as FINDING_4; no additive issue beyond fixing the table or genericizing hints.  
+FINDING_6: YES  
+FINDING_7: EXONERATE -- Same file/line as FINDING_6; one issue covers updating that contract doc.  
+FINDING_8: EXONERATE -- Duplicate of FINDING_6/7; no third issue for the same line.  
+FINDING_9: NO -- Points at a session cache artifact path, not a repo defect to file on GitHub.  
+FINDING_10: EXONERATE -- Duplicate comment is minor noise; removing it is churn with negligible maintainer benefit.  
+FINDING_11: EXONERATE -- Same as FINDING_10.  
+FINDING_12: EXONERATE -- Same as FINDING_10.  
+FINDING_13: YES  
+FINDING_14: YES  
+FINDING_15: YES  
+FINDING_16: YES  
+FINDING_17: EXONERATE -- Same line and fix as FINDING_16; duplicate ballot entry.  
+FINDING_18: EXONERATE -- Same as FINDING_16; duplicate ballot entry.  
+FINDING_19: YES  
+FINDING_20: EXONERATE -- Same CI-usage bullet as FINDING_16; duplicate ballot entry.

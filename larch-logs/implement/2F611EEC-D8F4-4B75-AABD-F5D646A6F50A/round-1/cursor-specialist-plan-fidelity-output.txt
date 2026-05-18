@@ -1,0 +1,44 @@
+Gathering the branch diff and commit history to perform a Plan Fidelity review against the implementation plan.
+
+Checking `docs/linting.md` for remaining "13" references and scanning the repo for stale shard counts per the plan.
+
+## Plan Fidelity Review (read-only)
+
+**Commits** (`git merge-base HEAD main`..HEAD): `7a0b2f5a Rebalance test-harness matrix from 13 to 16 shards via LPT bin-packing`
+
+**Traceability vs implementation plan**
+
+| Plan item | Status |
+|-----------|--------|
+| Makefile: `.PHONY` adds 14–16; comment + #2291; umbrella `test-harnesses-1`…`16`; 16 shard lines per LPT | **Met** — shard lines match the plan’s LPT lists byte-for-byte in the supplied diff / current `Makefile` (`Makefile:35-66`). |
+| `.github/workflows/ci.yaml`: matrix `1..16`, step “of 16” | **Met** — diff shows matrix and step name updated. |
+| `docs/linting.md`: sixteen-shard narrative, branch protection 14–16, `range(16)`, lockstep “shard count 16” | **Partially met** — see findings below. |
+| Plan testing: `make test-harness-shards-coverage` | **Not verifiable** in this read-only pass (no command run). |
+
+---
+
+### In-Scope Findings
+
+1. **Important** (`correctness`) — [docs/linting.md:22](docs/linting.md) (Usage → **CI** bullet): Implementation plan §3 calls out updating the shard-count wording to sixteen; this paragraph still says the matrix runs `make test-harnesses-1` **through `make test-harnesses-13`**, which contradicts the updated 16-shard CI matrix and leaves an explicit plan bullet unimplemented. **Scenario:** A reader trusts the intro and believes CI only has 13 harness shards. **Fix:** Change the range end to `test-harnesses-16` (or equivalent neutral wording).
+
+2. **Important** (`correctness`) — [docs/linting.md](docs/linting.md) Manual Release Gates / harness reference table (`docs/linting.md:167-209` and nearby rows): The Makefile was reshuffled per LPT, but many “`A make lint prerequisite via test-harnesses-N`” entries were **not** refreshed and now disagree with [Makefile:35-66](Makefile). Examples verified against the branch `Makefile`: `test-ship-pr` is documented as `test-harnesses-7` ([docs/linting.md:186](docs/linting.md)) but lives on **`test-harnesses-4`** ([Makefile:41](Makefile)); `test-upgrade-larch` is documented as `test-harnesses-13` ([docs/linting.md:187](docs/linting.md)) but lives on **`test-harnesses-9`** ([Makefile:51](Makefile)); the combined launch-CI row cites `test-harnesses-7` ([docs/linting.md:188](docs/linting.md)) while `test-launch-cursor-ci` is on **`test-harnesses-14`** and `test-launch-codex-ci` on **`test-harnesses-16`** ([Makefile:62-66](Makefile)). **Scenario:** After a harness failure, someone re-runs the documented shard in CI or locally and **does not execute** the failing harness. **Fix:** Regenerate all per-harness shard annotations from the Makefile (or drop exact shard numbers in favor of “see Makefile / `make test-harness-shards-coverage`”).
+
+3. **Nit** (`architecture`) — [Makefile:32-33](Makefile) and [Makefile:57-58](Makefile): The comment `# Shard-12 leads with the partition-invariant guard...` appears **twice**—once above the umbrella `test-harnesses:` prerequisite list and again above `test-harnesses-12:`. Pre-merge [Makefile](Makefile) already had it above the umbrella; the new copy above `test-harnesses-12` fixes local context for the guard but duplicates guidance. **Fix:** Keep a single comment adjacent to `test-harnesses-12` (or only above the umbrella), not both.
+
+---
+
+### Out-of-Scope Observations
+
+1. **Out of scope** (`correctness`) — Several `via test-harnesses-N` table cells **already disagreed** with `main`’s Makefile before this branch (e.g. design/timing/token rows citing shards that did not contain those targets on 13-shard `main`). This change does not newly “fix” those historical mismatches; only rows that were **true on `main` and became false** after the reshuffle are in-scope under finding 2.
+
+---
+
+HARD CONSTRAINTS: no `.tsv` sidecar file was written. Inline TSV:
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	docs/linting.md:22	Usage CI bullet still ends matrix range at test-harnesses-13 despite 16-shard CI and plan §3 sixteen-shard doc update.	Readers believe CI only exposes 13 harness shards and misconfigure expectations or branch-protection mental model vs actual workflow.	Update the sentence to test-harnesses-16 or otherwise describe sixteen matrix cells.
+1	in_scope	important	correctness	docs/linting.md:167-209 (examples docs/linting.md:186-188)	Manual harness table still lists old via test-harnesses-N for many targets after LPT reshuffle; verified mismatches include test-ship-pr test-upgrade-larch and launch CI harnesses vs Makefile:41 Makefile:51 Makefile:62-66.	Operator reruns the documented shard to reproduce a failure and the named harness never runs on that shard.	Regenerate per-harness shard suffixes from Makefile or remove exact shard numbers from the table.
+1	in_scope	nit	architecture	Makefile:32-33 Makefile:57-58	Duplicate Shard-12 partition-guard comment before umbrella test-harnesses and before test-harnesses-12.	Slight maintainer confusion about where the invariant is anchored.	Keep one comment next to test-harnesses-12 only or only above the umbrella line.
+1	out_of_scope	nit	correctness	docs/linting.md (various table rows)	Some via test-harnesses-N cells predated this branch and already disagreed with main Makefile assignments.	Stale cross-refs pre-existed; not introduced solely by this PR’s edits to those lines.	Track separately if you want the table mechanically synced to Makefile.
+```

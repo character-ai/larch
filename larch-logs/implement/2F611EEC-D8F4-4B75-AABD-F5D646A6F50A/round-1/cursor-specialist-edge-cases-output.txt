@@ -1,0 +1,33 @@
+Gathering the branch diff and commit history for a read-only review.
+
+Checking `docs/linting.md` for remaining "13" references and verifying Makefile shard-guard comments and coverage script expectations.
+
+Checking whether doc "via test-harnesses-N" lines matched main before this change or were already stale.
+
+Review used the precomputed diff, current workspace files for line numbers, and `git show main:Makefile` to compare shard assignments before vs after.
+
+### In-Scope Findings
+
+1. **`**Important**` · `risk-integration` · [`docs/linting.md:22`](docs/linting.md)** — The CI overview bullet still says regression harnesses run through `` `make test-harnesses-1` through `make test-harnesses-13` ``, while [`.github/workflows/ci.yaml`](.github/workflows/ci.yaml) and the [`Makefile`](Makefile) now define 16 matrix shards and `test-harnesses-14`–`16`. A maintainer or runbook that trusts this paragraph mis-models CI parallelism and required checks. Update that phrase to end at `test-harnesses-16` (or use shard-count-agnostic wording).
+
+2. **`**Latent**` · `risk-integration` · [`docs/linting.md:187`](docs/linting.md)** — The reference table still says `` `make test-upgrade-larch` `` is a `make lint` prerequisite **via `test-harnesses-13`**, but on this branch [`Makefile:51`](Makefile) lists `test-upgrade-larch` under `test-harnesses-9:`. On `main`, that row matched the real shard (13); the reshuffle made the only formerly-accurate “via” row in that grep set wrong. Someone re-running failures from the wrong matrix cell gets no signal or the wrong logs. Refresh the suffix to `test-harnesses-9` (or drop hard-coded shard text).
+
+3. **`**Latent**` · `risk-integration` · [`docs/linting.md:185`](docs/linting.md)** — Same pattern: `` `test-lint-fix-loop` `` is documented **via `test-harnesses-6`**, which matched `main`’s [`Makefile`](Makefile), but the harness now lives on [`Makefile:55`](Makefile) under `test-harnesses-11:`. Re-run and triage workflows keyed off the doc point at the wrong CI shard. Update the suffix to `test-harnesses-11`.
+
+### Out-of-Scope Observations
+
+1. **`**Nit**` · `risk-integration` · [`scripts/test-harness-shards-coverage.md:27`](scripts/test-harness-shards-coverage.md)** — The sibling contract still says the umbrella runs `test-harnesses-1` through `test-harnesses-13`. This file is **not** in the branch diff, but after the Makefile change it is stale the same way as the linting doc until someone updates it. Refresh to `…-16` when touching shard docs.
+
+2. **`**Nit**` · `code-quality` · [`docs/linting.md`](docs/linting.md) (multiple reference-table rows, e.g. ~167–221)** — Many other `` via `test-harnesses-N` `` cells already disagreed with **`main`’s** `Makefile` before this branch (spot-checked against `git show main:Makefile`). This change does not introduce that bulk drift; fixing it would be a wider doc–Makefile sync pass, not a regression isolated to this diff.
+
+3. **`**Nit**` · `code-quality` · [`CHANGELOG.md`](CHANGELOG.md)** — Historical bullets still describe the earlier 11→13 shard rebalance; unchanged by this branch and accurate as changelog history, not as “current shard count.”
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	risk-integration	docs/linting.md:22	CI prose still caps the harness matrix at `make test-harnesses-13` while CI/Makefile implement 16 shards.	Maintainers misread how many parallel `test-harnesses (N)` jobs exist or align automation with the wrong upper bound.	Update the range to `test-harnesses-16` or describe the matrix without a hard-coded last index.
+1	in_scope	latent	risk-integration	docs/linting.md:187	`test-upgrade-larch` table row still claims lint coverage via `test-harnesses-13` but Makefile places the harness on `test-harnesses-9` (`Makefile:51`).	Failure triage uses “Re-run failed jobs” on shard 13 and never exercises the failing harness, burning cycles and hiding signal.	Set the suffix to `test-harnesses-9` or remove per-shard wording.
+1	in_scope	latent	risk_integration	docs/linting.md:185	`test-lint-fix-loop` row still says via `test-harnesses-6` but Makefile lists it on `test-harnesses-11` (`Makefile:55`).	Same wrong-shard re-run / log lookup scenario as other stale rows.	Set the suffix to `test-harnesses-11` or remove per-shard wording.
+1	out_of_scope	nit	risk-integration	scripts/test-harness-shards-coverage.md:27	Contract doc still says umbrella spans shards 1–13 after Makefile moved to 16.	Readers of the coverage-script contract doc get the wrong shard inventory; file not modified on this branch.	Update to 1–16 when editing shard documentation.
+1	out_of_scope	nit	code-quality	docs/linting.md:167-221 (representative)	Many reference-table `via test-harnesses-*` hints already mismatched `main`’s Makefile before this PR.	Not introduced by this diff; broad pre-existing doc drift.	Optional full-table regeneration from Makefile or drop hard-coded shard hints.
+1	out_of_scope	nit	code-quality	CHANGELOG.md (historical entries)	Changelog records past 11→13 rebalance; not updated for 16.	Readers might confuse history with current layout; changelog is historical by design.	Leave as-is or add a new changelog entry on release, outside this diff’s scope.
+```

@@ -1,0 +1,27 @@
+Now I have all the facts needed to vote. Key observations from reading the actual files:
+
+1. **Line 22 of `docs/linting.md`** already reads `make test-harnesses-16` — correctly updated.
+2. **The harness table at lines 167–246** uses only generic `"via the test-harnesses-N shard partition"` language — no specific shard numbers appear anywhere.
+3. **`scripts/test-harness-shards-coverage.md:27`** does still say `"test-harnesses-1 through test-harnesses-13"` — genuinely stale.
+4. **Duplicate Shard-12 comment** in `Makefile`: both instances (line 32 before umbrella, line 57 before test-harnesses-12) appear as context lines in the diff — both pre-existed this PR.
+
+FINDING_1: NO -- line 22 correctly reads "test-harnesses-16" in the merged file; the table uses generic language with no specific shard numbers; the specific claim of 54 mismatches is false
+FINDING_2: NO -- changelog is historical; new entries belong at release time, not during a reshard PR
+FINDING_3: NO -- quadratic bins.index is pre-existing doc-example debt with no runtime impact; not introduced by this PR
+FINDING_4: NO -- table uses only "test-harnesses-N shard partition" wording throughout; no specific shard numbers exist to drift
+FINDING_5: NO -- same incorrect basis as FINDING_4; duplicate finding
+FINDING_6: YES -- scripts/test-harness-shards-coverage.md:27 literally says "test-harnesses-1 through test-harnesses-13" and wasn't updated in this PR; worth tracking
+FINDING_7: NO -- duplicate of FINDING_6
+FINDING_8: NO -- duplicate of FINDING_6
+FINDING_9: NO -- critiques a cached session diff artifact, not actual code in the repo
+FINDING_10: EXONERATE -- both "Shard-12 leads" comments appear as unchanged context lines in the diff; the duplication pre-dates this PR and isn't a regression introduced here
+FINDING_11: NO -- duplicate of FINDING_10
+FINDING_12: NO -- duplicate of FINDING_10
+FINDING_13: NO -- harness table rows use only generic "test-harnesses-N shard partition" text; no stale specific shard annotations exist
+FINDING_14: NO -- same incorrect basis as FINDING_13; the specific examples cited (test-upgrade-larch "via test-harnesses-13") do not appear in the file
+FINDING_15: NO -- the upgrade-larch row uses generic shard-partition wording, not a stale "via test-harnesses-13" annotation
+FINDING_16: NO -- line 22 already reads "make test-harnesses-16" in the merged file; the claimed stale reference does not exist
+FINDING_17: NO -- duplicate of FINDING_16; same incorrect basis
+FINDING_18: NO -- duplicate of FINDING_16; same incorrect basis
+FINDING_19: NO -- upgrade-larch row uses generic language; the specific stale annotation the finding describes is not in the file
+FINDING_20: NO -- duplicate of FINDING_16; same incorrect basis
