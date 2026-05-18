@@ -98,17 +98,23 @@ list_cached_versions() {
 
 collect_active_session_versions() {
     local env_files=()
-    local env_file plugin_root version session_root
+    local env_file plugin_root version session_root fallback_session_dir
 
-    for session_root in "$LARCH_SESSIONS_DIR" /tmp /private/tmp; do
+    if [ -d "$LARCH_SESSIONS_DIR" ]; then
+        shopt -s nullglob
+        env_files+=("$LARCH_SESSIONS_DIR"/*/session-env.sh)
+        shopt -u nullglob
+    fi
+
+    for session_root in /tmp /private/tmp; do
         [ -d "$session_root" ] || continue
 
         shopt -s nullglob
-        if [ "$session_root" = "$LARCH_SESSIONS_DIR" ]; then
-            env_files+=("$session_root"/*/session-env.sh)
-        else
-            env_files+=("$session_root"/claude-*/session-env.sh)
-        fi
+        for fallback_session_dir in "$session_root"/claude-*; do
+            [ -d "$fallback_session_dir" ] || continue
+            [ -O "$fallback_session_dir" ] || continue
+            env_files+=("$fallback_session_dir"/session-env.sh)
+        done
         shopt -u nullglob
     done
 
@@ -116,6 +122,11 @@ collect_active_session_versions() {
 
     for env_file in "${env_files[@]}"; do
         [ -f "$env_file" ] || continue
+        case "$env_file" in
+            /tmp/claude-*/session-env.sh|/private/tmp/claude-*/session-env.sh)
+                [ -O "$env_file" ] || continue
+                ;;
+        esac
         plugin_root=$(awk '
             BEGIN { p = "LARCH_CLAUDE_PLUGIN_ROOT=" }
             index($0, p) == 1 {
@@ -123,6 +134,8 @@ collect_active_session_versions() {
                 exit
             }
         ' "$env_file" 2>/dev/null || true)
+        [ -n "$plugin_root" ] || continue
+        plugin_root=$(printf '%s' "$plugin_root" | tr -d '\r' | sed 's/[[:space:]]*$//')
         [ -n "$plugin_root" ] || continue
 
         version=$(basename "$plugin_root")

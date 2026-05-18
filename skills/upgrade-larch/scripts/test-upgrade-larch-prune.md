@@ -9,9 +9,10 @@ Covered cases:
 - active session pinned to an otherwise pruneable old version: keep the active version, the verified latest stable, and its predecessor; prune an unused older version
 - no sessions: prune old versions normally, but still preserve the executing cached plugin version alongside the latest stable and predecessor
 - unparseable session plugin root: ignore the malformed value and otherwise prune normally while preserving the executing cached plugin version
+- session plugin root with CRLF or trailing whitespace: trim the suffix noise, preserve the pinned numeric version, and prune only truly unused olds
 - `XDG_CACHE_HOME` default session root: preserve an old version pinned by a parseable `session-env.sh` without overriding `LARCH_SESSIONS_DIR`
-- `/tmp` fallback session root: preserve an old version pinned by a parseable fallback `session-env.sh`
+- current-user-owned `/tmp` fallback session root: preserve an old version pinned by a parseable fallback `session-env.sh`
 
 This harness exists alongside `test-upgrade-larch.sh`, which covers stable release selection, idempotency, verification, prune fallback, and `gh` stderr redaction.
 
-Edit in sync: update this harness, `upgrade-larch.sh`, `upgrade-larch.md`, `skills/upgrade-larch/SKILL.md`, and `docs/installation-and-setup.md` when changing active-session pruning behavior or validation commands.
+Edit in sync: update this harness, `upgrade-larch.sh`, `upgrade-larch.md`, `skills/upgrade-larch/SKILL.md`, `docs/installation-and-setup.md`, and `Makefile` when changing active-session pruning behavior or validation commands.
