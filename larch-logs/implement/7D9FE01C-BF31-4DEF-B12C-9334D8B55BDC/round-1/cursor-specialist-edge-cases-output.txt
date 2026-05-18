@@ -1,0 +1,19 @@
+Gathering the diff and commit list for a read-only review.
+
+Checking Python imports and the `dollars` helper for consistency with `mean`.
+
+Checking `print_analysis` for empty-record handling before the workflow loop.
+
+## Review summary
+
+**Branch vs `main`:** one commit (`6634361 Add mean to per-workflow cost breakdown in /report-tokens`). **Changes:** [`skills/report-tokens/scripts/run-analysis.sh`](skills/report-tokens/scripts/run-analysis.sh) adds `mean {dollars(statistics.mean(values))}` between median and max in the per-workflow summary line; [`skills/report-tokens/scripts/run-analysis.md`](skills/report-tokens/scripts/run-analysis.md) documents the new aggregate fields.
+
+**Edge-case / failure lens:** The per-workflow loop only builds `values` after `if not rows: continue`, so `values` is never empty and `statistics.mean(values)` cannot raise `StatisticsError` from an empty sequence (unlike a hypothetical bare `mean` on all runs). `records` is already guarded by `if not records: return` before `costs` / global median, so that path is unchanged. `import statistics` is present in the embedded Python (line 222). `mean` uses the same numeric `cost` values as `sum`, `median`, and `max`, so no new type or normalization path is introduced.
+
+**Contract:** The markdown contract file is updated in lockstep with stdout/issue body shape. No in-repo greps show automation parsing the exact old `median … max` workflow line.
+
+### In-Scope Findings
+
+No in-scope issues found.
+
+NO_ISSUES_FOUND
