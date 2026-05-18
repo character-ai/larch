@@ -22,4 +22,6 @@ ${CLAUDE_PLUGIN_ROOT}/skills/upgrade-larch/scripts/upgrade-larch.sh
 
 See `${CLAUDE_PLUGIN_ROOT}/skills/upgrade-larch/scripts/upgrade-larch.md` for script contract and failure recovery details.
 
-Validation: run `${CLAUDE_PLUGIN_ROOT}/skills/upgrade-larch/scripts/test-upgrade-larch.sh` after editing the upgrade script or its stable-version/pruning logic.
+Validation: run `${CLAUDE_PLUGIN_ROOT}/skills/upgrade-larch/scripts/test-upgrade-larch.sh` and `${CLAUDE_PLUGIN_ROOT}/skills/upgrade-larch/scripts/test-upgrade-larch-prune.sh` after editing the upgrade script or its stable-version/pruning logic.
+
+Active-session prune harness contract: `${CLAUDE_PLUGIN_ROOT}/skills/upgrade-larch/scripts/test-upgrade-larch-prune.md`.
