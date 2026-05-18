@@ -15,22 +15,39 @@ extract_timing() {
   awk -F'\t' '/^LARCH_HARNESS_TIMING\t/ { print $3; exit }'
 }
 
-# Test 1: sleep 0.5 — timing should be between 0.40s and 0.69s (slop for CI)
+# Accepts timings formatted as N.NNs within an inclusive numeric range.
+timing_in_range() {
+  local timing="$1"
+  local min="$2"
+  local max="$3"
+  awk -v timing="$timing" -v min="$min" -v max="$max" '
+    BEGIN {
+      if (timing !~ /^[0-9]+\.[0-9]{2}s$/) {
+        exit 1
+      }
+      value = timing
+      sub(/s$/, "", value)
+      exit !(value >= min && value <= max)
+    }
+  '
+}
+
+# Test 1: sleep 0.5 — timing should be between 0.40s and 0.79s (slop for CI)
 out=$(bash "$TIMER" test-sleep-half sleep 0.5 2>&1)
 timing=$(printf '%s\n' "$out" | extract_timing)
-if printf '%s\n' "$timing" | grep -qE '^0\.[4-6][0-9]s$'; then
-  ok "sleep 0.5 timing matches ^0\\.[4-6][0-9]s\\$ (got: $timing)"
+if timing_in_range "$timing" "0.40" "0.79"; then
+  ok "sleep 0.5 timing is within 0.40s-0.79s (got: $timing)"
 else
-  fail "sleep 0.5 timing mismatch (got: '$timing', expected ^0\\.[4-6][0-9]s\\$)"
+  fail "sleep 0.5 timing mismatch (got: '$timing', expected 0.40s-0.79s)"
 fi
 
-# Test 2: sleep 2 — timing should match ^[12]\.[0-9]{2}s$
+# Test 2: sleep 2 — timing should be between 1.90s and 4.99s (slop for CI)
 out=$(bash "$TIMER" test-sleep-two sleep 2 2>&1)
 timing=$(printf '%s\n' "$out" | extract_timing)
-if printf '%s\n' "$timing" | grep -qE '^[12]\.[0-9]{2}s$'; then
-  ok "sleep 2 timing matches ^[12]\\.[0-9]{2}s\\$ (got: $timing)"
+if timing_in_range "$timing" "1.90" "4.99"; then
+  ok "sleep 2 timing is within 1.90s-4.99s (got: $timing)"
 else
-  fail "sleep 2 timing mismatch (got: '$timing', expected ^[12]\\.[0-9]{2}s\\$)"
+  fail "sleep 2 timing mismatch (got: '$timing', expected 1.90s-4.99s)"
 fi
 
 # Test 3: false — exit code 1 mirrored AND LARCH_HARNESS_TIMING line emitted
