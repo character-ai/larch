@@ -1418,6 +1418,7 @@ echo "MERGE_RESULT=error"
 echo "ERROR=local HEAD (abc123) does not match PR head OID (def456); refusing to evaluate same-version gate"
 STUB
 chmod +x "$root/scripts/merge-pr.sh"
+real_git=$(command -v git)
 cat > "$root/scripts/git" <<STUB
 #!/usr/bin/env bash
 set -euo pipefail

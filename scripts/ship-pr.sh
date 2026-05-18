@@ -1202,6 +1202,10 @@ run_evaluate_failure() {
 is_head_divergence_recoverable() {
     local text="$1"
     local local_head="" pr_head_oid="" current_head=""
+    case "$text" in
+        *local\ HEAD*does\ not\ match\ PR\ head\ OID*) ;;
+        *) return 1 ;;
+    esac
     if [[ "$text" =~ local\ HEAD\ \(([[:alnum:]]+)\)\ does\ not\ match\ PR\ head\ OID\ \(([[:alnum:]]+)\) ]]; then
         local_head="${BASH_REMATCH[1]}"
         pr_head_oid="${BASH_REMATCH[2]}"
