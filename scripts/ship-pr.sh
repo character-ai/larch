@@ -625,7 +625,7 @@ run_checks_with_lint_fix_loop() {
     redacted_log=$(resolve_checks_log_path "$redacted_log") || {
         record_failure "$phase" "run-relevant-checks-captured.sh" "$rc" "$fail_file" "$fail_category"
         return 1
-    fi
+    }
     vendor_dirty_paths_file="$IMPLEMENT_TMPDIR/${phase}-vendor-dirty-paths.txt"
     capture_dirty_paths > "$vendor_dirty_paths_file"
     for attempt in 1 2 3; do
