@@ -199,8 +199,8 @@ run_orchestrator_case() {
         --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 --session-env-path "$implement_tmp/session-env.sh" --run-id "$label-run")
     rc=$?
     set -e
-    [[ "$rc" -eq 3 ]] || { echo "$out" >&2; fail "$label expected exit 3 got $rc"; }
-    grep -Fq 'REVIEW_AND_FIX_STATUS=fix-required' <<< "$out" || fail "$label status"
+    [[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "$label expected exit 0 got $rc"; }
+    grep -Fq 'REVIEW_AND_FIX_STATUS=fix-applied' <<< "$out" || fail "$label status"
     grep -Fq "CODER_TOOL=$expected_tool" <<< "$out" || fail "$label tool"
     grep -Fq 'CODER_STATUS=applied' <<< "$out" || fail "$label applied"
     grep -Eq '^CODER_COMMIT_SHA=[0-9a-f]+' <<< "$out" || fail "$label commit sha"
@@ -210,7 +210,7 @@ run_orchestrator_case() {
     current_head=$(git -C "$work" rev-parse HEAD)
     [[ "$current_head" != "$initial_head" ]] || fail "$label HEAD did not advance"
     git -C "$work" log -1 --format='%s' | grep -Fq "Address code review feedback (round 1)" || fail "$label commit message"
-    jq -e '.schema_version == 2 and .status == "fix-required" and .accepted_count == 1 and .coder_tool == "'"$expected_tool"'" and .coder_status == "applied" and .submodule_scrub_count == 0 and .submodule_revert_count == 0 and (.coder_commit_sha | length > 0)' "$implement_tmp/review-and-fix-summary.json" >/dev/null \
+    jq -e '.schema_version == 2 and .status == "fix-applied" and .accepted_count == 1 and .coder_tool == "'"$expected_tool"'" and .coder_status == "applied" and .submodule_scrub_count == 0 and .submodule_revert_count == 0 and (.coder_commit_sha | length > 0)' "$implement_tmp/review-and-fix-summary.json" >/dev/null \
         || fail "$label summary schema"
     jq -e '.batch == "code-review-tally" and .rounds == 1 and .accepted_count == 1 and .rejected_count == 0 and (.body | contains("# Review Round 1"))' \
         "$implement_tmp/larch-logs/implement/$label-run/code-review-tally.json" >/dev/null \
@@ -569,7 +569,7 @@ out=$(
 )
 rc=$?
 set -e
-[[ "$rc" -eq 3 ]] || { echo "$out" >&2; fail "skipped-routing expected exit 3 got $rc"; }
+[[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "skipped-routing expected exit 0 got $rc"; }
 grep -Fq 'SKIPPED_FINDING_COUNT=2' <<< "$out" || fail "skipped-routing count"
 grep -Fq 'FIX_COUNT=2' <<< "$out" || fail "skipped-routing fix count"
 grep -Fq 'Non-security skipped finding' "$implement_tmp/oos-accepted-review.md" || fail "skipped-routing public skipped finding missing"

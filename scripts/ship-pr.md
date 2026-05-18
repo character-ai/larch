@@ -34,7 +34,7 @@ The script also writes `$IMPLEMENT_TMPDIR/postbump-state.sh` before `implement-f
 
 ## Exit Codes
 
-- `0` means complete or a prompt-side checkpoint (`OOS_PENDING=true` or `CI_PASSED=true`).
+- `0` means complete or a prompt-side checkpoint (`OOS_PENDING=true`). `CI_PASSED=true` is internal state recorded when green CI is observed; it is not an exit-0 checkpoint because `ci-initial` now continues into `ci-merge` in the same invocation.
 - `3` means the CI loop needs user input. `BAIL_REASON` and `BAIL_NEEDS_USER_INPUT=true` are written to state.
 - `4` means stalled cleanup. `STALL_TRACKING=true` and `STALL_STEP` are written to state.
 - `5` means the prompt-side Rebase + Re-bump Sub-procedure must run. `RESUME_PHASE` and `CALLER_KIND` are written to state.
@@ -63,7 +63,7 @@ Transient network classification uses `is_transient_net_signature` from `scripts
 - `run_pr_create_phase` derives the PR title from the branch range (`merge-base..HEAD`, falling back to all of `HEAD` when `git merge-base` fails), skipping subjects whose prefix matches `^chore(larch-logs): flush` followed by a space (larch-log flush commits produced by `larch-log-flush.sh`). The first non-matching subject becomes the title; fallback is `"Implement requested changes"` when no non-flush commit exists in the range.
 - After `implement-finalize.sh postbump` completes with `STATUS=ok` or `STATUS=skipped`, `run_bump_phase` emits a human-readable breadcrumb line: `✅ 8: version bump — CURRENT → NEW (TYPE)` on a real bump, or `⏩ 8: version bump status=skip reason=<NONE|forked>` when the bump was skipped. The orchestrator MUST NOT re-emit these lines as text output (issue #1944). See NEVER #11 in `skills/implement/SKILL.md`.
 - Postbump conflict preserves `CALLER_KIND=step8b_rebase`.
-- `ci-initial` treats `ACTION=merge` as CI passed and exits `0`; `ci-merge` treats it as permission to call `merge-pr.sh`.
+- `ci-initial` treats `ACTION=merge` as CI passed, writes `CI_PASSED=true`, advances to `ci-merge`, and returns to the internal loop in the same `ship-pr.sh` invocation. `ci-merge` then treats `ACTION=merge` as permission to call `merge-pr.sh`.
 - `version_already_published` from `merge-pr.sh` is a recoverable version-race condition. `run_ci_phase` first checks `gh pr view <PR_NUMBER> --json state`; when GitHub reports `MERGED`, the script treats the result as `already_merged`, marks `PR_CLOSED=true`, and advances to `postmerge` without re-bumping. If the PR is not merged or the probe fails, it calls `run_rebase_rebump "$phase"` and returns 0 so the outer loop re-enters `ci-wait.sh`; the existing `REBASE_COUNT >= 20` guard in `ci-decide.sh` bounds the retry budget.
 - Every merge-success branch writes `$IMPLEMENT_TMPDIR/post-merge-sentinel` before `advance_phase postmerge`, so postmerge and prompt-side teardown cannot create or push larch-log-only commits to main. Failure to write the sentinel stalls fail-closed instead of entering postmerge without the guard.
 - After `apply-bump.sh` succeeds inside `run_rebase_rebump`, the PR title is updated via `gh pr edit --title "Bump version to <new-version>"` (best-effort, skipped when no PR yet) and the `version-bump-reasoning` larch-log batch is overwritten with the new reasoning file so the audit trail reflects the actually-landed version rather than the original race target.

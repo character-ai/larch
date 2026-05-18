@@ -990,7 +990,7 @@ EOF
             if [ "$phase" = "ci-initial" ]; then
                 state_set CI_PASSED true
                 advance_phase ci-merge
-                exit 0
+                return 0
             fi
             merge_args=(--pr "$(read_state PR_NUMBER)" --repo "$(read_state REPO)")
             [ "$NO_ADMIN_FALLBACK" = "true" ] && merge_args+=(--no-admin-fallback)

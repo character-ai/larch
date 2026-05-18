@@ -13,7 +13,7 @@ Flags:
 
 Output is `KEY=value` only through `scripts/lib-quiet.sh`:
 
-- `REVIEW_AND_FIX_STATUS=complete|no-findings|coder-failed|main-agent-vote-required|no-changes`
+- `REVIEW_AND_FIX_STATUS=complete|no-findings|coder-failed|main-agent-vote-required|no-changes|fix-applied`
 - `FIX_COUNT=N`
 - `CODER_TOOL=none|codex|cursor`
 - `CODER_STATUS=skipped|applied|no-changes|failed|submodule-violation`
@@ -51,9 +51,10 @@ Step 5 ledger marks are owned by the parent `/implement` Step 5 preamble, not by
 
 Exit codes:
 
-- `0`: no accepted findings remain for this round, OR `main-agent-vote-required` when no voting judges were available and the parent must adjudicate the ballot, OR `no-changes` when the coder dispatch exited 0 but did not modify the working tree (the parent halts the loop — re-running the same review would produce the same fixed point).
+- `0`: no accepted findings remain for this round (`complete`), OR `main-agent-vote-required` when no voting judges were available and the parent must adjudicate the ballot, OR `no-changes` when the coder dispatch exited 0 but did not modify the working tree (the parent halts the loop — re-running the same review would produce the same fixed point), OR `fix-applied` (`REVIEW_AND_FIX_STATUS=fix-applied`) when a coder applied accepted findings AND the script committed them as `Address code review feedback (round N)` — the parent runs relevant checks and decides whether to call the script for the next round.
 - `2`: panel failure, coder failure, or submodule violation; parent `/implement` treats this as blocking.
-- `3`: a coder applied accepted findings AND the script committed them as `Address code review feedback (round N)`. The parent runs relevant checks and decides whether to call the script for the next round.
+
+Compatibility note: out-of-tree callers must detect applied fixes via `REVIEW_AND_FIX_STATUS=fix-applied` on exit `0`. Do not rely on exit `3`; successful fix application no longer uses that exit code.
 
 Additional output keys:
 
@@ -86,7 +87,7 @@ aligned with the findings file the coder actually saw.
 
 The script writes `$IMPLEMENT_TMPDIR/review-and-fix-summary.json` atomically with `schema_version=2`, aggregate accepted/rejected counts, `rounds_completed`, latest approved-fixes path, latest round directory, accumulated OOS artifact paths, coder/submodule status fields, and `coder_commit_sha` (latest round's per-round commit, empty string when the round produced no commit). Accepted OOS markdown is accumulated at `$IMPLEMENT_TMPDIR/accumulated-oos.md` and mirrored to `$IMPLEMENT_TMPDIR/oos-accepted-review.md` for existing Step 9a.1 consumers; a JSONL audit copy is appended at `$IMPLEMENT_TMPDIR/accumulated-oos.jsonl`. That mirror copy is load-bearing: if the copy fails, the round fails instead of silently leaving the legacy mirror stale.
 
-When an orchestrator round exits `0` (cap-reached or clean) or `3` (fix-required) and `--run-id` is non-empty, the script best-effort flushes the Step 5 implement run-log batches:
+When an orchestrator round exits `0` (cap-reached, clean, or fix-applied) and `--run-id` is non-empty, the script best-effort flushes the Step 5 implement run-log batches:
 
 - `code-review-tally` via `scripts/write-tally.sh`, with a body containing aggregate counts, the latest parent `review-round-summary.md` or per-round summaries, rejected code-review findings, and the latest round voting tally when present.
 - `review-findings-full` via `scripts/compose-review-findings.sh` followed by `scripts/larch-log.sh write`.
