@@ -17,8 +17,8 @@ available.
   it first runs `skills/implement/scripts/flush-execution-issues.sh` in
   commit-tail mode so post-7a entries are committed before the log flush.
 - Invokes `scripts/larch-log.sh commit --log-root "$IMPLEMENT_TMPDIR/larch-logs"
-  --skill implement --run-id "$run_id"` and swallows failures so the preceding
-  business commit remains successful.
+  --skill implement --run-id "$run_id"` and swallows failures so the explicit
+  lifecycle flush remains best-effort.
 
 ## Call sites (invoke `larch-log-flush.sh` only here)
 

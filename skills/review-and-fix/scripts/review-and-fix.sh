@@ -455,12 +455,18 @@ flush_review_batches() {
     [[ -x "$LARCH_LOG_SH" ]] || return 0
 
     batch_input_dir="$impl_tmpdir/larch-log-batches-input"
-    mkdir -p "$batch_input_dir" || return 0
+    mkdir -p "$batch_input_dir" || {
+        emit_breadcrumb "⚠ review-and-fix: failed to create tally batch input directory; skipping tally flush"
+        return 1
+    }
     body_file="$batch_input_dir/code-review-tally-body.md"
     findings_file="$batch_input_dir/review-findings-full.md"
 
     if [[ -n "$composed_findings_source" && -s "$composed_findings_source" ]]; then
-        cp "$composed_findings_source" "$findings_file" 2>/dev/null || return 0
+        cp "$composed_findings_source" "$findings_file" 2>/dev/null || {
+            emit_breadcrumb "⚠ review-and-fix: failed to stage review-findings-full batch input; skipping tally flush"
+            return 1
+        }
     elif ! compose_review_findings_output "$impl_tmpdir" "$findings_file"; then
         emit_breadcrumb "⚠ review-and-fix: failed to compose review-findings-full batch; skipping tally flush"
         return 0
@@ -468,7 +474,7 @@ flush_review_batches() {
     derived_counts=$(derive_code_review_tally_from_composed_findings "$findings_file") || derived_counts="0 0"
     read -r derived_accepted derived_rejected <<< "$derived_counts"
 
-    {
+    if ! {
         printf 'Rounds: %s | Accepted: %s | Rejected: %s | Exonerated: %s | Neutral: %s\n' \
             "$rounds" "$derived_accepted" "$derived_rejected" "$exonerated" "$neutral"
 
@@ -538,7 +544,10 @@ flush_review_batches() {
             cat "$voting_tally"
             printf '\n'
         fi
-    } > "$body_file" || return 0
+    } > "$body_file"; then
+        emit_breadcrumb "⚠ review-and-fix: failed to write code-review-tally batch body; skipping tally flush"
+        return 1
+    fi
 
     set +e
     tally_out="$("$WRITE_TALLY_SH" \
@@ -952,9 +961,13 @@ run_implement_round() {
     emit_kv SKIPPED_FINDING_COUNT "${skipped_finding_count:-0}"
     if [[ "$exit_code" -eq 0 ]]; then
         if [[ "$composed_findings_ok" == true ]]; then
-            flush_review_batches "$IMPLEMENT_TMPDIR" "$RUN_ID" "$PANEL" "$round_num_dec" "$total_accepted" "$total_rejected" "$total_exonerated" "$total_neutral" "$composed_findings_file"
+            if ! flush_review_batches "$IMPLEMENT_TMPDIR" "$RUN_ID" "$PANEL" "$round_num_dec" "$total_accepted" "$total_rejected" "$total_exonerated" "$total_neutral" "$composed_findings_file"; then
+                emit_breadcrumb "⚠ review-and-fix: code-review tally flush skipped after local batch write failure"
+            fi
         else
-            flush_review_batches "$IMPLEMENT_TMPDIR" "$RUN_ID" "$PANEL" "$round_num_dec" "$total_accepted" "$total_rejected" "$total_exonerated" "$total_neutral"
+            if ! flush_review_batches "$IMPLEMENT_TMPDIR" "$RUN_ID" "$PANEL" "$round_num_dec" "$total_accepted" "$total_rejected" "$total_exonerated" "$total_neutral"; then
+                emit_breadcrumb "⚠ review-and-fix: code-review tally flush skipped after local batch write failure"
+            fi
         fi
     fi
     exit "$exit_code"
