@@ -102,7 +102,7 @@ got=$(awk -F= '$1=="NEUTRAL_COUNT"{print $2}' "$out"); assert_eq "FINDING_2 1Y/1
 got=$(awk -F= '$1=="FINDING_2_OUTCOME"{print $2}' "$TMP/review-tally.env"); assert_eq "review-tally.env records neutral outcome explicitly" "$got" "neutral"
 got=$(awk -F= '$1=="OOS_ACCEPTED_COUNT"{print $2}' "$out"); assert_eq "FINDING_3 unanimous YES → OOS accepted" "$got" "1"
 
-echo "# Case: 2 voters, 1 YES 1 NEUTRAL → rejected (not unanimous)"
+echo "# Case: 2 voters, sparse per-finding ballots leave 1 YES and 1 missing vote → rejected"
 TMP="$WORKDIR/case3"
 mkdir -p "$TMP"
 mk_ballot "$TMP/ballot.md"

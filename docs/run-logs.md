@@ -78,7 +78,7 @@ in the envelope but not listed separately.
 
 **Mode**: replace (markdown sections). **Written**: Step 5, immediately after the `code-review-tally` batch.
 
-Per-finding payloads for plan-review accepted, plan-review rejected, and code-review entries. Each section heading carries finding id, reviewer, phase, and outcome, followed by the redacted prose body. Accepted code-review findings appear in `### FINDING_X: panel [code-review/accepted]` blocks; rejected findings appear in `### FINDING_X: panel [code-review/rejected]` blocks.
+Per-finding payloads for plan-review accepted, plan-review rejected, and code-review entries. Each section heading carries finding id, reviewer, phase, and outcome, followed by the redacted prose body. Accepted code-review findings appear in `### FINDING_X: panel [code-review/accepted]` blocks; rejected code-review findings appear in generated `### REJ_CX: reviewer [code-review/rejected]` blocks.
 
 ### version-bump-reasoning.md
 
