@@ -1,0 +1,24 @@
+Gathering the branch diff and commit list for a read-only review focused on tests, CI, and regression risk.
+
+Searching the diff for relevant files (excluding large larch-logs noise):
+
+Checking the test harness setup and resolver matching logic for alignment with the new tests.
+
+Reviewed the precomputed diff (focused on `scripts/sessionstart-health.{sh,md}`, `scripts/test-sessionstart-health.{sh,md}`, `scripts/merge-pr.{sh,md}`, `scripts/test-merge-pr.sh`, `.claude-plugin/plugin.json`) and the current copies of the key files in the repo for line-accurate citations. Commits on the branch since merge-base with `main`: version bump, SessionStart boundary advisories, larch-logs flush, round-1 review fixes.
+
+### In-Scope Findings
+
+1. **Important** — `risk-integration` — [`scripts/test-merge-pr.sh:131-134`](scripts/test-merge-pr.sh): The fake `git` stub’s `fetch` handler now treats **any** `git fetch origin …` as success (previously it required `origin` **and** `main`). **Concrete scenario:** If `merge-pr.sh` regresses and calls an unintended ref (for example `git fetch origin` without `main`, or a wrong second argument), harness runs that still expect a strict contract may **exit 0 from `fetch` instead of hitting the stub’s `exit 3` “unexpected subcommand” path**, so the regression might only show up in real CI or production. **Suggested fix:** Keep the relaxed matcher only for cases that need it (for example branch on `STUB_FETCH_RELAXED=1`), or assert argv in new flush-recovery cases while preserving the old `origin`+`main` guard for the existing sub-tests.
+
+2. **Latent** — `risk-integration` — [`scripts/sessionstart-health.md:25`](scripts/sessionstart-health.md) vs [`scripts/test-sessionstart-health.sh`](scripts/test-sessionstart-health.sh) (boundary cases ~375–460): The contract states that **malformed JSON** on stdin fails open with **no boundary advisory**, but there is **no regression test** that feeds invalid JSON and asserts empty stdout (and stable exit 0). **Scenario:** A future edit could mishandle `jq` failures or partially parse stdin and accidentally append boundary text or disturb `MSG`/`HOOK_CWD` parsing without the harness catching it. **Suggested fix:** Add a small case (for example stdin `{not json` or `{}` without `cwd`) asserting no output and exit 0.
+
+3. **Nit** — `risk-integration` — [`scripts/test-sessionstart-health.sh:403-404`](scripts/test-sessionstart-health.sh): After `assert_empty` on stdout, `assert_not_contains "$stdout" "boundary"` adds almost no signal (empty haystack already forces the “does not contain” pass for any non-empty needle). **Suggested fix:** Drop the redundant assertion or replace it with a stronger check (for example stderr empty, or a positive grep on a log if one existed).
+
+**Plan / requirements check (testing lens):** The stated cases for manifest + gate, `.run-cleaned-up`, review + `.review-boundary-passed`, bump + `postbump-state.sh`, resolver tooling on `PATH`, and combined triple-boundary (case 16) are present in the diff and align with the feature description; the optional malformed-JSON contract line in the doc is the main **plan-adjacent** gap above.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	risk-integration	scripts/test-merge-pr.sh:131-134	Fake git fetch stub accepts any `git fetch origin …` with exit 0.	A mistaken `git fetch origin <unexpected>` in merge-pr.sh could pass offline tests that previously failed closed on unexpected argv, hiding regressions until real runs.	Scope the relaxed stub to opt-in tests or restore strict `origin main` matching for legacy cases.
+1	in_scope	latent	risk-integration	scripts/sessionstart-health.md:25 / scripts/test-sessionstart-health.sh:375-460	Doc claims malformed SessionStart JSON fails open; no harness asserts that.	Future jq/stdin parsing changes could violate the fail-open contract without CI signal.	Add stdin case with invalid JSON expecting exit 0 and empty stdout.
+1	in_scope	nit	risk-integration	scripts/test-sessionstart-health.sh:403-404	Redundant assert_not_contains after assert_empty on stdout.	Low signal; noise if assertions are used as documentation for expected invariants.	Remove or replace with a materially stronger assertion.
+```

@@ -1,0 +1,28 @@
+Gathering the branch diff and commit history for a read-only correctness review.
+
+Searching the diff for relevant files; the full diff is too large to read at once.
+
+Reading the implementation files in the workspace (branch state) for full context; the cached diff is dominated by larch-logs.
+
+Reviewed the branch implementation by reading the current versions of [`scripts/sessionstart-health.sh`](file:///Users/zhupanov/larch3/scripts/sessionstart-health.sh), [`scripts/test-sessionstart-health.sh`](file:///Users/zhupanov/larch3/scripts/test-sessionstart-health.sh), [`scripts/sessionstart-health.md`](file:///Users/zhupanov/larch3/scripts/sessionstart-health.md), [`scripts/test-sessionstart-health.md`](file:///Users/zhupanov/larch3/scripts/test-sessionstart-health.md), and [`skills/implement/scripts/lib-resolve-implement-tmpdir.sh`](file:///Users/zhupanov/larch3/skills/implement/scripts/lib-resolve-implement-tmpdir.sh), and compared them to the feature description and implementation plan. The cached `diff.txt` is dominated by `larch-logs/` noise; the behavioral edits match the files above.
+
+**Plan / requirements verification (correctness, `both`):** Std `{cwd, session_id}` via `jq` when `JQ_AVAILABLE` and non-empty stdin; `LARCH_TOKEN_SESSION_ID` export when `SID` non-empty and explicit `unset` when empty (stricter than `hook-post-design.sh` / `hook-stop-fail-close.sh`, avoids inheriting a stale session token); resolver sourced from `CLAUDE_PLUGIN_ROOT`/`$SCRIPT_DIR/..`; same three boundary predicates as the Stop hook (`manifest.env` + missing `.boundary-gate-passed`; `review-round-summary.md` + missing `.review-boundary-passed`; `.bump-version-armed` + missing `postbump-state.sh`); gated out by `.run-cleaned-up`; advisories appended to `MSG` and emitted only through `jq -n --arg ctx "$MSG"`; tests add `stat`/`basename`/`date`/`touch` to `build_bin`, `run_with_stdin` with `XDG_CACHE_HOME`, cases 12–16 including suppressions and combined payload. No requirement from the plan or feature text appears missing in these files.
+
+No **Important** or **Latent** correctness defects identified in the new logic (fail-open paths, `set -e` interaction with `||`/`[[`, resolver parity with existing hooks, and the `TMPDIR_BASENAME` fallback match `hook-stop-fail-close.sh`).
+
+### In-Scope Findings
+
+1. **Nit** `code-quality` [`scripts/sessionstart-health.sh:1-4`](scripts/sessionstart-health.sh) — The opening comment still says the hook only probes CLI tools and git state; it does not mention stdin JSON, tmpdir resolution, or `/implement` boundary advisories (those are documented later at lines 14–15). **Suggested fix:** Extend the opening paragraph so the file header matches the behavior described in [`scripts/sessionstart-health.md`](scripts/sessionstart-health.md).
+
+2. **Nit** `risk-integration` [`scripts/test-sessionstart-health.sh:402-404`](scripts/test-sessionstart-health.sh) — Case 13 already uses `assert_empty` on stdout; `assert_not_contains "$stdout" "boundary"` is redundant, and the needle `boundary` is broad enough that an unrelated future advisory containing that substring could fail the test even when the boundary feature behaves correctly. **Suggested fix:** Rely on `assert_empty` alone or assert absence of specific markers (for example `post-/design boundary`).
+
+### Out-of-Scope Observations
+
+1. **Nit** `code-quality` [`docs/linting.md:240`](docs/linting.md) — The `make test-sessionstart` row still describes only jq/git/git-state coverage and does not mention the new stdin-driven `/implement` boundary regressions. This file is not part of the feature diff; updating it would help operators discover the expanded harness scope.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	nit	code-quality	scripts/sessionstart-health.sh:1-4	Opening header comment omits stdin JSON and implement boundary advisories.	Readers skimming only the top of the file may underestimate SessionStart behavior already documented at lines 14-15.	Align the opening paragraph with scripts/sessionstart-health.md.
+1	in_scope	nit	risk-integration	scripts/test-sessionstart-health.sh:402-404	Case 13 combines assert_empty with a broad assert_not_contains needle boundary.	Redundant with assert_empty; a future unrelated advisory containing substring boundary could false-fail the harness.	Keep assert_empty or narrow needles to post-/design|review|bump-version markers.
+1	out_of_scope	nit	code-quality	docs/linting.md:240	make test-sessionstart description omits boundary stdin regression coverage.	Discoverability only; not introduced by the touched files in this feature.	Optionally extend the linting table row when editing docs.
+```

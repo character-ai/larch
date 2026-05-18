@@ -148,6 +148,12 @@ case "$1" in
             exit 0
         fi
         ;;
+    diff)
+        if [[ "${2:-}" == "--name-only" && "${3:-}" =~ \.\.HEAD$ ]]; then
+            printf '%s\n' "${STUB_FLUSH_AHEAD_DIFF:-larch-logs/implement/run-1/manifest.json}"
+            exit 0
+        fi
+        ;;
     show)
         if [[ "${2:-}" == "origin/main:.claude-plugin/plugin.json" ]]; then
             if [[ "${STUB_ORIGIN_PLUGIN_JSON+x}" == "x" ]]; then
@@ -501,6 +507,20 @@ Fix some real bug" \
 assert_stdout_contains "flush_recovery_mixed" "MERGE_RESULT=error" "N1: mixed commits emit error"
 assert_stdout_contains "flush_recovery_mixed" "ERROR=local HEAD (cccc3333) does not match PR head OID (aaaa1111); refusing to evaluate same-version gate" "N2: mixed commits preserve original OID error"
 assert_no_merge_commands "flush_recovery_mixed" "N3: mixed commits skip merge commands"
+
+echo
+echo "Sub-test N2: flush-subject range with non-log paths preserves original OID error"
+run_case "flush_recovery_non_log_paths" \
+    env GH_MERGE_STATE=CLEAN \
+    STUB_HEAD_OID=cccc3333 \
+    STUB_PR_HEAD_OID=aaaa1111 \
+    STUB_FLUSH_AHEAD_LOG="chore(larch-logs): flush implement run ABC" \
+    "STUB_FLUSH_AHEAD_DIFF=larch-logs/implement/run-1/manifest.json
+scripts/merge-pr.sh" \
+    bash "$REPO_ROOT/scripts/merge-pr.sh" --pr 123 --repo owner/repo
+assert_stdout_contains "flush_recovery_non_log_paths" "MERGE_RESULT=error" "N2a: non-log path divergence emits error"
+assert_stdout_contains "flush_recovery_non_log_paths" "ERROR=local HEAD (cccc3333) does not match PR head OID (aaaa1111); refusing to evaluate same-version gate" "N2b: non-log path divergence preserves original OID error"
+assert_no_merge_commands "flush_recovery_non_log_paths" "N2c: non-log path divergence skips merge commands"
 
 echo
 echo "Sub-test O: non-ancestor flush-only range preserves original OID error"

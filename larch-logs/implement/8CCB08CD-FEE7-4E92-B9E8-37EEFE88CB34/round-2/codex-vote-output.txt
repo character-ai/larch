@@ -1,0 +1,16 @@
+FINDING_1: YES
+FINDING_2: EXONERATE -- Legitimate style concern, but hook strictness is pre-existing and not worth a tracking issue.
+FINDING_3: EXONERATE -- True discoverability gap, but too small to justify a future issue.
+FINDING_4: EXONERATE -- Plan/diff mismatch is real, but splitting or rewriting scope narrative now is more process cost than warranted.
+FINDING_5: EXONERATE -- Mixed PR scope is legitimate review friction, but not worth forcing a split for these small related workflow edits.
+FINDING_6: NO -- The file header already documents stdin `cwd`/`session_id` use and active boundary state at lines 12-15.
+FINDING_7: EXONERATE -- Duplicate jq parsing is harmless and combining fields would add shell parsing complexity for negligible gain.
+FINDING_8: EXONERATE -- Same minor jq duplication as FINDING_7; no user-visible risk.
+FINDING_9: EXONERATE -- Drift risk is real, but a shared helper would add coupling before the predicates have proven unstable.
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: EXONERATE -- Exact cwd matching is the existing resolver contract and normalization risks changing binding semantics without a proven failure.
+FINDING_13: NO -- The broad fetch stub is needed for `git-force-push.sh`, while exercised legacy paths already assert exact `git fetch origin main --quiet`.
+FINDING_14: NO -- Redundant assertion after `assert_empty` is harmless test noise, not a meaningful risk.
+FINDING_15: NO -- Same harmless redundancy as FINDING_14.
+FINDING_16: EXONERATE -- The stdin payload is host-generated SessionStart JSON; adding caps would introduce extra dependency/edge complexity for a low local-DoS risk.

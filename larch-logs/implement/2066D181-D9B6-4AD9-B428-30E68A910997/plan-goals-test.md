@@ -32,6 +32,7 @@ Then convert contract-emitting lines (KEY=value output to the caller) from `echo
 - `scripts/ci-status.sh` — source+init; convert CI_STATUS=, BEHIND_COUNT=, FAILED_RUN_ID= to emit_kv
 - `scripts/ci-decide.sh` — source+init; convert ACTION= to emit_kv
 - `scripts/merge-pr.sh` — source+init; convert MERGE_RESULT=, PR_STATE=, etc. to emit_kv
+- `scripts/merge-pr.md` — update the script contract prose alongside the quiet-output conversion
 - `scripts/rebase-push.sh` — source+init; convert SKIPPED_ALREADY_FRESH=, SKIPPED_ALREADY_PUSHED=, CONFLICT_FILES=, REBASE_ERROR= to emit_kv
 - `scripts/git-force-push.sh` — source+init; convert PUSH_STATUS=, etc. to emit_kv
 - `scripts/launch-cursor-ci.sh` — source+init; convert contract output to emit_kv
@@ -47,7 +48,7 @@ Then convert contract-emitting lines (KEY=value output to the caller) from `echo
 **AGENTS.md** — add row for `scripts/lib-quiet.md` in the Canonical sources table.
 
 ### Test Updates
-For each test-*.sh that asserts against stdout of a now-quiet script, add `export LARCH_QUIET_DISABLE=1` near the top. Affected files to check: `test-check-bump-version.sh`, `test-apply-bump.sh`, `test-create-pr.sh`, `test-gh-pr-body-update.sh`, `test-ci-wait.sh`, `test-launch-cursor-ci.sh`, `test-launch-codex-ci.sh`, `test-tracking-issue-write.sh`, `test-refresh-run-logs.sh`, `test-ship-pr.sh`, `test-implement-finalize.sh`.
+For each test-*.sh that asserts against stdout of a now-quiet script, add `export LARCH_QUIET_DISABLE=1` near the top. Affected files to check: `test-check-bump-version.sh`, `test-apply-bump.sh`, `test-create-pr.sh`, `test-gh-pr-body-update.sh`, `test-ci-wait.sh`, `test-launch-cursor-ci.sh`, `test-launch-codex-ci.sh`, `test-tracking-issue-write.sh`, `test-refresh-run-logs.sh`, `test-ship-pr.sh`, `test-implement-finalize.sh`, `test-merge-pr.sh`.
 
 ### Wiring
 After writing test-lib-quiet.sh, add it to the Makefile as a new `test-lib-quiet` target (adjacent to existing test-*.sh targets).

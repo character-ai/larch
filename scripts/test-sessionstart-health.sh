@@ -29,6 +29,7 @@ fi
 
 tmp=$(mktemp -d /tmp/larch-sessionstart-test.XXXXXX)
 trap 'rm -rf "$tmp"' EXIT
+XDG_TEST="$tmp/xdg-cache"
 
 JQ_ONLY_FIXED='{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"larch hook preflight: jq not on PATH (install jq for advisory hook output)."}}'
 JQ_GIT_FIXED='{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"larch hook preflight: jq not on PATH and git not on PATH; install jq and git for advisory hook output."}}'
@@ -104,6 +105,10 @@ build_bin() {
     link_tool "$dir" grep
     link_tool "$dir" awk
     link_tool "$dir" cat
+    link_tool "$dir" stat
+    link_tool "$dir" basename
+    link_tool "$dir" date
+    link_tool "$dir" touch
 }
 
 add_real_tool() {
@@ -126,6 +131,12 @@ STUB
 run_from_dir() {
     local bin=$1 cwd=$2 out_file=$3 err_file=$4 rc=0
     (cd "$cwd" && env -i PATH="$bin" "$BASH_BIN" "$SCRIPT" < /dev/null > "$out_file" 2> "$err_file") || rc=$?
+    printf '%s\n' "$rc"
+}
+
+run_with_stdin() {
+    local bin=$1 cwd=$2 input=$3 xdg_cache=$4 out_file=$5 err_file=$6 rc=0
+    (cd "$cwd" && printf '%s' "$input" | env -i PATH="$bin" XDG_CACHE_HOME="$xdg_cache" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" "$BASH_BIN" "$SCRIPT" > "$out_file" 2> "$err_file") || rc=$?
     printf '%s\n' "$rc"
 }
 
@@ -160,6 +171,18 @@ make_repo() {
     git -C "$repo" add file.txt
     git -C "$repo" commit -m "base" >/dev/null 2>&1
     printf '%s\n' "$repo"
+}
+
+make_impl_tmpdir() {
+    local name=$1 cwd=$2 sid=${3:-} impl
+    impl="$XDG_TEST/larch/sessions/claude-implement-$name"
+    mkdir -p "$impl/design-export"
+    if [[ -n "$sid" ]]; then
+        printf 'CLONE_PATH=%s\nSESSION_ID=%s\n' "$cwd" "$sid" > "$impl/.larch-keepalive"
+    else
+        printf 'CLONE_PATH=%s\n' "$cwd" > "$impl/.larch-keepalive"
+    fi
+    printf '%s\n' "$impl"
 }
 
 echo "=== Case 1: jq + git both present, not a work-tree ==="
@@ -348,6 +371,100 @@ rc=$(run_from_dir "$tmp/real_bin" "$tmp/outside" "$tmp/c11.out" "$tmp/c11.err")
 assert_eq "$rc" "0" "case 11: exit code 0"
 stdout=$(cat "$tmp/c11.out")
 assert_empty "$stdout" "case 11: stdout empty outside work-tree"
+
+echo "=== Case 11b: malformed SessionStart JSON fails open ==="
+mkdir -p "$tmp/c11b-cwd"
+rc=$(run_with_stdin "$tmp/real_bin" "$tmp/c11b-cwd" '{"cwd":' "$XDG_TEST" "$tmp/c11b.out" "$tmp/c11b.err")
+assert_eq "$rc" "0" "case 11b: exit code 0"
+stdout=$(cat "$tmp/c11b.out")
+assert_empty "$stdout" "case 11b: stdout empty on malformed json"
+
+echo "=== Case 12: SessionStart detects pending post-/design boundary ==="
+mkdir -p "$tmp/c12-cwd"
+impl=$(make_impl_tmpdir c12-design "$tmp/c12-cwd" "sid-12")
+printf 'MANIFEST_OK=true\n' > "$impl/design-export/manifest.env"
+rc=$(run_with_stdin "$tmp/real_bin" "$tmp/c12-cwd" '{"cwd":"'"$tmp/c12-cwd"'","session_id":"sid-12"}' "$XDG_TEST" "$tmp/c12.out" "$tmp/c12.err")
+assert_eq "$rc" "0" "case 12: exit code 0"
+stdout=$(cat "$tmp/c12.out")
+assert_valid_json "$stdout" "case 12"
+ctx=$(ctx_from_stdout "$stdout")
+assert_contains "$ctx" "post-/design boundary" "case 12: design boundary advisory"
+assert_contains "$ctx" "post-design-boundary.sh" "case 12: design boundary names wrapper"
+
+echo "=== Case 12b: .boundary-gate-passed suppresses post-/design advisory ==="
+touch "$impl/.boundary-gate-passed"
+rc=$(run_with_stdin "$tmp/real_bin" "$tmp/c12-cwd" '{"cwd":"'"$tmp/c12-cwd"'","session_id":"sid-12"}' "$XDG_TEST" "$tmp/c12b.out" "$tmp/c12b.err")
+assert_eq "$rc" "0" "case 12b: exit code 0"
+stdout=$(cat "$tmp/c12b.out")
+assert_empty "$stdout" "case 12b: stdout empty after boundary gate"
+assert_not_contains "$stdout" "post-/design boundary" "case 12b: no design boundary advisory"
+
+echo "=== Case 13: .run-cleaned-up suppresses boundary advisories ==="
+mkdir -p "$tmp/c13-cwd"
+impl=$(make_impl_tmpdir c13-cleaned "$tmp/c13-cwd")
+printf 'MANIFEST_OK=true\n' > "$impl/design-export/manifest.env"
+touch "$impl/.run-cleaned-up"
+rc=$(run_with_stdin "$tmp/real_bin" "$tmp/c13-cwd" '{"cwd":"'"$tmp/c13-cwd"'"}' "$XDG_TEST" "$tmp/c13.out" "$tmp/c13.err")
+assert_eq "$rc" "0" "case 13: exit code 0"
+stdout=$(cat "$tmp/c13.out")
+assert_empty "$stdout" "case 13: stdout empty after run cleanup"
+assert_not_contains "$stdout" "boundary" "case 13: no boundary advisory"
+
+echo "=== Case 14: SessionStart detects pending post-/review boundary ==="
+mkdir -p "$tmp/c14-cwd"
+impl=$(make_impl_tmpdir c14-review "$tmp/c14-cwd")
+rm -f "$impl/design-export/manifest.env"
+printf 'review summary\n' > "$impl/review-round-summary.md"
+rc=$(run_with_stdin "$tmp/real_bin" "$tmp/c14-cwd" '{"cwd":"'"$tmp/c14-cwd"'"}' "$XDG_TEST" "$tmp/c14.out" "$tmp/c14.err")
+assert_eq "$rc" "0" "case 14: exit code 0"
+stdout=$(cat "$tmp/c14.out")
+assert_valid_json "$stdout" "case 14"
+ctx=$(ctx_from_stdout "$stdout")
+assert_contains "$ctx" "post-/review boundary" "case 14: review boundary advisory"
+
+echo "=== Case 14b: .review-boundary-passed suppresses post-/review advisory ==="
+touch "$impl/.review-boundary-passed"
+rc=$(run_with_stdin "$tmp/real_bin" "$tmp/c14-cwd" '{"cwd":"'"$tmp/c14-cwd"'"}' "$XDG_TEST" "$tmp/c14b.out" "$tmp/c14b.err")
+assert_eq "$rc" "0" "case 14b: exit code 0"
+stdout=$(cat "$tmp/c14b.out")
+assert_empty "$stdout" "case 14b: stdout empty after review boundary"
+assert_not_contains "$stdout" "post-/review boundary" "case 14b: no review boundary advisory"
+
+echo "=== Case 15: SessionStart detects pending post-/bump-version boundary ==="
+mkdir -p "$tmp/c15-cwd"
+impl=$(make_impl_tmpdir c15-bump "$tmp/c15-cwd")
+printf 'MANIFEST_OK=true\n' > "$impl/design-export/manifest.env"
+touch "$impl/.boundary-gate-passed"
+touch "$impl/.bump-version-armed"
+rc=$(run_with_stdin "$tmp/real_bin" "$tmp/c15-cwd" '{"cwd":"'"$tmp/c15-cwd"'"}' "$XDG_TEST" "$tmp/c15.out" "$tmp/c15.err")
+assert_eq "$rc" "0" "case 15: exit code 0"
+stdout=$(cat "$tmp/c15.out")
+assert_valid_json "$stdout" "case 15"
+ctx=$(ctx_from_stdout "$stdout")
+assert_contains "$ctx" "post-/bump-version boundary" "case 15: bump boundary advisory"
+
+echo "=== Case 15b: postbump-state.sh suppresses post-/bump-version advisory ==="
+printf 'STATUS=ok\n' > "$impl/postbump-state.sh"
+rc=$(run_with_stdin "$tmp/real_bin" "$tmp/c15-cwd" '{"cwd":"'"$tmp/c15-cwd"'"}' "$XDG_TEST" "$tmp/c15b.out" "$tmp/c15b.err")
+assert_eq "$rc" "0" "case 15b: exit code 0"
+stdout=$(cat "$tmp/c15b.out")
+assert_empty "$stdout" "case 15b: stdout empty after postbump state"
+assert_not_contains "$stdout" "post-/bump-version boundary" "case 15b: no bump boundary advisory"
+
+echo "=== Case 16: all three pending boundaries concatenate into one advisory ==="
+mkdir -p "$tmp/c16-cwd"
+impl=$(make_impl_tmpdir c16-all-boundaries "$tmp/c16-cwd")
+printf 'MANIFEST_OK=true\n' > "$impl/design-export/manifest.env"
+printf 'review summary\n' > "$impl/review-round-summary.md"
+touch "$impl/.bump-version-armed"
+rc=$(run_with_stdin "$tmp/real_bin" "$tmp/c16-cwd" '{"cwd":"'"$tmp/c16-cwd"'"}' "$XDG_TEST" "$tmp/c16.out" "$tmp/c16.err")
+assert_eq "$rc" "0" "case 16: exit code 0"
+stdout=$(cat "$tmp/c16.out")
+assert_valid_json "$stdout" "case 16"
+ctx=$(ctx_from_stdout "$stdout")
+assert_contains "$ctx" "post-/design boundary" "case 16: design boundary advisory"
+assert_contains "$ctx" "post-/review boundary" "case 16: review boundary advisory"
+assert_contains "$ctx" "post-/bump-version boundary" "case 16: bump boundary advisory"
 
 echo
 echo "=== Summary ==="

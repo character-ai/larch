@@ -11,7 +11,8 @@
 #
 # SessionStart is non-blocking by spec: the script ALWAYS exits 0. A failing
 # probe produces advisory JSON on stdout; a healthy environment produces
-# nothing. The hook does not read stdin.
+# nothing. When jq is available, the hook reads stdin for `cwd` and
+# `session_id` so it can resolve active /implement boundary state.
 
 set -euo pipefail
 
@@ -27,7 +28,10 @@ if command -v dirname >/dev/null 2>&1 && command -v mkdir >/dev/null 2>&1; then
 fi
 LC_ALL=C
 
+INPUT=$(cat 2>/dev/null) || INPUT=''
 MSG=""
+HOOK_CWD=""
+SID=""
 JQ_AVAILABLE=true
 GIT_AVAILABLE=true
 
@@ -104,6 +108,45 @@ if [[ "$JQ_AVAILABLE" == "true" && "$GIT_AVAILABLE" == "true" ]]; then
                 append_msg "larch hook preflight: a prior /implement run for #${issue_number} stalled at step ${stall_step}. Working-tree edits stashed as ${stash_ref}. Resume via 'git stash apply ${stash_ref}' or drop via 'git stash drop ${stash_ref}'."
             else
                 append_msg "larch hook preflight: a prior /implement run for #${issue_number} stalled at step ${stall_step}. No working-tree edits were stashed; inspect 'git status' / the issue for context."
+            fi
+        fi
+    fi
+fi
+
+if [[ "$JQ_AVAILABLE" == "true" && -n "$INPUT" ]]; then
+    HOOK_CWD=$(printf '%s' "$INPUT" | jq -r '.cwd // ""' 2>/dev/null) || HOOK_CWD=""
+    SID=$(printf '%s' "$INPUT" | jq -r '.session_id // ""' 2>/dev/null) || SID=""
+fi
+
+if [[ -n "$HOOK_CWD" ]]; then
+    PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd -P)}"
+    LIB_RESOLVE="$PLUGIN_ROOT/skills/implement/scripts/lib-resolve-implement-tmpdir.sh"
+    if [[ -f "$LIB_RESOLVE" ]]; then
+        # shellcheck source=skills/implement/scripts/lib-resolve-implement-tmpdir.sh
+        # shellcheck disable=SC1090
+        source "$LIB_RESOLVE" 2>/dev/null || true
+    fi
+    if declare -F resolve_implement_tmpdir >/dev/null 2>&1; then
+        if [[ -n "$SID" ]]; then
+            export LARCH_TOKEN_SESSION_ID="$SID"
+        else
+            unset LARCH_TOKEN_SESSION_ID || true
+        fi
+        IMPLEMENT_TMPDIR=$(resolve_implement_tmpdir "$HOOK_CWD" 2>/dev/null) || IMPLEMENT_TMPDIR=""
+        if [[ -n "$IMPLEMENT_TMPDIR" && ! -f "$IMPLEMENT_TMPDIR/.run-cleaned-up" ]]; then
+            TMPDIR_BASENAME=$(basename "$IMPLEMENT_TMPDIR" 2>/dev/null) \
+                || TMPDIR_BASENAME="<implement-tmpdir>"
+            if [[ -f "$IMPLEMENT_TMPDIR/design-export/manifest.env" && \
+                  ! -f "$IMPLEMENT_TMPDIR/.boundary-gate-passed" ]]; then
+                append_msg "larch hook preflight: pending post-/design boundary in active /implement tmpdir (${TMPDIR_BASENAME}); NEXT REQUIRED: run skills/implement/scripts/post-design-boundary.sh against the active /implement tmpdir and continue per its terminal directive."
+            fi
+            if [[ -f "$IMPLEMENT_TMPDIR/review-round-summary.md" && \
+                  ! -f "$IMPLEMENT_TMPDIR/.review-boundary-passed" ]]; then
+                append_msg "larch hook preflight: pending post-/review boundary in active /implement tmpdir (${TMPDIR_BASENAME}); NEXT REQUIRED: execute Cross-Skill Presence Propagation + Track Rejected Code Review Findings + Step 6 breadcrumb in order per skills/implement/SKILL.md Step 5, then touch .review-boundary-passed."
+            fi
+            if [[ -f "$IMPLEMENT_TMPDIR/.bump-version-armed" && \
+                  ! -f "$IMPLEMENT_TMPDIR/postbump-state.sh" ]]; then
+                append_msg "larch hook preflight: pending post-/bump-version boundary in active /implement tmpdir (${TMPDIR_BASENAME}); NEXT REQUIRED: complete Step 8 post-bump continuation, write postbump-state.sh, then invoke implement-finalize.sh postbump."
             fi
         fi
     fi
