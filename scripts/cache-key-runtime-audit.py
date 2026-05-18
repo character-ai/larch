@@ -156,6 +156,8 @@ def content_to_text(value: Any) -> str:
 
 def entry_content(entry: TranscriptEntry) -> str:
     raw = entry.raw
+    if entry.entry_type == "attachment" and "attachment" in raw:
+        return content_to_text(raw.get("attachment"))
     message = raw.get("message")
     if isinstance(message, dict) and "content" in message:
         return content_to_text(message.get("content"))
@@ -326,6 +328,13 @@ def prefix_records(chain: list[TranscriptEntry]) -> list[PrefixRecord]:
         if entry.entry_type == "system":
             include = True
             reason = f"system:{entry.raw.get('subtype') or 'unknown'}"
+        elif entry.entry_type == "attachment":
+            include = True
+            attachment = entry.raw.get("attachment")
+            attachment_type = ""
+            if isinstance(attachment, dict):
+                attachment_type = str(attachment.get("type") or "")
+            reason = f"attachment:{attachment_type or 'unknown'}"
         elif entry.entry_type == "user" and entry.raw.get("isMeta") is True:
             include = True
             reason = "user:isMeta"
