@@ -804,7 +804,7 @@ def print_analysis(cache_path, records, skipped, plot_paths):
         values = [r["cost"] for r in rows]
         print(
             f"- {workflow}: {len(rows)} run(s), total {dollars(sum(values))}, "
-            f"median {dollars(statistics.median(values))}, max {dollars(max(values))}"
+            f"median {dollars(statistics.median(values))}, mean {dollars(statistics.mean(values))}, max {dollars(max(values))}"
         )
         vendor_costs: dict = {}
         for r in rows:

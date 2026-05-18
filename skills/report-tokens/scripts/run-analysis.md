@@ -52,7 +52,7 @@ Stdout contains progress lines while fetching and then a markdown analysis with:
 - cache JSON path
 - generated plot paths, or a plot-skipped reason
 - rates used
-- aggregate cost by workflow
+- aggregate cost by workflow (count, total, median, mean, max per SIMPLE/HARD/unknown)
 - top SIMPLE issues by estimated cost
 - HARD phase breakdown
 - cache-read dominance
