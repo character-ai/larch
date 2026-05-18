@@ -33,7 +33,14 @@ assert_eq "$(run_redactor '/tmp/claude-implement-larch1-G2GITf')" '<TMPDIR>' "cl
 assert_eq "$(run_redactor '/Users/example/.cache/larch/sessions/claude-design-cache123')" '<TMPDIR>' "cache session path redacted"
 assert_eq "$(run_redactor '/Users/example/larch3/scripts/foo.sh')" '<OPERATOR_REPO_PATH>/scripts/foo.sh' "operator repo path redacted"
 assert_eq "$(run_redactor '/Users/example/my.repo/scripts/foo.sh')" '<OPERATOR_REPO_PATH>/scripts/foo.sh' "operator repo path with dotted repo name redacted"
+assert_eq "$(run_redactor '/Users/example/my+repo/scripts/foo.sh')" '<OPERATOR_REPO_PATH>/scripts/foo.sh' "operator repo path with plus-bearing repo name redacted"
 assert_eq "$(run_redactor '/home/example/my.repo/scripts/foo.sh')" '<OPERATOR_REPO_PATH>/scripts/foo.sh' "linux operator repo path redacted"
+assert_eq "$(run_redactor '/home/example/foo+bar/scripts/foo.sh')" '<OPERATOR_REPO_PATH>/scripts/foo.sh' "linux operator repo path with plus-bearing repo name redacted"
+assert_eq "$(run_redactor 'OUTER_LAUNCHER_WORKDIR=/Users/example/my.repo')" 'OUTER_LAUNCHER_WORKDIR=<OPERATOR_REPO_PATH>' "operator repo root at end of value redacted"
+assert_eq "$(run_redactor 'cwd=/home/example/my.repo,')" 'cwd=<OPERATOR_REPO_PATH>,' "operator repo root before punctuation redacted"
+assert_eq "$(run_redactor 'cwd=/Users/example/my+repo,')" 'cwd=<OPERATOR_REPO_PATH>,' "operator repo root with plus-bearing repo name before punctuation redacted"
+assert_eq "$(run_redactor '{"cwd":"/Users/example/my.repo"}')" '{"cwd":"<OPERATOR_REPO_PATH>"}' "quoted JSON repo root at end of object redacted"
+assert_eq "$(run_redactor '{"cwd":"/Users/example/my.repo","x":1}')" '{"cwd":"<OPERATOR_REPO_PATH>","x":1}' "quoted JSON repo root before next field redacted"
 assert_eq "$(run_redactor 'see /tmp/claude-research-a_b-C/log.txt now')" 'see <TMPDIR>/log.txt now' "embedded path redacted in prose"
 assert_eq "$(run_redactor '/tmp/not-larch-session and /var/tmp/claude-implement-abc')" '/tmp/not-larch-session and /var/tmp/claude-implement-abc' "non-matching paths preserved"
 assert_eq "$(run_redactor '/var/folders/kf/abc123/T/claude-implement-larch5-XyZ')" '<TMPDIR>' "/var/folders macOS session path redacted"
@@ -97,6 +104,14 @@ assert_eq \
     "$(run_redactor 'foo\n/home/example/my.repo/scripts/foo.sh')" \
     'foo\n<OPERATOR_REPO_PATH>/scripts/foo.sh' \
     "E4: \\n immediately before linux operator repo path redacted, \\n preserved"
+assert_eq \
+    "$(run_redactor 'foo\n/Users/example/my+repo/scripts/foo.sh')" \
+    'foo\n<OPERATOR_REPO_PATH>/scripts/foo.sh' \
+    "E4: \\n immediately before plus-bearing operator repo path redacted, \\n preserved"
+assert_eq \
+    "$(run_redactor 'foo\n/Users/example/my.repo')" \
+    'foo\n<OPERATOR_REPO_PATH>' \
+    "E4: \\n immediately before operator repo root at end-of-line redacted, \\n preserved"
 
 # Expression 5: \n (two chars: backslash + n) immediately before larch/sessions path
 assert_eq \

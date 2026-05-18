@@ -1,0 +1,27 @@
+Gathering the pre-computed diff and commit history for a read-only security review.
+
+Searching the diff for relevant hunks and reading the modified sections in the repo for full context.
+
+Checking how `SKILL` and `RUN_ID` are validated in `larch-log.sh` and reading the new test block in the diff.
+
+Reviewed the precomputed diff (including `SECURITY.md`, `docs/run-logs.md`, `scripts/larch-log.md`, `scripts/larch-log.sh`, `scripts/redact-tmpdir-paths.{sh,md}`, `scripts/ship-pr.{sh,md}`, tests, bump-version artifacts, and the large `larch-logs/implement/...` tree). Confirmed `larch_log_validate_slug` in [`scripts/lib-larch-log.sh`](scripts/lib-larch-log.sh) restricts `--skill` / `--run-id` to `[A-Za-z0-9._-]` with no `/` or `..`, so the new `rel="larch-logs/$SKILL/$RUN_ID"` pathspec is not attacker-controlled path traversal from CLI flags.
+
+### In-Scope Findings
+
+1. **Latent** (`security`) [`scripts/redact-tmpdir-paths.sh`](scripts/redact-tmpdir-paths.sh) (new `[[:alnum:]_.-]+/[[:alnum:]_.-]+` operator-repo expressions): The scrubber only matches ASCII-ish path segments and relies on POSIX character classes whose `[[:alnum:]]` behavior is locale-sensitive. A real macOS/Linux home or repo directory that contains non-ASCII characters (or other characters outside that class) may fail to match, so text that still contains a literal `/Users/...` or `/home/...` absolute path could cross the publish boundary unchanged despite the expanded `SECURITY.md` claim. Tighten the contract with explicit `LC_ALL=C` (if not already set by all callers), document the ASCII-segment assumption, or add a conservative fallback pass for `/Users`/`/home` prefixes that does not depend on a narrow segment alphabet.
+
+2. **Latent** (`correctness`) [`scripts/ship-pr.sh`](scripts/ship-pr.sh) (`run_rebase_rebump` + `semver_lt`): `_origin_ver` is constrained with `^[0-9]+\.[0-9]+\.[0-9]+$`, but `new_version` from `classify-bump.sh` is not validated on the same path before `semver_lt "$new_version" "$_origin_ver"` and the numeric `[[ ... -lt ... ]]` comparisons inside `semver_lt`. Unusual or corrupted `NEW_VERSION` strings can make the regression test unreliable or, in edge cases, trip Bash’s integer parsing for `[[` under `set -euo pipefail`, aborting the rebase/re-bump flow mid-flight. Mirror the origin-version regex (or reuse a single strict semver gate) for `new_version` before any semver comparison.
+
+### Out-of-Scope Observations
+
+1. **Pre-existing / policy** (`risk-integration`) Large additions under [`larch-logs/implement/`](larch-logs/implement/) (reviewer transcripts, env snippets, tallies): Per your instructions, this is intentional shipped run-log material, not scope drift; any residual PII or secret risk in those trees is a standing trust-model topic for redaction at write time, not introduced by the `larch-log.sh commit` pathspec change alone.
+
+2. **Pre-existing** (`architecture`) Duplicated `semver_lt` logic between [`scripts/ship-pr.sh`](scripts/ship-pr.sh) and [`scripts/apply-bump.sh`](scripts/apply-bump.sh): Called out by reviewers in the committed tally; this branch adds another copy rather than consolidating—maintenance hazard only, not a new injection boundary.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	latent	security	scripts/redact-tmpdir-paths.sh:2714-2717	Narrow ASCII-only path segments and locale-sensitive alnum for operator-repo redaction.	Operator home or repo dir names with characters outside [[:alnum:]_.-] or locale quirks can leave literal /Users/... or /home/... paths in published text despite SECURITY.md claiming broader coverage.	Document ASCII-only assumption set LC_ALL=C at scrubber entry or add a conservative second pass for /Users and /home prefixes.
+1	in_scope	latent	correctness	scripts/ship-pr.sh:2789-2943 semver_lt and run_rebase_rebump	new_version from classify is not strict-semver-validated before semver_lt while origin version is.	Garbage or odd NEW_VERSION can make regression detection wrong or trigger bash integer comparison errors under set -e during rebase rebump.	Validate new_version with the same ^[0-9]+.[0-9]+.[0-9]+$ pattern (or shared helper) before semver_lt.
+1	out_of_scope	nit	risk-integration	larch-logs/implement/**	Large committed implement run logs with embedded external tool output.	Not introduced solely by commit pathspec fix per review scope rules; ongoing redaction discipline at capture time.	N/A for this PR; rely on existing redact pipeline at publish boundaries.
+1	out_of_scope	nit	architecture	scripts/ship-pr.sh vs scripts/apply-bump.sh	Duplicate semver_lt helpers across scripts.	Pre-existed as pattern; branch continues duplication.	Factor shared semver helper in a follow-up if desired.
+```

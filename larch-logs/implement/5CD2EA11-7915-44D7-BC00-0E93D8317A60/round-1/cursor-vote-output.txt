@@ -1,0 +1,22 @@
+Reading the ballot file to vote on each finding.
+
+Voted from the ballot text alone (read-only; no repo verification). Format: `FINDING_N: YES` has no required reason per your template.
+
+FINDING_1: YES  
+FINDING_2: EXONERATE -- accurate scope/process note but not worth a GitHub tracking issue.  
+FINDING_3: EXONERATE -- optional SECURITY blurb; legitimate reminder, not issue-worthy.  
+FINDING_4: NO -- explicitly historical/noise and out of scope for the pathspec fix.  
+FINDING_5: EXONERATE -- hypothetical layout drift; sharing a helper now adds churn for little gain.  
+FINDING_6: EXONERATE -- duplicate semver concern is real but subsumed by FINDING_8; extraction not urgent here.  
+FINDING_7: YES  
+FINDING_8: YES  
+FINDING_9: YES  
+FINDING_10: YES  
+FINDING_11: YES  
+FINDING_12: EXONERATE -- same docs/manifest contradiction as FINDING_11; one wording pass covers it.  
+FINDING_13: EXONERATE -- same docs/manifest contradiction as FINDING_11; one wording pass covers it.  
+FINDING_14: EXONERATE -- same docs/manifest contradiction as FINDING_11; one wording pass covers it.  
+FINDING_15: EXONERATE -- malformed NEW_VERSION is unlikely on this path; extra regex/skip branches add noise for rare cases.  
+FINDING_16: YES  
+FINDING_17: EXONERATE -- optional symlink variant; main regression already targets the stated bug class.  
+FINDING_18: EXONERATE -- same latent semver-validation point as FINDING_15; duplicate ballot item.

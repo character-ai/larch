@@ -1,0 +1,5 @@
+### In-Scope Findings
+
+1. **Important** `security` `larch-logs/implement/D1984F57-A5A7-4632-8114-6533205051D3/round-1/codex-generalist-output.txt.meta:8` — The committed run logs still expose an unredacted operator-local repo path via `OUTER_LAUNCHER_WORKDIR`; the same leak pattern appears in multiple `round-1/*output.txt.meta` files and in `larch-logs/implement/D1984F57-A5A7-4632-8114-6533205051D3/round-1/coder-prompt.md:11`. Concrete scenario: this PR is merged and ships public `larch-logs/implement/...` artifacts containing the operator’s local home/repo path, which is the privacy leak class called out in the feature description. Scrub the committed log files before merge and update `scripts/redact-tmpdir-paths.sh` to redact `/Users/<user>/<repo>` or `/home/<user>/<repo>` when the repo path appears at end-of-value/end-of-line or before punctuation, then add a regression case for `OUTER_LAUNCHER_WORKDIR=/Users/name/repo`.
+
+### Out-of-Scope Observations

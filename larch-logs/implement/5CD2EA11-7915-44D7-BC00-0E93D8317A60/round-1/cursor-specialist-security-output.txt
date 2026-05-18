@@ -1,0 +1,32 @@
+Gathering the branch diff and commit list for a security-focused read-only review.
+
+Searching the diff for relevant files and reading those hunks.
+
+Checking how `SKILL` and `RUN_ID` are validated in `larch-log.sh` and whether explicit `rel` introduces new risks.
+
+Reviewed the cached diff (focused on `scripts/larch-log.sh`, `scripts/test-larch-log.sh`, `docs/run-logs.md`, `scripts/larch-log.md`, plus the substantial `scripts/ship-pr.sh` / `apply-bump.sh` / harness changes and the large `larch-logs/implement/...` tree). Commits since `merge-base(HEAD, main)`:
+
+- `696d6c52` — fix(larch-log): scope commit pathspec to current RUN_ID, add regression test, clarify manifest status docs  
+- `fb46b0bf` — Bump version to 29.3.4 (#2309)
+
+`SKILL` / `RUN_ID` are constrained by `larch_log_validate_slug` in `require_common()` ([`scripts/larch-log.sh`](scripts/larch-log.sh) calling [`scripts/lib-larch-log.sh:29-35`](scripts/lib-larch-log.sh)), so the new explicit `rel="larch-logs/$SKILL/$RUN_ID"` does not newly enable path traversal into arbitrary git pathspecs beyond what was already implied by `repo_path` construction.
+
+### In-Scope Findings
+
+1. **Important** (`correctness`) — [`docs/run-logs.md:73`](docs/run-logs.md): The new sentence claims `status` in **committed** manifests is **always** `"in-progress"`. That overstates the contract: post-merge / recovery flows can set other values in the tmpdir manifest (for example `status=partial` in [`scripts/ship-pr.sh:1480`](scripts/ship-pr.sh) per `run_postmerge_phase`), and a later `larch-log.sh commit` could theoretically persist a non–`in-progress` value if the log root still held that manifest when flushed. **Concrete impact:** Readers treat committed `status` as a definitive lifecycle signal and misjudge recovery or partial runs, or wrongly dismiss `partial` / other values as impossible. **Suggested fix:** Replace “always” with a precise rule (for example: normal flush commits occur before `status=done`, so `done` is not what appears in git; list allowed committed values or point to `scripts/larch-log.md` for the exact state machine).
+
+2. **Latent** (`security` / shell robustness) — [`scripts/ship-pr.sh:1231-1234`](scripts/ship-pr.sh): The version-regression branch calls `semver_lt "$new_version" "$_origin_ver"` after validating only `_origin_ver` with a strict semver regex. `new_version` from `classify-bump.sh` output is not regex-gated on this path before numeric `[[ ... -lt ... ]]`. **Concrete scenario:** Malformed or non-numeric `NEW_VERSION` (corrupt tool output, hand-edited stub, or unexpected `classify-bump` format) can make the `[[` numeric comparisons error or behave unexpectedly under `set -euo pipefail`, aborting or mishandling `run_rebase_rebump`. **Suggested fix:** Reuse the same `^[0-9]+\.[0-9]+\.[0-9]+$` guard used for `_origin_ver` (and in [`apply-bump.sh`](.claude/skills/bump-version/scripts/apply-bump.sh)) before calling `semver_lt`, or skip the regression branch when the pattern does not match.
+
+### Out-of-Scope Observations
+
+1. **Nit** (`risk-integration`) — [`AGENTS.md`](AGENTS.md) (repo policy, not changed in this diff): Security- or privacy-relevant behavior changes are supposed to be reflected in [`SECURITY.md`](SECURITY.md). This branch materially reduces risk of committing extra run directories (operator-path / tmpdir leakage) via [`scripts/larch-log.sh`](scripts/larch-log.sh) but does not update `SECURITY.md`. **Why out of scope:** `SECURITY.md` is not part of the provided diff hunks you asked to treat as in-scope for introduced defects.
+
+2. **Nit** (`architecture`) — The cached diff bundles the narrow `larch-log.sh` pathspec fix with a large `ship-pr` / bump-version surface and a full `larch-logs/implement/...` flush. Per your instructions, the committed run-log tree is not flagged as noise; it still enlarges the security and correctness review surface for anyone treating this as a single “pathspec fix” PR. **Why out of scope:** not a defect in the pathspec change itself.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	docs/run-logs.md:73	Committed manifest status documented as always "in-progress"	Readers infer committed status is a complete lifecycle truth; contradicts recovery paths that can set e.g. partial before a flush, so operational and audit conclusions about a run can be wrong	Replace absolute "always" with accurate lifecycle wording; enumerate or defer to scripts/larch-log.md for committed vs tmpdir-only statuses
+1	in_scope	latent	security	scripts/ship-pr.sh:1231-1234	semver_lt applied to classify NEW_VERSION without prior strict semver validation	Malformed NEW_VERSION can break [[ numeric compares or error under set -e, derailing run_rebase_rebump	Validate new_version with the same ^[0-9]+.[0-9]+.[0-9]+$ pattern (or skip regression logic) before semver_lt
+1	out_of_scope	nit	risk-integration	SECURITY.md (policy vs branch diff)	No SECURITY.md update alongside privacy-relevant commit-behavior change	Policy asks for SECURITY updates on security-relevant changes; reviewers may miss documenting reduced accidental run-dir commit risk	Consider a short SECURITY note when implementing (not required for this read-only review)
+1	out_of_scope	nit	architecture	Branch diff aggregate	Wide PR mixes larch-log pathspec fix, ship-pr semver/reasoning rewrite, apply-bump guard, and bulk run-log commit	Higher review cost and coupling than a minimal pathspec-only change	Prefer smaller stacked PRs when process allows (observation only)
+```

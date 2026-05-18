@@ -1,0 +1,35 @@
+Gathering the branch diff and commit list for a read-only review focused on tests, CI, and regression risk.
+
+Searching the diff for relevant hunks; the full diff is too large to read at once.
+
+Verifying test variable wiring and whether the new `rel` path can mis-scope when `LARCH_LOG_REPO_ROOT` differs from `REPO_ROOT`.
+
+## Commits vs `main`
+
+`git log $(git merge-base HEAD main)..HEAD --oneline`:
+
+- `696d6c52` — `fix(larch-log): scope commit pathspec to current RUN_ID, add regression test, clarify manifest status docs`
+- `fb46b0bf` — `Bump version to 29.3.4 (#2309)`
+
+The precomputed diff also includes large unrelated hunks (for example `scripts/ship-pr.sh`, `scripts/test-ship-pr.sh`, bump-version assets, and a full `larch-logs/implement/D1984F57-…` tree). The review below follows your testing/regression lens and ties findings to files the branch actually changes.
+
+### In-Scope Findings
+
+1. **Important** (`correctness`) [docs/run-logs.md](docs/run-logs.md) (new paragraph under `## manifest.json`, immediately after the “Created by `scripts/larch-log.sh init`…” sentence): The added claim that `status` in **committed** manifests is **always** `"in-progress"` is not true for this repository’s own shipped logs. Multiple committed manifests under `larch-logs/implement/` still contain `"status": "done"` (for example `larch-logs/implement/FA318108-514A-405E-B331-3664A952C94A/manifest.json:10` and many others from `grep`). Readers will mis-infer that any `done` value is invalid or that the on-disk corpus is inconsistent. **Suggested fix:** Soften or correct the wording (for example distinguish “current lifecycle / typical PR snapshots” vs legacy commits, or document when `done` last appeared and that new runs aim not to commit post-`done` updates), and align with `scripts/implement-finalize.md` (teardown writes `done` in tmpdir without a commit, which does not imply all historical committed files lack `done`).
+
+2. **Nit** (`risk-integration`) [scripts/test-larch-log.sh](scripts/test-larch-log.sh) `188-214` (“commit does not include orphan stale-run directories”): The scenario exercises a sibling stale run directory under the same staging `larch-logs/implement/` tree, which is the right guard for “do not `git add` the whole skill directory.” It does **not** reproduce the plan’s symlink / `REPO_ROOT` vs `LARCH_LOG_REPO_ROOT` prefix-strip failure mode. **Suggested fix:** Optional follow-up: a second test with `REPO_ROOT` resolved through a symlink and a real-path log root, if you want lock-in on the exact regression named in comments.
+
+### Out-of-Scope Observations
+
+1. **Nit** (`risk-integration`, out of scope): Historical `larch-logs/**/manifest.json` files that still carry literal `operator_cwd` / `operator_repo_root` paths and `"status": "done"` predate the stricter redaction narrative in [docs/run-logs.md](docs/run-logs.md); those files are not introduced solely to fix `larch-log.sh commit` pathspecs. Worth knowing when wordsmithing the new `status` paragraph so docs do not contradict the checked-in corpus.
+
+**Plan check (`plan` / `requirements`):** The plan asked for a regression test in `scripts/test-larch-log.sh`, doc clarification in `docs/run-logs.md`, and contract text in `scripts/larch-log.md`. The regression test and `scripts/larch-log.md` updates match the plan; the `docs/run-logs.md` addition overstates `status` semantics and should be corrected as in finding 1.
+
+**CI note:** `make test-larch-log` / `test-harnesses-3` runs [scripts/test-larch-log.sh](scripts/test-larch-log.sh) ([Makefile](Makefile) `536-537`, `40`), so the new case is on the harness path once the branch is exercised in CI.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	docs/run-logs.md (manifest.json section, new status paragraph)	New docs claim committed manifest status is always in-progress and done exists only post-merge in tmpdir.	Contradicts many committed larch-logs/implement/*/manifest.json files with status done (e.g. larch-logs/implement/FA318108-514A-405E-B331-3664A952C94A/manifest.json:10); misleads consumers auditing the tree.	Reword to match actual committed corpus and lifecycle (legacy done vs current intent), or document the transition explicitly.
+1	in_scope	nit	risk-integration	scripts/test-larch-log.sh:188-214	Stale-run regression covers sibling dirs under the same staging root but not symlink REPO_ROOT vs LARCH_LOG_REPO_ROOT mismatch from the plan rationale.	Less lock-in on the exact prefix-strip bug class named in the implementation plan.	Optional: add a symlinked-repo variant if that edge remains load-bearing.
+1	out_of_scope	nit	risk-integration	larch-logs/implement/**/manifest.json (historical)	Legacy manifests mix done status and older operator path fields.	Noise when reconciling new run-logs prose with the repo snapshot.	Treat as historical context when editing docs; not required for the commit pathspec fix.
+```

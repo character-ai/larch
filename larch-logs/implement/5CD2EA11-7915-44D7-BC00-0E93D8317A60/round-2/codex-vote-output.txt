@@ -1,0 +1,24 @@
+FINDING_1: YES
+FINDING_2: NO -- intentional committed run logs are repository policy, not a future issue.
+FINDING_3: EXONERATE -- duplicate helper is real maintainability debt but too small to track separately.
+FINDING_4: EXONERATE -- residual run-log sensitivity is real but already covered by the redaction/publish-boundary policy.
+FINDING_5: EXONERATE -- duplicate helper is real maintainability debt but not issue-worthy.
+FINDING_6: EXONERATE -- sharing the tiny semver helper adds more coordination than the current duplication warrants.
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: NO -- the softened manifest wording is more accurate than the absolute plan invariant.
+FINDING_11: NO -- restoring an absolute committed-status invariant would contradict existing exceptions and history.
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: EXONERATE -- fixture reuse is legitimate cleanup but not worth churn.
+FINDING_17: NO -- docs should remain accurate rather than match an over-strong plan claim.
+FINDING_18: YES
+FINDING_19: EXONERATE -- bespoke payload is harmless test duplication.
+FINDING_20: EXONERATE -- extra git object assertion is reasonable but optional for this regression.
+FINDING_21: EXONERATE -- duplicate payload text is minor maintenance risk only.
+FINDING_22: YES
+FINDING_23: YES
+FINDING_24: YES

@@ -5,5 +5,5 @@ CAPTURE_STDOUT_ONLY=true
 OUTPUT_FILE=<TMPDIR>/round-1/cursor-specialist-security-output.txt
 OUTER_LAUNCHER=<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/29.3.2/scripts/launch-review.sh
 OUTER_LAUNCHER_PROMPT_FILE=<TMPDIR>/round-1/cursor-specialist-security-output.txt.prompt
-OUTER_LAUNCHER_WORKDIR=/Users/zhupanov/larch1
+OUTER_LAUNCHER_WORKDIR=<OPERATOR_REPO_PATH>
 OUTER_LAUNCHER_RISK=high

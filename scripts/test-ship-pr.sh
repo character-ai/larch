@@ -60,6 +60,11 @@ if [[ "${STUB_APPLY_SAME_VERSION:-false}" == true ]]; then
   echo "ERROR=origin/main has already bumped to 1.0.1; re-classify needed"
   exit 1
 fi
+if [[ "${STUB_APPLY_VERSION_REGRESSION:-false}" == true ]]; then
+  echo "APPLIED=false"
+  echo "ERROR=version regression: 1.0.1 < origin/main 1.0.2; rebase conflict may have been resolved to branch stale version — re-resolve and re-bump"
+  exit 1
+fi
 echo "APPLIED=true"
 echo "COMMIT_SHA=abc123"
 SH
@@ -392,6 +397,13 @@ write_state "$tmp/ship-pr-state.sh" bump
 STUB_APPLY_SAME_VERSION=true run_subject "$root" "$tmp" "$tmp/rc"
 assert_rc "$tmp/rc" 5 "same-version bump exits 5"
 assert_state_line "$tmp/ship-pr-state.sh" "CALLER_KIND=step8b_same_version" "same-version writes caller kind"
+
+root=$(make_repo version_regression)
+tmp=$(make_tmpdir)
+write_state "$tmp/ship-pr-state.sh" bump
+STUB_APPLY_VERSION_REGRESSION=true run_subject "$root" "$tmp" "$tmp/rc"
+assert_rc "$tmp/rc" 5 "version-regression bump exits 5"
+assert_state_line "$tmp/ship-pr-state.sh" "CALLER_KIND=step8b_same_version" "version-regression writes caller kind"
 
 root=$(make_repo ci_initial)
 tmp=$(make_tmpdir)
@@ -876,6 +888,77 @@ if grep -qxF -- "- **New version**: \`2.3.1\`" "$tmp/bump-version-reasoning.md" 
 else
     fail "run_rebase_rebump should update reasoning markdown after version correction"
     sed 's/^/    reasoning: /' "$tmp/bump-version-reasoning.md" 2>/dev/null || true
+fi
+rm -rf "$sentinel_dir"
+
+root=$(make_repo rebump_invalid_new_version)
+tmp=$(make_tmpdir)
+write_state "$tmp/ship-pr-state.sh" ci-initial
+_make_rebase_stubs "$root" "$(mktemp -d /tmp/ship-pr-rebump-invalid.XXXXXX)"
+cat > "$root/.claude/skills/bump-version/scripts/classify-bump.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+echo "CURRENT_VERSION=2.1.4"
+echo "NEW_VERSION=2.1"
+echo "BUMP_TYPE=PATCH"
+echo "REASONING_FILE=${IMPLEMENT_TMPDIR:-/tmp}/bump-version-reasoning.md"
+STUB
+chmod +x "$root/.claude/skills/bump-version/scripts/classify-bump.sh"
+set +e
+(cd "$root" && PATH="$root/scripts:$PATH" CLAUDE_PLUGIN_ROOT="$root" \
+    "$root/scripts/ship-pr.sh" --state-file "$tmp/ship-pr-state.sh" --implement-tmpdir "$tmp" \
+    --merge true --draft false --forked false --repo owner/repo \
+    > "$tmp/stdout-rebump-invalid" 2>&1)
+printf '%s' "$?" > "$tmp/rc-rebump-invalid"
+set -e
+assert_rc "$tmp/rc-rebump-invalid" 4 "run_rebase_rebump rejects invalid classify-bump semver output"
+
+root=$(make_repo rebump_reasoning_fallback_log)
+tmp=$(make_tmpdir)
+sentinel_dir=$(mktemp -d /tmp/ship-pr-rebump-fallback.XXXXXX)
+write_state "$tmp/ship-pr-state.sh" ci-initial
+_make_rebase_stubs "$root" "$sentinel_dir"
+cat > "$root/.claude/skills/bump-version/scripts/classify-bump.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+reasoning_file="${IMPLEMENT_TMPDIR:-/tmp}/bump-version-reasoning.md"
+cat > "$reasoning_file" <<'EOF'
+# Version Bump Reasoning
+
+## Result: PATCH
+
+No structured new-version bullet here.
+EOF
+echo "CURRENT_VERSION=2.1.4"
+echo "NEW_VERSION=2.1.5"
+echo "BUMP_TYPE=PATCH"
+echo "REASONING_FILE=$reasoning_file"
+STUB
+chmod +x "$root/.claude/skills/bump-version/scripts/classify-bump.sh"
+real_git=$(command -v git)
+cat > "$root/scripts/git" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "\${1:-}" == "show" && "\${2:-}" == "origin/main:.claude-plugin/plugin.json" ]]; then
+    printf '%s\n' '{"version":"2.3.0"}'
+    exit 0
+fi
+exec "$real_git" "\$@"
+STUB
+chmod +x "$root/scripts/git"
+set +e
+(cd "$root" && PATH="$root/scripts:$PATH" LARCH_LOG_STUB_SENTINEL_DIR="$sentinel_dir" CLAUDE_PLUGIN_ROOT="$root" \
+    "$root/scripts/ship-pr.sh" --state-file "$tmp/ship-pr-state.sh" --implement-tmpdir "$tmp" \
+    --merge true --draft false --forked false --repo owner/repo \
+    > "$tmp/stdout-rebump-fallback" 2>&1)
+printf '%s' "$?" > "$tmp/rc-rebump-fallback"
+set -e
+assert_rc "$tmp/rc-rebump-fallback" 0 "run_rebase_rebump writes corrected fallback reasoning when rewrite fails"
+if grep -Eq -- '--input-file .*/bump-version-reasoning-corrected-[0-9]+\.md' "$sentinel_dir/larch-log-calls.txt" 2>/dev/null; then
+    ok "run_rebase_rebump logs corrected fallback reasoning instead of stale classify output"
+else
+    fail "run_rebase_rebump should point larch-log at corrected fallback reasoning"
+    sed 's/^/    larch-log: /' "$sentinel_dir/larch-log-calls.txt" 2>/dev/null || true
 fi
 rm -rf "$sentinel_dir"
 

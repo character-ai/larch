@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "rounds_completed": 2,
+  "reviewer_output_paths": [
+    "<TMPDIR>/round-2/claude-vote-output.txt",
+    "<TMPDIR>/round-2/codex-generalist-output.txt",
+    "<TMPDIR>/round-2/codex-vote-output.txt",
+    "<TMPDIR>/round-2/cursor-specialist-correctness-output.txt",
+    "<TMPDIR>/round-2/cursor-specialist-edge-cases-output.txt",
+    "<TMPDIR>/round-2/cursor-specialist-plan-fidelity-output.txt",
+    "<TMPDIR>/round-2/cursor-specialist-security-output.txt",
+    "<TMPDIR>/round-2/cursor-specialist-structure-output.txt",
+    "<TMPDIR>/round-2/cursor-specialist-testing-output.txt",
+    "<TMPDIR>/round-2/cursor-vote-output.txt"
+  ],
+  "finding_counts": {
+    "total_accepted": 8,
+    "total_rejected": 8,
+    "total_exonerated": 4,
+    "total_neutral": 0
+  },
+  "accepted_count": 8,
+  "rejected_count": 8,
+  "exonerated_count": 4,
+  "neutral_count": 0
+}
