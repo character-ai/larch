@@ -95,4 +95,21 @@ if grep -Fq 'failed (exit 0)' "$TMP/execution-issues.md"; then
     exit 1
 fi
 
+# Narrative-only output (no structured findings) must produce FINDINGS_COUNT=0,
+# not a spurious "Reviewer finding" catchall row (#2254).
+narrative="$TMP/narrative-only.txt"
+cat > "$narrative" <<'EOF'
+Gathering the diff and reviewing changes... everything looks fine to me.
+No specific concerns to raise at this time.
+EOF
+printf '0\n' > "$narrative.done"
+printf 'STATUS=clean\n' > "$narrative.dirty-tree"
+out=$(WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.01 "$SCRIPT" --claude-output-files "$narrative" --mode description --timeout 1 --findings-file "$TMP/findings-narrative.md" --oos-file "$TMP/oos-narrative.md")
+assert_stdout_cap "$out"
+grep -Fq 'FINDINGS_COUNT=0' <<< "$out"
+if grep -Fq 'Reviewer finding' "$TMP/findings-narrative.md" 2>/dev/null; then
+    echo "FAIL: narrative-only output produced a Reviewer finding row" >&2
+    exit 1
+fi
+
 echo "All assertions passed."

@@ -78,6 +78,39 @@ voter1_rc=$?
 set -e
 [[ -f "$VOTER_1_PATH.done" ]] || printf '%s\n' "$voter1_rc" > "$VOTER_1_PATH.done"
 
+# Log diagnostic when Claude voter fails or produces empty output.
+if [[ "$voter1_rc" -ne 0 || ! -s "$VOTER_1_PATH" ]]; then
+    _voter1_diag="$REVIEW_TMPDIR/voter1-diag.txt"
+    {
+        printf 'voter1_rc=%s\n' "$voter1_rc"
+        printf 'output_bytes=%s\n' "$(wc -c < "$VOTER_1_PATH" 2>/dev/null || echo 0)"
+        if [[ -s "${VOTER_1_PATH}.diag" ]]; then
+            printf -- '--- first 200 bytes of .diag ---\n'
+            head -c 200 "${VOTER_1_PATH}.diag"
+            printf '\n'
+        fi
+    } > "$_voter1_diag"
+    _issues_log="${LARCH_EXECUTION_ISSUES_LOG:-}"
+    if [[ -z "$_issues_log" && -n "${SESSION_ENV_PATH:-}" ]]; then
+        _issues_log="$(dirname "$SESSION_ENV_PATH")/execution-issues.md"
+    fi
+    if [[ -z "$_issues_log" && -n "${IMPLEMENT_TMPDIR:-}" ]]; then
+        _issues_log="$IMPLEMENT_TMPDIR/execution-issues.md"
+    fi
+    [[ -z "$_issues_log" ]] && _issues_log="$REVIEW_TMPDIR/execution-issues.md"
+    if [[ -x "$PLUGIN_ROOT/scripts/append-tool-failure.sh" ]]; then
+        "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
+            --log "$_issues_log" \
+            --site "dispatch-code-voters.sh voter1" \
+            --tool "launch-claude-review.sh (claude voter)" \
+            --exit-code "$voter1_rc" \
+            --category Warnings \
+            --output-file "$_voter1_diag" \
+            --redact >/dev/null 2>&1 || true
+    fi
+    unset _voter1_diag _issues_log
+fi
+
 codex_prompt=$(make_voter_prompt_file codex)
 cursor_prompt=$(make_voter_prompt_file cursor)
 VOTER_2_BASE="$REVIEW_TMPDIR/codex-vote-output.txt"

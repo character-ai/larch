@@ -32,6 +32,8 @@ The script writes per-slot prompt files, builds a two-slot NDJSON manifest, and 
 - `DEGRADED_PANEL_WARNING`: emitted when fewer than 3 effective judges produced non-empty output.
 - `DISPATCH_OK`: `false` when the direct Claude voter fails or any waterfall slot hard-fails in Phase 3.
 
+When `VOTER_1_STATUS=failed` (non-zero exit or empty output from the Claude voter), a Warnings entry is appended to `execution-issues.md` via `append-tool-failure.sh`, capturing `voter1_rc`, the output byte count, and the first 200 bytes of `${VOTER_1_PATH}.diag` when present. The log path resolves via `LARCH_EXECUTION_ISSUES_LOG`, `$(dirname "$SESSION_ENV_PATH")/execution-issues.md`, `$IMPLEMENT_TMPDIR/execution-issues.md`, or `$REVIEW_TMPDIR/execution-issues.md` in that order (#2254).
+
 `fallback` means the slot finished on Claude after a waterfall fallback. `failed` means the final output path is missing or empty.
 
 ## Callers and Harness

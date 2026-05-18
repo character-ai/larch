@@ -211,12 +211,12 @@ parse_output() {
     awk -v label="$label" -v mode="$MODE" '
     BEGIN { oos=0; body=""; title="" }
     function flush() {
-        if (body != "") {
+        if (body != "" && title != "") {
             gsub(/^[[:space:]]+|[[:space:]]+$/, "", body)
             gsub(/\r/, "", body)
             gsub(/\n/, " ", body)
             prefix=oos ? "[OUT_OF_SCOPE] " : ""
-            printf("%s%s\t%s\t%s\n", prefix, title == "" ? "Reviewer finding" : title, label, body)
+            printf("%s%s\t%s\t%s\n", prefix, title, label, body)
         }
         body=""; title=""
     }
