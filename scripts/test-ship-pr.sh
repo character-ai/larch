@@ -769,7 +769,9 @@ rm -rf "$sentinel_dir"
 # Vendor retry loop: two no-change fix attempts still re-dispatch vendor, third succeeds.
 root=$(make_repo ci_fix_vendor_retry)
 tmp=$(make_tmpdir)
-call_dir=$(mktemp -d /tmp/ship-pr-vendor-retry.XXXXXX)
+# call_dir must live under IMPLEMENT_TMPDIR ($tmp) so ship-pr resolve_checks_log_path
+# accepts REDACTED_LOG_FILE paths from the checks stub (see #2288).
+call_dir=$(mktemp -d "$tmp/ship-pr-vendor-retry.XXXXXX")
 cat > "$root/scripts/ci-wait.sh" <<STUB
 #!/usr/bin/env bash
 set -euo pipefail
