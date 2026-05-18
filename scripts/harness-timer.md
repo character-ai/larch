@@ -21,11 +21,13 @@ After `<command>` returns, the script prints one tab-separated line to stdout
 (columns separated by `\t`):
 
 ```
-LARCH_HARNESS_TIMING<TAB><test-name><TAB><N>s
+LARCH_HARNESS_TIMING<TAB><test-name><TAB><N.NN>s
 ```
 
 `LARCH_HARNESS_TIMING` is the sentinel prefix used by log parsers and CI
-analysis tools to locate per-test timing rows.
+analysis tools to locate per-test timing rows. The timing token matches
+`^[0-9]+(\.[0-9]+)?s$` — consumers must accept both integer-only values
+(from historical committed logs) and fractional values like `0.34s` or `7.62s`.
 
 ## Invariants
 
@@ -35,8 +37,9 @@ analysis tools to locate per-test timing rows.
 - External termination of the wrapper shell (for example CI cancellation or an
   untrapped signal) can prevent emission; treat missing rows as interrupted
   runs, not zero-duration samples.
-- Duration uses `date +%s` (second granularity); sufficient for shard
-  rebalancing purposes.
+- Duration uses `python3 time.time()` (fractional-second precision); the
+  emitted value has exactly 2 digits after the decimal point (e.g. `0.34s`,
+  `7.62s`, `0.00s`).
 
 ## Makefile Wiring
 
@@ -50,10 +53,10 @@ labeled with the same target name; consumers should sum them.
 
 ## Regression Harness
 
-No dedicated harness; covered indirectly by the existing
-`scripts/test-harness-shards-coverage.sh` (which validates Makefile structure
-after any recipe changes) and by running any shard target and grepping for
-`LARCH_HARNESS_TIMING` in its output.
+`scripts/test-harness-timer.sh` — tests fractional-second output shape and
+exit-code mirroring. Also covered indirectly by
+`scripts/test-harness-shards-coverage.sh` (Makefile structure validation) and
+by running any shard target and grepping for `LARCH_HARNESS_TIMING`.
 
 ## Edit-In-Sync
 

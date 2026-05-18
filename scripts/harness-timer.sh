@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 # Wraps one regression-harness test invocation to emit per-test timing.
 # Usage: harness-timer.sh <test-name> <command> [args…]
-# Prints LARCH_HARNESS_TIMING\t<name>\t<N>s to stdout on completion.
+# Prints LARCH_HARNESS_TIMING\t<name>\t<N.NN>s to stdout on completion.
 # Exits with the same exit code as <command>.
+# set -e intentionally omitted: rc=$? must capture non-zero inner exit.
 name="$1"; shift
-start=$(date +%s)
+start=$(python3 -c 'import time; print(time.time())')
 "$@"
 rc=$?
-end=$(date +%s)
-printf 'LARCH_HARNESS_TIMING\t%s\t%ds\n' "$name" "$((end - start))"
+end=$(python3 -c 'import time; print(time.time())')
+elapsed=$(python3 -c "print(f'{$end - $start:.2f}')")
+printf 'LARCH_HARNESS_TIMING\t%s\t%ss\n' "$name" "$elapsed"
 exit "$rc"
