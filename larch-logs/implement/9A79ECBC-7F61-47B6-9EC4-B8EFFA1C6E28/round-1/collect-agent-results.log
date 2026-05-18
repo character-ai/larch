@@ -7,10 +7,10 @@ FAILURE_REASON=
 
 REVIEWER_FILE=<TMPDIR>/round-1/cursor-specialist-correctness-output.txt
 TOOL=cursor
-STATUS=NOT_SUBSTANTIVE
+STATUS=OK
 EXIT_CODE=0
 STRUCTURED_SIDECAR=
-FAILURE_REASON=no provenance marker found
+FAILURE_REASON=
 
 REVIEWER_FILE=<TMPDIR>/round-1/cursor-specialist-testing-output.txt
 TOOL=cursor

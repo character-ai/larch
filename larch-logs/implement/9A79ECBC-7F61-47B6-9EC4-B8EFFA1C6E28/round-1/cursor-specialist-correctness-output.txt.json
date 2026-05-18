@@ -2,14 +2,14 @@
   "type": "result",
   "subtype": "success",
   "is_error": false,
-  "duration_ms": 232240,
-  "duration_api_ms": 232240,
-  "session_id": "e0a67647-b659-49bd-b9ce-643d8f91249b",
-  "request_id": "fd167f5f-7b5e-4ed4-b1ca-cff4ae66d1e4",
+  "duration_ms": 261194,
+  "duration_api_ms": 261194,
+  "session_id": "12a0dd69-f759-4dc1-9e25-58e17b8c9352",
+  "request_id": "4efdd927-0251-46c4-a699-e6b4674a1840",
   "usage": {
-    "inputTokens": 59092,
-    "outputTokens": 8179,
-    "cacheReadTokens": 459264,
+    "inputTokens": 39321,
+    "outputTokens": 9395,
+    "cacheReadTokens": 267776,
     "cacheWriteTokens": 0
   }
 }

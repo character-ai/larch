@@ -1,9 +1,40 @@
-Gathering the branch diff and commit history for a read-only review.
+Gathering the pre-computed diff and commit history for a read-only review.
 
-Checking timing-report schemas and a sample manifest to validate aggregation semantics and silent-failure paths.
+Searching the diff for measurement scripts and AGENTS.md changes.
 
-Confirming transcript JSON shape: assistant `message.content` includes `tool_use` blocks — matches `iter_tool_uses`. Checking one `timing-report.md` for MD parsing and whether `measure-realized-cost` undercounts vs `per_step`.
+Reading full scripts and AGENTS.md changes from the repo (diff hunks are truncated).
 
-Having verified `per_step` contains multiple rows per skill per run while the script deduplicates to one increment per run, filing that as the primary correctness finding. Creating the plan document per plan-mode requirements.
+Checking executable bits and the `measure-md-cost` header for a TSV typo:
 
+Review summary: three commits on the branch (`067c975` add tooling, `47c182e` chore larch-logs flush, `21d048c` review round 1). Read full scripts from the repo and verified the `measure-md-cost` header bug with raw bytes.
 
+### In-Scope Findings
+
+1. **Important** | **correctness** | [`scripts/measure-md-cost.sh:95`](scripts/measure-md-cost.sh) — The Python string literal `fh.write("path\ttier\tbytes...")` parses as `path` + TAB + `ier` + TAB + `bytes`, so the emitted header’s second column is **`ier`**, not **`tier`**, mislabeling the TSV contract and breaking anything that keys off the column name `tier`. The committed [`larch-logs/measure-md-cost/2026-05-18.tsv`](larch-logs/measure-md-cost/2026-05-18.tsv) first line correctly contains `tier` (verified via raw bytes), so that artifact is **not** reproducible from the current script without fixing the literal (e.g. split concatenation `"path\t" + "tier\tbytes\ttokens\tlines\th2_count\n"` or use a raw tab between tokens).
+
+2. **Important** | **risk-integration** | [`scripts/measure-realized-cost.sh:100-106`](scripts/measure-realized-cost.sh) — Skills that appear in timing data but have **no** matching `skills/<name>/SKILL.md` or `.claude/skills/<name>/SKILL.md` are **silently dropped** from the ranked TSV (`continue` with no stderr). A typo slug, renamed skill, or non-file-backed name yields a **plausibly complete-looking report that omits entire workloads** with no signal that data was lost.
+
+3. **Latent** | **correctness** | [`scripts/measure-realized-cost.sh:52-87`](scripts/measure-realized-cost.sh) — `skills_in_run` is a **set**, so each skill is counted **at most once per run directory** even when `timing-report.json` `per_step` lists the same skill on many steps (common for `implement`). `realized_tokens = invocations * tokens_per_invocation` then measures “runs touching this skill × full SKILL size,” not “per-step loads,” which **understates** cost if the intended contract is per-step prompt loads; the sibling doc says timing “identify which skills appeared” but not this dedupe, so consumers can mis-budget.
+
+4. **Latent** | **architecture** | [`scripts/measure-realized-cost.sh:52-54`](scripts/measure-realized-cost.sh) — The loop walks **every** `larch-logs/*/*` directory (not only `implement/`), so any future two-level subtree that happens to carry `manifest.json` / timing files will be folded into the same counters **without** distinguishing run type, which can **mix unrelated semantics** into one ranking if layouts evolve.
+
+5. **Latent** | **risk-integration** | [`scripts/measure-realized-cost.sh:59-83`](scripts/measure-realized-cost.sh) — `except Exception: pass` around timing JSON and manifest fallbacks **swallows parse errors**; a corrupt or schema-shifted `timing-report.json` can yield empty `skills_in_run` and then a **quiet fallback** to manifest-only or nothing, producing thin output that still looks like a successful run.
+
+6. **Nit** | **architecture** | [`scripts/measure-md-cost.sh:93-98`](scripts/measure-md-cost.sh) — If the process dies after `mkstemp` but before `os.replace`, a prefixed `.tmp.measure-md-cost.*` file can remain under `larch-logs/measure-md-cost/` until manual cleanup (low impact for a dev script).
+
+7. **Nit** | **correctness** | [`scripts/measure-ngram-duplication.sh:25-27`](scripts/measure-ngram-duplication.sh) — `LARCH_MEASURE_NGRAM_SIZE` / `MIN_FILES` / `LIMIT` are parsed with `int()` and no floor validation; `ngram_size=0` or negative yields nonsensical ranges or `ValueError` on `ranked[:limit]` if limit negative, which is an avoidable footgun for ad-hoc env overrides.
+
+### Out-of-Scope Observations
+
+None identified against the stated scope rules.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/measure-md-cost.sh:95	Python literal path\ttier splits as path + TAB + ier so header column is wrong.	Next run writes second column name ier; parsers expecting tier break; committed 2026-05-18.tsv header does not match script output (artifact drift).	Use explicit tabs around tier e.g. fh.write("path\t" + "tier\tbytes\ttokens\tlines\th2_count\n") or equivalent so tier is not glued to escape.
+1	in_scope	important	risk-integration	scripts/measure-realized-cost.sh:100-106	Unknown skill paths are skipped with no warning.	Timing lists design or custom slugs with no SKILL.md on disk vanish from TSV; report looks healthy but omits work.	Log stderr for skipped skills or emit a comment row / companion file listing skips.
+1	in_scope	latent	correctness	scripts/measure-realized-cost.sh:52-87	per_run set dedupes multiple per_step rows for same skill.	Multi-step implement runs count as one invocation; realized_tokens is a lower bound vs per-step loads.	Document invocations=runs_with_skill or count len(per_step rows) per skill if per-step cost is intended.
+1	in_scope	latent	architecture	scripts/measure-realized-cost.sh:52-54	Glob larch-logs/*/* ingests any two-level run layout.	Future non-implement logs with same filenames pollute aggregates.	Restrict to larch-logs/implement/*/ or filter by manifest schema_version or parent dir name.
+1	in_scope	latent	risk-integration	scripts/measure-realized-cost.sh:59-83	Bare except pass on timing/manifest parse.	Corrupt JSON yields empty skills with no error line.	Log exception summary to stderr or increment a parse_errors counter column.
+1	in_scope	nit	architecture	scripts/measure-md-cost.sh:93-98	Tmpfile not removed on crash before replace.	Stray .tmp.measure-md-cost.* files after OOM/kill.	Trap EXIT to unlink tmp_name on failure.
+1	in_scope	nit	correctness	scripts/measure-ngram-duplication.sh:25-27	Unvalidated int env for ngram size and limit.	ngram_size 0 or negative breaks intuition or raises.	Clamp ngram_size and min_files to >=1 and limit to >=0 with clear errors.
+```
