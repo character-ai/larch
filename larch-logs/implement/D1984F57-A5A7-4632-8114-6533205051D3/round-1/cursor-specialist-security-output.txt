@@ -1,0 +1,7 @@
+Gathering the precomputed diff and commit history for a read-only security-focused review.
+
+Verifying test case parameters and `semver_lt` behavior with edge cases by reading the relevant file sections.
+
+Review complete: inspected the cached diff, commit history (`3a525a50`), and surrounding `ship-pr.sh` / `apply-bump.sh` / `test-apply-bump.sh` / `classify-bump.sh` for trust-boundary and correctness effects.
+
+

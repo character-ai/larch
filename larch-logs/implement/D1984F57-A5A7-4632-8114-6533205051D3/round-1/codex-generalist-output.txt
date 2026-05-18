@@ -1,0 +1,11 @@
+### In-Scope Findings
+
+1. **Important** `correctness` `scripts/ship-pr.sh:1213` / `scripts/ship-pr.sh:1239` — When the regression correction triggers, `new_version` is updated but `reasoning_file` still contains the original `classify-bump.sh` result. Concrete scenario: `classify-bump.sh` emits `NEW_VERSION=29.1.39`, the guard corrects to `29.3.1`, `apply-bump.sh` commits `29.3.1`, then the `version-bump-reasoning` larch-log batch is refreshed from a file that still says the new version is `29.1.39`. Update or append to `BUMP_REASONING_FILE` when correction happens so the recorded audit trail includes the corrected version and why it changed.
+
+2. **Nit** `risk-integration` `.claude/skills/bump-version/SKILL.md:53` — `apply-bump.sh` now has a new fail-closed regression error, but the shipped `/bump-version` skill prompt still documents only the same-version origin failure path. Add the regression guard/error behavior there too; `apply-bump.md` explicitly lists this SKILL file as an edit-in-sync target for behavior changes.
+
+### Out-of-Scope Observations
+
+No out-of-scope observations.  
+
+Verification note: `bash -n` passed for `scripts/ship-pr.sh`, `.claude/skills/bump-version/scripts/apply-bump.sh`, and `scripts/test-apply-bump.sh`. `make test-apply-bump` could not run in this sandbox because `mktemp` failed with `Operation not permitted`.

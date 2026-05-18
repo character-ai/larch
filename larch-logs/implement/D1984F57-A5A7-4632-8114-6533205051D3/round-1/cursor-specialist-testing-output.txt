@@ -1,0 +1,31 @@
+Gathering the branch diff and commit list for a read-only review (Tests, CI, regression risk).
+
+Verifying the test harness wiring for case H and whether CI invokes `test-apply-bump`.
+
+Checking `rollback_before_commit` and whether the regression path removes the backup like other pre-commit failures.
+
+Branch has one commit: `3a525a50 Add version-regression guard...`. Review used the cached diff plus harness/ship-pr reads (read-only).
+
+### In-Scope Findings
+
+1. **Important** (`risk-integration`) [scripts/ship-pr.sh:1199-1217](scripts/ship-pr.sh): `run_rebase_rebump`’s new “correct `new_version` from `bump_type` + `origin/main`” path is not covered by any harness. [scripts/test-apply-bump.sh:291-299](scripts/test-apply-bump.sh) only proves `apply-bump.sh` fails when `NEW_VERSION < ORIGIN_VERSION`; it does not assert the WARN line, `state_set_many` value, PR title update, or MAJOR/MINOR/PATCH arithmetic in `ship-pr.sh`. A mistake in the `case "$bump_type"` mapping or `semver_lt` integration would still pass CI. **Suggested fix:** Add a focused case under [scripts/test-ship-pr.sh](scripts/test-ship-pr.sh) (where `run_rebase_rebump` is already partially stubbed around lines 699–764) or extract the correction into a tiny sourced helper with its own test.
+
+2. **Nit** (`risk-integration`) [.claude/skills/bump-version/scripts/apply-bump.md:25](.claude/skills/bump-version/scripts/apply-bump.md): The “exits 1 for …” sentence still only lists “same-version race detection” and omits the new regression guard, while the Invariants section already documents it. **Suggested fix:** Extend that sentence to include version regression (pre-commit `NEW_VERSION < ORIGIN_VERSION`).
+
+3. **Nit** (`risk-integration`) [.claude/skills/bump-version/scripts/apply-bump.sh:111-112](.claude/skills/bump-version/scripts/apply-bump.sh): After `git fetch` failure, the error text still says `cannot verify same-version race` even though the fetch also gates the regression check. **Suggested fix:** Broaden the message (e.g. “cannot verify origin/main bump guards”).
+
+### Out-of-Scope Observations
+
+1. **Nit** (`risk-integration`) [docs/linting.md](docs/linting.md) (not touched by this diff): The `make test-apply-bump` row still enumerates harness cases without the new regression-guard rollback. Worth a follow-up doc sync so the central linting guide matches [scripts/test-apply-bump.md](scripts/test-apply-bump.md) case 8.
+
+---
+
+**Plan check:** The implementation plan’s test obligation (sub-test H for `apply-bump.sh`) is satisfied: stub origin `3.0.0`, fixed `--new-version 2.0.0` from [scripts/test-apply-bump.sh:103-106](scripts/test-apply-bump.sh), stable `ERROR=version regression: …` assertion, rollback/index/commit assertions. The plan’s example `2.9.9` differs only numerically; behavior under test is the same class. `Makefile` / `test-harnesses-4` already includes `test-apply-bump`, so CI wiring does not need changes for this diff.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	risk-integration	scripts/ship-pr.sh:1199-1217	run_rebase_rebump version-regression correction is not exercised by any automated test	apply-bump regression is covered; wrong MAJOR/MINOR/PATCH correction or WARN/state handling could ship without CI signal	Add stubbed ship-pr harness coverage or unit-test extracted correction helper
+1	in_scope	nit	risk-integration	.claude/skills/bump-version/scripts/apply-bump.md:25	exit-code summary omits version-regression failure despite new behavior	Readers relying on the opening contract miss the new fail-closed path	Extend the exit-1 list to mention NEW_VERSION < ORIGIN_VERSION regression
+1	in_scope	nit	risk-integration	.claude/skills/bump-version/scripts/apply-bump.sh:111-112	fetch-failure error string only references same-version race	fetch also gates regression check; message is slightly misleading	Reword to cover both origin/main guards
+1	out_of_scope	nit	risk-integration	docs/linting.md	make test-apply-bump narrative omits new regression case	File not modified; central doc drifts from scripts/test-apply-bump.md case 8	Update linting doc row when convenient
+```

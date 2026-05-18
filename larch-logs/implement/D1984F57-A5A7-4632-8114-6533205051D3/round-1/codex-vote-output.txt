@@ -1,0 +1,23 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: EXONERATE -- Legitimate doc-parity nit, but not worth a separate future issue.
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: EXONERATE -- Duplication is real, but factoring a tiny helper adds more coupling than this warrants.
+FINDING_7: YES
+FINDING_8: EXONERATE -- Same duplicate-helper concern; centralization is optional cleanup, not a review blocker.
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: EXONERATE -- Tiny duplicated comparison helper does not justify a shared-library refactor here.
+FINDING_14: EXONERATE -- Test coverage is functionally equivalent; matching an illustrative plan version is not worth churn.
+FINDING_15: YES
+FINDING_16: EXONERATE -- `new_version` comes from the trusted classifier contract and the suggested regex guard is mostly defensive.
+FINDING_17: EXONERATE -- Duplicate of the defensive `new_version` validation concern; not necessary for this path.
+FINDING_18: EXONERATE -- The regression case is covered; plan-fidelity-only version changes are not worth it.
+FINDING_19: YES
+FINDING_20: EXONERATE -- The doc-sync concern is partly valid, but requiring broad implement/subprocedure edits is over-scoped.
+FINDING_21: YES
+FINDING_22: YES
+FINDING_23: EXONERATE -- No functional test gap; changing the fixture version would be cosmetic.
