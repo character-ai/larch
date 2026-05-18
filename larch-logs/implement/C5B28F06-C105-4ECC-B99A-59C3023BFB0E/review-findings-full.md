@@ -22,3 +22,67 @@
 - **Concern**: [latent] Full tool_result JSON in prefix digest and diffs Audit output or saved reports may embed secrets from tool outputs Document sensitivity add redaction or gate verbose serialization
 - **Suggested revision**: Address the concern above.
 
+### FINDING_1: panel [code-review/accepted]
+
+## **Important** (`risk-integration`) — [larch-logs/implement/C5B28F06-C105-4ECC-B99A-59C3023BFB0E/manifest.json](larch-logs/implement/C5B28F06-C105-4ECC-B99A-59C3023BFB0E/manifest.json): The branch adds a committed implement run directory with `status: "in-progress"`, plus [larch-logs/implement/C5B28F06-C105-4ECC-B99A-59C3023BFB0E/plan-goals-test.md](larch-logs/implement/C5B28F06-C105-4ECC-B99A-59C3023BFB0E/plan-goals-test.md) and [larch-logs/implement/C5B28F06-C105-4ECC-B99A-59C3023BFB0E/plan-review-tally.json](larch-logs/implement/C5B28F06-C105-4ECC-B99A-59C3023BFB0E/plan-review-tally.json). This is unrelated to the audit-script behavior under review, increases noise and size on every clone, and risks violating the repo’s own run-log hygiene expectations (operators and reviewers must reason about whether this tree is intentional). **Scenario:** PR merges with a stray in-progress run; future tooling or humans treat `larch-logs/` as authoritative and get confused by duplicate plan text and non-final manifests. **Suggested fix:** Drop these paths from the PR (or replace with a single finalized artifact only if a tracking issue explicitly requires committing this run, following `docs/run-logs.md`).
+
+- **Reviewer**: cursor-specialist-testing-output.txt
+- **Concern**: 1. **Important** (`risk-integration`) — [larch-logs/implement/C5B28F06-C105-4ECC-B99A-59C3023BFB0E/manifest.json](larch-logs/implement/C5B28F06-C105-4ECC-B99A-59C3023BFB0E/manifest.json): The branch adds a committed implement run directory with `status: "in-progress"`, plus [larch-logs/implement/C5B28F06-C105-4ECC-B99A-59C3023BFB0E/plan-goals-test.md](larch-logs/implement/C5B28F06-C105-4ECC-B99A-59C3023BFB0E/plan-goals-test.md) and [larch-logs/implement/C5B28F06-C105-4ECC-B99A-59C3023BFB0E/plan-review-tally.json](larch-logs/implement/C5B28F06-C105-4ECC-B99A-59C3023BFB0E/plan-review-tally.json). This is unrelated to the audit-script behavior under review, increases noise and size on every clone, and risks violating the repo’s own run-log hygiene expectations (operators and reviewers must reason about whether this tree is intentional). **Scenario:** PR merges with a stray in-progress run; future tooling or humans treat `larch-logs/` as authoritative and get confused by duplicate plan text and non-final manifests. **Suggested fix:** Drop these paths from the PR (or replace with a single finalized artifact only if a tracking issue explicitly requires committing this run, following `docs/run-logs.md`).
+- **Suggested revision**: Address the concern above.
+
+### FINDING_16: panel [code-review/accepted]
+
+## code-quality: larch-logs/implement/C5B28F06-C105-4ECC-B99A-59C3023BFB0E/
+
+- **Reviewer**: cursor-specialist-structure-output.txt
+- **Concern**: [important] Unrelated implement run artifacts (manifest, plan-goals-test, tally) committed alongside the audit fix. PR noise, possible policy/process mismatch, harder review and merge conflict risk on larch-logs. Remove run-log artifacts from the PR or replace with intentionally scoped committed logs per repo contract.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_2: panel [code-review/accepted]
+
+## **Important** `security` `scripts/cache-key-runtime-audit.py:145` and `scripts/cache-key-runtime-audit.py:296-309` — The new redaction invariant does not hold for dict-shaped non-text content blocks: `_is_attachment_bearing()` only recognizes list content, and `content_to_text()` returns a dict’s `"text"` field before checking `type`. Concrete scenario: a transcript entry like `{"type":"user","message":{"content":{"type":"file","text":"SECRET"}}}` can be included as `user:initial` and render `SECRET` in the audit report, despite `SECURITY.md` saying raw attachment bodies are no longer reproduced. Fix by handling dict content in `_is_attachment_bearing()` and checking `block_type not in ("", "text")` before returning `"text"` in the dict branch.
+
+- **Reviewer**: codex-generalist-output.txt
+- **Concern**: 1. **Important** `security` `scripts/cache-key-runtime-audit.py:145` and `scripts/cache-key-runtime-audit.py:296-309` — The new redaction invariant does not hold for dict-shaped non-text content blocks: `_is_attachment_bearing()` only recognizes list content, and `content_to_text()` returns a dict’s `"text"` field before checking `type`. Concrete scenario: a transcript entry like `{"type":"user","message":{"content":{"type":"file","text":"SECRET"}}}` can be included as `user:initial` and render `SECRET` in the audit report, despite `SECURITY.md` saying raw attachment bodies are no longer reproduced. Fix by handling dict content in `_is_attachment_bearing()` and checking `block_type not in ("", "text")` before returning `"text"` in the dict branch.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_20: panel [code-review/accepted]
+
+## correctness: implementation plan Files to Modify (1-4) vs branch diff
+
+- **Reviewer**: cursor-specialist-plan-fidelity-output.txt
+- **Concern**: [important] Branch modifies SECURITY.md and adds larch-logs/implement/C5B28F06-C105-4ECC-B99A-59C3023BFB0E/* not listed in the plan's four-file surface Plan-to-implementation traceability breaks; merged tree carries implement run artifacts alongside the audit fix Remove unintended run-log files from the PR or extend the written plan; document SECURITY.md if intentional
+- **Suggested revision**: Address the concern above.
+
+### FINDING_22: panel [code-review/accepted]
+
+## correctness: scripts/cache-key-runtime-audit.py:312-337
+
+- **Reviewer**: cursor-specialist-correctness-output.txt
+- **Concern**: [important] user:attachment does not set included_initial so a later plain user in the same chain can be mislabeled user:initial Chain system then tool_result user then assistant then plain user then assistant: plain user is recorded as user:initial; later edits to that plain text can yield CACHE-INVALIDATING even if runtime cache treats only the true opener plus attachments as stable Tighten user:initial eligibility or mark initial slot consumed after first included user prefix record; add regression for attachment-then-text chain
+- **Suggested revision**: Address the concern above.
+
+### FINDING_24: panel [code-review/accepted]
+
+## risk-integration: larch-logs/implement/C5B28F06-C105-4ECC-B99A-59C3023BFB0E/manifest.json;larch-logs/implement/C5B28F06-C105-4ECC-B99A-59C3023BFB0E/plan-goals-test.md;larch-logs/implement/C5B28F06-C105-4ECC-B99A-59C3023BFB0E/plan-review-tally.json
+
+- **Reviewer**: cursor-specialist-correctness-output.txt
+- **Concern**: [important] Committed in-progress implement run artifacts and embedded plan text not listed in the attachment-fix plan Feature PR carries unrelated larch-logs session state (in-progress manifest, full plan copy), increasing noise and risking policy mismatch with how implement logs should land Remove these files from the branch unless run-log policy explicitly requires them
+- **Suggested revision**: Address the concern above.
+
+### FINDING_3: panel [code-review/accepted]
+
+## **Nit** (`risk-integration`) — [scripts/test-cache-key-runtime-audit.sh](scripts/test-cache-key-runtime-audit.sh) (~175–189): New checks only compare `classification_sequence` from `audit_run`; they do not assert anything about rendered report text (e.g. presence of `payload_sha256` / absence of raw attachment bodies) despite [SECURITY.md](SECURITY.md) and [scripts/cache-key-runtime-audit.md](scripts/cache-key-runtime-audit.md) documenting redacted reporting. **Scenario:** A future change could route classification through summarized digests but accidentally restore raw bodies in `PrefixRecord.render` / diff output without failing this harness. **Suggested fix:** Extend `run_audit` assertions for one attachment fixture to grep for `payload_sha256` and against a distinctive raw secret string placed in fixture content.
+
+- **Reviewer**: cursor-specialist-testing-output.txt
+- **Concern**: 3. **Nit** (`risk-integration`) — [scripts/test-cache-key-runtime-audit.sh](scripts/test-cache-key-runtime-audit.sh) (~175–189): New checks only compare `classification_sequence` from `audit_run`; they do not assert anything about rendered report text (e.g. presence of `payload_sha256` / absence of raw attachment bodies) despite [SECURITY.md](SECURITY.md) and [scripts/cache-key-runtime-audit.md](scripts/cache-key-runtime-audit.md) documenting redacted reporting. **Scenario:** A future change could route classification through summarized digests but accidentally restore raw bodies in `PrefixRecord.render` / diff output without failing this harness. **Suggested fix:** Extend `run_audit` assertions for one attachment fixture to grep for `payload_sha256` and against a distinctive raw secret string placed in fixture content.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_5: panel [code-review/accepted]
+
+## **Nit** `code-quality` `scripts/test-cache-key-runtime-audit.sh:75-196` — The feature explicitly names `tool_use`, but the new fixtures cover `tool_result`, image mutation, and stable `tool_result` only. Add a `tool_use` fixture so future regressions in that named block type cannot pass unnoticed.
+
+- **Reviewer**: codex-generalist-output.txt
+- **Concern**: 2. **Nit** `code-quality` `scripts/test-cache-key-runtime-audit.sh:75-196` — The feature explicitly names `tool_use`, but the new fixtures cover `tool_result`, image mutation, and stable `tool_result` only. Add a `tool_use` fixture so future regressions in that named block type cannot pass unnoticed.
+- **Suggested revision**: Address the concern above.
+
