@@ -22,12 +22,12 @@ url="${url%/}"
 url="${url%.git}"
 url="${url%/}"
 
-if [[ "$url" =~ ^git@github\.com:([A-Za-z0-9._-]+)/([A-Za-z0-9._-]+)$ ]]; then
+if [[ "$url" =~ ^git@github[.]com:([A-Za-z0-9._-]+)/([A-Za-z0-9._-]+)$ ]]; then
     printf '%s/%s\n' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"
     exit 0
 fi
 
-if [[ "$url" =~ ^(https?|ssh|git)://([^@]+@)?github\.com/([A-Za-z0-9._-]+)/([A-Za-z0-9._-]+)$ ]]; then
+if [[ "$url" =~ ^(https?|ssh|git)://([^@]+@)?github[.]com/([A-Za-z0-9._-]+)/([A-Za-z0-9._-]+)$ ]]; then
     printf '%s/%s\n' "${BASH_REMATCH[3]}" "${BASH_REMATCH[4]}"
     exit 0
 fi

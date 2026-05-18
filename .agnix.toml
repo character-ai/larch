@@ -38,4 +38,5 @@ disabled_rules = [
   "XP-003",     # Hard-coded .claude/ paths are correct — this IS a Claude Code plugin repo
   "CC-SK-007",  # Unrestricted Bash is intentional — all larch skills need full shell access
   "XP-SK-001",  # 'argument-hint' is a Claude Code-supported field; every use in this repo is intentional because this IS a Claude Code plugin
+  "AS-014",     # False positive for escaped-dot bash regex patterns in [[ =~ ]] expressions
 ]
