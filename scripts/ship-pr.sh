@@ -524,6 +524,10 @@ mark_stall() {
     state_set_many STALL_TRACKING true STALL_STEP "$1"
 }
 
+clear_stall_keys_for_postmerge() {
+    state_set_many BAIL_REASON "" STALL_TRACKING false STALL_STEP ""
+}
+
 exit_stall() {
     mark_stall "$1"
     exit 4
@@ -1313,11 +1317,13 @@ run_ci_phase() {
         if [ "$phase" = "ci-initial" ]; then
             advance_phase ci-merge
         else
+            clear_stall_keys_for_postmerge
             advance_phase postmerge
         fi
         return 0
     fi
     if [ "$phase" = "ci-merge" ] && { [ "$(read_state MERGE)" != "true" ] || [ "$(read_state DRAFT)" = "true" ] || [ "$(read_state FORKED_TARGET)" = "true" ]; }; then
+        clear_stall_keys_for_postmerge
         advance_phase postmerge
         return 0
     fi

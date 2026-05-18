@@ -1325,6 +1325,41 @@ else
     ok "empty MANIFEST_PATH: entry validation does not fire"
 fi
 
+# Regression: REPO_UNAVAILABLE skip-path clears stale stall keys before advancing to postmerge.
+# Prior to the fix, clear_stall_keys_for_postmerge() was missing, so stale BAIL_REASON/
+# STALL_TRACKING/STALL_STEP from an earlier ci-merge stall propagated into finalize-state.sh
+# and caused implement-finalize.sh postmerge to skip local branch cleanup.
+root=$(make_repo stale_stall_cleared_on_repo_unavailable_skip)
+tmp=$(make_tmpdir)
+write_state "$tmp/ship-pr-state.sh" ci-merge
+seed_stale_stall_state "$tmp/ship-pr-state.sh"
+awk -F= '{if ($1=="REPO_UNAVAILABLE") print "REPO_UNAVAILABLE=true"; else print}' \
+    "$tmp/ship-pr-state.sh" > "$tmp/ship-pr-state.sh.new" \
+    && mv "$tmp/ship-pr-state.sh.new" "$tmp/ship-pr-state.sh"
+run_subject "$root" "$tmp" "$tmp/rc" --resume-phase ci-merge
+assert_rc "$tmp/rc" 0 "stale stall state: REPO_UNAVAILABLE skip-path exits 0"
+assert_state_line "$tmp/ship-pr-state.sh" "PHASE=done" "stale stall state: REPO_UNAVAILABLE skip-path reaches PHASE=done"
+assert_state_line "$tmp/ship-pr-state.sh" "BAIL_REASON=" "stale stall state: REPO_UNAVAILABLE skip-path clears BAIL_REASON"
+assert_state_line "$tmp/ship-pr-state.sh" "STALL_TRACKING=false" "stale stall state: REPO_UNAVAILABLE skip-path clears STALL_TRACKING"
+assert_state_line "$tmp/ship-pr-state.sh" "STALL_STEP=" "stale stall state: REPO_UNAVAILABLE skip-path clears STALL_STEP"
+assert_file_absent_or_empty "$tmp/final-bail-reason.txt" "stale stall state: REPO_UNAVAILABLE skip-path leaves final-bail-reason.txt empty"
+
+# Regression: skip-merge guard clears stale stall keys before advancing to postmerge.
+root=$(make_repo stale_stall_cleared_on_skip_merge_guard)
+tmp=$(make_tmpdir)
+write_state "$tmp/ship-pr-state.sh" ci-merge
+seed_stale_stall_state "$tmp/ship-pr-state.sh"
+awk -F= '{if ($1=="MERGE") print "MERGE=false"; else print}' \
+    "$tmp/ship-pr-state.sh" > "$tmp/ship-pr-state.sh.new" \
+    && mv "$tmp/ship-pr-state.sh.new" "$tmp/ship-pr-state.sh"
+run_subject "$root" "$tmp" "$tmp/rc" --resume-phase ci-merge
+assert_rc "$tmp/rc" 0 "stale stall state: skip-merge guard exits 0"
+assert_state_line "$tmp/ship-pr-state.sh" "PHASE=done" "stale stall state: skip-merge guard reaches PHASE=done"
+assert_state_line "$tmp/ship-pr-state.sh" "BAIL_REASON=" "stale stall state: skip-merge guard clears BAIL_REASON"
+assert_state_line "$tmp/ship-pr-state.sh" "STALL_TRACKING=false" "stale stall state: skip-merge guard clears STALL_TRACKING"
+assert_state_line "$tmp/ship-pr-state.sh" "STALL_STEP=" "stale stall state: skip-merge guard clears STALL_STEP"
+assert_file_absent_or_empty "$tmp/final-bail-reason.txt" "stale stall state: skip-merge guard leaves final-bail-reason.txt empty"
+
 if [[ "$FAIL_COUNT" -ne 0 ]]; then
     echo "test-ship-pr: $FAIL_COUNT failure(s), $PASS_COUNT pass(es)" >&2
     exit 1
