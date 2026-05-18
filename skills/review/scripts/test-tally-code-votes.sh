@@ -2,6 +2,7 @@
 # test-tally-code-votes.sh — regression harness for tally-code-votes.sh.
 
 set -euo pipefail
+export LARCH_QUIET_DISABLE=1
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 CLAUDE_PLUGIN_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd -P)"
@@ -65,7 +66,7 @@ got=$(awk -F= '$1=="OOS_REJECTED_COUNT"{print $2}' "$out"); assert_eq "OOS_REJEC
 grep -Fq 'FINDING_1: First in-scope finding' "$TMP/accepted-findings.md" || { FAIL=1; printf '  FAIL accepted-findings missing FINDING_1\n'; }
 grep -Fq 'FINDING_2' "$TMP/rejected-findings.md" || { FAIL=1; printf '  FAIL rejected-findings missing FINDING_2\n'; }
 grep -Fq 'OOS observation' "$TMP/oos-accepted-review.md" || { FAIL=1; printf '  FAIL oos-accepted missing FINDING_3\n'; }
-grep -Fq '| Reviewer | Proposed | Accepted | Neutral/Exon | Rejected | OOS-Proposed | OOS-Accepted | OOS-Neutral/Exon | OOS-Rejected | Score |' "$TMP/voting-tally.md" || { FAIL=1; printf '  FAIL scoreboard header missing OOS outcome columns\n'; }
+grep -Fq '| Reviewer | Proposed | Accepted | Neutral/Exon | Rejected | OOS-Proposed | OOS-Accepted | OOS-Neutral/Exon | OOS-Rejected | Score | Status |' "$TMP/voting-tally.md" || { FAIL=1; printf '  FAIL scoreboard header missing OOS outcome columns\n'; }
 
 echo "# Case: OOS rejected subtracts 1 from reviewer score"
 TMP="$WORKDIR/case1b"
@@ -84,7 +85,7 @@ out="$TMP/out.env"
     --voter-files "$TMP/cursor-vote-output.txt" "$TMP/codex-vote-output.txt" "$TMP/claude-vote-output.txt" \
     --review-tmpdir "$TMP" > "$out"
 got=$(awk -F= '$1=="OOS_REJECTED_COUNT"{print $2}' "$out"); assert_eq "OOS_REJECTED_COUNT=1" "$got" "1"
-grep -Fq '| Codex-Security | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 1 | -1 |' "$TMP/voting-tally.md" || { FAIL=1; printf '  FAIL rejected OOS did not subtract from score\n'; }
+grep -Fq '| Codex-Security | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 1 | -1 | |' "$TMP/voting-tally.md" || { FAIL=1; printf '  FAIL rejected OOS did not subtract from score\n'; }
 
 echo "# Case: 2 voters, unanimous YES (3-voter threshold falls back to 2-voter unanimous)"
 TMP="$WORKDIR/case2"
@@ -510,6 +511,37 @@ if printf '%s\n' "$tally_content" | grep -q 'STATUS=NOT_SUBSTANTIVE'; then
     printf '  ok   dead_slots: NOT_SUBSTANTIVE annotation present\n'
 else
     FAIL=1; printf '  FAIL dead_slots: NOT_SUBSTANTIVE annotation missing\n'
+fi
+# Manifest rows missing collector entries should fall back to STATUS=UNKNOWN.
+TMP="$WORKDIR/case8"
+mkdir -p "$TMP"
+cat > "$TMP/ballot.md" <<'EOF'
+### FINDING_1: Structure concern
+- **Reviewer**: cursor-specialist-structure-output.txt
+- **Concern**: Structure issue.
+- **Suggested revision**: Fix it.
+EOF
+cat > "$TMP/panel-manifest.ndjson" <<EOF
+{"slot":"structure","tool":"cursor","output":"$TMP/cursor-specialist-structure-output.txt","agent":"agents/reviewer-structure.md"}
+{"slot":"generic","tool":"codex","output":"$TMP/codex-generalist-output.txt","agent":"agents/codex-generalist.md"}
+EOF
+cat > "$TMP/collector-results.env" <<EOF
+REVIEWER_FILE=$TMP/cursor-specialist-structure-output.txt
+TOOL=cursor
+STATUS=OK
+EXIT_CODE=0
+EOF
+printf 'FINDING_1: YES\n' > "$TMP/cursor-vote-output.txt"
+out="$TMP/out.env"
+"$SCRIPT" --ballot-file "$TMP/ballot.md" \
+    --voter-files "$TMP/cursor-vote-output.txt" \
+    --manifest-file "$TMP/panel-manifest.ndjson" \
+    --collector-results-file "$TMP/collector-results.env" \
+    --review-tmpdir "$TMP" > "$out"
+if grep -Fq '| codex-generalist | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | STATUS=UNKNOWN |' "$TMP/voting-tally.md"; then
+    printf '  ok   dead_slots: missing collector row falls back to UNKNOWN\n'
+else
+    FAIL=1; printf '  FAIL dead_slots: missing collector row did not fall back to UNKNOWN\n'
 fi
 # Degraded banner must appear (NOT_SUBSTANTIVE_COUNT=2 passed via --not-substantive-count)
 if printf '%s\n' "$tally_content" | grep -q '2 reviewer slot(s) emitted narrative-only output'; then

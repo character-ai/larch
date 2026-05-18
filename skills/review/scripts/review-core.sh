@@ -352,6 +352,22 @@ fi
 findings_count=$(kv_get "$collect_out" FINDINGS_COUNT)
 findings_count="${findings_count:-0}"
 if [[ "$findings_count" == "0" ]]; then
+    zero_findings_tally_out="$REVIEW_TMPDIR/review-core-zero-findings-tally.env"
+    zero_findings_voter="$REVIEW_TMPDIR/zero-findings-voter.txt"
+    : > "$zero_findings_voter"
+    zero_tally_args=(
+        --ballot-file "$REVIEW_TMPDIR/findings.md"
+        --review-tmpdir "$REVIEW_TMPDIR"
+        --cursor-available "$CURSOR_AVAILABLE"
+        --codex-available "$CODEX_AVAILABLE"
+        --voter-files "$zero_findings_voter"
+    )
+    [[ -n "$panel_manifest" && -f "$panel_manifest" ]] && zero_tally_args+=(--manifest-file "$panel_manifest")
+    [[ -f "$collector_results_file" ]] && zero_tally_args+=(--collector-results-file "$collector_results_file")
+    [[ "$not_substantive_slots" -gt 0 ]] && zero_tally_args+=(--not-substantive-count "$not_substantive_slots")
+    "$TALLY_VOTES_SH" "${zero_tally_args[@]}" > "$zero_findings_tally_out"
+    zero_voting_tally_file=$(kv_get "$zero_findings_tally_out" VOTING_TALLY_FILE)
+
     : > "$REVIEW_TMPDIR/accepted-findings.md"
     : > "$REVIEW_TMPDIR/rejected-findings.md"
     : > "$REVIEW_TMPDIR/oos-accepted-review.md"
@@ -370,6 +386,7 @@ if [[ "$findings_count" == "0" ]]; then
     emit_kv REJECTED_FINDINGS_FILE "$REVIEW_TMPDIR/rejected-findings.md"
     emit_kv PANEL_MODE "$panel_mode"
     emit_kv PANEL_SHAPE "$panel_shape"
+    [[ -n "$zero_voting_tally_file" ]] && emit_kv VOTING_TALLY_FILE "$zero_voting_tally_file"
     exit 0
 fi
 

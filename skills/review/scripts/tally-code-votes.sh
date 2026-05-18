@@ -14,7 +14,7 @@ larch_quiet_init
 source "$PLUGIN_ROOT/scripts/lib-vote-tally.sh"
 
 usage() {
-    larch_err "Usage: tally-code-votes.sh --ballot-file FILE --voter-files FILE... --review-tmpdir DIR [--session-env-path FILE] [--scope-files FILE] [--plan-file FILE] [--manifest-file FILE] [--cursor-available true|false] [--codex-available true|false] [--both-down true|false]"
+    larch_err "Usage: tally-code-votes.sh --ballot-file FILE --voter-files FILE... --review-tmpdir DIR [--session-env-path FILE] [--scope-files FILE] [--plan-file FILE] [--manifest-file FILE] [--collector-results-file FILE] [--not-substantive-count N] [--cursor-available true|false] [--codex-available true|false] [--both-down true|false]"
 }
 
 BALLOT_FILE=""
@@ -349,8 +349,8 @@ write_archetype_map "$MANIFEST_FILE" "$archetype_map"
     done
 
     printf '\n## Reviewer Competition Scoreboard\n\n'
-    printf '| Reviewer | Proposed | Accepted | Neutral/Exon | Rejected | OOS-Proposed | OOS-Accepted | OOS-Neutral/Exon | OOS-Rejected | Score |\n'
-    printf '|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|\n'
+    printf '| Reviewer | Proposed | Accepted | Neutral/Exon | Rejected | OOS-Proposed | OOS-Accepted | OOS-Neutral/Exon | OOS-Rejected | Score | Status |\n'
+    printf '|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|\n'
     awk -F '\t' '
       {
         reviewer=$1; kind=$2; result=$3
@@ -370,7 +370,7 @@ write_archetype_map "$MANIFEST_FILE" "$archetype_map"
       END {
         for (reviewer in seen) {
           score=accepted[reviewer]+0 + oos_accepted[reviewer]+0 - rejected[reviewer]+0 - oos_rejected[reviewer]+0
-          printf "| %s | %d | %d | %d | %d | %d | %d | %d | %d | %d |\n",
+          printf "| %s | %d | %d | %d | %d | %d | %d | %d | %d | %d | |\n",
             reviewer, proposed[reviewer]+0, accepted[reviewer]+0, neutral[reviewer]+0,
             rejected[reviewer]+0, oos_proposed[reviewer]+0, oos_accepted[reviewer]+0,
             oos_neutral[reviewer]+0, oos_rejected[reviewer]+0, score
@@ -432,9 +432,9 @@ if [[ -n "$MANIFEST_FILE" && -f "$MANIFEST_FILE" ]]; then
                 normed = norm_base(base)
                 if (normed ~ /^dyn-/) continue
                 if (!(normed in seen)) {
-                    st = (normed in collector_status) ? collector_status[normed] : "NOT_SUBSTANTIVE"
+                    st = (normed in collector_status) ? collector_status[normed] : "UNKNOWN"
                     label = normed; sub(/-output\.txt$/, "", label); sub(/\.txt$/, "", label)
-                    printf "| %s | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | STATUS=%s |\n", label, st
+                    printf "| %s | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | STATUS=%s |\n", label, st
                 }
             }
         }
