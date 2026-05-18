@@ -34,6 +34,10 @@ The script writes per-slot prompt files, builds a two-slot NDJSON manifest, and 
 
 When `VOTER_1_STATUS=failed` (non-zero exit or empty output from the Claude voter), a Warnings entry is appended to `execution-issues.md` via `append-tool-failure.sh`, capturing `voter1_rc`, the output byte count, and the first 200 bytes of `${VOTER_1_PATH}.diag` when present. The log path resolves via `LARCH_EXECUTION_ISSUES_LOG`, `$(dirname "$SESSION_ENV_PATH")/execution-issues.md`, `$IMPLEMENT_TMPDIR/execution-issues.md`, or `$REVIEW_TMPDIR/execution-issues.md` in that order (#2254).
 
+After voter statuses are resolved, `check_voter_parse_rate` runs for each non-failed voter. It counts ballot finding IDs that produce NEUTRAL from the `vote_for_id` logic against the voter file, and when the NEUTRAL fraction is ≥ 80% logs a Warnings entry with the voter tool name and first 200 bytes of the file. This detects the failure mode where a voter produced non-empty prose without any parseable `FINDING_N: YES|NO|EXONERATE` lines (#2265).
+
+The `make_voter_prompt_file` function includes a silent-drop warning: non-matching lines are ignored and voters MUST output exactly one `FINDING_N: YES|NO|EXONERATE` line per finding using the exact ID from the ballot heading.
+
 `fallback` means the slot finished on Claude after a waterfall fallback. `failed` means the final output path is missing or empty.
 
 ## Callers and Harness

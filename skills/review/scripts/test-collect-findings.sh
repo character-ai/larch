@@ -16,7 +16,7 @@ assert_stdout_cap() {
     [[ "$bytes" -le "$cap" ]] || { echo "FAIL: stdout ${bytes}B > ${cap}B cap" >&2; exit 1; }
 }
 
-outf="$TMP/claude.txt"
+outf="$TMP/claude-vote-output.txt"
 cat > "$outf" <<'EOF'
 ### In-Scope Findings
 - Missing validation in parser.
@@ -36,7 +36,7 @@ grep -Fq 'COLLECTOR_OUTPUT_FILE=' <<< "$out"
 grep -Fq '### FINDING_1:' "$TMP/findings.md"
 grep -Fq -- '- **Concern**: - Missing validation in parser.' "$TMP/findings.md"
 
-multiline="$TMP/multiline.txt"
+multiline="$TMP/cursor-specialist-multiline-output.txt"
 cat > "$multiline" <<'EOF'
 ### In-Scope Findings
 1. Parser misses a guard.
@@ -71,7 +71,7 @@ if command -v jq >/dev/null 2>&1; then
     grep -Fq 'FINDINGS_COUNT=0' <<< "$out"
 fi
 
-external="$TMP/external-inline-tsv.txt"
+external="$TMP/codex-generalist-output.txt"
 cat > "$external" <<'EOF'
 Read-only: we can't write the TSV sidecar here, so the findings follow inline.
 
@@ -102,7 +102,7 @@ fi
 
 # Narrative-only output (no structured findings) must produce FINDINGS_COUNT=0,
 # not a spurious "Reviewer finding" catchall row (#2254).
-narrative="$TMP/narrative-only.txt"
+narrative="$TMP/cursor-specialist-correctness-output.txt"
 cat > "$narrative" <<'EOF'
 Gathering the diff and reviewing changes... everything looks fine to me.
 No specific concerns to raise at this time.
@@ -119,5 +119,34 @@ fi
 grep -Fq 'STATUS=NOT_SUBSTANTIVE' "$TMP/collector-results.env"
 grep -Fq "REVIEWER_FILE=$narrative" "$TMP/collector-results.env"
 grep -Fq 'collect-findings.sh claude NOT_SUBSTANTIVE warning (exit 0)' "$TMP/execution-issues.md"
+
+# Corrupted reviewer column: tab in finding title shifts TSV columns (#2265).
+# Without the tab-strip fix in flush(), the TSV columns would shift, making
+# label="in the title" (not *-output.txt) and the row would be skipped by the
+# validation. With the fix, title="Finding with tab in the title", the label
+# is the filename (which ends in -output.txt), and the finding IS collected.
+# This test verifies the combined fix: tab-stripping prevents corruption so
+# the finding is collected normally.
+: > "$TMP/execution-issues-tab.md"
+tab_file="$TMP/cursor-specialist-edge-cases-output.txt"
+printf '### In-Scope Findings\n' > "$tab_file"
+printf -- '- Finding with tab\tin the title\n' >> "$tab_file"
+printf '0\n' > "$tab_file.done"
+printf 'STATUS=clean\n' > "$tab_file.dirty-tree"
+out=$(WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.01 LARCH_EXECUTION_ISSUES_LOG="$TMP/execution-issues-tab.md" \
+    "$SCRIPT" --claude-output-files "$tab_file" --mode description --timeout 1 \
+    --findings-file "$TMP/findings-tab.md" --oos-file "$TMP/oos-tab.md")
+assert_stdout_cap "$out"
+# With the tab-strip fix: the tab in the title is replaced with a space, so
+# "Finding with tab in the title" becomes one finding with the correct reviewer.
+grep -Fq 'FINDINGS_COUNT=1' <<< "$out"
+grep -Fq '### FINDING_1: Finding with tab in the title' "$TMP/findings-tab.md"
+grep -Fq "cursor-specialist-edge-cases-output.txt" "$TMP/findings-tab.md"
+# No invalid-reviewer-column warning should appear (the fix prevents corruption).
+if [[ -f "$TMP/execution-issues-tab.md" ]] && grep -Fq 'invalid reviewer column' "$TMP/execution-issues-tab.md"; then
+    echo "FAIL: tab-strip fix should prevent reviewer column corruption, not trigger warning" >&2
+    cat "$TMP/execution-issues-tab.md" >&2
+    exit 1
+fi
 
 echo "All assertions passed."
