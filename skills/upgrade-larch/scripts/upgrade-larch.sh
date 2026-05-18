@@ -203,6 +203,7 @@ if [ "$VERIFIED_TARGET" = true ]; then
             emit_breadcrumb "  Removing version newer than verified stable: $version"
             if ! rm -rf -- "${LARCH_CACHE_DIR:?}/${version:?}"; then
                 warn_prune_failure "$version"
+                SANITIZED_VERSIONS+=("$version")
             fi
             continue
         fi
