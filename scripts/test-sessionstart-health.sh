@@ -372,6 +372,13 @@ assert_eq "$rc" "0" "case 11: exit code 0"
 stdout=$(cat "$tmp/c11.out")
 assert_empty "$stdout" "case 11: stdout empty outside work-tree"
 
+echo "=== Case 11b: malformed SessionStart JSON fails open ==="
+mkdir -p "$tmp/c11b-cwd"
+rc=$(run_with_stdin "$tmp/real_bin" "$tmp/c11b-cwd" '{"cwd":' "$XDG_TEST" "$tmp/c11b.out" "$tmp/c11b.err")
+assert_eq "$rc" "0" "case 11b: exit code 0"
+stdout=$(cat "$tmp/c11b.out")
+assert_empty "$stdout" "case 11b: stdout empty on malformed json"
+
 echo "=== Case 12: SessionStart detects pending post-/design boundary ==="
 mkdir -p "$tmp/c12-cwd"
 impl=$(make_impl_tmpdir c12-design "$tmp/c12-cwd" "sid-12")

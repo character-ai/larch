@@ -16,7 +16,7 @@ When both `jq` and `git` are available and `git rev-parse --is-inside-work-tree`
 
 Probe-internal failures are skipped silently; missing `jq` or `git` still produce the existing tool advisory and suppress the git-state probes.
 
-When `jq` is available, the hook reads the SessionStart JSON payload on stdin and extracts `cwd` and `session_id`. It resolves the active `/implement` tmpdir through `skills/implement/scripts/lib-resolve-implement-tmpdir.sh`, exporting the payload `session_id` as `LARCH_TOKEN_SESSION_ID` when present so the resolver can apply its session binding. Missing stdin, missing `jq`, malformed JSON, a missing resolver, no matching tmpdir, or `.run-cleaned-up` all fail open with no boundary advisory.
+When `jq` is available, the hook reads the SessionStart JSON payload on stdin and extracts `cwd` and `session_id`. It resolves the active `/implement` tmpdir through `skills/implement/scripts/lib-resolve-implement-tmpdir.sh`, exporting the payload `session_id` as `LARCH_TOKEN_SESSION_ID` when present so the resolver can apply its session binding. Missing stdin, missing `jq`, malformed JSON, a missing resolver, no matching tmpdir, stale candidates, or `.run-cleaned-up` all fail open with no boundary advisory.
 
 Boundary advisories are emitted for:
 

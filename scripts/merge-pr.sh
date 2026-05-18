@@ -163,6 +163,15 @@ if [[ -z "$PR_HEAD_OID" ]]; then
     exit 0
 fi
 
+flush_recovery_is_logs_only() {
+    local base_oid="$1"
+    local diff_paths=""
+
+    diff_paths=$(git diff --name-only "${base_oid}..HEAD" 2>/dev/null || echo "")
+    [[ -n "$diff_paths" ]] || return 1
+    ! printf '%s\n' "$diff_paths" | grep -qv '^larch-logs/' 2>/dev/null
+}
+
 LOCAL_HEAD=$(git rev-parse HEAD 2>/dev/null || echo "")
 if [[ -z "$LOCAL_HEAD" ]] || [[ "$LOCAL_HEAD" != "$PR_HEAD_OID" ]]; then
     # Check whether local HEAD is ahead of the PR head exclusively by
@@ -175,6 +184,7 @@ if [[ -z "$LOCAL_HEAD" ]] || [[ "$LOCAL_HEAD" != "$PR_HEAD_OID" ]]; then
         FLUSH_COUNT=$(printf '%s\n' "$FLUSH_AHEAD" | grep -c . 2>/dev/null || true)
         if [[ "$FLUSH_COUNT" -gt 0 ]] && [[ "$FLUSH_COUNT" -le 5 ]] \
             && ! printf '%s\n' "$FLUSH_AHEAD" | grep -qv '^chore(larch-logs): flush ' \
+            && flush_recovery_is_logs_only "$PR_HEAD_OID" \
             && git merge-base --is-ancestor "$PR_HEAD_OID" HEAD 2>/dev/null; then
             _flush_recoverable=true
         fi
