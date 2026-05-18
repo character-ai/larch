@@ -294,32 +294,32 @@
       {
         "step": "Step 8b — rebase",
         "totals": {
-          "input": 21,
-          "cache_read": 4519026,
-          "cache_create": 228643,
-          "output": 10914,
-          "total": 4758604
+          "input": 61,
+          "cache_read": 12486423,
+          "cache_create": 247649,
+          "output": 22713,
+          "total": 12756846
         },
         "skills": [
           {
             "skill": "inferred:Step 8b — rebase",
             "totals": {
-              "input": 21,
-              "cache_read": 4519026,
-              "cache_create": 228643,
-              "output": 10914,
-              "total": 4758604
+              "input": 61,
+              "cache_read": 12486423,
+              "cache_create": 247649,
+              "output": 22713,
+              "total": 12756846
             }
           }
         ]
       }
     ],
     "totals": {
-      "input": 194,
-      "cache_read": 34601979,
-      "cache_create": 772128,
-      "output": 103792,
-      "total": 35478093
+      "input": 234,
+      "cache_read": 42569376,
+      "cache_create": 791134,
+      "output": 115591,
+      "total": 43476335
     }
   },
   "codex": {
