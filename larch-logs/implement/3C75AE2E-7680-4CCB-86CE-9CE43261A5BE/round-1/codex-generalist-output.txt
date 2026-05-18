@@ -1,0 +1,3 @@
+### In-Scope Findings
+
+1. **Important** risk-integration: Makefile:15 wires `lint-bash32` only into the aggregate `make lint`, but CI does not run that target; `.github/workflows/ci.yaml:52-63` runs `make lint-only`, and `.github/workflows/ci.yaml:186-187` runs only the harness shards. Concrete scenario: a later PR adds `declare -A cache` to `scripts/foo.sh`; CI runs pre-commit plus `test-lint-bash32`, but never runs the full-tree `scripts/lint-bash32.sh`, so the Bash-4-only construct can merge and then fail for consumers on macOS Bash 3.2. Fix by adding a CI step/target that runs `make lint-bash32` over the full repo, or by making one CI shard depend on `lint-bash32` instead of only `test-lint-bash32`.

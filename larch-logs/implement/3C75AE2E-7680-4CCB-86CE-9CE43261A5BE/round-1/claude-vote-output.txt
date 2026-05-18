@@ -1,0 +1,26 @@
+FINDING_1: YES
+FINDING_2: EXONERATE -- expected repo workflow noise per repo policy; larch-logs commits are intentional by design
+FINDING_3: EXONERATE -- same as FINDING_2; version bump and run-log flush commits are expected larch workflow artifacts
+FINDING_4: EXONERATE -- explicitly by design per docs/run-logs.md; no action required
+FINDING_5: EXONERATE -- expected branch hygiene noise with no code impact
+FINDING_6: NO -- speculative finding derived only from bundled larch-logs text, not from reading the actual code diff in this PR
+FINDING_7: YES
+FINDING_8: EXONERATE -- minor ordering preference; reordering adds maintenance risk and the current order is a deliberate slow-path tradeoff
+FINDING_9: EXONERATE -- duplicate of FINDING_7; same bundled-changes concern already captured
+FINDING_10: YES
+FINDING_11: EXONERATE -- substring suppression discipline is documented; anchoring would add awk complexity without clear benefit given the low-volume use of suppression markers
+FINDING_12: EXONERATE -- the split-string `"&>"">` is the only way for the harness to contain the forbidden token while surviving its own scan; single-quoting alone does not solve the self-scan problem
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: EXONERATE -- duplicate of FINDING_16; anonymous coproc gap already captured
+FINDING_18: YES
+FINDING_19: NO -- `"&>""> append-all redirection"` is correct Bash string concatenation producing `&>> append-all redirection` which exactly matches the linter's stderr; the finding is incorrect
+FINDING_20: EXONERATE -- duplicate of FINDING_1; CI gap fully captured there
+FINDING_21: EXONERATE -- duplicate of FINDING_1
+FINDING_22: EXONERATE -- duplicate of FINDING_1
+FINDING_23: EXONERATE -- duplicate of FINDING_1; the docs accurately describe the current state (local-only enforcement)
+FINDING_24: YES
+FINDING_25: EXONERATE -- the `eval` arguments are hardcoded variable-name strings within the same script, not derived from external input; not an exploitable injection path
+FINDING_26: EXONERATE -- duplicate of FINDING_11; substring suppression behavior already addressed there

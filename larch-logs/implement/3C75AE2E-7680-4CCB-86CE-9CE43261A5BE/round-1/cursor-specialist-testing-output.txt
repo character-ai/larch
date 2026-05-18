@@ -1,0 +1,25 @@
+Gathering the pre-computed diff and commit history for a read-only review focused on tests, CI, and regression risk.
+
+Searching the large diff for Bash 3.2 lint, Makefile, CI, and test-related hunks.
+
+Reading implementation files in the workspace for full context (diff hunks are truncated).
+
+### In-Scope Findings
+
+1. **Important** · `risk-integration` · [.github/workflows/ci.yaml:52-63](.github/workflows/ci.yaml) · The `lint` job still runs only `make lint-only` (repo-wide pre-commit), and no workflow step invokes `make lint-bash32`. The new full-tree scan is wired into local [`Makefile:15`](Makefile) (`lint: test-harnesses lint-bash32 lint-only`) but that aggregate target is never run in CI, which continues to mirror the split `lint-only` + `test-harnesses` shards ([`docs/linting.md:23`](docs/linting.md)). **Scenario (plan / requirements):** A PR adds Bash 4+ syntax to a tracked `.sh` file; shard 10’s [`scripts/test-lint-bash32.sh`](scripts/test-lint-bash32.sh) still passes because it only exercises isolated fixtures, and `lint-only` / `shellcheck` may not catch the same construct—so the “all tracked bash scripts must pass `lint-bash32`” bar from `<feature_description>` is not enforced on the merge path. **Suggested fix:** Add an explicit CI step (e.g. `make lint-bash32` in the `lint` job or a small parallel job) or a `pass_filenames: false` pre-commit hook, and document that path next to the existing CI bullets.
+
+2. **Latent** · `correctness` · [`scripts/lint-bash32.sh:81`](scripts/lint-bash32.sh) · The awk rule only flags `${…^^}` and `${…,,}` ([`BASH_AUTHORING.md:42`](BASH_AUTHORING.md) matches that subset). Bash 4 also supports single-character case conversion `${var^}`, `${var,}`, `${var^^}`, `${var,,}`—the middle two are not matched. **Scenario (requirements):** A script uses `${title^}`; `make lint-bash32` exits 0 while macOS Bash 3.2 still fails at runtime. **Suggested fix:** Broaden the pattern (and extend [`scripts/test-lint-bash32.sh`](scripts/test-lint-bash32.sh) + docs) to include single `^` / `,` forms.
+
+3. **Latent** · `correctness` · [`scripts/lint-bash32.sh:85`](scripts/lint-bash32.sh) · Only `coproc NAME {` is detected; anonymous `coproc { … }` is still Bash 4+–only relative to 3.2 but is not flagged. **Scenario:** A contributor adds an anonymous coproc; the linter and harness stay green. **Suggested fix:** Add a pattern for `coproc` immediately followed by `{` (plus fixtures), or document an explicit exception if anonymous coprocs are considered out of scope.
+
+### Out-of-Scope Observations
+
+1. **Nit** · `architecture` · Branch commit list vs `<feature_description>` · `git log $(git merge-base HEAD main)..HEAD` includes unrelated `Bump version …` and `chore(larch-logs): flush …` commits alongside `Add Bash 3.2 portability lint`; they do not change the testing story for bash32 itself and are not defects in the bash32 implementation.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	risk-integration	.github/workflows/ci.yaml:52-63	CI lint job never runs make lint-bash32; only local make lint does.	A PR can merge Bash 4+ syntax into tracked *.sh; test-lint-bash32 fixtures still pass; full-tree bash32 guard from feature_description is not enforced on CI.	Add make lint-bash32 (or equivalent pre-commit hook) to CI and document it in docs/linting.md CI section.
+1	in_scope	latent	correctness	scripts/lint-bash32.sh:81	Case-conversion awk only matches ^^ and ,, not single ^ or ,.	${var^} or ${var,} slips past lint-bash32 while still requiring Bash 4+.	Extend regex, BASH_AUTHORING.md, and test-lint-bash32.sh for single-caret/comma forms.
+1	in_scope	latent	correctness	scripts/lint-bash32.sh:85	Named coproc pattern misses anonymous coproc { ... }.	Anonymous coproc is incompatible with Bash 3.2 but passes the linter.	Add coproc-before-{ detection and regression cases (or narrow docs if intentional).
+1	out_of_scope	nit	architecture	branch commits (e.g. e9a74a2d a83cd1dc 8ea4de6c)	Version bump and larch-logs flush commits ride with bash32 work; orthogonal to bash32 test coverage.	Reviewer noise when reading PR scope only; no bash32 CI gap by themselves.	None required for bash32 feature; optional history cleanup for PR authors.
+```

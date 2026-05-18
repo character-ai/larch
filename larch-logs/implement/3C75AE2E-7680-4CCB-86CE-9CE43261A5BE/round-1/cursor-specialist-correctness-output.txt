@@ -1,0 +1,11 @@
+Gathering the branch diff and commit history for a correctness-focused review.
+
+Searching the large diff for Bash 3.2 lint-related changes and reading key new/modified files in the repo for full context.
+
+Checking whether `${var^}` / `${var,}` appear in the repo and verifying the `test-lint-bash32` assertion string.
+
+Confirming the `"&>"">` quoting is intentional Bash concatenation producing `&>>` (verified on Bash 3.2). Retracting the false needle bug. Checking one more edge case for the inline `#` scenario:
+
+Identifying a real linter false positive. Creating the review plan document.
+
+
