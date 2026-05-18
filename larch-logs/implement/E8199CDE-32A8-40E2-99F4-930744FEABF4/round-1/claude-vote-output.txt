@@ -1,0 +1,17 @@
+FINDING_1: YES
+FINDING_2: EXONERATE -- review-core.sh receives the already-resolved value via --dynamic-archetypes from review-and-fix.sh; direct env reading by review-core.sh is speculative
+FINDING_3: EXONERATE -- /fix-issue consistently omits most /implement flags by design; gap is intentional and not worth a separate issue
+FINDING_4: EXONERATE -- duplicate of FINDING_3
+FINDING_5: EXONERATE -- minor doc gap; the runtime concern is captured by FINDING_1 which covers the Edit-in-sync contract violation
+FINDING_6: EXONERATE -- duplicate of FINDING_5
+FINDING_7: NO -- substantively duplicate of FINDING_1; subskill-invocation.md note is a nit insufficient for a separate issue
+FINDING_8: EXONERATE -- last-wins is deterministic and consistent with how other valued flags are parsed in SKILL.md; adding abort would overcomplicate
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: NO -- duplicate of FINDING_10
+FINDING_12: EXONERATE -- test gap is real but separate follow-up; no existing tests were broken by the diff
+FINDING_13: NO -- duplicate of FINDING_1
+FINDING_14: EXONERATE -- /fix-issue's simplified interface intentionally omits most /implement flags; operators can use process env as workaround
+FINDING_15: EXONERATE -- hardcoded "cap=4" in banner is cosmetic; runtime behavior is correct regardless
+FINDING_16: EXONERATE -- parse convention matches other valued flags in SKILL.md (--run-id, --issue); no special treatment warranted
+FINDING_17: EXONERATE -- nit-level; argument-hint metadata is optional and not required for all flags

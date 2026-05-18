@@ -1,0 +1,8 @@
+### In-Scope Findings
+
+1. **Important** `risk-integration` — `scripts/session-setup.sh:131`  
+   The new `LARCH_DYNAMIC_ARCHETYPES_MAX` session-env key is written by `scripts/write-session-env.sh`, but `scripts/session-setup.sh:131-140` still ignores it when reading `--caller-env`, and `scripts/session-setup.sh:409-432` never forwards it into the child session env. Concrete failing scenario: a parent session-env contains `LARCH_DYNAMIC_ARCHETYPES_MAX=0`, `session-setup.sh --caller-env ... --write-session-env ...` drops the key, then `skills/review-and-fix/scripts/review-and-fix.sh:708-713` sees no session value and defaults `/implement` review rounds back to `4`, launching the scout despite the inherited disable. Add a `CALLER_DYNAMIC_ARCHETYPES_MAX` parse/pass-through path, validate `0..4`, pass `--dynamic-archetypes "$CALLER_DYNAMIC_ARCHETYPES_MAX"` to `write-session-env.sh`, and cover it in the session-env roundtrip tests/docs.
+
+### Out-of-Scope Observations
+
+No out-of-scope observations.

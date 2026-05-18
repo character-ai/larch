@@ -1,0 +1,39 @@
+Reading the ballot file to vote on each finding.
+
+Verifying key claims in the codebase so votes are grounded (read-only).
+
+Here are the panel votes. Format: `FINDING_N: YES`, `FINDING_N: NO -- reason`, or `FINDING_N: EXONERATE -- reason`.
+
+FINDING_1: YES
+
+FINDING_2: NO -- review-core documents empty `LARCH_DYNAMIC_ARCHETYPES_MAX` as invalid (exit 2), not “unset”; aligning with review-and-fix would change that contract, not fix a latent bug.
+
+FINDING_3: EXONERATE -- disabling scout from `/fix-issue` is already achievable via env/session; argv passthrough is optional polish, not worth filing a separate issue.
+
+FINDING_4: EXONERATE -- plan/SKILL doc gap alone does not justify a GitHub tracking issue; fold into normal doc work if parity is desired.
+
+FINDING_5: YES
+
+FINDING_6: EXONERATE -- same edit-in-sync gap as FINDING_5; one doc update covers both.
+
+FINDING_7: YES
+
+FINDING_8: EXONERATE -- both flags map to the same knob; rare combination; a short “last token wins” note is enough without new mutex machinery.
+
+FINDING_9: YES
+
+FINDING_10: YES
+
+FINDING_11: EXONERATE -- duplicate of FINDING_10 (empty-set env); same fix path.
+
+FINDING_12: YES
+
+FINDING_13: YES
+
+FINDING_14: YES
+
+FINDING_15: YES
+
+FINDING_16: EXONERATE -- general flag-stripping rules already exist in the SKILL; extra mechanical parse steps add length without fixing a demonstrated failure mode.
+
+FINDING_17: YES

@@ -1,0 +1,27 @@
+Gathering the branch diff and commit list for a Plan Fidelity review against the provided implementation plan.
+
+Checking whether `/fix-issue` uses the same review path and whether the implement skill initializes `dynamic_archetypes_value` when flags are absent.
+
+Verification: `run-step5-review.sh` does not pass `--dynamic-archetypes`; resolution in `run_implement_round` supplies the default — matches the plan’s resolution priority (session-env / implement default).
+
+### In-Scope Findings
+
+1. **Important** (`correctness` / `architecture`) — [scripts/write-session-env.md](scripts/write-session-env.md):44-46 vs [scripts/session-setup.sh](scripts/session-setup.sh):131-140  
+   The branch documents the new `LARCH_DYNAMIC_ARCHETYPES_MAX` key and repeats the **Edit-in-sync** rule that requires updating `scripts/session-setup.sh` and `skills/shared/subskill-invocation.md` whenever session-env keys are added, but neither file is updated. Today `session-setup.sh`’s `--caller-env` whitelist ignores unknown keys (`*) ;;`), so a parent-prepared caller session file that sets `LARCH_DYNAMIC_ARCHETYPES_MAX` (for example on the `/fix-issue` → `/implement --session-env …` handoff) is **never bridged** into the fresh implement `session-env.sh`; the value is also invisible to `write-session-env.sh` unless the orchestrator passes `--dynamic-archetypes` or the operator relies on process environment. That undercuts the documented “propagate via session-env” story for any caller-env–first workflow. **Suggested fix:** extend `session-setup.sh` caller-env parsing (with the same 0–4 validation at the write boundary) and refresh `subskill-invocation.md` per the Edit-in-sync contract.
+
+2. **Nit** (`correctness`) — [skills/review-and-fix/scripts/review-and-fix.sh](skills/review-and-fix/scripts/review-and-fix.sh):704-719  
+   Resolution uses `elif [[ ${LARCH_DYNAMIC_ARCHETYPES_MAX+x} ]]; then`, so an **empty-but-set** process env (`export LARCH_DYNAMIC_ARCHETYPES_MAX=`) selects that branch, sets `DYNAMIC_ARCHETYPES` to empty, and fails the `[0-4]` case with exit 2. Treat empty like unset (for example only take the env branch when the value is non-empty) to match the “optional cap” intent.
+
+### Out-of-Scope Observations
+
+1. **Latent** (`risk-integration`) — [skills/fix-issue/SKILL.md](skills/fix-issue/SKILL.md):4-6,227-229  
+   The **feature_description** names `/fix-issue`, but the **implementation plan** only lists `/implement` and the branch does not touch `fix-issue`. PR-producing `/fix-issue` still reaches `review-and-fix.sh` with default cap `4` via delegated `/implement` and `IMPLEMENT_TMPDIR`, so the scout is “on” for that path; however the prescribed Step 5a `/implement …` argv template and `argument-hint` do not expose `--no-dynamic-archetypes` / `--dynamic-archetypes <N>`, so operators on the fix-issue entrypoint cannot use the same first-class toggles without diverging from the skill text. **Out of scope** because `skills/fix-issue/SKILL.md` is not modified and was not named in the implementation plan’s file list.
+
+---
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	architecture	scripts/write-session-env.md:44-46 scripts/session-setup.sh:131-140	New session-env key documented but Edit-in-sync consumers not updated.	Caller session-env that sets LARCH_DYNAMIC_ARCHETYPES_MAX is passed as --caller-env into session-setup; the key is dropped by the whitelist so it never reaches implement session-env or write-session-env unless set in the process environment or via /implement flags.	Whitelist and forward LARCH_DYNAMIC_ARCHETYPES_MAX in session-setup.sh (validate 0-4) and update subskill-invocation.md per write-session-env.md Edit-in-sync.
+1	in_scope	nit	correctness	skills/review-and-fix/scripts/review-and-fix.sh:704-719	Empty-but-set LARCH_DYNAMIC_ARCHETYPES_MAX errors at validation.	Operator runs with export LARCH_DYNAMIC_ARCHETYPES_MAX= ; review-and-fix hits the env branch with an empty value and exits 2 before review-core runs.	Treat empty env like unset before the [0-4] case, or skip the env branch when the value is empty.
+1	out_of_scope	latent	risk-integration	skills/fix-issue/SKILL.md:4-6 227-229	/fix-issue entrypoint lacks documented pass-through for new archetype flags though feature_description names fix-issue.	Default cap=4 still applies via /implement delegation; disabling scout from /fix-issue needs env override or non-canonical args.	Extend implementation plan and fix-issue SKILL if first-class /fix-issue flags are required.
+```

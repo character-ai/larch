@@ -1,0 +1,9 @@
+Gathering the branch diff and commit history for a read-only review focused on tests, CI, and regression risk.
+
+Checking whether `review-core.sh` handles `--dynamic-archetypes` and whether `fix-issue` appears in the branch diff (requirements mention both).
+
+Checking `skills/implement/SKILL.md` for flag-parsing and `dynamic_archetypes_cap` initialization (orchestrator contract).
+
+Having mapped the diff: strong unit/regression coverage for `write-session-env`, `session-setup` caller-env, `run-step5-review` argv forwarding, and `review-and-fix` env vs session precedence. `test-scout-dynamic-archetypes.sh` covers the scout script in isolation (not introduced in this diff). Creating the formal plan record, then delivering the review format you requested.
+
+
