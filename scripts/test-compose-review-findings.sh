@@ -41,7 +41,7 @@ cat > "$TMP/b-impl/rejected-findings.md" <<'EOF'
 This summary should not be selected when the full artifact exists.
 EOF
 cat > "$TMP/b-impl/rejected-findings-full.md" <<'EOF'
-### [Code Review] Cursor-Security
+### [Code Review] Cursor-<Security & QA>
 **Finding**: token sk-ant-abcdefghijklmnopqrstuvwxyz0123456789ABCD appears.
 **Reason not implemented**: fixture.
 EOF
@@ -64,8 +64,11 @@ grep -Fq '### FINDING_2: panel [code-review/accepted]' "$out" \
     || fail "code accepted section missing"
 grep -Fq '### REJ_P1: Cursor-Architecture [plan-review/rejected]' "$out" \
     || fail "plan rejected section missing"
-grep -Fq '### REJ_C1: Cursor-Security [code-review/rejected]' "$out" \
+grep -Fq '### REJ_C1: Cursor-&lt;Security &amp; QA&gt; [code-review/rejected]' "$out" \
     || fail "code rejected section missing"
+if grep -qF '### REJ_C1: Cursor-<Security & QA> [code-review/rejected]' "$out"; then
+    fail "reviewer header was not HTML-escaped"
+fi
 grep -qF '&lt;REDACTED-TOKEN&gt;' "$out" || fail "token was not redacted (expected HTML-escaped form)"
 grep -Fq 'Reason not implemented' "$out" || fail "full rejected artifact was not used"
 
@@ -73,7 +76,7 @@ echo "=== HTML-escape XML-like tags in finding body ==="
 mkdir -p "$TMP/c-impl/round-1"
 cat > "$TMP/c-impl/round-1/accepted-findings.md" <<'EOF'
 ### FINDING_3: Prompt injection guard
-- **Concern**: The </reviewer_diff> tag and <scout_notes> element are unescaped.
+- **Concern**: The </reviewer_diff> tag, <scout_notes> element, and A & B marker are unescaped.
 - **Suggested revision**: HTML-escape all <…> sequences.
 EOF
 out="$TMP/c.md"
@@ -81,8 +84,10 @@ stdout="$("$COMPOSE" --implement-tmpdir "$TMP/c-impl" --issue 42 --output "$out"
 [[ "$stdout" == *"FINDINGS_TOTAL=1"* ]] || fail "xml escape total: $stdout"
 grep -Fq '&lt;/reviewer_diff&gt;' "$out" || fail "reviewer_diff not escaped"
 grep -Fq '&lt;scout_notes&gt;' "$out" || fail "scout_notes not escaped"
+grep -Fq 'A &amp; B' "$out" || fail "ampersand not escaped"
 if grep -qF '</reviewer_diff>' "$out"; then fail "unescaped </reviewer_diff> still present"; fi
 if grep -qF '<scout_notes>' "$out"; then fail "unescaped <scout_notes> still present"; fi
+if grep -qF 'A & B' "$out"; then fail "unescaped ampersand still present"; fi
 
 echo "=== invalid issue fails ==="
 set +e

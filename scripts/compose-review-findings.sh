@@ -64,11 +64,12 @@ FINDINGS_TOTAL=0
 
 emit_record() {
     local id="$1" phase="$2" outcome="$3" reviewer="$4" body="$5"
-    local reviewer_redacted body_redacted body_escaped
+    local reviewer_redacted reviewer_escaped body_redacted body_escaped
     reviewer_redacted="$(redact_field "$reviewer")" || fail "redaction failed for reviewer in $id"
+    reviewer_escaped="$(printf '%s' "$reviewer_redacted" | escape_finding_body)" || fail "HTML escape failed for reviewer in $id"
     body_redacted="$(redact_field "$body")" || fail "redaction failed for prose_body in $id"
     body_escaped="$(printf '%s' "$body_redacted" | escape_finding_body)" || fail "HTML escape failed for prose_body in $id"
-    printf '### %s: %s [%s/%s]\n\n%s\n\n' "$id" "$reviewer_redacted" "$phase" "$outcome" "$body_escaped" \
+    printf '### %s: %s [%s/%s]\n\n%s\n\n' "$id" "$reviewer_escaped" "$phase" "$outcome" "$body_escaped" \
         >> "$TMP_OUT" || fail "failed to write section for $id"
     FINDINGS_TOTAL=$((FINDINGS_TOTAL + 1))
 }
