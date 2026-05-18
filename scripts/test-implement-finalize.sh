@@ -255,7 +255,8 @@ exit 0
 STUB
     cat > "$SANDBOX/scripts/larch-log.sh" <<STUB
 #!/usr/bin/env bash
-printf '%s\n' "\$@" > "$SANDBOX/larch-log-argv.txt"
+printf '%s\n' "---" >> "$SANDBOX/larch-log-argv.txt"
+printf '%s\n' "\$@" >> "$SANDBOX/larch-log-argv.txt"
 # Record the inherited IMPLEMENT_TMPDIR for export regression tests.
 printf 'IMPLEMENT_TMPDIR=%s\n' "\${IMPLEMENT_TMPDIR:-UNSET}" >> "$SANDBOX/larch-log-env.txt"
 if [ "\${STUB_LARCH_LOG_FAIL:-false}" = "true" ]; then
@@ -1117,6 +1118,20 @@ cp "$SANDBOX/original-CHANGELOG.md" "$SANDBOX/repo/CHANGELOG.md"
 write_postbump_state "$POSTBUMP_STATE"
 OUT=$(STUB_AMEND_FAIL=true run_subject postbump --state-file "$POSTBUMP_STATE" --implement-tmpdir "$SANDBOX/tmp")
 assert_contains "STATUS=changelog-failed" "$OUT" "postbump: changelog amend failure is fatal"
+
+cp "$SANDBOX/original-CHANGELOG.md" "$SANDBOX/repo/CHANGELOG.md"
+: > "$SANDBOX/larch-log-argv.txt"
+write_postbump_state "$POSTBUMP_STATE"
+OUT=$(STUB_LARCH_LOG_FAIL=true run_subject postbump --state-file "$POSTBUMP_STATE" --implement-tmpdir "$SANDBOX/tmp" || true)
+assert_contains "LOG_WRITE_STATUS=failed" "$OUT" "postbump: write failure surfaces failed status"
+assert_contains "postbump commit skipped because version-bump-reasoning write failed" "$OUT" "postbump: write failure warns that commit was skipped"
+if grep -qFx "commit" "$SANDBOX/larch-log-argv.txt"; then
+    FAIL=$((FAIL + 1))
+    echo "FAIL: postbump: write failure should skip larch-log commit"
+else
+    PASS=$((PASS + 1))
+    echo "PASS: postbump: write failure skips larch-log commit"
+fi
 
 write_postbump_state "$POSTBUMP_STATE" BRANCH_NAME=main
 run_subject_raw_rc postbump --state-file "$POSTBUMP_STATE" --implement-tmpdir "$SANDBOX/tmp"

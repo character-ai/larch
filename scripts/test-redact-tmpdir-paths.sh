@@ -31,6 +31,7 @@ assert_eq "$(run_redactor '/tmp/claude-implement-AbC123')" '<TMPDIR>' "/tmp sess
 assert_eq "$(run_redactor '/private/tmp/larch-review-xyz_789')" '<TMPDIR>' "/private/tmp session path redacted"
 assert_eq "$(run_redactor '/tmp/claude-implement-larch1-G2GITf')" '<TMPDIR>' "clone-tagged session path redacted"
 assert_eq "$(run_redactor '/Users/example/.cache/larch/sessions/claude-design-cache123')" '<TMPDIR>' "cache session path redacted"
+assert_eq "$(run_redactor '/Users/example/larch3/scripts/foo.sh')" '<OPERATOR_REPO_PATH>/scripts/foo.sh' "operator repo path redacted"
 assert_eq "$(run_redactor 'see /tmp/claude-research-a_b-C/log.txt now')" 'see <TMPDIR>/log.txt now' "embedded path redacted in prose"
 assert_eq "$(run_redactor '/tmp/not-larch-session and /var/tmp/claude-implement-abc')" '/tmp/not-larch-session and /var/tmp/claude-implement-abc' "non-matching paths preserved"
 assert_eq "$(run_redactor '/var/folders/kf/abc123/T/claude-implement-larch5-XyZ')" '<TMPDIR>' "/var/folders macOS session path redacted"
@@ -59,6 +60,11 @@ assert_eq \
     'Some text <TMPDIR>/foo' \
     "larch/sessions path with space boundary redacted"
 
+assert_eq \
+    "$(run_redactor 'Some text /Users/example/larch3/scripts/foo.sh')" \
+    'Some text <OPERATOR_REPO_PATH>/scripts/foo.sh' \
+    "operator repo path with space boundary redacted"
+
 jsonl_multi='{"a":"/Users/example/.cache/larch/sessions/claude-implement-ONE/a.log","b":"/Users/example/.cache/larch/sessions/claude-implement-TWO/b.log"}'
 jsonl_multi_redacted="$(run_redactor "$jsonl_multi")"
 assert_eq \
@@ -81,25 +87,31 @@ assert_eq \
 
 # Expression 4: \n (two chars: backslash + n) immediately before larch/sessions path
 assert_eq \
+    "$(run_redactor 'foo\n/Users/example/larch3/scripts/foo.sh')" \
+    'foo\n<OPERATOR_REPO_PATH>/scripts/foo.sh' \
+    "E4: \\n immediately before operator repo path redacted, \\n preserved"
+
+# Expression 5: \n (two chars: backslash + n) immediately before larch/sessions path
+assert_eq \
     "$(run_redactor 'foo\n/Users/example/.cache/larch/sessions/claude-implement-XYZ')" \
     'foo\n<TMPDIR>' \
-    "E4: \\n immediately before larch/sessions path redacted, \\n preserved"
+    "E5: \\n immediately before larch/sessions path redacted, \\n preserved"
 
 assert_eq \
     "$(run_redactor '\n/Users/example/.cache/larch/sessions/larch-design-ABC123/bar.log')" \
     '\n<TMPDIR>/bar.log' \
-    "E4: \\n-prefixed larch/sessions path with suffix redacted, \\n preserved"
+    "E5: \\n-prefixed larch/sessions path with suffix redacted, \\n preserved"
 
-# Expressions 5-6: \n immediately before /tmp and /var/folders paths
+# Expressions 6-7: \n immediately before /tmp and /var/folders paths
 assert_eq \
     "$(run_redactor '\n/tmp/claude-implement-XYZ123')" \
     '\n<TMPDIR>' \
-    "E5: \\n immediately before /tmp session path redacted, \\n preserved"
+    "E6: \\n immediately before /tmp session path redacted, \\n preserved"
 
 assert_eq \
     "$(run_redactor '\n/private/var/folders/kf/abc/T/larch-fix-issue-XyZ')" \
     '\n<TMPDIR>' \
-    "E6: \\n immediately before /var/folders session path redacted, \\n preserved"
+    "E7: \\n immediately before /var/folders session path redacted, \\n preserved"
 
 echo
 echo "Results: $PASS passed, $FAIL failed"

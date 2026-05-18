@@ -83,6 +83,8 @@ assert_contains "$out" "LOG_WRITTEN=true" "code write emits LOG_WRITTEN"
 code_json="$log_root/implement/run-code/code-review-tally.json"
 assert_json_field "$code_json" '.batch' "code-review-tally" "code batch slug"
 assert_json_field "$code_json" '.mode' "simple" "code mode"
+assert_json_field "$code_json" '.exonerated_count' "0" "code exonerated count"
+assert_json_field "$code_json" '.neutral_count' "0" "code neutral count"
 
 echo "=== code-review heading allowlist ==="
 code_body_valid="$TMP/code-body-valid.md"

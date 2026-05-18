@@ -183,6 +183,14 @@ score_rows="$WORKDIR/score-rows.tsv"
                     neutral)
                         NEUTRAL_COUNT=$((NEUTRAL_COUNT + 1))
                         ;;
+                    *)
+                        {
+                            printf '### [rejected] %s\n\n' "$id"
+                            cat "$block"
+                            printf '\nVote tally: YES=%s NO=%s EXON=%s NEUTRAL=%s\n\n' "$yes" "$no" "$exonerate" "$neutral"
+                        } >> "$REJECTED_FINDINGS_FILE"
+                        REJECTED_COUNT=$((REJECTED_COUNT + 1))
+                        ;;
                 esac
                 printf 'FINDING_%s_ACCEPTED=false\n' "${id#FINDING_}" >> "$TALLY_ENV_FILE"
             fi

@@ -481,7 +481,7 @@ write_version_reasoning_fragment() {
             append_execution_issue "Step 8 postbump version-bump-reasoning log write failed."
             warn_line '**⚠ 8: larch-log — version-bump-reasoning write failed. Continuing.**'
         fi
-        if [ "${LARCH_NO_LOGS_COMMIT:-false}" != "true" ]; then
+        if [ "${LARCH_NO_LOGS_COMMIT:-false}" != "true" ] && [ "$LOG_WRITE_STATUS" = "ok" ]; then
             set +e
             out=$("$SCRIPT_DIR/larch-log.sh" commit --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$run_id")
             rc=$?
@@ -490,6 +490,9 @@ write_version_reasoning_fragment() {
                 append_execution_issue "Step 8 postbump larch-log commit failed."
                 warn_line '**⚠ 8: larch-log — postbump commit failed. Continuing.**'
             fi
+        elif [ "${LARCH_NO_LOGS_COMMIT:-false}" != "true" ] && [ "$LOG_WRITE_STATUS" != "ok" ]; then
+            append_execution_issue "Step 8 postbump skipped larch-log commit because version-bump-reasoning write failed."
+            warn_line '**⚠ 8: larch-log — postbump commit skipped because version-bump-reasoning write failed. Continuing.**'
         fi
     fi
     emit_breadcrumb "$(printf '✅ 8: larch-log status=complete elapsed=%s' "$(elapsed "$start")")"

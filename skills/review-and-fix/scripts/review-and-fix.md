@@ -64,6 +64,8 @@ Additional output keys:
 - `REJECTED_COUNT` — strictly `rejected` outcomes only; does not include exonerated or neutral.
 - `EXONERATED_COUNT` — findings with outcome `exonerated` (this round only).
 - `NEUTRAL_COUNT` — findings with outcome `neutral` (this round only).
+- `TOTAL_EXONERATED_COUNT` — cumulative exonerated findings across completed rounds.
+- `TOTAL_NEUTRAL_COUNT` — cumulative neutral findings across completed rounds.
 - `FIX_COUNT`
 - `APPROVED_FIXES_FILE`
 - `REJECTED_FINDINGS_FILE`
@@ -87,7 +89,7 @@ Additional output keys:
 pre-scrub accepted in-scope count. This keeps the `/implement` bulk-skip-ratio denominator
 aligned with the findings file the coder actually saw.
 
-The script writes `$IMPLEMENT_TMPDIR/review-and-fix-summary.json` atomically with `schema_version=2`, aggregate accepted/rejected counts, `rounds_completed`, latest approved-fixes path, latest round directory, accumulated OOS artifact paths, coder/submodule status fields, and `coder_commit_sha` (latest round's per-round commit, empty string when the round produced no commit). Accepted OOS markdown is accumulated at `$IMPLEMENT_TMPDIR/accumulated-oos.md` and mirrored to `$IMPLEMENT_TMPDIR/oos-accepted-review.md` for existing Step 9a.1 consumers; a JSONL audit copy is appended at `$IMPLEMENT_TMPDIR/accumulated-oos.jsonl`. That mirror copy is load-bearing: if the copy fails, the round fails instead of silently leaving the legacy mirror stale.
+The script writes `$IMPLEMENT_TMPDIR/review-and-fix-summary.json` atomically with `schema_version=2`, aggregate accepted/rejected/exonerated/neutral counts, `rounds_completed`, latest approved-fixes path, latest round directory, accumulated OOS artifact paths, coder/submodule status fields, and `coder_commit_sha` (latest round's per-round commit, empty string when the round produced no commit). Accepted OOS markdown is accumulated at `$IMPLEMENT_TMPDIR/accumulated-oos.md` and mirrored to `$IMPLEMENT_TMPDIR/oos-accepted-review.md` for existing Step 9a.1 consumers; a JSONL audit copy is appended at `$IMPLEMENT_TMPDIR/accumulated-oos.jsonl`. That mirror copy is load-bearing: if the copy fails, the round fails instead of silently leaving the legacy mirror stale.
 
 When an orchestrator round exits `0` (cap-reached, clean, or fix-applied) and `--run-id` is non-empty, the script best-effort flushes the Step 5 implement run-log batches:
 
