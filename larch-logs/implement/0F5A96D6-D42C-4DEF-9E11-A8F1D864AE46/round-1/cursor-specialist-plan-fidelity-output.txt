@@ -1,0 +1,38 @@
+Gathering the pre-computed diff and read-only commit history for a plan-fidelity review.
+
+Verifying test harness setup (`make_repo`, `ci-wait`) and how `error_text` is bound in `run_ci_phase` for completeness against the plan.
+
+Here is the plan-fidelity review. I read the cached diff, inspected [`scripts/test-ship-pr.sh`](scripts/test-ship-pr.sh) for `write_stubs` / default `ci-wait.sh`, and confirmed real `merge-pr.sh` error strings via repo search. `git log $(git merge-base HEAD main)..HEAD --oneline` shows one commit: `e0b939f8 Route OID-mismatch merge-pr error to run_rebase_rebump instead of STALL_STEP=12d`. I did not run tests (read-only); the plan’s “run `bash scripts/test-ship-pr.sh`” is unverified here.
+
+### In-Scope Findings
+
+1. **Nit** · `architecture` · [`scripts/test-ship-pr.sh`](scripts/test-ship-pr.sh) (new `oid_mismatch_recoverable` block ~1338–1380) vs implementation plan test bullets  
+   The plan called out an explicit `ci-wait.sh` stub “always `ACTION=merge`” and “Rebase stubs via `_make_rebase_stubs`.” The test instead relies on the default [`write_stubs`](scripts/test-ship-pr.sh) `ci-wait.sh`, which always emits `ACTION=${STUB_CI_ACTION:-merge}` ([`scripts/test-ship-pr.sh:110–119`](scripts/test-ship-pr.sh)), so behavior matches the intent of “merge on every call” without a dedicated override; rebump helpers are inlined in a `for` loop and add `refresh-run-logs.sh` (which `_make_rebase_stubs` does not stub—[`scripts/test-ship-pr.sh:776–796`](scripts/test-ship-pr.sh)). No plan requirement is missing in behavior, but traceability to the written test recipe is weaker than the plan’s step list.
+
+2. **Nit** · `correctness` · [`scripts/ship-pr.sh:1173–1208`](scripts/ship-pr.sh) (`is_head_divergence_recoverable`) vs implementation plan placement  
+   The plan’s first preference was to add the helper after `run_rebase_rebump`; the diff places it immediately **before** `run_rebase_rebump`, which still satisfies the plan’s alternate “near helper functions” option and keeps call order (transient-net check, then OID routing) as specified ([`scripts/ship-pr.sh:1492–1508`](scripts/ship-pr.sh)).
+
+3. **Latent** · `correctness` · [`scripts/ship-pr.sh:1202–1206`](scripts/ship-pr.sh) vs [`scripts/merge-pr.sh`](scripts/merge-pr.sh) / [`scripts/merge-pr.md`](scripts/merge-pr.md) domain split  
+   The helper name implies “recoverable” divergence, but the glob matches every `merge-pr.sh` error that contains both `local HEAD` and `does not match PR head OID`, including strings documented as **non-recoverable** in merge-pr docs (e.g. `…; refusing to evaluate same-version gate` at [`scripts/merge-pr.sh:233`](scripts/merge-pr.sh)) and post–force-push failures (`… after force-push recovery`). That matches the written plan pattern and feature wording; the latent concern is product/ops semantics if anything still depended on `STALL_STEP=12d` for those non-flush cases. If narrower behavior is desired later, the classifier would need to exclude documented non-recoverable suffixes (plan did not ask for that).
+
+**Plan walk-through (completeness):**  
+- `is_head_divergence_recoverable` with case glob — implemented.  
+- `run_ci_phase` `policy_denied|admin_failed|error` branch after `is_transient_net_signature` — implemented with `run_rebase_rebump "$phase"; return 0`.  
+- [`scripts/test-ship-pr.sh`](scripts/test-ship-pr.sh) positive test (first merge error with OID text, second `merged`, assert rc 0 and `PHASE=done`, assert merge-pr invoked ≥2) — implemented; `refresh-run-logs.sh` stub added as in plan.  
+- Negative case “already covered by `non_transient_merge_pr`” — unchanged; still present in diff context.  
+- [`scripts/ship-pr.md`](scripts/ship-pr.md) exit-4 bullet exception — implemented.  
+- [`scripts/test-ship-pr.md`](scripts/test-ship-pr.md) bullet — implemented.  
+- Commit history: single focused commit aligns with the change set.
+
+No **Important** in-scope gaps relative to the supplied implementation plan.
+
+### Out-of-Scope Observations
+
+None. Items such as merge-pr’s internal recoverability taxonomy or broader `run_rebase_rebump` risk are only raised above as a **latent** plan-aligned note, not as pre-existing unrelated bugs.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	nit	architecture	scripts/test-ship-pr.sh:1338-1380	Test setup diverges from plan text explicit ci-wait override and _make_rebase_stubs	Plan listed dedicated ci-wait always-merge and _make_rebase_stubs; test uses default write_stubs ci-wait merge plus inline helper loop including refresh-run-logs.sh	Document in test comment or align with _make_rebase_stubs pattern if maintainers want strict plan traceability
+1	in_scope	nit	correctness	scripts/ship-pr.sh:1173-1208	Helper placed before run_rebase_rebump not after	Plan first option was after run_rebase_rebump; behavior unchanged	Accept as-is alternate placement or move after function if style guide prefers plan order
+1	in_scope	latent	correctness	scripts/ship-pr.sh:1202-1206	is_head_divergence_recoverable name and glob may include merge-pr non-recoverable OID errors	Merge-pr emits same substring for documented non-recoverable gate refusal; ship-pr will run_rebase_rebump instead of STALL_STEP=12d	Confirm product intent; if stall must persist for those errors tighten matcher per merge-pr result codes or suffixes
+```

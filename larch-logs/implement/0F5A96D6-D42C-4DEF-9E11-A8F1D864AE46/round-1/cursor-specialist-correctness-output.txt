@@ -1,0 +1,22 @@
+Gathering the diff and commit history for a read-only correctness review.
+
+Tracing `error_text` / `merge_result` sources in `run_ci_phase` and verifying the test harness stubs `ci-wait.sh` and the merge flow.
+
+Verifying `merge-pr.sh` error strings for pattern coverage:
+
+## Verdict
+
+Single commit `e0b939f8` implements the described routing in [`scripts/ship-pr.sh`](scripts/ship-pr.sh), updates docs in [`scripts/ship-pr.md`](scripts/ship-pr.md) / [`scripts/test-ship-pr.md`](scripts/test-ship-pr.md), and adds a regression block in [`scripts/test-ship-pr.sh`](scripts/test-ship-pr.sh). Logic order (transient net check, then OID recovery, then 12d stall) matches the intended control flow in `run_ci_phase`. The harness test is consistent with default `write_stubs` `ci-wait.sh` (`ACTION=merge` every time), which is appropriate for a `ci-merge` scenario (unlike `_make_rebase_stubs`, which would incorrectly force an initial `rebase` on `ci-initial`).
+
+### In-Scope Findings
+
+1. **Latent** (`correctness`, `requirements` + `plan`): [`scripts/ship-pr.sh`](scripts/ship-pr.sh) `is_head_divergence_recoverable` matches any `ERROR` containing the substrings `"local HEAD"` and `"does not match PR head OID"`. In [`scripts/merge-pr.sh`](scripts/merge-pr.sh) that includes not only `; refusing to evaluate same-version gate` (lines 232–234) but also `after force-push recovery` (lines 206–208), i.e. after merge-pr’s flush recovery path already ran a leased force-push and the OID still disagreed. **Concrete scenario:** `merge-pr.sh` exits 0 with `MERGE_RESULT=error` and the “after force-push recovery” message; `ship-pr.sh` now runs `run_rebase_rebump` instead of stalling at `STALL_STEP=12d`, which may spend another full rebase/rebump cycle (bounded by `REBASE_COUNT`) where the previous stall made the operator read Step 16. **Suggested fix:** If the product intent is to recover only for the same-version gate refusal, tighten the pattern (e.g. require `refusing to evaluate same-version gate` or exclude `after force-push recovery`); if broader recovery is intended, document that explicitly next to the exception in [`scripts/ship-pr.md`](scripts/ship-pr.md).
+
+### Out-of-Scope Observations
+
+None.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	latent	correctness	scripts/ship-pr.sh:1202-1207	OID-mismatch substring also matches merge-pr 'after force-push recovery' errors, not only the same-version gate message.	MERGE_RESULT=error with ERROR ending in 'after force-push recovery' routes to run_rebase_rebump and skips STALL_STEP=12d, changing operator-facing recovery semantics vs a narrow 'same-version gate' interpretation.	Narrow the glob or document broader intent in scripts/ship-pr.md.
+```

@@ -1,0 +1,12 @@
+FINDING_1: YES
+FINDING_2: NO -- `_make_rebase_stubs` wrires a ci-wait that first returns `ACTION=rebase`; the OID path fires from merge-pr.sh inside ci-merge, never through ci-wait, so `_make_rebase_stubs` would add wrong ci-wait behavior; inline stubs are correct for this path
+FINDING_3: YES
+FINDING_4: EXONERATE -- DRY concern is real but `_make_rebase_stubs` is the wrong helper for this code path (ci-merge, not ci-initial); inline stubs are appropriate; concern is not issue-worthy
+FINDING_5: NO -- duplicate of FINDING_4; adds no new substance
+FINDING_6: NO -- callee-before-caller placement is conventional Bash style; plan wording was aspirational, not prescriptive; behavior is identical
+FINDING_7: NO -- duplicate of FINDING_1; rephrased as a product-intent question rather than adding new substance
+FINDING_8: NO -- duplicate of FINDING_1; the "after force-push recovery" overmatch is part of the same root cause and is fixed by the same narrowing fix
+FINDING_9: NO -- duplicate of FINDING_1/8; adds no new substance beyond naming the same second error string
+FINDING_10: NO -- duplicate of FINDING_1; security/risk framing adds no fix-relevant detail beyond what FINDING_1 already captures
+FINDING_11: NO -- duplicate of FINDING_3; same spurious `record_failure` concern from a different reviewer
+FINDING_12: EXONERATE -- the suggestion to assert `STALL_TRACKING=false`/`STALL_STEP` cleared is valid, but the primary recommendation (`_make_rebase_stubs`) is wrong for this path; net concern is too mixed to file as a standalone issue
