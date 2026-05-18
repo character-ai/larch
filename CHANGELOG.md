@@ -11,6 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Document the `review-and-fix.sh` applied-fixes contract change: accepted findings applied by the coder now complete with exit `0` plus `REVIEW_AND_FIX_STATUS=fix-applied`, and `review-and-fix-summary.json` now records `.status = "fix-applied"` instead of the old `fix-required`/exit-3 checkpoint shape. External wrappers, jq filters, and dashboards must key on the new status fields rather than exit `3`.
 
+## [29.1.23] - 2026-05-17
+
+### Changed
+
+- Rebalanced CI test harnesses from 11 shards to 13 shards in Makefile and CI workflow matrix.
+- Moved the two heavy harnesses into a new shard 13 and split the former shard 11 inventory across shards 11 and 12.
+- Updated the shard coverage guard and docs so the partition guard can live first in shard 12 while later heavy-test shards follow.
+
 ## [29.1.11] - 2026-05-17
 
 ### Changed
