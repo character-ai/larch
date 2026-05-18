@@ -75,32 +75,54 @@
       {
         "step": "Step 3 — checks first pass",
         "totals": {
-          "input": 29,
-          "cache_read": 6370452,
-          "cache_create": 41912,
-          "output": 11676,
-          "total": 6424069
+          "input": 31,
+          "cache_read": 6832602,
+          "cache_create": 44214,
+          "output": 12798,
+          "total": 6889645
         },
         "skills": [
           {
             "skill": "larch:implement",
             "totals": {
-              "input": 29,
-              "cache_read": 6370452,
-              "cache_create": 41912,
-              "output": 11676,
-              "total": 6424069
+              "input": 31,
+              "cache_read": 6832602,
+              "cache_create": 44214,
+              "output": 12798,
+              "total": 6889645
+            }
+          }
+        ]
+      },
+      {
+        "step": "Step 6 — checks second pass",
+        "totals": {
+          "input": 1,
+          "cache_read": 232226,
+          "cache_create": 576,
+          "output": 316,
+          "total": 233119
+        },
+        "skills": [
+          {
+            "skill": "larch:implement",
+            "totals": {
+              "input": 1,
+              "cache_read": 232226,
+              "cache_create": 576,
+              "output": 316,
+              "total": 233119
             }
           }
         ]
       }
     ],
     "totals": {
-      "input": 159,
-      "cache_read": 29090924,
-      "cache_create": 221876,
-      "output": 90870,
-      "total": 29403829
+      "input": 162,
+      "cache_read": 29785300,
+      "cache_create": 224754,
+      "output": 92308,
+      "total": 30102524
     }
   },
   "codex": {
@@ -135,6 +157,14 @@
           "input": 0,
           "output": 0,
           "total": 131097
+        }
+      },
+      {
+        "step": "Step 6 — checks second pass",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
         }
       }
     ],
@@ -176,6 +206,14 @@
           "input": 366040,
           "output": 38697,
           "total": 2600449
+        }
+      },
+      {
+        "step": "Step 6 — checks second pass",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
         }
       }
     ],
