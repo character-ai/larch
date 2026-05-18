@@ -165,7 +165,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
@@ -183,7 +183,7 @@ jobs:
         # `$(rg ... || true)` substitutions). Ubuntu 24.04 hosted runners
         # do not include ripgrep in the default image inventory.
         run: sudo apt-get update && sudo apt-get install -y ripgrep
-      - name: Run test harnesses (shard ${{ matrix.shard }} of 11)
+      - name: Run test harnesses (shard ${{ matrix.shard }} of 13)
         run: make test-harnesses-${{ matrix.shard }}
 
   agent-lint:
