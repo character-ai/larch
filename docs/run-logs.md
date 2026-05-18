@@ -52,29 +52,33 @@ Contains the implementation plan: goal statement, files to modify, approach, edg
 
 **Mode**: replace (JSON object). **Written**: Step 1 tail, after the plan-review voting tally is exported.
 
-One JSON object per `/implement` session. The canonical fields are
-`schema_version`, `phase`, `batch`, `mode`, `rounds`, `accepted_count`,
-`rejected_count`, and `body`. The `body` contains the plan-review voting outcome
-(accepted count, rejected count, round summaries) plus any rejected plan-review
-findings under a `## Rejected Plan Review Findings` sub-header. In quick mode
-the body contains `"Quick mode — no plan review voting."`.
+One JSON object per `/implement` session. The tally envelope shape is shared with
+`code-review-tally.json`: `schema_version`, `phase`, `batch`, `mode`, `rounds`,
+`accepted_count`, `rejected_count`, `exonerated_count`, `neutral_count`, and
+`body`. For plan review the extra counters are normally `0`. The `body` contains
+the plan-review voting outcome (accepted count, rejected count, round summaries)
+plus any rejected plan-review findings under a `## Rejected Plan Review Findings`
+sub-header. In quick mode the body contains `"Quick mode — no plan review voting."`.
 
 ### code-review-tally.json
 
 **Mode**: replace (JSON object). **Written**: Step 5, after `/review` returns (normal mode) or the quick-mode review loop completes.
 
 One JSON object per `/implement` session with the same tally envelope fields as
-`plan-review-tally.json`. The body contains the code-review voting outcome and
-a round-by-round summary. It also includes rejected code-review findings under a
-`## Rejected Code Review Findings` sub-header — making this the load-bearing
-source for rejected findings (the terminal session transcript only prints a
-breadcrumb, not the full content).
+`plan-review-tally.json`. `exonerated_count` covers findings voted `exonerated`
+(valid but not worth implementing in this PR), `neutral_count` covers tie votes
+with no clear consensus, and `rejected_count` counts only findings where the panel
+voted strictly `rejected` (voted down). The body contains the code-review voting
+outcome and a round-by-round summary. It also includes rejected code-review
+findings under a `## Rejected Code Review Findings` sub-header — only findings
+with outcome `rejected` appear here. Exonerated and neutral findings are counted
+in the envelope but not listed separately.
 
 ### review-findings-full.md
 
 **Mode**: replace (markdown sections). **Written**: Step 5, immediately after the `code-review-tally` batch.
 
-Per-finding payloads for plan-review accepted, plan-review rejected, and code-review rejected entries. Each section heading carries finding id, reviewer, phase, and outcome, followed by the redacted prose body. Accepted code-review findings are not yet captured here; `scripts/compose-review-findings.sh` only reads plan-review and code-review rejection artifacts, not the accepted-code-review path.
+Per-finding payloads for plan-review accepted, plan-review rejected, and code-review entries. Each section heading carries finding id, reviewer, phase, and outcome, followed by the redacted prose body. Accepted code-review findings appear in `### FINDING_X: panel [code-review/accepted]` blocks; rejected code-review findings appear in generated `### REJ_CX: reviewer [code-review/rejected]` blocks.
 
 ### version-bump-reasoning.md
 

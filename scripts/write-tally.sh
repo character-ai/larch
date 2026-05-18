@@ -20,13 +20,15 @@ MODE=""
 ROUNDS="0"
 ACCEPTED="0"
 REJECTED="0"
+EXONERATED="0"
+NEUTRAL="0"
 BODY_FILE=""
 
 usage() {
     while IFS= read -r line; do larch_err "$line"; done <<'USAGE'
 Usage: write-tally.sh --log-root D --skill S --run-id R \
     --phase plan-review|code-review --mode simple|hard \
-    [--rounds N] [--accepted N] [--rejected N] --body-file PATH
+    [--rounds N] [--accepted N] [--rejected N] [--exonerated N] [--neutral N] --body-file PATH
 USAGE
 }
 
@@ -108,6 +110,8 @@ while [ $# -gt 0 ]; do
         --rounds) require_value "$1" "${2-}"; ROUNDS="$2"; shift 2 ;;
         --accepted) require_value "$1" "${2-}"; ACCEPTED="$2"; shift 2 ;;
         --rejected) require_value "$1" "${2-}"; REJECTED="$2"; shift 2 ;;
+        --exonerated) require_value "$1" "${2-}"; EXONERATED="$2"; shift 2 ;;
+        --neutral) require_value "$1" "${2-}"; NEUTRAL="$2"; shift 2 ;;
         --body-file) require_value "$1" "${2-}"; BODY_FILE="$2"; shift 2 ;;
         -h|--help) usage; exit 0 ;;
         *) usage; fail "unknown flag: $1" ;;
@@ -135,6 +139,8 @@ esac
 require_non_negative_integer "--rounds" "$ROUNDS"
 require_non_negative_integer "--accepted" "$ACCEPTED"
 require_non_negative_integer "--rejected" "$REJECTED"
+require_non_negative_integer "--exonerated" "$EXONERATED"
+require_non_negative_integer "--neutral" "$NEUTRAL"
 
 [ -x "$COMPOSE_TALLY_RECORD" ] || fail "compose-tally-record.sh not executable: $COMPOSE_TALLY_RECORD"
 [ -x "$LARCH_LOG" ] || fail "larch-log.sh not executable: $LARCH_LOG"
@@ -164,6 +170,8 @@ if ! "$COMPOSE_TALLY_RECORD" \
     --rounds "$ROUNDS" \
     --accepted "$ACCEPTED" \
     --rejected "$REJECTED" \
+    --exonerated "$EXONERATED" \
+    --neutral "$NEUTRAL" \
     --body-file "$BODY_FILE" > "$RECORD_FILE"; then
     emit_kv FAILED true
     emit_kv ERROR "compose-tally-record.sh failed"

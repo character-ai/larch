@@ -21,6 +21,8 @@ Inputs:
 [--rounds N]
 [--accepted N]
 [--rejected N]
+[--exonerated N]
+[--neutral N]
 --body-file PATH
 ```
 

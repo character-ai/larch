@@ -619,7 +619,7 @@ run_pr_prep_phase() {
 }
 
 run_pr_create_phase() {
-    local title out rc pr_number pr_url pr_status repo_args draft_args fail_file _merge_base
+    local title out rc pr_number pr_url pr_status repo_args draft_args fail_file _merge_base flush_run_id manifest_rc
     _merge_base=$(git merge-base HEAD origin/main 2>/dev/null) || _merge_base=
     if [ -n "$_merge_base" ]; then
         title=$(git log --format=%s "${_merge_base}..HEAD" 2>/dev/null | grep -v '^chore(larch-logs): flush ' | head -1)
@@ -658,6 +658,33 @@ run_pr_create_phase() {
         "$SCRIPT_DIR/gh-pr-body-update.sh" --pr "$pr_number" --body-file "$IMPLEMENT_TMPDIR/pr-body.md" "${repo_args[@]+"${repo_args[@]}"}" > "$fail_file" 2>&1
         rc=$?
         [ "$rc" -eq 0 ] || record_failure pr-create "gh-pr-body-update.sh" "$rc" "$fail_file"
+    fi
+    flush_run_id=$(read_state RUN_ID)
+    if [ -z "$flush_run_id" ]; then
+        flush_run_id="${LARCH_RUN_ID:-${RUN_ID:-$(basename "$IMPLEMENT_TMPDIR")}}"
+    fi
+    if [ -n "$flush_run_id" ]; then
+        manifest_rc=0
+        fail_file=$(failure_capture_path pr-create)
+        "$SCRIPT_DIR/larch-log.sh" manifest \
+            --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
+            --skill implement \
+            --run-id "$flush_run_id" \
+            --field "pr_number=$pr_number" \
+            > "$fail_file" 2>&1
+        rc=$?
+        manifest_rc=$rc
+        [ "$rc" -eq 0 ] || record_failure pr-create "larch-log.sh manifest (pr_number)" "$rc" "$fail_file" Warnings
+        if [ "$manifest_rc" -eq 0 ] && [ "${LARCH_NO_LOGS_COMMIT:-false}" != "true" ]; then
+            fail_file=$(failure_capture_path pr-create)
+            "$SCRIPT_DIR/larch-log.sh" commit \
+                --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
+                --skill implement \
+                --run-id "$flush_run_id" \
+                > "$fail_file" 2>&1
+            rc=$?
+            [ "$rc" -eq 0 ] || record_failure pr-create "larch-log.sh commit (post-pr-create)" "$rc" "$fail_file" Warnings
+        fi
     fi
     advance_phase ci-initial
 }

@@ -357,7 +357,7 @@ apply_findings_with_coder() {
 
 write_summary_json() {
     local output="$1" tmp="$1.tmp.$$"
-    local status="$2" core_status="$3" round="$4" accepted="$5" rejected="$6" rounds_completed="$7" approved="$8" round_dir="$9" oos_jsonl="${10}" oos_markdown="${11}" cap="${12:-0}" coder_tool="${13:-none}" coder_status="${14:-skipped}" scrub_count="${15:-0}" revert_count="${16:-0}" commit_sha="${17:-}"
+    local status="$2" core_status="$3" round="$4" accepted="$5" rejected="$6" exonerated="$7" neutral="$8" rounds_completed="$9" approved="${10}" round_dir="${11}" oos_jsonl="${12}" oos_markdown="${13}" cap="${14:-0}" coder_tool="${15:-none}" coder_status="${16:-skipped}" scrub_count="${17:-0}" revert_count="${18:-0}" commit_sha="${19:-}"
     jq -n \
         --arg status "$status" \
         --arg core_status "$core_status" \
@@ -365,6 +365,8 @@ write_summary_json() {
         --argjson rounds_completed "$rounds_completed" \
         --argjson accepted_count "$accepted" \
         --argjson rejected_count "$rejected" \
+        --argjson exonerated_count "$exonerated" \
+        --argjson neutral_count "$neutral" \
         --argjson round_cap "$cap" \
         --arg approved_fixes_file "$approved" \
         --arg review_round_dir "$round_dir" \
@@ -384,6 +386,8 @@ write_summary_json() {
             round_cap: $round_cap,
             accepted_count: $accepted_count,
             rejected_count: $rejected_count,
+            exonerated_count: $exonerated_count,
+            neutral_count: $neutral_count,
             approved_fixes_file: $approved_fixes_file,
             review_round_dir: $review_round_dir,
             accumulated_oos_file: $accumulated_oos_file,
@@ -398,7 +402,7 @@ write_summary_json() {
 }
 
 flush_review_batches() {
-    local impl_tmpdir="$1" run_id="$2" panel="$3" rounds="$4" accepted="$5" rejected="$6"
+    local impl_tmpdir="$1" run_id="$2" panel="$3" rounds="$4" accepted="$5" rejected="$6" exonerated="${7:-0}" neutral="${8:-0}"
     local batch_input_dir body_file findings_file design_dir="" voting_tally="" summary_file
     local tally_out="" tally_rc=0
     local -a round_summary_files=() round_summary_glob=() compose_args=()
@@ -409,6 +413,8 @@ flush_review_batches() {
     [[ "$rounds" =~ ^[0-9]+$ ]] || rounds=0
     [[ "$accepted" =~ ^[0-9]+$ ]] || accepted=0
     [[ "$rejected" =~ ^[0-9]+$ ]] || rejected=0
+    [[ "$exonerated" =~ ^[0-9]+$ ]] || exonerated=0
+    [[ "$neutral" =~ ^[0-9]+$ ]] || neutral=0
     [[ -x "$WRITE_TALLY_SH" ]] || return 0
     [[ -x "$COMPOSE_REVIEW_FINDINGS_SH" ]] || return 0
     [[ -x "$LARCH_LOG_SH" ]] || return 0
@@ -419,7 +425,8 @@ flush_review_batches() {
     findings_file="$batch_input_dir/review-findings-full.md"
 
     {
-        printf 'Rounds: %s | Accepted: %s | Rejected: %s\n' "$rounds" "$accepted" "$rejected"
+        printf 'Rounds: %s | Accepted: %s | Rejected: %s | Exonerated: %s | Neutral: %s\n' \
+            "$rounds" "$accepted" "$rejected" "$exonerated" "$neutral"
 
         if [[ -s "$impl_tmpdir/review-round-summary.md" ]]; then
             printf '\n'
@@ -487,6 +494,8 @@ flush_review_batches() {
         --rounds "$rounds" \
         --accepted "$accepted" \
         --rejected "$rejected" \
+        --exonerated "$exonerated" \
+        --neutral "$neutral" \
         --body-file "$body_file" 2>&1)"
     tally_rc=$?
     set -e
@@ -607,10 +616,14 @@ run_implement_round() {
     core_status=$(kv_get "$core_out" REVIEW_CORE_STATUS)
     accepted_count=$(kv_get "$core_out" ACCEPTED_COUNT)
     rejected_count=$(kv_get "$core_out" REJECTED_COUNT)
+    exonerated_count=$(kv_get "$core_out" EXONERATED_COUNT)
+    neutral_count=$(kv_get "$core_out" NEUTRAL_COUNT)
     accepted_file=$(kv_get "$core_out" ACCEPTED_FINDINGS_FILE)
     rejected_file=$(kv_get "$core_out" REJECTED_FINDINGS_FILE)
     accepted_count="${accepted_count:-0}"
     rejected_count="${rejected_count:-0}"
+    exonerated_count="${exonerated_count:-0}"
+    neutral_count="${neutral_count:-0}"
     core_status="${core_status:-unknown}"
     accepted_file="${accepted_file:-$round_dir/accepted-findings.md}"
     rejected_file="${rejected_file:-$round_dir/rejected-findings.md}"
@@ -720,15 +733,21 @@ run_implement_round() {
     prior_summary="$IMPLEMENT_TMPDIR/review-and-fix-summary.json"
     prior_accepted=0
     prior_rejected=0
+    prior_exonerated=0
+    prior_neutral=0
     if [[ -f "$prior_summary" ]] && jq -e '.schema_version == 2' "$prior_summary" >/dev/null 2>&1; then
         prior_rounds=$(jq -r '.rounds_completed // 0' "$prior_summary")
         if [[ "$prior_rounds" =~ ^[0-9]+$ ]] && (( 10#$prior_rounds < round_num_dec )); then
             prior_accepted=$(jq -r '.accepted_count // 0' "$prior_summary")
             prior_rejected=$(jq -r '.rejected_count // 0' "$prior_summary")
+            prior_exonerated=$(jq -r '.exonerated_count // 0' "$prior_summary")
+            prior_neutral=$(jq -r '.neutral_count // 0' "$prior_summary")
         fi
     fi
     total_accepted=$((prior_accepted + accepted_count))
     total_rejected=$((prior_rejected + rejected_count))
+    total_exonerated=$((prior_exonerated + exonerated_count))
+    total_neutral=$((prior_neutral + neutral_count))
 
     status="complete"
     exit_code=0
@@ -768,13 +787,15 @@ run_implement_round() {
     esac
 
     local round_cap_val="${ROUND_CAP:-0}"
-    write_summary_json "$prior_summary" "$status" "$core_status" "$round_num_dec" "$total_accepted" "$total_rejected" "$round_num_dec" "$accepted_file" "$round_dir" "$oos_jsonl" "$oos_markdown" "$round_cap_val" "$coder_tool" "$coder_status" "$scrub_count" "$revert_count" "$coder_commit_sha"
+    write_summary_json "$prior_summary" "$status" "$core_status" "$round_num_dec" "$total_accepted" "$total_rejected" "$total_exonerated" "$total_neutral" "$round_num_dec" "$accepted_file" "$round_dir" "$oos_jsonl" "$oos_markdown" "$round_cap_val" "$coder_tool" "$coder_status" "$scrub_count" "$revert_count" "$coder_commit_sha"
 
     emit_kv REVIEW_AND_FIX_STATUS "$status"
     emit_kv REVIEW_CORE_STATUS "$core_status"
     emit_kv ROUND_NUM "$round_num_dec"
     emit_kv ACCEPTED_COUNT "$accepted_count"
     emit_kv REJECTED_COUNT "$rejected_count"
+    emit_kv EXONERATED_COUNT "$exonerated_count"
+    emit_kv NEUTRAL_COUNT "$neutral_count"
     emit_kv FIX_COUNT "$coder_input_count"
     emit_kv APPROVED_FIXES_FILE "$accepted_file"
     emit_kv REJECTED_FINDINGS_FILE "$rejected_file"
@@ -782,6 +803,8 @@ run_implement_round() {
     emit_kv REVIEW_ROUND_DIR "$round_dir"
     emit_kv REVIEW_AND_FIX_SUMMARY_FILE "$prior_summary"
     emit_kv ACCUMULATED_OOS_FILE "$oos_jsonl"
+    emit_kv TOTAL_EXONERATED_COUNT "$total_exonerated"
+    emit_kv TOTAL_NEUTRAL_COUNT "$total_neutral"
     emit_kv CODER_TOOL "$coder_tool"
     emit_kv CODER_STATUS "$coder_status"
     [[ -n "$coder_log" ]] && emit_kv CODER_LOG_FILE "$coder_log"
@@ -790,7 +813,7 @@ run_implement_round() {
     emit_kv SUBMODULE_REVERT_COUNT "$revert_count"
     emit_kv SKIPPED_FINDING_COUNT "${skipped_finding_count:-0}"
     if [[ "$exit_code" -eq 0 ]]; then
-        flush_review_batches "$IMPLEMENT_TMPDIR" "$RUN_ID" "$PANEL" "$round_num_dec" "$total_accepted" "$total_rejected"
+        flush_review_batches "$IMPLEMENT_TMPDIR" "$RUN_ID" "$PANEL" "$round_num_dec" "$total_accepted" "$total_rejected" "$total_exonerated" "$total_neutral"
     fi
     exit "$exit_code"
 }

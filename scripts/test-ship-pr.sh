@@ -509,6 +509,25 @@ else
 fi
 rm -rf "$sentinel_dir"
 
+# PR create flush: persist pr_number to the manifest and commit it on success.
+root=$(make_repo pr_create_flush)
+tmp=$(make_tmpdir)
+sentinel_dir=$(mktemp -d /tmp/ship-pr-pr-create-flush.XXXXXX)
+write_state "$tmp/ship-pr-state.sh" pr-create
+LARCH_LOG_STUB_SENTINEL_DIR="$sentinel_dir" run_subject "$root" "$tmp" "$tmp/rc"
+assert_rc "$tmp/rc" 0 "pr-create happy path exits 0 after continuation"
+if [ -f "$sentinel_dir/larch-log-calls.txt" ]; then
+    if grep -q -- 'manifest --log-root .* --run-id test-run --field pr_number=123' "$sentinel_dir/larch-log-calls.txt" && \
+       grep -q -- 'commit --log-root .* --run-id test-run' "$sentinel_dir/larch-log-calls.txt"; then
+        ok "pr-create flush writes manifest pr_number and commits with matching run-id"
+    else
+        fail "pr-create flush: expected manifest pr_number + commit; got: $(cat "$sentinel_dir/larch-log-calls.txt")"
+    fi
+else
+    fail "pr-create flush: larch-log.sh stub was not called"
+fi
+rm -rf "$sentinel_dir"
+
 # Regression: CI-fix vendors receive the design plan path from session-env.
 root=$(make_repo ci_fix_plan_file)
 tmp=$(make_tmpdir)

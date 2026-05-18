@@ -12,11 +12,17 @@ Inputs:
 [--rounds N]
 [--accepted N]
 [--rejected N]
+[--exonerated N]
+[--neutral N]
 --body-file PATH
 ```
 
 The output is a single JSON object on stdout with `schema_version`, `phase`,
-`batch`, `mode`, `rounds`, `accepted_count`, `rejected_count`, and `body`.
+`batch`, `mode`, `rounds`, `accepted_count`, `rejected_count`,
+`exonerated_count`, `neutral_count`, and `body`. For code-review tallies,
+`rejected_count` counts only findings with outcome `rejected` (voted down);
+`exonerated_count` counts findings voted `exonerated` (valid but not worth
+implementing in this PR); `neutral_count` counts tied votes.
 The `plan-review` phase maps to `batch: "plan-review-tally"`; the
 `code-review` phase maps to `batch: "code-review-tally"`. The body file is
 embedded verbatim as a JSON string by `jq --rawfile`.
