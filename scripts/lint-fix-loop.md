@@ -1,0 +1,55 @@
+# scripts/lint-fix-loop.sh Contract
+
+`scripts/lint-fix-loop.sh` is the `/implement` check-failure repair helper for
+Step 3 and Step 6.
+
+Flags:
+
+- `--tmpdir IMPLEMENT_TMPDIR`
+- `--site step3|step6`
+- `--checks-log REDACTED_LOG_FILE`
+
+The checks log must be the redacted log emitted by
+`scripts/run-relevant-checks-captured.sh`, not the raw log.
+
+Output is `KEY=value` through `scripts/lib-quiet.sh`:
+
+- `LINT_FIX_STATUS=applied|main-agent-required|failed|no-changes`
+- `LINT_FIX_SITE=step3|step6`
+- `CODER_TOOL=codex|cursor` when an external coder ran
+- `CODER_LOG_FILE=<path>` when an external coder ran
+- `LINT_FIX_COMMIT_SHA=<sha>` when the helper committed fixes
+- `LINT_FIX_RUN_DIR=<path>` for dispatch artifacts
+- `FAILURE_REASON=<reason>` on internal helper failures
+
+Behavior:
+
+1. Read `CODEX_PRESENT` and `CURSOR_PRESENT` from
+   `$IMPLEMENT_TMPDIR/session-env.sh` using `scripts/read-session-env-key.sh`.
+2. If neither external coder is present, emit
+   `LINT_FIX_STATUS=main-agent-required` and exit 0.
+3. If the redacted checks log is empty, emit `LINT_FIX_STATUS=no-changes` and
+   exit 0.
+4. Compose a prompt that treats the checks log as untrusted command output and
+   asks the external coder to make the minimum repository edits required for
+   `/relevant-checks` to pass. The prompt forbids commits; the helper owns the
+   commit.
+5. Dispatch Codex first via `scripts/run-external-agent.sh`; if Codex is absent
+   or fails and Cursor is present, dispatch Cursor with the standard Cursor
+   model/auth launcher helpers.
+6. When dispatch succeeds and the working tree is dirty, stage all changes and
+   commit through `scripts/git-commit.sh` using
+   `Apply /relevant-checks fixes (Step 3)` or
+   `Apply /relevant-checks fixes (Step 6)`.
+7. If dispatch succeeds but the working tree is clean, emit
+   `LINT_FIX_STATUS=no-changes`.
+8. If every available dispatch path fails, emit `LINT_FIX_STATUS=failed` and
+   exit 1.
+
+The `/implement` orchestrator consumes statuses as follows:
+
+- `applied`: re-run `run-relevant-checks-captured.sh`.
+- `main-agent-required`: repair with main-agent Edit/Write, then re-run checks.
+- `no-changes`: re-run checks once so the captured helper remains the source of
+  truth.
+- `failed`: set `STALL_TRACKING=true` and route to Step 18 cleanup.
