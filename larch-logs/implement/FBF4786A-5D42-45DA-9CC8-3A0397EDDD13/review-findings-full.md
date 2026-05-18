@@ -259,7 +259,7 @@
 ## security: scripts/scout-dynamic-archetypes.sh:162-200 and skills/review/scripts/dispatch-panel.sh:144-161
 
 - **Reviewer**: cursor-specialist-security-output.txt
-- **Concern**: [important] Scout rationale/prompt_body are embedded inside a literal `scout_notes` wrapper but validation only blocks `reviewer_` closing tags and standalone `---` lines, not the real closing tag used in synthesis. A compromised scout can emit a matching closing tag (including via multiline rationale) so following attacker text appears outside the untrusted-labeled region, smuggling instructions to the Cursor reviewer. Extend jq validation (or post-jq checks) to reject or neutralize delimiter substrings that match the synthesis envelope; alternatively base64-wrap or otherwise structurally encode scout free text so it cannot terminate the wrapper.
+- **Concern**: [important] Scout rationale/prompt_body are embedded inside a literal <scout_notes> wrapper but validation only blocks </reviewer_ and standalone --- lines, not the real closing tag used in synthesis. A compromised scout can emit </scout_notes> (including via multiline rationale) so following attacker text appears outside the untrusted-labeled region, smuggling instructions to the Cursor reviewer. Extend jq validation (or post-jq checks) to reject or neutralize delimiter substrings that match the synthesis envelope (at minimum literal </scout_notes>, ideally case-insensitive / other mirror tags); alternatively base64-wrap or otherwise structurally encode scout free text so it cannot terminate the wrapper.
 - **Suggested revision**: Address the concern above.
 
 ### FINDING_8: panel [code-review/accepted]
@@ -572,5 +572,61 @@
 
 - **Reviewer**: cursor-specialist-security-output.txt
 - **Concern**: [nit] Contract says the scout always uses launch-claude-subprocess.sh while the implementation allows an executable override. Security reviewers reading only the contract may omit auditing the substituted binary. Update scout-dynamic-archetypes.md to describe SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH and its trust implications.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_13: panel [code-review/accepted]
+
+## correctness: scripts/ship-pr.sh:85-111, scripts/ship-pr.sh:602-614, scripts/ship-pr.sh:976-985
+
+- **Reviewer**: codex-specialist-plan-fidelity-output.txt
+- **Concern**: [important] Accumulated lint-fix delta paths are staged without checking that they still exist or are still dirty. A first CI-fix attempt creates an untracked fixture, a later attempt removes it and passes checks, then git add receives the stale fixture path and fails, stalling the recovered CI fix. Filter accumulated/vendor paths against current dirty tracked/untracked files before git add, preserving tracked deletion staging.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_21: panel [code-review/accepted]
+
+## risk-integration: skills/review/scripts/test-review-core.sh:231-270
+
+- **Reviewer**: codex-specialist-testing-output.txt
+- **Concern**: [important] Plan-required scout KV coverage is missing for review-core early exits. A regression that moves SCOUT_STATUS/DYNAMIC_SLOTS emission after review-core.sh:273-292, review-core.sh:297-315, or review-core.sh:403-419 would pass tests while the wrapper silently skips review-scout-manifest logging. Add test-review-core cases with TEST_SCOUT_STATUS/TEST_DYNAMIC_SLOTS for panel-failed, zero-findings, and main-agent-vote-required exits.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_23: panel [code-review/accepted]
+
+## security: scripts/scout-dynamic-archetypes.sh:170-188
+
+- **Reviewer**: codex-specialist-security-output.txt
+- **Concern**: [latent] Raw diff and plan content can close scout prompt delimiters. A malicious diff includes </reviewer_diff> followed by scout instructions to return empty or biased archetypes, reducing the dynamic review panel's value. Encode or escape diff/plan content before prompt assembly so embedded closing tags remain data.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_25: panel [code-review/accepted]
+
+## security: scripts/scout-dynamic-archetypes.sh:jq-validation+skills/review/scripts/dispatch-panel.sh:scout_manifest_is_valid
+
+- **Reviewer**: cursor-specialist-security-output.txt
+- **Concern**: [important] prompt_body guard for '</reviewer_' is case-sensitive Scout can include '</Reviewer_…>' (or other case variants) and pass validation while weakening the intended anti-breakout guard for synthesized reviewer markdown. Use ascii_downcase (or casefold) before contains('</reviewer_') in both validators; keep dispatch and scout rules in sync.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_26: panel [code-review/accepted]
+
+## security: scripts/ship-pr.sh:44-47, scripts/ship-pr.sh:978-985
+
+- **Reviewer**: codex-specialist-edge-cases-output.txt
+- **Concern**: [important] CI-fix commit staging includes every untracked path present after an external fixer runs. A CI fixer leaves .env, a debug artifact, or a token-bearing generated file in the repo; capture_dirty_paths includes it and git add commits and pushes it. Keep vendor CI staging to tracked changes by default, or require an explicit allowlist plus secret/path-deny checks before staging untracked files.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_28: panel [code-review/accepted]
+
+## security: scripts/ship-pr.sh:85-111, scripts/ship-pr.sh:962-983
+
+- **Reviewer**: codex-specialist-structure-output.txt
+- **Concern**: [important] CI-fix staging includes all vendor dirty paths, including arbitrary untracked byproducts, despite the intended allowlist for untracked files. An external CI fixer writes a real fix plus an untracked debug.log or token.txt; capture_dirty_paths records it, collect_ci_stage_paths prints it, and git add stages it even though it is not in the lint-fix delta. Capture vendor tracked and untracked paths separately; stage tracked changes normally, but stage untracked paths only if they are current and explicitly listed in the lint-fix delta; add a regression for an unlisted untracked byproduct.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_4: panel [code-review/accepted]
+
+## architecture: skills/review/references/heavy-worker.md:23-27
+
+- **Reviewer**: cursor-specialist-structure-output.txt
+- **Concern**: [nit] Heavy-worker Step 1 still references gather-branch-context.sh while review-core uses gather-context.sh. Subagent operators follow a gather script that does not match the inline review path. Update Step 1 to the same gather script name/path used by review-core.sh (or document a single supported entrypoint).
 - **Suggested revision**: Address the concern above.
 
