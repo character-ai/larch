@@ -1,0 +1,11 @@
+Gathering the branch diff, commit list, and references to `bump-verification.digest` for a read-only review.
+
+### In-Scope Findings
+
+No in-scope issues found.
+
+**Plan and requirements (`plan` / `requirements`):** The diff removes only [`skills/implement/references/bump-verification.digest.md`](skills/implement/references/bump-verification.digest.md) (26-line digest). [`bump-verification.md`](skills/implement/references/bump-verification.md) does not appear in the diff, so the “do not touch full file” constraint is satisfied. [`scripts/test-implement-structure.sh`](scripts/test-implement-structure.sh) still lists `bump-verification.md` in the `ref` loop and does not list the digest, consistent with the plan. A repo-wide grep over `*.md,*.sh,*.json,*.yml,*.yaml` for `bump-verification.digest` shows no remaining references on the runtime/doc surface. The only other hit is under `larch-logs/`, which your verification recipe explicitly excludes. **Note:** `make lint` was not run in this read-only session; that remains for CI or a follow-up run.
+
+---
+
+**NO_ISSUES_FOUND** — no out-of-scope observations worth listing; no TSV rows (omit `tsv` block per instructions).

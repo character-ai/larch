@@ -1,0 +1,24 @@
+Gathering the pre-computed diff and commit history for a read-only review (Tests, CI, Regression Risk).
+
+Searching the repo for references to the deleted file to assess CI/regression risk.
+
+## Review summary
+
+**Branch vs `main`:** one commit — `f81ddd46 Remove orphan reference bump-verification.digest.md`.
+
+**Diff:** deletion only of [`skills/implement/references/bump-verification.digest.md`](skills/implement/references/bump-verification.digest.md) (26 lines). Matches the stated goal: remove orphan digest; [`bump-verification.md`](skills/implement/references/bump-verification.md) is untouched in the diff.
+
+**Tests / CI:** [`scripts/test-implement-structure.sh`](scripts/test-implement-structure.sh) requires `bump-verification.md` and other named refs (lines 27–29); **`bump-verification.digest.md` is not in that list**, so this deletion does not violate the structural harness. Repo-wide search for `bump-verification.digest` under non-`larch-logs` sources shows no skill/script/workflow references that would break runtime or lint by missing file reads.
+
+### In-Scope Findings
+
+No in-scope issues found.
+
+### Out-of-Scope Observations
+
+1. **Nit** (`risk-integration`) — [`larch-logs/measure-md-cost/2026-05-18.tsv`](larch-logs/measure-md-cost/2026-05-18.tsv) (row listing `skills/implement/references/bump-verification.digest.md`): committed cost snapshot predates the deletion and was **not** changed by this branch; after merge that row points at a path that no longer exists. **Why out of scope:** file not modified by the diff; no CI step in this repo appears to assert “every path in this TSV exists.” **Suggested fix (optional later):** regenerate or edit that TSV in a separate hygiene change if you want snapshots to stay path-valid.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	out_of_scope	nit	risk-integration	larch-logs/measure-md-cost/2026-05-18.tsv:381	Committed measure-md-cost snapshot still lists bump-verification.digest.md path not updated by this PR.	After merge the TSV row references a deleted file; confusing for humans diffing snapshots; no evidence tests fail.	Optional future refresh of measure-md-cost output or TSV edit outside this single-file-delete scope.
+```
