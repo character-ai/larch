@@ -204,27 +204,137 @@
       {
         "step": "Step 7a — code flow diagram",
         "totals": {
-          "input": 4,
-          "cache_read": 1280355,
-          "cache_create": 1562,
-          "output": 1150,
-          "total": 1283071
+          "input": 5,
+          "cache_read": 1601152,
+          "cache_create": 1913,
+          "output": 2273,
+          "total": 1605343
         },
         "skills": [
           {
             "skill": "inferred:Step 7a — code flow diagram",
             "totals": {
-              "input": 4,
-              "cache_read": 1280355,
-              "cache_create": 1562,
-              "output": 1150,
-              "total": 1283071
+              "input": 5,
+              "cache_read": 1601152,
+              "cache_create": 1913,
+              "output": 2273,
+              "total": 1605343
             }
           }
         ]
       },
       {
         "step": "Step 8 — version bump",
+        "totals": {
+          "input": 6,
+          "cache_read": 1929715,
+          "cache_create": 5820,
+          "output": 3249,
+          "total": 1938790
+        },
+        "skills": [
+          {
+            "skill": "inferred:Step 8 — version bump",
+            "totals": {
+              "input": 6,
+              "cache_read": 1929715,
+              "cache_create": 5820,
+              "output": 3249,
+              "total": 1938790
+            }
+          }
+        ]
+      },
+      {
+        "step": "Step 6 — checks second pass",
+        "totals": {
+          "input": 5,
+          "cache_read": 1618740,
+          "cache_create": 2185,
+          "output": 2238,
+          "total": 1623168
+        },
+        "skills": [
+          {
+            "skill": "inferred:Step 6 — checks second pass",
+            "totals": {
+              "input": 5,
+              "cache_read": 1618740,
+              "cache_create": 2185,
+              "output": 2238,
+              "total": 1623168
+            }
+          }
+        ]
+      },
+      {
+        "step": "Step 16 — rejected findings",
+        "totals": {
+          "input": 5,
+          "cache_read": 1622839,
+          "cache_create": 3119,
+          "output": 2210,
+          "total": 1628173
+        },
+        "skills": [
+          {
+            "skill": "inferred:Step 16 — rejected findings",
+            "totals": {
+              "input": 5,
+              "cache_read": 1622839,
+              "cache_create": 3119,
+              "output": 2210,
+              "total": 1628173
+            }
+          }
+        ]
+      },
+      {
+        "step": "Step 17 — final report",
+        "totals": {
+          "input": 13,
+          "cache_read": 4257572,
+          "cache_create": 6797,
+          "output": 5878,
+          "total": 4270260
+        },
+        "skills": [
+          {
+            "skill": "inferred:Step 17 — final report",
+            "totals": {
+              "input": 13,
+              "cache_read": 4257572,
+              "cache_create": 6797,
+              "output": 5878,
+              "total": 4270260
+            }
+          }
+        ]
+      },
+      {
+        "step": "Step 6 — checks second pass",
+        "totals": {
+          "input": 7,
+          "cache_read": 2320189,
+          "cache_create": 3956,
+          "output": 3389,
+          "total": 2327541
+        },
+        "skills": [
+          {
+            "skill": "inferred:Step 6 — checks second pass",
+            "totals": {
+              "input": 7,
+              "cache_read": 2320189,
+              "cache_create": 3956,
+              "output": 3389,
+              "total": 2327541
+            }
+          }
+        ]
+      },
+      {
+        "step": "Step 6 — checks second pass",
         "totals": {
           "input": 0,
           "cache_read": 0,
@@ -236,11 +346,11 @@
       }
     ],
     "totals": {
-      "input": 549,
-      "cache_read": 94368106,
-      "cache_create": 5503020,
-      "output": 212599,
-      "total": 100084274
+      "input": 586,
+      "cache_read": 106437958,
+      "cache_create": 5525248,
+      "output": 230686,
+      "total": 112194478
     }
   },
   "codex": {
@@ -319,6 +429,46 @@
       },
       {
         "step": "Step 8 — version bump",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 6 — checks second pass",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 16 — rejected findings",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 17 — final report",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 6 — checks second pass",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 6 — checks second pass",
         "totals": {
           "input": 0,
           "output": 0,
@@ -408,6 +558,46 @@
       },
       {
         "step": "Step 8 — version bump",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 6 — checks second pass",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 16 — rejected findings",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 17 — final report",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 6 — checks second pass",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 6 — checks second pass",
         "totals": {
           "input": 0,
           "output": 0,
