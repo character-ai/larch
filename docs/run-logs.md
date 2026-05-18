@@ -52,26 +52,27 @@ Contains the implementation plan: goal statement, files to modify, approach, edg
 
 **Mode**: replace (JSON object). **Written**: Step 1 tail, after the plan-review voting tally is exported.
 
-One JSON object per `/implement` session. The canonical fields are
-`schema_version`, `phase`, `batch`, `mode`, `rounds`, `accepted_count`,
-`rejected_count`, and `body`. The `body` contains the plan-review voting outcome
-(accepted count, rejected count, round summaries) plus any rejected plan-review
-findings under a `## Rejected Plan Review Findings` sub-header. In quick mode
-the body contains `"Quick mode — no plan review voting."`.
+One JSON object per `/implement` session. The tally envelope shape is shared with
+`code-review-tally.json`: `schema_version`, `phase`, `batch`, `mode`, `rounds`,
+`accepted_count`, `rejected_count`, `exonerated_count`, `neutral_count`, and
+`body`. For plan review the extra counters are normally `0`. The `body` contains
+the plan-review voting outcome (accepted count, rejected count, round summaries)
+plus any rejected plan-review findings under a `## Rejected Plan Review Findings`
+sub-header. In quick mode the body contains `"Quick mode — no plan review voting."`.
 
 ### code-review-tally.json
 
 **Mode**: replace (JSON object). **Written**: Step 5, after `/review` returns (normal mode) or the quick-mode review loop completes.
 
 One JSON object per `/implement` session with the same tally envelope fields as
-`plan-review-tally.json`, plus `exonerated_count` (findings voted `exonerated` —
-valid but not worth implementing in this PR) and `neutral_count` (tie votes with no
-clear consensus). `rejected_count` counts only findings where the panel voted
-strictly `rejected` (voted down); it does not include exonerated or neutral outcomes.
-The body contains the code-review voting outcome and a round-by-round summary. It
-also includes rejected code-review findings under a `## Rejected Code Review
-Findings` sub-header — only findings with outcome `rejected` appear here. Exonerated
-and neutral findings are counted in the envelope but not listed separately.
+`plan-review-tally.json`. `exonerated_count` covers findings voted `exonerated`
+(valid but not worth implementing in this PR), `neutral_count` covers tie votes
+with no clear consensus, and `rejected_count` counts only findings where the panel
+voted strictly `rejected` (voted down). The body contains the code-review voting
+outcome and a round-by-round summary. It also includes rejected code-review
+findings under a `## Rejected Code Review Findings` sub-header — only findings
+with outcome `rejected` appear here. Exonerated and neutral findings are counted
+in the envelope but not listed separately.
 
 ### review-findings-full.md
 

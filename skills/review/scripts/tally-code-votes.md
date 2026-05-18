@@ -25,7 +25,7 @@ Sources `${CLAUDE_PLUGIN_ROOT}/scripts/lib-vote-tally.sh` for `vote_for_id`, `re
 - `rejected-findings.md` — only findings with outcome `rejected` (strictly voted down), with `Vote tally: YES=… NO=… EXON=… NEUTRAL=…` appended. Exonerated and neutral findings are counted but not written here.
 - `oos-accepted-review.md` — accepted OOS blocks with the security-tag filter applied (security-tagged OOS items are held locally only, never filed publicly).
 - `oos.md` — all OOS items (accepted and not), with vote tallies.
-- `review-tally.env` — `FINDING_N_ACCEPTED=true|false` keys for each block.
+- `review-tally.env` — per-block `FINDING_N_ACCEPTED=true|false` and `FINDING_N_OUTCOME=<accepted|rejected|exonerated|neutral>` keys, plus summary counters (`ACCEPTED_COUNT`, `REJECTED_COUNT`, `EXONERATED_COUNT`, `NEUTRAL_COUNT`, `OOS_ACCEPTED_COUNT`, `OOS_REJECTED_COUNT`).
 - Reviewer competition scoreboard score formula: `accepted + oos_accepted - rejected - oos_rejected`; rendered OOS columns are `OOS-Proposed`, `OOS-Accepted`, `OOS-Neutral/Exon`, and `OOS-Rejected`.
 
 ## stdout (FD 3 via `emit_kv`)

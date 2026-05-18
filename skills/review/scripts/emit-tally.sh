@@ -47,8 +47,22 @@ REJECTED_FINDINGS_FILE="$REVIEW_TMPDIR/rejected-findings.md"
 FULL_REJECTED_FINDINGS_FILE="$REVIEW_TMPDIR/rejected-findings-full.md"
 OOS_ACCEPTED_FILE="$REVIEW_TMPDIR/oos-accepted-review.md"
 
-accepted=$(grep -c 'ACCEPTED=true' "$TALLY_FILE" || true)
-rejected=$(grep -c 'ACCEPTED=false' "$TALLY_FILE" || true)
+count_from_tally() {
+    local key="$1" value
+    value=$(awk -F= -v key="$key" '$1==key { print $2; found=1; exit } END { if (!found) print "" }' "$TALLY_FILE")
+    printf '%s' "$value"
+}
+
+accepted=$(count_from_tally ACCEPTED_COUNT)
+rejected=$(count_from_tally REJECTED_COUNT)
+[[ -n "$accepted" ]] || accepted=$(grep -c 'ACCEPTED=true' "$TALLY_FILE" || true)
+if [[ -z "$rejected" ]]; then
+    if grep -q '_OUTCOME=' "$TALLY_FILE"; then
+        rejected=$(grep -c '_OUTCOME=rejected$' "$TALLY_FILE" || true)
+    else
+        rejected=$(grep -c 'ACCEPTED=false' "$TALLY_FILE" || true)
+    fi
+fi
 
 {
     printf '# Review Round %s\n\n' "$ROUND"
@@ -71,7 +85,11 @@ fi
 
 {
     printf '# Rejected Findings\n\n'
-    grep -n 'ACCEPTED=false' "$TALLY_FILE" || true
+    if grep -q '_OUTCOME=' "$TALLY_FILE"; then
+        grep -n '_OUTCOME=rejected$' "$TALLY_FILE" || true
+    else
+        grep -n 'ACCEPTED=false' "$TALLY_FILE" || true
+    fi
 } > "$REJECTED_FINDINGS_FILE"
 
 # Collect reviewer output paths from the review tmpdir for the JSON schema.

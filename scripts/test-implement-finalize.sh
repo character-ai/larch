@@ -1122,6 +1122,24 @@ assert_contains "STATUS=changelog-failed" "$OUT" "postbump: changelog amend fail
 cp "$SANDBOX/original-CHANGELOG.md" "$SANDBOX/repo/CHANGELOG.md"
 : > "$SANDBOX/larch-log-argv.txt"
 write_postbump_state "$POSTBUMP_STATE"
+OUT=$(run_subject postbump --state-file "$POSTBUMP_STATE" --implement-tmpdir "$SANDBOX/tmp")
+assert_contains "LOG_WRITE_STATUS=ok" "$OUT" "postbump: write success surfaces ok status"
+if awk '
+    $0 == "---" { section++; next }
+    section == 1 && $0 == "write" { saw_write=1 }
+    section == 2 && $0 == "commit" && saw_write { saw_commit_after_write=1 }
+    END { exit saw_commit_after_write ? 0 : 1 }
+' "$SANDBOX/larch-log-argv.txt"; then
+    PASS=$((PASS + 1))
+    echo "PASS: postbump: successful write is followed by larch-log commit"
+else
+    FAIL=$((FAIL + 1))
+    echo "FAIL: postbump: expected larch-log commit after successful write"
+fi
+
+cp "$SANDBOX/original-CHANGELOG.md" "$SANDBOX/repo/CHANGELOG.md"
+: > "$SANDBOX/larch-log-argv.txt"
+write_postbump_state "$POSTBUMP_STATE"
 OUT=$(STUB_LARCH_LOG_FAIL=true run_subject postbump --state-file "$POSTBUMP_STATE" --implement-tmpdir "$SANDBOX/tmp" || true)
 assert_contains "LOG_WRITE_STATUS=failed" "$OUT" "postbump: write failure surfaces failed status"
 assert_contains "postbump commit skipped because version-bump-reasoning write failed" "$OUT" "postbump: write failure warns that commit was skipped"

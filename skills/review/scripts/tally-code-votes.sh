@@ -83,6 +83,12 @@ NEUTRAL_COUNT=0
 OOS_ACCEPTED_COUNT=0
 OOS_REJECTED_COUNT=0
 
+record_tally_outcome() {
+    local id="$1" accepted="$2" outcome="$3"
+    printf 'FINDING_%s_ACCEPTED=%s\n' "${id#FINDING_}" "$accepted" >> "$TALLY_ENV_FILE"
+    printf 'FINDING_%s_OUTCOME=%s\n' "${id#FINDING_}" "$outcome" >> "$TALLY_ENV_FILE"
+}
+
 # Voter eligibility is the panel-level count of available voter files. The
 # deprecated --both-down flag maps to the 0-judge main-agent path.
 ELIGIBLE_VOTERS="${#VOTER_FILES[@]}"
@@ -142,6 +148,13 @@ score_rows="$WORKDIR/score-rows.tsv"
         done
 
         result=$(classify_result "$yes" "$no" "$exonerate" "$ELIGIBLE_VOTERS")
+        case "$result" in
+            accepted|rejected|exonerated|neutral) ;;
+            *)
+                larch_err "tally-code-votes.sh: unknown classify_result outcome for $id: $result"
+                exit 2
+                ;;
+        esac
         printf '| %s | %s | %s | %s | %s | %s |\n' "$id" "$yes" "$no" "$exonerate" "$neutral" "$result"
 
         reviewer=$(reviewer_for_block "$block")
@@ -166,7 +179,7 @@ score_rows="$WORKDIR/score-rows.tsv"
                 cat "$block" >> "$ACCEPTED_FINDINGS_FILE"
                 printf '\n' >> "$ACCEPTED_FINDINGS_FILE"
                 ACCEPTED_COUNT=$((ACCEPTED_COUNT + 1))
-                printf 'FINDING_%s_ACCEPTED=true\n' "${id#FINDING_}" >> "$TALLY_ENV_FILE"
+                record_tally_outcome "$id" true accepted
             else
                 case "$result" in
                     rejected)
@@ -183,16 +196,8 @@ score_rows="$WORKDIR/score-rows.tsv"
                     neutral)
                         NEUTRAL_COUNT=$((NEUTRAL_COUNT + 1))
                         ;;
-                    *)
-                        {
-                            printf '### [rejected] %s\n\n' "$id"
-                            cat "$block"
-                            printf '\nVote tally: YES=%s NO=%s EXON=%s NEUTRAL=%s\n\n' "$yes" "$no" "$exonerate" "$neutral"
-                        } >> "$REJECTED_FINDINGS_FILE"
-                        REJECTED_COUNT=$((REJECTED_COUNT + 1))
-                        ;;
                 esac
-                printf 'FINDING_%s_ACCEPTED=false\n' "${id#FINDING_}" >> "$TALLY_ENV_FILE"
+                record_tally_outcome "$id" false "$result"
             fi
         else
             # OOS item
@@ -211,10 +216,10 @@ score_rows="$WORKDIR/score-rows.tsv"
                     fi
                 fi
                 OOS_ACCEPTED_COUNT=$((OOS_ACCEPTED_COUNT + 1))
-                printf 'FINDING_%s_ACCEPTED=true\n' "${id#FINDING_}" >> "$TALLY_ENV_FILE"
+                record_tally_outcome "$id" true accepted
             else
                 OOS_REJECTED_COUNT=$((OOS_REJECTED_COUNT + 1))
-                printf 'FINDING_%s_ACCEPTED=false\n' "${id#FINDING_}" >> "$TALLY_ENV_FILE"
+                record_tally_outcome "$id" false "$result"
             fi
         fi
     done
@@ -249,6 +254,15 @@ score_rows="$WORKDIR/score-rows.tsv"
       }
     ' "$score_rows" | sort
 } > "$VOTING_TALLY_FILE"
+
+{
+    printf 'ACCEPTED_COUNT=%s\n' "$ACCEPTED_COUNT"
+    printf 'REJECTED_COUNT=%s\n' "$REJECTED_COUNT"
+    printf 'EXONERATED_COUNT=%s\n' "$EXONERATED_COUNT"
+    printf 'NEUTRAL_COUNT=%s\n' "$NEUTRAL_COUNT"
+    printf 'OOS_ACCEPTED_COUNT=%s\n' "$OOS_ACCEPTED_COUNT"
+    printf 'OOS_REJECTED_COUNT=%s\n' "$OOS_REJECTED_COUNT"
+} >> "$TALLY_ENV_FILE"
 
 : "$CURSOR_AVAILABLE" "$CODEX_AVAILABLE"
 

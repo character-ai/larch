@@ -425,7 +425,8 @@ flush_review_batches() {
     findings_file="$batch_input_dir/review-findings-full.md"
 
     {
-        printf 'Rounds: %s | Accepted: %s | Rejected: %s\n' "$rounds" "$accepted" "$rejected"
+        printf 'Rounds: %s | Accepted: %s | Rejected: %s | Exonerated: %s | Neutral: %s\n' \
+            "$rounds" "$accepted" "$rejected" "$exonerated" "$neutral"
 
         if [[ -s "$impl_tmpdir/review-round-summary.md" ]]; then
             printf '\n'

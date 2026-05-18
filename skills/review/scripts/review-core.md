@@ -36,7 +36,7 @@ Emitted keys:
 - `PANEL_SHAPE=simple|hard`
 - `VOTING_SKIPPED_WARNING=<text>` — emitted only on the 0-judge main-agent-required path; callers should parse and display it as a user-visible warning
 
-Diff-mode convergence note: `REVIEW_CORE_STATUS=ok` is also the expected outcome when voting leaves `ACCEPTED_COUNT=0` and one or more findings were rejected. Callers that need to distinguish "nothing left to fix after voting" from a benign no-follow-up outcome should monitor `ACCEPTED_COUNT` together with `REJECTED_COUNT`, not the status string alone.
+Diff-mode convergence note: `REVIEW_CORE_STATUS=ok` is also the expected outcome when voting leaves `ACCEPTED_COUNT=0` and one or more findings were rejected. Callers that need to distinguish "nothing left to fix after voting" from a benign no-follow-up outcome should monitor `ACCEPTED_COUNT` together with `REJECTED_COUNT`, `EXONERATED_COUNT`, and `NEUTRAL_COUNT`, not the status string alone.
 
 Round stages:
 

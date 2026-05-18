@@ -57,6 +57,8 @@ got=$(awk -F= '$1=="ACCEPTED_COUNT"{print $2}' "$out"); assert_eq "ACCEPTED_COUN
 got=$(awk -F= '$1=="REJECTED_COUNT"{print $2}' "$out"); assert_eq "REJECTED_COUNT=1 (FINDING_2 has 1 YES)" "$got" "1"
 got=$(awk -F= '$1=="EXONERATED_COUNT"{print $2}' "$out"); assert_eq "EXONERATED_COUNT=0 (no exonerated findings)" "$got" "0"
 got=$(awk -F= '$1=="NEUTRAL_COUNT"{print $2}' "$out"); assert_eq "NEUTRAL_COUNT=0 (no neutral findings)" "$got" "0"
+got=$(awk -F= '$1=="FINDING_2_OUTCOME"{print $2}' "$TMP/review-tally.env"); assert_eq "review-tally.env records rejected outcome explicitly" "$got" "rejected"
+got=$(awk -F= '$1=="ACCEPTED_COUNT"{print $2}' "$TMP/review-tally.env"); assert_eq "review-tally.env stores accepted count summary" "$got" "1"
 got=$(awk -F= '$1=="OOS_ACCEPTED_COUNT"{print $2}' "$out"); assert_eq "OOS_ACCEPTED_COUNT=1 (FINDING_3 has 2 YES, accepted)" "$got" "1"
 got=$(awk -F= '$1=="OOS_REJECTED_COUNT"{print $2}' "$out"); assert_eq "OOS_REJECTED_COUNT=0" "$got" "0"
 # Spot-check the artifacts.
@@ -97,6 +99,7 @@ out="$TMP/out.env"
 got=$(awk -F= '$1=="ACCEPTED_COUNT"{print $2}' "$out"); assert_eq "FINDING_1 unanimous YES → accepted" "$got" "1"
 got=$(awk -F= '$1=="REJECTED_COUNT"{print $2}' "$out"); assert_eq "FINDING_2 1Y/1N → neutral (tied), not counted in rejected" "$got" "0"
 got=$(awk -F= '$1=="NEUTRAL_COUNT"{print $2}' "$out"); assert_eq "FINDING_2 1Y/1N → neutral_count=1" "$got" "1"
+got=$(awk -F= '$1=="FINDING_2_OUTCOME"{print $2}' "$TMP/review-tally.env"); assert_eq "review-tally.env records neutral outcome explicitly" "$got" "neutral"
 got=$(awk -F= '$1=="OOS_ACCEPTED_COUNT"{print $2}' "$out"); assert_eq "FINDING_3 unanimous YES → OOS accepted" "$got" "1"
 
 echo "# Case: 2 voters, 1 YES 1 NEUTRAL → rejected (not unanimous)"
@@ -149,6 +152,7 @@ out="$TMP/out.env"
 got=$(awk -F= '$1=="ACCEPTED_COUNT"{print $2}' "$out"); assert_eq "1 voter EXONERATE → no in-scope accepted" "$got" "0"
 got=$(awk -F= '$1=="REJECTED_COUNT"{print $2}' "$out"); assert_eq "1 voter EXONERATE → rejected_count=0 (exonerated, not rejected)" "$got" "0"
 got=$(awk -F= '$1=="EXONERATED_COUNT"{print $2}' "$out"); assert_eq "1 voter EXONERATE → exonerated_count=2" "$got" "2"
+got=$(awk -F= '$1=="FINDING_1_OUTCOME"{print $2}' "$TMP/review-tally.env"); assert_eq "review-tally.env records exonerated outcome explicitly" "$got" "exonerated"
 grep -Fq '| FINDING_1 | 0 | 0 | 1 | 0 | exonerated |' "$TMP/voting-tally.md" || { FAIL=1; printf '  FAIL single EXONERATE not labeled exonerated\n'; }
 
 echo "# Case: 0 voters → main-agent-vote-required"
