@@ -85,6 +85,7 @@ rc=$?
 set -e
 if [ "$rc" -ne 0 ]; then pass 'copy failure exits non-zero'; else fail 'copy failure exits non-zero'; fi
 assert_contains 'STATUS=failed' "$out" 'copy failure emits failed status'
+assert_contains 'REJECTED_COUNT=1' "$out" 'copy failure preserves computed count'
 assert_contains 'ERROR=failed to persist rejected findings log copy' "$out" 'copy failure emits error'
 
 set +e

@@ -103,6 +103,45 @@ else
     fail "post-reset call 3 should fire warning, got: $out_w5"
 fi
 
+echo "=== future timestamp resets skewed state ==="
+out_s1=$(run_hook 100 "/tmp/skew.md" 0 "/proj-skew")
+if [ -z "$out_s1" ]; then pass 'skew call 1 silent'; else fail "skew call 1 should be silent, got: $out_s1"; fi
+out_s2=$(run_hook 101 "/tmp/skew.md" 0 "/proj-skew")
+if [ -z "$out_s2" ]; then pass 'skew call 2 silent'; else fail "skew call 2 should be silent, got: $out_s2"; fi
+state_skew="$TMP/larch-read-poll/state-$(printf '%s' "/proj-skew" | cksum | awk '{print $1}').tsv"
+printf '/tmp/skew.md\t0\t2\t200\n' > "$state_skew"
+out_s3=$(run_hook 102 "/tmp/skew.md" 0 "/proj-skew")
+if [ -z "$out_s3" ]; then pass 'future timestamp resets skewed state'; else fail "future timestamp should reset state, got: $out_s3"; fi
+out_s4=$(run_hook 103 "/tmp/skew.md" 0 "/proj-skew")
+if [ -z "$out_s4" ]; then pass 'skew reset call 2 silent'; else fail "skew reset call 2 should be silent, got: $out_s4"; fi
+out_s5=$(run_hook 104 "/tmp/skew.md" 0 "/proj-skew")
+if printf '%s' "$out_s5" | grep -q 'Read-poll detected'; then
+    pass 'skew reset call 3 fires warning'
+else
+    fail "skew reset call 3 should fire warning, got: $out_s5"
+fi
+
+echo "=== tabs and newlines in path do not corrupt state ==="
+path_ctrl=$'/tmp/path\twith\ncontrols.md'
+out_c1=$(run_hook 0 "$path_ctrl" 0 "/proj-controls")
+if [ -z "$out_c1" ]; then pass 'control-char path call 1 silent'; else fail "control-char path call 1 should be silent, got: $out_c1"; fi
+out_c2=$(run_hook 1 "$path_ctrl" 0 "/proj-controls")
+if [ -z "$out_c2" ]; then pass 'control-char path call 2 silent'; else fail "control-char path call 2 should be silent, got: $out_c2"; fi
+out_c3=$(run_hook 2 "$path_ctrl" 0 "/proj-controls")
+if printf '%s' "$out_c3" | grep -q 'Read-poll detected'; then
+    pass 'control-char path call 3 fires warning'
+else
+    fail "control-char path call 3 should fire warning, got: $out_c3"
+fi
+state_controls="$TMP/larch-read-poll/state-$(printf '%s' "/proj-controls" | cksum | awk '{print $1}').tsv"
+stored_line=$(cat "$state_controls")
+tab_count=$(printf '%s' "$stored_line" | awk -F '\t' '{print NF-1}')
+if [ "$tab_count" -eq 3 ]; then
+    pass 'control-char path keeps TSV field count stable'
+else
+    fail "state TSV should keep 4 fields, got line: $stored_line"
+fi
+
 echo "=== state file is private ==="
 state_file="$TMP/larch-read-poll/state-$(printf '%s' "/proj-window" | cksum | awk '{print $1}').tsv"
 state_mode=$(stat -f '%Mp%Lp' "$state_file" 2>/dev/null || stat -c '%a' "$state_file" 2>/dev/null || true)

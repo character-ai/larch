@@ -3,8 +3,10 @@
 `scripts/compose-review-findings.sh` converts plan-review and code-review
 finding artifacts into `review-findings-full.md`. Code-review artifacts are
 read from `$IMPLEMENT_TMPDIR/round-*/accepted-findings.md` and
+`$IMPLEMENT_TMPDIR/round-*/rejected-findings-full.md` when present, otherwise
 `$IMPLEMENT_TMPDIR/round-*/rejected-findings.md`; the parent
-`$IMPLEMENT_TMPDIR/rejected-findings.md` remains a fallback for older runs.
+`$IMPLEMENT_TMPDIR/rejected-findings-full.md` and
+`$IMPLEMENT_TMPDIR/rejected-findings.md` remain fallbacks for older runs.
 
 Inputs:
 

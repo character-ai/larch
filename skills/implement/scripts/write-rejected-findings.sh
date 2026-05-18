@@ -102,7 +102,7 @@ persist_detail_copy() {
 
 if [ -n "$RUN_ID" ] && [ -n "$LOG_ROOT" ]; then
     if ! persist_detail_copy; then
-        emit_kv REJECTED_COUNT 0
+        emit_kv REJECTED_COUNT "$count"
         emit_kv STATUS failed
         emit_kv ERROR "failed to persist rejected findings log copy"
         exit 1

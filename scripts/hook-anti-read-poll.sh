@@ -15,6 +15,8 @@ tool_name=$(printf '%s' "$INPUT" | jq -r '.tool_name // ""' 2>/dev/null) || exit
 
 file_path=$(printf '%s' "$INPUT" | jq -r '.tool_input.file_path // ""' 2>/dev/null) || exit 0
 [ -n "$file_path" ] || exit 0
+sanitized_path=${file_path//$'\t'/ }
+sanitized_path=${sanitized_path//$'\n'/ }
 
 offset=$(printf '%s' "$INPUT" | jq -r '.tool_input.offset // 0' 2>/dev/null) || offset=0
 case "$offset" in ''|*[!0-9]*) offset=0 ;; esac
@@ -44,9 +46,9 @@ if [ -f "$state_file" ]; then
     case "$first_ts" in ''|*[!0-9]*) first_ts=0 ;; esac
 fi
 
-if [ "$file_path" = "$last_path" ] && [ "$offset" = "$last_offset" ]; then
+if [ "$sanitized_path" = "$last_path" ] && [ "$offset" = "$last_offset" ]; then
     age=$(( now - first_ts ))
-    if [ "$age" -gt "$WINDOW_SECS" ]; then
+    if [ "$age" -lt 0 ] || [ "$age" -gt "$WINDOW_SECS" ]; then
         count=1
         first_ts=$now
     else
@@ -57,7 +59,7 @@ else
     first_ts=$now
 fi
 
-printf '%s\t%s\t%s\t%s\n' "$file_path" "$offset" "$count" "$first_ts" > "$state_file" 2>/dev/null || true
+printf '%s\t%s\t%s\t%s\n' "$sanitized_path" "$offset" "$count" "$first_ts" > "$state_file" 2>/dev/null || true
 chmod 600 "$state_file" 2>/dev/null || true
 
 age=$(( now - first_ts ))
