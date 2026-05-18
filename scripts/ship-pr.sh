@@ -428,6 +428,30 @@ rewrite_reasoning_new_version() {
     return $rc
 }
 
+write_corrected_reasoning_fallback() {
+    local file=$1 classified_version=$2 origin_version=$3 corrected_version=$4 tmp_file
+    [ -n "$file" ] || return 1
+    tmp_file="$(dirname "$file")/bump-version-reasoning-corrected-$$.md"
+    {
+        printf '%s\n\n' '# Version Bump Reasoning'
+        printf '%s\n\n' '## Result: Corrected after rebase'
+        printf -- "- **New version**: \`%s\`\n\n" "$corrected_version"
+        printf '%s\n\n' '### Rebase + Re-bump Correction'
+        printf -- "- **Classified version**: \`%s\`\n" "$classified_version"
+        printf -- "- **origin/main version at correction time**: \`%s\`\n" "$origin_version"
+        printf -- "- **Corrected version applied by \`ship-pr.sh\`**: \`%s\`\n" "$corrected_version"
+        if [ -f "$file" ]; then
+            printf '\n%s\n\n' '### Original reasoning snapshot'
+            cat "$file"
+            printf '\n'
+        fi
+    } > "$tmp_file" || {
+        rm -f "$tmp_file"
+        return 1
+    }
+    printf '%s\n' "$tmp_file"
+}
+
 FAILURE_LOG_SEQ=0
 
 failure_capture_path() {
@@ -1279,11 +1303,18 @@ run_rebase_rebump() {
         new_version=$(kv_value NEW_VERSION "$classify_out")
         bump_type=$(kv_value BUMP_TYPE "$classify_out")
         reasoning_file=$(kv_value REASONING_FILE "$classify_out")
+        reasoning_log_file=$reasoning_file
         _classified_version="$new_version"
         # Version-regression guard: when rebase conflict was resolved to the branch's
         # stale version instead of origin/main's, classify-bump produces NEW_VERSION <
         # ORIGIN_VERSION. Correct by applying bump_type to origin/main's version.
         if [ "$bump_type" != "NONE" ] && [ -n "$new_version" ]; then
+            if [[ ! "$new_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+                printf 'ERROR: run_rebase_rebump: classify-bump produced invalid NEW_VERSION: %s\n' \
+                    "$new_version" >> "$fail_file"
+                record_failure rebase "classify-bump.sh" 1 "$fail_file" "CI Issues"
+                exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12)"
+            fi
             _origin_ver=$(git show origin/main:.claude-plugin/plugin.json 2>/dev/null \
                 | jq -r '.version // empty' 2>/dev/null || echo "")
             if [[ "$_origin_ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] && semver_lt "$new_version" "$_origin_ver"; then
@@ -1299,13 +1330,21 @@ run_rebase_rebump() {
                 new_version="$_corrected"
                 if [ -n "$reasoning_file" ] && [ -f "$reasoning_file" ]; then
                     if ! rewrite_reasoning_new_version "$reasoning_file" "$_classified_version" "$_origin_ver" "$_corrected"; then
-                        printf 'WARN: run_rebase_rebump: failed to rewrite reasoning file after version correction: %s\n' \
-                            "$reasoning_file" >> "$fail_file"
+                        reasoning_log_file=$(write_corrected_reasoning_fallback \
+                            "$reasoning_file" "$_classified_version" "$_origin_ver" "$_corrected" 2>/dev/null || true)
+                        if [ -n "$reasoning_log_file" ] && [ -f "$reasoning_log_file" ]; then
+                            printf 'WARN: run_rebase_rebump: failed to rewrite reasoning file after version correction; using fallback reasoning snapshot: %s\n' \
+                                "$reasoning_log_file" >> "$fail_file"
+                        else
+                            printf 'WARN: run_rebase_rebump: failed to rewrite reasoning file after version correction and could not build fallback snapshot: %s\n' \
+                                "$reasoning_file" >> "$fail_file"
+                            reasoning_log_file=""
+                        fi
                     fi
                 fi
             fi
         fi
-        state_set_many BUMP_TYPE "$bump_type" NEW_VERSION "$new_version" BUMP_REASONING_FILE "$reasoning_file"
+        state_set_many BUMP_TYPE "$bump_type" NEW_VERSION "$new_version" BUMP_REASONING_FILE "$reasoning_log_file"
         if [ "$bump_type" != "NONE" ] && [ -n "$new_version" ]; then
             fail_file=$(failure_capture_path rebase)
             apply_out=$("$PLUGIN_ROOT/.claude/skills/bump-version/scripts/apply-bump.sh" \
@@ -1326,7 +1365,7 @@ run_rebase_rebump() {
             fi
             # Refresh version-bump-reasoning larch-log so the audit trail
             # reflects the actually-landed version rather than the race target.
-            if [ -n "$reasoning_file" ] && [ -f "$reasoning_file" ]; then
+            if [ -n "$reasoning_log_file" ] && [ -f "$reasoning_log_file" ]; then
                 run_id=$(read_state RUN_ID)
                 if [ -n "$run_id" ]; then
                     "$SCRIPT_DIR/larch-log.sh" write \
@@ -1334,7 +1373,7 @@ run_rebase_rebump() {
                         --skill implement \
                         --run-id "$run_id" \
                         --batch version-bump-reasoning \
-                        --input-file "$reasoning_file" 2>/dev/null || true
+                        --input-file "$reasoning_log_file" 2>/dev/null || true
                 fi
             fi
         fi

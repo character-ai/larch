@@ -428,8 +428,8 @@ case "$cmd" in
             cp -rp "$src_path/." "$repo_path/" || larch_log_fail 3 "cannot copy logs from temp to repo"
         fi
         # Scope all git operations to exactly this run's directory, not the broader
-        # skill/ parent. Building explicitly avoids string-strip failures when
-        # LARCH_LOG_REPO_ROOT and REPO_ROOT have different symlink resolution.
+        # skill parent. Building the pathspec explicitly hardens add/status/diff
+        # against prefix math mistakes and untracked-file omissions.
         rel="larch-logs/$SKILL/$RUN_ID"
         # Check status first: git diff alone misses untracked files.
         if ! git -C "$REPO_ROOT" status --porcelain -- "$rel" | grep -q .; then

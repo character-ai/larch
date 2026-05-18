@@ -17,5 +17,13 @@ sed -E \
     -e 's#(\\n)/([^/"\\[:space:]]+/)*larch/sessions/(claude|larch)-(implement|design|review|research|fix-issue|issue)-[A-Za-z0-9_-]+#\1<TMPDIR>#g' \
     -e 's#(\\n)/(private/)?tmp/(claude|larch)-(implement|design|review|research|fix-issue|issue)-[A-Za-z0-9_-]+#\1<TMPDIR>#g' \
     -e 's#(\\n)/(private/)?var/folders/[^/]+/[^/]+/T/(claude|larch)-(implement|design|review|research|fix-issue|issue)-[A-Za-z0-9_-]+#\1<TMPDIR>#g' \
-    -e 's#(^|[^[:alnum:]_./-])(/Users|/home)/[[:alnum:]_.-]+/[[:alnum:]_.-]+(/|$|[[:punct:]])#\1<OPERATOR_REPO_PATH>\3#g' \
-    -e 's#(\\n)(/Users|/home)/[[:alnum:]_.-]+/[[:alnum:]_.-]+(/|$|[[:punct:]])#\1<OPERATOR_REPO_PATH>\3#g'
+    -e 's#(^|[^[:alnum:]_./-])(/Users|/home)/([^/"\\[:space:]]+)/([^/"\\[:space:]]+)/#\1<OPERATOR_REPO_PATH>/#g' \
+    -e 's#(^|[^[:alnum:]_./-])(/Users|/home)/([^/"\\[:space:]]+)/([^/"\\[:space:],]+),#\1<OPERATOR_REPO_PATH>,#g' \
+    -e 's#(^|[^[:alnum:]_./-])(/Users|/home)/([^/"\\[:space:]]+)/([^/"\\[:space:];]+);#\1<OPERATOR_REPO_PATH>;#g' \
+    -e 's#(^|[^[:alnum:]_./-])(/Users|/home)/([^/"\\[:space:]]+)/([^/"\\[:space:]:]+):#\1<OPERATOR_REPO_PATH>:#g' \
+    -e 's#(^|[^[:alnum:]_./-])(/Users|/home)/([^/"\\[:space:]]+)/([^/"\\[:space:]]+)$#\1<OPERATOR_REPO_PATH>#g' \
+    -e 's#(\\n)(/Users|/home)/([^/"\\[:space:]]+)/([^/"\\[:space:]]+)/#\1<OPERATOR_REPO_PATH>/#g' \
+    -e 's#(\\n)(/Users|/home)/([^/"\\[:space:]]+)/([^/"\\[:space:],]+),#\1<OPERATOR_REPO_PATH>,#g' \
+    -e 's#(\\n)(/Users|/home)/([^/"\\[:space:]]+)/([^/"\\[:space:];]+);#\1<OPERATOR_REPO_PATH>;#g' \
+    -e 's#(\\n)(/Users|/home)/([^/"\\[:space:]]+)/([^/"\\[:space:]:]+):#\1<OPERATOR_REPO_PATH>:#g' \
+    -e 's#(\\n)(/Users|/home)/([^/"\\[:space:]]+)/([^/"\\[:space:]]+)$#\1<OPERATOR_REPO_PATH>#g'
