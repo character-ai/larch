@@ -60,9 +60,17 @@ Artifact paths under `$REVIEW_TMPDIR`:
 
 When `SESSION_ENV_PATH` is set, `emit-tally.sh` copies `review-round-summary.md` and `review-summary.json` to `$(dirname "$SESSION_ENV_PATH")`. `review-core.sh` copies `rejected-findings.md`, `oos-accepted-review.md`, and `review-dirty-tree-summary.env` there.
 
+When `IMPLEMENT_TMPDIR` and `RUN_ID` are set, `review-core.sh` best-effort calls
+`scripts/larch-log.sh write-round --skill implement --round "$ROUND_NUM"
+--source-dir "$REVIEW_TMPDIR"` before emitting the terminal round status. This
+persists registered per-round reviewer outputs, vote files, sidecars, and
+summary artifacts under `larch-logs/implement/<RUN_ID>/round-<N>/`; the existing
+later `larch-log.sh commit` flush owns committing those files.
+
 Dirty-tree recovery runs after collection. It scans every launched reviewer output sidecar `${output}.dirty-tree`; missing sidecars count as `unknown`. Any `STATUS=dirty` or `STATUS=unknown` marks `ANY_DIRTY=true`, records the output basename in `LAUNCHERS_DIRTY`, runs `scripts/check-mid-run-dirty-tree.sh --mode checkpoint`, and discards reviewer-introduced paths named by sidecar path streams (`TRACKED_PATHS_FILE`, `NEW_UNTRACKED_PATHS_FILE`) when a recovery checkpoint reports dirty or unknown. The summary file contains `ANY_DIRTY`, `LAUNCHERS_DIRTY`, `RECOVERY_TAKEN`, and any per-launcher path stream keys.
 
-Run-log batches are not written here. The `/review` wrapper owns `log-phase.sh` calls after summary artifacts are complete.
+Flat standalone `/review` batches are still owned by the `/review` wrapper's
+`log-phase.sh` calls after summary artifacts are complete.
 
 Known gap deferred to Part 2: `skills/review/references/heavy-worker.md` still documents heavy-worker Step 1 as `gather-branch-context.sh`, while inline `review-core.sh` uses `gather-context.sh` to match the current inline path. This PR documents the divergence rather than changing heavy-worker behavior.
 

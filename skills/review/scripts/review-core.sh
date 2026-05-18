@@ -67,6 +67,8 @@ EMIT_TALLY_SH="${REVIEW_CORE_EMIT_TALLY_SH:-$SCRIPT_DIR/emit-tally.sh}"
 CHECK_DIRTY_TREE_SH="${REVIEW_CORE_CHECK_DIRTY_TREE_SH:-$PLUGIN_ROOT/scripts/check-mid-run-dirty-tree.sh}"
 CHECK_THRESHOLD_SH="${REVIEW_CORE_CHECK_THRESHOLD_SH:-$SCRIPT_DIR/check-reviewer-failure-threshold.sh}"
 DISPATCH_VOTERS_SH="${REVIEW_CORE_DISPATCH_VOTERS_SH:-$PLUGIN_ROOT/scripts/dispatch-code-voters.sh}"
+LARCH_LOG_SH="${REVIEW_CORE_LARCH_LOG_SH:-$PLUGIN_ROOT/scripts/larch-log.sh}"
+APPEND_TOOL_FAILURE_SH="${REVIEW_CORE_APPEND_TOOL_FAILURE_SH:-$PLUGIN_ROOT/scripts/append-tool-failure.sh}"
 
 kv_get() {
     local file="$1" key="$2"
@@ -77,6 +79,57 @@ copy_to_parent() {
     local file="$1" name="$2"
     [[ -n "$SESSION_ENV_PATH" && -f "$file" ]] || return 0
     cp "$file" "$(dirname "$SESSION_ENV_PATH")/$name" 2>/dev/null || true
+}
+
+execution_issues_log() {
+    if [[ -n "${LARCH_EXECUTION_ISSUES_LOG:-}" ]]; then
+        printf '%s\n' "$LARCH_EXECUTION_ISSUES_LOG"
+    elif [[ -n "$SESSION_ENV_PATH" ]]; then
+        printf '%s/execution-issues.md\n' "$(dirname "$SESSION_ENV_PATH")"
+    elif [[ -n "${IMPLEMENT_TMPDIR:-}" ]]; then
+        printf '%s/execution-issues.md\n' "$IMPLEMENT_TMPDIR"
+    else
+        printf '%s/execution-issues.md\n' "$REVIEW_TMPDIR"
+    fi
+}
+
+append_round_log_write_failure() {
+    local site="$1" round_num="$2" rc="$3" output_file="$4"
+    local issues_log
+    [[ -x "$APPEND_TOOL_FAILURE_SH" ]] || return 0
+    issues_log="$(execution_issues_log)"
+    "$APPEND_TOOL_FAILURE_SH" \
+        --log "$issues_log" \
+        --site "$site" \
+        --tool "larch-log.sh write-round" \
+        --exit-code "$rc" \
+        --category "Warnings" \
+        --output-file "$output_file" \
+        --verdict "review-core round $round_num" \
+        --redact >/dev/null 2>&1 || true
+}
+
+flush_round_log() {
+    local flush_err rc=0
+    [[ -n "$RUN_ID" ]] || return 0
+    [[ -n "${IMPLEMENT_TMPDIR:-}" && -d "${IMPLEMENT_TMPDIR:-}" ]] || return 0
+    [[ -x "$LARCH_LOG_SH" ]] || return 0
+    flush_err="$REVIEW_TMPDIR/review-core-write-round.log"
+    set +e
+    "$LARCH_LOG_SH" write-round \
+        --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
+        --skill implement \
+        --run-id "$RUN_ID" \
+        --round "$ROUND_NUM" \
+        --source-dir "$REVIEW_TMPDIR" >/dev/null 2>"$flush_err"
+    rc=$?
+    set -e
+    if [[ "$rc" -ne 0 ]]; then
+        emit_breadcrumb "⚠ review-core: round log flush failed (round $ROUND_NUM, rc=$rc)"
+        append_round_log_write_failure "5" "$ROUND_NUM" "$rc" "$flush_err"
+    else
+        rm -f "$flush_err"
+    fi
 }
 
 join_comma() {
@@ -158,6 +211,7 @@ if [[ "$MODE" == "description" && "${scope_count:-0}" == "0" ]]; then
     : > "$REVIEW_TMPDIR/rejected-findings.md"
     : > "$REVIEW_TMPDIR/oos-accepted-review.md"
     recover_dirty_tree
+    flush_round_log
     emit_kv REVIEW_CORE_STATUS zero-findings
     emit_kv ROUND_NUM "$ROUND_NUM"
     emit_kv ACCEPTED_COUNT 0
@@ -243,6 +297,7 @@ if [[ "$threshold_ok" == "false" ]]; then
     : > "$REVIEW_TMPDIR/oos-accepted-review.md"
     copy_to_parent "$REVIEW_TMPDIR/rejected-findings.md" rejected-findings.md
     copy_to_parent "$REVIEW_TMPDIR/oos-accepted-review.md" oos-accepted-review.md
+    flush_round_log
     emit_kv REVIEW_CORE_STATUS panel-failed
     emit_kv ROUND_NUM "$ROUND_NUM"
     emit_kv ACCEPTED_COUNT 0
@@ -267,6 +322,7 @@ if [[ "$findings_count" == "0" ]]; then
     : > "$REVIEW_TMPDIR/oos-accepted-review.md"
     copy_to_parent "$REVIEW_TMPDIR/rejected-findings.md" rejected-findings.md
     copy_to_parent "$REVIEW_TMPDIR/oos-accepted-review.md" oos-accepted-review.md
+    flush_round_log
     emit_kv REVIEW_CORE_STATUS zero-findings
     emit_kv ROUND_NUM "$ROUND_NUM"
     emit_kv ACCEPTED_COUNT 0
@@ -368,6 +424,7 @@ if [[ "$tally_status" == "main-agent-vote-required" ]]; then
     : > "$REVIEW_TMPDIR/rejected-findings.md"
     copy_to_parent "$REVIEW_TMPDIR/rejected-findings.md" rejected-findings.md
     copy_to_parent "$REVIEW_TMPDIR/oos-accepted-review.md" oos-accepted-review.md
+    flush_round_log
     emit_kv REVIEW_CORE_STATUS main-agent-vote-required
     emit_kv ROUND_NUM "$ROUND_NUM"
     emit_kv ACCEPTED_COUNT 0
@@ -399,6 +456,7 @@ emit_args=(
 rejected_file="$REVIEW_TMPDIR/rejected-findings.md"
 copy_to_parent "$rejected_file" rejected-findings.md
 copy_to_parent "$REVIEW_TMPDIR/oos-accepted-review.md" oos-accepted-review.md
+flush_round_log
 
 status="ok"
 if [[ "$MODE" == "diff" && "$accepted_count" -gt 0 ]]; then

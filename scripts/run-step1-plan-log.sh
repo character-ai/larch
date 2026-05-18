@@ -8,6 +8,23 @@ fail() {
     exit 2
 }
 
+append_log_write_failure() {
+    local site="$1" tool="$2" output_file="$3"
+    local helper="$PLUGIN_ROOT/scripts/append-tool-failure.sh"
+    if [[ -x "$helper" ]]; then
+        "$helper" \
+            --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
+            --site "$site" \
+            --tool "$tool" \
+            --exit-code 1 \
+            --category Warnings \
+            --output-file "$output_file" \
+            --redact >/dev/null 2>&1 || true
+    else
+        printf 'run-step1-plan-log.sh: best-effort log write failed for %s (see %s)\n' "$tool" "$output_file" >&2
+    fi
+}
+
 usage() {
     printf 'Usage: run-step1-plan-log.sh --implement-tmpdir PATH --goal-text TEXT\n' >&2
 }
@@ -122,3 +139,15 @@ trap - EXIT
     --run-id "$RUN_ID" \
     --batch plan-goals-test \
     --input-file "$OUTPUT_FILE"
+
+if [[ -f "$IMPLEMENT_TMPDIR/parent-issue.md" ]]; then
+    parent_issue_fail_log="$IMPLEMENT_TMPDIR/parent-issue-write.failure.log"
+    if ! "$LARCH_LOG_SH" write \
+        --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
+        --skill implement \
+        --run-id "$RUN_ID" \
+        --batch parent-issue \
+        --input-file "$IMPLEMENT_TMPDIR/parent-issue.md" >"$parent_issue_fail_log" 2>&1; then
+        append_log_write_failure "1" "larch-log.sh write parent-issue" "$parent_issue_fail_log"
+    fi
+fi

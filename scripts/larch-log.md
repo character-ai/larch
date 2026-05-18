@@ -13,6 +13,14 @@ Primary verbs:
   fields for schema compatibility without committing operator-local absolute
   paths.
 - `write` atomically replaces replace-mode batches.
+- `write-round` copies registered per-round review artifacts from
+  `--source-dir` into `round-<N>/` under the run directory. It strips `CMD_JSON`
+  lines from `.meta` sidecars and removes top-level `.result` from included
+  `*-output.txt.json` / `*-output-*.txt.json` tool-envelope sidecars before
+  applying the normal tmpdir and secrets redaction. Session tmpdirs may retain
+  raw `.meta` / JSON sidecars for retry state, but committed `round-<N>/`
+  artifacts always use the trimmed form and fail closed if trimming fails. It
+  writes only to the log root; `commit` later picks up the round directory.
 - `append` atomically appends append-mode NDJSON batches.
 - `exists` probes a batch path.
 - `manifest` updates mutable manifest fields. Values that look like JSON-native scalars (`null`, `true`, `false`, integers) are passed via `--argjson` so they are stored with the correct JSON type; all other values are passed via `--arg` (stored as strings). This matters for numeric fields like `pr_number`.
@@ -33,7 +41,9 @@ UNCHANGED=true|false
 ```
 
 Payload content is never written to stdout. Payloads pass through
-`redact-tmpdir-paths.sh` and `redact-secrets.sh`. Batches that declare the
+`redact-tmpdir-paths.sh` and `redact-secrets.sh`. `write-round` applies
+sidecar-specific trimmers from `scripts/lib-redact.sh` before this shared
+redaction pipeline. Batches that declare the
 `plan-goals` sanitizer must contain a non-empty `## Implementation Plan` section
 that is not a pointer-only placeholder. Batches that declare the `json-lines`
 sanitizer must be empty or contain one valid JSON value per non-empty line.
@@ -47,7 +57,7 @@ current batch uses the Mermaid sanitizer — it is reserved for future opt-in.
 1. `$LARCH_LOG_ROOT`, set by the required `--log-root <dir>` flag or explicitly
    exported for test isolation.
 
-The `init`, `write`, `append`, `exists`, `manifest`, and `commit` verbs require
+The `init`, `write`, `write-round`, `append`, `exists`, `manifest`, and `commit` verbs require
 an absolute `--log-root <dir>` unless `$LARCH_LOG_ROOT` is already exported.
 `/implement` passes `$IMPLEMENT_TMPDIR/larch-logs` explicitly so in-progress
 runtime payloads stay out of the git working tree until `commit` is called.

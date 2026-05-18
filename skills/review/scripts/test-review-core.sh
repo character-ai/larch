@@ -221,6 +221,35 @@ run_core() {
     "$SCRIPT" "${args[@]}"
 }
 
+run_core_with_log_stub() {
+    local outdir="$1" session_env="$2"
+    # flush_round_log requires IMPLEMENT_TMPDIR/larch-logs; without it write-round
+    # is skipped and execution-issues never receives the failure record.
+    local impl_tmp="$TMP/implement-for-write-round"
+    mkdir -p "$impl_tmp"
+    local log_stub="$TMP/larch-log-fail.sh"
+    cat > "$log_stub" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'write-round failed with sk-ant-abcdefghijklmnopqrstuvwxyz0123456789ABCD\n' >&2
+exit 7
+STUB
+    chmod +x "$log_stub"
+    local args=(--mode diff --output-dir "$outdir" --codex-available true --cursor-available true --panel simple --run-id test-run)
+    [[ -n "$session_env" ]] && args+=(--session-env-path "$session_env")
+    IMPLEMENT_TMPDIR="$impl_tmp" \
+    REVIEW_CORE_GATHER_CONTEXT_SH="$TMP/gather.sh" \
+    REVIEW_CORE_DISPATCH_PANEL_SH="$TMP/dispatch.sh" \
+    REVIEW_CORE_COLLECT_FINDINGS_SH="$TMP/collect.sh" \
+    REVIEW_CORE_TALLY_VOTES_SH="$TMP/tally.sh" \
+    REVIEW_CORE_EMIT_TALLY_SH="$TMP/emit.sh" \
+    REVIEW_CORE_CHECK_DIRTY_TREE_SH="$TMP/check-dirty.sh" \
+    REVIEW_CORE_CHECK_THRESHOLD_SH="$TMP/check-threshold.sh" \
+    REVIEW_CORE_DISPATCH_VOTERS_SH="$TMP/dispatch-voters.sh" \
+    REVIEW_CORE_LARCH_LOG_SH="$log_stub" \
+    "$SCRIPT" "${args[@]}"
+}
+
 write_stubs
 
 out=$(TEST_FINDINGS=0 run_core "$TMP/zero")
@@ -263,5 +292,18 @@ grep -Fq 'RECOVERY_TAKEN=true' "$TMP/dirty/review-dirty-tree-summary.env"
 out=$(TEST_FINDINGS=0 TEST_DIRTY_STATUS=unknown TEST_CHECKPOINT_STATUS=unknown run_core "$TMP/unknown")
 assert_contains "$out" 'REVIEW_CORE_STATUS=zero-findings'
 grep -Fq 'LAUNCHERS_DIRTY=codex-specialist-structure-output.txt' "$TMP/unknown/review-dirty-tree-summary.env"
+
+issues_parent="$TMP/issues-parent"
+mkdir -p "$issues_parent"
+out=$(TEST_FINDINGS=0 run_core_with_log_stub "$TMP/log-fail" "$issues_parent/session.env")
+assert_contains "$out" 'REVIEW_CORE_STATUS=zero-findings'
+grep -Fq 'larch-log.sh write-round failed (exit 7' "$issues_parent/execution-issues.md" || {
+    echo "FAIL: missing review-core write-round execution issue" >&2
+    exit 1
+}
+if grep -Fq 'sk-ant-abcdefghijklmnopqrstuvwxyz0123456789ABCD' "$issues_parent/execution-issues.md"; then
+    echo "FAIL: execution-issues should redact write-round stderr" >&2
+    exit 1
+fi
 
 echo "All assertions passed."

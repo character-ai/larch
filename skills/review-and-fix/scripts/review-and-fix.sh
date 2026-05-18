@@ -521,6 +521,55 @@ flush_review_batches() {
         --input-file "$findings_file" >/dev/null 2>&1 || true
 }
 
+flush_round_log_after_coder() {
+    local impl_tmpdir="$1" run_id="$2" round_num="$3" round_dir="$4"
+    local flush_err rc=0
+    [[ -n "$impl_tmpdir" && -d "$impl_tmpdir" ]] || return 0
+    [[ -n "$run_id" ]] || return 0
+    [[ "$round_num" =~ ^[0-9]+$ ]] || return 0
+    [[ -d "$round_dir" ]] || return 0
+    [[ -x "$LARCH_LOG_SH" ]] || return 0
+
+    flush_err="$round_dir/review-and-fix-write-round.log"
+    set +e
+    "$LARCH_LOG_SH" write-round \
+        --log-root "$impl_tmpdir/larch-logs" \
+        --skill implement \
+        --run-id "$run_id" \
+        --round "$round_num" \
+        --source-dir "$round_dir" >/dev/null 2>"$flush_err"
+    rc=$?
+    set -e
+    if [[ "$rc" -ne 0 ]]; then
+        emit_breadcrumb "⚠ review-and-fix: late round log flush failed (round $round_num, rc=$rc)"
+        append_log_write_failure "5" "larch-log.sh write-round" "$flush_err" "Warnings" "$rc" "post-coder round $round_num"
+    else
+        rm -f "$flush_err"
+    fi
+}
+
+append_log_write_failure() {
+    local site="$1" tool="$2" output_file="$3" category="${4:-Warnings}" exit_code="${5:-1}" verdict="${6:-}"
+    local helper="$PLUGIN_ROOT/scripts/append-tool-failure.sh"
+    local -a helper_args
+    if [[ -x "$helper" ]]; then
+        helper_args=(
+            --log "$IMPLEMENT_TMPDIR/execution-issues.md"
+            --site "$site"
+            --tool "$tool"
+            --exit-code "$exit_code"
+            --category "$category"
+            --output-file "$output_file"
+            --redact
+        )
+        [[ -n "$verdict" ]] && helper_args+=(--verdict "$verdict")
+        "$helper" \
+            "${helper_args[@]}" >/dev/null 2>&1 || true
+    else
+        larch_err "review-and-fix.sh: best-effort log write failed for $tool (see $output_file)"
+    fi
+}
+
 run_findings_mode() {
     [[ -f "$FINDINGS_FILE" ]] || { larch_err "review-and-fix.sh: --findings-file must name a file"; exit 2; }
     [[ -n "$REVIEW_TMPDIR" ]] || { larch_err "review-and-fix.sh: --review-tmpdir is required"; exit 2; }
@@ -594,6 +643,30 @@ run_implement_round() {
     if (( round_num_dec == 1 )) && [[ -x "$PLUGIN_ROOT/scripts/snapshot-untracked.sh" ]]; then
         "$PLUGIN_ROOT/scripts/snapshot-untracked.sh" --output "$IMPLEMENT_TMPDIR/pre-review-untracked.txt"
         git rev-parse HEAD > "$IMPLEMENT_TMPDIR/pre-review-head.txt" 2>/dev/null || rm -f "$IMPLEMENT_TMPDIR/pre-review-head.txt"
+        if [[ -n "$RUN_ID" && -x "$LARCH_LOG_SH" ]]; then
+            if [[ -f "$IMPLEMENT_TMPDIR/pre-review-untracked.txt" ]]; then
+                pre_review_untracked_fail_log="$IMPLEMENT_TMPDIR/pre-review-untracked-write.failure.log"
+                if ! "$LARCH_LOG_SH" write \
+                    --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
+                    --skill implement \
+                    --run-id "$RUN_ID" \
+                    --batch pre-review-untracked \
+                    --input-file "$IMPLEMENT_TMPDIR/pre-review-untracked.txt" >"$pre_review_untracked_fail_log" 2>&1; then
+                    append_log_write_failure "7a" "larch-log.sh write pre-review-untracked" "$pre_review_untracked_fail_log"
+                fi
+            fi
+            if [[ -f "$IMPLEMENT_TMPDIR/pre-review-head.txt" ]]; then
+                pre_review_head_fail_log="$IMPLEMENT_TMPDIR/pre-review-head-write.failure.log"
+                if ! "$LARCH_LOG_SH" write \
+                    --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
+                    --skill implement \
+                    --run-id "$RUN_ID" \
+                    --batch pre-review-head \
+                    --input-file "$IMPLEMENT_TMPDIR/pre-review-head.txt" >"$pre_review_head_fail_log" 2>&1; then
+                    append_log_write_failure "7a" "larch-log.sh write pre-review-head" "$pre_review_head_fail_log"
+                fi
+            fi
+        fi
     fi
     core_out="$round_dir/review-core.env"
     core_args=(
@@ -788,6 +861,7 @@ run_implement_round() {
 
     local round_cap_val="${ROUND_CAP:-0}"
     write_summary_json "$prior_summary" "$status" "$core_status" "$round_num_dec" "$total_accepted" "$total_rejected" "$total_exonerated" "$total_neutral" "$round_num_dec" "$accepted_file" "$round_dir" "$oos_jsonl" "$oos_markdown" "$round_cap_val" "$coder_tool" "$coder_status" "$scrub_count" "$revert_count" "$coder_commit_sha"
+    flush_round_log_after_coder "$IMPLEMENT_TMPDIR" "$RUN_ID" "$round_num_dec" "$round_dir"
 
     emit_kv REVIEW_AND_FIX_STATUS "$status"
     emit_kv REVIEW_CORE_STATUS "$core_status"

@@ -11,6 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Document the `review-and-fix.sh` applied-fixes contract change: accepted findings applied by the coder now complete with exit `0` plus `REVIEW_AND_FIX_STATUS=fix-applied`, and `review-and-fix-summary.json` now records `.status = "fix-applied"` instead of the old `fix-required`/exit-3 checkpoint shape. External wrappers, jq filters, and dashboards must key on the new status fields rather than exit `3`.
 
+## [29.1.34] - 2026-05-17
+
+### Changed
+
+- Preserve per-round review diagnostics in committed run logs for post-run analysis
+- Retain high-value setup and Codex implementation artifacts through the existing consolidated log flush
+- Redact oversized or sensitive sidecar fields before durable log writes
+
 ## [29.1.23] - 2026-05-17
 
 ### Changed
