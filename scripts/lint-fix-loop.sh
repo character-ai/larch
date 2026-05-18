@@ -210,12 +210,14 @@ mkdir -p "$run_parent" || fail_status "run-dir-create-failed" 1
 run_dir=$(mktemp -d "$run_parent/$SITE.XXXXXX") || fail_status "run-dir-create-failed" 1
 baseline_tracked="$run_dir/baseline-tracked.txt"
 baseline_untracked="$run_dir/baseline-untracked.txt"
+baseline_head=""
 forbidden_paths_file="$run_dir/forbidden-paths.txt"
 current_tracked="$run_dir/current-tracked.txt"
 current_untracked="$run_dir/current-untracked.txt"
 delta_paths_file="$run_dir/delta-paths.txt"
 capture_tracked_paths > "$baseline_tracked"
 capture_untracked_paths > "$baseline_untracked"
+baseline_head=$(git rev-parse HEAD 2>/dev/null) || fail_status "baseline-head-unresolved" 1
 baseline_clean=true
 if [[ -s "$baseline_tracked" || -s "$baseline_untracked" ]]; then
     baseline_clean=false
@@ -244,6 +246,11 @@ else
     exit 1
 fi
 
+current_head=$(git rev-parse HEAD 2>/dev/null || true)
+if [[ -z "$current_head" || "$current_head" != "$baseline_head" ]]; then
+    fail_status "head-changed-after-dispatch" 1
+fi
+
 revert_count=$(post_dispatch_forbidden_revert "$run_dir" "$forbidden_paths_file")
 if (( revert_count > 0 )); then
     fail_status "forbidden-path-violation" 1
@@ -265,10 +272,19 @@ fi
 
 commit_sha=""
 if [[ "$baseline_clean" == "true" ]]; then
-    mapfile -t delta_paths < "$delta_paths_file"
-    git add -- "${delta_paths[@]}" >> "$run_dir/commit.log" 2>&1 || fail_status "git-add-failed" 1
-    "$SCRIPT_DIR/git-commit.sh" --no-trailer -m "Apply /relevant-checks fixes ($SITE_LABEL)" >> "$run_dir/commit.log" 2>&1 \
-        || fail_status "git-commit-failed" 1
+    delta_paths=()
+    while IFS= read -r path || [[ -n "$path" ]]; do
+        [[ -n "$path" ]] || continue
+        delta_paths+=("$path")
+    done < "$delta_paths_file"
+    if ! git add -- "${delta_paths[@]}" >> "$run_dir/commit.log" 2>&1; then
+        git reset --quiet -- "${delta_paths[@]}" >> "$run_dir/commit.log" 2>&1 || true
+        fail_status "git-add-failed" 1
+    fi
+    if ! "$SCRIPT_DIR/git-commit.sh" --no-trailer -m "Apply /relevant-checks fixes ($SITE_LABEL)" >> "$run_dir/commit.log" 2>&1; then
+        git reset --quiet -- "${delta_paths[@]}" >> "$run_dir/commit.log" 2>&1 || true
+        fail_status "git-commit-failed" 1
+    fi
     commit_sha=$(git rev-parse HEAD 2>/dev/null || true)
 fi
 

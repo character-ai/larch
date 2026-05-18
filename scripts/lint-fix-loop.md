@@ -38,9 +38,10 @@ Behavior:
 5. Dispatch Codex first via `scripts/run-external-agent.sh`; if Codex is absent
    or fails and Cursor is present, dispatch Cursor with the standard Cursor
    model/auth launcher helpers.
-6. Before dispatch, capture the tracked/untracked dirty-tree baseline. After
-   dispatch, mechanically revert any `.gitmodules` or checked-out submodule-path
-   edits before staging.
+6. Before dispatch, capture the tracked/untracked dirty-tree baseline plus the
+   current `HEAD`. After dispatch, fail closed if `HEAD` changed, then
+   mechanically revert any `.gitmodules` or checked-out submodule-path edits
+   before staging.
 7. If dispatch succeeds but there are no post-dispatch paths beyond the
    baseline, emit
    `LINT_FIX_STATUS=no-changes`.
@@ -48,7 +49,9 @@ Behavior:
    `LINT_FIX_STATUS=applied`. Only when the pre-dispatch baseline was clean may
    the helper stage those delta paths and commit through
    `scripts/git-commit.sh --no-trailer` using
-   `Apply /relevant-checks fixes (Step 3)`, `(Step 5)`, or `(Step 6)`.
+   `Apply /relevant-checks fixes (Step 3)`, `(Step 5)`, or `(Step 6)`. If the
+   commit path fails after staging, the helper must reset the staged delta
+   paths before emitting failure.
 9. If every available dispatch path fails, emit `LINT_FIX_STATUS=failed`,
    `FAILURE_REASON=dispatch-failed`, and exit 1.
 10. If forbidden path edits are detected post-dispatch, revert them, emit
@@ -63,4 +66,8 @@ The `/implement` orchestrator consumes statuses as follows:
   until clean.
 - `no-changes`: re-run checks once so the captured helper remains the source of
   truth; if checks still fail, continue the same step's repair loop.
-- `failed`: set `STALL_TRACKING=true` and route to Step 18 cleanup.
+- `failed`: when `LINT_FIX_SITE=step5`, set `STALL_TRACKING=true` and route to
+  Step 16 cleanup; when `LINT_FIX_SITE=step3|step6`, set
+  `STALL_TRACKING=true` and route to Step 18 cleanup.
+
+Harness: `scripts/test-lint-fix-loop.sh`.

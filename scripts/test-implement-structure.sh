@@ -35,7 +35,10 @@ grep -Fq 'scripts/tracking-issue-summary.sh' "$SKILL_MD" \
 grep -Fq 'summary-comment-template.md' "$SKILL_MD" \
   || fail "SKILL.md must reference summary-comment-template.md"
 
-if grep -Eiq '(^|[^[:alpha:]])user has( made| fixed)?([^[:alpha:]]|$)' "$SKILL_MD" "$REPO_ROOT/skills/review-and-fix/scripts/review-and-fix.md"; then
+if grep -Eiq '(^|[^[:alpha:]])user has( made| fixed)?([^[:alpha:]]|$)' \
+    "$SKILL_MD" \
+    "$REPO_ROOT/skills/review-and-fix/scripts/review-and-fix.md" \
+    "$REPO_ROOT/skills/review-and-fix/scripts/review-and-fix.sh"; then
   fail "orchestrator/review-fix docs must not attribute coder work as 'user has...'"
 fi
 

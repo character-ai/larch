@@ -1257,6 +1257,13 @@ exclude = [
   # (sibling contract); not invoked from runtime skill prose.
   "scripts/test-refresh-run-logs.sh",
   "scripts/test-refresh-run-logs.md",
+  # scripts/test-lint-fix-loop.sh is the offline regression harness for
+  # scripts/lint-fix-loop.sh dispatch safety and helper-owned commit rollback.
+  # Referenced from Makefile (test-lint-fix-loop target), docs/linting.md,
+  # scripts/lint-fix-loop.md, and the sibling contract
+  # scripts/test-lint-fix-loop.md; not invoked from runtime skill prose.
+  "scripts/test-lint-fix-loop.sh",
+  "scripts/test-lint-fix-loop.md",
   # scripts/test-ship-pr.sh and the two CI launcher argv harnesses are
   # Makefile-only regression entrypoints for the ship-pr state machine. They
   # are referenced from Makefile, docs/linting.md, and sibling contracts, not
