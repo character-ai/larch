@@ -314,12 +314,18 @@ if [[ -n "$FALLBACK_COUNTER_FILE" ]]; then
 fi
 
 dispatch_ok=true
+static_dispatch_ok=true
+dynamic_dispatch_ok=true
 for idx in "${phase3_failed[@]+"${phase3_failed[@]}"}"; do
     # shellcheck disable=SC2004
     final_outputs[$idx]="$(output_for_phase "${slot_outputs[$idx]}" phase3)"
     # shellcheck disable=SC2004
     final_tools[$idx]="claude"
     dispatch_ok=false
+    case "${slot_names[$idx]}" in
+        dyn-*) dynamic_dispatch_ok=false ;;
+        *) static_dispatch_ok=false ;;
+    esac
 done
 
 warn=""
@@ -337,3 +343,5 @@ emit_kv ALL_OUTPUT_TOOLS "${final_tools[*]-}"
 emit_kv FALLBACK_COUNT "$fallback_count"
 [[ -n "$warn" ]] && emit_kv WARN "$warn"
 emit_kv DISPATCH_OK "$dispatch_ok"
+emit_kv STATIC_DISPATCH_OK "$static_dispatch_ok"
+emit_kv DYNAMIC_DISPATCH_OK "$dynamic_dispatch_ok"

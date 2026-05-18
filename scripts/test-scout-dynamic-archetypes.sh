@@ -59,6 +59,25 @@ run_case() {
     printf '%s\n' "$stdout_file"
 }
 
+run_case_description() {
+    local label="$1" fixture="$2" description_text="$3" out_dir output stdout_file
+    out_dir="$TMP/$label"
+    mkdir -p "$out_dir"
+    seed_case_inputs "$out_dir"
+    output="$out_dir/scout-manifest.json"
+    stdout_file="$out_dir/stdout.env"
+    PATH="$BIN:$PATH" SCOUT_STUB_OUTPUT_FILE="$fixture" "$SCRIPT" \
+        --mode description \
+        --scope-files "$out_dir/scope-files.txt" \
+        --description-text "$description_text" \
+        --plan-file "$out_dir/plan.md" \
+        --max-archetypes 4 \
+        --output "$output" \
+        --timeout 5 \
+        > "$stdout_file"
+    printf '%s\n' "$stdout_file"
+}
+
 cat > "$TMP/valid4.json" <<'JSON'
 {"archetypes":[
   {"name":"api-contract","focus_area":"correctness","weight":4,"rationale":"API changes are central.","prompt_body":"Check API contract compatibility."},
@@ -114,6 +133,11 @@ cat > "$TMP/empty.json" <<'JSON'
 JSON
 stdout=$(run_case empty "$TMP/empty.json")
 grep -Fq 'SCOUT_STATUS=empty' "$stdout" || fail "empty status"
+
+stdout=$(run_case_description description-valid "$TMP/valid4.json" "Review the CLI and API integration changes.")
+grep -Fq 'SCOUT_STATUS=ok' "$stdout" || fail "description valid status"
+grep -Fq 'SCOUT_ARCHETYPE_COUNT=4' "$stdout" || fail "description valid count"
+[[ "$(jq '.archetypes | length' "$TMP/description-valid/scout-manifest.json")" = "4" ]] || fail "description valid manifest count"
 
 timeout_launch="$TMP/timeout-launch-stub.sh"
 cat > "$timeout_launch" <<'STUB'
@@ -209,5 +233,26 @@ PATH="$BIN:$PATH" SCOUT_STUB_OUTPUT_FILE="$TMP/truncate-valid.json" "$SCRIPT" \
 grep -Fq 'SCOUT_STATUS=ok' "$out_dir/stdout.env" || fail "truncate valid status"
 grep -Fq 'WARN=validated archetypes exceed max cap: 3 > 2; truncating' "$out_dir/stdout.env" || fail "truncate warning"
 [[ "$(jq '.archetypes | length' "$out_dir/scout-manifest.json")" = "2" ]] || fail "truncate manifest count"
+
+mkdir -p "$TMP/description-too-large"
+seed_case_inputs "$TMP/description-too-large"
+huge_description=$(python3 - <<'PY'
+print("x" * 270000)
+PY
+)
+set +e
+PATH="$BIN:$PATH" "$SCRIPT" \
+    --mode description \
+    --scope-files "$TMP/description-too-large/scope-files.txt" \
+    --description-text "$huge_description" \
+    --plan-file "$TMP/description-too-large/plan.md" \
+    --max-archetypes 4 \
+    --output "$TMP/description-too-large/scout-manifest.json" \
+    --timeout 5 \
+    > "$TMP/description-too-large/stdout.env" 2> "$TMP/description-too-large/stderr.env"
+rc=$?
+set -e
+[[ "$rc" -eq 2 ]] || fail "description too large should fail validation"
+grep -Fq 'description-text exceeds 256 KB' "$TMP/description-too-large/stderr.env" || fail "description too large stderr"
 
 echo "All assertions passed."

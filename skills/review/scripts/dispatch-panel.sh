@@ -208,6 +208,43 @@ derive_scout_status_from_manifest() {
     esac
 }
 
+scout_manifest_is_valid() {
+    local scout_manifest="$1" max="${2:-4}"
+    [[ -s "$scout_manifest" ]] || return 1
+    jq -e --argjson max "$max" '
+        def reserved:
+          ["generic","structure","correctness","testing","security","edge-cases","plan-fidelity",
+           "code-reviewer","reviewer-structure","reviewer-correctness","reviewer-testing",
+           "reviewer-security","reviewer-edge-cases","reviewer-plan-fidelity"];
+        def has_unsafe_wrapper_tag:
+          (ascii_downcase | contains("</scout_notes>"));
+        def names:
+          [.archetypes[]?.name];
+        (.archetypes | type) == "array"
+        and (.archetypes | length) <= $max
+        and ((names | length) == (names | unique | length))
+        and all(.archetypes[]?;
+            . as $a
+            | (type == "object")
+            and ((.name | type) == "string")
+            and (.name | test("^[a-z][a-z0-9-]{2,40}$"))
+            and ((reserved | index($a.name)) == null)
+            and ((["code-quality","risk-integration","correctness","architecture","security"] | index($a.focus_area)) != null)
+            and ((.weight | type) == "number")
+            and ((.weight % 1) == 0)
+            and (.weight >= 1 and .weight <= 8)
+            and ((.rationale | type) == "string")
+            and ((.rationale | length) > 0)
+            and ((.rationale | has_unsafe_wrapper_tag) | not)
+            and ((.prompt_body | type) == "string")
+            and ((.prompt_body | length) > 0)
+            and ((.prompt_body | test("(?m)^---$")) | not)
+            and ((.prompt_body | contains("</reviewer_")) | not)
+            and ((.prompt_body | has_unsafe_wrapper_tag) | not)
+        )
+    ' "$scout_manifest" >/dev/null 2>&1
+}
+
 write_scout_status_file() {
     local scout_status_file="$REVIEW_TMPDIR/scout-round${ROUND_NUM}-status.env"
     {
@@ -232,16 +269,28 @@ if [[ "$DYNAMIC_ARCHETYPES" != "0" && "$SCOUT_STATUS" == "na" ]]; then
             else
                 scout_args+=(--scope-files "$SCOPE_FILES" --description-text "${DESCRIPTION_TEXT:-description review}")
             fi
+            set +e
             scout_output=$("$PLUGIN_ROOT/scripts/scout-dynamic-archetypes.sh" "${scout_args[@]}")
-            while IFS= read -r line || [[ -n "$line" ]]; do
-                key="${line%%=*}"
-                value="${line#*=}"
-                case "$key" in
-                    SCOUT_STATUS) SCOUT_STATUS="$value" ;;
-                    SCOUT_OUTPUT) SCOUT_MANIFEST="$value" ;;
-                    WARN) emit_kv WARN "$value" ;;
-                esac
-            done <<< "$scout_output"
+            scout_rc=$?
+            set -e
+            if [[ "$scout_rc" -ne 0 ]]; then
+                write_empty_scout_manifest "$SCOUT_MANIFEST"
+                SCOUT_STATUS="validation-failed"
+            else
+                while IFS= read -r line || [[ -n "$line" ]]; do
+                    key="${line%%=*}"
+                    value="${line#*=}"
+                    case "$key" in
+                        SCOUT_STATUS) SCOUT_STATUS="$value" ;;
+                        SCOUT_OUTPUT) SCOUT_MANIFEST="$value" ;;
+                        WARN) emit_kv WARN "$value" ;;
+                    esac
+                done <<< "$scout_output"
+                if ! scout_manifest_is_valid "$SCOUT_MANIFEST" "$DYNAMIC_ARCHETYPES"; then
+                    write_empty_scout_manifest "$SCOUT_MANIFEST"
+                    SCOUT_STATUS="parse-failed"
+                fi
+            fi
             write_scout_status_file
         fi
     else
@@ -249,16 +298,27 @@ if [[ "$DYNAMIC_ARCHETYPES" != "0" && "$SCOUT_STATUS" == "na" ]]; then
         if [[ -s "$scout_status_file" ]]; then
             SCOUT_STATUS=$(awk -F= '$1=="SCOUT_STATUS"{print $2; exit}' "$scout_status_file")
             [[ -n "$SCOUT_STATUS" ]] || SCOUT_STATUS="na"
+            if [[ "$SCOUT_STATUS" == "ok" ]] && ! scout_manifest_is_valid "$SCOUT_MANIFEST" "$DYNAMIC_ARCHETYPES"; then
+                SCOUT_STATUS="parse-failed"
+                write_empty_scout_manifest "$SCOUT_MANIFEST"
+            fi
         else
-            derived_status=$(derive_scout_status_from_manifest "$SCOUT_MANIFEST" || true)
+            if scout_manifest_is_valid "$SCOUT_MANIFEST" "$DYNAMIC_ARCHETYPES"; then
+                derived_status=$(derive_scout_status_from_manifest "$SCOUT_MANIFEST" || true)
+            else
+                derived_status=""
+            fi
             if [[ -n "$derived_status" ]]; then
                 SCOUT_STATUS="$derived_status"
             else
                 SCOUT_STATUS="parse-failed"
+                write_empty_scout_manifest "$SCOUT_MANIFEST"
             fi
         fi
     fi
-    [[ "$SCOUT_STATUS" != "na" && -n "$SCOUT_MANIFEST" ]] && synthesize_dynamic_slots "$SCOUT_MANIFEST"
+    if [[ "$SCOUT_STATUS" == "ok" && -n "$SCOUT_MANIFEST" ]] && scout_manifest_is_valid "$SCOUT_MANIFEST" "$DYNAMIC_ARCHETYPES"; then
+        synthesize_dynamic_slots "$SCOUT_MANIFEST"
+    fi
 fi
 
 waterfall_args=(--slots-file "$manifest" --codex-present "$CODEX_AVAILABLE" --cursor-present "$CURSOR_AVAILABLE" --mode "$MODE" --timeout 1800)
@@ -272,6 +332,8 @@ waterfall_output=$("$DISPATCH_WATERFALL" "${waterfall_args[@]}")
 all_outputs=""
 all_tools=""
 dispatch_ok="true"
+static_dispatch_ok="true"
+dynamic_dispatch_ok="true"
 while IFS= read -r line || [[ -n "$line" ]]; do
     key="${line%%=*}"
     value="${line#*=}"
@@ -279,6 +341,8 @@ while IFS= read -r line || [[ -n "$line" ]]; do
         ALL_OUTPUT_FILES) all_outputs="$value" ;;
         ALL_OUTPUT_TOOLS) all_tools="$value" ;;
         DISPATCH_OK) dispatch_ok="$value" ;;
+        STATIC_DISPATCH_OK) static_dispatch_ok="$value" ;;
+        DYNAMIC_DISPATCH_OK) dynamic_dispatch_ok="$value" ;;
         WARN) emit_kv WARN "$value" ;;
     esac
 done <<< "$waterfall_output"
@@ -306,3 +370,5 @@ emit_kv SLOT_COUNT "$((static_slot_count + DYNAMIC_SLOTS))"
 [[ -n "$SCOUT_MANIFEST" ]] && emit_kv SCOUT_MANIFEST "$SCOUT_MANIFEST"
 emit_kv PANEL_MANIFEST "$manifest"
 emit_kv DISPATCH_OK "$dispatch_ok"
+emit_kv STATIC_DISPATCH_OK "$static_dispatch_ok"
+emit_kv DYNAMIC_DISPATCH_OK "$dynamic_dispatch_ok"

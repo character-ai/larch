@@ -41,7 +41,7 @@ Print `> **🔶 /review 2: launch reviewers**`. `review-core.sh` calls `dispatch
 
 Print `> **🔶 /review 3: review cycle**`. **MANDATORY — READ ENTIRE FILE** before executing Step 3: `${CLAUDE_PLUGIN_ROOT}/skills/review/references/domain-rules.md`. Voting is now run by `${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-code-voters.sh` + `${CLAUDE_PLUGIN_ROOT}/skills/review/scripts/tally-code-votes.sh` inside `review-core.sh`. The 3-judge panel (Claude + Codex + Cursor; Claude waterfall replacement when an external is absent or fails) votes YES/NO/EXONERATE on every `### FINDING_N:` block every round.
 
-Wrapper loop: set `round_cap=5`; for each round call `review-core.sh --mode <diff|description> --output-dir "$REVIEW_TMPDIR" --session-env-path "$SESSION_ENV_PATH" --codex-available "$codex_available" --cursor-available "$cursor_available" --description-text "$DESCRIPTION_TEXT" --panel hard --dynamic-archetypes "$DYNAMIC_ARCHETYPES" --run-id "$RUN_ID" --round-num "$round_num"` and parse `REVIEW_CORE_STATUS`, `ACCEPTED_FINDINGS_FILE`, counts, `PANEL_MODE`, `PANEL_SHAPE`, `SCOUT_STATUS`, `DYNAMIC_SLOTS`, `SCOUT_MANIFEST`, `YIELD_TSV_FILE`, and `VOTING_SKIPPED_WARNING`; if `VOTING_SKIPPED_WARNING` is non-empty, print it as a user-visible warning before proceeding. Scout artifacts are round-scoped: `dispatch-panel.sh` writes `scout-round${round_num}-manifest.json` plus `scout-round${round_num}-status.env`, so standalone `/review` never reuses stale dynamic reviewer choices from a prior round.
+Wrapper loop: set `round_cap=5`; for each round call `review-core.sh --mode <diff|description> --output-dir "$REVIEW_TMPDIR" --session-env-path "$SESSION_ENV_PATH" --codex-available "$codex_available" --cursor-available "$cursor_available" --description-text "$DESCRIPTION_TEXT" --panel hard --dynamic-archetypes "$DYNAMIC_ARCHETYPES" --run-id "$RUN_ID" --round-num "$round_num"` and parse `REVIEW_CORE_STATUS`, `ACCEPTED_FINDINGS_FILE`, counts, `PANEL_MODE`, `PANEL_SHAPE`, `SCOUT_STATUS`, `DYNAMIC_SLOTS`, `SCOUT_MANIFEST`, `YIELD_TSV_FILE`, and `VOTING_SKIPPED_WARNING`; if `VOTING_SKIPPED_WARNING` is non-empty, print it as a user-visible warning before proceeding. Scout artifacts are round-scoped: `dispatch-panel.sh` writes `scout-round${round_num}-manifest.json` plus `scout-round${round_num}-status.env`, and each round reads or regenerates only its own numbered files rather than reusing scout state from a different round.
 
 If `REVIEW_CORE_STATUS=fix-required`, invoke `/review-and-fix` via the Skill tool with `--findings-file "$ACCEPTED_FINDINGS_FILE" --review-tmpdir "$REVIEW_TMPDIR" [--session-env "$SESSION_ENV_PATH"]`; fix application is performed by Codex via `review-and-fix.sh`, with Cursor and Claude-subagent fallbacks when needed.
 
@@ -61,6 +61,7 @@ Write `review-scout-manifest` after the tally batch when `SCOUT_STATUS` is non-e
 ```bash
 if [[ -n "${RUN_ID:-}" && "${SCOUT_STATUS:-na}" != "na" ]]; then
   scout_payload_file="$REVIEW_TMPDIR/review-scout-manifest.json"
+  review_log_root="${LARCH_LOG_ROOT:-$REVIEW_TMPDIR/larch-logs}"
   scout_manifest_base=""
   yield_tsv_base=""
   [[ -n "$SCOUT_MANIFEST" ]] && scout_manifest_base="$(basename "$SCOUT_MANIFEST")"
@@ -78,7 +79,7 @@ if [[ -n "${RUN_ID:-}" && "${SCOUT_STATUS:-na}" != "na" ]]; then
      }' > "$scout_payload_file"
   "${CLAUDE_PLUGIN_ROOT}/skills/review/scripts/log-phase.sh" \
     --run-id "$RUN_ID" \
-    --log-root "$REVIEW_TMPDIR/larch-logs" \
+    --log-root "$review_log_root" \
     --batch review-scout-manifest \
     --action write \
     --payload-file "$scout_payload_file"

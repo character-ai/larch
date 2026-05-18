@@ -39,12 +39,64 @@ USAGE
 }
 
 LAST_LINT_FIX_DELTA_PATHS_FILE=""
+ALL_LINT_FIX_DELTA_PATHS_FILE=""
 
 capture_dirty_paths() {
     {
         git diff --name-only HEAD 2>/dev/null || true
         git ls-files --others --exclude-standard 2>/dev/null || true
     } | awk 'NF && !seen[$0]++ { print }'
+}
+
+capture_tracked_dirty_paths() {
+    git diff --name-only HEAD 2>/dev/null || true
+}
+
+capture_untracked_dirty_paths() {
+    git ls-files --others --exclude-standard 2>/dev/null || true
+}
+
+append_unique_paths_file() {
+    local target=$1 source=${2:-}
+    [[ -n "$target" && -n "$source" && -f "$source" ]] || return 0
+    mkdir -p "$(dirname "$target")"
+    if [[ -f "$target" ]]; then
+        awk 'NF && !seen[$0]++ { print }' "$target" "$source" > "${target}.tmp" && mv "${target}.tmp" "$target"
+    else
+        awk 'NF && !seen[$0]++ { print }' "$source" > "$target"
+    fi
+}
+
+run_lint_fix_loop_capture() {
+    local fail_file=$1 site=$2 redacted_log=$3 out_var=$4 rc_var=$5
+    local output rc had_errexit=0
+    case $- in *e*) had_errexit=1 ;; esac
+    set +e
+    output=$("$SCRIPT_DIR/lint-fix-loop.sh" \
+        --tmpdir "$IMPLEMENT_TMPDIR" \
+        --site "$site" \
+        --checks-log "$redacted_log" 2>"$fail_file")
+    rc=$?
+    (( had_errexit )) && set -e
+    printf -v "$out_var" '%s' "$output"
+    printf -v "$rc_var" '%s' "$rc"
+}
+
+collect_ci_stage_paths() {
+    local tracked_dirty_file=$1 untracked_dirty_file=$2 allowlisted_untracked_file=$3
+    awk '
+        FNR == NR {
+            if (NF) allow[$0]=1
+            next
+        }
+        FILENAME == ARGV[2] {
+            if (NF && !seen[$0]++) print
+            next
+        }
+        {
+            if (NF && ($0 in allow) && !seen[$0]++) print
+        }
+    ' "${allowlisted_untracked_file:-/dev/null}" "$tracked_dirty_file" "$untracked_dirty_file"
 }
 
 die_usage() {
@@ -486,13 +538,7 @@ run_checks_phase() {
     }
     for lint_attempt in 1 2 3; do
         fail_file=$(failure_capture_path checks)
-        set +e
-        fix_out=$("$SCRIPT_DIR/lint-fix-loop.sh" \
-            --tmpdir "$IMPLEMENT_TMPDIR" \
-            --site ship-pr-ci-initial \
-            --checks-log "$redacted_log" 2>"$fail_file")
-        fix_rc=$?
-        set -e
+        run_lint_fix_loop_capture "$fail_file" ship-pr-ci-initial "$redacted_log" fix_out fix_rc
         printf '%s\n' "$fix_out" >> "$fail_file"
         fix_status=$(printf '%s\n' "$fix_out" | awk -F= '/^LINT_FIX_STATUS=/ { print $2; exit }')
         case "$fix_status" in
@@ -541,6 +587,8 @@ run_checks_with_lint_fix_loop() {
     local fail_category fail_file out rc attempt fix_delta_paths_file vendor_dirty_paths_file
 
     LAST_LINT_FIX_DELTA_PATHS_FILE=""
+    ALL_LINT_FIX_DELTA_PATHS_FILE="$IMPLEMENT_TMPDIR/${phase}-lint-fix-delta-paths.txt"
+    : > "$ALL_LINT_FIX_DELTA_PATHS_FILE"
 
     fix_site=$(lint_fix_site_for_phase "$phase") || return 2
     case "$phase" in
@@ -568,25 +616,24 @@ run_checks_with_lint_fix_loop() {
     capture_dirty_paths > "$vendor_dirty_paths_file"
     for attempt in 1 2 3; do
         fail_file=$(failure_capture_path "$phase")
-        set +e
-        fix_out=$("$SCRIPT_DIR/lint-fix-loop.sh" \
-            --tmpdir "$IMPLEMENT_TMPDIR" \
-            --site "$fix_site" \
-            --checks-log "$redacted_log" 2>"$fail_file")
-        fix_rc=$?
-        set -e
+        run_lint_fix_loop_capture "$fail_file" "$fix_site" "$redacted_log" fix_out fix_rc
         printf '%s\n' "$fix_out" >> "$fail_file"
         fix_status=$(printf '%s\n' "$fix_out" | awk -F= '/^LINT_FIX_STATUS=/ { print $2; exit }')
         fix_delta_paths_file=$(printf '%s\n' "$fix_out" | awk -F= '/^LINT_FIX_DELTA_PATHS_FILE=/ { print substr($0, index($0,"=")+1); exit }')
         case "$fix_status" in
             applied|no-changes)
+                if [[ "$fix_status" == "applied" && -n "$fix_delta_paths_file" && -f "$fix_delta_paths_file" ]]; then
+                    append_unique_paths_file "$ALL_LINT_FIX_DELTA_PATHS_FILE" "$fix_delta_paths_file"
+                fi
                 printf 'ship-pr %s: lint fix %s (attempt %d/3), re-running checks...\n' "$phase" "$fix_status" "$attempt"
                 fail_file=$(failure_capture_path "$phase")
                 capture_command_output out "$fail_file" "$SCRIPT_DIR/run-relevant-checks-captured.sh" --site "$checks_site" --tmpdir "$IMPLEMENT_TMPDIR"
                 rc=$?
                 printf '%s\n' "$out" >> "$fail_file"
                 if [ "$rc" -eq 0 ] && printf '%s\n' "$out" | grep -q '^RELEVANT_CHECKS_OK=true '; then
-                    if [[ "$fix_status" == "applied" && -n "$fix_delta_paths_file" ]]; then
+                    if [[ -s "$ALL_LINT_FIX_DELTA_PATHS_FILE" ]]; then
+                        LAST_LINT_FIX_DELTA_PATHS_FILE="$ALL_LINT_FIX_DELTA_PATHS_FILE"
+                    elif [[ "$fix_status" == "applied" && -n "$fix_delta_paths_file" ]]; then
                         LAST_LINT_FIX_DELTA_PATHS_FILE="$fix_delta_paths_file"
                     fi
                     return 0
@@ -914,7 +961,7 @@ rename_done_best_effort() {
 
 run_ci_fix_vendor() {
     local phase=$1 run_id=$2 output rc fail_file tool_label plan_file checks_site delta_paths_file
-    local plan_args=() vendor_dirty_paths_file
+    local plan_args=() vendor_dirty_paths_file tracked_dirty_paths_file untracked_dirty_paths_file
     output="$IMPLEMENT_TMPDIR/ci-fix-${phase}-$(date +%s).out"
     plan_file=$(resolve_plan_file)
     if [ -n "$plan_file" ]; then
@@ -950,40 +997,41 @@ run_ci_fix_vendor() {
     if ! run_checks_with_lint_fix_loop "$phase" "$checks_site"; then
         return 1
     fi
-    # Only commit when the vendor left uncommitted changes; vendor may have
-    # committed its own fix (working tree clean in that case).
-    if ! git diff --quiet HEAD 2>/dev/null; then
-        # git diff --quiet HEAD detects uncommitted changes (staged or unstaged);
-        # git-commit.sh with no file args only commits staged ones — stage first.
+    tracked_dirty_paths_file="$IMPLEMENT_TMPDIR/${phase}-post-success-tracked-dirty-paths.txt"
+    untracked_dirty_paths_file="$IMPLEMENT_TMPDIR/${phase}-post-success-untracked-dirty-paths.txt"
+    capture_tracked_dirty_paths > "$tracked_dirty_paths_file"
+    capture_untracked_dirty_paths > "$untracked_dirty_paths_file"
+    # Only commit when the vendor or lint-fix path left dirty tracked changes,
+    # or allowlisted untracked files created by the lint-fix loop.
+    if [[ -s "$tracked_dirty_paths_file" || -s "$untracked_dirty_paths_file" ]]; then
         fail_file=$(failure_capture_path "$phase")
         delta_paths_file="$LAST_LINT_FIX_DELTA_PATHS_FILE"
-        if [[ -n "$vendor_dirty_paths_file" && -f "$vendor_dirty_paths_file" && -s "$vendor_dirty_paths_file" ]] \
-            || [[ -n "$delta_paths_file" && -f "$delta_paths_file" && -s "$delta_paths_file" ]]; then
+        rc=0
+        if [[ -s "$tracked_dirty_paths_file" ]] || [[ -n "$delta_paths_file" && -f "$delta_paths_file" && -s "$delta_paths_file" ]]; then
             local stage_paths=() stage_path
             while IFS= read -r stage_path || [[ -n "$stage_path" ]]; do
                 [[ -n "$stage_path" ]] || continue
                 stage_paths+=("$stage_path")
-            done < <(
-                {
-                    [[ -n "$vendor_dirty_paths_file" && -f "$vendor_dirty_paths_file" ]] && cat "$vendor_dirty_paths_file"
-                    [[ -n "$delta_paths_file" && -f "$delta_paths_file" ]] && cat "$delta_paths_file"
-                } | awk 'NF && !seen[$0]++ { print }'
-            )
-            git add -- "${stage_paths[@]}" > "$fail_file" 2>&1
-        else
-            git add -u > "$fail_file" 2>&1
+            done < <(collect_ci_stage_paths "$tracked_dirty_paths_file" "$untracked_dirty_paths_file" "$delta_paths_file")
+            if [[ "${#stage_paths[@]}" -gt 0 ]]; then
+                git add -- "${stage_paths[@]}" > "$fail_file" 2>&1
+            else
+                : > "$fail_file"
+            fi
         fi
         rc=$?
         if [ "$rc" -ne 0 ]; then
-            record_failure "$phase" "$([ -n "$delta_paths_file" ] || [ -s "$vendor_dirty_paths_file" ] && printf '%s' 'git add -- <vendor+lint delta>' || printf '%s' 'git add -u')" "$rc" "$fail_file" "CI Issues"
+            record_failure "$phase" "git add -- <tracked+allowlisted-untracked>" "$rc" "$fail_file" "CI Issues"
             return 1
         fi
-        fail_file=$(failure_capture_path "$phase")
-        "$SCRIPT_DIR/git-commit.sh" -m "Fix CI failure" > "$fail_file" 2>&1
-        rc=$?
-        if [ "$rc" -ne 0 ]; then
-            record_failure "$phase" "git-commit.sh" "$rc" "$fail_file" "CI Issues"
-            return 1
+        if ! git diff --cached --quiet 2>/dev/null; then
+            fail_file=$(failure_capture_path "$phase")
+            "$SCRIPT_DIR/git-commit.sh" -m "Fix CI failure" > "$fail_file" 2>&1
+            rc=$?
+            if [ "$rc" -ne 0 ]; then
+                record_failure "$phase" "git-commit.sh" "$rc" "$fail_file" "CI Issues"
+                return 1
+            fi
         fi
     fi
     # Refresh larch-log token/timing artifacts before push (Trigger B).

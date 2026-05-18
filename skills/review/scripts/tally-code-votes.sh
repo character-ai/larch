@@ -399,9 +399,14 @@ if [[ -n "$MANIFEST_FILE" && -f "$MANIFEST_FILE" ]]; then
       }
       {
         base=norm($1)
-        total[base]++
-        if ($3 == "accepted") accepted[base]++
-        else if ($3 == "rejected") rejected[base]++
+        if ($2 != "finding") next
+        if ($3 == "accepted") {
+          total[base]++
+          accepted[base]++
+        } else if ($3 == "rejected") {
+          total[base]++
+          rejected[base]++
+        }
       }
       END {
         printf "archetype_name\tfocus_area\tweight\tfindings_total\tfindings_accepted\tfindings_rejected\tyield_ratio\n"

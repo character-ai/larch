@@ -345,6 +345,38 @@ grep -Fq $'structure\tcode-quality\t1\t1\t1\t0\t1.000000' "$yield_file" || { FAI
 grep -Fq $'dyn-foo\tarchitecture\t6\t1\t0\t1\t0.000000' "$yield_file" || { FAIL=1; printf '  FAIL dynamic fallback-normalized yield row missing\n'; }
 grep -Fq $'generic\tcode-quality\t1\t1\t1\t0\t1.000000' "$yield_file" || { FAIL=1; printf '  FAIL generalist yield row missing\n'; }
 
+echo "# Case: manifest-file yield TSV ignores OOS and neutral/exonerated rows"
+TMP="$WORKDIR/case7a"
+mkdir -p "$TMP"
+cat > "$TMP/ballot.md" <<'EOF'
+### FINDING_1: Accepted in-scope finding
+- **Reviewer**: dyn-yield-output.txt
+- **Concern**: Accepted concern.
+- **Suggested revision**: Accepted revision.
+
+### FINDING_2: Neutral in-scope finding
+- **Reviewer**: dyn-yield-output.txt
+- **Concern**: Neutral concern.
+- **Suggested revision**: Neutral revision.
+
+### FINDING_3: [OUT_OF_SCOPE] OOS accepted finding
+- **Reviewer**: dyn-yield-output.txt
+- **Concern**: OOS concern.
+- **Suggested revision**: OOS revision.
+EOF
+cat > "$TMP/panel-manifest.ndjson" <<EOF
+{"slot":"dyn-yield","tool":"cursor","output":"$TMP/dyn-yield-output.txt","prompt_file":"$TMP/dyn-yield-prompt.md","weight":4,"focus_area":"correctness"}
+EOF
+printf 'FINDING_1: YES\nFINDING_2: YES\nFINDING_3: YES\n' > "$TMP/cursor-vote-output.txt"
+printf 'FINDING_1: YES\nFINDING_2: NO\nFINDING_3: YES\n' > "$TMP/codex-vote-output.txt"
+out="$TMP/out.env"
+"$SCRIPT" --ballot-file "$TMP/ballot.md" \
+    --voter-files "$TMP/cursor-vote-output.txt" "$TMP/codex-vote-output.txt" \
+    --manifest-file "$TMP/panel-manifest.ndjson" \
+    --review-tmpdir "$TMP" > "$out"
+yield_file=$(awk -F= '$1=="YIELD_TSV_FILE"{print $2}' "$out")
+grep -Fq $'dyn-yield\tcorrectness\t4\t1\t1\t0\t1.000000' "$yield_file" || { FAIL=1; printf '  FAIL yield TSV should count only accepted/rejected in-scope findings\n'; }
+
 echo "# Case: manifest-file warns when reviewer totals lack a manifest entry"
 TMP="$WORKDIR/case7b"
 mkdir -p "$TMP"

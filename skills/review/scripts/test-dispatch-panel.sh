@@ -250,6 +250,51 @@ out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" \
 grep -Fq 'SCOUT_STATUS=parse-failed' <<< "$out"
 grep -Fq 'DYNAMIC_SLOTS=0' <<< "$out"
 
+mkdir -p "$TMP/reuse-invalid-manifest"
+seed_case_inputs "$TMP/reuse-invalid-manifest"
+cat > "$TMP/reuse-invalid-manifest/scout-round6-manifest.json" <<'JSON'
+{"archetypes":[{"name":"bad","focus_area":"performance","weight":1,"rationale":"r","prompt_body":"p"}]}
+JSON
+cat > "$TMP/reuse-invalid-manifest/scout-round6-status.env" <<'EOF'
+SCOUT_STATUS=ok
+SCOUT_MANIFEST=/tmp/ignored.json
+EOF
+out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" \
+    --mode diff \
+    --diff-file "$TMP/reuse-invalid-manifest/review.diff" \
+    --review-tmpdir "$TMP/reuse-invalid-manifest" \
+    --codex-available true \
+    --cursor-available true \
+    --panel hard \
+    --plan-file "$TMP/reuse-invalid-manifest/plan.md" \
+    --dynamic-archetypes 4 \
+    --round-num 6)
+grep -Fq 'SCOUT_STATUS=parse-failed' <<< "$out"
+grep -Fq 'DYNAMIC_SLOTS=0' <<< "$out"
+if grep -q '"prompt_file"' "$TMP/reuse-invalid-manifest/panel-manifest.ndjson"; then
+    echo "FAIL: invalid cached scout manifest should not synthesize dynamic slots" >&2
+    exit 1
+fi
+
+seed_case_inputs "$TMP/oversized-diff"
+python3 - <<'PY' > "$TMP/oversized-diff/review.diff"
+print("diff --git a/a b/a")
+print("+" + "x" * 270000)
+PY
+out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" \
+    --mode diff \
+    --diff-file "$TMP/oversized-diff/review.diff" \
+    --review-tmpdir "$TMP/oversized-diff" \
+    --codex-available true \
+    --cursor-available true \
+    --panel hard \
+    --plan-file "$TMP/oversized-diff/plan.md" \
+    --dynamic-archetypes 4)
+grep -Fq 'SCOUT_STATUS=validation-failed' <<< "$out"
+grep -Fq 'DYNAMIC_SLOTS=0' <<< "$out"
+grep -Fq 'STATIC_SLOT_COUNT=12' <<< "$out"
+[[ -s "$TMP/oversized-diff/cursor-specialist-structure-output.txt" ]]
+
 for bad in 5 -1 abc; do
     set +e
     PATH="$STUB_BIN:$PATH" "$SCRIPT" \

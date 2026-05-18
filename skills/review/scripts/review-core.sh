@@ -262,6 +262,7 @@ claude_outputs=$(kv_get "$dispatch_out" CLAUDE_OUTPUT_FILES)
 panel_mode=$(kv_get "$dispatch_out" PANEL_MODE)
 panel_shape=$(kv_get "$dispatch_out" PANEL_SHAPE)
 dispatch_ok=$(kv_get "$dispatch_out" DISPATCH_OK)
+static_dispatch_ok=$(kv_get "$dispatch_out" STATIC_DISPATCH_OK)
 panel_manifest=$(kv_get "$dispatch_out" PANEL_MANIFEST)
 scout_status=$(kv_get "$dispatch_out" SCOUT_STATUS)
 dynamic_slots=$(kv_get "$dispatch_out" DYNAMIC_SLOTS)
@@ -270,6 +271,7 @@ static_slot_count=$(kv_get "$dispatch_out" STATIC_SLOT_COUNT)
 panel_mode="${panel_mode:-waterfall}"
 panel_shape="${panel_shape:-$PANEL}"
 dispatch_ok="${dispatch_ok:-true}"
+static_dispatch_ok="${static_dispatch_ok:-true}"
 scout_status="${scout_status:-na}"
 dynamic_slots="${dynamic_slots:-0}"
 static_slot_count="${static_slot_count:-0}"
@@ -311,7 +313,7 @@ collector_results_file="$REVIEW_TMPDIR/collector-results.env"
 threshold_out="$REVIEW_TMPDIR/review-core-threshold.env"
 launched_slots="$static_slot_count"
 threshold_args=(--collector-results-file "$collector_results_file" --panel "$panel_shape" --launched-slots "$launched_slots")
-if [[ "$dispatch_ok" == "false" ]]; then
+if [[ "$static_dispatch_ok" == "false" ]]; then
     printf 'THRESHOLD_OK=false\nTHRESHOLD_REASON=dispatch-failed\n' > "$threshold_out"
 else
     "$CHECK_THRESHOLD_SH" "${threshold_args[@]}" > "$threshold_out"

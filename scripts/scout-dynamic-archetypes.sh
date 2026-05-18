@@ -23,6 +23,7 @@ OUTPUT=""
 SESSION_ENV_PATH="${SESSION_ENV_PATH:-}"
 TIMEOUT="180"
 LAUNCH_CLAUDE_SUBPROCESS_SH="${SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH:-$PLUGIN_ROOT/scripts/launch-claude-subprocess.sh}"
+MAX_CONTEXT_BYTES=262144
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -93,6 +94,10 @@ SESSION_ROOT=$(cd "$(dirname "$OUTPUT")" && pwd -P)
 [[ "$MODE" != "description" || -f "$SCOPE_FILES" ]] || fail "--scope-files is required for description mode"
 [[ "$MODE" != "description" || -n "$DESCRIPTION_TEXT" ]] || fail "--description-text is required for description mode"
 [[ -z "$PLAN_FILE" || -f "$PLAN_FILE" ]] || fail "--plan-file not found: $PLAN_FILE"
+if [[ "$MODE" == "description" ]]; then
+    description_bytes=$(printf '%s' "$DESCRIPTION_TEXT" | wc -c | tr -d ' ')
+    (( description_bytes <= MAX_CONTEXT_BYTES )) || fail "--description-text exceeds 256 KB"
+fi
 
 DIFF_FILE_CANON=""
 SCOPE_FILES_CANON=""

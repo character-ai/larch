@@ -328,13 +328,19 @@ parse_output_tsv() {
 }
 
 normalize_reviewer_label() {
-    local label="$1"
+    local label="$1" stem ext
     case "$label" in
-        *-output-phase2.txt) printf '%s-output.txt\n' "${label%-output-phase2.txt}" ;;
-        *-output-phase3.txt) printf '%s-output.txt\n' "${label%-output-phase3.txt}" ;;
-        *-output-retry.txt) printf '%s-output.txt\n' "${label%-output-retry.txt}" ;;
-        *) printf '%s\n' "$label" ;;
+        *.txt) stem="${label%.txt}"; ext=".txt" ;;
+        *) stem="$label"; ext="" ;;
     esac
+    while [[ "$stem" == *-phase2 || "$stem" == *-phase3 || "$stem" == *-retry ]]; do
+        case "$stem" in
+            *-phase2) stem="${stem%-phase2}" ;;
+            *-phase3) stem="${stem%-phase3}" ;;
+            *-retry) stem="${stem%-retry}" ;;
+        esac
+    done
+    printf '%s%s\n' "$stem" "$ext"
 }
 
 per_tmp=$(mktemp "${TMPDIR:-/tmp}/review-per-file.XXXXXX") || exit 1
