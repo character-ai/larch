@@ -54,3 +54,91 @@
 - **Concern**: [important] New OPERATOR_REPO_PATH sed not covered by scripts/test-redact-tmpdir-paths.sh. Regression in the new redaction rule ships without harness signal. Add cases to test-redact-tmpdir-paths.sh and extend redact-tmpdir-paths.md harness list per repo convention.
 - **Suggested revision**: Address the concern above.
 
+### FINDING_1: panel [code-review/accepted]
+
+## **Important** `risk-integration` `skills/review/scripts/tally-code-votes.sh:195`, affected: `skills/review/scripts/emit-tally.sh:50-57`, `skills/review-and-fix/scripts/review-and-fix.sh:430-498`  
+
+- **Reviewer**: codex-generalist-output.txt
+- **Concern**: 1. **Important** `risk-integration` `skills/review/scripts/tally-code-votes.sh:195`, affected: `skills/review/scripts/emit-tally.sh:50-57`, `skills/review-and-fix/scripts/review-and-fix.sh:430-498`      Neutral and exonerated findings still flow through `review-tally.env` as `FINDING_N_ACCEPTED=false`, but `emit-tally.sh` treats every `ACCEPTED=false` as rejected. Concrete scenario: a 2-judge `YES/NO` split now correctly emits `REJECTED_COUNT=0` and `NEUTRAL_COUNT=1`, but `emit-tally.sh` writes `review-round-summary.md` and `review-summary.json` with `Rejected findings: 1`; `review-and-fix.sh` then embeds that stale summary into `code-review-tally.json.body`, reintroducing the counter mismatch this PR is meant to fix. Add an explicit outcome field/counter to `review-tally.env` and update `emit-tally.sh` plus its tests to count only `outcome=rejected` as rejected, or stop deriving rejected counts from the binary accepted flag.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_11: panel [code-review/accepted]
+
+## code-quality: skills/review/scripts/emit-tally.sh:50-98
+
+- **Reviewer**: cursor-specialist-structure-output.txt
+- **Concern**: [important] emit-tally round summary and review-summary.json still count all FINDING_*_ACCEPTED=false lines as rejected while tally-code-votes now defines REJECTED_COUNT as strictly rejected-only When any in-scope finding is exonerated or neutral review-round-summary.md and review-summary.json report a larger rejected total than code-review-tally.json / tally stdout causing contradictory run audits Derive display and JSON counts from tally stdout keys or add explicit EXONERATED/NEUTRAL lines to review-tally.env and count them separately
+- **Suggested revision**: Address the concern above.
+
+### FINDING_13: panel [code-review/accepted]
+
+## correctness: skills/review/scripts/review-core.md (convergence note hunk in diff)
+
+- **Reviewer**: cursor-specialist-plan-fidelity-output.txt
+- **Concern**: [nit] Doc still steers callers to ACCEPTED_COUNT+REJECTED_COUNT only after REJECTED_COUNT semantics narrowed. Readers infer old semantics (non-accepted == rejected) and ignore EXONERATED_COUNT/NEUTRAL_COUNT. Mention the new counters in the convergence guidance.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_14: panel [code-review/accepted]
+
+## correctness: skills/review/scripts/tally-code-votes.sh:171-193
+
+- **Reviewer**: cursor-specialist-edge-cases-output.txt
+- **Concern**: [important] Unknown classify_result falls through to rejected file and REJECTED_COUNT New or unexpected outcome strings misclassified as rejected with no hard failure Fail closed on unknown result or separate unknown counter without writing rejected-findings
+- **Suggested revision**: Address the concern above.
+
+### FINDING_18: panel [code-review/accepted]
+
+## risk-integration: scripts/ship-pr.sh run_pr_create_phase (RUN_ID guard per diff)
+
+- **Reviewer**: cursor-specialist-plan-fidelity-output.txt
+- **Concern**: [latent] Plan 1a implies always persisting pr_number after PR create; diff skips manifest/commit when read_state RUN_ID is empty. If RUN_ID is missing from state at pr-create, GitHub has a PR but manifest pr_number stays null; original gap can persist. Resolve run_id with fallbacks or explicit policy so manifest update is not RUN_ID-gated when logs are active.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_21: panel [code-review/accepted]
+
+## risk-integration: scripts/ship-pr.sh:666-683
+
+- **Reviewer**: cursor-specialist-edge-cases-output.txt
+- **Concern**: [important] larch-log commit runs after manifest even when manifest failed Manifest update can fail while a subsequent commit still lands; manifest can remain without pr_number despite PR existing Gate commit on manifest rc==0 or use atomic update+commit helper
+- **Suggested revision**: Address the concern above.
+
+### FINDING_22: panel [code-review/accepted]
+
+## risk-integration: scripts/test-implement-finalize.sh:1122-1134 vs scripts/implement-finalize.sh:484-496
+
+- **Reviewer**: cursor-specialist-testing-output.txt
+- **Concern**: [important] Only negative coverage for postbump larch-log commit. Success-path commit could be deleted or never run when LOG_WRITE_STATUS=ok; CI still passes. Extend test-implement-finalize.sh: after a normal successful postbump, grep the stub argv log for a commit invocation following write with expected args.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_23: panel [code-review/accepted]
+
+## risk-integration: scripts/test-ship-pr.sh vs scripts/ship-pr.sh:662-683
+
+- **Reviewer**: cursor-specialist-testing-output.txt
+- **Concern**: [important] No harness coverage for new pr-create manifest+commit tail. A refactor drops the block or breaks larch-log argv order; manifest stays without pr_number until postmerge and the regression ships green. Add a pr-create happy-path case in test-ship-pr.sh that stubs create-pr success, sets RUN_ID, and asserts stub log contains manifest pr_number= and commit with matching run-id.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_5: panel [code-review/accepted]
+
+## code-quality: docs/run-logs.md:55-74
+
+- **Reviewer**: cursor-specialist-structure-output.txt
+- **Concern**: [important] Documentation describes plan-review and code-review tally envelopes inconsistently with compose-tally-record which emits exonerated_count and neutral_count for every phase Plan-review docs omit keys that appear in committed JSON and code-review text claims additive fields relative to plan-review though both envelopes share the same shape Update plan-review and code-review subsections to list the shared JSON envelope or change the composer to omit zero fields on plan-review
+- **Suggested revision**: Address the concern above.
+
+### FINDING_6: panel [code-review/accepted]
+
+## code-quality: scripts/implement-finalize.md:57
+
+- **Reviewer**: cursor-specialist-structure-output.txt
+- **Concern**: [nit] Output contract prose order of breadcrumbs vs larch-log commit does not match write_version_reasoning_fragment Misleading for operators tracing stdout order Align contract text with actual ordering in write_version_reasoning_fragment
+- **Suggested revision**: Address the concern above.
+
+### FINDING_8: panel [code-review/accepted]
+
+## code-quality: skills/review-and-fix/scripts/review-and-fix.sh:1258-1260
+
+- **Reviewer**: cursor-specialist-security-output.txt
+- **Concern**: [nit] code-review-tally body header omits exonerated/neutral while JSON includes those fields. Human skim of body vs JSON suggests inconsistent tallies. Add exonerated/neutral to the summary line or document the split.
+- **Suggested revision**: Address the concern above.
+
