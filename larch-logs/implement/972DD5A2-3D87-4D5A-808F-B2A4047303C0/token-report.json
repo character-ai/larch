@@ -207,32 +207,84 @@
       {
         "step": "Step 7a — code flow diagram",
         "totals": {
-          "input": 7,
-          "cache_read": 1547245,
-          "cache_create": 2390,
-          "output": 3399,
-          "total": 1553041
+          "input": 11,
+          "cache_read": 2438767,
+          "cache_create": 6518,
+          "output": 5089,
+          "total": 2450385
         },
         "skills": [
           {
             "skill": "larch:implement",
             "totals": {
-              "input": 7,
-              "cache_read": 1547245,
-              "cache_create": 2390,
-              "output": 3399,
-              "total": 1553041
+              "input": 11,
+              "cache_read": 2438767,
+              "cache_create": 6518,
+              "output": 5089,
+              "total": 2450385
+            }
+          }
+        ]
+      },
+      {
+        "step": "Step 6 — checks second pass",
+        "totals": {
+          "input": 40,
+          "cache_read": 6365842,
+          "cache_create": 792904,
+          "output": 20127,
+          "total": 7178913
+        },
+        "skills": [
+          {
+            "skill": "bump-version",
+            "totals": {
+              "input": 6,
+              "cache_read": 953208,
+              "cache_create": 5532,
+              "output": 393,
+              "total": 959139
+            }
+          },
+          {
+            "skill": "inferred:Step 6 — checks second pass",
+            "totals": {
+              "input": 9,
+              "cache_read": 38928,
+              "cache_create": 681018,
+              "output": 2211,
+              "total": 722166
+            }
+          },
+          {
+            "skill": "larch:implement",
+            "totals": {
+              "input": 11,
+              "cache_read": 2541392,
+              "cache_create": 34428,
+              "output": 3814,
+              "total": 2579645
+            }
+          },
+          {
+            "skill": "larch:issue",
+            "totals": {
+              "input": 14,
+              "cache_read": 2832314,
+              "cache_create": 71926,
+              "output": 13709,
+              "total": 2917963
             }
           }
         ]
       }
     ],
     "totals": {
-      "input": 201,
-      "cache_read": 33997219,
-      "cache_create": 1551863,
-      "output": 96990,
-      "total": 35646273
+      "input": 245,
+      "cache_read": 41254583,
+      "cache_create": 2348895,
+      "output": 118807,
+      "total": 43722530
     }
   },
   "codex": {
@@ -311,6 +363,14 @@
       },
       {
         "step": "Step 7a — code flow diagram",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 6 — checks second pass",
         "totals": {
           "input": 0,
           "output": 0,
@@ -400,6 +460,14 @@
       },
       {
         "step": "Step 7a — code flow diagram",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 6 — checks second pass",
         "totals": {
           "input": 0,
           "output": 0,
