@@ -182,3 +182,91 @@
 - **Concern**: [nit] Plugin description omits optional dynamic reviewers. Consumers reading only `plugin.json` get an outdated picture of panel topology. Update the description string to mention optional scout-driven slots (cap 4, default off).
 - **Suggested revision**: Address the concern above.
 
+### FINDING_11: panel [code-review/accepted]
+
+## code-quality: scripts/scout-dynamic-archetypes.sh:162-199
+
+- **Reviewer**: cursor-specialist-edge-cases-output.txt
+- **Concern**: [nit] jq reduce truncates to max archetypes without emitting WARN. Scout returns more accepted archetypes than N after validation; extras vanish with no operator-visible signal. Emit WARN when filtered length exceeds max before truncation.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_15: panel [code-review/accepted]
+
+## code-quality: skills/review/scripts/test-dispatch-panel.sh
+
+- **Reviewer**: cursor-specialist-testing-output.txt
+- **Concern**: [nit] Duplicate env assignment in skip-mode test case Noise only; no runtime impact Remove duplicate SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH=… fragment
+- **Suggested revision**: Address the concern above.
+
+### FINDING_16: panel [code-review/accepted]
+
+## correctness: scripts/scout-dynamic-archetypes.sh:55-63 skills/review/scripts/dispatch-panel.sh:195-196
+
+- **Reviewer**: cursor-specialist-edge-cases-output.txt
+- **Concern**: [important] Scout subprocess uses exit 2 when diff mode diff-file is missing or not -f; dispatch does not treat this as a soft scout failure. Empty or deleted DIFF_FILE in diff mode aborts dispatch-panel with set -e instead of continuing with a static panel and a scout status. Validate DIFF_FILE before scout or map missing/invalid diff-file to the same non-fatal empty-manifest path used for parse/claude failures.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_17: panel [code-review/accepted]
+
+## correctness: scripts/ship-pr.sh:887-903; scripts/lint-fix-loop.sh:275-291
+
+- **Reviewer**: codex-specialist-structure-output.txt
+- **Concern**: [important] CI lint-fix recovery can leave required untracked files out of the pushed fix commit. When a vendor CI fix dirties the tree first, lint-fix-loop.sh does not self-commit; local checks can pass using a newly created untracked fixture, but run_ci_fix_vendor later uses git add -u and pushes without that fixture. Commit the full safe delta including untracked files, preferably from an explicit delta file emitted by lint-fix-loop.sh.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_18: panel [code-review/accepted]
+
+## correctness: skills/review/SKILL.md:57-82
+
+- **Reviewer**: cursor-specialist-correctness-output.txt
+- **Concern**: [important] SKILL Step 4 prose requires RUN_ID and SCOUT_STATUS!=na guards for review-scout-manifest, but the fenced canonical bash omits any if-wrapper. Orchestrator copies the block and runs log-phase on every review including SCOUT_STATUS=na (dynamics off), writing an unintended or empty scout batch contrary to the stated contract. Wrap jq+log-phase in if [[ -n "${RUN_ID:-}" && "${SCOUT_STATUS:-na}" != "na" ]]; then … fi matching the prose.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_25: panel [code-review/accepted]
+
+## correctness: skills/review/scripts/check-reviewer-failure-threshold.sh:32-87
+
+- **Reviewer**: cursor-specialist-plan-fidelity-output.txt
+- **Concern**: [important] Implementation widens INTENDED_SLOTS to max(static, launched) including dynamic reviewers, conflicting with the plan Edge Case #9 / OOS_4 note that the denominator stays on the static 12/7 baseline with dynamics excluded. Reviewers or operators following the written plan expect failure-rate math anchored to static slots only; actual runs use a larger denominator whenever dynamics launch, changing when panel-failed triggers versus the documented follow-up. Reconcile plan and code: either restore static-only denominator behavior and document it, or update the implementation plan / review docs to state that dynamics expand INTENDED_SLOTS and retire OOS_4’s exclusion wording.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_30: panel [code-review/accepted]
+
+## risk-integration: scripts/ship-pr.sh:445-451; scripts/ship-pr.sh:523-529
+
+- **Reviewer**: codex-specialist-testing-output.txt
+- **Concern**: [important] New lint-fix paths enable errexit in ship-pr.sh despite the script intentionally running without set -e. After lint-fix succeeds, later command-substitution helper failures can abort before record_failure or exit_stall records state. Capture rc without set -e, or save and restore the original shell options.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_32: panel [code-review/accepted]
+
+## risk-integration: scripts/test-scout-dynamic-archetypes.sh:154-158
+
+- **Reviewer**: codex-specialist-testing-output.txt
+- **Concern**: [latent] The plan-required </reviewer_ prompt_body rejection case is untested. A future edit could drop the untrusted-wrapper closing-tag guard while the scout harness still passes. Add a fixture containing </reviewer_ and assert rejection plus unsafe warning.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_35: panel [code-review/accepted]
+
+## risk-integration: skills/review/scripts/dispatch-panel.sh:189-220
+
+- **Reviewer**: cursor-specialist-edge-cases-output.txt
+- **Concern**: [latent] Sentinel manifest present without companion scout status env clears SCOUT_MANIFEST and skips synthesis. Crash or partial tmpdir leaves scout-roundN-manifest.json populated but scout-roundN-status.env missing; dynamic archetypes are silently dropped for that round. If manifest is readable JSON with archetypes, synthesize or re-derive status; do not clear manifest path solely on missing env.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_37: panel [code-review/accepted]
+
+## security: scripts/scout-dynamic-archetypes.sh:162-200 and skills/review/scripts/dispatch-panel.sh:144-161
+
+- **Reviewer**: cursor-specialist-security-output.txt
+- **Concern**: [important] Scout rationale/prompt_body are embedded inside a literal <scout_notes> wrapper but validation only blocks </reviewer_ and standalone --- lines, not the real closing tag used in synthesis. A compromised scout can emit </scout_notes> (including via multiline rationale) so following attacker text appears outside the untrusted-labeled region, smuggling instructions to the Cursor reviewer. Extend jq validation (or post-jq checks) to reject or neutralize delimiter substrings that match the synthesis envelope (at minimum literal </scout_notes>, ideally case-insensitive / other mirror tags); alternatively base64-wrap or otherwise structurally encode scout free text so it cannot terminate the wrapper.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_8: panel [code-review/accepted]
+
+## architecture: skills/review/scripts/tally-code-votes.sh:375-417
+
+- **Reviewer**: cursor-specialist-correctness-output.txt
+- **Concern**: [latent] Yield TSV END iterates only manifest-derived keys; score_rows basenames not present in the map accrue totals that are never emitted. If a finding’s normalized Reviewer basename is missing from the panel manifest map, accepted/rejected counts for that reviewer disappear from scout-archetype-yield.tsv with no warning. Iterate union of manifest keys and observed reviewers, or WARN on orphan total[base] keys.
+- **Suggested revision**: Address the concern above.
+
