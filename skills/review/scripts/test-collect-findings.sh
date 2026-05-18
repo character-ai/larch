@@ -88,10 +88,15 @@ grep -Fq 'OOS_COUNT=1' <<< "$out"
 grep -Fq 'correctness: scripts/foo.sh:42' "$TMP/findings-inline-tsv.md"
 grep -Fq 'code-quality: scripts/bar.sh:10' "$TMP/findings-inline-tsv.md"
 grep -Fq '[OUT_OF_SCOPE] code-quality: scripts/bar.sh:10' "$TMP/oos-inline-tsv.md"
-grep -Fq 'recovered inline TSV findings' "$TMP/inline-tsv.stderr"
-grep -Fq 'inline-TSV recovery' "$TMP/execution-issues.md"
-if grep -Fq 'failed (exit 0)' "$TMP/execution-issues.md"; then
-    echo "FAIL: inline TSV recovery logged as failed exit 0" >&2
+# Normal inline TSV is collected silently — no stderr noise and no execution-issues tsv-fallback rows.
+if [[ -s "$TMP/inline-tsv.stderr" ]]; then
+    echo "FAIL: expected empty stderr for silent inline-TSV collection" >&2
+    cat "$TMP/inline-tsv.stderr" >&2
+    exit 1
+fi
+if [[ -f "$TMP/execution-issues.md" ]] && grep -Eiq 'tsv-fallback|inline-TSV recovery' "$TMP/execution-issues.md"; then
+    echo "FAIL: execution-issues must not log tsv-fallback for normal inline TSV" >&2
+    cat "$TMP/execution-issues.md" >&2
     exit 1
 fi
 
