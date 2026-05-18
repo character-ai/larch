@@ -253,12 +253,15 @@ RESULT_T5=$(run_collector 1 "$OUT_T5")
 assert_line "C_T5 status" "STATUS=SENTINEL_TIMEOUT" "$RESULT_T5"
 assert_no_retry_file "C_T5 no retry" "$OUT_T5"
 
-# C_IT1: cursor output with inline TSV inside code fence passes
+# C_IT1: synthetic reviewer output with inline TSV inside a code fence passes
 # --substantive-validation --validation-mode (no NOT_SUBSTANTIVE).
 OUT_IT1="$TMPROOT/cursor-it1.txt"
 cat > "$OUT_IT1" <<'EOF'
-Read-only: we won't write the TSV sidecar file (plan-mode); including TSV inline.
-we can't write the TSV sidecar due to read-only constraints; we'll include TSV lines in the response.
+Synthetic plan-review output for collector validation. The body is intentionally
+short-form reviewer prose with one concrete source anchor,
+scripts/collect-agent-results.sh:1, plus an inline TSV payload so
+validation-mode accepts it as substantive structured reviewer content without
+depending on any incidental meta narration about tool limitations.
 
 ```
 schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix

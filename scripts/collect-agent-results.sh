@@ -1053,7 +1053,7 @@ fi
 # (REVIEWER_FILE — the retry path may have set it to a *-retry.txt). On
 # validator failure, rewrite the entry to STATUS=NOT_SUBSTANTIVE with the
 # sanitized diagnostic in FAILURE_REASON. Closes #416.
-if [[ "$SUBSTANTIVE_VALIDATION" == "true" ]]; then
+if [[ "$SUBSTANTIVE_VALIDATION" == "true" || "$STRUCTURED_REVIEWER_VALIDATION" == "true" ]]; then
     VALIDATOR="$SCRIPT_DIR/validate-research-output.sh"
     VAL_ARGS=()
     if [[ "$VALIDATION_MODE" == "true" ]]; then

@@ -18,6 +18,8 @@ REVIEW_TMPDIR=""
 CODEX_AVAILABLE=""
 CURSOR_AVAILABLE=""
 SESSION_ENV_PATH="${SESSION_ENV_PATH:-}"
+DIFF_FILE=""
+PLAN_FILE=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -26,8 +28,8 @@ while [[ $# -gt 0 ]]; do
         --codex-available) CODEX_AVAILABLE="${2:?--codex-available requires a value}"; shift 2 ;;
         --cursor-available) CURSOR_AVAILABLE="${2:?--cursor-available requires a value}"; shift 2 ;;
         --session-env-path) SESSION_ENV_PATH="${2:?--session-env-path requires a value}"; shift 2 ;;
-        --diff-file) : "${2:?--diff-file requires a value}"; shift 2 ;;
-        --plan-file) : "${2:?--plan-file requires a value}"; shift 2 ;;
+        --diff-file) DIFF_FILE="${2:?--diff-file requires a value}"; shift 2 ;;
+        --plan-file) PLAN_FILE="${2:?--plan-file requires a value}"; shift 2 ;;
         --help) usage; exit 0 ;;
         *) larch_err "dispatch-code-voters.sh: unknown option: $1"; usage; exit 2 ;;
     esac
@@ -48,6 +50,7 @@ make_voter_prompt_file() {
         printf 'For items prefixed with [OUT_OF_SCOPE]: YES means file a GitHub issue for future tracking; NO means trivial/incorrect; EXONERATE means legitimate but not issue-worthy.\n'
         printf 'Do NOT modify files. Do NOT commit. Do NOT push.\n'
         printf '\nRead the ballot from this path: %s\n' "$BALLOT_FILE"
+        printf 'Use any provided diff/plan context files to verify the ballot claims before voting.\n'
         printf '\nFor every ballot item, output exactly one line using the same FINDING_N: id from the ballot heading:\n'
         printf '  FINDING_N: YES\n'
         printf '  FINDING_N: NO -- one-line reason\n'
@@ -56,6 +59,26 @@ make_voter_prompt_file() {
         printf 'IMPORTANT: lines that do not start with FINDING_N: followed by YES, NO, or EXONERATE are silently ignored. Use the exact ID from the ballot heading.\n'
     } > "$prompt_file"
     printf '%s' "$prompt_file"
+}
+
+make_bounded_context_copy() {
+    local label="$1"
+    local src="$2"
+    local max_bytes="$3"
+    local dest
+    [[ -n "$src" && -f "$src" ]] || return 0
+    dest="$REVIEW_TMPDIR/${label}-context.txt"
+    python3 - "$src" "$dest" "$max_bytes" <<'PY'
+import pathlib
+import sys
+
+src = pathlib.Path(sys.argv[1])
+dest = pathlib.Path(sys.argv[2])
+limit = int(sys.argv[3])
+data = src.read_bytes()[:limit]
+dest.write_bytes(data)
+PY
+    printf '%s' "$dest"
 }
 
 # check_voter_parse_rate: logs a Warning when a non-empty voter file produces
@@ -119,8 +142,10 @@ check_voter_parse_rate() {
 
 ctx_args=()
 mode="description"
-# Voter role: ballot only — no inline diff/plan. --diff-file/--plan-file accepted for backward
-# compatibility but not forwarded; voter Reads cited <file>:<line> references on demand.
+bounded_diff="$(make_bounded_context_copy diff "$DIFF_FILE" 200000)"
+bounded_plan="$(make_bounded_context_copy plan "$PLAN_FILE" 60000)"
+[[ -n "$bounded_diff" ]] && ctx_args+=(--diff-file "$bounded_diff")
+[[ -n "$bounded_plan" ]] && ctx_args+=(--plan-file "$bounded_plan")
 
 VOTER_1_PATH="$REVIEW_TMPDIR/claude-vote-output.txt"
 claude_prompt=$(make_voter_prompt_file claude)

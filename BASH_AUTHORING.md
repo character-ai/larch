@@ -39,9 +39,9 @@ Do not use Bash 4+ constructs in committed shell scripts:
 - associative arrays: `declare -A` / `typeset -A`
 - namerefs: `declare -n` / `local -n`
 - `mapfile` / `readarray`
-- parameter case conversion: `${var^^}` / `${var,,}`
+- parameter case conversion: `${var^^}` / `${var^}` / `${var,,}` / `${var,}`
 - append-all redirection: `&>>`
-- named coprocs: `coproc NAME { ... }`
+- coprocs: `coproc { ... }` / `coproc NAME { ... }`
 
 Use Bash 3.2-compatible alternatives: newline-delimited temp files, `while IFS= read -r ...`, `case` or `tr` for case conversion, and `>>file 2>&1` instead of `&>>file`.
 

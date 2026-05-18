@@ -81,25 +81,26 @@ leaked=( "$(dirname "$sym_out")"/claude-subprocess-stderr.* )
 shopt -u nullglob
 (( ${#leaked[@]} == 0 )) || { echo "FAIL: subprocess-stderr tempfile leaked: ${leaked[*]}" >&2; exit 1; }
 
-# --role voter: context files (diff, plan, feature, scope) must NOT be forwarded
-# to launch-claude-subprocess.sh. Verify by passing an invalid (symlink) diff file —
-# if it were forwarded, canonical_existing_file would reject it and exit 2;
-# with --role voter the symlink is accepted at parse time but never appended,
-# so the prompt-file voter succeeds.
-voter_output="$TMPROOT/voter-out.txt"
+# --role voter: diff context is now forwarded. A symlink diff must therefore
+# fail validation the same way reviewer launches do.
 voter_prompt="$TMPROOT/voter-prompt.txt"
 printf 'vote on this ballot\n' > "$voter_prompt"
 diff_for_voter="$TMPROOT/diff-for-voter-symlink.txt"
 ln -s "$prompt" "$diff_for_voter"
+set +e
 PATH="$STUB_BIN:$PATH" "$REPO_ROOT/scripts/launch-claude-review.sh" \
-    --output "$voter_output" \
+    --output "$TMPROOT/voter-out.txt" \
     --prompt-file "$voter_prompt" \
     --mode description \
     --role voter \
     --diff-file "$diff_for_voter" \
-    --timeout 5 >/dev/null
-[[ "$(cat "$voter_output")" == "claude review ok" ]] \
-    || { echo "FAIL: --role voter output passthrough (got: $(cat "$voter_output"))" >&2; exit 1; }
+    --timeout 5 >/dev/null 2>"$TMPROOT/voter.stderr"
+voter_rc=$?
+set -e
+[[ "$voter_rc" -eq 2 ]] \
+    || { echo "FAIL: --role voter with symlink diff should yield exit 2 (got $voter_rc)" >&2; exit 1; }
+grep -Fq 'invalid context file' "$TMPROOT/voter.stderr" \
+    || { echo "FAIL: --role voter missing 'invalid context file' in stderr" >&2; exit 1; }
 
 # --agent-file is reviewer-only. Reject voter launches before the specialist
 # prompt renderer can re-inline diff/plan/scope context into the voter prompt.

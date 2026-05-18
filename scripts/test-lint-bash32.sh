@@ -86,11 +86,14 @@ typeset -A old=() # lint-bash32: ok fixture
 mapfile -t rows < input.txt # lint-bash32: ok fixture
 readarray -t more < input.txt # lint-bash32: ok fixture
 echo "${NAME^^}" # lint-bash32: ok fixture
+echo "${NAME^}" # lint-bash32: ok fixture
 echo "${NAME,,}" # lint-bash32: ok fixture
+echo "${NAME,}" # lint-bash32: ok fixture
 declare -n ref=target # lint-bash32: ok fixture
 local -n inner=target # lint-bash32: ok fixture
 cmd &>> log.txt # lint-bash32: ok fixture
 coproc WORKER { cat; } # lint-bash32: ok fixture
+coproc { cat; } # lint-bash32: ok fixture
 EOF
 sed '/lint-bash32: ok fixture/s/[[:space:]]*# lint-bash32: ok fixture//' "$TMPROOT/scripts/bad.sh" > "$TMPROOT/scripts/bad-unsuppressed.sh"
 rm -f "$TMPROOT/scripts/bad.sh"
@@ -103,7 +106,7 @@ assert_case "forbidden constructs" 1 "$stderr_file" "$rc" \
     "declare -n nameref" \
     "local -n nameref" \
     "&>""> append-all redirection" \
-    "named coproc"
+    "coproc"
 
 reset_tree
 write_sh "$TMPROOT/scripts/comments-and-allow.sh" <<'EOF'
