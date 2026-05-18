@@ -96,8 +96,37 @@ list_cached_versions() {
     done | sort_versions
 }
 
+collect_active_session_versions() {
+    local env_files=()
+    local env_file plugin_root version
+    [ -d "$LARCH_SESSIONS_DIR" ] || return 0
+
+    shopt -s nullglob
+    env_files=("$LARCH_SESSIONS_DIR"/*/session-env.sh)
+    shopt -u nullglob
+
+    for env_file in "${env_files[@]}"; do
+        [ -f "$env_file" ] || continue
+        plugin_root=$(awk '
+            BEGIN { p = "LARCH_CLAUDE_PLUGIN_ROOT=" }
+            index($0, p) == 1 {
+                print substr($0, length(p) + 1)
+                exit
+            }
+        ' "$env_file" 2>/dev/null || true)
+        [ -n "$plugin_root" ] || continue
+
+        version=$(basename "$plugin_root")
+        if is_safe_version "$version"; then
+            printf '%s\n' "$version"
+        fi
+    done | sort_versions | awk '!seen[$0]++'
+}
+
 # Parent directory that contains one subdirectory per installed larch version.
 LARCH_CACHE_DIR="$(dirname "$PLUGIN_ROOT")"
+# Parent directory that contains larch session temp dirs with session-env.sh.
+LARCH_SESSIONS_DIR="${LARCH_SESSIONS_DIR:-${HOME:-/tmp}/.cache/larch/sessions}"
 # Version string of the currently running larch installation (basename of PLUGIN_ROOT).
 INSTALLED_VERSION="$(basename "$PLUGIN_ROOT")"
 
@@ -198,8 +227,23 @@ if [ "$VERIFIED_TARGET" = true ]; then
     SANITIZED_VERSIONS=()
     KEEP_LIMIT=8
 
+    ACTIVE_SESSION_VERSIONS=()
+    while IFS= read -r version; do
+        [ -n "$version" ] || continue
+        ACTIVE_SESSION_VERSIONS+=("$version")
+    done < <(collect_active_session_versions)
+
     for version in "${CACHED_VERSIONS[@]}"; do
         if version_gt "$version" "$LATEST_STABLE"; then
+            if [ "${#ACTIVE_SESSION_VERSIONS[@]}" -gt 0 ]; then
+                for active_version in "${ACTIVE_SESSION_VERSIONS[@]}"; do
+                    if [ "$version" = "$active_version" ]; then
+                        larch_err "Warning: preserving cached larch version '${version}' because an active session is using it."
+                        SANITIZED_VERSIONS+=("$version")
+                        continue 2
+                    fi
+                done
+            fi
             emit_breadcrumb "  Removing version newer than verified stable: $version"
             if ! rm -rf -- "${LARCH_CACHE_DIR:?}/${version:?}"; then
                 warn_prune_failure "$version"
@@ -217,6 +261,14 @@ if [ "$VERIFIED_TARGET" = true ]; then
             version="${SANITIZED_VERSIONS[$i]}"
             if [ "$version" = "$LATEST_STABLE" ]; then
                 continue
+            fi
+            if [ "${#ACTIVE_SESSION_VERSIONS[@]}" -gt 0 ]; then
+                for active_version in "${ACTIVE_SESSION_VERSIONS[@]}"; do
+                    if [ "$version" = "$active_version" ]; then
+                        larch_err "Warning: preserving cached larch version '${version}' because an active session is using it."
+                        continue 2
+                    fi
+                done
             fi
             emit_breadcrumb "  Removing old version: $version"
             if ! rm -rf -- "${LARCH_CACHE_DIR:?}/${version:?}"; then

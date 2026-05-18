@@ -37,7 +37,7 @@ After `/upgrade-larch` finishes, restart Claude Code only if it actually install
 
 `/upgrade-larch` is idempotent only when `gh` is installed and can resolve the latest stable release: if the currently installed version already matches that stable release, it exits immediately with no changes. If `gh` is unavailable or cannot resolve stable releases, the script warns and upgrades unconditionally, skips stable-version verification, and skips pruning.
 
-When `/upgrade-larch` does verify a stable install successfully, it removes any cached larch versions newer than the verified stable release and then attempts to prune older cached versions toward a total of at most 8 cached versions, always preserving the verified stable release directory when it exists. If a cache-directory removal fails, extra directories can remain on disk and the script warns instead of claiming they were deleted.
+When `/upgrade-larch` does verify a stable install successfully, it removes any cached larch versions newer than the verified stable release and then attempts to prune older cached versions toward a total of at most 8 cached versions, always preserving the verified stable release directory when it exists. If a cache-directory removal fails, extra directories can remain on disk and the script warns instead of claiming they were deleted. Before removing any cached version the script also scans active larch session env files and preserves any version still named by a running session's `LARCH_CLAUDE_PLUGIN_ROOT`, warning when an active-session pin prevents pruning.
 
 ## Install for local development (contributors)
 
