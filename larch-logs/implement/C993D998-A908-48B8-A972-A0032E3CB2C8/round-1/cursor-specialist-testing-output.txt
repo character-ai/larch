@@ -1,0 +1,34 @@
+Gathering the branch diff and commit list for a read-only review focused on tests, CI, and regression risk.
+
+Searching the diff for plan-relevant files and reading key sections.
+
+Checking how `compose-review-findings.sh` selects rejected artifacts and whether backward compatibility is covered.
+
+Commits on branch vs `main`: `d26aa37f` (feature) and `1b0742f8` (version bump). Review used the cached diff plus current copies of a few files for line-accurate citations.
+
+### In-Scope Findings
+
+1. **Important** (`risk-integration`, `plan`) — [`scripts/compose-review-findings.sh:127-145`](scripts/compose-review-findings.sh)  
+   `code-review-rejected` now only recognizes `### [rejected] …`; the previous `### [Code Review] …` pattern is gone. For any round where `rejected-findings-full.md` is absent but legacy `rejected-findings.md` still uses `[Code Review]` headings, those lines hit the generic `###` branch (`flush_pending` + `continue`) and never populate `pending_body`, so rejected sections are dropped and `FINDINGS_TOTAL` / downstream consumers that depend on composed output can silently skew on older logs or partial flushes. Suggested fix: accept both header shapes (two regex branches or alternation) until migration is complete, and add a regression fixture for “full missing + legacy md”.
+
+2. **Latent** (`risk-integration`, `plan`) — [`scripts/test-hook-anti-read-poll.sh:1-67`](scripts/test-hook-anti-read-poll.sh)  
+   The plan’s edge list calls out a 30-second window, but the harness never advances time or injects `first_ts`, so behavior when `age > 30` (counter reset vs continued warnings) and repeated warnings after the threshold are unverified. Suggested fix: add a small helper hook point (e.g. optional `LARCH_READ_POLL_NOW` override for tests) or fixture-driven `state_file` to assert “no fire after window” and “fires again only after streak rebuilds”.
+
+3. **Latent** (`risk-integration`, `plan`) — [`scripts/test-hook-anti-read-poll.sh:50-62`](scripts/test-hook-anti-read-poll.sh)  
+   The “different path” case only checks two reads of `other.md` then one read of `different.md`; it does not exercise interleaved reads (e.g. `A,A,B,A,A,A`) to prove the counter fully resets per path after alternation, which is the usual failure mode for streak bugs. Suggested fix: extend the harness with an explicit interleave sequence.
+
+4. **Nit** (`risk-integration`) — [`skills/implement/scripts/write-rejected-findings.sh:62-63`](skills/implement/scripts/write-rejected-findings.sh)  
+   The quiet-line still reports `details=rejected-findings.md` even when the durable log copy came from `rejected-findings-full.md`, which can mislead anyone correlating transcript keys with log files. Suggested fix: mention “full artifact when present” or drop the hard-coded filename.
+
+### Out-of-Scope Observations
+
+1. **Nit** (`risk-integration`) — Large committed `larch-logs/implement/...` tree and unrelated `.agnix.toml` / `CHANGELOG.md` / `github-remote-repo.sh` / version bump in the same branch widen CI blast radius beyond items P and Q; per instructions this is not a scope-violation finding, only a note that failures there are harder to attribute to the two headline changes alone.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	risk-integration	scripts/compose-review-findings.sh:127-145	code-review-rejected parser only matches ### [rejected]	Legacy ### [Code Review] headers in sole rejected-findings.md are skipped by the generic ### handler so rejected bodies disappear and FINDINGS_TOTAL can be wrong for old artifacts	Accept both header formats or add migration regression fixture
+1	in_scope	latent	risk-integration	scripts/test-hook-anti-read-poll.sh:1-67	No test for WINDOW_SECS expiry or post-window streak	30s window semantics and post-expiry warning behavior are unverified; regressions would not be caught	Add time override or state-file injection tests
+1	in_scope	latent	risk-integration	scripts/test-hook-anti-read-poll.sh:50-62	Path-reset coverage is shallow	Interleaved A/B reads might still hide off-by-one streak bugs	Add explicit interleave sequence assertions
+1	in_scope	nit	risk-integration	skills/implement/scripts/write-rejected-findings.sh:62-63	Emit line always says details=rejected-findings.md	Operators may grep the wrong artifact name when full file was copied	Clarify emit text when full file is used
+1	out_of_scope	nit	risk-integration	branch diff (larch-logs + agnix + changelog + bump)	Broad PR surface beyond P/Q	Attribution noise if CI fails	None (informational)
+```

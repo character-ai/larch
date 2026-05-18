@@ -1,0 +1,7 @@
+### In-Scope Findings
+
+1. **Important** `correctness` — `scripts/hook-anti-read-poll.sh:41-52`: The 30-second window never resets while the same path+offset continues, so the hook can permanently stop detecting that file after an early slow sequence. Concrete scenario: read `/tmp/a.md` at t=0 and t=1, then read it again at t=35, t=36, and t=37; the last three reads are consecutive within 2 seconds, but `first_ts` is still 0, `age=37`, and no reminder is emitted. Reset `count=1` and `first_ts=now` when the same path+offset is seen but `now - first_ts > WINDOW_SECS`, and add a harness case for the expired-window reset.
+
+### Out-of-Scope Observations
+
+1. **Latent** `correctness` — `skills/implement/scripts/write-rejected-findings.sh:41-50`: Pre-existing behavior treats a header-only compact `rejected-findings.md` as one rejected finding because `count=0` is forced to `1`. Concrete scenario: `emit-tally.sh` can create `# Rejected Findings` with no rejected entries; Step 16 then reports `STATUS=ok` / `REJECTED_COUNT=1` instead of empty. Fix separately by treating files with no actual rejected entry markers as empty before forcing the fallback count.

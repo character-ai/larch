@@ -1,0 +1,35 @@
+Gathering the branch diff and commit list for a read-only security review.
+
+Searching the large diff for relevant files and reading those sections.
+
+Reading security-relevant source files on the branch (full context for injection, path handling, and hook behavior).
+
+Commits on the branch since `merge-base` with `main`:
+
+- `00749838` — Address code review feedback (round 2)  
+- `a3ff31f6` — Address code review feedback (round 1)  
+- `d26aa37f` — Fix rejected-findings log detail and add Read-poll anti-poll hook  
+- `1b0742f8` — Bump version to 29.3.12 (#2332)  
+
+Reviewed the cached diff plus current sources for [`scripts/hook-anti-read-poll.sh`](scripts/hook-anti-read-poll.sh), [`hooks/hooks.json`](hooks/hooks.json), [`skills/implement/scripts/write-rejected-findings.sh`](skills/implement/scripts/write-rejected-findings.sh), [`scripts/compose-review-findings.sh`](scripts/compose-review-findings.sh), [`.agnix.toml`](.agnix.toml), [`scripts/github-remote-repo.sh`](scripts/github-remote-repo.sh), [`SECURITY.md`](SECURITY.md), and [`scripts/test-hook-anti-read-poll.sh`](scripts/test-hook-anti-read-poll.sh).
+
+### In-Scope Findings
+
+1. **Latent** (`risk-integration`) — [`.agnix.toml:41`](.agnix.toml): `AS-014` is added to global `disabled_rules`, so **agnix no longer evaluates that rule anywhere in the tree**, not only for the GitHub URL regex in `github-remote-repo.sh`. **Concrete scenario:** a future edit in another script or skill that would have tripped `AS-014` for a pattern the rule is meant to catch (for example, a problematic `[[ =~ ]]` or path-like construct the rule models) can pass `make agent-lint` / strict agnix until caught by human review or other tooling. **Suggested fix:** after the `github[.]com` regex rewrites in [`scripts/github-remote-repo.sh:25-33`](scripts/github-remote-repo.sh), try removing `AS-014` from `disabled_rules`; keep the global disable only if agnix still reports a false positive with no narrower suppression option.
+
+2. **Latent** (`security`) — [`scripts/hook-anti-read-poll.sh:60-61`](scripts/hook-anti-read-poll.sh): `file_path` from hook JSON is written as a TSV field with `printf '%s\t…\n'` and later parsed with `IFS=$'\t' read -r last_path …`. A path string containing a **literal TAB or newline** breaks the one-line TSV contract and desynchronizes `read`, so `last_path` / counters can be wrong and the anti-poll signal becomes unreliable. **Suggested fix:** reject or strip control characters in `file_path` before persistence, or store state as JSON via `jq` (no ambiguous delimiters).
+
+3. **Nit** (`correctness`) — [`scripts/hook-anti-read-poll.sh:41-44`](scripts/hook-anti-read-poll.sh): `count` and `first_ts` from the state file are validated as all-digits, but **`last_offset` is not** normalized the same way as fresh `offset` (lines 19–20). **Concrete scenario:** a stale state line with `last_offset` `01` vs a new read with offset `1` fails the string equality check, resetting the streak and suppressing the reminder. **Suggested fix:** apply the same digit-only normalization to `last_offset` after `read`.
+
+**Positive security notes (not findings):** [`scripts/github-remote-repo.sh:35-36`](scripts/github-remote-repo.sh) redacts userinfo in unparsed URLs before printing; the read-poll hook’s [`scripts/hook-anti-read-poll.sh:65-67`](scripts/hook-anti-read-poll.sh) reminder does not echo `file_path` (aligned with [`SECURITY.md`](SECURITY.md)); [`scripts/compose-review-findings.sh:68-71`](scripts/compose-review-findings.sh) and [`skills/implement/scripts/write-rejected-findings.sh:85-88`](skills/implement/scripts/write-rejected-findings.sh) keep redaction + escaping on persisted composed / log content.
+
+### Out-of-Scope Observations
+
+None.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	latent	risk-integration	.agnix.toml:41	AS-014 added to global disabled_rules in agnix config.	Later edits that would have failed AS-014 for patterns the rule is meant to catch can pass agent-lint until caught elsewhere.	Re-evaluate removing AS-014 from disabled_rules if agent-lint passes with only the github[.]com regex rewrites; use narrower suppression if agnix supports it.
+1	in_scope	latent	security	scripts/hook-anti-read-poll.sh:60-61	Hook persists tool_input.file_path into a tab-delimited state line without delimiter escaping.	A file_path value containing TAB or newline corrupts TSV parsing and breaks consecutive-read detection.	Strip or reject control characters in file_path before writing state, or persist state as JSON with jq.
+1	in_scope	nit	correctness	scripts/hook-anti-read-poll.sh:41-44	last_offset read from state is not normalized like incoming offset.	Stale last_offset 01 vs new offset 1 resets the counter and can suppress the third-read warning.	Normalize last_offset with the same digit-only case stanza used for offset.
+```

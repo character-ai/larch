@@ -1,0 +1,27 @@
+Gathering the branch diff and commit list for a plan-fidelity review (read-only).
+
+Searching the diff for plan-relevant files and reading key sections.
+
+Reading plan-critical files in the workspace for full context (diff hunks are capped).
+
+Review complete against the supplied implementation plan and the fix commit `d26aa37f` (workspace files match that commit for the planned paths). The plan’s numbered deliverables P1–P5 and Q6–Q10 are present in that commit; supporting wiring (`Makefile`, `agent-lint.toml`) is consistent with the plan’s Testing section but was not explicitly itemized in the plan’s 1–10 list.
+
+### In-Scope Findings
+
+1. **Latent** (`correctness`) — [skills/implement/scripts/write-rejected-findings.sh](skills/implement/scripts/write-rejected-findings.sh):41-59 — The run-log copy prefers `rejected-findings-full.md` only **after** the script has already treated a missing/empty `rejected-findings.md` as `STATUS=empty` and exited at lines 42–46, so a hypothetical tmpdir where the bare ledger is empty but `rejected-findings-full.md` is non-empty would never copy full detail into `larch-logs/.../rejected-findings.md` and would under-report `REJECTED_COUNT`. The plan’s edge-case bullet only covered “full missing,” not this inverse. **Suggested fix:** Before the early exit, treat a non-empty `rejected-findings-full.md` as “non-empty findings” for gating/copy (and optionally derive count from the same source), or document that the bare ledger is the sole source of truth for emptiness.
+
+2. **Nit** (`code-quality`) — [scripts/test-hook-anti-read-poll.sh](scripts/test-hook-anti-read-poll.sh):45-48 — The comment “Wipe state by using a new cwd” does not match the harness: the offset-reset case reuses `cwd` `/proj` (same as the prior three-read sequence), relying on a different `offset` to reset the counter. **Suggested fix:** Reword the comment to state that a different `path+offset` resets the streak (or use a fresh `cwd` if the intent was an isolated state file).
+
+### Out-of-Scope Observations
+
+1. **Out-of-scope** (`nit` / `architecture`) — `git log $(git merge-base HEAD main)..HEAD`: includes `1b0742f8 Bump version to 29.3.12 (#2332)` in addition to `d26aa37f Fix rejected-findings...`; the implementation plan’s itemized file list corresponds to the fix commit, not the version-bump commit. Large `larch-logs/` additions from that bump path are intentional per repo guidance and are not plan omissions for P/Q.
+
+2. **Out-of-scope** (`nit` / `architecture`) — Implementation plan Q6 specified a flat state filename `${TMPDIR:-/tmp}/larch-read-poll-${CWD_HASH}.tsv`; the shipped hook uses `${TMPDIR:-/tmp}/larch-read-poll/state-<cwd_hash>.tsv` as documented in [scripts/hook-anti-read-poll.md](scripts/hook-anti-read-poll.md):16-18. Behavior matches the plan’s intent (per-`cwd` isolation, single TSV row); only the on-disk layout differs from the plan’s literal path.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	latent	correctness	skills/implement/scripts/write-rejected-findings.sh:41-59	Early exit on empty rejected-findings.md skips full-file preference	If rejected-findings.md is empty while rejected-findings-full.md is non-empty the script exits STATUS=empty and never copies full detail to the run log and may emit REJECTED_COUNT=0	Gate empty/ok on full file too or document bare-only contract
+1	in_scope	nit	code-quality	scripts/test-hook-anti-read-poll.sh:45-48	Misleading test comment	Readers may believe cwd is controlling isolation in the offset-reset case	Reword comment to match behavior (offset change resets streak)
+1	out_of_scope	nit	architecture	git log merge-base..HEAD	Version bump commit not in implementation plan items 1-10	Parallel housekeeping commit on branch; not a gap in P/Q file checklist	None required for plan fidelity
+1	out_of_scope	nit	architecture	implementation plan Q6 vs scripts/hook-anti-read-poll.sh:28-30	State file path differs from plan’s literal filename	Equivalent isolation via cwd hash subdirectory layout	Align plan text to shipped path or accept as doc-only delta
+```

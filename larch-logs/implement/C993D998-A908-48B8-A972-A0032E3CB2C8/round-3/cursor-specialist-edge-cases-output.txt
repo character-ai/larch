@@ -1,0 +1,38 @@
+Gathering the branch diff and commit list for a read-only edge-case review.
+
+Searching the diff for relevant hunks and reading the changed files in the repo for full context.
+
+Commits on the branch since merge-base with `main`:
+
+- `00749838` Address code review feedback (round 2)
+- `a3ff31f6` Address code review feedback (round 1)
+- `d26aa37f` Fix rejected-findings log detail and add Read-poll anti-poll hook
+- `1b0742f8` Bump version to 29.3.12 (#2332)
+
+Review used the cached diff index plus full reads of the implementation and test scripts listed below.
+
+### In-Scope Findings
+
+1. **Important** (`risk-integration`) — [skills/implement/scripts/write-rejected-findings.sh](skills/implement/scripts/write-rejected-findings.sh):104-108 — On failure to copy redacted findings into `LOG_ROOT/implement/<RUN_ID>/rejected-findings.md`, the script sets `REJECTED_COUNT` to `0` together with `STATUS=failed`. A caller that treats `REJECTED_COUNT` as authoritative can conclude there were no rejections when the tmpdir actually contained findings, only persistence failed. Suggested fix: keep emitting the computed count (or add a separate `PERSIST_OK=false` / `COPY_FAILED=true` flag) while retaining `STATUS=failed` and the error string.
+
+2. **Latent** (`correctness`) — [scripts/hook-anti-read-poll.sh](scripts/hook-anti-read-poll.sh):47-64 — `age` is computed as `$((now - first_ts))` with no guard for negative values. If the clock steps backward or `first_ts` in the state file is ahead of `now`, `age` is negative; `[ "$age" -le "$WINDOW_SECS" ]` stays true, so the “third read in window” branch can fire when the real elapsed wall time is not 30 seconds, and the `age -gt "$WINDOW_SECS"` reset path may never run until clocks realign. Suggested fix: treat `age < 0` like an expired window (reset streak) or ignore corrupted `first_ts`.
+
+3. **Nit** (`correctness`) — [scripts/hook-anti-read-poll.sh](scripts/hook-anti-read-poll.sh):19-20 — Any `tool_input.offset` string that is not purely digits is coerced to `0`, so two distinct logical offsets that normalize to the same bucket could share one poll counter. Suggested fix: document as intentional or parse integers with `jq` more strictly if the tool ever emits non-decimal offsets.
+
+4. **Latent** (`correctness`) — [skills/implement/scripts/write-rejected-findings.sh](skills/implement/scripts/write-rejected-findings.sh):62-74 — `count_rejected_findings` falls through to `printf '1\n'` when the file is non-empty but matches none of the heuristics, forcing a count of `1` and an `ok` status. A malformed or future-format artifact would be reported as exactly one rejection. Suggested fix: return `0` or a dedicated `unknown`/`STATUS` path instead of defaulting to `1`.
+
+5. **Latent** (`risk-integration`) — [scripts/compose-review-findings.sh](scripts/compose-review-findings.sh):127-132 — Rejected code-review blocks now bind `pending_reviewer` from the tally line (often a `FINDING_*` id). Downstream consumers of `review-findings-full.md` that assumed the second field was always a human reviewer name (as in legacy `### [Code Review] Name`) may mis-classify or mis-display rows. Suggested fix: document the emitted field semantics or split “display name” vs “finding id” in the template.
+
+### Out-of-Scope Observations
+
+1. **Nit** (`architecture`) — The branch diff includes large committed [larch-logs/implement/](larch-logs/implement/) trees and ancillary release/config files per your scope rules; they are intentional run-log / release cargo and are not treated as defects here.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	risk-integration	skills/implement/scripts/write-rejected-findings.sh:104-108	On persist failure REJECTED_COUNT is forced to 0	Run summary or automation may record zero rejections while tmpdir still holds rejected content; plausible wrong gating or reporting	Preserve computed REJECTED_COUNT on copy failure or add explicit PERSIST/ COPY flags separate from count
+1	in_scope	latent	correctness	scripts/hook-anti-read-poll.sh:47-64	Negative age not handled when now < first_ts	Clock skew or corrupt state can satisfy the 30s window test with negative elapsed time and skew streak resets	Clamp negative age to treat as window expired or reset when first_ts > now
+1	in_scope	nit	correctness	scripts/hook-anti-read-poll.sh:19-20	Non-digit offset strings become 0	Distinct non-integer offsets could collapse into one counter bucket	Document contract or parse offset via jq as integer only
+1	in_scope	latent	correctness	skills/implement/scripts/write-rejected-findings.sh:62-74	Unknown-format nonempty file yields count 1	Corrupt or future-format rejected artifact mis-reported as exactly one finding	Return 0 or explicit unknown status instead of defaulting to 1
+1	in_scope	latent	risk-integration	scripts/compose-review-findings.sh:127-132	Reviewer slot now carries finding id for tally format	Consumers expecting human reviewer names in composed markdown may mis-parse emitted sections	Document contract or separate reviewer vs finding id in output
+1	out_of_scope	nit	architecture	larch-logs/implement/** (diff)	Large committed run-log directories in same PR	Noise for reviewers focused on hook and writer logic only	None per project policy; split PRs if desired for review ergonomics
+```
