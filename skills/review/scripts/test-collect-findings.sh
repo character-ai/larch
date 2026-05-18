@@ -111,5 +111,8 @@ if grep -Fq 'Reviewer finding' "$TMP/findings-narrative.md" 2>/dev/null; then
     echo "FAIL: narrative-only output produced a Reviewer finding row" >&2
     exit 1
 fi
+grep -Fq 'STATUS=NOT_SUBSTANTIVE' "$TMP/collector-results.env"
+grep -Fq "REVIEWER_FILE=$narrative" "$TMP/collector-results.env"
+grep -Fq 'collect-findings.sh claude NOT_SUBSTANTIVE warning (exit 0)' "$TMP/execution-issues.md"
 
 echo "All assertions passed."

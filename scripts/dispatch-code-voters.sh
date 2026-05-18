@@ -89,7 +89,7 @@ if [[ "$voter1_rc" -ne 0 || ! -s "$VOTER_1_PATH" ]]; then
             head -c 200 "${VOTER_1_PATH}.diag"
             printf '\n'
         fi
-    } > "$_voter1_diag"
+    } > "$_voter1_diag" || true
     _issues_log="${LARCH_EXECUTION_ISSUES_LOG:-}"
     if [[ -z "$_issues_log" && -n "${SESSION_ENV_PATH:-}" ]]; then
         _issues_log="$(dirname "$SESSION_ENV_PATH")/execution-issues.md"
@@ -99,16 +99,19 @@ if [[ "$voter1_rc" -ne 0 || ! -s "$VOTER_1_PATH" ]]; then
     fi
     [[ -z "$_issues_log" ]] && _issues_log="$REVIEW_TMPDIR/execution-issues.md"
     if [[ -x "$PLUGIN_ROOT/scripts/append-tool-failure.sh" ]]; then
+        _status_label="failed"
+        [[ "$voter1_rc" -eq 0 ]] && _status_label="warning"
         "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
             --log "$_issues_log" \
             --site "dispatch-code-voters.sh voter1" \
             --tool "launch-claude-review.sh (claude voter)" \
             --exit-code "$voter1_rc" \
+            --status-label "$_status_label" \
             --category Warnings \
             --output-file "$_voter1_diag" \
             --redact >/dev/null 2>&1 || true
     fi
-    unset _voter1_diag _issues_log
+    unset _voter1_diag _issues_log _status_label
 fi
 
 codex_prompt=$(make_voter_prompt_file codex)
