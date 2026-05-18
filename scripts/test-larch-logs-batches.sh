@@ -13,6 +13,13 @@ source "$SCRIPT_DIR/larch-log-batches.sh"
 source "$SCRIPT_DIR/lib-larch-log.sh"
 
 expected='plan-goals-test
+parent-issue
+pre-review-head
+pre-review-untracked
+codex-impl-transcript
+codex-impl-transcript-prompt
+codex-commit-message
+codex-impl-manifest-raw
 plan-review-tally
 code-review-tally
 review-findings-full
@@ -40,7 +47,7 @@ for slug in $actual; do
     ext="$(larch_log_batch_extension "$slug")"
     mode="$(larch_log_batch_mode "$slug")"
     sanitizer="$(larch_log_batch_sanitizer "$slug")"
-    case "$ext" in .md|.ndjson|.json|.jsonl) ;; *) echo "FAIL: invalid extension for $slug: $ext" >&2; exit 1 ;; esac
+    case "$ext" in .md|.txt|.ndjson|.json|.jsonl) ;; *) echo "FAIL: invalid extension for $slug: $ext" >&2; exit 1 ;; esac
     case "$mode" in replace|append) ;; *) echo "FAIL: invalid mode for $slug: $mode" >&2; exit 1 ;; esac
     case "$sanitizer" in none|mermaid|plan-goals|json-lines|json-object) ;; *) echo "FAIL: invalid sanitizer for $slug: $sanitizer" >&2; exit 1 ;; esac
 done
@@ -52,6 +59,20 @@ done
 [ "$(larch_log_batch_mode run-statistics)" = "replace" ]
 [ "$(larch_log_batch_extension run-statistics)" = ".md" ]
 [ "$(larch_log_batch_sanitizer plan-goals-test)" = "plan-goals" ]
+[ "$(larch_log_batch_mode parent-issue)" = "replace" ]
+[ "$(larch_log_batch_extension parent-issue)" = ".md" ]
+[ "$(larch_log_batch_mode pre-review-head)" = "replace" ]
+[ "$(larch_log_batch_extension pre-review-head)" = ".txt" ]
+[ "$(larch_log_batch_mode pre-review-untracked)" = "replace" ]
+[ "$(larch_log_batch_extension pre-review-untracked)" = ".txt" ]
+[ "$(larch_log_batch_mode codex-impl-transcript)" = "replace" ]
+[ "$(larch_log_batch_extension codex-impl-transcript)" = ".txt" ]
+[ "$(larch_log_batch_mode codex-impl-transcript-prompt)" = "replace" ]
+[ "$(larch_log_batch_extension codex-impl-transcript-prompt)" = ".txt" ]
+[ "$(larch_log_batch_mode codex-commit-message)" = "replace" ]
+[ "$(larch_log_batch_extension codex-commit-message)" = ".txt" ]
+[ "$(larch_log_batch_mode codex-impl-manifest-raw)" = "replace" ]
+[ "$(larch_log_batch_extension codex-impl-manifest-raw)" = ".json" ]
 [ "$(larch_log_batch_mode plan-review-tally)" = "replace" ]
 [ "$(larch_log_batch_extension plan-review-tally)" = ".json" ]
 [ "$(larch_log_batch_sanitizer plan-review-tally)" = "json-object" ]

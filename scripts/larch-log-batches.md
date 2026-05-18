@@ -4,13 +4,16 @@
 slugs, file extensions, write modes, and sanitizer hooks.
 
 The table intentionally covers the legacy tracking sections as durable files:
-`plan-goals-test`, `plan-review-tally`, `code-review-tally`,
+`plan-goals-test`, per-run setup/implementation artifacts (`parent-issue`,
+`pre-review-head`, `pre-review-untracked`, `codex-impl-transcript`,
+`codex-impl-transcript-prompt`, `codex-commit-message`,
+`codex-impl-manifest-raw`), `plan-review-tally`, `code-review-tally`,
 `review-findings-full`, review runtime batches (`review-context`,
 `review-findings`, `review-panel-manifest`, `review-round-summary`,
 `review-tally`), `version-bump-reasoning`, `oos-issues`, `run-statistics`,
-`token-report`, `timing-report`, `execution-issues`, and `session-transcript`
-(the redacted Claude Code session transcript captured at Step 18 for full
-post-hoc auditability).
+`token-report`, `timing-report`, `execution-issues`, and
+`session-transcript` (the redacted Claude Code session transcript captured at
+Step 18 for full post-hoc auditability).
 
 `plan-goals-test` uses the `plan-goals` sanitizer. The sanitizer requires a
 sectioned payload with a non-empty `## Implementation Plan` body and rejects

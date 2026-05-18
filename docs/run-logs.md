@@ -12,6 +12,13 @@ larch-logs/
     <RUN_ID>/
       manifest.json
       plan-goals-test.md
+      parent-issue.md
+      pre-review-head.txt
+      pre-review-untracked.txt
+      codex-impl-transcript.txt
+      codex-impl-transcript-prompt.txt
+      codex-commit-message.txt
+      codex-impl-manifest-raw.json
       plan-review-tally.json
       code-review-tally.json
       review-findings-full.md
@@ -22,6 +29,16 @@ larch-logs/
       timing-report.json
       execution-issues.ndjson
       session-transcript.jsonl
+      round-<N>/
+        findings.md
+        accepted-findings.md
+        rejected-findings.md
+        review-round-summary.md
+        review-summary.json
+        voting-tally.md
+        *-output.txt
+        *-output.txt.meta
+        *-output.txt.json
   review/
     <RUN_ID>/
       manifest.json
@@ -33,6 +50,13 @@ larch-logs/
 ```
 
 `<RUN_ID>` is the UUID assigned at the start of each `/implement` session. Batch payload files under a run directory are redacted for secrets and tmpdir paths before commit. `manifest.json` schema version 2 keeps `operator_cwd` / `operator_repo_root` only as stable redacted placeholders (`"<OPERATOR_CWD>"`, `"<REPO_ROOT>"`) so committed logs preserve schema shape without exposing operator-local absolute paths.
+
+`round-<N>/` directories are written by `larch-log.sh write-round` during
+`/implement` code review. They preserve the per-round reviewer and voter
+diagnostic artifacts that are otherwise lost with `$IMPLEMENT_TMPDIR` cleanup.
+Only registered artifact names are copied. `.meta` files have `CMD_JSON=...`
+removed, Cursor JSON sidecars have their top-level `.result` field removed, and
+all copied files still pass through the normal tmpdir and secrets redaction.
 
 `/review` uses the same `larch-logs/<skill>/<RUN_ID>/` layout when a run ID is provided. Review phase names are encoded in flat batch slugs, not subdirectories: `review-context` for gathered context, `review-panel-manifest` for launched slots, `review-findings` for collected finding records, `review-tally` for vote results, and `review-round-summary` for the human-readable round summary.
 
@@ -47,6 +71,33 @@ Created by `scripts/larch-log.sh init` at Step 0.5 when the tracking issue is fi
 **Mode**: replace (one file per run). **Written**: Step 1, after the design plan is finalized.
 
 Contains the implementation plan: goal statement, files to modify, approach, edge cases, and testing strategy. In normal mode the content comes from `/design`'s exported `plan.txt`; in quick mode it is the inline plan produced by the orchestrator.
+
+### parent-issue.md
+
+**Mode**: replace. **Written**: Step 1 and refreshed at the pre-bump flush when
+present.
+
+Tracking-issue sentinel with the adopted or created issue number and run ID.
+This is the session-scope idempotency source for tracking issue recovery.
+
+### pre-review-head.txt and pre-review-untracked.txt
+
+**Mode**: replace. **Written**: Step 5 round 1 initialization.
+
+`pre-review-head.txt` records the HEAD SHA before review starts.
+`pre-review-untracked.txt` records the untracked-file snapshot used by the
+review-change checks.
+
+### codex-impl-transcript.txt and related Codex setup files
+
+**Mode**: replace. **Written**: Step 7a pre-bump flush when present.
+
+`codex-impl-transcript.txt` is the external implementer transcript,
+`codex-impl-transcript-prompt.txt` is the prompt sidecar,
+`codex-commit-message.txt` is the redacted commit message consumed by the
+dispatcher, and `codex-impl-manifest-raw.json` is the pre-sanitized manifest
+copy retained for diagnosis. These files are optional because non-Codex or
+bailout paths may not produce them.
 
 ### plan-review-tally.json
 
@@ -121,6 +172,18 @@ Log of noteworthy events during the run, grouped by category: `Pre-existing Code
 **Mode**: replace. **Written**: Step 18, terminal cleanup.
 
 The redacted Claude Code session transcript (`.jsonl` format) captured for post-hoc auditability. Redacted for tmpdir paths and secrets. Allows replaying the full session reasoning, tool calls, and assistant turns after the run completes. Step 18 records `SESSION_TRANSCRIPT_STATUS` in the execution-issues `Warnings` section for every capture outcome.
+
+### round-<N>/
+
+**Mode**: directory replace-by-file. **Written**: at the end of each
+`review-core.sh` round during `/implement` Step 5.
+
+Contains registered per-round artifacts such as reviewer outputs, voter outputs,
+prompt sidecars, diagnostics, collector/tally env files, accepted/rejected
+findings, OOS review markdown, voting tally, and round summary JSON/markdown.
+The directory is staged in `$IMPLEMENT_TMPDIR/larch-logs`; the existing later
+flush commit copies it into `larch-logs/implement/<RUN_ID>/round-<N>/` in the
+repo. There is no per-round commit.
 
 ## Tracking issue comments
 

@@ -11,12 +11,16 @@ REPO_ROOT="$(git -C "$PWD" rev-parse --show-toplevel 2>/dev/null)" || true
 # shellcheck source=scripts/lib-larch-log.sh
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/lib-larch-log.sh"
+# shellcheck source=scripts/lib-redact.sh
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/lib-redact.sh"
 
 usage() {
     cat <<'USAGE' >&2
 Usage:
   larch-log.sh init --log-root D --skill S --run-id R [--parent-skill P] [--issue N]
   larch-log.sh write --log-root D --skill S --run-id R --batch B --input-file F
+  larch-log.sh write-round --log-root D --skill S --run-id R --round N --source-dir DIR
   larch-log.sh append --log-root D --skill S --run-id R --batch B --record-file F
   larch-log.sh exists --log-root D --skill S --run-id R --batch B
   larch-log.sh commit --log-root D --skill S --run-id R
@@ -58,6 +62,51 @@ require_log_root() {
         return 0
     fi
     larch_log_fail 1 "--log-root is required (or export LARCH_LOG_ROOT for test isolation)"
+}
+
+round_artifact_included() {
+    local name="$1"
+    case "$name" in
+        findings.md|accepted-findings.md|accepted-in-scope-findings.md|accepted-findings.scrubbed.md|rejected-findings.md|rejected-findings-full.md|oos.md|oos-accepted-review.md|review-round-summary.md|review-summary.json|voting-tally.md|review-tally.env|review-dirty-tree-summary.env|collector-results.env|collect-agent-results.log|panel-manifest.ndjson|code-voter-slots.ndjson|submodule-paths.txt|submodule-scrub.log|submodule-revert.log|coder.env|coder-prompt.md|coder-tool.txt|coder-output.log|coder-commit.log|coder-codex.log|coder-codex.wrapper.log|coder-cursor.log|coder-cursor.wrapper.log|review-core-gather.env|review-core-dispatch.env|review-core-collect.env|review-core-threshold.env|review-core-tally.env|review-core-voters.env|review-core-emit.env)
+            return 0
+            ;;
+        dirty-checkpoint-*.env|voter*-diag.txt|*-parse-rate-diag.txt|skipped-findings*.md|*.dirty-tree|*.untracked-baseline|*-output.txt|*-output-*.txt|*-output.txt.done|*-output-*.txt.done|*-output.txt.inner.done|*-output-*.txt.inner.done|*-output.txt.meta|*-output-*.txt.meta|*-output.txt.diag|*-output-*.txt.diag|*-output.txt.json|*-output-*.txt.json|*-output.txt.prompt|*-output-*.txt.prompt|*-output.txt.sidecar|*-output-*.txt.sidecar|*-output.txt.cap-hit|*-output-*.txt.cap-hit|*-prompt.txt)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+stage_round_artifact() {
+    local input="$1"
+    local output="$2"
+    local name trim_tmp
+    name="$(basename "$input")"
+    trim_tmp="$(mktemp "${TMPDIR:-/tmp}/larch-log-round-trim.XXXXXX")" || larch_log_fail 2 "cannot create round trim temp"
+    case "$name" in
+        *.meta)
+            larch_redact_strip_meta_cmd_json "$input" "$trim_tmp" || {
+                rm -f "$trim_tmp"
+                larch_log_fail 2 "cannot trim meta sidecar: $input"
+            }
+            ;;
+        *cursor*.json)
+            larch_redact_strip_cursor_json_result "$input" "$trim_tmp" || {
+                rm -f "$trim_tmp"
+                larch_log_fail 2 "cannot trim cursor json sidecar: $input"
+            }
+            ;;
+        *)
+            cp "$input" "$trim_tmp" || {
+                rm -f "$trim_tmp"
+                larch_log_fail 2 "cannot stage round artifact: $input"
+            }
+            ;;
+    esac
+    larch_log_redact_file "$trim_tmp" "$output"
+    rm -f "$trim_tmp"
 }
 
 current_branch_is_default() {
@@ -194,6 +243,57 @@ case "$cmd" in
         fi
         larch_log_atomic_replace "$tmp" "$path"
         larch_log_emit_success "$path" true false
+        ;;
+
+    write-round)
+        LOG_ROOT=""; SKILL=""; RUN_ID=""; ROUND_NUM=""; SOURCE_DIR=""
+        while [ $# -gt 0 ]; do
+            case "$1" in
+                --log-root) LOG_ROOT="${2:?--log-root requires a value}"; shift 2 ;;
+                --skill) SKILL="${2:?--skill requires a value}"; shift 2 ;;
+                --run-id) RUN_ID="${2:?--run-id requires a value}"; shift 2 ;;
+                --round) ROUND_NUM="${2:?--round requires a value}"; shift 2 ;;
+                --source-dir) SOURCE_DIR="${2:?--source-dir requires a value}"; shift 2 ;;
+                *) usage; larch_log_fail 1 "unknown option for write-round: $1" ;;
+            esac
+        done
+        require_log_root
+        require_common
+        case "$ROUND_NUM" in ''|*[!0-9]*) larch_log_fail 1 "--round must be a positive integer" ;; esac
+        [ "$ROUND_NUM" -gt 0 ] || larch_log_fail 1 "--round must be a positive integer"
+        [ -d "$SOURCE_DIR" ] || larch_log_fail 1 "source directory not found: $SOURCE_DIR"
+        [ ! -L "$SOURCE_DIR" ] || larch_log_fail 1 "source directory must not be a symlink: $SOURCE_DIR"
+
+        round_dir="$(larch_log_run_dir "$SKILL" "$RUN_ID")/round-$ROUND_NUM"
+        mkdir -p "$round_dir" || larch_log_fail 2 "cannot create round log directory: $round_dir"
+        written=false
+        found=false
+        round_tmp="$(mktemp "${TMPDIR:-/tmp}/larch-log-round.XXXXXX")" || larch_log_fail 2 "cannot create round artifact temp"
+        trap 'rm -f "${tmp:-}" "${round_tmp:-}"' EXIT
+        while IFS= read -r src || [ -n "$src" ]; do
+            name="$(basename "$src")"
+            round_artifact_included "$name" || continue
+            [ -f "$src" ] || continue
+            [ ! -L "$src" ] || continue
+            found=true
+            : > "$round_tmp"
+            stage_round_artifact "$src" "$round_tmp"
+            dest="$round_dir/$name"
+            if [ -f "$dest" ] && cmp -s "$round_tmp" "$dest"; then
+                continue
+            fi
+            larch_log_atomic_replace "$round_tmp" "$dest"
+            written=true
+        done < <(find "$SOURCE_DIR" -maxdepth 1 -type f -print | LC_ALL=C sort)
+        if [ "$found" = false ]; then
+            larch_log_emit_success "$round_dir" false true
+        else
+            if [ "$written" = true ]; then
+                larch_log_emit_success "$round_dir" true false
+            else
+                larch_log_emit_success "$round_dir" false true
+            fi
+        fi
         ;;
 
     append)

@@ -594,6 +594,24 @@ run_implement_round() {
     if (( round_num_dec == 1 )) && [[ -x "$PLUGIN_ROOT/scripts/snapshot-untracked.sh" ]]; then
         "$PLUGIN_ROOT/scripts/snapshot-untracked.sh" --output "$IMPLEMENT_TMPDIR/pre-review-untracked.txt"
         git rev-parse HEAD > "$IMPLEMENT_TMPDIR/pre-review-head.txt" 2>/dev/null || rm -f "$IMPLEMENT_TMPDIR/pre-review-head.txt"
+        if [[ -n "$RUN_ID" && -x "$LARCH_LOG_SH" ]]; then
+            if [[ -f "$IMPLEMENT_TMPDIR/pre-review-untracked.txt" ]]; then
+                "$LARCH_LOG_SH" write \
+                    --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
+                    --skill implement \
+                    --run-id "$RUN_ID" \
+                    --batch pre-review-untracked \
+                    --input-file "$IMPLEMENT_TMPDIR/pre-review-untracked.txt" >/dev/null 2>&1 || true
+            fi
+            if [[ -f "$IMPLEMENT_TMPDIR/pre-review-head.txt" ]]; then
+                "$LARCH_LOG_SH" write \
+                    --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
+                    --skill implement \
+                    --run-id "$RUN_ID" \
+                    --batch pre-review-head \
+                    --input-file "$IMPLEMENT_TMPDIR/pre-review-head.txt" >/dev/null 2>&1 || true
+            fi
+        fi
     fi
     core_out="$round_dir/review-core.env"
     core_args=(

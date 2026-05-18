@@ -122,3 +122,12 @@ trap - EXIT
     --run-id "$RUN_ID" \
     --batch plan-goals-test \
     --input-file "$OUTPUT_FILE"
+
+if [[ -f "$IMPLEMENT_TMPDIR/parent-issue.md" ]]; then
+    "$LARCH_LOG_SH" write \
+        --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
+        --skill implement \
+        --run-id "$RUN_ID" \
+        --batch parent-issue \
+        --input-file "$IMPLEMENT_TMPDIR/parent-issue.md" >/dev/null 2>&1 || true
+fi

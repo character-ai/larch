@@ -5,6 +5,7 @@
 .PHONY: test-check-reviewer-failure-threshold
 .PHONY: test-lib-vote-tally
 .PHONY: test-dispatch-code-voters
+.PHONY: test-larch-log-write-round
 # CI splits `lint` into `lint-only` (pre-commit) and `test-harnesses`
 # (regression harnesses). `lint` remains the local-dev convenience target
 # that runs both, defined in terms of the two split targets to prevent drift.
@@ -54,7 +55,7 @@ test-harnesses-11: test-dispatch-plan-voters test-umbrella-helpers test-check-re
 
 test-harnesses-12: test-harness-shards-coverage test-dispatch-code-voters test-rebase-push-keep-on-conflict test-token-report test-tally-code-votes test-check-phantom-dirty test-render-lane-status test-get-issue-context test-implement-structure test-implement-step2-routing test-implement-relevant-checks-anti-halt test-implement-rebase-macro test-implement-fork-env test-implement-cleanup-script test-implement-cleanup-roundtrip test-implement-anti-polling-rule test-implement-anti-halt test-gh-pr-body-update test-generate-code-flow-diagram test-fix-issue-bail-detection test-finalize-plan test-false-positive-keywords test-emit-tally test-emit-plan test-effort-prose test-design-structure test-compose-pr-summary test-commit-implementation test-cleanup-tmpdir test-ci-rerun-failed test-check-reviewers test-check-clean-tree test-cache-root-validation test-cache-key-runtime-audit test-body-file-title test-blocked-by-issue test-ballot-parse test-audit-edit-write test-anti-improvised-wakeup test-anti-halt test-alias-structure test-agent-model-args
 
-test-harnesses-13: test-dispatch-panel test-oos-file-conflict-deps test-upgrade-larch-prune
+test-harnesses-13: test-dispatch-panel test-oos-file-conflict-deps test-upgrade-larch-prune test-larch-log-write-round
 
 test-pipe-sigpipe-safety:
 	bash scripts/harness-timer.sh $@ bash scripts/test-pipe-sigpipe-safety.sh
@@ -522,6 +523,9 @@ test-tracking-issue-write:
 
 test-larch-log:
 	bash scripts/harness-timer.sh $@ bash scripts/test-larch-log.sh
+
+test-larch-log-write-round:
+	bash scripts/harness-timer.sh $@ bash scripts/test-larch-log-write-round.sh
 
 test-capture-session-transcript:
 	bash scripts/harness-timer.sh $@ bash scripts/test-capture-session-transcript.sh
