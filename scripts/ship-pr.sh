@@ -1321,6 +1321,7 @@ EOF
                         exit_transient_net "merge-pr: $error_text"
                     fi
                     state_set_many BAIL_REASON "$error_text" STALL_TRACKING true STALL_STEP 12d
+                    printf '\n--- ORCHESTRATOR DIRECTIVE (STALL_STEP=12d) ---\nDO NOT improvise recovery. Do NOT patch state files, do NOT force-push, do NOT re-invoke ship-pr.sh manually.\nCorrect action: read STALL_TRACKING and STALL_STEP from state, then continue to Step 16 per skills/implement/SKILL.md.\n' >> "$fail_file"
                     exit 4
                     ;;
                 *) exit_stall 12b ;;

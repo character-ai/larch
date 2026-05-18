@@ -199,4 +199,18 @@ grep -qF 'timing-ledger.sh" mark "Step 7 — commit review fixes"' "$COMMIT_REVI
 grep -qF 'timing-ledger.sh" mark "Step 7a — code flow diagram"' "$GEN_DIAGRAM_SH" \
   || fail "generate-code-flow-diagram.sh must contain Step 7a timing-ledger mark"
 
+# Pin Exit 4 handling in SKILL.md: must direct orchestrator to "Continue to Step 16"
+exit4_step16_status=0
+awk '
+  /\*\*Exit 4\*\*/ { window = 15 }
+  window > 0 && /Continue to Step 16/ { found = 1 }
+  window > 0 { window-- }
+  END { if (!found) exit 1 }
+' "$SKILL_MD" || exit4_step16_status=$?
+[[ "$exit4_step16_status" == "0" ]] || fail "SKILL.md Exit 4 prose must direct orchestrator to 'Continue to Step 16'"
+
+# Pin that ship-pr.sh STALL_STEP=12d branch emits DO NOT improvise diagnostic
+grep -q 'DO NOT improvise' "$SHIP_PR_SH" \
+  || fail "ship-pr.sh must emit DO NOT improvise diagnostic on STALL_STEP=12d exit 4 path"
+
 echo "All assertions passed."
