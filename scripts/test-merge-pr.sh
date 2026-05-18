@@ -48,24 +48,34 @@ case "$2" in
     view)
         # Compound call: returns JSON with both mergeStateStatus and headRefOid.
         # __EMPTY__ sentinel → null mergeStateStatus so jq // "" yields "".
-        # GH_VIEW_SECOND_HEAD_OID: if set, return it on 2nd+ call (flush recovery).
+        # GH_VIEW_SECOND_*: if set, return it on 2nd+ call (flush recovery).
         HEAD_OID="${STUB_PR_HEAD_OID:-aaaa1111}"
+        MERGE_STATE="${GH_MERGE_STATE:-CLEAN}"
         if [[ -n "${GH_VIEW_SECOND_HEAD_OID:-}" ]] && [[ -n "${GH_VIEW_COUNT_FILE:-}" ]]; then
             _count=$(( $(cat "$GH_VIEW_COUNT_FILE" 2>/dev/null || echo 0) + 1 ))
             printf '%s\n' "$_count" > "$GH_VIEW_COUNT_FILE"
             if [[ "$_count" -ge 2 ]]; then
                 HEAD_OID="$GH_VIEW_SECOND_HEAD_OID"
+                MERGE_STATE="${GH_VIEW_SECOND_MERGE_STATE:-$MERGE_STATE}"
             fi
         fi
-        if [[ "${GH_MERGE_STATE:-CLEAN}" == "__EMPTY__" ]]; then
+        if [[ "$MERGE_STATE" == "__EMPTY__" ]]; then
             printf '{"mergeStateStatus":null,"headRefOid":"%s"}\n' "$HEAD_OID"
         else
-            printf '{"mergeStateStatus":"%s","headRefOid":"%s"}\n' "${GH_MERGE_STATE:-CLEAN}" "$HEAD_OID"
+            printf '{"mergeStateStatus":"%s","headRefOid":"%s"}\n' "$MERGE_STATE" "$HEAD_OID"
         fi
         ;;
     checks)
-        if [[ -n "${GH_CHECKS_JSON:-}" ]]; then
-            printf '%s\n' "$GH_CHECKS_JSON"
+        CHECKS_JSON="${GH_CHECKS_JSON:-}"
+        if [[ -n "${GH_CHECKS_SECOND_JSON:-}" ]] && [[ -n "${GH_CHECKS_COUNT_FILE:-}" ]]; then
+            _count=$(( $(cat "$GH_CHECKS_COUNT_FILE" 2>/dev/null || echo 0) + 1 ))
+            printf '%s\n' "$_count" > "$GH_CHECKS_COUNT_FILE"
+            if [[ "$_count" -ge 2 ]]; then
+                CHECKS_JSON="$GH_CHECKS_SECOND_JSON"
+            fi
+        fi
+        if [[ -n "$CHECKS_JSON" ]]; then
+            printf '%s\n' "$CHECKS_JSON"
         else
             printf '[{"name":"ci","bucket":"pass"}]\n'
         fi
@@ -152,6 +162,9 @@ case "$1" in
         if [[ "${2:-}" == "--is-ancestor" && "${3:-}" == "origin/main" && "${4:-}" == "HEAD" ]]; then
             exit "${STUB_ANCESTOR_EXIT:-0}"
         fi
+        if [[ "${2:-}" == "--is-ancestor" && "${4:-}" == "HEAD" ]]; then
+            exit "${STUB_PR_HEAD_ANCESTOR_EXIT:-${STUB_ANCESTOR_EXIT:-0}}"
+        fi
         ;;
     symbolic-ref)
         # git symbolic-ref --short HEAD — used by git-force-push.sh
@@ -187,11 +200,13 @@ run_case() {
     : > "$case_dir/git.log"
     : > "$case_dir/trace.log"
     : > "$case_dir/gh_view_count"
+    : > "$case_dir/gh_checks_count"
 
     GH_LOG_FILE="$case_dir/gh.log" \
     GIT_LOG_FILE="$case_dir/git.log" \
     TRACE_LOG_FILE="$case_dir/trace.log" \
     GH_VIEW_COUNT_FILE="$case_dir/gh_view_count" \
+    GH_CHECKS_COUNT_FILE="$case_dir/gh_checks_count" \
     PATH="$case_dir/bin:$PATH" \
     "$@" > "$case_dir/stdout.log" 2> "$case_dir/stderr.log"
 }
@@ -432,13 +447,15 @@ run_case "flush_recovery_success" \
     STUB_HEAD_OID=cccc3333 \
     STUB_PR_HEAD_OID=aaaa1111 \
     GH_VIEW_SECOND_HEAD_OID=cccc3333 \
-    STUB_FLUSH_AHEAD_LOG="chore(larch-logs): flush implement run ABC" \
+    "STUB_FLUSH_AHEAD_LOG=chore(larch-logs): flush implement run ABC
+chore(larch-logs): flush implement run DEF" \
     STUB_PUSH_EXIT=0 \
     STUB_BRANCH_NAME=feature-branch \
     STUB_REMOTE_OID=cccc3333 \
     bash "$REPO_ROOT/scripts/merge-pr.sh" --pr 123 --repo owner/repo
 assert_stdout_contains "flush_recovery_success" "MERGE_RESULT=admin_merged" "K1: flush-only divergence recovers and proceeds to merge"
-assert_command_count "flush_recovery_success" "git.log" "push --force-with-lease" "1" "K1: force-push was invoked exactly once"
+assert_command_count "flush_recovery_success" "git.log" "push --force-with-lease=refs/heads/feature-branch:aaaa1111" "1" "K1: force-push uses explicit expected lease exactly once"
+assert_command_count "flush_recovery_success" "gh.log" "pr checks 123 --repo owner/repo --json name,state,bucket,link" "2" "K2: CI is re-checked after force-push recovery"
 
 echo
 echo "Sub-test L: flush-only divergence, force-push fails"
@@ -456,7 +473,24 @@ assert_stdout_matches "flush_recovery_push_fail" "ERROR=.*force-push failed" "L1
 assert_no_merge_commands "flush_recovery_push_fail" "L1: force-push failure skips merge commands"
 
 echo
-echo "Sub-test M: mixed commits (flush + non-flush) preserve original OID error"
+echo "Sub-test M: recovery re-checks CI after force-push"
+run_case "flush_recovery_ci_pending" \
+    env GH_MERGE_STATE=CLEAN \
+    STUB_HEAD_OID=cccc3333 \
+    STUB_PR_HEAD_OID=aaaa1111 \
+    GH_VIEW_SECOND_HEAD_OID=cccc3333 \
+    STUB_FLUSH_AHEAD_LOG="chore(larch-logs): flush implement run ABC" \
+    GH_CHECKS_SECOND_JSON='[{"name":"ci","bucket":"pending"}]' \
+    STUB_PUSH_EXIT=0 \
+    STUB_BRANCH_NAME=feature-branch \
+    STUB_REMOTE_OID=cccc3333 \
+    bash "$REPO_ROOT/scripts/merge-pr.sh" --pr 123 --repo owner/repo
+assert_stdout_contains "flush_recovery_ci_pending" "MERGE_RESULT=ci_not_ready" "M1: pending checks after recovery emit ci_not_ready"
+assert_stdout_contains "flush_recovery_ci_pending" "ERROR=CI checks are not all passing after force-push recovery" "M2: post-recovery CI error is stable"
+assert_no_merge_commands "flush_recovery_ci_pending" "M3: pending checks after recovery skip merge commands"
+
+echo
+echo "Sub-test N: mixed commits (flush + non-flush) preserve original OID error"
 run_case "flush_recovery_mixed" \
     env GH_MERGE_STATE=CLEAN \
     STUB_HEAD_OID=cccc3333 \
@@ -464,12 +498,25 @@ run_case "flush_recovery_mixed" \
     "STUB_FLUSH_AHEAD_LOG=chore(larch-logs): flush implement run ABC
 Fix some real bug" \
     bash "$REPO_ROOT/scripts/merge-pr.sh" --pr 123 --repo owner/repo
-assert_stdout_contains "flush_recovery_mixed" "MERGE_RESULT=error" "M1: mixed commits emit error"
-assert_stdout_contains "flush_recovery_mixed" "ERROR=local HEAD (cccc3333) does not match PR head OID (aaaa1111); refusing to evaluate same-version gate" "M1: mixed commits preserve original OID error"
-assert_no_merge_commands "flush_recovery_mixed" "M1: mixed commits skip merge commands"
+assert_stdout_contains "flush_recovery_mixed" "MERGE_RESULT=error" "N1: mixed commits emit error"
+assert_stdout_contains "flush_recovery_mixed" "ERROR=local HEAD (cccc3333) does not match PR head OID (aaaa1111); refusing to evaluate same-version gate" "N2: mixed commits preserve original OID error"
+assert_no_merge_commands "flush_recovery_mixed" "N3: mixed commits skip merge commands"
 
 echo
-echo "Sub-test N: >5 flush commits cap preserves original OID error"
+echo "Sub-test O: non-ancestor flush-only range preserves original OID error"
+run_case "flush_recovery_non_ancestor" \
+    env GH_MERGE_STATE=CLEAN \
+    STUB_HEAD_OID=cccc3333 \
+    STUB_PR_HEAD_OID=aaaa1111 \
+    STUB_FLUSH_AHEAD_LOG="chore(larch-logs): flush implement run ABC" \
+    STUB_PR_HEAD_ANCESTOR_EXIT=1 \
+    bash "$REPO_ROOT/scripts/merge-pr.sh" --pr 123 --repo owner/repo
+assert_stdout_contains "flush_recovery_non_ancestor" "MERGE_RESULT=error" "O1: non-ancestor flush-only range emits error"
+assert_stdout_contains "flush_recovery_non_ancestor" "ERROR=local HEAD (cccc3333) does not match PR head OID (aaaa1111); refusing to evaluate same-version gate" "O2: non-ancestor range preserves original OID error"
+assert_no_merge_commands "flush_recovery_non_ancestor" "O3: non-ancestor range skips merge commands"
+
+echo
+echo "Sub-test P: >5 flush commits cap preserves original OID error"
 run_case "flush_recovery_cap" \
     env GH_MERGE_STATE=CLEAN \
     STUB_HEAD_OID=cccc3333 \
@@ -481,9 +528,9 @@ chore(larch-logs): flush implement run 4
 chore(larch-logs): flush implement run 5
 chore(larch-logs): flush implement run 6" \
     bash "$REPO_ROOT/scripts/merge-pr.sh" --pr 123 --repo owner/repo
-assert_stdout_contains "flush_recovery_cap" "MERGE_RESULT=error" "N1: >5 flush commits emit error"
-assert_stdout_contains "flush_recovery_cap" "ERROR=local HEAD (cccc3333) does not match PR head OID (aaaa1111); refusing to evaluate same-version gate" "N1: >5 flush commits preserve original OID error"
-assert_no_merge_commands "flush_recovery_cap" "N1: >5 flush commits skip merge commands"
+assert_stdout_contains "flush_recovery_cap" "MERGE_RESULT=error" "P1: >5 flush commits emit error"
+assert_stdout_contains "flush_recovery_cap" "ERROR=local HEAD (cccc3333) does not match PR head OID (aaaa1111); refusing to evaluate same-version gate" "P2: >5 flush commits preserve original OID error"
+assert_no_merge_commands "flush_recovery_cap" "P3: >5 flush commits skip merge commands"
 
 echo
 if [[ "$FAIL_COUNT" -eq 0 ]]; then

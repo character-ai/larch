@@ -76,10 +76,47 @@ emit_output() {
 }
 trap 'emit_output' EXIT
 
+refresh_pr_info() {
+    PR_INFO=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json mergeStateStatus,headRefOid 2>/dev/null || echo "")
+    MERGE_STATE=$(echo "$PR_INFO" | jq -r '.mergeStateStatus // ""' 2>/dev/null || echo "")
+    PR_HEAD_OID=$(echo "$PR_INFO" | jq -r '.headRefOid // ""' 2>/dev/null || echo "")
+}
+
+refresh_ci_state() {
+    # Use gh pr checks --json with bucket field (consistent with ci-status.sh)
+    CHECKS_JSON=$(gh pr checks "$PR_NUMBER" --repo "$REPO" --json name,state,bucket,link 2>/dev/null || echo "")
+
+    CI_GOOD=false
+    if [[ -n "$CHECKS_JSON" ]] && [[ "$CHECKS_JSON" != "null" ]] \
+        && echo "$CHECKS_JSON" | jq -e 'type == "array"' >/dev/null 2>&1; then
+        TOTAL=$(echo "$CHECKS_JSON" | jq 'length' 2>/dev/null || echo "0")
+
+        if [[ "$TOTAL" -eq 0 ]]; then
+            # Zero checks — conservative: treat as not ready
+            CI_GOOD=false
+        else
+            # Require every check to have bucket == "pass" (not just absence of fail/pending).
+            # This rejects cancelled, skipping, or any other non-pass bucket.
+            PASSED=$(echo "$CHECKS_JSON" | jq '[.[] | select(.bucket == "pass")] | length' 2>/dev/null || echo "0")
+
+            if [[ "$PASSED" -eq "$TOTAL" ]]; then
+                CI_GOOD=true
+            fi
+        fi
+    else
+        # Fallback: parse text output — conservative: only accept if all lines show pass
+        CHECKS_TEXT=$(gh pr checks "$PR_NUMBER" --repo "$REPO" 2>/dev/null || echo "")
+        if [[ -n "$CHECKS_TEXT" ]]; then
+            if ! echo "$CHECKS_TEXT" | grep -qiE '\bfail|pending|in_progress|queued|cancelled|skipping'; then
+                CI_GOOD=true
+            fi
+        fi
+        # Empty or unparseable — conservative: treat as not ready
+    fi
+}
+
 # --- Fetch PR metadata (mergeStateStatus + headRefOid) in one compound call ---
-PR_INFO=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json mergeStateStatus,headRefOid 2>/dev/null || echo "")
-MERGE_STATE=$(echo "$PR_INFO" | jq -r '.mergeStateStatus // ""' 2>/dev/null || echo "")
-PR_HEAD_OID=$(echo "$PR_INFO" | jq -r '.headRefOid // ""' 2>/dev/null || echo "")
+refresh_pr_info
 
 if [[ "$MERGE_STATE" == "BEHIND" ]]; then
     MERGE_RESULT="main_advanced"
@@ -100,36 +137,7 @@ if [[ -z "$MERGE_STATE" ]] || [[ "$MERGE_STATE" == "UNKNOWN" ]]; then
 fi
 
 # --- Re-verify CI before attempting --admin ---
-# Use gh pr checks --json with bucket field (consistent with ci-status.sh)
-CHECKS_JSON=$(gh pr checks "$PR_NUMBER" --repo "$REPO" --json name,state,bucket,link 2>/dev/null || echo "")
-
-CI_GOOD=false
-if [[ -n "$CHECKS_JSON" ]] && [[ "$CHECKS_JSON" != "null" ]] \
-    && echo "$CHECKS_JSON" | jq -e 'type == "array"' >/dev/null 2>&1; then
-    TOTAL=$(echo "$CHECKS_JSON" | jq 'length' 2>/dev/null || echo "0")
-
-    if [[ "$TOTAL" -eq 0 ]]; then
-        # Zero checks — conservative: treat as not ready
-        CI_GOOD=false
-    else
-        # Require every check to have bucket == "pass" (not just absence of fail/pending).
-        # This rejects cancelled, skipping, or any other non-pass bucket.
-        PASSED=$(echo "$CHECKS_JSON" | jq '[.[] | select(.bucket == "pass")] | length' 2>/dev/null || echo "0")
-
-        if [[ "$PASSED" -eq "$TOTAL" ]]; then
-            CI_GOOD=true
-        fi
-    fi
-else
-    # Fallback: parse text output — conservative: only accept if all lines show pass
-    CHECKS_TEXT=$(gh pr checks "$PR_NUMBER" --repo "$REPO" 2>/dev/null || echo "")
-    if [[ -n "$CHECKS_TEXT" ]]; then
-        if ! echo "$CHECKS_TEXT" | grep -qiE '\bfail|pending|in_progress|queued|cancelled|skipping'; then
-            CI_GOOD=true
-        fi
-    fi
-    # Empty or unparseable — conservative: treat as not ready
-fi
+refresh_ci_state
 
 if [[ "$CI_GOOD" != "true" ]]; then
     MERGE_RESULT="ci_not_ready"
@@ -164,27 +172,50 @@ if [[ -z "$LOCAL_HEAD" ]] || [[ "$LOCAL_HEAD" != "$PR_HEAD_OID" ]]; then
     _flush_recoverable=false
     if [[ -n "$LOCAL_HEAD" ]]; then
         FLUSH_AHEAD=$(git log --format='%s' "${PR_HEAD_OID}..HEAD" 2>/dev/null || echo "")
-        FLUSH_COUNT=$(printf '%s\n' "$FLUSH_AHEAD" | grep -c . 2>/dev/null || echo "0")
+        FLUSH_COUNT=$(printf '%s\n' "$FLUSH_AHEAD" | grep -c . 2>/dev/null || true)
         if [[ "$FLUSH_COUNT" -gt 0 ]] && [[ "$FLUSH_COUNT" -le 5 ]] \
-            && ! printf '%s\n' "$FLUSH_AHEAD" | grep -qv '^chore(larch-logs): flush '; then
+            && ! printf '%s\n' "$FLUSH_AHEAD" | grep -qv '^chore(larch-logs): flush ' \
+            && git merge-base --is-ancestor "$PR_HEAD_OID" HEAD 2>/dev/null; then
             _flush_recoverable=true
         fi
     fi
     if [[ "$_flush_recoverable" == "true" ]]; then
-        FORCE_OUT=$("$SCRIPT_DIR/git-force-push.sh" 2>/dev/null || true)
+        FORCE_OUT=$("$SCRIPT_DIR/git-force-push.sh" --expected-remote-oid "$PR_HEAD_OID" 2>&1 || true)
         PUSHED=$(printf '%s\n' "$FORCE_OUT" | awk -F= '/^PUSHED=/ { print $2 }')
+        FORCE_STATUS=$(printf '%s\n' "$FORCE_OUT" | awk -F= '/^STATUS=/ { print $2 }')
         if [[ "$PUSHED" != "true" ]]; then
             MERGE_RESULT="error"
-            ERROR="local HEAD ($LOCAL_HEAD) is ahead of PR head OID ($PR_HEAD_OID) by flush commits only; force-push failed"
+            FORCE_OUT_ONE_LINE=$(printf '%s' "$FORCE_OUT" | tr '\n' ' ')
+            ERROR="local HEAD ($LOCAL_HEAD) is ahead of PR head OID ($PR_HEAD_OID) by flush commits only; force-push failed (status=${FORCE_STATUS:-unknown}; output=${FORCE_OUT_ONE_LINE})"
             exit 0
         fi
         # Re-read PR metadata after the force-push advanced the remote HEAD.
-        PR_INFO=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json mergeStateStatus,headRefOid 2>/dev/null || echo "")
-        PR_HEAD_OID=$(echo "$PR_INFO" | jq -r '.headRefOid // ""' 2>/dev/null || echo "")
+        refresh_pr_info
         LOCAL_HEAD=$(git rev-parse HEAD 2>/dev/null || echo "")
         if [[ -z "$LOCAL_HEAD" ]] || [[ "$LOCAL_HEAD" != "$PR_HEAD_OID" ]]; then
             MERGE_RESULT="error"
             ERROR="local HEAD ($LOCAL_HEAD) does not match PR head OID ($PR_HEAD_OID) after force-push recovery"
+            exit 0
+        fi
+        if [[ "$MERGE_STATE" == "BEHIND" ]]; then
+            MERGE_RESULT="main_advanced"
+            ERROR=""
+            exit 0
+        fi
+        if [[ -z "$MERGE_STATE" ]] || [[ "$MERGE_STATE" == "UNKNOWN" ]]; then
+            MERGE_RESULT="error"
+            ERROR="could not read mergeStateStatus from gh pr view --json mergeStateStatus,headRefOid after force-push recovery (state=\"$MERGE_STATE\")"
+            exit 0
+        fi
+        refresh_ci_state
+        if [[ "$CI_GOOD" != "true" ]]; then
+            MERGE_RESULT="ci_not_ready"
+            ERROR="CI checks are not all passing after force-push recovery"
+            exit 0
+        fi
+        if [[ "$MERGE_STATE" != "CLEAN" ]] && [[ "$MERGE_STATE" != "UNSTABLE" ]] && [[ "$MERGE_STATE" != "HAS_HOOKS" ]] && [[ "$MERGE_STATE" != "BLOCKED" ]]; then
+            MERGE_RESULT="main_advanced"
+            ERROR="Branch mergeStateStatus is $MERGE_STATE after force-push recovery"
             exit 0
         fi
     else
