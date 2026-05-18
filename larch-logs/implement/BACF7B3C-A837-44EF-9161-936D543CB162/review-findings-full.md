@@ -70,3 +70,27 @@
 - **Concern**: [nit] Test label still says ci-initial merge checkpoint though flow is usually single-invocation Misleading PASS diagnostics only Rename assertion label optional PHASE assert
 - **Suggested revision**: Address the concern above.
 
+### FINDING_10: panel [code-review/accepted]
+
+## risk-integration: CHANGELOG.md (omission)
+
+- **Reviewer**: cursor-specialist-testing-output.txt
+- **Concern**: [latent] No release note for review-and-fix exit-3 removal and summary status fix-applied. Out-of-tree automation that only checked exit 3 or summary fix-required may break silently until upgraded. Add CHANGELOG entry documenting new exit 0 + REVIEW_AND_FIX_STATUS=fix-applied contract.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_15: panel [code-review/accepted]
+
+## risk-integration: skills/review-and-fix/scripts/review-and-fix.sh:527-532 skills/review-and-fix/scripts/test-review-and-fix.sh:619-621
+
+- **Reviewer**: cursor-specialist-security-output.txt
+- **Concern**: [nit] review-and-fix-summary.json .status uses fix-applied instead of fix-required when coder applied External jq or dashboards expecting .status fix-required for post-commit applied-fix rounds stop matching Ship CHANGELOG note; update external consumers
+- **Suggested revision**: Address the concern above.
+
+### FINDING_9: panel [code-review/accepted]
+
+## correctness: skills/implement/SKILL.md:1729
+
+- **Reviewer**: cursor-specialist-correctness-output.txt
+- **Concern**: [nit] Stale Step 10 prose calls ACTION=merge a CI-passed checkpoint while ship-pr.md and Step 8+ describe same-invocation continuation without that exit-0 checkpoint. Orchestrator or doc reader expects a ship-pr return boundary at ci-initial merge and omits work they used to schedule between invocations. Rephrase to align with scripts/ship-pr.md (internal CI_PASSED state plus in-process advance to ci-merge).
+- **Suggested revision**: Address the concern above.
+
