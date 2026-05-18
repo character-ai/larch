@@ -9,6 +9,8 @@ Input is an NDJSON slots file. Each row must contain:
 - `output`: phase-1 output path
 - `agent` or `prompt_file`: source prompt for launchers
 
+Rows may include optional metadata such as `weight` and `focus_area`; the dispatcher preserves validation compatibility and ignores those fields at launch time.
+
 Phases:
 
 1. Launch each slot on its assigned external tool when `--<tool>-present true`.

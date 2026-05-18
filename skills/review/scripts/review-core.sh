@@ -10,7 +10,7 @@ source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
 
 usage() {
-    larch_err "Usage: review-core.sh --mode diff|description --output-dir DIR --codex-available true|false --cursor-available true|false [context flags]"
+    larch_err "Usage: review-core.sh --mode diff|description --output-dir DIR --codex-available true|false --cursor-available true|false [--dynamic-archetypes 0-4] [context flags]"
 }
 
 MODE=""
@@ -27,6 +27,7 @@ DESCRIPTION_TEXT=""
 PANEL="hard"
 RUN_ID=""
 ROUND_NUM="1"
+DYNAMIC_ARCHETYPES="${LARCH_DYNAMIC_ARCHETYPES_MAX:-0}"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -42,6 +43,7 @@ while [[ $# -gt 0 ]]; do
         --feature-file) FEATURE_FILE="${2:?--feature-file requires a value}"; shift 2 ;;
         --description-text) DESCRIPTION_TEXT="${2:?--description-text requires a value}"; shift 2 ;;
         --panel) PANEL="${2:?--panel requires a value}"; shift 2 ;;
+        --dynamic-archetypes) DYNAMIC_ARCHETYPES="${2:?--dynamic-archetypes requires a value}"; shift 2 ;;
         --run-id) RUN_ID="${2:?--run-id requires a value}"; shift 2 ;;
         --round-num) ROUND_NUM="${2:?--round-num requires a value}"; shift 2 ;;
         --help) usage; exit 0 ;;
@@ -54,6 +56,10 @@ done
 [[ "$CODEX_AVAILABLE" == "true" || "$CODEX_AVAILABLE" == "false" ]] || { larch_err "review-core.sh: --codex-available must be true or false"; exit 2; }
 [[ "$CURSOR_AVAILABLE" == "true" || "$CURSOR_AVAILABLE" == "false" ]] || { larch_err "review-core.sh: --cursor-available must be true or false"; exit 2; }
 [[ "$PANEL" == "simple" || "$PANEL" == "hard" ]] || { larch_err "review-core.sh: --panel must be simple or hard"; exit 2; }
+case "$DYNAMIC_ARCHETYPES" in
+    [0-4]) ;;
+    *) larch_err "review-core.sh: --dynamic-archetypes/LARCH_DYNAMIC_ARCHETYPES_MAX must be an integer from 0 to 4"; exit 2 ;;
+esac
 case "$ROUND_NUM" in ''|*[!0-9]*) larch_err "review-core.sh: --round-num must be a positive integer"; exit 2 ;; esac
 mkdir -p "$REVIEW_TMPDIR"
 
@@ -236,6 +242,7 @@ dispatch_args=(
     --cursor-available "$CURSOR_AVAILABLE"
     --commit-count "${COMMIT_COUNT:-0}"
     --timing-task-prefix "review-round${ROUND_NUM}"
+    --dynamic-archetypes "$DYNAMIC_ARCHETYPES"
 )
 [[ -n "$DIFF_FILE" ]] && dispatch_args+=(--diff-file "$DIFF_FILE")
 [[ -n "$SCOPE_FILES" ]] && dispatch_args+=(--scope-files "$SCOPE_FILES")
@@ -251,9 +258,23 @@ claude_outputs=$(kv_get "$dispatch_out" CLAUDE_OUTPUT_FILES)
 panel_mode=$(kv_get "$dispatch_out" PANEL_MODE)
 panel_shape=$(kv_get "$dispatch_out" PANEL_SHAPE)
 dispatch_ok=$(kv_get "$dispatch_out" DISPATCH_OK)
+panel_manifest=$(kv_get "$dispatch_out" PANEL_MANIFEST)
+scout_status=$(kv_get "$dispatch_out" SCOUT_STATUS)
+dynamic_slots=$(kv_get "$dispatch_out" DYNAMIC_SLOTS)
+scout_manifest=$(kv_get "$dispatch_out" SCOUT_MANIFEST)
 panel_mode="${panel_mode:-waterfall}"
 panel_shape="${panel_shape:-$PANEL}"
 dispatch_ok="${dispatch_ok:-true}"
+scout_status="${scout_status:-na}"
+dynamic_slots="${dynamic_slots:-0}"
+{
+    printf 'SCOUT_STATUS=%s\n' "$scout_status"
+    printf 'DYNAMIC_SLOTS=%s\n' "$dynamic_slots"
+    printf 'SCOUT_MANIFEST=%s\n' "$scout_manifest"
+} > "$REVIEW_TMPDIR/scout-status.env"
+emit_kv SCOUT_STATUS "$scout_status"
+emit_kv DYNAMIC_SLOTS "$dynamic_slots"
+[[ -n "$scout_manifest" ]] && emit_kv SCOUT_MANIFEST "$scout_manifest"
 
 collect_out="$REVIEW_TMPDIR/review-core-collect.env"
 collect_args=(--mode "$MODE" --timeout 1860 --findings-file "$REVIEW_TMPDIR/findings.md" --oos-file "$REVIEW_TMPDIR/oos.md")
@@ -385,6 +406,7 @@ tally_args=(
 [[ -n "$SESSION_ENV_PATH" ]] && tally_args+=(--session-env-path "$SESSION_ENV_PATH")
 [[ -n "$SCOPE_FILES" && -s "$SCOPE_FILES" ]] && tally_args+=(--scope-files "$SCOPE_FILES")
 [[ -n "$PLAN_FILE" && -f "$PLAN_FILE" ]] && tally_args+=(--plan-file "$PLAN_FILE")
+[[ -n "$panel_manifest" && -f "$panel_manifest" ]] && tally_args+=(--manifest-file "$panel_manifest")
 if [[ "${#voter_files[@]}" -gt 0 ]]; then
     tally_args+=(--voter-files "${voter_files[@]}")
 fi
@@ -403,7 +425,9 @@ neutral_count="${neutral_count:-0}"
 tally_file=$(kv_get "$tally_out" TALLY_FILE)
 accepted_file=$(kv_get "$tally_out" ACCEPTED_FINDINGS_FILE)
 voting_skipped_warning=$(kv_get "$tally_out" VOTING_SKIPPED_WARNING)
+yield_tsv_file=$(kv_get "$tally_out" YIELD_TSV_FILE)
 [[ -n "$voting_skipped_warning" ]] && emit_kv VOTING_SKIPPED_WARNING "$voting_skipped_warning"
+[[ -n "$yield_tsv_file" ]] && emit_kv YIELD_TSV_FILE "$yield_tsv_file"
 accepted_count="${accepted_count:-0}"
 rejected_count="${rejected_count:-0}"
 tally_file="${tally_file:-$REVIEW_TMPDIR/review-tally.env}"

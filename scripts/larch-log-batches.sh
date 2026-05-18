@@ -20,6 +20,7 @@ review-context .md replace none
 review-findings .ndjson append json-lines
 review-panel-manifest .ndjson replace none
 review-round-summary .md replace none
+review-scout-manifest .json replace json-object
 review-tally .md replace none
 version-bump-reasoning .md replace none
 oos-issues .ndjson append json-lines

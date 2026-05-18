@@ -10,6 +10,10 @@ It dispatches all reviewer slots through `scripts/dispatch-with-waterfall.sh`, w
 
 Both panels always include plan-fidelity; there is no longer a conditional based on plan file presence.
 
+Dynamic archetypes are opt-in with `--dynamic-archetypes N` or `LARCH_DYNAMIC_ARCHETYPES_MAX`, where `N` must be `0..4`; the flag overrides the env var and the default is `0`. When enabled, `dispatch-panel.sh` invokes `scripts/scout-dynamic-archetypes.sh` once per review tmpdir via `$REVIEW_TMPDIR/scout-manifest.json`, then appends valid scout archetypes as Cursor-primary `prompt_file` slots with normal waterfall fallback. Dynamic agent files are synthesized under `$REVIEW_TMPDIR/dynamic-archetypes/` and are ephemeral; they bypass `agent-sync`. In diff mode, docs-only, test-only, and generated-only diffs skip the scout and emit `SCOUT_STATUS=skipped-<mode>`.
+
+Once-per-round-dispatch is scoped to `$REVIEW_TMPDIR`. Standalone `/review` reuses the sentinel for the run; `/implement` creates a new round dir after fixes, so the scout can run again against the changed diff in the next round.
+
 `PANEL_MODE=waterfall` is always emitted (the waterfall is the only dispatch mode). `PANEL_SHAPE=simple|hard` reports the selected topology shape. `DISPATCH_OK=false` is emitted when any Phase 3 Claude slot fails, so callers can gate on full-panel availability. `WARN=cost-fallback-exceeded-threshold` is emitted when the Phase 3 fallback count exceeds `LARCH_FALLBACK_CLAUDE_WARN_THRESHOLD`.
 
 Pass `--description-text` to thread the user's description through to both external and Claude reviewer prompts in description mode.
@@ -20,7 +24,7 @@ Pass `--session-env-path` in nested `/implement` runs. `SESSION_ENV_PATH` is exp
 
 Use `--launch-review <path>` in harnesses to override the external reviewer launcher. The default remains `${CLAUDE_PLUGIN_ROOT}/scripts/launch-review.sh`.
 
-Stdout is `KEY=value` only: `EXTERNAL_OUTPUT_FILES`, `CLAUDE_OUTPUT_FILES`, `PANEL_MODE`, `PANEL_SHAPE`, `SLOT_COUNT`, `PANEL_MANIFEST`, `DISPATCH_OK`, and optionally `WARN`.
+Stdout is `KEY=value` only: `EXTERNAL_OUTPUT_FILES`, `CLAUDE_OUTPUT_FILES`, `PANEL_MODE`, `PANEL_SHAPE`, `SCOUT_STATUS`, `DYNAMIC_SLOTS`, `STATIC_SLOT_COUNT`, `SLOT_COUNT`, `PANEL_MANIFEST`, `DISPATCH_OK`, optional `SCOUT_MANIFEST`, and optional `WARN`. `SLOT_COUNT` is total static plus dynamic slots; `STATIC_SLOT_COUNT` preserves the pre-scout panel size.
 
 On non-zero exit, `FAILURE_LOG=<path>` may appear on stdout.
 

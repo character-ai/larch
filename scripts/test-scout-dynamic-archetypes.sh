@@ -1,0 +1,134 @@
+#!/usr/bin/env bash
+# Regression harness for scout-dynamic-archetypes.sh.
+
+set -euo pipefail
+
+REPO_ROOT=$(cd "$(dirname "$0")/.." && pwd -P)
+SCRIPT="$REPO_ROOT/scripts/scout-dynamic-archetypes.sh"
+export CLAUDE_PLUGIN_ROOT="$REPO_ROOT"
+TMP=$(mktemp -d "${TMPDIR:-/tmp}/test-scout-dynamic-archetypes.XXXXXX")
+trap 'rm -rf "$TMP"' EXIT
+
+fail() {
+    echo "FAIL: $1" >&2
+    exit 1
+}
+
+BIN="$TMP/bin"
+mkdir -p "$BIN"
+cat > "$BIN/claude" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+cat >/dev/null
+if [[ "${SCOUT_STUB_FAIL:-false}" == "true" ]]; then
+    exit 17
+fi
+cat "${SCOUT_STUB_OUTPUT_FILE:?SCOUT_STUB_OUTPUT_FILE required}"
+STUB
+chmod +x "$BIN/claude"
+
+diff_file="$TMP/review.diff"
+scope_file="$TMP/scope-files.txt"
+plan_file="$TMP/plan.md"
+printf 'diff --git a/scripts/foo.sh b/scripts/foo.sh\n' > "$diff_file"
+printf 'scripts/foo.sh\n' > "$scope_file"
+printf '# plan\n' > "$plan_file"
+
+run_case() {
+    local label="$1" fixture="$2" out_dir output stdout_file
+    out_dir="$TMP/$label"
+    mkdir -p "$out_dir"
+    output="$out_dir/scout-manifest.json"
+    stdout_file="$out_dir/stdout.env"
+    PATH="$BIN:$PATH" SCOUT_STUB_OUTPUT_FILE="$fixture" "$SCRIPT" \
+        --mode diff \
+        --diff-file "$diff_file" \
+        --plan-file "$plan_file" \
+        --max-archetypes 4 \
+        --output "$output" \
+        --timeout 5 \
+        > "$stdout_file"
+    printf '%s\n' "$stdout_file"
+}
+
+cat > "$TMP/valid4.json" <<'JSON'
+{"archetypes":[
+  {"name":"api-contract","focus_area":"correctness","weight":4,"rationale":"API changes are central.","prompt_body":"Check API contract compatibility."},
+  {"name":"cli-flow","focus_area":"risk-integration","weight":3,"rationale":"CLI behavior changed.","prompt_body":"Check command flow and user-visible behavior."},
+  {"name":"state-model","focus_area":"architecture","weight":5,"rationale":"State is shared across scripts.","prompt_body":"Check state transitions."},
+  {"name":"error-paths","focus_area":"code-quality","weight":2,"rationale":"Many shell exits exist.","prompt_body":"Check error handling."}
+]}
+JSON
+stdout=$(run_case valid4 "$TMP/valid4.json")
+grep -Fq 'SCOUT_STATUS=ok' "$stdout" || fail "valid4 status"
+grep -Fq 'SCOUT_ARCHETYPE_COUNT=4' "$stdout" || fail "valid4 count"
+[[ "$(jq '.archetypes | length' "$TMP/valid4/scout-manifest.json")" = "4" ]] || fail "valid4 manifest count"
+
+cat > "$TMP/too-many.json" <<'JSON'
+{"archetypes":[
+  {"name":"one","focus_area":"correctness","weight":1,"rationale":"r","prompt_body":"p"},
+  {"name":"two","focus_area":"correctness","weight":1,"rationale":"r","prompt_body":"p"},
+  {"name":"three","focus_area":"correctness","weight":1,"rationale":"r","prompt_body":"p"},
+  {"name":"four","focus_area":"correctness","weight":1,"rationale":"r","prompt_body":"p"},
+  {"name":"five","focus_area":"correctness","weight":1,"rationale":"r","prompt_body":"p"}
+]}
+JSON
+stdout=$(run_case too-many "$TMP/too-many.json")
+grep -Fq 'SCOUT_STATUS=parse-failed' "$stdout" || fail "too-many parse-failed"
+[[ "$(jq '.archetypes | length' "$TMP/too-many/scout-manifest.json")" = "0" ]] || fail "too-many empty manifest"
+
+cat > "$TMP/duplicate.json" <<'JSON'
+{"archetypes":[
+  {"name":"dup-check","focus_area":"correctness","weight":1,"rationale":"first","prompt_body":"first prompt"},
+  {"name":"dup-check","focus_area":"architecture","weight":2,"rationale":"second","prompt_body":"second prompt"}
+]}
+JSON
+stdout=$(run_case duplicate "$TMP/duplicate.json")
+grep -Fq 'SCOUT_STATUS=ok' "$stdout" || fail "duplicate status"
+grep -Fq 'WARN=duplicate archetype name: dup-check' "$stdout" || fail "duplicate warning"
+[[ "$(jq '.archetypes | length' "$TMP/duplicate/scout-manifest.json")" = "1" ]] || fail "duplicate keeps first only"
+
+printf '{not json\n' > "$TMP/malformed.json"
+stdout=$(run_case malformed "$TMP/malformed.json")
+grep -Fq 'SCOUT_STATUS=parse-failed' "$stdout" || fail "malformed parse-failed"
+
+mkdir -p "$TMP/claude-failed"
+if ! PATH="$BIN:$PATH" SCOUT_STUB_FAIL=true SCOUT_STUB_OUTPUT_FILE="$TMP/valid4.json" "$SCRIPT" \
+    --mode diff --diff-file "$diff_file" --max-archetypes 4 --output "$TMP/claude-failed/scout-manifest.json" --timeout 5 \
+    > "$TMP/claude-failed/stdout.env"; then
+    fail "claude failure should be non-fatal"
+fi
+grep -Fq 'SCOUT_STATUS=claude-failed' "$TMP/claude-failed/stdout.env" || fail "claude-failed status"
+
+cat > "$TMP/empty.json" <<'JSON'
+{"archetypes":[]}
+JSON
+stdout=$(run_case empty "$TMP/empty.json")
+grep -Fq 'SCOUT_STATUS=empty' "$stdout" || fail "empty status"
+
+cat > "$TMP/reserved.json" <<'JSON'
+{"archetypes":[{"name":"security","focus_area":"security","weight":1,"rationale":"r","prompt_body":"p"}]}
+JSON
+stdout=$(run_case reserved "$TMP/reserved.json")
+grep -Fq 'SCOUT_STATUS=empty' "$stdout" || fail "reserved rejected"
+grep -Fq 'WARN=reserved archetype name: security' "$stdout" || fail "reserved warning"
+
+cat > "$TMP/invalid-focus.json" <<'JSON'
+{"archetypes":[{"name":"bad-focus","focus_area":"performance","weight":1,"rationale":"r","prompt_body":"p"}]}
+JSON
+stdout=$(run_case invalid-focus "$TMP/invalid-focus.json")
+grep -Fq 'SCOUT_STATUS=empty' "$stdout" || fail "invalid focus rejected"
+
+cat > "$TMP/empty-prompt.json" <<'JSON'
+{"archetypes":[{"name":"empty-prompt","focus_area":"correctness","weight":1,"rationale":"r","prompt_body":""}]}
+JSON
+stdout=$(run_case empty-prompt "$TMP/empty-prompt.json")
+grep -Fq 'SCOUT_STATUS=empty' "$stdout" || fail "empty prompt rejected"
+
+cat > "$TMP/frontmatter.json" <<'JSON'
+{"archetypes":[{"name":"frontmatter","focus_area":"correctness","weight":1,"rationale":"r","prompt_body":"before\n---\nafter"}]}
+JSON
+stdout=$(run_case frontmatter "$TMP/frontmatter.json")
+grep -Fq 'SCOUT_STATUS=empty' "$stdout" || fail "frontmatter prompt rejected"
+
+echo "All assertions passed."

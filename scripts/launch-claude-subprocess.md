@@ -2,7 +2,7 @@
 
 `scripts/launch-claude-subprocess.sh` launches a Claude CLI reviewer subprocess for `/review` fallback slots.
 
-Primary callers: `skills/review/scripts/dispatch-panel.sh` for Claude reviewer slots and `scripts/dispatch-code-voters.sh` for Claude voting slots.
+Primary callers: `skills/review/scripts/dispatch-panel.sh` through waterfall Claude reviewer slots, `scripts/dispatch-code-voters.sh` for Claude voting slots, and `scripts/scout-dynamic-archetypes.sh` for dynamic-reviewer scout proposals.
 
 Invariants:
 

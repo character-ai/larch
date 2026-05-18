@@ -28,6 +28,7 @@ review-context
 review-findings
 review-panel-manifest
 review-round-summary
+review-scout-manifest
 review-tally
 version-bump-reasoning
 oos-issues

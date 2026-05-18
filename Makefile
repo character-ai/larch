@@ -7,6 +7,7 @@
 .PHONY: test-dispatch-code-voters
 .PHONY: test-larch-log-write-round
 .PHONY: test-upgrade-larch
+.PHONY: test-scout-dynamic-archetypes
 # CI splits `lint` into `lint-only` (pre-commit) and `test-harnesses`
 # (regression harnesses). `lint` remains the local-dev convenience target
 # that runs both, defined in terms of the two split targets to prevent drift.
@@ -57,7 +58,7 @@ test-harnesses-11: test-collect-agent-retry test-codex-implementer test-collect-
 # Shard-12 leads with the partition-invariant guard so partition bugs surface.
 test-harnesses-12: test-harness-shards-coverage test-dispatch-code-voters test-agent-model-args test-check-reviewer-failure-threshold test-drop-bump-commit test-implement-anti-halt test-lib-cursor-auth test-rebase-push-keep-on-conflict test-review-structure test-synthesis-subagent
 
-test-harnesses-13: test-dispatch-panel test-alias-structure test-check-reviewers test-effort-prose test-implement-anti-polling-rule test-lib-quiet test-redact test-round-trip-detect test-tally-vote
+test-harnesses-13: test-dispatch-panel test-scout-dynamic-archetypes test-alias-structure test-check-reviewers test-effort-prose test-implement-anti-polling-rule test-lib-quiet test-redact test-round-trip-detect test-tally-vote
 
 test-harnesses-14: test-find-lock-issue test-cursor-implementer test-tally-code-votes test-wait-for-reviewers test-tracking-issue-read-sentinel test-render-specialist-prompt test-launch-cursor-ci test-check-topology-rule-paths test-check-generators test-deny-edit-write test-gh-pr-body-update test-launch-claude-review test-post-tracking-issue test-resolve-repo test-show-skill
 
@@ -459,6 +460,9 @@ test-review-core:
 
 test-dispatch-panel:
 	bash scripts/harness-timer.sh $@ bash skills/review/scripts/test-dispatch-panel.sh
+
+test-scout-dynamic-archetypes:
+	bash scripts/harness-timer.sh $@ bash scripts/test-scout-dynamic-archetypes.sh
 
 test-dispatch-plan-voters:
 	bash scripts/harness-timer.sh $@ bash scripts/test-dispatch-plan-voters.sh

@@ -9,7 +9,7 @@ PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
 source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
 
-usage() { larch_err "Usage: dispatch-panel.sh --mode diff|description --review-tmpdir DIR --codex-available true|false --cursor-available true|false [--panel simple|hard] [context flags]"; }
+usage() { larch_err "Usage: dispatch-panel.sh --mode diff|description --review-tmpdir DIR --codex-available true|false --cursor-available true|false [--panel simple|hard] [--dynamic-archetypes 0-4] [context flags]"; }
 
 MODE=""
 DIFF_FILE=""
@@ -25,6 +25,11 @@ DESCRIPTION_TEXT=""
 DISPATCH_WATERFALL="$PLUGIN_ROOT/scripts/dispatch-with-waterfall.sh"
 SESSION_ENV_PATH="${SESSION_ENV_PATH:-}"
 PANEL="hard"
+DYNAMIC_ARCHETYPES="${LARCH_DYNAMIC_ARCHETYPES_MAX:-0}"
+SCOUT_STATUS="na"
+DYNAMIC_SLOTS=0
+SCOUT_MANIFEST=""
+DIFF_MODE=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -44,6 +49,7 @@ while [[ $# -gt 0 ]]; do
         --launch-review) shift 2 ;; # accepted for backward compat; waterfall owns launch routing
         --session-env-path) SESSION_ENV_PATH="${2:?--session-env-path requires a value}"; shift 2 ;;
         --panel) PANEL="${2:?--panel requires a value}"; shift 2 ;;
+        --dynamic-archetypes) DYNAMIC_ARCHETYPES="${2:?--dynamic-archetypes requires a value}"; shift 2 ;;
         --help) usage; exit 0 ;;
         *) larch_err "dispatch-panel.sh: unknown option: $1"; usage; exit 2 ;;
     esac
@@ -58,26 +64,30 @@ export SESSION_ENV_PATH
 [[ "$CODEX_AVAILABLE" == "true" || "$CODEX_AVAILABLE" == "false" ]] || { larch_err "dispatch-panel.sh: --codex-available must be true or false"; exit 2; }
 [[ "$CURSOR_AVAILABLE" == "true" || "$CURSOR_AVAILABLE" == "false" ]] || { larch_err "dispatch-panel.sh: --cursor-available must be true or false"; exit 2; }
 [[ "$PANEL" == "simple" || "$PANEL" == "hard" ]] || { larch_err "dispatch-panel.sh: --panel must be simple or hard"; exit 2; }
+case "$DYNAMIC_ARCHETYPES" in
+    [0-4]) ;;
+    *) larch_err "dispatch-panel.sh: --dynamic-archetypes/LARCH_DYNAMIC_ARCHETYPES_MAX must be an integer from 0 to 4"; exit 2 ;;
+esac
 mkdir -p "$REVIEW_TMPDIR"
 
 manifest="$REVIEW_TMPDIR/panel-manifest.ndjson"
 : > "$manifest"
 external_outputs=()
 claude_outputs=()
-slot_count=0
+static_slot_count=0
 
 queue_external_slot() {
     local tool="$1" name="$2" out="$3"
     local agent="$PLUGIN_ROOT/agents/reviewer-${name}.md"
     printf '{"slot":"%s","tool":"%s","output":"%s","agent":"%s"}\n' "$name" "$tool" "$out" "$agent" >> "$manifest"
-    slot_count=$((slot_count + 1))
+    static_slot_count=$((static_slot_count + 1))
 }
 
 queue_external_generalist_slot() {
     local tool="$1" out="$2"
     local agent="$PLUGIN_ROOT/agents/code-reviewer.md"
     printf '{"slot":"generic","tool":"%s","output":"%s","agent":"%s"}\n' "$tool" "$out" "$agent" >> "$manifest"
-    slot_count=$((slot_count + 1))
+    static_slot_count=$((static_slot_count + 1))
 }
 
 # Plan file is required when reviewers run; plan-fidelity is always dispatched.
@@ -102,6 +112,98 @@ if [[ "$PANEL" == "hard" ]]; then
     done
 else
     queue_external_generalist_slot codex "$REVIEW_TMPDIR/codex-generalist-output.txt"
+fi
+
+if [[ "$DYNAMIC_ARCHETYPES" != "0" && "$MODE" == "diff" && -n "$DIFF_FILE" && -s "$DIFF_FILE" ]]; then
+    classifier_out=$("$PLUGIN_ROOT/scripts/classify-diff-mode.sh" "$DIFF_FILE" 2>/dev/null || true)
+    DIFF_MODE="${classifier_out#DIFF_MODE=}"
+    case "$DIFF_MODE" in
+        docs-only|test-only|generated-only) SCOUT_STATUS="skipped-$DIFF_MODE" ;;
+        generic|"") DIFF_MODE="generic" ;;
+        *) DIFF_MODE="generic" ;;
+    esac
+fi
+
+synthesize_dynamic_slots() {
+    local scout_manifest="$1"
+    [[ -s "$scout_manifest" ]] || return 0
+    mkdir -p "$REVIEW_TMPDIR/dynamic-archetypes"
+    local row name focus_area weight agent_file rendered_prompt output_file render_args
+    while IFS= read -r row || [[ -n "$row" ]]; do
+        [[ -n "$row" ]] || continue
+        name=$(printf '%s' "$row" | jq -r '.name')
+        focus_area=$(printf '%s' "$row" | jq -r '.focus_area')
+        weight=$(printf '%s' "$row" | jq -r '.weight')
+        agent_file="$REVIEW_TMPDIR/dynamic-archetypes/reviewer-dyn-${name}.md"
+        rendered_prompt="$REVIEW_TMPDIR/dynamic-archetypes/dyn-${name}-prompt.md"
+        output_file="$REVIEW_TMPDIR/dyn-${name}-output.txt"
+        {
+            printf '%s\n' '---'
+            printf 'name: reviewer-dyn-%s\n' "$name"
+            printf 'description: "Ephemeral dynamic reviewer for %s"\n' "$focus_area"
+            printf '%s\n\n' '---'
+            printf '# Dynamic Reviewer: %s\n\n' "$name"
+            printf "Focus area: \`%s\`.\n\n" "$focus_area"
+            printf 'Scout rationale: %s\n\n' "$(printf '%s' "$row" | jq -r '.rationale')"
+            printf '%s\n' "$(printf '%s' "$row" | jq -r '.prompt_body')"
+        } > "$agent_file"
+        render_args=(--agent-file "$agent_file" --mode "$MODE")
+        if [[ "$MODE" == "diff" ]]; then
+            [[ -n "$DIFF_FILE" ]] && render_args+=(--diff-file "$DIFF_FILE")
+            [[ -n "$COMMIT_COUNT" ]] && render_args+=(--commit-count "$COMMIT_COUNT")
+            [[ -n "$DIFF_MODE" ]] && render_args+=(--diff-mode "$DIFF_MODE")
+        else
+            render_args+=(--description-text "${DESCRIPTION_TEXT:-description review}" --scope-files "$SCOPE_FILES")
+        fi
+        [[ -n "$PLAN_FILE" && -f "$PLAN_FILE" ]] && render_args+=(--plan-file "$PLAN_FILE")
+        [[ -n "$FEATURE_FILE" && -f "$FEATURE_FILE" ]] && render_args+=(--feature-file "$FEATURE_FILE")
+        if [[ -n "$COMPETITION_NOTICE_FILE" && -f "$COMPETITION_NOTICE_FILE" ]]; then
+            render_args+=(--competition-notice --competition-notice-file "$COMPETITION_NOTICE_FILE")
+        fi
+        "$PLUGIN_ROOT/scripts/render-specialist-prompt.sh" "${render_args[@]}" > "$rendered_prompt"
+        jq -cn \
+            --arg slot "dyn-$name" \
+            --arg output "$output_file" \
+            --arg prompt_file "$rendered_prompt" \
+            --arg focus_area "$focus_area" \
+            --argjson weight "$weight" \
+            '{slot:$slot, tool:"cursor", output:$output, prompt_file:$prompt_file, weight:$weight, focus_area:$focus_area}' \
+            >> "$manifest"
+        DYNAMIC_SLOTS=$((DYNAMIC_SLOTS + 1))
+    done < <(jq -c '.archetypes[]?' "$scout_manifest")
+}
+
+if [[ "$DYNAMIC_ARCHETYPES" != "0" && "$SCOUT_STATUS" == "na" ]]; then
+    SCOUT_MANIFEST="$REVIEW_TMPDIR/scout-manifest.json"
+    if [[ ! -s "$SCOUT_MANIFEST" ]]; then
+        scout_args=(--mode "$MODE" --max-archetypes "$DYNAMIC_ARCHETYPES" --output "$SCOUT_MANIFEST")
+        [[ -n "$SESSION_ENV_PATH" ]] && scout_args+=(--session-env-path "$SESSION_ENV_PATH")
+        [[ -n "$PLAN_FILE" && -f "$PLAN_FILE" ]] && scout_args+=(--plan-file "$PLAN_FILE")
+        if [[ "$MODE" == "diff" ]]; then
+            scout_args+=(--diff-file "$DIFF_FILE")
+        else
+            scout_args+=(--scope-files "$SCOPE_FILES" --description-text "${DESCRIPTION_TEXT:-description review}")
+        fi
+        scout_output=$("$PLUGIN_ROOT/scripts/scout-dynamic-archetypes.sh" "${scout_args[@]}")
+        while IFS= read -r line || [[ -n "$line" ]]; do
+            key="${line%%=*}"
+            value="${line#*=}"
+            case "$key" in
+                SCOUT_STATUS) SCOUT_STATUS="$value" ;;
+                SCOUT_OUTPUT) SCOUT_MANIFEST="$value" ;;
+                WARN) emit_kv WARN "$value" ;;
+            esac
+        done <<< "$scout_output"
+    else
+        scout_status_file="$REVIEW_TMPDIR/scout-status.env"
+        if [[ -s "$scout_status_file" ]]; then
+            SCOUT_STATUS=$(awk -F= '$1=="SCOUT_STATUS"{print $2; exit}' "$scout_status_file")
+            [[ -n "$SCOUT_STATUS" ]] || SCOUT_STATUS="ok"
+        else
+            SCOUT_STATUS="ok"
+        fi
+    fi
+    synthesize_dynamic_slots "$SCOUT_MANIFEST"
 fi
 
 waterfall_args=(--slots-file "$manifest" --codex-present "$CODEX_AVAILABLE" --cursor-present "$CURSOR_AVAILABLE" --mode "$MODE" --timeout 1800)
@@ -142,6 +244,10 @@ emit_kv EXTERNAL_OUTPUT_FILES "${external_outputs[*]-}"
 emit_kv CLAUDE_OUTPUT_FILES "${claude_outputs[*]-}"
 emit_kv PANEL_MODE waterfall
 emit_kv PANEL_SHAPE "$PANEL"
-emit_kv SLOT_COUNT "$slot_count"
+emit_kv SCOUT_STATUS "$SCOUT_STATUS"
+emit_kv DYNAMIC_SLOTS "$DYNAMIC_SLOTS"
+emit_kv STATIC_SLOT_COUNT "$static_slot_count"
+emit_kv SLOT_COUNT "$((static_slot_count + DYNAMIC_SLOTS))"
+[[ -n "$SCOUT_MANIFEST" ]] && emit_kv SCOUT_MANIFEST "$SCOUT_MANIFEST"
 emit_kv PANEL_MANIFEST "$manifest"
 emit_kv DISPATCH_OK "$dispatch_ok"
