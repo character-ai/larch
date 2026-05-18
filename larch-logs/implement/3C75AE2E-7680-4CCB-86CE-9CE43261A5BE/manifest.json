@@ -6,13 +6,15 @@
   "operator_repo_root": "<REPO_ROOT>",
   "parent_skill": null,
   "issue_number": 2333,
-  "pr_number": null,
+  "pr_number": 2339,
   "status": "in-progress",
   "larch_version": "29.3.12",
-  "model_roster": {"main": "unknown"},
+  "model_roster": {
+    "main": "unknown"
+  },
   "effort": "max",
   "started_at": "2026-05-18T21:41:38Z",
-  "updated_at": "2026-05-18T21:41:38Z",
+  "updated_at": "2026-05-18T22:33:51Z",
   "attempt": 1,
   "superseded_by": null,
   "stalled_at_step": null,
