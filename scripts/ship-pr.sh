@@ -1199,6 +1199,14 @@ run_evaluate_failure() {
     exit_stall "$([ "$phase" = "ci-initial" ] && echo 10-max-retries || echo 12-max-retries)"
 }
 
+is_head_divergence_recoverable() {
+    local text="$1"
+    case "$text" in
+        *"local HEAD"*"does not match PR head OID"*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 run_rebase_rebump() {
     local phase=$1 drop_out rebase_out rebase_rc conflict_out run_id classify_out classify_rc
     local apply_out new_version bump_type reasoning_file
@@ -1485,6 +1493,10 @@ EOF
                     [ "$rc" -ne 0 ] || record_failure ci-merge "merge-pr.sh envelope" 1 "$fail_file" "CI Issues"
                     if [[ "$merge_result" == "error" || "$merge_result" == "admin_failed" ]] && is_transient_net_signature "$error_text"; then
                         exit_transient_net "merge-pr: $error_text"
+                    fi
+                    if [[ "$merge_result" == "error" ]] && is_head_divergence_recoverable "$error_text"; then
+                        run_rebase_rebump "$phase"
+                        return 0
                     fi
                     state_set_many BAIL_REASON "$error_text" STALL_TRACKING true STALL_STEP 12d
                     printf '\n--- ORCHESTRATOR DIRECTIVE (STALL_STEP=12d) ---\nDO NOT improvise recovery. Do NOT patch state files, do NOT force-push, do NOT re-invoke ship-pr.sh manually.\nCorrect action: read STALL_TRACKING and STALL_STEP from state, then continue to Step 16 per skills/implement/SKILL.md.\n' >> "$fail_file"

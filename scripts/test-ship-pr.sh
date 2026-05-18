@@ -1335,6 +1335,50 @@ run_subject "$root" "$tmp" "$tmp/rc"
 assert_rc "$tmp/rc" 4 "non-transient merge-pr: exits 4 (not 6)"
 assert_state_line "$tmp/ship-pr-state.sh" "STALL_TRACKING=true" "non-transient merge-pr: STALL_TRACKING=true"
 
+# Positive case: OID-mismatch merge-pr error routes to run_rebase_rebump, exits 0.
+root=$(make_repo oid_mismatch_recoverable)
+tmp=$(make_tmpdir)
+sentinel_dir=$(mktemp -d /tmp/ship-pr-oid-mismatch.XXXXXX)
+write_state "$tmp/ship-pr-state.sh" ci-merge
+
+# merge-pr.sh: first call returns OID mismatch, second call returns merged
+cat > "$root/scripts/merge-pr.sh" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+count_file="$sentinel_dir/merge-pr-count"
+count=\$(cat "\$count_file" 2>/dev/null || echo 0)
+printf '%s\n' "\$((count + 1))" > "\$count_file"
+if [ "\$count" -eq 0 ]; then
+    echo "MERGE_RESULT=error"
+    echo "ERROR=local HEAD (abc123) does not match PR head OID (def456); refusing to evaluate same-version gate"
+else
+    echo "MERGE_RESULT=merged"
+    echo "ERROR="
+fi
+STUB
+chmod +x "$root/scripts/merge-pr.sh"
+
+# Stubs for run_rebase_rebump dependencies not provided by write_stubs
+for extra in drop-bump-commit.sh git-sync-local-main.sh git-force-push.sh refresh-run-logs.sh; do
+    printf '#!/usr/bin/env bash\nexit 0\n' > "$root/scripts/$extra"
+done
+chmod +x \
+    "$root/scripts/drop-bump-commit.sh" \
+    "$root/scripts/git-sync-local-main.sh" \
+    "$root/scripts/git-force-push.sh" \
+    "$root/scripts/refresh-run-logs.sh"
+
+run_subject "$root" "$tmp" "$tmp/rc"
+assert_rc "$tmp/rc" 0 "oid-mismatch merge-pr error: exits 0 via run_rebase_rebump"
+assert_state_line "$tmp/ship-pr-state.sh" "PHASE=done" "oid-mismatch merge-pr error: PHASE=done after recovery"
+if [ "$(cat "$sentinel_dir/merge-pr-count" 2>/dev/null || echo 0)" -ge 2 ]; then
+    ok "oid-mismatch merge-pr error: merge-pr.sh called at least twice (rebase then retry)"
+else
+    fail "oid-mismatch merge-pr error: merge-pr.sh should be called at least twice"
+    cat "$sentinel_dir/merge-pr-count" 2>/dev/null || true
+fi
+rm -rf "$sentinel_dir"
+
 # Negative case 2: create-pr non-transient error — should exit 4.
 root=$(make_repo non_transient_create_pr)
 tmp=$(make_tmpdir)
