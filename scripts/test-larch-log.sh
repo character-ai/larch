@@ -192,6 +192,7 @@ _stale_repo="$TMP/stale-repo"
 _stale_staging="$TMP/stale-staging"
 _fresh_run="freshrun-abc123"
 _stale_run="stalerun-old999"
+_stale_payload="$TMP/stale-commit-payload.md"
 mkdir -p "$_stale_staging"
 git init "$_stale_repo" >/dev/null 2>&1
 git -C "$_stale_repo" config user.email "ci@test"
@@ -204,12 +205,23 @@ git -C "$_stale_repo" checkout -q -b feature-stale-isolation
 mkdir -p "$_stale_staging/larch-logs/implement/$_stale_run"
 printf '{"schema_version":2,"skill":"implement","run_id":"%s","status":"in-progress"}\n' "$_stale_run" \
     > "$_stale_staging/larch-logs/implement/$_stale_run/manifest.json"
+cat > "$_stale_payload" <<'EOF'
+## Goal
+Verify stale staging directories are ignored.
+
+## Implementation Plan
+Write a valid plan-goals-test payload for the fresh run while a stale run
+directory already exists in the same staging root.
+
+## Test plan
+Run scripts/test-larch-log.sh.
+EOF
 # Init + write fresh run using same staging root that contains the stale dir
 (cd "$_stale_repo" && "$LARCH_LOG" init --log-root "$_stale_staging/larch-logs" \
     --skill implement --run-id "$_fresh_run" --issue 99) >/dev/null
 (cd "$_stale_repo" && "$LARCH_LOG" write --log-root "$_stale_staging/larch-logs" \
     --skill implement --run-id "$_fresh_run" --batch plan-goals-test \
-    --input-file "$_cpayload") >/dev/null
+    --input-file "$_stale_payload") >/dev/null
 (cd "$_stale_repo" && "$LARCH_LOG" commit --log-root "$_stale_staging/larch-logs" \
     --skill implement --run-id "$_fresh_run") >/dev/null
 # Assert: fresh run files exist in repo

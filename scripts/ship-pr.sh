@@ -416,9 +416,16 @@ rewrite_reasoning_new_version() {
                 print "- **Classified version**: `" classified "`"
                 print "- **origin/main version at correction time**: `" origin "`"
                 print "- **Corrected version applied by `ship-pr.sh`**: `" new_version "`"
+                exit 0
             }
+            exit 3
         }
-    ' "$file" > "$tmp_file" && mv "$tmp_file" "$file"
+    ' "$file" > "$tmp_file" &&
+        grep -Fqx -- "- **New version**: \`$corrected_version\`" "$tmp_file" &&
+        mv "$tmp_file" "$file"
+    local rc=$?
+    [ $rc -eq 0 ] || rm -f "$tmp_file"
+    return $rc
 }
 
 FAILURE_LOG_SEQ=0
