@@ -185,6 +185,36 @@ argv_file="$TMP/run-id-manifest.argv"
 RUN_STEP5_REVIEW_SH="$SPY" RUN_STEP5_ARGV_FILE="$argv_file" "$LAUNCHER" --implement-tmpdir "$case_dir" --round-num 2 >/dev/null
 assert_contains "$(cat "$argv_file")" "review-manifest-run" "manifest RUN_ID overrides session-id"
 
+echo "=== PLAN_FILE missing: fallback to design-export/plan.txt with loud warning (#2326) ==="
+case_dir="$TMP/plan-file-fallback"
+make_tmpdir "$case_dir" SIMPLE true false
+grep -v '^PLAN_FILE=' "$case_dir/session-env.sh" > "$case_dir/session-env.sh.new"
+mv "$case_dir/session-env.sh.new" "$case_dir/session-env.sh"
+mkdir -p "$case_dir/design-export"
+printf '%s\n' "Recovered plan body from design-export." > "$case_dir/design-export/plan.txt"
+argv_file="$TMP/fallback.argv"
+set +e
+out="$(RUN_STEP5_REVIEW_SH="$SPY" RUN_STEP5_ARGV_FILE="$argv_file" "$LAUNCHER" --implement-tmpdir "$case_dir" --round-num 1 2>&1)"
+rc=$?
+set -e
+if [[ "$rc" -eq 0 ]]; then pass "step5 fallback continues (exit 0)"; else fail "step5 fallback rc=$rc"; fi
+assert_contains "$out" "PLAN_FILE missing from session-env" "step5 fallback emits PLAN_FILE-missing warning"
+assert_contains "$out" "recovering from design-export/plan.txt" "step5 fallback names recovery source"
+assert_contains "$out" "THIS IS A BUG" "step5 fallback flags as bug"
+assert_contains "$(cat "$argv_file")" "$case_dir/design-export/plan.txt" "step5 fallback passes design-export plan to review"
+
+echo "=== PLAN_FILE missing AND design-export missing: fail loud ==="
+case_dir="$TMP/plan-file-fail"
+make_tmpdir "$case_dir" SIMPLE true false
+grep -v '^PLAN_FILE=' "$case_dir/session-env.sh" > "$case_dir/session-env.sh.new"
+mv "$case_dir/session-env.sh.new" "$case_dir/session-env.sh"
+set +e
+out="$("$LAUNCHER" --implement-tmpdir "$case_dir" --round-num 1 2>&1)"
+rc=$?
+set -e
+if [[ "$rc" -eq 2 ]]; then pass "step5: no PLAN_FILE and no design-export exits 2"; else fail "step5 no-fallback rc=$rc"; fi
+assert_contains "$out" "PLAN_FILE missing from session-env" "step5 no-fallback error"
+
 TOTAL=$((PASS + FAIL))
 if [[ "$FAIL" -eq 0 ]]; then
     printf 'PASS: test-run-step5-review.sh - %s/%s assertions\n' "$PASS" "$TOTAL"

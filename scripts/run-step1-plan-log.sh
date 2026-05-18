@@ -114,7 +114,22 @@ export CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT"
 export IMPLEMENT_TMPDIR
 
 PLAN_FILE="$(session_get "$SESSION_ENV_PATH" PLAN_FILE "")"
-[[ -n "$PLAN_FILE" ]] || fail "PLAN_FILE missing from session-env"
+if [[ -z "$PLAN_FILE" ]]; then
+    # Belt-and-braces fallback: a buggy Step 1 writer may leave session-env.sh
+    # missing PLAN_FILE even when /design wrote design-export/plan.txt. Recover
+    # from the conventional path so the run progresses, but emit a LOUD stderr
+    # warning so the upstream defect stays visible (see issue #2326). The
+    # warning is intentionally noisy: it names this script and tells the
+    # operator to investigate the Step 1 writer rather than treating this
+    # message as the bug.
+    DESIGN_EXPORT_PLAN="$IMPLEMENT_TMPDIR/design-export/plan.txt"
+    if [[ -s "$DESIGN_EXPORT_PLAN" ]]; then
+        printf '**⚠ run-step1-plan-log.sh: PLAN_FILE missing from session-env; recovering from design-export/plan.txt. THIS IS A BUG — investigate the Step 1 writer (persist-post-plan-keys.sh).**\n' >&2
+        PLAN_FILE="$DESIGN_EXPORT_PLAN"
+    else
+        fail "PLAN_FILE missing from session-env"
+    fi
+fi
 [[ -f "$PLAN_FILE" ]] || fail "PLAN_FILE not found: $PLAN_FILE"
 
 COMPOSE_SH="${RUN_STEP1_COMPOSE_SH:-$PLUGIN_ROOT/scripts/compose-plan-goals-test.sh}"
