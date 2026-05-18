@@ -1,0 +1,36 @@
+Gathering the branch diff, commit list, and key changed files for a read-only review.
+
+Searching the diff for planned files and reading the implementations.
+
+Reading implementation files in the workspace for accurate line numbers and logic review. Diff is dominated by `larch-logs/`; focusing on code changes.
+
+Reviewed the precomputed diff (notably `scripts/*`, `skills/implement/scripts/*`, `hooks/hooks.json`, `Makefile`, `agent-lint.toml`, `SECURITY.md`, `github-remote-repo.sh`, plus large `larch-logs/` noise per your scope rules) and the current workspace copies of the touched scripts for line-accurate citations.
+
+### In-Scope Findings
+
+1. **Nit** · `code-quality` · [scripts/compose-review-findings.md](scripts/compose-review-findings.md):5-8 — The contract still says code-review rejections are read from `$IMPLEMENT_TMPDIR/round-*/rejected-findings.md` (and parent `rejected-findings.md`), but [scripts/compose-review-findings.sh](scripts/compose-review-findings.sh):163-176 prefers `rejected-findings-full.md` when it exists and is non-empty. Someone wiring artifacts from the doc alone can omit the full file and get different composition than the script. Extend the input bullets to state `rejected-findings-full.md` first, then the bare `.md` fallback (same for the parent tmpdir fallback).
+
+2. **Latent** · `code-quality` (plan) · [skills/implement/scripts/write-rejected-findings.sh](skills/implement/scripts/write-rejected-findings.sh):43-51 — The implementation plan called for preferring `rejected-findings-full.md` when `--run-id` and `--log-root` are set; the script always sets `detail_file` from the full artifact whenever it is non-empty, so `REJECTED_COUNT` / `details=` also follow the full file even when no run log is written. That is likely desirable but is a broader semantic change than the plan text. Either gate `detail_file` on log args or document global preference explicitly (and align with [skills/implement/scripts/write-rejected-findings.md](skills/implement/scripts/write-rejected-findings.md):12-17).
+
+3. **Latent** · `correctness` · [scripts/hook-anti-read-poll.sh](scripts/hook-anti-read-poll.sh):63-68 — `age=$(( now - first_ts ))` is not clamped; if `first_ts` is ever greater than `now` (clock skew, manual `HOOK_ANTI_READ_POLL_NOW` in tests, restored state), `age` is negative and `[ "$age" -le "$WINDOW_SECS" ]` stays true, so the third read can still emit a reminder even though real wall time between first and third read exceeded 30 seconds. Clamp to non-negative age or reset the streak when `now < first_ts`.
+
+4. **Nit** · `code-quality` · [scripts/hook-anti-read-poll.sh](scripts/hook-anti-read-poll.sh):13-20 — The hook runs `jq` five times on the same JSON blob. A single `jq` extracting all needed fields would match common hook style and reduce fork overhead on every Read.
+
+5. **Nit** · `risk-integration` · [scripts/test-hook-anti-read-poll.sh](scripts/test-hook-anti-read-poll.sh):76-84 — The “different path resets counter” case switches `cwd` to `/proj2`, which uses a different state file than the `/proj` streak above, so it does not prove same-`cwd_hash` state isolation for path changes (the production case). Prefer one fixed `cwd` and vary only `file_path` to match the hook’s real layout.
+
+### Out-of-Scope Observations
+
+1. **Nit** · `code-quality` · [scripts/github-remote-repo.sh](scripts/github-remote-repo.sh):25-32 — Only changes literal `github\.com` to `github[.]com` in regexes; unrelated to P/Q but harmless style/agent-lint hygiene. Not tied to the feature description.
+
+2. **Latent** · `correctness` · [scripts/compose-review-findings.sh](scripts/compose-review-findings.sh):77-151 — `counter` resets per `parse_artifact` call, so multiple rounds can each emit `REJ_C1`, `REJ_C1`, etc., in one composed file. This predates the branch diff and was not introduced here.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	nit	code-quality	scripts/compose-review-findings.md:5-8	Contract lists only round-*/rejected-findings.md while the script prefers rejected-findings-full.md when present.	Operators or tests following only the markdown contract may omit full.md and see different composed output than production.	Document rejected-findings-full.md first, then bare rejected-findings.md (and parent tmpdir fallback) to match compose-review-findings.sh:163-176.
+1	in_scope	latent	code-quality	skills/implement/scripts/write-rejected-findings.sh:43-51	Full artifact preference applies whenever full exists, not only when --run-id and --log-root are set as the plan described.	REJECTED_COUNT/details= follow full.md even when no log copy runs, a broader behavior change than the written plan.	Gate detail_file on log args or update plan and write-rejected-findings.md to state global preference explicitly.
+1	in_scope	latent	correctness	scripts/hook-anti-read-poll.sh:63-68	age=(now-first_ts) is not clamped for clock skew or test clocks.	Negative age keeps -le 30 true so the threshold branch can fire after long real gaps if first_ts > now.	Use max(0,now-first_ts) or reset streak when now < first_ts.
+1	in_scope	nit	code-quality	scripts/hook-anti-read-poll.sh:13-20	Five jq invocations per hook run on the same JSON.	Extra fork/exec on every Read in busy sessions.	Parse tool_name, file_path, offset, cwd in one jq call.
+1	in_scope	nit	risk-integration	scripts/test-hook-anti-read-poll.sh:76-84	Different-path reset test uses a new cwd so it does not hit the same state file as earlier cases.	Less assurance that path switching resets state in the real single-project cwd_hash file.	Keep cwd constant and only change file_path in the reset scenario.
+1	out_of_scope	nit	code-quality	scripts/github-remote-repo.sh:25-32	Regex-only tweak escaping dots in github.com.	No functional tie to rejected-findings or Read-poll work.	None required for this feature.
+1	out_of_scope	latent	correctness	scripts/compose-review-findings.sh:77-151	REJ_C* ids restart per parse_artifact invocation, so duplicate headings across rounds are possible.	Pre-existing counter scoping; unchanged by this branch.	None for this review scope.
+```

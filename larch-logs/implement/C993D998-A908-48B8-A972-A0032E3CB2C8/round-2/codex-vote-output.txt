@@ -1,0 +1,29 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: EXONERATE -- legitimate tooling tradeoff, but not worth a tracking issue.
+FINDING_4: EXONERATE -- traceability nit is legitimate, but not issue-worthy.
+FINDING_5: EXONERATE -- legitimate process nit, but isolating this churn later is not worth a new issue.
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: EXONERATE -- concurrency risk is plausible, but locking a best-effort warning hook is more complexity than warranted.
+FINDING_9: EXONERATE -- extra jq processes are real, but combining extraction is not worth the complexity here.
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: NO -- the test already switches paths within the same cwd after starting a fresh state scope.
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: EXONERATE -- stale plan-path prose is legitimate, but runtime code and shipped hook docs already agree.
+FINDING_16: YES
+FINDING_17: YES
+FINDING_18: YES
+FINDING_19: YES
+FINDING_20: YES
+FINDING_21: EXONERATE -- no runtime bug, and the shipped hook documentation already has the actual state path.
+FINDING_22: EXONERATE -- race is plausible, but atomic locking is too much for this best-effort hook.
+FINDING_23: YES
+FINDING_24: YES
+FINDING_25: YES
+FINDING_26: YES
+FINDING_27: YES
+FINDING_28: EXONERATE -- bounded input is defensible, but the hook event source does not justify added complexity.
+FINDING_29: YES

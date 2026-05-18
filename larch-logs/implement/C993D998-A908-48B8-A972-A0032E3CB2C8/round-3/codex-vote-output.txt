@@ -1,0 +1,28 @@
+FINDING_1: EXONERATE -- scope drift is real but not worth a tracking issue.
+FINDING_2: EXONERATE -- committed run logs are review noise, not a defect needing an issue.
+FINDING_3: EXONERATE -- the regex cleanup is unrelated but too trivial to track separately.
+FINDING_4: YES
+FINDING_5: NO -- Step 16 names the destination log file; the helper contract documents full-file preference.
+FINDING_6: EXONERATE -- actual hook docs match the implemented state path, so only the historical plan drift remains.
+FINDING_7: YES
+FINDING_8: EXONERATE -- reducing jq forks would complicate parsing untrusted path fields more than the performance nit warrants.
+FINDING_9: EXONERATE -- the broader full-file preference is now documented and tested as the intended helper contract.
+FINDING_10: NO -- Read offset is numeric in the hook contract; invalid strings falling back to 0 is acceptable fail-open behavior.
+FINDING_11: NO -- this depends on non-contract string offsets rather than real Read payload semantics.
+FINDING_12: EXONERATE -- advisory hook state can tolerate rare concurrent races without adding lock handling.
+FINDING_13: NO -- duplicate of the non-contract string-offset normalization concern.
+FINDING_14: YES
+FINDING_15: NO -- duplicate of FINDING_14.
+FINDING_16: NO -- current docs, tests, and changelog define full-derived counts when the full artifact exists.
+FINDING_17: NO -- duplicate of FINDING_16 and contradicted by the current documented contract.
+FINDING_18: EXONERATE -- the fallback treats a non-empty rejected artifact as at least one finding; unknown-status handling is more contract than this needs.
+FINDING_19: EXONERATE -- duplicate unknown-format count concern; returning 0 would be at least as misleading.
+FINDING_20: EXONERATE -- AS-014 has many legitimate bash-regex false positives in this repo, and the global disable is documented.
+FINDING_21: EXONERATE -- duplicate of FINDING_20.
+FINDING_22: YES
+FINDING_23: NO -- speculative alternate payload shapes are not enough to expand the hook contract.
+FINDING_24: NO -- the test does switch paths within the same cwd/state file for that scenario.
+FINDING_25: YES
+FINDING_26: YES
+FINDING_27: YES
+FINDING_28: YES

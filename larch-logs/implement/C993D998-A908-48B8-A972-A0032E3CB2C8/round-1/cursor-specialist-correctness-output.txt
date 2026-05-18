@@ -1,0 +1,45 @@
+Gathering the pre-computed diff and commit history for a read-only correctness review.
+
+Searching the diff for plan-relevant files and reading key sections.
+
+Reading diff hunks for the core implementation files and the full scripts in the repo for complete logic.
+
+Checking whether `rejected-findings.md` can be empty while `rejected-findings-full.md` is non-empty, and verifying the hook's "consecutive" semantics.
+
+Checking for remaining `[Code Review]` expectations in compose paths and whether `write-rejected-findings` early-exit is reachable with a non-empty full file.
+
+Here is the read-only review. I read the pre-computed diff (including the implementation hunks), the full current copies of [`scripts/hook-anti-read-poll.sh`](scripts/hook-anti-read-poll.sh), [`skills/implement/scripts/write-rejected-findings.sh`](skills/implement/scripts/write-rejected-findings.sh), and [`scripts/compose-review-findings.sh`](scripts/compose-review-findings.sh) (parser section), plus [`skills/review/scripts/emit-tally.sh`](skills/review/scripts/emit-tally.sh) to validate the rejected-findings lifecycle. Commits on the branch since merge-base with `main`: `d26aa37f Fix rejected-findings log detail and add Read-poll anti-poll hook`, `1b0742f8 Bump version to 29.3.12 (#2332)`.
+
+### In-Scope Findings
+
+1. **Important** (`correctness`, `requirements` + `plan`) — [`scripts/hook-anti-read-poll.sh:41-56`](scripts/hook-anti-read-poll.sh)  
+   The hook advances the streak on every `Read` with the same `file_path` + `offset` within 30s; it does **not** require that those `Read` calls be consecutive in the overall tool stream (e.g. `Read`, `Bash`, `Read`, `Bash`, `Read` still reaches `count=3` and fires). The feature text calls for “read 3+ times **consecutively**,” which is usually read as back-to-back `Read` invocations only. **Scenario:** an agent alternates small `Bash` checks with the same `Read` and gets warned without having issued three `Read` calls in a row. **Fix:** Narrow the contract to “repeated identical `Read` within 30s” in docs/requirements, or encode “last tool was `Read`” / session-level consecutiveness if the product meaning is strict (harder in a hook-only design).
+
+2. **Important** (`correctness`, `plan`) — [`scripts/compose-review-findings.sh:127-139`](scripts/compose-review-findings.sh)  
+   `code-review-rejected` parsing now only opens a block on `### [rejected] …`. Any older or stubbed `rejected-findings-full.md` that still uses `### [Code Review] …` section heads is no longer parsed as rejected findings at all (generic `###` branch flushes and drops the section). **Scenario:** Re-run `compose-review-findings.sh` on an archived tmpdir or fixture whose full rejected artifact predates the tally header format; composed `FINDINGS_TOTAL` omits those rejections and bodies disappear from the composed markdown. **Fix:** Optionally accept both header shapes, or document a one-time migration path for old logs.
+
+3. **Latent** (`correctness`, `both`) — [`skills/implement/scripts/write-rejected-findings.sh:41-59`](skills/implement/scripts/write-rejected-findings.sh)  
+   If `rejected-findings.md` is missing or empty, the script exits `STATUS=empty` before the log copy path runs, even when `rejected-findings-full.md` exists and is non-empty. **Scenario:** Unusual or hand-built tmpdir state (or a partial pipeline failure) with only the full file materialized; the run log never receives the detailed rejected artifact despite “full” content on disk. **Fix:** Before the early exit, treat a non-empty `rejected-findings-full.md` as evidence of non-empty rejected state (or merge gates with the plan’s “prefer full” rule). In the normal `emit-tally.sh` path, the compact file still gets a non-empty `# Rejected Findings` header, so this is an edge case outside the happy path.
+
+4. **Nit** (`risk-integration`, `plan`) — [`scripts/hook-anti-read-poll.sh:50-56`](scripts/hook-anti-read-poll.sh)  
+   The condition uses `count >= 3`, so every further identical `Read` in the same 30s window emits another `additionalContext` JSON line. **Scenario:** Pathological polling floods the hook channel with duplicate reminders after the first warning. **Fix:** Fire only on `count == 3`, or add a “warned until reset” bit in the state file.
+
+5. **Nit** (`code-quality`, `plan`) — [`scripts/test-hook-anti-read-poll.sh:45-47`](scripts/test-hook-anti-read-poll.sh)  
+   The comment “Wipe state by using a new cwd” does not match the test (same `cwd`, different `offset`). Misleading for future maintainers. **Fix:** Correct the comment to describe offset-based reset on the same project.
+
+### Out-of-Scope Observations
+
+1. **Nit** (`code-quality`, pre-existing) — [`skills/review/scripts/test-review-core.sh:161-162`](skills/review/scripts/test-review-core.sh)  
+   The emit-tally stub still writes `### [Code Review]` into `rejected-findings-full.md`. This file is not part of the reviewed diff; it is only a consistency risk if those fixtures are ever fed through `compose-review-findings.sh`, which now keys on `### [rejected]`.
+
+2. **Nit** (`architecture`, pre-existing) — Large committed [`larch-logs/implement/...`](larch-logs/implement/) tree in the diff: per your instructions, treated as intentional run-log noise, not scope drift.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/hook-anti-read-poll.sh:41-56	Streak counts identical Read uses within 30s without requiring consecutive Read-only tool sequence	Read then Bash then Read then Bash then Read on same path+offset still hits count=3 and emits though Reads are not back-to-back	Align requirements/docs to actual behavior or add session-level consecutiveness if required
+1	in_scope	important	correctness	scripts/compose-review-findings.sh:127-139	code-review-rejected parser only recognizes ### [rejected] headers	Re-composing from legacy rejected-findings-full.md using ### [Code Review] drops all rejected sections and under-reports FINDINGS_TOTAL	Accept legacy header or document migration
+1	in_scope	latent	correctness	skills/implement/scripts/write-rejected-findings.sh:41-59	Early empty exit on bare rejected-findings.md skips copying non-empty rejected-findings-full.md	Full detail file exists while bare file is empty; run log never gets full copy; STATUS=empty	Consider full-file presence before STATUS=empty short-circuit
+1	in_scope	nit	risk-integration	scripts/hook-anti-read-poll.sh:50-56	Warns on every Read once count>=3 within window	Continued polling emits duplicate JSON reminders each Read	Emit once per streak or throttle
+1	in_scope	nit	code-quality	scripts/test-hook-anti-read-poll.sh:45-47	Comment claims new cwd clears state; test uses same cwd and different offset	Maintainers misread reset semantics	Fix comment text
+1	out_of_scope	nit	code-quality	skills/review/scripts/test-review-core.sh:161-162	Stub rejected-findings-full still uses ### [Code Review] pattern	Not introduced by this diff; possible future confusion if composed with new parser	Update stub if ever wired to compose-review-findings
+```

@@ -1,0 +1,33 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: EXONERATE -- Legitimate plan/history noise, but not worth future issue tracking.
+FINDING_4: EXONERATE -- The implementation preserves per-cwd isolation; this is only a doc-plan wording mismatch.
+FINDING_5: EXONERATE -- True fixture drift, but unused enough that a tracking issue would be disproportionate.
+FINDING_6: EXONERATE -- True fixture drift, but not introduced in the relevant path and not issue-worthy.
+FINDING_7: EXONERATE -- Broad-surface concern is legitimate but informational and covered by stronger in-scope findings.
+FINDING_8: EXONERATE -- Plausible future parser fragility, but current tally format is narrow and fixing it risks overgeneralizing.
+FINDING_9: YES
+FINDING_10: EXONERATE -- Combining jq calls is a micro-optimization for a hook that exits quickly.
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: EXONERATE -- Tab/newline paths are a real edge case, but JSON state is more complexity than this hook warrants.
+FINDING_17: NO -- Bash interleaving is still a Read-poll pattern the hook should catch.
+FINDING_18: EXONERATE -- Duplicate reminders can be noisy, but repeated warnings are consistent with the current hook contract.
+FINDING_19: YES
+FINDING_20: YES
+FINDING_21: YES
+FINDING_22: YES
+FINDING_23: EXONERATE -- Global suppression has risk, but scoped support is unclear and a manual-review process is too much here.
+FINDING_24: YES
+FINDING_25: EXONERATE -- Debouncing is optional polish, not necessary for the warning hook’s correctness.
+FINDING_26: EXONERATE -- Throttling duplicate warnings is a low-value refinement.
+FINDING_27: YES
+FINDING_28: YES
+FINDING_29: EXONERATE -- Additional interleave coverage would be nice, but existing path-reset coverage is enough for this change.
+FINDING_30: YES
+FINDING_31: YES
+FINDING_32: YES
+FINDING_33: YES

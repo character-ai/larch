@@ -1,0 +1,28 @@
+FINDING_1: EXONERATE -- prior-run AS-014 and regex-fix changes are already committed with their own run log and changelog entry; no tracking issue needed.
+FINDING_2: NO -- committed run logs are explicitly per project policy; not a problem to note.
+FINDING_3: EXONERATE -- regex rewrite is correct and directly tied to the AS-014 fix that the branch includes; not worth a separate tracking issue.
+FINDING_4: EXONERATE -- pre-existing counter-scoping behavior, unchanged by this branch; not issue-worthy.
+FINDING_5: YES
+FINDING_6: EXONERATE -- subdirectory layout with chmod 700 is cleaner and more secure than the plan's flat-file description; deviation is an improvement.
+FINDING_7: EXONERATE -- minor doc gap; the full-file preference is already documented in write-rejected-findings.md; compose-review-findings.md update was scoped to the inner-heading fix.
+FINDING_8: EXONERATE -- per-Read hook overhead from extra jq forks is negligible at the 5 s timeout budget; consolidating adds quoting complexity per BASH_AUTHORING.md.
+FINDING_9: EXONERATE -- using detail_file for counting is more accurate than the bare ledger; write-rejected-findings.md explicitly documents the full-file preference as the contract.
+FINDING_10: EXONERATE -- Read tool offset is always an integer or null; non-digit normalization to 0 is a reasonable defensive guard.
+FINDING_11: EXONERATE -- jq normalizes JSON integers to canonical strings before the case guard; leading-zero forms cannot survive the jq parse, so string equality is correct in practice.
+FINDING_12: EXONERATE -- Claude Code PostToolUse hooks fire sequentially within a session; concurrent invocation is not a real scenario, and a missed warning is the worst-case outcome.
+FINDING_13: EXONERATE -- the state file is always written with normalized $offset values, so last_offset cannot contain non-canonical strings.
+FINDING_14: EXONERATE -- a spurious warning from clock skew or a corrupt state file is an acceptable fail-open outcome; hooks must never block tool use.
+FINDING_15: EXONERATE -- duplicate of FINDING_14; same clock-skew concern, same acceptable fail-open outcome.
+FINDING_16: EXONERATE -- counting from the full artifact is more accurate than the bare ledger; write-rejected-findings.md now formally documents this as the contract.
+FINDING_17: EXONERATE -- duplicate of FINDING_16; same plan-vs-implementation delta, same reasoning.
+FINDING_18: EXONERATE -- "at least 1 for non-empty file" fallback preserves prior behavior and is conservative rather than misleading; returning 0 for an unknown-format non-empty file would be worse.
+FINDING_19: EXONERATE -- duplicate of FINDING_18.
+FINDING_20: EXONERATE -- AS-014 disable is intentional defense-in-depth, already reviewed and exonerated in the prior round-1 run.
+FINDING_21: EXONERATE -- duplicate of FINDING_20.
+FINDING_22: EXONERATE -- the old `[Code Review] REVIEWER_NAME` header was dead code against real tally output; the new format matches what the pipeline actually produces.
+FINDING_23: EXONERATE -- fail-open on unknown or renamed payload fields is the correct hook posture and matches the plan's edge-case spec.
+FINDING_24: EXONERATE -- path-switch reset is tested, even if via a fresh cwd; the behavior is simple enough that code inspection confirms correctness.
+FINDING_25: YES
+FINDING_26: EXONERATE -- duplicate of FINDING_25; adding a separate PERSIST flag would add complexity beyond what the fix requires.
+FINDING_27: EXONERATE -- duplicate of FINDING_25; documentation alternative is weaker than emitting the actual count.
+FINDING_28: EXONERATE -- file paths containing tabs are vanishingly rare in practice; the failure mode (missed warning) is benign, and the hook output deliberately does not reflect the path.
