@@ -81,8 +81,7 @@ extract_individual_targets() {
 extract_shard_prereqs() {
   local makefile="$1"
   local out_all="$2"
-  local out_guard_shard="$3"
-  local out_expected_shards="${4:-}"
+  local out_expected_shards="${3:-}"
   local n
   local count
   local line
@@ -93,7 +92,6 @@ extract_shard_prereqs() {
   discovered_shards="$(grep -Eo '^test-harnesses-[0-9]+:' "$makefile" | awk '{ sub(/^test-harnesses-/, ""); sub(/:$/, ""); print }' | sort -nu)"
 
   : > "$out_all"
-  : > "$out_guard_shard"
   if [[ -n "$out_expected_shards" ]]; then
     : > "$out_expected_shards"
   fi
@@ -138,9 +136,6 @@ extract_shard_prereqs() {
       if [[ -z "$GUARD_SHARD_NAME" ]]; then
         GUARD_SHARD_NAME="test-harnesses-$n"
         GUARD_SHARD_FIRST="$first_prereq"
-        for prereq in $line; do
-          printf '%s\n' "$prereq" >> "$out_guard_shard"
-        done
       fi
     fi
   done
@@ -181,7 +176,6 @@ validate_makefile() {
   local continuation_violations="$TMPDIR_SHARDS/continuation-violations"
   local individual="$TMPDIR_SHARDS/individual"
   local shard_all="$TMPDIR_SHARDS/shard-all"
-  local guard_shard="$TMPDIR_SHARDS/guard-shard"
   local shard_no_self="$TMPDIR_SHARDS/shard-no-self"
   local duplicates="$TMPDIR_SHARDS/duplicates"
   local missing="$TMPDIR_SHARDS/missing"
@@ -217,7 +211,7 @@ validate_makefile() {
   grep -nE "^test-harnesses-[0-9]+:.*\\\\" "$makefile" > "$continuation_violations" || true
 
   extract_individual_targets "$makefile" > "$individual"
-  extract_shard_prereqs "$makefile" "$shard_all" "$guard_shard" "$umbrella_expected"
+  extract_shard_prereqs "$makefile" "$shard_all" "$umbrella_expected"
 
   grep -Fxv 'test-harness-shards-coverage' "$shard_all" | sort -u > "$shard_no_self" || true
   sort "$shard_all" | uniq -d > "$duplicates"
