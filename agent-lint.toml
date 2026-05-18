@@ -1310,4 +1310,27 @@ exclude = [
   # the other test-* harnesses above.
   "scripts/test-write-tally.sh",
   "scripts/test-write-tally.md",
+  # skills/implement/scripts/test-*.sh entries below are offline regression
+  # harnesses for the extracted /implement prompt-side wrappers introduced by
+  # the Step 0.5/4/7/7a/11/16/16a/17/18 script factoring work. They are
+  # referenced from Makefile targets in test-harnesses-3 and from sibling
+  # contracts, not from runtime skill prose.
+  "skills/implement/scripts/test-post-tracking-issue.sh",
+  "skills/implement/scripts/test-post-tracking-issue.md",
+  "skills/implement/scripts/test-commit-implementation.sh",
+  "skills/implement/scripts/test-commit-implementation.md",
+  "skills/implement/scripts/test-commit-review-fixes.sh",
+  "skills/implement/scripts/test-commit-review-fixes.md",
+  "skills/implement/scripts/test-generate-code-flow-diagram.sh",
+  "skills/implement/scripts/test-generate-code-flow-diagram.md",
+  "skills/implement/scripts/test-refresh-execution-issues.sh",
+  "skills/implement/scripts/test-refresh-execution-issues.md",
+  "skills/implement/scripts/test-write-rejected-findings.sh",
+  "skills/implement/scripts/test-write-rejected-findings.md",
+  "skills/implement/scripts/test-slack-issue-announce.sh",
+  "skills/implement/scripts/test-slack-issue-announce.md",
+  "skills/implement/scripts/test-write-final-report.sh",
+  "skills/implement/scripts/test-write-final-report.md",
+  "skills/implement/scripts/test-cleanup.sh",
+  "skills/implement/scripts/test-cleanup.md",
 ]
