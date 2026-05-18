@@ -16,6 +16,7 @@ Covered cases:
 6. Pre-existing dirty worktree still fails before any mutation and includes the `/implement` phantom-file guidance substring.
 7. Commit failure still uses the post-commit rollback path.
 8. Regression guard (NEW_VERSION < ORIGIN_VERSION) emits `APPLIED=false`, restores `plugin.json`, unstages the index, removes the backup, and creates no commit.
+9. Larch-internal untracked artifacts (`*.launcher-stderr`, `*.redacted.log`) are tolerated: `apply-bump.sh` succeeds (APPLIED=true), creates the bump commit, and emits a WARN line to stderr naming the tolerated files.
 
 ## Fixture Layout
 

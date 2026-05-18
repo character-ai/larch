@@ -87,8 +87,24 @@ rollback_before_commit() {
 # `git status --porcelain` covers tracked changes (staged and unstaged) AND
 # untracked files — unlike `git diff-index --quiet HEAD --` which silently
 # ignores untracked entries.
-if [[ -n "$(git status --porcelain 2>/dev/null)" ]]; then
-  fail "Working tree is not clean (staged, unstaged, or untracked changes present); refusing to bump version. Mid-/implement run: check tracking issue Execution Issues section or \$IMPLEMENT_TMPDIR/execution-issues.md for phantom file warnings. Otherwise: commit, stash, or clean them first."
+#
+# Known-larch-internal untracked artifacts (.launcher-stderr sidecars from the
+# review dispatch, *.redacted.log from relevant-checks) are tolerated: they do
+# not affect the bump commit and appear when a /implement run reaches Step 8
+# without fully cleaning up review artifacts.  Any other dirty entry (staged,
+# tracked-modified, or truly foreign untracked files) still fails immediately.
+_raw_status=$(git status --porcelain 2>/dev/null)
+if [[ -n "$_raw_status" ]]; then
+  _non_internal=$(printf '%s\n' "$_raw_status" \
+    | grep -v '^?? .*\.launcher-stderr$' \
+    | grep -v '^?? .*\.redacted\.log$' \
+    || true)
+  if [[ -n "$_non_internal" ]]; then
+    fail "Working tree is not clean (staged, unstaged, or untracked changes present); refusing to bump version. Mid-/implement run: check tracking issue Execution Issues section or \$IMPLEMENT_TMPDIR/execution-issues.md for phantom file warnings. Otherwise: commit, stash, or clean them first."
+  fi
+  # Only larch-internal artifacts present; log and tolerate.
+  _internal_list=$(printf '%s\n' "$_raw_status" | awk '{print $2}' | tr '\n' ' ' | sed 's/ $//')
+  printf 'WARN: larch-internal untracked artifacts present (tolerated before bump): %s\n' "$_internal_list" >&2
 fi
 
 # Step 2: Validate plugin.json parses.

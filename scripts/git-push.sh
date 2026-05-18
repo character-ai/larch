@@ -23,4 +23,27 @@ if ! BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null); then
 fi
 echo "BRANCH=$BRANCH"
 
-exec git push
+# Retry loop with jittered backoff for transient non-fast-forward rejections
+# (e.g. concurrent pushes).  Detached-HEAD is checked before each attempt so
+# a mid-loop `git rebase` that leaves HEAD detached is caught immediately.
+_MAX_ATTEMPTS=3
+_last_exit=0
+for _attempt in 1 2 3; do
+    if ! git symbolic-ref --quiet HEAD >/dev/null 2>&1; then
+        printf 'git-push.sh: not on a named branch before attempt %d\n' "$_attempt" >&2
+        exit 1
+    fi
+    if git push; then
+        exit 0
+    fi
+    _last_exit=$?
+    if [ "$_attempt" -lt "$_MAX_ATTEMPTS" ]; then
+        # Jittered backoff: base 1s/2s ±25 %
+        _base=$(( 1 * 2 ** (_attempt - 1) ))
+        _jitter=$(( RANDOM % (_base / 2 + 1) ))
+        _sleep=$(( _base + _jitter - _base / 4 ))
+        [ "$_sleep" -lt 1 ] && _sleep=1
+        sleep "$_sleep"
+    fi
+done
+exit "$_last_exit"
