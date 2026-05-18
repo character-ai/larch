@@ -9,6 +9,7 @@ REFS_DIR="$REPO_ROOT/skills/implement/references"
 RESTORE_FINALIZE_SH="$REPO_ROOT/scripts/restore-finalize-state.sh"
 LIB_FINALIZE_KEYS_SH="$REPO_ROOT/scripts/lib-finalize-state-keys.sh"
 SHIP_PR_SH="$REPO_ROOT/scripts/ship-pr.sh"
+LINT_FIX_LOOP_SH="$REPO_ROOT/scripts/lint-fix-loop.sh"
 
 fail() {
   echo "FAIL: $1" >&2
@@ -33,6 +34,13 @@ grep -Fq 'scripts/tracking-issue-summary.sh' "$SKILL_MD" \
   || fail "SKILL.md must reference scripts/tracking-issue-summary.sh"
 grep -Fq 'summary-comment-template.md' "$SKILL_MD" \
   || fail "SKILL.md must reference summary-comment-template.md"
+
+if grep -Eiq '(^|[^[:alpha:]])user has( made| fixed)?([^[:alpha:]]|$)' \
+    "$SKILL_MD" \
+    "$REPO_ROOT/skills/review-and-fix/scripts/review-and-fix.md" \
+    "$REPO_ROOT/skills/review-and-fix/scripts/review-and-fix.sh"; then
+  fail "orchestrator/review-fix docs must not attribute coder work as 'user has...'"
+fi
 
 old_surfaces=(anchor-section-markers.sh assemble-anchor.sh hydrate-anchor.sh refresh-anchor.sh upsert-anchor find-anchor ANCHOR_COMMENT_ID "\$IMPLEMENT_TMPDIR/anchor-sections")
 for old in "${old_surfaces[@]}"; do
@@ -96,6 +104,47 @@ esac
 [[ -f "$RESTORE_FINALIZE_SH" ]] || fail "scripts/restore-finalize-state.sh missing"
 [[ -x "$RESTORE_FINALIZE_SH" ]] || fail "scripts/restore-finalize-state.sh must be executable"
 [[ -f "$REPO_ROOT/scripts/restore-finalize-state.md" ]] || fail "scripts/restore-finalize-state.sh must have sibling restore-finalize-state.md"
+
+[[ -f "$LINT_FIX_LOOP_SH" ]] || fail "scripts/lint-fix-loop.sh missing"
+[[ -x "$LINT_FIX_LOOP_SH" ]] || fail "scripts/lint-fix-loop.sh must be executable"
+[[ -f "$REPO_ROOT/scripts/lint-fix-loop.md" ]] || fail "scripts/lint-fix-loop.sh must have sibling lint-fix-loop.md"
+grep -qE '^[[:space:]]*(source|\.)[[:space:]].*lib-quiet\.sh' "$LINT_FIX_LOOP_SH" \
+  || fail "lint-fix-loop.sh must source lib-quiet.sh"
+grep -qE '^[[:space:]]*(source|\.)[[:space:]].*lib-cursor-launcher-common\.sh' "$LINT_FIX_LOOP_SH" \
+  || fail "lint-fix-loop.sh must source lib-cursor-launcher-common.sh"
+grep -Fq 'run-external-agent.sh' "$LINT_FIX_LOOP_SH" \
+  || fail "lint-fix-loop.sh must dispatch through run-external-agent.sh"
+
+step3_lint_status=0
+awk '
+  /<!-- step:3/ { in_step = 1; next }
+  in_step && /<!-- step:/ { in_step = 0 }
+  in_step && /lint-fix-loop\.sh/ { found = 1 }
+  END { if (!found) exit 1 }
+' "$SKILL_MD" || step3_lint_status=$?
+[[ "$step3_lint_status" == "0" ]] || fail "Step 3 region must reference lint-fix-loop.sh"
+
+step6_lint_status=0
+awk '
+  /<!-- step:6/ { in_step = 1; next }
+  in_step && /<!-- step:/ { in_step = 0 }
+  in_step && /lint-fix-loop\.sh/ { found = 1 }
+  END { if (!found) exit 1 }
+' "$SKILL_MD" || step6_lint_status=$?
+[[ "$step6_lint_status" == "0" ]] || fail "Step 6 region must reference lint-fix-loop.sh"
+
+step5_lint_status=0
+awk '
+  /<!-- step:5/ { in_step = 1; next }
+  in_step && /<!-- step:/ { in_step = 0 }
+  in_step && /lint-fix-loop\.sh/ { found = 1 }
+  END { if (!found) exit 1 }
+' "$SKILL_MD" || step5_lint_status=$?
+[[ "$step5_lint_status" == "0" ]] || fail "Step 5 region must reference lint-fix-loop.sh"
+
+if grep -Eiq 'diagnose([[:space:]]*,[[:space:]]*|[[:space:]]*\+[[:space:]]*)fix' "$SKILL_MD"; then
+  fail "SKILL.md must not contain bare diagnose/fix relevant-checks loops without lint-fix-loop.sh routing"
+fi
 
 [[ -f "$LIB_FINALIZE_KEYS_SH" ]] || fail "scripts/lib-finalize-state-keys.sh missing"
 [[ -f "$REPO_ROOT/scripts/lib-finalize-state-keys.md" ]] || fail "scripts/lib-finalize-state-keys.sh must have sibling lib-finalize-state-keys.md"
