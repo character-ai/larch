@@ -144,11 +144,11 @@ fi
 
 echo "=== state file is private ==="
 state_file="$TMP/larch-read-poll/state-$(printf '%s' "/proj-window" | cksum | awk '{print $1}').tsv"
-state_mode=$(stat -f '%Mp%Lp' "$state_file" 2>/dev/null || stat -c '%a' "$state_file" 2>/dev/null || true)
-if [ "$state_mode" = "600" ] || [ "$state_mode" = "0600" ]; then
+# Avoid parsing `stat` output: GNU `-f` is not BSD `-f`, and BSD `%a` is atime (not mode).
+if find "$state_file" -perm 600 2>/dev/null | grep -q .; then
     pass 'state file mode is 600'
 else
-    fail "state file mode should be 600, got: ${state_mode:-missing}"
+    fail "state file mode should be 600 (find -perm 600 mismatch): $state_file"
 fi
 
 [ "$FAIL" -eq 0 ] || exit 1
