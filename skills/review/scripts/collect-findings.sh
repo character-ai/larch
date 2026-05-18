@@ -272,6 +272,7 @@ parse_output() {
             gsub(/^[[:space:]]+|[[:space:]]+$/, "", body)
             gsub(/\r/, "", body)
             gsub(/\n/, " ", body)
+            gsub(/\t/, " ", title)
             prefix=oos ? "[OUT_OF_SCOPE] " : ""
             printf("%s%s\t%s\t%s\n", prefix, title, label, body)
         }
@@ -355,6 +356,18 @@ count=0
 oos_count=0
 while IFS=$'\t' read -r title label body || [[ -n "${title:-}" ]]; do
     [[ -n "$title" ]] || continue
+    # Validate reviewer column: must end in -output.txt (any recognized reviewer filename).
+    # A corrupted label (e.g., from tab characters in a finding title shifting TSV columns)
+    # would be a prose fragment — skip the row and log a Warning.
+    if [[ ! "$label" =~ -output\.txt$ ]]; then
+        _bad_label="${label:0:100}"
+        "$PLUGIN_ROOT/scripts/append-execution-issue.sh" \
+            --log "$(execution_issue_log)" \
+            --category Warnings \
+            --entry "- **Step 3a — invalid reviewer column**: expected '*-output.txt', got '${_bad_label}' (finding title: '${title:0:80}'). Row skipped." 2>/dev/null || true
+        unset _bad_label
+        continue
+    fi
     count=$((count + 1))
     {
         printf '### FINDING_%s: %s\n' "$count" "$title"

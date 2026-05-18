@@ -55,8 +55,68 @@ make_voter_prompt_file() {
         printf '  FINDING_N: NO -- one-line reason\n'
         printf '  FINDING_N: EXONERATE -- one-line reason\n'
         printf 'You must vote on every item. Do NOT skip any.\n'
+        printf 'IMPORTANT: lines that do not start with FINDING_N: followed by YES, NO, or EXONERATE are silently ignored. Use the exact ID from the ballot heading.\n'
     } > "$prompt_file"
     printf '%s' "$prompt_file"
+}
+
+# check_voter_parse_rate: logs a Warning when a non-empty voter file produces
+# NEUTRAL for >=80% of ballot findings (indicating unparseable output).
+check_voter_parse_rate() {
+    local voter_path="$1" voter_tool="$2"
+    [[ -s "$voter_path" ]] || return 0
+    local ids_count neutral_count
+    ids_count=$(grep -cE '^### (FINDING_[0-9]+):' "$BALLOT_FILE" 2>/dev/null || echo 0)
+    [[ "$ids_count" -gt 0 ]] || return 0
+    # Count how many ballot IDs produce NEUTRAL in the voter file.
+    neutral_count=$(grep -oE '^### FINDING_[0-9]+:' "$BALLOT_FILE" 2>/dev/null | \
+        awk '{sub(/:$/, "", $2); print $2}' | \
+        while IFS= read -r id; do
+            awk -v id="$id" '
+              BEGIN { result="NEUTRAL" }
+              {
+                upper=toupper($0)
+                prefix="^" toupper(id) ":[[:space:]]*"
+                if (upper ~ (prefix "(YES|NO|EXONERATE)([[:space:]-]|$)")) {
+                    rest=upper; sub(prefix, "", rest)
+                    if (rest ~ /^YES([[:space:]-]|$)/) result="YES"
+                    else if (rest ~ /^NO([[:space:]-]|$)/) result="NO"
+                    else if (rest ~ /^EXONERATE([[:space:]-]|$)/) result="EXONERATE"
+                }
+              }
+              END { print result }
+            ' "$voter_path"
+        done | grep -c '^NEUTRAL' || echo 0)
+    # >=80% NEUTRAL threshold
+    if awk -v n="$neutral_count" -v t="$ids_count" 'BEGIN { exit (n / t >= 0.8) ? 0 : 1 }'; then
+        local _diag_file="$REVIEW_TMPDIR/${voter_tool}-parse-rate-diag.txt"
+        {
+            printf 'voter_tool=%s\n' "$voter_tool"
+            printf 'neutral_count=%s\n' "$neutral_count"
+            printf 'total_findings=%s\n' "$ids_count"
+            printf 'voter_file=%s\n' "$voter_path"
+            printf -- '--- first 200 bytes of voter output ---\n'
+            head -c 200 "$voter_path" 2>/dev/null || true
+            printf '\n'
+        } > "$_diag_file" || true
+        _issues_log="${LARCH_EXECUTION_ISSUES_LOG:-}"
+        [[ -z "$_issues_log" && -n "${SESSION_ENV_PATH:-}" ]] && _issues_log="$(dirname "$SESSION_ENV_PATH")/execution-issues.md"
+        [[ -z "$_issues_log" && -n "${IMPLEMENT_TMPDIR:-}" ]] && _issues_log="$IMPLEMENT_TMPDIR/execution-issues.md"
+        [[ -z "$_issues_log" ]] && _issues_log="$REVIEW_TMPDIR/execution-issues.md"
+        if [[ -x "$PLUGIN_ROOT/scripts/append-tool-failure.sh" ]]; then
+            "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
+                --log "$_issues_log" \
+                --site "dispatch-code-voters.sh ${voter_tool}" \
+                --tool "launch-${voter_tool}-review.sh (voter parse-rate check)" \
+                --exit-code 0 \
+                --status-label "warning" \
+                --category Warnings \
+                --output-file "$_diag_file" \
+                --redact >/dev/null 2>&1 || true
+        fi
+        larch_err "**⚠ Voter ${voter_tool}: ${neutral_count}/${ids_count} findings returned NEUTRAL — voter likely produced prose without FINDING_N: VOTE lines. Check voter output at ${voter_path}.**"
+        unset _diag_file _issues_log
+    fi
 }
 
 ctx_args=()
@@ -162,6 +222,10 @@ VOTER_3_STATUS="launched"
 [[ "$VOTER_3_TOOL" == "claude" ]] && VOTER_3_STATUS="fallback"
 [[ -s "$VOTER_2_PATH" ]] || VOTER_2_STATUS="failed"
 [[ -s "$VOTER_3_PATH" ]] || VOTER_3_STATUS="failed"
+
+[[ "$VOTER_1_STATUS" != "failed" ]] && check_voter_parse_rate "$VOTER_1_PATH" "$VOTER_1_TOOL"
+[[ "$VOTER_2_STATUS" != "failed" ]] && check_voter_parse_rate "$VOTER_2_PATH" "$VOTER_2_TOOL"
+[[ "$VOTER_3_STATUS" != "failed" ]] && check_voter_parse_rate "$VOTER_3_PATH" "$VOTER_3_TOOL"
 
 effective_judges=0
 for status_path in "$VOTER_1_STATUS:$VOTER_1_PATH" "$VOTER_2_STATUS:$VOTER_2_PATH" "$VOTER_3_STATUS:$VOTER_3_PATH"; do
