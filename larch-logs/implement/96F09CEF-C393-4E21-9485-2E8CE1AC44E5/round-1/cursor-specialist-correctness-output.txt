@@ -1,0 +1,22 @@
+Gathering the pre-computed diff and commit history for a read-only correctness review.
+
+Verifying `fail_file` initialization on this path and whether SKILL.md's Exit 4 section satisfies the awk window. Checking for other "**Exit 4**" matches that could confuse the test.
+
+Verification: `fail_file` is set at line 1177 before `merge-pr.sh` for the `ci-merge` merge branch; the new `printf` uses that same path. `set -e` is intentionally off, so a failed append would not change the exit code (acceptable best-effort). The Exit 4 bullet in `SKILL.md` places `**Continue to Step 16.**` on the same line as `**Exit 4**`, and nearby “continue to Step 16” phrases use lowercase `c`, so they do not satisfy the awk’s case-sensitive `/Continue to Step 16/`.
+
+### In-Scope Findings
+
+1. **Latent** `risk-integration` [`scripts/test-implement-structure.sh:212-214`](scripts/test-implement-structure.sh): The new guard uses `grep -q 'DO NOT improvise'` over the whole of `ship-pr.sh`, not the `STALL_STEP=12d` / `exit 4` branch. **Concrete scenario:** a future edit removes the `printf` on the `policy_denied|admin_failed|error` path but leaves (or adds) the substring `DO NOT improvise` elsewhere—for example in a header comment—so CI still passes while merge failures on that path no longer append the orchestrator directive to `$fail_file`. **Suggested fix:** tighten the assertion (e.g. require a multi-line pattern including `STALL_STEP 12d` and `DO NOT improvise`, or `grep` the `printf` line and `exit 4` proximity).
+
+### Out-of-Scope Observations
+
+None. Changes are confined to the documented scripts and harness; no pre-existing defects in untouched files warrant listing here.
+
+---
+
+Plan vs requirements: the diff matches the feature description (diagnostic on STALL_STEP=12d `exit 4`, structural tests, docs). The implementation plan’s intent to “pin” the ship-pr diagnostic is only partially met by a file-wide substring check (**completeness w.r.t. plan** / **plan-correctness** on test strength—covered in finding 1 as `both` plan and requirements for “pin”).
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	latent	risk-integration	scripts/test-implement-structure.sh:212-214	Whole-file grep for 'DO NOT improvise' does not tie the string to the STALL_STEP=12d exit 4 path.	A later change can delete the stall printf yet keep any other occurrence of the phrase in ship-pr.sh; CI stays green but operators lose the fail_file directive on the real 12d stall.	Use a anchored pattern (e.g. STALL_STEP 12d nearby, or match the printf line) so removal from the exit path breaks the test.
+```

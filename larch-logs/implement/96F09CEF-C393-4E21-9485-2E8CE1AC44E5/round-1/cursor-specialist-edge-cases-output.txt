@@ -1,0 +1,23 @@
+Gathering the branch diff and commit history for a read-only review.
+
+Verifying `$fail_file` lifecycle on the 12d path and whether SKILL.md matches the awk window logic.
+
+Review complete. `ship-pr.sh` intentionally omits `set -e` (see lines 4–7), so the new `printf` follows the same best-effort append pattern as the existing `printf '%s\n' "$merge_out" >> "$fail_file"` on the merge path.
+
+### In-Scope Findings
+
+1. **Important** · `risk-integration` · [scripts/test-implement-structure.sh](scripts/test-implement-structure.sh):153–155 — The assertion described as pinning the **STALL_STEP=12d / exit 4** diagnostic only checks that `DO NOT improvise` appears **anywhere** in `ship-pr.sh`. A maintainer could satisfy CI by leaving an unrelated comment or string anywhere in the file while removing the `policy_denied|admin_failed|error` branch `printf`, so the harness would **not** actually guard the intended failure path. Tighten the pin: e.g. require `STALL_STEP=12d` (or `ORCHESTRATOR DIRECTIVE (STALL_STEP=12d)`) in the same neighborhood as `DO NOT improvise` via a small `awk`/here-doc slice, or a multi-pattern check anchored to that `case` arm.
+
+2. **Latent** · `architecture` · [scripts/ship-pr.sh](scripts/ship-pr.sh):1219 — The new orchestrator banner is appended with `printf ... >> "$fail_file"` and, like other appends in this script, **has no success check** (consistent with no `set -e`). If the append fails (full disk, permissions), the process still hits **`exit 4`** with `STALL_STEP=12d` in state, but the failure log may omit the new directive, weakening the very signal this change adds for operators reading `$fail_file`. Consider stderr warning on non-zero `printf` status, a short note in [scripts/ship-pr.md](scripts/ship-pr.md) that the banner is best-effort, or a tiny helper used for critical annotations.
+
+### Out-of-Scope Observations
+
+None identified from the supplied diff; broader stall-path or `record_failure` behavior was not changed in meaningfully new ways beyond the added append.
+
+---
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	risk-integration	scripts/test-implement-structure.sh:153-155	test uses file-wide grep -q DO NOT improvise on ship-pr.sh while claiming to pin the STALL_STEP=12d exit 4 path	the diagnostic line on the real stall branch can be deleted and replaced by an unrelated DO NOT improvise string elsewhere; CI still passes but operators lose the intended 12d-scoped guidance	anchor the assertion to the policy_denied admin_failed error arm e.g. require ORCHESTRATOR DIRECTIVE STALL_STEP=12d near DO NOT improvise or use awk to require both within the case branch block
+1	in_scope	latent	architecture	scripts/ship-pr.sh:1219	new printf append to fail_file is unchecked under intentional no set -e	disk full or permission failure yields exit 4 and state 12d without the new banner in the captured log; reader may miss the narrow recovery contract the change is meant to surface	log append failure to stderr document best-effort in ship-pr.md or check printf status and emit a visible fallback
+```

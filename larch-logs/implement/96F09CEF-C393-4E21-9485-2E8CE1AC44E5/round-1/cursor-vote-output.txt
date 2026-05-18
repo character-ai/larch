@@ -1,0 +1,33 @@
+Reading the ballot file and producing votes for each finding.
+
+Checking the referenced code to ground our votes.
+
+Verified the ballot: the `DO NOT improvise` guard is at lines 212–214 of `test-implement-structure.sh`; FINDING_4 cites 153–155 (different checks). Casting votes.
+
+FINDING_1: EXONERATE -- stall-path append is best-effort; checking `printf` status or new docs adds little recovery value for rare full-disk cases.
+
+FINDING_2: EXONERATE -- legitimate coupling risk; anchoring is worthwhile once, not worth duplicating across multiple near-identical ballot lines.
+
+FINDING_3: EXONERATE -- same as FINDING_2; one strengthened assertion suffices.
+
+FINDING_4: NO -- cited range 153–155 is lint-fix-loop site flags, not the `DO NOT improvise` grep the text describes.
+
+FINDING_5: YES
+
+FINDING_6: EXONERATE -- same unpinned-grep issue as FINDING_5; accept FINDING_5 as the single actionable item.
+
+FINDING_7: EXONERATE -- nit is valid; fixing assertion scope (FINDING_5) or a one-line reword is optional and low leverage alone.
+
+---
+
+```
+FINDING_1: EXONERATE -- stall-path log append is best-effort; strict printf status handling or new docs is low ROI for rare I/O failures.
+FINDING_2: EXONERATE -- real coupling risk, but same remedy as FINDING_5; no need to track this duplicate separately.
+FINDING_3: EXONERATE -- duplicate of the unpinned-grep concern addressed by accepting FINDING_5 alone.
+FINDING_4: NO -- lines 153–155 gate lint-fix-loop sites, not the DO NOT improvise assertion described in the finding.
+FINDING_5: YES
+FINDING_6: EXONERATE -- same issue as FINDING_5; one anchored assertion change covers this finding.
+FINDING_7: EXONERATE -- message semantics are minor once the assertion is anchored or left as substring-only with understood limits.
+```
+
+**Note:** Only lines matching `FINDING_N: YES`, `FINDING_N: NO -- …`, or `FINDING_N: EXONERATE -- …` count for your sidecar; the prose above is for you. If you need machine-parseable output only, use the fenced block lines starting with `FINDING_`.
