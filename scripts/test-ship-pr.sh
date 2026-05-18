@@ -914,7 +914,7 @@ count_file="$call_dir/checks-count"
 count=\$(cat "\$count_file" 2>/dev/null || echo 0)
 printf '%s\n' "\$((count + 1))" > "\$count_file"
 if [ "\$count" -eq 0 ]; then
-    log_file="$call_dir/redacted-\$count.log"
+    log_file="$tmp/redacted-\$count.log"
     : > "\$log_file"
     echo "STATUS=fail FAILURE_REASON=stubbed"
     echo "REDACTED_LOG_FILE=\$log_file"
