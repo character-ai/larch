@@ -1,36 +1,9 @@
 Gathering the branch diff and commit list for a read-only review.
 
-Verifying realized-cost invocation counting and timing-report structure by reading the full scripts and a sample timing report.
+Searching the diff for measurement scripts and AGENTS.md changes; reading those hunks in full.
 
-Here is the read-only review. I read the cached diff, the full [`scripts/measure-realized-cost.sh`](scripts/measure-realized-cost.sh), and the start of the two scripts that duplicate CLAUDE import parsing; `git log $(git merge-base HEAD main)..HEAD --oneline` shows two commits: `067c975` (measurement tooling + AGENTS + agent-lint) and `47c182e` (larch-logs flush).
+Verifying AGENTS.md for unintended deletions and checking `measure-realized-cost` semantics against an example `timing-report.json`.
 
-### In-Scope Findings
+Creating the structured review plan for plan-mode compliance.
 
-1. **Important** (`correctness`) [`scripts/measure-realized-cost.sh:56-65`](scripts/measure-realized-cost.sh) and [`scripts/measure-realized-cost.sh:84-85`](scripts/measure-realized-cost.sh): Skills seen in a run are stored in a **set** (`skills_in_run`), so each skill contributes **at most one invocation per run** even when `timing-report.json` `per_step` lists the same skill on many steps (e.g. multiple `implement` rows in real logs). `realized_tokens` then scales with **distinct skills per run**, not step-level skill usage, which understates cost if “invocation” means each step where the skill’s prompt could matter. **Fix:** Count invocations from `per_step` with a `Counter` (and merge MD parsing similarly) instead of deduplicating with a set, or document and implement explicitly as “runs touching skill”.
 
-2. **Important** (`code-quality`, source: **requirements**): [`scripts/measure-realized-cost.sh:112-114`](scripts/measure-realized-cost.sh): `<feature_description>` asked for TSV columns `skill,invocations,tokens_per_invocation,realized_tokens`, but the script emits an extra **`issues_observed`** column. **Impact:** Any consumer or quick awk expecting four fields mis-parses columns. **Fix:** Match the four-column contract, move diagnostics to a separate file/column only behind a flag, or version the schema in the header/filename and document it.
-
-3. **Latent** (`correctness`) [`scripts/measure-realized-cost.sh:100-102`](scripts/measure-realized-cost.sh): Skills that appear in timing data but resolve to **no** `skills/<name>/SKILL.md` or `.claude/skills/<name>/SKILL.md` are **dropped** with no row or stderr hint. **Scenario:** Renamed skills, `larch:` normalization gaps, or dev-only skills skew rankings silently. **Fix:** Emit placeholder rows or warn on unresolved skills.
-
-4. **Nit** (`code-quality`, source: **requirements**): [`scripts/measure-ngram-duplication.sh:14-59`](scripts/measure-ngram-duplication.sh): Feature text called for a “shell/awk helper”; the implementation is **inline Python** only (no awk). Acceptable if the inner plan wins; otherwise rename/docs to match.
-
-5. **Nit** (`code-quality`, source: **requirements**): [`scripts/measure-references-heatmap.sh:89-104`](scripts/measure-references-heatmap.sh): Feature mentioned **grep** over logs; the implementation uses **JSONL** parsing. Behavior can still be correct; wording in the issue/spec and the script doc may diverge.
-
-6. **Nit** (`code-quality`): [`scripts/measure-md-cost.sh:37-48`](scripts/measure-md-cost.sh) vs [`scripts/measure-ngram-duplication.sh:33-41`](scripts/measure-ngram-duplication.sh): Duplicated **CLAUDE.md `@…` import** parsing. **Fix:** Small shared Python module or one sourced shell snippet if you want a single place for import semantics.
-
-7. **Latent** (`risk-integration`) [`scripts/measure-realized-cost.sh:59-67`](scripts/measure-realized-cost.sh) and [`scripts/measure-realized-cost.sh:75-83`](scripts/measure-realized-cost.sh): **Silent** `except: pass` on JSON/regex paths makes systematic format drift look like “no skills” with no diagnostic. **Fix:** Optional `--verbose` / stderr counters for skipped rows.
-
-### Out-of-Scope Observations
-
-None. (Committed `larch-logs/implement/` noise is explicitly out of scope per your instructions; no separate findings there.)
-
-```tsv
-schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
-1	in_scope	important	correctness	scripts/measure-realized-cost.sh:56-87	Per-run set dedupes skills so invocations ignore repeated per_step rows	Multi-step runs with the same skill many times still add only +1 invocation; realized_tokens can be far below step-based SKILL exposure if that was the intent	Count per step (e.g. Counter over timing per_step) or document metric as once-per-run-per-skill
-1	in_scope	important	code-quality	scripts/measure-realized-cost.sh:112-114	Output TSV has extra issues_observed column vs feature_description four-column contract	Downstream parsers expecting four fields mis-align columns	Match spec columns or version and document schema
-1	in_scope	latent	correctness	scripts/measure-realized-cost.sh:100-102	Unresolved skill names are omitted entirely	Timing lists a skill with no SKILL.md on disk: no row warning; totals miss mass	Emit diagnostic rows or stderr for missing SKILL.md
-1	in_scope	nit	code-quality	scripts/measure-ngram-duplication.sh:14-59	Implementation is Python not shell/awk as phrased in feature_description	Mismatch with issue wording only	Update spec or doc to say Python
-1	in_scope	nit	code-quality	scripts/measure-references-heatmap.sh:89-104	JSONL parse instead of grep per feature_description text	Spec said grep; implementation differs	Update spec or sibling .md to match approach
-1	in_scope	nit	code-quality	scripts/measure-md-cost.sh:37-48 scripts/measure-ngram-duplication.sh:33-41	Duplicate CLAUDE @ import parsing	Two places to fix if import syntax rules change	Extract shared helper
-1	in_scope	latent	risk-integration	scripts/measure-realized-cost.sh:59-83	Bare except pass swallows parse errors	Corrupt or evolved timing JSON yields empty skill sets with no signal	Add counters or optional verbose logging
-```
