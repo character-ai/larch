@@ -29,13 +29,13 @@ run_hook() {
 export TMPDIR="$TMP"
 
 echo "=== first two calls do not fire ==="
-out1=$(mk_payload "/tmp/file.md" 0 "/proj" | "$HOOK")
+out1=$(run_hook 0 "/tmp/file.md" 0 "/proj")
 if [ -z "$out1" ]; then pass 'call 1 silent'; else fail "call 1 should be silent, got: $out1"; fi
-out2=$(mk_payload "/tmp/file.md" 0 "/proj" | "$HOOK")
+out2=$(run_hook 1 "/tmp/file.md" 0 "/proj")
 if [ -z "$out2" ]; then pass 'call 2 silent'; else fail "call 2 should be silent, got: $out2"; fi
 
 echo "=== third call fires the warning ==="
-out3=$(mk_payload "/tmp/file.md" 0 "/proj" | "$HOOK")
+out3=$(run_hook 2 "/tmp/file.md" 0 "/proj")
 if printf '%s' "$out3" | grep -q 'additionalContext'; then
     pass 'call 3 fires warning'
 else
@@ -46,30 +46,41 @@ if printf '%s' "$out3" | grep -q 'Read-poll detected'; then
 else
     fail "warning message content missing: $out3"
 fi
+if printf '%s' "$out3" | grep -q '/tmp/file.md'; then
+    fail "warning message should not include raw path: $out3"
+else
+    pass 'warning message omits raw path'
+fi
 
 echo "=== different offset resets counter ==="
 # Same cwd, new offset resets the consecutive-read streak.
-out_off=$(mk_payload "/tmp/file.md" 100 "/proj" | "$HOOK")
+out_off=$(run_hook 3 "/tmp/file.md" 100 "/proj")
 if [ -z "$out_off" ]; then pass 'different offset: call 1 silent'; else fail "different offset call 1 should be silent, got: $out_off"; fi
-out_off2=$(mk_payload "/tmp/file.md" 100 "/proj" | "$HOOK")
+out_off2=$(run_hook 4 "/tmp/file.md" 100 "/proj")
 if [ -z "$out_off2" ]; then pass 'different offset: call 2 silent'; else fail "different offset call 2 should be silent, got: $out_off2"; fi
 
-echo "=== fourth identical read still fires ==="
-out4=$(mk_payload "/tmp/file.md" 100 "/proj" | "$HOOK")
+echo "=== warning fires only on threshold crossing ==="
+out4=$(run_hook 5 "/tmp/file.md" 100 "/proj")
 if printf '%s' "$out4" | grep -q 'Read-poll detected'; then
-    pass 'call 4 fires warning again'
+    pass 'call 3 at new offset fires warning'
 else
-    fail "call 4 should fire warning, got: $out4"
+    fail "call 3 at new offset should fire warning, got: $out4"
+fi
+out5=$(run_hook 6 "/tmp/file.md" 100 "/proj")
+if [ -z "$out5" ]; then
+    pass 'call 4 at new offset stays silent'
+else
+    fail "call 4 at new offset should be silent, got: $out5"
 fi
 
 echo "=== different path resets counter ==="
 # Use a fresh cwd to start clean
-out_p1=$(mk_payload "/tmp/other.md" 0 "/proj2" | "$HOOK")
+out_p1=$(run_hook 0 "/tmp/other.md" 0 "/proj2")
 if [ -z "$out_p1" ]; then pass 'new path call 1 silent'; else fail "new path call 1 should be silent, got: $out_p1"; fi
-out_p2=$(mk_payload "/tmp/other.md" 0 "/proj2" | "$HOOK")
+out_p2=$(run_hook 1 "/tmp/other.md" 0 "/proj2")
 if [ -z "$out_p2" ]; then pass 'new path call 2 silent'; else fail "new path call 2 should be silent, got: $out_p2"; fi
 # Switch path — counter resets
-out_p3=$(mk_payload "/tmp/different.md" 0 "/proj2" | "$HOOK")
+out_p3=$(run_hook 2 "/tmp/different.md" 0 "/proj2")
 if [ -z "$out_p3" ]; then pass 'switched path call 1 silent'; else fail "switched path call 1 should be silent, got: $out_p3"; fi
 
 echo "=== non-Read tool is ignored ==="

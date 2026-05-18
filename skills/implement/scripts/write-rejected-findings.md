@@ -13,7 +13,8 @@ When `--run-id` and `--log-root` are provided the script copies the rejected
 findings to `$LOG_ROOT/implement/$RUN_ID/rejected-findings.md`. It prefers
 `$IMPLEMENT_TMPDIR/rejected-findings-full.md` (the pre-compaction full version
 preserved by `emit-tally.sh`) when it is non-empty; otherwise it falls back to
-`rejected-findings.md`.
+`rejected-findings.md`. `REJECTED_COUNT` is derived from the same detail file
+when that full artifact is present.
 
 Output:
 

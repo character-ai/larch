@@ -132,8 +132,8 @@ parse_artifact() {
                     pending_reviewer="${BASH_REMATCH[2]}"
                     continue
                 fi
-                # Inner FINDING_/OOS_ headings inside a rejected block are body lines.
-                if [[ -n "$pending_id" && "$line" =~ ^###[[:space:]]+(FINDING_|OOS_) ]]; then
+                # Inner headings inside a rejected block belong to that block's body.
+                if [[ -n "$pending_id" && "$line" =~ ^###[[:space:]] ]]; then
                     pending_body="${pending_body}${pending_body:+$'\n'}$line"
                     continue
                 fi

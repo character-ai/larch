@@ -94,6 +94,24 @@ grep -Fq '### REJ_C1: Legacy-Reviewer [code-review/rejected]' "$out" \
     || fail "legacy code-review rejected header missing"
 grep -Fq 'Legacy rejected body.' "$out" || fail "legacy rejected body missing"
 
+echo "=== preserve inner headings inside rejected code-review blocks ==="
+mkdir -p "$TMP/f-impl"
+cat > "$TMP/f-impl/rejected-findings-full.md" <<'EOF'
+### [rejected] Reviewer-With-Notes
+**Finding**: Primary rejected body.
+
+### Notes
+This heading should remain inside the same rejected block.
+EOF
+out="$TMP/f.md"
+stdout="$("$COMPOSE" --implement-tmpdir "$TMP/f-impl" --issue 45 --output "$out")"
+[[ "$stdout" == *"FINDINGS_TOTAL=1"* ]] || fail "inner-heading total: $stdout"
+structured_count="$(grep -cE '^### [^:]+: .+ \[(plan-review|code-review)/(accepted|rejected)\]' "$out" || true)"
+[ "$structured_count" = "1" ] || fail "expected 1 structured section with inner heading, got $structured_count"
+grep -Fq '### Notes' "$out" || fail "inner heading missing from rejected body"
+grep -Fq 'This heading should remain inside the same rejected block.' "$out" \
+    || fail "inner heading body missing"
+
 echo "=== HTML-escape XML-like tags in finding body ==="
 mkdir -p "$TMP/c-impl/round-1"
 cat > "$TMP/c-impl/round-1/accepted-findings.md" <<'EOF'

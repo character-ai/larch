@@ -34,6 +34,7 @@ printf '### [rejected] FINDING_1\n\nFull detail body in /Users/example/project/f
     > "$full_dir/rejected-findings-full.md"
 out=$("$HELPER" --implement-tmpdir "$full_dir" --run-id run-4 --log-root "$full_dir/logs")
 assert_contains 'STATUS=ok' "$out" 'full-file status ok'
+assert_contains 'REJECTED_COUNT=1' "$out" 'full-file count uses detailed file'
 assert_contains 'details=rejected-findings-full.md' "$out" 'full detail label emitted'
 if grep -q 'Full detail body' "$full_dir/logs/implement/run-4/rejected-findings.md" 2>/dev/null; then
     pass 'full file used when present'
@@ -74,6 +75,17 @@ if grep -q 'Detailed body only' "$fallback_dir/logs/implement/run-5/rejected-fin
 else
     fail 'full fallback copy written'
 fi
+
+copy_fail_dir="$TMP_ROOT/copy-fail"; mkdir -p "$copy_fail_dir"
+printf '[Code Review] one\n' > "$copy_fail_dir/rejected-findings.md"
+printf 'not-a-directory\n' > "$copy_fail_dir/log-root-file"
+set +e
+out=$("$HELPER" --implement-tmpdir "$copy_fail_dir" --run-id run-6 --log-root "$copy_fail_dir/log-root-file")
+rc=$?
+set -e
+if [ "$rc" -ne 0 ]; then pass 'copy failure exits non-zero'; else fail 'copy failure exits non-zero'; fi
+assert_contains 'STATUS=failed' "$out" 'copy failure emits failed status'
+assert_contains 'ERROR=failed to persist rejected findings log copy' "$out" 'copy failure emits error'
 
 set +e
 bad=$("$HELPER" 2>/dev/null)

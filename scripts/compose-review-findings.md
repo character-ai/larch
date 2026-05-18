@@ -34,7 +34,9 @@ that XML-like tag names cited in security findings (e.g.
 trigger markdownlint/agent-lint XML-element warnings. Existing HTML entities
 are preserved rather than double-encoded. The old inline/archive split was
 removed when review findings moved from issue anchors to committed
-`larch-logs/` files.
+`larch-logs/` files. Rejected code-review blocks preserve inner `### ...`
+subheadings as body content unless a new top-level rejected block header is
+seen.
 
 On non-zero exit, `FAILURE_LOG=<path>` may appear on stdout.
 

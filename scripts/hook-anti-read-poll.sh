@@ -61,8 +61,8 @@ printf '%s\t%s\t%s\t%s\n' "$file_path" "$offset" "$count" "$first_ts" > "$state_
 chmod 600 "$state_file" 2>/dev/null || true
 
 age=$(( now - first_ts ))
-if [ "$count" -ge "$POLL_THRESHOLD" ] && [ "$age" -le "$WINDOW_SECS" ]; then
-    msg="[system-reminder] Read-poll detected: '$(basename "$file_path")' has been read $count times consecutively (same path+offset) within ${age}s. If waiting for a file to appear, use the Bash background-job completion notification instead of polling with repeated Read calls."
+if [ "$count" -eq "$POLL_THRESHOLD" ] && [ "$age" -le "$WINDOW_SECS" ]; then
+    msg="[system-reminder] Read-poll detected: the same path+offset has been read $count times consecutively within ${age}s. If waiting for a file to appear, use the Bash background-job completion notification instead of polling with repeated Read calls."
     jq -cn --arg ctx "$msg" \
         '{hookSpecificOutput:{hookEventName:"PostToolUse",additionalContext:$ctx}}' \
         2>/dev/null || true

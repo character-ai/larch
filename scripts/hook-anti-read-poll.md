@@ -1,8 +1,8 @@
 # hook-anti-read-poll.sh
 
 PostToolUse hook registered in `hooks/hooks.json` under `matcher: "Read"`. Emits
-a `system-reminder` when the orchestrator reads the same `file_path` + `offset`
-three or more times consecutively within a 30-second window.
+a `system-reminder` when the orchestrator reaches the third consecutive read of
+the same `file_path` + `offset` within a 30-second window.
 
 ## Purpose
 
@@ -27,9 +27,10 @@ Reads from stdin (Claude Code hook event JSON). Relevant fields:
 
 ## Output
 
-On the third (or later) consecutive identical read within the 30 s window, emits
-a JSON `hookSpecificOutput.additionalContext` message instructing the orchestrator
-to use the Bash background-job completion notification instead.
+On the third consecutive identical read within the 30 s window, emits a JSON
+`hookSpecificOutput.additionalContext` message instructing the orchestrator to
+use the Bash background-job completion notification instead. The reminder does
+not echo the path basename back into high-priority context.
 
 ## Test harness
 

@@ -59,15 +59,53 @@ if [ ! -s "$summary_file" ]; then
     exit 0
 fi
 
-count="$(grep -Ec '^\[[^]]+\]|^- |^###[[:space:]]+\[(rejected|Code Review)\]' "$summary_file" 2>/dev/null || printf '0')"
-[ "$count" -gt 0 ] 2>/dev/null || count=1
+count_rejected_findings() {
+    local source_file="$1" count_value="0"
+    count_value="$(grep -Ec '^###[[:space:]]+\[(rejected|Code Review)\][[:space:]]+' "$source_file" 2>/dev/null || printf '0')"
+    if [ "$count_value" -gt 0 ] 2>/dev/null; then
+        printf '%s\n' "$count_value"
+        return 0
+    fi
+    count_value="$(grep -Ec '^[0-9]+:FINDING_[A-Za-z0-9_]+_OUTCOME=rejected$|^\[[^]]+\]|^- ' "$source_file" 2>/dev/null || printf '0')"
+    if [ "$count_value" -gt 0 ] 2>/dev/null; then
+        printf '%s\n' "$count_value"
+    else
+        printf '1\n'
+    fi
+}
+
+count="$(count_rejected_findings "$detail_file")"
+
+persist_detail_copy() {
+    local dest_dir dest_file tmp_file
+    dest_dir="$LOG_ROOT/implement/$RUN_ID"
+    dest_file="$dest_dir/rejected-findings.md"
+    mkdir -p "$dest_dir"
+    tmp_file="$(mktemp "${TMPDIR:-/tmp}/rejected-findings-copy.XXXXXX")"
+    if [ -x "$REDACT_TMP" ] && [ -x "$REDACT_SECRETS" ]; then
+        if ! "$REDACT_TMP" < "$detail_file" | "$REDACT_SECRETS" > "$tmp_file"; then
+            rm -f "$tmp_file"
+            return 1
+        fi
+    else
+        if ! cp "$detail_file" "$tmp_file"; then
+            rm -f "$tmp_file"
+            return 1
+        fi
+    fi
+    if [ ! -s "$tmp_file" ]; then
+        rm -f "$tmp_file"
+        return 1
+    fi
+    mv -f "$tmp_file" "$dest_file"
+}
 
 if [ -n "$RUN_ID" ] && [ -n "$LOG_ROOT" ]; then
-    mkdir -p "$LOG_ROOT/implement/$RUN_ID" 2>/dev/null || true
-    if [ -x "$REDACT_TMP" ] && [ -x "$REDACT_SECRETS" ]; then
-        "$REDACT_TMP" < "$detail_file" | "$REDACT_SECRETS" > "$LOG_ROOT/implement/$RUN_ID/rejected-findings.md" 2>/dev/null || true
-    else
-        cp "$detail_file" "$LOG_ROOT/implement/$RUN_ID/rejected-findings.md" 2>/dev/null || true
+    if ! persist_detail_copy; then
+        emit_kv REJECTED_COUNT 0
+        emit_kv STATUS failed
+        emit_kv ERROR "failed to persist rejected findings log copy"
+        exit 1
     fi
 fi
 

@@ -11,6 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Document the `review-and-fix.sh` applied-fixes contract change: accepted findings applied by the coder now complete with exit `0` plus `REVIEW_AND_FIX_STATUS=fix-applied`, and `review-and-fix-summary.json` now records `.status = "fix-applied"` instead of the old `fix-required`/exit-3 checkpoint shape. External wrappers, jq filters, and dashboards must key on the new status fields rather than exit `3`.
 
+## [29.3.12] - 2026-05-18
+
+### Fixed
+
+- Emit the anti-read-poll reminder only on the third identical read within the active window, and remove path echoing from the reminder payload.
+- Preserve inner `###` headings inside rejected code-review finding bodies when composing `review-findings-full.md`.
+- Count rejected findings from `rejected-findings-full.md` when present and fail closed if the optional log-copy write cannot be persisted.
+
 ## [29.3.11] - 2026-05-18
 
 ### Changed
