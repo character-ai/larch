@@ -1128,9 +1128,10 @@ run_evaluate_failure() {
     "$SCRIPT_DIR/gh-run-logs.sh" --run-id "$failed_run" --repo "$(read_state REPO)" > "$fail_file" 2>&1
     rc=$?
     [ "$rc" -eq 0 ] || record_failure "$phase" "gh-run-logs.sh" "$rc" "$fail_file" "CI Issues"
-    # Retry loop with cap, detached-HEAD check, and jittered backoff.  Cap at 5
-    # total FIX_ATTEMPTS across all evaluate-failure calls for this phase to
-    # prevent indefinite storms from repeated non-fast-forward push rejections.
+    # Retry loop with cap, detached-HEAD check, and jittered backoff. This caps
+    # each run_evaluate_failure invocation at 5 vendor+push attempts; the
+    # persisted FIX_ATTEMPTS counter still tracks successful fix pushes across
+    # the wider phase for reporting/state purposes.
     local _max_fix=5 _fix_attempt
     _fix_attempt=0
     while [ "$_fix_attempt" -lt "$_max_fix" ]; do

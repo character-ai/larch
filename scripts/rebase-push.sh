@@ -242,9 +242,14 @@ if [[ "$NO_PUSH" == "true" ]]; then
 fi
 
 # --- Attempt force-push with retry and jittered backoff ---
-# Retries handle transient lease-check races (another push landed between our
-# fetch and our push).  Detached-HEAD is checked before each attempt.
+# Retries refresh the branch tracking ref between attempts so a lease-check
+# race can be re-evaluated instead of repeating the same stale expectation.
 _PUSH_MAX=3
+CURRENT_BRANCH=$(git branch --show-current 2>/dev/null)
+if [[ -z "$CURRENT_BRANCH" ]]; then
+    emit_kv PUSH_ERROR "Not on a branch (detached HEAD) before push"
+    exit 2
+fi
 for _push_attempt in 1 2 3; do
     if ! git symbolic-ref --quiet HEAD >/dev/null 2>&1; then
         emit_kv PUSH_ERROR "Not on a branch (detached HEAD) before push attempt $_push_attempt"
@@ -253,6 +258,12 @@ for _push_attempt in 1 2 3; do
     PUSH_OUTPUT=$(git push --force-with-lease 2>&1)
     PUSH_EXIT=$?
     if [[ $PUSH_EXIT -eq 0 ]]; then
+        exit 0
+    fi
+    git fetch "$BASE_REMOTE" "$CURRENT_BRANCH" --quiet 2>/dev/null || true
+    LOCAL_HEAD=$(git rev-parse HEAD 2>/dev/null || printf '')
+    REMOTE_HEAD=$(git rev-parse "$BASE_REMOTE/$CURRENT_BRANCH" 2>/dev/null || printf '')
+    if [[ -n "$LOCAL_HEAD" && -n "$REMOTE_HEAD" && "$LOCAL_HEAD" == "$REMOTE_HEAD" ]]; then
         exit 0
     fi
     if [[ $_push_attempt -lt $_PUSH_MAX ]]; then

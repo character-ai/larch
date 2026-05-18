@@ -843,6 +843,12 @@ exclude = [
   # target) and the sibling scripts/test-rebase-push-keep-on-conflict.md.
   # Same Makefile-only pattern as other test-* harnesses.
   "scripts/test-rebase-push-keep-on-conflict.sh",
+  # scripts/test-rebase-push-force-lease.sh is the offline regression harness
+  # for scripts/rebase-push.sh's force-with-lease race-recovery path.
+  # Referenced only from Makefile (test-rebase-push-force-lease target) and
+  # the sibling scripts/test-rebase-push-force-lease.md. Same Makefile-only
+  # pattern as other test-* harnesses.
+  "scripts/test-rebase-push-force-lease.sh",
   "scripts/test-implement-structure.sh",
   # scripts/test-implement-timing-rehydration.sh pins /implement's
   # timing-aware session-env rehydration template so timing-ledger/report calls
@@ -1032,6 +1038,12 @@ exclude = [
   # and scripts/test-apply-bump.md (sibling contract), matching the same
   # Makefile-only harness pattern as test-merge-pr.sh.
   "scripts/test-apply-bump.sh",
+  # scripts/test-git-push.sh is the offline regression harness for
+  # scripts/git-push.sh retry exit propagation. It is referenced only from
+  # Makefile (test-git-push target) and scripts/test-git-push.md (sibling
+  # contract), matching the same Makefile-only harness pattern as
+  # test-apply-bump.sh.
+  "scripts/test-git-push.sh",
   # scripts/test-token-tally.sh is the offline regression harness for
   # scripts/token-tally.sh (per-run token-cost telemetry helper for
   # /research; closes #518). The token-tally helper is invoked from
@@ -1156,7 +1168,9 @@ exclude = [
   "skills/design/scripts/test-tally-plan-review.md",
   "skills/design/scripts/test-finalize-plan.md",
   "scripts/test-rebase-push-keep-on-conflict.md",
+  "scripts/test-rebase-push-force-lease.md",
   "scripts/test-implement-timing-rehydration.md",
+  "scripts/test-git-push.md",
   # scripts/promote-release.sh is a standalone operator utility for promoting
   # a GitHub Release to "Latest". It is not invoked by any SKILL.md — operators
   # call it directly from the terminal. Its sibling contract

@@ -24,8 +24,10 @@ fi
 echo "BRANCH=$BRANCH"
 
 # Retry loop with jittered backoff for transient non-fast-forward rejections
-# (e.g. concurrent pushes).  Detached-HEAD is checked before each attempt so
+# (e.g. concurrent pushes). Detached-HEAD is checked before each attempt so
 # a mid-loop `git rebase` that leaves HEAD detached is caught immediately.
+# First retry sleeps a fixed 1s floor; later retries use the jittered formula
+# below.
 _MAX_ATTEMPTS=3
 _last_exit=0
 for _attempt in 1 2 3; do
@@ -35,10 +37,11 @@ for _attempt in 1 2 3; do
     fi
     if git push; then
         exit 0
+    else
+        _last_exit=$?
     fi
-    _last_exit=$?
     if [ "$_attempt" -lt "$_MAX_ATTEMPTS" ]; then
-        # Jittered backoff: base 1s/2s ±25 %
+        # Jittered backoff: first retry fixed 1s, then base 2s ±25 %
         _base=$(( 1 * 2 ** (_attempt - 1) ))
         _jitter=$(( RANDOM % (_base / 2 + 1) ))
         _sleep=$(( _base + _jitter - _base / 4 ))
