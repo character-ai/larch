@@ -270,3 +270,107 @@
 - **Concern**: [latent] Yield TSV END iterates only manifest-derived keys; score_rows basenames not present in the map accrue totals that are never emitted. If a finding’s normalized Reviewer basename is missing from the panel manifest map, accepted/rejected counts for that reviewer disappear from scout-archetype-yield.tsv with no warning. Iterate union of manifest keys and observed reviewers, or WARN on orphan total[base] keys.
 - **Suggested revision**: Address the concern above.
 
+### FINDING_13: panel [code-review/accepted]
+
+## code-quality: scripts/scout-dynamic-archetypes.sh:159-217
+
+- **Reviewer**: cursor-specialist-edge-cases-output.txt
+- **Concern**: [nit] mktemp validated_tmp path not removed on jq validation failure branch. Repeated parse failures accumulate stray .tmp.* files under REVIEW_TMPDIR. Add rm -f "$validated_tmp" in the parse-failed branches (and on set -e traps if needed).
+- **Suggested revision**: Address the concern above.
+
+### FINDING_14: panel [code-review/accepted]
+
+## code-quality: skills/review/SKILL.md:61-82
+
+- **Reviewer**: cursor-specialist-structure-output.txt
+- **Concern**: [important] Canonical log-phase example omits required --run-id (and usual --log-root). Orchestrator copies the fenced block literally; log-phase.sh exits 2 on usage, so review-scout-manifest never lands in larch-logs. Add --run-id "$RUN_ID" and matching --log-root to the example (same as other Step 4 log-phase calls).
+- **Suggested revision**: Address the concern above.
+
+### FINDING_17: panel [code-review/accepted]
+
+## correctness: scripts/ship-pr.sh:447-453,527-533
+
+- **Reviewer**: codex-specialist-correctness-output.txt
+- **Concern**: [important] New ship-pr lint-fix paths leave errexit disabled by running set +e twice. After lint-fix, a later unchecked command such as advance_phase bump can fail while the function still returns success with stale state. Restore set -e after capturing fix_rc or wrap the non-fatal command substitution in a helper.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_18: panel [code-review/accepted]
+
+## correctness: scripts/ship-pr.sh:895-914
+
+- **Reviewer**: codex-specialist-edge-cases-output.txt
+- **Concern**: [important] CI fix commits can stage only lint-fix delta paths after a vendor fix plus lint-fix sequence. Vendor changes made before lint-fix-loop remain uncommitted while the Fix CI failure commit includes only lint-fix paths, leaving the tree dirty or pushing an incomplete fix. Stage the union of vendor dirty paths and lint-fix delta paths, or use the broader staging behavior with scope validation.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_19: panel [code-review/accepted]
+
+## correctness: skills/review/SKILL.md:57-83; skills/review/scripts/log-phase.sh:12-32
+
+- **Reviewer**: codex-specialist-plan-fidelity-output.txt
+- **Concern**: [important] The documented review-scout-manifest log-phase call omits required --run-id. When SCOUT_STATUS is present, the wrapper pattern exits 2 because log-phase.sh requires --run-id. Add --run-id "$RUN_ID" to the Step 4 log-phase invocation.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_22: panel [code-review/accepted]
+
+## correctness: skills/review/references/heavy-worker.md:15-21,30-34; skills/review/SKILL.md:27
+
+- **Reviewer**: codex-specialist-correctness-output.txt
+- **Concern**: [important] Subagent review contract lacks DYNAMIC_ARCHETYPES and scout result propagation. /review --diff --subagent --dynamic-archetypes 4 can run the heavy worker without passing the requested dynamic reviewer count, silently skipping the feature. Pass and consume DYNAMIC_ARCHETYPES in the heavy-worker contract or require the worker to call review-core.sh with the parsed flag and return scout KVs.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_24: panel [code-review/accepted]
+
+## correctness: skills/review/scripts/check-reviewer-failure-threshold.sh:56-61,78-86
+
+- **Reviewer**: codex-specialist-edge-cases-output.txt
+- **Concern**: [important] Dynamic fallback output basenames are not recognized as dynamic reviewers. A dynamic reviewer fallback writes dyn-foo-output-phase2.txt or dyn-foo-output-phase3.txt; those failures count against the static 12-slot denominator and can falsely stall review. Normalize phase2/phase3/retry suffixes before excluding dyn-* outputs and add regression coverage.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_29: panel [code-review/accepted]
+
+## correctness: skills/review/scripts/check-reviewer-failure-threshold.sh:90-96
+
+- **Reviewer**: cursor-specialist-edge-cases-output.txt
+- **Concern**: [important] NEVER_LAUNCHED uses static INTENDED_SLOTS minus LAUNCHED_SLOTS but LAUNCHED_SLOTS counts static+dynamic outputs from review-core. With dynamic slots enabled, LAUNCHED_SLOTS is often >= static baseline even when total planned slots (static+dynamic) are not all present, so never-launched failures clamp to zero and under-fill FAILED_SLOTS vs the pre-dynamic contract. Align denominators: subtract dynamic planned count, pass static-only launched counts, or compute missing slots from manifest NDJSON vs returned ALL_OUTPUT_FILES instead of STATIC_INTENDED minus total launched.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_32: panel [code-review/accepted]
+
+## risk-integration: scripts/scout-dynamic-archetypes.sh:83-120
+
+- **Reviewer**: codex-specialist-testing-output.txt
+- **Concern**: [important] scout input files are concatenated before launch-claude-subprocess.sh so launcher context validation and size caps do not apply. A large diff can bypass the intended 256 KB context cap and make the Sonnet scout timeout or consume excessive context. Validate diff/scope/plan files with the same non-symlink/root/size constraints before catting them, or pass them through --context-files; add oversized and symlink fixture tests.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_33: panel [code-review/accepted]
+
+## risk-integration: scripts/test-scout-dynamic-archetypes.sh
+
+- **Reviewer**: cursor-specialist-testing-output.txt
+- **Concern**: [important] Prompt-body `</reviewer_` injection guard has no regression test. A future edit could drop or typo the jq `contains("</reviewer_")` check while all harness cases still pass, re-opening frontmatter/wrapper corruption risk the plan called out. Add a fixture whose `prompt_body` includes `</reviewer_` and assert `SCOUT_STATUS`/warnings and empty-or-filtered manifest per the script contract.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_5: panel [code-review/accepted]
+
+## architecture: Branch diff vs feature_description / implementation_plan
+
+- **Reviewer**: cursor-specialist-plan-fidelity-output.txt
+- **Concern**: [important] PR bundles ship-pr lint-fix-loop implement SKILL upgrade-larch SECURITY Makefile and larch-logs flushes beyond listed scout+dispatch files. Reviewers cannot trace a single cohesive plan scope; unrelated regressions risk shipping with the feature. Split unrelated changes into separate PRs or expand the authoritative plan to cover every touched subsystem.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_7: panel [code-review/accepted]
+
+## architecture: skills/review/SKILL.md:5153-5175 (diff)
+
+- **Reviewer**: cursor-specialist-plan-fidelity-output.txt
+- **Concern**: [important] Step 4 fenced review-scout-manifest snippet omits required log-phase.sh --run-id/--log-root. log-phase.sh fails argument validation when operators paste the documented exact pattern. Mirror other Step 4 log-phase.sh calls: pass --run-id "$RUN_ID" and the same --log-root as sibling batches.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_9: panel [code-review/accepted]
+
+## architecture: skills/review/scripts/dispatch-panel.sh:197-249
+
+- **Reviewer**: cursor-specialist-edge-cases-output.txt
+- **Concern**: [important] derive_scout_status_from_manifest treats any {"archetypes":[]} manifest as SCOUT_STATUS=empty when scout-roundN-status.env is absent. Second dispatch-panel run without the sidecar mis-labels prior parse-failed/claude-failed/timeout runs (all write the same empty JSON) as empty scout success. Persist authoritative SCOUT_STATUS beside the manifest whenever scout runs, or embed status in the manifest JSON so reuse does not collapse failure modes to empty.
+- **Suggested revision**: Address the concern above.
+
