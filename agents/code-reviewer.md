@@ -74,7 +74,7 @@ Tailor the review to the nature of the change. Apply the specialization that fit
 ## Do NOT report
 
 Exclude the following from your In-Scope findings (surface pre-existing issues only under Out-of-Scope Observations, never as In-Scope):
-- Pre-existing issues not introduced or amplified by this PR — if worth surfacing at all, report them under Out-of-Scope Observations, never as In-Scope.
+- Pre-existing issues not introduced or amplified by this PR — route to Out-of-Scope Observations, never In-Scope. **Scope check**: a finding belongs under In-Scope Findings ONLY when at least one of: (a) the file is modified by the diff; (b) the file is named in the implementation plan as a file to touch; (c) the finding is a regression directly caused by the diff. If none of (a)/(b)/(c) applies, move it to Out-of-Scope Observations, even if the affected file is adjacent to the diff or the issue is severe.
 - Pedantic nitpicks with no user impact.
 - Lint-territory concerns that a linter would catch.
 - Concerns in code explicitly lint-ignored (e.g., `// nolint`, `# noqa`, or equivalent).

@@ -19,6 +19,8 @@ Accepted flags:
 - `--run-id ID`
 - `--round-num N` (default `1`)
 
+After `gather-context.sh`, resolved `--scope-files` (explicit flag or `FILE_LIST_FILE` when the flag was unset) and `--plan-file`, when non-empty and the scope file has content / the plan path exists, are forwarded to `tally-code-votes.sh` so the scope-fit gate can treat plan-mentioned paths as in-scope.
+
 The script emits only `KEY=value` records on the lib-quiet FD3 contract stream. Ordinary stdout/stderr is redirected by `scripts/lib-quiet.sh` unless quiet mode is disabled.
 
 Emitted keys:
@@ -35,6 +37,7 @@ Emitted keys:
 - `PANEL_MODE=waterfall|normal` (`waterfall` is the current value; `normal` may appear on the zero-scope early-exit path)
 - `PANEL_SHAPE=simple|hard`
 - `VOTING_SKIPPED_WARNING=<text>` — emitted only on the 0-judge main-agent-required path; callers should parse and display it as a user-visible warning
+- `OUT_OF_SCOPE_DRIFT_COUNT=N` — number of in-scope findings reclassified to OOS by the scope-fit gate in `tally-code-votes.sh`; copied from tally stdout when voting runs; `0` on early exits that skip tally (description zero-scope, `panel-failed`, `zero-findings` after collection, or before the tally stage).
 
 Diff-mode convergence note: `REVIEW_CORE_STATUS=ok` is also the expected outcome when voting leaves `ACCEPTED_COUNT=0` and one or more findings were rejected. Callers that need to distinguish "nothing left to fix after voting" from a benign no-follow-up outcome should monitor `ACCEPTED_COUNT` together with `REJECTED_COUNT`, `EXONERATED_COUNT`, and `NEUTRAL_COUNT`, not the status string alone.
 

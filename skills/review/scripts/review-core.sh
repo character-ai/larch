@@ -164,6 +164,7 @@ if [[ "$MODE" == "description" && "${scope_count:-0}" == "0" ]]; then
     emit_kv REJECTED_COUNT 0
     emit_kv EXONERATED_COUNT 0
     emit_kv NEUTRAL_COUNT 0
+    emit_kv OUT_OF_SCOPE_DRIFT_COUNT 0
     emit_kv FINDINGS_FILE "$REVIEW_TMPDIR/findings.md"
     emit_kv ACCEPTED_FINDINGS_FILE "$REVIEW_TMPDIR/accepted-findings.md"
     emit_kv REJECTED_FINDINGS_FILE "$REVIEW_TMPDIR/rejected-findings.md"
@@ -248,6 +249,7 @@ if [[ "$threshold_ok" == "false" ]]; then
     emit_kv REJECTED_COUNT 0
     emit_kv EXONERATED_COUNT 0
     emit_kv NEUTRAL_COUNT 0
+    emit_kv OUT_OF_SCOPE_DRIFT_COUNT 0
     emit_kv FINDINGS_FILE "$REVIEW_TMPDIR/findings.md"
     emit_kv ACCEPTED_FINDINGS_FILE "$REVIEW_TMPDIR/accepted-findings.md"
     emit_kv REJECTED_FINDINGS_FILE "$REVIEW_TMPDIR/rejected-findings.md"
@@ -271,6 +273,7 @@ if [[ "$findings_count" == "0" ]]; then
     emit_kv REJECTED_COUNT 0
     emit_kv EXONERATED_COUNT 0
     emit_kv NEUTRAL_COUNT 0
+    emit_kv OUT_OF_SCOPE_DRIFT_COUNT 0
     emit_kv FINDINGS_FILE "$REVIEW_TMPDIR/findings.md"
     emit_kv ACCEPTED_FINDINGS_FILE "$REVIEW_TMPDIR/accepted-findings.md"
     emit_kv REJECTED_FINDINGS_FILE "$REVIEW_TMPDIR/rejected-findings.md"
@@ -324,10 +327,15 @@ tally_args=(
     --codex-available "$CODEX_AVAILABLE"
 )
 [[ -n "$SESSION_ENV_PATH" ]] && tally_args+=(--session-env-path "$SESSION_ENV_PATH")
+[[ -n "$SCOPE_FILES" && -s "$SCOPE_FILES" ]] && tally_args+=(--scope-files "$SCOPE_FILES")
+[[ -n "$PLAN_FILE" && -f "$PLAN_FILE" ]] && tally_args+=(--plan-file "$PLAN_FILE")
 if [[ "${#voter_files[@]}" -gt 0 ]]; then
     tally_args+=(--voter-files "${voter_files[@]}")
 fi
 "$TALLY_VOTES_SH" "${tally_args[@]}" > "$tally_out"
+
+out_of_scope_drift_count=$(kv_get "$tally_out" OUT_OF_SCOPE_DRIFT_COUNT)
+out_of_scope_drift_count="${out_of_scope_drift_count:-0}"
 
 tally_status=$(kv_get "$tally_out" TALLY_STATUS)
 accepted_count=$(kv_get "$tally_out" ACCEPTED_COUNT)
@@ -371,6 +379,7 @@ if [[ "$tally_status" == "main-agent-vote-required" ]]; then
     emit_kv REJECTED_FINDINGS_FILE "$REVIEW_TMPDIR/rejected-findings.md"
     emit_kv PANEL_MODE "$panel_mode"
     emit_kv PANEL_SHAPE "$panel_shape"
+    emit_kv OUT_OF_SCOPE_DRIFT_COUNT "$out_of_scope_drift_count"
     exit 0
 fi
 
@@ -409,5 +418,6 @@ emit_kv NEUTRAL_COUNT "$neutral_count"
 emit_kv FINDINGS_FILE "$REVIEW_TMPDIR/findings.md"
 emit_kv ACCEPTED_FINDINGS_FILE "$accepted_file"
 emit_kv REJECTED_FINDINGS_FILE "$rejected_file"
+emit_kv OUT_OF_SCOPE_DRIFT_COUNT "$out_of_scope_drift_count"
 emit_kv PANEL_MODE "$panel_mode"
 emit_kv PANEL_SHAPE "$panel_shape"
