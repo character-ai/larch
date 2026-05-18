@@ -1,0 +1,12 @@
+FINDING_1: EXONERATE -- legitimate scope hygiene concern, but a landed version-bump bundling nit is not worth a tracking issue.
+FINDING_2: EXONERATE -- wording clarity concern is real but too minor for a future issue.
+FINDING_3: NO -- current branch diff from 75c59ffb only touches ship-pr files, so compose changes are not bundled here.
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: EXONERATE -- entity double-escaping is a legitimate edge case, but literal safe escaping is acceptable and entity-aware handling adds ambiguity.
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: NO -- compose-review harness files are not in the current branch diff from 75c59ffb.
+FINDING_11: NO -- the alleged compose harness changes are upstream/base, not part of this branch’s ship-pr fix.
+FINDING_12: EXONERATE -- empty PR_NUMBER shares the exact tested skip-path, so an extra fixture is not worth the added test bulk.

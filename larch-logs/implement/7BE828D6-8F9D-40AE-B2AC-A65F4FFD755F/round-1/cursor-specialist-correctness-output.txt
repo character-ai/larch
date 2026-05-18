@@ -1,0 +1,24 @@
+Gathering the branch diff and commit list for a correctness-focused review.
+
+Searching the cached diff for relevant hunks — the full diff is too large to read at once.
+
+Reviewed the cached diff (including [`scripts/ship-pr.sh`](scripts/ship-pr.sh), [`scripts/ship-pr.md`](scripts/ship-pr.md), [`scripts/test-ship-pr.sh`](scripts/test-ship-pr.sh)) and confirmed the working tree matches the described behavior by spot-checking [`scripts/ship-pr.sh`](scripts/ship-pr.sh) and [`scripts/test-ship-pr.sh`](scripts/test-ship-pr.sh).
+
+**Commits (`git merge-base HEAD main..HEAD`):**
+- `d94873d1` Clear stall keys before skip-path advances to postmerge in ship-pr.sh  
+- `75c59ffb` Bump version to 29.3.4 (#2310)
+
+**Plan / requirements check:** The helper `clear_stall_keys_for_postmerge()` mirrors merge-success clearing (`BAIL_REASON` / `STALL_TRACKING` / `STALL_STEP`). It is invoked in the `REPO_UNAVAILABLE` or empty `PR_NUMBER` branch only in the `else` of `phase = ci-initial` (so `ci-initial` still advances to `ci-merge` unchanged), and in the skip-merge guard before `advance_phase postmerge`. Tests follow the existing `seed_stale_stall_state` + `--resume-phase ci-merge` pattern; `make_repo` only uses the name as a unique directory, so the new repo names are fine.
+
+### In-Scope Findings
+
+1. **Nit** (`correctness`, `both`) — [`scripts/ship-pr.md`](scripts/ship-pr.md) (new paragraph under State): The sentence that these skip-paths are “reached **only** on resume after a prior stall” is too strong. The skip-merge guard can run on a normal first pass through `ci-merge` when `MERGE!=true`, `DRAFT=true`, or `FORKED_TARGET=true` without any prior stall, and the `REPO_UNAVAILABLE` / empty `PR_NUMBER` branch is not inherently tied to “resume after stall” either. **Impact:** Operators may mis-infer when stale keys can exist or when clearing runs. **Fix:** Rephrase to something like: these paths do not run merge-success handlers, so they must clear stall keys whenever taken—especially common when resuming after a stalled `ci-merge` left `BAIL_REASON` / `STALL_*` populated.
+
+### Out-of-Scope Observations
+
+None (per your scope rules, only pre-existing issues belong here; the large `larch-logs/` and `scripts/test-compose-review-findings.sh` hunks in the cached diff are outside the stall-key feature but are not “pre-existing” defects in unchanged files).
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	nit	correctness	scripts/ship-pr.md:State section	New contract text claims skip-paths are reached only on resume after a prior stall	Skip-merge can run on first ci-merge without any stall; REPO_UNAVAILABLE branch is not exclusively a post-stall resume scenario, so readers may misunderstand when clearing applies	Soften or replace only to describe that these paths skip merge-success clears so explicit clear_stall_keys_for_postmerge is required; cite resume-after-stall as one important scenario not the sole case
+```

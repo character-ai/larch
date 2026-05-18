@@ -1,0 +1,31 @@
+Gathering the branch diff and commit history for a read-only review.
+
+Searching the large diff for relevant hunks.
+
+Verifying test helpers and whether `write_state` sets `REPO_UNAVAILABLE`/`MERGE`, and scanning `run_ci_phase` for other `postmerge` advances.
+
+Commits on this branch vs `main` (from `git log $(git merge-base HEAD main)..HEAD --oneline`):
+
+1. `75c59ffb` — Bump version to 29.3.4 (#2310)  
+2. `d94873d1` — Clear stall keys before skip-path advances to postmerge in ship-pr.sh  
+
+The cached diff also includes `.claude-plugin/plugin.json` (29.3.4→29.3.5), a large `larch-logs/implement/...` tree, `scripts/test-compose-review-findings.sh` (HTML-escape / fixture changes), and the ship-pr changes described in your feature text. Per your instructions, `larch-logs` volume is not treated as a review finding.
+
+### In-Scope Findings
+
+1. **Nit** (`code-quality`) — [`scripts/ship-pr.md:23`](scripts/ship-pr.md): The new sentence claims the two skip-paths “are reached **only** on resume after a prior stall.” That is not always true (for example `MERGE=false` or `DRAFT=true` from the start, or `REPO_UNAVAILABLE=true` without any earlier stall). Clearing keys is still the right behavior; the doc overstates the trigger and can mislead someone debugging state. **Suggested fix:** Soften to “especially common after resume…” or describe the invariant (“may still carry stall keys from an earlier ci-merge stall”) without “only”.
+
+2. **Important** (`risk-integration`) — [`scripts/test-compose-review-findings.sh:27-91`](scripts/test-compose-review-findings.sh): The branch bundles substantial compose-review HTML-escape / redaction fixture changes with the ship-pr stall-key fix from the feature description. That widens blast radius, complicates bisect/review, and is unrelated to `clear_stall_keys_for_postmerge` unless intentionally coupled. **Suggested fix:** Land compose harness changes in a separate PR (or document explicit coupling in the PR summary if both are required together).
+
+**Positive (no separate finding row):** [`scripts/ship-pr.sh:527-529`](scripts/ship-pr.sh) mirrors merge-success clearing; call sites at [`scripts/ship-pr.sh:1319-1328`](scripts/ship-pr.sh) sit immediately before `advance_phase postmerge`; regressions in [`scripts/test-ship-pr.sh:1328-1355`](scripts/test-ship-pr.sh) align with `write_state` defaults (`REPO_UNAVAILABLE`, `MERGE`, `PR_NUMBER`) so the `awk` rewrites actually hit the intended skip branches.
+
+### Out-of-Scope Observations
+
+1. **Nit** (`code-quality`) — [`scripts/ship-pr.md:21`](scripts/ship-pr.md): The long sentence tying merge-success clearing to “stale stall-state from a prior `ci-merge` failure” is easy to read as if a successful merge follows a failure; the intent is “clear so stale keys cannot propagate.” This predates the new paragraph at line 23 and is not introduced by the stall-key fix itself.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	nit	code-quality	scripts/ship-pr.md:23	New contract text says skip-paths are reached only after resume from a prior stall.	Operators or tests may hit skip-merge or REPO_UNAVAILABLE without any prior stall; the absolute only misstates when those branches run even though clearing remains correct.	Rephrase to describe possible stale keys without claiming exclusivity (e.g. especially after resume).
+1	in_scope	important	risk-integration	scripts/test-compose-review-findings.sh:27-91	Large compose-review test/fixture changes ride on the same branch as the ship-pr stall-key fix.	Reviewers must validate unrelated composer behavior; merges/reverts and bisects conflate two concerns.	Split into a separate PR or document mandatory coupling in the PR narrative.
+1	out_of_scope	nit	code-quality	scripts/ship-pr.md:21	Merge-success paragraph wording can read as if merge-success itself follows a ci-merge failure.	Pre-existing clarity issue in the State section; not caused by the new skip-path paragraph.	Optional rewrite for reader clarity in a docs-only pass.
+```
