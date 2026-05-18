@@ -1,0 +1,28 @@
+Gathering the branch diff and commit list for a read-only edge-case review.
+
+Searching the diff for relevant hunks; the full diff is large (likely includes larch-logs).
+
+Reading the implementation files and the diff hunks for the feature (excluding larch-logs noise).
+
+Checking how the SessionStart hook is invoked and whether `LARCH_TOKEN_SESSION_ID` can leak into the hook process.
+
+Checking whether `session_id` is optional in SessionStart payloads (docs).
+
+Reviewed the branch commits (`git log $(git merge-base HEAD main)..HEAD --oneline`), the precomputed diff (focused on `scripts/sessionstart-health*.sh/md`, `scripts/test-sessionstart-health*.sh/md`, and `.claude-plugin/plugin.json`; the rest is mostly `larch-logs/` per your scope rules), and the full current implementations of [`scripts/sessionstart-health.sh`](scripts/sessionstart-health.sh), [`scripts/test-sessionstart-health.sh`](scripts/test-sessionstart-health.sh), [`scripts/sessionstart-health.md`](scripts/sessionstart-health.md), and [`skills/implement/scripts/lib-resolve-implement-tmpdir.sh`](skills/implement/scripts/lib-resolve-implement-tmpdir.sh) for resolver contract alignment.
+
+### In-Scope Findings
+
+1. **Latent** (`risk-integration`) — [`scripts/sessionstart-health.sh:129-131`](scripts/sessionstart-health.sh): The hook only runs `export LARCH_TOKEN_SESSION_ID="$SID"` when `SID` is non-empty; it never clears a **pre-existing** `LARCH_TOKEN_SESSION_ID` from the process environment when the SessionStart payload omits or nulls `session_id`. [`lib-resolve-implement-tmpdir.sh:54-67`](skills/implement/scripts/lib-resolve-implement-tmpdir.sh) then applies session binding whenever that variable is set, so a stale inherited value can force the resolver down the strict `SESSION_ID` match path and return **no** tmpdir even though a valid TTL-bound run exists—**boundary advisories fail open and disappear** while the tmpdir is still pending. **Suggested fix:** `unset LARCH_TOKEN_SESSION_ID` (or export empty) immediately before the conditional export so “missing `session_id` in JSON” reliably means TTL mode as documented.
+
+2. **Nit** (`risk-integration`) — [`scripts/test-sessionstart-health.sh:375-445`](scripts/test-sessionstart-health.sh): The implementation plan’s own edge case calls out that **all three** boundary conditions can append in one advisory, but the harness never asserts a single run where `manifest.env`, `review-round-summary.md`, and `.bump-version-armed` (with appropriate sentinels absent) all fire together—so a future regression that drops concatenation, ordering, or `append_msg` spacing would not be caught. **Suggested fix:** Add one fixture tmpdir + `run_with_stdin` assertion that the decoded `additionalContext` contains all three “post-/…” substrings.
+
+### Out-of-Scope Observations
+
+1. **Latent** (`risk-integration`) — [`skills/implement/scripts/hook-stop-fail-close.sh:35-39`](skills/implement/scripts/hook-stop-fail-close.sh): The same “export `LARCH_TOKEN_SESSION_ID` only when `SID` is set, never unset inherited value” pattern already exists on the Stop hook path; this branch did not change that file. Listed only so a fix in `sessionstart-health.sh` can be matched there for consistent resolver semantics.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	latent	risk-integration	scripts/sessionstart-health.sh:116-131	Pre-existing LARCH_TOKEN_SESSION_ID is not cleared when SessionStart JSON omits session_id; resolver uses strict session binding per lib-resolve-implement-tmpdir.sh.	Resolver returns empty tmpdir despite an active CLONE_PATH-bound run within TTL; post-/design|review|bump boundary advisories are silently skipped.	Unset LARCH_TOKEN_SESSION_ID before exporting from payload (only export when SID non-empty).
+1	in_scope	nit	risk-integration	scripts/test-sessionstart-health.sh:375-445	No regression case asserts combined post-/design + post-/review + post-/bump-version advisories in one SessionStart emission.	Concatenation or append_msg regressions could ship undetected.	Add one harness case expecting all three boundary phrases in a single additionalContext.
+1	out_of_scope	latent	risk-integration	skills/implement/scripts/hook-stop-fail-close.sh:35-39	Sibling Stop hook mirrors conditional LARCH_TOKEN_SESSION_ID export without clearing inherited env.	Same stale-env vs missing session_id interaction as sessionstart (not introduced here).	Align with unset/export pattern if sessionstart is hardened; file not in branch diff.
+```

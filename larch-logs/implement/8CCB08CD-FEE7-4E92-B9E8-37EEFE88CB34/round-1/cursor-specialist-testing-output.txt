@@ -1,0 +1,27 @@
+Gathering the diff and commit list for a read-only review against the feature description and plan.
+
+Searching the diff for relevant files; the full diff is too large to read at once.
+
+Checking whether `merge-pr.sh` appears in the diff as a functional change (not only tests) and scanning `sessionstart-health.sh` for the `LARCH_TOKEN_SESSION_ID` pattern.
+
+Rechecked `scripts/test-sessionstart-health.md`: the parenthesis balances across the multi-line parenthetical (`(the SessionStart … boundary state)`), so there is no stray `)` — removing that nit.
+
+### In-Scope Findings
+
+1. **Latent** (`risk-integration`, `plan`) [scripts/test-sessionstart-health.sh](scripts/test-sessionstart-health.sh) (new boundary cases): The implementation plan’s edge case “all three boundaries can fire simultaneously (MSG concatenated)” has no regression test. Only each boundary (and suppressions) is exercised in isolation, so a bad interaction (ordering, short-circuit, or truncation) in `append_msg` / single `jq --arg ctx` emission would not be caught. **Suggested fix:** Add one fixture tmpdir with `design-export/manifest.env`, `review-round-summary.md`, and `.bump-version-armed` (and no sentinels / no `postbump-state.sh`) and assert `additionalContext` contains all three “post-/design”, “post-/review”, and “post-/bump-version” substrings in one JSON payload.
+
+2. **Latent** (`correctness`) [scripts/sessionstart-health.sh](scripts/sessionstart-health.sh) (boundary block after `resolve_implement_tmpdir` sourcing): The hook runs `[[ -n "$SID" ]] && export LARCH_TOKEN_SESSION_ID="$SID"` and never clears `LARCH_TOKEN_SESSION_ID` when `session_id` is absent from stdin. If the hook process inherits a stale `LARCH_TOKEN_SESSION_ID` from the parent environment while the SessionStart JSON omits `session_id`, `lib-resolve-implement-tmpdir.sh` applies session binding and may skip the real tmpdir or bind the wrong session—advisory fails open (no prompt) even though a pending boundary exists. **Suggested fix:** Before calling `resolve_implement_tmpdir`, `unset LARCH_TOKEN_SESSION_ID` (or `export LARCH_TOKEN_SESSION_ID="${SID:-}"` when you intend empty to mean “no session binding”) so absent `session_id` cannot pick up unrelated env.
+
+3. **Nit** (`risk-integration`, doc/test matrix for merge side) [scripts/merge-pr.md:48](scripts/merge-pr.md): Step 4 still states that “local/remote OID mismatch” always “fail closed via `MERGE_RESULT=error`”, but the new flush-only OID recovery path can clear a local-ahead OID mismatch and continue. **Concrete scenario:** Someone uses step 4 as the exhaustive list of hard failures and misses that flush-only divergence is recoverable. **Suggested fix:** Qualify “OID mismatch” (e.g. non-recoverable / excluding flush-only recovery) or cross-reference the “Flush-commit OID recovery” subsection.
+
+### Out-of-Scope Observations
+
+1. **Orthogonal deliverables on the same branch:** Besides SessionStart boundary work, the diff includes `.claude-plugin/plugin.json` version bump, large `larch-logs/implement/…` additions, and substantial `scripts/merge-pr.sh` / `scripts/test-merge-pr.sh` / `scripts/git-force-push.sh` flush-recovery changes. Per instructions, `larch-logs` churn is not flagged as drift; the merge-pr / git-force-push surface is simply outside the SessionStart `<feature_description>` test obligations—reviewers should treat harness **6** (`make test-harnesses-6` includes `test-merge-pr`) as the gate for that behavior, not `test-sessionstart`.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	latent	risk-integration	scripts/test-sessionstart-health.sh	No regression asserts all three boundary advisories appear together when design manifest review summary and bump armed are all pending	Plan edge case simultaneous boundaries MSG concatenation could regress without CI catching	Add one tmpdir fixture and assert one JSON additionalContext contains post-/design post-/review and post-/bump-version substrings
+1	in_scope	latent	correctness	scripts/sessionstart-health.sh	When session_id is omitted from stdin LARCH_TOKEN_SESSION_ID is not cleared before resolve_implement_tmpdir	Inherited stale LARCH_TOKEN_SESSION_ID can skew session binding and suppress advisories fail-open	Unset LARCH_TOKEN_SESSION_ID or export empty when SID absent before resolver call
+1	in_scope	nit	risk-integration	scripts/merge-pr.md:48	Step 4 lists OID mismatch as unconditional fail-closed while flush recovery can resolve some OID mismatches	Operators misread step 4 as exhaustive hard-fail list	Qualify OID mismatch or cross-reference flush recovery subsection
+1	out_of_scope	latent	risk-integration	branch vs main (merge-pr git-force-push plugin.json larch-logs)	Multiple independent behavioral areas ship in one diff	Sessionstart tests do not exercise merge-pr or force-push paths	Use separate PRs or at least run full make lint harness buckets including test-harnesses-6 for merge-pr
+```

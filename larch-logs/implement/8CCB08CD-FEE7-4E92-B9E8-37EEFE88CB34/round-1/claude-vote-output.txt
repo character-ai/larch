@@ -1,0 +1,18 @@
+FINDING_1: EXONERATE -- pre-existing pattern in hook-stop-fail-close.sh; not introduced here and not worth a standalone issue
+FINDING_2: EXONERATE -- process advice about PR scope; not a trackable bug
+FINDING_3: EXONERATE -- duplicate of FINDING_1; same pre-existing hook-stop pattern
+FINDING_4: YES
+FINDING_5: EXONERATE -- two jq calls on a local hook is fine; merging into one adds destructuring complexity that doesn't pay for itself here
+FINDING_6: YES
+FINDING_7: EXONERATE -- duplicate of FINDING_4
+FINDING_8: YES
+FINDING_9: EXONERATE -- duplicate of FINDING_8 with more narrative detail
+FINDING_10: EXONERATE -- duplicate of FINDING_8
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: EXONERATE -- duplicate of FINDING_11
+FINDING_14: EXONERATE -- duplicate of FINDING_8
+FINDING_15: EXONERATE -- duplicate of FINDING_8
+FINDING_16: YES
+FINDING_17: EXONERATE -- duplicate of FINDING_16
+FINDING_18: EXONERATE -- legitimate concern but bounded read introduces complexity disproportionate to the threat model for a local-only hook
