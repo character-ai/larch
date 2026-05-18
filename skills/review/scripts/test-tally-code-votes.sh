@@ -399,6 +399,125 @@ out="$TMP/out.env"
     --review-tmpdir "$TMP" > "$out"
 grep -Fq 'WARN=yield TSV missing manifest entry for reviewer basename: cursor-specialist-unknown-output.txt' "$out" || { FAIL=1; printf '  FAIL orphan reviewer warning missing\n'; }
 
+echo "# Case: panel-manifest with 7 slots, only 5 produce findings — scoreboard shows 7 rows"
+TMP="$WORKDIR/case_dead_slots"
+mkdir -p "$TMP"
+# 5-slot ballot (structure + correctness + testing + security + edge-cases)
+cat > "$TMP/ballot.md" <<'EOF'
+### FINDING_1: Structure concern
+- **Reviewer**: cursor-specialist-structure-output.txt
+- **Concern**: Structure issue.
+- **Suggested revision**: Fix it.
+
+### FINDING_2: Correctness concern
+- **Reviewer**: cursor-specialist-correctness-output.txt
+- **Concern**: Correctness issue.
+- **Suggested revision**: Fix it.
+
+### FINDING_3: Testing concern
+- **Reviewer**: cursor-specialist-testing-output.txt
+- **Concern**: Testing issue.
+- **Suggested revision**: Fix it.
+
+### FINDING_4: Security concern
+- **Reviewer**: cursor-specialist-security-output.txt
+- **Concern**: Security issue.
+- **Suggested revision**: Fix it.
+
+### FINDING_5: Edge cases concern
+- **Reviewer**: cursor-specialist-edge-cases-output.txt
+- **Concern**: Edge case issue.
+- **Suggested revision**: Fix it.
+EOF
+# 7-slot panel manifest (structure+correctness+testing+security+edge-cases+plan-fidelity+codex-generalist)
+cat > "$TMP/panel-manifest.ndjson" <<EOF
+{"slot":"structure","tool":"cursor","output":"$TMP/cursor-specialist-structure-output.txt","agent":"agents/reviewer-structure.md"}
+{"slot":"correctness","tool":"cursor","output":"$TMP/cursor-specialist-correctness-output.txt","agent":"agents/reviewer-correctness.md"}
+{"slot":"testing","tool":"cursor","output":"$TMP/cursor-specialist-testing-output.txt","agent":"agents/reviewer-testing.md"}
+{"slot":"security","tool":"cursor","output":"$TMP/cursor-specialist-security-output.txt","agent":"agents/reviewer-security.md"}
+{"slot":"edge-cases","tool":"cursor","output":"$TMP/cursor-specialist-edge-cases-output.txt","agent":"agents/reviewer-edge-cases.md"}
+{"slot":"plan-fidelity","tool":"cursor","output":"$TMP/cursor-specialist-plan-fidelity-output.txt","agent":"agents/reviewer-plan-fidelity.md"}
+{"slot":"generic","tool":"codex","output":"$TMP/codex-generalist-output.txt","agent":"agents/codex-generalist.md"}
+EOF
+# Collector results: plan-fidelity and codex-generalist are NOT_SUBSTANTIVE (dead slots)
+cat > "$TMP/collector-results.env" <<EOF
+REVIEWER_FILE=$TMP/cursor-specialist-structure-output.txt
+TOOL=cursor
+STATUS=OK
+EXIT_CODE=0
+
+REVIEWER_FILE=$TMP/cursor-specialist-correctness-output.txt
+TOOL=cursor
+STATUS=OK
+EXIT_CODE=0
+
+REVIEWER_FILE=$TMP/cursor-specialist-testing-output.txt
+TOOL=cursor
+STATUS=OK
+EXIT_CODE=0
+
+REVIEWER_FILE=$TMP/cursor-specialist-security-output.txt
+TOOL=cursor
+STATUS=OK
+EXIT_CODE=0
+
+REVIEWER_FILE=$TMP/cursor-specialist-edge-cases-output.txt
+TOOL=cursor
+STATUS=OK
+EXIT_CODE=0
+
+REVIEWER_FILE=$TMP/cursor-specialist-plan-fidelity-output.txt
+TOOL=cursor
+STATUS=NOT_SUBSTANTIVE
+EXIT_CODE=0
+
+REVIEWER_FILE=$TMP/codex-generalist-output.txt
+TOOL=codex
+STATUS=NOT_SUBSTANTIVE
+EXIT_CODE=0
+EOF
+printf 'FINDING_1: YES\nFINDING_2: YES\nFINDING_3: NO\nFINDING_4: YES\nFINDING_5: YES\n' > "$TMP/cursor-vote-output.txt"
+printf 'FINDING_1: YES\nFINDING_2: NO\nFINDING_3: YES\nFINDING_4: YES\nFINDING_5: NO\n'  > "$TMP/codex-vote-output.txt"
+printf 'FINDING_1: YES\nFINDING_2: YES\nFINDING_3: YES\nFINDING_4: YES\nFINDING_5: YES\n' > "$TMP/claude-vote-output.txt"
+out="$TMP/out.env"
+"$SCRIPT" --ballot-file "$TMP/ballot.md" \
+    --voter-files "$TMP/cursor-vote-output.txt" "$TMP/codex-vote-output.txt" "$TMP/claude-vote-output.txt" \
+    --manifest-file "$TMP/panel-manifest.ndjson" \
+    --collector-results-file "$TMP/collector-results.env" \
+    --not-substantive-count 2 \
+    --review-tmpdir "$TMP" > "$out"
+tally_content=$(cat "$TMP/voting-tally.md" 2>/dev/null || true)
+# Scoreboard must include rows for live slots (full basename with -output.txt label)
+for _slot in cursor-specialist-structure-output.txt cursor-specialist-correctness-output.txt \
+             cursor-specialist-testing-output.txt cursor-specialist-security-output.txt \
+             cursor-specialist-edge-cases-output.txt; do
+    if printf '%s\n' "$tally_content" | grep -Fq "| $_slot "; then
+        printf '  ok   dead_slots: live slot %s row present\n' "$_slot"
+    else
+        FAIL=1; printf '  FAIL dead_slots: live slot %s row missing from scoreboard\n' "$_slot"
+    fi
+done
+# Dead slots use short label (no -output.txt suffix)
+for _slot in cursor-specialist-plan-fidelity codex-generalist; do
+    if printf '%s\n' "$tally_content" | grep -Fq "| $_slot "; then
+        printf '  ok   dead_slots: dead slot %s row present in scoreboard\n' "$_slot"
+    else
+        FAIL=1; printf '  FAIL dead_slots: dead slot %s row missing from scoreboard\n' "$_slot"
+    fi
+done
+# Dead slots should carry STATUS=NOT_SUBSTANTIVE annotation
+if printf '%s\n' "$tally_content" | grep -q 'STATUS=NOT_SUBSTANTIVE'; then
+    printf '  ok   dead_slots: NOT_SUBSTANTIVE annotation present\n'
+else
+    FAIL=1; printf '  FAIL dead_slots: NOT_SUBSTANTIVE annotation missing\n'
+fi
+# Degraded banner must appear (NOT_SUBSTANTIVE_COUNT=2 passed via --not-substantive-count)
+if printf '%s\n' "$tally_content" | grep -q '2 reviewer slot(s) emitted narrative-only output'; then
+    printf '  ok   dead_slots: degraded panel banner present\n'
+else
+    FAIL=1; printf '  FAIL dead_slots: degraded panel banner missing\n'
+fi
+
 if [[ "$FAIL" -eq 0 ]]; then
     printf 'PASS: test-tally-code-votes.sh\n'
     exit 0

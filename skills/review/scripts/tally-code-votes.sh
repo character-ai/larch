@@ -24,6 +24,8 @@ SESSION_ENV_PATH=""
 SCOPE_FILES=""
 PLAN_FILE=""
 MANIFEST_FILE=""
+COLLECTOR_RESULTS_FILE=""
+NOT_SUBSTANTIVE_COUNT=0
 CURSOR_AVAILABLE=""
 CODEX_AVAILABLE=""
 BOTH_DOWN="false"
@@ -37,6 +39,8 @@ while [[ $# -gt 0 ]]; do
         --scope-files) SCOPE_FILES="${2:?--scope-files requires a value}"; shift 2 ;;
         --plan-file) PLAN_FILE="${2:?--plan-file requires a value}"; shift 2 ;;
         --manifest-file) MANIFEST_FILE="${2:?--manifest-file requires a value}"; shift 2 ;;
+        --collector-results-file) COLLECTOR_RESULTS_FILE="${2:?--collector-results-file requires a value}"; shift 2 ;;
+        --not-substantive-count) NOT_SUBSTANTIVE_COUNT="${2:?--not-substantive-count requires a value}"; shift 2 ;;
         --cursor-available) CURSOR_AVAILABLE="${2:?--cursor-available requires a value}"; shift 2 ;;
         --codex-available) CODEX_AVAILABLE="${2:?--codex-available requires a value}"; shift 2 ;;
         --both-down) BOTH_DOWN="${2:?--both-down requires a value}"; shift 2 ;;
@@ -241,6 +245,9 @@ write_archetype_map "$MANIFEST_FILE" "$archetype_map"
         tier_label="$(panel_tier "$ELIGIBLE_VOTERS")"
         printf '**⚠ Degraded code-review panel: %s judge(s) available. Panel tier: %s.**\n\n' "$ELIGIBLE_VOTERS" "$tier_label"
     fi
+    if [[ "$NOT_SUBSTANTIVE_COUNT" -gt 0 ]]; then
+        printf '**⚠ Degraded code-review panel: %s reviewer slot(s) emitted narrative-only output (NOT_SUBSTANTIVE). Dead slots are shown in the scoreboard below.**\n\n' "$NOT_SUBSTANTIVE_COUNT"
+    fi
     printf '## Per-finding vote breakdown\n\n'
     printf '| Item | YES | NO | EXON | NEUT | Result |\n'
     printf '|---|---:|---:|---:|---:|---|\n'
@@ -371,6 +378,71 @@ write_archetype_map "$MANIFEST_FILE" "$archetype_map"
       }
     ' "$score_rows" | sort
 } > "$VOTING_TALLY_FILE"
+
+# Append dead-slot rows for manifest entries that produced no score_rows (e.g.
+# NOT_SUBSTANTIVE slots whose reviewers emitted narrative without any findings).
+# Uses awk (not bash arrays) for bash 3.2 portability.
+if [[ -n "$MANIFEST_FILE" && -f "$MANIFEST_FILE" ]]; then
+    _dead_rows=$(awk -v collector_file="${COLLECTOR_RESULTS_FILE:-/dev/null}" \
+        -v score_file="$score_rows" \
+        -v manifest_file="$MANIFEST_FILE" \
+        '
+        function norm_base(b,    stem) {
+            sub(/^.*\//, "", b)
+            if (b ~ /\.txt$/) {
+                stem = b; sub(/\.txt$/, "", stem)
+                while (stem ~ /-(phase2|phase3|retry)$/) sub(/-(phase2|phase3|retry)$/, "", stem)
+                return stem ".txt"
+            }
+            stem = b
+            while (stem ~ /-(phase2|phase3|retry)$/) sub(/-(phase2|phase3|retry)$/, "", stem)
+            return stem
+        }
+        BEGIN {
+            cr_file = ""; cr_status = ""
+            while ((getline line < collector_file) > 0) {
+                if (line == "") {
+                    if (cr_file != "" && cr_status != "") {
+                        n = split(cr_file, parts, "/"); b = parts[n]
+                        b = norm_base(b)
+                        collector_status[b] = cr_status
+                    }
+                    cr_file = ""; cr_status = ""
+                } else if (substr(line,1,14) == "REVIEWER_FILE=") {
+                    cr_file = substr(line,15)
+                } else if (substr(line,1,7) == "STATUS=") {
+                    cr_status = substr(line,8)
+                }
+            }
+            if (cr_file != "" && cr_status != "") {
+                n = split(cr_file, parts, "/"); b = parts[n]
+                b = norm_base(b); collector_status[b] = cr_status
+            }
+            close(collector_file)
+            while ((getline line < score_file) > 0) {
+                n = split(line, f, "\t")
+                if (n >= 1 && f[1] != "") seen[f[1]] = 1
+            }
+            close(score_file)
+            while ((getline row < manifest_file) > 0) {
+                if (row == "") continue
+                b = row
+                gsub(/.*"output":"/, "", b); gsub(/".*/, "", b)
+                n = split(b, parts, "/"); base = parts[n]
+                normed = norm_base(base)
+                if (normed ~ /^dyn-/) continue
+                if (!(normed in seen)) {
+                    st = (normed in collector_status) ? collector_status[normed] : "NOT_SUBSTANTIVE"
+                    label = normed; sub(/-output\.txt$/, "", label); sub(/\.txt$/, "", label)
+                    printf "| %s | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | STATUS=%s |\n", label, st
+                }
+            }
+        }
+        ' /dev/null)
+    if [[ -n "$_dead_rows" ]]; then
+        printf '%s\n' "$_dead_rows" >> "$VOTING_TALLY_FILE"
+    fi
+fi
 
 if [[ -n "$MANIFEST_FILE" && -f "$MANIFEST_FILE" ]]; then
     awk -F '\t' '

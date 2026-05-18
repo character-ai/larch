@@ -140,6 +140,32 @@ assert_eq "dynamic phase2/phase3/retry outputs do not enter counted slots" "$got
 got=$(printf '%s\n' "$out" | awk -F= '$1=="FAILED_SLOTS"{print $2}')
 assert_eq "only static failures contribute when dynamic fallback outputs fail" "$got" "3"
 
+echo "# NOT_SUBSTANTIVE slots are counted as failed AND tracked separately"
+out=$(run_case not_substantive simple --launched-slots 7 \
+    OK OK OK OK OK NOT_SUBSTANTIVE NOT_SUBSTANTIVE 2>&1)
+got=$(printf '%s\n' "$out" | awk -F= '$1=="FAILED_SLOTS"{print $2}')
+assert_eq "NOT_SUBSTANTIVE counts as failed" "$got" "2"
+got=$(printf '%s\n' "$out" | awk -F= '$1=="NOT_SUBSTANTIVE_SLOTS"{print $2}')
+assert_eq "NOT_SUBSTANTIVE_SLOTS count emitted" "$got" "2"
+got=$(printf '%s\n' "$out" | awk -F= '$1=="THRESHOLD_OK"{print $2}')
+assert_eq "2 of 7 NOT_SUBSTANTIVE → threshold OK (not >50%)" "$got" "true"
+
+echo "# 4 NOT_SUBSTANTIVE of 7 → threshold fails"
+out=$(run_case not_substantive_majority simple --launched-slots 7 \
+    OK OK OK NOT_SUBSTANTIVE NOT_SUBSTANTIVE NOT_SUBSTANTIVE NOT_SUBSTANTIVE 2>&1)
+got=$(printf '%s\n' "$out" | awk -F= '$1=="THRESHOLD_OK"{print $2}')
+assert_eq "4 of 7 NOT_SUBSTANTIVE → threshold fails" "$got" "false"
+got=$(printf '%s\n' "$out" | awk -F= '$1=="NOT_SUBSTANTIVE_SLOTS"{print $2}')
+assert_eq "NOT_SUBSTANTIVE_SLOTS=4 emitted on majority-fail path" "$got" "4"
+
+echo "# mixed NOT_SUBSTANTIVE and other failures"
+out=$(run_case mixed_failures simple --launched-slots 7 \
+    OK OK OK NOT_SUBSTANTIVE FAILED NOT_SUBSTANTIVE timeout 2>&1)
+got=$(printf '%s\n' "$out" | awk -F= '$1=="FAILED_SLOTS"{print $2}')
+assert_eq "mixed: all non-OK count as failed" "$got" "4"
+got=$(printf '%s\n' "$out" | awk -F= '$1=="NOT_SUBSTANTIVE_SLOTS"{print $2}')
+assert_eq "mixed: only NOT_SUBSTANTIVE counted in NOT_SUBSTANTIVE_SLOTS" "$got" "2"
+
 if [[ "$FAIL" -eq 0 ]]; then
     printf 'PASS: test-check-reviewer-failure-threshold.sh\n'
     exit 0

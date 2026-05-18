@@ -9,6 +9,7 @@ Regression harness for `skills/review/scripts/check-reviewer-failure-threshold.s
 - `STATUS=cap_hit` counted as success (deliberate slot-skip, not failure).
 - `--launched-slots` accounting: never-launched slots count as failures (vendor unhealthy).
 - Both-down case: zero records, zero launched → all 12 counted as failures.
+- `STATUS=NOT_SUBSTANTIVE` counted as both `FAILED_SLOTS` and `NOT_SUBSTANTIVE_SLOTS`; threshold still triggers when majority are NOT_SUBSTANTIVE.
 
 ## Invocation
 

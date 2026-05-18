@@ -889,6 +889,159 @@ if [[ "$STRUCTURED_REVIEWER_VALIDATION" == "true" ]]; then
     done
 fi
 
+# --- 3.7. Retry NOT_SUBSTANTIVE entries once with a structured-output demand ---
+# For each entry downgraded to NOT_SUBSTANTIVE in sections 3.5 or 3.6, if the
+# reviewer has a .meta sidecar with OUTER_LAUNCHER (outer-launcher path), prepend
+# a structured-output demand header to a temp copy of the prompt and re-run.
+# Uses the same sentinel-wait + validator-check loop as section 3.
+if [[ "$SUBSTANTIVE_VALIDATION" == "true" ]]; then
+    NS_RETRY_FILES=()
+    NS_RETRY_INDICES=()
+    NS_RETRY_TIMEOUTS=()
+
+    for j in "${!RESULTS[@]}"; do
+        entry="${RESULTS[$j]}"
+        rf_field="${entry%%|*}"
+        REVIEWER_FILE="${rf_field#REVIEWER_FILE=}"
+        rest1="${entry#*|}"
+        tool_field="${rest1%%|*}"
+        ENTRY_TOOL="${tool_field#TOOL=}"
+        rest2="${rest1#*|}"
+        status_field="${rest2%%|*}"
+        ENTRY_STATUS="${status_field#STATUS=}"
+
+        [[ "$ENTRY_STATUS" == "NOT_SUBSTANTIVE" ]] || continue
+        META="${REVIEWER_FILE%.txt}.meta"
+        [[ -f "$META" ]] || continue
+        # Only retry when an OUTER_LAUNCHER and its prompt file are recorded in .meta.
+        _ns_launcher=""
+        _ns_prompt=""
+        _ns_workdir=""
+        _ns_tool=""
+        _ns_timeout=""
+        _ns_risk=""
+        while IFS= read -r _ns_meta_line || [[ -n "$_ns_meta_line" ]]; do
+            _ns_key="${_ns_meta_line%%=*}"
+            _ns_val="${_ns_meta_line#*=}"
+            case "$_ns_key" in
+                OUTER_LAUNCHER)             _ns_launcher="$_ns_val" ;;
+                OUTER_LAUNCHER_PROMPT_FILE) _ns_prompt="$_ns_val" ;;
+                OUTER_LAUNCHER_WORKDIR)     _ns_workdir="$_ns_val" ;;
+                OUTER_LAUNCHER_RISK)        _ns_risk="$_ns_val" ;;
+                TOOL)                       _ns_tool="$_ns_val" ;;
+                TIMEOUT)                    _ns_timeout="$_ns_val" ;;
+            esac
+        done < "$META"
+
+        [[ -n "$_ns_launcher" && -n "$_ns_prompt" && -n "$_ns_workdir" ]] || continue
+        [[ -f "$_ns_launcher" && ! -L "$_ns_launcher" && -x "$_ns_launcher" ]] || continue
+        [[ -f "$_ns_prompt"   && ! -L "$_ns_prompt"   && -r "$_ns_prompt"   ]] || continue
+        [[ -d "$_ns_workdir" ]] || continue
+        case "$_ns_timeout" in ''|*[!0-9]*) continue ;; esac
+        (( 10#$_ns_timeout >= 1 )) || continue
+        _ns_timeout=$((10#$_ns_timeout))
+
+        NS_RETRY_FILES+=("$REVIEWER_FILE")
+        NS_RETRY_INDICES+=("$j")
+        NS_RETRY_TIMEOUTS+=("$_ns_timeout")
+    done
+
+    if [[ ${#NS_RETRY_FILES[@]} -gt 0 ]]; then
+        NS_RETRY_SENTINELS=()
+        NS_RETRY_LAUNCHED=()
+        NS_MAX_RETRY_TIMEOUT=30
+        # Structured-output demand prepended to the reviewer prompt on retry.
+        NS_STRONG_HEADER="IMPORTANT: Your previous response was not structured correctly. You MUST output findings in the required format (### FINDING_N: title / bullet fields), or the literal NO_ISSUES_FOUND if no issues exist. Do NOT output narrative, process descriptions, or reading logs. Begin your response directly with findings or NO_ISSUES_FOUND.
+
+"
+        for j in "${!NS_RETRY_FILES[@]}"; do
+            ORIG_OUTPUT="${NS_RETRY_FILES[$j]}"
+            META="${ORIG_OUTPUT%.txt}.meta"
+            NS_RETRY_OUTPUT="${ORIG_OUTPUT%.txt}-ns-retry.txt"
+
+            _ns_launcher=""
+            _ns_prompt=""
+            _ns_workdir=""
+            _ns_tool=""
+            _ns_timeout="${NS_RETRY_TIMEOUTS[$j]}"
+            _ns_risk="high"
+            while IFS= read -r _ns_meta_line || [[ -n "$_ns_meta_line" ]]; do
+                _ns_key="${_ns_meta_line%%=*}"
+                _ns_val="${_ns_meta_line#*=}"
+                case "$_ns_key" in
+                    OUTER_LAUNCHER)             _ns_launcher="$_ns_val" ;;
+                    OUTER_LAUNCHER_PROMPT_FILE) _ns_prompt="$_ns_val" ;;
+                    OUTER_LAUNCHER_WORKDIR)     _ns_workdir="$_ns_val" ;;
+                    OUTER_LAUNCHER_RISK)        _ns_risk="${_ns_val:-high}" ;;
+                    TOOL)                       _ns_tool="$_ns_val" ;;
+                esac
+            done < "$META"
+
+            [[ -n "$_ns_launcher" && -n "$_ns_prompt" && -n "$_ns_workdir" && -n "$_ns_tool" ]] || continue
+
+            NS_RETRY_WAIT=$(( _ns_timeout + 60 ))
+            [[ $NS_RETRY_WAIT -gt $NS_MAX_RETRY_TIMEOUT ]] && NS_MAX_RETRY_TIMEOUT=$NS_RETRY_WAIT
+
+            # Build a stronger prompt file by prepending the structured-output demand.
+            _ns_strong_prompt=$(mktemp "${TMPDIR:-/tmp}/larch-ns-retry-prompt.XXXXXX") || continue
+            { printf '%s' "$NS_STRONG_HEADER"; cat "$_ns_prompt"; } > "$_ns_strong_prompt" 2>/dev/null || {
+                rm -f "$_ns_strong_prompt"; continue
+            }
+            (
+                cd "$_ns_workdir" || exit 1
+                env -u LARCH_ALLOW_TEST_HOOKS \
+                    -u LARCH_TEST_TRAP_AFTER_INNER_DONE_FILE \
+                    -u LARCH_TEST_TRAP_AFTER_INNER_DONE \
+                    -- "$_ns_launcher" \
+                        --tool "$_ns_tool" \
+                        --output "$NS_RETRY_OUTPUT" \
+                        --timeout "$_ns_timeout" \
+                        --risk "$_ns_risk" \
+                        --prompt-file "$_ns_strong_prompt"
+            ) >/dev/null 2>&1 &
+            _ns_bg=$!
+            NS_RETRY_SENTINELS+=("${NS_RETRY_OUTPUT}.done")
+            NS_RETRY_LAUNCHED[j]=1
+            # Clean up temp prompt file when the background child exits.
+            ( wait "$_ns_bg" 2>/dev/null; rm -f "$_ns_strong_prompt" ) >/dev/null 2>&1 &
+        done
+
+        if [[ ${#NS_RETRY_SENTINELS[@]} -gt 0 ]]; then
+            "$SCRIPT_DIR/wait-for-reviewers.sh" --timeout "$NS_MAX_RETRY_TIMEOUT" \
+                "${NS_RETRY_SENTINELS[@]}" >/dev/null 2>&1 || true
+
+            VAL_ARGS_NS=()
+            [[ "$VALIDATION_MODE" == "true" ]] && VAL_ARGS_NS+=(--validation-mode)
+
+            for j in "${!NS_RETRY_FILES[@]}"; do
+                [[ "${NS_RETRY_LAUNCHED[$j]:-0}" == "1" ]] || continue
+                ORIG_OUTPUT="${NS_RETRY_FILES[$j]}"
+                NS_RETRY_OUTPUT="${ORIG_OUTPUT%.txt}-ns-retry.txt"
+                NS_RETRY_SENTINEL="${NS_RETRY_OUTPUT}.done"
+                IDX="${NS_RETRY_INDICES[$j]}"
+
+                if [[ -f "$NS_RETRY_SENTINEL" && -s "$NS_RETRY_OUTPUT" ]]; then
+                    NS_EXIT=$(cat "$NS_RETRY_SENTINEL" 2>/dev/null || echo "99")
+                    case "$NS_EXIT" in ''|*[!0-9]*) NS_EXIT=99 ;; esac
+                    if [[ "$NS_EXIT" == "0" ]]; then
+                        # Validate the retry output; discard diagnostic (failure keeps NOT_SUBSTANTIVE).
+                        "$SCRIPT_DIR/validate-research-output.sh" \
+                            "${VAL_ARGS_NS[@]+"${VAL_ARGS_NS[@]}"}" "$NS_RETRY_OUTPUT" >/dev/null 2>&1
+                        NS_VAL_EXIT=$?
+                        if [[ "$NS_VAL_EXIT" -eq 0 ]]; then
+                            # Retry succeeded — update to OK and point to retry output.
+                            entry="${RESULTS[$IDX]}"
+                            ENTRY_TOOL="${entry#*TOOL=}"; ENTRY_TOOL="${ENTRY_TOOL%%|*}"
+                            RESULTS[IDX]="REVIEWER_FILE=$NS_RETRY_OUTPUT|TOOL=$ENTRY_TOOL|STATUS=OK|EXIT_CODE=0|FAILURE_REASON="
+                        fi
+                        # If validation still fails, keep STATUS=NOT_SUBSTANTIVE on the original entry.
+                    fi
+                fi
+            done
+        fi
+    fi
+fi
+
 # --- 4. Emit structured results ---
 emit_summary_result() {
     local entry="$1"

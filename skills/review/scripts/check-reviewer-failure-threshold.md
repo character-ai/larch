@@ -22,6 +22,7 @@ Emits to FD 3 (`emit_kv`):
 | `SUCCEEDED_SLOTS` | count of static-slot records with `STATUS=OK` or `STATUS=cap_hit` |
 | `FAILED_SLOTS` | count of static-slot records with `STATUS != OK && STATUS != cap_hit` plus static never-launched slots |
 | `COUNTED_SLOTS` | total static-slot record count from the collector file |
+| `NOT_SUBSTANTIVE_SLOTS` | count of static-slot records with `STATUS=NOT_SUBSTANTIVE` (subset of `FAILED_SLOTS`; useful for the degraded-panel banner) |
 | `THRESHOLD_OK` | `true` when failures ≤ 50% of intended panel size, else `false` |
 | `THRESHOLD_REASON` | human-readable explanation when `THRESHOLD_OK=false`; empty otherwise |
 
@@ -31,7 +32,7 @@ Emits to FD 3 (`emit_kv`):
 
 ## STATUS classification
 
-`STATUS=cap_hit` is a deliberate static slot-skip, NOT a failure. It counts as `SUCCEEDED_SLOTS` for threshold purposes. Dynamic scout slots are ignored entirely by this script, including fallback basenames such as `dyn-foo-output-phase2.txt`, `dyn-foo-output-phase3.txt`, and `dyn-foo-output-retry.txt`; the threshold answers whether the baseline 12-slot or 7-slot panel failed, not whether optional dynamic slots failed.
+`STATUS=cap_hit` is a deliberate static slot-skip, NOT a failure. It counts as `SUCCEEDED_SLOTS` for threshold purposes. `STATUS=NOT_SUBSTANTIVE` counts as both `FAILED_SLOTS` AND `NOT_SUBSTANTIVE_SLOTS`; it indicates a reviewer produced narrative-only output without structured findings. Dynamic scout slots are ignored entirely by this script, including fallback basenames such as `dyn-foo-output-phase2.txt`, `dyn-foo-output-phase3.txt`, and `dyn-foo-output-retry.txt`; the threshold answers whether the baseline 12-slot or 7-slot panel failed, not whether optional dynamic slots failed.
 
 ## Callers
 

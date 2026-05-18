@@ -324,6 +324,8 @@ else
 fi
 threshold_ok=$(kv_get "$threshold_out" THRESHOLD_OK)
 threshold_reason=$(kv_get "$threshold_out" THRESHOLD_REASON)
+not_substantive_slots=$(kv_get "$threshold_out" NOT_SUBSTANTIVE_SLOTS)
+not_substantive_slots="${not_substantive_slots:-0}"
 if [[ "$threshold_ok" == "false" ]]; then
     : > "$REVIEW_TMPDIR/accepted-findings.md"
     : > "$REVIEW_TMPDIR/rejected-findings.md"
@@ -419,6 +421,8 @@ tally_args=(
 [[ -n "$SCOPE_FILES" && -s "$SCOPE_FILES" ]] && tally_args+=(--scope-files "$SCOPE_FILES")
 [[ -n "$PLAN_FILE" && -f "$PLAN_FILE" ]] && tally_args+=(--plan-file "$PLAN_FILE")
 [[ -n "$panel_manifest" && -f "$panel_manifest" ]] && tally_args+=(--manifest-file "$panel_manifest")
+[[ -f "$collector_results_file" ]] && tally_args+=(--collector-results-file "$collector_results_file")
+[[ "$not_substantive_slots" -gt 0 ]] && tally_args+=(--not-substantive-count "$not_substantive_slots")
 if [[ "${#voter_files[@]}" -gt 0 ]]; then
     tally_args+=(--voter-files "${voter_files[@]}")
 fi
