@@ -62,3 +62,43 @@
 - **Concern**: [nit] "Running session" implies liveness Stale session dirs also pin; doc overstates detection Match wording to upgrade-larch.md session-cache semantics
 - **Suggested revision**: Address the concern above.
 
+### FINDING_12: panel [code-review/accepted]
+
+## code-quality: skills/upgrade-larch/scripts/upgrade-larch.md:31-36 skills/upgrade-larch/scripts/test-upgrade-larch-prune.md:17-17
+
+- **Reviewer**: cursor-specialist-structure-output.txt
+- **Concern**: [nit] Edit-in-sync lists omit Makefile harness wiring Editors may change scripts without updating CI shard targets Add Makefile bullet to both edit-in-sync lists
+- **Suggested revision**: Address the concern above.
+
+### FINDING_14: panel [code-review/accepted]
+
+## correctness: implementation_plan §Regression test structure case 2; skills/upgrade-larch/scripts/test-upgrade-larch-prune.sh (no-sessions-prunes-old); skills/upgrade-larch/scripts/upgrade-larch.sh (ACTIVE_SESSION_VERSIONS += INSTALLED_VERSION)
+
+- **Reviewer**: cursor-specialist-plan-fidelity-output.txt
+- **Concern**: [important] Literal plan acceptance "no sessions -> prune 29.1.19 and 29.1.20" is not met; executing numeric cache version is always kept. Checklists or reviewers using the plan text expect 29.1.20 removed with no sessions; tests and code require 29.1.20 to remain. Update the plan/issue acceptance to match shipped contract (executing cached version preserved; only unused olds pruned).
+- **Suggested revision**: Address the concern above.
+
+### FINDING_17: panel [code-review/accepted]
+
+## correctness: skills/upgrade-larch/scripts/upgrade-larch.sh:117-128
+
+- **Reviewer**: cursor-specialist-edge-cases-output.txt
+- **Concern**: [latent] CRLF or trailing whitespace on LARCH_CLAUDE_PLUGIN_ROOT value breaks is_safe_version. A valid absolute path whose basename should be 29.1.x is ignored; that cached version can be pruned while a session still uses the path. Strip \r and trim trailing whitespace before basename / is_safe_version; add a CRLF regression case in test-upgrade-larch-prune.sh.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_26: panel [code-review/accepted]
+
+## security: skills/upgrade-larch/scripts/upgrade-larch.sh:97-131
+
+- **Reviewer**: cursor-specialist-security-output.txt
+- **Concern**: [latent] Prune guard honors session-env pins discovered under world-writable /tmp and /private/tmp via claude-* globs. On a shared host, another local user can create /tmp/claude-<name>/session-env.sh with LARCH_CLAUDE_PLUGIN_ROOT=/x/<numericVersion> so the victim's upgrade run skips pruning that cached version even without a real session, enabling cleanup denial or disk-retention harassment. Restrict fallback scanning to dirs owned by the current euid, drop /tmp fallback, or otherwise tie pins to the operator's session roots only.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_9: panel [code-review/accepted]
+
+## code-quality: docs/installation-and-setup.md:40 vs skills/upgrade-larch/scripts/upgrade-larch.md:18
+
+- **Reviewer**: cursor-specialist-structure-output.txt
+- **Concern**: [nit] Install doc omits /private/tmp fallback present in script contract Operators on macOS may misunderstand which dirs participate in the prune guard Mention /private/tmp next to /tmp in installation-and-setup.md
+- **Suggested revision**: Address the concern above.
+
