@@ -1,12 +1,12 @@
 # Version Bump Reasoning
 
-- **Base commit**: `ccdbfa98` (Bump version to 29.1.18 (#2251))
-- **Current version**: `29.1.18`
+- **Base commit**: `143cfcab` (Bump version to 29.1.19 (#2259))
+- **Current version**: `29.1.19`
 - **Classification scope**: `skills/**` and `agents/**` only (public plugin surface).
 
 ## Result: PATCH
 
-- **New version**: `29.1.19`
+- **New version**: `29.1.20`
 
 ### PATCH rationale
 
