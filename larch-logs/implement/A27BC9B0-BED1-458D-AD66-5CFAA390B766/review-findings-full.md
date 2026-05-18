@@ -190,3 +190,35 @@
 - **Concern**: [latent] Two independent compose calls (summary vs flush) with swallow-on-failure semantics. First compose fails while second succeeds, leaving review-and-fix-summary.json on vote tallies but code-review-tally.json compose-derived. Reuse one composed output or hard-fail the round when compose fails on success paths.
 - **Suggested revision**: Address the concern above.
 
+### FINDING_1: panel [code-review/accepted]
+
+## **Important** `correctness` `scripts/ship-pr.sh:431` — `run_checks_phase` now calls `run-relevant-checks-captured.sh --site ship-pr-ci-initial` instead of `step6`, and repeats that at `scripts/ship-pr.sh:457`. `run-relevant-checks-captured.sh` only writes Step 6 token/timing marks for `--site step6`, so a resumed post-review run starting at `PHASE=checks` will pass checks but omit the Step 6 telemetry from run logs. Keep `lint-fix-loop.sh --site ship-pr-ci-initial` for the repair prompt, but pass `--site step6` to `run-relevant-checks-captured.sh` in `run_checks_phase`.
+
+- **Reviewer**: codex-generalist-output.txt
+- **Concern**: 1. **Important** `correctness` `scripts/ship-pr.sh:431` — `run_checks_phase` now calls `run-relevant-checks-captured.sh --site ship-pr-ci-initial` instead of `step6`, and repeats that at `scripts/ship-pr.sh:457`. `run-relevant-checks-captured.sh` only writes Step 6 token/timing marks for `--site step6`, so a resumed post-review run starting at `PHASE=checks` will pass checks but omit the Step 6 telemetry from run logs. Keep `lint-fix-loop.sh --site ship-pr-ci-initial` for the repair prompt, but pass `--site step6` to `run-relevant-checks-captured.sh` in `run_checks_phase`.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_12: panel [code-review/accepted]
+
+## correctness: skills/review-and-fix/scripts/review-and-fix.sh:836-884
+
+- **Reviewer**: cursor-specialist-security-output.txt
+- **Concern**: [important] compose failure after composed_findings_file is set skips flush_review_batches entirely. no code-review-tally or review-findings-full flush on successful exit when compose_review_findings_output fails while IMPLEMENT_TMPDIR is set. On compose failure call flush without the precomposed ninth arg or clear composed_findings_file so the legacy flush path runs.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_15: panel [code-review/accepted]
+
+## risk-integration: skills/review-and-fix/scripts/review-and-fix.sh (run_implement_round flush tail)
+
+- **Reviewer**: cursor-specialist-structure-output.txt
+- **Concern**: [latent] Flush is skipped when pre-summary compose fails while IMPLEMENT_TMPDIR is set because composed_findings_file is non-empty and composed_findings_ok is false. A transient compose-review-findings failure could skip both code-review-tally and review-findings-full batch updates for an otherwise successful round; older flush always ran and attempted compose inside flush_review_batches. On compose failure still invoke flush_review_batches without the precomposed ninth argument so flush retries compose, or explicitly document and accept no batch on compose failure.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_6: panel [code-review/accepted]
+
+## code-quality: scripts/implement-finalize.md
+
+- **Reviewer**: cursor-specialist-structure-output.txt
+- **Concern**: [nit] Sibling contract omits description of new Step 8a execution-issue fields while shell+tests encode them. Operators and editors lack a single SSOT sentence for the diagnostic shape. Document manifest_path manifest_exists coder substrings in the postbump/changelog section of implement-finalize.md.
+- **Suggested revision**: Address the concern above.
+
