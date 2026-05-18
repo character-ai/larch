@@ -20,9 +20,17 @@ available.
   --skill implement --run-id "$run_id"` and swallows failures so the preceding
   business commit remains successful.
 
-## Primary Caller
+## Call sites (invoke `larch-log-flush.sh` only here)
 
-- `skills/implement/scripts/step2-implement.sh`
+Business commits must **not** tail-call this helper (for example `scripts/git-commit.sh` and
+`scripts/git-amend-add.sh` intentionally omit it so every code commit does not spawn a
+`chore(larch-logs): flush` follow-up). Authorized flush paths instead are:
+
+- **External implementer** — `skills/implement/scripts/step2-implement.sh` (post-dispatcher
+  commit).
+- **Step 7a pre-bump** — the implement orchestrator runs `scripts/larch-log.sh commit` directly
+  at the pre-bump checkpoint (not via this wrapper).
+- **Pre-push refresh** — `scripts/refresh-run-logs.sh` before each push.
 
 ## Edit In Sync
 

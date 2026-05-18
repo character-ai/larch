@@ -436,7 +436,7 @@ derive_code_review_tally_from_composed_findings() {
 }
 
 flush_review_batches() {
-    local impl_tmpdir="$1" run_id="$2" panel="$3" rounds="$4" accepted="$5" rejected="$6" exonerated="${7:-0}" neutral="${8:-0}"
+    local impl_tmpdir="$1" run_id="$2" panel="$3" rounds="$4" accepted="$5" rejected="$6" exonerated="${7:-0}" neutral="${8:-0}" composed_findings_source="${9:-}"
     local batch_input_dir body_file findings_file voting_tally="" summary_file
     local tally_out="" tally_rc=0 derived_accepted=0 derived_rejected=0
     local derived_counts=""
@@ -459,7 +459,9 @@ flush_review_batches() {
     body_file="$batch_input_dir/code-review-tally-body.md"
     findings_file="$batch_input_dir/review-findings-full.md"
 
-    if ! compose_review_findings_output "$impl_tmpdir" "$findings_file"; then
+    if [[ -n "$composed_findings_source" && -s "$composed_findings_source" ]]; then
+        cp "$composed_findings_source" "$findings_file" 2>/dev/null || return 0
+    elif ! compose_review_findings_output "$impl_tmpdir" "$findings_file"; then
         emit_breadcrumb "⚠ review-and-fix: failed to compose review-findings-full batch; skipping tally flush"
         return 0
     fi
@@ -472,7 +474,13 @@ flush_review_batches() {
 
         if [[ -s "$impl_tmpdir/review-round-summary.md" ]]; then
             printf '\n'
-            cat "$impl_tmpdir/review-round-summary.md"
+            awk '
+                /^- Accepted findings: / { next }
+                /^- Rejected findings: / { next }
+                /^- Exonerated findings: / { next }
+                /^- Neutral findings: / { next }
+                { print }
+            ' "$impl_tmpdir/review-round-summary.md"
             printf '\n'
         else
             shopt -s nullglob
@@ -503,7 +511,13 @@ flush_review_batches() {
             for summary_file in "${round_summary_files[@]+"${round_summary_files[@]}"}"; do
                 [[ -s "$summary_file" ]] || continue
                 printf '\n'
-                cat "$summary_file"
+                awk '
+                    /^- Accepted findings: / { next }
+                    /^- Rejected findings: / { next }
+                    /^- Exonerated findings: / { next }
+                    /^- Neutral findings: / { next }
+                    { print }
+                ' "$summary_file"
                 printf '\n'
             done
         fi
@@ -893,10 +907,11 @@ run_implement_round() {
     esac
 
     local round_cap_val="${ROUND_CAP:-0}"
-    local composed_findings_file="" derived_counts="" derived_accepted="" derived_rejected=""
+    local composed_findings_file="" derived_counts="" derived_accepted="" derived_rejected="" composed_findings_ok=false
     if [[ "$exit_code" -eq 0 && -n "$IMPLEMENT_TMPDIR" && -d "$IMPLEMENT_TMPDIR" ]]; then
         composed_findings_file="$round_dir/review-findings-full.composed.md"
         if compose_review_findings_output "$IMPLEMENT_TMPDIR" "$composed_findings_file"; then
+            composed_findings_ok=true
             derived_counts=$(derive_code_review_tally_from_composed_findings "$composed_findings_file") || derived_counts=""
             if [[ -n "$derived_counts" ]]; then
                 read -r derived_accepted derived_rejected <<< "$derived_counts"
@@ -913,8 +928,10 @@ run_implement_round() {
     emit_kv REVIEW_AND_FIX_STATUS "$status"
     emit_kv REVIEW_CORE_STATUS "$core_status"
     emit_kv ROUND_NUM "$round_num_dec"
-    emit_kv ACCEPTED_COUNT "$total_accepted"
-    emit_kv REJECTED_COUNT "$total_rejected"
+    emit_kv ACCEPTED_COUNT "$accepted_count"
+    emit_kv REJECTED_COUNT "$rejected_count"
+    emit_kv TOTAL_ACCEPTED_COUNT "$total_accepted"
+    emit_kv TOTAL_REJECTED_COUNT "$total_rejected"
     emit_kv EXONERATED_COUNT "$exonerated_count"
     emit_kv NEUTRAL_COUNT "$neutral_count"
     emit_kv FIX_COUNT "$coder_input_count"
@@ -934,7 +951,11 @@ run_implement_round() {
     emit_kv SUBMODULE_REVERT_COUNT "$revert_count"
     emit_kv SKIPPED_FINDING_COUNT "${skipped_finding_count:-0}"
     if [[ "$exit_code" -eq 0 ]]; then
-        flush_review_batches "$IMPLEMENT_TMPDIR" "$RUN_ID" "$PANEL" "$round_num_dec" "$total_accepted" "$total_rejected" "$total_exonerated" "$total_neutral"
+        if [[ "$composed_findings_ok" == true ]]; then
+            flush_review_batches "$IMPLEMENT_TMPDIR" "$RUN_ID" "$PANEL" "$round_num_dec" "$total_accepted" "$total_rejected" "$total_exonerated" "$total_neutral" "$composed_findings_file"
+        elif [[ -z "$composed_findings_file" ]]; then
+            flush_review_batches "$IMPLEMENT_TMPDIR" "$RUN_ID" "$PANEL" "$round_num_dec" "$total_accepted" "$total_rejected" "$total_exonerated" "$total_neutral"
+        fi
     fi
     exit "$exit_code"
 }

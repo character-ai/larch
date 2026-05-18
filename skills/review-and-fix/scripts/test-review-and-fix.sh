@@ -132,6 +132,15 @@ EOF_FINDING
     printf 'REVIEW_CORE_STATUS=main-agent-vote-required\nROUND_NUM=%s\nACCEPTED_COUNT=0\nREJECTED_COUNT=0\nFINDINGS_FILE=%s/findings.md\nACCEPTED_FINDINGS_FILE=%s/accepted-findings.md\nREJECTED_FINDINGS_FILE=%s/rejected-findings.md\nPANEL_MODE=normal\nPANEL_SHAPE=simple\n' "$round" "$out" "$out" "$out"
     ;;
   tally-fidelity)
+    cat > "$out/review-round-summary.md" <<'EOF_SUMMARY'
+# Review Round 1
+
+- Mode: `diff`
+- Accepted findings: 1
+- Rejected findings: 4
+- Exonerated findings: 0
+- Neutral findings: 0
+EOF_SUMMARY
     cat > "$out/accepted-findings.md" <<'EOF_ACCEPTED'
 ### FINDING_1: First accepted
 - **Location**: src/main.py
@@ -355,10 +364,16 @@ jq -e '.accepted_count == 3 and .rejected_count == 2' \
 jq -e '.accepted_count == 3 and .rejected_count == 2' \
     "$implement_tmp/review-and-fix-summary.json" >/dev/null \
     || fail "tally-fidelity summary matches composed tally"
-grep -Fq 'ACCEPTED_COUNT=3' <<< "$out" || fail "tally-fidelity stdout accepted kv matches composed tally"
-grep -Fq 'REJECTED_COUNT=2' <<< "$out" || fail "tally-fidelity stdout rejected kv matches composed tally"
+grep -Fq 'ACCEPTED_COUNT=1' <<< "$out" || fail "tally-fidelity stdout accepted kv remains per-round"
+grep -Fq 'REJECTED_COUNT=4' <<< "$out" || fail "tally-fidelity stdout rejected kv remains per-round"
+grep -Fq 'TOTAL_ACCEPTED_COUNT=3' <<< "$out" || fail "tally-fidelity stdout total accepted kv matches composed tally"
+grep -Fq 'TOTAL_REJECTED_COUNT=2' <<< "$out" || fail "tally-fidelity stdout total rejected kv matches composed tally"
 [[ "$(grep -cE '^### .+ \[code-review/accepted\]$' "$implement_tmp/larch-logs/implement/tally-fidelity-run/review-findings-full.md")" == "3" ]] \
     || fail "tally-fidelity accepted header count"
+grep -Fq -- '- Accepted findings:' "$implement_tmp/round-1/review-round-summary.md" || fail "tally-fidelity fixture summary keeps per-round count lines"
+if grep -Fq -- '- Accepted findings:' "$implement_tmp/larch-logs/implement/tally-fidelity-run/code-review-tally.json"; then
+    fail "tally-fidelity tally body must omit stale per-round count lines"
+fi
 
 cat > "$TMP/compose-review-findings-fail-stub.sh" <<'EOF_COMPOSE_FAIL'
 #!/usr/bin/env bash
@@ -371,13 +386,12 @@ implement_tmp="$work_compose_fail/implement"
 mkdir -p "$implement_tmp"
 printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
 set +e
-out=$(REVIEW_AND_FIX_COMPOSE_REVIEW_FINDINGS_SH="$TMP/compose-review-findings-fail-stub.sh" TEST_CORE_STATUS=zero run_review_and_fix "$work_compose_fail" \
+out=$(LARCH_QUIET_BREADCRUMBS=1 REVIEW_AND_FIX_COMPOSE_REVIEW_FINDINGS_SH="$TMP/compose-review-findings-fail-stub.sh" TEST_CORE_STATUS=zero run_review_and_fix "$work_compose_fail" \
     --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 --session-env-path "$implement_tmp/session-env.sh" --run-id compose-fail-run)
 rc=$?
 set -e
 [[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "compose-fail expected exit 0 got $rc"; }
 grep -Fq 'failed to compose review findings for summary derivation' <<< "$out" || fail "compose-fail summary warning breadcrumb"
-grep -Fq 'failed to compose review-findings-full batch; skipping tally flush' <<< "$out" || fail "compose-fail flush warning breadcrumb"
 [[ ! -f "$implement_tmp/larch-logs/implement/compose-fail-run/code-review-tally.json" ]] || fail "compose-fail must skip tally batch write"
 [[ ! -f "$implement_tmp/larch-logs/implement/compose-fail-run/review-findings-full.md" ]] || fail "compose-fail must skip findings batch write"
 
