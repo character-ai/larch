@@ -829,6 +829,56 @@ else
 fi
 rm -rf "$sentinel_dir"
 
+root=$(make_repo rebump_reasoning_corrected)
+tmp=$(make_tmpdir)
+sentinel_dir=$(mktemp -d /tmp/ship-pr-rebump-reasoning.XXXXXX)
+write_state "$tmp/ship-pr-state.sh" ci-initial
+_make_rebase_stubs "$root" "$sentinel_dir"
+cat > "$root/.claude/skills/bump-version/scripts/classify-bump.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+reasoning_file="${IMPLEMENT_TMPDIR:-/tmp}/bump-version-reasoning.md"
+cat > "$reasoning_file" <<'EOF'
+# Version Bump Reasoning
+
+## Result: PATCH
+
+- **New version**: `2.1.5`
+EOF
+echo "CURRENT_VERSION=2.1.4"
+echo "NEW_VERSION=2.1.5"
+echo "BUMP_TYPE=PATCH"
+echo "REASONING_FILE=$reasoning_file"
+STUB
+chmod +x "$root/.claude/skills/bump-version/scripts/classify-bump.sh"
+real_git=$(command -v git)
+cat > "$root/scripts/git" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "\${1:-}" == "show" && "\${2:-}" == "origin/main:.claude-plugin/plugin.json" ]]; then
+    printf '%s\n' '{"version":"2.3.0"}'
+    exit 0
+fi
+exec "$real_git" "\$@"
+STUB
+chmod +x "$root/scripts/git"
+set +e
+(cd "$root" && PATH="$root/scripts:$PATH" LARCH_LOG_STUB_SENTINEL_DIR="$sentinel_dir" CLAUDE_PLUGIN_ROOT="$root" \
+    "$root/scripts/ship-pr.sh" --state-file "$tmp/ship-pr-state.sh" --implement-tmpdir "$tmp" \
+    --merge true --draft false --forked false --repo owner/repo \
+    > "$tmp/stdout-rebump-reasoning" 2>&1)
+printf '%s' "$?" > "$tmp/rc-rebump-reasoning"
+set -e
+assert_rc "$tmp/rc-rebump-reasoning" 0 "run_rebase_rebump rewrites reasoning after version correction"
+if grep -qxF -- "- **New version**: \`2.3.1\`" "$tmp/bump-version-reasoning.md" && \
+   grep -qxF -- "### Rebase + Re-bump Correction" "$tmp/bump-version-reasoning.md"; then
+    ok "run_rebase_rebump updates reasoning markdown to the corrected version"
+else
+    fail "run_rebase_rebump should update reasoning markdown after version correction"
+    sed 's/^/    reasoning: /' "$tmp/bump-version-reasoning.md" 2>/dev/null || true
+fi
+rm -rf "$sentinel_dir"
+
 # ──────────────────────────────────────────────────────────────────────────────
 # run_evaluate_failure: inner local fix loop
 # ──────────────────────────────────────────────────────────────────────────────

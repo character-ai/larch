@@ -308,6 +308,17 @@ assert_backup_absent "commit_failure" "G: backup removed"
 assert_commit_count "commit_failure" "1" "G: no new commit"
 
 echo
+echo "Sub-test H: regression guard rejects NEW_VERSION < ORIGIN_VERSION"
+run_case "regression_guard" invoke_apply STUB_ORIGIN_PLUGIN_JSON='{"version":"3.0.0"}'
+assert_exit_code "regression_guard" "1" "H: regression guard exits 1"
+assert_stdout_contains "regression_guard" "APPLIED=false" "H: regression guard emits APPLIED=false"
+assert_stdout_matches "regression_guard" "^ERROR=version regression: 2\.0\.0 < origin/main 3\.0\.0" "H: regression guard error is stable"
+assert_plugin_version "regression_guard" "1.0.0" "H: plugin.json restored"
+assert_index_unstaged "regression_guard" "H: index unstaged"
+assert_backup_absent "regression_guard" "H: backup removed"
+assert_commit_count "regression_guard" "1" "H: no new commit"
+
+echo
 if [[ "$FAIL_COUNT" -eq 0 ]]; then
     echo "PASS: scripts/test-apply-bump.sh ($PASS_COUNT assertions)"
     exit 0

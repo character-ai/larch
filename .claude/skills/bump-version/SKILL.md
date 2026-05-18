@@ -54,9 +54,10 @@ If you escalate, append at most 5 sentences (≤100 words) to the reasoning log 
    - First verifies the working tree is clean (fails on any staged, unstaged, or untracked changes). Dirty-worktree failures include `/implement` phantom-file guidance pointing operators at the tracking issue Execution Issues section or the literal `\$IMPLEMENT_TMPDIR/execution-issues.md` path; the backslash keeps manual `set -u` invocations from expanding an unset variable.
    - Backs up `.claude-plugin/plugin.json`
    - Rewrites the `version` field via `jq` (atomic via tmp + mv)
-   - Runs `git add`, then `git fetch origin main` before `git commit`. Fetch failure is fatal with rollback: restore from `$BACKUP`, `git reset HEAD "$PLUGIN_JSON"`, and emit `ERROR="git fetch origin main failed; cannot verify same-version race"`.
+   - Runs `git add`, then `git fetch origin main` before `git commit`. Fetch failure is fatal with rollback: restore from `$BACKUP`, `git reset HEAD "$PLUGIN_JSON"`, and emit `ERROR="git fetch origin main failed; cannot verify origin/main version guards"`.
    - Reads `origin/main:.claude-plugin/plugin.json`'s version with strict semver validation. Parse failure is fatal with the same rollback.
    - If the parsed origin version equals `NEW_VERSION`, rolls back the staged `plugin.json` mutation and calls `fail()` with `ERROR="origin/main has already bumped to <NEW_VERSION>; re-classify needed"`. `/implement` Step 8 routes this to the Rebase + Re-bump Sub-procedure with `caller_kind=step8_apply_bump_same_version` for one re-classification attempt; subsequent failure stalls.
+   - If `NEW_VERSION < ORIGIN_VERSION`, rolls back the staged `plugin.json` mutation and fails closed on the version-regression guard with `ERROR="version regression: <NEW_VERSION> < origin/main <ORIGIN_VERSION>; rebase conflict may have been resolved to branch stale version — re-resolve and re-bump"`. `/implement` Step 8 treats that as a hard failure; Step 10/12's delegated `ship-pr.sh` rebase/re-bump path instead recomputes the bump from the refreshed `origin/main` baseline and rewrites the reasoning artifact before refreshing `version-bump-reasoning`.
    - `git commit -m "Bump version to <NEW_VERSION>"`
    - No `larch-log-flush.sh` tail-call after the bump commit: the rebase+re-bump machinery requires the bump commit to remain at HEAD.
    - Rolls back from backup on commit failure
@@ -89,4 +90,4 @@ The reasoning log at `${IMPLEMENT_TMPDIR:-${TMPDIR:-/tmp}}/bump-version-reasonin
 
 ## Exit codes
 - `classify-bump.sh` — 0 on success (including `BUMP_TYPE=NONE`), non-zero on parse/validation failure
-- `apply-bump.sh` — 0 on successful commit, non-zero on dirty worktree, origin/main probe failure, same-version race, parse failure, or commit failure (rollback performed after mutation)
+- `apply-bump.sh` — 0 on successful commit, non-zero on dirty worktree, origin/main probe failure (including fetch failure for either version guard), same-version race, version-regression guard failure (`NEW_VERSION < ORIGIN_VERSION`), parse failure, or commit failure (rollback performed after mutation)

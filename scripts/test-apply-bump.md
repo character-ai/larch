@@ -15,6 +15,7 @@ Covered cases:
 5. Malformed origin `plugin.json` fails closed with rollback.
 6. Pre-existing dirty worktree still fails before any mutation and includes the `/implement` phantom-file guidance substring.
 7. Commit failure still uses the post-commit rollback path.
+8. Regression guard (NEW_VERSION < ORIGIN_VERSION) emits `APPLIED=false`, restores `plugin.json`, unstages the index, removes the backup, and creates no commit.
 
 ## Fixture Layout
 

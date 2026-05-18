@@ -1,0 +1,39 @@
+Gathering the branch diff and commit list for a read-only review.
+
+Checking test harness defaults, whether shared semver helpers exist, and apply-bump.md edit-in-sync expectations.
+
+Verifying the reasoning refresh path after correction and whether `run_bump_phase` mirrors the guard.
+
+### In-Scope Findings
+
+1. **Important** (`correctness`) [scripts/ship-pr.sh:1199-1247](scripts/ship-pr.sh): After the new regression guard rewrites `new_version`, the block that refreshes the `version-bump-reasoning` larch-log batch still passes the original `reasoning_file` from `classify-bump.sh`, whose body was generated for the pre-correction `NEW_VERSION`. In the stale-conflict scenario (e.g. classify argued `29.1.39`, you correct to `29.3.1`), the PR title and committed `plugin.json` can disagree with the reasoning batch the run logs as authoritative. **Suggested fix:** On the correction path, append a bounded correction stanza to the reasoning file (or regenerate it) before `larch-log.sh write`, or skip the reasoning overwrite when `new_version` was corrected.
+
+2. **Important** (`code-quality`, source: plan + repo contract) [.claude/skills/bump-version/scripts/apply-bump.md:60-65](.claude/skills/bump-version/scripts/apply-bump.md): This PR updates `apply-bump.md` invariants but leaves **Edit-in-sync** siblings untouched—notably [.claude/skills/bump-version/SKILL.md](.claude/skills/bump-version/SKILL.md) still describes only the same-version `origin/main` probe and `fail()` text (around lines 53–59) and does not document the new `NEW_VERSION < ORIGIN_VERSION` rollback. **Suggested fix:** Extend the SKILL “How it works” bullets for `apply-bump.sh` to match the sibling contract.
+
+3. **Important** (`code-quality`) [.claude/skills/bump-version/scripts/apply-bump.md:7,25](.claude/skills/bump-version/scripts/apply-bump.md): The **Purpose** sentence and the **exit 1** sentence still only mention the same-version duplicate-bump case, not the regression guard, so the primary contract doc is internally inconsistent with the updated Invariants. **Suggested fix:** Mention both probes in Purpose and in the failure exit list.
+
+4. **Latent** (`risk-integration`) [scripts/ship-pr.sh:689-724](scripts/ship-pr.sh): `run_bump_phase` maps only `ERROR` values matching `origin/main has already bumped to*` to `exit 5` / `CALLER_KIND=step8b_same_version`. A `version regression:` failure from `apply-bump.sh` falls through to `exit_stall 8`, unlike the rebase path where `run_rebase_rebump` auto-corrects before `apply-bump.sh`. If regression ever appears on the initial bump path (no correction), recovery is a hard stall instead of the same-version-style sub-procedure. **Suggested fix:** Either mirror the regression correction in `run_bump_phase`, or extend the `case` to route regression errors to the same exit-5 handoff if that matches product intent.
+
+5. **Nit** (`code-quality`) [scripts/ship-pr.sh:385-396](scripts/ship-pr.sh) and [.claude/skills/bump-version/scripts/apply-bump.sh:41-51](.claude/skills/bump-version/scripts/apply-bump.sh): Identical `semver_lt` implementations in two shipped scripts increase drift risk on any future semver edge-case fix. **Suggested fix:** Move one copy to a small sourced helper under `scripts/` (or similar) and call it from both.
+
+6. **Nit** (`code-quality`, source: plan) [scripts/test-apply-bump.sh:103-106,312-315](scripts/test-apply-bump.sh): The plan specified `--new-version 2.9.9` for sub-test H; the harness still hardcodes `2.0.0` in `invoke_apply`, so the test is weaker as documentation of the intended edge (though it still exercises `NEW_VERSION < ORIGIN_VERSION`). **Suggested fix:** Pass `2.9.9` for case H only (e.g. a dedicated runner or optional argument).
+
+7. **Nit** (`code-quality`) [.claude/skills/bump-version/scripts/apply-bump.sh:9-11,22](.claude/skills/bump-version/scripts/apply-bump.sh): The header comment and exit-code comment still describe only the same-version `origin/main` check, not the regression guard. **Suggested fix:** Align comments with the new pre-commit probe.
+
+### Out-of-Scope Observations
+
+1. **Nit** (`code-quality`) [docs/linting.md](docs/linting.md): The `make test-apply-bump` prose still lists harness cases without the new regression guard; this file is not part of the branch diff. **Why out of scope:** not modified by the change set.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/ship-pr.sh:1199-1247	After version-regression correction, larch-log still refreshes from classify-bump reasoning_file written for pre-correction NEW_VERSION.	PR title and committed bump can show 29.3.1 while version-bump-reasoning batch still documents 29.1.39 and prior rationale, breaking audit consistency in the exact mis-merge scenario this feature targets.	On correction path, amend or regenerate reasoning before larch-log write, or skip overwrite when new_version was corrected.
+1	in_scope	important	code-quality	.claude/skills/bump-version/scripts/apply-bump.md:60-65 (+ sibling SKILL.md)	apply-bump.md Edit-in-sync requires SKILL.md updates for apply-bump behavior changes; SKILL.md still omits regression guard.	Operators following SKILL see incomplete apply-bump contract vs scripts and md invariants.	Update .claude/skills/bump-version/SKILL.md apply-bump bullets for regression probe and failure text.
+1	in_scope	important	code-quality	.claude/skills/bump-version/scripts/apply-bump.md:7,25	Purpose and exit-code paragraphs omit regression guard while Invariants describe it.	Readers of the primary contract miss the new failure mode until they scroll to Invariants.	Update Purpose line and exit-1 sentence to include regression guard.
+1	in_scope	latent	risk-integration	scripts/ship-pr.sh:689-724	run_bump_phase only maps same-version ERROR to exit 5; version regression errors stall at 8 and lack run_bump_phase-side correction.	If initial bump path ever hits NEW_VERSION < ORIGIN_VERSION without run_rebase_rebump correction, user gets stall 8 instead of same-version-style exit 5 recovery.	Mirror correction in run_bump_phase or extend ERROR case routing per intended UX.
+1	in_scope	nit	code-quality	scripts/ship-pr.sh:385-396; .claude/skills/bump-version/scripts/apply-bump.sh:41-51	Duplicate semver_lt helper.	Future semver tweak must be edited twice; easy to diverge.	Extract to shared sourced helper.
+1	in_scope	nit	code-quality	scripts/test-apply-bump.sh:103-106,312-315	Sub-test H uses default 2.0.0 not plan-specified 2.9.9.	Weaker alignment with planned scenario naming; still valid functionally.	Use 2.9.9 for case H via dedicated invoke path.
+1	in_scope	nit	code-quality	.claude/skills/bump-version/scripts/apply-bump.sh:9-11,22	Header comments omit regression guard.	Misleading skim-level contract for contributors.	Update file header and exit-code comment.
+1	out_of_scope	nit	code-quality	docs/linting.md (not in diff)	make test-apply-bump description omits regression case.	Docs lag harness unless updated elsewhere.	Update linting.md when editing docs next.
+```
+
+**Branch vs `main`:** one commit oneline: `3a525a50 Add version-regression guard to prevent stale conflict resolution from publishing a downgraded version`. The diff matches the plan’s structural intent (`semver_lt`, `run_rebase_rebump` guard + WARN, `apply-bump.sh` regression fail-closed, test H, ship-pr/apply-bump/test docs), with the gaps above around sibling docs, top-level `apply-bump.md` contract text, audit-trail consistency after correction, and bump-phase routing/symmetry.

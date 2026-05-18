@@ -7,7 +7,7 @@
 #   - Back up plugin.json.
 #   - Rewrite .version field atomically via jq + mv.
 #   - git add, fetch origin/main, and fail closed with rollback if origin/main
-#     already publishes the requested version.
+#     already publishes the requested version or is ahead of it.
 #   - Commit with message "Bump version to <new-version>".
 #   - Roll back from backup if git commit fails.
 #
@@ -19,7 +19,8 @@
 #   COMMIT_SHA=<sha>             (if APPLIED=true)
 #   ERROR=<message>              (if APPLIED=false)
 #
-# Exit codes: 0 on success, 1 on invalid args / validation / dirty worktree / commit failure.
+# Exit codes: 0 on success, 1 on invalid args / validation / dirty worktree /
+#   origin/main same-version or regression guard failures / commit failure.
 
 set -euo pipefail
 
@@ -36,6 +37,18 @@ fail() {
   emit_kv APPLIED false
   emit_kv ERROR "$1"
   exit 1
+}
+
+semver_lt() {
+  local a_maj a_min a_pat b_maj b_min b_pat
+  IFS='.' read -r a_maj a_min a_pat <<< "$1"
+  IFS='.' read -r b_maj b_min b_pat <<< "$2"
+  if [[ $a_maj -lt $b_maj ]]; then return 0; fi
+  if [[ $a_maj -gt $b_maj ]]; then return 1; fi
+  if [[ $a_min -lt $b_min ]]; then return 0; fi
+  if [[ $a_min -gt $b_min ]]; then return 1; fi
+  if [[ $a_pat -lt $b_pat ]]; then return 0; fi
+  return 1
 }
 
 NEW_VERSION=""
@@ -97,7 +110,7 @@ mv "$TMP_JSON" "$PLUGIN_JSON"
 git add "$PLUGIN_JSON"
 if ! git fetch origin main --quiet 2>/dev/null; then
   rollback_before_commit
-  fail "git fetch origin main failed; cannot verify same-version race"
+  fail "git fetch origin main failed; cannot verify origin/main version guards"
 fi
 
 ORIGIN_VERSION=$(git show origin/main:.claude-plugin/plugin.json 2>/dev/null | jq -r -e '.version // empty' 2>/dev/null || echo "")
@@ -109,6 +122,11 @@ fi
 if [[ "$ORIGIN_VERSION" == "$NEW_VERSION" ]]; then
   rollback_before_commit
   fail "origin/main has already bumped to $NEW_VERSION; re-classify needed"
+fi
+
+if semver_lt "$NEW_VERSION" "$ORIGIN_VERSION"; then
+  rollback_before_commit
+  fail "version regression: $NEW_VERSION < origin/main $ORIGIN_VERSION; rebase conflict may have been resolved to branch stale version — re-resolve and re-bump"
 fi
 
 COMMIT_MSG="Bump version to $NEW_VERSION"
