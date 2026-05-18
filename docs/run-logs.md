@@ -55,8 +55,13 @@ larch-logs/
 `/implement` code review. They preserve the per-round reviewer and voter
 diagnostic artifacts that are otherwise lost with `$IMPLEMENT_TMPDIR` cleanup.
 Only registered artifact names are copied. `.meta` files have `CMD_JSON=...`
-removed, Cursor JSON sidecars have their top-level `.result` field removed, and
-all copied files still pass through the normal tmpdir and secrets redaction.
+removed when `CMD_JSON=` is the first non-whitespace token, included
+`*-output.txt.json` / `*-output-*.txt.json` sidecars have their top-level
+`.result` field removed, and all copied files still pass through the normal
+tmpdir and secrets redaction. This trimming is specific to the committed round
+artifacts; the session tmpdir may still hold raw sidecars for in-run retries.
+If JSON trimming fails, `write-round` fails closed instead of copying the raw
+sidecar into `larch-logs/`.
 
 `/review` uses the same `larch-logs/<skill>/<RUN_ID>/` layout when a run ID is provided. Review phase names are encoded in flat batch slugs, not subdirectories: `review-context` for gathered context, `review-panel-manifest` for launched slots, `review-findings` for collected finding records, `review-tally` for vote results, and `review-round-summary` for the human-readable round summary.
 

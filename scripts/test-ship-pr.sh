@@ -769,7 +769,7 @@ rm -rf "$sentinel_dir"
 # Inner loop retries: first 2 local check attempts fail, 3rd succeeds -> exits 0.
 root=$(make_repo ci_fix_local_retry)
 tmp=$(make_tmpdir)
-call_dir=$(mktemp -d /tmp/ship-pr-local-retry.XXXXXX)
+call_dir=$(mktemp -d "$tmp/ship-pr-local-retry.XXXXXX")
 cat > "$root/scripts/ci-wait.sh" <<STUB
 #!/usr/bin/env bash
 set -euo pipefail
@@ -829,7 +829,7 @@ rm -rf "$call_dir"
 # Inner loop exhausted: all 3 attempts fail -> stall (exits 4).
 root=$(make_repo ci_fix_exhausted)
 tmp=$(make_tmpdir)
-call_dir=$(mktemp -d /tmp/ship-pr-exhausted.XXXXXX)
+call_dir=$(mktemp -d "$tmp/ship-pr-exhausted.XXXXXX")
 cat > "$root/scripts/ci-wait.sh" <<'STUB'
 #!/usr/bin/env bash
 printf 'ACTION=evaluate_failure\nCI_STATUS=fail\nBEHIND_COUNT=0\nFAILED_RUN_ID=run123\nBAIL_REASON=\nITERATION=0\nELAPSED=1\n'

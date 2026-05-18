@@ -38,6 +38,19 @@ assert_not_grep() {
     fi
 }
 
+assert_json_result_stripped() {
+    local path="$1" label="$2"
+    python3 - "$path" <<'PYEOF' || fail "$label"
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as fh:
+    data = json.load(fh)
+if isinstance(data, dict) and "result" in data:
+    raise SystemExit(1)
+PYEOF
+}
+
 log_root="$TMP/larch-logs"
 source_dir="$TMP/round-1"
 mkdir -p "$source_dir"
@@ -57,7 +70,7 @@ EOF
 
 cat > "$source_dir/cursor-specialist-security-output-phase2.txt.meta" <<'EOF'
 TOOL=cursor
-CMD_JSON=["cursor","agent","secret argv"]
+  CMD_JSON=["cursor","agent","secret argv"]
 OUTPUT_FILE=/tmp/source/cursor-specialist-security-output-phase2.txt
 EOF
 
@@ -110,17 +123,44 @@ assert_grep '<TMPDIR>' "$round_dir/findings.md" "tmpdir path redacted"
 assert_grep '<REDACTED-TOKEN>' "$round_dir/findings.md" "secret redacted"
 assert_not_grep '^CMD_JSON=' "$round_dir/codex-specialist-security-output.txt.meta" "CMD_JSON stripped"
 assert_not_grep '^CMD_JSON=' "$round_dir/cursor-specialist-security-output-phase2.txt.meta" "phase CMD_JSON stripped"
-if command -v jq >/dev/null 2>&1; then
-    jq -e 'has("result") | not' "$round_dir/cursor-vote-output.txt.json" >/dev/null \
-        || fail "cursor .result field should be stripped"
-    jq -e 'has("result") | not' "$round_dir/codex-vote-output.txt.json" >/dev/null \
-        || fail "codex .result field should be stripped"
-fi
+assert_json_result_stripped "$round_dir/cursor-vote-output.txt.json" "cursor .result field should be stripped"
+assert_json_result_stripped "$round_dir/codex-vote-output.txt.json" "codex .result field should be stripped"
 
 out="$("$LARCH_LOG" write-round --log-root "$log_root" --skill implement --run-id run123 --round 1 --source-dir "$source_dir")"
 [[ "$out" == *"UNCHANGED=true"* ]] || fail "write-round retry should be unchanged: $out"
 
-"$LARCH_LOG" write-round --log-root "$log_root" --skill implement --run-id run123 --round 2 --source-dir "$source_dir" >/dev/null
+python_only_bin="$TMP/python-only-bin"
+mkdir -p "$python_only_bin"
+cat > "$python_only_bin/jq" <<'EOF'
+#!/usr/bin/env bash
+exit 1
+EOF
+chmod +x "$python_only_bin/jq"
+PATH="$python_only_bin:$PATH" "$LARCH_LOG" write-round --log-root "$log_root" --skill implement --run-id run123 --round 2 --source-dir "$source_dir" >/dev/null
 assert_file "$log_root/implement/run123/round-2/findings.md" "round-2 findings"
+assert_json_result_stripped "$log_root/implement/run123/round-2/cursor-vote-output.txt.json" "python fallback strips cursor .result"
+
+excluded_only_source="$TMP/round-empty"
+mkdir -p "$excluded_only_source"
+printf 'excluded\n' > "$excluded_only_source/random-notes.txt"
+printf 'excluded\n' > "$excluded_only_source/coder-output.log"
+out="$("$LARCH_LOG" write-round --log-root "$log_root" --skill implement --run-id run123 --round 3 --source-dir "$excluded_only_source")"
+[[ "$out" == *"LOG_WRITTEN=false"* ]] || fail "excluded-only write-round should not write files: $out"
+[[ "$out" == *"UNCHANGED=true"* ]] || fail "excluded-only write-round should be unchanged: $out"
+round3_dir="$log_root/implement/run123/round-3"
+[[ -d "$round3_dir" ]] || fail "round-3 directory missing"
+if find "$round3_dir" -mindepth 1 -maxdepth 1 | grep -q .; then
+    fail "round-3 should contain no copied artifacts"
+fi
+
+invalid_source="$TMP/round-invalid"
+mkdir -p "$invalid_source"
+cat > "$invalid_source/cursor-vote-output.txt.json" <<'EOF'
+{"result":
+EOF
+if "$LARCH_LOG" write-round --log-root "$log_root" --skill implement --run-id run123 --round 4 --source-dir "$invalid_source" >/dev/null 2>&1; then
+    fail "write-round should fail closed on invalid json sidecar"
+fi
+assert_not_file "$log_root/implement/run123/round-4/cursor-vote-output.txt.json" "invalid json sidecar should not be copied"
 
 echo "PASS: test-larch-log-write-round.sh"

@@ -547,6 +547,23 @@ flush_round_log_after_coder() {
     fi
 }
 
+append_log_write_failure() {
+    local site="$1" tool="$2" output_file="$3" category="${4:-Warnings}"
+    local helper="$PLUGIN_ROOT/scripts/append-tool-failure.sh"
+    if [[ -x "$helper" ]]; then
+        "$helper" \
+            --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
+            --site "$site" \
+            --tool "$tool" \
+            --exit-code 1 \
+            --category "$category" \
+            --output-file "$output_file" \
+            --redact >/dev/null 2>&1 || true
+    else
+        larch_err "review-and-fix.sh: best-effort log write failed for $tool (see $output_file)"
+    fi
+}
+
 run_findings_mode() {
     [[ -f "$FINDINGS_FILE" ]] || { larch_err "review-and-fix.sh: --findings-file must name a file"; exit 2; }
     [[ -n "$REVIEW_TMPDIR" ]] || { larch_err "review-and-fix.sh: --review-tmpdir is required"; exit 2; }
@@ -622,20 +639,26 @@ run_implement_round() {
         git rev-parse HEAD > "$IMPLEMENT_TMPDIR/pre-review-head.txt" 2>/dev/null || rm -f "$IMPLEMENT_TMPDIR/pre-review-head.txt"
         if [[ -n "$RUN_ID" && -x "$LARCH_LOG_SH" ]]; then
             if [[ -f "$IMPLEMENT_TMPDIR/pre-review-untracked.txt" ]]; then
-                "$LARCH_LOG_SH" write \
+                pre_review_untracked_fail_log="$IMPLEMENT_TMPDIR/pre-review-untracked-write.failure.log"
+                if ! "$LARCH_LOG_SH" write \
                     --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
                     --skill implement \
                     --run-id "$RUN_ID" \
                     --batch pre-review-untracked \
-                    --input-file "$IMPLEMENT_TMPDIR/pre-review-untracked.txt" >/dev/null 2>&1 || true
+                    --input-file "$IMPLEMENT_TMPDIR/pre-review-untracked.txt" >"$pre_review_untracked_fail_log" 2>&1; then
+                    append_log_write_failure "7a" "larch-log.sh write pre-review-untracked" "$pre_review_untracked_fail_log"
+                fi
             fi
             if [[ -f "$IMPLEMENT_TMPDIR/pre-review-head.txt" ]]; then
-                "$LARCH_LOG_SH" write \
+                pre_review_head_fail_log="$IMPLEMENT_TMPDIR/pre-review-head-write.failure.log"
+                if ! "$LARCH_LOG_SH" write \
                     --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
                     --skill implement \
                     --run-id "$RUN_ID" \
                     --batch pre-review-head \
-                    --input-file "$IMPLEMENT_TMPDIR/pre-review-head.txt" >/dev/null 2>&1 || true
+                    --input-file "$IMPLEMENT_TMPDIR/pre-review-head.txt" >"$pre_review_head_fail_log" 2>&1; then
+                    append_log_write_failure "7a" "larch-log.sh write pre-review-head" "$pre_review_head_fail_log"
+                fi
             fi
         fi
     fi

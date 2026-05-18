@@ -16,9 +16,11 @@ Primary verbs:
 - `write-round` copies registered per-round review artifacts from
   `--source-dir` into `round-<N>/` under the run directory. It strips `CMD_JSON`
   lines from `.meta` sidecars and removes top-level `.result` from included
-  `*-output*.json` tool-envelope sidecars before applying the normal tmpdir and
-  secrets redaction. It writes
-  only to the log root; `commit` later picks up the round directory.
+  `*-output.txt.json` / `*-output-*.txt.json` tool-envelope sidecars before
+  applying the normal tmpdir and secrets redaction. Session tmpdirs may retain
+  raw `.meta` / JSON sidecars for retry state, but committed `round-<N>/`
+  artifacts always use the trimmed form and fail closed if trimming fails. It
+  writes only to the log root; `commit` later picks up the round directory.
 - `append` atomically appends append-mode NDJSON batches.
 - `exists` probes a batch path.
 - `manifest` updates mutable manifest fields. Values that look like JSON-native scalars (`null`, `true`, `false`, integers) are passed via `--argjson` so they are stored with the correct JSON type; all other values are passed via `--arg` (stored as strings). This matters for numeric fields like `pr_number`.

@@ -6,7 +6,7 @@ set -euo pipefail
 larch_redact_strip_meta_cmd_json() {
     local input="$1"
     local output="$2"
-    awk 'index($0, "CMD_JSON=") != 1 { print }' "$input" > "$output"
+    awk '!match($0, /^[[:space:]]*CMD_JSON=/) { print }' "$input" > "$output"
 }
 
 larch_redact_strip_json_result() {
@@ -35,7 +35,7 @@ PYEOF
             return 0
         fi
     fi
-    cp "$input" "$output"
+    return 1
 }
 
 larch_redact_strip_cursor_json_result() {
