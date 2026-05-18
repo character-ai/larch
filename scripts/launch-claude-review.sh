@@ -9,7 +9,7 @@ source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
 
 usage() {
-    larch_err "Usage: launch-claude-review.sh --output <file> (--agent-file <file>|--prompt-file <file>|--prompt <text>) --mode diff|description [context flags]"
+    larch_err "Usage: launch-claude-review.sh --output <file> (--agent-file <file>|--prompt-file <file>|--prompt <text>) --mode diff|description [--role reviewer|voter] [context flags]"
 }
 
 OUTPUT=""
@@ -25,6 +25,7 @@ PLAN_FILE=""
 FEATURE_FILE=""
 TIMEOUT="1800"
 TIMING_TASK_KIND="claude-review"
+ROLE="reviewer"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -33,6 +34,7 @@ while [[ $# -gt 0 ]]; do
         --prompt-file) PROMPT_FILE="${2:?--prompt-file requires a value}"; shift 2 ;;
         --prompt) PROMPT="${2:?--prompt requires a value}"; shift 2 ;;
         --mode) MODE="${2:?--mode requires a value}"; shift 2 ;;
+        --role) ROLE="${2:?--role requires a value}"; shift 2 ;;
         --description-text) DESCRIPTION_TEXT="${2:?--description-text requires a value}"; shift 2 ;;
         --scope-files) SCOPE_FILES="${2:?--scope-files requires a value}"; shift 2 ;;
         --diff-file) DIFF_FILE="${2:?--diff-file requires a value}"; shift 2 ;;
@@ -45,6 +47,8 @@ while [[ $# -gt 0 ]]; do
         *) larch_err "launch-claude-review.sh: unknown option: $1"; usage; exit 2 ;;
     esac
 done
+
+[[ "$ROLE" == "reviewer" || "$ROLE" == "voter" ]] || { larch_err "launch-claude-review.sh: --role must be reviewer or voter"; exit 2; }
 
 [[ -n "$OUTPUT" ]] || { larch_err "launch-claude-review.sh: --output is required"; exit 2; }
 case "$TIMEOUT" in ''|*[!0-9]*|0) larch_err "launch-claude-review.sh: --timeout must be a positive integer"; exit 2 ;; esac
@@ -97,10 +101,14 @@ append_context_file() {
         *) allow_root_args+=(--allow-root "$dir"); seen_allow_roots="${seen_allow_roots}:$dir" ;;
     esac
 }
-append_context_file "$DIFF_FILE"
-append_context_file "$SCOPE_FILES"
-append_context_file "$PLAN_FILE"
-append_context_file "$FEATURE_FILE"
+# Reviewer role needs the full diff context inline; voter role reads the ballot
+# and verifies cited references on demand — no inline diff/plan needed.
+if [[ "$ROLE" == "reviewer" ]]; then
+    append_context_file "$DIFF_FILE"
+    append_context_file "$SCOPE_FILES"
+    append_context_file "$PLAN_FILE"
+    append_context_file "$FEATURE_FILE"
+fi
 
 SUBPROCESS_STDERR=$(mktemp "$(dirname "$OUTPUT")/claude-subprocess-stderr.XXXXXX")
 set +e
