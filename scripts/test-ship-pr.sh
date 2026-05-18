@@ -771,10 +771,25 @@ rm -rf "$call_dir"
 # --no-logs-commit: exported to lifecycle helper subprocess tree
 # ──────────────────────────────────────────────────────────────────────────────
 
+# Helper: stub scripts run_rebase_rebump invokes that write_stubs omits or leaves
+# unsuitable for the harness (drop-bump, sync main, force-push, refresh logs).
+_install_rebump_dep_stubs() {
+    local root=$1
+    for extra in drop-bump-commit.sh git-sync-local-main.sh git-force-push.sh refresh-run-logs.sh; do
+        printf '#!/usr/bin/env bash\nexit 0\n' > "$root/scripts/$extra"
+    done
+    chmod +x \
+        "$root/scripts/drop-bump-commit.sh" \
+        "$root/scripts/git-sync-local-main.sh" \
+        "$root/scripts/git-force-push.sh" \
+        "$root/scripts/refresh-run-logs.sh"
+}
+
 # Helper: override ci-wait.sh (rebase first call, merge second) and add stubs
 # required by run_rebase_rebump that are not in write_stubs.
 _make_rebase_stubs() {
     local root=$1 count_dir=$2
+    _install_rebump_dep_stubs "$root"
     cat > "$root/scripts/ci-wait.sh" <<STUB
 #!/usr/bin/env bash
 set -euo pipefail
@@ -787,13 +802,7 @@ else
     printf 'ACTION=merge\nCI_STATUS=pass\nBEHIND_COUNT=0\nFAILED_RUN_ID=\nBAIL_REASON=\nITERATION=1\nELAPSED=1\n'
 fi
 STUB
-    for extra in drop-bump-commit.sh git-sync-local-main.sh git-force-push.sh; do
-        printf '#!/usr/bin/env bash\nexit 0\n' > "$root/scripts/$extra"
-    done
-    chmod +x "$root/scripts/ci-wait.sh" \
-             "$root/scripts/drop-bump-commit.sh" \
-             "$root/scripts/git-sync-local-main.sh" \
-             "$root/scripts/git-force-push.sh"
+    chmod +x "$root/scripts/ci-wait.sh"
 }
 
 root=$(make_repo rebump_flush_enabled)
@@ -1358,15 +1367,24 @@ fi
 STUB
 chmod +x "$root/scripts/merge-pr.sh"
 
-# Stubs for run_rebase_rebump dependencies not provided by write_stubs
-for extra in drop-bump-commit.sh git-sync-local-main.sh git-force-push.sh refresh-run-logs.sh; do
-    printf '#!/usr/bin/env bash\nexit 0\n' > "$root/scripts/$extra"
-done
-chmod +x \
-    "$root/scripts/drop-bump-commit.sh" \
-    "$root/scripts/git-sync-local-main.sh" \
-    "$root/scripts/git-force-push.sh" \
-    "$root/scripts/refresh-run-logs.sh"
+# ci-wait.sh: always ACTION=merge (first: merge + OID mismatch → rebump; second: merge + merged).
+cat > "$root/scripts/ci-wait.sh" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+count_file="$sentinel_dir/ci-wait-count"
+count=\$(cat "\$count_file" 2>/dev/null || echo 0)
+printf '%s\n' "\$((count + 1))" > "\$count_file"
+echo "ACTION=merge"
+echo "CI_STATUS=pass"
+echo "BEHIND_COUNT=0"
+echo "FAILED_RUN_ID="
+echo "BAIL_REASON="
+echo "ITERATION=1"
+echo "ELAPSED=0"
+STUB
+chmod +x "$root/scripts/ci-wait.sh"
+
+_install_rebump_dep_stubs "$root"
 real_git=$(command -v git)
 cat > "$root/scripts/git" <<STUB
 #!/usr/bin/env bash
@@ -1388,6 +1406,14 @@ printf '%s' "$?" > "$tmp/rc"
 set -e
 assert_rc "$tmp/rc" 0 "oid-mismatch merge-pr error: exits 0 via run_rebase_rebump"
 assert_state_line "$tmp/ship-pr-state.sh" "PHASE=done" "oid-mismatch merge-pr error: PHASE=done after recovery"
+assert_state_line "$tmp/ship-pr-state.sh" "STALL_TRACKING=false" "oid-mismatch merge-pr error: STALL_TRACKING=false (no 12d stall)"
+assert_state_line "$tmp/ship-pr-state.sh" "STALL_STEP=" "oid-mismatch merge-pr error: STALL_STEP cleared"
+if [ "$(cat "$sentinel_dir/ci-wait-count" 2>/dev/null || echo 0)" -ge 2 ]; then
+    ok "oid-mismatch merge-pr error: ci-wait.sh called at least twice"
+else
+    fail "oid-mismatch merge-pr error: ci-wait.sh should be called at least twice"
+    cat "$sentinel_dir/ci-wait-count" 2>/dev/null || true
+fi
 if [ "$(cat "$sentinel_dir/merge-pr-count" 2>/dev/null || echo 0)" -ge 2 ]; then
     ok "oid-mismatch merge-pr error: merge-pr.sh called at least twice (rebase then retry)"
 else
