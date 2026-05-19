@@ -446,6 +446,11 @@ yield_file=$(awk -F= '$1=="YIELD_TSV_FILE"{print $2}' "$out")
 grep -Fq $'structure\tcode-quality\t1\t1\t1\t0\t1.000000' "$yield_file" || { FAIL=1; printf '  FAIL static structure yield row missing\n'; }
 grep -Fq $'dyn-foo\tarchitecture\t6\t1\t0\t1\t0.000000' "$yield_file" || { FAIL=1; printf '  FAIL dynamic fallback-normalized yield row missing\n'; }
 grep -Fq $'generic\tcode-quality\t1\t1\t1\t0\t1.000000' "$yield_file" || { FAIL=1; printf '  FAIL generalist yield row missing\n'; }
+if grep -Fq '| dyn-foo | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | STATUS=OK |' "$TMP/voting-tally.md"; then
+    FAIL=1; printf '  FAIL dynamic fallback-normalized reviewer should not also emit dead-slot STATUS=OK row\n'
+else
+    printf '  ok   dynamic fallback-normalized reviewer does not emit extra dead-slot row\n'
+fi
 
 echo "# Case: manifest-file yield TSV counts all in-scope outcomes and ignores OOS rows"
 TMP="$WORKDIR/case7a"

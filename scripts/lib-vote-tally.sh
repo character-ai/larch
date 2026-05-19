@@ -30,8 +30,9 @@ vote_for_id() {
 }
 
 # reviewer_for_block: extracts the reviewer attribution from a `### FINDING_N:`
-# or `### OOS_N:` block file. Tolerates leading `-`/whitespace and `*` emphasis
-# wrappers; tolerates both `Reviewer` and `Reviewers` (singular and plural).
+# or `### OOS_N:` block file. Matches lines anchored at the start after optional
+# leading `-`/whitespace, with optional `**Reviewer**:` / `**Reviewers**:` or
+# plain `Reviewer:` / `Reviewers:` labels.
 reviewer_for_block() {
     local block="$1" reviewer
     reviewer=$(awk -F: '
