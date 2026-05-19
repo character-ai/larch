@@ -2,6 +2,7 @@
 # Regression harness for scripts/dispatch-code-voters.sh waterfall wiring.
 
 set -euo pipefail
+export LARCH_QUIET_DISABLE=1
 
 # --section CLI selector (closes #2349): splits the 5 scenarios into 2 groups
 # so the CI matrix can pack them as independent harness rows. Sections:
@@ -34,13 +35,61 @@ log="${CODEX_STUB_LOG:-}"
 for arg in "$@"; do [[ "$last" == "--output-last-message" ]] && out="$arg"; last="$arg"; done
 [[ -n "$out" ]] || exit 9
 [[ -n "$log" ]] && printf '%s\n' "$*" >> "$log"
-printf 'FINDING_1: YES\n' > "$out"
+case "${CODEX_STUB_MODE:-ok}" in
+  parse_retry_success)
+    count_file="${CODEX_STUB_COUNT_FILE:?CODEX_STUB_COUNT_FILE required}"
+    count=0
+    [[ -f "$count_file" ]] && count=$(cat "$count_file" 2>/dev/null || echo 0)
+    count=$((count + 1))
+    printf '%s\n' "$count" > "$count_file"
+    if [[ "$count" -eq 1 ]]; then
+      printf 'Narrative codex output without structured votes.\n' > "$out"
+    else
+      printf 'FINDING_1: YES\n' > "$out"
+    fi
+    ;;
+  parse_retry_fail)
+    count_file="${CODEX_STUB_COUNT_FILE:?CODEX_STUB_COUNT_FILE required}"
+    count=0
+    [[ -f "$count_file" ]] && count=$(cat "$count_file" 2>/dev/null || echo 0)
+    count=$((count + 1))
+    printf '%s\n' "$count" > "$count_file"
+    printf 'Narrative codex output without structured votes.\n' > "$out"
+    ;;
+  *)
+    printf 'FINDING_1: YES\n' > "$out"
+    ;;
+esac
 STUB
 cat > "$STUB_BIN/cursor" <<'STUB'
 #!/usr/bin/env bash
 log="${CURSOR_STUB_LOG:-}"
 [[ -n "$log" ]] && printf '%s\n' "$*" >> "$log"
-printf '{"result":"FINDING_1: NO -- cursor","usage":{"inputTokens":1,"outputTokens":1,"cacheReadTokens":0,"cacheWriteTokens":0}}\n'
+case "${CURSOR_STUB_MODE:-ok}" in
+  parse_retry_success)
+    count_file="${CURSOR_STUB_COUNT_FILE:?CURSOR_STUB_COUNT_FILE required}"
+    count=0
+    [[ -f "$count_file" ]] && count=$(cat "$count_file" 2>/dev/null || echo 0)
+    count=$((count + 1))
+    printf '%s\n' "$count" > "$count_file"
+    if [[ "$count" -eq 1 ]]; then
+      printf '{"result":"Narrative cursor output without structured votes.","usage":{"inputTokens":1,"outputTokens":1,"cacheReadTokens":0,"cacheWriteTokens":0}}\n'
+    else
+      printf '{"result":"FINDING_1: NO -- cursor","usage":{"inputTokens":1,"outputTokens":1,"cacheReadTokens":0,"cacheWriteTokens":0}}\n'
+    fi
+    ;;
+  parse_retry_fail)
+    count_file="${CURSOR_STUB_COUNT_FILE:?CURSOR_STUB_COUNT_FILE required}"
+    count=0
+    [[ -f "$count_file" ]] && count=$(cat "$count_file" 2>/dev/null || echo 0)
+    count=$((count + 1))
+    printf '%s\n' "$count" > "$count_file"
+    printf '{"result":"Narrative cursor output without structured votes.","usage":{"inputTokens":1,"outputTokens":1,"cacheReadTokens":0,"cacheWriteTokens":0}}\n'
+    ;;
+  *)
+    printf '{"result":"FINDING_1: NO -- cursor","usage":{"inputTokens":1,"outputTokens":1,"cacheReadTokens":0,"cacheWriteTokens":0}}\n'
+    ;;
+esac
 STUB
 cat > "$STUB_BIN/claude" <<'STUB'
 #!/usr/bin/env bash
@@ -176,10 +225,14 @@ grep -Fq 'VOTER_1_PARSE_RATE_STATUS=OK' <<< "$out" \
     || { echo "FAIL: parse-rate retry success expected VOTER_1_PARSE_RATE_STATUS=OK" >&2; exit 1; }
 grep -Fq 'FINDING_1: YES' "$retry_success_tmp/claude-vote-output.txt" \
     || { echo "FAIL: parse-rate retry success expected structured final voter output" >&2; exit 1; }
-[[ ! -e "$retry_success_tmp/claude-parse-rate-diag.txt" ]] \
+[[ ! -e "$retry_success_tmp/claude-vote-output-parse-rate-diag.txt" ]] \
     || { echo "FAIL: parse-rate retry success should clear claude parse-rate diag" >&2; exit 1; }
 [[ "$(cat "$retry_count_file")" -eq 2 ]] \
     || { echo "FAIL: parse-rate retry success expected exactly two claude attempts" >&2; exit 1; }
+if [[ -f "$retry_success_tmp/execution-issues.md" ]] && grep -Fq 'dispatch-code-voters.sh claude' "$retry_success_tmp/execution-issues.md"; then
+    echo "FAIL: parse-rate retry success should not leave a stale execution issue warning" >&2
+    exit 1
+fi
 
 retry_fail_tmp="$TMP/retry-fail"
 retry_fail_count_file="$TMP/retry-fail-count.txt"
@@ -193,11 +246,49 @@ grep -Fq 'VOTER_1_PARSE_RATE_STATUS=NOT_SUBSTANTIVE' <<< "$out" \
     || { echo "FAIL: parse-rate retry failure expected VOTER_1_PARSE_RATE_STATUS=NOT_SUBSTANTIVE" >&2; exit 1; }
 grep -Fq 'narrative instead of votes' "$retry_fail_tmp/claude-vote-output.txt" \
     || { echo "FAIL: parse-rate retry failure should preserve original narrative output" >&2; exit 1; }
-[[ -s "$retry_fail_tmp/claude-parse-rate-diag.txt" ]] \
+[[ -s "$retry_fail_tmp/claude-vote-output-parse-rate-diag.txt" ]] \
     || { echo "FAIL: parse-rate retry failure should preserve claude parse-rate diag" >&2; exit 1; }
 grep -Fq 'dispatch-code-voters.sh claude' "$retry_fail_issues" \
     || { echo "FAIL: parse-rate retry failure should append execution issue warning" >&2; exit 1; }
 [[ "$(cat "$retry_fail_count_file")" -eq 2 ]] \
     || { echo "FAIL: parse-rate retry failure expected exactly two claude attempts" >&2; exit 1; }
+[[ "$(grep -Fc 'dispatch-code-voters.sh claude' "$retry_fail_issues")" -eq 1 ]] \
+    || { echo "FAIL: parse-rate retry failure should append exactly one execution issue warning" >&2; exit 1; }
+
+retry_success_codex_tmp="$TMP/retry-success-codex"
+retry_success_codex_count_file="$TMP/retry-success-codex-count.txt"
+out=$(PATH="$STUB_BIN:$PATH" CODEX_STUB_MODE=parse_retry_success CODEX_STUB_COUNT_FILE="$retry_success_codex_count_file" "$SCRIPT" \
+    --ballot-file "$BALLOT" \
+    --review-tmpdir "$retry_success_codex_tmp" \
+    --codex-available true \
+    --cursor-available true)
+grep -Fq 'VOTER_2_TOOL=codex' <<< "$out" \
+    || { echo "FAIL: codex retry fixture expected voter 2 to stay on codex" >&2; exit 1; }
+grep -Fq 'VOTER_2_PARSE_RATE_STATUS=OK' <<< "$out" \
+    || { echo "FAIL: codex parse-rate retry success expected VOTER_2_PARSE_RATE_STATUS=OK" >&2; exit 1; }
+grep -Fq 'FINDING_1: YES' "$retry_success_codex_tmp/codex-vote-output.txt" \
+    || { echo "FAIL: codex parse-rate retry success expected structured final voter output" >&2; exit 1; }
+[[ ! -e "$retry_success_codex_tmp/codex-vote-output-parse-rate-diag.txt" ]] \
+    || { echo "FAIL: codex parse-rate retry success should clear slot-specific parse-rate diag" >&2; exit 1; }
+[[ "$(cat "$retry_success_codex_count_file")" -eq 2 ]] \
+    || { echo "FAIL: codex parse-rate retry success expected exactly two codex attempts" >&2; exit 1; }
+
+retry_success_cursor_tmp="$TMP/retry-success-cursor"
+retry_success_cursor_count_file="$TMP/retry-success-cursor-count.txt"
+out=$(PATH="$STUB_BIN:$PATH" CURSOR_STUB_MODE=parse_retry_success CURSOR_STUB_COUNT_FILE="$retry_success_cursor_count_file" "$SCRIPT" \
+    --ballot-file "$BALLOT" \
+    --review-tmpdir "$retry_success_cursor_tmp" \
+    --codex-available true \
+    --cursor-available true)
+grep -Fq 'VOTER_3_TOOL=cursor' <<< "$out" \
+    || { echo "FAIL: cursor retry fixture expected voter 3 to stay on cursor" >&2; exit 1; }
+grep -Fq 'VOTER_3_PARSE_RATE_STATUS=OK' <<< "$out" \
+    || { echo "FAIL: cursor parse-rate retry success expected VOTER_3_PARSE_RATE_STATUS=OK" >&2; exit 1; }
+grep -Fq 'FINDING_1: NO -- cursor' "$retry_success_cursor_tmp/cursor-vote-output.txt" \
+    || { echo "FAIL: cursor parse-rate retry success expected structured final voter output" >&2; exit 1; }
+[[ ! -e "$retry_success_cursor_tmp/cursor-vote-output-parse-rate-diag.txt" ]] \
+    || { echo "FAIL: cursor parse-rate retry success should clear slot-specific parse-rate diag" >&2; exit 1; }
+[[ "$(cat "$retry_success_cursor_count_file")" -eq 2 ]] \
+    || { echo "FAIL: cursor parse-rate retry success expected exactly two cursor attempts" >&2; exit 1; }
 
 echo "PASS: test-dispatch-code-voters.sh"

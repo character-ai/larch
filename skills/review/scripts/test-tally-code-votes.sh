@@ -81,7 +81,7 @@ mk_ballot "$TMP/ballot.md"
 printf 'FINDING_1: YES\nFINDING_2: YES\nFINDING_3: YES\n' > "$TMP/cursor-vote-output.txt"
 printf 'FINDING_1: YES\nFINDING_2: NO\nFINDING_3: YES\n' > "$TMP/codex-vote-output.txt"
 printf 'FINDING_1: NO\nFINDING_2: NO\nFINDING_3: NO\n' > "$TMP/claude-vote-output.txt"
-printf 'voter_tool=cursor\nneutral_count=3\ntotal_findings=3\n' > "$TMP/cursor-parse-rate-diag.txt"
+printf 'voter_tool=cursor\nneutral_count=3\ntotal_findings=3\n' > "$TMP/cursor-vote-output-parse-rate-diag.txt"
 out="$TMP/out.env"
 "$SCRIPT" --ballot-file "$TMP/ballot.md" \
     --voter-files "$TMP/cursor-vote-output.txt" "$TMP/codex-vote-output.txt" "$TMP/claude-vote-output.txt" \
@@ -98,7 +98,7 @@ mk_ballot "$TMP/ballot.md"
 printf 'FINDING_1: YES\nFINDING_2: YES\nFINDING_3: YES\n' > "$TMP/cursor-vote-output.txt"
 printf 'FINDING_1: YES\nFINDING_2: NO\nFINDING_3: YES\n' > "$TMP/codex-vote-output.txt"
 printf 'FINDING_1: NO\nFINDING_2: NO\nFINDING_3: NO\n' > "$TMP/claude-vote-output.txt"
-printf 'voter_tool=cursor\nneutral_count=3\ntotal_findings=3\n' > "$TMP/cursor-parse-rate-diag.txt"
+printf 'voter_tool=cursor\nneutral_count=3\ntotal_findings=3\n' > "$TMP/cursor-vote-output-parse-rate-diag.txt"
 out="$TMP/out.env"
 "$SCRIPT" --ballot-file "$TMP/ballot.md" \
     --voter-files "$TMP/cursor-vote-output.txt" "$TMP/codex-vote-output.txt" "$TMP/claude-vote-output.txt" \
@@ -108,6 +108,26 @@ grep -Fq '1 reviewer slot(s) emitted narrative-only output (NOT_SUBSTANTIVE)' "$
     || { FAIL=1; printf '  FAIL combined banner case missing reviewer NOT_SUBSTANTIVE banner\n'; }
 grep -Fq '1 voter slot(s) emitted narrative-only output' "$TMP/voting-tally.md" \
     || { FAIL=1; printf '  FAIL combined banner case missing voter parse-rate banner\n'; }
+
+echo "# Case: per-output parse-rate diags reduce effective quorum and ignore stale unrelated diags"
+TMP="$WORKDIR/case_voter_parse_effective_quorum"
+mkdir -p "$TMP"
+mk_ballot "$TMP/ballot.md"
+printf 'FINDING_1: YES\nFINDING_2: YES\nFINDING_3: YES\n' > "$TMP/cursor-vote-output.txt"
+printf 'FINDING_1: NO\nFINDING_2: NO\nFINDING_3: NO\n' > "$TMP/codex-vote-output.txt"
+printf 'FINDING_1: narrative only\nFINDING_2: narrative only\nFINDING_3: narrative only\n' > "$TMP/claude-vote-output.txt"
+printf 'voter_tool=claude\nneutral_count=3\ntotal_findings=3\n' > "$TMP/claude-vote-output-parse-rate-diag.txt"
+printf 'stale\n' > "$TMP/cursor-parse-rate-diag.txt"
+out="$TMP/out.env"
+"$SCRIPT" --ballot-file "$TMP/ballot.md" \
+    --voter-files "$TMP/cursor-vote-output.txt" "$TMP/codex-vote-output.txt" "$TMP/claude-vote-output.txt" \
+    --review-tmpdir "$TMP" > "$out"
+grep -Fq '1 voter slot(s) emitted narrative-only output' "$TMP/voting-tally.md" \
+    || { FAIL=1; printf '  FAIL effective quorum case missing voter parse-rate banner\n'; }
+grep -Fq '| FINDING_1 | 1 | 1 | 0 | 1 | neutral |' "$TMP/voting-tally.md" \
+    || { FAIL=1; printf '  FAIL effective quorum case should classify 1 YES / 1 NO / 1 dead slot as neutral under 2-judge quorum\n'; }
+got=$(awk -F= '$1=="VOTER_COUNT"{print $2}' "$out"); assert_eq "VOTER_COUNT reflects effective judges when parse-rate degrades a slot" "$got" "2"
+got=$(awk -F= '$1=="ELIGIBLE_VOTER_COUNT"{print $2}' "$out"); assert_eq "ELIGIBLE_VOTER_COUNT preserves raw voter file count" "$got" "3"
 
 echo "# Case: OOS rejected subtracts 1 from reviewer score"
 TMP="$WORKDIR/case1b"

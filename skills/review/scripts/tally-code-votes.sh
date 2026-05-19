@@ -195,6 +195,14 @@ scope_drift_check() {
     return 0  # all paths outside diff and plan → scope drift
 }
 
+voter_parse_rate_diag_path() {
+    local voter_path="$1"
+    case "$voter_path" in
+        *.txt) printf '%s\n' "${voter_path%.txt}-parse-rate-diag.txt" ;;
+        *) printf '%s-parse-rate-diag.txt\n' "$voter_path" ;;
+    esac
+}
+
 record_tally_outcome() {
     local id="$1" accepted="$2" outcome="$3"
     printf 'FINDING_%s_ACCEPTED=%s\n' "${id#FINDING_}" "$accepted" >> "$TALLY_ENV_FILE"
@@ -209,8 +217,8 @@ if [[ "$BOTH_DOWN" == "true" ]]; then
     ELIGIBLE_VOTERS=0
 fi
 VOTER_PARSE_FAILED_COUNT=0
-for voter_tool in claude codex cursor; do
-    if [[ -f "$REVIEW_TMPDIR/${voter_tool}-parse-rate-diag.txt" ]]; then
+for voter_file in "${VOTER_FILES[@]+"${VOTER_FILES[@]}"}"; do
+    if [[ -f "$(voter_parse_rate_diag_path "$voter_file")" ]]; then
         VOTER_PARSE_FAILED_COUNT=$((VOTER_PARSE_FAILED_COUNT + 1))
     fi
 done
@@ -276,7 +284,7 @@ write_archetype_map "$MANIFEST_FILE" "$archetype_map"
             esac
         done
 
-        result=$(classify_result "$yes" "$no" "$exonerate" "$ELIGIBLE_VOTERS")
+        result=$(classify_result "$yes" "$no" "$exonerate" "$EFFECTIVE_VOTERS")
         case "$result" in
             accepted|rejected|exonerated|neutral) ;;
             *)
@@ -561,7 +569,8 @@ emit_kv REJECTED_FINDINGS_FILE "$REJECTED_FINDINGS_FILE"
 emit_kv OOS_ACCEPTED_FILE "$OOS_ACCEPTED_OUT"
 emit_kv OOS_FILE "$OOS_FILE"
 emit_kv TALLY_OK true
-emit_kv VOTER_COUNT "$ELIGIBLE_VOTERS"
+emit_kv ELIGIBLE_VOTER_COUNT "$ELIGIBLE_VOTERS"
+emit_kv VOTER_COUNT "$EFFECTIVE_VOTERS"
 if [[ -n "$MANIFEST_FILE" && -f "$YIELD_TSV_FILE" ]]; then
     emit_kv YIELD_TSV_FILE "$YIELD_TSV_FILE"
 fi

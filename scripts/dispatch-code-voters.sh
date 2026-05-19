@@ -96,11 +96,22 @@ PY
 
 # check_voter_parse_rate: logs a Warning when a non-empty voter file produces
 # NEUTRAL for >=80% of ballot findings (indicating unparseable output).
+voter_parse_rate_diag_path() {
+    local voter_path="$1"
+    case "$voter_path" in
+        *.txt) printf '%s\n' "${voter_path%.txt}-parse-rate-diag.txt" ;;
+        *) printf '%s-parse-rate-diag.txt\n' "$voter_path" ;;
+    esac
+}
+
 check_voter_parse_rate() {
-    local voter_path="$1" voter_tool="$2"
+    local voter_path="$1" voter_tool="$2" slot_num="${3:-}" log_mode="${4:-log}"
+    local diag_file
+    diag_file="$(voter_parse_rate_diag_path "$voter_path")"
     [[ -s "$voter_path" ]] || { printf 'PARSE_RATE_STATUS=OK\n'; return 0; }
     local ids_count neutral_count
-    ids_count=$(grep -cE '^### (FINDING_[0-9]+):' "$BALLOT_FILE" 2>/dev/null || echo 0)
+    ids_count=$(grep -cE '^### (FINDING_[0-9]+):' "$BALLOT_FILE" 2>/dev/null || true)
+    ids_count="${ids_count:-0}"
     [[ "$ids_count" -gt 0 ]] || { printf 'PARSE_RATE_STATUS=OK\n'; return 0; }
     # Count how many ballot IDs produce NEUTRAL in the voter file.
     neutral_count=$(grep -oE '^### FINDING_[0-9]+:' "$BALLOT_FILE" 2>/dev/null | \
@@ -120,11 +131,12 @@ check_voter_parse_rate() {
               }
               END { print result }
             ' "$voter_path"
-        done | grep -c '^NEUTRAL' || echo 0)
+        done | grep -c '^NEUTRAL' || true)
+    neutral_count="${neutral_count:-0}"
     # >=80% NEUTRAL threshold
     if awk -v n="$neutral_count" -v t="$ids_count" 'BEGIN { exit (n / t >= 0.8) ? 0 : 1 }'; then
-        local _diag_file="$REVIEW_TMPDIR/${voter_tool}-parse-rate-diag.txt"
         {
+            [[ -n "$slot_num" ]] && printf 'slot=%s\n' "$slot_num"
             printf 'voter_tool=%s\n' "$voter_tool"
             printf 'neutral_count=%s\n' "$neutral_count"
             printf 'total_findings=%s\n' "$ids_count"
@@ -132,26 +144,29 @@ check_voter_parse_rate() {
             printf -- '--- first 200 bytes of voter output ---\n'
             head -c 200 "$voter_path" 2>/dev/null || true
             printf '\n'
-        } > "$_diag_file" || true
-        _issues_log="${LARCH_EXECUTION_ISSUES_LOG:-}"
-        [[ -z "$_issues_log" && -n "${SESSION_ENV_PATH:-}" ]] && _issues_log="$(dirname "$SESSION_ENV_PATH")/execution-issues.md"
-        [[ -z "$_issues_log" && -n "${IMPLEMENT_TMPDIR:-}" ]] && _issues_log="$IMPLEMENT_TMPDIR/execution-issues.md"
-        [[ -z "$_issues_log" ]] && _issues_log="$REVIEW_TMPDIR/execution-issues.md"
-        if [[ -x "$PLUGIN_ROOT/scripts/append-tool-failure.sh" ]]; then
-            "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
-                --log "$_issues_log" \
-                --site "dispatch-code-voters.sh ${voter_tool}" \
-                --tool "launch-${voter_tool}-review.sh (voter parse-rate check)" \
-                --exit-code 0 \
-                --status-label "warning" \
-                --category Warnings \
-                --output-file "$_diag_file" \
-                --redact >/dev/null 2>&1 || true
+        } > "$diag_file" || true
+        if [[ "$log_mode" == "log" ]]; then
+            _issues_log="${LARCH_EXECUTION_ISSUES_LOG:-}"
+            [[ -z "$_issues_log" && -n "${SESSION_ENV_PATH:-}" ]] && _issues_log="$(dirname "$SESSION_ENV_PATH")/execution-issues.md"
+            [[ -z "$_issues_log" && -n "${IMPLEMENT_TMPDIR:-}" ]] && _issues_log="$IMPLEMENT_TMPDIR/execution-issues.md"
+            [[ -z "$_issues_log" ]] && _issues_log="$REVIEW_TMPDIR/execution-issues.md"
+            if [[ -x "$PLUGIN_ROOT/scripts/append-tool-failure.sh" ]]; then
+                "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
+                    --log "$_issues_log" \
+                    --site "dispatch-code-voters.sh ${voter_tool}" \
+                    --tool "launch-${voter_tool}-review.sh (voter parse-rate check)" \
+                    --exit-code 0 \
+                    --status-label "warning" \
+                    --category Warnings \
+                    --output-file "$diag_file" \
+                    --redact >/dev/null 2>&1 || true
+            fi
+            larch_err "**⚠ Voter ${voter_tool}: ${neutral_count}/${ids_count} findings returned NEUTRAL — voter likely produced prose without FINDING_N: VOTE lines. Check voter output at ${voter_path}.**"
+            unset _issues_log
         fi
-        larch_err "**⚠ Voter ${voter_tool}: ${neutral_count}/${ids_count} findings returned NEUTRAL — voter likely produced prose without FINDING_N: VOTE lines. Check voter output at ${voter_path}.**"
-        unset _diag_file _issues_log
         printf 'PARSE_RATE_STATUS=NOT_SUBSTANTIVE\n'
     else
+        rm -f "$diag_file"
         printf 'PARSE_RATE_STATUS=OK\n'
     fi
 }
@@ -197,21 +212,17 @@ launch_voter_retry() {
 
 check_and_retry_voter_parse_rate() {
     local slot_num="$1" voter_path="$2" voter_tool="$3" prompt_file="$4"
-    local status retry_prompt retry_output retry_rc retry_status diag_file saved_diag
-    status=$(check_voter_parse_rate "$voter_path" "$voter_tool" | parse_rate_status_from_output)
+    local status retry_prompt retry_output retry_rc retry_status diag_file retry_diag_file
+    diag_file="$(voter_parse_rate_diag_path "$voter_path")"
+    status=$(check_voter_parse_rate "$voter_path" "$voter_tool" "$slot_num" silent | parse_rate_status_from_output)
     [[ "$status" == "NOT_SUBSTANTIVE" ]] || { printf '%s\n' "$status"; return 0; }
-
-    diag_file="$REVIEW_TMPDIR/${voter_tool}-parse-rate-diag.txt"
-    saved_diag="$REVIEW_TMPDIR/${voter_tool}-parse-rate-diag.voter${slot_num}.orig"
-    if [[ -f "$diag_file" ]]; then
-        cp "$diag_file" "$saved_diag" 2>/dev/null || true
-    fi
 
     retry_prompt=$(make_voter_retry_prompt_file "$voter_tool" "$prompt_file")
     case "$voter_path" in
         *.txt) retry_output="${voter_path%.txt}-parse-retry.txt" ;;
         *) retry_output="${voter_path}-parse-retry" ;;
     esac
+    retry_diag_file="$(voter_parse_rate_diag_path "$retry_output")"
     rm -f "$retry_output" "${retry_output}.done" "${retry_output}.launcher-stderr"
 
     set +e
@@ -219,7 +230,7 @@ check_and_retry_voter_parse_rate() {
     retry_rc=$?
     set -e
     if [[ "$retry_rc" -eq 0 && -s "$retry_output" ]]; then
-        retry_status=$(check_voter_parse_rate "$retry_output" "$voter_tool" | parse_rate_status_from_output)
+        retry_status=$(check_voter_parse_rate "$retry_output" "$voter_tool" "$slot_num" silent | parse_rate_status_from_output)
         if [[ "$retry_status" == "OK" ]]; then
             mv "$retry_output" "$voter_path"
             if [[ -f "${retry_output}.done" ]]; then
@@ -227,16 +238,14 @@ check_and_retry_voter_parse_rate() {
             else
                 printf '0\n' > "${voter_path}.done"
             fi
-            rm -f "$diag_file" "$saved_diag"
+            rm -f "$diag_file" "$retry_diag_file"
             printf 'OK\n'
             return 0
         fi
     fi
 
-    if [[ -f "$saved_diag" ]]; then
-        mv "$saved_diag" "$diag_file"
-    fi
-    printf 'NOT_SUBSTANTIVE\n'
+    rm -f "$retry_diag_file"
+    check_voter_parse_rate "$voter_path" "$voter_tool" "$slot_num" log | parse_rate_status_from_output
 }
 
 ctx_args=()
