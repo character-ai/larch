@@ -660,7 +660,41 @@ else
 fi
 assert_file_absent_or_empty "$tmp/git-push-calls.log" "pr-create skips post-create push"
 
-root=$(make_repo pr_create_final_summary_failure)
+root=$(make_repo pr_create_precreate_final_summary_failure)
+tmp=$(make_tmpdir)
+mkdir -p "$root/skills/implement/scripts"
+cat > "$root/skills/implement/scripts/write-final-report.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --comment-only) shift ;;
+    *) shift ;;
+  esac
+done
+printf 'write-final-report failed sk-ant-abcdefghijklmnopqrstuvwxyz0123456789ABCD\n' >&2
+exit 17
+STUB
+chmod +x "$root/skills/implement/scripts/write-final-report.sh"
+write_state "$tmp/ship-pr-state.sh" pr-create
+run_subject "$root" "$tmp" "$tmp/rc"
+assert_rc "$tmp/rc" 4 "pr-create pre-create final summary failure stalls"
+assert_state_line "$tmp/ship-pr-state.sh" "STALL_TRACKING=true" "pr-create pre-create final summary failure marks stall"
+assert_state_line "$tmp/ship-pr-state.sh" "STALL_STEP=9b" "pr-create pre-create final summary failure records stall step"
+if grep -Fq 'write-final-report.sh failed (exit 17)' "$tmp/execution-issues.md"; then
+    ok "pr-create pre-create final summary failure records execution issue"
+else
+    fail "pr-create pre-create final summary failure records execution issue"
+    sed 's/^/    issues: /' "$tmp/execution-issues.md" 2>/dev/null || true
+fi
+if [ ! -f "$tmp/create-pr-calls.log" ]; then
+    ok "pr-create pre-create final summary failure skips create-pr helper"
+else
+    fail "pr-create pre-create final summary failure should skip create-pr helper"
+    sed 's/^/    create-pr: /' "$tmp/create-pr-calls.log" 2>/dev/null || true
+fi
+
+root=$(make_repo pr_create_postcreate_final_summary_failure)
 tmp=$(make_tmpdir)
 mkdir -p "$root/skills/implement/scripts"
 cat > "$root/skills/implement/scripts/write-final-report.sh" <<'STUB'
@@ -702,6 +736,53 @@ if grep -Fq 'sk-ant-abcdefghijklmnopqrstuvwxyz0123456789ABCD' "$tmp/execution-is
 else
     ok "pr-create final summary failure redacts stderr"
 fi
+
+root=$(make_repo pr_create_log_commit_failure)
+tmp=$(make_tmpdir)
+sentinel_dir=$(mktemp -d /tmp/ship-pr-pr-create-log-commit-failure.XXXXXX)
+cat > "$root/scripts/larch-log.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+sentinel_dir="${LARCH_LOG_STUB_SENTINEL_DIR:-/tmp}"
+printf 'LARCH_LOG_ARGS=%s\n' "$*" >> "$sentinel_dir/larch-log-calls.txt"
+if [[ "${1:-}" == commit ]]; then
+  printf 'commit failed sk-ant-abcdefghijklmnopqrstuvwxyz0123456789ABCD\n' >&2
+  exit 23
+fi
+STUB
+chmod +x "$root/scripts/larch-log.sh"
+cat > "$root/scripts/create-pr.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'create-pr-called\n' >> "${IMPLEMENT_TMPDIR:?}/create-pr-calls.log"
+echo "PR_NUMBER=123"
+echo "PR_URL=https://example.invalid/pr/123"
+echo "PR_TITLE=Title"
+echo "PR_STATUS=created"
+STUB
+chmod +x "$root/scripts/create-pr.sh"
+write_state "$tmp/ship-pr-state.sh" pr-create
+LARCH_LOG_STUB_SENTINEL_DIR="$sentinel_dir" run_subject "$root" "$tmp" "$tmp/rc"
+assert_rc "$tmp/rc" 0 "pr-create log commit failure continues"
+if grep -qxF 'create-pr-called' "$tmp/create-pr-calls.log"; then
+    ok "pr-create log commit failure still invokes create-pr"
+else
+    fail "pr-create log commit failure should still invoke create-pr"
+    sed 's/^/    create-pr: /' "$tmp/create-pr-calls.log" 2>/dev/null || true
+fi
+if grep -Fq 'larch-log.sh commit (pre-pr-create) failed (exit 23)' "$tmp/execution-issues.md"; then
+    ok "pr-create log commit failure records warning"
+else
+    fail "pr-create log commit failure records warning"
+    sed 's/^/    issues: /' "$tmp/execution-issues.md" 2>/dev/null || true
+fi
+if grep -Fq 'sk-ant-abcdefghijklmnopqrstuvwxyz0123456789ABCD' "$tmp/execution-issues.md"; then
+    fail "pr-create log commit failure should redact stderr"
+    sed 's/^/    issues: /' "$tmp/execution-issues.md" 2>/dev/null || true
+else
+    ok "pr-create log commit failure redacts stderr"
+fi
+rm -rf "$sentinel_dir"
 
 # Postmerge manifest finalization: with PR_CLOSED=true, larch-log manifest runs.
 root=$(make_repo postmerge_flush)

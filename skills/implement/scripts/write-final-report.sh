@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# write-final-report.sh — write final summary file and tracking comment.
+# write-final-report.sh — write the tracking final summary and, unless
+# --comment-only is set, the run-log final-summary file copy.
 #
 # Reads all session state from $IMPLEMENT_TMPDIR files; callers pass only
 # --implement-tmpdir to avoid non-determinism from many CLI arguments.

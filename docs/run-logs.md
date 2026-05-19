@@ -238,7 +238,9 @@ PR creation, where `ship-pr.sh` renders and commits `final-summary.md` with
 placeholder PR fields before `create-pr.sh` pushes the branch, and later
 refreshed during Step 18 terminal cleanup. The tracking-issue comment may also
 be refreshed immediately after PR creation with the live URL, without a second
-log commit. For `--design-only` runs, Step 8+ and Step 18 are skipped.
+log commit. For `--design-only` runs, Step 8+ and PR creation are skipped, but
+the terminal cleanup path still runs and may refresh the tracking summary with
+`PR: N/A`.
 
 Content: final run status (`STALL_TRACKING` value), PR URL, and log directory path. The committed `final-summary.md` in the PR tree may carry placeholder `PR: N/A`; the tracking-issue comment is the canonical live source for the PR URL.
 

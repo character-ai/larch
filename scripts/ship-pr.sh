@@ -949,7 +949,10 @@ run_pr_create_phase() {
     draft_args=()
     [ "$(read_state DRAFT)" = "true" ] && draft_args=(--draft)
     # Write final-summary.md with placeholder PR fields before push so the
-    # commit rides in Push #1 (via create-pr.sh). PR_URL defaults to "N/A".
+    # commit rides in Push #1 (via create-pr.sh). This also upserts the
+    # tracking-issue larch:final-summary comment before PR creation, so a
+    # helper failure here stalls Step 9b with no PR yet. PR_URL defaults to
+    # "N/A".
     fail_file=$(failure_capture_path pr-create)
     final_report_output=$("$SCRIPT_DIR/../skills/implement/scripts/write-final-report.sh" \
         --implement-tmpdir "$IMPLEMENT_TMPDIR" 2>"$fail_file")
@@ -960,7 +963,8 @@ run_pr_create_phase() {
         exit_stall 9b
     fi
     # Fold final-summary.md into the branch before the PR-create push so
-    # the remote PR tip carries it. Gated on LARCH_NO_LOGS_COMMIT.
+    # the remote PR tip carries it. Gated on LARCH_NO_LOGS_COMMIT; a
+    # best-effort log-commit failure must not block create-pr.sh.
     if [ "${LARCH_NO_LOGS_COMMIT:-false}" != "true" ]; then
         local flush_run_id
         flush_run_id=$(read_state RUN_ID)
@@ -996,10 +1000,10 @@ run_pr_create_phase() {
     pr_url=$(kv_value PR_URL "$out")
     pr_status=$(kv_value PR_STATUS "$out")
     state_set_many PR_NUMBER "$pr_number" PR_URL "$pr_url" PR_TITLE "$title"
-    # Re-run write-final-report.sh with the live PR_URL to update the
-    # tracking-issue larch:final-summary comment via API only — no commit,
-    # no second push. Best-effort: a failure here must not stall since the
-    # PR was already created.
+    # Re-run write-final-report.sh with the live PR_URL to refresh the
+    # tracking-issue larch:final-summary comment and tmp summary-final.md for
+    # the upsert. No extra git commit or second push happens here. Best-effort:
+    # a failure here must not stall since the PR was already created.
     fail_file=$(failure_capture_path pr-create)
     final_report_output=$("$SCRIPT_DIR/../skills/implement/scripts/write-final-report.sh" \
         --implement-tmpdir "$IMPLEMENT_TMPDIR" --comment-only 2>"$fail_file")
