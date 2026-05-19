@@ -1,0 +1,20 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: EXONERATE -- Legitimate doc gap, but too small to warrant a future issue.
+FINDING_5: NO -- Mode is currently unused, so a duplicate description-mode case would be redundant.
+FINDING_6: NO -- Count semantics are implemented and already asserted correctly.
+FINDING_7: NO -- `grep -Fq` treats `[OUT_OF_SCOPE]` literally.
+FINDING_8: EXONERATE -- Dead variable is real but harmless and not issue-worthy.
+FINDING_9: EXONERATE -- Single-hash preambles are a plausible edge case, but broadening skip rules risks more complexity than warranted.
+FINDING_10: YES
+FINDING_11: NO -- The plan did not require description mode, and diff mode matches the reviewed dynamic-output path.
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: YES
+FINDING_18: EXONERATE -- Legitimate doc gap, but too small to warrant a future issue.
+FINDING_19: NO -- The premise that the bug path is description-mode is not supported, and `mode` is currently unused.
+FINDING_20: NO -- Diff mode is a reasonable fit for the production dynamic review path, and `mode` is currently unused.

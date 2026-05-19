@@ -1,0 +1,20 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: EXONERATE -- legitimate doc gap but a one-phrase omission in a .md contract is too minor for a GitHub issue
+FINDING_5: NO -- correctly identifies no issue; mode is never referenced in the awk program so --mode diff vs description produces identical parse_output behavior
+FINDING_6: NO -- correctly confirms FINDINGS_COUNT includes OOS rows per existing contract; no change needed
+FINDING_7: NO -- -F makes brackets literal; confirmed no issue
+FINDING_8: EXONERATE -- dead -v mode argument is real but removing an unused awk variable is not issue-worthy
+FINDING_9: EXONERATE -- valid observation that single-# preambles remain unguarded, but extending to /^#/ would risk breaking normal reviewer prose; document-only scope is not issue-worthy now
+FINDING_10: EXONERATE -- plan-fidelity doc gap for one test case omission; the harness itself is correct and the .md already covers the primary fix
+FINDING_11: EXONERATE -- since mode is currently unused in awk, choosing --mode diff over description has no functional effect; traceability concern is real but too speculative to require action
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: EXONERATE -- plan-fidelity only; not a runtime correctness issue
+FINDING_16: YES
+FINDING_17: YES
+FINDING_18: EXONERATE -- same doc gap as FINDING_4; too minor for a GitHub issue
+FINDING_19: EXONERATE -- speculative forward-looking concern; mode is currently unused in awk so there is no present-day regression
+FINDING_20: EXONERATE -- same speculative concern as FINDING_19; no current functional difference
