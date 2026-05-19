@@ -467,10 +467,8 @@ out=$(
     "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 --session-env-path "$implement_tmp/session-env.sh" --run-id rejected-fallback-run
 )
 grep -Fq 'REVIEW_AND_FIX_STATUS=complete' <<< "$out" || fail "rejected-fallback status"
+grep -Fq '## Round 1' "$implement_tmp/rejected-findings.md" || fail "rejected-fallback missing round header"
 grep -Fq 'FINDING_9_ACCEPTED=false' "$implement_tmp/rejected-findings.md" || fail "rejected-fallback missing bare ledger"
-if grep -Fq '## Round 1' "$implement_tmp/rejected-findings.md"; then
-    fail "rejected-fallback should not synthesize full-detail round headers"
-fi
 
 work_tally="$TMP/tally-fidelity"
 make_work_repo "$work_tally"
@@ -687,6 +685,33 @@ pos10 = body.find("# Review Round 10")
 if pos2 == -1 or pos10 == -1 or pos2 >= pos10:
     raise SystemExit(1)
 PYEOF
+
+work_rejected_mix="$TMP/rejected-findings-mixed-rounds"
+make_work_repo "$work_rejected_mix"
+implement_tmp="$work_rejected_mix/implement"
+mkdir -p "$implement_tmp/round-1" "$implement_tmp/round-2"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
+cat > "$implement_tmp/round-1/rejected-findings-full.md" <<'EOF_REJECTED_FULL'
+### FINDING_1: Round 1 rejected finding
+- **Concern**: Keep full prose when present.
+EOF_REJECTED_FULL
+cat > "$implement_tmp/round-2/rejected-findings.md" <<'EOF_REJECTED_COMPACT'
+### FINDING_2: Round 2 rejected finding
+- **Concern**: Keep compact fallback when full detail is absent.
+EOF_REJECTED_COMPACT
+set +e
+out=$(TEST_CORE_STATUS=zero run_review_and_fix "$work_rejected_mix" \
+    --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 3 --session-env-path "$implement_tmp/session-env.sh" --run-id rejected-mix-run)
+rc=$?
+set -e
+[[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "mixed rejected aggregate expected exit 0 got $rc"; }
+grep -Fq '## Round 1' "$implement_tmp/rejected-findings.md" || fail "mixed rejected aggregate kept round 1 heading"
+grep -Fq 'Round 1 rejected finding' "$implement_tmp/rejected-findings.md" || fail "mixed rejected aggregate kept round 1 full detail"
+grep -Fq '## Round 2' "$implement_tmp/rejected-findings.md" || fail "mixed rejected aggregate kept round 2 heading"
+grep -Fq 'Round 2 rejected finding' "$implement_tmp/rejected-findings.md" || fail "mixed rejected aggregate kept round 2 compact detail"
+jq -e '.batch == "code-review-tally" and (.body | contains("Round 1 rejected finding")) and (.body | contains("Round 2 rejected finding"))' \
+    "$implement_tmp/larch-logs/implement/rejected-mix-run/code-review-tally.json" >/dev/null \
+    || fail "mixed rejected aggregate feeds code-review-tally body"
 
 cat > "$TMP/write-tally-fails-stub.sh" <<'EOF_WRITE_TALLY'
 #!/usr/bin/env bash

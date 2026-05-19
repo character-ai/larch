@@ -439,6 +439,20 @@ derive_code_review_tally_from_composed_findings() {
     printf '%s %s\n' "$accepted" "$rejected"
 }
 
+render_rejected_findings_for_tally() {
+    local file="$1"
+    awk '
+        NR == 1 && /^# Rejected Findings$/ { next }
+        /^## Round / {
+            sub(/^## /, "")
+            print
+            print ""
+            next
+        }
+        { print }
+    ' "$file"
+}
+
 flush_review_batches() {
     local impl_tmpdir="$1" run_id="$2" panel="$3" rounds="$4" accepted="$5" rejected="$6" exonerated="${7:-0}" neutral="${8:-0}" composed_findings_source="${9:-}"
     local batch_input_dir body_file findings_file voting_tally="" summary_file
@@ -532,13 +546,13 @@ flush_review_batches() {
             done
         fi
 
-        if [[ -s "$impl_tmpdir/rejected-findings-full.md" ]]; then
+        if [[ -s "$impl_tmpdir/rejected-findings.md" ]]; then
             printf '\n## Rejected Code Review Findings\n\n'
-            cat "$impl_tmpdir/rejected-findings-full.md"
+            render_rejected_findings_for_tally "$impl_tmpdir/rejected-findings.md"
             printf '\n'
-        elif [[ -s "$impl_tmpdir/rejected-findings.md" ]]; then
+        elif [[ -s "$impl_tmpdir/rejected-findings-full.md" ]]; then
             printf '\n## Rejected Code Review Findings\n\n'
-            cat "$impl_tmpdir/rejected-findings.md"
+            render_rejected_findings_for_tally "$impl_tmpdir/rejected-findings-full.md"
             printf '\n'
         fi
 
@@ -611,16 +625,25 @@ flush_round_log_after_coder() {
 write_rejected_findings_aggregate() {
     local impl_tmpdir="$1" fallback_file="${2:-}"
     local output_file="$impl_tmpdir/rejected-findings.md"
-    local tmp_out round_num round_file any_full=false tab
+    local tmp_out round_num round_dir round_file full_file compact_file any_round=false tab
 
     [[ -n "$impl_tmpdir" && -d "$impl_tmpdir" ]] || return 1
     tab="$(printf '\t')"
     tmp_out="$(mktemp "${TMPDIR:-/tmp}/rejected-findings.XXXXXX")" || return 1
-    while IFS="$tab" read -r round_num round_file; do
-        [[ -n "$round_num" && -n "$round_file" && -s "$round_file" ]] || continue
-        if [[ "$any_full" == false ]]; then
+    while IFS="$tab" read -r round_num round_dir; do
+        [[ -n "$round_num" && -n "$round_dir" && -d "$round_dir" ]] || continue
+        full_file="$round_dir/rejected-findings-full.md"
+        compact_file="$round_dir/rejected-findings.md"
+        if [[ -s "$full_file" ]]; then
+            round_file="$full_file"
+        elif [[ -s "$compact_file" ]]; then
+            round_file="$compact_file"
+        else
+            continue
+        fi
+        if [[ "$any_round" == false ]]; then
             printf '# Rejected Findings\n\n' > "$tmp_out"
-            any_full=true
+            any_round=true
         fi
         {
             printf '## Round %s\n\n' "$round_num"
@@ -628,7 +651,7 @@ write_rejected_findings_aggregate() {
             printf '\n\n'
         } >> "$tmp_out"
     done < <(
-        find "$impl_tmpdir" -maxdepth 2 -type f -name rejected-findings-full.md 2>/dev/null \
+        find "$impl_tmpdir" -maxdepth 1 -type d -name 'round-*' 2>/dev/null \
             | awk -F/ '
                 {
                     for (i = 1; i <= NF; i++) {
@@ -644,7 +667,7 @@ write_rejected_findings_aggregate() {
             | sort -t "$tab" -k1,1n
     )
 
-    if [[ "$any_full" == true ]]; then
+    if [[ "$any_round" == true ]]; then
         mv -f "$tmp_out" "$output_file"
         return 0
     fi
@@ -850,7 +873,7 @@ run_implement_round() {
     if [[ -f "$rejected_full_file" ]]; then
         cp "$rejected_full_file" "$IMPLEMENT_TMPDIR/rejected-findings-full.md" 2>/dev/null || true
     fi
-    write_rejected_findings_aggregate "$IMPLEMENT_TMPDIR" "$rejected_file" || true
+    write_rejected_findings_aggregate "$IMPLEMENT_TMPDIR" "$rejected_file"
 
     coder_tool="none"
     coder_status="skipped"

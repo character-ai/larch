@@ -113,9 +113,10 @@ while IFS= read -r f; do
 done < <(find "$REVIEW_TMPDIR" -maxdepth 1 -name '*-output.txt' 2>/dev/null | sort)
 reviewer_paths_json=$(printf '%s\n' "${reviewer_paths[@]+"${reviewer_paths[@]}"}" | jq -R . | jq -s .)
 
-# Emit schema matching heavy-worker.md contract: schema_version,
-# rounds_completed, reviewer_output_paths, finding_counts totals, and canonical
-# top-level accepted/rejected/exonerated/neutral counts.
+# Emit schema matching emit-tally.md and the current dispatch-panel harness:
+# schema_version, rounds_completed, reviewer_output_paths, panel metadata,
+# finding_counts totals, and canonical top-level
+# accepted/rejected/exonerated/neutral counts.
 jq -n \
     --argjson round "$ROUND" \
     --argjson accepted "$accepted" \

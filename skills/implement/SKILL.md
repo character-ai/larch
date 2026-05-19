@@ -1672,12 +1672,11 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 [ -f "$IMPLEMENT_TMPDIR/codex-commit-message.txt" ] && "${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" write --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --batch codex-commit-message --input-file "$IMPLEMENT_TMPDIR/codex-commit-message.txt" || true
 [ -f "$IMPLEMENT_TMPDIR/manifest-raw.json" ] && "${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" write --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --batch codex-impl-manifest-raw --input-file "$IMPLEMENT_TMPDIR/manifest-raw.json" || true
 if [ "${no_logs_commit:-false}" != "true" ]; then
-  "${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/write-final-report.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR" || true
   "${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" commit --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" || true
 fi
 ```
 
-Best-effort: failures are non-fatal, but each non-zero `token-report.sh`, `timing-report.sh`, `larch-log.sh write`, or `larch-log.sh commit` result must first be captured to `$IMPLEMENT_TMPDIR/pre-bump-log-flush-<tool>.log` and appended with `append-tool-failure.sh` under `Tool Failures` (use `Warnings` only for report rendering that is known to be documentation-only). Do not leave a bare `|| true` on these calls without the adjacent capture and append.
+Best-effort: failures are non-fatal, but each non-zero `token-report.sh`, `timing-report.sh`, `larch-log.sh write`, or `larch-log.sh commit` result must first be captured to `$IMPLEMENT_TMPDIR/pre-bump-log-flush-<tool>.log` and appended with `append-tool-failure.sh` under `Tool Failures` (use `Warnings` only for report rendering that is known to be documentation-only). Do not leave a bare `|| true` on these calls without the adjacent capture and append. Do **not** call `write-final-report.sh` in this Step 7a pre-bump checkpoint: `ship-pr-state.sh` does not exist yet, so `PR_URL` is still unavailable. The terminal `larch:final-summary` projection is written later, after Step 8+ has populated ship/PR state.
 
 On each retry (CI failure, merge conflict, rebase in Steps 10/12), `scripts/refresh-run-logs.sh` (Triggers A-C in `ship-pr.sh`) re-renders and commits the `token-report` and `timing-report` batches before each push, and it also flushes any post-Step-7a `execution-issues.md` tail once the Step 7a checkpoint has run, so the merged PR carries up-to-date token/timing and execution-issues data.
 
