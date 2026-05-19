@@ -402,23 +402,44 @@ if [[ -s "$path_guard_issues" ]]; then
 fi
 
 # Regression 3: production-shape — voter_path outside test-dispatch-code-voters; both
-# local diag file and issues-log must be written.
-prod_tmp="$(mktemp -d "${TMPDIR:-/tmp}/review-prod-shape.XXXXXX")"
-trap 'rm -rf "$prod_tmp"' EXIT
-prod_issues="$prod_tmp/prod-issues.md"
-out=$(PATH="$STUB_BIN:$PATH" \
-    CLAUDE_STUB_MODE=parse_retry_fail CLAUDE_STUB_COUNT_FILE="$TMP/prod-shape-count.txt" \
-    LARCH_EXECUTION_ISSUES_LOG="$prod_issues" \
-    "$SCRIPT" \
-    --ballot-file "$BALLOT" \
-    --review-tmpdir "$prod_tmp/review" \
-    --codex-available true \
-    --cursor-available true)
-grep -Fq 'VOTER_1_PARSE_RATE_STATUS=NOT_SUBSTANTIVE' <<< "$out" \
-    || { echo "FAIL: regression3 prod-shape — expected NOT_SUBSTANTIVE parse-rate status" >&2; exit 1; }
-[[ -s "$prod_tmp/review/claude-vote-output-parse-rate-diag.txt" ]] \
-    || { echo "FAIL: regression3 prod-shape — local diag file not written" >&2; exit 1; }
-grep -Fq 'dispatch-code-voters.sh claude' "$prod_issues" \
-    || { echo "FAIL: regression3 prod-shape — issues-log not written for production-shape voter_path" >&2; exit 1; }
+# local diag file and issues-log must be written, including codex-specific labels.
+(
+    prod_tmp="$(mktemp -d "${TMPDIR:-/tmp}/review-prod-shape.XXXXXX")"
+    trap 'rm -rf "$prod_tmp"' EXIT
+
+    prod_issues="$prod_tmp/prod-issues.md"
+    out=$(PATH="$STUB_BIN:$PATH" \
+        CLAUDE_STUB_MODE=parse_retry_fail CLAUDE_STUB_COUNT_FILE="$TMP/prod-shape-count.txt" \
+        LARCH_EXECUTION_ISSUES_LOG="$prod_issues" \
+        "$SCRIPT" \
+        --ballot-file "$BALLOT" \
+        --review-tmpdir "$prod_tmp/review" \
+        --codex-available true \
+        --cursor-available true)
+    grep -Fq 'VOTER_1_PARSE_RATE_STATUS=NOT_SUBSTANTIVE' <<< "$out" \
+        || { echo "FAIL: regression3 prod-shape — expected NOT_SUBSTANTIVE parse-rate status" >&2; exit 1; }
+    [[ -s "$prod_tmp/review/claude-vote-output-parse-rate-diag.txt" ]] \
+        || { echo "FAIL: regression3 prod-shape — local claude diag file not written" >&2; exit 1; }
+    grep -Fq 'dispatch-code-voters.sh claude' "$prod_issues" \
+        || { echo "FAIL: regression3 prod-shape — claude issues-log entry missing" >&2; exit 1; }
+
+    prod_codex_issues="$prod_tmp/prod-codex-issues.md"
+    out=$(PATH="$STUB_BIN:$PATH" \
+        CODEX_STUB_MODE=parse_retry_fail CODEX_STUB_COUNT_FILE="$TMP/prod-shape-codex-count.txt" \
+        LARCH_EXECUTION_ISSUES_LOG="$prod_codex_issues" \
+        "$SCRIPT" \
+        --ballot-file "$BALLOT" \
+        --review-tmpdir "$prod_tmp/review-codex" \
+        --codex-available true \
+        --cursor-available true)
+    grep -Fq 'VOTER_2_PARSE_RATE_STATUS=NOT_SUBSTANTIVE' <<< "$out" \
+        || { echo "FAIL: regression3 prod-shape codex — expected NOT_SUBSTANTIVE parse-rate status" >&2; exit 1; }
+    [[ -s "$prod_tmp/review-codex/codex-vote-output-parse-rate-diag.txt" ]] \
+        || { echo "FAIL: regression3 prod-shape codex — local codex diag file not written" >&2; exit 1; }
+    grep -Fq 'dispatch-code-voters.sh codex' "$prod_codex_issues" \
+        || { echo "FAIL: regression3 prod-shape codex — issues-log entry missing" >&2; exit 1; }
+    grep -Fq 'launch-review.sh --tool codex (voter parse-rate check)' "$prod_codex_issues" \
+        || { echo "FAIL: regression3 prod-shape codex — codex tool label missing from issues-log" >&2; exit 1; }
+)
 
 echo "PASS: test-dispatch-code-voters.sh"
