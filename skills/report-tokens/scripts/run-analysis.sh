@@ -114,7 +114,6 @@ if [[ -z "$PLOT_FROM" ]]; then
         token_report_json="$dir/token-report.json"
         timing_report_json="$dir/timing-report.json"
         plan_tally_json="$dir/plan-review-tally.json"
-        plan_tally_ndjson="$dir/plan-review-tally.ndjson"
 
         [[ -f "$manifest" ]] || continue
         [[ -f "$token_report_json" ]] || continue
@@ -133,17 +132,6 @@ if [[ -z "$PLOT_FROM" ]]; then
         fi
         if [[ "$workflow_path" == "unknown" && -f "$plan_tally_json" ]]; then
             tally_body=$(jq -r '(.body // .tally) // ""' "$plan_tally_json" 2>/dev/null || true)
-            if [[ "$tally_body" == "Quick mode"* || "$tally_body" == "Both externals unavailable"* ]]; then
-                workflow_path="SIMPLE"
-            elif [[ -n "$tally_body" ]]; then
-                workflow_path="HARD"
-            fi
-        fi
-        if [[ "$workflow_path" == "unknown" && -f "$plan_tally_ndjson" ]]; then
-            tally_body=""
-            if ! tally_body=$(jq -r 'select((.body // .tally) != null) | (.body // .tally)' "$plan_tally_ndjson" 2>/dev/null | head -1); then
-                tally_body=$(head -1 "$plan_tally_ndjson" 2>/dev/null || true)
-            fi
             if [[ "$tally_body" == "Quick mode"* || "$tally_body" == "Both externals unavailable"* ]]; then
                 workflow_path="SIMPLE"
             elif [[ -n "$tally_body" ]]; then

@@ -1,1 +1,0 @@
-{"schema_version":1,"phase":"code-review","batch":"code-review-tally","mode":"simple","rounds":1,"accepted_count":2,"rejected_count":0,"body":"Quick mode — no voting panel. Round 1: 5 Cursor specialists + generic Codex. All reviewers reported no in-scope issues. Two pre-existing issues triaged inline (rule 2): EOF unclosed-fence guard, trailing-whitespace pattern tolerance.\n"}
