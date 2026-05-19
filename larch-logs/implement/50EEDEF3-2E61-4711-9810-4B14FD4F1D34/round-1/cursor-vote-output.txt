@@ -1,0 +1,22 @@
+Reading the ballot and verifying claims against provided context.
+
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: EXONERATE -- historical log artifacts need no tracking issue
+FINDING_6: NO -- affirms no harness defect to file or fix
+FINDING_7: EXONERATE -- grep confusion in archived logs not worth an issue
+FINDING_8: EXONERATE -- optional doc polish; line counts are inherently brittle
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: YES
+FINDING_18: YES
+FINDING_19: YES
+FINDING_20: EXONERATE -- trivial boundary wording vs exact line numbers

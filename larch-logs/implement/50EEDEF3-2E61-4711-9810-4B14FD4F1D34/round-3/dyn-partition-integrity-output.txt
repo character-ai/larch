@@ -1,0 +1,23 @@
+Gathering the diff and commit history for a read-only partition-integrity review.
+
+Verifying partition invariants on the branch: counting assertions and `section_runs` guards, and checking `test-review-and-fix.sh` section boundaries.
+
+Checking for other assertion patterns in `test-dispatch-code-voters.sh` and whether `test-review-and-fix.sh` references stubs created only inside the dispatch block when running `--section convergence` alone:
+
+Review used the cached diff plus the current tree for line-accurate citations; `git log $(git merge-base HEAD main)..HEAD --oneline` shows three commits (`797f048f`, `c63923ed`, `35c0f6d0`).
+
+### In-Scope Findings
+
+NO_ISSUES_FOUND
+
+Partition-integrity checks from the diff and current files:
+
+- **`scripts/test-dispatch-code-voters.sh`**: Eight `if section_runs` guards ([163](scripts/test-dispatch-code-voters.sh), [193](scripts/test-dispatch-code-voters.sh), [264](scripts/test-dispatch-code-voters.sh), [313](scripts/test-dispatch-code-voters.sh), [335](scripts/test-dispatch-code-voters.sh), [357](scripts/test-dispatch-code-voters.sh), [396](scripts/test-dispatch-code-voters.sh), [439](scripts/test-dispatch-code-voters.sh)) match eight closing `fi  # end section:` lines ([191](scripts/test-dispatch-code-voters.sh)–[464](scripts/test-dispatch-code-voters.sh)); only `echo "PASS: …"` follows the last `fi` ([466](scripts/test-dispatch-code-voters.sh)).
+- **Assertions**: `grep -Fq` count is **51** on both `main` and HEAD for this file (`git show main:…` vs workspace); total `grep ` count is **53** on both—no net loss of `grep`-based checks from the move.
+- **Regression 3 claude**: The four checks (stdout `NOT_SUBSTANTIVE`, local diag file, `dispatch-code-voters.sh claude`, `launch-claude-review.sh (voter parse-rate check)`) are preserved under `edge-and-r3-claude` in the subshell at [238-261](scripts/test-dispatch-code-voters.sh).
+- **`regressions-r3-codex`**: Only the codex half remains in [439-464](scripts/test-dispatch-code-voters.sh); claude `prod_issues` assertions are absent there.
+- **`skills/review-and-fix/scripts/test-review-and-fix.sh`**: Shared setup (`SECTION` parse, `section_runs`, `fail`/`pass`, stub writes, `make_work_repo`, `run_review_and_fix`) runs before `if section_runs dispatch` ([11-241](skills/review-and-fix/scripts/test-review-and-fix.sh) vs guard at [243](skills/review-and-fix/scripts/test-review-and-fix.sh)); `write_prior_round` and convergence tests live only under `if section_runs convergence` ([1238-1955](skills/review-and-fix/scripts/test-review-and-fix.sh)); the success line runs after both sections ([1958](skills/review-and-fix/scripts/test-review-and-fix.sh)). Convergence-only runs do not reference `review-core-*` stubs that are only created inside the dispatch block (those references stay ≤ line 1235).
+
+### Out-of-Scope Observations
+
+- **risk-integration**, `skills/review-and-fix/scripts/test-review-and-fix.sh:11-26`, **issue**: New top-level `while [[ $# -gt 0 ]]` rejects unknown arguments; on `main` there was no harness-level argv loop, so extra argv would have been ignored. **Suggested fix**: None for partition integrity; keep call sites to `bash …/test-review-and-fix.sh` with only `--section …` or no args (as in the Makefile recipes).

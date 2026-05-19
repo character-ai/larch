@@ -20,7 +20,7 @@ Larch uses [pre-commit](https://pre-commit.com/) as the source of truth for lint
 
 There are three pre-commit-driven paths:
 
-- **CI** — The `lint` job runs `make lint-only` (repo-wide pre-commit over all files) with `SKIP=agnix,lint-mermaid-fences,shellcheck` on the step, because the dedicated `agnix` and `shellcheck` jobs run those hooks in parallel and Mermaid parsing runs as a separate changed-files step after installing the Node toolchain. A parallel `lint-mermaid` job runs Mermaid fence lint and the SIGPIPE safety lint (split from `lint` so both halves run concurrently — issue #2080). Gitleaks is **not** skipped — its `--no-git` working-tree scan is documented in SECURITY.md as complementary to the dedicated `gitleaks` job's history scan. The `lint` job also runs on `push: main` (not just `pull_request`) so the pre-commit hook-env cache populates under the default-branch scope and fresh PRs read it warm (issue #1034). CI runs regression harnesses through the `test-harnesses` matrix (`make test-harnesses-1` through `make test-harnesses-18`) instead of one serial harness job. Local `make lint` also runs `make lint-bash32` between harnesses and pre-commit. CI also runs separate dedicated jobs on top of the `lint` job: `shellcheck`, `agent-lint`, `agnix`, `gitleaks` (installs the same pinned engine and runs a full git-history scan on its own so the signal is independently re-runnable), `trufflehog` (CI-only; see "CI secret scanning" below), and `agent-sync` / `smoke-dialectic` for internal invariants. The `agent-sync` job installs the same Python lint dependencies before running the topology-rule paths coverage check.
+- **CI** — The `lint` job runs `make lint-only` (repo-wide pre-commit over all files) with `SKIP=agnix,lint-mermaid-fences,shellcheck` on the step, because the dedicated `agnix` and `shellcheck` jobs run those hooks in parallel and Mermaid parsing runs as a separate changed-files step after installing the Node toolchain. A parallel `lint-mermaid` job runs Mermaid fence lint and the SIGPIPE safety lint (split from `lint` so both halves run concurrently — issue #2080). Gitleaks is **not** skipped — its `--no-git` working-tree scan is documented in SECURITY.md as complementary to the dedicated `gitleaks` job's history scan. The `lint` job also runs on `push: main` (not just `pull_request`) so the pre-commit hook-env cache populates under the default-branch scope and fresh PRs read it warm (issue #1034). CI runs regression harnesses through the `test-harnesses` matrix (`make test-harnesses-1` through `make test-harnesses-20`) instead of one serial harness job. Local `make lint` also runs `make lint-bash32` between harnesses and pre-commit. CI also runs separate dedicated jobs on top of the `lint` job: `shellcheck`, `agent-lint`, `agnix`, `gitleaks` (installs the same pinned engine and runs a full git-history scan on its own so the signal is independently re-runnable), `trufflehog` (CI-only; see "CI secret scanning" below), and `agent-sync` / `smoke-dialectic` for internal invariants. The `agent-sync` job installs the same Python lint dependencies before running the topology-rule paths coverage check.
 - **`/relevant-checks` script path** — The project-local `.claude/skills/relevant-checks/scripts/run-checks.sh` runs `pre-commit run --files <changed-files>` scoped to branch changes, then attempts the full-repo `agent-lint` phase unconditionally, including when the changed-file set is empty after the `[ -f ]` regular-file filter (for example, deletions-only branches or directory-only changes). If neither phase runs because there are no existing regular files for pre-commit and `agent-lint` is not on `PATH`, the script exits 2 with an `ERROR: no validation phases ran ...` line instead of silently passing (issue #1276). `/implement` and `/review` call it through `scripts/run-relevant-checks-captured.sh`, which captures verbose output under the session tmpdir and emits a one-line `RELEVANT_CHECKS_OK=true ...` green-path envelope. On failure, orchestrators read only `REDACTED_LOG_FILE` from the helper envelope. Hooks with `pass_filenames: false` (gitleaks) scan the full tree regardless of the scoped path argument — intentional so scoped checks cannot silently miss secrets outside the changed file set. See `.claude/skills/relevant-checks/SKILL.md` for the human-facing phase and failure-mode taxonomy.
 - **Local git hook** — Run `make setup` (or `pre-commit install`) to enable pre-commit hooks on every commit. Bypassable via `git commit --no-verify`; the CI jobs are the enforced backstop.
 
@@ -36,11 +36,11 @@ When adding a new pre-commit hook, decide explicitly whether `lint`, the dedicat
 
 ## CI sharding of `test-harnesses`
 
-`make test-harnesses` remains the local umbrella target and runs every regression harness wired into the `test-harnesses-N` shards plus the partition guard (`make test-harness-shards-coverage` reports the active inventory; the `Makefile` is the source of truth). CI fans the same inventory out across eighteen parallel matrix cells named `test-harnesses (1)` through `test-harnesses (18)`, each invoking `make test-harnesses-N`.
+`make test-harnesses` remains the local umbrella target and runs every regression harness wired into the `test-harnesses-N` shards plus the partition guard (`make test-harness-shards-coverage` reports the active inventory; the `Makefile` is the source of truth). CI fans the same inventory out across twenty parallel matrix cells named `test-harnesses (1)` through `test-harnesses (20)`, each invoking `make test-harnesses-N`.
 
-The shard lists live directly in `Makefile` and are balanced by measured per-harness wall-clock time. New harnesses must be assigned to exactly one `test-harnesses-N:` prerequisite list; `make test-harness-shards-coverage` checks for missing, orphaned, duplicated, wrapped, or non-standard harness entries. The matrix uses `fail-fast: false`, so all eighteen shards finish even after one fails. This spends more CI minutes but preserves complete diagnostics.
+The shard lists live directly in `Makefile` and are balanced by measured per-harness wall-clock time. New harnesses must be assigned to exactly one `test-harnesses-N:` prerequisite list; `make test-harness-shards-coverage` checks for missing, orphaned, duplicated, wrapped, or non-standard harness entries. The matrix uses `fail-fast: false`, so all twenty shards finish even after one fails. This spends more CI minutes but preserves complete diagnostics.
 
-Local ordering changed: under `make test-harnesses` and therefore `make lint`, harnesses now execute in shard order (`test-harnesses-1`, then `test-harnesses-2`, and so on), not in the old single prerequisite-list order. Direct `make test-X` invocations are unchanged. CI shards run on separate VMs; local `make -j18 test-harnesses` can run shard targets concurrently, so fixed `/tmp` paths in individual harnesses remain a local-parallelism limitation even though the CI split is isolated.
+Local ordering changed: under `make test-harnesses` and therefore `make lint`, harnesses now execute in shard order (`test-harnesses-1`, then `test-harnesses-2`, and so on), not in the old single prerequisite-list order. Direct `make test-X` invocations are unchanged. CI shards run on separate VMs; local `make -j20 test-harnesses` can run shard targets concurrently, so fixed `/tmp` paths in individual harnesses remain a local-parallelism limitation even though the CI split is isolated.
 
 ### Refreshing harness shard balance
 
@@ -87,7 +87,7 @@ for line in sys.stdin:
     name, seconds = line.split()
     items.append((float(seconds), name))
 
-bins = [(0.0, []) for _ in range(18)]
+bins = [(0.0, []) for _ in range(20)]
 for seconds, name in sorted(items, reverse=True):
     total, names = min(bins, key=lambda item: item[0])
     names.append(name)
@@ -121,6 +121,8 @@ Before the sharded CI shape merges, an admin must update main-branch protection.
 - `test-harnesses (16)`
 - `test-harnesses (17)`
 - `test-harnesses (18)`
+- `test-harnesses (19)`
+- `test-harnesses (20)`
 - `lint-mermaid`
 
 Save the rule before merging the PR, or GitHub may report green matrix checks while branch protection still waits for the retired single check. If the repository uses rulesets in addition to classic branch protection, verify the same required-check list there too.
@@ -129,10 +131,10 @@ The `shellcheck` job runs as a dedicated CI job in parallel with `lint`; the `li
 
 ### Changing the shard count (lockstep edit)
 
-The shard count today is `18`, hard-coded in two places (the partition guard is shard-count-agnostic — it discovers `test-harnesses-N:` rules by parsing the Makefile):
+The shard count today is `20`, hard-coded in two places (the partition guard is shard-count-agnostic — it discovers `test-harnesses-N:` rules by parsing the Makefile):
 
-1. `Makefile` — eighteen `test-harnesses-N:` shard targets and the umbrella `test-harnesses:` aggregating them.
-2. `.github/workflows/ci.yaml` — the matrix `shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18]` strategy on the `test-harnesses` job.
+1. `Makefile` — twenty `test-harnesses-N:` shard targets and the umbrella `test-harnesses:` aggregating them.
+2. `.github/workflows/ci.yaml` — the matrix `shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]` strategy on the `test-harnesses` job.
 
 `scripts/test-harness-shards-coverage.sh` does NOT need editing on a shard-count change: it discovers the active `test-harnesses-N:` rules from the Makefile (`extract_shard_prereqs` parses them) and validates that `test-harness-shards-coverage` is first in the shard that contains it. The umbrella-expected list is built from the same discovered set.
 
