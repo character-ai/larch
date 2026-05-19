@@ -175,14 +175,32 @@ jobs:
           cache-dependency-path: .github/workflows/requirements-lint.txt
       - name: Install lint dependencies
         run: pip install -r .github/workflows/requirements-lint.txt
-      - name: Install ripgrep
-        # ripgrep (rg) is required by scripts/test-agent-model-args.sh
-        # static migration guards (FINDING_11 of /review code review on
-        # PR #1367 hardened the harness to fail fast when rg is missing,
-        # rather than silently passing all guards via empty
-        # `$(rg ... || true)` substitutions). Ubuntu 24.04 hosted runners
-        # do not include ripgrep in the default image inventory.
-        run: sudo apt-get update && sudo apt-get install -y ripgrep
+      # ripgrep (rg) is required by scripts/test-agent-model-args.sh static
+      # migration guards (FINDING_11 of /review on PR #1367 hardened the
+      # harness to fail fast when rg is missing, rather than silently
+      # passing all guards via empty `$(rg ... || true)` substitutions).
+      # Ubuntu 24.04 hosted runners do not include ripgrep in the default
+      # image inventory. We cache the prebuilt musl binary at
+      # /usr/local/bin/rg (single-file cache, ~5 MB) to skip ~7s of
+      # `apt-get update + install` per shard on cache hits (#2349).
+      - name: Cache ripgrep binary
+        id: cache-ripgrep
+        uses: actions/cache@v4
+        with:
+          path: /usr/local/bin/rg
+          key: ripgrep-bin-${{ runner.os }}-15.1.0
+      - name: Install ripgrep (on cache miss)
+        if: steps.cache-ripgrep.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          tmp=$(mktemp -d)
+          curl -sSfL https://github.com/BurntSushi/ripgrep/releases/download/15.1.0/ripgrep-15.1.0-x86_64-unknown-linux-musl.tar.gz \
+            -o "$tmp/rg.tgz"
+          tar -xzf "$tmp/rg.tgz" -C "$tmp"
+          sudo install -m 0755 "$tmp/ripgrep-15.1.0-x86_64-unknown-linux-musl/rg" /usr/local/bin/rg
+          rm -rf "$tmp"
+      - name: Verify ripgrep
+        run: rg --version | head -1
       - name: Run test harnesses (shard ${{ matrix.shard }} of 16)
         run: make test-harnesses-${{ matrix.shard }}
 
