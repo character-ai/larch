@@ -20,6 +20,15 @@ while [[ $# -gt 0 ]]; do
         *) shift ;;
     esac
 done
+if [[ -n "$SECTION" ]]; then
+    case "$SECTION" in
+        happy|edge|retry-claude|retry-codex-success|retry-cursor|retry-codex-fail-and-fallback) ;;
+        *)
+            printf 'ERROR: unknown --section: %s\n' "$SECTION" >&2
+            exit 1
+            ;;
+    esac
+fi
 section_runs() {
     [[ -z "$SECTION" || "$SECTION" == "$1" ]]
 }

@@ -21,14 +21,14 @@ lint-only:
 # then to 13 after heavy tests pushed shard wall time over the 40s target, then to 16 after
 # shards 12/13 exceeded 50s with test-dispatch-code-voters and test-dispatch-panel, then to 14
 # after splitting test-ship-pr/-dispatch-code-voters/-dispatch-panel into sections and stubbing
-# ship-pr.sh sleep brought the ceiling under 22s). Lists
+# ship-pr.sh sleep brought the ceiling under 22s, and now to 18 after isolating the four
+# retry-only dispatch-code-voters harness sections into dedicated shard rows). Lists
 # are manually adjusted from observed CI timings using LPT bin-packing; see
 # docs/linting.md "Refreshing harness shard balance" for the procedure used to regenerate these
 # lists when imbalance grows. IMPORTANT: each test-harnesses-N rule below stays on a single
 # physical line (no `\` continuations); the drift-detection script
 # `scripts/test-harness-shards-coverage.sh` parses these lines literally. New harnesses get
 # appended to one shard line.
-# Shard-13 leads with the partition-invariant guard so partition bugs surface.
 test-harnesses: test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesses-4 test-harnesses-5 test-harnesses-6 test-harnesses-7 test-harnesses-8 test-harnesses-9 test-harnesses-10 test-harnesses-11 test-harnesses-12 test-harnesses-13 test-harnesses-14 test-harnesses-15 test-harnesses-16 test-harnesses-17 test-harnesses-18
 
 test-harnesses-1: test-launch-review
@@ -53,9 +53,9 @@ test-harnesses-10: test-dispatch-panel-reuse test-collect-agent-retry test-codex
 
 test-harnesses-11: test-oos-file-conflict-deps test-dispatch-panel-limits test-step2-dispatch test-oos-issue-cap test-wait-for-reviewers test-render-findings-batch test-lint-fix-loop test-run-external-agent test-umbrella-render-batch-input test-add-blocked-by test-run-research-planner test-round-trip-detect test-session-setup-presence-defaults test-sentinel-write test-umbrella-emit-output-contract test-ci-status test-emit-plan test-post-tracking-issue test-gh-pr-body-update test-research-angle-prompts
 
-# Shard-13 leads with the partition-invariant guard so partition bugs surface.
 test-harnesses-12: test-dispatch-plan-voters test-dispatch-with-waterfall test-session-setup-repo-fallback test-analyze test-lint-literal-counts test-parse-prose-blockers test-render-reviewer-prompt test-design-manifest test-tracking-issue-read-sentinel test-relevant-checks-validation test-session-env-roundtrip test-design-structure test-github-remote-repo test-agent-model-args test-render-umbrella-body test-ci-rerun-failed test-external-tool-registry test-implement-timing-rehydration test-intra-batch-deps test-rebase-push-force-lease test-ballot-parse
 
+# Shard-13 leads with the partition-invariant guard so partition bugs surface.
 test-harnesses-13: test-harness-shards-coverage test-review-and-fix test-collect-findings test-validate-citations test-pipe-sigpipe-safety test-parse-input test-hook-anti-read-poll test-check-phantom-dirty test-ci-wait test-rebase-push-keep-on-conflict test-redact-tmpdir-paths test-lint-bash32 test-implement-fork-env test-implement-post-design-boundary test-run-external-agent-args test-implement-structure test-commit-implementation test-orchestrator-scope-sync test-oos-serialize
 
 test-harnesses-14: test-dispatch-panel-core test-collect-agent-results test-tally-plan-review test-token-report test-upgrade-larch-prune test-check-generators test-token-ledger test-check-review-changes test-run-checks test-restore-finalize-state test-token-tally test-compose-collector-failure-log test-larch-logs-manifest test-rate-assertions test-review-structure test-commit-review-fixes test-implement-anti-halt test-alias-structure test-lib-external-launcher-common
