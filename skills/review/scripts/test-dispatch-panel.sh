@@ -3,11 +3,10 @@
 
 set -euo pipefail
 
-# --section CLI selector (closes #2349): splits 18 scenarios into 3 groups:
-#   core:     panel-mode + missing-diff fallbacks (7 scenarios)
-#   reuse:    round-reuse and reuse-manifest cases (5 scenarios)
-#   limits:   oversized-diff, dynamic-archetype limit cases (6 scenarios)
-# With no --section, all 18 run sequentially (local-dev backward compat).
+# --section CLI selector (closes #2349): shards the main scenarios into 3 groups.
+# The scout parse-failed regression assertions live under `core` so sharded runs
+# execute them once instead of once per shard. With no --section, all assertions
+# still run sequentially for local-dev backward compatibility.
 SECTION=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -189,7 +188,12 @@ grep -Fq 'SCOUT_STATUS=parse-failed' <<< "$out"
 grep -Fq 'SCOUT_FAIL_REASON=json_parse' <<< "$out"
 grep -Fq 'DYNAMIC_SLOTS=0' <<< "$out"
 grep -Fq 'SCOUT_FAIL_REASON=json_parse' "$TMP/dynamic-parse-failed/scout-round1-status.env"
-grep -Fq 'Review scout dynamic archetype parse failed in round 1; reason=json_parse' "$issues_log"
+[[ -s "$TMP/dynamic-parse-failed/scout-parse-failed-round1-diag.txt" ]]
+grep -Fq 'scout_fail_reason=json_parse' "$TMP/dynamic-parse-failed/scout-parse-failed-round1-diag.txt"
+if [[ -e "$issues_log" ]]; then
+    echo "FAIL: core parse-failed should suppress harness issues-log append" >&2
+    exit 1
+fi
 
 seed_case_inputs "$TMP/dynamic-parse-failed-warn"
 readonly_dir="$TMP/dynamic-parse-failed-warn/readonly"
@@ -206,7 +210,11 @@ out=$(PATH="$STUB_BIN:$PATH" LARCH_EXECUTION_ISSUES_LOG="$warn_log" SCOUT_DYNAMI
     --plan-file "$TMP/dynamic-parse-failed-warn/plan.md" \
     --dynamic-archetypes 4)
 chmod 700 "$readonly_dir"
-grep -Fq 'WARN=append-execution-issue failed for scout parse issue:' <<< "$out"
+[[ -s "$TMP/dynamic-parse-failed-warn/scout-parse-failed-round1-diag.txt" ]]
+if grep -Fq 'WARN=append-execution-issue failed for scout parse issue:' <<< "$out"; then
+    echo "FAIL: harness parse-failed warn path should suppress append-execution-issue" >&2
+    exit 1
+fi
 
 for mode in docs-only test-only generated-only; do
     seed_case_inputs "$TMP/skip-$mode"
@@ -446,6 +454,8 @@ claude_count=$(find "$TMP/both-down" -name '*phase3.txt' | wc -l | tr -d ' ')
 [[ "$claude_count" -ge 7 ]] || { echo "FAIL: expected Claude phase3 outputs for both-down panel" >&2; exit 1; }
 fi  # end section: limits
 
+if section_runs core; then
+
 assert_emit_tally_panel() {
     local label="$1" scout_status="$2" dynamic_slots="$3" static_slot_count="$4" total_slot_count="$5"
     local dir="$TMP/emit-tally-$label"
@@ -564,5 +574,7 @@ fi
     grep -Fq 'Review scout dynamic archetype parse failed in round 13; reason=missing_status_sidecar' "$prod_issues" \
         || { echo "FAIL: regression3 prod-shape — execution-issues warning not written for production-shape tmpdir" >&2; exit 1; }
 )
+
+fi  # end section: core regressions
 
 echo "All assertions passed."

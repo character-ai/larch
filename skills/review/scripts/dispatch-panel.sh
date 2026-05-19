@@ -277,8 +277,7 @@ is_harness_scout_path() {
 }
 
 should_suppress_scout_parse_issue_append() {
-    local manifest_path="$1"
-    is_harness_scout_path "$REVIEW_TMPDIR" || is_harness_scout_path "$manifest_path"
+    is_harness_scout_path "$REVIEW_TMPDIR"
 }
 
 append_scout_parse_issue() {
@@ -295,7 +294,7 @@ append_scout_parse_issue() {
         printf 'manifest=%s\n' "$manifest_label"
     } > "$diag_file" || true
     # Suppress parent execution-issues append when running under a test harness
-    if should_suppress_scout_parse_issue_append "$manifest_label"; then
+    if should_suppress_scout_parse_issue_append; then
         return 0
     fi
     [[ -x "$PLUGIN_ROOT/scripts/append-execution-issue.sh" ]] || return 0
