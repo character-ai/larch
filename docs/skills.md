@@ -78,7 +78,7 @@ Design an implementation plan with collaborative multi-reviewer review. The [ske
 
 ## `/fix-issue`
 
-**Arguments**: `[--auto] [--no-admin-fallback] [--coder=<value>] [--inline] [--hard] [<number-or-url>]`
+**Arguments**: `[--auto] [--no-admin-fallback] [--no-logs-commit] [--coder=<value>] [--inline] [--hard] [<number-or-url>]`
 
 **Source**: [`skills/fix-issue/SKILL.md`](../skills/fix-issue/SKILL.md)
 
@@ -88,7 +88,7 @@ Process one approved GitHub issue per invocation, classifying intent and delegat
 
 ## `/implement`
 
-**Arguments**: `[--quick] [--auto] [--forked] [--design-only] [--no-issues] [--inline] [--merge | --draft] [--no-admin-fallback] [--coder=claude|codex|cursor] [--session-env <path>] [--issue <N>] <feature description>`
+**Arguments**: `[--quick] [--auto] [--forked] [--design-only] [--no-issues] [--inline] [--merge | --draft] [--no-admin-fallback] [--no-logs-commit] [--coder=claude|codex|cursor] [--session-env <path>] [--issue <N>] <feature description>`
 
 **Source**: [`skills/implement/SKILL.md`](../skills/implement/SKILL.md) · [Diagram](../skills/implement/diagram.svg)
 
