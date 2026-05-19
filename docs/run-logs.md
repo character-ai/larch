@@ -21,7 +21,7 @@ larch-logs/
       codex-impl-manifest-raw.json
       plan-review-tally.json
       code-review-tally.json
-      review-findings-full.md
+      review-findings-full.jsonl
       version-bump-reasoning.md
       oos-issues.ndjson
       run-statistics.md
@@ -133,11 +133,11 @@ findings under a `## Rejected Code Review Findings` sub-header — only findings
 with outcome `rejected` appear here. Exonerated and neutral findings are counted
 in the envelope but not listed separately.
 
-### review-findings-full.md
+### review-findings-full.jsonl
 
-**Mode**: replace (markdown sections). **Written**: Step 5, immediately after the `code-review-tally` batch.
+**Mode**: replace (line-delimited JSON). **Written**: Step 5, immediately after the `code-review-tally` batch.
 
-Per-finding payloads for plan-review accepted, plan-review rejected, and code-review entries. Each section heading carries finding id, reviewer, phase, and outcome, followed by the redacted prose body. Accepted code-review findings appear in `### FINDING_X: panel [code-review/accepted]` blocks; rejected code-review findings appear in generated `### REJ_CX: reviewer [code-review/rejected]` blocks.
+Per-finding payloads for plan-review accepted, plan-review rejected, and code-review entries. One JSON object per line with keys `id`, `issue_number`, `phase` (`plan-review` | `code-review`), `outcome` (`accepted` | `rejected`), `reviewer`, `category` (best-effort, extracted from a leading `## <cat>: ...` body line — may be empty), and `prose_body` (redacted). See `scripts/compose-review-findings.md` for the producer contract.
 
 ### version-bump-reasoning.md
 

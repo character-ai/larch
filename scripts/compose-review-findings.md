@@ -1,8 +1,9 @@
 # compose-review-findings.sh contract
 
 `scripts/compose-review-findings.sh` converts plan-review and code-review
-finding artifacts into `review-findings-full.md`. Code-review artifacts are
-read from `$IMPLEMENT_TMPDIR/round-*/accepted-findings.md` and
+finding artifacts into a single `review-findings-full.jsonl` file (one JSON
+object per line). Code-review artifacts are read from
+`$IMPLEMENT_TMPDIR/round-*/accepted-findings.md` and
 `$IMPLEMENT_TMPDIR/round-*/rejected-findings-full.md` when present, otherwise
 `$IMPLEMENT_TMPDIR/round-*/rejected-findings.md`; the parent
 `$IMPLEMENT_TMPDIR/rejected-findings-full.md` and
@@ -17,29 +18,32 @@ Inputs:
 --output PATH
 ```
 
-The output is one markdown section per finding:
+Each output line is a JSON object with these fields:
 
-```markdown
-### <id>: <reviewer> [<phase>/<outcome>]
-
-<redacted finding body>
+```text
+id            string  — the finding id (e.g. FINDING_10, REJ_C1)
+issue_number  string  — the --issue arg, propagated verbatim
+phase         string  — plan-review | code-review
+outcome       string  — accepted | rejected
+reviewer      string  — the reviewer label (redacted)
+category      string  — best-effort extract from a leading "## <cat>: ..." body line; empty when absent
+prose_body    string  — the full finding body (redacted; not HTML-escaped — consumers parse JSON)
 ```
 
-Missing inputs are treated
-as "no findings"; the script still writes an empty markdown file and emits
-`FINDINGS_TOTAL=0`.
+Missing inputs are treated as "no findings"; the script still writes an empty
+file and emits `FINDINGS_TOTAL=0`.
 
-The helper redacts tmpdir paths and token-shaped secrets before writing
-sections, then HTML-escapes `<`, `>`, and bare `&` in every finding body so
-that XML-like tag names cited in security findings (e.g.
-`</reviewer_diff>`, `<scout_notes>`) are encoded as `&lt;…&gt;` and do not
-trigger markdownlint/agent-lint XML-element warnings. Existing HTML entities
-are preserved rather than double-encoded. The old inline/archive split was
-removed when review findings moved from issue anchors to committed
-`larch-logs/` files. Rejected code-review blocks preserve inner `### ...`
-subheadings as body content unless a new top-level rejected block header is
-seen.
+The helper redacts tmpdir paths and token-shaped secrets before writing each
+record's `reviewer` and `prose_body`. JSON escaping is handled by `jq -nc`,
+so inner `<`, `>`, `&`, newlines, and quotes are preserved literally inside
+the JSON string and round-trip cleanly through any JSON parser. The old
+inline/archive split was removed when review findings moved from issue
+anchors to committed `larch-logs/` files. Rejected code-review blocks
+preserve inner `### ...` subheadings as body content unless a new top-level
+rejected block header is seen.
 
-On non-zero exit, `FAILURE_LOG=<path>` may appear on stdout.
+`MODE=jsonl` is emitted on stdout after a successful compose; `MODE=markdown`
+is no longer produced by this script. On non-zero exit, `FAILURE_LOG=<path>`
+may appear on stdout.
 
 Harness: `scripts/test-compose-review-findings.sh`.

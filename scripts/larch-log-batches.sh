@@ -15,7 +15,7 @@ codex-commit-message .txt replace none
 codex-impl-manifest-raw .json replace none
 plan-review-tally .json replace json-object
 code-review-tally .json replace json-object
-review-findings-full .md replace none
+review-findings-full .jsonl replace none
 review-context .md replace none
 review-findings .ndjson append json-lines
 review-panel-manifest .ndjson replace none

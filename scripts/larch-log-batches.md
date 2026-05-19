@@ -48,8 +48,10 @@ batch slug; `mode` is `simple` or `hard`; counts are non-negative integers;
 `body` holds the verbatim markdown tally prose with newlines JSON-escaped.
 
 The `json-object` sanitizer validates these tally batches before replace writes.
-`review-findings-full.md` is raw markdown and uses no sanitizer beyond the
-standard tmpdir and secret redaction pipeline.
+`review-findings-full.jsonl` is line-delimited JSON (one finding per line, with
+keys `id`, `issue_number`, `phase`, `outcome`, `reviewer`, `category`,
+`prose_body`); it uses no sanitizer beyond the standard tmpdir and secret
+redaction pipeline because `jq` handles JSON string escaping for each record.
 
 ## review-scout-manifest schema
 

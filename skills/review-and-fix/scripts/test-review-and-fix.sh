@@ -254,7 +254,7 @@ run_orchestrator_case() {
     jq -e '.batch == "code-review-tally" and .rounds == 1 and .accepted_count == 1 and .rejected_count == 0 and (.body | contains("# Review Round 1"))' \
         "$implement_tmp/larch-logs/implement/$label-run/code-review-tally.json" >/dev/null \
         || fail "$label code-review-tally batch"
-    [[ -f "$implement_tmp/larch-logs/implement/$label-run/review-findings-full.md" ]] || fail "$label review-findings-full batch"
+    [[ -f "$implement_tmp/larch-logs/implement/$label-run/review-findings-full.jsonl" ]] || fail "$label review-findings-full batch"
     [[ -s "$implement_tmp/accumulated-oos.jsonl" ]] || fail "$label oos jsonl"
     [[ -s "$implement_tmp/oos-accepted-review.md" ]] || fail "$label oos markdown"
 }
@@ -391,7 +391,7 @@ out=$(
 grep -Fq 'REVIEW_AND_FIX_STATUS=complete' <<< "$out" || fail "rejected-full status"
 grep -Fq 'full rejected review prose' "$implement_tmp/larch-logs/implement/rejected-full-run/code-review-tally.json" \
     || fail "rejected-full tally missing preserved rejected prose"
-grep -Fq 'full rejected review prose' "$implement_tmp/larch-logs/implement/rejected-full-run/review-findings-full.md" \
+grep -Fq 'full rejected review prose' "$implement_tmp/larch-logs/implement/rejected-full-run/review-findings-full.jsonl" \
     || fail "rejected-full findings batch missing preserved rejected prose"
 
 work_tally="$TMP/tally-fidelity"
@@ -415,8 +415,8 @@ grep -Fq 'ACCEPTED_COUNT=1' <<< "$out" || fail "tally-fidelity stdout accepted k
 grep -Fq 'REJECTED_COUNT=4' <<< "$out" || fail "tally-fidelity stdout rejected kv remains per-round"
 grep -Fq 'TOTAL_ACCEPTED_COUNT=3' <<< "$out" || fail "tally-fidelity stdout total accepted kv matches composed tally"
 grep -Fq 'TOTAL_REJECTED_COUNT=2' <<< "$out" || fail "tally-fidelity stdout total rejected kv matches composed tally"
-[[ "$(grep -cE '^### .+ \[code-review/accepted\]$' "$implement_tmp/larch-logs/implement/tally-fidelity-run/review-findings-full.md")" == "3" ]] \
-    || fail "tally-fidelity accepted header count"
+[[ "$(jq -c 'select(.phase == "code-review" and .outcome == "accepted")' "$implement_tmp/larch-logs/implement/tally-fidelity-run/review-findings-full.jsonl" | wc -l | tr -d ' ')" == "3" ]] \
+    || fail "tally-fidelity accepted record count"
 grep -Fq -- '- Accepted findings:' "$implement_tmp/round-1/review-round-summary.md" || fail "tally-fidelity fixture summary keeps per-round count lines"
 if grep -Fq -- '- Accepted findings:' "$implement_tmp/larch-logs/implement/tally-fidelity-run/code-review-tally.json"; then
     fail "tally-fidelity tally body must omit stale per-round count lines"
@@ -440,7 +440,7 @@ set -e
 [[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "compose-fail expected exit 0 got $rc"; }
 grep -Fq 'failed to compose review findings for summary derivation' <<< "$out" || fail "compose-fail summary warning breadcrumb"
 [[ ! -f "$implement_tmp/larch-logs/implement/compose-fail-run/code-review-tally.json" ]] || fail "compose-fail must skip tally batch write"
-[[ ! -f "$implement_tmp/larch-logs/implement/compose-fail-run/review-findings-full.md" ]] || fail "compose-fail must skip findings batch write"
+[[ ! -f "$implement_tmp/larch-logs/implement/compose-fail-run/review-findings-full.jsonl" ]] || fail "compose-fail must skip findings batch write"
 
 work_claude="$TMP/claude-removed"
 make_work_repo "$work_claude"
@@ -580,7 +580,7 @@ jq -e '.schema_version == 2 and .status == "complete" and .coder_status == "skip
 jq -e '.batch == "code-review-tally" and .rounds == 1 and .accepted_count == 0 and .rejected_count == 0 and (.body | contains("# Review Round 1"))' \
     "$implement_tmp/larch-logs/implement/zero-run/code-review-tally.json" >/dev/null \
     || fail "zero code-review-tally batch"
-[[ -f "$implement_tmp/larch-logs/implement/zero-run/review-findings-full.md" ]] || fail "zero review-findings-full batch"
+[[ -f "$implement_tmp/larch-logs/implement/zero-run/review-findings-full.jsonl" ]] || fail "zero review-findings-full batch"
 [[ "$out" != *"LOG_WRITTEN="* ]] || fail "zero flush leaked larch-log writer stdout"
 
 work_sorted="$TMP/sorted-summaries"

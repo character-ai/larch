@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-compose-review-findings.sh — markdown composer harness.
+# test-compose-review-findings.sh — JSONL composer harness.
 
 set -euo pipefail
 
@@ -15,12 +15,25 @@ fail() {
     exit 1
 }
 
+# jq helpers — count records matching a phase/outcome and emit a single field.
+count_records() {
+    # $1: file, $2: phase, $3: outcome
+    jq -c --arg phase "$2" --arg outcome "$3" \
+        'select(.phase == $phase and .outcome == $outcome)' "$1" \
+        | wc -l | tr -d ' '
+}
+record_field_by_id() {
+    # $1: file, $2: id, $3: field name → prints the field value or empty.
+    jq -r --arg id "$2" --arg field "$3" \
+        'select(.id == $id) | .[$field] // empty' "$1"
+}
+
 echo "=== empty inputs ==="
 mkdir -p "$TMP/a-design" "$TMP/a-impl"
-out="$TMP/a.md"
+out="$TMP/a.jsonl"
 stdout="$("$COMPOSE" --design-artifacts-dir "$TMP/a-design" --implement-tmpdir "$TMP/a-impl" --issue 1 --output "$out")"
 [[ "$stdout" == *"FINDINGS_TOTAL=0"* ]] || fail "empty total missing: $stdout"
-[[ "$stdout" == *"MODE=markdown"* ]] || fail "markdown mode missing: $stdout"
+[[ "$stdout" == *"MODE=jsonl"* ]] || fail "jsonl mode missing: $stdout"
 [ -f "$out" ] || fail "empty output missing"
 [ ! -s "$out" ] || fail "empty output should be zero bytes"
 
@@ -60,25 +73,46 @@ cat > "$TMP/b-impl/round-1/accepted-findings.md" <<'EOF'
 EOF
 cp "$TMP/b-impl/rejected-findings.md" "$TMP/b-impl/round-1/rejected-findings.md"
 cp "$TMP/b-impl/rejected-findings-full.md" "$TMP/b-impl/round-1/rejected-findings-full.md"
-out="$TMP/b.md"
+out="$TMP/b.jsonl"
 stdout="$("$COMPOSE" --design-artifacts-dir "$TMP/b-design" --implement-tmpdir "$TMP/b-impl" --issue 7 --output "$out")"
 [[ "$stdout" == *"FINDINGS_TOTAL=4"* ]] || fail "total missing: $stdout"
-# Count only structured finding headers (the emit_record format): ### ID: reviewer [phase/outcome]
-structured_count="$(grep -cE '^### [^:]+: .+ \[(plan-review|code-review)/(accepted|rejected)\]' "$out" || true)"
-[ "$structured_count" = "4" ] || fail "expected 4 structured sections, got $structured_count"
-grep -Fq '### FINDING_1: panel [plan-review/accepted]' "$out" \
-    || fail "accepted finding section missing"
-grep -Fq '### FINDING_2: panel [code-review/accepted]' "$out" \
-    || fail "code accepted section missing"
-grep -Fq '### REJ_P1: Cursor-Architecture [plan-review/rejected]' "$out" \
-    || fail "plan rejected section missing"
-grep -Fq '### REJ_C1: FINDING_1 [code-review/rejected]' "$out" \
-    || fail "code rejected section missing"
-grep -qF '&lt;REDACTED-TOKEN&gt;' "$out" || fail "token was not redacted (expected HTML-escaped form)"
-grep -Fq 'Suggested revision' "$out" || fail "full rejected artifact body was not used"
-# Verify body HTML escaping: < and & in the body must be escaped
-grep -qF '&lt;config&gt;' "$out" || fail "angle brackets in body were not HTML-escaped"
-grep -qF '&amp; test' "$out" || fail "ampersand in body was not HTML-escaped"
+[[ "$(wc -l <"$out" | tr -d ' ')" == "4" ]] || fail "expected 4 JSONL records, got $(wc -l <"$out")"
+
+# Each JSONL record must parse and have the expected fields.
+while IFS= read -r line; do
+    printf '%s' "$line" | jq -e 'has("id") and has("issue_number") and has("phase") and has("outcome") and has("reviewer") and has("category") and has("prose_body")' >/dev/null \
+        || fail "missing required keys in record: $line"
+done < "$out"
+
+# Plan-review accepted finding
+[[ "$(record_field_by_id "$out" FINDING_1 phase)" == "plan-review" ]] || fail "FINDING_1 phase"
+[[ "$(record_field_by_id "$out" FINDING_1 outcome)" == "accepted" ]] || fail "FINDING_1 outcome"
+[[ "$(record_field_by_id "$out" FINDING_1 reviewer)" == "panel" ]] || fail "FINDING_1 reviewer"
+
+# Code-review accepted finding
+[[ "$(record_field_by_id "$out" FINDING_2 phase)" == "code-review" ]] || fail "FINDING_2 phase"
+[[ "$(record_field_by_id "$out" FINDING_2 outcome)" == "accepted" ]] || fail "FINDING_2 outcome"
+[[ "$(record_field_by_id "$out" FINDING_2 reviewer)" == "panel" ]] || fail "FINDING_2 reviewer"
+
+# Plan-review rejected finding
+[[ "$(record_field_by_id "$out" REJ_P1 phase)" == "plan-review" ]] || fail "REJ_P1 phase"
+[[ "$(record_field_by_id "$out" REJ_P1 outcome)" == "rejected" ]] || fail "REJ_P1 outcome"
+[[ "$(record_field_by_id "$out" REJ_P1 reviewer)" == "Cursor-Architecture" ]] || fail "REJ_P1 reviewer"
+
+# Code-review rejected finding
+[[ "$(record_field_by_id "$out" REJ_C1 phase)" == "code-review" ]] || fail "REJ_C1 phase"
+[[ "$(record_field_by_id "$out" REJ_C1 outcome)" == "rejected" ]] || fail "REJ_C1 outcome"
+
+# Token-shaped secret is redacted in the prose_body
+body_with_token=$(record_field_by_id "$out" REJ_C1 prose_body)
+grep -qF '<REDACTED-TOKEN>' <<<"$body_with_token" || fail "token was not redacted in JSONL prose_body"
+grep -qF 'sk-ant-abcdefghijklmnopqrstuvwxyz0123456789ABCD' <<<"$body_with_token" \
+    && fail "raw token leaked into JSONL prose_body"
+grep -qF 'Suggested revision' <<<"$body_with_token" || fail "rejected body lost 'Suggested revision'"
+
+# JSONL preserves literal '<', '>', and '&' (no HTML escaping).
+grep -qF '<config> & test' <<<"$body_with_token" \
+    || fail "JSONL prose_body should preserve literal angle brackets and ampersand"
 
 echo "=== legacy code review rejected header is accepted ==="
 mkdir -p "$TMP/e-impl"
@@ -87,12 +121,13 @@ cat > "$TMP/e-impl/rejected-findings-full.md" <<'EOF'
 **Finding**: Legacy rejected body.
 **Reason not implemented**: Kept for compatibility.
 EOF
-out="$TMP/e.md"
+out="$TMP/e.jsonl"
 stdout="$("$COMPOSE" --implement-tmpdir "$TMP/e-impl" --issue 44 --output "$out")"
 [[ "$stdout" == *"FINDINGS_TOTAL=1"* ]] || fail "legacy rejected total: $stdout"
-grep -Fq '### REJ_C1: Legacy-Reviewer [code-review/rejected]' "$out" \
-    || fail "legacy code-review rejected header missing"
-grep -Fq 'Legacy rejected body.' "$out" || fail "legacy rejected body missing"
+[[ "$(record_field_by_id "$out" REJ_C1 reviewer)" == "Legacy-Reviewer" ]] || fail "legacy reviewer"
+[[ "$(record_field_by_id "$out" REJ_C1 outcome)" == "rejected" ]] || fail "legacy outcome"
+grep -qF 'Legacy rejected body.' <<<"$(record_field_by_id "$out" REJ_C1 prose_body)" \
+    || fail "legacy rejected body missing from prose_body"
 
 echo "=== preserve inner headings inside rejected code-review blocks ==="
 mkdir -p "$TMP/f-impl"
@@ -103,50 +138,45 @@ cat > "$TMP/f-impl/rejected-findings-full.md" <<'EOF'
 ### Notes
 This heading should remain inside the same rejected block.
 EOF
-out="$TMP/f.md"
+out="$TMP/f.jsonl"
 stdout="$("$COMPOSE" --implement-tmpdir "$TMP/f-impl" --issue 45 --output "$out")"
 [[ "$stdout" == *"FINDINGS_TOTAL=1"* ]] || fail "inner-heading total: $stdout"
-structured_count="$(grep -cE '^### [^:]+: .+ \[(plan-review|code-review)/(accepted|rejected)\]' "$out" || true)"
-[ "$structured_count" = "1" ] || fail "expected 1 structured section with inner heading, got $structured_count"
-grep -Fq '### Notes' "$out" || fail "inner heading missing from rejected body"
-grep -Fq 'This heading should remain inside the same rejected block.' "$out" \
+[[ "$(wc -l <"$out" | tr -d ' ')" == "1" ]] || fail "expected 1 JSONL record"
+body=$(record_field_by_id "$out" REJ_C1 prose_body)
+grep -qF '### Notes' <<<"$body" || fail "inner heading missing from prose_body"
+grep -qF 'This heading should remain inside the same rejected block.' <<<"$body" \
     || fail "inner heading body missing"
 
-echo "=== HTML-escape XML-like tags in finding body ==="
+echo "=== JSONL preserves XML-like tags literally (no HTML escaping) ==="
 mkdir -p "$TMP/c-impl/round-1"
 cat > "$TMP/c-impl/round-1/accepted-findings.md" <<'EOF'
 ### FINDING_3: Prompt injection guard
 - **Concern**: The </reviewer_diff> tag, <scout_notes> element, and A & B marker are unescaped.
 - **Suggested revision**: HTML-escape all <…> sequences.
 EOF
-out="$TMP/c.md"
+out="$TMP/c.jsonl"
 stdout="$("$COMPOSE" --implement-tmpdir "$TMP/c-impl" --issue 42 --output "$out")"
-[[ "$stdout" == *"FINDINGS_TOTAL=1"* ]] || fail "xml escape total: $stdout"
-grep -Fq '&lt;/reviewer_diff&gt;' "$out" || fail "reviewer_diff not escaped"
-grep -Fq '&lt;scout_notes&gt;' "$out" || fail "scout_notes not escaped"
-grep -Fq 'A &amp; B' "$out" || fail "ampersand not escaped"
-if grep -qF '</reviewer_diff>' "$out"; then fail "unescaped </reviewer_diff> still present"; fi
-if grep -qF '<scout_notes>' "$out"; then fail "unescaped <scout_notes> still present"; fi
-if grep -qF 'A & B' "$out"; then fail "unescaped ampersand still present"; fi
+[[ "$stdout" == *"FINDINGS_TOTAL=1"* ]] || fail "xml literal total: $stdout"
+body=$(record_field_by_id "$out" FINDING_3 prose_body)
+grep -qF '</reviewer_diff>' <<<"$body" || fail "literal </reviewer_diff> missing"
+grep -qF '<scout_notes>' <<<"$body" || fail "literal <scout_notes> missing"
+grep -qF 'A & B' <<<"$body" || fail "literal ampersand missing"
 
-echo "=== preserve existing HTML entities while escaping raw tags ==="
-mkdir -p "$TMP/d-impl/round-1"
-cat > "$TMP/d-impl/round-1/accepted-findings.md" <<'EOF'
-### FINDING_4: Preserve pre-escaped content
-- **Concern**: Already escaped &lt;tag&gt; and &#35; entity should survive, but raw <other> & marker should still escape.
-- **Suggested revision**: Preserve existing entities.
+echo "=== category is extracted from the leading '## <cat>:' line when present ==="
+mkdir -p "$TMP/g-impl/round-1"
+cat > "$TMP/g-impl/round-1/accepted-findings.md" <<'EOF'
+### FINDING_5: correctness: scripts/foo.sh:1-3
+
+- **Concern**: example
 EOF
-out="$TMP/d.md"
-stdout="$("$COMPOSE" --implement-tmpdir "$TMP/d-impl" --issue 43 --output "$out")"
-[[ "$stdout" == *"FINDINGS_TOTAL=1"* ]] || fail "entity preservation total: $stdout"
-grep -Fq 'Already escaped &lt;tag&gt; and &#35; entity should survive, but raw &lt;other&gt; &amp; marker should still escape.' "$out" \
-    || fail "existing entities were not preserved while raw markup escaped"
-if grep -qF '&amp;lt;tag&amp;gt;' "$out"; then fail "existing named entity was double-encoded"; fi
-if grep -qF '&amp;#35;' "$out"; then fail "existing numeric entity was double-encoded"; fi
+out="$TMP/g.jsonl"
+"$COMPOSE" --implement-tmpdir "$TMP/g-impl" --issue 46 --output "$out" >/dev/null
+[[ "$(record_field_by_id "$out" FINDING_5 category)" == "correctness" ]] \
+    || fail "category extraction from '## <cat>: ...' failed"
 
 echo "=== invalid issue fails ==="
 set +e
-bad="$("$COMPOSE" --issue nope --output "$TMP/bad.md" 2>&1)"
+bad="$("$COMPOSE" --issue nope --output "$TMP/bad.jsonl" 2>&1)"
 rc=$?
 set -e
 [ "$rc" = "2" ] || fail "invalid issue exit $rc"
