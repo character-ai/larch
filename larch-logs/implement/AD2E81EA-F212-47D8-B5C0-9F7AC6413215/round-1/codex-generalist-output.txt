@@ -1,0 +1,7 @@
+### In-Scope Findings
+
+1. **Important** `risk-integration` `scripts/test-implement-step2-routing.sh:22` — The routing regression harness still pins the old `diff_lines < 30` / `>=30` strings, so this branch breaks `make lint` through `test-harnesses-6`. Concrete failure: `bash scripts/test-implement-step2-routing.sh` exits with `FAIL: implement carve-out missing: diff_lines < 30`. Update the assertions at `scripts/test-implement-step2-routing.sh:22-27` to the new `diff_lines <= 3` and `>=4` contract, and update the sibling harness docs (`scripts/test-implement-step2-routing.md`, `docs/linting.md`) to match.
+
+2. **Nit** `code-quality` `skills/design/SKILL.md:553` — `/design` runtime prompt text still says the estimate drives `/implement`’s `diff_lines < 30` carve-out, with the same stale threshold also at `skills/design/SKILL.md:367` and `skills/design/SKILL.md:847`. This is now misleading for future design/debugging runs. Update those references to `diff_lines <= 3`.
+
+### Out-of-Scope Observations

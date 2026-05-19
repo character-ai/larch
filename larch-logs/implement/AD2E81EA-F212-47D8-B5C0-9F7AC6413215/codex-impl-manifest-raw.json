@@ -1,0 +1,25 @@
+{
+  "schema_version": "1",
+  "status": "complete",
+  "files_touched": [
+    {
+      "path": "skills/implement/SKILL.md",
+      "lines_added": 7,
+      "lines_removed": 7
+    }
+  ],
+  "tests_added_or_modified": [],
+  "summary_bullets": [
+    "Reserve Claude-only implementation for plans with at most three estimated diff lines so routine work stays on Codex or Cursor by default.",
+    "Keep operator-facing breadcrumbs and Step 2 routing copy consistent with the stricter carve-out boundary."
+  ],
+  "commit_message": "Lower /implement coder simplicity carve-out to diff_lines <= 3\n\nStep 1 now treats exported diff_lines above three as non-carve-out (>=4 or invalid/absent unchanged semantics) and updates all related prose and status strings.",
+  "todos_left": [
+    "Update scripts/test-implement-step2-routing.sh assert_contains pins and docs/linting.md (SECURITY.md routing blurb if needed) so harnesses and published docs match the new threshold."
+  ],
+  "oos_observations": [],
+  "bail_reason": "",
+  "needs_qa": {
+    "questions": []
+  }
+}
