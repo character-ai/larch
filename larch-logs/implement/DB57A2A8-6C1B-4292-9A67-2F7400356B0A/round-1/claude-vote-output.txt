@@ -1,0 +1,20 @@
+FINDING_1: YES
+FINDING_2: EXONERATE -- intentional design; current callers always pass both counters together; transient-only support is out of scope here
+FINDING_3: NO -- duplicate of FINDING_2
+FINDING_4: YES
+FINDING_5: NO -- duplicate of FINDING_4
+FINDING_6: NO -- duplicate of FINDING_4
+FINDING_7: NO -- duplicate of FINDING_2
+FINDING_8: EXONERATE -- valid fragility but controlled stubs produce no captured body that could contain "codex-review"
+FINDING_9: YES
+FINDING_10: NO -- duplicate of FINDING_4
+FINDING_11: YES
+FINDING_12: NO -- duplicate of FINDING_11
+FINDING_13: NO -- duplicate of FINDING_11
+FINDING_14: EXONERATE -- append_launch_failure is a shared helper; symmetric wiring tested via codex path; cursor-specific miss is low-probability
+FINDING_15: NO -- duplicate of FINDING_14
+FINDING_16: NO -- duplicate of FINDING_14, filename typo ("test-llaunch-review.sh") indicates reviewer error
+FINDING_17: YES
+FINDING_18: EXONERATE -- execution-issues.md won't be created on the success path; || echo 0 issue is latent only
+FINDING_19: NO -- duplicate of FINDING_8
+FINDING_20: NO -- duplicate of FINDING_11
