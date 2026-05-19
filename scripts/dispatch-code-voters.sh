@@ -105,6 +105,27 @@ parse_rate_check_tool_label() {
     esac
 }
 
+is_harness_review_path() {
+    local path="$1"
+    case "$path" in
+        */test-dispatch-code-voters.*|\
+        */test-collect-*|\
+        */test-check-*|\
+        */test-tally-*)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+should_suppress_parse_rate_issue_append() {
+    local voter_path="$1"
+    [[ "$voter_path" == "$REVIEW_TMPDIR"/* ]] || return 1
+    is_harness_review_path "$REVIEW_TMPDIR" || is_harness_review_path "$voter_path"
+}
+
 check_voter_parse_rate() {
     local voter_path="$1" voter_tool="$2" slot_num="${3:-}" log_mode="${4:-log}"
     local diag_file
@@ -148,11 +169,12 @@ check_voter_parse_rate() {
             printf '\n'
         } > "$diag_file" || true
         if [[ "$log_mode" == "log" ]]; then
+            larch_err "**⚠ Voter ${voter_tool}: ${neutral_count}/${ids_count} findings returned NEUTRAL — voter likely produced prose without FINDING_N: VOTE lines. Check voter output at ${voter_path}.**"
             _issues_log="${LARCH_EXECUTION_ISSUES_LOG:-}"
             [[ -z "$_issues_log" && -n "${SESSION_ENV_PATH:-}" ]] && _issues_log="$(dirname "$SESSION_ENV_PATH")/execution-issues.md"
             [[ -z "$_issues_log" && -n "${IMPLEMENT_TMPDIR:-}" ]] && _issues_log="$IMPLEMENT_TMPDIR/execution-issues.md"
             [[ -z "$_issues_log" ]] && _issues_log="$REVIEW_TMPDIR/execution-issues.md"
-            if [[ -x "$PLUGIN_ROOT/scripts/append-tool-failure.sh" ]]; then
+            if ! should_suppress_parse_rate_issue_append "$voter_path" && [[ -x "$PLUGIN_ROOT/scripts/append-tool-failure.sh" ]]; then
                 "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
                     --log "$_issues_log" \
                     --site "dispatch-code-voters.sh ${voter_tool}" \
@@ -163,7 +185,6 @@ check_voter_parse_rate() {
                     --output-file "$diag_file" \
                     --redact >/dev/null 2>&1 || true
             fi
-            larch_err "**⚠ Voter ${voter_tool}: ${neutral_count}/${ids_count} findings returned NEUTRAL — voter likely produced prose without FINDING_N: VOTE lines. Check voter output at ${voter_path}.**"
             unset _issues_log
         fi
         printf 'PARSE_RATE_STATUS=NOT_SUBSTANTIVE\n'

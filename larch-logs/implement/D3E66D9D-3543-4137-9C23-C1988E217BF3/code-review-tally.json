@@ -1,0 +1,1 @@
+{"schema_version":1,"phase":"code-review","batch":"code-review-tally","mode":"simple","rounds":3,"accepted_count":31,"rejected_count":26,"exonerated_count":5,"neutral_count":0,"body":"Rounds: 3 | Accepted: 31 | Rejected: 26 | Exonerated: 5 | Neutral: 0\n\nReview loop converged after 3 rounds (SIMPLE panel). Codex applied all accepted findings (0 skipped).\n"}

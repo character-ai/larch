@@ -1,0 +1,91 @@
+Reading the ballot and session context to verify each finding before voting.
+
+Verifying ballot claims against the repo sources and session diff context.
+
+Checking how `voter_path` is passed to `check_voter_parse_rate` and whether `--section` gates the retry block.
+
+Verified against [`scripts/dispatch-code-voters.sh`](scripts/dispatch-code-voters.sh) (guard + `larch_err`), [`scripts/test-dispatch-code-voters.sh`](scripts/test-dispatch-code-voters.sh) (`section_runs` scope, `trap` at lines 26 and 385–386, retry/codex assertions), and [`round-1/diff-context.txt`](file:///Users/zhupanov/.cache/larch/sessions/claude-implement-larch4-OGqPUW/round-1/diff-context.txt) / [`.github/workflows/release-tag.yaml`](.github/workflows/release-tag.yaml) diff.
+
+FINDING_1: EXONERATE -- `--section` only wraps happy/edge blocks; parse-rate scenarios after line 221 are intentionally ungated, so this is harness contract clarity, not a defect warranting a tracking issue.
+
+FINDING_2: YES -- `case` guard returns before the `log` branch, so both `append-tool-failure.sh` and `larch_err` are skipped, while inline comments claim only the append is suppressed.
+
+FINDING_3: EXONERATE -- `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24` is self-explanatory and mirrored from CI; omitting the long `ci.yaml` comment block is a minor consistency nit, not worth blocking.
+
+FINDING_4: YES -- `dispatch-code-voters.md` states only the append is suppressed for harness paths, but the implementation also skips `larch_err` on that early return.
+
+FINDING_5: EXONERATE -- Codex retry-fail still asserts `NOT_SUBSTANTIVE`, diag, and cleanup; prod-shape issues-log lines are deliberately suppressed under test tmpdirs, so demanding a parallel codex issues-log grep is extra surface for limited marginal signal.
+
+FINDING_6: EXONERATE -- Startup `unset` of parent env vars achieves the isolation goal without forcing subshell boilerplate on every invocation.
+
+FINDING_7: EXONERATE -- Regression 1 vs 2 split “parent log path set” vs “diag + log” is overlapping but still readable; merging is cleanup, not a correctness gap.
+
+FINDING_8: EXONERATE -- Broad `case` patterns could theoretically match odd real paths; tightening or adding an env gate trades off simplicity for a rare collision.
+
+FINDING_9: EXONERATE -- Dispatch/harness builds paths under `mktemp`/`$TMP` style dirs that match `*/…`; a relative-only mismatch is theoretical and callers normally pass absolute tmpdirs.
+
+FINDING_10: EXONERATE -- Same subshell-vs-`unset` doc/plan drift as FINDING_6; behavior matches the implemented approach.
+
+FINDING_11: EXONERATE -- Same redundancy note as FINDING_7; optional test hygiene only.
+
+FINDING_12: YES -- A second `trap 'rm -rf "$prod_tmp"' EXIT` replaces the original `rm -rf "$TMP"` EXIT handler, so the main harness directory can leak on successful exit.
+
+FINDING_13: YES -- Same EXIT-trap replacement and `$TMP` leak as FINDING_12 (duplicate finding).
+
+FINDING_14: YES -- Same EXIT-trap replacement and `$TMP` leak as FINDING_12 (duplicate finding).
+
+FINDING_15: EXONERATE -- Same broad-pattern concern as FINDING_8; acceptable without extra machinery.
+
+FINDING_16: EXONERATE -- Same plan/spec vs `unset` mismatch as FINDING_6/10.
+
+FINDING_17: EXONERATE -- Codex parse-rate failure path still exercises status, degraded panel, and diag; relying on regression 3’s Claude-only issues-log grep is a coverage gap in principle but low practical risk versus another prod-shape case.
+
+FINDING_18: EXONERATE -- Same codex issues-log assertion gap as FINDING_5/17; not worth duplicating another full prod fixture for CI alone.
+
+FINDING_19: EXONERATE -- Same overlap observation as FINDING_7/11.
+
+FINDING_20: YES -- Same EXIT-trap regression as FINDING_12–14: must chain traps or scope regression 3 so `$TMP` cleanup still runs.
+
+---
+
+Copy-paste panel format (only machine-scored lines):
+
+FINDING_1: EXONERATE -- --section only gates happy/edge; ungated parse-rate block is pre-existing harness shape, not issue-worthy.
+
+FINDING_2: YES -- guard early-return skips larch_err as well as append-tool-failure, contradicting comments/docs.
+
+FINDING_3: EXONERATE -- env knob is clear; missing ci.yaml-length rationale in release workflow is minor.
+
+FINDING_4: YES -- doc claims only append-tool-failure suppressed; code also omits larch_err on guarded return.
+
+FINDING_5: EXONERATE -- codex retry-fail still asserts diag/status; extra prod-shape codex issues-log grep is optional hardening.
+
+FINDING_6: EXONERATE -- global startup unset satisfies env isolation; subshell-per-case adds churn without proven need.
+
+FINDING_7: EXONERATE -- regressions 1/2 overlap narratively but both checks are small and clear.
+
+FINDING_8: EXONERATE -- substring guard false positives need implausible paths; tightening is optional complexity.
+
+FINDING_9: EXONERATE -- voter paths are effectively absolute from mktemp/callers; relative edge is rare.
+
+FINDING_10: EXONERATE -- plan/feature wording vs unset implementation is documentation alignment, not a runtime bug.
+
+FINDING_11: EXONERATE -- redundant regression coverage is maintainability nit only.
+
+FINDING_12: YES -- second EXIT trap replaces TMP cleanup; successful runs can leak harness mktemp tree.
+
+FINDING_13: YES -- duplicate of trap leak: prod_tmp trap drops original rm -rf "$TMP" on EXIT.
+
+FINDING_14: YES -- duplicate of trap leak: prod_tmp trap drops original rm -rf "$TMP" on EXIT.
+
+FINDING_15: EXONERATE -- same broad-guard concern as FINDING_8; acceptable trade-off.
+
+FINDING_16: EXONERATE -- same subshell vs unset spec drift as FINDING_6/10.
+
+FINDING_17: EXONERATE -- codex path still covered by status/diag/degraded output; issues-log label gap is narrow.
+
+FINDING_18: EXONERATE -- same codex prod-shape coverage gap as FINDING_5/17; optional follow-up.
+
+FINDING_19: EXONERATE -- same overlap as FINDING_7/11; optional merge only.
+
+FINDING_20: YES -- same EXIT trap regression: chain cleanup or subshell regression 3 to preserve TMP removal.

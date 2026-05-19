@@ -1,0 +1,35 @@
+Gathering the diff and commit history for the review.
+
+Verifying bash trap behavior and locating exact line numbers in the modified test script.
+
+### FINDING_1: Regression test replaces EXIT trap and skips `$TMP` cleanup
+- **severity:** Important  
+- **focus:** `correctness`  
+- **location:** [scripts/test-dispatch-code-voters.sh](scripts/test-dispatch-code-voters.sh) — `26:26` (initial trap), `385:386` (second trap)  
+- **problem:** A second `trap ... EXIT` overwrites the first; after regression 3 runs, `EXIT` only runs `rm -rf "$prod_tmp"` and no longer removes `"$TMP"`.  
+- **impact:** Successful runs leave the main harness directory (stubs, logs, voter fixtures) under `/tmp/test-dispatch-code-voters.*` on disk until external cleanup; repeated runs accumulate junk; any sensitive fixture content in `$TMP` outlives the process.  
+- **fix:** Chain cleanup (e.g. `trap 'rm -rf "$prod_tmp" "$TMP"' EXIT`) or use a nested subshell for regression 3 so the outer `EXIT` trap stays intact.
+
+### FINDING_2: Path-pattern guard can suppress parent execution-issues for non-test tmpdirs
+- **severity:** Latent  
+- **focus:** `risk-integration`  
+- **location:** [scripts/dispatch-code-voters.sh](scripts/dispatch-code-voters.sh) — `161:165` (`case "$voter_path" in ...`)  
+- **problem:** Suppression is keyed only on pathname globs (`*/test-collect-*`, `*/test-check-*`, `*/test-tally-*`, etc.), not on a dedicated test flag.  
+- **impact:** If `--review-tmpdir` (or a resolved voter path) ever sits under a legitimate directory whose path matches these segments, parse-rate warnings would not be appended to `execution-issues.md`, weakening audit visibility for that run.  
+- **fix:** Prefer an explicit opt-in/out (e.g. env sentinel) in addition to path heuristics, or document and enforce naming constraints for production tmp roots.
+
+### In-Scope Findings
+
+1. **Important** — `correctness` — `scripts/test-dispatch-code-voters.sh:26` and `scripts/test-dispatch-code-voters.sh:385-386` — Replacing the `EXIT` trap drops cleanup of the primary `mktemp` harness dir `$TMP`, so successful exits no longer remove stub roots and prior test artifacts — chain `rm` in one trap, nest regression 3, or append to the existing trap instead of replacing it.
+
+2. **Latent** — `risk-integration` — `scripts/dispatch-code-voters.sh:161-165` — Path-glob-based suppression of `append-tool-failure.sh` can hide parse-rate warnings for any voter path that accidentally matches `test-collect-*` / `test-check-*` / `test-tally-*` segments — tighten with an explicit env gate or canonical tmp-root checks beyond substring matching.
+
+### Out-of-Scope Observations
+
+_No pre-existing issues surfaced that are unrelated to this diff; the sibling-harness scope in the feature text appears satisfied in-repo because no other harness script invokes `dispatch-code-voters.sh` the way this file does._
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/test-dispatch-code-voters.sh:26,385-386	Second trap 'rm -rf "$prod_tmp"' EXIT overwrites earlier trap 'rm -rf "$TMP"' EXIT.	On successful completion, /tmp/test-dispatch-code-voters.* (stubs, logs) is never removed; repeated runs leak directories and any content under $TMP.	Chain traps: trap 'rm -rf "$prod_tmp" "$TMP"' EXIT, or run regression 3 in a subshell, or append prod_tmp cleanup to the existing trap without replacing it.
+1	in_scope	latent	risk-integration	scripts/dispatch-code-voters.sh:161-165	Parse-rate append-tool-failure suppressed when voter_path matches broad path globs only.	A production or manual run whose REVIEW_TMPDIR resolves under a path containing e.g. test-collect-* would skip execution-issues logging for parse-rate degradation.	Add explicit env-based test detection and/or stricter root-prefix checks; document production tmp naming to avoid false matches.
+```
