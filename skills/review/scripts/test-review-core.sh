@@ -76,6 +76,9 @@ printf 'CLAUDE_OUTPUT_FILES=%s\n' "$claude"
 printf 'PANEL_MODE=%s\n' "${TEST_PANEL_MODE:-normal}"
 printf 'PANEL_SHAPE=%s\n' "$panel"
 printf 'SCOUT_STATUS=%s\n' "${TEST_SCOUT_STATUS:-na}"
+if [[ -n "${TEST_SCOUT_FAIL_REASON:-}" ]]; then
+  printf 'SCOUT_FAIL_REASON=%s\n' "$TEST_SCOUT_FAIL_REASON"
+fi
 printf 'DYNAMIC_SLOTS=%s\n' "${TEST_DYNAMIC_SLOTS:-0}"
 printf 'SCOUT_MANIFEST=%s/scout-round%s-manifest.json\n' "$tmp" "$round_num"
 printf 'SLOT_COUNT=2\n'
@@ -302,6 +305,12 @@ assert_contains "$out" 'SCOUT_STATUS=ok'
 assert_contains "$out" 'DYNAMIC_SLOTS=3'
 jq -e '.panel.scout_status == "ok" and .panel.dynamic_slot_count == 3 and .panel.total_slot_count == 3' \
     "$TMP/zero-scout/review-summary.json" >/dev/null || { echo "FAIL: zero-scout review-summary.json missing dynamic panel fields" >&2; exit 1; }
+
+out=$(TEST_FINDINGS=0 TEST_SCOUT_STATUS=parse-failed TEST_SCOUT_FAIL_REASON=json_parse run_core "$TMP/zero-scout-parse-failed")
+assert_contains "$out" 'REVIEW_CORE_STATUS=zero-findings'
+assert_contains "$out" 'SCOUT_STATUS=parse-failed'
+assert_contains "$out" 'SCOUT_FAIL_REASON=json_parse'
+grep -Fq 'SCOUT_FAIL_REASON=json_parse' "$TMP/zero-scout-parse-failed/scout-round1-status.env"
 
 out=$(TEST_FINDINGS=0 TEST_NOT_SUBSTANTIVE_SLOTS=2 run_core "$TMP/zero-degraded")
 assert_contains "$out" 'REVIEW_CORE_STATUS=zero-findings'

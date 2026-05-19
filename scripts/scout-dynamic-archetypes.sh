@@ -117,6 +117,45 @@ write_empty_manifest() {
     mv -f "$tmp" "$target"
 }
 
+emit_parse_failed_result() {
+    local reason="$1" latency_ms="$2"
+    write_empty_manifest "$OUTPUT"
+    emit_kv SCOUT_STATUS parse-failed
+    emit_kv SCOUT_FAIL_REASON "$reason"
+    emit_kv SCOUT_OUTPUT "$OUTPUT"
+    emit_kv SCOUT_ARCHETYPE_COUNT 0
+    emit_kv SCOUT_LATENCY_MS "$latency_ms"
+    exit 0
+}
+
+extract_valid_fenced_json() {
+    local source="$1" target="$2" line in_block=0 candidate=""
+    [[ -r "$source" ]] || return 0
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        if [[ "$line" =~ ^[[:space:]]*\`\`\` ]]; then
+            if (( in_block )); then
+                in_block=0
+                if [[ -n "$candidate" && -s "$candidate" ]] && jq -e '.' "$candidate" >/dev/null 2>&1; then
+                    mv -f "$candidate" "$target" || return 2
+                    candidate=""
+                    return 0
+                fi
+                [[ -n "$candidate" ]] && rm -f "$candidate"
+                candidate=""
+            else
+                candidate=$(mktemp "${target}.fenced.XXXXXX") || return 2
+                in_block=1
+            fi
+            continue
+        fi
+        if (( in_block )) && [[ -n "$candidate" ]]; then
+            printf '%s\n' "$line" >> "$candidate" || return 2
+        fi
+    done < "$source"
+    [[ -n "$candidate" ]] && rm -f "$candidate"
+    return 0
+}
+
 escape_prompt_data() {
     sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'
 }
@@ -190,6 +229,8 @@ parse_error="${OUTPUT}.parse-error"
     printf 'You are selecting optional specialist code-review archetypes for /review.\n'
     printf 'Return ONLY compact JSON with this shape: {"archetypes":[{"name":"slug","focus_area":"code-quality|risk-integration|correctness|architecture|security","weight":1,"rationale":"...","prompt_body":"..."}]}.\n'
     printf 'Return at most %s archetypes. Return {"archetypes":[]} when the static panel is sufficient.\n' "$MAX_ARCHETYPES"
+    printf 'Output ONLY the raw JSON object — no markdown code fences, no backticks, no prose.\n'
+    printf 'The "rationale" field must be a single line with no embedded newlines.\n'
     printf 'Use short lowercase slug names. Do not duplicate existing static reviewers: structure, correctness, testing, security, edge-cases, plan-fidelity, generic.\n'
     printf 'The prompt_body must instruct a reviewer what to focus on and must not include YAML frontmatter fences.\n'
     if [[ "$MODE" == "diff" ]]; then
@@ -246,29 +287,35 @@ if [[ "$launch_rc" -ne 0 ]]; then
     exit 0
 fi
 
+if ! jq -e '.' "$raw_output" >/dev/null 2>&1; then
+    set +e
+    extract_valid_fenced_json "$raw_output" "$raw_output"
+    fence_strip_rc=$?
+    set -e
+    if [[ "$fence_strip_rc" -eq 2 ]]; then
+        printf 'cannot extract fenced JSON from %s\n' "$raw_output" > "$parse_error"
+        emit_parse_failed_result fence_strip_io "$latency_ms"
+    fi
+fi
+
+if ! jq -e '.' "$raw_output" >/dev/null 2>"$parse_error"; then
+    emit_parse_failed_result json_parse "$latency_ms"
+fi
+
 if ! jq -e '.archetypes and (.archetypes | type == "array")' "$raw_output" >/dev/null 2>"$parse_error"; then
-    write_empty_manifest "$OUTPUT"
-    emit_kv SCOUT_STATUS parse-failed
-    emit_kv SCOUT_OUTPUT "$OUTPUT"
-    emit_kv SCOUT_ARCHETYPE_COUNT 0
-    emit_kv SCOUT_LATENCY_MS "$latency_ms"
-    exit 0
+    emit_parse_failed_result invalid_archetypes_shape "$latency_ms"
 fi
 
 raw_count=$(jq '.archetypes | length' "$raw_output")
 if (( raw_count > 4 )); then
     printf 'archetypes length exceeds max cap: %s\n' "$raw_count" > "$parse_error"
-    write_empty_manifest "$OUTPUT"
-    emit_kv SCOUT_STATUS parse-failed
-    emit_kv SCOUT_OUTPUT "$OUTPUT"
-    emit_kv SCOUT_ARCHETYPE_COUNT 0
-    emit_kv SCOUT_LATENCY_MS "$latency_ms"
-    exit 0
+    emit_parse_failed_result archetype_count_overflow "$latency_ms"
 fi
 
 validated_tmp=$(mktemp "${OUTPUT}.tmp.XXXXXX") || exit 1
 cleanup_validated_tmp() {
     [[ -n "${validated_tmp:-}" ]] && rm -f "$validated_tmp"
+    return 0
 }
 trap cleanup_validated_tmp EXIT
 warnings_file="${OUTPUT}.warnings"
@@ -329,12 +376,7 @@ if ! jq -c --argjson max "$MAX_ARCHETYPES" '
 ' "$raw_output" > "$validated_tmp"; then
     rm -f "$validated_tmp"
     validated_tmp=""
-    write_empty_manifest "$OUTPUT"
-    emit_kv SCOUT_STATUS parse-failed
-    emit_kv SCOUT_OUTPUT "$OUTPUT"
-    emit_kv SCOUT_ARCHETYPE_COUNT 0
-    emit_kv SCOUT_LATENCY_MS "$latency_ms"
-    exit 0
+    emit_parse_failed_result validation_jq_error "$latency_ms"
 fi
 
 jq -r '.warns[]?' "$validated_tmp" > "$warnings_file"

@@ -1,0 +1,32 @@
+FINDING_1: YES
+FINDING_2: EXONERATE -- legitimate pre-existing infra edge, but rare mktemp exhaustion is not worth a separate tracking issue.
+FINDING_3: EXONERATE -- stale sidecar concern is real but edge-only and not issue-worthy as a future ticket.
+FINDING_4: NO -- duplicate test environment assignment is trivial readability noise.
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: NO -- plan checklist fidelity is not a code-review defect in the shipped change.
+FINDING_8: YES
+FINDING_9: EXONERATE -- multi-fence recovery is a plausible edge, but per-block JSON extraction adds more complexity than warranted here.
+FINDING_10: YES
+FINDING_11: EXONERATE -- legacy absent-reason reporting is mildly inconsistent but not worth changing the KV contract for.
+FINDING_12: NO -- the warning text is accurate enough; ordering before waterfall dispatch is not a behavioral issue.
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: YES
+FINDING_18: YES
+FINDING_19: EXONERATE -- the defensive validation_jq_error branch is hard to fixture meaningfully and current tests cover the normal new reason paths.
+FINDING_20: EXONERATE -- wording could be clearer, but the broader dispatch reason docs cover the meaningful contract gap.
+FINDING_21: EXONERATE -- adding a brittle test for a defensive jq failure path is more cost than value.
+FINDING_22: EXONERATE -- the suggested extra edge tests would overfit rare fallback behavior.
+FINDING_23: YES
+FINDING_24: YES
+FINDING_25: YES
+FINDING_26: EXONERATE -- executable-bit loss is an odd install condition and not worth broadening the helper invocation here.
+FINDING_27: EXONERATE -- noexec/non-executable helper handling is an edge beyond the new behavior’s needed scope.
+FINDING_28: EXONERATE -- logging a skip for a non-executable packaged helper is legitimate but not issue-worthy.
+FINDING_29: YES
+FINDING_30: YES
+FINDING_31: YES
+FINDING_32: NO -- the launcher override is trusted configuration and the single-line KV/path interpolation is not a meaningful security boundary.

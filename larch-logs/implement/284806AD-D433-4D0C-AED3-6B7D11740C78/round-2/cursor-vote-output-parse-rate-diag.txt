@@ -1,0 +1,12 @@
+slot=3
+voter_tool=cursor
+neutral_count=20
+total_findings=20
+voter_file=<TMPDIR>/round-2/cursor-vote-output.txt
+voter_sha256=03cb3d31e92b8a2ebf8a753da08e4f7bdd53eb4c01e76476a4b89ed50db71846
+--- first 200 bytes of voter output ---
+Reading the ballot and locating diff/plan context to verify each finding.
+
+Verifying ballot claims against the codebase: reading the cited files and session diff context.
+
+Checking how `raw_output` is

@@ -14,12 +14,13 @@ Invariants:
 - `SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH` may override that launcher path for tests or controlled integrations. Treat the override target as trusted executable configuration: it can change the subprocess binary and the hardening path applied to scout prompts.
 - Diff, scope-file, optional `--description-file`, and optional plan-file inputs are validated before prompt assembly with the same regular-file, non-symlink, allowed-root, and 256 KB-per-file constraints enforced by `launch-claude-subprocess.sh`. Allowed roots are the plugin root, the scout output directory, and when available the caller session directory (`dirname "$SESSION_ENV_PATH"`) or `IMPLEMENT_TMPDIR`. Inline `--description-text` is also capped at 256 KB before prompt assembly.
 - The output JSON is validated before publication. Valid archetypes require a safe slug name, allowed focus area (`code-quality`, `risk-integration`, `correctness`, `architecture`, `security`), integer weight `1..8`, non-empty rationale, and non-empty prompt body.
+- If the Claude subprocess wraps an otherwise valid JSON object in markdown code fences, the script strips the fenced wrapper before validation. Other malformed JSON remains a non-fatal `parse-failed` scout result.
 - Prompt bodies containing a standalone `---` line, literal `</reviewer_` closing tags, or literal `</scout_notes>` wrapper terminators are rejected so synthesized agent frontmatter and untrusted wrapper tags cannot be corrupted. Rationale text is likewise rejected when it contains newlines, a standalone `---` line, or `</scout_notes>`.
 - Duplicate names keep the first archetype and emit `WARN`; reserved static slugs are rejected.
 - When validation yields more accepted archetypes than `--max-archetypes`, the script truncates to the cap and emits a `WARN`.
 - Dynamic archetypes are ephemeral files under the review tmpdir and bypass the `agent-sync` CI job.
 
-Stdout is `KEY=value`: `SCOUT_STATUS`, `SCOUT_OUTPUT`, `SCOUT_ARCHETYPE_COUNT`, `SCOUT_LATENCY_MS`, and optional `WARN`.
+Stdout is `KEY=value`: `SCOUT_STATUS`, `SCOUT_OUTPUT`, `SCOUT_ARCHETYPE_COUNT`, `SCOUT_LATENCY_MS`, optional `SCOUT_FAIL_REASON` on `SCOUT_STATUS=parse-failed`, and optional `WARN`. Scout-local `SCOUT_FAIL_REASON` values are `json_parse`, `invalid_archetypes_shape`, `archetype_count_overflow`, `validation_jq_error`, and `fence_strip_io`. `dispatch-panel.sh` may also emit wrapper-level `SCOUT_FAIL_REASON` values such as `dispatch_manifest_validation`, `missing_status_sidecar`, and `unknown` when it validates cached scout artifacts or logs a parse-failure fallback.
 
 Harness: `scripts/test-scout-dynamic-archetypes.sh`.
 

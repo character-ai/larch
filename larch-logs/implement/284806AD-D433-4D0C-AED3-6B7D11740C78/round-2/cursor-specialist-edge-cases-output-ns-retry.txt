@@ -1,0 +1,37 @@
+Gathering the diff and commit list for review.
+
+Checking scout skip paths and `append_scout_parse_issue` placement so we don't false-positive on `parse-failed` vs `skipped-*`.
+
+### In-Scope Findings
+
+### FINDING_1: Non-executable append helper drops warnings with no fallback
+- **severity:** **Nit**
+- **focus_area:** risk-integration
+- **location:** [skills/review/scripts/dispatch-panel.sh](skills/review/scripts/dispatch-panel.sh):267-269
+- **issue:** `append_scout_parse_issue` returns early when `append-execution-issue.sh` is not executable (`[[ -x ... ]]`), so `SCOUT_STATUS=parse-failed` produces neither an execution-issues entry nor a `WARN=` line.
+- **scenario_or_breakage:** Unusual installs, tight permissions, or broken file modes hide the new warning path entirely with no signal.
+- **suggested_fix:** Treat non-executable like a failed append (emit `WARN=`) or drop the `-x` gate and rely on invoking the script via `bash` with an explicit path.
+
+### FINDING_2: Stale cached `parse-failed` sidecar triggers a misleading execution warning
+- **severity:** **Latent**
+- **focus_area:** risk-integration
+- **location:** [skills/review/scripts/dispatch-panel.sh](skills/review/scripts/dispatch-panel.sh):336-365 (reuse path) with harness [skills/review/scripts/test-dispatch-panel.sh](skills/review/scripts/test-dispatch-panel.sh):294-312 (`reuse-empty-with-status`)
+- **issue:** `append_scout_parse_issue` keys only off `SCOUT_STATUS=parse-failed`, including the reuse branch that **does not reconcile** a valid empty manifest with a stale `parse-failed` status file and often leaves `SCOUT_FAIL_REASON` empty.
+- **scenario_or_breakage:** A round directory can contain a valid `{"archetypes":[]}` manifest while `scout-roundN-status.env` still says `parse-failed` (the harness encodes this). After this change, the dispatcher appends a Warnings execution issue with `reason=unknown`, implying a fresh scout parse failure for that round even when no scout subprocess ran or failed in this invocation.
+- **suggested_fix:** Before appending, detect reuse inconsistency (e.g. valid empty manifest + `parse-failed` without a fresh scout run) and either normalize status/`SCOUT_FAIL_REASON`, skip the append, or log a distinct reason such as `stale_scout_status_sidecar`.
+
+### Out-of-Scope Observations
+
+### FINDING_OOS_1: `larch-logs/implement/...` run artifacts in the diff
+- **severity:** **Nit**
+- **focus_area:** code-quality
+- **location:** [larch-logs/implement/284806AD-D433-4D0C-AED3-6B7D11740C78/](larch-logs/implement/284806AD-D433-4D0C-AED3-6B7D11740C78/) (new files under the diff)
+- **issue:** Large committed run-log payload rides alongside the functional change.
+- **why_out_of_scope:** Review instructions explicitly exclude flagging intentional `chore(larch-logs)` / `larch-logs/implement/` flush commits as scope drift; only noting volume for reviewers.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	nit	risk-integration	skills/review/scripts/dispatch-panel.sh:267-269	append_scout_parse_issue requires append-execution-issue.sh to be executable and otherwise returns silently	Parse-failed runs with a present but non-executable helper emit no execution-issues line and no WARN=	Emit WARN= on missing/non-executable helper or invoke via bash without the -x gate
+1	in_scope	latent	risk-integration	skills/review/scripts/dispatch-panel.sh:336-365;skills/review/scripts/test-dispatch-panel.sh:294-312	append_scout_parse_issue fires for any SCOUT_STATUS=parse-failed including stale reuse sidecars	Valid empty manifest with stale parse-failed status (reuse-empty-with-status) appends a warning with reason=unknown as if this round’s scout output failed	Reconcile or special-case stale sidecars; use a distinct SCOUT_FAIL_REASON or skip append when no live scout failure occurred
+1	out_of_scope	nit	code-quality	larch-logs/implement/284806AD-D433-4D0C-AED3-6B7D11740C78/	Implement run log files added in the same branch diff	PR noise for readers scanning the functional diff	None per repo policy; optional local exclude when browsing
+```

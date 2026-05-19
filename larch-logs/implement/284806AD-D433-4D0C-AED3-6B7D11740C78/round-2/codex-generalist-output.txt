@@ -1,0 +1,7 @@
+### In-Scope Findings
+
+1. **Important** correctness [scripts/scout-dynamic-archetypes.sh:267](<OPERATOR_REPO_PATH>/scripts/scout-dynamic-archetypes.sh:267) — The new fence-stripping path can make the scout exit nonzero before it reaches the `json_parse` failure emitter. Concrete scenario: a launcher exits `0` but fails to create `$raw_output`; line 262 enters the recovery branch because `jq` cannot read it, then line 267 runs `awk` on the missing file under `set -e`, aborting the script. `dispatch-panel.sh:313-315` then reports `SCOUT_STATUS=validation-failed`, so there is no `SCOUT_FAIL_REASON=json_parse` and no parse-failure execution-issues warning. Guard the `awk` extraction with a readable-file check or tolerate `awk` failure, then let the existing `jq` gate at lines 275-277 emit the normal `json_parse` result.
+
+### Out-of-Scope Observations
+
+No out-of-scope observations.

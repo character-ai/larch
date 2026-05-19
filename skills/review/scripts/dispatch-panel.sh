@@ -34,6 +34,7 @@ else
     DYNAMIC_ARCHETYPES="0"
 fi
 SCOUT_STATUS="na"
+SCOUT_FAIL_REASON=""
 DYNAMIC_SLOTS=0
 SCOUT_MANIFEST=""
 DIFF_MODE=""
@@ -246,8 +247,47 @@ write_scout_status_file() {
     local scout_status_file="$REVIEW_TMPDIR/scout-round${ROUND_NUM}-status.env"
     {
         printf 'SCOUT_STATUS=%s\n' "$SCOUT_STATUS"
+        [[ -n "$SCOUT_FAIL_REASON" ]] && printf 'SCOUT_FAIL_REASON=%s\n' "$SCOUT_FAIL_REASON"
         printf 'SCOUT_MANIFEST=%s\n' "$SCOUT_MANIFEST"
     } > "$scout_status_file"
+}
+
+resolve_execution_issues_log() {
+    local issues_log="${LARCH_EXECUTION_ISSUES_LOG:-}"
+    if [[ -z "$issues_log" && -n "${SESSION_ENV_PATH:-}" ]]; then
+        issues_log="$(dirname "$SESSION_ENV_PATH")/execution-issues.md"
+    fi
+    if [[ -z "$issues_log" && -n "${IMPLEMENT_TMPDIR:-}" ]]; then
+        issues_log="$IMPLEMENT_TMPDIR/execution-issues.md"
+    fi
+    [[ -z "$issues_log" ]] && issues_log="$REVIEW_TMPDIR/execution-issues.md"
+    printf '%s\n' "$issues_log"
+}
+
+append_scout_parse_issue() {
+    [[ "$SCOUT_STATUS" == "parse-failed" ]] || return 0
+    [[ -x "$PLUGIN_ROOT/scripts/append-execution-issue.sh" ]] || return 0
+    local issues_log reason manifest_label append_output append_rc append_error
+    issues_log=$(resolve_execution_issues_log)
+    reason="${SCOUT_FAIL_REASON:-unknown}"
+    manifest_label="${SCOUT_MANIFEST:-none}"
+    set +e
+    append_output=$("$PLUGIN_ROOT/scripts/append-execution-issue.sh" \
+        --log "$issues_log" \
+        --category Warnings \
+        --entry "Review scout dynamic archetype parse failed in round ${ROUND_NUM}; reason=${reason}; manifest=${manifest_label}. Continuing with the static review panel." \
+        2>&1)
+    append_rc=$?
+    set -e
+    if [[ "$append_rc" -ne 0 ]]; then
+        append_error=$(printf '%s\n' "$append_output" | awk -F= '
+            $1=="ERROR" { print substr($0, index($0, "=") + 1); found=1; exit }
+            { last=$0 }
+            END { if (!found && last != "") print last }
+        ')
+        [[ -n "$append_error" ]] || append_error="exit $append_rc"
+        emit_kv WARN "append-execution-issue failed for scout parse issue: $append_error"
+    fi
 }
 
 if [[ "$DYNAMIC_ARCHETYPES" != "0" && "$SCOUT_STATUS" == "na" ]]; then
@@ -279,6 +319,7 @@ if [[ "$DYNAMIC_ARCHETYPES" != "0" && "$SCOUT_STATUS" == "na" ]]; then
                     value="${line#*=}"
                     case "$key" in
                         SCOUT_STATUS) SCOUT_STATUS="$value" ;;
+                        SCOUT_FAIL_REASON) SCOUT_FAIL_REASON="$value" ;;
                         SCOUT_OUTPUT) SCOUT_MANIFEST="$value" ;;
                         WARN) emit_kv WARN "$value" ;;
                     esac
@@ -286,6 +327,7 @@ if [[ "$DYNAMIC_ARCHETYPES" != "0" && "$SCOUT_STATUS" == "na" ]]; then
                 if ! scout_manifest_is_valid "$SCOUT_MANIFEST" "$DYNAMIC_ARCHETYPES"; then
                     write_empty_scout_manifest "$SCOUT_MANIFEST"
                     SCOUT_STATUS="parse-failed"
+                    [[ -n "$SCOUT_FAIL_REASON" ]] || SCOUT_FAIL_REASON="dispatch_manifest_validation"
                 fi
             fi
             write_scout_status_file
@@ -295,9 +337,16 @@ if [[ "$DYNAMIC_ARCHETYPES" != "0" && "$SCOUT_STATUS" == "na" ]]; then
         if [[ -s "$scout_status_file" ]]; then
             SCOUT_STATUS=$(awk -F= '$1=="SCOUT_STATUS"{print $2; exit}' "$scout_status_file")
             [[ -n "$SCOUT_STATUS" ]] || SCOUT_STATUS="na"
+            SCOUT_FAIL_REASON=$(awk -F= '$1=="SCOUT_FAIL_REASON"{print $2; exit}' "$scout_status_file")
+            if [[ "$SCOUT_STATUS" == "parse-failed" && -z "$SCOUT_FAIL_REASON" ]]; then
+                SCOUT_FAIL_REASON="cached_parse_failed"
+                write_scout_status_file
+            fi
             if [[ "$SCOUT_STATUS" == "ok" ]] && ! scout_manifest_is_valid "$SCOUT_MANIFEST" "$DYNAMIC_ARCHETYPES"; then
                 SCOUT_STATUS="parse-failed"
+                SCOUT_FAIL_REASON="dispatch_manifest_validation"
                 write_empty_scout_manifest "$SCOUT_MANIFEST"
+                write_scout_status_file
             fi
         else
             # Missing status sidecar: stale cache unless the manifest is a valid
@@ -308,6 +357,7 @@ if [[ "$DYNAMIC_ARCHETYPES" != "0" && "$SCOUT_STATUS" == "na" ]]; then
                 write_scout_status_file
             else
                 SCOUT_STATUS="parse-failed"
+                SCOUT_FAIL_REASON="missing_status_sidecar"
                 write_empty_scout_manifest "$SCOUT_MANIFEST"
                 write_scout_status_file
             fi
@@ -317,6 +367,7 @@ if [[ "$DYNAMIC_ARCHETYPES" != "0" && "$SCOUT_STATUS" == "na" ]]; then
         synthesize_dynamic_slots "$SCOUT_MANIFEST"
     fi
 fi
+append_scout_parse_issue
 
 waterfall_args=(--slots-file "$manifest" --codex-present "$CODEX_AVAILABLE" --cursor-present "$CURSOR_AVAILABLE" --mode "$MODE" --timeout 1800)
 [[ "$MODE" == "diff" && -n "$DIFF_FILE" ]] && waterfall_args+=(--diff-file "$DIFF_FILE" --commit-count "$COMMIT_COUNT")
@@ -361,6 +412,7 @@ emit_kv CLAUDE_OUTPUT_FILES "${claude_outputs[*]-}"
 emit_kv PANEL_MODE waterfall
 emit_kv PANEL_SHAPE "$PANEL"
 emit_kv SCOUT_STATUS "$SCOUT_STATUS"
+[[ -n "$SCOUT_FAIL_REASON" ]] && emit_kv SCOUT_FAIL_REASON "$SCOUT_FAIL_REASON"
 emit_kv DYNAMIC_SLOTS "$DYNAMIC_SLOTS"
 emit_kv STATIC_SLOT_COUNT "$static_slot_count"
 emit_kv SLOT_COUNT "$((static_slot_count + DYNAMIC_SLOTS))"
