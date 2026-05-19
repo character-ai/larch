@@ -338,6 +338,10 @@ if [[ "$DYNAMIC_ARCHETYPES" != "0" && "$SCOUT_STATUS" == "na" ]]; then
             SCOUT_STATUS=$(awk -F= '$1=="SCOUT_STATUS"{print $2; exit}' "$scout_status_file")
             [[ -n "$SCOUT_STATUS" ]] || SCOUT_STATUS="na"
             SCOUT_FAIL_REASON=$(awk -F= '$1=="SCOUT_FAIL_REASON"{print $2; exit}' "$scout_status_file")
+            if [[ "$SCOUT_STATUS" == "parse-failed" && -z "$SCOUT_FAIL_REASON" ]]; then
+                SCOUT_FAIL_REASON="cached_parse_failed"
+                write_scout_status_file
+            fi
             if [[ "$SCOUT_STATUS" == "ok" ]] && ! scout_manifest_is_valid "$SCOUT_MANIFEST" "$DYNAMIC_ARCHETYPES"; then
                 SCOUT_STATUS="parse-failed"
                 SCOUT_FAIL_REASON="dispatch_manifest_validation"

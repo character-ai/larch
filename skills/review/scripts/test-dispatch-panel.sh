@@ -309,7 +309,9 @@ out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" \
     --dynamic-archetypes 4 \
     --round-num 5)
 grep -Fq 'SCOUT_STATUS=parse-failed' <<< "$out"
+grep -Fq 'SCOUT_FAIL_REASON=cached_parse_failed' <<< "$out"
 grep -Fq 'DYNAMIC_SLOTS=0' <<< "$out"
+grep -Fq 'SCOUT_FAIL_REASON=cached_parse_failed' "$TMP/reuse-empty-with-status/scout-round5-status.env"
 
 mkdir -p "$TMP/reuse-invalid-manifest"
 seed_case_inputs "$TMP/reuse-invalid-manifest"

@@ -128,6 +128,34 @@ emit_parse_failed_result() {
     exit 0
 }
 
+extract_valid_fenced_json() {
+    local source="$1" target="$2" line in_block=0 candidate=""
+    [[ -r "$source" ]] || return 0
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        if [[ "$line" =~ ^[[:space:]]*\`\`\` ]]; then
+            if (( in_block )); then
+                in_block=0
+                if [[ -n "$candidate" && -s "$candidate" ]] && jq -e '.' "$candidate" >/dev/null 2>&1; then
+                    mv -f "$candidate" "$target" || return 2
+                    candidate=""
+                    return 0
+                fi
+                [[ -n "$candidate" ]] && rm -f "$candidate"
+                candidate=""
+            else
+                candidate=$(mktemp "${target}.fenced.XXXXXX") || return 2
+                in_block=1
+            fi
+            continue
+        fi
+        if (( in_block )) && [[ -n "$candidate" ]]; then
+            printf '%s\n' "$line" >> "$candidate" || return 2
+        fi
+    done < "$source"
+    [[ -n "$candidate" ]] && rm -f "$candidate"
+    return 0
+}
+
 escape_prompt_data() {
     sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'
 }
@@ -260,15 +288,13 @@ if [[ "$launch_rc" -ne 0 ]]; then
 fi
 
 if ! jq -e '.' "$raw_output" >/dev/null 2>&1; then
-    fenced_tmp=$(mktemp "${OUTPUT}.fenced.XXXXXX") || {
-        printf 'cannot create fenced-json scratch file for %s\n' "$OUTPUT" > "$parse_error"
+    set +e
+    extract_valid_fenced_json "$raw_output" "$raw_output"
+    fence_strip_rc=$?
+    set -e
+    if [[ "$fence_strip_rc" -eq 2 ]]; then
+        printf 'cannot extract fenced JSON from %s\n' "$raw_output" > "$parse_error"
         emit_parse_failed_result fence_strip_io "$latency_ms"
-    }
-    awk '/^[[:space:]]*```/{if(!in_block){in_block=1;next}else{in_block=0;next}} in_block{print}' "$raw_output" > "$fenced_tmp"
-    if [[ -s "$fenced_tmp" ]] && jq -e '.' "$fenced_tmp" >/dev/null 2>&1; then
-        mv -f "$fenced_tmp" "$raw_output"
-    else
-        rm -f "$fenced_tmp"
     fi
 fi
 

@@ -137,6 +137,49 @@ stdout=$(run_case fence-with-prose "$TMP/fence-with-prose.json")
 grep -Fq 'SCOUT_STATUS=ok' "$stdout" || fail "fence-with-prose status"
 grep -Fq 'SCOUT_ARCHETYPE_COUNT=1' "$stdout" || fail "fence-with-prose count"
 
+cat > "$TMP/multi-fence-valid-second.json" <<'JSON'
+```text
+not json
+```
+```json
+{"archetypes":[
+  {"name":"second-block","focus_area":"correctness","weight":4,"rationale":"Use the valid fenced block.","prompt_body":"Check the valid fenced block only."}
+]}
+```
+JSON
+stdout=$(run_case multi-fence-valid-second "$TMP/multi-fence-valid-second.json")
+grep -Fq 'SCOUT_STATUS=ok' "$stdout" || fail "multi-fence valid-second status"
+grep -Fq 'SCOUT_ARCHETYPE_COUNT=1' "$stdout" || fail "multi-fence valid-second count"
+grep -Fq '"second-block"' "$TMP/multi-fence-valid-second/scout-manifest.json" || fail "multi-fence valid-second manifest"
+
+missing_raw_out_dir="$TMP/missing-raw-output"
+mkdir -p "$missing_raw_out_dir"
+seed_case_inputs "$missing_raw_out_dir"
+missing_launch="$TMP/missing-raw-output-launch.sh"
+cat > "$missing_launch" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+out=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --output-file) out="$2"; shift 2 ;;
+        *) shift ;;
+    esac
+done
+printf 'STATUS=OK\nOUTPUT_FILE=%s\nELAPSED=0\n' "${out:-}"
+exit 0
+STUB
+chmod +x "$missing_launch"
+stdout=$(SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$missing_launch" PATH="$BIN:$PATH" "$SCRIPT" \
+    --mode diff \
+    --diff-file "$missing_raw_out_dir/review.diff" \
+    --plan-file "$missing_raw_out_dir/plan.md" \
+    --max-archetypes 4 \
+    --output "$missing_raw_out_dir/scout-manifest.json" \
+    --timeout 5)
+grep -Fq 'SCOUT_STATUS=parse-failed' <<< "$stdout" || fail "missing raw output parse-failed"
+grep -Fq 'SCOUT_FAIL_REASON=json_parse' <<< "$stdout" || fail "missing raw output fail reason"
+
 cat > "$TMP/too-many.json" <<'JSON'
 {"archetypes":[
   {"name":"one","focus_area":"correctness","weight":1,"rationale":"r","prompt_body":"p"},
