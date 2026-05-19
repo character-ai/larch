@@ -722,6 +722,45 @@ jq -e '.batch == "code-review-tally" and (.body | contains("Round 1 rejected fin
     "$implement_tmp/larch-logs/implement/rejected-mix-run/code-review-tally.json" >/dev/null \
     || fail "mixed rejected aggregate feeds code-review-tally body"
 
+work_rejected_heading_edges="$TMP/rejected-findings-heading-edges"
+make_work_repo "$work_rejected_heading_edges"
+implement_tmp="$work_rejected_heading_edges/implement"
+mkdir -p "$implement_tmp/round-1" "$implement_tmp/round-2" "$implement_tmp/round-3"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
+cat > "$implement_tmp/round-1/rejected-findings-full.md" <<'EOF_REJECTED_FULL'
+### FINDING_0: full-detail round keeps aggregate mode enabled
+- **Concern**: Preserve full prose when any round emitted the detailed artifact.
+EOF_REJECTED_FULL
+cat > "$implement_tmp/round-2/rejected-findings.md" <<'EOF_REJECTED_NO_BLANK'
+# Rejected Findings
+### FINDING_1: compact body without blank separator
+- **Concern**: Preserve compact prose when the title is immediately followed by content.
+EOF_REJECTED_NO_BLANK
+cat > "$implement_tmp/round-3/rejected-findings.md" <<'EOF_REJECTED_LEADING_BLANK'
+
+# Rejected Findings
+
+### FINDING_2: title preceded by a blank line
+- **Concern**: Strip only the top-level title block before aggregation.
+EOF_REJECTED_LEADING_BLANK
+set +e
+out=$(TEST_CORE_STATUS=zero run_review_and_fix "$work_rejected_heading_edges" \
+    --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 4 --session-env-path "$implement_tmp/session-env.sh" --run-id rejected-heading-edges-run)
+rc=$?
+set -e
+[[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "heading-edge rejected aggregate expected exit 0 got $rc"; }
+grep -Fq 'compact body without blank separator' "$implement_tmp/rejected-findings.md" \
+    || fail "heading-edge rejected aggregate keeps compact body without blank separator"
+grep -Fq 'title preceded by a blank line' "$implement_tmp/rejected-findings.md" \
+    || fail "heading-edge rejected aggregate keeps body after leading blank"
+python3 - "$implement_tmp/rejected-findings.md" <<'PYEOF' || fail "heading-edge rejected aggregate strips duplicate top-level headings"
+import sys
+
+body = open(sys.argv[1], encoding="utf-8").read()
+if body.count("# Rejected Findings") != 1:
+    raise SystemExit(1)
+PYEOF
+
 cat > "$TMP/write-tally-fails-stub.sh" <<'EOF_WRITE_TALLY'
 #!/usr/bin/env bash
 printf 'stub write-tally failure\n' >&2

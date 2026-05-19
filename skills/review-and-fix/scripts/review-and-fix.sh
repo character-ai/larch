@@ -684,16 +684,26 @@ write_rejected_findings_aggregate() {
         body_start=1
         if first_heading=$(awk 'NF { print; exit }' "$round_file" 2>/dev/null) && [[ "$first_heading" == "# Rejected Findings" ]]; then
             body_start=$(awk '
-                BEGIN { seen = 0 }
+                BEGIN { heading = 0; body = 0 }
                 {
-                    if (!seen && $0 ~ /^[[:space:]]*$/) {
-                        seen = 1
-                        print NR + 1
+                    if (!heading && $0 !~ /^[[:space:]]*$/) {
+                        heading = 1
+                        next
+                    }
+                    if (!heading) {
+                        next
+                    }
+                    if ($0 ~ /^[[:space:]]*$/) {
+                        next
+                    }
+                    if (!body) {
+                        body = 1
+                        print NR
                         exit
                     }
                 }
                 END {
-                    if (!seen) print NR + 1
+                    if (!body) print 2
                 }
             ' "$round_file")
         fi

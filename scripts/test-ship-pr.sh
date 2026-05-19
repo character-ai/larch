@@ -605,6 +605,34 @@ else
     ok "postmerge does not call tracking-issue-summary.sh (Step 18 owns it)"
 fi
 
+root=$(make_repo pr_create_final_summary)
+tmp=$(make_tmpdir)
+mkdir -p "$root/skills/implement/scripts"
+cat > "$root/skills/implement/scripts/write-final-report.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+tmpdir=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --implement-tmpdir) tmpdir=$2; shift 2 ;;
+    *) shift ;;
+  esac
+done
+awk -F= '$1=="PR_URL"{print "PR_URL_AT_WRITE=" substr($0, index($0, "=") + 1)}' "$tmpdir/ship-pr-state.sh" \
+  > "$tmpdir/final-summary-write.log"
+printf 'STATUS=ok\n'
+STUB
+chmod +x "$root/skills/implement/scripts/write-final-report.sh"
+write_state "$tmp/ship-pr-state.sh" pr-create
+run_subject "$root" "$tmp" "$tmp/rc"
+assert_rc "$tmp/rc" 0 "pr-create final summary refresh exits 0"
+if grep -qxF 'PR_URL_AT_WRITE=https://example.invalid/pr/123' "$tmp/final-summary-write.log"; then
+    ok "pr-create final summary refresh sees persisted PR_URL"
+else
+    fail "pr-create final summary refresh sees persisted PR_URL"
+    sed 's/^/    write: /' "$tmp/final-summary-write.log" 2>/dev/null || true
+fi
+
 # Postmerge manifest finalization: with PR_CLOSED=true, larch-log manifest runs.
 root=$(make_repo postmerge_flush)
 tmp=$(make_tmpdir)

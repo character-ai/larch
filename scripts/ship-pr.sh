@@ -968,6 +968,8 @@ run_pr_create_phase() {
     pr_url=$(kv_value PR_URL "$out")
     pr_status=$(kv_value PR_STATUS "$out")
     state_set_many PR_NUMBER "$pr_number" PR_URL "$pr_url" PR_TITLE "$title"
+    "$SCRIPT_DIR/../skills/implement/scripts/write-final-report.sh" \
+        --implement-tmpdir "$IMPLEMENT_TMPDIR" >/dev/null 2>&1 || true
     if [ "$pr_status" = "existing" ]; then
         fail_file=$(failure_capture_path pr-create)
         "$SCRIPT_DIR/gh-pr-body-update.sh" --pr "$pr_number" --body-file "$IMPLEMENT_TMPDIR/pr-body.md" "${repo_args[@]+"${repo_args[@]}"}" > "$fail_file" 2>&1
