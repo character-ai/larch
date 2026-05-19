@@ -459,9 +459,8 @@ if [[ -n "$MANIFEST_FILE" && -f "$MANIFEST_FILE" ]]; then
                 gsub(/.*"output":"/, "", b); gsub(/".*/, "", b)
                 n = split(b, parts, "/"); base = parts[n]
                 normed = norm_base(base)
-                if (normed ~ /^dyn-/) continue
                 if (!(normed in seen)) {
-                    st = (normed in collector_status) ? collector_status[normed] : "UNKNOWN"
+                    st = (normed in collector_status) ? collector_status[normed] : "OK"
                     label = normed; sub(/-output\.txt$/, "", label); sub(/\.txt$/, "", label)
                     printf "| %s | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | STATUS=%s |\n", label, st
                 }

@@ -35,7 +35,7 @@ vote_for_id() {
 reviewer_for_block() {
     local block="$1" reviewer
     reviewer=$(awk -F: '
-      /Reviewer/ {
+      /^[[:space:]-]*\*\*Reviewers?\*\*:/ || /^[[:space:]-]*Reviewers?:/ {
         sub(/^[[:space:]-]*/, "", $1)
         $1=""
         sub(/^:[[:space:]]*/, "", $0)

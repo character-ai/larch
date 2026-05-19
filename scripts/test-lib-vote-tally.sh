@@ -100,6 +100,31 @@ cat > "$block" <<'EOF'
 EOF
 got=$(reviewer_for_block "$block"); assert_eq "plural reviewers" "$got" "Codex-Security, Cursor-Structure"
 cat > "$block" <<'EOF'
+### FINDING_1: short title
+- **Reviewer**: cursor-specialist-correctness-output.txt
+EOF
+got=$(reviewer_for_block "$block"); assert_eq "canonical bold reviewer filename" "$got" "cursor-specialist-correctness-output.txt"
+cat > "$block" <<'EOF'
+### FINDING_1: short title
+- **Reviewers**: slot-a, slot-b
+EOF
+got=$(reviewer_for_block "$block"); assert_eq "canonical bold plural slots" "$got" "slot-a, slot-b"
+cat > "$block" <<'EOF'
+### FINDING_1: short title
+Reviewer: codex-output.txt
+EOF
+got=$(reviewer_for_block "$block"); assert_eq "unbolded line-start reviewer" "$got" "codex-output.txt"
+cat > "$block" <<'EOF'
+### FINDING_1: short title
+- **Concern**: The Reviewer parser should not treat prose as attribution.
+EOF
+got=$(reviewer_for_block "$block"); assert_eq "reviewer prose body → unknown" "$got" "unknown"
+cat > "$block" <<'EOF'
+### FINDING_1: short title
+- **Concern**: Embedded sentence says Reviewer: not an attribution.
+EOF
+got=$(reviewer_for_block "$block"); assert_eq "embedded reviewer colon prose → unknown" "$got" "unknown"
+cat > "$block" <<'EOF'
 ### FINDING_1: no attribution
 - **Concern**: something
 EOF
