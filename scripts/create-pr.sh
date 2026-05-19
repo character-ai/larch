@@ -167,8 +167,10 @@ if [[ -z "$BASE_REF" ]]; then
     fi
 fi
 
-# Build the argv for diagnostic purposes (redact body file path, keep flags).
+# Build the argv for diagnostic purposes (redact title/body values, keep flags),
+# then pass it through the shared tmpdir redactor before logging it.
 GH_CREATE_ARGV="gh pr create ${GH_REPO_ARGS[*]+${GH_REPO_ARGS[*]}} --assignee @me --head $BRANCH --base $BASE_REF --title <redacted> --body-file <redacted> ${GH_DRAFT_ARGS[*]+${GH_DRAFT_ARGS[*]}}"
+GH_CREATE_ARGV=$(printf '%s\n' "$GH_CREATE_ARGV" | "$REDACT_TMPDIR_HELPER")
 
 # Capture stdout to a tmpfile (for last-10-lines diagnostic) while stderr goes
 # to PR_STDERR_FILE.  Use set +e/-e to prevent set -e from firing on gh non-zero

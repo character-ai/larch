@@ -220,8 +220,12 @@ assert_contains "STATUS=changelog-failed" "$out_c" \
 assert_contains "CHANGELOG_STATUS=fail-no-manifest-no-issue" "$out_c" \
     "c: CHANGELOG_STATUS=fail-no-manifest-no-issue"
 # The warn_line writes to stderr, captured by run_postbump's 2>&1 redirect.
-assert_contains "no manifest AND no tracking-issue context" "$out_c" \
+assert_contains "summary bullets absent and no tracking-issue context" "$out_c" \
     "c: loud error message present"
+assert_file_contains \
+    "ERROR=Cannot generate changelog bullet: summary bullets absent and no tracking-issue context." \
+    "$SANDBOX/tmp/execution-issues.md" \
+    "c: execution-issues logs stable ERROR line"
 
 # ===========================================================================
 echo

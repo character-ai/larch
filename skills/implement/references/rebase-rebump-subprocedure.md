@@ -28,6 +28,7 @@ After the initial version bump in Step 8, every subsequent rebase of the feature
    ```bash
    ${CLAUDE_PLUGIN_ROOT}/scripts/drop-bump-commit.sh
    ```
+   The helper walks back from `HEAD` and removes the most recent matching bump commit within its search depth, so `HEAD=larch-log-flush`, `HEAD~1=bump` is an expected success shape.
    Parse `DROPPED`. If `DROPPED=false`, log to `$IMPLEMENT_TMPDIR/execution-issues.md` under `Warnings`: `Step <N> — drop-bump-commit.sh reported DROPPED=false before rebase; HEAD was not a bump commit (CI fix commit may have landed on top, worktree had uncommitted tracked changes, or the commit touched files outside the configured bump-file set — see LARCH_BUMP_FILES in docs/configuration-and-permissions.md). Re-bump will still run but branch history may temporarily contain two bump commits and the rebase may encounter a bump-file conflict routed through Phase 1–3.` Continue to step 1b. (The guard in `drop-bump-commit.sh` is defense-in-depth — the sub-procedure does not treat `DROPPED=false` as a hard failure. Note: untracked-only worktree dirtiness does NOT cause `DROPPED=false` — Guard 1 uses `--untracked-files=no` since `git reset --hard` does not affect untracked files.)
 
 1b. **Refresh token/timing log batches** (step10/step12 family only; best-effort, non-fatal):

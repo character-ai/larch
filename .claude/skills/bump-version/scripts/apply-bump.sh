@@ -94,9 +94,10 @@ rollback_before_commit() {
 # without fully cleaning up review artifacts.  Any other dirty entry (staged,
 # tracked-modified, or truly foreign untracked files) still fails immediately.
 
-# Pre-check: detect unmerged paths before the generic dirty-tree check so
-# callers receive a distinct exit code (4) instead of the generic exit-1 "not
-# clean" error. Unmerged-path codes in porcelain format:
+# Pre-check: detect unmerged paths from an in-progress merge or rebase before
+# the generic dirty-tree check so callers receive a distinct exit code (4)
+# instead of the generic exit-1 "not clean" error. Unmerged-path codes in
+# porcelain format:
 # UU = both modified, AA = both added, DD = both deleted, AU/UA/DU/UD = partial.
 _unmerged=$(git status --porcelain 2>/dev/null | grep -E '^(UU|AA|DD|AU|UA|DU|UD) ' || true)
 if [[ -n "$_unmerged" ]]; then

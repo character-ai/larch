@@ -43,6 +43,6 @@ When editing `scripts/drop-bump-commit.sh`:
 - Update this file (`scripts/drop-bump-commit.md`) for any behavioral change.
 - Update `scripts/test-drop-bump-commit.sh` for any Guard 4 logic change.
 - Update `docs/configuration-and-permissions.md` `LARCH_BUMP_FILES` section for any env var contract change.
-- Update `skills/implement/references/rebase-rebump-subprocedure.md` step 1 for any output-contract change.
+- Update `skills/implement/references/rebase-rebump-subprocedure.md` step 1 for any output-contract or walk-back search change.
 - Update `skills/implement/references/bump-verification.md` for any `DROPPED=false` scenario change.
 - Update `skills/implement/references/conflict-resolution.md` Phase 1 trivial-files and the plugin.json-conflicts note.

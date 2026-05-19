@@ -352,7 +352,7 @@ assert_commit_count "internal_artifacts" "2" "I: exactly one new commit"
 assert_backup_absent "internal_artifacts" "I: backup removed"
 
 echo
-echo "Sub-test J: rebase in-progress (unmerged paths) exits 4 with distinct error"
+echo "Sub-test J: in-progress merge/rebase (unmerged paths) exits 4 with distinct error"
 # shellcheck disable=SC2317  # invoked indirectly via run_case "$runner"
 invoke_unmerged_apply() {
     local repo_dir="$1"

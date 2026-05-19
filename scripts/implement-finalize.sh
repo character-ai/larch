@@ -535,7 +535,8 @@ collect_changelog_bullets() {
             jq -r '(.summary_bullets // []) | if type == "array" then .[] else empty end' "$manifest_path" 2>/dev/null >> "$dir/Changed" || true
         fi
     else
-        # No manifest and no bullets file → empty categories, not an error (skipped-no-bullets path)
+        # No manifest and no bullets file leaves empty categories; the caller
+        # decides whether to synthesize a fallback bullet or fail loudly.
         [ -n "${CHANGELOG_BULLETS_FILE:-}" ] || return 0
         validate_small_tmp_file "$CHANGELOG_BULLETS_FILE" || return 1
         while IFS= read -r line || [ -n "$line" ]; do
@@ -707,8 +708,8 @@ maybe_update_changelog() {
             tool_label=$(read_state TOOL_LABEL 2>/dev/null || true)
             manifest_exists=false
             [ -n "$manifest_path" ] && [ -f "$manifest_path" ] && manifest_exists=true
-            append_execution_issue "Step 8a changelog failed: no summary bullets AND no tracking-issue context. manifest_path='${manifest_path}' manifest_exists=$manifest_exists coder='${tool_label}'. CHANGELOG_STATUS=fail-no-manifest-no-issue ERROR=Cannot generate changelog bullet: no manifest AND no tracking-issue context."
-            warn_line '**⚠ 8a: changelog — no manifest AND no tracking-issue context; cannot generate fallback bullet. CHANGELOG_STATUS=fail-no-manifest-no-issue.**'
+            append_execution_issue "Step 8a changelog failed: no summary bullets AND no tracking-issue context. manifest_path='${manifest_path}' manifest_exists=$manifest_exists coder='${tool_label}'. CHANGELOG_STATUS=fail-no-manifest-no-issue ERROR=Cannot generate changelog bullet: summary bullets absent and no tracking-issue context."
+            warn_line '**⚠ 8a: changelog — summary bullets absent and no tracking-issue context; cannot generate fallback bullet. CHANGELOG_STATUS=fail-no-manifest-no-issue.**'
             rm -rf "$tmpdir"
             return 1
         fi

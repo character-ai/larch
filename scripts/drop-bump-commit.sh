@@ -156,7 +156,7 @@ if [[ -n "${LARCH_BUMP_FILES+x}" ]]; then
     done <<< "$CHANGED_FILES"
 
     if [[ "$ALLOWED_FAILED" == "true" ]]; then
-        larch_err "WARN: HEAD subject matches bump pattern but commit touches unexpected files (changed: $CHANGED_FILES); refusing to drop"
+        larch_err "WARN: found commit at HEAD~$FOUND_AT matches bump pattern but touches unexpected files (changed: $CHANGED_FILES); refusing to drop"
         emit_kv DROPPED false
         exit 0
     fi
