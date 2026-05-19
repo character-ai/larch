@@ -1,12 +1,12 @@
 # Version Bump Reasoning
 
-- **Base commit**: `03e8ea25` (Bump version to 29.8.2 (#2357))
-- **Current version**: `29.8.3`
+- **Base commit**: `2d012357` (Rebalance test-harness shards (#2349) (#2350))
+- **Current version**: `29.8.4`
 - **Classification scope**: `skills/**` and `agents/**` only (public plugin surface).
 
 ## Result: PATCH
 
-- **New version**: `29.8.4`
+- **New version**: `29.8.5`
 
 ### PATCH rationale
 
