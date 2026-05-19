@@ -346,6 +346,7 @@ if [[ "$DYNAMIC_ARCHETYPES" != "0" && "$SCOUT_STATUS" == "na" ]]; then
                 SCOUT_STATUS="parse-failed"
                 SCOUT_FAIL_REASON="dispatch_manifest_validation"
                 write_empty_scout_manifest "$SCOUT_MANIFEST"
+                write_scout_status_file
             fi
         else
             # Missing status sidecar: stale cache unless the manifest is a valid
