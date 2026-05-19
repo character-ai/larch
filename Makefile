@@ -17,7 +17,7 @@ lint: test-harnesses lint-bash32 lint-only
 lint-only:
 	pre-commit run --all-files
 
-# Balanced regression-harness shards (closes #1294, #1585, #1911, #2080, #2252, #2262, #2291 — rebalance after
+# Balanced regression-harness shards (closes #1294, #1585, #1911, #2080, #2252, #2262, #2291, #2349 — rebalance after
 # slow harnesses pushed shards 2/3/5 over the 20s target, resharded to 10, then resharded to 11,
 # then to 13 after heavy tests pushed shard wall time over the 40s target, then to 16 after
 # shards 12/13 exceeded 50s with test-dispatch-code-voters and test-dispatch-panel). Lists
