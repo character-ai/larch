@@ -188,10 +188,14 @@ A filtered, machine-readable rendering of the Claude Code session, produced by `
 later in the same round after the coder finishes if `review-and-fix.sh`
 produces additional registered artifacts (for example coder-side files).
 
-Contains registered per-round artifacts such as reviewer outputs, voter outputs,
-prompt sidecars, diagnostics, collector/tally env files, accepted/rejected
-findings, OOS review markdown, voting tally, round summary JSON/markdown, and
-any later registered coder artifacts. The `review-core.sh` flush is the first
+Contains a curated set of per-round artifacts: the aggregate `findings.md`,
+accepted / rejected findings, OOS review markdown, voting tally and summary,
+per-voter outputs (the byte-identical vote prompts and the raw per-specialist
+reviewer outputs are excluded by `round_artifact_included` in
+`scripts/larch-log.sh` because the aggregates already cover their content),
+panel manifest, code-voter slots, collector/tally env files, coder dispatch
+state (env, prompt, tool log, wrapper logs), and any later registered coder
+artifacts. The `review-core.sh` flush is the first
 snapshot for the round; `review-and-fix.sh` may run one more `write-round`
 after coder application so the committed round directory reflects the full
 round state before the later shared log-commit paths copy it into

@@ -1,5 +1,0 @@
-Gathering the branch diff and commit list for a plan-fidelity review (read-only).
-
-Comparing the diff and commit list to the feature description and implementation plan: core timer change and docs largely match; the regression harness diverges from the specified regex assertions and the sibling `.md` disagrees with the shell script on the sleep 0.5 bounds.
-
-

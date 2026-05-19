@@ -1,7 +1,0 @@
-Gathering the branch diff and commit history for a correctness-focused review against the plan.
-
-Checking whether `review-core.sh` accepts `--dynamic-archetypes` and whether `/fix-issue` was wired (feature description mentions both).
-
-Confirming: `[[ -n "0" ]]` is true in bash — CLI `0` is handled. Creating the review plan and delivering the full structured output.
-
-
