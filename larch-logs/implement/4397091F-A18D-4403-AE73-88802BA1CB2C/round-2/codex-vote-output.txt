@@ -1,0 +1,28 @@
+FINDING_1: YES
+FINDING_2: EXONERATE -- Legitimate broad allow-list concern, but it is pre-existing and not worth a new tracking issue here.
+FINDING_3: EXONERATE -- `kv_get` is intentionally simple for KV env files; malformed complex values are too hypothetical for a tracking issue.
+FINDING_4: NO -- `larch_log_fail` emitting the quiet envelope on stdout is the existing contract, not a defect.
+FINDING_5: EXONERATE -- Best-effort warning logging can drop diagnostics, but changing that contract is broader than this scout work.
+FINDING_6: YES
+FINDING_7: NO -- `review-scout-manifest` is a replace-mode run-root batch by existing batch design, while round-scoped scout files preserve per-round detail.
+FINDING_8: NO -- Extra regression coverage beyond the plan is acceptable and does not require release-note or issue churn.
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: NO -- Additional hardening tests are not a code-quality defect, and companion docs already describe the expanded coverage.
+FINDING_13: NO -- Empty `SCOUT_STATUS` defaults to `na`, which effectively satisfies the documented non-empty guard.
+FINDING_14: NO -- The empty-value documentation mismatch is not present; whitespace normalization is a separate edge case.
+FINDING_15: NO -- The code’s `${SCOUT_STATUS:-na}` behavior is consistent with skipping empty status values.
+FINDING_16: NO -- Empty `SCOUT_STATUS` does not flush, so the documented non-empty guard is not materially wrong.
+FINDING_17: YES
+FINDING_18: EXONERATE -- Requiring an executable `LARCH_LOG_SH` matches nearby existing gates; warning on misconfiguration is nice but not necessary here.
+FINDING_19: EXONERATE -- Whitespace-only `SCOUT_STATUS` is theoretically sloppy input, but review-core emits controlled status tokens.
+FINDING_20: YES
+FINDING_21: YES
+FINDING_22: EXONERATE -- Missing scout files are anomalous and empty basenames are allowed by the batch schema; warning/skipping adds little.
+FINDING_23: EXONERATE -- Trailing-space status is malformed KV input and not worth complicating the parser for this change.
+FINDING_24: YES
+FINDING_25: EXONERATE -- A full directory fingerprint would be stronger, but the current fixture checks the meaningful regression surface.
+FINDING_26: EXONERATE -- Same as FINDING_25; full equality is extra rigor, not required for this branch.
+FINDING_27: EXONERATE -- The executable gate is consistent with existing log flushing; adding fallback warnings is low-value.
+FINDING_28: NO -- Only basenames are logged, and a malicious `review-core` is not a meaningful security boundary here.

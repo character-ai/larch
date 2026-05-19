@@ -1,0 +1,10 @@
+### In-Scope Findings
+
+1. **Important** `architecture` `skills/review-and-fix/scripts/review-and-fix.sh:1101-1110`  
+   The new `/implement` `review-scout-manifest.json` payload omits `yield_tsv_basename`, even though the shared batch schema requires it (`scripts/larch-log-batches.md:56-68`) and the `/review` path writes it (`skills/review/SKILL.md:59-78`). Concrete scenario: when `review-core.sh` emits `YIELD_TSV_FILE=/.../scout-archetype-yield.tsv`, standalone `/review` logs the basename, but `/implement` drops it, so committed implement logs cannot audit per-archetype yield data for the same batch contract. Fix by reading `YIELD_TSV_FILE` from `core_out`, basenaming it, adding `--arg yield_tsv_basename`, and asserting it in `test-review-and-fix.sh`.
+
+### Out-of-Scope Observations
+
+None.
+
+Syntax-only checks passed with `bash -n` for the touched shell scripts. I did not modify files, per instruction.
