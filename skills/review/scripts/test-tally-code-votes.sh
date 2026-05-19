@@ -288,7 +288,7 @@ out="$TMP/out.env"
     --voter-files "$TMP/cursor-vote-output.txt" "$TMP/codex-vote-output.txt" "$TMP/claude-vote-output.txt" \
     --review-tmpdir "$TMP" > "$out"
 got=$(awk -F= '$1=="ACCEPTED_COUNT"{print $2}' "$out"); assert_eq "3 voters, 1 YES 2 JUDGE_ERROR → no accepted" "$got" "0"
-grep -Fq '| FINDING_1 | 1 | 0 | 0 | 2 | rejected |' "$TMP/voting-tally.md" || { FAIL=1; printf '  FAIL neutral quorum row missing\n'; }
+grep -Fq '| FINDING_1 | 1 | 0 | 0 | 2 | rejected |' "$TMP/voting-tally.md" || { FAIL=1; printf '  FAIL rejected row with 2 JERR votes missing\n'; }
 
 echo "# Case: security-tagged accepted OOS is NOT written to public file"
 TMP="$WORKDIR/case5"
