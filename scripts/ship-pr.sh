@@ -578,6 +578,7 @@ write_postbump_state() {
     {
         printf 'BRANCH_NAME=%s\n' "$(read_state BRANCH_NAME)"
         printf 'ISSUE_NUMBER=%s\n' "$(read_state ISSUE_NUMBER)"
+        printf 'PR_TITLE=%s\n' "$(read_state PR_TITLE)"
         printf 'REPO=%s\n' "$(read_state REPO)"
         printf 'REPO_UNAVAILABLE=%s\n' "$(read_state REPO_UNAVAILABLE)"
         printf 'FORKED_TARGET=%s\n' "$(read_state FORKED_TARGET)"

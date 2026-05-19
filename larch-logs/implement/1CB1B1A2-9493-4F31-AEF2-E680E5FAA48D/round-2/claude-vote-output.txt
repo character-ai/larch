@@ -1,0 +1,42 @@
+Reading the ballot and both context files before voting.
+
+FINDING_1: NO -- CHANGELOG.md historical entries are immutable records; no issue warranted
+FINDING_2: NO -- duplicate of FINDING_1
+FINDING_3: YES -- pre-existing push-stderr redaction gap worth tracking as an issue
+FINDING_4: EXONERATE -- pre-existing duplicate `set +e`; appears intentional given explicit `rc=$?` capture; no correctness impact
+FINDING_5: YES -- drop-bump-commit.md edit-in-sync rules require updating rebase-rebump-subprocedure.md for output-contract changes, and walk-back is a real contract change
+FINDING_6: EXONERATE -- fuller integration harness with more stubs is more realistic than a narrow shim; higher stub count is the trade-off for exercising real code paths
+FINDING_7: YES -- apply-bump.md/tests say rebase-in-progress; code and test fixture cover any unmerged index state including merge conflicts; real doc/code mismatch
+FINDING_8: YES -- docs/linting.md descriptions for test-apply-bump and test-git-push not updated to mention new coverage; documentation debt worth tracking
+FINDING_9: NO -- duplicate of FINDING_20
+FINDING_10: YES -- stale "HEAD subject matches bump pattern" WARN in LARCH_BUMP_FILES ALLOWED_FAILED branch; not updated to match walk-back "HEAD~$FOUND_AT" phrasing of sibling branches
+FINDING_11: NO -- the BUMP_FILE_FOUND branch at this location was fixed in the diff (updated to "found commit at HEAD~$FOUND_AT"); finding is a false alarm or duplicate of FINDING_10
+FINDING_12: YES -- stale comment references skipped-no-bullets path after Item J removed that status; misleads future maintainers
+FINDING_13: NO -- duplicate of FINDING_12
+FINDING_14: EXONERATE -- 2>/dev/null is a minor test quality nit; pass/fail outcome is fully determined by existing assertions
+FINDING_15: YES -- apply-bump.md invariant still claims drop-bump-commit requires bump at HEAD, directly contradicting Item H walk-back capability; operators will misread compatibility constraints
+FINDING_16: NO -- duplicate of FINDING_7
+FINDING_17: EXONERATE -- awk $2 space-in-path bug only affects diagnostic file list in error message, not the exit-4 decision itself; spaces in bump-file paths are not a realistic scenario
+FINDING_18: EXONERATE -- "unmerged paths present" is more accurate than the plan's "rebase in progress" phrasing; test pins the implemented string; no external parser contracts depend on the plan wording
+FINDING_19: NO -- duplicate of FINDING_18
+FINDING_20: YES -- plan explicitly specified redact-tmpdir-paths.sh for argv diagnostics; GH_CREATE_ARGV is hand-assembled without the helper; deviation from spec merits tracking
+FINDING_21: EXONERATE -- new "Drop mechanism" section correctly documents both reset and rebase-onto paths; Invariant paragraph's focus on LARCH_BUMP_FILES trust boundary remains accurate
+FINDING_22: NO -- duplicate of FINDING_10
+FINDING_23: EXONERATE -- PR_TITLE is engineer-controlled internal workflow data; markdown injection in CHANGELOG.md is not a realistic threat in this context
+FINDING_24: YES -- ERROR text "no manifest AND no tracking-issue context" is misleading when manifest_exists=true but has no bullets; operators will misdiagnose root cause
+FINDING_25: NO -- duplicate of FINDING_24
+FINDING_26: NO -- duplicate of FINDING_7
+FINDING_27: EXONERATE -- same reasoning as FINDING_18; implemented wording is more precise
+FINDING_28: NO -- duplicate of FINDING_8
+FINDING_29: NO -- duplicate of FINDING_20
+FINDING_30: NO -- duplicate of FINDING_20
+FINDING_31: NO -- duplicate of FINDING_20
+FINDING_32: NO -- duplicate of FINDING_10
+FINDING_33: EXONERATE -- shallow history early-break is rare in this workflow; behavior (no drop) is correct; adding walked-depth tracking adds complexity for minimal diagnostic value
+FINDING_34: YES -- skipped-no-bullets retained in implement-finalize.md enum but no longer emitted by code after Item J; downstream parsers expecting it will desync
+FINDING_35: NO -- duplicate of FINDING_34
+FINDING_36: YES -- behavioral break: soft skip (skipped-no-bullets) changed to hard fail (changelog-failed) for runs without ISSUE_NUMBER; postbump callers without tracking-issue context will now stall where they previously completed
+FINDING_37: YES -- test-step-8a-changelog fixture (c) does not assert execution-issues.md contains ERROR= line as Item J specification requires; append_execution_issue could regress silently
+FINDING_38: NO -- duplicate of FINDING_37
+FINDING_39: NO -- duplicate of FINDING_20
+FINDING_40: NO -- duplicate of FINDING_23; same PR_TITLE embedding, same reasoning applies

@@ -93,6 +93,20 @@ rollback_before_commit() {
 # not affect the bump commit and appear when a /implement run reaches Step 8
 # without fully cleaning up review artifacts.  Any other dirty entry (staged,
 # tracked-modified, or truly foreign untracked files) still fails immediately.
+
+# Pre-check: detect unmerged paths from an in-progress merge or rebase before
+# the generic dirty-tree check so callers receive a distinct exit code (4)
+# instead of the generic exit-1 "not clean" error. Unmerged-path codes in
+# porcelain format:
+# UU = both modified, AA = both added, DD = both deleted, AU/UA/DU/UD = partial.
+_unmerged=$(git status --porcelain 2>/dev/null | grep -E '^(UU|AA|DD|AU|UA|DU|UD) ' || true)
+if [[ -n "$_unmerged" ]]; then
+  _unmerged_files=$(printf '%s\n' "$_unmerged" | awk '{print $2}' | tr '\n' ',' | sed 's/,$//')
+  emit_kv APPLIED false
+  emit_kv ERROR "unmerged paths present: $_unmerged_files. Resolve conflicts from the in-progress merge or rebase (git merge --continue/--abort or git rebase --continue/--abort) before bumping."
+  exit 4
+fi
+
 _raw_status=$(git status --porcelain 2>/dev/null)
 if [[ -n "$_raw_status" ]]; then
   _non_internal=$(printf '%s\n' "$_raw_status" \

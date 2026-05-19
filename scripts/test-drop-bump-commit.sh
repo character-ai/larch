@@ -176,6 +176,136 @@ setup_repo "$REPO" .claude-plugin/plugin.json
 echo "pending" > "$REPO/larch-logs-pending.txt"
 run_test "Untracked file present → DROPPED=true" "true"
 
+# --- Walk-back tests (bump not at HEAD) ---
+
+# Helper: create a repo with HEAD = flush commit, HEAD~1 = bump commit
+setup_walkback_repo() {
+    local repo_dir="$1"
+    mkdir -p "$repo_dir"
+    cd "$repo_dir"
+    git init -q
+    git config user.email "test@test.com"
+    git config user.name "Test"
+
+    # Initial commit
+    mkdir -p .claude-plugin
+    echo '{"version":"1.2.2"}' > .claude-plugin/plugin.json
+    echo '' > CHANGELOG.md
+    git add -A
+    git commit -q -m "Initial commit"
+
+    # Bump commit at HEAD~1
+    echo '{"version":"1.2.3"}' > .claude-plugin/plugin.json
+    git add -A
+    git commit -q -m "Bump version to 1.2.3"
+
+    # Flush commit at HEAD (simulates larch-log flush landing on top of bump)
+    mkdir -p larch-logs
+    echo 'log data' > larch-logs/run.md
+    git add -A
+    git commit -q -m "Flush larch-logs before push"
+}
+
+# Test 18: bump at HEAD~1 (flush commit at HEAD) → DROPPED=true, flush preserved
+REPO="$TMPDIR_BASE/test18"
+setup_walkback_repo "$REPO"
+output=""
+output=$(cd "$REPO" && bash "$DROP_SCRIPT" 2>/dev/null) || true
+actual=$(echo "$output" | grep "^DROPPED=" | head -1 | cut -d= -f2)
+if [[ "$actual" == "true" ]]; then
+    # Verify the flush commit is now HEAD (bump was removed)
+    new_head_subject=$(git -C "$REPO" log -1 --format=%s HEAD 2>/dev/null || true)
+    if [[ "$new_head_subject" == "Flush larch-logs before push" ]]; then
+        PASS=$((PASS + 1))
+    else
+        echo "FAIL: Test 18 — flush commit not preserved after drop; HEAD subject: $new_head_subject" >&2
+        FAIL=$((FAIL + 1))
+    fi
+else
+    echo "FAIL: Test 18 — expected DROPPED=true (bump at HEAD~1), got DROPPED=$actual" >&2
+    FAIL=$((FAIL + 1))
+fi
+
+# Test 19: bump beyond max-depth → DROPPED=false, warning mentions depth
+REPO="$TMPDIR_BASE/test19"
+mkdir -p "$REPO"
+cd "$REPO"
+git init -q
+git config user.email "test@test.com"
+git config user.name "Test"
+mkdir -p .claude-plugin
+echo '{"version":"1.0.0"}' > .claude-plugin/plugin.json
+git add -A
+git commit -q -m "Initial commit"
+# Bump commit
+echo '{"version":"1.2.3"}' > .claude-plugin/plugin.json
+git add -A
+git commit -q -m "Bump version to 1.2.3"
+# Add 3 more commits on top so bump is at HEAD~3
+for _i in 1 2 3; do
+    echo "log $_i" > larch-logs-test-"$_i".txt
+    git add -A
+    git commit -q -m "Flush commit $_i"
+done
+
+stderr_out=""
+output=""
+output=$(cd "$REPO" && bash "$DROP_SCRIPT" --max-depth 2 2>"$TMPDIR_BASE/test19-stderr.txt") || true
+actual=$(echo "$output" | grep "^DROPPED=" | head -1 | cut -d= -f2)
+stderr_out=$(cat "$TMPDIR_BASE/test19-stderr.txt" 2>/dev/null || true)
+if [[ "$actual" == "false" ]]; then
+    if echo "$stderr_out" | grep -Fq "within 2 commits of HEAD"; then
+        PASS=$((PASS + 1))
+    else
+        echo "FAIL: Test 19 — DROPPED=false but depth not mentioned in stderr: $stderr_out" >&2
+        FAIL=$((FAIL + 1))
+    fi
+else
+    echo "FAIL: Test 19 — expected DROPPED=false (bump beyond --max-depth 2), got DROPPED=$actual" >&2
+    FAIL=$((FAIL + 1))
+fi
+
+# Test 20: forced rebase --onto failure → exit 1 and abort cleanup removes rebase state
+REPO="$TMPDIR_BASE/test20"
+setup_walkback_repo "$REPO"
+WRAP_BIN="$TMPDIR_BASE/test20-bin"
+REAL_GIT="$(command -v git)"
+mkdir -p "$WRAP_BIN"
+cat > "$WRAP_BIN/git" <<SH
+#!/usr/bin/env bash
+if [[ "\${1:-}" == "rebase" && "\${2:-}" == "--onto" ]]; then
+    mkdir -p .git/rebase-merge
+    printf 'forced\n' > .git/rebase-merge/head-name
+    echo "forced rebase failure" >&2
+    exit 1
+fi
+if [[ "\${1:-}" == "rebase" && "\${2:-}" == "--abort" ]]; then
+    rm -rf .git/rebase-merge
+    exit 0
+fi
+exec "$REAL_GIT" "\$@"
+SH
+chmod +x "$WRAP_BIN/git"
+set +e
+(
+    cd "$REPO" &&
+    PATH="$WRAP_BIN:$PATH" \
+    bash "$DROP_SCRIPT" >"$TMPDIR_BASE/test20-stdout.txt" 2>"$TMPDIR_BASE/test20-stderr.txt"
+)
+rc=$?
+set -e
+if [[ "$rc" == "1" ]]; then
+    if [[ ! -e "$REPO/.git/rebase-merge" ]]; then
+        PASS=$((PASS + 1))
+    else
+        echo "FAIL: Test 20 — rebase state remained after forced failure" >&2
+        FAIL=$((FAIL + 1))
+    fi
+else
+    echo "FAIL: Test 20 — expected exit 1 from forced rebase failure, got $rc" >&2
+    FAIL=$((FAIL + 1))
+fi
+
 # --- Summary ---
 TOTAL=$((PASS + FAIL))
 echo ""

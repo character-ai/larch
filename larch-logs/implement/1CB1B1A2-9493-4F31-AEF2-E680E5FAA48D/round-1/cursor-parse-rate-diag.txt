@@ -1,0 +1,10 @@
+voter_tool=cursor
+neutral_count=38
+total_findings=38
+voter_file=<TMPDIR>/round-1/cursor-vote-output.txt
+--- first 200 bytes of voter output ---
+Reading the ballot and locating diff/plan context to verify each finding.
+
+Verifying ballot claims against the repo and session diff context.
+
+Checking `drop-bump-commit.md` for Guard 2 documentation 

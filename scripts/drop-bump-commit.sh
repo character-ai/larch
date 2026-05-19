@@ -1,16 +1,18 @@
 #!/usr/bin/env bash
-# drop-bump-commit.sh — Drop a terminal "Bump version to X.Y.Z" commit from HEAD.
+# drop-bump-commit.sh — Drop a "Bump version to X.Y.Z" commit from the branch.
 #
 # Narrow primitive used by /implement's Rebase + Re-bump Sub-procedure to
 # strip a stale version-bump commit before rebasing onto latest main.
-# Refuses to do anything destructive unless ALL of these hold:
+# Walks back up to --max-depth commits (default 10) from HEAD looking for
+# the most recent bump commit.  Refuses to do anything destructive unless
+# ALL of these hold:
 #   1. Working tree has no uncommitted changes to tracked files.
-#      Untracked files are excluded from this check because git reset --hard
-#      HEAD~1 does not affect them.
-#   2. HEAD subject matches ^Bump version to [0-9]+\.[0-9]+\.[0-9]+$.
-#   3. HEAD~1 exists (branch has at least 2 commits).
-#   4. HEAD touches only allowed bump files (optionally together with
-#      CHANGELOG.md), and nothing else.
+#      Untracked files are excluded from this check because the drop
+#      operation does not affect them.
+#   2. The found commit's subject matches ^Bump version to [0-9]+\.[0-9]+\.[0-9]+$.
+#   3. The parent of the found commit exists.
+#   4. The found commit touches only allowed bump files (optionally together
+#      with CHANGELOG.md), and nothing else.
 #
 # Guard 4 allowed-file set:
 #   - When LARCH_BUMP_FILES is unset: defaults to .claude-plugin/plugin.json
@@ -26,7 +28,10 @@
 # want to surface it.
 #
 # Usage:
-#   drop-bump-commit.sh
+#   drop-bump-commit.sh [--max-depth N]
+#
+# Options:
+#   --max-depth N   Walk at most N commits back from HEAD (default 10).
 #
 # Output (stdout, KEY=VALUE):
 #   DROPPED=true|false
@@ -34,7 +39,7 @@
 #
 # Exit codes:
 #   0 — success, including no-op cases (inspect DROPPED to know what happened)
-#   1 — git error during the reset itself (rare)
+#   1 — git error during the drop itself (rare)
 
 set -uo pipefail
 
@@ -45,34 +50,72 @@ larch_quiet_init
 # Note: not using set -e — we handle errors explicitly so all no-op paths
 # exit 0 with DROPPED=false, matching the contract used by callers.
 
+# --- Parse flags ---
+MAX_DEPTH=10
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --max-depth)
+            if [ "$#" -lt 2 ]; then
+                larch_err "WARN: --max-depth requires a value"
+                emit_kv DROPPED false
+                exit 0
+            fi
+            MAX_DEPTH="$2"
+            # Validate numeric
+            case "$MAX_DEPTH" in
+                ''|*[!0-9]*) larch_err "WARN: --max-depth must be a positive integer"; emit_kv DROPPED false; exit 0 ;;
+            esac
+            [ "$MAX_DEPTH" -gt 0 ] || { larch_err "WARN: --max-depth must be >= 1"; emit_kv DROPPED false; exit 0; }
+            shift 2
+            ;;
+        *) larch_err "WARN: unknown argument: $1"; emit_kv DROPPED false; exit 0 ;;
+    esac
+done
+
 # --- Guard 1: clean working tree (tracked files only) ---
-# Defense in depth: `git reset --hard HEAD~1` destroys uncommitted changes to
-# TRACKED files. Untracked files are unaffected by `git reset --hard`, so
-# they are excluded from this check via --untracked-files=no. This avoids
-# spurious DROPPED=false when larch-log writes are pending in the worktree
-# (untracked until the next larch-log.sh commit call).
+# Defense in depth: the drop operation destroys uncommitted changes to TRACKED
+# files. Untracked files are unaffected, so they are excluded from this check
+# via --untracked-files=no. This avoids spurious DROPPED=false when larch-log
+# writes are pending in the worktree (untracked until the next commit call).
 if [[ -n "$(git status --porcelain --untracked-files=no 2>/dev/null)" ]]; then
     larch_err "WARN: worktree has uncommitted tracked changes; refusing to drop bump commit"
     emit_kv DROPPED false
     exit 0
 fi
 
-# --- Guard 2: HEAD subject must be a bump commit ---
-HEAD_SUBJECT=$(git log -1 --format=%s HEAD 2>/dev/null || true)
-if ! [[ "$HEAD_SUBJECT" =~ ^Bump\ version\ to\ [0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+# --- Guard 2: walk back up to MAX_DEPTH looking for the most recent bump commit ---
+FOUND_AT=-1
+_depth=0
+while [ "$_depth" -lt "$MAX_DEPTH" ]; do
+    _ref="HEAD~$_depth"
+    # Verify this ref exists before querying its subject.
+    if ! git rev-parse --verify "$_ref" >/dev/null 2>&1; then
+        break
+    fi
+    _subj=$(git log -1 --format=%s "$_ref" 2>/dev/null || true)
+    if [[ "$_subj" =~ ^Bump\ version\ to\ [0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        FOUND_AT="$_depth"
+        break
+    fi
+    _depth=$(( _depth + 1 ))
+done
+
+if [ "$FOUND_AT" -lt 0 ]; then
+    larch_err "WARN: no bump commit found within $MAX_DEPTH commits of HEAD; not dropping"
     emit_kv DROPPED false
     exit 0
 fi
 
-# --- Guard 3: HEAD~1 must exist ---
-if ! git rev-parse --verify HEAD~1 >/dev/null 2>&1; then
-    larch_err "WARN: HEAD~1 does not exist; cannot drop the only commit on the branch"
+# --- Guard 3: the parent of the found commit must exist ---
+_parent_ref="HEAD~$(( FOUND_AT + 1 ))"
+if ! git rev-parse --verify "$_parent_ref" >/dev/null 2>&1; then
+    larch_err "WARN: ${_parent_ref} does not exist; cannot drop the only commit on the branch"
     emit_kv DROPPED false
     exit 0
 fi
 
-# --- Guard 4: commit must touch only allowed bump files ---
-CHANGED_FILES=$(git diff --name-only HEAD~1 HEAD 2>/dev/null | LC_ALL=C sort)
+# --- Guard 4: the found commit must touch only allowed bump files ---
+CHANGED_FILES=$(git diff --name-only "$_parent_ref" "HEAD~$FOUND_AT" 2>/dev/null | LC_ALL=C sort)
 
 if [[ -n "${LARCH_BUMP_FILES+x}" ]]; then
     # Custom path: LARCH_BUMP_FILES is set (replacement semantics).
@@ -113,13 +156,13 @@ if [[ -n "${LARCH_BUMP_FILES+x}" ]]; then
     done <<< "$CHANGED_FILES"
 
     if [[ "$ALLOWED_FAILED" == "true" ]]; then
-        larch_err "WARN: HEAD subject matches bump pattern but commit touches unexpected files (changed: $CHANGED_FILES); refusing to drop"
+        larch_err "WARN: found commit at HEAD~$FOUND_AT matches bump pattern but touches unexpected files (changed: $CHANGED_FILES); refusing to drop"
         emit_kv DROPPED false
         exit 0
     fi
 
     if [[ "$BUMP_FILE_FOUND" != "true" ]]; then
-        larch_err "WARN: HEAD subject matches bump pattern but commit touches no configured bump files; refusing to drop (fail-closed)"
+        larch_err "WARN: found commit at HEAD~$FOUND_AT matches bump pattern but touches no configured bump files; refusing to drop (fail-closed)"
         emit_kv DROPPED false
         exit 0
     fi
@@ -130,18 +173,34 @@ else
     ALLOWED_ONE=".claude-plugin/plugin.json"
     ALLOWED_TWO=$'.claude-plugin/plugin.json\nCHANGELOG.md'
     if [[ "$CHANGED_FILES" != "$ALLOWED_ONE" && "$CHANGED_FILES" != "$ALLOWED_TWO" ]]; then
-        larch_err "WARN: HEAD subject matches bump pattern but commit touches unexpected files (changed: $CHANGED_FILES); refusing to drop"
+        larch_err "WARN: found commit at HEAD~$FOUND_AT matches bump pattern but touches unexpected files (changed: $CHANGED_FILES); refusing to drop"
         emit_kv DROPPED false
         exit 0
     fi
 fi
 
 # --- All guards passed: capture SHA and drop ---
-OLD_BUMP_SHA=$(git rev-parse HEAD)
+OLD_BUMP_SHA=$(git rev-parse "HEAD~$FOUND_AT")
 
-if ! git reset --hard HEAD~1 >/dev/null 2>&1; then
-    larch_err "ERROR: git reset --hard HEAD~1 failed"
-    exit 1
+if [ "$FOUND_AT" -eq 0 ]; then
+    # Fast path: bump is at HEAD — use reset --hard (no rebase needed).
+    if ! git reset --hard HEAD~1 >/dev/null 2>&1; then
+        larch_err "ERROR: git reset --hard HEAD~1 failed"
+        exit 1
+    fi
+else
+    # Walk-back path: bump is below HEAD — replay commits above it onto its parent.
+    # git rebase --onto <newbase> <upstream>:
+    #   newbase  = commit just before the bump (HEAD~(FOUND_AT+1))
+    #   upstream = the bump commit itself (HEAD~FOUND_AT)
+    # This replays [HEAD~FOUND_AT..HEAD] (exclusive) = the commits above the bump.
+    _newbase="HEAD~$(( FOUND_AT + 1 ))"
+    _upstream="HEAD~$FOUND_AT"
+    if ! GIT_SEQUENCE_EDITOR=true git rebase --onto "$_newbase" "$_upstream" >/dev/null 2>&1; then
+        larch_err "ERROR: git rebase --onto $_newbase $_upstream failed; aborting rebase"
+        git rebase --abort >/dev/null 2>&1 || true
+        exit 1
+    fi
 fi
 
 emit_kv DROPPED true

@@ -28,14 +28,20 @@ echo "BRANCH=$BRANCH"
 # a mid-loop `git rebase` that leaves HEAD detached is caught immediately.
 # First retry sleeps a fixed 1s floor; later retries use the jittered formula
 # below.
+#
+# Per-attempt stderr is captured so identical consecutive blocks are deduplicated
+# on failure: each unique block is emitted once; if a block repeated M times
+# "(repeated M times)" is appended so the caller sees one clean diagnostic.
 _MAX_ATTEMPTS=3
 _last_exit=0
+_STDERR_DIR=$(mktemp -d)
+trap 'rm -rf "$_STDERR_DIR"' EXIT
 for _attempt in 1 2 3; do
     if ! git symbolic-ref --quiet HEAD >/dev/null 2>&1; then
         printf 'git-push.sh: not on a named branch before attempt %d\n' "$_attempt" >&2
         exit 1
     fi
-    if git push; then
+    if git push 2>"$_STDERR_DIR/attempt-$_attempt"; then
         exit 0
     else
         _last_exit=$?
@@ -49,4 +55,31 @@ for _attempt in 1 2 3; do
         sleep "$_sleep"
     fi
 done
+
+# Deduplicate consecutive identical stderr blocks before emitting.
+_prev_file=""
+_repeat=0
+for _n in 1 2 3; do
+    _cur="$_STDERR_DIR/attempt-$_n"
+    [ -f "$_cur" ] || continue
+    if [ -n "$_prev_file" ] && cmp -s "$_prev_file" "$_cur" 2>/dev/null; then
+        _repeat=$(( _repeat + 1 ))
+    else
+        if [ -n "$_prev_file" ]; then
+            cat "$_prev_file" >&2
+            if [ "$_repeat" -gt 0 ]; then
+                printf '(repeated %d times)\n' "$(( _repeat + 1 ))" >&2
+            fi
+        fi
+        _prev_file="$_cur"
+        _repeat=0
+    fi
+done
+if [ -n "$_prev_file" ]; then
+    cat "$_prev_file" >&2
+    if [ "$_repeat" -gt 0 ]; then
+        printf '(repeated %d times)\n' "$(( _repeat + 1 ))" >&2
+    fi
+fi
+
 exit "$_last_exit"

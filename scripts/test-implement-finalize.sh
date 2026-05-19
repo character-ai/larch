@@ -118,6 +118,7 @@ write_postbump_state() {
     {
         printf 'BRANCH_NAME=%s\n' "$(override_value BRANCH_NAME feature/finalize "$@")"
         printf 'ISSUE_NUMBER=%s\n' "$(override_value ISSUE_NUMBER 456 "$@")"
+        printf 'PR_TITLE=%s\n' "$(override_value PR_TITLE 'Title' "$@")"
         printf 'REPO=%s\n' "$(override_value REPO owner/repo "$@")"
         printf 'REPO_UNAVAILABLE=%s\n' "$(override_value REPO_UNAVAILABLE false "$@")"
         printf 'FORKED_TARGET=%s\n' "$(override_value FORKED_TARGET false "$@")"
@@ -1022,25 +1023,30 @@ write_postbump_state "$POSTBUMP_STATE" MANIFEST_PATH="$SANDBOX/tmp/manifest-non-
 OUT=$(run_subject postbump --state-file "$POSTBUMP_STATE" --implement-tmpdir "$SANDBOX/tmp")
 assert_contains "STATUS=ok" "$OUT" "postbump: non-JSON manifest does not fail the phase"
 assert_not_contains "STATUS=changelog-failed" "$OUT" "postbump: non-JSON manifest does not route to changelog-failed"
+assert_contains "CHANGELOG_STATUS=skipped-no-bullets" "$OUT" "postbump: non-JSON manifest skips synthetic fallback bullet"
+assert_file_not_contains "Closed: #456" "$SANDBOX/repo/CHANGELOG.md" "postbump: non-JSON manifest does not synthesize tracking-issue bullet"
 
 cp "$SANDBOX/original-CHANGELOG.md" "$SANDBOX/repo/CHANGELOG.md"
 : > "$SANDBOX/tmp/execution-issues.md"
-write_postbump_state "$POSTBUMP_STATE" MANIFEST_PATH= TOOL_LABEL=codex
+write_postbump_state "$POSTBUMP_STATE" ISSUE_NUMBER=0 MANIFEST_PATH= TOOL_LABEL=codex
 OUT=$(run_subject postbump --state-file "$POSTBUMP_STATE" --implement-tmpdir "$SANDBOX/tmp")
-assert_contains "CHANGELOG_STATUS=skipped-no-bullets" "$OUT" "postbump: missing bullets skips changelog amend"
-assert_file_contains "manifest_path=''" "$SANDBOX/tmp/execution-issues.md" "postbump: skipped-no-bullets execution issue resolves manifest path"
-assert_file_contains "manifest_exists=false" "$SANDBOX/tmp/execution-issues.md" "postbump: skipped-no-bullets execution issue resolves manifest presence"
-assert_file_contains "coder='codex'" "$SANDBOX/tmp/execution-issues.md" "postbump: skipped-no-bullets execution issue resolves coder"
+assert_contains "STATUS=changelog-failed" "$OUT" "postbump: missing bullets without tracking issue fails loudly"
+assert_contains "CHANGELOG_STATUS=fail-no-manifest-no-issue" "$OUT" "postbump: missing bullets without tracking issue sets fail-no-manifest-no-issue"
+assert_file_contains "manifest_path=''" "$SANDBOX/tmp/execution-issues.md" "postbump: fail-no-manifest-no-issue resolves empty manifest path"
+assert_file_contains "manifest_exists=false" "$SANDBOX/tmp/execution-issues.md" "postbump: fail-no-manifest-no-issue resolves missing manifest presence"
+assert_file_contains "coder='codex'" "$SANDBOX/tmp/execution-issues.md" "postbump: fail-no-manifest-no-issue resolves coder"
+assert_file_contains "ERROR=Cannot generate changelog bullet: no manifest AND no tracking-issue context." "$SANDBOX/tmp/execution-issues.md" "postbump: fail-no-manifest-no-issue uses stable ERROR literal"
 
 cp "$SANDBOX/original-CHANGELOG.md" "$SANDBOX/repo/CHANGELOG.md"
 : > "$SANDBOX/tmp/execution-issues.md"
 printf '{}' > "$SANDBOX/tmp/manifest-empty.json"
-write_postbump_state "$POSTBUMP_STATE" MANIFEST_PATH="$SANDBOX/tmp/manifest-empty.json" TOOL_LABEL=codex
+write_postbump_state "$POSTBUMP_STATE" ISSUE_NUMBER=0 MANIFEST_PATH="$SANDBOX/tmp/manifest-empty.json" TOOL_LABEL=codex
 OUT=$(run_subject postbump --state-file "$POSTBUMP_STATE" --implement-tmpdir "$SANDBOX/tmp")
-assert_contains "CHANGELOG_STATUS=skipped-no-bullets" "$OUT" "postbump: existing manifest without bullets skips changelog amend"
-assert_file_contains "manifest_path='$SANDBOX/tmp/manifest-empty.json'" "$SANDBOX/tmp/execution-issues.md" "postbump: existing-manifest skipped-no-bullets logs manifest path"
-assert_file_contains "manifest_exists=true" "$SANDBOX/tmp/execution-issues.md" "postbump: existing-manifest skipped-no-bullets logs manifest presence"
-assert_file_contains "coder='codex'" "$SANDBOX/tmp/execution-issues.md" "postbump: existing-manifest skipped-no-bullets resolves coder"
+assert_contains "STATUS=changelog-failed" "$OUT" "postbump: existing manifest without bullets fails loudly without tracking issue"
+assert_contains "CHANGELOG_STATUS=fail-no-manifest-no-issue" "$OUT" "postbump: existing manifest without bullets sets fail-no-manifest-no-issue"
+assert_file_contains "manifest_path='$SANDBOX/tmp/manifest-empty.json'" "$SANDBOX/tmp/execution-issues.md" "postbump: existing-manifest fail-no-manifest-no-issue logs manifest path"
+assert_file_contains "manifest_exists=true" "$SANDBOX/tmp/execution-issues.md" "postbump: existing-manifest fail-no-manifest-no-issue logs manifest presence"
+assert_file_contains "coder='codex'" "$SANDBOX/tmp/execution-issues.md" "postbump: existing-manifest fail-no-manifest-no-issue resolves coder"
 
 # Regression: when target version header already exists (replacement path), no double blank before next header.
 cat > "$SANDBOX/repo/CHANGELOG.md" <<'CHANGELOG_REPLACE'

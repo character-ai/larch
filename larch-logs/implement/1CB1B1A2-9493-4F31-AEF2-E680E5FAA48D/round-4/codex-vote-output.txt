@@ -1,0 +1,11 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: EXONERATE -- Warning names the configured search window correctly enough; tracking actual walked count is too small a signal.
+FINDING_4: YES
+FINDING_5: NO -- `local` inside the function block is valid Bash and this is only a style preference.
+FINDING_6: YES
+FINDING_7: NO -- The exact phrase was plan-only drift; committed docs and runtime still clearly identify unmerged merge/rebase state.
+FINDING_8: YES
+FINDING_9: EXONERATE -- The non-JSON manifest path is intentionally guarded by `ship-pr.sh` and covered as a safe skip; a runtime branch change is not warranted.
+FINDING_10: EXONERATE -- The sandbox copy list is an inherent harness maintenance cost, not a current defect.
+FINDING_11: YES
