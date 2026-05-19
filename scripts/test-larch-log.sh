@@ -427,6 +427,7 @@ mkdir -p "$_wr_source/dynamic-archetypes"
 # Allowed round artifacts
 printf 'SCOUT_STATUS=ok\nSCOUT_RESULT=fired\n' > "$_wr_source/scout-round1-status.env"
 printf '{"archetypes":["api-contract","edge-cases"]}\n' > "$_wr_source/scout-round1-manifest.json"
+printf '{"raw":"scout output"}\n' > "$_wr_source/scout-round1-manifest.json.raw"
 printf 'findings here\n' > "$_wr_source/findings.md"
 # Flattened from dynamic-archetypes/
 printf '# reviewer-dyn-api-contract\n' > "$_wr_source/dynamic-archetypes/reviewer-dyn-api-contract.md"
@@ -457,6 +458,11 @@ if [ -f "$_wr_round/scout-round1-manifest.json" ]; then
     pass "write-round commits scout-round1-manifest.json"
 else
     fail "write-round must commit scout-round1-manifest.json (missing)"
+fi
+if [ -f "$_wr_round/scout-round1-manifest.json.raw" ]; then
+    pass "write-round commits scout-round1-manifest.json.raw"
+else
+    fail "write-round must commit scout-round1-manifest.json.raw (missing)"
 fi
 
 # Test 3: dynamic-archetypes flattened to round root (not in a subdir)
@@ -496,6 +502,12 @@ if [ "$_wr_status_content" = "$(cat "$_wr_source/scout-round1-status.env")" ]; t
     pass "write-round scout-round1-status.env content matches source"
 else
     fail "write-round scout-round1-status.env content mismatch"
+fi
+_wr_raw_content=$(cat "$_wr_round/scout-round1-manifest.json.raw" 2>/dev/null || true)
+if [ "$_wr_raw_content" = "$(cat "$_wr_source/scout-round1-manifest.json.raw")" ]; then
+    pass "write-round scout-round1-manifest.json.raw content matches source"
+else
+    fail "write-round scout-round1-manifest.json.raw content mismatch"
 fi
 
 echo "=== write-round keeps baseline artifacts unchanged without scout or dynamic inputs ==="

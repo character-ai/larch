@@ -1,0 +1,47 @@
+{
+  "schema_version": "1",
+  "status": "complete",
+  "files_touched": [
+    {
+      "path": "scripts/larch-log.md",
+      "lines_added": 1,
+      "lines_removed": 1
+    },
+    {
+      "path": "scripts/larch-log.sh",
+      "lines_added": 1,
+      "lines_removed": 1
+    },
+    {
+      "path": "scripts/scout-dynamic-archetypes.md",
+      "lines_added": 1,
+      "lines_removed": 0
+    },
+    {
+      "path": "scripts/test-larch-log.sh",
+      "lines_added": 12,
+      "lines_removed": 0
+    },
+    {
+      "path": "scripts/test-scout-dynamic-archetypes.sh",
+      "lines_added": 10,
+      "lines_removed": 0
+    }
+  ],
+  "tests_added_or_modified": [
+    "scripts/test-larch-log.sh",
+    "scripts/test-scout-dynamic-archetypes.sh"
+  ],
+  "summary_bullets": [
+    "Allow larch-log write-round to commit scout raw-output sidecars alongside scout manifests.",
+    "Document scout raw sidecar preservation and committed round-log behavior.",
+    "Cover raw sidecar preservation in scout tests and committed write-round copying in larch-log tests."
+  ],
+  "commit_message": "Commit scout raw sidecar artifacts\n\nAllow write-round to include scout-round*-manifest.json.raw files so raw scout subprocess output is preserved in committed round logs. Update scout and larch-log contracts, and add regression assertions for raw sidecar preservation and copying.",
+  "todos_left": [],
+  "oos_observations": [],
+  "bail_reason": "",
+  "needs_qa": {
+    "questions": []
+  }
+}

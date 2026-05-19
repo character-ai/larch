@@ -224,6 +224,8 @@ fi
 prompt_file="$(dirname "$OUTPUT")/scout-dynamic-archetypes-prompt.md"
 raw_output="${OUTPUT}.raw"
 parse_error="${OUTPUT}.parse-error"
+parse_input="$raw_output"
+fenced_json_tmp=""
 
 {
     printf 'You are selecting optional specialist code-review archetypes for /review.\n'
@@ -287,37 +289,47 @@ if [[ "$launch_rc" -ne 0 ]]; then
     exit 0
 fi
 
+cleanup_parse_tmp() {
+    [[ -n "${fenced_json_tmp:-}" ]] && rm -f "$fenced_json_tmp"
+    return 0
+}
+cleanup_temps() {
+    cleanup_parse_tmp
+    [[ -n "${validated_tmp:-}" ]] && rm -f "$validated_tmp"
+    return 0
+}
+trap cleanup_temps EXIT
+
 if ! jq -e '.' "$raw_output" >/dev/null 2>&1; then
+    fenced_json_tmp=$(mktemp "${OUTPUT}.fenced-json.XXXXXX") || exit 1
     set +e
-    extract_valid_fenced_json "$raw_output" "$raw_output"
+    extract_valid_fenced_json "$raw_output" "$fenced_json_tmp"
     fence_strip_rc=$?
     set -e
     if [[ "$fence_strip_rc" -eq 2 ]]; then
         printf 'cannot extract fenced JSON from %s\n' "$raw_output" > "$parse_error"
         emit_parse_failed_result fence_strip_io "$latency_ms"
     fi
+    if [[ -s "$fenced_json_tmp" ]]; then
+        parse_input="$fenced_json_tmp"
+    fi
 fi
 
-if ! jq -e '.' "$raw_output" >/dev/null 2>"$parse_error"; then
+if ! jq -e '.' "$parse_input" >/dev/null 2>"$parse_error"; then
     emit_parse_failed_result json_parse "$latency_ms"
 fi
 
-if ! jq -e '.archetypes and (.archetypes | type == "array")' "$raw_output" >/dev/null 2>"$parse_error"; then
+if ! jq -e '.archetypes and (.archetypes | type == "array")' "$parse_input" >/dev/null 2>"$parse_error"; then
     emit_parse_failed_result invalid_archetypes_shape "$latency_ms"
 fi
 
-raw_count=$(jq '.archetypes | length' "$raw_output")
+raw_count=$(jq '.archetypes | length' "$parse_input")
 if (( raw_count > 4 )); then
     printf 'archetypes length exceeds max cap: %s\n' "$raw_count" > "$parse_error"
     emit_parse_failed_result archetype_count_overflow "$latency_ms"
 fi
 
 validated_tmp=$(mktemp "${OUTPUT}.tmp.XXXXXX") || exit 1
-cleanup_validated_tmp() {
-    [[ -n "${validated_tmp:-}" ]] && rm -f "$validated_tmp"
-    return 0
-}
-trap cleanup_validated_tmp EXIT
 warnings_file="${OUTPUT}.warnings"
 : > "$warnings_file"
 if ! jq -c --argjson max "$MAX_ARCHETYPES" '
@@ -373,7 +385,7 @@ if ! jq -c --argjson max "$MAX_ARCHETYPES" '
         .warns += ["validated archetypes exceed max cap: \(.valid_total) > \($max); truncating"]
       else . end
     | {archetypes, warns}
-' "$raw_output" > "$validated_tmp"; then
+' "$parse_input" > "$validated_tmp"; then
     rm -f "$validated_tmp"
     validated_tmp=""
     emit_parse_failed_result validation_jq_error "$latency_ms"
@@ -385,6 +397,7 @@ mv -f "${validated_tmp}.manifest" "$OUTPUT"
 rm -f "$validated_tmp"
 validated_tmp=""
 trap - EXIT
+cleanup_parse_tmp
 
 while IFS= read -r warning || [[ -n "$warning" ]]; do
     [[ -n "$warning" ]] && emit_kv WARN "$warning"

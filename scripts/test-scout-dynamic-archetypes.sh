@@ -90,6 +90,13 @@ run_case_description() {
     printf '%s\n' "$stdout_file"
 }
 
+assert_raw_matches() {
+    local label="$1" fixture="$2"
+    local raw_file="$TMP/$label/scout-manifest.json.raw"
+    [[ -f "$raw_file" ]] || fail "$label raw sidecar missing"
+    cmp -s "$fixture" "$raw_file" || fail "$label raw sidecar mismatch"
+}
+
 cat > "$TMP/valid4.json" <<'JSON'
 {"archetypes":[
   {"name":"api-contract","focus_area":"correctness","weight":4,"rationale":"API changes are central.","prompt_body":"Check API contract compatibility."},
@@ -102,6 +109,7 @@ stdout=$(run_case valid4 "$TMP/valid4.json")
 grep -Fq 'SCOUT_STATUS=ok' "$stdout" || fail "valid4 status"
 grep -Fq 'SCOUT_ARCHETYPE_COUNT=4' "$stdout" || fail "valid4 count"
 [[ "$(jq '.archetypes | length' "$TMP/valid4/scout-manifest.json")" = "4" ]] || fail "valid4 manifest count"
+assert_raw_matches valid4 "$TMP/valid4.json"
 
 cat > "$TMP/fence-wrapped.json" <<'JSON'
 ```json
@@ -113,6 +121,7 @@ JSON
 stdout=$(run_case fence-wrapped "$TMP/fence-wrapped.json")
 grep -Fq 'SCOUT_STATUS=ok' "$stdout" || fail "fence-wrapped status"
 grep -Fq 'SCOUT_ARCHETYPE_COUNT=1' "$stdout" || fail "fence-wrapped count"
+assert_raw_matches fence-wrapped "$TMP/fence-wrapped.json"
 
 cat > "$TMP/indented-fence-wrapped.json" <<'JSON'
   ```json
@@ -124,6 +133,7 @@ JSON
 stdout=$(run_case indented-fence-wrapped "$TMP/indented-fence-wrapped.json")
 grep -Fq 'SCOUT_STATUS=ok' "$stdout" || fail "indented fence-wrapped status"
 grep -Fq 'SCOUT_ARCHETYPE_COUNT=1' "$stdout" || fail "indented fence-wrapped count"
+assert_raw_matches indented-fence-wrapped "$TMP/indented-fence-wrapped.json"
 
 cat > "$TMP/fence-with-prose.json" <<'JSON'
 Here is the JSON:
@@ -136,6 +146,7 @@ JSON
 stdout=$(run_case fence-with-prose "$TMP/fence-with-prose.json")
 grep -Fq 'SCOUT_STATUS=ok' "$stdout" || fail "fence-with-prose status"
 grep -Fq 'SCOUT_ARCHETYPE_COUNT=1' "$stdout" || fail "fence-with-prose count"
+assert_raw_matches fence-with-prose "$TMP/fence-with-prose.json"
 
 cat > "$TMP/multi-fence-valid-second.json" <<'JSON'
 ```text
@@ -151,6 +162,7 @@ stdout=$(run_case multi-fence-valid-second "$TMP/multi-fence-valid-second.json")
 grep -Fq 'SCOUT_STATUS=ok' "$stdout" || fail "multi-fence valid-second status"
 grep -Fq 'SCOUT_ARCHETYPE_COUNT=1' "$stdout" || fail "multi-fence valid-second count"
 grep -Fq '"second-block"' "$TMP/multi-fence-valid-second/scout-manifest.json" || fail "multi-fence valid-second manifest"
+assert_raw_matches multi-fence-valid-second "$TMP/multi-fence-valid-second.json"
 
 missing_raw_out_dir="$TMP/missing-raw-output"
 mkdir -p "$missing_raw_out_dir"
@@ -209,6 +221,7 @@ printf '{not json\n' > "$TMP/malformed.json"
 stdout=$(run_case malformed "$TMP/malformed.json")
 grep -Fq 'SCOUT_STATUS=parse-failed' "$stdout" || fail "malformed parse-failed"
 grep -Fq 'SCOUT_FAIL_REASON=json_parse' "$stdout" || fail "malformed fail reason"
+assert_raw_matches malformed "$TMP/malformed.json"
 
 cat > "$TMP/invalid-shape.json" <<'JSON'
 {"archetypes":{}}
@@ -241,6 +254,7 @@ cat > "$TMP/empty.json" <<'JSON'
 JSON
 stdout=$(run_case empty "$TMP/empty.json")
 grep -Fq 'SCOUT_STATUS=empty' "$stdout" || fail "empty status"
+assert_raw_matches empty "$TMP/empty.json"
 
 stdout=$(run_case_description description-valid "$TMP/valid4.json" "Review the CLI and API integration changes.")
 grep -Fq 'SCOUT_STATUS=ok' "$stdout" || fail "description valid status"

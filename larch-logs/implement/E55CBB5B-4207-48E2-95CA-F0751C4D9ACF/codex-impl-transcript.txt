@@ -1,0 +1,18 @@
+Implemented Phase 1 for scout raw sidecar logging.
+
+Changed:
+- [scripts/larch-log.sh](<OPERATOR_REPO_PATH>/scripts/larch-log.sh): added `scout-round*-manifest.json.raw` to `write-round` artifact allow-list.
+- [scripts/larch-log.md](<OPERATOR_REPO_PATH>/scripts/larch-log.md) and [scripts/scout-dynamic-archetypes.md](<OPERATOR_REPO_PATH>/scripts/scout-dynamic-archetypes.md): documented raw sidecar preservation/commit behavior.
+- [scripts/test-scout-dynamic-archetypes.sh](<OPERATOR_REPO_PATH>/scripts/test-scout-dynamic-archetypes.sh): asserts `.raw` exists and byte-matches fixtures for `ok`, `empty`, and `parse-failed`.
+- [scripts/test-larch-log.sh](<OPERATOR_REPO_PATH>/scripts/test-larch-log.sh): asserts `write-round` commits `scout-round1-manifest.json.raw` byte-for-byte.
+
+Verification:
+- `scripts/test-scout-dynamic-archetypes.sh` passed.
+- `scripts/test-larch-log.sh` passed.
+- `scripts/test-larch-log-write-round.sh` passed.
+- `shellcheck scripts/test-scout-dynamic-archetypes.sh scripts/test-larch-log.sh scripts/larch-log.sh` passed.
+- `git diff --check` passed.
+- `/relevant-checks` passed.
+- `make lint-only` still fails on repo-wide Mermaid render failures in existing docs/log files, unrelated to this change set.
+
+Wrote completion manifest at `<TMPDIR>/manifest.json`; no `qa-pending.json` was written.
