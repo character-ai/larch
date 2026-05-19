@@ -123,6 +123,27 @@ round_degraded() {
     [[ "$degraded_marker" == "true" ]]
 }
 
+find_previous_non_degraded_round() {
+    local base_dir="$1" start_round="$2"
+    local candidate_round=0
+
+    for (( candidate_round = start_round; candidate_round >= 1; candidate_round-- )); do
+        if ! round_degraded "$base_dir/round-${candidate_round}"; then
+            printf '%s\n' "$candidate_round"
+            return 0
+        fi
+    done
+    printf '0\n'
+}
+
+convergence_candidate_status() {
+    local status="$1"
+    case "$status" in
+        complete|fix-applied|no-changes|in-scope-filtered-out|converged-small-changes) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 count_findings() {
     local file="$1"
     if [[ -s "$file" ]]; then
@@ -983,7 +1004,6 @@ run_implement_round() {
             rm -f "$degraded_retry_flag"
         fi
         if [[ ! -f "$degraded_retry_flag" ]]; then
-            append_round_oos_artifact "$round_num_dec" "$round_oos" "$oos_jsonl" "$oos_markdown"
             touch "$degraded_retry_flag"
             IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR" "$REVIEW_CORE_SH" "${core_args[@]}" > "$core_out"
             touch "$degraded_retry_done"
@@ -1162,17 +1182,14 @@ run_implement_round() {
     # Part A: Convergence heuristic — early-termination on two consecutive low-accept rounds.
     # Count only non-degraded rounds and only terminal clean statuses.
     local small_threshold="${CONVERGENCE_THRESHOLD:-3}"
-    if [[ "$status" == "complete" && "$degraded_this_round" == false && "$round_num_dec" -ge 2 ]]; then
+    if convergence_candidate_status "$status" && [[ "$degraded_this_round" == false && "$round_num_dec" -ge 2 ]]; then
         local prev_round_a=0
-        local candidate_round_a=0
         local prev_core_out_a=""
         local prev_accepted_a
-        for (( candidate_round_a = round_num_dec - 1; candidate_round_a >= 1; candidate_round_a-- )); do
-            if ! round_degraded "$IMPLEMENT_TMPDIR/round-${candidate_round_a}"; then
-                prev_round_a=$candidate_round_a
-                break
-            fi
-        done
+        local important_scan_files=()
+        local scan_round_a=0
+
+        prev_round_a=$(find_previous_non_degraded_round "$IMPLEMENT_TMPDIR" "$((round_num_dec - 1))")
         if (( prev_round_a >= 1 )); then
             prev_core_out_a="$IMPLEMENT_TMPDIR/round-${prev_round_a}/review-core.env"
             prev_accepted_a=$(kv_get "$prev_core_out_a" ACCEPTED_COUNT)
@@ -1180,8 +1197,10 @@ run_implement_round() {
             if [[ "$prev_accepted_a" =~ ^[0-9]+$ ]] && \
                (( 10#$prev_accepted_a <= 10#$small_threshold )) && \
                (( accepted_count <= 10#$small_threshold )); then
-                local prev_round_dir_a="$IMPLEMENT_TMPDIR/round-${prev_round_a}"
-                if important_findings_present "$round_dir/findings.md" "$prev_round_dir_a/findings.md"; then
+                for (( scan_round_a = prev_round_a; scan_round_a <= round_num_dec; scan_round_a++ )); do
+                    important_scan_files+=("$IMPLEMENT_TMPDIR/round-${scan_round_a}/findings.md")
+                done
+                if important_findings_present "${important_scan_files[@]}"; then
                     :
                 else
                     local important_rc=$?
@@ -1196,14 +1215,19 @@ run_implement_round() {
     fi
 
     # Part C: Warn when round-N accepts > round-(N-1) accepts (churn-without-convergence).
-    if [[ "$exit_code" -eq 0 && "$round_num_dec" -ge 3 ]]; then
-        local prev_round_c=$((round_num_dec - 1))
-        local prev_core_out_c="$IMPLEMENT_TMPDIR/round-${prev_round_c}/review-core.env"
+    if [[ "$exit_code" -eq 0 && "$status" != "converged-small-changes" && "$round_num_dec" -ge 3 ]]; then
+        local prev_round_c=0
+        local prev_core_out_c=""
         local prev_accepted_c
-        prev_accepted_c=$(kv_get "$prev_core_out_c" ACCEPTED_COUNT)
-        prev_accepted_c="${prev_accepted_c:-0}"
-        if [[ "$prev_accepted_c" =~ ^[0-9]+$ ]] && (( accepted_count > 10#$prev_accepted_c )); then
-            larch_err "**⚠ /implement Step 5: round ${round_num_dec} accepted ${accepted_count} findings (>${prev_accepted_c} in round ${prev_round_c}). Reviewers may be polishing prior fixes rather than converging on a clean state. Consider stopping after this round.**"
+
+        prev_round_c=$(find_previous_non_degraded_round "$IMPLEMENT_TMPDIR" "$((round_num_dec - 1))")
+        if (( prev_round_c >= 1 )); then
+            prev_core_out_c="$IMPLEMENT_TMPDIR/round-${prev_round_c}/review-core.env"
+            prev_accepted_c=$(kv_get "$prev_core_out_c" ACCEPTED_COUNT)
+            prev_accepted_c="${prev_accepted_c:-0}"
+            if [[ "$prev_accepted_c" =~ ^[0-9]+$ ]] && (( accepted_count > 10#$prev_accepted_c )); then
+                larch_err "**⚠ /implement Step 5: round ${round_num_dec} accepted ${accepted_count} findings (>${prev_accepted_c} in round ${prev_round_c}). Reviewers may be polishing prior fixes rather than converging on a clean state. Consider stopping after this round.**"
+            fi
         fi
     fi
 
