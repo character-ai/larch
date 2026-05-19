@@ -131,16 +131,16 @@ check_voter_parse_rate() {
     local diag_file
     diag_file="$(voter_parse_rate_diag_path "$voter_path")"
     [[ -s "$voter_path" ]] || { printf 'PARSE_RATE_STATUS=OK\n'; return 0; }
-    local ids_count neutral_count
+    local ids_count judge_error_count
     ids_count=$(grep -cE '^### (FINDING_[0-9]+):' "$BALLOT_FILE" 2>/dev/null || true)
     ids_count="${ids_count:-0}"
     [[ "$ids_count" -gt 0 ]] || { printf 'PARSE_RATE_STATUS=OK\n'; return 0; }
-    # Count how many ballot IDs produce NEUTRAL in the voter file.
-    neutral_count=$(grep -oE '^### FINDING_[0-9]+:' "$BALLOT_FILE" 2>/dev/null | \
+    # Count how many ballot IDs produce JUDGE_ERROR in the voter file.
+    judge_error_count=$(grep -oE '^### FINDING_[0-9]+:' "$BALLOT_FILE" 2>/dev/null | \
         awk '{sub(/:$/, "", $2); print $2}' | \
         while IFS= read -r id; do
             awk -v id="$id" '
-              BEGIN { result="NEUTRAL" }
+              BEGIN { result="JUDGE_ERROR" }
               {
                 upper=toupper($0)
                 prefix="^" toupper(id) ":[[:space:]]*"
@@ -153,14 +153,14 @@ check_voter_parse_rate() {
               }
               END { print result }
             ' "$voter_path"
-        done | grep -c '^NEUTRAL' || true)
-    neutral_count="${neutral_count:-0}"
-    # >=80% NEUTRAL threshold
-    if awk -v n="$neutral_count" -v t="$ids_count" 'BEGIN { exit (n / t >= 0.8) ? 0 : 1 }'; then
+        done | grep -c '^JUDGE_ERROR' || true)
+    judge_error_count="${judge_error_count:-0}"
+    # >=80% JUDGE_ERROR threshold
+    if awk -v n="$judge_error_count" -v t="$ids_count" 'BEGIN { exit (n / t >= 0.8) ? 0 : 1 }'; then
         {
             [[ -n "$slot_num" ]] && printf 'slot=%s\n' "$slot_num"
             printf 'voter_tool=%s\n' "$voter_tool"
-            printf 'neutral_count=%s\n' "$neutral_count"
+            printf 'judge_error_count=%s\n' "$judge_error_count"
             printf 'total_findings=%s\n' "$ids_count"
             printf 'voter_file=%s\n' "$voter_path"
             printf 'voter_sha256=%s\n' "$(voter_output_sha256 "$voter_path")"
@@ -169,7 +169,7 @@ check_voter_parse_rate() {
             printf '\n'
         } > "$diag_file" || true
         if [[ "$log_mode" == "log" ]]; then
-            larch_err "**⚠ Voter ${voter_tool}: ${neutral_count}/${ids_count} findings returned NEUTRAL — voter likely produced prose without FINDING_N: VOTE lines. Check voter output at ${voter_path}.**"
+            larch_err "**⚠ Voter ${voter_tool}: ${judge_error_count}/${ids_count} findings returned JUDGE_ERROR — voter likely produced prose without FINDING_N: VOTE lines. Check voter output at ${voter_path}.**"
             _issues_log="${LARCH_EXECUTION_ISSUES_LOG:-}"
             [[ -z "$_issues_log" && -n "${SESSION_ENV_PATH:-}" ]] && _issues_log="$(dirname "$SESSION_ENV_PATH")/execution-issues.md"
             [[ -z "$_issues_log" && -n "${IMPLEMENT_TMPDIR:-}" ]] && _issues_log="$IMPLEMENT_TMPDIR/execution-issues.md"

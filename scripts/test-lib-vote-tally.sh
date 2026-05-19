@@ -51,9 +51,9 @@ assert_eq "1 voter, 1 EXONERATE → reject for implementation" "$got" "reject"
 accept_finding 0 0 0 0 && got=accept || got=reject
 assert_eq "0 voters → reject" "$got" "reject"
 accept_finding 1 0 0 3 && got=accept || got=reject
-assert_eq "3 available, 1 YES 2 NEUTRAL → reject" "$got" "reject"
+assert_eq "3 available, 1 YES 2 JUDGE_ERROR → reject" "$got" "reject"
 accept_finding 1 0 0 2 && got=accept || got=reject
-assert_eq "2 available, 1 YES 1 NEUTRAL → reject" "$got" "reject"
+assert_eq "2 available, 1 YES 1 JUDGE_ERROR → reject" "$got" "reject"
 
 echo "# vote_for_id"
 voter_file="$WORKDIR/voter.txt"
@@ -67,18 +67,24 @@ got=$(vote_for_id FINDING_1 "$voter_file"); assert_eq "FINDING_1 → YES" "$got"
 got=$(vote_for_id FINDING_2 "$voter_file"); assert_eq "FINDING_2 → NO" "$got" "NO"
 got=$(vote_for_id FINDING_3 "$voter_file"); assert_eq "FINDING_3 → EXONERATE" "$got" "EXONERATE"
 got=$(vote_for_id FINDING_10 "$voter_file"); assert_eq "FINDING_10 → YES" "$got" "YES"
-got=$(vote_for_id FINDING_4 "$voter_file"); assert_eq "FINDING_4 absent → NEUTRAL" "$got" "NEUTRAL"
+got=$(vote_for_id FINDING_4 "$voter_file"); assert_eq "FINDING_4 absent → JUDGE_ERROR" "$got" "JUDGE_ERROR"
 # Substring guard: FINDING_1 must not match FINDING_10's line.
 cat > "$voter_file" <<'EOF'
 FINDING_10: NO — only the long id
 EOF
-got=$(vote_for_id FINDING_1 "$voter_file"); assert_eq "FINDING_1 vs only-FINDING_10 → NEUTRAL" "$got" "NEUTRAL"
+got=$(vote_for_id FINDING_1 "$voter_file"); assert_eq "FINDING_1 vs only-FINDING_10 → JUDGE_ERROR" "$got" "JUDGE_ERROR"
 cat > "$voter_file" <<'EOF'
 FINDING_1: NO -- yes this matters
 FINDING_2: EXONERATE -- yes but minor
 EOF
 got=$(vote_for_id FINDING_1 "$voter_file"); assert_eq "FINDING_1 NO with yes prose → NO" "$got" "NO"
 got=$(vote_for_id FINDING_2 "$voter_file"); assert_eq "FINDING_2 EXONERATE with yes prose → EXONERATE" "$got" "EXONERATE"
+# Regression: voter file with zero parseable FINDING_N: lines must yield JUDGE_ERROR, never NEUTRAL.
+cat > "$voter_file" <<'EOF'
+This voter produced prose without any structured vote lines.
+No findings were addressed.
+EOF
+got=$(vote_for_id FINDING_1 "$voter_file"); assert_eq "zero-parseable-lines voter → JUDGE_ERROR not NEUTRAL" "$got" "JUDGE_ERROR"
 
 echo "# reviewer_for_block"
 block="$WORKDIR/block.md"

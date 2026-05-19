@@ -81,7 +81,7 @@ mk_ballot "$TMP/ballot.md"
 printf 'FINDING_1: YES\nFINDING_2: YES\nFINDING_3: YES\n' > "$TMP/cursor-vote-output.txt"
 printf 'FINDING_1: YES\nFINDING_2: NO\nFINDING_3: YES\n' > "$TMP/codex-vote-output.txt"
 printf 'FINDING_1: NO\nFINDING_2: NO\nFINDING_3: NO\n' > "$TMP/claude-vote-output.txt"
-printf 'voter_tool=cursor\nneutral_count=3\ntotal_findings=3\nvoter_file=%s/cursor-vote-output.txt\nvoter_sha256=%s\n' "$TMP" "$(shasum -a 256 "$TMP/cursor-vote-output.txt" | awk '{print $1}')" > "$TMP/cursor-vote-output-parse-rate-diag.txt"
+printf 'voter_tool=cursor\njudge_error_count=3\ntotal_findings=3\nvoter_file=%s/cursor-vote-output.txt\nvoter_sha256=%s\n' "$TMP" "$(shasum -a 256 "$TMP/cursor-vote-output.txt" | awk '{print $1}')" > "$TMP/cursor-vote-output-parse-rate-diag.txt"
 out="$TMP/out.env"
 "$SCRIPT" --ballot-file "$TMP/ballot.md" \
     --voter-files "$TMP/cursor-vote-output.txt" "$TMP/codex-vote-output.txt" "$TMP/claude-vote-output.txt" \
@@ -98,7 +98,7 @@ mk_ballot "$TMP/ballot.md"
 printf 'FINDING_1: YES\nFINDING_2: YES\nFINDING_3: YES\n' > "$TMP/cursor-vote-output.txt"
 printf 'FINDING_1: YES\nFINDING_2: NO\nFINDING_3: YES\n' > "$TMP/codex-vote-output.txt"
 printf 'FINDING_1: NO\nFINDING_2: NO\nFINDING_3: NO\n' > "$TMP/claude-vote-output.txt"
-printf 'voter_tool=cursor\nneutral_count=3\ntotal_findings=3\nvoter_file=%s/cursor-vote-output.txt\nvoter_sha256=%s\n' "$TMP" "$(shasum -a 256 "$TMP/cursor-vote-output.txt" | awk '{print $1}')" > "$TMP/cursor-vote-output-parse-rate-diag.txt"
+printf 'voter_tool=cursor\njudge_error_count=3\ntotal_findings=3\nvoter_file=%s/cursor-vote-output.txt\nvoter_sha256=%s\n' "$TMP" "$(shasum -a 256 "$TMP/cursor-vote-output.txt" | awk '{print $1}')" > "$TMP/cursor-vote-output-parse-rate-diag.txt"
 out="$TMP/out.env"
 "$SCRIPT" --ballot-file "$TMP/ballot.md" \
     --voter-files "$TMP/cursor-vote-output.txt" "$TMP/codex-vote-output.txt" "$TMP/claude-vote-output.txt" \
@@ -116,7 +116,7 @@ mk_ballot "$TMP/ballot.md"
 printf 'FINDING_1: YES\nFINDING_2: YES\nFINDING_3: YES\n' > "$TMP/cursor-vote-output.txt"
 printf 'FINDING_1: NO\nFINDING_2: NO\nFINDING_3: NO\n' > "$TMP/codex-vote-output.txt"
 printf 'FINDING_1: narrative only\nFINDING_2: narrative only\nFINDING_3: narrative only\n' > "$TMP/claude-vote-output.txt"
-printf 'voter_tool=claude\nneutral_count=3\ntotal_findings=3\nvoter_file=%s/claude-vote-output.txt\nvoter_sha256=%s\n' "$TMP" "$(shasum -a 256 "$TMP/claude-vote-output.txt" | awk '{print $1}')" > "$TMP/claude-vote-output-parse-rate-diag.txt"
+printf 'voter_tool=claude\njudge_error_count=3\ntotal_findings=3\nvoter_file=%s/claude-vote-output.txt\nvoter_sha256=%s\n' "$TMP" "$(shasum -a 256 "$TMP/claude-vote-output.txt" | awk '{print $1}')" > "$TMP/claude-vote-output-parse-rate-diag.txt"
 printf 'stale\n' > "$TMP/cursor-vote-output-parse-rate-diag.txt"
 out="$TMP/out.env"
 "$SCRIPT" --ballot-file "$TMP/ballot.md" \
@@ -136,9 +136,9 @@ mk_ballot "$TMP/ballot.md"
 printf 'FINDING_1: narrative only\nFINDING_2: narrative only\nFINDING_3: narrative only\n' > "$TMP/cursor-vote-output.txt"
 printf 'FINDING_1: narrative only\nFINDING_2: narrative only\nFINDING_3: narrative only\n' > "$TMP/codex-vote-output.txt"
 printf 'FINDING_1: narrative only\nFINDING_2: narrative only\nFINDING_3: narrative only\n' > "$TMP/claude-vote-output.txt"
-printf 'voter_tool=cursor\nneutral_count=3\ntotal_findings=3\nvoter_file=%s/cursor-vote-output.txt\nvoter_sha256=%s\n' "$TMP" "$(shasum -a 256 "$TMP/cursor-vote-output.txt" | awk '{print $1}')" > "$TMP/cursor-vote-output-parse-rate-diag.txt"
-printf 'voter_tool=codex\nneutral_count=3\ntotal_findings=3\nvoter_file=%s/codex-vote-output.txt\nvoter_sha256=%s\n' "$TMP" "$(shasum -a 256 "$TMP/codex-vote-output.txt" | awk '{print $1}')" > "$TMP/codex-vote-output-parse-rate-diag.txt"
-printf 'voter_tool=claude\nneutral_count=3\ntotal_findings=3\nvoter_file=%s/claude-vote-output.txt\nvoter_sha256=%s\n' "$TMP" "$(shasum -a 256 "$TMP/claude-vote-output.txt" | awk '{print $1}')" > "$TMP/claude-vote-output-parse-rate-diag.txt"
+printf 'voter_tool=cursor\njudge_error_count=3\ntotal_findings=3\nvoter_file=%s/cursor-vote-output.txt\nvoter_sha256=%s\n' "$TMP" "$(shasum -a 256 "$TMP/cursor-vote-output.txt" | awk '{print $1}')" > "$TMP/cursor-vote-output-parse-rate-diag.txt"
+printf 'voter_tool=codex\njudge_error_count=3\ntotal_findings=3\nvoter_file=%s/codex-vote-output.txt\nvoter_sha256=%s\n' "$TMP" "$(shasum -a 256 "$TMP/codex-vote-output.txt" | awk '{print $1}')" > "$TMP/codex-vote-output-parse-rate-diag.txt"
+printf 'voter_tool=claude\njudge_error_count=3\ntotal_findings=3\nvoter_file=%s/claude-vote-output.txt\nvoter_sha256=%s\n' "$TMP" "$(shasum -a 256 "$TMP/claude-vote-output.txt" | awk '{print $1}')" > "$TMP/claude-vote-output-parse-rate-diag.txt"
 out="$TMP/out.env"
 "$SCRIPT" --ballot-file "$TMP/ballot.md" \
     --voter-files "$TMP/cursor-vote-output.txt" "$TMP/codex-vote-output.txt" "$TMP/claude-vote-output.txt" \
@@ -154,7 +154,7 @@ TMP="$WORKDIR/case_voter_parse_stale_diag_replaced_output"
 mkdir -p "$TMP"
 mk_ballot "$TMP/ballot.md"
 printf 'FINDING_1: narrative only\nFINDING_2: narrative only\nFINDING_3: narrative only\n' > "$TMP/claude-vote-output.txt"
-printf 'voter_tool=claude\nneutral_count=3\ntotal_findings=3\nvoter_file=%s/claude-vote-output.txt\nvoter_sha256=%s\n' "$TMP" "$(shasum -a 256 "$TMP/claude-vote-output.txt" | awk '{print $1}')" > "$TMP/claude-vote-output-parse-rate-diag.txt"
+printf 'voter_tool=claude\njudge_error_count=3\ntotal_findings=3\nvoter_file=%s/claude-vote-output.txt\nvoter_sha256=%s\n' "$TMP" "$(shasum -a 256 "$TMP/claude-vote-output.txt" | awk '{print $1}')" > "$TMP/claude-vote-output-parse-rate-diag.txt"
 printf 'FINDING_1: YES\nFINDING_2: YES\nFINDING_3: YES\n' > "$TMP/claude-vote-output.txt"
 printf 'FINDING_1: YES\nFINDING_2: NO\nFINDING_3: YES\n' > "$TMP/codex-vote-output.txt"
 printf 'FINDING_1: YES\nFINDING_2: NO\nFINDING_3: YES\n' > "$TMP/cursor-vote-output.txt"
@@ -276,7 +276,7 @@ out="$TMP/out.env"
 got=$(awk -F= '$1=="TALLY_STATUS"{print $2}' "$out"); assert_eq "both-down status" "$got" "main-agent-vote-required"
 got=$(awk -F= '$1=="ACCEPTED_COUNT"{print $2}' "$out"); assert_eq "both-down accepted count" "$got" "0"
 
-echo "# Case: 3 voters, 1 YES 2 NEUTRAL → rejected (no quorum reduction)"
+echo "# Case: 3 voters, 1 YES 2 JUDGE_ERROR → rejected (no quorum reduction)"
 TMP="$WORKDIR/case4f"
 mkdir -p "$TMP"
 mk_ballot "$TMP/ballot.md"
@@ -287,8 +287,8 @@ out="$TMP/out.env"
 "$SCRIPT" --ballot-file "$TMP/ballot.md" \
     --voter-files "$TMP/cursor-vote-output.txt" "$TMP/codex-vote-output.txt" "$TMP/claude-vote-output.txt" \
     --review-tmpdir "$TMP" > "$out"
-got=$(awk -F= '$1=="ACCEPTED_COUNT"{print $2}' "$out"); assert_eq "3 voters, 1 YES 2 NEUTRAL → no accepted" "$got" "0"
-grep -Fq '| FINDING_1 | 1 | 0 | 0 | 2 | rejected |' "$TMP/voting-tally.md" || { FAIL=1; printf '  FAIL neutral quorum row missing\n'; }
+got=$(awk -F= '$1=="ACCEPTED_COUNT"{print $2}' "$out"); assert_eq "3 voters, 1 YES 2 JUDGE_ERROR → no accepted" "$got" "0"
+grep -Fq '| FINDING_1 | 1 | 0 | 0 | 2 | rejected |' "$TMP/voting-tally.md" || { FAIL=1; printf '  FAIL rejected row with 2 JERR votes missing\n'; }
 
 echo "# Case: security-tagged accepted OOS is NOT written to public file"
 TMP="$WORKDIR/case5"

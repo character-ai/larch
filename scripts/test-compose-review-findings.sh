@@ -62,7 +62,7 @@ cat > "$TMP/b-impl/rejected-findings-full.md" <<'EOF'
 - **Concern**: token sk-ant-abcdefghijklmnopqrstuvwxyz0123456789ABCD appears.
 - **Suggested revision**: Redact the token.
 
-Vote tally: YES=0 NO=2 EXON=0 NEUTRAL=0
+Vote tally: YES=0 NO=2 EXON=0 JUDGE_ERROR=0
 
 EOF
 cat > "$TMP/b-impl/round-1/accepted-findings.md" <<'EOF'

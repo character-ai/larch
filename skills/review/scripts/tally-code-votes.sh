@@ -231,7 +231,7 @@ if (( EFFECTIVE_VOTERS == 0 )); then
         printf '**⚠ Degraded code-review panel: %s reviewer slot(s) emitted narrative-only output (NOT_SUBSTANTIVE). Dead slots are shown in the scoreboard below.**\n\n' "$NOT_SUBSTANTIVE_COUNT" >> "$VOTING_TALLY_FILE"
     fi
     if [[ "$VOTER_PARSE_FAILED_COUNT" -gt 0 && "$ELIGIBLE_VOTERS" -gt 0 ]]; then
-        printf '**⚠ Degraded code-review panel: %s voter slot(s) emitted narrative-only output (parse-rate ≥80%% NEUTRAL) and were removed from the effective quorum.**\n\n' "$VOTER_PARSE_FAILED_COUNT" >> "$VOTING_TALLY_FILE"
+        printf '**⚠ Degraded code-review panel: %s voter slot(s) emitted narrative-only output (parse-rate ≥80%% JUDGE_ERROR) and were removed from the effective quorum.**\n\n' "$VOTER_PARSE_FAILED_COUNT" >> "$VOTING_TALLY_FILE"
     fi
     emit_kv TALLY_STATUS main-agent-vote-required
     emit_kv ACCEPTED_COUNT "$ACCEPTED_COUNT"
@@ -270,15 +270,15 @@ write_archetype_map "$MANIFEST_FILE" "$archetype_map"
         printf '**⚠ Degraded code-review panel: %s reviewer slot(s) emitted narrative-only output (NOT_SUBSTANTIVE). Dead slots are shown in the scoreboard below.**\n\n' "$NOT_SUBSTANTIVE_COUNT"
     fi
     if [[ "$VOTER_PARSE_FAILED_COUNT" -gt 0 ]]; then
-        printf '**⚠ Degraded code-review panel: %s voter slot(s) emitted narrative-only output (parse-rate ≥80%% NEUTRAL) and were removed from the effective quorum.**\n\n' "$VOTER_PARSE_FAILED_COUNT"
+        printf '**⚠ Degraded code-review panel: %s voter slot(s) emitted narrative-only output (parse-rate ≥80%% JUDGE_ERROR) and were removed from the effective quorum.**\n\n' "$VOTER_PARSE_FAILED_COUNT"
     fi
     printf '## Per-finding vote breakdown\n\n'
-    printf '| Item | YES | NO | EXON | NEUT | Result |\n'
+    printf '| Item | YES | NO | EXON | JERR | Result |\n'
     printf '|---|---:|---:|---:|---:|---|\n'
 
     for block in "${block_files[@]+"${block_files[@]}"}"; do
         id=$(basename "$block" .md)
-        yes=0; no=0; exonerate=0; neutral=0
+        yes=0; no=0; exonerate=0; judge_error=0
         # Code review uses EFFECTIVE_VOTERS, not raw voter-file count, after
         # parse-rate degradation removes narrative-only voter slots.
         for voter_file in "${EFFECTIVE_VOTER_FILES[@]}"; do
@@ -287,7 +287,7 @@ write_archetype_map "$MANIFEST_FILE" "$archetype_map"
                 YES) yes=$((yes + 1)) ;;
                 NO) no=$((no + 1)) ;;
                 EXONERATE) exonerate=$((exonerate + 1)) ;;
-                *) neutral=$((neutral + 1)) ;;
+                *) judge_error=$((judge_error + 1)) ;;
             esac
         done
 
@@ -299,7 +299,7 @@ write_archetype_map "$MANIFEST_FILE" "$archetype_map"
                 exit 2
                 ;;
         esac
-        printf '| %s | %s | %s | %s | %s | %s |\n' "$id" "$yes" "$no" "$exonerate" "$neutral" "$result"
+        printf '| %s | %s | %s | %s | %s | %s |\n' "$id" "$yes" "$no" "$exonerate" "$judge_error" "$result"
 
         reviewer=$(reviewer_for_block "$block")
 
@@ -336,7 +336,7 @@ write_archetype_map "$MANIFEST_FILE" "$archetype_map"
                         {
                             printf '### [%s] %s\n\n' "$result" "$id"
                             cat "$block"
-                            printf '\nVote tally: YES=%s NO=%s EXON=%s NEUTRAL=%s\n\n' "$yes" "$no" "$exonerate" "$neutral"
+                            printf '\nVote tally: YES=%s NO=%s EXON=%s JUDGE_ERROR=%s\n\n' "$yes" "$no" "$exonerate" "$judge_error"
                         } >> "$REJECTED_FINDINGS_FILE"
                         REJECTED_COUNT=$((REJECTED_COUNT + 1))
                         ;;
@@ -352,7 +352,7 @@ write_archetype_map "$MANIFEST_FILE" "$archetype_map"
         else
             # OOS item
             cat "$block" >> "$OOS_FILE"
-            printf '\nVote tally: YES=%s NO=%s EXON=%s NEUTRAL=%s Result=%s\n\n' "$yes" "$no" "$exonerate" "$neutral" "$result" >> "$OOS_FILE"
+            printf '\nVote tally: YES=%s NO=%s EXON=%s JUDGE_ERROR=%s Result=%s\n\n' "$yes" "$no" "$exonerate" "$judge_error" "$result" >> "$OOS_FILE"
             if [[ "$result" == "accepted" ]]; then
                 if [[ "$security" == "true" ]]; then
                     # Security-tagged accepted OOS: held locally only, never filed publicly.

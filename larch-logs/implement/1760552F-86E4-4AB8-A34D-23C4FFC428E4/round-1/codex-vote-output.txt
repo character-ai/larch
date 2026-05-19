@@ -1,0 +1,31 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: EXONERATE -- historical logs are legitimate legacy artifacts but not worth a tracking issue.
+FINDING_8: NO -- the envelope `neutral` fields are correct tied-vote counters and should not be renamed.
+FINDING_9: EXONERATE -- historical committed logs are legacy snapshots, not issue-worthy cleanup.
+FINDING_10: EXONERATE -- legitimate fixture drift, but duplicated by in-scope findings and not worth a future issue.
+FINDING_11: EXONERATE -- legitimate fixture drift, but duplicated by in-scope findings and not worth a future issue.
+FINDING_12: EXONERATE -- legitimate harness drift, but duplicated by in-scope findings and not worth a future issue.
+FINDING_13: EXONERATE -- legitimate doc drift, but duplicated by in-scope findings and not worth a future issue.
+FINDING_14: EXONERATE -- legitimate doc drift, but duplicated by in-scope findings and not worth a future issue.
+FINDING_15: EXONERATE -- duplicated awk is real but refactoring it is broader than this rename warrants.
+FINDING_16: NO -- the API table already shows aggregate arguments; threshold prose is conceptual, not a signature.
+FINDING_17: YES
+FINDING_18: YES
+FINDING_19: YES
+FINDING_20: YES
+FINDING_21: YES
+FINDING_22: YES
+FINDING_23: NO -- the test description accurately describes the implied missing per-item votes under the aggregate call.
+FINDING_24: NO -- prose-only input is a valid zero-parseable-vote-lines regression fixture.
+FINDING_25: YES
+FINDING_26: YES
+FINDING_27: YES
+FINDING_28: YES
+FINDING_29: YES
+FINDING_30: EXONERATE -- external migration guidance is broader than needed; first-party doc drift is covered separately.
+FINDING_31: YES

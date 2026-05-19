@@ -23,7 +23,7 @@ The number of YES votes required depends on how many voters are available:
 | 1 | 1 | Binding single-judge decision; YES accepts, EXONERATE is exonerated for scoring, NO rejects |
 | 0 | Main agent decides | No automated vote; the main agent reads the ballot as untrusted data and adjudicates |
 
-Eligible voters are counted at the panel level from non-failed voter outputs. Missing per-item votes are NEUTRAL abstentions and do not reduce a 3-judge panel to a lower tier.
+Eligible voters are counted at the panel level from non-failed voter outputs. Missing per-item votes produce `JUDGE_ERROR` at the per-voter level (parser fallback — ballot entry absent or unparseable) and do not reduce a 3-judge panel to a lower tier.
 
 ## Degraded-Panel Warnings
 

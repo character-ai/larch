@@ -25,9 +25,9 @@ Sources `${CLAUDE_PLUGIN_ROOT}/scripts/lib-vote-tally.sh` for `vote_for_id`, `re
 
 ## Output artifacts
 
-- `voting-tally.md` — per-item table (`Item | YES | NO | EXON | NEUT | Result`) plus reviewer competition scoreboard.
+- `voting-tally.md` — per-item table (`Item | YES | NO | EXON | JERR | Result`) plus reviewer competition scoreboard.
 - `accepted-findings.md` — accepted FINDING_N blocks (in-scope only; OOS items go to a separate file).
-- `rejected-findings.md` — only findings with outcome `rejected` (strictly voted down), with `Vote tally: YES=… NO=… EXON=… NEUTRAL=…` appended. Exonerated and neutral findings are counted but not written here.
+- `rejected-findings.md` — only findings with outcome `rejected` (strictly voted down), with `Vote tally: YES=… NO=… EXON=… JUDGE_ERROR=…` appended. Exonerated and neutral findings are counted but not written here.
 - `oos-accepted-review.md` — accepted OOS blocks with the security-tag filter applied (security-tagged OOS items are held locally only, never filed publicly).
 - `oos.md` — all OOS items (accepted and not), with vote tallies.
 - `review-tally.env` — per-block `FINDING_N_ACCEPTED=true|false` and `FINDING_N_OUTCOME=<accepted|rejected|exonerated|neutral>` keys, plus summary counters (`ACCEPTED_COUNT`, `REJECTED_COUNT`, `EXONERATED_COUNT`, `NEUTRAL_COUNT`, `OOS_ACCEPTED_COUNT`, `OOS_REJECTED_COUNT`).
@@ -67,7 +67,7 @@ Manifest attribution maps output basenames, not slot IDs. Fallback basenames nor
 - `effective == 1` → single-judge binding decision (`YES` accepts; `NO` rejects; `EXONERATE` is exonerated but not accepted).
 - `effective == 0` → no automated vote; emit `TALLY_STATUS=main-agent-vote-required`, leave accepted/rejected counts at 0, and require main-agent adjudication.
 
-The quorum basis is the panel-level effective voter count (`VOTER_COUNT`), not the per-finding non-neutral vote count. `ELIGIBLE_VOTER_COUNT` captures the raw voter file count, while `VOTER_COUNT` removes parse-rate-degraded narrative-only voter slots before tallying. NEUTRAL or missing per-item votes within the effective panel do not reduce a 3-judge panel to a lower tier.
+The quorum basis is the panel-level effective voter count (`VOTER_COUNT`), not the per-finding non-`JUDGE_ERROR` vote count. `ELIGIBLE_VOTER_COUNT` captures the raw voter file count, while `VOTER_COUNT` removes parse-rate-degraded narrative-only voter slots before tallying. Per-judge `JUDGE_ERROR` fallbacks or missing per-item votes within the effective panel do not reduce a 3-judge panel to a lower tier.
 
 ## Callers
 
@@ -75,4 +75,4 @@ The quorum basis is the panel-level effective voter count (`VOTER_COUNT`), not t
 
 ## Harness
 
-`skills/review/scripts/test-tally-code-votes.sh` covers: 3-voter 2-YES accept, 3-voter 1-YES reject with NEUTRAL abstentions, 2-voter unanimous and non-unanimous paths, single-judge YES/NO/EXONERATE, 0-judge main-agent-required, deprecated `--both-down`, OOS handling with `[OUT_OF_SCOPE]` title prefix, rejected-OOS scoring, security-tag filtering on accepted OOS, the scope-fit gate (diff-only list, plan exemption, no-op without `--scope-files`), and `--manifest-file` yield TSV attribution including dynamic fallback basename normalization and generalist mapping.
+`skills/review/scripts/test-tally-code-votes.sh` covers: 3-voter 2-YES accept, 3-voter 1-YES reject with per-judge `JUDGE_ERROR` fallbacks, 2-voter unanimous and non-unanimous paths, single-judge YES/NO/EXONERATE, 0-judge main-agent-required, deprecated `--both-down`, OOS handling with `[OUT_OF_SCOPE]` title prefix, rejected-OOS scoring, security-tag filtering on accepted OOS, the scope-fit gate (diff-only list, plan exemption, no-op without `--scope-files`), and `--manifest-file` yield TSV attribution including dynamic fallback basename normalization and generalist mapping.
