@@ -380,7 +380,7 @@ invoke_unmerged_apply() {
 run_case "unmerged_paths" invoke_unmerged_apply
 assert_exit_code "unmerged_paths" "4" "J: unmerged paths exits 4"
 assert_stdout_contains "unmerged_paths" "APPLIED=false" "J: unmerged paths emits APPLIED=false"
-assert_stdout_matches "unmerged_paths" "^ERROR=rebase in progress with unmerged paths:" "J: unmerged paths error is stable"
+assert_stdout_matches "unmerged_paths" "^ERROR=unmerged paths present:" "J: unmerged paths error is stable"
 
 echo
 if [[ "$FAIL_COUNT" -eq 0 ]]; then

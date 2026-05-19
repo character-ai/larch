@@ -93,12 +93,10 @@ while [ "$_depth" -lt "$MAX_DEPTH" ]; do
         break
     fi
     _subj=$(git log -1 --format=%s "$_ref" 2>/dev/null || true)
-    case "$_subj" in
-        Bump\ version\ to\ [0-9]*.[0-9]*.[0-9]*)
-            FOUND_AT="$_depth"
-            break
-            ;;
-    esac
+    if [[ "$_subj" =~ ^Bump\ version\ to\ [0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        FOUND_AT="$_depth"
+        break
+    fi
     _depth=$(( _depth + 1 ))
 done
 

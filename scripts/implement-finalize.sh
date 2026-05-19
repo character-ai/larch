@@ -696,7 +696,7 @@ maybe_update_changelog() {
         local fallback_issue_num fallback_pr_title
         fallback_issue_num=$(read_state ISSUE_NUMBER 2>/dev/null || true)
         fallback_pr_title=$(read_state PR_TITLE 2>/dev/null || true)
-        if [ -n "$fallback_issue_num" ]; then
+        if [ -n "$fallback_issue_num" ] && [ "$fallback_issue_num" != "0" ]; then
             # Write a synthetic categories_md so write_changelog_entry can proceed.
             local fallback_line="Closed: #${fallback_issue_num}"
             [ -n "$fallback_pr_title" ] && fallback_line="${fallback_line} — ${fallback_pr_title}"

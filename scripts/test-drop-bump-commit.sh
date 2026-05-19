@@ -254,7 +254,7 @@ output=$(cd "$REPO" && bash "$DROP_SCRIPT" --max-depth 2 2>"$TMPDIR_BASE/test19-
 actual=$(echo "$output" | grep "^DROPPED=" | head -1 | cut -d= -f2)
 stderr_out=$(cat "$TMPDIR_BASE/test19-stderr.txt" 2>/dev/null || true)
 if [[ "$actual" == "false" ]]; then
-    if echo "$stderr_out" | grep -q "2"; then
+    if echo "$stderr_out" | grep -Fq "within 2 commits of HEAD"; then
         PASS=$((PASS + 1))
     else
         echo "FAIL: Test 19 — DROPPED=false but depth not mentioned in stderr: $stderr_out" >&2

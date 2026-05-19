@@ -215,6 +215,8 @@ git -C "$SANDBOX/repo" checkout -- CHANGELOG.md 2>/dev/null || true
 
 state_c=$(make_state_file "" "" "")
 out_c=$(run_postbump "$state_c")
+assert_contains "STATUS=changelog-failed" "$out_c" \
+    "c: STATUS=changelog-failed"
 assert_contains "CHANGELOG_STATUS=fail-no-manifest-no-issue" "$out_c" \
     "c: CHANGELOG_STATUS=fail-no-manifest-no-issue"
 # The warn_line writes to stderr, captured by run_postbump's 2>&1 redirect.
