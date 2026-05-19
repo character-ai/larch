@@ -1,0 +1,28 @@
+FINDING_1: YES
+FINDING_2: NO -- committed run logs are intentional repo policy and explicitly excluded by the reviewer’s own concern.
+FINDING_3: EXONERATE -- legitimate duplicate of in-scope parse-diag bug, not a separate future issue.
+FINDING_4: NO -- committed implement logs are intentional per docs/run-logs.md and not a functional defect.
+FINDING_5: EXONERATE -- label is mildly misleading but too small to track separately.
+FINDING_6: EXONERATE -- terminology ambiguity is real but not worth a blocking finding.
+FINDING_7: YES
+FINDING_8: NO -- launch-review.sh is the actual canonical codex/cursor launcher used by waterfall; named direct launchers are not present.
+FINDING_9: EXONERATE -- stale retry stderr sidecar is harmless tempdir clutter.
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: EXONERATE -- cleanup is legitimate but the orphaned sidecar is low-impact tempdir noise.
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: YES
+FINDING_18: YES
+FINDING_19: EXONERATE -- log label mismatch is real but too minor for a required fix.
+FINDING_20: NO -- retry uses the same unified launcher path waterfall uses for codex/cursor, so the claimed launcher-contract divergence is not substantiated.
+FINDING_21: YES
+FINDING_22: YES
+FINDING_23: YES
+FINDING_24: YES
+FINDING_25: YES
+FINDING_26: YES
+FINDING_27: YES
+FINDING_28: YES

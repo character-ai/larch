@@ -1,0 +1,9 @@
+Reading the ballot and locating diff/plan context to verify each finding.
+
+Reading plan/diff context and verifying cited code in the repository.
+
+Tracing voter_tool vs output paths during fallback and locating scoreboard normalization (line numbers may differ).
+
+Verification summary: Confirmed in [`scripts/dispatch-code-voters.sh`](scripts/dispatch-code-voters.sh) that when `voter_tool` is set, `voter_parse_rate_diag_path` uses `"$REVIEW_TMPDIR/$voter_tool-parse-rate-diag.txt"` (lines 99–103), while fallback sets `VOTER_2_TOOL=claude` with output still `codex-vote-output.txt` (lines 375–385). [`skills/review/scripts/tally-code-votes.sh`](skills/review/scripts/tally-code-votes.sh) maps diags only from the output basename (lines 198–207), so slot-2 Claude fallback writes `claude-parse-rate-diag.txt` but tallies `codex-vote-output.txt` against `codex-parse-rate-diag.txt`. Early exit at lines 235–257 omits the later parse-rate banner block (lines 266–277). Banner text at lines 275–276 differs from [`plan-context.txt`](file:///Users/zhupanov/.cache/larch/sessions/claude-implement-larch2-OQ1fqR/round-3/plan-context.txt) lines 44–46. [`test-tally-code-votes.md`](skills/review/scripts/test-tally-code-votes.md) lists no parse-rate / `VOTER_COUNT` cases while [`test-tally-code-votes.sh`](skills/review/scripts/test-tally-code-votes.sh) does.
+
+
