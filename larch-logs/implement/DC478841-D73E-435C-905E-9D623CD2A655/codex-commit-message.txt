@@ -1,0 +1,5 @@
+fix(review): correct reviewer scoreboard attribution
+
+Anchor reviewer attribution parsing to canonical Reviewer/Reviewers lines, include dynamic zero-finding slots in the reviewer scoreboard, and treat missing collector status as OK for slots that produced no findings.
+
+Update vote tally and code-review tally harness coverage for the repaired cases.
