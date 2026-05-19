@@ -139,7 +139,7 @@ find_previous_non_degraded_round() {
 convergence_candidate_status() {
     local status="$1"
     case "$status" in
-        complete|fix-applied|no-changes|in-scope-filtered-out|converged-small-changes) return 0 ;;
+        complete|no-changes|in-scope-filtered-out|converged-small-changes) return 0 ;;
         *) return 1 ;;
     esac
 }
@@ -1005,6 +1005,7 @@ run_implement_round() {
         fi
         if [[ ! -f "$degraded_retry_flag" ]]; then
             touch "$degraded_retry_flag"
+            append_round_oos_artifact "$round_num_dec" "$round_oos" "$oos_jsonl" "$oos_markdown"
             IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR" "$REVIEW_CORE_SH" "${core_args[@]}" > "$core_out"
             touch "$degraded_retry_done"
             core_status=$(kv_get "$core_out" REVIEW_CORE_STATUS)
