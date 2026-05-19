@@ -208,6 +208,14 @@ VOTING_SKIPPED_WARNING=""
 if [[ "$BOTH_DOWN" == "true" ]]; then
     ELIGIBLE_VOTERS=0
 fi
+VOTER_PARSE_FAILED_COUNT=0
+for voter_tool in claude codex cursor; do
+    if [[ -f "$REVIEW_TMPDIR/${voter_tool}-parse-rate-diag.txt" ]]; then
+        VOTER_PARSE_FAILED_COUNT=$((VOTER_PARSE_FAILED_COUNT + 1))
+    fi
+done
+EFFECTIVE_VOTERS=$((ELIGIBLE_VOTERS - VOTER_PARSE_FAILED_COUNT))
+(( EFFECTIVE_VOTERS < 0 )) && EFFECTIVE_VOTERS=0
 
 if (( ELIGIBLE_VOTERS == 0 )); then
     VOTING_SKIPPED_WARNING="**⚠ Degraded code-review panel: 0 judges available. Panel tier: main-agent-required. Manual adjudication needed.**"
@@ -241,12 +249,15 @@ write_archetype_map "$MANIFEST_FILE" "$archetype_map"
 
 {
     printf '# Code Review Voting Tally\n\n'
-    if (( ELIGIBLE_VOTERS < 3 )); then
-        tier_label="$(panel_tier "$ELIGIBLE_VOTERS")"
-        printf '**⚠ Degraded code-review panel: %s judge(s) available. Panel tier: %s.**\n\n' "$ELIGIBLE_VOTERS" "$tier_label"
+    if (( EFFECTIVE_VOTERS < 3 )); then
+        tier_label="$(panel_tier "$EFFECTIVE_VOTERS")"
+        printf '**⚠ Degraded code-review panel: %s judge(s) available. Panel tier: %s.**\n\n' "$EFFECTIVE_VOTERS" "$tier_label"
     fi
     if [[ "$NOT_SUBSTANTIVE_COUNT" -gt 0 ]]; then
         printf '**⚠ Degraded code-review panel: %s reviewer slot(s) emitted narrative-only output (NOT_SUBSTANTIVE). Dead slots are shown in the scoreboard below.**\n\n' "$NOT_SUBSTANTIVE_COUNT"
+    fi
+    if [[ "$VOTER_PARSE_FAILED_COUNT" -gt 0 ]]; then
+        printf '**⚠ Degraded code-review panel: %s voter slot(s) emitted narrative-only output (parse-rate ≥80%% NEUTRAL). Voted blocks have inflated NEUT counts; treat results with caution.**\n\n' "$VOTER_PARSE_FAILED_COUNT"
     fi
     printf '## Per-finding vote breakdown\n\n'
     printf '| Item | YES | NO | EXON | NEUT | Result |\n'
@@ -369,9 +380,12 @@ write_archetype_map "$MANIFEST_FILE" "$archetype_map"
       }
       END {
         for (reviewer in seen) {
+          label=reviewer
+          sub(/-output\.txt$/, "", label)
+          sub(/\.txt$/, "", label)
           score=accepted[reviewer]+0 + oos_accepted[reviewer]+0 - rejected[reviewer]+0 - oos_rejected[reviewer]+0
-          printf "| %s | %d | %d | %d | %d | %d | %d | %d | %d | %d | |\n",
-            reviewer, proposed[reviewer]+0, accepted[reviewer]+0, neutral[reviewer]+0,
+          printf "| %s | %d | %d | %d | %d | %d | %d | %d | %d | %d | STATUS=OK |\n",
+            label, proposed[reviewer]+0, accepted[reviewer]+0, neutral[reviewer]+0,
             rejected[reviewer]+0, oos_proposed[reviewer]+0, oos_accepted[reviewer]+0,
             oos_neutral[reviewer]+0, oos_rejected[reviewer]+0, score
         }

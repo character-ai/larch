@@ -50,6 +50,26 @@ case "${CLAUDE_STUB_MODE:-ok}" in
   fail)
     printf 'stub claude failure\n' >&2
     exit 7 ;;
+  parse_retry_success)
+    count_file="${CLAUDE_STUB_COUNT_FILE:?CLAUDE_STUB_COUNT_FILE required}"
+    count=0
+    [[ -f "$count_file" ]] && count=$(cat "$count_file" 2>/dev/null || echo 0)
+    count=$((count + 1))
+    printf '%s\n' "$count" > "$count_file"
+    if [[ "$count" -eq 1 ]]; then
+      printf 'I reviewed the ballot and here is my narrative instead of votes.\n'
+    else
+      printf 'FINDING_1: YES\n'
+    fi
+    exit 0 ;;
+  parse_retry_fail)
+    count_file="${CLAUDE_STUB_COUNT_FILE:?CLAUDE_STUB_COUNT_FILE required}"
+    count=0
+    [[ -f "$count_file" ]] && count=$(cat "$count_file" 2>/dev/null || echo 0)
+    count=$((count + 1))
+    printf '%s\n' "$count" > "$count_file"
+    printf 'I reviewed the ballot and here is my narrative instead of votes.\n'
+    exit 0 ;;
 esac
 printf 'FINDING_1: YES\n'
 STUB
@@ -80,6 +100,9 @@ grep -Fq 'VOTER_3_STATUS=launched' <<< "$out"
 grep -Fq 'DISPATCH_OK=true' <<< "$out"
 grep -Fq -- '--output-last-message' "$CODEX_LOG" || { echo "FAIL: codex launch missing output-last-message" >&2; exit 1; }
 grep -Fq -- '--output-format json' "$CURSOR_LOG" || { echo "FAIL: cursor launch missing json mode" >&2; exit 1; }
+grep -Fq 'VOTER_1_PARSE_RATE_STATUS=OK' <<< "$out" || { echo "FAIL: voter1 parse-rate status missing/incorrect" >&2; exit 1; }
+grep -Fq 'VOTER_2_PARSE_RATE_STATUS=OK' <<< "$out" || { echo "FAIL: voter2 parse-rate status missing/incorrect" >&2; exit 1; }
+grep -Fq 'VOTER_3_PARSE_RATE_STATUS=OK' <<< "$out" || { echo "FAIL: voter3 parse-rate status missing/incorrect" >&2; exit 1; }
 
 out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" --ballot-file "$BALLOT" --review-tmpdir "$TMP/absent" --codex-available false --cursor-available false)
 grep -Fq 'VOTER_2_TOOL=claude' <<< "$out"
@@ -141,5 +164,40 @@ grep -Fq 'VOTER_1_STATUS=launched' <<< "$out" \
 grep -Fq 'FINDING_1: YES' "$big_review_tmpdir/claude-vote-output.txt" \
     || { echo "FAIL: 2MB-diff scenario expected FINDING_1: YES in voter output" >&2; exit 1; }
 fi  # end section: edge
+
+retry_success_tmp="$TMP/retry-success"
+retry_count_file="$TMP/retry-success-count.txt"
+out=$(PATH="$STUB_BIN:$PATH" CLAUDE_STUB_MODE=parse_retry_success CLAUDE_STUB_COUNT_FILE="$retry_count_file" "$SCRIPT" \
+    --ballot-file "$BALLOT" \
+    --review-tmpdir "$retry_success_tmp" \
+    --codex-available true \
+    --cursor-available true)
+grep -Fq 'VOTER_1_PARSE_RATE_STATUS=OK' <<< "$out" \
+    || { echo "FAIL: parse-rate retry success expected VOTER_1_PARSE_RATE_STATUS=OK" >&2; exit 1; }
+grep -Fq 'FINDING_1: YES' "$retry_success_tmp/claude-vote-output.txt" \
+    || { echo "FAIL: parse-rate retry success expected structured final voter output" >&2; exit 1; }
+[[ ! -e "$retry_success_tmp/claude-parse-rate-diag.txt" ]] \
+    || { echo "FAIL: parse-rate retry success should clear claude parse-rate diag" >&2; exit 1; }
+[[ "$(cat "$retry_count_file")" -eq 2 ]] \
+    || { echo "FAIL: parse-rate retry success expected exactly two claude attempts" >&2; exit 1; }
+
+retry_fail_tmp="$TMP/retry-fail"
+retry_fail_count_file="$TMP/retry-fail-count.txt"
+retry_fail_issues="$TMP/retry-fail-execution-issues.md"
+out=$(PATH="$STUB_BIN:$PATH" CLAUDE_STUB_MODE=parse_retry_fail CLAUDE_STUB_COUNT_FILE="$retry_fail_count_file" LARCH_EXECUTION_ISSUES_LOG="$retry_fail_issues" "$SCRIPT" \
+    --ballot-file "$BALLOT" \
+    --review-tmpdir "$retry_fail_tmp" \
+    --codex-available true \
+    --cursor-available true)
+grep -Fq 'VOTER_1_PARSE_RATE_STATUS=NOT_SUBSTANTIVE' <<< "$out" \
+    || { echo "FAIL: parse-rate retry failure expected VOTER_1_PARSE_RATE_STATUS=NOT_SUBSTANTIVE" >&2; exit 1; }
+grep -Fq 'narrative instead of votes' "$retry_fail_tmp/claude-vote-output.txt" \
+    || { echo "FAIL: parse-rate retry failure should preserve original narrative output" >&2; exit 1; }
+[[ -s "$retry_fail_tmp/claude-parse-rate-diag.txt" ]] \
+    || { echo "FAIL: parse-rate retry failure should preserve claude parse-rate diag" >&2; exit 1; }
+grep -Fq 'dispatch-code-voters.sh claude' "$retry_fail_issues" \
+    || { echo "FAIL: parse-rate retry failure should append execution issue warning" >&2; exit 1; }
+[[ "$(cat "$retry_fail_count_file")" -eq 2 ]] \
+    || { echo "FAIL: parse-rate retry failure expected exactly two claude attempts" >&2; exit 1; }
 
 echo "PASS: test-dispatch-code-voters.sh"

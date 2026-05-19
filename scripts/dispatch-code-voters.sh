@@ -61,6 +61,19 @@ make_voter_prompt_file() {
     printf '%s' "$prompt_file"
 }
 
+VOTER_PARSE_RATE_RETRY_PREFIX='IMPORTANT: Your previous attempt produced narrative output instead of structured votes. Each line MUST start with FINDING_N: followed by exactly one of YES, NO, or EXONERATE. Do not output any prose, reasoning, or status updates before, between, or after the vote lines. If you need to verify claims, do so silently. Output ONLY vote lines.'
+
+make_voter_retry_prompt_file() {
+    local label="$1"
+    local src_prompt_file="$2"
+    local retry_prompt_file="$REVIEW_TMPDIR/${label}-vote-prompt-retry.txt"
+    {
+        printf '%s\n\n' "$VOTER_PARSE_RATE_RETRY_PREFIX"
+        cat "$src_prompt_file"
+    } > "$retry_prompt_file"
+    printf '%s' "$retry_prompt_file"
+}
+
 make_bounded_context_copy() {
     local label="$1"
     local src="$2"
@@ -85,10 +98,10 @@ PY
 # NEUTRAL for >=80% of ballot findings (indicating unparseable output).
 check_voter_parse_rate() {
     local voter_path="$1" voter_tool="$2"
-    [[ -s "$voter_path" ]] || return 0
+    [[ -s "$voter_path" ]] || { printf 'PARSE_RATE_STATUS=OK\n'; return 0; }
     local ids_count neutral_count
     ids_count=$(grep -cE '^### (FINDING_[0-9]+):' "$BALLOT_FILE" 2>/dev/null || echo 0)
-    [[ "$ids_count" -gt 0 ]] || return 0
+    [[ "$ids_count" -gt 0 ]] || { printf 'PARSE_RATE_STATUS=OK\n'; return 0; }
     # Count how many ballot IDs produce NEUTRAL in the voter file.
     neutral_count=$(grep -oE '^### FINDING_[0-9]+:' "$BALLOT_FILE" 2>/dev/null | \
         awk '{sub(/:$/, "", $2); print $2}' | \
@@ -137,7 +150,93 @@ check_voter_parse_rate() {
         fi
         larch_err "**⚠ Voter ${voter_tool}: ${neutral_count}/${ids_count} findings returned NEUTRAL — voter likely produced prose without FINDING_N: VOTE lines. Check voter output at ${voter_path}.**"
         unset _diag_file _issues_log
+        printf 'PARSE_RATE_STATUS=NOT_SUBSTANTIVE\n'
+    else
+        printf 'PARSE_RATE_STATUS=OK\n'
     fi
+}
+
+parse_rate_status_from_output() {
+    awk -F= '$1=="PARSE_RATE_STATUS" { print $2; found=1 } END { if (!found) print "OK" }'
+}
+
+launch_voter_retry() {
+    local voter_tool="$1" retry_output="$2" retry_prompt="$3" timing_task="$4"
+    set +e
+    case "$voter_tool" in
+        claude)
+            "$SCRIPT_DIR/launch-claude-review.sh" \
+                --output "$retry_output" \
+                --prompt-file "$retry_prompt" \
+                --mode "$mode" \
+                --role voter \
+                --timeout 1200 \
+                --timing-task-kind "$timing_task" \
+                "${ctx_args[@]+"${ctx_args[@]}"}" >/dev/null 2> "${retry_output}.launcher-stderr"
+            ;;
+        codex|cursor)
+            "$SCRIPT_DIR/launch-review.sh" \
+                --tool "$voter_tool" \
+                --output "$retry_output" \
+                --prompt-file "$retry_prompt" \
+                --mode "$mode" \
+                --timeout 1200 \
+                --timing-task-kind "$timing_task" \
+                "${ctx_args[@]+"${ctx_args[@]}"}" >/dev/null 2> "${retry_output}.launcher-stderr"
+            ;;
+        *)
+            larch_err "dispatch-code-voters.sh: unknown voter retry tool: $voter_tool"
+            return 2
+            ;;
+    esac
+    local rc=$?
+    set -e
+    [[ -f "${retry_output}.done" ]] || printf '%s\n' "$rc" > "${retry_output}.done"
+    return "$rc"
+}
+
+check_and_retry_voter_parse_rate() {
+    local slot_num="$1" voter_path="$2" voter_tool="$3" prompt_file="$4"
+    local status retry_prompt retry_output retry_rc retry_status diag_file saved_diag
+    status=$(check_voter_parse_rate "$voter_path" "$voter_tool" | parse_rate_status_from_output)
+    [[ "$status" == "NOT_SUBSTANTIVE" ]] || { printf '%s\n' "$status"; return 0; }
+
+    diag_file="$REVIEW_TMPDIR/${voter_tool}-parse-rate-diag.txt"
+    saved_diag="$REVIEW_TMPDIR/${voter_tool}-parse-rate-diag.voter${slot_num}.orig"
+    if [[ -f "$diag_file" ]]; then
+        cp "$diag_file" "$saved_diag" 2>/dev/null || true
+    fi
+
+    retry_prompt=$(make_voter_retry_prompt_file "$voter_tool" "$prompt_file")
+    case "$voter_path" in
+        *.txt) retry_output="${voter_path%.txt}-parse-retry.txt" ;;
+        *) retry_output="${voter_path}-parse-retry" ;;
+    esac
+    rm -f "$retry_output" "${retry_output}.done" "${retry_output}.launcher-stderr"
+
+    set +e
+    launch_voter_retry "$voter_tool" "$retry_output" "$retry_prompt" "${voter_tool}-voter-${slot_num}-parse-retry"
+    retry_rc=$?
+    set -e
+    if [[ "$retry_rc" -eq 0 && -s "$retry_output" ]]; then
+        retry_status=$(check_voter_parse_rate "$retry_output" "$voter_tool" | parse_rate_status_from_output)
+        if [[ "$retry_status" == "OK" ]]; then
+            mv "$retry_output" "$voter_path"
+            if [[ -f "${retry_output}.done" ]]; then
+                mv "${retry_output}.done" "${voter_path}.done"
+            else
+                printf '0\n' > "${voter_path}.done"
+            fi
+            rm -f "$diag_file" "$saved_diag"
+            printf 'OK\n'
+            return 0
+        fi
+    fi
+
+    if [[ -f "$saved_diag" ]]; then
+        mv "$saved_diag" "$diag_file"
+    fi
+    printf 'NOT_SUBSTANTIVE\n'
 }
 
 ctx_args=()
@@ -252,9 +351,12 @@ VOTER_3_STATUS="launched"
 [[ -s "$VOTER_2_PATH" ]] || VOTER_2_STATUS="failed"
 [[ -s "$VOTER_3_PATH" ]] || VOTER_3_STATUS="failed"
 
-[[ "$VOTER_1_STATUS" != "failed" ]] && check_voter_parse_rate "$VOTER_1_PATH" "$VOTER_1_TOOL"
-[[ "$VOTER_2_STATUS" != "failed" ]] && check_voter_parse_rate "$VOTER_2_PATH" "$VOTER_2_TOOL"
-[[ "$VOTER_3_STATUS" != "failed" ]] && check_voter_parse_rate "$VOTER_3_PATH" "$VOTER_3_TOOL"
+VOTER_1_PARSE_RATE_STATUS="OK"
+VOTER_2_PARSE_RATE_STATUS="OK"
+VOTER_3_PARSE_RATE_STATUS="OK"
+[[ "$VOTER_1_STATUS" != "failed" ]] && VOTER_1_PARSE_RATE_STATUS=$(check_and_retry_voter_parse_rate 1 "$VOTER_1_PATH" "$VOTER_1_TOOL" "$claude_prompt")
+[[ "$VOTER_2_STATUS" != "failed" ]] && VOTER_2_PARSE_RATE_STATUS=$(check_and_retry_voter_parse_rate 2 "$VOTER_2_PATH" "$VOTER_2_TOOL" "$codex_prompt")
+[[ "$VOTER_3_STATUS" != "failed" ]] && VOTER_3_PARSE_RATE_STATUS=$(check_and_retry_voter_parse_rate 3 "$VOTER_3_PATH" "$VOTER_3_TOOL" "$cursor_prompt")
 
 effective_judges=0
 for status_path in "$VOTER_1_STATUS:$VOTER_1_PATH" "$VOTER_2_STATUS:$VOTER_2_PATH" "$VOTER_3_STATUS:$VOTER_3_PATH"; do
@@ -271,11 +373,14 @@ fi
 emit_kv VOTER_1_PATH "$VOTER_1_PATH"
 emit_kv VOTER_1_TOOL "$VOTER_1_TOOL"
 emit_kv VOTER_1_STATUS "$VOTER_1_STATUS"
+emit_kv VOTER_1_PARSE_RATE_STATUS "$VOTER_1_PARSE_RATE_STATUS"
 emit_kv VOTER_2_PATH "$VOTER_2_PATH"
 emit_kv VOTER_2_TOOL "$VOTER_2_TOOL"
 emit_kv VOTER_2_STATUS "$VOTER_2_STATUS"
+emit_kv VOTER_2_PARSE_RATE_STATUS "$VOTER_2_PARSE_RATE_STATUS"
 emit_kv VOTER_3_PATH "$VOTER_3_PATH"
 emit_kv VOTER_3_TOOL "$VOTER_3_TOOL"
 emit_kv VOTER_3_STATUS "$VOTER_3_STATUS"
+emit_kv VOTER_3_PARSE_RATE_STATUS "$VOTER_3_PARSE_RATE_STATUS"
 [[ "$VOTER_1_STATUS" == "failed" ]] && dispatch_ok="false"
 emit_kv DISPATCH_OK "$dispatch_ok"

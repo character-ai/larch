@@ -67,6 +67,47 @@ grep -Fq 'FINDING_1: First in-scope finding' "$TMP/accepted-findings.md" || { FA
 grep -Fq 'FINDING_2' "$TMP/rejected-findings.md" || { FAIL=1; printf '  FAIL rejected-findings missing FINDING_2\n'; }
 grep -Fq 'OOS observation' "$TMP/oos-accepted-review.md" || { FAIL=1; printf '  FAIL oos-accepted missing FINDING_3\n'; }
 grep -Fq '| Reviewer | Proposed | Accepted | Neutral/Exon | Rejected | OOS-Proposed | OOS-Accepted | OOS-Neutral/Exon | OOS-Rejected | Score | Status |' "$TMP/voting-tally.md" || { FAIL=1; printf '  FAIL scoreboard header missing OOS outcome columns\n'; }
+if grep -Fq 'Degraded code-review panel' "$TMP/voting-tally.md"; then
+    FAIL=1; printf '  FAIL clean 3-voter fixture should not emit degraded panel banner\n'
+else
+    printf '  ok   clean 3-voter fixture emits no degraded panel banner\n'
+fi
+grep -Fq 'STATUS=OK' "$TMP/voting-tally.md" || { FAIL=1; printf '  FAIL clean 3-voter fixture should populate live row Status=OK\n'; }
+
+echo "# Case: voter parse-rate diag emits degraded voter banner"
+TMP="$WORKDIR/case_voter_parse_banner"
+mkdir -p "$TMP"
+mk_ballot "$TMP/ballot.md"
+printf 'FINDING_1: YES\nFINDING_2: YES\nFINDING_3: YES\n' > "$TMP/cursor-vote-output.txt"
+printf 'FINDING_1: YES\nFINDING_2: NO\nFINDING_3: YES\n' > "$TMP/codex-vote-output.txt"
+printf 'FINDING_1: NO\nFINDING_2: NO\nFINDING_3: NO\n' > "$TMP/claude-vote-output.txt"
+printf 'voter_tool=cursor\nneutral_count=3\ntotal_findings=3\n' > "$TMP/cursor-parse-rate-diag.txt"
+out="$TMP/out.env"
+"$SCRIPT" --ballot-file "$TMP/ballot.md" \
+    --voter-files "$TMP/cursor-vote-output.txt" "$TMP/codex-vote-output.txt" "$TMP/claude-vote-output.txt" \
+    --review-tmpdir "$TMP" > "$out"
+grep -Fq '1 voter slot(s) emitted narrative-only output' "$TMP/voting-tally.md" \
+    || { FAIL=1; printf '  FAIL voter parse-rate degraded banner missing\n'; }
+grep -Fq '2 judge(s) available. Panel tier: unanimous-2.' "$TMP/voting-tally.md" \
+    || { FAIL=1; printf '  FAIL voter parse-rate should reduce effective judges in banner\n'; }
+
+echo "# Case: voter parse-rate and reviewer NOT_SUBSTANTIVE banners can coexist"
+TMP="$WORKDIR/case_voter_parse_combined_banner"
+mkdir -p "$TMP"
+mk_ballot "$TMP/ballot.md"
+printf 'FINDING_1: YES\nFINDING_2: YES\nFINDING_3: YES\n' > "$TMP/cursor-vote-output.txt"
+printf 'FINDING_1: YES\nFINDING_2: NO\nFINDING_3: YES\n' > "$TMP/codex-vote-output.txt"
+printf 'FINDING_1: NO\nFINDING_2: NO\nFINDING_3: NO\n' > "$TMP/claude-vote-output.txt"
+printf 'voter_tool=cursor\nneutral_count=3\ntotal_findings=3\n' > "$TMP/cursor-parse-rate-diag.txt"
+out="$TMP/out.env"
+"$SCRIPT" --ballot-file "$TMP/ballot.md" \
+    --voter-files "$TMP/cursor-vote-output.txt" "$TMP/codex-vote-output.txt" "$TMP/claude-vote-output.txt" \
+    --not-substantive-count 1 \
+    --review-tmpdir "$TMP" > "$out"
+grep -Fq '1 reviewer slot(s) emitted narrative-only output (NOT_SUBSTANTIVE)' "$TMP/voting-tally.md" \
+    || { FAIL=1; printf '  FAIL combined banner case missing reviewer NOT_SUBSTANTIVE banner\n'; }
+grep -Fq '1 voter slot(s) emitted narrative-only output' "$TMP/voting-tally.md" \
+    || { FAIL=1; printf '  FAIL combined banner case missing voter parse-rate banner\n'; }
 
 echo "# Case: OOS rejected subtracts 1 from reviewer score"
 TMP="$WORKDIR/case1b"
@@ -85,7 +126,7 @@ out="$TMP/out.env"
     --voter-files "$TMP/cursor-vote-output.txt" "$TMP/codex-vote-output.txt" "$TMP/claude-vote-output.txt" \
     --review-tmpdir "$TMP" > "$out"
 got=$(awk -F= '$1=="OOS_REJECTED_COUNT"{print $2}' "$out"); assert_eq "OOS_REJECTED_COUNT=1" "$got" "1"
-grep -Fq '| Codex-Security | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 1 | -1 | |' "$TMP/voting-tally.md" || { FAIL=1; printf '  FAIL rejected OOS did not subtract from score\n'; }
+grep -Fq '| Codex-Security | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 1 | -1 | STATUS=OK |' "$TMP/voting-tally.md" || { FAIL=1; printf '  FAIL rejected OOS did not subtract from score\n'; }
 
 echo "# Case: 2 voters, unanimous YES (3-voter threshold falls back to 2-voter unanimous)"
 TMP="$WORKDIR/case2"
@@ -488,14 +529,15 @@ out="$TMP/out.env"
     --not-substantive-count 2 \
     --review-tmpdir "$TMP" > "$out"
 tally_content=$(cat "$TMP/voting-tally.md" 2>/dev/null || true)
-# Scoreboard must include rows for live slots (full basename with -output.txt label)
-for _slot in cursor-specialist-structure-output.txt cursor-specialist-correctness-output.txt \
-             cursor-specialist-testing-output.txt cursor-specialist-security-output.txt \
-             cursor-specialist-edge-cases-output.txt; do
-    if printf '%s\n' "$tally_content" | grep -Fq "| $_slot "; then
+# Scoreboard must include rows for live slots using the same short label as dead slots.
+for _slot in cursor-specialist-structure cursor-specialist-correctness \
+             cursor-specialist-testing cursor-specialist-security \
+             cursor-specialist-edge-cases; do
+    if printf '%s\n' "$tally_content" | grep -Fq "| $_slot " \
+       && printf '%s\n' "$tally_content" | grep -F "| $_slot " | grep -Fq '| STATUS=OK |'; then
         printf '  ok   dead_slots: live slot %s row present\n' "$_slot"
     else
-        FAIL=1; printf '  FAIL dead_slots: live slot %s row missing from scoreboard\n' "$_slot"
+        FAIL=1; printf '  FAIL dead_slots: live slot %s row missing short label or STATUS=OK\n' "$_slot"
     fi
 done
 # Dead slots use short label (no -output.txt suffix)
