@@ -1,0 +1,20 @@
+{
+  "schema_version": 2,
+  "skill": "implement",
+  "run_id": "0BFBE42F-C974-406B-B0B9-89871EBDA45D",
+  "operator_cwd": "<OPERATOR_CWD>",
+  "operator_repo_root": "<REPO_ROOT>",
+  "parent_skill": null,
+  "issue_number": 2319,
+  "pr_number": null,
+  "status": "in-progress",
+  "larch_version": "29.6.2",
+  "model_roster": {"main": "unknown"},
+  "effort": "max",
+  "started_at": "2026-05-19T04:14:29Z",
+  "updated_at": "2026-05-19T04:14:29Z",
+  "attempt": 1,
+  "superseded_by": null,
+  "stalled_at_step": null,
+  "flags": {}
+}
