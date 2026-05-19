@@ -11,6 +11,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Document the `review-and-fix.sh` applied-fixes contract change: accepted findings applied by the coder now complete with exit `0` plus `REVIEW_AND_FIX_STATUS=fix-applied`, and `review-and-fix-summary.json` now records `.status = "fix-applied"` instead of the old `fix-required`/exit-3 checkpoint shape. External wrappers, jq filters, and dashboards must key on the new status fields rather than exit `3`.
 
+## [29.8.18] - 2026-05-19
+
+### Changed
+
+- Reserve Claude-only implementation for plans with at most three estimated diff lines so routine work stays on Codex or Cursor by default.
+- Keep operator-facing breadcrumbs and Step 2 routing copy consistent with the stricter carve-out boundary.
+
 ## [29.8.17] - 2026-05-19
 
 ### Changed
