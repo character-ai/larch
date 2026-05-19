@@ -205,22 +205,22 @@ write_session_env_literal() {
     printf '%s\n' "$literal_line" > "$sessions_root/$session_name/session-env.sh"
 }
 
-GH_OUTPUT=$'29.1.22\n29.1.21\n'
+GH_OUTPUT=$'29.1.30\n29.1.29\n'
 INITIAL_INSTALLED_VERSION="29.1.21"
 PLUGIN_ROOT_VERSION="29.1.21"
-INSTALL_RESULT_VERSION="29.1.22"
-CACHED_VERSIONS="29.1.19 29.1.20 29.1.21 29.1.22"
-SESSION_PINNED_VERSIONS="29.1.20"
+INSTALL_RESULT_VERSION="29.1.30"
+CACHED_VERSIONS="29.1.20 29.1.21 29.1.22 29.1.23 29.1.24 29.1.25 29.1.26 29.1.27 29.1.28"
+SESSION_PINNED_VERSIONS="29.1.21"
 SET_LARCH_SESSIONS_DIR=1
 unset FALLBACK_SESSION_ROOTS
 unset SESSION_PINNED_ROOT
 run_case active-session-keeps-version
 [[ "$CASE_RC" -eq 0 ]] || fail "active-session-keeps-version exit $CASE_RC"
-[[ ! -d "$CASE_CACHE_ROOT/29.1.19" ]] || fail "active-session-keeps-version should prune unused old version"
-[[ -d "$CASE_CACHE_ROOT/29.1.20" ]] || fail "active-session-keeps-version should keep active in-use version"
-[[ -d "$CASE_CACHE_ROOT/29.1.21" ]] || fail "active-session-keeps-version should keep predecessor"
-[[ -d "$CASE_CACHE_ROOT/29.1.22" ]] || fail "active-session-keeps-version should keep latest"
-assert_contains "$CASE_OUTPUT" "Warning: preserving cached larch version '29.1.20' because an active session, stale session metadata, or the executing cached plugin root still references it." "active-session-keeps-version warning"
+[[ ! -d "$CASE_CACHE_ROOT/29.1.20" ]] || fail "active-session-keeps-version should prune oldest unpinned version"
+for version in 29.1.21 29.1.22 29.1.23 29.1.24 29.1.25 29.1.26 29.1.27 29.1.28 29.1.30; do
+    [[ -d "$CASE_CACHE_ROOT/$version" ]] || fail "active-session-keeps-version should keep $version"
+done
+assert_contains "$CASE_OUTPUT" "Warning: preserving cached larch version '29.1.21' because an active session, stale session metadata, or the executing cached plugin root still references it." "active-session-keeps-version warning"
 
 GH_OUTPUT=$'29.1.22\n29.1.21\n'
 INITIAL_INSTALLED_VERSION="29.1.20"
@@ -230,12 +230,11 @@ CACHED_VERSIONS="29.1.19 29.1.20 29.1.21 29.1.22"
 unset SESSION_PINNED_VERSIONS SESSION_PINNED_ROOT XDG_SESSION_PINNED_VERSIONS TMP_SESSION_PINNED_VERSIONS
 SET_LARCH_SESSIONS_DIR=1
 unset FALLBACK_SESSION_ROOTS
-run_case no-sessions-prunes-old
-[[ "$CASE_RC" -eq 0 ]] || fail "no-sessions-prunes-old exit $CASE_RC"
-[[ ! -d "$CASE_CACHE_ROOT/29.1.19" ]] || fail "no-sessions-prunes-old should prune oldest version"
-[[ -d "$CASE_CACHE_ROOT/29.1.20" ]] || fail "no-sessions-prunes-old should keep the executing cached version"
-[[ -d "$CASE_CACHE_ROOT/29.1.21" ]] || fail "no-sessions-prunes-old should keep predecessor"
-[[ -d "$CASE_CACHE_ROOT/29.1.22" ]] || fail "no-sessions-prunes-old should keep latest"
+run_case no-sessions-keeps-under-cap
+[[ "$CASE_RC" -eq 0 ]] || fail "no-sessions-keeps-under-cap exit $CASE_RC"
+for version in 29.1.19 29.1.20 29.1.21 29.1.22; do
+    [[ -d "$CASE_CACHE_ROOT/$version" ]] || fail "no-sessions-keeps-under-cap should keep $version"
+done
 
 GH_OUTPUT=$'29.1.22\n29.1.21\n'
 INITIAL_INSTALLED_VERSION="29.1.20"
@@ -248,27 +247,26 @@ SESSION_PINNED_ROOT="/cache/not-a-version"
 unset FALLBACK_SESSION_ROOTS
 run_case unparseable-session-prunes-normally
 [[ "$CASE_RC" -eq 0 ]] || fail "unparseable-session-prunes-normally exit $CASE_RC"
-[[ ! -d "$CASE_CACHE_ROOT/29.1.19" ]] || fail "unparseable-session-prunes-normally should prune oldest version"
-[[ -d "$CASE_CACHE_ROOT/29.1.20" ]] || fail "unparseable-session-prunes-normally should keep the executing cached version"
-[[ -d "$CASE_CACHE_ROOT/29.1.21" ]] || fail "unparseable-session-prunes-normally should keep predecessor"
-[[ -d "$CASE_CACHE_ROOT/29.1.22" ]] || fail "unparseable-session-prunes-normally should keep latest"
+for version in 29.1.19 29.1.20 29.1.21 29.1.22; do
+    [[ -d "$CASE_CACHE_ROOT/$version" ]] || fail "unparseable-session-prunes-normally should keep $version"
+done
 
-GH_OUTPUT=$'29.1.22\n29.1.21\n'
+GH_OUTPUT=$'29.1.30\n29.1.29\n'
 INITIAL_INSTALLED_VERSION="29.1.21"
 PLUGIN_ROOT_VERSION="29.1.21"
-INSTALL_RESULT_VERSION="29.1.22"
-CACHED_VERSIONS="29.1.19 29.1.20 29.1.21 29.1.22"
+INSTALL_RESULT_VERSION="29.1.30"
+CACHED_VERSIONS="29.1.20 29.1.21 29.1.22 29.1.23 29.1.24 29.1.25 29.1.26 29.1.27 29.1.28"
 SET_LARCH_SESSIONS_DIR=1
 unset SESSION_PINNED_VERSIONS SESSION_PINNED_ROOT XDG_SESSION_PINNED_VERSIONS TMP_SESSION_PINNED_VERSIONS
-SESSION_PINNED_ROOT_LITERAL=$'LARCH_CLAUDE_PLUGIN_ROOT=/ignored/prefix/29.1.20\r   '
+SESSION_PINNED_ROOT_LITERAL=$'LARCH_CLAUDE_PLUGIN_ROOT=/ignored/prefix/29.1.21\r   '
 unset FALLBACK_SESSION_ROOTS
 run_case crlf-session-root-keeps-version
 [[ "$CASE_RC" -eq 0 ]] || fail "crlf-session-root-keeps-version exit $CASE_RC"
-[[ ! -d "$CASE_CACHE_ROOT/29.1.19" ]] || fail "crlf-session-root-keeps-version should prune unused old version"
-[[ -d "$CASE_CACHE_ROOT/29.1.20" ]] || fail "crlf-session-root-keeps-version should keep CRLF-pinned version"
-[[ -d "$CASE_CACHE_ROOT/29.1.21" ]] || fail "crlf-session-root-keeps-version should keep predecessor"
-[[ -d "$CASE_CACHE_ROOT/29.1.22" ]] || fail "crlf-session-root-keeps-version should keep latest"
-assert_contains "$CASE_OUTPUT" "Warning: preserving cached larch version '29.1.20' because an active session, stale session metadata, or the executing cached plugin root still references it." "crlf-session-root-keeps-version warning"
+[[ ! -d "$CASE_CACHE_ROOT/29.1.20" ]] || fail "crlf-session-root-keeps-version should prune oldest unpinned version"
+for version in 29.1.21 29.1.22 29.1.23 29.1.24 29.1.25 29.1.26 29.1.27 29.1.28 29.1.30; do
+    [[ -d "$CASE_CACHE_ROOT/$version" ]] || fail "crlf-session-root-keeps-version should keep $version"
+done
+assert_contains "$CASE_OUTPUT" "Warning: preserving cached larch version '29.1.21' because an active session, stale session metadata, or the executing cached plugin root still references it." "crlf-session-root-keeps-version warning"
 
 GH_OUTPUT=$'29.1.22\n29.1.21\n'
 INITIAL_INSTALLED_VERSION="29.1.21"
@@ -281,7 +279,7 @@ unset SET_LARCH_SESSIONS_DIR
 unset FALLBACK_SESSION_ROOTS
 run_case xdg-default-sessions-root-keeps-version
 [[ "$CASE_RC" -eq 0 ]] || fail "xdg-default-sessions-root-keeps-version exit $CASE_RC"
-[[ ! -d "$CASE_CACHE_ROOT/29.1.19" ]] || fail "xdg-default-sessions-root-keeps-version should prune unused old version"
+[[ -d "$CASE_CACHE_ROOT/29.1.19" ]] || fail "xdg-default-sessions-root-keeps-version should keep old version under cap"
 [[ -d "$CASE_CACHE_ROOT/29.1.20" ]] || fail "xdg-default-sessions-root-keeps-version should keep XDG-pinned version"
 [[ -d "$CASE_CACHE_ROOT/29.1.21" ]] || fail "xdg-default-sessions-root-keeps-version should keep predecessor"
 [[ -d "$CASE_CACHE_ROOT/29.1.22" ]] || fail "xdg-default-sessions-root-keeps-version should keep latest"
@@ -297,10 +295,27 @@ TMP_SESSION_PINNED_VERSIONS="29.1.20"
 FALLBACK_SESSION_ROOTS="/tmp"
 run_case tmp-fallback-sessions-root-keeps-version
 [[ "$CASE_RC" -eq 0 ]] || fail "tmp-fallback-sessions-root-keeps-version exit $CASE_RC"
-[[ ! -d "$CASE_CACHE_ROOT/29.1.19" ]] || fail "tmp-fallback-sessions-root-keeps-version should prune unused old version"
+[[ -d "$CASE_CACHE_ROOT/29.1.19" ]] || fail "tmp-fallback-sessions-root-keeps-version should keep old version under cap"
 [[ -d "$CASE_CACHE_ROOT/29.1.20" ]] || fail "tmp-fallback-sessions-root-keeps-version should keep /tmp-pinned version"
 [[ -d "$CASE_CACHE_ROOT/29.1.21" ]] || fail "tmp-fallback-sessions-root-keeps-version should keep predecessor"
 [[ -d "$CASE_CACHE_ROOT/29.1.22" ]] || fail "tmp-fallback-sessions-root-keeps-version should keep latest"
 assert_contains "$CASE_OUTPUT" "Warning: preserving cached larch version '29.1.20' because an active session, stale session metadata, or the executing cached plugin root still references it." "tmp-fallback-sessions-root-keeps-version warning"
+
+GH_OUTPUT=$'29.1.30\n29.1.29\n'
+INITIAL_INSTALLED_VERSION="29.1.29"
+PLUGIN_ROOT_VERSION="29.1.29"
+INSTALL_RESULT_VERSION="29.1.30"
+CACHED_VERSIONS="29.1.21 29.1.22 29.1.23 29.1.24 29.1.25 29.1.26 29.1.27 29.1.28 29.1.29"
+unset SESSION_PINNED_VERSIONS SESSION_PINNED_ROOT SESSION_PINNED_ROOT_LITERAL XDG_SESSION_PINNED_VERSIONS TMP_SESSION_PINNED_VERSIONS
+SET_LARCH_SESSIONS_DIR=1
+unset FALLBACK_SESSION_ROOTS
+run_case cap-prune-trims-to-eight
+[[ "$CASE_RC" -eq 0 ]] || fail "cap-prune-trims-to-eight exit $CASE_RC"
+for version in 29.1.21 29.1.22; do
+    [[ ! -d "$CASE_CACHE_ROOT/$version" ]] || fail "cap-prune-trims-to-eight should prune $version"
+done
+for version in 29.1.23 29.1.24 29.1.25 29.1.26 29.1.27 29.1.28 29.1.29 29.1.30; do
+    [[ -d "$CASE_CACHE_ROOT/$version" ]] || fail "cap-prune-trims-to-eight should keep $version"
+done
 
 printf 'PASS: test-upgrade-larch-prune.sh\n'
