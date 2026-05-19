@@ -6,13 +6,14 @@ The harness runs `skills/upgrade-larch/scripts/upgrade-larch.sh` end-to-end in a
 
 Covered cases:
 
-- active session pinned to an otherwise pruneable old version: when the cache exceeds the 8-version cap, prune an older unpinned version while keeping the pinned version and verified latest stable
+- active session pinned to an otherwise pruneable old version: when the cache exceeds the 8-version cap, prune as many oldest unpinned versions as needed while keeping the pinned version and verified latest stable
 - no sessions: keep old versions when the cache is still under the 8-version cap, while still preserving the executing cached plugin version
 - unparseable session plugin root: ignore the malformed value and keep old versions when the cache is still under the 8-version cap
-- session plugin root with CRLF or trailing whitespace: trim the suffix noise, preserve the pinned numeric version, and prune only unpinned versions selected by the cap-based retention loop
+- session plugin root with CRLF or trailing whitespace: trim the suffix noise, preserve the pinned numeric version, and prune as many oldest unpinned versions as needed to stay within the cap
 - `XDG_CACHE_HOME` default session root: preserve an old version pinned by a parseable `session-env.sh` without overriding `LARCH_SESSIONS_DIR`, and keep other old versions while under cap
 - current-user-owned `/tmp` fallback session root: preserve an old version pinned by a parseable fallback `session-env.sh`, and keep other old versions while under cap
 - cap-only pruning: with 10 cached versions after install, remove the two oldest so 8 cached versions remain
+- multiple pinned oldest versions: when the two oldest cached versions are pinned, keep both and remove the next oldest unpinned versions so the cache still ends at 8 total
 
 This harness exists alongside `test-upgrade-larch.sh`, which covers stable release selection, idempotency, verification, prune fallback, and `gh` stderr redaction.
 

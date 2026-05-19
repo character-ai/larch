@@ -293,23 +293,47 @@ if [ "$VERIFIED_TARGET" = true ]; then
 
     VERSION_COUNT="${#SANITIZED_VERSIONS[@]}"
     if [ "$VERSION_COUNT" -gt "$KEEP_LIMIT" ]; then
-        PRUNE_COUNT=$((VERSION_COUNT - KEEP_LIMIT))
-        for ((i=0; i<PRUNE_COUNT; i++)); do
-            version="${SANITIZED_VERSIONS[$i]}"
-            if [ "$version" = "$LATEST_STABLE" ]; then
-                continue
-            fi
-            if [ "${#ACTIVE_SESSION_VERSIONS[@]}" -gt 0 ]; then
-                for active_version in "${ACTIVE_SESSION_VERSIONS[@]}"; do
-                    if [ "$version" = "$active_version" ]; then
-                        larch_err "Warning: preserving cached larch version '${version}' because an active session, stale session metadata, or the executing cached plugin root still references it."
-                        continue 2
+        PRUNE_FAILED_VERSIONS=()
+        while [ "$VERSION_COUNT" -gt "$KEEP_LIMIT" ]; do
+            REMOVED_VERSION=false
+            for version in "${SANITIZED_VERSIONS[@]}"; do
+                if [ "$version" = "$LATEST_STABLE" ]; then
+                    continue
+                fi
+                if [ "${#ACTIVE_SESSION_VERSIONS[@]}" -gt 0 ]; then
+                    for active_version in "${ACTIVE_SESSION_VERSIONS[@]}"; do
+                        if [ "$version" = "$active_version" ]; then
+                            larch_err "Warning: preserving cached larch version '${version}' because an active session, stale session metadata, or the executing cached plugin root still references it."
+                            continue 2
+                        fi
+                    done
+                fi
+                if [ "${#PRUNE_FAILED_VERSIONS[@]}" -gt 0 ]; then
+                    for failed_version in "${PRUNE_FAILED_VERSIONS[@]}"; do
+                        if [ "$version" = "$failed_version" ]; then
+                            continue 2
+                        fi
+                    done
+                fi
+                emit_breadcrumb "  Removing old version: $version"
+                if ! rm -rf -- "${LARCH_CACHE_DIR:?}/${version:?}"; then
+                    warn_prune_failure "$version"
+                    PRUNE_FAILED_VERSIONS+=("$version")
+                    continue
+                fi
+                UPDATED_VERSIONS=()
+                for retained_version in "${SANITIZED_VERSIONS[@]}"; do
+                    if [ "$retained_version" != "$version" ]; then
+                        UPDATED_VERSIONS+=("$retained_version")
                     fi
                 done
-            fi
-            emit_breadcrumb "  Removing old version: $version"
-            if ! rm -rf -- "${LARCH_CACHE_DIR:?}/${version:?}"; then
-                warn_prune_failure "$version"
+                SANITIZED_VERSIONS=("${UPDATED_VERSIONS[@]}")
+                VERSION_COUNT=$((VERSION_COUNT - 1))
+                REMOVED_VERSION=true
+                break
+            done
+            if [ "$REMOVED_VERSION" = false ]; then
+                break
             fi
         done
     else
