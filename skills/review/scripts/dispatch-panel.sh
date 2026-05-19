@@ -264,13 +264,41 @@ resolve_execution_issues_log() {
     printf '%s\n' "$issues_log"
 }
 
+is_harness_scout_path() {
+    local path="$1"
+    case "$path" in
+        */test-dispatch-panel.*|*/test-review-core.*|*/test-scout-*)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+should_suppress_scout_parse_issue_append() {
+    local manifest_path="$1"
+    is_harness_scout_path "$REVIEW_TMPDIR" || is_harness_scout_path "$manifest_path"
+}
+
 append_scout_parse_issue() {
     [[ "$SCOUT_STATUS" == "parse-failed" ]] || return 0
-    [[ -x "$PLUGIN_ROOT/scripts/append-execution-issue.sh" ]] || return 0
-    local issues_log reason manifest_label append_output append_rc append_error
+    local issues_log reason manifest_label diag_file append_output append_rc append_error
     issues_log=$(resolve_execution_issues_log)
     reason="${SCOUT_FAIL_REASON:-unknown}"
     manifest_label="${SCOUT_MANIFEST:-none}"
+    # Write local diag sidecar into REVIEW_TMPDIR (always, including in test harness)
+    diag_file="$REVIEW_TMPDIR/scout-parse-failed-round${ROUND_NUM}-diag.txt"
+    {
+        printf 'round_num=%s\n' "${ROUND_NUM:-}"
+        printf 'scout_fail_reason=%s\n' "$reason"
+        printf 'manifest=%s\n' "$manifest_label"
+    } > "$diag_file" || true
+    # Suppress parent execution-issues append when running under a test harness
+    if should_suppress_scout_parse_issue_append "$manifest_label"; then
+        return 0
+    fi
+    [[ -x "$PLUGIN_ROOT/scripts/append-execution-issue.sh" ]] || return 0
     set +e
     append_output=$("$PLUGIN_ROOT/scripts/append-execution-issue.sh" \
         --log "$issues_log" \
