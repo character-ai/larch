@@ -958,6 +958,10 @@ run_pr_create_phase() {
         --implement-tmpdir "$IMPLEMENT_TMPDIR" 2>"$fail_file")
     rc=$?
     printf '%s\n' "$final_report_output" >> "$fail_file"
+    if [ "$rc" -ne 0 ] && is_transient_net_signature "$(cat "$fail_file" 2>/dev/null)"; then
+        record_failure pr-create "write-final-report.sh" "$rc" "$fail_file" Warnings
+        exit_transient_net "write-final-report: $final_report_output"
+    fi
     if [ "$rc" -ne 0 ]; then
         record_failure pr-create "write-final-report.sh" "$rc" "$fail_file" Warnings
         exit_stall 9b

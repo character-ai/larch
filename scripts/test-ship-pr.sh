@@ -367,6 +367,17 @@ seed_stale_stall_state() {
         && mv "$file.new" "$file"
 }
 
+clear_pr_state() {
+    local file=$1
+    awk '
+      /^PR_NUMBER=/ { print "PR_NUMBER="; next }
+      /^PR_URL=/ { print "PR_URL="; next }
+      /^PR_TITLE=/ { print "PR_TITLE="; next }
+      { print }
+    ' "$file" > "$file.new" \
+        && mv "$file.new" "$file"
+}
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Section dispatch (closes #2349 by reducing the test-ship-pr ceiling)
 #
@@ -630,8 +641,10 @@ while [[ $# -gt 0 ]]; do
     *) shift ;;
   esac
 done
+call_count=$(grep -c '^CALL=' "$tmpdir/final-summary-write.log" 2>/dev/null || true)
+printf 'CALL=%s\n' "$((call_count + 1))" >> "$tmpdir/final-summary-write.log"
 awk -F= '$1=="PR_URL"{print "PR_URL_AT_WRITE=" substr($0, index($0, "=") + 1)}' "$tmpdir/ship-pr-state.sh" \
-  > "$tmpdir/final-summary-write.log"
+  >> "$tmpdir/final-summary-write.log"
 printf 'COMMENT_ONLY=%s\n' "$comment_only" >> "$tmpdir/final-summary-write.log"
 printf 'STATUS=ok\n'
 STUB
@@ -644,18 +657,23 @@ printf 'BRANCH=feature/test\n'
 STUB
 chmod +x "$root/scripts/git-push.sh"
 write_state "$tmp/ship-pr-state.sh" pr-create
+clear_pr_state "$tmp/ship-pr-state.sh"
 run_subject "$root" "$tmp" "$tmp/rc"
 assert_rc "$tmp/rc" 0 "pr-create final summary refresh exits 0"
-if grep -qxF 'PR_URL_AT_WRITE=https://example.invalid/pr/123' "$tmp/final-summary-write.log"; then
-    ok "pr-create final summary refresh sees persisted PR_URL"
+if grep -Fqx 'CALL=1' "$tmp/final-summary-write.log" && \
+   grep -Fqx 'PR_URL_AT_WRITE=' "$tmp/final-summary-write.log" && \
+   grep -Fqx 'COMMENT_ONLY=false' "$tmp/final-summary-write.log"; then
+    ok "pr-create final summary first pass runs before PR_URL exists"
 else
-    fail "pr-create final summary refresh sees persisted PR_URL"
+    fail "pr-create final summary first pass runs before PR_URL exists"
     sed 's/^/    write: /' "$tmp/final-summary-write.log" 2>/dev/null || true
 fi
-if grep -qxF 'COMMENT_ONLY=true' "$tmp/final-summary-write.log"; then
-    ok "pr-create post-create refresh is API-only"
+if grep -Fqx 'CALL=2' "$tmp/final-summary-write.log" && \
+   grep -Fqx 'PR_URL_AT_WRITE=https://example.invalid/pr/123' "$tmp/final-summary-write.log" && \
+   grep -Fqx 'COMMENT_ONLY=true' "$tmp/final-summary-write.log"; then
+    ok "pr-create second final summary pass refreshes with persisted PR_URL"
 else
-    fail "pr-create post-create refresh is API-only"
+    fail "pr-create second final summary pass refreshes with persisted PR_URL"
     sed 's/^/    write: /' "$tmp/final-summary-write.log" 2>/dev/null || true
 fi
 assert_file_absent_or_empty "$tmp/git-push-calls.log" "pr-create skips post-create push"
@@ -875,6 +893,21 @@ if [ -f "$sentinel_dir/larch-log-calls.txt" ]; then
     fi
 else
     fail "pr-create flush: larch-log.sh stub was not called"
+fi
+rm -rf "$sentinel_dir"
+
+root=$(make_repo pr_create_no_logs_commit)
+tmp=$(make_tmpdir)
+sentinel_dir=$(mktemp -d /tmp/ship-pr-pr-create-no-logs-commit.XXXXXX)
+write_state "$tmp/ship-pr-state.sh" pr-create
+clear_pr_state "$tmp/ship-pr-state.sh"
+LARCH_LOG_STUB_SENTINEL_DIR="$sentinel_dir" run_subject "$root" "$tmp" "$tmp/rc" --no-logs-commit true
+assert_rc "$tmp/rc" 0 "pr-create no-logs-commit exits 0"
+if [ -f "$sentinel_dir/larch-log-calls.txt" ] && grep -q -- 'commit --log-root' "$sentinel_dir/larch-log-calls.txt"; then
+    fail "pr-create no-logs-commit should skip pre-PR larch-log commit"
+    sed 's/^/    larch-log: /' "$sentinel_dir/larch-log-calls.txt" 2>/dev/null || true
+else
+    ok "pr-create no-logs-commit skips pre-PR larch-log commit"
 fi
 rm -rf "$sentinel_dir"
 fi  # end section: postmerge
@@ -1466,6 +1499,29 @@ write_state "$tmp/ship-pr-state.sh" pr-create
 run_subject "$root" "$tmp" "$tmp/rc"
 assert_rc "$tmp/rc" 6 "transient create-pr: exits 6 on network signature"
 assert_state_line "$tmp/ship-pr-state.sh" "STALL_TRACKING=false" "transient create-pr: STALL_TRACKING=false"
+
+# Positive case 1b: pre-create write-final-report transient — expect exit 6 before create-pr.
+root=$(make_repo transient_precreate_final_summary)
+tmp=$(make_tmpdir)
+mkdir -p "$root/skills/implement/scripts"
+cat > "$root/skills/implement/scripts/write-final-report.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+echo "fatal: Could not resolve host: github.com" >&2
+exit 17
+STUB
+chmod +x "$root/skills/implement/scripts/write-final-report.sh"
+write_state "$tmp/ship-pr-state.sh" pr-create
+clear_pr_state "$tmp/ship-pr-state.sh"
+run_subject "$root" "$tmp" "$tmp/rc"
+assert_rc "$tmp/rc" 6 "transient pre-create final summary: exits 6 on network signature"
+assert_state_line "$tmp/ship-pr-state.sh" "STALL_TRACKING=false" "transient pre-create final summary: STALL_TRACKING=false"
+if [ ! -f "$tmp/create-pr-calls.log" ]; then
+    ok "transient pre-create final summary skips create-pr helper"
+else
+    fail "transient pre-create final summary should skip create-pr helper"
+    sed 's/^/    create-pr: /' "$tmp/create-pr-calls.log" 2>/dev/null || true
+fi
 
 # Positive case 2: merge-pr transient — stub emits MERGE_RESULT=error with network signature.
 root=$(make_repo transient_merge_pr)
