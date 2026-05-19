@@ -235,7 +235,7 @@ Content: the Architecture Diagram (from `/design`) and Code Flow Diagram (genera
 
 Written at Step 18 during terminal cleanup.
 
-Content: final run status (`STALL_TRACKING` value), PR URL, and log directory path.
+Content: final run status (`STALL_TRACKING` value), PR URL, and log directory path. The committed `final-summary.md` in the PR tree may carry placeholder `PR: N/A`; the tracking-issue comment is the canonical live source for the PR URL.
 
 ## Authoritative sources
 
