@@ -86,7 +86,7 @@ session_get() {
 
 important_findings_present() {
     local file="" rc=0
-    local pattern='(^### FINDING_[0-9]+:[[:space:]]*\*\*Important\*\*|^\*\*Important\*\*([[:space:]]|$))'
+    local pattern='(^### FINDING_[0-9]+:[[:space:]]*\*\*[Ii]mportant\*\*|^\*\*[Ii]mportant\*\*([[:space:]]|$)|^- \*\*Concern\*\*:[[:space:]]*\[[Ii]mportant\]([[:space:][:punct:]]|$))'
 
     for file in "$@"; do
         [[ -r "$file" ]] || {
@@ -103,6 +103,16 @@ important_findings_present() {
         fi
     done
     return 1
+}
+
+append_round_oos_artifact() {
+    local round_num="$1" round_oos="$2" oos_jsonl="$3" oos_markdown="$4"
+    [[ -s "$round_oos" ]] || return 0
+    jq -Rn --argjson round "$round_num" --rawfile body "$round_oos" \
+        '{round: $round, source: "code-review", body: $body}' >> "$oos_jsonl"
+    [[ -s "$oos_markdown" ]] && printf '\n' >> "$oos_markdown"
+    cat "$round_oos" >> "$oos_markdown"
+    mirror_oos_markdown "$oos_markdown" "$IMPLEMENT_TMPDIR/oos-accepted-review.md"
 }
 
 round_degraded() {
@@ -955,6 +965,9 @@ run_implement_round() {
     core_status="${core_status:-unknown}"
     accepted_file="${accepted_file:-$round_dir/accepted-findings.md}"
     rejected_file="${rejected_file:-$round_dir/rejected-findings.md}"
+    oos_jsonl="$IMPLEMENT_TMPDIR/accumulated-oos.jsonl"
+    oos_markdown="$IMPLEMENT_TMPDIR/accumulated-oos.md"
+    round_oos="$round_dir/oos-accepted-review.md"
 
     # Part B: Degraded-round detection via voting-tally.md banner.
     # If degraded, retry the panel once; cap retries at 1 per round.
@@ -964,9 +977,16 @@ run_implement_round() {
         degraded_this_round=true
         larch_err "⏳ /implement Step 5: round ${round_num_dec} panel was degraded (banner triggered); retrying with fresh panel."
         local degraded_retry_flag="$round_dir/degraded-retry.flag"
+        local degraded_retry_done="$round_dir/degraded-retry.done"
+        if [[ -f "$degraded_retry_flag" && ! -f "$degraded_retry_done" ]]; then
+            larch_err "⚠ /implement Step 5: round ${round_num_dec} found stale degraded retry marker without completion; retrying once."
+            rm -f "$degraded_retry_flag"
+        fi
         if [[ ! -f "$degraded_retry_flag" ]]; then
+            append_round_oos_artifact "$round_num_dec" "$round_oos" "$oos_jsonl" "$oos_markdown"
             touch "$degraded_retry_flag"
             IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR" "$REVIEW_CORE_SH" "${core_args[@]}" > "$core_out"
+            touch "$degraded_retry_done"
             core_status=$(kv_get "$core_out" REVIEW_CORE_STATUS)
             accepted_count=$(kv_get "$core_out" ACCEPTED_COUNT)
             rejected_count=$(kv_get "$core_out" REJECTED_COUNT)
@@ -989,16 +1009,7 @@ run_implement_round() {
         fi
     fi
 
-    oos_jsonl="$IMPLEMENT_TMPDIR/accumulated-oos.jsonl"
-    oos_markdown="$IMPLEMENT_TMPDIR/accumulated-oos.md"
-    round_oos="$round_dir/oos-accepted-review.md"
-    if [[ -s "$round_oos" ]]; then
-        jq -Rn --argjson round "$round_num_dec" --rawfile body "$round_oos" \
-            '{round: $round, source: "code-review", body: $body}' >> "$oos_jsonl"
-        [[ -s "$oos_markdown" ]] && printf '\n' >> "$oos_markdown"
-        cat "$round_oos" >> "$oos_markdown"
-        mirror_oos_markdown "$oos_markdown" "$IMPLEMENT_TMPDIR/oos-accepted-review.md"
-    fi
+    append_round_oos_artifact "$round_num_dec" "$round_oos" "$oos_jsonl" "$oos_markdown"
 
     rejected_full_file="$round_dir/rejected-findings-full.md"
     if [[ -f "$rejected_full_file" ]]; then
@@ -1213,11 +1224,11 @@ run_implement_round() {
         fi
     fi
     write_summary_json "$prior_summary" "$status" "$core_status" "$round_num_dec" "$total_accepted" "$total_rejected" "$total_exonerated" "$total_neutral" "$round_num_dec" "$accepted_file" "$round_dir" "$oos_jsonl" "$oos_markdown" "$round_cap_val" "$coder_tool" "$coder_status" "$scrub_count" "$revert_count" "$coder_commit_sha"
-    cat > "$round_dir/review-and-fix.env" <<EOF_REVIEW_AND_FIX_ENV
-REVIEW_AND_FIX_STATUS=$status
-REVIEW_CORE_STATUS=$core_status
-DEGRADED_ROUND=$degraded_this_round
-EOF_REVIEW_AND_FIX_ENV
+    {
+        printf 'REVIEW_AND_FIX_STATUS=%s\n' "$status"
+        printf 'REVIEW_CORE_STATUS=%s\n' "$core_status"
+        printf 'DEGRADED_ROUND=%s\n' "$degraded_this_round"
+    } > "$round_dir/review-and-fix.env"
     flush_round_log_after_coder "$IMPLEMENT_TMPDIR" "$RUN_ID" "$round_num_dec" "$round_dir"
 
     if [[ -n "$RUN_ID" && -x "$LARCH_LOG_SH" && -n "$IMPLEMENT_TMPDIR" && -d "$IMPLEMENT_TMPDIR" ]]; then
