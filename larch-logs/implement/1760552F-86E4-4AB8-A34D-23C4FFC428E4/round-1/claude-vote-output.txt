@@ -1,0 +1,33 @@
+I have all the context I need. Here are my votes:
+
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: EXONERATE -- tally-plan-review.md gap fully captured by FINDING_1
+FINDING_5: EXONERATE -- tally-code-votes.md gap fully captured by FINDING_1
+FINDING_6: EXONERATE -- duplicate of FINDING_2
+FINDING_7: NO -- cosmetic backfill of historical log artifacts is not issue-worthy
+FINDING_8: NO -- write-tally.sh/compose-tally-record.sh correctly retain neutral for tied-vote envelope per plan; no change needed
+FINDING_9: NO -- duplicate of FINDING_7
+FINDING_10: NO -- fix already covered by in-scope FINDING_3 (YES)
+FINDING_11: NO -- duplicate of FINDING_10
+FINDING_12: NO -- covered by in-scope FINDING_2 (YES)
+FINDING_13: NO -- covered by in-scope FINDING_1 (YES)
+FINDING_14: NO -- covered by in-scope FINDING_1 (YES)
+FINDING_15: EXONERATE -- pre-existing awk duplication not introduced by this diff; out of scope per surgical-change principle
+FINDING_16: EXONERATE -- wording is accurate (JUDGE_ERROR falls through to a non-yes count); ambiguity is too subtle to warrant a tracking issue
+FINDING_17: YES
+FINDING_18: EXONERATE -- duplicate of FINDING_17
+FINDING_19: YES
+FINDING_20: EXONERATE -- duplicate of FINDING_19
+FINDING_21: EXONERATE -- duplicate of FINDING_2
+FINDING_22: NO -- covered by in-scope FINDING_3 (YES); filing a separate OOS issue is redundant
+FINDING_23: NO -- test descriptions accurately narrate the scenario (1 YES, 2 missing votes); no confusion risk
+FINDING_24: NO -- "zero parseable FINDING_N: lines" precisely describes a prose-only fixture; claimed mismatch does not exist
+FINDING_25: EXONERATE -- duplicate of FINDING_4 which is captured by FINDING_1
+FINDING_26: EXONERATE -- duplicate of FINDING_25/4/1
+FINDING_27: EXONERATE -- duplicate of FINDING_5 which is captured by FINDING_1
+FINDING_28: EXONERATE -- duplicate of FINDING_27/5/1
+FINDING_29: EXONERATE -- covered by FINDING_1 (combines 5 and 4)
+FINDING_30: EXONERATE -- external consumer migration concern is speculative for internal-only tooling; tally-code-votes.md update is already captured by FINDING_1
+FINDING_31: EXONERATE -- duplicate of FINDING_2
