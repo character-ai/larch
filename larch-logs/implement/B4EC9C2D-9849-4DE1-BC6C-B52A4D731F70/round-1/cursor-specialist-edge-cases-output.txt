@@ -1,7 +1,0 @@
-Gathering the branch diff, commit list, and full-file context for a read-only review.
-
-Reading the full script and `.agnix.toml` for regex semantics, capture groups, and blast radius of disabling AS-014.
-
-Completing the read-only review. Calling CreatePlan to satisfy plan-mode workflow with a short summary; the full review and TSV appear below.
-
-

@@ -25,6 +25,8 @@ The script always exits 0 and prints exactly one `SESSION_TRANSCRIPT_STATUS=<sta
 - `source-file-missing` — `--source-file` was empty or not a regular file.
 - `transcript-path-missing` — the source file had no `TRANSCRIPT_PATH=` line.
 - `transcript-file-missing` — `TRANSCRIPT_PATH` did not point to a regular file.
+- `render-failed` — `scripts/render-session-transcript.py` exited non-zero. The raw `.jsonl` is not flushed; the run continues. Stderr is truncated into the warning message.
+- `render-empty` — the renderer produced an empty file (suspect input). Flush is skipped; the run continues.
 - `write-failed` — `larch-log.sh write` failed.
 - `suppressed-no-logs-commit` — write succeeded and `--no-logs-commit true` skipped commit.
 - `suppressed-post-merge-sentinel` — write succeeded but `$IMPLEMENT_TMPDIR/post-merge-sentinel` exists; commit intentionally skipped because the PR has already merged.
@@ -39,6 +41,10 @@ The wrapper may also append non-terminal `Warnings` entries before the final sta
 For every status, including `captured`, the wrapper appends a `Warnings` entry to the execution-issues log via `append-execution-issue.sh`. Append failure is swallowed so transcript capture never becomes fatal to cleanup.
 
 Malformed argv emits `SESSION_TRANSCRIPT_STATUS=usage-error` and exits 0 before log capture begins; regular `/implement` callers should never hit this branch.
+
+## Rendering
+
+Before flush, the wrapper renders the raw Claude Code session JSONL through `scripts/render-session-transcript.py` and flushes the filtered JSONL instead of the raw one. The renderer drops harness-injected slash-command expansions, housekeeping records, and routine tool outputs, keeping the user/assistant conversation plus tool outputs that report errors or warnings, in a stable machine-readable schema (header + one record per turn). See `scripts/render-session-transcript.md` for the filter rules and full schema. The `session-transcript` larch-log batch ships as `.jsonl` (declared in `scripts/larch-log-batches.sh`).
 
 ## Callers
 

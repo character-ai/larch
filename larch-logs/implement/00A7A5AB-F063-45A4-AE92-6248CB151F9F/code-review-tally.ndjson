@@ -1,1 +1,0 @@
-{"phase":"code-review","tally":"Quick mode round 1 — 5 Cursor specialists + generic Codex. Accepted 2 findings (post-parse validation in capture-session-transcript.sh; operator_cwd/operator_repo_root added to immutable set in larch-log.sh). Rejected 4 nits/latents."}

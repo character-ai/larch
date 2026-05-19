@@ -429,8 +429,9 @@ derive_code_review_tally_from_composed_findings() {
 
     [[ -f "$findings_file" ]] || return 1
 
-    accepted=$(grep -cE '^### .+ \[code-review/accepted\]$' "$findings_file" 2>/dev/null || true)
-    rejected=$(grep -cE '^### .+ \[code-review/rejected\]$' "$findings_file" 2>/dev/null || true)
+    # Per-finding JSONL: count records where phase=code-review and outcome matches.
+    accepted=$(jq -c 'select(.phase == "code-review" and .outcome == "accepted")' "$findings_file" 2>/dev/null | wc -l | tr -d ' ')
+    rejected=$(jq -c 'select(.phase == "code-review" and .outcome == "rejected")' "$findings_file" 2>/dev/null | wc -l | tr -d ' ')
     accepted="${accepted:-0}"
     rejected="${rejected:-0}"
     [[ "$accepted" =~ ^[0-9]+$ ]] || accepted=0
@@ -463,7 +464,7 @@ flush_review_batches() {
         return 1
     }
     body_file="$batch_input_dir/code-review-tally-body.md"
-    findings_file="$batch_input_dir/review-findings-full.md"
+    findings_file="$batch_input_dir/review-findings-full.jsonl"
 
     if [[ -n "$composed_findings_source" && -s "$composed_findings_source" ]]; then
         cp "$composed_findings_source" "$findings_file" 2>/dev/null || {
@@ -947,7 +948,7 @@ run_implement_round() {
     local round_cap_val="${ROUND_CAP:-0}"
     local composed_findings_file="" derived_counts="" derived_accepted="" derived_rejected="" composed_findings_ok=false
     if [[ "$exit_code" -eq 0 && -n "$IMPLEMENT_TMPDIR" && -d "$IMPLEMENT_TMPDIR" ]]; then
-        composed_findings_file="$round_dir/review-findings-full.composed.md"
+        composed_findings_file="$round_dir/review-findings-full.composed.jsonl"
         if compose_review_findings_output "$IMPLEMENT_TMPDIR" "$composed_findings_file"; then
             composed_findings_ok=true
             derived_counts=$(derive_code_review_tally_from_composed_findings "$composed_findings_file") || derived_counts=""

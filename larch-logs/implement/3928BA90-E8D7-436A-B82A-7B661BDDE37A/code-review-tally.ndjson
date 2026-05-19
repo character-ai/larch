@@ -1,4 +1,0 @@
-## Quick-mode code review tally — Round 1
-- 5 Cursor specialists, round 1 (Codex skipped — network unavailable)
-- Accepted: 3 (cleanup ordering fix, EXIT traps for ci/implement launchers, unset guard for inherited env)
-- Rejected: 5 (see rejected-findings.md)

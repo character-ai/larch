@@ -1,7 +1,0 @@
-Gathering the diff and commit history to compare the branch against the implementation plan.
-
-Checking how `invoke_apply` sets `--new-version` in the test harness to verify plan fidelity for sub-test H.
-
-Plan vs diff traceability: Files 1–3 and all three doc updates appear in the diff. `semver_lt`, `run_rebase_rebump` guard (before `state_set_many`), `apply-bump.sh` regression check after the same-version check, and `ship-pr.md` Helper Contracts bullet match the plan. One planned test detail differs; the top-of-file contract line in `apply-bump.md` was not aligned with the new invariant (minor doc drift).
-
-

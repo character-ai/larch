@@ -112,13 +112,11 @@ if [[ -z "$PLOT_FROM" ]]; then
     while IFS= read -r dir; do
         manifest="$dir/manifest.json"
         token_report_json="$dir/token-report.json"
-        token_report_md="$dir/token-report.md"
         timing_report_json="$dir/timing-report.json"
         plan_tally_json="$dir/plan-review-tally.json"
-        plan_tally_ndjson="$dir/plan-review-tally.ndjson"
 
         [[ -f "$manifest" ]] || continue
-        [[ -f "$token_report_json" || -f "$token_report_md" ]] || continue
+        [[ -f "$token_report_json" ]] || continue
 
         issue_number=$(jq -r '.issue_number // empty' "$manifest" 2>/dev/null)
         [[ -n "$issue_number" && "$issue_number" != "null" ]] || continue
@@ -140,65 +138,24 @@ if [[ -z "$PLOT_FROM" ]]; then
                 workflow_path="HARD"
             fi
         fi
-        if [[ "$workflow_path" == "unknown" && -f "$plan_tally_ndjson" ]]; then
-            tally_body=""
-            if ! tally_body=$(jq -r 'select((.body // .tally) != null) | (.body // .tally)' "$plan_tally_ndjson" 2>/dev/null | head -1); then
-                tally_body=$(head -1 "$plan_tally_ndjson" 2>/dev/null || true)
-            fi
-            if [[ "$tally_body" == "Quick mode"* || "$tally_body" == "Both externals unavailable"* ]]; then
-                workflow_path="SIMPLE"
-            elif [[ -n "$tally_body" ]]; then
-                workflow_path="HARD"
-            fi
-        fi
 
-        if [[ -f "$token_report_json" ]]; then
-            combined_body="**Workflow path**: ${workflow_path}"
-            emit_breadcrumb "Processing run for issue #${issue_number}..."
-            # Isolate jq failure per-run: an invalid token-report.json falls back to .md rather
-            # than aborting the whole scan under set -euo pipefail.
-            if ! jq -cn \
-                --argjson number "$issue_number" \
-                --arg title "Issue #${issue_number}" \
-                --arg url "https://github.com/${REPO}/issues/${issue_number}" \
-                --arg startedAt "$started_at" \
-                --arg closedAt "$closed_at" \
-                --arg workflow_path "$workflow_path" \
-                --arg body "$combined_body" \
-                --slurpfile token_report "$token_report_json" \
-                'if ($token_report[0] | type) == "object" then {number: $number, title: $title, url: $url, startedAt: $startedAt, closedAt: $closedAt, workflow_path: $workflow_path, body: $body, token_report: $token_report[0], comments: []} else error("not-an-object") end' \
-                >> "$ISSUES_JSONL" 2>/dev/null; then
-                larch_err "Warning: invalid token-report.json for issue #${issue_number} — falling back to .md"
-                if [[ -f "$token_report_md" ]]; then
-                    token_content=$(cat "$token_report_md")
-                    combined_body_fb="${token_content}
-
-**Workflow path**: ${workflow_path}"
-                    jq -cn \
-                        --argjson number "$issue_number" \
-                        --arg title "Issue #${issue_number}" \
-                        --arg url "https://github.com/${REPO}/issues/${issue_number}" \
-                        --arg startedAt "$started_at" \
-                        --arg closedAt "$closed_at" \
-                        --arg body "$combined_body_fb" \
-                        '{number: $number, title: $title, url: $url, startedAt: $startedAt, closedAt: $closedAt, body: $body, comments: []}' >> "$ISSUES_JSONL" || true
-                fi
-            fi
-        else
-            token_content=$(cat "$token_report_md")
-            combined_body="${token_content}
-
-**Workflow path**: ${workflow_path}"
-
-            emit_breadcrumb "Processing run for issue #${issue_number}..."
-            jq -cn \
-                --argjson number "$issue_number" \
-                --arg title "Issue #${issue_number}" \
-                --arg url "https://github.com/${REPO}/issues/${issue_number}" \
-                --arg startedAt "$started_at" \
-                --arg closedAt "$closed_at" \
-                --arg body "$combined_body" \
-                '{number: $number, title: $title, url: $url, startedAt: $startedAt, closedAt: $closedAt, body: $body, comments: []}' >> "$ISSUES_JSONL"
+        combined_body="**Workflow path**: ${workflow_path}"
+        emit_breadcrumb "Processing run for issue #${issue_number}..."
+        # Isolate jq failure per-run so a single invalid token-report.json
+        # warns and is skipped rather than aborting the whole scan under
+        # set -euo pipefail.
+        if ! jq -cn \
+            --argjson number "$issue_number" \
+            --arg title "Issue #${issue_number}" \
+            --arg url "https://github.com/${REPO}/issues/${issue_number}" \
+            --arg startedAt "$started_at" \
+            --arg closedAt "$closed_at" \
+            --arg workflow_path "$workflow_path" \
+            --arg body "$combined_body" \
+            --slurpfile token_report "$token_report_json" \
+            'if ($token_report[0] | type) == "object" then {number: $number, title: $title, url: $url, startedAt: $startedAt, closedAt: $closedAt, workflow_path: $workflow_path, body: $body, token_report: $token_report[0], comments: []} else error("not-an-object") end' \
+            >> "$ISSUES_JSONL" 2>/dev/null; then
+            larch_err "Warning: invalid token-report.json for issue #${issue_number} — skipping run"
         fi
 
         run_count=$((run_count + 1))

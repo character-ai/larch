@@ -1,9 +1,0 @@
-Gathering the branch diff and commit list for a read-only review.
-
-Reading the full scripts for accurate line numbers and checking for a `fail`/`fail()` name collision with peer harnesses.
-
-Checking how `LARCH_HARNESS_TIMING` is parsed elsewhere for integration risk.
-
-`docs/linting.md` already strips the `s` suffix and uses `float(seconds)` for bin-packing, so fractional tokens integrate cleanly. Finalizing the review: user forbids writing sidecar files — embedding TSV only.
-
-

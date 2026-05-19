@@ -21,7 +21,7 @@ larch-logs/
       codex-impl-manifest-raw.json
       plan-review-tally.json
       code-review-tally.json
-      review-findings-full.md
+      review-findings-full.jsonl
       version-bump-reasoning.md
       oos-issues.ndjson
       run-statistics.md
@@ -133,11 +133,11 @@ findings under a `## Rejected Code Review Findings` sub-header — only findings
 with outcome `rejected` appear here. Exonerated and neutral findings are counted
 in the envelope but not listed separately.
 
-### review-findings-full.md
+### review-findings-full.jsonl
 
-**Mode**: replace (markdown sections). **Written**: Step 5, immediately after the `code-review-tally` batch.
+**Mode**: replace (line-delimited JSON). **Written**: Step 5, immediately after the `code-review-tally` batch.
 
-Per-finding payloads for plan-review accepted, plan-review rejected, and code-review entries. Each section heading carries finding id, reviewer, phase, and outcome, followed by the redacted prose body. Accepted code-review findings appear in `### FINDING_X: panel [code-review/accepted]` blocks; rejected code-review findings appear in generated `### REJ_CX: reviewer [code-review/rejected]` blocks.
+Per-finding payloads for plan-review accepted, plan-review rejected, and code-review entries. One JSON object per line with keys `id`, `issue_number`, `phase` (`plan-review` | `code-review`), `outcome` (`accepted` | `rejected`), `reviewer`, `category` (best-effort, extracted from a leading `## <cat>: ...` body line — may be empty), and `prose_body` (redacted). See `scripts/compose-review-findings.md` for the producer contract.
 
 ### version-bump-reasoning.md
 
@@ -179,7 +179,7 @@ Log of noteworthy events during the run, grouped by category: `Pre-existing Code
 
 **Mode**: replace. **Written**: Step 18, terminal cleanup.
 
-The redacted Claude Code session transcript (`.jsonl` format) captured for post-hoc auditability. Redacted for tmpdir paths and secrets. Allows replaying the full session reasoning, tool calls, and assistant turns after the run completes. Step 18 records `SESSION_TRANSCRIPT_STATUS` in the execution-issues `Warnings` section for every capture outcome.
+A filtered, machine-readable rendering of the Claude Code session, produced by `scripts/render-session-transcript.py` from the raw session JSONL. The first line is a `{"v": 1, "source_basename": ..., "turns": N}` header; subsequent lines are per-turn objects with a `blocks` array. Blocks carry user-typed slash commands and text, assistant prose, `tool_call` entries with full input objects, and `tool_result` entries — full body when the result reported an error or warning (`is_error: true`, Bash `^Exit code [1-9]` / `^Error:`, or `warning:`), otherwise collapsed to an `elided_bytes` count. Assistant `thinking` blocks are kept only when at least one `tool_use` in the same turn produced an errored result. Harness-injected SKILL.md expansions, attachments, and housekeeping events are dropped. Redacted for tmpdir paths and secrets before commit. Step 18 records `SESSION_TRANSCRIPT_STATUS` in the execution-issues `Warnings` section for every capture outcome, including `render-failed` / `render-empty` when the renderer cannot produce a usable output (the run continues; nothing is committed). See `scripts/render-session-transcript.md` for the complete schema.
 
 ### round-<N>/
 
@@ -188,10 +188,14 @@ The redacted Claude Code session transcript (`.jsonl` format) captured for post-
 later in the same round after the coder finishes if `review-and-fix.sh`
 produces additional registered artifacts (for example coder-side files).
 
-Contains registered per-round artifacts such as reviewer outputs, voter outputs,
-prompt sidecars, diagnostics, collector/tally env files, accepted/rejected
-findings, OOS review markdown, voting tally, round summary JSON/markdown, and
-any later registered coder artifacts. The `review-core.sh` flush is the first
+Contains a curated set of per-round artifacts: the aggregate `findings.md`,
+accepted / rejected findings, OOS review markdown, voting tally and summary,
+per-voter outputs (the byte-identical vote prompts and the raw per-specialist
+reviewer outputs are excluded by `round_artifact_included` in
+`scripts/larch-log.sh` because the aggregates already cover their content),
+panel manifest, code-voter slots, collector/tally env files, coder dispatch
+state (env, prompt, tool log, wrapper logs), and any later registered coder
+artifacts. The `review-core.sh` flush is the first
 snapshot for the round; `review-and-fix.sh` may run one more `write-round`
 after coder application so the committed round directory reflects the full
 round state before the later shared log-commit paths copy it into

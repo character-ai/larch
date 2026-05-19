@@ -16,7 +16,6 @@ import collections
 import json
 import os
 import pathlib
-import re
 import sys
 import tempfile
 
@@ -55,7 +54,6 @@ for run_dir in sorted((repo / "larch-logs").glob("*/*")):
     issue = manifest_issue(run_dir / "manifest.json")
     skills_in_run = set()
     timing_json = run_dir / "timing-report.json"
-    timing_md = run_dir / "timing-report.md"
     if timing_json.exists():
         try:
             data = json.loads(timing_json.read_text(encoding="utf-8"))
@@ -65,13 +63,6 @@ for run_dir in sorted((repo / "larch-logs").glob("*/*")):
                     skills_in_run.add(skill)
         except Exception:
             pass
-    if timing_md.exists():
-        for line in timing_md.read_text(encoding="utf-8", errors="replace").splitlines():
-            match = re.match(r"^\|\s*([^|*][^|]*?)\s*\|\s*Step\b", line)
-            if match:
-                skill = normalize_skill(match.group(1).strip())
-                if skill and skill.lower() not in {"skill", "---"}:
-                    skills_in_run.add(skill)
     if not skills_in_run:
         manifest_path = run_dir / "manifest.json"
         if manifest_path.exists():

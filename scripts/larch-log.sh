@@ -70,10 +70,26 @@ round_artifact_included() {
         *.dirty-tree|*.untracked-baseline|*.done|*.diag|*.sidecar|*-output.txt.prompt|*-output-*.txt.prompt|coder-output.log|coder-codex.log)
             return 1
             ;;
-        findings.md|accepted-findings.md|accepted-in-scope-findings.md|accepted-findings.scrubbed.md|rejected-findings.md|rejected-findings-full.md|oos.md|oos-accepted-review.md|review-round-summary.md|review-summary.json|voting-tally.md|review-tally.env|review-dirty-tree-summary.env|collector-results.env|collect-agent-results.log|panel-manifest.ndjson|code-voter-slots.ndjson|submodule-paths.txt|submodule-scrub.log|submodule-revert.log|coder.env|coder-prompt.md|coder-tool.txt|coder-commit.log|coder-codex.wrapper.log|coder-cursor.log|coder-cursor.wrapper.log|review-core-gather.env|review-core-dispatch.env|review-core-collect.env|review-core-threshold.env|review-core-tally.env|review-core-voters.env|review-core-emit.env)
+        # Excluded raw per-specialist reviewer outputs and their sidecars
+        # (findings.md is the canonical aggregate). Phased outputs
+        # (cursor-specialist-*-output-phase*.txt) and their sidecars remain
+        # included via the broad *-output-*.txt patterns below.
+        cursor-specialist-*-output.txt|cursor-specialist-*-output.txt.meta|cursor-specialist-*-output.txt.json|cursor-specialist-*-output.txt.cap-hit)
+            return 1
+            ;;
+        # Excluded vote prompts (the ballot is byte-identical across voters
+        # and is already captured by voting-tally.md plus the per-voter outputs).
+        *-vote-prompt.txt)
+            return 1
+            ;;
+        # Excluded zero-byte placeholders (observed empty in every committed run).
+        skipped-findings.security.md|submodule-paths.txt|submodule-scrub.log|submodule-revert.log|coder-commit.log)
+            return 1
+            ;;
+        findings.md|accepted-findings.md|rejected-findings.md|rejected-findings-full.md|oos.md|oos-accepted-review.md|review-round-summary.md|review-summary.json|voting-tally.md|review-tally.env|review-dirty-tree-summary.env|collector-results.env|collect-agent-results.log|panel-manifest.ndjson|code-voter-slots.ndjson|coder.env|coder-prompt.md|coder-tool.txt|coder-codex.wrapper.log|coder-cursor.log|coder-cursor.wrapper.log)
             return 0
             ;;
-        dirty-checkpoint-*.env|voter*-diag.txt|*-parse-rate-diag.txt|skipped-findings*.md|*-output.txt|*-output-*.txt|*-output.txt.meta|*-output-*.txt.meta|*-output.txt.json|*-output-*.txt.json|*-output.txt.cap-hit|*-output-*.txt.cap-hit|*-prompt.txt)
+        dirty-checkpoint-*.env|voter*-diag.txt|*-parse-rate-diag.txt|skipped-findings*.md|*-output.txt|*-output-*.txt|*-output.txt.meta|*-output-*.txt.meta|*-output.txt.json|*-output-*.txt.json|*-output.txt.cap-hit|*-output-*.txt.cap-hit)
             return 0
             ;;
         *)

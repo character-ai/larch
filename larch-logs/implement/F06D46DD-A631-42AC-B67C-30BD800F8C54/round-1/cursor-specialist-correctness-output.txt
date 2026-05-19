@@ -1,9 +1,0 @@
-Gathering the branch diff and commit history for a read-only correctness review.
-
-Reading the full scripts to verify pipeline semantics, whether the new test supplies required inputs, and how findings are counted.
-
-Checking how secret redaction formats tokens to validate the updated assertion.
-
-Verification: diff matches the plan (escape helper mirrors `escape_prompt_data`, applied after redaction in `emit_record`, doc + regression test). `redact-secrets.sh` replaces secrets with `<REDACTED-TOKEN>`, so the updated test expectation `&lt;REDACTED-TOKEN&gt;` is consistent. `set -euo pipefail` makes the `printf | escape_finding_body` pipeline surface failures. New test omits `--design-artifacts-dir`; empty `DESIGN_DIR` skips design parses only, so `FINDINGS_TOTAL=1` is correct. No in-scope correctness defects identified.
-
-

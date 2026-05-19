@@ -1432,10 +1432,10 @@ export CLAUDE_PLUGIN_ROOT
     --design-artifacts-dir "$IMPLEMENT_TMPDIR/design-export" \
     --implement-tmpdir "$IMPLEMENT_TMPDIR" \
     --issue "${ISSUE_NUMBER:-0}" \
-    --output "$IMPLEMENT_TMPDIR/review-findings-full.md"
+    --output "$IMPLEMENT_TMPDIR/review-findings-full.jsonl"
 ```
 
-Best-effort: parse `COMPOSED=true` / `FINDINGS_TOTAL=<N>` from stdout. On `FAILED=true` or non-zero exit, log `Step 5 — review-findings-full compose failed: $ERROR` to `Warnings` and continue without writing the batch. If composed, replace `review-findings-full` with `larch-log.sh write --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --batch review-findings-full --input-file "$IMPLEMENT_TMPDIR/review-findings-full.md"`.
+Best-effort: parse `COMPOSED=true` / `FINDINGS_TOTAL=<N>` from stdout. On `FAILED=true` or non-zero exit, log `Step 5 — review-findings-full compose failed: $ERROR` to `Warnings` and continue without writing the batch. If composed, replace `review-findings-full` with `larch-log.sh write --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --batch review-findings-full --input-file "$IMPLEMENT_TMPDIR/review-findings-full.jsonl"`.
 
 Comment: accepted code-review findings are now captured from `$IMPLEMENT_TMPDIR/round-*/accepted-findings.md`; rejected code-review findings are read from `$IMPLEMENT_TMPDIR/round-*/rejected-findings.md` and the parent `$IMPLEMENT_TMPDIR/rejected-findings.md` fallback.
 

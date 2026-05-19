@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# compose-review-findings.sh — compose review-findings-full markdown sections.
+# compose-review-findings.sh — compose review-findings-full JSONL records.
 
 set -euo pipefail
 
@@ -54,8 +54,21 @@ redact_field() {
     printf '%s' "$1" | "$REDACT_TMP" | "$REDACT_SECRETS"
 }
 
-escape_finding_body() {
-    LC_ALL=C perl -pe 's/&(?!(?:#\d+|#x[0-9A-Fa-f]+|[A-Za-z][A-Za-z0-9]*);)/&amp;/g; s/</&lt;/g; s/>/&gt;/g'
+# Extract the category from a finding body. Bodies typically open with a
+# '## <category>: <title>' line; if absent, returns the empty string.
+extract_category() {
+    LC_ALL=C awk '
+        /^## / {
+            sub(/^## /, "")
+            n = index($0, ":")
+            if (n > 0) {
+                print substr($0, 1, n - 1)
+            } else {
+                print $0
+            }
+            exit
+        }
+    ' <<<"$1"
 }
 
 TMP_OUT="$(mktemp "${TMPDIR:-/tmp}/review-findings-full.XXXXXX")" || fail "cannot create temp output"
@@ -64,13 +77,21 @@ FINDINGS_TOTAL=0
 
 emit_record() {
     local id="$1" phase="$2" outcome="$3" reviewer="$4" body="$5"
-    local reviewer_redacted reviewer_escaped body_redacted body_escaped
+    local reviewer_redacted body_redacted category
     reviewer_redacted="$(redact_field "$reviewer")" || fail "redaction failed for reviewer in $id"
-    reviewer_escaped="$(printf '%s' "$reviewer_redacted" | escape_finding_body)" || fail "HTML escape failed for reviewer in $id"
     body_redacted="$(redact_field "$body")" || fail "redaction failed for prose_body in $id"
-    body_escaped="$(printf '%s' "$body_redacted" | escape_finding_body)" || fail "HTML escape failed for prose_body in $id"
-    printf '### %s: %s [%s/%s]\n\n%s\n\n' "$id" "$reviewer_escaped" "$phase" "$outcome" "$body_escaped" \
-        >> "$TMP_OUT" || fail "failed to write section for $id"
+    category="$(extract_category "$body_redacted")"
+    # JSONL: one compact JSON object per line. jq handles string escaping.
+    jq -nc \
+        --arg id "$id" \
+        --arg issue_number "$ISSUE" \
+        --arg phase "$phase" \
+        --arg outcome "$outcome" \
+        --arg reviewer "$reviewer_redacted" \
+        --arg category "$category" \
+        --arg prose_body "$body_redacted" \
+        '{id: $id, issue_number: $issue_number, phase: $phase, outcome: $outcome, reviewer: $reviewer, category: $category, prose_body: $prose_body}' \
+        >> "$TMP_OUT" || fail "failed to write JSONL record for $id"
     FINDINGS_TOTAL=$((FINDINGS_TOTAL + 1))
 }
 
@@ -184,4 +205,4 @@ trap - EXIT
 emit_kv COMPOSED true
 emit_kv OUTPUT "$OUTPUT"
 emit_kv FINDINGS_TOTAL "$FINDINGS_TOTAL"
-emit_kv MODE markdown
+emit_kv MODE jsonl

@@ -84,7 +84,7 @@ done
 [ "$(larch_log_batch_extension code-review-tally)" = ".json" ]
 [ "$(larch_log_batch_sanitizer code-review-tally)" = "json-object" ]
 [ "$(larch_log_batch_mode review-findings-full)" = "replace" ]
-[ "$(larch_log_batch_extension review-findings-full)" = ".md" ]
+[ "$(larch_log_batch_extension review-findings-full)" = ".jsonl" ]
 [ "$(larch_log_batch_sanitizer review-findings-full)" = "none" ]
 
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/test-larch-log-batches.XXXXXX")"
