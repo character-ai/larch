@@ -1,0 +1,11 @@
+Gathering the branch diff, commit list, and source context for a correctness-focused review.
+
+Tracing `TRANSIENT_ATTEMPT` and transient-retry logic in `launch-review.sh`, and verifying test expectations against implementation.
+
+Checking `external_is_transient_infra_failure` and whether the nontransient test's header comment matches the assertions.
+
+Checking whether `append_launch_failure` can receive an empty `retry_count` and verifying the nontransient stub writes the output file before exiting.
+
+Tracing the transient loop confirms `TRANSIENT_ATTEMPT` reaches 3 after two retries when `MAX_TRANSIENT_RETRIES=2`. `launch-review.sh` passes `"$TRANSIENT_ATTEMPT"` unconditionally at both failure sites. Creating the review document.
+
+

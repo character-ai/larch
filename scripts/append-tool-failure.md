@@ -9,7 +9,7 @@ verbatim.
 ## Interface
 
 ```text
-append-tool-failure.sh --log <path> --site <step-id> --tool <label> --exit-code <N> --category <category> --output-file <path> [--status-label <label>] [--verdict <label>] [--retry-count <N>] [--redact]
+append-tool-failure.sh --log <path> --site <step-id> --tool <label> --exit-code <N> --category <category> --output-file <path> [--status-label <label>] [--verdict <label>] [--retry-count <N>] [--transient-retry-count <N>] [--redact]
 ```
 
 Supported categories are `Tool Failures`, `External Reviewer Issues`,
@@ -19,7 +19,7 @@ The helper reads `--output-file` without truncation and wraps the exact
 content in a markdown code fence under a bullet:
 
 ````markdown
-- **Step <site> — <tool> <status-label> (exit <N>[ — <verdict>][ — retries=<N>])**:
+- **Step <site> — <tool> <status-label> (exit <N>[ — <verdict>][ — retries=<N>|auth-retries=<N>, transient-retries=<N>])**:
   ```
   <captured content>
   ```
@@ -39,6 +39,15 @@ omitted, no verdict suffix is written.
 pass the final auth-loop attempt count so terminal failure entries can
 distinguish first-attempt failures from exhausted retry loops. When
 omitted, no retry suffix is written.
+
+`--transient-retry-count` is an optional non-negative integer. When
+provided alongside `--retry-count`, the header suffix changes from
+`retries=N` to `auth-retries=N, transient-retries=M`, where N is the
+auth-retry counter and M is the transient-infra-retry counter
+(M=1 means no transient retry fired; M>=2 means M-1 retries fired).
+When omitted, the existing `retries=N` format is preserved for backward
+compatibility. Passing `--transient-retry-count` without `--retry-count`
+does not add a suffix.
 
 When `--redact` is present, the captured content is first passed through
 `scripts/redact-secrets.sh`. The redaction pass preserves non-secret
@@ -77,9 +86,9 @@ output.
 
 `scripts/test-append-tool-failure.sh` covers single-line, multi-line,
 large-content, category routing, custom status labels, verdict /
-retry-count suffixes, redaction, missing-input failure, and delegate
-failure atomicity. It is intended to run directly and through the
-relevant-checks script harness.
+retry-count suffixes, transient-only omission, redaction, missing-input
+failure, and delegate failure atomicity. It is intended to run directly
+and through the relevant-checks script harness.
 
 ## Edit In Sync
 
