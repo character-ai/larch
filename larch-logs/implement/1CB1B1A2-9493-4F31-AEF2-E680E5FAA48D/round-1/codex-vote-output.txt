@@ -1,0 +1,38 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: EXONERATE -- Pre-existing no-errexit/probe-boundary style is legitimate context but not worth a future issue.
+FINDING_4: EXONERATE -- Duplicate set +e is harmless pre-existing cleanup, not issue-worthy.
+FINDING_5: EXONERATE -- Legitimate cosmetic cleanup, but unrelated and too low-value for tracking.
+FINDING_6: EXONERATE -- Capturing gh stdout in memory is suboptimal plan fidelity, but PR-create stdout is bounded enough that streaming adds more churn than value.
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: EXONERATE -- Misleading depth wording is real but diagnostic-only and not worth blocking this change.
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: EXONERATE -- The stub doc is thin, but expanding it is maintenance polish rather than a necessary fix.
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: YES
+FINDING_18: YES
+FINDING_19: YES
+FINDING_20: YES
+FINDING_21: YES
+FINDING_22: YES
+FINDING_23: YES
+FINDING_24: YES
+FINDING_25: YES
+FINDING_26: YES
+FINDING_27: EXONERATE -- Newline path handling is a very rare edge case and hardening it would add more complexity than this check warrants.
+FINDING_28: YES
+FINDING_29: YES
+FINDING_30: YES
+FINDING_31: YES
+FINDING_32: NO -- GH_REPO_ARGS is built from validated OWNER/REPO text, so the cited spaced-argv rendering risk is not present there.
+FINDING_33: YES
+FINDING_34: YES
+FINDING_35: YES
+FINDING_36: YES
+FINDING_37: YES
+FINDING_38: EXONERATE -- Changelog title normalization is a legitimate hardening idea, but PR titles are effectively single-line here and sanitization is not worth expanding this PR.

@@ -1,0 +1,9 @@
+Reading the ballot and locating diff/plan context to verify each finding.
+
+Reading plan/diff context and verifying cited files and line ranges in the workspace.
+
+Verifying `rebase-rebump-subprocedure.md` for FINDING_5 and checking `run_postbump` for execution-issues writes.
+
+Cross-checking: `rebase-rebump-subprocedure.md` line 31 still says "HEAD was not a bump commit" for `DROPPED=false`, which is incomplete after walk-back. Creating the plan and delivering vote lines.
+
+

@@ -1,0 +1,3 @@
+### In-Scope Findings
+
+1. **Nit** `correctness` — `scripts/ship-pr.sh:575-591`: the new fallback reads `PR_TITLE` in `scripts/implement-finalize.sh:697-704`, and the new harness supplies it in `skills/implement/scripts/test-step-8a-changelog.sh:128-132`, but the production postbump state writer never includes `PR_TITLE`. In a real no-manifest fallback run, the changelog entry will be `Closed: #N` even when the main ship state already has a PR title, so the test covers a richer state than production can provide. Add `PR_TITLE=$(read_state PR_TITLE)` to `write_postbump_state` and pin that path in the ship-pr or finalize harness.
