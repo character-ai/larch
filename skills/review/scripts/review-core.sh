@@ -329,9 +329,31 @@ threshold_reason=$(kv_get "$threshold_out" THRESHOLD_REASON)
 not_substantive_slots=$(kv_get "$threshold_out" NOT_SUBSTANTIVE_SLOTS)
 not_substantive_slots="${not_substantive_slots:-0}"
 if [[ "$threshold_ok" == "false" ]]; then
+    panel_failed_tally="$REVIEW_TMPDIR/review-core-panel-failed-tally.env"
+    panel_failed_emit_out="$REVIEW_TMPDIR/review-core-panel-failed-emit.env"
     : > "$REVIEW_TMPDIR/accepted-findings.md"
     : > "$REVIEW_TMPDIR/rejected-findings.md"
     : > "$REVIEW_TMPDIR/oos-accepted-review.md"
+    cat > "$panel_failed_tally" <<EOF
+ACCEPTED_COUNT=0
+REJECTED_COUNT=0
+EXONERATED_COUNT=0
+NEUTRAL_COUNT=0
+EOF
+    panel_failed_emit_args=(
+        --tally-file "$panel_failed_tally"
+        --accepted-findings-file "$REVIEW_TMPDIR/accepted-findings.md"
+        --oos-file "$REVIEW_TMPDIR/oos.md"
+        --review-tmpdir "$REVIEW_TMPDIR"
+        --round "$ROUND_NUM"
+        --mode "$MODE"
+        --scout-status "$scout_status"
+        --dynamic-slots "$dynamic_slots"
+        --static-slot-count "$static_slot_count"
+    )
+    [[ -n "$SESSION_ENV_PATH" ]] && panel_failed_emit_args+=(--session-env-path "$SESSION_ENV_PATH")
+    [[ -n "${IMPLEMENT_TMPDIR:-}" ]] && panel_failed_emit_args+=(--implement-tmpdir "$IMPLEMENT_TMPDIR")
+    "$EMIT_TALLY_SH" "${panel_failed_emit_args[@]}" > "$panel_failed_emit_out"
     copy_to_parent "$REVIEW_TMPDIR/rejected-findings.md" rejected-findings.md
     copy_to_parent "$REVIEW_TMPDIR/oos-accepted-review.md" oos-accepted-review.md
     flush_round_log

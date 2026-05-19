@@ -934,7 +934,7 @@ run_pr_prep_phase() {
 }
 
 run_pr_create_phase() {
-    local title out rc pr_number pr_url pr_status repo_args draft_args fail_file _merge_base flush_run_id manifest_rc
+    local title out rc pr_number pr_url pr_status repo_args draft_args fail_file _merge_base flush_run_id manifest_rc push_output
     _merge_base=$(git merge-base HEAD origin/main 2>/dev/null) || _merge_base=
     if [ -n "$_merge_base" ]; then
         title=$(git log --format=%s "${_merge_base}..HEAD" 2>/dev/null | grep -v '^chore(larch-logs): flush ' | head -1)
@@ -1001,6 +1001,20 @@ run_pr_create_phase() {
                 > "$fail_file" 2>&1
             rc=$?
             [ "$rc" -eq 0 ] || record_failure pr-create "larch-log.sh commit (post-pr-create)" "$rc" "$fail_file" Warnings
+            if [ "$rc" -eq 0 ]; then
+                fail_file=$(failure_capture_path pr-create)
+                push_output=$("$SCRIPT_DIR/git-push.sh" 2>"$fail_file")
+                rc=$?
+                printf '%s\n' "$push_output" >> "$fail_file"
+                if [ "$rc" -ne 0 ] && is_transient_net_signature "$(cat "$fail_file" 2>/dev/null)"; then
+                    record_failure pr-create "git-push.sh (post-pr-create)" "$rc" "$fail_file" "CI Issues"
+                    exit_transient_net "post-pr-create-push: $push_output"
+                fi
+                if [ "$rc" -ne 0 ]; then
+                    record_failure pr-create "git-push.sh (post-pr-create)" "$rc" "$fail_file" "CI Issues"
+                    exit_stall 9b
+                fi
+            fi
         fi
     fi
     advance_phase ci-initial

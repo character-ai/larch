@@ -34,6 +34,7 @@ esac
 
 run_id=$(kv RUN_ID)
 [ -n "$run_id" ] || { emit "REFRESH_SKIPPED=true REASON=no-run-id"; exit 0; }
+pr_url=$(kv PR_URL)
 
 # Reject path-traversal characters in RUN_ID before it reaches git pathspecs.
 case "$run_id" in
@@ -68,8 +69,10 @@ if [ -s "$issue_log" ] && { [ -f "$checkpoint" ] || [ -f "$sentinel" ] || [ -f "
         2>/dev/null || true
 fi
 
-"$SCRIPT_DIR/../skills/implement/scripts/write-final-report.sh" \
-    --implement-tmpdir "$IMPL_TMPDIR" 2>/dev/null || true
+if [ -n "$pr_url" ]; then
+    "$SCRIPT_DIR/../skills/implement/scripts/write-final-report.sh" \
+        --implement-tmpdir "$IMPL_TMPDIR" 2>/dev/null || true
+fi
 
 # Re-render and write token and timing reports.
 "$SCRIPT_DIR/token-report.sh"  --full --format json --output "$IMPL_TMPDIR/token-report-refresh.json"  2>/dev/null || true

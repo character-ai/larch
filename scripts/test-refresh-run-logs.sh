@@ -252,6 +252,11 @@ ISSUES
     else
         fail "step7a-skip refresh: execution issues log cleared after flush"
     fi
+    if [ -f "$impl_tmpdir/larch-logs/implement/$run_id/final-summary.md" ]; then
+        fail "step7a-skip refresh: final summary must not render before PR_URL exists"
+    else
+        pass "step7a-skip refresh: final summary gated on PR_URL"
+    fi
     rm -rf "$tmp"
 } || fail "step7a-skip refresh: exception"
 

@@ -325,6 +325,8 @@ fi
 assert_contains "$out" 'REVIEW_CORE_STATUS=panel-failed'
 assert_contains "$out" 'SCOUT_STATUS=ok'
 assert_contains "$out" 'DYNAMIC_SLOTS=2'
+jq -e '.schema_version == 2 and .accepted_count == 0 and .rejected_count == 0 and .panel.scout_status == "ok" and .panel.dynamic_slot_count == 2 and .panel.total_slot_count == 2' \
+    "$TMP/panel-failed/review-summary.json" >/dev/null || { echo "FAIL: panel-failed review-summary.json missing panel telemetry" >&2; exit 1; }
 
 out=$(TEST_FINDINGS=1 TEST_TALLY_STATUS=main-agent-vote-required run_core "$TMP/main-agent")
 assert_contains "$out" 'REVIEW_CORE_STATUS=main-agent-vote-required'
