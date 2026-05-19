@@ -71,12 +71,22 @@ extract_category() {
     ' <<<"$1"
 }
 
+extract_reviewer_from_body() {
+    LC_ALL=C awk '
+        /^- \*\*Reviewer\*\*:[[:space:]]*/ {
+            sub(/^- \*\*Reviewer\*\*:[[:space:]]*/, "")
+            print
+            exit
+        }
+    ' <<<"$1"
+}
+
 TMP_OUT="$(mktemp "${TMPDIR:-/tmp}/review-findings-full.XXXXXX")" || fail "cannot create temp output"
 trap 'rm -f "$TMP_OUT"' EXIT
 FINDINGS_TOTAL=0
 
 emit_record() {
-    local id="$1" phase="$2" outcome="$3" reviewer="$4" body="$5"
+    local id="$1" phase="$2" outcome="$3" reviewer="$4" body="$5" round_num="$6"
     local reviewer_redacted body_redacted category
     reviewer_redacted="$(redact_field "$reviewer")" || fail "redaction failed for reviewer in $id"
     body_redacted="$(redact_field "$body")" || fail "redaction failed for prose_body in $id"
@@ -88,15 +98,16 @@ emit_record() {
         --arg phase "$phase" \
         --arg outcome "$outcome" \
         --arg reviewer "$reviewer_redacted" \
+        --arg round_num "$round_num" \
         --arg category "$category" \
         --arg prose_body "$body_redacted" \
-        '{id: $id, issue_number: $issue_number, phase: $phase, outcome: $outcome, reviewer: $reviewer, category: $category, prose_body: $prose_body}' \
+        '{id: $id, issue_number: $issue_number, phase: $phase, outcome: $outcome, reviewer: $reviewer, round_num: $round_num, category: $category, prose_body: $prose_body}' \
         >> "$TMP_OUT" || fail "failed to write JSONL record for $id"
     FINDINGS_TOTAL=$((FINDINGS_TOTAL + 1))
 }
 
 parse_artifact() {
-    local file="$1" kind="$2"
+    local file="$1" kind="$2" round_num="${3:-}"
     [ -f "$file" ] && [ -s "$file" ] || return 0
 
     local pending_id="" pending_reviewer="" pending_title="" pending_body="" counter=0 id_prefix phase outcome
@@ -105,16 +116,21 @@ parse_artifact() {
         plan-review-rejected) phase="plan-review"; outcome="rejected"; id_prefix="REJ_P" ;;
         code-review-accepted) phase="code-review"; outcome="accepted"; id_prefix="" ;;
         code-review-rejected) phase="code-review"; outcome="rejected"; id_prefix="REJ_C" ;;
+        code-review-oos) phase="code-review"; outcome="out_of_scope"; id_prefix="OOS_C" ;;
         *) fail "internal: unknown kind: $kind" ;;
     esac
 
     flush_pending() {
         [ -n "$pending_id" ] || return 0
+        local reviewer="$pending_reviewer"
         local body="$pending_body"
         if [ -n "$pending_title" ]; then
             body="## $pending_title"$'\n\n'"$body"
         fi
-        emit_record "$pending_id" "$phase" "$outcome" "${pending_reviewer:-panel}" "$body"
+        if [ -z "$reviewer" ]; then
+            reviewer="$(extract_reviewer_from_body "$pending_body")"
+        fi
+        emit_record "$pending_id" "$phase" "$outcome" "${reviewer:-panel}" "$body" "$round_num"
         pending_id=""; pending_reviewer=""; pending_title=""; pending_body=""
     }
 
@@ -150,12 +166,23 @@ parse_artifact() {
                     flush_pending
                     counter=$((counter + 1))
                     pending_id="${id_prefix}${counter}"
-                    pending_reviewer="${BASH_REMATCH[2]}"
+                    if [ "${BASH_REMATCH[1]}" = "Code Review" ]; then
+                        pending_reviewer="${BASH_REMATCH[2]}"
+                    fi
                     continue
                 fi
                 # Inner headings inside a rejected block belong to that block's body.
                 if [[ -n "$pending_id" && "$line" =~ ^###[[:space:]] ]]; then
                     pending_body="${pending_body}${pending_body:+$'\n'}$line"
+                    continue
+                fi
+                ;;
+            code-review-oos)
+                if [[ "$line" =~ ^###[[:space:]]+OOS_[0-9A-Za-z_]+:[[:space:]]*(.*)$ ]]; then
+                    flush_pending
+                    counter=$((counter + 1))
+                    pending_id="${id_prefix}${counter}"
+                    pending_title="${BASH_REMATCH[1]}"
                     continue
                 fi
                 ;;
@@ -171,8 +198,8 @@ parse_artifact() {
     flush_pending
 }
 
-[ -n "$DESIGN_DIR" ] && parse_artifact "$DESIGN_DIR/accepted-plan-findings.md" plan-review-accepted
-[ -n "$DESIGN_DIR" ] && parse_artifact "$DESIGN_DIR/rejected-findings.md" plan-review-rejected
+[ -n "$DESIGN_DIR" ] && parse_artifact "$DESIGN_DIR/accepted-plan-findings.md" plan-review-accepted ""
+[ -n "$DESIGN_DIR" ] && parse_artifact "$DESIGN_DIR/rejected-findings.md" plan-review-rejected ""
 if [ -n "$IMPLEMENT_TMPDIR" ]; then
     shopt -s nullglob
     round_dirs=( "$IMPLEMENT_TMPDIR"/round-* )
@@ -180,20 +207,22 @@ if [ -n "$IMPLEMENT_TMPDIR" ]; then
     round_rejected_found=false
     for round_dir in "${round_dirs[@]+"${round_dirs[@]}"}"; do
         [ -d "$round_dir" ] || continue
-        parse_artifact "$round_dir/accepted-findings.md" code-review-accepted
+        round_num="$(basename "$round_dir" | sed 's/^round-//')"
+        parse_artifact "$round_dir/accepted-findings.md" code-review-accepted "$round_num"
+        parse_artifact "$round_dir/oos.md" code-review-oos "$round_num"
         if [ -s "$round_dir/rejected-findings-full.md" ]; then
             round_rejected_found=true
-            parse_artifact "$round_dir/rejected-findings-full.md" code-review-rejected
+            parse_artifact "$round_dir/rejected-findings-full.md" code-review-rejected "$round_num"
         elif [ -s "$round_dir/rejected-findings.md" ]; then
             round_rejected_found=true
-            parse_artifact "$round_dir/rejected-findings.md" code-review-rejected
+            parse_artifact "$round_dir/rejected-findings.md" code-review-rejected "$round_num"
         fi
     done
     if [ "$round_rejected_found" = false ]; then
         if [ -s "$IMPLEMENT_TMPDIR/rejected-findings-full.md" ]; then
-            parse_artifact "$IMPLEMENT_TMPDIR/rejected-findings-full.md" code-review-rejected
+            parse_artifact "$IMPLEMENT_TMPDIR/rejected-findings-full.md" code-review-rejected ""
         else
-            parse_artifact "$IMPLEMENT_TMPDIR/rejected-findings.md" code-review-rejected
+            parse_artifact "$IMPLEMENT_TMPDIR/rejected-findings.md" code-review-rejected ""
         fi
     fi
 fi
