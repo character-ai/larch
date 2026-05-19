@@ -217,21 +217,21 @@
       {
         "step": "Step 6 — checks second pass",
         "totals": {
-          "input": 34,
-          "cache_read": 6759819,
-          "cache_create": 50164,
-          "output": 11277,
-          "total": 6821294
+          "input": 36,
+          "cache_read": 7209601,
+          "cache_create": 51682,
+          "output": 12035,
+          "total": 7273354
         },
         "skills": [
           {
             "skill": "bump-version",
             "totals": {
-              "input": 18,
-              "cache_read": 3344433,
-              "cache_create": 10615,
-              "output": 3438,
-              "total": 3358504
+              "input": 20,
+              "cache_read": 3794215,
+              "cache_create": 12133,
+              "output": 4196,
+              "total": 3810564
             }
           },
           {
@@ -245,14 +245,25 @@
             }
           }
         ]
+      },
+      {
+        "step": "Step 8b — rebase",
+        "totals": {
+          "input": 0,
+          "cache_read": 0,
+          "cache_create": 0,
+          "output": 0,
+          "total": 0
+        },
+        "skills": []
       }
     ],
     "totals": {
-      "input": 181,
-      "cache_read": 30059764,
-      "cache_create": 1050695,
-      "output": 98339,
-      "total": 31208979
+      "input": 183,
+      "cache_read": 30509546,
+      "cache_create": 1052213,
+      "output": 99097,
+      "total": 31661039
     }
   },
   "codex": {
@@ -331,6 +342,14 @@
       },
       {
         "step": "Step 6 — checks second pass",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 8b — rebase",
         "totals": {
           "input": 0,
           "output": 0,
@@ -420,6 +439,14 @@
       },
       {
         "step": "Step 6 — checks second pass",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 8b — rebase",
         "totals": {
           "input": 0,
           "output": 0,
