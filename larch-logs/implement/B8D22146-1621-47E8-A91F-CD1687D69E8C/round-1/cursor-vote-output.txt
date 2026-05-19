@@ -1,0 +1,9 @@
+Reading the ballot and session context files to verify each finding (read-only).
+
+Verifying ballot claims against the codebase and session diff context.
+
+Checking `classify_result` usage and whether `tally-code-votes.sh` documents `EFFECTIVE_VOTERS`:
+
+Confirming: `check_and_retry_voter_parse_rate` runs slots 1→2→3 sequentially; shared `diag_file` and `rm -f "$diag_file"` on slot-2 success can remove slot-1's diag. `classify_result` uses `ELIGIBLE_VOTERS` at line 279 while banners use `EFFECTIVE_VOTERS`. Creating the formal plan document per plan-mode instructions.
+
+

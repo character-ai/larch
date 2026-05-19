@@ -1,0 +1,10 @@
+voter_tool=cursor
+neutral_count=20
+total_findings=20
+voter_file=<TMPDIR>/round-3/cursor-vote-output.txt
+--- first 200 bytes of voter output ---
+Reading the ballot and locating diff/plan context to verify each finding.
+
+Reading plan/diff context and verifying cited code in the repository.
+
+Tracing voter_tool vs output paths during fallback and
