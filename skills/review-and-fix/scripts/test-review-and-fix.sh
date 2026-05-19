@@ -968,4 +968,111 @@ if grep -Fq 'sk-ant-abcdefghijklmnopqrstuvwxyz0123456789ABCD' "$implement_tmp/ex
     fail "late flush warning should redact stderr"
 fi
 
+
+# Tests 6-7: review-scout-manifest flush from /implement path
+
+cat > "$TMP/review-core-scout-stub.sh" <<'EOF_SCOUT_CORE'
+#!/usr/bin/env bash
+set -euo pipefail
+out=""
+round="1"
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --output-dir) out="$2"; shift 2 ;;
+    --round-num) round="$2"; shift 2 ;;
+    *) shift; [[ $# -gt 0 && "${1:-}" != --* ]] && shift || true ;;
+  esac
+done
+mkdir -p "$out"
+: > "$out/findings.md"
+: > "$out/accepted-findings.md"
+: > "$out/rejected-findings.md"
+scout_manifest="$out/scout-round${round}-manifest.json"
+case "${TEST_SCOUT_STATUS:-ok}" in
+  ok)
+    printf '{"archetypes":["api-contract"]}\n' > "$scout_manifest"
+    printf 'REVIEW_CORE_STATUS=zero-findings\nROUND_NUM=%s\nACCEPTED_COUNT=0\nREJECTED_COUNT=0\nEXONERATED_COUNT=0\nNEUTRAL_COUNT=0\nACCEPTED_FINDINGS_FILE=%s/accepted-findings.md\nREJECTED_FINDINGS_FILE=%s/rejected-findings.md\nPANEL_MODE=normal\nPANEL_SHAPE=simple\nSCOUT_STATUS=ok\nDYNAMIC_SLOTS=2\nSCOUT_MANIFEST=%s\n' \
+        "$round" "$out" "$out" "$scout_manifest"
+    ;;
+  *)
+    printf 'REVIEW_CORE_STATUS=zero-findings\nROUND_NUM=%s\nACCEPTED_COUNT=0\nREJECTED_COUNT=0\nEXONERATED_COUNT=0\nNEUTRAL_COUNT=0\nACCEPTED_FINDINGS_FILE=%s/accepted-findings.md\nREJECTED_FINDINGS_FILE=%s/rejected-findings.md\nPANEL_MODE=normal\nPANEL_SHAPE=simple\nSCOUT_STATUS=na\nDYNAMIC_SLOTS=0\nSCOUT_MANIFEST=\n' \
+        "$round" "$out" "$out"
+    ;;
+esac
+EOF_SCOUT_CORE
+chmod +x "$TMP/review-core-scout-stub.sh"
+
+# Test 6: scout summary committed in /implement when SCOUT_STATUS=ok
+work_scout="$TMP/scout-manifest-ok"
+make_work_repo "$work_scout"
+scout_impl_tmp="$work_scout/implement"
+mkdir -p "$scout_impl_tmp"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$scout_impl_tmp/session-env.sh"
+scout_run_id="scout-run-test-ok"
+scout_log_root="$scout_impl_tmp/larch-logs"
+(cd "$work_scout" && CLAUDE_PLUGIN_ROOT="$REPO_ROOT" "$REPO_ROOT/scripts/larch-log.sh" init \
+    --log-root "$scout_log_root" --skill implement --run-id "$scout_run_id" --issue 2356) >/dev/null
+
+set +e
+out=$(
+    cd "$work_scout" && \
+    CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+    CURSOR_API_KEY=test-cursor-key \
+    REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-scout-stub.sh" \
+    REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
+    REVIEW_AND_FIX_SCRUB_SUBMODULE_PATHS_SH="$REPO_ROOT/scripts/scrub-submodule-paths.sh" \
+    TEST_SCOUT_STATUS=ok \
+    "$SCRIPT" --implement-tmpdir "$scout_impl_tmp" --mode diff --panel simple \
+        --round-num 1 --session-env-path "$scout_impl_tmp/session-env.sh" \
+        --run-id "$scout_run_id"
+)
+rc=$?
+set -e
+[[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "scout-ok test expected exit 0 got $rc"; }
+scout_batch="$scout_log_root/implement/$scout_run_id/review-scout-manifest.json"
+if [[ -f "$scout_batch" ]]; then
+    pass "review-scout-manifest.json committed when SCOUT_STATUS=ok"
+else
+    fail "review-scout-manifest.json must be committed when SCOUT_STATUS=ok (missing: $scout_batch)"
+fi
+if jq -e '.status == "ok" and .dynamic_slots == 2 and (.manifest_basename | length > 0)' "$scout_batch" >/dev/null 2>&1; then
+    pass "review-scout-manifest.json has expected fields (status, dynamic_slots, manifest_basename)"
+else
+    fail "review-scout-manifest.json fields wrong: $(cat "$scout_batch" 2>/dev/null)"
+fi
+
+# Test 7: no review-scout-manifest.json committed when SCOUT_STATUS=na
+work_scout_na="$TMP/scout-manifest-na"
+make_work_repo "$work_scout_na"
+scout_na_impl_tmp="$work_scout_na/implement"
+mkdir -p "$scout_na_impl_tmp"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$scout_na_impl_tmp/session-env.sh"
+scout_na_run_id="scout-run-test-na"
+scout_na_log_root="$scout_na_impl_tmp/larch-logs"
+(cd "$work_scout_na" && CLAUDE_PLUGIN_ROOT="$REPO_ROOT" "$REPO_ROOT/scripts/larch-log.sh" init \
+    --log-root "$scout_na_log_root" --skill implement --run-id "$scout_na_run_id" --issue 2356) >/dev/null
+
+set +e
+out=$(
+    cd "$work_scout_na" && \
+    CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+    CURSOR_API_KEY=test-cursor-key \
+    REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-scout-stub.sh" \
+    REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
+    REVIEW_AND_FIX_SCRUB_SUBMODULE_PATHS_SH="$REPO_ROOT/scripts/scrub-submodule-paths.sh" \
+    TEST_SCOUT_STATUS=na \
+    "$SCRIPT" --implement-tmpdir "$scout_na_impl_tmp" --mode diff --panel simple \
+        --round-num 1 --session-env-path "$scout_na_impl_tmp/session-env.sh" \
+        --run-id "$scout_na_run_id"
+)
+rc=$?
+set -e
+[[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "scout-na test expected exit 0 got $rc"; }
+scout_na_batch="$scout_na_log_root/implement/$scout_na_run_id/review-scout-manifest.json"
+if [[ ! -f "$scout_na_batch" ]]; then
+    pass "review-scout-manifest.json NOT committed when SCOUT_STATUS=na"
+else
+    fail "review-scout-manifest.json must NOT be committed when SCOUT_STATUS=na"
+fi
+
 echo "test-review-and-fix: ok"

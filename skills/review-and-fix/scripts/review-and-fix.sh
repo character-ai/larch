@@ -1093,6 +1093,43 @@ run_implement_round() {
     write_summary_json "$prior_summary" "$status" "$core_status" "$round_num_dec" "$total_accepted" "$total_rejected" "$total_exonerated" "$total_neutral" "$round_num_dec" "$accepted_file" "$round_dir" "$oos_jsonl" "$oos_markdown" "$round_cap_val" "$coder_tool" "$coder_status" "$scrub_count" "$revert_count" "$coder_commit_sha"
     flush_round_log_after_coder "$IMPLEMENT_TMPDIR" "$RUN_ID" "$round_num_dec" "$round_dir"
 
+    if [[ -n "$RUN_ID" && -x "$LARCH_LOG_SH" && -n "$IMPLEMENT_TMPDIR" && -d "$IMPLEMENT_TMPDIR" ]]; then
+        local scout_status_val scout_dynamic_slots scout_manifest_path scout_payload manifest_basename scout_flush_err scout_rc
+        scout_status_val=$(kv_get "$core_out" SCOUT_STATUS)
+        scout_status_val="${scout_status_val:-na}"
+        if [[ "$scout_status_val" != "na" ]]; then
+            scout_dynamic_slots=$(kv_get "$core_out" DYNAMIC_SLOTS)
+            scout_manifest_path=$(kv_get "$core_out" SCOUT_MANIFEST)
+            scout_payload="$round_dir/.scout-payload.json"
+            manifest_basename=""
+            [[ -n "$scout_manifest_path" && -f "$scout_manifest_path" ]] && manifest_basename="$(basename "$scout_manifest_path")"
+            jq -cn \
+                --arg status "$scout_status_val" \
+                --argjson dynamic_slots "${scout_dynamic_slots:-0}" \
+                --arg manifest_basename "$manifest_basename" \
+                '{status: $status, dynamic_slots: $dynamic_slots, manifest_basename: $manifest_basename}' \
+                > "$scout_payload" || true
+            if [[ -s "$scout_payload" ]]; then
+                scout_flush_err="$round_dir/review-and-fix-scout-flush.log"
+                set +e
+                "$LARCH_LOG_SH" write \
+                    --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
+                    --skill implement \
+                    --run-id "$RUN_ID" \
+                    --batch review-scout-manifest \
+                    --input-file "$scout_payload" >/dev/null 2>"$scout_flush_err"
+                scout_rc=$?
+                set -e
+                if [[ "$scout_rc" -ne 0 ]]; then
+                    append_log_write_failure "5" "larch-log.sh write review-scout-manifest" "$scout_flush_err" "Warnings" "$scout_rc" "scout flush round $round_num_dec"
+                else
+                    rm -f "$scout_flush_err"
+                fi
+            fi
+            rm -f "$scout_payload"
+        fi
+    fi
+
     emit_kv REVIEW_AND_FIX_STATUS "$status"
     emit_kv REVIEW_CORE_STATUS "$core_status"
     emit_kv ROUND_NUM "$round_num_dec"

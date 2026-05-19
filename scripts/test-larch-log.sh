@@ -418,6 +418,86 @@ fi
 
 export LARCH_LOG_ROOT="$_saved_log_root"
 
+echo "=== write-round commits scout and dynamic-archetype artifacts ==="
+_wr_staging="$TMP/wr-staging"
+_wr_run="wrround-scout-001"
+_wr_source="$TMP/wr-source-round1"
+mkdir -p "$_wr_source/dynamic-archetypes"
+
+# Allowed round artifacts
+printf 'SCOUT_STATUS=ok\nSCOUT_RESULT=fired\n' > "$_wr_source/scout-round1-status.env"
+printf '{"archetypes":["api-contract","edge-cases"]}\n' > "$_wr_source/scout-round1-manifest.json"
+printf 'findings here\n' > "$_wr_source/findings.md"
+# Flattened from dynamic-archetypes/
+printf '# reviewer-dyn-api-contract\n' > "$_wr_source/dynamic-archetypes/reviewer-dyn-api-contract.md"
+printf '# dyn-api-contract-prompt\n' > "$_wr_source/dynamic-archetypes/dyn-api-contract-prompt.md"
+# Denied files that should stay out
+printf 'raw output\n' > "$_wr_source/cursor-specialist-correctness-output.txt"
+printf 'vote prompt\n' > "$_wr_source/main-agent-vote-prompt.txt"
+
+"$LARCH_LOG" init --log-root "$_wr_staging/larch-logs" --skill implement --run-id "$_wr_run" --issue 2356 >/dev/null
+"$LARCH_LOG" write-round \
+    --log-root "$_wr_staging/larch-logs" \
+    --skill implement \
+    --run-id "$_wr_run" \
+    --round 1 \
+    --source-dir "$_wr_source" >/dev/null
+
+_wr_round="$_wr_staging/larch-logs/implement/$_wr_run/round-1"
+
+# Test 1: scout status committed
+if [ -f "$_wr_round/scout-round1-status.env" ]; then
+    pass "write-round commits scout-round1-status.env"
+else
+    fail "write-round must commit scout-round1-status.env (missing)"
+fi
+
+# Test 2: scout manifest committed
+if [ -f "$_wr_round/scout-round1-manifest.json" ]; then
+    pass "write-round commits scout-round1-manifest.json"
+else
+    fail "write-round must commit scout-round1-manifest.json (missing)"
+fi
+
+# Test 3: dynamic-archetypes flattened to round root (not in a subdir)
+if [ -f "$_wr_round/reviewer-dyn-api-contract.md" ] && [ ! -d "$_wr_round/dynamic-archetypes" ]; then
+    pass "write-round flattens reviewer-dyn-*.md to round root"
+else
+    fail "write-round must flatten reviewer-dyn-*.md (missing or still in subdir)"
+fi
+if [ -f "$_wr_round/dyn-api-contract-prompt.md" ]; then
+    pass "write-round flattens dyn-*-prompt.md to round root"
+else
+    fail "write-round must flatten dyn-*-prompt.md (missing)"
+fi
+
+# Test 4: no-regression — existing allowed files still committed
+if [ -f "$_wr_round/findings.md" ]; then
+    pass "write-round no-regression: findings.md still committed"
+else
+    fail "write-round no-regression: findings.md missing"
+fi
+
+# Test 5: denied files stay denied
+if [ ! -f "$_wr_round/cursor-specialist-correctness-output.txt" ]; then
+    pass "write-round denied: cursor-specialist-*-output.txt excluded"
+else
+    fail "write-round must exclude cursor-specialist-*-output.txt"
+fi
+if [ ! -f "$_wr_round/main-agent-vote-prompt.txt" ]; then
+    pass "write-round denied: *-vote-prompt.txt excluded"
+else
+    fail "write-round must exclude *-vote-prompt.txt"
+fi
+
+# Byte-for-byte content verification on scout files
+_wr_status_content=$(cat "$_wr_round/scout-round1-status.env" 2>/dev/null || true)
+if [ "$_wr_status_content" = "$(cat "$_wr_source/scout-round1-status.env")" ]; then
+    pass "write-round scout-round1-status.env content matches source"
+else
+    fail "write-round scout-round1-status.env content mismatch"
+fi
+
 echo
 echo "Passed: $PASS"
 echo "Failed: $FAIL"

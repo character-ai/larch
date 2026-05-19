@@ -89,7 +89,7 @@ round_artifact_included() {
         findings.md|accepted-findings.md|rejected-findings.md|rejected-findings-full.md|oos.md|oos-accepted-review.md|review-round-summary.md|review-summary.json|voting-tally.md|review-tally.env|review-dirty-tree-summary.env|collector-results.env|collect-agent-results.log|panel-manifest.ndjson|code-voter-slots.ndjson|coder.env|coder-prompt.md|coder-tool.txt|coder-codex.wrapper.log|coder-cursor.log|coder-cursor.wrapper.log)
             return 0
             ;;
-        dirty-checkpoint-*.env|voter*-diag.txt|*-parse-rate-diag.txt|skipped-findings*.md|*-output.txt|*-output-*.txt|*-output.txt.meta|*-output-*.txt.meta|*-output.txt.json|*-output-*.txt.json|*-output.txt.cap-hit|*-output-*.txt.cap-hit)
+        dirty-checkpoint-*.env|voter*-diag.txt|*-parse-rate-diag.txt|skipped-findings*.md|*-output.txt|*-output-*.txt|*-output.txt.meta|*-output-*.txt.meta|*-output.txt.json|*-output-*.txt.json|*-output.txt.cap-hit|*-output-*.txt.cap-hit|scout-round*-status.env|scout-round*-manifest.json|reviewer-dyn-*.md|dyn-*-prompt.md)
             return 0
             ;;
         *)
@@ -296,7 +296,12 @@ case "$cmd" in
             fi
             larch_log_atomic_replace "$round_tmp" "$dest"
             written=true
-        done < <(find "$SOURCE_DIR" -maxdepth 1 -type f -print | LC_ALL=C sort)
+        done < <({
+            find "$SOURCE_DIR" -maxdepth 1 -type f -print
+            if [ -d "$SOURCE_DIR/dynamic-archetypes" ]; then
+                find "$SOURCE_DIR/dynamic-archetypes" -maxdepth 1 -type f -print
+            fi
+        } | LC_ALL=C sort)
         if [ "$found" = false ]; then
             larch_log_emit_success "$round_dir" false true
         else
