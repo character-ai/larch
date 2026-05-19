@@ -1,11 +1,13 @@
 # Version Bump Reasoning
 
-- **Base commit**: `757bb28d` (Bump version to 29.8.13 (#2370))
+- **Base commit**: `ea70879c` (Fix missing write_scout_status_file in cached ok-but-invalid branch (#2371))
 - **Current version**: `29.8.14`
 - **Classification scope**: `skills/**` and `agents/**` only (public plugin surface).
 
-## Result: NONE (already bumped)
+## Result: PATCH
 
-HEAD is a version bump commit: `6ea379de` — "Bump version to 29.8.14"
+- **New version**: `29.8.15`
 
-No additional bump will be applied.
+### PATCH rationale
+
+No MAJOR or MINOR evidence found in the public plugin surface. Defaulting to PATCH per policy ("every PR must bump at least PATCH").
