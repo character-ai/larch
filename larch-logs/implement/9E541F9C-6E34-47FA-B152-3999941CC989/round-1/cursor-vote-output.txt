@@ -1,0 +1,33 @@
+Reading the ballot and verifying claims against context files.
+
+FINDING_1: YES
+FINDING_2: EXONERATE -- sibling-doc drift; fold into next shard-doc edit, not its own issue
+FINDING_3: EXONERATE -- same as FINDING_2
+FINDING_4: EXONERATE -- same as FINDING_2
+FINDING_5: EXONERATE -- real skip-if-mismatch behavior; dedicated issue overkill vs tightening the harness in-place
+FINDING_6: EXONERATE -- same as FINDING_2
+FINDING_7: EXONERATE -- speculative shard-12 timing without CI numbers
+FINDING_8: EXONERATE -- -j16 is illustrative; not wrong for partial local parallelism
+FINDING_9: YES
+FINDING_10: EXONERATE -- same Makefile history block as FINDING_9
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: EXONERATE -- duplicate of FINDING_8
+FINDING_15: YES
+FINDING_16: EXONERATE -- duplicate of FINDING_12
+FINDING_17: EXONERATE -- duplicate of FINDING_12
+FINDING_18: EXONERATE -- duplicate of FINDING_13
+FINDING_19: EXONERATE -- duplicate of FINDING_13
+FINDING_20: EXONERATE -- duplicate of FINDING_13
+FINDING_21: EXONERATE -- duplicate of FINDING_8
+FINDING_22: EXONERATE -- duplicate of FINDING_15
+FINDING_23: YES
+FINDING_24: EXONERATE -- duplicate of FINDING_23
+FINDING_25: EXONERATE -- duplicate of FINDING_23
+FINDING_26: EXONERATE -- duplicate of FINDING_12
+FINDING_27: EXONERATE -- duplicate of FINDING_13
+FINDING_28: YES
+FINDING_29: EXONERATE -- duplicate of FINDING_28
+FINDING_30: EXONERATE -- duplicate bundle of FINDING_8 and FINDING_15
+FINDING_31: EXONERATE -- duplicate of FINDING_5

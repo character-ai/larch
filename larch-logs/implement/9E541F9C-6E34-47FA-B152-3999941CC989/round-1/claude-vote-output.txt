@@ -1,0 +1,47 @@
+Verified all key claims against live files. Ready to vote.
+
+**Key observations:**
+- `docs/linting.md:23` still says `test-harnesses-16` (confirmed stale)
+- `docs/linting.md:43` still says `make -j16` (confirmed stale)
+- `docs/linting.md:90` still says `range(14)` (confirmed stale)
+- `docs/linting.md:104-119` branch protection ends at `(14)` (confirmed stale)
+- `docs/linting.md:126-131` still says count is `16` and shows matrix `[1..16]` (confirmed stale)
+- `scripts/test-harness-shards-coverage.md:26-27` says guard shard 12 and umbrella 1-16 (both stale — guard is 13, umbrella is 18)
+- `section_runs()` has no allowlist validation — unknown `SECTION` → silent PASS (confirmed)
+- `docs/linting.md:259` names `test-harnesses-15` for `test-quick-mode-docs-sync` but Makefile puts it on `test-harnesses-5` (confirmed; new real shard 15 is retry-claude)
+- Makefile history comment ends at "resharded to 14" without noting 18 (confirmed)
+- Duplicate "Shard-13 guard" comment in Makefile is pre-existing (not in this diff)
+
+---
+
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: EXONERATE -- duplicate of FINDING_2, same file and lines
+FINDING_4: EXONERATE -- subset of FINDING_2 (umbrella range only)
+FINDING_5: YES
+FINDING_6: EXONERATE -- covered by FINDING_2 (guard-shard part)
+FINDING_7: EXONERATE -- speculative timing concern; monitor-after-CI is the standard workflow, not a trackable issue
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: EXONERATE -- duplicate of FINDING_9
+FINDING_11: EXONERATE -- pre-existing duplicate comment not introduced by this PR; separate cleanup
+FINDING_12: EXONERATE -- covered by FINDING_1 (lockstep section 16→18 is part of FINDING_1's enumeration)
+FINDING_13: EXONERATE -- covered by FINDING_1 (line 23 is explicitly named in FINDING_1)
+FINDING_14: EXONERATE -- duplicate of FINDING_8
+FINDING_15: EXONERATE -- covered by FINDING_1 (range(14) explicitly named in FINDING_1)
+FINDING_16: EXONERATE -- covered by FINDING_1 (lockstep section)
+FINDING_17: EXONERATE -- duplicate of FINDING_1
+FINDING_18: EXONERATE -- covered by FINDING_1 (line 23)
+FINDING_19: EXONERATE -- covered by FINDING_1 (line 23)
+FINDING_20: EXONERATE -- covered by FINDING_1 (line 23) and FINDING_8 (-j16)
+FINDING_21: EXONERATE -- duplicate of FINDING_8
+FINDING_22: EXONERATE -- covered by FINDING_1 (range(14))
+FINDING_23: EXONERATE -- covered by FINDING_1 (branch protection list through (14) explicitly named)
+FINDING_24: EXONERATE -- covered by FINDING_1
+FINDING_25: EXONERATE -- covered by FINDING_1
+FINDING_26: EXONERATE -- covered by FINDING_1 (lockstep section)
+FINDING_27: EXONERATE -- covered by FINDING_1 (line 23)
+FINDING_28: YES
+FINDING_29: EXONERATE -- duplicate of FINDING_28
+FINDING_30: EXONERATE -- -j16 covered by FINDING_8; range(14) covered by FINDING_1
+FINDING_31: YES
