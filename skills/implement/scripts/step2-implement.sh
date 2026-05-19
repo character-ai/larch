@@ -13,10 +13,9 @@
 #
 # Coder flag (preferred):
 #   --coder claude   → STATUS=claude_fallback (main-agent path)
-#   --coder codex    → spawn Codex implementer (default when --coder is omitted)
-#   --coder cursor   → spawn Cursor implementer when --cursor-present true;
-#                      otherwise emits STATUS=claude_fallback so the orchestrator
-#                      runs the main-agent code-edit path.
+#   --coder cursor   → spawn Cursor implementer (default when --coder is omitted);
+#                      when --cursor-present is unset/false, falls back to claude_fallback
+#   --coder codex    → spawn Codex implementer
 #
 # Cursor presence flag:
 #   --cursor-present true   → permit --coder cursor to launch Cursor
@@ -121,9 +120,9 @@ if [[ -n "$CODEX_AVAILABLE" ]]; then
     esac
 fi
 
-# Default coder is codex (Codex spawn path) when --coder is omitted.
+# Default coder is cursor (Cursor spawn path) when --coder is omitted.
 if [[ -z "$CODER" ]]; then
-    CODER="codex"
+    CODER="cursor"
 fi
 
 # shellcheck source=scripts/external-tool-registry.sh

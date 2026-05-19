@@ -1,0 +1,32 @@
+Reviewing the ballot against the diff and plan context. The plan covers exactly 6 files: `skills/implement/SKILL.md`, `skills/implement/scripts/step2-implement.sh`, `skills/implement/scripts/test-step2-dispatch.sh`, `skills/implement/scripts/test-step2-dispatch.md`, `scripts/test-implement-step2-routing.sh`, `scripts/test-implement-step2-routing.md`. Notably absent: `docs/linting.md`, `SECURITY.md`, `docs/run-logs.md`.
+
+**Key observations before voting:**
+
+- `docs/linting.md` (FINDING_1/8/9/13): not in diff or plan; if it had a waterfall row it's now stale.
+- `SECURITY.md` (FINDING_6/7/16/17): not touched; its omitted-`--coder` routing narrative would be stale after this change.
+- `docs/run-logs.md` (FINDING_10/14): `coder_fallback=true` description "fell past Codex" is stale.
+- Duplicate "unavailable or unavailable" (FINDING_2/3/4/5): pre-existing prose typo in context lines, not changed by this diff.
+- Test 1b (FINDING_11/12/15/19): drops `ORCHESTRATOR_EDIT_AUTHORITY` assertion vs sibling tests; also can't distinguish cursor-default from claude-default (both yield `STATUS=claude_fallback` in the non-git-cwd setup).
+- FINDING_18 behavioral change: cursor-absent → `STATUS=claude_fallback` exit 0 instead of exit 2 from non-git cwd. This is explicitly intended and tested in test 1b; the orchestrator itself always runs from within a git repo.
+
+---
+
+FINDING_1: YES
+FINDING_2: EXONERATE -- pre-existing duplicate word in untouched prose; cosmetic only, not issue-worthy
+FINDING_3: EXONERATE -- same pre-existing typo as FINDING_2
+FINDING_4: EXONERATE -- same pre-existing typo as FINDING_2
+FINDING_5: EXONERATE -- same pre-existing typo as FINDING_2
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: YES
+FINDING_18: EXONERATE -- intentional design: cursor-absent falls through to claude_fallback; test 1b explicitly documents and pins this behavior; orchestrator always runs inside a git repo in practice
+FINDING_19: YES

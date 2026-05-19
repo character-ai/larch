@@ -4,8 +4,8 @@
 # Covers the dispatcher branches that do NOT require spawning an external implementer
 # (for the full per-test inventory see test-step2-dispatch.md):
 #   - --coder claude → STATUS=claude_fallback (no launcher run; no baseline-file leak).
-#   - default coder (no --coder flag) is codex.
-#   - Default codex path outside a git work-tree → exit 2.
+#   - default coder (no --coder flag) is cursor.
+#   - Default cursor path outside a git work-tree, no --cursor-present → claude_fallback (exit 0).
 #   - Legacy --codex-available false → STATUS=claude_fallback + deprecation warning on stderr.
 #   - Missing required flag (--auto-mode) → exit 2.
 #   - Bad --coder enum value → exit 2 and names {claude,codex,cursor}.
@@ -89,20 +89,58 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Test 1b: default coder (neither flag set) is codex. From a non-git cwd the
-# codex path fails the git-tree precondition and exits 2 — if the default
-# were still claude, the dispatcher would early-return STATUS=claude_fallback
-# from the git-free claude branch with exit 0.
+# Test 1b: default coder (neither flag set) resolves to cursor. Run from the
+# repo root with --cursor-present true and a PATH-stubbed cursor binary so the
+# dispatcher reaches the external launcher path; this distinguishes the omitted
+# flag default from both explicit --coder claude and a mistaken codex default.
 # ---------------------------------------------------------------------------
 TMP1B="$SCRATCH/test1b"; mkdir -p "$TMP1B"
-NON_GIT_1B="$SCRATCH/not-a-repo-default"; mkdir -p "$NON_GIT_1B"
-EXIT=0
-ERR=$(cd "$NON_GIT_1B" && "$DISPATCHER" --tmpdir "$TMP1B" --plan-file "$PLAN" --feature-file "$FEATURE" \
-    --auto-mode false 2>&1 >/dev/null) || EXIT=$?
-if [[ "$EXIT" == "2" ]] && [[ "$ERR" == *"must be invoked from within a git working tree"* ]]; then
+STUB_BIN_1B="$SCRATCH/test1b-bin"; mkdir -p "$STUB_BIN_1B"
+STUB_CURSOR_1B="$STUB_BIN_1B/cursor"
+cat > "$STUB_CURSOR_1B" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+: "${STUB_MANIFEST_PATH:?}"
+cat > "$STUB_MANIFEST_PATH.tmp" <<'JSON'
+{
+  "schema_version": "1",
+  "status": "bailed",
+  "bail_reason": "stub-bailed"
+}
+JSON
+mv "$STUB_MANIFEST_PATH.tmp" "$STUB_MANIFEST_PATH"
+printf 'stub cursor stdout\n'
+EOF
+chmod +x "$STUB_CURSOR_1B"
+STDOUT_1B="$TMP1B/stdout.txt"
+STDERR_1B="$TMP1B/stderr.txt"
+(
+    cd "$REPO_ROOT" && \
+    PATH="$STUB_BIN_1B:$PATH" \
+    RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
+    STUB_MANIFEST_PATH="$TMP1B/manifest.json" \
+    LARCH_TIMING_LEDGER="$TMP1B/timing-ledger.tsv" \
+    LARCH_QUIET_DISABLE=1 \
+    LARCH_CURSOR_MODEL="stub-model" \
+    CURSOR_API_KEY="" \
+    LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 \
+    LIB_CURSOR_AUTH_TEST_UNAME="Linux" \
+    "$DISPATCHER" --tmpdir "$TMP1B" --plan-file "$PLAN" --feature-file "$FEATURE" \
+        --auto-mode false --cursor-present true >"$STDOUT_1B" 2>"$STDERR_1B"
+)
+OUT=$(cat "$STDOUT_1B")
+ERR=$(cat "$STDERR_1B")
+if [[ "$OUT" == *"STATUS=bailed"* ]] \
+   && [[ "$OUT" == *"REASON=stub-bailed"* ]] \
+   && [[ "$OUT" == *"TOOL=cursor"* ]] \
+   && [[ "$OUT" == *"ORCHESTRATOR_EDIT_AUTHORITY=forbidden"* ]] \
+   && [[ "$OUT" != *"ORCHESTRATOR_EDIT_AUTHORITY=allowed"* ]] \
+   && [[ -z "$ERR" ]] \
+   && [[ -f "$TMP1B/step2-spawn-coder.txt" ]] \
+   && [[ "$(cat "$TMP1B/step2-spawn-coder.txt")" == "cursor" ]]; then
     pass
 else
-    fail 1b "default coder should be codex (non-git cwd → git-tree exit 2), got exit=$EXIT err=$ERR"
+    fail 1b "default coder should resolve to cursor, got out=$OUT err=$ERR sentinel=$(cat "$TMP1B/step2-spawn-coder.txt" 2>/dev/null || echo MISSING)"
 fi
 
 # ---------------------------------------------------------------------------

@@ -3,7 +3,7 @@
 Structural regression harness for `/implement` Step 2 implementer routing.
 
 It pins the `diff_lines <= 3` Claude inline carve-out, omitted-`--coder`
-waterfall order (Codex → Cursor → Claude), explicit-coder bypass, both-down
+waterfall order (Cursor → Codex → Claude), explicit-coder bypass, both-down
 warning and `coder_fallback=true` manifest flag, `/design` `diff-lines.txt`
 export, and review-health routing pins.
 

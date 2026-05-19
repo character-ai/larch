@@ -1,0 +1,7 @@
+### In-Scope Findings
+
+1. **Nit** `risk-integration` `docs/linting.md:239` — The linting docs still say `make test-implement-step2-routing` pins the omitted-`--coder` `Codex → Cursor → Claude` waterfall, but this branch changes that contract to `Cursor → Codex → Claude`. Update the row to match `scripts/test-implement-step2-routing.md:5-7` and `skills/implement/SKILL.md:1072-1082`.
+
+### Out-of-Scope Observations
+
+No out-of-scope observations.
