@@ -267,15 +267,27 @@ resolve_execution_issues_log() {
 append_scout_parse_issue() {
     [[ "$SCOUT_STATUS" == "parse-failed" ]] || return 0
     [[ -x "$PLUGIN_ROOT/scripts/append-execution-issue.sh" ]] || return 0
-    local issues_log reason manifest_label
+    local issues_log reason manifest_label append_output append_rc append_error
     issues_log=$(resolve_execution_issues_log)
     reason="${SCOUT_FAIL_REASON:-unknown}"
     manifest_label="${SCOUT_MANIFEST:-none}"
-    "$PLUGIN_ROOT/scripts/append-execution-issue.sh" \
+    set +e
+    append_output=$("$PLUGIN_ROOT/scripts/append-execution-issue.sh" \
         --log "$issues_log" \
         --category Warnings \
         --entry "Review scout dynamic archetype parse failed in round ${ROUND_NUM}; reason=${reason}; manifest=${manifest_label}. Continuing with the static review panel." \
-        >/dev/null 2>&1 || true
+        2>&1)
+    append_rc=$?
+    set -e
+    if [[ "$append_rc" -ne 0 ]]; then
+        append_error=$(printf '%s\n' "$append_output" | awk -F= '
+            $1=="ERROR" { print substr($0, index($0, "=") + 1); found=1; exit }
+            { last=$0 }
+            END { if (!found && last != "") print last }
+        ')
+        [[ -n "$append_error" ]] || append_error="exit $append_rc"
+        emit_kv WARN "append-execution-issue failed for scout parse issue: $append_error"
+    fi
 }
 
 if [[ "$DYNAMIC_ARCHETYPES" != "0" && "$SCOUT_STATUS" == "na" ]]; then

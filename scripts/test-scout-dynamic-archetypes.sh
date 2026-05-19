@@ -16,6 +16,8 @@ fail() {
 
 BIN="$TMP/bin"
 mkdir -p "$BIN"
+REAL_JQ=$(command -v jq)
+export REAL_JQ
 cat > "$BIN/claude" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -26,6 +28,16 @@ fi
 cat "${SCOUT_STUB_OUTPUT_FILE:?SCOUT_STUB_OUTPUT_FILE required}"
 STUB
 chmod +x "$BIN/claude"
+cat > "$BIN/jq" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "${SCOUT_STUB_JQ_FAIL_MODE:-}" == "validation" && "${1:-}" == "-c" && "${2:-}" == "--argjson" ]]; then
+    printf 'stubbed validation jq failure\n' >&2
+    exit 9
+fi
+exec "${REAL_JQ:?REAL_JQ required}" "$@"
+STUB
+chmod +x "$BIN/jq"
 
 diff_file="$TMP/review.diff"
 scope_file="$TMP/scope-files.txt"
@@ -102,6 +114,17 @@ stdout=$(run_case fence-wrapped "$TMP/fence-wrapped.json")
 grep -Fq 'SCOUT_STATUS=ok' "$stdout" || fail "fence-wrapped status"
 grep -Fq 'SCOUT_ARCHETYPE_COUNT=1' "$stdout" || fail "fence-wrapped count"
 
+cat > "$TMP/indented-fence-wrapped.json" <<'JSON'
+  ```json
+{"archetypes":[
+  {"name":"indented-fence","focus_area":"correctness","weight":4,"rationale":"Indented fences should still parse.","prompt_body":"Check indented fence parsing."}
+]}
+  ```
+JSON
+stdout=$(run_case indented-fence-wrapped "$TMP/indented-fence-wrapped.json")
+grep -Fq 'SCOUT_STATUS=ok' "$stdout" || fail "indented fence-wrapped status"
+grep -Fq 'SCOUT_ARCHETYPE_COUNT=1' "$stdout" || fail "indented fence-wrapped count"
+
 cat > "$TMP/fence-with-prose.json" <<'JSON'
 Here is the JSON:
 ```json
@@ -143,6 +166,23 @@ printf '{not json\n' > "$TMP/malformed.json"
 stdout=$(run_case malformed "$TMP/malformed.json")
 grep -Fq 'SCOUT_STATUS=parse-failed' "$stdout" || fail "malformed parse-failed"
 grep -Fq 'SCOUT_FAIL_REASON=json_parse' "$stdout" || fail "malformed fail reason"
+
+cat > "$TMP/invalid-shape.json" <<'JSON'
+{"archetypes":{}}
+JSON
+stdout=$(run_case invalid-shape "$TMP/invalid-shape.json")
+grep -Fq 'SCOUT_STATUS=parse-failed' "$stdout" || fail "invalid-shape parse-failed"
+grep -Fq 'SCOUT_FAIL_REASON=invalid_archetypes_shape' "$stdout" || fail "invalid-shape fail reason"
+
+stdout=$(REAL_JQ="$REAL_JQ" PATH="$BIN:$PATH" SCOUT_STUB_JQ_FAIL_MODE=validation SCOUT_STUB_OUTPUT_FILE="$TMP/valid4.json" "$SCRIPT" \
+    --mode diff \
+    --diff-file "$TMP/valid4/review.diff" \
+    --plan-file "$TMP/valid4/plan.md" \
+    --max-archetypes 4 \
+    --output "$TMP/valid4/validation-fail-manifest.json" \
+    --timeout 5)
+grep -Fq 'SCOUT_STATUS=parse-failed' <<< "$stdout" || fail "validation-jq-error parse-failed"
+grep -Fq 'SCOUT_FAIL_REASON=validation_jq_error' <<< "$stdout" || fail "validation-jq-error fail reason"
 
 mkdir -p "$TMP/claude-failed"
 seed_case_inputs "$TMP/claude-failed"

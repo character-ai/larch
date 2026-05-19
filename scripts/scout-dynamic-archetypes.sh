@@ -117,6 +117,17 @@ write_empty_manifest() {
     mv -f "$tmp" "$target"
 }
 
+emit_parse_failed_result() {
+    local reason="$1" latency_ms="$2"
+    write_empty_manifest "$OUTPUT"
+    emit_kv SCOUT_STATUS parse-failed
+    emit_kv SCOUT_FAIL_REASON "$reason"
+    emit_kv SCOUT_OUTPUT "$OUTPUT"
+    emit_kv SCOUT_ARCHETYPE_COUNT 0
+    emit_kv SCOUT_LATENCY_MS "$latency_ms"
+    exit 0
+}
+
 escape_prompt_data() {
     sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'
 }
@@ -249,8 +260,11 @@ if [[ "$launch_rc" -ne 0 ]]; then
 fi
 
 if ! jq -e '.' "$raw_output" >/dev/null 2>&1; then
-    fenced_tmp=$(mktemp "${OUTPUT}.fenced.XXXXXX") || exit 1
-    awk '/^```/{if(!in_block){in_block=1;next}else{in_block=0;next}} in_block{print}' "$raw_output" > "$fenced_tmp"
+    fenced_tmp=$(mktemp "${OUTPUT}.fenced.XXXXXX") || {
+        printf 'cannot create fenced-json scratch file for %s\n' "$OUTPUT" > "$parse_error"
+        emit_parse_failed_result fence_strip_io "$latency_ms"
+    }
+    awk '/^[[:space:]]*```/{if(!in_block){in_block=1;next}else{in_block=0;next}} in_block{print}' "$raw_output" > "$fenced_tmp"
     if [[ -s "$fenced_tmp" ]] && jq -e '.' "$fenced_tmp" >/dev/null 2>&1; then
         mv -f "$fenced_tmp" "$raw_output"
     else
@@ -258,31 +272,24 @@ if ! jq -e '.' "$raw_output" >/dev/null 2>&1; then
     fi
 fi
 
+if ! jq -e '.' "$raw_output" >/dev/null 2>"$parse_error"; then
+    emit_parse_failed_result json_parse "$latency_ms"
+fi
+
 if ! jq -e '.archetypes and (.archetypes | type == "array")' "$raw_output" >/dev/null 2>"$parse_error"; then
-    write_empty_manifest "$OUTPUT"
-    emit_kv SCOUT_STATUS parse-failed
-    emit_kv SCOUT_FAIL_REASON json_parse
-    emit_kv SCOUT_OUTPUT "$OUTPUT"
-    emit_kv SCOUT_ARCHETYPE_COUNT 0
-    emit_kv SCOUT_LATENCY_MS "$latency_ms"
-    exit 0
+    emit_parse_failed_result invalid_archetypes_shape "$latency_ms"
 fi
 
 raw_count=$(jq '.archetypes | length' "$raw_output")
 if (( raw_count > 4 )); then
     printf 'archetypes length exceeds max cap: %s\n' "$raw_count" > "$parse_error"
-    write_empty_manifest "$OUTPUT"
-    emit_kv SCOUT_STATUS parse-failed
-    emit_kv SCOUT_FAIL_REASON archetype_count_overflow
-    emit_kv SCOUT_OUTPUT "$OUTPUT"
-    emit_kv SCOUT_ARCHETYPE_COUNT 0
-    emit_kv SCOUT_LATENCY_MS "$latency_ms"
-    exit 0
+    emit_parse_failed_result archetype_count_overflow "$latency_ms"
 fi
 
 validated_tmp=$(mktemp "${OUTPUT}.tmp.XXXXXX") || exit 1
 cleanup_validated_tmp() {
     [[ -n "${validated_tmp:-}" ]] && rm -f "$validated_tmp"
+    return 0
 }
 trap cleanup_validated_tmp EXIT
 warnings_file="${OUTPUT}.warnings"
@@ -343,13 +350,7 @@ if ! jq -c --argjson max "$MAX_ARCHETYPES" '
 ' "$raw_output" > "$validated_tmp"; then
     rm -f "$validated_tmp"
     validated_tmp=""
-    write_empty_manifest "$OUTPUT"
-    emit_kv SCOUT_STATUS parse-failed
-    emit_kv SCOUT_FAIL_REASON validation_jq_error
-    emit_kv SCOUT_OUTPUT "$OUTPUT"
-    emit_kv SCOUT_ARCHETYPE_COUNT 0
-    emit_kv SCOUT_LATENCY_MS "$latency_ms"
-    exit 0
+    emit_parse_failed_result validation_jq_error "$latency_ms"
 fi
 
 jq -r '.warns[]?' "$validated_tmp" > "$warnings_file"

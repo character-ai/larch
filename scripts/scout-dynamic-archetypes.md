@@ -20,7 +20,7 @@ Invariants:
 - When validation yields more accepted archetypes than `--max-archetypes`, the script truncates to the cap and emits a `WARN`.
 - Dynamic archetypes are ephemeral files under the review tmpdir and bypass the `agent-sync` CI job.
 
-Stdout is `KEY=value`: `SCOUT_STATUS`, `SCOUT_OUTPUT`, `SCOUT_ARCHETYPE_COUNT`, `SCOUT_LATENCY_MS`, optional `SCOUT_FAIL_REASON` on `SCOUT_STATUS=parse-failed`, and optional `WARN`. Current `SCOUT_FAIL_REASON` values are `json_parse`, `archetype_count_overflow`, and `validation_jq_error`.
+Stdout is `KEY=value`: `SCOUT_STATUS`, `SCOUT_OUTPUT`, `SCOUT_ARCHETYPE_COUNT`, `SCOUT_LATENCY_MS`, optional `SCOUT_FAIL_REASON` on `SCOUT_STATUS=parse-failed`, and optional `WARN`. Scout-local `SCOUT_FAIL_REASON` values are `json_parse`, `invalid_archetypes_shape`, `archetype_count_overflow`, `validation_jq_error`, and `fence_strip_io`. `dispatch-panel.sh` may also emit wrapper-level `SCOUT_FAIL_REASON` values such as `dispatch_manifest_validation`, `missing_status_sidecar`, and `unknown` when it validates cached scout artifacts or logs a parse-failure fallback.
 
 Harness: `scripts/test-scout-dynamic-archetypes.sh`.
 
