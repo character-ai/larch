@@ -83,6 +83,20 @@ assert_grep() {
     if grep -Fq -- "$pattern" "$file"; then pass; else fail "$label: missing '$pattern' in $file"; fi
 }
 
+assert_regex() {
+    local label="$1"
+    local pattern="$2"
+    local file="$3"
+    if grep -Eq -- "$pattern" "$file"; then pass; else fail "$label: expected $file to match regex $pattern"; fi
+}
+
+assert_not_regex() {
+    local label="$1"
+    local pattern="$2"
+    local file="$3"
+    if grep -Eq -- "$pattern" "$file"; then fail "$label: unexpected regex $pattern in $file"; else pass; fi
+}
+
 set +e
 "$LAUNCHER" >/dev/null 2>"$TMPDIR/missing.stderr"
 RC=$?
@@ -867,8 +881,8 @@ assert_eq "SL-transient-not-applied stub invoked exactly 1 time (exit 1 not in a
 rm -f "$SL_TRANSIENT_NOAPPLY_COUNT"
 
 # Case SL-transient-obs-exhausted: verify that when the transient-retry loop
-# exhausts all retries, the execution-issues log entry contains transient-retries=N
-# (auth-retries=M, transient-retries=N format). Uses IMPLEMENT_TMPDIR so
+# exhausts all retries, the execution-issues header contains the exact retry
+# counters (auth-retries=M, transient-retries=N). Uses IMPLEMENT_TMPDIR so
 # append_launch_failure actually writes to execution-issues.md.
 # With MAX_TRANSIENT_RETRIES=2: start=1, +1 for retry1=2, +1 for retry2=3, then
 # 3>2 → break → TRANSIENT_ATTEMPT=3 at failure time.
@@ -898,16 +912,7 @@ assert_eq "SL-transient-obs-exhausted exits non-zero after exhausting retries" "
 EI_OBS_EXHAUSTED="$IMPL_TMPDIR_OBS_EXHAUSTED/execution-issues.md"
 OBS_EXHAUSTED_ENTRY_COUNT=$(grep -c 'codex-review' "$EI_OBS_EXHAUSTED" 2>/dev/null || echo 0)
 assert_eq "SL-transient-obs-exhausted execution-issues has one failure entry" "1" "$OBS_EXHAUSTED_ENTRY_COUNT"
-if grep -q 'transient-retries=3' "$EI_OBS_EXHAUSTED" 2>/dev/null; then
-    pass
-else
-    fail "SL-transient-obs-exhausted: execution-issues entry must contain transient-retries=3 (2 retries + original)"
-fi
-if grep -q 'auth-retries=1' "$EI_OBS_EXHAUSTED" 2>/dev/null; then
-    pass
-else
-    fail "SL-transient-obs-exhausted: execution-issues entry must contain auth-retries=1"
-fi
+assert_regex "SL-transient-obs-exhausted exact retry header" '^-\s\*\*Step review Step 2 — codex-review failed \(exit 7 — non-auth — auth-retries=1, transient-retries=3\)\*\*:$' "$EI_OBS_EXHAUSTED"
 rm -f "$SL_OBS_EXHAUSTED_COUNT"
 
 # Case SL-transient-obs-fired: verify that when the transient-retry fires and
@@ -952,9 +957,10 @@ assert_eq "SL-transient-obs-fired execution-issues has no failure entry on succe
 rm -f "$SL_OBS_FIRED_COUNT"
 
 # Case SL-transient-obs-nontransient: verify that a true non-transient failure
-# (exit code not in the transient allowlist, non-empty output file) logs a failure
-# entry WITHOUT a transient-retries field. Stub exits 1 and writes ~5KB to the
-# output file; exit 1 is not in the transient allowlist so no retry fires.
+# (exit code not in the transient allowlist, non-empty output file) logs a
+# failure entry WITHOUT a transient-retries field. Stub exits 1 and writes ~5KB
+# to the output file; exit 1 is not in the transient allowlist so no retry
+# fires.
 SL_OBS_NONTRANSIENT_COUNT="$TMPDIR/sl-obs-nontransient-count.txt"
 printf '0' > "$SL_OBS_NONTRANSIENT_COUNT"
 cat > "$STUB_BIN/codex-obs-nontransient" <<STUB_OBS_NONTRANSIENT
@@ -994,11 +1000,8 @@ assert_eq "SL-transient-obs-nontransient stub invoked exactly 1 time" "1" "$OBS_
 EI_OBS_NONTRANSIENT="$IMPL_TMPDIR_OBS_NONTRANSIENT/execution-issues.md"
 OBS_NONTRANSIENT_ENTRY_COUNT=$(grep -c 'codex-review' "$EI_OBS_NONTRANSIENT" 2>/dev/null || echo 0)
 assert_eq "SL-transient-obs-nontransient execution-issues has one failure entry" "1" "$OBS_NONTRANSIENT_ENTRY_COUNT"
-if grep -q 'transient-retries=1' "$EI_OBS_NONTRANSIENT" 2>/dev/null; then
-    pass
-else
-    fail "SL-transient-obs-nontransient: execution-issues entry must contain transient-retries=1 (no retry fired)"
-fi
+assert_regex "SL-transient-obs-nontransient exact non-transient header" '^-\s\*\*Step review Step 2 — codex-review failed \(exit 1 — non-auth — retries=1\)\*\*:$' "$EI_OBS_NONTRANSIENT"
+assert_not_regex "SL-transient-obs-nontransient omits transient-retries field" 'transient-retries=' "$EI_OBS_NONTRANSIENT"
 rm -f "$SL_OBS_NONTRANSIENT_COUNT"
 
 # Restore normal codex stub for remaining tests.
@@ -1074,6 +1077,17 @@ assert_grep() {
         pass
     else
         fail "$label: expected $path to match $pattern"
+    fi
+}
+
+assert_regex() {
+    local label="$1"
+    local pattern="$2"
+    local path="$3"
+    if grep -Eq -- "$pattern" "$path"; then
+        pass
+    else
+        fail "$label: expected $path to match regex $pattern"
     fi
 }
 
@@ -2171,6 +2185,43 @@ assert_equals "SL-transient-retry-cursor-8 exits 0 after transient retry" "0" "$
 SL_TRANSIENT_CURSOR8_ATTEMPTS=$(cat "$SL_TRANSIENT_CURSOR8_COUNT" 2>/dev/null || echo "0")
 assert_equals "SL-transient-retry-cursor-8 stub invoked exactly 2 times" "2" "$SL_TRANSIENT_CURSOR8_ATTEMPTS"
 rm -f "$SL_TRANSIENT_CURSOR8_COUNT"
+
+# Case SL-transient-obs-exhausted-cursor: verify that cursor failure logging
+# preserves both auth and transient counters when the transient-retry loop
+# exhausts all retries.
+SL_OBS_CURSOR_EXHAUSTED_COUNT="$TMPDIR/sl-obs-cursor-exhausted-count.txt"
+printf '0' > "$SL_OBS_CURSOR_EXHAUSTED_COUNT"
+cat > "$STUB_BIN/cursor-obs-exhausted" <<STUB_OBS_CURSOR_EXHAUSTED
+#!/usr/bin/env bash
+count=\$(cat "${SL_OBS_CURSOR_EXHAUSTED_COUNT}" 2>/dev/null || echo 0)
+count=\$((count + 1))
+printf '%s' "\$count" > "${SL_OBS_CURSOR_EXHAUSTED_COUNT}"
+printf 'cursor transient failure attempt %s\n' "\$count" >&2
+exit 8
+STUB_OBS_CURSOR_EXHAUSTED
+chmod +x "$STUB_BIN/cursor-obs-exhausted"
+ln -sf "$STUB_BIN/cursor-obs-exhausted" "$STUB_BIN/cursor"
+IMPL_TMPDIR_OBS_CURSOR_EXHAUSTED="$TMPDIR/obs-cursor-exhausted-impl"
+mkdir -p "$IMPL_TMPDIR_OBS_CURSOR_EXHAUSTED"
+OUT_OBS_CURSOR_EXHAUSTED="$TMPDIR/obs-cursor-exhausted.txt"
+set +e
+USER="${SERIAL_LOCK_USER}-obs-cursor-exhausted" \
+    LARCH_TRANSIENT_RETRY_DELAY=0 \
+    LARCH_EXTERNAL_SERIAL_LOCK_FORCE_UNAME=Darwin \
+    LARCH_EXTERNAL_SERIAL_LOCK_DELAY=0 \
+    IMPLEMENT_TMPDIR="$IMPL_TMPDIR_OBS_CURSOR_EXHAUSTED" \
+    PATH="$STUB_BIN:$PATH" \
+    "$LAUNCHER" --output "$OUT_OBS_CURSOR_EXHAUSTED" --timeout 10 --prompt "sl-transient-obs-exhausted-cursor" >/dev/null 2>&1
+RC_OBS_CURSOR_EXHAUSTED=$?
+set -e
+assert_equals "SL-transient-obs-exhausted-cursor exits non-zero after exhausting retries" "8" "$RC_OBS_CURSOR_EXHAUSTED"
+SL_OBS_CURSOR_EXHAUSTED_ATTEMPTS=$(cat "$SL_OBS_CURSOR_EXHAUSTED_COUNT" 2>/dev/null || echo "0")
+assert_equals "SL-transient-obs-exhausted-cursor stub invoked exactly 3 times (2 retries)" "3" "$SL_OBS_CURSOR_EXHAUSTED_ATTEMPTS"
+EI_OBS_CURSOR_EXHAUSTED="$IMPL_TMPDIR_OBS_CURSOR_EXHAUSTED/execution-issues.md"
+OBS_CURSOR_EXHAUSTED_ENTRY_COUNT=$(grep -c 'cursor-review' "$EI_OBS_CURSOR_EXHAUSTED" 2>/dev/null || echo 0)
+assert_equals "SL-transient-obs-exhausted-cursor execution-issues has one failure entry" "1" "$OBS_CURSOR_EXHAUSTED_ENTRY_COUNT"
+assert_regex "SL-transient-obs-exhausted-cursor exact retry header" '^-\s\*\*Step review Step 2 — cursor-review failed \(exit 8 — non-auth — auth-retries=1, transient-retries=3\)\*\*:$' "$EI_OBS_CURSOR_EXHAUSTED"
+rm -f "$SL_OBS_CURSOR_EXHAUSTED_COUNT"
 
 # Restore normal cursor stub for remaining tests.
 ln -sf "$STUB_BIN/cursor-sl" "$STUB_BIN/cursor"

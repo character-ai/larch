@@ -106,6 +106,10 @@ combined_log="$TMPDIR_BASE/combined-log.md"
 "$SCRIPT" --log "$combined_log" --site "review Step 2" --tool "cursor-review" --exit-code 99 --category "External Reviewer Issues" --output-file "$verdict_input" --verdict "non-auth" --retry-count 1 >/dev/null
 assert_contains "verdict and retry-count: header suffix" "$combined_log" "- **Step review Step 2 — cursor-review failed (exit 99 — non-auth — retries=1)**:"
 
+transient_combined_log="$TMPDIR_BASE/transient-combined-log.md"
+"$SCRIPT" --log "$transient_combined_log" --site "review Step 2" --tool "cursor-review" --exit-code 8 --category "External Reviewer Issues" --output-file "$verdict_input" --verdict "non-auth" --retry-count 1 --transient-retry-count 3 >/dev/null
+assert_contains "verdict and auth/transient retry-counts: header suffix" "$transient_combined_log" "- **Step review Step 2 — cursor-review failed (exit 8 — non-auth — auth-retries=1, transient-retries=3)**:"
+
 warning_log="$TMPDIR_BASE/warning-log.md"
 "$SCRIPT" --log "$warning_log" --site "review Step 3a tsv-fallback" --tool "collect-findings.sh inline-TSV recovery" --exit-code 0 --status-label "warning" --category "External Reviewer Issues" --output-file "$verdict_input" >/dev/null
 assert_contains "status-label: warning wording" "$warning_log" "- **Step review Step 3a tsv-fallback — collect-findings.sh inline-TSV recovery warning (exit 0)**:"
@@ -117,6 +121,14 @@ set -e
 assert_rc "retry-count: invalid value exits non-zero" "$bad_retry_rc" 1
 printf '%s\n' "$bad_retry_out" > "$TMPDIR_BASE/bad-retry-out.txt"
 assert_contains "retry-count: invalid value diagnostic" "$TMPDIR_BASE/bad-retry-out.txt" "ERROR=usage: --retry-count must be a non-negative integer"
+
+set +e
+bad_transient_retry_out=$("$SCRIPT" --log "$TMPDIR_BASE/bad-transient-retry-log.md" --site "2" --tool "tool" --exit-code 1 --category "Tool Failures" --output-file "$verdict_input" --retry-count 1 --transient-retry-count nope 2>&1)
+bad_transient_retry_rc=$?
+set -e
+assert_rc "transient-retry-count: invalid value exits non-zero" "$bad_transient_retry_rc" 1
+printf '%s\n' "$bad_transient_retry_out" > "$TMPDIR_BASE/bad-transient-retry-out.txt"
+assert_contains "transient-retry-count: invalid value diagnostic" "$TMPDIR_BASE/bad-transient-retry-out.txt" "ERROR=usage: --transient-retry-count must be a non-negative integer"
 
 redact_input="$TMPDIR_BASE/redact.txt"
 redact_log="$TMPDIR_BASE/redact-log.md"
