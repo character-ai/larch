@@ -229,32 +229,54 @@
       {
         "step": "Step 6 — checks second pass",
         "totals": {
-          "input": 2,
-          "cache_read": 523049,
-          "cache_create": 579,
-          "output": 223,
-          "total": 523853
+          "input": 3,
+          "cache_read": 784937,
+          "cache_create": 754,
+          "output": 361,
+          "total": 786055
         },
         "skills": [
           {
             "skill": "larch:implement",
             "totals": {
-              "input": 2,
-              "cache_read": 523049,
-              "cache_create": 579,
-              "output": 223,
-              "total": 523853
+              "input": 3,
+              "cache_read": 784937,
+              "cache_create": 754,
+              "output": 361,
+              "total": 786055
+            }
+          }
+        ]
+      },
+      {
+        "step": "Step 8b — rebase",
+        "totals": {
+          "input": 35,
+          "cache_read": 9268782,
+          "cache_create": 8443,
+          "output": 5113,
+          "total": 9282373
+        },
+        "skills": [
+          {
+            "skill": "larch:implement",
+            "totals": {
+              "input": 35,
+              "cache_read": 9268782,
+              "cache_create": 8443,
+              "output": 5113,
+              "total": 9282373
             }
           }
         ]
       }
     ],
     "totals": {
-      "input": 223,
-      "cache_read": 44742415,
-      "cache_create": 441802,
-      "output": 116583,
-      "total": 45301023
+      "input": 259,
+      "cache_read": 54273085,
+      "cache_create": 450420,
+      "output": 121834,
+      "total": 54845598
     }
   },
   "codex": {
@@ -341,6 +363,14 @@
       },
       {
         "step": "Step 6 — checks second pass",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 8b — rebase",
         "totals": {
           "input": 0,
           "output": 0,
@@ -438,6 +468,14 @@
       },
       {
         "step": "Step 6 — checks second pass",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 8b — rebase",
         "totals": {
           "input": 0,
           "output": 0,
