@@ -266,7 +266,7 @@ parse_output() {
     fi
     # In description mode dual-list output: split on ### In-Scope Findings vs ### Out-of-Scope Observations (#659). In diff mode single-list output: preserve entire output when headers absent. Both modes: awk handles dual-section with fail-open. Specialist dual-section format matches description headers. Claude generic produces single-list output; [OUT_OF_SCOPE] prefix routes OOS.
     awk -v label="$label" -v mode="$MODE" '
-    BEGIN { oos=0; body=""; title="" }
+    BEGIN { oos=0; body=""; title=""; skip=0 }
     function flush() {
         if (body != "" && title != "") {
             gsub(/^[[:space:]]+|[[:space:]]+$/, "", body)
@@ -278,8 +278,10 @@ parse_output() {
         }
         body=""; title=""
     }
-    /^### Out-of-Scope Observations/ { flush(); oos=1; next }
-    /^### In-Scope Findings/ { flush(); oos=0; next }
+    /^### Out-of-Scope Observations/ { flush(); oos=1; skip=0; next }
+    /^### In-Scope Findings/ { flush(); oos=0; skip=0; next }
+    /^##/ { flush(); skip=1; next }
+    skip { next }
     /^[-*] / || /^[0-9]+\./ {
         flush()
         title=$0

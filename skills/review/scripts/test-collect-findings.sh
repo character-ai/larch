@@ -173,4 +173,61 @@ assert_stdout_cap "$out"
 grep -Fq 'FINDINGS_COUNT=1' <<< "$out"
 grep -Fq -- '- **Reviewer**: dyn-api-contract-output.txt' "$TMP/findings-phase2-retry.md"
 
+
+# bullet-not-a-finding: commit-hash bullets in ## preamble must not become FINDING_N entries
+preamble="$TMP/dyn-preamble-output.txt"
+cat > "$preamble" <<'EOF'
+## Commits since merge-base with main
+
+Merge-base: `7ee70f6130baaf39ec9b58c5be30a0db294ba457`
+
+- `abc1234` Drop post-PR-create push to eliminate duplicate CI runs per PR
+- `def5678` Address code review feedback (round 1)
+
+---
+
+### In-Scope Findings
+- Missing nil guard in foo.sh:42.
+EOF
+printf '0\n' > "$preamble.done"
+printf 'STATUS=clean\n' > "$preamble.dirty-tree"
+out=$(WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.01 "$SCRIPT" --claude-output-files "$preamble" --mode diff --timeout 1 --findings-file "$TMP/findings-preamble.md" --oos-file "$TMP/oos-preamble.md")
+assert_stdout_cap "$out"
+grep -Fq 'FINDINGS_COUNT=1' <<< "$out"
+grep -Fq '### FINDING_1:' "$TMP/findings-preamble.md"
+if grep -Fq 'abc1234' "$TMP/findings-preamble.md"; then
+    echo "FAIL: commit hash bullet was promoted to a FINDING entry" >&2
+    exit 1
+fi
+if grep -Fq 'def5678' "$TMP/findings-preamble.md"; then
+    echo "FAIL: commit hash bullet was promoted to a FINDING entry" >&2
+    exit 1
+fi
+if grep -Fq '### FINDING_2:' "$TMP/findings-preamble.md"; then
+    echo "FAIL: expected exactly 1 finding but found FINDING_2" >&2
+    exit 1
+fi
+
+# canonical-3-finding-guard: 3 in-scope + 1 OOS from canonical grammar
+canonical3="$TMP/canonical-3-finding-output.txt"
+cat > "$canonical3" <<'EOF'
+### In-Scope Findings
+- First real finding in scripts/foo.sh:10.
+- Second real finding in scripts/bar.sh:20.
+- Third real finding in scripts/baz.sh:30.
+
+### Out-of-Scope Observations
+- Pre-existing issue in scripts/old.sh:5.
+EOF
+printf '0\n' > "$canonical3.done"
+printf 'STATUS=clean\n' > "$canonical3.dirty-tree"
+out=$(WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.01 "$SCRIPT" --claude-output-files "$canonical3" --mode description --timeout 1 --findings-file "$TMP/findings-3.md" --oos-file "$TMP/oos-3.md")
+assert_stdout_cap "$out"
+grep -Fq 'FINDINGS_COUNT=4' <<< "$out"
+grep -Fq 'OOS_COUNT=1' <<< "$out"
+grep -Fq '### FINDING_1:' "$TMP/findings-3.md"
+grep -Fq '### FINDING_2:' "$TMP/findings-3.md"
+grep -Fq '### FINDING_3:' "$TMP/findings-3.md"
+grep -Fq '[OUT_OF_SCOPE]' "$TMP/oos-3.md"
+
 echo "All assertions passed."
