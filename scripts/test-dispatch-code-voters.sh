@@ -4,11 +4,15 @@
 set -euo pipefail
 export LARCH_QUIET_DISABLE=1
 
-# --section CLI selector (closes #2349): splits the 5 scenarios into 2 groups
-# so the CI matrix can pack them as independent harness rows. Sections:
-#   happy:     scenarios 1-3 (happy path, absent tools, empty voter)
-#   edge:      scenarios 4-5 (symlink diff, 2 MB diff)
-# With no --section, all 5 run sequentially (local-dev backward compat).
+# --section CLI selector: splits the 11 scenarios into 6 groups so the CI
+# matrix can pack them as independent harness rows. Sections:
+#   happy:                         scenarios 1-3 (happy path, absent tools, empty voter)
+#   edge:                          scenarios 4-5 (symlink diff, 2 MB diff)
+#   retry-claude:                  retry_success_claude, retry_fail_claude
+#   retry-codex-success:           retry_success_codex
+#   retry-cursor:                  retry_success_cursor
+#   retry-codex-fail-and-fallback: retry_fail_codex, retry_fail_fallback
+# With no --section, all 11 run sequentially (local-dev backward compat).
 SECTION=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -16,6 +20,15 @@ while [[ $# -gt 0 ]]; do
         *) shift ;;
     esac
 done
+if [[ -n "$SECTION" ]]; then
+    case "$SECTION" in
+        happy|edge|retry-claude|retry-codex-success|retry-cursor|retry-codex-fail-and-fallback) ;;
+        *)
+            printf 'ERROR: unknown --section: %s\n' "$SECTION" >&2
+            exit 1
+            ;;
+    esac
+fi
 section_runs() {
     [[ -z "$SECTION" || "$SECTION" == "$1" ]]
 }
@@ -215,6 +228,7 @@ grep -Fq 'FINDING_1: YES' "$big_review_tmpdir/claude-vote-output.txt" \
     || { echo "FAIL: 2MB-diff scenario expected FINDING_1: YES in voter output" >&2; exit 1; }
 fi  # end section: edge
 
+if section_runs retry-claude; then
 retry_success_tmp="$TMP/retry-success"
 retry_count_file="$TMP/retry-success-count.txt"
 out=$(PATH="$STUB_BIN:$PATH" CLAUDE_STUB_MODE=parse_retry_success CLAUDE_STUB_COUNT_FILE="$retry_count_file" "$SCRIPT" \
@@ -265,7 +279,9 @@ grep -Fq 'launch-claude-review.sh (voter parse-rate check)' "$retry_fail_issues"
     || { echo "FAIL: parse-rate retry failure should append exactly one execution issue warning" >&2; exit 1; }
 [[ ! -e "$retry_fail_tmp/claude-vote-output-parse-retry.txt" && ! -e "$retry_fail_tmp/claude-vote-output-parse-retry.txt.launcher-stderr" ]] \
     || { echo "FAIL: parse-rate retry failure should clean retry temp files" >&2; exit 1; }
+fi  # end section: retry-claude
 
+if section_runs retry-codex-success; then
 retry_success_codex_tmp="$TMP/retry-success-codex"
 retry_success_codex_count_file="$TMP/retry-success-codex-count.txt"
 out=$(PATH="$STUB_BIN:$PATH" CODEX_STUB_MODE=parse_retry_success CODEX_STUB_COUNT_FILE="$retry_success_codex_count_file" "$SCRIPT" \
@@ -285,7 +301,9 @@ if [[ -e "$retry_success_codex_tmp/codex-vote-output-parse-rate-diag.txt" || -e 
 fi
 [[ "$(cat "$retry_success_codex_count_file")" -eq 2 ]] \
     || { echo "FAIL: codex parse-rate retry success expected exactly two codex attempts" >&2; exit 1; }
+fi  # end section: retry-codex-success
 
+if section_runs retry-cursor; then
 retry_success_cursor_tmp="$TMP/retry-success-cursor"
 retry_success_cursor_count_file="$TMP/retry-success-cursor-count.txt"
 out=$(PATH="$STUB_BIN:$PATH" CURSOR_STUB_MODE=parse_retry_success CURSOR_STUB_COUNT_FILE="$retry_success_cursor_count_file" "$SCRIPT" \
@@ -305,7 +323,9 @@ if [[ -e "$retry_success_cursor_tmp/cursor-vote-output-parse-rate-diag.txt" || -
 fi
 [[ "$(cat "$retry_success_cursor_count_file")" -eq 2 ]] \
     || { echo "FAIL: cursor parse-rate retry success expected exactly two cursor attempts" >&2; exit 1; }
+fi  # end section: retry-cursor
 
+if section_runs retry-codex-fail-and-fallback; then
 retry_fail_codex_tmp="$TMP/retry-fail-codex"
 retry_fail_codex_count_file="$TMP/retry-fail-codex-count.txt"
 retry_fail_codex_issues="$TMP/retry-fail-codex-execution-issues.md"
@@ -342,5 +362,6 @@ grep -Fq "VOTER_2_PATH=$retry_fail_fallback_tmp/codex-vote-output-phase3.txt" <<
     || { echo "FAIL: fallback-claude fixture should write an output-specific codex voter diag" >&2; exit 1; }
 grep -Fq "voter_file=$retry_fail_fallback_tmp/codex-vote-output-phase3.txt" "$retry_fail_fallback_tmp/codex-vote-output-phase3-parse-rate-diag.txt" \
     || { echo "FAIL: fallback-claude fixture diag should bind to the phase3 codex slot output path" >&2; exit 1; }
+fi  # end section: retry-codex-fail-and-fallback
 
 echo "PASS: test-dispatch-code-voters.sh"

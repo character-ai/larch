@@ -4,16 +4,25 @@ Smoke harness for `scripts/dispatch-code-voters.sh`. Stubs every external binary
 
 ## Coverage
 
-- Argument validation: no-args → non-zero exit.
-- All three voters available → 3 launches; `VOTER_N_TOOL` and `VOTER_N_STATUS=launched` correctly emitted; vote-output files present.
-- Codex unavailable → Voter 2 falls back to Claude replacement (`VOTER_2_TOOL=claude`, `VOTER_2_STATUS=fallback`).
-- Cursor unavailable → Voter 3 falls back to Claude replacement.
-- Both externals unavailable → Voters 2 and 3 both filled by Claude replacements.
+11 scenarios split across 6 `--section` groups for CI shard packing:
+
+- `happy` (scenarios 1-3): all voters available; codex/cursor absent; voter1 fails.
+- `edge` (scenarios 4-5): symlink diff; 2 MB diff.
+- `retry-claude` (scenarios 6-7): claude voter parse-rate retry success; parse-rate retry failure.
+- `retry-codex-success` (scenario 8): codex voter parse-rate retry success.
+- `retry-cursor` (scenario 9): cursor voter parse-rate retry success.
+- `retry-codex-fail-and-fallback` (scenarios 10-11): codex parse-rate retry failure; all-claude fallback parse-rate failure.
 
 ## Invocation
 
 ```bash
 scripts/test-dispatch-code-voters.sh
+```
+
+Run a single section:
+
+```bash
+scripts/test-dispatch-code-voters.sh --section happy
 ```
 
 Exit 0 → pass, exit 1 → at least one assertion failed.

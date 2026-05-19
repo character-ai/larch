@@ -23,8 +23,8 @@ The Makefile documents opt-in evaluation targets that are intentionally not part
 `Makefile` defines:
 
 - `test-harness-shards-coverage:` running `bash scripts/test-harness-shards-coverage.sh` and `bash scripts/test-harness-shards-coverage.sh --self-test`.
-- The guard-owning `test-harnesses-N:` rule with `test-harness-shards-coverage` as the first prerequisite (currently `test-harnesses-12:`).
-- `test-harnesses:` as an umbrella over every declared `test-harnesses-N` (currently `test-harnesses-1` through `test-harnesses-16`).
+- The guard-owning `test-harnesses-N:` rule with `test-harness-shards-coverage` as the first prerequisite (currently `test-harnesses-13:`).
+- `test-harnesses:` as an umbrella over every declared `test-harnesses-N` (currently `test-harnesses-1` through `test-harnesses-18`).
 
 When adding a new harness target, add it to `.PHONY`, add its recipe, and assign it to exactly one `test-harnesses-N:` shard prerequisite list. Rebalance shard lists when timing drift makes a shard materially slower than the `test-validate-citations` floor documented in `docs/linting.md`.
 

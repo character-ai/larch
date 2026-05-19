@@ -1,0 +1,31 @@
+FINDING_1: YES
+FINDING_2: EXONERATE -- Legitimate stale sibling-doc detail, but covered by the in-scope shard-doc finding rather than needing a separate future issue.
+FINDING_3: EXONERATE -- Legitimate duplicate of the stale sibling-doc shard mapping already covered in FINDING_1.
+FINDING_4: EXONERATE -- Legitimate duplicate of the stale sibling-doc umbrella ceiling already covered in FINDING_1.
+FINDING_5: YES
+FINDING_6: EXONERATE -- Legitimate duplicate of the stale sibling-doc guard-shard claim already covered in FINDING_1.
+FINDING_7: NO -- Speculative timing regression without CI timing evidence or a concrete failing condition.
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: YES
+FINDING_18: YES
+FINDING_19: YES
+FINDING_20: YES
+FINDING_21: YES
+FINDING_22: YES
+FINDING_23: YES
+FINDING_24: YES
+FINDING_25: YES
+FINDING_26: YES
+FINDING_27: YES
+FINDING_28: YES
+FINDING_29: YES
+FINDING_30: YES
+FINDING_31: YES
