@@ -46,7 +46,8 @@ provided alongside `--retry-count`, the header suffix changes from
 auth-retry counter and M is the transient-infra-retry counter
 (M=1 means no transient retry fired; M>=2 means M-1 retries fired).
 When omitted, the existing `retries=N` format is preserved for backward
-compatibility.
+compatibility. Passing `--transient-retry-count` without `--retry-count`
+does not add a suffix.
 
 When `--redact` is present, the captured content is first passed through
 `scripts/redact-secrets.sh`. The redaction pass preserves non-secret
@@ -85,9 +86,9 @@ output.
 
 `scripts/test-append-tool-failure.sh` covers single-line, multi-line,
 large-content, category routing, custom status labels, verdict /
-retry-count suffixes, redaction, missing-input failure, and delegate
-failure atomicity. It is intended to run directly and through the
-relevant-checks script harness.
+retry-count suffixes, transient-only omission, redaction, missing-input
+failure, and delegate failure atomicity. It is intended to run directly
+and through the relevant-checks script harness.
 
 ## Edit In Sync
 

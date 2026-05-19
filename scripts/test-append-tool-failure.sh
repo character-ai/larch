@@ -110,6 +110,11 @@ transient_combined_log="$TMPDIR_BASE/transient-combined-log.md"
 "$SCRIPT" --log "$transient_combined_log" --site "review Step 2" --tool "cursor-review" --exit-code 8 --category "External Reviewer Issues" --output-file "$verdict_input" --verdict "non-auth" --retry-count 1 --transient-retry-count 3 >/dev/null
 assert_contains "verdict and auth/transient retry-counts: header suffix" "$transient_combined_log" "- **Step review Step 2 — cursor-review failed (exit 8 — non-auth — auth-retries=1, transient-retries=3)**:"
 
+transient_only_log="$TMPDIR_BASE/transient-only-log.md"
+"$SCRIPT" --log "$transient_only_log" --site "review Step 2" --tool "cursor-review" --exit-code 8 --category "External Reviewer Issues" --output-file "$verdict_input" --transient-retry-count 3 >/dev/null
+assert_contains "transient-only: legacy header preserved" "$transient_only_log" "- **Step review Step 2 — cursor-review failed (exit 8)**:"
+assert_not_contains "transient-only: no auth/transient suffix without retry-count" "$transient_only_log" "transient-retries="
+
 warning_log="$TMPDIR_BASE/warning-log.md"
 "$SCRIPT" --log "$warning_log" --site "review Step 3a tsv-fallback" --tool "collect-findings.sh inline-TSV recovery" --exit-code 0 --status-label "warning" --category "External Reviewer Issues" --output-file "$verdict_input" >/dev/null
 assert_contains "status-label: warning wording" "$warning_log" "- **Step review Step 3a tsv-fallback — collect-findings.sh inline-TSV recovery warning (exit 0)**:"

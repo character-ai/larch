@@ -90,13 +90,6 @@ assert_regex() {
     if grep -Eq -- "$pattern" "$file"; then pass; else fail "$label: expected $file to match regex $pattern"; fi
 }
 
-assert_not_regex() {
-    local label="$1"
-    local pattern="$2"
-    local file="$3"
-    if grep -Eq -- "$pattern" "$file"; then fail "$label: unexpected regex $pattern in $file"; else pass; fi
-}
-
 set +e
 "$LAUNCHER" >/dev/null 2>"$TMPDIR/missing.stderr"
 RC=$?
@@ -957,10 +950,10 @@ assert_eq "SL-transient-obs-fired execution-issues has no failure entry on succe
 rm -f "$SL_OBS_FIRED_COUNT"
 
 # Case SL-transient-obs-nontransient: verify that a true non-transient failure
-# (exit code not in the transient allowlist, non-empty output file) logs a
-# failure entry WITHOUT a transient-retries field. Stub exits 1 and writes ~5KB
-# to the output file; exit 1 is not in the transient allowlist so no retry
-# fires.
+# (exit code not in the transient allowlist, non-empty output file) still logs
+# both retry counters. M=1 means no transient retry fired. Stub exits 1 and
+# writes ~5KB to the output file; exit 1 is not in the transient allowlist so
+# no retry fires.
 SL_OBS_NONTRANSIENT_COUNT="$TMPDIR/sl-obs-nontransient-count.txt"
 printf '0' > "$SL_OBS_NONTRANSIENT_COUNT"
 cat > "$STUB_BIN/codex-obs-nontransient" <<STUB_OBS_NONTRANSIENT
@@ -1000,8 +993,7 @@ assert_eq "SL-transient-obs-nontransient stub invoked exactly 1 time" "1" "$OBS_
 EI_OBS_NONTRANSIENT="$IMPL_TMPDIR_OBS_NONTRANSIENT/execution-issues.md"
 OBS_NONTRANSIENT_ENTRY_COUNT=$(grep -c 'codex-review' "$EI_OBS_NONTRANSIENT" 2>/dev/null || echo 0)
 assert_eq "SL-transient-obs-nontransient execution-issues has one failure entry" "1" "$OBS_NONTRANSIENT_ENTRY_COUNT"
-assert_regex "SL-transient-obs-nontransient exact non-transient header" '^-\s\*\*Step review Step 2 — codex-review failed \(exit 1 — non-auth — retries=1\)\*\*:$' "$EI_OBS_NONTRANSIENT"
-assert_not_regex "SL-transient-obs-nontransient omits transient-retries field" 'transient-retries=' "$EI_OBS_NONTRANSIENT"
+assert_regex "SL-transient-obs-nontransient exact non-transient header" '^-\s\*\*Step review Step 2 — codex-review failed \(exit 1 — non-auth — auth-retries=1, transient-retries=1\)\*\*:$' "$EI_OBS_NONTRANSIENT"
 rm -f "$SL_OBS_NONTRANSIENT_COUNT"
 
 # Restore normal codex stub for remaining tests.
