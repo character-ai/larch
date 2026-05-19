@@ -155,9 +155,9 @@ DESIGN_NEUTRAL="$TMPROOT/design-neutral"
 mkdir -p "$DESIGN_NEUTRAL"
 "$SUBJECT" --ballot-file "$BALLOT" --voter-files "$V4" "$V_NEUTRAL" "$V_NEUTRAL" --design-tmpdir "$DESIGN_NEUTRAL" >/dev/null
 if grep -q 'FINDING_1' "$DESIGN_NEUTRAL/accepted-plan-findings.md"; then
-    fail "3-voter panel with 1 YES and 2 NEUTRAL should not accept"
+    fail "3-voter panel with 1 YES and 2 JUDGE_ERROR should not accept"
 fi
-grep -q '| FINDING_1 | 1 | 0 | 0 | 2 | rejected |' "$DESIGN_NEUTRAL/voting-tally.md" || fail "neutral quorum result row missing"
+grep -q '| FINDING_1 | 1 | 0 | 0 | 2 | rejected |' "$DESIGN_NEUTRAL/voting-tally.md" || fail "JUDGE_ERROR quorum result row missing"
 
 BALLOT_OOS_ONE="$TMPROOT/ballot-oos-one.md"
 cat > "$BALLOT_OOS_ONE" <<'EOF'
