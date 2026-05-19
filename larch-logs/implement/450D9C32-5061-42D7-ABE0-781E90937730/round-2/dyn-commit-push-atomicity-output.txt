@@ -1,0 +1,7 @@
+Gathering evidence from the pre-computed diff, commit history, and relevant scripts/tests for a risk-integration review.
+
+Checking test harness ordering, `create-pr.sh` behavior, and whether `--comment-only` leaves a dirty working tree.
+
+Confirming `write-final-report.sh`: non–comment-only path writes both `summary-final.md` and copies to `run_dir/final-summary.md` (diff lines 698–712).
+
+

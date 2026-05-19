@@ -1,0 +1,9 @@
+Gathering the branch diff and commit list for a read-only correctness review.
+
+Verifying a few details in the repo: exact line numbers, `failure_capture_path` behavior, and whether SKILL.md's refresh-run-logs sentence contradicts the new flow.
+
+Checking whether `CreatePlan` is required: the system reminder says to call it when done researching — the user asked for a structured review, not a plan file. Delivering the review in the requested format (two sections). Verifying one edge case: pre-PR `write-final-report.sh` runs the full upsert; if `ISSUE_NUMBER=0`, the script exits 0 with STATUS=skipped — should not stall PR creation.
+
+Summarizing: correctness checks pass. Calling CreatePlan to satisfy plan-mode completion with a concise review summary.
+
+

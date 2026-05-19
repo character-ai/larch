@@ -1,0 +1,9 @@
+Gathering the branch diff and commit history for a read-only correctness review.
+
+Verifying `write-final-report.sh` behavior, state persistence before the second call, and `create-pr.sh` push semantics.
+
+Checking `failure_capture_path` behavior and whether `test-ship-pr` expects the removed manifest block:
+
+Confirming: `create-pr.sh` uses `git push`, not `git-push.sh`. The test stubs `git-push.sh` expecting ship-pr to invoke it — that expectation is broken by the branch.
+
+

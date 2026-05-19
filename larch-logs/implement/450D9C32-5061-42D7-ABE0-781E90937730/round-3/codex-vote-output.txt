@@ -1,0 +1,15 @@
+FINDING_1: YES
+FINDING_2: NO -- observation describes correct idempotent behavior, not a defect or follow-up issue.
+FINDING_3: NO -- observation confirms intended refresh gating; no defect to track.
+FINDING_4: NO -- observation confirms distinct failure logs; no defect to track.
+FINDING_5: EXONERATE -- legitimate hardening idea, but current ship-pr callers already capture/redact this path enough that a separate issue is not warranted.
+FINDING_6: NO -- ballot entry is just a commit subject, not a review finding.
+FINDING_7: NO -- ballot entry is just a commit subject, not a review finding.
+FINDING_8: NO -- ballot entry is just a commit subject, not a review finding.
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: EXONERATE -- best-effort log commits are intentional; blocking PR creation on a log-commit failure would be disproportionate.
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: YES
