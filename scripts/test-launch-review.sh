@@ -728,6 +728,143 @@ else
     pass
 fi
 
+# Case SL-transient-retry-codex-7: stub exits 7 with empty sidecar on attempt 1,
+# returns valid output on attempt 2. Launcher must retry and exit 0.
+SL_TRANSIENT_CODEX7_COUNT="$TMPDIR/sl-transient-codex7-count.txt"
+printf '0' > "$SL_TRANSIENT_CODEX7_COUNT"
+cat > "$STUB_BIN/codex-transient-7" <<STUB_TRANSIENT_CODEX7
+#!/usr/bin/env bash
+count=\$(cat "${SL_TRANSIENT_CODEX7_COUNT}" 2>/dev/null || echo 0)
+count=\$((count + 1))
+printf '%s' "\$count" > "${SL_TRANSIENT_CODEX7_COUNT}"
+if (( count == 1 )); then
+    exit 7
+fi
+# Write valid output on retry (args: exec --sandbox read-only ... --output-last-message FILE -- PROMPT)
+last=""
+for arg in "\$@"; do
+    if [[ "\$last" == "--output-last-message" ]]; then
+        printf 'transient-codex-7 retry ok\n' > "\$arg"
+        break
+    fi
+    last="\$arg"
+done
+printf 'tokens used\n1\n'
+STUB_TRANSIENT_CODEX7
+chmod +x "$STUB_BIN/codex-transient-7"
+ln -sf "$STUB_BIN/codex-transient-7" "$STUB_BIN/codex"
+OUT_TRANSIENT_CODEX7="$TMPDIR/transient-codex7.txt"
+set +e
+LARCH_TRANSIENT_RETRY_DELAY=0 \
+    LARCH_EXTERNAL_SERIAL_LOCK_DELAY=0 \
+    PATH="$STUB_BIN:$PATH" \
+    "$LAUNCHER" --output "$OUT_TRANSIENT_CODEX7" --timeout 10 --prompt "sl-transient-retry-codex-7" >/dev/null 2>&1
+RC_TRANSIENT_CODEX7=$?
+set -e
+assert_eq "SL-transient-retry-codex-7 exits 0 after transient retry" "0" "$RC_TRANSIENT_CODEX7"
+SL_TRANSIENT_CODEX7_ATTEMPTS=$(cat "$SL_TRANSIENT_CODEX7_COUNT" 2>/dev/null || echo "0")
+assert_eq "SL-transient-retry-codex-7 stub invoked exactly 2 times" "2" "$SL_TRANSIENT_CODEX7_ATTEMPTS"
+rm -f "$SL_TRANSIENT_CODEX7_COUNT"
+
+# Case SL-transient-retry-exhausted: stub exits 7 with empty sidecar on all 3
+# attempts. Launcher must give up after 2 retries (3 total attempts) and exit non-zero.
+SL_TRANSIENT_EXHAUSTED_COUNT="$TMPDIR/sl-transient-exhausted-count.txt"
+printf '0' > "$SL_TRANSIENT_EXHAUSTED_COUNT"
+cat > "$STUB_BIN/codex-transient-exhausted" <<STUB_TRANSIENT_EXHAUSTED
+#!/usr/bin/env bash
+count=\$(cat "${SL_TRANSIENT_EXHAUSTED_COUNT}" 2>/dev/null || echo 0)
+count=\$((count + 1))
+printf '%s' "\$count" > "${SL_TRANSIENT_EXHAUSTED_COUNT}"
+exit 7
+STUB_TRANSIENT_EXHAUSTED
+chmod +x "$STUB_BIN/codex-transient-exhausted"
+ln -sf "$STUB_BIN/codex-transient-exhausted" "$STUB_BIN/codex"
+OUT_TRANSIENT_EXHAUSTED="$TMPDIR/transient-exhausted.txt"
+set +e
+LARCH_TRANSIENT_RETRY_DELAY=0 \
+    LARCH_EXTERNAL_SERIAL_LOCK_DELAY=0 \
+    PATH="$STUB_BIN:$PATH" \
+    "$LAUNCHER" --output "$OUT_TRANSIENT_EXHAUSTED" --timeout 10 --prompt "sl-transient-retry-exhausted" >/dev/null 2>&1
+RC_TRANSIENT_EXHAUSTED=$?
+set -e
+assert_eq "SL-transient-retry-exhausted exits non-zero after exhausting retries" "7" "$RC_TRANSIENT_EXHAUSTED"
+SL_TRANSIENT_EXHAUSTED_ATTEMPTS=$(cat "$SL_TRANSIENT_EXHAUSTED_COUNT" 2>/dev/null || echo "0")
+assert_eq "SL-transient-retry-exhausted stub invoked exactly 3 times (2 retries)" "3" "$SL_TRANSIENT_EXHAUSTED_ATTEMPTS"
+rm -f "$SL_TRANSIENT_EXHAUSTED_COUNT"
+
+# Case SL-transient-vs-auth-precedence: stub exits 7 but writes an auth-error
+# string to stderr (which propagates to the sidecar via FD inheritance from
+# run-external-agent.sh). The launcher must NOT treat this as a transient
+# infra failure because the auth-exclusion guard fires first; the auth-retry
+# path handles it instead. With LARCH_EXTERNAL_AUTH_RETRIES=2, one auth retry
+# occurs (2 attempts total).
+SL_TRANSIENT_AUTH_COUNT="$TMPDIR/sl-transient-auth-count.txt"
+printf '0' > "$SL_TRANSIENT_AUTH_COUNT"
+cat > "$STUB_BIN/codex-transient-auth" <<STUB_TRANSIENT_AUTH
+#!/usr/bin/env bash
+count=\$(cat "${SL_TRANSIENT_AUTH_COUNT}" 2>/dev/null || echo 0)
+count=\$((count + 1))
+printf '%s' "\$count" > "${SL_TRANSIENT_AUTH_COUNT}"
+if (( count == 1 )); then
+    # Auth-error pattern to sidecar via inherited stderr — disqualifies transient path
+    printf 'Error: not logged in\n' >&2
+    exit 7
+fi
+last=""
+for arg in "\$@"; do
+    if [[ "\$last" == "--output-last-message" ]]; then
+        printf 'auth-path ok\n' > "\$arg"
+        break
+    fi
+    last="\$arg"
+done
+printf 'tokens used\n1\n'
+STUB_TRANSIENT_AUTH
+chmod +x "$STUB_BIN/codex-transient-auth"
+ln -sf "$STUB_BIN/codex-transient-auth" "$STUB_BIN/codex"
+OUT_TRANSIENT_AUTH="$TMPDIR/transient-auth.txt"
+set +e
+LARCH_TRANSIENT_RETRY_DELAY=0 \
+    LARCH_EXTERNAL_AUTH_RETRIES=2 \
+    LARCH_EXTERNAL_SERIAL_LOCK_DELAY=0 \
+    PATH="$STUB_BIN:$PATH" \
+    "$LAUNCHER" --output "$OUT_TRANSIENT_AUTH" --timeout 10 --prompt "sl-transient-vs-auth-precedence" >/dev/null 2>&1
+RC_TRANSIENT_AUTH=$?
+set -e
+assert_eq "SL-transient-vs-auth-precedence exits 0 via auth retry" "0" "$RC_TRANSIENT_AUTH"
+SL_TRANSIENT_AUTH_ATTEMPTS=$(cat "$SL_TRANSIENT_AUTH_COUNT" 2>/dev/null || echo "0")
+assert_eq "SL-transient-vs-auth-precedence stub invoked exactly 2 times (auth retry)" "2" "$SL_TRANSIENT_AUTH_ATTEMPTS"
+rm -f "$SL_TRANSIENT_AUTH_COUNT"
+
+# Case SL-transient-not-applied: stub exits 1 with non-empty sidecar content.
+# Exit code 1 is not in the transient allowlist → no transient retry, exactly
+# 1 invocation.
+SL_TRANSIENT_NOAPPLY_COUNT="$TMPDIR/sl-transient-noapply-count.txt"
+printf '0' > "$SL_TRANSIENT_NOAPPLY_COUNT"
+cat > "$STUB_BIN/codex-transient-noapply" <<STUB_TRANSIENT_NOAPPLY
+#!/usr/bin/env bash
+count=\$(cat "${SL_TRANSIENT_NOAPPLY_COUNT}" 2>/dev/null || echo 0)
+count=\$((count + 1))
+printf '%s' "\$count" > "${SL_TRANSIENT_NOAPPLY_COUNT}"
+printf 'some output indicating real failure\n' >&2
+exit 1
+STUB_TRANSIENT_NOAPPLY
+chmod +x "$STUB_BIN/codex-transient-noapply"
+ln -sf "$STUB_BIN/codex-transient-noapply" "$STUB_BIN/codex"
+OUT_TRANSIENT_NOAPPLY="$TMPDIR/transient-noapply.txt"
+set +e
+LARCH_TRANSIENT_RETRY_DELAY=0 \
+    LARCH_EXTERNAL_SERIAL_LOCK_DELAY=0 \
+    PATH="$STUB_BIN:$PATH" \
+    "$LAUNCHER" --output "$OUT_TRANSIENT_NOAPPLY" --timeout 10 --prompt "sl-transient-not-applied" >/dev/null 2>&1
+set -e
+SL_TRANSIENT_NOAPPLY_ATTEMPTS=$(cat "$SL_TRANSIENT_NOAPPLY_COUNT" 2>/dev/null || echo "0")
+assert_eq "SL-transient-not-applied stub invoked exactly 1 time (exit 1 not in allowlist)" "1" "$SL_TRANSIENT_NOAPPLY_ATTEMPTS"
+rm -f "$SL_TRANSIENT_NOAPPLY_COUNT"
+
+# Restore normal codex stub for remaining tests.
+ln -sf "$STUB_BIN/codex" "$STUB_BIN/codex" 2>/dev/null || true
+
 if (( FAIL > 0 )); then
     printf 'FAIL: test-launch-review.sh --tool codex - %s failed, %s passed\n' "$FAIL" "$PASS" >&2
     printf '  %s\n' "${FAILURES[@]}" >&2
@@ -1864,6 +2001,37 @@ assert_equals "SL-security-cmd-failed-auth launcher exits 0 after one retry" "0"
 SL_SECURITY_CMD_FAILED_AUTH_ATTEMPTS=$(cat "$SL_SECURITY_CMD_FAILED_AUTH_COUNT" 2>/dev/null || echo "0")
 assert_equals "SL-security-cmd-failed-auth stub invoked exactly 2 times" "2" "$SL_SECURITY_CMD_FAILED_AUTH_ATTEMPTS"
 rm -f "$SL_SECURITY_CMD_FAILED_AUTH_COUNT"
+
+# Case SL-transient-retry-cursor-8: stub exits 8 with empty sidecar on attempt 1,
+# returns valid JSON on attempt 2. Launcher must retry and exit 0.
+SL_TRANSIENT_CURSOR8_COUNT="$TMPDIR/sl-transient-cursor8-count.txt"
+printf '0' > "$SL_TRANSIENT_CURSOR8_COUNT"
+cat > "$STUB_BIN/cursor-transient-8" <<STUB_TRANSIENT_CURSOR8
+#!/usr/bin/env bash
+count=\$(cat "${SL_TRANSIENT_CURSOR8_COUNT}" 2>/dev/null || echo 0)
+count=\$((count + 1))
+printf '%s' "\$count" > "${SL_TRANSIENT_CURSOR8_COUNT}"
+if (( count == 1 )); then
+    exit 8
+fi
+printf '{"result":"transient-cursor-8 retry ok","usage":{"inputTokens":1,"outputTokens":2,"cacheReadTokens":0,"cacheWriteTokens":0}}\n'
+STUB_TRANSIENT_CURSOR8
+chmod +x "$STUB_BIN/cursor-transient-8"
+ln -sf "$STUB_BIN/cursor-transient-8" "$STUB_BIN/cursor"
+OUT_TRANSIENT_CURSOR8="$TMPDIR/transient-cursor8.txt"
+set +e
+USER="${SERIAL_LOCK_USER}-transient8" \
+    LARCH_TRANSIENT_RETRY_DELAY=0 \
+    LARCH_EXTERNAL_SERIAL_LOCK_FORCE_UNAME=Darwin \
+    LARCH_EXTERNAL_SERIAL_LOCK_DELAY=0 \
+    PATH="$STUB_BIN:$PATH" \
+    "$LAUNCHER" --output "$OUT_TRANSIENT_CURSOR8" --timeout 10 --prompt "sl-transient-retry-cursor-8" >/dev/null 2>&1
+RC_TRANSIENT_CURSOR8=$?
+set -e
+assert_equals "SL-transient-retry-cursor-8 exits 0 after transient retry" "0" "$RC_TRANSIENT_CURSOR8"
+SL_TRANSIENT_CURSOR8_ATTEMPTS=$(cat "$SL_TRANSIENT_CURSOR8_COUNT" 2>/dev/null || echo "0")
+assert_equals "SL-transient-retry-cursor-8 stub invoked exactly 2 times" "2" "$SL_TRANSIENT_CURSOR8_ATTEMPTS"
+rm -f "$SL_TRANSIENT_CURSOR8_COUNT"
 
 # Restore normal cursor stub for remaining tests.
 ln -sf "$STUB_BIN/cursor-sl" "$STUB_BIN/cursor"

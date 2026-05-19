@@ -475,13 +475,16 @@ else
 fi
 MAX_AUTH_RETRIES=${LARCH_EXTERNAL_AUTH_RETRIES:-5}
 case "$MAX_AUTH_RETRIES" in ''|*[!0-9]*|0) MAX_AUTH_RETRIES=5 ;; esac
+MAX_TRANSIENT_RETRIES=2
 HOLD=${LARCH_EXTERNAL_SERIAL_LOCK_DELAY:-0.5}
 AUTH_ATTEMPT=1
+TRANSIENT_ATTEMPT=1
 while (( AUTH_ATTEMPT <= MAX_AUTH_RETRIES )); do
     _SERIAL_LOCK=""
     external_serial_lock_acquire _SERIAL_LOCK "codex"
     external_serial_lock_release_after "$_SERIAL_LOCK" "$HOLD"
     EXIT_CODE=0
+    _ATTEMPT_START=$SECONDS
     if [[ "$SIDECAR" != "/dev/null" ]]; then
         CODEX_HOME="$CODEX_HOME_DIR" \
         RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX=.inner.done \
@@ -514,6 +517,21 @@ while (( AUTH_ATTEMPT <= MAX_AUTH_RETRIES )); do
             -- \
             "$PROMPT" \
             >/dev/null 2>&1 || EXIT_CODE=$?
+    fi
+    _ELAPSED=$((SECONDS - _ATTEMPT_START))
+    if (( EXIT_CODE != 0 && TRANSIENT_ATTEMPT <= MAX_TRANSIENT_RETRIES )) \
+        && ! external_is_auth_failure "codex" "$SIDECAR" \
+        && external_is_transient_infra_failure "codex" "$EXIT_CODE" "$_ELAPSED" "$OUTPUT"; then
+        TRANSIENT_ATTEMPT=$((TRANSIENT_ATTEMPT + 1))
+        if [[ -n "${LARCH_TRANSIENT_RETRY_DELAY:-}" ]]; then
+            if (( LARCH_TRANSIENT_RETRY_DELAY > 0 )); then sleep "$LARCH_TRANSIENT_RETRY_DELAY"; fi
+        else
+            _backoff=$(( 1 << TRANSIENT_ATTEMPT ))
+            _jitter=$(( RANDOM % 2 ))
+            sleep $(( _backoff + _jitter )) || true
+        fi
+        : > "$SIDECAR" 2>/dev/null || true
+        continue
     fi
     if (( EXIT_CODE != 0 && AUTH_ATTEMPT < MAX_AUTH_RETRIES )) && external_is_auth_failure "codex" "$SIDECAR"; then
         AUTH_ATTEMPT=$((AUTH_ATTEMPT + 1))
@@ -878,11 +896,14 @@ fi
 cursor_launcher_setup_private_config_dir
 MAX_AUTH_RETRIES=${LARCH_EXTERNAL_AUTH_RETRIES:-5}
 case "$MAX_AUTH_RETRIES" in ''|*[!0-9]*|0) MAX_AUTH_RETRIES=5 ;; esac
+MAX_TRANSIENT_RETRIES=2
 HOLD=${LARCH_EXTERNAL_SERIAL_LOCK_DELAY:-0.5}
 AUTH_ATTEMPT=1
+TRANSIENT_ATTEMPT=1
 while (( AUTH_ATTEMPT <= MAX_AUTH_RETRIES )); do
     _SERIAL_LOCK=""
     external_serial_lock_acquire _SERIAL_LOCK "cursor"
+    _ATTEMPT_START=$SECONDS
     RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX=.inner.done \
     "$RUN_EXTERNAL" \
             --tool cursor \
@@ -901,6 +922,21 @@ while (( AUTH_ATTEMPT <= MAX_AUTH_RETRIES )); do
     external_serial_lock_release_after "$_SERIAL_LOCK" "$HOLD"
     wait "$WRAPPER_PID" && EXIT_CODE=0 || EXIT_CODE=$?
     WRAPPER_PID=""
+    _ELAPSED=$((SECONDS - _ATTEMPT_START))
+    if (( EXIT_CODE != 0 && TRANSIENT_ATTEMPT <= MAX_TRANSIENT_RETRIES )) \
+        && ! { external_is_auth_failure "cursor" "$SIDECAR" || external_is_auth_failure "cursor" "${OUTPUT}.diag"; } \
+        && external_is_transient_infra_failure "cursor" "$EXIT_CODE" "$_ELAPSED" "$OUTPUT"; then
+        TRANSIENT_ATTEMPT=$((TRANSIENT_ATTEMPT + 1))
+        if [[ -n "${LARCH_TRANSIENT_RETRY_DELAY:-}" ]]; then
+            if (( LARCH_TRANSIENT_RETRY_DELAY > 0 )); then sleep "$LARCH_TRANSIENT_RETRY_DELAY"; fi
+        else
+            _backoff=$(( 1 << TRANSIENT_ATTEMPT ))
+            _jitter=$(( RANDOM % 2 ))
+            sleep $(( _backoff + _jitter )) || true
+        fi
+        : > "$SIDECAR" 2>/dev/null || true
+        continue
+    fi
     if (( EXIT_CODE != 0 && AUTH_ATTEMPT < MAX_AUTH_RETRIES )) \
         && { external_is_auth_failure "cursor" "$SIDECAR" || external_is_auth_failure "cursor" "${OUTPUT}.diag"; }; then
         AUTH_ATTEMPT=$((AUTH_ATTEMPT + 1))
