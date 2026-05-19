@@ -36,9 +36,9 @@ When adding a new pre-commit hook, decide explicitly whether `lint`, the dedicat
 
 ## CI sharding of `test-harnesses`
 
-`make test-harnesses` remains the local umbrella target and runs every regression harness wired into the `test-harnesses-N` shards plus the partition guard (`make test-harness-shards-coverage` reports the active inventory; the `Makefile` is the source of truth). CI fans the same inventory out across sixteen parallel matrix cells named `test-harnesses (1)` through `test-harnesses (16)`, each invoking `make test-harnesses-N`.
+`make test-harnesses` remains the local umbrella target and runs every regression harness wired into the `test-harnesses-N` shards plus the partition guard (`make test-harness-shards-coverage` reports the active inventory; the `Makefile` is the source of truth). CI fans the same inventory out across fourteen parallel matrix cells named `test-harnesses (1)` through `test-harnesses (14)`, each invoking `make test-harnesses-N`.
 
-The shard lists live directly in `Makefile` and are balanced by measured per-harness wall-clock time. New harnesses must be assigned to exactly one `test-harnesses-N:` prerequisite list; `make test-harness-shards-coverage` checks for missing, orphaned, duplicated, wrapped, or non-standard harness entries. The matrix uses `fail-fast: false`, so all sixteen shards finish even after one fails. This spends more CI minutes but preserves complete diagnostics.
+The shard lists live directly in `Makefile` and are balanced by measured per-harness wall-clock time. New harnesses must be assigned to exactly one `test-harnesses-N:` prerequisite list; `make test-harness-shards-coverage` checks for missing, orphaned, duplicated, wrapped, or non-standard harness entries. The matrix uses `fail-fast: false`, so all fourteen shards finish even after one fails. This spends more CI minutes but preserves complete diagnostics.
 
 Local ordering changed: under `make test-harnesses` and therefore `make lint`, harnesses now execute in shard order (`test-harnesses-1`, then `test-harnesses-2`, and so on), not in the old single prerequisite-list order. Direct `make test-X` invocations are unchanged. CI shards run on separate VMs; local `make -j16 test-harnesses` can run shard targets concurrently, so fixed `/tmp` paths in individual harnesses remain a local-parallelism limitation even though the CI split is isolated.
 
@@ -87,7 +87,7 @@ for line in sys.stdin:
     name, seconds = line.split()
     items.append((float(seconds), name))
 
-bins = [(0.0, []) for _ in range(16)]
+bins = [(0.0, []) for _ in range(14)]
 for seconds, name in sorted(items, reverse=True):
     total, names = min(bins, key=lambda item: item[0])
     names.append(name)
@@ -117,8 +117,6 @@ Before the sharded CI shape merges, an admin must update main-branch protection.
 - `test-harnesses (12)`
 - `test-harnesses (13)`
 - `test-harnesses (14)`
-- `test-harnesses (15)`
-- `test-harnesses (16)`
 - `lint-mermaid`
 
 Save the rule before merging the PR, or GitHub may report green matrix checks while branch protection still waits for the retired single check.

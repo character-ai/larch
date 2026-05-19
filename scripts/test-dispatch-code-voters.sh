@@ -3,6 +3,22 @@
 
 set -euo pipefail
 
+# --section CLI selector (closes #2349): splits the 5 scenarios into 2 groups
+# so the CI matrix can pack them as independent harness rows. Sections:
+#   happy:     scenarios 1-3 (happy path, absent tools, empty voter)
+#   edge:      scenarios 4-5 (symlink diff, 2 MB diff)
+# With no --section, all 5 run sequentially (local-dev backward compat).
+SECTION=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --section) SECTION="$2"; shift 2 ;;
+        *) shift ;;
+    esac
+done
+section_runs() {
+    [[ -z "$SECTION" || "$SECTION" == "$1" ]]
+}
+
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 SCRIPT="$REPO_ROOT/scripts/dispatch-code-voters.sh"
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/test-dispatch-code-voters.XXXXXX")"
@@ -54,6 +70,7 @@ printf 'plan\n' > "$PLAN_FILE"
 CODEX_LOG="$TMP/codex.log"
 CURSOR_LOG="$TMP/cursor.log"
 
+if section_runs happy; then
 out=$(PATH="$STUB_BIN:$PATH" CODEX_STUB_LOG="$CODEX_LOG" CURSOR_STUB_LOG="$CURSOR_LOG" "$SCRIPT" --ballot-file "$BALLOT" --review-tmpdir "$TMP/happy" --codex-available true --cursor-available true --diff-file "$DIFF_FILE" --plan-file "$PLAN_FILE")
 grep -Fq 'VOTER_1_TOOL=claude' <<< "$out"
 grep -Fq 'VOTER_2_TOOL=codex' <<< "$out"
@@ -77,7 +94,9 @@ grep -Fq 'VOTER_1_STATUS=failed' <<< "$out"
 grep -Fq 'dispatch-code-voters.sh voter1' "$issues_log"
 grep -Fq 'launch-claude-review.sh (claude voter) failed (exit 99)' "$issues_log"
 grep -Fq 'voter1_rc=99' "$issues_log"
+fi  # end section: happy
 
+if section_runs edge; then
 # Voter dispatch now receives bounded regular-file copies of diff/plan context,
 # so a symlink source path still yields grounded voter context without passing a
 # symlink through to launch-claude-subprocess.sh.
@@ -121,5 +140,6 @@ grep -Fq 'VOTER_1_STATUS=launched' <<< "$out" \
     || { echo "FAIL: 2MB-diff scenario expected 200000-byte bounded diff copy" >&2; exit 1; }
 grep -Fq 'FINDING_1: YES' "$big_review_tmpdir/claude-vote-output.txt" \
     || { echo "FAIL: 2MB-diff scenario expected FINDING_1: YES in voter output" >&2; exit 1; }
+fi  # end section: edge
 
 echo "PASS: test-dispatch-code-voters.sh"
