@@ -43,6 +43,7 @@ ROUND_CAP=""
 CODEX_AVAILABLE="${CODEX_AVAILABLE:-}"
 CURSOR_AVAILABLE="${CURSOR_AVAILABLE:-}"
 DYNAMIC_ARCHETYPES_CLI=""
+CONVERGENCE_THRESHOLD=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -59,6 +60,7 @@ while [[ $# -gt 0 ]]; do
         --run-id) RUN_ID="${2:?--run-id requires a value}"; shift 2 ;;
         --round-num) ROUND_NUM="${2:?--round-num requires a value}"; shift 2 ;;
         --round-cap) ROUND_CAP="${2:?--round-cap requires a value}"; shift 2 ;;
+        --convergence-threshold) CONVERGENCE_THRESHOLD="${2:?--convergence-threshold requires a value}"; shift 2 ;;
         --codex-available) CODEX_AVAILABLE="${2:?--codex-available requires a value}"; shift 2 ;;
         --cursor-available) CURSOR_AVAILABLE="${2:?--cursor-available requires a value}"; shift 2 ;;
         --dynamic-archetypes) DYNAMIC_ARCHETYPES_CLI="${2:?--dynamic-archetypes requires a value}"; shift 2 ;;
@@ -921,6 +923,39 @@ run_implement_round() {
     accepted_file="${accepted_file:-$round_dir/accepted-findings.md}"
     rejected_file="${rejected_file:-$round_dir/rejected-findings.md}"
 
+    # Part B: Degraded-round detection via voting-tally.md banner.
+    # If degraded, retry the panel once; cap retries at 1 per round.
+    degraded_this_round=false
+    local voting_tally_file="$round_dir/voting-tally.md"
+    if [[ -f "$voting_tally_file" ]] && grep -Fq '⚠ Degraded code-review panel' "$voting_tally_file"; then
+        degraded_this_round=true
+        larch_err "⏳ /implement Step 5: round ${round_num_dec} panel was degraded (banner triggered); retrying with fresh panel."
+        local degraded_retry_flag="$round_dir/degraded-retry.flag"
+        if [[ ! -f "$degraded_retry_flag" ]]; then
+            touch "$degraded_retry_flag"
+            IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR" "$REVIEW_CORE_SH" "${core_args[@]}" > "$core_out"
+            core_status=$(kv_get "$core_out" REVIEW_CORE_STATUS)
+            accepted_count=$(kv_get "$core_out" ACCEPTED_COUNT)
+            rejected_count=$(kv_get "$core_out" REJECTED_COUNT)
+            exonerated_count=$(kv_get "$core_out" EXONERATED_COUNT)
+            neutral_count=$(kv_get "$core_out" NEUTRAL_COUNT)
+            accepted_file=$(kv_get "$core_out" ACCEPTED_FINDINGS_FILE)
+            rejected_file=$(kv_get "$core_out" REJECTED_FINDINGS_FILE)
+            accepted_count="${accepted_count:-0}"
+            rejected_count="${rejected_count:-0}"
+            exonerated_count="${exonerated_count:-0}"
+            neutral_count="${neutral_count:-0}"
+            core_status="${core_status:-unknown}"
+            accepted_file="${accepted_file:-$round_dir/accepted-findings.md}"
+            rejected_file="${rejected_file:-$round_dir/rejected-findings.md}"
+            if [[ -f "$voting_tally_file" ]] && grep -Fq '⚠ Degraded code-review panel' "$voting_tally_file"; then
+                larch_err "⚠ /implement Step 5: round ${round_num_dec} panel retry also degraded; proceeding best-effort."
+            else
+                degraded_this_round=false
+            fi
+        fi
+    fi
+
     oos_jsonl="$IMPLEMENT_TMPDIR/accumulated-oos.jsonl"
     oos_markdown="$IMPLEMENT_TMPDIR/accumulated-oos.md"
     round_oos="$round_dir/oos-accepted-review.md"
@@ -1080,6 +1115,40 @@ run_implement_round() {
         exit_code="$core_rc"
     fi
 
+    # Part A: Convergence heuristic — early-termination on two consecutive low-accept rounds.
+    # Skipped when: terminal failure, fewer than 2 rounds, or this round was degraded.
+    local small_threshold="${CONVERGENCE_THRESHOLD:-3}"
+    if [[ "$exit_code" -eq 0 && "$degraded_this_round" == false && "$round_num_dec" -ge 2 ]]; then
+        local prev_round_a=$((round_num_dec - 1))
+        local prev_core_out_a="$IMPLEMENT_TMPDIR/round-${prev_round_a}/review-core.env"
+        local prev_accepted_a
+        prev_accepted_a=$(kv_get "$prev_core_out_a" ACCEPTED_COUNT)
+        prev_accepted_a="${prev_accepted_a:-999}"
+        if [[ "$prev_accepted_a" =~ ^[0-9]+$ ]] && \
+           (( 10#$prev_accepted_a <= 10#$small_threshold )) && \
+           (( accepted_count <= 10#$small_threshold )); then
+            local prev_round_dir_a="$IMPLEMENT_TMPDIR/round-${prev_round_a}"
+            if ! grep -qE '^\*\*Important\*\*|\*\*Important `' \
+                   "$round_dir/findings.md" \
+                   "$prev_round_dir_a/findings.md" 2>/dev/null; then
+                emit_breadcrumb "⏳ /implement Step 5: converged after round ${round_num_dec} (round ${round_num_dec}=${accepted_count}, round ${prev_round_a}=${prev_accepted_a} both ≤ ${small_threshold})."
+                status="converged-small-changes"
+            fi
+        fi
+    fi
+
+    # Part C: Warn when round-N accepts > round-(N-1) accepts (churn-without-convergence).
+    if [[ "$exit_code" -eq 0 && "$round_num_dec" -ge 3 ]]; then
+        local prev_round_c=$((round_num_dec - 1))
+        local prev_core_out_c="$IMPLEMENT_TMPDIR/round-${prev_round_c}/review-core.env"
+        local prev_accepted_c
+        prev_accepted_c=$(kv_get "$prev_core_out_c" ACCEPTED_COUNT)
+        prev_accepted_c="${prev_accepted_c:-0}"
+        if [[ "$prev_accepted_c" =~ ^[0-9]+$ ]] && (( accepted_count > 10#$prev_accepted_c )); then
+            larch_err "**⚠ /implement Step 5: round ${round_num_dec} accepted ${accepted_count} findings (>${prev_accepted_c} in round ${prev_round_c}). Reviewers may be polishing prior fixes rather than converging on a clean state. Consider stopping after this round.**"
+        fi
+    fi
+
     local round_cap_val="${ROUND_CAP:-0}"
     local composed_findings_file="" derived_counts="" derived_accepted="" derived_rejected="" composed_findings_ok=false
     if [[ "$exit_code" -eq 0 && -n "$IMPLEMENT_TMPDIR" && -d "$IMPLEMENT_TMPDIR" ]]; then
@@ -1172,6 +1241,7 @@ run_implement_round() {
     emit_kv SUBMODULE_SCRUB_COUNT "$scrub_count"
     emit_kv SUBMODULE_REVERT_COUNT "$revert_count"
     emit_kv SKIPPED_FINDING_COUNT "${skipped_finding_count:-0}"
+    emit_kv DEGRADED_ROUND "$degraded_this_round"
     if [[ "$exit_code" -eq 0 ]]; then
         if [[ "$composed_findings_ok" == true ]]; then
             if ! flush_review_batches "$IMPLEMENT_TMPDIR" "$RUN_ID" "$PANEL" "$round_num_dec" "$total_accepted" "$total_rejected" "$total_exonerated" "$total_neutral" "$composed_findings_file"; then

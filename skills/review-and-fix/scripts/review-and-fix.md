@@ -13,7 +13,7 @@ Flags:
 
 Output is `KEY=value` only through `scripts/lib-quiet.sh`:
 
-- `REVIEW_AND_FIX_STATUS=complete|no-findings|coder-failed|main-agent-vote-required|no-changes|fix-applied`
+- `REVIEW_AND_FIX_STATUS=complete|no-findings|coder-failed|main-agent-vote-required|no-changes|fix-applied|converged-small-changes`
 - `FIX_COUNT=N`
 - `CODER_TOOL=none|codex|cursor`
 - `CODER_STATUS=skipped|applied|no-changes|failed|submodule-violation`
@@ -44,6 +44,10 @@ Flags:
 - `--cursor-available true|false`
 - `--dynamic-archetypes 0-4` (default: `4` in orchestrator mode, `0` in standalone mode)
 - `--no-dynamic-archetypes` (equivalent to `--dynamic-archetypes 0`)
+- `--convergence-threshold N` (default: `3`) — two consecutive rounds with `ACCEPTED_COUNT ≤ N`
+  (and no Important findings in either round) trigger early-termination with
+  `REVIEW_AND_FIX_STATUS=converged-small-changes`. Degraded rounds are excluded from the
+  consecutive-rounds check.
 
 Orchestrator mode invokes `skills/review/scripts/review-core.sh` once with `--output-dir "$IMPLEMENT_TMPDIR/round-N"` and `--dynamic-archetypes "$DYNAMIC_ARCHETYPES"`. `DYNAMIC_ARCHETYPES` is resolved in priority order: `--dynamic-archetypes` / `--no-dynamic-archetypes` CLI args > **non-empty** `LARCH_DYNAMIC_ARCHETYPES_MAX` in the process environment (an empty export is ignored so session-env can supply the cap) > `LARCH_DYNAMIC_ARCHETYPES_MAX` in session-env > `4` (default when `--implement-tmpdir` is set) > `0` (standalone default). On round 1 it captures `$IMPLEMENT_TMPDIR/pre-review-untracked.txt` via `scripts/snapshot-untracked.sh` so Step 6 can detect review-created untracked files, and writes `$IMPLEMENT_TMPDIR/pre-review-head.txt` (current HEAD SHA) so `check-review-changes.sh --head-baseline` can detect the per-round commits this script makes during Step 5. When `--run-id` is set, both pre-review snapshot files are also flushed to the `pre-review-untracked` and `pre-review-head` run-log batches under `$IMPLEMENT_TMPDIR/larch-logs`.
 
@@ -53,7 +57,7 @@ Step 5 ledger marks are owned by the parent `/implement` Step 5 preamble, not by
 
 Exit codes:
 
-- `0`: no accepted findings remain for this round (`complete`), OR `main-agent-vote-required` when no voting judges were available and the parent must adjudicate the ballot, OR `no-changes` when the coder dispatch exited 0 but did not modify the working tree (the parent halts the loop — re-running the same review would produce the same fixed point), OR `fix-applied` (`REVIEW_AND_FIX_STATUS=fix-applied`) when a coder applied accepted findings AND the script committed them as `Address code review feedback (round N)` — the parent runs relevant checks and decides whether to call the script for the next round.
+- `0`: no accepted findings remain for this round (`complete`), OR `main-agent-vote-required` when no voting judges were available and the parent must adjudicate the ballot, OR `no-changes` when the coder dispatch exited 0 but did not modify the working tree (the parent halts the loop — re-running the same review would produce the same fixed point), OR `fix-applied` (`REVIEW_AND_FIX_STATUS=fix-applied`) when a coder applied accepted findings AND the script committed them as `Address code review feedback (round N)` — the parent runs relevant checks and decides whether to call the script for the next round, OR `converged-small-changes` when two consecutive non-degraded rounds both had `ACCEPTED_COUNT ≤ convergence-threshold` and neither contained Important findings — the parent must stop the review loop.
 - `2`: panel failure, coder failure, or submodule violation; parent `/implement` treats this as blocking.
 
 Compatibility note: out-of-tree callers must detect applied fixes via `REVIEW_AND_FIX_STATUS=fix-applied` on exit `0`. Do not rely on exit `3`; successful fix application no longer uses that exit code.
@@ -88,6 +92,10 @@ Additional output keys:
   `SKIPPED:` lines and orphan ids with no matching `### FINDING_N:` block do not increase the
   count. Defaults to 0 when the coder did not run or reported no qualifying skips. Consumed by
   the `/implement` Step 5 bulk-skip-ratio gate.
+- `DEGRADED_ROUND=true|false` — `true` when the round's voting panel was degraded (the
+  `⚠ Degraded code-review panel` banner was present in `voting-tally.md`) after any applicable
+  panel retry. When `true`, the orchestrator should skip counting this round toward the review
+  cap and toward the convergence calculation.
 
 `FIX_COUNT` is the post-submodule-scrub count actually dispatched to the coder, not the
 pre-scrub accepted in-scope count. This keeps the `/implement` bulk-skip-ratio denominator
