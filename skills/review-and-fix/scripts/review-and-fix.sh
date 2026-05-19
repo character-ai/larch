@@ -901,7 +901,10 @@ run_implement_round() {
     [[ -n "$FEATURE_FILE" ]] && core_args+=(--feature-file "$FEATURE_FILE")
     [[ -n "$RUN_ID" ]] && core_args+=(--run-id "$RUN_ID")
 
+    set +e
     IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR" "$REVIEW_CORE_SH" "${core_args[@]}" > "$core_out"
+    core_rc=$?
+    set -e
 
     core_status=$(kv_get "$core_out" REVIEW_CORE_STATUS)
     accepted_count=$(kv_get "$core_out" ACCEPTED_COUNT)
@@ -1073,6 +1076,9 @@ run_implement_round() {
             status="$core_status"
             ;;
     esac
+    if [[ "$core_rc" -ne 0 && "$exit_code" -eq 0 ]]; then
+        exit_code="$core_rc"
+    fi
 
     local round_cap_val="${ROUND_CAP:-0}"
     local composed_findings_file="" derived_counts="" derived_accepted="" derived_rejected="" composed_findings_ok=false
@@ -1103,10 +1109,11 @@ run_implement_round() {
             yield_tsv_path=$(kv_get "$core_out" YIELD_TSV_FILE)
             scout_payload="$round_dir/.scout-payload.json"
             scout_flush_err="$round_dir/review-and-fix-scout-flush.log"
+            rm -f "$scout_payload" "$scout_flush_err"
             manifest_basename=""
             yield_tsv_basename=""
-            [[ -n "$scout_manifest_path" && -f "$scout_manifest_path" ]] && manifest_basename="$(basename "$scout_manifest_path")"
-            [[ -n "$yield_tsv_path" && -f "$yield_tsv_path" ]] && yield_tsv_basename="$(basename "$yield_tsv_path")"
+            [[ -n "$scout_manifest_path" ]] && manifest_basename="$(basename "$scout_manifest_path")"
+            [[ -n "$yield_tsv_path" ]] && yield_tsv_basename="$(basename "$yield_tsv_path")"
             scout_dynamic_slots="${scout_dynamic_slots_raw:-0}"
             if [[ ! "$scout_dynamic_slots" =~ ^[0-9]+$ ]]; then
                 printf 'invalid DYNAMIC_SLOTS for review-scout-manifest payload: %s\n' "${scout_dynamic_slots_raw:-<empty>}" > "$scout_flush_err"

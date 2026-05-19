@@ -282,14 +282,14 @@ else
 fi
 _sentinel_head_after=$(git -C "$_sentinel_repo" rev-parse HEAD)
 if [ "$_sentinel_head_after" = "$_sentinel_head_before" ]; then
-    pass "flush does not create commit after sentinel"
+    pass "flush does not advance HEAD after sentinel"
 else
-    fail "flush does not create commit after sentinel"
+    fail "flush should not advance HEAD after sentinel"
 fi
 if [ ! -e "$_sentinel_repo/larch-logs/implement/$_sentinel_run" ]; then
-    pass "flush does not copy logs into repo after sentinel"
+    pass "flush leaves no round directory under repo after sentinel"
 else
-    fail "flush should not copy logs into repo after sentinel"
+    fail "flush should not leave a round directory under repo after sentinel"
 fi
 echo "=== flush honors Step 7a checkpoint without prior batch ==="
 _checkpoint_repo="$TMP/checkpoint-repo"

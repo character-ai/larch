@@ -13,6 +13,10 @@ fail() {
     exit 1
 }
 
+pass() {
+    echo "ok: $1"
+}
+
 cat > "$TMP/run-external-agent-stub.sh" <<'EOF_AGENT'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -994,7 +998,14 @@ case "${TEST_SCOUT_STATUS:-ok}" in
     printf '{"archetypes":["api-contract"]}\n' > "$scout_manifest"
     printf 'archetype\tyield\napi-contract\t1\n' > "$yield_tsv"
     printf 'REVIEW_CORE_STATUS=zero-findings\nROUND_NUM=%s\nACCEPTED_COUNT=0\nREJECTED_COUNT=0\nEXONERATED_COUNT=0\nNEUTRAL_COUNT=0\nACCEPTED_FINDINGS_FILE=%s/accepted-findings.md\nREJECTED_FINDINGS_FILE=%s/rejected-findings.md\nPANEL_MODE=normal\nPANEL_SHAPE=simple\nSCOUT_STATUS=ok\nDYNAMIC_SLOTS=%s\nSCOUT_MANIFEST=%s\nYIELD_TSV_FILE=%s\n' \
-        "$round" "$out" "$out" "${TEST_DYNAMIC_SLOTS:-2}" "$scout_manifest" "$yield_tsv"
+        "$round" "$out" "$out" "${TEST_DYNAMIC_SLOTS:-2}" "${TEST_SCOUT_MANIFEST_PATH:-$scout_manifest}" "${TEST_YIELD_TSV_PATH:-$yield_tsv}"
+    ;;
+  panel-failed)
+    printf '{"archetypes":["api-contract"]}\n' > "$scout_manifest"
+    printf 'archetype\tyield\napi-contract\t1\n' > "$yield_tsv"
+    printf 'REVIEW_CORE_STATUS=panel-failed\nROUND_NUM=%s\nACCEPTED_COUNT=0\nREJECTED_COUNT=0\nEXONERATED_COUNT=0\nNEUTRAL_COUNT=0\nACCEPTED_FINDINGS_FILE=%s/accepted-findings.md\nREJECTED_FINDINGS_FILE=%s/rejected-findings.md\nPANEL_MODE=normal\nPANEL_SHAPE=simple\nSCOUT_STATUS=ok\nDYNAMIC_SLOTS=%s\nSCOUT_MANIFEST=%s\nYIELD_TSV_FILE=%s\n' \
+        "$round" "$out" "$out" "${TEST_DYNAMIC_SLOTS:-2}" "${TEST_SCOUT_MANIFEST_PATH:-$scout_manifest}" "${TEST_YIELD_TSV_PATH:-$yield_tsv}"
+    exit 2
     ;;
   *)
     printf 'REVIEW_CORE_STATUS=zero-findings\nROUND_NUM=%s\nACCEPTED_COUNT=0\nREJECTED_COUNT=0\nEXONERATED_COUNT=0\nNEUTRAL_COUNT=0\nACCEPTED_FINDINGS_FILE=%s/accepted-findings.md\nREJECTED_FINDINGS_FILE=%s/rejected-findings.md\nPANEL_MODE=normal\nPANEL_SHAPE=simple\nSCOUT_STATUS=na\nDYNAMIC_SLOTS=0\nSCOUT_MANIFEST=\nYIELD_TSV_FILE=\n' \
@@ -1043,7 +1054,41 @@ else
     fail "review-scout-manifest.json fields wrong: $(cat "$scout_batch" 2>/dev/null)"
 fi
 
-# Test 7: no review-scout-manifest.json committed when SCOUT_STATUS=na
+# Test 7: panel-failed still flushes review-scout-manifest before exiting nonzero
+work_scout_panel_failed="$TMP/scout-manifest-panel-failed"
+make_work_repo "$work_scout_panel_failed"
+scout_panel_failed_impl_tmp="$work_scout_panel_failed/implement"
+mkdir -p "$scout_panel_failed_impl_tmp"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$scout_panel_failed_impl_tmp/session-env.sh"
+scout_panel_failed_run_id="scout-run-test-panel-failed"
+scout_panel_failed_log_root="$scout_panel_failed_impl_tmp/larch-logs"
+(cd "$work_scout_panel_failed" && CLAUDE_PLUGIN_ROOT="$REPO_ROOT" "$REPO_ROOT/scripts/larch-log.sh" init \
+    --log-root "$scout_panel_failed_log_root" --skill implement --run-id "$scout_panel_failed_run_id" --issue 2356) >/dev/null
+
+set +e
+out=$(
+    cd "$work_scout_panel_failed" && \
+    CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+    CURSOR_API_KEY=test-cursor-key \
+    REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-scout-stub.sh" \
+    REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
+    REVIEW_AND_FIX_SCRUB_SUBMODULE_PATHS_SH="$REPO_ROOT/scripts/scrub-submodule-paths.sh" \
+    TEST_SCOUT_STATUS=panel-failed \
+    "$SCRIPT" --implement-tmpdir "$scout_panel_failed_impl_tmp" --mode diff --panel simple \
+        --round-num 1 --session-env-path "$scout_panel_failed_impl_tmp/session-env.sh" \
+        --run-id "$scout_panel_failed_run_id"
+)
+rc=$?
+set -e
+[[ "$rc" -eq 2 ]] || { echo "$out" >&2; fail "scout-panel-failed test expected exit 2 got $rc"; }
+scout_panel_failed_batch="$scout_panel_failed_log_root/implement/$scout_panel_failed_run_id/review-scout-manifest.json"
+if [[ -f "$scout_panel_failed_batch" ]]; then
+    pass "review-scout-manifest.json committed before panel-failed exit"
+else
+    fail "review-scout-manifest.json must be committed before panel-failed exit (missing: $scout_panel_failed_batch)"
+fi
+
+# Test 8: no review-scout-manifest.json committed when SCOUT_STATUS=na
 work_scout_na="$TMP/scout-manifest-na"
 make_work_repo "$work_scout_na"
 scout_na_impl_tmp="$work_scout_na/implement"
@@ -1077,7 +1122,7 @@ else
     fail "review-scout-manifest.json must NOT be committed when SCOUT_STATUS=na"
 fi
 
-# Test 8: invalid DYNAMIC_SLOTS logs a warning and skips scout manifest flush
+# Test 9: invalid DYNAMIC_SLOTS logs a warning, clears stale payload, and skips scout manifest flush
 work_scout_invalid="$TMP/scout-manifest-invalid"
 make_work_repo "$work_scout_invalid"
 scout_invalid_impl_tmp="$work_scout_invalid/implement"
@@ -1087,6 +1132,9 @@ scout_invalid_run_id="scout-run-test-invalid"
 scout_invalid_log_root="$scout_invalid_impl_tmp/larch-logs"
 (cd "$work_scout_invalid" && CLAUDE_PLUGIN_ROOT="$REPO_ROOT" "$REPO_ROOT/scripts/larch-log.sh" init \
     --log-root "$scout_invalid_log_root" --skill implement --run-id "$scout_invalid_run_id" --issue 2356) >/dev/null
+mkdir -p "$scout_invalid_impl_tmp/round-1"
+printf '{"status":"stale","dynamic_slots":99,"manifest_basename":"stale.json","yield_tsv_basename":"stale.tsv"}\n' \
+    > "$scout_invalid_impl_tmp/round-1/.scout-payload.json"
 
 set +e
 out=$(
@@ -1115,6 +1163,43 @@ if grep -Fq 'review-scout-manifest payload validation' "$scout_invalid_impl_tmp/
     pass "invalid DYNAMIC_SLOTS warning appended to execution-issues.md"
 else
     fail "invalid DYNAMIC_SLOTS warning missing from execution-issues.md"
+fi
+
+# Test 10: basename fields come from non-empty KVs even if the files are absent
+work_scout_missing_files="$TMP/scout-manifest-missing-files"
+make_work_repo "$work_scout_missing_files"
+scout_missing_files_impl_tmp="$work_scout_missing_files/implement"
+mkdir -p "$scout_missing_files_impl_tmp"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$scout_missing_files_impl_tmp/session-env.sh"
+scout_missing_files_run_id="scout-run-test-missing-files"
+scout_missing_files_log_root="$scout_missing_files_impl_tmp/larch-logs"
+(cd "$work_scout_missing_files" && CLAUDE_PLUGIN_ROOT="$REPO_ROOT" "$REPO_ROOT/scripts/larch-log.sh" init \
+    --log-root "$scout_missing_files_log_root" --skill implement --run-id "$scout_missing_files_run_id" --issue 2356) >/dev/null
+
+set +e
+out=$(
+    cd "$work_scout_missing_files" && \
+    CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+    CURSOR_API_KEY=test-cursor-key \
+    REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-scout-stub.sh" \
+    REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
+    REVIEW_AND_FIX_SCRUB_SUBMODULE_PATHS_SH="$REPO_ROOT/scripts/scrub-submodule-paths.sh" \
+    TEST_SCOUT_STATUS=ok \
+    TEST_SCOUT_MANIFEST_PATH="$scout_missing_files_impl_tmp/round-1/not-present/scout-round1-manifest.json" \
+    TEST_YIELD_TSV_PATH="$scout_missing_files_impl_tmp/round-1/not-present/scout-archetype-yield.tsv" \
+    "$SCRIPT" --implement-tmpdir "$scout_missing_files_impl_tmp" --mode diff --panel simple \
+        --round-num 1 --session-env-path "$scout_missing_files_impl_tmp/session-env.sh" \
+        --run-id "$scout_missing_files_run_id"
+)
+rc=$?
+set -e
+[[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "scout-missing-files test expected exit 0 got $rc"; }
+scout_missing_files_batch="$scout_missing_files_log_root/implement/$scout_missing_files_run_id/review-scout-manifest.json"
+if jq -e '.manifest_basename == "scout-round1-manifest.json" and .yield_tsv_basename == "scout-archetype-yield.tsv"' \
+    "$scout_missing_files_batch" >/dev/null 2>&1; then
+    pass "review-scout-manifest basenames come from non-empty KVs"
+else
+    fail "review-scout-manifest basenames should come from non-empty KVs: $(cat "$scout_missing_files_batch" 2>/dev/null)"
 fi
 
 echo "test-review-and-fix: ok"
