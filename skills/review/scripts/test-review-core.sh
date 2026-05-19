@@ -179,6 +179,10 @@ while [[ $# -gt 0 ]]; do
     *) shift 2 ;;
   esac
 done
+if [[ "${TEST_EMIT_FAIL:-false}" == "true" ]]; then
+  printf 'emit failed sk-ant-abcdefghijklmnopqrstuvwxyz0123456789ABCD\n' >&2
+  exit 7
+fi
 printf '# summary\n' > "$tmp/review-round-summary.md"
 printf '{"schema_version":2,"accepted_count":0,"rejected_count":0,"panel":{"scout_status":"%s","dynamic_slot_count":%s,"static_slot_count":%s,"total_slot_count":%s}}\n' \
   "$scout_status" "$dynamic_slots" "$static_slot_count" "$(( static_slot_count + dynamic_slots ))" > "$tmp/review-summary.json"
@@ -331,11 +335,15 @@ jq -e '.schema_version == 2 and .accepted_count == 0 and .rejected_count == 0 an
 out=$(TEST_FINDINGS=1 TEST_TALLY_STATUS=main-agent-vote-required run_core "$TMP/main-agent")
 assert_contains "$out" 'REVIEW_CORE_STATUS=main-agent-vote-required'
 assert_contains "$out" 'ACCEPTED_COUNT=0'
+jq -e '.schema_version == 2 and .accepted_count == 0 and .rejected_count == 0' \
+    "$TMP/main-agent/review-summary.json" >/dev/null || { echo "FAIL: main-agent review-summary.json missing summary output" >&2; exit 1; }
 
 out=$(TEST_FINDINGS=1 TEST_TALLY_STATUS=main-agent-vote-required TEST_SCOUT_STATUS=ok TEST_DYNAMIC_SLOTS=4 run_core "$TMP/main-agent-scout")
 assert_contains "$out" 'REVIEW_CORE_STATUS=main-agent-vote-required'
 assert_contains "$out" 'SCOUT_STATUS=ok'
 assert_contains "$out" 'DYNAMIC_SLOTS=4'
+jq -e '.schema_version == 2 and .panel.scout_status == "ok" and .panel.dynamic_slot_count == 4' \
+    "$TMP/main-agent-scout/review-summary.json" >/dev/null || { echo "FAIL: main-agent-scout review-summary.json missing panel telemetry" >&2; exit 1; }
 
 out=$(TEST_FINDINGS=1 TEST_ACCEPTED=1 run_core "$TMP/desc" description)
 assert_contains "$out" 'REVIEW_CORE_STATUS=ok'
@@ -375,6 +383,41 @@ if grep -Fq 'sk-ant-abcdefghijklmnopqrstuvwxyz0123456789ABCD' "$issues_parent/ex
     echo "FAIL: execution-issues should redact write-round stderr" >&2
     exit 1
 fi
+
+emit_fail_parent="$TMP/emit-fail-parent"
+mkdir -p "$emit_fail_parent"
+set +e
+out=$(TEST_FINDINGS=1 TEST_ACCEPTED=1 TEST_THRESHOLD_OK=false TEST_EMIT_FAIL=true run_core "$TMP/panel-failed-emit" diff "$emit_fail_parent/session.env")
+rc=$?
+set -e
+[[ "$rc" -eq 2 ]] || { echo "FAIL: panel-failed emit failure should preserve exit 2" >&2; exit 1; }
+assert_contains "$out" 'REVIEW_CORE_STATUS=panel-failed'
+grep -Fq 'emit-tally.sh (panel-failed) failed (exit 7' "$emit_fail_parent/execution-issues.md" || {
+    echo "FAIL: missing panel-failed emit execution issue" >&2
+    exit 1
+}
+if grep -Fq 'sk-ant-abcdefghijklmnopqrstuvwxyz0123456789ABCD' "$emit_fail_parent/execution-issues.md"; then
+    echo "FAIL: execution-issues should redact panel-failed emit stderr" >&2
+    exit 1
+fi
+
+emit_fail_parent="$TMP/emit-fail-zero-parent"
+mkdir -p "$emit_fail_parent"
+out=$(TEST_FINDINGS=0 TEST_EMIT_FAIL=true run_core "$TMP/zero-emit-fail" diff "$emit_fail_parent/session.env")
+assert_contains "$out" 'REVIEW_CORE_STATUS=zero-findings'
+grep -Fq 'emit-tally.sh (zero-findings) failed (exit 7' "$emit_fail_parent/execution-issues.md" || {
+    echo "FAIL: missing zero-findings emit execution issue" >&2
+    exit 1
+}
+
+emit_fail_parent="$TMP/emit-fail-main-agent-parent"
+mkdir -p "$emit_fail_parent"
+out=$(TEST_FINDINGS=1 TEST_TALLY_STATUS=main-agent-vote-required TEST_EMIT_FAIL=true run_core "$TMP/main-agent-emit-fail" diff "$emit_fail_parent/session.env")
+assert_contains "$out" 'REVIEW_CORE_STATUS=main-agent-vote-required'
+grep -Fq 'emit-tally.sh (main-agent-vote-required) failed (exit 7' "$emit_fail_parent/execution-issues.md" || {
+    echo "FAIL: missing main-agent emit execution issue" >&2
+    exit 1
+}
 
 # Empty export is ignored (same semantics as review-and-fix.sh / test-review-and-fix.sh).
 set +e
