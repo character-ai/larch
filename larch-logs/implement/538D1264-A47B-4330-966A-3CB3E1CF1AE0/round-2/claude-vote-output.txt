@@ -1,0 +1,24 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: EXONERATE -- duplicate of FINDING_1; same doc/code mismatch, fix already captured
+FINDING_4: EXONERATE -- REVIEW_TMPDIR is mktemp-created by the scripts themselves; practical false-positive risk for path collision is minimal
+FINDING_5: YES
+FINDING_6: EXONERATE -- symlink non-canonicalization is a pre-existing class of limitation acknowledged by the reviewer; not issue-worthy
+FINDING_7: NO -- just confirms the regression-3 tmpdir name was chosen correctly; not a problem
+FINDING_8: NO -- just confirms the mktemp pattern is a guaranteed ancestor for nested paths; not a problem
+FINDING_9: EXONERATE -- duplicate of FINDING_4
+FINDING_10: EXONERATE -- duplicate of FINDING_1
+FINDING_11: EXONERATE -- resolve_execution_issues_log is pure string manipulation with no I/O; reordering adds complexity for zero practical benefit
+FINDING_12: EXONERATE -- duplicate of FINDING_1
+FINDING_13: EXONERATE -- duplicate of FINDING_1
+FINDING_14: EXONERATE -- duplicate of FINDING_4
+FINDING_15: EXONERATE -- the `|| true` is intentional; the diag sidecar is a secondary debugging artifact and SCOUT_STATUS=parse-failed is the primary signal
+FINDING_16: EXONERATE -- duplicate of FINDING_15
+FINDING_17: EXONERATE -- duplicate of FINDING_1
+FINDING_18: EXONERATE -- duplicate of FINDING_1
+FINDING_19: EXONERATE -- duplicate of FINDING_2
+FINDING_20: EXONERATE -- duplicate of FINDING_5
+FINDING_21: EXONERATE -- duplicate of FINDING_5
+FINDING_22: EXONERATE -- duplicate of FINDING_5
+FINDING_23: EXONERATE -- duplicate of FINDING_5
+FINDING_24: EXONERATE -- duplicate of FINDING_4

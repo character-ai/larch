@@ -1,0 +1,21 @@
+FINDING_1: YES
+FINDING_2: EXONERATE -- legitimate maintainability note, but current Bash/set -e behavior is already correct and not issue-worthy.
+FINDING_3: EXONERATE -- grep I/O error handling is a real edge case, but it is pre-existing test-harness hardening, not worth tracking separately.
+FINDING_4: EXONERATE -- silent skip is legitimate but pre-existing and not worth a future issue for this soft-warning path.
+FINDING_5: YES
+FINDING_6: EXONERATE -- possible markdown/data sanitation concern is speculative here and the helper treats --entry as data, not shell code.
+FINDING_7: EXONERATE -- the overlap is real, but consolidating these tests is cleanup rather than a required review finding.
+FINDING_8: EXONERATE -- wording could be tighter, but the broader path-guard behavior is the substantive issue.
+FINDING_9: EXONERATE -- naming could be clearer, but it does not create a behavioral risk.
+FINDING_10: EXONERATE -- resolving an unused log path before suppression is harmless and not worth churn.
+FINDING_11: EXONERATE -- duplicated assertions add maintenance noise, but not enough to require a change.
+FINDING_12: YES
+FINDING_13: EXONERATE -- manifest-path-only suppression is a valid concern, but real scout output normally mirrors the requested REVIEW_TMPDIR path.
+FINDING_14: YES
+FINDING_15: EXONERATE -- this duplicates the broader path-glob correctness issue already covered by FINDING_12.
+FINDING_16: EXONERATE -- relative harness paths can miss the guard, but current harness/prod paths are expected to be mktemp-style absolute paths.
+FINDING_17: EXONERATE -- legitimate but duplicative of FINDING_12 and not a separate actionable finding.
+FINDING_18: EXONERATE -- best-effort diag writes may fail silently, but adding warning behavior for disk-full style failures is not warranted here.
+FINDING_19: EXONERATE -- regression duplication is maintenance cleanup, not a correctness issue.
+FINDING_20: YES
+FINDING_21: EXONERATE -- this is largely the same manifest-suppression concern as FINDING_13 and overstates the security angle.

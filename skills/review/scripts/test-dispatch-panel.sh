@@ -3,11 +3,10 @@
 
 set -euo pipefail
 
-# --section CLI selector (closes #2349): splits 18 scenarios into 3 groups:
-#   core:     panel-mode + missing-diff fallbacks (7 scenarios)
-#   reuse:    round-reuse and reuse-manifest cases (5 scenarios)
-#   limits:   oversized-diff, dynamic-archetype limit cases (6 scenarios)
-# With no --section, all 18 run sequentially (local-dev backward compat).
+# --section CLI selector (closes #2349): shards the main scenarios into 3 groups.
+# The scout parse-failed regression assertions live under `core` so sharded runs
+# execute them once instead of once per shard. With no --section, all assertions
+# still run sequentially for local-dev backward compatibility.
 SECTION=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -189,7 +188,12 @@ grep -Fq 'SCOUT_STATUS=parse-failed' <<< "$out"
 grep -Fq 'SCOUT_FAIL_REASON=json_parse' <<< "$out"
 grep -Fq 'DYNAMIC_SLOTS=0' <<< "$out"
 grep -Fq 'SCOUT_FAIL_REASON=json_parse' "$TMP/dynamic-parse-failed/scout-round1-status.env"
-grep -Fq 'Review scout dynamic archetype parse failed in round 1; reason=json_parse' "$issues_log"
+[[ -s "$TMP/dynamic-parse-failed/scout-parse-failed-round1-diag.txt" ]]
+grep -Fq 'scout_fail_reason=json_parse' "$TMP/dynamic-parse-failed/scout-parse-failed-round1-diag.txt"
+if [[ -e "$issues_log" ]]; then
+    echo "FAIL: core parse-failed should suppress harness issues-log append" >&2
+    exit 1
+fi
 
 seed_case_inputs "$TMP/dynamic-parse-failed-warn"
 readonly_dir="$TMP/dynamic-parse-failed-warn/readonly"
@@ -206,7 +210,39 @@ out=$(PATH="$STUB_BIN:$PATH" LARCH_EXECUTION_ISSUES_LOG="$warn_log" SCOUT_DYNAMI
     --plan-file "$TMP/dynamic-parse-failed-warn/plan.md" \
     --dynamic-archetypes 4)
 chmod 700 "$readonly_dir"
-grep -Fq 'WARN=append-execution-issue failed for scout parse issue:' <<< "$out"
+[[ -s "$TMP/dynamic-parse-failed-warn/scout-parse-failed-round1-diag.txt" ]]
+if grep -Fq 'WARN=append-execution-issue failed for scout parse issue:' <<< "$out"; then
+    echo "FAIL: harness parse-failed warn path should suppress append-execution-issue" >&2
+    exit 1
+fi
+
+(
+    prod_tmp="$(mktemp -d "${TMPDIR:-/tmp}/review-prod-warn.XXXXXX")"
+    trap 'rm -rf "$prod_tmp"' EXIT
+    seed_case_inputs "$prod_tmp/review"
+    readonly_dir="$prod_tmp/readonly"
+    mkdir -p "$readonly_dir"
+    chmod 500 "$readonly_dir"
+    warn_log="$readonly_dir/execution-issues.md"
+    out=$(PATH="$STUB_BIN:$PATH" \
+        LARCH_EXECUTION_ISSUES_LOG="$warn_log" \
+        SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$scout_launch" \
+        SCOUT_LAUNCH_JSON_FILE="$TMP/scout-malformed.json" \
+        "$SCRIPT" \
+        --mode diff \
+        --diff-file "$prod_tmp/review/review.diff" \
+        --review-tmpdir "$prod_tmp/review" \
+        --codex-available true \
+        --cursor-available true \
+        --panel hard \
+        --plan-file "$prod_tmp/review/plan.md" \
+        --dynamic-archetypes 4)
+    chmod 700 "$readonly_dir"
+    [[ -s "$prod_tmp/review/scout-parse-failed-round1-diag.txt" ]] \
+        || { echo "FAIL: production parse-failed warn path should still write local diag sidecar" >&2; exit 1; }
+    grep -Fq 'WARN=append-execution-issue failed for scout parse issue:' <<< "$out" \
+        || { echo "FAIL: production parse-failed warn path should emit append-execution-issue warning" >&2; exit 1; }
+)
 
 for mode in docs-only test-only generated-only; do
     seed_case_inputs "$TMP/skip-$mode"
@@ -258,22 +294,27 @@ grep -Fq "SCOUT_MANIFEST=$TMP/round-reuse/scout-round2-manifest.json" <<< "$out"
 mkdir -p "$TMP/reuse-manifest-no-status"
 seed_case_inputs "$TMP/reuse-manifest-no-status"
 cp "$TMP/scout-valid4.json" "$TMP/reuse-manifest-no-status/scout-round3-manifest.json"
-issues_log="$TMP/reuse-manifest-no-status/execution-issues.md"
-out=$(PATH="$STUB_BIN:$PATH" LARCH_EXECUTION_ISSUES_LOG="$issues_log" "$SCRIPT" \
-    --mode diff \
-    --diff-file "$TMP/reuse-manifest-no-status/review.diff" \
-    --review-tmpdir "$TMP/reuse-manifest-no-status" \
-    --codex-available true \
-    --cursor-available true \
-    --panel hard \
-    --plan-file "$TMP/reuse-manifest-no-status/plan.md" \
-    --dynamic-archetypes 4 \
-    --round-num 3)
-grep -Fq 'SCOUT_STATUS=parse-failed' <<< "$out"
-grep -Fq 'SCOUT_FAIL_REASON=missing_status_sidecar' <<< "$out"
-grep -Fq 'DYNAMIC_SLOTS=0' <<< "$out"
-[[ "$(jq '.archetypes | length' "$TMP/reuse-manifest-no-status/scout-round3-manifest.json")" = "0" ]] || { echo "FAIL: missing status sidecar should clear cached scout manifest" >&2; exit 1; }
-grep -Fq 'Review scout dynamic archetype parse failed in round 3; reason=missing_status_sidecar' "$issues_log"
+(
+    unset LARCH_EXECUTION_ISSUES_LOG SESSION_ENV_PATH IMPLEMENT_TMPDIR
+    out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" \
+        --mode diff \
+        --diff-file "$TMP/reuse-manifest-no-status/review.diff" \
+        --review-tmpdir "$TMP/reuse-manifest-no-status" \
+        --codex-available true \
+        --cursor-available true \
+        --panel hard \
+        --plan-file "$TMP/reuse-manifest-no-status/plan.md" \
+        --dynamic-archetypes 4 \
+        --round-num 3)
+    grep -Fq 'SCOUT_STATUS=parse-failed' <<< "$out"
+    grep -Fq 'SCOUT_FAIL_REASON=missing_status_sidecar' <<< "$out"
+    grep -Fq 'DYNAMIC_SLOTS=0' <<< "$out"
+    [[ "$(jq '.archetypes | length' "$TMP/reuse-manifest-no-status/scout-round3-manifest.json")" = "0" ]] || { echo "FAIL: missing status sidecar should clear cached scout manifest" >&2; exit 1; }
+    # Verify local diag sidecar written in test tmpdir (guard suppresses parent execution-issues)
+    [[ -s "$TMP/reuse-manifest-no-status/scout-parse-failed-round3-diag.txt" ]] \
+        || { echo "FAIL: diag sidecar not written for missing_status_sidecar case" >&2; exit 1; }
+    grep -Fq 'scout_fail_reason=missing_status_sidecar' "$TMP/reuse-manifest-no-status/scout-parse-failed-round3-diag.txt"
+)
 
 mkdir -p "$TMP/reuse-empty-no-status"
 seed_case_inputs "$TMP/reuse-empty-no-status"
@@ -322,25 +363,30 @@ cat > "$TMP/reuse-invalid-manifest/scout-round6-status.env" <<'EOF'
 SCOUT_STATUS=ok
 SCOUT_MANIFEST=/tmp/ignored.json
 EOF
-issues_log="$TMP/reuse-invalid-manifest/execution-issues.md"
-out=$(PATH="$STUB_BIN:$PATH" LARCH_EXECUTION_ISSUES_LOG="$issues_log" "$SCRIPT" \
-    --mode diff \
-    --diff-file "$TMP/reuse-invalid-manifest/review.diff" \
-    --review-tmpdir "$TMP/reuse-invalid-manifest" \
-    --codex-available true \
-    --cursor-available true \
-    --panel hard \
-    --plan-file "$TMP/reuse-invalid-manifest/plan.md" \
-    --dynamic-archetypes 4 \
-    --round-num 6)
-grep -Fq 'SCOUT_STATUS=parse-failed' <<< "$out"
-grep -Fq 'SCOUT_FAIL_REASON=dispatch_manifest_validation' <<< "$out"
-grep -Fq 'DYNAMIC_SLOTS=0' <<< "$out"
-if grep -q '"prompt_file"' "$TMP/reuse-invalid-manifest/panel-manifest.ndjson"; then
-    echo "FAIL: invalid cached scout manifest should not synthesize dynamic slots" >&2
-    exit 1
-fi
-grep -Fq 'Review scout dynamic archetype parse failed in round 6; reason=dispatch_manifest_validation' "$issues_log"
+(
+    unset LARCH_EXECUTION_ISSUES_LOG SESSION_ENV_PATH IMPLEMENT_TMPDIR
+    out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" \
+        --mode diff \
+        --diff-file "$TMP/reuse-invalid-manifest/review.diff" \
+        --review-tmpdir "$TMP/reuse-invalid-manifest" \
+        --codex-available true \
+        --cursor-available true \
+        --panel hard \
+        --plan-file "$TMP/reuse-invalid-manifest/plan.md" \
+        --dynamic-archetypes 4 \
+        --round-num 6)
+    grep -Fq 'SCOUT_STATUS=parse-failed' <<< "$out"
+    grep -Fq 'SCOUT_FAIL_REASON=dispatch_manifest_validation' <<< "$out"
+    grep -Fq 'DYNAMIC_SLOTS=0' <<< "$out"
+    if grep -q '"prompt_file"' "$TMP/reuse-invalid-manifest/panel-manifest.ndjson"; then
+        echo "FAIL: invalid cached scout manifest should not synthesize dynamic slots" >&2
+        exit 1
+    fi
+    # Verify local diag sidecar written in test tmpdir (guard suppresses parent execution-issues)
+    [[ -s "$TMP/reuse-invalid-manifest/scout-parse-failed-round6-diag.txt" ]] \
+        || { echo "FAIL: diag sidecar not written for dispatch_manifest_validation case" >&2; exit 1; }
+    grep -Fq 'scout_fail_reason=dispatch_manifest_validation' "$TMP/reuse-invalid-manifest/scout-parse-failed-round6-diag.txt"
+)
 
 fi  # end section: reuse
 
@@ -472,5 +518,91 @@ assert_emit_tally_panel() {
 assert_emit_tally_panel static-na na 0 7 7
 assert_emit_tally_panel scout-ok ok 4 12 16
 assert_emit_tally_panel scout-skipped skipped-docs-only 0 12 12
+
+if section_runs core; then
+
+# Regression 1: env-isolation — LARCH_EXECUTION_ISSUES_LOG set on invocation but
+# REVIEW_TMPDIR lives under a test-dispatch-panel.* ancestor, so the guard must
+# suppress the parent issues-log write while still writing the local diag sidecar.
+env_isolation_parent="$TMP/env-isolation-parent.md"
+rm -f "$env_isolation_parent"
+mkdir -p "$TMP/env-isolation-test"
+seed_case_inputs "$TMP/env-isolation-test"
+cp "$TMP/scout-valid4.json" "$TMP/env-isolation-test/scout-round11-manifest.json"
+PATH="$STUB_BIN:$PATH" \
+    LARCH_EXECUTION_ISSUES_LOG="$env_isolation_parent" \
+    "$SCRIPT" \
+    --mode diff \
+    --diff-file "$TMP/env-isolation-test/review.diff" \
+    --review-tmpdir "$TMP/env-isolation-test" \
+    --codex-available true \
+    --cursor-available true \
+    --panel hard \
+    --plan-file "$TMP/env-isolation-test/plan.md" \
+    --dynamic-archetypes 4 \
+    --round-num 11 >/dev/null
+if [[ -s "$env_isolation_parent" ]]; then
+    echo "FAIL: regression1 env-isolation — parent LARCH_EXECUTION_ISSUES_LOG was written despite test-tmpdir REVIEW_TMPDIR" >&2
+    exit 1
+fi
+[[ -s "$TMP/env-isolation-test/scout-parse-failed-round11-diag.txt" ]] \
+    || { echo "FAIL: regression1 — local diag sidecar not written" >&2; exit 1; }
+
+# Regression 2: path-guard — diag sidecar written locally but the explicit
+# parent issues-log remains untouched for REVIEW_TMPDIR nested under test-dispatch-panel.*.
+path_guard_issues="$TMP/path-guard-issues.md"
+rm -f "$path_guard_issues"
+mkdir -p "$TMP/path-guard-review"
+seed_case_inputs "$TMP/path-guard-review"
+cp "$TMP/scout-valid4.json" "$TMP/path-guard-review/scout-round12-manifest.json"
+PATH="$STUB_BIN:$PATH" \
+    LARCH_EXECUTION_ISSUES_LOG="$path_guard_issues" \
+    "$SCRIPT" \
+    --mode diff \
+    --diff-file "$TMP/path-guard-review/review.diff" \
+    --review-tmpdir "$TMP/path-guard-review" \
+    --codex-available true \
+    --cursor-available true \
+    --panel hard \
+    --plan-file "$TMP/path-guard-review/plan.md" \
+    --dynamic-archetypes 4 \
+    --round-num 12 >/dev/null
+[[ -s "$TMP/path-guard-review/scout-parse-failed-round12-diag.txt" ]] \
+    || { echo "FAIL: regression2 path-guard — local diag sidecar not written" >&2; exit 1; }
+grep -Fq 'scout_fail_reason=missing_status_sidecar' "$TMP/path-guard-review/scout-parse-failed-round12-diag.txt" \
+    || { echo "FAIL: regression2 path-guard — diag missing expected fail reason" >&2; exit 1; }
+if [[ -s "$path_guard_issues" ]]; then
+    echo "FAIL: regression2 path-guard — append-execution-issue.sh was called despite test-tmpdir REVIEW_TMPDIR" >&2
+    exit 1
+fi
+
+# Regression 3: production-shape — REVIEW_TMPDIR outside any harness ancestry,
+# so both the local diag sidecar and the explicit issues-log must be written.
+(
+    prod_tmp="$(mktemp -d "${TMPDIR:-/tmp}/review-prod-shape.XXXXXX")"
+    trap 'rm -rf "$prod_tmp"' EXIT
+    mkdir -p "$prod_tmp/review"
+    seed_case_inputs "$prod_tmp/review"
+    cp "$TMP/scout-valid4.json" "$prod_tmp/review/scout-round13-manifest.json"
+    prod_issues="$prod_tmp/prod-issues.md"
+    PATH="$STUB_BIN:$PATH" \
+        LARCH_EXECUTION_ISSUES_LOG="$prod_issues" \
+        "$SCRIPT" \
+        --mode diff \
+        --diff-file "$prod_tmp/review/review.diff" \
+        --review-tmpdir "$prod_tmp/review" \
+        --codex-available true \
+        --cursor-available true \
+        --panel hard \
+        --plan-file "$prod_tmp/review/plan.md" \
+        --dynamic-archetypes 4 \
+        --round-num 13 >/dev/null
+    [[ -s "$prod_tmp/review/scout-parse-failed-round13-diag.txt" ]] \
+        || { echo "FAIL: regression3 prod-shape — local diag sidecar not written" >&2; exit 1; }
+    grep -Fq 'Review scout dynamic archetype parse failed in round 13; reason=missing_status_sidecar' "$prod_issues" \
+        || { echo "FAIL: regression3 prod-shape — execution-issues warning not written for production-shape tmpdir" >&2; exit 1; }
+)
+
+fi  # end section: core regressions
 
 echo "All assertions passed."

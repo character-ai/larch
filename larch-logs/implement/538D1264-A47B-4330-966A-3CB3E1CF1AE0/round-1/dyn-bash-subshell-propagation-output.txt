@@ -1,0 +1,17 @@
+Gathering the branch diff, commit list, and `test-dispatch-panel.sh` for subshell failure-propagation review.
+
+Checking `test-dispatch-panel.sh` for `set -e`/errexit and whether subshells need explicit `|| exit 1`.
+
+Checking whether the regression block is gated by `--section` (could affect which code paths run):
+
+Reviewed the precomputed diff and the full [`skills/review/scripts/test-dispatch-panel.sh`](skills/review/scripts/test-dispatch-panel.sh) around the changed blocks. Commit on branch since merge-base with `main`: `e929a125 Add test-tmpdir path guard to scout parse-failed logging`.
+
+### In-Scope Findings
+
+None. Under **correctness** and the subshell checklist: the harness uses `set -euo pipefail` at the top of the script (`skills/review/scripts/test-dispatch-panel.sh:4-4`), and the `reuse` section containing the new parenthesized blocks (`skills/review/scripts/test-dispatch-panel.sh:261-281`, `skills/review/scripts/test-dispatch-panel.sh:330-353`) runs **before** any `set +e` toggles used in the `limits` section (`skills/review/scripts/test-dispatch-panel.sh:402-431`). Those subshells inherit errexit; failures from `"$SCRIPT"` inside `out=$(...)`, from `grep -Fq`, from `[[ ... ]]`, or from explicit `exit 1` terminate the subshell with non-zero status, and Bash propagates that to the outer script as the exit status of the `( ... )` compound command, so failures are not swallowed. Regression 1 and 2 invoke `dispatch-panel.sh` at the outer level with env vars on the same command line (`skills/review/scripts/test-dispatch-panel.sh:494-505`, `skills/review/scripts/test-dispatch-panel.sh:520-531`); a non-zero exit from `"$SCRIPT"` fails the harness under the same global `set -e`. Regression 3 uses a subshell with the same inheritance (`skills/review/scripts/test-dispatch-panel.sh:543-566`). The reuse cases no longer assert on `LARCH_EXECUTION_ISSUES_LOG` because the branch intentionally suppresses that append under harness paths; coverage for “parent log must stay empty” is handled by the new outer-level regressions, not a weakening of failure detection inside the subshells.
+
+### Out-of-Scope Observations
+
+- **correctness** `skills/review/scripts/test-dispatch-panel.sh:345-348` — The `if grep -q '"prompt_file"' ...` pattern treats `grep` exit status only as true/false; a `grep` I/O error (exit 2) would follow the “no match” branch rather than failing the harness. This structure already existed before the subshell move and was not introduced by this diff.
+
+- **code-quality** (optional hardening, not a functional bug under current Bash) `skills/review/scripts/test-dispatch-panel.sh:261-281`, `skills/review/scripts/test-dispatch-panel.sh:330-353`, `skills/review/scripts/test-dispatch-panel.sh:543-566` — Adding an explicit `) || exit 1` after each parenthesized block would document intent for maintainers who might later add `set +e` inside the group; current behavior already relies on inherited `set -e` for propagation.

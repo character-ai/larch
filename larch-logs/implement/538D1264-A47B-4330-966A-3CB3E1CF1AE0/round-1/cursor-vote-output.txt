@@ -1,0 +1,25 @@
+Reading the ballot and verifying claims against provided context.
+
+Verifying ballot claims against the codebase and diff/plan context.
+
+FINDING_1: YES
+FINDING_2: EXONERATE -- optional `) || exit 1` hardening is not worth a standalone tracking issue
+FINDING_3: NO -- pre-existing `if grep -q` idiom; not introduced and not worth an issue
+FINDING_4: NO -- reviewer flags pre-existing behavior explicitly out of PR scope
+FINDING_5: EXONERATE -- doc/Makefile target drift is real but fixable without opening an issue
+FINDING_6: EXONERATE -- latent consumer escaping is valid but explicitly beyond this PR
+FINDING_7: EXONERATE -- plan’s three regressions match env-isolation, path-guard, and prod-shape as stated
+FINDING_8: EXONERATE -- doc already names glob tokens alongside “ancestor”; tightening is minor polish
+FINDING_9: EXONERATE -- parameter naming nit with little operational impact
+FINDING_10: EXONERATE -- resolving issues_log before suppress is harmless overhead in harness paths
+FINDING_11: EXONERATE -- overlapping setup is intentional to document two guard facets separately
+FINDING_12: EXONERATE -- TMPDIR/path segment collisions are edge-case and not demonstrated failures
+FINDING_13: YES
+FINDING_14: EXONERATE -- three case arms share one implementation; separate mktemp shards add CI cost for low typo risk
+FINDING_15: EXONERATE -- broad-glob concern is subsumed by findings 13/16/21 without new action
+FINDING_16: YES
+FINDING_17: EXONERATE -- policy duplicate of other glob-based findings; no new distinct fix
+FINDING_18: EXONERATE -- best-effort diag write matches non-fatal telemetry intent
+FINDING_19: EXONERATE -- merging tests would blur distinct round/assertion coverage
+FINDING_20: YES
+FINDING_21: YES
