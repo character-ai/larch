@@ -1314,6 +1314,31 @@ if grep -Fq 'REVIEW_AND_FIX_STATUS=converged-small-changes' <<< "$out"; then
     fail "converge-important must NOT converge when prior round has Important findings"
 fi
 
+# Test 2b: Convergence ignores Important findings from degraded rounds between the compared rounds.
+work_degraded_gap="$TMP/converge-degraded-gap-ignored"
+make_work_repo "$work_degraded_gap"
+implement_tmp="$work_degraded_gap/implement"
+mkdir -p "$implement_tmp"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
+write_prior_round "$implement_tmp" 1 1 false
+write_prior_round "$implement_tmp" 2 2 true
+printf '### FINDING_1: **Important** severity finding in degraded round 2\n' > "$implement_tmp/round-2/findings.md"
+set +e
+out=$(
+    cd "$work_degraded_gap" && \
+    STUB_ACCEPTED=1 \
+    CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+    REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-small-stub.sh" \
+    REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
+    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 3 \
+        --session-env-path "$implement_tmp/session-env.sh" --run-id converge-degraded-gap-run
+)
+rc=$?
+set -e
+[[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "converge-degraded-gap-ignored expected exit 0 got $rc"; }
+grep -Fq 'REVIEW_AND_FIX_STATUS=converged-small-changes' <<< "$out" \
+    || fail "converge-degraded-gap-ignored should converge using rounds 1 and 3 only"
+
 # Test 2a: Convergence — structured [important] concern blocks early-termination.
 work_structured_important="$TMP/converge-structured-important-blocks"
 make_work_repo "$work_structured_important"
@@ -1476,7 +1501,7 @@ grep -Fq 'DEGRADED_ROUND=false' <<< "$out" || fail "degraded-retry-clean should 
 [[ -f "$implement_tmp/round-1/degraded-retry.flag" ]] || fail "degraded-retry-clean should write retry flag"
 [[ -f "$implement_tmp/round-1/degraded-retry.done" ]] || fail "degraded-retry-clean should write retry completion marker"
 
-# Test 4a: Stale degraded retry marker is cleared and retried once.
+# Test 4a: Stale degraded retry marker from a prior interrupted invocation does not block a retry.
 cat > "$TMP/review-core-stale-retry-recovered.sh" <<'EOF_CORE_STALE_RETRY'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -1530,9 +1555,32 @@ out=$(
 rc=$?
 set -e
 [[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "degraded-retry-stale expected exit 0 got $rc"; }
-grep -Fq 'stale degraded retry marker without completion' <<< "$out" || fail "degraded-retry-stale should log stale marker recovery"
+grep -Fq 'panel was degraded (banner triggered)' <<< "$out" || fail "degraded-retry-stale should still detect degradation and retry"
 grep -Fq 'DEGRADED_ROUND=false' <<< "$out" || fail "degraded-retry-stale should still complete the retry"
 [[ -f "$implement_tmp/round-1/degraded-retry.done" ]] || fail "degraded-retry-stale should rewrite retry completion marker"
+
+# Test 4b: Completed degraded retry markers from a prior invocation do not suppress a fresh retry.
+work_retry_done_stale="$TMP/degraded-retry-done-stale"
+make_work_repo "$work_retry_done_stale"
+implement_tmp="$work_retry_done_stale/implement"
+mkdir -p "$implement_tmp/round-1"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
+touch "$implement_tmp/round-1/degraded-retry.flag" "$implement_tmp/round-1/degraded-retry.done"
+set +e
+out=$(
+    cd "$work_retry_done_stale" && \
+    LARCH_QUIET_BREADCRUMBS=1 \
+    CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+    REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-degraded-then-clean.sh" \
+    REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
+    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 \
+        --session-env-path "$implement_tmp/session-env.sh" --run-id degraded-retry-done-stale-run 2>&1
+)
+rc=$?
+set -e
+[[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "degraded-retry-done-stale expected exit 0 got $rc"; }
+grep -Fq 'panel was degraded (banner triggered)' <<< "$out" || fail "degraded-retry-done-stale should still schedule a fresh retry"
+grep -Fq 'DEGRADED_ROUND=false' <<< "$out" || fail "degraded-retry-done-stale should complete the fresh retry"
 
 # Test 5: Degraded round retry exhausted — both attempts degraded, proceeds best-effort.
 work_retry_fail="$TMP/degraded-retry-exhausted"
@@ -1735,6 +1783,30 @@ if grep -Fq 'REVIEW_AND_FIX_STATUS=converged-small-changes' <<< "$out"; then
     fail "convergence-threshold-one must not converge when prior round accepted count exceeds threshold 1"
 fi
 
+# Test 8a: Non-default convergence threshold positive path converges when both rounds meet the threshold.
+work_threshold_positive="$TMP/convergence-threshold-one-positive"
+make_work_repo "$work_threshold_positive"
+implement_tmp="$work_threshold_positive/implement"
+mkdir -p "$implement_tmp"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
+write_prior_round "$implement_tmp" 1 1 false
+set +e
+out=$(
+    cd "$work_threshold_positive" && \
+    STUB_ACCEPTED=1 \
+    CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+    REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-small-stub.sh" \
+    REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
+    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 2 \
+        --convergence-threshold 1 \
+        --session-env-path "$implement_tmp/session-env.sh" --run-id threshold-one-positive-run
+)
+rc=$?
+set -e
+[[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "convergence-threshold-one-positive expected exit 0 got $rc"; }
+grep -Fq 'REVIEW_AND_FIX_STATUS=converged-small-changes' <<< "$out" \
+    || fail "convergence-threshold-one-positive should converge when both rounds are <= threshold 1"
+
 # Test 9: Invalid convergence threshold fails validation.
 work_threshold_invalid="$TMP/convergence-threshold-invalid"
 make_work_repo "$work_threshold_invalid"
@@ -1797,7 +1869,8 @@ rc=$?
 set -e
 [[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "review-env-literal expected exit 0 got $rc"; }
 [[ ! -e "$TMP/shell-expanded" ]] || fail "review-env-literal must not execute command substitution while writing review-and-fix.env"
-grep -Fq 'REVIEW_CORE_STATUS=$(touch '"$TMP"'/shell-expanded)' "$implement_tmp/round-1/review-and-fix.env" \
+expected_review_core_status="REVIEW_CORE_STATUS=\$(touch $TMP/shell-expanded)"
+grep -Fq "$expected_review_core_status" "$implement_tmp/round-1/review-and-fix.env" \
     || fail "review-env-literal should persist the literal core status"
 
 # Test 10: Missing findings files fail closed during Important detection.

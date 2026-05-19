@@ -951,6 +951,12 @@ run_implement_round() {
         fi
     fi
     core_out="$round_dir/review-core.env"
+    degraded_retry_flag="$round_dir/degraded-retry.flag"
+    degraded_retry_done="$round_dir/degraded-retry.done"
+    # Retry markers are per-invocation state. Clear leftovers before the first
+    # review-core run so a previous completed invocation cannot suppress the
+    # one retry this invocation is allowed to take.
+    rm -f "$degraded_retry_flag" "$degraded_retry_done"
     core_args=(
         --mode "$MODE"
         --output-dir "$round_dir"
@@ -997,8 +1003,6 @@ run_implement_round() {
     if [[ -f "$voting_tally_file" ]] && grep -Fq '⚠ Degraded code-review panel' "$voting_tally_file"; then
         degraded_this_round=true
         larch_err "⏳ /implement Step 5: round ${round_num_dec} panel was degraded (banner triggered); retrying with fresh panel."
-        local degraded_retry_flag="$round_dir/degraded-retry.flag"
-        local degraded_retry_done="$round_dir/degraded-retry.done"
         if [[ -f "$degraded_retry_flag" && ! -f "$degraded_retry_done" ]]; then
             larch_err "⚠ /implement Step 5: round ${round_num_dec} found stale degraded retry marker without completion; retrying once."
             rm -f "$degraded_retry_flag"
@@ -1188,7 +1192,6 @@ run_implement_round() {
         local prev_core_out_a=""
         local prev_accepted_a
         local important_scan_files=()
-        local scan_round_a=0
 
         prev_round_a=$(find_previous_non_degraded_round "$IMPLEMENT_TMPDIR" "$((round_num_dec - 1))")
         if (( prev_round_a >= 1 )); then
@@ -1198,9 +1201,10 @@ run_implement_round() {
             if [[ "$prev_accepted_a" =~ ^[0-9]+$ ]] && \
                (( 10#$prev_accepted_a <= 10#$small_threshold )) && \
                (( accepted_count <= 10#$small_threshold )); then
-                for (( scan_round_a = prev_round_a; scan_round_a <= round_num_dec; scan_round_a++ )); do
-                    important_scan_files+=("$IMPLEMENT_TMPDIR/round-${scan_round_a}/findings.md")
-                done
+                important_scan_files+=(
+                    "$IMPLEMENT_TMPDIR/round-${prev_round_a}/findings.md"
+                    "$IMPLEMENT_TMPDIR/round-${round_num_dec}/findings.md"
+                )
                 if important_findings_present "${important_scan_files[@]}"; then
                     :
                 else
