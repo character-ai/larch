@@ -89,19 +89,58 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Test 1b: default coder (neither flag set) is cursor. From a non-git cwd
-# with no --cursor-present, the cursor presence check fires before git-tree
-# lookup and the dispatcher exits 0 with STATUS=claude_fallback — if the
-# default were still codex, the dispatcher would exit 2 with a git-tree error.
+# Test 1b: default coder (neither flag set) resolves to cursor. Run from the
+# repo root with --cursor-present true and a PATH-stubbed cursor binary so the
+# dispatcher reaches the external launcher path; this distinguishes the omitted
+# flag default from both explicit --coder claude and a mistaken codex default.
 # ---------------------------------------------------------------------------
 TMP1B="$SCRATCH/test1b"; mkdir -p "$TMP1B"
-NON_GIT_1B="$SCRATCH/not-a-repo-default"; mkdir -p "$NON_GIT_1B"
-OUT=$(cd "$NON_GIT_1B" && "$DISPATCHER" --tmpdir "$TMP1B" --plan-file "$PLAN" --feature-file "$FEATURE" \
-    --auto-mode false 2>/dev/null)
-if [[ "$OUT" == *"STATUS=claude_fallback"* ]]; then
+STUB_BIN_1B="$SCRATCH/test1b-bin"; mkdir -p "$STUB_BIN_1B"
+STUB_CURSOR_1B="$STUB_BIN_1B/cursor"
+cat > "$STUB_CURSOR_1B" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+: "${STUB_MANIFEST_PATH:?}"
+cat > "$STUB_MANIFEST_PATH.tmp" <<'JSON'
+{
+  "schema_version": "1",
+  "status": "bailed",
+  "bail_reason": "stub-bailed"
+}
+JSON
+mv "$STUB_MANIFEST_PATH.tmp" "$STUB_MANIFEST_PATH"
+printf 'stub cursor stdout\n'
+EOF
+chmod +x "$STUB_CURSOR_1B"
+STDOUT_1B="$TMP1B/stdout.txt"
+STDERR_1B="$TMP1B/stderr.txt"
+(
+    cd "$REPO_ROOT" && \
+    PATH="$STUB_BIN_1B:$PATH" \
+    RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
+    STUB_MANIFEST_PATH="$TMP1B/manifest.json" \
+    LARCH_TIMING_LEDGER="$TMP1B/timing-ledger.tsv" \
+    LARCH_QUIET_DISABLE=1 \
+    LARCH_CURSOR_MODEL="stub-model" \
+    CURSOR_API_KEY="" \
+    LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 \
+    LIB_CURSOR_AUTH_TEST_UNAME="Linux" \
+    "$DISPATCHER" --tmpdir "$TMP1B" --plan-file "$PLAN" --feature-file "$FEATURE" \
+        --auto-mode false --cursor-present true >"$STDOUT_1B" 2>"$STDERR_1B"
+)
+OUT=$(cat "$STDOUT_1B")
+ERR=$(cat "$STDERR_1B")
+if [[ "$OUT" == *"STATUS=bailed"* ]] \
+   && [[ "$OUT" == *"REASON=stub-bailed"* ]] \
+   && [[ "$OUT" == *"TOOL=cursor"* ]] \
+   && [[ "$OUT" == *"ORCHESTRATOR_EDIT_AUTHORITY=forbidden"* ]] \
+   && [[ "$OUT" != *"ORCHESTRATOR_EDIT_AUTHORITY=allowed"* ]] \
+   && [[ -z "$ERR" ]] \
+   && [[ -f "$TMP1B/step2-spawn-coder.txt" ]] \
+   && [[ "$(cat "$TMP1B/step2-spawn-coder.txt")" == "cursor" ]]; then
     pass
 else
-    fail 1b "default coder should be cursor (non-git cwd, no --cursor-present → claude_fallback exit 0), got: $OUT"
+    fail 1b "default coder should resolve to cursor, got out=$OUT err=$ERR sentinel=$(cat "$TMP1B/step2-spawn-coder.txt" 2>/dev/null || echo MISSING)"
 fi
 
 # ---------------------------------------------------------------------------
