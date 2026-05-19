@@ -97,17 +97,34 @@ PY
 # check_voter_parse_rate: logs a Warning when a non-empty voter file produces
 # NEUTRAL for >=80% of ballot findings (indicating unparseable output).
 voter_parse_rate_diag_path() {
-    local voter_path="$1"
-    case "$voter_path" in
+    local voter_path="$1" voter_tool="${2:-}" base
+    if [[ -n "$voter_tool" ]]; then
+        printf '%s/%s-parse-rate-diag.txt\n' "$REVIEW_TMPDIR" "$voter_tool"
+        return 0
+    fi
+    base="$(basename "$voter_path")"
+    case "$base" in
+        claude-*) printf '%s/claude-parse-rate-diag.txt\n' "$REVIEW_TMPDIR" ;;
+        codex-*) printf '%s/codex-parse-rate-diag.txt\n' "$REVIEW_TMPDIR" ;;
+        cursor-*) printf '%s/cursor-parse-rate-diag.txt\n' "$REVIEW_TMPDIR" ;;
         *.txt) printf '%s\n' "${voter_path%.txt}-parse-rate-diag.txt" ;;
         *) printf '%s-parse-rate-diag.txt\n' "$voter_path" ;;
+    esac
+}
+
+parse_rate_check_tool_label() {
+    local voter_tool="$1"
+    case "$voter_tool" in
+        claude) printf 'launch-claude-review.sh (voter parse-rate check)\n' ;;
+        codex|cursor) printf 'launch-review.sh --tool %s (voter parse-rate check)\n' "$voter_tool" ;;
+        *) printf 'voter parse-rate check (%s)\n' "$voter_tool" ;;
     esac
 }
 
 check_voter_parse_rate() {
     local voter_path="$1" voter_tool="$2" slot_num="${3:-}" log_mode="${4:-log}"
     local diag_file
-    diag_file="$(voter_parse_rate_diag_path "$voter_path")"
+    diag_file="$(voter_parse_rate_diag_path "$voter_path" "$voter_tool")"
     [[ -s "$voter_path" ]] || { printf 'PARSE_RATE_STATUS=OK\n'; return 0; }
     local ids_count neutral_count
     ids_count=$(grep -cE '^### (FINDING_[0-9]+):' "$BALLOT_FILE" 2>/dev/null || true)
@@ -154,7 +171,7 @@ check_voter_parse_rate() {
                 "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
                     --log "$_issues_log" \
                     --site "dispatch-code-voters.sh ${voter_tool}" \
-                    --tool "launch-${voter_tool}-review.sh (voter parse-rate check)" \
+                    --tool "$(parse_rate_check_tool_label "$voter_tool")" \
                     --exit-code 0 \
                     --status-label "warning" \
                     --category Warnings \
@@ -213,7 +230,7 @@ launch_voter_retry() {
 check_and_retry_voter_parse_rate() {
     local slot_num="$1" voter_path="$2" voter_tool="$3" prompt_file="$4"
     local status retry_prompt retry_output retry_rc retry_status diag_file retry_diag_file
-    diag_file="$(voter_parse_rate_diag_path "$voter_path")"
+    diag_file="$(voter_parse_rate_diag_path "$voter_path" "$voter_tool")"
     status=$(check_voter_parse_rate "$voter_path" "$voter_tool" "$slot_num" silent | parse_rate_status_from_output)
     [[ "$status" == "NOT_SUBSTANTIVE" ]] || { printf '%s\n' "$status"; return 0; }
 
@@ -222,7 +239,7 @@ check_and_retry_voter_parse_rate() {
         *.txt) retry_output="${voter_path%.txt}-parse-retry.txt" ;;
         *) retry_output="${voter_path}-parse-retry" ;;
     esac
-    retry_diag_file="$(voter_parse_rate_diag_path "$retry_output")"
+    retry_diag_file="$(voter_parse_rate_diag_path "$retry_output" "$voter_tool")"
     rm -f "$retry_output" "${retry_output}.done" "${retry_output}.launcher-stderr"
 
     set +e
@@ -238,13 +255,13 @@ check_and_retry_voter_parse_rate() {
             else
                 printf '0\n' > "${voter_path}.done"
             fi
-            rm -f "$diag_file" "$retry_diag_file"
+            rm -f "$diag_file" "$retry_diag_file" "${retry_output}.launcher-stderr"
             printf 'OK\n'
             return 0
         fi
     fi
 
-    rm -f "$retry_diag_file"
+    rm -f "$retry_output" "${retry_output}.done" "${retry_output}.launcher-stderr" "$retry_diag_file"
     check_voter_parse_rate "$voter_path" "$voter_tool" "$slot_num" log | parse_rate_status_from_output
 }
 
@@ -360,18 +377,20 @@ VOTER_3_STATUS="launched"
 [[ -s "$VOTER_2_PATH" ]] || VOTER_2_STATUS="failed"
 [[ -s "$VOTER_3_PATH" ]] || VOTER_3_STATUS="failed"
 
-VOTER_1_PARSE_RATE_STATUS="OK"
-VOTER_2_PARSE_RATE_STATUS="OK"
-VOTER_3_PARSE_RATE_STATUS="OK"
+VOTER_1_PARSE_RATE_STATUS="SKIPPED"
+VOTER_2_PARSE_RATE_STATUS="SKIPPED"
+VOTER_3_PARSE_RATE_STATUS="SKIPPED"
 [[ "$VOTER_1_STATUS" != "failed" ]] && VOTER_1_PARSE_RATE_STATUS=$(check_and_retry_voter_parse_rate 1 "$VOTER_1_PATH" "$VOTER_1_TOOL" "$claude_prompt")
 [[ "$VOTER_2_STATUS" != "failed" ]] && VOTER_2_PARSE_RATE_STATUS=$(check_and_retry_voter_parse_rate 2 "$VOTER_2_PATH" "$VOTER_2_TOOL" "$codex_prompt")
 [[ "$VOTER_3_STATUS" != "failed" ]] && VOTER_3_PARSE_RATE_STATUS=$(check_and_retry_voter_parse_rate 3 "$VOTER_3_PATH" "$VOTER_3_TOOL" "$cursor_prompt")
 
 effective_judges=0
-for status_path in "$VOTER_1_STATUS:$VOTER_1_PATH" "$VOTER_2_STATUS:$VOTER_2_PATH" "$VOTER_3_STATUS:$VOTER_3_PATH"; do
-    status="${status_path%%:*}"
-    path="${status_path#*:}"
-    [[ "$status" != "failed" && -s "$path" ]] && effective_judges=$((effective_judges + 1))
+for slot_record in \
+    "$VOTER_1_STATUS"$'\t'"$VOTER_1_PATH"$'\t'"$VOTER_1_PARSE_RATE_STATUS" \
+    "$VOTER_2_STATUS"$'\t'"$VOTER_2_PATH"$'\t'"$VOTER_2_PARSE_RATE_STATUS" \
+    "$VOTER_3_STATUS"$'\t'"$VOTER_3_PATH"$'\t'"$VOTER_3_PARSE_RATE_STATUS"; do
+    IFS=$'\t' read -r status path parse_rate_status <<< "$slot_record"
+    [[ "$status" != "failed" && "$parse_rate_status" != "NOT_SUBSTANTIVE" && -s "$path" ]] && effective_judges=$((effective_judges + 1))
 done
 if (( effective_judges < 3 )); then
     _warn_msg="**⚠ Degraded code-review panel: ${effective_judges}/3 effective judges produced output.**"

@@ -196,8 +196,12 @@ scope_drift_check() {
 }
 
 voter_parse_rate_diag_path() {
-    local voter_path="$1"
-    case "$voter_path" in
+    local voter_path="$1" base
+    base="$(basename "$voter_path")"
+    case "$base" in
+        claude-*) printf '%s/claude-parse-rate-diag.txt\n' "$REVIEW_TMPDIR" ;;
+        codex-*) printf '%s/codex-parse-rate-diag.txt\n' "$REVIEW_TMPDIR" ;;
+        cursor-*) printf '%s/cursor-parse-rate-diag.txt\n' "$REVIEW_TMPDIR" ;;
         *.txt) printf '%s\n' "${voter_path%.txt}-parse-rate-diag.txt" ;;
         *) printf '%s-parse-rate-diag.txt\n' "$voter_path" ;;
     esac
@@ -217,15 +221,18 @@ if [[ "$BOTH_DOWN" == "true" ]]; then
     ELIGIBLE_VOTERS=0
 fi
 VOTER_PARSE_FAILED_COUNT=0
+EFFECTIVE_VOTER_FILES=()
 for voter_file in "${VOTER_FILES[@]+"${VOTER_FILES[@]}"}"; do
     if [[ -f "$(voter_parse_rate_diag_path "$voter_file")" ]]; then
         VOTER_PARSE_FAILED_COUNT=$((VOTER_PARSE_FAILED_COUNT + 1))
+    else
+        EFFECTIVE_VOTER_FILES+=("$voter_file")
     fi
 done
 EFFECTIVE_VOTERS=$((ELIGIBLE_VOTERS - VOTER_PARSE_FAILED_COUNT))
 (( EFFECTIVE_VOTERS < 0 )) && EFFECTIVE_VOTERS=0
 
-if (( ELIGIBLE_VOTERS == 0 )); then
+if (( EFFECTIVE_VOTERS == 0 )); then
     VOTING_SKIPPED_WARNING="**⚠ Degraded code-review panel: 0 judges available. Panel tier: main-agent-required. Manual adjudication needed.**"
     printf '# Code Review Voting Tally\n\n' > "$VOTING_TALLY_FILE"
     printf '%s\n\n' "$VOTING_SKIPPED_WARNING" >> "$VOTING_TALLY_FILE"
@@ -244,6 +251,7 @@ if (( ELIGIBLE_VOTERS == 0 )); then
     emit_kv OOS_ACCEPTED_FILE "$OOS_ACCEPTED_OUT"
     emit_kv OOS_FILE "$OOS_FILE"
     emit_kv TALLY_OK true
+    emit_kv ELIGIBLE_VOTER_COUNT "$ELIGIBLE_VOTERS"
     emit_kv VOTER_COUNT 0
     emit_kv VOTING_SKIPPED_WARNING "$VOTING_SKIPPED_WARNING"
     exit 0
@@ -265,7 +273,7 @@ write_archetype_map "$MANIFEST_FILE" "$archetype_map"
         printf '**⚠ Degraded code-review panel: %s reviewer slot(s) emitted narrative-only output (NOT_SUBSTANTIVE). Dead slots are shown in the scoreboard below.**\n\n' "$NOT_SUBSTANTIVE_COUNT"
     fi
     if [[ "$VOTER_PARSE_FAILED_COUNT" -gt 0 ]]; then
-        printf '**⚠ Degraded code-review panel: %s voter slot(s) emitted narrative-only output (parse-rate ≥80%% NEUTRAL). Voted blocks have inflated NEUT counts; treat results with caution.**\n\n' "$VOTER_PARSE_FAILED_COUNT"
+        printf '**⚠ Degraded code-review panel: %s voter slot(s) emitted narrative-only output (parse-rate ≥80%% NEUTRAL) and were removed from the effective quorum.**\n\n' "$VOTER_PARSE_FAILED_COUNT"
     fi
     printf '## Per-finding vote breakdown\n\n'
     printf '| Item | YES | NO | EXON | NEUT | Result |\n'
@@ -274,7 +282,9 @@ write_archetype_map "$MANIFEST_FILE" "$archetype_map"
     for block in "${block_files[@]+"${block_files[@]}"}"; do
         id=$(basename "$block" .md)
         yes=0; no=0; exonerate=0; neutral=0
-        for voter_file in "${VOTER_FILES[@]}"; do
+        # Code review uses EFFECTIVE_VOTERS, not raw voter-file count, after
+        # parse-rate degradation removes narrative-only voter slots.
+        for voter_file in "${EFFECTIVE_VOTER_FILES[@]}"; do
             vote=$(vote_for_id "$id" "$voter_file")
             case "$vote" in
                 YES) yes=$((yes + 1)) ;;

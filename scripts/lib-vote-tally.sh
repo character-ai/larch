@@ -67,7 +67,9 @@ PYEOF
 
 # accept_finding: returns 0 (accept) or 1 (reject) given counts of YES/NO/EXONERATE
 # votes and the panel-level eligible voter count. The eligible count must be
-# the number of non-failed voter files, not the per-finding non-neutral count.
+# the caller's effective quorum for that tally stage, not the per-finding
+# non-neutral count. For code review this means non-failed voter files after
+# parse-rate-degraded narrative-only slots have been removed.
 # Threshold:
 #   eligible >= 3 → 2+ YES
 #   eligible == 2 → unanimous YES (2/2)
@@ -133,7 +135,7 @@ classify_result() {
     fi
 }
 
-# panel_tier: prints the human-readable policy tier for a panel-level eligible
+# panel_tier: prints the human-readable policy tier for a panel-level effective
 # voter count.
 panel_tier() {
     local eligible="$1"

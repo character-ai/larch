@@ -55,18 +55,19 @@ Manifest attribution maps output basenames, not slot IDs. Fallback basenames nor
 | `OOS_ACCEPTED_FILE` | Absolute path to OOS-accepted file (parent-dir copy when `SESSION_ENV_PATH` is set). |
 | `OOS_FILE` | Absolute path to `oos.md`. |
 | `TALLY_OK` | Always `true` on success. |
-| `VOTER_COUNT` | Voter file count. |
+| `ELIGIBLE_VOTER_COUNT` | Raw voter file count after `--both-down` compatibility handling and before parse-rate degradation. |
+| `VOTER_COUNT` | Effective quorum count after removing parse-rate-degraded narrative-only voter slots. |
 | `VOTING_SKIPPED_WARNING` | Present on the 0-judge main-agent path. |
 | `YIELD_TSV_FILE` | Present when `--manifest-file` produces `scout-archetype-yield.tsv`. |
 
 ## Threshold (delegated to lib-vote-tally.sh)
 
-- `eligible >= 3` → `yes >= 2` accepts.
-- `eligible == 2` → unanimous `yes == 2` accepts.
-- `eligible == 1` → single-judge binding decision (`YES` accepts; `NO` rejects; `EXONERATE` is exonerated but not accepted).
-- `eligible == 0` → no automated vote; emit `TALLY_STATUS=main-agent-vote-required`, leave accepted/rejected counts at 0, and require main-agent adjudication.
+- `effective >= 3` → `yes >= 2` accepts.
+- `effective == 2` → unanimous `yes == 2` accepts.
+- `effective == 1` → single-judge binding decision (`YES` accepts; `NO` rejects; `EXONERATE` is exonerated but not accepted).
+- `effective == 0` → no automated vote; emit `TALLY_STATUS=main-agent-vote-required`, leave accepted/rejected counts at 0, and require main-agent adjudication.
 
-The quorum basis is the panel-level eligible voter count (number of non-failed voter files), not the per-finding non-neutral vote count. NEUTRAL or missing per-item votes do not reduce a 3-judge panel to a lower tier.
+The quorum basis is the panel-level effective voter count (`VOTER_COUNT`), not the per-finding non-neutral vote count. `ELIGIBLE_VOTER_COUNT` captures the raw voter file count, while `VOTER_COUNT` removes parse-rate-degraded narrative-only voter slots before tallying. NEUTRAL or missing per-item votes within the effective panel do not reduce a 3-judge panel to a lower tier.
 
 ## Callers
 
