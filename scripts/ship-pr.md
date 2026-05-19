@@ -92,6 +92,11 @@ Transient network classification uses `is_transient_net_signature` from `scripts
 
 ## Log Refresh
 
+`run_pr_create_phase` writes the first deterministic `final-summary.md` only after
+persisting `PR_NUMBER`/`PR_URL`, then commits that log refresh and immediately
+pushes the new branch tip before entering CI wait so the remote PR tip includes
+the same run-log tree as the local branch.
+
 `scripts/refresh-run-logs.sh` re-renders `token-report` and `timing-report` larch-log batches and commits the updated files before each push, so the PR's committed logs always reflect the most recent run state. It is called at three trigger points:
 
 - **Trigger A** (`run_rebase_rebump`): after re-bump, before `git-force-push.sh`.

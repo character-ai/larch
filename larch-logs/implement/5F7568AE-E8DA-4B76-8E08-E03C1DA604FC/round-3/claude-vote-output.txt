@@ -1,0 +1,25 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: NO -- trivial run-log chore, not worth tracking
+FINDING_4: NO -- historical plan text in committed run-log, no runtime impact
+FINDING_5: NO -- extra stall-status test assertion is a positive addition
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: EXONERATE -- write-final-report.md now accurately documents the provisional-PR_URL constraint and why Step 7a is avoided; documentation is self-consistent with chosen approach
+FINDING_9: YES
+FINDING_10: NO -- pure narrative nit about which filename appears in feature text; behavior is already correct
+FINDING_11: YES
+FINDING_12: EXONERATE -- BOM/trailing-space on programmatically generated files is a highly unlikely edge case
+FINDING_13: EXONERATE -- same as FINDING_12
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: YES
+FINDING_18: EXONERATE -- `2>/dev/null || true` suppression is consistent with token-report and timing-report calls in the same script; established convention
+FINDING_19: EXONERATE -- happy-path test was added; failure-path test would be enhancement; the `|| true` pattern is intentional
+FINDING_20: EXONERATE -- same as FINDING_18
+FINDING_21: EXONERATE -- latent speculative future risk; no evidence any merge path skips refresh-run-logs before sentinel
+FINDING_22: EXONERATE -- missing negative test for integer validation is low-priority enhancement
+FINDING_23: EXONERATE -- internal schema version; all consumers are co-located within larch codebase
+FINDING_24: YES
+FINDING_25: YES

@@ -1,0 +1,9 @@
+### In-Scope Findings
+
+1. **Important** `risk-integration` `scripts/refresh-run-logs.sh:71` writes `final-summary.md` before the common path has a PR URL. On a clean no-retry run, Trigger C runs before PR creation, so `write-final-report.sh` records `PR: N/A`; after `scripts/ship-pr.sh:969` sets `PR_URL`, the post-PR-create larch-log commit at `scripts/ship-pr.sh:992-1000` only updates the manifest and never regenerates `final-summary.md`. After merge, the post-merge sentinel still suppresses committing the Step 17/18 regenerated file, so the committed run-log keeps stale `PR: N/A`. Fix by calling `write-final-report.sh` after `state_set_many PR_NUMBER ... PR_URL ...` and before the post-PR-create `larch-log.sh commit`.
+
+2. **Important** `architecture` `skills/review/references/heavy-worker.md:69` still defines `review-summary.json` as `schema_version: 1` and has no `panel` object. Standalone `/review --diff --subagent --dynamic-archetypes 2` follows this heavy-worker contract rather than `emit-tally.sh`, so it can produce a v1 summary with no `panel.scout_status`, `dynamic_slot_count`, `static_slot_count`, or `total_slot_count`, defeating the new observability contract for subagent review. Update the heavy-worker schema and instructions to emit schema v2 with the same panel fields, or route the heavy worker through the same `emit-tally.sh` contract.
+
+### Out-of-Scope Observations
+
+None.

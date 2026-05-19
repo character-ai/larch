@@ -1,0 +1,10 @@
+voter_tool=cursor
+neutral_count=20
+total_findings=20
+voter_file=<TMPDIR>/round-1/cursor-vote-output.txt
+--- first 200 bytes of voter output ---
+Reading the ballot and verifying claims against provided context files.
+
+Verifying ballot claims against the repo: reading diff context and the cited source regions.
+
+Verified against the repo: `revie

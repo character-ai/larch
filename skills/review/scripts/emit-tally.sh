@@ -10,7 +10,7 @@ SHARED_DIR="$SCRIPT_DIR/../../shared/scripts"
 source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
 
-usage() { larch_err "Usage: emit-tally.sh --tally-file FILE --accepted-findings-file FILE --oos-file FILE --review-tmpdir DIR --round N --mode diff|description [--session-env-path FILE] [--implement-tmpdir DIR]"; }
+usage() { larch_err "Usage: emit-tally.sh --tally-file FILE --accepted-findings-file FILE --oos-file FILE --review-tmpdir DIR --round N --mode diff|description [--session-env-path FILE] [--implement-tmpdir DIR] [--scout-status STR] [--dynamic-slots N] [--static-slot-count N]"; }
 
 TALLY_FILE=""
 ACCEPTED_FINDINGS_FILE=""
@@ -20,6 +20,9 @@ SESSION_ENV_PATH=""
 ROUND="1"
 MODE=""
 IMPLEMENT_TMPDIR=""
+SCOUT_STATUS="na"
+DYNAMIC_SLOTS="0"
+STATIC_SLOT_COUNT="0"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -31,6 +34,9 @@ while [[ $# -gt 0 ]]; do
         --round) ROUND="${2:?--round requires a value}"; shift 2 ;;
         --mode) MODE="${2:?--mode requires a value}"; shift 2 ;;
         --implement-tmpdir) IMPLEMENT_TMPDIR="${2:?--implement-tmpdir requires a value}"; shift 2 ;;
+        --scout-status) SCOUT_STATUS="${2:?--scout-status requires a value}"; shift 2 ;;
+        --dynamic-slots) DYNAMIC_SLOTS="${2:?--dynamic-slots requires a value}"; shift 2 ;;
+        --static-slot-count) STATIC_SLOT_COUNT="${2:?--static-slot-count requires a value}"; shift 2 ;;
         --help) usage; exit 0 ;;
         *) larch_err "emit-tally.sh: unknown option: $1"; usage; exit 2 ;;
     esac
@@ -39,6 +45,8 @@ done
 [[ -n "$REVIEW_TMPDIR" ]] || { larch_err "emit-tally.sh: --review-tmpdir is required"; exit 2; }
 [[ -n "$TALLY_FILE" && -f "$TALLY_FILE" ]] || { larch_err "emit-tally.sh: --tally-file must name a file"; exit 2; }
 [[ -n "$ACCEPTED_FINDINGS_FILE" && -f "$ACCEPTED_FINDINGS_FILE" ]] || { larch_err "emit-tally.sh: --accepted-findings-file must name a file"; exit 2; }
+case "$DYNAMIC_SLOTS" in ''|*[!0-9]*) larch_err "emit-tally.sh: --dynamic-slots must be a non-negative integer"; exit 2 ;; esac
+case "$STATIC_SLOT_COUNT" in ''|*[!0-9]*) larch_err "emit-tally.sh: --static-slot-count must be a non-negative integer"; exit 2 ;; esac
 mkdir -p "$REVIEW_TMPDIR"
 
 ROUND_SUMMARY_FILE="$REVIEW_TMPDIR/review-round-summary.md"
@@ -105,9 +113,10 @@ while IFS= read -r f; do
 done < <(find "$REVIEW_TMPDIR" -maxdepth 1 -name '*-output.txt' 2>/dev/null | sort)
 reviewer_paths_json=$(printf '%s\n' "${reviewer_paths[@]+"${reviewer_paths[@]}"}" | jq -R . | jq -s .)
 
-# Emit schema matching heavy-worker.md contract: schema_version,
-# rounds_completed, reviewer_output_paths, finding_counts totals, and canonical
-# top-level accepted/rejected/exonerated/neutral counts.
+# Emit schema matching emit-tally.md and the current dispatch-panel harness:
+# schema_version, rounds_completed, reviewer_output_paths, panel metadata,
+# finding_counts totals, and canonical top-level
+# accepted/rejected/exonerated/neutral counts.
 jq -n \
     --argjson round "$ROUND" \
     --argjson accepted "$accepted" \
@@ -115,10 +124,19 @@ jq -n \
     --argjson exonerated "$exonerated" \
     --argjson neutral "$neutral" \
     --argjson paths "$reviewer_paths_json" \
+    --arg scout_status "$SCOUT_STATUS" \
+    --argjson dynamic_slots "$DYNAMIC_SLOTS" \
+    --argjson static_slot_count "$STATIC_SLOT_COUNT" \
     '{
-        schema_version: 1,
+        schema_version: 2,
         rounds_completed: $round,
         reviewer_output_paths: $paths,
+        panel: {
+            scout_status: $scout_status,
+            static_slot_count: $static_slot_count,
+            dynamic_slot_count: $dynamic_slots,
+            total_slot_count: (($static_slot_count + $dynamic_slots) | floor)
+        },
         finding_counts: {
             total_accepted: $accepted,
             total_rejected: $rejected,

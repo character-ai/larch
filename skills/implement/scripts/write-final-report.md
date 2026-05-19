@@ -27,3 +27,9 @@ upsert failures emit `STATUS=failed` and return non-zero.
 
 The script writes both `$IMPLEMENT_TMPDIR/summary-final.md` and
 `$IMPLEMENT_TMPDIR/larch-logs/implement/<RUN_ID>/final-summary.md`.
+
+`PR_URL` is provisional until Step 8+ writes `ship-pr-state.sh`. Before that
+state file exists, callers should expect `PR: N/A`. `/implement` therefore
+uses this helper for the terminal Step 17/18 `larch:final-summary` projection,
+after ship/PR state has been established, rather than during the Step 7a
+pre-bump checkpoint.

@@ -121,6 +121,32 @@ append_round_log_write_failure() {
         --redact >/dev/null 2>&1 || true
 }
 
+emit_tally_with_failure_isolation() {
+    local site="$1" context="$2" output_file="$3"
+    shift 3
+    local issues_log rc=0
+    set +e
+    "$EMIT_TALLY_SH" "$@" > "$output_file" 2>&1
+    rc=$?
+    set -e
+    if [[ "$rc" -ne 0 ]]; then
+        emit_breadcrumb "⚠ review-core: emit-tally failed ($context, round $ROUND_NUM, rc=$rc)"
+        if [[ -x "$APPEND_TOOL_FAILURE_SH" ]]; then
+            issues_log="$(execution_issues_log)"
+            "$APPEND_TOOL_FAILURE_SH" \
+                --log "$issues_log" \
+                --site "$site" \
+                --tool "emit-tally.sh ($context)" \
+                --exit-code "$rc" \
+                --category "Warnings" \
+                --output-file "$output_file" \
+                --verdict "review-core round $ROUND_NUM" \
+                --redact >/dev/null 2>&1 || true
+        fi
+    fi
+    return "$rc"
+}
+
 flush_round_log() {
     local flush_err rc=0
     [[ -n "$RUN_ID" ]] || return 0
@@ -329,11 +355,34 @@ threshold_reason=$(kv_get "$threshold_out" THRESHOLD_REASON)
 not_substantive_slots=$(kv_get "$threshold_out" NOT_SUBSTANTIVE_SLOTS)
 not_substantive_slots="${not_substantive_slots:-0}"
 if [[ "$threshold_ok" == "false" ]]; then
+    panel_failed_tally="$REVIEW_TMPDIR/review-core-panel-failed-tally.env"
+    panel_failed_emit_out="$REVIEW_TMPDIR/review-core-panel-failed-emit.env"
     : > "$REVIEW_TMPDIR/accepted-findings.md"
     : > "$REVIEW_TMPDIR/rejected-findings.md"
     : > "$REVIEW_TMPDIR/oos-accepted-review.md"
-    copy_to_parent "$REVIEW_TMPDIR/rejected-findings.md" rejected-findings.md
-    copy_to_parent "$REVIEW_TMPDIR/oos-accepted-review.md" oos-accepted-review.md
+    cat > "$panel_failed_tally" <<EOF
+ACCEPTED_COUNT=0
+REJECTED_COUNT=0
+EXONERATED_COUNT=0
+NEUTRAL_COUNT=0
+EOF
+    panel_failed_emit_args=(
+        --tally-file "$panel_failed_tally"
+        --accepted-findings-file "$REVIEW_TMPDIR/accepted-findings.md"
+        --oos-file "$REVIEW_TMPDIR/oos.md"
+        --review-tmpdir "$REVIEW_TMPDIR"
+        --round "$ROUND_NUM"
+        --mode "$MODE"
+        --scout-status "$scout_status"
+        --dynamic-slots "$dynamic_slots"
+        --static-slot-count "$static_slot_count"
+    )
+    [[ -n "$SESSION_ENV_PATH" ]] && panel_failed_emit_args+=(--session-env-path "$SESSION_ENV_PATH")
+    [[ -n "${IMPLEMENT_TMPDIR:-}" ]] && panel_failed_emit_args+=(--implement-tmpdir "$IMPLEMENT_TMPDIR")
+    if emit_tally_with_failure_isolation "5" "panel-failed" "$panel_failed_emit_out" "${panel_failed_emit_args[@]}"; then
+        copy_to_parent "$REVIEW_TMPDIR/rejected-findings.md" rejected-findings.md
+        copy_to_parent "$REVIEW_TMPDIR/oos-accepted-review.md" oos-accepted-review.md
+    fi
     flush_round_log
     emit_kv REVIEW_CORE_STATUS panel-failed
     emit_kv ROUND_NUM "$ROUND_NUM"
@@ -356,6 +405,7 @@ findings_count="${findings_count:-0}"
 if [[ "$findings_count" == "0" ]]; then
     zero_findings_tally_out="$REVIEW_TMPDIR/review-core-zero-findings-tally.env"
     zero_findings_voter="$REVIEW_TMPDIR/zero-findings-voter.txt"
+    zero_emit_out="$REVIEW_TMPDIR/review-core-zero-findings-emit.env"
     : > "$zero_findings_voter"
     zero_tally_args=(
         --ballot-file "$REVIEW_TMPDIR/findings.md"
@@ -369,12 +419,31 @@ if [[ "$findings_count" == "0" ]]; then
     [[ "$not_substantive_slots" -gt 0 ]] && zero_tally_args+=(--not-substantive-count "$not_substantive_slots")
     "$TALLY_VOTES_SH" "${zero_tally_args[@]}" > "$zero_findings_tally_out"
     zero_voting_tally_file=$(kv_get "$zero_findings_tally_out" VOTING_TALLY_FILE)
+    zero_tally_file=$(kv_get "$zero_findings_tally_out" TALLY_FILE)
+    zero_accepted_file=$(kv_get "$zero_findings_tally_out" ACCEPTED_FINDINGS_FILE)
+    zero_tally_file="${zero_tally_file:-$REVIEW_TMPDIR/review-tally.env}"
+    zero_accepted_file="${zero_accepted_file:-$REVIEW_TMPDIR/accepted-findings.md}"
 
     : > "$REVIEW_TMPDIR/accepted-findings.md"
     : > "$REVIEW_TMPDIR/rejected-findings.md"
     : > "$REVIEW_TMPDIR/oos-accepted-review.md"
-    copy_to_parent "$REVIEW_TMPDIR/rejected-findings.md" rejected-findings.md
-    copy_to_parent "$REVIEW_TMPDIR/oos-accepted-review.md" oos-accepted-review.md
+    zero_emit_args=(
+        --tally-file "$zero_tally_file"
+        --accepted-findings-file "$zero_accepted_file"
+        --oos-file "$REVIEW_TMPDIR/oos.md"
+        --review-tmpdir "$REVIEW_TMPDIR"
+        --round "$ROUND_NUM"
+        --mode "$MODE"
+        --scout-status "$scout_status"
+        --dynamic-slots "$dynamic_slots"
+        --static-slot-count "$static_slot_count"
+    )
+    [[ -n "$SESSION_ENV_PATH" ]] && zero_emit_args+=(--session-env-path "$SESSION_ENV_PATH")
+    [[ -n "${IMPLEMENT_TMPDIR:-}" ]] && zero_emit_args+=(--implement-tmpdir "$IMPLEMENT_TMPDIR")
+    if emit_tally_with_failure_isolation "5" "zero-findings" "$zero_emit_out" "${zero_emit_args[@]}"; then
+        copy_to_parent "$REVIEW_TMPDIR/rejected-findings.md" rejected-findings.md
+        copy_to_parent "$REVIEW_TMPDIR/oos-accepted-review.md" oos-accepted-review.md
+    fi
     flush_round_log
     emit_kv REVIEW_CORE_STATUS zero-findings
     emit_kv ROUND_NUM "$ROUND_NUM"
@@ -480,9 +549,25 @@ voting_tally_file=$(kv_get "$tally_out" VOTING_TALLY_FILE)
 [[ -n "$voting_tally_file" ]] && emit_kv VOTING_TALLY_FILE "$voting_tally_file"
 
 if [[ "$tally_status" == "main-agent-vote-required" ]]; then
+    main_agent_emit_out="$REVIEW_TMPDIR/review-core-main-agent-emit.env"
+    main_agent_emit_args=(
+        --tally-file "$tally_file"
+        --accepted-findings-file "$accepted_file"
+        --oos-file "$REVIEW_TMPDIR/oos.md"
+        --review-tmpdir "$REVIEW_TMPDIR"
+        --round "$ROUND_NUM"
+        --mode "$MODE"
+        --scout-status "$scout_status"
+        --dynamic-slots "$dynamic_slots"
+        --static-slot-count "$static_slot_count"
+    )
+    [[ -n "$SESSION_ENV_PATH" ]] && main_agent_emit_args+=(--session-env-path "$SESSION_ENV_PATH")
+    [[ -n "${IMPLEMENT_TMPDIR:-}" ]] && main_agent_emit_args+=(--implement-tmpdir "$IMPLEMENT_TMPDIR")
     : > "$REVIEW_TMPDIR/rejected-findings.md"
-    copy_to_parent "$REVIEW_TMPDIR/rejected-findings.md" rejected-findings.md
-    copy_to_parent "$REVIEW_TMPDIR/oos-accepted-review.md" oos-accepted-review.md
+    if emit_tally_with_failure_isolation "5" "main-agent-vote-required" "$main_agent_emit_out" "${main_agent_emit_args[@]}"; then
+        copy_to_parent "$REVIEW_TMPDIR/rejected-findings.md" rejected-findings.md
+        copy_to_parent "$REVIEW_TMPDIR/oos-accepted-review.md" oos-accepted-review.md
+    fi
     flush_round_log
     emit_kv REVIEW_CORE_STATUS main-agent-vote-required
     emit_kv ROUND_NUM "$ROUND_NUM"
@@ -510,6 +595,9 @@ emit_args=(
 )
 [[ -n "$SESSION_ENV_PATH" ]] && emit_args+=(--session-env-path "$SESSION_ENV_PATH")
 [[ -n "${IMPLEMENT_TMPDIR:-}" ]] && emit_args+=(--implement-tmpdir "$IMPLEMENT_TMPDIR")
+emit_args+=(--scout-status "$scout_status")
+emit_args+=(--dynamic-slots "$dynamic_slots")
+emit_args+=(--static-slot-count "$static_slot_count")
 "$EMIT_TALLY_SH" "${emit_args[@]}" > "$emit_out"
 
 rejected_file="$REVIEW_TMPDIR/rejected-findings.md"

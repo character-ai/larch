@@ -20,7 +20,7 @@ fail() { echo "  FAIL: $1"; FAIL_COUNT=$((FAIL_COUNT + 1)); }
 
 write_subject() {
     local root=$1
-    mkdir -p "$root/scripts" "$root/.claude/skills/bump-version/scripts"
+    mkdir -p "$root/scripts" "$root/.claude/skills/bump-version/scripts" "$root/skills/implement/scripts"
     cp "$REPO_ROOT/scripts/ship-pr.sh" "$root/scripts/ship-pr.sh"
     cp "$REPO_ROOT/scripts/lib-quiet.sh" "$root/scripts/lib-quiet.sh"
     cp "$REPO_ROOT/scripts/lib-net.sh" "$root/scripts/lib-net.sh"
@@ -107,6 +107,11 @@ sentinel_dir="${LARCH_LOG_STUB_SENTINEL_DIR:-/tmp}"
 printf 'LARCH_LOG_ARGS=%s\n' "$*" \
     >> "$sentinel_dir/larch-log-calls.txt"
 SH
+    cat > "$root/skills/implement/scripts/write-final-report.sh" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'STATUS=ok\n'
+SH
     cat > "$root/scripts/ci-wait.sh" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -148,6 +153,7 @@ case "$(basename "$0")" in
   sanitize-mermaid-fragment.sh)
     echo "STATUS=ok" ;;
   append-tool-failure.sh)
+    redact=false
     while [[ $# -gt 0 ]]; do
       case "$1" in
         --log) log=$2; shift 2 ;;
@@ -156,7 +162,7 @@ case "$(basename "$0")" in
         --tool) tool=$2; shift 2 ;;
         --exit-code) exit_code=$2; shift 2 ;;
         --output-file) output_file=$2; shift 2 ;;
-        --redact) shift ;;
+        --redact) redact=true; shift ;;
         *) shift ;;
       esac
     done
@@ -164,7 +170,11 @@ case "$(basename "$0")" in
     {
       printf '### %s\n\n' "${category:-Tool Failures}"
       printf -- '- Step %s — %s failed (exit %s)\n' "${site:-unknown}" "${tool:-unknown}" "${exit_code:-unknown}"
-      cat "${output_file:-/dev/null}" 2>/dev/null || true
+      if [[ "${redact:-false}" == true ]]; then
+        sed -E 's/sk-ant-[[:alnum:]]+/[REDACTED]/g' "${output_file:-/dev/null}" 2>/dev/null || true
+      else
+        cat "${output_file:-/dev/null}" 2>/dev/null || true
+      fi
     } >> "${log:-/tmp/execution-issues.md}"
     echo "APPENDED=true"
     echo "LOG=${log:-}"
@@ -225,7 +235,7 @@ SH
 #!/usr/bin/env bash
 exit 0
 SH
-    chmod +x "$root"/scripts/*.sh "$root"/scripts/gh "$root"/scripts/sleep "$root"/.claude/skills/bump-version/scripts/*.sh
+    chmod +x "$root"/scripts/*.sh "$root"/scripts/gh "$root"/scripts/sleep "$root"/.claude/skills/bump-version/scripts/*.sh "$root"/skills/implement/scripts/*.sh
 }
 
 make_repo() {
@@ -603,6 +613,82 @@ if [ -f "$tmp/summary-upsert-called" ]; then
     fail "postmerge should not call tracking-issue-summary.sh (owned by prompt-side Step 18)"
 else
     ok "postmerge does not call tracking-issue-summary.sh (Step 18 owns it)"
+fi
+
+root=$(make_repo pr_create_final_summary)
+tmp=$(make_tmpdir)
+mkdir -p "$root/skills/implement/scripts"
+cat > "$root/skills/implement/scripts/write-final-report.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+tmpdir=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --implement-tmpdir) tmpdir=$2; shift 2 ;;
+    *) shift ;;
+  esac
+done
+awk -F= '$1=="PR_URL"{print "PR_URL_AT_WRITE=" substr($0, index($0, "=") + 1)}' "$tmpdir/ship-pr-state.sh" \
+  > "$tmpdir/final-summary-write.log"
+printf 'STATUS=ok\n'
+STUB
+chmod +x "$root/skills/implement/scripts/write-final-report.sh"
+cat > "$root/scripts/git-push.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'git-push-called\n' >> "${IMPLEMENT_TMPDIR:?}/git-push-calls.log"
+printf 'BRANCH=feature/test\n'
+STUB
+chmod +x "$root/scripts/git-push.sh"
+write_state "$tmp/ship-pr-state.sh" pr-create
+run_subject "$root" "$tmp" "$tmp/rc"
+assert_rc "$tmp/rc" 0 "pr-create final summary refresh exits 0"
+if grep -qxF 'PR_URL_AT_WRITE=https://example.invalid/pr/123' "$tmp/final-summary-write.log"; then
+    ok "pr-create final summary refresh sees persisted PR_URL"
+else
+    fail "pr-create final summary refresh sees persisted PR_URL"
+    sed 's/^/    write: /' "$tmp/final-summary-write.log" 2>/dev/null || true
+fi
+if grep -qxF 'git-push-called' "$tmp/git-push-calls.log"; then
+    ok "pr-create post-log-refresh commit is pushed before CI wait"
+else
+    fail "pr-create post-log-refresh commit is pushed before CI wait"
+    sed 's/^/    push: /' "$tmp/git-push-calls.log" 2>/dev/null || true
+fi
+
+root=$(make_repo pr_create_final_summary_failure)
+tmp=$(make_tmpdir)
+mkdir -p "$root/skills/implement/scripts"
+cat > "$root/skills/implement/scripts/write-final-report.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'write-final-report failed sk-ant-abcdefghijklmnopqrstuvwxyz0123456789ABCD\n' >&2
+exit 17
+STUB
+chmod +x "$root/skills/implement/scripts/write-final-report.sh"
+cat > "$root/scripts/git-push.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'git-push-called\n' >> "${IMPLEMENT_TMPDIR:?}/git-push-calls.log"
+printf 'BRANCH=feature/test\n'
+STUB
+chmod +x "$root/scripts/git-push.sh"
+write_state "$tmp/ship-pr-state.sh" pr-create
+run_subject "$root" "$tmp" "$tmp/rc"
+assert_rc "$tmp/rc" 4 "pr-create final summary failure exits 4"
+assert_state_line "$tmp/ship-pr-state.sh" "STALL_TRACKING=true" "pr-create final summary failure marks stall"
+assert_file_absent_or_empty "$tmp/git-push-calls.log" "pr-create final summary failure skips post-log push"
+if grep -Fq 'write-final-report.sh failed (exit 17)' "$tmp/execution-issues.md"; then
+    ok "pr-create final summary failure records execution issue"
+else
+    fail "pr-create final summary failure records execution issue"
+    sed 's/^/    issues: /' "$tmp/execution-issues.md" 2>/dev/null || true
+fi
+if grep -Fq 'sk-ant-abcdefghijklmnopqrstuvwxyz0123456789ABCD' "$tmp/execution-issues.md"; then
+    fail "pr-create final summary failure should redact stderr"
+    sed 's/^/    issues: /' "$tmp/execution-issues.md" 2>/dev/null || true
+else
+    ok "pr-create final summary failure redacts stderr"
 fi
 
 # Postmerge manifest finalization: with PR_CLOSED=true, larch-log manifest runs.
