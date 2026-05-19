@@ -260,8 +260,9 @@ fi
 
 retry_fail_tmp="$TMP/retry-fail"
 retry_fail_count_file="$TMP/retry-fail-count.txt"
-# No LARCH_EXECUTION_ISSUES_LOG: check_voter_parse_rate falls back to the review-local
-# execution-issues.md path under REVIEW_TMPDIR, so no parent issues-log write is possible.
+# No LARCH_EXECUTION_ISSUES_LOG. For this harness-shaped REVIEW_TMPDIR, the parse-rate
+# guard skips append-tool-failure.sh entirely, so stderr and the local diag sidecar
+# remain the only warning surfaces.
 out=$(PATH="$STUB_BIN:$PATH" CLAUDE_STUB_MODE=parse_retry_fail CLAUDE_STUB_COUNT_FILE="$retry_fail_count_file" "$SCRIPT" \
     --ballot-file "$BALLOT" \
     --review-tmpdir "$retry_fail_tmp" \
@@ -328,8 +329,9 @@ fi  # end section: retry-cursor
 if section_runs retry-codex-fail-and-fallback; then
 retry_fail_codex_tmp="$TMP/retry-fail-codex"
 retry_fail_codex_count_file="$TMP/retry-fail-codex-count.txt"
-# No LARCH_EXECUTION_ISSUES_LOG: check_voter_parse_rate falls back to the review-local
-# execution-issues.md path under REVIEW_TMPDIR for this codex fixture too.
+# No LARCH_EXECUTION_ISSUES_LOG. For this harness-shaped codex fixture too, the
+# parse-rate guard skips append-tool-failure.sh entirely instead of appending to a
+# review-local execution-issues.md fallback.
 out=$(PATH="$STUB_BIN:$PATH" CODEX_STUB_MODE=parse_retry_fail CODEX_STUB_COUNT_FILE="$retry_fail_codex_count_file" "$SCRIPT" \
     --ballot-file "$BALLOT" \
     --review-tmpdir "$retry_fail_codex_tmp" \
