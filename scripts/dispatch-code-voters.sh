@@ -105,18 +105,25 @@ parse_rate_check_tool_label() {
     esac
 }
 
-should_suppress_parse_rate_issue_append() {
-    local voter_path="$1"
-    local review_basename
-    review_basename="$(basename "$REVIEW_TMPDIR")"
-    case "$review_basename" in
-        test-dispatch-code-voters.*|test-collect-*|test-check-*|test-tally-*)
-            [[ "$voter_path" == "$REVIEW_TMPDIR"/* ]]
+is_harness_review_path() {
+    local path="$1"
+    case "$path" in
+        */test-dispatch-code-voters.*|\
+        */test-collect-*|\
+        */test-check-*|\
+        */test-tally-*)
+            return 0
             ;;
         *)
             return 1
             ;;
     esac
+}
+
+should_suppress_parse_rate_issue_append() {
+    local voter_path="$1"
+    [[ "$voter_path" == "$REVIEW_TMPDIR"/* ]] || return 1
+    is_harness_review_path "$REVIEW_TMPDIR" || is_harness_review_path "$voter_path"
 }
 
 check_voter_parse_rate() {

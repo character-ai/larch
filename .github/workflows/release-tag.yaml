@@ -9,6 +9,8 @@ permissions:
   contents: write
 
 env:
+  # Force JavaScript-based actions onto Node.js 24 to suppress the
+  # "Node.js 20 actions are deprecated" warning until GitHub flips the default.
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:

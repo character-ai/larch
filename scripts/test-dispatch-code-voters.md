@@ -14,9 +14,9 @@ The harness unsets `LARCH_EXECUTION_ISSUES_LOG`, `SESSION_ENV_PATH`, and `IMPLEM
 - `retry-codex-success` (scenario 8): codex voter parse-rate retry success.
 - `retry-cursor` (scenario 9): cursor voter parse-rate retry success.
 - `retry-codex-fail-and-fallback` (scenarios 10-11): codex parse-rate retry failure; all-claude fallback parse-rate failure.
-- Regression: env isolation — `LARCH_EXECUTION_ISSUES_LOG` passed with a test-tmpdir `--review-tmpdir`; issues-log not written (path guard fires).
-- Regression: harness-ancestor path guard — local diag file written; issues-log suppressed when `voter_path` is under a harness-ancestor dir.
-- Regression: production-shape — `voter_path` outside harness-ancestor dirs; both local diag file and issues-log written.
+- Regression: env isolation — `LARCH_EXECUTION_ISSUES_LOG` passed explicitly but `REVIEW_TMPDIR` is nested under a harness tmpdir; parent issues-log not written.
+- Regression: harness-ancestor path guard — local diag file written; issues-log suppressed when `REVIEW_TMPDIR` and `voter_path` stay inside the same harness tree.
+- Regression: production-shape — `REVIEW_TMPDIR` outside the harness prefixes; both local diag file and issues-log written.
 
 ## Invocation
 

@@ -260,8 +260,8 @@ fi
 
 retry_fail_tmp="$TMP/retry-fail"
 retry_fail_count_file="$TMP/retry-fail-count.txt"
-# No LARCH_EXECUTION_ISSUES_LOG: the path guard in check_voter_parse_rate suppresses
-# append-tool-failure.sh for test-tmpdir voter paths, so no issues-log write expected.
+# No LARCH_EXECUTION_ISSUES_LOG: check_voter_parse_rate falls back to the review-local
+# execution-issues.md path under REVIEW_TMPDIR, so no parent issues-log write is possible.
 out=$(PATH="$STUB_BIN:$PATH" CLAUDE_STUB_MODE=parse_retry_fail CLAUDE_STUB_COUNT_FILE="$retry_fail_count_file" "$SCRIPT" \
     --ballot-file "$BALLOT" \
     --review-tmpdir "$retry_fail_tmp" \
@@ -328,7 +328,8 @@ fi  # end section: retry-cursor
 if section_runs retry-codex-fail-and-fallback; then
 retry_fail_codex_tmp="$TMP/retry-fail-codex"
 retry_fail_codex_count_file="$TMP/retry-fail-codex-count.txt"
-# No LARCH_EXECUTION_ISSUES_LOG: path guard suppresses append-tool-failure.sh for test-tmpdir paths.
+# No LARCH_EXECUTION_ISSUES_LOG: check_voter_parse_rate falls back to the review-local
+# execution-issues.md path under REVIEW_TMPDIR for this codex fixture too.
 out=$(PATH="$STUB_BIN:$PATH" CODEX_STUB_MODE=parse_retry_fail CODEX_STUB_COUNT_FILE="$retry_fail_codex_count_file" "$SCRIPT" \
     --ballot-file "$BALLOT" \
     --review-tmpdir "$retry_fail_codex_tmp" \
@@ -362,8 +363,9 @@ grep -Fq "voter_file=$retry_fail_fallback_tmp/codex-vote-output-phase3.txt" "$re
     || { echo "FAIL: fallback-claude fixture diag should bind to the phase3 codex slot output path" >&2; exit 1; }
 fi  # end section: retry-codex-fail-and-fallback
 
-# Regression 1: env isolation — LARCH_EXECUTION_ISSUES_LOG set on invocation but voter_path
-# is under a test-dispatch-code-voters.* tmpdir; path guard must suppress the write.
+# Regression 1: env isolation — LARCH_EXECUTION_ISSUES_LOG set on invocation, but the
+# review tmpdir lives under a test-dispatch-code-voters.* harness ancestor, so the guard
+# must suppress the parent issues-log write while still writing the local diag sidecar.
 env_isolation_parent="$TMP/env-isolation-parent.md"
 rm -f "$env_isolation_parent"
 env_isolation_count="$TMP/env-isolation-count.txt"
@@ -382,7 +384,8 @@ if [[ -s "$env_isolation_parent" ]]; then
     exit 1
 fi
 
-# Regression 2: test-tmpdir path guard — diag file written locally but issues-log not written.
+# Regression 2: harness-ancestor path guard — diag file written locally but the explicit
+# parent issues-log remains untouched for review tmpdirs nested under the harness tmp root.
 path_guard_issues="$TMP/path-guard-issues.md"
 rm -f "$path_guard_issues"
 path_guard_review="$TMP/path-guard-review"
@@ -401,8 +404,8 @@ if [[ -s "$path_guard_issues" ]]; then
     exit 1
 fi
 
-# Regression 3: production-shape — voter_path outside test-dispatch-code-voters; both
-# local diag file and issues-log must be written, including codex-specific labels.
+# Regression 3: production-shape — review tmpdir outside any harness ancestry, so both
+# local diag files and the explicit issues-log must be written with tool-specific labels.
 (
     prod_tmp="$(mktemp -d "${TMPDIR:-/tmp}/review-prod-shape.XXXXXX")"
     trap 'rm -rf "$prod_tmp"' EXIT
@@ -422,6 +425,8 @@ fi
         || { echo "FAIL: regression3 prod-shape — local claude diag file not written" >&2; exit 1; }
     grep -Fq 'dispatch-code-voters.sh claude' "$prod_issues" \
         || { echo "FAIL: regression3 prod-shape — claude issues-log entry missing" >&2; exit 1; }
+    grep -Fq 'launch-claude-review.sh (voter parse-rate check)' "$prod_issues" \
+        || { echo "FAIL: regression3 prod-shape — claude tool label missing from issues-log" >&2; exit 1; }
 
     prod_codex_issues="$prod_tmp/prod-codex-issues.md"
     out=$(PATH="$STUB_BIN:$PATH" \
