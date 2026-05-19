@@ -17,6 +17,13 @@ assert_contains() {
     grep -Fq "$needle" <<< "$haystack" || fail "$label: missing [$needle]"
 }
 
+assert_occurrences() {
+    local haystack="$1" needle="$2" expected="$3" label="$4"
+    local actual
+    actual=$(grep -Foc "$needle" <<< "$haystack")
+    [[ "$actual" -eq "$expected" ]] || fail "$label: expected $expected occurrences of [$needle], found $actual"
+}
+
 make_plugin_root() {
     local base="$1" version="$2"
     local root="$base/$version"
@@ -97,6 +104,22 @@ EOF
     chmod +x "$path"
 }
 
+write_stub_rm() {
+    local path="$1"
+    cat > "$path" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+target="${*: -1}"
+if [[ -n "${RM_FAIL_VERSION:-}" && "$target" == */"$RM_FAIL_VERSION" ]]; then
+    exit 1
+fi
+
+/bin/rm "$@"
+EOF
+    chmod +x "$path"
+}
+
 run_case() {
     local name="$1"
     local work="$TMP/$name"
@@ -116,6 +139,7 @@ run_case() {
     plugin_root=$(make_plugin_root "$cache_root" "${PLUGIN_ROOT_VERSION:-29.1.20}")
     write_stub_claude "$bin/claude"
     write_stub_gh "$bin/gh"
+    write_stub_rm "$bin/rm"
     cat > "$state_file" <<STATE
 INSTALLED_VERSION="${INITIAL_INSTALLED_VERSION:-}"
 STATE
@@ -164,6 +188,7 @@ STATE
             TEST_CACHE_DIR="$cache_root" \
             GH_OUTPUT="${GH_OUTPUT:-}" \
             INSTALL_RESULT_VERSION="${INSTALL_RESULT_VERSION:-}" \
+            RM_FAIL_VERSION="${RM_FAIL_VERSION:-}" \
             LARCH_UPGRADE_FALLBACK_SESSION_ROOTS="$fallback_session_roots" \
             LARCH_QUIET_BREADCRUMBS=1 \
             "$SCRIPT" 2>&1
@@ -339,5 +364,28 @@ for version in 29.1.20 29.1.21 29.1.24 29.1.25 29.1.26 29.1.27 29.1.28 29.1.30; 
 done
 assert_contains "$CASE_OUTPUT" "Warning: preserving cached larch version '29.1.20' because an active session, stale session metadata, or the executing cached plugin root still references it." "multi-pinned-oldest-still-trims-to-eight warning 29.1.20"
 assert_contains "$CASE_OUTPUT" "Warning: preserving cached larch version '29.1.21' because an active session, stale session metadata, or the executing cached plugin root still references it." "multi-pinned-oldest-still-trims-to-eight warning 29.1.21"
+assert_occurrences "$CASE_OUTPUT" "Warning: preserving cached larch version '29.1.20' because an active session, stale session metadata, or the executing cached plugin root still references it." 1 "multi-pinned-oldest-still-trims-to-eight dedupe 29.1.20"
+assert_occurrences "$CASE_OUTPUT" "Warning: preserving cached larch version '29.1.21' because an active session, stale session metadata, or the executing cached plugin root still references it." 1 "multi-pinned-oldest-still-trims-to-eight dedupe 29.1.21"
+
+GH_OUTPUT=$'29.1.30\n29.1.29\n'
+INITIAL_INSTALLED_VERSION="29.1.29"
+PLUGIN_ROOT_VERSION="29.1.29"
+INSTALL_RESULT_VERSION="29.1.30"
+CACHED_VERSIONS="29.1.21 29.1.22 29.1.23 29.1.24 29.1.25 29.1.26 29.1.27 29.1.28 29.1.29"
+RM_FAIL_VERSION="29.1.21"
+unset SESSION_PINNED_VERSIONS SESSION_PINNED_ROOT SESSION_PINNED_ROOT_LITERAL XDG_SESSION_PINNED_VERSIONS TMP_SESSION_PINNED_VERSIONS
+SET_LARCH_SESSIONS_DIR=1
+unset FALLBACK_SESSION_ROOTS
+run_case cap-prune-rm-failure-skips-retry
+[[ "$CASE_RC" -eq 0 ]] || fail "cap-prune-rm-failure-skips-retry exit $CASE_RC"
+[[ -d "$CASE_CACHE_ROOT/29.1.21" ]] || fail "cap-prune-rm-failure-skips-retry should retain failed version"
+[[ ! -d "$CASE_CACHE_ROOT/29.1.22" ]] || fail "cap-prune-rm-failure-skips-retry should prune next oldest version"
+[[ ! -d "$CASE_CACHE_ROOT/29.1.23" ]] || fail "cap-prune-rm-failure-skips-retry should prune the second-oldest remaining version"
+for version in 29.1.24 29.1.25 29.1.26 29.1.27 29.1.28 29.1.29 29.1.30; do
+    [[ -d "$CASE_CACHE_ROOT/$version" ]] || fail "cap-prune-rm-failure-skips-retry should keep $version"
+done
+assert_contains "$CASE_OUTPUT" "Warning: failed to prune cached larch version '29.1.21'." "cap-prune-rm-failure-skips-retry warning"
+assert_occurrences "$CASE_OUTPUT" "Warning: failed to prune cached larch version '29.1.21'." 1 "cap-prune-rm-failure-skips-retry warning count"
+unset RM_FAIL_VERSION
 
 printf 'PASS: test-upgrade-larch-prune.sh\n'

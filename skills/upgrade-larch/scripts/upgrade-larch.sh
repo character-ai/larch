@@ -22,6 +22,22 @@ warn_prune_failure() {
     larch_err "Warning: failed to prune cached larch version '${version}'."
 }
 
+warn_preserved_active_version_once() {
+    local version="$1"
+    local warned_version
+
+    if [ "${#WARNED_ACTIVE_SESSION_VERSIONS[@]}" -gt 0 ]; then
+        for warned_version in "${WARNED_ACTIVE_SESSION_VERSIONS[@]}"; do
+            if [ "$warned_version" = "$version" ]; then
+                return 0
+            fi
+        done
+    fi
+
+    larch_err "Warning: preserving cached larch version '${version}' because an active session, stale session metadata, or the executing cached plugin root still references it."
+    WARNED_ACTIVE_SESSION_VERSIONS+=("$version")
+}
+
 is_safe_version() {
     [[ "$1" =~ ^[0-9]+(\.[0-9]+)*$ ]]
 }
@@ -264,9 +280,10 @@ if [ "$VERIFIED_TARGET" = true ]; then
     if is_safe_version "$INSTALLED_VERSION"; then
         ACTIVE_SESSION_VERSIONS+=("$INSTALLED_VERSION")
     fi
+    WARNED_ACTIVE_SESSION_VERSIONS=()
     if [ "${#SESSION_PLUGIN_VERSIONS[@]}" -gt 0 ]; then
         for session_pin in "${SESSION_PLUGIN_VERSIONS[@]}"; do
-            larch_err "Warning: preserving cached larch version '${session_pin}' because an active session, stale session metadata, or the executing cached plugin root still references it."
+            warn_preserved_active_version_once "$session_pin"
         done
     fi
 
@@ -303,7 +320,7 @@ if [ "$VERIFIED_TARGET" = true ]; then
                 if [ "${#ACTIVE_SESSION_VERSIONS[@]}" -gt 0 ]; then
                     for active_version in "${ACTIVE_SESSION_VERSIONS[@]}"; do
                         if [ "$version" = "$active_version" ]; then
-                            larch_err "Warning: preserving cached larch version '${version}' because an active session, stale session metadata, or the executing cached plugin root still references it."
+                            warn_preserved_active_version_once "$version"
                             continue 2
                         fi
                     done
