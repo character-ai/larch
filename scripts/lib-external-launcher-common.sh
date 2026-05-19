@@ -117,7 +117,7 @@ external_is_auth_failure() {
 }
 
 external_is_transient_infra_failure() {
-    local tool="$1" exit_code="$2" elapsed_s="$3" output_file="$4"
+    local tool="$1" exit_code="$2" output_file="$4"
     # Check the output file (where the tool would write its actual response),
     # not the sidecar — the sidecar always contains run-external-agent.sh's
     # failure message even on 0-output runs, so its size is never a reliable
@@ -142,7 +142,6 @@ external_is_transient_infra_failure() {
         output_size=${output_size// /}
     fi
     [[ "$output_size" -eq 0 ]] || return 1
-    [[ "$elapsed_s" -le 5 ]] || return 1
     return 0
 }
 

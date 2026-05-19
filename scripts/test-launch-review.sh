@@ -123,7 +123,8 @@ assert_grep "flag-like timing-task-kind message" "non-empty, non-flag-like value
 
 STUB_BIN="$TMPDIR/bin"
 mkdir -p "$STUB_BIN"
-cat > "$STUB_BIN/codex" <<'STUB_CODEX'
+CODEX_DEFAULT_STUB="$STUB_BIN/codex-default"
+cat > "$CODEX_DEFAULT_STUB" <<'STUB_CODEX'
 #!/usr/bin/env bash
 set -euo pipefail
 : "${CODEX_STUB_ARGV_LOG:?}"
@@ -159,7 +160,8 @@ done
 printf 'codex review ok\n' > "$output"
 printf 'tokens used\n1\n'
 STUB_CODEX
-chmod +x "$STUB_BIN/codex"
+chmod +x "$CODEX_DEFAULT_STUB"
+ln -sf "$CODEX_DEFAULT_STUB" "$STUB_BIN/codex"
 
 OUTDIR_REAL="$TMPDIR/out-real"
 mkdir -p "$OUTDIR_REAL"
@@ -728,7 +730,7 @@ else
     pass
 fi
 
-# Case SL-transient-retry-codex-7: stub exits 7 with empty sidecar on attempt 1,
+# Case SL-transient-retry-codex-7: stub exits 7 with empty output on attempt 1,
 # returns valid output on attempt 2. Launcher must retry and exit 0.
 SL_TRANSIENT_CODEX7_COUNT="$TMPDIR/sl-transient-codex7-count.txt"
 printf '0' > "$SL_TRANSIENT_CODEX7_COUNT"
@@ -766,7 +768,7 @@ SL_TRANSIENT_CODEX7_ATTEMPTS=$(cat "$SL_TRANSIENT_CODEX7_COUNT" 2>/dev/null || e
 assert_eq "SL-transient-retry-codex-7 stub invoked exactly 2 times" "2" "$SL_TRANSIENT_CODEX7_ATTEMPTS"
 rm -f "$SL_TRANSIENT_CODEX7_COUNT"
 
-# Case SL-transient-retry-exhausted: stub exits 7 with empty sidecar on all 3
+# Case SL-transient-retry-exhausted: stub exits 7 with empty output on all 3
 # attempts. Launcher must give up after 2 retries (3 total attempts) and exit non-zero.
 SL_TRANSIENT_EXHAUSTED_COUNT="$TMPDIR/sl-transient-exhausted-count.txt"
 printf '0' > "$SL_TRANSIENT_EXHAUSTED_COUNT"
@@ -857,13 +859,15 @@ LARCH_TRANSIENT_RETRY_DELAY=0 \
     LARCH_EXTERNAL_SERIAL_LOCK_DELAY=0 \
     PATH="$STUB_BIN:$PATH" \
     "$LAUNCHER" --output "$OUT_TRANSIENT_NOAPPLY" --timeout 10 --prompt "sl-transient-not-applied" >/dev/null 2>&1
+RC_TRANSIENT_NOAPPLY=$?
 set -e
+assert_eq "SL-transient-not-applied exits 1 without transient retry" "1" "$RC_TRANSIENT_NOAPPLY"
 SL_TRANSIENT_NOAPPLY_ATTEMPTS=$(cat "$SL_TRANSIENT_NOAPPLY_COUNT" 2>/dev/null || echo "0")
 assert_eq "SL-transient-not-applied stub invoked exactly 1 time (exit 1 not in allowlist)" "1" "$SL_TRANSIENT_NOAPPLY_ATTEMPTS"
 rm -f "$SL_TRANSIENT_NOAPPLY_COUNT"
 
 # Restore normal codex stub for remaining tests.
-ln -sf "$STUB_BIN/codex" "$STUB_BIN/codex" 2>/dev/null || true
+ln -sf "$CODEX_DEFAULT_STUB" "$STUB_BIN/codex"
 
 if (( FAIL > 0 )); then
     printf 'FAIL: test-launch-review.sh --tool codex - %s failed, %s passed\n' "$FAIL" "$PASS" >&2

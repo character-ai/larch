@@ -58,22 +58,22 @@ assert_returns "cursor exit 1 returns 1 (not transient)" 1 \
 assert_returns "cursor exit 3 returns 1 (not transient)" 1 \
     external_is_transient_infra_failure "cursor" "3" "0" "$EMPTY_OUTPUT"
 
-# Codex exit 7 + empty output + elapsed<=5: must return 0
+# Codex exit 7 + empty output: must return 0
 assert_returns "codex exit 7 + empty output + 0s = transient (returns 0)" 0 \
     external_is_transient_infra_failure "codex" "7" "0" "$EMPTY_OUTPUT"
 
 assert_returns "codex exit 7 + empty output + 5s = transient (returns 0)" 0 \
     external_is_transient_infra_failure "codex" "7" "5" "$EMPTY_OUTPUT"
 
-# Codex exit 5 + empty output + elapsed<=5: must return 0
+# Codex exit 5 + empty output: must return 0
 assert_returns "codex exit 5 + empty output + 0s = transient (returns 0)" 0 \
     external_is_transient_infra_failure "codex" "5" "0" "$EMPTY_OUTPUT"
 
-# Cursor exit 8 + empty output + elapsed<=5: must return 0
+# Cursor exit 8 + empty output: must return 0
 assert_returns "cursor exit 8 + empty output + 0s = transient (returns 0)" 0 \
     external_is_transient_infra_failure "cursor" "8" "0" "$EMPTY_OUTPUT"
 
-# Cursor exit 4 + empty output + elapsed<=5: must return 0
+# Cursor exit 4 + empty output: must return 0
 assert_returns "cursor exit 4 + empty output + 0s = transient (returns 0)" 0 \
     external_is_transient_infra_failure "cursor" "4" "0" "$EMPTY_OUTPUT"
 
@@ -84,11 +84,10 @@ assert_returns "codex exit 7 + non-empty output returns 1" 1 \
 assert_returns "cursor exit 8 + non-empty output returns 1" 1 \
     external_is_transient_infra_failure "cursor" "8" "0" "$NONEMPTY_OUTPUT"
 
-# elapsed > 5: must return 1 (even with valid exit code and empty output)
-assert_returns "codex exit 7 + elapsed=6 returns 1" 1 \
+assert_returns "codex exit 7 + elapsed=6 still returns 0 when output is empty" 0 \
     external_is_transient_infra_failure "codex" "7" "6" "$EMPTY_OUTPUT"
 
-assert_returns "cursor exit 8 + elapsed=10 returns 1" 1 \
+assert_returns "cursor exit 8 + elapsed=10 still returns 0 when output is empty" 0 \
     external_is_transient_infra_failure "cursor" "8" "10" "$EMPTY_OUTPUT"
 
 if (( FAIL > 0 )); then
