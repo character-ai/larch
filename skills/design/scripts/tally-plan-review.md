@@ -16,7 +16,7 @@
 - Optional `--session-env-path FILE` enables nested-run OOS handoff.
 - The parser supports design-local `### FINDING_N:` and `### OOS_N:` blocks. Voter files use anchored `ID: VOTE` lines (e.g. `FINDING_1: YES`); substring matching is rejected to prevent `FINDING_10` matching inside `FINDING_100`.
 - Acceptance threshold comes from `scripts/lib-vote-tally.sh::classify_result`: 3+ eligible voters require 2+ YES; 2 eligible voters require unanimous YES; 1 eligible voter is a binding single-judge decision; 0 eligible voters emit `TALLY_PLAN_REVIEW_STATUS=main-agent-vote-required` for main-agent adjudication.
-- The quorum basis is the panel-level available voter count, not the per-finding non-neutral response count. NEUTRAL abstentions do not reduce the tier.
+- The quorum basis is the panel-level available voter count, not the per-finding non-`JUDGE_ERROR` response count. Per-judge `JUDGE_ERROR` fallbacks do not reduce the tier.
 - Accepted in-scope findings are written to `accepted-plan-findings.md`.
 - Rejected or neutral in-scope findings are written to `rejected-findings.md`.
 - OOS visibility output is written to `oos.md`.
@@ -32,7 +32,7 @@ The regression harness is `make test-tally-plan-review`, wired into `test-harnes
 
 ## Harness
 
-`test-tally-plan-review.sh` covers all-yes, mixed votes, tie/neutral, single-judge YES/NO/EXONERATE, 0-judge main-agent-required, no quorum reduction for NEUTRAL votes, OOS accepted/rejected, security-tagged OOS exclusion, HARD-path plan-review-tally batch flushing, and scoreboard rendering.
+`test-tally-plan-review.sh` covers all-yes, mixed votes, tie/neutral, single-judge YES/NO/EXONERATE, 0-judge main-agent-required, no quorum reduction for per-judge `JUDGE_ERROR` fallbacks, OOS accepted/rejected, security-tagged OOS exclusion, HARD-path plan-review-tally batch flushing, and scoreboard rendering.
 
 ## Edit In Sync
 

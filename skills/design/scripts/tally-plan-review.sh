@@ -197,7 +197,7 @@ fi
         printf '**⚠ Degraded plan-review panel: %s judge(s) available. Panel tier: %s.**\n\n' "$eligible_count" "$tier_label"
     fi
     printf '## Findings\n\n'
-    printf '| Item | YES | NO | Exon | JErr | Result |\n'
+    printf '| Item | YES | NO | Exon | JERR | Result |\n'
     printf '|---|---:|---:|---:|---:|---|\n'
 
     for block in "${block_files[@]+"${block_files[@]}"}"; do
