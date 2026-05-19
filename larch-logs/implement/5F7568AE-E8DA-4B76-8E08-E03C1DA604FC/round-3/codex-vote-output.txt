@@ -1,0 +1,25 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: EXONERATE -- committed run-log noise is real but not worth a tracking issue.
+FINDING_4: EXONERATE -- historical run-log wording drift is harmless and not issue-worthy.
+FINDING_5: NO -- the extra assertion is harmless and does not create a future-tracking issue.
+FINDING_6: YES
+FINDING_7: EXONERATE -- the plan drift is real, but the material risk is covered by the concrete final-summary timing findings.
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: NO -- review-core already passes dispatch KVs to emit-tally; dispatch-panel did not need a diff.
+FINDING_11: YES
+FINDING_12: EXONERATE -- plausible robustness edge case, but own producers emit the exact heading and BOM handling is not worth blocking.
+FINDING_13: EXONERATE -- plausible robustness edge case, but own producers emit the exact heading and BOM handling is not worth blocking.
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: YES
+FINDING_18: EXONERATE -- silent failure handling is not ideal, but write-final-report normally writes the committed file before GitHub upsert can fail.
+FINDING_19: EXONERATE -- the cited gh/upsert failure does not normally prevent final-summary.md from being written.
+FINDING_20: EXONERATE -- silent failure is legitimate but unlikely to stale the committed artifact enough to justify added plumbing here.
+FINDING_21: EXONERATE -- speculative future-path coverage gap; the current concrete timing failure is already captured elsewhere.
+FINDING_22: EXONERATE -- useful negative coverage, but not important enough to block this change.
+FINDING_23: NO -- schema v2 is intentional and documented; no strict v1 consumer is identified.
+FINDING_24: EXONERATE -- emit-tally is now the core artifact writer, and duplicating fallback summary logic adds more complexity than warranted.
+FINDING_25: EXONERATE -- emit-tally is now the core artifact writer, and duplicating fallback summary logic adds more complexity than warranted.

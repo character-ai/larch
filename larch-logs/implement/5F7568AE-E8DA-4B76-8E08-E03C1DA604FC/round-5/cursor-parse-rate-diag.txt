@@ -1,0 +1,10 @@
+voter_tool=cursor
+neutral_count=14
+total_findings=14
+voter_file=<TMPDIR>/round-5/cursor-vote-output.txt
+--- first 200 bytes of voter output ---
+Reading the ballot and verifying claims against referenced context files.
+
+Verifying ballot claims against the codebase and diff context.
+
+Verifying `review-core.sh` uses `set -e` at the top and check

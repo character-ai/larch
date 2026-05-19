@@ -1,0 +1,22 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: EXONERATE -- Legitimate edge case, but generated inputs have the title on line 1 and BOM/blank-line hardening is not worth the added parsing complexity.
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: NO -- SCOUT_STATUS is emitted from a controlled status set and jq-escaped; unbounded arbitrary JSON bloat is not a credible regression here.
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: EXONERATE -- The mixed full/compact behavior preserves more rejection data than strict plan fidelity and does not warrant changing behavior.
+FINDING_13: EXONERATE -- The gap is real, but existing focused tests cover the new emit-tally flags and JSON shape well enough for this small integration risk.
+FINDING_14: EXONERATE -- Pre-existing test-stub drift is legitimate but too minor to file a tracking issue.
+FINDING_15: YES
+FINDING_16: EXONERATE -- Keeping “Round N” labels without markdown heading syntax is a harmless presentation choice in the tally body.
+FINDING_17: YES
+FINDING_18: YES
+FINDING_19: YES
+FINDING_20: YES
+FINDING_21: YES
+FINDING_22: YES
