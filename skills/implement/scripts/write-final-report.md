@@ -6,7 +6,7 @@ tracking-issue comment.
 Usage:
 
 ```bash
-write-final-report.sh --implement-tmpdir PATH
+write-final-report.sh --implement-tmpdir PATH [--comment-only]
 ```
 
 All session state is read from files under `IMPLEMENT_TMPDIR` rather than
@@ -28,8 +28,14 @@ upsert failures emit `STATUS=failed` and return non-zero.
 The script writes both `$IMPLEMENT_TMPDIR/summary-final.md` and
 `$IMPLEMENT_TMPDIR/larch-logs/implement/<RUN_ID>/final-summary.md`.
 
-`PR_URL` is provisional until Step 8+ writes `ship-pr-state.sh`. Before that
-state file exists, callers should expect `PR: N/A`. `/implement` therefore
-uses this helper for the terminal Step 17/18 `larch:final-summary` projection,
-after ship/PR state has been established, rather than during the Step 7a
-pre-bump checkpoint.
+When `--comment-only` is passed, the script still rewrites
+`$IMPLEMENT_TMPDIR/summary-final.md` for the GitHub upsert payload but leaves
+the tracked `larch-logs/.../final-summary.md` file untouched. `ship-pr.sh`
+uses this mode immediately after PR creation so the tracking issue gets the
+live PR URL without leaving a dirty run-log tree on disk.
+
+`PR_URL` is provisional until Step 8+ writes `ship-pr-state.sh`. Before PR
+creation, callers should expect `PR: N/A`. `ship-pr.sh` first uses this helper
+before `create-pr.sh` so the placeholder `final-summary.md` is committed into
+the PR branch, then re-runs it with `--comment-only` after PR creation to
+refresh the tracking comment with the live PR URL.

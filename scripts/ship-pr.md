@@ -67,7 +67,7 @@ Transient network classification uses `is_transient_net_signature` from `scripts
 
 - `run_rebase_rebump` bounds infinite rebase storms from concurrent merges to main with `REBASE_COUNT >= 5`. On exhaustion it stalls with `STALL_STEP=10-max-retries` for `ci-initial` or `STALL_STEP=12-max-retries` for `ci-merge`. If `git symbolic-ref HEAD` fails before the rebase call, it stalls with `STALL_STEP=10-detached-head` or `STALL_STEP=12-detached-head` respectively.
 - `run_evaluate_failure` retries `run_ci_fix_vendor` up to 5 times with jittered backoff (~2s/4s/8s/16s ±25%) between attempts, with a detached-HEAD check before each attempt. If `FAILED_RUN_ID` is empty it stalls immediately with the legacy phase token: `STALL_STEP=10` for `ci-initial`, `STALL_STEP=12c` for `ci-merge`. This missing-run-id path is the sole remaining legacy exception; retry exhaustion and detached-HEAD now use the hyphenated tokens listed above.
-- `run_pr_create_phase` derives the PR title from the branch range (`merge-base..HEAD`, falling back to all of `HEAD` when `git merge-base` fails), skipping subjects whose prefix matches `^chore(larch-logs): flush` followed by a space (larch-log flush commits produced by `larch-log-flush.sh`). The first non-matching subject becomes the title; fallback is `"Implement requested changes"` when no non-flush commit exists in the range. After the PR is created (and its body updated when it already existed), the phase writes `pr_number` to the larch-log manifest via `larch-log.sh manifest --field pr_number=N` (which also bumps `updated_at`) and commits the updated manifest with `larch-log.sh commit` when `LARCH_NO_LOGS_COMMIT` is not `true`. Both calls are best-effort; failures are recorded under `Warnings`.
+- `run_pr_create_phase` derives the PR title from the branch range (`merge-base..HEAD`, falling back to all of `HEAD` when `git merge-base` fails), skipping subjects whose prefix matches `^chore(larch-logs): flush` followed by a space (larch-log flush commits produced by `larch-log-flush.sh`). The first non-matching subject becomes the title; fallback is `"Implement requested changes"` when no non-flush commit exists in the range. Before `create-pr.sh`, the phase writes placeholder `final-summary.md` content; a failure there stalls PR creation. When that write succeeds, the phase commits the run-log tree via `larch-log.sh commit` when `LARCH_NO_LOGS_COMMIT` is not `true`, so `create-pr.sh`'s push carries the committed summary onto the remote PR tip. After the PR is created (and its body updated when it already existed), the phase re-runs `write-final-report.sh --comment-only` to refresh only the tracking-issue comment with the live PR URL. The pre-PR `larch-log.sh commit` and the post-create comment refresh are best-effort warnings only.
 - After `implement-finalize.sh postbump` completes with `STATUS=ok` or `STATUS=skipped`, `run_bump_phase` emits a human-readable breadcrumb line: `✅ 8: version bump — CURRENT → NEW (TYPE)` on a real bump, or `⏩ 8: version bump status=skip reason=<NONE|forked>` when the bump was skipped. The orchestrator MUST NOT re-emit these lines as text output (issue #1944). See NEVER #11 in `skills/implement/SKILL.md`.
 - Postbump conflict preserves `CALLER_KIND=step8b_rebase`.
 - `ci-initial` treats `ACTION=merge` as CI passed, writes `CI_PASSED=true`, advances to `ci-merge`, and returns to the internal loop in the same `ship-pr.sh` invocation. `ci-merge` then treats `ACTION=merge` as permission to call `merge-pr.sh`.
@@ -92,10 +92,11 @@ Transient network classification uses `is_transient_net_signature` from `scripts
 
 ## Log Refresh
 
-`run_pr_create_phase` writes the first deterministic `final-summary.md` only after
-persisting `PR_NUMBER`/`PR_URL`, then commits that log refresh and immediately
-pushes the new branch tip before entering CI wait so the remote PR tip includes
-the same run-log tree as the local branch.
+`run_pr_create_phase` writes and commits the placeholder `final-summary.md`
+before `create-pr.sh` so the remote PR tip includes the same run-log tree as
+the local branch on the first push. After `PR_NUMBER`/`PR_URL` are persisted,
+it re-runs `write-final-report.sh --comment-only` to refresh the tracking
+comment via API only; that second pass does not commit or push.
 
 `scripts/refresh-run-logs.sh` re-renders `token-report` and `timing-report` larch-log batches and commits the updated files before each push, so the PR's committed logs always reflect the most recent run state. It is called at three trigger points:
 

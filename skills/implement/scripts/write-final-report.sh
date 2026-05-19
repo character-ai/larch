@@ -15,7 +15,7 @@ source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
 
 usage() {
-    larch_err "Usage: write-final-report.sh --implement-tmpdir PATH"
+    larch_err "Usage: write-final-report.sh --implement-tmpdir PATH [--comment-only]"
 }
 
 fail_usage() {
@@ -33,9 +33,11 @@ read_kv() {
 }
 
 IMPLEMENT_TMPDIR=""
+COMMENT_ONLY=false
 while [ $# -gt 0 ]; do
     case "$1" in
         --implement-tmpdir) [ $# -ge 2 ] || fail_usage "--implement-tmpdir requires a value"; IMPLEMENT_TMPDIR=$2; shift 2 ;;
+        --comment-only) COMMENT_ONLY=true; shift ;;
         --help) usage; exit 0 ;;
         *) fail_usage "unknown option: $1" ;;
     esac
@@ -76,7 +78,9 @@ summary="$IMPLEMENT_TMPDIR/summary-final.md"
     emit_kv ERROR "could not write summary"
     exit 1
 }
-cp "$summary" "$run_dir/final-summary.md" 2>/dev/null || true
+if [ "$COMMENT_ONLY" != "true" ]; then
+    cp "$summary" "$run_dir/final-summary.md" 2>/dev/null || true
+fi
 
 if [ "$ISSUE" = "0" ]; then
     emit_kv COMMENT_URL ""

@@ -1002,7 +1002,7 @@ run_pr_create_phase() {
     # PR was already created.
     fail_file=$(failure_capture_path pr-create)
     final_report_output=$("$SCRIPT_DIR/../skills/implement/scripts/write-final-report.sh" \
-        --implement-tmpdir "$IMPLEMENT_TMPDIR" 2>"$fail_file")
+        --implement-tmpdir "$IMPLEMENT_TMPDIR" --comment-only 2>"$fail_file")
     rc=$?
     printf '%s\n' "$final_report_output" >> "$fail_file"
     [ "$rc" -eq 0 ] || record_failure pr-create "write-final-report.sh post" "$rc" "$fail_file" Warnings

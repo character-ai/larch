@@ -42,6 +42,15 @@ assert_contains 'PR: https://example.test/pr/5' "$(cat "$TMP_ROOT/content.md")" 
 if [ -s "$impl_dir/larch-logs/implement/run-5/final-summary.md" ]; then pass 'final summary file written'; else fail 'final summary file written'; fi
 assert_contains 'Status: false' "$(cat "$impl_dir/larch-logs/implement/run-5/final-summary.md")" 'final summary includes stall status'
 
+# Comment-only path leaves the tracked run-log file untouched while still
+# emitting the live tracking-comment projection.
+printf 'Status: false\nPR: stale\nLogs: larch-logs/implement/run-5/\n' > "$impl_dir/larch-logs/implement/run-5/final-summary.md"
+out=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-comment-only.md" \
+      "$HELPER" --implement-tmpdir "$impl_dir" --comment-only)
+assert_contains 'STATUS=ok' "$out" 'comment-only status ok'
+assert_contains 'PR: https://example.test/pr/5' "$(cat "$TMP_ROOT/content-comment-only.md")" 'comment-only summary includes live PR'
+assert_contains 'PR: stale' "$(cat "$impl_dir/larch-logs/implement/run-5/final-summary.md")" 'comment-only does not rewrite tracked final summary'
+
 # Upsert failure → STATUS=failed + non-zero exit
 set +e
 failed=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_FAIL=true TRACKING_ERR='gh auth failed' \

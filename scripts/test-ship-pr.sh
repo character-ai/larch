@@ -622,14 +622,17 @@ cat > "$root/skills/implement/scripts/write-final-report.sh" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
 tmpdir=""
+comment_only=false
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --implement-tmpdir) tmpdir=$2; shift 2 ;;
+    --comment-only) comment_only=true; shift ;;
     *) shift ;;
   esac
 done
 awk -F= '$1=="PR_URL"{print "PR_URL_AT_WRITE=" substr($0, index($0, "=") + 1)}' "$tmpdir/ship-pr-state.sh" \
   > "$tmpdir/final-summary-write.log"
+printf 'COMMENT_ONLY=%s\n' "$comment_only" >> "$tmpdir/final-summary-write.log"
 printf 'STATUS=ok\n'
 STUB
 chmod +x "$root/skills/implement/scripts/write-final-report.sh"
@@ -649,12 +652,13 @@ else
     fail "pr-create final summary refresh sees persisted PR_URL"
     sed 's/^/    write: /' "$tmp/final-summary-write.log" 2>/dev/null || true
 fi
-if grep -qxF 'git-push-called' "$tmp/git-push-calls.log"; then
-    ok "pr-create post-log-refresh commit is pushed before CI wait"
+if grep -qxF 'COMMENT_ONLY=true' "$tmp/final-summary-write.log"; then
+    ok "pr-create post-create refresh is API-only"
 else
-    fail "pr-create post-log-refresh commit is pushed before CI wait"
-    sed 's/^/    push: /' "$tmp/git-push-calls.log" 2>/dev/null || true
+    fail "pr-create post-create refresh is API-only"
+    sed 's/^/    write: /' "$tmp/final-summary-write.log" 2>/dev/null || true
 fi
+assert_file_absent_or_empty "$tmp/git-push-calls.log" "pr-create skips post-create push"
 
 root=$(make_repo pr_create_final_summary_failure)
 tmp=$(make_tmpdir)
@@ -662,8 +666,16 @@ mkdir -p "$root/skills/implement/scripts"
 cat > "$root/skills/implement/scripts/write-final-report.sh" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
-printf 'write-final-report failed sk-ant-abcdefghijklmnopqrstuvwxyz0123456789ABCD\n' >&2
-exit 17
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --comment-only)
+      printf 'write-final-report failed sk-ant-abcdefghijklmnopqrstuvwxyz0123456789ABCD\n' >&2
+      exit 17
+      ;;
+    *) shift ;;
+  esac
+done
+printf 'STATUS=ok\n'
 STUB
 chmod +x "$root/skills/implement/scripts/write-final-report.sh"
 cat > "$root/scripts/git-push.sh" <<'STUB'
@@ -675,10 +687,10 @@ STUB
 chmod +x "$root/scripts/git-push.sh"
 write_state "$tmp/ship-pr-state.sh" pr-create
 run_subject "$root" "$tmp" "$tmp/rc"
-assert_rc "$tmp/rc" 4 "pr-create final summary failure exits 4"
-assert_state_line "$tmp/ship-pr-state.sh" "STALL_TRACKING=true" "pr-create final summary failure marks stall"
+assert_rc "$tmp/rc" 0 "pr-create post-create final summary failure continues"
+assert_state_line "$tmp/ship-pr-state.sh" "STALL_TRACKING=false" "pr-create post-create final summary failure does not mark stall"
 assert_file_absent_or_empty "$tmp/git-push-calls.log" "pr-create final summary failure skips post-log push"
-if grep -Fq 'write-final-report.sh failed (exit 17)' "$tmp/execution-issues.md"; then
+if grep -Fq 'write-final-report.sh post failed (exit 17)' "$tmp/execution-issues.md"; then
     ok "pr-create final summary failure records execution issue"
 else
     fail "pr-create final summary failure records execution issue"
@@ -766,7 +778,7 @@ else
 fi
 rm -rf "$sentinel_dir"
 
-# PR create flush: persist pr_number to the manifest and commit it on success.
+# PR create flush: commit the placeholder final-summary before create-pr.
 root=$(make_repo pr_create_flush)
 tmp=$(make_tmpdir)
 sentinel_dir=$(mktemp -d /tmp/ship-pr-pr-create-flush.XXXXXX)
@@ -774,11 +786,11 @@ write_state "$tmp/ship-pr-state.sh" pr-create
 LARCH_LOG_STUB_SENTINEL_DIR="$sentinel_dir" run_subject "$root" "$tmp" "$tmp/rc"
 assert_rc "$tmp/rc" 0 "pr-create happy path exits 0 after continuation"
 if [ -f "$sentinel_dir/larch-log-calls.txt" ]; then
-    if grep -q -- 'manifest --log-root .* --run-id test-run --field pr_number=123' "$sentinel_dir/larch-log-calls.txt" && \
-       grep -q -- 'commit --log-root .* --run-id test-run' "$sentinel_dir/larch-log-calls.txt"; then
-        ok "pr-create flush writes manifest pr_number and commits with matching run-id"
+    if grep -q -- 'commit --log-root .* --run-id test-run' "$sentinel_dir/larch-log-calls.txt" && \
+       ! grep -q -- 'manifest --log-root .* --run-id test-run --field pr_number=123' "$sentinel_dir/larch-log-calls.txt"; then
+        ok "pr-create flush commits pre-PR logs without manifest pr_number write"
     else
-        fail "pr-create flush: expected manifest pr_number + commit; got: $(cat "$sentinel_dir/larch-log-calls.txt")"
+        fail "pr-create flush: expected commit without manifest pr_number write; got: $(cat "$sentinel_dir/larch-log-calls.txt")"
     fi
 else
     fail "pr-create flush: larch-log.sh stub was not called"
