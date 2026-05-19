@@ -113,14 +113,12 @@ skipped.
 - Edit `~/.cursor/cli-config.json` and change `model` section to read:
 ```JSON
   "model": {
-    "modelId": "composer-2",
-    "displayModelId": "composer-2",
-    "displayName": "Composer 2",
-    "displayNameShort": "Composer 2",
-    "aliases": [
-      "composer"
-    ],
-    "maxMode": true
+    modelId: "composer-2-5",
+    displayModelId: "composer-2-5",
+    displayName: "Composer 2.5",
+    displayNameShort: "Composer 2.5",
+    aliases: [ "composer" ],
+    maxMode: true
   }
 ```
 
