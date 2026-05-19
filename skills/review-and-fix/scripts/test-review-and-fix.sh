@@ -11,8 +11,18 @@ trap 'rm -rf "$TMP"' EXIT
 SECTION=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --section) SECTION="$2"; shift 2 ;;
-        *) shift ;;
+        --section)
+            [[ $# -ge 2 ]] || {
+                printf 'ERROR: --section requires a value\n' >&2
+                exit 1
+            }
+            SECTION="$2"
+            shift 2
+            ;;
+        *)
+            printf 'ERROR: unknown argument: %s\n' "$1" >&2
+            exit 1
+            ;;
     esac
 done
 if [[ -n "$SECTION" ]]; then
