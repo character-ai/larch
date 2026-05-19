@@ -20,7 +20,7 @@ Consider asking about:
 - **Unclear requirements**: Any aspect of the feature description that is vague, could be interpreted multiple ways, or has implicit assumptions.
 
 **Guidelines**:
-- Only ask questions when there is genuine ambiguity — do NOT ask trivially answerable questions or re-confirm what is already clear.
+- If you have any doubt about scope, requirements, or what 'done' means, ask. This is the highest-value question point in the entire workflow — answers here reshape what the sketch agents explore. The cost of one extra clarifying question is small; anchoring sketches on the wrong interpretation is large. Suppress only when the feature description is fully unambiguous.
 - Batch questions into a single `AskUserQuestion` call with 1-4 questions rather than multiple sequential calls.
 - If the feature description is clear and unambiguous, proceed to Step 1d.
 

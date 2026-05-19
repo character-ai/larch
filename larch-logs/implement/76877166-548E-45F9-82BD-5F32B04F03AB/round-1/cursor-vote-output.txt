@@ -1,0 +1,14 @@
+Reading the ballot and session context to verify each finding. Read-only: listing the session directory and reading `findings.md`.
+
+Verifying claims against the repo files and session diff/plan context.
+
+Verified: line 1223 contains duplicated “unavailable”; the opportunistic-questions paragraph (line 1229) matches the diff (removed explicit “cannot be resolved from … CLAUDE.md” gate); `discussion-rounds.md` lines 15 and 23 both stress “highest-value question point” / reshaping sketches. §2.3 still requires `CLAUDE.md` for `auto_mode=true` answers only, not for opportunistic questions. No `CreatePlan` call — you asked for ballot votes only (not an implementation plan).
+
+FINDING_1: EXONERATE -- pre-existing duplicate word is real but too small to warrant a GitHub tracking issue.
+FINDING_2: EXONERATE -- duplicate rhetoric is mild and reinforces the intentional soften-ask behavior change from the plan.
+FINDING_3: EXONERATE -- same overlap as FINDING_2; optional single trim if ever polishing, not a required follow-up.
+FINDING_4: EXONERATE -- same substantive point as FINDING_2–3; no extra edit burden beyond optional copyedit.
+FINDING_5: EXONERATE -- token cost in this short, gated reference block is negligible versus clarity of the new rule.
+FINDING_6: YES
+FINDING_7: EXONERATE -- optional substring tests on prose are brittle and disproportionate for doc-only behavior guidance.
+FINDING_8: EXONERATE -- same latent gap as FINDING_6; one soft CLAUDE.md clause (if any) addresses both without two separate actions.
