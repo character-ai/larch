@@ -116,6 +116,35 @@ external_is_auth_failure() {
     esac
 }
 
+external_is_transient_infra_failure() {
+    local tool="$1" exit_code="$2" output_file="$4"
+    # Check the output file (where the tool would write its actual response),
+    # not the sidecar — the sidecar always contains run-external-agent.sh's
+    # failure message even on 0-output runs, so its size is never a reliable
+    # "0 bytes" signal.
+
+    case "$tool" in
+        codex)
+            # exit 7 = internal error before any output; exit 5 = network blip
+            case "$exit_code" in 5|7) ;; *) return 1 ;; esac
+            ;;
+        cursor)
+            # exit 8 = process startup failure; exit 4 = network blip
+            case "$exit_code" in 4|8) ;; *) return 1 ;; esac
+            ;;
+        *) return 1 ;;
+    esac
+
+    # Output file absent or empty: the tool exited before producing any output.
+    local output_size=0
+    if [[ -f "$output_file" ]]; then
+        output_size=$(wc -c < "$output_file" 2>/dev/null || echo 1)
+        output_size=${output_size// /}
+    fi
+    [[ "$output_size" -eq 0 ]] || return 1
+    return 0
+}
+
 external_auth_verdict() {
     local tool="$1" sidecar readable=false
     shift || true
