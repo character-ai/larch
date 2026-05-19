@@ -498,6 +498,90 @@ else
     fail "write-round scout-round1-status.env content mismatch"
 fi
 
+echo "=== write-round keeps baseline artifacts unchanged without scout or dynamic inputs ==="
+_wr_plain_staging="$TMP/wr-plain-staging"
+_wr_plain_run="wrround-plain-001"
+_wr_plain_source="$TMP/wr-source-plain"
+mkdir -p "$_wr_plain_source"
+printf 'baseline findings\n' > "$_wr_plain_source/findings.md"
+printf 'accepted findings\n' > "$_wr_plain_source/accepted-findings.md"
+printf 'rejected findings\n' > "$_wr_plain_source/rejected-findings.md"
+printf 'vote summary\n' > "$_wr_plain_source/voting-tally.md"
+printf 'forbidden raw output\n' > "$_wr_plain_source/cursor-specialist-plan-output.txt"
+
+"$LARCH_LOG" init --log-root "$_wr_plain_staging/larch-logs" --skill implement --run-id "$_wr_plain_run" --issue 2357 >/dev/null
+"$LARCH_LOG" write-round \
+    --log-root "$_wr_plain_staging/larch-logs" \
+    --skill implement \
+    --run-id "$_wr_plain_run" \
+    --round 1 \
+    --source-dir "$_wr_plain_source" >/dev/null
+
+_wr_plain_round="$_wr_plain_staging/larch-logs/implement/$_wr_plain_run/round-1"
+for _plain_expected in findings.md accepted-findings.md rejected-findings.md voting-tally.md; do
+    if [ -f "$_wr_plain_round/$_plain_expected" ]; then
+        pass "write-round plain fixture keeps $_plain_expected"
+    else
+        fail "write-round plain fixture missing $_plain_expected"
+    fi
+done
+if [ ! -e "$_wr_plain_round/scout-round1-status.env" ] && [ ! -e "$_wr_plain_round/scout-round1-manifest.json" ] && [ ! -e "$_wr_plain_round/dynamic-archetypes" ] && [ ! -e "$_wr_plain_round/cursor-specialist-plan-output.txt" ]; then
+    pass "write-round plain fixture does not invent scout, dynamic, or denied artifacts"
+else
+    fail "write-round plain fixture wrote unexpected artifacts"
+fi
+
+echo "=== write-round rejects duplicate basenames across root and dynamic-archetypes ==="
+_wr_dup_staging="$TMP/wr-dup-staging"
+_wr_dup_run="wrround-dup-001"
+_wr_dup_source="$TMP/wr-source-dup"
+mkdir -p "$_wr_dup_source/dynamic-archetypes"
+printf 'root findings\n' > "$_wr_dup_source/findings.md"
+printf 'root dyn\n' > "$_wr_dup_source/reviewer-dyn-api-contract.md"
+printf 'dynamic dyn\n' > "$_wr_dup_source/dynamic-archetypes/reviewer-dyn-api-contract.md"
+
+"$LARCH_LOG" init --log-root "$_wr_dup_staging/larch-logs" --skill implement --run-id "$_wr_dup_run" --issue 2358 >/dev/null
+_wr_dup_stderr="$TMP/wr-dup-stderr.txt"
+_wr_dup_rc=0
+_wr_dup_output=$("$LARCH_LOG" write-round \
+    --log-root "$_wr_dup_staging/larch-logs" \
+    --skill implement \
+    --run-id "$_wr_dup_run" \
+    --round 1 \
+    --source-dir "$_wr_dup_source" \
+    2>"$_wr_dup_stderr") || _wr_dup_rc=$?
+if [ "$_wr_dup_rc" -ne 0 ] && printf '%s\n' "$_wr_dup_output" | grep -Fq "duplicate round artifact basename 'reviewer-dyn-api-contract.md'"; then
+    pass "write-round rejects duplicate flattened basenames"
+else
+    fail "write-round must reject duplicate flattened basenames"
+fi
+
+echo "=== write-round rejects symlinked dynamic-archetypes ==="
+_wr_link_staging="$TMP/wr-link-staging"
+_wr_link_run="wrround-link-001"
+_wr_link_source="$TMP/wr-source-link"
+_wr_link_target="$TMP/wr-source-link-target"
+mkdir -p "$_wr_link_source" "$_wr_link_target"
+printf '# reviewer-dyn-external\n' > "$_wr_link_target/reviewer-dyn-external.md"
+ln -s "$_wr_link_target" "$_wr_link_source/dynamic-archetypes"
+printf 'root findings\n' > "$_wr_link_source/findings.md"
+
+"$LARCH_LOG" init --log-root "$_wr_link_staging/larch-logs" --skill implement --run-id "$_wr_link_run" --issue 2359 >/dev/null
+_wr_link_stderr="$TMP/wr-link-stderr.txt"
+_wr_link_rc=0
+_wr_link_output=$("$LARCH_LOG" write-round \
+    --log-root "$_wr_link_staging/larch-logs" \
+    --skill implement \
+    --run-id "$_wr_link_run" \
+    --round 1 \
+    --source-dir "$_wr_link_source" \
+    2>"$_wr_link_stderr") || _wr_link_rc=$?
+if [ "$_wr_link_rc" -ne 0 ] && printf '%s\n' "$_wr_link_output" | grep -Fq "dynamic-archetypes must not be a symlink"; then
+    pass "write-round rejects symlinked dynamic-archetypes"
+else
+    fail "write-round must reject symlinked dynamic-archetypes"
+fi
+
 echo
 echo "Passed: $PASS"
 echo "Failed: $FAIL"

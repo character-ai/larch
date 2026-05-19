@@ -101,7 +101,7 @@ When an orchestrator round exits `0` (cap-reached, clean, or fix-applied) and `-
 
 - `review-findings-full` via `scripts/compose-review-findings.sh` followed by `scripts/larch-log.sh write`.
 - `code-review-tally` via `scripts/write-tally.sh`, with a body containing aggregate counts derived from the composed `[code-review/accepted]` / `[code-review/rejected]` sections, sanitized review round summaries with stale per-round count bullets removed, rejected code-review findings, and the latest round voting tally when present.
-- `review-scout-manifest` via `scripts/larch-log.sh write` when `SCOUT_STATUS` from `review-core.sh` is non-empty and not `na`. The payload is `{"status":"<status>","dynamic_slots":<N>,"manifest_basename":"<basename>"}`. Flush failure is logged to `execution-issues.md` under `Warnings` and does not fail the round.
+- `review-scout-manifest` via `scripts/larch-log.sh write` when `SCOUT_STATUS` from `review-core.sh` is non-empty and not `na`. The payload is `{"status":"<status>","dynamic_slots":<N>,"manifest_basename":"<basename>","yield_tsv_basename":"<basename>"}`. Invalid scout payload inputs or flush failure are logged to `execution-issues.md` under `Warnings` and do not fail the round.
 
 Batch flushing is intentionally non-blocking: failures are suppressed so review status remains governed by the review and fix results.
 
