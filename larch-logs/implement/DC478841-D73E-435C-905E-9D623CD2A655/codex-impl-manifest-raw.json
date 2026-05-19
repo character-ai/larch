@@ -1,0 +1,27 @@
+{
+  "schema_version": "1",
+  "status": "complete",
+  "files_touched": [
+    {"path": "scripts/lib-vote-tally.md", "lines_added": 4, "lines_removed": 0},
+    {"path": "scripts/lib-vote-tally.sh", "lines_added": 1, "lines_removed": 1},
+    {"path": "scripts/test-lib-vote-tally.md", "lines_added": 1, "lines_removed": 1},
+    {"path": "scripts/test-lib-vote-tally.sh", "lines_added": 25, "lines_removed": 0},
+    {"path": "skills/review/scripts/tally-code-votes.md", "lines_added": 2, "lines_removed": 2},
+    {"path": "skills/review/scripts/tally-code-votes.sh", "lines_added": 1, "lines_removed": 2},
+    {"path": "skills/review/scripts/test-tally-code-votes.sh", "lines_added": 21, "lines_removed": 8}
+  ],
+  "tests_added_or_modified": [
+    "scripts/test-lib-vote-tally.sh",
+    "skills/review/scripts/test-tally-code-votes.sh"
+  ],
+  "summary_bullets": [
+    "Anchored reviewer attribution parsing to canonical Reviewer/Reviewers lines so prose mentions no longer misattribute findings.",
+    "Included zero-finding dynamic reviewer slots in the scoreboard and defaulted missing collector status to STATUS=OK.",
+    "Updated regression harnesses and script contracts for attribution parsing, dynamic zero-finding rows, and STATUS=OK fallback."
+  ],
+  "commit_message": "fix(review): correct reviewer scoreboard attribution\n\nAnchor reviewer attribution parsing to canonical Reviewer/Reviewers lines, include dynamic zero-finding slots in the reviewer scoreboard, and treat missing collector status as OK for slots that produced no findings.\n\nUpdate vote tally and code-review tally harness coverage for the repaired cases.",
+  "todos_left": [],
+  "oos_observations": [],
+  "bail_reason": "",
+  "needs_qa": {"questions": []}
+}

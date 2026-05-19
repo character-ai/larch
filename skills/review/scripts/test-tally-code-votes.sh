@@ -446,6 +446,11 @@ yield_file=$(awk -F= '$1=="YIELD_TSV_FILE"{print $2}' "$out")
 grep -Fq $'structure\tcode-quality\t1\t1\t1\t0\t1.000000' "$yield_file" || { FAIL=1; printf '  FAIL static structure yield row missing\n'; }
 grep -Fq $'dyn-foo\tarchitecture\t6\t1\t0\t1\t0.000000' "$yield_file" || { FAIL=1; printf '  FAIL dynamic fallback-normalized yield row missing\n'; }
 grep -Fq $'generic\tcode-quality\t1\t1\t1\t0\t1.000000' "$yield_file" || { FAIL=1; printf '  FAIL generalist yield row missing\n'; }
+if grep -Fq '| dyn-foo | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | STATUS=OK |' "$TMP/voting-tally.md"; then
+    FAIL=1; printf '  FAIL dynamic fallback-normalized reviewer should not also emit dead-slot STATUS=OK row\n'
+else
+    printf '  ok   dynamic fallback-normalized reviewer does not emit extra dead-slot row\n'
+fi
 
 echo "# Case: manifest-file yield TSV counts all in-scope outcomes and ignores OOS rows"
 TMP="$WORKDIR/case7a"
@@ -501,7 +506,7 @@ out="$TMP/out.env"
     --review-tmpdir "$TMP" > "$out"
 grep -Fq 'WARN=yield TSV missing manifest entry for reviewer basename: cursor-specialist-unknown-output.txt' "$out" || { FAIL=1; printf '  FAIL orphan reviewer warning missing\n'; }
 
-echo "# Case: panel-manifest with 7 slots, only 5 produce findings — scoreboard shows 7 rows"
+echo "# Case: panel-manifest with 8 slots, only 5 produce findings — scoreboard shows 8 rows"
 TMP="$WORKDIR/case_dead_slots"
 mkdir -p "$TMP"
 # 5-slot ballot (structure + correctness + testing + security + edge-cases)
@@ -531,7 +536,7 @@ cat > "$TMP/ballot.md" <<'EOF'
 - **Concern**: Edge case issue.
 - **Suggested revision**: Fix it.
 EOF
-# 7-slot panel manifest (structure+correctness+testing+security+edge-cases+plan-fidelity+codex-generalist)
+# 8-slot panel manifest (structure+correctness+testing+security+edge-cases+plan-fidelity+codex-generalist+dyn-zero)
 cat > "$TMP/panel-manifest.ndjson" <<EOF
 {"slot":"structure","tool":"cursor","output":"$TMP/cursor-specialist-structure-output.txt","agent":"agents/reviewer-structure.md"}
 {"slot":"correctness","tool":"cursor","output":"$TMP/cursor-specialist-correctness-output.txt","agent":"agents/reviewer-correctness.md"}
@@ -540,8 +545,10 @@ cat > "$TMP/panel-manifest.ndjson" <<EOF
 {"slot":"edge-cases","tool":"cursor","output":"$TMP/cursor-specialist-edge-cases-output.txt","agent":"agents/reviewer-edge-cases.md"}
 {"slot":"plan-fidelity","tool":"cursor","output":"$TMP/cursor-specialist-plan-fidelity-output.txt","agent":"agents/reviewer-plan-fidelity.md"}
 {"slot":"generic","tool":"codex","output":"$TMP/codex-generalist-output.txt","agent":"agents/codex-generalist.md"}
+{"slot":"dyn-zero","tool":"cursor","output":"$TMP/dyn-zero-output.txt","prompt_file":"$TMP/dyn-zero-prompt.md","weight":3,"focus_area":"correctness"}
 EOF
-# Collector results: plan-fidelity and codex-generalist are NOT_SUBSTANTIVE (dead slots)
+# Collector results: plan-fidelity and codex-generalist are NOT_SUBSTANTIVE (dead slots),
+# dyn-zero is OK but produced no findings.
 cat > "$TMP/collector-results.env" <<EOF
 REVIEWER_FILE=$TMP/cursor-specialist-structure-output.txt
 TOOL=cursor
@@ -577,6 +584,11 @@ REVIEWER_FILE=$TMP/codex-generalist-output.txt
 TOOL=codex
 STATUS=NOT_SUBSTANTIVE
 EXIT_CODE=0
+
+REVIEWER_FILE=$TMP/dyn-zero-output.txt
+TOOL=cursor
+STATUS=OK
+EXIT_CODE=0
 EOF
 printf 'FINDING_1: YES\nFINDING_2: YES\nFINDING_3: NO\nFINDING_4: YES\nFINDING_5: YES\n' > "$TMP/cursor-vote-output.txt"
 printf 'FINDING_1: YES\nFINDING_2: NO\nFINDING_3: YES\nFINDING_4: YES\nFINDING_5: NO\n'  > "$TMP/codex-vote-output.txt"
@@ -601,7 +613,7 @@ for _slot in cursor-specialist-structure cursor-specialist-correctness \
     fi
 done
 # Dead slots use short label (no -output.txt suffix)
-for _slot in cursor-specialist-plan-fidelity codex-generalist; do
+for _slot in cursor-specialist-plan-fidelity codex-generalist dyn-zero; do
     if printf '%s\n' "$tally_content" | grep -Fq "| $_slot "; then
         printf '  ok   dead_slots: dead slot %s row present in scoreboard\n' "$_slot"
     else
@@ -614,7 +626,13 @@ if printf '%s\n' "$tally_content" | grep -q 'STATUS=NOT_SUBSTANTIVE'; then
 else
     FAIL=1; printf '  FAIL dead_slots: NOT_SUBSTANTIVE annotation missing\n'
 fi
-# Manifest rows missing collector entries should fall back to STATUS=UNKNOWN.
+# OK dynamic slots with zero findings should appear in the scoreboard.
+if printf '%s\n' "$tally_content" | grep -Fq '| dyn-zero | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | STATUS=OK |'; then
+    printf '  ok   dead_slots: dynamic zero-finding slot shows STATUS=OK\n'
+else
+    FAIL=1; printf '  FAIL dead_slots: dynamic zero-finding slot missing STATUS=OK row\n'
+fi
+# Manifest rows missing collector entries should fall back to STATUS=OK.
 TMP="$WORKDIR/case8"
 mkdir -p "$TMP"
 cat > "$TMP/ballot.md" <<'EOF'
@@ -640,10 +658,10 @@ out="$TMP/out.env"
     --manifest-file "$TMP/panel-manifest.ndjson" \
     --collector-results-file "$TMP/collector-results.env" \
     --review-tmpdir "$TMP" > "$out"
-if grep -Fq '| codex-generalist | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | STATUS=UNKNOWN |' "$TMP/voting-tally.md"; then
-    printf '  ok   dead_slots: missing collector row falls back to UNKNOWN\n'
+if grep -Fq '| codex-generalist | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | STATUS=OK |' "$TMP/voting-tally.md"; then
+    printf '  ok   dead_slots: missing collector row falls back to OK\n'
 else
-    FAIL=1; printf '  FAIL dead_slots: missing collector row did not fall back to UNKNOWN\n'
+    FAIL=1; printf '  FAIL dead_slots: missing collector row did not fall back to OK\n'
 fi
 # Degraded banner must appear (NOT_SUBSTANTIVE_COUNT=2 passed via --not-substantive-count)
 if printf '%s\n' "$tally_content" | grep -q '2 reviewer slot(s) emitted narrative-only output'; then

@@ -408,8 +408,10 @@ write_archetype_map "$MANIFEST_FILE" "$archetype_map"
     ' "$score_rows" | sort
 } > "$VOTING_TALLY_FILE"
 
-# Append dead-slot rows for manifest entries that produced no score_rows (e.g.
-# NOT_SUBSTANTIVE slots whose reviewers emitted narrative without any findings).
+# Append zero-count rows for manifest entries that produced no score_rows, including
+# narrative-only NOT_SUBSTANTIVE slots and dynamic/other manifest slots that had no
+# accepted, neutral, rejected, or OOS findings. Missing collector metadata falls
+# back to STATUS=OK.
 # Uses awk (not bash arrays) for bash 3.2 portability.
 if [[ -n "$MANIFEST_FILE" && -f "$MANIFEST_FILE" ]]; then
     _dead_rows=$(awk -v collector_file="${COLLECTOR_RESULTS_FILE:-/dev/null}" \
@@ -450,7 +452,7 @@ if [[ -n "$MANIFEST_FILE" && -f "$MANIFEST_FILE" ]]; then
             close(collector_file)
             while ((getline line < score_file) > 0) {
                 n = split(line, f, "\t")
-                if (n >= 1 && f[1] != "") seen[f[1]] = 1
+                if (n >= 1 && f[1] != "") seen[norm_base(f[1])] = 1
             }
             close(score_file)
             while ((getline row < manifest_file) > 0) {
@@ -459,9 +461,8 @@ if [[ -n "$MANIFEST_FILE" && -f "$MANIFEST_FILE" ]]; then
                 gsub(/.*"output":"/, "", b); gsub(/".*/, "", b)
                 n = split(b, parts, "/"); base = parts[n]
                 normed = norm_base(base)
-                if (normed ~ /^dyn-/) continue
                 if (!(normed in seen)) {
-                    st = (normed in collector_status) ? collector_status[normed] : "UNKNOWN"
+                    st = (normed in collector_status) ? collector_status[normed] : "OK"
                     label = normed; sub(/-output\.txt$/, "", label); sub(/\.txt$/, "", label)
                     printf "| %s | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | STATUS=%s |\n", label, st
                 }

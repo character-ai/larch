@@ -33,6 +33,10 @@ The `eligible` argument is the panel-level count of available voter files (non-f
 
 `vote_for_id` matches an anchored `<id>:` prefix and the first vote token immediately after the colon. Pattern is case-insensitive in the canonical `YES`/`NO`/`EXONERATE` token. Substring collisions are prevented (`FINDING_10:` does not match `FINDING_100:`), and prose such as `FINDING_1: NO -- yes, minor concern` cannot override the leading `NO`.
 
+## Reviewer attribution
+
+`reviewer_for_block` extracts only anchored reviewer attribution lines: `- **Reviewer**: ...`, `- **Reviewers**: ...`, or unbolded line-start `Reviewer:`/`Reviewers:` fallbacks. Prose containing `Reviewer` elsewhere in the block is ignored and returns `unknown` when no attribution line exists.
+
 ## Security tag
 
 `is_security_block` exits 0 when the block has at least one **unfenced** occurrence of `focus-area\s*=\s*security` (case-insensitive). Both triple-backtick fenced regions and single-backtick code spans are stripped before matching. This is the canonical security counter-invariant — real security findings MUST contain at least one unfenced occurrence.

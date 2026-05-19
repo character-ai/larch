@@ -1,0 +1,22 @@
+FINDING_1: YES
+FINDING_2: EXONERATE -- Legitimate edge case, but colon-bearing reviewer identifiers are rare and not worth a tracking issue.
+FINDING_3: EXONERATE -- Same low-impact colon parsing edge case, not issue-worthy.
+FINDING_4: EXONERATE -- Duplicate normalization helpers are a real drift risk, but too minor for a future issue.
+FINDING_5: EXONERATE -- Legitimate but rare malformed attribution case, not worth filing.
+FINDING_6: EXONERATE -- Plan-review integration coverage could be stronger, but the shared parser is already unit-tested and this is not issue-worthy.
+FINDING_7: EXONERATE -- Fragile manifest parsing is real but controlled-input and pre-existing, so not worth filing now.
+FINDING_8: EXONERATE -- TSV hardening is legitimate but not worth a tracking issue for internal reviewer attribution.
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: EXONERATE -- Non-canonical label casing/spacing is outside the documented ballot contract and loosening the parser is not warranted.
+FINDING_17: YES
+FINDING_18: EXONERATE -- The existing anchored-regex tests cover the bug class well enough; the extra prose variant is low value.
+FINDING_19: YES
+FINDING_20: YES
+FINDING_21: YES
+FINDING_22: YES
