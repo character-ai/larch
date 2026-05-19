@@ -267,7 +267,7 @@ resolve_execution_issues_log() {
 is_harness_scout_path() {
     local path="$1"
     case "$path" in
-        */test-dispatch-panel.*|*/test-review-core.*|*/test-scout-*)
+        */test-dispatch-panel.*|*/test-review-core.*|*/test-scout-dynamic-archetypes.*)
             return 0
             ;;
         *)

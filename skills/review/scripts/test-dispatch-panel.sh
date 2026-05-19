@@ -216,6 +216,34 @@ if grep -Fq 'WARN=append-execution-issue failed for scout parse issue:' <<< "$ou
     exit 1
 fi
 
+(
+    prod_tmp="$(mktemp -d "${TMPDIR:-/tmp}/review-prod-warn.XXXXXX")"
+    trap 'rm -rf "$prod_tmp"' EXIT
+    seed_case_inputs "$prod_tmp/review"
+    readonly_dir="$prod_tmp/readonly"
+    mkdir -p "$readonly_dir"
+    chmod 500 "$readonly_dir"
+    warn_log="$readonly_dir/execution-issues.md"
+    out=$(PATH="$STUB_BIN:$PATH" \
+        LARCH_EXECUTION_ISSUES_LOG="$warn_log" \
+        SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$scout_launch" \
+        SCOUT_LAUNCH_JSON_FILE="$TMP/scout-malformed.json" \
+        "$SCRIPT" \
+        --mode diff \
+        --diff-file "$prod_tmp/review/review.diff" \
+        --review-tmpdir "$prod_tmp/review" \
+        --codex-available true \
+        --cursor-available true \
+        --panel hard \
+        --plan-file "$prod_tmp/review/plan.md" \
+        --dynamic-archetypes 4)
+    chmod 700 "$readonly_dir"
+    [[ -s "$prod_tmp/review/scout-parse-failed-round1-diag.txt" ]] \
+        || { echo "FAIL: production parse-failed warn path should still write local diag sidecar" >&2; exit 1; }
+    grep -Fq 'WARN=append-execution-issue failed for scout parse issue:' <<< "$out" \
+        || { echo "FAIL: production parse-failed warn path should emit append-execution-issue warning" >&2; exit 1; }
+)
+
 for mode in docs-only test-only generated-only; do
     seed_case_inputs "$TMP/skip-$mode"
     out=$(PATH="$STUB_BIN:$PATH" TEST_DIFF_MODE="$mode" SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$scout_launch" SCOUT_LAUNCH_JSON_FILE="$TMP/scout-valid4.json" \
@@ -454,8 +482,6 @@ claude_count=$(find "$TMP/both-down" -name '*phase3.txt' | wc -l | tr -d ' ')
 [[ "$claude_count" -ge 7 ]] || { echo "FAIL: expected Claude phase3 outputs for both-down panel" >&2; exit 1; }
 fi  # end section: limits
 
-if section_runs core; then
-
 assert_emit_tally_panel() {
     local label="$1" scout_status="$2" dynamic_slots="$3" static_slot_count="$4" total_slot_count="$5"
     local dir="$TMP/emit-tally-$label"
@@ -492,6 +518,8 @@ assert_emit_tally_panel() {
 assert_emit_tally_panel static-na na 0 7 7
 assert_emit_tally_panel scout-ok ok 4 12 16
 assert_emit_tally_panel scout-skipped skipped-docs-only 0 12 12
+
+if section_runs core; then
 
 # Regression 1: env-isolation — LARCH_EXECUTION_ISSUES_LOG set on invocation but
 # REVIEW_TMPDIR lives under a test-dispatch-panel.* ancestor, so the guard must
