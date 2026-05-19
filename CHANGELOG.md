@@ -21,6 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Allow larch-log write-round to commit scout raw-output sidecars alongside scout manifests.
+- Document scout raw sidecar preservation and committed round-log behavior.
+- Cover raw sidecar preservation in scout tests and committed write-round copying in larch-log tests.
 - Reserve Claude-only implementation for plans with at most three estimated diff lines so routine work stays on Codex or Cursor by default.
 - Keep operator-facing breadcrumbs and Step 2 routing copy consistent with the stricter carve-out boundary.
 
