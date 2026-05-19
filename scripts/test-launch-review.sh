@@ -866,6 +866,141 @@ SL_TRANSIENT_NOAPPLY_ATTEMPTS=$(cat "$SL_TRANSIENT_NOAPPLY_COUNT" 2>/dev/null ||
 assert_eq "SL-transient-not-applied stub invoked exactly 1 time (exit 1 not in allowlist)" "1" "$SL_TRANSIENT_NOAPPLY_ATTEMPTS"
 rm -f "$SL_TRANSIENT_NOAPPLY_COUNT"
 
+# Case SL-transient-obs-exhausted: verify that when the transient-retry loop
+# exhausts all retries, the execution-issues log entry contains transient-retries=N
+# (auth-retries=M, transient-retries=N format). Uses IMPLEMENT_TMPDIR so
+# append_launch_failure actually writes to execution-issues.md.
+# With MAX_TRANSIENT_RETRIES=2: start=1, +1 for retry1=2, +1 for retry2=3, then
+# 3>2 → break → TRANSIENT_ATTEMPT=3 at failure time.
+SL_OBS_EXHAUSTED_COUNT="$TMPDIR/sl-obs-exhausted-count.txt"
+printf '0' > "$SL_OBS_EXHAUSTED_COUNT"
+cat > "$STUB_BIN/codex-obs-exhausted" <<STUB_OBS_EXHAUSTED
+#!/usr/bin/env bash
+count=\$(cat "${SL_OBS_EXHAUSTED_COUNT}" 2>/dev/null || echo 0)
+count=\$((count + 1))
+printf '%s' "\$count" > "${SL_OBS_EXHAUSTED_COUNT}"
+exit 7
+STUB_OBS_EXHAUSTED
+chmod +x "$STUB_BIN/codex-obs-exhausted"
+ln -sf "$STUB_BIN/codex-obs-exhausted" "$STUB_BIN/codex"
+IMPL_TMPDIR_OBS_EXHAUSTED="$TMPDIR/obs-exhausted-impl"
+mkdir -p "$IMPL_TMPDIR_OBS_EXHAUSTED"
+OUT_OBS_EXHAUSTED="$TMPDIR/obs-exhausted.txt"
+set +e
+LARCH_TRANSIENT_RETRY_DELAY=0 \
+    LARCH_EXTERNAL_SERIAL_LOCK_DELAY=0 \
+    IMPLEMENT_TMPDIR="$IMPL_TMPDIR_OBS_EXHAUSTED" \
+    PATH="$STUB_BIN:$PATH" \
+    "$LAUNCHER" --output "$OUT_OBS_EXHAUSTED" --timeout 10 --prompt "sl-obs-exhausted" >/dev/null 2>&1
+RC_OBS_EXHAUSTED=$?
+set -e
+assert_eq "SL-transient-obs-exhausted exits non-zero after exhausting retries" "7" "$RC_OBS_EXHAUSTED"
+EI_OBS_EXHAUSTED="$IMPL_TMPDIR_OBS_EXHAUSTED/execution-issues.md"
+OBS_EXHAUSTED_ENTRY_COUNT=$(grep -c 'codex-review' "$EI_OBS_EXHAUSTED" 2>/dev/null || echo 0)
+assert_eq "SL-transient-obs-exhausted execution-issues has one failure entry" "1" "$OBS_EXHAUSTED_ENTRY_COUNT"
+if grep -q 'transient-retries=3' "$EI_OBS_EXHAUSTED" 2>/dev/null; then
+    pass
+else
+    fail "SL-transient-obs-exhausted: execution-issues entry must contain transient-retries=3 (2 retries + original)"
+fi
+if grep -q 'auth-retries=1' "$EI_OBS_EXHAUSTED" 2>/dev/null; then
+    pass
+else
+    fail "SL-transient-obs-exhausted: execution-issues entry must contain auth-retries=1"
+fi
+rm -f "$SL_OBS_EXHAUSTED_COUNT"
+
+# Case SL-transient-obs-fired: verify that when the transient-retry fires and
+# the second attempt succeeds, no failure entry is written to execution-issues.
+SL_OBS_FIRED_COUNT="$TMPDIR/sl-obs-fired-count.txt"
+printf '0' > "$SL_OBS_FIRED_COUNT"
+cat > "$STUB_BIN/codex-obs-fired" <<STUB_OBS_FIRED
+#!/usr/bin/env bash
+count=\$(cat "${SL_OBS_FIRED_COUNT}" 2>/dev/null || echo 0)
+count=\$((count + 1))
+printf '%s' "\$count" > "${SL_OBS_FIRED_COUNT}"
+if (( count == 1 )); then
+    exit 7
+fi
+last=""
+for arg in "\$@"; do
+    if [[ "\$last" == "--output-last-message" ]]; then
+        printf 'transient-obs-fired retry ok\n' > "\$arg"
+        break
+    fi
+    last="\$arg"
+done
+printf 'tokens used\n1\n'
+STUB_OBS_FIRED
+chmod +x "$STUB_BIN/codex-obs-fired"
+ln -sf "$STUB_BIN/codex-obs-fired" "$STUB_BIN/codex"
+IMPL_TMPDIR_OBS_FIRED="$TMPDIR/obs-fired-impl"
+mkdir -p "$IMPL_TMPDIR_OBS_FIRED"
+OUT_OBS_FIRED="$TMPDIR/obs-fired.txt"
+set +e
+LARCH_TRANSIENT_RETRY_DELAY=0 \
+    LARCH_EXTERNAL_SERIAL_LOCK_DELAY=0 \
+    IMPLEMENT_TMPDIR="$IMPL_TMPDIR_OBS_FIRED" \
+    PATH="$STUB_BIN:$PATH" \
+    "$LAUNCHER" --output "$OUT_OBS_FIRED" --timeout 10 --prompt "sl-obs-fired" >/dev/null 2>&1
+RC_OBS_FIRED=$?
+set -e
+assert_eq "SL-transient-obs-fired exits 0 after transient retry succeeds" "0" "$RC_OBS_FIRED"
+EI_OBS_FIRED="$IMPL_TMPDIR_OBS_FIRED/execution-issues.md"
+OBS_FIRED_ENTRY_COUNT=$(grep -c 'codex-review' "$EI_OBS_FIRED" 2>/dev/null || echo 0)
+assert_eq "SL-transient-obs-fired execution-issues has no failure entry on success" "0" "$OBS_FIRED_ENTRY_COUNT"
+rm -f "$SL_OBS_FIRED_COUNT"
+
+# Case SL-transient-obs-nontransient: verify that a true non-transient failure
+# (exit code not in the transient allowlist, non-empty output file) logs a failure
+# entry WITHOUT a transient-retries field. Stub exits 1 and writes ~5KB to the
+# output file; exit 1 is not in the transient allowlist so no retry fires.
+SL_OBS_NONTRANSIENT_COUNT="$TMPDIR/sl-obs-nontransient-count.txt"
+printf '0' > "$SL_OBS_NONTRANSIENT_COUNT"
+cat > "$STUB_BIN/codex-obs-nontransient" <<STUB_OBS_NONTRANSIENT
+#!/usr/bin/env bash
+count=\$(cat "${SL_OBS_NONTRANSIENT_COUNT}" 2>/dev/null || echo 0)
+count=\$((count + 1))
+printf '%s' "\$count" > "${SL_OBS_NONTRANSIENT_COUNT}"
+# Write ~5KB to the output file to ensure external_is_transient_infra_failure
+# returns false on the output-empty check (which would short-circuit before the
+# exit-code check; exit 1 already fails the allowlist gate so the order is moot).
+last=""
+for arg in "\$@"; do
+    if [[ "\$last" == "--output-last-message" ]]; then
+        dd if=/dev/urandom bs=5120 count=1 2>/dev/null | base64 > "\$arg" || printf '%05120d' 0 > "\$arg"
+        break
+    fi
+    last="\$arg"
+done
+exit 1
+STUB_OBS_NONTRANSIENT
+chmod +x "$STUB_BIN/codex-obs-nontransient"
+ln -sf "$STUB_BIN/codex-obs-nontransient" "$STUB_BIN/codex"
+IMPL_TMPDIR_OBS_NONTRANSIENT="$TMPDIR/obs-nontransient-impl"
+mkdir -p "$IMPL_TMPDIR_OBS_NONTRANSIENT"
+OUT_OBS_NONTRANSIENT="$TMPDIR/obs-nontransient.txt"
+set +e
+LARCH_TRANSIENT_RETRY_DELAY=0 \
+    LARCH_EXTERNAL_SERIAL_LOCK_DELAY=0 \
+    IMPLEMENT_TMPDIR="$IMPL_TMPDIR_OBS_NONTRANSIENT" \
+    PATH="$STUB_BIN:$PATH" \
+    "$LAUNCHER" --output "$OUT_OBS_NONTRANSIENT" --timeout 10 --prompt "sl-obs-nontransient" >/dev/null 2>&1
+RC_OBS_NONTRANSIENT=$?
+set -e
+assert_eq "SL-transient-obs-nontransient exits 1 without transient retry" "1" "$RC_OBS_NONTRANSIENT"
+OBS_NONTRANSIENT_ATTEMPTS=$(cat "$SL_OBS_NONTRANSIENT_COUNT" 2>/dev/null || echo "0")
+assert_eq "SL-transient-obs-nontransient stub invoked exactly 1 time" "1" "$OBS_NONTRANSIENT_ATTEMPTS"
+EI_OBS_NONTRANSIENT="$IMPL_TMPDIR_OBS_NONTRANSIENT/execution-issues.md"
+OBS_NONTRANSIENT_ENTRY_COUNT=$(grep -c 'codex-review' "$EI_OBS_NONTRANSIENT" 2>/dev/null || echo 0)
+assert_eq "SL-transient-obs-nontransient execution-issues has one failure entry" "1" "$OBS_NONTRANSIENT_ENTRY_COUNT"
+if grep -q 'transient-retries=1' "$EI_OBS_NONTRANSIENT" 2>/dev/null; then
+    pass
+else
+    fail "SL-transient-obs-nontransient: execution-issues entry must contain transient-retries=1 (no retry fired)"
+fi
+rm -f "$SL_OBS_NONTRANSIENT_COUNT"
+
 # Restore normal codex stub for remaining tests.
 ln -sf "$CODEX_DEFAULT_STUB" "$STUB_BIN/codex"
 

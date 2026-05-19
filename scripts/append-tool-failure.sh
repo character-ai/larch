@@ -22,6 +22,7 @@ CATEGORY=""
 OUTPUT_FILE=""
 VERDICT=""
 RETRY_COUNT=""
+TRANSIENT_RETRY_COUNT=""
 REDACT=false
 STATUS_LABEL="failed"
 
@@ -51,6 +52,9 @@ while [ $# -gt 0 ]; do
         --retry-count)
             [ $# -ge 2 ] || fail_usage "--retry-count requires a value"
             RETRY_COUNT=$2; shift 2 ;;
+        --transient-retry-count)
+            [ $# -ge 2 ] || fail_usage "--transient-retry-count requires a value"
+            TRANSIENT_RETRY_COUNT=$2; shift 2 ;;
         --redact)
             REDACT=true; shift ;;
         --status-label)
@@ -79,6 +83,10 @@ esac
 
 case "$RETRY_COUNT" in
     ""|*[!0-9]*) [ -z "$RETRY_COUNT" ] || fail_usage "--retry-count must be a non-negative integer" ;;
+esac
+
+case "$TRANSIENT_RETRY_COUNT" in
+    ""|*[!0-9]*) [ -z "$TRANSIENT_RETRY_COUNT" ] || fail_usage "--transient-retry-count must be a non-negative integer" ;;
 esac
 
 case "$VERDICT" in
@@ -132,7 +140,9 @@ header_suffix=""
 if [ -n "$VERDICT" ]; then
     header_suffix="${header_suffix} — ${VERDICT}"
 fi
-if [ -n "$RETRY_COUNT" ]; then
+if [ -n "$RETRY_COUNT" ] && [ -n "$TRANSIENT_RETRY_COUNT" ]; then
+    header_suffix="${header_suffix} — auth-retries=${RETRY_COUNT}, transient-retries=${TRANSIENT_RETRY_COUNT}"
+elif [ -n "$RETRY_COUNT" ]; then
     header_suffix="${header_suffix} — retries=${RETRY_COUNT}"
 fi
 

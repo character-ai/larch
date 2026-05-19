@@ -58,12 +58,13 @@ if [[ -z "$TOOL" ]]; then
 fi
 
 append_launch_failure() {
-    local site="$1" tool_label="$2" rc="$3" diag_file="$4" verdict="${5:-}" retry_count="${6:-}"
+    local site="$1" tool_label="$2" rc="$3" diag_file="$4" verdict="${5:-}" retry_count="${6:-}" transient_retry_count="${7:-}"
     [[ -x "$PLUGIN_ROOT/scripts/append-tool-failure.sh" ]] || return 0
     [[ -n "${IMPLEMENT_TMPDIR:-}" ]] || return 0
     local _args=()
     [[ -n "$verdict" ]] && _args+=(--verdict "$verdict")
     [[ -n "$retry_count" ]] && _args+=(--retry-count "$retry_count")
+    [[ -n "$transient_retry_count" ]] && _args+=(--transient-retry-count "$transient_retry_count")
     "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
         --log "${IMPLEMENT_TMPDIR}/execution-issues.md" \
         --site "$site" --tool "$tool_label" --exit-code "$rc" \
@@ -544,7 +545,7 @@ done
 if (( EXIT_CODE != 0 )); then
     _AUTH_VERDICT=$(external_auth_verdict "codex" "$SIDECAR")
     [[ "$_AUTH_VERDICT" == "auth" ]] && _VERDICT="auth-retries-exhausted" || _VERDICT="$_AUTH_VERDICT"
-    append_launch_failure "review Step 2" "codex-review" "$EXIT_CODE" "$SIDECAR" "$_VERDICT" "$AUTH_ATTEMPT"
+    append_launch_failure "review Step 2" "codex-review" "$EXIT_CODE" "$SIDECAR" "$_VERDICT" "$AUTH_ATTEMPT" "$TRANSIENT_ATTEMPT"
 fi
 
 codex_launcher_append_outer_meta "${OUTPUT}.meta" "$SCRIPT_DIR/launch-review.sh" "$PROMPT_FILE_SIDECAR" "$PWD"
@@ -954,7 +955,7 @@ if (( EXIT_CODE != 0 )); then
     if [[ ! -s "$_FAILURE_OUTPUT" && -s "${OUTPUT}.diag" ]]; then
         _FAILURE_OUTPUT="${OUTPUT}.diag"
     fi
-    append_launch_failure "review Step 2" "cursor-review" "$EXIT_CODE" "$_FAILURE_OUTPUT" "$_VERDICT" "$AUTH_ATTEMPT"
+    append_launch_failure "review Step 2" "cursor-review" "$EXIT_CODE" "$_FAILURE_OUTPUT" "$_VERDICT" "$AUTH_ATTEMPT" "$TRANSIENT_ATTEMPT"
 fi
 
 cursor_launcher_append_outer_meta "${OUTPUT}.meta" "$SCRIPT_DIR/launch-review.sh" "$PROMPT_FILE_SIDECAR" "$PWD"
