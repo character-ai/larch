@@ -1,0 +1,15 @@
+FINDING_1: YES
+FINDING_2: EXONERATE -- Historical run-log snapshots are intentionally frozen and not worth a follow-up issue.
+FINDING_3: EXONERATE -- Review-scope blur is legitimate but not worth filing as a separate issue.
+FINDING_4: EXONERATE -- Commit-stack hygiene concern is legitimate but not issue-worthy.
+FINDING_5: EXONERATE -- Sparse changelog entries are an audit nuisance, not worth a separate tracking issue.
+FINDING_6: EXONERATE -- The duplicated awk logic is real but pre-existing and too small for a follow-up issue.
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: NO -- The doc already explicitly says quorum is panel-level and not per-finding non-JUDGE_ERROR count.
+FINDING_13: NO -- Against current origin/main the #2381 sweep is not in this branch diff, and the log flush is routine.
+FINDING_14: NO -- The asserted multi-theme stack depends on stale local main; origin/main diff only has scout logging plus routine logs.
+FINDING_15: YES

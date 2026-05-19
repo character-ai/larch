@@ -1,0 +1,23 @@
+Reading the ballot and locating diff/plan context to verify each finding.
+
+Verifying ballot claims against the workspace: reading the cited scripts and docs.
+
+Checking `write-round` behavior for `.raw` artifacts and reviewing session `diff-context` for `tally-plan-review.md` changes.
+
+Verified `extract_valid_fenced_json` uses `mv` into `"$target"` with both args `"$raw_output"` in [scout-dynamic-archetypes.sh](file:///Users/zhupanov/larch2/scripts/scout-dynamic-archetypes.sh) (lines 131–157, 290–293), `--max-archetypes 0` exits before `${OUTPUT}.raw` is created (lines 215–221), [scout-dynamic-archetypes.md](file:///Users/zhupanov/larch2/scripts/scout-dynamic-archetypes.md) line 22 claims verbatim `.raw` committed by `write-round`, while [larch-log.sh](file:///Users/zhupanov/larch2/scripts/larch-log.sh) includes `scout-round*-manifest.json.raw` in round artifacts and `stage_round_artifact` runs `larch_log_redact_file` (lines 101–121). [tally-plan-review.md](file:///Users/zhupanov/larch2/skills/design/scripts/tally-plan-review.md) line 19 already states panel-level quorum vs per-finding non-`JUDGE_ERROR` counts. [test-scout-dynamic-archetypes.sh](file:///Users/zhupanov/larch2/scripts/test-scout-dynamic-archetypes.sh) uses `assert_raw_matches` for `valid4`/`malformed`/`empty` but not for fence cases (lines 93–146).
+
+FINDING_1: YES
+FINDING_2: EXONERATE -- frozen committed run logs intentionally keep historical tally vocabulary; opening an issue adds no value
+FINDING_3: EXONERATE -- mixed-scope PRs are a review nuisance but not something to track as a standalone GitHub issue
+FINDING_4: EXONERATE -- commit-level triage is guidance, not defect-level work warranting an issue
+FINDING_5: EXONERATE -- umbrella changelog line is acceptable; optional bullets are polish, not a bug
+FINDING_6: EXONERATE -- pre-existing awk duplication; refactor is optional and not issue-worthy
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: EXONERATE -- same doc mismatch as FINDING_7/9; no separate edit needed beyond one contract pass
+FINDING_11: EXONERATE -- bundles code+doc already covered by FINDING_1 and the consolidated doc fixes above
+FINDING_12: NO -- `tally-plan-review.md:19` already ties quorum to panel-level eligible voters and contrasts per-finding non-`JUDGE_ERROR` counts
+FINDING_13: EXONERATE -- stacked themes are a merge/revert ergonomics concern, not an actionable defect in shipped behavior
+FINDING_14: EXONERATE -- same integration risk as FINDING_13; split-PR advice does not warrant another YES on the same theme
+FINDING_15: YES
