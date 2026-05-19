@@ -7,3 +7,5 @@ It verifies standalone accepted-findings mode no-op behavior and Codex coder dis
 It also verifies `/implement` orchestrator mode selected by `--implement-tmpdir`: Codex success, Cursor fallback success, empty ambient `LARCH_DYNAMIC_ARCHETYPES_MAX` falling through to the session-env cap, no Claude-subagent fallback, all-coder failure, scrub failure fail-closed behavior, scrubbed-out `in-scope-filtered-out` status, post-dispatch tracked and untracked submodule revert failure, no-finding exit `0`, summary JSON schema `2`, coder/submodule fields, OOS accumulation, and `review-scout-manifest` batch flush: committed when `SCOUT_STATUS != na`, absent when `SCOUT_STATUS=na`.
 
 Run with `bash skills/review-and-fix/scripts/test-review-and-fix.sh` or `make test-review-and-fix`.
+
+Supports `--section dispatch|convergence` for CI shard packing. `dispatch` covers coder dispatch, scrubber, scout-manifest, and per-invocation tests (roughly the first 1200 lines of tests). `convergence` covers convergence and degraded-round loop tests. Without `--section`, all tests run sequentially (local-dev backward compat).

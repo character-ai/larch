@@ -6,17 +6,18 @@ The harness unsets `LARCH_EXECUTION_ISSUES_LOG`, `SESSION_ENV_PATH`, and `IMPLEM
 
 ## Coverage
 
-11 scenarios split across 6 `--section` groups for CI shard packing:
+11 scenarios + 3 regression blocks split across 8 `--section` groups for CI shard packing:
 
 - `happy` (scenarios 1-3): all voters available; codex/cursor absent; voter1 fails.
-- `edge` (scenarios 4-5): symlink diff; 2 MB diff.
+- `edge-and-r3-claude` (scenarios 4-5 + Regression 3 claude case): symlink diff; 2 MB diff; production-shape claude voter parse-rate failure.
 - `retry-claude` (scenarios 6-7): claude voter parse-rate retry success; parse-rate retry failure.
 - `retry-codex-success` (scenario 8): codex voter parse-rate retry success.
 - `retry-cursor` (scenario 9): cursor voter parse-rate retry success.
 - `retry-codex-fail-and-fallback` (scenarios 10-11): codex parse-rate retry failure; all-claude fallback parse-rate failure.
-- Regression: env isolation — `LARCH_EXECUTION_ISSUES_LOG` passed explicitly but `REVIEW_TMPDIR` is nested under a harness tmpdir; parent issues-log not written.
-- Regression: harness-ancestor path guard — local diag file written; issues-log suppressed when `REVIEW_TMPDIR` and `voter_path` stay inside the same harness tree.
-- Regression: production-shape — `REVIEW_TMPDIR` outside the harness prefixes; both local diag file and issues-log written.
+- `regressions-r1-r2`: env isolation (Regression 1) + harness-ancestor path guard (Regression 2).
+- `regressions-r3-codex`: production-shape codex voter parse-rate failure (Regression 3, codex half).
+
+Invariant: no ungated code may live between the last `fi  # end section:` and the closing `echo "PASS: ..."`. Verify with `grep -c 'if section_runs' scripts/test-dispatch-code-voters.sh` == 8 after any structural edits.
 
 ## Invocation
 

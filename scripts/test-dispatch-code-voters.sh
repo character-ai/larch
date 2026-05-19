@@ -4,15 +4,18 @@
 set -euo pipefail
 export LARCH_QUIET_DISABLE=1
 
-# --section CLI selector: splits the 11 scenarios into 6 groups so the CI
-# matrix can pack them as independent harness rows. Sections:
-#   happy:                         scenarios 1-3 (happy path, absent tools, empty voter)
-#   edge:                          scenarios 4-5 (symlink diff, 2 MB diff)
-#   retry-claude:                  retry_success_claude, retry_fail_claude
-#   retry-codex-success:           retry_success_codex
-#   retry-cursor:                  retry_success_cursor
-#   retry-codex-fail-and-fallback: retry_fail_codex, retry_fail_fallback
-# With no --section, all 11 run sequentially (local-dev backward compat).
+# --section CLI selector: splits the 11 scenarios + 3 regression blocks into
+# 8 groups so the CI matrix can pack them as independent harness rows. Sections:
+#   happy:                          scenarios 1-3 (happy path, absent tools, empty voter)
+#   edge-and-r3-claude:             scenarios 4-5 (symlink diff, 2 MB diff) + Regression 3 claude case
+#   retry-claude:                   retry_success_claude, retry_fail_claude
+#   retry-codex-success:            retry_success_codex
+#   retry-cursor:                   retry_success_cursor
+#   retry-codex-fail-and-fallback:  retry_fail_codex, retry_fail_fallback
+#   regressions-r1-r2:              env-isolation (Regression 1) + harness-ancestor path-guard (Regression 2)
+#   regressions-r3-codex:           production-shape codex case (Regression 3, codex half)
+# With no --section, all 11 scenarios + 3 regressions run sequentially
+# (local-dev backward compat).
 SECTION=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -22,7 +25,7 @@ while [[ $# -gt 0 ]]; do
 done
 if [[ -n "$SECTION" ]]; then
     case "$SECTION" in
-        happy|edge|retry-claude|retry-codex-success|retry-cursor|retry-codex-fail-and-fallback) ;;
+        happy|edge-and-r3-claude|retry-claude|retry-codex-success|retry-cursor|retry-codex-fail-and-fallback|regressions-r1-r2|regressions-r3-codex) ;;
         *)
             printf 'ERROR: unknown --section: %s\n' "$SECTION" >&2
             exit 1
@@ -187,7 +190,7 @@ grep -Fq 'launch-claude-review.sh (claude voter) failed (exit 99)' "$issues_log"
 grep -Fq 'voter1_rc=99' "$issues_log"
 fi  # end section: happy
 
-if section_runs edge; then
+if section_runs edge-and-r3-claude; then
 # Voter dispatch now receives bounded regular-file copies of diff/plan context,
 # so a symlink source path still yields grounded voter context without passing a
 # symlink through to launch-claude-subprocess.sh.
@@ -231,7 +234,32 @@ grep -Fq 'VOTER_1_STATUS=launched' <<< "$out" \
     || { echo "FAIL: 2MB-diff scenario expected 200000-byte bounded diff copy" >&2; exit 1; }
 grep -Fq 'FINDING_1: YES' "$big_review_tmpdir/claude-vote-output.txt" \
     || { echo "FAIL: 2MB-diff scenario expected FINDING_1: YES in voter output" >&2; exit 1; }
-fi  # end section: edge
+
+# Regression 3 (claude case): production-shape — review tmpdir outside any harness ancestry,
+# so local diag files and the explicit issues-log must be written with tool-specific labels.
+(
+    prod_tmp="$(mktemp -d "${TMPDIR:-/tmp}/review-prod-shape-claude.XXXXXX")"
+    trap 'rm -rf "$prod_tmp"' EXIT
+
+    prod_issues="$prod_tmp/prod-issues.md"
+    out=$(PATH="$STUB_BIN:$PATH" \
+        CLAUDE_STUB_MODE=parse_retry_fail CLAUDE_STUB_COUNT_FILE="$TMP/prod-shape-count.txt" \
+        LARCH_EXECUTION_ISSUES_LOG="$prod_issues" \
+        "$SCRIPT" \
+        --ballot-file "$BALLOT" \
+        --review-tmpdir "$prod_tmp/review" \
+        --codex-available true \
+        --cursor-available true)
+    grep -Fq 'VOTER_1_PARSE_RATE_STATUS=NOT_SUBSTANTIVE' <<< "$out" \
+        || { echo "FAIL: regression3 prod-shape — expected NOT_SUBSTANTIVE parse-rate status" >&2; exit 1; }
+    [[ -s "$prod_tmp/review/claude-vote-output-parse-rate-diag.txt" ]] \
+        || { echo "FAIL: regression3 prod-shape — local claude diag file not written" >&2; exit 1; }
+    grep -Fq 'dispatch-code-voters.sh claude' "$prod_issues" \
+        || { echo "FAIL: regression3 prod-shape — claude issues-log entry missing" >&2; exit 1; }
+    grep -Fq 'launch-claude-review.sh (voter parse-rate check)' "$prod_issues" \
+        || { echo "FAIL: regression3 prod-shape — claude tool label missing from issues-log" >&2; exit 1; }
+)
+fi  # end section: edge-and-r3-claude
 
 if section_runs retry-claude; then
 retry_success_tmp="$TMP/retry-success"
@@ -365,6 +393,7 @@ grep -Fq "voter_file=$retry_fail_fallback_tmp/codex-vote-output-phase3.txt" "$re
     || { echo "FAIL: fallback-claude fixture diag should bind to the phase3 codex slot output path" >&2; exit 1; }
 fi  # end section: retry-codex-fail-and-fallback
 
+if section_runs regressions-r1-r2; then
 # Regression 1: env isolation — LARCH_EXECUTION_ISSUES_LOG set on invocation, but the
 # review tmpdir lives under a test-dispatch-code-voters.* harness ancestor, so the guard
 # must suppress the parent issues-log write while still writing the local diag sidecar.
@@ -405,30 +434,14 @@ if [[ -s "$path_guard_issues" ]]; then
     echo "FAIL: regression2 path-guard — append-tool-failure.sh was called despite test-tmpdir voter_path" >&2
     exit 1
 fi
+fi  # end section: regressions-r1-r2
 
-# Regression 3: production-shape — review tmpdir outside any harness ancestry, so both
-# local diag files and the explicit issues-log must be written with tool-specific labels.
+if section_runs regressions-r3-codex; then
+# Regression 3 (codex case): production-shape — review tmpdir outside any harness ancestry,
+# so local diag files and the explicit issues-log must be written with tool-specific labels.
 (
-    prod_tmp="$(mktemp -d "${TMPDIR:-/tmp}/review-prod-shape.XXXXXX")"
+    prod_tmp="$(mktemp -d "${TMPDIR:-/tmp}/review-prod-shape-codex.XXXXXX")"
     trap 'rm -rf "$prod_tmp"' EXIT
-
-    prod_issues="$prod_tmp/prod-issues.md"
-    out=$(PATH="$STUB_BIN:$PATH" \
-        CLAUDE_STUB_MODE=parse_retry_fail CLAUDE_STUB_COUNT_FILE="$TMP/prod-shape-count.txt" \
-        LARCH_EXECUTION_ISSUES_LOG="$prod_issues" \
-        "$SCRIPT" \
-        --ballot-file "$BALLOT" \
-        --review-tmpdir "$prod_tmp/review" \
-        --codex-available true \
-        --cursor-available true)
-    grep -Fq 'VOTER_1_PARSE_RATE_STATUS=NOT_SUBSTANTIVE' <<< "$out" \
-        || { echo "FAIL: regression3 prod-shape — expected NOT_SUBSTANTIVE parse-rate status" >&2; exit 1; }
-    [[ -s "$prod_tmp/review/claude-vote-output-parse-rate-diag.txt" ]] \
-        || { echo "FAIL: regression3 prod-shape — local claude diag file not written" >&2; exit 1; }
-    grep -Fq 'dispatch-code-voters.sh claude' "$prod_issues" \
-        || { echo "FAIL: regression3 prod-shape — claude issues-log entry missing" >&2; exit 1; }
-    grep -Fq 'launch-claude-review.sh (voter parse-rate check)' "$prod_issues" \
-        || { echo "FAIL: regression3 prod-shape — claude tool label missing from issues-log" >&2; exit 1; }
 
     prod_codex_issues="$prod_tmp/prod-codex-issues.md"
     out=$(PATH="$STUB_BIN:$PATH" \
@@ -448,5 +461,6 @@ fi
     grep -Fq 'launch-review.sh --tool codex (voter parse-rate check)' "$prod_codex_issues" \
         || { echo "FAIL: regression3 prod-shape codex — codex tool label missing from issues-log" >&2; exit 1; }
 )
+fi  # end section: regressions-r3-codex
 
 echo "PASS: test-dispatch-code-voters.sh"

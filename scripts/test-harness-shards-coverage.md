@@ -16,7 +16,7 @@ This sibling contract exists because `.claude/rules/script-md-siblings.md` requi
 
 ## Carve-Outs
 
-The Makefile documents opt-in evaluation targets that are intentionally not part of `test-harnesses`: `test-eval-set-structure` and `test-eval-research-baseline-flag`. The script carries the same carve-out list as a single source of truth in the `CARVE_OUTS` shell variable near the top of `scripts/test-harness-shards-coverage.sh`; both the inventory parser and the naming-violation scan consume that variable via the shared `is_carve_out()` awk function (`CARVE_OUT_FN`). When adding another standalone carve-out, update both the Makefile comments near that target and the `CARVE_OUTS` variable in the same change — there is no second list to keep in sync inside the script.
+The Makefile documents opt-in evaluation targets and full-run convenience targets that are intentionally not part of `test-harnesses`: `test-eval-set-structure`, `test-eval-research-baseline-flag`, and `test-review-and-fix` (a local-dev convenience wrapper that runs all review-and-fix sections sequentially; CI uses the section variants `test-review-and-fix-dispatch` and `test-review-and-fix-convergence` instead). The script carries the same carve-out list as a single source of truth in the `CARVE_OUTS` shell variable near the top of `scripts/test-harness-shards-coverage.sh`; both the inventory parser and the naming-violation scan consume that variable via the shared `is_carve_out()` awk function (`CARVE_OUT_FN`). When adding another standalone carve-out, update both the Makefile comments near that target and the `CARVE_OUTS` variable in the same change — there is no second list to keep in sync inside the script.
 
 ## Makefile Wiring
 
@@ -24,7 +24,7 @@ The Makefile documents opt-in evaluation targets that are intentionally not part
 
 - `test-harness-shards-coverage:` running `bash scripts/test-harness-shards-coverage.sh` and `bash scripts/test-harness-shards-coverage.sh --self-test`.
 - The guard-owning `test-harnesses-N:` rule with `test-harness-shards-coverage` as the first prerequisite (currently `test-harnesses-13:`).
-- `test-harnesses:` as an umbrella over every declared `test-harnesses-N` (currently `test-harnesses-1` through `test-harnesses-18`).
+- `test-harnesses:` as an umbrella over every declared `test-harnesses-N` (currently `test-harnesses-1` through `test-harnesses-20`).
 
 When adding a new harness target, add it to `.PHONY`, add its recipe, and assign it to exactly one `test-harnesses-N:` shard prerequisite list. Rebalance shard lists when timing drift makes a shard materially slower than the `test-validate-citations` floor documented in `docs/linting.md`.
 

@@ -8,6 +8,26 @@ SCRIPT="$REPO_ROOT/skills/review-and-fix/scripts/review-and-fix.sh"
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/test-review-and-fix.XXXXXX")
 trap 'rm -rf "$TMP"' EXIT
 
+SECTION=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --section) SECTION="$2"; shift 2 ;;
+        *) shift ;;
+    esac
+done
+if [[ -n "$SECTION" ]]; then
+    case "$SECTION" in
+        dispatch|convergence) ;;
+        *)
+            printf 'ERROR: unknown --section: %s\n' "$SECTION" >&2
+            exit 1
+            ;;
+    esac
+fi
+section_runs() {
+    [[ -z "$SECTION" || "$SECTION" == "$1" ]]
+}
+
 fail() {
     echo "FAIL: $1" >&2
     exit 1
@@ -210,6 +230,7 @@ run_review_and_fix() {
     )
 }
 
+if section_runs dispatch; then
 work_findings="$TMP/findings-mode"
 make_work_repo "$work_findings"
 empty="$work_findings/empty.md"
@@ -1202,6 +1223,9 @@ else
     fail "review-scout-manifest basenames should come from non-empty KVs: $(cat "$scout_missing_files_batch" 2>/dev/null)"
 fi
 
+fi  # end section: dispatch
+
+if section_runs convergence; then
 # ── Convergence and degraded-round tests ────────────────────────────────────
 
 # Helper: stub a prior round by writing its review-core.env with the given accepted count.
@@ -1918,6 +1942,7 @@ set -e
 if grep -Fq 'REVIEW_AND_FIX_STATUS=converged-small-changes' <<< "$out"; then
     fail "round1-small-no-converge: must NOT converge on round 1 (no prior round to compare)"
 fi
+fi  # end section: convergence
 
 
 echo "test-review-and-fix: ok"

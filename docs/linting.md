@@ -36,11 +36,11 @@ When adding a new pre-commit hook, decide explicitly whether `lint`, the dedicat
 
 ## CI sharding of `test-harnesses`
 
-`make test-harnesses` remains the local umbrella target and runs every regression harness wired into the `test-harnesses-N` shards plus the partition guard (`make test-harness-shards-coverage` reports the active inventory; the `Makefile` is the source of truth). CI fans the same inventory out across eighteen parallel matrix cells named `test-harnesses (1)` through `test-harnesses (18)`, each invoking `make test-harnesses-N`.
+`make test-harnesses` remains the local umbrella target and runs every regression harness wired into the `test-harnesses-N` shards plus the partition guard (`make test-harness-shards-coverage` reports the active inventory; the `Makefile` is the source of truth). CI fans the same inventory out across twenty parallel matrix cells named `test-harnesses (1)` through `test-harnesses (20)`, each invoking `make test-harnesses-N`.
 
-The shard lists live directly in `Makefile` and are balanced by measured per-harness wall-clock time. New harnesses must be assigned to exactly one `test-harnesses-N:` prerequisite list; `make test-harness-shards-coverage` checks for missing, orphaned, duplicated, wrapped, or non-standard harness entries. The matrix uses `fail-fast: false`, so all eighteen shards finish even after one fails. This spends more CI minutes but preserves complete diagnostics.
+The shard lists live directly in `Makefile` and are balanced by measured per-harness wall-clock time. New harnesses must be assigned to exactly one `test-harnesses-N:` prerequisite list; `make test-harness-shards-coverage` checks for missing, orphaned, duplicated, wrapped, or non-standard harness entries. The matrix uses `fail-fast: false`, so all twenty shards finish even after one fails. This spends more CI minutes but preserves complete diagnostics.
 
-Local ordering changed: under `make test-harnesses` and therefore `make lint`, harnesses now execute in shard order (`test-harnesses-1`, then `test-harnesses-2`, and so on), not in the old single prerequisite-list order. Direct `make test-X` invocations are unchanged. CI shards run on separate VMs; local `make -j18 test-harnesses` can run shard targets concurrently, so fixed `/tmp` paths in individual harnesses remain a local-parallelism limitation even though the CI split is isolated.
+Local ordering changed: under `make test-harnesses` and therefore `make lint`, harnesses now execute in shard order (`test-harnesses-1`, then `test-harnesses-2`, and so on), not in the old single prerequisite-list order. Direct `make test-X` invocations are unchanged. CI shards run on separate VMs; local `make -j20 test-harnesses` can run shard targets concurrently, so fixed `/tmp` paths in individual harnesses remain a local-parallelism limitation even though the CI split is isolated.
 
 ### Refreshing harness shard balance
 
@@ -129,10 +129,10 @@ The `shellcheck` job runs as a dedicated CI job in parallel with `lint`; the `li
 
 ### Changing the shard count (lockstep edit)
 
-The shard count today is `18`, hard-coded in two places (the partition guard is shard-count-agnostic — it discovers `test-harnesses-N:` rules by parsing the Makefile):
+The shard count today is `20`, hard-coded in two places (the partition guard is shard-count-agnostic — it discovers `test-harnesses-N:` rules by parsing the Makefile):
 
-1. `Makefile` — eighteen `test-harnesses-N:` shard targets and the umbrella `test-harnesses:` aggregating them.
-2. `.github/workflows/ci.yaml` — the matrix `shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18]` strategy on the `test-harnesses` job.
+1. `Makefile` — twenty `test-harnesses-N:` shard targets and the umbrella `test-harnesses:` aggregating them.
+2. `.github/workflows/ci.yaml` — the matrix `shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]` strategy on the `test-harnesses` job.
 
 `scripts/test-harness-shards-coverage.sh` does NOT need editing on a shard-count change: it discovers the active `test-harnesses-N:` rules from the Makefile (`extract_shard_prereqs` parses them) and validates that `test-harness-shards-coverage` is first in the shard that contains it. The umbrella-expected list is built from the same discovered set.
 
