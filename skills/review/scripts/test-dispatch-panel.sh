@@ -3,6 +3,22 @@
 
 set -euo pipefail
 
+# --section CLI selector (closes #2349): splits 17 scenarios into 3 groups:
+#   core:     panel-mode + missing-diff fallbacks (6 scenarios)
+#   reuse:    round-reuse and reuse-manifest cases (5 scenarios)
+#   limits:   oversized-diff, dynamic-archetype limit cases (6 scenarios)
+# With no --section, all 17 run sequentially (local-dev backward compat).
+SECTION=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --section) SECTION="$2"; shift 2 ;;
+        *) shift ;;
+    esac
+done
+section_runs() {
+    [[ -z "$SECTION" || "$SECTION" == "$1" ]]
+}
+
 export WAIT_FOR_REVIEWERS_POLL_INTERVAL="${WAIT_FOR_REVIEWERS_POLL_INTERVAL:-0.05}"
 export RUN_EXTERNAL_AGENT_POLL_INTERVAL="${RUN_EXTERNAL_AGENT_POLL_INTERVAL:-0.05}"
 
@@ -83,6 +99,7 @@ printf 'DIFF_MODE=%s\n' "${TEST_DIFF_MODE:-generic}"
 STUB
 chmod +x "$classifier_stub"
 
+if section_runs core; then
 out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" \
     --mode diff \
     --review-tmpdir "$TMP/simple" \
@@ -186,7 +203,9 @@ out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" \
 grep -Fq 'SCOUT_STATUS=missing-diff-file' <<< "$out"
 grep -Fq 'DYNAMIC_SLOTS=0' <<< "$out"
 [[ "$(jq '.archetypes | length' "$TMP/missing-diff/scout-round1-manifest.json")" = "0" ]] || { echo "FAIL: expected missing-diff scout manifest to be empty" >&2; exit 1; }
+fi  # end section: core
 
+if section_runs reuse; then
 seed_case_inputs "$TMP/round-reuse"
 out=$(PATH="$STUB_BIN:$PATH" SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$scout_launch" SCOUT_LAUNCH_JSON_FILE="$TMP/scout-valid4.json" "$SCRIPT" \
     --mode diff \
@@ -280,6 +299,9 @@ if grep -q '"prompt_file"' "$TMP/reuse-invalid-manifest/panel-manifest.ndjson"; 
     exit 1
 fi
 
+fi  # end section: reuse
+
+if section_runs limits; then
 seed_case_inputs "$TMP/oversized-diff"
 # Multi-line padding just over the 256 KiB scout context cap (avoids one 270k-line bash read in classify/render paths).
 python3 - <<'PY' > "$TMP/oversized-diff/review.diff"
@@ -369,5 +391,6 @@ out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" \
 grep -Fq 'DISPATCH_OK=true' <<< "$out"
 claude_count=$(find "$TMP/both-down" -name '*phase3.txt' | wc -l | tr -d ' ')
 [[ "$claude_count" -ge 7 ]] || { echo "FAIL: expected Claude phase3 outputs for both-down panel" >&2; exit 1; }
+fi  # end section: limits
 
 echo "All assertions passed."

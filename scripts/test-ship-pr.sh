@@ -218,7 +218,14 @@ SH
 #!/usr/bin/env bash
 touch "${IMPLEMENT_TMPDIR:-/tmp}/summary-upsert-called"
 SH
-    chmod +x "$root"/scripts/*.sh "$root"/scripts/gh "$root"/.claude/skills/bump-version/scripts/*.sh
+    # Stub sleep to no-op so ship-pr.sh fix-attempt backoff (2/4/8/16s) does
+    # not gate test wall time. ship-pr.sh resolves `sleep` via PATH, so
+    # prepending $root/scripts to PATH in run_subject picks this up.
+    cat > "$root/scripts/sleep" <<'SH'
+#!/usr/bin/env bash
+exit 0
+SH
+    chmod +x "$root"/scripts/*.sh "$root"/scripts/gh "$root"/scripts/sleep "$root"/.claude/skills/bump-version/scripts/*.sh
 }
 
 make_repo() {
@@ -288,7 +295,11 @@ EOF
 run_subject() {
     local root=$1 tmpdir=$2 rc_file=$3
     set +e
-    (cd "$root" && CLAUDE_PLUGIN_ROOT="$root" IMPLEMENT_TMPDIR="$tmpdir" "$root/scripts/ship-pr.sh" --state-file "$tmpdir/ship-pr-state.sh" --implement-tmpdir "$tmpdir" --merge true --draft false --forked false --repo owner/repo "${@:4}" > "$tmpdir/stdout" 2> "$tmpdir/stderr")
+    # PATH prepend ensures stub `sleep` (no-op) and other $root/scripts/* stubs
+    # are picked up by ship-pr.sh and any helpers it spawns. Without it,
+    # ship-pr.sh's fix-attempt backoff (sleeps of 2/4/8/16s) makes scenarios
+    # like ci_fix_exhausted take 30s+ each.
+    (cd "$root" && PATH="$root/scripts:$PATH" CLAUDE_PLUGIN_ROOT="$root" IMPLEMENT_TMPDIR="$tmpdir" "$root/scripts/ship-pr.sh" --state-file "$tmpdir/ship-pr-state.sh" --implement-tmpdir "$tmpdir" --merge true --draft false --forked false --repo owner/repo "${@:4}" > "$tmpdir/stdout" 2> "$tmpdir/stderr")
     local rc=$?
     set -e
     printf '%s' "$rc" > "$rc_file"
@@ -346,6 +357,60 @@ seed_stale_stall_state() {
         && mv "$file.new" "$file"
 }
 
+# ──────────────────────────────────────────────────────────────────────────────
+# Section dispatch (closes #2349 by reducing the test-ship-pr ceiling)
+#
+# Scenarios are partitioned into 4 functional sections. Each section becomes a
+# separate Makefile target (test-ship-pr-state, -postmerge, -fix-loop,
+# -transient) so the CI matrix can pack them as independent harness rows.
+# Running the script without --section is equivalent to running all four
+# sections sequentially (backward-compat for local dev).
+# ──────────────────────────────────────────────────────────────────────────────
+SECTION=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --section) SECTION="$2"; shift 2 ;;
+        *) shift ;;
+    esac
+done
+section_runs() {
+    [[ -z "$SECTION" || "$SECTION" == "$1" ]]
+}
+
+# Helpers used by both the fix-loop and transient sections; defined at top
+# scope so a single-section invocation (e.g. --section transient) still sees
+# them after the fix-loop section is skipped.
+_install_rebump_dep_stubs() {
+    local root=$1
+    for extra in drop-bump-commit.sh git-sync-local-main.sh git-force-push.sh refresh-run-logs.sh; do
+        printf '#!/usr/bin/env bash\nexit 0\n' > "$root/scripts/$extra"
+    done
+    chmod +x \
+        "$root/scripts/drop-bump-commit.sh" \
+        "$root/scripts/git-sync-local-main.sh" \
+        "$root/scripts/git-force-push.sh" \
+        "$root/scripts/refresh-run-logs.sh"
+}
+
+_make_rebase_stubs() {
+    local root=$1 count_dir=$2
+    _install_rebump_dep_stubs "$root"
+    cat > "$root/scripts/ci-wait.sh" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+count_file="$count_dir/ci-wait-count"
+count=\$(cat "\$count_file" 2>/dev/null || echo 0)
+printf '%s\n' "\$((count + 1))" > "\$count_file"
+if [ "\$count" -eq 0 ]; then
+    printf 'ACTION=rebase\nCI_STATUS=fail\nBEHIND_COUNT=1\nFAILED_RUN_ID=\nBAIL_REASON=\nITERATION=0\nELAPSED=1\n'
+else
+    printf 'ACTION=merge\nCI_STATUS=pass\nBEHIND_COUNT=0\nFAILED_RUN_ID=\nBAIL_REASON=\nITERATION=1\nELAPSED=1\n'
+fi
+STUB
+    chmod +x "$root/scripts/ci-wait.sh"
+}
+
+if section_runs state; then
 root=$(make_repo checks_fail)
 tmp=$(make_tmpdir)
 write_state "$tmp/ship-pr-state.sh" checks
@@ -424,7 +489,9 @@ write_state "$tmp/ship-pr-state.sh" ci-merge
 STUB_CI_ACTION=bail STUB_BAIL_REASON=fix-attempts-exhausted run_subject "$root" "$tmp" "$tmp/rc"
 assert_rc "$tmp/rc" 3 "user-input bail exits 3"
 assert_state_line "$tmp/ship-pr-state.sh" "BAIL_NEEDS_USER_INPUT=true" "user-input bail marks state"
+fi  # end section: state
 
+if section_runs postmerge; then
 root=$(make_repo version_published_pr_merged)
 tmp=$(make_tmpdir)
 write_state "$tmp/ship-pr-state.sh" ci-merge
@@ -625,7 +692,9 @@ else
     fail "pr-create flush: larch-log.sh stub was not called"
 fi
 rm -rf "$sentinel_dir"
+fi  # end section: postmerge
 
+if section_runs fix-loop; then
 # Regression: CI-fix vendors receive the design plan path from session-env.
 root=$(make_repo ci_fix_plan_file)
 tmp=$(make_tmpdir)
@@ -770,40 +839,6 @@ rm -rf "$call_dir"
 # ──────────────────────────────────────────────────────────────────────────────
 # --no-logs-commit: exported to lifecycle helper subprocess tree
 # ──────────────────────────────────────────────────────────────────────────────
-
-# Helper: stub scripts run_rebase_rebump invokes that write_stubs omits or leaves
-# unsuitable for the harness (drop-bump, sync main, force-push, refresh logs).
-_install_rebump_dep_stubs() {
-    local root=$1
-    for extra in drop-bump-commit.sh git-sync-local-main.sh git-force-push.sh refresh-run-logs.sh; do
-        printf '#!/usr/bin/env bash\nexit 0\n' > "$root/scripts/$extra"
-    done
-    chmod +x \
-        "$root/scripts/drop-bump-commit.sh" \
-        "$root/scripts/git-sync-local-main.sh" \
-        "$root/scripts/git-force-push.sh" \
-        "$root/scripts/refresh-run-logs.sh"
-}
-
-# Helper: override ci-wait.sh (rebase first call, merge second) and add stubs
-# required by run_rebase_rebump that are not in write_stubs.
-_make_rebase_stubs() {
-    local root=$1 count_dir=$2
-    _install_rebump_dep_stubs "$root"
-    cat > "$root/scripts/ci-wait.sh" <<STUB
-#!/usr/bin/env bash
-set -euo pipefail
-count_file="$count_dir/ci-wait-count"
-count=\$(cat "\$count_file" 2>/dev/null || echo 0)
-printf '%s\n' "\$((count + 1))" > "\$count_file"
-if [ "\$count" -eq 0 ]; then
-    printf 'ACTION=rebase\nCI_STATUS=fail\nBEHIND_COUNT=1\nFAILED_RUN_ID=\nBAIL_REASON=\nITERATION=0\nELAPSED=1\n'
-else
-    printf 'ACTION=merge\nCI_STATUS=pass\nBEHIND_COUNT=0\nFAILED_RUN_ID=\nBAIL_REASON=\nITERATION=1\nELAPSED=1\n'
-fi
-STUB
-    chmod +x "$root/scripts/ci-wait.sh"
-}
 
 root=$(make_repo rebump_flush_enabled)
 tmp=$(make_tmpdir)
@@ -1226,7 +1261,9 @@ else
     fail "local fix loop exhausted: expected 20 check attempts across 5 vendor attempts, got $check_count"
 fi
 rm -rf "$call_dir"
+fi  # end section: fix-loop
 
+if section_runs transient; then
 # --- Transient-net exit-6 tests (Part C) ---
 
 # Positive case 1: create-pr transient — stub emits a network error signature, expect exit 6.
@@ -1579,6 +1616,7 @@ assert_state_line "$tmp/ship-pr-state.sh" "BAIL_REASON=" "stale stall state: ski
 assert_state_line "$tmp/ship-pr-state.sh" "STALL_TRACKING=false" "stale stall state: skip-merge guard clears STALL_TRACKING"
 assert_state_line "$tmp/ship-pr-state.sh" "STALL_STEP=" "stale stall state: skip-merge guard clears STALL_STEP"
 assert_file_absent_or_empty "$tmp/final-bail-reason.txt" "stale stall state: skip-merge guard leaves final-bail-reason.txt empty"
+fi  # end section: transient
 
 if [[ "$FAIL_COUNT" -ne 0 ]]; then
     echo "test-ship-pr: $FAIL_COUNT failure(s), $PASS_COUNT pass(es)" >&2

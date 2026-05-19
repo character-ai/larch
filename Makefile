@@ -1,10 +1,9 @@
 # Larch Makefile
 # Thin wrapper around pre-commit. Linter definitions live in .pre-commit-config.yaml.
 
-.PHONY: lint lint-only test-harnesses test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesses-4 test-harnesses-5 test-harnesses-6 test-harnesses-7 test-harnesses-8 test-harnesses-9 test-harnesses-10 test-harnesses-11 test-harnesses-12 test-harnesses-13 test-harnesses-14 test-harnesses-15 test-harnesses-16 shellcheck markdownlint jsonlint actionlint agent-lint agnix gitleaks trufflehog setup test-pipe-sigpipe-safety test-redact test-redact-tmpdir-paths test-append-tool-failure test-validate-research-output test-validate-citations test-validate-citations-budget test-collect-agent-bash32 test-collect-agent-retry test-collect-agent-results test-parse-input test-allocate-candidates test-add-blocked-by test-list-issues test-parse-args test-prepare-description test-parse-prose-blockers test-issue-lifecycle test-fix-issue-bail-detection test-anti-improvised-wakeup test-fix-issue-step-order test-find-lock-issue test-umbrella-handler test-finalize-umbrella test-sentinel-write test-sessionstart test-keepalive-sentinel test-check-clean-tree test-preflight-args test-cleanup-tmpdir test-cache-root-validation test-cache-key-discipline test-finalize-sanity-check test-session-entry-gate test-session-setup-presence-defaults test-session-setup-repo-fallback test-session-env-roundtrip test-audit-edit-write test-block-submodule test-deny-edit-write test-post-scaffold-hints test-render-skill test-show-skill test-render-lane-status test-verify-skill-called test-check-bump-version test-run-checks test-relevant-checks-byte-budget test-relevant-checks-validation test-relevant-checks-helper-failure test-hook-block-skill-relevant-checks test-hook-anti-read-poll test-review-relevant-checks-helper test-lint-fix-loop test-drop-bump-commit test-ci-wait-exit-trap test-ci-rerun-failed test-ci-status test-merge-pr test-apply-bump test-git-push test-lint-skill-invocations test-lint-literal-counts test-lint-no-raw-stderr-after-quiet-init test-mermaid-fragments test-anti-halt test-orchestrator-scope-sync test-alias-target-resolution test-alias-structure test-design-structure test-design-manifest test-design-driver test-classify-issue test-emit-plan test-tally-plan-review test-finalize-plan test-write-run-params test-plan-review-prompt test-implement-rebase-macro test-implement-step2-routing test-rebase-push-keep-on-conflict test-rebase-push-force-lease test-rebase-push-fork-mode test-implement-structure test-implement-timing-rehydration test-implement-cleanup-roundtrip test-implement-anti-polling-rule test-implement-relevant-checks-anti-halt test-implement-anti-halt test-post-design-boundary test-implement-post-design-boundary test-implement-review-token-propagation test-step2-dispatch test-cursor-implementer test-codex-implementer test-refresh-run-logs test-ship-pr test-ci-wait test-launch-cursor-ci test-launch-codex-ci test-launch-claude-subprocess test-launch-claude-review test-dispatch-with-waterfall test-run-external-agent test-run-external-agent-args test-quick-mode-docs-sync test-implement-finalize test-flush-execution-issues test-post-tracking-issue test-commit-implementation test-commit-review-fixes test-generate-code-flow-diagram test-refresh-execution-issues test-write-rejected-findings test-slack-issue-announce test-write-final-report test-implement-cleanup-script test-restore-finalize-state test-harness-shards-coverage test-harness-timer test-references-headers test-render-reviewer-prompt test-render-specialist-prompt test-research-structure test-review-structure test-gather-context test-review-core test-dispatch-panel test-scout-dynamic-archetypes test-dispatch-plan-voters test-collect-findings test-tally-code-votes test-check-reviewer-failure-threshold test-lib-vote-tally test-dispatch-code-voters test-emit-tally test-log-phase test-review-and-fix test-scrub-submodule-paths test-ballot-parse test-tally-vote test-scoreboard test-oos-serialize test-run-research-planner test-render-findings-batch test-research-banner test-synthesis-subagent test-research-angle-prompts test-subskill-anchors test-tracking-issue-write test-larch-log test-capture-session-transcript test-local-cleanup test-larch-logs-manifest test-larch-logs-batches test-compose-plan-goals-test test-write-tally test-compose-collector-failure-log test-tracking-issue-summary test-false-positive-keywords test-round-trip-detect test-tracking-issue-read-sentinel test-compose-review-findings test-token-tally test-token-ledger test-token-report test-timing-ledger test-timing-report test-token-vendor-scrapers test-token-claude-source test-umbrella-helpers test-umbrella-parse-args test-umbrella-blocked-by-issue test-umbrella-emit-output-contract test-umbrella-render-batch-input test-render-umbrella-body test-check-review-changes test-check-mid-run-dirty-tree test-check-phantom-dirty test-check-reviewers test-check-generators test-check-topology-rule-paths test-generate-topology-docs test-external-tool-registry test-agent-model-args test-effort-prose test-launch-review test-lib-cursor-auth test-lib-quiet test-github-remote-repo test-implement-fork-env test-get-issue-context test-create-pr test-resolve-repo test-gh-pr-body-update test-validate-pieces-json test-upgrade-larch test-upgrade-larch-prune smoke-dialectic eval-research test-eval-set-structure test-eval-research-baseline-flag test-body-file-title test-intra-batch-deps test-blocked-by-issue test-oos-file-conflict-deps test-oos-issue-cap test-wait-for-reviewers test-set-up-forked-open-source-repo test-analyze test-rate-assertions test-compose-pr-summary test-compose-architecture-sketch test-run-step5-review test-run-step1-plan-log test-run-step2-dispatch test-persist-post-plan-keys
+.PHONY: lint lint-only test-harnesses test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesses-4 test-harnesses-5 test-harnesses-6 test-harnesses-7 test-harnesses-8 test-harnesses-9 test-harnesses-10 test-harnesses-11 test-harnesses-12 test-harnesses-13 test-harnesses-14 test-harnesses-15 test-harnesses-16 shellcheck markdownlint jsonlint actionlint agent-lint agnix gitleaks trufflehog setup test-pipe-sigpipe-safety test-redact test-redact-tmpdir-paths test-append-tool-failure test-validate-research-output test-validate-citations test-validate-citations-budget test-collect-agent-bash32 test-collect-agent-retry test-collect-agent-results test-parse-input test-allocate-candidates test-add-blocked-by test-list-issues test-parse-args test-prepare-description test-parse-prose-blockers test-issue-lifecycle test-fix-issue-bail-detection test-anti-improvised-wakeup test-fix-issue-step-order test-find-lock-issue test-umbrella-handler test-finalize-umbrella test-sentinel-write test-sessionstart test-keepalive-sentinel test-check-clean-tree test-preflight-args test-cleanup-tmpdir test-cache-root-validation test-cache-key-discipline test-finalize-sanity-check test-session-entry-gate test-session-setup-presence-defaults test-session-setup-repo-fallback test-session-env-roundtrip test-audit-edit-write test-block-submodule test-deny-edit-write test-post-scaffold-hints test-render-skill test-show-skill test-render-lane-status test-verify-skill-called test-check-bump-version test-run-checks test-relevant-checks-byte-budget test-relevant-checks-validation test-relevant-checks-helper-failure test-hook-block-skill-relevant-checks test-hook-anti-read-poll test-review-relevant-checks-helper test-lint-fix-loop test-drop-bump-commit test-ci-wait-exit-trap test-ci-rerun-failed test-ci-status test-merge-pr test-apply-bump test-git-push test-lint-skill-invocations test-lint-literal-counts test-lint-no-raw-stderr-after-quiet-init test-mermaid-fragments test-anti-halt test-orchestrator-scope-sync test-alias-target-resolution test-alias-structure test-design-structure test-design-manifest test-design-driver test-classify-issue test-emit-plan test-tally-plan-review test-finalize-plan test-write-run-params test-plan-review-prompt test-implement-rebase-macro test-implement-step2-routing test-rebase-push-keep-on-conflict test-rebase-push-force-lease test-rebase-push-fork-mode test-implement-structure test-implement-timing-rehydration test-implement-cleanup-roundtrip test-implement-anti-polling-rule test-implement-relevant-checks-anti-halt test-implement-anti-halt test-post-design-boundary test-implement-post-design-boundary test-implement-review-token-propagation test-step2-dispatch test-cursor-implementer test-codex-implementer test-refresh-run-logs test-ship-pr-state test-ship-pr-postmerge test-ship-pr-fix-loop test-ship-pr-transient test-ci-wait test-launch-cursor-ci test-launch-codex-ci test-launch-claude-subprocess test-launch-claude-review test-dispatch-with-waterfall test-run-external-agent test-run-external-agent-args test-quick-mode-docs-sync test-implement-finalize test-flush-execution-issues test-post-tracking-issue test-commit-implementation test-commit-review-fixes test-generate-code-flow-diagram test-refresh-execution-issues test-write-rejected-findings test-slack-issue-announce test-write-final-report test-implement-cleanup-script test-restore-finalize-state test-harness-shards-coverage test-harness-timer test-references-headers test-render-reviewer-prompt test-render-specialist-prompt test-research-structure test-review-structure test-gather-context test-review-core test-dispatch-panel-core test-dispatch-panel-reuse test-dispatch-panel-limits test-scout-dynamic-archetypes test-dispatch-plan-voters test-collect-findings test-tally-code-votes test-check-reviewer-failure-threshold test-lib-vote-tally test-dispatch-code-voters-happy test-dispatch-code-voters-edge test-emit-tally test-log-phase test-review-and-fix test-scrub-submodule-paths test-ballot-parse test-tally-vote test-scoreboard test-oos-serialize test-run-research-planner test-render-findings-batch test-research-banner test-synthesis-subagent test-research-angle-prompts test-subskill-anchors test-tracking-issue-write test-larch-log test-capture-session-transcript test-local-cleanup test-larch-logs-manifest test-larch-logs-batches test-compose-plan-goals-test test-write-tally test-compose-collector-failure-log test-tracking-issue-summary test-false-positive-keywords test-round-trip-detect test-tracking-issue-read-sentinel test-compose-review-findings test-token-tally test-token-ledger test-token-report test-timing-ledger test-timing-report test-token-vendor-scrapers test-token-claude-source test-umbrella-helpers test-umbrella-parse-args test-umbrella-blocked-by-issue test-umbrella-emit-output-contract test-umbrella-render-batch-input test-render-umbrella-body test-check-review-changes test-check-mid-run-dirty-tree test-check-phantom-dirty test-check-reviewers test-check-generators test-check-topology-rule-paths test-generate-topology-docs test-external-tool-registry test-agent-model-args test-effort-prose test-launch-review test-lib-cursor-auth test-lib-quiet test-github-remote-repo test-implement-fork-env test-get-issue-context test-create-pr test-resolve-repo test-gh-pr-body-update test-validate-pieces-json test-upgrade-larch test-upgrade-larch-prune smoke-dialectic eval-research test-eval-set-structure test-eval-research-baseline-flag test-body-file-title test-intra-batch-deps test-blocked-by-issue test-oos-file-conflict-deps test-oos-issue-cap test-wait-for-reviewers test-set-up-forked-open-source-repo test-analyze test-rate-assertions test-compose-pr-summary test-compose-architecture-sketch test-run-step5-review test-run-step1-plan-log test-run-step2-dispatch test-persist-post-plan-keys
 .PHONY: test-check-reviewer-failure-threshold
 .PHONY: test-lib-vote-tally
-.PHONY: test-dispatch-code-voters
 .PHONY: test-larch-log-write-round
 .PHONY: test-upgrade-larch
 .PHONY: test-scout-dynamic-archetypes
@@ -30,15 +29,15 @@ lint-only:
 # Shard-12 leads with the partition-invariant guard so partition bugs surface.
 test-harnesses: test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesses-4 test-harnesses-5 test-harnesses-6 test-harnesses-7 test-harnesses-8 test-harnesses-9 test-harnesses-10 test-harnesses-11 test-harnesses-12 test-harnesses-13 test-harnesses-14 test-harnesses-15 test-harnesses-16
 
-test-harnesses-1: test-ship-pr
+test-harnesses-1: test-ship-pr-state test-ship-pr-postmerge test-ship-pr-fix-loop test-ship-pr-transient
 
-test-harnesses-2: test-dispatch-panel
+test-harnesses-2: test-dispatch-panel-core test-dispatch-panel-reuse test-dispatch-panel-limits
 
 test-harnesses-3: test-launch-review
 
 test-harnesses-4: test-set-up-forked-open-source-repo
 
-test-harnesses-5: test-dispatch-code-voters test-research-banner test-alias-structure
+test-harnesses-5: test-dispatch-code-voters-happy test-dispatch-code-voters-edge test-research-banner test-alias-structure
 
 test-harnesses-6: test-implement-finalize test-token-report test-check-phantom-dirty test-refresh-run-logs test-launch-claude-subprocess test-relevant-checks-validation test-run-research-planner test-session-entry-gate test-compose-plan-goals-test test-commit-review-fixes test-agent-model-args test-lib-vote-tally test-research-structure test-tally-vote test-oos-serialize test-body-file-title
 
@@ -387,8 +386,17 @@ test-codex-implementer:
 test-refresh-run-logs:
 	bash scripts/harness-timer.sh $@ bash scripts/test-refresh-run-logs.sh
 
-test-ship-pr:
-	bash scripts/harness-timer.sh $@ bash scripts/test-ship-pr.sh
+test-ship-pr-state:
+	bash scripts/harness-timer.sh $@ bash scripts/test-ship-pr.sh --section state
+
+test-ship-pr-postmerge:
+	bash scripts/harness-timer.sh $@ bash scripts/test-ship-pr.sh --section postmerge
+
+test-ship-pr-fix-loop:
+	bash scripts/harness-timer.sh $@ bash scripts/test-ship-pr.sh --section fix-loop
+
+test-ship-pr-transient:
+	bash scripts/harness-timer.sh $@ bash scripts/test-ship-pr.sh --section transient
 
 test-ci-wait:
 	bash scripts/harness-timer.sh $@ bash scripts/test-ci-wait.sh
@@ -470,8 +478,14 @@ test-gather-context:
 test-review-core:
 	bash scripts/harness-timer.sh $@ bash skills/review/scripts/test-review-core.sh
 
-test-dispatch-panel:
-	bash scripts/harness-timer.sh $@ bash skills/review/scripts/test-dispatch-panel.sh
+test-dispatch-panel-core:
+	bash scripts/harness-timer.sh $@ bash skills/review/scripts/test-dispatch-panel.sh --section core
+
+test-dispatch-panel-reuse:
+	bash scripts/harness-timer.sh $@ bash skills/review/scripts/test-dispatch-panel.sh --section reuse
+
+test-dispatch-panel-limits:
+	bash scripts/harness-timer.sh $@ bash skills/review/scripts/test-dispatch-panel.sh --section limits
 
 test-scout-dynamic-archetypes:
 	bash scripts/harness-timer.sh $@ bash scripts/test-scout-dynamic-archetypes.sh
@@ -493,9 +507,12 @@ test-check-reviewer-failure-threshold:
 test-lib-vote-tally:
 	bash scripts/harness-timer.sh $@ bash scripts/test-lib-vote-tally.sh
 
-.PHONY: test-dispatch-code-voters
-test-dispatch-code-voters:
-	bash scripts/harness-timer.sh $@ bash scripts/test-dispatch-code-voters.sh
+.PHONY: test-dispatch-code-voters-happy test-dispatch-code-voters-edge
+test-dispatch-code-voters-happy:
+	bash scripts/harness-timer.sh $@ bash scripts/test-dispatch-code-voters.sh --section happy
+
+test-dispatch-code-voters-edge:
+	bash scripts/harness-timer.sh $@ bash scripts/test-dispatch-code-voters.sh --section edge
 
 test-emit-tally:
 	bash scripts/harness-timer.sh $@ bash skills/review/scripts/test-emit-tally.sh
