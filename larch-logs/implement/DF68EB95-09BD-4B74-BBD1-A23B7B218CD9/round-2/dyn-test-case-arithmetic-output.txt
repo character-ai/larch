@@ -1,0 +1,25 @@
+Gathering the branch diff and commit list, then auditing test arithmetic against `KEEP_LIMIT=8` and pruning logic.
+
+Verifying how `SANITIZED_VERSIONS` is ordered and how the test harness merges `PLUGIN_ROOT_VERSION` into active pins — affects arithmetic correctness.
+
+Here is the read-only review. I used the precomputed diff plus the current workspace copies of [`skills/upgrade-larch/scripts/upgrade-larch.sh`](skills/upgrade-larch/scripts/upgrade-larch.sh) and [`skills/upgrade-larch/scripts/test-upgrade-larch-prune.sh`](skills/upgrade-larch/scripts/test-upgrade-larch-prune.sh) to confirm ordering (`list_cached_versions` → `sort_versions`), how `ACTIVE_SESSION_VERSIONS` is built (`SESSION_PLUGIN_VERSIONS` plus `INSTALLED_VERSION` from `basename "$PLUGIN_ROOT"` at script start, lines 271–282 in the current file), and that `warn_preserved_active_version_once` still emits the exact warning substring the tests assert.
+
+**Commits since merge-base with `main`:** `2ed18e44491a099b8341006f47ccde92f9cf6107` — `d4d4370f` Address code review feedback (round 1); `b282bfeb` chore(larch-logs): flush implement run …; `7572fc49` Fix upgrade-larch cache pruning floor sweep.
+
+### In-Scope Findings
+
+No correctness defects found in the modified expectations versus `KEEP_LIMIT=8` and the new cap-prune loop in [`skills/upgrade-larch/scripts/upgrade-larch.sh`](skills/upgrade-larch/scripts/upgrade-larch.sh) (lines 311–355): `list_cached_versions` feeds versions in `sort_versions` order, so the inner `for version in "${SANITIZED_VERSIONS[@]}"` always considers the **oldest** removable candidate first; removing two unpinned oldest from 10 cached dirs yields exactly eight retained dirs.
+
+- **correctness** — [`skills/upgrade-larch/scripts/test-upgrade-larch-prune.sh`](skills/upgrade-larch/scripts/test-upgrade-larch-prune.sh) `233-249` (`active-session-keeps-version`): nine seeded dirs `29.1.20`–`29.1.28`, install `29.1.30` → ten dirs; `LATEST_STABLE` `29.1.30`; pins/executing protect `29.1.21`; removable oldest are `29.1.20` then `29.1.22`; eight kept (`21`, `23`–`28`, `30`). Arithmetic matches assertions.
+- **correctness** — same file `280-296` (`crlf-session-root-keeps-version`): same counts and pin on `29.1.21` via literal line; same prune pair and kept set as above.
+- **correctness** — same file `279-295` in diff / `280-295` current (`cap-prune-trims-to-eight`): nine seeds `29.1.21`–`29.1.29`, install `29.1.30` → ten dirs; only `LATEST_STABLE` and executing `29.1.29` are protected among removals; two removals (`21`, `22`) leave eight (`23`–`30`). Consistent.
+- **correctness** — same file `297-315` (`multi-pinned-oldest-still-trims-to-eight`): pins `29.1.20` and `29.1.21` plus executing `29.1.21`; ten dirs after install; two removals must be `29.1.22` and `29.1.23`; eight kept including both pins and `30`. Consistent.
+- **correctness** — `no-sessions-keeps-under-cap` / `unparseable-session-keeps-under-cap` ([`skills/upgrade-larch/scripts/test-upgrade-larch-prune.sh`](skills/upgrade-larch/scripts/test-upgrade-larch-prune.sh) `251-278`): four dirs after install, below cap 8; expecting all four kept is consistent with `VERSION_COUNT > KEEP_LIMIT` being false.
+
+`PLUGIN_ROOT_VERSION` / `INSTALLED_VERSION` interaction: the script adds `basename "$PLUGIN_ROOT"` to `ACTIVE_SESSION_VERSIONS` even when that version is already listed from sessions; duplicates do not change protection or ordering. No extra prune beyond the two unpinned oldest in the over-cap cases above.
+
+### Out-of-Scope Observations
+
+- **architecture** — [`larch-logs/implement/DF68EB95-09BD-4B74-BBD1-A23B7B218CD9/`](larch-logs/implement/DF68EB95-09BD-4B74-BBD1-A23B7B218CD9/) (new `manifest.json`, `parent-issue.md`, etc. in the diff): implement run artifacts under `larch-logs/` are unrelated to prune arithmetic; whether they belong on the branch is a process/repo-hygiene choice, not introduced by the test expectations themselves.
+
+Because there are **no** in-scope correctness issues tied to test-case arithmetic, the in-scope section is “none found” rather than a defect list. I am **not** emitting `NO_ISSUES_FOUND` (that token is defined only when both sections are empty, and the `larch-logs` note is listed out-of-scope).
