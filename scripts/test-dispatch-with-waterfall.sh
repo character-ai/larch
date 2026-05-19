@@ -8,6 +8,10 @@ TMPROOT="$(mktemp -d /tmp/larch-test-dispatch-waterfall-XXXXXX)"
 trap 'rm -rf "$TMPROOT"' EXIT
 export WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.05
 export RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05
+# Suppress launch-review.sh transient-retry backoffs (#2357 added 2/4/8s
+# default jittered backoff). Tests not exercising retry timing set this to
+# 0 to skip the sleep and avoid gating the harness on backoff wall time.
+export LARCH_TRANSIENT_RETRY_DELAY=0
 
 STUB_BIN="$TMPROOT/bin"
 mkdir -p "$STUB_BIN"
