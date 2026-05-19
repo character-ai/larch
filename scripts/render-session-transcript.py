@@ -1,24 +1,39 @@
 #!/usr/bin/env python3
-"""render-session-transcript.py — render a Claude Code session JSONL as a chat-view markdown file.
+"""render-session-transcript.py — render a Claude Code session JSONL as a filtered chat-view JSONL.
+
+Output schema (v1):
+
+  Line 1 is a header record:
+      {"v": 1, "source_basename": "<input-basename>", "turns": N}
+
+  Subsequent lines are per-turn records (one JSON object per line):
+      {"turn": <int>, "role": "user" | "assistant", "blocks": [<block>...]}
+
+  Block types:
+      {"type": "command", "name": "/cmd", "args": "..."}     # slash command typed by user
+      {"type": "text", "value": "..."}                       # plain user / assistant text
+      {"type": "thinking", "value": "..."}                   # assistant thinking (kept only when adjacent to error)
+      {"type": "tool_call", "id": "toolu_...", "name": "Bash", "input": {...}}
+      {"type": "tool_result", "tool_use_id": "toolu_...", "name": "Bash",
+       "elided_bytes": N}                                    # routine result, body elided
+      {"type": "tool_result", "tool_use_id": "toolu_...", "name": "Bash",
+       "text": "...", "error": true, "exit_code": N}         # errored result (full body)
+      {"type": "tool_result", "tool_use_id": "toolu_...", "name": "Bash",
+       "text": "...", "warning": true}                       # warning result (full body)
 
 Filter rules:
   - Drop records with isMeta=true (harness-injected slash-command/@file expansions).
   - Drop housekeeping record types: permission-mode, file-history-snapshot,
     attachment, last-prompt, queue-operation, system.
-  - User records:
-      * <command-message>/<command-name>/<command-args> blocks → '> /name args'.
-      * plain text → '> text' (with <system-reminder> blocks stripped).
-      * tool_result blocks → see tool_result rule below.
-  - Assistant records:
-      * text blocks rendered verbatim.
-      * tool_use rendered as 'Tool name(compact-input)'.
-      * thinking blocks kept only when at least one tool_use in the same
-        assistant turn produced an errored tool_result.
-  - tool_result kept in full when:
-      (a) block has is_error=true, OR
+  - User <command-message>/<command-name>/<command-args> collapse to a `command` block.
+  - User plain text strips <system-reminder> blocks.
+  - tool_result body kept in full when:
+      (a) is_error=true, OR
       (b) tool is 'Bash' AND first 500 chars contain '^(Error:|Exit code [1-9])'
           OR a 'warning:' substring (case-insensitive).
-    Otherwise replaced with '[Tool → N bytes elided]'.
+    Otherwise replaced with `elided_bytes`.
+  - thinking blocks kept only when at least one tool_use in the same
+    assistant turn produced an errored tool_result.
 
 Exit codes:
   0 success; output written.
@@ -34,6 +49,8 @@ import re
 import sys
 from pathlib import Path
 
+SCHEMA_VERSION = 1
+
 HOUSEKEEPING_TYPES = {
     "permission-mode",
     "file-history-snapshot",
@@ -46,31 +63,12 @@ HOUSEKEEPING_TYPES = {
 SYSREM_RE = re.compile(r"<system-reminder>.*?</system-reminder>", re.S)
 CMD_NAME_RE = re.compile(r"<command-name>(.*?)</command-name>", re.S)
 CMD_ARGS_RE = re.compile(r"<command-args>(.*?)</command-args>", re.S)
-BASH_FAIL_RE = re.compile(r"(?m)^(Error:|Exit code [1-9])")
+EXIT_CODE_RE = re.compile(r"(?m)^Exit code ([1-9][0-9]*)")
+ERROR_PREFIX_RE = re.compile(r"(?m)^Error:")
 WARN_RE = re.compile(r"warning:", re.I)
 
 
-def is_error_result(blk: dict, tool_name: str) -> bool:
-    """Return True when this tool_result should be kept in full."""
-    if blk.get("is_error") is True:
-        return True
-    if tool_name != "Bash":
-        return False
-    c = blk.get("content")
-    if isinstance(c, str):
-        txt = c
-    elif isinstance(c, list):
-        txt = "".join(
-            x.get("text", "") for x in c
-            if isinstance(x, dict) and x.get("type") == "text"
-        )
-    else:
-        return False
-    head = txt[:500]
-    return bool(BASH_FAIL_RE.search(head) or WARN_RE.search(head))
-
-
-def extract_text_from_tool_result(blk: dict) -> str:
+def tool_result_text(blk: dict) -> str:
     c = blk.get("content")
     if isinstance(c, str):
         return c
@@ -82,79 +80,90 @@ def extract_text_from_tool_result(blk: dict) -> str:
     return ""
 
 
-def compact_input(inp: object, limit: int = 200) -> str:
-    """Render a tool_use input dict as a compact one-liner, truncated."""
-    if not isinstance(inp, (dict, list)):
-        return str(inp)[:limit]
-    s = json.dumps(inp, separators=(",", ":"), ensure_ascii=False)
-    if len(s) <= limit:
-        return s
-    return s[:limit] + "…"
+def classify_tool_result(blk: dict, tool_name: str) -> tuple[bool, bool, int | None]:
+    """Returns (kept_error, kept_warning, exit_code_or_None).
+
+    kept_error is True when the harness flagged is_error OR the Bash output
+    indicates a non-zero exit / Error prefix. kept_warning is True when the
+    Bash output contains a 'warning:' substring and the result wasn't already
+    classified as an error. exit_code is parsed from 'Exit code N' when present.
+    """
+    is_err_flag = blk.get("is_error") is True
+    if tool_name != "Bash":
+        return (is_err_flag, False, None)
+    txt = tool_result_text(blk)
+    head = txt[:500]
+    exit_match = EXIT_CODE_RE.search(head)
+    exit_code = int(exit_match.group(1)) if exit_match else None
+    has_err_prefix = bool(ERROR_PREFIX_RE.search(head))
+    has_warn = bool(WARN_RE.search(head))
+    error = is_err_flag or exit_code is not None or has_err_prefix
+    warning = (not error) and has_warn
+    return (error, warning, exit_code)
 
 
 def parse_jsonl(path: Path):
-    """Yield (line_number, record) for each parseable line."""
+    """Yield record dicts from a JSONL file, skipping unparseable lines."""
     with path.open("r", encoding="utf-8", errors="replace") as fh:
-        for ln, line in enumerate(fh, 1):
+        for line in fh:
             line = line.rstrip("\n")
             if not line:
                 continue
             try:
-                yield ln, json.loads(line)
+                yield json.loads(line)
             except json.JSONDecodeError:
                 continue
 
 
 def first_pass(records):
-    """Build tool_use_id → name and tool_use_id → error_status maps."""
+    """Build tool_use_id → name and tool_use_id → error_or_warning status maps."""
     id_to_name: dict[str, str] = {}
-    id_to_err: dict[str, bool] = {}
-    for _, rec in records:
+    id_to_kept: dict[str, bool] = {}
+    for rec in records:
         if rec.get("isMeta"):
             continue
         if rec.get("type") in HOUSEKEEPING_TYPES:
             continue
-        msg = rec.get("message", {})
-        content = msg.get("content")
+        content = rec.get("message", {}).get("content")
         if not isinstance(content, list):
             continue
         for blk in content:
             if not isinstance(blk, dict):
                 continue
-            t = blk.get("type")
-            if t == "tool_use":
+            bt = blk.get("type")
+            if bt == "tool_use":
                 bid = blk.get("id", "")
                 if bid:
                     id_to_name[bid] = blk.get("name", "?")
-            elif t == "tool_result":
+            elif bt == "tool_result":
                 tid = blk.get("tool_use_id", "")
                 if not tid:
                     continue
-                # tool name comes from a prior assistant turn already scanned
                 tname = id_to_name.get(tid, "?")
-                id_to_err[tid] = is_error_result(blk, tname)
-    return id_to_name, id_to_err
+                error, warning, _ = classify_tool_result(blk, tname)
+                id_to_kept[tid] = (error or warning)
+    return id_to_name, id_to_kept
 
 
-def render_user(rec, msg, id_to_name, id_to_err, out):
-    content = msg.get("content")
+def render_user_blocks(content, id_to_name) -> list[dict]:
+    blocks: list[dict] = []
     if isinstance(content, str):
         s = SYSREM_RE.sub("", content).strip()
         if "<command-name>" in s:
             m = CMD_NAME_RE.search(s)
             a = CMD_ARGS_RE.search(s)
-            cmd = (m.group(1).strip() if m else "")
+            name = (m.group(1).strip() if m else "")
             args = (a.group(1).strip() if a else "")
-            line = (cmd + (" " + args if args else "")).strip()
-            if line:
-                out.append(f"> {line}")
+            if name:
+                blk: dict = {"type": "command", "name": name}
+                if args:
+                    blk["args"] = args
+                blocks.append(blk)
         elif s:
-            for ln in s.splitlines():
-                out.append(f"> {ln}")
-        return
-
+            blocks.append({"type": "text", "value": s})
+        return blocks
     if not isinstance(content, list):
-        return
+        return blocks
     for blk in content:
         if not isinstance(blk, dict):
             continue
@@ -162,59 +171,60 @@ def render_user(rec, msg, id_to_name, id_to_err, out):
             continue
         tid = blk.get("tool_use_id", "")
         tname = id_to_name.get(tid, "?")
-        txt = extract_text_from_tool_result(blk)
-        if id_to_err.get(tid, False) or is_error_result(blk, tname):
-            head = txt[:500]
-            first_err = ""
-            m = BASH_FAIL_RE.search(head)
-            if m:
-                first_err = head.split("\n", 1)[0][:160]
-            label = f"[{tname} ERROR"
-            if first_err:
-                label += f" — {first_err}"
-            label += "]"
-            out.append(label)
-            out.append("```")
-            out.append(txt)
-            out.append("```")
+        txt = tool_result_text(blk)
+        error, warning, exit_code = classify_tool_result(blk, tname)
+        out: dict = {"type": "tool_result", "tool_use_id": tid, "name": tname}
+        if error or warning:
+            out["text"] = txt
+            if error:
+                out["error"] = True
+            if warning:
+                out["warning"] = True
+            if exit_code is not None:
+                out["exit_code"] = exit_code
         else:
-            n = len(txt)
-            out.append(f"[{tname} → {n} bytes elided]")
+            out["elided_bytes"] = len(txt)
+        blocks.append(out)
+    return blocks
 
 
-def render_assistant(rec, msg, id_to_name, id_to_err, out):
-    content = msg.get("content")
+def render_assistant_blocks(content, id_to_kept) -> list[dict]:
+    blocks: list[dict] = []
     if not isinstance(content, list):
-        return
-    # Determine whether any tool_use in this turn errored.
-    turn_has_error = False
+        return blocks
+    # Does any tool_use in this assistant turn map to a kept (errored or warned) tool_result?
+    turn_has_kept = False
     for blk in content:
         if isinstance(blk, dict) and blk.get("type") == "tool_use":
-            if id_to_err.get(blk.get("id", ""), False):
-                turn_has_error = True
+            if id_to_kept.get(blk.get("id", ""), False):
+                turn_has_kept = True
                 break
     for blk in content:
         if not isinstance(blk, dict):
             continue
-        t = blk.get("type")
-        if t == "text":
+        bt = blk.get("type")
+        if bt == "text":
             txt = SYSREM_RE.sub("", blk.get("text", "")).rstrip()
             if not txt or txt.startswith("Base directory for this skill"):
                 continue
-            out.append(txt)
-        elif t == "thinking":
-            if not turn_has_error:
+            blocks.append({"type": "text", "value": txt})
+        elif bt == "thinking":
+            if not turn_has_kept:
                 continue
             think = blk.get("thinking", "").strip()
-            if not think:
-                continue
-            out.append("<thinking>")
-            out.append(think)
-            out.append("</thinking>")
-        elif t == "tool_use":
-            name = blk.get("name", "?")
-            inp = compact_input(blk.get("input", {}))
-            out.append(f"[{name}({inp})]")
+            if think:
+                blocks.append({"type": "thinking", "value": think})
+        elif bt == "tool_use":
+            out: dict = {"type": "tool_call"}
+            tid = blk.get("id", "")
+            if tid:
+                out["id"] = tid
+            out["name"] = blk.get("name", "?")
+            inp = blk.get("input", {})
+            if inp:
+                out["input"] = inp
+            blocks.append(out)
+    return blocks
 
 
 def render(input_path: Path) -> str:
@@ -223,14 +233,10 @@ def render(input_path: Path) -> str:
     records = list(parse_jsonl(input_path))
     if not records:
         raise ValueError(f"no parseable records in {input_path}")
-    id_to_name, id_to_err = first_pass(records)
-    out: list[str] = []
-    out.append(f"# Session transcript — chat view")
-    out.append(f"")
-    out.append(f"Source: `{input_path.name}` ({len(records)} records)")
-    out.append(f"")
-    turn = 0
-    for _, rec in records:
+    id_to_name, id_to_kept = first_pass(records)
+    turns: list[dict] = []
+    turn_no = 0
+    for rec in records:
         if rec.get("isMeta"):
             continue
         if rec.get("type") in HOUSEKEEPING_TYPES:
@@ -239,32 +245,34 @@ def render(input_path: Path) -> str:
         role = msg.get("role")
         if role not in ("user", "assistant"):
             continue
-        turn += 1
-        out.append(f"## Turn {turn} — {role}")
-        out.append("")
-        before = len(out)
         if role == "user":
-            render_user(rec, msg, id_to_name, id_to_err, out)
+            blocks = render_user_blocks(msg.get("content"), id_to_name)
         else:
-            render_assistant(rec, msg, id_to_name, id_to_err, out)
-        if len(out) == before:
-            # nothing rendered for this turn (e.g. only housekeeping content) — drop header
-            out.pop()  # blank line
-            out.pop()  # header
-            turn -= 1
-        else:
-            out.append("")
-    return "\n".join(out).rstrip() + "\n"
+            blocks = render_assistant_blocks(msg.get("content"), id_to_kept)
+        if not blocks:
+            continue
+        turn_no += 1
+        turns.append({"turn": turn_no, "role": role, "blocks": blocks})
+
+    header = {
+        "v": SCHEMA_VERSION,
+        "source_basename": input_path.name,
+        "turns": len(turns),
+    }
+    out_lines = [json.dumps(header, ensure_ascii=False, separators=(",", ":"))]
+    for t in turns:
+        out_lines.append(json.dumps(t, ensure_ascii=False, separators=(",", ":")))
+    return "\n".join(out_lines) + "\n"
 
 
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    p.add_argument("--input", required=True, help="Path to session-transcript.jsonl")
-    p.add_argument("--output", help="Path to write rendered .md (default: stdout)")
+    p.add_argument("--input", required=True, help="Path to raw Claude Code session JSONL")
+    p.add_argument("--output", help="Path to write filtered JSONL (default: stdout)")
     args = p.parse_args()
     inp = Path(args.input)
     try:
-        md = render(inp)
+        out = render(inp)
     except FileNotFoundError as e:
         print(f"render-session-transcript: input missing: {e}", file=sys.stderr)
         return 2
@@ -272,9 +280,9 @@ def main() -> int:
         print(f"render-session-transcript: {e}", file=sys.stderr)
         return 3
     if args.output:
-        Path(args.output).write_text(md, encoding="utf-8")
+        Path(args.output).write_text(out, encoding="utf-8")
     else:
-        sys.stdout.write(md)
+        sys.stdout.write(out)
     return 0
 
 

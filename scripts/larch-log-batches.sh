@@ -28,7 +28,7 @@ run-statistics .md replace none
 token-report .json replace none
 timing-report .json replace none
 execution-issues .ndjson append json-lines
-session-transcript .md replace none
+session-transcript .jsonl replace none
 "
 
 larch_log_batch_info() {

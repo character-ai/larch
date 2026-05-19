@@ -44,7 +44,7 @@ Malformed argv emits `SESSION_TRANSCRIPT_STATUS=usage-error` and exits 0 before 
 
 ## Rendering
 
-Before flush, the wrapper renders the raw Claude Code session JSONL through `scripts/render-session-transcript.py` and flushes the rendered markdown instead of the raw `.jsonl`. The renderer drops harness-injected slash-command expansions, housekeeping records, and routine tool outputs, keeping the user/assistant conversation plus tool outputs that report errors or warnings. See `scripts/render-session-transcript.md` for the filter rules. The `session-transcript` larch-log batch ships as `.md` (declared in `scripts/larch-log-batches.sh`).
+Before flush, the wrapper renders the raw Claude Code session JSONL through `scripts/render-session-transcript.py` and flushes the filtered JSONL instead of the raw one. The renderer drops harness-injected slash-command expansions, housekeeping records, and routine tool outputs, keeping the user/assistant conversation plus tool outputs that report errors or warnings, in a stable machine-readable schema (header + one record per turn). See `scripts/render-session-transcript.md` for the filter rules and full schema. The `session-transcript` larch-log batch ships as `.jsonl` (declared in `scripts/larch-log-batches.sh`).
 
 ## Callers
 

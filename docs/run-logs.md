@@ -28,7 +28,7 @@ larch-logs/
       token-report.json
       timing-report.json
       execution-issues.ndjson
-      session-transcript.md
+      session-transcript.jsonl
       round-<N>/
         findings.md
         accepted-findings.md
@@ -175,11 +175,11 @@ Structured per-step elapsed-time data for the session, measured from the timing 
 
 Log of noteworthy events during the run, grouped by category: `Pre-existing Code Issues`, `Tool Failures`, `Permission Prompts`, `External Reviewer Issues`, `CI Issues`, `Warnings`, and `Q/A`. Entries from Step 2's Q/A loop are appended progressively; the main flush happens at Step 7a before the bump so the audit log is part of the same PR tree that CI validates. If later steps append new execution issues, the shared external-implementer / pre-push flush paths append only the unflushed tail, and Step 18 remains the best-effort fallback. This batch is the durable audit trail for follow-up work and operational events.
 
-### session-transcript.md
+### session-transcript.jsonl
 
 **Mode**: replace. **Written**: Step 18, terminal cleanup.
 
-A chat-view rendering of the Claude Code session, produced by `scripts/render-session-transcript.py` from the raw session JSONL. Includes user-typed slash commands and text, assistant prose and tool calls, and only those tool results that reported an error or warning (other tool bodies collapse to a one-line `[Tool → N bytes elided]` placeholder). Harness-injected SKILL.md expansions, attachments, and housekeeping events are dropped. Redacted for tmpdir paths and secrets before commit. Step 18 records `SESSION_TRANSCRIPT_STATUS` in the execution-issues `Warnings` section for every capture outcome, including `render-failed` / `render-empty` when the renderer cannot produce a usable output (the run continues; nothing is committed).
+A filtered, machine-readable rendering of the Claude Code session, produced by `scripts/render-session-transcript.py` from the raw session JSONL. The first line is a `{"v": 1, "source_basename": ..., "turns": N}` header; subsequent lines are per-turn objects with a `blocks` array. Blocks carry user-typed slash commands and text, assistant prose, `tool_call` entries with full input objects, and `tool_result` entries — full body when the result reported an error or warning (`is_error: true`, Bash `^Exit code [1-9]` / `^Error:`, or `warning:`), otherwise collapsed to an `elided_bytes` count. Assistant `thinking` blocks are kept only when at least one `tool_use` in the same turn produced an errored result. Harness-injected SKILL.md expansions, attachments, and housekeeping events are dropped. Redacted for tmpdir paths and secrets before commit. Step 18 records `SESSION_TRANSCRIPT_STATUS` in the execution-issues `Warnings` section for every capture outcome, including `render-failed` / `render-empty` when the renderer cannot produce a usable output (the run continues; nothing is committed). See `scripts/render-session-transcript.md` for the complete schema.
 
 ### round-<N>/
 
