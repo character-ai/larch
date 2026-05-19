@@ -1,0 +1,11 @@
+### In-Scope Findings
+
+1. **Important** `correctness` `skills/review-and-fix/scripts/review-and-fix.sh:1159`  
+   The convergence check only runs when `status == "complete"`, but real `review-core.sh` sets `REVIEW_CORE_STATUS=fix-required` whenever `ACCEPTED_COUNT > 0`, so low nonzero accepted counts never reach this branch. Concrete failing scenario: two non-degraded rounds with `ACCEPTED_COUNT=2` then `ACCEPTED_COUNT=1`, no Important findings, and successful coder handling produce `fix-applied`/`no-changes` instead of `converged-small-changes`, so the new threshold does not govern the intended low-accept path. Suggested fix: base convergence on the current/previous accepted counts for all successful terminal statuses that should stop the loop, or emit a separate post-fix convergence signal that the parent honors after checks.
+
+2. **Important** `risk-integration` `skills/review-and-fix/scripts/review-and-fix.sh:983`  
+   On a degraded panel, the script appends accepted OOS artifacts from the first degraded attempt before retrying, so a clean retry cannot retract public-boundary OOS from the discarded attempt. Concrete failing scenario: attempt 1 has a 1-judge degraded tally accepting an OOS item, attempt 2 is clean and rejects or omits it, but `accumulated-oos.md` still contains the attempt-1 item and Step 9a.1 can file it publicly. Suggested fix: do not append round OOS until after the final retry result is known; keep first-attempt artifacts only in a local diagnostic/audit file if needed.
+
+### Out-of-Scope Observations
+
+No out-of-scope observations.

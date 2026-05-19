@@ -1,0 +1,19 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: EXONERATE -- The test-count drift is real, but extra focused regressions are lower risk than trimming coverage or revising specs just for count alignment.
+FINDING_6: EXONERATE -- The matrix exceeds the original eight-test note, but the added cases cover real edges and do not warrant churn.
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: EXONERATE -- The regex can over-block convergence, but it fails conservative and structured Markdown parsing is disproportionate here.
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: EXONERATE -- The direct flag works; exposing a session-env passthrough from Step 5 is a nice-to-have beyond the stated launcher contract.
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: EXONERATE -- A forged banner can force only one bounded retry, and adding a structured marker is more plumbing than the risk warrants.
+FINDING_18: EXONERATE -- The substring is fragile, but the feature explicitly chose banner detection and a shared marker is not worth blocking this change.
+FINDING_19: EXONERATE -- The count mismatch is cosmetic; keeping the extra edge regressions is more valuable than reducing the harness to match the brief.

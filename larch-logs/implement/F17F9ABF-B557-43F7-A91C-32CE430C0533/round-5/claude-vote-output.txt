@@ -1,0 +1,15 @@
+FINDING_1: YES
+FINDING_2: EXONERATE -- legitimate cross-reference gap, but review-and-fix.md is the authoritative contract; not worth scope-expanding this PR
+FINDING_3: NO -- plan §3 described intent, not a naming requirement; custom REVIEW_AND_FIX_REVIEW_CORE_SH env stubs give equivalent coverage with a cleaner approach
+FINDING_4: YES
+FINDING_5: EXONERATE -- comparing to the last non-degraded predecessor is more meaningful for churn detection than comparing to a known-bad round; docs should reflect the actual semantics
+FINDING_6: EXONERATE -- retry progress messages on stderr are acceptable given the surrounding pattern; the inconsistency is minor
+FINDING_7: EXONERATE -- same design question as FINDING_5; using a non-degraded baseline is defensible and consistent with how convergence works
+FINDING_8: EXONERATE -- duplicate of FINDING_5/7; same reasoning
+FINDING_9: YES
+FINDING_10: EXONERATE -- default threshold of 3 is reasonable; this is a latent operator-ergonomics gap, not a correctness issue
+FINDING_11: EXONERATE -- duplicate of FINDING_10
+FINDING_12: EXONERATE -- final-state-only cap counting is a deliberate design choice (recovered degraded rounds are functionally clean); the behavior should be documented but not changed here
+FINDING_13: EXONERATE -- test-review-and-fix.md is supplementary; stale docs are a minor issue
+FINDING_14: YES
+FINDING_15: EXONERATE -- $status is set from internal constants; $core_status comes from awk's kv_get which yields a single line by construction; newline injection risk is negligible

@@ -1,0 +1,29 @@
+Reading the ballot and session context to verify each finding before voting.
+
+Verifying ballot claims against the repository code and session diff context.
+
+Verification against [`review-and-fix.sh`](file:///Users/zhupanov/larch2/skills/review-and-fix/scripts/review-and-fix.sh) and [`test-review-and-fix.sh`](file:///Users/zhupanov/larch2/skills/review-and-fix/scripts/test-review-and-fix.sh): degraded retry runs a second `review-core` into the same `core_out`/`round_dir` before a single `append_round_oos_artifact` at line 1029; `convergence_candidate_status` includes `fix-applied` (line 142) so Part A can set `converged-small-changes` after a successful apply; `write_prior_round` leaves empty `findings.md` for test 5b while round 1 and round 2 both have `ACCEPTED_COUNT` ≤ 3, so the convergence branch would overwrite `fix-applied`; tests reference `CONVERGENCE_THRESHOLD` nowhere.
+
+FINDING_1: YES  
+FINDING_2: YES  
+FINDING_3: NO -- in bash the `else` branch’s `$?` is still `is_security_block`’s exit status; behavior matches intent and is pre-existing  
+FINDING_4: YES  
+FINDING_5: EXONERATE -- naming drift only; renaming stubs or the plan adds churn without fixing behavior  
+FINDING_6: EXONERATE -- readability nit; a case statement is optional and not worth mandatory refactor here  
+FINDING_7: EXONERATE -- `find_previous_non_degraded_round` matches degraded-excluded tests and product intent  
+FINDING_8: EXONERATE -- one retry per round is explicit; clearing markers would undermine that cap  
+FINDING_9: EXONERATE -- extra regression cases are net positive; update the brief if needed, not shrink coverage  
+FINDING_10: EXONERATE -- same as FINDING_9  
+FINDING_11: YES  
+FINDING_12: EXONERATE -- fail-closed on unreadable paths is a reasonable safety posture vs silently treating as empty  
+FINDING_13: EXONERATE -- same tradeoff as FINDING_12; doc-only if operators need the guarantee spelled out  
+FINDING_14: YES  
+FINDING_15: YES  
+FINDING_16: YES  
+FINDING_17: EXONERATE -- same semantics as FINDING_7; strict N-1 is not clearly required  
+FINDING_18: YES  
+FINDING_19: YES  
+FINDING_20: EXONERATE -- extra stderr signal on degraded rounds is low harm; gating adds branching for little gain  
+FINDING_21: EXONERATE -- same as FINDING_7/17  
+FINDING_22: EXONERATE -- rare pairing of filtered-out rounds; behavior is defensible until a real consumer complains  
+FINDING_23: YES

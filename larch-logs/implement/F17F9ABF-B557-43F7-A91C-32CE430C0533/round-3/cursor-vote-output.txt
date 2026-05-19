@@ -1,0 +1,23 @@
+Reading the ballot and referenced context to verify each finding.
+
+Verifying ballot claims against the codebase and session diff/plan context.
+
+FINDING_1: NO -- Test 5b locks fix-applied over convergence; gating on complete is deliberate, not a gap.
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: EXONERATE -- extra cases add regression value; update written spec to match matrix instead of deleting tests.
+FINDING_6: EXONERATE -- same as FINDING_5.
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: EXONERATE -- unlikely false positives on real ballots; stricter parsing adds complexity for marginal gain.
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: EXONERATE -- tiny crash window between append and touch marker.
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: EXONERATE -- tally is already trusted reviewer output; structured marker is optional hardening.
+FINDING_18: YES
+FINDING_19: EXONERATE -- same as FINDING_5/6; document expanded count rather than culling tests.
