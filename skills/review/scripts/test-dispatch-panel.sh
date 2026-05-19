@@ -393,4 +393,41 @@ claude_count=$(find "$TMP/both-down" -name '*phase3.txt' | wc -l | tr -d ' ')
 [[ "$claude_count" -ge 7 ]] || { echo "FAIL: expected Claude phase3 outputs for both-down panel" >&2; exit 1; }
 fi  # end section: limits
 
+assert_emit_tally_panel() {
+    local label="$1" scout_status="$2" dynamic_slots="$3" static_slot_count="$4" total_slot_count="$5"
+    local dir="$TMP/emit-tally-$label"
+    mkdir -p "$dir"
+    printf 'ACCEPTED_COUNT=0\nREJECTED_COUNT=0\nEXONERATED_COUNT=0\nNEUTRAL_COUNT=0\n' > "$dir/tally.env"
+    : > "$dir/accepted.md"
+    : > "$dir/oos.md"
+    "$REPO_ROOT/skills/review/scripts/emit-tally.sh" \
+        --tally-file "$dir/tally.env" \
+        --accepted-findings-file "$dir/accepted.md" \
+        --oos-file "$dir/oos.md" \
+        --review-tmpdir "$dir" \
+        --round 1 \
+        --mode diff \
+        --scout-status "$scout_status" \
+        --dynamic-slots "$dynamic_slots" \
+        --static-slot-count "$static_slot_count" >/dev/null
+    jq -e \
+        --arg scout_status "$scout_status" \
+        --argjson dynamic_slots "$dynamic_slots" \
+        --argjson static_slot_count "$static_slot_count" \
+        --argjson total_slot_count "$total_slot_count" \
+        '.schema_version == 2
+            and .panel.scout_status == $scout_status
+            and .panel.dynamic_slot_count == $dynamic_slots
+            and .panel.static_slot_count == $static_slot_count
+            and .panel.total_slot_count == $total_slot_count' \
+        "$dir/review-summary.json" >/dev/null || {
+            echo "FAIL: emit-tally panel summary mismatch for $label" >&2
+            exit 1
+        }
+}
+
+assert_emit_tally_panel static-na na 0 7 7
+assert_emit_tally_panel scout-ok ok 4 12 16
+assert_emit_tally_panel scout-skipped skipped-docs-only 0 12 12
+
 echo "All assertions passed."

@@ -510,6 +510,9 @@ emit_args=(
 )
 [[ -n "$SESSION_ENV_PATH" ]] && emit_args+=(--session-env-path "$SESSION_ENV_PATH")
 [[ -n "${IMPLEMENT_TMPDIR:-}" ]] && emit_args+=(--implement-tmpdir "$IMPLEMENT_TMPDIR")
+emit_args+=(--scout-status "$scout_status")
+emit_args+=(--dynamic-slots "$dynamic_slots")
+emit_args+=(--static-slot-count "$static_slot_count")
 "$EMIT_TALLY_SH" "${emit_args[@]}" > "$emit_out"
 
 rejected_file="$REVIEW_TMPDIR/rejected-findings.md"

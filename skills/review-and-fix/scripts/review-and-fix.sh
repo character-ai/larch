@@ -608,6 +608,54 @@ flush_round_log_after_coder() {
     fi
 }
 
+write_rejected_findings_aggregate() {
+    local impl_tmpdir="$1" fallback_file="${2:-}"
+    local output_file="$impl_tmpdir/rejected-findings.md"
+    local tmp_out round_num round_file any_full=false tab
+
+    [[ -n "$impl_tmpdir" && -d "$impl_tmpdir" ]] || return 1
+    tab="$(printf '\t')"
+    tmp_out="$(mktemp "${TMPDIR:-/tmp}/rejected-findings.XXXXXX")" || return 1
+    while IFS="$tab" read -r round_num round_file; do
+        [[ -n "$round_num" && -n "$round_file" && -s "$round_file" ]] || continue
+        if [[ "$any_full" == false ]]; then
+            printf '# Rejected Findings\n\n' > "$tmp_out"
+            any_full=true
+        fi
+        {
+            printf '## Round %s\n\n' "$round_num"
+            cat "$round_file"
+            printf '\n\n'
+        } >> "$tmp_out"
+    done < <(
+        find "$impl_tmpdir" -maxdepth 2 -type f -name rejected-findings-full.md 2>/dev/null \
+            | awk -F/ '
+                {
+                    for (i = 1; i <= NF; i++) {
+                        if ($i ~ /^round-[0-9]+$/) {
+                            round = $i
+                            sub(/^round-/, "", round)
+                            printf "%d\t%s\n", round, $0
+                            break
+                        }
+                    }
+                }
+            ' \
+            | sort -t "$tab" -k1,1n
+    )
+
+    if [[ "$any_full" == true ]]; then
+        mv -f "$tmp_out" "$output_file"
+        return 0
+    fi
+
+    rm -f "$tmp_out"
+    if [[ -n "$fallback_file" && -f "$fallback_file" ]]; then
+        cp "$fallback_file" "$output_file" 2>/dev/null || return 1
+    fi
+    return 0
+}
+
 append_log_write_failure() {
     local site="$1" tool="$2" output_file="$3" category="${4:-Warnings}" exit_code="${5:-1}" verdict="${6:-}"
     local helper="$PLUGIN_ROOT/scripts/append-tool-failure.sh"
@@ -801,10 +849,8 @@ run_implement_round() {
     rejected_full_file="$round_dir/rejected-findings-full.md"
     if [[ -f "$rejected_full_file" ]]; then
         cp "$rejected_full_file" "$IMPLEMENT_TMPDIR/rejected-findings-full.md" 2>/dev/null || true
-        cp "$rejected_file" "$IMPLEMENT_TMPDIR/rejected-findings.md" 2>/dev/null || true
-    elif [[ -f "$rejected_file" ]]; then
-        cp "$rejected_file" "$IMPLEMENT_TMPDIR/rejected-findings.md" 2>/dev/null || true
     fi
+    write_rejected_findings_aggregate "$IMPLEMENT_TMPDIR" "$rejected_file" || true
 
     coder_tool="none"
     coder_status="skipped"

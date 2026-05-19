@@ -389,10 +389,88 @@ out=$(
     "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 --session-env-path "$implement_tmp/session-env.sh" --run-id rejected-full-run
 )
 grep -Fq 'REVIEW_AND_FIX_STATUS=complete' <<< "$out" || fail "rejected-full status"
+grep -Fq '## Round 1' "$implement_tmp/rejected-findings.md" || fail "rejected-full run-root missing round header"
+grep -Fq 'full rejected review prose' "$implement_tmp/rejected-findings.md" \
+    || fail "rejected-full run-root missing preserved rejected prose"
 grep -Fq 'full rejected review prose' "$implement_tmp/larch-logs/implement/rejected-full-run/code-review-tally.json" \
     || fail "rejected-full tally missing preserved rejected prose"
 grep -Fq 'full rejected review prose' "$implement_tmp/larch-logs/implement/rejected-full-run/review-findings-full.jsonl" \
     || fail "rejected-full findings batch missing preserved rejected prose"
+
+work_rejected_aggregate="$TMP/rejected-aggregate"
+make_work_repo "$work_rejected_aggregate"
+implement_tmp="$work_rejected_aggregate/implement"
+mkdir -p "$implement_tmp/round-1"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
+cat > "$implement_tmp/round-1/rejected-findings-full.md" <<'EOF_AGG_ROUND1'
+### [Code Review] Codex-Testing
+
+**Finding**: first round full prose
+**Reason not implemented**: test fixture
+EOF_AGG_ROUND1
+out=$(
+    cd "$work_rejected_aggregate" && \
+    CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+    REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-rejected-stub.sh" \
+    REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
+    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 2 --session-env-path "$implement_tmp/session-env.sh" --run-id rejected-aggregate-run
+)
+grep -Fq 'REVIEW_AND_FIX_STATUS=complete' <<< "$out" || fail "rejected-aggregate status"
+grep -Fq '## Round 1' "$implement_tmp/rejected-findings.md" || fail "rejected-aggregate missing round 1 header"
+grep -Fq '## Round 2' "$implement_tmp/rejected-findings.md" || fail "rejected-aggregate missing round 2 header"
+grep -Fq 'first round full prose' "$implement_tmp/rejected-findings.md" || fail "rejected-aggregate missing round 1 prose"
+grep -Fq 'full rejected review prose' "$implement_tmp/rejected-findings.md" || fail "rejected-aggregate missing round 2 prose"
+python3 - "$implement_tmp/rejected-findings.md" <<'PYEOF' || fail "rejected-aggregate round order"
+import sys
+
+body = open(sys.argv[1], encoding="utf-8").read()
+pos1 = body.find("## Round 1")
+pos2 = body.find("## Round 2")
+if pos1 == -1 or pos2 == -1 or pos1 >= pos2:
+    raise SystemExit(1)
+PYEOF
+
+work_rejected_fallback="$TMP/rejected-fallback"
+make_work_repo "$work_rejected_fallback"
+implement_tmp="$work_rejected_fallback/implement"
+mkdir -p "$implement_tmp"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
+cat > "$TMP/review-core-rejected-fallback-stub.sh" <<'EOF_CORE_REJECTED_FALLBACK'
+#!/usr/bin/env bash
+set -euo pipefail
+out=""
+round="1"
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --output-dir) out="$2"; shift 2 ;;
+    --round-num) round="$2"; shift 2 ;;
+    *) shift; [[ $# -gt 0 && "$1" != --* ]] && shift || true ;;
+  esac
+done
+mkdir -p "$out"
+: > "$out/accepted-findings.md"
+cat > "$out/rejected-findings.md" <<'EOF_REJECTED_SUMMARY'
+# Rejected Findings
+
+1:FINDING_9_ACCEPTED=false
+EOF_REJECTED_SUMMARY
+printf '{"schema_version":1,"rounds_completed":%s,"accepted_count":0,"rejected_count":1}\n' "$round" > "$out/review-summary.json"
+printf '# Review Round %s\n' "$round" > "$out/review-round-summary.md"
+printf 'REVIEW_CORE_STATUS=ok\nROUND_NUM=%s\nACCEPTED_COUNT=0\nREJECTED_COUNT=1\nACCEPTED_FINDINGS_FILE=%s/accepted-findings.md\nREJECTED_FINDINGS_FILE=%s/rejected-findings.md\nPANEL_MODE=normal\nPANEL_SHAPE=simple\n' "$round" "$out" "$out"
+EOF_CORE_REJECTED_FALLBACK
+chmod +x "$TMP/review-core-rejected-fallback-stub.sh"
+out=$(
+    cd "$work_rejected_fallback" && \
+    CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+    REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-rejected-fallback-stub.sh" \
+    REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
+    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 --session-env-path "$implement_tmp/session-env.sh" --run-id rejected-fallback-run
+)
+grep -Fq 'REVIEW_AND_FIX_STATUS=complete' <<< "$out" || fail "rejected-fallback status"
+grep -Fq 'FINDING_9_ACCEPTED=false' "$implement_tmp/rejected-findings.md" || fail "rejected-fallback missing bare ledger"
+if grep -Fq '## Round 1' "$implement_tmp/rejected-findings.md"; then
+    fail "rejected-fallback should not synthesize full-detail round headers"
+fi
 
 work_tally="$TMP/tally-fidelity"
 make_work_repo "$work_tally"

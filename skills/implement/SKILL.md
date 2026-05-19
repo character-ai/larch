@@ -1672,6 +1672,7 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 [ -f "$IMPLEMENT_TMPDIR/codex-commit-message.txt" ] && "${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" write --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --batch codex-commit-message --input-file "$IMPLEMENT_TMPDIR/codex-commit-message.txt" || true
 [ -f "$IMPLEMENT_TMPDIR/manifest-raw.json" ] && "${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" write --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --batch codex-impl-manifest-raw --input-file "$IMPLEMENT_TMPDIR/manifest-raw.json" || true
 if [ "${no_logs_commit:-false}" != "true" ]; then
+  "${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/write-final-report.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR" || true
   "${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" commit --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" || true
 fi
 ```
