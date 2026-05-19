@@ -653,7 +653,7 @@ write_changelog_entry() {
 }
 
 maybe_update_changelog() {
-    local start out rc present forked_target has_bump bump_type new_version manifest_path tmpdir categories_md tmp_changelog status_out tool_label manifest_exists
+    local start out rc present forked_target has_bump bump_type new_version manifest_path tmpdir categories_md tmp_changelog status_out tool_label manifest_exists fallback_issue_num fallback_pr_title fallback_allowed
     start=$(date +%s)
     CHANGELOG_STATUS="skipped-no-bump"
     set +e
@@ -693,22 +693,33 @@ maybe_update_changelog() {
     fi
     categories_md="$tmpdir/categories.md"
     if ! changelog_categories_to_markdown "$tmpdir/categories" "$categories_md"; then
-        # No bullets from manifest. Try to emit a fallback bullet before failing loudly.
-        local fallback_issue_num fallback_pr_title
+        # No bullets from manifest. Only synthesize a tracking-issue fallback when
+        # there was no manifest at all, or when the manifest is valid JSON but empty.
         fallback_issue_num=$(read_state ISSUE_NUMBER 2>/dev/null || true)
         fallback_pr_title=$(read_state PR_TITLE 2>/dev/null || true)
-        if [ -n "$fallback_issue_num" ] && [ "$fallback_issue_num" != "0" ]; then
+        fallback_allowed=false
+        if [ -z "$manifest_path" ]; then
+            fallback_allowed=true
+        elif jq -e . "$manifest_path" >/dev/null 2>&1; then
+            fallback_allowed=true
+        fi
+        if [ "$fallback_allowed" = "true" ] && [ -n "$fallback_issue_num" ] && [ "$fallback_issue_num" != "0" ]; then
             # Write a synthetic categories_md so write_changelog_entry can proceed.
             local fallback_line="Closed: #${fallback_issue_num}"
             [ -n "$fallback_pr_title" ] && fallback_line="${fallback_line} — ${fallback_pr_title}"
             printf '### Changed\n\n- %s\n' "$fallback_line" > "$categories_md"
             # categories_md is now non-empty; fall through to write_changelog_entry.
+        elif [ "$fallback_allowed" != "true" ]; then
+            CHANGELOG_STATUS="skipped-no-bullets"
+            emit_breadcrumb "$(printf '⏩ 8a: changelog status=skip reason=no-json-bullets elapsed=%s' "$(elapsed "$start")")"
+            rm -rf "$tmpdir"
+            return 0
         else
             CHANGELOG_STATUS="fail-no-manifest-no-issue"
             tool_label=$(read_state TOOL_LABEL 2>/dev/null || true)
             manifest_exists=false
             [ -n "$manifest_path" ] && [ -f "$manifest_path" ] && manifest_exists=true
-            append_execution_issue "Step 8a changelog failed: no summary bullets AND no tracking-issue context. manifest_path='${manifest_path}' manifest_exists=$manifest_exists coder='${tool_label}'. CHANGELOG_STATUS=fail-no-manifest-no-issue ERROR=Cannot generate changelog bullet: summary bullets absent and no tracking-issue context."
+            append_execution_issue "Step 8a changelog failed: no summary bullets AND no tracking-issue context. manifest_path='${manifest_path}' manifest_exists=$manifest_exists coder='${tool_label}'. CHANGELOG_STATUS=fail-no-manifest-no-issue ERROR=Cannot generate changelog bullet: no manifest AND no tracking-issue context."
             warn_line '**⚠ 8a: changelog — summary bullets absent and no tracking-issue context; cannot generate fallback bullet. CHANGELOG_STATUS=fail-no-manifest-no-issue.**'
             rm -rf "$tmpdir"
             return 1

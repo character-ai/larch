@@ -34,7 +34,7 @@ Optional keys:
 
 Required keys:
 
-`BRANCH_NAME`, `ISSUE_NUMBER`, `REPO`, `REPO_UNAVAILABLE`, `FORKED_TARGET`, `HAS_BUMP`, `BUMP_TYPE`, `NEW_VERSION`, `BUMP_REASONING_FILE`, `MANIFEST_PATH`, `TOOL_LABEL`.
+`BRANCH_NAME`, `ISSUE_NUMBER`, `PR_TITLE`, `REPO`, `REPO_UNAVAILABLE`, `FORKED_TARGET`, `HAS_BUMP`, `BUMP_TYPE`, `NEW_VERSION`, `BUMP_REASONING_FILE`, `MANIFEST_PATH`, `TOOL_LABEL`.
 
 `HAS_BUMP`, `FORKED_TARGET`, and `REPO_UNAVAILABLE` must be literal `true` or `false`. `BUMP_TYPE` must be `MAJOR`, `MINOR`, `PATCH`, or `NONE`. `BRANCH_NAME` must be non-empty and must not be `main` or `master`; phases that rebase or push also verify the current git branch still matches `BRANCH_NAME`. When `BUMP_TYPE` is not `NONE`, `NEW_VERSION` must match `X.Y.Z`.
 
@@ -58,7 +58,7 @@ During `postbump`, the script first refreshes `version-bump-reasoning.md`, then 
 
 ```
 LOG_WRITE_STATUS=ok|skipped|failed
-CHANGELOG_STATUS=updated|skipped-absent|skipped-fork|skipped-no-bump|skipped-resume|fail-no-manifest-no-issue|failed
+CHANGELOG_STATUS=updated|skipped-absent|skipped-fork|skipped-no-bump|skipped-no-bullets|skipped-resume|fail-no-manifest-no-issue|failed
 REBASE_STATUS=rebased|already-fresh|conflict|failed|skipped-resume
 FORCE_PUSH_STATUS=pushed|noop_same_ref|absent|skipped-repo-unavailable|failed
 RESUME_PHASE=force-push-gate

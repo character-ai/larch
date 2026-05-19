@@ -265,6 +265,47 @@ else
     FAIL=$((FAIL + 1))
 fi
 
+# Test 20: forced rebase --onto failure → exit 1 and abort cleanup removes rebase state
+REPO="$TMPDIR_BASE/test20"
+setup_walkback_repo "$REPO"
+WRAP_BIN="$TMPDIR_BASE/test20-bin"
+REAL_GIT="$(command -v git)"
+mkdir -p "$WRAP_BIN"
+cat > "$WRAP_BIN/git" <<SH
+#!/usr/bin/env bash
+if [[ "\${1:-}" == "rebase" && "\${2:-}" == "--onto" ]]; then
+    mkdir -p .git/rebase-merge
+    printf 'forced\n' > .git/rebase-merge/head-name
+    echo "forced rebase failure" >&2
+    exit 1
+fi
+if [[ "\${1:-}" == "rebase" && "\${2:-}" == "--abort" ]]; then
+    rm -rf .git/rebase-merge
+    exit 0
+fi
+exec "$REAL_GIT" "\$@"
+SH
+chmod +x "$WRAP_BIN/git"
+set +e
+(
+    cd "$REPO" &&
+    PATH="$WRAP_BIN:$PATH" \
+    bash "$DROP_SCRIPT" >"$TMPDIR_BASE/test20-stdout.txt" 2>"$TMPDIR_BASE/test20-stderr.txt"
+)
+rc=$?
+set -e
+if [[ "$rc" == "1" ]]; then
+    if [[ ! -e "$REPO/.git/rebase-merge" ]]; then
+        PASS=$((PASS + 1))
+    else
+        echo "FAIL: Test 20 — rebase state remained after forced failure" >&2
+        FAIL=$((FAIL + 1))
+    fi
+else
+    echo "FAIL: Test 20 — expected exit 1 from forced rebase failure, got $rc" >&2
+    FAIL=$((FAIL + 1))
+fi
+
 # --- Summary ---
 TOTAL=$((PASS + FAIL))
 echo ""

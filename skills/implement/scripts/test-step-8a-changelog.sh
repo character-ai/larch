@@ -223,7 +223,7 @@ assert_contains "CHANGELOG_STATUS=fail-no-manifest-no-issue" "$out_c" \
 assert_contains "summary bullets absent and no tracking-issue context" "$out_c" \
     "c: loud error message present"
 assert_file_contains \
-    "ERROR=Cannot generate changelog bullet: summary bullets absent and no tracking-issue context." \
+    "ERROR=Cannot generate changelog bullet: no manifest AND no tracking-issue context." \
     "$SANDBOX/tmp/execution-issues.md" \
     "c: execution-issues logs stable ERROR line"
 

@@ -118,6 +118,7 @@ write_postbump_state() {
     {
         printf 'BRANCH_NAME=%s\n' "$(override_value BRANCH_NAME feature/finalize "$@")"
         printf 'ISSUE_NUMBER=%s\n' "$(override_value ISSUE_NUMBER 456 "$@")"
+        printf 'PR_TITLE=%s\n' "$(override_value PR_TITLE 'Title' "$@")"
         printf 'REPO=%s\n' "$(override_value REPO owner/repo "$@")"
         printf 'REPO_UNAVAILABLE=%s\n' "$(override_value REPO_UNAVAILABLE false "$@")"
         printf 'FORKED_TARGET=%s\n' "$(override_value FORKED_TARGET false "$@")"
@@ -1022,6 +1023,8 @@ write_postbump_state "$POSTBUMP_STATE" MANIFEST_PATH="$SANDBOX/tmp/manifest-non-
 OUT=$(run_subject postbump --state-file "$POSTBUMP_STATE" --implement-tmpdir "$SANDBOX/tmp")
 assert_contains "STATUS=ok" "$OUT" "postbump: non-JSON manifest does not fail the phase"
 assert_not_contains "STATUS=changelog-failed" "$OUT" "postbump: non-JSON manifest does not route to changelog-failed"
+assert_contains "CHANGELOG_STATUS=skipped-no-bullets" "$OUT" "postbump: non-JSON manifest skips synthetic fallback bullet"
+assert_file_not_contains "Closed: #456" "$SANDBOX/repo/CHANGELOG.md" "postbump: non-JSON manifest does not synthesize tracking-issue bullet"
 
 cp "$SANDBOX/original-CHANGELOG.md" "$SANDBOX/repo/CHANGELOG.md"
 : > "$SANDBOX/tmp/execution-issues.md"
@@ -1032,6 +1035,7 @@ assert_contains "CHANGELOG_STATUS=fail-no-manifest-no-issue" "$OUT" "postbump: m
 assert_file_contains "manifest_path=''" "$SANDBOX/tmp/execution-issues.md" "postbump: fail-no-manifest-no-issue resolves empty manifest path"
 assert_file_contains "manifest_exists=false" "$SANDBOX/tmp/execution-issues.md" "postbump: fail-no-manifest-no-issue resolves missing manifest presence"
 assert_file_contains "coder='codex'" "$SANDBOX/tmp/execution-issues.md" "postbump: fail-no-manifest-no-issue resolves coder"
+assert_file_contains "ERROR=Cannot generate changelog bullet: no manifest AND no tracking-issue context." "$SANDBOX/tmp/execution-issues.md" "postbump: fail-no-manifest-no-issue uses stable ERROR literal"
 
 cp "$SANDBOX/original-CHANGELOG.md" "$SANDBOX/repo/CHANGELOG.md"
 : > "$SANDBOX/tmp/execution-issues.md"

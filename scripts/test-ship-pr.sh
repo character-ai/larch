@@ -455,6 +455,12 @@ write_state "$tmp/ship-pr-state.sh" bump
 STUB_POSTBUMP_STATUS=conflict run_subject "$root" "$tmp" "$tmp/rc"
 assert_rc "$tmp/rc" 5 "postbump conflict exits 5"
 assert_state_line "$tmp/ship-pr-state.sh" "CALLER_KIND=step8b_rebase" "postbump conflict preserves caller kind"
+if grep -qxF "PR_TITLE=Title" "$tmp/postbump-state.sh"; then
+    ok "postbump conflict writes PR_TITLE into postbump state"
+else
+    fail "postbump conflict should write PR_TITLE into postbump state"
+    sed 's/^/    state: /' "$tmp/postbump-state.sh" 2>/dev/null || true
+fi
 
 root=$(make_repo same_version)
 tmp=$(make_tmpdir)
