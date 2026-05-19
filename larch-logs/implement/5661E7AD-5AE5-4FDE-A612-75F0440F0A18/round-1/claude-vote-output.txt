@@ -1,0 +1,28 @@
+I've verified the key claim in FINDING_1: `run-external-agent.sh` line 127 confirms the default poll interval is 10 seconds, and the poll loop structure (check `kill -0` first, then `sleep`) means any process still alive during the first `kill -0` call causes a 10-second sleep before the next check — making `_ELAPSED` ≥10s, which exceeds the 5s cutoff. The concern is real.
+
+Now I have enough context to vote on all findings.
+
+---
+
+FINDING_1: YES
+FINDING_2: NO -- positive CI wiring drift; correct behavior, not an issue
+FINDING_3: EXONERATE -- global transient budget across auth retries is a reasonable design; the interleaving scenario is contrived and the total retries remain bounded
+FINDING_4: EXONERATE -- one-line auth predicate duplication across two branches; factoring adds abstraction weight not worth the minimal maintenance gain
+FINDING_5: EXONERATE -- output-file deviation from plan is intentional and documented in the updated lib-external-launcher-common.md; implementation is superior to the plan's sidecar approach
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: EXONERATE -- intentional and documented design deviation; the lib md explains the rationale; no runtime regression
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: EXONERATE -- SIDECAR=/dev/null is a pre-existing limitation of auth detection; transient retry adds 2 attempts but doesn't worsen auth classification correctness vs the prior single-shot path
+FINDING_17: YES
+FINDING_18: EXONERATE -- unit tests in test-lib-external-launcher-common.sh cover exit 5 and 4 in the allowlist; integration tests cover the retry mechanism generically
+FINDING_19: YES
+FINDING_20: YES
+FINDING_21: YES
+FINDING_22: YES

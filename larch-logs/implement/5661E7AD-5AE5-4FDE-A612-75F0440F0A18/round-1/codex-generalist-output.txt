@@ -1,0 +1,6 @@
+### In-Scope Findings
+
+1. **Important** `correctness` `scripts/launch-review.sh:521-524`, `scripts/launch-review.sh:925-928`, affected: `scripts/run-external-agent.sh:122-127`, `scripts/run-external-agent.sh:204-225`  
+   The transient retry gate uses the outer launcher wall-clock elapsed time with a `<= 5s` cutoff, but `run-external-agent.sh` defaults to a 10s poll interval. Concrete failing scenario: with `RUN_EXTERNAL_AGENT_POLL_INTERVAL` unset, a Codex child that exits 7 immediately with no output can still be observed by the wrapper’s first `kill -0`, then the wrapper sleeps 10s before returning; `_ELAPSED` is about 10, so `external_is_transient_infra_failure` returns 1 and the requested retry never happens. The new tests set `RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05`, so they do not exercise production timing. Fix by removing the elapsed cutoff, making it exceed the wrapper’s default poll interval, or making the wrapper detect child exit without waiting a full poll cycle before the retry classifier measures elapsed.
+
+Verification note: I attempted `bash scripts/test-lib-external-launcher-common.sh` and `bash scripts/test-launch-review.sh`, but this environment is read-only and both failed at `mktemp` with `Operation not permitted`. `git diff --check $(git merge-base HEAD main)..HEAD` completed successfully.
