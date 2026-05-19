@@ -1,0 +1,25 @@
+Gathering the diff, commit list, and cross-file consistency checks for a read-only risk-integration review.
+
+Searching the branch for lockstep inconsistencies and stale references the diff might have missed.
+
+Commits on the branch since merge-base with `main`:
+
+- `797f048f` — Rebalance CI shards 18→20: gate ungated regression blocks, fix duplicate target, split shard 13  
+- `c63923ed` — Address code review feedback (round 1)  
+- `35c0f6d0` — Address code review feedback (round 2)
+
+---
+
+### In-Scope Findings
+
+NO_ISSUES_FOUND
+
+Lockstep / `risk-integration` checks against the precomputed diff and the working tree line up: [`.github/workflows/ci.yaml`](.github/workflows/ci.yaml) uses `shard: [1, …, 20]` and the step name `of 20`; the [`Makefile`](Makefile) `test-harnesses:` umbrella lists `test-harnesses-1` … `test-harnesses-20` with matching `test-harnesses-19:` / `test-harnesses-20:` rules; the long top `.PHONY` includes `test-harnesses-19`, `test-harnesses-20`, `test-dispatch-code-voters-edge-and-r3-claude`, `test-dispatch-code-voters-regressions-r1-r2`, `test-dispatch-code-voters-regressions-r3-codex`, `test-review-and-fix-dispatch`, and `test-review-and-fix-convergence`; [`scripts/test-harness-shards-coverage.sh`](scripts/test-harness-shards-coverage.sh) `CARVE_OUTS` matches [`scripts/test-harness-shards-coverage.md`](scripts/test-harness-shards-coverage.md) (adds `test-review-and-fix` with prose for the section targets); [`docs/linting.md`](docs/linting.md) branch-protection bullets include `test-harnesses (19)` and `(20)`, LPT snippet uses `range(20)`, and the “shard count today” section documents `20` with the full matrix literal; the duplicate `test-upgrade-larch:` recipe block is removed (single `test-upgrade-larch:` remains); [`scripts/test-dispatch-code-voters.sh`](scripts/test-dispatch-code-voters.sh) has eight `if section_runs` gates as intended. No remaining tracked references to the old `test-dispatch-code-voters-edge` target name were found outside `larch-logs/` artifacts.
+
+---
+
+### Out-of-Scope Observations
+
+- **`code-quality`** — [`skills/review-and-fix/scripts/review-and-fix.md:122-122`](skills/review-and-fix/scripts/review-and-fix.md) still only mentions `make test-review-and-fix` for the harness; this file was not changed on the branch. CI now relies on `test-review-and-fix-dispatch` / `test-review-and-fix-convergence` (documented in [`skills/review-and-fix/scripts/test-review-and-fix.md`](skills/review-and-fix/scripts/test-review-and-fix.md) and the Makefile comments). Optional follow-up: extend the one-line harness bullet so operators do not assume CI runs the monolithic target.
+
+- **`code-quality` / `architecture`** — [`skills/review-and-fix/scripts/test-review-and-fix.sh`](skills/review-and-fix/scripts/test-review-and-fix.sh) now parses argv strictly and errors on unknown arguments; earlier versions would have ignored extra tokens. The `make` + `harness-timer.sh` path only passes the timed target name to the timer, not to the harness script, so CI behavior is unchanged; this only affects hypothetical direct `bash …/test-review-and-fix.sh extra` invocations.
