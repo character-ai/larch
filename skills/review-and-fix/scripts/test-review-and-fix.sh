@@ -467,7 +467,9 @@ out=$(
     "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 --session-env-path "$implement_tmp/session-env.sh" --run-id rejected-fallback-run
 )
 grep -Fq 'REVIEW_AND_FIX_STATUS=complete' <<< "$out" || fail "rejected-fallback status"
-grep -Fq '## Round 1' "$implement_tmp/rejected-findings.md" || fail "rejected-fallback missing round header"
+if grep -Fq '## Round 1' "$implement_tmp/rejected-findings.md"; then
+    fail "rejected-fallback should preserve bare ledger without synthetic round header"
+fi
 grep -Fq 'FINDING_9_ACCEPTED=false' "$implement_tmp/rejected-findings.md" || fail "rejected-fallback missing bare ledger"
 
 work_tally="$TMP/tally-fidelity"
@@ -709,6 +711,13 @@ grep -Fq '## Round 1' "$implement_tmp/rejected-findings.md" || fail "mixed rejec
 grep -Fq 'Round 1 rejected finding' "$implement_tmp/rejected-findings.md" || fail "mixed rejected aggregate kept round 1 full detail"
 grep -Fq '## Round 2' "$implement_tmp/rejected-findings.md" || fail "mixed rejected aggregate kept round 2 heading"
 grep -Fq 'Round 2 rejected finding' "$implement_tmp/rejected-findings.md" || fail "mixed rejected aggregate kept round 2 compact detail"
+python3 - "$implement_tmp/rejected-findings.md" <<'PYEOF' || fail "mixed rejected aggregate should strip duplicate top-level heading from compact round body"
+import sys
+
+body = open(sys.argv[1], encoding="utf-8").read()
+if "# Rejected Findings\n\n# Rejected Findings" in body:
+    raise SystemExit(1)
+PYEOF
 jq -e '.batch == "code-review-tally" and (.body | contains("Round 1 rejected finding")) and (.body | contains("Round 2 rejected finding"))' \
     "$implement_tmp/larch-logs/implement/rejected-mix-run/code-review-tally.json" >/dev/null \
     || fail "mixed rejected aggregate feeds code-review-tally body"

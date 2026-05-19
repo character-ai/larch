@@ -17,8 +17,19 @@ setup_plugin_stub() {
     local root=$1
     mkdir -p "$root/scripts"
     cp "$SCRIPT_DIR/../skills/implement/scripts/flush-execution-issues.sh" "$root/scripts/flush-execution-issues.sh"
+    cp "$SCRIPT_DIR/../skills/implement/scripts/write-final-report.sh" "$root/scripts/write-final-report.sh"
     cp "$SCRIPT_DIR/lib-quiet.sh" "$root/scripts/lib-quiet.sh"
     cp "$SCRIPT_DIR/lib-execution-issues.sh" "$root/scripts/lib-execution-issues.sh"
+    cat > "$root/scripts/tracking-issue-summary.sh" <<'STUB'
+#!/usr/bin/env bash
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --content-file) cp "$2" "${TRACKING_CONTENT_LOG:?}"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+printf 'COMMENT_URL=https://example.test/comment/final\n'
+STUB
     cat > "$root/scripts/larch-log.sh" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -96,7 +107,9 @@ run_flush_helper() {
     mkdir -p "$impl_tmpdir/larch-logs"
     state_file="$impl_tmpdir/ship-pr-state.sh"
     run_id="TEST-RUN-$(date +%s)"
-    printf 'RUN_ID=%s\nNO_LOGS_COMMIT=false\n' "$run_id" > "$state_file"
+    printf 'RUN_ID=%s\nNO_LOGS_COMMIT=false\nPR_URL=https://example.test/pr/123\nSTALL_TRACKING=false\n' "$run_id" > "$state_file"
+    printf 'ISSUE_NUMBER=7\nRUN_ID=%s\n' "$run_id" > "$impl_tmpdir/parent-issue.md"
+    printf 'REPO=owner/repo\n' > "$impl_tmpdir/session-env.sh"
 
     # Create a dummy token-report file so larch-log.sh write has something to stage.
     mkdir -p "$impl_tmpdir/larch-logs/implement/$run_id"
@@ -140,7 +153,7 @@ ISSUES
     printf 'old-sha\n' > "$impl_tmpdir/.execution-issues-flushed.sha"
 
     # Run in the tmp repo dir so git operations resolve to it.
-    out=$(cd "$tmp" && CLAUDE_PLUGIN_ROOT="$plugin_root" PATH="$stub_dir:$PATH" "$HELPER" \
+    out=$(cd "$tmp" && CLAUDE_PLUGIN_ROOT="$plugin_root" TRACKING_CONTENT_LOG="$tmp/final-summary-content.md" PATH="$stub_dir:$PATH" "$HELPER" \
         --state-file "$state_file" \
         --implement-tmpdir "$impl_tmpdir" 2>/dev/null || true)
 
@@ -161,6 +174,11 @@ ISSUES
         pass "happy-path: execution issues log cleared after flush"
     else
         fail "happy-path: execution issues log cleared after flush"
+    fi
+    if grep -Fq 'PR: https://example.test/pr/123' "$impl_tmpdir/larch-logs/implement/$run_id/final-summary.md"; then
+        pass "happy-path: final summary refreshed before commit"
+    else
+        fail "happy-path: final summary refreshed before commit"
     fi
     rm -rf "$tmp"
 } || fail "happy-path: exception"

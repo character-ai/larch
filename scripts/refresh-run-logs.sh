@@ -68,6 +68,9 @@ if [ -s "$issue_log" ] && { [ -f "$checkpoint" ] || [ -f "$sentinel" ] || [ -f "
         2>/dev/null || true
 fi
 
+"$SCRIPT_DIR/../skills/implement/scripts/write-final-report.sh" \
+    --implement-tmpdir "$IMPL_TMPDIR" 2>/dev/null || true
+
 # Re-render and write token and timing reports.
 "$SCRIPT_DIR/token-report.sh"  --full --format json --output "$IMPL_TMPDIR/token-report-refresh.json"  2>/dev/null || true
 "$SCRIPT_DIR/larch-log.sh" write --log-root "$log_root" --skill implement --run-id "$run_id" \

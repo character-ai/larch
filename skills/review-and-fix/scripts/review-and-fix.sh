@@ -625,11 +625,47 @@ flush_round_log_after_coder() {
 write_rejected_findings_aggregate() {
     local impl_tmpdir="$1" fallback_file="${2:-}"
     local output_file="$impl_tmpdir/rejected-findings.md"
-    local tmp_out round_num round_dir round_file full_file compact_file any_round=false tab
+    local tmp_out round_num round_dir round_file full_file compact_file
+    local any_full=false any_round=false tab body_start
 
     [[ -n "$impl_tmpdir" && -d "$impl_tmpdir" ]] || return 1
     tab="$(printf '\t')"
     tmp_out="$(mktemp "${TMPDIR:-/tmp}/rejected-findings.XXXXXX")" || return 1
+
+    while IFS="$tab" read -r round_num round_dir; do
+        [[ -n "$round_num" && -n "$round_dir" && -d "$round_dir" ]] || continue
+        full_file="$round_dir/rejected-findings-full.md"
+        if [[ -s "$full_file" ]]; then
+            any_full=true
+            break
+        fi
+    done < <(
+        find "$impl_tmpdir" -maxdepth 1 -type d -name 'round-*' 2>/dev/null \
+            | awk -F/ '
+                {
+                    for (i = 1; i <= NF; i++) {
+                        if ($i ~ /^round-[0-9]+$/) {
+                            round = $i
+                            sub(/^round-/, "", round)
+                            printf "%d\t%s\n", round, $0
+                            break
+                        }
+                    }
+                }
+            ' \
+            | sort -t "$tab" -k1,1n
+    )
+
+    if [[ "$any_full" == false ]]; then
+        rm -f "$tmp_out"
+        if [[ -n "$fallback_file" && -f "$fallback_file" ]]; then
+            cp "$fallback_file" "$output_file" 2>/dev/null || return 1
+        else
+            rm -f "$output_file"
+        fi
+        return 0
+    fi
+
     while IFS="$tab" read -r round_num round_dir; do
         [[ -n "$round_num" && -n "$round_dir" && -d "$round_dir" ]] || continue
         full_file="$round_dir/rejected-findings-full.md"
@@ -645,9 +681,25 @@ write_rejected_findings_aggregate() {
             printf '# Rejected Findings\n\n' > "$tmp_out"
             any_round=true
         fi
+        body_start=1
+        if first_heading=$(awk 'NF { print; exit }' "$round_file" 2>/dev/null) && [[ "$first_heading" == "# Rejected Findings" ]]; then
+            body_start=$(awk '
+                BEGIN { seen = 0 }
+                {
+                    if (!seen && $0 ~ /^[[:space:]]*$/) {
+                        seen = 1
+                        print NR + 1
+                        exit
+                    }
+                }
+                END {
+                    if (!seen) print NR + 1
+                }
+            ' "$round_file")
+        fi
         {
             printf '## Round %s\n\n' "$round_num"
-            cat "$round_file"
+            sed -n "${body_start},\$p" "$round_file"
             printf '\n\n'
         } >> "$tmp_out"
     done < <(
@@ -673,9 +725,7 @@ write_rejected_findings_aggregate() {
     fi
 
     rm -f "$tmp_out"
-    if [[ -n "$fallback_file" && -f "$fallback_file" ]]; then
-        cp "$fallback_file" "$output_file" 2>/dev/null || return 1
-    fi
+    rm -f "$output_file"
     return 0
 }
 

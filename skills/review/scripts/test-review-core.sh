@@ -166,15 +166,22 @@ STUB
 set -euo pipefail
 tmp=""
 session=""
+scout_status="na"
+dynamic_slots="0"
+static_slot_count="0"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --review-tmpdir) tmp="$2"; shift 2 ;;
     --session-env-path) session="$2"; shift 2 ;;
+    --scout-status) scout_status="$2"; shift 2 ;;
+    --dynamic-slots) dynamic_slots="$2"; shift 2 ;;
+    --static-slot-count) static_slot_count="$2"; shift 2 ;;
     *) shift 2 ;;
   esac
 done
 printf '# summary\n' > "$tmp/review-round-summary.md"
-printf '{"schema_version":1}\n' > "$tmp/review-summary.json"
+printf '{"schema_version":2,"accepted_count":0,"rejected_count":0,"panel":{"scout_status":"%s","dynamic_slot_count":%s,"static_slot_count":%s,"total_slot_count":%s}}\n' \
+  "$scout_status" "$dynamic_slots" "$static_slot_count" "$(( static_slot_count + dynamic_slots ))" > "$tmp/review-summary.json"
 printf '# rejected\n' > "$tmp/rejected-findings.md"
 printf '### [Code Review] Stub Reviewer\n\n**Finding**: full rejected body\n' > "$tmp/rejected-findings-full.md"
 printf '# oos\n' > "$tmp/oos-accepted-review.md"
@@ -282,11 +289,15 @@ assert_contains "$out" 'DYNAMIC_SLOTS=0'
 assert_contains "$out" "VOTING_TALLY_FILE=$TMP/zero/voting-tally.md"
 [[ -f "$TMP/zero/review-dirty-tree-summary.env" ]] || { echo "FAIL: missing review-dirty-tree-summary.env" >&2; exit 1; }
 [[ -f "$TMP/zero/voting-tally.md" ]] || { echo "FAIL: missing zero-findings voting-tally.md" >&2; exit 1; }
+jq -e '.schema_version == 2 and .accepted_count == 0 and .rejected_count == 0 and .panel.scout_status == "na" and .panel.static_slot_count == 0 and .panel.dynamic_slot_count == 0 and .panel.total_slot_count == 0' \
+    "$TMP/zero/review-summary.json" >/dev/null || { echo "FAIL: zero-findings review-summary.json missing panel fields" >&2; cat "$TMP/zero/review-summary.json" >&2; exit 1; }
 
 out=$(TEST_FINDINGS=0 TEST_SCOUT_STATUS=ok TEST_DYNAMIC_SLOTS=3 run_core "$TMP/zero-scout")
 assert_contains "$out" 'REVIEW_CORE_STATUS=zero-findings'
 assert_contains "$out" 'SCOUT_STATUS=ok'
 assert_contains "$out" 'DYNAMIC_SLOTS=3'
+jq -e '.panel.scout_status == "ok" and .panel.dynamic_slot_count == 3 and .panel.total_slot_count == 3' \
+    "$TMP/zero-scout/review-summary.json" >/dev/null || { echo "FAIL: zero-scout review-summary.json missing dynamic panel fields" >&2; exit 1; }
 
 out=$(TEST_FINDINGS=0 TEST_NOT_SUBSTANTIVE_SLOTS=2 run_core "$TMP/zero-degraded")
 assert_contains "$out" 'REVIEW_CORE_STATUS=zero-findings'

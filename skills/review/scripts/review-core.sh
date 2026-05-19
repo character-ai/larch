@@ -356,6 +356,7 @@ findings_count="${findings_count:-0}"
 if [[ "$findings_count" == "0" ]]; then
     zero_findings_tally_out="$REVIEW_TMPDIR/review-core-zero-findings-tally.env"
     zero_findings_voter="$REVIEW_TMPDIR/zero-findings-voter.txt"
+    zero_emit_out="$REVIEW_TMPDIR/review-core-zero-findings-emit.env"
     : > "$zero_findings_voter"
     zero_tally_args=(
         --ballot-file "$REVIEW_TMPDIR/findings.md"
@@ -369,10 +370,28 @@ if [[ "$findings_count" == "0" ]]; then
     [[ "$not_substantive_slots" -gt 0 ]] && zero_tally_args+=(--not-substantive-count "$not_substantive_slots")
     "$TALLY_VOTES_SH" "${zero_tally_args[@]}" > "$zero_findings_tally_out"
     zero_voting_tally_file=$(kv_get "$zero_findings_tally_out" VOTING_TALLY_FILE)
+    zero_tally_file=$(kv_get "$zero_findings_tally_out" TALLY_FILE)
+    zero_accepted_file=$(kv_get "$zero_findings_tally_out" ACCEPTED_FINDINGS_FILE)
+    zero_tally_file="${zero_tally_file:-$REVIEW_TMPDIR/review-tally.env}"
+    zero_accepted_file="${zero_accepted_file:-$REVIEW_TMPDIR/accepted-findings.md}"
 
     : > "$REVIEW_TMPDIR/accepted-findings.md"
     : > "$REVIEW_TMPDIR/rejected-findings.md"
     : > "$REVIEW_TMPDIR/oos-accepted-review.md"
+    zero_emit_args=(
+        --tally-file "$zero_tally_file"
+        --accepted-findings-file "$zero_accepted_file"
+        --oos-file "$REVIEW_TMPDIR/oos.md"
+        --review-tmpdir "$REVIEW_TMPDIR"
+        --round "$ROUND_NUM"
+        --mode "$MODE"
+        --scout-status "$scout_status"
+        --dynamic-slots "$dynamic_slots"
+        --static-slot-count "$static_slot_count"
+    )
+    [[ -n "$SESSION_ENV_PATH" ]] && zero_emit_args+=(--session-env-path "$SESSION_ENV_PATH")
+    [[ -n "${IMPLEMENT_TMPDIR:-}" ]] && zero_emit_args+=(--implement-tmpdir "$IMPLEMENT_TMPDIR")
+    "$EMIT_TALLY_SH" "${zero_emit_args[@]}" > "$zero_emit_out"
     copy_to_parent "$REVIEW_TMPDIR/rejected-findings.md" rejected-findings.md
     copy_to_parent "$REVIEW_TMPDIR/oos-accepted-review.md" oos-accepted-review.md
     flush_round_log

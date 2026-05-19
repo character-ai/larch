@@ -40,6 +40,7 @@ assert_contains 'STATUS=ok' "$out" 'happy path status ok'
 assert_contains 'COMMENT_URL=https://example.test/comment/final' "$out" 'comment URL emitted'
 assert_contains 'PR: https://example.test/pr/5' "$(cat "$TMP_ROOT/content.md")" 'summary includes PR'
 if [ -s "$impl_dir/larch-logs/implement/run-5/final-summary.md" ]; then pass 'final summary file written'; else fail 'final summary file written'; fi
+assert_contains 'Status: false' "$(cat "$impl_dir/larch-logs/implement/run-5/final-summary.md")" 'final summary includes stall status'
 
 # Upsert failure → STATUS=failed + non-zero exit
 set +e
