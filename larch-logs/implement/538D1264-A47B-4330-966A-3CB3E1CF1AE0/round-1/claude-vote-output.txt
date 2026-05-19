@@ -1,0 +1,21 @@
+FINDING_1: YES
+FINDING_2: NO -- `set -e` already propagates subshell failures; `) || exit 1` is redundant defensive style with no behavioral difference
+FINDING_3: EXONERATE -- pre-existing pattern not introduced by this diff; grep I/O errors on freshly-written test artifacts are implausible
+FINDING_4: NO -- `[[ -x ... ]] || return 0` is intentional behavior (skip when script absent), not a silent failure bug
+FINDING_5: EXONERATE -- doc target-name nit is legitimate but too minor to warrant a GitHub issue
+FINDING_6: EXONERATE -- SCOUT_FAIL_REASON and SCOUT_MANIFEST are set by dispatch-panel.sh internals, not direct LLM output; escaping belongs in append-execution-issue.sh
+FINDING_7: EXONERATE -- env-isolation, path-guard, and prod-shape test distinct invariants; structural similarity in setup doesn't make them duplicates
+FINDING_8: EXONERATE -- "harness ancestor" is adequate prose for the path-component glob pattern; precision nit not worth tracking
+FINDING_9: EXONERATE -- minor naming inconsistency (manifest_path param vs manifest_label caller variable) not severe enough to file an issue
+FINDING_10: EXONERATE -- spurious resolve_execution_issues_log call in the suppressed path is harmless overhead, not a correctness concern
+FINDING_11: EXONERATE -- the two tests assert different things (env-var leak vs diag sidecar presence) despite similar setup
+FINDING_12: EXONERATE -- larch test naming conventions are specific enough that false positives on production dirs are implausible
+FINDING_13: YES -- SCOUT_MANIFEST path check in the OR condition is a design flaw: a stale or externally-influenced manifest path containing test-scout-like segments would suppress execution-issues append even when REVIEW_TMPDIR is a production directory
+FINDING_14: EXONERATE -- test-review-core.* and test-scout-* arms are logically symmetric to test-dispatch-panel.*; adding more permutation tests increases complexity without meaningful coverage gain
+FINDING_15: EXONERATE -- same as FINDING_12; patterns are specific enough
+FINDING_16: EXONERATE -- mktemp always produces absolute paths; relative REVIEW_TMPDIR is incorrect usage not worth defensive-coding around
+FINDING_17: EXONERATE -- same as FINDING_12 and FINDING_15
+FINDING_18: EXONERATE -- diag file is best-effort telemetry; `|| true` is consistent with BASH_AUTHORING.md guidance for write probes; primary SCOUT_STATUS signal in stdout is unaffected
+FINDING_19: EXONERATE -- same underlying concern as FINDING_11; minor duplication acceptable in a regression harness
+FINDING_20: EXONERATE -- minor CI redundancy from unconditional new tests not worth restructuring shards for
+FINDING_21: YES -- SCOUT_MANIFEST path should not be used as a harness signal; stale or attacker-influenced manifest paths containing test-scout-* segments would suppress legitimate production warnings while REVIEW_TMPDIR remains a production path
