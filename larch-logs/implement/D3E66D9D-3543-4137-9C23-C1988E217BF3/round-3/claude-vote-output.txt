@@ -1,0 +1,34 @@
+I have all the information needed. The key facts confirmed:
+
+1. `is_harness_review_path` uses broad glob patterns (`*/test-collect-*`, `*/test-check-*`, `*/test-tally-*`) that could theoretically match non-harness paths.
+2. `should_suppress_parse_rate_issue_append` suppresses **all** `append-tool-failure` calls (including review-local REVIEW_TMPDIR/execution-issues.md writes), not just parent-log writes.
+3. The comments at lines 249-250 and 311-312 attribute the safety to the fallback mechanism, but the actual guard is `should_suppress_parse_rate_issue_append`.
+4. The doc at dispatch-code-voters.md:44 parenthetically says "(the parent-run-log write)" but the suppression is unconditional for all resolved `_issues_log` targets.
+5. The Voter 1 failure branch has no harness suppression guard.
+6. The global `unset` at startup is correct for current harness code (no tests export SESSION_ENV_PATH/IMPLEMENT_TMPDIR afterward).
+
+FINDING_1: NO -- correct observation but vacuously N/A; no harness other than the one under test calls dispatch-code-voters.sh today
+FINDING_2: NO -- pre-existing Makefile structure unrelated to this PR; reviewer explicitly flags as future change only
+FINDING_3: NO -- reviewer correctly identifies it is N/A today; plan wording was aspirational, not a gap in this PR
+FINDING_4: NO -- pre-existing silent-failure behavior, unchanged by this PR; reviewer explicitly advises leave it
+FINDING_5: EXONERATE -- asymmetry is real but global unset at harness startup mitigates current leakage; voter1 failure is a distinct higher-severity path worth a follow-up issue rather than blocking this fix
+FINDING_6: EXONERATE -- global unset is correct for all current tests; per-test subshells add complexity without benefit since no test exports SESSION_ENV_PATH/IMPLEMENT_TMPDIR after startup
+FINDING_7: EXONERATE -- same reasoning as FINDING_6; future-test risk is speculative and addressed when a new test actually exports those vars
+FINDING_8: EXONERATE -- plan wording gap only; implementation is behaviorally correct
+FINDING_9: YES -- comment at lines 249-250 attributes safety to fallback path, but actual mechanism is `should_suppress_parse_rate_issue_append` suppressing all `append-tool-failure` calls including the review-local one
+FINDING_10: YES -- same comment inaccuracy confirmed by independent reviewer; reword is warranted
+FINDING_11: EXONERATE -- same as FINDING_6; per-invocation isolation is unnecessary given no subsequent exports
+FINDING_12: YES -- dispatch-code-voters.md:44 parenthetical "(the parent-run-log write)" implies only parent-log writes are suppressed; code suppresses append-tool-failure regardless of which resolved path `_issues_log` holds, including review-local REVIEW_TMPDIR/execution-issues.md
+FINDING_13: EXONERATE -- low-probability production collision; REVIEW_TMPDIR is mktemp-generated so unlikely to contain `test-collect-*` etc.; consequence is lost persistent warning entry while stderr still fires; not worth blocking
+FINDING_14: EXONERATE -- same as FINDING_13
+FINDING_15: EXONERATE -- same as FINDING_13
+FINDING_16: EXONERATE -- reordering stderr before append-tool-failure is benign; no evidence log scrapers depend on ordering between these two writes
+FINDING_17: YES -- same comment inaccuracy as FINDING_9; "falls back under REVIEW_TMPDIR" description does not match the actual suppress-all mechanism
+FINDING_18: EXONERATE -- same as FINDING_6; plan/implementation wording mismatch but behavior is correct
+FINDING_19: EXONERATE -- FORCE_JAVASCRIPT_ACTIONS_TO_NODE24 is the standard GitHub-recommended opt-in; becomes the default 2026-06-02; major actions already support Node 24; risk of incompatible action is low and accepted
+FINDING_20: EXONERATE -- same as FINDING_13; path collision risk is latent and low-probability
+FINDING_21: EXONERATE -- same as FINDING_13
+FINDING_22: EXONERATE -- regression3 prod-shape explicitly asserts append-tool-failure wiring for a non-harness REVIEW_TMPDIR; the removed retry-fail assertions are covered there
+FINDING_23: EXONERATE -- same as FINDING_22; regression3 covers both claude and codex prod-shape cases
+FINDING_24: YES -- same comment inaccuracy as FINDING_9/10/17; all four independently confirm the comment misleads about the actual suppression mechanism
+FINDING_25: EXONERATE -- same as FINDING_6

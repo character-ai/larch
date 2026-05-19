@@ -1,0 +1,23 @@
+FINDING_1: YES
+FINDING_2: NO -- Sibling harness already isolates its issues log under its own TMPROOT; no future issue is shown.
+FINDING_3: EXONERATE -- The basename collision is theoretically real but too unlikely to warrant extra guard complexity beyond fixing the concrete test-path bug.
+FINDING_4: NO -- The provided plan explicitly called for a one-time harness startup unset, not per-case subshell isolation.
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: NO -- The provided plan matches the global startup unset; per-test subshells are not required by the verified context.
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: NO -- No contract or user-visible correctness issue is established for stderr versus issues-log ordering.
+FINDING_17: NO -- The verified plan called for a global unset, and the sibling-harness concern does not show a concrete gap.
+FINDING_18: YES
+FINDING_19: YES
+FINDING_20: NO -- Global startup unset is sufficient for the current harness and matches the provided implementation plan.
+FINDING_21: YES
+FINDING_22: YES
+FINDING_23: EXONERATE -- Legitimate edge case, but production reuse of harness-style tmpdir names is too narrow to justify more machinery.

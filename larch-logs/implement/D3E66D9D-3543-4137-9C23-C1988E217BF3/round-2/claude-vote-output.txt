@@ -1,0 +1,25 @@
+I've confirmed the core mechanical issue: `should_suppress_parse_rate_issue_append` takes `basename "$REVIEW_TMPDIR"`, but Regression 1 passes `--review-tmpdir "$TMP/env-isolation-review"` (basename `env-isolation-review`) and Regression 2 passes `--review-tmpdir "$TMP/path-guard-review"` (basename `path-guard-review`). Neither matches the case patterns, so the guard never fires, `append-tool-failure.sh` writes to the explicit `LARCH_EXECUTION_ISSUES_LOG`, and both `[[ -s ]]` assertions fail.
+
+FINDING_1: YES
+FINDING_2: NO -- [OUT_OF_SCOPE] sibling harness isolation is pre-existing behavior untouched by this branch; reviewer explicitly says "none required"
+FINDING_3: EXONERATE -- production REVIEW_TMPDIR basenames matching harness patterns is low-probability; impact is a missed warning, not a crash
+FINDING_4: EXONERATE -- global unset achieves the same env-isolation goal as per-case subshells; no isolation gap exists in practice
+FINDING_5: EXONERATE -- env var name is self-documenting; a comment adds marginal value and ci.yaml provides the canonical rationale
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: EXONERATE -- duplicate of FINDING_4 reasoning; global unset is functionally equivalent
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: EXONERATE -- ordering between stderr emission and file write has no semantic contract; both occur before function returns
+FINDING_17: EXONERATE -- duplicate of FINDING_4/9; global unset is sufficient and simpler
+FINDING_18: YES
+FINDING_19: YES
+FINDING_20: EXONERATE -- duplicate of FINDING_4/9/17 reasoning
+FINDING_21: YES
+FINDING_22: YES
+FINDING_23: EXONERATE -- production dirs with harness-style basenames are unlikely; risk is benign (missed warning) not data corruption

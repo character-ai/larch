@@ -1,0 +1,36 @@
+Gathering the diff and commit list for plan-fidelity review.
+
+Checking for sibling harness scripts referenced in the feature description.
+
+Verifying how `REVIEW_TMPDIR` is set and whether regression 1's `--review-tmpdir` matches the guard.
+
+### FINDING_1: Path guard keys off `REVIEW_TMPDIR` basename, not `voter_path` / harness prefix
+- **Severity:** **Important**
+- **Focus:** `correctness`
+- **Location:** [scripts/dispatch-code-voters.sh](scripts/dispatch-code-voters.sh) (`should_suppress_parse_rate_issue_append`, ~lines 156–168 in branch); [scripts/test-dispatch-code-voters.sh](scripts/test-dispatch-code-voters.sh) regressions 1–2 (~344–380); [scripts/dispatch-code-voters.md](scripts/dispatch-code-voters.md) (new guard paragraph ~line 118 in diff)
+- **Issue:** Suppression runs only when `basename "$REVIEW_TMPDIR"` matches `test-dispatch-code-voters.*|test-collect-*|test-check-*|test-tally-*` and `voter_path` is under that directory. The harness always passes `--review-tmpdir` as nested children of `$TMP` (e.g. `$TMP/env-isolation-review`, basename `env-isolation-review`), so the case arm does not match even though `voter_path` is under `/tmp/test-dispatch-code-voters.XXXX/...`.
+- **Concrete scenario:** Regressions 1 and 2 set `LARCH_EXECUTION_ISSUES_LOG` to explicit files and expect **no** append to those logs; with the real `append-tool-failure.sh` (harness uses repo `PLUGIN_ROOT`, not a stub), `should_suppress_parse_rate_issue_append` returns false, `append-tool-failure.sh` should run, and those log files should become non-empty → assertions `[[ -s "$env_isolation_parent" ]]` / `[[ -s "$path_guard_issues" ]]` should trip.
+- **Suggested fix:** Align guard with the stated intent: match `voter_path` (or `REVIEW_TMPDIR`) against the harness path patterns (e.g. path segment `test-dispatch-code-voters.` / `test-collect-` / etc.), or pass `--review-tmpdir` at the `test-dispatch-code-voters.*` root in regressions so basename matches; update docs/tests accordingly.
+
+### FINDING_2: Retry-fail comments misattribute “no issues-log write” to the path guard
+- **Severity:** **Nit**
+- **Focus:** `correctness`
+- **Location:** [scripts/test-dispatch-code-voters.sh](scripts/test-dispatch-code-voters.sh) ~247–250, ~309–311
+- **Issue:** Those invocations omit `LARCH_EXECUTION_ISSUES_LOG`; `check_voter_parse_rate` then falls through to `$REVIEW_TMPDIR/execution-issues.md`, so parent logs are not touched regardless of `should_suppress_parse_rate_issue_append`.
+- **Concrete scenario:** Readers maintain the wrong mental model of which layer prevents parent leakage and may “verify” the path guard via scenarios that never exercise it.
+- **Suggested fix:** Reword comments to cite unset-at-harness-start plus `_issues_log` fallback, or set `LARCH_EXECUTION_ISSUES_LOG` in those tests only if the goal is to assert guard behavior.
+
+### FINDING_3: Plan / feature wording vs implementation for Part (B)
+- **Severity:** **Latent**
+- **Focus:** `risk-integration`
+- **Location:** Feature description Part (B) (“`voter_path` matches … patterns”) vs [scripts/dispatch-code-voters.sh](scripts/dispatch-code-voters.sh) implementation and [scripts/dispatch-code-voters.md](scripts/dispatch-code-voters.md)
+- **Issue:** Spec and implementation_plan Part B speak in terms of `voter_path` / test-tmpdir patterns; the shipped guard is `basename "$REVIEW_TMPDIR"` + prefix check on `voter_path`.
+- **Concrete scenario:** Any caller that uses a benign `REVIEW_TMPDIR` basename but whose absolute `voter_path` still lives under a harness-style directory tree could still append to a parent `LARCH_EXECUTION_ISSUES_LOG` when set.
+- **Suggested fix:** Unify naming and predicate with the feature (path-segment or `voter_path` match) or document the narrower contract explicitly in the plan and user-facing docs.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/dispatch-code-voters.sh:156-168;scripts/test-dispatch-code-voters.sh:344-380	Guard uses basename(REVIEW_TMPDIR) patterns but harness uses nested --review-tmpdir basenames env-isolation-review/path-guard-review so suppression does not run while regressions 1-2 expect no LARCH_EXECUTION_ISSUES_LOG append.	CI/local harness: append-tool-failure writes to explicit issues logs; regression1/2 -s checks fail (or plan B never exercised as written).	Match voter_path or full path to harness patterns or set --review-tmpdir to basename-matching roots in tests; align docs.
+1	in_scope	nit	correctness	scripts/test-dispatch-code-voters.sh:247-250,309-311	Comments claim path guard suppresses parent writes for retry-fail cases that omit LARCH_EXECUTION_ISSUES_LOG.	Future edits may remove unset or add LARCH_EXECUTION_ISSUES_LOG and assume path guard covers it.	Reword to cite env unset and _issues_log fallback to REVIEW_TMPDIR/execution-issues.md.
+1	in_scope	latent	risk-integration	scripts/dispatch-code-voters.sh;scripts/dispatch-code-voters.md	Feature Part B and plan cite voter_path pattern matching; implementation uses REVIEW_TMPDIR basename rules.	Edge caller with parent LARCH_EXECUTION_ISSUESUES_LOG and nested tmp paths could still leak despite intent.	Align predicate with spec or narrow spec/docs to basename(REVIEW_TMPDIR) contract.
+```
