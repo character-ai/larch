@@ -1,0 +1,32 @@
+Reading the ballot and verifying against provided context (read-only).
+
+Verifying key claims against `diff-context.txt`, `plan-context.txt`, and the referenced source files.
+
+FINDING_1: YES
+FINDING_2: EXONERATE -- pre-existing allow-list risk; filing an issue would be noise
+FINDING_3: EXONERATE -- pre-existing kv_get limitation; refactor out of scope
+FINDING_4: EXONERATE -- pre-existing test/contract mismatch; not introduced here
+FINDING_5: EXONERATE -- pre-existing swallowing pattern; not introduced here
+FINDING_6: EXONERATE -- fail-fast after partial copies is acceptable; full pre-scan is heavy
+FINDING_7: EXONERATE -- replace-mode batch matches plan and /review-style run-root logs
+FINDING_8: EXONERATE -- extra tests are acceptable hardening; update issue text only if required
+FINDING_9: EXONERATE -- duplicate init is harmless churn
+FINDING_10: EXONERATE -- duplicate with FINDING_9; cosmetic only
+FINDING_11: YES -- pass/fail strings misdescribe behavior vs staging-only tests
+FINDING_12: EXONERATE -- traceability nit; optional doc sync not worth blocking
+FINDING_13: YES -- doc says non-empty and not na while code default-empty behaves as na
+FINDING_14: YES -- whitespace-only values contradict documented non-empty guard
+FINDING_15: EXONERATE -- same doc mismatch as FINDING_13; one prose fix covers it
+FINDING_16: EXONERATE -- duplicate of FINDING_13/14 consolidation
+FINDING_17: EXONERATE -- jq failure leaves empty/non-s typically; rm -f ends; edge rare
+FINDING_18: EXONERATE -- -x matches invoking a shell script; plan “set” is informal
+FINDING_19: YES -- whitespace-only SCOUT_STATUS is not coerced to na before comparison
+FINDING_20: YES -- stale -s .scout-payload.json possible if jq path skipped after prior write
+FINDING_21: YES -- -f gate diverges from SKILL.md basename-on-non-empty KV parity
+FINDING_22: EXONERATE -- empty basenames on missing files are honest; extra warns add noise
+FINDING_23: YES -- literal na comparison is not trimmed; values like na\t can mis-gate
+FINDING_24: EXONERATE -- same as FINDING_11; fix messaging once
+FINDING_25: EXONERATE -- stronger allow-list equality is optional beyond plan test 4
+FINDING_26: EXONERATE -- duplicate of FINDING_25 intent
+FINDING_27: EXONERATE -- silent skip matches non-blocking flush contract in review-and-fix.md
+FINDING_28: EXONERATE -- review-core is trusted; only basenames land in committed JSON

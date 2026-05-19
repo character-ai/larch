@@ -1,0 +1,52 @@
+Gathering the diff and commit history for a correctness-focused review.
+
+Checking `review-scout-manifest` batch validation, `/review` parity, and `append_log_write_failure` usage for consistency.
+
+### In-Scope Findings
+
+### FINDING_1: SCOUT_STATUS guard does not treat whitespace-only values as `na`
+- **Severity**: **Latent**
+- **Focus**: `correctness` (source: `requirements` + `plan` — prose in [skills/review/SKILL.md](skills/review/SKILL.md) and [skills/review-and-fix/scripts/review-and-fix.md](skills/review-and-fix/scripts/review-and-fix.md) say non-empty / not `na`, but guards match only the literal token `na`)
+- **Location**: [skills/review-and-fix/scripts/review-and-fix.sh](skills/review-and-fix/scripts/review-and-fix.sh):1098-1100
+- **Issue**: `scout_status_val=$(kv_get ...)` then `scout_status_val="${scout_status_val:-na}"` only substitutes when unset or null (empty); a value consisting only of spaces (or other blank characters) stays non-`na`, so the block runs and emits a `review-scout-manifest` batch with a bogus `status`.
+- **Concrete failing scenario**: `review-core.env` contains `SCOUT_STATUS=   ` (malformed hand edit or upstream bug); implement round still flushes `review-scout-manifest.json` as if scout were meaningful.
+- **Suggested fix**: Normalize with a trim predicate (e.g. collapse to `na` when `[[ ! "$scout_status_val" =~ [^[:space:]] ]]`) or match the SKILL guard literally with `[[ -n "$scout_status_val" && "$scout_status_val" != "na" ]]` after trimming.
+
+### FINDING_2: `DYNAMIC_SLOTS` accepts leading zeros that can make `jq --argjson` fail after passing the regex gate
+- **Severity**: **Latent**
+- **Focus**: `correctness` (source: `plan`)
+- **Location**: [skills/review-and-fix/scripts/review-and-fix.sh](skills/review-and-fix/scripts/review-and-fix.sh):1110-1121
+- **Issue**: `[[ ! "$scout_dynamic_slots" =~ ^[0-9]+$ ]]` allows strings like `007`, which are not valid JSON integer tokens for `jq --argjson`.
+- **Concrete failing scenario**: `DYNAMIC_SLOTS=007` in `review-core.env`; jq errors, payload build logs a warning, and no manifest batch is written despite numeric-looking input operators expect to accept.
+- **Suggested fix**: Reject leading zeros unless the value is exactly `0`, or normalize with `10#` arithmetic / `printf '%d'` before passing to jq.
+
+### FINDING_3: Non-atomic `jq` redirect can leave a non-empty `scout_payload` if `jq` fails mid-write
+- **Severity**: **Latent**
+- **Focus**: `correctness` (source: `plan`)
+- **Location**: [skills/review-and-fix/scripts/review-and-fix.sh](skills/review-and-fix/scripts/review-and-fix.sh):1114-1123
+- **Issue**: On `jq` failure, `[[ -s "$scout_payload" ]]` may still be true if a partial JSON file was written before abort, so a subsequent `larch-log.sh write` may run on corrupt input (likely fails validation, but behavior is less deterministic than writing to a temp and `mv`).
+- **Concrete failing scenario**: disk/quota error or jq abort after truncating and partially writing `round_dir/.scout-payload.json`; the following `larch-log.sh write` consumes a non-empty garbage payload.
+- **Suggested fix**: Write to a fresh `mktemp` path and `mv` into place only on jq success, or `rm -f` the payload before `jq` and treat any non-zero jq exit as hard “no write” without consulting `-s` on the old file.
+
+### FINDING_4: Duplicate `written=false` / `found=false` assignments in `write-round`
+- **Severity**: **Nit**
+- **Focus**: `code-quality` (source: `plan`)
+- **Location**: [scripts/larch-log.sh](scripts/larch-log.sh):118-142 (per diff: initialization line plus repeated assignments after `mkdir`)
+- **Issue**: Redundant resets add noise and a small maintenance footgun if one site is updated without the other.
+- **Suggested fix**: Keep a single initialization block after option parsing.
+
+### FINDING_5: Harness messages say “committed” for `write-round` staging-only checks
+- **Severity**: **Nit**
+- **Focus**: `risk-integration` (source: `plan` — tests 1–2 wording)
+- **Location**: [scripts/test-larch-log.sh](scripts/test-larch-log.sh):268-280 (new assertions)
+- **Issue**: `write-round` writes into the log tree under `LARCH_LOG_ROOT`; it does not perform `git commit`. Wording can mislead future readers triaging failures.
+- **Suggested fix**: Say “copied” or “present under round dir” instead of “committed”.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	latent	correctness	skills/review-and-fix/scripts/review-and-fix.sh:1098-1100	SCOUT_STATUS guard uses only :-na and literal != na; whitespace-only values are treated as active scout.	review-core.env has SCOUT_STATUS= only spaces; review-scout-manifest batch is still written with meaningless status.	Trim or treat all-blank as na; optionally align with explicit -n check after trim.
+1	in_scope	latent	correctness	skills/review-and-fix/scripts/review-and-fix.sh:1110-1121	DYNAMIC_SLOTS regex allows leading-zero multi-digit values; jq --argjson may reject them after validation passes.	DYNAMIC_SLOTS=007 causes jq payload build to fail and skip flush despite digit-only input.	Reject leading zeros or normalize to decimal before jq.
+1	in_scope	latent	correctness	skills/review-and-fix/scripts/review-and-fix.sh:1114-1123	jq writes directly to scout_payload; partial file can remain non-empty on jq failure, allowing a follow-up larch-log write attempt.	jq aborts after partial write to round_dir/.scout-payload.json; -s is true and larch-log may run on corrupt JSON.	Write jq output to a temp file and move on success only, or rm -f payload before jq.
+1	in_scope	nit	code-quality	scripts/larch-log.sh:118-142	Duplicate written=false/found=false initialization in write-round branch.	Maintenance-only drift risk if one copy is edited.	Single initialization after parsing options.
+1	in_scope	nit	risk-integration	scripts/test-larch-log.sh:268-280	Test pass messages say write-round commits files; write-round only stages under log root.	Readers misdiagnose git vs log staging when a test fails.	Rename messages to copied/staged/present.
+```

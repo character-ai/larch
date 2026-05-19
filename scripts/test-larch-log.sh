@@ -282,14 +282,14 @@ else
 fi
 _sentinel_head_after=$(git -C "$_sentinel_repo" rev-parse HEAD)
 if [ "$_sentinel_head_after" = "$_sentinel_head_before" ]; then
-    pass "flush does not create commit after sentinel"
+    pass "flush does not advance HEAD after sentinel"
 else
-    fail "flush does not create commit after sentinel"
+    fail "flush should not advance HEAD after sentinel"
 fi
 if [ ! -e "$_sentinel_repo/larch-logs/implement/$_sentinel_run" ]; then
-    pass "flush does not copy logs into repo after sentinel"
+    pass "flush leaves no round directory under repo after sentinel"
 else
-    fail "flush should not copy logs into repo after sentinel"
+    fail "flush should not leave a round directory under repo after sentinel"
 fi
 echo "=== flush honors Step 7a checkpoint without prior batch ==="
 _checkpoint_repo="$TMP/checkpoint-repo"
@@ -417,6 +417,170 @@ else
 fi
 
 export LARCH_LOG_ROOT="$_saved_log_root"
+
+echo "=== write-round commits scout and dynamic-archetype artifacts ==="
+_wr_staging="$TMP/wr-staging"
+_wr_run="wrround-scout-001"
+_wr_source="$TMP/wr-source-round1"
+mkdir -p "$_wr_source/dynamic-archetypes"
+
+# Allowed round artifacts
+printf 'SCOUT_STATUS=ok\nSCOUT_RESULT=fired\n' > "$_wr_source/scout-round1-status.env"
+printf '{"archetypes":["api-contract","edge-cases"]}\n' > "$_wr_source/scout-round1-manifest.json"
+printf 'findings here\n' > "$_wr_source/findings.md"
+# Flattened from dynamic-archetypes/
+printf '# reviewer-dyn-api-contract\n' > "$_wr_source/dynamic-archetypes/reviewer-dyn-api-contract.md"
+printf '# dyn-api-contract-prompt\n' > "$_wr_source/dynamic-archetypes/dyn-api-contract-prompt.md"
+# Denied files that should stay out
+printf 'raw output\n' > "$_wr_source/cursor-specialist-correctness-output.txt"
+printf 'vote prompt\n' > "$_wr_source/main-agent-vote-prompt.txt"
+
+"$LARCH_LOG" init --log-root "$_wr_staging/larch-logs" --skill implement --run-id "$_wr_run" --issue 2356 >/dev/null
+"$LARCH_LOG" write-round \
+    --log-root "$_wr_staging/larch-logs" \
+    --skill implement \
+    --run-id "$_wr_run" \
+    --round 1 \
+    --source-dir "$_wr_source" >/dev/null
+
+_wr_round="$_wr_staging/larch-logs/implement/$_wr_run/round-1"
+
+# Test 1: scout status committed
+if [ -f "$_wr_round/scout-round1-status.env" ]; then
+    pass "write-round commits scout-round1-status.env"
+else
+    fail "write-round must commit scout-round1-status.env (missing)"
+fi
+
+# Test 2: scout manifest committed
+if [ -f "$_wr_round/scout-round1-manifest.json" ]; then
+    pass "write-round commits scout-round1-manifest.json"
+else
+    fail "write-round must commit scout-round1-manifest.json (missing)"
+fi
+
+# Test 3: dynamic-archetypes flattened to round root (not in a subdir)
+if [ -f "$_wr_round/reviewer-dyn-api-contract.md" ] && [ ! -d "$_wr_round/dynamic-archetypes" ]; then
+    pass "write-round flattens reviewer-dyn-*.md to round root"
+else
+    fail "write-round must flatten reviewer-dyn-*.md (missing or still in subdir)"
+fi
+if [ -f "$_wr_round/dyn-api-contract-prompt.md" ]; then
+    pass "write-round flattens dyn-*-prompt.md to round root"
+else
+    fail "write-round must flatten dyn-*-prompt.md (missing)"
+fi
+
+# Test 4: no-regression — existing allowed files still committed
+if [ -f "$_wr_round/findings.md" ]; then
+    pass "write-round no-regression: findings.md still committed"
+else
+    fail "write-round no-regression: findings.md missing"
+fi
+
+# Test 5: denied files stay denied
+if [ ! -f "$_wr_round/cursor-specialist-correctness-output.txt" ]; then
+    pass "write-round denied: cursor-specialist-*-output.txt excluded"
+else
+    fail "write-round must exclude cursor-specialist-*-output.txt"
+fi
+if [ ! -f "$_wr_round/main-agent-vote-prompt.txt" ]; then
+    pass "write-round denied: *-vote-prompt.txt excluded"
+else
+    fail "write-round must exclude *-vote-prompt.txt"
+fi
+
+# Byte-for-byte content verification on scout files
+_wr_status_content=$(cat "$_wr_round/scout-round1-status.env" 2>/dev/null || true)
+if [ "$_wr_status_content" = "$(cat "$_wr_source/scout-round1-status.env")" ]; then
+    pass "write-round scout-round1-status.env content matches source"
+else
+    fail "write-round scout-round1-status.env content mismatch"
+fi
+
+echo "=== write-round keeps baseline artifacts unchanged without scout or dynamic inputs ==="
+_wr_plain_staging="$TMP/wr-plain-staging"
+_wr_plain_run="wrround-plain-001"
+_wr_plain_source="$TMP/wr-source-plain"
+mkdir -p "$_wr_plain_source"
+printf 'baseline findings\n' > "$_wr_plain_source/findings.md"
+printf 'accepted findings\n' > "$_wr_plain_source/accepted-findings.md"
+printf 'rejected findings\n' > "$_wr_plain_source/rejected-findings.md"
+printf 'vote summary\n' > "$_wr_plain_source/voting-tally.md"
+printf 'forbidden raw output\n' > "$_wr_plain_source/cursor-specialist-plan-output.txt"
+
+"$LARCH_LOG" init --log-root "$_wr_plain_staging/larch-logs" --skill implement --run-id "$_wr_plain_run" --issue 2357 >/dev/null
+"$LARCH_LOG" write-round \
+    --log-root "$_wr_plain_staging/larch-logs" \
+    --skill implement \
+    --run-id "$_wr_plain_run" \
+    --round 1 \
+    --source-dir "$_wr_plain_source" >/dev/null
+
+_wr_plain_round="$_wr_plain_staging/larch-logs/implement/$_wr_plain_run/round-1"
+for _plain_expected in findings.md accepted-findings.md rejected-findings.md voting-tally.md; do
+    if [ -f "$_wr_plain_round/$_plain_expected" ]; then
+        pass "write-round plain fixture keeps $_plain_expected"
+    else
+        fail "write-round plain fixture missing $_plain_expected"
+    fi
+done
+if [ ! -e "$_wr_plain_round/scout-round1-status.env" ] && [ ! -e "$_wr_plain_round/scout-round1-manifest.json" ] && [ ! -e "$_wr_plain_round/dynamic-archetypes" ] && [ ! -e "$_wr_plain_round/cursor-specialist-plan-output.txt" ]; then
+    pass "write-round plain fixture does not invent scout, dynamic, or denied artifacts"
+else
+    fail "write-round plain fixture wrote unexpected artifacts"
+fi
+
+echo "=== write-round rejects duplicate basenames across root and dynamic-archetypes ==="
+_wr_dup_staging="$TMP/wr-dup-staging"
+_wr_dup_run="wrround-dup-001"
+_wr_dup_source="$TMP/wr-source-dup"
+mkdir -p "$_wr_dup_source/dynamic-archetypes"
+printf 'root findings\n' > "$_wr_dup_source/findings.md"
+printf 'root dyn\n' > "$_wr_dup_source/reviewer-dyn-api-contract.md"
+printf 'dynamic dyn\n' > "$_wr_dup_source/dynamic-archetypes/reviewer-dyn-api-contract.md"
+
+"$LARCH_LOG" init --log-root "$_wr_dup_staging/larch-logs" --skill implement --run-id "$_wr_dup_run" --issue 2358 >/dev/null
+_wr_dup_stderr="$TMP/wr-dup-stderr.txt"
+_wr_dup_rc=0
+_wr_dup_output=$("$LARCH_LOG" write-round \
+    --log-root "$_wr_dup_staging/larch-logs" \
+    --skill implement \
+    --run-id "$_wr_dup_run" \
+    --round 1 \
+    --source-dir "$_wr_dup_source" \
+    2>"$_wr_dup_stderr") || _wr_dup_rc=$?
+if [ "$_wr_dup_rc" -ne 0 ] && printf '%s\n' "$_wr_dup_output" | grep -Fq "duplicate round artifact basename 'reviewer-dyn-api-contract.md'"; then
+    pass "write-round rejects duplicate flattened basenames"
+else
+    fail "write-round must reject duplicate flattened basenames"
+fi
+
+echo "=== write-round rejects symlinked dynamic-archetypes ==="
+_wr_link_staging="$TMP/wr-link-staging"
+_wr_link_run="wrround-link-001"
+_wr_link_source="$TMP/wr-source-link"
+_wr_link_target="$TMP/wr-source-link-target"
+mkdir -p "$_wr_link_source" "$_wr_link_target"
+printf '# reviewer-dyn-external\n' > "$_wr_link_target/reviewer-dyn-external.md"
+ln -s "$_wr_link_target" "$_wr_link_source/dynamic-archetypes"
+printf 'root findings\n' > "$_wr_link_source/findings.md"
+
+"$LARCH_LOG" init --log-root "$_wr_link_staging/larch-logs" --skill implement --run-id "$_wr_link_run" --issue 2359 >/dev/null
+_wr_link_stderr="$TMP/wr-link-stderr.txt"
+_wr_link_rc=0
+_wr_link_output=$("$LARCH_LOG" write-round \
+    --log-root "$_wr_link_staging/larch-logs" \
+    --skill implement \
+    --run-id "$_wr_link_run" \
+    --round 1 \
+    --source-dir "$_wr_link_source" \
+    2>"$_wr_link_stderr") || _wr_link_rc=$?
+if [ "$_wr_link_rc" -ne 0 ] && printf '%s\n' "$_wr_link_output" | grep -Fq "dynamic-archetypes must not be a symlink"; then
+    pass "write-round rejects symlinked dynamic-archetypes"
+else
+    fail "write-round must reject symlinked dynamic-archetypes"
+fi
 
 echo
 echo "Passed: $PASS"

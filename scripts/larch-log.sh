@@ -89,7 +89,7 @@ round_artifact_included() {
         findings.md|accepted-findings.md|rejected-findings.md|rejected-findings-full.md|oos.md|oos-accepted-review.md|review-round-summary.md|review-summary.json|voting-tally.md|review-tally.env|review-dirty-tree-summary.env|collector-results.env|collect-agent-results.log|panel-manifest.ndjson|code-voter-slots.ndjson|coder.env|coder-prompt.md|coder-tool.txt|coder-codex.wrapper.log|coder-cursor.log|coder-cursor.wrapper.log)
             return 0
             ;;
-        dirty-checkpoint-*.env|voter*-diag.txt|*-parse-rate-diag.txt|skipped-findings*.md|*-output.txt|*-output-*.txt|*-output.txt.meta|*-output-*.txt.meta|*-output.txt.json|*-output-*.txt.json|*-output.txt.cap-hit|*-output-*.txt.cap-hit)
+        dirty-checkpoint-*.env|voter*-diag.txt|*-parse-rate-diag.txt|skipped-findings*.md|*-output.txt|*-output-*.txt|*-output.txt.meta|*-output-*.txt.meta|*-output.txt.json|*-output-*.txt.json|*-output.txt.cap-hit|*-output-*.txt.cap-hit|scout-round*-status.env|scout-round*-manifest.json|reviewer-dyn-*.md|dyn-*-prompt.md)
             return 0
             ;;
         *)
@@ -259,6 +259,7 @@ case "$cmd" in
 
     write-round)
         LOG_ROOT=""; SKILL=""; RUN_ID=""; ROUND_NUM=""; SOURCE_DIR=""
+        round_dir=""; written=false; found=false; round_tmp=""; src=""; name=""; dest=""; dynamic_dir=""; seen_round_artifacts=""
         while [ $# -gt 0 ]; do
             case "$1" in
                 --log-root) LOG_ROOT="${2:?--log-root requires a value}"; shift 2 ;;
@@ -275,18 +276,26 @@ case "$cmd" in
         [ "$ROUND_NUM" -gt 0 ] || larch_log_fail 1 "--round must be a positive integer"
         [ -d "$SOURCE_DIR" ] || larch_log_fail 1 "source directory not found: $SOURCE_DIR"
         [ ! -L "$SOURCE_DIR" ] || larch_log_fail 1 "source directory must not be a symlink: $SOURCE_DIR"
+        dynamic_dir="$SOURCE_DIR/dynamic-archetypes"
+        [ ! -L "$dynamic_dir" ] || larch_log_fail 2 "dynamic-archetypes must not be a symlink: $dynamic_dir"
 
         round_dir="$(larch_log_run_dir "$SKILL" "$RUN_ID")/round-$ROUND_NUM"
         mkdir -p "$round_dir" || larch_log_fail 2 "cannot create round log directory: $round_dir"
         written=false
         found=false
         round_tmp="$(mktemp "${TMPDIR:-/tmp}/larch-log-round.XXXXXX")" || larch_log_fail 2 "cannot create round artifact temp"
-        trap 'rm -f "${round_tmp:-}"' EXIT
+        seen_round_artifacts="$(mktemp "${TMPDIR:-/tmp}/larch-log-round-seen.XXXXXX")" || larch_log_fail 2 "cannot create round basename temp"
+        trap 'rm -f "${round_tmp:-}" "${seen_round_artifacts:-}"' EXIT
         while IFS= read -r src || [ -n "$src" ]; do
             name="$(basename "$src")"
             round_artifact_included "$name" || continue
             [ -f "$src" ] || continue
             [ ! -L "$src" ] || continue
+            prev_src="$(awk -F '\t' -v target="$name" '$1 == target { print $2; exit }' "$seen_round_artifacts")"
+            if [ -n "$prev_src" ]; then
+                larch_log_fail 2 "duplicate round artifact basename '$name' from $src and $prev_src"
+            fi
+            printf '%s\t%s\n' "$name" "$src" >> "$seen_round_artifacts"
             found=true
             : > "$round_tmp"
             stage_round_artifact "$src" "$round_tmp"
@@ -296,7 +305,12 @@ case "$cmd" in
             fi
             larch_log_atomic_replace "$round_tmp" "$dest"
             written=true
-        done < <(find "$SOURCE_DIR" -maxdepth 1 -type f -print | LC_ALL=C sort)
+        done < <({
+            find "$SOURCE_DIR" -maxdepth 1 -type f -print
+            if [ -d "$dynamic_dir" ]; then
+                find "$dynamic_dir" -maxdepth 1 -type f -print
+            fi
+        } | LC_ALL=C sort)
         if [ "$found" = false ]; then
             larch_log_emit_success "$round_dir" false true
         else

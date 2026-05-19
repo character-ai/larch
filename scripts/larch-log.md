@@ -21,6 +21,11 @@ Primary verbs:
   raw `.meta` / JSON sidecars for retry state, but committed `round-<N>/`
   artifacts always use the trimmed form and fail closed if trimming fails. It
   writes only to the log root; `commit` later picks up the round directory.
+  The allow-list includes scout artifacts (`scout-round*-status.env`,
+  `scout-round*-manifest.json`) and dynamic-archetype files
+  (`reviewer-dyn-*.md`, `dyn-*-prompt.md`). Files under `dynamic-archetypes/`
+  inside `--source-dir` are walked one level deep and flattened to the round
+  root (no nested `dynamic-archetypes/` directory in committed output).
 - `append` atomically appends append-mode NDJSON batches.
 - `exists` probes a batch path.
 - `manifest` updates mutable manifest fields. Values that look like JSON-native scalars (`null`, `true`, `false`, integers) are passed via `--argjson` so they are stored with the correct JSON type; all other values are passed via `--arg` (stored as strings). This matters for numeric fields like `pr_number`.

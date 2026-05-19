@@ -901,7 +901,10 @@ run_implement_round() {
     [[ -n "$FEATURE_FILE" ]] && core_args+=(--feature-file "$FEATURE_FILE")
     [[ -n "$RUN_ID" ]] && core_args+=(--run-id "$RUN_ID")
 
+    set +e
     IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR" "$REVIEW_CORE_SH" "${core_args[@]}" > "$core_out"
+    core_rc=$?
+    set -e
 
     core_status=$(kv_get "$core_out" REVIEW_CORE_STATUS)
     accepted_count=$(kv_get "$core_out" ACCEPTED_COUNT)
@@ -1073,6 +1076,9 @@ run_implement_round() {
             status="$core_status"
             ;;
     esac
+    if [[ "$core_rc" -ne 0 && "$exit_code" -eq 0 ]]; then
+        exit_code="$core_rc"
+    fi
 
     local round_cap_val="${ROUND_CAP:-0}"
     local composed_findings_file="" derived_counts="" derived_accepted="" derived_rejected="" composed_findings_ok=false
@@ -1092,6 +1098,54 @@ run_implement_round() {
     fi
     write_summary_json "$prior_summary" "$status" "$core_status" "$round_num_dec" "$total_accepted" "$total_rejected" "$total_exonerated" "$total_neutral" "$round_num_dec" "$accepted_file" "$round_dir" "$oos_jsonl" "$oos_markdown" "$round_cap_val" "$coder_tool" "$coder_status" "$scrub_count" "$revert_count" "$coder_commit_sha"
     flush_round_log_after_coder "$IMPLEMENT_TMPDIR" "$RUN_ID" "$round_num_dec" "$round_dir"
+
+    if [[ -n "$RUN_ID" && -x "$LARCH_LOG_SH" && -n "$IMPLEMENT_TMPDIR" && -d "$IMPLEMENT_TMPDIR" ]]; then
+        local scout_status_val scout_dynamic_slots_raw scout_dynamic_slots scout_manifest_path yield_tsv_path scout_payload manifest_basename yield_tsv_basename scout_flush_err scout_rc
+        scout_status_val=$(kv_get "$core_out" SCOUT_STATUS)
+        scout_status_val="${scout_status_val:-na}"
+        if [[ "$scout_status_val" != "na" ]]; then
+            scout_dynamic_slots_raw=$(kv_get "$core_out" DYNAMIC_SLOTS)
+            scout_manifest_path=$(kv_get "$core_out" SCOUT_MANIFEST)
+            yield_tsv_path=$(kv_get "$core_out" YIELD_TSV_FILE)
+            scout_payload="$round_dir/.scout-payload.json"
+            scout_flush_err="$round_dir/review-and-fix-scout-flush.log"
+            rm -f "$scout_payload" "$scout_flush_err"
+            manifest_basename=""
+            yield_tsv_basename=""
+            [[ -n "$scout_manifest_path" ]] && manifest_basename="$(basename "$scout_manifest_path")"
+            [[ -n "$yield_tsv_path" ]] && yield_tsv_basename="$(basename "$yield_tsv_path")"
+            scout_dynamic_slots="${scout_dynamic_slots_raw:-0}"
+            if [[ ! "$scout_dynamic_slots" =~ ^[0-9]+$ ]]; then
+                printf 'invalid DYNAMIC_SLOTS for review-scout-manifest payload: %s\n' "${scout_dynamic_slots_raw:-<empty>}" > "$scout_flush_err"
+                append_log_write_failure "5" "review-scout-manifest payload validation" "$scout_flush_err" "Warnings" "1" "scout flush round $round_num_dec"
+            elif ! jq -cn \
+                --arg status "$scout_status_val" \
+                --argjson dynamic_slots "$scout_dynamic_slots" \
+                --arg manifest_basename "$manifest_basename" \
+                --arg yield_tsv_basename "$yield_tsv_basename" \
+                '{status: $status, dynamic_slots: $dynamic_slots, manifest_basename: $manifest_basename, yield_tsv_basename: $yield_tsv_basename}' \
+                > "$scout_payload" 2>"$scout_flush_err"; then
+                append_log_write_failure "5" "review-scout-manifest payload build" "$scout_flush_err" "Warnings" "1" "scout flush round $round_num_dec"
+            fi
+            if [[ -s "$scout_payload" ]]; then
+                set +e
+                "$LARCH_LOG_SH" write \
+                    --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
+                    --skill implement \
+                    --run-id "$RUN_ID" \
+                    --batch review-scout-manifest \
+                    --input-file "$scout_payload" >/dev/null 2>"$scout_flush_err"
+                scout_rc=$?
+                set -e
+                if [[ "$scout_rc" -ne 0 ]]; then
+                    append_log_write_failure "5" "larch-log.sh write review-scout-manifest" "$scout_flush_err" "Warnings" "$scout_rc" "scout flush round $round_num_dec"
+                else
+                    rm -f "$scout_flush_err"
+                fi
+            fi
+            rm -f "$scout_payload" "$scout_flush_err"
+        fi
+    fi
 
     emit_kv REVIEW_AND_FIX_STATUS "$status"
     emit_kv REVIEW_CORE_STATUS "$core_status"
