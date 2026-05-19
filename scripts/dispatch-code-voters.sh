@@ -8,6 +8,8 @@ PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd -P)}"
 # shellcheck source=scripts/lib-quiet.sh
 source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
+# shellcheck source=scripts/lib-voter-parse-rate.sh
+source "$SCRIPT_DIR/lib-voter-parse-rate.sh"
 
 usage() {
     larch_err "Usage: dispatch-code-voters.sh --ballot-file FILE --review-tmpdir DIR --codex-available true|false --cursor-available true|false [--session-env-path FILE] [--diff-file FILE] [--plan-file FILE]"
@@ -94,24 +96,6 @@ PY
     printf '%s' "$dest"
 }
 
-# check_voter_parse_rate: logs a Warning when a non-empty voter file produces
-# NEUTRAL for >=80% of ballot findings (indicating unparseable output).
-voter_parse_rate_diag_path() {
-    local voter_path="$1" voter_tool="${2:-}" base
-    if [[ -n "$voter_tool" ]]; then
-        printf '%s/%s-parse-rate-diag.txt\n' "$REVIEW_TMPDIR" "$voter_tool"
-        return 0
-    fi
-    base="$(basename "$voter_path")"
-    case "$base" in
-        claude-*) printf '%s/claude-parse-rate-diag.txt\n' "$REVIEW_TMPDIR" ;;
-        codex-*) printf '%s/codex-parse-rate-diag.txt\n' "$REVIEW_TMPDIR" ;;
-        cursor-*) printf '%s/cursor-parse-rate-diag.txt\n' "$REVIEW_TMPDIR" ;;
-        *.txt) printf '%s\n' "${voter_path%.txt}-parse-rate-diag.txt" ;;
-        *) printf '%s-parse-rate-diag.txt\n' "$voter_path" ;;
-    esac
-}
-
 parse_rate_check_tool_label() {
     local voter_tool="$1"
     case "$voter_tool" in
@@ -124,7 +108,7 @@ parse_rate_check_tool_label() {
 check_voter_parse_rate() {
     local voter_path="$1" voter_tool="$2" slot_num="${3:-}" log_mode="${4:-log}"
     local diag_file
-    diag_file="$(voter_parse_rate_diag_path "$voter_path" "$voter_tool")"
+    diag_file="$(voter_parse_rate_diag_path "$voter_path")"
     [[ -s "$voter_path" ]] || { printf 'PARSE_RATE_STATUS=OK\n'; return 0; }
     local ids_count neutral_count
     ids_count=$(grep -cE '^### (FINDING_[0-9]+):' "$BALLOT_FILE" 2>/dev/null || true)
@@ -158,6 +142,7 @@ check_voter_parse_rate() {
             printf 'neutral_count=%s\n' "$neutral_count"
             printf 'total_findings=%s\n' "$ids_count"
             printf 'voter_file=%s\n' "$voter_path"
+            printf 'voter_sha256=%s\n' "$(voter_output_sha256 "$voter_path")"
             printf -- '--- first 200 bytes of voter output ---\n'
             head -c 200 "$voter_path" 2>/dev/null || true
             printf '\n'
@@ -230,7 +215,7 @@ launch_voter_retry() {
 check_and_retry_voter_parse_rate() {
     local slot_num="$1" voter_path="$2" voter_tool="$3" prompt_file="$4"
     local status retry_prompt retry_output retry_rc retry_status diag_file retry_diag_file
-    diag_file="$(voter_parse_rate_diag_path "$voter_path" "$voter_tool")"
+    diag_file="$(voter_parse_rate_diag_path "$voter_path")"
     status=$(check_voter_parse_rate "$voter_path" "$voter_tool" "$slot_num" silent | parse_rate_status_from_output)
     [[ "$status" == "NOT_SUBSTANTIVE" ]] || { printf '%s\n' "$status"; return 0; }
 
@@ -239,7 +224,7 @@ check_and_retry_voter_parse_rate() {
         *.txt) retry_output="${voter_path%.txt}-parse-retry.txt" ;;
         *) retry_output="${voter_path}-parse-retry" ;;
     esac
-    retry_diag_file="$(voter_parse_rate_diag_path "$retry_output" "$voter_tool")"
+    retry_diag_file="$(voter_parse_rate_diag_path "$retry_output")"
     rm -f "$retry_output" "${retry_output}.done" "${retry_output}.launcher-stderr"
 
     set +e

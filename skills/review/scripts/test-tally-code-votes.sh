@@ -81,7 +81,7 @@ mk_ballot "$TMP/ballot.md"
 printf 'FINDING_1: YES\nFINDING_2: YES\nFINDING_3: YES\n' > "$TMP/cursor-vote-output.txt"
 printf 'FINDING_1: YES\nFINDING_2: NO\nFINDING_3: YES\n' > "$TMP/codex-vote-output.txt"
 printf 'FINDING_1: NO\nFINDING_2: NO\nFINDING_3: NO\n' > "$TMP/claude-vote-output.txt"
-printf 'voter_tool=cursor\nneutral_count=3\ntotal_findings=3\n' > "$TMP/cursor-parse-rate-diag.txt"
+printf 'voter_tool=cursor\nneutral_count=3\ntotal_findings=3\nvoter_file=%s/cursor-vote-output.txt\nvoter_sha256=%s\n' "$TMP" "$(shasum -a 256 "$TMP/cursor-vote-output.txt" | awk '{print $1}')" > "$TMP/cursor-vote-output-parse-rate-diag.txt"
 out="$TMP/out.env"
 "$SCRIPT" --ballot-file "$TMP/ballot.md" \
     --voter-files "$TMP/cursor-vote-output.txt" "$TMP/codex-vote-output.txt" "$TMP/claude-vote-output.txt" \
@@ -98,7 +98,7 @@ mk_ballot "$TMP/ballot.md"
 printf 'FINDING_1: YES\nFINDING_2: YES\nFINDING_3: YES\n' > "$TMP/cursor-vote-output.txt"
 printf 'FINDING_1: YES\nFINDING_2: NO\nFINDING_3: YES\n' > "$TMP/codex-vote-output.txt"
 printf 'FINDING_1: NO\nFINDING_2: NO\nFINDING_3: NO\n' > "$TMP/claude-vote-output.txt"
-printf 'voter_tool=cursor\nneutral_count=3\ntotal_findings=3\n' > "$TMP/cursor-parse-rate-diag.txt"
+printf 'voter_tool=cursor\nneutral_count=3\ntotal_findings=3\nvoter_file=%s/cursor-vote-output.txt\nvoter_sha256=%s\n' "$TMP" "$(shasum -a 256 "$TMP/cursor-vote-output.txt" | awk '{print $1}')" > "$TMP/cursor-vote-output-parse-rate-diag.txt"
 out="$TMP/out.env"
 "$SCRIPT" --ballot-file "$TMP/ballot.md" \
     --voter-files "$TMP/cursor-vote-output.txt" "$TMP/codex-vote-output.txt" "$TMP/claude-vote-output.txt" \
@@ -116,7 +116,7 @@ mk_ballot "$TMP/ballot.md"
 printf 'FINDING_1: YES\nFINDING_2: YES\nFINDING_3: YES\n' > "$TMP/cursor-vote-output.txt"
 printf 'FINDING_1: NO\nFINDING_2: NO\nFINDING_3: NO\n' > "$TMP/codex-vote-output.txt"
 printf 'FINDING_1: narrative only\nFINDING_2: narrative only\nFINDING_3: narrative only\n' > "$TMP/claude-vote-output.txt"
-printf 'voter_tool=claude\nneutral_count=3\ntotal_findings=3\n' > "$TMP/claude-parse-rate-diag.txt"
+printf 'voter_tool=claude\nneutral_count=3\ntotal_findings=3\nvoter_file=%s/claude-vote-output.txt\nvoter_sha256=%s\n' "$TMP" "$(shasum -a 256 "$TMP/claude-vote-output.txt" | awk '{print $1}')" > "$TMP/claude-vote-output-parse-rate-diag.txt"
 printf 'stale\n' > "$TMP/cursor-vote-output-parse-rate-diag.txt"
 out="$TMP/out.env"
 "$SCRIPT" --ballot-file "$TMP/ballot.md" \
@@ -136,9 +136,9 @@ mk_ballot "$TMP/ballot.md"
 printf 'FINDING_1: narrative only\nFINDING_2: narrative only\nFINDING_3: narrative only\n' > "$TMP/cursor-vote-output.txt"
 printf 'FINDING_1: narrative only\nFINDING_2: narrative only\nFINDING_3: narrative only\n' > "$TMP/codex-vote-output.txt"
 printf 'FINDING_1: narrative only\nFINDING_2: narrative only\nFINDING_3: narrative only\n' > "$TMP/claude-vote-output.txt"
-printf 'voter_tool=cursor\nneutral_count=3\ntotal_findings=3\n' > "$TMP/cursor-parse-rate-diag.txt"
-printf 'voter_tool=codex\nneutral_count=3\ntotal_findings=3\n' > "$TMP/codex-parse-rate-diag.txt"
-printf 'voter_tool=claude\nneutral_count=3\ntotal_findings=3\n' > "$TMP/claude-parse-rate-diag.txt"
+printf 'voter_tool=cursor\nneutral_count=3\ntotal_findings=3\nvoter_file=%s/cursor-vote-output.txt\nvoter_sha256=%s\n' "$TMP" "$(shasum -a 256 "$TMP/cursor-vote-output.txt" | awk '{print $1}')" > "$TMP/cursor-vote-output-parse-rate-diag.txt"
+printf 'voter_tool=codex\nneutral_count=3\ntotal_findings=3\nvoter_file=%s/codex-vote-output.txt\nvoter_sha256=%s\n' "$TMP" "$(shasum -a 256 "$TMP/codex-vote-output.txt" | awk '{print $1}')" > "$TMP/codex-vote-output-parse-rate-diag.txt"
+printf 'voter_tool=claude\nneutral_count=3\ntotal_findings=3\nvoter_file=%s/claude-vote-output.txt\nvoter_sha256=%s\n' "$TMP" "$(shasum -a 256 "$TMP/claude-vote-output.txt" | awk '{print $1}')" > "$TMP/claude-vote-output-parse-rate-diag.txt"
 out="$TMP/out.env"
 "$SCRIPT" --ballot-file "$TMP/ballot.md" \
     --voter-files "$TMP/cursor-vote-output.txt" "$TMP/codex-vote-output.txt" "$TMP/claude-vote-output.txt" \
@@ -146,6 +146,28 @@ out="$TMP/out.env"
 got=$(awk -F= '$1=="TALLY_STATUS"{print $2}' "$out"); assert_eq "all parse-rate failures trigger main-agent-vote-required" "$got" "main-agent-vote-required"
 got=$(awk -F= '$1=="ELIGIBLE_VOTER_COUNT"{print $2}' "$out"); assert_eq "all parse-rate failures preserve eligible count" "$got" "3"
 got=$(awk -F= '$1=="VOTER_COUNT"{print $2}' "$out"); assert_eq "all parse-rate failures drop effective count to zero" "$got" "0"
+grep -Fq '3 voter slot(s) emitted narrative-only output' "$TMP/voting-tally.md" \
+    || { FAIL=1; printf '  FAIL all parse-rate failures should still emit voter parse-rate banner on early exit\n'; }
+
+echo "# Case: stale parse-rate diag for replaced voter output is ignored"
+TMP="$WORKDIR/case_voter_parse_stale_diag_replaced_output"
+mkdir -p "$TMP"
+mk_ballot "$TMP/ballot.md"
+printf 'FINDING_1: narrative only\nFINDING_2: narrative only\nFINDING_3: narrative only\n' > "$TMP/claude-vote-output.txt"
+printf 'voter_tool=claude\nneutral_count=3\ntotal_findings=3\nvoter_file=%s/claude-vote-output.txt\nvoter_sha256=%s\n' "$TMP" "$(shasum -a 256 "$TMP/claude-vote-output.txt" | awk '{print $1}')" > "$TMP/claude-vote-output-parse-rate-diag.txt"
+printf 'FINDING_1: YES\nFINDING_2: YES\nFINDING_3: YES\n' > "$TMP/claude-vote-output.txt"
+printf 'FINDING_1: YES\nFINDING_2: NO\nFINDING_3: YES\n' > "$TMP/codex-vote-output.txt"
+printf 'FINDING_1: YES\nFINDING_2: NO\nFINDING_3: YES\n' > "$TMP/cursor-vote-output.txt"
+out="$TMP/out.env"
+"$SCRIPT" --ballot-file "$TMP/ballot.md" \
+    --voter-files "$TMP/cursor-vote-output.txt" "$TMP/codex-vote-output.txt" "$TMP/claude-vote-output.txt" \
+    --review-tmpdir "$TMP" > "$out"
+got=$(awk -F= '$1=="VOTER_COUNT"{print $2}' "$out"); assert_eq "stale replaced-output diag should not reduce effective voters" "$got" "3"
+if grep -Fq 'voter slot(s) emitted narrative-only output' "$TMP/voting-tally.md"; then
+    FAIL=1; printf '  FAIL stale replaced-output diag should not emit parse-rate banner\n'
+else
+    printf '  ok   stale replaced-output diag ignored by checksum binding\n'
+fi
 
 echo "# Case: OOS rejected subtracts 1 from reviewer score"
 TMP="$WORKDIR/case1b"

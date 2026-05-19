@@ -12,6 +12,8 @@ source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
 # shellcheck source=scripts/lib-vote-tally.sh
 source "$PLUGIN_ROOT/scripts/lib-vote-tally.sh"
+# shellcheck source=scripts/lib-voter-parse-rate.sh
+source "$PLUGIN_ROOT/scripts/lib-voter-parse-rate.sh"
 
 usage() {
     larch_err "Usage: tally-code-votes.sh --ballot-file FILE --voter-files FILE... --review-tmpdir DIR [--session-env-path FILE] [--scope-files FILE] [--plan-file FILE] [--manifest-file FILE] [--collector-results-file FILE] [--not-substantive-count N] [--cursor-available true|false] [--codex-available true|false] [--both-down true|false]"
@@ -195,18 +197,6 @@ scope_drift_check() {
     return 0  # all paths outside diff and plan → scope drift
 }
 
-voter_parse_rate_diag_path() {
-    local voter_path="$1" base
-    base="$(basename "$voter_path")"
-    case "$base" in
-        claude-*) printf '%s/claude-parse-rate-diag.txt\n' "$REVIEW_TMPDIR" ;;
-        codex-*) printf '%s/codex-parse-rate-diag.txt\n' "$REVIEW_TMPDIR" ;;
-        cursor-*) printf '%s/cursor-parse-rate-diag.txt\n' "$REVIEW_TMPDIR" ;;
-        *.txt) printf '%s\n' "${voter_path%.txt}-parse-rate-diag.txt" ;;
-        *) printf '%s-parse-rate-diag.txt\n' "$voter_path" ;;
-    esac
-}
-
 record_tally_outcome() {
     local id="$1" accepted="$2" outcome="$3"
     printf 'FINDING_%s_ACCEPTED=%s\n' "${id#FINDING_}" "$accepted" >> "$TALLY_ENV_FILE"
@@ -223,7 +213,8 @@ fi
 VOTER_PARSE_FAILED_COUNT=0
 EFFECTIVE_VOTER_FILES=()
 for voter_file in "${VOTER_FILES[@]+"${VOTER_FILES[@]}"}"; do
-    if [[ -f "$(voter_parse_rate_diag_path "$voter_file")" ]]; then
+    diag_file="$(voter_parse_rate_diag_path "$voter_file")"
+    if voter_parse_rate_diag_matches_output "$diag_file" "$voter_file"; then
         VOTER_PARSE_FAILED_COUNT=$((VOTER_PARSE_FAILED_COUNT + 1))
     else
         EFFECTIVE_VOTER_FILES+=("$voter_file")
@@ -236,6 +227,12 @@ if (( EFFECTIVE_VOTERS == 0 )); then
     VOTING_SKIPPED_WARNING="**⚠ Degraded code-review panel: 0 judges available. Panel tier: main-agent-required. Manual adjudication needed.**"
     printf '# Code Review Voting Tally\n\n' > "$VOTING_TALLY_FILE"
     printf '%s\n\n' "$VOTING_SKIPPED_WARNING" >> "$VOTING_TALLY_FILE"
+    if [[ "$NOT_SUBSTANTIVE_COUNT" -gt 0 ]]; then
+        printf '**⚠ Degraded code-review panel: %s reviewer slot(s) emitted narrative-only output (NOT_SUBSTANTIVE). Dead slots are shown in the scoreboard below.**\n\n' "$NOT_SUBSTANTIVE_COUNT" >> "$VOTING_TALLY_FILE"
+    fi
+    if [[ "$VOTER_PARSE_FAILED_COUNT" -gt 0 && "$ELIGIBLE_VOTERS" -gt 0 ]]; then
+        printf '**⚠ Degraded code-review panel: %s voter slot(s) emitted narrative-only output (parse-rate ≥80%% NEUTRAL) and were removed from the effective quorum.**\n\n' "$VOTER_PARSE_FAILED_COUNT" >> "$VOTING_TALLY_FILE"
+    fi
     emit_kv TALLY_STATUS main-agent-vote-required
     emit_kv ACCEPTED_COUNT "$ACCEPTED_COUNT"
     emit_kv REJECTED_COUNT "$REJECTED_COUNT"

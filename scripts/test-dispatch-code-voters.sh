@@ -251,8 +251,10 @@ grep -Fq 'VOTER_1_PARSE_RATE_STATUS=NOT_SUBSTANTIVE' <<< "$out" \
     || { echo "FAIL: parse-rate retry failure expected VOTER_1_PARSE_RATE_STATUS=NOT_SUBSTANTIVE" >&2; exit 1; }
 grep -Fq 'narrative instead of votes' "$retry_fail_tmp/claude-vote-output.txt" \
     || { echo "FAIL: parse-rate retry failure should preserve original narrative output" >&2; exit 1; }
-[[ -s "$retry_fail_tmp/claude-parse-rate-diag.txt" ]] \
+[[ -s "$retry_fail_tmp/claude-vote-output-parse-rate-diag.txt" ]] \
     || { echo "FAIL: parse-rate retry failure should preserve claude parse-rate diag" >&2; exit 1; }
+grep -Fq "voter_file=$retry_fail_tmp/claude-vote-output.txt" "$retry_fail_tmp/claude-vote-output-parse-rate-diag.txt" \
+    || { echo "FAIL: parse-rate retry failure diag should bind to the canonical claude voter output" >&2; exit 1; }
 grep -Fq 'dispatch-code-voters.sh claude' "$retry_fail_issues" \
     || { echo "FAIL: parse-rate retry failure should append execution issue warning" >&2; exit 1; }
 grep -Fq 'launch-claude-review.sh (voter parse-rate check)' "$retry_fail_issues" \
@@ -318,9 +320,27 @@ grep -Fq 'DEGRADED_PANEL_WARNING=**⚠ Degraded code-review panel: 2/3 effective
     || { echo "FAIL: codex parse-rate retry failure should degrade effective judges" >&2; exit 1; }
 grep -Fq 'launch-review.sh --tool codex (voter parse-rate check)' "$retry_fail_codex_issues" \
     || { echo "FAIL: codex parse-rate warning should name launch-review.sh" >&2; exit 1; }
-[[ -s "$retry_fail_codex_tmp/codex-parse-rate-diag.txt" ]] \
+[[ -s "$retry_fail_codex_tmp/codex-vote-output-parse-rate-diag.txt" ]] \
     || { echo "FAIL: codex parse-rate retry failure should preserve codex parse-rate diag" >&2; exit 1; }
 [[ ! -e "$retry_fail_codex_tmp/codex-vote-output-parse-retry.txt" && ! -e "$retry_fail_codex_tmp/codex-vote-output-parse-retry.txt.launcher-stderr" ]] \
     || { echo "FAIL: codex parse-rate retry failure should clean retry temp files" >&2; exit 1; }
+
+retry_fail_fallback_tmp="$TMP/retry-fail-fallback-claude"
+retry_fail_fallback_count_file="$TMP/retry-fail-fallback-claude-count.txt"
+out=$(PATH="$STUB_BIN:$PATH" CLAUDE_STUB_MODE=parse_retry_fail CLAUDE_STUB_COUNT_FILE="$retry_fail_fallback_count_file" "$SCRIPT" \
+    --ballot-file "$BALLOT" \
+    --review-tmpdir "$retry_fail_fallback_tmp" \
+    --codex-available false \
+    --cursor-available false)
+grep -Fq 'VOTER_2_TOOL=claude' <<< "$out" \
+    || { echo "FAIL: fallback-claude fixture expected voter 2 to run on claude" >&2; exit 1; }
+grep -Fq 'VOTER_2_PARSE_RATE_STATUS=NOT_SUBSTANTIVE' <<< "$out" \
+    || { echo "FAIL: fallback-claude fixture expected VOTER_2_PARSE_RATE_STATUS=NOT_SUBSTANTIVE" >&2; exit 1; }
+grep -Fq "VOTER_2_PATH=$retry_fail_fallback_tmp/codex-vote-output-phase3.txt" <<< "$out" \
+    || { echo "FAIL: fallback-claude fixture expected voter 2 final path to remain the phase3 output" >&2; exit 1; }
+[[ -s "$retry_fail_fallback_tmp/codex-vote-output-phase3-parse-rate-diag.txt" ]] \
+    || { echo "FAIL: fallback-claude fixture should write an output-specific codex voter diag" >&2; exit 1; }
+grep -Fq "voter_file=$retry_fail_fallback_tmp/codex-vote-output-phase3.txt" "$retry_fail_fallback_tmp/codex-vote-output-phase3-parse-rate-diag.txt" \
+    || { echo "FAIL: fallback-claude fixture diag should bind to the phase3 codex slot output path" >&2; exit 1; }
 
 echo "PASS: test-dispatch-code-voters.sh"
