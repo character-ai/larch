@@ -4,8 +4,8 @@
 # Covers the dispatcher branches that do NOT require spawning an external implementer
 # (for the full per-test inventory see test-step2-dispatch.md):
 #   - --coder claude → STATUS=claude_fallback (no launcher run; no baseline-file leak).
-#   - default coder (no --coder flag) is codex.
-#   - Default codex path outside a git work-tree → exit 2.
+#   - default coder (no --coder flag) is cursor.
+#   - Default cursor path outside a git work-tree, no --cursor-present → claude_fallback (exit 0).
 #   - Legacy --codex-available false → STATUS=claude_fallback + deprecation warning on stderr.
 #   - Missing required flag (--auto-mode) → exit 2.
 #   - Bad --coder enum value → exit 2 and names {claude,codex,cursor}.
@@ -89,20 +89,19 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Test 1b: default coder (neither flag set) is codex. From a non-git cwd the
-# codex path fails the git-tree precondition and exits 2 — if the default
-# were still claude, the dispatcher would early-return STATUS=claude_fallback
-# from the git-free claude branch with exit 0.
+# Test 1b: default coder (neither flag set) is cursor. From a non-git cwd
+# with no --cursor-present, the cursor presence check fires before git-tree
+# lookup and the dispatcher exits 0 with STATUS=claude_fallback — if the
+# default were still codex, the dispatcher would exit 2 with a git-tree error.
 # ---------------------------------------------------------------------------
 TMP1B="$SCRATCH/test1b"; mkdir -p "$TMP1B"
 NON_GIT_1B="$SCRATCH/not-a-repo-default"; mkdir -p "$NON_GIT_1B"
-EXIT=0
-ERR=$(cd "$NON_GIT_1B" && "$DISPATCHER" --tmpdir "$TMP1B" --plan-file "$PLAN" --feature-file "$FEATURE" \
-    --auto-mode false 2>&1 >/dev/null) || EXIT=$?
-if [[ "$EXIT" == "2" ]] && [[ "$ERR" == *"must be invoked from within a git working tree"* ]]; then
+OUT=$(cd "$NON_GIT_1B" && "$DISPATCHER" --tmpdir "$TMP1B" --plan-file "$PLAN" --feature-file "$FEATURE" \
+    --auto-mode false 2>/dev/null)
+if [[ "$OUT" == *"STATUS=claude_fallback"* ]]; then
     pass
 else
-    fail 1b "default coder should be codex (non-git cwd → git-tree exit 2), got exit=$EXIT err=$ERR"
+    fail 1b "default coder should be cursor (non-git cwd, no --cursor-present → claude_fallback exit 0), got: $OUT"
 fi
 
 # ---------------------------------------------------------------------------

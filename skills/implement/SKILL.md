@@ -1069,7 +1069,7 @@ If `design_only=true`:
 
 Runs unconditionally in both quick and normal modes (i.e. all `Proceed to Step 2` paths, including the manifest-reuse fast path) UNLESS `design_only=true` — design-only never reaches Step 2, so the override is moot.
 
-When `coder_explicit=true`, the explicit value wins. Do not apply the `diff_lines <= 3` carve-out, do not apply the Codex → Cursor → Claude waterfall, and do not modify `coder_explicit` itself.
+When `coder_explicit=true`, the explicit value wins. Do not apply the `diff_lines <= 3` carve-out, do not apply the Cursor → Codex → Claude waterfall, and do not modify `coder_explicit` itself.
 
 When `coder_explicit=false` AND `design_only=false`, read `$IMPLEMENT_TMPDIR/design-export/diff-lines.txt` if it exists. The file is written by `/design` Step 2b and contains only an integer estimate of total planned diff lines. Treat an absent, empty, non-integer, or `>=4` value as "no carve-out"; this is the quick-mode and missing-design-export behavior. If the parsed integer is `<=3`, set `coder=claude` and print:
 
@@ -1077,9 +1077,9 @@ When `coder_explicit=false` AND `design_only=false`, read `$IMPLEMENT_TMPDIR/des
 
 When the `diff_lines <= 3` carve-out does not fire, route by availability:
 
-- If `codex_available=true`, set `coder=codex`. This is the default implementer when `--coder` is omitted.
-- If `codex_available=false` AND `cursor_available=true`, set `coder=cursor` and `coder_fallback_target=cursor`, print `**⚠ Codex unavailable — falling back to Cursor implementer.**`, and append `Step 1 — Codex unavailable: waterfall fallback to cursor` to the `Warnings` section of `$IMPLEMENT_TMPDIR/execution-issues.md`. Do NOT set `coder_fallback=true` on this path; Cursor is an external implementer, not a degraded fallback.
-- If `codex_available=false` AND `cursor_available=false`, set `coder=claude` and `coder_fallback_target=claude`, print `**⚠ /implement Step 2: Codex and Cursor both unavailable. Falling back to Claude main agent for implementation — this is more expensive (~$1-6/run on Claude meter). Re-running with a available Codex or Cursor is preferred.**`, append `Step 1 — Codex and Cursor unavailable: waterfall fallback to claude` to the `Warnings` section of `$IMPLEMENT_TMPDIR/execution-issues.md`, and best-effort update the run manifest with `coder_fallback=true`.
+- If `cursor_available=true`, set `coder=cursor`. This is the default implementer when `--coder` is omitted.
+- If `cursor_available=false` AND `codex_available=true`, set `coder=codex` and `coder_fallback_target=codex`, print `**⚠ Cursor unavailable — falling back to Codex implementer.**`, and append `Step 1 — Cursor unavailable: waterfall fallback to codex` to the `Warnings` section of `$IMPLEMENT_TMPDIR/execution-issues.md`. Do NOT set `coder_fallback=true` on this path; Codex is an external implementer, not a degraded fallback.
+- If `cursor_available=false` AND `codex_available=false`, set `coder=claude` and `coder_fallback_target=claude`, print `**⚠ /implement Step 2: Cursor and Codex both unavailable. Falling back to Claude main agent for implementation — this is more expensive (~$1-6/run on Claude meter). Re-running with an available Cursor or Codex is preferred.**`, append `Step 1 — Cursor and Codex unavailable: waterfall fallback to claude` to the `Warnings` section of `$IMPLEMENT_TMPDIR/execution-issues.md`, and best-effort update the run manifest with `coder_fallback=true`.
 
 The manifest update, when `RUN_ID` and the larch-log manifest are available, is:
 
@@ -1223,7 +1223,7 @@ Print one of the following based on which path landed here, evaluated **in this 
 - When `coder=cursor` was the resolved choice but the dispatcher fell back to claude because Cursor was unavailable or unavailable: `**⚠ Cursor unavailable — implementing with main agent.**` Also log `Step 2 — Cursor unavailable/unavailable: fell back to claude` to the `Warnings` section of `$IMPLEMENT_TMPDIR/execution-issues.md`.
 - When the orchestrator earlier reported Codex unavailable / unavailable AND `coder=codex` was NOT explicitly requested (legacy / pre-`--coder` callers that mapped through `--codex-available false`): `**⚠ Codex unavailable — implementing with main agent.**`
 - When `coder=claude` AND `coder_explicit=true` (explicit operator selection via `--coder=claude`): `**ℹ Implementing with main agent (coder=claude).**`
-- When `coder=claude` AND `coder_explicit=false` AND `coder_fallback_target=claude`: `**⚠ Codex and Cursor unavailable — implementing with main agent.**`
+- When `coder=claude` AND `coder_explicit=false` AND `coder_fallback_target=claude`: `**⚠ Cursor and Codex unavailable — implementing with main agent.**`
 - When `coder=claude` AND `coder_explicit=false` (auto-routed by Step 1's `diff_lines <= 3` carve-out; reached only after the legacy / presence-fallback bullets above did not match): `**ℹ Implementing with main agent (auto-routed: diff_lines <= 3, no explicit --coder).**`
 
 **Opportunistic questions** (`auto_mode=false` only): before edits, if the plan leaves ambiguous choices — interpretations the plan does not pin down and the codebase does not unambiguously dictate — first consult `CLAUDE.md` when it may resolve the interpretation, then batch any remaining 1-4 into a single `AskUserQuestion`. Ask freely about plan ambiguities; do NOT ask about whether to do the plan, scope, or capacity (see "No mid-run scope re-litigation"). When `auto_mode=true`, proceed with best judgment.
