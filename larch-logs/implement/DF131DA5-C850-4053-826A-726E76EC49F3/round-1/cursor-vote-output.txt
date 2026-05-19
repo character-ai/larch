@@ -1,0 +1,28 @@
+Reading the ballot and session context to verify each finding before voting.
+
+Verifying ballot claims against the repository: reading `collect-findings.sh`, tests, `dispatch-panel.sh`, and diff/plan context.
+
+Verified `parse_output` awk in [`collect-findings.sh`](file:///Users/zhupanov/larch1/skills/review/scripts/collect-findings.sh): canonical `###` rules run first with `next`; `/^##/` matches any line whose first two characters are `#` `#`, including `###` lines that are not the two exact section headers; `skip { next }` drops bullets until a recognized section; `mode` is passed but unused; [`test-collect-findings.md`](file:///Users/zhupanov/larch1/skills/review/scripts/test-collect-findings.md) documents the preamble case only; [`dispatch-panel.sh`](file:///Users/zhupanov/larch1/skills/review/scripts/dispatch-panel.sh) includes the anti-preamble `printf` at line 163.
+
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: EXONERATE -- trivial doc gap; opening a GitHub issue would be disproportionate
+FINDING_5: NO -- awk is mode-agnostic today; a duplicate `--mode description` case would not add meaningful coverage
+FINDING_6: NO -- count semantics match implementation; no defect
+FINDING_7: NO -- `grep -Fq` treats brackets literally; concern is incorrect
+FINDING_8: EXONERATE -- unused `-v mode` is harmless noise; tracking as an issue is unnecessary
+FINDING_9: EXONERATE -- optional edge case; extending skip for `#` preambles is more surface than warranted now
+FINDING_10: EXONERATE -- doc-only nit; fix in-doc without a finding cycle
+FINDING_11: EXONERATE -- `mode` unused in awk so diff vs description choice is immaterial until branching exists
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: EXONERATE -- duplicate of FINDING_10 class; not worth separate tracking
+FINDING_16: YES
+FINDING_17: EXONERATE -- static prompt string; dedicated harness grep is low ROI versus churn
+FINDING_18: EXONERATE -- same doc gap as FINDING_10/15; no separate issue needed
+FINDING_19: EXONERATE -- hypothetical future `mode` branch; redundant test not warranted yet
+FINDING_20: EXONERATE -- same as FINDING_19; optional comment suffices over matrix duplication
+
+

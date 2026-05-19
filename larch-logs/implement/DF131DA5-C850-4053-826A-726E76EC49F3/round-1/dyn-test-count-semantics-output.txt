@@ -1,0 +1,23 @@
+Gathering the diff, commit list, and source files to verify FINDINGS_COUNT semantics and the new tests.
+
+Verifying early tests' count semantics and whether `findings.md` includes OOS rows as separate FINDING_N entries.
+
+Checking whether `mode` is used in the `parse_output` awk program and scanning for similar `grep` patterns.
+
+Checking for an existing test that uses non-canonical `###` headings to assess regression likelihood:
+
+Here is the review. Evidence: `FINDINGS_COUNT` / `OOS_COUNT` come from [`collect-findings.sh`](skills/review/scripts/collect-findings.sh) lines 373–404; `parse_output` skip logic from the diff at 281–284; first harness fixture at [`test-collect-findings.sh`](skills/review/scripts/test-collect-findings.sh) lines 19–33.
+
+### In-Scope Findings
+
+- **[correctness]** [`skills/review/scripts/collect-findings.sh:281-284`](skills/review/scripts/collect-findings.sh) — The new `/^##/` rule matches any line whose first two characters are `##`. In awk, that includes every `### ...` line that does **not** match the two earlier exact headers (`### Out-of-Scope Observations`, `### In-Scope Findings`). A non-canonical third-level heading (e.g. `### Notes` between sections) therefore runs `flush(); skip=1; next` and subsequent list bullets are dropped until another canonical header clears `skip`, whereas before they would have been folded into the prose `NF` path. That is a real narrowing of accepted reviewer grammar introduced by this branch. **Suggested fix:** Restrict the skipper to level-2 headings only (for example require the third character not to be `#`, or match `^## ` / `^##[^#]` with an explicit `^##$` edge case), or add explicit allow patterns for benign `###` subheads if you want to keep `^##` as written.
+
+### Out-of-Scope Observations
+
+- **[correctness]** Scout note on `FINDINGS_COUNT=4` in [`skills/review/scripts/test-collect-findings.sh:224-227`](skills/review/scripts/test-collect-findings.sh) — This matches implementation semantics, not a false green. In [`skills/review/scripts/collect-findings.sh:390-404`](skills/review/scripts/collect-findings.sh), `count` is incremented for **every** row emitted into the main findings file (including `[OUT_OF_SCOPE]`-prefixed titles), and `OOS_COUNT` increments only when `title` matches `\[OUT_OF_SCOPE\]*`. The same contract is already asserted in the opening fixture ([`test-collect-findings.sh:19-33`](skills/review/scripts/test-collect-findings.sh): `FINDINGS_COUNT=2` with `OOS_COUNT=1` for one in-scope and one OOS bullet). No change required for count semantics.
+
+- **[correctness]** [`skills/review/scripts/test-collect-findings.sh:231`](skills/review/scripts/test-collect-findings.sh) — `grep -Fq '[OUT_OF_SCOPE]'` uses fixed-string mode; `[` and `]` are literal. Same pattern as line 90 for the inline-TSV case. No issue.
+
+- **[correctness]** Preamble fixture uses `--mode diff` only ([`test-collect-findings.sh:211-239`](skills/review/scripts/test-collect-findings.sh)) — [`skills/review/scripts/collect-findings.sh:268-295`](skills/review/scripts/collect-findings.sh) passes `-v mode="$MODE"` into `parse_output`’s awk but the program never references `mode`, so prose parsing (including `skip`) is the same in description and diff modes. A duplicate `--mode description` case would add redundancy, not fix a mode-specific bug.
+
+- **[code-quality]** [`skills/review/scripts/test-collect-findings.md`](skills/review/scripts/test-collect-findings.md) (updated in the branch) calls out the preamble/`##` skip regression but does not mention the `canonical-3-finding-guard` block added in [`test-collect-findings.sh:218-231`](skills/review/scripts/test-collect-findings.sh). Small contract-doc gap relative to the full harness; not a runtime correctness defect.

@@ -143,6 +143,9 @@ grep -Fq 'SLOT_COUNT=16' <<< "$out"
 dyn_prompt_slots=$(grep -c '"prompt_file"' "$TMP/dynamic4/panel-manifest.ndjson")
 [[ "$dyn_prompt_slots" = "4" ]] || { echo "FAIL: expected 4 dynamic prompt_file slots" >&2; exit 1; }
 [[ -s "$TMP/dynamic4/dyn-api-contract-output.txt" ]]
+grep -Fq 'Do not include a commits-since-merge-base section, a merge-base header, or any preamble before the findings list.' \
+    "$TMP/dynamic4/dynamic-archetypes/reviewer-dyn-api-contract.md" \
+    || { echo "FAIL: dynamic reviewer artifact missing anti-preamble instruction" >&2; exit 1; }
 
 seed_case_inputs "$TMP/dynamic-empty"
 out=$(PATH="$STUB_BIN:$PATH" SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$scout_launch" SCOUT_LAUNCH_JSON_FILE="$TMP/scout-empty.json" "$SCRIPT" \
