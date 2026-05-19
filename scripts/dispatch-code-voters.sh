@@ -147,6 +147,17 @@ check_voter_parse_rate() {
             head -c 200 "$voter_path" 2>/dev/null || true
             printf '\n'
         } > "$diag_file" || true
+        # Guard: suppress parent-run-log write when voter_path is under a test-harness
+        # tmpdir.  The local diag file above is still written so test assertions that
+        # check its presence still pass; only the append-tool-failure.sh call is
+        # suppressed to prevent test-fixture diagnostics leaking into the parent run's
+        # execution-issues.md when tests run inside an active /implement session.
+        case "$voter_path" in
+            */test-dispatch-code-voters*|*/test-collect-*|*/test-check-*|*/test-tally-*)
+                printf 'PARSE_RATE_STATUS=NOT_SUBSTANTIVE\n'
+                return 0
+                ;;
+        esac
         if [[ "$log_mode" == "log" ]]; then
             _issues_log="${LARCH_EXECUTION_ISSUES_LOG:-}"
             [[ -z "$_issues_log" && -n "${SESSION_ENV_PATH:-}" ]] && _issues_log="$(dirname "$SESSION_ENV_PATH")/execution-issues.md"

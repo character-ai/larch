@@ -19,6 +19,16 @@ on:
 permissions:
   contents: read
 
+env:
+  # Force all JavaScript-based actions (including transitive sub-actions like
+  # the actions/cache@v4 carried inside actions/setup-node and
+  # actions/setup-python) to run under Node.js 24.  Suppresses the deprecation
+  # warning that fires on every job:
+  #   "Node.js 20 actions are deprecated."
+  # Per GitHub changelog 2025-09-19, Node 20 is removed from runners on
+  # 2026-09-16; this env var becomes the default on 2026-06-02.
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 jobs:
   # Linters only: pre-commit over all files (markdownlint, jsonlint,
   # actionlint, agent-lint, lint-skill-invocations, gitleaks). The `agnix`

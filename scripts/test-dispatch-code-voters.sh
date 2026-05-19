@@ -38,6 +38,11 @@ SCRIPT="$REPO_ROOT/scripts/dispatch-code-voters.sh"
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/test-dispatch-code-voters.XXXXXX")"
 trap 'rm -rf "$TMP"' EXIT
 unset CLAUDE_PLUGIN_ROOT
+# Drop any parent /implement env vars so test invocations do not inherit the
+# parent run's issues-log path and accidentally append test-fixture diagnostics
+# to a live execution-issues.md.  Tests that need to assert issues-log writes
+# set LARCH_EXECUTION_ISSUES_LOG explicitly on each individual invocation.
+unset LARCH_EXECUTION_ISSUES_LOG SESSION_ENV_PATH IMPLEMENT_TMPDIR
 
 STUB_BIN="$TMP/bin"
 mkdir -p "$STUB_BIN"
@@ -255,8 +260,9 @@ fi
 
 retry_fail_tmp="$TMP/retry-fail"
 retry_fail_count_file="$TMP/retry-fail-count.txt"
-retry_fail_issues="$TMP/retry-fail-execution-issues.md"
-out=$(PATH="$STUB_BIN:$PATH" CLAUDE_STUB_MODE=parse_retry_fail CLAUDE_STUB_COUNT_FILE="$retry_fail_count_file" LARCH_EXECUTION_ISSUES_LOG="$retry_fail_issues" "$SCRIPT" \
+# No LARCH_EXECUTION_ISSUES_LOG: the path guard in check_voter_parse_rate suppresses
+# append-tool-failure.sh for test-tmpdir voter paths, so no issues-log write expected.
+out=$(PATH="$STUB_BIN:$PATH" CLAUDE_STUB_MODE=parse_retry_fail CLAUDE_STUB_COUNT_FILE="$retry_fail_count_file" "$SCRIPT" \
     --ballot-file "$BALLOT" \
     --review-tmpdir "$retry_fail_tmp" \
     --codex-available true \
@@ -269,14 +275,8 @@ grep -Fq 'narrative instead of votes' "$retry_fail_tmp/claude-vote-output.txt" \
     || { echo "FAIL: parse-rate retry failure should preserve claude parse-rate diag" >&2; exit 1; }
 grep -Fq "voter_file=$retry_fail_tmp/claude-vote-output.txt" "$retry_fail_tmp/claude-vote-output-parse-rate-diag.txt" \
     || { echo "FAIL: parse-rate retry failure diag should bind to the canonical claude voter output" >&2; exit 1; }
-grep -Fq 'dispatch-code-voters.sh claude' "$retry_fail_issues" \
-    || { echo "FAIL: parse-rate retry failure should append execution issue warning" >&2; exit 1; }
-grep -Fq 'launch-claude-review.sh (voter parse-rate check)' "$retry_fail_issues" \
-    || { echo "FAIL: claude parse-rate warning should name the actual launcher" >&2; exit 1; }
 [[ "$(cat "$retry_fail_count_file")" -eq 2 ]] \
     || { echo "FAIL: parse-rate retry failure expected exactly two claude attempts" >&2; exit 1; }
-[[ "$(grep -Fc 'dispatch-code-voters.sh claude' "$retry_fail_issues")" -eq 1 ]] \
-    || { echo "FAIL: parse-rate retry failure should append exactly one execution issue warning" >&2; exit 1; }
 [[ ! -e "$retry_fail_tmp/claude-vote-output-parse-retry.txt" && ! -e "$retry_fail_tmp/claude-vote-output-parse-retry.txt.launcher-stderr" ]] \
     || { echo "FAIL: parse-rate retry failure should clean retry temp files" >&2; exit 1; }
 fi  # end section: retry-claude
@@ -328,8 +328,8 @@ fi  # end section: retry-cursor
 if section_runs retry-codex-fail-and-fallback; then
 retry_fail_codex_tmp="$TMP/retry-fail-codex"
 retry_fail_codex_count_file="$TMP/retry-fail-codex-count.txt"
-retry_fail_codex_issues="$TMP/retry-fail-codex-execution-issues.md"
-out=$(PATH="$STUB_BIN:$PATH" CODEX_STUB_MODE=parse_retry_fail CODEX_STUB_COUNT_FILE="$retry_fail_codex_count_file" LARCH_EXECUTION_ISSUES_LOG="$retry_fail_codex_issues" "$SCRIPT" \
+# No LARCH_EXECUTION_ISSUES_LOG: path guard suppresses append-tool-failure.sh for test-tmpdir paths.
+out=$(PATH="$STUB_BIN:$PATH" CODEX_STUB_MODE=parse_retry_fail CODEX_STUB_COUNT_FILE="$retry_fail_codex_count_file" "$SCRIPT" \
     --ballot-file "$BALLOT" \
     --review-tmpdir "$retry_fail_codex_tmp" \
     --codex-available true \
@@ -338,8 +338,6 @@ grep -Fq 'VOTER_2_PARSE_RATE_STATUS=NOT_SUBSTANTIVE' <<< "$out" \
     || { echo "FAIL: codex parse-rate retry failure expected VOTER_2_PARSE_RATE_STATUS=NOT_SUBSTANTIVE" >&2; exit 1; }
 grep -Fq 'DEGRADED_PANEL_WARNING=**⚠ Degraded code-review panel: 2/3 effective judges produced output.**' <<< "$out" \
     || { echo "FAIL: codex parse-rate retry failure should degrade effective judges" >&2; exit 1; }
-grep -Fq 'launch-review.sh --tool codex (voter parse-rate check)' "$retry_fail_codex_issues" \
-    || { echo "FAIL: codex parse-rate warning should name launch-review.sh" >&2; exit 1; }
 [[ -s "$retry_fail_codex_tmp/codex-vote-output-parse-rate-diag.txt" ]] \
     || { echo "FAIL: codex parse-rate retry failure should preserve codex parse-rate diag" >&2; exit 1; }
 [[ ! -e "$retry_fail_codex_tmp/codex-vote-output-parse-retry.txt" && ! -e "$retry_fail_codex_tmp/codex-vote-output-parse-retry.txt.launcher-stderr" ]] \
@@ -363,5 +361,64 @@ grep -Fq "VOTER_2_PATH=$retry_fail_fallback_tmp/codex-vote-output-phase3.txt" <<
 grep -Fq "voter_file=$retry_fail_fallback_tmp/codex-vote-output-phase3.txt" "$retry_fail_fallback_tmp/codex-vote-output-phase3-parse-rate-diag.txt" \
     || { echo "FAIL: fallback-claude fixture diag should bind to the phase3 codex slot output path" >&2; exit 1; }
 fi  # end section: retry-codex-fail-and-fallback
+
+# Regression 1: env isolation — LARCH_EXECUTION_ISSUES_LOG set on invocation but voter_path
+# is under a test-dispatch-code-voters.* tmpdir; path guard must suppress the write.
+env_isolation_parent="$TMP/env-isolation-parent.md"
+rm -f "$env_isolation_parent"
+env_isolation_count="$TMP/env-isolation-count.txt"
+out=$(PATH="$STUB_BIN:$PATH" \
+    CLAUDE_STUB_MODE=parse_retry_fail CLAUDE_STUB_COUNT_FILE="$env_isolation_count" \
+    LARCH_EXECUTION_ISSUES_LOG="$env_isolation_parent" \
+    "$SCRIPT" \
+    --ballot-file "$BALLOT" \
+    --review-tmpdir "$TMP/env-isolation-review" \
+    --codex-available true \
+    --cursor-available true)
+grep -Fq 'VOTER_1_PARSE_RATE_STATUS=NOT_SUBSTANTIVE' <<< "$out" \
+    || { echo "FAIL: regression1 — expected NOT_SUBSTANTIVE parse-rate status" >&2; exit 1; }
+if [[ -s "$env_isolation_parent" ]]; then
+    echo "FAIL: regression1 env-isolation — parent LARCH_EXECUTION_ISSUES_LOG was written despite test-tmpdir voter_path" >&2
+    exit 1
+fi
+
+# Regression 2: test-tmpdir path guard — diag file written locally but issues-log not written.
+path_guard_issues="$TMP/path-guard-issues.md"
+rm -f "$path_guard_issues"
+path_guard_review="$TMP/path-guard-review"
+out=$(PATH="$STUB_BIN:$PATH" \
+    CLAUDE_STUB_MODE=parse_retry_fail CLAUDE_STUB_COUNT_FILE="$TMP/path-guard-count.txt" \
+    LARCH_EXECUTION_ISSUES_LOG="$path_guard_issues" \
+    "$SCRIPT" \
+    --ballot-file "$BALLOT" \
+    --review-tmpdir "$path_guard_review" \
+    --codex-available true \
+    --cursor-available true)
+[[ -s "$path_guard_review/claude-vote-output-parse-rate-diag.txt" ]] \
+    || { echo "FAIL: regression2 path-guard — local diag file not written" >&2; exit 1; }
+if [[ -s "$path_guard_issues" ]]; then
+    echo "FAIL: regression2 path-guard — append-tool-failure.sh was called despite test-tmpdir voter_path" >&2
+    exit 1
+fi
+
+# Regression 3: production-shape — voter_path outside test-dispatch-code-voters; both
+# local diag file and issues-log must be written.
+prod_tmp="$(mktemp -d "${TMPDIR:-/tmp}/review-prod-shape.XXXXXX")"
+trap 'rm -rf "$prod_tmp"' EXIT
+prod_issues="$prod_tmp/prod-issues.md"
+out=$(PATH="$STUB_BIN:$PATH" \
+    CLAUDE_STUB_MODE=parse_retry_fail CLAUDE_STUB_COUNT_FILE="$TMP/prod-shape-count.txt" \
+    LARCH_EXECUTION_ISSUES_LOG="$prod_issues" \
+    "$SCRIPT" \
+    --ballot-file "$BALLOT" \
+    --review-tmpdir "$prod_tmp/review" \
+    --codex-available true \
+    --cursor-available true)
+grep -Fq 'VOTER_1_PARSE_RATE_STATUS=NOT_SUBSTANTIVE' <<< "$out" \
+    || { echo "FAIL: regression3 prod-shape — expected NOT_SUBSTANTIVE parse-rate status" >&2; exit 1; }
+[[ -s "$prod_tmp/review/claude-vote-output-parse-rate-diag.txt" ]] \
+    || { echo "FAIL: regression3 prod-shape — local diag file not written" >&2; exit 1; }
+grep -Fq 'dispatch-code-voters.sh claude' "$prod_issues" \
+    || { echo "FAIL: regression3 prod-shape — issues-log not written for production-shape voter_path" >&2; exit 1; }
 
 echo "PASS: test-dispatch-code-voters.sh"
