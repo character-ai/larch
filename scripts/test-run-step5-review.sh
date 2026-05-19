@@ -169,6 +169,17 @@ $case_dir/feature-description.txt
 --run-id
 run-xyz" "HARD workflow resolved argv"
 
+echo "=== degraded prior rounds extend effective round cap ==="
+case_dir="$TMP/degraded-cap"
+make_tmpdir "$case_dir" SIMPLE true false
+mkdir -p "$case_dir/round-1" "$case_dir/round-2"
+printf 'DEGRADED_ROUND=true\n' > "$case_dir/round-1/review-and-fix.env"
+printf 'DEGRADED_ROUND=false\n' > "$case_dir/round-2/review-and-fix.env"
+argv_file="$TMP/degraded-cap.argv"
+RUN_STEP5_REVIEW_SH="$SPY" RUN_STEP5_ARGV_FILE="$argv_file" "$LAUNCHER" --implement-tmpdir "$case_dir" --round-num 3 >/dev/null
+assert_contains "$(cat "$argv_file")" "--round-cap
+6" "degraded prior rounds add back onto simple round cap"
+
 echo "=== canonical RUN_ID prefers sentinel over session-id ==="
 case_dir="$TMP/run-id-sentinel"
 make_tmpdir "$case_dir" SIMPLE true false "session-only"

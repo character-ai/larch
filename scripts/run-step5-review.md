@@ -15,7 +15,9 @@ Derived sources:
 
 - `$IMPLEMENT_TMPDIR/session-env.sh`
   - `POST_PLAN_WORKFLOW_PATH`: `SIMPLE` maps to `--panel simple --round-cap 5`;
-    `HARD` maps to `--panel hard --round-cap 7`.
+    `HARD` maps to `--panel hard --round-cap 7`. Prior completed rounds with
+    `DEGRADED_ROUND=true` in `round-N/review-and-fix.env` are added back onto
+    that cap so degraded panels do not consume a valid review slot.
   - `CODEX_PRESENT`: forwarded as `--codex-available`.
   - `CURSOR_PRESENT`: forwarded as `--cursor-available`.
   - `PLAN_FILE`: forwarded as `--plan-file`.

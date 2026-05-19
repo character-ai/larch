@@ -1,0 +1,15 @@
+FINDING_1: YES
+FINDING_2: NO -- SKILL.md already cross-references review-and-fix.md and the skill is not a standalone user entry point.
+FINDING_3: EXONERATE -- Coverage exists; aligning stub names to the plan would only improve traceability.
+FINDING_4: YES
+FINDING_5: EXONERATE -- The warning names the actual compared prior round, and changing degraded-round warning semantics is not worth the churn.
+FINDING_6: NO -- Degraded-panel retry messages are warning diagnostics, so stderr via larch_err is appropriate.
+FINDING_7: EXONERATE -- The mismatch is limited to warning semantics and the message already identifies the compared round.
+FINDING_8: EXONERATE -- Legitimate wording drift, but previous non-degraded comparison is defensible for a degraded-aware warning.
+FINDING_9: YES
+FINDING_10: EXONERATE -- Custom thresholds are supported by review-and-fix.sh directly; Step 5 launcher configurability is optional.
+FINDING_11: EXONERATE -- No supported /implement session knob exists, so forwarding the flag is a low-value enhancement.
+FINDING_12: NO -- Final DEGRADED_ROUND state matches the documented cap behavior; a recovered retry produced a valid round.
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: NO -- kv_get reads one physical line per key, so embedded-newline review-core values are not persisted as multi-line env values.

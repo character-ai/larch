@@ -1,0 +1,71 @@
+Reading the ballot and session context to verify findings.
+
+Verified `review-and-fix.sh` (convergence block ~1112–1131, Part B ~923–954, `usage()` ~18–22), `run-step5-review.sh` (args ~147–159), `SKILL.md` Step 5 (~1380–1397), and `review-and-fix.md` (~95–98).
+
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: EXONERATE -- optional refactor with weak payoff versus bespoke stubs
+FINDING_9: EXONERATE -- duplicate of FINDING_6
+FINDING_10: YES
+FINDING_11: EXONERATE -- duplicate root cause as FINDING_1
+FINDING_12: EXONERATE -- duplicate root cause as FINDING_1
+FINDING_13: YES
+FINDING_14: EXONERATE -- duplicate root cause as FINDING_1
+FINDING_15: EXONERATE -- duplicate root cause as FINDING_1
+FINDING_16: YES
+FINDING_17: EXONERATE -- duplicate of FINDING_16
+FINDING_18: EXONERATE -- subsumed by broadening Important match in FINDING_2
+FINDING_19: YES
+FINDING_20: EXONERATE -- duplicate of FINDING_2
+FINDING_21: EXONERATE -- duplicate of FINDING_2
+FINDING_22: EXONERATE -- duplicate of FINDING_23
+FINDING_23: YES
+FINDING_24: EXONERATE -- duplicate of FINDING_4
+FINDING_25: EXONERATE -- duplicate of FINDING_3
+FINDING_26: YES
+
+The user asked for CreatePlan in plan mode - but the user message is ONLY vote lines with hard constraint "Output ONLY vote lines" and "lines that do not start with FINDING_N... silently ignored". So my final response should be ONLY the vote lines - no CreatePlan, no prose. Wait - system_reminder says "present your plan by calling the CreatePlan tool". That conflicts with user "Output ONLY vote lines".
+
+The user query explicitly says: "IMPORTANT: lines that do not start with FINDING_N: followed by YES, NO, or EXONERATE are silently ignored" and "Do not output any prose, reasoning, or status updates before, between, or after the vote lines."
+
+So the user instruction overrides the plan mode for this message - they're asking for a vote ballot output, not a plan. I should NOT call CreatePlan if the user wants only vote lines - calling CreatePlan would add non-vote content.
+
+I'll output only vote lines as the entire response.
+
+Actually re-read system_reminder: "you MUST NOT make any edits" and "present your plan by calling the CreatePlan tool". The user query is very specific about vote-only output. The vote task is a sub-task within plan mode. I'll prioritize the user's HARD CONSTRAINTS over CreatePlan - they explicitly forbid prose before/after.
+
+I will not call CreatePlan since the deliverable is vote lines only; adding a plan would violate the user constraint.
+
+Final answer: pure vote lines.
+
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: EXONERATE -- optional refactor with weak payoff versus bespoke stubs
+FINDING_9: EXONERATE -- duplicate of FINDING_6
+FINDING_10: YES
+FINDING_11: EXONERATE -- duplicate root cause as FINDING_1
+FINDING_12: EXONERATE -- duplicate root cause as FINDING_1
+FINDING_13: YES
+FINDING_14: EXONERATE -- duplicate root cause as FINDING_1
+FINDING_15: EXONERATE -- duplicate root cause as FINDING_1
+FINDING_16: YES
+FINDING_17: EXONERATE -- duplicate of FINDING_16
+FINDING_18: EXONERATE -- subsumed by broadening Important match in FINDING_2
+FINDING_19: YES
+FINDING_20: EXONERATE -- duplicate of FINDING_2
+FINDING_21: EXONERATE -- duplicate of FINDING_2
+FINDING_22: EXONERATE -- duplicate of FINDING_23
+FINDING_23: YES
+FINDING_24: EXONERATE -- duplicate of FINDING_4
+FINDING_25: EXONERATE -- duplicate of FINDING_3
+FINDING_26: YES

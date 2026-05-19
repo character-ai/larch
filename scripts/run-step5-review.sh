@@ -47,6 +47,24 @@ resolve_run_id() {
     printf '%s\n' "$run_id"
 }
 
+count_prior_degraded_rounds() {
+    local implement_tmpdir="$1" current_round="$2"
+    local round=0 count=0
+    local degraded_file="" degraded_value=""
+
+    for (( round = 1; round < current_round; round++ )); do
+        degraded_file="$implement_tmpdir/round-${round}/review-and-fix.env"
+        degraded_value=""
+        if [[ -r "$degraded_file" ]]; then
+            degraded_value="$(session_get "$degraded_file" DEGRADED_ROUND false)"
+        fi
+        if [[ "$degraded_value" == "true" ]]; then
+            count=$((count + 1))
+        fi
+    done
+    printf '%s\n' "$count"
+}
+
 IMPLEMENT_TMPDIR_ARG=""
 ROUND_NUM=""
 
@@ -137,6 +155,12 @@ case "$WORKFLOW_PATH" in
         fail "POST_PLAN_WORKFLOW_PATH must be SIMPLE or HARD, got: ${WORKFLOW_PATH:-<empty>}"
         ;;
 esac
+
+DEGRADED_ROUNDS="$(count_prior_degraded_rounds "$IMPLEMENT_TMPDIR" "$ROUND_NUM")"
+case "$DEGRADED_ROUNDS" in
+    ''|*[!0-9]*) fail "degraded round count must be numeric, got: ${DEGRADED_ROUNDS:-<empty>}" ;;
+esac
+ROUND_CAP="$((ROUND_CAP + DEGRADED_ROUNDS))"
 
 case "$CODEX_PRESENT" in true|false) ;; *) fail "CODEX_PRESENT must be true or false, got: $CODEX_PRESENT" ;; esac
 case "$CURSOR_PRESENT" in true|false) ;; *) fail "CURSOR_PRESENT must be true or false, got: $CURSOR_PRESENT" ;; esac

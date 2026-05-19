@@ -1,0 +1,9 @@
+### In-Scope Findings
+
+1. **Important** `correctness` `skills/review-and-fix/scripts/review-and-fix.sh:142` / `skills/review-and-fix/scripts/review-and-fix.sh:1205`  
+   `convergence_candidate_status` includes `fix-applied`, so a round that actually applied and committed review fixes can be overwritten to `REVIEW_AND_FIX_STATUS=converged-small-changes`. Concrete scenario: round 1 has 1 accepted finding, round 2 has 1 accepted finding, the coder applies round 2 successfully, and no Important findings exist; line 1205 changes the status from `fix-applied` to `converged-small-changes`. The `/implement` Step 5 contract only runs post-fix relevant checks for `fix-applied`, while `converged-small-changes` is treated as terminal, so the just-committed review-fix code can skip checks. Remove `fix-applied` from the convergence candidate statuses, or only run convergence before coder dispatch / when no edits were applied.
+
+2. **Important** `correctness` `skills/review-and-fix/scripts/review-and-fix.sh:1005` / `skills/review-and-fix/scripts/review-and-fix.sh:1029`  
+   The degraded-panel retry reruns `review-core.sh` into the same `round_dir`, but OOS accumulation only happens once after the retry, so first-attempt OOS artifacts are lost when the retry overwrites `oos-accepted-review.md`. Concrete scenario covered by the new test stub at `skills/review-and-fix/scripts/test-review-and-fix.sh:1345-1375`: the first degraded attempt writes `OOS_1`, the clean retry writes `OOS_2`, and `accumulated-oos.md` will only contain `OOS_2`, failing the asserted preservation of both JSONL records. Append or snapshot the first attempt’s OOS artifact before rerunning the core, or change the test/contract if degraded-attempt OOS is intentionally discarded.
+
+I could not run the regression script in this environment because `mktemp` cannot create its temp directory under the read-only sandbox: `Operation not permitted`.

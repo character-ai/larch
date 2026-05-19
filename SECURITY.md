@@ -27,6 +27,8 @@ Dynamic review scout notes are also treated as untrusted data. `scripts/scout-dy
 
 The external implementer prompts (`agents/codex-implementer.md`, `agents/cursor-implementer.md`) likewise prohibit folding security findings inline and prohibit emitting them in `oos_observations[]`. `/implement` Step 9a.1 defensively re-excludes any security-tagged OOS entries that slip through upstream filters before the `/issue` handoff.
 
+`skills/review-and-fix/scripts/review-and-fix.sh` also treats round-local review metadata as untrusted data when persisting `review-and-fix.env`: values such as `REVIEW_CORE_STATUS` are written with `printf`-safe key/value lines, not an expanding heredoc, so tampered status strings cannot trigger shell expansion while the env file is emitted.
+
 ## Trust Model
 
 Larch is a Claude Code plugin that runs within Claude Code's permission boundary. It does not bypass Claude Code's built-in permission system at the operator level — all tool calls (file edits, shell commands, etc.) at the user-facing assistant level go through the standard permission flow. Consumers running in strict-permissions mode must grant both the bare and fully-qualified `Skill(...)` form for each larch skill they invoke — see the "Strict-permissions consumers — Skill permission entries" subsection in [`docs/configuration-and-permissions.md`](docs/configuration-and-permissions.md#strict-permissions-consumers--skill-permission-entries) for the required allowlist convention, the shadowing caveat (bare names may resolve to project-local skills before reaching the plugin), and the reason `Skill(larch:*)` wildcards do not currently work.

@@ -1202,4 +1202,722 @@ else
     fail "review-scout-manifest basenames should come from non-empty KVs: $(cat "$scout_missing_files_batch" 2>/dev/null)"
 fi
 
+# ── Convergence and degraded-round tests ────────────────────────────────────
+
+# Helper: stub a prior round by writing its review-core.env with the given accepted count.
+write_prior_round() {
+    local impl_tmpdir="$1" round="$2" accepted_count="$3" degraded="${4:-false}"
+    mkdir -p "$impl_tmpdir/round-${round}"
+    printf 'REVIEW_CORE_STATUS=ok\nACCEPTED_COUNT=%s\nREJECTED_COUNT=0\n' "$accepted_count" \
+        > "$impl_tmpdir/round-${round}/review-core.env"
+    : > "$impl_tmpdir/round-${round}/findings.md"
+    printf 'DEGRADED_ROUND=%s\n' "$degraded" > "$impl_tmpdir/round-${round}/review-and-fix.env"
+}
+
+# Test 1: Convergence — two small rounds terminate loop.
+# Round 2 is small (accepted=2) and round 3 is small (accepted=1) → converged after round 3.
+cat > "$TMP/review-core-small-stub.sh" <<'EOF_CORE_SMALL'
+#!/usr/bin/env bash
+set -euo pipefail
+out=""
+round="1"
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --output-dir) out="$2"; shift 2 ;;
+    --round-num) round="$2"; shift 2 ;;
+    *) shift; [[ $# -gt 0 && "$1" != --* ]] && shift || true ;;
+  esac
+done
+mkdir -p "$out"
+: > "$out/accepted-findings.md"
+: > "$out/rejected-findings.md"
+: > "$out/findings.md"
+printf '{"schema_version":1,"rounds_completed":%s,"accepted_count":0,"rejected_count":0}\n' "$round" > "$out/review-summary.json"
+printf '# Review Round %s\n' "$round" > "$out/review-round-summary.md"
+printf 'REVIEW_CORE_STATUS=ok\nROUND_NUM=%s\nACCEPTED_COUNT=%s\nREJECTED_COUNT=0\nACCEPTED_FINDINGS_FILE=%s/accepted-findings.md\nREJECTED_FINDINGS_FILE=%s/rejected-findings.md\nPANEL_MODE=normal\nPANEL_SHAPE=simple\n' "$round" "${STUB_ACCEPTED:-0}" "$out" "$out"
+EOF_CORE_SMALL
+chmod +x "$TMP/review-core-small-stub.sh"
+
+work_converge="$TMP/converge-two-small"
+make_work_repo "$work_converge"
+implement_tmp="$work_converge/implement"
+mkdir -p "$implement_tmp"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
+write_prior_round "$implement_tmp" 1 10  # round 1: 10 accepts (not small)
+write_prior_round "$implement_tmp" 2 2   # round 2: 2 accepts (small)
+set +e
+out=$(
+    cd "$work_converge" && \
+    STUB_ACCEPTED=1 \
+    CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+    REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-small-stub.sh" \
+    REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
+    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 3 \
+        --session-env-path "$implement_tmp/session-env.sh" --run-id converge-two-small-run
+)
+rc=$?
+set -e
+[[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "converge-two-small expected exit 0 got $rc"; }
+grep -Fq 'REVIEW_AND_FIX_STATUS=converged-small-changes' <<< "$out" \
+    || fail "converge-two-small should emit converged-small-changes (round 3=1 and round 2=2, both ≤3)"
+grep -Fq 'DEGRADED_ROUND=false' <<< "$out" || fail "converge-two-small degraded should be false"
+
+# Test 2: Convergence — Important finding blocks early-termination.
+# Round 2 has Important finding → loop continues to round 3.
+cat > "$TMP/review-core-important-stub.sh" <<'EOF_CORE_IMP'
+#!/usr/bin/env bash
+set -euo pipefail
+out=""
+round="1"
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --output-dir) out="$2"; shift 2 ;;
+    --round-num) round="$2"; shift 2 ;;
+    *) shift; [[ $# -gt 0 && "$1" != --* ]] && shift || true ;;
+  esac
+done
+mkdir -p "$out"
+: > "$out/accepted-findings.md"
+: > "$out/rejected-findings.md"
+printf '{"schema_version":1,"rounds_completed":%s,"accepted_count":0,"rejected_count":0}\n' "$round" > "$out/review-summary.json"
+printf '# Review Round %s\n' "$round" > "$out/review-round-summary.md"
+# Write canonical Important finding heading into findings.md to block convergence.
+printf '### FINDING_1: **Important** severity finding here\n' > "$out/findings.md"
+printf 'REVIEW_CORE_STATUS=ok\nROUND_NUM=%s\nACCEPTED_COUNT=1\nREJECTED_COUNT=0\nACCEPTED_FINDINGS_FILE=%s/accepted-findings.md\nREJECTED_FINDINGS_FILE=%s/rejected-findings.md\nPANEL_MODE=normal\nPANEL_SHAPE=simple\n' "$round" "$out" "$out"
+EOF_CORE_IMP
+chmod +x "$TMP/review-core-important-stub.sh"
+
+work_important="$TMP/converge-important-blocks"
+make_work_repo "$work_important"
+implement_tmp="$work_important/implement"
+mkdir -p "$implement_tmp"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
+write_prior_round "$implement_tmp" 1 10   # round 1: 10 accepts
+# Round 2 core.env: accepted=2 (small), but its findings.md has Important.
+mkdir -p "$implement_tmp/round-2"
+printf 'REVIEW_CORE_STATUS=ok\nACCEPTED_COUNT=2\nREJECTED_COUNT=0\n' > "$implement_tmp/round-2/review-core.env"
+printf 'DEGRADED_ROUND=false\n' > "$implement_tmp/round-2/review-and-fix.env"
+printf '### FINDING_1: **Important** severity finding in round 2\n' > "$implement_tmp/round-2/findings.md"
+set +e
+out=$(
+    cd "$work_important" && \
+    CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+    REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-important-stub.sh" \
+    REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
+    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 3 \
+        --session-env-path "$implement_tmp/session-env.sh" --run-id converge-important-run
+)
+rc=$?
+set -e
+[[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "converge-important expected exit 0 got $rc"; }
+if grep -Fq 'REVIEW_AND_FIX_STATUS=converged-small-changes' <<< "$out"; then
+    fail "converge-important must NOT converge when prior round has Important findings"
+fi
+
+# Test 2b: Convergence ignores Important findings from degraded rounds between the compared rounds.
+work_degraded_gap="$TMP/converge-degraded-gap-ignored"
+make_work_repo "$work_degraded_gap"
+implement_tmp="$work_degraded_gap/implement"
+mkdir -p "$implement_tmp"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
+write_prior_round "$implement_tmp" 1 1 false
+write_prior_round "$implement_tmp" 2 2 true
+printf '### FINDING_1: **Important** severity finding in degraded round 2\n' > "$implement_tmp/round-2/findings.md"
+set +e
+out=$(
+    cd "$work_degraded_gap" && \
+    STUB_ACCEPTED=1 \
+    CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+    REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-small-stub.sh" \
+    REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
+    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 3 \
+        --session-env-path "$implement_tmp/session-env.sh" --run-id converge-degraded-gap-run
+)
+rc=$?
+set -e
+[[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "converge-degraded-gap-ignored expected exit 0 got $rc"; }
+grep -Fq 'REVIEW_AND_FIX_STATUS=converged-small-changes' <<< "$out" \
+    || fail "converge-degraded-gap-ignored should converge using rounds 1 and 3 only"
+
+# Test 2a: Convergence — structured [important] concern blocks early-termination.
+work_structured_important="$TMP/converge-structured-important-blocks"
+make_work_repo "$work_structured_important"
+implement_tmp="$work_structured_important/implement"
+mkdir -p "$implement_tmp"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
+write_prior_round "$implement_tmp" 1 10 false
+mkdir -p "$implement_tmp/round-2"
+printf 'REVIEW_CORE_STATUS=ok\nACCEPTED_COUNT=2\nREJECTED_COUNT=0\n' > "$implement_tmp/round-2/review-core.env"
+printf 'DEGRADED_ROUND=false\n' > "$implement_tmp/round-2/review-and-fix.env"
+cat > "$implement_tmp/round-2/findings.md" <<'EOF_STRUCTURED_IMPORTANT'
+### FINDING_1: correctness: demo/path.sh:10
+- **Concern**: [important] Structured severity form should still block convergence.
+- **Suggested revision**: Fix it.
+EOF_STRUCTURED_IMPORTANT
+set +e
+out=$(
+    cd "$work_structured_important" && \
+    STUB_ACCEPTED=1 \
+    CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+    REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-small-stub.sh" \
+    REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
+    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 3 \
+        --session-env-path "$implement_tmp/session-env.sh" --run-id converge-structured-important-run
+)
+rc=$?
+set -e
+[[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "converge-structured-important expected exit 0 got $rc"; }
+if grep -Fq 'REVIEW_AND_FIX_STATUS=converged-small-changes' <<< "$out"; then
+    fail "converge-structured-important must NOT converge when prior round has [important] concern formatting"
+fi
+
+# Test 2b: Convergence — prior degraded small round is excluded from the comparison.
+work_prev_degraded="$TMP/converge-prior-degraded-excluded"
+make_work_repo "$work_prev_degraded"
+implement_tmp="$work_prev_degraded/implement"
+mkdir -p "$implement_tmp"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
+write_prior_round "$implement_tmp" 1 10 false
+write_prior_round "$implement_tmp" 2 2 true
+set +e
+out=$(
+    cd "$work_prev_degraded" && \
+    STUB_ACCEPTED=1 \
+    CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+    REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-small-stub.sh" \
+    REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
+    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 3 \
+        --session-env-path "$implement_tmp/session-env.sh" --run-id prior-degraded-run
+)
+rc=$?
+set -e
+[[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "converge-prior-degraded-excluded expected exit 0 got $rc"; }
+if grep -Fq 'REVIEW_AND_FIX_STATUS=converged-small-changes' <<< "$out"; then
+    fail "converge-prior-degraded-excluded must ignore degraded round 2 when evaluating convergence"
+fi
+
+# Test 3: Degraded round detection — banner excluded from convergence.
+# Round 3 has degraded panel; convergence must not fire even though accepts=1.
+cat > "$TMP/review-core-degraded-stub.sh" <<'EOF_CORE_DEG'
+#!/usr/bin/env bash
+set -euo pipefail
+out=""
+round="1"
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --output-dir) out="$2"; shift 2 ;;
+    --round-num) round="$2"; shift 2 ;;
+    *) shift; [[ $# -gt 0 && "$1" != --* ]] && shift || true ;;
+  esac
+done
+mkdir -p "$out"
+: > "$out/accepted-findings.md"
+: > "$out/rejected-findings.md"
+: > "$out/findings.md"
+printf '{"schema_version":1,"rounds_completed":%s,"accepted_count":0,"rejected_count":0}\n' "$round" > "$out/review-summary.json"
+printf '# Review Round %s\n' "$round" > "$out/review-round-summary.md"
+# Write degraded banner into voting-tally.md unconditionally (both initial + retry)
+printf '**⚠ Degraded code-review panel: 0 judges available.**\n' > "$out/voting-tally.md"
+printf 'REVIEW_CORE_STATUS=ok\nROUND_NUM=%s\nACCEPTED_COUNT=1\nREJECTED_COUNT=0\nACCEPTED_FINDINGS_FILE=%s/accepted-findings.md\nREJECTED_FINDINGS_FILE=%s/rejected-findings.md\nPANEL_MODE=normal\nPANEL_SHAPE=simple\n' "$round" "$out" "$out"
+EOF_CORE_DEG
+chmod +x "$TMP/review-core-degraded-stub.sh"
+
+work_degraded="$TMP/degraded-excluded"
+make_work_repo "$work_degraded"
+implement_tmp="$work_degraded/implement"
+mkdir -p "$implement_tmp"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
+write_prior_round "$implement_tmp" 1 10   # round 1: 10 accepts (clean)
+write_prior_round "$implement_tmp" 2 2    # round 2: 2 accepts (clean, small)
+set +e
+out=$(
+    cd "$work_degraded" && \
+    LARCH_QUIET_BREADCRUMBS=1 \
+    CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+    REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-degraded-stub.sh" \
+    REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
+    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 3 \
+        --session-env-path "$implement_tmp/session-env.sh" --run-id degraded-excluded-run 2>&1
+)
+rc=$?
+set -e
+[[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "degraded-excluded expected exit 0 got $rc"; }
+grep -Fq 'DEGRADED_ROUND=true' <<< "$out" || fail "degraded-excluded should set DEGRADED_ROUND=true"
+if grep -Fq 'REVIEW_AND_FIX_STATUS=converged-small-changes' <<< "$out"; then
+    fail "degraded-excluded must NOT converge on a degraded round"
+fi
+grep -Fq 'panel was degraded (banner triggered)' <<< "$out" \
+    || fail "degraded-excluded should emit degraded breadcrumb"
+
+# Test 4: Degraded round panel-retry — retry succeeds (clean), tally from retry used.
+cat > "$TMP/review-core-degraded-then-clean.sh" <<'EOF_CORE_DEG_CLEAN'
+#!/usr/bin/env bash
+set -euo pipefail
+out=""
+round="1"
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --output-dir) out="$2"; shift 2 ;;
+    --round-num) round="$2"; shift 2 ;;
+    *) shift; [[ $# -gt 0 && "$1" != --* ]] && shift || true ;;
+  esac
+done
+mkdir -p "$out"
+: > "$out/accepted-findings.md"
+: > "$out/rejected-findings.md"
+: > "$out/findings.md"
+printf '{"schema_version":1,"rounds_completed":%s,"accepted_count":0,"rejected_count":0}\n' "$round" > "$out/review-summary.json"
+printf '# Review Round %s\n' "$round" > "$out/review-round-summary.md"
+# First invocation: write degraded banner. Retry (retry flag present): write clean tally.
+retry_flag="$out/degraded-retry.flag"
+if [[ -f "$retry_flag" ]]; then
+    : > "$out/voting-tally.md"  # clean retry
+else
+    printf '**⚠ Degraded code-review panel: 0 judges available.**\n' > "$out/voting-tally.md"
+fi
+printf 'REVIEW_CORE_STATUS=ok\nROUND_NUM=%s\nACCEPTED_COUNT=5\nREJECTED_COUNT=0\nACCEPTED_FINDINGS_FILE=%s/accepted-findings.md\nREJECTED_FINDINGS_FILE=%s/rejected-findings.md\nPANEL_MODE=normal\nPANEL_SHAPE=simple\n' "$round" "$out" "$out"
+EOF_CORE_DEG_CLEAN
+chmod +x "$TMP/review-core-degraded-then-clean.sh"
+
+work_retry_ok="$TMP/degraded-retry-clean"
+make_work_repo "$work_retry_ok"
+implement_tmp="$work_retry_ok/implement"
+mkdir -p "$implement_tmp"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
+set +e
+out=$(
+    cd "$work_retry_ok" && \
+    LARCH_QUIET_BREADCRUMBS=1 \
+    CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+    REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-degraded-then-clean.sh" \
+    REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
+    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 \
+        --session-env-path "$implement_tmp/session-env.sh" --run-id degraded-retry-clean-run 2>&1
+)
+rc=$?
+set -e
+[[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "degraded-retry-clean expected exit 0 got $rc"; }
+grep -Fq 'DEGRADED_ROUND=false' <<< "$out" || fail "degraded-retry-clean should set DEGRADED_ROUND=false after clean retry"
+[[ -f "$implement_tmp/round-1/degraded-retry.flag" ]] || fail "degraded-retry-clean should write retry flag"
+[[ -f "$implement_tmp/round-1/degraded-retry.done" ]] || fail "degraded-retry-clean should write retry completion marker"
+
+# Test 4a: Stale degraded retry marker from a prior interrupted invocation does not block a retry.
+cat > "$TMP/review-core-stale-retry-recovered.sh" <<'EOF_CORE_STALE_RETRY'
+#!/usr/bin/env bash
+set -euo pipefail
+out=""
+round="1"
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --output-dir) out="$2"; shift 2 ;;
+    --round-num) round="$2"; shift 2 ;;
+    *) shift; [[ $# -gt 0 && "$1" != --* ]] && shift || true ;;
+  esac
+done
+mkdir -p "$out"
+: > "$out/accepted-findings.md"
+: > "$out/rejected-findings.md"
+: > "$out/findings.md"
+printf '{"schema_version":1,"rounds_completed":%s,"accepted_count":0,"rejected_count":0}\n' "$round" > "$out/review-summary.json"
+printf '# Review Round %s\n' "$round" > "$out/review-round-summary.md"
+count_file="$out/retry-count"
+count=0
+if [[ -f "$count_file" ]]; then
+    count=$(cat "$count_file")
+fi
+count=$((count + 1))
+printf '%s\n' "$count" > "$count_file"
+if [[ "$count" -ge 2 ]]; then
+    : > "$out/voting-tally.md"
+else
+    printf '**⚠ Degraded code-review panel: 0 judges available.**\n' > "$out/voting-tally.md"
+fi
+printf 'REVIEW_CORE_STATUS=ok\nROUND_NUM=%s\nACCEPTED_COUNT=5\nREJECTED_COUNT=0\nACCEPTED_FINDINGS_FILE=%s/accepted-findings.md\nREJECTED_FINDINGS_FILE=%s/rejected-findings.md\nPANEL_MODE=normal\nPANEL_SHAPE=simple\n' "$round" "$out" "$out"
+EOF_CORE_STALE_RETRY
+chmod +x "$TMP/review-core-stale-retry-recovered.sh"
+
+work_retry_stale="$TMP/degraded-retry-stale"
+make_work_repo "$work_retry_stale"
+implement_tmp="$work_retry_stale/implement"
+mkdir -p "$implement_tmp/round-1"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
+touch "$implement_tmp/round-1/degraded-retry.flag"
+set +e
+out=$(
+    cd "$work_retry_stale" && \
+    LARCH_QUIET_BREADCRUMBS=1 \
+    CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+    REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-stale-retry-recovered.sh" \
+    REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
+    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 \
+        --session-env-path "$implement_tmp/session-env.sh" --run-id degraded-retry-stale-run 2>&1
+)
+rc=$?
+set -e
+[[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "degraded-retry-stale expected exit 0 got $rc"; }
+grep -Fq 'panel was degraded (banner triggered)' <<< "$out" || fail "degraded-retry-stale should still detect degradation and retry"
+grep -Fq 'DEGRADED_ROUND=false' <<< "$out" || fail "degraded-retry-stale should still complete the retry"
+[[ -f "$implement_tmp/round-1/degraded-retry.done" ]] || fail "degraded-retry-stale should rewrite retry completion marker"
+
+# Test 4b: Completed degraded retry markers from a prior invocation do not suppress a fresh retry.
+work_retry_done_stale="$TMP/degraded-retry-done-stale"
+make_work_repo "$work_retry_done_stale"
+implement_tmp="$work_retry_done_stale/implement"
+mkdir -p "$implement_tmp/round-1"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
+touch "$implement_tmp/round-1/degraded-retry.flag" "$implement_tmp/round-1/degraded-retry.done"
+set +e
+out=$(
+    cd "$work_retry_done_stale" && \
+    LARCH_QUIET_BREADCRUMBS=1 \
+    CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+    REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-degraded-then-clean.sh" \
+    REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
+    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 \
+        --session-env-path "$implement_tmp/session-env.sh" --run-id degraded-retry-done-stale-run 2>&1
+)
+rc=$?
+set -e
+[[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "degraded-retry-done-stale expected exit 0 got $rc"; }
+grep -Fq 'panel was degraded (banner triggered)' <<< "$out" || fail "degraded-retry-done-stale should still schedule a fresh retry"
+grep -Fq 'DEGRADED_ROUND=false' <<< "$out" || fail "degraded-retry-done-stale should complete the fresh retry"
+
+# Test 5: Degraded round retry exhausted — both attempts degraded, proceeds best-effort.
+work_retry_fail="$TMP/degraded-retry-exhausted"
+make_work_repo "$work_retry_fail"
+implement_tmp="$work_retry_fail/implement"
+mkdir -p "$implement_tmp"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
+set +e
+out=$(
+    cd "$work_retry_fail" && \
+    LARCH_QUIET_BREADCRUMBS=1 \
+    CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+    REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-degraded-stub.sh" \
+    REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
+    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 \
+        --session-env-path "$implement_tmp/session-env.sh" --run-id degraded-retry-exhausted-run 2>&1
+)
+rc=$?
+set -e
+[[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "degraded-retry-exhausted expected exit 0 got $rc"; }
+grep -Fq 'DEGRADED_ROUND=true' <<< "$out" || fail "degraded-retry-exhausted should remain DEGRADED_ROUND=true"
+grep -Fq 'panel retry also degraded' <<< "$out" || fail "degraded-retry-exhausted should log retry-also-degraded warning"
+
+# Test 5a: Degraded retry preserves OOS from the first attempt before retry overwrite.
+cat > "$TMP/review-core-degraded-oos-then-clean.sh" <<'EOF_CORE_DEG_OOS'
+#!/usr/bin/env bash
+set -euo pipefail
+out=""
+round="1"
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --output-dir) out="$2"; shift 2 ;;
+    --round-num) round="$2"; shift 2 ;;
+    *) shift; [[ $# -gt 0 && "$1" != --* ]] && shift || true ;;
+  esac
+done
+mkdir -p "$out"
+: > "$out/accepted-findings.md"
+: > "$out/rejected-findings.md"
+: > "$out/findings.md"
+printf '{"schema_version":1,"rounds_completed":%s,"accepted_count":0,"rejected_count":0}\n' "$round" > "$out/review-summary.json"
+printf '# Review Round %s\n' "$round" > "$out/review-round-summary.md"
+retry_flag="$out/degraded-retry.flag"
+if [[ -f "$retry_flag" ]]; then
+    printf '### OOS_2: second attempt\nDescription: retry artifact\n' > "$out/oos-accepted-review.md"
+    : > "$out/voting-tally.md"
+else
+    printf '### OOS_1: first attempt\nDescription: degraded artifact\n' > "$out/oos-accepted-review.md"
+    printf '**⚠ Degraded code-review panel: 0 judges available.**\n' > "$out/voting-tally.md"
+fi
+printf 'REVIEW_CORE_STATUS=ok\nROUND_NUM=%s\nACCEPTED_COUNT=1\nREJECTED_COUNT=0\nACCEPTED_FINDINGS_FILE=%s/accepted-findings.md\nREJECTED_FINDINGS_FILE=%s/rejected-findings.md\nPANEL_MODE=normal\nPANEL_SHAPE=simple\n' "$round" "$out" "$out"
+EOF_CORE_DEG_OOS
+chmod +x "$TMP/review-core-degraded-oos-then-clean.sh"
+
+work_retry_oos="$TMP/degraded-retry-oos-preserved"
+make_work_repo "$work_retry_oos"
+implement_tmp="$work_retry_oos/implement"
+mkdir -p "$implement_tmp"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
+set +e
+out=$(
+    cd "$work_retry_oos" && \
+    CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+    REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-degraded-oos-then-clean.sh" \
+    REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
+    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 \
+        --session-env-path "$implement_tmp/session-env.sh" --run-id degraded-retry-oos-run
+)
+rc=$?
+set -e
+[[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "degraded-retry-oos-preserved expected exit 0 got $rc"; }
+grep -Fq 'first attempt' "$implement_tmp/accumulated-oos.md" || fail "degraded-retry-oos-preserved should retain first-attempt OOS content"
+grep -Fq 'second attempt' "$implement_tmp/accumulated-oos.md" || fail "degraded-retry-oos-preserved should retain retry OOS content"
+[[ "$(jq -s 'length' "$implement_tmp/accumulated-oos.jsonl")" -eq 2 ]] || fail "degraded-retry-oos-preserved should append both OOS jsonl entries"
+
+# Test 5b: fix-applied remains the status even when low accepted counts would otherwise converge.
+work_fix_applied="$TMP/fix-applied-not-overwritten"
+make_work_repo "$work_fix_applied"
+implement_tmp="$work_fix_applied/implement"
+mkdir -p "$implement_tmp"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
+write_prior_round "$implement_tmp" 1 1 false
+set +e
+out=$(TEST_AGENT_BEHAVIOR=codex-success run_review_and_fix "$work_fix_applied" \
+    --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 2 --session-env-path "$implement_tmp/session-env.sh" --run-id fix-applied-round-run)
+rc=$?
+set -e
+[[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "fix-applied-not-overwritten expected exit 0 got $rc"; }
+grep -Fq 'REVIEW_AND_FIX_STATUS=fix-applied' <<< "$out" || fail "fix-applied-not-overwritten must preserve fix-applied status"
+
+# Test 5c: main-agent-vote-required remains the status even on low accepted counts.
+work_vote_required="$TMP/main-agent-vote-not-overwritten"
+make_work_repo "$work_vote_required"
+implement_tmp="$work_vote_required/implement"
+mkdir -p "$implement_tmp"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
+write_prior_round "$implement_tmp" 1 0 false
+set +e
+out=$(TEST_CORE_STATUS=main-agent-vote-required run_review_and_fix "$work_vote_required" \
+    --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 2 --session-env-path "$implement_tmp/session-env.sh" --run-id main-agent-vote-round-run)
+rc=$?
+set -e
+[[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "main-agent-vote-not-overwritten expected exit 0 got $rc"; }
+grep -Fq 'REVIEW_AND_FIX_STATUS=main-agent-vote-required' <<< "$out" || fail "main-agent-vote-not-overwritten must preserve main-agent-vote-required status"
+
+# Test 6: Churn warning — round-N accepts > round-(N-1) accepts fires on stderr.
+work_churn="$TMP/churn-warning"
+make_work_repo "$work_churn"
+implement_tmp="$work_churn/implement"
+mkdir -p "$implement_tmp"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
+write_prior_round "$implement_tmp" 1 5   # round 1: 5 accepts
+write_prior_round "$implement_tmp" 2 4   # round 2: 4 accepts
+# Round 3: 8 accepts (> round 2's 4) → churn warning fires
+cat > "$TMP/review-core-churn-stub.sh" <<'EOF_CORE_CHURN'
+#!/usr/bin/env bash
+set -euo pipefail
+out=""
+round="1"
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --output-dir) out="$2"; shift 2 ;;
+    --round-num) round="$2"; shift 2 ;;
+    *) shift; [[ $# -gt 0 && "$1" != --* ]] && shift || true ;;
+  esac
+done
+mkdir -p "$out"
+: > "$out/accepted-findings.md"
+: > "$out/rejected-findings.md"
+: > "$out/findings.md"
+printf '{"schema_version":1,"rounds_completed":%s,"accepted_count":0,"rejected_count":0}\n' "$round" > "$out/review-summary.json"
+printf '# Review Round %s\n' "$round" > "$out/review-round-summary.md"
+printf 'REVIEW_CORE_STATUS=ok\nROUND_NUM=%s\nACCEPTED_COUNT=8\nREJECTED_COUNT=0\nACCEPTED_FINDINGS_FILE=%s/accepted-findings.md\nREJECTED_FINDINGS_FILE=%s/rejected-findings.md\nPANEL_MODE=normal\nPANEL_SHAPE=simple\n' "$round" "$out" "$out"
+EOF_CORE_CHURN
+chmod +x "$TMP/review-core-churn-stub.sh"
+set +e
+out=$(
+    cd "$work_churn" && \
+    LARCH_QUIET_BREADCRUMBS=1 \
+    CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+    REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-churn-stub.sh" \
+    REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
+    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 3 \
+        --session-env-path "$implement_tmp/session-env.sh" --run-id churn-run 2>&1
+)
+rc=$?
+set -e
+[[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "churn-warning expected exit 0 got $rc"; }
+grep -Fq 'round 3 accepted 8 findings' <<< "$out" || fail "churn-warning should fire on stderr"
+if grep -Fq 'REVIEW_AND_FIX_STATUS=converged-small-changes' <<< "$out"; then
+    fail "churn-warning must not trigger early-termination"
+fi
+
+# Test 7: Single small round does NOT terminate (need two consecutive small rounds).
+work_single_small="$TMP/single-small-no-terminate"
+make_work_repo "$work_single_small"
+implement_tmp="$work_single_small/implement"
+mkdir -p "$implement_tmp"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
+write_prior_round "$implement_tmp" 1 10   # round 1: 10 accepts (not small)
+set +e
+out=$(
+    cd "$work_single_small" && \
+    STUB_ACCEPTED=1 \
+    CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+    REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-small-stub.sh" \
+    REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
+    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 2 \
+        --session-env-path "$implement_tmp/session-env.sh" --run-id single-small-run
+)
+rc=$?
+set -e
+[[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "single-small-no-terminate expected exit 0 got $rc"; }
+if grep -Fq 'REVIEW_AND_FIX_STATUS=converged-small-changes' <<< "$out"; then
+    fail "single-small: must NOT converge when only one small round (prev=10 is not small)"
+fi
+
+# Test 8: Non-default convergence threshold is honored.
+work_threshold="$TMP/convergence-threshold-one"
+make_work_repo "$work_threshold"
+implement_tmp="$work_threshold/implement"
+mkdir -p "$implement_tmp"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
+write_prior_round "$implement_tmp" 1 2 false
+set +e
+out=$(
+    cd "$work_threshold" && \
+    STUB_ACCEPTED=1 \
+    CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+    REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-small-stub.sh" \
+    REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
+    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 2 \
+        --convergence-threshold 1 \
+        --session-env-path "$implement_tmp/session-env.sh" --run-id threshold-one-run
+)
+rc=$?
+set -e
+[[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "convergence-threshold-one expected exit 0 got $rc"; }
+if grep -Fq 'REVIEW_AND_FIX_STATUS=converged-small-changes' <<< "$out"; then
+    fail "convergence-threshold-one must not converge when prior round accepted count exceeds threshold 1"
+fi
+
+# Test 8a: Non-default convergence threshold positive path converges when both rounds meet the threshold.
+work_threshold_positive="$TMP/convergence-threshold-one-positive"
+make_work_repo "$work_threshold_positive"
+implement_tmp="$work_threshold_positive/implement"
+mkdir -p "$implement_tmp"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
+write_prior_round "$implement_tmp" 1 1 false
+set +e
+out=$(
+    cd "$work_threshold_positive" && \
+    STUB_ACCEPTED=1 \
+    CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+    REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-small-stub.sh" \
+    REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
+    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 2 \
+        --convergence-threshold 1 \
+        --session-env-path "$implement_tmp/session-env.sh" --run-id threshold-one-positive-run
+)
+rc=$?
+set -e
+[[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "convergence-threshold-one-positive expected exit 0 got $rc"; }
+grep -Fq 'REVIEW_AND_FIX_STATUS=converged-small-changes' <<< "$out" \
+    || fail "convergence-threshold-one-positive should converge when both rounds are <= threshold 1"
+
+# Test 9: Invalid convergence threshold fails validation.
+work_threshold_invalid="$TMP/convergence-threshold-invalid"
+make_work_repo "$work_threshold_invalid"
+implement_tmp="$work_threshold_invalid/implement"
+mkdir -p "$implement_tmp"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
+set +e
+out=$(
+    cd "$work_threshold_invalid" && \
+    CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+    REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-small-stub.sh" \
+    REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
+    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 \
+        --convergence-threshold nope \
+        --session-env-path "$implement_tmp/session-env.sh" --run-id threshold-invalid-run 2>&1
+)
+rc=$?
+set -e
+[[ "$rc" -eq 2 ]] || { echo "$out" >&2; fail "convergence-threshold-invalid expected exit 2 got $rc"; }
+grep -Fq -- '--convergence-threshold must be a non-negative integer' <<< "$out" || fail "convergence-threshold-invalid should name validation error"
+
+# Test 9a: review-and-fix.env writes literal values without shell expansion.
+cat > "$TMP/review-core-shell-literal.sh" <<EOF_CORE_SHELL_LITERAL
+#!/usr/bin/env bash
+set -euo pipefail
+out=""
+round="1"
+while [[ \$# -gt 0 ]]; do
+  case "\$1" in
+    --output-dir) out="\$2"; shift 2 ;;
+    --round-num) round="\$2"; shift 2 ;;
+    *) shift; [[ \$# -gt 0 && "\$1" != --* ]] && shift || true ;;
+  esac
+done
+mkdir -p "\$out"
+: > "\$out/findings.md"
+: > "\$out/accepted-findings.md"
+: > "\$out/rejected-findings.md"
+printf '{"schema_version":1,"rounds_completed":%s,"accepted_count":0,"rejected_count":0}\n' "\$round" > "\$out/review-summary.json"
+printf '# Review Round %s\n' "\$round" > "\$out/review-round-summary.md"
+printf 'REVIEW_CORE_STATUS=\$(touch %s/shell-expanded)\nROUND_NUM=%s\nACCEPTED_COUNT=0\nREJECTED_COUNT=0\nACCEPTED_FINDINGS_FILE=%s/accepted-findings.md\nREJECTED_FINDINGS_FILE=%s/rejected-findings.md\nPANEL_MODE=normal\nPANEL_SHAPE=simple\n' "$TMP" "\$round" "\$out" "\$out"
+EOF_CORE_SHELL_LITERAL
+chmod +x "$TMP/review-core-shell-literal.sh"
+
+work_shell_literal="$TMP/review-env-literal"
+make_work_repo "$work_shell_literal"
+implement_tmp="$work_shell_literal/implement"
+mkdir -p "$implement_tmp"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
+set +e
+out=$(
+    cd "$work_shell_literal" && \
+    CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+    REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-shell-literal.sh" \
+    REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
+    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 \
+        --session-env-path "$implement_tmp/session-env.sh" --run-id review-env-literal-run
+)
+rc=$?
+set -e
+[[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "review-env-literal expected exit 0 got $rc"; }
+[[ ! -e "$TMP/shell-expanded" ]] || fail "review-env-literal must not execute command substitution while writing review-and-fix.env"
+expected_review_core_status="REVIEW_CORE_STATUS=\$(touch $TMP/shell-expanded)"
+grep -Fq "$expected_review_core_status" "$implement_tmp/round-1/review-and-fix.env" \
+    || fail "review-env-literal should persist the literal core status"
+
+# Test 10: Missing findings files fail closed during Important detection.
+work_missing_findings="$TMP/converge-missing-findings-fails"
+make_work_repo "$work_missing_findings"
+implement_tmp="$work_missing_findings/implement"
+mkdir -p "$implement_tmp"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
+write_prior_round "$implement_tmp" 1 1 false
+rm -f "$implement_tmp/round-1/findings.md"
+set +e
+out=$(
+    cd "$work_missing_findings" && \
+    STUB_ACCEPTED=1 \
+    CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+    REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-small-stub.sh" \
+    REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
+    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 2 \
+        --session-env-path "$implement_tmp/session-env.sh" --run-id missing-findings-run 2>&1
+)
+rc=$?
+set -e
+[[ "$rc" -eq 2 ]] || { echo "$out" >&2; fail "converge-missing-findings-fails expected exit 2 got $rc"; }
+grep -Fq 'findings file not readable for Important check' <<< "$out" || fail "converge-missing-findings-fails should fail closed on unreadable findings"
+
+# Test 11: Round 1 alone is small — no convergence fires (need prior round).
+work_round1_small="$TMP/round1-small-no-converge"
+make_work_repo "$work_round1_small"
+implement_tmp="$work_round1_small/implement"
+mkdir -p "$implement_tmp"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
+set +e
+out=$(
+    cd "$work_round1_small" && \
+    STUB_ACCEPTED=1 \
+    CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+    REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-small-stub.sh" \
+    REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
+    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 \
+        --session-env-path "$implement_tmp/session-env.sh" --run-id round1-small-run
+)
+rc=$?
+set -e
+[[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "round1-small-no-converge expected exit 0 got $rc"; }
+if grep -Fq 'REVIEW_AND_FIX_STATUS=converged-small-changes' <<< "$out"; then
+    fail "round1-small-no-converge: must NOT converge on round 1 (no prior round to compare)"
+fi
+
+
 echo "test-review-and-fix: ok"

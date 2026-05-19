@@ -18,7 +18,7 @@ source "$PLUGIN_ROOT/scripts/lib-cursor-launcher-common.sh"
 usage() {
     larch_err "Usage:"
     larch_err "  review-and-fix.sh --findings-file FILE --review-tmpdir DIR [--session-env-path FILE]"
-    larch_err "  review-and-fix.sh --implement-tmpdir DIR --mode diff --panel simple|hard --round-num N [context flags]"
+    larch_err "  review-and-fix.sh --implement-tmpdir DIR --mode diff --panel simple|hard --round-num N [--convergence-threshold N] [context flags]"
 }
 
 FINDINGS_FILE=""
@@ -43,6 +43,7 @@ ROUND_CAP=""
 CODEX_AVAILABLE="${CODEX_AVAILABLE:-}"
 CURSOR_AVAILABLE="${CURSOR_AVAILABLE:-}"
 DYNAMIC_ARCHETYPES_CLI=""
+CONVERGENCE_THRESHOLD=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -59,6 +60,7 @@ while [[ $# -gt 0 ]]; do
         --run-id) RUN_ID="${2:?--run-id requires a value}"; shift 2 ;;
         --round-num) ROUND_NUM="${2:?--round-num requires a value}"; shift 2 ;;
         --round-cap) ROUND_CAP="${2:?--round-cap requires a value}"; shift 2 ;;
+        --convergence-threshold) CONVERGENCE_THRESHOLD="${2:?--convergence-threshold requires a value}"; shift 2 ;;
         --codex-available) CODEX_AVAILABLE="${2:?--codex-available requires a value}"; shift 2 ;;
         --cursor-available) CURSOR_AVAILABLE="${2:?--cursor-available requires a value}"; shift 2 ;;
         --dynamic-archetypes) DYNAMIC_ARCHETYPES_CLI="${2:?--dynamic-archetypes requires a value}"; shift 2 ;;
@@ -80,6 +82,66 @@ session_get() {
     else
         printf '%s\n' "$default_value"
     fi
+}
+
+important_findings_present() {
+    local file="" rc=0
+    local pattern='(^### FINDING_[0-9]+:[[:space:]]*\*\*[Ii]mportant\*\*|^\*\*[Ii]mportant\*\*([[:space:]]|$)|^- \*\*Concern\*\*:[[:space:]]*\[[Ii]mportant\]([[:space:][:punct:]]|$))'
+
+    for file in "$@"; do
+        [[ -r "$file" ]] || {
+            larch_err "review-and-fix.sh: findings file not readable for Important check: $file"
+            return 2
+        }
+        if grep -qE "$pattern" "$file"; then
+            return 0
+        fi
+        rc=$?
+        if [[ "$rc" -gt 1 ]]; then
+            larch_err "review-and-fix.sh: failed to scan findings file for Important markers: $file"
+            return 2
+        fi
+    done
+    return 1
+}
+
+append_round_oos_artifact() {
+    local round_num="$1" round_oos="$2" oos_jsonl="$3" oos_markdown="$4"
+    [[ -s "$round_oos" ]] || return 0
+    jq -Rn --argjson round "$round_num" --rawfile body "$round_oos" \
+        '{round: $round, source: "code-review", body: $body}' >> "$oos_jsonl"
+    [[ -s "$oos_markdown" ]] && printf '\n' >> "$oos_markdown"
+    cat "$round_oos" >> "$oos_markdown"
+    mirror_oos_markdown "$oos_markdown" "$IMPLEMENT_TMPDIR/oos-accepted-review.md"
+}
+
+round_degraded() {
+    local round_dir="$1"
+    local degraded_marker=""
+
+    degraded_marker=$(kv_get "$round_dir/review-and-fix.env" DEGRADED_ROUND)
+    [[ "$degraded_marker" == "true" ]]
+}
+
+find_previous_non_degraded_round() {
+    local base_dir="$1" start_round="$2"
+    local candidate_round=0
+
+    for (( candidate_round = start_round; candidate_round >= 1; candidate_round-- )); do
+        if ! round_degraded "$base_dir/round-${candidate_round}"; then
+            printf '%s\n' "$candidate_round"
+            return 0
+        fi
+    done
+    printf '0\n'
+}
+
+convergence_candidate_status() {
+    local status="$1"
+    case "$status" in
+        complete|no-changes|in-scope-filtered-out|converged-small-changes) return 0 ;;
+        *) return 1 ;;
+    esac
 }
 
 count_findings() {
@@ -819,6 +881,10 @@ run_implement_round() {
     [[ -x "$REVIEW_CORE_SH" ]] || { larch_err "review-and-fix.sh: review-core.sh not executable: $REVIEW_CORE_SH"; exit 2; }
     [[ -x "$RUN_EXTERNAL_AGENT_SH" ]] || { larch_err "review-and-fix.sh: run-external-agent.sh not executable: $RUN_EXTERNAL_AGENT_SH"; exit 2; }
     command -v jq >/dev/null 2>&1 || { larch_err "review-and-fix.sh: jq is required"; exit 2; }
+    if [[ -n "$CONVERGENCE_THRESHOLD" && ! "$CONVERGENCE_THRESHOLD" =~ ^[0-9]+$ ]]; then
+        larch_err "review-and-fix.sh: --convergence-threshold must be a non-negative integer"
+        exit 2
+    fi
 
     if [[ "$CODEX_AVAILABLE" != "true" && "$CODEX_AVAILABLE" != "false" ]]; then
         codex_present=$(session_get CODEX_PRESENT false)
@@ -885,6 +951,12 @@ run_implement_round() {
         fi
     fi
     core_out="$round_dir/review-core.env"
+    degraded_retry_flag="$round_dir/degraded-retry.flag"
+    degraded_retry_done="$round_dir/degraded-retry.done"
+    # Retry markers are per-invocation state. Clear leftovers before the first
+    # review-core run so a previous completed invocation cannot suppress the
+    # one retry this invocation is allowed to take.
+    rm -f "$degraded_retry_flag" "$degraded_retry_done"
     core_args=(
         --mode "$MODE"
         --output-dir "$round_dir"
@@ -920,17 +992,49 @@ run_implement_round() {
     core_status="${core_status:-unknown}"
     accepted_file="${accepted_file:-$round_dir/accepted-findings.md}"
     rejected_file="${rejected_file:-$round_dir/rejected-findings.md}"
-
     oos_jsonl="$IMPLEMENT_TMPDIR/accumulated-oos.jsonl"
     oos_markdown="$IMPLEMENT_TMPDIR/accumulated-oos.md"
     round_oos="$round_dir/oos-accepted-review.md"
-    if [[ -s "$round_oos" ]]; then
-        jq -Rn --argjson round "$round_num_dec" --rawfile body "$round_oos" \
-            '{round: $round, source: "code-review", body: $body}' >> "$oos_jsonl"
-        [[ -s "$oos_markdown" ]] && printf '\n' >> "$oos_markdown"
-        cat "$round_oos" >> "$oos_markdown"
-        mirror_oos_markdown "$oos_markdown" "$IMPLEMENT_TMPDIR/oos-accepted-review.md"
+
+    # Part B: Degraded-round detection via voting-tally.md banner.
+    # If degraded, retry the panel once; cap retries at 1 per round.
+    degraded_this_round=false
+    local voting_tally_file="$round_dir/voting-tally.md"
+    if [[ -f "$voting_tally_file" ]] && grep -Fq '⚠ Degraded code-review panel' "$voting_tally_file"; then
+        degraded_this_round=true
+        larch_err "⏳ /implement Step 5: round ${round_num_dec} panel was degraded (banner triggered); retrying with fresh panel."
+        if [[ -f "$degraded_retry_flag" && ! -f "$degraded_retry_done" ]]; then
+            larch_err "⚠ /implement Step 5: round ${round_num_dec} found stale degraded retry marker without completion; retrying once."
+            rm -f "$degraded_retry_flag"
+        fi
+        if [[ ! -f "$degraded_retry_flag" ]]; then
+            touch "$degraded_retry_flag"
+            append_round_oos_artifact "$round_num_dec" "$round_oos" "$oos_jsonl" "$oos_markdown"
+            IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR" "$REVIEW_CORE_SH" "${core_args[@]}" > "$core_out"
+            touch "$degraded_retry_done"
+            core_status=$(kv_get "$core_out" REVIEW_CORE_STATUS)
+            accepted_count=$(kv_get "$core_out" ACCEPTED_COUNT)
+            rejected_count=$(kv_get "$core_out" REJECTED_COUNT)
+            exonerated_count=$(kv_get "$core_out" EXONERATED_COUNT)
+            neutral_count=$(kv_get "$core_out" NEUTRAL_COUNT)
+            accepted_file=$(kv_get "$core_out" ACCEPTED_FINDINGS_FILE)
+            rejected_file=$(kv_get "$core_out" REJECTED_FINDINGS_FILE)
+            accepted_count="${accepted_count:-0}"
+            rejected_count="${rejected_count:-0}"
+            exonerated_count="${exonerated_count:-0}"
+            neutral_count="${neutral_count:-0}"
+            core_status="${core_status:-unknown}"
+            accepted_file="${accepted_file:-$round_dir/accepted-findings.md}"
+            rejected_file="${rejected_file:-$round_dir/rejected-findings.md}"
+            if [[ -f "$voting_tally_file" ]] && grep -Fq '⚠ Degraded code-review panel' "$voting_tally_file"; then
+                larch_err "⚠ /implement Step 5: round ${round_num_dec} panel retry also degraded; proceeding best-effort."
+            else
+                degraded_this_round=false
+            fi
+        fi
     fi
+
+    append_round_oos_artifact "$round_num_dec" "$round_oos" "$oos_jsonl" "$oos_markdown"
 
     rejected_full_file="$round_dir/rejected-findings-full.md"
     if [[ -f "$rejected_full_file" ]]; then
@@ -1080,6 +1184,58 @@ run_implement_round() {
         exit_code="$core_rc"
     fi
 
+    # Part A: Convergence heuristic — early-termination on two consecutive low-accept rounds.
+    # Count only non-degraded rounds and only terminal clean statuses.
+    local small_threshold="${CONVERGENCE_THRESHOLD:-3}"
+    if convergence_candidate_status "$status" && [[ "$degraded_this_round" == false && "$round_num_dec" -ge 2 ]]; then
+        local prev_round_a=0
+        local prev_core_out_a=""
+        local prev_accepted_a
+        local important_scan_files=()
+
+        prev_round_a=$(find_previous_non_degraded_round "$IMPLEMENT_TMPDIR" "$((round_num_dec - 1))")
+        if (( prev_round_a >= 1 )); then
+            prev_core_out_a="$IMPLEMENT_TMPDIR/round-${prev_round_a}/review-core.env"
+            prev_accepted_a=$(kv_get "$prev_core_out_a" ACCEPTED_COUNT)
+            prev_accepted_a="${prev_accepted_a:-999}"
+            if [[ "$prev_accepted_a" =~ ^[0-9]+$ ]] && \
+               (( 10#$prev_accepted_a <= 10#$small_threshold )) && \
+               (( accepted_count <= 10#$small_threshold )); then
+                important_scan_files+=(
+                    "$IMPLEMENT_TMPDIR/round-${prev_round_a}/findings.md"
+                    "$IMPLEMENT_TMPDIR/round-${round_num_dec}/findings.md"
+                )
+                if important_findings_present "${important_scan_files[@]}"; then
+                    :
+                else
+                    local important_rc=$?
+                    if [[ "$important_rc" -eq 2 ]]; then
+                        exit 2
+                    fi
+                    emit_breadcrumb "⏳ /implement Step 5: converged after round ${round_num_dec} (round ${round_num_dec}=${accepted_count}, round ${prev_round_a}=${prev_accepted_a} both <= ${small_threshold}; degraded rounds excluded)."
+                    status="converged-small-changes"
+                fi
+            fi
+        fi
+    fi
+
+    # Part C: Warn when round-N accepts > round-(N-1) accepts (churn-without-convergence).
+    if [[ "$exit_code" -eq 0 && "$status" != "converged-small-changes" && "$round_num_dec" -ge 3 ]]; then
+        local prev_round_c=0
+        local prev_core_out_c=""
+        local prev_accepted_c
+
+        prev_round_c=$(find_previous_non_degraded_round "$IMPLEMENT_TMPDIR" "$((round_num_dec - 1))")
+        if (( prev_round_c >= 1 )); then
+            prev_core_out_c="$IMPLEMENT_TMPDIR/round-${prev_round_c}/review-core.env"
+            prev_accepted_c=$(kv_get "$prev_core_out_c" ACCEPTED_COUNT)
+            prev_accepted_c="${prev_accepted_c:-0}"
+            if [[ "$prev_accepted_c" =~ ^[0-9]+$ ]] && (( accepted_count > 10#$prev_accepted_c )); then
+                larch_err "**⚠ /implement Step 5: round ${round_num_dec} accepted ${accepted_count} findings (>${prev_accepted_c} in round ${prev_round_c}). Reviewers may be polishing prior fixes rather than converging on a clean state. Consider stopping after this round.**"
+            fi
+        fi
+    fi
+
     local round_cap_val="${ROUND_CAP:-0}"
     local composed_findings_file="" derived_counts="" derived_accepted="" derived_rejected="" composed_findings_ok=false
     if [[ "$exit_code" -eq 0 && -n "$IMPLEMENT_TMPDIR" && -d "$IMPLEMENT_TMPDIR" ]]; then
@@ -1097,6 +1253,11 @@ run_implement_round() {
         fi
     fi
     write_summary_json "$prior_summary" "$status" "$core_status" "$round_num_dec" "$total_accepted" "$total_rejected" "$total_exonerated" "$total_neutral" "$round_num_dec" "$accepted_file" "$round_dir" "$oos_jsonl" "$oos_markdown" "$round_cap_val" "$coder_tool" "$coder_status" "$scrub_count" "$revert_count" "$coder_commit_sha"
+    {
+        printf 'REVIEW_AND_FIX_STATUS=%s\n' "$status"
+        printf 'REVIEW_CORE_STATUS=%s\n' "$core_status"
+        printf 'DEGRADED_ROUND=%s\n' "$degraded_this_round"
+    } > "$round_dir/review-and-fix.env"
     flush_round_log_after_coder "$IMPLEMENT_TMPDIR" "$RUN_ID" "$round_num_dec" "$round_dir"
 
     if [[ -n "$RUN_ID" && -x "$LARCH_LOG_SH" && -n "$IMPLEMENT_TMPDIR" && -d "$IMPLEMENT_TMPDIR" ]]; then
@@ -1172,6 +1333,7 @@ run_implement_round() {
     emit_kv SUBMODULE_SCRUB_COUNT "$scrub_count"
     emit_kv SUBMODULE_REVERT_COUNT "$revert_count"
     emit_kv SKIPPED_FINDING_COUNT "${skipped_finding_count:-0}"
+    emit_kv DEGRADED_ROUND "$degraded_this_round"
     if [[ "$exit_code" -eq 0 ]]; then
         if [[ "$composed_findings_ok" == true ]]; then
             if ! flush_review_batches "$IMPLEMENT_TMPDIR" "$RUN_ID" "$PANEL" "$round_num_dec" "$total_accepted" "$total_rejected" "$total_exonerated" "$total_neutral" "$composed_findings_file"; then
