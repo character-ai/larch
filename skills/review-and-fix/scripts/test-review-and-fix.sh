@@ -1206,10 +1206,12 @@ fi
 
 # Helper: stub a prior round by writing its review-core.env with the given accepted count.
 write_prior_round() {
-    local impl_tmpdir="$1" round="$2" accepted_count="$3"
+    local impl_tmpdir="$1" round="$2" accepted_count="$3" degraded="${4:-false}"
     mkdir -p "$impl_tmpdir/round-${round}"
     printf 'REVIEW_CORE_STATUS=ok\nACCEPTED_COUNT=%s\nREJECTED_COUNT=0\n' "$accepted_count" \
         > "$impl_tmpdir/round-${round}/review-core.env"
+    : > "$impl_tmpdir/round-${round}/findings.md"
+    printf 'DEGRADED_ROUND=%s\n' "$degraded" > "$impl_tmpdir/round-${round}/review-and-fix.env"
 }
 
 # Test 1: Convergence — two small rounds terminate loop.
@@ -1279,8 +1281,8 @@ mkdir -p "$out"
 : > "$out/rejected-findings.md"
 printf '{"schema_version":1,"rounds_completed":%s,"accepted_count":0,"rejected_count":0}\n' "$round" > "$out/review-summary.json"
 printf '# Review Round %s\n' "$round" > "$out/review-round-summary.md"
-# Write Important finding into findings.md to block convergence
-printf '**Important** severity finding here\n' > "$out/findings.md"
+# Write canonical Important finding heading into findings.md to block convergence.
+printf '### FINDING_1: **Important** severity finding here\n' > "$out/findings.md"
 printf 'REVIEW_CORE_STATUS=ok\nROUND_NUM=%s\nACCEPTED_COUNT=1\nREJECTED_COUNT=0\nACCEPTED_FINDINGS_FILE=%s/accepted-findings.md\nREJECTED_FINDINGS_FILE=%s/rejected-findings.md\nPANEL_MODE=normal\nPANEL_SHAPE=simple\n' "$round" "$out" "$out"
 EOF_CORE_IMP
 chmod +x "$TMP/review-core-important-stub.sh"
@@ -1291,10 +1293,11 @@ implement_tmp="$work_important/implement"
 mkdir -p "$implement_tmp"
 printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
 write_prior_round "$implement_tmp" 1 10   # round 1: 10 accepts
-# Round 2 core.env: accepted=2 (small), but its findings.md has Important
+# Round 2 core.env: accepted=2 (small), but its findings.md has Important.
 mkdir -p "$implement_tmp/round-2"
 printf 'REVIEW_CORE_STATUS=ok\nACCEPTED_COUNT=2\nREJECTED_COUNT=0\n' > "$implement_tmp/round-2/review-core.env"
-printf '**Important** severity finding in round 2\n' > "$implement_tmp/round-2/findings.md"
+printf 'DEGRADED_ROUND=false\n' > "$implement_tmp/round-2/review-and-fix.env"
+printf '### FINDING_1: **Important** severity finding in round 2\n' > "$implement_tmp/round-2/findings.md"
 set +e
 out=$(
     cd "$work_important" && \
@@ -1309,6 +1312,31 @@ set -e
 [[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "converge-important expected exit 0 got $rc"; }
 if grep -Fq 'REVIEW_AND_FIX_STATUS=converged-small-changes' <<< "$out"; then
     fail "converge-important must NOT converge when prior round has Important findings"
+fi
+
+# Test 2b: Convergence — prior degraded small round is excluded from the comparison.
+work_prev_degraded="$TMP/converge-prior-degraded-excluded"
+make_work_repo "$work_prev_degraded"
+implement_tmp="$work_prev_degraded/implement"
+mkdir -p "$implement_tmp"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
+write_prior_round "$implement_tmp" 1 10 false
+write_prior_round "$implement_tmp" 2 2 true
+set +e
+out=$(
+    cd "$work_prev_degraded" && \
+    STUB_ACCEPTED=1 \
+    CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+    REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-small-stub.sh" \
+    REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
+    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 3 \
+        --session-env-path "$implement_tmp/session-env.sh" --run-id prior-degraded-run
+)
+rc=$?
+set -e
+[[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "converge-prior-degraded-excluded expected exit 0 got $rc"; }
+if grep -Fq 'REVIEW_AND_FIX_STATUS=converged-small-changes' <<< "$out"; then
+    fail "converge-prior-degraded-excluded must ignore degraded round 2 when evaluating convergence"
 fi
 
 # Test 3: Degraded round detection — banner excluded from convergence.
@@ -1437,6 +1465,36 @@ set -e
 grep -Fq 'DEGRADED_ROUND=true' <<< "$out" || fail "degraded-retry-exhausted should remain DEGRADED_ROUND=true"
 grep -Fq 'panel retry also degraded' <<< "$out" || fail "degraded-retry-exhausted should log retry-also-degraded warning"
 
+# Test 5b: fix-applied remains the status even when low accepted counts would otherwise converge.
+work_fix_applied="$TMP/fix-applied-not-overwritten"
+make_work_repo "$work_fix_applied"
+implement_tmp="$work_fix_applied/implement"
+mkdir -p "$implement_tmp"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
+write_prior_round "$implement_tmp" 1 1 false
+set +e
+out=$(TEST_AGENT_BEHAVIOR=codex-success run_review_and_fix "$work_fix_applied" \
+    --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 2 --session-env-path "$implement_tmp/session-env.sh" --run-id fix-applied-round-run)
+rc=$?
+set -e
+[[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "fix-applied-not-overwritten expected exit 0 got $rc"; }
+grep -Fq 'REVIEW_AND_FIX_STATUS=fix-applied' <<< "$out" || fail "fix-applied-not-overwritten must preserve fix-applied status"
+
+# Test 5c: main-agent-vote-required remains the status even on low accepted counts.
+work_vote_required="$TMP/main-agent-vote-not-overwritten"
+make_work_repo "$work_vote_required"
+implement_tmp="$work_vote_required/implement"
+mkdir -p "$implement_tmp"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
+write_prior_round "$implement_tmp" 1 0 false
+set +e
+out=$(TEST_CORE_STATUS=main-agent-vote-required run_review_and_fix "$work_vote_required" \
+    --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 2 --session-env-path "$implement_tmp/session-env.sh" --run-id main-agent-vote-round-run)
+rc=$?
+set -e
+[[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "main-agent-vote-not-overwritten expected exit 0 got $rc"; }
+grep -Fq 'REVIEW_AND_FIX_STATUS=main-agent-vote-required' <<< "$out" || fail "main-agent-vote-not-overwritten must preserve main-agent-vote-required status"
+
 # Test 6: Churn warning — round-N accepts > round-(N-1) accepts fires on stderr.
 work_churn="$TMP/churn-warning"
 make_work_repo "$work_churn"
@@ -1509,7 +1567,76 @@ if grep -Fq 'REVIEW_AND_FIX_STATUS=converged-small-changes' <<< "$out"; then
     fail "single-small: must NOT converge when only one small round (prev=10 is not small)"
 fi
 
-# Test 8: Round 1 alone is small — no convergence fires (need prior round).
+# Test 8: Non-default convergence threshold is honored.
+work_threshold="$TMP/convergence-threshold-one"
+make_work_repo "$work_threshold"
+implement_tmp="$work_threshold/implement"
+mkdir -p "$implement_tmp"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
+write_prior_round "$implement_tmp" 1 2 false
+set +e
+out=$(
+    cd "$work_threshold" && \
+    STUB_ACCEPTED=1 \
+    CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+    REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-small-stub.sh" \
+    REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
+    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 2 \
+        --convergence-threshold 1 \
+        --session-env-path "$implement_tmp/session-env.sh" --run-id threshold-one-run
+)
+rc=$?
+set -e
+[[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "convergence-threshold-one expected exit 0 got $rc"; }
+if grep -Fq 'REVIEW_AND_FIX_STATUS=converged-small-changes' <<< "$out"; then
+    fail "convergence-threshold-one must not converge when prior round accepted count exceeds threshold 1"
+fi
+
+# Test 9: Invalid convergence threshold fails validation.
+work_threshold_invalid="$TMP/convergence-threshold-invalid"
+make_work_repo "$work_threshold_invalid"
+implement_tmp="$work_threshold_invalid/implement"
+mkdir -p "$implement_tmp"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
+set +e
+out=$(
+    cd "$work_threshold_invalid" && \
+    CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+    REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-small-stub.sh" \
+    REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
+    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 \
+        --convergence-threshold nope \
+        --session-env-path "$implement_tmp/session-env.sh" --run-id threshold-invalid-run 2>&1
+)
+rc=$?
+set -e
+[[ "$rc" -eq 2 ]] || { echo "$out" >&2; fail "convergence-threshold-invalid expected exit 2 got $rc"; }
+grep -Fq -- '--convergence-threshold must be a non-negative integer' <<< "$out" || fail "convergence-threshold-invalid should name validation error"
+
+# Test 10: Missing findings files fail closed during Important detection.
+work_missing_findings="$TMP/converge-missing-findings-fails"
+make_work_repo "$work_missing_findings"
+implement_tmp="$work_missing_findings/implement"
+mkdir -p "$implement_tmp"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
+write_prior_round "$implement_tmp" 1 1 false
+rm -f "$implement_tmp/round-1/findings.md"
+set +e
+out=$(
+    cd "$work_missing_findings" && \
+    STUB_ACCEPTED=1 \
+    CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+    REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-small-stub.sh" \
+    REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
+    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 2 \
+        --session-env-path "$implement_tmp/session-env.sh" --run-id missing-findings-run 2>&1
+)
+rc=$?
+set -e
+[[ "$rc" -eq 2 ]] || { echo "$out" >&2; fail "converge-missing-findings-fails expected exit 2 got $rc"; }
+grep -Fq 'findings file not readable for Important check' <<< "$out" || fail "converge-missing-findings-fails should fail closed on unreadable findings"
+
+# Test 11: Round 1 alone is small — no convergence fires (need prior round).
 work_round1_small="$TMP/round1-small-no-converge"
 make_work_repo "$work_round1_small"
 implement_tmp="$work_round1_small/implement"

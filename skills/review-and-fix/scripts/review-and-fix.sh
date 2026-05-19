@@ -18,7 +18,7 @@ source "$PLUGIN_ROOT/scripts/lib-cursor-launcher-common.sh"
 usage() {
     larch_err "Usage:"
     larch_err "  review-and-fix.sh --findings-file FILE --review-tmpdir DIR [--session-env-path FILE]"
-    larch_err "  review-and-fix.sh --implement-tmpdir DIR --mode diff --panel simple|hard --round-num N [context flags]"
+    larch_err "  review-and-fix.sh --implement-tmpdir DIR --mode diff --panel simple|hard --round-num N [--convergence-threshold N] [context flags]"
 }
 
 FINDINGS_FILE=""
@@ -82,6 +82,35 @@ session_get() {
     else
         printf '%s\n' "$default_value"
     fi
+}
+
+important_findings_present() {
+    local file="" rc=0
+    local pattern='(^### FINDING_[0-9]+:[[:space:]]*\*\*Important\*\*|^\*\*Important\*\*([[:space:]]|$))'
+
+    for file in "$@"; do
+        [[ -r "$file" ]] || {
+            larch_err "review-and-fix.sh: findings file not readable for Important check: $file"
+            return 2
+        }
+        if grep -qE "$pattern" "$file"; then
+            return 0
+        fi
+        rc=$?
+        if [[ "$rc" -gt 1 ]]; then
+            larch_err "review-and-fix.sh: failed to scan findings file for Important markers: $file"
+            return 2
+        fi
+    done
+    return 1
+}
+
+round_degraded() {
+    local round_dir="$1"
+    local degraded_marker=""
+
+    degraded_marker=$(kv_get "$round_dir/review-and-fix.env" DEGRADED_ROUND)
+    [[ "$degraded_marker" == "true" ]]
 }
 
 count_findings() {
@@ -821,6 +850,10 @@ run_implement_round() {
     [[ -x "$REVIEW_CORE_SH" ]] || { larch_err "review-and-fix.sh: review-core.sh not executable: $REVIEW_CORE_SH"; exit 2; }
     [[ -x "$RUN_EXTERNAL_AGENT_SH" ]] || { larch_err "review-and-fix.sh: run-external-agent.sh not executable: $RUN_EXTERNAL_AGENT_SH"; exit 2; }
     command -v jq >/dev/null 2>&1 || { larch_err "review-and-fix.sh: jq is required"; exit 2; }
+    if [[ -n "$CONVERGENCE_THRESHOLD" && ! "$CONVERGENCE_THRESHOLD" =~ ^[0-9]+$ ]]; then
+        larch_err "review-and-fix.sh: --convergence-threshold must be a non-negative integer"
+        exit 2
+    fi
 
     if [[ "$CODEX_AVAILABLE" != "true" && "$CODEX_AVAILABLE" != "false" ]]; then
         codex_present=$(session_get CODEX_PRESENT false)
@@ -1116,23 +1149,37 @@ run_implement_round() {
     fi
 
     # Part A: Convergence heuristic — early-termination on two consecutive low-accept rounds.
-    # Skipped when: terminal failure, fewer than 2 rounds, or this round was degraded.
+    # Count only non-degraded rounds and only terminal clean statuses.
     local small_threshold="${CONVERGENCE_THRESHOLD:-3}"
-    if [[ "$exit_code" -eq 0 && "$degraded_this_round" == false && "$round_num_dec" -ge 2 ]]; then
-        local prev_round_a=$((round_num_dec - 1))
-        local prev_core_out_a="$IMPLEMENT_TMPDIR/round-${prev_round_a}/review-core.env"
+    if [[ "$status" == "complete" && "$degraded_this_round" == false && "$round_num_dec" -ge 2 ]]; then
+        local prev_round_a=0
+        local candidate_round_a=0
+        local prev_core_out_a=""
         local prev_accepted_a
-        prev_accepted_a=$(kv_get "$prev_core_out_a" ACCEPTED_COUNT)
-        prev_accepted_a="${prev_accepted_a:-999}"
-        if [[ "$prev_accepted_a" =~ ^[0-9]+$ ]] && \
-           (( 10#$prev_accepted_a <= 10#$small_threshold )) && \
-           (( accepted_count <= 10#$small_threshold )); then
-            local prev_round_dir_a="$IMPLEMENT_TMPDIR/round-${prev_round_a}"
-            if ! grep -qE '^\*\*Important\*\*|\*\*Important `' \
-                   "$round_dir/findings.md" \
-                   "$prev_round_dir_a/findings.md" 2>/dev/null; then
-                emit_breadcrumb "⏳ /implement Step 5: converged after round ${round_num_dec} (round ${round_num_dec}=${accepted_count}, round ${prev_round_a}=${prev_accepted_a} both ≤ ${small_threshold})."
-                status="converged-small-changes"
+        for (( candidate_round_a = round_num_dec - 1; candidate_round_a >= 1; candidate_round_a-- )); do
+            if ! round_degraded "$IMPLEMENT_TMPDIR/round-${candidate_round_a}"; then
+                prev_round_a=$candidate_round_a
+                break
+            fi
+        done
+        if (( prev_round_a >= 1 )); then
+            prev_core_out_a="$IMPLEMENT_TMPDIR/round-${prev_round_a}/review-core.env"
+            prev_accepted_a=$(kv_get "$prev_core_out_a" ACCEPTED_COUNT)
+            prev_accepted_a="${prev_accepted_a:-999}"
+            if [[ "$prev_accepted_a" =~ ^[0-9]+$ ]] && \
+               (( 10#$prev_accepted_a <= 10#$small_threshold )) && \
+               (( accepted_count <= 10#$small_threshold )); then
+                local prev_round_dir_a="$IMPLEMENT_TMPDIR/round-${prev_round_a}"
+                if important_findings_present "$round_dir/findings.md" "$prev_round_dir_a/findings.md"; then
+                    :
+                else
+                    local important_rc=$?
+                    if [[ "$important_rc" -eq 2 ]]; then
+                        exit 2
+                    fi
+                    emit_breadcrumb "⏳ /implement Step 5: converged after round ${round_num_dec} (round ${round_num_dec}=${accepted_count}, round ${prev_round_a}=${prev_accepted_a} both <= ${small_threshold}; degraded rounds excluded)."
+                    status="converged-small-changes"
+                fi
             fi
         fi
     fi
@@ -1166,6 +1213,11 @@ run_implement_round() {
         fi
     fi
     write_summary_json "$prior_summary" "$status" "$core_status" "$round_num_dec" "$total_accepted" "$total_rejected" "$total_exonerated" "$total_neutral" "$round_num_dec" "$accepted_file" "$round_dir" "$oos_jsonl" "$oos_markdown" "$round_cap_val" "$coder_tool" "$coder_status" "$scrub_count" "$revert_count" "$coder_commit_sha"
+    cat > "$round_dir/review-and-fix.env" <<EOF_REVIEW_AND_FIX_ENV
+REVIEW_AND_FIX_STATUS=$status
+REVIEW_CORE_STATUS=$core_status
+DEGRADED_ROUND=$degraded_this_round
+EOF_REVIEW_AND_FIX_ENV
     flush_round_log_after_coder "$IMPLEMENT_TMPDIR" "$RUN_ID" "$round_num_dec" "$round_dir"
 
     if [[ -n "$RUN_ID" && -x "$LARCH_LOG_SH" && -n "$IMPLEMENT_TMPDIR" && -d "$IMPLEMENT_TMPDIR" ]]; then
