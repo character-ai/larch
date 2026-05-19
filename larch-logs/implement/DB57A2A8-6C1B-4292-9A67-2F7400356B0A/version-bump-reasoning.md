@@ -1,11 +1,13 @@
 # Version Bump Reasoning
 
-- **Base commit**: `b5ef0d76` (Bump version to 29.8.17 (#2384))
+- **Base commit**: `74c09195` (Bump version to 29.8.18 (#2387))
 - **Current version**: `29.8.18`
 - **Classification scope**: `skills/**` and `agents/**` only (public plugin surface).
 
-## Result: NONE (already bumped)
+## Result: PATCH
 
-HEAD is a version bump commit: `0e0d4883` — "Bump version to 29.8.18"
+- **New version**: `29.8.19`
 
-No additional bump will be applied.
+### PATCH rationale
+
+No MAJOR or MINOR evidence found in the public plugin surface. Defaulting to PATCH per policy ("every PR must bump at least PATCH").
