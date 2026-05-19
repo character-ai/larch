@@ -91,6 +91,29 @@ grep -Fq 'SCOUT_STATUS=ok' "$stdout" || fail "valid4 status"
 grep -Fq 'SCOUT_ARCHETYPE_COUNT=4' "$stdout" || fail "valid4 count"
 [[ "$(jq '.archetypes | length' "$TMP/valid4/scout-manifest.json")" = "4" ]] || fail "valid4 manifest count"
 
+cat > "$TMP/fence-wrapped.json" <<'JSON'
+```json
+{"archetypes":[
+  {"name":"api-contract","focus_area":"correctness","weight":4,"rationale":"API changes are central.","prompt_body":"Check API contract compatibility."}
+]}
+```
+JSON
+stdout=$(run_case fence-wrapped "$TMP/fence-wrapped.json")
+grep -Fq 'SCOUT_STATUS=ok' "$stdout" || fail "fence-wrapped status"
+grep -Fq 'SCOUT_ARCHETYPE_COUNT=1' "$stdout" || fail "fence-wrapped count"
+
+cat > "$TMP/fence-with-prose.json" <<'JSON'
+Here is the JSON:
+```json
+{"archetypes":[
+  {"name":"cli-flow","focus_area":"risk-integration","weight":3,"rationale":"CLI behavior changed.","prompt_body":"Check command flow and user-visible behavior."}
+]}
+```
+JSON
+stdout=$(run_case fence-with-prose "$TMP/fence-with-prose.json")
+grep -Fq 'SCOUT_STATUS=ok' "$stdout" || fail "fence-with-prose status"
+grep -Fq 'SCOUT_ARCHETYPE_COUNT=1' "$stdout" || fail "fence-with-prose count"
+
 cat > "$TMP/too-many.json" <<'JSON'
 {"archetypes":[
   {"name":"one","focus_area":"correctness","weight":1,"rationale":"r","prompt_body":"p"},
@@ -102,6 +125,7 @@ cat > "$TMP/too-many.json" <<'JSON'
 JSON
 stdout=$(run_case too-many "$TMP/too-many.json")
 grep -Fq 'SCOUT_STATUS=parse-failed' "$stdout" || fail "too-many parse-failed"
+grep -Fq 'SCOUT_FAIL_REASON=archetype_count_overflow' "$stdout" || fail "too-many fail reason"
 [[ "$(jq '.archetypes | length' "$TMP/too-many/scout-manifest.json")" = "0" ]] || fail "too-many empty manifest"
 
 cat > "$TMP/duplicate.json" <<'JSON'
@@ -118,6 +142,7 @@ grep -Fq 'WARN=duplicate archetype name: dup-check' "$stdout" || fail "duplicate
 printf '{not json\n' > "$TMP/malformed.json"
 stdout=$(run_case malformed "$TMP/malformed.json")
 grep -Fq 'SCOUT_STATUS=parse-failed' "$stdout" || fail "malformed parse-failed"
+grep -Fq 'SCOUT_FAIL_REASON=json_parse' "$stdout" || fail "malformed fail reason"
 
 mkdir -p "$TMP/claude-failed"
 seed_case_inputs "$TMP/claude-failed"

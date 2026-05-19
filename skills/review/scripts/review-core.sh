@@ -299,20 +299,24 @@ panel_manifest=$(kv_get "$dispatch_out" PANEL_MANIFEST)
 scout_status=$(kv_get "$dispatch_out" SCOUT_STATUS)
 dynamic_slots=$(kv_get "$dispatch_out" DYNAMIC_SLOTS)
 scout_manifest=$(kv_get "$dispatch_out" SCOUT_MANIFEST)
+scout_fail_reason=$(kv_get "$dispatch_out" SCOUT_FAIL_REASON)
 static_slot_count=$(kv_get "$dispatch_out" STATIC_SLOT_COUNT)
 panel_mode="${panel_mode:-waterfall}"
 panel_shape="${panel_shape:-$PANEL}"
 dispatch_ok="${dispatch_ok:-true}"
 static_dispatch_ok="${static_dispatch_ok:-true}"
 scout_status="${scout_status:-na}"
+scout_fail_reason="${scout_fail_reason:-}"
 dynamic_slots="${dynamic_slots:-0}"
 static_slot_count="${static_slot_count:-0}"
 {
     printf 'SCOUT_STATUS=%s\n' "$scout_status"
+    [[ -n "$scout_fail_reason" ]] && printf 'SCOUT_FAIL_REASON=%s\n' "$scout_fail_reason"
     printf 'DYNAMIC_SLOTS=%s\n' "$dynamic_slots"
     printf 'SCOUT_MANIFEST=%s\n' "$scout_manifest"
 } > "$REVIEW_TMPDIR/scout-round${ROUND_NUM}-status.env"
 emit_kv SCOUT_STATUS "$scout_status"
+[[ -n "$scout_fail_reason" ]] && emit_kv SCOUT_FAIL_REASON "$scout_fail_reason"
 emit_kv DYNAMIC_SLOTS "$dynamic_slots"
 [[ -n "$scout_manifest" ]] && emit_kv SCOUT_MANIFEST "$scout_manifest"
 

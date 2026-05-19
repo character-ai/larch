@@ -40,6 +40,7 @@ Emitted keys:
 - `PANEL_MODE=waterfall|normal` (`waterfall` is the current value; `normal` may appear on the zero-scope early-exit path)
 - `PANEL_SHAPE=simple|hard`
 - `SCOUT_STATUS` — `na` when dynamic archetypes are disabled; otherwise copied from `dispatch-panel.sh` and emitted on every post-dispatch exit path.
+- `SCOUT_FAIL_REASON` — present only when `dispatch-panel.sh` reports a scout parse-failure reason.
 - `DYNAMIC_SLOTS=N` — queued dynamic reviewer slots; emitted on every post-dispatch exit path.
 - `SCOUT_MANIFEST=PATH` — present when a scout manifest exists.
 - `YIELD_TSV_FILE=PATH` — present when `tally-code-votes.sh --manifest-file` writes per-archetype yield metrics.

@@ -190,6 +190,8 @@ parse_error="${OUTPUT}.parse-error"
     printf 'You are selecting optional specialist code-review archetypes for /review.\n'
     printf 'Return ONLY compact JSON with this shape: {"archetypes":[{"name":"slug","focus_area":"code-quality|risk-integration|correctness|architecture|security","weight":1,"rationale":"...","prompt_body":"..."}]}.\n'
     printf 'Return at most %s archetypes. Return {"archetypes":[]} when the static panel is sufficient.\n' "$MAX_ARCHETYPES"
+    printf 'Output ONLY the raw JSON object — no markdown code fences, no backticks, no prose.\n'
+    printf 'The "rationale" field must be a single line with no embedded newlines.\n'
     printf 'Use short lowercase slug names. Do not duplicate existing static reviewers: structure, correctness, testing, security, edge-cases, plan-fidelity, generic.\n'
     printf 'The prompt_body must instruct a reviewer what to focus on and must not include YAML frontmatter fences.\n'
     if [[ "$MODE" == "diff" ]]; then
@@ -246,9 +248,20 @@ if [[ "$launch_rc" -ne 0 ]]; then
     exit 0
 fi
 
+if ! jq -e '.' "$raw_output" >/dev/null 2>&1; then
+    fenced_tmp=$(mktemp "${OUTPUT}.fenced.XXXXXX") || exit 1
+    awk '/^```/{if(!in_block){in_block=1;next}else{in_block=0;next}} in_block{print}' "$raw_output" > "$fenced_tmp"
+    if [[ -s "$fenced_tmp" ]] && jq -e '.' "$fenced_tmp" >/dev/null 2>&1; then
+        mv -f "$fenced_tmp" "$raw_output"
+    else
+        rm -f "$fenced_tmp"
+    fi
+fi
+
 if ! jq -e '.archetypes and (.archetypes | type == "array")' "$raw_output" >/dev/null 2>"$parse_error"; then
     write_empty_manifest "$OUTPUT"
     emit_kv SCOUT_STATUS parse-failed
+    emit_kv SCOUT_FAIL_REASON json_parse
     emit_kv SCOUT_OUTPUT "$OUTPUT"
     emit_kv SCOUT_ARCHETYPE_COUNT 0
     emit_kv SCOUT_LATENCY_MS "$latency_ms"
@@ -260,6 +273,7 @@ if (( raw_count > 4 )); then
     printf 'archetypes length exceeds max cap: %s\n' "$raw_count" > "$parse_error"
     write_empty_manifest "$OUTPUT"
     emit_kv SCOUT_STATUS parse-failed
+    emit_kv SCOUT_FAIL_REASON archetype_count_overflow
     emit_kv SCOUT_OUTPUT "$OUTPUT"
     emit_kv SCOUT_ARCHETYPE_COUNT 0
     emit_kv SCOUT_LATENCY_MS "$latency_ms"
@@ -331,6 +345,7 @@ if ! jq -c --argjson max "$MAX_ARCHETYPES" '
     validated_tmp=""
     write_empty_manifest "$OUTPUT"
     emit_kv SCOUT_STATUS parse-failed
+    emit_kv SCOUT_FAIL_REASON validation_jq_error
     emit_kv SCOUT_OUTPUT "$OUTPUT"
     emit_kv SCOUT_ARCHETYPE_COUNT 0
     emit_kv SCOUT_LATENCY_MS "$latency_ms"

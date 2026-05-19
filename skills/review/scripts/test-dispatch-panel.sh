@@ -3,11 +3,11 @@
 
 set -euo pipefail
 
-# --section CLI selector (closes #2349): splits 17 scenarios into 3 groups:
-#   core:     panel-mode + missing-diff fallbacks (6 scenarios)
+# --section CLI selector (closes #2349): splits 18 scenarios into 3 groups:
+#   core:     panel-mode + missing-diff fallbacks (7 scenarios)
 #   reuse:    round-reuse and reuse-manifest cases (5 scenarios)
 #   limits:   oversized-diff, dynamic-archetype limit cases (6 scenarios)
-# With no --section, all 17 run sequentially (local-dev backward compat).
+# With no --section, all 18 run sequentially (local-dev backward compat).
 SECTION=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -90,6 +90,7 @@ cat > "$TMP/scout-valid4.json" <<'JSON'
 ]}
 JSON
 printf '{"archetypes":[]}\n' > "$TMP/scout-empty.json"
+printf '{not json\n' > "$TMP/scout-malformed.json"
 
 classifier_stub="$TMP/classify-diff-mode-stub.sh"
 cat > "$classifier_stub" <<'STUB'
@@ -172,6 +173,23 @@ grep -Fq 'SCOUT_STATUS=claude-failed' <<< "$out"
 grep -Fq 'DYNAMIC_SLOTS=0' <<< "$out"
 grep -Fq 'SLOT_COUNT=12' <<< "$out"
 grep -Fq 'SCOUT_STATUS=claude-failed' "$TMP/dynamic-fail/scout-round1-status.env"
+
+seed_case_inputs "$TMP/dynamic-parse-failed"
+issues_log="$TMP/dynamic-parse-failed/execution-issues.md"
+out=$(PATH="$STUB_BIN:$PATH" LARCH_EXECUTION_ISSUES_LOG="$issues_log" SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$scout_launch" SCOUT_LAUNCH_JSON_FILE="$TMP/scout-malformed.json" "$SCRIPT" \
+    --mode diff \
+    --diff-file "$TMP/dynamic-parse-failed/review.diff" \
+    --review-tmpdir "$TMP/dynamic-parse-failed" \
+    --codex-available true \
+    --cursor-available true \
+    --panel hard \
+    --plan-file "$TMP/dynamic-parse-failed/plan.md" \
+    --dynamic-archetypes 4)
+grep -Fq 'SCOUT_STATUS=parse-failed' <<< "$out"
+grep -Fq 'SCOUT_FAIL_REASON=json_parse' <<< "$out"
+grep -Fq 'DYNAMIC_SLOTS=0' <<< "$out"
+grep -Fq 'SCOUT_FAIL_REASON=json_parse' "$TMP/dynamic-parse-failed/scout-round1-status.env"
+grep -Fq 'Review scout dynamic archetype parse failed in round 1; reason=json_parse' "$issues_log"
 
 for mode in docs-only test-only generated-only; do
     seed_case_inputs "$TMP/skip-$mode"
