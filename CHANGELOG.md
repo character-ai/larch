@@ -11,6 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Document the `review-and-fix.sh` applied-fixes contract change: accepted findings applied by the coder now complete with exit `0` plus `REVIEW_AND_FIX_STATUS=fix-applied`, and `review-and-fix-summary.json` now records `.status = "fix-applied"` instead of the old `fix-required`/exit-3 checkpoint shape. External wrappers, jq filters, and dashboards must key on the new status fields rather than exit `3`.
 
+## [29.8.19] - 2026-05-19
+
+### Changed
+
+- Closed: #2378
+
 ## [29.8.18] - 2026-05-19
 
 ### Changed
