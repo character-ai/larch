@@ -3,6 +3,11 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
+# launch-review.sh resolves PLUGIN_ROOT from CLAUDE_PLUGIN_ROOT when set; a
+# developer/CI environment may point that at a plugin cache tree that lags this
+# checkout. Pin the harness to the repo under test so append_launch_failure
+# exercises the workspace copy of append-tool-failure.sh (including new flags).
+export CLAUDE_PLUGIN_ROOT="$REPO_ROOT"
 TMPROOT="$(mktemp -d /tmp/larch-test-launch-review-XXXXXX)"
 unset LARCH_EXECUTION_ISSUES_LOG SESSION_ENV_PATH IMPLEMENT_TMPDIR REVIEW_TMPDIR || true
 # shellcheck disable=SC2030
@@ -903,7 +908,7 @@ RC_OBS_EXHAUSTED=$?
 set -e
 assert_eq "SL-transient-obs-exhausted exits non-zero after exhausting retries" "7" "$RC_OBS_EXHAUSTED"
 EI_OBS_EXHAUSTED="$IMPL_TMPDIR_OBS_EXHAUSTED/execution-issues.md"
-OBS_EXHAUSTED_ENTRY_COUNT=$(grep -Ec '^-\\s\\*\\*Step review Step 2 — codex-review failed \\(' "$EI_OBS_EXHAUSTED" 2>/dev/null || echo 0)
+OBS_EXHAUSTED_ENTRY_COUNT=$(grep -Ec '^- \*\*Step review Step 2 — codex-review failed' "$EI_OBS_EXHAUSTED" 2>/dev/null || echo 0)
 assert_eq "SL-transient-obs-exhausted execution-issues has one failure entry" "1" "$OBS_EXHAUSTED_ENTRY_COUNT"
 assert_regex "SL-transient-obs-exhausted exact retry header" '^-\s\*\*Step review Step 2 — codex-review failed \(exit 7 — non-auth — auth-retries=1, transient-retries=3\)\*\*:$' "$EI_OBS_EXHAUSTED"
 rm -f "$SL_OBS_EXHAUSTED_COUNT"
@@ -945,7 +950,7 @@ RC_OBS_FIRED=$?
 set -e
 assert_eq "SL-transient-obs-fired exits 0 after transient retry succeeds" "0" "$RC_OBS_FIRED"
 EI_OBS_FIRED="$IMPL_TMPDIR_OBS_FIRED/execution-issues.md"
-OBS_FIRED_ENTRY_COUNT=$(grep -Ec '^-\\s\\*\\*Step review Step 2 — codex-review failed \\(' "$EI_OBS_FIRED" 2>/dev/null || echo 0)
+OBS_FIRED_ENTRY_COUNT=$(grep -Ec '^- \*\*Step review Step 2 — codex-review failed' "$EI_OBS_FIRED" 2>/dev/null || echo 0)
 assert_eq "SL-transient-obs-fired execution-issues has no failure entry on success" "0" "$OBS_FIRED_ENTRY_COUNT"
 rm -f "$SL_OBS_FIRED_COUNT"
 
@@ -991,7 +996,7 @@ assert_eq "SL-transient-obs-nontransient exits 1 without transient retry" "1" "$
 OBS_NONTRANSIENT_ATTEMPTS=$(cat "$SL_OBS_NONTRANSIENT_COUNT" 2>/dev/null || echo "0")
 assert_eq "SL-transient-obs-nontransient stub invoked exactly 1 time" "1" "$OBS_NONTRANSIENT_ATTEMPTS"
 EI_OBS_NONTRANSIENT="$IMPL_TMPDIR_OBS_NONTRANSIENT/execution-issues.md"
-OBS_NONTRANSIENT_ENTRY_COUNT=$(grep -Ec '^-\\s\\*\\*Step review Step 2 — codex-review failed \\(' "$EI_OBS_NONTRANSIENT" 2>/dev/null || echo 0)
+OBS_NONTRANSIENT_ENTRY_COUNT=$(grep -Ec '^- \*\*Step review Step 2 — codex-review failed' "$EI_OBS_NONTRANSIENT" 2>/dev/null || echo 0)
 assert_eq "SL-transient-obs-nontransient execution-issues has one failure entry" "1" "$OBS_NONTRANSIENT_ENTRY_COUNT"
 assert_regex "SL-transient-obs-nontransient exact non-transient header" '^-\s\*\*Step review Step 2 — codex-review failed \(exit 1 — non-auth — auth-retries=1, transient-retries=1\)\*\*:$' "$EI_OBS_NONTRANSIENT"
 rm -f "$SL_OBS_NONTRANSIENT_COUNT"
@@ -2210,7 +2215,7 @@ assert_equals "SL-transient-obs-exhausted-cursor exits non-zero after exhausting
 SL_OBS_CURSOR_EXHAUSTED_ATTEMPTS=$(cat "$SL_OBS_CURSOR_EXHAUSTED_COUNT" 2>/dev/null || echo "0")
 assert_equals "SL-transient-obs-exhausted-cursor stub invoked exactly 3 times (2 retries)" "3" "$SL_OBS_CURSOR_EXHAUSTED_ATTEMPTS"
 EI_OBS_CURSOR_EXHAUSTED="$IMPL_TMPDIR_OBS_CURSOR_EXHAUSTED/execution-issues.md"
-OBS_CURSOR_EXHAUSTED_ENTRY_COUNT=$(grep -Ec '^-\\s\\*\\*Step review Step 2 — cursor-review failed \\(' "$EI_OBS_CURSOR_EXHAUSTED" 2>/dev/null || echo 0)
+OBS_CURSOR_EXHAUSTED_ENTRY_COUNT=$(grep -Ec '^- \*\*Step review Step 2 — cursor-review failed' "$EI_OBS_CURSOR_EXHAUSTED" 2>/dev/null || echo 0)
 assert_equals "SL-transient-obs-exhausted-cursor execution-issues has one failure entry" "1" "$OBS_CURSOR_EXHAUSTED_ENTRY_COUNT"
 assert_regex "SL-transient-obs-exhausted-cursor exact retry header" '^-\s\*\*Step review Step 2 — cursor-review failed \(exit 8 — non-auth — auth-retries=1, transient-retries=3\)\*\*:$' "$EI_OBS_CURSOR_EXHAUSTED"
 rm -f "$SL_OBS_CURSOR_EXHAUSTED_COUNT"
