@@ -149,12 +149,30 @@ if [ ! -f "$TRANSCRIPT_PATH" ]; then
     emit_status "transcript-file-missing" "TRANSCRIPT_PATH target was missing or not a regular file; transcript capture skipped."
 fi
 
+# Render the raw JSONL into a chat-view markdown before flushing. If the
+# render fails for any reason, skip flush entirely and record a warning;
+# the run itself must continue. See scripts/render-session-transcript.md.
+RENDERED_MD="$(mktemp -t session-transcript-XXXXXX)"
+RENDER_STDERR="$(mktemp -t render-stderr-XXXXXX)"
+trap 'rm -f "$RENDERED_MD" "$RENDER_STDERR"' EXIT
+if ! python3 "$SCRIPT_DIR/render-session-transcript.py" \
+        --input "$TRANSCRIPT_PATH" \
+        --output "$RENDERED_MD" \
+        2>"$RENDER_STDERR"; then
+    render_msg="$(tr '\n' ' ' < "$RENDER_STDERR" | sed 's/  */ /g' | cut -c1-300)"
+    [ -n "$render_msg" ] || render_msg="render-session-transcript.py exited non-zero with no stderr"
+    emit_status "render-failed" "session-transcript render failed; transcript was not committed: $render_msg"
+fi
+if [ ! -s "$RENDERED_MD" ]; then
+    emit_status "render-empty" "session-transcript renderer produced an empty file; transcript was not committed."
+fi
+
 if ! "$SCRIPT_DIR/larch-log.sh" write \
     --log-root "$LOG_ROOT" \
     --skill "$SKILL" \
     --run-id "$RUN_ID" \
     --batch session-transcript \
-    --input-file "$TRANSCRIPT_PATH" \
+    --input-file "$RENDERED_MD" \
     >/dev/null 2>&1; then
     emit_status "write-failed" "larch-log write failed; transcript was not captured."
 fi
