@@ -19,7 +19,7 @@ Invariants:
 - Duplicate names keep the first archetype and emit `WARN`; reserved static slugs are rejected.
 - When validation yields more accepted archetypes than `--max-archetypes`, the script truncates to the cap and emits a `WARN`.
 - Dynamic archetypes are ephemeral files under the review tmpdir and bypass the `agent-sync` CI job.
-- The raw subprocess output sidecar `${OUTPUT}.raw` is preserved verbatim for every Claude invocation outcome and is committed to round-N logs by `scripts/larch-log.sh write-round`.
+- When Claude is invoked (`--max-archetypes > 0`), the on-disk sidecar `${OUTPUT}.raw` preserves the subprocess output verbatim, even when fence-wrapped JSON is later parsed from a separate temp file. When `scripts/larch-log.sh write-round` commits that sidecar into round-N logs, it stages the copy through the normal redaction path (`stage_round_artifact` → `larch_log_redact_file`), so committed bytes may differ from the live tmpdir file. `--max-archetypes 0` skips the launch entirely and does not create `${OUTPUT}.raw`.
 
 Stdout is `KEY=value`: `SCOUT_STATUS`, `SCOUT_OUTPUT`, `SCOUT_ARCHETYPE_COUNT`, `SCOUT_LATENCY_MS`, optional `SCOUT_FAIL_REASON` on `SCOUT_STATUS=parse-failed`, and optional `WARN`. Scout-local `SCOUT_FAIL_REASON` values are `json_parse`, `invalid_archetypes_shape`, `archetype_count_overflow`, `validation_jq_error`, and `fence_strip_io`. `dispatch-panel.sh` may also emit wrapper-level `SCOUT_FAIL_REASON` values such as `dispatch_manifest_validation`, `missing_status_sidecar`, and `unknown` when it validates cached scout artifacts or logs a parse-failure fallback.
 

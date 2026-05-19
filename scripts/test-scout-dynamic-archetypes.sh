@@ -121,6 +121,7 @@ JSON
 stdout=$(run_case fence-wrapped "$TMP/fence-wrapped.json")
 grep -Fq 'SCOUT_STATUS=ok' "$stdout" || fail "fence-wrapped status"
 grep -Fq 'SCOUT_ARCHETYPE_COUNT=1' "$stdout" || fail "fence-wrapped count"
+assert_raw_matches fence-wrapped "$TMP/fence-wrapped.json"
 
 cat > "$TMP/indented-fence-wrapped.json" <<'JSON'
   ```json
@@ -132,6 +133,7 @@ JSON
 stdout=$(run_case indented-fence-wrapped "$TMP/indented-fence-wrapped.json")
 grep -Fq 'SCOUT_STATUS=ok' "$stdout" || fail "indented fence-wrapped status"
 grep -Fq 'SCOUT_ARCHETYPE_COUNT=1' "$stdout" || fail "indented fence-wrapped count"
+assert_raw_matches indented-fence-wrapped "$TMP/indented-fence-wrapped.json"
 
 cat > "$TMP/fence-with-prose.json" <<'JSON'
 Here is the JSON:
@@ -144,6 +146,7 @@ JSON
 stdout=$(run_case fence-with-prose "$TMP/fence-with-prose.json")
 grep -Fq 'SCOUT_STATUS=ok' "$stdout" || fail "fence-with-prose status"
 grep -Fq 'SCOUT_ARCHETYPE_COUNT=1' "$stdout" || fail "fence-with-prose count"
+assert_raw_matches fence-with-prose "$TMP/fence-with-prose.json"
 
 cat > "$TMP/multi-fence-valid-second.json" <<'JSON'
 ```text
@@ -159,6 +162,7 @@ stdout=$(run_case multi-fence-valid-second "$TMP/multi-fence-valid-second.json")
 grep -Fq 'SCOUT_STATUS=ok' "$stdout" || fail "multi-fence valid-second status"
 grep -Fq 'SCOUT_ARCHETYPE_COUNT=1' "$stdout" || fail "multi-fence valid-second count"
 grep -Fq '"second-block"' "$TMP/multi-fence-valid-second/scout-manifest.json" || fail "multi-fence valid-second manifest"
+assert_raw_matches multi-fence-valid-second "$TMP/multi-fence-valid-second.json"
 
 missing_raw_out_dir="$TMP/missing-raw-output"
 mkdir -p "$missing_raw_out_dir"
