@@ -352,6 +352,37 @@ assert_commit_count "internal_artifacts" "2" "I: exactly one new commit"
 assert_backup_absent "internal_artifacts" "I: backup removed"
 
 echo
+echo "Sub-test J: rebase in-progress (unmerged paths) exits 4 with distinct error"
+# shellcheck disable=SC2317  # invoked indirectly via run_case "$runner"
+invoke_unmerged_apply() {
+    local repo_dir="$1"
+    # Create a genuine UU conflict state via REAL_GIT merge --no-commit.
+    # The stub PATH git only handles specific subcommands; use REAL_GIT directly
+    # for all setup operations so that checkout/merge/-C are supported.
+    # apply-bump.sh's `git status` call passes through the stub to REAL_GIT and
+    # will observe the UU state left by the merge conflict.
+    local orig_branch
+    orig_branch=$("$REAL_GIT" -C "$repo_dir" rev-parse --abbrev-ref HEAD 2>/dev/null || echo main)
+    # Create a side branch with a competing change
+    "$REAL_GIT" -C "$repo_dir" checkout -b conflict-other >/dev/null 2>&1
+    printf '{"version":"1.1.0","conflict":"theirs"}\n' > "$repo_dir/.claude-plugin/plugin.json"
+    "$REAL_GIT" -C "$repo_dir" add .claude-plugin/plugin.json
+    "$REAL_GIT" -C "$repo_dir" commit -q -m "theirs change"
+    # Switch back to original branch and make a competing change
+    "$REAL_GIT" -C "$repo_dir" checkout "$orig_branch" >/dev/null 2>&1
+    printf '{"version":"2.0.0","conflict":"ours"}\n' > "$repo_dir/.claude-plugin/plugin.json"
+    "$REAL_GIT" -C "$repo_dir" add .claude-plugin/plugin.json
+    "$REAL_GIT" -C "$repo_dir" commit -q -m "ours change"
+    # Merge to create the conflict state (--no-commit leaves UU in index)
+    "$REAL_GIT" -C "$repo_dir" merge --no-commit conflict-other >/dev/null 2>&1 || true
+    invoke_apply "$repo_dir" STUB_ORIGIN_PLUGIN_JSON='{"version":"1.0.0"}'
+}
+run_case "unmerged_paths" invoke_unmerged_apply
+assert_exit_code "unmerged_paths" "4" "J: unmerged paths exits 4"
+assert_stdout_contains "unmerged_paths" "APPLIED=false" "J: unmerged paths emits APPLIED=false"
+assert_stdout_matches "unmerged_paths" "^ERROR=rebase in progress with unmerged paths:" "J: unmerged paths error is stable"
+
+echo
 if [[ "$FAIL_COUNT" -eq 0 ]]; then
     echo "PASS: scripts/test-apply-bump.sh ($PASS_COUNT assertions)"
     exit 0

@@ -58,7 +58,7 @@ During `postbump`, the script first refreshes `version-bump-reasoning.md`, then 
 
 ```
 LOG_WRITE_STATUS=ok|skipped|failed
-CHANGELOG_STATUS=updated|skipped-absent|skipped-fork|skipped-no-bump|skipped-resume|skipped-no-bullets|failed
+CHANGELOG_STATUS=updated|skipped-absent|skipped-fork|skipped-no-bump|skipped-resume|skipped-no-bullets|fail-no-manifest-no-issue|failed
 REBASE_STATUS=rebased|already-fresh|conflict|failed|skipped-resume
 FORCE_PUSH_STATUS=pushed|noop_same_ref|absent|skipped-repo-unavailable|failed
 RESUME_PHASE=force-push-gate

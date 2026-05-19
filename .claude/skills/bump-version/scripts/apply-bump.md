@@ -22,11 +22,11 @@ APPLIED=false
 ERROR=<message>
 ```
 
-The script exits 0 only when the bump commit was created. It exits 1 for invalid arguments, dirty worktree, JSON validation/rewrite failures, origin/main version-guard failures (same-version race detection and `NEW_VERSION < ORIGIN_VERSION` regression guard), and commit failure.
+The script exits 0 only when the bump commit was created. It exits 1 for invalid arguments, dirty worktree, JSON validation/rewrite failures, origin/main version-guard failures (same-version race detection and `NEW_VERSION < ORIGIN_VERSION` regression guard), and commit failure. It exits 4 when an in-progress rebase with unmerged paths is detected (checked before the general dirty-tree guard so callers can distinguish the rebase shape from a generic dirty worktree).
 
 ## Invariants
 
-- Before any mutation, the working tree must be free of tracked changes and non-internal untracked files. `git status --porcelain` covers staged, unstaged, and untracked files; the only tolerated dirty entries are larch-internal untracked artifacts matching `*.launcher-stderr` (review-dispatch sidecars) or `*.redacted.log` (relevant-checks output), which are logged as WARN to stderr and preserved. All other dirty entries still fail immediately.
+- Before any mutation, the working tree is verified in two sequential checks: (1) unmerged-path pre-check (`UU`, `AA`, `DD`, `AU`, `UA`, `DU`, `UD` porcelain codes) exits 4 immediately with a rebase-in-progress error; (2) general dirty-tree check allows only larch-internal untracked artifacts (`*.launcher-stderr` review-dispatch sidecars, `*.redacted.log` relevant-checks output) and fails with exit 1 on anything else.
 - Dirty-worktree failures include `/implement` phantom-file guidance:
   `Mid-/implement run: check tracking issue Execution Issues section or \$IMPLEMENT_TMPDIR/execution-issues.md for phantom file warnings.` The
   `\$IMPLEMENT_TMPDIR` token is intentionally backslash-escaped in the script

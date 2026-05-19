@@ -160,4 +160,37 @@ if [[ -x /bin/bash ]] && /bin/bash --version | grep -qE 'version 3\.[0-9]'; then
     fi
 fi
 
+# Test: gh pr create exits 1 with empty stderr → diagnostic block is non-empty
+# The gh stub below always exits 1 with no stderr output on pr create.
+stub_empty_err_dir="$TMPROOT/bin-empty-err"
+mkdir -p "$stub_empty_err_dir"
+cat > "$stub_empty_err_dir/gh" <<'GH'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "${1:-} ${2:-}" == "pr view" ]]; then
+    exit 1
+fi
+if [[ "${1:-} ${2:-}" == "pr create" ]]; then
+    # Exit non-zero with no stderr and no stdout to trigger the diagnostic stub.
+    exit 1
+fi
+if [[ "${1:-} ${2:-}" == "repo view" ]]; then
+    echo "main"
+    exit 0
+fi
+exit 2
+GH
+chmod +x "$stub_empty_err_dir/gh"
+
+repo_empty=$(setup_repo empty-err)
+set +e
+(cd "$repo_empty" && PATH="$stub_empty_err_dir:$PATH" "$SCRIPT" --title "Empty err test" --body-file body.md --repo fork/repo) \
+    >"$TMPROOT/empty-err.out" 2>"$TMPROOT/empty-err.err"
+rc=$?
+set -e
+[[ "$rc" -ne 0 ]] || fail "empty-stderr pr create should have failed"
+# The error message must be non-empty and contain the argv hint (not an empty block)
+grep -q 'gh pr create' "$TMPROOT/empty-err.err" || fail "error message should contain 'gh pr create' argv hint, got: $(cat "$TMPROOT/empty-err.err")"
+grep -q 'no diagnostic captured' "$TMPROOT/empty-err.err" || fail "error message should contain 'no diagnostic captured' stub, got: $(cat "$TMPROOT/empty-err.err")"
+
 echo "PASS: test-create-pr.sh"

@@ -35,9 +35,10 @@ REDACT_TMPDIR_HELPER="$REPO_ROOT/scripts/redact-tmpdir-paths.sh"
 
 PUSH_STDERR=""
 PR_STDERR_FILE=""
+PR_STDOUT_FILE=""
 REDACTED_BODY_FILE=""
 cleanup() {
-    rm -f "$PUSH_STDERR" "$PR_STDERR_FILE" "$REDACTED_BODY_FILE"
+    rm -f "$PUSH_STDERR" "$PR_STDERR_FILE" "$PR_STDOUT_FILE" "$REDACTED_BODY_FILE"
 }
 trap cleanup EXIT
 
@@ -153,6 +154,7 @@ fi
 
 # --- Create PR ---
 PR_STDERR_FILE=$(mktemp)
+PR_STDOUT_FILE=$(mktemp)
 GH_DRAFT_ARGS=()
 if [[ "$DRAFT" == "true" ]]; then
     GH_DRAFT_ARGS+=(--draft)
@@ -165,6 +167,13 @@ if [[ -z "$BASE_REF" ]]; then
     fi
 fi
 
+# Build the argv for diagnostic purposes (redact body file path, keep flags).
+GH_CREATE_ARGV="gh pr create ${GH_REPO_ARGS[*]+${GH_REPO_ARGS[*]}} --assignee @me --head $BRANCH --base $BASE_REF --title <redacted> --body-file <redacted> ${GH_DRAFT_ARGS[*]+${GH_DRAFT_ARGS[*]}}"
+
+# Capture stdout to a tmpfile (for last-10-lines diagnostic) while stderr goes
+# to PR_STDERR_FILE.  Use set +e/-e to prevent set -e from firing on gh non-zero
+# before PR_EXIT=$? is reached.
+set +e
 PR_OUTPUT=$(gh pr create \
     ${GH_REPO_ARGS[@]+"${GH_REPO_ARGS[@]}"} \
     --assignee @me \
@@ -172,12 +181,20 @@ PR_OUTPUT=$(gh pr create \
     --base "$BASE_REF" \
     --title "$TITLE" \
     --body-file "$REDACTED_BODY_FILE" \
-    ${GH_DRAFT_ARGS[@]+"${GH_DRAFT_ARGS[@]}"} 2>"$PR_STDERR_FILE")
+    ${GH_DRAFT_ARGS[@]+"${GH_DRAFT_ARGS[@]}"} \
+    2>"$PR_STDERR_FILE")
 PR_EXIT=$?
+set -e
+printf '%s\n' "$PR_OUTPUT" > "$PR_STDOUT_FILE"
 
 if [[ $PR_EXIT -ne 0 ]]; then
-    PR_STDERR=$(cat "$PR_STDERR_FILE" 2>/dev/null)
-    larch_err "ERROR: Failed to create PR: $PR_STDERR $PR_OUTPUT"
+    PR_STDERR=$(cat "$PR_STDERR_FILE" 2>/dev/null || true)
+    PR_STDOUT_TAIL=$(tail -10 "$PR_STDOUT_FILE" 2>/dev/null || true)
+    if [[ -z "$PR_STDERR" && -z "$PR_STDOUT_TAIL" ]]; then
+        larch_err "ERROR: Failed to create PR (exit $PR_EXIT): (no diagnostic captured; gh pr create exited $PR_EXIT with no output. Manual investigation required.) argv: $GH_CREATE_ARGV"
+    else
+        larch_err "ERROR: Failed to create PR (exit $PR_EXIT): stderr=$PR_STDERR stdout_tail=$PR_STDOUT_TAIL argv=$GH_CREATE_ARGV"
+    fi
     exit 2
 fi
 

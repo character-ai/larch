@@ -73,9 +73,13 @@ Both paths surface push failure as exit 1 with stderr, and both paths surface su
 - `scripts/git-force-push.sh` — invoked on the existing-PR fast-path's escalation branch.
 - `scripts/gh-pr-body-update.sh` — used by `/implement` Step 9b to update an existing PR's body when `PR_STATUS=existing` (since this script does not update the body of pre-existing PRs).
 
+## PR-create failure diagnostics
+
+On non-zero exit from `gh pr create`, the script always emits a diagnostic `ERROR:` line to stderr that includes: the redacted argv used, the captured stderr from `gh pr create`, the exit code, and the last 10 lines of stdout. If all three content fields are empty, the message contains the stub `(no diagnostic captured; gh pr create exited <N> with no output. Manual investigation required.)` so operators never see an empty backtick error block in execution-issues output.
+
 ## Test harness
 
-`scripts/test-create-pr.sh` uses temporary git repositories and a PATH-stubbed `gh` binary to assert that `--repo` is threaded through every `gh pr view` and `gh pr create` path, including existing-PR title backfill and PR-number fallback. It also covers explicit `--base`, detected default-branch base, and fallback-to-`main` base selection on the new-PR path.
+`scripts/test-create-pr.sh` uses temporary git repositories and a PATH-stubbed `gh` binary to assert that `--repo` is threaded through every `gh pr view` and `gh pr create` path, including existing-PR title backfill and PR-number fallback. It also covers explicit `--base`, detected default-branch base, fallback-to-`main` base selection on the new-PR path, and the empty-stderr diagnostic case (asserts that the error block is non-empty when `gh pr create` exits with no output).
 
 ## Edit-in-sync rules
 
