@@ -1,0 +1,22 @@
+FINDING_1: NO -- The item confirms the arithmetic is consistent; it does not describe a defect.
+FINDING_2: NO -- The under-cap expectations and duplicate pin behavior are consistent with the implementation.
+FINDING_3: NO -- The cap-prune expected removals and kept set are correct.
+FINDING_4: NO -- The CRLF pin case arithmetic matches the implementation.
+FINDING_5: NO -- The multi-pin expected removals and kept set are correct.
+FINDING_6: EXONERATE -- Run-log diff noise is a legitimate process concern but not worth an out-of-scope tracking issue.
+FINDING_7: EXONERATE -- The duplicate Makefile target is real hygiene noise but too minor for a future issue.
+FINDING_8: EXONERATE -- Implement logs in the diff are review noise, but repo policy/process can tolerate this without an issue.
+FINDING_9: NO -- This is only a commit title, not an actionable finding.
+FINDING_10: NO -- This is only a commit title, not an actionable finding.
+FINDING_11: NO -- This is review context, not a concrete defect.
+FINDING_12: EXONERATE -- Extra multi-pin coverage is useful despite plan drift, and updating plan provenance is not warranted.
+FINDING_13: EXONERATE -- The doc/plan mismatch is real but not worth changing the implementation plan artifact.
+FINDING_14: EXONERATE -- The extra harness case is reasonable coverage, not harmful scope creep.
+FINDING_15: EXONERATE -- The wording could be clearer, but the doc already separately states executing-root preservation.
+FINDING_16: YES
+FINDING_17: EXONERATE -- The warning copy differs, but unifying diagnostics is minor cleanup rather than a needed fix.
+FINDING_18: EXONERATE -- The plan arithmetic is stale, but the code and tests use the correct count.
+FINDING_19: YES
+FINDING_20: EXONERATE -- The cap-loop change is broader than the plan, but it is necessary for pinned-prefix pruning semantics.
+FINDING_21: EXONERATE -- PR-summary traceability would help, but it is not a code defect to block on here.
+FINDING_22: NO -- The current prune harness already includes a cap-phase rm-failure regression case.

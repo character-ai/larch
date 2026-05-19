@@ -1,0 +1,19 @@
+Reading the pre-computed diff and commit history (read-only).
+
+Verifying prune-loop ordering and cap logic against the new tests by reading the pruned section of `upgrade-larch.sh`.
+
+Checking `skills/upgrade-larch/SKILL.md` for stale floor/cap language (plan sync).
+
+### In-Scope Findings
+
+1. **`correctness` (plan)** — **Nit** — [`skills/upgrade-larch/scripts/test-upgrade-larch-prune.sh:248-251`](skills/upgrade-larch/scripts/test-upgrade-larch-prune.sh): The case is still invoked as `unparseable-session-prunes-normally` and failure messages keep that label, but the assertions now require **all** seeded cache dirs to remain when the cache is under the cap (no pruning). That name and copy are misleading for anyone triaging failures or reading logs. Rename the `run_case` argument and `fail` strings to something like `unparseable-session-keeps-under-cap` (or `...-no-prune-below-cap`) so the label matches the behavior under test.
+
+### Out-of-Scope Observations
+
+1. **`correctness` (requirements)** — **Latent** — [`skills/upgrade-larch/scripts/upgrade-larch.sh:295-314`](skills/upgrade-larch/scripts/upgrade-larch.sh) and [`skills/upgrade-larch/scripts/upgrade-larch.md:18`](skills/upgrade-larch/scripts/upgrade-larch.md): The cap-prune loop walks a fixed prefix of `SANITIZED_VERSIONS` indices and uses `continue` when a candidate is `LATEST_STABLE` or session-pinned, so it does **not** always drive the cache down to eight directories. **Concrete scenario (unchanged by this branch’s script logic):** ten cached versions `29.1.20`–`29.1.28` plus `29.1.30` after install, with a pin on `29.1.21`, removes only `29.1.20` at `i=0`, then skips `29.1.21` at `i=1` and exits the `PRUNE_COUNT=2` loop, leaving **nine** dirs—exactly what [`skills/upgrade-larch/scripts/test-upgrade-larch-prune.sh:208-223`](skills/upgrade-larch/scripts/test-upgrade-larch-prune.sh) now encodes as success—while the contract line still says “keeps at most 8 cached versions total.” **Suggested fix:** Either document a best-effort cap when pins occupy the oldest slots, or change the prune loop to keep deleting until the count is ≤8 without “burning” iterations on pinned indices. **Why out of scope:** The indexed loop body is not modified in this diff; the mismatch predates the floor-sweep removal.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	nit	correctness	skills/upgrade-larch/scripts/test-upgrade-larch-prune.sh:248-251	Case label `unparseable-session-prunes-normally` contradicts under-cap no-prune assertions.	Failure logs imply pruning should occur; readers misdiagnose regressions.	Rename run_case label and fail() strings to reflect under-cap retention (e.g. unparseable-session-keeps-under-cap).
+1	out_of_scope	latent	correctness	skills/upgrade-larch/scripts/upgrade-larch.sh:295-314 and skills/upgrade-larch/scripts/upgrade-larch.md:18	Doc promises at most 8 cached versions; fixed-index cap loop can leave more when early sorted entries are pinned.	Example: 10 dirs 29.1.20-29.1.28 plus 29.1.30 with pin on 29.1.21 removes only 29.1.20; nine dirs remain (also asserted by the updated active-session test).	Pre-existing: tighten prune algorithm or narrow the written contract to best-effort eight under pin pressure.
+```

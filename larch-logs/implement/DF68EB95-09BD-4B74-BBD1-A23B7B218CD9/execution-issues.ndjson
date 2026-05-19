@@ -1,0 +1,1 @@
+{"phase":"implement","step":"pre-push","category":"Tool Failures","source":"execution-issues.md pre-push refresh","source_sha256":"dcd61b44dd80a60baa2d2b8a95c0c734d821f55b239a8e8256a84489af41e5b0","body":"\n- **Step bump — apply-bump.sh failed (exit 1)**:\n  ```\nAPPLIED=false\nERROR=origin/main has already bumped to 29.8.25; re-classify needed\n  ```\n"}

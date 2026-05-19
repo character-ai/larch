@@ -1,0 +1,20 @@
+FINDING_1: YES
+FINDING_2: EXONERATE -- Historical run-log wording is inaccurate, but it is not worth a future tracking issue.
+FINDING_3: NO -- The reviewed cap loop does not use the claimed pattern-substitution array removal.
+FINDING_4: EXONERATE -- The wording mismatch is real but too minor for a tracking issue.
+FINDING_5: NO -- The claimed pattern-substitution idiom is not present in the reviewed code.
+FINDING_6: NO -- The alleged substring-removal path is not present in the reviewed cap-prune loop.
+FINDING_7: NO -- This pattern-substitution risk is not present in the reviewed code.
+FINDING_8: NO -- The edit-in-sync footer is a broad maintainer checklist, not a mandatory change list.
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: NO -- The doc wording still accurately says malformed session metadata does not create a prune pin.
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: NO -- Committed implement manifests are documented as normally retaining an in-progress snapshot.
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: YES
+FINDING_18: EXONERATE -- Missing test proof is a legitimate merge-check concern, but not a code finding.
+FINDING_19: EXONERATE -- The optional under-cap retention note is reasonable but not issue-worthy.
+FINDING_20: EXONERATE -- The behavior is inferable from the cap wording, so an extra note is optional.
