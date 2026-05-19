@@ -207,32 +207,87 @@
       {
         "step": "Step 6 — checks second pass",
         "totals": {
-          "input": 4,
-          "cache_read": 1060996,
-          "cache_create": 1184,
-          "output": 607,
-          "total": 1062791
+          "input": 5,
+          "cache_read": 1326806,
+          "cache_create": 1446,
+          "output": 751,
+          "total": 1329008
         },
         "skills": [
           {
             "skill": "larch:implement",
             "totals": {
-              "input": 4,
-              "cache_read": 1060996,
-              "cache_create": 1184,
-              "output": 607,
-              "total": 1062791
+              "input": 5,
+              "cache_read": 1326806,
+              "cache_create": 1446,
+              "output": 751,
+              "total": 1329008
+            }
+          }
+        ]
+      },
+      {
+        "step": "Step 8a — changelog",
+        "totals": {
+          "input": 0,
+          "cache_read": 0,
+          "cache_create": 0,
+          "output": 0,
+          "total": 0
+        },
+        "skills": []
+      },
+      {
+        "step": "Step 8b — rebase",
+        "totals": {
+          "input": 19,
+          "cache_read": 5137429,
+          "cache_create": 26394,
+          "output": 6817,
+          "total": 5170659
+        },
+        "skills": [
+          {
+            "skill": "larch:implement",
+            "totals": {
+              "input": 19,
+              "cache_read": 5137429,
+              "cache_create": 26394,
+              "output": 6817,
+              "total": 5170659
+            }
+          }
+        ]
+      },
+      {
+        "step": "Step 4 — commit implementation",
+        "totals": {
+          "input": 29,
+          "cache_read": 8222921,
+          "cache_create": 15133,
+          "output": 11846,
+          "total": 8249929
+        },
+        "skills": [
+          {
+            "skill": "larch:implement",
+            "totals": {
+              "input": 29,
+              "cache_read": 8222921,
+              "cache_create": 15133,
+              "output": 11846,
+              "total": 8249929
             }
           }
         ]
       }
     ],
     "totals": {
-      "input": 219,
-      "cache_read": 50996278,
-      "cache_create": 118413,
-      "output": 59391,
-      "total": 51174301
+      "input": 268,
+      "cache_read": 64622438,
+      "cache_create": 160202,
+      "output": 78198,
+      "total": 64861106
     }
   },
   "codex": {
@@ -311,6 +366,30 @@
       },
       {
         "step": "Step 6 — checks second pass",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 8a — changelog",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 8b — rebase",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 4 — commit implementation",
         "totals": {
           "input": 0,
           "output": 0,
@@ -400,6 +479,30 @@
       },
       {
         "step": "Step 6 — checks second pass",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 8a — changelog",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 8b — rebase",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 4 — commit implementation",
         "totals": {
           "input": 0,
           "output": 0,

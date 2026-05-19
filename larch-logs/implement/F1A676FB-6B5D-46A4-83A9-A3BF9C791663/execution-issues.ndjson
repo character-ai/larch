@@ -1,0 +1,1 @@
+{"phase":"implement","step":"pre-push","category":"CI Issues","source":"execution-issues.md pre-push refresh","source_sha256":"b19438c085b15b027fb896c745420d96e3c986732293461d52ab3304f5fc670b","body":"\n- **Step rebase — rebase-push.sh --keep-on-conflict failed (exit 1)**:\n  ```\nCONFLICT_FILES=CHANGELOG.md\n  ```\n"}
