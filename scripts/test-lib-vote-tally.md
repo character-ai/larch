@@ -5,7 +5,7 @@ Regression harness for `scripts/lib-vote-tally.sh`. Sources the library and asse
 ## Coverage
 
 - `accept_finding` threshold boundaries: 3-voter 2-YES, 3-voter 1-YES, 2-voter unanimous, 2-voter 1-YES+1-EXO, 1-voter, 0-voter.
-- `vote_for_id`: YES/NO/EXONERATE matching, missing finding → NEUTRAL, anchored-prefix substring guard (FINDING_1 vs FINDING_10).
+- `vote_for_id`: YES/NO/EXONERATE matching, missing finding → JUDGE_ERROR, anchored-prefix substring guard (FINDING_1 vs FINDING_10), zero-parseable-lines voter → JUDGE_ERROR.
 - `reviewer_for_block`: singular `Reviewer`, plural `Reviewers`, missing attribution → `unknown`.
 - `is_security_block`: unfenced detection, backtick-fenced rejection, triple-backtick-fenced rejection, no-space variant.
 - `split_ballot_to_blocks`: per-ID block file creation, voter-instruction prose dropped.

@@ -197,7 +197,7 @@ fi
         printf '**⚠ Degraded plan-review panel: %s judge(s) available. Panel tier: %s.**\n\n' "$eligible_count" "$tier_label"
     fi
     printf '## Findings\n\n'
-    printf '| Item | YES | NO | Exon | Neutral | Result |\n'
+    printf '| Item | YES | NO | Exon | JErr | Result |\n'
     printf '|---|---:|---:|---:|---:|---|\n'
 
     for block in "${block_files[@]+"${block_files[@]}"}"; do
@@ -205,19 +205,19 @@ fi
         yes=0
         no=0
         exonerate=0
-        neutral=0
+        judge_error=0
         for voter_file in "${VOTER_FILES[@]}"; do
             vote=$(vote_for_id "$id" "$voter_file")
             case "$vote" in
                 YES) yes=$((yes + 1)) ;;
                 NO) no=$((no + 1)) ;;
                 EXONERATE) exonerate=$((exonerate + 1)) ;;
-                *) neutral=$((neutral + 1)) ;;
+                *) judge_error=$((judge_error + 1)) ;;
             esac
         done
 
         result=$(classify_result "$yes" "$no" "$exonerate" "$eligible_count")
-        printf '| %s | %s | %s | %s | %s | %s |\n' "$id" "$yes" "$no" "$exonerate" "$neutral" "$result"
+        printf '| %s | %s | %s | %s | %s | %s |\n' "$id" "$yes" "$no" "$exonerate" "$judge_error" "$result"
 
         reviewer=$(reviewer_for_block "$block")
         kind="finding"
@@ -248,7 +248,7 @@ fi
                 :
             else
                 cat "$block" >> "$oos_file"
-                printf '\nVote tally: YES=%s NO=%s EXON=%s NEUTRAL=%s Result=%s\n\n' "$yes" "$no" "$exonerate" "$neutral" "$result" >> "$oos_file"
+                printf '\nVote tally: YES=%s NO=%s EXON=%s JUDGE_ERROR=%s Result=%s\n\n' "$yes" "$no" "$exonerate" "$judge_error" "$result" >> "$oos_file"
                 if [[ "$result" == "accepted" ]]; then
                     cat "$block" >> "$oos_accepted_local"
                     printf '\n' >> "$oos_accepted_local"

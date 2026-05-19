@@ -126,12 +126,19 @@ sub-header. In quick mode the body contains `"Quick mode — no plan review voti
 One JSON object per `/implement` session with the same tally envelope fields as
 `plan-review-tally.json`. `exonerated_count` covers findings voted `exonerated`
 (valid but not worth implementing in this PR), `neutral_count` covers tie votes
-with no clear consensus, and `rejected_count` counts only findings where the panel
-voted strictly `rejected` (voted down). The body contains the code-review voting
-outcome and a round-by-round summary. It also includes rejected code-review
-findings under a `## Rejected Code Review Findings` sub-header — only findings
-with outcome `rejected` appear here. Exonerated and neutral findings are counted
-in the envelope but not listed separately.
+with no clear consensus (finding-level result from `classify_result()`), and
+`rejected_count` counts only findings where the panel voted strictly `rejected`
+(voted down). The body contains the code-review voting outcome and a round-by-round
+summary. It also includes rejected code-review findings under a
+`## Rejected Code Review Findings` sub-header — only findings with outcome
+`rejected` appear here. Exonerated and neutral findings are counted in the envelope
+but not listed separately.
+
+**Note**: `neutral_count` covers finding-level tied votes and is distinct from
+`JUDGE_ERROR`, which is a per-judge-per-finding state (the parser fallback when a
+voter's ballot did not contain a parseable vote line for that finding). `JUDGE_ERROR`
+appears in the per-finding vote breakdown table under the `JERR` column header but
+is not separately enumerated in the tally envelope counters.
 
 ### review-findings-full.jsonl
 

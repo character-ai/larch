@@ -43,7 +43,7 @@ OOS_3: EXONERATE — <one-line reason>
 ...
 ```
 
-Valid vote tokens are `YES`, `NO`, and `EXONERATE`. If a voter's output contains valid votes for some findings but is missing votes for others, use the valid votes and treat only the missing findings as NEUTRAL abstentions. Abstentions do not reduce the panel tier; the quorum basis is the number of available voter files for the round.
+Valid vote tokens are `YES`, `NO`, and `EXONERATE`. If a voter's output contains valid votes for some findings but is missing votes for others, use the valid votes; missing ballot entries produce `JUDGE_ERROR` at the per-voter level (parser fallback). `JUDGE_ERROR` does not reduce the panel tier; the quorum basis is the number of available voter files for the round.
 
 ## Threshold Rules
 

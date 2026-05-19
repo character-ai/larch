@@ -8,7 +8,7 @@
 
 | Function | Inputs | Output | Exit |
 |---|---|---|---|
-| `vote_for_id <id> <voter_file>` | finding/oos id (e.g. `FINDING_3`), voter output file | stdout: `YES` \| `NO` \| `EXONERATE` \| `NEUTRAL` | 0 |
+| `vote_for_id <id> <voter_file>` | finding/oos id (e.g. `FINDING_3`), voter output file | stdout: `YES` \| `NO` \| `EXONERATE` \| `JUDGE_ERROR` | 0 |
 | `reviewer_for_block <block_file>` | per-block markdown file | stdout: reviewer attribution string (or `unknown`) | 0 |
 | `is_security_block <block_file>` | per-block markdown file | — | 0 (security tag found, unfenced) \| 1 (not found) |
 | `accept_finding <yes> <no> <exonerate> <eligible>` | vote counts and eligible voter count | — | 0 (accept) \| 1 (reject) |
@@ -22,10 +22,10 @@
 
 - `eligible >= 3` → `yes >= 2` accepts.
 - `eligible == 2` → `yes == 2` (unanimous) accepts.
-- `eligible == 1` → `yes == 1` accepts; `NO`, `EXONERATE`, or `NEUTRAL` do not accept.
+- `eligible == 1` → `yes == 1` accepts; `NO`, `EXONERATE`, or `JUDGE_ERROR` do not accept.
 - `eligible == 0` → never accepts; caller escalates to main-agent adjudication.
 
-The `eligible` argument is the panel-level count of available voter files (non-failed voter outputs), not the per-finding count of YES/NO/EXONERATE responses. Missing votes from available judges are NEUTRAL abstentions and do not reduce the panel tier.
+The `eligible` argument is the panel-level count of available voter files (non-failed voter outputs), not the per-finding count of YES/NO/EXONERATE responses. Missing votes from available judges produce `JUDGE_ERROR` (parser fallback — ballot entry absent or unparseable) and do not reduce the panel tier.
 
 `classify_result` uses the same tiers. In a single-judge panel, `YES` is `accepted`, `NO` is `rejected`, and `EXONERATE` is `exonerated` for scoreboard purposes even though the finding is not accepted for implementation.
 

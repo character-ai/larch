@@ -5,14 +5,14 @@
 #
 # Contract documented in scripts/lib-vote-tally.md.
 
-# vote_for_id: prints YES | NO | EXONERATE | NEUTRAL for a (id, voter_file) pair.
+# vote_for_id: prints YES | NO | EXONERATE | JUDGE_ERROR for a (id, voter_file) pair.
 # Matches an anchored `<id>:` prefix and the first vote token after the colon to
 # avoid substring collisions and prose tokens overriding the actual vote.
-# Returns NEUTRAL on missing match.
+# Returns JUDGE_ERROR on missing match (parser fallback — ballot entry absent or unparseable).
 vote_for_id() {
     local id="$1" file="$2"
     awk -v id="$id" '
-      BEGIN { result="NEUTRAL" }
+      BEGIN { result="JUDGE_ERROR" }
       {
         line=$0
         upper=toupper(line)

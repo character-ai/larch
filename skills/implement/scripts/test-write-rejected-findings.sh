@@ -30,7 +30,7 @@ if [ -s "$case_dir/logs/implement/run-3/rejected-findings.md" ]; then pass 'opti
 # full-file preference: when rejected-findings-full.md exists it should be copied
 full_dir="$TMP_ROOT/full"; mkdir -p "$full_dir"
 printf 'bare\n' > "$full_dir/rejected-findings.md"
-printf '### [rejected] FINDING_1\n\nFull detail body in /Users/example/project/file.txt with token sk-ant-abcdefghijklmnopqrstuvwxyz0123456789ABCD.\n\nVote tally: YES=0 NO=2 EXON=0 NEUTRAL=0\n' \
+printf '### [rejected] FINDING_1\n\nFull detail body in /Users/example/project/file.txt with token sk-ant-abcdefghijklmnopqrstuvwxyz0123456789ABCD.\n\nVote tally: YES=0 NO=2 EXON=0 JUDGE_ERROR=0\n' \
     > "$full_dir/rejected-findings-full.md"
 out=$("$HELPER" --implement-tmpdir "$full_dir" --run-id run-4 --log-root "$full_dir/logs")
 assert_contains 'STATUS=ok' "$out" 'full-file status ok'
