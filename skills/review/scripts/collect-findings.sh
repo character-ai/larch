@@ -264,7 +264,7 @@ parse_output() {
     if file_has_no_findings_sentinel "$file"; then
         return 0
     fi
-    # In description mode dual-list output: split on ### In-Scope Findings vs ### Out-of-Scope Observations (#659). In diff mode single-list output: preserve entire output when headers absent. Both modes: awk handles dual-section with fail-open. Specialist dual-section format matches description headers. Claude generic produces single-list output; [OUT_OF_SCOPE] prefix routes OOS.
+    # In description mode dual-list output: split on ### In-Scope Findings vs ### Out-of-Scope Observations (#659). In diff mode single-list output: preserve entire output when headers absent. Both modes: awk handles dual-section with fail-open. Specialist dual-section format matches description headers. Claude generic produces single-list output; [OUT_OF_SCOPE] prefix routes OOS. Only the known merge-base preamble heading activates skip mode so noncanonical ##/### reviewer headings still fail open instead of silently dropping findings.
     awk -v label="$label" -v mode="$MODE" '
     BEGIN { oos=0; body=""; title=""; skip=0 }
     function flush() {
@@ -280,7 +280,7 @@ parse_output() {
     }
     /^### Out-of-Scope Observations/ { flush(); oos=1; skip=0; next }
     /^### In-Scope Findings/ { flush(); oos=0; skip=0; next }
-    /^##/ { flush(); skip=1; next }
+    /^## Commits since merge-base/ { flush(); skip=1; next }
     skip { next }
     /^[-*] / || /^[0-9]+\./ {
         flush()

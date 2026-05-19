@@ -208,6 +208,35 @@ if grep -Fq '### FINDING_2:' "$TMP/findings-preamble.md"; then
     exit 1
 fi
 
+# noncanonical-heading-fail-open: generic ## headings must not suppress findings
+noncanonical="$TMP/noncanonical-heading-output.txt"
+cat > "$noncanonical" <<'EOF'
+## Findings
+- Real parser issue survives noncanonical heading.
+EOF
+printf '0\n' > "$noncanonical.done"
+printf 'STATUS=clean\n' > "$noncanonical.dirty-tree"
+out=$(WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.01 "$SCRIPT" --claude-output-files "$noncanonical" --mode diff --timeout 1 --findings-file "$TMP/findings-noncanonical.md" --oos-file "$TMP/oos-noncanonical.md")
+assert_stdout_cap "$out"
+grep -Fq 'FINDINGS_COUNT=1' <<< "$out"
+grep -Fq '### FINDING_1: Real parser issue survives noncanonical heading.' "$TMP/findings-noncanonical.md"
+
+# unknown-third-level-heading-fail-open: unknown ### headings must not trigger skip
+unknown_h3="$TMP/unknown-h3-output.txt"
+cat > "$unknown_h3" <<'EOF'
+### In-Scope Findings
+- First finding remains in scope.
+### Notes
+- Second finding after unknown heading still parses.
+EOF
+printf '0\n' > "$unknown_h3.done"
+printf 'STATUS=clean\n' > "$unknown_h3.dirty-tree"
+out=$(WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.01 "$SCRIPT" --claude-output-files "$unknown_h3" --mode description --timeout 1 --findings-file "$TMP/findings-unknown-h3.md" --oos-file "$TMP/oos-unknown-h3.md")
+assert_stdout_cap "$out"
+grep -Fq 'FINDINGS_COUNT=2' <<< "$out"
+grep -Fq '### FINDING_1: First finding remains in scope.' "$TMP/findings-unknown-h3.md"
+grep -Fq '### FINDING_2: Second finding after unknown heading still parses.' "$TMP/findings-unknown-h3.md"
+
 # canonical-3-finding-guard: 3 in-scope + 1 OOS from canonical grammar
 canonical3="$TMP/canonical-3-finding-output.txt"
 cat > "$canonical3" <<'EOF'
