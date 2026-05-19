@@ -1,0 +1,5 @@
+### In-Scope Findings
+
+1. **Nit** `correctness` `docs/run-logs.md:234` says `--design-only` runs skip Step 18, but [skills/implement/SKILL.md](<OPERATOR_REPO_PATH>/skills/implement/SKILL.md:1010) routes design-only completion to Step 16 and Step 18, and Step 17/18 still run `write-final-report.sh`. This makes the final-summary docs contradict the workflow. Update the sentence to say design-only skips Step 8+ PR creation, while terminal cleanup still runs and may refresh the tracking summary with `PR: N/A`.
+
+Validation note: I attempted `make test-ship-pr` and `bash skills/implement/scripts/test-write-final-report.sh`, but the read-only sandbox blocked temp/cache creation under `/tmp` and `/var/folders`, so I could not verify the harnesses here.

@@ -1,0 +1,19 @@
+Reading the ballot and verifying against session context files.
+
+Verifying cited locations in the workspace against the ballot.
+
+FINDING_1: YES
+FINDING_2: NO -- ballot only restates existing idempotent larch-log commit behavior, not a defect
+FINDING_3: EXONERATE -- accurate note on refresh path gating; no GitHub issue warranted
+FINDING_4: NO -- confirms existing failure_capture_path sequencing; nothing to file or fix
+FINDING_5: EXONERATE -- pre-existing redaction nit; optional polish not worth a tracking issue
+FINDING_6: NO -- spurious manifest/changelog entry, not a code-review finding
+FINDING_7: NO -- spurious manifest/changelog entry, not a code-review finding
+FINDING_8: NO -- commit subject ballotized by mistake, not an actionable finding
+FINDING_9: EXONERATE -- same doc ambiguity as FINDING_1; one clarifying edit covers it
+FINDING_10: EXONERATE -- post-create path is explicitly best-effort by design; extra retries add disproportionate complexity
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: EXONERATE -- duplicate/overlap with FINDING_14 on harness coverage
+FINDING_14: YES
+FINDING_15: EXONERATE -- small optional regression guard for a documented escape hatch

@@ -1,0 +1,37 @@
+Gathering the branch diff and commit list, then reviewing `run_pr_create_phase` for correctness (Bash scoping, variable reuse, dangling references).
+
+Verifying SKILL.md wording against behavior and inspecting `write-final-report.sh` for when it posts the tracking comment.
+
+Checking whether `state_set_many` persists `PR_URL` to `ship-pr-state.sh` before the second `write-final-report.sh` reads it.
+
+Checking whether `test-ship-pr.sh` still expects the removed manifest+commit behavior (not in the provided diff).
+
+Commits on branch vs `main` (read-only):
+
+`f3a49121 Drop post-PR-create push to eliminate duplicate CI runs per PR`
+
+---
+
+### In-Scope Findings
+
+**correctness — [scripts/test-ship-pr.sh:769-785](scripts/test-ship-pr.sh)**  
+**Issue:** The pr-create sentinel harness still requires both `larch-log.sh manifest ... --field pr_number=123` and a matching `larch-log.sh commit` during the pr-create phase (`grep` on `larch-log-calls.txt`). The branch removes the post-create `manifest` + `commit` + `git-push` block from `run_pr_create_phase` and replaces it with a pre-`create-pr.sh` `commit` only (no `manifest` with `pr_number`). Unless this harness is updated elsewhere, `make test-harnesses` / `scripts/test-ship-pr.sh` will fail on the pr-create happy path.  
+**Suggested fix:** Update the pr-create flush assertions to match the new call sequence (e.g. expect `write-final-report.sh` / `larch-log.sh commit` before `create-pr.sh`, no `manifest --field pr_number=...` in this phase, and optionally a second `write-final-report` after create); align comment at line 769 with the new contract.
+
+**correctness — [skills/implement/SKILL.md:1680](skills/implement/SKILL.md)**  
+**Issue:** The paragraph contradicts itself and misstates ordering. It still claims: “The first deterministic `larch:final-summary` projection is written in Step 8+ **immediately after** `ship-pr.sh` persists `PR_NUMBER`/`PR_URL`”, but `write-final-report.sh` performs a tracking-issue upsert on every successful run (see [skills/implement/scripts/write-final-report.sh:68-96](skills/implement/scripts/write-final-report.sh)) using `PR_URL` from `ship-pr-state.sh` defaulting to `N/A` when unset ([skills/implement/scripts/write-final-report.sh:51-55](skills/implement/scripts/write-final-report.sh)). The **first** upsert therefore happens at the **start** of `run_pr_create_phase` **before** `state_set_many` persists the live PR ([scripts/ship-pr.sh:951-998](scripts/ship-pr.sh)); the **second** upsert is the one immediately after persist.  
+**Suggested fix:** Reword so “first” distinguishes placeholder file + first API upsert (pre-create, PR `N/A`) from the post-persist refresh with the live URL, and remove the “immediately after persists” clause as written.
+
+---
+
+### Out-of-Scope Observations
+
+**correctness — Bash scoping (`flush_run_id`, `local` in `if`)**  
+**Observation:** In Bash, `local flush_run_id` inside `run_pr_create_phase`’s `if [ "${LARCH_NO_LOGS_COMMIT:-false}" != "true" ]` block ([scripts/ship-pr.sh:964-977](scripts/ship-pr.sh)) is valid; the name remains function-scoped for the rest of the function once that branch runs. No code after the block references `flush_run_id`, `manifest_rc`, or `push_output`. `fail_file` is reassigned before `create-pr.sh`, before the post-create `write-final-report.sh`, and before `gh-pr-body-update.sh`; `rc` is overwritten by each subsequent command substitution — no stale-`rc` bug found for the surviving paths.
+
+**architecture — [scripts/ship-pr.md:70](scripts/ship-pr.md)**  
+**Observation:** Operator-facing doc still describes pr-create writing `pr_number` to the manifest via `larch-log.sh manifest` and committing after PR creation. That no longer matches `run_pr_create_phase` after this change; updating `ship-pr.md` would avoid doc/runtime drift (file not in the provided diff).
+
+---
+
+**Summary:** Scout-scoped variable/scoping review shows no defect in [scripts/ship-pr.sh:936-1015](scripts/ship-pr.sh). The branch likely breaks [scripts/test-ship-pr.sh:769-785](scripts/test-ship-pr.sh) unless updated, and [skills/implement/SKILL.md:1680](skills/implement/SKILL.md) still misstates when the first `larch:final-summary` upsert occurs relative to `state_set_many`.

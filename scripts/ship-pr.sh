@@ -934,7 +934,7 @@ run_pr_prep_phase() {
 }
 
 run_pr_create_phase() {
-    local title out rc pr_number pr_url pr_status repo_args draft_args fail_file _merge_base flush_run_id manifest_rc push_output final_report_output
+    local title out rc pr_number pr_url pr_status repo_args draft_args fail_file _merge_base final_report_output
     _merge_base=$(git merge-base HEAD origin/main 2>/dev/null) || _merge_base=
     if [ -n "$_merge_base" ]; then
         title=$(git log --format=%s "${_merge_base}..HEAD" 2>/dev/null | grep -v '^chore(larch-logs): flush ' | head -1)
@@ -948,6 +948,42 @@ run_pr_create_phase() {
     fi
     draft_args=()
     [ "$(read_state DRAFT)" = "true" ] && draft_args=(--draft)
+    # Write final-summary.md with placeholder PR fields before push so the
+    # commit rides in Push #1 (via create-pr.sh). This also upserts the
+    # tracking-issue larch:final-summary comment before PR creation, so a
+    # helper failure here stalls Step 9b with no PR yet. PR_URL defaults to
+    # "N/A".
+    fail_file=$(failure_capture_path pr-create)
+    final_report_output=$("$SCRIPT_DIR/../skills/implement/scripts/write-final-report.sh" \
+        --implement-tmpdir "$IMPLEMENT_TMPDIR" 2>"$fail_file")
+    rc=$?
+    printf '%s\n' "$final_report_output" >> "$fail_file"
+    if [ "$rc" -ne 0 ] && is_transient_net_signature "$(cat "$fail_file" 2>/dev/null)"; then
+        record_failure pr-create "write-final-report.sh" "$rc" "$fail_file" Warnings
+        exit_transient_net "write-final-report: $final_report_output"
+    fi
+    if [ "$rc" -ne 0 ]; then
+        record_failure pr-create "write-final-report.sh" "$rc" "$fail_file" Warnings
+        exit_stall 9b
+    fi
+    # Fold final-summary.md into the branch before the PR-create push so
+    # the remote PR tip carries it. Gated on LARCH_NO_LOGS_COMMIT; a
+    # best-effort log-commit failure must not block create-pr.sh.
+    if [ "${LARCH_NO_LOGS_COMMIT:-false}" != "true" ]; then
+        local flush_run_id
+        flush_run_id=$(read_state RUN_ID)
+        [ -n "$flush_run_id" ] || flush_run_id="${LARCH_RUN_ID:-${RUN_ID:-$(basename "$IMPLEMENT_TMPDIR")}}"
+        if [ -n "$flush_run_id" ]; then
+            fail_file=$(failure_capture_path pr-create)
+            "$SCRIPT_DIR/larch-log.sh" commit \
+                --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
+                --skill implement \
+                --run-id "$flush_run_id" \
+                > "$fail_file" 2>&1
+            rc=$?
+            [ "$rc" -eq 0 ] || record_failure pr-create "larch-log.sh commit (pre-pr-create)" "$rc" "$fail_file" Warnings
+        fi
+    fi
     fail_file=$(failure_capture_path pr-create)
     out=$("$SCRIPT_DIR/create-pr.sh" --title "$title" --body-file "$IMPLEMENT_TMPDIR/pr-body.md" "${draft_args[@]+"${draft_args[@]}"}" "${repo_args[@]+"${repo_args[@]}"}" 2>"$fail_file")
     rc=$?
@@ -968,61 +1004,21 @@ run_pr_create_phase() {
     pr_url=$(kv_value PR_URL "$out")
     pr_status=$(kv_value PR_STATUS "$out")
     state_set_many PR_NUMBER "$pr_number" PR_URL "$pr_url" PR_TITLE "$title"
+    # Re-run write-final-report.sh with the live PR_URL to refresh the
+    # tracking-issue larch:final-summary comment and tmp summary-final.md for
+    # the upsert. No extra git commit or second push happens here. Best-effort:
+    # a failure here must not stall since the PR was already created.
     fail_file=$(failure_capture_path pr-create)
     final_report_output=$("$SCRIPT_DIR/../skills/implement/scripts/write-final-report.sh" \
-        --implement-tmpdir "$IMPLEMENT_TMPDIR" 2>"$fail_file")
+        --implement-tmpdir "$IMPLEMENT_TMPDIR" --comment-only 2>"$fail_file")
     rc=$?
     printf '%s\n' "$final_report_output" >> "$fail_file"
-    if [ "$rc" -ne 0 ]; then
-        record_failure pr-create "write-final-report.sh" "$rc" "$fail_file" Warnings
-        exit_stall 9b
-    fi
+    [ "$rc" -eq 0 ] || record_failure pr-create "write-final-report.sh post" "$rc" "$fail_file" Warnings
     if [ "$pr_status" = "existing" ]; then
         fail_file=$(failure_capture_path pr-create)
         "$SCRIPT_DIR/gh-pr-body-update.sh" --pr "$pr_number" --body-file "$IMPLEMENT_TMPDIR/pr-body.md" "${repo_args[@]+"${repo_args[@]}"}" > "$fail_file" 2>&1
         rc=$?
         [ "$rc" -eq 0 ] || record_failure pr-create "gh-pr-body-update.sh" "$rc" "$fail_file"
-    fi
-    flush_run_id=$(read_state RUN_ID)
-    if [ -z "$flush_run_id" ]; then
-        flush_run_id="${LARCH_RUN_ID:-${RUN_ID:-$(basename "$IMPLEMENT_TMPDIR")}}"
-    fi
-    if [ -n "$flush_run_id" ]; then
-        manifest_rc=0
-        fail_file=$(failure_capture_path pr-create)
-        "$SCRIPT_DIR/larch-log.sh" manifest \
-            --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
-            --skill implement \
-            --run-id "$flush_run_id" \
-            --field "pr_number=$pr_number" \
-            > "$fail_file" 2>&1
-        rc=$?
-        manifest_rc=$rc
-        [ "$rc" -eq 0 ] || record_failure pr-create "larch-log.sh manifest (pr_number)" "$rc" "$fail_file" Warnings
-        if [ "$manifest_rc" -eq 0 ] && [ "${LARCH_NO_LOGS_COMMIT:-false}" != "true" ]; then
-            fail_file=$(failure_capture_path pr-create)
-            "$SCRIPT_DIR/larch-log.sh" commit \
-                --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
-                --skill implement \
-                --run-id "$flush_run_id" \
-                > "$fail_file" 2>&1
-            rc=$?
-            [ "$rc" -eq 0 ] || record_failure pr-create "larch-log.sh commit (post-pr-create)" "$rc" "$fail_file" Warnings
-            if [ "$rc" -eq 0 ]; then
-                fail_file=$(failure_capture_path pr-create)
-                push_output=$("$SCRIPT_DIR/git-push.sh" 2>"$fail_file")
-                rc=$?
-                printf '%s\n' "$push_output" >> "$fail_file"
-                if [ "$rc" -ne 0 ] && is_transient_net_signature "$(cat "$fail_file" 2>/dev/null)"; then
-                    record_failure pr-create "git-push.sh (post-pr-create)" "$rc" "$fail_file" "CI Issues"
-                    exit_transient_net "post-pr-create-push: $push_output"
-                fi
-                if [ "$rc" -ne 0 ]; then
-                    record_failure pr-create "git-push.sh (post-pr-create)" "$rc" "$fail_file" "CI Issues"
-                    exit_stall 9b
-                fi
-            fi
-        fi
     fi
     advance_phase ci-initial
 }
