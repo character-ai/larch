@@ -1,0 +1,11 @@
+name	type	pattern	expected_outcome	severity
+required-file-presence	file-exists	docs/run-logs-required-files.tsv	all required files present in run-log root	warning
+exon-misclassification	grep-pattern	\| FINDING_.* \| 0 \| 0 \| [1-9][0-9]* \|.*\| rejected \|	no EXON misclassifications in voting-tally.md	high
+oos-category-mangle	jsonl-field	.category not in ["code-quality","risk-integration","correctness","architecture","security"]	all OOS category fields use canonical values	high
+ns-retry-sidecars	file-glob	round-*/*-ns-retry*.txt	no NS-retry sidecar files present	medium
+codex-round1-adherence	jsonl-field	round-([2-9]|[1-9][0-9]+)/panel-manifest.ndjson: .tool=="codex"	Codex absent from round 2+ panel manifests	medium
+codex-generalist-waste	composite	codex-generalist-output.txt == NO_ISSUES_FOUND AND timing > 120s	Codex generalist not wasting time when finding nothing	low
+execution-issues-categories	jsonl-field	.category != "Warnings"	no non-Warnings entries in execution-issues.ndjson	medium
+cache-freshness	manifest-field	manifest.json::larch_version < latest	run used current or recent plugin version	high
+coder-tool	env-field	round-*/coder.env: CODER_TOOL	coder tool recorded in each round	low
+trailing-content-no-issues-found	grep-pattern	^NO_ISSUES_FOUND\n.+	no first-pass files with trailing content after NO_ISSUES_FOUND	medium

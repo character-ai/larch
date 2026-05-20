@@ -1,0 +1,21 @@
+Gathering the branch diff and commit list for a read-only review focused on HTML entities and code quality.
+
+Searching new and modified files for HTML entities and verifying `find-lock-issue.sh` jq logic.
+
+### In-Scope Findings
+
+- **correctness** `.claude/skills/audit-runs/SKILL.md:37` — The concurrency guard tells operators to run `gh issue list ... --search 'created:>5m'`. GitHub issue search `created:` qualifiers are normally absolute timestamps (`created:>YYYY-MM-DD` / full ISO-style dates), so `>5m` is very likely not interpreted as “created in the last five minutes,” which would make the guard ineffective or brittle depending on how `gh` forwards the query. **Suggested fix:** Document a syntax that GitHub’s search actually accepts (absolute cutoff computed in-shell) or drop `--search` in favor of listing recent `audit-report` issues and filtering with `jq` on `createdAt` against “now − 5 minutes.”
+
+- **code-quality** `.claude/skills/audit-runs/SKILL.md:16` — The Usage fence shows `/audit-runs …` while the work is described elsewhere as `/larch:audit-runs`, so an operator following only this file may invoke the wrong slash command or think the skill is wired under a different name. **Suggested fix:** Use the canonical invocable name in the Usage block (or one line that states the alias relationship explicitly).
+
+- **code-quality** `.claude/skills/audit-runs/SKILL.md:36` — Pre-flight step 2 documents `gh repo view <--repo> --json url`, which reads like invalid or placeholder-corrupted CLI text (`<--repo>` is not a standard `gh` operand pattern and is easy to mis-copy). **Suggested fix:** Match established repo wording (for example `gh repo view -R owner/name --json url` or `gh repo view owner/name --json url` with a clear variable for the `--repo` argument).
+
+- **code-quality** `.claude/skills/audit-runs/scripts/test-audit-runs.sh:171` — `bad_body="## Summary\nNo frontmatter here"` does not produce a newline between the two fragments in Bash (double-quoted strings do not treat `\n` as a line break), so the test data does not reflect the stated “missing frontmatter” shape as literally as the label suggests, even though the assertion can still pass because there is no `---` block. **Suggested fix:** Use `$'## Summary\nNo frontmatter here'` or a real multi-line assignment so the fixture matches real issue-body layout.
+
+### Out-of-Scope Observations
+
+- A repo-wide search of [.claude/skills/audit-runs/](.claude/skills/audit-runs/) and [skills/fix-issue/scripts/find-lock-issue.sh](skills/fix-issue/scripts/find-lock-issue.sh) found no HTML entities (`&lt;`, `&gt;`, `&amp;`, `&quot;`); angle brackets in [`.claude/skills/audit-runs/SKILL.md`](.claude/skills/audit-runs/SKILL.md) and comparison text in [`.claude/skills/audit-runs/scans.tsv`](.claude/skills/audit-runs/scans.tsv) appear as literal characters in the working tree, so the scout-note concern about entity-encoded patterns in those files is not supported by the current branch content.
+
+- Branch commit (since merge-base with `main`): `dbb15504 Add /larch:audit-runs skill and audit-report label filter for /fix-issue`.
+
+- [skills/fix-issue/scripts/find-lock-issue.sh](skills/fix-issue/scripts/find-lock-issue.sh) label filtering and the new fixtures in [skills/fix-issue/scripts/test-find-lock-issue.sh](skills/fix-issue/scripts/test-find-lock-issue.sh) are internally consistent on review of the diff (explicit path fetches `labels`, auto-pick threads `labels` into each row, and tests stub the new shape); no additional code-quality defect was identified there from static review alone.

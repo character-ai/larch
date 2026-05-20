@@ -1,0 +1,29 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: NO -- it states the entity-encoding concern is unsupported, not a defect to track
+FINDING_6: NO -- commit metadata is not a review finding
+FINDING_7: NO -- it records that no defect was identified
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: NO -- current configured review rounds are single-digit, so round-10 is an unsupported hypothetical
+FINDING_17: YES
+FINDING_18: YES
+FINDING_19: YES
+FINDING_20: YES
+FINDING_21: YES
+FINDING_22: YES
+FINDING_23: EXONERATE -- schema lint for an unused dev-only registry is more ceremony than warranted now
+FINDING_24: YES
+FINDING_25: EXONERATE -- converting prompt logic into shared production code is too much for this dev-only harness
+FINDING_26: YES
+FINDING_27: YES
+FINDING_28: YES
+FINDING_29: EXONERATE -- injection hardening guidance is valid, but the finding is speculative without a concrete current interpolation path

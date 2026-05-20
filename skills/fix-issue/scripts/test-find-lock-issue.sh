@@ -67,6 +67,12 @@
 #  22. explicit-target picks an issue with no GO comment (no-GO path) →
 #      exit 0; ISSUE_NUMBER=220 LOCK_ACQUIRED=true. Confirms the explicit
 #      path uses --lock-no-go when GO is absent.
+#  23. auto-pick skips audit-report labeled issue (#2462 regression) →
+#      exit 0; ISSUE_NUMBER=231 (audit-report #230 skipped). Confirms the
+#      label filter in auto-pick rejects issues labeled 'audit-report'.
+#  24. explicit-target refuses audit-report labeled issue (#2462 regression)
+#      → exit 2; ELIGIBLE=false with error mentioning 'audit-report'.
+#      Confirms the label check in the explicit-target path.
 #
 # Stub gh dispatches on positional + json args. Each fixture writes a stub
 # state file under a per-fixture tmpdir; the stub reads the file to decide
@@ -194,11 +200,20 @@ dispatch_issue_view() {
         fi
         prev="$a"
     done
+    # Per-issue LABELS support: ISSUE_<N>_LABELS may be a JSON array string
+    # like '["audit-report","bug"]'. Default: empty array.
+    local var_labels="ISSUE_${issue}_LABELS"
+    local labels_json
+    labels_json="${!var_labels:-[]}"
+    # Convert flat name array to gh's [{name:...},...] format for --json labels.
+    local labels_objects
+    labels_objects=$(printf '%s' "$labels_json" | jq -c '[.[] | {name: .}]' 2>/dev/null || printf '[]')
     local json
-    json=$(printf '{"number":%s,"state":"%s","url":"https://%s/stub/repo/issues/%s","title":%s,"body":%s,"createdAt":"2024-01-01T00:00:00Z"}' \
+    json=$(printf '{"number":%s,"state":"%s","url":"https://%s/stub/repo/issues/%s","title":%s,"body":%s,"createdAt":"2024-01-01T00:00:00Z","labels":%s}' \
         "$issue" "$state" "$host" "$issue" \
         "$(printf '%s' "$title" | jq -R -s '.')" \
-        "$(printf '%s' "$body" | jq -R -s '.')")
+        "$(printf '%s' "$body" | jq -R -s '.')" \
+        "$labels_objects")
     if [[ -n "$jq_filter" ]]; then
         printf '%s' "$json" | jq -r "$jq_filter"
     else
@@ -1243,6 +1258,67 @@ assert_contains "$OUT" "ISSUE_NUMBER=220" "[22] ISSUE_NUMBER=220"
 assert_contains "$OUT" "LOCK_ACQUIRED=true" "[22] LOCK_ACQUIRED=true (--lock-no-go succeeded)"
 assert_contains "$OUT" "RENAMED=true" "[22] RENAMED=true"
 unset RUNTIME_COMMENTS_DIR
+
+# ---------------------------------------------------------------------------
+# Fixture 23: auto-pick skips an issue labeled 'audit-report'.
+# Two candidates: #230 (audit-report label) and #231 (no label).
+# Expect #231 to be picked; #230 skipped with "has label 'audit-report'".
+# ---------------------------------------------------------------------------
+echo "Fixture 23: auto-pick skips audit-report labeled issue"
+run_fixture "fixture-23"
+mkdir -p "$TMPROOT/fixture-23/runtime-comments"
+export RUNTIME_COMMENTS_DIR="$TMPROOT/fixture-23/runtime-comments"
+{
+    echo "RUNTIME_COMMENTS_DIR=\"\${RUNTIME_COMMENTS_DIR:-}\""
+    # Stub ignores --jq; emit the already-filtered shape with labels included.
+    # #230 has audit-report label; #231 has no labels.
+    OPEN_ISSUES_LINES='{"number":230,"title":"Audit report issue","labels":["audit-report"]}
+{"number":231,"title":"Normal eligible issue","labels":[]}'
+    printf "OPEN_ISSUES_JSON='%s'\n" "$OPEN_ISSUES_LINES"
+    echo "ISSUE_230_COMMENTS='$(make_comments_json GO)'"
+    echo "ISSUE_231_COMMENTS='$(make_comments_json GO)'"
+    echo "RENAME_FAIL=false"
+} > "$STUB_STATE_FILE"
+
+OUT_FILE="$TMPROOT/fixture-23/stdout.txt"
+ERR_FILE="$TMPROOT/fixture-23/stderr.txt"
+EXIT_CODE=0
+with_sterile_repo "fixture-23" "$SCRIPT" >"$OUT_FILE" 2>"$ERR_FILE" || EXIT_CODE=$?
+
+OUT=$(cat "$OUT_FILE")
+ERR=$(cat "$ERR_FILE")
+
+assert_equal "$EXIT_CODE" "0" "[23] exit code 0 (eligible issue picked despite audit-report candidate)"
+assert_contains "$OUT" "ELIGIBLE=true" "[23] ELIGIBLE=true"
+assert_contains "$OUT" "ISSUE_NUMBER=231" "[23] ISSUE_NUMBER=231 (audit-report #230 skipped)"
+assert_contains "$OUT" "LOCK_ACQUIRED=true" "[23] LOCK_ACQUIRED=true"
+assert_contains "$ERR" "Skipping issue #230: has label 'audit-report'" "[23] stderr confirms audit-report skip"
+unset RUNTIME_COMMENTS_DIR
+
+# ---------------------------------------------------------------------------
+# Fixture 24: explicit-target refuses an issue labeled 'audit-report'.
+# Passing issue #240 (which has the audit-report label) should exit 2.
+# ---------------------------------------------------------------------------
+echo "Fixture 24: explicit-target refuses audit-report labeled issue"
+run_fixture "fixture-24"
+{
+    echo "ISSUE_STATE=OPEN"
+    echo "ISSUE_TITLE='[Run Logs Audit Report 2026-05-20T19:30Z] PRs #2430-#2440'"
+    echo "ISSUE_240_LABELS='[\"audit-report\"]'"
+    echo "RENAME_FAIL=false"
+} > "$STUB_STATE_FILE"
+
+OUT_FILE="$TMPROOT/fixture-24/stdout.txt"
+ERR_FILE="$TMPROOT/fixture-24/stderr.txt"
+EXIT_CODE=0
+with_sterile_repo "fixture-24" "$SCRIPT" 240 >"$OUT_FILE" 2>"$ERR_FILE" || EXIT_CODE=$?
+
+OUT=$(cat "$OUT_FILE")
+ERR=$(cat "$ERR_FILE")
+
+assert_equal "$EXIT_CODE" "2" "[24] exit code 2 (audit-report issue refused)"
+assert_contains "$OUT" "ELIGIBLE=false" "[24] ELIGIBLE=false"
+assert_contains "$OUT" "audit-report" "[24] error mentions audit-report label"
 
 # ---------------------------------------------------------------------------
 # Summary
