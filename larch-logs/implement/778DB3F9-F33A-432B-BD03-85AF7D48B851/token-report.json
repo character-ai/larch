@@ -284,21 +284,54 @@
       {
         "step": "Step 8b — rebase",
         "totals": {
-          "input": 0,
-          "cache_read": 0,
-          "cache_create": 0,
-          "output": 0,
-          "total": 0
+          "input": 10,
+          "cache_read": 1792549,
+          "cache_create": 243761,
+          "output": 1552,
+          "total": 2037872
         },
-        "skills": []
+        "skills": [
+          {
+            "skill": "inferred:Step 8b — rebase",
+            "totals": {
+              "input": 10,
+              "cache_read": 1792549,
+              "cache_create": 243761,
+              "output": 1552,
+              "total": 2037872
+            }
+          }
+        ]
+      },
+      {
+        "step": "Step 7 — commit review fixes",
+        "totals": {
+          "input": 5,
+          "cache_read": 1277715,
+          "cache_create": 3479,
+          "output": 3875,
+          "total": 1285074
+        },
+        "skills": [
+          {
+            "skill": "inferred:Step 7 — commit review fixes",
+            "totals": {
+              "input": 5,
+              "cache_read": 1277715,
+              "cache_create": 3479,
+              "output": 3875,
+              "total": 1285074
+            }
+          }
+        ]
       }
     ],
     "totals": {
-      "input": 213,
-      "cache_read": 38329998,
-      "cache_create": 884483,
-      "output": 104287,
-      "total": 39318981
+      "input": 228,
+      "cache_read": 41400262,
+      "cache_create": 1131723,
+      "output": 109714,
+      "total": 42641927
     }
   },
   "codex": {
@@ -409,6 +442,14 @@
       },
       {
         "step": "Step 8b — rebase",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 7 — commit review fixes",
         "totals": {
           "input": 0,
           "output": 0,
@@ -531,16 +572,24 @@
       {
         "step": "Step 8b — rebase",
         "totals": {
-          "input": 164,
-          "output": 164,
-          "total": 328
+          "input": 328,
+          "output": 328,
+          "total": 656
+        }
+      },
+      {
+        "step": "Step 7 — commit review fixes",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
         }
       }
     ],
     "totals": {
-      "input": 660705,
-      "output": 70368,
-      "total": 6174401
+      "input": 660869,
+      "output": 70532,
+      "total": 6174729
     }
   }
 }
