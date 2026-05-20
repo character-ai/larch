@@ -241,7 +241,7 @@ check_and_retry_voter_parse_rate() {
         *.txt) first_pass_sidecar="${voter_path%.txt}-first-pass.txt" ;;
         *) first_pass_sidecar="${voter_path}-first-pass" ;;
     esac
-    rm -f "$first_pass_sidecar"
+    rm -f "$first_pass_sidecar" || true
     status=$(check_voter_parse_rate "$voter_path" "$voter_tool" "$slot_num" silent | parse_rate_status_from_output)
     [[ "$status" == "NOT_SUBSTANTIVE" ]] || { printf '%s\n' "$status"; return 0; }
 
@@ -263,6 +263,8 @@ check_and_retry_voter_parse_rate() {
             if cp "$voter_path" "$first_pass_sidecar" 2>/dev/null; then
                 # Stderr so callers that capture this function's stdout (parse-rate status) are not polluted.
                 { emit_breadcrumb "voter-${voter_tool}: first-pass content preserved at $(basename "$first_pass_sidecar") (parse-rate retry succeeded)"; } >&2
+            else
+                larch_err "dispatch-code-voters.sh: warning: failed to preserve first-pass voter output at $first_pass_sidecar after parse-rate retry succeeded"
             fi
             mv "$retry_output" "$voter_path"
             if [[ -f "${retry_output}.done" ]]; then
