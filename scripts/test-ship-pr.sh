@@ -882,6 +882,17 @@ else
 fi
 rm -rf "$sentinel_dir"
 
+# PR title: oldest commit (tail -1) with issue number prefix.
+root=$(make_repo pr_title_oldest_with_issue_num)
+tmp=$(make_tmpdir)
+git -C "$root" commit --allow-empty -q -m "chore(larch-logs): flush test-run"
+git -C "$root" commit --allow-empty -q -m "Bump version to 1.0.1"
+write_state "$tmp/ship-pr-state.sh" pr-create
+clear_pr_state "$tmp/ship-pr-state.sh"
+run_subject "$root" "$tmp" "$tmp/rc"
+assert_rc "$tmp/rc" 0 "pr-title oldest: exits 0"
+assert_state_line "$tmp/ship-pr-state.sh" "PR_TITLE=Fixes #7: initial" "pr-title: oldest commit with issue prefix used as PR title"
+
 # Postmerge manifest finalization: with PR_CLOSED=true, larch-log manifest runs.
 root=$(make_repo postmerge_flush)
 tmp=$(make_tmpdir)

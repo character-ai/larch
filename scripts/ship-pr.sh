@@ -939,15 +939,17 @@ run_pr_prep_phase() {
 }
 
 run_pr_create_phase() {
-    local title out rc pr_number pr_url pr_status repo_args draft_args fail_file _merge_base final_report_output
+    local title out rc pr_number pr_url pr_status repo_args draft_args fail_file _merge_base final_report_output issue_num
     emit_breadcrumb "→ ship-pr: opening PR"
     _merge_base=$(git merge-base HEAD origin/main 2>/dev/null) || _merge_base=
     if [ -n "$_merge_base" ]; then
-        title=$(git log --format=%s "${_merge_base}..HEAD" 2>/dev/null | grep -v '^chore(larch-logs): flush ' | head -1)
+        title=$(git log --format=%s "${_merge_base}..HEAD" 2>/dev/null | grep -v '^chore(larch-logs): flush ' | tail -1)
     else
-        title=$(git log --format=%s HEAD 2>/dev/null | grep -v '^chore(larch-logs): flush ' | head -1)
+        title=$(git log --format=%s HEAD 2>/dev/null | grep -v '^chore(larch-logs): flush ' | tail -1)
     fi
     title=${title:-"Implement requested changes"}
+    issue_num=$(read_state ISSUE_NUMBER)
+    [ -n "$issue_num" ] && title="Fixes #${issue_num}: ${title}"
     repo_args=()
     if [ -n "$(read_state REPO)" ]; then
         repo_args=(--repo "$(read_state REPO)")
