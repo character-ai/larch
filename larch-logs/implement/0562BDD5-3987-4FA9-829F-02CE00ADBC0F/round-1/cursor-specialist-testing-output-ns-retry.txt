@@ -1,0 +1,19 @@
+Gathering the diff and commit list for a read-only review focused on tests, CI, and regression risk.
+
+Tracing how description-mode builds OOS titles so we can verify the normalization path and edge cases.
+
+Checking whether `make lint` runs the harness shards that include these tests:
+
+### In-Scope Findings
+
+**1.** **Nit** (`risk-integration`) [skills/review/scripts/test-collect-findings.sh](skills/review/scripts/test-collect-findings.sh) (new block ~407–427) and [skills/review/scripts/collect-findings.sh:392–403](skills/review/scripts/collect-findings.sh). The plan’s edge case “`[OUT_OF_SCOPE] **` … but no `` [`…`] `` link → `fileref=""` → `title='[OUT_OF_SCOPE] $category'`” is implemented but not exercised; the new regression only covers the branch with a bracketed backtick path. **Impact:** A future edit could break the no-link branch and `make lint` / shard-13 would still pass. **Fix:** Add a second reviewer fixture under `### Out-of-Scope Observations` with `- **cat** — plain text` (no `` [`path`] ``) and assert `grep -Fq '### FINDING_k: [OUT_OF_SCOPE] sometag'` without a `: path` suffix and stable `OOS_COUNT`.
+
+### Out-of-Scope Observations
+
+**1.** **Nit** (`architecture`) [skills/review/scripts/collect-findings.sh:268–277](skills/review/scripts/collect-findings.sh). If a reviewer already prefixes an OOS bullet with `[OUT_OF_SCOPE] ` and the line still starts with `**` after the awk-added prefix, the title can become `[OUT_OF_SCOPE] [OUT_OF_SCOPE] **…`, which does not match `[[ "$title" == "[OUT_OF_SCOPE] **"* ]]` and skips normalization. **Why out of scope:** The `prefix=oos ? "[OUT_OF_SCOPE] "` behavior predates this diff; this branch does not change that awk logic.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	nit	risk-integration	skills/review/scripts/test-collect-findings.sh:407-427;skills/review/scripts/collect-findings.sh:392-403	Plan-documented OOS edge case (bold markdown without bracketed backtick link) has no regression test	Refactor could drop or corrupt the fileref-empty branch; CI would not fail because the new test always includes [`path`]	Add a second OOS bullet with **category** and no [`...`] link; assert compact [OUT_OF_SCOPE] title and OOS_COUNT
+1	out_of_scope	nit	architecture	skills/review/scripts/collect-findings.sh:268-277	Double [OUT_OF_SCOPE] prefix can prevent bold-markdown normalization when reviewers self-prefix bullets	Reviewer writes [OUT_OF_SCOPE] **cat** in OOS section; awk adds another prefix; normalization guard does not match	Pre-existing prefix behavior; not introduced by this diff
+```

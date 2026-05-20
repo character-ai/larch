@@ -1,0 +1,13 @@
+FINDING_1: YES
+FINDING_2: EXONERATE -- Legitimate edge case, but self-prefixing inside the OOS section is not worth tracking separately.
+FINDING_3: NO -- Trivial pre-existing dead binding with no behavioral impact.
+FINDING_4: NO -- Duplicate trivial unused-variable cleanup, not a review finding.
+FINDING_5: NO -- The claimed parser mismatch is not substantiated; both paths effectively stop at the first closing bold marker.
+FINDING_6: NO -- Documentation nuance is too minor and the current contract remains understandable.
+FINDING_7: NO -- The doc only promises the path form for bullets with a bracketed file link.
+FINDING_8: NO -- The cited wording does not claim file:lines extraction in the current doc.
+FINDING_9: NO -- Malformed category text containing inner bold delimiters is outside the supported format.
+FINDING_10: NO -- The double-space scenario is not produced by the prose parser’s whitespace stripping.
+FINDING_11: NO -- The example parses as the first bold span; the claimed longest-suffix bug is incorrect.
+FINDING_12: NO -- The documented path form is scoped to bullets that include a bracketed link.
+FINDING_13: EXONERATE -- Legitimate optional coverage gap, but the fallback branch is simple and not worth blocking on.
