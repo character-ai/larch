@@ -1,0 +1,13 @@
+Gathering the diff, commit list, and relevant source sections to verify test coverage and ID assignment correctness.
+
+Verifying OOS ID assignment in `compose-review-findings.sh` and scanning tests for coverage of all five focus-area tags.
+
+### In-Scope Findings
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+- **Synthetic IDs:** In [`scripts/compose-review-findings.sh`](scripts/compose-review-findings.sh) `code-review-oos` handling (`217-231`), each `### FINDING_*: [OUT_OF_SCOPE] …` line increments `counter` and sets `pending_id` to `OOS_CR${round}_${counter}` via `synthetic_id`. The new fixture has seven such headers in order, so `OOS_CR1_1`–`OOS_CR1_7` line up with the seven assertions in [`scripts/test-compose-review-findings.sh`](scripts/test-compose-review-findings.sh) `336-383`; there is no off-by-one against the parser.
+- **Fixture count vs plan text:** The implementation uses **seven** OOS rows (four mangled shapes plus three valid colon-form tags). The prose in [`larch-logs/implement/80C6B507-11E4-4C71-AC42-EC8F3CD604D8/plan-goals-test.md`](larch-logs/implement/80C6B507-11E4-4C71-AC42-EC8F3CD604D8/plan-goals-test.md) still says “6 findings”; that is a stale plan note, not a test bug.
+- **Bold heading coverage:** The new block only validates good categories with the `## code-quality:` / `## architecture:` / `## security:` style (after title injection). Bold `## **…** —` OOS behavior remains covered only for **risk-integration** in `317-334`. Other tags are not asserted on that path; behavior is still the same AWK branch as for `risk-integration`.
+- **All five focus-area tags:** `risk-integration` (bold + colon OOS), `correctness` (accepted `305-315`), and `code-quality` / `architecture` / `security` (new OOS `355-383`) all have at least one passing category assertion elsewhere in the harness.
+- **Unrelated diff noise:** The branch adds [`larch-logs/implement/80C6B507-11E4-4C71-AC42-EC8F3CD604D8/`](larch-logs/implement/80C6B507-11E4-4C71-AC42-EC8F3CD604D8/) (`manifest.json`, `parent-issue.md`, `plan-goals-test.md`, `plan-review-tally.json`) — typical local implement run metadata and usually should not ship with the functional fix.

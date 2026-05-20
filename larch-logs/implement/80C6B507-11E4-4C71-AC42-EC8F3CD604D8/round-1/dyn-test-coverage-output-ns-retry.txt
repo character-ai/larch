@@ -1,0 +1,11 @@
+Gathering the diff, commit log, and test/fixture sections for the correctness review.
+
+Checking how finding bodies are built for OOS records and whether fixtures include `##` lines that `extract_category` reads.
+
+### In-Scope Findings
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+- The new `mangled OOS` fixture in [`scripts/test-compose-review-findings.sh`](scripts/test-compose-review-findings.sh) defines seven `### FINDING_` blocks, matches `FINDINGS_TOTAL=7`, and uses `OOS_CR1_1`–`OOS_CR1_7` consistently with `flush_pending` / `synthetic_id` for `round-1` OOS rows (`parse_artifact` builds `## $pending_title` before `extract_category`, so the mangled and valid headings are actually exercised).
+- Across the full harness, all five focus-area tags have a positive category assertion: `correctness` at `scripts/test-compose-review-findings.sh:314-315`, `risk-integration` at `331-334`, and `code-quality`, `architecture`, and `security` at `378-383`.
+- [`larch-logs/implement/80C6B507-11E4-4C71-AC42-EC8F3CD604D8/plan-goals-test.md:76`](larch-logs/implement/80C6B507-11E4-4C71-AC42-EC8F3CD604D8/plan-goals-test.md) still says the fixture has “6 findings,” which understates the seven-block `oos.md` described in the implementation; harmless to runtime but inconsistent with the committed test file.

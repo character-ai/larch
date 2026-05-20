@@ -1,0 +1,8 @@
+FINDING_1: YES
+FINDING_2: NO -- not a code finding; just a git log dump with no actionable concern
+FINDING_3: NO -- larch-logs commits are intentional per repo conventions (docs/run-logs.md contract; commit message confirms chore flush)
+FINDING_4: EXONERATE -- pre-existing behavior explicitly flagged as out-of-scope in the finding itself; not worth a standalone issue
+FINDING_5: NO -- minor plan-text/test count mismatch in an internal run artifact; not behavior-affecting
+FINDING_6: EXONERATE -- test assertion is behaviorally correct (empty result); concern is only about fixture semantics, not worth a standalone issue
+FINDING_7: YES
+FINDING_8: YES

@@ -1,0 +1,7 @@
+Gathering the diff, commit history, and test file contents for a correctness-focused review.
+
+Verifying how OOS synthetic IDs map to fixture findings and locating all five tag assertions in the test file.
+
+Verified OOS synthetic IDs: `synthetic_id` with prefix `OOS_C` and round `1` yields `OOS_CR1_${counter}`; seven `### FINDING_N: [OUT_OF_SCOPE] ...` headers increment the counter 1–7, matching `OOS_CR1_1`–`OOS_CR1_7`. Confirmed `flush_pending` prefixes bodies with `## $pending_title`, so category extraction sees the intended headings. Confirmed all five focus-area tags have a positive `category` assertion elsewhere (`FINDING_5` / `OOS_CR1_5`–`7` / bold+static `risk-integration`). `is_security_block` keys off unfenced `focus-area = security`, not the word “security” in the heading, so FINDING_7 should not be dropped.
+
+
