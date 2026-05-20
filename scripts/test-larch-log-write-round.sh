@@ -95,6 +95,7 @@ printf 'excluded\n' > "$source_dir/codex-specialist-security-output.txt.prompt"
 printf 'excluded\n' > "$source_dir/codex-specialist-security-output.txt.sidecar"
 printf 'excluded\n' > "$source_dir/codex-specialist-security-output.txt.dirty-tree"
 printf 'excluded\n' > "$source_dir/codex-specialist-security-output.txt.untracked-baseline"
+printf 'first-pass narrative only\n' > "$source_dir/cursor-specialist-edge-cases-output-first-pass.txt"
 
 out="$("$LARCH_LOG" write-round --log-root "$log_root" --skill implement --run-id run123 --round 1 --source-dir "$source_dir")"
 [[ "$out" == *"LOG_WRITTEN=true"* ]] || fail "write-round should report write: $out"
@@ -118,6 +119,7 @@ assert_not_file "$round_dir/codex-specialist-security-output.txt.prompt" "exclud
 assert_not_file "$round_dir/codex-specialist-security-output.txt.sidecar" "excluded sidecar"
 assert_not_file "$round_dir/codex-specialist-security-output.txt.dirty-tree" "excluded dirty tree sidecar"
 assert_not_file "$round_dir/codex-specialist-security-output.txt.untracked-baseline" "excluded untracked baseline sidecar"
+assert_file "$round_dir/cursor-specialist-edge-cases-output-first-pass.txt" "ns-retry first-pass sidecar included"
 
 assert_grep '<TMPDIR>' "$round_dir/findings.md" "tmpdir path redacted"
 assert_grep '<REDACTED-TOKEN>' "$round_dir/findings.md" "secret redacted"

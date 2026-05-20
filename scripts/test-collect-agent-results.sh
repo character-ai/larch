@@ -290,7 +290,7 @@ printf '0\n' > "${OUT_NSR}.done"
 write_meta "$OUT_NSR" "$SUCCESS_HELPER"
 RESULT_NSR=$(RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.05 \
     bash "$COLLECTOR" --timeout 5 --substantive-validation --validation-mode "$OUT_NSR" 2>/dev/null)
-assert_line "C_NSR retry file selected" "REVIEWER_FILE=${OUT_NSR%.txt}-ns-retry.txt" "$RESULT_NSR"
+assert_line "C_NSR retry file selected (mv to orig)" "REVIEWER_FILE=$OUT_NSR" "$RESULT_NSR"
 assert_line "C_NSR retry status OK" "STATUS=OK" "$RESULT_NSR"
 NS_RETRY_SENTINEL="${OUT_NSR%.txt}-ns-retry.txt.done"
 if [[ -f "$NS_RETRY_SENTINEL" ]]; then
@@ -315,13 +315,75 @@ printf '0\n' > "${OUT_NSS}.done"
 write_meta "$OUT_NSS" "$STRUCTURED_SUCCESS_HELPER"
 RESULT_NSS=$(RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.05 \
     bash "$COLLECTOR" --timeout 5 --substantive-validation --validation-mode --structured-reviewer-validation "$OUT_NSS" 2>/dev/null)
-assert_line "C_NSS retry file selected" "REVIEWER_FILE=${OUT_NSS%.txt}-ns-retry.txt" "$RESULT_NSS"
+assert_line "C_NSS retry file selected (mv to orig)" "REVIEWER_FILE=$OUT_NSS" "$RESULT_NSS"
 assert_line "C_NSS retry status OK" "STATUS=OK" "$RESULT_NSS"
-assert_line "C_NSS structured sidecar emitted" "STRUCTURED_SIDECAR=${OUT_NSS%.txt}-ns-retry.txt.tsv" "$RESULT_NSS"
+assert_line "C_NSS structured sidecar emitted (mv to orig path)" "STRUCTURED_SIDECAR=${OUT_NSS}.tsv" "$RESULT_NSS"
 if [[ -f "${OUT_NSS%.txt}-ns-retry.txt.done" ]]; then
     ok "C_NSS retry sentinel created"
 else
     fail "C_NSS retry sentinel missing"
+fi
+
+# C_NS_FP_SUCCESS: NS-retry success path produces a -first-pass.txt sidecar.
+# The original output (first-pass) must be copied to -first-pass.txt and the
+# retry's content must appear at the original path (via mv).
+echo "# Case: NS-retry success — first-pass sidecar produced"
+OUT_NSF="$TMPROOT/cursor-specialist-edge-cases-output.txt"
+FIRST_PASS_CONTENT="First-pass narrative only, no findings."
+RETRY_CONTENT="NO_ISSUES_FOUND"
+printf '%s\n' "$FIRST_PASS_CONTENT" > "$OUT_NSF"
+printf '0\n' > "${OUT_NSF}.done"
+write_meta "$OUT_NSF" "$SUCCESS_HELPER"
+RESULT_NSF=$(RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.05 \
+    bash "$COLLECTOR" --timeout 5 --substantive-validation --validation-mode "$OUT_NSF" 2>/dev/null)
+assert_line "C_NS_FP_SUCCESS reviewer file is orig" "REVIEWER_FILE=$OUT_NSF" "$RESULT_NSF"
+assert_line "C_NS_FP_SUCCESS status OK" "STATUS=OK" "$RESULT_NSF"
+NSF_SIDECAR="${OUT_NSF%.txt}-first-pass.txt"
+if [[ -f "$NSF_SIDECAR" ]]; then
+    ok "C_NS_FP_SUCCESS sidecar exists"
+    if grep -Fxq "$FIRST_PASS_CONTENT" "$NSF_SIDECAR"; then
+        ok "C_NS_FP_SUCCESS sidecar has first-pass content"
+    else
+        fail "C_NS_FP_SUCCESS sidecar missing first-pass content"
+    fi
+else
+    fail "C_NS_FP_SUCCESS sidecar not created"
+fi
+if grep -Fq "$RETRY_CONTENT" "$OUT_NSF" 2>/dev/null; then
+    ok "C_NS_FP_SUCCESS orig path has retry content"
+else
+    fail "C_NS_FP_SUCCESS orig path missing retry content"
+fi
+
+# C_NS_FP_FAILURE: when the NS-retry sentinel is absent (retry didn't launch or
+# failed), no -first-pass.txt sidecar must be created.
+echo "# Case: NS-retry not launched — no first-pass sidecar"
+OUT_NSFAIL="$TMPROOT/cursor-specialist-security-output.txt"
+printf 'Short text.\n' > "$OUT_NSFAIL"
+printf '0\n' > "${OUT_NSFAIL}.done"
+# No .meta → NS-retry metadata invalid, no retry launched
+RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.05 \
+    bash "$COLLECTOR" --timeout 5 --substantive-validation --validation-mode "$OUT_NSFAIL" >/dev/null 2>/dev/null
+NSFAIL_SIDECAR="${OUT_NSFAIL%.txt}-first-pass.txt"
+if [[ -f "$NSFAIL_SIDECAR" ]]; then
+    fail "C_NS_FP_FAILURE sidecar must not exist when retry not launched"
+else
+    ok "C_NS_FP_FAILURE no sidecar when retry not launched"
+fi
+
+# C_NO_RETRY_FP: substantive first-pass (no retry needed) must not produce a sidecar.
+echo "# Case: substantive first-pass — no first-pass sidecar"
+OUT_NSNR="$TMPROOT/cursor-specialist-plan-fidelity-output.txt"
+printf 'NO_ISSUES_FOUND\n' > "$OUT_NSNR"
+printf '0\n' > "${OUT_NSNR}.done"
+RESULT_NSNR=$(RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.05 \
+    bash "$COLLECTOR" --timeout 5 --substantive-validation --validation-mode "$OUT_NSNR" 2>/dev/null)
+assert_line "C_NO_RETRY_FP status OK" "STATUS=OK" "$RESULT_NSNR"
+NSNR_SIDECAR="${OUT_NSNR%.txt}-first-pass.txt"
+if [[ -f "$NSNR_SIDECAR" ]]; then
+    fail "C_NO_RETRY_FP sidecar must not exist when no retry fired"
+else
+    ok "C_NO_RETRY_FP no sidecar when no retry needed"
 fi
 
 if [[ "$FAIL" -ne 0 ]]; then

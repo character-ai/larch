@@ -16,7 +16,7 @@ When `--substantive-validation` or `--structured-reviewer-validation` is passed 
 
 **Stronger prompt**: a structured-output demand header is prepended to a temp copy of the original prompt file. The header explicitly refuses narrative output and demands either structured `### FINDING_N:` blocks or `NO_ISSUES_FOUND`.
 
-**Retry outcome**: the retry output is validated with `validate-research-output.sh` (same flags as section 3.5). If validation passes, the entry is updated to `STATUS=OK` pointing at the retry output file (`<base>-ns-retry.txt`). If validation fails again, the entry keeps `STATUS=NOT_SUBSTANTIVE`.
+**Retry outcome**: the retry output is validated with `validate-research-output.sh` (same flags as section 3.5). If validation passes, the first-pass content of `<base>.txt` is copied to `<base>-first-pass.txt` (preserving the NOT_SUBSTANTIVE output for observability), the retry file is moved to `<base>.txt` (overwriting the first-pass), and the entry is updated to `STATUS=OK` with `REVIEWER_FILE=<base>.txt`. For structured retries the sidecar (`.tsv` or `.jsonl`) is also moved to be adjacent to the final `<base>.txt` path. If validation fails again, the entry keeps `STATUS=NOT_SUBSTANTIVE` and no sidecar is created.
 
 **Temp prompt cleanup**: the temp prompt file is removed via a background wait-and-cleanup child after the retry process exits.
 

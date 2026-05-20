@@ -1239,14 +1239,34 @@ if [[ "$SUBSTANTIVE_VALIDATION" == "true" || "$STRUCTURED_REVIEWER_VALIDATION" =
                                 --structured-reviewer-mode --write-structured "$STRUCTURED_SIDECAR" "$NS_RETRY_OUTPUT" >/dev/null 2>&1
                             NS_VAL_EXIT=$?
                             if [[ "$NS_VAL_EXIT" -eq 0 ]]; then
-                                RESULTS[IDX]="REVIEWER_FILE=$NS_RETRY_OUTPUT|TOOL=$ENTRY_TOOL|STATUS=OK|EXIT_CODE=0|STRUCTURED_SIDECAR=$STRUCTURED_SIDECAR|FAILURE_REASON="
+                                case "$ORIG_OUTPUT" in
+                                    *.txt) _ns_first_pass_sidecar="${ORIG_OUTPUT%.txt}-first-pass.txt" ;;
+                                    *) _ns_first_pass_sidecar="${ORIG_OUTPUT}-first-pass" ;;
+                                esac
+                                if cp "$ORIG_OUTPUT" "$_ns_first_pass_sidecar" 2>/dev/null; then
+                                    emit_breadcrumb "ns-retry: first-pass content preserved at $(basename "$_ns_first_pass_sidecar")" >&2
+                                fi
+                                _ns_sidecar_ext="${STRUCTURED_SIDECAR##*.}"
+                                _ns_new_sidecar="${ORIG_OUTPUT}.${_ns_sidecar_ext}"
+                                mv "$NS_RETRY_OUTPUT" "$ORIG_OUTPUT"
+                                mv "$STRUCTURED_SIDECAR" "$_ns_new_sidecar" 2>/dev/null || true
+                                STRUCTURED_SIDECAR="$_ns_new_sidecar"
+                                RESULTS[IDX]="REVIEWER_FILE=$ORIG_OUTPUT|TOOL=$ENTRY_TOOL|STATUS=OK|EXIT_CODE=0|STRUCTURED_SIDECAR=$STRUCTURED_SIDECAR|FAILURE_REASON="
                             fi
                         else
                             "$SCRIPT_DIR/validate-research-output.sh" \
                                 "${VAL_ARGS_NS[@]+"${VAL_ARGS_NS[@]}"}" "$NS_RETRY_OUTPUT" >/dev/null 2>&1
                             NS_VAL_EXIT=$?
                             if [[ "$NS_VAL_EXIT" -eq 0 ]]; then
-                                RESULTS[IDX]="REVIEWER_FILE=$NS_RETRY_OUTPUT|TOOL=$ENTRY_TOOL|STATUS=OK|EXIT_CODE=0|FAILURE_REASON="
+                                case "$ORIG_OUTPUT" in
+                                    *.txt) _ns_first_pass_sidecar="${ORIG_OUTPUT%.txt}-first-pass.txt" ;;
+                                    *) _ns_first_pass_sidecar="${ORIG_OUTPUT}-first-pass" ;;
+                                esac
+                                if cp "$ORIG_OUTPUT" "$_ns_first_pass_sidecar" 2>/dev/null; then
+                                    emit_breadcrumb "ns-retry: first-pass content preserved at $(basename "$_ns_first_pass_sidecar")" >&2
+                                fi
+                                mv "$NS_RETRY_OUTPUT" "$ORIG_OUTPUT"
+                                RESULTS[IDX]="REVIEWER_FILE=$ORIG_OUTPUT|TOOL=$ENTRY_TOOL|STATUS=OK|EXIT_CODE=0|FAILURE_REASON="
                             fi
                         fi
                     fi
