@@ -1,0 +1,44 @@
+Reading the ballot and referenced context files to verify findings.
+
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: NO -- confirms awk is fine; nothing to track
+FINDING_6: NO -- same-path behavior is correct; no issue
+FINDING_7: NO -- emit usage matches lib-quiet/session-setup patterns
+FINDING_8: EXONERATE -- intentional warn-only wrapper; fix belongs in helper
+FINDING_9: NO -- portability claim matches the new/modified shell
+FINDING_10: EXONERATE -- pre-existing preflight emit path; out of scope
+FINDING_11: EXONERATE -- minor stakeholder wording drift; not issue-worthy
+FINDING_12: YES
+FINDING_13: NO -- cited installation doc span does not assert a stderr warning
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: YES
+FINDING_18: YES
+FINDING_19: NO -- script line span is invalid (file is far shorter); duplicate of FINDING_12/18
+FINDING_20: YES
+FINDING_21: YES
+FINDING_22: YES
+FINDING_23: YES
+FINDING_24: EXONERATE -- duplicate contract/argv nit already covered by FINDING_12/18
+FINDING_25: YES
+FINDING_26: NO -- cited line range does not exist; concern duplicates FINDING_27
+FINDING_27: EXONERATE -- acceptable for controlled plugin.json; jq/stricter parse is heavy
+FINDING_28: YES
+FINDING_29: EXONERATE -- X.Y.Z numeric compare matches intended scope
+FINDING_30: EXONERATE -- three-part compare is documented tradeoff; full semver is heavy
+FINDING_31: YES
+FINDING_32: EXONERATE -- emit is deliberate for orchestrator/quiet visibility vs raw stderr
+FINDING_33: NO -- that doc span is fork-CI text, not a stderr-vs-emit description
+FINDING_34: NO -- stderr claim is not in the cited installation doc lines
+FINDING_35: YES
+FINDING_36: EXONERATE -- same masking concern as FINDING_35 with redundant severity
+FINDING_37: EXONERATE -- duplicate nit of FINDING_31/35
+FINDING_38: EXONERATE -- duplicate nit of FINDING_31/35
+FINDING_39: EXONERATE -- coverage gap is real but not worth a tracking issue alone
+FINDING_40: EXONERATE -- optional harness expansion; same as FINDING_39
+FINDING_41: EXONERATE -- session-setup wiring test is nice-to-have, not issue-worthy
+FINDING_42: EXONERATE -- local trusted plugin.json; sanitization overkill for this banner

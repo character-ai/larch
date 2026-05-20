@@ -1,0 +1,42 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: NO -- this describes expected behavior rather than a defect.
+FINDING_6: NO -- same-directory plugin-dir comparison reads the same version source by design.
+FINDING_7: NO -- the emit call shape matches the existing quiet-stream contract.
+FINDING_8: NO -- duplicate of the in-scope session-setup masking finding.
+FINDING_9: NO -- no Bash 4+ portability defect is present.
+FINDING_10: NO -- this is unchanged pre-existing behavior outside the stale-plugin change.
+FINDING_11: EXONERATE -- the wording mismatch is real but too minor to track separately.
+FINDING_12: YES
+FINDING_13: NO -- the implementation intentionally uses emit and the repo docs do not require literal stderr here.
+FINDING_14: EXONERATE -- the mixed spellings are a legitimate consistency nit but not worth blocking.
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: NO -- the implementation follows the plan’s emit-based visibility contract.
+FINDING_18: YES
+FINDING_19: YES
+FINDING_20: YES
+FINDING_21: EXONERATE -- the feature-description step-number mismatch is real but not worth tracking separately.
+FINDING_22: YES
+FINDING_23: YES
+FINDING_24: YES
+FINDING_25: YES
+FINDING_26: EXONERATE -- the controlled plugin.json shape does not justify adding a parser dependency or broader parsing logic.
+FINDING_27: EXONERATE -- the edge is legitimate but tightening this controlled JSON read is more complexity than warranted.
+FINDING_28: YES
+FINDING_29: EXONERATE -- repo versions appear to be numeric triples, so prerelease ordering support is unnecessary here.
+FINDING_30: EXONERATE -- the helper’s three-part comparison matches the current version policy.
+FINDING_31: YES
+FINDING_32: NO -- emit is the intended orchestrator-visible stream under lib-quiet, not stderr.
+FINDING_33: NO -- the cited docs do not actually document a stderr warning.
+FINDING_34: NO -- the accepted implementation plan explicitly chose emit-based visibility.
+FINDING_35: YES
+FINDING_36: YES
+FINDING_37: YES
+FINDING_38: YES
+FINDING_39: YES
+FINDING_40: YES
+FINDING_41: YES
+FINDING_42: EXONERATE -- local plugin metadata is already trusted input, and semver validation hardening is not issue-worthy here.

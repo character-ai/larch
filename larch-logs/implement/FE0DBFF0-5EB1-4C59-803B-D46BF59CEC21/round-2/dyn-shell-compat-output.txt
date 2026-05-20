@@ -1,0 +1,11 @@
+Gathering the diff, commit list, and Bash authoring rules to audit the new scripts for Bash 3.2 compatibility.
+
+Reading the new scripts in full for accurate line numbers and a Bash 3.2 / `pipefail` audit.
+
+### In-Scope Findings
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+- **correctness** `scripts/check-stale-plugin.sh:84-95` — Version parsing uses the first `grep '"version"'` hit and naive stripping, so an unusual `plugin.json` where another field’s string value contains `"version"` before the real top-level `"version"` key could mis-parse the semver (unlikely for the real larch manifest). **Suggested fix:** If this ever matters, anchor the match (e.g. line-anchored pattern or a tiny `python3 -c` JSON read) and add a harness fixture; not required for Bash 3.2 compliance.
+- **risk-integration** `docs/installation-and-setup.md` (new subsection in diff) — The doc describes the warning as going to “stderr,” but the wiring in `scripts/session-setup.sh:219` uses `emit`, which follows the repo’s quiet-stream contract and may not be raw stderr. **Suggested fix:** Align the doc wording with how `emit` is documented for session-setup consumers, or explicitly say it is emitted on the quiet/emit channel the orchestrator sees.
+- **correctness** `scripts/session-setup.sh:223-226` — `${CLONE_TAG:0:32}` is Bash 4+ style substring expansion on a named variable; macOS Bash 3.2 can mishandle it. This predates the stale-plugin change (same hunk context) and is not introduced by this branch. **Suggested fix:** Use a Bash 3.2-safe truncation helper (e.g. `cut -c1-32` / loop) if macOS 3.2 is still a supported target for this script.

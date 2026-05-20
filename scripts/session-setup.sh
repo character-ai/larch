@@ -199,6 +199,27 @@ if [[ "$SKIP_PREFLIGHT" == "false" ]]; then
     fi
 fi
 
+# --- 1a. Stale-plugin check (warn-only) ---
+# When in a larch dev clone and the working-tree version is ahead of the
+# installed cached plugin version, emit a warning so the operator knows to
+# refresh the installed plugin from the current checkout before the next run.
+# Option A from issue #2430.
+if [[ "$SKIP_PREFLIGHT" == "false" ]]; then
+    _stale_out=""
+    _stale_rc=0
+    _stale_out=$("$SCRIPT_DIR/check-stale-plugin.sh" 2>&1) || _stale_rc=$?
+    if [[ $_stale_rc -ne 0 ]]; then
+        larch_errf 'session-setup.sh: warning: stale plugin check failed (rc=%s): %s\n' "$_stale_rc" "$_stale_out"
+        _stale_out=""
+    fi
+    _stale_check=$(printf '%s\n' "$_stale_out" | awk -F= '/^STALE_PLUGIN_CHECK=/ { v=$2 } END { print v }')
+    if [[ "$_stale_check" == "working-tree-ahead" ]]; then
+        _inst=$(printf '%s\n' "$_stale_out" | awk -F= '/^STALE_PLUGIN_INSTALLED_VERSION=/ { v=$2 } END { print v }')
+        _wt=$(printf '%s\n' "$_stale_out" | awk -F= '/^STALE_PLUGIN_WORKING_TREE_VERSION=/ { v=$2 } END { print v }')
+        emit "**⚠ larch: installed plugin version ($_inst) is behind the working tree ($_wt). Reinstall or refresh the plugin from this checkout before the next run to pick up the latest fixes. Continuing with the cached version.**"
+    fi
+fi
+
 # --- 2. Create temp directory (always fresh, never inherited) ---
 CLONE_TAG=$(basename "$PWD")
 CLONE_TAG="${CLONE_TAG//[^A-Za-z0-9_-]/_}"

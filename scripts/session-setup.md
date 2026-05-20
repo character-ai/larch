@@ -1,6 +1,6 @@
 # scripts/session-setup.sh — contract
 
-Shared setup wrapper for larch skills. It creates a fresh session tmpdir, optionally runs preflight and repo discovery, checks reviewer binary presence, and can write a session-env file.
+Shared setup wrapper for larch skills. It creates a fresh session tmpdir, optionally runs preflight and repo discovery, checks reviewer binary presence, and can write a session-env file. When `--skip-preflight` is not set it also calls `scripts/check-stale-plugin.sh` and emits a warning when the installed plugin is behind the working-tree version (larch dev-clone only).
 
 Session tmpdirs are named `${XDG_CACHE_HOME:-$HOME/.cache}/larch/sessions/<prefix>-<clone-tag>-XXXXXX`, where
 `<clone-tag>` is the current working directory basename with every character
