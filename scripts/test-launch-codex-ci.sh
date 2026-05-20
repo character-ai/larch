@@ -30,7 +30,10 @@ assert_fails "rejects bad role" --role nope --output "$TMPDIR_BASE/out" --run-id
 assert_fails "rejects relative output" --role fix --output relative --run-id 1 --repo owner/repo
 assert_fails "rejects unsafe output characters" --role fix --output "$TMPDIR_BASE/out with space" --run-id 1 --repo owner/repo
 assert_fails "rejects relative --plan-file" --role fix --output "$TMPDIR_BASE/out" --run-id 1 --repo owner/repo --plan-file relative/plan.txt
+assert_fails "rejects conflict-files with .." --role resolve-conflict --output "$TMPDIR_BASE/out" --run-id 1 --repo owner/repo --conflict-files '../etc/passwd'
 
+if grep -q -- '--conflict-files' "$REPO_ROOT/scripts/launch-codex-ci.sh"; then ok "script supports --conflict-files"; else fail "script supports --conflict-files"; fi
+if grep -q 'Still-conflicted paths' "$REPO_ROOT/scripts/launch-codex-ci.sh"; then ok "resolve-conflict prompt includes conflict path block"; else fail "resolve-conflict prompt includes conflict path block"; fi
 if grep -q -- "--task-kind \"\$TIMING_TASK_KIND\"" "$REPO_ROOT/scripts/launch-codex-ci.sh"; then ok "uses timing task kind"; else fail "uses timing task kind"; fi
 if grep -q 'plan-file' "$REPO_ROOT/scripts/launch-codex-ci.sh"; then ok "script supports --plan-file"; else fail "script supports --plan-file"; fi
 if grep -q 'codex-ci-fix' "$REPO_ROOT/scripts/lib-timing-kinds.sh"; then ok "timing allow-list includes codex-ci-fix"; else fail "timing allow-list includes codex-ci-fix"; fi
