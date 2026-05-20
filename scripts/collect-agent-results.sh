@@ -124,6 +124,37 @@ build_missing_retry_sentinel_result() {
         "$orig_output" "$tool"
 }
 
+first_pass_sidecar_path() {
+    local orig_output="$1"
+    case "$orig_output" in
+        *.txt) printf '%s-first-pass.txt' "${orig_output%.txt}" ;;
+        *) printf '%s-first-pass' "$orig_output" ;;
+    esac
+}
+
+preserve_and_publish_ns_retry() {
+    local orig_output="$1"
+    local retry_output="$2"
+    local retry_label="$3"
+    local first_pass_sidecar=""
+
+    first_pass_sidecar="$(first_pass_sidecar_path "$orig_output")"
+    if cp "$orig_output" "$first_pass_sidecar" 2>/dev/null; then
+        emit_breadcrumb "ns-retry: first-pass content preserved at $(basename "$first_pass_sidecar")" >&2
+    else
+        larch_err "collect-agent-results.sh: $retry_label: failed to preserve first-pass content at $first_pass_sidecar; leaving STATUS=NOT_SUBSTANTIVE"
+        return 1
+    fi
+
+    if cp "$retry_output" "$orig_output" 2>/dev/null; then
+        emit_breadcrumb "ns-retry: successful retry content retained at $(basename "$retry_output")" >&2
+        return 0
+    fi
+
+    larch_err "collect-agent-results.sh: $retry_label: failed to publish retry output to $orig_output; leaving STATUS=NOT_SUBSTANTIVE"
+    return 1
+}
+
 if [[ "${BASH_SOURCE[0]}" != "$0" && "${1:-}" == "--source-only" ]]; then
     return 0
 fi
@@ -1239,18 +1270,20 @@ if [[ "$SUBSTANTIVE_VALIDATION" == "true" || "$STRUCTURED_REVIEWER_VALIDATION" =
                                 --structured-reviewer-mode --write-structured "$STRUCTURED_SIDECAR" "$NS_RETRY_OUTPUT" >/dev/null 2>&1
                             NS_VAL_EXIT=$?
                             if [[ "$NS_VAL_EXIT" -eq 0 ]]; then
-                                case "$ORIG_OUTPUT" in
-                                    *.txt) _ns_first_pass_sidecar="${ORIG_OUTPUT%.txt}-first-pass.txt" ;;
-                                    *) _ns_first_pass_sidecar="${ORIG_OUTPUT}-first-pass" ;;
-                                esac
-                                if cp "$ORIG_OUTPUT" "$_ns_first_pass_sidecar" 2>/dev/null; then
-                                    emit_breadcrumb "ns-retry: first-pass content preserved at $(basename "$_ns_first_pass_sidecar")" >&2
+                                if ! preserve_and_publish_ns_retry "$ORIG_OUTPUT" "$NS_RETRY_OUTPUT" "structured NS retry"; then
+                                    continue
+                                fi
+                                if [[ ! -f "$STRUCTURED_SIDECAR" ]]; then
+                                    larch_err "collect-agent-results.sh: structured NS retry: missing structured retry sidecar after validation; leaving STATUS=NOT_SUBSTANTIVE"
+                                    continue
                                 fi
                                 _ns_sidecar_ext="${STRUCTURED_SIDECAR##*.}"
                                 _ns_new_sidecar="${ORIG_OUTPUT}.${_ns_sidecar_ext}"
-                                mv "$NS_RETRY_OUTPUT" "$ORIG_OUTPUT"
-                                mv "$STRUCTURED_SIDECAR" "$_ns_new_sidecar" 2>/dev/null || true
-                                STRUCTURED_SIDECAR="$_ns_new_sidecar"
+                                if cp "$STRUCTURED_SIDECAR" "$_ns_new_sidecar" 2>/dev/null; then
+                                    STRUCTURED_SIDECAR="$_ns_new_sidecar"
+                                else
+                                    larch_err "collect-agent-results.sh: structured NS retry: failed to publish structured sidecar to $_ns_new_sidecar; keeping retry sidecar path"
+                                fi
                                 RESULTS[IDX]="REVIEWER_FILE=$ORIG_OUTPUT|TOOL=$ENTRY_TOOL|STATUS=OK|EXIT_CODE=0|STRUCTURED_SIDECAR=$STRUCTURED_SIDECAR|FAILURE_REASON="
                             fi
                         else
@@ -1258,14 +1291,9 @@ if [[ "$SUBSTANTIVE_VALIDATION" == "true" || "$STRUCTURED_REVIEWER_VALIDATION" =
                                 "${VAL_ARGS_NS[@]+"${VAL_ARGS_NS[@]}"}" "$NS_RETRY_OUTPUT" >/dev/null 2>&1
                             NS_VAL_EXIT=$?
                             if [[ "$NS_VAL_EXIT" -eq 0 ]]; then
-                                case "$ORIG_OUTPUT" in
-                                    *.txt) _ns_first_pass_sidecar="${ORIG_OUTPUT%.txt}-first-pass.txt" ;;
-                                    *) _ns_first_pass_sidecar="${ORIG_OUTPUT}-first-pass" ;;
-                                esac
-                                if cp "$ORIG_OUTPUT" "$_ns_first_pass_sidecar" 2>/dev/null; then
-                                    emit_breadcrumb "ns-retry: first-pass content preserved at $(basename "$_ns_first_pass_sidecar")" >&2
+                                if ! preserve_and_publish_ns_retry "$ORIG_OUTPUT" "$NS_RETRY_OUTPUT" "substantive NS retry"; then
+                                    continue
                                 fi
-                                mv "$NS_RETRY_OUTPUT" "$ORIG_OUTPUT"
                                 RESULTS[IDX]="REVIEWER_FILE=$ORIG_OUTPUT|TOOL=$ENTRY_TOOL|STATUS=OK|EXIT_CODE=0|FAILURE_REASON="
                             fi
                         fi

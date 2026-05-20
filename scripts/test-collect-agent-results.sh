@@ -145,6 +145,8 @@ exit 7
 FAIL_HELPER_EOF
 chmod +x "$FAIL_HELPER"
 
+RETRY_CONTENT="NO_ISSUES_FOUND"
+
 json_array() {
     local helper="$1"
     local output="$2"
@@ -290,13 +292,19 @@ printf '0\n' > "${OUT_NSR}.done"
 write_meta "$OUT_NSR" "$SUCCESS_HELPER"
 RESULT_NSR=$(RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.05 \
     bash "$COLLECTOR" --timeout 5 --substantive-validation --validation-mode "$OUT_NSR" 2>/dev/null)
-assert_line "C_NSR retry file selected (mv to orig)" "REVIEWER_FILE=$OUT_NSR" "$RESULT_NSR"
+assert_line "C_NSR retry file selected (publish to orig)" "REVIEWER_FILE=$OUT_NSR" "$RESULT_NSR"
 assert_line "C_NSR retry status OK" "STATUS=OK" "$RESULT_NSR"
 NS_RETRY_SENTINEL="${OUT_NSR%.txt}-ns-retry.txt.done"
 if [[ -f "$NS_RETRY_SENTINEL" ]]; then
     ok "C_NSR retry sentinel created"
 else
     fail "C_NSR retry sentinel missing"
+fi
+NSR_RETRY_OUTPUT="${OUT_NSR%.txt}-ns-retry.txt"
+if grep -Fq "$RETRY_CONTENT" "$NSR_RETRY_OUTPUT" 2>/dev/null; then
+    ok "C_NSR retry artifact retained"
+else
+    fail "C_NSR retry artifact missing retry content"
 fi
 
 # C_NS_STRUCTURED: section 3.6 downgrade must re-run structured validation
@@ -315,22 +323,38 @@ printf '0\n' > "${OUT_NSS}.done"
 write_meta "$OUT_NSS" "$STRUCTURED_SUCCESS_HELPER"
 RESULT_NSS=$(RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.05 \
     bash "$COLLECTOR" --timeout 5 --substantive-validation --validation-mode --structured-reviewer-validation "$OUT_NSS" 2>/dev/null)
-assert_line "C_NSS retry file selected (mv to orig)" "REVIEWER_FILE=$OUT_NSS" "$RESULT_NSS"
+assert_line "C_NSS retry file selected (publish to orig)" "REVIEWER_FILE=$OUT_NSS" "$RESULT_NSS"
 assert_line "C_NSS retry status OK" "STATUS=OK" "$RESULT_NSS"
-assert_line "C_NSS structured sidecar emitted (mv to orig path)" "STRUCTURED_SIDECAR=${OUT_NSS}.tsv" "$RESULT_NSS"
+assert_line "C_NSS structured sidecar emitted (orig path)" "STRUCTURED_SIDECAR=${OUT_NSS}.tsv" "$RESULT_NSS"
 if [[ -f "${OUT_NSS%.txt}-ns-retry.txt.done" ]]; then
     ok "C_NSS retry sentinel created"
 else
     fail "C_NSS retry sentinel missing"
 fi
+NSS_SIDECAR="${OUT_NSS%.txt}-first-pass.txt"
+if [[ -f "$NSS_SIDECAR" ]]; then
+    ok "C_NSS sidecar exists"
+    if grep -Fq "This response stays narrative-only so it clears the short-response floor, but it" "$NSS_SIDECAR"; then
+        ok "C_NSS sidecar has first-pass content"
+    else
+        fail "C_NSS sidecar missing first-pass content"
+    fi
+else
+    fail "C_NSS sidecar not created"
+fi
+NSS_RETRY_OUTPUT="${OUT_NSS%.txt}-ns-retry.txt"
+if grep -Fq "NO_ISSUES_FOUND" "$NSS_RETRY_OUTPUT" 2>/dev/null; then
+    ok "C_NSS retry artifact retained"
+else
+    fail "C_NSS retry artifact missing retry content"
+fi
 
 # C_NS_FP_SUCCESS: NS-retry success path produces a -first-pass.txt sidecar.
 # The original output (first-pass) must be copied to -first-pass.txt and the
-# retry's content must appear at the original path (via mv).
+# retry's content must appear at the original path while the retry artifact remains.
 echo "# Case: NS-retry success — first-pass sidecar produced"
 OUT_NSF="$TMPROOT/cursor-specialist-edge-cases-output.txt"
 FIRST_PASS_CONTENT="First-pass narrative only, no findings."
-RETRY_CONTENT="NO_ISSUES_FOUND"
 printf '%s\n' "$FIRST_PASS_CONTENT" > "$OUT_NSF"
 printf '0\n' > "${OUT_NSF}.done"
 write_meta "$OUT_NSF" "$SUCCESS_HELPER"
@@ -354,9 +378,15 @@ if grep -Fq "$RETRY_CONTENT" "$OUT_NSF" 2>/dev/null; then
 else
     fail "C_NS_FP_SUCCESS orig path missing retry content"
 fi
+NSF_RETRY_OUTPUT="${OUT_NSF%.txt}-ns-retry.txt"
+if grep -Fq "$RETRY_CONTENT" "$NSF_RETRY_OUTPUT" 2>/dev/null; then
+    ok "C_NS_FP_SUCCESS retry artifact retained"
+else
+    fail "C_NS_FP_SUCCESS retry artifact missing retry content"
+fi
 
-# C_NS_FP_FAILURE: when the NS-retry sentinel is absent (retry didn't launch or
-# failed), no -first-pass.txt sidecar must be created.
+# C_NS_FP_NO_LAUNCH: when NS retry is never launched (.meta absent), no
+# -first-pass.txt sidecar must be created.
 echo "# Case: NS-retry not launched — no first-pass sidecar"
 OUT_NSFAIL="$TMPROOT/cursor-specialist-security-output.txt"
 printf 'Short text.\n' > "$OUT_NSFAIL"
@@ -366,9 +396,25 @@ RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.05 \
     bash "$COLLECTOR" --timeout 5 --substantive-validation --validation-mode "$OUT_NSFAIL" >/dev/null 2>/dev/null
 NSFAIL_SIDECAR="${OUT_NSFAIL%.txt}-first-pass.txt"
 if [[ -f "$NSFAIL_SIDECAR" ]]; then
-    fail "C_NS_FP_FAILURE sidecar must not exist when retry not launched"
+    fail "C_NS_FP_NO_LAUNCH sidecar must not exist when retry not launched"
 else
-    ok "C_NS_FP_FAILURE no sidecar when retry not launched"
+    ok "C_NS_FP_NO_LAUNCH no sidecar when retry not launched"
+fi
+
+# C_NS_FP_RETRY_FAIL: when a retry launches but fails, no -first-pass.txt
+# sidecar must be created.
+echo "# Case: NS-retry launched but failed — no first-pass sidecar"
+OUT_NSFAIL_RETRY="$TMPROOT/cursor-specialist-testing-output.txt"
+printf 'Short text.\n' > "$OUT_NSFAIL_RETRY"
+printf '0\n' > "${OUT_NSFAIL_RETRY}.done"
+write_meta "$OUT_NSFAIL_RETRY" "$FAIL_HELPER"
+RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.05 \
+    bash "$COLLECTOR" --timeout 5 --substantive-validation --validation-mode "$OUT_NSFAIL_RETRY" >/dev/null 2>/dev/null
+NSFAIL_RETRY_SIDECAR="${OUT_NSFAIL_RETRY%.txt}-first-pass.txt"
+if [[ -f "$NSFAIL_RETRY_SIDECAR" ]]; then
+    fail "C_NS_FP_RETRY_FAIL sidecar must not exist when retry fails"
+else
+    ok "C_NS_FP_RETRY_FAIL no sidecar when retry fails"
 fi
 
 # C_NO_RETRY_FP: substantive first-pass (no retry needed) must not produce a sidecar.
