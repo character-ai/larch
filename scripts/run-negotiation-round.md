@@ -4,7 +4,7 @@
 
 ## KeyChain serial lock
 
-Sources `scripts/lib-external-launcher-common.sh` to access `external_serial_lock_acquire` / `external_serial_lock_release_after`. Both the Codex and Cursor branches acquire the per-tool serial lock immediately before spawning the agent and release it asynchronously after `${LARCH_EXTERNAL_SERIAL_LOCK_DELAY:-0.5}` seconds, matching the pattern used by the 5 existing correctly-guarded launchers.
+Sources `scripts/lib-external-launcher-common.sh` to access `external_serial_lock_acquire` / `external_serial_lock_release_after`. Both the Codex and Cursor branches acquire the per-tool serial lock immediately before spawning the agent and release it asynchronously after `${LARCH_EXTERNAL_SERIAL_LOCK_DELAY:-0.5}` seconds, matching the pattern used by the 5 existing correctly-guarded launchers. On the Cursor branch, Darwin `cursor_auth_preflight` still runs before lock acquisition; the lock wraps `cursor agent` startup itself, not the preflight probe.
 
 ## Cursor auth handling
 
