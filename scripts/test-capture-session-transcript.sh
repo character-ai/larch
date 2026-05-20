@@ -209,6 +209,11 @@ if [ -f "$TMP/$default_branch_label-issues.md" ]; then
 else
     fail "$default_branch_label execution issue log missing"
 fi
+if [ -e "$default_branch_repo/larch-logs/implement/$default_branch_label" ]; then
+    fail "$default_branch_label should not copy run logs into repo on failed commit"
+else
+    pass "$default_branch_label leaves repo free of copied run logs"
+fi
 
 refresh_label="refresh-retains-prior-transcript"
 refresh_repo="$TMP/$refresh_label-repo"
@@ -244,6 +249,36 @@ if [ -f "$refresh_issues" ]; then
     fi
 else
     fail "$refresh_label execution issue log missing"
+fi
+
+refresh_captured_label="refresh-captured-warning"
+refresh_captured_repo="$TMP/$refresh_captured_label-repo"
+refresh_captured_log_root="$TMP/$refresh_captured_label-staging/larch-logs"
+refresh_captured_issues="$TMP/$refresh_captured_label-issues.md"
+mkdir -p "$refresh_captured_repo"
+git -C "$refresh_captured_repo" init >/dev/null 2>&1
+git -C "$refresh_captured_repo" config user.email "ci@test"
+git -C "$refresh_captured_repo" config user.name "Test CI"
+touch "$refresh_captured_repo/.gitkeep"
+git -C "$refresh_captured_repo" add .
+git -C "$refresh_captured_repo" commit -q -m "init"
+git -C "$refresh_captured_repo" checkout -q -b "feature-$refresh_captured_label"
+out="$(cd "$refresh_captured_repo" && env "PATH=${PATH:-}" "IMPLEMENT_TMPDIR=" "HOME=$TMP/default-home" "$CAPTURE" \
+    --source-file "$source_ok" \
+    --log-root "$refresh_captured_log_root" \
+    --skill implement \
+    --run-id "$refresh_captured_label" \
+    --no-logs-commit false \
+    --warning-step-label pre-push-refresh \
+    --refresh-mode true \
+    --defer-commit true \
+    --execution-issues-log "$refresh_captured_issues")"
+assert_contains "$refresh_captured_label stdout status" "$out" "SESSION_TRANSCRIPT_STATUS=captured"
+if [ -f "$refresh_captured_issues" ]; then
+    assert_contains "$refresh_captured_label execution issue status" "$(cat "$refresh_captured_issues")" "session-transcript status=captured"
+    assert_contains "$refresh_captured_label execution issue text" "$(cat "$refresh_captured_issues")" "commit deferred to caller"
+else
+    fail "$refresh_captured_label execution issue log missing"
 fi
 
 echo

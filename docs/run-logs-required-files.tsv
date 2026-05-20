@@ -5,11 +5,10 @@ relative_path	condition	batch_slug	extension
 manifest.json	always	manifest	json
 plan-goals-test.md	always	plan-goals-test	md
 plan-review-tally.json	always	plan-review-tally	json
-code-review-tally.json	always	code-review-tally	json
-review-findings-full.jsonl	always	review-findings-full	jsonl
+code-review-tally.json	step5	code-review-tally	json
+review-findings-full.jsonl	step5	review-findings-full	jsonl
 version-bump-reasoning.md	step8	version-bump-reasoning	md
 token-report.json	step7a	token-report	json
 timing-report.json	step7a	timing-report	json
 execution-issues.ndjson	step7a	execution-issues	ndjson
 run-statistics.md	step9a1	run-statistics	md
-session-transcript.jsonl	step7a	session-transcript	jsonl

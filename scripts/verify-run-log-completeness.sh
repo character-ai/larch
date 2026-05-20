@@ -14,9 +14,20 @@ usage() {
 }
 
 manifest_pr_number() {
-    awk '
-        match($0, /"pr_number"[[:space:]]*:[[:space:]]*([0-9]+)/, m) { print m[1]; exit }
-    ' "$RUN_DIR/manifest.json" 2>/dev/null || true
+    python3 - "$RUN_DIR/manifest.json" <<'PY'
+import json
+import sys
+
+try:
+    with open(sys.argv[1], "r", encoding="utf-8") as fh:
+        data = json.load(fh)
+except Exception:
+    sys.exit(0)
+
+value = data.get("pr_number")
+if isinstance(value, int):
+    print(value)
+PY
 }
 
 has_file() {
@@ -29,11 +40,15 @@ condition_reached() {
         always)
             return 0
             ;;
+        step5)
+            has_file code-review-tally.json ||
+                has_file review-findings-full.jsonl ||
+                condition_reached step7a
+            ;;
         step7a)
             has_file token-report.json ||
                 has_file timing-report.json ||
                 has_file execution-issues.ndjson ||
-                has_file session-transcript.jsonl ||
                 condition_reached step8
             ;;
         step8)

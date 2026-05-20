@@ -29,7 +29,7 @@ load_required_files() {
     awk -F '\t' '
         $1 == "relative_path" { next }
         $1 ~ /^#/ || $1 == "" { next }
-        $2 ~ /^(always|step7a)$/ { print $1 }
+        $2 ~ /^(always|step5|step7a)$/ { print $1 }
     ' "$MANIFEST"
 }
 
@@ -42,7 +42,10 @@ assert_manifest_matches_batch_table() {
         [ "$relative_path" = "relative_path" ] && continue
         [ -n "$relative_path" ] || continue
         case "$relative_path" in \#*) continue ;; esac
-        [ "$condition" = "always" ] || continue
+        case "$condition" in
+            always|step5) ;;
+            *) continue ;;
+        esac
         [ "$batch_slug" = "manifest" ] && continue
 
         if ! expected_ext="$(larch_log_batch_extension "$batch_slug" 2>/dev/null)"; then
@@ -81,53 +84,77 @@ make_complete_run_dir "$run_ok"
 out="$("$VERIFY" "$run_ok" 2>&1 || true)"
 assert_contains "complete run emits OK" "$out" "OK"
 
-# Test 2: missing session-transcript.jsonl from a Step-7a-complete run → MISSING reported
-run_missing_transcript="$TMP/run-missing-transcript"
-make_complete_run_dir "$run_missing_transcript"
-rm "$run_missing_transcript/session-transcript.jsonl"
-out="$("$VERIFY" "$run_missing_transcript" 2>&1 || true)"
-assert_contains "missing transcript emits MISSING" "$out" "MISSING=session-transcript.jsonl"
+# Test 2: missing execution-issues.ndjson from a Step-7a-complete run → MISSING reported
+run_missing_step7a="$TMP/run-missing-step7a"
+make_complete_run_dir "$run_missing_step7a"
+rm "$run_missing_step7a/execution-issues.ndjson"
+out="$("$VERIFY" "$run_missing_step7a" 2>&1 || true)"
+assert_contains "missing step7a artifact emits MISSING" "$out" "MISSING=execution-issues.ndjson"
 
 # Test 3: missing multiple files → all listed in MISSING
 run_missing_multi="$TMP/run-missing-multi"
 make_complete_run_dir "$run_missing_multi"
-rm "$run_missing_multi/session-transcript.jsonl"
+rm "$run_missing_multi/execution-issues.ndjson"
 rm "$run_missing_multi/token-report.json"
 out="$("$VERIFY" "$run_missing_multi" 2>&1 || true)"
-assert_contains "multi-missing includes session-transcript" "$out" "session-transcript.jsonl"
+assert_contains "multi-missing includes execution-issues" "$out" "execution-issues.ndjson"
 assert_contains "multi-missing includes token-report" "$out" "token-report.json"
 
 # Test 4: nonexistent run dir → error exit
 out="$("$VERIFY" "$TMP/nonexistent-run" 2>&1 || true)"
 assert_contains "nonexistent dir emits error" "$out" "not found"
 
-# Test 5: verify C068D05A (known pre-fix run) when it exists in repo tree — conditional
-repo_root="$(cd "$SCRIPT_DIR/.." && pwd -P)"
-pre_fix_run="$repo_root/larch-logs/implement/C068D05A-E9B5-45EC-86E4-3AB8A9161C9D"
-if [ -d "$pre_fix_run" ]; then
-    out="$("$VERIFY" "$pre_fix_run" 2>&1 || true)"
-    assert_contains "pre-fix run missing session-transcript" "$out" "session-transcript.jsonl"
-fi
-
-# Test 6: pre-Step-7a partial tree should not require Step-7a+ files
+# Test 5: pre-Step-7a partial tree should not require Step-5+ files
 run_pre_step7a="$TMP/run-pre-step7a"
 mkdir -p "$run_pre_step7a"
 printf 'placeholder\n' > "$run_pre_step7a/manifest.json"
 printf 'placeholder\n' > "$run_pre_step7a/plan-goals-test.md"
 printf 'placeholder\n' > "$run_pre_step7a/plan-review-tally.json"
-printf 'placeholder\n' > "$run_pre_step7a/code-review-tally.json"
-printf 'placeholder\n' > "$run_pre_step7a/review-findings-full.jsonl"
 out="$("$VERIFY" "$run_pre_step7a" 2>&1 || true)"
 assert_contains "pre-step7a partial emits OK" "$out" "OK"
 
-# Test 7: Step-8 tree should not require Step-9a.1-only run-statistics
+# Test 6: Step-5 partial tree should require Step-5 files but not Step-7a+ files
+run_step5="$TMP/run-step5"
+mkdir -p "$run_step5"
+for f in manifest.json plan-goals-test.md plan-review-tally.json code-review-tally.json review-findings-full.jsonl; do
+    printf 'placeholder\n' > "$run_step5/$f"
+done
+out="$("$VERIFY" "$run_step5" 2>&1 || true)"
+assert_contains "step5 partial emits OK" "$out" "OK"
+
+# Test 7: Step-7a inferred from one artifact should require the rest of the Step-7a set
+run_partial_step7a="$TMP/run-partial-step7a"
+mkdir -p "$run_partial_step7a"
+for f in manifest.json plan-goals-test.md plan-review-tally.json code-review-tally.json review-findings-full.jsonl token-report.json; do
+    printf 'placeholder\n' > "$run_partial_step7a/$f"
+done
+out="$("$VERIFY" "$run_partial_step7a" 2>&1 || true)"
+assert_contains "partial step7a emits MISSING" "$out" "MISSING="
+assert_contains "partial step7a requires execution-issues" "$out" "execution-issues.ndjson"
+assert_contains "partial step7a requires timing-report" "$out" "timing-report.json"
+
+# Test 8: Step-8 tree should not require Step-9a.1-only run-statistics
 run_step8="$TMP/run-step8"
 mkdir -p "$run_step8"
-for f in manifest.json plan-goals-test.md plan-review-tally.json code-review-tally.json review-findings-full.jsonl token-report.json timing-report.json execution-issues.ndjson session-transcript.jsonl version-bump-reasoning.md final-summary.md; do
+for f in manifest.json plan-goals-test.md plan-review-tally.json code-review-tally.json review-findings-full.jsonl token-report.json timing-report.json execution-issues.ndjson version-bump-reasoning.md final-summary.md; do
     printf 'placeholder\n' > "$run_step8/$f"
 done
 out="$("$VERIFY" "$run_step8" 2>&1 || true)"
 assert_contains "step8 partial emits OK" "$out" "OK"
+
+# Test 9: pr_number-only later-phase signal should trigger Step-8/9a.1 requirements
+run_pr_number="$TMP/run-pr-number"
+mkdir -p "$run_pr_number"
+cat > "$run_pr_number/manifest.json" <<'EOF'
+{"status":"in-progress","pr_number":123}
+EOF
+for f in plan-goals-test.md plan-review-tally.json code-review-tally.json review-findings-full.jsonl token-report.json timing-report.json execution-issues.ndjson; do
+    printf 'placeholder\n' > "$run_pr_number/$f"
+done
+out="$("$VERIFY" "$run_pr_number" 2>&1 || true)"
+assert_contains "pr-number-only emits MISSING" "$out" "MISSING="
+assert_contains "pr-number-only requires version bump reasoning" "$out" "version-bump-reasoning.md"
+assert_contains "pr-number-only requires run statistics" "$out" "run-statistics.md"
 
 echo
 echo "Passed: $PASS"

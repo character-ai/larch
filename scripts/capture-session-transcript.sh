@@ -81,9 +81,6 @@ append_warning() {
     local message="$2"
 
     [ -n "$EXECUTION_ISSUES_LOG" ] || return 0
-    if [ "$REFRESH_MODE" = "true" ] && [ "$status" = "captured" ]; then
-        return 0
-    fi
     "$SCRIPT_DIR/append-execution-issue.sh" \
         --log "$EXECUTION_ISSUES_LOG" \
         --category Warnings \

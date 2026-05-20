@@ -30,13 +30,13 @@ The script always exits 0 and prints exactly one `SESSION_TRANSCRIPT_STATUS=<sta
 - `write-failed` — `larch-log.sh write` failed.
 - `suppressed-no-logs-commit` — write succeeded and `--no-logs-commit true` skipped commit.
 - `commit-failed` — write succeeded and `larch-log.sh commit` failed. The warning text preserves a trimmed copy of `larch-log.sh` stderr so policy refusals (for example default-branch or post-merge guards) are distinguishable from a literal `git commit` failure. This is also the loud-failure outcome when the script is accidentally invoked post-merge on the default branch.
-- `captured` — write and commit both succeeded.
+- `captured` — write succeeded and the transcript is safely staged for the current flow. In the normal path this means write and commit both succeeded; with `--defer-commit true` it means the write succeeded and the caller still owns the later `larch-log.sh commit`.
 
 The wrapper may also append non-terminal `Warnings` entries before the final status:
 
 - `source-file-recovered-via-discovery` — the Step 0 source snapshot was missing but fallback discovery found a recent transcript under `$HOME/.claude/projects`.
 
-For every status, including `captured`, the wrapper appends a `Warnings` entry to the execution-issues log via `append-execution-issue.sh`. Append failure is swallowed so transcript capture never becomes fatal to cleanup.
+For every status, including `captured` in refresh/deferred-commit flows, the wrapper appends a `Warnings` entry to the execution-issues log via `append-execution-issue.sh`. Append failure is swallowed so transcript capture never becomes fatal to cleanup.
 
 Malformed argv emits `SESSION_TRANSCRIPT_STATUS=usage-error` and exits 0 before log capture begins; regular `/implement` callers should never hit this branch.
 

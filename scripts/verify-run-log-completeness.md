@@ -23,6 +23,7 @@ stderr when the manifest or run dir cannot be found.
 (header) is skipped automatically. `condition` is step-scoped:
 
 - `always` — required for every committed `/implement` run dir covered by the manifest.
+- `step5` — required once the Step 5 review/tally phase has been reached.
 - `step7a` — required once the Step 7a pre-bump flush has been reached.
 - `step8` — required once the Step 8 version-bump phase has been reached.
 - `step9a1` — required once the Step 9a.1 OOS/statistics phase has been reached.
@@ -31,6 +32,9 @@ The verifier infers later-phase reachability from committed run-dir signals
 already present in the tree (for example `final-summary.md`, `oos-issues.ndjson`,
 `manifest.json` `pr_number`, or `status=done`) so pre-Step-7a and mid-run
 partial directories do not produce false missing-file failures for later batches.
+Best-effort batches that are allowed to be absent after a successful run
+(currently `session-transcript.jsonl`) are intentionally excluded from the
+required-file manifest.
 
 ## Callers
 
