@@ -213,14 +213,69 @@
             }
           }
         ]
+      },
+      {
+        "step": "Step 8a — changelog",
+        "totals": {
+          "input": 0,
+          "cache_read": 0,
+          "cache_create": 0,
+          "output": 0,
+          "total": 0
+        },
+        "skills": []
+      },
+      {
+        "step": "Step 8b — rebase",
+        "totals": {
+          "input": 20,
+          "cache_read": 4565852,
+          "cache_create": 19753,
+          "output": 9627,
+          "total": 4595252
+        },
+        "skills": [
+          {
+            "skill": "inferred:Step 8b — rebase",
+            "totals": {
+              "input": 20,
+              "cache_read": 4565852,
+              "cache_create": 19753,
+              "output": 9627,
+              "total": 4595252
+            }
+          }
+        ]
+      },
+      {
+        "step": "Step 4 — commit implementation",
+        "totals": {
+          "input": 5,
+          "cache_read": 1459992,
+          "cache_create": 2699,
+          "output": 1956,
+          "total": 1464652
+        },
+        "skills": [
+          {
+            "skill": "inferred:Step 4 — commit implementation",
+            "totals": {
+              "input": 5,
+              "cache_read": 1459992,
+              "cache_create": 2699,
+              "output": 1956,
+              "total": 1464652
+            }
+          }
+        ]
       }
     ],
     "totals": {
-      "input": 269,
-      "cache_read": 54068352,
-      "cache_create": 1124268,
-      "output": 163196,
-      "total": 55356085
+      "input": 294,
+      "cache_read": 60094196,
+      "cache_create": 1146720,
+      "output": 174779,
+      "total": 61415989
     }
   },
   "codex": {
@@ -291,6 +346,30 @@
       },
       {
         "step": "Step 6 — checks second pass",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 8a — changelog",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 8b — rebase",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 4 — commit implementation",
         "totals": {
           "input": 0,
           "output": 0,
@@ -372,6 +451,30 @@
       },
       {
         "step": "Step 6 — checks second pass",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 8a — changelog",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 8b — rebase",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 4 — commit implementation",
         "totals": {
           "input": 0,
           "output": 0,
