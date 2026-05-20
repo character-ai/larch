@@ -1,0 +1,11 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: EXONERATE -- pre-existing table imprecision; the row is a coarse summary, not a spec; not issue-worthy on its own
+FINDING_4: NO -- larch-logs committed during implement runs are an intentional artifact of the plugin's run-log retention design
+FINDING_5: YES
+FINDING_6: EXONERATE -- valid nit but the format-sensitive grep pin is low-risk and fixing it adds complexity; same concern covered by FINDING_2
+FINDING_7: EXONERATE -- same concern as FINDING_6; adding a comment warning is helpful but not worth a separate fix in this PR
+FINDING_8: EXONERATE -- technically correct but the reader reaching line 30 of voting-process.md already has the classify_result neutral branch spec in front of them; confusion risk is negligible
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES

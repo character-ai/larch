@@ -1,0 +1,13 @@
+Reading the ballot and nearby context files to verify findings.
+
+FINDING_1: YES
+FINDING_2: EXONERATE -- optional hardening against cosmetic refactors is not concrete enough to warrant a durable tracking issue
+FINDING_3: EXONERATE -- known coarse scoreboard summary predates this change; a footnote is polish, not defect tracking
+FINDING_4: EXONERATE -- accidental run-log commit is PR hygiene, not an ongoing integration risk needing an issue
+FINDING_5: YES
+FINDING_6: EXONERATE -- exact-string pin is brittle but switching mechanisms adds more surface area than the regression guard warrants now
+FINDING_7: EXONERATE -- duplicates FINDING_6’s coupling concern; coupling comment is optional churn for a nit
+FINDING_8: EXONERATE -- minor ambiguity when the same section already exemplifies 0Y/0N/3E under path 1
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
