@@ -57,6 +57,32 @@ function md_second_heading_index(arr, n, start,    i) {
     }
     return 0
 }
+function md_has_any_l2_heading(arr, n,    i) {
+    for (i = 1; i <= n; i++) {
+        if (arr[i] ~ /^## /) {
+            return 1
+        }
+    }
+    return 0
+}
+function tails_match(sh2, n2, sh3, n3,    len, i) {
+    if (sh2 == 0 && sh3 == 0) {
+        return 1
+    }
+    if (sh2 == 0 || sh3 == 0) {
+        return 0
+    }
+    len = n2 - sh2 + 1
+    if (len != n3 - sh3 + 1) {
+        return 0
+    }
+    for (i = 0; i < len; i++) {
+        if (a2[sh2 + i] != a3[sh3 + i]) {
+            return 0
+        }
+    }
+    return 1
+}
 # --- reStructuredText (title + underline section headers) ---
 function is_rst_adornment(ul, title,    len_t, k, c) {
     len_t = length(title)
@@ -137,10 +163,16 @@ BEGIN {
     } else if (bn ~ /\.md$/) {
         mode = "md"
     } else {
+        has2 = md_has_any_l2_heading(a2, n2)
+        has3 = md_has_any_l2_heading(a3, n3)
         h2m = md_first_heading_line(a2, n2)
         h3m = md_first_heading_line(a3, n3)
-        if (h2m != "" && h3m != "" && h2m == h3m) {
-            mode = "md"
+        if (has2 || has3) {
+            if (h2m != "" && h3m != "" && h2m == h3m) {
+                mode = "md"
+            } else {
+                exit 1
+            }
         } else {
             mode = "rst"
         }
@@ -170,6 +202,9 @@ BEGIN {
             end3 = n3
         } else {
             end3 = sh3 - 1
+        }
+        if (!tails_match(sh2, n2, sh3, n3)) {
+            exit 1
         }
         for (i = fh2 + body_off; i <= end2; i++) {
             print a2[i]
@@ -214,6 +249,9 @@ BEGIN {
         end3 = n3
     } else {
         end3 = sh3 - 1
+    }
+    if (!tails_match(sh2, n2, sh3, n3)) {
+        exit 1
     }
     for (i = fh2 + body_off; i <= end2; i++) {
         print a2[i]
