@@ -30,6 +30,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib-quiet.sh
 source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
+# shellcheck source=scripts/lib-external-launcher-common.sh
+source "$SCRIPT_DIR/lib-external-launcher-common.sh"
 
 usage() { larch_err "Usage: run-negotiation-round.sh --tool codex|cursor --prompt-file <path> --output <path> --workspace <path>"; }
 
@@ -76,6 +78,9 @@ case "$TOOL" in
             CODEX_MODEL_ARGS+=("$arg")
         done < "$CODEX_MODEL_ARGS_TMP"
         rm -f "$CODEX_MODEL_ARGS_TMP"
+        _SERIAL_LOCK=""
+        external_serial_lock_acquire _SERIAL_LOCK "codex"
+        external_serial_lock_release_after "$_SERIAL_LOCK" "${LARCH_EXTERNAL_SERIAL_LOCK_DELAY:-0.5}"
         codex exec --full-auto -C "$WORKSPACE" ${CODEX_MODEL_ARGS[@]+"${CODEX_MODEL_ARGS[@]}"} \
             --output-last-message "$OUTPUT_FILE" - < "$PROMPT_FILE" 2>&1
         ;;
@@ -108,6 +113,9 @@ case "$TOOL" in
         fi
         CURSOR_AUTH_ARGS=()
         cursor_auth_argv
+        _SERIAL_LOCK=""
+        external_serial_lock_acquire _SERIAL_LOCK "cursor"
+        external_serial_lock_release_after "$_SERIAL_LOCK" "${LARCH_EXTERNAL_SERIAL_LOCK_DELAY:-0.5}"
         cursor agent -p --force --trust ${CURSOR_MODEL_ARGS[@]+"${CURSOR_MODEL_ARGS[@]}"} ${CURSOR_AUTH_ARGS[@]+"${CURSOR_AUTH_ARGS[@]}"} --workspace "$WORKSPACE" \
             "$("$SCRIPT_DIR/cursor-wrap-prompt.sh" "Read the negotiation prompt from $PROMPT_FILE and respond to it.")" \
             > "$OUTPUT_FILE" 2>&1

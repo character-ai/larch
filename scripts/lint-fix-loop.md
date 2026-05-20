@@ -38,7 +38,11 @@ Behavior:
    embedding.
 5. Dispatch Codex first via `scripts/run-external-agent.sh`; if Codex is absent
    or fails and Cursor is present, dispatch Cursor with the standard Cursor
-   model/auth launcher helpers.
+   model/auth launcher helpers. Both `run_codex()` and `run_cursor()` acquire the
+   per-tool KeyChain serial lock (`external_serial_lock_acquire` from
+   `scripts/lib-cursor-launcher-common.sh` → `lib-external-launcher-common.sh`)
+   immediately before each `run-external-agent.sh` call and release it
+   asynchronously via `external_serial_lock_release_after`.
 6. Before dispatch, capture the tracked/untracked dirty-tree baseline plus the
    current `HEAD`. After dispatch, fail closed if `HEAD` changed, then
    mechanically revert any `.gitmodules` or checked-out submodule-path edits
