@@ -1,0 +1,9 @@
+Gathering the branch diff and commit history for a read-only review.
+
+Reading surrounding code for `run_pr_create_phase`, `read_state`, and test helpers to validate edge cases.
+
+Checking the rebump title-edit path for interaction with the new title convention:
+
+Calling CreatePlan to satisfy plan-mode while the deliverable is the in-chat review.
+
+

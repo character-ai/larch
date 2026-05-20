@@ -1,0 +1,13 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: EXONERATE -- issue_num comes from trusted internal state written by controlled scripts; validation complexity exceeds risk for an internal value
+FINDING_4: EXONERATE -- pre-existing pattern not introduced by this diff; documents existing behavior rather than warranting a new tracking issue
+FINDING_5: EXONERATE -- pre-existing state_set behavior unchanged by this diff; not issue-worthy from this change
+FINDING_6: EXONERATE -- pre-existing grep pipeline edge case; only head→tail changed, not the error-handling shape
+FINDING_7: NO -- trivial stub naming nit with no behavioral consequence; not worth a tracking issue
+FINDING_8: EXONERATE -- branch commit counts for larch runs are small in practice; `git log --reverse | head -1` optimization adds complexity that doesn't pay off at real scale
+FINDING_9: EXONERATE -- duplicate of FINDING_2 at lower detail; covered by that finding
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: EXONERATE -- duplicate of FINDING_3; same reasoning applies
+FINDING_13: EXONERATE -- duplicate of FINDING_2/FINDING_10; covered by those findings

@@ -1,0 +1,13 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: EXONERATE -- Malformed internal state can make a misleading title, but treating it as a security fix adds validation policy beyond this PR.
+FINDING_4: EXONERATE -- The broader ISSUE_NUMBER validation gap is real but low-impact and not worth a separate tracking issue from this ballot.
+FINDING_5: EXONERATE -- Generic state-file newline hygiene predates the change and is too broad for a useful follow-up issue here.
+FINDING_6: NO -- With no set -e, the empty grep pipeline falls through to the existing title fallback.
+FINDING_7: NO -- The stubbed PR_TITLE is irrelevant because ship-pr stores the computed title directly.
+FINDING_8: EXONERATE -- The history-scan concern is legitimate but not worth complicating this small title-selection change.
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: NO -- The expected PR_TITLE already pins the #7 prefix, so changing the default would fail the test.
+FINDING_12: EXONERATE -- Bad internal ISSUE_NUMBER values can mislead, but numeric validation is broader state hygiene rather than a needed fix here.
+FINDING_13: YES
