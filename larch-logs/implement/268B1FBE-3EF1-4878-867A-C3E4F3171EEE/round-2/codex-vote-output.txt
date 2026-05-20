@@ -1,0 +1,48 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: NO -- malformed parser fragment, not a review finding
+FINDING_7: NO -- malformed parser fragment, not a review finding
+FINDING_8: NO -- malformed parser fragment, not a review finding
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: EXONERATE -- functionally fine despite not using the exact requested comment token
+FINDING_13: YES
+FINDING_14: NO -- location-only parser fragment, not a review finding
+FINDING_15: NO -- location-only parser fragment, not a review finding
+FINDING_16: NO -- location-only parser fragment, not a review finding
+FINDING_17: NO -- location-only parser fragment, duplicate of the accepted harness concern
+FINDING_18: NO -- location-only parser fragment, not a review finding
+FINDING_19: NO -- severity-only parser fragment, not a review finding
+FINDING_20: NO -- severity-only parser fragment, not a review finding
+FINDING_21: NO -- severity-only parser fragment, not a review finding
+FINDING_22: NO -- suggested-fix-only parser fragment, not a standalone finding
+FINDING_23: NO -- suggested-fix-only parser fragment, duplicate of an accepted concern
+FINDING_24: NO -- suggested-fix-only parser fragment, not a standalone finding
+FINDING_25: NO -- suggested-fix-only parser fragment, duplicate of an accepted concern
+FINDING_26: NO -- suggested-fix-only parser fragment, duplicate of an accepted concern
+FINDING_27: EXONERATE -- legitimate branch-scope observation but not worth a future issue
+FINDING_28: EXONERATE -- generic log-redaction risk is legitimate but not issue-worthy here
+FINDING_29: EXONERATE -- run-log noise is by policy and not issue-worthy
+FINDING_30: NO -- bash does not re-execute command substitution introduced through PLAN_FILE variable contents
+FINDING_31: NO -- commit-list parser fragment, not a review finding
+FINDING_32: NO -- commit-list parser fragment, not a review finding
+FINDING_33: NO -- commit-list parser fragment, not a review finding
+FINDING_34: NO -- commit-list parser fragment, not a review finding
+FINDING_35: YES
+FINDING_36: EXONERATE -- real low-probability prompt duplication risk, but not worth extra logic beyond the stricter full-sentence fix
+FINDING_37: YES
+FINDING_38: YES
+FINDING_39: NO -- speculative; the plan only pinned TAGGING_DIFF and no parser parity requirement is shown
+FINDING_40: YES
+FINDING_41: NO -- trivial wording nit with no meaningful behavioral risk
+FINDING_42: YES
+FINDING_43: EXONERATE -- near-duplicate of the lower-risk scout repair concern and covered by enforcing the full required sentence
+FINDING_44: YES
+FINDING_45: YES
+FINDING_46: YES
+FINDING_47: EXONERATE -- wording is slightly imprecise but enforcement behavior is stronger and low risk
+FINDING_48: YES

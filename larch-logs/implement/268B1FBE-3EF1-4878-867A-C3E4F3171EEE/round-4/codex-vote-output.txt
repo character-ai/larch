@@ -1,0 +1,21 @@
+FINDING_1: YES
+FINDING_2: NO -- malformed fragment with no actionable claim.
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: NO -- location-only fragment; the actionable voting-protocol mismatch is covered by complete findings.
+FINDING_7: NO -- severity-only fragment with no actionable claim.
+FINDING_8: NO -- suggested-fix-only fragment; the actionable voting-protocol mismatch is covered by complete findings.
+FINDING_9: EXONERATE -- stale plan file list is real but the diff/file-list context covers review, and amending the plan is low value.
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: YES
+FINDING_18: YES
+FINDING_19: YES
+FINDING_20: EXONERATE -- partial suffix duplication is a harmless edge case compared with adding more jq repair complexity.
+FINDING_21: NO -- `find -quit` is not GNU-only on the target macOS/BSD-style environments.

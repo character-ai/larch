@@ -1,0 +1,49 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: EXONERATE -- retry manifest pins the declared output path; phase2 filename split not shown in the provided diff
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: NO -- empty scaffold, not an actionable defect
+FINDING_7: NO -- empty scaffold, not an actionable defect
+FINDING_8: NO -- empty scaffold, not an actionable defect
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: EXONERATE -- #2417 trace is present; exact `# Refs:` token is optional noise
+FINDING_13: YES
+FINDING_14: EXONERATE -- restates FINDING_13 without new evidence
+FINDING_15: EXONERATE -- restates FINDING_9 without new evidence
+FINDING_16: EXONERATE -- restates FINDING_12 without new evidence
+FINDING_17: EXONERATE -- restates FINDING_11 without new evidence
+FINDING_18: EXONERATE -- restates FINDING_10 without new evidence
+FINDING_19: NO -- severity label alone is not a review finding
+FINDING_20: NO -- severity label alone is not a review finding
+FINDING_21: NO -- severity label alone is not a review finding
+FINDING_22: NO -- malformed ballot entry mixing unrelated concerns
+FINDING_23: EXONERATE -- duplicates FINDING_9/10 in one suggested-fix line
+FINDING_24: EXONERATE -- duplicates FINDING_13 in one suggested-fix line
+FINDING_25: EXONERATE -- duplicates FINDING_10/13 in one suggested-fix line
+FINDING_26: EXONERATE -- duplicates FINDING_11 in one suggested-fix line
+FINDING_27: EXONERATE -- legitimate scope creep note; no GitHub issue needed
+FINDING_28: EXONERATE -- generic logging hygiene without a concrete leak/regression
+FINDING_29: EXONERATE -- intentional run-log policy; not a functional defect
+FINDING_30: EXONERATE -- hypothetical heredoc expansion without a demonstrated untrusted PLAN_FILE path
+FINDING_31: NO -- commit metadata is not a code defect
+FINDING_32: NO -- commit metadata is not a code defect
+FINDING_33: NO -- commit metadata is not a code defect
+FINDING_34: NO -- preamble about diff scope is not a ballot finding
+FINDING_35: YES
+FINDING_36: EXONERATE -- speculative jq edge case without observed mis-repair
+FINDING_37: EXONERATE -- changelog attribution nit only
+FINDING_38: EXONERATE -- duplicate of FINDING_9
+FINDING_39: YES
+FINDING_40: EXONERATE -- duplicate of FINDING_10
+FINDING_41: EXONERATE -- trivial prompt heading wording
+FINDING_42: EXONERATE -- voting-protocol/lib-vote-tally.md updates cover most consumer semantics
+FINDING_43: EXONERATE -- subsumed by FINDING_44’s stronger jq-prefix claim
+FINDING_44: YES
+FINDING_45: EXONERATE -- optional fixture tightening without demonstrated misclassification
+FINDING_46: EXONERATE -- duplicate of FINDING_9
+FINDING_47: EXONERATE -- minor prose mismatch; low functional risk
+FINDING_48: EXONERATE -- duplicate of FINDING_11
+FINDING_49: EXONERATE -- duplicate of FINDING_48/FINDING_11

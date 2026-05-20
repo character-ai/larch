@@ -1,0 +1,11 @@
+### In-Scope Findings
+
+1. **Important** `risk-integration` `scripts/dispatch-plan-voters.sh:40` — The new plan-voter retry prefix says every line must start with `FINDING_N:`, but `/design` plan-review ballots also contain `OOS_N:` items. In a retry after narrative output, a voter can follow this instruction and omit or mis-ID OOS votes, so `tally-plan-review.sh` records `JUDGE_ERROR` for `OOS_1` and accepted follow-up issues can be skipped. **Suggested fix:** Change the first-pass and retry directives to say “the same ballot ID, `FINDING_N` or `OOS_N`,” and add an OOS retry regression.
+
+2. **Important** `risk-integration` `scripts/dispatch-plan-voters.sh:148` — The parse-rate retry re-dispatches using `tool="$voter_tool"`, but when the original slot fell back to Claude, `dispatch-with-waterfall.sh` rejects initial manifest rows whose tool is `claude`. Scenario: Codex/Cursor is unavailable, Claude fallback returns narrative text, retry writes a `tool:"claude"` manifest, the dispatcher exits before launching, stderr is discarded, and the non-substantive vote remains. **Suggested fix:** Handle Claude fallback retries directly with `launch-claude-review.sh`, or extend `dispatch-with-waterfall.sh` to accept `claude` as an initial slot tool.
+
+3. **Important** `risk-integration` `scripts/lint-fix-loop.sh:51` — `compose_prompt` always calls `emit_submodule_prohibition ""`, even though the script builds the real forbidden submodule list at `scripts/lint-fix-loop.sh:246-249`. In a repo with submodule `vendor/foo`, the lint-fixer prompt falsely says no submodules were discovered; if the agent edits `vendor/foo/...`, `post_dispatch_forbidden_revert` later reverts it and the loop fails with `forbidden-path-violation`. **Suggested fix:** Pass the generated `$forbidden_paths_file` into `compose_prompt` and then to `emit_submodule_prohibition`.
+
+### Out-of-Scope Observations
+
+No out-of-scope observations.
