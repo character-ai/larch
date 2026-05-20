@@ -1,0 +1,34 @@
+# Review Round 1
+
+- Mode: `diff`
+- Accepted findings: 4
+- Rejected findings: 4
+- Exonerated findings: 13
+- Neutral findings: 0
+
+## Accepted Findings
+
+### FINDING_1: **code-quality** `scripts/test-gh-run-logs.sh:73-78` — The `run_script` helper is defined but never invoked; tests duplicate the same `PATH=… gh-run-logs.sh … || rc=$?` pattern inline, so the helper is dead code on the branch. **Suggested fix:** Remove `run_script` or refactor the four tests to call it so the harness stays minimal and easier to maintain.
+- **Reviewer**: dyn-caller-integration-output.txt
+- **Concern**: - **code-quality** `scripts/test-gh-run-logs.sh:73-78` — The `run_script` helper is defined but never invoked; tests duplicate the same `PATH=… gh-run-logs.sh … || rc=$?` pattern inline, so the helper is dead code on the branch. **Suggested fix:** Remove `run_script` or refactor the four tests to call it so the harness stays minimal and easier to maintain.
+- **Suggested revision**: Address the concern above.
+
+
+### FINDING_15: code-quality: scripts/test-gh-run-logs.sh:41-48
+- **Reviewer**: cursor-specialist-edge-cases-output.txt
+- **Concern**: [nit] assert_not_contains is defined but unused. Dead code adds noise when reading the harness. Remove or use it in a meaningful assertion.
+- **Suggested revision**: Address the concern above.
+
+
+### FINDING_2: **correctness** `scripts/gh-run-logs.sh:43-49` — Capturing all of `gh run view … --log-failed` with `raw=$(… 2>&1)` materializes the **entire** transcript as one bash string before `tail -100`, so peak memory stays proportional to the full log for the rest of the script. The old `gh … | tail -100` pipeline still had `tail` read to EOF, but it never forced bash to hold the whole transcript in a single expandable variable while re-printing it; on very large Actions logs this change can **amplify memory pressure, slow the step sharply, or hit practical size limits** compared to streaming to `tail` from a file or FIFO. **Suggested fix:** keep the stderr/stdout merge and sentinel detection, but avoid storing the full log in `$raw`—for example write `gh` output to a `mktemp` file (or a `> >( … )` process substitution that only buffers enough to detect the sentinel), `grep -q` on that file, then `tail -100` the same file, unlinking afterward; alternatively probe with a bounded read for the in-progress message before fetching logs.
+- **Reviewer**: dyn-shell-capture-safety-output.txt
+- **Concern**: - **correctness** `scripts/gh-run-logs.sh:43-49` — Capturing all of `gh run view … --log-failed` with `raw=$(… 2>&1)` materializes the **entire** transcript as one bash string before `tail -100`, so peak memory stays proportional to the full log for the rest of the script. The old `gh … | tail -100` pipeline still had `tail` read to EOF, but it never forced bash to hold the whole transcript in a single expandable variable while re-printing it; on very large Actions logs this change can **amplify memory pressure, slow the step sharply, or hit practical size limits** compared to streaming to `tail` from a file or FIFO. **Suggested fix:** keep the stderr/stdout merge and sentinel detection, but avoid storing the full log in `$raw`—for example write `gh` output to a `mktemp` file (or a `> >( … )` process substitution that only buffers enough to detect the sentinel), `grep -q` on that file, then `tail -100` the same file, unlinking afterward; alternatively probe with a bounded read for the in-progress message before fetching logs.
+- **Suggested revision**: Address the concern above.
+
+
+### FINDING_3: **correctness** `scripts/gh-run-logs.sh:44-50` — On non-matching failures the script ends with `exit "$gh_rc"`, so **any** non-zero `gh` status—including a hypothetical or future **`gh` exit 2** unrelated to the in-progress string—is forwarded unchanged; `scripts/ship-pr.sh` at line 1197 exempts **all** `rc=2` from `record_failure`, not only the sentinel-driven branch, so a real `gh` failure that happens to use status 2 would be misclassified as the benign “still in progress” case and **silently skip** CI Issues logging. **Suggested fix:** reserve a wrapper-specific exit code for the in-progress case (for example 3) that `gh` never emits, return that only when the sentinel matches, map every other `gh` failure (including `gh_rc=2` without the sentinel) to exit 1, and narrow `ship-pr.sh` to exempt only that dedicated code.
+- **Reviewer**: dyn-shell-capture-safety-output.txt
+- **Concern**: - **correctness** `scripts/gh-run-logs.sh:44-50` — On non-matching failures the script ends with `exit "$gh_rc"`, so **any** non-zero `gh` status—including a hypothetical or future **`gh` exit 2** unrelated to the in-progress string—is forwarded unchanged; `scripts/ship-pr.sh` at line 1197 exempts **all** `rc=2` from `record_failure`, not only the sentinel-driven branch, so a real `gh` failure that happens to use status 2 would be misclassified as the benign “still in progress” case and **silently skip** CI Issues logging. **Suggested fix:** reserve a wrapper-specific exit code for the in-progress case (for example 3) that `gh` never emits, return that only when the sentinel matches, map every other `gh` failure (including `gh_rc=2` without the sentinel) to exit 1, and narrow `ship-pr.sh` to exempt only that dedicated code.
+- **Suggested revision**: Address the concern above.
+
+

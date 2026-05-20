@@ -1,0 +1,7 @@
+### In-Scope Findings
+- **risk-integration** `scripts/gh-run-logs.sh:49-50` — **Important**: the wrapper reserves exit `2` for the in-progress sentinel, but it also preserves unrelated raw `gh` exit code `2` via `exit "$gh_rc"`. `gh help exit-codes` says `2` is used when a running command is cancelled, so a cancelled/non-progress `gh run view` can return `2`; `scripts/ship-pr.sh:1197` will then treat it as non-failure and suppress the real `CI Issues` entry. **Suggested fix:** normalize every non-progress `gh` failure to `1` before returning, or have `ship-pr.sh` suppress only a verified in-progress sentinel rather than every rc `2`; add a regression test where the stub exits `2` with a non-matching message and assert it is recorded/returned as failure.
+
+### Out-of-Scope Observations
+No out-of-scope observations.
+
+Validation note: I attempted `bash scripts/test-gh-run-logs.sh`, but this read-only sandbox denied `mktemp` in the temp directory, so the harness did not run here.

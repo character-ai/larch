@@ -13,6 +13,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Extend the plan-voter harnesses to cover healthy Codex/Cursor dispatch and retry-path waterfall promotion, so phase-2/phase-3 structured retry outputs cannot be dropped silently.
 - Align description-mode specialist prompts with diff-mode’s pinned single-bullet finding grammar, and enforce the full scout closing-sentence repair in both code and tests.
 
+## [29.8.40] - 2026-05-20
+
+### Changed
+
+- Closed: #2432
+
 ## [29.8.39] - 2026-05-20
 
 ### Changed

@@ -16,6 +16,7 @@
 # Exit codes:
 #   0 — success (logs printed to stdout)
 #   1 — usage/argument error or gh command failure
+#   3 — run still in progress (transient; logs not yet available)
 
 set -euo pipefail
 
@@ -39,4 +40,17 @@ fi
 
 printf -- '--- CI log (run %s, repo %s) — last 100 lines shown. Full log: https://github.com/%s/actions/runs/%s ---\n' \
     "$RUN_ID" "$REPO" "$REPO" "$RUN_ID"
-gh run view "$RUN_ID" --repo "$REPO" --log-failed | tail -100
+gh_rc=0
+log_file=$(mktemp "${TMPDIR:-/tmp}/gh-run-logs.XXXXXX")
+cleanup() {
+    rm -f "$log_file"
+}
+trap cleanup EXIT
+
+gh run view "$RUN_ID" --repo "$REPO" --log-failed >"$log_file" 2>&1 || gh_rc=$?
+if [ "$gh_rc" -ne 0 ] && grep -Fq "is still in progress; logs will be available" "$log_file"; then
+    tail -100 "$log_file"
+    exit 3
+fi
+tail -100 "$log_file"
+[ "$gh_rc" -eq 0 ] || exit 1

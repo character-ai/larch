@@ -1,0 +1,29 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: EXONERATE -- same rc-2 conflation already covered by FINDING_3
+FINDING_5: EXONERATE -- duplicate of the ship-pr/rc-2 contract issue in FINDING_3
+FINDING_6: NO -- praise-only observation, nothing to track as an issue
+FINDING_7: EXONERATE -- grep confirms single production call site; no issue needed
+FINDING_8: EXONERATE -- intentional coupling already documented in gh-run-logs.md
+FINDING_9: EXONERATE -- accurate behavioral nuance, not a separate defect
+FINDING_10: EXONERATE -- minor header imprecision vs exit "$gh_rc"
+FINDING_11: NO -- explicitly pre-existing behavior, not introduced here
+FINDING_12: NO -- pre-existing loop shape, not introduced here
+FINDING_13: EXONERATE -- duplicates FINDING_2 memory concern
+FINDING_14: EXONERATE -- duplicates FINDING_10 header-contract nit
+FINDING_15: YES
+FINDING_16: EXONERATE -- same unused-helper cleanup as FINDING_1 and FINDING_15
+FINDING_17: EXONERATE -- duplicate of FINDING_1
+FINDING_18: EXONERATE -- duplicate of FINDING_1
+FINDING_19: EXONERATE -- eval risk only in unused dead helper
+FINDING_20: EXONERATE -- duplicate of FINDING_1
+FINDING_21: EXONERATE -- duplicate of FINDING_1
+FINDING_22: EXONERATE -- message drift yields exit 1 and record_failure, not silent skip
+FINDING_23: EXONERATE -- duplicate of FINDING_2
+FINDING_24: EXONERATE -- subsumed by FINDING_25 same false-positive theme
+FINDING_25: YES
+FINDING_26: EXONERATE -- duplicate of FINDING_25 substring false-positive risk
+FINDING_27: EXONERATE -- duplicate of FINDING_2
+FINDING_28: EXONERATE -- duplicate of FINDING_3 rc-2 misclassification
+FINDING_29: EXONERATE -- narrow guard, ship-pr harness cost outweighs benefit here
