@@ -1,0 +1,22 @@
+Gathering the diff and commit list for a read-only review.
+
+Checking `emit_breadcrumb` behavior and CI test invocation for integration risk.
+
+### In-Scope Findings
+
+### FINDING_1: Cursor parse-retry failure path untested despite stub support
+- **Severity:** **Latent**
+- **Focus area:** `risk-integration` (symmetry / regression gap; not required by written plan, which only named claude/codex retry-fail extensions)
+- **Location:** [scripts/test-dispatch-code-voters.sh](scripts/test-dispatch-code-voters.sh) stub `CURSOR_STUB_MODE=parse_retry_fail` at `scripts/test-dispatch-code-voters.sh:102-108`; success-only coverage at `scripts/test-dispatch-code-voters.sh:355-383`
+- **Issue:** The cursor stub already implements `parse_retry_fail` (narrative on every call), but no `--section` scenario runs it or asserts `VOTER_3_PARSE_RATE_STATUS=NOT_SUBSTANTIVE` plus absence of `cursor-vote-output-first-pass.txt` (and stable narrative in `cursor-vote-output.txt`), unlike the claude/codex failure harnesses.
+- **Scenario / breakage:** A future regression that mishandles cursor retry (e.g., writing a sidecar on the failure path, or breaking the second attempt wiring) would not fail `make lint` / `test-dispatch-code-voters-retry-cursor`, which only exercises `parse_retry_success`.
+- **Suggested fix:** Add a dedicated `--section` (or extend an existing shard-friendly section) that runs `CURSOR_STUB_MODE=parse_retry_fail` with a count file, mirrors the codex/claude failure assertions, and wire a `Makefile` `test-dispatch-code-voters-*` target if CI sharding requires it.
+
+### Out-of-Scope Observations
+
+None (per instructions, the added `larch-logs/implement/...` run directory from the chore commit is not flagged as noise).
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	latent	risk-integration	scripts/test-dispatch-code-voters.sh:102-108 scripts/test-dispatch-code-voters.sh:355-383	Cursor parse-retry failure is stubbed but never exercised in the harness.	A regression in cursor-specific retry or first-pass sidecar rules could ship while CI still passes because only parse_retry_success is covered for voter 3.	Add a harness section (and Makefile shard target if needed) using CURSOR_STUB_MODE=parse_retry_fail asserting NOT_SUBSTANTIVE, narrative preserved on the canonical path, and no cursor-vote-output-first-pass.txt sidecar.
+```

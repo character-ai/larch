@@ -235,8 +235,12 @@ launch_voter_retry() {
 
 check_and_retry_voter_parse_rate() {
     local slot_num="$1" voter_path="$2" voter_tool="$3" prompt_file="$4"
-    local status retry_prompt retry_output retry_rc retry_status diag_file retry_diag_file
+    local status retry_prompt retry_output retry_rc retry_status diag_file retry_diag_file first_pass_sidecar
     diag_file="$(voter_parse_rate_diag_path "$voter_path")"
+    case "$voter_path" in
+        *.txt) first_pass_sidecar="${voter_path%.txt}-first-pass.txt" ;;
+        *) first_pass_sidecar="${voter_path}-first-pass" ;;
+    esac
     status=$(check_voter_parse_rate "$voter_path" "$voter_tool" "$slot_num" silent | parse_rate_status_from_output)
     [[ "$status" == "NOT_SUBSTANTIVE" ]] || { printf '%s\n' "$status"; return 0; }
 
@@ -255,6 +259,13 @@ check_and_retry_voter_parse_rate() {
     if [[ "$retry_rc" -eq 0 && -s "$retry_output" ]]; then
         retry_status=$(check_voter_parse_rate "$retry_output" "$voter_tool" "$slot_num" silent | parse_rate_status_from_output)
         if [[ "$retry_status" == "OK" ]]; then
+            rm -f "$first_pass_sidecar" || true
+            if cp "$voter_path" "$first_pass_sidecar" 2>/dev/null; then
+                # Stderr so callers that capture this function's stdout (parse-rate status) are not polluted.
+                { emit_breadcrumb "voter-${voter_tool}: first-pass content preserved at $(basename "$first_pass_sidecar") (parse-rate retry succeeded)"; } >&2
+            else
+                larch_err "dispatch-code-voters.sh: warning: failed to preserve first-pass voter output at $first_pass_sidecar after parse-rate retry succeeded"
+            fi
             mv "$retry_output" "$voter_path"
             if [[ -f "${retry_output}.done" ]]; then
                 mv "${retry_output}.done" "${voter_path}.done"

@@ -22,8 +22,9 @@ Primary verbs:
   artifacts always use the trimmed form and fail closed if trimming fails. It
   writes only to the log root; `commit` later picks up the round directory.
   The allow-list includes scout artifacts (`scout-round*-status.env`,
-  `scout-round*-manifest.json`, `scout-round*-manifest.json.raw`) and dynamic-archetype files
-  (`reviewer-dyn-*.md`, `dyn-*-prompt.md`). Files under `dynamic-archetypes/`
+  `scout-round*-manifest.json`, `scout-round*-manifest.json.raw`), dynamic-archetype files
+  (`reviewer-dyn-*.md`, `dyn-*-prompt.md`), and voter parse-retry first-pass sidecars
+  (`*-vote-output-first-pass.txt`). Files under `dynamic-archetypes/`
   inside `--source-dir` are walked one level deep and flattened to the round
   root (no nested `dynamic-archetypes/` directory in committed output).
 - `append` atomically appends append-mode NDJSON batches.

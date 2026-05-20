@@ -1,0 +1,9 @@
+Gathering the diff and commit history for review.
+
+Checking whether `larch_err` aborts (affects fail-open) and reading the rest of the diff.
+
+Checking whether `round_artifact_included` already matched first-pass via `*-output-*.txt` (per plan note):
+
+Confirming `cursor-vote-output-first-pass.txt` matches `*-output-*.txt` (`cursor-vote` + `-output-` + `first-pass` + `.txt`). Explicit allow-list entry is redundant documentation per plan.
+
+

@@ -173,6 +173,8 @@ grep -Fq -- '--output-format json' "$CURSOR_LOG" || { echo "FAIL: cursor launch 
 grep -Fq 'VOTER_1_PARSE_RATE_STATUS=OK' <<< "$out" || { echo "FAIL: voter1 parse-rate status missing/incorrect" >&2; exit 1; }
 grep -Fq 'VOTER_2_PARSE_RATE_STATUS=OK' <<< "$out" || { echo "FAIL: voter2 parse-rate status missing/incorrect" >&2; exit 1; }
 grep -Fq 'VOTER_3_PARSE_RATE_STATUS=OK' <<< "$out" || { echo "FAIL: voter3 parse-rate status missing/incorrect" >&2; exit 1; }
+[[ ! -e "$TMP/happy/claude-vote-output-first-pass.txt" && ! -e "$TMP/happy/codex-vote-output-first-pass.txt" && ! -e "$TMP/happy/cursor-vote-output-first-pass.txt" ]] \
+    || { echo "FAIL: happy path must not write parse-retry first-pass sidecars" >&2; exit 1; }
 
 out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" --ballot-file "$BALLOT" --review-tmpdir "$TMP/absent" --codex-available false --cursor-available false)
 grep -Fq 'VOTER_2_TOOL=claude' <<< "$out"
@@ -264,6 +266,7 @@ fi  # end section: edge-and-r3-claude
 if section_runs retry-claude; then
 retry_success_tmp="$TMP/retry-success"
 retry_count_file="$TMP/retry-success-count.txt"
+mkdir -p "$retry_success_tmp"
 out=$(PATH="$STUB_BIN:$PATH" CLAUDE_STUB_MODE=parse_retry_success CLAUDE_STUB_COUNT_FILE="$retry_count_file" "$SCRIPT" \
     --ballot-file "$BALLOT" \
     --review-tmpdir "$retry_success_tmp" \
@@ -273,6 +276,14 @@ grep -Fq 'VOTER_1_PARSE_RATE_STATUS=OK' <<< "$out" \
     || { echo "FAIL: parse-rate retry success expected VOTER_1_PARSE_RATE_STATUS=OK" >&2; exit 1; }
 grep -Fq 'FINDING_1: YES' "$retry_success_tmp/claude-vote-output.txt" \
     || { echo "FAIL: parse-rate retry success expected structured final voter output" >&2; exit 1; }
+[[ -f "$retry_success_tmp/claude-vote-output-first-pass.txt" ]] \
+    || { echo "FAIL: parse-rate retry success expected claude first-pass sidecar" >&2; exit 1; }
+grep -Fq 'narrative instead of votes' "$retry_success_tmp/claude-vote-output-first-pass.txt" \
+    || { echo "FAIL: claude first-pass sidecar should preserve pre-retry narrative output" >&2; exit 1; }
+if cmp -s "$retry_success_tmp/claude-vote-output-first-pass.txt" "$retry_success_tmp/claude-vote-output.txt"; then
+    echo "FAIL: claude first-pass sidecar must differ from promoted retry output" >&2
+    exit 1
+fi
 if [[ -e "$retry_success_tmp/claude-vote-output-parse-rate-diag.txt" || -e "$retry_success_tmp/claude-parse-rate-diag.txt" ]]; then
     echo "FAIL: parse-rate retry success should clear claude parse-rate diag" >&2
     exit 1
@@ -288,6 +299,7 @@ fi
 
 retry_fail_tmp="$TMP/retry-fail"
 retry_fail_count_file="$TMP/retry-fail-count.txt"
+mkdir -p "$retry_fail_tmp"
 # No LARCH_EXECUTION_ISSUES_LOG. For this harness-shaped REVIEW_TMPDIR, the parse-rate
 # guard skips append-tool-failure.sh entirely, so stderr and the local diag sidecar
 # remain the only warning surfaces.
@@ -308,6 +320,8 @@ grep -Fq "voter_file=$retry_fail_tmp/claude-vote-output.txt" "$retry_fail_tmp/cl
     || { echo "FAIL: parse-rate retry failure expected exactly two claude attempts" >&2; exit 1; }
 [[ ! -e "$retry_fail_tmp/claude-vote-output-parse-retry.txt" && ! -e "$retry_fail_tmp/claude-vote-output-parse-retry.txt.launcher-stderr" ]] \
     || { echo "FAIL: parse-rate retry failure should clean retry temp files" >&2; exit 1; }
+[[ ! -e "$retry_fail_tmp/claude-vote-output-first-pass.txt" ]] \
+    || { echo "FAIL: parse-rate retry failure must not write first-pass sidecar" >&2; exit 1; }
 fi  # end section: retry-claude
 
 if section_runs retry-codex-success; then
@@ -324,6 +338,14 @@ grep -Fq 'VOTER_2_PARSE_RATE_STATUS=OK' <<< "$out" \
     || { echo "FAIL: codex parse-rate retry success expected VOTER_2_PARSE_RATE_STATUS=OK" >&2; exit 1; }
 grep -Fq 'FINDING_1: YES' "$retry_success_codex_tmp/codex-vote-output.txt" \
     || { echo "FAIL: codex parse-rate retry success expected structured final voter output" >&2; exit 1; }
+[[ -f "$retry_success_codex_tmp/codex-vote-output-first-pass.txt" ]] \
+    || { echo "FAIL: codex parse-rate retry success expected first-pass sidecar" >&2; exit 1; }
+grep -Fq 'Narrative codex output without structured votes' "$retry_success_codex_tmp/codex-vote-output-first-pass.txt" \
+    || { echo "FAIL: codex first-pass sidecar should preserve pre-retry narrative output" >&2; exit 1; }
+if cmp -s "$retry_success_codex_tmp/codex-vote-output-first-pass.txt" "$retry_success_codex_tmp/codex-vote-output.txt"; then
+    echo "FAIL: codex first-pass sidecar must differ from promoted retry output" >&2
+    exit 1
+fi
 if [[ -e "$retry_success_codex_tmp/codex-vote-output-parse-rate-diag.txt" || -e "$retry_success_codex_tmp/codex-parse-rate-diag.txt" ]]; then
     echo "FAIL: codex parse-rate retry success should clear slot-specific parse-rate diag" >&2
     exit 1
@@ -346,6 +368,14 @@ grep -Fq 'VOTER_3_PARSE_RATE_STATUS=OK' <<< "$out" \
     || { echo "FAIL: cursor parse-rate retry success expected VOTER_3_PARSE_RATE_STATUS=OK" >&2; exit 1; }
 grep -Fq 'FINDING_1: NO -- cursor' "$retry_success_cursor_tmp/cursor-vote-output.txt" \
     || { echo "FAIL: cursor parse-rate retry success expected structured final voter output" >&2; exit 1; }
+[[ -f "$retry_success_cursor_tmp/cursor-vote-output-first-pass.txt" ]] \
+    || { echo "FAIL: cursor parse-rate retry success expected first-pass sidecar" >&2; exit 1; }
+grep -Fq 'Narrative cursor output without structured votes' "$retry_success_cursor_tmp/cursor-vote-output-first-pass.txt" \
+    || { echo "FAIL: cursor first-pass sidecar should preserve pre-retry narrative output" >&2; exit 1; }
+if cmp -s "$retry_success_cursor_tmp/cursor-vote-output-first-pass.txt" "$retry_success_cursor_tmp/cursor-vote-output.txt"; then
+    echo "FAIL: cursor first-pass sidecar must differ from promoted retry output" >&2
+    exit 1
+fi
 if [[ -e "$retry_success_cursor_tmp/cursor-vote-output-parse-rate-diag.txt" || -e "$retry_success_cursor_tmp/cursor-parse-rate-diag.txt" ]]; then
     echo "FAIL: cursor parse-rate retry success should clear slot-specific parse-rate diag" >&2
     exit 1
@@ -357,6 +387,7 @@ fi  # end section: retry-cursor
 if section_runs retry-codex-fail-and-fallback; then
 retry_fail_codex_tmp="$TMP/retry-fail-codex"
 retry_fail_codex_count_file="$TMP/retry-fail-codex-count.txt"
+mkdir -p "$retry_fail_codex_tmp"
 # No LARCH_EXECUTION_ISSUES_LOG. For this harness-shaped codex fixture too, the
 # parse-rate guard skips append-tool-failure.sh entirely instead of appending to a
 # review-local execution-issues.md fallback.
@@ -373,6 +404,8 @@ grep -Fq 'DEGRADED_PANEL_WARNING=**⚠ Degraded code-review panel: 2/3 effective
     || { echo "FAIL: codex parse-rate retry failure should preserve codex parse-rate diag" >&2; exit 1; }
 [[ ! -e "$retry_fail_codex_tmp/codex-vote-output-parse-retry.txt" && ! -e "$retry_fail_codex_tmp/codex-vote-output-parse-retry.txt.launcher-stderr" ]] \
     || { echo "FAIL: codex parse-rate retry failure should clean retry temp files" >&2; exit 1; }
+[[ ! -e "$retry_fail_codex_tmp/codex-vote-output-first-pass.txt" ]] \
+    || { echo "FAIL: codex parse-rate retry failure must not write first-pass sidecar" >&2; exit 1; }
 
 retry_fail_fallback_tmp="$TMP/retry-fail-fallback-claude"
 retry_fail_fallback_count_file="$TMP/retry-fail-fallback-claude-count.txt"

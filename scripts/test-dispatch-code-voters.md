@@ -8,12 +8,12 @@ The harness unsets `LARCH_EXECUTION_ISSUES_LOG`, `SESSION_ENV_PATH`, and `IMPLEM
 
 11 scenarios + 3 regression blocks split across 8 `--section` groups for CI shard packing:
 
-- `happy` (scenarios 1-3): all voters available; codex/cursor absent; voter1 fails.
+- `happy` (scenarios 1-3): all voters available; codex/cursor absent; voter1 fails; asserts no `*-vote-output-first-pass.txt` sidecars on the no-retry path.
 - `edge-and-r3-claude` (scenarios 4-5 + Regression 3 claude case): symlink diff; 2 MB diff; production-shape claude voter parse-rate failure.
-- `retry-claude` (scenarios 6-7): claude voter parse-rate retry success; parse-rate retry failure.
-- `retry-codex-success` (scenario 8): codex voter parse-rate retry success.
-- `retry-cursor` (scenario 9): cursor voter parse-rate retry success.
-- `retry-codex-fail-and-fallback` (scenarios 10-11): codex parse-rate retry failure; all-claude fallback parse-rate failure.
+- `retry-claude` (scenarios 6-7): claude voter parse-rate retry success (first-pass sidecar present, differs from promoted output); parse-rate retry failure (no sidecar).
+- `retry-codex-success` (scenario 8): codex voter parse-rate retry success (first-pass sidecar present, differs from promoted output).
+- `retry-cursor` (scenario 9): cursor voter parse-rate retry success (first-pass sidecar present, differs from promoted output).
+- `retry-codex-fail-and-fallback` (scenarios 10-11): codex parse-rate retry failure (no first-pass sidecar); all-claude fallback parse-rate failure.
 - `regressions-r1-r2`: env isolation (Regression 1) + harness-ancestor path guard (Regression 2).
 - `regressions-r3-codex`: production-shape codex voter parse-rate failure (Regression 3, codex half).
 

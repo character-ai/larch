@@ -1,0 +1,23 @@
+FINDING_1: NO -- intentional committed run logs are repo policy, not a future issue
+FINDING_2: NO -- clearing the owned sidecar up front preserves the no-stale-sidecar invariant
+FINDING_3: EXONERATE -- the non-.txt branch is theoretical for current voter paths and broadening log allow-lists is not warranted
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: EXONERATE -- adjacent duplicate case arms are minor and not worth churn
+FINDING_7: EXONERATE -- cp failure already emits a warning, and an unconditional preserved breadcrumb would be misleading
+FINDING_8: YES
+FINDING_9: EXONERATE -- fail-open promotion is preserved and the warning is acceptable plan drift
+FINDING_10: NO -- deleting stale sidecars for the current owned output path avoids false retry artifacts
+FINDING_11: NO -- reused tmpdir stale artifacts should not survive a clean current run
+FINDING_12: NO -- the preseed intentionally verifies stale sidecar cleanup, and fail-path writes would still be caught
+FINDING_13: NO -- the sidecar filename is owned by the current dispatch invocation
+FINDING_14: NO -- preserving prior-run sidecars beside current outputs would be misleading
+FINDING_15: NO -- cleanup before classification is consistent with no sidecar on no-retry runs
+FINDING_16: NO -- foreign sidecars at the owned voter output path are stale artifacts
+FINDING_17: EXONERATE -- the behavior is functionally fail-open and the extra warning is acceptable
+FINDING_18: EXONERATE -- rare cp failure already has stderr observability; changing breadcrumb semantics is unnecessary
+FINDING_19: EXONERATE -- duplicate of the cp-failure breadcrumb concern and not worth code churn
+FINDING_20: EXONERATE -- cp-failure simulation would add harness complexity for a low-risk fail-open path
+FINDING_21: NO -- the seed documents lifecycle cleanup rather than masking a failure-path write
+FINDING_22: NO -- full diagnostic paths are normal local stderr behavior and useful for debugging
+FINDING_23: YES
