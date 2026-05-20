@@ -288,18 +288,21 @@ cat > "$bold_oos" <<'EOF'
 
 ### Out-of-Scope Observations
 - **risk-integration** — [`scripts/foo.sh`](https://example.com/doc) docs drift note.
+- **code-quality** — prose-only note without a file link.
 EOF
 printf '0\n' > "$bold_oos.done"
 printf 'STATUS=clean\n' > "$bold_oos.dirty-tree"
 out=$(WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.01 "$SCRIPT" --claude-output-files "$bold_oos" --mode description --timeout 1 --findings-file "$TMP/findings-bold-oos.md" --oos-file "$TMP/oos-bold-oos.md")
 assert_stdout_cap "$out"
-grep -Fq 'FINDINGS_COUNT=2' <<< "$out"
-grep -Fq 'OOS_COUNT=1' <<< "$out"
-grep -Fq '### FINDING_2: [OUT_OF_SCOPE] risk-integration: scripts/foo.sh' "$TMP/findings-bold-oos.md" \
+grep -Fq 'FINDINGS_COUNT=3' <<< "$out"
+grep -Fq 'OOS_COUNT=2' <<< "$out"
+grep -Eq '^### FINDING_[0-9]+: \[OUT_OF_SCOPE\] risk-integration: scripts/foo\.sh$' "$TMP/findings-bold-oos.md" \
     || { echo "FAIL: expected normalized OOS title in findings" >&2; cat "$TMP/findings-bold-oos.md" >&2; exit 1; }
-grep -Fq '### FINDING_2: [OUT_OF_SCOPE] **' "$TMP/findings-bold-oos.md" && {
-    echo "FAIL: FINDING_2 title should not keep bold-markdown prefix" >&2
+grep -Eq '^### FINDING_[0-9]+: \[OUT_OF_SCOPE\] code-quality$' "$TMP/findings-bold-oos.md" \
+    || { echo "FAIL: expected category-only normalized OOS title in findings" >&2; cat "$TMP/findings-bold-oos.md" >&2; exit 1; }
+if grep -Eq '^### FINDING_[0-9]+: \[OUT_OF_SCOPE\] \*\*' "$TMP/findings-bold-oos.md"; then
+    echo "FAIL: OOS titles should not keep bold-markdown prefix" >&2
     exit 1
-}
+fi
 
 echo "All assertions passed."
