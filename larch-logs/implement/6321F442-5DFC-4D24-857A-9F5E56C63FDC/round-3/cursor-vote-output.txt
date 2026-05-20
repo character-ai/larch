@@ -1,0 +1,22 @@
+Verifying critical ballot claims against the repository (read-only).
+
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: EXONERATE -- pre-existing wording nit; no GitHub issue needed
+FINDING_4: EXONERATE -- cosmetic structural-test prose; no issue
+FINDING_5: EXONERATE -- fix tally header when touching tally; no separate issue
+FINDING_6: EXONERATE -- same header drift as FINDING_5; no separate issue
+FINDING_7: NO -- already covered by FINDING_2 topology/doc sweep; separate issue redundant
+FINDING_8: YES
+FINDING_9: EXONERATE -- stale diagram line; low impact vs churn
+FINDING_10: EXONERATE -- extra tmp prompt file is harmless noise
+FINDING_11: YES
+FINDING_12: EXONERATE -- Step 3 documents `--round-num`; example gap is minor
+FINDING_13: EXONERATE -- `skipped` contract plus empty path makes extra guard low value
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: EXONERATE -- tally fix moots plan-only gap without extra process work
+FINDING_17: EXONERATE -- shipped skills/docs already describe round-aware `/review`; residual blurb risk is minor
+FINDING_18: EXONERATE -- Step 3 already states round-2+ 2-judge and Codex omission
+FINDING_19: YES
+FINDING_20: EXONERATE -- speculative coverage expansion without demonstrated failure mode

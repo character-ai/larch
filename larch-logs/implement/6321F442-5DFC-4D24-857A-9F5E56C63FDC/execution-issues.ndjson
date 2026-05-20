@@ -1,0 +1,1 @@
+{"phase":"implement","step":"7a","category":"Warnings","source":"execution-issues.md pre-bump","source_sha256":"6bfc9f88fad970aa6a6f5d782ba8a52efa3cc93c1b09d98f162d5967b9b4ae03","body":"\nStep 5 — review loop stopped after round 3 because accepted findings were not substantial (accepted=5; reasoning=under 8 accepted, no large structural fix).\n"}
