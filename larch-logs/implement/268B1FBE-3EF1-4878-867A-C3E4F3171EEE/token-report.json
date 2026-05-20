@@ -568,16 +568,16 @@
       {
         "step": "Step 8b — rebase",
         "totals": {
-          "input": 0,
-          "output": 0,
-          "total": 0
+          "input": 111,
+          "output": 112,
+          "total": 238
         }
       }
     ],
     "totals": {
-      "input": 2071554,
-      "output": 231420,
-      "total": 14986238
+      "input": 2071665,
+      "output": 231532,
+      "total": 14986476
     }
   }
 }
