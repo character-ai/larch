@@ -38,16 +38,6 @@ assert_contains() {
     fi
 }
 
-assert_not_contains() {
-    local label=$1 file=$2 needle=$3
-    if grep -Fq -- "$needle" "$file"; then
-        fail "$label (needle unexpectedly found: $needle)"
-        sed 's/^/    /' "$file" || true
-    else
-        ok "$label"
-    fi
-}
-
 # --------------------------------------------------------------------------
 # Helpers
 
@@ -70,25 +60,24 @@ SH
 
 run_script() {
     local root=$1 run_id=$2 repo=$3 out_file=$4 rc_var=$5
-    local rc=0
+    local script_rc=0
     PATH="$root/scripts:$PATH" "$root/scripts/gh-run-logs.sh" \
-        --run-id "$run_id" --repo "$repo" > "$out_file" 2>&1 || rc=$?
-    eval "$rc_var=$rc"
+        --run-id "$run_id" --repo "$repo" > "$out_file" 2>&1 || script_rc=$?
+    printf -v "$rc_var" '%s' "$script_rc"
 }
 
 # --------------------------------------------------------------------------
-# Test 1: in-progress response → exit 2
+# Test 1: in-progress response → exit 3
 
-echo "--- Test 1: in-progress response → exit 2 ---"
+echo "--- Test 1: in-progress response → exit 3 ---"
 T1="$TMPDIR_BASE/t1"
 mkdir -p "$T1"
 write_subject "$T1"
 write_gh_stub "$T1" "run 12345 is still in progress; logs will be available when it is complete" 1
 
 rc=0
-PATH="$T1/scripts:$PATH" "$T1/scripts/gh-run-logs.sh" \
-    --run-id "12345" --repo "owner/repo" > "$T1/out.txt" 2>&1 || rc=$?
-assert_rc "in-progress exits 2" "$rc" "2"
+run_script "$T1" "12345" "owner/repo" "$T1/out.txt" rc
+assert_rc "in-progress exits 3" "$rc" "3"
 assert_contains "output contains in-progress message" "$T1/out.txt" "is still in progress"
 assert_contains "output contains header comment" "$T1/out.txt" "CI log (run 12345"
 
@@ -102,8 +91,7 @@ write_subject "$T2"
 write_gh_stub "$T2" "Error: some step failed with code 1" 0
 
 rc=0
-PATH="$T2/scripts:$PATH" "$T2/scripts/gh-run-logs.sh" \
-    --run-id "99999" --repo "owner/repo" > "$T2/out.txt" 2>&1 || rc=$?
+run_script "$T2" "99999" "owner/repo" "$T2/out.txt" rc
 assert_rc "successful gh exits 0" "$rc" "0"
 assert_contains "output contains log line" "$T2/out.txt" "some step failed"
 
@@ -117,24 +105,22 @@ write_subject "$T3"
 write_gh_stub "$T3" "HTTP 404: not found" 1
 
 rc=0
-PATH="$T3/scripts:$PATH" "$T3/scripts/gh-run-logs.sh" \
-    --run-id "55555" --repo "owner/repo" > "$T3/out.txt" 2>&1 || rc=$?
+run_script "$T3" "55555" "owner/repo" "$T3/out.txt" rc
 assert_rc "non-in-progress failure exits 1" "$rc" "1"
 assert_contains "output contains error message" "$T3/out.txt" "HTTP 404"
 
 # --------------------------------------------------------------------------
 # Test 4: in-progress substring must be exact (different message → exit 1)
 
-echo "--- Test 4: partial match does not trigger exit 2 ---"
+echo "--- Test 4: partial match does not trigger exit 3 ---"
 T4="$TMPDIR_BASE/t4"
 mkdir -p "$T4"
 write_subject "$T4"
-write_gh_stub "$T4" "logs will be available once the run completes" 1
+write_gh_stub "$T4" "logs will be available once the run completes" 2
 
 rc=0
-PATH="$T4/scripts:$PATH" "$T4/scripts/gh-run-logs.sh" \
-    --run-id "11111" --repo "owner/repo" > "$T4/out.txt" 2>&1 || rc=$?
-assert_rc "non-matching message does not exit 2" "$rc" "1"
+run_script "$T4" "11111" "owner/repo" "$T4/out.txt" rc
+assert_rc "non-matching message does not exit 3" "$rc" "1"
 
 # --------------------------------------------------------------------------
 # Summary

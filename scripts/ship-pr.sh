@@ -1194,7 +1194,7 @@ run_evaluate_failure() {
     fail_file=$(failure_capture_path "$phase")
     "$SCRIPT_DIR/gh-run-logs.sh" --run-id "$failed_run" --repo "$(read_state REPO)" > "$fail_file" 2>&1
     rc=$?
-    [ "$rc" -eq 0 ] || [ "$rc" -eq 2 ] || record_failure "$phase" "gh-run-logs.sh" "$rc" "$fail_file" "CI Issues"
+    [ "$rc" -eq 0 ] || [ "$rc" -eq 3 ] || record_failure "$phase" "gh-run-logs.sh" "$rc" "$fail_file" "CI Issues"
     # Retry loop with cap, detached-HEAD check, and jittered backoff. This caps
     # each run_evaluate_failure invocation at 5 vendor+push attempts; the
     # persisted FIX_ATTEMPTS counter still tracks successful fix pushes across
