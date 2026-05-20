@@ -233,6 +233,7 @@ baseline_tracked="$run_dir/baseline-tracked.txt"
 baseline_untracked="$run_dir/baseline-untracked.txt"
 baseline_head=""
 forbidden_paths_file="$run_dir/forbidden-paths.txt"
+submodule_paths_file="$run_dir/submodule-paths.txt"
 current_tracked="$run_dir/current-tracked.txt"
 current_untracked="$run_dir/current-untracked.txt"
 delta_paths_file="$run_dir/delta-paths.txt"
@@ -243,12 +244,13 @@ baseline_clean=true
 if [[ -s "$baseline_tracked" || -s "$baseline_untracked" ]]; then
     baseline_clean=false
 fi
+submodule_paths | awk 'NF && !seen[$0]++ { print }' > "$submodule_paths_file"
 {
     printf '%s\n' '.gitmodules'
-    submodule_paths
+    cat "$submodule_paths_file"
 } | awk 'NF && !seen[$0]++ { print }' > "$forbidden_paths_file"
 prompt_file="$run_dir/prompt.md"
-compose_prompt "$prompt_file" "$CHECKS_LOG" "$SITE_LABEL" "$forbidden_paths_file"
+compose_prompt "$prompt_file" "$CHECKS_LOG" "$SITE_LABEL" "$submodule_paths_file"
 prompt_body="$(cat "$prompt_file")"
 
 coder_tool=""

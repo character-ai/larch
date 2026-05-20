@@ -133,6 +133,8 @@ PATH="$stub_bin:$PATH" LARCH_QUIET_DISABLE=1 "$REPO_ROOT/scripts/dispatch-plan-v
 
 assert_contains "plan-voter Verify silently" \
     'Verify silently' "$plan_voter_tmp/codex-plan-voter-prompt.txt"
+assert_contains "plan-voter plan/file verification allowance" \
+    'silently inspect the plan or referenced repo files for verification' "$plan_voter_tmp/codex-plan-voter-prompt.txt"
 assert_contains "plan-voter Output ONLY vote lines" \
     'Output ONLY vote lines' "$plan_voter_tmp/codex-plan-voter-prompt.txt"
 assert_contains "plan-voter OOS ballot rows" \

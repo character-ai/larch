@@ -7,7 +7,7 @@ Sourced-only library (no shebang) exposing `emit_submodule_prohibition()`. Centr
 ## Primary Callers
 
 - `skills/review-and-fix/scripts/review-and-fix.sh::compose_coder_prompt()` — passes `$submodules_list` from `submodule_paths()` output
-- `scripts/lint-fix-loop.sh::compose_prompt()` — passes `$forbidden_paths_file`, which includes discovered submodule paths plus `.gitmodules`; the function itself always appends the `.git/` / `.gitmodules` catch-all prohibition line
+- `scripts/lint-fix-loop.sh::compose_prompt()` — passes a submodule-paths-only file; `.gitmodules` stays on the caller's mechanical forbidden-path list while the function itself appends the `.git/` / `.gitmodules` catch-all prohibition line
 
 ## Function Contract
 
@@ -15,7 +15,7 @@ Sourced-only library (no shebang) exposing `emit_submodule_prohibition()`. Centr
 emit_submodule_prohibition [submodules_list_path]
 ```
 
-Writes the PROHIBITION block to stdout. When `submodules_list_path` is non-empty and the file is non-empty (`-s`), lists the submodule paths as a bullet list. Otherwise emits the "no submodule paths discovered" variant. Always appends the `.git/` / `.gitmodules` catch-all prohibition line.
+Writes the PROHIBITION block to stdout. When `submodules_list_path` is non-empty and the file is non-empty (`-s`), lists only discovered submodule paths as a bullet list. Otherwise emits the "no submodule paths discovered" variant. Always appends the `.git/` / `.gitmodules` catch-all prohibition line.
 
 ## Harness
 

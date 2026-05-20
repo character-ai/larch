@@ -113,6 +113,17 @@ while IFS= read -r row || [[ -n "$row" ]]; do
             all_outputs+=("$phase2_output")
             all_tools+=("cursor")
             ;;
+        retry-fails-substantive:voter-2)
+            printf 'Narrative output that should trigger retry.\n' > "$output"
+            all_outputs+=("$output")
+            all_tools+=("$tool")
+            ;;
+        retry-fails-substantive:voter-2-retry)
+            phase2_output="${output%.txt}-phase2.txt"
+            printf 'Narrative output that should still fail substantive validation.\n' > "$phase2_output"
+            all_outputs+=("$phase2_output")
+            all_tools+=("cursor")
+            ;;
         *)
             printf 'FINDING_1: YES\nOOS_1: NO -- fallback\n' > "$output"
             all_outputs+=("$output")
@@ -146,5 +157,11 @@ grep -Fq 'FINDING_1: NO -- cursor' "$voter2_path" || { echo "FAIL: retry waterfa
 test -f "$TMP/retry-waterfall/codex-vote-output-first-pass.txt" || { echo "FAIL: retry waterfall first-pass sidecar missing" >&2; exit 1; }
 test ! -f "$TMP/retry-waterfall/codex-vote-output-parse-retry-phase2.txt" || { echo "FAIL: retry waterfall phase2 artifact should have been moved into canonical path" >&2; exit 1; }
 grep -Fq $'voter-2-retry\tcodex' "$stub_log_retry" || { echo "FAIL: retry stub log missing retry slot wiring" >&2; exit 1; }
+
+stub_log_not_substantive="$TMP/dispatch-with-waterfall-not-substantive.log"
+out=$(PATH="$STUB_BIN:$PATH" CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT_STUB" PLAN_VOTER_STUB_MODE=retry-fails-substantive PLAN_VOTER_STUB_LOG="$stub_log_not_substantive" \
+    "$SCRIPT" --ballot-file "$BALLOT" --design-tmpdir "$TMP/retry-fails-substantive" --codex-available true --cursor-available true)
+grep -Fq 'VOTER_2_STATUS=failed' <<< "$out" || { echo "FAIL: narrative-only retry output should mark voter 2 failed" >&2; exit 1; }
+grep -Fq 'DEGRADED_PANEL_WARNING=' <<< "$out" || { echo "FAIL: narrative-only retry output should emit degraded warning" >&2; exit 1; }
 
 echo "PASS: test-dispatch-plan-voters.sh"

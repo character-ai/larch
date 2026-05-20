@@ -318,7 +318,7 @@ Review this generated-only diff for drift from the source template or generator,
 TAGGING_GENERATED
         ;;
       generic)
-        # Per-finding shape pinned here; OOS parser in #2417 relies on this format.
+        # Refs: #2417
         cat <<'TAGGING_DIFF'
 Tag each finding with its focus area (one of code-quality / risk-integration / correctness / architecture / security). Return findings in two clearly delimited sections: a section starting with the line '### In-Scope Findings' for issues introduced or amplified by the branch diff, and a section starting with the line '### Out-of-Scope Observations' for pre-existing issues not introduced or amplified by the change. Each finding MUST be a single bullet matching this pattern exactly:
 - **<focus-area>** `<path>:<line-range>` — <one-paragraph issue text>. **Suggested fix:** <one-paragraph suggested fix text>.

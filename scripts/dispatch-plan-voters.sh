@@ -55,7 +55,7 @@ make_prompt_file() {
         printf '  OOS_N: NO -- one-line reason\n'
         printf '  OOS_N: EXONERATE -- one-line reason\n'
         printf 'For OOS_N items: YES means file a GitHub issue; NO or EXONERATE means skip.\n'
-        printf '\n**Verify silently** — do not produce narrative output, reasoning explanations, or status updates before, between, or after the vote lines. You may read the ballot file for verification, but do not invoke planning/status tools or any other tools beyond that file read.\n'
+        printf '\n**Verify silently** — do not produce narrative output, reasoning explanations, or status updates before, between, or after the vote lines. You may read the ballot file and silently inspect the plan or referenced repo files for verification, but do not invoke planning/status tools.\n'
         printf 'You must vote on every item. Do NOT skip any.\n'
         printf '**Output ONLY vote lines.** Lines that do not start with the exact ballot ID from the ballot heading (FINDING_N: or OOS_N:) followed by YES, NO, or EXONERATE are silently ignored.\n'
     } > "$prompt_file"
@@ -208,11 +208,26 @@ retry_voter() {
 retry_voter 2 VOTER_2_PATH "$VOTER_2_TOOL" "$codex_prompt"
 retry_voter 3 VOTER_3_PATH "$VOTER_3_TOOL" "$cursor_prompt"
 
+if [[ "$VOTER_2_STATUS" != "failed" ]]; then
+    voter_2_rate_status=$(check_plan_voter_substantive "$VOTER_2_PATH")
+    if [[ "$voter_2_rate_status" == "NOT_SUBSTANTIVE" ]]; then
+        emit_kv WARN "plan-voter slot 2 remained narrative-only after retry; excluding from external judge count"
+        VOTER_2_STATUS="failed"
+    fi
+fi
+if [[ "$VOTER_3_STATUS" != "failed" ]]; then
+    voter_3_rate_status=$(check_plan_voter_substantive "$VOTER_3_PATH")
+    if [[ "$voter_3_rate_status" == "NOT_SUBSTANTIVE" ]]; then
+        emit_kv WARN "plan-voter slot 3 remained narrative-only after retry; excluding from external judge count"
+        VOTER_3_STATUS="failed"
+    fi
+fi
+
 external_judges=0
 [[ "$VOTER_2_STATUS" != "failed" && -s "$VOTER_2_PATH" ]] && external_judges=$((external_judges + 1))
 [[ "$VOTER_3_STATUS" != "failed" && -s "$VOTER_3_PATH" ]] && external_judges=$((external_judges + 1))
 if (( external_judges < 2 )); then
-    _warn_msg="**⚠ Plan-review external voter degradation: ${external_judges}/2 voter slots produced output. Voter 1 (Claude) must compensate.**"
+    _warn_msg="**⚠ Plan-review external voter degradation: ${external_judges}/2 voter slots produced substantive vote output. Voter 1 (Claude) must compensate.**"
     larch_err "$_warn_msg"
     emit_kv DEGRADED_PANEL_WARNING "$_warn_msg"
 fi
