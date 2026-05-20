@@ -524,6 +524,7 @@ tally_args=(
     --review-tmpdir "$REVIEW_TMPDIR"
     --cursor-available "$CURSOR_AVAILABLE"
     --codex-available "$CODEX_AVAILABLE"
+    --round-num "$ROUND_NUM"
 )
 [[ -n "$SESSION_ENV_PATH" ]] && tally_args+=(--session-env-path "$SESSION_ENV_PATH")
 [[ -n "$SCOPE_FILES" && -s "$SCOPE_FILES" ]] && tally_args+=(--scope-files "$SCOPE_FILES")

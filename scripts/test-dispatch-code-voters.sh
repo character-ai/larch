@@ -4,9 +4,9 @@
 set -euo pipefail
 export LARCH_QUIET_DISABLE=1
 
-# --section CLI selector: splits the 11 scenarios + 3 regression blocks into
+# --section CLI selector: splits the 12 scenarios + 3 regression blocks into
 # 8 groups so the CI matrix can pack them as independent harness rows. Sections:
-#   happy:                          scenarios 1-3 (happy path, absent tools, empty voter)
+#   happy:                          scenarios 1-4 (happy path, absent tools, empty voter, round-2 panel)
 #   edge-and-r3-claude:             scenarios 4-5 (symlink diff, 2 MB diff) + Regression 3 claude case
 #   retry-claude:                   retry_success_claude, retry_fail_claude
 #   retry-codex-success:            retry_success_codex
@@ -14,7 +14,7 @@ export LARCH_QUIET_DISABLE=1
 #   retry-codex-fail-and-fallback:  retry_fail_codex, retry_fail_fallback
 #   regressions-r1-r2:              env-isolation (Regression 1) + harness-ancestor path-guard (Regression 2)
 #   regressions-r3-codex:           production-shape codex case (Regression 3, codex half)
-# With no --section, all 11 scenarios + 3 regressions run sequentially
+# With no --section, all 12 scenarios + 3 regressions run sequentially
 # (local-dev backward compat).
 SECTION=""
 while [[ $# -gt 0 ]]; do
