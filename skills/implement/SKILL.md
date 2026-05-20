@@ -749,8 +749,8 @@ Steps 1, 2, 5, 7a, 8, 9a.1, 11, and 18 write durable run payloads through `scrip
 | Step 1 tail (after `/design` exports the voting tally artifact) | `plan-review-tally` |
 | Step 2 (after each Q/A append) | `execution-issues` |
 | Step 5 (after `review-and-fix.sh` writes `review-and-fix-summary.json`) | `code-review-tally` and `review-findings-full` |
-| Step 7a tail (pre-bump log flush) | `token-report`, `timing-report`, `execution-issues` (pre-bump), and log-flush commit |
-| Step 8+ mid-run (`ship-pr.sh` Triggers A-C via `scripts/refresh-run-logs.sh`: before each rebase force-push, before each CI-fix push, before each bump postbump push) | `token-report`, `timing-report`, and refresh commit — skipped when `--no-logs-commit` |
+| Step 7a tail (pre-bump log flush) | `token-report`, `timing-report`, `execution-issues` (pre-bump), `session-transcript` (truncated at pre-bump boundary), and log-flush commit |
+| Step 8+ mid-run (`ship-pr.sh` Triggers A-C via `scripts/refresh-run-logs.sh`: before each rebase force-push, before each CI-fix push, before each bump postbump push) | `token-report`, `timing-report`, `session-transcript` refresh, and refresh commit — skipped when `--no-logs-commit` |
 | Step 8 (after `ship-pr.sh` bump phase writes `BUMP_REASONING_FILE` to state) | `version-bump-reasoning` |
 | Step 9a.1 (after OOS filing) | `oos-issues`, `run-statistics`, `token-report`, and `timing-report` |
 | Step 11 (post-execution checkpoint) | no post-CI `execution-issues` append; Step 7a pre-bump writes the batch and Step 18 teardown remains the safety net |
@@ -1672,14 +1672,21 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 [ -f "$IMPLEMENT_TMPDIR/codex-impl-transcript.txt.prompt" ] && "${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" write --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --batch codex-impl-transcript-prompt --input-file "$IMPLEMENT_TMPDIR/codex-impl-transcript.txt.prompt" || true
 [ -f "$IMPLEMENT_TMPDIR/codex-commit-message.txt" ] && "${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" write --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --batch codex-commit-message --input-file "$IMPLEMENT_TMPDIR/codex-commit-message.txt" || true
 [ -f "$IMPLEMENT_TMPDIR/manifest-raw.json" ] && "${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" write --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --batch codex-impl-manifest-raw --input-file "$IMPLEMENT_TMPDIR/manifest-raw.json" || true
+"${CLAUDE_PLUGIN_ROOT}/scripts/capture-session-transcript.sh" \
+  --source-file "$LARCH_CLAUDE_SOURCE_FILE" \
+  --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
+  --skill implement \
+  --run-id "$RUN_ID" \
+  --no-logs-commit "${no_logs_commit:-false}" \
+  --execution-issues-log "$IMPLEMENT_TMPDIR/execution-issues.md" || true
 if [ "${no_logs_commit:-false}" != "true" ]; then
   "${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" commit --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" || true
 fi
 ```
 
-Best-effort: failures are non-fatal, but each non-zero `token-report.sh`, `timing-report.sh`, `larch-log.sh write`, or `larch-log.sh commit` result must first be captured to `$IMPLEMENT_TMPDIR/pre-bump-log-flush-<tool>.log` and appended with `append-tool-failure.sh` under `Tool Failures` (use `Warnings` only for report rendering that is known to be documentation-only). Do not leave a bare `|| true` on these calls without the adjacent capture and append. Do **not** call `write-final-report.sh` in this Step 7a pre-bump checkpoint: `ship-pr-state.sh` does not exist yet, so `PR_URL` is still unavailable. In Step 8+, `ship-pr.sh` first writes `final-summary.md` with placeholder PR fields before `create-pr.sh`, folds that file into the pre-PR larch-log commit, and lets `create-pr.sh`'s push carry it onto the remote PR tip. That pre-PR pass also seeds the initial tracking-issue `larch:final-summary` upsert with placeholder PR fields. Only after PR creation does `ship-pr.sh` persist `PR_NUMBER`/`PR_URL` and re-run `write-final-report.sh --comment-only` to refresh the tracking-issue `larch:final-summary` comment with the live PR URL via API only — no second commit, no second push. Later refreshes and Step 18 can re-render it as state evolves.
+Best-effort: failures are non-fatal, but each non-zero `token-report.sh`, `timing-report.sh`, `larch-log.sh write`, `capture-session-transcript.sh`, or `larch-log.sh commit` result must first be captured to `$IMPLEMENT_TMPDIR/pre-bump-log-flush-<tool>.log` and appended with `append-tool-failure.sh` under `Tool Failures` (use `Warnings` only for report rendering that is known to be documentation-only). Do not leave a bare `|| true` on these calls without the adjacent capture and append. Do **not** call `write-final-report.sh` in this Step 7a pre-bump checkpoint: `ship-pr-state.sh` does not exist yet, so `PR_URL` is still unavailable. In Step 8+, `ship-pr.sh` first writes `final-summary.md` with placeholder PR fields before `create-pr.sh`, folds that file into the pre-PR larch-log commit, and lets `create-pr.sh`'s push carry it onto the remote PR tip. That pre-PR pass also seeds the initial tracking-issue `larch:final-summary` upsert with placeholder PR fields. Only after PR creation does `ship-pr.sh` persist `PR_NUMBER`/`PR_URL` and re-run `write-final-report.sh --comment-only` to refresh the tracking-issue `larch:final-summary` comment with the live PR URL via API only — no second commit, no second push. Later refreshes and Step 18 can re-render it as state evolves.
 
-In `scripts/refresh-run-logs.sh`, on each retry (CI failure, merge conflict, rebase in Steps 10/12), Triggers A-C in `ship-pr.sh` re-render and commit the `token-report` and `timing-report` batches before each push, refresh `larch:final-summary` only after `PR_URL` exists, and flush any post-Step-7a `execution-issues.md` tail once the Step 7a checkpoint has run, so the merged PR carries up-to-date token/timing, final-summary, and execution-issues data.
+In `scripts/refresh-run-logs.sh`, on each retry (CI failure, merge conflict, rebase in Steps 10/12), Triggers A-C in `ship-pr.sh` re-render and commit the `token-report`, `timing-report`, and `session-transcript` batches before each push, refresh `larch:final-summary` only after `PR_URL` exists, and flush any post-Step-7a `execution-issues.md` tail once the Step 7a checkpoint has run, so the merged PR carries up-to-date token/timing, session-transcript, final-summary, and execution-issues data.
 
 <!-- step:8+ — Ship PR State Machine -->
 ## Step 8+ — Ship PR State Machine
@@ -1921,30 +1928,6 @@ fi
 ```
 
 For Step 18's `token-report.sh` and `write-final-report.sh`, preserve the best-effort behavior but capture any non-zero stdout/stderr to `$IMPLEMENT_TMPDIR/step18-<tool>.failure.log` and append with `append-tool-failure.sh` before continuing.
-
-Capture and commit the session transcript (best-effort — never fatal):
-
-```bash
-IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR"
-export IMPLEMENT_TMPDIR
-if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
-  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
-fi
-export CLAUDE_PLUGIN_ROOT
-LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
-LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
-LARCH_TIMING_LEDGER=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
-export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
-"${CLAUDE_PLUGIN_ROOT}/scripts/capture-session-transcript.sh" \
-  --source-file "$LARCH_CLAUDE_SOURCE_FILE" \
-  --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
-  --skill implement \
-  --run-id "$RUN_ID" \
-  --no-logs-commit "${no_logs_commit:-false}" \
-  --execution-issues-log "$IMPLEMENT_TMPDIR/execution-issues.md" || true
-```
-
-The transcript path was snapshotted at Step 0 via `token-claude-source.sh` and stored in `$IMPLEMENT_TMPDIR/claude-source.env`. `capture-session-transcript.sh` reads that source safely, writes the `session-transcript` batch through `larch-log.sh` (which applies `redact-tmpdir-paths.sh` and `redact-secrets.sh`), and commits unless `--no-logs-commit` is set. Three mechanisms cooperate to prevent post-merge log-only commits to `main`: (1) `IMPLEMENT_TMPDIR` is exported into the subprocess so the sentinel check in `capture-session-transcript.sh` and `larch-log.sh` can see it; (2) `ship-pr.sh`'s `write_post_merge_sentinel()` writes `$IMPLEMENT_TMPDIR/post-merge-sentinel` immediately after merge, causing both scripts to suppress the commit (`SESSION_TRANSCRIPT_STATUS=suppressed-post-merge-sentinel`); (3) both scripts also refuse to commit when `current_branch_is_default()` returns true (branch is `main`, `master`, or the repo's `origin/HEAD` default), emitting `SESSION_TRANSCRIPT_STATUS=suppressed-default-branch` or a `larch-log.sh` stderr diagnostic respectively. For every outcome, including `captured`, the wrapper records `SESSION_TRANSCRIPT_STATUS=<status>` in `Warnings` so source/write/commit skips remain visible.
 
 Run the consolidated teardown subcommand after the prompt-side warnings/notes and token artifact refresh above. **See NEVER #13 — do NOT write or recreate `$IMPLEMENT_TMPDIR/finalize-state.sh` from prompt-side orchestrator code; on non-design-only runs the file is produced by `ship-pr.sh`'s `write_finalize_state()`, and the sanctioned `restore-finalize-state.sh` call below is the only blessed pre-teardown writer. If teardown fails with `state-file missing required key` and restore could not help (e.g. `ship-pr-state.sh` itself is absent), surface the error and stop.** Under `forked_target=true`, skip only the tracking-issue rename / summary-refresh portions by leaving `ISSUE_NUMBER` unset; still run `implement-finalize.sh teardown` so `$IMPLEMENT_TMPDIR` is cleaned up and final warnings are repeated. It performs the title-prefix terminal transition first: Branch A renames to `[STALLED]` only when `STALL_TRACKING=true` and the issue state is exactly `OPEN`; Branch B renames to `[DONE]` when `STALL_TRACKING=false`, `DONE_RENAME_APPLIED!=true`, and `$PR_NUMBER` is set OR `DESIGN_ONLY_DONE=true`; Branch C is a no-op. Finalize-time round-trip detection runs inside `scripts/implement-finalize.sh` immediately before Branch A/B renames. On stalled paths, it then best-effort stashes leftover working-tree edits with a `larch-stalled-...` label and writes `.git/larch-stalled-run.txt` so the next SessionStart/preflight can surface or clear the leftover state. Before `cleanup-tmpdir.sh` runs (and before `verify_cleanup_target`, so even a refused cleanup releases the Stop hook), teardown writes `$IMPLEMENT_TMPDIR/.run-cleaned-up`. Teardown then best-effort kills stale background processes from this session whose argv references `$IMPLEMENT_TMPDIR` (fixed-string match via `awk index()` against lexical and physical tmpdir paths; current process and its direct parent are excluded; SIGTERM + 1s wait + SIGKILL backstop; emits a warning breadcrumb if any were killed). Before tmpdir removal, it verifies the tmpdir basename prefix and `session-id` against the Step 14 state file. When both match, cleanup proceeds. When only the session-id matches (prefix mismatch), it emits a warning and still invokes cleanup — this handles prefix bugs fixed in #1563/#1572. When the session-id doesn't match (or is absent), it logs a Tool Failures entry, emits the documented refusal warning, skips `rm -rf`, and continues. It then prints the tracking-issue URL when resolvable and prints the final Step 18 breadcrumb. Mechanical SSOT: `${CLAUDE_PLUGIN_ROOT}/scripts/implement-finalize.md` § `teardown`.
 

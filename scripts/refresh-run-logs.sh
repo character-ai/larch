@@ -81,6 +81,17 @@ fi
 "$SCRIPT_DIR/timing-report.sh" --full --format json --output "$IMPL_TMPDIR/timing-report-refresh.json" 2>/dev/null || true
 "$SCRIPT_DIR/larch-log.sh" write --log-root "$log_root" --skill implement --run-id "$run_id" \
     --batch timing-report --input-file "$IMPL_TMPDIR/timing-report-refresh.json" 2>/dev/null || true
+# Re-capture session transcript so CI-retry pushes carry the most recent turns.
+# Use the already-exported LARCH_CLAUDE_SOURCE_FILE (set by the session-env block above
+# when session-env.sh exists); falls back to empty string if missing, which causes the
+# script to attempt fallback discovery. Redirect stdout so SESSION_TRANSCRIPT_STATUS does
+# not pollute the caller's output stream.
+"$SCRIPT_DIR/capture-session-transcript.sh" \
+    --source-file "${LARCH_CLAUDE_SOURCE_FILE:-}" \
+    --log-root "$log_root" \
+    --skill implement \
+    --run-id "$run_id" \
+    --no-logs-commit "false" >/dev/null 2>&1 || true
 
 # Commit via larch-log.sh, which handles the tmpdir→repo copy and git operations.
 # No push — caller owns the push.

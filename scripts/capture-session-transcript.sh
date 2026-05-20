@@ -64,7 +64,7 @@ append_warning() {
     "$SCRIPT_DIR/append-execution-issue.sh" \
         --log "$EXECUTION_ISSUES_LOG" \
         --category Warnings \
-        --entry "- **Step 18 — session-transcript status=$status:** $message" \
+        --entry "- **Step 7a — session-transcript status=$status:** $message" \
         >/dev/null 2>&1 || true
 }
 
@@ -75,25 +75,6 @@ emit_status() {
     append_warning "$status" "$message"
     emit_kv SESSION_TRANSCRIPT_STATUS "$status"
     exit 0
-}
-
-current_branch_is_default() {
-    local repo_root current_branch default_branch
-
-    repo_root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
-    [ -n "$repo_root" ] || return 1
-    current_branch="$(git -C "$repo_root" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
-    [ -n "$current_branch" ] || return 1
-    [ "$current_branch" != "HEAD" ] || return 1
-    [ "$current_branch" != "main" ] || return 0
-    [ "$current_branch" != "master" ] || return 0
-
-    default_branch="$(
-        git -C "$repo_root" symbolic-ref refs/remotes/origin/HEAD 2>/dev/null \
-            | sed 's|^refs/remotes/origin/||'
-    )" || default_branch=""
-    [ -n "$default_branch" ] || return 1
-    [ "$current_branch" = "$default_branch" ]
 }
 
 TRANSCRIPT_PATH=""
@@ -179,14 +160,6 @@ fi
 
 if [ "$NO_LOGS_COMMIT" = "true" ]; then
     emit_status "suppressed-no-logs-commit" "--no-logs-commit was set; transcript was written under the staging log root but not committed."
-fi
-
-if [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -e "$IMPLEMENT_TMPDIR/post-merge-sentinel" ]; then
-    emit_status "suppressed-post-merge-sentinel" "post-merge sentinel exists; transcript was written but not committed (intentional — no commits after merge)."
-fi
-
-if current_branch_is_default; then
-    emit_status "suppressed-default-branch" "current branch is main/default; transcript was written but not committed (intentional — no commits after merge)."
 fi
 
 if ! "$SCRIPT_DIR/larch-log.sh" commit \

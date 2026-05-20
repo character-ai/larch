@@ -176,34 +176,9 @@ touch -t 200001010000 "$fallback_stale_transcript"
 printf 'test-session\n' > "$fallback_stale_impl/session-id"
 run_capture "$fallback_stale_label" "source-file-missing" "" "false" "$fallback_stale_impl" "$fallback_stale_home"
 
-# post-merge sentinel suppression test.
-sentinel_label="post-merge-sentinel"
-sentinel_repo="$TMP/$sentinel_label-repo"
-sentinel_impl="$TMP/$sentinel_label-impl"
-mkdir -p "$sentinel_repo" "$sentinel_impl"
-git -C "$sentinel_repo" init >/dev/null 2>&1
-git -C "$sentinel_repo" config user.email "ci@test"
-git -C "$sentinel_repo" config user.name "Test CI"
-touch "$sentinel_repo/.gitkeep"
-git -C "$sentinel_repo" add .
-git -C "$sentinel_repo" commit -q -m "init"
-printf '%s\n' "$sentinel_label" > "$sentinel_impl/session-id"
-printf 'MERGE_RESULT=merged\n' > "$sentinel_impl/post-merge-sentinel"
-out="$(cd "$sentinel_repo" && env "PATH=${PATH:-}" "IMPLEMENT_TMPDIR=$sentinel_impl" "HOME=$TMP/default-home" "$CAPTURE" \
-    --source-file "$source_ok" \
-    --log-root "$TMP/$sentinel_label-staging/larch-logs" \
-    --skill implement \
-    --run-id "$sentinel_label" \
-    --no-logs-commit false \
-    --execution-issues-log "$TMP/$sentinel_label-issues.md")"
-assert_contains "$sentinel_label stdout status" "$out" "SESSION_TRANSCRIPT_STATUS=suppressed-post-merge-sentinel"
-if [ -f "$TMP/$sentinel_label-issues.md" ]; then
-    assert_contains "$sentinel_label execution issue status" "$(cat "$TMP/$sentinel_label-issues.md")" "session-transcript status=suppressed-post-merge-sentinel"
-else
-    fail "$sentinel_label execution issue log missing"
-fi
-
-default_branch_label="default-branch"
+# Loud-failure test on default branch: script should attempt commit and emit commit-failed
+# (larch-log.sh refuses to commit on main) rather than silently suppressing.
+default_branch_label="default-branch-loud-fail"
 default_branch_repo="$TMP/$default_branch_label-repo"
 mkdir -p "$default_branch_repo"
 git -C "$default_branch_repo" init >/dev/null 2>&1
@@ -220,16 +195,12 @@ out="$(cd "$default_branch_repo" && env "PATH=${PATH:-}" "IMPLEMENT_TMPDIR=" "HO
     --run-id "$default_branch_label" \
     --no-logs-commit false \
     --execution-issues-log "$TMP/$default_branch_label-issues.md")"
-assert_contains "$default_branch_label stdout status" "$out" "SESSION_TRANSCRIPT_STATUS=suppressed-default-branch"
+# larch-log.sh refuses to commit on main/default branch → commit-failed (loud, not suppressed)
+assert_contains "$default_branch_label stdout status" "$out" "SESSION_TRANSCRIPT_STATUS=commit-failed"
 if [ -f "$TMP/$default_branch_label-issues.md" ]; then
-    assert_contains "$default_branch_label execution issue status" "$(cat "$TMP/$default_branch_label-issues.md")" "session-transcript status=suppressed-default-branch"
+    assert_contains "$default_branch_label execution issue status" "$(cat "$TMP/$default_branch_label-issues.md")" "session-transcript status=commit-failed"
 else
     fail "$default_branch_label execution issue log missing"
-fi
-if [ ! -e "$default_branch_repo/larch-logs/implement/$default_branch_label" ]; then
-    pass "$default_branch_label does not copy logs into repo"
-else
-    fail "$default_branch_label should not copy logs into repo"
 fi
 
 echo
