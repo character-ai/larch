@@ -5,8 +5,10 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 VERIFY="$SCRIPT_DIR/verify-run-log-completeness.sh"
+MANIFEST="$SCRIPT_DIR/../docs/run-logs-required-files.tsv"
 
 [ -x "$VERIFY" ] || { echo "FAIL: $VERIFY not executable" >&2; exit 1; }
+[ -f "$MANIFEST" ] || { echo "FAIL: $MANIFEST not found" >&2; exit 1; }
 
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/test-verify-run-log-completeness.XXXXXX")"
 trap 'rm -rf "$TMP"' EXIT
@@ -23,20 +25,47 @@ assert_contains() {
     else fail "$label (missing '$needle'; got '${haystack:0:200}')"; fi
 }
 
-# Required files from the real manifest (condition=always).
-REQUIRED_FILES=(
-    manifest.json
-    plan-goals-test.md
-    plan-review-tally.json
-    code-review-tally.json
-    review-findings-full.jsonl
-    version-bump-reasoning.md
-    token-report.json
-    timing-report.json
-    execution-issues.ndjson
-    run-statistics.json
-    session-transcript.jsonl
-)
+load_required_files() {
+    awk -F '\t' '
+        $1 == "relative_path" { next }
+        $1 ~ /^#/ || $1 == "" { next }
+        $2 == "always" { print $1 }
+    ' "$MANIFEST"
+}
+
+assert_manifest_matches_batch_table() {
+    # shellcheck source=scripts/larch-log-batches.sh
+    source "$SCRIPT_DIR/larch-log-batches.sh"
+
+    local mismatch=0 relative_path condition batch_slug extension expected_ext
+    while IFS=$'\t' read -r relative_path condition batch_slug extension; do
+        [ "$relative_path" = "relative_path" ] && continue
+        [ -n "$relative_path" ] || continue
+        case "$relative_path" in \#*) continue ;; esac
+        [ "$condition" = "always" ] || continue
+        [ "$batch_slug" = "manifest" ] && continue
+
+        if ! expected_ext="$(larch_log_batch_extension "$batch_slug" 2>/dev/null)"; then
+            fail "manifest batch exists in larch-log-batches: $batch_slug"
+            mismatch=1
+            continue
+        fi
+        if [ ".$extension" != "$expected_ext" ]; then
+            fail "manifest extension matches batch table for $batch_slug"
+            mismatch=1
+        else
+            pass "manifest extension matches batch table for $batch_slug"
+        fi
+    done < "$MANIFEST"
+
+    return "$mismatch"
+}
+
+REQUIRED_FILES=()
+while IFS= read -r required_file; do
+    REQUIRED_FILES+=("$required_file")
+done < <(load_required_files)
+assert_manifest_matches_batch_table || true
 
 make_complete_run_dir() {
     local dir="$1"

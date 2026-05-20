@@ -91,7 +91,17 @@ fi
     --log-root "$log_root" \
     --skill implement \
     --run-id "$run_id" \
-    --no-logs-commit "false" >/dev/null 2>&1 || true
+    --no-logs-commit "false" \
+    --execution-issues-log "$issue_log" >/dev/null || true
+if [ -s "$issue_log" ] && { [ -f "$checkpoint" ] || [ -f "$sentinel" ] || [ -f "$batch_path" ]; }; then
+    "$SCRIPT_DIR/../skills/implement/scripts/flush-execution-issues.sh" \
+        --log-root "$log_root" \
+        --run-id "$run_id" \
+        --issue-log "$issue_log" \
+        --step-label pre-push-post-transcript \
+        --source-label "execution-issues.md post-transcript refresh" \
+        2>/dev/null || true
+fi
 
 # Commit via larch-log.sh, which handles the tmpdir→repo copy and git operations.
 # No push — caller owns the push.

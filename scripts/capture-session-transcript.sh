@@ -135,7 +135,9 @@ fi
 # warning; the run itself must continue. See scripts/render-session-transcript.md.
 RENDERED_JSONL="$(mktemp -t session-transcript-XXXXXX)"
 RENDER_STDERR="$(mktemp -t render-stderr-XXXXXX)"
-trap 'rm -f "$RENDERED_JSONL" "$RENDER_STDERR"' EXIT
+WRITE_STDERR="$(mktemp -t session-transcript-write-stderr-XXXXXX)"
+COMMIT_STDERR="$(mktemp -t session-transcript-commit-stderr-XXXXXX)"
+trap 'rm -f "$RENDERED_JSONL" "$RENDER_STDERR" "$WRITE_STDERR" "$COMMIT_STDERR"' EXIT
 if ! python3 "$SCRIPT_DIR/render-session-transcript.py" \
         --input "$TRANSCRIPT_PATH" \
         --output "$RENDERED_JSONL" \
@@ -154,8 +156,10 @@ if ! "$SCRIPT_DIR/larch-log.sh" write \
     --run-id "$RUN_ID" \
     --batch session-transcript \
     --input-file "$RENDERED_JSONL" \
-    >/dev/null 2>&1; then
-    emit_status "write-failed" "larch-log write failed; transcript was not captured."
+    >/dev/null 2>"$WRITE_STDERR"; then
+    write_msg="$(tr '\n' ' ' < "$WRITE_STDERR" | sed 's/  */ /g' | cut -c1-300)"
+    [ -n "$write_msg" ] || write_msg="larch-log write failed with no stderr"
+    emit_status "write-failed" "larch-log write failed; transcript was not captured: $write_msg"
 fi
 
 if [ "$NO_LOGS_COMMIT" = "true" ]; then
@@ -166,8 +170,10 @@ if ! "$SCRIPT_DIR/larch-log.sh" commit \
     --log-root "$LOG_ROOT" \
     --skill "$SKILL" \
     --run-id "$RUN_ID" \
-    >/dev/null 2>&1; then
-    emit_status "commit-failed" "write succeeded but git commit failed; transcript remains under the staging log root."
+    >/dev/null 2>"$COMMIT_STDERR"; then
+    commit_msg="$(tr '\n' ' ' < "$COMMIT_STDERR" | sed 's/  */ /g' | cut -c1-300)"
+    [ -n "$commit_msg" ] || commit_msg="larch-log commit failed with no stderr"
+    emit_status "commit-failed" "write succeeded but transcript commit failed; transcript remains under the staging log root: $commit_msg"
 fi
 
 emit_status "captured" "session transcript was written and committed."

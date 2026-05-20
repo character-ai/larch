@@ -1678,13 +1678,28 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
   --skill implement \
   --run-id "$RUN_ID" \
   --no-logs-commit "${no_logs_commit:-false}" \
-  --execution-issues-log "$IMPLEMENT_TMPDIR/execution-issues.md" || true
+  --execution-issues-log "$IMPLEMENT_TMPDIR/execution-issues.md"
+"${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/flush-execution-issues.sh" \
+  --issue-log "$IMPLEMENT_TMPDIR/execution-issues.md" \
+  --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
+  --run-id "$RUN_ID" \
+  --step-label 7a-post-transcript \
+  --source-label "execution-issues.md post-transcript refresh" \
+  2>"$IMPLEMENT_TMPDIR/pre-bump-flush-execution-issues-post-transcript.log" || \
+"${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh" \
+  --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
+  --site step-7a \
+  --tool flush-execution-issues.sh \
+  --exit-code "$?" \
+  --category "Tool Failures" \
+  --output-file "$IMPLEMENT_TMPDIR/pre-bump-flush-execution-issues-post-transcript.log" \
+  --redact || true
 if [ "${no_logs_commit:-false}" != "true" ]; then
   "${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh" commit --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" || true
 fi
 ```
 
-Best-effort: failures are non-fatal, but each non-zero `token-report.sh`, `timing-report.sh`, `larch-log.sh write`, `capture-session-transcript.sh`, or `larch-log.sh commit` result must first be captured to `$IMPLEMENT_TMPDIR/pre-bump-log-flush-<tool>.log` and appended with `append-tool-failure.sh` under `Tool Failures` (use `Warnings` only for report rendering that is known to be documentation-only). Do not leave a bare `|| true` on these calls without the adjacent capture and append. Do **not** call `write-final-report.sh` in this Step 7a pre-bump checkpoint: `ship-pr-state.sh` does not exist yet, so `PR_URL` is still unavailable. In Step 8+, `ship-pr.sh` first writes `final-summary.md` with placeholder PR fields before `create-pr.sh`, folds that file into the pre-PR larch-log commit, and lets `create-pr.sh`'s push carry it onto the remote PR tip. That pre-PR pass also seeds the initial tracking-issue `larch:final-summary` upsert with placeholder PR fields. Only after PR creation does `ship-pr.sh` persist `PR_NUMBER`/`PR_URL` and re-run `write-final-report.sh --comment-only` to refresh the tracking-issue `larch:final-summary` comment with the live PR URL via API only — no second commit, no second push. Later refreshes and Step 18 can re-render it as state evolves.
+Best-effort: failures are non-fatal, but each non-zero `token-report.sh`, `timing-report.sh`, `larch-log.sh write`, `flush-execution-issues.sh`, or `larch-log.sh commit` result must first be captured to `$IMPLEMENT_TMPDIR/pre-bump-log-flush-<tool>.log` and appended with `append-tool-failure.sh` under `Tool Failures` (use `Warnings` only for report rendering that is known to be documentation-only). Do not leave a bare `|| true` on these calls without the adjacent capture and append. `capture-session-transcript.sh` is different: it always exits 0, appends its own `SESSION_TRANSCRIPT_STATUS=...` warning to `execution-issues.md`, and emits the machine status on stdout, so callers must treat the status line plus the post-transcript `flush-execution-issues.sh` refresh as the contract instead of gating on `$?`. Do **not** call `write-final-report.sh` in this Step 7a pre-bump checkpoint: `ship-pr-state.sh` does not exist yet, so `PR_URL` is still unavailable. In Step 8+, `ship-pr.sh` first writes `final-summary.md` with placeholder PR fields before `create-pr.sh`, folds that file into the pre-PR larch-log commit, and lets `create-pr.sh`'s push carry it onto the remote PR tip. That pre-PR pass also seeds the initial tracking-issue `larch:final-summary` upsert with placeholder PR fields. Only after PR creation does `ship-pr.sh` persist `PR_NUMBER`/`PR_URL` and re-run `write-final-report.sh --comment-only` to refresh the tracking-issue `larch:final-summary` comment with the live PR URL via API only — no second commit, no second push. Later refreshes and Step 18 can re-render it as state evolves.
 
 In `scripts/refresh-run-logs.sh`, on each retry (CI failure, merge conflict, rebase in Steps 10/12), Triggers A-C in `ship-pr.sh` re-render and commit the `token-report`, `timing-report`, and `session-transcript` batches before each push, refresh `larch:final-summary` only after `PR_URL` exists, and flush any post-Step-7a `execution-issues.md` tail once the Step 7a checkpoint has run, so the merged PR carries up-to-date token/timing, session-transcript, final-summary, and execution-issues data.
 

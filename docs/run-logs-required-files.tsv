@@ -1,4 +1,7 @@
 relative_path	condition	batch_slug	extension
+# This manifest describes committed /implement runs that reach the Step 7a
+# pre-bump flush. Design-only and other pre-Step-7a bailout paths may produce
+# committed partial logs without Step-7a-only batches such as session-transcript.
 manifest.json	always	manifest	json
 plan-goals-test.md	always	plan-goals-test	md
 plan-review-tally.json	always	plan-review-tally	json
@@ -8,5 +11,5 @@ version-bump-reasoning.md	always	version-bump-reasoning	md
 token-report.json	always	token-report	json
 timing-report.json	always	timing-report	json
 execution-issues.ndjson	always	execution-issues	ndjson
-run-statistics.json	always	run-statistics	json
+run-statistics.md	always	run-statistics	md
 session-transcript.jsonl	always	session-transcript	jsonl

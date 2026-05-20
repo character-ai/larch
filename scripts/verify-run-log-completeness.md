@@ -21,14 +21,21 @@ stderr when the manifest or run dir cannot be found.
 `docs/run-logs-required-files.tsv` is a tab-separated file with columns:
 `relative_path`, `condition`, `batch_slug`, `extension`. Only rows with
 `condition=always` are checked. The first row (header) is skipped automatically.
+The current manifest is scoped to committed `/implement` runs that reach the
+Step 7a pre-bump flush; design-only and other pre-Step-7a bailout paths may
+produce committed partial logs that omit Step-7a-only batches such as
+`session-transcript.jsonl`.
 
 ## Callers
 
 - `make test-verify-run-log-completeness` — local verification
-- CI workflow `.github/workflows/verify-run-logs.yml` — validates newly added run dirs on PRs
+- `make test-harnesses-7` — local shard that includes the verifier harness
+- `.github/workflows/ci.yaml` `test-harnesses` job (shard 7) — CI coverage via the Makefile harness
 
 ## Edit-in-sync
 
 Update `docs/run-logs-required-files.tsv` when the set of required committed files changes
-(e.g., a new batch is added or an existing batch is removed). Update
-`docs/run-logs.md` in the same PR. The test harness is `scripts/test-verify-run-log-completeness.sh`.
+(e.g., a new batch is added or an existing batch is removed). Keep the TSV's
+`batch_slug` / `extension` columns aligned with `scripts/larch-log-batches.sh`
+and update `docs/run-logs.md` in the same PR. The test harness is
+`scripts/test-verify-run-log-completeness.sh`.

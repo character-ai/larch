@@ -170,6 +170,11 @@ ISSUES
     else
         fail "happy-path: execution issues flushed before commit"
     fi
+    if grep -Fq 'session-transcript status=' "$impl_tmpdir/larch-logs/implement/$run_id/execution-issues.ndjson"; then
+        pass "happy-path: transcript status warning flushed into execution issues batch"
+    else
+        fail "happy-path: transcript status warning flushed into execution issues batch"
+    fi
     if [ ! -s "$impl_tmpdir/execution-issues.md" ]; then
         pass "happy-path: execution issues log cleared after flush"
     else

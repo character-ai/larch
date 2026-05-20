@@ -29,7 +29,7 @@ The script always exits 0 and prints exactly one `SESSION_TRANSCRIPT_STATUS=<sta
 - `render-empty` — the renderer produced an empty file (suspect input). Flush is skipped; the run continues.
 - `write-failed` — `larch-log.sh write` failed.
 - `suppressed-no-logs-commit` — write succeeded and `--no-logs-commit true` skipped commit.
-- `commit-failed` — write succeeded and `larch-log.sh commit` failed. This is also the loud-failure outcome when the script is accidentally invoked post-merge on the default branch (larch-log.sh refuses to commit there).
+- `commit-failed` — write succeeded and `larch-log.sh commit` failed. The warning text preserves a trimmed copy of `larch-log.sh` stderr so policy refusals (for example default-branch or post-merge guards) are distinguishable from a literal `git commit` failure. This is also the loud-failure outcome when the script is accidentally invoked post-merge on the default branch.
 - `captured` — write and commit both succeeded.
 
 The wrapper may also append non-terminal `Warnings` entries before the final status:
