@@ -1,12 +1,12 @@
 # Version Bump Reasoning
 
-- **Base commit**: `27721f21` (Fixes #2447: fix(compose-review-findings): whitelist extract_category focus-area tags (#2459))
-- **Current version**: `29.8.51`
+- **Base commit**: `71ac233b` (Bump version to 29.8.52 (#2461))
+- **Current version**: `29.8.52`
 - **Classification scope**: `skills/**` and `agents/**` only (public plugin surface).
 
 ## Result: PATCH
 
-- **New version**: `29.8.52`
+- **New version**: `29.8.53`
 
 ### PATCH rationale
 
