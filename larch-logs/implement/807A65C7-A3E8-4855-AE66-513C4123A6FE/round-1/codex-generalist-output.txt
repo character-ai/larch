@@ -1,0 +1,7 @@
+### In-Scope Findings
+
+1. docs, `scripts/dispatch-code-voters.md:32`: The new paragraph says a Voter 1 API-style failure falls back to a “2-judge fallback (Voters 2 and 3 continuing without Voter 1)” without limiting that statement to round 1. In round 2+, Voter 2 is intentionally skipped, so a Voter 1 failure leaves only Voter 3 and the tally becomes single-judge if Voter 3 succeeds. Suggested fix: qualify the sentence as round-1 behavior, and add the round-2+ behavior explicitly.
+
+### Out-of-Scope Observations
+
+1. docs, `docs/voting-process.md:30`: Pre-existing stale wording says dispatch degraded-panel warnings include missing slots and the active tier, but `scripts/dispatch-code-voters.sh` emits only an effective-judge count; tier wording is written later by `skills/review/scripts/tally-code-votes.sh`. Suggested fix: split dispatch warning behavior from tally-file warning behavior so operators know where to look.

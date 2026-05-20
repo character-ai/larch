@@ -29,6 +29,8 @@ Voter 1 runs synchronously via `launch-claude-review.sh` with `--role voter`. On
 
 On round 2+, the script writes only the Cursor slot into the NDJSON manifest and calls the waterfall with `--codex-present false`, so no Codex fallback can be selected after round 1. `DISPATCH_OK` is set to `false` when Voter 1 fails or any launched waterfall slot hard-fails in Phase 3.
 
+A `voter1_rc=1` exit with non-zero `output_bytes` and empty launcher-stderr indicates the claude CLI received an API-level error response (rate limit, server overload, or transient auth failure) rather than a wrapper validation failure; the CLI exits 1 with JSON error body on stdout while the `launch-claude-review.sh` shell wrapper passes all its own checks and emits nothing to stderr. This shape is distinct from `voter1_rc=2`, which indicates a wrapper validation failure caught inside `launch-claude-review.sh` before the CLI return. When only Voter 1 is affected, the 2-judge fallback (Voters 2 and 3) is the accepted recovery; no manual intervention is required. See #2433 for the investigation that identified and characterized this pattern.
+
 ## Output
 
 - `VOTER_1_PATH`, `VOTER_2_PATH`, `VOTER_3_PATH`: final output path per slot.
