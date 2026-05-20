@@ -195,32 +195,43 @@
       {
         "step": "Step 7a — code flow diagram",
         "totals": {
-          "input": 43,
-          "cache_read": 10743368,
-          "cache_create": 38817,
-          "output": 18028,
-          "total": 10800256
+          "input": 48,
+          "cache_read": 12048634,
+          "cache_create": 43667,
+          "output": 21817,
+          "total": 12114166
         },
         "skills": [
           {
             "skill": "inferred:Step 7a — code flow diagram",
             "totals": {
-              "input": 43,
-              "cache_read": 10743368,
-              "cache_create": 38817,
-              "output": 18028,
-              "total": 10800256
+              "input": 48,
+              "cache_read": 12048634,
+              "cache_create": 43667,
+              "output": 21817,
+              "total": 12114166
             }
           }
         ]
+      },
+      {
+        "step": "Step 6 — checks second pass",
+        "totals": {
+          "input": 0,
+          "cache_read": 0,
+          "cache_create": 0,
+          "output": 0,
+          "total": 0
+        },
+        "skills": []
       }
     ],
     "totals": {
-      "input": 214,
-      "cache_read": 40027391,
-      "cache_create": 1344436,
-      "output": 93289,
-      "total": 41465330
+      "input": 219,
+      "cache_read": 41332657,
+      "cache_create": 1349286,
+      "output": 97078,
+      "total": 42779240
     }
   },
   "codex": {
@@ -291,6 +302,14 @@
       },
       {
         "step": "Step 7a — code flow diagram",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 6 — checks second pass",
         "totals": {
           "input": 0,
           "output": 0,
@@ -372,6 +391,14 @@
       },
       {
         "step": "Step 7a — code flow diagram",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 6 — checks second pass",
         "totals": {
           "input": 0,
           "output": 0,
