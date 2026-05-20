@@ -1,0 +1,23 @@
+Reading the ballot and nearby context files for verification.
+
+FINDING_1: EXONERATE -- legitimate drift risk but too broad and non-specific to land as its own change.
+FINDING_2: NO -- boilerplate header with no concrete defect.
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: EXONERATE -- duplicate pointer of the voting-protocol vs tally mismatch in FINDING_5.
+FINDING_7: NO -- severity stub without actionable content.
+FINDING_8: EXONERATE -- same remediation as FINDING_5; merge into one doc-or-code alignment pass.
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: EXONERATE -- duplicate of FINDING_12 (Refs marker nit).
+FINDING_14: EXONERATE -- duplicate of FINDING_12 (Refs marker nit).
+FINDING_15: YES
+FINDING_16: EXONERATE -- duplicate of FINDING_15 (protocol vs classify_result).
+FINDING_17: EXONERATE -- duplicate of FINDING_15 (protocol vs classify_result).
+FINDING_18: YES
+FINDING_19: EXONERATE -- duplicate of FINDING_18 (.gitmodules vs submodule-path wording).
+FINDING_20: YES
+FINDING_21: YES

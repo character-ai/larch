@@ -29,10 +29,7 @@ The `eligible` argument is the panel-level count of available voter files (non-f
 
 `classify_result` uses the same tiers. In a single-judge panel, `YES` is `accepted`, `NO` is `rejected`, and `EXONERATE` is `exonerated` for scoreboard purposes even though the finding is not accepted for implementation.
 
-For multi-voter panels, `classify_result` keeps an intentional two-arm exoneration rule after acceptance and `YES==NO` neutral checks:
-
-- Legacy zero-NO path: any `EXONERATE > 0` with `NO == 0` yields `exonerated` (for example `1Y/0N/1E` and `0Y/0N/3E`).
-- Mixed-panel path: when `NO > 0`, exoneration requires `EXONERATE >= NO` and `EXONERATE > YES` (for example `0Y/1N/1E` exonerates, `0Y/2N/1E` rejects).
+For multi-voter panels, `classify_result` keeps the legacy exoneration rule after acceptance and `YES==NO` neutral checks: `exonerated` applies only when `YES > 0`, `EXONERATE > 0`, and `NO == 0` (for example `1Y/0N/1E`). All-exonerate panels and mixed `NO`/`EXONERATE` panels remain `rejected`.
 
 ## ID matching
 

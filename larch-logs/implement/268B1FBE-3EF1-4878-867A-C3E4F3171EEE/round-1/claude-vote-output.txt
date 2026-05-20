@@ -1,0 +1,33 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: NO -- trivial larch-logs noise observation, not issue-worthy
+FINDING_5: NO -- trivial commit-history observation, not actionable
+FINDING_6: EXONERATE -- legitimate fragility concern but too minor for a standalone issue; broader concern covered by FINDING_13 and FINDING_32
+FINDING_7: EXONERATE -- redundant text is harmless; legitimate cleanup but not issue-worthy
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: EXONERATE -- same concern as FINDING_2 which is more specific and actionable (OOS_N items dropped)
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: EXONERATE -- captured by FINDING_15 whose fixture-replacement fix would also address the comment mismatch
+FINDING_15: YES
+FINDING_16: EXONERATE -- captured by FINDING_22 which is more specific and important
+FINDING_17: EXONERATE -- captured by FINDING_22
+FINDING_18: EXONERATE -- captured by FINDING_22
+FINDING_19: YES
+FINDING_20: YES
+FINDING_21: EXONERATE -- the classify_result change was intentional (#2418 bug fix) and is documented in CHANGELOG
+FINDING_22: YES
+FINDING_23: YES
+FINDING_24: EXONERATE -- captured by FINDING_25 which is more specific (anchors to FINDING_/OOS_ ballot IDs)
+FINDING_25: YES
+FINDING_26: EXONERATE -- intentional change, documented via CHANGELOG/issue #2418, already went through its own code review
+FINDING_27: EXONERATE -- same as FINDING_26
+FINDING_28: EXONERATE -- the semantic change was separately reviewed for #2418 and documented; bundling is a process concern not a code defect
+FINDING_29: EXONERATE -- same as FINDING_26
+FINDING_30: YES
+FINDING_31: YES
+FINDING_32: YES
+FINDING_33: YES

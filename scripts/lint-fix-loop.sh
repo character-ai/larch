@@ -10,6 +10,9 @@ larch_quiet_init
 # shellcheck source=scripts/lib-cursor-launcher-common.sh
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/lib-cursor-launcher-common.sh"
+# shellcheck source=scripts/lib-submodule-prohibition.sh
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/lib-submodule-prohibition.sh"
 
 IMPLEMENT_TMPDIR=""
 SITE=""
@@ -35,7 +38,7 @@ session_get() {
 }
 
 compose_prompt() {
-    local prompt_file="$1" log_file="$2" site_label="$3"
+    local prompt_file="$1" log_file="$2" site_label="$3" submodules_list="$4"
     local log_bytes
     log_bytes=$(wc -c < "$log_file" | tr -d '[:space:]')
     {
@@ -44,8 +47,18 @@ compose_prompt() {
         printf '\n%s\n' "Fix the repository so \`/relevant-checks\` passes for $site_label."
         printf '%s\n' 'Make the minimum necessary edits under the current repository root.'
         printf '%s\n' 'Do NOT commit; the parent script owns staging and commits.'
-        printf '%s\n' 'Do NOT touch .git/, .gitmodules, or submodule contents.'
-        printf '%s\n' 'When done, report a concise summary of changed files and the check failure addressed.'
+        printf '\n'
+        emit_submodule_prohibition "$submodules_list"
+        printf '\n%s\n' 'When done, report on a single final line in this exact shape:'
+        printf '%s\n' '  FIXED: <comma-separated repo-relative paths of files you changed> | <short check-failure description>'
+        printf '%s\n' 'If you cannot fix the failure, instead report on a single final line:'
+        printf '%s\n' '  UNFIXABLE: <one-paragraph reason>'
+        printf '%s\n' '**Do NOT** prepend, append, or interleave narrative prose around that final line. Tool output from your edits is fine; the result line must be the last line.'
+        printf '\n%s\n' '## Acceptable final-line shapes'
+        printf '%s\n' '```'
+        printf '%s\n' 'FIXED: scripts/foo.sh,scripts/foo.md | markdownlint MD038 violation on inner-whitespace code span'
+        printf '%s\n' 'UNFIXABLE: lint failure originates in a vendored file under third-party/ that this loop is not allowed to edit'
+        printf '%s\n' '```'
         printf '\n%s\n' "Checks log path: $log_file"
         printf '%s\n' "Checks log bytes: $log_bytes"
         printf '\n%s\n' '## Checks Log'
@@ -220,6 +233,7 @@ baseline_tracked="$run_dir/baseline-tracked.txt"
 baseline_untracked="$run_dir/baseline-untracked.txt"
 baseline_head=""
 forbidden_paths_file="$run_dir/forbidden-paths.txt"
+submodule_paths_file="$run_dir/submodule-paths.txt"
 current_tracked="$run_dir/current-tracked.txt"
 current_untracked="$run_dir/current-untracked.txt"
 delta_paths_file="$run_dir/delta-paths.txt"
@@ -230,12 +244,13 @@ baseline_clean=true
 if [[ -s "$baseline_tracked" || -s "$baseline_untracked" ]]; then
     baseline_clean=false
 fi
+submodule_paths | awk 'NF && !seen[$0]++ { print }' > "$submodule_paths_file"
 {
     printf '%s\n' '.gitmodules'
-    submodule_paths
+    cat "$submodule_paths_file"
 } | awk 'NF && !seen[$0]++ { print }' > "$forbidden_paths_file"
 prompt_file="$run_dir/prompt.md"
-compose_prompt "$prompt_file" "$CHECKS_LOG" "$SITE_LABEL"
+compose_prompt "$prompt_file" "$CHECKS_LOG" "$SITE_LABEL" "$submodule_paths_file"
 prompt_body="$(cat "$prompt_file")"
 
 coder_tool=""

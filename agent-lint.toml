@@ -1425,4 +1425,20 @@ exclude = [
   "skills/implement/scripts/test-write-final-report.md",
   "skills/implement/scripts/test-cleanup.sh",
   "skills/implement/scripts/test-cleanup.md",
+  # scripts/lib-submodule-prohibition.sh is a sourced-only shell library (no
+  # shebang, not invokable directly). It is referenced from review-and-fix.sh
+  # and lint-fix-loop.sh via `source` directives only, which agent-lint does
+  # not follow. scripts/test-lib-submodule-prohibition.sh is its Makefile-only
+  # regression harness.
+  "scripts/lib-submodule-prohibition.sh",
+  "scripts/lib-submodule-prohibition.md",
+  "scripts/test-lib-submodule-prohibition.sh",
+  "scripts/test-lib-submodule-prohibition.md",
+  # scripts/test-prompt-template-invariants.sh is the cross-cutting
+  # structural invariants harness for subagent prompt templates (issue #2421).
+  # Referenced only from Makefile (test-prompt-template-invariants target),
+  # docs/linting.md, and the sibling contract
+  # scripts/test-prompt-template-invariants.md, not from runtime skill prose.
+  "scripts/test-prompt-template-invariants.sh",
+  "scripts/test-prompt-template-invariants.md",
 ]

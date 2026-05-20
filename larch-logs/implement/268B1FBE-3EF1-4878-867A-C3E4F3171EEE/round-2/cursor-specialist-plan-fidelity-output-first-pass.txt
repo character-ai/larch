@@ -1,0 +1,7 @@
+Gathering the branch diff and commit list for a plan-fidelity review (read-only).
+
+Searching the large diff for plan-relevant files and markers.
+
+Noting substantial out-of-plan changes (e.g. `lib-vote-tally`, `larch-logs`, `#2417` pipeline). Creating a concise plan document that captures the plan-fidelity review.
+
+

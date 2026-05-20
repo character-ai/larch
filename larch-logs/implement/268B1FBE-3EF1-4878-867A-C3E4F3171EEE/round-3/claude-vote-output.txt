@@ -1,0 +1,32 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: NO -- entire concern is only the metadata label `**focus-area**: code-quality` with no substantive finding content
+FINDING_4: NO -- entire concern is only the metadata label `**focus-area**: correctness` with no substantive finding content
+FINDING_5: NO -- entire concern is only the metadata label `**focus-area**: risk-integration` with no substantive finding content
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: NO -- entire concern is only a location field label with no substantive finding content
+FINDING_11: NO -- entire concern is only a location field label with no substantive finding content
+FINDING_12: NO -- entire concern is only a location field label with no substantive finding content
+FINDING_13: NO -- entire concern is only a location field label with no substantive finding content
+FINDING_14: NO -- entire concern is only the metadata label `**severity**: Important` with no substantive finding content
+FINDING_15: NO -- entire concern is only the metadata label `**severity**: Nit` with no substantive finding content
+FINDING_16: NO -- malformed parsing artifact: title and concern consist of the suggested-fix text from another finding mixed with an embedded finding header
+FINDING_17: NO -- malformed parsing artifact: title and concern consist only of the suggested-fix text from another finding
+FINDING_18: NO -- malformed parsing artifact: title is suggested-fix text with an embedded finding header concatenated into the concern field
+FINDING_19: NO -- malformed parsing artifact: title is suggested-fix text with an embedded finding header concatenated into the concern field
+FINDING_20: EXONERATE -- trivial PR-description nit; version bump commits are an expected /implement policy artifact and need no separate issue
+FINDING_21: EXONERATE -- committed run logs are intentional per project policy; not issue-worthy
+FINDING_22: EXONERATE -- theoretical non-exploitable backtick-parsing edge case acknowledged by the reviewer as low risk; not issue-worthy
+FINDING_23: EXONERATE -- retroactively unactionable coupling observation; the multi-issue branch is already committed and #2418 had its own tracked plan
+FINDING_24: EXONERATE -- trivial placeholder naming inconsistency (`<lines>` vs `<line-range>`) in non-functional example text; both communicate the same intent
+FINDING_25: YES
+FINDING_26: EXONERATE -- the comment at render-specialist-prompt.sh:321 does reference #2417 inline; the absence of a bare `Refs:` token is a minor stylistic preference
+FINDING_27: YES
+FINDING_28: YES
+FINDING_29: YES
+FINDING_30: YES
+FINDING_31: EXONERATE -- substantially overlaps with accepted FINDING_9 (plan-scope) and FINDING_25 (test-coverage); filing a separate issue would be redundant
+FINDING_32: EXONERATE -- substantially overlaps with accepted FINDING_7 (misleading bullet heading) and FINDING_8 (doc misrepresents .git/ inclusion)

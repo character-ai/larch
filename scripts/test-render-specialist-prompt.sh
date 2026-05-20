@@ -125,6 +125,8 @@ for name in "${SPECIALISTS[@]}"; do
   assert_contains "${name} description: has OOS anchor" "anchored to the canonical file list" "$output"
   assert_contains "${name} description: has in-scope header" "### In-Scope Findings" "$output"
   assert_contains "${name} description: has oos header" "### Out-of-Scope Observations" "$output"
+  assert_contains "${name} description: pins single-bullet grammar" "Each finding MUST be a single bullet matching this pattern exactly" "$output"
+  assert_contains "${name} description: pins suggested-fix clause" "**Suggested fix:**" "$output"
 done
 rm -rf "$TMPDIR_TEST"
 

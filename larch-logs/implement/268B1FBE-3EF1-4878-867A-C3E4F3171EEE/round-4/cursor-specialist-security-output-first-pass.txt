@@ -1,0 +1,13 @@
+Gathering the branch diff and commit list for a read-only security and trust-boundaries review.
+
+Searching the large diff for changed files and security-sensitive patterns.
+
+Locating hunks for security-relevant scripts (excluding bulk `larch-logs` noise).
+
+Checking `collect-findings` normalization when the category isn't in the allowlist and scanning for accidental secret patterns in new test fixtures:
+
+Verifying how `parse_output` prefixes OOS titles to assess the severity-prefix interaction:
+
+Completing the review: commits reviewed; code hunks read for security-relevant scripts. Calling CreatePlan to satisfy plan-mode while delivering the full review.
+
+

@@ -40,6 +40,7 @@ make_fixture_scripts() {
     cp "$SOURCE_SCRIPTS/lib-quiet.sh" "$dir/lib-quiet.sh"
     cp "$SOURCE_SCRIPTS/lib-cursor-launcher-common.sh" "$dir/lib-cursor-launcher-common.sh"
     cp "$SOURCE_SCRIPTS/lib-external-launcher-common.sh" "$dir/lib-external-launcher-common.sh"
+    cp "$SOURCE_SCRIPTS/lib-submodule-prohibition.sh" "$dir/lib-submodule-prohibition.sh"
     cp "$SOURCE_SCRIPTS/read-session-env-key.sh" "$dir/read-session-env-key.sh"
     cp "$SOURCE_SCRIPTS/git-commit.sh" "$dir/git-commit.sh"
     chmod +x \

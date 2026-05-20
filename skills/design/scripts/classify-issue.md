@@ -26,7 +26,15 @@ The regression harness is `make test-classify-issue`, wired into `test-harnesses
 
 ## Harness
 
-`test-classify-issue.sh` covers deterministic doc-only/simple/hard paths, Cursor confirmation, Cursor override, Cursor-unavailable fallback, malformed Cursor output fallback, and untrusted input containing prompt-like text.
+`test-classify-issue.sh` covers deterministic doc-only/simple/hard paths, Cursor confirmation, Cursor override, Cursor-unavailable fallback, malformed Cursor output fallback, runtime-markdown classification guardrails, and untrusted input containing prompt-like text.
+
+## Validator Pattern: Ratifier
+
+`try_cursor_validation()` uses a **ratifier** pattern: the deterministic classifier's proposed answer and reason are explicitly embedded in the Cursor prompt. The validator may confirm or override, but it sees the deterministic proposal first.
+
+This is a deliberate design choice, not a bug. The rationale: for the vast majority of classification inputs the deterministic heuristics are correct; showing the proposal gives the LLM a fast-path confirmation with low token cost. The bias toward agreement is acceptable because the deterministic classifier itself is conservative (it defaults HARD on ambiguity), and the validator's job is to catch clear misclassifications or deliberate policy overrides (for example, escalating a runtime-surface markdown change after deterministic classification marked it `SIMPLE`), not to be an independent adversarial agent.
+
+Operators who want independent classification should set `CLASSIFY_ISSUE_SKIP_CURSOR=true` to use the deterministic result only. A future "challenger" variant would hide the deterministic proposal until after the LLM emits its own classification; that variant requires a two-pass prompt exchange and is out of scope for current tooling.
 
 ## Edit In Sync
 

@@ -76,3 +76,5 @@ The `/implement` orchestrator consumes statuses as follows:
   `STALL_TRACKING=true` and route to Step 18 cleanup.
 
 Harness: `scripts/test-lint-fix-loop.sh`.
+
+The submodule-prohibition prompt block is extracted into `scripts/lib-submodule-prohibition.sh`; its harness is `scripts/test-lib-submodule-prohibition.sh`.

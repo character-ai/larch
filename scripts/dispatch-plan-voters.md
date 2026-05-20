@@ -24,7 +24,7 @@ Stdout is `KEY=value` only:
 - optional `DEGRADED_PANEL_WARNING`
 - `DISPATCH_OK`
 
-`fallback` means the slot completed on Claude after waterfall fallback. `failed` means the final output file is missing or empty. When fewer than 2 effective external-voter slots produce output, the script emits a degraded-panel warning so `/design` can compensate with Claude Voter 1.
+`fallback` means the slot completed on Claude after waterfall fallback. `failed` means the final output file is missing, empty, or still narrative-only after the parse-rate retry path. When fewer than 2 effective external-voter slots produce substantive vote output, the script emits a degraded-panel warning so `/design` can compensate with Claude Voter 1.
 
 ## Harness
 

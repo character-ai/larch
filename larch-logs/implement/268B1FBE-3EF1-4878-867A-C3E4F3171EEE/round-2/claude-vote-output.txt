@@ -1,0 +1,49 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: NO -- empty label fragment with no substantive concern
+FINDING_7: NO -- empty label fragment with no substantive concern
+FINDING_8: NO -- empty label fragment with no substantive concern
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: EXONERATE -- trivial plan-literal wording nit; the intent is preserved and not issue-worthy
+FINDING_13: EXONERATE -- multi-issue bundling on one branch is normal practice; retroactive plan update adds complexity without value
+FINDING_14: NO -- location tag fragment, not a finding
+FINDING_15: NO -- location tag fragment, not a finding
+FINDING_16: NO -- location tag fragment, not a finding
+FINDING_17: NO -- location tag fragment, not a finding
+FINDING_18: NO -- location tag fragment, not a finding
+FINDING_19: NO -- severity label fragment only, not a finding
+FINDING_20: NO -- severity label fragment only, not a finding
+FINDING_21: NO -- severity label fragment only, not a finding
+FINDING_22: NO -- suggested-fix fragment concatenated with another finding title; not a standalone finding
+FINDING_23: NO -- suggested-fix fragment only, not a standalone finding
+FINDING_24: NO -- suggested-fix fragment only, not a standalone finding
+FINDING_25: NO -- suggested-fix fragment only, not a standalone finding
+FINDING_26: NO -- suggested-fix fragment only, not a standalone finding
+FINDING_27: EXONERATE -- legitimate observation but broad review surface concern doesn't need a tracking issue
+FINDING_28: EXONERATE -- pre-existing committed-log behavior; existing redaction tooling covers it; not issue-worthy
+FINDING_29: NO -- trivial noise-in-diff observation, not issue-worthy
+FINDING_30: YES
+FINDING_31: NO -- git commit hash line, not a finding
+FINDING_32: NO -- git commit hash line, not a finding
+FINDING_33: NO -- git commit hash line, not a finding
+FINDING_34: NO -- git commit hash fragment, not a finding
+FINDING_35: YES
+FINDING_36: EXONERATE -- minor latent risk; fix adds complexity for low practical gain
+FINDING_37: EXONERATE -- minor changelog wording nit; #2417 was legitimately closed in this run
+FINDING_38: YES
+FINDING_39: YES
+FINDING_40: YES
+FINDING_41: EXONERATE -- minor prompt wording nit, not issue-worthy
+FINDING_42: YES
+FINDING_43: EXONERATE -- near-match scenario that triggers duplicate append is unlikely in practice
+FINDING_44: YES
+FINDING_45: EXONERATE -- test naming concern but fixture exercises the codepath; not functionally broken
+FINDING_46: YES
+FINDING_47: EXONERATE -- minor terminology inconsistency; no functional divergence
+FINDING_48: YES
+FINDING_49: YES

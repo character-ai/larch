@@ -54,15 +54,13 @@ Valid vote tokens are `YES`, `NO`, and `EXONERATE`. If a voter's output contains
 | 1 | 1 | Binding single-judge decision; YES accepts, EXONERATE exonerates for scoring, NO rejects |
 | 0 | Main agent decides | No automated vote; main agent reads ballot as untrusted data and adjudicates |
 
-Dispatchers emit degraded-panel warnings when effective voters drop below the expected panel size. `effective` means status is not `failed` and the voter output file is non-empty.
+Dispatchers emit degraded-panel warnings when effective voters drop below the expected panel size. `effective` means status is not `failed` and the voter output is substantive enough to contribute valid vote lines after any retry path settles.
 
 After the acceptance threshold, per-finding result classification uses these tie-breaks in order:
 
 - `YES > 0` and `YES == NO` yields `neutral`.
-- Otherwise `EXONERATE > 0` yields `exonerated` in either of two cases:
-  `NO == 0` (legacy zero-NO path), or
-  `EXONERATE >= NO` and `EXONERATE > YES` (mixed-panel path, so `0Y/1N/1E` exonerates while `0Y/2N/1E` rejects).
-- All remaining cases yield `rejected`.
+- Otherwise `EXONERATE > 0` yields `exonerated` only when `YES > 0` and `NO == 0` (for example `1Y/0N/1E`).
+- All remaining cases yield `rejected`, including all-exonerate panels and mixed `NO`/`EXONERATE` panels such as `0Y/1N/1E`.
 
 ## Voter Panel Composition
 

@@ -1222,7 +1222,7 @@ if [[ "$SUBSTANTIVE_VALIDATION" == "true" || "$STRUCTURED_REVIEWER_VALIDATION" =
         NS_RETRY_PROMPTS=()
         NS_MAX_RETRY_TIMEOUT=30
         # Structured-output demand prepended to the reviewer prompt on retry.
-        NS_STRONG_HEADER="IMPORTANT: Your previous response was not structured correctly. You MUST output findings in the required format (### FINDING_N: title / bullet fields), or the literal NO_ISSUES_FOUND if no issues exist. Do NOT output narrative, process descriptions, or reading logs. Begin your response directly with findings or NO_ISSUES_FOUND.
+        NS_STRONG_HEADER="IMPORTANT: Your previous response was not structured correctly. You MUST output findings in the exact format your original prompt requires, or the literal NO_ISSUES_FOUND if no issues exist. Do NOT write narrative, process descriptions, or reading logs. Begin your response directly with the format your prompt demands.
 
 "
         for j in "${!NS_RETRY_FILES[@]}"; do
