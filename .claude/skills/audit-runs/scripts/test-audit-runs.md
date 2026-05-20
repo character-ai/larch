@@ -1,6 +1,6 @@
 # .claude/skills/audit-runs/scripts/test-audit-runs.sh — contract
 
-Offline unit test harness for `/larch:audit-runs` skill logic. Tests verbal-description parsing, "since last audit" error paths, concurrency guard, `--repo` enforcement, `--no-fix-issues` behavior, frontmatter round-trip, and audit report title exclusion regex.
+Offline unit test harness for `/larch:audit-runs` skill logic. Tests verbal-description parsing, "since last audit" error paths, concurrency guard, `--repo` enforcement, removed-flag rejection (`--no-fix-issues`), scan-time proposal-only recording, zero-findings short-circuit, frontmatter round-trip, and audit report title exclusion regex.
 
 ## Purpose
 
@@ -14,7 +14,9 @@ Validates the parsing and guard logic that the `/audit-runs` skill orchestrator 
 - Frontmatter YAML round-trip for all required fields
 - Concurrency guard (fires when recent report exists; bypassed by `--allow-concurrent`)
 - `--repo` enforcement (rejects pwd that doesn't match target repo remote)
-- `--no-fix-issues` flag suppresses bug filings and augmentations but still records in `proposed_issues_no_filing`
+- Test 13a: `--no-fix-issues` is rejected (flag removed from the skill)
+- Test 13b: scan-time behavior records into `proposed_new_issues` / `proposed_augmentations` only (no auto-file path)
+- Test 15: zero-findings short-circuit chat message and absence of the 3-way filing prompt when both proposal lists are empty; frontmatter lists `proposed_new_issues: []` and `proposed_augmentations: []`
 - Audit report title self-exclusion prefix (`^\[Run Logs Audit Report` pattern prevents self-augmentation); note that the existing `has_report_prefix` pattern does NOT match audit report titles because the ISO timestamp follows "Report" inside the bracket — the `audit-report` GitHub label filter in `find-lock-issue.sh` is the primary /fix-issue exclusion guard
 
 ## Run

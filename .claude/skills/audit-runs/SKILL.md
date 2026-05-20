@@ -1,19 +1,19 @@
 ---
 name: audit-runs
-description: "Use when auditing recently-merged /implement run logs for anomalies, filing or augmenting bug issues, and maintaining a chain-of-history audit-report issue trail. Mechanizes the ad-hoc post-merge audit workflow."
+description: "Use when auditing recently-merged /implement run logs for anomalies, filing the chain-of-history audit-report issue, and proposing bug-issue follow-ups that require explicit user direction before any filing or augmentation. Mechanizes the ad-hoc post-merge audit workflow."
 allowed-tools: Bash, Read
 ---
 
 # audit-runs
 
-Audit recently-merged `/implement` run logs for anomalies (EXON regression, OOS mangling, missing files, NS-retry sidecars, self-deploying gap, etc.); file or augment bug issues; always file a chain-of-history audit-report issue.
+Audit recently-merged `/implement` run logs for anomalies (EXON regression, OOS mangling, missing files, NS-retry sidecars, self-deploying gap, etc.); always file a chain-of-history audit-report issue; record bug-issue candidates as proposals at scan time and act on them only after explicit user direction in chat.
 
 This is a **dev-only** operator skill (`.claude/skills/`). It is NOT shipped with the plugin.
 
 ## Usage
 
 ```
-/larch:audit-runs <verbal-description> [--no-fix-issues] [--repo owner/name] [--allow-concurrent]
+/larch:audit-runs <verbal-description> [--repo owner/name] [--allow-concurrent]
 ```
 
 (Plugin slash-alias: `/audit-runs …` may also resolve to this skill depending on marketplace wiring; prefer `/larch:audit-runs` when unsure.)
@@ -26,9 +26,9 @@ This is a **dev-only** operator skill (`.claude/skills/`). It is NOT shipped wit
   - `since <ISO-timestamp>` — PRs merged after the given timestamp
   - `#N` or `PR #N` — exactly one PR
   - Default when empty: fail with usage error
-- `--no-fix-issues`: suppress filing new bug issues and augmentation comments; audit report is still filed (records what would have been filed in `proposed_issues_no_filing` field)
 - `--repo <owner/name>`: target repo. Default: `character-ai/larch`
 - `--allow-concurrent`: override the 5-minute concurrency guard
+- **Removed flag**: `--no-fix-issues` is not supported. If any token in the skill argv is exactly `--no-fix-issues`, refuse immediately with a clear usage error (flag removed); do not proceed or silently ignore it.
 
 ## Pre-flight
 
@@ -101,16 +101,29 @@ Run for each audited PR:
 - **Self-deploying gap detection**: cross-reference `manifest.json::larch_version` with the version that contains the PR's `Closes #N` fix. Warn loudly if the run used a version BEFORE the fix landed (the bug-being-fixed exhibits in the very run that fixes it).
 - **Closed-issue cross-reference**: parse `Closes #N` from the PR body. Check if the run still exhibits the bug that `#N` claims to fix.
 
-## Bug Issue Handling
+## Proposed bug-issue actions
 
-For each finding from the scans:
+At scan time, **only** record findings as proposals. **Never** auto-file a bug issue and **never** auto-post augmentation comments during the scan.
 
-1. Search open issues (excluding titles matching `^\[Run Logs Audit Report` or `^\[IN PROGRESS\]`): `gh issue list --state open --repo <repo> --search "<finding keywords>" --json number,title`
-2. If a match is found: post an augmentation comment via `gh issue comment <N> --body-file <path>` (unless `--no-fix-issues`).
-3. If no match: file a new issue via `/larch:issue` (dedup ON; the issue skill does its own dedup pass) (unless `--no-fix-issues`).
-4. With `--no-fix-issues`: suppress both filing and augmentation; record in `proposed_issues_no_filing` frontmatter field instead.
+- **`proposed_new_issues`**: findings with no matching open issue (excluding titles matching `^\[Run Logs Audit Report` or `^\[IN PROGRESS\]` when searching). Always present in the audit-report frontmatter (possibly empty).
+- **`proposed_augmentations`**: findings that match an existing open issue (same title search as today). Always present in the audit-report frontmatter (possibly empty).
 
-### Augmentation Comment Shape
+For each finding, classify it into one of these two lists (search open issues with `gh issue list --state open --repo <repo> --search "<finding keywords>" --json number,title`); do not file or comment until after the post-report user prompt below.
+
+### Post-report user prompt
+
+After the audit report issue is filed and prior reports are handled per **Close Prior Reports**:
+
+1. Print the **full audit-report body** verbatim to chat (the same markdown submitted as the issue body), then print the **audit-report URL**.
+2. **Zero-findings short-circuit**: if `proposed_new_issues` and `proposed_augmentations` are both empty, state `No findings — no bug issues to file.` and exit — do **not** ask the 3-way question.
+3. **Otherwise**, ask the operator a 3-way question: (1) file/augment all, (2) discuss specific findings first, or (3) skip filing. Act on the response:
+   - **File/augment all**: file new issues via `/larch:issue` (dedup ON); post augmentation comments with `gh issue comment <N> --repo "<repo>" --body-file "$TMPDIR/audit-augment-<N>.md"` (write the **Augmentation comment shape** markdown to that file first — same `--body-file` pattern as `create-one.sh`; do not pass multi-line tables through an inline `--body` string).
+   - **Discuss first**: wait for operator direction; file or augment per finding only as approved.
+   - **Skip filing**: exit cleanly; the audit report already captures proposed findings for the historical record.
+
+The audit report issue is **never** edited after creation (chain-of-history).
+
+### Augmentation comment shape
 
 ```markdown
 **Additional data from <PR list>:**
@@ -159,9 +172,8 @@ audited_pr_range:
   count: K
 audited_prs: [N, ..., M]   # explicit list when range has gaps
 prior_report_issue: <N | null>
-issues_filed_this_audit: [...]
-issues_augmented_this_audit: [...]
-proposed_issues_no_filing: [...]   # only present when --no-fix-issues was set
+proposed_new_issues: [...]        # always present; findings with no matching open issue
+proposed_augmentations: [...]     # always present; findings matched to an existing issue
 cumulative_counters:
   exon_misclassifications: N
   oos_categories_mangled: N
@@ -185,13 +197,19 @@ After the new audit report is filed:
 2. For each: post `Superseded by #<new>` as a comment, then close via `gh issue close <N> --repo <repo>`
 3. Order: file new first, then close priors (if close-priors fails, orphaned open prior is cosmetic)
 
+## Output to chat
+
+Only after the new audit report issue is filed and prior reports are handled per **Close Prior Reports** (same sequencing precondition as `### Post-report user prompt` above), the orchestrator MUST surface to chat (in order):
+
+1. The **full audit-report body**, verbatim (same content as the filed issue body).
+2. The **audit-report URL**.
+3. Either the **zero-findings short-circuit** message (`No findings — no bug issues to file.`) when both proposal lists are empty, **or** the **3-way question** about filing/augmenting when there is at least one proposed item.
+
+Bug-issue filing and augmentation happen only after operator response to that question (unless skipped); they are not part of this mandatory chat tail when the short-circuit applies.
+
 ## Output
 
-Stdout summary at the end:
-- Per-scan PASS/FAIL counts
-- List of new issues filed
-- List of augmented issues
-- Audit report URL
+Optional stdout-style summary after the chat contract (for example per-scan PASS/FAIL counts). Lists of bug issues filed or augmented belong here only **after** the operator has directed those actions — not at scan time.
 
 ## Preconditions
 
@@ -210,3 +228,5 @@ Stdout summary at the end:
 - Do NOT recurse: the skill must not audit its own audit-report issues
 - Do NOT close prior reports before the new one is confirmed filed (ISSUE_NUMBER from create-one.sh is non-empty)
 - Do NOT `gh issue create` directly — use `create-one.sh` for audit reports and `/larch:issue` for bug issues
+- Do NOT auto-file or auto-augment bug issues — only file the audit report itself at scan/report time. Bug-issue actions require explicit user direction in chat.
+- Do NOT ask the 3-way question when there are zero findings — state `No findings — no bug issues to file.` and exit.

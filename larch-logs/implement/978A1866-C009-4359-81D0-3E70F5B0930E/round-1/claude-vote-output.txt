@@ -1,0 +1,26 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: NO -- stdout-based stub pattern is consistent throughout the harness; argv-order edge cases trivial for a removed flag
+FINDING_5: NO -- run-log metadata files are expected committed artifacts per convention
+FINDING_6: NO -- in-progress manifest status is standard committed run-log practice
+FINDING_7: EXONERATE -- legitimate security concern but pre-existing, not introduced by this diff
+FINDING_8: EXONERATE -- duplicate of FINDING_2; same ordering concern already captured
+FINDING_9: EXONERATE -- legitimate naming concern but renaming section adds complexity without correctness benefit
+FINDING_10: NO -- trivial naming nit in contract doc
+FINDING_11: EXONERATE -- duplicate of FINDING_2
+FINDING_12: NO -- trivial comment accuracy nit
+FINDING_13: EXONERATE -- duplication is minimal in a test harness with controlled fixtures; factoring adds noise
+FINDING_14: NO -- trivial test style inconsistency
+FINDING_15: NO -- misreads the spec; zero-findings short-circuit is explicitly correct per SKILL.md design intent
+FINDING_16: EXONERATE -- requires orchestrator to mis-build frontmatter inconsistently; anti-patterns section already guards this
+FINDING_17: EXONERATE -- same as FINDING_16
+FINDING_18: EXONERATE -- controlled test fixtures mean whole-document grep risk is negligible in practice
+FINDING_19: YES
+FINDING_20: EXONERATE -- intentional design change for a dev-only skill; migration concern not issue-worthy
+FINDING_21: EXONERATE -- duplicate of FINDING_1
+FINDING_22: NO -- trivial; variant spellings of a removed flag not worth tracking
+FINDING_23: EXONERATE -- duplicate of FINDING_1
+FINDING_24: EXONERATE -- duplicate of FINDING_3
+FINDING_25: EXONERATE -- controlled fixtures in test harness; YAML trailing-comment risk is negligible
+FINDING_26: EXONERATE -- duplicate of FINDING_25
