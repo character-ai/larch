@@ -1,0 +1,21 @@
+Gathering the diff and commit list for review.
+
+Verifying abort-path cleanup in `create-pr.sh` and whether `REDACTED_BODY_FILE` is removed on early exits.
+
+### In-Scope Findings
+
+- **correctness** `scripts/create-pr.sh:98-102` — `DIRTY_FILES=$(git status --porcelain 2>/dev/null || true)` discards stderr and forces success on non-zero exit, so a failing or mis-invoked `git status` (broken repo, wrong `GIT_DIR`, I/O error) yields an empty `DIRTY_FILES` and the script can treat the tree as clean and continue toward push, which is the opposite of fail-closed for the new guard’s purpose. **Suggested fix:** run `git status --porcelain` without `|| true`, do not send stderr to `/dev/null`, and on non-zero exit emit `larch_err` with stderr (or re-run with explicit error) and exit non-zero (e.g. `2` for “guard could not run”) instead of inferring cleanliness from empty output.
+
+- **correctness** `scripts/git-force-push.sh:59-63` — Same pattern as `create-pr.sh`: `2>/dev/null || true` can turn a hard `git status` failure into a false “clean” result and allow `push_with_lease` to run, undermining defense-in-depth for direct callers (`scripts/merge-pr.sh`, `scripts/ship-pr.sh`). **Suggested fix:** mirror the fail-closed handling above: propagate `git status` failure as a distinct abort (and surface stderr) rather than collapsing all failures to an empty porcelain snapshot.
+
+- **correctness** `scripts/test-create-pr.sh:312-335` — New regression coverage only exercises tracked content modification and an untracked file; it does not cover other non-empty porcelain cases called out in review notes (e.g. staged-but-uncommitted index entries, or unmerged paths), nor a controlled scenario where `git status` fails, so a future change that reintroduces `|| true` or swallows errors could pass CI while re-opening the false-negative hole. **Suggested fix:** add harness cases for “dirty index / staged only” and, if feasible in the temp-repo fixture, a stubbed or broken `git`/`GIT_DIR` path that forces `git status` to fail and asserts the script exits non-zero without pushing.
+
+### Out-of-Scope Observations
+
+- **Pre-existing / not introduced by this diff:** `scripts/ship-pr.sh` is unchanged; pushes still flow through `scripts/create-pr.sh` and `scripts/git-force-push.sh`, so behavior is covered indirectly even though the feature text mentioned `ship-pr.sh` by name.
+
+- **TOCTOU:** Any point-in-time `git status` check can pass and the working tree can still change before `git push`; that race is inherent and not introduced solely by this branch (the guard still removes the dominant “forgot to commit” failure mode).
+
+- **`scripts/create-pr.sh:40-43`:** `trap cleanup EXIT` already removes `REDACTED_BODY_FILE` on the new `exit 1` path, so the dirty-tree abort does not leave the redaction tempfile behind (the scout note about cleanup is not a defect here).
+
+- **`scripts/merge-pr.sh:193-196`:** `git-force-push.sh` output is merged stdout/stderr with `PUSHED` parsed from lines; a dirty-tree exit leaves `PUSHED` non-`true`, so the existing failure branch still trips without requiring a new parser shape.
