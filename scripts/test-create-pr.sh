@@ -24,10 +24,11 @@ setup_repo() {
     git -C "$repo" config user.email "larch-test@example.invalid"
     git -C "$repo" checkout -b feature >/dev/null 2>&1
     printf 'body\n' > "$repo/file.txt"
+    printf 'PR body\n' > "$repo/body.md"
     git -C "$repo" add file.txt
+    git -C "$repo" add body.md
     git -C "$repo" commit -m "Initial" >/dev/null
     git -C "$repo" remote add origin "$bare"
-    printf 'PR body\n' > "$repo/body.md"
     printf '%s\n' "$repo"
 }
 
