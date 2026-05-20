@@ -1,0 +1,7 @@
+Gathering the branch diff and commit list for a correctness-focused review.
+
+Reading `trimmed_nonblank_content` and the validation-mode comment block to verify consistency and edge cases.
+
+Confirming: `--help` extracts only the initial header block (up to the first non-`#` line), so the stale comment at lines 362–367 isn’t in `--help` output. Calling CreatePlan to satisfy plan-mode while delivering the requested review format.
+
+

@@ -1,0 +1,10 @@
+Gathering the diff and source context to verify correctness (trimmed content, FIRST_LINE, JSON jq path, CURSOR_EMPTY_RESPONSE).
+
+Reading the modified script sections for exact line numbers and verifying `json_no_issues_found_short_circuit` and Makefile wiring.
+
+### In-Scope Findings
+- **correctness** `scripts/validate-research-output.sh:65-67` — The validation-mode header still says the first non-empty line must **equal** the one-line JSON literal `{"no_issues_found": true}`, but `json_no_issues_found_short_circuit` (`scripts/validate-research-output.sh:232-243`) also accepts pretty-printed objects whose first trimmed line is only `{` by re-running `jq` on the full `$trimmed` body, so operators reading `--help` get a materially narrower rule than the implementation (regression cases 68-69 depend on this wider behavior). **Suggested fix:** Update the header (and the matching contract prose in `scripts/validate-research-output.md:3`) to describe both paths: exact sentinel on the first line, or first line beginning with `{` with the full trimmed stream parsing as an object where `.no_issues_found == true`.
+- **code-quality** `scripts/test-validate-research-output.sh:5-6` — The top-of-file structured-reviewer summary was narrowed to “52-63” and still calls out #2455 only for cases “62-63”, while the same branch adds executable cases 64-69, so the documented case matrix is internally inconsistent with the script body. **Suggested fix:** Expand the summary range (e.g. 52-69) and adjust the #2455 parenthetical to mention JSON-first-line and multiline JSON coverage (cases 64-69) alongside 60-63.
+
+### Out-of-Scope Observations
+NO_ISSUES_FOUND

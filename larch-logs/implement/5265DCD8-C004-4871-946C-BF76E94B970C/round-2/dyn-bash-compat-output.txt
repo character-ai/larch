@@ -1,0 +1,19 @@
+Gathering the diff and commit list, then inspecting `validate-research-output.sh` for Bash 3.2 compatibility and correctness.
+
+Reading `scripts/validate-research-output.sh` for `set` options, the new function's full context, and `trimmed_nonblank_content` behavior.
+
+### In-Scope Findings
+
+- **correctness** `scripts/validate-research-output.md:8` and `scripts/validate-research-output.sh:65-67` — The contract and header describe the JSON no-findings short-circuit as the **first non-empty line equaling** the one-line sentinel `{"no_issues_found": true}`, but [`json_no_issues_found_short_circuit`](scripts/validate-research-output.sh) (lines 232–243) also returns success when the first line is only an opening `{` and `jq` succeeds on the **full** `TRIMMED` stream (cases 68–69), which is not the same as “first line equals” that literal. Operators reading only the markdown could mis-implement a consumer-side check. **Suggested fix:** Tighten the prose to match behavior: e.g. state that detection is `jq` on the first non-empty line, and if that fails while the first line begins `{`, `jq` is retried on the entire trimmed non-blank body so pretty-printed objects still short-circuit, with trailing prose only allowed when the first-line parse already succeeds (single-line sentinel + notes).
+
+- **code-quality** `scripts/test-validate-research-output.sh:9-12` — The top-of-file case summary still frames structured-reviewer coverage as **52–63** while the branch adds regression cases **64–69** (JSON-with-note, sentinel-not-first, and multiline JSON). The banner range is stale relative to the expanded suite. **Suggested fix:** Update that summary line to cover **52–69** (or drop a fixed upper bound and point readers to the numbered list below).
+
+### Out-of-Scope Observations
+
+- The diff does not touch the Makefile; [`test-validate-research-output`](Makefile) remains on the `lint` path via `test-harnesses-7`, consistent with the “wire into make lint” intent without a new Makefile hunk.
+
+- [`set -uo pipefail`](scripts/validate-research-output.sh:134) without `-e` means failed `jq` probes inside `if` conditions do not abort the script; here-strings and `command -v jq` match existing patterns in the same file.
+
+- `git log $(git merge-base HEAD main)..HEAD --oneline`: `31819bba Loosen NO_ISSUES_FOUND sentinel to first-non-empty-line match (#2455)`; `544129bc Address code review feedback (round 1)`.
+
+- This review did not execute `make lint-bash32` or `bash scripts/test-validate-research-output.sh`; correctness beyond static inspection was not machine-verified here.

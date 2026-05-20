@@ -1,0 +1,19 @@
+Gathering the diff, commit list, and full context for cases 60–63 and related implementation.
+
+Verifying the stale comment in `validate-research-output.sh` and word-count behavior for case 61 fixtures.
+
+Verifying word count for the case 61 fixture and checking the Makefile for lint wiring (read-only).
+
+### In-Scope Findings
+
+- **correctness** `scripts/validate-research-output.sh:362-367` — The `--- 0. Validation-mode short-circuits` comment block still states that sentinels must equal the **entire** trimmed file and that only “partial matches inside larger prose” are excluded, which no longer matches the implementation: `NO_ISSUES_FOUND` and the JSON no-findings object are now accepted when they match the **first non-empty line** of `trimmed_nonblank_content` output (while `CURSOR_EMPTY_RESPONSE` correctly remains a full-trimmed equality check). **Suggested fix:** Rewrite that comment to describe first-non-empty-line matching for the two no-findings short-circuits and keep the “entire trimmed content” wording only for `CURSOR_EMPTY_RESPONSE` (and any other full-content rules).
+
+- **correctness** `scripts/test-validate-research-output.sh:547-548` — The case 61 comment claims “9 words” for the fixture `Verification: mktemp failed.` plus a later `NO_ISSUES_FOUND` line, but the validator’s word-count `awk` sums `NF` per non-fence line and this fixture yields **four** fields total (`Verification:`, `mktemp`, `failed.`, `NO_ISSUES_FOUND`), not nine; exit **2** is still the right expectation because 4 is below the validation-mode default `--min-words` floor. **Suggested fix:** Replace the incorrect word count in the comment with the actual count (or drop the numeric claim) and describe exit 2 as the thin-body path without citing a wrong tally.
+
+- **correctness** `scripts/test-validate-research-output.sh:4-6` — The file header still groups structured-reviewer coverage as cases **52-59**, even though new cases **62-63** are also `--structured-reviewer-mode`; the detailed index for 60-63 was added lower in the file, so the top summary is now internally inconsistent. **Suggested fix:** Update the header summary (e.g., extend the range to 52-63 or add an explicit line that 62-63 continue structured-reviewer-mode) so newcomers see one coherent case map.
+
+- **correctness** `scripts/test-validate-research-output.sh:540-561` — Cases 60-63 lock in the `NO_ISSUES_FOUND` first-line / not-first-line behavior, but there is **no** symmetric regression for the **JSON** no-findings sentinel on the first line with trailing operational prose, even though `scripts/validate-research-output.sh` applies the same `FIRST_LINE` + `jq` short-circuit for JSON in both structured-reviewer and validation paths. **Suggested fix:** Add fixtures mirroring 60/61 (and optionally 62/63) using `{"no_issues_found": true}` as the first non-empty line with trailing notes so both sentinel branches are covered.
+
+### Out-of-Scope Observations
+
+- The branch diff does not touch the Makefile; `test-validate-research-output` is already defined and referenced from `lint`-related phony targets in [Makefile](Makefile) (existing wiring, not introduced by this diff).
