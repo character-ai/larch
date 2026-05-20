@@ -205,7 +205,10 @@ grep -Fq 'VOTER_2_PARSE_RATE_STATUS=SKIPPED' <<< "$out"
 grep -Fq 'VOTER_3_TOOL=claude' <<< "$out"
 grep -Fq 'VOTER_3_STATUS=fallback' <<< "$out"
 grep -Fq 'DISPATCH_OK=true' <<< "$out"
-grep -Fq 'DEGRADED_PANEL_WARNING=**⚠ Degraded code-review panel: 1/2 effective judges produced output.**' <<< "$out"
+if grep -Fq 'DEGRADED_PANEL_WARNING=' <<< "$out"; then
+    echo "FAIL: round2 should not emit a degraded panel warning when both effective judges produce output" >&2
+    exit 1
+fi
 [[ "$(wc -l < "$TMP/round2/code-voter-slots.ndjson")" -eq 1 ]] \
     || { echo "FAIL: round2 manifest must contain only the Cursor slot" >&2; exit 1; }
 grep -Fq '"slot":"voter-3"' "$TMP/round2/code-voter-slots.ndjson" \

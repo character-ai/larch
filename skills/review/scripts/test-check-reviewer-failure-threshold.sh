@@ -129,6 +129,15 @@ assert_eq "0 launched of 12 → FAILED_SLOTS=12" "$got" "12"
 got=$(printf '%s\n' "$out" | awk -F= '$1=="THRESHOLD_OK"{print $2}')
 assert_eq "0 launched → THRESHOLD_OK=false" "$got" "false"
 
+echo "# round 2+ both-down: zero records, zero launched"
+out=$(run_case both_down_round2 hard --round-num 2 --launched-slots 0 2>&1)
+got=$(printf '%s\n' "$out" | awk -F= '$1=="INTENDED_SLOTS"{print $2}')
+assert_eq "round2 0 launched → INTENDED_SLOTS=6" "$got" "6"
+got=$(printf '%s\n' "$out" | awk -F= '$1=="FAILED_SLOTS"{print $2}')
+assert_eq "round2 0 launched of 6 → FAILED_SLOTS=6" "$got" "6"
+got=$(printf '%s\n' "$out" | awk -F= '$1=="THRESHOLD_OK"{print $2}')
+assert_eq "round2 0 launched → THRESHOLD_OK=false" "$got" "false"
+
 echo "# dynamic slots are excluded from the static threshold math"
 out=$(run_case dynamic_hard hard --launched-slots 16 \
     OK OK OK OK OK OK OK OK OK timeout timeout timeout \
