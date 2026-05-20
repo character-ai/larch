@@ -129,7 +129,7 @@ classify_result() {
         printf 'accepted'
     elif (( yes > 0 && yes == no )); then
         printf 'neutral'
-    elif (( yes > 0 && exonerate > 0 && no == 0 )); then
+    elif (( exonerate > 0 && exonerate >= no && exonerate > yes )); then
         printf 'exonerated'
     else
         printf 'rejected'
