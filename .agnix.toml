@@ -12,12 +12,16 @@ tools = ["claude-code"]
 #   is expected and must NOT be fixed on the fixture itself.
 # - agents/_implementer-base.md — source-of-truth prompt fragment for the
 #   generated implementer agents, not an invokable Claude Code agent.
+# - larch-logs/** — committed run-log artifacts (reviewer prompts, voter
+#   outputs, plan embeds) contain arbitrary XML-like text that is not
+#   intended to be valid XML and must not be validated as skill content.
 exclude = [
   "node_modules/**",
   ".git/**",
   "target/**",
   "tests/fixtures/**",
   "agents/_implementer-base.md",
+  "larch-logs/**",
 ]
 
 # Pin versions so version-dependent rules (VER-001 family) evaluate against
