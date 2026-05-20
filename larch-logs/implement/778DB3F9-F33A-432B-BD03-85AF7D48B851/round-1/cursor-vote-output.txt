@@ -1,0 +1,54 @@
+Reading the ballot and referenced context files to verify findings.
+
+Verifying ballot claims against the repo and session diff context.
+
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: EXONERATE -- meta note about pre-existing logs, not worth a tracking issue
+FINDING_16: NO -- item rebuts a defect; nothing to fix or file
+FINDING_17: NO -- confirms ordering is sound, not a finding
+FINDING_18: NO -- confirms validation behavior, not a finding
+FINDING_19: NO -- confirms tests already match invalid=9 boundary
+FINDING_20: EXONERATE -- spec vs shipped belongs in PR/plan closure, not a new issue
+FINDING_21: EXONERATE -- stable anchor id vs prose skew is cosmetic
+FINDING_22: NO -- accurate observation that simple/hard still branches elsewhere, not a defect
+FINDING_23: EXONERATE -- unmodified fixtures nit, optional follow-up only
+FINDING_24: EXONERATE -- optional editorial alignment, low urgency
+FINDING_25: EXONERATE -- optional scout boundary tests when that file is touched
+FINDING_26: EXONERATE -- duplicate of FINDING_25
+FINDING_27: EXONERATE -- speculative hardening without demonstrated exploit path
+FINDING_28: EXONERATE -- extra max-8 fixture is nice-to-have, not required for this PR
+FINDING_29: YES
+FINDING_30: YES
+FINDING_31: YES
+FINDING_32: YES
+FINDING_33: EXONERATE -- POS_MARKERS should keep a Codex phrase while quick-mode copy still names Codex union
+FINDING_34: YES
+FINDING_35: YES
+FINDING_36: YES
+FINDING_37: YES
+FINDING_38: YES
+FINDING_39: YES
+FINDING_40: YES
+FINDING_41: YES
+FINDING_42: YES
+FINDING_43: NO -- stale /review fallback prose is at line 100, not line 71
+FINDING_44: YES
+FINDING_45: YES
+FINDING_46: EXONERATE -- commit-message wording is PR hygiene, not a product issue ticket
+FINDING_47: YES
+FINDING_48: EXONERATE -- manifest slot covers labeling; explicit case is optional polish
+FINDING_49: EXONERATE -- same optional max-8 coverage as FINDING_28
+FINDING_50: EXONERATE -- duplicate of FINDING_49
