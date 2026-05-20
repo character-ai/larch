@@ -1,0 +1,24 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: EXONERATE -- staged changes ARE caught by git status --porcelain; the test gap is real but minor given code correctness
+FINDING_7: YES
+FINDING_8: EXONERATE -- guard is applied through the call chain; no separate issue needed
+FINDING_9: NO -- informational verification note, not a defect
+FINDING_10: NO -- informational verification note, not a defect
+FINDING_11: NO -- informational note, not a defect
+FINDING_12: NO -- inherent TOCTOU limitation, not introduced by this diff
+FINDING_13: NO -- confirms existing trap handles the new exit path correctly
+FINDING_14: NO -- confirms merge-pr.sh routes safely on empty PUSHED
+FINDING_15: EXONERATE -- pre-existing stub pattern; not issue-worthy
+FINDING_16: EXONERATE -- documentation wording mismatch only; no code change required if leaf-script enforcement is accepted
+FINDING_17: EXONERATE -- minor ordering nit; redaction cost is negligible, benefit too small
+FINDING_18: EXONERATE -- minor wording inconsistency; both messages convey the actionable information
+FINDING_19: EXONERATE -- positive test still fails on regression (just without stderr context); acceptable for a clean-path assertion
+FINDING_20: EXONERATE -- both dirty repos have body.md untracked too, so exit 2 from arg validation is not a realistic false-pass path
+FINDING_21: YES
+FINDING_22: YES
+FINDING_23: YES
+FINDING_24: EXONERATE -- create-pr.sh and git-force-push.sh are named explicitly in the prose; concern is overstated

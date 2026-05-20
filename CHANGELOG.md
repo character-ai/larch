@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Closed: #2432
+- Closed: #2434
 
 ## [29.8.39] - 2026-05-20
 

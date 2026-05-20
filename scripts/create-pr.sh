@@ -21,8 +21,8 @@
 #
 # Exit codes:
 #   0 — success (PR created or already exists)
-#   1 — push failed
-#   2 — PR creation failed
+#   1 — push failed or dirty-tree guard aborted before push
+#   2 — guard/setup/PR creation failed
 
 set -euo pipefail
 
@@ -34,11 +34,12 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 REDACT_TMPDIR_HELPER="$REPO_ROOT/scripts/redact-tmpdir-paths.sh"
 
 PUSH_STDERR=""
+GIT_STATUS_STDERR=""
 PR_STDERR_FILE=""
 PR_STDOUT_FILE=""
 REDACTED_BODY_FILE=""
 cleanup() {
-    rm -f "$PUSH_STDERR" "$PR_STDERR_FILE" "$PR_STDOUT_FILE" "$REDACTED_BODY_FILE"
+    rm -f "$PUSH_STDERR" "$GIT_STATUS_STDERR" "$PR_STDERR_FILE" "$PR_STDOUT_FILE" "$REDACTED_BODY_FILE"
 }
 trap cleanup EXIT
 
@@ -91,6 +92,19 @@ REDACTED_BODY_FILE=$(mktemp)
 if ! "$REDACT_TMPDIR_HELPER" < "$BODY_FILE" > "$REDACTED_BODY_FILE"; then
     larch_err "ERROR: Failed to redact PR body tmpdir paths"
     exit 2
+fi
+
+# Pre-push clean-tree guard: uncommitted working-tree changes are silently
+# excluded from a push, causing data loss (issue #2434).
+GIT_STATUS_STDERR=$(mktemp)
+if ! DIRTY_FILES=$(git status --porcelain 2>"$GIT_STATUS_STDERR"); then
+    larch_err "ERROR: Failed to inspect working tree before push: $(cat "$GIT_STATUS_STDERR")"
+    exit 2
+fi
+if [[ -n "$DIRTY_FILES" ]]; then
+    larch_err "ERROR: Uncommitted working-tree changes detected before push. These will NOT be included in the merged PR. Stage and commit them, or discard them, before pushing."
+    larch_err "$DIRTY_FILES"
+    exit 1
 fi
 
 # --- Get current branch ---

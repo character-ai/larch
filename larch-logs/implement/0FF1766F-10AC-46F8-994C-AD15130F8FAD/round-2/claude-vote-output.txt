@@ -1,0 +1,26 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: NO -- ship-pr delegates pushes to create-pr.sh which is now guarded; implicit coverage is functional and the suggested revision is "None"
+FINDING_5: YES
+FINDING_6: EXONERATE -- wording is accurate at the workflow level and the em-dash clause explicitly names both guarded scripts
+FINDING_7: YES
+FINDING_8: EXONERATE -- the duplication is intentional defense-in-depth per the design; extracting a helper adds indirection for a seven-line pattern
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: NO -- ship-pr pushes via create-pr.sh which is guarded; delegation satisfies the acceptance criterion without needing ship-pr.sh edited directly
+FINDING_13: NO -- inherent TOCTOU window in any check-then-act pattern; reviewer marks it optional and non-actionable
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: YES
+FINDING_18: YES
+FINDING_19: YES
+FINDING_20: YES
+FINDING_21: YES
+FINDING_22: YES
+FINDING_23: YES
+FINDING_24: YES
+FINDING_25: YES
+FINDING_26: YES

@@ -1,0 +1,5 @@
+### In-Scope Findings
+- **risk-integration** `scripts/test-create-pr.sh:17-30` — **Important:** `setup_repo` leaves `body.md` untracked after the initial commit, so the new `create-pr.sh` guard sees every harness repo as dirty before it ever reaches `git push`. Concrete failure: the first create-path test at `scripts/test-create-pr.sh:82-84` invokes `create-pr.sh --body-file body.md`; `git status --porcelain` reports `?? body.md`, `create-pr.sh` exits 1, and `make test-create-pr` fails instead of proving the clean-tree path. **Suggested fix:** Make the fixture repos clean by committing `body.md` in `setup_repo` or placing the PR body file outside the worktree, then keep the dirty tracked/untracked cases adding their extra files after setup.
+
+### Out-of-Scope Observations
+No out-of-scope observations.

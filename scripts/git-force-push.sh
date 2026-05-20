@@ -19,12 +19,12 @@
 # Output (stdout, KEY=VALUE):
 #   BRANCH=<name>
 #   PUSHED=true|false
-#   STATUS=pushed|noop_same_ref|diverged_retry_failed
+#   STATUS=pushed|noop_same_ref|diverged_retry_failed|dirty_worktree
 #
 # Exit codes:
 #   0 — PUSHED=true (either pushed fresh or race-landed)
-#   1 — PUSHED=false with STATUS=diverged_retry_failed (caller should bail)
-#   2 — not on a named branch (detached HEAD / not a git repo)
+#   1 — dirty-tree guard aborted before push (PUSHED=false, STATUS=dirty_worktree), or PUSHED=false with STATUS=diverged_retry_failed
+#   2 — not on a named branch (detached HEAD / not a git repo), or guard/setup failed
 
 set -euo pipefail
 
@@ -33,6 +33,8 @@ SCRIPT_DIR="$SLEEP_SCRIPT_DIR"
 # shellcheck source=scripts/lib-quiet.sh
 source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
+
+GIT_STATUS_STDERR=""
 
 EXPECTED_REMOTE_OID=""
 while [[ $# -gt 0 ]]; do
@@ -53,6 +55,24 @@ if ! BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null); then
     exit 2
 fi
 emit_kv BRANCH "$BRANCH"
+
+# Pre-push clean-tree guard: uncommitted working-tree changes are silently
+# excluded from a push, causing data loss (issue #2434).
+GIT_STATUS_STDERR=$(mktemp)
+if ! DIRTY_FILES=$(git status --porcelain 2>"$GIT_STATUS_STDERR"); then
+    larch_err "git-force-push.sh: failed to inspect working tree before force-push: $(cat "$GIT_STATUS_STDERR")"
+    rm -f "$GIT_STATUS_STDERR"
+    exit 2
+fi
+if [[ -n "$DIRTY_FILES" ]]; then
+    emit_kv PUSHED "false"
+    emit_kv STATUS "dirty_worktree"
+    larch_err "git-force-push.sh: uncommitted working-tree changes detected before force-push. Stage and commit them before pushing."
+    larch_err "$DIRTY_FILES"
+    rm -f "$GIT_STATUS_STDERR"
+    exit 1
+fi
+rm -f "$GIT_STATUS_STDERR"
 
 push_with_lease() {
     if [[ -n "$EXPECTED_REMOTE_OID" ]]; then

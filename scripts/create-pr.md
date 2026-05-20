@@ -40,13 +40,17 @@ PR_STATUS=created|existing
 
 Failure is signalled exclusively via non-zero exit code + a human-readable `ERROR:` message on stderr. The script does NOT emit failure key=value lines on stdout — `/implement` Step 9b's parser detects failure by exit code.
 
+## Pre-push clean-tree guard
+
+Before any push attempt, `create-pr.sh` runs `git status --porcelain` and aborts with exit 1 if the working tree is dirty. This prevents silent data loss: uncommitted changes (e.g., inline OOS-fold edits applied between commit boundaries) would otherwise be excluded from the push and therefore missing from the merged PR. The check runs once at script entry, covering all three push sites (new-PR path, existing-PR fast-path plain push, existing-PR fast-path force-push escalation). The error message lists the dirty paths so the operator knows exactly what to stage and commit before retrying.
+
 ## Exit codes
 
 | Exit | Meaning |
 |------|---------|
 | 0    | PR created or pre-existing PR detected; remote branch confirmed up-to-date with local. |
-| 1    | Push failed. Either path: stderr carries the underlying git rejection. |
-| 2    | Argument validation failed, branch detection failed (detached HEAD), `gh pr create` failed, or PR number/URL extraction failed. |
+| 1    | Push failed (includes dirty-tree abort). Either path: stderr carries the underlying git rejection or the list of uncommitted paths. |
+| 2    | Argument validation failed, branch detection failed (detached HEAD), working-tree inspection failed before any push attempt, `gh pr create` failed, or PR number/URL extraction failed. |
 
 ## PR body redaction
 
@@ -56,7 +60,7 @@ Failure is signalled exclusively via non-zero exit code + a human-readable `ERRO
 
 On the existing-PR fast-path, the script attempts a plain `git push -u origin HEAD` first. If the plain push succeeds (fast-forward or no-op), the script proceeds to emit the `PR_*` lines and exits 0.
 
-If the plain push fails (commonly non-fast-forward after a history rewrite — e.g., `/implement` Step 12's rebase + re-bump path), the script escalates to `git-force-push.sh` (force-with-lease + race-recovery + single retry). Before invoking the helper, the script defensively populates the local `origin/$BRANCH` ref via `git fetch origin "$BRANCH"` and sets upstream tracking via `git branch --set-upstream-to=origin/$BRANCH "$BRANCH"`, since `git-force-push.sh`'s `git push --force-with-lease` (no refspec) requires both. If the helper exits non-zero (`STATUS=diverged_retry_failed` — diverged history that lease cannot reconcile), this script exits 1 with the helper's stderr surfaced. The helper's stdout (`BRANCH=`/`PUSHED=`/`STATUS=` keys) is suppressed to `/dev/null` so the documented `PR_*` stdout contract this script publishes stays intact.
+If the plain push fails (commonly non-fast-forward after a history rewrite — e.g., `/implement` Step 12's rebase + re-bump path), the script escalates to `git-force-push.sh` (force-with-lease + race-recovery + single retry). Before invoking the helper, the script defensively populates the local `origin/$BRANCH` ref via `git fetch origin "$BRANCH"` and sets upstream tracking via `git branch --set-upstream-to=origin/$BRANCH "$BRANCH"`, since `git-force-push.sh`'s `git push --force-with-lease` (no refspec) requires both. If the helper exits non-zero, this script exits 1 with the helper's stderr surfaced; that exit can represent either a dirty-tree abort or a post-retry diverged push failure, and `scripts/git-force-push.md` is the source of truth for the helper's stdout/stderr split. The helper's stdout (`BRANCH=`/`PUSHED=`/`STATUS=` keys) is suppressed to `/dev/null` so the documented `PR_*` stdout contract this script publishes stays intact.
 
 Prior to the #837 fix, the fast-path's push line read `git push -u origin HEAD >/dev/null 2>&1 || true`, silently swallowing every push failure (non-fast-forward, lease failures, network errors). That violated the documented exit-1-on-push-failure contract on this path and caused `/implement` to emit `PR_STATUS=existing` while origin's branch tip was actually stale. The current fail-closed behavior is the documented contract.
 
@@ -79,7 +83,7 @@ On non-zero exit from `gh pr create`, the script always emits a diagnostic `ERRO
 
 ## Test harness
 
-`scripts/test-create-pr.sh` uses temporary git repositories and a PATH-stubbed `gh` binary to assert that `--repo` is threaded through every `gh pr view` and `gh pr create` path, including existing-PR title backfill and PR-number fallback. It also covers explicit `--base`, detected default-branch base, fallback-to-`main` base selection on the new-PR path, and the empty-stderr diagnostic case (asserts that the error block is non-empty when `gh pr create` exits with no output).
+`scripts/test-create-pr.sh` uses temporary git repositories and a PATH-stubbed `gh` binary to assert that `--repo` is threaded through every `gh pr view` and `gh pr create` path, including existing-PR title backfill and PR-number fallback. It also covers explicit `--base`, detected default-branch base, fallback-to-`main` base selection on the new-PR path, the empty-stderr diagnostic case (asserts that the error block is non-empty when `gh pr create` exits with no output), and the pre-push clean-tree guard (clean tree proceeds; tracked-modified and untracked-file dirty trees exit non-zero with a descriptive error).
 
 ## Edit-in-sync rules
 
