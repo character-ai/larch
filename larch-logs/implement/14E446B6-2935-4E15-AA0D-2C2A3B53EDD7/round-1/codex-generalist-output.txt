@@ -1,0 +1,8 @@
+### In-Scope Findings
+
+1. **Important** correctness — `scripts/compose-review-findings.sh:180`  
+   `code-review-oos` only recognizes headings shaped as `### OOS_N: ...`, but production `oos.md` entries are written as `### FINDING_N: [OUT_OF_SCOPE] ...` by `skills/review/scripts/collect-findings.sh:392-399` and then preserved by `skills/review/scripts/tally-code-votes.sh:354-355`. Concrete failing scenario: a round with OOS findings produces `round-1/oos.md`, but `compose-review-findings.sh` emits zero `outcome="out_of_scope"` records, so Gap 3 remains unfixed for real runs. Update the parser and regression fixture to cover the actual `FINDING_N: [OUT_OF_SCOPE]` shape, while still mapping emitted JSONL ids to `OOS_C...` if that is the desired schema.
+
+2. **Important** security — `SECURITY.md:36`  
+   The updated trust-model text says explicit `--coder=cursor` runs Cursor but then documents the command/posture as ``codex exec --full-auto`, `approval: never`, `sandbox: workspace-write``. Concrete breakage path: an operator using `SECURITY.md` to choose an implementer can read that Cursor has Codex’s workspace-write sandbox posture, even though the same paragraph later says Cursor runs with `--trust` and broader filesystem access. Replace that parenthetical with the actual Cursor launcher posture, and describe the Codex fallback separately.
+

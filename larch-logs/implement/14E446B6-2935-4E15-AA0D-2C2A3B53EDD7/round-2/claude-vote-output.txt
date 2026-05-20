@@ -1,0 +1,18 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: NO -- trivial OOS: larch-logs are intentional per policy, no actionable issue
+FINDING_4: EXONERATE -- legitimate scope concern but bundled-PR is an accepted pattern here; not issue-worthy
+FINDING_5: EXONERATE -- plan was correctly scoped to three compose files; other branch changes come from separate issues
+FINDING_6: NO -- pre-existing path-traversal class, explicitly not introduced by this diff
+FINDING_7: YES
+FINDING_8: EXONERATE -- consolidating a 4-line awk snippet adds shared-library overhead; duplication risk is low given stable pattern
+FINDING_9: NO -- trivial plan-wording vs. implementation mismatch; same outcome, not issue-worthy
+FINDING_10: YES
+FINDING_11: EXONERATE -- oos.md is written exclusively by tally-code-votes.sh with OOS blocks; scenario requires malformed writer output outside this PR's contract
+FINDING_12: EXONERATE -- reviewer values are internal filenames (e.g. cursor-specialist-correctness-output.txt) which never contain colons; hypothetical edge case
+FINDING_13: NO -- "panel" fallback for legacy-header-only blocks is documented intentional behavior, not a bug
+FINDING_14: EXONERATE -- schema change is purely additive; contract doc updated; old consumers remain unaffected
+FINDING_15: YES
+FINDING_16: NO -- exact duplicate of FINDING_15
+FINDING_17: EXONERATE -- OOS_C1 id and outcome are already asserted; reviewer field for the first record is a minor gap not worth a standalone issue
+FINDING_18: EXONERATE -- routing change is documented in SECURITY.md, SKILL.md, and test harness; bundling concern doesn't warrant a separate tracking issue at post-implementation stage
