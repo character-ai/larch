@@ -1,0 +1,3 @@
+NO_ISSUES_FOUND
+
+Verification: `scripts/test-dispatch-code-voters.sh --section happy` could not run in this read-only session because `mktemp` failed with `Operation not permitted`.

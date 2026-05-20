@@ -1,0 +1,5 @@
+FINDING_1: EXONERATE -- same doc inconsistency as FINDING_2; one glossary fix suffices without a separate issue.
+FINDING_2: YES
+FINDING_3: EXONERATE -- pre-existing fire-and-forget append pattern; opening an issue has low payoff versus noise.
+FINDING_4: YES
+FINDING_5: EXONERATE -- bounded 200-byte excerpt with existing redact pass is proportionate; broad PII caveat is generic.
