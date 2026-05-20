@@ -72,9 +72,13 @@ extract_category() {
 }
 
 extract_reviewer_from_body() {
-    LC_ALL=C awk '
-        /^- \*\*Reviewer\*\*:[[:space:]]*/ {
-            sub(/^- \*\*Reviewer\*\*:[[:space:]]*/, "")
+    LC_ALL=C awk -F: '
+        /^[[:space:]-]*\*\*Reviewers?\*\*:/ || /^[[:space:]-]*Reviewers?:/ {
+            sub(/^[[:space:]-]*/, "", $1)
+            $1=""
+            sub(/^:[[:space:]]*/, "", $0)
+            gsub(/\*/, "", $0)
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", $0)
             print
             exit
         }
@@ -183,6 +187,18 @@ parse_artifact() {
                     counter=$((counter + 1))
                     pending_id="${id_prefix}${counter}"
                     pending_title="${BASH_REMATCH[1]}"
+                    continue
+                fi
+                if [[ "$line" =~ ^###[[:space:]]+FINDING_[0-9A-Za-z_]+:[[:space:]]*\[OUT_OF_SCOPE\][[:space:]]*(.*)$ ]]; then
+                    flush_pending
+                    counter=$((counter + 1))
+                    pending_id="${id_prefix}${counter}"
+                    pending_title="${BASH_REMATCH[1]}"
+                    continue
+                fi
+                # Inner headings inside an OOS block belong to that block's body.
+                if [[ -n "$pending_id" && "$line" =~ ^###[[:space:]] ]]; then
+                    pending_body="${pending_body}${pending_body:+$'\n'}$line"
                     continue
                 fi
                 ;;

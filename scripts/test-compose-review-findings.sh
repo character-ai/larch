@@ -174,16 +174,16 @@ stdout="$("$COMPOSE" --implement-tmpdir "$TMP/h-impl" --issue 47 --output "$out"
 echo "=== OOS review findings are captured ==="
 mkdir -p "$TMP/i-impl/round-1"
 cat > "$TMP/i-impl/round-1/oos.md" <<'EOF'
-### OOS_1: Follow-up docs drift
+### FINDING_1: [OUT_OF_SCOPE] Follow-up docs drift
 - **Reviewer**: cursor-docs-output.txt
 - **Concern**: docs/example.md has a stale example.
 
-### OOS_2: Follow-up test naming
-- **Reviewer**: codex-testing-output.txt
+### FINDING_2: [OUT_OF_SCOPE] Follow-up test naming
+- **Reviewers**: codex-testing-output.txt
 - **Concern**: tests should use clearer fixture names.
 
-### OOS_3: Follow-up cleanup
-- **Reviewer**: cursor-cleanup-output.txt
+### FINDING_3: [OUT_OF_SCOPE] Follow-up cleanup
+Reviewer: cursor-cleanup-output.txt
 - **Concern**: an unrelated cleanup could be done later.
 EOF
 out="$TMP/i.jsonl"
@@ -195,6 +195,7 @@ for id in OOS_C1 OOS_C2 OOS_C3; do
     [[ "$(record_field_by_id "$out" "$id" round_num)" == "1" ]] || fail "$id round_num"
 done
 [[ "$(record_field_by_id "$out" OOS_C2 reviewer)" == "codex-testing-output.txt" ]] || fail "OOS_C2 reviewer"
+[[ "$(record_field_by_id "$out" OOS_C3 reviewer)" == "cursor-cleanup-output.txt" ]] || fail "OOS_C3 reviewer"
 
 echo "=== rejected [rejected] headers use body reviewer attribution ==="
 mkdir -p "$TMP/j-impl"
@@ -210,6 +211,24 @@ stdout="$("$COMPOSE" --implement-tmpdir "$TMP/j-impl" --issue 49 --output "$out"
 [[ "$stdout" == *"FINDINGS_TOTAL=1"* ]] || fail "body reviewer rejected total: $stdout"
 [[ "$(record_field_by_id "$out" REJ_C1 reviewer)" == "cursor-specialist-testing-output.txt" ]] \
     || fail "body reviewer rejected attribution"
+
+echo "=== preserve inner headings inside OOS code-review blocks ==="
+mkdir -p "$TMP/k-impl/round-1"
+cat > "$TMP/k-impl/round-1/oos.md" <<'EOF'
+### FINDING_1: [OUT_OF_SCOPE] Follow-up docs drift
+- **Reviewer**: cursor-docs-output.txt
+- **Concern**: docs/example.md has a stale example.
+
+### Notes
+This heading should remain inside the same OOS block.
+EOF
+out="$TMP/k.jsonl"
+stdout="$("$COMPOSE" --implement-tmpdir "$TMP/k-impl" --issue 50 --output "$out")"
+[[ "$stdout" == *"FINDINGS_TOTAL=1"* ]] || fail "OOS inner-heading total: $stdout"
+body=$(record_field_by_id "$out" OOS_C1 prose_body)
+grep -qF '### Notes' <<<"$body" || fail "OOS inner heading missing from prose_body"
+grep -qF 'This heading should remain inside the same OOS block.' <<<"$body" \
+    || fail "OOS inner heading body missing"
 
 echo "=== JSONL preserves XML-like tags literally (no HTML escaping) ==="
 mkdir -p "$TMP/c-impl/round-1"
