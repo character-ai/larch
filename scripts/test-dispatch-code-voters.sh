@@ -204,6 +204,7 @@ issues_log_nonempty="$TMP/execution-issues-nonempty.md"
 out=$(PATH="$STUB_BIN:$PATH" CLAUDE_STUB_MODE=fail_nonempty LARCH_EXECUTION_ISSUES_LOG="$issues_log_nonempty" "$SCRIPT" --ballot-file "$BALLOT" --review-tmpdir "$TMP/nonempty-voter1" --codex-available true --cursor-available true)
 grep -Fq 'VOTER_1_STATUS=failed' <<< "$out"
 grep -Fq -- '--- first 200 bytes of voter output ---' "$issues_log_nonempty"
+grep -Fq 'stub voter output for diag test' "$issues_log_nonempty"
 
 out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" --ballot-file "$BALLOT" --review-tmpdir "$TMP/round2" --codex-available true --cursor-available false --round-num 2)
 grep -Fq 'VOTER_1_TOOL=claude' <<< "$out"
