@@ -1,0 +1,31 @@
+Verifying ballot claims against the repo files referenced in the ballot.
+
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: NO -- scout claim unsupported; no issue to file
+FINDING_6: NO -- meta commit note, not actionable issue material
+FINDING_7: NO -- positive review; no tracking issue warranted
+FINDING_8: YES
+FINDING_9: EXONERATE -- fail-open is explicit in-script policy; fail-closed would add avoidable breakage
+FINDING_10: EXONERATE -- known gap already called out in test-audit-runs.md with label-primary mitigation
+FINDING_11: EXONERATE -- same jq fail-open policy as explicit-path block
+FINDING_12: YES
+FINDING_13: NO -- cited lines absent in current test-audit-runs.sh; issue covered by FINDING_3
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: EXONERATE -- intentional fail-open per comment; tightening is disproportionate risk
+FINDING_18: EXONERATE -- duplicate of FINDING_17
+FINDING_19: EXONERATE -- duplicate of FINDING_17
+FINDING_20: YES
+FINDING_21: YES
+FINDING_22: YES
+FINDING_23: EXONERATE -- TSV is the skill’s registry; schema lint premature without automated scanner
+FINDING_24: YES
+FINDING_25: EXONERATE -- offline harness mirroring skill prose is proportionate for dev-only tooling
+FINDING_26: EXONERATE -- same as FINDING_10 with documented label guard
+FINDING_27: EXONERATE -- same fail-open tradeoff as FINDING_9 without demonstrated exploit path
+FINDING_28: EXONERATE -- same jq fail-open pattern as FINDING_11
+FINDING_29: EXONERATE -- hypothetical wrapper misuse; SKILL does not prescribe unsafe interpolation
