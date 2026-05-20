@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Reject non-canonical review headings so JSONL category stays aligned with the five focus-area tags used downstream.
 - Document the whitelist contract next to the category field so consumers know empty means unknown or malformed extraction.
 - Lock in OOS fixtures for mangled headings versus valid tags so regressions surface in the compose harness.
+- Closed: #2455
 
 ## [29.8.50] - 2026-05-20
 
