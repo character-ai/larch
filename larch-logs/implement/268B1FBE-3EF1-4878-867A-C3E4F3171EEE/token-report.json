@@ -261,32 +261,43 @@
       {
         "step": "Step 7a — code flow diagram",
         "totals": {
-          "input": 11,
-          "cache_read": 2595556,
-          "cache_create": 2341,
-          "output": 1747,
-          "total": 2599655
+          "input": 17,
+          "cache_read": 4831211,
+          "cache_create": 6911,
+          "output": 5360,
+          "total": 4843499
         },
         "skills": [
           {
             "skill": "inferred:Step 7a — code flow diagram",
             "totals": {
-              "input": 11,
-              "cache_read": 2595556,
-              "cache_create": 2341,
-              "output": 1747,
-              "total": 2599655
+              "input": 17,
+              "cache_read": 4831211,
+              "cache_create": 6911,
+              "output": 5360,
+              "total": 4843499
             }
           }
         ]
+      },
+      {
+        "step": "Step 6 — checks second pass",
+        "totals": {
+          "input": 0,
+          "cache_read": 0,
+          "cache_create": 0,
+          "output": 0,
+          "total": 0
+        },
+        "skills": []
       }
     ],
     "totals": {
-      "input": 1447,
-      "cache_read": 95280933,
-      "cache_create": 3165402,
-      "output": 164644,
-      "total": 98612426
+      "input": 1453,
+      "cache_read": 97516588,
+      "cache_create": 3169972,
+      "output": 168257,
+      "total": 100856270
     }
   },
   "codex": {
@@ -381,6 +392,14 @@
       },
       {
         "step": "Step 7a — code flow diagram",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 6 — checks second pass",
         "totals": {
           "input": 0,
           "output": 0,
@@ -486,6 +505,14 @@
       },
       {
         "step": "Step 7a — code flow diagram",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 6 — checks second pass",
         "totals": {
           "input": 0,
           "output": 0,
