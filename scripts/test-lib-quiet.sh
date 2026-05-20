@@ -76,6 +76,13 @@ write_helper "$helper" 'LARCH_QUIET_LOG_FILE=$1; LARCH_QUIET_BREADCRUMBS=1; expo
 out=$("$helper" "$log")
 assert_eq "$out" $'step done\nSTATUS=ok' "breadcrumb visible stdout"
 
+# 5b. Breadcrumbs can use an inherited alternate fd when stdout is captured.
+helper="$SCRATCH/breadcrumb-fd.sh"
+log="$SCRATCH/breadcrumb-fd.log"
+write_helper "$helper" 'LARCH_QUIET_LOG_FILE=$1; LARCH_QUIET_BREADCRUMBS=1; export LARCH_QUIET_LOG_FILE LARCH_QUIET_BREADCRUMBS; larch_quiet_init; exec 5>&3; export LARCH_QUIET_BREADCRUMB_FD=5; emit_breadcrumb "step done"; emit_kv STATUS ok'
+"$helper" "$log" >"$SCRATCH/breadcrumb-fd.out"
+assert_eq "$(cat "$SCRATCH/breadcrumb-fd.out")" $'step done\nSTATUS=ok' "breadcrumb visible alternate fd"
+
 # 6. Empty values are emitted as KEY=.
 helper="$SCRATCH/empty.sh"
 write_helper "$helper" 'larch_quiet_init; emit_kv EMPTY ""'

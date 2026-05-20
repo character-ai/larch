@@ -8,6 +8,19 @@ PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
 # shellcheck source=scripts/lib-quiet.sh
 source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
+
+ensure_breadcrumb_fd() {
+    if [[ -z "${LARCH_QUIET_BREADCRUMB_FD:-}" ]]; then
+        if [[ "${LARCH_QUIET_PID:-}" == "$$" ]]; then
+            exec 5>&3
+        else
+            exec 5>&1
+        fi
+        export LARCH_QUIET_BREADCRUMB_FD=5
+    fi
+}
+ensure_breadcrumb_fd
+
 # lib-cursor-launcher-common.sh expects SCRIPT_DIR to point at the root scripts
 # directory for sibling helpers such as agent-model-args.sh and lib-cursor-auth.sh.
 SCRIPT_DIR="$PLUGIN_ROOT/scripts"
@@ -228,8 +241,14 @@ run_coder_dispatch() {
         return 0
     fi
 
-    cursor_launcher_load_model_args || return 1
-    cursor_launcher_setup_auth_argv || return 1
+    if ! cursor_launcher_load_model_args; then
+        emit_breadcrumb "⚠ review-and-fix: coder dispatch failed (both codex and cursor)"
+        return 1
+    fi
+    if ! cursor_launcher_setup_auth_argv; then
+        emit_breadcrumb "⚠ review-and-fix: coder dispatch failed (both codex and cursor)"
+        return 1
+    fi
     _SERIAL_LOCK=""
     external_serial_lock_acquire _SERIAL_LOCK "cursor"
     external_serial_lock_release_after "$_SERIAL_LOCK" "${LARCH_EXTERNAL_SERIAL_LOCK_DELAY:-0.5}"
@@ -244,6 +263,7 @@ run_coder_dispatch() {
         return 0
     fi
 
+    emit_breadcrumb "⚠ review-and-fix: coder dispatch failed (both codex and cursor)"
     return 1
 }
 
@@ -343,7 +363,7 @@ apply_findings_with_coder() {
     prompt_body=$(cat "$prompt_file")
     tool_file="$round_dir/coder-tool.txt"
     tool_log="$round_dir/coder-output.log"
-
+    emit_breadcrumb "→ review-and-fix: dispatching coder (${scrubbed_count} fixes)"
     if ! run_coder_dispatch "$round_dir" "$prompt_body" "$tool_log" "$tool_file"; then
         {
             printf 'CODER_TOOL=none\n'
@@ -413,6 +433,7 @@ apply_findings_with_coder() {
         fi
         commit_sha=$(git rev-parse HEAD 2>/dev/null || true)
     fi
+    emit_breadcrumb "→ review-and-fix: $(cat "$tool_file") applied ${scrubbed_count} fixes (commit ${commit_sha:0:7})"
 
     {
         printf 'CODER_TOOL=%s\n' "$(cat "$tool_file")"
@@ -926,6 +947,7 @@ run_implement_round() {
         *) larch_err "review-and-fix.sh: --dynamic-archetypes/LARCH_DYNAMIC_ARCHETYPES_MAX must be an integer from 0 to 4"; exit 2 ;;
     esac
 
+    emit_breadcrumb "→ review-and-fix: round ${round_num_dec}"
     round_dir="$IMPLEMENT_TMPDIR/round-${round_num_dec}"
     mkdir -p "$round_dir"
     if (( round_num_dec == 1 )) && [[ -x "$PLUGIN_ROOT/scripts/snapshot-untracked.sh" ]]; then
@@ -1047,6 +1069,7 @@ run_implement_round() {
         cp "$rejected_full_file" "$IMPLEMENT_TMPDIR/rejected-findings-full.md" 2>/dev/null || true
     fi
     write_rejected_findings_aggregate "$IMPLEMENT_TMPDIR" "$rejected_file"
+    emit_breadcrumb "→ review-and-fix: round ${round_num_dec} — ${accepted_count} accepted, ${rejected_count} rejected"
 
     coder_tool="none"
     coder_status="skipped"
@@ -1154,6 +1177,7 @@ run_implement_round() {
     exit_code=0
     case "$core_status" in
         panel-failed)
+            emit_breadcrumb "⚠ review-and-fix: reviewer panel failed (>50% slots)"
             status="$core_status"
             exit_code=2
             ;;

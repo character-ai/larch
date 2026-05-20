@@ -9,6 +9,18 @@ PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
 source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
 
+ensure_breadcrumb_fd() {
+    if [[ -z "${LARCH_QUIET_BREADCRUMB_FD:-}" ]]; then
+        if [[ "${LARCH_QUIET_PID:-}" == "$$" ]]; then
+            exec 5>&3
+        else
+            exec 5>&1
+        fi
+        export LARCH_QUIET_BREADCRUMB_FD=5
+    fi
+}
+ensure_breadcrumb_fd
+
 usage() {
     larch_err "Usage: review-core.sh --mode diff|description --output-dir DIR --codex-available true|false --cursor-available true|false [--dynamic-archetypes 0-4] [context flags]"
 }
@@ -339,6 +351,7 @@ if [[ -n "$claude_outputs" ]]; then
 else
     claude_array=()
 fi
+emit_breadcrumb "→ review: consolidating findings"
 "$COLLECT_FINDINGS_SH" "${collect_args[@]}" > "$collect_out"
 recover_dirty_tree "${external_array[@]+"${external_array[@]}"}" "${claude_array[@]+"${claude_array[@]}"}"
 

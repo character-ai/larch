@@ -19,6 +19,10 @@ source the library and run `larch_quiet_init` after strict-mode setup and
 - `emit_kv KEY VALUE` writes `KEY=VALUE` to the caller-visible stream.
 - `emit_breadcrumb TEXT` writes progress text to the quiet log by default.
   Set `LARCH_QUIET_BREADCRUMBS=1` to surface breadcrumbs on caller stdout.
+  When `LARCH_QUIET_BREADCRUMB_FD` is set to an inherited numeric file
+  descriptor, surfaced breadcrumbs write there instead of FD 3 so nested
+  scripts can stay operator-visible even when their stdout is redirected into
+  capture files.
 - `larch_err TEXT…` writes user-visible errors (argv validation, fatals) to the
   original stderr (FD 4 after init) so harnesses and operators still see them
   while incidental `echo`/`printf` chatter stays in the quiet log.
@@ -53,6 +57,8 @@ first available session tmpdir (`IMPLEMENT_TMPDIR`, `REVIEW_TMPDIR`,
 - Pure stdin-to-stdout filters must either avoid `larch_quiet_init` or set
   `LARCH_QUIET_DISABLE=1` before calling it, because their data stream is
   ordinary stdout rather than contract output.
+
+`scripts/ship-pr.sh` and the review/review-and-fix tree (`skills/review/scripts/dispatch-panel.sh`, `skills/review/scripts/review-core.sh`, `skills/review-and-fix/scripts/review-and-fix.sh`) opt into breadcrumb surfacing via `export LARCH_QUIET_BREADCRUMBS=1` set at their `/implement` invocation sites (`skills/implement/SKILL.md` Step 8+ block and `scripts/run-step5-review.sh`).
 
 ## Harness
 

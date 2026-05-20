@@ -113,7 +113,12 @@ emit_kv() {
 
 emit_breadcrumb() {
     if larch_quiet_truthy "${LARCH_QUIET_BREADCRUMBS:-}"; then
-        emit "$*"
+        local breadcrumb_fd="${LARCH_QUIET_BREADCRUMB_FD:-}"
+        if [[ "$breadcrumb_fd" =~ ^[0-9]+$ ]]; then
+            printf '%s\n' "$*" >&"$breadcrumb_fd"
+        else
+            emit "$*"
+        fi
     else
         printf '%s\n' "$*"
     fi

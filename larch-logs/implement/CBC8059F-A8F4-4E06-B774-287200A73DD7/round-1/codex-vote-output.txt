@@ -1,0 +1,24 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: NO -- Test fixture git identity setup is intentional and not a defect.
+FINDING_4: YES
+FINDING_5: EXONERATE -- Legitimate section-coverage nuance, but CI already runs the dispatch section that owns these assertions.
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: NO -- Successful dispatch writes a fixed tool label before this breadcrumb, so an empty tool file is not a credible success path.
+FINDING_9: EXONERATE -- The current totals match the emitted slot counts; changing for hypothetical future refactors is not worth it.
+FINDING_10: NO -- The doc accurately describes caller-visible surfacing under the breadcrumb env var.
+FINDING_11: YES
+FINDING_12: NO -- The tool file is parent-written as a fixed codex/cursor token on successful dispatch, not raw reviewer data.
+FINDING_13: NO -- The parent overwrites coder-tool.txt with a fixed single-line token after the external agent exits.
+FINDING_14: YES
+FINDING_15: NO -- create-pr.sh already fails if PR_NUMBER is empty and derives it from numeric GitHub fields/URL parsing.
+FINDING_16: EXONERATE -- Extra stall lines in the quiet log are a diagnostic improvement and too small to warrant gating complexity.
+FINDING_17: YES
+FINDING_18: NO -- create-pr.sh does not return success with an empty PR_NUMBER, so this is not a real ship-pr path.
+FINDING_19: YES
+FINDING_20: YES
+FINDING_21: YES
+FINDING_22: YES
+FINDING_23: YES
+FINDING_24: NO -- coder-tool.txt is parent-generated from an allowlisted dispatch result, not attacker-controlled stream content.

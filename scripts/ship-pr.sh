@@ -552,6 +552,7 @@ advance_phase() {
 }
 
 mark_stall() {
+    emit_breadcrumb "⛔ ship-pr: stalled at step $1"
     state_set_many STALL_TRACKING true STALL_STEP "$1"
 }
 
@@ -565,6 +566,7 @@ exit_stall() {
 }
 
 exit_transient_net() {
+    emit_breadcrumb "⚠ ship-pr: transient network failure"
     # Truncate to first line to keep BAIL_REASON a single KEY=value line in state.
     local reason
     reason=$(printf '%s' "$1" | head -1 | cut -c1-200)
@@ -612,6 +614,7 @@ write_finalize_state() {
 run_checks_phase() {
     local out rc fail_file redacted_log fix_out fix_status fix_rc
     local lint_attempt
+    emit_breadcrumb "→ ship-pr: checks"
     fail_file=$(failure_capture_path checks)
     capture_command_output out "$fail_file" "$SCRIPT_DIR/run-relevant-checks-captured.sh" --site step6 --tmpdir "$IMPLEMENT_TMPDIR"
     rc=$?
@@ -751,6 +754,7 @@ run_checks_with_lint_fix_loop() {
 
 run_bump_phase() {
     local forked has_bump commits_before classify_out apply_out finalize_out status resume_phase error_text rc fail_file
+    emit_breadcrumb "→ ship-pr: version bump"
     forked=$(read_state FORKED_TARGET)
     has_bump=$(read_state HAS_BUMP)
     if [ "$forked" = "true" ] || [ "$has_bump" = "false" ]; then
@@ -889,6 +893,7 @@ sanitize_diagram_or_placeholder() {
 
 run_pr_prep_phase() {
     local summary tests closes architecture_file code_flow_file composed_summary plan_goals_file run_id
+    emit_breadcrumb "→ ship-pr: PR prep"
     summary=$(manifest_summary)
     if [ -z "$summary" ]; then
         run_id=$(read_state RUN_ID)
@@ -935,6 +940,7 @@ run_pr_prep_phase() {
 
 run_pr_create_phase() {
     local title out rc pr_number pr_url pr_status repo_args draft_args fail_file _merge_base final_report_output
+    emit_breadcrumb "→ ship-pr: opening PR"
     _merge_base=$(git merge-base HEAD origin/main 2>/dev/null) || _merge_base=
     if [ -n "$_merge_base" ]; then
         title=$(git log --format=%s "${_merge_base}..HEAD" 2>/dev/null | grep -v '^chore(larch-logs): flush ' | head -1)
@@ -1004,6 +1010,7 @@ run_pr_create_phase() {
     pr_url=$(kv_value PR_URL "$out")
     pr_status=$(kv_value PR_STATUS "$out")
     state_set_many PR_NUMBER "$pr_number" PR_URL "$pr_url" PR_TITLE "$title"
+    emit_breadcrumb "→ ship-pr: PR #${pr_number} opened"
     # Re-run write-final-report.sh with the live PR_URL to refresh the
     # tracking-issue larch:final-summary comment and tmp summary-final.md for
     # the upsert. No extra git commit or second push happens here. Best-effort:
@@ -1074,6 +1081,7 @@ rename_done_best_effort() {
 run_ci_fix_vendor() {
     local phase=$1 run_id=$2 output rc fail_file tool_label plan_file checks_site delta_paths_file
     local plan_args=() vendor_tracked_dirty_paths_file vendor_untracked_dirty_paths_file tracked_dirty_paths_file untracked_dirty_paths_file
+    emit_breadcrumb "⚠ ship-pr: CI failed; dispatching fix"
     output="$IMPLEMENT_TMPDIR/ci-fix-${phase}-$(date +%s).out"
     plan_file=$(resolve_plan_file)
     if [ -n "$plan_file" ]; then
@@ -1244,6 +1252,7 @@ run_rebase_rebump() {
     local fail_file rc tool_label plan_file
     local plan_args=()
     local _origin_ver="" _classified_version="" _corrected=""
+    emit_breadcrumb "⚠ ship-pr: rebase + re-bump"
 
     # Cap rebase retries to prevent indefinite storms (e.g. concurrent merges
     # to main that keep triggering ACTION=rebase from ci-wait.sh).
@@ -1315,6 +1324,7 @@ run_rebase_rebump() {
         printf '%s\n' "$rebase_out" >> "$fail_file"
         if [ "$rebase_rc" -ne 0 ]; then
             record_failure rebase "rebase-push.sh --no-push" "$rebase_rc" "$fail_file" "CI Issues"
+            emit_breadcrumb "⚠ ship-pr: merge conflict on rebase"
             exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12)"
         fi
     elif [ "$rebase_rc" -ne 0 ]; then
@@ -1324,6 +1334,7 @@ run_rebase_rebump() {
         if is_transient_net_signature "$(cat "$fail_file" 2>/dev/null)"; then
             exit_transient_net "rebase: $rebase_out"
         fi
+        emit_breadcrumb "⚠ ship-pr: merge conflict on rebase"
         exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12)"
     fi
 
@@ -1460,6 +1471,7 @@ run_ci_phase() {
         advance_phase postmerge
         return 0
     fi
+    emit_breadcrumb "→ ship-pr: CI watch (${phase})"
 
     ci_args=()
     while IFS= read -r arg; do ci_args+=("$arg"); done <<EOF
@@ -1479,6 +1491,7 @@ EOF
         merge)
             if [ "$phase" = "ci-initial" ]; then
                 state_set CI_PASSED true
+                emit_breadcrumb "→ ship-pr: CI green"
                 advance_phase ci-merge
                 return 0
             fi
@@ -1496,6 +1509,7 @@ EOF
             case "$merge_result" in
                 merged|admin_merged)
                     state_set_many PR_CLOSED true MERGE_RESULT "$merge_result" BAIL_REASON "" STALL_TRACKING false STALL_STEP ""
+                    emit_breadcrumb "→ ship-pr: merged"
                     rename_done_best_effort
                     write_post_merge_sentinel
                     advance_phase postmerge
@@ -1512,6 +1526,7 @@ EOF
                     fi
                     if [ "$pr_state" = "MERGED" ]; then
                         state_set_many PR_CLOSED true MERGE_RESULT already_merged BAIL_REASON "" STALL_TRACKING false STALL_STEP ""
+                        emit_breadcrumb "→ ship-pr: merged"
                         rename_done_best_effort
                         write_post_merge_sentinel
                         advance_phase postmerge
@@ -1557,6 +1572,7 @@ EOF
             ;;
         already_merged)
             state_set_many PR_CLOSED true MERGE_RESULT already_merged BAIL_REASON "" STALL_TRACKING false STALL_STEP ""
+            emit_breadcrumb "→ ship-pr: merged"
             rename_done_best_effort
             write_post_merge_sentinel
             advance_phase postmerge
@@ -1582,6 +1598,7 @@ EOF
 
 run_postmerge_phase() {
     local rc fail_file
+    emit_breadcrumb "→ ship-pr: postmerge"
     write_finalize_state
     fail_file=$(failure_capture_path postmerge)
     "$SCRIPT_DIR/implement-finalize.sh" postmerge --state-file "$IMPLEMENT_TMPDIR/finalize-state.sh" --final-bail-reason-file "$IMPLEMENT_TMPDIR/final-bail-reason.txt" > "$fail_file" 2>&1

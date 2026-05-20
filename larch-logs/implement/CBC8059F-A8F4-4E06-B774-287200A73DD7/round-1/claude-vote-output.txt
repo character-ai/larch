@@ -1,0 +1,24 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: NO -- trivially unrelated to breadcrumb changes; pre-existing test infrastructure noise
+FINDING_4: NO -- implementation plan is ephemeral internal text, not shipped documentation
+FINDING_5: EXONERATE -- legitimate test-org note but not issue-worthy; CI runs the dispatch section and covers the assertions
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: EXONERATE -- single read site, empty tool_file after a successful commit is unreachable in practice
+FINDING_9: EXONERATE -- arrays are the source of truth for slot composition; divergence from static_slot_count is theoretical
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: EXONERATE -- pr_number comes from internal structured KV; multi-line injection from own script is theoretical over-engineering
+FINDING_16: EXONERATE -- diagnostic lines in quiet log when flag is off is intended quiet-log behavior, not a volume regression
+FINDING_17: YES
+FINDING_18: EXONERATE -- create-pr.sh returning exit 0 with no PR_NUMBER is a pre-existing contract violation caught upstream; breadcrumb guard adds complexity for an already-broken state
+FINDING_19: YES
+FINDING_20: YES
+FINDING_21: YES
+FINDING_22: YES
+FINDING_23: YES
+FINDING_24: YES

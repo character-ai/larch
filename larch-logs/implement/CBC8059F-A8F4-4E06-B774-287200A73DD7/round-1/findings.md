@@ -1,0 +1,120 @@
+### FINDING_1: **Important** `correctness` `skills/review/scripts/review-core.sh:342`: The new nested review breadcrumbs are emitted from scripts whose stdout is redirected into capture files, so they are not operator-visible. `review-and-fix.sh` invokes review-core with `> "$core_out"` at `skills/review-and-fix/scripts/review-and-fix.sh:986`, and review-core invokes dispatch-panel with `> "$dispatch_out"` at `skills/review/scripts/review-core.sh:290`; because `larch_quiet_init` binds FD 3 to the child’s current stdout, breadcrumbs at `skills/review/scripts/review-core.sh:342` and `skills/review/scripts/dispatch-panel.sh:409-411` land in `round-N/review-core.env` / `review-core-dispatch.env` instead of the terminal. Concrete failing scenario: during a long Step 5 reviewer launch or collection phase with `LARCH_QUIET_BREADCRUMBS=1`, the operator still sees no `→ review: launching ...` or `→ review: consolidating findings` progress line. Fix by passing a dedicated inherited progress FD that `larch_quiet_init` does not rebind, or move these breadcrumbs to the non-captured parent layer before the long child calls.
+- **Reviewer**: codex-generalist-output.txt
+- **Concern**: 1. **Important** `correctness` `skills/review/scripts/review-core.sh:342`: The new nested review breadcrumbs are emitted from scripts whose stdout is redirected into capture files, so they are not operator-visible. `review-and-fix.sh` invokes review-core with `> "$core_out"` at `skills/review-and-fix/scripts/review-and-fix.sh:986`, and review-core invokes dispatch-panel with `> "$dispatch_out"` at `skills/review/scripts/review-core.sh:290`; because `larch_quiet_init` binds FD 3 to the child’s current stdout, breadcrumbs at `skills/review/scripts/review-core.sh:342` and `skills/review/scripts/dispatch-panel.sh:409-411` land in `round-N/review-core.env` / `review-core-dispatch.env` instead of the terminal. Concrete failing scenario: during a long Step 5 reviewer launch or collection phase with `LARCH_QUIET_BREADCRUMBS=1`, the operator still sees no `→ review: launching ...` or `→ review: consolidating findings` progress line. Fix by passing a dedicated inherited progress FD that `larch_quiet_init` does not rebind, or move these breadcrumbs to the non-captured parent layer before the long child calls.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_2: **Nit** `code-quality` `skills/review-and-fix/scripts/review-and-fix.sh:231`: The new coder-dispatch failure breadcrumb is skipped when Cursor setup fails before the Cursor agent is launched. If Codex fails and `cursor_launcher_load_model_args` or `cursor_launcher_setup_auth_argv` returns nonzero at `skills/review-and-fix/scripts/review-and-fix.sh:231-232`, the function returns before the breadcrumb at line 247; emit the failure breadcrumb on those early-return paths too.
+- **Reviewer**: codex-generalist-output.txt
+- **Concern**: 2. **Nit** `code-quality` `skills/review-and-fix/scripts/review-and-fix.sh:231`: The new coder-dispatch failure breadcrumb is skipped when Cursor setup fails before the Cursor agent is launched. If Codex fails and `cursor_launcher_load_model_args` or `cursor_launcher_setup_auth_argv` returns nonzero at `skills/review-and-fix/scripts/review-and-fix.sh:231-232`, the function returns before the breadcrumb at line 247; emit the failure breadcrumb on those early-return paths too.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_3: [OUT_OF_SCOPE] code-quality: scripts/test-ship-pr.sh:247-249
+- **Reviewer**: cursor-specialist-structure-output.txt
+- **Concern**: [nit] make_repo configures git user identity in test repos Noise for git config in tests unrelated to breadcrumb changes None required for this PR
+- **Suggested revision**: Address the concern above.
+
+### FINDING_4: [OUT_OF_SCOPE] risk-integration: Makefile:403-413
+- **Reviewer**: cursor-specialist-testing-output.txt
+- **Concern**: [latent] Implementation plan verification cites `make test-ship-pr` but Makefile only defines section targets. Anyone following the plan literally may hit a missing target. Update plan/runbook or add a phony aggregate Makefile target.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_5: [OUT_OF_SCOPE] risk-integration: skills/review-and-fix/scripts/test-review-and-fix.sh:1957-1985
+- **Reviewer**: cursor-specialist-testing-output.txt
+- **Concern**: [latent] Breadcrumb tests live under `section_runs dispatch`. `--section convergence` alone never runs the new assertions. Acceptable because `test-review-and-fix-dispatch` runs in CI; document if operators rely on section-only runs.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_6: architecture: scripts/ship-pr.sh:1520-1536
+- **Reviewer**: cursor-specialist-edge-cases-output.txt
+- **Concern**: [latent] CI watch breadcrumb emitted before early-return skips that never call ci-wait.sh. Stream shows CI watch while run immediately skips waiting (no PR / unavailable / merge-skipped), confusing progress interpretation. Move breadcrumb after skip logic or emit an explicit skipped breadcrumb on those returns.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_7: code-quality: skills/review-and-fix/scripts/review-and-fix.md:breadcrumb subsection
+- **Reviewer**: cursor-specialist-edge-cases-output.txt
+- **Concern**: [nit] New doc list omits existing no-changes halting breadcrumb. Operators reading only the new subsection underestimate total breadcrumb traffic. Add the halting no-changes bullet to match review-and-fix.sh behavior.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_8: code-quality: skills/review-and-fix/scripts/review-and-fix.sh:414-417
+- **Reviewer**: cursor-specialist-structure-output.txt
+- **Concern**: [latent] Success breadcrumb uses inline $(cat "$tool_file") before repeated reads If tool_file were empty the breadcrumb could mis-label the tool while claiming success Read tool name once into a variable with a fallback or reuse the value read for the result_file block
+- **Suggested revision**: Address the concern above.
+
+### FINDING_9: code-quality: skills/review/scripts/dispatch-panel.sh:400-413
+- **Reviewer**: cursor-specialist-structure-output.txt
+- **Concern**: [nit] Breadcrumb total recomputed from array lengths instead of static_slot_count After a refactor that changes queueing without updating the parallel counts the human-readable total can disagree with STATIC_SLOT_COUNT/SLOT_COUNT emitted later Use total=$((static_slot_count + DYNAMIC_SLOTS)) for the numeric total aligned with emit_kv and keep breakdown text separate
+- **Suggested revision**: Address the concern above.
+
+### FINDING_10: code-quality: skills/review/scripts/review-core.md (new LARCH_QUIET_BREADCRUMBS paragraph)
+- **Reviewer**: cursor-specialist-structure-output.txt
+- **Concern**: [nit] Doc implies emit-tally breadcrumb only surfaces when LARCH_QUIET_BREADCRUMBS=1 emit_breadcrumb always runs; without the flag output still goes via printf (typically the quiet log) not caller-visible FD 3 Clarify caller-visible vs quiet-log behavior instead of implying env-gated emission
+- **Suggested revision**: Address the concern above.
+
+### FINDING_11: correctness: scripts/ship-pr.sh:1526-1530 scripts/ship-pr.sh:1571-1575
+- **Reviewer**: cursor-specialist-correctness-output.txt
+- **Concern**: [latent] merged breadcrumb omitted on alternate merge-completion paths version_already_published branch when pr_state is MERGED, and ci-wait ACTION=already_merged, finish merge without the new merged line operators see on merged|admin_merged. Mirror emit_breadcrumb before rename_done_best_effort or narrow ship-pr.md wording.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_12: correctness: skills/review-and-fix/scripts/review-and-fix.sh
+- **Reviewer**: cursor-specialist-testing-output.txt
+- **Concern**: [latent] Breadcrumb embeds raw `$(cat "$tool_file")` for the tool name. Unexpected multi-line or empty tool_file yields confusing or multi-line progress output. Normalize or constrain tool label before emitting.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_13: correctness: skills/review-and-fix/scripts/review-and-fix.sh:417
+- **Reviewer**: cursor-specialist-edge-cases-output.txt
+- **Concern**: [latent] Breadcrumb interpolates raw tool name via cat of coder-tool.txt. Multi-line or polluted coder-tool.txt breaks one-line FD3 progress contract for automation or log parsers. Normalize tool label to a single sanitized token or first line only.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_14: risk-integration: scripts/ship-pr.md:111
+- **Reviewer**: cursor-specialist-testing-output.txt
+- **Concern**: [nit] Harness doc references non-existent make target `test-ship-pr`. Contributors or automation following ship-pr.md run `make test-ship-pr` and get a Makefile error. Point to `test-ship-pr-state` (etc.) or `bash scripts/test-ship-pr.sh` without `--section`, or add a phony aggregate target.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_15: risk-integration: scripts/ship-pr.sh (run_pr_create_phase; emit after PR_NUMBER state_set in branch diff)
+- **Reviewer**: cursor-specialist-security-output.txt
+- **Concern**: [latent] Breadcrumb prints `PR_NUMBER` from helper KV without format validation. A compromised or buggy `create-pr.sh` could emit a `PR_NUMBER` with embedded newlines; the breadcrumb splits the quiet stream and can break consumers that assume one line per progress record. Validate `pr_number` as numeric (or sanitize to a single safe token) before string interpolation.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_16: risk-integration: scripts/ship-pr.sh:129-131 scripts/lib-quiet.sh:114-119
+- **Reviewer**: cursor-specialist-testing-output.txt
+- **Concern**: [latent] mark_stall always calls emit_breadcrumb; when breadcrumbs are off, text goes to the quiet log via FD1. Quiet logs grow with stall lines vs previous mark_stall (no printf); could affect log-volume assumptions. Accept as diagnostic improvement or gate printf behind the same truthy check used for operator-visible emits.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_17: risk-integration: scripts/ship-pr.sh:1296-1337
+- **Reviewer**: cursor-specialist-edge-cases-output.txt
+- **Concern**: [latent] Merge-conflict breadcrumb only on one rebase failure branch; vendor second-rebase stall omits it. Doc promises "merge conflict on rebase" for that class; operator on vendor conflict path can hit exit_stall after failed second rebase-push with only generic stall line. Emit the conflict breadcrumb before exit_stall when the second rebase-push fails, or narrow ship-pr.md wording to match code.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_18: risk-integration: scripts/ship-pr.sh:993-354 area
+- **Reviewer**: cursor-specialist-edge-cases-output.txt
+- **Concern**: [latent] PR opened breadcrumb uses possibly empty pr_number. Empty PR_NUMBER with success-shaped output yields misleading "PR # opened" on the operator stream. Guard breadcrumb on non-empty pr_number or reword to not assert a number.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_19: risk-integration: scripts/ship-pr.sh:merge handling for version_already_published
+- **Reviewer**: cursor-specialist-edge-cases-output.txt
+- **Concern**: [latent] Merged breadcrumb not emitted on already_merged completion path. Grepping or dashboards for "merged" miss the path that still finalizes post-merge work. Mirror merged breadcrumb (or equivalent label) when treating version_already_published as merged.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_20: risk-integration: scripts/test-ship-pr.sh:520-532
+- **Reviewer**: cursor-specialist-correctness-output.txt
+- **Concern**: [nit] Phase-entry breadcrumb test omits exit-code assertion A stall after early phases could still print expected substrings and pass greps. Add assert_rc on tmp/rc for the stubbed scenario.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_21: risk-integration: skills/review-and-fix/scripts/review-and-fix.md:122-129
+- **Reviewer**: cursor-specialist-testing-output.txt
+- **Concern**: [nit] Breadcrumb bullet list omits the no-changes halting breadcrumb emitted by review-and-fix.sh. Operators rely on the sibling .md for grep-able contracts; the halting path is undocumented vs code. Add a bullet for the `coder dispatch exited 0 but did not modify the working tree` line (and any other new emits in the same change).
+- **Suggested revision**: Address the concern above.
+
+### FINDING_22: risk-integration: skills/review-and-fix/scripts/review-and-fix.sh:231-232
+- **Reviewer**: cursor-specialist-correctness-output.txt
+- **Concern**: [important] run_coder_dispatch returns before failure breadcrumb Codex fails then Cursor launcher setup returns 1 at lines 231-232; no emit_breadcrumb runs so Step 5 shows no FD3 failure crumb despite coder dispatch failing. Add early-return breadcrumbs or a single generic failure emit before each return 1 in run_coder_dispatch.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_23: risk-integration: skills/review/scripts/dispatch-panel.sh skills/review/scripts/review-core.sh
+- **Reviewer**: cursor-specialist-testing-output.txt
+- **Concern**: [latent] New review breadcrumb strings have no harness grep coverage. A regression removes or breaks breadcrumbs in dispatch-panel or review-core without failing CI. Add minimal LARCH_QUIET_BREADCRUMBS=1 string assertions to test-dispatch-panel.sh and test-review-core.sh.
+- **Suggested revision**: Address the concern above.
+
+### FINDING_24: security: skills/review-and-fix/scripts/review-and-fix.sh:417
+- **Reviewer**: cursor-specialist-security-output.txt
+- **Concern**: [latent] Breadcrumb embeds raw `cat "$tool_file"` into the FD3 contract stream. If `coder-tool.txt` contains newlines, binary garbage, or ANSI escapes (bug, partial write, or hostile tampering), operators or parsers see multiple lines or misleading terminal output on the same channel as machine contract data. Emit an allowlisted tool name or normalize (single line, max length, strip non-printable) before `emit_breadcrumb`.
+- **Suggested revision**: Address the concern above.
+

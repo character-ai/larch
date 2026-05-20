@@ -320,6 +320,9 @@ out=$(TEST_FINDINGS=1 TEST_ACCEPTED=1 TEST_REJECTED=0 run_core "$TMP/fix")
 assert_contains "$out" 'REVIEW_CORE_STATUS=fix-required'
 assert_contains "$out" "ACCEPTED_FINDINGS_FILE=$TMP/fix/accepted-findings.md"
 
+out=$(LARCH_QUIET_BREADCRUMBS=1 TEST_FINDINGS=1 TEST_ACCEPTED=1 TEST_REJECTED=0 run_core "$TMP/fix-breadcrumbs")
+assert_contains "$out" '→ review: consolidating findings'
+
 out=$(TEST_FINDINGS=1 TEST_ACCEPTED=0 TEST_REJECTED=1 run_core "$TMP/rejected")
 assert_contains "$out" 'REVIEW_CORE_STATUS=ok'
 

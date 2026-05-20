@@ -108,7 +108,21 @@ All three calls use `|| true` so refresh failure is non-fatal. The helper exits 
 
 ## Harness
 
-`scripts/test-ship-pr.sh` runs offline state/transition coverage with stubbed helpers. Its disposable repositories copy `ship-pr.sh`, `lib-net.sh`, and `lib-finalize-state-keys.sh` so sourced-library contracts are exercised. It is wired through `make test-ship-pr`.
+`scripts/test-ship-pr.sh` runs offline state/transition coverage with stubbed helpers. Its disposable repositories copy `ship-pr.sh`, `lib-net.sh`, and `lib-finalize-state-keys.sh` so sourced-library contracts are exercised. It is wired through `make test-ship-pr-state`, `make test-ship-pr-postmerge`, and `make test-ship-pr-fix-loop`; running `bash scripts/test-ship-pr.sh` executes the full harness locally.
+
+## Breadcrumb Stream
+
+When `LARCH_QUIET_BREADCRUMBS=1` is exported (set by the `/implement` Step 8+ invocation in `skills/implement/SKILL.md`), `ship-pr.sh` emits single-line progress breadcrumbs to FD 3 (caller-visible stdout) at major phase boundaries and snag points via `emit_breadcrumb` from `lib-quiet.sh`:
+
+- `→ ship-pr: <phase>` — positive phase-entry (checks, version bump, PR prep, opening PR, CI watch, postmerge)
+- `→ ship-pr: PR #N opened` — after PR creation
+- `→ ship-pr: CI green` — after CI passes in the initial phase
+- `→ ship-pr: merged` — after the PR is merged
+- `⚠ ship-pr: CI failed; dispatching fix` — on CI failure before vendor dispatch
+- `⚠ ship-pr: rebase + re-bump` — on rebase + re-bump entry
+- `⚠ ship-pr: merge conflict on rebase` — when a rebase fails with a non-transient conflict
+- `⚠ ship-pr: transient network failure` — on every `exit_transient_net` call
+- `⛔ ship-pr: stalled at step N` — on every `mark_stall` call (covers all `exit_stall` codes)
 
 ## Edit In Sync
 
