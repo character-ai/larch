@@ -1422,7 +1422,7 @@ After the `review-and-fix.sh` loop completes, compose the `code-review-tally` ba
 
 ### Larch-log batch — `review-findings-full`
 
-After the `code-review-tally` batch is written above, compose the `review-findings-full` markdown sections that persist per-finding payloads (id, phase, outcome, reviewer, and verbatim prose body) for plan-review accepted, plan-review rejected, and code-review entries found under `$IMPLEMENT_TMPDIR/round-*/`. This batch carries the load-bearing miner content per issue #1402.
+After the `code-review-tally` batch is written above, compose the `review-findings-full` JSONL records that persist per-finding payloads (id, phase, outcome, reviewer, round number, category, and verbatim prose body) for plan-review accepted, plan-review rejected, and code-review entries found under `$IMPLEMENT_TMPDIR/round-*/`. This batch carries the load-bearing miner content per issue #1402.
 
 ```bash
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
@@ -1438,7 +1438,7 @@ export CLAUDE_PLUGIN_ROOT
 
 Best-effort: parse `COMPOSED=true` / `FINDINGS_TOTAL=<N>` from stdout. On `FAILED=true` or non-zero exit, log `Step 5 — review-findings-full compose failed: $ERROR` to `Warnings` and continue without writing the batch. If composed, replace `review-findings-full` with `larch-log.sh write --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --batch review-findings-full --input-file "$IMPLEMENT_TMPDIR/review-findings-full.jsonl"`.
 
-Comment: accepted code-review findings are now captured from `$IMPLEMENT_TMPDIR/round-*/accepted-findings.md`; rejected code-review findings are read from `$IMPLEMENT_TMPDIR/round-*/rejected-findings.md` and the parent `$IMPLEMENT_TMPDIR/rejected-findings.md` fallback.
+Comment: accepted code-review findings are captured from `$IMPLEMENT_TMPDIR/round-*/accepted-findings.md`; OOS code-review findings are captured from `$IMPLEMENT_TMPDIR/round-*/oos.md`; rejected code-review findings are read from `$IMPLEMENT_TMPDIR/round-*/rejected-findings.md` and the parent `$IMPLEMENT_TMPDIR/rejected-findings.md` fallback.
 
 <!-- step:6 — Relevant Checks (second pass) -->
 
