@@ -1,0 +1,9 @@
+FINDING_1: EXONERATE -- separate per-tool lock paths are intentional; global Keychain serialization is optional product scope, not a defect to track alone.
+FINDING_2: EXONERATE -- bounded-try fail-open with empty lock path matches the library’s non-blocking contract, not an oversight.
+FINDING_3: EXONERATE -- timed async release only staggers launches by design; holding through full auth would be a different feature.
+FINDING_4: EXONERATE -- preflight before lock matches `launch-cursor-implement.sh` (`cursor_launcher_setup_auth_argv` precedes the locked `cursor agent` loop).
+FINDING_5: YES
+FINDING_6: EXONERATE -- same gap and fix surface as FINDING_5; no separate issue needed once parity rule or checks are aligned.
+FINDING_7: NO -- process/artifact claim about `/relevant-checks` is outside diff-based verification and not an actionable code defect.
+FINDING_8: YES
+FINDING_9: EXONERATE -- negotiation script only wires already-tested `external_serial_lock_*` helpers; dedicated harness adds churn for thin glue.
