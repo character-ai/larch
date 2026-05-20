@@ -1,0 +1,15 @@
+Gathering evidence from the pre-computed diff and source files for the bash FD-routing and correctness review.
+
+Checking how `preserve_and_publish_ns_retry` interacts with the NS-retry loop when validation fails after a partial step, and verifying `larch_err` vs doc wording.
+
+### In-Scope Findings
+
+- **[correctness]** [`scripts/collect-agent-results.sh:142-143`](scripts/collect-agent-results.sh) and [`scripts/collect-agent-results.sh:149-151`](scripts/collect-agent-results.sh): Appending `>&2` to `emit_breadcrumb` does **not** route breadcrumbs to the quiet library’s user-visible stderr (FD 4 via `larch_err`). After `larch_quiet_init`, both stdout and stderr are redirected to the same quiet log (`exec >>"$log_file" 2>&1` in [`scripts/lib-quiet.sh:70-75`](scripts/lib-quiet.sh)), so `>&2` is effectively redundant for the default branch. When `LARCH_QUIET_BREADCRUMBS` is set, `emit_breadcrumb` calls `emit`, which writes with `printf ... >&3` ([`scripts/lib-quiet.sh:97-102`](scripts/lib-quiet.sh), [`scripts/lib-quiet.sh:114-119`](scripts/lib-quiet.sh)), so the outer `>&2` does **not** redirect that output at all (no-op for FD 3). This neither achieves “real stderr for orchestrator visibility” nor matches the voter pattern’s stated reason in [`scripts/dispatch-code-voters.sh:263-265`](scripts/dispatch-code-voters.sh) (there, `>&2` avoids polluting a **captured** stdout from the surrounding function). **Suggested fix:** Remove the misleading `>&2` unless this function is ever called in a context where its stdout is captured; if operator-visible diagnostics are required, use `larch_err` / `larch_errf` (FD 4) instead of relying on `emit_breadcrumb >&2`.
+
+- **[correctness]** [`scripts/collect-agent-results.sh:149-151`](scripts/collect-agent-results.sh): On success, the breadcrumb text says retry content is “retained” at `$(basename "$retry_output")` (the `*-ns-retry.txt` basename), while the published transcript the result row points at is `$orig_output` after `cp`. That wording can misread logs when triaging paths. **Suggested fix:** Mention `$(basename "$orig_output")` (published path) and optionally note the retry artifact path separately, or drop the second breadcrumb if it adds noise.
+
+### Out-of-Scope Observations
+
+- **[correctness]** [`scripts/lib-quiet.md:19-21`](scripts/lib-quiet.md) vs [`scripts/lib-quiet.sh:114-119`](scripts/lib-quiet.sh): Documentation describes breadcrumbs as going to the “quiet log”; the default implementation writes via ordinary stdout (which is the quiet log only after init), not via FD 3. This predates the branch and is not introduced by the NS-retry change.
+
+- **[correctness]** [`scripts/dispatch-code-voters.sh:263-265`](scripts/dispatch-code-voters.sh): The `{ emit_breadcrumb ...; } >&2` idiom and its interaction with `emit` / FD 3 is pre-existing; the new collector code mirrors the surface syntax without the same “stdout must stay parse-clean” constraint.

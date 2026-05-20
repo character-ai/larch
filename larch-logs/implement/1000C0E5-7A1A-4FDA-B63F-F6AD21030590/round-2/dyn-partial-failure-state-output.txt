@@ -1,0 +1,13 @@
+Gathering the diff, commit history, and relevant code paths for a correctness-focused read-only review.
+
+Verifying caller behavior when `preserve_and_publish_ns_retry` fails and checking for edge cases (e.g., partial `cp`).
+
+### In-Scope Findings
+
+**[correctness]** [`scripts/collect-agent-results.sh:141-155`](scripts/collect-agent-results.sh): In `preserve_and_publish_ns_retry`, when the first `cp` (`orig_output` → first-pass sidecar) succeeds and the second `cp` (`retry_output` → `orig_output`) fails, the function returns 1 and the loop `continue`s without updating `RESULTS[IDX]` (so the row stays `STATUS=NOT_SUBSTANTIVE`), but a `*-first-pass.txt` file can remain on disk. That artifact normally signals a completed “preserve then publish” path; here it signals a **failed** publish, which is easy to misread in logs and is not described in [`scripts/collect-agent-results.md:19`](scripts/collect-agent-results.md) (publish failure is documented, but not the leftover sidecar). **Suggested fix:** On the publish-failure branch, either `rm -f "$first_pass_sidecar"` (and document that partial publish leaves no sidecar), or document this partial-failure disk state explicitly; add a regression test that forces publish failure after a successful first-pass copy (e.g., make `orig_output` temporarily unwritable after the first `cp` succeeds) and assert the intended artifact policy.
+
+**[correctness]** [`scripts/test-collect-agent-results.sh:404-417`](scripts/test-collect-agent-results.sh): `C_NS_FP_RETRY_FAIL` only covers the case where the retry helper exits before a successful retry transcript exists (`FAIL_HELPER` exits 7), so it asserts “no `-first-pass.txt`” when the NS-retry **never succeeds**. It does **not** exercise “retry validated successfully, but `preserve_and_publish_ns_retry` fails on the second `cp`,” so the orphan/misleading sidecar behavior above has **no** automated coverage. **Suggested fix:** Add a targeted case (or extend naming/comments of existing cases) that distinguishes “retry did not complete” from “publish-to-orig failed after preserve.”
+
+### Out-of-Scope Observations
+
+None.

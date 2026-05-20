@@ -1,0 +1,20 @@
+FINDING_1: YES
+FINDING_2: NO -- reviewer describes correct documented behavior (STRUCTURED_SIDECAR stays on retry path on sidecar copy failure); no defect
+FINDING_3: NO -- reviewer describes unchanged correct emission behavior; not a real concern
+FINDING_4: EXONERATE -- pre-existing path pattern not introduced by this branch; not critical enough for a standalone issue
+FINDING_5: EXONERATE -- duplicate of FINDING_4's concern from a second reviewer; same reasoning
+FINDING_6: EXONERATE -- readability nit; existing dense paragraph style matches adjacent contract sections in this file
+FINDING_7: YES -- doc says "stderr warning" but larch_err is error-channel severity; one-line terminology fix is warranted
+FINDING_8: EXONERATE -- cp over mv is intentional; md explicitly documents "best-effort copies that sidecar" and retaining retry artifacts
+FINDING_9: YES -- C_NSR asserts the retry artifact has retry content but never asserts ORIG_OUTPUT does, leaving a real regression blind spot
+FINDING_10: EXONERATE -- non-.txt OUTPUT_FILE branch is hypothetical; all production specialist paths end in .txt; no practical impact
+FINDING_11: EXONERATE -- same as FINDING_8; cp intentional and documented in the md
+FINDING_12: EXONERATE -- plan deviation intentionally documented in md with rationale; no correctness bug
+FINDING_13: EXONERATE -- plan divergence (cp+mv instead of bare mv) is intentional; md documents retention of both transcripts for log recovery
+FINDING_14: EXONERATE -- reviewer notes "already documented in collect-agent-results.md" and "optional plan sync only"; no action needed
+FINDING_15: EXONERATE -- C_NS_FP_NO_LAUNCH and C_NS_FP_RETRY_FAIL together cover the spirit of the planned C_NS_FP_FAILURE; renaming is cosmetic
+FINDING_16: EXONERATE -- best-effort sidecar copy; selective cp injection harness would be disproportionate complexity for a documented best-effort path
+FINDING_17: EXONERATE -- md explicitly documents STRUCTURED_SIDECAR as the canonical field; off-contract consumer path derivation is the consumer's bug
+FINDING_18: YES -- C_NSR doesn't assert first-pass sidecar presence; C_NS_FP_SUCCESS wouldn't catch a regression in the C_NSR substantive-only path
+FINDING_19: EXONERATE -- simple guard conditions (`-f sentinel`, `-s output`, exit==0) are trusted without exhaustive fixture coverage; existing cases cover main failure modes
+FINDING_20: EXONERATE -- preserve_and_publish_ns_retry is defined before the --source-only gate (line 135 vs 170); the invariant is stable and defensive comments would add boilerplate

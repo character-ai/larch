@@ -1,0 +1,36 @@
+Reading the ballot and verifying claims against provided context.
+
+Verifying code at cited locations in the workspace.
+
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: EXONERATE -- restates known no--e design; actionable risk already tracked in mv/RESULTS items
+FINDING_8: EXONERATE -- pre-existing .txt coupling; document only if non-.txt specialists matter
+FINDING_9: EXONERATE -- same path-contract caveat as FINDING_8; no standalone issue
+FINDING_10: EXONERATE -- no new interpolation; generic trust-boundary note
+FINDING_11: YES
+FINDING_12: EXONERATE -- DRY nit; optional refactor, not a defect
+FINDING_13: EXONERATE -- duplicate of FINDING_12 maintenance concern
+FINDING_14: YES
+FINDING_15: EXONERATE -- explicit token is low-cost clarity vs broad glob overlap
+FINDING_16: YES
+FINDING_17: YES
+FINDING_18: YES
+FINDING_19: YES
+FINDING_20: YES
+FINDING_21: YES
+FINDING_22: YES
+FINDING_23: YES
+FINDING_24: YES
+FINDING_25: YES
+FINDING_26: YES
+FINDING_27: EXONERATE -- optional comment/fixture polish vs blocking gap
+FINDING_28: EXONERATE -- stderr breadcrumb is non-contract observability; test optional
+FINDING_29: EXONERATE -- policy/docs follow-up, not a code defect
+FINDING_30: YES
+FINDING_31: EXONERATE -- comment accuracy nit; low risk
+FINDING_32: EXONERATE -- extra failure-shape coverage is nice-to-have, not incorrect current tests
