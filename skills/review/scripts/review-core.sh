@@ -22,7 +22,7 @@ ensure_breadcrumb_fd() {
 ensure_breadcrumb_fd
 
 usage() {
-    larch_err "Usage: review-core.sh --mode diff|description --output-dir DIR --codex-available true|false --cursor-available true|false [--dynamic-archetypes 0-4] [context flags]"
+    larch_err "Usage: review-core.sh --mode diff|description --output-dir DIR --codex-available true|false --cursor-available true|false [--dynamic-archetypes 0-8] [context flags]"
 }
 
 MODE=""
@@ -75,8 +75,8 @@ done
 [[ "$CURSOR_AVAILABLE" == "true" || "$CURSOR_AVAILABLE" == "false" ]] || { larch_err "review-core.sh: --cursor-available must be true or false"; exit 2; }
 [[ "$PANEL" == "simple" || "$PANEL" == "hard" ]] || { larch_err "review-core.sh: --panel must be simple or hard"; exit 2; }
 case "$DYNAMIC_ARCHETYPES" in
-    [0-4]) ;;
-    *) larch_err "review-core.sh: --dynamic-archetypes/LARCH_DYNAMIC_ARCHETYPES_MAX must be an integer from 0 to 4"; exit 2 ;;
+    [0-8]) ;;
+    *) larch_err "review-core.sh: --dynamic-archetypes/LARCH_DYNAMIC_ARCHETYPES_MAX must be an integer from 0 to 8"; exit 2 ;;
 esac
 case "$ROUND_NUM" in ''|*[!0-9]*) larch_err "review-core.sh: --round-num must be a positive integer"; exit 2 ;; esac
 ROUND_NUM=$((10#$ROUND_NUM))

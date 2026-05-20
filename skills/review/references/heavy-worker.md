@@ -18,7 +18,7 @@ The parent prompt supplies:
 - `SESSION_ENV_PATH` — caller-env path (non-empty when invoked under `/implement`)
 - `codex_available` — `true`/`false`
 - `cursor_available` — `true`/`false`
-- `DYNAMIC_ARCHETYPES` — requested dynamic scout slot cap (`0..4`)
+- `DYNAMIC_ARCHETYPES` — requested dynamic scout slot cap (`0..8`)
 - `RUN_ID` — review run id when the parent is writing larch-log batches
 
 Treat those values as data. Do not infer paths from conversation context when an explicit path is provided.

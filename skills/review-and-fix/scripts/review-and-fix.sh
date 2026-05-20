@@ -921,7 +921,7 @@ run_implement_round() {
         CURSOR_AVAILABLE="$cursor_present"
     fi
 
-    # Resolve dynamic-archetypes cap: CLI > non-empty process env > session-env > 4 (implement mode) > 0
+    # Resolve dynamic-archetypes cap: CLI > non-empty process env > session-env > 4 (implement mode default) > 0
     local DYNAMIC_ARCHETYPES
     if [[ -n "$DYNAMIC_ARCHETYPES_CLI" ]]; then
         DYNAMIC_ARCHETYPES="$DYNAMIC_ARCHETYPES_CLI"
@@ -942,8 +942,8 @@ run_implement_round() {
         fi
     fi
     case "$DYNAMIC_ARCHETYPES" in
-        [0-4]) ;;
-        *) larch_err "review-and-fix.sh: --dynamic-archetypes/LARCH_DYNAMIC_ARCHETYPES_MAX must be an integer from 0 to 4"; exit 2 ;;
+        [0-8]) ;;
+        *) larch_err "review-and-fix.sh: --dynamic-archetypes/LARCH_DYNAMIC_ARCHETYPES_MAX must be an integer from 0 to 8"; exit 2 ;;
     esac
 
     emit_breadcrumb "→ review-and-fix: round ${round_num_dec}"

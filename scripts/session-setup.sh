@@ -46,7 +46,7 @@
 #   LARCH_TOKEN_SESSION_ID=<id> Output when passthrough from --caller-env, in both probe and passthrough branches
 #   LARCH_CLAUDE_SOURCE_FILE=<path> Output when passthrough from --caller-env, in both probe and passthrough branches
 #   LARCH_TIMING_LEDGER is forwarded to write-session-env.sh only when supplied via --caller-env; it is intentionally NOT echoed on stdout.
-#   LARCH_DYNAMIC_ARCHETYPES_MAX is forwarded to write-session-env.sh only when supplied via --caller-env and validated as 0..4; it is intentionally NOT echoed on stdout.
+#   LARCH_DYNAMIC_ARCHETYPES_MAX is forwarded to write-session-env.sh only when supplied via --caller-env and validated as 0..8; it is intentionally NOT echoed on stdout.
 #
 # On preflight failure, outputs PREFLIGHT_ERROR=<message> and exits non-zero.
 #
@@ -419,8 +419,8 @@ if [[ -n "$WRITE_SESSION_ENV" ]]; then
     [[ -n "$CALLER_CLAUDE_SOURCE_FILE" ]] && WSE_ARGS+=(--claude-source-file "$CALLER_CLAUDE_SOURCE_FILE")
     if [[ -n "$CALLER_DYNAMIC_ARCHETYPES_MAX" ]]; then
         case "$CALLER_DYNAMIC_ARCHETYPES_MAX" in
-            [0-4]) WSE_ARGS+=(--dynamic-archetypes "$CALLER_DYNAMIC_ARCHETYPES_MAX") ;;
-            *) larch_err "session-setup.sh: warning: ignoring invalid LARCH_DYNAMIC_ARCHETYPES_MAX from caller-env (must be 0..4)" ;;
+            [0-8]) WSE_ARGS+=(--dynamic-archetypes "$CALLER_DYNAMIC_ARCHETYPES_MAX") ;;
+            *) larch_err "session-setup.sh: warning: ignoring invalid LARCH_DYNAMIC_ARCHETYPES_MAX from caller-env (must be 0..8)" ;;
         esac
     fi
     if [[ -n "$CALLER_TIMING_LEDGER" ]]; then

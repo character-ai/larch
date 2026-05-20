@@ -9,7 +9,7 @@ PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
 source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
 
-usage() { larch_err "Usage: dispatch-panel.sh --mode diff|description --review-tmpdir DIR --codex-available true|false --cursor-available true|false [--panel simple|hard] [--dynamic-archetypes 0-4] [context flags]"; }
+usage() { larch_err "Usage: dispatch-panel.sh --mode diff|description --review-tmpdir DIR --codex-available true|false --cursor-available true|false [--panel simple|hard] [--dynamic-archetypes 0-8] [context flags]"; }
 
 MODE=""
 DIFF_FILE=""
@@ -75,8 +75,8 @@ export SESSION_ENV_PATH
 [[ "$CURSOR_AVAILABLE" == "true" || "$CURSOR_AVAILABLE" == "false" ]] || { larch_err "dispatch-panel.sh: --cursor-available must be true or false"; exit 2; }
 [[ "$PANEL" == "simple" || "$PANEL" == "hard" ]] || { larch_err "dispatch-panel.sh: --panel must be simple or hard"; exit 2; }
 case "$DYNAMIC_ARCHETYPES" in
-    [0-4]) ;;
-    *) larch_err "dispatch-panel.sh: --dynamic-archetypes/LARCH_DYNAMIC_ARCHETYPES_MAX must be an integer from 0 to 4"; exit 2 ;;
+    [0-8]) ;;
+    *) larch_err "dispatch-panel.sh: --dynamic-archetypes/LARCH_DYNAMIC_ARCHETYPES_MAX must be an integer from 0 to 8"; exit 2 ;;
 esac
 case "$ROUND_NUM" in ''|*[!0-9]*) larch_err "dispatch-panel.sh: --round-num must be a positive integer"; exit 2 ;; esac
 ROUND_NUM=$((10#$ROUND_NUM))
@@ -96,10 +96,24 @@ queue_external_slot() {
     static_slot_count=$((static_slot_count + 1))
 }
 
-queue_external_generalist_slot() {
-    local tool="$1" out="$2"
-    local agent="$PLUGIN_ROOT/agents/code-reviewer.md"
-    printf '{"slot":"generic","tool":"%s","output":"%s","agent":"%s"}\n' "$tool" "$out" "$agent" >> "$manifest"
+queue_codex_union_slot() {
+    local out="$REVIEW_TMPDIR/codex-union-output.txt"
+    local agent="$REVIEW_TMPDIR/codex-union-agent.md"
+    if [[ "$DYNAMIC_SLOTS" -gt 0 && "$SCOUT_STATUS" == "ok" && -n "$SCOUT_MANIFEST" ]]; then
+        local focus_list
+        focus_list=$(jq -r '[.archetypes[]?.focus_area] | map(select(. != null and . != "")) | join(", ")' "$SCOUT_MANIFEST" 2>/dev/null || true)
+        if [[ -n "$focus_list" ]]; then
+            {
+                cat "$PLUGIN_ROOT/agents/code-reviewer.md"
+                printf '\n\n## Dynamic Focus Coverage\nThis review additionally covers the dynamic archetype focus areas: %s.\n' "$focus_list"
+            } > "$agent"
+        else
+            cp "$PLUGIN_ROOT/agents/code-reviewer.md" "$agent"
+        fi
+    else
+        cp "$PLUGIN_ROOT/agents/code-reviewer.md" "$agent"
+    fi
+    printf '{"slot":"codex-union","tool":"codex","output":"%s","agent":"%s"}\n' "$out" "$agent" >> "$manifest"
     static_slot_count=$((static_slot_count + 1))
 }
 
@@ -107,29 +121,16 @@ queue_external_generalist_slot() {
 [[ -n "$PLAN_FILE" ]] || { larch_err "dispatch-panel.sh: --plan-file is required (plan-fidelity specialist is always dispatched)"; exit 2; }
 [[ -f "$PLAN_FILE" ]] || { larch_err "dispatch-panel.sh: plan file not found: $PLAN_FILE"; exit 2; }
 
-# Simple panel: 6 Cursor specialists + 1 Codex generalist.
-# Hard panel: 6 Cursor specialists + 6 Codex specialists.
+# Both panels: 6 Cursor specialists + 1 Codex union slot on round 1.
+# Codex union covers the union of all scouted dynamic archetype focus areas, or
+# falls back to agents/code-reviewer.md when no dynamic archetypes are present.
 # Both panels always include plan-fidelity (plan file required above).
 # Focus area enum anchor for CI: code-quality / risk-integration / correctness / architecture / security
 cursor_specialists=(structure correctness testing security edge-cases plan-fidelity)
-if [[ "$PANEL" == "hard" ]]; then
-    codex_specialists=(structure correctness testing security edge-cases plan-fidelity)
-fi
 
 for name in "${cursor_specialists[@]}"; do
     queue_external_slot cursor "$name" "$REVIEW_TMPDIR/cursor-specialist-${name}-output.txt"
 done
-if [[ "$PANEL" == "hard" ]]; then
-    if (( ROUND_NUM == 1 )); then
-        for name in "${codex_specialists[@]}"; do
-            queue_external_slot codex "$name" "$REVIEW_TMPDIR/codex-specialist-${name}-output.txt"
-        done
-    fi
-else
-    if (( ROUND_NUM == 1 )); then
-        queue_external_generalist_slot codex "$REVIEW_TMPDIR/codex-generalist-output.txt"
-    fi
-fi
 
 if [[ "$DYNAMIC_ARCHETYPES" != "0" && "$MODE" == "diff" && -n "$DIFF_FILE" && -s "$DIFF_FILE" ]]; then
     classifier_out=$("$CLASSIFY_DIFF_MODE_SH" "$DIFF_FILE" 2>/dev/null || true)
@@ -215,7 +216,7 @@ write_empty_scout_manifest() {
 }
 
 scout_manifest_is_valid() {
-    local scout_manifest="$1" max="${2:-4}"
+    local scout_manifest="$1" max="${2:-8}"
     [[ -s "$scout_manifest" ]] || return 1
     jq -e --argjson max "$max" '
         def reserved:
@@ -408,22 +409,20 @@ if [[ "$DYNAMIC_ARCHETYPES" != "0" && "$SCOUT_STATUS" == "na" ]]; then
 fi
 append_scout_parse_issue
 
-static_cursor=${#cursor_specialists[@]}
+# Round 1 only: add 1 Codex union slot (union of dynamic archetypes, or generic fallback).
 if (( ROUND_NUM == 1 )); then
-    if [[ "$PANEL" == "hard" ]]; then
-        static_codex=${#codex_specialists[@]}
-    else
-        static_codex=1
-    fi
-else
-    static_codex=0
+    queue_codex_union_slot
 fi
+
+static_cursor=${#cursor_specialists[@]}
+static_codex=0
+(( ROUND_NUM == 1 )) && static_codex=1
 total=$((static_cursor + static_codex + DYNAMIC_SLOTS))
 if (( total > 0 )); then
-    if [[ "$PANEL" == "hard" ]]; then
-        emit_breadcrumb "→ review: launching $total reviewers ($static_cursor Cursor static, $static_codex Codex specialists, $DYNAMIC_SLOTS dynamic)"
+    if (( ROUND_NUM == 1 )); then
+        emit_breadcrumb "→ review: launching $total reviewers ($static_cursor Cursor static, 1 Codex union, $DYNAMIC_SLOTS dynamic)"
     else
-        emit_breadcrumb "→ review: launching $total reviewers ($static_cursor Cursor static, $static_codex Codex generalist, $DYNAMIC_SLOTS dynamic)"
+        emit_breadcrumb "→ review: launching $total reviewers ($static_cursor Cursor static, $DYNAMIC_SLOTS dynamic)"
     fi
 fi
 

@@ -20,4 +20,4 @@ Quick-mode `/implement` reviewer-loop phrases such as `5 rounds`, `simple review
 | <a id="implement.conflict_review.rounds_max"></a>`implement.conflict_review.rounds_max` | 2 total | resolution-review rounds | `skills/implement/references/conflict-resolution.md` |
 | <a id="research.lanes"></a>`research.lanes` | four research lanes | architecture + edge cases + external comparisons + security | `skills/research/references/research-phase.md` |
 | <a id="research.validation_panel"></a>`research.validation_panel` | 3 reviewer lanes | Claude Code Reviewer subagent + Codex + Cursor | `skills/research/references/validation-phase.md` |
-| <a id="implement.review_and_fix.panel_hard"></a>`implement.review_and_fix.panel_hard` | 6 Cursor specialists + 6 Codex specialists | Hard panel | `skills/review/scripts/dispatch-panel.sh` |
+| <a id="implement.review_and_fix.panel_hard"></a>`implement.review_and_fix.panel_hard` | 6 Cursor specialists + 1 Codex union | Hard and simple panels share the same static layout | `skills/review/scripts/dispatch-panel.sh` |

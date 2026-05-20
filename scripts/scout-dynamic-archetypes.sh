@@ -166,8 +166,8 @@ print_escaped_file() {
 }
 
 [[ "$MODE" == "diff" || "$MODE" == "description" ]] || fail "--mode must be diff or description"
-case "$MAX_ARCHETYPES" in ''|*[!0-9]*) fail "--max-archetypes must be an integer from 0 to 4" ;; esac
-(( 10#$MAX_ARCHETYPES <= 4 )) || fail "--max-archetypes must be an integer from 0 to 4"
+case "$MAX_ARCHETYPES" in ''|*[!0-9]*) fail "--max-archetypes must be an integer from 0 to 8" ;; esac
+(( 10#$MAX_ARCHETYPES <= 8 )) || fail "--max-archetypes must be an integer from 0 to 8"
 case "$TIMEOUT" in ''|*[!0-9]*|0) fail "--timeout must be a positive integer" ;; esac
 [[ -n "$OUTPUT" ]] || fail "--output is required"
 mkdir -p "$(dirname "$OUTPUT")"
@@ -329,7 +329,7 @@ if ! jq -e '.archetypes and (.archetypes | type == "array")' "$parse_input" >/de
 fi
 
 raw_count=$(jq '.archetypes | length' "$parse_input")
-if (( raw_count > 4 )); then
+if (( raw_count > 10#$MAX_ARCHETYPES )); then
     printf 'archetypes length exceeds max cap: %s\n' "$raw_count" > "$parse_error"
     emit_parse_failed_result archetype_count_overflow "$latency_ms"
 fi
