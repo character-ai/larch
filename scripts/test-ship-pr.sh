@@ -648,6 +648,49 @@ EOF
     printf '%s\n' "$root"
 }
 
+# Real git + real rebase-push.sh: only ``.claude-plugin/plugin.json`` conflicts (root-relative path).
+make_repo_rebase_plugin_json_prep() {
+    local name=$1 root
+    root="$TMP_BASE/$name"
+    mkdir -p "$root"
+    write_subject "$root"
+    write_stubs "$root"
+    cp "$REPO_ROOT/scripts/rebase-push.sh" "$root/scripts/rebase-push.sh"
+    chmod +x "$root/scripts/rebase-push.sh"
+    printf '%s\n' '#!/usr/bin/env bash' 'exit 99' > "$root/scripts/cursor"
+    chmod +x "$root/scripts/cursor"
+    git -C "$root" init -q
+    git -C "$root" config user.email test@example.invalid
+    git -C "$root" config user.name Test
+    mkdir -p "$root/origin.git"
+    git init --bare "$root/origin.git" -q
+    git -C "$root" remote add origin "$root/origin.git"
+    git -C "$root" checkout -b main -q
+    touch "$root/README.md"
+    mkdir -p "$root/.claude-plugin"
+    cat > "$root/.claude-plugin/plugin.json" <<'EOF'
+{"name":"ship-pr-test","version":"1.0.0"}
+EOF
+    git -C "$root" add README.md .claude-plugin/plugin.json
+    git -C "$root" commit -q -m base
+    git -C "$root" push -q -u origin main
+    git -C "$root" checkout -b feature -q
+    cat > "$root/.claude-plugin/plugin.json" <<'EOF'
+{"name":"ship-pr-test","version":"1.0.0","side":"branch"}
+EOF
+    git -C "$root" add .claude-plugin/plugin.json
+    git -C "$root" commit -q -m feature
+    git -C "$root" checkout main -q
+    cat > "$root/.claude-plugin/plugin.json" <<'EOF'
+{"name":"ship-pr-test","version":"1.0.0","side":"main"}
+EOF
+    git -C "$root" add .claude-plugin/plugin.json
+    git -C "$root" commit -q -m advance-main
+    git -C "$root" push -q origin main
+    git -C "$root" checkout feature -q
+    printf '%s\n' "$root"
+}
+
 # CHANGELOG + second file both conflict; auto-merge leaves the second path for the vendor.
 make_repo_rebase_dual_conflict_prep() {
     local name=$1 root
@@ -1525,6 +1568,22 @@ if [ ! -f "$count_dir/launcher-calls.txt" ]; then
     ok "bare CHANGELOG auto-resolve skips vendor launcher"
 else
     fail "bare CHANGELOG auto-resolve should not invoke launch-cursor/codex"
+    sed 's/^/    launcher: /' "$count_dir/launcher-calls.txt" 2>/dev/null || true
+fi
+rm -rf "$count_dir"
+
+# Regression: root-relative ``.claude-plugin/plugin.json`` rebase conflict → checkout --ours (no vendor).
+root=$(make_repo_rebase_plugin_json_prep rebump_plugin_json_root)
+tmp=$(make_tmpdir)
+count_dir=$(mktemp -d /tmp/ship-pr-plugin-json-auto.XXXXXX)
+_make_rebase_stubs "$root" "$count_dir"
+write_state "$tmp/ship-pr-state.sh" ci-initial
+PATH="$root/scripts:$PATH" SHIP_PR_LAUNCH_SENTINEL_DIR="$count_dir" run_subject "$root" "$tmp" "$tmp/rc"
+assert_rc "$tmp/rc" 0 ".claude-plugin/plugin.json-only rebase conflict auto-resolve exits 0"
+if [ ! -f "$count_dir/launcher-calls.txt" ]; then
+    ok "plugin.json manifest auto-resolve skips vendor launcher"
+else
+    fail "plugin.json manifest auto-resolve should not invoke launch-cursor/codex"
     sed 's/^/    launcher: /' "$count_dir/launcher-calls.txt" 2>/dev/null || true
 fi
 rm -rf "$count_dir"
