@@ -2,8 +2,8 @@
 # test-validate-research-output.sh — Regression test for scripts/validate-research-output.sh.
 #
 # Cases (per the acceptance criteria in issue #416, extended for #447, #473, and structured-reviewer-mode):
-#   52-63: --structured-reviewer-mode coverage (JSONL valid, TSV valid, NO_ISSUES_FOUND, JSON no-findings sentinel, fence repair,
-#          preamble repair, severity alias, unrepairable → exit 5, --write-structured sidecar; includes #2455 first-line sentinel cases 62-63)
+#   52-71: structured-reviewer / sentinel regression block (52-59 JSONL–TSV baseline and --write-structured; #2455 first-line sentinel relaxations
+#          60-63; JSON sentinel + not-first + pretty-print / multiline variants 64-69; pretty-print JSON + trailing note 70-71). See the numbered list below for each case.
 #
 # Cases (per the acceptance criteria in issue #416, extended for #447):
 #   1. Happy path: substantive prose with one file:line citation → exit 0
@@ -85,6 +85,8 @@
 #   67. --structured-reviewer-mode trailing note + JSON sentinel (NOT first) → exit 5
 #   68. --validation-mode pretty-printed multi-line JSON no-findings → exit 0
 #   69. --structured-reviewer-mode pretty-printed multi-line JSON no-findings → exit 0
+#   70. --validation-mode pretty-printed multi-line JSON no-findings + trailing note → exit 0
+#   71. --structured-reviewer-mode pretty-printed multi-line JSON no-findings + trailing note → exit 0
 #
 # Usage:
 #   bash scripts/test-validate-research-output.sh
@@ -603,6 +605,28 @@ cat > "$F69" <<'EOF'
 }
 EOF
 run_case "case 69: --structured-reviewer-mode pretty-printed multi-line JSON no-findings → exit 0" 0 --structured-reviewer-mode "$F69"
+
+# Case 70: --validation-mode pretty-printed multi-line JSON + trailing operational note → exit 0
+F70="$TMPROOT/case70-json-multiline-with-note.txt"
+cat > "$F70" <<'EOF'
+{
+  "no_issues_found": true
+}
+
+Verification: scripts/test-dispatch-code-voters.sh could not run in this read-only session because mktemp failed.
+EOF
+run_case "case 70: --validation-mode pretty-printed JSON + trailing note → exit 0" 0 --validation-mode "$F70"
+
+# Case 71: --structured-reviewer-mode pretty-printed multi-line JSON + trailing note → exit 0
+F71="$TMPROOT/case71-srm-json-multiline-with-note.txt"
+cat > "$F71" <<'EOF'
+{
+  "no_issues_found": true
+}
+
+Verification: scripts/test-dispatch-code-voters.sh could not run in this read-only session because mktemp failed.
+EOF
+run_case "case 71: --structured-reviewer-mode pretty-printed JSON + trailing note → exit 0" 0 --structured-reviewer-mode "$F71"
 
 echo ""
 echo "=== Summary ==="
