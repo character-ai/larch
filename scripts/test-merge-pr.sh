@@ -185,6 +185,18 @@ case "$1" in
             exit 0
         fi
         ;;
+    status)
+        if [[ "${2:-}" == "--porcelain" ]]; then
+            if [[ "${STUB_STATUS_RC:-0}" -ne 0 ]]; then
+                echo "${STUB_STATUS_ERROR:-status failed}" >&2
+                exit "${STUB_STATUS_RC:-1}"
+            fi
+            if [[ "${STUB_GIT_DIRTY:-false}" == "true" ]]; then
+                echo " M file.txt"
+            fi
+            exit 0
+        fi
+        ;;
     push)
         # git push --force-with-lease — used by git-force-push.sh
         exit "${STUB_PUSH_EXIT:-0}"
@@ -483,6 +495,20 @@ run_case "flush_recovery_push_fail" \
 assert_stdout_contains "flush_recovery_push_fail" "MERGE_RESULT=error" "L1: force-push failure emits error"
 assert_stdout_matches "flush_recovery_push_fail" "ERROR=.*force-push failed" "L1: error mentions force-push failed"
 assert_no_merge_commands "flush_recovery_push_fail" "L1: force-push failure skips merge commands"
+
+echo
+echo "Sub-test L2: flush-only divergence, force-push dirty-tree abort is distinguished"
+run_case "flush_recovery_dirty_worktree" \
+    env GH_MERGE_STATE=CLEAN \
+    STUB_HEAD_OID=cccc3333 \
+    STUB_PR_HEAD_OID=aaaa1111 \
+    STUB_FLUSH_AHEAD_LOG="chore(larch-logs): flush implement run ABC" \
+    STUB_GIT_DIRTY=true \
+    STUB_BRANCH_NAME=feature-branch \
+    bash "$REPO_ROOT/scripts/merge-pr.sh" --pr 123 --repo owner/repo
+assert_stdout_contains "flush_recovery_dirty_worktree" "MERGE_RESULT=error" "L2a: dirty-tree abort emits error"
+assert_stdout_matches "flush_recovery_dirty_worktree" "ERROR=.*status=dirty_worktree" "L2b: dirty-tree abort surfaces explicit helper status"
+assert_no_merge_commands "flush_recovery_dirty_worktree" "L2c: dirty-tree abort skips merge commands"
 
 echo
 echo "Sub-test M: recovery re-checks CI after force-push"

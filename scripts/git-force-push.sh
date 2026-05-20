@@ -19,11 +19,11 @@
 # Output (stdout, KEY=VALUE):
 #   BRANCH=<name>
 #   PUSHED=true|false
-#   STATUS=pushed|noop_same_ref|diverged_retry_failed
+#   STATUS=pushed|noop_same_ref|diverged_retry_failed|dirty_worktree
 #
 # Exit codes:
 #   0 — PUSHED=true (either pushed fresh or race-landed)
-#   1 — dirty-tree guard aborted before push, or PUSHED=false with STATUS=diverged_retry_failed
+#   1 — dirty-tree guard aborted before push (PUSHED=false, STATUS=dirty_worktree), or PUSHED=false with STATUS=diverged_retry_failed
 #   2 — not on a named branch (detached HEAD / not a git repo), or guard/setup failed
 
 set -euo pipefail
@@ -65,6 +65,8 @@ if ! DIRTY_FILES=$(git status --porcelain 2>"$GIT_STATUS_STDERR"); then
     exit 2
 fi
 if [[ -n "$DIRTY_FILES" ]]; then
+    emit_kv PUSHED "false"
+    emit_kv STATUS "dirty_worktree"
     larch_err "git-force-push.sh: uncommitted working-tree changes detected before force-push. Stage and commit them before pushing."
     larch_err "$DIRTY_FILES"
     rm -f "$GIT_STATUS_STDERR"

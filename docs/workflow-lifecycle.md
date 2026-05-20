@@ -170,7 +170,7 @@ Certain steps in the workflow depend on configuration prerequisites and are skip
 
 ## Pre-push Clean-Tree Invariant
 
-Before any `git push` to origin — initial PR creation (`scripts/create-pr.sh`) and force-push during rebase recovery (`scripts/git-force-push.sh`) — `/implement` asserts that `git status --porcelain` is empty. If uncommitted working-tree changes are present, the push aborts with exit 1 and a message listing the dirty paths, so the orchestrator routes to the bail path (Step 12d / Step 18). This prevents silent data loss when inline fixes (e.g., OOS-fold edits) land in the working tree between commit boundaries and would otherwise be excluded from the merged PR.
+Before guarded push wrappers invoked by `/implement` — initial PR creation (`scripts/create-pr.sh`) and force-push during rebase recovery (`scripts/git-force-push.sh`) — the script asserts that `git status --porcelain` is empty. If uncommitted working-tree changes are present, the push aborts with exit 1 and a message listing the dirty paths, so the orchestrator routes to the bail path (Step 12d / Step 18). This prevents silent data loss when inline fixes (e.g., OOS-fold edits) land in the working tree between commit boundaries and would otherwise be excluded from the merged PR.
 
 ## Resolution Protocols
 

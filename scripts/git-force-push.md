@@ -22,25 +22,26 @@ Operates on the current branch (detected via `git symbolic-ref --short HEAD`). W
 ```
 BRANCH=<current branch name>
 PUSHED=true|false
-STATUS=pushed|noop_same_ref|diverged_retry_failed
+STATUS=pushed|noop_same_ref|diverged_retry_failed|dirty_worktree
 ```
 
-- `BRANCH` is always the first key emitted. On exit 2, no stdout keys are emitted (only a stderr message).
+- `BRANCH` is always the first key emitted. On exit 2, no stdout keys are emitted (only a stderr message). On early exit 2 before branch detection (for example, an unknown CLI flag), the script emits no stdout keys at all.
 - `PUSHED=true` with `STATUS=pushed`: force-push succeeded on first or retry attempt.
 - `PUSHED=true` with `STATUS=noop_same_ref`: push appeared to fail but local HEAD matches `origin/<branch>` after refresh — the push landed in a race window.
 - `PUSHED=false` with `STATUS=diverged_retry_failed`: both push attempts failed and local/remote diverge.
+- `PUSHED=false` with `STATUS=dirty_worktree`: the pre-push clean-tree guard found uncommitted changes and aborted before any push attempt.
 
 ## Pre-push clean-tree guard
 
-After branch detection, `git-force-push.sh` runs `git status --porcelain` and aborts with exit 1 if the working tree is dirty. This is defense-in-depth against data loss (issue #2434): `create-pr.sh` runs the same check before calling this helper, so in normal operation the guard here catches only direct callers (`merge-pr.sh`, `/implement` Step 8b). The `BRANCH=` key is emitted before the guard so callers still see the branch even on dirty-tree failure; no `PUSHED=` or `STATUS=` key is emitted (consistent with the error exit path).
+After branch detection, `git-force-push.sh` runs `git status --porcelain` and aborts with exit 1 if the working tree is dirty. This is defense-in-depth against data loss (issue #2434): `create-pr.sh` runs the same check before calling this helper, so in normal operation the guard here catches only direct callers (`merge-pr.sh`, `/implement` Step 8b). The `BRANCH=` key is emitted before the guard so callers still see the branch even on dirty-tree failure; the script also emits `PUSHED=false` and `STATUS=dirty_worktree` before exiting so callers can distinguish the guard from a lease-divergence failure.
 
 ## Exit codes
 
 | Exit | Meaning |
 |------|---------|
 | 0 | `PUSHED=true` — branch successfully force-pushed (either `pushed` or `noop_same_ref`). |
-| 1 | Either `PUSHED=false` with `STATUS=diverged_retry_failed` (push diverged after retry), or dirty working tree (no `PUSHED=`/`STATUS=` emitted). Caller should bail in both cases. |
-| 2 | Not on a named branch (detached HEAD or not a git repo). Stderr: `git-force-push.sh: not on a named branch`. No stdout keys emitted. |
+| 1 | Either `PUSHED=false` with `STATUS=diverged_retry_failed` (push diverged after retry), or `PUSHED=false` with `STATUS=dirty_worktree` (pre-push clean-tree guard aborted before any push). Caller should bail in both cases. |
+| 2 | Setup failure before a push attempt. Includes detached HEAD / not a git repo (`git-force-push.sh: not on a named branch`), working-tree inspection failure after `BRANCH=` emission, or unknown CLI flags before branch detection. |
 
 ## Dependencies
 

@@ -50,7 +50,7 @@ Before any push attempt, `create-pr.sh` runs `git status --porcelain` and aborts
 |------|---------|
 | 0    | PR created or pre-existing PR detected; remote branch confirmed up-to-date with local. |
 | 1    | Push failed (includes dirty-tree abort). Either path: stderr carries the underlying git rejection or the list of uncommitted paths. |
-| 2    | Argument validation failed, branch detection failed (detached HEAD), `gh pr create` failed, or PR number/URL extraction failed. |
+| 2    | Argument validation failed, branch detection failed (detached HEAD), working-tree inspection failed before any push attempt, `gh pr create` failed, or PR number/URL extraction failed. |
 
 ## PR body redaction
 
