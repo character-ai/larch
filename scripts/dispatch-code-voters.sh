@@ -12,7 +12,7 @@ larch_quiet_init
 source "$SCRIPT_DIR/lib-voter-parse-rate.sh"
 
 usage() {
-    larch_err "Usage: dispatch-code-voters.sh --ballot-file FILE --review-tmpdir DIR --codex-available true|false --cursor-available true|false [--session-env-path FILE] [--diff-file FILE] [--plan-file FILE]"
+    larch_err "Usage: dispatch-code-voters.sh --ballot-file FILE --review-tmpdir DIR --codex-available true|false --cursor-available true|false [--session-env-path FILE] [--diff-file FILE] [--plan-file FILE] [--round-num N]"
 }
 
 BALLOT_FILE=""
@@ -44,13 +44,21 @@ done
 [[ "$CODEX_AVAILABLE" == "true" || "$CODEX_AVAILABLE" == "false" ]] || { larch_err "dispatch-code-voters.sh: --codex-available must be true or false"; exit 2; }
 [[ "$CURSOR_AVAILABLE" == "true" || "$CURSOR_AVAILABLE" == "false" ]] || { larch_err "dispatch-code-voters.sh: --cursor-available must be true or false"; exit 2; }
 case "$ROUND_NUM" in ''|*[!0-9]*) larch_err "dispatch-code-voters.sh: --round-num must be a positive integer"; exit 2 ;; esac
+ROUND_NUM=$((10#$ROUND_NUM))
+(( ROUND_NUM > 0 )) || { larch_err "dispatch-code-voters.sh: --round-num must be a positive integer"; exit 2; }
 mkdir -p "$REVIEW_TMPDIR"
 
 make_voter_prompt_file() {
     local label="$1"
     local prompt_file="$REVIEW_TMPDIR/${label}-vote-prompt.txt"
+    local panel_intro
+    if (( ROUND_NUM == 1 )); then
+        panel_intro='You are a scrupulous senior code reviewer on a 3-judge voting panel deciding which proposed code-review findings should be accepted.'
+    else
+        panel_intro='You are a scrupulous senior code reviewer on a 2-judge voting panel deciding which proposed code-review findings should be accepted.'
+    fi
     {
-        printf 'You are a scrupulous senior code reviewer on a 3-judge voting panel deciding which proposed code-review findings should be accepted.\n'
+        printf '%s\n' "$panel_intro"
         printf 'Vote EXONERATE rather than YES when the concern is legitimate but the proposed change introduces more complexity than it warrants.\n'
         printf 'For items prefixed with [OUT_OF_SCOPE]: YES means file a GitHub issue for future tracking; NO means trivial/incorrect; EXONERATE means legitimate but not issue-worthy.\n'
         printf 'Do NOT modify files. Do NOT commit. Do NOT push.\n'
@@ -364,9 +372,11 @@ else
     printf '{"slot":"voter-3","tool":"cursor","output":"%s","prompt_file":"%s"}\n' "$VOTER_3_BASE" "$cursor_prompt" > "$manifest"
 fi
 
+codex_present_for_waterfall="$CODEX_AVAILABLE"
+(( ROUND_NUM == 1 )) || codex_present_for_waterfall="false"
 waterfall_output=$("$PLUGIN_ROOT/scripts/dispatch-with-waterfall.sh" \
     --slots-file "$manifest" \
-    --codex-present "$CODEX_AVAILABLE" \
+    --codex-present "$codex_present_for_waterfall" \
     --cursor-present "$CURSOR_AVAILABLE" \
     --mode "$mode" \
     --timeout 1200 \
@@ -422,9 +432,9 @@ VOTER_3_PARSE_RATE_STATUS="SKIPPED"
 [[ "$VOTER_2_STATUS" != "failed" && "$VOTER_2_STATUS" != "skipped" ]] && VOTER_2_PARSE_RATE_STATUS=$(check_and_retry_voter_parse_rate 2 "$VOTER_2_PATH" "$VOTER_2_TOOL" "$codex_prompt")
 [[ "$VOTER_3_STATUS" != "failed" ]] && VOTER_3_PARSE_RATE_STATUS=$(check_and_retry_voter_parse_rate 3 "$VOTER_3_PATH" "$VOTER_3_TOOL" "$cursor_prompt")
 
-# Round 1 expects 3 judges; subsequent rounds intentionally use 2 (Claude + Cursor).
+# Round 1 expects 3 judges; subsequent rounds intentionally use 2 (Claude + Cursor only).
 expected_judges=3
-[[ "$ROUND_NUM" != "1" ]] && expected_judges=2
+(( ROUND_NUM == 1 )) || expected_judges=2
 
 effective_judges=0
 for slot_record in \

@@ -35,7 +35,7 @@ The dispatch scripts emit loud degraded-panel warnings when effective judges dro
 
 ## Voter Panel Composition
 
-Both skills use 3-voter panels in their voting paths. All voters vote on all findings — there is no self-voting exclusion.
+`/design` always uses a 3-voter panel in normal mode. `/review` uses a 3-voter panel on round 1 and a 2-voter panel (Claude + Cursor) in rounds 2+. All launched voters vote on all findings — there is no self-voting exclusion.
 
 | Skill | Voters |
 |---|---|

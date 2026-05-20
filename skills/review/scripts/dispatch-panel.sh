@@ -79,6 +79,8 @@ case "$DYNAMIC_ARCHETYPES" in
     *) larch_err "dispatch-panel.sh: --dynamic-archetypes/LARCH_DYNAMIC_ARCHETYPES_MAX must be an integer from 0 to 4"; exit 2 ;;
 esac
 case "$ROUND_NUM" in ''|*[!0-9]*) larch_err "dispatch-panel.sh: --round-num must be a positive integer"; exit 2 ;; esac
+ROUND_NUM=$((10#$ROUND_NUM))
+(( ROUND_NUM > 0 )) || { larch_err "dispatch-panel.sh: --round-num must be a positive integer"; exit 2; }
 mkdir -p "$REVIEW_TMPDIR"
 
 manifest="$REVIEW_TMPDIR/panel-manifest.ndjson"
@@ -118,13 +120,13 @@ for name in "${cursor_specialists[@]}"; do
     queue_external_slot cursor "$name" "$REVIEW_TMPDIR/cursor-specialist-${name}-output.txt"
 done
 if [[ "$PANEL" == "hard" ]]; then
-    if [[ "$ROUND_NUM" == "1" ]]; then
+    if (( ROUND_NUM == 1 )); then
         for name in "${codex_specialists[@]}"; do
             queue_external_slot codex "$name" "$REVIEW_TMPDIR/codex-specialist-${name}-output.txt"
         done
     fi
 else
-    if [[ "$ROUND_NUM" == "1" ]]; then
+    if (( ROUND_NUM == 1 )); then
         queue_external_generalist_slot codex "$REVIEW_TMPDIR/codex-generalist-output.txt"
     fi
 fi
@@ -402,10 +404,14 @@ fi
 append_scout_parse_issue
 
 static_cursor=${#cursor_specialists[@]}
-if [[ "$PANEL" == "hard" ]]; then
-    static_codex=${#codex_specialists[@]}
+if (( ROUND_NUM == 1 )); then
+    if [[ "$PANEL" == "hard" ]]; then
+        static_codex=${#codex_specialists[@]}
+    else
+        static_codex=1
+    fi
 else
-    static_codex=1
+    static_codex=0
 fi
 total=$((static_cursor + static_codex + DYNAMIC_SLOTS))
 if (( total > 0 )); then
@@ -416,7 +422,9 @@ if (( total > 0 )); then
     fi
 fi
 
-waterfall_args=(--slots-file "$manifest" --codex-present "$CODEX_AVAILABLE" --cursor-present "$CURSOR_AVAILABLE" --mode "$MODE" --timeout 1800)
+codex_present_for_waterfall="$CODEX_AVAILABLE"
+(( ROUND_NUM == 1 )) || codex_present_for_waterfall="false"
+waterfall_args=(--slots-file "$manifest" --codex-present "$codex_present_for_waterfall" --cursor-present "$CURSOR_AVAILABLE" --mode "$MODE" --timeout 1800)
 [[ "$MODE" == "diff" && -n "$DIFF_FILE" ]] && waterfall_args+=(--diff-file "$DIFF_FILE" --commit-count "$COMMIT_COUNT")
 [[ "$MODE" == "description" && -n "$SCOPE_FILES" ]] && waterfall_args+=(--description-text "${DESCRIPTION_TEXT:-description review}" --scope-files "$SCOPE_FILES")
 [[ -n "$PLAN_FILE" && -f "$PLAN_FILE" ]] && waterfall_args+=(--plan-file "$PLAN_FILE")

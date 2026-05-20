@@ -113,6 +113,15 @@ assert_eq "6 OK launched + 6 never-launched → FAILED_SLOTS=6" "$got" "6"
 got=$(printf '%s\n' "$out" | awk -F= '$1=="THRESHOLD_OK"{print $2}')
 assert_eq "6 failed-via-not-launched → still OK (not >50%)" "$got" "true"
 
+echo "# round 2+ hard panel uses a 6-slot intended denominator"
+out=$(run_case round2_hard hard --round-num 2 --launched-slots 6 OK OK OK OK OK timeout 2>&1)
+got=$(printf '%s\n' "$out" | awk -F= '$1=="INTENDED_SLOTS"{print $2}')
+assert_eq "round2 HARD → INTENDED_SLOTS=6" "$got" "6"
+got=$(printf '%s\n' "$out" | awk -F= '$1=="FAILED_SLOTS"{print $2}')
+assert_eq "round2 HARD one real failure stays one failure" "$got" "1"
+got=$(printf '%s\n' "$out" | awk -F= '$1=="THRESHOLD_OK"{print $2}')
+assert_eq "round2 HARD 1/6 fail → THRESHOLD_OK=true" "$got" "true"
+
 echo "# both-down: zero records, zero launched"
 out=$(run_case both_down hard --launched-slots 0 2>&1)
 got=$(printf '%s\n' "$out" | awk -F= '$1=="FAILED_SLOTS"{print $2}')

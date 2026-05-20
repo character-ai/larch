@@ -10,33 +10,41 @@ source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
 
 usage() {
-    larch_err "Usage: check-reviewer-failure-threshold.sh --collector-results-file FILE --panel hard|simple [--launched-slots N]"
+    larch_err "Usage: check-reviewer-failure-threshold.sh --collector-results-file FILE --panel hard|simple [--launched-slots N] [--round-num N]"
 }
 
 COLLECTOR_RESULTS_FILE=""
 PANEL=""
 LAUNCHED_SLOTS=""
+ROUND_NUM="1"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --collector-results-file) COLLECTOR_RESULTS_FILE="${2:?--collector-results-file requires a value}"; shift 2 ;;
         --panel) PANEL="${2:?--panel requires a value}"; shift 2 ;;
         --launched-slots) LAUNCHED_SLOTS="${2:?--launched-slots requires a value}"; shift 2 ;;
+        --round-num) ROUND_NUM="${2:?--round-num requires a value}"; shift 2 ;;
         --help) usage; exit 0 ;;
         *) larch_err "check-reviewer-failure-threshold.sh: unknown option: $1"; usage; exit 2 ;;
     esac
 done
 
 [[ "$PANEL" == "hard" || "$PANEL" == "simple" ]] || { larch_err "check-reviewer-failure-threshold.sh: --panel must be hard or simple"; exit 2; }
+case "$ROUND_NUM" in ''|*[!0-9]*) larch_err "check-reviewer-failure-threshold.sh: --round-num must be a positive integer"; exit 2 ;; esac
+ROUND_NUM=$((10#$ROUND_NUM))
+(( ROUND_NUM > 0 )) || { larch_err "check-reviewer-failure-threshold.sh: --round-num must be a positive integer"; exit 2; }
 
-# Intended static panel size: HARD=12 (6 Cursor + 6 Codex specialists),
-# SIMPLE=7 (6 Cursor + 1 Codex generalist). Dynamic scout reviewers are
-# excluded from the threshold denominator and should not affect the failure
-# rate that decides whether the static panel itself failed.
-case "$PANEL" in
-    hard)   STATIC_INTENDED_SLOTS=12 ;;
-    simple) STATIC_INTENDED_SLOTS=7  ;;
-esac
+# Intended static panel size is round-aware because Codex reviewer slots are
+# intentionally omitted after round 1. Dynamic scout reviewers are excluded
+# from the threshold denominator and should not affect the static panel result.
+if (( ROUND_NUM == 1 )); then
+    case "$PANEL" in
+        hard)   STATIC_INTENDED_SLOTS=12 ;;
+        simple) STATIC_INTENDED_SLOTS=7  ;;
+    esac
+else
+    STATIC_INTENDED_SLOTS=6
+fi
 INTENDED_SLOTS=$STATIC_INTENDED_SLOTS
 
 is_dynamic_reviewer_basename() {

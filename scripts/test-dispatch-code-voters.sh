@@ -196,6 +196,26 @@ grep -Fq 'VOTER_1_PARSE_RATE_STATUS=SKIPPED' <<< "$out"
 grep -Fq 'dispatch-code-voters.sh voter1' "$issues_log"
 grep -Fq 'launch-claude-review.sh (claude voter) failed (exit 99)' "$issues_log"
 grep -Fq 'voter1_rc=99' "$issues_log"
+
+out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" --ballot-file "$BALLOT" --review-tmpdir "$TMP/round2" --codex-available true --cursor-available false --round-num 2)
+grep -Fq 'VOTER_1_TOOL=claude' <<< "$out"
+grep -Fq 'VOTER_2_TOOL=codex' <<< "$out"
+grep -Fq 'VOTER_2_STATUS=skipped' <<< "$out"
+grep -Fq 'VOTER_2_PARSE_RATE_STATUS=SKIPPED' <<< "$out"
+grep -Fq 'VOTER_3_TOOL=claude' <<< "$out"
+grep -Fq 'VOTER_3_STATUS=fallback' <<< "$out"
+grep -Fq 'DISPATCH_OK=true' <<< "$out"
+grep -Fq 'DEGRADED_PANEL_WARNING=**⚠ Degraded code-review panel: 1/2 effective judges produced output.**' <<< "$out"
+[[ "$(wc -l < "$TMP/round2/code-voter-slots.ndjson")" -eq 1 ]] \
+    || { echo "FAIL: round2 manifest must contain only the Cursor slot" >&2; exit 1; }
+grep -Fq '"slot":"voter-3"' "$TMP/round2/code-voter-slots.ndjson" \
+    || { echo "FAIL: round2 manifest missing voter-3 slot" >&2; exit 1; }
+if grep -Fq '"slot":"voter-2"' "$TMP/round2/code-voter-slots.ndjson"; then
+    echo "FAIL: round2 manifest must omit voter-2" >&2
+    exit 1
+fi
+grep -Fq '2-judge voting panel' "$TMP/round2/claude-vote-prompt.txt" \
+    || { echo "FAIL: round2 claude voter prompt must describe a 2-judge panel" >&2; exit 1; }
 fi  # end section: happy
 
 if section_runs edge-and-r3-claude; then
