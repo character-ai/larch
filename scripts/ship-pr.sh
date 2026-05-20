@@ -1367,6 +1367,10 @@ run_rebase_rebump() {
             vendor_conflict_csv=""
         fi
 
+        if [ "$skip_vendor" = false ] && [ -z "$vendor_conflict_csv" ]; then
+            vendor_conflict_csv=$(git diff --name-only --diff-filter=U 2>/dev/null | tr '\n' ',' | sed 's/,$//')
+        fi
+
         if [ "$skip_vendor" = false ]; then
             conflict_out="$IMPLEMENT_TMPDIR/rebase-conflict-$(date +%s).out"
             fail_file=$(failure_capture_path conflict-resolution)

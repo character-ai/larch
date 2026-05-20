@@ -494,6 +494,160 @@ EOF
     printf '%s\n' "$root"
 }
 
+# Same as make_repo_rebase_autoresolve_prep but CHANGELOG.rst (RST section titles + underlines).
+make_repo_rebase_autoresolve_rst_prep() {
+    local name=$1 root
+    root="$TMP_BASE/$name"
+    mkdir -p "$root"
+    write_subject "$root"
+    write_stubs "$root"
+    cp "$REPO_ROOT/scripts/rebase-push.sh" "$root/scripts/rebase-push.sh"
+    chmod +x "$root/scripts/rebase-push.sh"
+    printf '%s\n' '#!/usr/bin/env bash' 'exit 99' > "$root/scripts/cursor"
+    chmod +x "$root/scripts/cursor"
+    git -C "$root" init -q
+    git -C "$root" config user.email test@example.invalid
+    git -C "$root" config user.name Test
+    mkdir -p "$root/origin.git"
+    git init --bare "$root/origin.git" -q
+    git -C "$root" remote add origin "$root/origin.git"
+    git -C "$root" checkout -b main -q
+    touch "$root/README.md"
+    cat > "$root/CHANGELOG.rst" <<'EOF'
+Changelog
+=========
+
+Unreleased
+----------
+
+* Base bullet
+
+1.0.0
+-----
+
+* Old
+EOF
+    git -C "$root" add README.md CHANGELOG.rst
+    git -C "$root" commit -q -m base
+    git -C "$root" push -q -u origin main
+    git -C "$root" checkout -b feature -q
+    cat > "$root/CHANGELOG.rst" <<'EOF'
+Changelog
+=========
+
+Unreleased
+----------
+
+* Base bullet
+* Branch bullet
+
+1.0.0
+-----
+
+* Old
+EOF
+    git -C "$root" add CHANGELOG.rst
+    git -C "$root" commit -q -m feature
+    git -C "$root" checkout main -q
+    cat > "$root/CHANGELOG.rst" <<'EOF'
+Changelog
+=========
+
+Unreleased
+----------
+
+* Base bullet
+* Mainline bullet
+
+1.0.0
+-----
+
+* Old
+EOF
+    git -C "$root" add CHANGELOG.rst
+    git -C "$root" commit -q -m advance-main
+    git -C "$root" push -q origin main
+    git -C "$root" checkout feature -q
+    printf '%s\n' "$root"
+}
+
+# Bare ``CHANGELOG`` (no extension), RST-shaped bodies — exercises basename detection + rst merge.
+make_repo_rebase_autoresolve_bare_changelog_prep() {
+    local name=$1 root
+    root="$TMP_BASE/$name"
+    mkdir -p "$root"
+    write_subject "$root"
+    write_stubs "$root"
+    cp "$REPO_ROOT/scripts/rebase-push.sh" "$root/scripts/rebase-push.sh"
+    chmod +x "$root/scripts/rebase-push.sh"
+    printf '%s\n' '#!/usr/bin/env bash' 'exit 99' > "$root/scripts/cursor"
+    chmod +x "$root/scripts/cursor"
+    git -C "$root" init -q
+    git -C "$root" config user.email test@example.invalid
+    git -C "$root" config user.name Test
+    mkdir -p "$root/origin.git"
+    git init --bare "$root/origin.git" -q
+    git -C "$root" remote add origin "$root/origin.git"
+    git -C "$root" checkout -b main -q
+    touch "$root/README.md"
+    cat > "$root/CHANGELOG" <<'EOF'
+Changelog
+=========
+
+Unreleased
+----------
+
+* Base bullet
+
+1.0.0
+-----
+
+* Old
+EOF
+    git -C "$root" add README.md CHANGELOG
+    git -C "$root" commit -q -m base
+    git -C "$root" push -q -u origin main
+    git -C "$root" checkout -b feature -q
+    cat > "$root/CHANGELOG" <<'EOF'
+Changelog
+=========
+
+Unreleased
+----------
+
+* Base bullet
+* Branch bullet
+
+1.0.0
+-----
+
+* Old
+EOF
+    git -C "$root" add CHANGELOG
+    git -C "$root" commit -q -m feature
+    git -C "$root" checkout main -q
+    cat > "$root/CHANGELOG" <<'EOF'
+Changelog
+=========
+
+Unreleased
+----------
+
+* Base bullet
+* Mainline bullet
+
+1.0.0
+-----
+
+* Old
+EOF
+    git -C "$root" add CHANGELOG
+    git -C "$root" commit -q -m advance-main
+    git -C "$root" push -q origin main
+    git -C "$root" checkout feature -q
+    printf '%s\n' "$root"
+}
+
 # CHANGELOG + second file both conflict; auto-merge leaves the second path for the vendor.
 make_repo_rebase_dual_conflict_prep() {
     local name=$1 root
@@ -1339,6 +1493,38 @@ if [ ! -f "$count_dir/launcher-calls.txt" ]; then
     ok "CHANGELOG auto-resolve skips vendor launcher"
 else
     fail "CHANGELOG auto-resolve should not invoke launch-cursor/codex"
+    sed 's/^/    launcher: /' "$count_dir/launcher-calls.txt" 2>/dev/null || true
+fi
+rm -rf "$count_dir"
+
+# Regression: CHANGELOG.rst conflict uses RST section merge (no vendor).
+root=$(make_repo_rebase_autoresolve_rst_prep rebump_changelog_rst)
+tmp=$(make_tmpdir)
+count_dir=$(mktemp -d /tmp/ship-pr-changelog-rst.XXXXXX)
+_make_rebase_stubs "$root" "$count_dir"
+write_state "$tmp/ship-pr-state.sh" ci-initial
+PATH="$root/scripts:$PATH" SHIP_PR_LAUNCH_SENTINEL_DIR="$count_dir" run_subject "$root" "$tmp" "$tmp/rc"
+assert_rc "$tmp/rc" 0 "CHANGELOG.rst-only rebase conflict auto-resolve exits 0"
+if [ ! -f "$count_dir/launcher-calls.txt" ]; then
+    ok "CHANGELOG.rst auto-resolve skips vendor launcher"
+else
+    fail "CHANGELOG.rst auto-resolve should not invoke launch-cursor/codex"
+    sed 's/^/    launcher: /' "$count_dir/launcher-calls.txt" 2>/dev/null || true
+fi
+rm -rf "$count_dir"
+
+# Regression: bare CHANGELOG filename (RST-shaped) auto-resolves without vendor.
+root=$(make_repo_rebase_autoresolve_bare_changelog_prep rebump_changelog_bare)
+tmp=$(make_tmpdir)
+count_dir=$(mktemp -d /tmp/ship-pr-changelog-bare.XXXXXX)
+_make_rebase_stubs "$root" "$count_dir"
+write_state "$tmp/ship-pr-state.sh" ci-initial
+PATH="$root/scripts:$PATH" SHIP_PR_LAUNCH_SENTINEL_DIR="$count_dir" run_subject "$root" "$tmp" "$tmp/rc"
+assert_rc "$tmp/rc" 0 "bare CHANGELOG rebase conflict auto-resolve exits 0"
+if [ ! -f "$count_dir/launcher-calls.txt" ]; then
+    ok "bare CHANGELOG auto-resolve skips vendor launcher"
+else
+    fail "bare CHANGELOG auto-resolve should not invoke launch-cursor/codex"
     sed 's/^/    launcher: /' "$count_dir/launcher-calls.txt" 2>/dev/null || true
 fi
 rm -rf "$count_dir"
