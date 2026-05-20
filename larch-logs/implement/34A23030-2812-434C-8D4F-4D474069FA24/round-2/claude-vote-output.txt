@@ -1,0 +1,10 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: NO -- positive finding confirming correctness of Exit 0/Exit 6 changes; not a problem to track
+FINDING_4: NO -- positive finding confirming no token-drift issue; not a problem to track
+FINDING_5: NO -- positive finding confirming token list matches ship-pr.sh; not a problem to track
+FINDING_6: EXONERATE -- pre-existing discoverability gap not introduced by this PR; not worth filing
+FINDING_7: EXONERATE -- pre-existing numbering quirk; editorial only, not worth filing separately
+FINDING_8: EXONERATE -- duplicate of FINDING_7; same assessment
+FINDING_9: EXONERATE -- plan/PR description gap; changes are intentional and correct per FINDING_3 validation
+FINDING_10: YES

@@ -1,0 +1,21 @@
+Gathering the diff and relevant SKILL.md sections to compare NEVER #16 with #9–#15 and verify consistency.
+
+Verifying `--resume-phase` usage in `ship-pr.sh` and whether any SKILL text documents a different Bash timeout.
+
+Confirming line numbers for NEVER #16 and the blockquote from the post-diff file:
+
+### In-Scope Findings
+
+- **architecture** `skills/implement/SKILL.md:64` — NEVER #16 claims the Bash tool’s **10-minute** timeout is enough for `ship-pr.sh` (CI+merge state machine), which conflicts with existing long-blocking guidance for synchronous `ci-wait.sh` in the same orchestration surface (`timeout: 1860000` / 31 minutes in [`skills/implement/references/rebase-rebump-subprocedure.md`](skills/implement/references/rebase-rebump-subprocedure.md) around line 173) and understates realistic wall-clock for multi-step CI loops inside `ship-pr.sh`. **Suggested fix:** Drop the “10 minutes covers the wait” assurance or replace it with language that matches the established long-timeout policy (or explicitly requires an orchestrator-configured Bash timeout large enough for the full delegated loop, with a pointer to the same reference as `ci-wait.sh`).
+
+- **architecture** `skills/implement/SKILL.md:64` and `skills/implement/SKILL.md:1727` — NEVER #16’s “How to apply” and the Step 8+ blockquote both instruct recovery as `ship-pr.sh --resume-phase $PHASE` after reading `PHASE` from `ship-pr-state.sh`, but [`scripts/ship-pr.sh`](scripts/ship-pr.sh) only accepts a fixed set of `--resume-phase` values (`force-push-gate`, `bump`, `pr-create`, `ci-initial`, `ci-merge`, `evaluate-failure`, `postmerge` at lines 1673–1681), while the state file’s `PHASE` can be values such as `checks` or `pr-prep` (see the main loop at lines 1685–1704), for which that flag form is invalid or misleading. **Suggested fix:** Tighten recovery wording to match the script: e.g. resume with the same foreground `ship-pr.sh` invocation **without** `--resume-phase` when continuing the persisted `PHASE` main loop, and reserve `--resume-phase <token>` for the tokens and situations already spelled out in the Step 8+ exit-code matrix (e.g. `skills/implement/SKILL.md` around lines 1755–1759), or explicitly map which `PHASE` values require which resume flag.
+
+- **architecture** `skills/implement/SKILL.md:64` — In the **Why** clause, “In `--auto` mode this stalls indefinitely **with no recovery path**” sits awkwardly next to issue #2454’s “requiring user intervention to recover” and the **How to apply** `--resume-phase` recovery text; together they read as if there were no way forward in auto mode even though a subsequent turn can still mechanically resume once the operator or host un-stalls the session. **Suggested fix:** Qualify “no recovery path” as **no automatic / unattended** recovery (or similar) so it does not contradict the recovery paragraph and the cited incident.
+
+### Out-of-Scope Observations
+
+- **Mutual consistency:** NEVER #16 and the blockquote at `skills/implement/SKILL.md:1727` match each other on foreground-only, async task-notification risk, and the proposed `--resume-phase $PHASE` recovery; they do not appear to contradict NEVER #9 (foreground completion vs. forbidding `ScheduleWakeup`), NEVER #11 (who owns bump / breadcrumbs), NEVER #12, or NEVER #15 (turn-end after Skill returns), since #16 targets Bash dispatch shape for `ship-pr.sh` rather than post-Skill turn boundaries.
+
+- **Pre-existing related gap:** The Step 8+ Exit 6 bullet at `skills/implement/SKILL.md:1758-1759` already documents re-invoking with `--resume-phase $PHASE` using `PHASE` from state; the same `ship-pr.sh` acceptance mismatch predates this change, but the new NEVER + prominent warning **replicate and elevate** that pattern rather than correcting it.
+
+- **Branch commits (read-only):** `git log "$(git merge-base HEAD main)"..HEAD --oneline` shows a single commit: `4a7ee184 Add NEVER #16 and foreground warning for ship-pr.sh in /implement SKILL.md`.
