@@ -241,7 +241,6 @@ check_and_retry_voter_parse_rate() {
         *.txt) first_pass_sidecar="${voter_path%.txt}-first-pass.txt" ;;
         *) first_pass_sidecar="${voter_path}-first-pass" ;;
     esac
-    rm -f "$first_pass_sidecar" || true
     status=$(check_voter_parse_rate "$voter_path" "$voter_tool" "$slot_num" silent | parse_rate_status_from_output)
     [[ "$status" == "NOT_SUBSTANTIVE" ]] || { printf '%s\n' "$status"; return 0; }
 
@@ -260,6 +259,7 @@ check_and_retry_voter_parse_rate() {
     if [[ "$retry_rc" -eq 0 && -s "$retry_output" ]]; then
         retry_status=$(check_voter_parse_rate "$retry_output" "$voter_tool" "$slot_num" silent | parse_rate_status_from_output)
         if [[ "$retry_status" == "OK" ]]; then
+            rm -f "$first_pass_sidecar" || true
             if cp "$voter_path" "$first_pass_sidecar" 2>/dev/null; then
                 # Stderr so callers that capture this function's stdout (parse-rate status) are not polluted.
                 { emit_breadcrumb "voter-${voter_tool}: first-pass content preserved at $(basename "$first_pass_sidecar") (parse-rate retry succeeded)"; } >&2
