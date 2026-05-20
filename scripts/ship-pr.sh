@@ -1606,7 +1606,8 @@ run_postmerge_phase() {
     [ "$rc" -eq 0 ] || record_failure postmerge "implement-finalize.sh postmerge" "$rc" "$fail_file"
     # Finalize manifest to status=done here so the update survives if the
     # LLM session ends before prompt-side Step 18 teardown runs. The manifest
-    # fields are committed by the session-transcript capture in Step 18.
+    # status=done update is local-only; the last committed snapshot remains
+    # in-progress (by design — the transcript was flushed at Step 7a before merge).
     local flush_run_id pr_num manifest_path_pm flush_issue_num recovery_ok
     flush_run_id=$(read_state RUN_ID)
     pr_num=$(read_state PR_NUMBER)
