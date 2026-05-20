@@ -1,0 +1,10 @@
+### In-Scope Findings
+
+1. **Important** `risk-integration` [scripts/collect-agent-results.sh:1268](<OPERATOR_REPO_PATH>/scripts/collect-agent-results.sh:1268)  
+   Successful NS-retry output is now moved back onto `cursor-specialist-*-output.txt`, but [scripts/larch-log.sh:77](<OPERATOR_REPO_PATH>/scripts/larch-log.sh:77) still excludes that canonical specialist output from committed round logs. Concrete scenario: a cursor specialist first pass is `NOT_SUBSTANTIVE`, the NS retry succeeds with `NO_ISSUES_FOUND`, then `write-round` commits `cursor-specialist-*-output-first-pass.txt` but neither the promoted `cursor-specialist-*-output.txt` nor the old `*-ns-retry.txt` retry artifact, so the committed log preserves only the failed first pass and loses the successful retry transcript. Add an allow-listed final retry sidecar, keep a copy of the retry artifact under an included name before the `mv`, or otherwise update `larch-log.sh`/tests so both first-pass and successful retry content are recoverable.
+
+### Out-of-Scope Observations
+
+No out-of-scope observations.
+
+Verification note: I attempted `bash scripts/test-collect-agent-results.sh` and `bash scripts/test-larch-log-write-round.sh`, but both failed immediately because this session’s read-only sandbox prevents `mktemp` from creating temporary directories.

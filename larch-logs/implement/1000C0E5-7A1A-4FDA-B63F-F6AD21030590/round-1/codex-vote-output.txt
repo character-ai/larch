@@ -1,0 +1,32 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: EXONERATE -- The no-`set -e` design is intentional and the actionable unchecked-operation risks are already covered in-scope.
+FINDING_8: EXONERATE -- Legitimate edge case, but reviewer output paths appear contracted around `.txt` and this is not worth a tracking issue.
+FINDING_9: EXONERATE -- Same pre-existing `.txt` path-contract edge case, not issue-worthy for this change.
+FINDING_10: EXONERATE -- Existing input-trust hardening concern, but no new attack surface from this diff warrants tracking.
+FINDING_11: EXONERATE -- Documentation wording is coupled to the accepted cp/mv handling fixes and does not need a separate finding.
+FINDING_12: EXONERATE -- Two short duplicated blocks are real maintenance risk, but extracting a helper adds more structure than warranted.
+FINDING_13: EXONERATE -- Duplicate of the small-helper concern; legitimate but not worth extra abstraction here.
+FINDING_14: YES
+FINDING_15: EXONERATE -- The pattern is redundant but harmless and documents intent.
+FINDING_16: YES
+FINDING_17: YES
+FINDING_18: YES
+FINDING_19: YES
+FINDING_20: YES
+FINDING_21: YES
+FINDING_22: YES
+FINDING_23: YES
+FINDING_24: YES
+FINDING_25: YES
+FINDING_26: YES
+FINDING_27: YES
+FINDING_28: EXONERATE -- Breadcrumb coverage would be nice, but it is not a meaningful behavioral contract.
+FINDING_29: EXONERATE -- Retention-policy concern is plausible, but the new sidecar is intentional and already documented as log material.
+FINDING_30: YES
+FINDING_31: YES
+FINDING_32: YES

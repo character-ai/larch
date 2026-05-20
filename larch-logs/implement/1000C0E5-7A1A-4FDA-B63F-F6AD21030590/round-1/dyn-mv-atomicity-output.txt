@@ -1,0 +1,21 @@
+Gathering the branch diff and NS-retry code paths to review ordering, partial failures, and RESULTS/STRUCTURED_SIDECAR consistency.
+
+Checking `set -e`/error handling and post-NS-retry consumption of `STRUCTURED_SIDECAR` and `RESULTS`.
+
+The script uses `set -uo pipefail` (no `-e`), so a failed `mv` does not stop execution; the new `mv` steps inherit that behavior and can desync `RESULTS` from disk.
+
+### In-Scope Findings
+
+- **correctness** [`scripts/collect-agent-results.sh:1251-1254`](scripts/collect-agent-results.sh:1251-1254) — After NS structured-retry validation succeeds, `mv "$NS_RETRY_OUTPUT" "$ORIG_OUTPUT"` is not checked. With `set -u` / `pipefail` but **without** `set -e` (see [`scripts/collect-agent-results.sh:81-82`](scripts/collect-agent-results.sh:81-82)), a non-zero `mv` (permissions, cross-device rename, transient IO) leaves `ORIG_OUTPUT` unchanged while the block still sets `RESULTS[IDX]` to `STATUS=OK` with `REVIEWER_FILE=$ORIG_OUTPUT`, so emitted results claim the canonical path holds validated retry prose when it may still hold first-pass `NOT_SUBSTANTIVE` content. **Suggested fix:** require `mv "$NS_RETRY_OUTPUT" "$ORIG_OUTPUT"` to succeed before updating `RESULTS[IDX]`; on failure, skip the OK rewrite (or fail closed for that index).
+
+- **correctness** [`scripts/collect-agent-results.sh:1251-1253`](scripts/collect-agent-results.sh:1251-1253) — If the prose `mv` fails but execution continues, the next line still runs `mv "$STRUCTURED_SIDECAR" "$_ns_new_sidecar" … || true`, which can place the **retry** structured file next to `ORIG_OUTPUT` while `ORIG_OUTPUT` still contains **first-pass** prose, splitting prose and structured artifacts across incompatible content. **Suggested fix:** chain moves (only relocate the structured sidecar after a successful prose `mv`) and abort the branch on any failed required `mv`.
+
+- **correctness** [`scripts/collect-agent-results.sh:1252-1253`](scripts/collect-agent-results.sh:1252-1253) — `mv "$STRUCTURED_SIDECAR" "$_ns_new_sidecar" 2>/dev/null || true` swallows failure but `STRUCTURED_SIDECAR="$_ns_new_sidecar"` is always applied, so `STRUCTURED_SIDECAR` can name a path that was never created while the real file may still live on the `-ns-retry` basename. **Suggested fix:** set `STRUCTURED_SIDECAR` only when the `mv` succeeds, or treat a required move failure like validation failure (do not emit `STRUCTURED_SIDECAR=` for a missing path).
+
+- **correctness** [`scripts/collect-agent-results.sh:1268-1269`](scripts/collect-agent-results.sh:1268-1269) — Same unchecked `mv "$NS_RETRY_OUTPUT" "$ORIG_OUTPUT"` on the substantive NS-retry success path: failure still leads to `RESULTS[IDX]=…STATUS=OK…REVIEWER_FILE=$ORIG_OUTPUT` while `ORIG_OUTPUT` may not contain the validated retry body (and `NS_RETRY_OUTPUT` may still hold the only copy). **Suggested fix:** gate the `RESULTS[IDX]` assignment on successful `mv` (and align cleanup of stale `-ns-retry` files if you fail closed).
+
+- **correctness** [`scripts/collect-agent-results.sh:1246-1247`](scripts/collect-agent-results.sh:1246-1247) and [`scripts/collect-agent-results.sh:1265-1266`](scripts/collect-agent-results.sh:1265-1266) — `cp` errors are fully silent (`2>/dev/null`); on `cp` failure the subsequent `mv` still overwrites `ORIG_OUTPUT`, so the stated observability goal (“preserve first-pass”) is **best-effort only** with no stderr signal and no test coverage for the failure mode. **Suggested fix:** on `cp` failure, either skip the overwrite/`RESULTS` update, or surface a non-ignored diagnostic and treat as collector-side failure for that index.
+
+### Out-of-Scope Observations
+
+- **architecture** [`scripts/collect-agent-results.sh:81-82`](scripts/collect-agent-results.sh:81-82), [`scripts/collect-agent-results.sh:1085-1086`](scripts/collect-agent-results.sh:1085-1086) — The collector intentionally runs without `set -e` so validator and other subprocess failures do not abort the loop; that design predates this diff. This branch’s new filesystem steps inherit the same semantics; the **new** risk is the combination of unchecked `mv` plus unconditional `RESULTS` updates (covered in-scope above), not the absence of `-e` by itself.

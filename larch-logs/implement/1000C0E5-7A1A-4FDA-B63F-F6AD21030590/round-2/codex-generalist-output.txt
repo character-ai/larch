@@ -1,0 +1,8 @@
+### In-Scope Findings
+
+1. **Important** `correctness` `scripts/collect-agent-results.sh:135-154`  
+   `preserve_and_publish_ns_retry` publishes the validated retry with `cp "$retry_output" "$orig_output"` directly over the canonical reviewer file. If that copy fails after opening/truncating the destination, for example due to ENOSPC or an interrupted write, the collector leaves `RESULTS[IDX]` as `STATUS=NOT_SUBSTANTIVE` but the original first-pass file may now contain partial retry content instead of the validated first-pass body. Publish through a temp file in the same directory and `mv` it over `orig_output` only after the copy succeeds; keep the `*-ns-retry.txt` artifact separately if retaining it is required.
+
+### Out-of-Scope Observations
+
+No out-of-scope observations.
