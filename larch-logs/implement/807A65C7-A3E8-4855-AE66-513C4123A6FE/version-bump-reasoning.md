@@ -1,12 +1,12 @@
 # Version Bump Reasoning
 
-- **Base commit**: `5dc832cd` (Bump version to 29.8.42 (#2443))
-- **Current version**: `29.8.43`
+- **Base commit**: `4745c723` (Bump version to 29.8.47 (#2453))
+- **Current version**: `29.8.47`
 - **Classification scope**: `skills/**` and `agents/**` only (public plugin surface).
 
 ## Result: PATCH
 
-- **New version**: `29.8.44`
+- **New version**: `29.8.48`
 
 ### PATCH rationale
 
