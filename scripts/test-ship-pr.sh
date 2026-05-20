@@ -885,6 +885,18 @@ rm -rf "$sentinel_dir"
 # PR title: oldest commit (tail -1) with issue number prefix.
 root=$(make_repo pr_title_oldest_with_issue_num)
 tmp=$(make_tmpdir)
+initial_branch=$(git -C "$root" branch --show-current)
+if [ "$initial_branch" = "main" ]; then
+    git -C "$root" commit --allow-empty -q -m "base"
+    git -C "$root" update-ref refs/remotes/origin/main HEAD
+    git -C "$root" checkout -q -b pr-title-branch
+else
+    git -C "$root" checkout -q -b main
+    git -C "$root" commit --allow-empty -q -m "base"
+    git -C "$root" update-ref refs/remotes/origin/main HEAD
+    git -C "$root" checkout -q "$initial_branch"
+fi
+git -C "$root" commit --allow-empty -q -m "initial"
 git -C "$root" commit --allow-empty -q -m "chore(larch-logs): flush test-run"
 git -C "$root" commit --allow-empty -q -m "Bump version to 1.0.1"
 write_state "$tmp/ship-pr-state.sh" pr-create
@@ -892,6 +904,51 @@ clear_pr_state "$tmp/ship-pr-state.sh"
 run_subject "$root" "$tmp" "$tmp/rc"
 assert_rc "$tmp/rc" 0 "pr-title oldest: exits 0"
 assert_state_line "$tmp/ship-pr-state.sh" "PR_TITLE=Fixes #7: initial" "pr-title: oldest commit with issue prefix used as PR title"
+
+root=$(make_repo pr_create_existing_updates_title)
+tmp=$(make_tmpdir)
+cat > "$root/scripts/create-pr.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+echo "PR_NUMBER=123"
+echo "PR_URL=https://example.invalid/pr/123"
+echo "PR_TITLE=Title"
+echo "PR_STATUS=existing"
+STUB
+chmod +x "$root/scripts/create-pr.sh"
+cat > "$root/scripts/gh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$*" >> "${IMPLEMENT_TMPDIR:?}/gh-calls.log"
+if [[ "${1:-}" == pr && "${2:-}" == edit ]]; then
+  exit 0
+fi
+exit 1
+STUB
+chmod +x "$root/scripts/gh"
+initial_branch=$(git -C "$root" branch --show-current)
+if [ "$initial_branch" = "main" ]; then
+    git -C "$root" commit --allow-empty -q -m "base"
+    git -C "$root" update-ref refs/remotes/origin/main HEAD
+    git -C "$root" checkout -q -b existing-pr-branch
+else
+    git -C "$root" checkout -q -b main
+    git -C "$root" commit --allow-empty -q -m "base"
+    git -C "$root" update-ref refs/remotes/origin/main HEAD
+    git -C "$root" checkout -q "$initial_branch"
+fi
+git -C "$root" commit --allow-empty -q -m "initial"
+git -C "$root" commit --allow-empty -q -m "Bump version to 1.0.1"
+write_state "$tmp/ship-pr-state.sh" pr-create
+clear_pr_state "$tmp/ship-pr-state.sh"
+run_subject "$root" "$tmp" "$tmp/rc"
+assert_rc "$tmp/rc" 0 "existing pr title refresh: exits 0"
+if grep -Fxq 'pr edit 123 --repo owner/repo --title Fixes #7: initial' "$tmp/gh-calls.log"; then
+    ok "existing pr title refresh: updates existing PR title"
+else
+    fail "existing pr title refresh: should update existing PR title"
+    sed 's/^/    gh: /' "$tmp/gh-calls.log" 2>/dev/null || true
+fi
 
 # Postmerge manifest finalization: with PR_CLOSED=true, larch-log manifest runs.
 root=$(make_repo postmerge_flush)

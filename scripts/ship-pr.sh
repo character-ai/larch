@@ -1025,6 +1025,10 @@ run_pr_create_phase() {
     [ "$rc" -eq 0 ] || record_failure pr-create "write-final-report.sh post" "$rc" "$fail_file" Warnings
     if [ "$pr_status" = "existing" ]; then
         fail_file=$(failure_capture_path pr-create)
+        gh pr edit "$pr_number" "${repo_args[@]+"${repo_args[@]}"}" --title "$title" > "$fail_file" 2>&1
+        rc=$?
+        [ "$rc" -eq 0 ] || record_failure pr-create "gh pr edit --title" "$rc" "$fail_file"
+        fail_file=$(failure_capture_path pr-create)
         "$SCRIPT_DIR/gh-pr-body-update.sh" --pr "$pr_number" --body-file "$IMPLEMENT_TMPDIR/pr-body.md" "${repo_args[@]+"${repo_args[@]}"}" > "$fail_file" 2>&1
         rc=$?
         [ "$rc" -eq 0 ] || record_failure pr-create "gh-pr-body-update.sh" "$rc" "$fail_file"
