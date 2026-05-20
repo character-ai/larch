@@ -92,7 +92,7 @@ Process one approved GitHub issue per invocation, classifying intent and delegat
 
 **Source**: [`skills/implement/SKILL.md`](../skills/implement/SKILL.md) · [Diagram](../skills/implement/diagram.svg)
 
-Full implementation workflow spanning design through PR merge. In `--quick` (and SIMPLE auto-switch) paths, Step 5 runs `review-and-fix.sh --panel simple`: up to **5 rounds**, **3-judge panel votes every round** (Claude opus + Codex + Cursor; Claude replacement when an external is unhealthy), and the **simple review panel** (6 Cursor specialists including **Cursor edge-cases** plus one **Codex generalist**). The `--design-only` flag publishes design artifacts then exits without implementation (mutually exclusive with `--quick`).
+Full implementation workflow spanning design through PR merge. In `--quick` (and SIMPLE auto-switch) paths, Step 5 runs `review-and-fix.sh --panel simple`: up to **5 rounds**, a **3-judge panel on round 1** (Claude opus + Codex + Cursor; Claude replacement when an external is unhealthy) and a **2-judge panel on rounds 2+** (Claude + Cursor; Codex voter omitted), and the **simple review panel** (6 Cursor specialists including **Cursor edge-cases** plus one **Codex generalist** on round 1 only). The `--design-only` flag publishes design artifacts then exits without implementation (mutually exclusive with `--quick`).
 
 ## `/issue`
 
