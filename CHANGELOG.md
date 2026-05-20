@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [29.8.51] - 2026-05-20
+
+### Changed
+
+- Reject non-canonical review headings so JSONL category stays aligned with the five focus-area tags used downstream.
+- Document the whitelist contract next to the category field so consumers know empty means unknown or malformed extraction.
+- Lock in OOS fixtures for mangled headings versus valid tags so regressions surface in the compose harness.
+
 ## [29.8.50] - 2026-05-20
 
 ### Changed
