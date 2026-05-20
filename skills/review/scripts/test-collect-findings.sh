@@ -280,4 +280,26 @@ grep -Fq '### FINDING_2:' "$TMP/findings-3.md"
 grep -Fq '### FINDING_3:' "$TMP/findings-3.md"
 grep -Fq '[OUT_OF_SCOPE]' "$TMP/oos-3.md"
 
+# Bold-markdown OOS bullets normalize to short titles (#2417).
+bold_oos="$TMP/cursor-dynamic-oos-output.txt"
+cat > "$bold_oos" <<'EOF'
+### In-Scope Findings
+- In-scope only.
+
+### Out-of-Scope Observations
+- **risk-integration** — [`scripts/foo.sh`](https://example.com/doc) docs drift note.
+EOF
+printf '0\n' > "$bold_oos.done"
+printf 'STATUS=clean\n' > "$bold_oos.dirty-tree"
+out=$(WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.01 "$SCRIPT" --claude-output-files "$bold_oos" --mode description --timeout 1 --findings-file "$TMP/findings-bold-oos.md" --oos-file "$TMP/oos-bold-oos.md")
+assert_stdout_cap "$out"
+grep -Fq 'FINDINGS_COUNT=2' <<< "$out"
+grep -Fq 'OOS_COUNT=1' <<< "$out"
+grep -Fq '### FINDING_2: [OUT_OF_SCOPE] risk-integration: scripts/foo.sh' "$TMP/findings-bold-oos.md" \
+    || { echo "FAIL: expected normalized OOS title in findings" >&2; cat "$TMP/findings-bold-oos.md" >&2; exit 1; }
+grep -Fq '### FINDING_2: [OUT_OF_SCOPE] **' "$TMP/findings-bold-oos.md" && {
+    echo "FAIL: FINDING_2 title should not keep bold-markdown prefix" >&2
+    exit 1
+}
+
 echo "All assertions passed."

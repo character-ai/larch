@@ -314,6 +314,25 @@ out="$TMP/g.jsonl"
 [[ "$(record_field_by_id "$out" FINDING_5 category)" == "correctness" ]] \
     || fail "category extraction from '## <cat>: ...' failed"
 
+echo "=== OOS bold-markdown ## line extracts category (not colon leak) ==="
+mkdir -p "$TMP/bold-impl/round-1"
+cat > "$TMP/bold-impl/round-1/oos.md" <<'EOF'
+### FINDING_1: [OUT_OF_SCOPE] **risk-integration** — [`scripts/handler.go`](https://example.com/handler)
+- **Reviewer**: cursor-dynamic-output.txt
+- **Concern**: Follow-up integration risk.
+
+### FINDING_2: [OUT_OF_SCOPE] risk-integration: scripts/legacy.sh:1-5
+- **Reviewer**: cursor-docs-output.txt
+- **Concern**: Static colon format still works.
+EOF
+out="$TMP/bold.jsonl"
+stdout="$("$COMPOSE" --implement-tmpdir "$TMP/bold-impl" --issue 2417 --output "$out")"
+[[ "$stdout" == *"FINDINGS_TOTAL=2"* ]] || fail "bold OOS total: $stdout"
+[[ "$(record_field_by_id "$out" OOS_CR1_1 category)" == "risk-integration" ]] \
+    || fail "bold-markdown OOS category: got $(record_field_by_id "$out" OOS_CR1_1 category)"
+[[ "$(record_field_by_id "$out" OOS_CR1_2 category)" == "risk-integration" ]] \
+    || fail "static colon OOS category: got $(record_field_by_id "$out" OOS_CR1_2 category)"
+
 echo "=== invalid issue fails ==="
 set +e
 bad="$("$COMPOSE" --issue nope --output "$TMP/bad.jsonl" 2>&1)"
