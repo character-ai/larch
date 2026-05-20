@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Harmonized the code-voter first-pass prompt contract in Phase 2 of #2396 so voters may read the ballot and bounded diff/plan context files for silent verification while still emitting only `FINDING_N: VOTE` lines.
 - Closed: #2398
 
 ## [29.8.29] - 2026-05-19
