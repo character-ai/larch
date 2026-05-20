@@ -1626,7 +1626,7 @@ Apply the Rebase Checkpoint Macro with `<step-prefix>=7a.r` and `<short-name>=di
 After the macro returns successfully or silently skips, run the Phantom
 Untracked Probe with `--step 7a.r-post-rebase`.
 
-> **Continue to Step 8 IMMEDIATELY.** The code flow diagram is not the end of the run — version bump, PR creation, CI monitoring, and merge still must run.
+> **Continue to Step 8 IMMEDIATELY.** Step 7a diagrams are not the end of the run — version bump, PR creation, CI monitoring, and merge still must run.
 
 ### Pre-bump log flush
 
