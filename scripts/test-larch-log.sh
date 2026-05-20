@@ -435,6 +435,7 @@ printf '# dyn-api-contract-prompt\n' > "$_wr_source/dynamic-archetypes/dyn-api-c
 # Denied files that should stay out
 printf 'raw output\n' > "$_wr_source/cursor-specialist-correctness-output.txt"
 printf 'vote prompt\n' > "$_wr_source/main-agent-vote-prompt.txt"
+printf 'pre-retry narrative\n' > "$_wr_source/cursor-vote-output-first-pass.txt"
 
 "$LARCH_LOG" init --log-root "$_wr_staging/larch-logs" --skill implement --run-id "$_wr_run" --issue 2356 >/dev/null
 "$LARCH_LOG" write-round \
@@ -494,6 +495,18 @@ if [ ! -f "$_wr_round/main-agent-vote-prompt.txt" ]; then
     pass "write-round denied: *-vote-prompt.txt excluded"
 else
     fail "write-round must exclude *-vote-prompt.txt"
+fi
+
+# Test 6: parse-retry first-pass voter sidecar is included when present
+if [ -f "$_wr_round/cursor-vote-output-first-pass.txt" ]; then
+    pass "write-round commits cursor-vote-output-first-pass.txt"
+else
+    fail "write-round must commit cursor-vote-output-first-pass.txt (missing)"
+fi
+if grep -q 'pre-retry narrative' "$_wr_round/cursor-vote-output-first-pass.txt" 2>/dev/null; then
+    pass "write-round cursor-vote-output-first-pass.txt content matches source"
+else
+    fail "write-round cursor-vote-output-first-pass.txt content mismatch"
 fi
 
 # Byte-for-byte content verification on scout files

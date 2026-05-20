@@ -255,6 +255,14 @@ check_and_retry_voter_parse_rate() {
     if [[ "$retry_rc" -eq 0 && -s "$retry_output" ]]; then
         retry_status=$(check_voter_parse_rate "$retry_output" "$voter_tool" "$slot_num" silent | parse_rate_status_from_output)
         if [[ "$retry_status" == "OK" ]]; then
+            local first_pass_sidecar
+            case "$voter_path" in
+                *.txt) first_pass_sidecar="${voter_path%.txt}-first-pass.txt" ;;
+                *) first_pass_sidecar="${voter_path}-first-pass" ;;
+            esac
+            cp "$voter_path" "$first_pass_sidecar" 2>/dev/null || true
+            # Stderr so callers that capture this function's stdout (parse-rate status) are not polluted.
+            { emit_breadcrumb "voter-${voter_tool}: first-pass content preserved at $(basename "$first_pass_sidecar") (parse-rate retry succeeded)"; } >&2
             mv "$retry_output" "$voter_path"
             if [[ -f "${retry_output}.done" ]]; then
                 mv "${retry_output}.done" "${voter_path}.done"

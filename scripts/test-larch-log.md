@@ -12,5 +12,6 @@ the repo before committing, the `larch-log-flush.sh` post-merge sentinel no-op
 path, commit refusal on the default branch/main, and `write-round` coverage for
 scout artifacts (`scout-round*-status.env`, `scout-round*-manifest.json`) and
 dynamic-archetype files (`reviewer-dyn-*.md`, `dyn-*-prompt.md` flattened from
-`dynamic-archetypes/` to the round root), plus regression assertions that denied
+`dynamic-archetypes/` to the round root), inclusion of `cursor-vote-output-first-pass.txt`
+when present (parse-retry observability sidecar), plus regression assertions that denied
 files (`cursor-specialist-*-output.txt`, `*-vote-prompt.txt`) remain excluded.
