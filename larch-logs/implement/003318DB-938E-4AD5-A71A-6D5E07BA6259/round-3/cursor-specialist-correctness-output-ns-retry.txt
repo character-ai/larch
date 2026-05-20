@@ -1,0 +1,38 @@
+Gathering the diff and commit list for review.
+
+Checking whether `larch_err` exits (would break fail-open on `cp` failure) and verifying the full `check_and_retry_voter_parse_rate` flow.
+
+Verifying whether `check_and_retry_voter_parse_rate` can run twice on the same `voter_path` in one process and whether the leading `rm` affects that.
+
+### In-Scope Findings
+
+### FINDING_1: Leading sidecar rm can drop a leftover first-pass artifact before OK fast-path
+- **severity**: **Latent**
+- **focus-area**: `correctness` (source: `plan` / operational semantics not spelled out in plan)
+- **file:line**: [scripts/dispatch-code-voters.sh](scripts/dispatch-code-voters.sh):244-246
+- **what**: `rm -f "$first_pass_sidecar"` runs on every `check_and_retry_voter_parse_rate` entry, before `status` is computed and before the `NOT_SUBSTANTIVE` gate; on the `OK` early-return path the function still deletes the sidecar path if it already exists.
+- **concrete scenario**: A prior run (or tooling) left `claude-vote-output-first-pass.txt` under the same `REVIEW_TMPDIR`; a later run hits `NOT_SUBSTANTIVE` for a different slot first, or the same slot is re-dispatched into a reused tmpdir, and the voter is ultimately `OK` without a new parse-retry — the unconditional `rm` removes the older sidecar before any new preservation occurs, so the earlier first-pass snapshot is lost with no replacement.
+- **suggested fix**: Restrict removal to the retry-success path immediately before `cp` (or only run the cleanup once `status` is `NOT_SUBSTANTIVE`), so the no-retry `OK` path never deletes unrelated pre-existing sidecars.
+
+### FINDING_2: Plan’s “always emit breadcrumb after best-effort cp” is only partially met
+- **severity**: **Nit**
+- **focus-area**: `correctness` (source: `plan` — completeness w.r.t. plan)
+- **file:line**: [scripts/dispatch-code-voters.sh](scripts/dispatch-code-voters.sh):263-268
+- **what**: The plan called for a single fail-open `cp … || true` plus a breadcrumb; the implementation emits `emit_breadcrumb` only when `cp` succeeds and uses `larch_err` on failure (retry promotion still proceeds, which matches fail-open for `mv`).
+- **concrete scenario**: Disk full or permission denied on the sidecar path: operators get a generic warning line but no breadcrumb in the breadcrumb channel, so observability differs from the plan’s uniform breadcrumb signal.
+- **suggested fix**: After the `larch_err` branch, also call `emit_breadcrumb` (or fold the warning text into one stderr-only breadcrumb) so both outcomes surface the same mechanism.
+
+### FINDING_3: Docs understate allow-list coverage for waterfall-shaped voter paths
+- **severity**: **Nit**
+- **focus-area**: `risk-integration` (source: `requirements` / operator docs accuracy)
+- **file:line**: [scripts/larch-log.md](scripts/larch-log.md):239-244
+- **what**: Docs highlight `*-vote-output-first-pass.txt`; waterfall final paths like `codex-vote-output-phase3.txt` produce `codex-vote-output-phase3-first-pass.txt`, which is not matched by that narrower glob but is still included via the existing `*-output-*.txt` arm in `round_artifact_included`.
+- **concrete scenario**: A reader disables or doubts logging for phase-3 outputs because the named pattern does not mention `*-phase*-first-pass.txt`, though commits still work.
+- **suggested fix**: Mention in `larch-log.md` that non-base voter filenames remain governed by the broader `*-output-*.txt` allow-list patterns.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	latent	correctness	scripts/dispatch-code-voters.sh:244-246	Unconditional rm of first-pass sidecar path before parse-status branches; OK fast-path deletes pre-existing sidecar without replacing it	Reused REVIEW_TMPDIR still containing claude-vote-output-first-pass.txt from an earlier attempt; new run ends OK without retry — rm drops the prior first-pass snapshot before any new cp runs	Move rm to just before successful cp on the retry-success branch or gate rm on NOT_SUBSTANTIVE
+1	in_scope	nit	correctness	scripts/dispatch-code-voters.sh:263-268	Breadcrumb emitted only when cp succeeds; cp failure uses larch_err instead of the plan’s uniform breadcrumb after best-effort cp	cp fails (full disk / permissions): no emit_breadcrumb line, only larch_err — observability diverges from the stated plan	Add emit_breadcrumb (or equivalent) on the cp-failure branch while keeping mv fail-open
+1	in_scope	nit	risk-integration	scripts/larch-log.md:239-244	Documents only *-vote-output-first-pass.txt; phase3 sidecars use *-vote-output-phase3-first-pass.txt pattern	Operator assumes phase3 first-pass sidecars are excluded; they are actually included via *-output-*.txt	Clarify in larch-log.md that waterfall voter paths rely on the broader *-output-*.txt allow-list
+```

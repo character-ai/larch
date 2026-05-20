@@ -1,0 +1,21 @@
+Reviewing the pre-computed diff and key file regions for ungated assertions, section counts, and Regression 3 / `write_prior_round` placement. Gathering evidence read-only.
+
+Verifying section boundaries and whether `convergence` depends on functions defined only inside `dispatch` (would break `--section convergence`).
+
+Research is complete. Commit on branch: `797f048f` (“Rebalance CI shards 18→20…”).
+
+### In-Scope Findings
+
+- **correctness** — [`docs/linting.md:23`](docs/linting.md): The “**CI**” usage bullet still says harnesses run via `make test-harnesses-1` through `make test-harnesses-18`, while the same PR updates the dedicated “CI sharding” section and workflow to **20** shards. Readers and copy-pasted automation can assume an 18-wide matrix and mis-map failures to the wrong shard row. **Suggested fix:** change the range to `test-harnesses-20` (or drop a hard-coded upper bound and point at the Makefile / workflow).
+
+- **correctness** — [`docs/linting.md:90`](docs/linting.md): The LPT snippet still uses `range(18)` for bin count. With twenty CI shards, copy-paste rebalancing uses the wrong number of bins vs the live matrix (same class of drift called out in past run-log findings for 14 vs 18). **Suggested fix:** use `range(20)` or derive the bin count from the discovered shard list so it cannot drift.
+
+- **correctness** — [`docs/linting.md:106-123`](docs/linting.md): The “**Branch protection migration**” checklist lists required checks `test-harnesses (1)` … `(18)` only. After this branch, CI emits `test-harnesses (19)` and `(20)` as well; branch protection that follows the doc literally can **omit** those two checks as merge gates while the workflow still runs them. **Suggested fix:** append `- test-harnesses (19)` and `- test-harnesses (20)` to the bullet list (and align any ruleset guidance in the same paragraph).
+
+**Harness section split (scout checklist 1–4, correctness):** In [`scripts/test-dispatch-code-voters.sh`](scripts/test-dispatch-code-voters.sh), the last `fi  # end section: regressions-r3-codex` is at `437`, then only a blank line before `echo "PASS: test-dispatch-code-voters.sh"` at `466` — no ungated assertions. There are **eight** `if section_runs` guards at `163,193,264,313,335,357,396,439`. Regression 3 **claude** assertions live only under `edge-and-r3-claude` (`193–262`); the **codex** half is only under `regressions-r3-codex` (`439–463`) — no duplicate claude block in the codex section. In [`skills/review-and-fix/scripts/test-review-and-fix.sh`](skills/review-and-fix/scripts/test-review-and-fix.sh), `fi  # end section: convergence` is at `1945`, then blank lines and `echo "test-review-and-fix: ok"` at `1948` — no ungated tests after the last section. `write_prior_round` is defined inside `convergence` immediately after `if section_runs convergence` (`1228–1239`) and only used from that block onward. `run_orchestrator_case` is defined and used only inside `dispatch` (`253–288`); convergence does not call it, so `--section convergence` does not depend on a helper that would be skipped.
+
+### Out-of-Scope Observations
+
+- None for **pre-existing** harness defects: the section fences and PASS/ok placement in the two harness scripts match the intended “no code after the last `fi`” invariant for this diff.
+
+- **Note (not a harness defect):** Stale “18 shard” prose elsewhere under `larch-logs/` is historical run output, not part of this branch’s authored surface.

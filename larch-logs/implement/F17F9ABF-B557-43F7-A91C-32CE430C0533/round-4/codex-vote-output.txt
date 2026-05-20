@@ -1,0 +1,23 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: NO -- Bash already captures the `is_security_block` exit status at the first command in the else branch.
+FINDING_4: YES
+FINDING_5: EXONERATE -- The standalone stubs cover the behavior; aligning the test seam to the plan wording is traceability churn.
+FINDING_6: EXONERATE -- The branch is a readability nit, but the current exit-status handling is correct.
+FINDING_7: EXONERATE -- The warning names the actual comparison round; the strict N-1 wording mismatch is minor.
+FINDING_8: NO -- Retry markers intentionally cap retry attempts once per round, and same-round reuse is outside that contract.
+FINDING_9: EXONERATE -- Extra regression coverage is legitimate maintenance cost but trimming tests would not improve correctness.
+FINDING_10: EXONERATE -- Extra regression coverage is legitimate maintenance cost but not worth reducing.
+FINDING_11: YES
+FINDING_12: EXONERATE -- Fail-closed on missing findings is intentional and safer than treating missing data as empty.
+FINDING_13: EXONERATE -- Fail-closed on missing findings is intentional and safer than treating missing data as empty.
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: EXONERATE -- The code deliberately compares against the previous non-degraded round and reports that round number.
+FINDING_18: YES
+FINDING_19: YES
+FINDING_20: EXONERATE -- A degraded-round churn warning can be noisy, but it is advisory and not worth complicating this path.
+FINDING_21: EXONERATE -- The skip-degraded comparison is coherent and the warning includes the actual compared round.
+FINDING_22: EXONERATE -- The status specificity loss is real but terminal behavior remains correct for filtered-out rounds.
+FINDING_23: EXONERATE -- A positive custom-threshold test would be nice, but the current matrix already covers default, lowered, and invalid thresholds.

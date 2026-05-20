@@ -1,0 +1,28 @@
+# Review Round 1
+
+- Mode: `diff`
+- Accepted findings: 3
+- Rejected findings: 1
+- Exonerated findings: 5
+- Neutral findings: 0
+
+## Accepted Findings
+
+### FINDING_1: **Important** correctness — `scripts/dispatch-code-voters.sh:240`: stale `*-first-pass.txt` sidecars are never removed when a later run in the same `REVIEW_TMPDIR` takes the no-retry or retry-fail path. `review-and-fix.sh` can rerun `review-core.sh` against the same `round-$N` directory during degraded-panel retry; if the first run wrote `codex-vote-output-first-pass.txt` and the retry run parses cleanly, line 241 returns `OK` and the old sidecar remains, so `larch-log.sh write-round` commits stale first-pass content for the current round. Compute the first-pass sidecar path at the start of `check_and_retry_voter_parse_rate` and `rm -f` it before the initial parse-rate check, then reuse that path on retry success; add a regression that precreates a sidecar and verifies clean/no-retry and retry-fail runs remove it.
+- **Reviewer**: codex-generalist-output.txt
+- **Concern**: 1. **Important** correctness — `scripts/dispatch-code-voters.sh:240`: stale `*-first-pass.txt` sidecars are never removed when a later run in the same `REVIEW_TMPDIR` takes the no-retry or retry-fail path. `review-and-fix.sh` can rerun `review-core.sh` against the same `round-$N` directory during degraded-panel retry; if the first run wrote `codex-vote-output-first-pass.txt` and the retry run parses cleanly, line 241 returns `OK` and the old sidecar remains, so `larch-log.sh write-round` commits stale first-pass content for the current round. Compute the first-pass sidecar path at the start of `check_and_retry_voter_parse_rate` and `rm -f` it before the initial parse-rate check, then reuse that path on retry success; add a regression that precreates a sidecar and verifies clean/no-retry and retry-fail runs remove it.
+- **Suggested revision**: Address the concern above.
+
+
+### FINDING_2: **[correctness]** [`scripts/dispatch-code-voters.sh:263-265`](scripts/dispatch-code-voters.sh:263-265) — After a best-effort `cp "$voter_path" "$first_pass_sidecar" 2>/dev/null || true`, `emit_breadcrumb` always says first-pass content was preserved even when `cp` failed (disk full, permissions, etc.), so operators can be misled into thinking the sidecar exists and matches the pre-retry file. **Suggested fix:** Only emit that breadcrumb when `cp` succeeds (e.g. run `cp` in an `if cp ...; then ... emit_breadcrumb ...; fi` or test `-f "$first_pass_sidecar"` and compare size/sha after copy), or reword the message to “attempted to preserve … (best-effort)” when not verifying success.
+- **Reviewer**: dyn-observability-sidecar-output.txt
+- **Concern**: - **[correctness]** [`scripts/dispatch-code-voters.sh:263-265`](scripts/dispatch-code-voters.sh:263-265) — After a best-effort `cp "$voter_path" "$first_pass_sidecar" 2>/dev/null || true`, `emit_breadcrumb` always says first-pass content was preserved even when `cp` failed (disk full, permissions, etc.), so operators can be misled into thinking the sidecar exists and matches the pre-retry file. **Suggested fix:** Only emit that breadcrumb when `cp` succeeds (e.g. run `cp` in an `if cp ...; then ... emit_breadcrumb ...; fi` or test `-f "$first_pass_sidecar"` and compare size/sha after copy), or reword the message to “attempted to preserve … (best-effort)” when not verifying success.
+- **Suggested revision**: Address the concern above.
+
+
+### FINDING_9: correctness: scripts/dispatch-code-voters.sh:263-265
+- **Reviewer**: cursor-specialist-edge-cases-output.txt
+- **Concern**: [important] Breadcrumb claims first-pass was preserved after best-effort cp that ignores failures. Disk full or permission error: cp fails, mv still promotes retry; operators see a preserved-at message but no sidecar file, undermining observability and trust in breadcrumbs. Emit preserved message only after verifying the sidecar exists (and optionally matches source), or emit a different message when cp fails.
+- **Suggested revision**: Address the concern above.
+
+

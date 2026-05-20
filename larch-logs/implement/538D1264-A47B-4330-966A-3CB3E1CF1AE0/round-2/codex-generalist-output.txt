@@ -1,0 +1,11 @@
+### In-Scope Findings
+
+1. **Nit** `code-quality` `skills/review/scripts/dispatch-panel.md:13`, `skills/review/scripts/dispatch-panel.sh:279-280`: the contract says suppression happens when `REVIEW_TMPDIR` “or the manifest path” is under a harness ancestor, but the implementation now only checks `REVIEW_TMPDIR`. Update the doc to remove “or the manifest path,” or restore the manifest-path check if that behavior is still intended.
+
+2. **Nit** `code-quality` `skills/review/scripts/test-dispatch-panel.sh:203-216`, `skills/review/scripts/test-dispatch-panel.sh:551-575`: the old append-failure warning assertion now only verifies harness suppression, while the production-shaped regression covers only successful issue-log append. Add a production-shaped append-failure case so `dispatch-panel.sh:309-317` stays covered.
+
+### Out-of-Scope Observations
+
+None.
+
+Validation note: I attempted `bash skills/review/scripts/test-dispatch-panel.sh --section core`, but the read-only sandbox blocked `mktemp` with `Operation not permitted`, so I could not execute the harness.

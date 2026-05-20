@@ -1,0 +1,20 @@
+FINDING_1: YES
+FINDING_2: NO -- current success records already point at ORIG_OUTPUT and the retry-path sidecar remains valid.
+FINDING_3: NO -- the existing emission path preserves the canonical structured field order and pads substantive rows correctly.
+FINDING_4: EXONERATE -- non-.txt retry naming is a real edge, but pre-existing and not worth a tracking issue here.
+FINDING_5: EXONERATE -- same non-.txt path hygiene concern is legitimate but too marginal for future issue tracking.
+FINDING_6: EXONERATE -- the paragraph is dense, but a prose-only reshuffle is not worth a separate accepted finding.
+FINDING_7: NO -- `larch_err` is the repo’s stderr diagnostic path and is already used for warning-style messages.
+FINDING_8: EXONERATE -- duplicate retry-path structured sidecars are mildly confusing, but retention is consistent with the retry artifact policy.
+FINDING_9: EXONERATE -- the added assertion would be reasonable, but existing C_NS_FP_SUCCESS covers the same publish-to-original behavior.
+FINDING_10: EXONERATE -- non-.txt OUTPUT_FILE handling is a legitimate edge, but the runtime reviewer paths are .txt and a path-normalization change is disproportionate.
+FINDING_11: EXONERATE -- duplicate sidecars are not ideal, but switching to mv is not necessary for correctness.
+FINDING_12: NO -- the branch documentation now specifies copy/retention semantics, so the old plan’s mv wording is no longer authoritative.
+FINDING_13: NO -- retaining `<base>-ns-retry.txt` is explicitly documented and required for committed retry transcript recovery.
+FINDING_14: NO -- failing closed on first-pass copy failure is documented behavior, not a defect.
+FINDING_15: EXONERATE -- the naming/traceability concern is fair, but the existing failure coverage is enough.
+FINDING_16: EXONERATE -- a sidecar-copy-failure regression test would help, but the shim complexity outweighs this best-effort edge.
+FINDING_17: NO -- consumers are already required to parse `STRUCTURED_SIDECAR`; ignoring that field is a consumer bug.
+FINDING_18: EXONERATE -- asserting the first-pass sidecar in C_NSR would be redundant with C_NS_FP_SUCCESS and C_NSS.
+FINDING_19: EXONERATE -- extra missing/bad sentinel fixtures would be nice, but the current control flow cannot create the sidecar before successful validation.
+FINDING_20: NO -- the source-only helper invariant is directly exercised by the test; an extra comment/assertion would not materially improve coverage.

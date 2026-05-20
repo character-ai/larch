@@ -1,0 +1,7 @@
+Gathering the diff, commit list, and full `dispatch-panel.sh` context for a correctness-focused path-guard review.
+
+Tracing how `SCOUT_MANIFEST` is set on parse-failed paths and verifying the `case` pattern behavior against edge cases.
+
+Completing the checklist: patterns match nested `REVIEW_TMPDIR` (path must contain `/test-dispatch-panel.` after some prefix). `manifest_label` `none` does not match (no `/`). Regression 3: basename `review-prod-shape.*` does not match the three patterns; full path can match if ancestors include a guard segment. Creating the plan artifact and delivering the structured review.
+
+

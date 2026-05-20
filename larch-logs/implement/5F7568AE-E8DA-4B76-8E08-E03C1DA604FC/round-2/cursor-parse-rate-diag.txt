@@ -1,0 +1,10 @@
+voter_tool=cursor
+neutral_count=22
+total_findings=22
+voter_file=<TMPDIR>/round-2/cursor-vote-output.txt
+--- first 200 bytes of voter output ---
+Reading the ballot and session context to verify each finding before voting.
+
+Verifying ballot claims against the repo: reading cited sections and diff context.
+
+Verifying `test-review-core.sh` stub a

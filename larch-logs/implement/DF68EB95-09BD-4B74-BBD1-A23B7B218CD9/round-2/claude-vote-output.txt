@@ -1,0 +1,24 @@
+Verified the key pieces: test arithmetic, cap-prune loop structure, `PRUNE_FAILED_VERSIONS` handling, and warning message divergence. Ready to vote.
+
+FINDING_1: NO -- reviewer is confirming correctness, not raising a defect; no actionable issue
+FINDING_2: NO -- reviewer confirms under-cap behavior is consistent with code; no defect
+FINDING_3: NO -- reviewer confirms `cap-prune-trims-to-eight` arithmetic is consistent; no defect
+FINDING_4: NO -- reviewer confirms `crlf-session-root-keeps-version` counts match; no defect
+FINDING_5: NO -- reviewer confirms `multi-pinned-oldest-still-trims-to-eight` arithmetic is consistent; no defect
+FINDING_6: EXONERATE -- committed run-log artifacts are expected repo process; larch-logs flush commit is intentional, not issue-worthy
+FINDING_7: EXONERATE -- pre-existing Makefile duplicate target not introduced by this branch; minor maintenance noise, not worth a separate issue
+FINDING_8: EXONERATE -- same as FINDING_6; implement-run artifacts under larch-logs/ are expected per repo policy
+FINDING_9: NO -- no concern articulated; just lists a commit hash from prior work
+FINDING_10: NO -- no concern articulated; just lists a commit hash
+FINDING_11: NO -- no concern articulated; just describes review activity and diff reading
+FINDING_12: EXONERATE -- `multi-pinned-oldest-still-trims-to-eight` is valuable regression coverage for a real edge case; minor plan/code alignment gap, not issue-worthy
+FINDING_13: EXONERATE -- accurate clarifying language added to doc; trivial plan checklist gap
+FINDING_14: EXONERATE -- same as FINDING_12; extra coverage is clearly beneficial
+FINDING_15: EXONERATE -- doc correctly distinguishes session-derived vs executing-root; the warning message in practice covers both via `warn_preserved_active_version_once`, making the distinction pedantic
+FINDING_16: EXONERATE -- "pins do not consume prune budget" is slightly ambiguous but the immediately following explanatory clause ("the loop keeps deleting the oldest remaining unpinned versions until the retained set is at or below the cap") resolves it sufficiently
+FINDING_17: EXONERATE -- two different message scopes for different code paths (newer-than-stable vs cap-prune) are intentionally distinct; inconsistent phrasing is a nit not worth a fix
+FINDING_18: EXONERATE -- plan doc accuracy issue (understates "two" removals); implementation is correct, plan is immutable, no actionable code change
+FINDING_19: EXONERATE -- same as FINDING_16; ambiguity is resolved by the compound sentence
+FINDING_20: EXONERATE -- cap-loop refactor was necessary to correctly handle pinned oldest entries; old index-bounded loop would exhaust iterations without meeting cap when pins occupied early positions; change is correct and in-scope of the fix
+FINDING_21: EXONERATE -- valid PR summary documentation point; not worth a separate GitHub issue
+FINDING_22: EXONERATE -- `PRUNE_FAILED_VERSIONS` error path terminates correctly via `REMOVED_VERSION=false`; testing rm failures requires non-trivial harness changes (chmod); low-priority latent gap

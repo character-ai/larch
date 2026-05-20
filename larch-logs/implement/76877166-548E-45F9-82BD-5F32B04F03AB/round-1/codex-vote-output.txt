@@ -1,0 +1,8 @@
+FINDING_1: EXONERATE -- legitimate pre-existing typo, but too trivial for future tracking.
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: EXONERATE -- legitimate drift risk, but pinning exact prose in CI is brittle for this prompt-only wording change.
+FINDING_8: YES

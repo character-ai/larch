@@ -1,0 +1,9 @@
+Reading the ballot and verifying claims against the provided context files.
+
+Reading diff/plan context and verifying cited files in the workspace.
+
+Verifying FINDING_4: whether `skipped-no-bullets` appends execution issues (doc claims blanket append).
+
+Creating the plan document with verified votes. Ballot items 1–11 verified against the repo and session `diff-context.txt` / `plan-context.txt`.
+
+

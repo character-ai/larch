@@ -1,0 +1,27 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: NO -- standard larch-logs artifact, per-repo guidance says this is intentional shipping noise
+FINDING_6: EXONERATE -- same concern as in-scope FINDING_1; not independently issue-worthy
+FINDING_7: EXONERATE -- pre-existing mixed-version state is orthogonal to this branch; consumers require version tolerance regardless
+FINDING_8: NO -- trivial historical larch-log artifact, not a change-induced issue
+FINDING_9: EXONERATE -- covered by in-scope FINDING_4; tagged out-of-scope appropriately
+FINDING_10: NO -- pre-existing gap not introduced by this diff
+FINDING_11: NO -- pre-existing nit, not introduced by this diff
+FINDING_12: NO -- not a finding; just a commit subject line
+FINDING_13: NO -- not a finding; just a commit subject line
+FINDING_14: NO -- not a finding; commit subject line with an informational note about diff truncation
+FINDING_15: NO -- not a finding; just a commit subject line
+FINDING_16: NO -- not a finding; just a commit subject line
+FINDING_17: EXONERATE -- test stub growth is warranted by the new write-final-report dependency; not issue-worthy
+FINDING_18: YES
+FINDING_19: EXONERATE -- intentional heading normalization to avoid h2-within-h2 nesting in tally body; not worth filing
+FINDING_20: EXONERATE -- minor duplication within a single function, drift risk is low; not worth filing
+FINDING_21: EXONERATE -- scout/slot variable wiring from dispatch-panel.sh to review-core.sh predates this diff; tests confirm values flow correctly
+FINDING_22: YES
+FINDING_23: YES
+FINDING_24: EXONERATE -- render_rejected_findings_for_tally is only called on the aggregated file (line 1 always has the heading) or on rejected-findings-full.md (no top-level heading to strip); nit is hypothetical
+FINDING_25: YES
+FINDING_26: YES
+FINDING_27: EXONERATE -- tracking-issue-summary.sh performs an upsert; repeated calls update the same comment rather than creating duplicates; latent rate-limit concern is not issue-worthy

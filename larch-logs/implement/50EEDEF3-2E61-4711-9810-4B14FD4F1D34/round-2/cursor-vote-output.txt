@@ -1,0 +1,13 @@
+Reading the ballot and verifying claims against the codebase.
+
+FINDING_1: NO -- duplicate `.PHONY` is harmless and not worth a tracking issue  
+FINDING_2: EXONERATE -- minor doc gap; fix on next edit, not a standalone issue  
+FINDING_3: EXONERATE -- long but accurate history; `docs/linting.md` already documents refresh  
+FINDING_4: EXONERATE -- style-only; huge unindented `if` blocks match other harness scripts  
+FINDING_5: YES  
+FINDING_6: EXONERATE -- operational re-measure reminder, not a demonstrated CI failure  
+FINDING_7: NO -- duplicates FINDING_6 shard-3 timing concern  
+FINDING_8: YES  
+FINDING_9: NO -- duplicates FINDING_8; docs already list required checks through 20  
+FINDING_10: YES  
+FINDING_11: EXONERATE -- same silent-unknown-argv issue as FINDING_5; one fix covers both

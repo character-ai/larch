@@ -1,0 +1,29 @@
+Gathering the diff and commit list for plan-fidelity review.
+
+Verifying the convergence block’s `status` guard and `important_findings_present` control flow against the plan.
+
+Having verified the convergence guard and control flow in the working tree, here is the plan-fidelity review.
+
+### In-Scope Findings
+
+### FINDING_1: Part A convergence is limited to `status=complete` even though the written plan only skips non-zero exit, `round_num_dec < 2`, and `degraded_this_round`
+- **severity**: **Important**
+- **focus_area**: correctness
+- **location**: [skills/review-and-fix/scripts/review-and-fix.sh](skills/review-and-fix/scripts/review-and-fix.sh) 1145–1178 (guard `[[ "$status" == "complete" && ...`)
+- **issue**: Implementation plan Part A lists skips `exit_code != 0`, `round_num_dec < 2`, and `degraded_this_round=true` only; it does not restrict to `REVIEW_AND_FIX_STATUS=complete`. The code additionally requires `status == "complete"`, so other exit-0 outcomes (for example `no-changes` with two consecutive low `ACCEPTED_COUNT` values) never reach `converged-small-changes`.
+- **scenario / breakage**: Two consecutive rounds end with low accepts but the final round’s status is `no-changes` (or another non-`complete` exit-0 status); early termination never triggers despite matching the plan’s stated numeric and degraded rules.
+- **suggested_fix**: Align behavior with the plan (run Part A for every `exit_code==0` case the plan intended, adjusting ordering vs `fix-applied` / `main-agent-vote-required` if needed), or amend the plan and consumer docs to explicitly require `complete` as the only convergable status.
+
+### FINDING_2: Regression suite exceeds the “8 tests” called for in the implementation plan and does not use the planned `TEST_CORE_STATUS` stub hooks
+- **severity**: **Nit**
+- **focus_area**: risk-integration
+- **location**: [skills/review-and-fix/scripts/test-review-and-fix.sh](skills/review-and-fix/scripts/test-review-and-fix.sh) (block starting ~807; numbered cases through “Test 11”)
+- **issue**: The implementation plan asks for eight regression tests and names `TEST_CORE_STATUS=degraded-panel` / `degraded-panel-clean-retry` style stubs; the diff adds more than eight cases and uses dedicated `REVIEW_AND_FIX_REVIEW_CORE_SH` stub scripts instead of those `TEST_CORE_STATUS` values.
+- **scenario / breakage**: No runtime breakage; this is traceability drift for reviewers expecting exactly eight tests and the named stub mechanism from the plan.
+- **suggested_fix**: Rename/trim to eight plan-anchored tests or update the implementation plan to match the richer harness; optionally add thin wrappers that set `TEST_CORE_STATUS` as originally specified for parity with the plan text.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/review-and-fix/scripts/review-and-fix.sh:1145-1178	Part A convergence requires status=complete though the written plan only gated on exit_code round_num and degraded	This skips early termination for other exit-0 statuses such as no-changes when two consecutive rounds still have low ACCEPTED_COUNT	Align code with the plan or update the plan docs to require complete-only convergence
+1	in_scope	nit	risk-integration	skills/review-and-fix/scripts/test-review-and-fix.sh:807-1262	More than eight tests and no TEST_CORE_STATUS degraded-panel stubs as named in the implementation plan	Reviewers tracing plan text see count and mechanism mismatch	Rename trim to eight tests or update the plan add thin TEST_CORE_STATUS shims
+```

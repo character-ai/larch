@@ -1,0 +1,23 @@
+Now let me verify the key correctness claims by checking the actual code in the diff.
+
+The core concern across several findings: `TRANSIENT_ATTEMPT=1` is always passed as the 7th arg to `append_launch_failure`, even on non-transient failures. With `RETRY_COUNT=1` and `TRANSIENT_RETRY_COUNT=1`, `append-tool-failure.sh`'s first branch fires (`both set → auth-retries=N, transient-retries=M`), but the `SL-transient-obs-nontransient` test asserts `retries=1` (legacy format) and `assert_not_regex` for `transient-retries=`. This is a genuine contradiction confirmed in the diff.
+
+FINDING_1: YES
+FINDING_2: EXONERATE -- transient-only omission is explicitly documented in the .md as requiring --retry-count alongside; no shipped caller exercises this path
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: EXONERATE -- dd /dev/urandom is speculative CI friction with an explicit fallback; only actionable if flakes appear
+FINDING_6: EXONERATE -- duplicates FINDING_2; same documented-behavior conclusion, complexity of an elif branch outweighs benefit
+FINDING_7: NO -- adding cursor observability tests beyond the minimum plan scope is net positive coverage, not a defect
+FINDING_8: EXONERATE -- functions are inside separate subshells by architectural necessity; hoisting requires restructuring the test's isolation model
+FINDING_9: YES
+FINDING_10: EXONERATE -- same as FINDING_2/6; no shipped caller passes transient-only; documented contract is clear
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: EXONERATE -- execution-issues body text containing the tool label substring is theoretically possible but highly unlikely in practice for this log format
+FINDING_15: NO -- plan verification checklist being incomplete is trivial documentation drift, not worth a tracking issue
+FINDING_16: EXONERATE -- same as FINDING_2/6/10; no shipped caller exercises this path
+FINDING_17: EXONERATE -- format change is intentional and documented; downstream parsers using `retries=` still partially match `auth-retries=`; concern is speculative without evidence of live parsers
+FINDING_18: EXONERATE -- same as FINDING_14; grep -c over-count is unlikely for structured header output
+FINDING_19: EXONERATE -- explicit fallback `printf '%05120d' 0` handles the sandbox case; concern is speculative

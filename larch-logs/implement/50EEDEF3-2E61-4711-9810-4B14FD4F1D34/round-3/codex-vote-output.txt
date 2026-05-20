@@ -1,0 +1,11 @@
+FINDING_1: EXONERATE -- Pre-existing harness argv footgun; real but not worth a standalone tracking issue.
+FINDING_2: EXONERATE -- Operational branch-protection risk is documented and admin-side, not a diff logic defect.
+FINDING_3: NO -- Duplicate `.PHONY` declarations are harmless cosmetic Makefile noise.
+FINDING_4: NO -- Stale labels in historical run logs are not a product or CI defect.
+FINDING_5: EXONERATE -- Unchanged CI supply-chain posture is legitimate but separate and not issue-worthy here.
+FINDING_6: EXONERATE -- Valid nit, but CI uses fixed Makefile invocations and stricter parsing is not worth blocking this shard split.
+FINDING_7: EXONERATE -- Real inconsistency, but optional doc alignment is too low-impact to require.
+FINDING_8: EXONERATE -- Strict argv in `test-review-and-fix` is reasonable; loosening it would trade away typo safety.
+FINDING_9: EXONERATE -- Timing concern is plausible but speculative until CI shows shard 3 regression.
+FINDING_10: EXONERATE -- Strict parsing only affects unsupported ad-hoc args and is an acceptable contract.
+FINDING_11: EXONERATE -- Same strict-argv concern; plan parity does not require copying the dispatch harness’s permissive parser.

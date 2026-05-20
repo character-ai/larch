@@ -1,0 +1,9 @@
+Reading the ballot and locating diff/plan context to verify each finding.
+
+Verifying ballot claims against the codebase: reading the cited files and session diff context.
+
+Checking how `raw_output` is set and whether a missing file can occur after `launch_rc=0`:
+
+Verification complete: `awk` on a missing `$raw_output` under `set -e` aborts before `emit_parse_failed_result` (lines 262–277). `append_scout_parse_issue` uses a double-quoted `--entry` with `${reason}` and `${manifest_label}` — Bash does not re-parse embedded `$(...)` inside expanded parameter values; `append-execution-issue.sh` stages with `printf '%s\n' "$ENTRY"`. Calling CreatePlan to satisfy plan-mode workflow.
+
+

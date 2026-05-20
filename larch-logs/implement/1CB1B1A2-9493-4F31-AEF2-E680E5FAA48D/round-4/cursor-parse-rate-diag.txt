@@ -1,0 +1,10 @@
+voter_tool=cursor
+neutral_count=11
+total_findings=11
+voter_file=<TMPDIR>/round-4/cursor-vote-output.txt
+--- first 200 bytes of voter output ---
+Reading the ballot and verifying claims against the provided context files.
+
+Reading diff/plan context and verifying cited files in the workspace.
+
+Verifying FINDING_4: whether `skipped-no-bullets` ap

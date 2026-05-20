@@ -1,0 +1,9 @@
+### In-Scope Findings
+
+1. **Important** `correctness` `skills/review-and-fix/scripts/review-and-fix.sh:1195`: degraded rounds are still included in the Important-finding scan even though they are excluded from the convergence count. In a run where round 1 is clean/small, round 2 is degraded and contains an Important finding, and round 3 is clean/small, `prev_round_a` becomes round 1 but the loop scans `round-1` through `round-3`, so the degraded round 2 finding blocks `converged-small-changes`. Suggested fix: scan only the current round and the selected previous non-degraded round, or skip `round_degraded` rounds inside the scan loop.
+
+### Out-of-Scope Observations
+
+No out-of-scope observations.
+
+Validation: `bash -n` passed for the changed shell scripts. The full regression harnesses could not run in this read-only environment because `mktemp` failed with `Operation not permitted`. Reviewed commits: `9e2d9f1e`, `b0861c9e`, `aaeffa51`, `44482d14`, `8444362a`.

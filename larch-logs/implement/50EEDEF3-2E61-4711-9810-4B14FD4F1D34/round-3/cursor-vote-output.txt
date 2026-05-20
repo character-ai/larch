@@ -1,0 +1,27 @@
+Reading the ballot and session context to verify each finding before voting.
+
+Reading diff/plan context and the cited source files to verify ballot claims.
+
+Verified against the repo: `test-dispatch-code-voters.sh` uses `*) shift ;;` and `--section) SECTION="$2"; shift 2 ;;` (lines 20–24), so a trailing `--section` can hit unset `$2` under `set -u`. `test-review-and-fix.sh` uses strict unknown-arg handling and checks `$#` before reading `--section` (lines 11–26). Makefile diff adds `test-review-and-fix-convergence` to `test-harnesses-3` and expands CI to 20 shards; `.PHONY` duplication for some targets remains. Below are the required vote lines only.
+
+FINDING_1: EXONERATE -- Pre-existing test-harness argv footgun; real but not worth a standalone tracking issue.
+
+FINDING_2: EXONERATE -- Accurate ops note about branch protection; docs address it and it is not a logic defect in the diff.
+
+FINDING_3: NO -- True cosmetic pre-existing Makefile noise with no functional impact.
+
+FINDING_4: NO -- Stale committed run-log labels are explicitly out of scope for this PR.
+
+FINDING_5: EXONERATE -- CI rg install is unchanged by the shard work; supply-chain hardening is a separate thread, not issue-worthy here.
+
+FINDING_6: EXONERATE -- Valid nit on permissive `*) shift` vs CI always passing `--section` from Makefile; tightening adds little versus occasional local typos.
+
+FINDING_7: EXONERATE -- Real inconsistency between harnesses; optional doc alignment suffices without forcing identical argv semantics.
+
+FINDING_8: EXONERATE -- Stricter argv in `test-review-and-fix` is a reasonable choice; loosening to match dispatch would trade away typo safety for marginal convenience.
+
+FINDING_9: EXONERATE -- Plausible shard timing risk but hypothetical until CI shows regression; rebalance path already documented.
+
+FINDING_10: EXONERATE -- Behavioral tightening is intentional; callers should pass only supported flags rather than ignoring unknown argv.
+
+FINDING_11: EXONERATE -- Same theme as FINDING_10; strict parsing is acceptable even if plan prose implied parity with the dispatch harness.

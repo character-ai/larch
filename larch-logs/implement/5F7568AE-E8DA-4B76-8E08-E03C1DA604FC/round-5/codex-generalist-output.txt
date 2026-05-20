@@ -1,0 +1,9 @@
+### In-Scope Findings
+
+1. **Important** `risk-integration` [skills/review/references/heavy-worker.md:65](<OPERATOR_REPO_PATH>/skills/review/references/heavy-worker.md:65)  
+   The `/review --subagent` heavy-worker contract still tells the worker to write `review-summary.json` with `schema_version: 1` and no `panel` object. Concrete breakage: a subagent review can successfully return a schema-1 summary, so the committed run-log still lacks `panel.scout_status`, `panel.static_slot_count`, `panel.dynamic_slot_count`, and `panel.total_slot_count` despite the new inline `emit-tally.sh` schema. Update this runtime prompt contract to schema version 2 and include the new `panel` fields/defaults.
+
+2. **Important** `correctness` [skills/review/scripts/review-core.sh:523](<OPERATOR_REPO_PATH>/skills/review/scripts/review-core.sh:523)  
+   The `main-agent-vote-required` path exits before calling `emit-tally.sh`, so 0-judge/degraded reviews do not get the new schema-2 `review-summary.json` with panel telemetry. Concrete scenario: when voter dispatch returns `TALLY_STATUS=main-agent-vote-required`, `review-core.sh` flushes the round log and exits, leaving `round-N/review-summary.json` missing or stale while stdout still reports `SCOUT_STATUS`/`DYNAMIC_SLOTS`. Call `emit-tally.sh` in this branch using the tally output files and pass `--scout-status`, `--dynamic-slots`, and `--static-slot-count` before `flush_round_log`.
+
+I could not run the shell harnesses because this sandbox is read-only and `mktemp` failed to create temp directories.

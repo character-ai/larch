@@ -1,0 +1,23 @@
+Reading the ballot and verifying claims against session context (read-only).
+
+Verifying ballot claims against the repository files.
+
+FINDING_1: YES
+FINDING_2: EXONERATE -- cosmetic duplicate wording; no separate issue needed
+FINDING_3: NO -- duplicate of FINDING_2 on the same lines
+FINDING_4: NO -- duplicate of FINDING_2 on the same lines
+FINDING_5: EXONERATE -- real typo is at ~1223; ~135 anchor is wrong and still cosmetic only
+FINDING_6: YES
+FINDING_7: NO -- duplicate of FINDING_6
+FINDING_8: NO -- duplicate of FINDING_1 / FINDING_9 / FINDING_13
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: NO -- duplicate of FINDING_11
+FINDING_13: YES
+FINDING_14: NO -- duplicate of FINDING_10
+FINDING_15: EXONERATE -- Test 1b already encodes default via non-git vs codex exit-2; extra harness optional
+FINDING_16: YES
+FINDING_17: NO -- duplicate of FINDING_16
+FINDING_18: EXONERATE -- matches intentional cursor gate before git-tree; doc/operator guidance suffices
+FINDING_19: NO -- duplicate of FINDING_15

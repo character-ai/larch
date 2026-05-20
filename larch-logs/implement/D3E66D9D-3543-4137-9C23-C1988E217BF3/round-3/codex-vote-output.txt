@@ -1,0 +1,25 @@
+FINDING_1: NO -- no sibling harness invokes dispatch-code-voters, so there is no uncovered caller.
+FINDING_2: EXONERATE -- duplicate shard tail work is real but minor CI inefficiency and not worth a tracking issue.
+FINDING_3: NO -- repository search confirms no other harness invokes dispatch-code-voters/check_voter_parse_rate.
+FINDING_4: EXONERATE -- swallowed append failures are pre-existing policy and not worth a future issue here.
+FINDING_5: EXONERATE -- voter1 failure logging is a different path and harness startup env cleanup avoids the current leak.
+FINDING_6: EXONERATE -- per-case subshells would only guard against hypothetical future exported env, not current behavior.
+FINDING_7: EXONERATE -- per-invocation isolation adds complexity for a future-edit risk not present in the harness.
+FINDING_8: EXONERATE -- feature wording mismatch is real, but the implementation plan and code agree.
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: EXONERATE -- global unset is sufficient for current tests; env -u everywhere is overkill.
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: NO -- no documented contract requires append-tool-failure before stderr.
+FINDING_17: YES
+FINDING_18: EXONERATE -- literal feature wording differs, but no current leak remains.
+FINDING_19: EXONERATE -- workflow-level Node24 forcing was explicitly requested; hypothetical action incompatibility is an accepted tradeoff.
+FINDING_20: YES
+FINDING_21: YES
+FINDING_22: NO -- production-shape regression already asserts non-suppressed append-tool-failure writes for retry-fail.
+FINDING_23: NO -- regression3 already has explicit non-harness issues-log assertions for claude and codex.
+FINDING_24: YES
+FINDING_25: EXONERATE -- global startup unset is adequate for the current harness.

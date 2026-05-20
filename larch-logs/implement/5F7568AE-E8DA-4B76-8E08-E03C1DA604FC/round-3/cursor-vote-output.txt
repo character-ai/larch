@@ -1,0 +1,9 @@
+Reading the ballot and verifying claims against referenced context files.
+
+Reading plan/diff context and verifying cited files and line ranges in the repo.
+
+Verifying the aggregate `awk` logic for the two-line case and checking `review-core.sh` for `set -e` around the zero-findings emit.
+
+Creating the plan document that records verified evidence and our votes.
+
+

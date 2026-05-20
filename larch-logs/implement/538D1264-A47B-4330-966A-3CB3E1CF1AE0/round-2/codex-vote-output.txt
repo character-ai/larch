@@ -1,0 +1,24 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: EXONERATE -- Legitimate symlink limitation, but too low-likelihood and inherent to this heuristic to track separately.
+FINDING_7: NO -- This is a confirming note about the regression test shape, not a defect or future issue.
+FINDING_8: NO -- This is a confirming note about intended harness ancestry matching, not a defect or future issue.
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: EXONERATE -- The pre-suppression log resolution is harmless cheap work and not worth churn.
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: YES
+FINDING_18: YES
+FINDING_19: YES
+FINDING_20: YES
+FINDING_21: YES
+FINDING_22: YES
+FINDING_23: YES
+FINDING_24: YES

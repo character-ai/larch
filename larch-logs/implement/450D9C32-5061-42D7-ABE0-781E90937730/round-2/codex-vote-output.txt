@@ -1,0 +1,10 @@
+FINDING_1: YES
+FINDING_2: EXONERATE -- legitimate pre-existing cleanliness concern, but not worth a separate issue from this indirect amplification.
+FINDING_3: NO -- the current docs already state the tracking-issue comment is the canonical live source for the PR URL.
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: EXONERATE -- legitimate edge case, but the best-effort pre-PR log commit is an intentional tradeoff and stalling would add more friction than warranted.
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES

@@ -1,0 +1,15 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: EXONERATE -- Legitimate stale cross-reference, but not worth a separate future issue; fix with this threshold cleanup.
+FINDING_8: EXONERATE -- Legitimate doc drift, but it should be handled with the current harness/docs fix rather than tracked separately.
+FINDING_9: EXONERATE -- Legitimate stale documentation cluster, but a follow-up issue would be overhead for straightforward companion edits.
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: YES

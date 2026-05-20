@@ -1,0 +1,14 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: NO -- generated run-log snapshots are expected artifacts, not a plan-fidelity defect.
+FINDING_4: EXONERATE -- canonical `round-N` naming is an established contract, so hypothetical zero-padded dirs are not issue-worthy.
+FINDING_5: EXONERATE -- legitimate but duplicate of in-scope FINDING_1, so no separate future issue is needed.
+FINDING_6: NO -- `mktemp` creates a private temp file and same-UID races are not a meaningful security boundary here.
+FINDING_7: EXONERATE -- the Step 8+ placement is justified because `PR_URL` is unavailable at Step 7a, and repo docs reflect that.
+FINDING_8: YES
+FINDING_9: EXONERATE -- the implementation still commits `final-summary.md` pre-merge after `PR_URL` exists; requiring literal Step 7a would be worse.
+FINDING_10: EXONERATE -- the shipped lifecycle is a justified architecture change, not a runtime correctness bug.
+FINDING_11: EXONERATE -- `emit-tally.sh` is the validation boundary; the actionable issue is preserving `review-core` status on emit failure.
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: NO -- `SCOUT_STATUS` is produced from bounded internal statuses; malicious sidecar tampering is not a credible security issue.

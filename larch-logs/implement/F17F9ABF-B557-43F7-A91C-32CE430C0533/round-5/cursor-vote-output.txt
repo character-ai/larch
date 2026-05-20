@@ -1,0 +1,19 @@
+Reading the ballot and session context to verify each finding.
+
+Verifying ballot claims against the codebase at the cited locations.
+
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: EXONERATE -- optional naming-only traceability; behavior already covered
+FINDING_4: EXONERATE -- same inclusive Important-scan issue as FINDING_1
+FINDING_5: EXONERATE -- matches non-degraded baseline and stderr names that round
+FINDING_6: EXONERATE -- channel nit; changing buys little versus churn
+FINDING_7: EXONERATE -- duplicate of FINDING_5; message states the baseline round
+FINDING_8: EXONERATE -- duplicate of FINDING_5/7
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: EXONERATE -- duplicate of FINDING_10 launcher-gap
+FINDING_12: EXONERATE -- document cap uses terminal DEGRADED_ROUND unless product needs per-attempt inflation
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: YES

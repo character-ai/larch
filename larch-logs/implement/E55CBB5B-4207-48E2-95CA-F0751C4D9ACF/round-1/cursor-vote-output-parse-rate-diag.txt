@@ -1,0 +1,12 @@
+slot=3
+voter_tool=cursor
+neutral_count=14
+total_findings=14
+voter_file=<TMPDIR>/round-1/cursor-vote-output.txt
+voter_sha256=c7acd22f6c5537576c35a554136cd2ba9f57b304988eb7a5d17166b2417201bd
+--- first 200 bytes of voter output ---
+Reading the ballot and verifying claims against session context files.
+
+Verifying ballot claims against the repo and session diff context.
+
+Confirming `tally-plan-review.sh` uses `Exon` in the per-fin

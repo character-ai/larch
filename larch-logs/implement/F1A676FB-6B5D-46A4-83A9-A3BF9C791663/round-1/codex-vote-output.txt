@@ -1,0 +1,19 @@
+FINDING_1: YES
+FINDING_2: EXONERATE -- Legitimate pre-existing cosmetic typo, but not worth a tracking issue.
+FINDING_3: EXONERATE -- Legitimate pre-existing cosmetic typo, but not worth a tracking issue.
+FINDING_4: EXONERATE -- Legitimate pre-existing cosmetic typo, but not worth a tracking issue.
+FINDING_5: EXONERATE -- Legitimate cosmetic duplicate of the same wording issue, not issue-worthy.
+FINDING_6: EXONERATE -- Legitimate SECURITY.md drift, but covered by in-scope findings rather than a future issue.
+FINDING_7: EXONERATE -- Legitimate SECURITY.md drift, but covered by in-scope findings rather than a future issue.
+FINDING_8: EXONERATE -- Legitimate docs/linting.md drift, but covered by in-scope findings rather than a future issue.
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: YES
+FINDING_18: EXONERATE -- Real behavior change, but fail-closed handling would complicate the intentional Cursor-unavailable fallback; SECURITY/docs coverage is enough.
+FINDING_19: YES

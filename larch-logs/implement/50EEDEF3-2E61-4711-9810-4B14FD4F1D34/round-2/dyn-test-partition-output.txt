@@ -1,0 +1,32 @@
+Reviewing the branch diff for test-partition correctness: reading the pre-computed diff and commit history, then inspecting full files where context is insufficient.
+
+Verifying partition integrity in the workspace: counting section guards, checking file endings, and scanning `test-review-and-fix.sh` for dropped arguments or misplaced code.
+
+Checking for assertions or scenario code before the first `section_runs` block and verifying the edge section's R3 claude block isn't duplicated.
+
+Checking whether stubs or helpers used by the convergence section are defined inside the dispatch-only block (would break `--section convergence`).
+
+Verification against the scout checklist (using the repo state reflected in the cached diff and current files):
+
+**`scripts/test-dispatch-code-voters.sh`**
+- `grep -c 'if section_runs'` → **8** (happy, edge-and-r3-claude, retry-claude, retry-codex-success, retry-cursor, retry-codex-fail-and-fallback, regressions-r1-r2, regressions-r3-codex).
+- Each `if section_runs X` pairs with `fi  # end section: X` with matching names (see grep hits at 163–464 in [`scripts/test-dispatch-code-voters.sh`](scripts/test-dispatch-code-voters.sh)).
+- Between the last `fi  # end section: regressions-r3-codex` and `echo "PASS: test-dispatch-code-voters.sh"` there is only a blank line ([`scripts/test-dispatch-code-voters.sh:464-466`](scripts/test-dispatch-code-voters.sh)).
+- Pre–`if section_runs happy` code is stub/fixture setup only (no scenario assertions) ([`scripts/test-dispatch-code-voters.sh:148-162`](scripts/test-dispatch-code-voters.sh)).
+- Regression 3 claude assertions exist only under `edge-and-r3-claude` ([`scripts/test-dispatch-code-voters.sh:238-261`](scripts/test-dispatch-code-voters.sh)); codex only under `regressions-r3-codex` ([`scripts/test-dispatch-code-voters.sh:439-463`](scripts/test-dispatch-code-voters.sh)) — no duplicate claude block in the codex section.
+
+**`skills/review-and-fix/scripts/test-review-and-fix.sh`**
+- `if section_runs dispatch` closes at [`1226`](skills/review-and-fix/scripts/test-review-and-fix.sh); `if section_runs convergence` opens at [`1228`](skills/review-and-fix/scripts/test-review-and-fix.sh); `write_prior_round` is defined only inside convergence and used only there.
+- Stubs and `make_work_repo` / `run_review_and_fix` stay before the first section guard ([`skills/review-and-fix/scripts/test-review-and-fix.sh:1-231`](skills/review-and-fix/scripts/test-review-and-fix.sh)).
+- `run_orchestrator_case` is defined and used only inside `dispatch` ([`253-288`](skills/review-and-fix/scripts/test-review-and-fix.sh)); convergence does not reference it.
+- After `fi  # end section: convergence` only the success line runs ([`1945-1948`](skills/review-and-fix/scripts/test-review-and-fix.sh)).
+
+No partition-integrity or assertion-placement defect surfaced from this pass.
+
+### In-Scope Findings
+
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+
+- **code-quality**, [`skills/review-and-fix/scripts/test-review-and-fix.sh:12-16`](skills/review-and-fix/scripts/test-review-and-fix.sh): The argv loop uses `*) shift ;;`, mirroring [`scripts/test-dispatch-code-voters.sh:20-24`](scripts/test-dispatch-code-voters.sh). Extra positional arguments are dropped instead of rejected; this is unchanged for the dispatch harness and is a general footgun only if someone wraps the script with unexpected args. Optional hardening: treat unknown tokens as an error (not required for the stated CI/Makefile paths, where the inner command is fixed).

@@ -1,0 +1,15 @@
+Reading the ballot and session context to verify findings.
+
+FINDING_1: YES
+FINDING_2: EXONERATE -- generic PR-splitting advice not worth a tracking issue
+FINDING_3: EXONERATE -- optional harness only; not issue-worthy
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: NO -- meta-confirmation not an actionable defect report
+FINDING_7: NO -- meta-confirmation not an actionable defect report
+FINDING_8: NO -- duplicate of FINDING_5
+FINDING_9: YES
+FINDING_10: EXONERATE -- overlaps FINDING_9 once changelog is fixed
+FINDING_11: EXONERATE -- same no-tools vs path-read tension as FINDING_1
+FINDING_12: EXONERATE -- speculative duplicate of FINDING_1
+FINDING_13: NO -- duplicate of FINDING_5

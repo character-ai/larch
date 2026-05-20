@@ -1,0 +1,25 @@
+Reading the ballot and verifying against provided context.
+
+Verifying ballot claims against the codebase and session diff context.
+
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: EXONERATE -- squash/reword at merge time; no GitHub issue needed
+FINDING_4: YES
+FINDING_5: EXONERATE -- `else` branch still sees correct `$?` from `important_findings_present` today
+FINDING_6: EXONERATE -- DRY nit; extract helper only if this block churns in practice
+FINDING_7: EXONERATE -- extra regression coverage is reasonable cost unless plan explicitly caps eight
+FINDING_8: EXONERATE -- legacy tmpdirs are out of contract; document non-retroactivity if needed
+FINDING_9: EXONERATE -- intentional N vs N-1 diagnostic; document asymmetry vs Part A if unclear
+FINDING_10: EXONERATE -- same Part C vs Part A asymmetry as FINDING_9
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: EXONERATE -- same stale-flag mechanism as FINDING_4; one fix covers both
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: EXONERATE -- subsumed if FINDING_15 adds explicit exit-0 handling text
+FINDING_17: EXONERATE -- duplicate doc nit with FINDING_15/16
+FINDING_18: EXONERATE -- same launcher vs prompt-side cap drift as FINDING_2/14
+FINDING_19: EXONERATE -- same churn-warning semantics as FINDING_9
+FINDING_20: EXONERATE -- duplicate of FINDING_9/19 churn-warning concern
+FINDING_21: YES

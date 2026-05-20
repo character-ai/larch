@@ -1,0 +1,11 @@
+Reading the ballot and session context to verify each finding before voting.
+
+Verifying ballot claims against the codebase: reading plan/diff context and the cited files.
+
+Checking `reviewer_for_block` in `lib-vote-tally.sh`, test harness coverage, and `compose-review-findings.md`.
+
+Verifying there's no `### OOS_` test and checking how `review-findings-full.jsonl` is used (committed vs local).
+
+Votes verified against `collect-findings.sh` (awk `skip`/`## Commits since merge-base`), `tally-code-votes.sh` (security OOS still appended to `OOS_FILE`), `compose-review-findings.sh` (OOS inner-`###` handling, `oos.md` ingestion), `lib-vote-tally.sh` (`reviewer_for_block` awk parity), `compose-review-findings.md`, and `test-compose-review-findings.sh` (no `### OOS_` fixture; OOS_C1 reviewer not asserted).
+
+

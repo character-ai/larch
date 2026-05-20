@@ -1,0 +1,22 @@
+FINDING_1: YES
+FINDING_2: NO -- CI and lint registration for a new harness is expected integration, not a future issue.
+FINDING_3: EXONERATE -- A global bounded transient budget is defensible; resetting per auth wave risks multiplying retries.
+FINDING_4: EXONERATE -- The duplicated auth predicate is minor and a helper would add little value here.
+FINDING_5: EXONERATE -- The output-file heuristic is intentional; the actionable stale-doc/comment cases are covered by narrower findings.
+FINDING_6: YES
+FINDING_7: NO -- The comment already states exit code 1 is outside the transient allowlist.
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: EXONERATE -- The sidecar-based plan would be unreliable with wrapper noise; align docs/tests rather than reverting the design.
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: EXONERATE -- The `/dev/null` sidecar fallback edge case is real but rare, and retries remain bounded.
+FINDING_17: EXONERATE -- Sleep-interruption parity with the plan is too minor to require another change.
+FINDING_18: EXONERATE -- Unit tests cover exit 5/4 allowlisting; extra launcher integration cases are nice-to-have.
+FINDING_19: YES
+FINDING_20: YES
+FINDING_21: YES
+FINDING_22: YES

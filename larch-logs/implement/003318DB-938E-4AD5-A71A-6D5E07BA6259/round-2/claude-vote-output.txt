@@ -1,0 +1,19 @@
+The code is verified. Here are my votes:
+
+FINDING_1: EXONERATE -- the unconditional `rm -f` before the gate is intentional stale-cleanup design; the tests explicitly seed stale sidecars and verify removal, confirming this is by design, not a bug; scenario requires reusing a `REVIEW_TMPDIR` which isn't normal operation
+FINDING_2: EXONERATE -- valid observability nit on a rare cp-failure path, but the fix adds a new `else` branch for a scenario (disk full mid-retry) with negligible operational impact
+FINDING_3: NO -- duplicate of the concern in FINDING_2, same reviewer class
+FINDING_4: EXONERATE -- correctly identifies that `rm -f` before the gate matches test expectations; behavior is intentional, no issue needed
+FINDING_5: EXONERATE -- standard larch run-log flush behavior; `in-progress` status in committed metadata is part of the established run-log contract
+FINDING_6: NO -- reviewer explicitly says no product change requested; this is routine plan-goals-test.md content in a flush commit
+FINDING_7: EXONERATE -- legitimate pre-existing `set -e` pattern observation, reviewer says no change required, not issue-worthy
+FINDING_8: EXONERATE -- valid doc gap, but the `rm -f` cleanup is intentional and the tests validate its semantics; documenting it would add noise
+FINDING_9: NO -- the doc phrase "cp failures are ignored" accurately describes the fail-open contract; breadcrumb tied to successful copy is semantically correct (the message says "preserved")
+FINDING_10: NO -- duplicate of FINDING_8
+FINDING_11: EXONERATE -- two separate `case` arms for sidecar vs retry paths are structurally redundant, but consolidating into one arm adds a multi-variable assignment that obscures the separate concerns
+FINDING_12: NO -- duplicate breadcrumb concern already covered by FINDING_2
+FINDING_13: EXONERATE -- valid test-design concern about the entry `rm -f` conflating cleanup with no-copy-on-failure; worth noting but the tests are clear in their current seeded form
+FINDING_14: EXONERATE -- the plan showed unconditional `emit_breadcrumb` after `cp ... || true`, but the implementation's conditional breadcrumb is semantically more correct (the message says "preserved" — should only fire when preservation actually succeeded)
+FINDING_15: NO -- duplicate of FINDING_1/FINDING_16; raises same rm-f concern already addressed
+FINDING_16: YES -- `rm -f "$first_pass_sidecar"` at line 244 runs under `set -e` without a `|| true` guard; if the path resolves to a directory or has a permission denial, `rm -f` returns non-zero and exits the script before any parse-rate handling; trivial fix with `|| true`
+FINDING_17: EXONERATE -- the `>&2` redirect is correct for keeping stdout clean for command-substitution callers; FD layout change speculation is too hypothetical

@@ -1,0 +1,23 @@
+Reading the ballot and session context to verify each finding before voting.
+
+Verifying ballot claims against the repo: reading the session diff/plan context and the cited source regions.
+
+Verified against [`scripts/dispatch-code-voters.sh`](file:///Users/zhupanov/larch1/scripts/dispatch-code-voters.sh) (lines 236–280), [`scripts/dispatch-code-voters.md`](file:///Users/zhupanov/larch1/scripts/dispatch-code-voters.md), [`scripts/test-dispatch-code-voters.sh`](file:///Users/zhupanov/larch1/scripts/test-dispatch-code-voters.sh) (e.g. stale sidecar seed at 392–393 and `! -e` first-pass at 410–411), and session [`round-2/diff-context.txt`](file:///Users/zhupanov/.cache/larch/sessions/claude-implement-larch1-YklaDx/round-2/diff-context.txt) / [`plan-context.txt`](file:///Users/zhupanov/.cache/larch/sessions/claude-implement-larch1-YklaDx/round-2/plan-context.txt).
+
+FINDING_1: YES
+FINDING_2: EXONERATE -- stderr-only warning on failed `cp` is optional; promotion still succeeds and failures are already silent by design.
+FINDING_3: YES
+FINDING_4: NO -- accurate behavior description; intentional hygiene with tests; no separate issue warranted.
+FINDING_5: EXONERATE -- run-log/process note is valid but does not need a standalone tracking issue beyond normal policy.
+FINDING_6: NO -- acknowledged PR noise and explicitly out of scope; no issue.
+FINDING_7: NO -- explicitly pre-existing and no PR-scoped change requested.
+FINDING_8: EXONERATE -- same core point as FINDING_1; fixing/removing entry `rm` or documenting intent suffices without extra architecture work.
+FINDING_9: NO -- shipped `dispatch-code-voters.md` does not promise a breadcrumb on failed `cp` (ballot line refs do not match the 56-line file); optional doc tweak only.
+FINDING_10: EXONERATE -- documenting the entry `rm` hygiene contract is enough once behavior is settled; no extra structural change required.
+FINDING_11: EXONERATE -- duplicate `case` arms are a minor DRY nit; consolidating risks churn for little gain.
+FINDING_12: EXONERATE -- overlaps FINDING_2/3/14; a single stderr diagnostic on failed `cp` is enough without tying success messaging to failed copy.
+FINDING_13: EXONERATE -- hypothetical future coupling; tightening tests now is more churn than proven benefit.
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: EXONERATE -- `rm -f` on a normal sidecar file in `REVIEW_TMPDIR` essentially always exits 0; rare directory/permission cases do not justify masking with `|| true` here.
+FINDING_17: EXONERATE -- no concrete leak today; worthwhile to remember if capture/`lib-quiet` changes, not an actionable defect now.

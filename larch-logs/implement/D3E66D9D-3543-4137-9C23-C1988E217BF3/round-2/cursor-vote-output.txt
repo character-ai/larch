@@ -1,0 +1,25 @@
+Reading the ballot and session context to verify findings.
+
+FINDING_1: YES
+FINDING_2: EXONERATE -- sibling harness already isolates env; no GitHub issue needed
+FINDING_3: EXONERATE -- unlikely operator tmpdir names; document if anything
+FINDING_4: EXONERATE -- global unset matches effective isolation for current harness
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: EXONERATE -- same plan/subshell nit as FINDING_4; doc tweak optional
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: EXONERATE -- ordering-only UX nit with no contract
+FINDING_17: EXONERATE -- note mismatch; fix docs not harness structure
+FINDING_18: YES
+FINDING_19: YES
+FINDING_20: EXONERATE -- same subshell preference as FINDING_4
+FINDING_21: YES
+FINDING_22: YES
+FINDING_23: EXONERATE -- overlaps basename collision; doc beats heavy detection

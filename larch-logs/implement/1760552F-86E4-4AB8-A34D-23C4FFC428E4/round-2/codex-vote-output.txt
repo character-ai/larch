@@ -1,0 +1,12 @@
+FINDING_1: EXONERATE -- legitimate stale wording, but a tiny harness-message nit is not worth a tracking issue.
+FINDING_2: EXONERATE -- legitimate terminology drift, but not issue-worthy as an out-of-scope follow-up.
+FINDING_3: EXONERATE -- valid stale failure text, but too minor for a GitHub issue.
+FINDING_4: EXONERATE -- real wording drift, but not worth tracking separately.
+FINDING_5: EXONERATE -- historical logs may look mixed across versions, but refreshing archives is not issue-worthy.
+FINDING_6: EXONERATE -- legitimate historical-format drift, but docs already distinguish committed logs and mixed old output is acceptable.
+FINDING_7: EXONERATE -- the phrase is a little awkward, but the doc is still technically clear enough.
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES

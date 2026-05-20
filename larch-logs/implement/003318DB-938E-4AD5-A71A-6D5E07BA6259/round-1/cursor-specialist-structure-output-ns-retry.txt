@@ -1,0 +1,19 @@
+Gathering the diff and commit list (read-only).
+
+Checking how `emit_breadcrumb` behaves and whether redirecting it to stderr is correct.
+
+### In-Scope Findings
+
+1. **Latent** · `correctness` · [scripts/dispatch-code-voters.sh:263-265](scripts/dispatch-code-voters.sh)  
+   After `cp "$voter_path" "$first_pass_sidecar" 2>/dev/null || true`, the breadcrumb always says first-pass content was “preserved” even when `cp` failed (full disk, permissions, read-only fs). Operators and log triage can be sent to a missing or empty sidecar while believing it exists.  
+   **Suggested fix:** Gate the breadcrumb on a successful copy (for example `cp … && emit_breadcrumb …` or test `-s "$first_pass_sidecar"` after `cp` and emit a different breadcrumb when the copy failed).
+
+2. **Nit** · `code-quality` · [scripts/dispatch-code-voters.sh:244-247,259-262](scripts/dispatch-code-voters.sh)  
+   The same `case "$voter_path" in *.txt) … ;; *) … ;; esac` shape appears twice in one function to derive `retry_output` and `first_pass_sidecar`, which duplicates control flow and will require two edits if naming rules ever change.  
+   **Suggested fix:** Compute both paths from one `case` (or a tiny helper) so the suffix convention stays single-sourced.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	latent	correctness	scripts/dispatch-code-voters.sh:263-265	Breadcrumb claims first-pass preserved after best-effort cp that may have failed.	Retry path still promotes clean output via mv, but operators see a breadcrumb implying a sidecar exists when cp failed (e.g. ENOSPC), so debugging points at the wrong artifact.	Emit the preserved message only after a successful copy, or emit a distinct breadcrumb when cp fails.
+1	in_scope	nit	code-quality	scripts/dispatch-code-voters.sh:244-247,259-262	Duplicate case on voter_path for retry temp vs first-pass sidecar paths.	Future rename of suffix rules needs two parallel edits, increasing drift risk.	Derive retry_output and first_pass_sidecar from one case arm or a small helper.
+```

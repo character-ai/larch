@@ -1,0 +1,10 @@
+voter_tool=cursor
+neutral_count=28
+total_findings=28
+voter_file=<TMPDIR>/round-1/cursor-vote-output.txt
+--- first 200 bytes of voter output ---
+Reading the ballot and session context files to verify each finding (read-only).
+
+Verifying ballot claims against the codebase and session diff context.
+
+Checking `classify_result` usage and whether `

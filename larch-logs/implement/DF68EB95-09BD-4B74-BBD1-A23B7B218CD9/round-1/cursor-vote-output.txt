@@ -1,0 +1,51 @@
+Reading the ballot and verifying claims against referenced context files.
+
+Verifying ballot claims against the workspace implementation and session diff context.
+
+Checking `manifest.json` in the repo and the plan-goals snippet for FINDING_2.
+
+Verified against [`skills/upgrade-larch/scripts/upgrade-larch.sh`](skills/upgrade-larch/scripts/upgrade-larch.sh) (cap loop `while [ "$VERSION_COUNT" -gt "$KEEP_LIMIT" ]` with full-array scan and explicit `UPDATED_VERSIONS` rebuild), [`skills/upgrade-larch/scripts/test-upgrade-larch-prune.sh`](skills/upgrade-larch/scripts/test-upgrade-larch-prune.sh) (asserts both `29.1.20` and `29.1.22` absent; `unparseable-session-keeps-under-cap`), [`skills/upgrade-larch/scripts/upgrade-larch.md`](skills/upgrade-larch/scripts/upgrade-larch.md), [`larch-logs/.../manifest.json`](larch-logs/implement/DF68EB95-09BD-4B74-BBD1-A23B7B218CD9/manifest.json), and session [`diff.txt`](<TMPDIR>/round-1/diff.txt). Several ballot items match an older diff hunk, not the current tree.
+
+FINDING_1: NO -- cap loop repeats until count≤8 and removes successive oldest unpinned dirs; tests assert 29.1.22 is pruned, not kept.
+FINDING_2: EXONERATE -- plan-goals-test line 28 understates the second cap eviction but archived plan nits are not worth a tracking issue.
+FINDING_3: EXONERATE -- concern was pre-substring-removal idiom; current rebuild uses an explicit `retained_version != $version` loop (no GitHub issue).
+FINDING_4: EXONERATE -- two warning phrasings differ slightly; polish-only, not issue-worthy.
+FINDING_5: EXONERATE -- same as FINDING_3; no `[@]/pattern` removal remains in this script.
+FINDING_6: EXONERATE -- substring-collision risk tied to removed pattern idiom; not actionable on current code without hypothetical future regression.
+FINDING_7: EXONERATE -- duplicate of FINDING_3/5 for current tree; no separate refactor issue needed.
+FINDING_8: EXONERATE -- edit-in-sync footer is standard boilerplate; optional narrowing is churn without policy change.
+FINDING_9: NO -- case is already `unparseable-session-keeps-under-cap` in the harness.
+FINDING_10: NO -- same rename and fail strings already updated.
+FINDING_11: EXONERATE -- step 8 already documents cap-driven multi-removal; line 29 “do not block pruning” refers to malformed env not blocking over-cap pruning, minor ambiguity only.
+FINDING_12: NO -- active-session assertions require both pruned dirs absent, matching KEEP_LIMIT math.
+FINDING_13: NO -- active-session and CRLF cases both assert `29.1.22` is removed and dropped from the keep list.
+FINDING_14: YES -- committed `manifest.json` still has `"status": "in-progress"`, misleading for a flushed log bundle.
+FINDING_15: NO -- harness already expects `29.1.22` pruned alongside `29.1.20`.
+FINDING_16: NO -- CRLF case mirrors the same dual-prune assertions.
+FINDING_17: NO -- case name no longer says `prunes-normally`.
+FINDING_18: EXONERATE -- diff cannot prove `test-upgrade-larch.sh` was run; pre-merge verification is procedural, not a code defect.
+FINDING_19: EXONERATE -- optional operator-facing sentence; step 8 already states cap and pin behavior.
+FINDING_20: EXONERATE -- overlaps FINDING_19; under-cap behavior is implied by “at most 8” and expanded step 8 text.
+
+---
+
+FINDING_1: NO -- cap uses a repeat-until-≤8 loop and tests require 29.1.22 removed, contradicting the ballot’s loop description and stale expectation.
+FINDING_2: EXONERATE -- embedded plan understates the second eviction but a GitHub issue for log copy would be disproportionate.
+FINDING_3: EXONERATE -- line ~324 is an explicit filter rebuild, not glob-substring removal on the whole array; issue would be moot.
+FINDING_4: EXONERATE -- wording mismatch between two preserve warnings is real but trivial polish, not issue-tracker material.
+FINDING_5: EXONERATE -- substring `[@]/pattern` removal is not present; finding describes superseded code.
+FINDING_6: EXONERATE -- substring-collision scenario does not apply to the current removal loop without reopening a separate hardening PR.
+FINDING_7: EXONERATE -- same pre-refactor fragility claim as FINDING_3/5/6 for current sources.
+FINDING_8: EXONERATE -- broad edit-in-sync list is normal; narrowing is optional doc hygiene only.
+FINDING_9: NO -- harness already uses `unparseable-session-keeps-under-cap`.
+FINDING_10: NO -- run_case and fail strings already match the under-cap behavior.
+FINDING_11: EXONERATE -- contract text in step 8 already explains multi-removal under the cap; marginal read risk on line 29 alone.
+FINDING_12: NO -- workspace asserts both cap evictions for the over-cap active-session scenario.
+FINDING_13: NO -- both active-session and CRLF blocks assert absence of 29.1.22 and omit it from the keep loop.
+FINDING_14: YES
+FINDING_15: NO -- ballot matches obsolete diff hunk; current test requires 29.1.22 pruned.
+FINDING_16: NO -- same as FINDING_15 for the CRLF scenario.
+FINDING_17: NO -- rename already landed in the harness.
+FINDING_18: EXONERATE -- legitimate CI/process reminder but not a repo change until a failure is observed.
+FINDING_19: EXONERATE -- optional doc note; Limitations removal is offset by detailed step 8.
+FINDING_20: EXONERATE -- largely duplicates FINDING_19; further doc expansion is optional, not a defect.

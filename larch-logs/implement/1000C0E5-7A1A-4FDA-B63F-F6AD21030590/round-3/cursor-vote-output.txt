@@ -1,0 +1,28 @@
+Reading the ballot and session context to verify each finding before voting.
+
+Verifying ballot claims against the repository: reading cited sections in the scripts and session diff/plan context.
+
+Searching for C_NSR and reviewing plan-context for plan-fidelity claims.
+
+Verified: [`collect-agent-results.md`](file:///Users/zhupanov/larch1/scripts/collect-agent-results.md) line 19 omits publish-failure cleanup of `-first-pass.txt` while [`preserve_and_publish_ns_retry`](file:///Users/zhupanov/larch1/scripts/collect-agent-results.sh) removes it on publish failure (lines 165–166); `C_NS_FP_PUBLISH_FAIL` expects removal. Doc uses “stderr warning” while first-pass failure uses `larch_err` (lines 148–149). Structured success uses `cp` for the sidecar (1294–1295), not plan’s `mv`. `C_NSR` asserts `REVIEWER_FILE=$OUT_NSR` and retry file content but does not grep `$OUT_NSR` for `$RETRY_CONTENT`. `first_pass_sidecar_path` maps non-`*.txt` to `-first-pass` without `.txt`; `larch-log.sh` allow-list includes `*-output-first-pass.txt`. `emit_summary_result` still scans four keys then full emission uses `with_structured_sidecar_field` (1321–1358).
+
+FINDING_1: YES  
+FINDING_2: NO -- ballot states correct behavior, not a defect or tracking item  
+FINDING_3: NO -- describes existing correct emission pipeline, not actionable  
+FINDING_4: EXONERATE -- true pre-existing quirk, a dedicated hygiene issue would be noise  
+FINDING_5: EXONERATE -- same as FINDING_4, not worth an issue  
+FINDING_6: EXONERATE -- readability nit; bulletizing adds churn without fixing a contract bug  
+FINDING_7: YES -- doc still says stderr warning where the code calls larch_err  
+FINDING_8: EXONERATE -- duplicate sidecar matches intentional retry-path retention and best-effort publish semantics  
+FINDING_9: YES -- C_NSR never asserts retry prose landed on the canonical OUT path, only on -ns-retry.txt  
+FINDING_10: YES -- non-.txt first-pass path does not match *-output-first-pass.txt allow-list without an explicit contract or code extension  
+FINDING_11: EXONERATE -- overlap with FINDING_8/12; mv is not clearly better than documenting duplicate artifacts  
+FINDING_12: EXONERATE -- plan’s mv conflicts with documented retention/fallback; amend spec rather than force mv  
+FINDING_13: EXONERATE -- keeping -ns-retry.txt is explicitly documented behavior, not an implementation slip  
+FINDING_14: EXONERATE -- stricter fail-closed is already documented; optional plan sync only  
+FINDING_15: NO -- failure/no-sidecar behavior is already covered by named cases (e.g. retry fail, no launch)  
+FINDING_16: EXONERATE -- useful branch but mocking final cp failure is awkward for the value gained in this harness  
+FINDING_17: EXONERATE -- mismatch risk is real but already spelled out in the contract paragraph for STRUCTURED_SIDECAR  
+FINDING_18: EXONERATE -- substantive NS success is already guarded by C_NS_FP_SUCCESS; duplicating assertions in C_NSR is low marginal value  
+FINDING_19: EXONERATE -- related failure modes are largely exercised elsewhere; another fixture is optional hardening  
+FINDING_20: EXONERATE -- obvious source-order invariant; a comment adds little beyond the working test

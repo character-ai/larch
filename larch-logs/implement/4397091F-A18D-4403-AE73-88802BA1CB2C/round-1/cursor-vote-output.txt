@@ -1,0 +1,59 @@
+Reading the ballot and verifying claims against referenced context files.
+
+Verifying ballot claims against the codebase and session `plan-context.txt` / `diff-context.txt`.
+
+Checking tests and SECURITY.md for scout/yield references.
+
+Checking `test-review-and-fix.sh` for scout manifest assertions and duplicate-finding overlap.
+
+Verified against [skills/review-and-fix/scripts/review-and-fix.sh](file:///Users/zhupanov/larch1/skills/review-and-fix/scripts/review-and-fix.sh) (scout flush before `flush_review_batches`, jq payload three keys, `|| true` on jq), [scripts/larch-log-batches.md](file:///Users/zhupanov/larch1/scripts/larch-log-batches.md) (four-field schema), [skills/review/SKILL.md](file:///Users/zhupanov/larch1/skills/review/SKILL.md) (`yield_tsv_basename`), [SECURITY.md](file:///Users/zhupanov/larch1/SECURITY.md) (basename-only `manifest_basename`, `yield_tsv_basename`), [scripts/larch-log.sh](file:///Users/zhupanov/larch1/scripts/larch-log.sh) write-round find/flatten/symlink handling on per-file `[ ! -L "$src" ]` but not on `dynamic-archetypes` dir), [scripts/test-larch-log.sh](file:///Users/zhupanov/larch1/scripts/test-larch-log.sh) (test 4 only checks `findings.md` inside combined fixture), [skills/review-and-fix/scripts/review-and-fix.md](file:///Users/zhupanov/larch1/skills/review-and-fix/scripts/review-and-fix.md) line 104, and [skills/review-and-fix/scripts/test-review-and-fix.sh](file:///Users/zhupanov/larch1/skills/review-and-fix/scripts/test-review-and-fix.sh) (pass strings / jq assert).
+
+FINDING_1: YES  
+FINDING_2: EXONERATE -- prose nit vs `:-na`; not worth a tracking issue.  
+FINDING_3: YES  
+FINDING_4: NO -- same basename-collision concern as FINDING_3.  
+FINDING_5: EXONERATE -- ordering differs from SKILL; fix only if a real consumer depends on batch order.  
+FINDING_6: EXONERATE -- wording nit; tests only assert files under log root, not git.  
+FINDING_7: EXONERATE -- optional doc tightening; behavior matches `:-na`.  
+FINDING_8: NO -- overlaps FINDING_7.  
+FINDING_9: YES  
+FINDING_10: EXONERATE -- same `yield_tsv_basename` gap as FINDING_1; one fix covers all.  
+FINDING_11: EXONERATE -- same “committed” wording issue as FINDING_6.  
+FINDING_12: EXONERATE -- real gap but subsumed by FINDING_13’s stricter plan-fidelity point.  
+FINDING_13: YES  
+FINDING_14: EXONERATE -- duplicate `yield_tsv_basename` gap vs FINDING_1.  
+FINDING_15: EXONERATE -- `NA` vs `na` unlikely for emitted KVs.  
+FINDING_16: EXONERATE -- whitespace-only status is a narrow edge case.  
+FINDING_17: YES  
+FINDING_18: EXONERATE -- replace-mode run-root batch is inherently latest snapshot.  
+FINDING_19: EXONERATE -- same implement `yield_tsv_basename` parity as FINDING_1.  
+FINDING_20: NO -- same silent-jq / invalid `DYNAMIC_SLOTS` thread as FINDING_17.  
+FINDING_21: NO -- duplicate of FINDING_17.  
+FINDING_22: NO -- duplicate of FINDING_17.  
+FINDING_23: YES  
+
+---
+
+FINDING_1: YES  
+FINDING_2: EXONERATE -- legitimate doc nit; opening a GitHub issue would be heavier than a tiny doc tweak.  
+FINDING_3: YES  
+FINDING_4: NO -- duplicate of FINDING_3 (same basename flattening / last-wins overwrite).  
+FINDING_5: EXONERATE -- true ordering skew vs `/review`; no evidence a consumer depends on inter-batch order.  
+FINDING_6: EXONERATE -- “committed” in pass text overstates what the test asserts (filesystem only).  
+FINDING_7: EXONERATE -- doc could mention edge whitespace; low impact vs current guard.  
+FINDING_8: NO -- redundant with FINDING_7 (same doc vs `:-na` mismatch).  
+FINDING_9: YES  
+FINDING_10: EXONERATE -- same substantive gap as FINDING_1 (`yield_tsv_basename`); track once.  
+FINDING_11: EXONERATE -- same “committed” wording nit as FINDING_6.  
+FINDING_12: EXONERATE -- weaker duplicate of FINDING_13 (no-scout fixture / regression coverage).  
+FINDING_13: YES  
+FINDING_14: EXONERATE -- same `yield_tsv_basename` omission as FINDING_1.  
+FINDING_15: EXONERATE -- case-sensitive `na` is acceptable if contract is documented or emitters stay lowercase.  
+FINDING_16: EXONERATE -- trimming whitespace status is minor vs added parsing complexity.  
+FINDING_17: YES  
+FINDING_18: EXONERATE -- latest-only at run root matches replace-mode batch semantics; document if needed.  
+FINDING_19: EXONERATE -- same `yield_tsv_basename` / schema parity as FINDING_1.  
+FINDING_20: NO -- same jq swallow / `DYNAMIC_SLOTS` failure mode as FINDING_17.  
+FINDING_21: NO -- duplicate of FINDING_17.  
+FINDING_22: NO -- duplicate of FINDING_17.  
+FINDING_23: YES

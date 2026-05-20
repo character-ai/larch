@@ -1,0 +1,38 @@
+Now I have enough information to vote on all findings.
+
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: EXONERATE -- intentional per run-log policy; larch-logs commits are expected artifacts
+FINDING_5: EXONERATE -- file unchanged in this diff; pre-existing observation not actionable here
+FINDING_6: EXONERATE -- run-log metadata artifact; policy-driven, not a functional defect
+FINDING_7: EXONERATE -- same as FINDING_4; intentional run-log policy
+FINDING_8: EXONERATE -- pre-existing prompt-injection surface; reviewer explicitly notes no change required for this branch
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: EXONERATE -- plan is a transient artifact; code is internally consistent; adding a comment about plan deviation is not issue-worthy
+FINDING_14: YES
+FINDING_15: NO -- duplicate of FINDING_10; same `.launcher-stderr` orphan on retry success path
+FINDING_16: EXONERATE -- `voter_parse_rate_diag_path` is a trivial one-liner; extracting to a shared lib adds more coupling than the duplication risk warrants
+FINDING_17: YES
+FINDING_18: NO -- duplicate of FINDING_10; same success-path sidecar cleanup issue
+FINDING_19: NO -- duplicate of FINDING_11; same failure-path `*-parse-retry.txt` cleanup issue
+FINDING_20: YES
+FINDING_21: YES
+FINDING_22: YES
+FINDING_23: EXONERATE -- latent only for unusual non-`-output.txt` filenames; not seen in practice
+FINDING_24: YES
+FINDING_25: EXONERATE -- hypothetical future divergence only; FINDING_9 covers the actionable plan-fidelity concern
+FINDING_26: YES
+FINDING_27: YES
+FINDING_28: YES
+FINDING_29: YES
+FINDING_30: YES
+FINDING_31: YES
+FINDING_32: YES
+FINDING_33: YES
+FINDING_34: YES
+FINDING_35: EXONERATE -- minor harness-doc nit; the new test cases are self-documenting
+FINDING_36: EXONERATE -- threat requires same-user filesystem access to REVIEW_TMPDIR; weak threat model and fix complexity (manifest/crypto binding) outweighs benefit

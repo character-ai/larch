@@ -1,0 +1,40 @@
+Reading the ballot and session context to verify each finding before voting.
+
+Verifying ballot claims against the diff and repository sources.
+
+Verification summary: Confirmed in-repo that `skills/review/SKILL.md` Step 0 (subagent) binds only `SCOUT_STATUS`, `DYNAMIC_SLOTS`, `SCOUT_MANIFEST`, `YIELD_TSV_FILE` while Step 3’s inline loop includes `SCOUT_FAIL_REASON`; `heavy-worker.md` Step 3 and the return KV example omit `SCOUT_FAIL_REASON`. `scout-dynamic-archetypes.sh` uses `mktemp ... || exit 1` and `awk '/^```/'` fence stripping; `json_parse` is emitted for the combined jq gate on `.archetypes`; tests grep `json_parse` and `archetype_count_overflow` but not `validation_jq_error`. `dispatch-panel.sh` has `append_scout_parse_issue` with `>/dev/null 2>&1 || true` and `-x` gate; the `ok` + invalid manifest branch updates state without `write_scout_status_file`. `dispatch-panel.md` line 33 references `make test-dispatch-panel` while the Makefile exposes `test-dispatch-panel-core` (and reuse/limits). `test-dispatch-panel.sh` duplicates `SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH=...` on lines 196–197.
+
+FINDING_1: YES -- subagent Step 0 and heavy-worker omit SCOUT_FAIL_REASON while inline Step 3 parses it; telemetry is dropped on --subagent path before parent Step 4.
+FINDING_2: EXONERATE -- pre-existing validated_tmp hard-exit; aligning scout-wide tmp policy is optional, not worth a dedicated issue.
+FINDING_3: YES -- reuse-path invalid-manifest branch mutates SCOUT_STATUS without write_scout_status_file; stale sidecar worth tracking out-of-scope.
+FINDING_4: NO -- duplicate env assignment is harmless readability noise only.
+FINDING_5: NO -- one-line Makefile target doc error; fix in-place, no GitHub issue needed.
+FINDING_6: YES -- fence mktemp failure uses exit 1 so scout_rc!=0 maps to validation-failed, breaking documented non-fatal scout semantics.
+FINDING_7: EXONERATE -- plan checklist omitted SKILL.md; orchestration already updated, meta-only.
+FINDING_8: YES -- scout-dynamic-archetypes.md lists three fail reasons while dispatch sets dispatch_manifest_validation and missing_status_sidecar.
+FINDING_9: EXONERATE -- awk multi-fence/concat limits are real but hardening adds meaningful complexity versus documenting behavior.
+FINDING_10: EXONERATE -- json_parse conflation is valid but renaming splits telemetry without blocking this change.
+FINDING_11: EXONERATE -- empty stdout KV vs reason=unknown in execution-issues is minor operator inconsistency.
+FINDING_12: EXONERATE -- append_scout_parse_issue before waterfall is slightly misleading wording only.
+FINDING_13: EXONERATE -- same doc gap as FINDING_8; one doc pass suffices.
+FINDING_14: EXONERATE -- duplicate of FINDING_8 doc contract concern.
+FINDING_15: YES -- ^``` fence matcher skips indented fences, a plausible real model output case.
+FINDING_16: EXONERATE -- overlaps FINDING_9 and FINDING_15; no separate action needed.
+FINDING_17: YES -- SCOUT_FAIL_REASON=json_parse fires for any .archetypes gate failure, not only JSON syntax errors.
+FINDING_18: EXONERATE -- same root issue as FINDING_17.
+FINDING_19: YES -- tests assert json_parse and overflow but not validation_jq_error from the third failure path.
+FINDING_20: EXONERATE -- review-core.md bullet is slightly narrow but readers can infer dispatch reasons.
+FINDING_21: EXONERATE -- same test gap as FINDING_19.
+FINDING_22: EXONERATE -- broad harness ask overlapping FINDING_9 and FINDING_19.
+FINDING_23: EXONERATE -- swallowed append is real but low severity versus explicit handling.
+FINDING_24: YES -- silent failure of execution-issues append undermines the new observability path.
+FINDING_25: EXONERATE -- duplicate theme of FINDING_24.
+FINDING_26: EXONERATE -- non-executable helper is an exotic packaging edge case.
+FINDING_27: EXONERATE -- duplicate of FINDING_26.
+FINDING_28: EXONERATE -- duplicate of FINDING_26–27.
+FINDING_29: EXONERATE -- duplicate of FINDING_24.
+FINDING_30: EXONERATE -- extra dispatch-reason tests are desirable but not required to ship this fix.
+FINDING_31: EXONERATE -- duplicate of FINDING_24.
+FINDING_32: EXONERATE -- internal execution-issues log with operator-trusted inputs; allowlisting is polish, not a proportional security fix.
+
+

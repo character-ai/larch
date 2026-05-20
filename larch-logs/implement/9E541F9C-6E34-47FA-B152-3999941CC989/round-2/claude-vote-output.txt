@@ -1,0 +1,25 @@
+The coverage script (lines 231-272) explicitly unions all `.PHONY` declarations — the secondary block concern in FINDING_16 doesn't affect it. Branch protection for shards 15-18 is fully documented in `docs/linting.md` lines 104-126 and 120-126 (rulesets note added). The shard-13 comment was repositioned but the partition-invariant guard is still first in shard 13.
+
+---
+
+FINDING_1: EXONERATE -- [OUT_OF_SCOPE] nit about comment density; pre-existing prose style, not issue-worthy
+FINDING_2: EXONERATE -- [OUT_OF_SCOPE] duplicate of FINDING_1; same nit, not issue-worthy
+FINDING_3: EXONERATE -- [OUT_OF_SCOPE] pre-existing per-row shard drift in table, not introduced by this diff
+FINDING_4: EXONERATE -- [OUT_OF_SCOPE] duplicate of FINDING_3; same pre-existing drift concern
+FINDING_5: EXONERATE -- [OUT_OF_SCOPE] pre-existing happy-path assertion style; not touched by this branch
+FINDING_6: EXONERATE -- [OUT_OF_SCOPE] pre-existing silent arg shift; new section-validation case arm partially mitigates
+FINDING_7: EXONERATE -- [OUT_OF_SCOPE] pre-existing set -u risk on missing $2; not introduced here
+FINDING_8: EXONERATE -- legitimate triplication concern, but the new validation case arm provides fast-fail guard; centralizing section names would add unjustified complexity
+FINDING_9: EXONERATE -- unplanned addition is purely defensive and beneficial; no code change warranted
+FINDING_10: EXONERATE -- cosmetic comment nit about 16→14→18 history; accurate record of actual shard-count progression
+FINDING_11: EXONERATE -- duplicate of FINDING_10; same comment readability concern
+FINDING_12: EXONERATE -- duplicate of FINDING_10; same comment readability concern
+FINDING_13: EXONERATE -- same section-name duplication concern as FINDING_8; runtime validation case arm guards against typo desync
+FINDING_14: EXONERATE -- docs/linting.md lines 104-126 already list test-harnesses (15)-(18) and rulesets note; this is an adequately documented operational step, not a code defect
+FINDING_15: EXONERATE -- duplicate of FINDING_14; same branch-protection concern already documented
+FINDING_16: EXONERATE -- test-harness-shards-coverage.sh explicitly unions all .PHONY declarations (lines 231-244); secondary block is handled correctly, concern about hypothetical tooling is speculative
+FINDING_17: EXONERATE -- latent timing concern; shard 12 rebalancing follows the standard LPT procedure documented in linting.md; monitor-and-rebalance is the intended process
+FINDING_18: EXONERATE -- duplicate of FINDING_17; same timing concern
+FINDING_19: EXONERATE -- duplicate of FINDING_17; same timing concern
+FINDING_20: EXONERATE -- duplicate of FINDING_14; branch protection instructions including rulesets are already in docs/linting.md
+FINDING_21: EXONERATE -- duplicate of FINDING_14/20; same operational prerequisite already fully documented

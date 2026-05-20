@@ -1,0 +1,40 @@
+FINDING_1: EXONERATE -- legitimate historical-doc drift, but too minor to file as a follow-up issue.
+FINDING_2: EXONERATE -- legitimate historical-doc drift, but too minor to file as a follow-up issue.
+FINDING_3: EXONERATE -- pre-existing push-stderr redaction gap is plausible, but not worth a separate issue from this ballot.
+FINDING_4: EXONERATE -- duplicate `set +e` is a readability nit, not issue-worthy.
+FINDING_5: YES
+FINDING_6: EXONERATE -- the harness is heavier than the plan implied, but refactoring it would add churn without clear value.
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: EXONERATE -- the spaced-path display bug is real but low-impact; exit behavior remains correct.
+FINDING_18: EXONERATE -- plan wording is not the runtime contract; the broader implemented message is reasonable.
+FINDING_19: EXONERATE -- this is traceability drift against the plan, not a functional defect.
+FINDING_20: YES
+FINDING_21: YES
+FINDING_22: YES
+FINDING_23: EXONERATE -- raw PR titles can make awkward markdown, but sanitizing this fallback path is more policy than necessary fix.
+FINDING_24: YES
+FINDING_25: YES
+FINDING_26: YES
+FINDING_27: EXONERATE -- regexes based on the plan text are not a supported contract; docs can cover the generic unmerged-path semantics.
+FINDING_28: YES
+FINDING_29: YES
+FINDING_30: YES
+FINDING_31: YES
+FINDING_32: YES
+FINDING_33: EXONERATE -- early-stop depth wording is a minor diagnostic precision issue, not worth added branching.
+FINDING_34: YES
+FINDING_35: YES
+FINDING_36: EXONERATE -- the hard-fail behavior is intentional; the actionable defect is the stale documented enum.
+FINDING_37: YES
+FINDING_38: YES
+FINDING_39: YES
+FINDING_40: EXONERATE -- markdown hardening for PR titles is legitimate but over-scoped for this fallback changelog path.

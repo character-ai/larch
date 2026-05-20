@@ -1,0 +1,27 @@
+Gathering the diff and commit list for the review.
+
+Checking whether scripts or other files hard-code the old threshold, which would desync behavior from the updated SKILL.md.
+
+### In-Scope Findings
+
+### FINDING_1: Structural routing harness still asserts removed `diff_lines < 30` / `>=30` literals
+- **severity**: **blocking**
+- **focus-area**: `correctness`
+- **location**: [scripts/test-implement-step2-routing.sh](scripts/test-implement-step2-routing.sh):22-27
+- **issue**: The harness uses `grep -Fq` on fixed substrings (`diff_lines < 30`, `` `>=30` value as "no carve-out" ``, and the explicit-coder paragraph still naming `` `diff_lines < 30` ``) that the branch removed from [skills/implement/SKILL.md](skills/implement/SKILL.md).
+- **scenario**: `make test-implement-step2-routing` (and thus `make lint` / harness shards that depend on it) fails immediately after merge even though the orchestrator contract in `SKILL.md` is updated.
+- **suggested fix**: Retarget the three `assert_contains` needles to the new canonical prose (`diff_lines <= 3`, `` `>=4` value as "no carve-out" ``, and the updated explicit-coder sentence), and refresh the sibling contract [scripts/test-implement-step2-routing.md](scripts/test-implement-step2-routing.md) plus the lint table row in [docs/linting.md](docs/linting.md):239 so docs match the pins.
+
+### FINDING_2: Security and `/design` docs still describe the old “below 30 lines” inline Claude window
+- **severity**: **Important**
+- **focus-area**: `risk-integration`
+- **location**: [SECURITY.md](SECURITY.md):46; [skills/design/SKILL.md](skills/design/SKILL.md):367,553,847; [docs/linting.md](docs/linting.md):239; [scripts/test-implement-step2-routing.md](scripts/test-implement-step2-routing.md):5
+- **issue**: Delegation and planning guidance still state that omitted-`--coder` routing uses a ~30-line `diff_lines` window for main-agent implementation, which no longer matches [skills/implement/SKILL.md](skills/implement/SKILL.md) after the threshold move to `<=3` / `>=4`.
+- **scenario**: Operators relying on `SECURITY.md` for trust posture, and planners following `/design` copy, assume Claude self-implements up to a much larger estimate than Step 1 actually allows, skewing risk decisions and how aggressively `diff_lines` is estimated.
+- **suggested fix**: Rewrite the `SECURITY.md` paragraph to the new numeric rule; align the three `/design` references so `diff_lines` guidance matches the implement carve-out; keep `docs/linting.md` and `test-implement-step2-routing.md` in sync (overlaps with FINDING_1).
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	blocking	correctness	scripts/test-implement-step2-routing.sh:22-27	Routing harness pins removed markdown literals from implement SKILL.	`make test-implement-step2-routing` / lint harness fails because `grep -Fq` no longer finds `diff_lines < 30`, `` `>=30` ... ``, or the old explicit-coder carve-out sentence.	Update `assert_contains` needles (and sibling `test-implement-step2-routing.md` + `docs/linting.md` row) to the new `<=3` / `>=4` wording.
+1	in_scope	important	risk-integration	SECURITY.md:46 skills/design/SKILL.md:367-847 docs/linting.md:239 scripts/test-implement-step2-routing.md:5	Security and design docs still describe below-30-line Claude routing.	Readers misjudge when Codex/Cursor vs main-agent implementation applies and mis-calibrate `diff_lines` estimates vs real Step 1 behavior.	Update `SECURITY.md`, the three `skills/design/SKILL.md` references, and lint/harness docs to the `diff_lines <= 3` / `>=4` carve-out contract.
+```

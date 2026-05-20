@@ -1,0 +1,47 @@
+Reading the ballot and verifying claims against provided context.
+
+Verifying ballot claims against the repository (read-only).
+
+Verified: `scripts/test-implement-step2-routing.sh` still asserts `diff_lines < 30` / `` `>=30` `` / old explicit-coder text; `skills/implement/SKILL.md` uses `diff_lines <= 3`, `` `>=4` ``, and updated explicit-coder prose. `skills/design/SKILL.md` still mentions `diff_lines < 30` at 367, 553, 847. `SECURITY.md` line 46 says “below 30”. `docs/linting.md` line 239 and `scripts/test-implement-step2-routing.md` lines 5–7 still describe `< 30`.
+
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: EXONERATE -- same doc fix as FINDING_2/5/11/15; no separate issue
+FINDING_8: EXONERATE -- same doc fix as FINDING_4/6/12; no separate issue
+FINDING_9: EXONERATE -- umbrella duplicate; one PR sweep beats an issue
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: YES
+
+Wait - user said for YES no reason. For EXONERATE need -- one-line reason.
+
+Also reconsider FINDING_7/8/9: "YES means file a GitHub issue for future tracking" - if the panel accepts the OUT_OF_SCOPE finding as "track via issue", that's YES. EXONERATE = legitimate but not issue-worthy.
+
+I'll keep EXONERATE for 7,8,9 because filing three GitHub issues for overlapping doc nits is worse than one fix batch.
+
+Final output only vote lines.
+
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: EXONERATE -- overlaps accepted doc items; a dedicated issue would duplicate work
+FINDING_8: EXONERATE -- overlaps accepted SECURITY/lint doc items; no separate issue needed
+FINDING_9: EXONERATE -- duplicate umbrella of already-accepted aligned findings
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: YES
+
+

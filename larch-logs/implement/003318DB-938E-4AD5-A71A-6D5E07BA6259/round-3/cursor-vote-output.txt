@@ -1,0 +1,29 @@
+Reading the ballot and session context to verify each finding before voting.
+
+Verifying ballot claims against the codebase and session diff/plan context.
+
+Verified against [`scripts/dispatch-code-voters.sh`](file:///Users/zhupanov/larch1/scripts/dispatch-code-voters.sh) (e.g. `rm -f "$first_pass_sidecar"` before `check_voter_parse_rate`; retry-success branch uses `if cp ...; then emit_breadcrumb; else larch_err`), [`scripts/dispatch-code-voters.md`](file:///Users/zhupanov/larch1/scripts/dispatch-code-voters.md) (line 46 states copy failures are ignored), [`scripts/larch-log.sh`](file:///Users/zhupanov/larch1/scripts/larch-log.sh) (`*-vote-output-first-pass.txt` in the allow arm), session [`plan-context.txt`](file:///Users/zhupanov/.cache/larch/sessions/claude-implement-larch1-YklaDx/round-3/plan-context.txt) / [`diff-context.txt`](file:///Users/zhupanov/.cache/larch/sessions/claude-implement-larch1-YklaDx/round-3/diff-context.txt), and [`scripts/test-dispatch-code-voters.sh`](file:///Users/zhupanov/larch1/scripts/test-dispatch-code-voters.sh) (stale first-pass seed + absence assertions).
+
+FINDING_1: EXONERATE -- intentional run-log artifacts per repo policy; no GitHub issue warranted  
+FINDING_2: EXONERATE -- true plan omission, but tightening rm placement overlaps the larger entry-rm bug cluster without extra win alone  
+FINDING_3: EXONERATE -- allow-list mismatch is real for the `*)` branch, but canonical voter paths are `*.txt` in this harness/production shape  
+FINDING_4: YES  
+FINDING_5: NO -- duplicate of FINDING_4’s doc-vs-runtime cp story  
+FINDING_6: EXONERATE -- duplicate `case` on `voter_path` is minor; merging is optional DRY with little payoff  
+FINDING_7: YES  
+FINDING_8: YES  
+FINDING_9: YES  
+FINDING_10: YES  
+FINDING_11: EXONERATE -- same root cause as FINDING_10; “security” framing overstates tmpdir artifact loss  
+FINDING_12: YES  
+FINDING_13: EXONERATE -- duplicate of FINDING_10’s unconditional early `rm` concern  
+FINDING_14: EXONERATE -- duplicate of FINDING_10’s unconditional early `rm` concern  
+FINDING_15: EXONERATE -- duplicate of FINDING_10’s unconditional early `rm` concern (line-range typo in ballot)  
+FINDING_16: EXONERATE -- duplicate of FINDING_10’s unconditional early `rm` concern  
+FINDING_17: EXONERATE -- fail-open promotion still holds; remaining gap is plan/doc cosmetics vs FINDING_9  
+FINDING_18: EXONERATE -- same plan drift as FINDING_7/9 without new substance  
+FINDING_19: NO -- near-duplicate of FINDING_18  
+FINDING_20: EXONERATE -- useful hardening but cp-failure simulation is awkward; not required to ship the behavior  
+FINDING_21: EXONERATE -- optional clarity; FINDING_12 already captures the weak assertion coupling  
+FINDING_22: EXONERATE -- tmp paths in diagnostics are normal for this script class; basename-only is polish  
+FINDING_23: NO -- speculative; `larch_log_redact_file` already applies to committed artifacts

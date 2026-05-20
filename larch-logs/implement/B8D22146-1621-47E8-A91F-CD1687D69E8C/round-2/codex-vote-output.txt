@@ -1,0 +1,36 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: NO -- Committed run logs are intentional per repo policy, so no future issue is needed.
+FINDING_5: EXONERATE -- Plausible clarity concern, but the path is unchanged/inert and not worth tracking separately.
+FINDING_6: EXONERATE -- The metadata inconsistency is real but minor run-log hygiene, not issue-worthy.
+FINDING_7: NO -- Committed run metadata is intentional per repo policy, so this is not a defect to track.
+FINDING_8: EXONERATE -- The trust-boundary concern is pre-existing and too broad for a useful follow-up issue here.
+FINDING_9: NO -- `launch-review.sh` is the actual external launcher used by waterfall, and the named cursor/codex launchers do not exist.
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: EXONERATE -- The implementation is internally consistent; reconciling plan wording is low-value cleanup.
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: EXONERATE -- The duplicated helper is small and a shared library would add more structure than this warrants.
+FINDING_17: YES
+FINDING_18: YES
+FINDING_19: YES
+FINDING_20: YES
+FINDING_21: YES
+FINDING_22: EXONERATE -- Path-derived diag names are internally consistent; the mismatch is mostly plan-doc traceability.
+FINDING_23: NO -- The extra `.txt` strip matches the dead-row renderer and only affects noncanonical labels.
+FINDING_24: NO -- The live and dead renderers both apply the broader `.txt` normalization, so the claimed mismatch is not present.
+FINDING_25: EXONERATE -- Future divergence is speculative and does not justify changing the retry dispatch path now.
+FINDING_26: YES
+FINDING_27: YES
+FINDING_28: YES
+FINDING_29: YES
+FINDING_30: YES
+FINDING_31: YES
+FINDING_32: YES
+FINDING_33: YES
+FINDING_34: YES
+FINDING_35: YES
+FINDING_36: NO -- A writer with that filesystem access can already alter voter outputs directly, so this is not a meaningful new security boundary.

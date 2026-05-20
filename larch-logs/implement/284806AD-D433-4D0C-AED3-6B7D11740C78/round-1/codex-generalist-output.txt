@@ -1,0 +1,7 @@
+### In-Scope Findings
+
+1. **Important** `risk-integration` `skills/review/SKILL.md:27`, `skills/review/references/heavy-worker.md:36`: the new `SCOUT_FAIL_REASON` telemetry is only wired through the inline review path; `/review --diff --subagent` still tells the parent to parse only `SCOUT_STATUS`, `DYNAMIC_SLOTS`, `SCOUT_MANIFEST`, and `YIELD_TSV_FILE`, and the heavy-worker return contract omits `SCOUT_FAIL_REASON`. Concrete failing scenario: with `--dynamic-archetypes 4`, a malformed scout response makes `review-core.sh` emit `SCOUT_FAIL_REASON=json_parse`, but the worker footer/parent binding drops it, so the subagent path loses the new telemetry before Step 4. Update both the Step 0 parent parse list and heavy-worker preserved/returned KV contract to include `SCOUT_FAIL_REASON`.
+
+### Out-of-Scope Observations
+
+No out-of-scope observations.

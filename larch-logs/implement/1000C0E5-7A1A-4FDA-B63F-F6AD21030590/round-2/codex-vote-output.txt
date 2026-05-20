@@ -1,0 +1,27 @@
+FINDING_1: YES
+FINDING_2: NO -- The redirect is redundant, but breadcrumbs are documented to surface on stdout when enabled, not FD4 stderr.
+FINDING_3: YES
+FINDING_4: EXONERATE -- The pre-existing breadcrumb redirect is misleading under surfaced breadcrumbs, but it is too narrow to merit a separate issue.
+FINDING_5: NO -- The doc is accurate for initialized quiet mode: default breadcrumb stdout is redirected to the quiet log.
+FINDING_6: NO -- Historical committed logs reflecting old paths are not a code defect.
+FINDING_7: NO -- This is a style preference over a readable contract paragraph.
+FINDING_8: NO -- The temporary variables are not read across iterations, so the stale-value risk is speculative.
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: NO -- Existing C_NS_FP_SUCCESS already pins first-pass preservation for the same substantive retry path.
+FINDING_14: YES
+FINDING_15: NO -- Current docs and tests intentionally define cp-and-retain behavior, superseding the session plan’s mv sketch.
+FINDING_16: YES
+FINDING_17: YES
+FINDING_18: YES
+FINDING_19: YES
+FINDING_20: NO -- This duplicates an already-covered assertion in C_NS_FP_SUCCESS.
+FINDING_21: YES
+FINDING_22: EXONERATE -- The fallback is low-probability and documented; a forced sidecar-copy failure test is more complexity than warranted.
+FINDING_23: NO -- The structured sidecar copy behavior matches the updated contract.
+FINDING_24: YES
+FINDING_25: EXONERATE -- First-pass artifacts are redacted by the same larch-log path as other outputs, so extra security docs are not necessary here.
+FINDING_26: YES
+FINDING_27: EXONERATE -- Full paths in failure diagnostics aid local debugging, and publish-boundary logs already redact paths.

@@ -1,0 +1,12 @@
+slot=3
+voter_tool=cursor
+judge_error_count=18
+total_findings=18
+voter_file=<TMPDIR>/round-2/cursor-vote-output.txt
+voter_sha256=6022f85658e219f6338bc4e0ddf6744aa6e0a753f0f84e379c93b7bf8f80a94d
+--- first 200 bytes of voter output ---
+Reading the ballot and session context to verify each finding before voting.
+
+Verifying ballot claims against the codebase: reading plan/diff context and the cited files.
+
+Checking `reviewer_for_block

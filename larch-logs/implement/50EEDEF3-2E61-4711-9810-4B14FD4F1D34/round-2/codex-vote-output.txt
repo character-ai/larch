@@ -1,0 +1,11 @@
+FINDING_1: EXONERATE -- True duplicate, but harmless and not worth filing as future work.
+FINDING_2: EXONERATE -- Legit docs nit, but not issue-worthy for a future tracking item.
+FINDING_3: YES
+FINDING_4: EXONERATE -- The structure is harder to scan, but indenting or wrapping ~1000 lines is churnier than the risk warrants.
+FINDING_5: YES
+FINDING_6: EXONERATE -- Timing should be watched, but no evidence shows shard 3 exceeds budget and CI timing is the right proof point.
+FINDING_7: EXONERATE -- Same timing risk as FINDING_6, without evidence of an actual over-budget shard.
+FINDING_8: NO -- `docs/linting.md` already lists required checks for shards 19 and 20; external branch protection drift is not shown in the repo diff.
+FINDING_9: NO -- The required-check documentation includes shards 19 and 20 plus ruleset verification language.
+FINDING_10: EXONERATE -- Assertion-count parity is a useful manual verification, but a committed grep-count guard would be brittle overkill.
+FINDING_11: YES

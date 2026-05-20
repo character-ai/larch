@@ -1,0 +1,20 @@
+FINDING_1: EXONERATE -- Legitimate hardening idea, but existing callers use controlled header values and this is not issue-worthy out of scope.
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: EXONERATE -- Real test fragility, but speculative for the current isolated fixtures and not worth the extra assertion machinery here.
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: YES
+FINDING_18: EXONERATE -- The grep-count idiom is fragile only if future behavior pre-creates the log, so it is not worth accepting as a current blocker.
+FINDING_19: EXONERATE -- Anchoring would be cleaner, but the current stubs do not put codex-review in captured bodies and the risk is hypothetical.
+FINDING_20: YES

@@ -1,0 +1,21 @@
+FINDING_1: EXONERATE -- Legitimate editorial nit, but not worth a tracking issue.
+FINDING_2: EXONERATE -- Legitimate editorial nit, but not worth a tracking issue.
+FINDING_3: NO -- No concrete stale docs/linting.md shard row was verified.
+FINDING_4: NO -- No concrete stale docs/linting.md shard row was verified.
+FINDING_5: EXONERATE -- Real diagnostic polish, but pre-existing and not issue-worthy.
+FINDING_6: EXONERATE -- Real harness UX wart, but pre-existing and not issue-worthy.
+FINDING_7: EXONERATE -- Real argument-parse edge case, but pre-existing and not issue-worthy.
+FINDING_8: EXONERATE -- Section-name duplication is real, but centralizing six harness labels is more machinery than warranted.
+FINDING_9: NO -- Unknown-section rejection is beneficial fail-fast behavior, not a defect.
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: EXONERATE -- Comment/case duplication is real, but single-sourcing it would add unnecessary complexity.
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: NO -- The retry targets are already phony via a valid secondary .PHONY block, and the repo guard unions all .PHONY lines.
+FINDING_17: EXONERATE -- CI timing should be watched, but there is no evidence shard 12 currently exceeds the target.
+FINDING_18: EXONERATE -- CI timing should be watched, but there is no evidence shard 12 currently exceeds the target.
+FINDING_19: EXONERATE -- CI timing should be watched, but there is no evidence shard 12 currently exceeds the target.
+FINDING_20: YES
+FINDING_21: YES

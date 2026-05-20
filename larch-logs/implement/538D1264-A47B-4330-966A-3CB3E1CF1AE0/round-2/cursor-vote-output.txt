@@ -1,0 +1,26 @@
+Reading the ballot and session context to verify each finding.
+
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: EXONERATE -- symlink/string-guard edge is unlikely and not worth a tracking issue
+FINDING_7: NO -- factual confirmation that prod regression tmp avoids harness globs and cleans up; not a defect
+FINDING_8: EXONERATE -- intentional harness mktemp naming; not a separate actionable finding
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: EXONERATE -- tiny extra path-string work before early return; reorder not worth complexity
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: EXONERATE -- rare IO path; hardening adds churn for minimal signal vs parse-failed main path
+FINDING_16: EXONERATE -- same tradeoff as FINDING_15; duplicate angle
+FINDING_17: YES
+FINDING_18: YES
+FINDING_19: YES
+FINDING_20: YES
+FINDING_21: YES
+FINDING_22: YES
+FINDING_23: YES
+FINDING_24: YES

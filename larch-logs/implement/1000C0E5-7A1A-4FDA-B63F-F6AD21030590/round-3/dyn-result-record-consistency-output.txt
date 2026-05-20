@@ -1,0 +1,13 @@
+Gathering the pre-computed diff and inspecting NS-retry success paths and summary emission for correctness.
+
+Reading `emit_summary_result`, structured-field helpers, and the full NS-retry loop for consistency.
+
+### In-Scope Findings
+
+- **correctness** — [`scripts/collect-agent-results.md:19`](scripts/collect-agent-results.md) — The updated NS-retry contract says that if publishing the validated retry body back to `<base>.txt` fails, the collector leaves `STATUS=NOT_SUBSTANTIVE`, but it does not say that the collector also deletes the `<base>-first-pass.txt` file that was created immediately before publish (`rm` of the first-pass sidecar on the publish-failure path in [`scripts/collect-agent-results.sh:165-167`](scripts/collect-agent-results.sh)). Operators reading only the doc may expect a first-pass sidecar to remain after a publish failure; the implementation and [`scripts/test-collect-agent-results.sh`](scripts/test-collect-agent-results.sh) (`C_NS_FP_PUBLISH_FAIL`) assume it is removed. **Suggested fix:** extend the publish-failure sentence to state that the first-pass sidecar is removed so the tree does not imply a successful publish.
+
+### Out-of-Scope Observations
+
+- **correctness** — [`scripts/collect-agent-results.sh:1262-1310`](scripts/collect-agent-results.sh) — NS-retry success paths set `RESULTS[IDX]` with `REVIEWER_FILE=$ORIG_OUTPUT` only; structured publish failure for the TSV/JSONL copy leaves `STRUCTURED_SIDECAR` on the validated retry-path sidecar, which should still exist because `preserve_and_publish_ns_retry` does not remove `NS_RETRY_OUTPUT`. No stale `NS_RETRY_OUTPUT` value is written into `RESULTS[IDX]` on the success path.
+
+- **correctness** — [`scripts/collect-agent-results.sh:1321-1358`](scripts/collect-agent-results.sh) — `emit_summary_result` still only forwards the four summary keys; full emission still runs `with_structured_sidecar_field` then `tr '|' '\n'`. Structured NS-retry success rows keep the canonical field order `REVIEWER_FILE|TOOL|STATUS|EXIT_CODE|STRUCTURED_SIDECAR|FAILURE_REASON`; substantive NS-retry success rows omit `STRUCTURED_SIDECAR` in the pipe record and rely on the existing `with_structured_sidecar_field` pass-through / padding behavior, unchanged by this branch.
