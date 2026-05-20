@@ -1,12 +1,12 @@
 # Version Bump Reasoning
 
-- **Base commit**: `a76f0b29` (docs: fix stale Step 18 references in larch-log-batches.md and ship-pr.sh (#2435))
-- **Current version**: `29.8.42`
+- **Base commit**: `fdbedd7c` (Bump version to 29.8.46 (#2449))
+- **Current version**: `29.8.46`
 - **Classification scope**: `skills/**` and `agents/**` only (public plugin surface).
 
 ## Result: PATCH
 
-- **New version**: `29.8.43`
+- **New version**: `29.8.47`
 
 ### PATCH rationale
 

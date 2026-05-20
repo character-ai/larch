@@ -235,14 +235,57 @@
             }
           }
         ]
+      },
+      {
+        "step": "Step 8a — changelog",
+        "totals": {
+          "input": 0,
+          "cache_read": 0,
+          "cache_create": 0,
+          "output": 0,
+          "total": 0
+        },
+        "skills": []
+      },
+      {
+        "step": "Step 8b — rebase",
+        "totals": {
+          "input": 40,
+          "cache_read": 5569561,
+          "cache_create": 529555,
+          "output": 16033,
+          "total": 6115189
+        },
+        "skills": [
+          {
+            "skill": "inferred:Step 8b — rebase",
+            "totals": {
+              "input": 34,
+              "cache_read": 4839442,
+              "cache_create": 461698,
+              "output": 9406,
+              "total": 5310580
+            }
+          },
+          {
+            "skill": "larch:issue",
+            "totals": {
+              "input": 6,
+              "cache_read": 730119,
+              "cache_create": 67857,
+              "output": 6627,
+              "total": 804609
+            }
+          }
+        ]
       }
     ],
     "totals": {
-      "input": 164,
-      "cache_read": 29543085,
-      "cache_create": 978994,
-      "output": 129536,
-      "total": 30651779
+      "input": 204,
+      "cache_read": 35112646,
+      "cache_create": 1508549,
+      "output": 145569,
+      "total": 36766968
     }
   },
   "codex": {
@@ -321,6 +364,22 @@
       },
       {
         "step": "Step 6 — checks second pass",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 8a — changelog",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 8b — rebase",
         "totals": {
           "input": 0,
           "output": 0,
@@ -410,6 +469,22 @@
       },
       {
         "step": "Step 6 — checks second pass",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 8a — changelog",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 8b — rebase",
         "totals": {
           "input": 0,
           "output": 0,
