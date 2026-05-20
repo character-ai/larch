@@ -13,8 +13,10 @@ This is a **dev-only** operator skill (`.claude/skills/`). It is NOT shipped wit
 ## Usage
 
 ```
-/audit-runs <verbal-description> [--no-fix-issues] [--repo owner/name] [--allow-concurrent]
+/larch:audit-runs <verbal-description> [--no-fix-issues] [--repo owner/name] [--allow-concurrent]
 ```
+
+(Plugin slash-alias: `/audit-runs …` may also resolve to this skill depending on marketplace wiring; prefer `/larch:audit-runs` when unsure.)
 
 ### Args
 
@@ -33,8 +35,21 @@ This is a **dev-only** operator skill (`.claude/skills/`). It is NOT shipped wit
 Run these checks before doing any work:
 
 1. `git fetch origin main && git pull --ff-only`. Refuse if working tree is dirty.
-2. Verify `pwd` is a clone of `--repo`. Compare `gh repo view <--repo> --json url` with `git config --get remote.origin.url`. Fail-fast if they don't match.
-3. Concurrency guard: search `gh issue list --state all --label audit-report --search 'created:>5m'`. Refuse if a match exists (unless `--allow-concurrent`).
+2. Verify `pwd` is a clone of `--repo`. Compare `gh repo view -R <owner/name> --json url` (substitute the same `owner/name` you passed to `--repo`) with `git config --get remote.origin.url`. Fail-fast if they don't match.
+3. Concurrency guard: GitHub issue search `created:` filters expect **absolute** dates, not rolling windows like `5m`, so do **not** rely on `gh issue list --search 'created:>5m'`. Instead list `audit-report` issues with `--json number,createdAt` and filter in `jq` against a UTC cutoff for **now − 5 minutes** (unless `--allow-concurrent`).
+
+   Compute `CUTOFF` portably, for example:
+
+   - GNU `date`: `CUTOFF="$(date -u -d '5 minutes ago' +'%Y-%m-%dT%H:%M:%SZ')"`
+   - macOS `date`: `CUTOFF="$(date -u -v-5M +'%Y-%m-%dT%H:%M:%SZ')"`
+
+   Then refuse when any row is newer than `CUTOFF`:
+
+   ```bash
+   gh issue list --state all --label audit-report --repo "<owner/name>" --json number,createdAt --limit 50 \
+     | jq -e --arg c "$CUTOFF" 'any(.[]; .createdAt > $c)' >/dev/null \
+     && { echo "Refuse: audit-report filed within the 5-minute concurrency window"; exit 1; }
+   ```
 
 ## Verbal-Description Resolution
 
@@ -63,7 +78,7 @@ SCANS_TSV="$PWD/.claude/skills/audit-runs/scans.tsv"
 | Required-file presence | Compare against `docs/run-logs-required-files.tsv` | run-log root |
 | EXON misclassification | `\| FINDING_.* \| 0 \| 0 \| [1-9]+ \|.*\| rejected \|` | `round-*/voting-tally.md` |
 | OOS category mangle | `category` field not in `{code-quality, risk-integration, correctness, architecture, security}` | `review-findings-full.jsonl` |
-| NS-retry sidecars | files matching `*-ns-retry*` or `*-first-pass.txt` | `round-*/` |
+| NS-retry sidecars | files matching `*-ns-retry*` (see `scans.tsv`; first-pass trailing-content checks are the separate `trailing-content-no-issues-found` scan) | `round-*/` |
 | Codex round-1 adherence | round 2+ panel-manifest should not contain `tool=codex` | `round-N/panel-manifest.ndjson` |
 | Codex generalist waste | `codex-generalist-output.txt` is `NO_ISSUES_FOUND` only AND timing > 120s | `round-1/` + `timing-report.json` |
 | Execution-issues categories | non-Warnings entries in `execution-issues.ndjson` | `execution-issues.ndjson` |
@@ -187,7 +202,7 @@ Stdout summary at the end:
 
 ## Scripts
 
-- `scripts/test-audit-runs.sh` (contract: `scripts/test-audit-runs.md`) — offline unit test harness for verbal-description parsing, guard logic, frontmatter round-trip, and title exclusion regex.
+- `.claude/skills/audit-runs/scripts/test-audit-runs.sh` (contract: `.claude/skills/audit-runs/scripts/test-audit-runs.md`) — offline unit test harness for verbal-description parsing, guard logic, frontmatter round-trip, and title exclusion regex.
 
 ## Anti-patterns
 

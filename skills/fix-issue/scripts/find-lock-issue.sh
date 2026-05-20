@@ -195,6 +195,19 @@ has_report_prefix() {
     printf '%s' "$1" | grep -qiE '^\[[^]]*[[:space:]]+report\]'
 }
 
+# Returns 0 when the title uses the stable run-logs audit-report prefix
+# (`[Run Logs Audit Report …]`), which is not matched by has_report_prefix
+# because the closing `]` follows the ISO timestamp, not immediately after
+# the word "Report". Used as a secondary guard when the audit-report label is
+# missing or unreadable.
+has_run_logs_audit_report_title() {
+    local t="$1"
+    case "$t" in
+        '[Run Logs Audit Report '*) return 0 ;;
+        *)                         return 1 ;;
+    esac
+}
+
 ISSUE_ARG=""
 
 while [[ $# -gt 0 ]]; do
@@ -698,11 +711,43 @@ if [[ -n "$ISSUE_ARG" ]]; then
 
     # Exclude issues labeled 'audit-report' — these are /audit-runs chain-of-
     # history issues, not fix-issue candidates (both auto-pick and
-    # explicit-target paths enforce this). Uses jq to parse the labels array
-    # from the --json labels field fetched above; fail-open on parse error.
-    if echo "$ISSUE_JSON" | jq -e '[.labels[]?.name] | index("audit-report") != null' > /dev/null 2>&1; then
+    # explicit-target paths enforce this). Labels must be a JSON array;
+    # jq failures are fail-closed (do not treat as "not labeled").
+    set +e
+    echo "$ISSUE_JSON" | jq -e '.labels | type == "array"' >/dev/null 2>&1
+    labels_type_rc=$?
+    set -e
+    if [ "$labels_type_rc" -ne 0 ]; then
+        if [ "$labels_type_rc" -eq 1 ]; then
+            emit_kv ELIGIBLE false
+            emit_kv ERROR "Cannot verify issue #$ISSUE_NUM labels (labels field is not a JSON array); refusing eligibility"
+            exit 2
+        fi
         emit_kv ELIGIBLE false
-        emit_kv ERROR "Issue #$ISSUE_NUM has label 'audit-report'; audit-report issues are excluded from /fix-issue"
+        emit_kv ERROR "Cannot verify issue #$ISSUE_NUM labels (jq failed verifying labels array, exit $labels_type_rc); refusing eligibility"
+        exit 2
+    fi
+    set +e
+    echo "$ISSUE_JSON" | jq -e '[.labels[]?.name] | index("audit-report") != null' >/dev/null 2>&1
+    audit_label_rc=$?
+    set -e
+    case "$audit_label_rc" in
+        0)
+            emit_kv ELIGIBLE false
+            emit_kv ERROR "Issue #$ISSUE_NUM has label 'audit-report'; audit-report issues are excluded from /fix-issue"
+            exit 2
+            ;;
+        1) ;;
+        *)
+            emit_kv ELIGIBLE false
+            emit_kv ERROR "Cannot verify audit-report label for issue #$ISSUE_NUM (jq failed, exit $audit_label_rc); refusing eligibility"
+            exit 2
+            ;;
+    esac
+
+    if has_run_logs_audit_report_title "$ISSUE_TITLE"; then
+        emit_kv ELIGIBLE false
+        emit_kv ERROR "Issue #$ISSUE_NUM has a run-logs audit report title; not a fix-issue candidate"
         exit 2
     fi
 
@@ -937,12 +982,38 @@ while IFS= read -r issue_row; do
         continue
     fi
 
-    # Skip issues labeled 'audit-report' — these are /audit-runs chain-of-
-    # history report issues, not fix-issue candidates.
-    if echo "$issue_row" | jq -e '.labels | if type == "array" then index("audit-report") != null else false end' > /dev/null 2>&1; then
-        larch_err "Skipping issue #$ISSUE_NUM: has label 'audit-report'"
+    if has_run_logs_audit_report_title "$ISSUE_TITLE"; then
+        larch_err "Skipping issue #$ISSUE_NUM: run-logs audit report title"
         continue
     fi
+
+    # Skip issues labeled 'audit-report' — these are /audit-runs chain-of-
+    # history report issues, not fix-issue candidates. Missing/null `.labels`
+    # is treated as an empty label set (matches GitHub's usual shape and
+    # offline harness rows); non-array `.labels` or jq failure is fail-closed.
+    set +e
+    echo "$issue_row" | jq -e '
+      (.labels
+        | if . == null then []
+          elif type == "array" then .
+          else error("issue labels must be a JSON array or null")
+          end)
+      | index("audit-report") != null
+    ' >/dev/null 2>&1
+    row_audit_label_rc=$?
+    set -e
+    case "$row_audit_label_rc" in
+        0)
+            larch_err "Skipping issue #$ISSUE_NUM: has label 'audit-report'"
+            continue
+            ;;
+        1) ;;
+        *)
+            emit_kv ELIGIBLE false
+            emit_kv ERROR "Cannot verify audit-report label for issue #$ISSUE_NUM (jq exit $row_audit_label_rc); refusing auto-pick"
+            exit 2
+            ;;
+    esac
 
     # Get the globally-last comment body. See the explicit-issue path above for
     # the rationale on `--slurp` + `add // [] | .[-1]`.

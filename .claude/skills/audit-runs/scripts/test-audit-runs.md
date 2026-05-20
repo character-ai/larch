@@ -1,6 +1,6 @@
 # .claude/skills/audit-runs/scripts/test-audit-runs.sh — contract
 
-Offline unit test harness for `/audit-runs` skill logic. Tests verbal-description parsing, "since last audit" error paths, concurrency guard, `--repo` enforcement, `--no-fix-issues` behavior, frontmatter round-trip, and audit report title exclusion regex.
+Offline unit test harness for `/larch:audit-runs` skill logic. Tests verbal-description parsing, "since last audit" error paths, concurrency guard, `--repo` enforcement, `--no-fix-issues` behavior, frontmatter round-trip, and audit report title exclusion regex.
 
 ## Purpose
 
@@ -25,7 +25,7 @@ bash .claude/skills/audit-runs/scripts/test-audit-runs.sh
 
 ## Wiring
 
-Not yet wired into `make lint`. To add: follow the pattern of `test-find-lock-issue` in the `Makefile`.
+Wired into `make lint` via the `test-audit-runs` target in the `Makefile` (same `harness-timer.sh` wrapper pattern as `test-find-lock-issue`). Listed in `docs/linting.md` harness inventory.
 
 ## Edit-in-sync
 

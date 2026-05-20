@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-audit-runs.sh — Unit tests for /audit-runs skill logic.
+# test-audit-runs.sh — Unit tests for /larch:audit-runs skill logic.
 #
 # Tests verbal-description parsing, "since last audit" error paths,
 # concurrency guard, --repo enforcement, --no-fix-issues flag, audit report
@@ -168,7 +168,7 @@ audited_pr_range:
 result=$(parse_frontmatter_last_pr "$good_body")
 assert_equal "$result" "last_pr:2410" "[7] well-formed frontmatter parses last PR"
 
-bad_body="## Summary\nNo frontmatter here"
+bad_body=$'## Summary\nNo frontmatter here'
 result=$(parse_frontmatter_last_pr "$bad_body")
 assert_equal "$result" "error:malformed_frontmatter" "[7b] missing frontmatter → error"
 
