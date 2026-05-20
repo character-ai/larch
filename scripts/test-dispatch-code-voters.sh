@@ -266,6 +266,8 @@ fi  # end section: edge-and-r3-claude
 if section_runs retry-claude; then
 retry_success_tmp="$TMP/retry-success"
 retry_count_file="$TMP/retry-success-count.txt"
+mkdir -p "$retry_success_tmp"
+printf 'stale first-pass content\n' > "$retry_success_tmp/claude-vote-output-first-pass.txt"
 out=$(PATH="$STUB_BIN:$PATH" CLAUDE_STUB_MODE=parse_retry_success CLAUDE_STUB_COUNT_FILE="$retry_count_file" "$SCRIPT" \
     --ballot-file "$BALLOT" \
     --review-tmpdir "$retry_success_tmp" \
@@ -298,6 +300,8 @@ fi
 
 retry_fail_tmp="$TMP/retry-fail"
 retry_fail_count_file="$TMP/retry-fail-count.txt"
+mkdir -p "$retry_fail_tmp"
+printf 'stale first-pass content\n' > "$retry_fail_tmp/claude-vote-output-first-pass.txt"
 # No LARCH_EXECUTION_ISSUES_LOG. For this harness-shaped REVIEW_TMPDIR, the parse-rate
 # guard skips append-tool-failure.sh entirely, so stderr and the local diag sidecar
 # remain the only warning surfaces.
@@ -385,6 +389,8 @@ fi  # end section: retry-cursor
 if section_runs retry-codex-fail-and-fallback; then
 retry_fail_codex_tmp="$TMP/retry-fail-codex"
 retry_fail_codex_count_file="$TMP/retry-fail-codex-count.txt"
+mkdir -p "$retry_fail_codex_tmp"
+printf 'stale first-pass content\n' > "$retry_fail_codex_tmp/codex-vote-output-first-pass.txt"
 # No LARCH_EXECUTION_ISSUES_LOG. For this harness-shaped codex fixture too, the
 # parse-rate guard skips append-tool-failure.sh entirely instead of appending to a
 # review-local execution-issues.md fallback.
