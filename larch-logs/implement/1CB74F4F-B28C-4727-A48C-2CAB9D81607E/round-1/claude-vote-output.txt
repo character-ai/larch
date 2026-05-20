@@ -1,0 +1,5 @@
+FINDING_1: YES
+FINDING_2: EXONERATE -- guard is inside `|| true` brace group so partial I/O already can't abort; incremental risk is trivial and not issue-worthy
+FINDING_3: YES
+FINDING_4: NO -- duplicate of FINDING_3 from a different reviewer; same assertion-weakness concern already captured
+FINDING_5: EXONERATE -- voter output embedded in a plain-text diagnostic file, not a rendered Markdown doc; fence-breaking risk is cosmetic and no parser currently relies on structure there

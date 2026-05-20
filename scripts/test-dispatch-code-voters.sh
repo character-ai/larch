@@ -117,6 +117,9 @@ cat > "$STUB_BIN/claude" <<'STUB'
 cat >/dev/null
 case "${CLAUDE_STUB_MODE:-ok}" in
   empty) exit 0 ;;
+  fail_nonempty)
+    printf 'stub voter output for diag test\n'
+    exit 7 ;;
   fail)
     printf 'stub claude failure\n' >&2
     exit 7 ;;
@@ -196,6 +199,12 @@ grep -Fq 'VOTER_1_PARSE_RATE_STATUS=SKIPPED' <<< "$out"
 grep -Fq 'dispatch-code-voters.sh voter1' "$issues_log"
 grep -Fq 'launch-claude-review.sh (claude voter) failed (exit 99)' "$issues_log"
 grep -Fq 'voter1_rc=99' "$issues_log"
+
+issues_log_nonempty="$TMP/execution-issues-nonempty.md"
+out=$(PATH="$STUB_BIN:$PATH" CLAUDE_STUB_MODE=fail_nonempty LARCH_EXECUTION_ISSUES_LOG="$issues_log_nonempty" "$SCRIPT" --ballot-file "$BALLOT" --review-tmpdir "$TMP/nonempty-voter1" --codex-available true --cursor-available true)
+grep -Fq 'VOTER_1_STATUS=failed' <<< "$out"
+grep -Fq -- '--- first 200 bytes of voter output ---' "$issues_log_nonempty"
+grep -Fq 'stub voter output for diag test' "$issues_log_nonempty"
 
 out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" --ballot-file "$BALLOT" --review-tmpdir "$TMP/round2" --codex-available true --cursor-available false --round-num 2)
 grep -Fq 'VOTER_1_TOOL=claude' <<< "$out"
