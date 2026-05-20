@@ -1,0 +1,9 @@
+Gathering the pre-computed diff and commit history for a read-only review.
+
+Tracing how `extract_category` is invoked and whether test fixtures match real finding bodies.
+
+Checking how other tests assert `category` for accepted findings to assess the global behavior change.
+
+Confirming: `flush_pending` prepends `## $pending_title` for all finding kinds that set `pending_title`, so the whitelist applies globally—not only OOS. Creating the plan document and delivering the full review.
+
+

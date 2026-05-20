@@ -1,0 +1,8 @@
+FINDING_1: YES
+FINDING_2: NO -- Bare branch commit listing is not an actionable out-of-scope issue.
+FINDING_3: NO -- The repo intentionally commits redacted implement run logs by default.
+FINDING_4: NO -- Whitelisted category extraction makes path/timestamp colon shapes empty rather than leaked categories.
+FINDING_5: EXONERATE -- The plan-log wording mismatch is harmless committed run-log churn.
+FINDING_6: EXONERATE -- The fixture concern is real but the existing assertion still covers the intended invalid-category behavior.
+FINDING_7: YES
+FINDING_8: YES

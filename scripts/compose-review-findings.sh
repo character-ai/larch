@@ -58,29 +58,44 @@ redact_field() {
 
 # Extract the category from a finding body. Bodies typically open with a
 # '## <category>: …' line or '## **<category>** — …'; if absent, returns the empty string.
+# For out_of_scope (strict=1), the extracted token must be one of the five focus-area tags
+# or the result is treated as unknown and the empty string is returned (prevents bogus OOS
+# headings from populating category). For other outcomes (strict=0), any non-empty
+# candidate after parsing is returned (best-effort label for downstream consumers).
 extract_category() {
-    LC_ALL=C awk '
+    local body="$1" strict="${2:-0}"
+    LC_ALL=C awk -v strict="$strict" '
         /^## / {
             sub(/^## /, "")
             if (substr($0, 1, 2) == "**") {
                 sub(/^\*\*/, "")
                 n = index($0, "**")
                 if (n > 0) {
-                    print substr($0, 1, n - 1)
+                    candidate = substr($0, 1, n - 1)
                 } else {
-                    print $0
+                    candidate = $0
                 }
             } else {
                 n = index($0, ":")
                 if (n > 0) {
-                    print substr($0, 1, n - 1)
+                    candidate = substr($0, 1, n - 1)
                 } else {
-                    print $0
+                    candidate = $0
                 }
+            }
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", candidate)
+            if (strict == 1) {
+                if (candidate == "code-quality" || candidate == "risk-integration" ||
+                    candidate == "correctness" || candidate == "architecture" ||
+                    candidate == "security") {
+                    print candidate
+                }
+            } else if (candidate != "") {
+                print candidate
             }
             exit
         }
-    ' <<<"$1"
+    ' <<<"$body"
 }
 
 extract_reviewer_from_body() {
@@ -103,10 +118,11 @@ FINDINGS_TOTAL=0
 
 emit_record() {
     local id="$1" phase="$2" outcome="$3" reviewer="$4" body="$5" round_num="$6"
-    local reviewer_redacted body_redacted category
+    local reviewer_redacted body_redacted category strict_cat=0
     reviewer_redacted="$(redact_field "$reviewer")" || fail "redaction failed for reviewer in $id"
     body_redacted="$(redact_field "$body")" || fail "redaction failed for prose_body in $id"
-    category="$(extract_category "$body_redacted")"
+    [[ "$outcome" == "out_of_scope" ]] && strict_cat=1
+    category="$(extract_category "$body_redacted" "$strict_cat")"
     # JSONL: one compact JSON object per line. jq handles string escaping.
     jq -nc \
         --arg id "$id" \

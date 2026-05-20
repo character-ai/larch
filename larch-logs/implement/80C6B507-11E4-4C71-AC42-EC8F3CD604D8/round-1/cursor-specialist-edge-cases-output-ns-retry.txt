@@ -1,0 +1,14 @@
+Gathering the diff and commit history for the review.
+
+Verifying how finding bodies are passed to `extract_category` and whether test fixtures match real parsing.
+
+Confirming OOS parsing: `flush_pending` prepends `## $pending_title`, so `extract_category` sees the synthetic heading; tests are consistent. Checking for a bold invalid-category gap and scanning `is_security_block` interaction.
+
+### In-Scope Findings
+
+- **correctness** `scripts/compose-review-findings.sh:64-87` — **Latent.** `extract_category` compares `candidate` to the five tags without trimming leading or trailing whitespace, but `flush_pending` builds `## $pending_title` from a regex-captured title that can include leading spaces (for example extra space after `[OUT_OF_SCOPE]`) or a tag token with trailing spaces before `:`, so a reviewer line that still names a valid focus tag can stringify as ` security` or `code-quality ` and incorrectly yield an empty `category` in JSONL. **Suggested fix:** In the same AWK program, normalize `candidate` with a leading/trailing whitespace strip (for example `gsub(/^[[:space:]]+|[[:space:]]+$/, "", candidate)` in POSIX awk) immediately before the five-tag equality checks, aligned with how `extract_reviewer_from_body` trims its extracted value.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	latent	correctness	scripts/compose-review-findings.sh:64-87	extract_category whitelists candidate without trimming whitespace	pending_title from OOS headers or Markdown can add leading/trailing spaces so a valid focus-area tag fails literal string match and category becomes empty JSONL	strip leading/trailing whitespace on candidate in AWK before the five-tag comparisons
+```

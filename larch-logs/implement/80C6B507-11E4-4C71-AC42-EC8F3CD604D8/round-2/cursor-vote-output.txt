@@ -1,0 +1,13 @@
+FINDING_1: EXONERATE -- run-logs.md line 148 still says best-effort only while compose-review-findings.md documents the whitelist, but syncing one sentence does not need a GitHub issue.
+FINDING_2: NO -- reviewer concludes logs are fine and no CI or test action is required.
+FINDING_3: NO -- traceability table asserts requirements are met; there is no defect to revise.
+FINDING_4: NO -- informational diff summary with no actionable security defect.
+FINDING_5: NO -- commit-title echo, not an independent actionable finding.
+FINDING_6: NO -- duplicate of FINDING_5 with no added substance.
+FINDING_7: NO -- chore commit metadata only, not a code defect.
+FINDING_8: NO -- duplicate of FINDING_7 with no added substance.
+FINDING_9: EXONERATE -- doc and script list the same five tags; a short cross-reference comment is enough without refactoring AWK into an associative array.
+FINDING_10: YES -- baseline block checks FINDING_1 and FINDING_2 fields but never asserts category, so accepted/plan category regressions can slip through unnoticed.
+FINDING_11: YES -- mangled OOS block covers colon and prose shapes but has no bold-markdown heading whose token is not a focus-area tag, so bold-path whitelist bypass is untested.
+FINDING_12: YES -- extract_category runs on every emit_record body, so free-form accepted/plan titles lose prior best-effort categories unless this breaking change is documented or validation is narrowed.
+FINDING_13: NO -- same missing bold invalid-token coverage already captured by FINDING_11.

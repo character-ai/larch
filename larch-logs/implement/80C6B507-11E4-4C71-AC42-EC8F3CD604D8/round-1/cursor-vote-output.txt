@@ -1,0 +1,10 @@
+Reading the ballot and nearby context files to verify findings.
+
+FINDING_1: YES
+FINDING_2: NO -- commit enumeration is informational, not a defect warranting a GitHub issue
+FINDING_3: EXONERATE -- mixed larch-logs and code in one diff is real noise but repo convention, not issue-tracker material
+FINDING_4: NO -- pre-existing first-colon limitation already scoped out of this change
+FINDING_5: YES
+FINDING_6: NO -- OOS fixtures shown lack a `## ` body line, so empties are not shown to come from an early-colon substring bug
+FINDING_7: YES
+FINDING_8: YES

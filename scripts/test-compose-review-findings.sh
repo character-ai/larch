@@ -96,6 +96,12 @@ done < "$out"
 [[ "$(record_field_by_id "$out" FINDING_2 reviewer)" == "Codex-Structure" ]] || fail "FINDING_2 reviewer"
 [[ "$(record_field_by_id "$out" FINDING_2 round_num)" == "1" ]] || fail "FINDING_2 round_num"
 
+# Best-effort category from the synthetic '## <title>' line (non-OOS is not tag-whitelisted).
+[[ "$(record_field_by_id "$out" FINDING_1 category)" == "Architecture boundary" ]] \
+    || fail "FINDING_1 category: got $(record_field_by_id "$out" FINDING_1 category)"
+[[ "$(record_field_by_id "$out" FINDING_2 category)" == "Runtime bug" ]] \
+    || fail "FINDING_2 category: got $(record_field_by_id "$out" FINDING_2 category)"
+
 # Plan-review rejected finding
 [[ "$(record_field_by_id "$out" REJ_P1 phase)" == "plan-review" ]] || fail "REJ_P1 phase"
 [[ "$(record_field_by_id "$out" REJ_P1 outcome)" == "rejected" ]] || fail "REJ_P1 outcome"
@@ -332,6 +338,61 @@ stdout="$("$COMPOSE" --implement-tmpdir "$TMP/bold-impl" --issue 2417 --output "
     || fail "bold-markdown OOS category: got $(record_field_by_id "$out" OOS_CR1_1 category)"
 [[ "$(record_field_by_id "$out" OOS_CR1_2 category)" == "risk-integration" ]] \
     || fail "static colon OOS category: got $(record_field_by_id "$out" OOS_CR1_2 category)"
+
+echo "=== mangled OOS categories return empty; valid tags pass ==="
+mkdir -p "$TMP/mangled-oos-impl/round-1"
+cat > "$TMP/mangled-oos-impl/round-1/oos.md" <<'EOF'
+### FINDING_1: [OUT_OF_SCOPE] TOCTOU: reviewer-invented heading shape
+- **Reviewer**: cursor-shape-3.txt
+- **Concern**: invented category token should not leak into JSONL.
+
+### FINDING_2: [OUT_OF_SCOPE] `scripts/create-pr.sh:40-43`: file-link-as-category shape
+- **Reviewer**: cursor-shape-4.txt
+- **Concern**: path-like heading should not become category.
+
+### FINDING_3: [OUT_OF_SCOPE] Pure prose paragraph with no colon delimiter anywhere
+- **Reviewer**: cursor-shape-5.txt
+- **Concern**: prose-only heading should yield empty category.
+
+### FINDING_4: [OUT_OF_SCOPE] docs, `docs/voting-process.md`: comma-separated token list
+- **Reviewer**: cursor-shape-6.txt
+- **Concern**: comma-separated blob should yield empty category.
+
+### FINDING_5: [OUT_OF_SCOPE] code-quality: valid tag with colon form
+- **Reviewer**: cursor-valid-cq.txt
+- **Concern**: canonical focus-area tag.
+
+### FINDING_6: [OUT_OF_SCOPE] architecture: valid tag with colon form
+- **Reviewer**: cursor-valid-arch.txt
+- **Concern**: architecture focus-area tag.
+
+### FINDING_7: [OUT_OF_SCOPE] security: valid tag with colon form
+- **Reviewer**: cursor-valid-sec.txt
+- **Concern**: security focus-area tag.
+
+### FINDING_8: [OUT_OF_SCOPE] **not-a-focus-tag** — [`scripts/foo.sh`](https://example.com/foo)
+- **Reviewer**: cursor-invalid-bold-tag.txt
+- **Concern**: Bold token that is not a whitelisted focus-area tag must not populate category.
+EOF
+out="$TMP/mangled-oos.jsonl"
+stdout="$("$COMPOSE" --implement-tmpdir "$TMP/mangled-oos-impl" --issue 2447 --output "$out")"
+[[ "$stdout" == *"FINDINGS_TOTAL=8"* ]] || fail "mangled OOS total: $stdout"
+[[ -z "$(record_field_by_id "$out" OOS_CR1_1 category)" ]] \
+    || fail "invented heading should yield empty category, got $(record_field_by_id "$out" OOS_CR1_1 category)"
+[[ -z "$(record_field_by_id "$out" OOS_CR1_2 category)" ]] \
+    || fail "file-link heading should yield empty category, got $(record_field_by_id "$out" OOS_CR1_2 category)"
+[[ -z "$(record_field_by_id "$out" OOS_CR1_3 category)" ]] \
+    || fail "prose heading should yield empty category, got $(record_field_by_id "$out" OOS_CR1_3 category)"
+[[ -z "$(record_field_by_id "$out" OOS_CR1_4 category)" ]] \
+    || fail "comma-list heading should yield empty category, got $(record_field_by_id "$out" OOS_CR1_4 category)"
+[[ "$(record_field_by_id "$out" OOS_CR1_5 category)" == "code-quality" ]] \
+    || fail "code-quality category: got $(record_field_by_id "$out" OOS_CR1_5 category)"
+[[ "$(record_field_by_id "$out" OOS_CR1_6 category)" == "architecture" ]] \
+    || fail "architecture category: got $(record_field_by_id "$out" OOS_CR1_6 category)"
+[[ "$(record_field_by_id "$out" OOS_CR1_7 category)" == "security" ]] \
+    || fail "security category: got $(record_field_by_id "$out" OOS_CR1_7 category)"
+[[ -z "$(record_field_by_id "$out" OOS_CR1_8 category)" ]] \
+    || fail "non-whitelisted bold OOS heading should yield empty category, got $(record_field_by_id "$out" OOS_CR1_8 category)"
 
 echo "=== invalid issue fails ==="
 set +e
