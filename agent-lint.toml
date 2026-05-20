@@ -1349,6 +1349,12 @@ exclude = [
   # scripts/test-lint-fix-loop.md; not invoked from runtime skill prose.
   "scripts/test-lint-fix-loop.sh",
   "scripts/test-lint-fix-loop.md",
+  # scripts/test-gh-run-logs.sh is the offline regression harness for the
+  # gh-run-logs.sh exit-code contract (exit 2 on in-progress polling). It is
+  # referenced only from Makefile (test-gh-run-logs target) and the sibling
+  # contract scripts/test-gh-run-logs.md, not from runtime skill prose.
+  "scripts/test-gh-run-logs.sh",
+  "scripts/test-gh-run-logs.md",
   # scripts/test-ship-pr.sh and the two CI launcher argv harnesses are
   # Makefile-only regression entrypoints for the ship-pr state machine. They
   # are referenced from Makefile, docs/linting.md, and sibling contracts, not

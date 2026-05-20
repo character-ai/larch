@@ -16,6 +16,7 @@
 # Exit codes:
 #   0 — success (logs printed to stdout)
 #   1 — usage/argument error or gh command failure
+#   2 — run still in progress (transient; logs not yet available)
 
 set -euo pipefail
 
@@ -39,4 +40,11 @@ fi
 
 printf -- '--- CI log (run %s, repo %s) — last 100 lines shown. Full log: https://github.com/%s/actions/runs/%s ---\n' \
     "$RUN_ID" "$REPO" "$REPO" "$RUN_ID"
-gh run view "$RUN_ID" --repo "$REPO" --log-failed | tail -100
+gh_rc=0
+raw=$(gh run view "$RUN_ID" --repo "$REPO" --log-failed 2>&1) || gh_rc=$?
+if [ "$gh_rc" -ne 0 ] && printf '%s\n' "$raw" | grep -q "is still in progress; logs will be available"; then
+    printf '%s\n' "$raw" | tail -100
+    exit 2
+fi
+printf '%s\n' "$raw" | tail -100
+exit "$gh_rc"
