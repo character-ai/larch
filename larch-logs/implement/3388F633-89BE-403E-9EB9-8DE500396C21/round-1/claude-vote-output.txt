@@ -1,0 +1,32 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: NO -- observes no defect, not actionable as an issue
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: EXONERATE -- assert_contains "OK" is sufficient since OK only prints on exit 0; asserting $? adds boilerplate without catching new bugs
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: NO -- observes no defect, not actionable as an issue
+FINDING_14: YES
+FINDING_15: EXONERATE -- pre-existing inconsistency not introduced or worsened by this branch
+FINDING_16: NO -- meta-observation, not a standalone actionable finding
+FINDING_17: EXONERATE -- same pre-existing inconsistency as FINDING_15
+FINDING_18: YES
+FINDING_19: YES
+FINDING_20: YES
+FINDING_21: YES
+FINDING_22: YES
+FINDING_23: EXONERATE -- cosmetic audit-label mis-attribution; fix requires new API parameter adding complexity disproportionate to the benefit
+FINDING_24: EXONERATE -- same issue as FINDING_23; mis-label is cosmetic in audit trail, not functionally broken
+FINDING_25: YES
+FINDING_26: YES
+FINDING_27: YES
+FINDING_28: YES
+FINDING_29: EXONERATE -- stderr suppression in refresh is a debuggability nit, not functionally broken; fix is minor but concern doesn't warrant a tracked issue
+FINDING_30: YES
+FINDING_31: YES
+FINDING_32: EXONERATE -- larch-log.sh still enforces the default-branch and sentinel guards; removing the redundant wrapper layer is acceptable simplification, not a security regression

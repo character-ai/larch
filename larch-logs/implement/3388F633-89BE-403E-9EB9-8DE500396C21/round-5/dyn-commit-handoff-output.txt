@@ -1,0 +1,17 @@
+Gathering the diff and tracing defer-commit paths for a correctness-focused review.
+
+Reading the post-change implementations in the repo to verify defer-commit flow, error paths, and dual `captured` semantics.
+
+### In-Scope Findings
+
+- **[correctness]** [scripts/ship-pr.md:101-102](scripts/ship-pr.md): The “Log Refresh” paragraph still says `scripts/refresh-run-logs.sh` re-renders and commits only `token-report` and `timing-report` before each push. The branch’s [scripts/refresh-run-logs.sh:84-98](scripts/refresh-run-logs.sh) also re-captures `session-transcript` (with `--defer-commit true`) before the same `larch-log.sh commit`. **Suggested fix:** Extend that sentence (and any downstream bullets that enumerate batches) to include `session-transcript` so ship-pr docs match runtime behavior.
+
+- **[correctness]** [skills/implement/SKILL.md:1703](skills/implement/SKILL.md): The Step 7a prose says `capture-session-transcript.sh` “emits the machine status on stdout” and that callers must use “the status line plus the post-transcript `flush-execution-issues.sh` refresh” as the contract. [scripts/refresh-run-logs.sh:87-98](scripts/refresh-run-logs.sh) intentionally redirects capture stdout to `/dev/null`, so for that caller there is no observable status line—only the execution-issues append (and flush when the checkpoint gate passes) remains. **Suggested fix:** Qualify the contract: stdout is for prompt-side Step 7a; refresh mode relies on execution-issues (and must keep the post-transcript flush + commit ordering).
+
+- **[correctness]** [scripts/verify-run-log-completeness.sh:48-54](scripts/verify-run-log-completeness.sh): The new `has_file session-transcript.jsonl` disjunct makes `condition_reached step7a` true whenever that file exists, including a degenerate directory that contains `session-transcript.jsonl` but none of the token/timing/execution witnesses. Because `condition_reached step5` ORs into `condition_reached step7a` ([scripts/verify-run-log-completeness.sh:42-46](scripts/verify-run-log-completeness.sh)), that lone file can force Step 5–scoped manifest rows to be evaluated and reported `MISSING` for review artifacts that were never part of that tree. **Suggested fix:** Treat `session-transcript.jsonl` as a dependent artifact (e.g. only count it toward `step7a` when at least one of token-report, timing-report, or execution-issues is also present), or document this strict edge as intentional if hand-corrupted dirs are out of scope.
+
+### Out-of-Scope Observations
+
+- **[correctness]** [scripts/refresh-run-logs.sh:111-116](scripts/refresh-run-logs.sh): `larch-log.sh commit` is wrapped with `2>/dev/null || true`, and any non-empty stdout that lacks `^UNCHANGED=true` yields `REFRESH_COMMITTED=true`, including commit failure with empty stdout. This pattern predates the inserted transcript block (per [round-5/diff.txt:757-765](file:///Users/zhupanov/.cache/larch/sessions/claude-implement-larch5-DmdX7Y/round-5/diff.txt)); the branch adds more content that could be left uncommitted if that path misfires, but the false-success structure itself is not introduced here.
+
+- **[correctness]** [skills/implement/SKILL.md:1698-1700](skills/implement/SKILL.md): Final `larch-log.sh commit` uses a bare `|| true` without the adjacent `append-tool-failure.sh` pattern mandated in the same paragraph for other tools; that tension appears to be pre-existing relative to the transcript relocation (the commit line is unchanged aside from surrounding new steps in the diff chunk).

@@ -396,6 +396,16 @@ exclude = [
   "scripts/test-larch-log.md",
   "scripts/test-capture-session-transcript.sh",
   "scripts/test-capture-session-transcript.md",
+  # scripts/verify-run-log-completeness.sh is the run-log completeness checker wired into
+  # Makefile (test-verify-run-log-completeness target and make lint via test-harnesses-7).
+  # scripts/test-verify-run-log-completeness.sh is its regression harness. Neither is
+  # invoked from SKILL.md/hooks.json/ci.yaml directly; agent-lint's G004/dead-script rule
+  # does not follow Makefile target chains. Same Makefile-only pattern as
+  # test-capture-session-transcript.sh above.
+  "scripts/verify-run-log-completeness.sh",
+  "scripts/verify-run-log-completeness.md",
+  "scripts/test-verify-run-log-completeness.sh",
+  "scripts/test-verify-run-log-completeness.md",
   "scripts/test-local-cleanup.sh",
   "scripts/test-local-cleanup.md",
   "scripts/test-larch-logs-manifest.sh",

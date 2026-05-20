@@ -1,0 +1,32 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: NO -- duplicate of in-scope FINDING_1/FINDING_8; filing a separate issue adds no coverage
+FINDING_11: NO -- reviewer explicitly verified all three as non-issues; not worth an issue
+FINDING_12: NO -- CHANGELOG historical entries are correct as written; retroactive updates misrepresent history
+FINDING_13: NO -- reviewer confirmed this as non-issue; nothing to track
+FINDING_14: NO -- reviewer confirmed as non-issue; existing dedup logic is correct
+FINDING_15: NO -- same as FINDING_12; CHANGELOG historical narrative should not be rewritten
+FINDING_16: EXONERATE -- pre-existing pattern not introduced by this diff; same class as new write/commit stderr mirroring; not issue-worthy standalone
+FINDING_17: NO -- pre-existing fallback discovery behavior; not introduced by this diff; not issue-worthy
+FINDING_18: EXONERATE -- capture-session-transcript.sh already routes render/write/commit stderr to tmpfiles; lib-quiet FD3 routing handles normal emit paths; callers suppress stderr anyway
+FINDING_19: YES
+FINDING_20: YES
+FINDING_21: YES
+FINDING_22: YES
+FINDING_23: YES
+FINDING_24: EXONERATE -- `-f` existence check is the conventional completeness signal; content validation is not the verifier's job; render-empty already handles zero-byte transcripts at capture time
+FINDING_25: YES
+FINDING_26: YES
+FINDING_27: YES
+FINDING_28: EXONERATE -- conditional historical-run test is an established codebase pattern; adding a committed synthetic fixture is over-engineering for a coverage gap that only arises if the run directory is removed
+FINDING_29: EXONERATE -- SESSION_TRANSCRIPT_STATUS visible in Step 7a orchestrator output is useful user feedback; redirect-to-dev-null would suppress diagnostic information; contexts differ from refresh-run-logs script-to-script call
+FINDING_30: YES
+FINDING_31: EXONERATE -- 300-char trim already limits exposure; git commit stderr rarely contains secrets; existing larch-log.sh redaction layer backstops; same pattern as pre-existing render-failed path
+FINDING_32: EXONERATE -- TSV is a committed source file requiring repo compromise to tamper; verifier performs no writes; only MISSING output is affected; validation complexity not justified

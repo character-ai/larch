@@ -1,0 +1,36 @@
+Reading the ballot and referenced context files to verify findings.
+
+Verifying ballot claims against the repository by reading the cited files.
+
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: EXONERATE -- commit-failed plus stderr trim already binds refusal text without extra coupling
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: EXONERATE -- same TSV/verifier gap as other findings; no separate issue needed
+FINDING_11: NO -- scout conclusions match refresh-run-logs, batch replace mode, and flush ordering
+FINDING_12: EXONERATE -- historical CHANGELOG entry; optional narrative cleanup only
+FINDING_13: NO -- early exit on NO_LOGS_COMMIT and flush using append only matches described behavior
+FINDING_14: NO -- documents existing dedup; no regression asserted
+FINDING_15: EXONERATE -- duplicate optional CHANGELOG note
+FINDING_16: EXONERATE -- pre-existing stderr-in-warning pattern; broad redaction not warranted here
+FINDING_17: EXONERATE -- pre-existing discovery logging; out of branch scope
+FINDING_18: EXONERATE -- low signal; capture already swallows failures with `|| true`
+FINDING_19: YES
+FINDING_20: YES
+FINDING_21: YES
+FINDING_22: YES
+FINDING_23: YES
+FINDING_24: EXONERATE -- zero-byte required files are unrealistic for this manifest in practice
+FINDING_25: YES
+FINDING_26: EXONERATE -- optional harness tightening with unclear stable contract on dirty tree
+FINDING_27: YES
+FINDING_28: EXONERATE -- optional fixture is nice-to-have; silent skip is an accepted conditional pattern
+FINDING_29: NO -- SKILL.md already documents stdout status emission for capture
+FINDING_30: YES
+FINDING_31: EXONERATE -- shared redaction across stderr paths is disproportionate for this branch
+FINDING_32: EXONERATE -- manifest is repo-controlled; `..` rows would be caught in review

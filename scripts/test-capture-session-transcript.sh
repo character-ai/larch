@@ -42,6 +42,9 @@ run_capture() {
     local no_logs_commit="$4"
     local implement_tmpdir="${5:-}"
     local home_dir="${6:-}"
+    local warning_step_label="${7:-7a}"
+    local refresh_mode="${8:-false}"
+    local defer_commit="${9:-false}"
     local repo="$TMP/$label-repo"
     local log_root="$TMP/$label-staging/larch-logs"
     local issues="$TMP/$label-execution-issues.md"
@@ -69,6 +72,9 @@ run_capture() {
         --skill implement \
         --run-id "$label" \
         --no-logs-commit "$no_logs_commit" \
+        --warning-step-label "$warning_step_label" \
+        --refresh-mode "$refresh_mode" \
+        --defer-commit "$defer_commit" \
         --execution-issues-log "$issues")"
 
     assert_contains "$label stdout status" "$out" "SESSION_TRANSCRIPT_STATUS=$expected"
@@ -176,34 +182,9 @@ touch -t 200001010000 "$fallback_stale_transcript"
 printf 'test-session\n' > "$fallback_stale_impl/session-id"
 run_capture "$fallback_stale_label" "source-file-missing" "" "false" "$fallback_stale_impl" "$fallback_stale_home"
 
-# post-merge sentinel suppression test.
-sentinel_label="post-merge-sentinel"
-sentinel_repo="$TMP/$sentinel_label-repo"
-sentinel_impl="$TMP/$sentinel_label-impl"
-mkdir -p "$sentinel_repo" "$sentinel_impl"
-git -C "$sentinel_repo" init >/dev/null 2>&1
-git -C "$sentinel_repo" config user.email "ci@test"
-git -C "$sentinel_repo" config user.name "Test CI"
-touch "$sentinel_repo/.gitkeep"
-git -C "$sentinel_repo" add .
-git -C "$sentinel_repo" commit -q -m "init"
-printf '%s\n' "$sentinel_label" > "$sentinel_impl/session-id"
-printf 'MERGE_RESULT=merged\n' > "$sentinel_impl/post-merge-sentinel"
-out="$(cd "$sentinel_repo" && env "PATH=${PATH:-}" "IMPLEMENT_TMPDIR=$sentinel_impl" "HOME=$TMP/default-home" "$CAPTURE" \
-    --source-file "$source_ok" \
-    --log-root "$TMP/$sentinel_label-staging/larch-logs" \
-    --skill implement \
-    --run-id "$sentinel_label" \
-    --no-logs-commit false \
-    --execution-issues-log "$TMP/$sentinel_label-issues.md")"
-assert_contains "$sentinel_label stdout status" "$out" "SESSION_TRANSCRIPT_STATUS=suppressed-post-merge-sentinel"
-if [ -f "$TMP/$sentinel_label-issues.md" ]; then
-    assert_contains "$sentinel_label execution issue status" "$(cat "$TMP/$sentinel_label-issues.md")" "session-transcript status=suppressed-post-merge-sentinel"
-else
-    fail "$sentinel_label execution issue log missing"
-fi
-
-default_branch_label="default-branch"
+# Loud-failure test on default branch: script should attempt commit and emit commit-failed
+# (larch-log.sh refuses to commit on main) rather than silently suppressing.
+default_branch_label="default-branch-loud-fail"
 default_branch_repo="$TMP/$default_branch_label-repo"
 mkdir -p "$default_branch_repo"
 git -C "$default_branch_repo" init >/dev/null 2>&1
@@ -220,16 +201,84 @@ out="$(cd "$default_branch_repo" && env "PATH=${PATH:-}" "IMPLEMENT_TMPDIR=" "HO
     --run-id "$default_branch_label" \
     --no-logs-commit false \
     --execution-issues-log "$TMP/$default_branch_label-issues.md")"
-assert_contains "$default_branch_label stdout status" "$out" "SESSION_TRANSCRIPT_STATUS=suppressed-default-branch"
+# larch-log.sh refuses to commit on main/default branch → commit-failed (loud, not suppressed)
+assert_contains "$default_branch_label stdout status" "$out" "SESSION_TRANSCRIPT_STATUS=commit-failed"
 if [ -f "$TMP/$default_branch_label-issues.md" ]; then
-    assert_contains "$default_branch_label execution issue status" "$(cat "$TMP/$default_branch_label-issues.md")" "session-transcript status=suppressed-default-branch"
+    assert_contains "$default_branch_label execution issue status" "$(cat "$TMP/$default_branch_label-issues.md")" "session-transcript status=commit-failed"
+    assert_contains "$default_branch_label execution issue refusal" "$(cat "$TMP/$default_branch_label-issues.md")" "refusing commit on default branch"
 else
     fail "$default_branch_label execution issue log missing"
 fi
-if [ ! -e "$default_branch_repo/larch-logs/implement/$default_branch_label" ]; then
-    pass "$default_branch_label does not copy logs into repo"
+if [ -e "$default_branch_repo/larch-logs/implement/$default_branch_label" ]; then
+    fail "$default_branch_label should not copy run logs into repo on failed commit"
 else
-    fail "$default_branch_label should not copy logs into repo"
+    pass "$default_branch_label leaves repo free of copied run logs"
+fi
+
+refresh_label="refresh-retains-prior-transcript"
+refresh_repo="$TMP/$refresh_label-repo"
+refresh_log_root="$TMP/$refresh_label-staging/larch-logs"
+refresh_issues="$TMP/$refresh_label-issues.md"
+mkdir -p "$refresh_repo"
+git -C "$refresh_repo" init >/dev/null 2>&1
+git -C "$refresh_repo" config user.email "ci@test"
+git -C "$refresh_repo" config user.name "Test CI"
+touch "$refresh_repo/.gitkeep"
+git -C "$refresh_repo" add .
+git -C "$refresh_repo" commit -q -m "init"
+git -C "$refresh_repo" checkout -q -b "feature-$refresh_label"
+mkdir -p "$refresh_log_root/implement/$refresh_label"
+printf '{"v":1}\n' > "$refresh_log_root/implement/$refresh_label/session-transcript.jsonl"
+out="$(cd "$refresh_repo" && env "PATH=${PATH:-}" "IMPLEMENT_TMPDIR=" "HOME=$TMP/default-home" "$CAPTURE" \
+    --source-file "$TMP/missing-source.env" \
+    --log-root "$refresh_log_root" \
+    --skill implement \
+    --run-id "$refresh_label" \
+    --no-logs-commit false \
+    --warning-step-label pre-push-refresh \
+    --refresh-mode true \
+    --defer-commit true \
+    --execution-issues-log "$refresh_issues")"
+assert_contains "$refresh_label stdout status" "$out" "SESSION_TRANSCRIPT_STATUS=source-file-missing"
+if [ -f "$refresh_issues" ]; then
+    assert_contains "$refresh_label prior transcript retained" "$(cat "$refresh_issues")" "prior transcript retained"
+    if grep -q "status=captured" "$refresh_issues"; then
+        fail "$refresh_label should not append captured warning during refresh"
+    else
+        pass "$refresh_label omits captured warning during refresh"
+    fi
+else
+    fail "$refresh_label execution issue log missing"
+fi
+
+refresh_captured_label="refresh-captured-warning"
+refresh_captured_repo="$TMP/$refresh_captured_label-repo"
+refresh_captured_log_root="$TMP/$refresh_captured_label-staging/larch-logs"
+refresh_captured_issues="$TMP/$refresh_captured_label-issues.md"
+mkdir -p "$refresh_captured_repo"
+git -C "$refresh_captured_repo" init >/dev/null 2>&1
+git -C "$refresh_captured_repo" config user.email "ci@test"
+git -C "$refresh_captured_repo" config user.name "Test CI"
+touch "$refresh_captured_repo/.gitkeep"
+git -C "$refresh_captured_repo" add .
+git -C "$refresh_captured_repo" commit -q -m "init"
+git -C "$refresh_captured_repo" checkout -q -b "feature-$refresh_captured_label"
+out="$(cd "$refresh_captured_repo" && env "PATH=${PATH:-}" "IMPLEMENT_TMPDIR=" "HOME=$TMP/default-home" "$CAPTURE" \
+    --source-file "$source_ok" \
+    --log-root "$refresh_captured_log_root" \
+    --skill implement \
+    --run-id "$refresh_captured_label" \
+    --no-logs-commit false \
+    --warning-step-label pre-push-refresh \
+    --refresh-mode true \
+    --defer-commit true \
+    --execution-issues-log "$refresh_captured_issues")"
+assert_contains "$refresh_captured_label stdout status" "$out" "SESSION_TRANSCRIPT_STATUS=captured"
+if [ -f "$refresh_captured_issues" ]; then
+    assert_contains "$refresh_captured_label execution issue status" "$(cat "$refresh_captured_issues")" "session-transcript status=captured"
+    assert_contains "$refresh_captured_label execution issue text" "$(cat "$refresh_captured_issues")" "commit deferred to caller"
+else
+    fail "$refresh_captured_label execution issue log missing"
 fi
 
 echo

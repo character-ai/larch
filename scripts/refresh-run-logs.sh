@@ -81,6 +81,30 @@ fi
 "$SCRIPT_DIR/timing-report.sh" --full --format json --output "$IMPL_TMPDIR/timing-report-refresh.json" 2>/dev/null || true
 "$SCRIPT_DIR/larch-log.sh" write --log-root "$log_root" --skill implement --run-id "$run_id" \
     --batch timing-report --input-file "$IMPL_TMPDIR/timing-report-refresh.json" 2>/dev/null || true
+# Re-capture session transcript so CI-retry pushes carry the most recent turns.
+# Use the already-exported LARCH_CLAUDE_SOURCE_FILE (set by the session-env block above
+# when session-env.sh exists); falls back to empty string if missing, which causes the
+# script to attempt fallback discovery. Redirect stdout so SESSION_TRANSCRIPT_STATUS does
+# not pollute the caller's output stream.
+"$SCRIPT_DIR/capture-session-transcript.sh" \
+    --source-file "${LARCH_CLAUDE_SOURCE_FILE:-}" \
+    --log-root "$log_root" \
+    --skill implement \
+    --run-id "$run_id" \
+    --no-logs-commit "false" \
+    --warning-step-label "pre-push-refresh" \
+    --refresh-mode "true" \
+    --defer-commit "true" \
+    --execution-issues-log "$issue_log" >/dev/null || true
+if [ -s "$issue_log" ] && { [ -f "$checkpoint" ] || [ -f "$sentinel" ] || [ -f "$batch_path" ]; }; then
+    "$SCRIPT_DIR/../skills/implement/scripts/flush-execution-issues.sh" \
+        --log-root "$log_root" \
+        --run-id "$run_id" \
+        --issue-log "$issue_log" \
+        --step-label pre-push-post-transcript \
+        --source-label "execution-issues.md post-transcript refresh" \
+        2>/dev/null || true
+fi
 
 # Commit via larch-log.sh, which handles the tmpdir→repo copy and git operations.
 # No push — caller owns the push.

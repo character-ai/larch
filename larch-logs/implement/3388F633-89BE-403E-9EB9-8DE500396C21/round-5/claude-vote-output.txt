@@ -1,0 +1,30 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: EXONERATE -- edge only in corrupted/degenerate dirs; a session-transcript.jsonl without peer step7a artifacts cannot arise in normal runs, and if it did the verifier would correctly flag the peers as MISSING
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: NO -- reviewer is simply noting their focus area boundary; no actionable concern raised
+FINDING_14: NO -- scout concern shown to be a false alarm; disjuncts in || chains are safe under set -e
+FINDING_15: NO -- scout cascade concern refuted; graph is strictly forward with no backward calls
+FINDING_16: NO -- under-triggers not over-triggers; empty MANIFEST_PR_NUMBER disables reachability rather than spuriously enabling it
+FINDING_17: YES
+FINDING_18: EXONERATE -- pre-existing discovery logic not changed by this diff; not issue-worthy
+FINDING_19: EXONERATE -- defer-commit split achieves the same design intent; plan was a guide not a spec; adding a prose comment would add minimal value
+FINDING_20: YES
+FINDING_21: YES
+FINDING_22: EXONERATE -- complexity is warranted and a single cross-reference comment would add little
+FINDING_23: EXONERATE -- nit; || true semantics are clear in context
+FINDING_24: YES
+FINDING_25: YES
+FINDING_26: YES
+FINDING_27: EXONERATE -- process reminder only; not independently issue-worthy
+FINDING_28: YES
+FINDING_29: YES
+FINDING_30: EXONERATE -- internal-only parameter with fixed caller-supplied values; risk is minimal and allowlisting adds disproportionate complexity

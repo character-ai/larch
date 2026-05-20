@@ -1,0 +1,25 @@
+Verifying ballot claims by reading cited files in the workspace.
+
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: EXONERATE -- optional boundary-case coverage, not blocking correctness
+FINDING_6: EXONERATE -- duplicate of FINDING_4 GNU awk match(…,m) portability issue
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: EXONERATE -- OUT_OF_SCOPE confirmation; no GitHub tracking issue warranted
+FINDING_10: EXONERATE -- OUT_OF_SCOPE; behavior matches described wiring
+FINDING_11: EXONERATE -- OUT_OF_SCOPE; exit-0 pattern pre-exists new completeness gate
+FINDING_12: EXONERATE -- OUT_OF_SCOPE; no diff regression to track as an issue
+FINDING_13: EXONERATE -- OUT_OF_SCOPE; pre-existing discovery path, not branch-introduced
+FINDING_14: EXONERATE -- true limited slug check scope but low practical miss risk
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: EXONERATE -- duplicate pr_number/GNU awk concern already covered by FINDING_4
+FINDING_18: EXONERATE -- hypothetical commit ordering; NDJSON alone rarely implies Step 7a falsely in practice
+FINDING_19: EXONERATE -- duplicate brittle JSON field parsing concern covered by FINDING_8
+FINDING_20: NO -- cited line range does not exist in current scripts/test-capture-session-transcript.sh
+FINDING_21: NO -- same invalid line references and duplicate of FINDING_20 claim
+FINDING_22: EXONERATE -- latent stderr-in-warning risk is real but narrow and caller/tool-dependent
+FINDING_23: EXONERATE -- trusted step labels from callers; extra validation likely overkill

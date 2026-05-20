@@ -11,7 +11,7 @@ larch_quiet_init
 usage() {
     while IFS= read -r line; do larch_err "$line"; done <<'USAGE'
 Usage:
-  capture-session-transcript.sh --source-file PATH --log-root DIR --skill S --run-id R --no-logs-commit true|false --execution-issues-log PATH
+  capture-session-transcript.sh --source-file PATH --log-root DIR --skill S --run-id R --no-logs-commit true|false --execution-issues-log PATH [--warning-step-label LABEL] [--refresh-mode true|false] [--defer-commit true|false]
 USAGE
 }
 
@@ -21,6 +21,9 @@ SKILL=""
 RUN_ID=""
 NO_LOGS_COMMIT=""
 EXECUTION_ISSUES_LOG=""
+WARNING_STEP_LABEL="7a"
+REFRESH_MODE="false"
+DEFER_COMMIT="false"
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -42,6 +45,15 @@ while [ $# -gt 0 ]; do
         --execution-issues-log)
             [ $# -ge 2 ] || { usage; emit_kv SESSION_TRANSCRIPT_STATUS usage-error; exit 0; }
             EXECUTION_ISSUES_LOG="$2"; shift 2 ;;
+        --warning-step-label)
+            [ $# -ge 2 ] || { usage; emit_kv SESSION_TRANSCRIPT_STATUS usage-error; exit 0; }
+            WARNING_STEP_LABEL="$2"; shift 2 ;;
+        --refresh-mode)
+            [ $# -ge 2 ] || { usage; emit_kv SESSION_TRANSCRIPT_STATUS usage-error; exit 0; }
+            REFRESH_MODE="$2"; shift 2 ;;
+        --defer-commit)
+            [ $# -ge 2 ] || { usage; emit_kv SESSION_TRANSCRIPT_STATUS usage-error; exit 0; }
+            DEFER_COMMIT="$2"; shift 2 ;;
         *) usage; emit_kv SESSION_TRANSCRIPT_STATUS usage-error; exit 0 ;;
     esac
 done
@@ -55,6 +67,14 @@ case "${NO_LOGS_COMMIT:-}" in
     true|false) ;;
     *) emit_kv SESSION_TRANSCRIPT_STATUS usage-error; usage; exit 0 ;;
 esac
+case "${REFRESH_MODE:-}" in
+    true|false) ;;
+    *) emit_kv SESSION_TRANSCRIPT_STATUS usage-error; usage; exit 0 ;;
+esac
+case "${DEFER_COMMIT:-}" in
+    true|false) ;;
+    *) emit_kv SESSION_TRANSCRIPT_STATUS usage-error; usage; exit 0 ;;
+esac
 
 append_warning() {
     local status="$1"
@@ -64,8 +84,20 @@ append_warning() {
     "$SCRIPT_DIR/append-execution-issue.sh" \
         --log "$EXECUTION_ISSUES_LOG" \
         --category Warnings \
-        --entry "- **Step 18 — session-transcript status=$status:** $message" \
+        --entry "- **Step $WARNING_STEP_LABEL — session-transcript status=$status:** $message" \
         >/dev/null 2>&1 || true
+}
+
+redact_stderr_snippet() {
+    local path="$1"
+    local snippet=""
+
+    [ -f "$path" ] || return 0
+    snippet="$(tr '\n' ' ' < "$path" | sed 's/  */ /g')"
+    if [ -x "$SCRIPT_DIR/redact-secrets.sh" ]; then
+        snippet="$(printf '%s' "$snippet" | "$SCRIPT_DIR/redact-secrets.sh" 2>/dev/null || printf '<REDACTION_FAILED>')"
+    fi
+    printf '%s' "$snippet" | cut -c1-300
 }
 
 emit_status() {
@@ -77,26 +109,9 @@ emit_status() {
     exit 0
 }
 
-current_branch_is_default() {
-    local repo_root current_branch default_branch
-
-    repo_root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
-    [ -n "$repo_root" ] || return 1
-    current_branch="$(git -C "$repo_root" rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
-    [ -n "$current_branch" ] || return 1
-    [ "$current_branch" != "HEAD" ] || return 1
-    [ "$current_branch" != "main" ] || return 0
-    [ "$current_branch" != "master" ] || return 0
-
-    default_branch="$(
-        git -C "$repo_root" symbolic-ref refs/remotes/origin/HEAD 2>/dev/null \
-            | sed 's|^refs/remotes/origin/||'
-    )" || default_branch=""
-    [ -n "$default_branch" ] || return 1
-    [ "$current_branch" = "$default_branch" ]
-}
-
 TRANSCRIPT_PATH=""
+existing_transcript_rel="implement/$RUN_ID/session-transcript.jsonl"
+existing_transcript_path="$LOG_ROOT/$existing_transcript_rel"
 if [ -z "$SOURCE_FILE" ] || [ ! -f "$SOURCE_FILE" ] || [ ! -s "$SOURCE_FILE" ]; then
     recovered=""
     if [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -d "$IMPLEMENT_TMPDIR" ] && [ -n "${HOME:-}" ]; then
@@ -133,19 +148,29 @@ if [ -z "$SOURCE_FILE" ] || [ ! -f "$SOURCE_FILE" ] || [ ! -s "$SOURCE_FILE" ]; 
     fi
     if [ -n "$recovered" ] && [ -f "$recovered" ]; then
         TRANSCRIPT_PATH="$recovered"
+        recovered_basename="$(basename -- "$recovered")"
         append_warning "source-file-recovered-via-discovery" \
-            "Original snapshot was missing; recovered transcript via project-dir probe: $recovered"
+            "Original snapshot was missing; recovered transcript via project-dir probe: $recovered_basename"
     else
+        if [ "$REFRESH_MODE" = "true" ] && [ -f "$existing_transcript_path" ]; then
+            emit_status "source-file-missing" "Claude source file was empty or not a regular file; refresh skipped and prior transcript retained."
+        fi
         emit_status "source-file-missing" "Claude source file was empty or not a regular file; transcript capture skipped."
     fi
 else
     TRANSCRIPT_PATH="$(awk 'BEGIN{prefix="TRANSCRIPT_PATH="} index($0, prefix) == 1 {print substr($0, length(prefix) + 1); exit}' "$SOURCE_FILE" 2>/dev/null || true)"
     if [ -z "$TRANSCRIPT_PATH" ]; then
+        if [ "$REFRESH_MODE" = "true" ] && [ -f "$existing_transcript_path" ]; then
+            emit_status "transcript-path-missing" "Claude source file did not contain a TRANSCRIPT_PATH entry; refresh skipped and prior transcript retained."
+        fi
         emit_status "transcript-path-missing" "Claude source file did not contain a TRANSCRIPT_PATH entry; transcript capture skipped."
     fi
 fi
 
 if [ ! -f "$TRANSCRIPT_PATH" ]; then
+    if [ "$REFRESH_MODE" = "true" ] && [ -f "$existing_transcript_path" ]; then
+        emit_status "transcript-file-missing" "TRANSCRIPT_PATH target was missing or not a regular file; refresh skipped and prior transcript retained."
+    fi
     emit_status "transcript-file-missing" "TRANSCRIPT_PATH target was missing or not a regular file; transcript capture skipped."
 fi
 
@@ -154,12 +179,14 @@ fi
 # warning; the run itself must continue. See scripts/render-session-transcript.md.
 RENDERED_JSONL="$(mktemp -t session-transcript-XXXXXX)"
 RENDER_STDERR="$(mktemp -t render-stderr-XXXXXX)"
-trap 'rm -f "$RENDERED_JSONL" "$RENDER_STDERR"' EXIT
+WRITE_STDERR="$(mktemp -t session-transcript-write-stderr-XXXXXX)"
+COMMIT_STDERR="$(mktemp -t session-transcript-commit-stderr-XXXXXX)"
+trap 'rm -f "$RENDERED_JSONL" "$RENDER_STDERR" "$WRITE_STDERR" "$COMMIT_STDERR"' EXIT
 if ! python3 "$SCRIPT_DIR/render-session-transcript.py" \
         --input "$TRANSCRIPT_PATH" \
         --output "$RENDERED_JSONL" \
         2>"$RENDER_STDERR"; then
-    render_msg="$(tr '\n' ' ' < "$RENDER_STDERR" | sed 's/  */ /g' | cut -c1-300)"
+    render_msg="$(redact_stderr_snippet "$RENDER_STDERR")"
     [ -n "$render_msg" ] || render_msg="render-session-transcript.py exited non-zero with no stderr"
     emit_status "render-failed" "session-transcript render failed; transcript was not committed: $render_msg"
 fi
@@ -173,28 +200,28 @@ if ! "$SCRIPT_DIR/larch-log.sh" write \
     --run-id "$RUN_ID" \
     --batch session-transcript \
     --input-file "$RENDERED_JSONL" \
-    >/dev/null 2>&1; then
-    emit_status "write-failed" "larch-log write failed; transcript was not captured."
+    >/dev/null 2>"$WRITE_STDERR"; then
+    write_msg="$(redact_stderr_snippet "$WRITE_STDERR")"
+    [ -n "$write_msg" ] || write_msg="larch-log write failed with no stderr"
+    emit_status "write-failed" "larch-log write failed; transcript was not captured: $write_msg"
 fi
 
 if [ "$NO_LOGS_COMMIT" = "true" ]; then
     emit_status "suppressed-no-logs-commit" "--no-logs-commit was set; transcript was written under the staging log root but not committed."
 fi
 
-if [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -e "$IMPLEMENT_TMPDIR/post-merge-sentinel" ]; then
-    emit_status "suppressed-post-merge-sentinel" "post-merge sentinel exists; transcript was written but not committed (intentional — no commits after merge)."
-fi
-
-if current_branch_is_default; then
-    emit_status "suppressed-default-branch" "current branch is main/default; transcript was written but not committed (intentional — no commits after merge)."
+if [ "$DEFER_COMMIT" = "true" ]; then
+    emit_status "captured" "session transcript was written; commit deferred to caller."
 fi
 
 if ! "$SCRIPT_DIR/larch-log.sh" commit \
     --log-root "$LOG_ROOT" \
     --skill "$SKILL" \
     --run-id "$RUN_ID" \
-    >/dev/null 2>&1; then
-    emit_status "commit-failed" "write succeeded but git commit failed; transcript remains under the staging log root."
+    >/dev/null 2>"$COMMIT_STDERR"; then
+    commit_msg="$(redact_stderr_snippet "$COMMIT_STDERR")"
+    [ -n "$commit_msg" ] || commit_msg="larch-log commit failed with no stderr"
+    emit_status "commit-failed" "write succeeded but transcript commit failed; transcript remains under the staging log root: $commit_msg"
 fi
 
 emit_status "captured" "session transcript was written and committed."

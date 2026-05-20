@@ -2,7 +2,7 @@
 
 ## Purpose
 
-`scripts/capture-session-transcript.sh` is the Step 18 wrapper for capturing the Claude Code session transcript into the `session-transcript` larch-log batch. It replaces prompt-side skip branches with one best-effort command that always emits and records a terminal status.
+`scripts/capture-session-transcript.sh` is the Step 7a (pre-bump log flush) wrapper for capturing the Claude Code session transcript into the `session-transcript` larch-log batch. It runs before the version bump so the transcript is part of the same PR tree that CI validates. The transcript is truncated at the pre-bump boundary (Steps 8+ are not included). The script replaces prompt-side skip branches with one best-effort command that always emits and records a terminal status.
 
 ## Interface
 
@@ -29,16 +29,18 @@ The script always exits 0 and prints exactly one `SESSION_TRANSCRIPT_STATUS=<sta
 - `render-empty` — the renderer produced an empty file (suspect input). Flush is skipped; the run continues.
 - `write-failed` — `larch-log.sh write` failed.
 - `suppressed-no-logs-commit` — write succeeded and `--no-logs-commit true` skipped commit.
-- `suppressed-post-merge-sentinel` — write succeeded but `$IMPLEMENT_TMPDIR/post-merge-sentinel` exists; commit intentionally skipped because the PR has already merged.
-- `suppressed-default-branch` — write succeeded but the current branch is `main` or the `origin/HEAD` default branch; commit intentionally skipped because Step 18 may be running after merge without an exported sentinel.
-- `commit-failed` — write succeeded and `larch-log.sh commit` failed.
-- `captured` — write and commit both succeeded.
+- `commit-failed` — write succeeded and `larch-log.sh commit` failed. The warning text preserves a trimmed copy of `larch-log.sh` stderr so policy refusals (for example default-branch or post-merge guards) are distinguishable from a literal `git commit` failure. This is also the loud-failure outcome when the script is accidentally invoked post-merge on the default branch.
+- `captured` — write succeeded and the transcript is safely staged for the current flow. In the normal path this means write and commit both succeeded; with `--defer-commit true` it means the write succeeded and the caller still owns the later `larch-log.sh commit`.
 
 The wrapper may also append non-terminal `Warnings` entries before the final status:
 
 - `source-file-recovered-via-discovery` — the Step 0 source snapshot was missing but fallback discovery found a recent transcript under `$HOME/.claude/projects`.
 
-For every status, including `captured`, the wrapper appends a `Warnings` entry to the execution-issues log via `append-execution-issue.sh`. Append failure is swallowed so transcript capture never becomes fatal to cleanup.
+The recovery warning must record only a non-sensitive identifier such as the
+discovered transcript basename; it must not append the full operator-local path
+into `execution-issues.md`.
+
+For every status, including `captured` in refresh/deferred-commit flows, the wrapper appends a `Warnings` entry to the execution-issues log via `append-execution-issue.sh`. Append failure is swallowed so transcript capture never becomes fatal to cleanup.
 
 Malformed argv emits `SESSION_TRANSCRIPT_STATUS=usage-error` and exits 0 before log capture begins; regular `/implement` callers should never hit this branch.
 
@@ -48,8 +50,10 @@ Before flush, the wrapper renders the raw Claude Code session JSONL through `scr
 
 ## Callers
 
-Primary caller: `skills/implement/SKILL.md` Step 18. The wrapper must run before `scripts/implement-finalize.sh teardown` because teardown removes `$IMPLEMENT_TMPDIR`.
+Primary caller: `skills/implement/SKILL.md` Step 7a (pre-bump log flush), invoked before `larch-log.sh commit` so the transcript lands in the same flush commit as token/timing reports.
+
+Secondary caller: `scripts/refresh-run-logs.sh` (Triggers A-C), which re-captures the transcript on each CI retry push so the merged PR carries the most recent transcript.
 
 ## Edit-in-sync
 
-Update `skills/implement/SKILL.md` Step 18 and `scripts/test-capture-session-transcript.sh` when changing flags, status names, or the write/commit ordering. The harness is wired through `make test-capture-session-transcript` and `test-harnesses-4`. Keep this file synchronized with `scripts/larch-log.md` when the `session-transcript` batch contract changes.
+Update `skills/implement/SKILL.md` Step 7a pre-bump flush section, `scripts/refresh-run-logs.sh`, and `scripts/test-capture-session-transcript.sh` when changing flags, status names, or the write/commit ordering. The harness is wired through `make test-capture-session-transcript` and `test-harnesses-7`. Keep this file synchronized with `scripts/larch-log.md` when the `session-transcript` batch contract changes.

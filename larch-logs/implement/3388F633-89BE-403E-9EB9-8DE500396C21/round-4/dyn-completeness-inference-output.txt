@@ -1,0 +1,21 @@
+Gathering the branch diff, commit list, and full contents of the verification script and manifest for a correctness-focused review.
+
+Searching the diff for verification-related hunks and reading the full verification script and manifest from the repo.
+
+### In-Scope Findings
+
+- **correctness** [`scripts/ship-pr.md:91`](scripts/ship-pr.md) — The postmerge paragraph still says “Token-report refresh, `larch:final-summary` upsert, **session-transcript capture**, and tmpdir teardown still run in the **prompt-side Step 18** orchestrator.” This branch moves primary capture to Step 7a (pre-bump flush) and refresh to [`scripts/refresh-run-logs.sh:84-98`](scripts/refresh-run-logs.sh), and [`docs/run-logs.md`](docs/run-logs.md) / [`scripts/capture-session-transcript.md`](scripts/capture-session-transcript.md) are updated accordingly. **Suggested fix:** Rewrite that sentence so session-transcript capture is attributed to Step 7a + `refresh-run-logs.sh` (and CI-retry refresh), and reserve Step 18 for teardown / remaining orchestrator-only work that still applies.
+
+- **correctness** [`scripts/test-verify-run-log-completeness.sh:45-48`](scripts/test-verify-run-log-completeness.sh) — `assert_manifest_matches_batch_table` only cross-checks `batch_slug` / `extension` against [`scripts/larch-log-batches.sh`](scripts/larch-log-batches.sh) for `always` and `step5` rows; rows with conditions `step7a`, `step8`, and `step9a1` in [`docs/run-logs-required-files.tsv:10-14`](docs/run-logs-required-files.tsv) skip the guard. A typo in those columns would not fail CI. **Suggested fix:** Extend the `case "$condition"` arm to include `step7a|step8|step9a1` (still skipping `manifest`), or validate all data rows uniformly.
+
+### Out-of-Scope Observations
+
+- **correctness** [`scripts/verify-run-log-completeness.sh:54-64`](scripts/verify-run-log-completeness.sh) — `MANIFEST_PR_NUMBER` appears in both `step8` and `step9a1` disjuncts; [`scripts/test-verify-run-log-completeness.sh:145-157`](scripts/test-verify-run-log-completeness.sh) encodes the strict outcome (synthetic manifest with `pr_number` forces `version-bump-reasoning.md` and `run-statistics.md`). With `pr_number` deferred to postmerge in [`scripts/ship-pr.sh:1635-1639`](scripts/ship-pr.sh), committed trees with `pr_number` but no bump reasoning are unlikely in normal flow; remaining risk is hand-edited or recovered manifests.
+
+- **correctness** [`scripts/verify-run-log-completeness.sh:37-70`](scripts/verify-run-log-completeness.sh) — `condition_reached` chains `step5 → step7a → step8 → step9a1` only forward; `step9a1` does not recurse back into `step8`/`step7a`, so there is no mutual-recursion cycle given the current table.
+
+- **security** [`scripts/verify-run-log-completeness.sh:16-30`](scripts/verify-run-log-completeness.sh) — `manifest_pr_number` passes `"$RUN_DIR/manifest.json"` as a single Python `sys.argv[1]`; shell splitting is not applied. Exotic paths (e.g. embedded newlines) are the usual low-level footgun for any CLI path argument, not a practical injection surface here.
+
+- **correctness** [`docs/run-logs-required-files.tsv:1-4`](docs/run-logs-required-files.tsv), [`scripts/verify-run-log-completeness.md:35-36`](scripts/verify-run-log-completeness.md), [`scripts/test-verify-run-log-completeness.sh:73-85`](scripts/test-verify-run-log-completeness.sh) — Excluding `session-transcript.jsonl` from the manifest matches the stated best-effort policy; the “complete run” harness never creates that file and still expects `OK`, which matches the intended contract.
+
+- **code-quality** [`scripts/verify-run-log-completeness.sh:84-99`](scripts/verify-run-log-completeness.sh) — TSV rows are not CRLF-trimmed or field-normalized; Windows-style `\r` line endings could yield odd `relative_path` keys (editor hygiene / `.gitattributes` mitigation). Low practical risk for a repo-maintained TSV.

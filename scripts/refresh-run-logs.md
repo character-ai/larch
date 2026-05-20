@@ -42,6 +42,13 @@ Always exits 0.
   subsequent push.
 - **Best-effort renders**: `token-report.sh`, `timing-report.sh`, and `larch-log.sh write`
   calls use `|| true`; render failures are non-fatal.
+- **Transcript status trail preserved on retries**: the retry-path
+  `capture-session-transcript.sh` call passes `--execution-issues-log
+  "$issue_log"` and suppresses only stdout, so the wrapper's
+  `SESSION_TRANSCRIPT_STATUS=...` warning is appended to
+  `execution-issues.md`. The script then runs a second post-transcript
+  execution-issues flush so that warning reaches the committed
+  `execution-issues.ndjson` batch before the retry-path log commit.
 - **Best-effort execution-issues tail flush**: when `execution-issues.md` is
   non-empty and Step 7a has already been reached (checkpoint file, sentinel, or
   batch file present), the script calls
@@ -69,5 +76,6 @@ and probe-failure fail-closed cases. Run via `make test-refresh-run-logs`.
 
 ## Edit-in-sync
 
-Any change to the stdout contract or `--state-file` / `MERGE_RESULT` semantics must
-be reflected in `scripts/ship-pr.md` and `scripts/test-refresh-run-logs.sh`.
+Any change to the stdout contract, transcript-refresh logging, or `--state-file` /
+`MERGE_RESULT` semantics must be reflected in `scripts/ship-pr.md` and
+`scripts/test-refresh-run-logs.sh`.

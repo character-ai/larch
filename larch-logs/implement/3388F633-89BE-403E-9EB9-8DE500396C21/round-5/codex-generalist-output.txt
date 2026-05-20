@@ -1,0 +1,3 @@
+### In-Scope Findings
+
+1. **Nit** `code-quality` `scripts/larch-log.md:88-91`, `scripts/larch-log-batches.md:16-18`, `scripts/ship-pr.sh:1590-1592` still describe `session-transcript` as a Step 18 capture/commit path, but this branch moves capture to Step 7a and removes the Step 18 call. Update those references so the canonical batch docs and postmerge comment match the new lifecycle.

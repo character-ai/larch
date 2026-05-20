@@ -88,7 +88,7 @@ Transient network classification uses `is_transient_net_signature` from `scripts
 
 ## Postmerge Phase
 
-`run_postmerge_phase` calls `implement-finalize.sh postmerge` (Steps 14+15: local cleanup and verify-main), then finalizes the staged larch-log manifest (`status=done`, `pr_number=N`) best-effort. Before the final status update, it probes `$IMPLEMENT_TMPDIR/larch-logs/implement/<RUN_ID>/manifest.json`; when missing, it runs `larch-log.sh init` and tags the synthesized manifest with `status=partial` plus `recovery_reason=manifest_lost_mid_run` so partial run-log directories remain identifiable. It does not create a dedicated log-flush commit; log commits are produced by explicit lifecycle flush points before postmerge. Token-report refresh, `larch:final-summary` upsert, session-transcript capture, and tmpdir teardown still run in the prompt-side Step 18 orchestrator. `$IMPLEMENT_TMPDIR` remains intact for Step 18 to use.
+`run_postmerge_phase` calls `implement-finalize.sh postmerge` (Steps 14+15: local cleanup and verify-main), then finalizes the staged larch-log manifest (`status=done`, `pr_number=N`) best-effort. Before the final status update, it probes `$IMPLEMENT_TMPDIR/larch-logs/implement/<RUN_ID>/manifest.json`; when missing, it runs `larch-log.sh init` and tags the synthesized manifest with `status=partial` plus `recovery_reason=manifest_lost_mid_run` so partial run-log directories remain identifiable. It does not create a dedicated log-flush commit; log commits are produced by explicit lifecycle flush points before postmerge. Session-transcript capture is owned by Step 7a and later `scripts/refresh-run-logs.sh` retries before each push; Step 18 is reserved for prompt-side teardown and the remaining terminal refresh/safety-net work such as final tracking-issue summary updates. `$IMPLEMENT_TMPDIR` remains intact for Step 18 to use.
 
 ## Log Refresh
 
@@ -98,7 +98,7 @@ the local branch on the first push. After `PR_NUMBER`/`PR_URL` are persisted,
 it re-runs `write-final-report.sh --comment-only` to refresh the tracking
 comment via API only; that second pass does not commit or push.
 
-`scripts/refresh-run-logs.sh` re-renders `token-report` and `timing-report` larch-log batches and commits the updated files before each push, so the PR's committed logs always reflect the most recent run state. It is called at three trigger points:
+`scripts/refresh-run-logs.sh` re-renders `token-report`, `timing-report`, and `session-transcript` before each push, then commits the updated run-log tree, so the PR's committed logs always reflect the most recent run state. It is called at three trigger points:
 
 - **Trigger A** (`run_rebase_rebump`): after re-bump, before `git-force-push.sh`.
 - **Trigger B** (`run_ci_fix_vendor`): after fix commit, before `git-push.sh`.

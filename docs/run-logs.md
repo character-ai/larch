@@ -2,7 +2,7 @@
 
 On a default `/implement --merge` run, a directory of structured log files is committed alongside the PR. These committed files are the single source of truth for full run content — voting tallies, rejected findings, version-bump reasoning, OOS observations, execution issues, run statistics, token/timing reports, and the session transcript. The tracking issue and PR body carry only slim projections.
 
-Exceptions: `--design-only --no-issues` and `repo_unavailable=true` produce no committed log at all (`$IMPLEMENT_TMPDIR/execution-issues.md` is the only audit trail and is removed at cleanup). Fork dry-run mode (`--forked`) does not create a tracking issue. In all cases, session-derived content in `larch-logs/` passes through secrets and tmpdir-path redaction, but redaction is best-effort — operators should avoid pasting sensitive content into `/implement` prompts.
+Exceptions: `--design-only --no-issues` and `repo_unavailable=true` produce no committed log at all (`$IMPLEMENT_TMPDIR/execution-issues.md` is the only audit trail and is removed at cleanup). `--design-only` runs with a tracking issue can still commit partial `larch-logs/implement/<RUN_ID>/` directories, but they stop before Step 7a and therefore omit Step-7a-only batches such as `session-transcript.jsonl`. Fork dry-run mode (`--forked`) does not create a tracking issue. In all cases, session-derived content in `larch-logs/` passes through secrets and tmpdir-path redaction, but redaction is best-effort — operators should avoid pasting sensitive content into `/implement` prompts.
 
 ## Directory structure
 
@@ -23,6 +23,7 @@ larch-logs/
       code-review-tally.json
       review-findings-full.jsonl
       version-bump-reasoning.md
+      final-summary.md
       oos-issues.ndjson
       run-statistics.md
       token-report.json
@@ -152,6 +153,14 @@ Per-finding payloads for plan-review accepted, plan-review rejected, and code-re
 
 Markdown explanation of the version bump classification: which bump type was chosen (PATCH / MINOR / MAJOR), which changed files drove the decision, and the reasoning applied. Useful for auditing unexpected version jumps.
 
+### final-summary.md
+
+**Mode**: replace. **Written**: Step 8+ before PR creation and refreshed later by terminal summary paths.
+
+Committed projection of the final tracking summary: run status, PR field, and
+the log directory pointer. The pre-PR copy may carry placeholder PR data; the
+tracking-issue `larch:final-summary` comment is the canonical live projection.
+
 ### oos-issues.ndjson
 
 **Mode**: append (NDJSON records). **Written**: Step 9a.1, after out-of-scope issue filing.
@@ -184,9 +193,9 @@ Log of noteworthy events during the run, grouped by category: `Pre-existing Code
 
 ### session-transcript.jsonl
 
-**Mode**: replace. **Written**: Step 18, terminal cleanup.
+**Mode**: replace. **Written**: Step 7a tail (pre-bump log flush) for runs that reach Step 7a. `--design-only` and other pre-Step-7a bailout paths do not write this batch. The transcript is truncated at the pre-bump boundary — Steps 8+ (version bump, PR creation, CI, merge, cleanup) are not included. On each CI retry `scripts/refresh-run-logs.sh` (Triggers A-C in `ship-pr.sh`) re-captures and refreshes the batch before each push, so the final merged PR carries the most up-to-date transcript available before merge.
 
-A filtered, machine-readable rendering of the Claude Code session, produced by `scripts/render-session-transcript.py` from the raw session JSONL. The first line is a `{"v": 1, "source_basename": ..., "turns": N}` header; subsequent lines are per-turn objects with a `blocks` array. Blocks carry user-typed slash commands and text, assistant prose, `tool_call` entries with full input objects, and `tool_result` entries — full body when the result reported an error or warning (`is_error: true`, Bash `^Exit code [1-9]` / `^Error:`, or `warning:`), otherwise collapsed to an `elided_bytes` count. Assistant `thinking` blocks are kept only when at least one `tool_use` in the same turn produced an errored result. Harness-injected SKILL.md expansions, attachments, and housekeeping events are dropped. Redacted for tmpdir paths and secrets before commit. Step 18 records `SESSION_TRANSCRIPT_STATUS` in the execution-issues `Warnings` section for every capture outcome, including `render-failed` / `render-empty` when the renderer cannot produce a usable output (the run continues; nothing is committed). See `scripts/render-session-transcript.md` for the complete schema.
+A filtered, machine-readable rendering of the Claude Code session, produced by `scripts/render-session-transcript.py` from the raw session JSONL. The first line is a `{"v": 1, "source_basename": ..., "turns": N}` header; subsequent lines are per-turn objects with a `blocks` array. Blocks carry user-typed slash commands and text, assistant prose, `tool_call` entries with full input objects, and `tool_result` entries — full body when the result reported an error or warning (`is_error: true`, Bash `^Exit code [1-9]` / `^Error:`, or `warning:`), otherwise collapsed to an `elided_bytes` count. Assistant `thinking` blocks are kept only when at least one `tool_use` in the same turn produced an errored result. Harness-injected SKILL.md expansions, attachments, and housekeeping events are dropped. Redacted for tmpdir paths and secrets before commit. The `session-transcript` capture records `SESSION_TRANSCRIPT_STATUS` in the execution-issues `Warnings` section for every capture outcome, including refresh/deferred-commit `captured` outcomes and `render-failed` / `render-empty` when the renderer cannot produce a usable output (the run continues; nothing is committed). For runs that reach Step 7a, `session-transcript.jsonl` is part of the required-file completeness manifest; pre-Step-7a partial directories remain excluded by the verifier's step reachability rules. The recovery warning records only the discovered transcript basename, not the full operator-local path. See `scripts/render-session-transcript.md` for the complete schema.
 
 ### round-<N>/
 

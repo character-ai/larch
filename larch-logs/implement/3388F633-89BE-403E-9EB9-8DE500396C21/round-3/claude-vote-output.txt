@@ -1,0 +1,23 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: EXONERATE -- machine-generated manifest.json has stable schema; low practical risk; fixing alongside FINDING_4 is cleaner
+FINDING_9: NO -- positive observation, not a defect; not worth an issue
+FINDING_10: NO -- positive observation confirming correct behavior; not worth an issue
+FINDING_11: NO -- same tension covered more concretely by FINDING_7; duplicate tracking not warranted
+FINDING_12: NO -- purely latent observation about unchanged code; not worth an issue
+FINDING_13: NO -- pre-existing latent concern not introduced by this diff; not worth an issue
+FINDING_14: EXONERATE -- nit-level gap in extension validation for step-scoped rows; improvement not a fix
+FINDING_15: YES
+FINDING_16: NO -- incorrect; || true is required by set -euo pipefail, and FAIL counter is correctly incremented inside the function and checked at harness end
+FINDING_17: YES
+FINDING_18: EXONERATE -- theoretical future scenario; execution-issues.ndjson is a valid step7a signal by definition; hardening adds complexity without fixing a current bug
+FINDING_19: EXONERATE -- same as FINDING_8; machine-generated stable schema; low practical risk
+FINDING_20: YES
+FINDING_21: EXONERATE -- duplicate of FINDING_20
+FINDING_22: YES
+FINDING_23: EXONERATE -- WARNING_STEP_LABEL is always from internal callers with hardcoded values, not untrusted input

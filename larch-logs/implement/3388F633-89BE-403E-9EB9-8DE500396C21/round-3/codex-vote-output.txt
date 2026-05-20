@@ -1,0 +1,23 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: NO -- The verifier is meant to flag incomplete Step 7a logs; best-effort runtime continuation does not imply completeness should pass.
+FINDING_8: EXONERATE -- Controlled manifest status is a simple string today; structured parsing is optional hardening, not worth this change by itself.
+FINDING_9: NO -- The finding describes coherent intended behavior, not a defect.
+FINDING_10: NO -- The finding describes coherent flag propagation, not a defect.
+FINDING_11: EXONERATE -- The exit-0 best-effort contract is intentional and not worth separate tracking here.
+FINDING_12: NO -- The concern is explicitly non-regressive and confirmed consistent with SECURITY.md.
+FINDING_13: EXONERATE -- Current-user transcript discovery is a plausible hardening surface but too speculative for tracking here.
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: NO -- The helper’s `fail` calls increment the harness failure count, so `|| true` does not make mismatches pass overall.
+FINDING_17: YES
+FINDING_18: YES
+FINDING_19: EXONERATE -- Controlled manifest status parsing is brittle in principle but not issue-worthy absent a real schema change.
+FINDING_20: YES
+FINDING_21: YES
+FINDING_22: EXONERATE -- Redacting these short stderr snippets is reasonable hardening, but the cited leak path is speculative for the current commands.
+FINDING_23: NO -- Quoted shell interpolation cannot break argv composition, and the label is caller-controlled rather than untrusted input.
