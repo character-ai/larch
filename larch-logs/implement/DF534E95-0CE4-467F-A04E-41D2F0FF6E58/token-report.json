@@ -195,32 +195,54 @@
       {
         "step": "Step 8 — version bump",
         "totals": {
-          "input": 7,
-          "cache_read": 1240219,
-          "cache_create": 5640,
-          "output": 3287,
-          "total": 1249153
+          "input": 12,
+          "cache_read": 2136599,
+          "cache_create": 10276,
+          "output": 7196,
+          "total": 2154083
         },
         "skills": [
           {
             "skill": "inferred:Step 8 — version bump",
             "totals": {
-              "input": 7,
-              "cache_read": 1240219,
-              "cache_create": 5640,
-              "output": 3287,
-              "total": 1249153
+              "input": 12,
+              "cache_read": 2136599,
+              "cache_create": 10276,
+              "output": 7196,
+              "total": 2154083
+            }
+          }
+        ]
+      },
+      {
+        "step": "Step 6 — checks second pass",
+        "totals": {
+          "input": 1,
+          "cache_read": 181410,
+          "cache_create": 268,
+          "output": 318,
+          "total": 181997
+        },
+        "skills": [
+          {
+            "skill": "inferred:Step 6 — checks second pass",
+            "totals": {
+              "input": 1,
+              "cache_read": 181410,
+              "cache_create": 268,
+              "output": 318,
+              "total": 181997
             }
           }
         ]
       }
     ],
     "totals": {
-      "input": 110,
-      "cache_read": 15692144,
-      "cache_create": 527598,
-      "output": 49356,
-      "total": 16269208
+      "input": 116,
+      "cache_read": 16769934,
+      "cache_create": 532502,
+      "output": 53583,
+      "total": 17356135
     }
   },
   "codex": {
@@ -291,6 +313,14 @@
       },
       {
         "step": "Step 8 — version bump",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 6 — checks second pass",
         "totals": {
           "input": 0,
           "output": 0,
@@ -372,6 +402,14 @@
       },
       {
         "step": "Step 8 — version bump",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 6 — checks second pass",
         "totals": {
           "input": 0,
           "output": 0,
