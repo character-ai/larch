@@ -1678,6 +1678,7 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
   --skill implement \
   --run-id "$RUN_ID" \
   --no-logs-commit "${no_logs_commit:-false}" \
+  --defer-commit "true" \
   --execution-issues-log "$IMPLEMENT_TMPDIR/execution-issues.md"
 "${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/flush-execution-issues.sh" \
   --issue-log "$IMPLEMENT_TMPDIR/execution-issues.md" \

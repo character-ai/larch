@@ -36,6 +36,10 @@ The wrapper may also append non-terminal `Warnings` entries before the final sta
 
 - `source-file-recovered-via-discovery` — the Step 0 source snapshot was missing but fallback discovery found a recent transcript under `$HOME/.claude/projects`.
 
+The recovery warning must record only a non-sensitive identifier such as the
+discovered transcript basename; it must not append the full operator-local path
+into `execution-issues.md`.
+
 For every status, including `captured` in refresh/deferred-commit flows, the wrapper appends a `Warnings` entry to the execution-issues log via `append-execution-issue.sh`. Append failure is swallowed so transcript capture never becomes fatal to cleanup.
 
 Malformed argv emits `SESSION_TRANSCRIPT_STATUS=usage-error` and exits 0 before log capture begins; regular `/implement` callers should never hit this branch.

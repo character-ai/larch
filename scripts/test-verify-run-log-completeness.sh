@@ -43,7 +43,7 @@ assert_manifest_matches_batch_table() {
         [ -n "$relative_path" ] || continue
         case "$relative_path" in \#*) continue ;; esac
         case "$condition" in
-            always|step5) ;;
+            always|step5|step7a|step8|step9a1) ;;
             *) continue ;;
         esac
         [ "$batch_slug" = "manifest" ] && continue
@@ -132,11 +132,12 @@ out="$("$VERIFY" "$run_partial_step7a" 2>&1 || true)"
 assert_contains "partial step7a emits MISSING" "$out" "MISSING="
 assert_contains "partial step7a requires execution-issues" "$out" "execution-issues.ndjson"
 assert_contains "partial step7a requires timing-report" "$out" "timing-report.json"
+assert_contains "partial step7a requires session-transcript" "$out" "session-transcript.jsonl"
 
 # Test 8: Step-8 tree should not require Step-9a.1-only run-statistics
 run_step8="$TMP/run-step8"
 mkdir -p "$run_step8"
-for f in manifest.json plan-goals-test.md plan-review-tally.json code-review-tally.json review-findings-full.jsonl token-report.json timing-report.json execution-issues.ndjson version-bump-reasoning.md final-summary.md; do
+for f in manifest.json plan-goals-test.md plan-review-tally.json code-review-tally.json review-findings-full.jsonl token-report.json timing-report.json execution-issues.ndjson session-transcript.jsonl version-bump-reasoning.md final-summary.md; do
     printf 'placeholder\n' > "$run_step8/$f"
 done
 out="$("$VERIFY" "$run_step8" 2>&1 || true)"

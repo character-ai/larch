@@ -136,8 +136,9 @@ if [ -z "$SOURCE_FILE" ] || [ ! -f "$SOURCE_FILE" ] || [ ! -s "$SOURCE_FILE" ]; 
     fi
     if [ -n "$recovered" ] && [ -f "$recovered" ]; then
         TRANSCRIPT_PATH="$recovered"
+        recovered_basename="$(basename -- "$recovered")"
         append_warning "source-file-recovered-via-discovery" \
-            "Original snapshot was missing; recovered transcript via project-dir probe: $recovered"
+            "Original snapshot was missing; recovered transcript via project-dir probe: $recovered_basename"
     else
         if [ "$REFRESH_MODE" = "true" ] && [ -f "$existing_transcript_path" ]; then
             emit_status "source-file-missing" "Claude source file was empty or not a regular file; refresh skipped and prior transcript retained."

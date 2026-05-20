@@ -11,4 +11,5 @@ version-bump-reasoning.md	step8	version-bump-reasoning	md
 token-report.json	step7a	token-report	json
 timing-report.json	step7a	timing-report	json
 execution-issues.ndjson	step7a	execution-issues	ndjson
+session-transcript.jsonl	step7a	session-transcript	jsonl
 run-statistics.md	step9a1	run-statistics	md

@@ -48,7 +48,12 @@ case "$cmd" in
         *) shift ;;
       esac
     done
-    path="$log_root/$skill/$run_id/$batch.json"
+    ext=".json"
+    [ "$batch" = "session-transcript" ] && ext=".jsonl"
+    [ "$batch" = "execution-issues" ] && ext=".ndjson"
+    [ "$batch" = "review-findings" ] && ext=".ndjson"
+    [ "$batch" = "review-panel-manifest" ] && ext=".ndjson"
+    path="$log_root/$skill/$run_id/$batch$ext"
     mkdir -p "$(dirname "$path")"
     cp "$input_file" "$path"
     printf 'LOG_WRITTEN=true\n'
@@ -109,7 +114,19 @@ run_flush_helper() {
     run_id="TEST-RUN-$(date +%s)"
     printf 'RUN_ID=%s\nNO_LOGS_COMMIT=false\nPR_URL=https://example.test/pr/123\nSTALL_TRACKING=false\n' "$run_id" > "$state_file"
     printf 'ISSUE_NUMBER=7\nRUN_ID=%s\n' "$run_id" > "$impl_tmpdir/parent-issue.md"
-    printf 'REPO=owner/repo\n' > "$impl_tmpdir/session-env.sh"
+    transcript_source="$impl_tmpdir/claude-source.env"
+    transcript_raw="$impl_tmpdir/raw-transcript.jsonl"
+    cat > "$transcript_source" <<EOF
+TRANSCRIPT_PATH=$transcript_raw
+EOF
+    cat > "$transcript_raw" <<'EOF'
+{"type":"user","message":{"role":"user","content":[{"type":"text","text":"hello"}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"world"}]}}
+EOF
+    cat > "$impl_tmpdir/session-env.sh" <<EOF
+REPO=owner/repo
+LARCH_CLAUDE_SOURCE_FILE=$transcript_source
+EOF
 
     # Create a dummy token-report file so larch-log.sh write has something to stage.
     mkdir -p "$impl_tmpdir/larch-logs/implement/$run_id"
@@ -142,7 +159,7 @@ STUB
 #!/usr/bin/env bash
 exec "$CLAUDE_PLUGIN_ROOT/scripts/larch-log.sh" "$@"
 STUB
-    printf '#!/usr/bin/env bash\nprintf ""\n' > "$stub_dir/read-session-env-key.sh"
+    cp "$SCRIPT_DIR/read-session-env-key.sh" "$stub_dir/read-session-env-key.sh"
     chmod +x "$stub_dir"/*.sh
 
     cat > "$impl_tmpdir/execution-issues.md" <<'ISSUES'
@@ -169,6 +186,11 @@ ISSUES
         pass "happy-path: execution issues flushed before commit"
     else
         fail "happy-path: execution issues flushed before commit"
+    fi
+    if [ -f "$impl_tmpdir/larch-logs/implement/$run_id/session-transcript.jsonl" ]; then
+        pass "happy-path: session transcript refreshed before commit"
+    else
+        fail "happy-path: session transcript refreshed before commit"
     fi
     if grep -Fq 'session-transcript status=' "$impl_tmpdir/larch-logs/implement/$run_id/execution-issues.ndjson"; then
         pass "happy-path: transcript status warning flushed into execution issues batch"

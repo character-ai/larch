@@ -32,9 +32,6 @@ The verifier infers later-phase reachability from committed run-dir signals
 already present in the tree (for example `final-summary.md`, `oos-issues.ndjson`,
 `manifest.json` `pr_number`, or `status=done`) so pre-Step-7a and mid-run
 partial directories do not produce false missing-file failures for later batches.
-Best-effort batches that are allowed to be absent after a successful run
-(currently `session-transcript.jsonl`) are intentionally excluded from the
-required-file manifest.
 
 ## Callers
 
@@ -47,5 +44,7 @@ required-file manifest.
 Update `docs/run-logs-required-files.tsv` when the set of required committed files changes
 (e.g., a new batch is added or an existing batch is removed). Keep the TSV's
 `batch_slug` / `extension` columns aligned with `scripts/larch-log-batches.sh`
-and update `docs/run-logs.md` in the same PR. The test harness is
+and update `docs/run-logs.md` in the same PR. For Step-7a batches, keep
+`session-transcript.jsonl` aligned with the manifest and verifier reachability
+rules. The test harness is
 `scripts/test-verify-run-log-completeness.sh`.

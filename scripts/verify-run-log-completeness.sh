@@ -49,6 +49,7 @@ condition_reached() {
             has_file token-report.json ||
                 has_file timing-report.json ||
                 has_file execution-issues.ndjson ||
+                has_file session-transcript.jsonl ||
                 condition_reached step8
             ;;
         step8)
