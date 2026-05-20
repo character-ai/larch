@@ -80,6 +80,7 @@ extract_category() {
                     candidate = $0
                 }
             }
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", candidate)
             if (candidate == "code-quality" || candidate == "risk-integration" ||
                 candidate == "correctness" || candidate == "architecture" ||
                 candidate == "security") {
