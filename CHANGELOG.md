@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [29.8.49] - 2026-05-20
+
+### Changed
+
+- Closed: #2446
+
 ## [29.8.48] - 2026-05-20
 
 ### Changed
@@ -12,6 +18,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Closed: #2439
 
 ## [Unreleased]
+
+### Fixed
+
+- Restore multi-voter `classify_result` exoneration in `scripts/lib-vote-tally.sh` (two-path rule: no-`NO` panels and mixed panels where `EXONERATE` meets or beats `NO` and exceeds `YES`), fixing mis-tallies after the narrow condition in PR #2428 (#2446).
 
 ### Changed
 

@@ -25,6 +25,17 @@ The number of YES votes required depends on how many voters are available:
 
 Eligible voters are counted at the panel level from non-failed voter outputs. Missing per-item votes produce `JUDGE_ERROR` at the per-voter level (parser fallback — ballot entry absent or unparseable) and do not reduce the round's intended panel size to a lower tier.
 
+## Multi-voter Exoneration
+
+When a finding is not accepted and is not a `YES == NO` neutral tie, tally code still labels some outcomes **`exonerated`** for scoreboard purposes (see `scripts/lib-vote-tally.sh::classify_result()`). For panels with more than one eligible voter, exoneration follows two paths:
+
+1. **No `NO` votes** — Any `EXONERATE` count with `NO == 0` exonerates (including all-exonerate ballots such as `0Y/0N/3E`).
+2. **Mixed `NO` / `EXONERATE`** — Exoneration applies when `EXONERATE` meets or beats `NO` and strictly exceeds `YES` (for example `1Y/2N/3E`).
+
+If `EXONERATE` is positive but neither path holds, the finding stays **`rejected`**.
+
+**History:** PR #2428 narrowed the multi-voter branch to require `YES > 0`, which misclassified valid exoneration panels (notably `0Y/0N/3E` → rejected). Issue #2446 tracks restoring the two-path rule above.
+
 ## Degraded-Panel Warnings
 
 The dispatch scripts emit loud degraded-panel warnings when effective judges drop below the expected panel size. Effective means the voter did not fail and produced a non-empty output file. Warnings include the available judge count, missing slots, and the active tier (`unanimous-2`, `single-judge`, or `main-agent-required`) so operators can distinguish a stricter degraded vote from a 0-judge main-agent handoff.
