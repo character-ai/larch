@@ -9,6 +9,8 @@ REDACT_SECRETS="$SCRIPT_DIR/redact-secrets.sh"
 # shellcheck source=scripts/lib-quiet.sh
 source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
+# shellcheck source=scripts/lib-vote-tally.sh
+source "$SCRIPT_DIR/lib-vote-tally.sh"
 
 DESIGN_DIR=""
 IMPLEMENT_TMPDIR=""
@@ -124,6 +126,15 @@ parse_artifact() {
         *) fail "internal: unknown kind: $kind" ;;
     esac
 
+    synthetic_id() {
+        local prefix="$1" num="$2" round="$3"
+        if [ -n "$round" ]; then
+            printf '%sR%s_%s' "$prefix" "$round" "$num"
+        else
+            printf '%s%s' "$prefix" "$num"
+        fi
+    }
+
     flush_pending() {
         [ -n "$pending_id" ] || return 0
         local reviewer="$pending_reviewer"
@@ -133,6 +144,10 @@ parse_artifact() {
         fi
         if [ -z "$reviewer" ]; then
             reviewer="$(extract_reviewer_from_body "$pending_body")"
+        fi
+        if [[ "$kind" == "code-review-oos" ]] && is_security_block <(printf '%s\n' "$body") 2>/dev/null; then
+            pending_id=""; pending_reviewer=""; pending_title=""; pending_body=""
+            return 0
         fi
         emit_record "$pending_id" "$phase" "$outcome" "${reviewer:-panel}" "$body" "$round_num"
         pending_id=""; pending_reviewer=""; pending_title=""; pending_body=""
@@ -160,7 +175,7 @@ parse_artifact() {
                 if [[ "$line" =~ ^###[[:space:]]+\[Plan[[:space:]]+Review\][[:space:]]+(.+)$ ]]; then
                     flush_pending
                     counter=$((counter + 1))
-                    pending_id="${id_prefix}${counter}"
+                    pending_id="$(synthetic_id "$id_prefix" "$counter" "$round_num")"
                     pending_reviewer="${BASH_REMATCH[1]}"
                     continue
                 fi
@@ -169,7 +184,7 @@ parse_artifact() {
                 if [[ "$line" =~ ^###[[:space:]]+\[(rejected|Code[[:space:]]+Review)\][[:space:]]+(.+)$ ]]; then
                     flush_pending
                     counter=$((counter + 1))
-                    pending_id="${id_prefix}${counter}"
+                    pending_id="$(synthetic_id "$id_prefix" "$counter" "$round_num")"
                     if [ "${BASH_REMATCH[1]}" = "Code Review" ]; then
                         pending_reviewer="${BASH_REMATCH[2]}"
                     fi
@@ -185,14 +200,14 @@ parse_artifact() {
                 if [[ "$line" =~ ^###[[:space:]]+OOS_[0-9A-Za-z_]+:[[:space:]]*(.*)$ ]]; then
                     flush_pending
                     counter=$((counter + 1))
-                    pending_id="${id_prefix}${counter}"
+                    pending_id="$(synthetic_id "$id_prefix" "$counter" "$round_num")"
                     pending_title="${BASH_REMATCH[1]}"
                     continue
                 fi
                 if [[ "$line" =~ ^###[[:space:]]+FINDING_[0-9A-Za-z_]+:[[:space:]]*\[OUT_OF_SCOPE\][[:space:]]*(.*)$ ]]; then
                     flush_pending
                     counter=$((counter + 1))
-                    pending_id="${id_prefix}${counter}"
+                    pending_id="$(synthetic_id "$id_prefix" "$counter" "$round_num")"
                     pending_title="${BASH_REMATCH[1]}"
                     continue
                 fi

@@ -221,6 +221,27 @@ assert_stdout_cap "$out"
 grep -Fq 'FINDINGS_COUNT=1' <<< "$out"
 grep -Fq '### FINDING_1: Real parser issue survives noncanonical heading.' "$TMP/findings-noncanonical.md"
 
+# preamble-noncanonical-heading-fail-open: skip state clears on next heading
+preamble_noncanonical="$TMP/preamble-noncanonical-heading-output.txt"
+cat > "$preamble_noncanonical" <<'EOF'
+## Commits since merge-base with main
+
+- `abc1234` Preable commit bullet should not become a finding.
+
+## Findings
+- Real bug after merge-base preamble still parses.
+EOF
+printf '0\n' > "$preamble_noncanonical.done"
+printf 'STATUS=clean\n' > "$preamble_noncanonical.dirty-tree"
+out=$(WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.01 "$SCRIPT" --claude-output-files "$preamble_noncanonical" --mode diff --timeout 1 --findings-file "$TMP/findings-preamble-noncanonical.md" --oos-file "$TMP/oos-preamble-noncanonical.md")
+assert_stdout_cap "$out"
+grep -Fq 'FINDINGS_COUNT=1' <<< "$out"
+grep -Fq '### FINDING_1: Real bug after merge-base preamble still parses.' "$TMP/findings-preamble-noncanonical.md"
+if grep -Fq 'abc1234' "$TMP/findings-preamble-noncanonical.md"; then
+    echo "FAIL: preamble commit bullet leaked through noncanonical heading recovery" >&2
+    exit 1
+fi
+
 # unknown-third-level-heading-fail-open: unknown ### headings must not trigger skip
 unknown_h3="$TMP/unknown-h3-output.txt"
 cat > "$unknown_h3" <<'EOF'

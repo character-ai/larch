@@ -103,13 +103,13 @@ done < "$out"
 [[ "$(record_field_by_id "$out" REJ_P1 round_num)" == "" ]] || fail "REJ_P1 round_num"
 
 # Code-review rejected finding
-[[ "$(record_field_by_id "$out" REJ_C1 phase)" == "code-review" ]] || fail "REJ_C1 phase"
-[[ "$(record_field_by_id "$out" REJ_C1 outcome)" == "rejected" ]] || fail "REJ_C1 outcome"
-[[ "$(record_field_by_id "$out" REJ_C1 reviewer)" == "Cursor-Security" ]] || fail "REJ_C1 reviewer"
-[[ "$(record_field_by_id "$out" REJ_C1 round_num)" == "1" ]] || fail "REJ_C1 round_num"
+[[ "$(record_field_by_id "$out" REJ_CR1_1 phase)" == "code-review" ]] || fail "REJ_CR1_1 phase"
+[[ "$(record_field_by_id "$out" REJ_CR1_1 outcome)" == "rejected" ]] || fail "REJ_CR1_1 outcome"
+[[ "$(record_field_by_id "$out" REJ_CR1_1 reviewer)" == "Cursor-Security" ]] || fail "REJ_CR1_1 reviewer"
+[[ "$(record_field_by_id "$out" REJ_CR1_1 round_num)" == "1" ]] || fail "REJ_CR1_1 round_num"
 
 # Token-shaped secret is redacted in the prose_body
-body_with_token=$(record_field_by_id "$out" REJ_C1 prose_body)
+body_with_token=$(record_field_by_id "$out" REJ_CR1_1 prose_body)
 grep -qF '<REDACTED-TOKEN>' <<<"$body_with_token" || fail "token was not redacted in JSONL prose_body"
 grep -qF 'sk-ant-abcdefghijklmnopqrstuvwxyz0123456789ABCD' <<<"$body_with_token" \
     && fail "raw token leaked into JSONL prose_body"
@@ -189,13 +189,13 @@ EOF
 out="$TMP/i.jsonl"
 stdout="$("$COMPOSE" --implement-tmpdir "$TMP/i-impl" --issue 48 --output "$out")"
 [[ "$stdout" == *"FINDINGS_TOTAL=3"* ]] || fail "OOS total: $stdout"
-for id in OOS_C1 OOS_C2 OOS_C3; do
+for id in OOS_CR1_1 OOS_CR1_2 OOS_CR1_3; do
     [[ "$(record_field_by_id "$out" "$id" phase)" == "code-review" ]] || fail "$id phase"
     [[ "$(record_field_by_id "$out" "$id" outcome)" == "out_of_scope" ]] || fail "$id outcome"
     [[ "$(record_field_by_id "$out" "$id" round_num)" == "1" ]] || fail "$id round_num"
 done
-[[ "$(record_field_by_id "$out" OOS_C2 reviewer)" == "codex-testing-output.txt" ]] || fail "OOS_C2 reviewer"
-[[ "$(record_field_by_id "$out" OOS_C3 reviewer)" == "cursor-cleanup-output.txt" ]] || fail "OOS_C3 reviewer"
+[[ "$(record_field_by_id "$out" OOS_CR1_2 reviewer)" == "codex-testing-output.txt" ]] || fail "OOS_CR1_2 reviewer"
+[[ "$(record_field_by_id "$out" OOS_CR1_3 reviewer)" == "cursor-cleanup-output.txt" ]] || fail "OOS_CR1_3 reviewer"
 
 echo "=== rejected [rejected] headers use body reviewer attribution ==="
 mkdir -p "$TMP/j-impl"
@@ -225,10 +225,67 @@ EOF
 out="$TMP/k.jsonl"
 stdout="$("$COMPOSE" --implement-tmpdir "$TMP/k-impl" --issue 50 --output "$out")"
 [[ "$stdout" == *"FINDINGS_TOTAL=1"* ]] || fail "OOS inner-heading total: $stdout"
-body=$(record_field_by_id "$out" OOS_C1 prose_body)
+body=$(record_field_by_id "$out" OOS_CR1_1 prose_body)
 grep -qF '### Notes' <<<"$body" || fail "OOS inner heading missing from prose_body"
 grep -qF 'This heading should remain inside the same OOS block.' <<<"$body" \
     || fail "OOS inner heading body missing"
+
+echo "=== legacy OOS headings remain accepted ==="
+mkdir -p "$TMP/l-impl/round-1"
+cat > "$TMP/l-impl/round-1/oos.md" <<'EOF'
+### OOS_1: Legacy follow-up docs drift
+- **Reviewer**: legacy-oos-reviewer.txt
+- **Concern**: old oos.md artifacts still compose.
+EOF
+out="$TMP/l.jsonl"
+stdout="$("$COMPOSE" --implement-tmpdir "$TMP/l-impl" --issue 51 --output "$out")"
+[[ "$stdout" == *"FINDINGS_TOTAL=1"* ]] || fail "legacy OOS total: $stdout"
+[[ "$(record_field_by_id "$out" OOS_CR1_1 reviewer)" == "legacy-oos-reviewer.txt" ]] || fail "legacy OOS reviewer"
+grep -qF 'Legacy follow-up docs drift' <<<"$(record_field_by_id "$out" OOS_CR1_1 prose_body)" \
+    || fail "legacy OOS body missing"
+
+echo "=== security-tagged OOS is held back from JSONL ==="
+mkdir -p "$TMP/m-impl/round-1"
+cat > "$TMP/m-impl/round-1/oos.md" <<'EOF'
+### FINDING_1: [OUT_OF_SCOPE] Public follow-up
+- **Reviewer**: public-reviewer.txt
+- **Concern**: regular follow-up stays visible.
+
+Vote tally: YES=2 NO=0 EXON=0 JUDGE_ERROR=0 Result=accepted
+
+### FINDING_2: [OUT_OF_SCOPE] Sensitive follow-up
+- **Reviewer**: security-reviewer.txt
+- **Concern**: focus-area = security must stay local.
+
+Vote tally: YES=2 NO=0 EXON=0 JUDGE_ERROR=0 Result=accepted
+EOF
+out="$TMP/m.jsonl"
+stdout="$("$COMPOSE" --implement-tmpdir "$TMP/m-impl" --issue 52 --output "$out")"
+[[ "$stdout" == *"FINDINGS_TOTAL=1"* ]] || fail "security OOS holdback total: $stdout"
+[[ "$(record_field_by_id "$out" OOS_CR1_1 reviewer)" == "public-reviewer.txt" ]] || fail "public OOS reviewer"
+[[ -z "$(record_field_by_id "$out" OOS_CR1_2 reviewer)" ]] || fail "security-tagged OOS should be held back"
+
+echo "=== synthetic rejected ids are unique across rounds ==="
+mkdir -p "$TMP/n-impl/round-1" "$TMP/n-impl/round-2"
+cat > "$TMP/n-impl/round-1/rejected-findings-full.md" <<'EOF'
+### [rejected] FINDING_1
+
+### FINDING_1: First round rejected
+- **Reviewer**: round-1-reviewer.txt
+- **Concern**: first round rejected body.
+EOF
+cat > "$TMP/n-impl/round-2/rejected-findings-full.md" <<'EOF'
+### [rejected] FINDING_1
+
+### FINDING_1: Second round rejected
+- **Reviewer**: round-2-reviewer.txt
+- **Concern**: second round rejected body.
+EOF
+out="$TMP/n.jsonl"
+stdout="$("$COMPOSE" --implement-tmpdir "$TMP/n-impl" --issue 53 --output "$out")"
+[[ "$stdout" == *"FINDINGS_TOTAL=2"* ]] || fail "multi-round rejected total: $stdout"
+[[ "$(record_field_by_id "$out" REJ_CR1_1 reviewer)" == "round-1-reviewer.txt" ]] || fail "REJ_CR1_1 reviewer"
+[[ "$(record_field_by_id "$out" REJ_CR2_1 reviewer)" == "round-2-reviewer.txt" ]] || fail "REJ_CR2_1 reviewer"
 
 echo "=== JSONL preserves XML-like tags literally (no HTML escaping) ==="
 mkdir -p "$TMP/c-impl/round-1"

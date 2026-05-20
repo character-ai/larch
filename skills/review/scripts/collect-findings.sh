@@ -281,6 +281,7 @@ parse_output() {
     /^### Out-of-Scope Observations/ { flush(); oos=1; skip=0; next }
     /^### In-Scope Findings/ { flush(); oos=0; skip=0; next }
     /^## Commits since merge-base/ { flush(); skip=1; next }
+    skip && (/^###[[:space:]]/ || /^##[[:space:]]/) { skip=0; next }
     skip { next }
     /^[-*] / || /^[0-9]+\./ {
         flush()
