@@ -305,4 +305,27 @@ if grep -Eq '^### FINDING_[0-9]+: \[OUT_OF_SCOPE\] \*\*' "$TMP/findings-bold-oos
     exit 1
 fi
 
+# Severity-first OOS bullets (e.g. **Latent** `category` `file`) must NOT be normalized (#2417).
+sev_oos="$TMP/cursor-sev-oos-output.txt"
+cat > "$sev_oos" <<'EOF'
+### In-Scope Findings
+- In-scope only.
+
+### Out-of-Scope Observations
+- **Latent** `code-quality` `scripts/old.sh:5` Pre-existing issue not introduced by this diff.
+EOF
+printf '0\n' > "$sev_oos.done"
+printf 'STATUS=clean\n' > "$sev_oos.dirty-tree"
+out=$(WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.01 "$SCRIPT" --claude-output-files "$sev_oos" --mode description --timeout 1 --findings-file "$TMP/findings-sev-oos.md" --oos-file "$TMP/oos-sev-oos.md")
+assert_stdout_cap "$out"
+grep -Fq 'OOS_COUNT=1' <<< "$out"
+# Severity token "Latent" must NOT become a category label — title must keep the full text or be left as-is.
+grep -Fq '[OUT_OF_SCOPE] Latent' "$TMP/findings-sev-oos.md" && {
+    echo "FAIL: severity-first OOS bullet was incorrectly normalized to '[OUT_OF_SCOPE] Latent'" >&2
+    cat "$TMP/findings-sev-oos.md" >&2
+    exit 1
+}
+grep -Fq '[OUT_OF_SCOPE] **Latent**' "$TMP/findings-sev-oos.md" \
+    || { echo "FAIL: severity-first OOS bullet title should be left intact" >&2; cat "$TMP/findings-sev-oos.md" >&2; exit 1; }
+
 echo "All assertions passed."
