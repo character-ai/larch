@@ -113,12 +113,39 @@ assert_eq "6 OK launched + 6 never-launched → FAILED_SLOTS=6" "$got" "6"
 got=$(printf '%s\n' "$out" | awk -F= '$1=="THRESHOLD_OK"{print $2}')
 assert_eq "6 failed-via-not-launched → still OK (not >50%)" "$got" "true"
 
+echo "# round 2+ hard panel uses a 6-slot intended denominator"
+out=$(run_case round2_hard hard --round-num 2 --launched-slots 6 OK OK OK OK OK timeout 2>&1)
+got=$(printf '%s\n' "$out" | awk -F= '$1=="INTENDED_SLOTS"{print $2}')
+assert_eq "round2 HARD → INTENDED_SLOTS=6" "$got" "6"
+got=$(printf '%s\n' "$out" | awk -F= '$1=="FAILED_SLOTS"{print $2}')
+assert_eq "round2 HARD one real failure stays one failure" "$got" "1"
+got=$(printf '%s\n' "$out" | awk -F= '$1=="THRESHOLD_OK"{print $2}')
+assert_eq "round2 HARD 1/6 fail → THRESHOLD_OK=true" "$got" "true"
+
+echo "# round 2+ simple panel also uses a 6-slot intended denominator"
+out=$(run_case round2_simple simple --round-num 2 --launched-slots 6 OK OK OK OK OK timeout 2>&1)
+got=$(printf '%s\n' "$out" | awk -F= '$1=="INTENDED_SLOTS"{print $2}')
+assert_eq "round2 SIMPLE → INTENDED_SLOTS=6" "$got" "6"
+got=$(printf '%s\n' "$out" | awk -F= '$1=="FAILED_SLOTS"{print $2}')
+assert_eq "round2 SIMPLE one real failure stays one failure" "$got" "1"
+got=$(printf '%s\n' "$out" | awk -F= '$1=="THRESHOLD_OK"{print $2}')
+assert_eq "round2 SIMPLE 1/6 fail → THRESHOLD_OK=true" "$got" "true"
+
 echo "# both-down: zero records, zero launched"
 out=$(run_case both_down hard --launched-slots 0 2>&1)
 got=$(printf '%s\n' "$out" | awk -F= '$1=="FAILED_SLOTS"{print $2}')
 assert_eq "0 launched of 12 → FAILED_SLOTS=12" "$got" "12"
 got=$(printf '%s\n' "$out" | awk -F= '$1=="THRESHOLD_OK"{print $2}')
 assert_eq "0 launched → THRESHOLD_OK=false" "$got" "false"
+
+echo "# round 2+ both-down: zero records, zero launched"
+out=$(run_case both_down_round2 hard --round-num 2 --launched-slots 0 2>&1)
+got=$(printf '%s\n' "$out" | awk -F= '$1=="INTENDED_SLOTS"{print $2}')
+assert_eq "round2 0 launched → INTENDED_SLOTS=6" "$got" "6"
+got=$(printf '%s\n' "$out" | awk -F= '$1=="FAILED_SLOTS"{print $2}')
+assert_eq "round2 0 launched of 6 → FAILED_SLOTS=6" "$got" "6"
+got=$(printf '%s\n' "$out" | awk -F= '$1=="THRESHOLD_OK"{print $2}')
+assert_eq "round2 0 launched → THRESHOLD_OK=false" "$got" "false"
 
 echo "# dynamic slots are excluded from the static threshold math"
 out=$(run_case dynamic_hard hard --launched-slots 16 \

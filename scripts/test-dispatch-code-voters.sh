@@ -4,9 +4,9 @@
 set -euo pipefail
 export LARCH_QUIET_DISABLE=1
 
-# --section CLI selector: splits the 11 scenarios + 3 regression blocks into
+# --section CLI selector: splits the 12 scenarios + 3 regression blocks into
 # 8 groups so the CI matrix can pack them as independent harness rows. Sections:
-#   happy:                          scenarios 1-3 (happy path, absent tools, empty voter)
+#   happy:                          scenarios 1-4 (happy path, absent tools, empty voter, round-2 panel)
 #   edge-and-r3-claude:             scenarios 4-5 (symlink diff, 2 MB diff) + Regression 3 claude case
 #   retry-claude:                   retry_success_claude, retry_fail_claude
 #   retry-codex-success:            retry_success_codex
@@ -14,7 +14,7 @@ export LARCH_QUIET_DISABLE=1
 #   retry-codex-fail-and-fallback:  retry_fail_codex, retry_fail_fallback
 #   regressions-r1-r2:              env-isolation (Regression 1) + harness-ancestor path-guard (Regression 2)
 #   regressions-r3-codex:           production-shape codex case (Regression 3, codex half)
-# With no --section, all 11 scenarios + 3 regressions run sequentially
+# With no --section, all 12 scenarios + 3 regressions run sequentially
 # (local-dev backward compat).
 SECTION=""
 while [[ $# -gt 0 ]]; do
@@ -196,6 +196,29 @@ grep -Fq 'VOTER_1_PARSE_RATE_STATUS=SKIPPED' <<< "$out"
 grep -Fq 'dispatch-code-voters.sh voter1' "$issues_log"
 grep -Fq 'launch-claude-review.sh (claude voter) failed (exit 99)' "$issues_log"
 grep -Fq 'voter1_rc=99' "$issues_log"
+
+out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" --ballot-file "$BALLOT" --review-tmpdir "$TMP/round2" --codex-available true --cursor-available false --round-num 2)
+grep -Fq 'VOTER_1_TOOL=claude' <<< "$out"
+grep -Fq 'VOTER_2_TOOL=codex' <<< "$out"
+grep -Fq 'VOTER_2_STATUS=skipped' <<< "$out"
+grep -Fq 'VOTER_2_PARSE_RATE_STATUS=SKIPPED' <<< "$out"
+grep -Fq 'VOTER_3_TOOL=claude' <<< "$out"
+grep -Fq 'VOTER_3_STATUS=fallback' <<< "$out"
+grep -Fq 'DISPATCH_OK=true' <<< "$out"
+if grep -Fq 'DEGRADED_PANEL_WARNING=' <<< "$out"; then
+    echo "FAIL: round2 should not emit a degraded panel warning when both effective judges produce output" >&2
+    exit 1
+fi
+[[ "$(wc -l < "$TMP/round2/code-voter-slots.ndjson")" -eq 1 ]] \
+    || { echo "FAIL: round2 manifest must contain only the Cursor slot" >&2; exit 1; }
+grep -Fq '"slot":"voter-3"' "$TMP/round2/code-voter-slots.ndjson" \
+    || { echo "FAIL: round2 manifest missing voter-3 slot" >&2; exit 1; }
+if grep -Fq '"slot":"voter-2"' "$TMP/round2/code-voter-slots.ndjson"; then
+    echo "FAIL: round2 manifest must omit voter-2" >&2
+    exit 1
+fi
+grep -Fq '2-judge voting panel' "$TMP/round2/claude-vote-prompt.txt" \
+    || { echo "FAIL: round2 claude voter prompt must describe a 2-judge panel" >&2; exit 1; }
 fi  # end section: happy
 
 if section_runs edge-and-r3-claude; then

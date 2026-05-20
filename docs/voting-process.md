@@ -4,7 +4,7 @@ The voting protocol is used by `/design` (plan review) and `/review` (code revie
 
 ## Overview
 
-After reviewers submit findings and findings are deduplicated, a voting panel votes on each finding. `/design` (plan review) uses a 3-voter panel (Claude + Codex + Cursor) in normal mode; in `--quick` mode, plan review is Claude-only with no external reviewers or voting panel (see [`skills/design/references/plan-review-quick.md`](../skills/design/references/plan-review-quick.md)). `/review` (code review) uses a 3-voter panel (Claude + Codex + Cursor) unconditionally, with Claude replacement voters when an external voter is unavailable. Each voter casts one of three votes:
+After reviewers submit findings and findings are deduplicated, a voting panel votes on each finding. `/design` (plan review) uses a 3-voter panel (Claude + Codex + Cursor) in normal mode; in `--quick` mode, plan review is Claude-only with no external reviewers or voting panel (see [`skills/design/references/plan-review-quick.md`](../skills/design/references/plan-review-quick.md)). `/review` (code review) uses a 3-voter panel (Claude + Codex + Cursor) on round 1; in rounds 2+ the Codex voter is omitted and a 2-voter panel (Claude + Cursor) is used. Claude replacement voters cover unavailable external voters. Each voter casts one of three votes:
 
 | Vote | Meaning |
 |---|---|
@@ -23,7 +23,7 @@ The number of YES votes required depends on how many voters are available:
 | 1 | 1 | Binding single-judge decision; YES accepts, EXONERATE is exonerated for scoring, NO rejects |
 | 0 | Main agent decides | No automated vote; the main agent reads the ballot as untrusted data and adjudicates |
 
-Eligible voters are counted at the panel level from non-failed voter outputs. Missing per-item votes produce `JUDGE_ERROR` at the per-voter level (parser fallback — ballot entry absent or unparseable) and do not reduce a 3-judge panel to a lower tier.
+Eligible voters are counted at the panel level from non-failed voter outputs. Missing per-item votes produce `JUDGE_ERROR` at the per-voter level (parser fallback — ballot entry absent or unparseable) and do not reduce the round's intended panel size to a lower tier.
 
 ## Degraded-Panel Warnings
 
@@ -35,13 +35,14 @@ The dispatch scripts emit loud degraded-panel warnings when effective judges dro
 
 ## Voter Panel Composition
 
-Both skills use 3-voter panels in their voting paths. All voters vote on all findings — there is no self-voting exclusion.
+`/design` always uses a 3-voter panel in normal mode. `/review` uses a 3-voter panel on round 1 and a 2-voter panel (Claude + Cursor) in rounds 2+. All launched voters vote on all findings — there is no self-voting exclusion.
 
 | Skill | Voters |
 |---|---|
 | `/design` (plan review, normal mode) | Claude Code Reviewer subagent + Codex + Cursor — all 3 always launched |
 | `/design` (plan review, `--quick` mode) | Claude only — no external reviewers, no voting panel |
-| `/review` (code review) | Claude + Codex + Cursor — all 3 launched every round, with Claude replacements for unhealthy external voters |
+| `/review` (code review, round 1) | Claude + Codex + Cursor — all 3 launched, with Claude replacements for unhealthy external voters |
+| `/review` (code review, round 2+) | Claude + Cursor — Codex voter omitted to reduce cost; 2-voter panel (unanimous YES required) |
 
 ## Ballot Format
 

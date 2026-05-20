@@ -79,6 +79,8 @@ case "$DYNAMIC_ARCHETYPES" in
     *) larch_err "review-core.sh: --dynamic-archetypes/LARCH_DYNAMIC_ARCHETYPES_MAX must be an integer from 0 to 4"; exit 2 ;;
 esac
 case "$ROUND_NUM" in ''|*[!0-9]*) larch_err "review-core.sh: --round-num must be a positive integer"; exit 2 ;; esac
+ROUND_NUM=$((10#$ROUND_NUM))
+(( ROUND_NUM > 0 )) || { larch_err "review-core.sh: --round-num must be a positive integer"; exit 2; }
 mkdir -p "$REVIEW_TMPDIR"
 
 : "$RUN_ID"
@@ -361,7 +363,7 @@ recover_dirty_tree "${external_array[@]+"${external_array[@]}"}" "${claude_array
 collector_results_file="$REVIEW_TMPDIR/collector-results.env"
 threshold_out="$REVIEW_TMPDIR/review-core-threshold.env"
 launched_slots="$static_slot_count"
-threshold_args=(--collector-results-file "$collector_results_file" --panel "$panel_shape" --launched-slots "$launched_slots")
+threshold_args=(--collector-results-file "$collector_results_file" --panel "$panel_shape" --launched-slots "$launched_slots" --round-num "$ROUND_NUM")
 if [[ "$static_dispatch_ok" == "false" ]]; then
     printf 'THRESHOLD_OK=false\nTHRESHOLD_REASON=dispatch-failed\n' > "$threshold_out"
 else
@@ -480,9 +482,9 @@ fi
 
 tally_out="$REVIEW_TMPDIR/review-core-tally.env"
 
-# Dispatch the 3-judge code-review panel and collect vote-output files.
-# The waterfall ensures all slots have output (Phase 3 Claude fallback);
-# voters always run. Failed voters are treated as abstentions.
+# Dispatch the round-aware code-review voting panel and collect vote-output files.
+# Round 1 uses Claude + Codex + Cursor; later rounds omit Codex and use
+# Claude + Cursor only. Failed voters are treated as abstentions.
 voter_files=()
 voter_1_tool=""
 voter_2_tool=""
@@ -496,6 +498,7 @@ voter_args=(
     --review-tmpdir "$REVIEW_TMPDIR"
     --codex-available "$CODEX_AVAILABLE"
     --cursor-available "$CURSOR_AVAILABLE"
+    --round-num "$ROUND_NUM"
 )
 [[ -n "$SESSION_ENV_PATH" ]] && voter_args+=(--session-env-path "$SESSION_ENV_PATH")
 [[ -n "$DIFF_FILE" ]] && voter_args+=(--diff-file "$DIFF_FILE")
@@ -521,6 +524,7 @@ tally_args=(
     --review-tmpdir "$REVIEW_TMPDIR"
     --cursor-available "$CURSOR_AVAILABLE"
     --codex-available "$CODEX_AVAILABLE"
+    --round-num "$ROUND_NUM"
 )
 [[ -n "$SESSION_ENV_PATH" ]] && tally_args+=(--session-env-path "$SESSION_ENV_PATH")
 [[ -n "$SCOPE_FILES" && -s "$SCOPE_FILES" ]] && tally_args+=(--scope-files "$SCOPE_FILES")

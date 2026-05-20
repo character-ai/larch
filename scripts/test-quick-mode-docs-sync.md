@@ -20,17 +20,17 @@ Without this harness, drift between the canonical quick-mode contract and its pu
 
 ### Positive anchors (required in every target)
 
-Each target file MUST contain all five markers:
+Each target file MUST contain all markers in `POS_MARKERS` inside `test-quick-mode-docs-sync.sh`:
 
 | Marker | Casing | Rationale |
 |--------|--------|-----------|
 | `5 rounds` | case-sensitive `grep -F` | Pins the 5-round cap for simple (quick) mode. |
-| `no voting panel` | **case-insensitive** `grep -iF` | Semantic marker; tolerates legitimate sentence-case rewrites (e.g. "No voting panel"). |
+| `3-judge panel on round 1` | **case-insensitive** `grep -iF` | Pins the round-1 Codex-inclusive judge panel; rounds 2+ omit Codex. |
 | `simple review panel` | **case-insensitive** `grep -iF` | Pins that quick mode uses the delegated `--panel simple` topology. |
 | `Cursor edge-cases` | case-sensitive `grep -F` | Pins one of the 6 Cursor specialist slots in the simple panel. |
-| `Codex generalist` | case-sensitive `grep -F` | Pins the single Codex generalist slot in the simple panel. |
+| `Codex generalist` | case-sensitive `grep -F` | Pins the single Codex generalist slot in the simple panel (round 1 only at runtime; prose should say so in public mirrors). |
 
-The last four markers encode the delegated simple-panel topology described in the canonical Step 5 contract. Without them, a SKILL.md edit that re-shuffled the quick-mode reviewer composition could ship without the public docs being updated.
+Together these markers encode the canonical Step 5 quick-mode contract. Without them, a SKILL.md edit that re-shuffled the quick-mode reviewer or judge composition could ship without the public docs being updated.
 
 ### Negative checks (forbidden in public docs only)
 

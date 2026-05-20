@@ -204,6 +204,23 @@ got=$(awk -F= '$1=="NEUTRAL_COUNT"{print $2}' "$out"); assert_eq "FINDING_2 1Y/1
 got=$(awk -F= '$1=="FINDING_2_OUTCOME"{print $2}' "$TMP/review-tally.env"); assert_eq "review-tally.env records neutral outcome explicitly" "$got" "neutral"
 got=$(awk -F= '$1=="OOS_ACCEPTED_COUNT"{print $2}' "$out"); assert_eq "FINDING_3 unanimous YES → OOS accepted" "$got" "1"
 
+echo "# Case: round 2 expected 2-voter panel does not emit degraded banner when both judges arrive"
+TMP="$WORKDIR/case2_round2_clean"
+mkdir -p "$TMP"
+mk_ballot "$TMP/ballot.md"
+printf 'FINDING_1: YES\nFINDING_2: YES\nFINDING_3: YES\n' > "$TMP/cursor-vote-output.txt"
+printf 'FINDING_1: YES\nFINDING_2: NO -- nope\nFINDING_3: YES\n' > "$TMP/claude-vote-output.txt"
+out="$TMP/out.env"
+"$SCRIPT" --ballot-file "$TMP/ballot.md" \
+    --voter-files "$TMP/cursor-vote-output.txt" "$TMP/claude-vote-output.txt" \
+    --round-num 2 \
+    --review-tmpdir "$TMP" > "$out"
+if grep -Fq 'Degraded code-review panel' "$TMP/voting-tally.md"; then
+    FAIL=1; printf '  FAIL round-2 clean 2-voter fixture should not emit degraded panel banner\n'
+else
+    printf '  ok   round-2 clean 2-voter fixture emits no degraded panel banner\n'
+fi
+
 echo "# Case: 2 voters, sparse per-finding ballots leave 1 YES and 1 missing vote → rejected"
 TMP="$WORKDIR/case3"
 mkdir -p "$TMP"

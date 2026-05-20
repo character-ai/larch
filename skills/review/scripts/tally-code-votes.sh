@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# tally-code-votes.sh — Tally /review code-review votes from a 3-judge panel.
+# tally-code-votes.sh — Tally /review code-review votes from a round-aware panel.
 # Renamed from tally-votes.sh and rewritten to source scripts/lib-vote-tally.sh
-# and apply the 3-voter threshold rules per voting-protocol.md.
+# and apply the active threshold rules per voting-protocol.md.
 
 set -euo pipefail
 
@@ -16,7 +16,7 @@ source "$PLUGIN_ROOT/scripts/lib-vote-tally.sh"
 source "$PLUGIN_ROOT/scripts/lib-voter-parse-rate.sh"
 
 usage() {
-    larch_err "Usage: tally-code-votes.sh --ballot-file FILE --voter-files FILE... --review-tmpdir DIR [--session-env-path FILE] [--scope-files FILE] [--plan-file FILE] [--manifest-file FILE] [--collector-results-file FILE] [--not-substantive-count N] [--cursor-available true|false] [--codex-available true|false] [--both-down true|false]"
+    larch_err "Usage: tally-code-votes.sh --ballot-file FILE --voter-files FILE... --review-tmpdir DIR [--session-env-path FILE] [--scope-files FILE] [--plan-file FILE] [--manifest-file FILE] [--collector-results-file FILE] [--not-substantive-count N] [--cursor-available true|false] [--codex-available true|false] [--round-num N] [--both-down true|false]"
 }
 
 BALLOT_FILE=""
@@ -30,6 +30,7 @@ COLLECTOR_RESULTS_FILE=""
 NOT_SUBSTANTIVE_COUNT=0
 CURSOR_AVAILABLE=""
 CODEX_AVAILABLE=""
+ROUND_NUM=1
 BOTH_DOWN="false"
 
 while [[ $# -gt 0 ]]; do
@@ -45,6 +46,7 @@ while [[ $# -gt 0 ]]; do
         --not-substantive-count) NOT_SUBSTANTIVE_COUNT="${2:?--not-substantive-count requires a value}"; shift 2 ;;
         --cursor-available) CURSOR_AVAILABLE="${2:?--cursor-available requires a value}"; shift 2 ;;
         --codex-available) CODEX_AVAILABLE="${2:?--codex-available requires a value}"; shift 2 ;;
+        --round-num) ROUND_NUM="${2:?--round-num requires a value}"; shift 2 ;;
         --both-down) BOTH_DOWN="${2:?--both-down requires a value}"; shift 2 ;;
         --help) usage; exit 0 ;;
         *) larch_err "tally-code-votes.sh: unknown option: $1"; usage; exit 2 ;;
@@ -54,6 +56,8 @@ done
 [[ -n "$BALLOT_FILE" && -f "$BALLOT_FILE" ]] || { larch_err "tally-code-votes.sh: --ballot-file must name a file"; exit 2; }
 [[ -n "$REVIEW_TMPDIR" ]] || { larch_err "tally-code-votes.sh: --review-tmpdir is required"; exit 2; }
 [[ -z "$MANIFEST_FILE" || -f "$MANIFEST_FILE" ]] || { larch_err "tally-code-votes.sh: --manifest-file must name a file"; exit 2; }
+case "$ROUND_NUM" in ''|*[!0-9]*) larch_err "tally-code-votes.sh: --round-num must be a positive integer"; exit 2 ;; esac
+(( ROUND_NUM > 0 )) || { larch_err "tally-code-votes.sh: --round-num must be a positive integer"; exit 2; }
 mkdir -p "$REVIEW_TMPDIR"
 
 ACCEPTED_FINDINGS_FILE="$REVIEW_TMPDIR/accepted-findings.md"
@@ -114,6 +118,15 @@ normalize_reviewer_basename() {
         esac
     done
     printf '%s%s' "$stem" "$ext"
+}
+
+expected_voters_for_round() {
+    local round_num="$1"
+    if (( round_num > 1 )); then
+        printf '2\n'
+    else
+        printf '3\n'
+    fi
 }
 
 static_focus_area() {
@@ -262,7 +275,8 @@ write_archetype_map "$MANIFEST_FILE" "$archetype_map"
 
 {
     printf '# Code Review Voting Tally\n\n'
-    if (( EFFECTIVE_VOTERS < 3 )); then
+    EXPECTED_VOTERS=$(expected_voters_for_round "$ROUND_NUM")
+    if (( EFFECTIVE_VOTERS < EXPECTED_VOTERS )); then
         tier_label="$(panel_tier "$EFFECTIVE_VOTERS")"
         printf '**⚠ Degraded code-review panel: %s judge(s) available. Panel tier: %s.**\n\n' "$EFFECTIVE_VOTERS" "$tier_label"
     fi

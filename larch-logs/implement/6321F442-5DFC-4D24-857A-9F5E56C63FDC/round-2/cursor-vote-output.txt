@@ -1,0 +1,23 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: EXONERATE -- duplicate of broader doc-sync scope in FINDING_2, not worth a standalone issue
+FINDING_5: EXONERATE -- minor nested-doc drift, low impact versus runtime/scripts
+FINDING_6: YES
+FINDING_7: EXONERATE -- harmless unused tmp prompt; guarding adds little operator value
+FINDING_8: EXONERATE -- same as FINDING_7
+FINDING_9: YES
+FINDING_10: EXONERATE -- skipped slots use empty paths so `-s` already excludes them
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: EXONERATE -- same as FINDING_10
+FINDING_15: EXONERATE -- same as FINDING_10
+FINDING_16: EXONERATE -- new round-2 threshold coverage already added in the diff
+FINDING_17: YES
+FINDING_18: YES
+FINDING_19: YES
+FINDING_20: YES
+FINDING_21: EXONERATE -- optional cross-skill doc mirror, not merge-blocking
+FINDING_22: YES
+FINDING_23: EXONERATE -- same as FINDING_10

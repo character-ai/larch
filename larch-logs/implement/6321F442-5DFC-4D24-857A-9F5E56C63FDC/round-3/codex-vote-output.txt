@@ -1,0 +1,20 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: EXONERATE -- Legitimate doc drift, but covered by the in-scope doc cleanup and not worth a separate OOS issue.
+FINDING_4: EXONERATE -- Legitimate stale wording in a test failure string, but not worth a separate tracking issue.
+FINDING_5: EXONERATE -- Legitimate header drift, but it should be folded into the tally fix rather than tracked separately.
+FINDING_6: EXONERATE -- Duplicate header-drift concern; legitimate but not worth a separate OOS issue.
+FINDING_7: NO -- The topology row matches the conflict-resolution source; the updated review-agents table is the drift.
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: EXONERATE -- The skipped Codex prompt artifact is harmless debug noise; conditional generation adds little value.
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: EXONERATE -- The stale-path scenario is hypothetical; the current empty path plus -s check prevents ingestion.
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: NO -- The feature blurb is session-only, and repo docs now explicitly describe standalone /review round-2 behavior.
+FINDING_18: YES
+FINDING_19: YES
+FINDING_20: YES

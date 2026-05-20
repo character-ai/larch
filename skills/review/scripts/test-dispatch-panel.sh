@@ -135,6 +135,32 @@ grep -Fq 'SLOT_COUNT=12' <<< "$out"
 [[ -s "$TMP/hard/cursor-specialist-structure-output.txt" ]]
 [[ -s "$TMP/hard/codex-specialist-structure-output.txt" ]]
 
+out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" \
+    --mode diff \
+    --review-tmpdir "$TMP/simple-round2" \
+    --codex-available true \
+    --cursor-available true \
+    --panel simple \
+    --plan-file "$plan_file" \
+    --round-num 2)
+grep -Fq 'STATIC_SLOT_COUNT=6' <<< "$out"
+grep -Fq 'SLOT_COUNT=6' <<< "$out"
+[[ ! -e "$TMP/simple-round2/codex-generalist-output.txt" ]] \
+    || { echo "FAIL: round2 simple panel must omit codex generalist slot" >&2; exit 1; }
+
+out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" \
+    --mode diff \
+    --review-tmpdir "$TMP/hard-round2" \
+    --codex-available true \
+    --cursor-available true \
+    --panel hard \
+    --plan-file "$plan_file" \
+    --round-num 2)
+grep -Fq 'STATIC_SLOT_COUNT=6' <<< "$out"
+grep -Fq 'SLOT_COUNT=6' <<< "$out"
+[[ ! -e "$TMP/hard-round2/codex-specialist-structure-output.txt" ]] \
+    || { echo "FAIL: round2 hard panel must omit codex specialist slots" >&2; exit 1; }
+
 seed_case_inputs "$TMP/dynamic4"
 out=$(PATH="$STUB_BIN:$PATH" SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$scout_launch" SCOUT_LAUNCH_JSON_FILE="$TMP/scout-valid4.json" "$SCRIPT" \
     --mode diff \

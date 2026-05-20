@@ -1,0 +1,20 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: EXONERATE -- diagram header refers to reviewer-panel size which can still be 6–12+ specialists; not directly contradicted by round-aware voter change
+FINDING_10: EXONERATE -- unused prompt file is harmless and empty; adding a branch for a trivial artifact is more complexity than it saves
+FINDING_11: YES
+FINDING_12: EXONERATE -- SKILL.md example already elides with `...` and orchestrator calls review-core.sh, not dispatch-panel.sh directly
+FINDING_13: EXONERATE -- VOTER_2_PATH is explicitly set to "" on skipped path; `-s ""` reliably fails, so hypothetical future-bug scenario has no current impact
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: YES
+FINDING_18: EXONERATE -- same as FINDING_12; the `...` elision in Step 2 already signals incomplete parameter list
+FINDING_19: YES
+FINDING_20: EXONERATE -- dynamic archetypes are Cursor-primary slots; round-aware Codex omission is orthogonal and the interaction is not regression-prone

@@ -4,9 +4,9 @@
 
 It dispatches all reviewer slots through `scripts/dispatch-with-waterfall.sh`, which applies a three-phase waterfall fallback per slot: Phase 1 uses the primary tool (Cursor or Codex) when present; Phase 2 tries the alternate external tool when Phase 1 fails or is absent; Phase 3 launches a Claude subprocess reviewer when both external phases fail or are absent. This means reviewer slots always produce output — Claude fills any slot that cannot be covered by an external tool.
 
-**Simple panel** (`--panel simple`): 6 Cursor specialist slots (structure, correctness, testing, security, edge-cases, plan-fidelity) + 1 Codex generalist slot using `agents/code-reviewer.md`. Total 7 slots when both tools are healthy. Plan file is required and always passed to all slots; absence is a hard fail (exit 2).
+**Simple panel** (`--panel simple`): 6 Cursor specialist slots (structure, correctness, testing, security, edge-cases, plan-fidelity) + 1 Codex generalist slot using `agents/code-reviewer.md` on round 1 only. Round 2+ drops the Codex generalist, leaving 6 Cursor specialist slots, and also disables Codex phase-2 waterfall fallback so later rounds alternate only between Cursor/Cursor-primary slots and Claude fallback. Plan file is required and always passed to all slots; absence is a hard fail (exit 2).
 
-**Hard panel** (`--panel hard`): 6 Cursor specialist slots + 6 Codex specialist slots (structure, correctness, testing, security, edge-cases, plan-fidelity each). Total 12 slots when both tools are healthy. Plan file is required; absence is a hard fail (exit 2).
+**Hard panel** (`--panel hard`): 6 Cursor specialist slots + 6 Codex specialist slots (structure, correctness, testing, security, edge-cases, plan-fidelity each) on round 1 only. Round 2+ drops all Codex specialist slots, leaving 6 Cursor specialist slots, and also disables Codex phase-2 waterfall fallback for every remaining slot (including Cursor-primary dynamic archetypes). Plan file is required; absence is a hard fail (exit 2).
 
 Both panels always include plan-fidelity; there is no longer a conditional based on plan file presence.
 
