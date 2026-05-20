@@ -1301,26 +1301,108 @@ run_rebase_rebump() {
     printf '%s\n' "$rebase_out" >> "$fail_file"
     if [ "$rebase_rc" -eq 1 ]; then
         record_failure rebase "rebase-push.sh --keep-on-conflict" "$rebase_rc" "$fail_file" "CI Issues"
-        # Conflict — vendor waterfall with resolve-conflict role
-        conflict_out="$IMPLEMENT_TMPDIR/rebase-conflict-$(date +%s).out"
-        fail_file=$(failure_capture_path conflict-resolution)
-        if command -v cursor >/dev/null 2>&1; then
-            tool_label="launch-cursor-ci.sh resolve-conflict"
-            "$SCRIPT_DIR/launch-cursor-ci.sh" --role resolve-conflict --output "$conflict_out" \
-                --run-id "$run_id" --repo "$(read_state REPO)" ${plan_args[@]+"${plan_args[@]}"} --timeout 1800 > "$fail_file" 2>&1
-            rc=$?
+        # Conflict — deterministic pre-pass, then optional vendor resolve-conflict role
+        conflict_files_kv=$(kv_value CONFLICT_FILES "$rebase_out")
+        _orchestrator_conflict_csv="$conflict_files_kv"
+        skip_vendor=false
+        vendor_conflict_csv=""
+        if [ -n "$conflict_files_kv" ]; then
+            needs_vendor=false
+            remaining_csv=""
+            _ofs=$IFS
+            IFS=,
+            set -f
+            # shellcheck disable=SC2086
+            for _cf in $conflict_files_kv; do
+                IFS=$_ofs
+                set +f
+                _base_cf=${_cf##*/}
+                _unresolved=false
+                case "$_base_cf" in
+                    CHANGELOG.md|CHANGELOG.rst|CHANGELOG)
+                        if ! "$SCRIPT_DIR/auto-resolve-changelog.sh" "$_cf" || ! git add -- "$_cf"; then
+                            needs_vendor=true
+                            _unresolved=true
+                        fi
+                        ;;
+                    plugin.json)
+                        if [[ "$_cf" == .claude-plugin/plugin.json || "$_cf" == */.claude-plugin/plugin.json ]]; then
+                            if ! git checkout --ours -- "$_cf" || ! git add -- "$_cf"; then
+                                needs_vendor=true
+                                _unresolved=true
+                            fi
+                        else
+                            needs_vendor=true
+                            _unresolved=true
+                        fi
+                        ;;
+                    version.go|go.sum)
+                        if ! git checkout --ours -- "$_cf" || ! git add -- "$_cf"; then
+                            needs_vendor=true
+                            _unresolved=true
+                        fi
+                        ;;
+                    *)
+                        needs_vendor=true
+                        _unresolved=true
+                        ;;
+                esac
+                if [ "$_unresolved" = true ]; then
+                    remaining_csv="${remaining_csv:+$remaining_csv,}${_cf}"
+                fi
+            done
+            IFS=$_ofs
+            set +f
+            if [ "$needs_vendor" = false ]; then
+                if GIT_EDITOR=true git rebase --continue >>"$fail_file" 2>&1; then
+                    skip_vendor=true
+                else
+                    needs_vendor=true
+                    vendor_conflict_csv=$(git diff --name-only --diff-filter=U 2>/dev/null | tr '\n' ',' | sed 's/,$//')
+                    if [ -z "$vendor_conflict_csv" ]; then
+                        vendor_conflict_csv=$_orchestrator_conflict_csv
+                    fi
+                fi
+            else
+                vendor_conflict_csv=$remaining_csv
+            fi
         else
-            tool_label="launch-codex-ci.sh resolve-conflict"
-            "$SCRIPT_DIR/launch-codex-ci.sh" --role resolve-conflict --output "$conflict_out" \
-                --run-id "$run_id" --repo "$(read_state REPO)" ${plan_args[@]+"${plan_args[@]}"} --timeout 1800 > "$fail_file" 2>&1
-            rc=$?
+            needs_vendor=true
+            vendor_conflict_csv=""
         fi
-        [ "$rc" -eq 0 ] || record_failure conflict-resolution "$tool_label" "$rc" "$fail_file" "External Reviewer Issues"
-        fail_file=$(failure_capture_path conflict-resolution)
-        "$SCRIPT_DIR/append-token-record.sh" --input "${conflict_out}.token-record" \
-            --tmpdir "$IMPLEMENT_TMPDIR" > "$fail_file" 2>&1
-        rc=$?
-        [ "$rc" -eq 0 ] || record_failure conflict-resolution "append-token-record.sh" "$rc" "$fail_file" Warnings
+
+        if [ "$skip_vendor" = false ] && [ -z "$vendor_conflict_csv" ]; then
+            vendor_conflict_csv=$(git diff --name-only --diff-filter=U 2>/dev/null | tr '\n' ',' | sed 's/,$//')
+        fi
+        if [ "$skip_vendor" = false ] && [ -z "$vendor_conflict_csv" ] && [ -n "$_orchestrator_conflict_csv" ]; then
+            vendor_conflict_csv=$_orchestrator_conflict_csv
+        fi
+
+        if [ "$skip_vendor" = false ]; then
+            conflict_out="$IMPLEMENT_TMPDIR/rebase-conflict-$(date +%s).out"
+            fail_file=$(failure_capture_path conflict-resolution)
+            _launch_extra=()
+            [ -n "$vendor_conflict_csv" ] && _launch_extra+=(--conflict-files "$vendor_conflict_csv")
+            if command -v cursor >/dev/null 2>&1; then
+                tool_label="launch-cursor-ci.sh resolve-conflict"
+                "$SCRIPT_DIR/launch-cursor-ci.sh" --role resolve-conflict --output "$conflict_out" \
+                    --run-id "$run_id" --repo "$(read_state REPO)" ${plan_args[@]+"${plan_args[@]}"} \
+                    "${_launch_extra[@]}" --timeout 600 > "$fail_file" 2>&1
+                rc=$?
+            else
+                tool_label="launch-codex-ci.sh resolve-conflict"
+                "$SCRIPT_DIR/launch-codex-ci.sh" --role resolve-conflict --output "$conflict_out" \
+                    --run-id "$run_id" --repo "$(read_state REPO)" ${plan_args[@]+"${plan_args[@]}"} \
+                    "${_launch_extra[@]}" --timeout 600 > "$fail_file" 2>&1
+                rc=$?
+            fi
+            [ "$rc" -eq 0 ] || record_failure conflict-resolution "$tool_label" "$rc" "$fail_file" "External Reviewer Issues"
+            fail_file=$(failure_capture_path conflict-resolution)
+            "$SCRIPT_DIR/append-token-record.sh" --input "${conflict_out}.token-record" \
+                --tmpdir "$IMPLEMENT_TMPDIR" > "$fail_file" 2>&1
+            rc=$?
+            [ "$rc" -eq 0 ] || record_failure conflict-resolution "append-token-record.sh" "$rc" "$fail_file" Warnings
+        fi
         # Fresh rebase after vendor fix: if vendor ran git rebase --continue, the
         # branch is already rebased and this returns SKIPPED_ALREADY_FRESH. If the
         # vendor left a conflict or broke the tree it fails, causing exit_stall.

@@ -1,0 +1,11 @@
+FINDING_1: EXONERATE -- Intentional committed run logs are legitimate to note but not worth filing as a future issue.
+FINDING_2: EXONERATE -- The bundled #2446 work is real scope drift, but it is already separate tracked work and not issue-worthy here.
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: EXONERATE -- The broader exoneration behavior is intentional and documented; adding security-specific tally logic is not warranted without a concrete gate requirement.
+FINDING_6: YES
+FINDING_7: EXONERATE -- The launcher test could be stronger, but existing integration tests already pin the important argv path.
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: EXONERATE -- The defense-in-depth concern is real, but these parsed paths are used with git path arguments and do not justify more validation complexity here.

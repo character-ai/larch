@@ -1,0 +1,30 @@
+Reading the ballot and nearby context files.
+
+FINDING_1: EXONERATE -- process nit; opening an issue would add tracking noise without a concrete defect.
+FINDING_2: EXONERATE -- aligns with documented run-log policy; not a regression finding.
+FINDING_3: EXONERATE -- generic hygiene reminder, not a new actionable security flaw in this diff.
+FINDING_4: EXONERATE -- accurate review-scope note; separate issue would restate process guidance only.
+FINDING_5: EXONERATE -- bundling observation is fair; no distinct defect to track separately.
+FINDING_6: EXONERATE -- behavior change is intentional and already tied to the noted fix/issue context.
+FINDING_7: EXONERATE -- size skew is real; tightening templates org-wide outweighs the mismatch cost here.
+FINDING_8: EXONERATE -- valid bisect concern; fixing requires process/split, not this review ballot.
+FINDING_9: EXONERATE -- maintenance cost is real; refactor split is disproportionate for current scope.
+FINDING_10: EXONERATE -- grep-based checks match the file; hardening is optional and low urgency.
+FINDING_11: YES
+FINDING_12: EXONERATE -- theoretical structure skew; documenting or strict-detect would be heavy for rare cases.
+FINDING_13: EXONERATE -- known dedupe limitation; normalization adds complexity for marginal gain.
+FINDING_14: YES
+FINDING_15: EXONERATE -- whole-string checks match current callers; per-segment hardening is speculative.
+FINDING_16: YES
+FINDING_17: EXONERATE -- same bundling/plan-fidelity theme as other items; issue would duplicate noise.
+FINDING_18: EXONERATE -- matches explicit plan to prefer ours for those files; risk is accepted by design.
+FINDING_19: EXONERATE -- same as 18; narrowing paths is policy change beyond this ballot fix.
+FINDING_20: EXONERATE -- edge rebase state is real; richer fallback adds non-trivial branching for rare path.
+FINDING_21: EXONERATE -- extra fixture would help but tail guard is already enforced in production awk.
+FINDING_22: EXONERATE -- mirrors 10; string checks match current harness goals.
+FINDING_23: EXONERATE -- deeper argv contract test is optional; grep still catches obvious regressions.
+FINDING_24: EXONERATE -- Codex path mirrors Cursor; orchestrator-supplied paths are already constrained.
+FINDING_25: EXONERATE -- same substance as 15; hypothetical mixed CSV without `..` is low practical risk here.
+FINDING_26: EXONERATE -- prompt-injection class is theoretical for trusted comma-lists; hardening is large.
+FINDING_27: EXONERATE -- acknowledges low severity; delimiter change is optional polish.
+FINDING_28: EXONERATE -- multi-line KV values are not how CONFLICT_FILES is emitted today.

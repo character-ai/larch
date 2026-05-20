@@ -25,7 +25,8 @@ write_subject() {
     cp "$REPO_ROOT/scripts/lib-quiet.sh" "$root/scripts/lib-quiet.sh"
     cp "$REPO_ROOT/scripts/lib-net.sh" "$root/scripts/lib-net.sh"
     cp "$REPO_ROOT/scripts/lib-finalize-state-keys.sh" "$root/scripts/lib-finalize-state-keys.sh"
-    chmod +x "$root/scripts/ship-pr.sh"
+    cp "$REPO_ROOT/scripts/auto-resolve-changelog.sh" "$root/scripts/auto-resolve-changelog.sh"
+    chmod +x "$root/scripts/ship-pr.sh" "$root/scripts/auto-resolve-changelog.sh"
 }
 
 write_stubs() {
@@ -411,6 +412,366 @@ _install_rebump_dep_stubs() {
         "$root/scripts/git-sync-local-main.sh" \
         "$root/scripts/git-force-push.sh" \
         "$root/scripts/refresh-run-logs.sh"
+}
+
+# Real git + real rebase-push.sh for CHANGELOG auto-resolve coverage in run_rebase_rebump.
+make_repo_rebase_autoresolve_prep() {
+    local name=$1 root
+    root="$TMP_BASE/$name"
+    mkdir -p "$root"
+    write_subject "$root"
+    write_stubs "$root"
+    cp "$REPO_ROOT/scripts/rebase-push.sh" "$root/scripts/rebase-push.sh"
+    chmod +x "$root/scripts/rebase-push.sh"
+    printf '%s\n' '#!/usr/bin/env bash' 'exit 99' > "$root/scripts/cursor"
+    chmod +x "$root/scripts/cursor"
+    git -C "$root" init -q
+    git -C "$root" config user.email test@example.invalid
+    git -C "$root" config user.name Test
+    mkdir -p "$root/origin.git"
+    git init --bare "$root/origin.git" -q
+    git -C "$root" remote add origin "$root/origin.git"
+    git -C "$root" checkout -b main -q
+    touch "$root/README.md"
+    cat > "$root/CHANGELOG.md" <<'EOF'
+# Changelog
+
+## Unreleased
+
+### Changed
+
+- Base bullet
+
+## [1.0.0]
+
+### Fixed
+
+- Old
+EOF
+    git -C "$root" add README.md CHANGELOG.md
+    git -C "$root" commit -q -m base
+    git -C "$root" push -q -u origin main
+    git -C "$root" checkout -b feature -q
+    cat > "$root/CHANGELOG.md" <<'EOF'
+# Changelog
+
+## Unreleased
+
+### Changed
+
+- Base bullet
+- Branch bullet
+
+## [1.0.0]
+
+### Fixed
+
+- Old
+EOF
+    git -C "$root" add CHANGELOG.md
+    git -C "$root" commit -q -m feature
+    git -C "$root" checkout main -q
+    cat > "$root/CHANGELOG.md" <<'EOF'
+# Changelog
+
+## Unreleased
+
+### Changed
+
+- Base bullet
+- Mainline bullet
+
+## [1.0.0]
+
+### Fixed
+
+- Old
+EOF
+    git -C "$root" add CHANGELOG.md
+    git -C "$root" commit -q -m advance-main
+    git -C "$root" push -q origin main
+    git -C "$root" checkout feature -q
+    printf '%s\n' "$root"
+}
+
+# Same as make_repo_rebase_autoresolve_prep but CHANGELOG.rst (RST section titles + underlines).
+make_repo_rebase_autoresolve_rst_prep() {
+    local name=$1 root
+    root="$TMP_BASE/$name"
+    mkdir -p "$root"
+    write_subject "$root"
+    write_stubs "$root"
+    cp "$REPO_ROOT/scripts/rebase-push.sh" "$root/scripts/rebase-push.sh"
+    chmod +x "$root/scripts/rebase-push.sh"
+    printf '%s\n' '#!/usr/bin/env bash' 'exit 99' > "$root/scripts/cursor"
+    chmod +x "$root/scripts/cursor"
+    git -C "$root" init -q
+    git -C "$root" config user.email test@example.invalid
+    git -C "$root" config user.name Test
+    mkdir -p "$root/origin.git"
+    git init --bare "$root/origin.git" -q
+    git -C "$root" remote add origin "$root/origin.git"
+    git -C "$root" checkout -b main -q
+    touch "$root/README.md"
+    cat > "$root/CHANGELOG.rst" <<'EOF'
+Changelog
+=========
+
+Unreleased
+----------
+
+* Base bullet
+
+1.0.0
+-----
+
+* Old
+EOF
+    git -C "$root" add README.md CHANGELOG.rst
+    git -C "$root" commit -q -m base
+    git -C "$root" push -q -u origin main
+    git -C "$root" checkout -b feature -q
+    cat > "$root/CHANGELOG.rst" <<'EOF'
+Changelog
+=========
+
+Unreleased
+----------
+
+* Base bullet
+* Branch bullet
+
+1.0.0
+-----
+
+* Old
+EOF
+    git -C "$root" add CHANGELOG.rst
+    git -C "$root" commit -q -m feature
+    git -C "$root" checkout main -q
+    cat > "$root/CHANGELOG.rst" <<'EOF'
+Changelog
+=========
+
+Unreleased
+----------
+
+* Base bullet
+* Mainline bullet
+
+1.0.0
+-----
+
+* Old
+EOF
+    git -C "$root" add CHANGELOG.rst
+    git -C "$root" commit -q -m advance-main
+    git -C "$root" push -q origin main
+    git -C "$root" checkout feature -q
+    printf '%s\n' "$root"
+}
+
+# Bare ``CHANGELOG`` (no extension), RST-shaped bodies — exercises basename detection + rst merge.
+make_repo_rebase_autoresolve_bare_changelog_prep() {
+    local name=$1 root
+    root="$TMP_BASE/$name"
+    mkdir -p "$root"
+    write_subject "$root"
+    write_stubs "$root"
+    cp "$REPO_ROOT/scripts/rebase-push.sh" "$root/scripts/rebase-push.sh"
+    chmod +x "$root/scripts/rebase-push.sh"
+    printf '%s\n' '#!/usr/bin/env bash' 'exit 99' > "$root/scripts/cursor"
+    chmod +x "$root/scripts/cursor"
+    git -C "$root" init -q
+    git -C "$root" config user.email test@example.invalid
+    git -C "$root" config user.name Test
+    mkdir -p "$root/origin.git"
+    git init --bare "$root/origin.git" -q
+    git -C "$root" remote add origin "$root/origin.git"
+    git -C "$root" checkout -b main -q
+    touch "$root/README.md"
+    cat > "$root/CHANGELOG" <<'EOF'
+Changelog
+=========
+
+Unreleased
+----------
+
+* Base bullet
+
+1.0.0
+-----
+
+* Old
+EOF
+    git -C "$root" add README.md CHANGELOG
+    git -C "$root" commit -q -m base
+    git -C "$root" push -q -u origin main
+    git -C "$root" checkout -b feature -q
+    cat > "$root/CHANGELOG" <<'EOF'
+Changelog
+=========
+
+Unreleased
+----------
+
+* Base bullet
+* Branch bullet
+
+1.0.0
+-----
+
+* Old
+EOF
+    git -C "$root" add CHANGELOG
+    git -C "$root" commit -q -m feature
+    git -C "$root" checkout main -q
+    cat > "$root/CHANGELOG" <<'EOF'
+Changelog
+=========
+
+Unreleased
+----------
+
+* Base bullet
+* Mainline bullet
+
+1.0.0
+-----
+
+* Old
+EOF
+    git -C "$root" add CHANGELOG
+    git -C "$root" commit -q -m advance-main
+    git -C "$root" push -q origin main
+    git -C "$root" checkout feature -q
+    printf '%s\n' "$root"
+}
+
+# Real git + real rebase-push.sh: only ``.claude-plugin/plugin.json`` conflicts (root-relative path).
+make_repo_rebase_plugin_json_prep() {
+    local name=$1 root
+    root="$TMP_BASE/$name"
+    mkdir -p "$root"
+    write_subject "$root"
+    write_stubs "$root"
+    cp "$REPO_ROOT/scripts/rebase-push.sh" "$root/scripts/rebase-push.sh"
+    chmod +x "$root/scripts/rebase-push.sh"
+    printf '%s\n' '#!/usr/bin/env bash' 'exit 99' > "$root/scripts/cursor"
+    chmod +x "$root/scripts/cursor"
+    git -C "$root" init -q
+    git -C "$root" config user.email test@example.invalid
+    git -C "$root" config user.name Test
+    mkdir -p "$root/origin.git"
+    git init --bare "$root/origin.git" -q
+    git -C "$root" remote add origin "$root/origin.git"
+    git -C "$root" checkout -b main -q
+    touch "$root/README.md"
+    mkdir -p "$root/.claude-plugin"
+    cat > "$root/.claude-plugin/plugin.json" <<'EOF'
+{"name":"ship-pr-test","version":"1.0.0"}
+EOF
+    git -C "$root" add README.md .claude-plugin/plugin.json
+    git -C "$root" commit -q -m base
+    git -C "$root" push -q -u origin main
+    git -C "$root" checkout -b feature -q
+    cat > "$root/.claude-plugin/plugin.json" <<'EOF'
+{"name":"ship-pr-test","version":"1.0.0","side":"branch"}
+EOF
+    git -C "$root" add .claude-plugin/plugin.json
+    git -C "$root" commit -q -m feature
+    git -C "$root" checkout main -q
+    cat > "$root/.claude-plugin/plugin.json" <<'EOF'
+{"name":"ship-pr-test","version":"1.0.0","side":"main"}
+EOF
+    git -C "$root" add .claude-plugin/plugin.json
+    git -C "$root" commit -q -m advance-main
+    git -C "$root" push -q origin main
+    git -C "$root" checkout feature -q
+    printf '%s\n' "$root"
+}
+
+# CHANGELOG + second file both conflict; auto-merge leaves the second path for the vendor.
+make_repo_rebase_dual_conflict_prep() {
+    local name=$1 root
+    root="$TMP_BASE/$name"
+    mkdir -p "$root"
+    write_subject "$root"
+    write_stubs "$root"
+    cp "$REPO_ROOT/scripts/rebase-push.sh" "$root/scripts/rebase-push.sh"
+    chmod +x "$root/scripts/rebase-push.sh"
+    printf '%s\n' '#!/usr/bin/env bash' 'exit 0' > "$root/scripts/cursor"
+    chmod +x "$root/scripts/cursor"
+    git -C "$root" init -q
+    git -C "$root" config user.email test@example.invalid
+    git -C "$root" config user.name Test
+    mkdir -p "$root/origin.git"
+    git init --bare "$root/origin.git" -q
+    git -C "$root" remote add origin "$root/origin.git"
+    git -C "$root" checkout -b main -q
+    printf 'm0\n' > "$root/other.txt"
+    touch "$root/README.md"
+    cat > "$root/CHANGELOG.md" <<'EOF'
+# Changelog
+
+## Unreleased
+
+### Changed
+
+- Base bullet
+
+## [1.0.0]
+
+### Fixed
+
+- Old
+EOF
+    git -C "$root" add README.md CHANGELOG.md other.txt
+    git -C "$root" commit -q -m base
+    git -C "$root" push -q -u origin main
+    git -C "$root" checkout -b feature -q
+    printf 'feat-side\n' > "$root/other.txt"
+    cat > "$root/CHANGELOG.md" <<'EOF'
+# Changelog
+
+## Unreleased
+
+### Changed
+
+- Base bullet
+- Branch bullet
+
+## [1.0.0]
+
+### Fixed
+
+- Old
+EOF
+    git -C "$root" add CHANGELOG.md other.txt
+    git -C "$root" commit -q -m feature
+    git -C "$root" checkout main -q
+    printf 'main-side\n' > "$root/other.txt"
+    cat > "$root/CHANGELOG.md" <<'EOF'
+# Changelog
+
+## Unreleased
+
+### Changed
+
+- Base bullet
+- Mainline bullet
+
+## [1.0.0]
+
+### Fixed
+
+- Old
+EOF
+    git -C "$root" add CHANGELOG.md other.txt
+    git -C "$root" commit -q -m advance-main
+    git -C "$root" push -q origin main
+    git -C "$root" checkout feature -q
+    printf '%s\n' "$root"
 }
 
 _make_rebase_stubs() {
@@ -1131,7 +1492,7 @@ count_file="$call_dir/rebase-push-count"
 count=\$(cat "\$count_file" 2>/dev/null || echo 0)
 printf '%s\n' "\$((count + 1))" > "\$count_file"
 if [ "\$count" -eq 0 ]; then
-    echo "CONFLICT=true"
+    echo "CONFLICT_FILES=CHANGELOG.md"
     exit 1
 fi
 exit 0
@@ -1155,6 +1516,166 @@ else
     fail "conflict resolver should forward --plan-file to cursor launcher"
     sed 's/^/    launcher: /' "$call_dir/launcher-calls.txt" 2>/dev/null || true
 fi
+if [ -f "$call_dir/launcher-calls.txt" ] && grep -qF -- "--timeout 600" "$call_dir/launcher-calls.txt"; then
+    ok "conflict resolver uses 600s vendor timeout"
+else
+    fail "conflict resolver should pass --timeout 600"
+    sed 's/^/    launcher: /' "$call_dir/launcher-calls.txt" 2>/dev/null || true
+fi
+rm -rf "$call_dir"
+
+# Regression: pure CHANGELOG rebase conflict auto-resolves without vendor launcher.
+root=$(make_repo_rebase_autoresolve_prep rebump_changelog_auto)
+tmp=$(make_tmpdir)
+count_dir=$(mktemp -d /tmp/ship-pr-changelog-auto.XXXXXX)
+_make_rebase_stubs "$root" "$count_dir"
+write_state "$tmp/ship-pr-state.sh" ci-initial
+PATH="$root/scripts:$PATH" SHIP_PR_LAUNCH_SENTINEL_DIR="$count_dir" run_subject "$root" "$tmp" "$tmp/rc"
+assert_rc "$tmp/rc" 0 "CHANGELOG-only rebase conflict auto-resolve exits 0"
+if [ ! -f "$count_dir/launcher-calls.txt" ]; then
+    ok "CHANGELOG auto-resolve skips vendor launcher"
+else
+    fail "CHANGELOG auto-resolve should not invoke launch-cursor/codex"
+    sed 's/^/    launcher: /' "$count_dir/launcher-calls.txt" 2>/dev/null || true
+fi
+rm -rf "$count_dir"
+
+# Regression: CHANGELOG.rst conflict uses RST section merge (no vendor).
+root=$(make_repo_rebase_autoresolve_rst_prep rebump_changelog_rst)
+tmp=$(make_tmpdir)
+count_dir=$(mktemp -d /tmp/ship-pr-changelog-rst.XXXXXX)
+_make_rebase_stubs "$root" "$count_dir"
+write_state "$tmp/ship-pr-state.sh" ci-initial
+PATH="$root/scripts:$PATH" SHIP_PR_LAUNCH_SENTINEL_DIR="$count_dir" run_subject "$root" "$tmp" "$tmp/rc"
+assert_rc "$tmp/rc" 0 "CHANGELOG.rst-only rebase conflict auto-resolve exits 0"
+if [ ! -f "$count_dir/launcher-calls.txt" ]; then
+    ok "CHANGELOG.rst auto-resolve skips vendor launcher"
+else
+    fail "CHANGELOG.rst auto-resolve should not invoke launch-cursor/codex"
+    sed 's/^/    launcher: /' "$count_dir/launcher-calls.txt" 2>/dev/null || true
+fi
+rm -rf "$count_dir"
+
+# Regression: bare CHANGELOG filename (RST-shaped) auto-resolves without vendor.
+root=$(make_repo_rebase_autoresolve_bare_changelog_prep rebump_changelog_bare)
+tmp=$(make_tmpdir)
+count_dir=$(mktemp -d /tmp/ship-pr-changelog-bare.XXXXXX)
+_make_rebase_stubs "$root" "$count_dir"
+write_state "$tmp/ship-pr-state.sh" ci-initial
+PATH="$root/scripts:$PATH" SHIP_PR_LAUNCH_SENTINEL_DIR="$count_dir" run_subject "$root" "$tmp" "$tmp/rc"
+assert_rc "$tmp/rc" 0 "bare CHANGELOG rebase conflict auto-resolve exits 0"
+if [ ! -f "$count_dir/launcher-calls.txt" ]; then
+    ok "bare CHANGELOG auto-resolve skips vendor launcher"
+else
+    fail "bare CHANGELOG auto-resolve should not invoke launch-cursor/codex"
+    sed 's/^/    launcher: /' "$count_dir/launcher-calls.txt" 2>/dev/null || true
+fi
+rm -rf "$count_dir"
+
+# Regression: root-relative ``.claude-plugin/plugin.json`` rebase conflict → checkout --ours (no vendor).
+root=$(make_repo_rebase_plugin_json_prep rebump_plugin_json_root)
+tmp=$(make_tmpdir)
+count_dir=$(mktemp -d /tmp/ship-pr-plugin-json-auto.XXXXXX)
+_make_rebase_stubs "$root" "$count_dir"
+write_state "$tmp/ship-pr-state.sh" ci-initial
+PATH="$root/scripts:$PATH" SHIP_PR_LAUNCH_SENTINEL_DIR="$count_dir" run_subject "$root" "$tmp" "$tmp/rc"
+assert_rc "$tmp/rc" 0 ".claude-plugin/plugin.json-only rebase conflict auto-resolve exits 0"
+if [ ! -f "$count_dir/launcher-calls.txt" ]; then
+    ok "plugin.json manifest auto-resolve skips vendor launcher"
+else
+    fail "plugin.json manifest auto-resolve should not invoke launch-cursor/codex"
+    sed 's/^/    launcher: /' "$count_dir/launcher-calls.txt" 2>/dev/null || true
+fi
+rm -rf "$count_dir"
+
+# Regression: mixed CHANGELOG + non-trivial conflict → vendor sees remaining path + 600s timeout.
+root=$(make_repo_rebase_dual_conflict_prep rebump_changelog_mixed)
+tmp=$(make_tmpdir)
+count_dir=$(mktemp -d /tmp/ship-pr-changelog-mix.XXXXXX)
+cat > "$root/scripts/launch-cursor-ci.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ -n "${SHIP_PR_LAUNCH_SENTINEL_DIR:-}" ]]; then
+    mkdir -p "$SHIP_PR_LAUNCH_SENTINEL_DIR"
+    printf '%s %s\n' "$(basename "$0")" "$*" >> "$SHIP_PR_LAUNCH_SENTINEL_DIR/launcher-calls.txt"
+fi
+if git rev-parse --git-dir >/dev/null 2>&1; then
+    if [ -d "$(git rev-parse --git-dir)/rebase-merge" ] || [ -d "$(git rev-parse --git-dir)/rebase-apply" ]; then
+        git checkout --ours -- other.txt
+        git add other.txt
+        GIT_EDITOR=true git rebase --continue
+    fi
+fi
+exit 0
+STUB
+chmod +x "$root/scripts/launch-cursor-ci.sh"
+_make_rebase_stubs "$root" "$count_dir"
+write_state "$tmp/ship-pr-state.sh" ci-initial
+PATH="$root/scripts:$PATH" SHIP_PR_LAUNCH_SENTINEL_DIR="$count_dir" run_subject "$root" "$tmp" "$tmp/rc"
+assert_rc "$tmp/rc" 0 "mixed CHANGELOG conflict auto-resolve + vendor exits 0"
+if [ ! -f "$count_dir/launcher-calls.txt" ]; then
+    fail "mixed conflict should invoke vendor for remaining file"
+else
+    if grep -q -- "launch-cursor-ci.sh .*--role resolve-conflict" "$count_dir/launcher-calls.txt" \
+        && grep -qF -- "--conflict-files other.txt" "$count_dir/launcher-calls.txt" \
+        && grep -qF -- "--timeout 600" "$count_dir/launcher-calls.txt"; then
+        ok "mixed conflict forwards only other.txt and 600s timeout"
+    else
+        fail "mixed conflict launcher argv mismatch"
+        sed 's/^/    launcher: /' "$count_dir/launcher-calls.txt" 2>/dev/null || true
+    fi
+fi
+rm -rf "$count_dir"
+
+# Regression: non-changelog-only conflict → vendor with --conflict-files + 600s timeout.
+root=$(make_repo vendor_only_paths)
+tmp=$(make_tmpdir)
+call_dir=$(mktemp -d /tmp/ship-pr-vendor-only.XXXXXX)
+cat > "$root/scripts/rebase-push.sh" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+count_file="$call_dir/rebase-push-count"
+count=\$(cat "\$count_file" 2>/dev/null || echo 0)
+printf '%s\n' "\$((count + 1))" > "\$count_file"
+if [ "\$count" -eq 0 ]; then
+    printf 'CONFLICT_FILES=locked.bin\n'
+    exit 1
+fi
+exit 0
+STUB
+chmod +x "$root/scripts/rebase-push.sh"
+cat > "$root/scripts/cursor" <<'STUB'
+#!/usr/bin/env bash
+exit 0
+STUB
+chmod +x "$root/scripts/cursor"
+cat > "$root/scripts/ci-wait.sh" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+count_file="$call_dir/ci-wait-count2"
+count=\$(cat "\$count_file" 2>/dev/null || echo 0)
+printf '%s\n' "\$((count + 1))" > "\$count_file"
+if [ "\$count" -eq 0 ]; then
+    printf 'ACTION=rebase\nCI_STATUS=fail\nBEHIND_COUNT=1\nFAILED_RUN_ID=\nBAIL_REASON=\nITERATION=0\nELAPSED=1\n'
+else
+    printf 'ACTION=merge\nCI_STATUS=pass\nBEHIND_COUNT=0\nFAILED_RUN_ID=\nBAIL_REASON=\nITERATION=1\nELAPSED=1\n'
+fi
+STUB
+chmod +x "$root/scripts/ci-wait.sh"
+for extra in drop-bump-commit.sh git-sync-local-main.sh git-force-push.sh; do
+    printf '#!/usr/bin/env bash\nexit 0\n' > "$root/scripts/$extra"
+done
+chmod +x "$root/scripts/drop-bump-commit.sh" "$root/scripts/git-sync-local-main.sh" "$root/scripts/git-force-push.sh"
+write_state "$tmp/ship-pr-state.sh" ci-initial
+PATH="$root/scripts:$PATH" SHIP_PR_LAUNCH_SENTINEL_DIR="$call_dir" run_subject "$root" "$tmp" "$tmp/rc"
+assert_rc "$tmp/rc" 0 "non-changelog-only conflict vendor path exits 0"
+if grep -qF -- "--conflict-files locked.bin" "$call_dir/launcher-calls.txt" \
+    && grep -qF -- "--timeout 600" "$call_dir/launcher-calls.txt"; then
+    ok "vendor-only conflict passes --conflict-files and --timeout 600"
+else
+    fail "vendor-only conflict argv missing"
+    sed 's/^/    launcher: /' "$call_dir/launcher-calls.txt" 2>/dev/null || true
+fi
 rm -rf "$call_dir"
 
 root=$(make_repo rebase_second_conflict_breadcrumb)
@@ -1175,7 +1696,7 @@ set -euo pipefail
 count_file="$call_dir/rebase-push-count"
 count=\$(cat "\$count_file" 2>/dev/null || echo 0)
 printf '%s\n' "\$((count + 1))" > "\$count_file"
-echo "CONFLICT=true"
+echo "CONFLICT_FILES=README.md"
 exit 1
 STUB
 for extra in drop-bump-commit.sh git-sync-local-main.sh git-force-push.sh; do

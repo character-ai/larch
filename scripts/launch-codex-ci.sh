@@ -17,11 +17,12 @@ OUTPUT=""
 RUN_ID=""
 REPO=""
 PLAN_FILE=""
+CONFLICT_FILES=""
 TIMEOUT="1800"
 TIMING_TASK_KIND="codex-ci-fix"
 
 usage() {
-    larch_err "Usage: launch-codex-ci.sh --role fix|resolve-conflict|bump-classify|changelog-draft --output PATH --run-id ID --repo OWNER/REPO [--plan-file PATH] [--timeout SECONDS]"
+    larch_err "Usage: launch-codex-ci.sh --role fix|resolve-conflict|bump-classify|changelog-draft --output PATH --run-id ID --repo OWNER/REPO [--plan-file PATH] [--conflict-files CSV] [--timeout SECONDS]"
 }
 
 die() {
@@ -51,6 +52,7 @@ while [ $# -gt 0 ]; do
         --run-id) [ $# -ge 2 ] || die "--run-id requires a value"; RUN_ID=$2; shift 2 ;;
         --repo) [ $# -ge 2 ] || die "--repo requires a value"; REPO=$2; shift 2 ;;
         --plan-file) [ $# -ge 2 ] || die "--plan-file requires a value"; PLAN_FILE=$2; shift 2 ;;
+        --conflict-files) [ $# -ge 2 ] || die "--conflict-files requires a value"; CONFLICT_FILES=$2; shift 2 ;;
         --timeout) [ $# -ge 2 ] || die "--timeout requires a value"; TIMEOUT=$2; shift 2 ;;
         --timing-task-kind) [ $# -ge 2 ] || die "--timing-task-kind requires a value"; TIMING_TASK_KIND=$2; shift 2 ;;
         --help) usage; exit 0 ;;
@@ -66,12 +68,28 @@ case "$TIMEOUT" in ''|*[!0-9]*|0) die "--timeout must be a positive integer" ;; 
 case "$OUTPUT" in /*) ;; *) die "--output must be an absolute path" ;; esac
 case "$PLAN_FILE" in /*) ;; "") ;; *) die "--plan-file must be an absolute path" ;; esac
 case "$OUTPUT" in *[!A-Za-z0-9._/-]*) die "--output contains unsupported characters" ;; esac
+if [[ -n "$CONFLICT_FILES" ]]; then
+    if [[ "$CONFLICT_FILES" == *..* || "$CONFLICT_FILES" == /* ]]; then
+        die "--conflict-files must be repo-relative comma-separated paths (no .. or absolute paths)"
+    fi
+    larch_validate_vendor_conflict_csv "$CONFLICT_FILES" || die "invalid --conflict-files"
+fi
 
 PLAN_CONTEXT=""
 if [ -n "$PLAN_FILE" ] && [ -f "$PLAN_FILE" ]; then
     PLAN_CONTEXT="
 Design plan (do not revert or undo the work it describes):
 $(cat "$PLAN_FILE")"
+fi
+
+CONFLICT_CONTEXT=""
+if [ "$ROLE" = "resolve-conflict" ] && [ -n "$CONFLICT_FILES" ]; then
+    CONFLICT_CONTEXT="
+Still-conflicted paths (repo-relative). Resolve each path, stage with git add, then finish the in-progress rebase with: GIT_EDITOR=true git rebase --continue
+
+<<<CONFLICT_PATHS>>>
+$CONFLICT_FILES
+<<<END_CONFLICT_PATHS>>>"
 fi
 
 PROMPT="You are fixing larch /implement CI subwork.
@@ -81,6 +99,7 @@ Repository: $REPO
 Failed run id: $RUN_ID
 Working directory: $PWD
 $PLAN_CONTEXT
+$CONFLICT_CONTEXT
 
 Inspect the repository and CI logs as needed. Make only the minimal changes required for this role. Do not rewrite history. Do not edit submodules. Leave a concise summary in the final answer."
 PROMPT_FILE="${OUTPUT}.prompt"

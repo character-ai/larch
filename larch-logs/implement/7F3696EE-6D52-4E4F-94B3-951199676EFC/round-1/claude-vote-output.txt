@@ -1,0 +1,11 @@
+FINDING_1: NO -- larch-logs are intentionally committed run artifacts per docs/run-logs.md, not an issue to track
+FINDING_2: NO -- bundling multiple fixes in a single bump is normal larch workflow, not a distinct defect to track
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: EXONERATE -- intentional and documented behavior change; security-finding exoneration concern is speculative given no security-specific gate exists
+FINDING_6: YES
+FINDING_7: EXONERATE -- grep-based presence test is weak but proportionate to a launcher flag check; full argv/prompt-dump infrastructure adds more complexity than the guard warrants
+FINDING_8: YES
+FINDING_9: EXONERATE -- validation duplication concern is valid but data source is internal git output; risk does not justify a shared helper in isolation
+FINDING_10: EXONERATE -- whole-CSV vs per-field validation gap is real but data originates from trusted git rebase output making injection impractical
+FINDING_11: EXONERATE -- defense-in-depth concern on trusted internal orchestration data; fix belongs alongside FINDING_10 not as a standalone change

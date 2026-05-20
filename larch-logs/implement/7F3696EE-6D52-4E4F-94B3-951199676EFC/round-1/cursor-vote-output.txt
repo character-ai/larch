@@ -1,0 +1,13 @@
+Reading the ballot and session context to verify findings.
+
+FINDING_1: EXONERATE -- intentional run logs per policy; filing an issue would add noise without a defect to track.
+FINDING_2: EXONERATE -- mixed-scope branch is real but PR-scope hygiene does not warrant a standalone tracking issue.
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: EXONERATE -- docs already describe the new classifier; a separate security-only tally branch would be disproportionate here.
+FINDING_6: YES
+FINDING_7: EXONERATE -- grep pins match existing launcher-test style; tighter argv-contract tests are optional churn.
+FINDING_8: YES
+FINDING_9: EXONERATE -- duplicated checks are tiny; a shared helper mainly adds indirection for marginal gain.
+FINDING_10: EXONERATE -- orchestrator-supplied CSV from trusted rebase output; stricter per-token parsing is low ROI.
+FINDING_11: EXONERATE -- paths come from git/rebase machinery; duplicating launcher validation in ship-pr is optional hardening, not a gap.
