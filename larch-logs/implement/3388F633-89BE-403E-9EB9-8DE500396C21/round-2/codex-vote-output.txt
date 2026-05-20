@@ -1,0 +1,32 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: EXONERATE -- legitimate audit-noise concern, but retry success status logging appears intentional and dedupe/caller-mode complexity is not warranted.
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: EXONERATE -- legitimate manifest-scope issue, but it duplicates in-scope findings and does not need a separate future issue.
+FINDING_11: NO -- describes verified non-issues rather than a trackable problem.
+FINDING_12: NO -- historical changelog wording is not a current contract bug.
+FINDING_13: NO -- describes a verified non-issue.
+FINDING_14: NO -- describes a verified non-issue.
+FINDING_15: NO -- historical changelog wording is not issue-worthy.
+FINDING_16: YES
+FINDING_17: YES
+FINDING_18: YES
+FINDING_19: NO -- the messages are assertion labels and still identify the failing slug/check.
+FINDING_20: NO -- duplicate of FINDING_19 and not materially misleading.
+FINDING_21: YES
+FINDING_22: YES
+FINDING_23: YES
+FINDING_24: EXONERATE -- true as a validation enhancement, but this checker is currently a presence manifest and deeper validation is beyond the needed fix.
+FINDING_25: YES
+FINDING_26: YES
+FINDING_27: YES
+FINDING_28: NO -- core missing-transcript coverage is synthetic already; the historical-run check is only extra opportunistic coverage.
+FINDING_29: EXONERATE -- the visible status line is minor prompt noise and the script’s stdout status contract makes suppressing it optional.
+FINDING_30: YES
+FINDING_31: YES
+FINDING_32: NO -- the manifest is trusted repo data and the verifier only checks file existence, so traversal framing is overblown.

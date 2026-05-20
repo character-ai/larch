@@ -1,0 +1,32 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: NO -- The ballot item itself identifies no defect in the lint excludes.
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: EXONERATE -- The exit-code assertion would be nicer, but current output checks adequately cover this narrow harness.
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: NO -- Header skipping matches the manifest header and is not a defect.
+FINDING_14: YES
+FINDING_15: EXONERATE -- The inconsistency is real but pre-existing and not worth a separate issue beyond the accepted capture-specific fix.
+FINDING_16: NO -- This is not an actionable defect.
+FINDING_17: EXONERATE -- The bare `|| true` cleanup concern is legitimate but too minor and pre-existing for separate tracking.
+FINDING_18: YES
+FINDING_19: YES
+FINDING_20: YES
+FINDING_21: YES
+FINDING_22: YES
+FINDING_23: YES
+FINDING_24: YES
+FINDING_25: YES
+FINDING_26: YES
+FINDING_27: YES
+FINDING_28: YES
+FINDING_29: EXONERATE -- Diagnostics would improve debuggability, but the missing execution-issues logging is the issue-worthy defect.
+FINDING_30: YES
+FINDING_31: YES
+FINDING_32: NO -- Existing larch-log and capture transcript tests already pin default-branch and post-merge commit refusal.

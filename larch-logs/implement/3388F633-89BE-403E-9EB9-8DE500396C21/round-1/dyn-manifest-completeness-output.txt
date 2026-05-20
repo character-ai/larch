@@ -1,0 +1,25 @@
+Gathering the branch diff and commit list, then reviewing manifest architecture against the scout checklist.
+
+Cross-checking the manifest against `larch-log-batches.sh` and `docs/run-logs.md`, and verifying whether the referenced CI workflow exists.
+
+Checked [`scripts/larch-log-batches.sh`](scripts/larch-log-batches.sh) (canonical batch extensions), [`docs/run-logs.md`](docs/run-logs.md) (`run-statistics.md`), committed run dirs under `larch-logs/implement/` (all `run-statistics.md`), and repo workflows (no `verify-run-logs.yml`).
+
+### In-Scope Findings
+
+- **[correctness]** [`docs/run-logs-required-files.tsv:11`](docs/run-logs-required-files.tsv): The manifest requires `run-statistics.json` with `extension=json`, but the canonical batch table defines `run-statistics` as `.md` ([`scripts/larch-log-batches.sh:27`](scripts/larch-log-batches.sh)), [`docs/run-logs.md`](docs/run-logs.md) documents `run-statistics.md`, and committed runs use `run-statistics.md` only. [`scripts/verify-run-log-completeness.sh`](scripts/verify-run-log-completeness.sh) tests `-f` for that path, so any real `larch-logs/implement/<RUN_ID>/` tree will be reported **MISSING=run-statistics.json** even when the run log is complete. Suggested fix: change the manifest row (and the `extension` column) to `run-statistics.md` / `md`, aligned with `larch-log-batches.sh` and `run-logs.md`.
+
+- **[architecture]** [`scripts/verify-run-log-completeness.md:27-29`](scripts/verify-run-log-completeness.md): The **Callers** section lists `.github/workflows/verify-run-logs.yml`, but that workflow is **not** added in this branch and does not exist under [`.github/workflows/`](.github/workflows/) (only `ci.yaml`, `release-tag.yaml`, etc.). The manifest checker is therefore documented as CI-enforced when it is only wired via [`Makefile`](Makefile) (`test-verify-run-log-completeness` in `test-harnesses-7`). Suggested fix: either add the workflow and hook it from `ci.yaml`/a new file, or remove/reword the Callers bullet so docs match enforcement.
+
+- **[architecture]** [`docs/run-logs-required-files.tsv`](docs/run-logs-required-files.tsv) and [`scripts/verify-run-log-completeness.md:31-35`](scripts/verify-run-log-completeness.md): **Edit-in-sync** names `docs/run-logs.md` and the TSV but not [`scripts/larch-log-batches.sh`](scripts/larch-log-batches.sh), which is the actual slug/extension SSOT; combined with the wrong `run-statistics` path, the TSV is not a reliable single source of truth. Suggested fix: state explicitly that new or renamed batches must match `larch-log-batches.sh` (and optionally add a small guard or doc cross-link); keep the TSV’s `batch_slug` / `extension` columns consistent with that file.
+
+- **[architecture]** [`scripts/test-verify-run-log-completeness.sh:34-47`](scripts/test-verify-run-log-completeness.sh): The harness hardcodes `REQUIRED_FILES` in parallel to the TSV instead of deriving expectations from [`docs/run-logs-required-files.tsv`](docs/run-logs-required-files.tsv), so the test can stay green while the manifest drifts from repo reality (as with `run-statistics`). Suggested fix: generate the list from the same manifest the verifier reads, or assert TSV rows match `larch-log-batches.sh` in a dedicated test.
+
+- **[architecture]** [`scripts/test-verify-run-log-completeness.sh:60-62`](scripts/test-verify-run-log-completeness.sh) (and similar lines): Success paths use `"$VERIFY" ... 2>&1 || true"` without asserting exit code `0`; reliance on substring checks is mostly safe given [`scripts/verify-run-log-completeness.sh:44-50`](scripts/verify-run-log-completeness.sh) prints `OK`/`MISSING=` before exiting, but it is a thin guard if the script’s control flow changes. Suggested fix: assert `$?` after capture on the happy path (run in a subshell or split stdout/status).
+
+- **[architecture]** [`agent-lint.toml:143-152`](agent-lint.toml): The four new `exclude` entries match the new [`scripts/verify-run-log-completeness.sh`](scripts/verify-run-log-completeness.sh), [`.md`](scripts/verify-run-log-completeness.md), [`scripts/test-verify-run-log-completeness.sh`](scripts/test-verify-run-log-completeness.sh), and [`.md`](scripts/test-verify-run-log-completeness.md) siblings; the Makefile-only / dead-script rationale is consistent with the diff. No defect.
+
+### Out-of-Scope Observations
+
+- **[architecture]** [`scripts/verify-run-log-completeness.sh:25-28`](scripts/verify-run-log-completeness.sh): Header skip via `[ "$relative_path" = "relative_path" ]` matches the first row of [`docs/run-logs-required-files.tsv:1`](docs/run-logs-required-files.tsv). No issue.
+
+- None of the session-transcript relocation pieces in the diff alter the manifest SSOT problem above; those changes are orthogonal to this checklist once the manifest path bug is fixed.

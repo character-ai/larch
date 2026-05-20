@@ -1,0 +1,19 @@
+Gathering the branch diff and relevant files to review flush-ordering and correctness.
+
+Reading `flush-execution-issues.sh` and the full `refresh-run-logs.sh` flow to verify SHA tracking and ordering.
+
+Checking how execution-issues records are built from the markdown file and whether the batch/sentinel logic can duplicate or skip incorrectly.
+
+Verifying whether `capture-session-transcript.sh` performs an internal `larch-log.sh commit` and how that interacts with the Step 7a final commit (scout item 2).
+
+### In-Scope Findings
+
+- **correctness** — [`docs/run-logs-required-files.tsv:2-15`](docs/run-logs-required-files.tsv): Comment lines state that partial / pre–Step 7a trees may omit `session-transcript.jsonl`, but the manifest row still uses `condition=always` for `session-transcript.jsonl`. [`scripts/verify-run-log-completeness.sh:19-27`](scripts/verify-run-log-completeness.sh) only honors `always`, so the machine check cannot encode the prose caveat; any partial tree will get `MISSING=session-transcript.jsonl` indistinguishable from a broken Step 7a tree. **Suggested fix:** introduce a non-`always` condition (or a separate manifest) aligned with “Step 7a reached”, and teach the verifier to skip or branch on that signal; or drop the contradictory comment and document that the verifier must only be pointed at Step-7a-complete directories.
+
+- **correctness** — [`scripts/capture-session-transcript.sh:169-177`](scripts/capture-session-transcript.sh) plus [`skills/implement/SKILL.md:1697-1698`](skills/implement/SKILL.md) / [`scripts/refresh-run-logs.sh:89-109`](scripts/refresh-run-logs.sh): `capture-session-transcript.sh` still runs `larch-log.sh commit` when `--no-logs-commit false`, while Step 7a and `refresh-run-logs.sh` each end with another `larch-log.sh commit`. After a successful capture, `emit_status "captured"` appends the status line to `execution-issues.md` **after** that internal commit ([`scripts/capture-session-transcript.sh:67-74`](scripts/capture-session-transcript.sh), [`179:179`](scripts/capture-session-transcript.sh)), so the post-transcript `flush-execution-issues.sh` pass materializes new NDJSON tail that the **following** commit must pick up. That is two separate git commits for one logical “pre-bump” or “pre-push refresh” flush, which contradicts the “single flush commit” mental model the scout checklist called out. **Suggested fix:** add a `--defer-commit` (or similar) path used by Step 7a / `refresh-run-logs.sh` so capture only writes, and retain a single `larch-log.sh commit` at the orchestrator tail; or explicitly document and test the two-commit contract if it is intentional.
+
+### Out-of-Scope Observations
+
+- **correctness** — [`skills/implement/scripts/flush-execution-issues.sh:96-125`](skills/implement/scripts/flush-execution-issues.sh) / [`scripts/lib-execution-issues.sh:95-154`](scripts/lib-execution-issues.sh): Per-file SHA sentinel plus per-section `source_sha256` dedup already prevents replaying markdown that was cleared in the first flush when the post-transcript flush runs; this logic predates the branch and is not weakened by the new ordering.
+
+- **correctness** — [`scripts/refresh-run-logs.sh:44-45`](scripts/refresh-run-logs.sh): `NO_LOGS_COMMIT=true` exits before any flush or capture, so there is no stray `larch-log.sh commit` from those paths when logs are suppressed; `flush-execution-issues.sh` only invokes `larch-log.sh append`, not `commit` ([`skills/implement/scripts/flush-execution-issues.sh:171-177`](skills/implement/scripts/flush-execution-issues.sh)).

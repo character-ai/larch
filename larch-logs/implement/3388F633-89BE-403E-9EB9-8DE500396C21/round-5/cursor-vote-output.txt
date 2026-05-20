@@ -1,0 +1,34 @@
+Reading the ballot and nearby context files to verify claims.
+
+Verifying ballot claims against the repo and round-5 diff context.
+
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: EXONERATE -- pre-existing commit-success heuristic; not worth a standalone tracking issue for this PR
+FINDING_12: EXONERATE -- pre-existing SKILL vs script mismatch; not introduced by the transcript move
+FINDING_13: NO -- explicitly scoped out; no GitHub issue warranted
+FINDING_14: NO -- concern is incorrect; `set -e` does not fire through `||`-chained non-zeroes here
+FINDING_15: NO -- backward cascade concern does not match the linear `condition_reached` implementation
+FINDING_16: NO -- empty `pr_number` on parse failure under-enables reachability, it does not spuriously enable it
+FINDING_17: EXONERATE -- same latent commit-classification issue as FINDING_11; duplicate out-of-scope note
+FINDING_18: EXONERATE -- discovery edge case is real but longstanding and not materially changed by this diff
+FINDING_19: EXONERATE -- intent is met; strict plan-archive traceability is optional process overhead
+FINDING_20: YES
+FINDING_21: YES
+FINDING_22: EXONERATE -- optional documentation cross-link; behavior already coherent enough
+FINDING_23: EXONERATE -- minor readability nit; ballot line anchor does not match current file layout
+FINDING_24: EXONERATE -- duplicate of FINDING_10 (same `MANIFEST_STATUS` awk issue)
+FINDING_25: EXONERATE -- duplicate of FINDING_10
+FINDING_26: EXONERATE -- duplicate of FINDING_10
+FINDING_27: EXONERATE -- doc drift reminder is generic; cited SECURITY line range does not match the MERGE_RESULT refresh note
+FINDING_28: YES
+FINDING_29: YES
+FINDING_30: YES

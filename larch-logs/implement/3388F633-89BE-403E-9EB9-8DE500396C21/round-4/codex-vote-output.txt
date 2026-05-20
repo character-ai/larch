@@ -1,0 +1,34 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: EXONERATE -- Suppressing refresh stdout is an intentional quiet-output tradeoff, not issue-worthy.
+FINDING_8: EXONERATE -- Legitimate abnormal-tree edge case, but normal Step 7a checkpoints already cover it.
+FINDING_9: EXONERATE -- CRLF handling is a low-practical-risk editor hygiene issue for a repo-maintained TSV.
+FINDING_10: NO -- This restates the current best-effort exclusion as intended behavior rather than a defect.
+FINDING_11: NO -- The current condition chain is forward-only and has no mutual-recursion cycle.
+FINDING_12: EXONERATE -- The hand-edited/recovered manifest case is too unlikely to warrant a tracking issue.
+FINDING_13: NO -- The manifest path is passed as one quoted argv value, so this is not a practical injection issue.
+FINDING_14: NO -- Historical changelog entries should not be rewritten just because later behavior changed.
+FINDING_15: NO -- SECURITY and lint metadata updates are reasonable supporting edits despite not being plan bullets.
+FINDING_16: EXONERATE -- The real issue is already covered by the in-scope defer-commit finding.
+FINDING_17: NO -- Shell parameter expansion inside double quotes does not recursively execute command substitutions.
+FINDING_18: EXONERATE -- The mismatch is real, but documenting the two-commit behavior is worse than fixing it via defer-commit.
+FINDING_19: YES
+FINDING_20: EXONERATE -- The positional test helper is awkward but not worth refactoring for this change.
+FINDING_21: YES
+FINDING_22: EXONERATE -- The duplicate flush blocks are minor and a shared abstraction is not warranted here.
+FINDING_23: YES
+FINDING_24: YES
+FINDING_25: EXONERATE -- Diagnosing abnormal partial directories with MISSING is acceptable and not worth tightening now.
+FINDING_26: YES
+FINDING_27: YES
+FINDING_28: YES
+FINDING_29: YES
+FINDING_30: YES
+FINDING_31: YES
+FINDING_32: YES
+FINDING_33: NO -- Expanded variable contents are not re-evaluated for command substitution, so the execution claim is false.
+FINDING_34: NO -- A warning-step-label value containing command substitution remains literal; it is not executed.

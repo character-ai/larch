@@ -1,0 +1,34 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: EXONERATE -- intentionally excluded per documented best-effort policy in docs/run-logs.md
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: EXONERATE -- stdout suppression is intentional; status is captured via execution-issues log append
+FINDING_8: NO -- reviewer correctly confirms the pre-existing guard condition is fine for normal post-Step-7a runs
+FINDING_9: EXONERATE -- low practical risk for a repo-maintained TSV kept under version control
+FINDING_10: NO -- confirms correct intended behavior; nothing to fix
+FINDING_11: NO -- confirms no mutual-recursion cycle; nothing to fix
+FINDING_12: EXONERATE -- unlikely in normal flow and test already encodes the strict outcome
+FINDING_13: NO -- standard quoted argument passing; embedded newlines in paths are not a practical injection surface here
+FINDING_14: EXONERATE -- minor changelog stale reference worth a follow-up but not a code defect
+FINDING_15: NO -- SECURITY.md update correctly reflects the implementation; no issue warranted
+FINDING_16: NO -- root cause addressed by the FINDING_1 defer-commit fix
+FINDING_17: EXONERATE -- pre-existing latent concern not introduced by this diff; worth a follow-up issue
+FINDING_18: EXONERATE -- documentation inconsistency is resolved as a byproduct of the FINDING_1 defer-commit fix
+FINDING_19: YES
+FINDING_20: EXONERATE -- test works correctly; refactoring nine positional params adds complexity without functional benefit
+FINDING_21: YES
+FINDING_22: EXONERATE -- slight label differences make extraction non-trivial; legitimate future DRY opportunity
+FINDING_23: EXONERATE -- batch mapping table is the canonical reference; adding to the intro sentence is redundant
+FINDING_24: EXONERATE -- plan is a non-shipped artifact; shipped docs (run-logs.md, verify-run-log-completeness.md) correctly document the intentional exclusion
+FINDING_25: EXONERATE -- tool targets committed run dirs; abnormal hand-edited partial trees are expected to surface MISSING
+FINDING_26: EXONERATE -- manifest.json is machine-generated with stable field order; low practical risk
+FINDING_27: EXONERATE -- same as FINDING_26
+FINDING_28: EXONERATE -- same as FINDING_26/27; machine-generated format makes field-order reordering extremely unlikely
+FINDING_29: EXONERATE -- Step 7a section already documents transcript capture location; adding a back-reference at Step 18 is noise
+FINDING_30: EXONERATE -- plan is non-shipped; shipped docs are self-consistent and explicitly document the intentional exclusion
+FINDING_31: YES
+FINDING_32: YES
+FINDING_33: NO -- variable expansion in double-quoted strings does not re-execute command substitutions embedded in the variable value; claimed injection vector is not valid without eval
+FINDING_34: NO -- same reasoning as FINDING_33; $WARNING_STEP_LABEL expansion produces a literal string and does not trigger execution of embedded $() without eval

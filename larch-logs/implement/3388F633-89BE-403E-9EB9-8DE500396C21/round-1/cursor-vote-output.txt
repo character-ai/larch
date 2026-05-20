@@ -1,0 +1,34 @@
+Reading the ballot and referenced context files.
+
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: NO -- reviewer concludes excludes match Makefile-only pattern with no defect alleged
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: EXONERATE -- current substring assertions match verifier’s OK/MISSING-first output contract
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: EXONERATE -- design-only / bail paths may legitimately omit full run-log surface; needs explicit policy text not code churn
+FINDING_12: YES
+FINDING_13: NO -- header-skip behavior matches manifest; no issue to file
+FINDING_14: EXONERATE -- pre-existing default-branch heuristic; narrow edge case not worth a tracking issue
+FINDING_15: NO -- pre-existing exemplar style drift alone is not issue-worthy
+FINDING_16: NO -- meta note, not an independent defect once manifest is corrected
+FINDING_17: NO -- nit duplicate of known pre-existing || true pattern; no issue
+FINDING_18: YES
+FINDING_19: YES
+FINDING_20: YES
+FINDING_21: YES
+FINDING_22: YES
+FINDING_23: EXONERATE -- warning prefix mismatch is cosmetic and low impact for triage
+FINDING_24: EXONERATE -- same Step 7a label issue as FINDING_23; not worth separate work beyond optional wording
+FINDING_25: YES
+FINDING_26: YES
+FINDING_27: YES
+FINDING_28: YES
+FINDING_29: EXONERATE -- stderr suppression trades debuggability for clean caller streams; acceptable here
+FINDING_30: YES
+FINDING_31: YES
+FINDING_32: EXONERATE -- larch-log commit policy plus new default-branch tests retain the meaningful guardrail
