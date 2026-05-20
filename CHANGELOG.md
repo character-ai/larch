@@ -13,6 +13,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Extend the plan-voter harnesses to cover healthy Codex/Cursor dispatch and retry-path waterfall promotion, so phase-2/phase-3 structured retry outputs cannot be dropped silently.
 - Align description-mode specialist prompts with diff-mode’s pinned single-bullet finding grammar, and enforce the full scout closing-sentence repair in both code and tests.
 
+## [29.8.45] - 2026-05-20
+
+### Changed
+
+- Try Cursor before Codex when applying automated review fixes so the preferred agent runs first.
+- Match lint-fix-loop dispatch order to the same Cursor-first policy used elsewhere in the toolchain.
+- Keep operator-facing contract docs accurate for coder dispatch ordering.
+
 ## [29.8.44] - 2026-05-20
 
 ### Changed
@@ -23,6 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Documented the review voter dispatch order: round-1 external coder slots now launch as Codex-first plus Cursor-first waterfall paths, so Cursor can win a slot directly before falling back to Codex and then Claude when needed.
 - Closed: #2440
 
 ## [29.8.40] - 2026-05-20

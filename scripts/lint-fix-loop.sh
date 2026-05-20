@@ -255,12 +255,12 @@ prompt_body="$(cat "$prompt_file")"
 
 coder_tool=""
 coder_log=""
-if [[ "$CODEX_PRESENT" == "true" ]] && run_codex "$run_dir" "$prompt_body"; then
-    coder_tool="codex"
-    coder_log="$run_dir/codex.log"
-elif [[ "$CURSOR_PRESENT" == "true" ]] && run_cursor "$run_dir" "$prompt_body"; then
+if [[ "$CURSOR_PRESENT" == "true" ]] && run_cursor "$run_dir" "$prompt_body"; then
     coder_tool="cursor"
     coder_log="$run_dir/cursor.log"
+elif [[ "$CODEX_PRESENT" == "true" ]] && run_codex "$run_dir" "$prompt_body"; then
+    coder_tool="codex"
+    coder_log="$run_dir/codex.log"
 else
     emit_kv LINT_FIX_STATUS failed
     emit_kv FAILURE_REASON dispatch-failed
