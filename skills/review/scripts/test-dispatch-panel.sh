@@ -114,6 +114,15 @@ grep -Fq 'DISPATCH_OK=true' <<< "$out"
 [[ -s "$TMP/simple/cursor-specialist-structure-output.txt" ]]
 [[ -s "$TMP/simple/codex-generalist-output.txt" ]]
 
+out=$(PATH="$STUB_BIN:$PATH" LARCH_QUIET_BREADCRUMBS=1 "$SCRIPT" \
+    --mode diff \
+    --review-tmpdir "$TMP/simple-breadcrumbs" \
+    --codex-available true \
+    --cursor-available true \
+    --panel simple \
+    --plan-file "$plan_file")
+grep -Fq '→ review: launching 7 reviewers (6 Cursor static, 1 Codex generalist, 0 dynamic)' <<< "$out"
+
 out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" \
     --mode diff \
     --review-tmpdir "$TMP/hard" \

@@ -522,6 +522,7 @@ root=$(make_repo breadcrumb_phase_entry)
 tmp=$(make_tmpdir)
 write_state "$tmp/ship-pr-state.sh" checks
 LARCH_QUIET_BREADCRUMBS=1 STUB_CI_ACTION=merge run_subject "$root" "$tmp" "$tmp/rc"
+assert_rc "$tmp/rc" 0 "breadcrumb phase-entry scenario exits 0"
 for crumb in '→ ship-pr: checks' '→ ship-pr: version bump' '→ ship-pr: PR prep' '→ ship-pr: opening PR'; do
     if grep -qF "$crumb" "$tmp/stdout"; then
         ok "breadcrumb phase-entry: stdout contains '$crumb'"
@@ -570,10 +571,26 @@ fi
 fi  # end section: state
 
 if section_runs postmerge; then
+root=$(make_repo ci_watch_skip_breadcrumb)
+tmp=$(make_tmpdir)
+write_state "$tmp/ship-pr-state.sh" ci-merge
+awk '
+  /^MERGE=/ { print "MERGE=false"; next }
+  { print }
+' "$tmp/ship-pr-state.sh" > "$tmp/ship-pr-state.sh.new" && mv "$tmp/ship-pr-state.sh.new" "$tmp/ship-pr-state.sh"
+LARCH_QUIET_BREADCRUMBS=1 run_subject "$root" "$tmp" "$tmp/rc" --resume-phase ci-merge
+assert_rc "$tmp/rc" 0 "ci-watch skip path exits 0"
+if grep -qF '→ ship-pr: CI watch (ci-merge)' "$tmp/stdout"; then
+    fail "ci-watch skip path should not emit CI watch breadcrumb"
+    sed 's/^/    stdout: /' "$tmp/stdout"
+else
+    ok "ci-watch skip path omits CI watch breadcrumb"
+fi
+
 root=$(make_repo version_published_pr_merged)
 tmp=$(make_tmpdir)
 write_state "$tmp/ship-pr-state.sh" ci-merge
-PATH="$root/scripts:$PATH" STUB_MERGE_RESULT=version_already_published STUB_GH_PR_VIEW_STATE=MERGED run_subject "$root" "$tmp" "$tmp/rc"
+PATH="$root/scripts:$PATH" LARCH_QUIET_BREADCRUMBS=1 STUB_MERGE_RESULT=version_already_published STUB_GH_PR_VIEW_STATE=MERGED run_subject "$root" "$tmp" "$tmp/rc"
 assert_rc "$tmp/rc" 0 "version_already_published + merged PR exits 0"
 assert_state_line "$tmp/ship-pr-state.sh" "MERGE_RESULT=already_merged" "version_already_published + merged PR records already_merged"
 assert_state_line "$tmp/ship-pr-state.sh" "PHASE=done" "version_already_published + merged PR completes postmerge"
@@ -581,6 +598,12 @@ if [ -f "$tmp/post-merge-sentinel" ]; then
     ok "version_already_published + merged PR writes post-merge-sentinel"
 else
     fail "version_already_published + merged PR should write post-merge-sentinel"
+fi
+if grep -qF '→ ship-pr: merged' "$tmp/stdout"; then
+    ok "version_already_published + merged PR emits merged breadcrumb"
+else
+    fail "version_already_published + merged PR should emit merged breadcrumb"
+    sed 's/^/    stdout: /' "$tmp/stdout"
 fi
 
 root=$(make_repo version_published_pr_open)
@@ -649,7 +672,7 @@ root=$(make_repo stale_stall_state_cleared_on_already_merged)
 tmp=$(make_tmpdir)
 write_state "$tmp/ship-pr-state.sh" ci-merge
 seed_stale_stall_state "$tmp/ship-pr-state.sh"
-STUB_CI_ACTION=already_merged run_subject "$root" "$tmp" "$tmp/rc" --resume-phase ci-merge
+LARCH_QUIET_BREADCRUMBS=1 STUB_CI_ACTION=already_merged run_subject "$root" "$tmp" "$tmp/rc" --resume-phase ci-merge
 assert_rc "$tmp/rc" 0 "stale stall state: ci-wait already_merged exits 0"
 assert_state_line "$tmp/ship-pr-state.sh" "MERGE_RESULT=already_merged" "stale stall state: ci-wait already_merged records already_merged"
 assert_state_line "$tmp/ship-pr-state.sh" "PHASE=done" "stale stall state: ci-wait already_merged completes postmerge"
@@ -657,6 +680,12 @@ assert_state_line "$tmp/ship-pr-state.sh" "BAIL_REASON=" "stale stall state: ci-
 assert_state_line "$tmp/ship-pr-state.sh" "STALL_TRACKING=false" "stale stall state: ci-wait already_merged clears STALL_TRACKING"
 assert_state_line "$tmp/ship-pr-state.sh" "STALL_STEP=" "stale stall state: ci-wait already_merged clears STALL_STEP"
 assert_file_absent_or_empty "$tmp/final-bail-reason.txt" "stale stall state: ci-wait already_merged leaves final-bail-reason.txt empty"
+if grep -qF '→ ship-pr: merged' "$tmp/stdout"; then
+    ok "already_merged path emits merged breadcrumb"
+else
+    fail "already_merged path should emit merged breadcrumb"
+    sed 's/^/    stdout: /' "$tmp/stdout"
+fi
 
 root=$(make_repo malformed)
 tmp=$(make_tmpdir)
@@ -1057,6 +1086,47 @@ if [ -f "$call_dir/launcher-calls.txt" ] && \
 else
     fail "conflict resolver should forward --plan-file to cursor launcher"
     sed 's/^/    launcher: /' "$call_dir/launcher-calls.txt" 2>/dev/null || true
+fi
+rm -rf "$call_dir"
+
+root=$(make_repo rebase_second_conflict_breadcrumb)
+tmp=$(make_tmpdir)
+call_dir=$(mktemp -d /tmp/ship-pr-rebase-second-conflict.XXXXXX)
+cat > "$root/scripts/cursor" <<'STUB'
+#!/usr/bin/env bash
+exit 0
+STUB
+cat > "$root/scripts/ci-wait.sh" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'ACTION=rebase\nCI_STATUS=fail\nBEHIND_COUNT=1\nFAILED_RUN_ID=\nBAIL_REASON=\nITERATION=0\nELAPSED=1\n'
+STUB
+cat > "$root/scripts/rebase-push.sh" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+count_file="$call_dir/rebase-push-count"
+count=\$(cat "\$count_file" 2>/dev/null || echo 0)
+printf '%s\n' "\$((count + 1))" > "\$count_file"
+echo "CONFLICT=true"
+exit 1
+STUB
+for extra in drop-bump-commit.sh git-sync-local-main.sh git-force-push.sh; do
+    printf '#!/usr/bin/env bash\nexit 0\n' > "$root/scripts/$extra"
+done
+chmod +x "$root/scripts/cursor" \
+         "$root/scripts/ci-wait.sh" \
+         "$root/scripts/rebase-push.sh" \
+         "$root/scripts/drop-bump-commit.sh" \
+         "$root/scripts/git-sync-local-main.sh" \
+         "$root/scripts/git-force-push.sh"
+write_state "$tmp/ship-pr-state.sh" ci-initial
+LARCH_QUIET_BREADCRUMBS=1 PATH="$root/scripts:$PATH" SHIP_PR_LAUNCH_SENTINEL_DIR="$call_dir" run_subject "$root" "$tmp" "$tmp/rc"
+assert_rc "$tmp/rc" 4 "second rebase conflict exits 4"
+if grep -qF '⚠ ship-pr: merge conflict on rebase' "$tmp/stdout"; then
+    ok "second rebase conflict emits merge-conflict breadcrumb"
+else
+    fail "second rebase conflict should emit merge-conflict breadcrumb"
+    sed 's/^/    stdout: /' "$tmp/stdout"
 fi
 rm -rf "$call_dir"
 

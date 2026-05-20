@@ -108,7 +108,7 @@ All three calls use `|| true` so refresh failure is non-fatal. The helper exits 
 
 ## Harness
 
-`scripts/test-ship-pr.sh` runs offline state/transition coverage with stubbed helpers. Its disposable repositories copy `ship-pr.sh`, `lib-net.sh`, and `lib-finalize-state-keys.sh` so sourced-library contracts are exercised. It is wired through `make test-ship-pr`.
+`scripts/test-ship-pr.sh` runs offline state/transition coverage with stubbed helpers. Its disposable repositories copy `ship-pr.sh`, `lib-net.sh`, and `lib-finalize-state-keys.sh` so sourced-library contracts are exercised. It is wired through `make test-ship-pr-state`, `make test-ship-pr-postmerge`, and `make test-ship-pr-fix-loop`; running `bash scripts/test-ship-pr.sh` executes the full harness locally.
 
 ## Breadcrumb Stream
 

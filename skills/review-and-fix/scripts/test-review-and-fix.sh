@@ -585,6 +585,20 @@ grep -Fq 'REVIEW_AND_FIX_STATUS=coder-failed' <<< "$out" || fail "all-fail statu
 grep -Fq 'CODER_TOOL=none' <<< "$out" || fail "all-fail tool"
 grep -Fq 'CODER_STATUS=failed' <<< "$out" || fail "all-fail coder status"
 
+work_fail_early="$TMP/all-fail-early-breadcrumb"
+make_work_repo "$work_fail_early"
+implement_tmp="$work_fail_early/implement"
+mkdir -p "$implement_tmp"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
+set +e
+out=$(LARCH_QUIET_BREADCRUMBS=1 CLAUDE_PLUGIN_OPTION_CURSOR_MODEL=' ' TEST_AGENT_BEHAVIOR=all-fail run_review_and_fix "$work_fail_early" \
+    --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 --session-env-path "$implement_tmp/session-env.sh")
+rc=$?
+set -e
+[[ "$rc" -eq 2 ]] || { echo "$out" >&2; fail "all-fail early breadcrumb expected exit 2 got $rc"; }
+grep -Fq '⚠ review-and-fix: coder dispatch failed (both codex and cursor)' <<< "$out" \
+    || fail "all-fail early breadcrumb missing failure breadcrumb"
+
 work_sub="$TMP/submodule-violation"
 make_work_repo "$work_sub"
 mkdir -p "$work_sub/vendor/lib"
@@ -1982,6 +1996,21 @@ out=$(LARCH_QUIET_BREADCRUMBS=1 TEST_AGENT_BEHAVIOR=codex-success run_review_and
 rc=$?
 set -e
 grep -Fq '→ review-and-fix: dispatching coder' <<< "$out" || fail "breadcrumb coder-dispatch: missing dispatching coder breadcrumb"
+
+work_breadcrumb_no_changes="$TMP/breadcrumb-no-changes"
+make_work_repo "$work_breadcrumb_no_changes"
+implement_tmp="$work_breadcrumb_no_changes/implement"
+mkdir -p "$implement_tmp"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
+set +e
+out=$(LARCH_QUIET_BREADCRUMBS=1 TEST_AGENT_BEHAVIOR=codex-no-changes run_review_and_fix "$work_breadcrumb_no_changes" \
+    --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 \
+    --session-env-path "$implement_tmp/session-env.sh" --run-id breadcrumb-no-changes-run 2>&1)
+rc=$?
+set -e
+[[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "breadcrumb no-changes expected exit 0 got $rc"; }
+grep -Fq 'coder dispatch exited 0 but did not modify the working tree' <<< "$out" \
+    || fail "breadcrumb no-changes: missing halting breadcrumb"
 fi  # end section: dispatch (breadcrumb additions)
 
 echo "test-review-and-fix: ok"

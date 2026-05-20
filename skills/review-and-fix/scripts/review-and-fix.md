@@ -127,5 +127,6 @@ When `LARCH_QUIET_BREADCRUMBS=1` is exported (inherited from `run-step5-review.s
 - `→ review-and-fix: <tool> applied N fixes (commit <sha>)` — after a successful coder commit
 - `⚠ review-and-fix: coder dispatch failed (both codex and cursor)` — when both coders fail
 - `⚠ review-and-fix: reviewer panel failed (>50% slots)` — on `core_status=panel-failed`
+- `⚠ review-and-fix: round N — coder dispatch exited 0 but did not modify the working tree; halting loop` — when the coder reports success but makes no repo changes
 
 Harness: `skills/review-and-fix/scripts/test-review-and-fix.sh`, wired through `make test-review-and-fix`.

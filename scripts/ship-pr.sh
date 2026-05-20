@@ -1324,6 +1324,7 @@ run_rebase_rebump() {
         printf '%s\n' "$rebase_out" >> "$fail_file"
         if [ "$rebase_rc" -ne 0 ]; then
             record_failure rebase "rebase-push.sh --no-push" "$rebase_rc" "$fail_file" "CI Issues"
+            emit_breadcrumb "⚠ ship-pr: merge conflict on rebase"
             exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12)"
         fi
     elif [ "$rebase_rc" -ne 0 ]; then
@@ -1456,7 +1457,6 @@ run_rebase_rebump() {
 
 run_ci_phase() {
     local phase=$1 out action bail_reason merge_out merge_result error_text rc ci_args merge_args fail_file pr_number pr_repo pr_state
-    emit_breadcrumb "→ ship-pr: CI watch (${phase})"
     if [ "$(read_state REPO_UNAVAILABLE)" = "true" ] || [ -z "$(read_state PR_NUMBER)" ]; then
         if [ "$phase" = "ci-initial" ]; then
             advance_phase ci-merge
@@ -1471,6 +1471,7 @@ run_ci_phase() {
         advance_phase postmerge
         return 0
     fi
+    emit_breadcrumb "→ ship-pr: CI watch (${phase})"
 
     ci_args=()
     while IFS= read -r arg; do ci_args+=("$arg"); done <<EOF
@@ -1525,6 +1526,7 @@ EOF
                     fi
                     if [ "$pr_state" = "MERGED" ]; then
                         state_set_many PR_CLOSED true MERGE_RESULT already_merged BAIL_REASON "" STALL_TRACKING false STALL_STEP ""
+                        emit_breadcrumb "→ ship-pr: merged"
                         rename_done_best_effort
                         write_post_merge_sentinel
                         advance_phase postmerge
@@ -1570,6 +1572,7 @@ EOF
             ;;
         already_merged)
             state_set_many PR_CLOSED true MERGE_RESULT already_merged BAIL_REASON "" STALL_TRACKING false STALL_STEP ""
+            emit_breadcrumb "→ ship-pr: merged"
             rename_done_best_effort
             write_post_merge_sentinel
             advance_phase postmerge

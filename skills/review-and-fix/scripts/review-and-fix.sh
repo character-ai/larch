@@ -8,6 +8,19 @@ PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
 # shellcheck source=scripts/lib-quiet.sh
 source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
+
+ensure_breadcrumb_fd() {
+    if [[ -z "${LARCH_QUIET_BREADCRUMB_FD:-}" ]]; then
+        if [[ "${LARCH_QUIET_PID:-}" == "$$" ]]; then
+            exec 5>&3
+        else
+            exec 5>&1
+        fi
+        export LARCH_QUIET_BREADCRUMB_FD=5
+    fi
+}
+ensure_breadcrumb_fd
+
 # lib-cursor-launcher-common.sh expects SCRIPT_DIR to point at the root scripts
 # directory for sibling helpers such as agent-model-args.sh and lib-cursor-auth.sh.
 SCRIPT_DIR="$PLUGIN_ROOT/scripts"
@@ -228,8 +241,14 @@ run_coder_dispatch() {
         return 0
     fi
 
-    cursor_launcher_load_model_args || return 1
-    cursor_launcher_setup_auth_argv || return 1
+    if ! cursor_launcher_load_model_args; then
+        emit_breadcrumb "⚠ review-and-fix: coder dispatch failed (both codex and cursor)"
+        return 1
+    fi
+    if ! cursor_launcher_setup_auth_argv; then
+        emit_breadcrumb "⚠ review-and-fix: coder dispatch failed (both codex and cursor)"
+        return 1
+    fi
     _SERIAL_LOCK=""
     external_serial_lock_acquire _SERIAL_LOCK "cursor"
     external_serial_lock_release_after "$_SERIAL_LOCK" "${LARCH_EXTERNAL_SERIAL_LOCK_DELAY:-0.5}"
