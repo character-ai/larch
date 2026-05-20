@@ -328,12 +328,6 @@ if ! jq -e '.archetypes and (.archetypes | type == "array")' "$parse_input" >/de
     emit_parse_failed_result invalid_archetypes_shape "$latency_ms"
 fi
 
-raw_count=$(jq '.archetypes | length' "$parse_input")
-if (( raw_count > 10#$MAX_ARCHETYPES )); then
-    printf 'archetypes length exceeds max cap: %s\n' "$raw_count" > "$parse_error"
-    emit_parse_failed_result archetype_count_overflow "$latency_ms"
-fi
-
 validated_tmp=$(mktemp "${OUTPUT}.tmp.XXXXXX") || exit 1
 warnings_file="${OUTPUT}.warnings"
 : > "$warnings_file"
