@@ -62,9 +62,10 @@
 # that are structurally different from research-phase prose (they contain a
 # no-findings sentinel on the happy path, or short numbered findings with
 # file:line citations). The preset:
-#   - accepts a file whose entire trimmed content equals the canonical JSON
+#   - accepts a file whose first non-empty line equals the canonical JSON
 #     sentinel `{"no_issues_found": true}` or legacy `NO_ISSUES_FOUND`
-#     (case-sensitive) as substantive — exit 0 with no further checks,
+#     (case-sensitive) as substantive — exit 0 with no further checks;
+#     trailing content (e.g. operational notes) is accepted and preserved,
 #   - maps a file whose entire trimmed content equals `CURSOR_EMPTY_RESPONSE`
 #     to exit 5 with a diagnostic so the collector can surface
 #     STATUS=CURSOR_EMPTY_RESPONSE,
@@ -80,7 +81,8 @@
 # and bypasses the prose word-count/citation gates when at least one valid
 # structured record is found. `--write-structured <path>` writes normalized valid
 # records to the given path; the canonical JSON no-findings sentinel and legacy
-# NO_ISSUES_FOUND write an empty file and exit 0.
+# NO_ISSUES_FOUND (matched on the first non-empty line; trailing content accepted)
+# write an empty file and exit 0.
 # JSONL detection prefers `jq`: each candidate line must parse as a JSON object
 # with schema_version=1 and the required schema fields. Severity aliases
 # Important/Nit/Latent are normalized case-insensitively. If `jq` is unavailable,
@@ -323,12 +325,13 @@ validate_structured_tsv() {
 
 if [[ "$STRUCTURED_REVIEWER_MODE" == "true" ]]; then
     TRIMMED=$(trimmed_nonblank_content "$INPUT")
-    if [[ "$TRIMMED" == "NO_ISSUES_FOUND" ]]; then
+    FIRST_LINE=$(printf '%s\n' "$TRIMMED" | awk 'NF { print; exit }')
+    if [[ "$FIRST_LINE" == "NO_ISSUES_FOUND" ]]; then
         write_structured_output "$WRITE_STRUCTURED" ""
         exit 0
     fi
     if command -v jq >/dev/null 2>&1 \
-       && jq -e 'type == "object" and .no_issues_found == true' <<<"$TRIMMED" >/dev/null 2>&1; then
+       && jq -e 'type == "object" and .no_issues_found == true' <<<"$FIRST_LINE" >/dev/null 2>&1; then
         write_structured_output "$WRITE_STRUCTURED" ""
         exit 0
     fi
@@ -369,11 +372,12 @@ if [[ "$VALIDATION_MODE" == "true" ]]; then
         emit "FAILURE_REASON=Cursor returned a JSON envelope with empty .result field — likely transient backend issue. Fallback engaged."
         exit 5
     fi
-    if [[ "$TRIMMED" == "NO_ISSUES_FOUND" ]]; then
+    FIRST_LINE=$(printf '%s\n' "$TRIMMED" | awk 'NF { print; exit }')
+    if [[ "$FIRST_LINE" == "NO_ISSUES_FOUND" ]]; then
         exit 0
     fi
     if command -v jq >/dev/null 2>&1 \
-       && jq -e 'type == "object" and .no_issues_found == true' <<<"$TRIMMED" >/dev/null 2>&1; then
+       && jq -e 'type == "object" and .no_issues_found == true' <<<"$FIRST_LINE" >/dev/null 2>&1; then
         exit 0
     fi
     # Inline-TSV short-circuit: when cursor runs in --mode plan it cannot write

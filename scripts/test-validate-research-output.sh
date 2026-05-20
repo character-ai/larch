@@ -74,6 +74,11 @@
 #   57. Severity alias normalization → exit 0
 #   58. No valid structured records → exit 5
 #   59. --write-structured writes normalized records
+# Cases added for #2455 (first-non-empty-line sentinel relaxation):
+#   60. --validation-mode NO_ISSUES_FOUND + trailing note → exit 0
+#   61. --validation-mode trailing note + NO_ISSUES_FOUND (sentinel NOT first) → exit 2
+#   62. --structured-reviewer-mode NO_ISSUES_FOUND + trailing note → exit 0
+#   63. --structured-reviewer-mode trailing note + NO_ISSUES_FOUND (sentinel NOT first) → exit 5
 #
 # Usage:
 #   bash scripts/test-validate-research-output.sh
@@ -531,6 +536,29 @@ else
     FAILED_TESTS+=("case 59b: sidecar file not written to $SIDECAR59")
     echo "  FAIL: case 59b: sidecar file not written" >&2
 fi
+
+# --- Cases 60-63: first-non-empty-line sentinel relaxation (#2455) ---
+
+# Case 60: --validation-mode NO_ISSUES_FOUND on first line + trailing operational note → exit 0
+F60="$TMPROOT/case60-nif-with-note.txt"
+printf 'NO_ISSUES_FOUND\n\nVerification: scripts/test-dispatch-code-voters.sh could not run in this read-only session because mktemp failed.\n' > "$F60"
+run_case "case 60: --validation-mode NO_ISSUES_FOUND + trailing note → exit 0" 0 --validation-mode "$F60"
+
+# Case 61: --validation-mode sentinel NOT on first line → not short-circuited → exit 2 (body thin)
+# Choice: sentinel-not-first is treated as normal content; 9 words, no citation → exit 2
+F61="$TMPROOT/case61-note-then-nif.txt"
+printf 'Verification: mktemp failed.\n\nNO_ISSUES_FOUND\n' > "$F61"
+run_case "case 61: --validation-mode sentinel NOT first → exit 2 (body thin, not short-circuited)" 2 --validation-mode "$F61"
+
+# Case 62: --structured-reviewer-mode NO_ISSUES_FOUND on first line + trailing note → exit 0
+F62="$TMPROOT/case62-srm-nif-with-note.txt"
+printf 'NO_ISSUES_FOUND\n\nVerification: scripts/test-dispatch-code-voters.sh could not run in this read-only session because mktemp failed.\n' > "$F62"
+run_case "case 62: --structured-reviewer-mode NO_ISSUES_FOUND + trailing note → exit 0" 0 --structured-reviewer-mode "$F62"
+
+# Case 63: --structured-reviewer-mode sentinel NOT on first line → not short-circuited → exit 5
+F63="$TMPROOT/case63-srm-note-then-nif.txt"
+printf 'Verification: mktemp failed.\n\nNO_ISSUES_FOUND\n' > "$F63"
+run_case "case 63: --structured-reviewer-mode sentinel NOT first → exit 5 (no valid records)" 5 --structured-reviewer-mode "$F63"
 
 echo ""
 echo "=== Summary ==="
