@@ -72,7 +72,7 @@ Reinstall or refresh the plugin from this checkout before the next run to pick u
 Continuing with the cached version.**
 ```
 
-This warning fires once per `session-setup.sh` invocation from a larch dev clone. Typical entrypoints include `/implement`, `/fix-issue`, and `/review`. After reinstalling or refreshing the plugin cache, restart Claude Code to pick up the new version.
+This warning fires once per `session-setup.sh` invocation from a larch dev clone when preflight is enabled. Typical entrypoints include `/implement` and `/fix-issue`; `/review` skips preflight and does not emit the warning in its default flow. After reinstalling or refreshing the plugin cache, restart Claude Code to pick up the new version.
 
 ### Mermaid CLI (required for the `lint-mermaid-fences` pre-commit hook)
 

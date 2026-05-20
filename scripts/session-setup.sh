@@ -207,8 +207,8 @@ fi
 if [[ "$SKIP_PREFLIGHT" == "false" ]]; then
     _stale_out=""
     _stale_rc=0
-    if ! _stale_out=$("$SCRIPT_DIR/check-stale-plugin.sh" 2>&1); then
-        _stale_rc=$?
+    _stale_out=$("$SCRIPT_DIR/check-stale-plugin.sh" 2>&1) || _stale_rc=$?
+    if [[ $_stale_rc -ne 0 ]]; then
         larch_errf 'session-setup.sh: warning: stale plugin check failed (rc=%s): %s\n' "$_stale_rc" "$_stale_out"
         _stale_out=""
     fi
