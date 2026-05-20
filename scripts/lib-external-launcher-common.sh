@@ -163,4 +163,40 @@ external_auth_verdict() {
     fi
 }
 
+# Validate repo-relative comma-separated paths passed into vendor prompts.
+# Rejects empty segments, absolute paths, traversal, spaces, and characters
+# that commonly break fenced prompt blocks.
+larch_validate_vendor_conflict_csv() {
+    local csv=$1 seg
+    [[ -z "$csv" ]] && return 0
+    if [[ "$csv" == *$'\n'* || "$csv" == *$'\r'* ]]; then
+        printf '%s\n' "larch_validate_vendor_conflict_csv: newline in CSV" >&2
+        return 1
+    fi
+    local _ofs=$IFS
+    IFS=,
+    # shellcheck disable=SC2086
+    for seg in $csv; do
+        IFS=$_ofs
+        [[ -n "$seg" ]] || {
+            printf '%s\n' "larch_validate_vendor_conflict_csv: empty path segment" >&2
+            return 1
+        }
+        [[ "$seg" == /* ]] && {
+            printf '%s\n' "larch_validate_vendor_conflict_csv: absolute path: $seg" >&2
+            return 1
+        }
+        if [[ "$seg" == *..* ]]; then
+            printf '%s\n' "larch_validate_vendor_conflict_csv: '..' in path: $seg" >&2
+            return 1
+        fi
+        if [[ ! "$seg" =~ ^[A-Za-z0-9._/-]+$ ]]; then
+            printf '%s\n' "larch_validate_vendor_conflict_csv: unsupported characters in path: $seg" >&2
+            return 1
+        fi
+    done
+    IFS=$_ofs
+    return 0
+}
+
 LARCH_LIB_EXTERNAL_LAUNCHER_COMMON_LOADED=1

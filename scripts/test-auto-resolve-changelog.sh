@@ -122,7 +122,81 @@ c=$(grep -c -- '- Same' "$repo/CHANGELOG.md" || true)
 [[ "$c" == 1 ]] || fail "expected exactly one - Same line, got $c"
 pass "dedupes identical entry line"
 
-# --- No heading → exit 1 ---
+# --- RST (document title + Unreleased) merges like ship-pr fixtures ---
+repo="$TMP_BASE/rst-two"
+mkdir -p "$repo"
+git -C "$repo" init -q
+git -C "$repo" config user.email t@e.invalid
+git -C "$repo" config user.name T
+git -C "$repo" checkout -b main -q
+cat >"$repo/CHANGELOG.rst" <<'EOF'
+Changelog
+=========
+
+Unreleased
+----------
+
+* Base bullet
+
+1.0.0
+-----
+
+* Old
+EOF
+git -C "$repo" add CHANGELOG.rst
+git -C "$repo" commit -q -m base
+mkdir -p "$repo/origin.git"
+git init --bare "$repo/origin.git" -q
+git -C "$repo" remote add origin "$repo/origin.git"
+git -C "$repo" push -q -u origin main
+git -C "$repo" checkout -b feature -q
+cat >"$repo/CHANGELOG.rst" <<'EOF'
+Changelog
+=========
+
+Unreleased
+----------
+
+* Base bullet
+* Branch bullet
+
+1.0.0
+-----
+
+* Old
+EOF
+git -C "$repo" add CHANGELOG.rst
+git -C "$repo" commit -q -m feature
+git -C "$repo" checkout main -q
+cat >"$repo/CHANGELOG.rst" <<'EOF'
+Changelog
+=========
+
+Unreleased
+----------
+
+* Base bullet
+* Mainline bullet
+
+1.0.0
+-----
+
+* Old
+EOF
+git -C "$repo" add CHANGELOG.rst
+git -C "$repo" commit -q -m advance-main
+git -C "$repo" push -q origin main
+git -C "$repo" checkout feature -q
+set +e
+git -C "$repo" rebase origin/main >/dev/null 2>&1
+set -e
+run_arv "$repo" CHANGELOG.rst
+grep -qF '* Mainline bullet' "$repo/CHANGELOG.rst" || fail "RST missing upstream bullet"
+grep -qF '* Branch bullet' "$repo/CHANGELOG.rst" || fail "RST missing branch bullet"
+grep -q '^1\.0\.0$' "$repo/CHANGELOG.rst" || fail "RST missing version tail"
+pass "RST Changelog banner: merges Unreleased entries and keeps upstream tail"
+
+# --- no heading → exit 1 ---
 repo="$TMP_BASE/no-head"
 mkdir -p "$repo"
 git -C "$repo" init -q

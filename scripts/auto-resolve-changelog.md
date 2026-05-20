@@ -27,10 +27,11 @@ This avoids mis-classifying Markdown logs without a shared first level-2 heading
 
 ## reStructuredText merge rule
 
-1. Both sides must share the same detected first RST section title (title line plus adornment underline). Otherwise exit `1`.
-2. Emit the upstream preamble through the first title and its underline.
-3. Merge the first section body like Markdown (upstream lines first, then `:3:` lines not already seen, exact-line dedupe).
-4. **Tail guard**: From the second RST section title onward, the `:2:` and `:3:` spans must be identical; otherwise exit `1`. If they match, append the upstream tail from the second title through EOF.
+1. Determine a **merge anchor** section title on each side. If the first RST section’s underline uses only `=` characters (typical project document title such as `Changelog` / `=========`), that banner is skipped and the **second** RST section is used as the merge anchor (for example `Unreleased` / `----------`). Otherwise the first RST section is the anchor.
+2. Both sides must share the same merge-anchor title line. Otherwise exit `1`.
+3. Emit the upstream preamble through the merge-anchor title and its underline.
+4. Merge the anchor section body like Markdown (upstream lines first, then `:3:` lines not already seen, exact-line dedupe).
+5. **Tail guard**: From the next RST section title after the anchor through EOF, the `:2:` and `:3:` spans must be identical; otherwise exit `1`. If they match, append the upstream tail from that next title through EOF.
 
 ## Output
 

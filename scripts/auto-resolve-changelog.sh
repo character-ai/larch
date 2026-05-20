@@ -154,6 +154,23 @@ function rst_second_title_index(arr, n, fh,    i) {
     }
     return 0
 }
+# Skip a leading RST document title (underline made only of "=") so the merge
+# anchor matches Markdown behavior (first real section, e.g. "Unreleased").
+function rst_merge_fh(arr, n,    fh1, fh2, ul) {
+    fh1 = rst_first_title_index(arr, n)
+    if (fh1 == 0) {
+        return 0
+    }
+    ul = arr[fh1 + 1]
+    if (is_rst_adornment(ul, arr[fh1]) && ul ~ /^=+$/) {
+        fh2 = rst_second_title_index(arr, n, fh1)
+        if (fh2 == 0) {
+            return 0
+        }
+        return fh2
+    }
+    return fh1
+}
 BEGIN {
     n2 = readfile(F2, a2)
     n3 = readfile(F3, a3)
@@ -224,13 +241,11 @@ BEGIN {
         exit 0
     }
     # rst
-    h2 = rst_first_title_line(a2, n2)
-    h3 = rst_first_title_line(a3, n3)
-    if (h2 == "" || h3 == "" || h2 != h3) {
+    fh2 = rst_merge_fh(a2, n2)
+    fh3 = rst_merge_fh(a3, n3)
+    if (fh2 == 0 || fh3 == 0 || a2[fh2] != a3[fh3]) {
         exit 1
     }
-    fh2 = rst_first_title_index(a2, n2)
-    fh3 = rst_first_title_index(a3, n3)
     sh2 = rst_second_title_index(a2, n2, fh2)
     sh3 = rst_second_title_index(a3, n3, fh3)
     body_off = 2

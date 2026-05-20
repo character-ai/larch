@@ -72,6 +72,7 @@ if [[ -n "$CONFLICT_FILES" ]]; then
     if [[ "$CONFLICT_FILES" == *..* || "$CONFLICT_FILES" == /* ]]; then
         die "--conflict-files must be repo-relative comma-separated paths (no .. or absolute paths)"
     fi
+    larch_validate_vendor_conflict_csv "$CONFLICT_FILES" || die "invalid --conflict-files"
 fi
 
 PLAN_CONTEXT=""
@@ -84,8 +85,11 @@ fi
 CONFLICT_CONTEXT=""
 if [ "$ROLE" = "resolve-conflict" ] && [ -n "$CONFLICT_FILES" ]; then
     CONFLICT_CONTEXT="
-Still-conflicted paths (comma-separated list from the orchestrator). Resolve each file, stage it with git add, then finish the in-progress rebase with: GIT_EDITOR=true git rebase --continue
-$CONFLICT_FILES"
+Still-conflicted paths (repo-relative). Resolve each path, stage with git add, then finish the in-progress rebase with: GIT_EDITOR=true git rebase --continue
+
+<<<CONFLICT_PATHS>>>
+$CONFLICT_FILES
+<<<END_CONFLICT_PATHS>>>"
 fi
 
 PROMPT="You are fixing larch /implement CI subwork.

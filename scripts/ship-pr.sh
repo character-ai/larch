@@ -1303,6 +1303,7 @@ run_rebase_rebump() {
         record_failure rebase "rebase-push.sh --keep-on-conflict" "$rebase_rc" "$fail_file" "CI Issues"
         # Conflict — deterministic pre-pass, then optional vendor resolve-conflict role
         conflict_files_kv=$(kv_value CONFLICT_FILES "$rebase_out")
+        _orchestrator_conflict_csv="$conflict_files_kv"
         skip_vendor=false
         vendor_conflict_csv=""
         if [ -n "$conflict_files_kv" ]; then
@@ -1358,6 +1359,9 @@ run_rebase_rebump() {
                 else
                     needs_vendor=true
                     vendor_conflict_csv=$(git diff --name-only --diff-filter=U 2>/dev/null | tr '\n' ',' | sed 's/,$//')
+                    if [ -z "$vendor_conflict_csv" ]; then
+                        vendor_conflict_csv=$_orchestrator_conflict_csv
+                    fi
                 fi
             else
                 vendor_conflict_csv=$remaining_csv
@@ -1369,6 +1373,9 @@ run_rebase_rebump() {
 
         if [ "$skip_vendor" = false ] && [ -z "$vendor_conflict_csv" ]; then
             vendor_conflict_csv=$(git diff --name-only --diff-filter=U 2>/dev/null | tr '\n' ',' | sed 's/,$//')
+        fi
+        if [ "$skip_vendor" = false ] && [ -z "$vendor_conflict_csv" ] && [ -n "$_orchestrator_conflict_csv" ]; then
+            vendor_conflict_csv=$_orchestrator_conflict_csv
         fi
 
         if [ "$skip_vendor" = false ]; then

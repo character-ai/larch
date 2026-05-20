@@ -10,7 +10,7 @@ launch-cursor-ci.sh --role fix|resolve-conflict|bump-classify|changelog-draft --
 
 `--output` must be an absolute path using the same narrowed safe alphabet as `run-external-agent.sh`.
 `--plan-file`, when present, must be an absolute path; if the file exists, its content is inserted into the vendor prompt as design-plan context.
-`--conflict-files`, when present with `--role resolve-conflict`, must be a comma-separated list of repo-relative paths (no `..` segments, no absolute paths); the launcher injects the list into the vendor prompt as unresolved-path context.
+`--conflict-files`, when present with `--role resolve-conflict`, must be a comma-separated list of repo-relative paths (no `..` segments, no absolute paths, each segment must match `^[A-Za-z0-9._/-]+$`); the launcher validates the CSV then injects it into the vendor prompt inside `<<<CONFLICT_PATHS>>>` / `<<<END_CONFLICT_PATHS>>>` delimiters.
 
 ## Behavior
 

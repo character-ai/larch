@@ -44,6 +44,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- RST changelogs with a leading `=========` document title: `auto-resolve-changelog.sh` now merges the first real section (e.g. `Unreleased`) instead of treating the document banner as the merge anchor, so `CHANGELOG.rst` / bare `CHANGELOG` rebase conflicts auto-resolve in `ship-pr.sh` without invoking the vendor. `run_rebase_rebump` falls back to the orchestrator `CONFLICT_FILES` CSV when `git rebase --continue` leaves no `diff-filter=U` paths. Cursor/Codex resolve-conflict launchers validate `--conflict-files` segments and fence the path list in the vendor prompt.
 - Restore multi-voter `classify_result` exoneration in `scripts/lib-vote-tally.sh` (two-path rule: no-`NO` panels and mixed panels where `EXONERATE` meets or beats `NO` and exceeds `YES`), fixing mis-tallies after the narrow condition in PR #2428 (#2446).
 
 ### Changed
