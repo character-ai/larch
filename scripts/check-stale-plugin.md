@@ -1,10 +1,10 @@
 # scripts/check-stale-plugin.sh — contract
 
-Detects whether the installed larch plugin cache is behind the working-tree version. Emits a structured `STALE_PLUGIN_CHECK=<result>` key on stdout. Always exits 0 — this is a warn-only check (Option A from issue #2430).
+Detects whether the installed larch plugin cache is behind the working-tree version. Emits a structured `STALE_PLUGIN_CHECK=<result>` key on stdout. Detection outcomes are warn-only and exit 0; invalid CLI usage (unknown flags or missing flag values) exits 1 (Option A from issue #2430).
 
 ## Primary caller
 
-`scripts/session-setup.sh` — invoked after a successful preflight when `--skip-preflight` is not set. Session-setup emits a human-readable warning via `emit` when `STALE_PLUGIN_CHECK=working-tree-ahead`, making the warning visible in the Bash tool output seen by the orchestrator.
+`scripts/session-setup.sh` — invoked after a successful preflight when `--skip-preflight` is not set. Session-setup emits a human-readable warning via `emit` when `STALE_PLUGIN_CHECK=working-tree-ahead`, making the warning visible in the Bash tool output seen by the orchestrator. Unexpected helper failures are logged once via `larch_err` and session setup continues.
 
 ## Dev-clone detection
 

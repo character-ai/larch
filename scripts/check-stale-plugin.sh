@@ -15,7 +15,7 @@
 # skills/implement/SKILL.md. Without this marker the script emits
 # STALE_PLUGIN_CHECK=not-a-dev-clone and exits 0.
 #
-# Output (stdout, KEY=value, always exits 0):
+# Output (stdout, KEY=value, exits 0 for detection outcomes):
 #   STALE_PLUGIN_CHECK=skip               CLAUDE_PLUGIN_ROOT unset or plugin.json missing
 #   STALE_PLUGIN_CHECK=not-a-dev-clone    Not in a larch dev clone
 #   STALE_PLUGIN_CHECK=versions-match     installed == working-tree
@@ -23,6 +23,8 @@
 #     STALE_PLUGIN_INSTALLED_VERSION=<X.Y.Z>
 #     STALE_PLUGIN_WORKING_TREE_VERSION=<X.Y.Z>
 #   STALE_PLUGIN_CHECK=installed-ahead    installed > working-tree (no warn)
+#
+# Invalid CLI usage (unknown flags or missing flag values) exits 1.
 
 set -euo pipefail
 
@@ -31,8 +33,12 @@ WORKING_TREE_ROOT=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --installed-plugin-json) INSTALLED_PLUGIN_JSON="$2"; shift 2 ;;
-        --working-tree-root)     WORKING_TREE_ROOT="$2";     shift 2 ;;
+        --installed-plugin-json)
+            [[ $# -ge 2 ]] || { printf 'check-stale-plugin.sh: --installed-plugin-json requires a value\n' >&2; exit 1; }
+            INSTALLED_PLUGIN_JSON="$2"; shift 2 ;;
+        --working-tree-root)
+            [[ $# -ge 2 ]] || { printf 'check-stale-plugin.sh: --working-tree-root requires a value\n' >&2; exit 1; }
+            WORKING_TREE_ROOT="$2";     shift 2 ;;
         *) printf 'check-stale-plugin.sh: unknown option: %s\n' "$1" >&2; exit 1 ;;
     esac
 done
@@ -76,7 +82,16 @@ fi
 
 # --- Extract versions (grep + sed; no jq dependency) ---
 extract_version() {
-    grep '"version"' "$1" | head -1 | sed 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/'
+    local line
+    line=$(grep '"version"' "$1" 2>/dev/null | head -1 || true)
+    if [ -z "$line" ]; then
+        printf '\n'
+        return 0
+    fi
+    line=${line#*\"version\"}
+    line=${line#*:}
+    line=${line#*\"}
+    printf '%s\n' "${line%%\"*}"
 }
 
 INSTALLED_VERSION=$(extract_version "$INSTALLED_PLUGIN_JSON")

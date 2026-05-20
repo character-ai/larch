@@ -59,6 +59,14 @@ run_check() {
     set -e
 }
 
+run_check_default_env() {
+    local root=$1
+    set +e
+    OUT=$(env -u CLAUDE_PLUGIN_ROOT "$SCRIPT" --working-tree-root "$root" 2>&1)
+    RC=$?
+    set -e
+}
+
 # --- Case 1: working-tree ahead → working-tree-ahead ---
 dir1="$SANDBOX/case1"
 mkdir -p "$dir1/installed" "$dir1/wt"
@@ -120,6 +128,42 @@ make_plugin_json "$dir6/wt/.claude-plugin" "29.0.0"
 run_check "$dir6/installed/plugin.json" "$dir6/wt"
 assert_rc "$RC" 0 "case6: exits 0 on major version difference"
 assert_kv "STALE_PLUGIN_CHECK" "working-tree-ahead" "$OUT" "case6: check=working-tree-ahead (major)"
+
+# --- Case 7: missing version field in installed plugin.json → skip ---
+dir7="$SANDBOX/case7"
+mkdir -p "$dir7/installed" "$dir7/wt"
+make_larch_clone "$dir7/wt"
+printf '{"name":"larch"}\n' > "$dir7/installed/plugin.json"
+make_plugin_json "$dir7/wt/.claude-plugin" "29.8.39"
+run_check "$dir7/installed/plugin.json" "$dir7/wt"
+assert_rc "$RC" 0 "case7: exits 0 when installed plugin.json has no version"
+assert_kv "STALE_PLUGIN_CHECK" "skip" "$OUT" "case7: check=skip on missing installed version"
+
+# --- Case 8: working-tree plugin.json missing → skip ---
+dir8="$SANDBOX/case8"
+mkdir -p "$dir8/installed" "$dir8/wt"
+make_larch_clone "$dir8/wt"
+make_plugin_json "$dir8/installed" "29.8.39"
+run_check "$dir8/installed/plugin.json" "$dir8/wt"
+assert_rc "$RC" 0 "case8: exits 0 when working-tree plugin.json is missing"
+assert_kv "STALE_PLUGIN_CHECK" "skip" "$OUT" "case8: check=skip on missing working-tree plugin.json"
+
+# --- Case 9: CLAUDE_PLUGIN_ROOT unset on default path → skip ---
+dir9="$SANDBOX/case9"
+mkdir -p "$dir9/wt"
+make_larch_clone "$dir9/wt"
+make_plugin_json "$dir9/wt/.claude-plugin" "29.8.39"
+run_check_default_env "$dir9/wt"
+assert_rc "$RC" 0 "case9: exits 0 when CLAUDE_PLUGIN_ROOT is unset"
+assert_kv "STALE_PLUGIN_CHECK" "skip" "$OUT" "case9: check=skip when CLAUDE_PLUGIN_ROOT is unset"
+
+# --- Case 10: invalid working-tree root → skip ---
+dir10="$SANDBOX/case10"
+mkdir -p "$dir10/installed"
+make_plugin_json "$dir10/installed" "29.8.39"
+run_check "$dir10/installed/plugin.json" "$dir10/does-not-exist"
+assert_rc "$RC" 0 "case10: exits 0 when working-tree root is invalid"
+assert_kv "STALE_PLUGIN_CHECK" "skip" "$OUT" "case10: check=skip on invalid working-tree root"
 
 echo
 echo "Results: $PASS passed, $FAIL failed"
