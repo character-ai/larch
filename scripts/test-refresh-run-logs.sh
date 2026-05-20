@@ -18,6 +18,8 @@ setup_plugin_stub() {
     mkdir -p "$root/scripts"
     cp "$SCRIPT_DIR/../skills/implement/scripts/flush-execution-issues.sh" "$root/scripts/flush-execution-issues.sh"
     cp "$SCRIPT_DIR/../skills/implement/scripts/write-final-report.sh" "$root/scripts/write-final-report.sh"
+    cp "$SCRIPT_DIR/render-run-summary.sh" "$root/scripts/render-run-summary.sh"
+    cp "$SCRIPT_DIR/token-cost.sh" "$root/scripts/token-cost.sh"
     cp "$SCRIPT_DIR/lib-quiet.sh" "$root/scripts/lib-quiet.sh"
     cp "$SCRIPT_DIR/lib-execution-issues.sh" "$root/scripts/lib-execution-issues.sh"
     cat > "$root/scripts/tracking-issue-summary.sh" <<'STUB'
@@ -112,8 +114,9 @@ run_flush_helper() {
     mkdir -p "$impl_tmpdir/larch-logs"
     state_file="$impl_tmpdir/ship-pr-state.sh"
     run_id="TEST-RUN-$(date +%s)"
-    printf 'RUN_ID=%s\nNO_LOGS_COMMIT=false\nPR_URL=https://example.test/pr/123\nSTALL_TRACKING=false\n' "$run_id" > "$state_file"
+    printf 'RUN_ID=%s\nNO_LOGS_COMMIT=false\nPR_URL=https://example.test/pr/123\nPR_NUMBER=99\nMERGE=true\nDRAFT=false\nSTALL_TRACKING=false\nFORKED_TARGET=false\n' "$run_id" > "$state_file"
     printf 'ISSUE_NUMBER=7\nRUN_ID=%s\n' "$run_id" > "$impl_tmpdir/parent-issue.md"
+    printf 'DESIGN_ONLY_DONE=false\n' > "$impl_tmpdir/finalize-state.sh"
     transcript_source="$impl_tmpdir/claude-source.env"
     transcript_raw="$impl_tmpdir/raw-transcript.jsonl"
     cat > "$transcript_source" <<EOF
@@ -125,6 +128,7 @@ EOF
 EOF
     cat > "$impl_tmpdir/session-env.sh" <<EOF
 REPO=owner/repo
+REPO_UNAVAILABLE=false
 LARCH_CLAUDE_SOURCE_FILE=$transcript_source
 EOF
 
@@ -202,7 +206,7 @@ ISSUES
     else
         fail "happy-path: execution issues log cleared after flush"
     fi
-    if grep -Fq 'PR: https://example.test/pr/123' "$impl_tmpdir/larch-logs/implement/$run_id/final-summary.md"; then
+    if grep -Fq 'https://example.test/pr/123' "$impl_tmpdir/larch-logs/implement/$run_id/final-summary.md"; then
         pass "happy-path: final summary refreshed before commit"
     else
         fail "happy-path: final summary refreshed before commit"
@@ -223,7 +227,18 @@ ISSUES
     mkdir -p "$impl_tmpdir/larch-logs"
     state_file="$impl_tmpdir/ship-pr-state.sh"
     run_id="TEST-RUN-SKIP-$(date +%s)"
-    printf 'RUN_ID=%s\nNO_LOGS_COMMIT=false\n' "$run_id" > "$state_file"
+    {
+        printf 'RUN_ID=%s\n' "$run_id"
+        printf 'NO_LOGS_COMMIT=false\n'
+        printf 'STALL_TRACKING=false\n'
+        printf 'FORKED_TARGET=false\n'
+        printf 'MERGE=false\n'
+        printf 'DRAFT=false\n'
+        printf 'PR_NUMBER=0\n'
+    } > "$state_file"
+    printf 'ISSUE_NUMBER=1\nRUN_ID=%s\n' "$run_id" > "$impl_tmpdir/parent-issue.md"
+    printf 'REPO=owner/repo\nREPO_UNAVAILABLE=false\n' > "$impl_tmpdir/session-env.sh"
+    printf 'DESIGN_ONLY_DONE=false\n' > "$impl_tmpdir/finalize-state.sh"
 
     plugin_root="$tmp/plugin"
     setup_plugin_stub "$plugin_root"
@@ -279,10 +294,11 @@ ISSUES
     else
         fail "step7a-skip refresh: execution issues log cleared after flush"
     fi
-    if [ -f "$impl_tmpdir/larch-logs/implement/$run_id/final-summary.md" ]; then
-        fail "step7a-skip refresh: final summary must not render before PR_URL exists"
+    if [ -s "$impl_tmpdir/larch-logs/implement/$run_id/final-summary.md" ] \
+        && grep -Fq '## /implement run' "$impl_tmpdir/larch-logs/implement/$run_id/final-summary.md"; then
+        pass "step7a-skip refresh: final summary renders without PR_URL (partial upsert tolerance)"
     else
-        pass "step7a-skip refresh: final summary gated on PR_URL"
+        fail "step7a-skip refresh: expected partial final-summary.md with run header"
     fi
     rm -rf "$tmp"
 } || fail "step7a-skip refresh: exception"

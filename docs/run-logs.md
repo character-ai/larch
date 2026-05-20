@@ -157,9 +157,7 @@ Markdown explanation of the version bump classification: which bump type was cho
 
 **Mode**: replace. **Written**: Step 8+ before PR creation and refreshed later by terminal summary paths.
 
-Committed projection of the final tracking summary: run status, PR field, and
-the log directory pointer. The pre-PR copy may carry placeholder PR data; the
-tracking-issue `larch:final-summary` comment is the canonical live projection.
+Committed **rich markdown** projection of the run: outcome, mode flags, workflow path, token totals (Claude / Codex / Cursor), optional per-lane USD estimates when [`scripts/token-cost.sh`](../scripts/token-cost.sh) rates are configured, duration, plan/code review tallies, OOS and execution-issue counts, log directory pointer, and operator-facing notes (fork dry-run, design-only, draft, no-merge, upstream issue, fork OOS stubs). The body starts with a versioned HTML sentinel (`<!-- larch:run-summary v=1 -->`) so consumers can detect the standardized block. The pre-PR copy may show `PR: N/A` or a draft URL; the tracking-issue `larch:final-summary` comment is the canonical live projection once upserted.
 
 ### oos-issues.ndjson
 

@@ -233,6 +233,16 @@ Per-million-token cost rate (USD) used by `/research`'s Step 4 token report (`##
 
 **Scope**: Token telemetry covers Claude subagent (Agent-tool) invocations only. Claude inline (orchestrator) and external lanes (Cursor/Codex) are unmeasurable and excluded from both the totals and the cost column. The report labels itself "Claude tokens only; external lanes excluded" so operators see the coverage honestly. See [`scripts/token-tally.md`](../scripts/token-tally.md) for the helper contract.
 
+#### Per-vendor rates (`/implement` / `/fix-issue` final summary)
+
+[`scripts/token-cost.sh`](../scripts/token-cost.sh) (used by [`scripts/render-run-summary.sh`](../scripts/render-run-summary.md)) computes optional USD estimates per lane when rates are set:
+
+- **`LARCH_CLAUDE_RATE_PER_M`** — Claude (per million total tokens). When unset or zero, falls back to **`LARCH_TOKEN_RATE_PER_M`** so existing research-style configuration continues to apply.
+- **`LARCH_CODEX_RATE_PER_M`** — Codex (per million total tokens). Omit or set to empty / `0` to show `N/A` for that lane.
+- **`LARCH_CURSOR_RATE_PER_M`** — Cursor (per million total tokens). Omit or set to empty / `0` to show `N/A` for that lane.
+
+When every applicable rate is unset or non-positive, cost lines in the rich summary show `N/A` and no combined total is shown.
+
 ### `LARCH_TIMING_OUTLIER_THRESHOLD_S`
 
 Step duration threshold (in seconds) used by `scripts/timing-report.sh --full` to identify hung-session rows. Steps whose duration exceeds this value are tagged `[OUTLIER]` in the Per-Step Durations table and listed in a trailing note. Default: `14400` (4 hours). Set to a positive integer; zero, negative, or non-numeric values fall back to the default. `--summary` and `--terse` modes are unaffected.

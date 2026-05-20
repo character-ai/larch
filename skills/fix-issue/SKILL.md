@@ -44,6 +44,8 @@ Follow shared/progress-reporting.md rules.
 
 **MANDATORY at session start — READ ENTIRE FILE**: `${CLAUDE_PLUGIN_ROOT}/skills/shared/orchestrator-never.md`. Contains cross-skill NEVER rules that apply to this skill in addition to the skill-specific Anti-patterns below.
 
+**Regression harness (terminal summary)**: `${CLAUDE_PLUGIN_ROOT}/skills/fix-issue/scripts/test-write-final-report.sh` (sibling contract `skills/fix-issue/scripts/test-write-final-report.md`), run via `make test-fix-issue-write-final-report`.
+
 ## Anti-patterns
 
 Each rule states **Why** (the specific consequence of breaking the rule) and **How to apply** (where the invariant is load-bearing). Rules marked **CI-backed: yes** are mechanically enforced by `skills/fix-issue/scripts/test-fix-issue-bail-detection.sh` via an `awk` extraction over the `### 5a` block (under Step 5 — Execute); the remaining rules are editorial invariants that depend on the SKILL.md text being unambiguous.
@@ -93,9 +95,16 @@ Handle exit codes:
 - **Exit 0**: Parse `ISSUE_NUMBER`, `ISSUE_TITLE`, `LOCK_ACQUIRED=true`, `RENAMED`, plus the umbrella-only keys (`IS_UMBRELLA`, `UMBRELLA_NUMBER`, `UMBRELLA_TITLE`, `UMBRELLA_ACTION`) when present. **Hold `$UMBRELLA_NUMBER` as a session variable across Steps 1-7** so Steps 3, 5a, and 6 can run the umbrella-finalization hook (FINDING_1).
   - **Non-umbrella path** (`IS_UMBRELLA` absent or empty): If `RENAMED=false`, the title rename failed best-effort — print `**⚠ 0: find & lock — found and locked #$ISSUE_NUMBER: $ISSUE_TITLE; title rename failed, /implement Branch 2 will retry. (<elapsed>)**`. Continue to Step 1.
   - **Umbrella-dispatched path** (`IS_UMBRELLA=true UMBRELLA_ACTION=dispatched`): If `RENAMED=false`, print `**⚠ 0: find & lock — found and locked child #$ISSUE_NUMBER of umbrella #$UMBRELLA_NUMBER: $ISSUE_TITLE; title rename failed, /implement Branch 2 will retry. (<elapsed>)**`. The literal substring `found and locked` is preserved in both sub-cases so callers recognize the success path with a single sentinel — see FINDING_2 from the umbrella-PR code-review panel. Continue to Step 1 — `$ISSUE_NUMBER` refers to the chosen child; downstream `/implement` adopts the CHILD via `--issue $ISSUE_NUMBER`.
-- **Exit 1**: Skip to Step 8. **Note**: `FIX_ISSUE_TMPDIR` is unset on this path; Step 8's cleanup guard handles the no-tmpdir case.
+- **Exit 1**: Skip to Step 8. **Note**: `FIX_ISSUE_TMPDIR` is unset on this path; Step 8's cleanup guard handles the no-tmpdir case. Best-effort terminal summary (no GitHub upsert):
+  ```bash
+  ${CLAUDE_PLUGIN_ROOT}/skills/fix-issue/scripts/write-final-report.sh --outcome no-candidate --print-stdout || true
+  ```
 - **Exit 2**: Parse `ERROR` from stdout. Print `**⚠ 0: find & lock — error: $ERROR (<elapsed>)**`. Skip to Step 8. Dirty-tree pre-lock abort is one exit-2 sub-case: operator action is commit or stash local changes, then re-run; no manual unlock is needed because no GitHub state was touched. This differs from a narrow post-lock TOCTOU dirty tree that Step 1 preflight catches after lock acquisition; that path still follows the Stale-IN-PROGRESS recovery guidance below. **Note**: `FIX_ISSUE_TMPDIR` is unset on this path; Step 8's cleanup guard handles the no-tmpdir case.
-- **Exit 3**: Eligibility passed but lock acquisition failed (concurrent runner won the race, or `gh` API failed mid-sequence; for umbrella-dispatched paths, the failure is on the chosen child and the `ERROR` carries umbrella context — `Failed to lock chosen child #C of umbrella #U: <reason>`). Parse `ISSUE_NUMBER` and `ERROR`. Print `**⚠ 0: find & lock — lock failed for #$ISSUE_NUMBER: $ERROR. Another run may have claimed this issue, or the IN PROGRESS comment stream may have been partially mutated — see Known Limitations "Stale IN PROGRESS lock" for recovery before re-running. (<elapsed>)**`. Skip to Step 8. The candidate may NOT be cleanly recoverable: when GO was present, `issue-lifecycle.sh comment --lock` deletes GO BEFORE posting `IN PROGRESS`, so a `gh issue comment` failure between those two writes leaves the issue with no comment sentinel; a duplicate-`IN PROGRESS` post-check failure leaves both `IN PROGRESS` comments present. Both states require manual recovery per Known Limitations "Stale IN PROGRESS lock".
+- **Exit 3**: Eligibility passed but lock acquisition failed (concurrent runner won the race, or `gh` API failed mid-sequence; for umbrella-dispatched paths, the failure is on the chosen child and the `ERROR` carries umbrella context — `Failed to lock chosen child #C of umbrella #U: <reason>`). Parse `ISSUE_NUMBER` and `ERROR`. Print `**⚠ 0: find & lock — lock failed for #$ISSUE_NUMBER: $ERROR. Another run may have claimed this issue, or the IN PROGRESS comment stream may have been partially mutated — see Known Limitations "Stale IN PROGRESS lock" for recovery before re-running. (<elapsed>)**`. Best-effort terminal summary (no GitHub upsert):
+  ```bash
+  ${CLAUDE_PLUGIN_ROOT}/skills/fix-issue/scripts/write-final-report.sh --issue-number "${ISSUE_NUMBER:-0}" --outcome lock-failed --print-stdout || true
+  ```
+  Skip to Step 8. The candidate may NOT be cleanly recoverable: when GO was present, `issue-lifecycle.sh comment --lock` deletes GO BEFORE posting `IN PROGRESS`, so a `gh issue comment` failure between those two writes leaves the issue with no comment sentinel; a duplicate-`IN PROGRESS` post-check failure leaves both `IN PROGRESS` comments present. Both states require manual recovery per Known Limitations "Stale IN PROGRESS lock".
 - **Exit 4** (umbrella complete — all parsed children CLOSED): parse `UMBRELLA_NUMBER` and `UMBRELLA_TITLE`. Print `> **🔶 /fix-issue 0: find & lock — umbrella #$UMBRELLA_NUMBER all-closed; finalizing**`. Invoke:
   ```bash
   ${CLAUDE_PLUGIN_ROOT}/skills/fix-issue/scripts/finalize-umbrella.sh finalize --issue $UMBRELLA_NUMBER
@@ -192,6 +201,12 @@ Decide whether the issue is still material against the codebase (see the referen
      --detail "<one-sentence reason>"
    ```
    On non-zero exit, log to `Tool Failures` and continue. Do not abort.
+   ```bash
+   {
+     printf 'ISSUE_NUMBER=%s\nCLASSIFICATION=NOT_MATERIAL\nOUTCOME=closed-not-material\n' "$ISSUE_NUMBER"
+   } > "$FIX_ISSUE_TMPDIR/final-report-state.sh"
+   ${CLAUDE_PLUGIN_ROOT}/skills/fix-issue/scripts/write-final-report.sh --fix-issue-tmpdir "$FIX_ISSUE_TMPDIR" --print-stdout || true
+   ```
 5. Skip to Step 8.
 
 **If the issue is still actual**, continue.
@@ -208,6 +223,13 @@ The triage-classification reference loaded at Step 3 (digest or full `triage-cla
 Set `INTENT` (and `COMPLEXITY` when `INTENT=PR`) per those rules using the issue details and Step 3's codebase exploration.
 
 When `INTENT=PR`, record `INTENT` and `COMPLEXITY` for downstream branching. When `INTENT=NON_PR`, record `INTENT` only.
+
+```bash
+{
+  printf 'ISSUE_NUMBER=%s\n' "$ISSUE_NUMBER"
+  printf 'CLASSIFICATION=%s\n' "$INTENT"
+} > "$FIX_ISSUE_TMPDIR/final-report-state.sh"
+```
 
 <!-- step:5 — Execute -->
 ## Step 5 — Execute
@@ -242,8 +264,22 @@ If `/implement` exits non-zero, branch on whether the captured output (stdout + 
        ${CLAUDE_PLUGIN_ROOT}/skills/fix-issue/scripts/finalize-umbrella.sh finalize --issue $UMBRELLA_NUMBER
    fi
    ```
-   Best-effort: log to `Tool Failures` on failure. Skip to Step 8 cleanup.
-- **Generic failure** (token absent): print `**⚠ 5: execute — /implement failed. Issue #$ISSUE_NUMBER remains locked with IN PROGRESS comment and [IN PROGRESS] title prefix. (<elapsed>)**`. Skip to Step 8. The IN PROGRESS comment serves as an indicator that manual intervention is needed. Note: `/implement` Step 18 may have renamed the issue title to `[STALLED] ...` (managed lifecycle prefix); see Known Limitations "Title-prefix interaction on adopted-issue retry" for the recovery flow before re-running `/fix-issue` against the same issue.
+   Best-effort: log to `Tool Failures` on failure. Then:
+   ```bash
+   {
+     printf 'ISSUE_NUMBER=%s\nCLASSIFICATION=PR\nOUTCOME=bailed-adopted-issue-closed\n' "$ISSUE_NUMBER"
+   } > "$FIX_ISSUE_TMPDIR/final-report-state.sh"
+   ${CLAUDE_PLUGIN_ROOT}/skills/fix-issue/scripts/write-final-report.sh --fix-issue-tmpdir "$FIX_ISSUE_TMPDIR" --print-stdout || true
+   ```
+   Skip to Step 8 cleanup.
+- **Generic failure** (token absent): print `**⚠ 5: execute — /implement failed. Issue #$ISSUE_NUMBER remains locked with IN PROGRESS comment and [IN PROGRESS] title prefix. (<elapsed>)**`. Then:
+   ```bash
+   {
+     printf 'ISSUE_NUMBER=%s\nCLASSIFICATION=PR\nOUTCOME=bailed-implement-failed\n' "$ISSUE_NUMBER"
+   } > "$FIX_ISSUE_TMPDIR/final-report-state.sh"
+   ${CLAUDE_PLUGIN_ROOT}/skills/fix-issue/scripts/write-final-report.sh --fix-issue-tmpdir "$FIX_ISSUE_TMPDIR" --print-stdout || true
+   ```
+   Skip to Step 8. The IN PROGRESS comment serves as an indicator that manual intervention is needed. Note: `/implement` Step 18 may have renamed the issue title to `[STALLED] ...` (managed lifecycle prefix); see Known Limitations "Title-prefix interaction on adopted-issue retry" for the recovery flow before re-running `/fix-issue` against the same issue.
 
 ### 5b — `INTENT=NON_PR` path (follow instructions inline)
 
@@ -297,6 +333,11 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh rename \
 
 Idempotent and best-effort: on `FAILED=true` or non-zero exit, log to `Tool Failures` and continue. Without this rename, a closed NON_PR issue would persist with the misleading `[IN PROGRESS]` title prefix until manually edited (because `/implement` Step 12a/12b/18 terminal renames only run on the PR delegation path).
 
+```bash
+printf 'OUTCOME=closed-non-pr\n' >> "$FIX_ISSUE_TMPDIR/final-report-state.sh"
+${CLAUDE_PLUGIN_ROOT}/skills/fix-issue/scripts/write-final-report.sh --fix-issue-tmpdir "$FIX_ISSUE_TMPDIR" --print-stdout || true
+```
+
 ### 6c — Umbrella finalize hook (both 6a and 6b)
 
 After Step 6a / 6b completes (the just-processed child has been closed), if `$UMBRELLA_NUMBER` is set (Step 0 dispatched this child from an umbrella), check whether the umbrella is now empty and finalize if so:
@@ -314,6 +355,17 @@ fi
 ```
 
 Best-effort: on `FAILED=true` / non-zero exit / `FINALIZED=false` non-idempotent error, log to `Tool Failures` and continue. The next `/fix-issue <umbrella#>` invocation will re-attempt finalization via the Step 0 exit-4 path. The `finalize-umbrella.sh` idempotency guard ensures concurrent or repeated invocations do not double-comment (FINDING_2). If `$UMBRELLA_NUMBER` is empty, this hook is a no-op.
+
+When `/implement` succeeded and `PR_URL` / `PR_NUMBER` were captured, append PR fields and emit a terminal-only run summary (GitHub upsert remains owned by `/implement`). Set `OUTCOME` to `pr-merged` when the child run merged the PR; use `pr-open` when a PR exists but was not merged in-session.
+
+```bash
+{
+  printf 'PR_NUMBER=%s\n' "$PR_NUMBER"
+  printf 'PR_URL=%s\n' "$PR_URL"
+  printf 'OUTCOME=%s\n' "${OUTCOME:-pr-open}"
+} >> "$FIX_ISSUE_TMPDIR/final-report-state.sh"
+${CLAUDE_PLUGIN_ROOT}/skills/fix-issue/scripts/write-final-report.sh --fix-issue-tmpdir "$FIX_ISSUE_TMPDIR" --print-stdout || true
+```
 
 > **Continue to Step 8 IMMEDIATELY.** This step is not terminal — cleanup still must run. → shared/subskill-invocation.md#step-boundary
 

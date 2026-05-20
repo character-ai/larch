@@ -185,6 +185,21 @@ grep -Fq 'When `hard_mode=false`, use plan size' "$SKILL_MD" \
 # shellcheck disable=SC2016
 grep -Fq 'scripts/persist-post-plan-keys.sh' "$SKILL_MD" \
   || fail "Post-plan router must invoke scripts/persist-post-plan-keys.sh (#2326)"
+grep -Fq 'scripts/persist-implement-run-flags.sh' "$SKILL_MD" \
+  || fail "Post-plan router must invoke scripts/persist-implement-run-flags.sh"
+
+step17_status=0
+awk '
+  /<!-- step:17/ { in_step = 1; next }
+  in_step && /<!-- step:/ { in_step = 0 }
+  in_step && /Fork CI Dry-Run Complete/ { bad = 1 }
+  in_step && /--draft was set/ { bad = 1 }
+  in_step && /--merge was not set/ { bad = 1 }
+  in_step && /--design-only was set/ { bad = 1 }
+  in_step && /write-final-report\.sh.*--print-stdout/ { good = 1 }
+  END { if (bad) exit 2; if (!good) exit 1 }
+' "$SKILL_MD" || step17_status=$?
+[[ "$step17_status" == "0" ]] || fail "SKILL.md Step 17 must drop branched prose and use write-final-report.sh --print-stdout"
 
 COMMIT_IMPL_SH="$REPO_ROOT/skills/implement/scripts/commit-implementation.sh"
 COMMIT_REVIEW_SH="$REPO_ROOT/skills/implement/scripts/commit-review-fixes.sh"

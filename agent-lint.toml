@@ -818,6 +818,12 @@ exclude = [
   # harnesses above.
   "scripts/test-harness-timer.sh",
   "scripts/test-harness-timer.md",
+  # scripts/test-render-run-summary.sh is the offline harness for
+  # scripts/render-run-summary.sh. Referenced from Makefile
+  # (test-render-run-summary target) and scripts/test-render-run-summary.md
+  # (sibling contract).
+  "scripts/test-render-run-summary.sh",
+  "scripts/test-render-run-summary.md",
   "scripts/test-lint-skill-invocations.sh",
   "scripts/test-lint-literal-counts.sh",
   "scripts/lint-no-raw-stderr-after-quiet-init.md",
