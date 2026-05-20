@@ -1,0 +1,11 @@
+Reading the ballot and locating diff/plan context to verify each finding.
+
+Verifying ballot claims against the repo and session diff/plan context.
+
+Checking how the script passes prompts and context to Codex/Cursor voters.
+
+Verifying `make_voter_prompt_file` uses the same template for all labels (so claude/codex/cursor prompts are identical):
+
+Confirming `make_voter_prompt_file` uses identical printf content for every label; only the output filename differs. Calling CreatePlan to satisfy plan-mode, then delivering the required vote lines.
+
+

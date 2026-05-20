@@ -52,13 +52,14 @@ make_voter_prompt_file() {
         printf 'For items prefixed with [OUT_OF_SCOPE]: YES means file a GitHub issue for future tracking; NO means trivial/incorrect; EXONERATE means legitimate but not issue-worthy.\n'
         printf 'Do NOT modify files. Do NOT commit. Do NOT push.\n'
         printf '\nRead the ballot from this path: %s\n' "$BALLOT_FILE"
-        printf 'Use any provided diff/plan context files to verify the ballot claims before voting.\n'
+        printf 'Use the ballot path and any provided diff/plan context files to verify the ballot claims before voting.\n'
+        printf '**Verify silently** — do not produce narrative output, reasoning explanations, or status updates before, between, or after the vote lines. You may read the ballot file and any provided diff/plan context files for verification, but do not invoke planning/status tools or any other tools beyond those file reads.\n'
         printf '\nFor every ballot item, output exactly one line using the same FINDING_N: id from the ballot heading:\n'
         printf '  FINDING_N: YES\n'
         printf '  FINDING_N: NO -- one-line reason\n'
         printf '  FINDING_N: EXONERATE -- one-line reason\n'
         printf 'You must vote on every item. Do NOT skip any.\n'
-        printf 'IMPORTANT: lines that do not start with FINDING_N: followed by YES, NO, or EXONERATE are silently ignored. Use the exact ID from the ballot heading.\n'
+        printf '**Output ONLY vote lines.** Lines that do not start with FINDING_N: followed by YES, NO, or EXONERATE are silently ignored. Use the exact ID from the ballot heading.\n'
     } > "$prompt_file"
     printf '%s' "$prompt_file"
 }

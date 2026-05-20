@@ -176,6 +176,12 @@ grep -Fq 'VOTER_3_PARSE_RATE_STATUS=OK' <<< "$out" || { echo "FAIL: voter3 parse
 [[ ! -e "$TMP/happy/claude-vote-output-first-pass.txt" && ! -e "$TMP/happy/codex-vote-output-first-pass.txt" && ! -e "$TMP/happy/cursor-vote-output-first-pass.txt" ]] \
     || { echo "FAIL: happy path must not write parse-retry first-pass sidecars" >&2; exit 1; }
 
+for prompt in "$TMP/happy/claude-vote-prompt.txt" "$TMP/happy/codex-vote-prompt.txt" "$TMP/happy/cursor-vote-prompt.txt"; do
+grep -Fq 'Verify silently' "$prompt" || { echo "FAIL: $(basename "$prompt") missing Verify silently directive" >&2; exit 1; }
+grep -Fq 'You may read the ballot file and any provided diff/plan context files for verification' "$prompt" || { echo "FAIL: $(basename "$prompt") missing bounded file-read verification directive" >&2; exit 1; }
+grep -Fq 'Output ONLY vote lines' "$prompt" || { echo "FAIL: $(basename "$prompt") missing Output ONLY vote lines directive" >&2; exit 1; }
+done
+
 out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" --ballot-file "$BALLOT" --review-tmpdir "$TMP/absent" --codex-available false --cursor-available false)
 grep -Fq 'VOTER_2_TOOL=claude' <<< "$out"
 grep -Fq 'VOTER_3_TOOL=claude' <<< "$out"
