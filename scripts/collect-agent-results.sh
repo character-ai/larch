@@ -137,6 +137,9 @@ preserve_and_publish_ns_retry() {
     local retry_output="$2"
     local retry_label="$3"
     local first_pass_sidecar=""
+    local orig_dir=""
+    local orig_base=""
+    local publish_tmp=""
 
     first_pass_sidecar="$(first_pass_sidecar_path "$orig_output")"
     if cp "$orig_output" "$first_pass_sidecar" 2>/dev/null; then
@@ -146,11 +149,20 @@ preserve_and_publish_ns_retry() {
         return 1
     fi
 
-    if cp "$retry_output" "$orig_output" 2>/dev/null; then
-        emit_breadcrumb "ns-retry: successful retry content retained at $(basename "$retry_output")" >&2
+    orig_dir="$(dirname "$orig_output")"
+    orig_base="$(basename "$orig_output")"
+    if ! publish_tmp="$(mktemp "$orig_dir/.${orig_base}.ns-retry.XXXXXX" 2>/dev/null)"; then
+        rm -f "$first_pass_sidecar" 2>/dev/null || true
+        larch_err "collect-agent-results.sh: $retry_label: failed to allocate temp publish path for $orig_output; leaving STATUS=NOT_SUBSTANTIVE"
+        return 1
+    fi
+
+    if cp "$retry_output" "$publish_tmp" 2>/dev/null && mv -f "$publish_tmp" "$orig_output" 2>/dev/null; then
+        emit_breadcrumb "ns-retry: published retry content to $orig_base; retry artifact retained at $(basename "$retry_output")" >&2
         return 0
     fi
 
+    rm -f "$publish_tmp" "$first_pass_sidecar" 2>/dev/null || true
     larch_err "collect-agent-results.sh: $retry_label: failed to publish retry output to $orig_output; leaving STATUS=NOT_SUBSTANTIVE"
     return 1
 }
@@ -1270,11 +1282,11 @@ if [[ "$SUBSTANTIVE_VALIDATION" == "true" || "$STRUCTURED_REVIEWER_VALIDATION" =
                                 --structured-reviewer-mode --write-structured "$STRUCTURED_SIDECAR" "$NS_RETRY_OUTPUT" >/dev/null 2>&1
                             NS_VAL_EXIT=$?
                             if [[ "$NS_VAL_EXIT" -eq 0 ]]; then
-                                if ! preserve_and_publish_ns_retry "$ORIG_OUTPUT" "$NS_RETRY_OUTPUT" "structured NS retry"; then
-                                    continue
-                                fi
                                 if [[ ! -f "$STRUCTURED_SIDECAR" ]]; then
                                     larch_err "collect-agent-results.sh: structured NS retry: missing structured retry sidecar after validation; leaving STATUS=NOT_SUBSTANTIVE"
+                                    continue
+                                fi
+                                if ! preserve_and_publish_ns_retry "$ORIG_OUTPUT" "$NS_RETRY_OUTPUT" "structured NS retry"; then
                                     continue
                                 fi
                                 _ns_sidecar_ext="${STRUCTURED_SIDECAR##*.}"

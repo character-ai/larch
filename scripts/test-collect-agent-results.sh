@@ -308,7 +308,8 @@ else
 fi
 
 # C_NS_STRUCTURED: section 3.6 downgrade must re-run structured validation
-# before restoring STATUS=OK, and should emit the retry sidecar path.
+# before restoring STATUS=OK, publish retry prose back to the original path,
+# and retain the first-pass prose in a sidecar.
 echo "# Case: structured-reviewer downgrade retries through structured validation"
 OUT_NSS="$TMPROOT/cursor-specialist-structured-output.txt"
 cat > "$OUT_NSS" <<'EOF'
@@ -410,11 +411,56 @@ printf '0\n' > "${OUT_NSFAIL_RETRY}.done"
 write_meta "$OUT_NSFAIL_RETRY" "$FAIL_HELPER"
 RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.05 \
     bash "$COLLECTOR" --timeout 5 --substantive-validation --validation-mode "$OUT_NSFAIL_RETRY" >/dev/null 2>/dev/null
+NSFAIL_RETRY_SENTINEL="${OUT_NSFAIL_RETRY%.txt}-ns-retry.txt.done"
+if [[ -f "$NSFAIL_RETRY_SENTINEL" ]]; then
+    ok "C_NS_FP_RETRY_FAIL retry sentinel created"
+else
+    fail "C_NS_FP_RETRY_FAIL retry sentinel missing"
+fi
 NSFAIL_RETRY_SIDECAR="${OUT_NSFAIL_RETRY%.txt}-first-pass.txt"
 if [[ -f "$NSFAIL_RETRY_SIDECAR" ]]; then
     fail "C_NS_FP_RETRY_FAIL sidecar must not exist when retry fails"
 else
     ok "C_NS_FP_RETRY_FAIL no sidecar when retry fails"
+fi
+
+# C_NS_FP_PUBLISH_FAIL: if publishing validated retry content fails after the
+# first-pass sidecar copy succeeds, the collector must keep the original output
+# intact and remove the sidecar to avoid a misleading partial-success artifact.
+echo "# Case: NS-retry publish failure cleans up sidecar and preserves orig"
+MV_FAIL_BIN="$TMPROOT/mv-fail-bin"
+mkdir -p "$MV_FAIL_BIN"
+cat > "$MV_FAIL_BIN/mv" <<'MV_FAIL_EOF'
+#!/usr/bin/env bash
+exit 1
+MV_FAIL_EOF
+chmod +x "$MV_FAIL_BIN/mv"
+OUT_NSFAIL_PUBLISH="$TMPROOT/cursor-specialist-publish-fail-output.txt"
+FIRST_PASS_PUBLISH_FAIL="First-pass content must survive publish failure."
+RETRY_PUBLISH_FAIL="NO_ISSUES_FOUND"
+printf '%s\n' "$FIRST_PASS_PUBLISH_FAIL" > "$OUT_NSFAIL_PUBLISH"
+NSFAIL_PUBLISH_RETRY="${OUT_NSFAIL_PUBLISH%.txt}-ns-retry.txt"
+printf '%s\n' "$RETRY_PUBLISH_FAIL" > "$NSFAIL_PUBLISH_RETRY"
+NSFAIL_PUBLISH_RESULT=$(PATH="$MV_FAIL_BIN:$PATH" bash -c '
+    set -uo pipefail
+    source "$1" --source-only
+    preserve_and_publish_ns_retry "$2" "$3" "test publish failure"
+' bash "$COLLECTOR" "$OUT_NSFAIL_PUBLISH" "$NSFAIL_PUBLISH_RETRY" 2>/dev/null || true)
+if [[ -z "$NSFAIL_PUBLISH_RESULT" ]]; then
+    ok "C_NS_FP_PUBLISH_FAIL helper returned no stdout"
+else
+    fail "C_NS_FP_PUBLISH_FAIL helper should not emit stdout"
+fi
+NSFAIL_PUBLISH_SIDECAR="${OUT_NSFAIL_PUBLISH%.txt}-first-pass.txt"
+if [[ -f "$NSFAIL_PUBLISH_SIDECAR" ]]; then
+    fail "C_NS_FP_PUBLISH_FAIL sidecar must be removed on publish failure"
+else
+    ok "C_NS_FP_PUBLISH_FAIL sidecar removed on publish failure"
+fi
+if grep -Fxq "$FIRST_PASS_PUBLISH_FAIL" "$OUT_NSFAIL_PUBLISH"; then
+    ok "C_NS_FP_PUBLISH_FAIL orig path preserved"
+else
+    fail "C_NS_FP_PUBLISH_FAIL orig path changed unexpectedly"
 fi
 
 # C_NO_RETRY_FP: substantive first-pass (no retry needed) must not produce a sidecar.
