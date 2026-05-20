@@ -1,0 +1,28 @@
+Reading the ballot and any referenced context files.
+
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: EXONERATE -- echo-based harness contract matches the file’s existing style; argv-order is niche for a removed flag
+FINDING_5: EXONERATE -- implement run-log artifacts belong in PR review scope, not a durable tracking issue
+FINDING_6: NO -- manifest `in-progress` is cosmetic and explicitly out of scope for this feature review
+FINDING_7: EXONERATE -- gh search interpolation risk is pre-existing and not materially expanded by this diff
+FINDING_8: EXONERATE -- same sequencing note as FINDING_2; one precondition restatement covers it
+FINDING_9: EXONERATE -- `Output to chat` vs optional `Output` is already distinguishable without a rename
+FINDING_10: YES
+FINDING_11: EXONERATE -- duplicates FINDING_2’s sequencing precondition gap
+FINDING_12: EXONERATE -- same argv-vs-argparse naming cleanup as FINDING_10 for companion comments
+FINDING_13: EXONERATE -- factoring two tiny predicates adds harness churn beyond the reliability gain
+FINDING_14: EXONERATE -- negative grep assertion is readable as-is; assert_equal symmetry is polish only
+FINDING_15: NO -- SKILL and plan explicitly document the zero-findings short-circuit vs the 3-way prompt
+FINDING_16: YES
+FINDING_17: EXONERATE -- duplicates FINDING_16’s mis-built-frontmatter/orchestrator hazard
+FINDING_18: EXONERATE -- offline harness intentionally pins canonical fixture lines over full YAML parsing
+FINDING_19: YES
+FINDING_20: EXONERATE -- dropping unattended `--no-fix-issues` is an explicit planned behavior change
+FINDING_21: YES
+FINDING_22: EXONERATE -- variant spellings are hypothetical without a real argv parser to align to
+FINDING_23: EXONERATE -- production argv gate is heavy for an LLM-orchestrated dev-only markdown skill
+FINDING_24: EXONERATE -- same missing non-empty proposal coverage already captured by FINDING_3
+FINDING_25: EXONERATE -- strict patterns intentionally lock the canonical empty-list spellings under test
+FINDING_26: EXONERATE -- CRLF/alternate YAML spellings duplicate FINDING_18’s low-yield harness critique

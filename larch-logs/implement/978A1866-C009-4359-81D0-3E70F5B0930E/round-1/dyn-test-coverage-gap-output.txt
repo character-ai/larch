@@ -1,0 +1,10 @@
+Reading the pre-computed diff and `test-audit-runs.sh` to verify Tests 13a/13b/15 and related assertions.
+
+Grep the test file for legacy strings to confirm nothing remains.
+
+### In-Scope Findings
+- **correctness** `.claude/skills/audit-runs/scripts/test-audit-runs.sh:374-427` — Test 15 only exercises the all-empty proposal case; there is no complementary case where `proposed_new_issues` or `proposed_augmentations` is non-empty (including asymmetric mixes such as one list empty and the other populated), so the harness never proves the post-report path emits the 3-way prompt instead of the short-circuit line. **Suggested fix:** Add one or two fixtures (e.g. non-empty `proposed_new_issues` with `proposed_augmentations: []`, and the reverse) and assert `audit_report_post_report_chat_block` output contains the 3-way question substring and does not contain `No findings — no bug issues to file.`
+
+### Out-of-Scope Observations
+- **code-quality** `.claude/skills/audit-runs/scripts/test-audit-runs.sh:307-319` — Test 13a models rejection as a stdout token (`usage_error:…`) rather than a non-zero exit code; that matches the rest of this file’s echo-based stubs but does not pin argv-order edge cases (e.g. `--no-fix-issues` first) unless added.
+- The branch diff also adds under `larch-logs/implement/978A1866-C009-4359-81D0-3E70F5B0930E/` run metadata and plan text; that is unrelated to the audit-runs harness contract the scout notes targeted.

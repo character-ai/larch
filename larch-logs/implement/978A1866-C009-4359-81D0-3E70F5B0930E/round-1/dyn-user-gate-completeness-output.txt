@@ -1,0 +1,15 @@
+Gathering the diff, commit list, and full skill/script content to trace control flow for the architecture review.
+
+Checking SKILL.md for ordering, cross-references, and any remaining auto-file language.
+
+Tracing the documented flow: scan ends at “Collect findings”; bug actions are deferred until after filing the audit report and closing prior reports; the only post-filing GitHub mutations before the user prompt are audit-report lifecycle (`gh issue comment` / `gh issue close` on prior `audit-report` issues), not bug-issue filing. “Discuss first” requires per-finding approval, so it does not authorize silent filing.
+
+### In-Scope Findings
+
+- **architecture** `.claude/skills/audit-runs/SKILL.md:13-30` — Usage and Args document that `--no-fix-issues` is gone, but the skill never tells the orchestrator to treat a present `--no-fix-issues` as a hard usage error, while the updated harness in `.claude/skills/audit-runs/scripts/test-audit-runs.sh:354-377` pins exactly that rejection contract. That splits the “removed flag” behavior across a test-only stub and markdown, so a legacy invocation can be silently ignored instead of failing fast, and the harness is not a faithful stand-in for anything the skill text requires. **Suggested fix:** Add an explicit Args or Pre-flight bullet: if any argv token is `--no-fix-issues`, refuse with a clear usage error (flag removed); keep the harness aligned with that single normative sentence.
+
+- **architecture** `.claude/skills/audit-runs/SKILL.md:199-207` — The new `## Output to chat` section lists the body, URL, and short-circuit vs 3-way prompt but does not restate the sequencing precondition spelled out in `### Post-report user prompt` (lines 112–114: only after the new audit report is filed and **Close Prior Reports** has run). An orchestrator that jumps to the tail section could emit the chat contract before superseding/closing prior `audit-report` issues, which is inconsistent with the earlier gate even though it is not a bug-issue auto-file path. **Suggested fix:** Open `## Output to chat` with the same one-line precondition as `### Post-report user prompt` (after filing and after prior-report handling), so ordering is single-sourced.
+
+### Out-of-Scope Observations
+
+The branch also adds `larch-logs/implement/978A1866-C009-4359-81D0-3E70F5B0930E/*` (implement session manifest, parent-issue stub, and embedded plan copy) via a separate `chore(larch-logs)` commit; that is unrelated to the audit-runs user-gate architecture and mostly adds review noise. `allowed-tools: Bash, Read` on the skill unchanged by this diff; any tension with later `/larch:issue` / `gh issue comment` steps is longstanding skill-shape, not introduced by this gate change.
