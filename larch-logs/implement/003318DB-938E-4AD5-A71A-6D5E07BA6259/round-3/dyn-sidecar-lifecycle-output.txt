@@ -1,0 +1,9 @@
+Gathering the branch diff and full context for `check_and_retry_voter_parse_rate` to review sidecar lifecycle correctness.
+
+Checking `larch_err` behavior (whether it aborts under `set -e`) and `emit_breadcrumb` output routing.
+
+Checking whether review rounds reuse the same `REVIEW_TMPDIR` paths for voter outputs.
+
+Having verified `larch_err` only prints to FD 4 (does not exit) and fail-path cleanup omits `first_pass_sidecar`, calling CreatePlan to satisfy plan-mode while the user-facing review is the structured findings below.
+
+

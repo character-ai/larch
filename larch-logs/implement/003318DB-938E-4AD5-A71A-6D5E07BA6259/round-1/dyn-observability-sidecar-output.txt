@@ -1,0 +1,15 @@
+Gathering the diff and commit history for a correctness-focused read-only review.
+
+Verifying `emit_breadcrumb` behavior and how callers consume `check_and_retry_voter_parse_rate` output.
+
+Checking whether a failed `cp` still emits the success breadcrumb and scanning for other stdout from that branch inside the function.
+
+### In-Scope Findings
+
+- **[correctness]** [`scripts/dispatch-code-voters.sh:263-265`](scripts/dispatch-code-voters.sh:263-265) — After a best-effort `cp "$voter_path" "$first_pass_sidecar" 2>/dev/null || true`, `emit_breadcrumb` always says first-pass content was preserved even when `cp` failed (disk full, permissions, etc.), so operators can be misled into thinking the sidecar exists and matches the pre-retry file. **Suggested fix:** Only emit that breadcrumb when `cp` succeeds (e.g. run `cp` in an `if cp ...; then ... emit_breadcrumb ...; fi` or test `-f "$first_pass_sidecar"` and compare size/sha after copy), or reword the message to “attempted to preserve … (best-effort)” when not verifying success.
+
+### Out-of-Scope Observations
+
+- **[correctness]** [`scripts/lib-quiet.sh:114-119`](scripts/lib-quiet.sh:114-119) — `emit_breadcrumb` uses plain `printf` to stdout when `LARCH_QUIET_BREADCRUMBS` is unset; in a normal `larch_quiet_init` process that is the quiet log, but inside `$(check_and_retry_voter_parse_rate …)` stdout is the command-substitution capture pipe, so breadcrumbs would pollute `VOTER_*_PARSE_RATE_STATUS` without a redirect. This branch’s `{ … } >&2` in [`scripts/dispatch-code-voters.sh:264-265`](scripts/dispatch-code-voters.sh:264-265) correctly addresses that interaction; the subtlety is pre-existing library behavior, not a defect in the new sidecar logic.
+
+- **[correctness]** [`scripts/dispatch-code-voters.sh:258-266`](scripts/dispatch-code-voters.sh:258-266) — Ordering (`cp` then `mv`) and path handling (`*.txt` → `…-first-pass.txt`, else `…-first-pass`) match the intended invariant; retry-fail path has no `cp` and leaves `voter_path` unchanged, consistent with the plan. No separate finding beyond the unconditional breadcrumb-vs-`cp` mismatch above.

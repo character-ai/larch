@@ -1,0 +1,12 @@
+slot=3
+voter_tool=cursor
+judge_error_count=9
+total_findings=9
+voter_file=<TMPDIR>/round-3/cursor-vote-output.txt
+voter_sha256=938f715223157167f53d787763ec992b4493d18189929abc7302d819351cd2a6
+--- first 200 bytes of voter output ---
+Reading the ballot and session context to verify each finding before voting.
+
+Reading plan/diff context and the referenced source files in the repo to verify each finding.
+
+Verified: `check_and_retry_
