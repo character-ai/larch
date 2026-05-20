@@ -14,8 +14,9 @@ The table intentionally covers the legacy tracking sections as durable files:
 `review-scout-manifest`, `review-tally`), `version-bump-reasoning`,
 `oos-issues`, `run-statistics`, `token-report`, `timing-report`,
 `execution-issues`, and `session-transcript`
-(the redacted Claude Code session transcript captured at Step 18 for full
-post-hoc auditability).
+(the redacted Claude Code session transcript captured at Step 7a tail
+pre-bump flush for full post-hoc auditability; refreshed on each CI-retry
+push via `scripts/refresh-run-logs.sh`).
 
 `plan-goals-test` uses the `plan-goals` sanitizer. The sanitizer requires a
 sectioned payload with a non-empty `## Implementation Plan` body and rejects
