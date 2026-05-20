@@ -68,7 +68,7 @@ After debate, the judge panel reads an attribution-stripped ballot (Defense A / 
 
 ### Voting Panel Agents
 
-The voters in the [voting process](voting-process.md) (Claude Code Reviewer subagent + Codex + Cursor). These are ephemeral agents launched with the ballot and voting instructions.
+The voters in the [voting process](voting-process.md) (Claude Code Reviewer subagent + Codex + Cursor). These are ephemeral agents launched with the ballot and voting instructions. For `/review` code-review, Codex participates only on round 1; rounds 2+ use a 2-voter panel (Claude + Cursor) to reduce cost on follow-up rounds where marginal Codex value is low.
 
 ### Research Agents
 

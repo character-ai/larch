@@ -22,6 +22,7 @@ CURSOR_AVAILABLE=""
 SESSION_ENV_PATH="${SESSION_ENV_PATH:-}"
 DIFF_FILE=""
 PLAN_FILE=""
+ROUND_NUM="1"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -32,6 +33,7 @@ while [[ $# -gt 0 ]]; do
         --session-env-path) SESSION_ENV_PATH="${2:?--session-env-path requires a value}"; shift 2 ;;
         --diff-file) DIFF_FILE="${2:?--diff-file requires a value}"; shift 2 ;;
         --plan-file) PLAN_FILE="${2:?--plan-file requires a value}"; shift 2 ;;
+        --round-num) ROUND_NUM="${2:?--round-num requires a value}"; shift 2 ;;
         --help) usage; exit 0 ;;
         *) larch_err "dispatch-code-voters.sh: unknown option: $1"; usage; exit 2 ;;
     esac
@@ -41,6 +43,7 @@ done
 [[ -n "$REVIEW_TMPDIR" ]] || { larch_err "dispatch-code-voters.sh: --review-tmpdir is required"; exit 2; }
 [[ "$CODEX_AVAILABLE" == "true" || "$CODEX_AVAILABLE" == "false" ]] || { larch_err "dispatch-code-voters.sh: --codex-available must be true or false"; exit 2; }
 [[ "$CURSOR_AVAILABLE" == "true" || "$CURSOR_AVAILABLE" == "false" ]] || { larch_err "dispatch-code-voters.sh: --cursor-available must be true or false"; exit 2; }
+case "$ROUND_NUM" in ''|*[!0-9]*) larch_err "dispatch-code-voters.sh: --round-num must be a positive integer"; exit 2 ;; esac
 mkdir -p "$REVIEW_TMPDIR"
 
 make_voter_prompt_file() {
@@ -351,10 +354,15 @@ cursor_prompt=$(make_voter_prompt_file cursor)
 VOTER_2_BASE="$REVIEW_TMPDIR/codex-vote-output.txt"
 VOTER_3_BASE="$REVIEW_TMPDIR/cursor-vote-output.txt"
 manifest="$REVIEW_TMPDIR/code-voter-slots.ndjson"
-{
-    printf '{"slot":"voter-2","tool":"codex","output":"%s","prompt_file":"%s"}\n' "$VOTER_2_BASE" "$codex_prompt"
-    printf '{"slot":"voter-3","tool":"cursor","output":"%s","prompt_file":"%s"}\n' "$VOTER_3_BASE" "$cursor_prompt"
-} > "$manifest"
+# Codex voter (voter-2) runs only on round 1; subsequent rounds use Claude + Cursor only.
+if [[ "$ROUND_NUM" == "1" ]]; then
+    {
+        printf '{"slot":"voter-2","tool":"codex","output":"%s","prompt_file":"%s"}\n' "$VOTER_2_BASE" "$codex_prompt"
+        printf '{"slot":"voter-3","tool":"cursor","output":"%s","prompt_file":"%s"}\n' "$VOTER_3_BASE" "$cursor_prompt"
+    } > "$manifest"
+else
+    printf '{"slot":"voter-3","tool":"cursor","output":"%s","prompt_file":"%s"}\n' "$VOTER_3_BASE" "$cursor_prompt" > "$manifest"
+fi
 
 waterfall_output=$("$PLUGIN_ROOT/scripts/dispatch-with-waterfall.sh" \
     --slots-file "$manifest" \
@@ -384,23 +392,39 @@ read -r -a tools_arr <<< "$all_tools"
 VOTER_1_TOOL="claude"
 VOTER_1_STATUS="launched"
 [[ "$voter1_rc" -eq 0 && -s "$VOTER_1_PATH" ]] || VOTER_1_STATUS="failed"
-VOTER_2_PATH="${outputs_arr[0]:-}"
-VOTER_3_PATH="${outputs_arr[1]:-}"
-VOTER_2_TOOL="${tools_arr[0]:-codex}"
-VOTER_3_TOOL="${tools_arr[1]:-cursor}"
-VOTER_2_STATUS="launched"
-VOTER_3_STATUS="launched"
-[[ "$VOTER_2_TOOL" == "claude" ]] && VOTER_2_STATUS="fallback"
-[[ "$VOTER_3_TOOL" == "claude" ]] && VOTER_3_STATUS="fallback"
-[[ -s "$VOTER_2_PATH" ]] || VOTER_2_STATUS="failed"
-[[ -s "$VOTER_3_PATH" ]] || VOTER_3_STATUS="failed"
+if [[ "$ROUND_NUM" == "1" ]]; then
+    VOTER_2_PATH="${outputs_arr[0]:-}"
+    VOTER_3_PATH="${outputs_arr[1]:-}"
+    VOTER_2_TOOL="${tools_arr[0]:-codex}"
+    VOTER_3_TOOL="${tools_arr[1]:-cursor}"
+    VOTER_2_STATUS="launched"
+    VOTER_3_STATUS="launched"
+    [[ "$VOTER_2_TOOL" == "claude" ]] && VOTER_2_STATUS="fallback"
+    [[ "$VOTER_3_TOOL" == "claude" ]] && VOTER_3_STATUS="fallback"
+    [[ -s "$VOTER_2_PATH" ]] || VOTER_2_STATUS="failed"
+    [[ -s "$VOTER_3_PATH" ]] || VOTER_3_STATUS="failed"
+else
+    # Codex voter intentionally omitted in round 2+.
+    VOTER_2_PATH=""
+    VOTER_2_TOOL="codex"
+    VOTER_2_STATUS="skipped"
+    VOTER_3_PATH="${outputs_arr[0]:-}"
+    VOTER_3_TOOL="${tools_arr[0]:-cursor}"
+    VOTER_3_STATUS="launched"
+    [[ "$VOTER_3_TOOL" == "claude" ]] && VOTER_3_STATUS="fallback"
+    [[ -s "$VOTER_3_PATH" ]] || VOTER_3_STATUS="failed"
+fi
 
 VOTER_1_PARSE_RATE_STATUS="SKIPPED"
 VOTER_2_PARSE_RATE_STATUS="SKIPPED"
 VOTER_3_PARSE_RATE_STATUS="SKIPPED"
 [[ "$VOTER_1_STATUS" != "failed" ]] && VOTER_1_PARSE_RATE_STATUS=$(check_and_retry_voter_parse_rate 1 "$VOTER_1_PATH" "$VOTER_1_TOOL" "$claude_prompt")
-[[ "$VOTER_2_STATUS" != "failed" ]] && VOTER_2_PARSE_RATE_STATUS=$(check_and_retry_voter_parse_rate 2 "$VOTER_2_PATH" "$VOTER_2_TOOL" "$codex_prompt")
+[[ "$VOTER_2_STATUS" != "failed" && "$VOTER_2_STATUS" != "skipped" ]] && VOTER_2_PARSE_RATE_STATUS=$(check_and_retry_voter_parse_rate 2 "$VOTER_2_PATH" "$VOTER_2_TOOL" "$codex_prompt")
 [[ "$VOTER_3_STATUS" != "failed" ]] && VOTER_3_PARSE_RATE_STATUS=$(check_and_retry_voter_parse_rate 3 "$VOTER_3_PATH" "$VOTER_3_TOOL" "$cursor_prompt")
+
+# Round 1 expects 3 judges; subsequent rounds intentionally use 2 (Claude + Cursor).
+expected_judges=3
+[[ "$ROUND_NUM" != "1" ]] && expected_judges=2
 
 effective_judges=0
 for slot_record in \
@@ -408,10 +432,10 @@ for slot_record in \
     "$VOTER_2_STATUS"$'\t'"$VOTER_2_PATH"$'\t'"$VOTER_2_PARSE_RATE_STATUS" \
     "$VOTER_3_STATUS"$'\t'"$VOTER_3_PATH"$'\t'"$VOTER_3_PARSE_RATE_STATUS"; do
     IFS=$'\t' read -r status path parse_rate_status <<< "$slot_record"
-    [[ "$status" != "failed" && "$parse_rate_status" != "NOT_SUBSTANTIVE" && -s "$path" ]] && effective_judges=$((effective_judges + 1))
+    [[ "$status" != "failed" && "$status" != "skipped" && "$parse_rate_status" != "NOT_SUBSTANTIVE" && -s "$path" ]] && effective_judges=$((effective_judges + 1))
 done
-if (( effective_judges < 3 )); then
-    _warn_msg="**⚠ Degraded code-review panel: ${effective_judges}/3 effective judges produced output.**"
+if (( effective_judges < expected_judges )); then
+    _warn_msg="**⚠ Degraded code-review panel: ${effective_judges}/${expected_judges} effective judges produced output.**"
     larch_err "$_warn_msg"
     emit_kv DEGRADED_PANEL_WARNING "$_warn_msg"
 fi

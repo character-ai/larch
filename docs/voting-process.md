@@ -4,7 +4,7 @@ The voting protocol is used by `/design` (plan review) and `/review` (code revie
 
 ## Overview
 
-After reviewers submit findings and findings are deduplicated, a voting panel votes on each finding. `/design` (plan review) uses a 3-voter panel (Claude + Codex + Cursor) in normal mode; in `--quick` mode, plan review is Claude-only with no external reviewers or voting panel (see [`skills/design/references/plan-review-quick.md`](../skills/design/references/plan-review-quick.md)). `/review` (code review) uses a 3-voter panel (Claude + Codex + Cursor) unconditionally, with Claude replacement voters when an external voter is unavailable. Each voter casts one of three votes:
+After reviewers submit findings and findings are deduplicated, a voting panel votes on each finding. `/design` (plan review) uses a 3-voter panel (Claude + Codex + Cursor) in normal mode; in `--quick` mode, plan review is Claude-only with no external reviewers or voting panel (see [`skills/design/references/plan-review-quick.md`](../skills/design/references/plan-review-quick.md)). `/review` (code review) uses a 3-voter panel (Claude + Codex + Cursor) on round 1; in rounds 2+ the Codex voter is omitted and a 2-voter panel (Claude + Cursor) is used. Claude replacement voters cover unavailable external voters. Each voter casts one of three votes:
 
 | Vote | Meaning |
 |---|---|
@@ -41,7 +41,8 @@ Both skills use 3-voter panels in their voting paths. All voters vote on all fin
 |---|---|
 | `/design` (plan review, normal mode) | Claude Code Reviewer subagent + Codex + Cursor — all 3 always launched |
 | `/design` (plan review, `--quick` mode) | Claude only — no external reviewers, no voting panel |
-| `/review` (code review) | Claude + Codex + Cursor — all 3 launched every round, with Claude replacements for unhealthy external voters |
+| `/review` (code review, round 1) | Claude + Codex + Cursor — all 3 launched, with Claude replacements for unhealthy external voters |
+| `/review` (code review, round 2+) | Claude + Cursor — Codex voter omitted to reduce cost; 2-voter panel (unanimous YES required) |
 
 ## Ballot Format
 

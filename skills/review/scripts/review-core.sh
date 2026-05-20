@@ -496,6 +496,7 @@ voter_args=(
     --review-tmpdir "$REVIEW_TMPDIR"
     --codex-available "$CODEX_AVAILABLE"
     --cursor-available "$CURSOR_AVAILABLE"
+    --round-num "$ROUND_NUM"
 )
 [[ -n "$SESSION_ENV_PATH" ]] && voter_args+=(--session-env-path "$SESSION_ENV_PATH")
 [[ -n "$DIFF_FILE" ]] && voter_args+=(--diff-file "$DIFF_FILE")

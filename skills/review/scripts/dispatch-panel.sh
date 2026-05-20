@@ -118,11 +118,15 @@ for name in "${cursor_specialists[@]}"; do
     queue_external_slot cursor "$name" "$REVIEW_TMPDIR/cursor-specialist-${name}-output.txt"
 done
 if [[ "$PANEL" == "hard" ]]; then
-    for name in "${codex_specialists[@]}"; do
-        queue_external_slot codex "$name" "$REVIEW_TMPDIR/codex-specialist-${name}-output.txt"
-    done
+    if [[ "$ROUND_NUM" == "1" ]]; then
+        for name in "${codex_specialists[@]}"; do
+            queue_external_slot codex "$name" "$REVIEW_TMPDIR/codex-specialist-${name}-output.txt"
+        done
+    fi
 else
-    queue_external_generalist_slot codex "$REVIEW_TMPDIR/codex-generalist-output.txt"
+    if [[ "$ROUND_NUM" == "1" ]]; then
+        queue_external_generalist_slot codex "$REVIEW_TMPDIR/codex-generalist-output.txt"
+    fi
 fi
 
 if [[ "$DYNAMIC_ARCHETYPES" != "0" && "$MODE" == "diff" && -n "$DIFF_FILE" && -s "$DIFF_FILE" ]]; then
