@@ -1,0 +1,17 @@
+Gathering the diff, commit list, and all `gh-run-logs` call sites for integration review.
+
+Searching for direct invocations of `gh-run-logs.sh` (not docs or logs).
+
+Checking whether `gh` uses exit code 2 and whether `test-ship-pr.sh` asserts `gh-run-logs` exit behavior:
+
+### In-Scope Findings
+
+- **risk-integration** `scripts/ship-pr.sh:1195-1197` and `scripts/gh-run-logs.sh:231-238` — `ship-pr.sh` skips `record_failure` for any `gh-run-logs.sh` exit code `2`, but `gh-run-logs.sh` ends with `exit "$gh_rc"` after the in-progress branch, so a non–in-progress failure where `gh` returns exit `2` (or a future CLI change) would still surface as `2` from the wrapper and would now be treated as a benign transient the same as the intentional in-progress sentinel, whereas previously any non-zero (including `2`) was recorded under “CI Issues.” **Suggested fix:** Use a dedicated sentinel exit code that `gh` will not reuse (for example `3` only from the in-progress branch and never from `exit "$gh_rc"`), or keep exit `2` only for that branch and map every other non-zero `gh_rc` to `1` before returning, and align `ship-pr.sh` with that contract.
+
+- **code-quality** `scripts/test-gh-run-logs.sh:73-78` — The `run_script` helper is defined but never invoked; tests duplicate the same `PATH=… gh-run-logs.sh … || rc=$?` pattern inline, so the helper is dead code on the branch. **Suggested fix:** Remove `run_script` or refactor the four tests to call it so the harness stays minimal and easier to maintain.
+
+### Out-of-Scope Observations
+
+- Repository-wide search of `*.sh` shows no other production invocations of `gh-run-logs.sh` besides `scripts/ship-pr.sh:1195`; `scripts/test-ship-pr.sh:146` only includes the name in a helper-stub loop, so there are no additional call sites in this tree that need an `[ "$rc" -eq 2 ]`-style guard for this diff.
+
+- The new behavior depends on matching a fixed English substring from `gh`; that is an explicit design trade-off in the plan, not a missed caller, but operators should expect silent reversion of the ndjson noise fix if `gh` rephrases that message without updating the grep needle.

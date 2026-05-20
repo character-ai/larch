@@ -1,0 +1,14 @@
+Gathering the diff, commit list, and relevant source for a correctness-focused review.
+
+Reading the modified script for exact line numbers and verifying edge cases.
+
+### In-Scope Findings
+
+- **correctness** `scripts/gh-run-logs.sh:43-49` — Capturing all of `gh run view … --log-failed` with `raw=$(… 2>&1)` materializes the **entire** transcript as one bash string before `tail -100`, so peak memory stays proportional to the full log for the rest of the script. The old `gh … | tail -100` pipeline still had `tail` read to EOF, but it never forced bash to hold the whole transcript in a single expandable variable while re-printing it; on very large Actions logs this change can **amplify memory pressure, slow the step sharply, or hit practical size limits** compared to streaming to `tail` from a file or FIFO. **Suggested fix:** keep the stderr/stdout merge and sentinel detection, but avoid storing the full log in `$raw`—for example write `gh` output to a `mktemp` file (or a `> >( … )` process substitution that only buffers enough to detect the sentinel), `grep -q` on that file, then `tail -100` the same file, unlinking afterward; alternatively probe with a bounded read for the in-progress message before fetching logs.
+
+- **correctness** `scripts/gh-run-logs.sh:44-50` — On non-matching failures the script ends with `exit "$gh_rc"`, so **any** non-zero `gh` status—including a hypothetical or future **`gh` exit 2** unrelated to the in-progress string—is forwarded unchanged; `scripts/ship-pr.sh` at line 1197 exempts **all** `rc=2` from `record_failure`, not only the sentinel-driven branch, so a real `gh` failure that happens to use status 2 would be misclassified as the benign “still in progress” case and **silently skip** CI Issues logging. **Suggested fix:** reserve a wrapper-specific exit code for the in-progress case (for example 3) that `gh` never emits, return that only when the sentinel matches, map every other `gh` failure (including `gh_rc=2` without the sentinel) to exit 1, and narrow `ship-pr.sh` to exempt only that dedicated code.
+
+### Out-of-Scope Observations
+
+- The prior `gh | tail -100` arrangement still drove `gh` to EOF under normal `tail` behavior, so **SIGPIPE-driven early termination of `gh` was not the dominant behavioral difference** here; the main regression risk from this diff is **bash-side buffering**, not loss of backpressure that stopped `gh` mid-flight.
+- Harness and wiring changes in [`Makefile`](Makefile), [`agent-lint.toml`](agent-lint.toml), and [`scripts/test-gh-run-logs.sh`](scripts/test-gh-run-logs.sh) look consistent with repo conventions; Test 4 usefully guards against partial-string false positives for exit 2.
