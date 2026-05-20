@@ -1,0 +1,42 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: NO -- positive finding confirming correct behavior; no issue warranted
+FINDING_6: NO -- positive finding confirming correct same-dir edge case handling; no issue warranted
+FINDING_7: NO -- positive finding confirming correct emit wiring; no issue warranted
+FINDING_8: EXONERATE -- substantive concern already covered by in-scope FINDING_3/35/36; no separate issue adds value
+FINDING_9: NO -- positive finding confirming Bash 3.2 compatibility; no issue warranted
+FINDING_10: NO -- pre-existing behavior not introduced by this diff; out of scope
+FINDING_11: EXONERATE -- Step numbering wording mismatch in feature description only; implementation is correct
+FINDING_12: YES
+FINDING_13: EXONERATE -- emit is the correct visibility channel for this repo; doc wording covered by FINDING_33
+FINDING_14: EXONERATE -- minor slash-command spelling inconsistency in docs; low impact
+FINDING_15: YES
+FINDING_16: EXONERATE -- docs/linting.md completeness is nice-to-have; harness is discoverable via Makefile
+FINDING_17: EXONERATE -- emit is correct; future-speculative concern does not warrant a tracking issue
+FINDING_18: YES
+FINDING_19: YES
+FINDING_20: YES
+FINDING_21: EXONERATE -- wording mismatch in feature description only; implementation follows SKILL.md step numbering correctly
+FINDING_22: YES
+FINDING_23: YES
+FINDING_24: YES
+FINDING_25: YES
+FINDING_26: EXONERATE -- plugin.json structure is well-defined; multiple "version" keys are not a realistic concern
+FINDING_27: EXONERATE -- same reasoning as FINDING_26; unlikely in practice given plugin.json schema
+FINDING_28: YES
+FINDING_29: EXONERATE -- larch uses plain X.Y.Z semver; pre-release tokens are not part of the versioning scheme
+FINDING_30: EXONERATE -- 3-segment comparison is sufficient and correct for larch's X.Y.Z scheme
+FINDING_31: EXONERATE -- 2>/dev/null is appropriate safety measure for a warn-only check; real masking concern covered by FINDING_3/35/36
+FINDING_32: EXONERATE -- emit/FD3 is the correct and intentional visibility channel for this repo
+FINDING_33: YES
+FINDING_34: YES
+FINDING_35: YES
+FINDING_36: YES
+FINDING_37: EXONERATE -- 2>/dev/null alone is reasonable once pipefail bug is fixed; the || true masking is the real risk, covered by FINDING_35
+FINDING_38: EXONERATE -- same as FINDING_37
+FINDING_39: YES
+FINDING_40: YES
+FINDING_41: EXONERATE -- session-setup integration test complexity outweighs benefit; unit-level coverage of the helper is sufficient
+FINDING_42: EXONERATE -- attacker would require write access to local plugin.json; threat model does not justify validation complexity for a dev-clone-only warning
