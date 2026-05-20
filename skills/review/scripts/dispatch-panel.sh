@@ -170,7 +170,7 @@ synthesize_dynamic_slots() {
             printf 'Acceptable response (minimum compliant shape):\n\n'
             printf '### In-Scope Findings\n'
             # shellcheck disable=SC2016
-            printf -- '- **<focus-area>** `<path>:<lines>` -- <issue text>. **Suggested fix:** <text>.\n\n'
+            printf -- '- **<focus-area>** `<path>:<lines>` — <issue text>. **Suggested fix:** <text>.\n\n'
             printf '### Out-of-Scope Observations\n'
             printf 'NO_ISSUES_FOUND\n\n'
             printf '<scout_notes>\n'

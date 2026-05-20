@@ -92,14 +92,14 @@ out=$(PATH="$stubbin:$PATH" RUN_EXTERNAL_AGENT="$TMPROOT/run-external-agent-ok.s
 printf '%s\n' "$out" | grep -q '^CLASSIFICATION=HARD$' || fail "ratifier case1: cursor confirmed HARD not used"
 printf '%s\n' "$out" | grep -q '^CLASSIFICATION_SOURCE=cursor-validated$' || fail "ratifier case1: cursor-validated source not emitted"
 
-# Case 2: True negative — synthetic doc-only diff that deterministic mis-tags as SIMPLE;
-# cursor (via the stub that always returns HARD) catches and overrides.
-printf 'A small non-doc change.\n' > "$feature"
+# Case 2: Runtime markdown change — wording looks doc-like, but the diff touches
+# skills/ runtime surface, so deterministic classification must stay SIMPLE.
+printf 'Fix wording in the runtime skill prompt.\n' > "$feature"
 cat > "$diff" <<'EOF'
-diff --git a/scripts/foo.sh b/scripts/foo.sh
---- a/scripts/foo.sh
-+++ b/scripts/foo.sh
-+echo ok
+diff --git a/skills/foo/SKILL.md b/skills/foo/SKILL.md
+--- a/skills/foo/SKILL.md
++++ b/skills/foo/SKILL.md
++Clarify runtime prompt wording.
 EOF
 cat > "$TMPROOT/run-external-agent-hard.sh" <<'EOF2'
 #!/usr/bin/env bash
@@ -115,6 +115,9 @@ printf 'CLASSIFICATION=HARD\n' > "$out"
 printf '0\n' > "$out.done"
 EOF2
 chmod +x "$TMPROOT/run-external-agent-hard.sh"
+baseline=$(CLASSIFY_ISSUE_SKIP_CURSOR=true "$SUBJECT" --feature-description "$feature" --diff-context "$diff")
+printf '%s\n' "$baseline" | grep -q '^CLASSIFICATION=SIMPLE$' || fail "ratifier case2: deterministic runtime-markdown baseline should be SIMPLE"
+printf '%s\n' "$baseline" | grep -q '^CLASSIFICATION_SOURCE=deterministic$' || fail "ratifier case2: deterministic baseline source not emitted"
 out=$(PATH="$stubbin:$PATH" RUN_EXTERNAL_AGENT="$TMPROOT/run-external-agent-hard.sh" "$SUBJECT" --feature-description "$feature" --diff-context "$diff")
 printf '%s\n' "$out" | grep -q '^CLASSIFICATION=HARD$' || fail "ratifier case2: cursor override to HARD not used"
 printf '%s\n' "$out" | grep -q '^CLASSIFICATION_SOURCE=cursor-validated$' || fail "ratifier case2: cursor-validated source not emitted"

@@ -28,8 +28,8 @@ sublist="$TMP/submodules.txt"
 printf 'vendor/foo\nexternal/bar\n' > "$sublist"
 out=$(emit_submodule_prohibition "$sublist")
 printf '%s\n' "$out" | grep -Fq '## PROHIBITION: Submodules' || fail "case3: PROHIBITION header missing"
-printf '%s\n' "$out" | grep -Fq '- vendor/foo' || fail "case3: vendor/foo not listed"
-printf '%s\n' "$out" | grep -Fq '- external/bar' || fail "case3: external/bar not listed"
+printf '%s\n' "$out" | grep -Fq -- '- vendor/foo' || fail "case3: vendor/foo not listed"
+printf '%s\n' "$out" | grep -Fq -- '- external/bar' || fail "case3: external/bar not listed"
 printf '%s\n' "$out" | grep -Fq 'No checked-out submodule paths' && fail "case3: should NOT emit no-submodules message"
 printf '%s\n' "$out" | grep -Fq '.git/' || fail "case3: .git/ catch-all missing"
 

@@ -37,7 +37,7 @@ done
 [[ "$CURSOR_AVAILABLE" == "true" || "$CURSOR_AVAILABLE" == "false" ]] || { larch_err "dispatch-plan-voters.sh: --cursor-available must be true or false"; exit 2; }
 mkdir -p "$DESIGN_TMPDIR"
 
-PLAN_VOTER_PARSE_RATE_RETRY_PREFIX='IMPORTANT: Your previous attempt produced narrative output instead of structured votes. Each line MUST start with FINDING_N: followed by exactly one of YES, NO, or EXONERATE. Do not output any prose, reasoning, or status updates before, between, or after the vote lines. If you need to verify claims, do so silently. Output ONLY vote lines.'
+PLAN_VOTER_PARSE_RATE_RETRY_PREFIX='IMPORTANT: Your previous attempt produced narrative output instead of structured votes. Each line MUST start with the same ballot ID from the ballot (FINDING_N: or OOS_N:) followed by exactly one of YES, NO, or EXONERATE. Do not output any prose, reasoning, or status updates before, between, or after the vote lines. If you need to verify claims, do so silently. Output ONLY vote lines.'
 
 make_prompt_file() {
     local tool="$1"
@@ -51,10 +51,13 @@ make_prompt_file() {
         printf '  FINDING_N: YES\n'
         printf '  FINDING_N: NO -- one-line reason\n'
         printf '  FINDING_N: EXONERATE -- one-line reason\n'
+        printf '  OOS_N: YES\n'
+        printf '  OOS_N: NO -- one-line reason\n'
+        printf '  OOS_N: EXONERATE -- one-line reason\n'
         printf 'For OOS_N items: YES means file a GitHub issue; NO or EXONERATE means skip.\n'
         printf '\n**Verify silently** — do not produce narrative output, reasoning explanations, or status updates before, between, or after the vote lines. You may read the ballot file for verification, but do not invoke planning/status tools or any other tools beyond that file read.\n'
         printf 'You must vote on every item. Do NOT skip any.\n'
-        printf '**Output ONLY vote lines.** Lines that do not start with FINDING_N: followed by YES, NO, or EXONERATE are silently ignored. Use the exact ID from the ballot heading.\n'
+        printf '**Output ONLY vote lines.** Lines that do not start with the exact ballot ID from the ballot heading (FINDING_N: or OOS_N:) followed by YES, NO, or EXONERATE are silently ignored.\n'
     } > "$prompt_file"
     printf '%s' "$prompt_file"
 }
@@ -74,7 +77,7 @@ check_plan_voter_substantive() {
     local voter_path="$1"
     [[ -s "$voter_path" ]] || { printf 'OK\n'; return 0; }
     local vote_count
-    vote_count=$(grep -cE '^[A-Z0-9_]+:[[:space:]]*(YES|NO|EXONERATE)([[:space:]-]|$)' "$voter_path" 2>/dev/null || true)
+    vote_count=$(grep -cE '^(FINDING|OOS)_[0-9]+:[[:space:]]*(YES|NO|EXONERATE)([[:space:]-]|$)' "$voter_path" 2>/dev/null || true)
     if [[ "${vote_count:-0}" -gt 0 ]]; then
         printf 'OK\n'
     else
@@ -132,7 +135,6 @@ VOTER_3_STATUS="launched"
 retry_voter() {
     local slot_num="$1" voter_path_var="$2" voter_tool="$3" orig_prompt="$4"
     local voter_path="${!voter_path_var}"
-    [[ "$voter_tool" == "failed" ]] && return 0
     [[ -s "$voter_path" ]] || return 0
     local rate_status
     rate_status=$(check_plan_voter_substantive "$voter_path")
@@ -146,15 +148,34 @@ retry_voter() {
                retry_output="${voter_path}-parse-retry" ;;
     esac
     retry_prompt=$(make_plan_voter_retry_prompt_file "$voter_tool" "$orig_prompt")
-    retry_manifest="$DESIGN_TMPDIR/plan-voter-retry-slot${slot_num}.ndjson"
-    printf '{"slot":"voter-%s-retry","tool":"%s","output":"%s","prompt_file":"%s"}\n' \
-        "$slot_num" "$voter_tool" "$retry_output" "$retry_prompt" > "$retry_manifest"
-    "$PLUGIN_ROOT/scripts/dispatch-with-waterfall.sh" \
-        --slots-file "$retry_manifest" \
-        --codex-present "$CODEX_AVAILABLE" \
-        --cursor-present "$CURSOR_AVAILABLE" \
-        --mode description \
-        --timeout 1200 >/dev/null 2>&1 || true
+    if [[ "$voter_tool" == "claude" ]]; then
+        if ! "$PLUGIN_ROOT/scripts/launch-claude-review.sh" \
+            --output "$retry_output" \
+            --prompt-file "$retry_prompt" \
+            --mode description \
+            --role voter \
+            --timeout 1200 >/dev/null 2>&1; then
+            emit_kv WARN "plan-voter retry failed for slot $slot_num via claude"
+            return 0
+        fi
+    else
+        retry_manifest="$DESIGN_TMPDIR/plan-voter-retry-slot${slot_num}.ndjson"
+        printf '{"slot":"voter-%s-retry","tool":"%s","output":"%s","prompt_file":"%s"}\n' \
+            "$slot_num" "$voter_tool" "$retry_output" "$retry_prompt" > "$retry_manifest"
+        if ! "$PLUGIN_ROOT/scripts/dispatch-with-waterfall.sh" \
+            --slots-file "$retry_manifest" \
+            --codex-present "$CODEX_AVAILABLE" \
+            --cursor-present "$CURSOR_AVAILABLE" \
+            --mode description \
+            --timeout 1200 >/dev/null 2>&1; then
+            emit_kv WARN "plan-voter retry failed for slot $slot_num via $voter_tool"
+            return 0
+        fi
+    fi
+    if [[ ! -s "$retry_output" ]]; then
+        emit_kv WARN "plan-voter retry produced no output for slot $slot_num"
+        return 0
+    fi
     if [[ -s "$retry_output" ]]; then
         local retry_rate_status
         retry_rate_status=$(check_plan_voter_substantive "$retry_output")

@@ -38,7 +38,7 @@ session_get() {
 }
 
 compose_prompt() {
-    local prompt_file="$1" log_file="$2" site_label="$3"
+    local prompt_file="$1" log_file="$2" site_label="$3" submodules_list="$4"
     local log_bytes
     log_bytes=$(wc -c < "$log_file" | tr -d '[:space:]')
     {
@@ -48,7 +48,7 @@ compose_prompt() {
         printf '%s\n' 'Make the minimum necessary edits under the current repository root.'
         printf '%s\n' 'Do NOT commit; the parent script owns staging and commits.'
         printf '\n'
-        emit_submodule_prohibition ""
+        emit_submodule_prohibition "$submodules_list"
         printf '\n%s\n' 'When done, report on a single final line in this exact shape:'
         printf '%s\n' '  FIXED: <comma-separated repo-relative paths of files you changed> | <short check-failure description>'
         printf '%s\n' 'If you cannot fix the failure, instead report on a single final line:'
@@ -248,7 +248,7 @@ fi
     submodule_paths
 } | awk 'NF && !seen[$0]++ { print }' > "$forbidden_paths_file"
 prompt_file="$run_dir/prompt.md"
-compose_prompt "$prompt_file" "$CHECKS_LOG" "$SITE_LABEL"
+compose_prompt "$prompt_file" "$CHECKS_LOG" "$SITE_LABEL" "$forbidden_paths_file"
 prompt_body="$(cat "$prompt_file")"
 
 coder_tool=""
