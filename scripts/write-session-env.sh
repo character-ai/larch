@@ -121,8 +121,8 @@ fi
 
 if [[ -n "$DYNAMIC_ARCHETYPES_MAX_ARG" ]]; then
   case "$DYNAMIC_ARCHETYPES_MAX_ARG" in
-    [0-4]) ;;
-    *) larch_err "ERROR=Invalid --dynamic-archetypes: must be an integer from 0 to 4"; exit 1 ;;
+    [0-8]) ;;
+    *) larch_err "ERROR=Invalid --dynamic-archetypes: must be an integer from 0 to 8"; exit 1 ;;
   esac
 fi
 

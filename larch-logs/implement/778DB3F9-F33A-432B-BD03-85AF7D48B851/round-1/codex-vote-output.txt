@@ -1,0 +1,48 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: EXONERATE -- Vague pre-existing concerns are not issue-worthy from this ballot.
+FINDING_16: NO -- This describes expected behavior and explicitly finds no actionable defect.
+FINDING_17: NO -- This explicitly reports no ordering defect.
+FINDING_18: NO -- The validation pattern behaves correctly for the raised cap.
+FINDING_19: NO -- The stated roundtrip harness behavior is not a defect.
+FINDING_20: NO -- This is an in-scope requirements mismatch already covered by active findings, not an out-of-scope future issue.
+FINDING_21: EXONERATE -- The naming skew is real but minor and not worth a tracking issue.
+FINDING_22: NO -- The retained panel-shape signal is intentional and still meaningful.
+FINDING_23: EXONERATE -- Minor fixture naming drift is not worth a separate tracking issue.
+FINDING_24: EXONERATE -- Optional editorial cleanup is legitimate but not issue-worthy.
+FINDING_25: YES
+FINDING_26: EXONERATE -- Duplicate of the scout boundary-test gap already covered.
+FINDING_27: NO -- `focus_area` is schema-limited to fixed enum values, so the claimed injection path is not supported.
+FINDING_28: YES
+FINDING_29: YES
+FINDING_30: YES
+FINDING_31: YES
+FINDING_32: YES
+FINDING_33: YES
+FINDING_34: YES
+FINDING_35: YES
+FINDING_36: YES
+FINDING_37: YES
+FINDING_38: YES
+FINDING_39: YES
+FINDING_40: YES
+FINDING_41: YES
+FINDING_42: YES
+FINDING_43: YES
+FINDING_44: YES
+FINDING_45: YES
+FINDING_46: EXONERATE -- Commit-message polish is legitimate but not worth changing history for this review.
+FINDING_47: YES
+FINDING_48: NO -- The Codex union slot should be removed per the feature, not given more tally support.

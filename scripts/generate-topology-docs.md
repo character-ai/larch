@@ -28,7 +28,7 @@ Registered in `scripts/generators.tsv` as the row `scripts/generate-topology-doc
 
 ## Out Of Scope
 
-Quick-mode `/implement` reviewer-loop phrases (`5 rounds`, `simple review panel`, `Cursor edge-cases`, `Codex generalist`, and adjacent public-doc markers) are excluded from `skills/shared/topology.tsv`. They are owned by `scripts/test-quick-mode-docs-sync.sh` and its sibling contract.
+Quick-mode `/implement` reviewer-loop phrases (`5 rounds`, `simple review panel`, `Cursor edge-cases`, `6 Cursor specialists`, and adjacent public-doc markers) are excluded from `skills/shared/topology.tsv`. They are owned by `scripts/test-quick-mode-docs-sync.sh` and its sibling contract.
 
 ## Edit In Sync
 

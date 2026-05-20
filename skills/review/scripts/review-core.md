@@ -16,7 +16,7 @@ Accepted flags:
 - `--feature-file PATH`
 - `--description-text TEXT`
 - `--panel simple|hard` (default `hard`)
-- `--dynamic-archetypes N` (`0..4`, default `0`; overrides `LARCH_DYNAMIC_ARCHETYPES_MAX`; an explicitly empty env value is invalid and exits 2)
+- `--dynamic-archetypes N` (`0..8`, default `0`; overrides `LARCH_DYNAMIC_ARCHETYPES_MAX`; an explicitly empty env value is invalid and exits 2)
 - `--run-id ID`
 - `--round-num N` (default `1`)
 

@@ -204,9 +204,10 @@ cat > "$TMP/too-many.json" <<'JSON'
 ]}
 JSON
 stdout=$(run_case too-many "$TMP/too-many.json")
-grep -Fq 'SCOUT_STATUS=parse-failed' "$stdout" || fail "too-many parse-failed"
-grep -Fq 'SCOUT_FAIL_REASON=archetype_count_overflow' "$stdout" || fail "too-many fail reason"
-[[ "$(jq '.archetypes | length' "$TMP/too-many/scout-manifest.json")" = "0" ]] || fail "too-many empty manifest"
+grep -Fq 'SCOUT_STATUS=ok' "$stdout" || fail "too-many status"
+grep -Fq 'WARN=validated archetypes exceed max cap: 5 > 4; truncating' "$stdout" || fail "too-many truncate warning"
+grep -Fq 'SCOUT_ARCHETYPE_COUNT=4' "$stdout" || fail "too-many count"
+[[ "$(jq '.archetypes | length' "$TMP/too-many/scout-manifest.json")" = "4" ]] || fail "too-many manifest count"
 
 cat > "$TMP/duplicate.json" <<'JSON'
 {"archetypes":[

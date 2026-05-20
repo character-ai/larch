@@ -9,7 +9,7 @@ PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
 source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
 
-usage() { larch_err "Usage: dispatch-panel.sh --mode diff|description --review-tmpdir DIR --codex-available true|false --cursor-available true|false [--panel simple|hard] [--dynamic-archetypes 0-4] [context flags]"; }
+usage() { larch_err "Usage: dispatch-panel.sh --mode diff|description --review-tmpdir DIR --codex-available true|false --cursor-available true|false [--panel simple|hard] [--dynamic-archetypes 0-8] [context flags]"; }
 
 MODE=""
 DIFF_FILE=""
@@ -75,8 +75,8 @@ export SESSION_ENV_PATH
 [[ "$CURSOR_AVAILABLE" == "true" || "$CURSOR_AVAILABLE" == "false" ]] || { larch_err "dispatch-panel.sh: --cursor-available must be true or false"; exit 2; }
 [[ "$PANEL" == "simple" || "$PANEL" == "hard" ]] || { larch_err "dispatch-panel.sh: --panel must be simple or hard"; exit 2; }
 case "$DYNAMIC_ARCHETYPES" in
-    [0-4]) ;;
-    *) larch_err "dispatch-panel.sh: --dynamic-archetypes/LARCH_DYNAMIC_ARCHETYPES_MAX must be an integer from 0 to 4"; exit 2 ;;
+    [0-8]) ;;
+    *) larch_err "dispatch-panel.sh: --dynamic-archetypes/LARCH_DYNAMIC_ARCHETYPES_MAX must be an integer from 0 to 8"; exit 2 ;;
 esac
 case "$ROUND_NUM" in ''|*[!0-9]*) larch_err "dispatch-panel.sh: --round-num must be a positive integer"; exit 2 ;; esac
 ROUND_NUM=$((10#$ROUND_NUM))
@@ -96,40 +96,18 @@ queue_external_slot() {
     static_slot_count=$((static_slot_count + 1))
 }
 
-queue_external_generalist_slot() {
-    local tool="$1" out="$2"
-    local agent="$PLUGIN_ROOT/agents/code-reviewer.md"
-    printf '{"slot":"generic","tool":"%s","output":"%s","agent":"%s"}\n' "$tool" "$out" "$agent" >> "$manifest"
-    static_slot_count=$((static_slot_count + 1))
-}
-
 # Plan file is required when reviewers run; plan-fidelity is always dispatched.
 [[ -n "$PLAN_FILE" ]] || { larch_err "dispatch-panel.sh: --plan-file is required (plan-fidelity specialist is always dispatched)"; exit 2; }
 [[ -f "$PLAN_FILE" ]] || { larch_err "dispatch-panel.sh: plan file not found: $PLAN_FILE"; exit 2; }
 
-# Simple panel: 6 Cursor specialists + 1 Codex generalist.
-# Hard panel: 6 Cursor specialists + 6 Codex specialists.
+# Both panels: 6 Cursor specialists.
 # Both panels always include plan-fidelity (plan file required above).
 # Focus area enum anchor for CI: code-quality / risk-integration / correctness / architecture / security
 cursor_specialists=(structure correctness testing security edge-cases plan-fidelity)
-if [[ "$PANEL" == "hard" ]]; then
-    codex_specialists=(structure correctness testing security edge-cases plan-fidelity)
-fi
 
 for name in "${cursor_specialists[@]}"; do
     queue_external_slot cursor "$name" "$REVIEW_TMPDIR/cursor-specialist-${name}-output.txt"
 done
-if [[ "$PANEL" == "hard" ]]; then
-    if (( ROUND_NUM == 1 )); then
-        for name in "${codex_specialists[@]}"; do
-            queue_external_slot codex "$name" "$REVIEW_TMPDIR/codex-specialist-${name}-output.txt"
-        done
-    fi
-else
-    if (( ROUND_NUM == 1 )); then
-        queue_external_generalist_slot codex "$REVIEW_TMPDIR/codex-generalist-output.txt"
-    fi
-fi
 
 if [[ "$DYNAMIC_ARCHETYPES" != "0" && "$MODE" == "diff" && -n "$DIFF_FILE" && -s "$DIFF_FILE" ]]; then
     classifier_out=$("$CLASSIFY_DIFF_MODE_SH" "$DIFF_FILE" 2>/dev/null || true)
@@ -215,7 +193,7 @@ write_empty_scout_manifest() {
 }
 
 scout_manifest_is_valid() {
-    local scout_manifest="$1" max="${2:-4}"
+    local scout_manifest="$1" max="${2:-8}"
     [[ -s "$scout_manifest" ]] || return 1
     jq -e --argjson max "$max" '
         def reserved:
@@ -409,26 +387,13 @@ fi
 append_scout_parse_issue
 
 static_cursor=${#cursor_specialists[@]}
-if (( ROUND_NUM == 1 )); then
-    if [[ "$PANEL" == "hard" ]]; then
-        static_codex=${#codex_specialists[@]}
-    else
-        static_codex=1
-    fi
-else
-    static_codex=0
-fi
+static_codex=0
 total=$((static_cursor + static_codex + DYNAMIC_SLOTS))
 if (( total > 0 )); then
-    if [[ "$PANEL" == "hard" ]]; then
-        emit_breadcrumb "→ review: launching $total reviewers ($static_cursor Cursor static, $static_codex Codex specialists, $DYNAMIC_SLOTS dynamic)"
-    else
-        emit_breadcrumb "→ review: launching $total reviewers ($static_cursor Cursor static, $static_codex Codex generalist, $DYNAMIC_SLOTS dynamic)"
-    fi
+    emit_breadcrumb "→ review: launching $total reviewers ($static_cursor Cursor static, $DYNAMIC_SLOTS dynamic)"
 fi
 
-codex_present_for_waterfall="$CODEX_AVAILABLE"
-(( ROUND_NUM == 1 )) || codex_present_for_waterfall="false"
+codex_present_for_waterfall="false"
 waterfall_args=(--slots-file "$manifest" --codex-present "$codex_present_for_waterfall" --cursor-present "$CURSOR_AVAILABLE" --mode "$MODE" --timeout 1800)
 [[ "$MODE" == "diff" && -n "$DIFF_FILE" ]] && waterfall_args+=(--diff-file "$DIFF_FILE" --commit-count "$COMMIT_COUNT")
 [[ "$MODE" == "description" && -n "$SCOPE_FILES" ]] && waterfall_args+=(--description-text "${DESCRIPTION_TEXT:-description review}" --scope-files "$SCOPE_FILES")

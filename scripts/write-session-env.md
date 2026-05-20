@@ -27,12 +27,12 @@ blocks can recover `${CLAUDE_PLUGIN_ROOT}` from `$IMPLEMENT_TMPDIR/session-env.s
 without sourcing the file.
 
 It may also write `LARCH_DYNAMIC_ARCHETYPES_MAX` when the caller passes
-`--dynamic-archetypes <N>` (integer 0–4). `/implement` uses this to propagate
+`--dynamic-archetypes <N>` (integer 0–8). `/implement` uses this to propagate
 `--dynamic-archetypes`/`--no-dynamic-archetypes` operator flags to
 `review-and-fix.sh`'s `DYNAMIC_ARCHETYPES` resolution logic, which reads
 `LARCH_DYNAMIC_ARCHETYPES_MAX` from session-env via `session_get`.
 
-Values must stay narrow and caller-controlled (`true|false` for presence booleans and `--auto-mode`; validated repo strings for repo identity; caller-owned tmp paths for timing ledgers). `--token-session-id` must match `^[A-Za-z0-9_.-]{1,128}$`; `--claude-source-file` and `--timing-ledger` must match `^[A-Za-z0-9_./~+-]{1,512}$`; `--prev-implement-tmpdir` and `CLAUDE_PLUGIN_ROOT` must be absolute paths of 512 characters or fewer using the same path character set; `--dynamic-archetypes` must be an integer from 0 to 4. Empty optional values are omitted from the file.
+Values must stay narrow and caller-controlled (`true|false` for presence booleans and `--auto-mode`; validated repo strings for repo identity; caller-owned tmp paths for timing ledgers). `--token-session-id` must match `^[A-Za-z0-9_.-]{1,128}$`; `--claude-source-file` and `--timing-ledger` must match `^[A-Za-z0-9_./~+-]{1,512}$`; `--prev-implement-tmpdir` and `CLAUDE_PLUGIN_ROOT` must be absolute paths of 512 characters or fewer using the same path character set; `--dynamic-archetypes` must be an integer from 0 to 8. Empty optional values are omitted from the file.
 
 ## Invariants
 

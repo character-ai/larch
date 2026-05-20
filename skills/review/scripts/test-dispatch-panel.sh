@@ -109,10 +109,12 @@ out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" \
     --plan-file "$plan_file")
 grep -Fq 'PANEL_MODE=waterfall' <<< "$out"
 grep -Fq 'PANEL_SHAPE=simple' <<< "$out"
-grep -Fq 'SLOT_COUNT=7' <<< "$out"
+grep -Fq 'STATIC_SLOT_COUNT=6' <<< "$out"
+grep -Fq 'SLOT_COUNT=6' <<< "$out"
 grep -Fq 'DISPATCH_OK=true' <<< "$out"
 [[ -s "$TMP/simple/cursor-specialist-structure-output.txt" ]]
-[[ -s "$TMP/simple/codex-generalist-output.txt" ]]
+[[ ! -e "$TMP/simple/codex-union-output.txt" ]] \
+    || { echo "FAIL: simple panel must not create codex-union-output.txt" >&2; exit 1; }
 
 out=$(PATH="$STUB_BIN:$PATH" LARCH_QUIET_BREADCRUMBS=1 "$SCRIPT" \
     --mode diff \
@@ -121,7 +123,7 @@ out=$(PATH="$STUB_BIN:$PATH" LARCH_QUIET_BREADCRUMBS=1 "$SCRIPT" \
     --cursor-available true \
     --panel simple \
     --plan-file "$plan_file")
-grep -Fq '→ review: launching 7 reviewers (6 Cursor static, 1 Codex generalist, 0 dynamic)' <<< "$out"
+grep -Fq '→ review: launching 6 reviewers (6 Cursor static, 0 dynamic)' <<< "$out"
 
 out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" \
     --mode diff \
@@ -131,9 +133,11 @@ out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" \
     --panel hard \
     --plan-file "$plan_file")
 grep -Fq 'PANEL_SHAPE=hard' <<< "$out"
-grep -Fq 'SLOT_COUNT=12' <<< "$out"
+grep -Fq 'STATIC_SLOT_COUNT=6' <<< "$out"
+grep -Fq 'SLOT_COUNT=6' <<< "$out"
 [[ -s "$TMP/hard/cursor-specialist-structure-output.txt" ]]
-[[ -s "$TMP/hard/codex-specialist-structure-output.txt" ]]
+[[ ! -e "$TMP/hard/codex-union-output.txt" ]] \
+    || { echo "FAIL: hard panel must not create codex-union-output.txt" >&2; exit 1; }
 
 out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" \
     --mode diff \
@@ -145,8 +149,7 @@ out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" \
     --round-num 2)
 grep -Fq 'STATIC_SLOT_COUNT=6' <<< "$out"
 grep -Fq 'SLOT_COUNT=6' <<< "$out"
-[[ ! -e "$TMP/simple-round2/codex-generalist-output.txt" ]] \
-    || { echo "FAIL: round2 simple panel must omit codex generalist slot" >&2; exit 1; }
+[[ ! -e "$TMP/simple-round2/codex-union-output.txt" ]]
 
 out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" \
     --mode diff \
@@ -158,8 +161,7 @@ out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" \
     --round-num 2)
 grep -Fq 'STATIC_SLOT_COUNT=6' <<< "$out"
 grep -Fq 'SLOT_COUNT=6' <<< "$out"
-[[ ! -e "$TMP/hard-round2/codex-specialist-structure-output.txt" ]] \
-    || { echo "FAIL: round2 hard panel must omit codex specialist slots" >&2; exit 1; }
+[[ ! -e "$TMP/hard-round2/codex-union-output.txt" ]]
 
 seed_case_inputs "$TMP/dynamic4"
 out=$(PATH="$STUB_BIN:$PATH" SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$scout_launch" SCOUT_LAUNCH_JSON_FILE="$TMP/scout-valid4.json" "$SCRIPT" \
@@ -173,8 +175,8 @@ out=$(PATH="$STUB_BIN:$PATH" SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$scout_launch" 
     --dynamic-archetypes 4)
 grep -Fq 'SCOUT_STATUS=ok' <<< "$out"
 grep -Fq 'DYNAMIC_SLOTS=4' <<< "$out"
-grep -Fq 'STATIC_SLOT_COUNT=12' <<< "$out"
-grep -Fq 'SLOT_COUNT=16' <<< "$out"
+grep -Fq 'STATIC_SLOT_COUNT=6' <<< "$out"
+grep -Fq 'SLOT_COUNT=10' <<< "$out"
 dyn_prompt_slots=$(grep -c '"prompt_file"' "$TMP/dynamic4/panel-manifest.ndjson")
 [[ "$dyn_prompt_slots" = "4" ]] || { echo "FAIL: expected 4 dynamic prompt_file slots" >&2; exit 1; }
 [[ -s "$TMP/dynamic4/dyn-api-contract-output.txt" ]]
@@ -194,7 +196,7 @@ out=$(PATH="$STUB_BIN:$PATH" SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$scout_launch" 
     --dynamic-archetypes 4)
 grep -Fq 'SCOUT_STATUS=empty' <<< "$out"
 grep -Fq 'DYNAMIC_SLOTS=0' <<< "$out"
-grep -Fq 'SLOT_COUNT=12' <<< "$out"
+grep -Fq 'SLOT_COUNT=6' <<< "$out"
 
 seed_case_inputs "$TMP/dynamic-fail"
 out=$(PATH="$STUB_BIN:$PATH" SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$scout_launch" SCOUT_LAUNCH_FAIL=true SCOUT_LAUNCH_JSON_FILE="$TMP/scout-valid4.json" "$SCRIPT" \
@@ -208,8 +210,38 @@ out=$(PATH="$STUB_BIN:$PATH" SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$scout_launch" 
     --dynamic-archetypes 4)
 grep -Fq 'SCOUT_STATUS=claude-failed' <<< "$out"
 grep -Fq 'DYNAMIC_SLOTS=0' <<< "$out"
-grep -Fq 'SLOT_COUNT=12' <<< "$out"
+grep -Fq 'SLOT_COUNT=6' <<< "$out"
 grep -Fq 'SCOUT_STATUS=claude-failed' "$TMP/dynamic-fail/scout-round1-status.env"
+
+cat > "$TMP/scout-valid8.json" <<'JSON'
+{"archetypes":[
+  {"name":"api-contract","focus_area":"correctness","weight":4,"rationale":"API changes are central.","prompt_body":"Check API contract compatibility."},
+  {"name":"cli-flow","focus_area":"risk-integration","weight":3,"rationale":"CLI behavior changed.","prompt_body":"Check command flow and user-visible behavior."},
+  {"name":"state-model","focus_area":"architecture","weight":5,"rationale":"State is shared across scripts.","prompt_body":"Check state transitions."},
+  {"name":"error-paths","focus_area":"code-quality","weight":2,"rationale":"Many shell exits exist.","prompt_body":"Check error handling."},
+  {"name":"auth-edges","focus_area":"security","weight":6,"rationale":"Auth edges changed.","prompt_body":"Check auth boundaries."},
+  {"name":"state-recovery","focus_area":"risk-integration","weight":4,"rationale":"Recovery paths changed.","prompt_body":"Check recovery integration."},
+  {"name":"migration-order","focus_area":"architecture","weight":5,"rationale":"Ordering matters.","prompt_body":"Check migration ordering."},
+  {"name":"result-shape","focus_area":"correctness","weight":3,"rationale":"Result shape is user-visible.","prompt_body":"Check response shape."}
+]}
+JSON
+
+seed_case_inputs "$TMP/dynamic8"
+out=$(PATH="$STUB_BIN:$PATH" SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$scout_launch" SCOUT_LAUNCH_JSON_FILE="$TMP/scout-valid8.json" "$SCRIPT" \
+    --mode diff \
+    --diff-file "$TMP/dynamic8/review.diff" \
+    --review-tmpdir "$TMP/dynamic8" \
+    --codex-available true \
+    --cursor-available true \
+    --panel hard \
+    --plan-file "$TMP/dynamic8/plan.md" \
+    --dynamic-archetypes 8)
+grep -Fq 'SCOUT_STATUS=ok' <<< "$out"
+grep -Fq 'DYNAMIC_SLOTS=8' <<< "$out"
+grep -Fq 'STATIC_SLOT_COUNT=6' <<< "$out"
+grep -Fq 'SLOT_COUNT=14' <<< "$out"
+dyn_prompt_slots=$(grep -c '"prompt_file"' "$TMP/dynamic8/panel-manifest.ndjson")
+[[ "$dyn_prompt_slots" = "8" ]] || { echo "FAIL: expected 8 dynamic prompt_file slots" >&2; exit 1; }
 
 seed_case_inputs "$TMP/dynamic-parse-failed"
 issues_log="$TMP/dynamic-parse-failed/execution-issues.md"
@@ -451,7 +483,7 @@ out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" \
     --dynamic-archetypes 4)
 grep -Fq 'SCOUT_STATUS=validation-failed' <<< "$out"
 grep -Fq 'DYNAMIC_SLOTS=0' <<< "$out"
-grep -Fq 'STATIC_SLOT_COUNT=12' <<< "$out"
+grep -Fq 'STATIC_SLOT_COUNT=6' <<< "$out"
 [[ -s "$TMP/oversized-diff/cursor-specialist-structure-output.txt" ]]
 
 parent_tmp="$TMP/implement-parent"
@@ -473,7 +505,7 @@ out=$(PATH="$STUB_BIN:$PATH" SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$scout_launch" 
 grep -Fq 'SCOUT_STATUS=ok' <<< "$out"
 grep -Fq 'DYNAMIC_SLOTS=4' <<< "$out"
 
-for bad in 5 -1 abc; do
+for bad in 9 -1 abc; do
     set +e
     PATH="$STUB_BIN:$PATH" "$SCRIPT" \
         --mode diff \
@@ -517,7 +549,7 @@ out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" \
     --plan-file "$plan_file")
 grep -Fq 'DISPATCH_OK=true' <<< "$out"
 claude_count=$(find "$TMP/both-down" -name '*phase3.txt' | wc -l | tr -d ' ')
-[[ "$claude_count" -ge 7 ]] || { echo "FAIL: expected Claude phase3 outputs for both-down panel" >&2; exit 1; }
+[[ "$claude_count" -ge 6 ]] || { echo "FAIL: expected Claude phase3 outputs for both-down panel" >&2; exit 1; }
 fi  # end section: limits
 
 assert_emit_tally_panel() {
@@ -554,8 +586,8 @@ assert_emit_tally_panel() {
 }
 
 assert_emit_tally_panel static-na na 0 7 7
-assert_emit_tally_panel scout-ok ok 4 12 16
-assert_emit_tally_panel scout-skipped skipped-docs-only 0 12 12
+assert_emit_tally_panel scout-ok ok 4 7 11
+assert_emit_tally_panel scout-skipped skipped-docs-only 0 7 7
 
 if section_runs core; then
 

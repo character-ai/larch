@@ -20,7 +20,7 @@ session-env script pair:
 - **D. `write-session-env.sh`** — `CLAUDE_PLUGIN_ROOT` from the environment
   accepts absolute plugin-root paths, persists `LARCH_CLAUDE_PLUGIN_ROOT`, and
   rejects unsafe or relative paths.
-- **E. `write-session-env.sh`** — `--dynamic-archetypes` accepts `0..4`,
+- **E. `write-session-env.sh`** — `--dynamic-archetypes` accepts `0..8`,
   persists `LARCH_DYNAMIC_ARCHETYPES_MAX`, and rejects out-of-range values.
 
 ## Inputs / outputs

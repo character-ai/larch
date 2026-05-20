@@ -10,4 +10,4 @@ implement.conflict_review.panel	3-reviewer	Claude Code Reviewer subagent + Codex
 implement.conflict_review.rounds_max	2 total	resolution-review rounds	skills/implement/references/conflict-resolution.md
 research.lanes	four research lanes	architecture + edge cases + external comparisons + security	skills/research/references/research-phase.md
 research.validation_panel	3 reviewer lanes	Claude Code Reviewer subagent + Codex + Cursor	skills/research/references/validation-phase.md
-implement.review_and_fix.panel_hard	6 Cursor specialists + 6 Codex specialists	Hard panel	skills/review/scripts/dispatch-panel.sh
+implement.review_and_fix.panel_hard	6 Cursor specialists	Hard and simple panels share the same static layout	skills/review/scripts/dispatch-panel.sh
