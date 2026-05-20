@@ -225,6 +225,24 @@ trimmed_nonblank_content() {
     awk 'NF { gsub(/^[[:space:]]+|[[:space:]]+$/, ""); print }' "$1"
 }
 
+# JSON no-findings sentinel: prefer the first non-empty line so trailing operational
+# notes stay valid. When that line is not a complete JSON value but looks like the
+# start of an object (e.g. pretty-printed `{"no_issues_found": true}` split across
+# lines), retry `jq` against the full trimmed body so multi-line objects remain accepted.
+json_no_issues_found_short_circuit() {
+    local trimmed="$1"
+    local first_line="$2"
+    command -v jq >/dev/null 2>&1 || return 1
+    if jq -e 'type == "object" and .no_issues_found == true' <<<"$first_line" >/dev/null 2>&1; then
+        return 0
+    fi
+    if [[ "$first_line" =~ ^[[:space:]]*\{ ]] \
+        && jq -e 'type == "object" and .no_issues_found == true' <<<"$trimmed" >/dev/null 2>&1; then
+        return 0
+    fi
+    return 1
+}
+
 validate_structured_jsonl_with_jq() {
     local input="$1"
     local output="$2"
@@ -330,8 +348,7 @@ if [[ "$STRUCTURED_REVIEWER_MODE" == "true" ]]; then
         write_structured_output "$WRITE_STRUCTURED" ""
         exit 0
     fi
-    if command -v jq >/dev/null 2>&1 \
-       && jq -e 'type == "object" and .no_issues_found == true' <<<"$FIRST_LINE" >/dev/null 2>&1; then
+    if json_no_issues_found_short_circuit "$TRIMMED" "$FIRST_LINE"; then
         write_structured_output "$WRITE_STRUCTURED" ""
         exit 0
     fi
@@ -361,10 +378,15 @@ fi
 
 # --- 0. Validation-mode short-circuits: accept no-findings sentinels as
 # substantive without applying word-count or citation checks, and distinguish
-# Cursor's empty .result response marker from generic thin content. Sentinels
-# must be the entire trimmed file content (whitespace-only lines removed top +
-# bottom; tabs and trailing whitespace stripped) — partial matches inside
-# larger prose do NOT trigger the short-circuit.
+# Cursor's empty .result response marker from generic thin content.
+#   - CURSOR_EMPTY_RESPONSE: entire trimmed body (whitespace-only lines removed
+#     top/bottom; tabs and trailing whitespace stripped per trimmed_nonblank_content)
+#     must equal the marker exactly.
+#   - NO_ISSUES_FOUND and the canonical JSON no-findings object: the first
+#     non-empty line of that trimmed stream must be the sentinel (trailing lines
+#     may hold operational notes). A sentinel that appears only later in the file,
+#     or on the same line as other non-whitespace text before the sentinel, does
+#     not short-circuit and falls through to normal validation.
 if [[ "$VALIDATION_MODE" == "true" ]]; then
     TRIMMED=$(trimmed_nonblank_content "$INPUT")
     if [[ "$TRIMMED" == "CURSOR_EMPTY_RESPONSE" ]]; then
@@ -376,8 +398,7 @@ if [[ "$VALIDATION_MODE" == "true" ]]; then
     if [[ "$FIRST_LINE" == "NO_ISSUES_FOUND" ]]; then
         exit 0
     fi
-    if command -v jq >/dev/null 2>&1 \
-       && jq -e 'type == "object" and .no_issues_found == true' <<<"$FIRST_LINE" >/dev/null 2>&1; then
+    if json_no_issues_found_short_circuit "$TRIMMED" "$FIRST_LINE"; then
         exit 0
     fi
     # Inline-TSV short-circuit: when cursor runs in --mode plan it cannot write

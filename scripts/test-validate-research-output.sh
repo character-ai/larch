@@ -2,8 +2,8 @@
 # test-validate-research-output.sh — Regression test for scripts/validate-research-output.sh.
 #
 # Cases (per the acceptance criteria in issue #416, extended for #447, #473, and structured-reviewer-mode):
-#   52-59: --structured-reviewer-mode coverage (JSONL valid, TSV valid, NO_ISSUES_FOUND, fence repair,
-#          preamble repair, severity alias, unrepairable → exit 5, --write-structured sidecar written)
+#   52-63: --structured-reviewer-mode coverage (JSONL valid, TSV valid, NO_ISSUES_FOUND, JSON no-findings sentinel, fence repair,
+#          preamble repair, severity alias, unrepairable → exit 5, --write-structured sidecar; includes #2455 first-line sentinel cases 62-63)
 #
 # Cases (per the acceptance criteria in issue #416, extended for #447):
 #   1. Happy path: substantive prose with one file:line citation → exit 0
@@ -79,6 +79,12 @@
 #   61. --validation-mode trailing note + NO_ISSUES_FOUND (sentinel NOT first) → exit 2
 #   62. --structured-reviewer-mode NO_ISSUES_FOUND + trailing note → exit 0
 #   63. --structured-reviewer-mode trailing note + NO_ISSUES_FOUND (sentinel NOT first) → exit 5
+#   64. --validation-mode JSON no-findings + trailing note → exit 0
+#   65. --validation-mode trailing note + JSON sentinel (NOT first) → exit 2
+#   66. --structured-reviewer-mode JSON no-findings + trailing note → exit 0
+#   67. --structured-reviewer-mode trailing note + JSON sentinel (NOT first) → exit 5
+#   68. --validation-mode pretty-printed multi-line JSON no-findings → exit 0
+#   69. --structured-reviewer-mode pretty-printed multi-line JSON no-findings → exit 0
 #
 # Usage:
 #   bash scripts/test-validate-research-output.sh
@@ -545,7 +551,7 @@ printf 'NO_ISSUES_FOUND\n\nVerification: scripts/test-dispatch-code-voters.sh co
 run_case "case 60: --validation-mode NO_ISSUES_FOUND + trailing note → exit 0" 0 --validation-mode "$F60"
 
 # Case 61: --validation-mode sentinel NOT on first line → not short-circuited → exit 2 (body thin)
-# Choice: sentinel-not-first is treated as normal content; 9 words, no citation → exit 2
+# Choice: sentinel-not-first is treated as normal content; four words, no citation → exit 2
 F61="$TMPROOT/case61-note-then-nif.txt"
 printf 'Verification: mktemp failed.\n\nNO_ISSUES_FOUND\n' > "$F61"
 run_case "case 61: --validation-mode sentinel NOT first → exit 2 (body thin, not short-circuited)" 2 --validation-mode "$F61"
@@ -559,6 +565,44 @@ run_case "case 62: --structured-reviewer-mode NO_ISSUES_FOUND + trailing note �
 F63="$TMPROOT/case63-srm-note-then-nif.txt"
 printf 'Verification: mktemp failed.\n\nNO_ISSUES_FOUND\n' > "$F63"
 run_case "case 63: --structured-reviewer-mode sentinel NOT first → exit 5 (no valid records)" 5 --structured-reviewer-mode "$F63"
+
+# Case 64: --validation-mode JSON no-findings on first line + trailing operational note → exit 0
+F64="$TMPROOT/case64-json-with-note.txt"
+printf '{"no_issues_found": true}\n\nVerification: scripts/test-dispatch-code-voters.sh could not run in this read-only session because mktemp failed.\n' > "$F64"
+run_case "case 64: --validation-mode JSON no-findings + trailing note → exit 0" 0 --validation-mode "$F64"
+
+# Case 65: --validation-mode JSON sentinel NOT on first line → exit 2 (body thin)
+F65="$TMPROOT/case65-note-then-json.txt"
+printf 'Verification: mktemp failed.\n\n{"no_issues_found": true}\n' > "$F65"
+run_case "case 65: --validation-mode JSON sentinel NOT first → exit 2 (body thin, not short-circuited)" 2 --validation-mode "$F65"
+
+# Case 66: --structured-reviewer-mode JSON no-findings on first line + trailing note → exit 0
+F66="$TMPROOT/case66-srm-json-with-note.txt"
+printf '{"no_issues_found": true}\n\nVerification: scripts/test-dispatch-code-voters.sh could not run in this read-only session because mktemp failed.\n' > "$F66"
+run_case "case 66: --structured-reviewer-mode JSON no-findings + trailing note → exit 0" 0 --structured-reviewer-mode "$F66"
+
+# Case 67: --structured-reviewer-mode JSON sentinel NOT on first line → exit 5
+F67="$TMPROOT/case67-srm-note-then-json.txt"
+printf 'Verification: mktemp failed.\n\n{"no_issues_found": true}\n' > "$F67"
+run_case "case 67: --structured-reviewer-mode JSON sentinel NOT first → exit 5 (no valid records)" 5 --structured-reviewer-mode "$F67"
+
+# Case 68: --validation-mode pretty-printed multi-line JSON no-findings → exit 0
+F68="$TMPROOT/case68-json-multiline.txt"
+cat > "$F68" <<'EOF'
+{
+  "no_issues_found": true
+}
+EOF
+run_case "case 68: --validation-mode pretty-printed multi-line JSON no-findings → exit 0" 0 --validation-mode "$F68"
+
+# Case 69: --structured-reviewer-mode pretty-printed multi-line JSON no-findings → exit 0
+F69="$TMPROOT/case69-srm-json-multiline.txt"
+cat > "$F69" <<'EOF'
+{
+  "no_issues_found": true
+}
+EOF
+run_case "case 69: --structured-reviewer-mode pretty-printed multi-line JSON no-findings → exit 0" 0 --structured-reviewer-mode "$F69"
 
 echo ""
 echo "=== Summary ==="
