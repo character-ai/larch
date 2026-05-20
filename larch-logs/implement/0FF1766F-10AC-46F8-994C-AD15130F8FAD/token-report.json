@@ -225,14 +225,47 @@
             }
           }
         ]
+      },
+      {
+        "step": "Step 8a — changelog",
+        "totals": {
+          "input": 0,
+          "cache_read": 0,
+          "cache_create": 0,
+          "output": 0,
+          "total": 0
+        },
+        "skills": []
+      },
+      {
+        "step": "Step 8b — rebase",
+        "totals": {
+          "input": 9,
+          "cache_read": 2079480,
+          "cache_create": 15627,
+          "output": 6346,
+          "total": 2101462
+        },
+        "skills": [
+          {
+            "skill": "larch:implement",
+            "totals": {
+              "input": 9,
+              "cache_read": 2079480,
+              "cache_create": 15627,
+              "output": 6346,
+              "total": 2101462
+            }
+          }
+        ]
       }
     ],
     "totals": {
-      "input": 102,
-      "cache_read": 18464137,
-      "cache_create": 1231060,
-      "output": 50283,
-      "total": 19745582
+      "input": 111,
+      "cache_read": 20543617,
+      "cache_create": 1246687,
+      "output": 56629,
+      "total": 21847044
     }
   },
   "codex": {
@@ -311,6 +344,22 @@
       },
       {
         "step": "Step 6 — checks second pass",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 8a — changelog",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 8b — rebase",
         "totals": {
           "input": 0,
           "output": 0,
@@ -400,6 +449,22 @@
       },
       {
         "step": "Step 6 — checks second pass",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 8a — changelog",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 8b — rebase",
         "totals": {
           "input": 0,
           "output": 0,
