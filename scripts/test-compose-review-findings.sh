@@ -333,6 +333,55 @@ stdout="$("$COMPOSE" --implement-tmpdir "$TMP/bold-impl" --issue 2417 --output "
 [[ "$(record_field_by_id "$out" OOS_CR1_2 category)" == "risk-integration" ]] \
     || fail "static colon OOS category: got $(record_field_by_id "$out" OOS_CR1_2 category)"
 
+echo "=== mangled OOS categories return empty; valid tags pass ==="
+mkdir -p "$TMP/mangled-oos-impl/round-1"
+cat > "$TMP/mangled-oos-impl/round-1/oos.md" <<'EOF'
+### FINDING_1: [OUT_OF_SCOPE] TOCTOU: reviewer-invented heading shape
+- **Reviewer**: cursor-shape-3.txt
+- **Concern**: invented category token should not leak into JSONL.
+
+### FINDING_2: [OUT_OF_SCOPE] `scripts/create-pr.sh:40-43`: file-link-as-category shape
+- **Reviewer**: cursor-shape-4.txt
+- **Concern**: path-like heading should not become category.
+
+### FINDING_3: [OUT_OF_SCOPE] Pure prose paragraph with no colon delimiter anywhere
+- **Reviewer**: cursor-shape-5.txt
+- **Concern**: prose-only heading should yield empty category.
+
+### FINDING_4: [OUT_OF_SCOPE] docs, `docs/voting-process.md`: comma-separated token list
+- **Reviewer**: cursor-shape-6.txt
+- **Concern**: comma-separated blob should yield empty category.
+
+### FINDING_5: [OUT_OF_SCOPE] code-quality: valid tag with colon form
+- **Reviewer**: cursor-valid-cq.txt
+- **Concern**: canonical focus-area tag.
+
+### FINDING_6: [OUT_OF_SCOPE] architecture: valid tag with colon form
+- **Reviewer**: cursor-valid-arch.txt
+- **Concern**: architecture focus-area tag.
+
+### FINDING_7: [OUT_OF_SCOPE] security: valid tag with colon form
+- **Reviewer**: cursor-valid-sec.txt
+- **Concern**: security focus-area tag.
+EOF
+out="$TMP/mangled-oos.jsonl"
+stdout="$("$COMPOSE" --implement-tmpdir "$TMP/mangled-oos-impl" --issue 2447 --output "$out")"
+[[ "$stdout" == *"FINDINGS_TOTAL=7"* ]] || fail "mangled OOS total: $stdout"
+[[ -z "$(record_field_by_id "$out" OOS_CR1_1 category)" ]] \
+    || fail "invented heading should yield empty category, got $(record_field_by_id "$out" OOS_CR1_1 category)"
+[[ -z "$(record_field_by_id "$out" OOS_CR1_2 category)" ]] \
+    || fail "file-link heading should yield empty category, got $(record_field_by_id "$out" OOS_CR1_2 category)"
+[[ -z "$(record_field_by_id "$out" OOS_CR1_3 category)" ]] \
+    || fail "prose heading should yield empty category, got $(record_field_by_id "$out" OOS_CR1_3 category)"
+[[ -z "$(record_field_by_id "$out" OOS_CR1_4 category)" ]] \
+    || fail "comma-list heading should yield empty category, got $(record_field_by_id "$out" OOS_CR1_4 category)"
+[[ "$(record_field_by_id "$out" OOS_CR1_5 category)" == "code-quality" ]] \
+    || fail "code-quality category: got $(record_field_by_id "$out" OOS_CR1_5 category)"
+[[ "$(record_field_by_id "$out" OOS_CR1_6 category)" == "architecture" ]] \
+    || fail "architecture category: got $(record_field_by_id "$out" OOS_CR1_6 category)"
+[[ "$(record_field_by_id "$out" OOS_CR1_7 category)" == "security" ]] \
+    || fail "security category: got $(record_field_by_id "$out" OOS_CR1_7 category)"
+
 echo "=== invalid issue fails ==="
 set +e
 bad="$("$COMPOSE" --issue nope --output "$TMP/bad.jsonl" 2>&1)"

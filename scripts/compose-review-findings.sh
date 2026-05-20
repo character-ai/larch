@@ -58,6 +58,8 @@ redact_field() {
 
 # Extract the category from a finding body. Bodies typically open with a
 # '## <category>: …' line or '## **<category>** — …'; if absent, returns the empty string.
+# When present, the extracted token must be one of the five focus-area tags or the
+# result is treated as unknown and the empty string is returned.
 extract_category() {
     LC_ALL=C awk '
         /^## / {
@@ -66,17 +68,22 @@ extract_category() {
                 sub(/^\*\*/, "")
                 n = index($0, "**")
                 if (n > 0) {
-                    print substr($0, 1, n - 1)
+                    candidate = substr($0, 1, n - 1)
                 } else {
-                    print $0
+                    candidate = $0
                 }
             } else {
                 n = index($0, ":")
                 if (n > 0) {
-                    print substr($0, 1, n - 1)
+                    candidate = substr($0, 1, n - 1)
                 } else {
-                    print $0
+                    candidate = $0
                 }
+            }
+            if (candidate == "code-quality" || candidate == "risk-integration" ||
+                candidate == "correctness" || candidate == "architecture" ||
+                candidate == "security") {
+                print candidate
             }
             exit
         }
