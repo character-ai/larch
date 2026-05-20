@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Documented the review voter dispatch order: round-1 external coder slots now launch as Codex-first plus Cursor-first waterfall paths, so Cursor can win a slot directly before falling back to Codex and then Claude when needed.
 - Closed: #2440
 
 ## [29.8.40] - 2026-05-20

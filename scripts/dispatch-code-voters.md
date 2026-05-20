@@ -48,7 +48,7 @@ When a voter is classified `NOT_SUBSTANTIVE`, the script retries that slot once 
 
 The `make_voter_prompt_file` function includes a silent-drop warning: non-matching lines are ignored and voters MUST output exactly one `FINDING_N: YES|NO|EXONERATE` line per finding using the exact ID from the ballot heading.
 
-`fallback` means the slot finished on Claude after a waterfall fallback. `failed` means the final output path is missing or empty.
+`fallback` means the slot finished on Claude after a waterfall fallback. For waterfall slots (`VOTER_2_STATUS`, `VOTER_3_STATUS`), `failed` means the final output path is missing or empty after the waterfall completes. For `VOTER_1_STATUS`, `failed` means the direct Claude voter exited non-zero or produced an empty output file; when that failure leaves a non-empty output file behind, the warning flow still records its byte count and a short excerpt for diagnosis.
 
 ## Callers and Harness
 
