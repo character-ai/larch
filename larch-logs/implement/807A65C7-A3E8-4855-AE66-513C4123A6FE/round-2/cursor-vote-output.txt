@@ -1,0 +1,11 @@
+Reading the ballot and nearby session context to verify each finding.
+
+FINDING_1: EXONERATE -- stderr text is narrowly pinned to `fail()` while other launch-stack diagnostics can share that stream.
+FINDING_2: EXONERATE -- line 53’s `failed` gloss omits voter1’s non-zero-with-output failure mode already defined above.
+FINDING_3: YES
+FINDING_4: EXONERATE -- dense paragraph is readable enough; bulletizing is optional polish not required here.
+FINDING_5: EXONERATE -- same paragraph as FINDING_4/6; splitting is nice-to-have, not necessary.
+FINDING_6: EXONERATE -- scanability concern is real but duplicate triangulation; no mandatory restructure.
+FINDING_7: EXONERATE -- narrative is explicitly heuristic (`typically`); full exit-code taxonomy belongs in subprocess docs.
+FINDING_8: EXONERATE -- rare non-2 rc=1 paths are acknowledged by `typically`; extra caveats add bulk without fixing a doc bug.
+FINDING_9: EXONERATE -- 124/99 detail is accurate but optional; pointing to sidecars/scripts suffices without expanding this section.
