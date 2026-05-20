@@ -1,0 +1,20 @@
+Gathering the diff and commit history for the review.
+
+Verifying `git log` ordering, how `PR_TITLE` is propagated, and whether the test sets `ISSUE_NUMBER`.
+
+### In-Scope Findings
+
+- **risk-integration** `scripts/ship-pr.sh:951-952` — `read_state` returns the raw value after the first `=` with no trim or digit check, and the new line unconditionally prefixes `Fixes #${issue_num}: ` whenever `[ -n "$issue_num" ]` passes. **Suggested fix:** Before mutating `title`, normalize with something like `issue_num=${issue_num#"${issue_num%%[![:space:]]*}"}` and `issue_num=${issue_num%"${issue_num##*[![:space:]]}"}` (or `awk` trim) and require `case $issue_num in ([0-9]*) ;; (*) issue_num= ;; esac` (full digit match) so only a sane tracking id reaches the PR title and `gh` invocation.
+
+- **correctness** `scripts/test-ship-pr.sh:886-890` — The regression only checks final `PR_TITLE` in state and inherits `ISSUE_NUMBER=7` from the shared `write_state` helper rather than setting `ISSUE_NUMBER` in the scenario itself, so a future change to the default template could pass the assertion while no longer proving issue-specific behavior. **Suggested fix:** After `write_state`, use `awk` (as elsewhere in this file) to set `ISSUE_NUMBER=<chosen>` explicitly for this repo, or assert the `create-pr.sh` stub log includes `--title 'Fixes #7: initial'` if the harness records argv.
+
+### Out-of-Scope Observations
+
+- **risk-integration** `scripts/ship-pr.sh:946-948` — The `git log | grep -v … | tail -1` pipeline still depends on `grep` exit status under `pipefail` when every subject is filtered out; that structure predates this branch and is unchanged aside from `head`→`tail`. **Why out of scope:** not introduced or amplified by the title-prefix or oldest-commit change.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	latent	risk-integration	scripts/ship-pr.sh:951-952	ISSUE_NUMBER is interpolated into the PR title without validation or trimming after read_state.	Whitespace-only or non-numeric ISSUE_NUMBER (e.g. corrupted state) yields a title like Fixes #   : … or Fixes #abc: …; GitHub may not link the issue and operators get a misleading PR title while the flow still succeeds.	Trim whitespace and require an all-digit ISSUE_NUMBER before applying the Fixes # prefix; otherwise leave title unchanged or stall loudly.
+1	in_scope	nit	correctness	scripts/test-ship-pr.sh:886-890	PR title test relies on write_state default ISSUE_NUMBER=7 instead of pinning the value in the scenario.	If the default ISSUE_NUMBER in write_state changes, the test could still pass PR_TITLE=Fixes #7: initial while no longer documenting issue-driven prefixing.	Set ISSUE_NUMBER explicitly in this test (or assert create-pr --title) so the scenario encodes its own contract.
+1	out_of_scope	latent	risk-integration	scripts/ship-pr.sh:946-948	git log filtered by grep -v still has pipefail/grep-empty edge cases when no subject survives the filter.	All subjects match the flush skip pattern so grep exits 1; behavior depends on pipefail and assignment rules as before this change.	Only worth addressing if tightening ship-pr error handling globally; unchanged by this diff aside from tail vs head.
+```

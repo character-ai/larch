@@ -939,15 +939,17 @@ run_pr_prep_phase() {
 }
 
 run_pr_create_phase() {
-    local title out rc pr_number pr_url pr_status repo_args draft_args fail_file _merge_base final_report_output
+    local title out rc pr_number pr_url pr_status repo_args draft_args fail_file _merge_base final_report_output issue_num
     emit_breadcrumb "→ ship-pr: opening PR"
     _merge_base=$(git merge-base HEAD origin/main 2>/dev/null) || _merge_base=
     if [ -n "$_merge_base" ]; then
-        title=$(git log --format=%s "${_merge_base}..HEAD" 2>/dev/null | grep -v '^chore(larch-logs): flush ' | head -1)
+        title=$(git log --format=%s "${_merge_base}..HEAD" 2>/dev/null | grep -v '^chore(larch-logs): flush ' | tail -1)
     else
-        title=$(git log --format=%s HEAD 2>/dev/null | grep -v '^chore(larch-logs): flush ' | head -1)
+        title=$(git log --format=%s HEAD 2>/dev/null | grep -v '^chore(larch-logs): flush ' | tail -1)
     fi
     title=${title:-"Implement requested changes"}
+    issue_num=$(read_state ISSUE_NUMBER)
+    [ -n "$issue_num" ] && title="Fixes #${issue_num}: ${title}"
     repo_args=()
     if [ -n "$(read_state REPO)" ]; then
         repo_args=(--repo "$(read_state REPO)")
@@ -1022,6 +1024,10 @@ run_pr_create_phase() {
     printf '%s\n' "$final_report_output" >> "$fail_file"
     [ "$rc" -eq 0 ] || record_failure pr-create "write-final-report.sh post" "$rc" "$fail_file" Warnings
     if [ "$pr_status" = "existing" ]; then
+        fail_file=$(failure_capture_path pr-create)
+        gh pr edit "$pr_number" "${repo_args[@]+"${repo_args[@]}"}" --title "$title" > "$fail_file" 2>&1
+        rc=$?
+        [ "$rc" -eq 0 ] || record_failure pr-create "gh pr edit --title" "$rc" "$fail_file"
         fail_file=$(failure_capture_path pr-create)
         "$SCRIPT_DIR/gh-pr-body-update.sh" --pr "$pr_number" --body-file "$IMPLEMENT_TMPDIR/pr-body.md" "${repo_args[@]+"${repo_args[@]}"}" > "$fail_file" 2>&1
         rc=$?

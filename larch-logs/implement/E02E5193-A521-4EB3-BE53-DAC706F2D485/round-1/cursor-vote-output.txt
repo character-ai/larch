@@ -1,0 +1,13 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: EXONERATE -- operator-trusted state, no shell injection; “security” overstates a title-quality concern
+FINDING_4: EXONERATE -- accurate context that predates this diff; no separate tracking issue needed
+FINDING_5: EXONERATE -- pre-existing state serialization; unchanged by this diff
+FINDING_6: EXONERATE -- latent pipefail/grep behavior predates tail-vs-head swap
+FINDING_7: NO -- stub PR_TITLE is harness noise; assertions target state file, not stub stdout
+FINDING_8: EXONERATE -- true that tail scans the pipe, but typical commit depth makes the suggested rewrite optional churn
+FINDING_9: EXONERATE -- same merge-base coverage gap as FINDING_2; no additional fix needed beyond one fixture update
+FINDING_10: EXONERATE -- valid design note for extending the fixture, subsumed by addressing FINDING_2
+FINDING_11: EXONERATE -- pinning ISSUE_NUMBER would be clearer but default write_state=7 is stable and discoverable
+FINDING_12: EXONERATE -- duplicates FINDING_3; strict validation is optional for corrupted local state
+FINDING_13: EXONERATE -- duplicates FINDING_2’s merge-base test gap
