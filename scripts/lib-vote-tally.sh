@@ -129,7 +129,10 @@ classify_result() {
         printf 'accepted'
     elif (( yes > 0 && yes == no )); then
         printf 'neutral'
-    elif (( yes > 0 && exonerate > 0 && no == 0 )); then
+    # Exoneration has two intentional paths:
+    # 1. Legacy zero-NO panels: any EXONERATE vote with no NO votes exonerates.
+    # 2. Mixed panels: EXONERATE must meet-or-beat NO and strictly exceed YES.
+    elif (( exonerate > 0 && (no == 0 || (exonerate >= no && exonerate > yes)) )); then
         printf 'exonerated'
     else
         printf 'rejected'

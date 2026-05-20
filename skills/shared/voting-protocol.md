@@ -56,6 +56,14 @@ Valid vote tokens are `YES`, `NO`, and `EXONERATE`. If a voter's output contains
 
 Dispatchers emit degraded-panel warnings when effective voters drop below the expected panel size. `effective` means status is not `failed` and the voter output file is non-empty.
 
+After the acceptance threshold, per-finding result classification uses these tie-breaks in order:
+
+- `YES > 0` and `YES == NO` yields `neutral`.
+- Otherwise `EXONERATE > 0` yields `exonerated` in either of two cases:
+  `NO == 0` (legacy zero-NO path), or
+  `EXONERATE >= NO` and `EXONERATE > YES` (mixed-panel path, so `0Y/1N/1E` exonerates while `0Y/2N/1E` rejects).
+- All remaining cases yield `rejected`.
+
 ## Voter Panel Composition
 
 **For plan review** (`/design` Step 3):

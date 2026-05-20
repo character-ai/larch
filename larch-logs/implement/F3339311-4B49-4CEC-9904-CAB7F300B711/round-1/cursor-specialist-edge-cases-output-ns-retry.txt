@@ -1,0 +1,36 @@
+Reading the pre-computed diff and running a read-only git log.
+
+Reading `accept_finding` and surrounding `classify_result` logic for edge-case analysis.
+
+### In-Scope Findings
+
+### FINDING_1: Two-judge YES+EXON split misclassified as rejected
+- **Severity:** **Important**
+- **Focus area:** `correctness`
+- **Location:** [`scripts/lib-vote-tally.sh:132-133`](scripts/lib-vote-tally.sh)
+- **Issue:** The new guard `exonerate > yes` is false when `yes` and `exonerate` are both 1, so the exoneration branch no longer runs for the previously covered case `classify_result 1 0 1 2`.
+- **Concrete scenario:** Degraded panel with `eligible_count` / `EFFECTIVE_VOTERS` == 2 (one voter casts `YES`, another `EXONERATE`, zero `NO`). Tallies pass `yes=1`, `no=0`, `exonerate=1`, `eligible=2` into `classify_result` ([`skills/review/scripts/tally-code-votes.sh:284-294`](skills/review/scripts/tally-code-votes.sh), [`skills/design/scripts/tally-plan-review.sh:209-219`](skills/design/scripts/tally-plan-review.sh)). **Before:** `yes > 0 && exonerate > 0 && no == 0` yielded `exonerated`. **After:** `exonerate > yes` is `1 > 1` → false → falls through to `rejected`, wrongly treating a mixed YES/EXON panel like a dismissal.
+- **Suggested fix:** Keep the unanimous-EXON fix without breaking the YES+EXON, `no==0` path—for example combine disjuncts: `(( yes > 0 && exonerate > 0 && no == 0 ) || ( yes == 0 && exonerate > 0 && exonerate >= no ))`, or otherwise preserve the old branch for `yes > 0 && no == 0` while still mapping `0Y/0N/NE` to `exonerated`.
+
+### FINDING_2: No harness assertion for the 2-judge YES+EXON regression
+- **Severity:** **Nit**
+- **Focus area:** `code-quality`
+- **Location:** [`scripts/test-lib-vote-tally.sh:191-202`](scripts/test-lib-vote-tally.sh)
+- **Issue:** New cases exercise `eligible=3` only; nothing locks in `classify_result 1 0 1 2` → `exonerated`, so the regression above is invisible to `scripts/test-lib-vote-tally.sh`.
+- **Suggested fix:** Add `got=$(classify_result 1 0 1 2); assert_eq "1Y/1E/2 elig (split) → exonerated" "$got" "exonerated"` (or equivalent) next to the other `classify_result` rows.
+
+### Out-of-Scope Observations
+
+### FINDING_3: `neutral` vs “exactly 1 YES” wording in scoring doc
+- **Severity:** **Nit**
+- **Focus area:** `risk-integration`
+- **Location:** [`skills/shared/voting-protocol.md:182-185`](skills/shared/voting-protocol.md)
+- **Issue:** The competition table describes neutral as “exactly 1 YES” while `classify_result` uses `yes > 0 && yes == no` ([`scripts/lib-vote-tally.sh:130-131`](scripts/lib-vote-tally.sh)); that mismatch predates this branch and is unchanged here.
+- **Why out of scope:** `skills/shared/voting-protocol.md` is not modified in the reviewed diff and the behavior is not introduced by this change.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/lib-vote-tally.sh:132-133	Replaced exoneration guard with exonerate > yes, which is false when yes==exonerate==1.	2-judge panel: one YES and one EXONERATE (no NO). classify_result 1 0 1 2 was exonerated; now returns rejected, mis-scoring the finding and contradicting prior tie handling.	Preserve old yes>0 exon>0 no==0 disjunct or special-case yes==exonerate with no==0 while still fixing all-EXON 0 YES cases; add test 1 0 1 2.
+1	in_scope	nit	code-quality	scripts/test-lib-vote-tally.sh:191-202	New tests only cover eligible=3; no assertion for 1Y/1E split on a 2-judge quorum.	Regression for classify_result 1 0 1 2 can ship without failing the harness.	Add assert classify_result 1 0 1 2 expects exonerated.
+1	out_of_scope	nit	risk-integration	skills/shared/voting-protocol.md:182-185	Doc rows say exactly 1 YES for neutral; code uses YES/NO tie.	Operator misreads scoreboard semantics vs tally; pre-existing doc drift.	Update voting-protocol or classify comments in a separate change; not part of this diff.
+```

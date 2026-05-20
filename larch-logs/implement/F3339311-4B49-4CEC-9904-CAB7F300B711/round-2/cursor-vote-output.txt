@@ -1,0 +1,22 @@
+FINDING_1: EXONERATE -- doc gap is real but a standalone tracking issue is heavier than an in-pass markdown update
+FINDING_2: YES
+FINDING_3: EXONERATE -- correctly scoped as latent contract noise unrelated to this diff
+FINDING_4: NO -- duplicate of FINDING_1
+FINDING_5: NO -- duplicate of FINDING_1
+FINDING_6: NO -- duplicate of FINDING_15
+FINDING_7: NO -- duplicate of FINDING_1
+FINDING_8: EXONERATE -- optional E2E harness; unit tests already cover classify_result
+FINDING_9: EXONERATE -- theoretical awk edge case not introduced here
+FINDING_10: EXONERATE -- tests encode the tie logic; extra comment is optional churn
+FINDING_11: EXONERATE -- same as FINDING_10
+FINDING_12: EXONERATE -- parallel elif branches add verbosity without reducing real bug risk
+FINDING_13: EXONERATE -- label-only readability nit
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: NO -- duplicate of FINDING_15
+FINDING_17: EXONERATE -- behavior change matches the bugfix; document intent rather than reopen policy in this PR
+FINDING_18: NO -- duplicate of FINDING_15
+FINDING_19: NO -- duplicate of FINDING_14
+FINDING_20: EXONERATE -- checklist traceability nit only
+FINDING_21: EXONERATE -- duplicate of FINDING_10/11
+FINDING_22: NO -- duplicate of FINDING_14

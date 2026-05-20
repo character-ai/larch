@@ -1,0 +1,6 @@
+### In-Scope Findings
+
+1. **Important** `correctness` `scripts/lib-vote-tally.sh:132` — The new EXON predicate regresses the existing `1 YES / 0 NO / 1 EXONERATE` path. `scripts/test-lib-vote-tally.sh:194` still expects `classify_result 1 0 1 3` to return `exonerated`, but the current code returns `rejected` because `exonerate > yes` is false when both are `1`; I confirmed directly with `source scripts/lib-vote-tally.sh; classify_result 1 0 1 3`. Adjust the condition so it covers the new all-EXON case without dropping the old no-NO mixed YES/EXON case, for example by preserving `no == 0` as an exoneration path or otherwise explicitly handling `1Y/0N/1E`.
+
+Full harness note: `bash scripts/test-lib-vote-tally.sh` could not start in this sandbox because `mktemp` under the user temp directory was blocked with `Operation not permitted`; the direct classifier check above did run.
+

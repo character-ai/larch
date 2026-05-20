@@ -1,0 +1,22 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: EXONERATE -- legitimate broader contract concern, but too vague and unchanged to merit a tracking issue.
+FINDING_4: EXONERATE -- duplicate of the lib-vote-tally documentation gap already covered by FINDING_1.
+FINDING_5: EXONERATE -- duplicate of the lib-vote-tally documentation gap already covered by FINDING_1.
+FINDING_6: EXONERATE -- legitimate plan-artifact mismatch, but not worth a repo tracking issue by itself.
+FINDING_7: EXONERATE -- duplicate of the lib-vote-tally documentation gap already covered by FINDING_1.
+FINDING_8: EXONERATE -- optional extra E2E coverage; current behavior is already covered in the unit harness.
+FINDING_9: NO -- tally IDs are canonical FINDING_N/OOS_N values, so regex metacharacter skew is only hypothetical.
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: NO -- the current test labels accurately describe the asserted vote relationships.
+FINDING_14: YES
+FINDING_15: EXONERATE -- real plan/code mismatch, but the session plan is not shipped and fixing it adds little value now.
+FINDING_16: EXONERATE -- real plan/code mismatch, but the session plan is not shipped and fixing it adds little value now.
+FINDING_17: YES
+FINDING_18: EXONERATE -- real plan/code mismatch, but the session plan is not shipped and fixing it adds little value now.
+FINDING_19: YES
+FINDING_20: NO -- adding more tests than the plan listed is not a defect.
+FINDING_21: YES
+FINDING_22: YES
