@@ -24,9 +24,9 @@
 #        - "3-judge panel on round 1"    (case-INSENSITIVE, grep -iF)
 #        - "simple review panel"         (case-INSENSITIVE, grep -iF)
 #        - "Cursor edge-cases"           (case-sensitive, grep -F)
-#        - "Codex generalist"            (case-sensitive, grep -F)
+#        - "6 Cursor specialists"        (case-sensitive, grep -F)
 #      The round-cap and judge-panel markers pair with `simple review panel`,
-#      `Cursor edge-cases`, and `Codex generalist` so future Step 5 quick-mode
+#      `Cursor edge-cases`, and `6 Cursor specialists` so future Step 5 quick-mode
 #      reviewer-composition changes that don't propagate to every public surface
 #      fail CI.
 #
@@ -88,7 +88,7 @@ readonly POS_MARKERS=(
   "3-judge panel on round 1|insensitive"
   "simple review panel|insensitive"
   "Cursor edge-cases|sensitive"
-  "Codex union|sensitive"
+  "6 Cursor specialists|sensitive"
 )
 
 # Stale phrases (forbidden in public docs; SKILL.md exempt).
@@ -289,7 +289,7 @@ run_self_test() {
 This is a fixture describing quick-mode behavior.
 The review loop runs up to 5 rounds.
 The loop runs a 3-judge panel on round 1 (Claude opus + Codex + Cursor) and a 2-judge panel on rounds 2+ (Claude + Cursor).
-It uses the simple review panel: 6 Cursor specialists (including Cursor edge-cases) plus Codex union on round 1.
+It uses the simple review panel: 6 Cursor specialists (including Cursor edge-cases).
 EOF
 
   # Stale-phrase fixture: contains ALL positive markers PLUS exactly one stale
@@ -302,7 +302,7 @@ EOF
 Stale-phrase fixture: contains every positive marker so only the stale phrase can drive failure.
 The review loop runs up to 5 rounds.
 The loop runs a 3-judge panel on round 1 (Claude opus + Codex + Cursor) and a 2-judge panel on rounds 2+ (Claude + Cursor).
-It uses the simple review panel: 6 Cursor specialists (including Cursor edge-cases) plus Codex union on round 1.
+It uses the simple review panel: 6 Cursor specialists (including Cursor edge-cases).
 Stale phrase intentionally embedded: simplified code review (1 Claude Code Reviewer subagent, 1 round).
 EOF
 

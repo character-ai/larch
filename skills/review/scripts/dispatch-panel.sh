@@ -96,34 +96,11 @@ queue_external_slot() {
     static_slot_count=$((static_slot_count + 1))
 }
 
-queue_codex_union_slot() {
-    local out="$REVIEW_TMPDIR/codex-union-output.txt"
-    local agent="$REVIEW_TMPDIR/codex-union-agent.md"
-    if [[ "$DYNAMIC_SLOTS" -gt 0 && "$SCOUT_STATUS" == "ok" && -n "$SCOUT_MANIFEST" ]]; then
-        local focus_list
-        focus_list=$(jq -r '[.archetypes[]?.focus_area] | map(select(. != null and . != "")) | join(", ")' "$SCOUT_MANIFEST" 2>/dev/null || true)
-        if [[ -n "$focus_list" ]]; then
-            {
-                cat "$PLUGIN_ROOT/agents/code-reviewer.md"
-                printf '\n\n## Dynamic Focus Coverage\nThis review additionally covers the dynamic archetype focus areas: %s.\n' "$focus_list"
-            } > "$agent"
-        else
-            cp "$PLUGIN_ROOT/agents/code-reviewer.md" "$agent"
-        fi
-    else
-        cp "$PLUGIN_ROOT/agents/code-reviewer.md" "$agent"
-    fi
-    printf '{"slot":"codex-union","tool":"codex","output":"%s","agent":"%s"}\n' "$out" "$agent" >> "$manifest"
-    static_slot_count=$((static_slot_count + 1))
-}
-
 # Plan file is required when reviewers run; plan-fidelity is always dispatched.
 [[ -n "$PLAN_FILE" ]] || { larch_err "dispatch-panel.sh: --plan-file is required (plan-fidelity specialist is always dispatched)"; exit 2; }
 [[ -f "$PLAN_FILE" ]] || { larch_err "dispatch-panel.sh: plan file not found: $PLAN_FILE"; exit 2; }
 
-# Both panels: 6 Cursor specialists + 1 Codex union slot on round 1.
-# Codex union covers the union of all scouted dynamic archetype focus areas, or
-# falls back to agents/code-reviewer.md when no dynamic archetypes are present.
+# Both panels: 6 Cursor specialists.
 # Both panels always include plan-fidelity (plan file required above).
 # Focus area enum anchor for CI: code-quality / risk-integration / correctness / architecture / security
 cursor_specialists=(structure correctness testing security edge-cases plan-fidelity)
@@ -409,25 +386,14 @@ if [[ "$DYNAMIC_ARCHETYPES" != "0" && "$SCOUT_STATUS" == "na" ]]; then
 fi
 append_scout_parse_issue
 
-# Round 1 only: add 1 Codex union slot (union of dynamic archetypes, or generic fallback).
-if (( ROUND_NUM == 1 )); then
-    queue_codex_union_slot
-fi
-
 static_cursor=${#cursor_specialists[@]}
 static_codex=0
-(( ROUND_NUM == 1 )) && static_codex=1
 total=$((static_cursor + static_codex + DYNAMIC_SLOTS))
 if (( total > 0 )); then
-    if (( ROUND_NUM == 1 )); then
-        emit_breadcrumb "→ review: launching $total reviewers ($static_cursor Cursor static, 1 Codex union, $DYNAMIC_SLOTS dynamic)"
-    else
-        emit_breadcrumb "→ review: launching $total reviewers ($static_cursor Cursor static, $DYNAMIC_SLOTS dynamic)"
-    fi
+    emit_breadcrumb "→ review: launching $total reviewers ($static_cursor Cursor static, $DYNAMIC_SLOTS dynamic)"
 fi
 
-codex_present_for_waterfall="$CODEX_AVAILABLE"
-(( ROUND_NUM == 1 )) || codex_present_for_waterfall="false"
+codex_present_for_waterfall="false"
 waterfall_args=(--slots-file "$manifest" --codex-present "$codex_present_for_waterfall" --cursor-present "$CURSOR_AVAILABLE" --mode "$MODE" --timeout 1800)
 [[ "$MODE" == "diff" && -n "$DIFF_FILE" ]] && waterfall_args+=(--diff-file "$DIFF_FILE" --commit-count "$COMMIT_COUNT")
 [[ "$MODE" == "description" && -n "$SCOPE_FILES" ]] && waterfall_args+=(--description-text "${DESCRIPTION_TEXT:-description review}" --scope-files "$SCOPE_FILES")

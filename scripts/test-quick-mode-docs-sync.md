@@ -28,7 +28,7 @@ Each target file MUST contain all markers in `POS_MARKERS` inside `test-quick-mo
 | `3-judge panel on round 1` | **case-insensitive** `grep -iF` | Pins the round-1 Codex-inclusive judge panel; rounds 2+ omit Codex. |
 | `simple review panel` | **case-insensitive** `grep -iF` | Pins that quick mode uses the delegated `--panel simple` topology. |
 | `Cursor edge-cases` | case-sensitive `grep -F` | Pins one of the 6 Cursor specialist slots in the simple panel. |
-| `Codex generalist` | case-sensitive `grep -F` | Pins the single Codex generalist slot in the simple panel (round 1 only at runtime; prose should say so in public mirrors). |
+| `6 Cursor specialists` | case-sensitive `grep -F` | Pins the Cursor-only simple-panel layout in the public mirrors. |
 
 Together these markers encode the canonical Step 5 quick-mode contract. Without them, a SKILL.md edit that re-shuffled the quick-mode reviewer or judge composition could ship without the public docs being updated.
 

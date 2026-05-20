@@ -4,11 +4,11 @@
 
 Primary caller: `skills/review/scripts/dispatch-panel.sh`. Other callers should treat it as an implementation detail of the review panel dispatcher.
 
-Accepted flags: `--mode diff|description`, `--diff-file` for diff mode, `--scope-files` for description mode, and exactly one of `--description-text` or `--description-file` (file path is validated like other context inputs; prefer `--description-file` for large descriptions because Linux caps per-`argv` string length below the 256 KB scout limit), optional `--plan-file`, required `--max-archetypes 0..4`, required `--output`, optional `--session-env-path` (exported for nested timing/session consumers), and optional `--timeout` (default `180` seconds).
+Accepted flags: `--mode diff|description`, `--diff-file` for diff mode, `--scope-files` for description mode, and exactly one of `--description-text` or `--description-file` (file path is validated like other context inputs; prefer `--description-file` for large descriptions because Linux caps per-`argv` string length below the 256 KB scout limit), optional `--plan-file`, required `--max-archetypes 0..8`, required `--output`, optional `--session-env-path` (exported for nested timing/session consumers), and optional `--timeout` (default `180` seconds).
 
 Invariants:
 
-- Dynamic archetypes are opt-in and capped at 4.
+- Dynamic archetypes are opt-in and capped at 8.
 - The scout is non-fatal. Claude failures, malformed JSON, timeout, and validation failures all write `{"archetypes":[]}` and emit a non-`ok` `SCOUT_STATUS`.
 - The script invokes `scripts/launch-claude-subprocess.sh` by default, not raw `claude`, so subprocess path validation, read-only preamble, context hardening, timing-ledger integration, and dirty-tree sidecars stay centralized.
 - `SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH` may override that launcher path for tests or controlled integrations. Treat the override target as trusted executable configuration: it can change the subprocess binary and the hardening path applied to scout prompts.

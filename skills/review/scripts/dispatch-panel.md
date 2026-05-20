@@ -4,7 +4,7 @@
 
 It dispatches all reviewer slots through `scripts/dispatch-with-waterfall.sh`, which applies a three-phase waterfall fallback per slot: Phase 1 uses the primary tool (Cursor or Codex) when present; Phase 2 tries the alternate external tool when Phase 1 fails or is absent; Phase 3 launches a Claude subprocess reviewer when both external phases fail or are absent. This means reviewer slots always produce output — Claude fills any slot that cannot be covered by an external tool.
 
-**Simple panel** (`--panel simple`) and **Hard panel** (`--panel hard`): both use the same static layout — 6 Cursor specialist slots (structure, correctness, testing, security, edge-cases, plan-fidelity) plus 1 Codex union archetype slot on round 1 only. The Codex union slot covers the union of all scouted dynamic archetype focus areas when the scout ran successfully (`SCOUT_STATUS=ok`, `DYNAMIC_SLOTS > 0`); otherwise it falls back to `agents/code-reviewer.md` as a generic archetype. Round 2+ drops the Codex union slot, leaving only the 6 Cursor specialist slots. Plan file is required and always passed to all slots; absence is a hard fail (exit 2).
+**Simple panel** (`--panel simple`) and **Hard panel** (`--panel hard`): both use the same static layout — 6 Cursor specialist slots (structure, correctness, testing, security, edge-cases, plan-fidelity). Plan file is required and always passed to all slots; absence is a hard fail (exit 2).
 
 Both panels always include plan-fidelity; there is no longer a conditional based on plan file presence.
 
@@ -28,6 +28,6 @@ Stdout is `KEY=value` only: `EXTERNAL_OUTPUT_FILES`, `CLAUDE_OUTPUT_FILES`, `PAN
 
 On non-zero exit, `FAILURE_LOG=<path>` may appear on stdout.
 
-When `LARCH_QUIET_BREADCRUMBS=1` is exported, `dispatch-panel.sh` emits one breadcrumb immediately before the waterfall dispatch, after static and dynamic slots are finalized. Round 1: `→ review: launching N reviewers (X Cursor static, 1 Codex union, Z dynamic)`. Round 2+: `→ review: launching N reviewers (X Cursor static, Z dynamic)`. The `total > 0` gate suppresses the line when no reviewers are launched.
+When `LARCH_QUIET_BREADCRUMBS=1` is exported, `dispatch-panel.sh` emits one breadcrumb immediately before the waterfall dispatch, after static and dynamic slots are finalized: `→ review: launching N reviewers (X Cursor static, Z dynamic)`. The `total > 0` gate suppresses the line when no reviewers are launched.
 
 Harness: `skills/review/scripts/test-dispatch-panel.sh`, wired through `make test-dispatch-panel`.

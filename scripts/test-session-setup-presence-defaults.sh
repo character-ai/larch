@@ -120,7 +120,7 @@ output=$(PATH="$STUB_BIN:/usr/bin:/bin" "$SCRIPT" \
     --write-session-env "$OUT_ENV4" \
     2>"$ERR4")
 assert_file_value "$OUT_ENV4" LARCH_DYNAMIC_ARCHETYPES_MAX "" "invalid caller dynamic archetypes omitted from session-env"
-grep -Fq "session-setup.sh: warning: ignoring invalid LARCH_DYNAMIC_ARCHETYPES_MAX from caller-env (must be 0..4)" "$ERR4" \
+grep -Fq "session-setup.sh: warning: ignoring invalid LARCH_DYNAMIC_ARCHETYPES_MAX from caller-env (must be 0..8)" "$ERR4" \
     || { FAIL=$((FAIL + 1)); echo "FAIL: invalid caller dynamic archetypes warning missing"; }
 
 echo "Results: $PASS passed, $FAIL failed"
