@@ -1,0 +1,29 @@
+Reading the ballot and session context files to verify findings.
+
+Reading diff/plan context and the cited source regions to verify ballot claims.
+
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: EXONERATE -- JSON sentinel already shares the first-line contract in validate-research-output.md; extra mirror fixtures are optional hardening, not a correctness gap.
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: NO -- factual commit-count observation, not a defect warranting a tracking issue.
+FINDING_8: NO -- informational note that Makefile wiring is already satisfied.
+FINDING_9: EXONERATE -- pre-existing comment nit outside this diff’s scope.
+FINDING_10: NO -- duplicate Makefile observation of FINDING_8.
+FINDING_11: EXONERATE -- same pre-existing trimmed_nonblank_content wording as FINDING_9.
+FINDING_12: EXONERATE -- overlaps the section-0 comment rewrite already tracked by FINDING_1/6.
+FINDING_13: EXONERATE -- multi-line JSON concern is the same contract trade-off as FINDING_5 without needing a separate issue.
+FINDING_14: EXONERATE -- two-line awk duplication is acceptable; a helper would be marginal churn.
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: EXONERATE -- behavior matches the intended first-line sentinel short-circuit; supporting JSONL after NO_ISSUES_FOUND would contradict “no findings” and adds branching cost for a contrived hybrid.
+FINDING_18: EXONERATE -- same FIRST_LINE jq trade-off as FINDING_5 once addressed or accepted.
+FINDING_19: EXONERATE -- duplicate of FINDING_5/18.
+FINDING_20: EXONERATE -- duplicate of FINDING_5/18.
+FINDING_21: YES
+FINDING_22: YES
+FINDING_23: YES
+FINDING_24: EXONERATE -- duplicate multi-line JSON risk already captured by FINDING_5.
+FINDING_25: YES

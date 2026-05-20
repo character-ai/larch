@@ -1,0 +1,27 @@
+Reading the ballot and any referenced context files.
+
+Verifying ballot claims against the repository files.
+
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: NO -- accurate observation; no GitHub issue warranted
+FINDING_4: NO -- meta self-disclosure, not a product defect
+FINDING_5: EXONERATE -- intentional `set -uo pipefail` without `-e` per header rationale
+FINDING_6: NO -- commit history listing is not a trackable defect
+FINDING_7: EXONERATE -- minor catalog lag; opening a ticket would be heavier than a casual doc touch-up
+FINDING_8: EXONERATE -- archival plan fidelity nit; optional note only
+FINDING_9: EXONERATE -- same header/plan drift as FINDING_1; no separate action needed
+FINDING_10: EXONERATE -- duplicate stale-range finding (see FINDING_1)
+FINDING_11: EXONERATE -- duplicate stale-range finding (see FINDING_1)
+FINDING_12: EXONERATE -- duplicate stale-range finding (see FINDING_1)
+FINDING_13: EXONERATE -- duplicate stale-range finding (see FINDING_1)
+FINDING_14: EXONERATE -- duplicate stale-range finding (see FINDING_1)
+FINDING_15: YES
+FINDING_16: EXONERATE -- duplicate contract/header mismatch (see FINDING_2)
+FINDING_17: EXONERATE -- duplicate contract/header mismatch (see FINDING_2)
+FINDING_18: EXONERATE -- duplicate contract/header mismatch (see FINDING_2)
+FINDING_19: YES
+FINDING_20: EXONERATE -- narrow edge; documenting intent beats tightening the fast path here
+FINDING_21: EXONERATE -- duplicate contract/header mismatch (see FINDING_2)
+FINDING_22: EXONERATE -- duplicate contract/header mismatch (see FINDING_2)
+FINDING_23: EXONERATE -- duplicate contract/header mismatch (see FINDING_2)

@@ -62,9 +62,13 @@
 # that are structurally different from research-phase prose (they contain a
 # no-findings sentinel on the happy path, or short numbered findings with
 # file:line citations). The preset:
-#   - accepts a file whose entire trimmed content equals the canonical JSON
-#     sentinel `{"no_issues_found": true}` or legacy `NO_ISSUES_FOUND`
-#     (case-sensitive) as substantive — exit 0 with no further checks,
+#   - accepts a file whose first non-empty line parses with `jq` as an object with
+#     `no_issues_found: true`, or legacy `NO_ISSUES_FOUND` (case-sensitive) as the
+#     entire first non-empty line, as substantive — exit 0 with no further checks;
+#     if the first line opens `{` but is not a complete JSON value, `jq` is retried
+#     on the full trimmed non-blank body, then (if needed) the first JSON value is
+#     decoded so pretty-printed sentinels with trailing operational notes still match;
+#     trailing content after a recognized sentinel is accepted and preserved,
 #   - maps a file whose entire trimmed content equals `CURSOR_EMPTY_RESPONSE`
 #     to exit 5 with a diagnostic so the collector can surface
 #     STATUS=CURSOR_EMPTY_RESPONSE,
@@ -80,7 +84,9 @@
 # and bypasses the prose word-count/citation gates when at least one valid
 # structured record is found. `--write-structured <path>` writes normalized valid
 # records to the given path; the canonical JSON no-findings sentinel and legacy
-# NO_ISSUES_FOUND write an empty file and exit 0.
+# NO_ISSUES_FOUND (legacy literal on the first non-empty line; JSON via the same
+# layered jq / first-value decode as validation mode; trailing content accepted)
+# write an empty file and exit 0.
 # JSONL detection prefers `jq`: each candidate line must parse as a JSON object
 # with schema_version=1 and the required schema fields. Severity aliases
 # Important/Nit/Latent are normalized case-insensitively. If `jq` is unavailable,
@@ -223,6 +229,49 @@ trimmed_nonblank_content() {
     awk 'NF { gsub(/^[[:space:]]+|[[:space:]]+$/, ""); print }' "$1"
 }
 
+# JSON no-findings sentinel: prefer the first non-empty line so trailing operational
+# notes stay valid. When that line is not a complete JSON value but looks like the
+# start of an object (e.g. pretty-printed `{"no_issues_found": true}` split across
+# lines), retry `jq` against the full trimmed body so multi-line objects remain accepted.
+# When the body is pretty-printed JSON followed by trailing prose, `jq` on the full
+# stream fails; decode only the first JSON value (python3) and accept if it matches.
+json_no_issues_found_short_circuit() {
+    local trimmed="$1"
+    local first_line="$2"
+    command -v jq >/dev/null 2>&1 || return 1
+    if jq -e 'type == "object" and .no_issues_found == true' <<<"$first_line" >/dev/null 2>&1; then
+        return 0
+    fi
+    if [[ "$first_line" =~ ^[[:space:]]*\{ ]]; then
+        if jq -e 'type == "object" and .no_issues_found == true' <<<"$trimmed" >/dev/null 2>&1; then
+            return 0
+        fi
+        if command -v python3 >/dev/null 2>&1 \
+            && printf '%s\n' "$trimmed" | python3 -c '
+import json, sys
+
+s = sys.stdin.read()
+d = json.JSONDecoder()
+i = 0
+n = len(s)
+while i < n and s[i] in " \t\r\n":
+    i += 1
+if i >= n or s[i] != "{":
+    raise SystemExit(1)
+try:
+    obj, _end = d.raw_decode(s, i)
+except json.JSONDecodeError:
+    raise SystemExit(1)
+if isinstance(obj, dict) and obj.get("no_issues_found") is True:
+    raise SystemExit(0)
+raise SystemExit(1)
+' >/dev/null 2>&1; then
+            return 0
+        fi
+    fi
+    return 1
+}
+
 validate_structured_jsonl_with_jq() {
     local input="$1"
     local output="$2"
@@ -323,12 +372,12 @@ validate_structured_tsv() {
 
 if [[ "$STRUCTURED_REVIEWER_MODE" == "true" ]]; then
     TRIMMED=$(trimmed_nonblank_content "$INPUT")
-    if [[ "$TRIMMED" == "NO_ISSUES_FOUND" ]]; then
+    FIRST_LINE=$(printf '%s\n' "$TRIMMED" | awk 'NF { print; exit }')
+    if [[ "$FIRST_LINE" == "NO_ISSUES_FOUND" ]]; then
         write_structured_output "$WRITE_STRUCTURED" ""
         exit 0
     fi
-    if command -v jq >/dev/null 2>&1 \
-       && jq -e 'type == "object" and .no_issues_found == true' <<<"$TRIMMED" >/dev/null 2>&1; then
+    if json_no_issues_found_short_circuit "$TRIMMED" "$FIRST_LINE"; then
         write_structured_output "$WRITE_STRUCTURED" ""
         exit 0
     fi
@@ -358,10 +407,17 @@ fi
 
 # --- 0. Validation-mode short-circuits: accept no-findings sentinels as
 # substantive without applying word-count or citation checks, and distinguish
-# Cursor's empty .result response marker from generic thin content. Sentinels
-# must be the entire trimmed file content (whitespace-only lines removed top +
-# bottom; tabs and trailing whitespace stripped) — partial matches inside
-# larger prose do NOT trigger the short-circuit.
+# Cursor's empty .result response marker from generic thin content.
+#   - CURSOR_EMPTY_RESPONSE: entire trimmed body (whitespace-only lines removed
+#     top/bottom; tabs and trailing whitespace stripped per trimmed_nonblank_content)
+#     must equal the marker exactly.
+#   - NO_ISSUES_FOUND and the canonical JSON no-findings object: the first
+#     non-empty line must be the legacy literal or begin JSON that decodes (via
+#     `jq` on the first line, then `jq` on the full trimmed body, then first-value
+#     decode when needed) to `no_issues_found: true` (trailing lines may hold
+#     operational notes). A sentinel that appears only later in the file, or on
+#     the same line as other non-whitespace text before the sentinel, does not
+#     short-circuit and falls through to normal validation.
 if [[ "$VALIDATION_MODE" == "true" ]]; then
     TRIMMED=$(trimmed_nonblank_content "$INPUT")
     if [[ "$TRIMMED" == "CURSOR_EMPTY_RESPONSE" ]]; then
@@ -369,11 +425,11 @@ if [[ "$VALIDATION_MODE" == "true" ]]; then
         emit "FAILURE_REASON=Cursor returned a JSON envelope with empty .result field — likely transient backend issue. Fallback engaged."
         exit 5
     fi
-    if [[ "$TRIMMED" == "NO_ISSUES_FOUND" ]]; then
+    FIRST_LINE=$(printf '%s\n' "$TRIMMED" | awk 'NF { print; exit }')
+    if [[ "$FIRST_LINE" == "NO_ISSUES_FOUND" ]]; then
         exit 0
     fi
-    if command -v jq >/dev/null 2>&1 \
-       && jq -e 'type == "object" and .no_issues_found == true' <<<"$TRIMMED" >/dev/null 2>&1; then
+    if json_no_issues_found_short_circuit "$TRIMMED" "$FIRST_LINE"; then
         exit 0
     fi
     # Inline-TSV short-circuit: when cursor runs in --mode plan it cannot write

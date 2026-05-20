@@ -1,0 +1,19 @@
+Gathering the diff, commit list, and relevant source context for a correctness-focused review.
+
+Checking `trimmed_nonblank_content`, the validation-mode comment block, and Makefile wiring for completeness.
+
+Checking for multi-line JSON sentinel tests and how `TRIMMED` interacts with `jq`.
+
+### In-Scope Findings
+
+- **correctness** `scripts/validate-research-output.sh:328-337,375-381` — The JSON no-findings short-circuit now feeds only `FIRST_LINE` into `jq` instead of the full `TRIMMED` string. Any producer that emitted a pretty-printed or otherwise line-wrapped JSON object (first physical line is `{` or similar, with the rest of the object on following lines) used to pass because `jq` parsed the entire `TRIMMED` document; after this change those inputs fall through and can fail later (e.g. exit 2 in `--validation-mode`, exit 5 in `--structured-reviewer-mode`). That is a semantic narrowing beyond “allow trailing notes after a one-line sentinel,” and there is no regression test covering multi-line JSON. **Suggested fix:** Either document this as an intentional breaking change and keep the current behavior, or preserve backward compatibility—for example by trying `jq` on `FIRST_LINE` first and, on failure, retrying with the full `TRIMMED` only when the first line looks like incomplete JSON (e.g. starts with `{` but `jq` on `FIRST_LINE` fails), or by adding an explicit multi-line parse path; add a test that locks the chosen contract.
+
+- **code-quality** `scripts/validate-research-output.sh:362-367` — The block comment above the `--validation-mode` short-circuits still states that sentinels “must be the entire trimmed file content” and describes short-circuit rules that no longer match the implementation for `NO_ISSUES_FOUND` and the JSON sentinel (those now use `FIRST_LINE` while `CURSOR_EMPTY_RESPONSE` correctly remains a full-`TRIMMED` equality check per [`scripts/validate-research-output.md`](scripts/validate-research-output.md)). **Suggested fix:** Rewrite that comment so it matches the real invariants: first non-empty line of `TRIMMED` for the two no-findings sentinels, full `TRIMMED` for `CURSOR_EMPTY_RESPONSE`, and clarify that “partial match” means the sentinel not occupying the first non-empty line of `TRIMMED` (or inline on a line with other text), consistent with the updated header and contract doc.
+
+### Out-of-Scope Observations
+
+- **Makefile / `make lint`:** The diff does not touch the Makefile; [`Makefile`](Makefile) already defines `test-validate-research-output` and includes it in `test-harnesses-7`, so “wire into make lint” appears satisfied without this branch changing it.
+
+- **Commits:** `git log $(git merge-base HEAD main)..HEAD --oneline` shows a single commit: `31819bba Loosen NO_ISSUES_FOUND sentinel to first-non-empty-line match (#2455)`.
+
+- **`trimmed_nonblank_content` vs comments:** The function at `scripts/validate-research-output.sh:224-226` prints every non-blank input line (each line-trimmed), not only “top and bottom” blank stripping; that wording predates this diff and is slightly misleading but unchanged by the branch.

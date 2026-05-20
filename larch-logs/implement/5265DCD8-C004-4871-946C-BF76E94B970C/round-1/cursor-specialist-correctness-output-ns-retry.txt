@@ -1,0 +1,20 @@
+Gathering the diff and commit list for a correctness-focused review.
+
+Checking `trimmed_nonblank_content` and the validation-mode comment block for consistency with the new semantics.
+
+### In-Scope Findings
+
+- **correctness** `scripts/validate-research-output.sh:326-337` — Structured-reviewer mode now returns on the first non-empty line when it equals `NO_ISSUES_FOUND` or parses as `{"no_issues_found": true}` before any JSONL/TSV extraction from the original `INPUT`, so `--write-structured` can emit an empty sidecar even when the file still contains valid structured records after that first line. **Concrete failing scenario:** a file whose first non-empty line is `NO_ISSUES_FOUND`, followed by a blank line and then a valid JSONL reviewer object; previously `TRIMMED` was multi-line and did not equal the sentinel alone, so execution fell through and `validate_structured_jsonl_with_jq` (reading `INPUT`) could populate the sidecar; with the new `FIRST_LINE` gate the script exits 0 immediately and overwrites the sidecar with emptiness, dropping real findings. **Suggested fix:** tighten the short-circuit so it only applies when the remainder of `TRIMMED` is free of structured-record shapes (or re-scan `INPUT` for JSONL/TSV after a sentinel first line and prefer records when present), and add a regression test covering `--structured-reviewer-mode --write-structured` with sentinel plus trailing JSONL.
+
+- **code-quality** `scripts/validate-research-output.sh:362-367` — The `Validation-mode short-circuits` comment still claims no-findings sentinels must equal the entire trimmed file content and that partial matches never short-circuit, which no longer matches `FIRST_LINE`-based checks for `NO_ISSUES_FOUND` / JSON while `CURSOR_EMPTY_RESPONSE` remains full-`TRIMMED` equality. **Suggested fix:** Rewrite that comment block so it distinguishes `CURSOR_EMPTY_RESPONSE` (still entire trimmed content per `trimmed_nonblank_content`) from the no-findings sentinels (first non-empty line of that stream, trailing lines allowed).
+
+### Out-of-Scope Observations
+
+- **code-quality** `scripts/validate-research-output.sh:224-226` — The `trimmed_nonblank_content` helper’s name and older comments elsewhere imply “top and bottom” blank stripping, but the `awk` prints every non-blank line from the whole file; this predates the branch diff and was not introduced here, though it interacts with how “first line” is defined.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/validate-research-output.sh:326-337	Structured-reviewer first-line no-findings short-circuit exits before JSONL/TSV parsing on INPUT; --write-structured can write an empty sidecar despite valid records after the sentinel line.	File: first line NO_ISSUES_FOUND then valid JSONL record; old strict TRIMMED equality failed so JSONL ran and could fill sidecar; new code matches FIRST_LINE and exits 0 with empty structured output losing records.	Only short-circuit when no structured records exist after the sentinel line (or parse INPUT and prefer records); add regression for --write-structured with sentinel plus JSONL.
+1	in_scope	nit	code-quality	scripts/validate-research-output.sh:362-367	Validation-mode sentinel comment still describes entire-trimmed-content semantics for all sentinels contradicting FIRST_LINE behavior for NO_ISSUES_FOUND and JSON.	Maintainers may misread contract and reintroduce wrong checks or mis-document collector behavior.	Reword to separate CURSOR_EMPTY_RESPONSE (full TRIMMED) from no-findings sentinels (first non-empty line with trailing content allowed).
+1	out_of_scope	nit	code-quality	scripts/validate-research-output.sh:224-226	trimmed_nonblank_content naming/comments suggest top-bottom blank stripping but awk emits all non-empty lines from the file.	Pre-existing mismatch with comment phrasing in section 0 not introduced by this diff.	Optional doc-only cleanup if you unify terminology across the script.
+```

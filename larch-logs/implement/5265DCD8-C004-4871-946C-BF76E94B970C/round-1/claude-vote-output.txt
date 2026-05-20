@@ -1,0 +1,25 @@
+FINDING_1: YES
+FINDING_2: EXONERATE -- detailed case index at lines 77-83 already accurately documents 62-63; top-level range is a cosmetic nit
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: NO -- exact duplicate of FINDING_1; same file, same lines, same fix
+FINDING_7: NO -- purely informational git-log observation, no actionable concern
+FINDING_8: NO -- positive confirmation that wiring exists, no issue warranted
+FINDING_9: NO -- pre-existing comment inaccuracy not introduced by this diff
+FINDING_10: NO -- duplicate of FINDING_8
+FINDING_11: NO -- pre-existing nit not introduced by this diff
+FINDING_12: NO -- pre-existing nit not introduced by this diff
+FINDING_13: NO -- covered by in-scope FINDING_5; no separate tracking issue needed
+FINDING_14: EXONERATE -- two identical one-liners across separate code paths; extracting a helper adds indirection for negligible gain
+FINDING_15: NO -- duplicate of FINDING_1
+FINDING_16: NO -- duplicate of FINDING_1
+FINDING_17: EXONERATE -- NO_ISSUES_FOUND followed by JSONL is contradictory input; new behavior of trusting the sentinel is more correct
+FINDING_18: NO -- duplicate of FINDING_5
+FINDING_19: NO -- duplicate of FINDING_5
+FINDING_20: NO -- duplicate of FINDING_5
+FINDING_21: NO -- duplicate of FINDING_1
+FINDING_22: NO -- duplicate of FINDING_1
+FINDING_23: NO -- duplicate of FINDING_1
+FINDING_24: NO -- duplicate of FINDING_5
+FINDING_25: NO -- duplicate of FINDING_1
