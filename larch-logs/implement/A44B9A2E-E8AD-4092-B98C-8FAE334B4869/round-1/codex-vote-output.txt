@@ -1,0 +1,26 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: EXONERATE -- historical changelog entries are legitimate history and do not need a tracking issue.
+FINDING_6: NO -- legacy changelog/log narrative is not a current contract defect.
+FINDING_7: NO -- committed run-log material is process noise, not a routing-contract defect.
+FINDING_8: EXONERATE -- historical changelog text is legitimate but not issue-worthy.
+FINDING_9: NO -- trivial pre-existing typo, not worth a tracking issue.
+FINDING_10: NO -- trivial pre-existing typo, not worth a tracking issue.
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: NO -- commit summary only; no actionable defect is stated.
+FINDING_15: NO -- commit summary/diff inventory only; no actionable defect is stated.
+FINDING_16: NO -- commit summary only; no actionable defect is stated.
+FINDING_17: YES
+FINDING_18: YES
+FINDING_19: YES
+FINDING_20: YES
+FINDING_21: YES
+FINDING_22: YES
+FINDING_23: NO -- the current SECURITY text already documents omitted routing and `--coder=claude`.
+FINDING_24: YES
+FINDING_25: YES
+FINDING_26: YES
