@@ -85,4 +85,50 @@ printf '%s\n' "$out" | grep -q '^CLASSIFICATION_SOURCE=cursor-fallback$' || fail
 out=$(PATH="/usr/bin:/bin" "$SUBJECT" --feature-description "$feature")
 printf '%s\n' "$out" | grep -q '^CLASSIFICATION_SOURCE=deterministic$' || fail "missing cursor should be deterministic"
 
+# Ratifier pattern regression cases (improvement 13):
+# Case 1: True positive — deterministic correct (HARD), cursor confirms.
+printf 'Redesign cross-skill workflow contract across all external reviewers and hooks.\n' > "$feature"
+out=$(PATH="$stubbin:$PATH" RUN_EXTERNAL_AGENT="$TMPROOT/run-external-agent-ok.sh" "$SUBJECT" --feature-description "$feature")
+printf '%s\n' "$out" | grep -q '^CLASSIFICATION=HARD$' || fail "ratifier case1: cursor confirmed HARD not used"
+printf '%s\n' "$out" | grep -q '^CLASSIFICATION_SOURCE=cursor-validated$' || fail "ratifier case1: cursor-validated source not emitted"
+
+# Case 2: True negative — synthetic doc-only diff that deterministic mis-tags as SIMPLE;
+# cursor (via the stub that always returns HARD) catches and overrides.
+printf 'A small non-doc change.\n' > "$feature"
+cat > "$diff" <<'EOF'
+diff --git a/scripts/foo.sh b/scripts/foo.sh
+--- a/scripts/foo.sh
++++ b/scripts/foo.sh
++echo ok
+EOF
+cat > "$TMPROOT/run-external-agent-hard.sh" <<'EOF2'
+#!/usr/bin/env bash
+out=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --output) out="$2"; shift 2 ;;
+    --) shift; break ;;
+    *) shift ;;
+  esac
+done
+printf 'CLASSIFICATION=HARD\n' > "$out"
+printf '0\n' > "$out.done"
+EOF2
+chmod +x "$TMPROOT/run-external-agent-hard.sh"
+out=$(PATH="$stubbin:$PATH" RUN_EXTERNAL_AGENT="$TMPROOT/run-external-agent-hard.sh" "$SUBJECT" --feature-description "$feature" --diff-context "$diff")
+printf '%s\n' "$out" | grep -q '^CLASSIFICATION=HARD$' || fail "ratifier case2: cursor override to HARD not used"
+printf '%s\n' "$out" | grep -q '^CLASSIFICATION_SOURCE=cursor-validated$' || fail "ratifier case2: cursor-validated source not emitted"
+
+# Case 3: Edge case — borderline diff, deterministic SIMPLE, cursor falls back (bad output).
+printf 'Add a small parser option.\n' > "$feature"
+out=$(PATH="$stubbin:$PATH" RUN_EXTERNAL_AGENT="$TMPROOT/run-external-agent-bad.sh" "$SUBJECT" --feature-description "$feature" --diff-context "$diff")
+printf '%s\n' "$out" | grep -q '^CLASSIFICATION=SIMPLE$' || fail "ratifier case3: borderline fallback should stay SIMPLE"
+printf '%s\n' "$out" | grep -q '^CLASSIFICATION_SOURCE=cursor-fallback$' || fail "ratifier case3: cursor-fallback source not emitted"
+
+# Case 4: Clear doc-only diff, deterministic TRIVIAL_DOC_ONLY, cursor would confirm (skipped via env).
+printf 'Fix a typo in the README.\n' > "$feature"
+out=$(CLASSIFY_ISSUE_SKIP_CURSOR=true "$SUBJECT" --feature-description "$feature")
+printf '%s\n' "$out" | grep -q '^CLASSIFICATION=TRIVIAL_DOC_ONLY$' || fail "ratifier case4: doc-only not trivial"
+printf '%s\n' "$out" | grep -q '^CLASSIFICATION_SOURCE=deterministic$' || fail "ratifier case4: deterministic source not emitted"
+
 echo "PASS: test-classify-issue.sh"

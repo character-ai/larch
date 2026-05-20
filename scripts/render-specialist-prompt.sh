@@ -318,8 +318,11 @@ Review this generated-only diff for drift from the source template or generator,
 TAGGING_GENERATED
         ;;
       generic)
+        # Per-finding shape pinned here; OOS parser in #2417 relies on this format.
         cat <<'TAGGING_DIFF'
-Tag each finding with its focus area (one of code-quality / risk-integration / correctness / architecture / security). Return findings in two clearly delimited sections: a section starting with the line '### In-Scope Findings' for issues introduced or amplified by the branch diff, and a section starting with the line '### Out-of-Scope Observations' for pre-existing issues not introduced or amplified by the change. Each finding: focus-area tag, file:line, issue, and suggested fix. When the finding's issue text references repo files, include affected repo-relative file paths and line ranges in the form `path/to/file.sh:120-150` (or `path/to/file.sh` for whole-file edits) so /implement Step 9a.1's file-conflict pre-pass can emit serialization edges. If you have neither in-scope findings nor out-of-scope observations, output exactly NO_ISSUES_FOUND. Do NOT modify files.
+Tag each finding with its focus area (one of code-quality / risk-integration / correctness / architecture / security). Return findings in two clearly delimited sections: a section starting with the line '### In-Scope Findings' for issues introduced or amplified by the branch diff, and a section starting with the line '### Out-of-Scope Observations' for pre-existing issues not introduced or amplified by the change. Each finding MUST be a single bullet matching this pattern exactly:
+- **<focus-area>** `<path>:<line-range>` — <one-paragraph issue text>. **Suggested fix:** <one-paragraph suggested fix text>.
+`<focus-area>` is one of code-quality / risk-integration / correctness / architecture / security. `<line-range>` is N, N-M, or omitted for whole-file findings. Use backticks around the file:lines token, not markdown links. When the finding's issue text references repo files, include affected repo-relative file paths and line ranges so /implement Step 9a.1's file-conflict pre-pass can emit serialization edges. If you have neither in-scope findings nor out-of-scope observations, output exactly NO_ISSUES_FOUND. Do NOT modify files.
 TAGGING_DIFF
         ;;
     esac

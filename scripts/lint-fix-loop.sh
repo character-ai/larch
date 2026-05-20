@@ -10,6 +10,9 @@ larch_quiet_init
 # shellcheck source=scripts/lib-cursor-launcher-common.sh
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/lib-cursor-launcher-common.sh"
+# shellcheck source=scripts/lib-submodule-prohibition.sh
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/lib-submodule-prohibition.sh"
 
 IMPLEMENT_TMPDIR=""
 SITE=""
@@ -44,8 +47,18 @@ compose_prompt() {
         printf '\n%s\n' "Fix the repository so \`/relevant-checks\` passes for $site_label."
         printf '%s\n' 'Make the minimum necessary edits under the current repository root.'
         printf '%s\n' 'Do NOT commit; the parent script owns staging and commits.'
-        printf '%s\n' 'Do NOT touch .git/, .gitmodules, or submodule contents.'
-        printf '%s\n' 'When done, report a concise summary of changed files and the check failure addressed.'
+        printf '\n'
+        emit_submodule_prohibition ""
+        printf '\n%s\n' 'When done, report on a single final line in this exact shape:'
+        printf '%s\n' '  FIXED: <comma-separated repo-relative paths of files you changed> | <short check-failure description>'
+        printf '%s\n' 'If you cannot fix the failure, instead report on a single final line:'
+        printf '%s\n' '  UNFIXABLE: <one-paragraph reason>'
+        printf '%s\n' '**Do NOT** prepend, append, or interleave narrative prose around that final line. Tool output from your edits is fine; the result line must be the last line.'
+        printf '\n%s\n' '## Acceptable final-line shapes'
+        printf '%s\n' '```'
+        printf '%s\n' 'FIXED: scripts/foo.sh,scripts/foo.md | markdownlint MD038 violation on inner-whitespace code span'
+        printf '%s\n' 'UNFIXABLE: lint failure originates in a vendored file under third-party/ that this loop is not allowed to edit'
+        printf '%s\n' '```'
         printf '\n%s\n' "Checks log path: $log_file"
         printf '%s\n' "Checks log bytes: $log_bytes"
         printf '\n%s\n' '## Checks Log'
