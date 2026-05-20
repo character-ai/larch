@@ -28,6 +28,7 @@ This is a **dev-only** operator skill (`.claude/skills/`). It is NOT shipped wit
   - Default when empty: fail with usage error
 - `--repo <owner/name>`: target repo. Default: `character-ai/larch`
 - `--allow-concurrent`: override the 5-minute concurrency guard
+- **Removed flag**: `--no-fix-issues` is not supported. If any token in the skill argv is exactly `--no-fix-issues`, refuse immediately with a clear usage error (flag removed); do not proceed or silently ignore it.
 
 ## Pre-flight
 
@@ -116,7 +117,7 @@ After the audit report issue is filed and prior reports are handled per **Close 
 1. Print the **full audit-report body** verbatim to chat (the same markdown submitted as the issue body), then print the **audit-report URL**.
 2. **Zero-findings short-circuit**: if `proposed_new_issues` and `proposed_augmentations` are both empty, state `No findings — no bug issues to file.` and exit — do **not** ask the 3-way question.
 3. **Otherwise**, ask the operator a 3-way question: (1) file/augment all, (2) discuss specific findings first, or (3) skip filing. Act on the response:
-   - **File/augment all**: file new issues via `/larch:issue` (dedup ON); post augmentation comments via `gh issue comment` using the shape below.
+   - **File/augment all**: file new issues via `/larch:issue` (dedup ON); post augmentation comments with `gh issue comment <N> --repo "<repo>" --body-file "$TMPDIR/audit-augment-<N>.md"` (write the **Augmentation comment shape** markdown to that file first — same `--body-file` pattern as `create-one.sh`; do not pass multi-line tables through an inline `--body` string).
    - **Discuss first**: wait for operator direction; file or augment per finding only as approved.
    - **Skip filing**: exit cleanly; the audit report already captures proposed findings for the historical record.
 
@@ -198,7 +199,7 @@ After the new audit report is filed:
 
 ## Output to chat
 
-The orchestrator MUST surface to chat (in order):
+Only after the new audit report issue is filed and prior reports are handled per **Close Prior Reports** (same sequencing precondition as `### Post-report user prompt` above), the orchestrator MUST surface to chat (in order):
 
 1. The **full audit-report body**, verbatim (same content as the filed issue body).
 2. The **audit-report URL**.

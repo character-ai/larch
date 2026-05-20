@@ -426,6 +426,78 @@ else
     echo "  ok: [15b] 3-way question absent on zero findings"
 fi
 
+THREE_WAY_NEEDLE='(1) file/augment all, (2) discuss specific findings first, (3) skip filing.'
+SHORT_CIRCUIT='No findings — no bug issues to file.'
+
+# ---------------------------------------------------------------------------
+# Test 16: non-empty proposals → 3-way prompt (asymmetric frontmatter)
+# ---------------------------------------------------------------------------
+echo "Test 16: proposed_new_issues non-empty, proposed_augmentations empty"
+ASYM_NEW_ONLY_BODY='---
+audit_schema_version: 1
+audit_timestamp: 2026-05-20T19:30Z
+audited_repo: character-ai/larch
+audited_pr_range:
+  first: 2440
+  last: 2450
+  count: 11
+audited_prs: [2440,2441,2442,2443,2444,2445,2446,2447,2448,2449,2450]
+prior_report_issue: 2463
+proposed_new_issues: ["EXON regression in PR #2450"]
+proposed_augmentations: []
+cumulative_counters:
+  exon_misclassifications: 1
+  oos_categories_mangled: 0
+  oos_categories_clean: 50
+  ns_retries_cursor_specialist: 0
+  ns_retries_cursor_specialist_launches: 0
+---
+## Summary
+Has proposals.'
+chat_block=$(audit_report_post_report_chat_block "$ASYM_NEW_ONLY_BODY")
+assert_equal "$(printf '%s' "$chat_block" | head -1)" "$THREE_WAY_NEEDLE" "[16] new-only proposals → 3-way question"
+if printf '%s' "$chat_block" | grep -qF "$SHORT_CIRCUIT"; then
+    FAIL=$((FAIL + 1))
+    FAILED_TESTS+=("[16b] short-circuit must not appear when proposed_new_issues is non-empty")
+    echo "  FAIL: [16b] short-circuit must not appear when proposed_new_issues is non-empty" >&2
+else
+    PASS=$((PASS + 1))
+    echo "  ok: [16b] short-circuit absent when proposed_new_issues is non-empty"
+fi
+
+echo "Test 16b: proposed_new_issues empty, proposed_augmentations non-empty"
+ASYM_AUG_ONLY_BODY='---
+audit_schema_version: 1
+audit_timestamp: 2026-05-20T19:30Z
+audited_repo: character-ai/larch
+audited_pr_range:
+  first: 2440
+  last: 2450
+  count: 11
+audited_prs: [2440,2441,2442,2443,2444,2445,2446,2447,2448,2449,2450]
+prior_report_issue: 2463
+proposed_new_issues: []
+proposed_augmentations: [{"issue": 2400, "finding": "additional PR #2450 hit"}]
+cumulative_counters:
+  exon_misclassifications: 0
+  oos_categories_mangled: 0
+  oos_categories_clean: 50
+  ns_retries_cursor_specialist: 0
+  ns_retries_cursor_specialist_launches: 0
+---
+## Summary
+Augmentation proposals only.'
+chat_block=$(audit_report_post_report_chat_block "$ASYM_AUG_ONLY_BODY")
+assert_equal "$(printf '%s' "$chat_block" | head -1)" "$THREE_WAY_NEEDLE" "[16c] augment-only proposals → 3-way question"
+if printf '%s' "$chat_block" | grep -qF "$SHORT_CIRCUIT"; then
+    FAIL=$((FAIL + 1))
+    FAILED_TESTS+=("[16d] short-circuit must not appear when proposed_augmentations is non-empty")
+    echo "  FAIL: [16d] short-circuit must not appear when proposed_augmentations is non-empty" >&2
+else
+    PASS=$((PASS + 1))
+    echo "  ok: [16d] short-circuit absent when proposed_augmentations is non-empty"
+fi
+
 # ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
