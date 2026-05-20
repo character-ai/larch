@@ -66,7 +66,7 @@ registry_rows=(
   '| 1.r  | `1.r`           | `design plan`    |'
   '| 4.r  | `4.r`           | `commit (impl)`  |'
   '| 7.r  | `7.r`           | `commit (review)`|'
-  '| 7a.r | `7a.r`          | `code flow`      |'
+  '| 7a.r | `7a.r`          | `diagrams`       |'
 )
 for row in "${registry_rows[@]}"; do
   # Use grep --count to avoid `grep -q | sed` pipefail+SIGPIPE on Linux: `-q` causes
@@ -89,7 +89,7 @@ canonical_invocations=(
   'Apply the Rebase Checkpoint Macro with `<step-prefix>=1.r` and `<short-name>=design plan`.'
   'Apply the Rebase Checkpoint Macro with `<step-prefix>=4.r` and `<short-name>=commit (impl)`.'
   'Apply the Rebase Checkpoint Macro with `<step-prefix>=7.r` and `<short-name>=commit (review)`.'
-  'Apply the Rebase Checkpoint Macro with `<step-prefix>=7a.r` and `<short-name>=code flow`.'
+  'Apply the Rebase Checkpoint Macro with `<step-prefix>=7a.r` and `<short-name>=diagrams`.'
 )
 for inv in "${canonical_invocations[@]}"; do
   grep -Fq "$inv" "$SKILL_MD" \

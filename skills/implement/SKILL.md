@@ -132,7 +132,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/rebase-push.sh --no-push --skip-if-pushed --keep-o
 | 1.r  | `1.r`           | `design plan`    |
 | 4.r  | `4.r`           | `commit (impl)`  |
 | 7.r  | `7.r`           | `commit (review)`|
-| 7a.r | `7a.r`          | `code flow`      |
+| 7a.r | `7a.r`          | `diagrams`       |
 
 ## Flags
 
@@ -1479,7 +1479,7 @@ If `FILES_CHANGED=false`: print `⏩ 6: checks (2) status=skip reason=no-review-
 
 Else (`FILES_CHANGED=true`):
 
-> **Continue after child returns.** On `RELEVANT_CHECKS_OK=true`, execute Step 7's commit (review) flow next — the next user-facing output is the review-fixes commit invocation, followed by `> **🔶 /implement 7a: code flow**` when Step 7a starts. On `STATUS=fail`, first check for `FAILURE_REASON` (structural — e.g. `tmpdir-validation`, `site-validation`, `repo-root-unresolved`, `missing-check-script`, `redaction-failed`; act on the reason, no log file is produced). Otherwise pass `REDACTED_LOG_FILE` (checks failure — NOT raw `LOG_FILE`) to `${CLAUDE_PLUGIN_ROOT}/scripts/lint-fix-loop.sh --tmpdir "$IMPLEMENT_TMPDIR" --site step6 --checks-log "$REDACTED_LOG_FILE"` and parse `LINT_FIX_STATUS`: `applied` → re-invoke the checks helper; `main-agent-required` → repair via main-agent Edit/Write, then re-invoke the checks helper; `failed` → set `STALL_TRACKING=true` and skip to Step 18; `no-changes` → re-invoke the checks helper once so captured checks remain authoritative. If the re-run still reports `STATUS=fail`, repeat the same Step 6 repair loop until the helper returns clean or the run stalls. The re-invoke loop is in-Step-6, not a halt. In either case, do NOT end the turn, summarize, or write a handoff message.
+> **Continue after child returns.** On `RELEVANT_CHECKS_OK=true`, execute Step 7's commit (review) flow next — the next user-facing output is the review-fixes commit invocation, followed by `> **🔶 /implement 7a: diagrams**` when Step 7a starts. On `STATUS=fail`, first check for `FAILURE_REASON` (structural — e.g. `tmpdir-validation`, `site-validation`, `repo-root-unresolved`, `missing-check-script`, `redaction-failed`; act on the reason, no log file is produced). Otherwise pass `REDACTED_LOG_FILE` (checks failure — NOT raw `LOG_FILE`) to `${CLAUDE_PLUGIN_ROOT}/scripts/lint-fix-loop.sh --tmpdir "$IMPLEMENT_TMPDIR" --site step6 --checks-log "$REDACTED_LOG_FILE"` and parse `LINT_FIX_STATUS`: `applied` → re-invoke the checks helper; `main-agent-required` → repair via main-agent Edit/Write, then re-invoke the checks helper; `failed` → set `STALL_TRACKING=true` and skip to Step 18; `no-changes` → re-invoke the checks helper once so captured checks remain authoritative. If the re-run still reports `STATUS=fail`, repeat the same Step 6 repair loop until the helper returns clean or the run stalls. The re-invoke loop is in-Step-6, not a halt. In either case, do NOT end the turn, summarize, or write a handoff message.
 
 ```bash
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
@@ -1547,13 +1547,13 @@ LARCH_TIMING_LEDGER=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --
 export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 ```
 
-Print: `> **🔶 /implement 7a: code flow**`
+Print: `> **🔶 /implement 7a: diagrams**`
 
 Runs unconditionally after Step 7 (regardless of Steps 6-7 skip).
 
 **MANDATORY — READ ENTIRE FILE** before writing diagram summary comments under `quick_mode=true`: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/summary-comment-template.md`. **Do NOT load** outside quick-mode paths.
 
-If `quick_mode=true`: print `⏩ 7a: code flow status=skip reason=quick-mode elapsed=<elapsed>`, still post the `larch:diagrams` summary comment (Architecture Diagram + Code-Flow-skipped placeholder per the `Diagrams summary comment` sub-section below), then proceed to the Pre-bump log flush subsection below (which leads into the 7a.r rebase checkpoint and then Step 8).
+If `quick_mode=true`: print `⏩ 7a: diagrams status=skip reason=quick-mode elapsed=<elapsed>`, still post the `larch:diagrams` summary comment (Architecture Diagram + Code-Flow-skipped placeholder per the `Diagrams summary comment` sub-section below), then proceed to the Pre-bump log flush subsection below (which leads into the 7a.r rebase checkpoint and then Step 8).
 
 If `quick_mode=false`: first check whether the committed diff is small and non-runtime. Compute the merge-base, then enumerate changed files relative to `origin/main`:
 
@@ -1567,7 +1567,7 @@ fi
 CHANGED_COUNT=$(printf '%s\n' "$CHANGED_FILES" | grep -c . 2>/dev/null || echo 0)
 ```
 
-If `MERGE_BASE` is empty, or `CHANGED_COUNT` is 0 (diff failed or branch has no commits vs main), treat this check as inconclusive and proceed with normal generation. Otherwise check whether `CHANGED_COUNT` is 1 or 2 AND every path in `CHANGED_FILES` is non-runtime: all files reside under `docs/`, are named `CHANGELOG` or `CHANGELOG.md`, or have extension `.txt` or `.tsv` (note: `.md` files outside `docs/` — including `skills/**`, `agents/**`, and `SKILL.md` — are not automatically non-runtime and do not qualify). If both conditions hold: print `⏩ 7a: code flow status=skip reason=small-non-runtime-change elapsed=<elapsed>`, still post the `larch:diagrams` summary comment (Architecture Diagram + placeholder `"(Code Flow Diagram skipped — small/non-runtime change)"` for Code Flow — see the `diagrams` sub-section below), and proceed to the Pre-bump log flush subsection below (which leads into the 7a.r rebase checkpoint and then Step 8).
+If `MERGE_BASE` is empty, or `CHANGED_COUNT` is 0 (diff failed or branch has no commits vs main), treat this check as inconclusive and proceed with normal generation. Otherwise check whether `CHANGED_COUNT` is 1 or 2 AND every path in `CHANGED_FILES` is non-runtime: all files reside under `docs/`, are named `CHANGELOG` or `CHANGELOG.md`, or have extension `.txt` or `.tsv` (note: `.md` files outside `docs/` — including `skills/**`, `agents/**`, and `SKILL.md` — are not automatically non-runtime and do not qualify). If both conditions hold: print `⏩ 7a: diagrams status=skip reason=small-non-runtime-change elapsed=<elapsed>`, still post the `larch:diagrams` summary comment (Architecture Diagram + placeholder `"(Code Flow Diagram skipped — small/non-runtime change)"` for Code Flow — see the `diagrams` sub-section below), and proceed to the Pre-bump log flush subsection below (which leads into the 7a.r rebase checkpoint and then Step 8).
 
 Otherwise, invoke the extracted generator and parse its KV envelope:
 
@@ -1621,7 +1621,7 @@ On non-zero exit, log `Step 7a — larch:diagrams upsert failed` to `Tool Failur
 
 Safety net before version bump. `--skip-if-pushed` short-circuits this when the branch is already on origin; Step 8b (a separate inline rebase that does NOT use `--skip-if-pushed`) ensures already-pushed branches still rebase onto fresh main right before PR creation, with Step 12 remaining the last-chance enforcement at merge time.
 
-Apply the Rebase Checkpoint Macro with `<step-prefix>=7a.r` and `<short-name>=code flow`.
+Apply the Rebase Checkpoint Macro with `<step-prefix>=7a.r` and `<short-name>=diagrams`.
 
 After the macro returns successfully or silently skips, run the Phantom
 Untracked Probe with `--step 7a.r-post-rebase`.

@@ -60,7 +60,7 @@ For prose-format lines, append the elapsed time in parentheses at the end of the
 
 ```
 ⏩ 6: checks (2) — skipped, no review changes (1s)
-⚠ 7a: code flow — generation failed, proceeding without diagram (12s)
+⚠ 7a: diagrams — generation failed, proceeding without diagram (12s)
 ```
 
 ### Compact Skip Format
