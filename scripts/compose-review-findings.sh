@@ -57,16 +57,26 @@ redact_field() {
 }
 
 # Extract the category from a finding body. Bodies typically open with a
-# '## <category>: <title>' line; if absent, returns the empty string.
+# '## <category>: …' line or '## **<category>** — …'; if absent, returns the empty string.
 extract_category() {
     LC_ALL=C awk '
         /^## / {
             sub(/^## /, "")
-            n = index($0, ":")
-            if (n > 0) {
-                print substr($0, 1, n - 1)
+            if (substr($0, 1, 2) == "**") {
+                sub(/^\*\*/, "")
+                n = index($0, "**")
+                if (n > 0) {
+                    print substr($0, 1, n - 1)
+                } else {
+                    print $0
+                }
             } else {
-                print $0
+                n = index($0, ":")
+                if (n > 0) {
+                    print substr($0, 1, n - 1)
+                } else {
+                    print $0
+                }
             }
             exit
         }

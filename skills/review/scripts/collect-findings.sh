@@ -389,6 +389,23 @@ while IFS=$'\t' read -r title label body || [[ -n "${title:-}" ]]; do
         continue
     fi
     count=$((count + 1))
+    if [[ "$title" == "[OUT_OF_SCOPE] **"* ]]; then
+        oos_body="${title#\[OUT_OF_SCOPE\] \*\*}"
+        category="${oos_body%%\*\**}"
+        case "$category" in
+            code-quality|risk-integration|correctness|architecture|security)
+                fileref=""
+                if [[ "$title" =~ \[\`([^\`]+)\`\] ]]; then
+                    fileref="${BASH_REMATCH[1]}"
+                fi
+                if [[ -n "$fileref" ]]; then
+                    title="[OUT_OF_SCOPE] $category: $fileref"
+                else
+                    title="[OUT_OF_SCOPE] $category"
+                fi
+                ;;
+        esac
+    fi
     {
         printf '### FINDING_%s: %s\n' "$count" "$title"
         printf -- '- **Reviewer**: %s\n' "$label"

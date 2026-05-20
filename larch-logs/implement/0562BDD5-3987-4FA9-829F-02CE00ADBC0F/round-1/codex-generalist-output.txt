@@ -1,0 +1,9 @@
+### In-Scope Findings
+
+1. **Important** `correctness` `skills/review/scripts/collect-findings.sh:392` — The new OOS normalizer matches any OOS title that starts with bold markdown, including the severity-first prose format required by the reviewer templates (`**Important**`, `**Nit**`, `**Latent**`). Concrete failing scenario: an OOS bullet like `- **Latent** \`code-quality\` \`scripts/old.sh:5\` Pre-existing issue` is parsed as `[OUT_OF_SCOPE] **Latent** ...`, then rewritten to just `[OUT_OF_SCOPE] Latent`, dropping the focus area, file reference, and issue title in both `findings.md` and `oos.md`. Restrict normalization to bold tokens that are valid focus areas (`code-quality|risk-integration|correctness|architecture|security`) and add a regression test for a severity-first OOS bullet.
+
+### Out-of-Scope Observations
+
+No out-of-scope observations.
+
+Verification note: I could not run the focused test scripts because this sandbox is read-only and both failed at `mktemp` directory creation.
