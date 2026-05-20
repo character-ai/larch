@@ -1,0 +1,9 @@
+Gathering the diff, commit list, and all `ship-pr` references in `skills/implement/SKILL.md` for invoke-site coverage.
+
+Searching for other `ship-pr` invocation patterns and `run_in_background` references in the implement skill.
+
+Verifying whether `ship-pr.sh` supports resuming the main loop without `--resume-phase` after Exit 6 (doc change may affect correctness).
+
+Confirming `ship-pr.sh` main loop: when `--resume-phase` is omitted, execution enters the `while` loop using `read_state PHASE` (lines 1685–1706), so Exit 6 recovery without `--resume-phase` matches the script. Passing `--resume-phase checks` would hit `die_usage` — the branch fixes a documentation/script mismatch.
+
+
