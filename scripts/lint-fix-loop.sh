@@ -141,6 +141,9 @@ delta_paths_after_dispatch() {
 
 run_codex() {
     local run_dir="$1" prompt_body="$2"
+    local _SERIAL_LOCK=""
+    external_serial_lock_acquire _SERIAL_LOCK "codex"
+    external_serial_lock_release_after "$_SERIAL_LOCK" "${LARCH_EXTERNAL_SERIAL_LOCK_DELAY:-0.5}"
     "$RUN_EXTERNAL_AGENT_SH" --tool codex --output "$run_dir/codex.log" --timeout 1800 --capture-stdout -- \
         codex exec --full-auto -C "$REPO_ROOT" --add-dir "$run_dir" --add-dir "$REPO_ROOT" "$prompt_body" \
         > "$run_dir/codex.wrapper.log" 2>&1
@@ -150,6 +153,9 @@ run_cursor() {
     local run_dir="$1" prompt_body="$2"
     cursor_launcher_load_model_args || return 1
     cursor_launcher_setup_auth_argv || return 1
+    local _SERIAL_LOCK=""
+    external_serial_lock_acquire _SERIAL_LOCK "cursor"
+    external_serial_lock_release_after "$_SERIAL_LOCK" "${LARCH_EXTERNAL_SERIAL_LOCK_DELAY:-0.5}"
     "$RUN_EXTERNAL_AGENT_SH" --tool cursor --output "$run_dir/cursor.log" --timeout 1800 --capture-stdout -- \
         cursor agent -p --trust \
         ${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"} \

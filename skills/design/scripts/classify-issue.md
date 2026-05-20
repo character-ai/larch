@@ -18,6 +18,7 @@ Caller-forwarded `/implement` classifications bypass this script when `/design` 
 - Cursor output only influences the result when it emits a valid `CLASSIFICATION=<enum>` record.
 - Cursor failure, timeout, malformed output, or missing binary falls back to the deterministic result.
 - `CLASSIFICATION_SOURCE` on stdout may be `deterministic`, `cursor-validated`, or `cursor-fallback`. Callers that write `run-params.json` map non-forwarded sources to `router-pre-design`.
+- `try_cursor_validation()` acquires the per-tool KeyChain serial lock (`external_serial_lock_acquire` from `scripts/lib-external-launcher-common.sh`) immediately before the `run-external-agent.sh` call and releases it asynchronously via `external_serial_lock_release_after`.
 
 ## Makefile Wiring
 

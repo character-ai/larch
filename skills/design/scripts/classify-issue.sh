@@ -8,6 +8,8 @@ REPO_ROOT=$(cd "$SCRIPT_DIR/../../.." && pwd -P)
 # shellcheck source=scripts/lib-quiet.sh
 source "$SCRIPT_DIR/../../../scripts/lib-quiet.sh"
 larch_quiet_init
+# shellcheck source=scripts/lib-external-launcher-common.sh
+source "$REPO_ROOT/scripts/lib-external-launcher-common.sh"
 
 RUN_EXTERNAL_AGENT="${RUN_EXTERNAL_AGENT:-$REPO_ROOT/scripts/run-external-agent.sh}"
 
@@ -179,6 +181,9 @@ Diff context:
 ${redacted_diff}
 EOF
 
+    local _SERIAL_LOCK=""
+    external_serial_lock_acquire _SERIAL_LOCK "cursor"
+    external_serial_lock_release_after "$_SERIAL_LOCK" "${LARCH_EXTERNAL_SERIAL_LOCK_DELAY:-0.5}"
     set +e
     "$RUN_EXTERNAL_AGENT" --tool cursor --output "$output_file" --timeout "${CLASSIFY_ISSUE_CURSOR_TIMEOUT:-60}" --capture-stdout -- \
         cursor agent -p --trust --mode plan --workspace "$PWD" "$(cat "$prompt_file")" >/dev/null 2>&1

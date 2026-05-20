@@ -2,6 +2,10 @@
 
 `scripts/run-negotiation-round.sh` is the per-round driver for the Negotiation Protocol described in `skills/shared/external-reviewers.md`. It wraps the Codex stdin-pipe and Cursor `--agent-prompt` invocation styles behind a uniform interface so callers don't repeat the per-tool argv shape. Removes the previous output file before invoking the tool (fresh-result invariant). Inputs: `--tool codex|cursor`, `--prompt-file`, `--output`, `--workspace`. Stdout emits `RESPONSE_FILE=<path>`. Exit 0 on success, 1 on usage error, 2 on reviewer command failure, and 3 on `cursor_auth_preflight` failure. Model-arg resolution failures from `scripts/agent-model-args.sh` propagate that helper's exit code (typically 1); its stderr diagnostic is the authoritative anchor. Used by `/design` Steps 1d / 3.5 (interactive design discussion rounds) when an external reviewer is the negotiator.
 
+## KeyChain serial lock
+
+Sources `scripts/lib-external-launcher-common.sh` to access `external_serial_lock_acquire` / `external_serial_lock_release_after`. Both the Codex and Cursor branches acquire the per-tool serial lock immediately before spawning the agent and release it asynchronously after `${LARCH_EXTERNAL_SERIAL_LOCK_DELAY:-0.5}` seconds, matching the pattern used by the 5 existing correctly-guarded launchers.
+
 ## Cursor auth handling
 
 Sources `scripts/lib-cursor-auth.sh` in the Cursor branch and runs `cursor_auth_preflight || exit 3` before launching `cursor agent`. Model args from `scripts/agent-model-args.sh` are read as one argv token per line into Bash arrays and expanded with the Bash-3.2-safe `${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"}` pattern. When `CURSOR_API_KEY` is non-empty, passes `--api-key "$CURSOR_API_KEY"` between the Cursor model-args array and `--workspace`. When empty, `cursor agent` runs without `--api-key` and falls back to its default auth resolution (e.g., the `cursor login` keychain entry on Darwin) — preserving backward compatibility with operators who haven't set the env var.
