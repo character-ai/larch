@@ -40,12 +40,16 @@ PR_STATUS=created|existing
 
 Failure is signalled exclusively via non-zero exit code + a human-readable `ERROR:` message on stderr. The script does NOT emit failure key=value lines on stdout — `/implement` Step 9b's parser detects failure by exit code.
 
+## Pre-push clean-tree guard
+
+Before any push attempt, `create-pr.sh` runs `git status --porcelain` and aborts with exit 1 if the working tree is dirty. This prevents silent data loss: uncommitted changes (e.g., inline OOS-fold edits applied between commit boundaries) would otherwise be excluded from the push and therefore missing from the merged PR. The check runs once at script entry, covering all three push sites (new-PR path, existing-PR fast-path plain push, existing-PR fast-path force-push escalation). The error message lists the dirty paths so the operator knows exactly what to stage and commit before retrying.
+
 ## Exit codes
 
 | Exit | Meaning |
 |------|---------|
 | 0    | PR created or pre-existing PR detected; remote branch confirmed up-to-date with local. |
-| 1    | Push failed. Either path: stderr carries the underlying git rejection. |
+| 1    | Push failed (includes dirty-tree abort). Either path: stderr carries the underlying git rejection or the list of uncommitted paths. |
 | 2    | Argument validation failed, branch detection failed (detached HEAD), `gh pr create` failed, or PR number/URL extraction failed. |
 
 ## PR body redaction
@@ -79,7 +83,7 @@ On non-zero exit from `gh pr create`, the script always emits a diagnostic `ERRO
 
 ## Test harness
 
-`scripts/test-create-pr.sh` uses temporary git repositories and a PATH-stubbed `gh` binary to assert that `--repo` is threaded through every `gh pr view` and `gh pr create` path, including existing-PR title backfill and PR-number fallback. It also covers explicit `--base`, detected default-branch base, fallback-to-`main` base selection on the new-PR path, and the empty-stderr diagnostic case (asserts that the error block is non-empty when `gh pr create` exits with no output).
+`scripts/test-create-pr.sh` uses temporary git repositories and a PATH-stubbed `gh` binary to assert that `--repo` is threaded through every `gh pr view` and `gh pr create` path, including existing-PR title backfill and PR-number fallback. It also covers explicit `--base`, detected default-branch base, fallback-to-`main` base selection on the new-PR path, the empty-stderr diagnostic case (asserts that the error block is non-empty when `gh pr create` exits with no output), and the pre-push clean-tree guard (clean tree proceeds; tracked-modified and untracked-file dirty trees exit non-zero with a descriptive error).
 
 ## Edit-in-sync rules
 

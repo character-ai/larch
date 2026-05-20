@@ -54,6 +54,15 @@ if ! BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null); then
 fi
 emit_kv BRANCH "$BRANCH"
 
+# Pre-push clean-tree guard: uncommitted working-tree changes are silently
+# excluded from a push, causing data loss (issue #2434).
+DIRTY_FILES=$(git status --porcelain 2>/dev/null || true)
+if [[ -n "$DIRTY_FILES" ]]; then
+    larch_err "git-force-push.sh: uncommitted working-tree changes detected before force-push. Stage and commit them before pushing."
+    larch_err "$DIRTY_FILES"
+    exit 1
+fi
+
 push_with_lease() {
     if [[ -n "$EXPECTED_REMOTE_OID" ]]; then
         git push --force-with-lease="refs/heads/$BRANCH:$EXPECTED_REMOTE_OID"

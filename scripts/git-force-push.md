@@ -30,12 +30,16 @@ STATUS=pushed|noop_same_ref|diverged_retry_failed
 - `PUSHED=true` with `STATUS=noop_same_ref`: push appeared to fail but local HEAD matches `origin/<branch>` after refresh — the push landed in a race window.
 - `PUSHED=false` with `STATUS=diverged_retry_failed`: both push attempts failed and local/remote diverge.
 
+## Pre-push clean-tree guard
+
+After branch detection, `git-force-push.sh` runs `git status --porcelain` and aborts with exit 1 if the working tree is dirty. This is defense-in-depth against data loss (issue #2434): `create-pr.sh` runs the same check before calling this helper, so in normal operation the guard here catches only direct callers (`merge-pr.sh`, `/implement` Step 8b). The `BRANCH=` key is emitted before the guard so callers still see the branch even on dirty-tree failure; no `PUSHED=` or `STATUS=` key is emitted (consistent with the error exit path).
+
 ## Exit codes
 
 | Exit | Meaning |
 |------|---------|
 | 0 | `PUSHED=true` — branch successfully force-pushed (either `pushed` or `noop_same_ref`). |
-| 1 | `PUSHED=false` with `STATUS=diverged_retry_failed` — caller should bail. |
+| 1 | Either `PUSHED=false` with `STATUS=diverged_retry_failed` (push diverged after retry), or dirty working tree (no `PUSHED=`/`STATUS=` emitted). Caller should bail in both cases. |
 | 2 | Not on a named branch (detached HEAD or not a git repo). Stderr: `git-force-push.sh: not on a named branch`. No stdout keys emitted. |
 
 ## Dependencies

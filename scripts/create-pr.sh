@@ -93,6 +93,15 @@ if ! "$REDACT_TMPDIR_HELPER" < "$BODY_FILE" > "$REDACTED_BODY_FILE"; then
     exit 2
 fi
 
+# Pre-push clean-tree guard: uncommitted working-tree changes are silently
+# excluded from a push, causing data loss (issue #2434).
+DIRTY_FILES=$(git status --porcelain 2>/dev/null || true)
+if [[ -n "$DIRTY_FILES" ]]; then
+    larch_err "ERROR: Uncommitted working-tree changes detected before push. These will NOT be included in the merged PR. Stage and commit them, or discard them, before pushing."
+    larch_err "$DIRTY_FILES"
+    exit 1
+fi
+
 # --- Get current branch ---
 BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null || echo "")
 if [[ -z "$BRANCH" ]]; then

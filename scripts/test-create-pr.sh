@@ -193,4 +193,29 @@ set -e
 grep -q 'gh pr create' "$TMPROOT/empty-err.err" || fail "error message should contain 'gh pr create' argv hint, got: $(cat "$TMPROOT/empty-err.err")"
 grep -q 'no diagnostic captured' "$TMPROOT/empty-err.err" || fail "error message should contain 'no diagnostic captured' stub, got: $(cat "$TMPROOT/empty-err.err")"
 
+# Test: clean tree → push proceeds (pre-push guard does not block a clean repo)
+repo_clean=$(setup_repo clean-tree)
+out=$(cd "$repo_clean" && GH_LOG="$TMPROOT/clean-gh.log" GH_MODE=create PATH="$stub_dir:$PATH" "$SCRIPT" --title "Clean tree" --body-file body.md --repo fork/repo 2>/dev/null)
+grep -Fxq 'PR_STATUS=created' <<<"$out" || fail "clean tree should allow push (pre-push guard must not block clean repos)"
+
+# Test: dirty tracked-modified file → push aborts
+repo_dirty_tracked=$(setup_repo dirty-tracked)
+printf 'modified content\n' >> "$repo_dirty_tracked/file.txt"
+set +e
+(cd "$repo_dirty_tracked" && PATH="$stub_dir:$PATH" "$SCRIPT" --title "Dirty tracked" --body-file body.md --repo fork/repo >/dev/null 2>"$TMPROOT/dirty-tracked.err")
+rc_dirty_tracked=$?
+set -e
+[[ "$rc_dirty_tracked" -ne 0 ]] || fail "dirty tracked-modified file should abort push (exit non-zero)"
+grep -q 'Uncommitted working-tree changes' "$TMPROOT/dirty-tracked.err" || fail "dirty tracked-modified error should mention uncommitted changes, got: $(cat "$TMPROOT/dirty-tracked.err")"
+
+# Test: dirty untracked file → push aborts
+repo_dirty_untracked=$(setup_repo dirty-untracked)
+printf 'new file\n' > "$repo_dirty_untracked/new-file.txt"
+set +e
+(cd "$repo_dirty_untracked" && PATH="$stub_dir:$PATH" "$SCRIPT" --title "Dirty untracked" --body-file body.md --repo fork/repo >/dev/null 2>"$TMPROOT/dirty-untracked.err")
+rc_dirty_untracked=$?
+set -e
+[[ "$rc_dirty_untracked" -ne 0 ]] || fail "dirty untracked file should abort push (exit non-zero)"
+grep -q 'Uncommitted working-tree changes' "$TMPROOT/dirty-untracked.err" || fail "dirty untracked error should mention uncommitted changes, got: $(cat "$TMPROOT/dirty-untracked.err")"
+
 echo "PASS: test-create-pr.sh"
