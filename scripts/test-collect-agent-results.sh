@@ -294,6 +294,11 @@ RESULT_NSR=$(RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 WAIT_FOR_REVIEWERS_POLL_INTER
     bash "$COLLECTOR" --timeout 5 --substantive-validation --validation-mode "$OUT_NSR" 2>/dev/null)
 assert_line "C_NSR retry file selected (publish to orig)" "REVIEWER_FILE=$OUT_NSR" "$RESULT_NSR"
 assert_line "C_NSR retry status OK" "STATUS=OK" "$RESULT_NSR"
+if grep -Fq "$RETRY_CONTENT" "$OUT_NSR" 2>/dev/null; then
+    ok "C_NSR orig path has retry content"
+else
+    fail "C_NSR orig path missing retry content"
+fi
 NS_RETRY_SENTINEL="${OUT_NSR%.txt}-ns-retry.txt.done"
 if [[ -f "$NS_RETRY_SENTINEL" ]]; then
     ok "C_NSR retry sentinel created"
