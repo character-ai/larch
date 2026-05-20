@@ -7,7 +7,7 @@ Sourced-only library (no shebang) exposing `emit_submodule_prohibition()`. Centr
 ## Primary Callers
 
 - `skills/review-and-fix/scripts/review-and-fix.sh::compose_coder_prompt()` — passes `$submodules_list` from `submodule_paths()` output
-- `scripts/lint-fix-loop.sh::compose_prompt()` — passes `$forbidden_paths_file`, which includes discovered submodule paths plus the always-forbidden `.git/` and `.gitmodules` entries
+- `scripts/lint-fix-loop.sh::compose_prompt()` — passes `$forbidden_paths_file`, which includes discovered submodule paths plus `.gitmodules`; the function itself always appends the `.git/` / `.gitmodules` catch-all prohibition line
 
 ## Function Contract
 
