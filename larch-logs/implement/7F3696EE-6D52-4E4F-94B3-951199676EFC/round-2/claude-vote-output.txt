@@ -1,0 +1,25 @@
+FINDING_1: NO -- normal implement-run artifacts (version bump, Makefile wiring, run-log flush); not worth a tracking issue
+FINDING_2: EXONERATE -- vote-tally changes already merged to main as #2457; bundling concern is legitimate but moot on merge
+FINDING_3: NO -- run logs are expected per docs/run-logs.md; no issue warranted
+FINDING_4: NO -- intentional asymmetry: fix role repairs arbitrary CI failures and legitimately needs more time than a scoped conflict
+FINDING_5: NO -- the vote-tally exoneration changes are already in main via #2457; stale observation
+FINDING_6: NO -- pre-existing launcher exit-code behavior; not introduced by this diff
+FINDING_7: EXONERATE -- same bundling concern as FINDING_20; vote-tally is already in main, making the issue self-resolving on rebase
+FINDING_8: EXONERATE -- RST support is a coherent scope expansion; estimate mismatch is real but the code is correct
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: EXONERATE -- added RST support is coherent and well-tested; plan estimate divergence alone is not issue-worthy
+FINDING_13: EXONERATE -- existing static grep catches removal of the prompt block; hermetic invocation tests add complexity beyond the concern
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: YES
+FINDING_18: YES
+FINDING_19: EXONERATE -- policy-level concern about exoneration breadth; already-shipped change, and a security carve-out would be a new feature
+FINDING_20: YES
+FINDING_21: YES
+FINDING_22: EXONERATE -- 600s is an explicit plan decision with a stated rationale; adding a tunable is out of scope for this PR
+FINDING_23: EXONERATE -- static source grep catches removal of the CONFLICT_CONTEXT block; full hermetic invocation tests add disproportionate complexity
+FINDING_24: EXONERATE -- codex launcher has identical validation to cursor; both launchers' CONFLICT_FILES comes from `tr '\n' ','` output making newline injection theoretical
+FINDING_25: EXONERATE -- CONFLICT_FILES is sourced from `git diff --name-only | tr '\n' ','`; the newline-to-comma transform eliminates the injection path before the value reaches the prompt
