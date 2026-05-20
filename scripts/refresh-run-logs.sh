@@ -92,6 +92,9 @@ fi
     --skill implement \
     --run-id "$run_id" \
     --no-logs-commit "false" \
+    --warning-step-label "pre-push-refresh" \
+    --refresh-mode "true" \
+    --defer-commit "true" \
     --execution-issues-log "$issue_log" >/dev/null || true
 if [ -s "$issue_log" ] && { [ -f "$checkpoint" ] || [ -f "$sentinel" ] || [ -f "$batch_path" ]; }; then
     "$SCRIPT_DIR/../skills/implement/scripts/flush-execution-issues.sh" \

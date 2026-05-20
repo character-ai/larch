@@ -11,7 +11,7 @@ larch_quiet_init
 usage() {
     while IFS= read -r line; do larch_err "$line"; done <<'USAGE'
 Usage:
-  capture-session-transcript.sh --source-file PATH --log-root DIR --skill S --run-id R --no-logs-commit true|false --execution-issues-log PATH
+  capture-session-transcript.sh --source-file PATH --log-root DIR --skill S --run-id R --no-logs-commit true|false --execution-issues-log PATH [--warning-step-label LABEL] [--refresh-mode true|false] [--defer-commit true|false]
 USAGE
 }
 
@@ -21,6 +21,9 @@ SKILL=""
 RUN_ID=""
 NO_LOGS_COMMIT=""
 EXECUTION_ISSUES_LOG=""
+WARNING_STEP_LABEL="7a"
+REFRESH_MODE="false"
+DEFER_COMMIT="false"
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -42,6 +45,15 @@ while [ $# -gt 0 ]; do
         --execution-issues-log)
             [ $# -ge 2 ] || { usage; emit_kv SESSION_TRANSCRIPT_STATUS usage-error; exit 0; }
             EXECUTION_ISSUES_LOG="$2"; shift 2 ;;
+        --warning-step-label)
+            [ $# -ge 2 ] || { usage; emit_kv SESSION_TRANSCRIPT_STATUS usage-error; exit 0; }
+            WARNING_STEP_LABEL="$2"; shift 2 ;;
+        --refresh-mode)
+            [ $# -ge 2 ] || { usage; emit_kv SESSION_TRANSCRIPT_STATUS usage-error; exit 0; }
+            REFRESH_MODE="$2"; shift 2 ;;
+        --defer-commit)
+            [ $# -ge 2 ] || { usage; emit_kv SESSION_TRANSCRIPT_STATUS usage-error; exit 0; }
+            DEFER_COMMIT="$2"; shift 2 ;;
         *) usage; emit_kv SESSION_TRANSCRIPT_STATUS usage-error; exit 0 ;;
     esac
 done
@@ -55,16 +67,27 @@ case "${NO_LOGS_COMMIT:-}" in
     true|false) ;;
     *) emit_kv SESSION_TRANSCRIPT_STATUS usage-error; usage; exit 0 ;;
 esac
+case "${REFRESH_MODE:-}" in
+    true|false) ;;
+    *) emit_kv SESSION_TRANSCRIPT_STATUS usage-error; usage; exit 0 ;;
+esac
+case "${DEFER_COMMIT:-}" in
+    true|false) ;;
+    *) emit_kv SESSION_TRANSCRIPT_STATUS usage-error; usage; exit 0 ;;
+esac
 
 append_warning() {
     local status="$1"
     local message="$2"
 
     [ -n "$EXECUTION_ISSUES_LOG" ] || return 0
+    if [ "$REFRESH_MODE" = "true" ] && [ "$status" = "captured" ]; then
+        return 0
+    fi
     "$SCRIPT_DIR/append-execution-issue.sh" \
         --log "$EXECUTION_ISSUES_LOG" \
         --category Warnings \
-        --entry "- **Step 7a — session-transcript status=$status:** $message" \
+        --entry "- **Step $WARNING_STEP_LABEL — session-transcript status=$status:** $message" \
         >/dev/null 2>&1 || true
 }
 
@@ -78,6 +101,8 @@ emit_status() {
 }
 
 TRANSCRIPT_PATH=""
+existing_transcript_rel="implement/$RUN_ID/session-transcript.jsonl"
+existing_transcript_path="$LOG_ROOT/$existing_transcript_rel"
 if [ -z "$SOURCE_FILE" ] || [ ! -f "$SOURCE_FILE" ] || [ ! -s "$SOURCE_FILE" ]; then
     recovered=""
     if [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -d "$IMPLEMENT_TMPDIR" ] && [ -n "${HOME:-}" ]; then
@@ -117,16 +142,25 @@ if [ -z "$SOURCE_FILE" ] || [ ! -f "$SOURCE_FILE" ] || [ ! -s "$SOURCE_FILE" ]; 
         append_warning "source-file-recovered-via-discovery" \
             "Original snapshot was missing; recovered transcript via project-dir probe: $recovered"
     else
+        if [ "$REFRESH_MODE" = "true" ] && [ -f "$existing_transcript_path" ]; then
+            emit_status "source-file-missing" "Claude source file was empty or not a regular file; refresh skipped and prior transcript retained."
+        fi
         emit_status "source-file-missing" "Claude source file was empty or not a regular file; transcript capture skipped."
     fi
 else
     TRANSCRIPT_PATH="$(awk 'BEGIN{prefix="TRANSCRIPT_PATH="} index($0, prefix) == 1 {print substr($0, length(prefix) + 1); exit}' "$SOURCE_FILE" 2>/dev/null || true)"
     if [ -z "$TRANSCRIPT_PATH" ]; then
+        if [ "$REFRESH_MODE" = "true" ] && [ -f "$existing_transcript_path" ]; then
+            emit_status "transcript-path-missing" "Claude source file did not contain a TRANSCRIPT_PATH entry; refresh skipped and prior transcript retained."
+        fi
         emit_status "transcript-path-missing" "Claude source file did not contain a TRANSCRIPT_PATH entry; transcript capture skipped."
     fi
 fi
 
 if [ ! -f "$TRANSCRIPT_PATH" ]; then
+    if [ "$REFRESH_MODE" = "true" ] && [ -f "$existing_transcript_path" ]; then
+        emit_status "transcript-file-missing" "TRANSCRIPT_PATH target was missing or not a regular file; refresh skipped and prior transcript retained."
+    fi
     emit_status "transcript-file-missing" "TRANSCRIPT_PATH target was missing or not a regular file; transcript capture skipped."
 fi
 
@@ -164,6 +198,10 @@ fi
 
 if [ "$NO_LOGS_COMMIT" = "true" ]; then
     emit_status "suppressed-no-logs-commit" "--no-logs-commit was set; transcript was written under the staging log root but not committed."
+fi
+
+if [ "$DEFER_COMMIT" = "true" ]; then
+    emit_status "captured" "session transcript was written; commit deferred to caller."
 fi
 
 if ! "$SCRIPT_DIR/larch-log.sh" commit \

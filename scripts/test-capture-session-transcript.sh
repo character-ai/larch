@@ -42,6 +42,9 @@ run_capture() {
     local no_logs_commit="$4"
     local implement_tmpdir="${5:-}"
     local home_dir="${6:-}"
+    local warning_step_label="${7:-7a}"
+    local refresh_mode="${8:-false}"
+    local defer_commit="${9:-false}"
     local repo="$TMP/$label-repo"
     local log_root="$TMP/$label-staging/larch-logs"
     local issues="$TMP/$label-execution-issues.md"
@@ -69,6 +72,9 @@ run_capture() {
         --skill implement \
         --run-id "$label" \
         --no-logs-commit "$no_logs_commit" \
+        --warning-step-label "$warning_step_label" \
+        --refresh-mode "$refresh_mode" \
+        --defer-commit "$defer_commit" \
         --execution-issues-log "$issues")"
 
     assert_contains "$label stdout status" "$out" "SESSION_TRANSCRIPT_STATUS=$expected"
@@ -199,8 +205,45 @@ out="$(cd "$default_branch_repo" && env "PATH=${PATH:-}" "IMPLEMENT_TMPDIR=" "HO
 assert_contains "$default_branch_label stdout status" "$out" "SESSION_TRANSCRIPT_STATUS=commit-failed"
 if [ -f "$TMP/$default_branch_label-issues.md" ]; then
     assert_contains "$default_branch_label execution issue status" "$(cat "$TMP/$default_branch_label-issues.md")" "session-transcript status=commit-failed"
+    assert_contains "$default_branch_label execution issue refusal" "$(cat "$TMP/$default_branch_label-issues.md")" "refusing commit on default branch"
 else
     fail "$default_branch_label execution issue log missing"
+fi
+
+refresh_label="refresh-retains-prior-transcript"
+refresh_repo="$TMP/$refresh_label-repo"
+refresh_log_root="$TMP/$refresh_label-staging/larch-logs"
+refresh_issues="$TMP/$refresh_label-issues.md"
+mkdir -p "$refresh_repo"
+git -C "$refresh_repo" init >/dev/null 2>&1
+git -C "$refresh_repo" config user.email "ci@test"
+git -C "$refresh_repo" config user.name "Test CI"
+touch "$refresh_repo/.gitkeep"
+git -C "$refresh_repo" add .
+git -C "$refresh_repo" commit -q -m "init"
+git -C "$refresh_repo" checkout -q -b "feature-$refresh_label"
+mkdir -p "$refresh_log_root/implement/$refresh_label"
+printf '{"v":1}\n' > "$refresh_log_root/implement/$refresh_label/session-transcript.jsonl"
+out="$(cd "$refresh_repo" && env "PATH=${PATH:-}" "IMPLEMENT_TMPDIR=" "HOME=$TMP/default-home" "$CAPTURE" \
+    --source-file "$TMP/missing-source.env" \
+    --log-root "$refresh_log_root" \
+    --skill implement \
+    --run-id "$refresh_label" \
+    --no-logs-commit false \
+    --warning-step-label pre-push-refresh \
+    --refresh-mode true \
+    --defer-commit true \
+    --execution-issues-log "$refresh_issues")"
+assert_contains "$refresh_label stdout status" "$out" "SESSION_TRANSCRIPT_STATUS=source-file-missing"
+if [ -f "$refresh_issues" ]; then
+    assert_contains "$refresh_label prior transcript retained" "$(cat "$refresh_issues")" "prior transcript retained"
+    if grep -q "status=captured" "$refresh_issues"; then
+        fail "$refresh_label should not append captured warning during refresh"
+    else
+        pass "$refresh_label omits captured warning during refresh"
+    fi
+else
+    fail "$refresh_label execution issue log missing"
 fi
 
 echo

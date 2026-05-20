@@ -13,11 +13,56 @@ usage() {
     exit 1
 }
 
+manifest_pr_number() {
+    awk '
+        match($0, /"pr_number"[[:space:]]*:[[:space:]]*([0-9]+)/, m) { print m[1]; exit }
+    ' "$RUN_DIR/manifest.json" 2>/dev/null || true
+}
+
+has_file() {
+    [ -f "$RUN_DIR/$1" ]
+}
+
+condition_reached() {
+    local condition="$1"
+    case "$condition" in
+        always)
+            return 0
+            ;;
+        step7a)
+            has_file token-report.json ||
+                has_file timing-report.json ||
+                has_file execution-issues.ndjson ||
+                has_file session-transcript.jsonl ||
+                condition_reached step8
+            ;;
+        step8)
+            has_file version-bump-reasoning.md ||
+                has_file final-summary.md ||
+                [ -n "$MANIFEST_PR_NUMBER" ] ||
+                condition_reached step9a1
+            ;;
+        step9a1)
+            has_file run-statistics.md ||
+                has_file oos-issues.ndjson ||
+                [ -n "$MANIFEST_PR_NUMBER" ] ||
+                [ "$MANIFEST_STATUS" = "done" ]
+            ;;
+        *)
+            printf 'verify-run-log-completeness.sh: unsupported manifest condition: %s\n' "$condition" >&2
+            exit 1
+            ;;
+    esac
+}
+
 [ $# -eq 1 ] || usage
 RUN_DIR="$1"
 
 [ -f "$MANIFEST" ] || { printf 'verify-run-log-completeness.sh: manifest not found: %s\n' "$MANIFEST" >&2; exit 1; }
 [ -d "$RUN_DIR" ] || { printf 'verify-run-log-completeness.sh: run dir not found: %s\n' "$RUN_DIR" >&2; exit 1; }
+
+MANIFEST_STATUS="$(awk -F'"' '/"status"[[:space:]]*:/ { print $4; exit }' "$RUN_DIR/manifest.json" 2>/dev/null || true)"
+MANIFEST_PR_NUMBER="$(manifest_pr_number)"
 
 missing=""
 
@@ -28,8 +73,7 @@ while IFS='	' read -r relative_path condition _rest; do
     [ -n "$relative_path" ] || continue
     case "$relative_path" in '#'*) continue ;; esac
 
-    # only check "always" required files for now
-    [ "$condition" = "always" ] || continue
+    condition_reached "$condition" || continue
 
     if [ ! -f "$RUN_DIR/$relative_path" ]; then
         if [ -n "$missing" ]; then

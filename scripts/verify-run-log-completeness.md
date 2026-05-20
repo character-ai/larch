@@ -19,12 +19,18 @@ stderr when the manifest or run dir cannot be found.
 ## Manifest format
 
 `docs/run-logs-required-files.tsv` is a tab-separated file with columns:
-`relative_path`, `condition`, `batch_slug`, `extension`. Only rows with
-`condition=always` are checked. The first row (header) is skipped automatically.
-The current manifest is scoped to committed `/implement` runs that reach the
-Step 7a pre-bump flush; design-only and other pre-Step-7a bailout paths may
-produce committed partial logs that omit Step-7a-only batches such as
-`session-transcript.jsonl`.
+`relative_path`, `condition`, `batch_slug`, `extension`. The first row
+(header) is skipped automatically. `condition` is step-scoped:
+
+- `always` — required for every committed `/implement` run dir covered by the manifest.
+- `step7a` — required once the Step 7a pre-bump flush has been reached.
+- `step8` — required once the Step 8 version-bump phase has been reached.
+- `step9a1` — required once the Step 9a.1 OOS/statistics phase has been reached.
+
+The verifier infers later-phase reachability from committed run-dir signals
+already present in the tree (for example `final-summary.md`, `oos-issues.ndjson`,
+`manifest.json` `pr_number`, or `status=done`) so pre-Step-7a and mid-run
+partial directories do not produce false missing-file failures for later batches.
 
 ## Callers
 
