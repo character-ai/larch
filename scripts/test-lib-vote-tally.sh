@@ -203,6 +203,8 @@ got=$(classify_result 0 1 1 3); assert_eq "0Y/1N/1E (3 elig) → exonerated" "$g
 got=$(classify_result 0 1 2 3); assert_eq "0Y/1N/2E (3 elig) → exonerated" "$got" "exonerated"
 got=$(classify_result 0 2 1 3); assert_eq "0Y/2N/1E (3 elig, NO > EXON) → rejected" "$got" "rejected"
 got=$(classify_result 1 2 3 3); assert_eq "1Y/2N/3E (3 elig) → exonerated" "$got" "exonerated"
+got=$(classify_result 0 0 2 2); assert_eq "0Y/0N/2E (2 elig, unanimous EXON) → exonerated" "$got" "exonerated"
+got=$(classify_result 0 1 1 2); assert_eq "0Y/1N/1E (2 elig, mixed NO/EXON) → exonerated" "$got" "exonerated"
 
 if grep -Fq 'exonerate > 0 && (no == 0 || (exonerate >= no && exonerate > yes))' "$LIB"; then
     got=ok
