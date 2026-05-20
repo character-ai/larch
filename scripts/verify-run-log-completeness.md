@@ -22,6 +22,9 @@ stderr when the manifest or run dir cannot be found.
 `relative_path`, `condition`, `batch_slug`, `extension`. The first row
 (header) is skipped automatically. `condition` is step-scoped:
 
+Data rows must remain tab-delimited. Space-aligned edits are invalid and can
+mis-bind columns in the verifier.
+
 - `always` — required for every committed `/implement` run dir covered by the manifest.
 - `step5` — required once the Step 5 review/tally phase has been reached.
 - `step7a` — required once the Step 7a pre-bump flush has been reached.
@@ -32,6 +35,10 @@ The verifier infers later-phase reachability from committed run-dir signals
 already present in the tree (for example `final-summary.md`, `oos-issues.ndjson`,
 `manifest.json` `pr_number`, or `status=done`) so pre-Step-7a and mid-run
 partial directories do not produce false missing-file failures for later batches.
+
+`batch_slug` normally matches `scripts/larch-log-batches.sh`. The reserved value
+`direct-file` covers committed files that are part of the run-dir contract but
+are written outside `larch-log.sh` batch plumbing, such as `final-summary.md`.
 
 ## Callers
 

@@ -13,8 +13,8 @@ usage() {
     exit 1
 }
 
-manifest_pr_number() {
-    python3 - "$RUN_DIR/manifest.json" <<'PY'
+manifest_field() {
+    python3 - "$RUN_DIR/manifest.json" "$1" <<'PY'
 import json
 import sys
 
@@ -24,9 +24,19 @@ try:
 except Exception:
     sys.exit(0)
 
-value = data.get("pr_number")
-if isinstance(value, int):
-    print(value)
+key = sys.argv[2]
+value = data.get(key)
+
+if key == "pr_number":
+    if isinstance(value, bool):
+        sys.exit(0)
+    if isinstance(value, int):
+        print(value)
+    elif isinstance(value, str) and value.strip():
+        print(value)
+elif key == "status":
+    if isinstance(value, str):
+        print(value)
 PY
 }
 
@@ -77,8 +87,8 @@ RUN_DIR="$1"
 [ -f "$MANIFEST" ] || { printf 'verify-run-log-completeness.sh: manifest not found: %s\n' "$MANIFEST" >&2; exit 1; }
 [ -d "$RUN_DIR" ] || { printf 'verify-run-log-completeness.sh: run dir not found: %s\n' "$RUN_DIR" >&2; exit 1; }
 
-MANIFEST_STATUS="$(awk -F'"' '/"status"[[:space:]]*:/ { print $4; exit }' "$RUN_DIR/manifest.json" 2>/dev/null || true)"
-MANIFEST_PR_NUMBER="$(manifest_pr_number)"
+MANIFEST_STATUS="$(manifest_field status)"
+MANIFEST_PR_NUMBER="$(manifest_field pr_number)"
 
 missing=""
 

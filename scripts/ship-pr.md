@@ -98,7 +98,7 @@ the local branch on the first push. After `PR_NUMBER`/`PR_URL` are persisted,
 it re-runs `write-final-report.sh --comment-only` to refresh the tracking
 comment via API only; that second pass does not commit or push.
 
-`scripts/refresh-run-logs.sh` re-renders `token-report` and `timing-report` larch-log batches and commits the updated files before each push, so the PR's committed logs always reflect the most recent run state. It is called at three trigger points:
+`scripts/refresh-run-logs.sh` re-renders `token-report`, `timing-report`, and `session-transcript` before each push, then commits the updated run-log tree, so the PR's committed logs always reflect the most recent run state. It is called at three trigger points:
 
 - **Trigger A** (`run_rebase_rebump`): after re-bump, before `git-force-push.sh`.
 - **Trigger B** (`run_ci_fix_vendor`): after fix commit, before `git-push.sh`.

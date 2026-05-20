@@ -46,7 +46,9 @@ assert_manifest_matches_batch_table() {
             always|step5|step7a|step8|step9a1) ;;
             *) continue ;;
         esac
-        [ "$batch_slug" = "manifest" ] && continue
+        case "$batch_slug" in
+            manifest|direct-file) continue ;;
+        esac
 
         if ! expected_ext="$(larch_log_batch_extension "$batch_slug" 2>/dev/null)"; then
             fail "manifest batch slug missing from larch-log-batches: $batch_slug"
@@ -68,7 +70,7 @@ REQUIRED_FILES=()
 while IFS= read -r required_file; do
     REQUIRED_FILES+=("$required_file")
 done < <(load_required_files)
-assert_manifest_matches_batch_table || true
+assert_manifest_matches_batch_table
 
 make_complete_run_dir() {
     local dir="$1"
@@ -147,7 +149,11 @@ assert_contains "step8 partial emits OK" "$out" "OK"
 run_pr_number="$TMP/run-pr-number"
 mkdir -p "$run_pr_number"
 cat > "$run_pr_number/manifest.json" <<'EOF'
-{"status":"in-progress","pr_number":123}
+{
+  "updated_at": "2026-05-20T12:00:00Z",
+  "pr_number": "123",
+  "status": "in-progress"
+}
 EOF
 for f in plan-goals-test.md plan-review-tally.json code-review-tally.json review-findings-full.jsonl token-report.json timing-report.json execution-issues.ndjson; do
     printf 'placeholder\n' > "$run_pr_number/$f"
@@ -155,7 +161,29 @@ done
 out="$("$VERIFY" "$run_pr_number" 2>&1 || true)"
 assert_contains "pr-number-only emits MISSING" "$out" "MISSING="
 assert_contains "pr-number-only requires version bump reasoning" "$out" "version-bump-reasoning.md"
+assert_contains "pr-number-only requires final summary" "$out" "final-summary.md"
 assert_contains "pr-number-only requires run statistics" "$out" "run-statistics.md"
+assert_contains "pr-number-only requires session transcript" "$out" "session-transcript.jsonl"
+assert_contains "pr-number-only requires oos issues" "$out" "oos-issues.ndjson"
+
+# Test 10: pretty-printed status=done should trigger Step-9a.1 requirements
+run_done_status="$TMP/run-done-status"
+mkdir -p "$run_done_status"
+cat > "$run_done_status/manifest.json" <<'EOF'
+{
+  "meta": {
+    "note": "status is intentionally not the first key"
+  },
+  "status": "done"
+}
+EOF
+for f in plan-goals-test.md plan-review-tally.json; do
+    printf 'placeholder\n' > "$run_done_status/$f"
+done
+out="$("$VERIFY" "$run_done_status" 2>&1 || true)"
+assert_contains "done-status emits MISSING" "$out" "MISSING="
+assert_contains "done-status requires run statistics" "$out" "run-statistics.md"
+assert_contains "done-status requires oos issues" "$out" "oos-issues.ndjson"
 
 echo
 echo "Passed: $PASS"

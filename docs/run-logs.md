@@ -23,6 +23,7 @@ larch-logs/
       code-review-tally.json
       review-findings-full.jsonl
       version-bump-reasoning.md
+      final-summary.md
       oos-issues.ndjson
       run-statistics.md
       token-report.json
@@ -151,6 +152,14 @@ Per-finding payloads for plan-review accepted, plan-review rejected, and code-re
 **Mode**: replace. **Written**: Step 8, after `ship-pr.sh` completes the version-bump phase.
 
 Markdown explanation of the version bump classification: which bump type was chosen (PATCH / MINOR / MAJOR), which changed files drove the decision, and the reasoning applied. Useful for auditing unexpected version jumps.
+
+### final-summary.md
+
+**Mode**: replace. **Written**: Step 8+ before PR creation and refreshed later by terminal summary paths.
+
+Committed projection of the final tracking summary: run status, PR field, and
+the log directory pointer. The pre-PR copy may carry placeholder PR data; the
+tracking-issue `larch:final-summary` comment is the canonical live projection.
 
 ### oos-issues.ndjson
 

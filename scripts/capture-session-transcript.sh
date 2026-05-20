@@ -88,6 +88,18 @@ append_warning() {
         >/dev/null 2>&1 || true
 }
 
+redact_stderr_snippet() {
+    local path="$1"
+    local snippet=""
+
+    [ -f "$path" ] || return 0
+    snippet="$(tr '\n' ' ' < "$path" | sed 's/  */ /g')"
+    if [ -x "$SCRIPT_DIR/redact-secrets.sh" ]; then
+        snippet="$(printf '%s' "$snippet" | "$SCRIPT_DIR/redact-secrets.sh" 2>/dev/null || printf '<REDACTION_FAILED>')"
+    fi
+    printf '%s' "$snippet" | cut -c1-300
+}
+
 emit_status() {
     local status="$1"
     local message="$2"
@@ -174,7 +186,7 @@ if ! python3 "$SCRIPT_DIR/render-session-transcript.py" \
         --input "$TRANSCRIPT_PATH" \
         --output "$RENDERED_JSONL" \
         2>"$RENDER_STDERR"; then
-    render_msg="$(tr '\n' ' ' < "$RENDER_STDERR" | sed 's/  */ /g' | cut -c1-300)"
+    render_msg="$(redact_stderr_snippet "$RENDER_STDERR")"
     [ -n "$render_msg" ] || render_msg="render-session-transcript.py exited non-zero with no stderr"
     emit_status "render-failed" "session-transcript render failed; transcript was not committed: $render_msg"
 fi
@@ -189,7 +201,7 @@ if ! "$SCRIPT_DIR/larch-log.sh" write \
     --batch session-transcript \
     --input-file "$RENDERED_JSONL" \
     >/dev/null 2>"$WRITE_STDERR"; then
-    write_msg="$(tr '\n' ' ' < "$WRITE_STDERR" | sed 's/  */ /g' | cut -c1-300)"
+    write_msg="$(redact_stderr_snippet "$WRITE_STDERR")"
     [ -n "$write_msg" ] || write_msg="larch-log write failed with no stderr"
     emit_status "write-failed" "larch-log write failed; transcript was not captured: $write_msg"
 fi
@@ -207,7 +219,7 @@ if ! "$SCRIPT_DIR/larch-log.sh" commit \
     --skill "$SKILL" \
     --run-id "$RUN_ID" \
     >/dev/null 2>"$COMMIT_STDERR"; then
-    commit_msg="$(tr '\n' ' ' < "$COMMIT_STDERR" | sed 's/  */ /g' | cut -c1-300)"
+    commit_msg="$(redact_stderr_snippet "$COMMIT_STDERR")"
     [ -n "$commit_msg" ] || commit_msg="larch-log commit failed with no stderr"
     emit_status "commit-failed" "write succeeded but transcript commit failed; transcript remains under the staging log root: $commit_msg"
 fi

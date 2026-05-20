@@ -8,8 +8,10 @@ plan-review-tally.json	always	plan-review-tally	json
 code-review-tally.json	step5	code-review-tally	json
 review-findings-full.jsonl	step5	review-findings-full	jsonl
 version-bump-reasoning.md	step8	version-bump-reasoning	md
+final-summary.md	step8	direct-file	md
 token-report.json	step7a	token-report	json
 timing-report.json	step7a	timing-report	json
 execution-issues.ndjson	step7a	execution-issues	ndjson
 session-transcript.jsonl	step7a	session-transcript	jsonl
+oos-issues.ndjson	step9a1	oos-issues	ndjson
 run-statistics.md	step9a1	run-statistics	md
