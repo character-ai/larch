@@ -322,6 +322,11 @@ if [[ "$voter1_rc" -ne 0 || ! -s "$VOTER_1_PATH" ]]; then
     {
         printf 'voter1_rc=%s\n' "$voter1_rc"
         printf 'output_bytes=%s\n' "$(wc -c < "$VOTER_1_PATH" 2>/dev/null || echo 0)"
+        if [[ "$voter1_rc" -ne 0 && -s "$VOTER_1_PATH" ]]; then
+            printf -- '--- first 200 bytes of voter output ---\n'
+            head -c 200 "$VOTER_1_PATH"
+            printf '\n'
+        fi
         if [[ -s "${VOTER_1_PATH}.diag" ]]; then
             printf -- '--- first 200 bytes of .diag ---\n'
             head -c 200 "${VOTER_1_PATH}.diag"
