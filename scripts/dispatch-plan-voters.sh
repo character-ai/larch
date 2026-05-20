@@ -159,16 +159,36 @@ retry_voter() {
             return 0
         fi
     else
+        local retry_waterfall_output retry_all_outputs retry_dispatch_ok
+        local retry_key retry_value retry_actual_output
         retry_manifest="$DESIGN_TMPDIR/plan-voter-retry-slot${slot_num}.ndjson"
         printf '{"slot":"voter-%s-retry","tool":"%s","output":"%s","prompt_file":"%s"}\n' \
             "$slot_num" "$voter_tool" "$retry_output" "$retry_prompt" > "$retry_manifest"
-        if ! "$PLUGIN_ROOT/scripts/dispatch-with-waterfall.sh" \
+        if ! retry_waterfall_output=$("$PLUGIN_ROOT/scripts/dispatch-with-waterfall.sh" \
             --slots-file "$retry_manifest" \
             --codex-present "$CODEX_AVAILABLE" \
             --cursor-present "$CURSOR_AVAILABLE" \
             --mode description \
-            --timeout 1200 >/dev/null 2>&1; then
+            --timeout 1200 2>/dev/null); then
             emit_kv WARN "plan-voter retry failed for slot $slot_num via $voter_tool"
+            return 0
+        fi
+        retry_all_outputs=""
+        retry_dispatch_ok="true"
+        while IFS= read -r line || [[ -n "$line" ]]; do
+            retry_key="${line%%=*}"
+            retry_value="${line#*=}"
+            case "$retry_key" in
+                ALL_OUTPUT_FILES) retry_all_outputs="$retry_value" ;;
+                DISPATCH_OK) retry_dispatch_ok="$retry_value" ;;
+                WARN) emit_kv WARN "$retry_value" ;;
+            esac
+        done <<< "$retry_waterfall_output"
+        read -r -a retry_outputs_arr <<< "$retry_all_outputs"
+        retry_actual_output="${retry_outputs_arr[0]:-$retry_output}"
+        retry_output="$retry_actual_output"
+        if [[ "$retry_dispatch_ok" != "true" && ! -s "$retry_output" ]]; then
+            emit_kv WARN "plan-voter retry produced no usable waterfall output for slot $slot_num"
             return 0
         fi
     fi

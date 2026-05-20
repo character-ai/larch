@@ -133,6 +133,12 @@ assert_contains "plan-voter Output ONLY vote lines" \
     'Output ONLY vote lines' "$plan_voter_tmp/codex-plan-voter-prompt.txt"
 assert_contains "plan-voter OOS ballot rows" \
     'OOS_N: YES' "$plan_voter_tmp/codex-plan-voter-prompt.txt"
+assert_contains "plan-voter cursor OOS ballot rows" \
+    'OOS_N: YES' "$plan_voter_tmp/cursor-plan-voter-prompt.txt"
+assert_contains "plan-voter cursor Verify silently" \
+    'Verify silently' "$plan_voter_tmp/cursor-plan-voter-prompt.txt"
+assert_contains "plan-voter cursor Output ONLY vote lines" \
+    'Output ONLY vote lines' "$plan_voter_tmp/cursor-plan-voter-prompt.txt"
 retry_prompt=$(find "$plan_voter_tmp" -name '*plan-voter-prompt-retry.txt' -print -quit)
 [[ -n "$retry_prompt" ]] || fail "plan-voter retry prompt was not rendered"
 assert_contains "plan-voter retry prefix" \
@@ -229,6 +235,8 @@ assert_contains "scout closing-sentence requirement" \
     'follow the output-format rules from your outer wrapper exactly' "$scout_out"
 assert_contains "scout closing-sentence repair" \
     'repaired_body' "$scout_out"
+assert_contains "scout closing-sentence full anchor" \
+    'Cite specific file paths and line ranges for any issues found, and follow the output-format rules from your outer wrapper exactly.' "$scout_out"
 
 # ── collect-agent-results.sh NS_STRONG_HEADER static source assertions ───────
 

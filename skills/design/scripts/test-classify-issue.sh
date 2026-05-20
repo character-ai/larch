@@ -134,4 +134,34 @@ out=$(CLASSIFY_ISSUE_SKIP_CURSOR=true "$SUBJECT" --feature-description "$feature
 printf '%s\n' "$out" | grep -q '^CLASSIFICATION=TRIVIAL_DOC_ONLY$' || fail "ratifier case4: doc-only not trivial"
 printf '%s\n' "$out" | grep -q '^CLASSIFICATION_SOURCE=deterministic$' || fail "ratifier case4: deterministic source not emitted"
 
+# Case 5: True negative — deterministic misclassifies doc-only prose as SIMPLE,
+# and cursor ratifies down to TRIVIAL_DOC_ONLY.
+printf 'Refresh the runtime skill prompt wording only.\n' > "$feature"
+cat > "$diff" <<'EOF'
+diff --git a/skills/foo/SKILL.md b/skills/foo/SKILL.md
+--- a/skills/foo/SKILL.md
++++ b/skills/foo/SKILL.md
++Clarify prompt wording.
+EOF
+cat > "$TMPROOT/run-external-agent-doc-only.sh" <<'EOF2'
+#!/usr/bin/env bash
+out=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --output) out="$2"; shift 2 ;;
+    --) shift; break ;;
+    *) shift ;;
+  esac
+done
+printf 'CLASSIFICATION=TRIVIAL_DOC_ONLY\n' > "$out"
+printf '0\n' > "$out.done"
+EOF2
+chmod +x "$TMPROOT/run-external-agent-doc-only.sh"
+baseline=$(CLASSIFY_ISSUE_SKIP_CURSOR=true "$SUBJECT" --feature-description "$feature" --diff-context "$diff")
+printf '%s\n' "$baseline" | grep -q '^CLASSIFICATION=SIMPLE$' || fail "ratifier case5: deterministic doc-like runtime-markdown baseline should be SIMPLE"
+printf '%s\n' "$baseline" | grep -q '^CLASSIFICATION_SOURCE=deterministic$' || fail "ratifier case5: deterministic baseline source not emitted"
+out=$(PATH="$stubbin:$PATH" RUN_EXTERNAL_AGENT="$TMPROOT/run-external-agent-doc-only.sh" "$SUBJECT" --feature-description "$feature" --diff-context "$diff")
+printf '%s\n' "$out" | grep -q '^CLASSIFICATION=TRIVIAL_DOC_ONLY$' || fail "ratifier case5: cursor downgrade to TRIVIAL_DOC_ONLY not used"
+printf '%s\n' "$out" | grep -q '^CLASSIFICATION_SOURCE=cursor-validated$' || fail "ratifier case5: cursor-validated source not emitted"
+
 echo "PASS: test-classify-issue.sh"

@@ -378,7 +378,7 @@ if ! jq -c --argjson max "$MAX_ARCHETYPES" '
            | .valid_total += 1
            | if (.archetypes | length) < $max then
                # Defensively append the required closing sentence when absent.
-               (if ($a.prompt_body | test("follow the output-format rules from your outer wrapper exactly\\.?$"))
+               (if ($a.prompt_body | test("Cite specific file paths and line ranges for any issues found, and follow the output-format rules from your outer wrapper exactly\\.?$"))
                 then $a.prompt_body
                 else ($a.prompt_body | rtrimstr(" ") | rtrimstr(".")) + " Cite specific file paths and line ranges for any issues found, and follow the output-format rules from your outer wrapper exactly."
                 end) as $repaired_body

@@ -109,6 +109,8 @@ stdout=$(run_case valid4 "$TMP/valid4.json")
 grep -Fq 'SCOUT_STATUS=ok' "$stdout" || fail "valid4 status"
 grep -Fq 'SCOUT_ARCHETYPE_COUNT=4' "$stdout" || fail "valid4 count"
 [[ "$(jq '.archetypes | length' "$TMP/valid4/scout-manifest.json")" = "4" ]] || fail "valid4 manifest count"
+jq -er '.archetypes[].prompt_body | endswith("Cite specific file paths and line ranges for any issues found, and follow the output-format rules from your outer wrapper exactly.")' \
+    "$TMP/valid4/scout-manifest.json" >/dev/null || fail "valid4 prompt repair suffix"
 assert_raw_matches valid4 "$TMP/valid4.json"
 
 cat > "$TMP/fence-wrapped.json" <<'JSON'
@@ -333,6 +335,17 @@ JSON
 stdout=$(run_case unsafe-rationale-close-tag "$TMP/unsafe-rationale-close-tag.json")
 grep -Fq 'SCOUT_STATUS=empty' "$stdout" || fail "unsafe rationale close-tag rejected"
 grep -Fq 'WARN=unsafe rationale for unsafe-rationale' "$stdout" || fail "unsafe rationale warning"
+
+cat > "$TMP/partial-closing-suffix.json" <<'JSON'
+{"archetypes":[
+  {"name":"partial-suffix","focus_area":"correctness","weight":1,"rationale":"r","prompt_body":"Only follow the output-format rules from your outer wrapper exactly."}
+]}
+JSON
+stdout=$(run_case partial-closing-suffix "$TMP/partial-closing-suffix.json")
+grep -Fq 'SCOUT_STATUS=ok' "$stdout" || fail "partial suffix status"
+[[ "$(jq -r '.archetypes[0].prompt_body' "$TMP/partial-closing-suffix/scout-manifest.json")" = \
+   "Only follow the output-format rules from your outer wrapper exactly Cite specific file paths and line ranges for any issues found, and follow the output-format rules from your outer wrapper exactly." ]] \
+   || fail "partial suffix should be repaired to full closing sentence"
 
 cat > "$TMP/truncate-valid.json" <<'JSON'
 {"archetypes":[
