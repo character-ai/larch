@@ -1,0 +1,5 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: EXONERATE -- mktemp-failure-after-launcher-failure is a valid edge case but qualifying the invariant with it adds noise without practical benefit
+FINDING_4: NO -- dispatch-panel.md is code-accurate; the plan draft was an intermediate document, not a production artifact; there is nothing to correct
+FINDING_5: YES

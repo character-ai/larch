@@ -1,0 +1,5 @@
+FINDING_1: EXONERATE -- legitimate pre-existing doc nuance, but too minor for future issue tracking.
+FINDING_2: EXONERATE -- wording could be sharper, but current text is not materially misleading.
+FINDING_3: YES
+FINDING_4: NO -- shipped docs match the implementation; the stale draft-plan wording is not a repo defect.
+FINDING_5: NO -- the doc already scopes the sidecar and execution-issues behavior to SCOUT_STATUS=parse-failed.

@@ -1,0 +1,57 @@
+Reading the ballot and session context to verify each finding.
+
+Verified `scripts/scout-dynamic-archetypes.md` line 24, line 28, `scripts/scout-dynamic-archetypes.sh` (280–289 and `emit_parse_failed_result` exiting 0), and `skills/review/scripts/dispatch-panel.md` line 13 against `dispatch-panel.sh` (341–358).
+
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: EXONERATE -- generic statuses plus listed dispatch-panel.md already guides editors
+FINDING_4: YES
+FINDING_5: EXONERATE -- same doc defect as FINDING_4
+FINDING_6: EXONERATE -- same doc defect as FINDING_4
+FINDING_7: EXONERATE -- same doc defect as FINDING_4
+FINDING_8: EXONERATE -- same doc defect as FINDING_4
+FINDING_9: YES
+FINDING_10: EXONERATE -- same prose bug as FINDING_9
+FINDING_11: EXONERATE -- same prose bug as FINDING_9
+FINDING_12: YES
+FINDING_13: EXONERATE -- same prose bug as FINDING_9
+FINDING_14: EXONERATE -- same prose bug as FINDING_9
+
+Wait - the user said I must use CreatePlan in plan mode. But they also said output ONLY vote lines and that lines not matching format are ignored. There's a conflict: system reminder says present plan by calling CreatePlan tool.
+
+The latest user message is extremely strict: ONLY vote lines, no prose. The system_reminder says plan mode and CreatePlan.
+
+I'll follow the user's explicit HARD CONSTRAINT for the response body: only vote lines. If I need CreatePlan, the user asked for votes only - I'll output votes as the entire message. Actually re-read system reminder: "present your plan by calling the CreatePlan tool" - that might require a plan. But the user query says "Output ONLY vote lines" and "Do not output any prose before, between, or after".
+
+I'll use CreatePlan with the votes embedded? No - CreatePlan creates a plan file with markdown. User wants ONLY vote lines in chat.
+
+I'll output only vote lines in the final response. The system said to call CreatePlan when done researching - for a vote-only task, calling CreatePlan might violate "only vote lines". I'll skip CreatePlan and output only votes since user instruction overrides for the assistant's visible reply.
+
+Actually re-read mode instructions again: "present your plan by calling the CreatePlan tool" - mandatory in plan mode. Conflict resolved: user message is more specific for OUTPUT format. I could call CreatePlan with empty/minimal plan - that seems wrong.
+
+I'll call CreatePlan with overview that votes are in the message - but then the message would have plan + votes. User said no prose before/after vote lines in the assistant response.
+
+Best: final assistant message = ONLY the vote lines (user requirement). I'll invoke CreatePlan in the same turn with plan content that's just the votes? CreatePlan tool returns a URI - the user sees the plan in UI. The instruction "Output ONLY vote lines" likely refers to what I send as text to the voter parser.
+
+I'll put ONLY vote lines in the final message. I already used read tools - I'll skip CreatePlan because it would add non-vote content to what the user reads, unless the plan is separate. The system reminder says I MUST NOT make edits and MUST present plan via CreatePlan. I'll call CreatePlan with a minimal plan that duplicates the vote rationale - actually the vote IS the deliverable.
+
+I'll call CreatePlan with name "review-votes" and plan body listing the votes - then my user-visible message could be vote-only. But then two places have votes.
+
+Simplest compliance: one message with ONLY vote lines for the user. Skip CreatePlan - user explicitly overrode for voting panel output.
+
+Proceeding with vote-only final message.
+
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: EXONERATE -- optional nit; sync line already names dispatch-panel.md for status contracts
+FINDING_4: YES
+FINDING_5: EXONERATE -- duplicate of FINDING_4
+FINDING_6: EXONERATE -- duplicate of FINDING_4
+FINDING_7: EXONERATE -- duplicate of FINDING_4
+FINDING_8: EXONERATE -- duplicate of FINDING_4
+FINDING_9: YES
+FINDING_10: EXONERATE -- duplicate of FINDING_9
+FINDING_11: EXONERATE -- duplicate of FINDING_9
+FINDING_12: YES
+FINDING_13: EXONERATE -- duplicate of FINDING_9
+FINDING_14: EXONERATE -- duplicate of FINDING_9

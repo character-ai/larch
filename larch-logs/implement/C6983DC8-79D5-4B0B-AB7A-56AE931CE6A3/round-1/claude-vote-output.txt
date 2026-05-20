@@ -1,0 +1,26 @@
+I now have enough evidence to vote. Key verifications from the source:
+
+1. **`scout-dynamic-archetypes.sh` lines 280–290**: When `launch_rc -ne 0`, the scout emits `claude-failed` or `timeout` on stdout and then calls `exit 0`. These are real stdout statuses the scout script emits — the new parenthetical claiming the scout "only emits `ok`, `empty`, or `parse-failed`" is factually wrong.
+
+2. **`emit_parse_failed_result` lines 120–128**: Every `validation_jq_error` path calls this function, which does `exit 0`. `validation_jq_error` never produces a non-zero scout exit; it yields `SCOUT_STATUS=parse-failed` at exit 0. The new dispatch-panel.md text incorrectly cites it as a non-zero exit example.
+
+3. **dispatch-panel.sh lines 341–359**: `validation-failed` is only triggered when `scout_rc -ne 0`. `parse-failed` can come directly from the scout's own stdout (which `emit_parse_failed_result` emits at exit 0), not only from `scout_manifest_is_valid` failing downstream.
+
+4. **Edit in sync note (line 28 of scout-dynamic-archetypes.md)**: The diff shows this line was not changed, though the plan called for it.
+
+---
+
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: EXONERATE -- duplicate of FINDING_2 at nit severity; reviewer itself notes "generic statuses already covers it"
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: YES

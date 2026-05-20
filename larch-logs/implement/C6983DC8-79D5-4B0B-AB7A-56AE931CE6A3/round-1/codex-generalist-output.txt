@@ -1,0 +1,8 @@
+### In-Scope Findings
+
+1. **Important** `risk-integration` [scripts/scout-dynamic-archetypes.md:24](<OPERATOR_REPO_PATH>/scripts/scout-dynamic-archetypes.md:24), [skills/review/scripts/dispatch-panel.md:13](<OPERATOR_REPO_PATH>/skills/review/scripts/dispatch-panel.md:13)  
+   The new contract text says the scout script itself only emits `ok`, `empty`, or `parse-failed`, but `scripts/scout-dynamic-archetypes.sh:280-285` also emits `SCOUT_STATUS=claude-failed` and `SCOUT_STATUS=timeout` on launcher failures. A direct caller following the documented enum could treat real timeout/subprocess-failure results as unknown even though they are established stdout statuses. Update the parenthetical to include `claude-failed` and `timeout`, or avoid enumerating scout-local statuses there; also avoid implying `validation_jq_error` maps to dispatcher `validation-failed`, since that path is caught by `emit_parse_failed_result` and exits 0 as `parse-failed`.
+
+### Out-of-Scope Observations
+
+No out-of-scope observations.
