@@ -54,6 +54,8 @@ first available session tmpdir (`IMPLEMENT_TMPDIR`, `REVIEW_TMPDIR`,
   `LARCH_QUIET_DISABLE=1` before calling it, because their data stream is
   ordinary stdout rather than contract output.
 
+`scripts/ship-pr.sh` and the review/review-and-fix tree (`skills/review/scripts/dispatch-panel.sh`, `skills/review/scripts/review-core.sh`, `skills/review-and-fix/scripts/review-and-fix.sh`) opt into breadcrumb surfacing via `export LARCH_QUIET_BREADCRUMBS=1` set at their `/implement` invocation sites (`skills/implement/SKILL.md` Step 8+ block and `scripts/run-step5-review.sh`).
+
 ## Harness
 
 `scripts/test-lib-quiet.sh` exercises default redirect behavior, explicit log

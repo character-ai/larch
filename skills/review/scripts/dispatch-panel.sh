@@ -397,6 +397,21 @@ if [[ "$DYNAMIC_ARCHETYPES" != "0" && "$SCOUT_STATUS" == "na" ]]; then
 fi
 append_scout_parse_issue
 
+static_cursor=${#cursor_specialists[@]}
+if [[ "$PANEL" == "hard" ]]; then
+    static_codex=${#codex_specialists[@]}
+else
+    static_codex=1
+fi
+total=$((static_cursor + static_codex + DYNAMIC_SLOTS))
+if (( total > 0 )); then
+    if [[ "$PANEL" == "hard" ]]; then
+        emit_breadcrumb "→ review: launching $total reviewers ($static_cursor Cursor static, $static_codex Codex specialists, $DYNAMIC_SLOTS dynamic)"
+    else
+        emit_breadcrumb "→ review: launching $total reviewers ($static_cursor Cursor static, $static_codex Codex generalist, $DYNAMIC_SLOTS dynamic)"
+    fi
+fi
+
 waterfall_args=(--slots-file "$manifest" --codex-present "$CODEX_AVAILABLE" --cursor-present "$CURSOR_AVAILABLE" --mode "$MODE" --timeout 1800)
 [[ "$MODE" == "diff" && -n "$DIFF_FILE" ]] && waterfall_args+=(--diff-file "$DIFF_FILE" --commit-count "$COMMIT_COUNT")
 [[ "$MODE" == "description" && -n "$SCOPE_FILES" ]] && waterfall_args+=(--description-text "${DESCRIPTION_TEXT:-description review}" --scope-files "$SCOPE_FILES")

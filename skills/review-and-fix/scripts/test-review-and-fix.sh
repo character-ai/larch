@@ -1954,5 +1954,34 @@ if grep -Fq 'REVIEW_AND_FIX_STATUS=converged-small-changes' <<< "$out"; then
 fi
 fi  # end section: convergence
 
+# Breadcrumb pin: round entry and coder dispatch breadcrumbs appear when LARCH_QUIET_BREADCRUMBS=1.
+if section_runs dispatch; then
+work_breadcrumb_round="$TMP/breadcrumb-round-entry"
+make_work_repo "$work_breadcrumb_round"
+implement_tmp="$work_breadcrumb_round/implement"
+mkdir -p "$implement_tmp"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
+set +e
+out=$(LARCH_QUIET_BREADCRUMBS=1 TEST_CORE_STATUS=zero run_review_and_fix "$work_breadcrumb_round" \
+    --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 \
+    --session-env-path "$implement_tmp/session-env.sh" --run-id breadcrumb-round-run 2>&1)
+rc=$?
+set -e
+[[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "breadcrumb round-entry expected exit 0 got $rc"; }
+grep -Fq '→ review-and-fix: round 1' <<< "$out" || fail "breadcrumb round-entry: missing round entry breadcrumb"
+
+work_breadcrumb_coder="$TMP/breadcrumb-coder-dispatch"
+make_work_repo "$work_breadcrumb_coder"
+implement_tmp="$work_breadcrumb_coder/implement"
+mkdir -p "$implement_tmp"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
+set +e
+out=$(LARCH_QUIET_BREADCRUMBS=1 TEST_AGENT_BEHAVIOR=codex-success run_review_and_fix "$work_breadcrumb_coder" \
+    --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 \
+    --session-env-path "$implement_tmp/session-env.sh" --run-id breadcrumb-coder-run 2>&1)
+rc=$?
+set -e
+grep -Fq '→ review-and-fix: dispatching coder' <<< "$out" || fail "breadcrumb coder-dispatch: missing dispatching coder breadcrumb"
+fi  # end section: dispatch (breadcrumb additions)
 
 echo "test-review-and-fix: ok"

@@ -339,6 +339,7 @@ if [[ -n "$claude_outputs" ]]; then
 else
     claude_array=()
 fi
+emit_breadcrumb "→ review: consolidating findings"
 "$COLLECT_FINDINGS_SH" "${collect_args[@]}" > "$collect_out"
 recover_dirty_tree "${external_array[@]+"${external_array[@]}"}" "${claude_array[@]+"${claude_array[@]}"}"
 

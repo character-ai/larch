@@ -119,4 +119,13 @@ Submodule guard layers:
 2. The coder prompt includes a submodule prohibition block.
 3. After coder dispatch, tracked changes under submodule roots are reverted with `git checkout -- <path>`, untracked files under submodule roots are removed, and the round is reported as `CODER_STATUS=submodule-violation`.
 
+When `LARCH_QUIET_BREADCRUMBS=1` is exported (inherited from `run-step5-review.sh`), the script emits breadcrumbs at major round-loop and coder-dispatch boundaries:
+
+- `→ review-and-fix: round N` — on `run_implement_round` entry
+- `→ review-and-fix: round N — X accepted, Y rejected` — after review-core tally reads finish
+- `→ review-and-fix: dispatching coder (N fixes)` — before `run_coder_dispatch`
+- `→ review-and-fix: <tool> applied N fixes (commit <sha>)` — after a successful coder commit
+- `⚠ review-and-fix: coder dispatch failed (both codex and cursor)` — when both coders fail
+- `⚠ review-and-fix: reviewer panel failed (>50% slots)` — on `core_status=panel-failed`
+
 Harness: `skills/review-and-fix/scripts/test-review-and-fix.sh`, wired through `make test-review-and-fix`.

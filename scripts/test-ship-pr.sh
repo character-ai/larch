@@ -516,6 +516,57 @@ write_state "$tmp/ship-pr-state.sh" ci-merge
 STUB_CI_ACTION=bail STUB_BAIL_REASON=fix-attempts-exhausted run_subject "$root" "$tmp" "$tmp/rc"
 assert_rc "$tmp/rc" 3 "user-input bail exits 3"
 assert_state_line "$tmp/ship-pr-state.sh" "BAIL_NEEDS_USER_INPUT=true" "user-input bail marks state"
+
+# Breadcrumb pin: phase-entry breadcrumbs appear in stdout when LARCH_QUIET_BREADCRUMBS=1.
+root=$(make_repo breadcrumb_phase_entry)
+tmp=$(make_tmpdir)
+write_state "$tmp/ship-pr-state.sh" checks
+LARCH_QUIET_BREADCRUMBS=1 STUB_CI_ACTION=merge run_subject "$root" "$tmp" "$tmp/rc"
+for crumb in '→ ship-pr: checks' '→ ship-pr: version bump' '→ ship-pr: PR prep' '→ ship-pr: opening PR'; do
+    if grep -qF "$crumb" "$tmp/stdout"; then
+        ok "breadcrumb phase-entry: stdout contains '$crumb'"
+    else
+        fail "breadcrumb phase-entry: stdout missing '$crumb'"
+        sed 's/^/    stdout: /' "$tmp/stdout"
+    fi
+done
+
+# Breadcrumb pin: stall breadcrumb appears when LARCH_QUIET_BREADCRUMBS=1 and bump fails.
+root=$(make_repo breadcrumb_stall)
+tmp=$(make_tmpdir)
+cat > "$root/.claude/skills/bump-version/scripts/classify-bump.sh" <<'STUB'
+#!/usr/bin/env bash
+exit 1
+STUB
+chmod +x "$root/.claude/skills/bump-version/scripts/classify-bump.sh"
+write_state "$tmp/ship-pr-state.sh" bump
+LARCH_QUIET_BREADCRUMBS=1 run_subject "$root" "$tmp" "$tmp/rc"
+if grep -qF '⛔ ship-pr: stalled at step 8' "$tmp/stdout"; then
+    ok "breadcrumb stall: stdout contains stall-at-step-8 breadcrumb"
+else
+    fail "breadcrumb stall: stdout missing '⛔ ship-pr: stalled at step 8'"
+    sed 's/^/    stdout: /' "$tmp/stdout"
+fi
+
+# Breadcrumb pin: transient breadcrumb appears when LARCH_QUIET_BREADCRUMBS=1.
+root=$(make_repo breadcrumb_transient)
+tmp=$(make_tmpdir)
+cat > "$root/scripts/create-pr.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+printf "fatal: unable to access 'https://github.com/owner/repo/': Connection timed out\n" >&2
+printf "fatal: unable to access 'https://github.com/owner/repo/': Connection timed out\n"
+exit 1
+STUB
+chmod +x "$root/scripts/create-pr.sh"
+write_state "$tmp/ship-pr-state.sh" pr-create
+LARCH_QUIET_BREADCRUMBS=1 run_subject "$root" "$tmp" "$tmp/rc"
+if grep -qF '⚠ ship-pr: transient network failure' "$tmp/stdout"; then
+    ok "breadcrumb transient: stdout contains transient-network breadcrumb"
+else
+    fail "breadcrumb transient: stdout missing '⚠ ship-pr: transient network failure'"
+    sed 's/^/    stdout: /' "$tmp/stdout"
+fi
 fi  # end section: state
 
 if section_runs postmerge; then
