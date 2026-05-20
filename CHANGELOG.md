@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Restore multi-voter `classify_result` exoneration in `scripts/lib-vote-tally.sh` (two-path rule: no-`NO` panels and mixed panels where `EXONERATE` meets or beats `NO` and exceeds `YES`), fixing mis-tallies after the narrow condition in PR #2428 (#2446).
+
 ### Changed
 
 - Document the `review-and-fix.sh` applied-fixes contract change: accepted findings applied by the coder now complete with exit `0` plus `REVIEW_AND_FIX_STATUS=fix-applied`, and `review-and-fix-summary.json` now records `.status = "fix-applied"` instead of the old `fix-required`/exit-3 checkpoint shape. External wrappers, jq filters, and dashboards must key on the new status fields rather than exit `3`.
