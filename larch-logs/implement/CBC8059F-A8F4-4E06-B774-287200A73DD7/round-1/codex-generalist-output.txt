@@ -1,0 +1,9 @@
+### In-Scope Findings
+
+1. **Important** `correctness` `skills/review/scripts/review-core.sh:342`: The new nested review breadcrumbs are emitted from scripts whose stdout is redirected into capture files, so they are not operator-visible. `review-and-fix.sh` invokes review-core with `> "$core_out"` at `skills/review-and-fix/scripts/review-and-fix.sh:986`, and review-core invokes dispatch-panel with `> "$dispatch_out"` at `skills/review/scripts/review-core.sh:290`; because `larch_quiet_init` binds FD 3 to the child’s current stdout, breadcrumbs at `skills/review/scripts/review-core.sh:342` and `skills/review/scripts/dispatch-panel.sh:409-411` land in `round-N/review-core.env` / `review-core-dispatch.env` instead of the terminal. Concrete failing scenario: during a long Step 5 reviewer launch or collection phase with `LARCH_QUIET_BREADCRUMBS=1`, the operator still sees no `→ review: launching ...` or `→ review: consolidating findings` progress line. Fix by passing a dedicated inherited progress FD that `larch_quiet_init` does not rebind, or move these breadcrumbs to the non-captured parent layer before the long child calls.
+
+2. **Nit** `code-quality` `skills/review-and-fix/scripts/review-and-fix.sh:231`: The new coder-dispatch failure breadcrumb is skipped when Cursor setup fails before the Cursor agent is launched. If Codex fails and `cursor_launcher_load_model_args` or `cursor_launcher_setup_auth_argv` returns nonzero at `skills/review-and-fix/scripts/review-and-fix.sh:231-232`, the function returns before the breadcrumb at line 247; emit the failure breadcrumb on those early-return paths too.
+
+### Out-of-Scope Observations
+
+No out-of-scope observations.
