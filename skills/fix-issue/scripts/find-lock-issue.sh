@@ -654,7 +654,7 @@ if [[ -n "$ISSUE_ARG" ]]; then
             ISSUE_QUERY="$ISSUE_NUM_FROM_ARG"
             ;;
     esac
-    ISSUE_JSON=$(gh issue view "$ISSUE_QUERY" --repo "$REPO" --json number,state,title,url 2>/dev/null) || {
+    ISSUE_JSON=$(gh issue view "$ISSUE_QUERY" --repo "$REPO" --json number,state,title,url,labels 2>/dev/null) || {
         emit_kv ELIGIBLE false
         emit_kv ERROR "Failed to fetch issue (invalid number, URL, or inaccessible): $ISSUE_ARG"
         exit 2
@@ -693,6 +693,16 @@ if [[ -n "$ISSUE_ARG" ]]; then
     if [ "$ISSUE_STATE" != "OPEN" ]; then
         emit_kv ELIGIBLE false
         emit_kv ERROR "Issue #$ISSUE_NUM is not open (state: $ISSUE_STATE)"
+        exit 2
+    fi
+
+    # Exclude issues labeled 'audit-report' — these are /audit-runs chain-of-
+    # history issues, not fix-issue candidates (both auto-pick and
+    # explicit-target paths enforce this). Uses jq to parse the labels array
+    # from the --json labels field fetched above; fail-open on parse error.
+    if echo "$ISSUE_JSON" | jq -e '[.labels[]?.name] | index("audit-report") != null' > /dev/null 2>&1; then
+        emit_kv ELIGIBLE false
+        emit_kv ERROR "Issue #$ISSUE_NUM has label 'audit-report'; audit-report issues are excluded from /fix-issue"
         exit 2
     fi
 
@@ -869,7 +879,7 @@ fi
 # `select(.pull_request == null)` since `gh issue list` does this implicitly.
 # ---------------------------------------------------------------------------
 ISSUES_JSONL=$(gh api --paginate "repos/${REPO}/issues?state=open&per_page=100" \
-    --jq '.[] | select(.pull_request == null) | {number, title}' 2>/dev/null) || {
+    --jq '.[] | select(.pull_request == null) | {number, title, labels: [.labels[]?.name]}' 2>/dev/null) || {
     emit_kv ELIGIBLE false
     emit_kv ERROR "Failed to list issues"
     exit 2
@@ -924,6 +934,13 @@ while IFS= read -r issue_row; do
 
     if has_report_prefix "$ISSUE_TITLE"; then
         larch_err "Skipping issue #$ISSUE_NUM: report title prefix"
+        continue
+    fi
+
+    # Skip issues labeled 'audit-report' — these are /audit-runs chain-of-
+    # history report issues, not fix-issue candidates.
+    if echo "$issue_row" | jq -e '.labels | if type == "array" then index("audit-report") != null else false end' > /dev/null 2>&1; then
+        larch_err "Skipping issue #$ISSUE_NUM: has label 'audit-report'"
         continue
     fi
 
