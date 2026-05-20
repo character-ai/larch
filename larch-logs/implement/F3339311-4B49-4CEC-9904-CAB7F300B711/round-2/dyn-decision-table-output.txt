@@ -1,0 +1,15 @@
+Gathering the pre-computed diff, commit history (read-only), and full `classify_result` / `accept_finding` context for a correctness-focused review.
+
+Checking the documented voting contract in `scripts/lib-vote-tally.md` and any caller context for vote-count invariants.
+
+Checking how callers compute counts to see whether tuples like `(1,0,1,3)` or `(0,1,2,3)` are reachable.
+
+### In-Scope Findings
+
+No correctness defects identified in the branch diff. The updated guard at [`scripts/lib-vote-tally.sh:128-135`](scripts/lib-vote-tally.sh) fixes the stated bug (e.g. `(yes,no,exonerate,eligible)=(0,0,3,3)` now reaches `exonerated` instead of falling through to `rejected`). The `(no == 0 || …)` form is consistent with the pre-change branch it replaced (`yes > 0 && exonerate > 0 && no == 0`), which already exonerated `(1,0,1,3)` without requiring `exonerate > yes`; the OR preserves that behavior where `yes == exonerate == 1` and `no == 0`. For `no > 0`, the second conjunct `exonerate >= no && exonerate > yes` blocks exoneration when `exonerate < no` (e.g. `(0,2,1,3)` → `rejected`, covered by [`scripts/test-lib-vote-tally.sh:201-203`](scripts/test-lib-vote-tally.sh)). After `accept_finding` fails on the `eligible >= 3` path, `yes` is at most `1`, so there is no reachable tuple with `no == 0`, `exonerate > 0`, and `yes > exonerate` that would rely on the short-circuit unsafely. The added cases `(0,1,2,3)` and `(0,0,3,3)` align with [`skills/shared/voting-protocol.md:184-185`](skills/shared/voting-protocol.md) (0 YES with 1+ EXONERATE → exonerated).
+
+### Out-of-Scope Observations
+
+- **[correctness]** [`skills/shared/voting-protocol.md:176-185`](skills/shared/voting-protocol.md) and [`scripts/test-lib-vote-tally.sh:193-195`](scripts/test-lib-vote-tally.sh): Competition copy describes exoneration as “0 YES” with 1+ EXONERATE, while `classify_result` still maps `(1,0,1,eligible)` to `exonerated` (pre-existing; the diff only adds the same expectation for `eligible=2` at line 195). **Suggested fix:** Either narrow the code path for 1Y/0N/1E to match the prose (breaking change) or extend the protocol text to describe mixed YES/EXON/0NO outcomes and how they map to `exonerated` vs `neutral`.
+
+- **[correctness]** [`scripts/lib-vote-tally.md:19-30`](scripts/lib-vote-tally.md): Documents `accept_finding` thresholds and single-judge EXON behavior but not the multi-judge exoneration / tie logic in `classify_result`. **Suggested fix:** Add a short subsection describing the `neutral` vs `exonerated` branches (including `no > 0` dominance) so future edits do not treat the implementation plan’s simplified formula as the only spec.

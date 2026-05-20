@@ -1,0 +1,17 @@
+Gathering the diff, commit history, and full `classify_result` logic for a correctness-focused review.
+
+Checking the documented contract for `classify_result` to verify intended semantics.
+
+Verifying whether the test harness passes with the current code (read-only).
+
+The harness run confirms a regression on the existing `1Y/1E` case. Delivering the review in the requested format (no preamble, no commits section).
+
+### In-Scope Findings
+
+- **[correctness]** [`scripts/lib-vote-tally.sh:130-135`](scripts/lib-vote-tally.sh:130-135) — Replacing `yes > 0 && exonerate > 0 && no == 0` with `exonerate > 0 && exonerate >= no && exonerate > yes` drops every outcome where `no == 0`, `exonerate > 0`, and `yes == exonerate > 0` (e.g. `yes=1`, `no=0`, `exonerate=1`, `eligible=3`): `exonerate > yes` is false, so the function falls through to `rejected` even though the previous branch treated this as `exonerated`. The regression is exercised by the unchanged expectation at [`scripts/test-lib-vote-tally.sh:193-194`](scripts/test-lib-vote-tally.sh:193-194); running `bash scripts/test-lib-vote-tally.sh` reports `FAIL 1Y/1E (3 elig) → exonerated — got rejected want exonerated`. **Suggested fix:** keep the bug fix for all-EXON / zero-YES cases without breaking the old `no == 0` mixed panel, e.g. combine predicates so `no == 0 && exonerate > 0` still maps like the pre-change line, and use the stricter `exonerate >= no && exonerate > yes` only when `no > 0` (or an equivalent disjunction you can prove equivalent to the intended policy).
+
+### Out-of-Scope Observations
+
+- **[correctness]** [`scripts/lib-vote-tally.md:19-31`](scripts/lib-vote-tally.md:19-31) — The markdown contract documents `accept_finding` thresholds and single-judge `classify_result` behavior but does not spell out multi-judge exoneration tie-breaks; that gap predates this diff and makes it easier for future edits to drift from intended semantics without a spec to test against.
+
+- **[correctness]** [`scripts/lib-vote-tally.sh:69-91`](scripts/lib-vote-tally.sh:69-91) — `accept_finding` ignores `exonerate` for acceptance (only `yes` vs `eligible`); [`scripts/test-lib-vote-tally.sh:49-50`](scripts/test-lib-vote-tally.sh:49-50) documents “1 voter, 1 EXONERATE → reject for implementation.” That asymmetry with `classify_result` is longstanding and not introduced by this branch.

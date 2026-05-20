@@ -1,0 +1,16 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: EXONERATE -- pre-existing doc gap; no need for a standalone tracking issue
+FINDING_4: EXONERATE -- longstanding, already covered by harness comments and code
+FINDING_5: EXONERATE -- duplicate doc nit; not issue-worthy
+FINDING_6: EXONERATE -- duplicate doc nit; not issue-worthy
+FINDING_7: EXONERATE -- minor prose clarification; not issue-worthy
+FINDING_8: EXONERATE -- doc/classify nuance; not issue-worthy
+FINDING_9: YES
+FINDING_10: EXONERATE -- 2-eligible expected label depends on chosen policy after the 1Y/1E fix
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: YES
