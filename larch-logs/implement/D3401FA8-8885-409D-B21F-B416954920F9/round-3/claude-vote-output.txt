@@ -1,0 +1,41 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: EXONERATE -- acknowledged limitation with documented UTC fallback; full calendar normalization adds disproportionate complexity
+FINDING_4: YES
+FINDING_5: EXONERATE -- message shows raw `--repo` arg as "expected" which is what the operator supplied; practically unambiguous
+FINDING_6: NO -- only one dispatch branch executes per invocation; no redundant fetches occur
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: YES
+FINDING_18: EXONERATE -- documented intentional choice in contract md; not worth filing a tracking issue
+FINDING_19: YES
+FINDING_20: EXONERATE -- operator-configured internal tool; attack requires malicious self-configuration
+FINDING_21: NO -- `gh --repo "$REPO"` passes value as argument; distinct from URL-string concatenation in FINDING_20
+FINDING_22: YES
+FINDING_23: NO -- `printf '%s'` argument is never shell-evaluated; this is safe use of printf
+FINDING_24: EXONERATE -- verbal descriptions are operator-CLI input; multi-line injection requires deliberate operator crafting
+FINDING_25: EXONERATE -- internal operator tool running in a trusted worktree; attack vector too contrived
+FINDING_26: YES
+FINDING_27: YES
+FINDING_28: EXONERATE -- 100-page × 100-PR cap = 10,000 PRs; impractical limit for the target repo
+FINDING_29: YES
+FINDING_30: NO -- `read -a` (indexed arrays) is Bash 3.2-compatible; only `declare -A` (associative) is 4+ forbidden
+FINDING_31: EXONERATE -- plan covered "all scans from scans.tsv"; updating scans.tsv to add the scan is legitimate scope within that directive
+FINDING_32: YES
+FINDING_33: YES
+FINDING_34: YES
+FINDING_35: YES
+FINDING_36: YES
+FINDING_37: EXONERATE -- condensed flow is intentionally high-level; detailed KV contracts belong in the sibling .md files
+FINDING_38: YES
+FINDING_39: NO -- verification note that no violations exist; nothing to track
+FINDING_40: NO -- affirmation that design choice is reasonable; nothing to track
+FINDING_41: EXONERATE -- tooling/version dependency tracking belongs under installation docs/CI image policy, not code issues

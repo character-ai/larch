@@ -1,0 +1,38 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: EXONERATE -- concern is legitimate but too vague to act on without historical-data comparison; no concrete fix is possible without that context
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: NO -- bash command substitution strips trailing newlines, so NO_ISSUES_FOUND\n correctly matches the equality check; reviewer's premise is wrong
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: EXONERATE -- CRLF in internal run-log files is a rare edge case; adding strip-CR logic increases complexity without proportionate benefit for this tool
+FINDING_18: EXONERATE -- LAST_PR is properly double-quoted in the gh invocation; shell injection is not possible; digit validation is defense-in-depth, not a correctness fix
+FINDING_19: YES
+FINDING_20: EXONERATE -- values being embedded (scan names, counts, TSV-sourced paths) are controlled inputs from checked-in files; risk is theoretical; fix requires pervasive jq -n refactor
+FINDING_21: EXONERATE -- dev-only internal tool with operator-trusted callers; path containment enforcement adds complexity disproportionate to risk
+FINDING_22: EXONERATE -- required-files TSV is a checked-in file; exploitation requires repo write access, which is already a full trust boundary
+FINDING_23: YES
+FINDING_24: YES
+FINDING_25: YES
+FINDING_26: YES
+FINDING_27: NO -- audit-close-priors.md accurately states that real gh calls are required; the "no unit tests" note reflects a genuine constraint, not an inconsistency with expansion goals
+FINDING_28: NO -- updated SKILL.md no longer carries the ≤4 rule; it delegates to audit-title.md which aligns with the script; the claimed discrepancy does not exist in the post-diff state
+FINDING_29: NO -- positive informational finding; no defect to track
+FINDING_30: NO -- metadata only; not a finding
+FINDING_31: YES
+FINDING_32: YES
+FINDING_33: YES
+FINDING_34: EXONERATE -- audit-scan-run.sh emits exactly one line per scan name per NDJSON file; head -1 is harmless; no undercounting occurs in practice
+FINDING_35: NO -- jq -r appends a newline after every output value; wc -l counts records correctly in all non-empty and empty cases
+FINDING_36: YES
+FINDING_37: YES
+FINDING_38: NO -- explicitly informational; reviewers flagged these as acceptable or low-likelihood; no actionable defect to file

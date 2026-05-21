@@ -1,0 +1,38 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: EXONERATE -- cumulative semantics are underspecified; a spec-driven change would be heavier than the current heuristic deserves right now
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: EXONERATE -- real wc newline quirk but fixtures/tests control newlines; low practical risk versus churn
+FINDING_17: YES
+FINDING_18: EXONERATE -- prior-report body is trusted operator input; hardening adds complexity for little realistic gain here
+FINDING_19: YES
+FINDING_20: YES
+FINDING_21: YES
+FINDING_22: YES
+FINDING_23: YES
+FINDING_24: YES
+FINDING_25: YES
+FINDING_26: YES
+FINDING_27: EXONERATE -- doc-only mismatch; fixable in a normal docs pass without an issue
+FINDING_28: EXONERATE -- SKILL vs script title rules disagree but behavior is explicit-list; align copy without a tracking issue
+FINDING_29: NO -- informational portability note, not a defect
+FINDING_30: NO -- metadata-only context, not reviewable code risk
+FINDING_31: YES
+FINDING_32: YES
+FINDING_33: YES
+FINDING_34: YES
+FINDING_35: YES
+FINDING_36: YES
+FINDING_37: YES
+FINDING_38: EXONERATE -- explicitly informational cross-checks, not actionable defects

@@ -1,0 +1,23 @@
+Gathering the diff and commit history, then cross-checking KV emissions vs contracts and SKILL.md parsing.
+
+Searching the diff and reading key files for KV contract alignment.
+
+Reading workspace files for exact line numbers and verifying every exit path in `audit-resolve-prs.sh` and YAML key alignment.
+
+### In-Scope Findings
+
+- **architecture** `.claude/skills/audit-runs/scripts/audit-resolve-prs.sh:19-20` — The script header promises `Exit codes: 0 always` and tells the caller to read `PR_LIST` / `ERROR`, but the unknown-argument branch exits with status `1` and prints only to stderr ([`.claude/skills/audit-runs/scripts/audit-resolve-prs.sh`](.claude/skills/audit-runs/scripts/audit-resolve-prs.sh) lines 30–32), while [`audit-resolve-prs.md`](.claude/skills/audit-runs/scripts/audit-resolve-prs.md) lines 16–17 correctly describe that failure mode (no KV on stdout). That mismatch can mislead anyone wiring automation or grepping for `ERROR=` after assuming exit `0` always. **Suggested fix:** Change the header comment to match the contract (document non-zero exit and no stdout KV for unknown argv), mirroring the wording already in `audit-resolve-prs.md`.
+
+- **architecture** `.claude/skills/audit-runs/scripts/audit-pacific-timestamp.sh:10-16` and `.claude/skills/audit-runs/scripts/audit-pacific-timestamp.md:1-16` — The script header still says `Exit codes: 0 always` while extra arguments trigger `exit 1` with stderr only ([`.claude/skills/audit-runs/scripts/audit-pacific-timestamp.sh`](.claude/skills/audit-runs/scripts/audit-pacific-timestamp.sh) lines 10–16), and the contract file never documents that failure surface, unlike [`audit-preflight.md`](.claude/skills/audit-runs/scripts/audit-preflight.md) which explicitly warns about unknown argv and missing stdout KV. Callers who only read `audit-pacific-timestamp.md` may assume `PACIFIC_TIMESTAMP=` is always present on success paths without checking exit status. **Suggested fix:** Fix the script header to reflect real exit codes and add a short “Unknown argv / unexpected arguments” subsection to `audit-pacific-timestamp.md` describing stderr-only diagnostics and absence of `PACIFIC_TIMESTAMP=` on stdout.
+
+- **architecture** `.claude/skills/audit-runs/SKILL.md:248-264` — The **Revised Orchestrator Flow** diagram summarizes `audit-resolve-prs.sh` as only `PR_LIST, PRIOR_REPORT_NUMBER, RESOLVED_ECHO` ([`.claude/skills/audit-runs/SKILL.md`](.claude/skills/audit-runs/SKILL.md) line 252), but **Verbal-Description Resolution** immediately above requires parsing six stdout keys including `PR_COUNT`, `IMPLICIT_SINCE_LAST_AUDIT`, and `ERROR`, with fail-fast on non-empty `ERROR` ([`.claude/skills/audit-runs/SKILL.md`](.claude/skills/audit-runs/SKILL.md) line 49). Someone following the diagram alone could skip `ERROR` / `PR_COUNT` handling and treat partial success as full success. **Suggested fix:** Expand that flow line to list all contract keys (or add a parenthetical pointing to the full key list and `audit-resolve-prs.md`).
+
+### Out-of-Scope Observations
+
+- **`CHANGELOG_REBASE_CONFLICTS` / `CHANGELOG_DELTA` vs `changelog_rebase_conflicts`:** [`audit-compute-counters.sh`](.claude/skills/audit-runs/scripts/audit-compute-counters.sh) and [`audit-compute-counters.md`](.claude/skills/audit-runs/scripts/audit-compute-counters.md) use uppercase KV names; [`SKILL.md`](.claude/skills/audit-runs/SKILL.md) lines 197–204 use snake_case YAML under `cumulative_counters`, with prose at line 183 instructing the operator to populate YAML from the script output. That is a deliberate KV-vs-YAML naming split, not an emission/parsing key mismatch, and `parse_prior` in the script targets the YAML key name `changelog_rebase_conflicts` consistently.
+
+- **`audit-resolve-prs.sh` `emit_error` / `emit_ok` paths:** Both helpers print all six keys documented in [`audit-resolve-prs.md`](.claude/skills/audit-runs/scripts/audit-resolve-prs.md) lines 7–14 (`IMPLICIT_SINCE_LAST_AUDIT`, `PRIOR_REPORT_NUMBER`, `PR_LIST`, `PR_COUNT`, `RESOLVED_ECHO`, `ERROR`).
+
+- **`audit-close-priors.sh` vs [`audit-close-priors.md`](.claude/skills/audit-runs/scripts/audit-close-priors.md) vs [`SKILL.md`](.claude/skills/audit-runs/SKILL.md) Close Prior Reports:** Per-issue `CLOSE_FAILED=<N>` plus a tab before `REASON=` matches the contract and the narrative in `SKILL.md` lines 223–223; `ISSUE_LIST_FAILED=true` plus a separate `REASON=` line matches the contract block in `audit-close-priors.md` lines 10–14.
+
+**Branch commits (merge-base..HEAD):** `620377c2`, `b34b08f7`, `85b092c1`, `01af862a`, `09ea2096`.

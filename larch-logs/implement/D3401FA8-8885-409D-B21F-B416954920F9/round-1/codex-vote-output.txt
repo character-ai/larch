@@ -1,0 +1,38 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: EXONERATE -- Legitimate branch-semantics ambiguity, but changing preflight to manipulate local main is more policy than defect fix.
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: EXONERATE -- The semantic drift risk is plausible but speculative without a concrete historical counter contract.
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: NO -- Command substitution strips trailing newlines, so a normal newline-terminated sentinel file still matches.
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: YES
+FINDING_18: NO -- The value is double-quoted in the shell invocation, so the claimed shell-quoting break is not substantiated.
+FINDING_19: YES
+FINDING_20: YES
+FINDING_21: EXONERATE -- Hardening a caller-controlled local log path is legitimate but not worth the containment complexity here.
+FINDING_22: EXONERATE -- TSV path hardening is reasonable, but the current trusted repo TSV only drives existence checks.
+FINDING_23: YES
+FINDING_24: YES
+FINDING_25: YES
+FINDING_26: YES
+FINDING_27: EXONERATE -- The documentation mismatch is real but too minor for a future tracking issue.
+FINDING_28: YES
+FINDING_29: NO -- This is an informational clean spot-check, not an actionable finding.
+FINDING_30: NO -- This is review metadata only, not a defect or future issue.
+FINDING_31: YES
+FINDING_32: YES
+FINDING_33: YES
+FINDING_34: EXONERATE -- Duplicate scan records are outside the stated one-object-per-scan contract, so full aggregation is unnecessary complexity.
+FINDING_35: NO -- `jq` output is newline-terminated here, so the specific `wc -l` undercount claim is not substantiated.
+FINDING_36: YES
+FINDING_37: YES
+FINDING_38: NO -- The item itself characterizes these as likely acceptable informational spot checks.

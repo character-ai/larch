@@ -1,0 +1,9 @@
+Gathering the pre-computed diff and commit history for a read-only edge-case review.
+
+Reading the diff in sections and sampling critical new scripts for edge-case review.
+
+Reading implemented scripts in the workspace for accurate line numbers and failure-path analysis.
+
+Creating the review plan document and assembling the final structured response.
+
+

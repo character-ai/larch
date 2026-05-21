@@ -1,0 +1,17 @@
+Reading the precomputed diff and BASH_AUTHORING.md, and scanning new scripts for Bash 3.2 compatibility issues.
+
+Searching the diff and reading the new audit-runs scripts for Bash 3.2 issues.
+
+Verifying whether `sort -V` works on macOS (portability concern separate from Bash version):
+
+### In-Scope Findings
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+The scout note that `matches+=` / `winners+=` in [`.claude/skills/audit-runs/scripts/audit-map-runs.sh`](.claude/skills/audit-runs/scripts/audit-map-runs.sh) (e.g. lines 115–121 and 145–155) “requires Bash 4+” does not match Bash behavior or this repo’s written policy: those are **indexed** array appends; [BASH_AUTHORING.md](BASH_AUTHORING.md) §3 only forbids **associative** arrays (`declare -A`), `mapfile`/`readarray`, case-conversion expansions, `&>>`, and `coproc`. Indexed `array+=(...)` is valid on macOS system Bash 3.2.
+
+Across the new scripts under [`.claude/skills/audit-runs/scripts/`](.claude/skills/audit-runs/scripts/), a scan for those forbidden tokens found no matches. Constructs called out in the scout prompt are Bash 3.2–available where used: `[[ ... ]]` and `[[ ... =~ ... ]]` / `BASH_REMATCH` in [`.claude/skills/audit-runs/scripts/test-audit-runs.sh`](.claude/skills/audit-runs/scripts/test-audit-runs.sh) (e.g. lines 26–31, 46–50, 82–86), `<<<` herestrings in [`.claude/skills/audit-runs/scripts/audit-map-runs.sh`](.claude/skills/audit-runs/scripts/audit-map-runs.sh) line 44, `(())` arithmetic in several files (e.g. [`.claude/skills/audit-runs/scripts/audit-title.sh`](.claude/skills/audit-runs/scripts/audit-title.sh) lines 49–60, [`.claude/skills/audit-runs/scripts/audit-compute-counters.sh`](.claude/skills/audit-runs/scripts/audit-compute-counters.sh) lines 88–127), and `IFS=$'\t' read ...` in [`.claude/skills/audit-runs/scripts/audit-scan-run.sh`](.claude/skills/audit-runs/scripts/audit-scan-run.sh) are not among the §3 bans.
+
+Unrelated to Bash version but worth separate validation (not asserted here as a Bash-3.2 violation): [`.claude/skills/audit-runs/scripts/audit-scan-run.sh`](.claude/skills/audit-runs/scripts/audit-scan-run.sh) line 238 uses `sort -V` for semver-style ordering, which depends on the host `sort` implementation (GNU vs BSD); that is outside the BASH_AUTHORING §3 list but can affect real macOS runs if `-V` is missing or differs.
+
+Branch commits vs `main` (from `git log $(git merge-base HEAD main)..HEAD --oneline`): `620377c2`, `b34b08f7`, `85b092c1`, `01af862a`. The precomputed diff file was not fully loaded here due to size limits; review above is from the current tree copies of the scripts and BASH_AUTHORING.

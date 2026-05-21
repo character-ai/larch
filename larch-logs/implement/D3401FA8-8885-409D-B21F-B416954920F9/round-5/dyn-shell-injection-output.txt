@@ -1,0 +1,23 @@
+Gathering the branch diff and inspecting operator-controlled data flows in the new audit-runs scripts.
+
+Checking `audit-title.sh`, `jstr` usage, and whether `emit_error` / `ERROR=` allows KV injection.
+
+### In-Scope Findings
+
+- **security** `.claude/skills/audit-runs/scripts/audit-resolve-prs.sh:40-48,133-137,196-197,199` — `emit_error` and `emit_ok` write `ERROR=` and `RESOLVED_ECHO=` with `%s` and no escaping of newlines or other control characters. Operator-controlled `--verbal-description` flows into those fields (for example the final `emit_error "unrecognized verbal description: $VERBAL"` and the single-PR branch `emit_ok ... "Resolved $VERBAL to: ..."`), so a value containing embedded newlines can append extra stdout lines after the intended KV block and spoof additional keys for any consumer that treats stdout as a machine-readable KV stream. **Suggested fix:** Build these records with `jq -n` using `--arg` / `--argjson` for every field (or strip/reject control characters and normalize newlines to spaces) so values are always single-line and safely quoted.
+
+- **security** `.claude/skills/audit-runs/scripts/audit-scan-run.sh:64-67,72-105,137-138,249-261,341` — `jstr()` only escapes backslash and double-quote; it does not escape newlines, carriage returns, tabs, or other ASCII controls. Several scans concatenate `jstr` output into hand-assembled JSON strings (for example `missing` in `scan_required_file_presence`, `detail` in `scan_oos_category_mangle`, `run_version` / `current_version` in `scan_cache_freshness`, and unknown `scan_name` from `scans.tsv`). A path or message containing a newline yields invalid JSON or splits one logical record across multiple NDJSON lines, which can confuse downstream `jq` in `audit-compute-counters.sh` and similar tooling. **Suggested fix:** Extend `jstr` to escape at least `\n`, `\r`, and `\t` (or stop hand-building JSON and emit each object with `jq -n` and `--arg` for every string field).
+
+- **security** `.claude/skills/audit-runs/scripts/audit-map-runs.sh:17-25,38-40,56-58,96-118` — `--log-root` is operator-controlled and only checks that the path exists as a directory; unlike `rel_path` checks in `audit-scan-run.sh`, there is no rejection of `..` or absolute paths. A caller can aim the glob at arbitrary readable directories (manifests and `parent-issue.md` files), which is a filesystem scope / information-disclosure footgun in the same trust model as “operator-controlled paths.” **Suggested fix:** Require `--log-root` to stay under the repo (for example resolve with `realpath` and assert a repo-root prefix), or reject arguments that are absolute or contain `..` segments before globbing.
+
+- **security** `.claude/skills/audit-runs/scripts/audit-title.sh:47-69` — `printf 'TITLE=[Run Logs Audit Report %s] PRs ...\n' "$TIMESTAMP" ...` passes `--timestamp` through unchanged. A timestamp string with embedded newlines produces a broken or multi-line `TITLE=` line, the same class of stdout KV / log spoofing risk as `audit-resolve-prs.sh` if anything parses these lines structurally. **Suggested fix:** Reject or normalize `--timestamp` (single line, no control characters) or emit `TITLE` via `jq -n --arg title ...` as a single JSON string on one line.
+
+### Out-of-Scope Observations
+
+- **correctness** `.claude/skills/audit-runs/scripts/audit-resolve-prs.sh:152-158` — For the `last N PRs` form, `N=$(printf '%s' "$VERBAL" | grep -oE '[0-9]+')` can capture multiple lines if several digit runs appear, producing an invalid `--argjson` payload for `jq` and failing the resolution path; this is primarily robustness rather than a demonstrated injection against `jq`.
+
+- **correctness** `.claude/skills/audit-runs/scripts/audit-preflight.sh:66-70` — `normalize_repo` is only applied to `remote.origin.url`, not to `--repo`; exotic URLs where `github.com` appears in a non-canonical position could yield a misleading normalized owner/repo comparison. This is identity-check accuracy, not operator `--repo` subverting that `sed` path.
+
+- **security** — `audit-scan-run.sh:41-47` validates `--pr` as non-empty digits-only before uses of `jq --argjson pr "$PR_NUM"`; `CLOSES_ISSUE` in `audit-map-runs.sh:112` is derived from a `Closes #<digits>` token with a trailing-digit extractor, so PR body text cannot append extra digits onto the matched issue id beyond that pattern.
+
+NO_ISSUES_FOUND does not apply because in-scope findings were listed above.

@@ -1,0 +1,26 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: NO -- ISO 8601 UTC timestamps in consistent `…Z` format sort correctly as strings; bash `>` is equivalent to jq `>` here, so the test and production paths are semantically identical
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: YES
+FINDING_18: YES
+FINDING_19: YES
+FINDING_20: YES
+FINDING_21: EXONERATE -- orchestrator reads only the `ERROR` key in the fail-fast path and never consults `IMPLICIT_SINCE_LAST_AUDIT` on error; the flag inaccuracy has no observable effect
+FINDING_22: YES
+FINDING_23: EXONERATE -- documented CLI form with explicit grammar; enforcing exact case prevents accidental ambiguity in an LLM-driven skill
+FINDING_24: YES
+FINDING_25: YES
+FINDING_26: YES
