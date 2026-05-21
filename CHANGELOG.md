@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [34.0.7] - 2026-05-21
+
+### Changed
+
+- Kill hung cursor-ci runs early by watching stdout or working-tree progress instead of waiting the full 30-minute wall-clock budget.
+- Centralize stall polling and SIGTERM/SIGKILL handling in cursor_launcher_run_stall_monitor for reuse and consistent diagnostics.
+- Harden token-record parsing after abrupt exits so stalled runs still emit LAUNCHER_EXIT for the dispatcher.
+
 ## [34.0.6] - 2026-05-21
 
 ### Changed
