@@ -9,13 +9,15 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/session-setup.sh --prefix <name> [--skip-preflight
 
 **Session-env override**: If `--caller-env` provides a non-empty `CODEX_PRESENT` or `CURSOR_PRESENT` value (either `true` or `false`), the script auto-sets the corresponding `--skip-codex-probe` / `--skip-cursor-probe` flag internally and propagates the caller value — you do not need to pass these explicitly when using `--caller-env`.
 
-Set mental flags `codex_available` and `cursor_available` based on the output:
-- If `CODEX_AVAILABLE=false`: `codex_available=false`. Print: `**⚠ Codex not available (binary not found). Proceeding without Codex reviewer.**`
-- Else if `CODEX_PRESENT=false`: `codex_available=false`. Print: `**⚠ Codex not present for this session. Using Claude replacement.**`
-- Else: `codex_available=true`
-- Same logic for Cursor.
+Set mental flags `codex_available` and `cursor_available` from `CODEX_PRESENT` / `CURSOR_PRESENT` in the session-env / `session-setup.sh` stdout (aliases `CODEX_AVAILABLE` / `CURSOR_AVAILABLE` mirror the same booleans). Use `CODEX_BINARY_FOUND` / `CURSOR_BINARY_FOUND` when you need to split the cases:
 
-**Note**: `*_AVAILABLE` is a backward-compatible alias for `*_PRESENT`. Presence is static for the session and is based on whether the tool binary is available at session start.
+- If `CODEX_BINARY_FOUND=false`: the Codex CLI is not on `PATH`. Print: `**⚠ Codex not available (binary not found). Proceeding without Codex reviewer.**`
+- Else if `CODEX_PRESENT=false`: the binary exists but the Step 0 runtime probe reported unhealthy (skipped probe, non-auth failure, auth failure after retries, or timeout). Print: `**⚠ Codex not healthy for this session (runtime probe failed). Using Claude replacement.**`
+- Else: `codex_available=true`
+
+Mirror the same two-tier pattern for Cursor (`CURSOR_BINARY_FOUND` / `CURSOR_PRESENT`).
+
+**Note**: `*_AVAILABLE` remains a backward-compatible alias for `*_PRESENT`; it does **not** mean "binary on `PATH`" by itself.
 
 Launch eligibility requires `*_PRESENT=true`. Runtime failures do not mutate `session-env.sh`; multi-slot dispatchers handle them through per-slot waterfall fallback.
 

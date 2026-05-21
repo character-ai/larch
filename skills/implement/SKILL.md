@@ -296,7 +296,7 @@ Then:
   ```
   Step 1 compares this value to the design manifest's `SESSION_ID` before reusing any exported plan.
 - If `REPO_UNAVAILABLE=true`: print `**⚠ Could not determine repository name. CI monitoring (Steps 10, 12) and merge (Step 12b) will be skipped.**` Set `repo_unavailable=true`.
-- If `CODEX_AVAILABLE=false`: print `**⚠ Codex not available (binary not found). Proceeding without Codex reviewer.**` Else if `CODEX_PRESENT=false`: print `**⚠ Codex not present for this session. Using Claude replacement.**` Same for Cursor (only check `*_PRESENT` when `*_AVAILABLE=true`).
+- If `CODEX_BINARY_FOUND=false` (read via `read-session-env-key.sh --key CODEX_BINARY_FOUND` from `$IMPLEMENT_TMPDIR/session-env.sh` after Step 0 writes it): print `**⚠ Codex not available (binary not found). Proceeding without Codex reviewer.**` Else if `CODEX_PRESENT=false`: print `**⚠ Codex not healthy for this session (runtime probe failed, skipped probe, auth error, or timeout). Using Claude replacement.**` Mirror the same two-tier pattern for Cursor using `CURSOR_BINARY_FOUND` / `CURSOR_PRESENT`.
 
 The session-env file is passed to `/design` (Step 1) and `review-and-fix.sh` (Step 5) via `--session-env-path`. It also carries `LARCH_CLAUDE_PLUGIN_ROOT` so later Bash blocks can recover `${CLAUDE_PLUGIN_ROOT}` without sourcing the file.
 
@@ -1074,7 +1074,11 @@ If `design_only=true`:
 
 Runs unconditionally in both quick and normal modes (i.e. all `Proceed to Step 2` paths, including the manifest-reuse fast path) UNLESS `design_only=true` — design-only never reaches Step 2, so implementer selection is moot.
 
-When `coder_explicit=true`, the explicit value wins. Do not apply the Cursor → Codex → Claude waterfall, and do not modify `coder_explicit` itself.
+When `coder_explicit=true`:
+
+- If the explicit coder is `cursor` AND `cursor_available=false`: print `**⚠ /implement Step 1: --coder=cursor requested but Cursor runtime probe failed. Re-run without --coder, or with --coder=codex|claude.**`, set `STALL_TRACKING=true`, and skip to Step 18.
+- If the explicit coder is `codex` AND `codex_available=false`: print `**⚠ /implement Step 1: --coder=codex requested but Codex runtime probe failed. Re-run without --coder, or with --coder=cursor|claude.**`, set `STALL_TRACKING=true`, and skip to Step 18.
+- Otherwise (explicit coder is available, or explicit coder is `claude`): the explicit value wins. Proceed to Step 2 with `coder=$coder`. Do not modify `coder_explicit` itself.
 
 When `coder_explicit=false` AND `design_only=false`, route by availability. The `diff_lines: <N>` line in `plan.txt` and `design-export/diff-lines.txt` remain useful informational sizing context from `/design`; they do not select the implementer.
 

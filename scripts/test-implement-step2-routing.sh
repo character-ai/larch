@@ -16,14 +16,14 @@ assert_contains() {
     local file="$1"
     local needle="$2"
     local label="$3"
-    grep -Fq "$needle" "$file" || fail "$label missing: $needle"
+    grep -Fq -- "$needle" "$file" || fail "$label missing: $needle"
 }
 
 assert_not_contains() {
     local file="$1"
     local needle="$2"
     local label="$3"
-    if grep -Fq "$needle" "$file"; then
+    if grep -Fq -- "$needle" "$file"; then
         fail "$label forbidden substring present: $needle"
     fi
 }
@@ -31,7 +31,9 @@ assert_not_contains() {
 assert_contains "$IMPLEMENT_SKILL" '### Implementer waterfall' "implementer waterfall heading"
 assert_contains "$IMPLEMENT_SKILL" 'Cursor → Codex → Claude' "implement waterfall"
 # shellcheck disable=SC2016 # literal markdown/code-span text, not shell.
-assert_contains "$IMPLEMENT_SKILL" 'When `coder_explicit=true`, the explicit value wins. Do not apply the Cursor → Codex → Claude waterfall' "explicit coder bypass"
+assert_contains "$IMPLEMENT_SKILL" '--coder=cursor requested but Cursor runtime probe failed' "explicit cursor unavailable bail"
+assert_contains "$IMPLEMENT_SKILL" '--coder=codex requested but Codex runtime probe failed' "explicit codex unavailable bail"
+assert_not_contains "$IMPLEMENT_SKILL" "When \`coder_explicit=true\`, the explicit value wins. Do not apply the Cursor → Codex → Claude waterfall" "removed blanket explicit-coder bypass sentence"
 assert_contains "$IMPLEMENT_SKILL" 'coder_fallback=true' "coder fallback manifest flag"
 assert_contains "$IMPLEMENT_SKILL" 'Cursor and Codex both unavailable' "both-down warning"
 assert_contains "$IMPLEMENT_SKILL" 'they do not select the implementer.' "diff_lines informational non-routing clause"

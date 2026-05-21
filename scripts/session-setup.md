@@ -24,7 +24,7 @@ lazily and falls back to uncached rendering if the directory cannot be created.
 
 ## Reviewer Presence Contract
 
-When `--check-reviewers` is passed, setup invokes `scripts/check-reviewers.sh` and emits `CODEX_PRESENT`, `CURSOR_PRESENT`, and backward-compatible `CODEX_AVAILABLE` / `CURSOR_AVAILABLE` aliases. Presence is static binary detection for the session; runtime launch failures are handled by per-slot waterfall fallback.
+When `--check-reviewers` is passed, setup invokes `scripts/check-reviewers.sh` and emits `CODEX_PRESENT`, `CURSOR_PRESENT`, backward-compatible `CODEX_AVAILABLE` / `CURSOR_AVAILABLE` aliases, and `CODEX_BINARY_FOUND` / `CURSOR_BINARY_FOUND` (whether `command -v` succeeded). `*_PRESENT` reflects the **runtime health probe** (or a fresh TTL stamp); `*_BINARY_FOUND` distinguishes "binary missing" from "binary present but probe failed / skipped / timed out / auth".
 
 ## Session-env contract
 

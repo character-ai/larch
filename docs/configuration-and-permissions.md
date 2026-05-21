@@ -186,7 +186,7 @@ Model configuration is also available via plugin `userConfig` — environment va
 The model name to pass to Cursor's `--model` flag (e.g., `gpt-5.4-medium`, `claude-sonnet-4-6`).
 
 **When set:**
-- All Cursor invocations (reviews, sketches, voting, presence checks, negotiations, and implement when `--coder=cursor`) use this model
+- All Cursor invocations (reviews, sketches, voting, Step 0 `check-reviewers.sh` probes, negotiations, and implement when `--coder=cursor`) use this model
 - The model flag is injected by `scripts/agent-model-args.sh` as line-token argv, then consumed through Bash arrays
 
 **When not set:**
@@ -199,13 +199,22 @@ The model name to pass to Cursor's `--model` flag (e.g., `gpt-5.4-medium`, `clau
 The model name to pass to Codex's `-m` flag (e.g., `o3`, `o4-mini`).
 
 **When set:**
-- All Codex invocations (reviews, sketches, voting, presence checks, negotiations) use this model
+- All Codex invocations (reviews, sketches, voting, Step 0 `check-reviewers.sh` probes, negotiations) use this model
 - The model flag is injected by `scripts/agent-model-args.sh` as line-token argv, then consumed through Bash arrays
 
 **When not set:**
 - Codex defaults to `gpt-5.5` (hardcoded in `scripts/agent-model-args.sh`) for all work invocations (reviews, sketches, voting)
-- Presence checks (`check-reviewers.sh`) probe only whether the binary is on `$PATH` (`command -v codex`); model argv validation happens at actual launch time inside `scripts/launch-review.sh` and `scripts/run-external-agent.sh`.
-- If your Codex installation does not support `gpt-5.5`, set this variable to a supported model (e.g., `o3`, `o4-mini`)
+- `scripts/check-reviewers.sh` runs a lightweight `codex exec --sandbox read-only …` health probe (no model argv); model selection is validated at real launch sites (`scripts/launch-review.sh`, `scripts/run-external-agent.sh`, etc.). If your Codex installation does not support `gpt-5.5`, set this variable to a supported model (e.g., `o3`, `o4-mini`)
+
+### External reviewer probe tuning (`check-reviewers.sh`)
+
+These knobs apply to the Step 0 runtime probes emitted into session-env via `session-setup.sh --check-reviewers`:
+
+- **`LARCH_PROBE_TTL_SECONDS`** — positive integer seconds for USER-scoped stamp freshness (default `60`). Non-numeric / empty falls back to `60`. `0` disables the stamp cache (always re-probe when the binary exists and the probe is not skipped).
+- **`LARCH_PROBE_TIMEOUT_SECONDS`** — per-attempt wall-clock timeout while waiting on the background probe PID (default `30`). Non-numeric, empty, or `0` falls back to `30`.
+- **`LARCH_EXTERNAL_AUTH_RETRIES`** — maximum auth-classified failures before treating the tool as absent for this session (default `5`; `0` or invalid → `5`). Shared with external launchers; the probe loops use the same counter semantics.
+
+Darwin-only mutex delay remains **`LARCH_EXTERNAL_SERIAL_LOCK_DELAY`** (default `0.5` seconds) via `external_serial_lock_release_after`.
 
 ### `LARCH_CODEX_EFFORT`
 
@@ -216,7 +225,7 @@ Codex reasoning effort for all Codex launches (reviews, sketches, voting). Accep
 
 **When not set (or set to empty string):**
 - `--with-effort` falls back to the plugin userConfig value (`codex_effort`, default `high`).
-- Setting `LARCH_CODEX_EFFORT=""` explicitly does NOT disable emission; to suppress effort flags entirely, the callers already omit the `--with-effort` flag (e.g., `check-reviewers.sh` presence checks do not use max effort regardless of env var setting).
+- Setting `LARCH_CODEX_EFFORT=""` explicitly does NOT disable emission; to suppress effort flags entirely, the callers already omit the `--with-effort` flag (e.g., `check-reviewers.sh` Codex probe does not use max effort regardless of env var setting).
 
 **Scope**: Claude and Cursor agents run at their defaults. Only Codex is bumped to `high` by default. This is deliberate — Claude's sonnet default is already well-suited to review work, and Cursor has no dedicated reasoning-effort CLI flag today.
 

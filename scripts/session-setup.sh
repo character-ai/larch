@@ -26,6 +26,7 @@
 #   --caller-env <path>   Path to KEY=value file with already-discovered values.
 #                          Recognized keys: REPO, REPO_UNAVAILABLE,
 #                          CODEX_PRESENT, CURSOR_PRESENT, CODEX_AVAILABLE, CURSOR_AVAILABLE,
+#                          CODEX_BINARY_FOUND, CURSOR_BINARY_FOUND,
 #                          LARCH_TOKEN_SESSION_ID, LARCH_CLAUDE_SOURCE_FILE,
 #                          LARCH_TIMING_LEDGER, PREV_IMPLEMENT_TMPDIR,
 #                          LARCH_DYNAMIC_ARCHETYPES_MAX.
@@ -41,8 +42,8 @@
 #   REPO_UNAVAILABLE=true|false Output unless --skip-repo-check
 #   CODEX_PRESENT=true|false    Output when --check-reviewers, or passthrough from --caller-env
 #   CURSOR_PRESENT=true|false   Output when --check-reviewers, or passthrough from --caller-env
-#   CODEX_AVAILABLE=true|false  Backward-compatible alias for CODEX_PRESENT
-#   CURSOR_AVAILABLE=true|false Backward-compatible alias for CURSOR_PRESENT
+#   CODEX_BINARY_FOUND=true|false  Output when --check-reviewers (command -v before probe)
+#   CURSOR_BINARY_FOUND=true|false Output when --check-reviewers
 #   LARCH_TOKEN_SESSION_ID=<id> Output when passthrough from --caller-env, in both probe and passthrough branches
 #   LARCH_CLAUDE_SOURCE_FILE=<path> Output when passthrough from --caller-env, in both probe and passthrough branches
 #   LARCH_TIMING_LEDGER is forwarded to write-session-env.sh only when supplied via --caller-env; it is intentionally NOT echoed on stdout.
@@ -360,6 +361,8 @@ if [[ "$CHECK_REVIEWERS" == "true" ]]; then
     PROBED_CURSOR_AVAILABLE=""
     PROBED_CODEX_PRESENT=""
     PROBED_CURSOR_PRESENT=""
+    PROBED_CODEX_BINARY_FOUND=""
+    PROBED_CURSOR_BINARY_FOUND=""
     # Explicit parameter-expansion split on first `=` for self-documenting
     # parsing (post-review parity with caller-env loop above).
     while IFS= read -r line || [[ -n "$line" ]]; do
@@ -373,6 +376,8 @@ if [[ "$CHECK_REVIEWERS" == "true" ]]; then
             CURSOR_PRESENT)    PROBED_CURSOR_PRESENT="$value" ;;
             CODEX_AVAILABLE)   PROBED_CODEX_AVAILABLE="$value" ;;
             CURSOR_AVAILABLE)  PROBED_CURSOR_AVAILABLE="$value" ;;
+            CODEX_BINARY_FOUND) PROBED_CODEX_BINARY_FOUND="$value" ;;
+            CURSOR_BINARY_FOUND) PROBED_CURSOR_BINARY_FOUND="$value" ;;
         esac
     done <<< "$REVIEWER_OUTPUT"
 
@@ -393,9 +398,14 @@ if [[ "$CHECK_REVIEWERS" == "true" ]]; then
     [[ -n "$PROBED_CODEX_AVAILABLE" ]] && emit_kv CODEX_AVAILABLE "$PROBED_CODEX_AVAILABLE"
     [[ -n "$PROBED_CURSOR_AVAILABLE" ]] && emit_kv CURSOR_AVAILABLE "$PROBED_CURSOR_AVAILABLE"
 
+    [[ -n "$PROBED_CODEX_BINARY_FOUND" ]] && emit_kv CODEX_BINARY_FOUND "$PROBED_CODEX_BINARY_FOUND"
+    [[ -n "$PROBED_CURSOR_BINARY_FOUND" ]] && emit_kv CURSOR_BINARY_FOUND "$PROBED_CURSOR_BINARY_FOUND"
+
     # Use probed values for downstream sections
     FINAL_CODEX_PRESENT="${PROBED_CODEX_PRESENT:-${PROBED_CODEX_AVAILABLE:-}}"
     FINAL_CURSOR_PRESENT="${PROBED_CURSOR_PRESENT:-${PROBED_CURSOR_AVAILABLE:-}}"
+    FINAL_CODEX_BINARY_FOUND="${PROBED_CODEX_BINARY_FOUND:-}"
+    FINAL_CURSOR_BINARY_FOUND="${PROBED_CURSOR_BINARY_FOUND:-}"
 else
     # Passthrough from caller-env (no probe)
     if [[ -n "$CALLER_CODEX_PRESENT" ]]; then
@@ -414,6 +424,8 @@ else
     fi
     FINAL_CODEX_PRESENT="${CALLER_CODEX_PRESENT:-}"
     FINAL_CURSOR_PRESENT="${CALLER_CURSOR_PRESENT:-}"
+    FINAL_CODEX_BINARY_FOUND=""
+    FINAL_CURSOR_BINARY_FOUND=""
 fi
 
 if [[ "$CHECK_REVIEWERS" == "true" ]]; then
@@ -436,6 +448,8 @@ if [[ -n "$WRITE_SESSION_ENV" ]]; then
     [[ -n "$WSE_REPO" ]] && WSE_ARGS+=(--repo "$WSE_REPO")
     [[ -n "$FINAL_CODEX_PRESENT" ]] && WSE_ARGS+=(--codex-present "$FINAL_CODEX_PRESENT")
     [[ -n "$FINAL_CURSOR_PRESENT" ]] && WSE_ARGS+=(--cursor-present "$FINAL_CURSOR_PRESENT")
+    [[ -n "$FINAL_CODEX_BINARY_FOUND" ]] && WSE_ARGS+=(--codex-binary-found "$FINAL_CODEX_BINARY_FOUND")
+    [[ -n "$FINAL_CURSOR_BINARY_FOUND" ]] && WSE_ARGS+=(--cursor-binary-found "$FINAL_CURSOR_BINARY_FOUND")
     [[ -n "$CALLER_TOKEN_SESSION_ID" ]] && WSE_ARGS+=(--token-session-id "$CALLER_TOKEN_SESSION_ID")
     [[ -n "$CALLER_CLAUDE_SOURCE_FILE" ]] && WSE_ARGS+=(--claude-source-file "$CALLER_CLAUDE_SOURCE_FILE")
     if [[ -n "$CALLER_DYNAMIC_ARCHETYPES_MAX" ]]; then

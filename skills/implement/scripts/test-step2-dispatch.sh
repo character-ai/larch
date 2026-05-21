@@ -8,7 +8,8 @@
 #   - Default cursor path outside a git work-tree, no --cursor-present → claude_fallback (exit 0).
 #   - Legacy --codex-available false → STATUS=claude_fallback + deprecation warning on stderr.
 #   - Bad --coder enum value → exit 2 and names {claude,codex,cursor}.
-#   - --coder cursor with false/missing/empty health → STATUS=claude_fallback (no baseline-file leak).
+#   - --coder cursor with false/missing/empty health → STATUS=claude_fallback (no baseline-file leak; Step 2 backstop when Step 1 did not bail for explicit unhealthy Cursor).
+#   - Test 3e: explicit --coder cursor --cursor-present true reaches external Cursor launcher (stub-bailed).
 #   - Bad --cursor-present enum value → exit 2.
 #   - --coder claude --cursor-present "" → STATUS=claude_fallback.
 #   - --coder cursor outside a git work-tree with false health → claude_fallback before REPO_ROOT lookup.
@@ -186,6 +187,59 @@ if [[ -f "$TMP3B/step2-baseline.txt" ]]; then
     fail 3b "cursor unhealthy fallback branch leaked baseline file"
 else
     pass
+fi
+
+# ---------------------------------------------------------------------------
+# Test 3e: explicit --coder cursor --cursor-present true reaches external Cursor
+# launcher (distinct from default-coder Test 1b and unhealthy Test 3b).
+# ---------------------------------------------------------------------------
+TMP3E="$SCRATCH/test3e"; mkdir -p "$TMP3E"
+STUB_BIN_3E="$SCRATCH/test3e-bin"; mkdir -p "$STUB_BIN_3E"
+STUB_CURSOR_3E="$STUB_BIN_3E/cursor"
+cat > "$STUB_CURSOR_3E" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+: "${STUB_MANIFEST_PATH:?}"
+cat > "$STUB_MANIFEST_PATH.tmp" <<'JSON'
+{
+  "schema_version": "1",
+  "status": "bailed",
+  "bail_reason": "stub-bailed"
+}
+JSON
+mv "$STUB_MANIFEST_PATH.tmp" "$STUB_MANIFEST_PATH"
+printf 'stub cursor stdout\n'
+EOF
+chmod +x "$STUB_CURSOR_3E"
+STDOUT_3E="$TMP3E/stdout.txt"
+STDERR_3E="$TMP3E/stderr.txt"
+(
+    cd "$REPO_ROOT" && \
+    PATH="$STUB_BIN_3E:$PATH" \
+    RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
+    STUB_MANIFEST_PATH="$TMP3E/manifest.json" \
+    LARCH_TIMING_LEDGER="$TMP3E/timing-ledger.tsv" \
+    LARCH_QUIET_DISABLE=1 \
+    LARCH_CURSOR_MODEL="stub-model" \
+    CURSOR_API_KEY="" \
+    LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 \
+    LIB_CURSOR_AUTH_TEST_UNAME="Linux" \
+    "$DISPATCHER" --tmpdir "$TMP3E" --plan-file "$PLAN" --feature-file "$FEATURE" \
+        --auto-mode false --coder cursor --cursor-present true >"$STDOUT_3E" 2>"$STDERR_3E"
+)
+OUT=$(cat "$STDOUT_3E")
+ERR=$(cat "$STDERR_3E")
+if [[ "$OUT" == *"STATUS=bailed"* ]] \
+   && [[ "$OUT" == *"REASON=stub-bailed"* ]] \
+   && [[ "$OUT" == *"TOOL=cursor"* ]] \
+   && [[ "$OUT" == *"ORCHESTRATOR_EDIT_AUTHORITY=forbidden"* ]] \
+   && [[ "$OUT" != *"ORCHESTRATOR_EDIT_AUTHORITY=allowed"* ]] \
+   && [[ -z "$ERR" ]] \
+   && [[ -f "$TMP3E/step2-spawn-coder.txt" ]] \
+   && [[ "$(cat "$TMP3E/step2-spawn-coder.txt")" == "cursor" ]]; then
+    pass
+else
+    fail 3e "explicit healthy cursor should reach stub launcher, got out=$OUT err=$ERR sentinel=$(cat "$TMP3E/step2-spawn-coder.txt" 2>/dev/null || echo MISSING)"
 fi
 
 # ---------------------------------------------------------------------------
