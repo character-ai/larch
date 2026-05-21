@@ -515,6 +515,7 @@ fi
 # Tests for audit-preflight.sh logic
 # ===========================================================================
 echo "=== test-audit-runs: audit-preflight.sh logic ==="
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Test 17: concurrency guard fires when recent report exists
 echo "Test 17: audit-preflight concurrency guard"
@@ -537,12 +538,12 @@ assert_equal "$result" "allowed" "[17b] old report < cutoff → allowed"
 result=$(preflight_concurrency_check "2026-05-20T22:05:00Z" "2026-05-20T22:00:00Z" "true")
 assert_equal "$result" "allowed" "[17c] allow-concurrent bypasses guard"
 
-# Test 18: repo-identity normalization
+# Test 18: repo-identity normalization (mirrors audit-preflight.sh normalize_repo)
 echo "Test 18: audit-preflight repo normalization"
 normalize_repo_url() {
     local url="$1"
     printf '%s' "$url" \
-        | sed -n 's|.*github\.com[:/]\([^/]*/[^/.]*\)\.git|\1|p; s|.*github\.com[:/]\([^/]*/[^/]*\)$|\1|p' \
+        | sed -n 's|.*github\.com[:/]\([^/]*/[^/]*\)\.git|\1|p; s|.*github\.com[:/]\([^/]*/[^/]*\)$|\1|p' \
         | head -1
 }
 result=$(normalize_repo_url "git@github.com:character-ai/larch.git")
@@ -551,49 +552,121 @@ result=$(normalize_repo_url "https://github.com/character-ai/larch")
 assert_equal "$result" "character-ai/larch" "[18b] https remote normalizes"
 result=$(normalize_repo_url "git@github.com:other/repo.git")
 assert_equal "$result" "other/repo" "[18c] different repo normalizes correctly"
+result=$(normalize_repo_url "git@github.com:myorg/foo.bar.git")
+assert_equal "$result" "myorg/foo.bar" "[18d] dotted repo segment before .git"
 
 # ===========================================================================
 # Tests for audit-resolve-prs.sh logic
 # ===========================================================================
 echo "=== test-audit-runs: audit-resolve-prs.sh logic ==="
 
-# Test 19: form dispatch — all 5 forms recognized
-echo "Test 19: audit-resolve-prs verbal description dispatch"
-classify_verbal() {
-    local desc="$1"
-    desc=$(printf '%s' "$desc" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-    if [[ -z "$desc" ]]; then echo "implicit-since-last-audit"; return; fi
-    if [[ "$desc" == "since last audit" ]]; then echo "since-last-audit"; return; fi
-    if printf '%s' "$desc" | grep -qE '^last[[:space:]]+[0-9]+[[:space:]]+PRs?$'; then echo "last-n-prs"; return; fi
-    if printf '%s' "$desc" | grep -qE '^since[[:space:]]+'; then
-        local ts
-        ts=$(printf '%s' "$desc" | sed 's/^since[[:space:]]*//')
-        if printf '%s' "$ts" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}(:[0-9]{2})?(\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$'; then
-            echo "since-iso"
-            return
+# Test 19: verbal forms via real audit-resolve-prs.sh + stub gh (no duplicated dispatch table)
+echo "Test 19: audit-resolve-prs verbal forms (integration)"
+RESOLVE_SCRIPT="$SCRIPT_DIR/audit-resolve-prs.sh"
+if [ -x "$RESOLVE_SCRIPT" ]; then
+    GH19=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-gh19-XXXXXX")
+    PRIOR_BODY=$(cat <<'BOD19'
+---
+audit_schema_version: 1
+audited_pr_range:
+  first: 1
+  last: 10
+  count: 1
+---
+
+BOD19
+)
+    jq -nc --arg body "$PRIOR_BODY" '{number:500,title:"prior",body:$body,createdAt:"2026-01-01T00:00:00Z"}' >"$GH19/prior.json"
+    cat >"$GH19/gh" <<'EOSH19'
+#!/usr/bin/env bash
+set -euo pipefail
+DIR=$(cd "$(dirname "$0")" && pwd)
+if [[ "${1:-}" == "issue" && "${2:-}" == "list" ]]; then
+    cat "$DIR/prior.json"
+    exit 0
+fi
+if [[ "${1:-}" == "pr" && "${2:-}" == "view" ]]; then
+    printf '%s\n' '2025-01-01T00:00:00Z'
+    exit 0
+fi
+if [[ "${1:-}" == "api" ]]; then
+    shift
+    url="${1:-}"
+    shift
+    jq_filter=""
+    while (($# > 0)); do
+        if [[ "$1" == "--jq" && $# -ge 2 ]]; then
+            jq_filter="$2"
+            shift 2
+        else
+            shift
         fi
+    done
+    if [[ "$url" == repos/*/pulls* ]]; then
+        raw='[{"number":10,"merged_at":"2025-01-01T00:00:00Z","base":{"ref":"main"}},{"number":20,"merged_at":"2025-06-02T00:00:00Z","base":{"ref":"main"}},{"number":30,"merged_at":"2025-12-01T00:00:00Z","base":{"ref":"main"}}]'
+        printf '%s' "$raw" | jq -c "$jq_filter"
+        exit 0
     fi
-    if printf '%s' "$desc" | grep -qE '^(PR[[:space:]]+)?#[0-9]+$'; then echo "pr-ref"; return; fi
-    echo "unknown"
-}
-result=$(classify_verbal "")
-assert_equal "$result" "implicit-since-last-audit" "[19] empty → implicit-since-last-audit"
-result=$(classify_verbal "since last audit")
-assert_equal "$result" "since-last-audit" "[19b] 'since last audit' form"
-result=$(classify_verbal "last 5 PRs")
-assert_equal "$result" "last-n-prs" "[19c] 'last N PRs' form"
-result=$(classify_verbal "last 1 PR")
-assert_equal "$result" "last-n-prs" "[19d] singular 'last 1 PR' form"
-result=$(classify_verbal "since 2026-05-01T00:00Z")
-assert_equal "$result" "since-iso" "[19e] 'since <ISO>' form"
-result=$(classify_verbal "since 2026-05-01")
-assert_equal "$result" "unknown" "[19e2] date-only since-ISO rejected"
-result=$(classify_verbal "#42")
-assert_equal "$result" "pr-ref" "[19f] '#N' form"
-result=$(classify_verbal "PR #42")
-assert_equal "$result" "pr-ref" "[19g] 'PR #N' form"
-result=$(classify_verbal "some random text")
-assert_equal "$result" "unknown" "[19h] unrecognized → unknown"
+    printf 'fake gh: bad url %s\n' "$url" >&2
+    exit 1
+fi
+printf 'fake gh: unsupported %s\n' "$*" >&2
+exit 1
+EOSH19
+    chmod +x "$GH19/gh"
+    r19_empty=$(PATH="$GH19:$PATH" bash "$RESOLVE_SCRIPT" --repo character-ai/larch --verbal-description "")
+    imp19=$(printf '%s' "$r19_empty" | sed -n 's/^IMPLICIT_SINCE_LAST_AUDIT=//p')
+    pl19=$(printf '%s' "$r19_empty" | sed -n 's/^PR_LIST=//p')
+    assert_equal "$imp19" "true" "[19] empty verbal → implicit since-last-audit"
+    assert_equal "$pl19" "20,30" "[19a] implicit since-last PR_LIST"
+
+    r19_sla=$(PATH="$GH19:$PATH" bash "$RESOLVE_SCRIPT" --repo character-ai/larch --verbal-description "since last audit")
+    imp19b=$(printf '%s' "$r19_sla" | sed -n 's/^IMPLICIT_SINCE_LAST_AUDIT=//p')
+    pl19b=$(printf '%s' "$r19_sla" | sed -n 's/^PR_LIST=//p')
+    assert_equal "$imp19b" "false" "[19b] explicit since last audit → not implicit"
+    assert_equal "$pl19b" "20,30" "[19c] explicit since-last PR_LIST"
+
+    r19_last=$(PATH="$GH19:$PATH" bash "$RESOLVE_SCRIPT" --repo character-ai/larch --verbal-description "last 2 PRs")
+    pl19L=$(printf '%s' "$r19_last" | sed -n 's/^PR_LIST=//p')
+    assert_equal "$pl19L" "20,30" "[19d] last 2 PRs merge-time slice"
+
+    r19_iso=$(PATH="$GH19:$PATH" bash "$RESOLVE_SCRIPT" --repo character-ai/larch --verbal-description "since 2025-05-01T00:00:00Z")
+    pl19i=$(printf '%s' "$r19_iso" | sed -n 's/^PR_LIST=//p')
+    assert_equal "$pl19i" "20,30" "[19e] since-iso PR_LIST"
+
+    r19_pound=$(bash "$RESOLVE_SCRIPT" --repo character-ai/larch --verbal-description "#501")
+    pl19p=$(printf '%s' "$r19_pound" | sed -n 's/^PR_LIST=//p')
+    assert_equal "$pl19p" "501" "[19f] #N form without gh"
+
+    r19_bad=$(bash "$RESOLVE_SCRIPT" --repo character-ai/larch --verbal-description "since 2026-05-01")
+    er19=$(printf '%s' "$r19_bad" | sed -n 's/^ERROR=//p')
+    case "$er19" in
+        *full\ instant*) PASS=$((PASS + 1)); echo "  ok: [19g] date-only since rejected" ;;
+        *)
+            FAIL=$((FAIL + 1))
+            FAILED_TESTS+=("[19g] expected ERROR about full instant, got: $er19")
+            echo "  FAIL: [19g] expected ERROR about full instant, got: $er19" >&2
+            ;;
+    esac
+
+    r19_unk=$(bash "$RESOLVE_SCRIPT" --repo character-ai/larch --verbal-description "some random text")
+    er19u=$(printf '%s' "$r19_unk" | sed -n 's/^ERROR=//p')
+    case "$er19u" in
+        *unrecognized*)
+            PASS=$((PASS + 1))
+            echo "  ok: [19h] unrecognized verbal"
+            ;;
+        *)
+            FAIL=$((FAIL + 1))
+            FAILED_TESTS+=("[19h] expected unrecognized ERROR, got: $er19u")
+            echo "  FAIL: [19h] expected unrecognized ERROR, got: $er19u" >&2
+            ;;
+    esac
+
+    rm -rf "$GH19"
+else
+    echo "  SKIP: audit-resolve-prs.sh not executable (not found at $RESOLVE_SCRIPT)"
+fi
 
 # Test 20: YAML frontmatter audited_pr_range.last parsing
 echo "Test 20: audit-resolve-prs frontmatter parsing"
@@ -783,7 +856,6 @@ assert_equal "$result" "contiguous" "[28e] leading-zero tokens use decimal radix
 
 # Test 29: title format for contiguous/non-contiguous
 echo "Test 29: audit-title title format"
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TITLE_SCRIPT="$SCRIPT_DIR/audit-title.sh"
 if [ -x "$TITLE_SCRIPT" ]; then
     result=$(bash "$TITLE_SCRIPT" --pr-list "2476,2477,2478" --timestamp "2026-05-20T22:00-07:00" | grep -oE 'TITLE=.*' | sed 's/TITLE=//')
@@ -912,8 +984,10 @@ if [ -x "$COMP_SCRIPT" ]; then
         printf '%s\n' '{"scan":"category-stats","pr":1,"partial_data":true,"canonical":0,"oos_blank":0}'
     } > "$COMP_TMP/scan-results-990001.ndjson"
     comp_out=$(bash "$COMP_SCRIPT" --scan-results-dir "$COMP_TMP")
+    scf=$(printf '%s' "$comp_out" | sed -n 's/^SCAN_FILES_FOUND=//p')
     chg_delta=$(printf '%s' "$comp_out" | sed -n 's/^CHANGELOG_DELTA=//p')
     part=$(printf '%s' "$comp_out" | sed -n 's/^CATEGORY_STATS_PARTIAL=//p')
+    assert_equal "$scf" "1" "[34c] SCAN_FILES_FOUND counts NDJSON inputs"
     assert_equal "$chg_delta" "4" "[34] CHANGELOG_DELTA sums scan NDJSON count"
     assert_equal "$part" "true" "[34b] partial category-stats flagged in KV output"
     rm -rf "$COMP_TMP"
@@ -974,8 +1048,10 @@ cumulative_counters:
 EOFMD
     printf '%s\n' '{"scan":"exon-misclassification","pr":1,"result":"fail","count":3}' > "$C36_TMP/scan-results-990035.ndjson"
     c36_out=$(bash "$COMP_SCRIPT" --scan-results-dir "$C36_TMP" --prior-frontmatter "$C36_TMP/prior.md")
+    sc36=$(printf '%s' "$c36_out" | sed -n 's/^SCAN_FILES_FOUND=//p')
     exon_tot=$(printf '%s' "$c36_out" | sed -n 's/^EXON_MISCLASSIFICATIONS=//p')
     exon_delta=$(printf '%s' "$c36_out" | sed -n 's/^EXON_DELTA=//p')
+    assert_equal "$sc36" "1" "[36c] SCAN_FILES_FOUND with one scan file"
     assert_equal "$exon_delta" "3" "[36] EXON_DELTA from scan NDJSON"
     assert_equal "$exon_tot" "53" "[36b] prior exon 50 + delta 3 → cumulative"
     rm -rf "$C36_TMP"

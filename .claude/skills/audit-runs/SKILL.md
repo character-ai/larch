@@ -176,11 +176,11 @@ COUNTERS_OUT=$(bash "$PWD/.claude/skills/audit-runs/scripts/audit-compute-counte
   [--prior-frontmatter "$TMPDIR/prior-report-body.md"])
 ```
 
-Read `EXON_MISCLASSIFICATIONS`, `EXON_DELTA`, `OOS_CATEGORIES_MANGLED`, `OOS_MANGLED_DELTA`, `OOS_CATEGORIES_CLEAN`, `OOS_CLEAN_DELTA`, `OOS_CATEGORIES_BLANK`, `OOS_BLANK_DELTA`, `NS_RETRIES_CURSOR_SPECIALIST`, `NS_RETRIES_DELTA`, `CHANGELOG_REBASE_CONFLICTS`, `CHANGELOG_DELTA`, and `CATEGORY_STATS_PARTIAL` (`true` when any PR scan lacked `review-findings-full.jsonl`, so `OOS_*_DELTA` for clean/blank skipped those rows). Contract: `audit-compute-counters.md`.
+Read `SCAN_FILES_FOUND`, `EXON_MISCLASSIFICATIONS`, `EXON_DELTA`, `OOS_CATEGORIES_MANGLED`, `OOS_MANGLED_DELTA`, `OOS_CATEGORIES_CLEAN`, `OOS_CLEAN_DELTA`, `OOS_CATEGORIES_BLANK`, `OOS_BLANK_DELTA`, `NS_RETRIES_CURSOR_SPECIALIST`, `NS_RETRIES_DELTA`, `CHANGELOG_REBASE_CONFLICTS`, `CHANGELOG_DELTA`, and `CATEGORY_STATS_PARTIAL` (`true` when any PR scan lacked `review-findings-full.jsonl`, so `OOS_*_DELTA` for clean/blank skipped those rows). Contract: `audit-compute-counters.md`.
 
 ### Frontmatter (YAML block between `---` markers at top of body)
 
-`audit_timestamp` matches **Title Format** `<Pacific-ISO-timestamp>`: Pacific wall time with explicit `-07:00` or `-08:00` and minute precision when `audit-pacific-timestamp.sh` can resolve `America/Los_Angeles` (or its manual heuristic). It is **not** the `since <ISO8601-instant>` filter convention. **UTC `Z` is allowed only** as the script’s last-resort fallback when Pacific resolution fails (same shape as `audit-pacific-timestamp.sh` may emit). Populate `cumulative_counters` from `audit-compute-counters.sh` output keys below.
+`audit_timestamp` matches **Title Format** `<Pacific-ISO-timestamp>`: Pacific wall time with explicit `-07:00` or `-08:00` and minute precision when `audit-pacific-timestamp.sh` resolves `America/Los_Angeles` (`PACIFIC_TIMESTAMP_SOURCE=tz_america_los_angeles`). It is **not** the `since <ISO8601-instant>` filter convention. **UTC `Z` is allowed only** as the script’s last-resort fallback when Pacific resolution fails (`PACIFIC_TIMESTAMP_SOURCE=utc_fallback`; same shape as `audit-pacific-timestamp.sh` may emit). Populate `cumulative_counters` from `audit-compute-counters.sh` output keys below.
 
 ```yaml
 audit_schema_version: 1
@@ -249,7 +249,7 @@ Optional stdout-style summary after the chat contract (for example per-scan PASS
 
 ```
 audit-preflight.sh           → PREFLIGHT_OK / fail-fast
-audit-resolve-prs.sh         → PR_LIST, PRIOR_REPORT_NUMBER, RESOLVED_ECHO
+audit-resolve-prs.sh         → full stdout KV contract (see `audit-resolve-prs.md`: IMPLICIT_SINCE_LAST_AUDIT, PRIOR_REPORT_NUMBER, PR_LIST, PR_COUNT, RESOLVED_ECHO, ERROR)
 audit-map-runs.sh            → run-map.tsv
 for each PR:
   audit-scan-run.sh          → scan-results-NNNN.ndjson

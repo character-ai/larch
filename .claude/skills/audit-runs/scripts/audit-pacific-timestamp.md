@@ -6,9 +6,14 @@ Emits the current Pacific time as an ISO 8601 timestamp with explicit UTC offset
 
 ```
 PACIFIC_TIMESTAMP=2026-05-20T21:59-07:00
+PACIFIC_TIMESTAMP_SOURCE=tz_america_los_angeles
 ```
 
-Offset is `-07:00` (PDT, Apr–Oct) or `-08:00` (PST, Nov–Mar). Uses `TZ=America/Los_Angeles` when available; falls back to a simplified month-based heuristic; **last resort** emits UTC minute-precision timestamps with a `Z` suffix (documented in the audit-runs skill as an allowed `audit_timestamp` fallback only when Pacific tooling fails).
+`PACIFIC_TIMESTAMP_SOURCE` is `tz_america_los_angeles` when `TZ=America/Los_Angeles` succeeds, otherwise `utc_fallback` (timestamp is then UTC `Z` minute-precision — **not** Pacific wall time; treat as a last-resort clock for titling/metadata only).
+
+## Unknown argv
+
+Extra arguments exit `1` with stderr only — **no** `PACIFIC_TIMESTAMP=` line on stdout (parse failure, not a usable timestamp).
 
 ## Edit-in-sync
 

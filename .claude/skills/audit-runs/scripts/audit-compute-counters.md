@@ -10,6 +10,7 @@ Sums scan-result deltas across PRs and adds to prior cumulative totals from a re
 ## Output KV (stdout)
 
 ```
+SCAN_FILES_FOUND=2
 EXON_MISCLASSIFICATIONS=103
 EXON_DELTA=0
 OOS_CATEGORIES_MANGLED=55
@@ -24,6 +25,8 @@ CHANGELOG_REBASE_CONFLICTS=3
 CHANGELOG_DELTA=1
 CATEGORY_STATS_PARTIAL=false
 ```
+
+`SCAN_FILES_FOUND` counts readable `scan-results-*.ndjson` files actually aggregated (zero means no scan NDJSON was read — likely a wrong `--scan-results-dir` or filename pattern).
 
 `CATEGORY_STATS_PARTIAL=true` when any `scan-results-*.ndjson` contains a `category-stats` object with `partial_data: true` (missing `review-findings-full.jsonl` for that PR). In that case `OOS_CLEAN_DELTA` / `OOS_BLANK_DELTA` omit category-stats contributions for those PRs; totals still add other scans.
 

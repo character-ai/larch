@@ -16,7 +16,8 @@
 #   RESOLVED_ECHO=<human-readable line>
 #   ERROR=<empty when ok; human-readable error when PR_LIST is empty>
 #
-# Exit codes: 0 always; caller reads PR_LIST / ERROR.
+# Exit codes: normal resolution exits 0 (caller reads PR_LIST / ERROR from stdout).
+# Unknown argv exits 1 with stderr only — no KV lines on stdout.
 
 set -euo pipefail
 
@@ -37,13 +38,21 @@ done
 # Trim whitespace
 VERBAL=$(printf '%s' "$VERBAL" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
 
+# Machine-safe single-line KV values (no controls / DEL)
+kv_sanitize() {
+    printf '%s' "$1" | LC_ALL=C tr -d '\000-\037\177'
+}
+
 emit_error() {
-    printf 'IMPLICIT_SINCE_LAST_AUDIT=false\nPRIOR_REPORT_NUMBER=\nPR_LIST=\nPR_COUNT=0\nRESOLVED_ECHO=\nERROR=%s\n' "$1"
+    local msg
+    msg=$(kv_sanitize "$1")
+    printf 'IMPLICIT_SINCE_LAST_AUDIT=false\nPRIOR_REPORT_NUMBER=\nPR_LIST=\nPR_COUNT=0\nRESOLVED_ECHO=\nERROR=%s\n' "$msg"
     exit 0
 }
 
 emit_ok() {
     local implicit="$1" prior="$2" pr_list="$3" pr_count="$4" echo_line="$5"
+    echo_line=$(kv_sanitize "$echo_line")
     printf 'IMPLICIT_SINCE_LAST_AUDIT=%s\nPRIOR_REPORT_NUMBER=%s\nPR_LIST=%s\nPR_COUNT=%s\nRESOLVED_ECHO=%s\nERROR=\n' \
         "$implicit" "$prior" "$pr_list" "$pr_count" "$echo_line"
     exit 0

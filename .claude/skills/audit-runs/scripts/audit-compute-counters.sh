@@ -83,9 +83,11 @@ delta_oos_blank=0
 delta_ns_retries=0
 delta_changelog=0
 category_stats_partial_any=false
+scan_files_found=0
 
 for ndjson_file in "$SCAN_RESULTS_DIR"/scan-results-*.ndjson; do
     [ -f "$ndjson_file" ] || continue
+    scan_files_found=$((scan_files_found + 1))
 
     # exon-misclassification count
     val=$(jq -r 'select(.scan=="exon-misclassification") | .count // 0' "$ndjson_file" 2>/dev/null | head -1 || echo 0)
@@ -131,6 +133,7 @@ total_oos_blank=$((prior_oos_blank + delta_oos_blank))
 total_ns_retries=$((prior_ns_retries + delta_ns_retries))
 total_changelog=$((prior_changelog + delta_changelog))
 
+printf 'SCAN_FILES_FOUND=%s\n' "$scan_files_found"
 printf 'EXON_MISCLASSIFICATIONS=%s\n' "$total_exon"
 printf 'EXON_DELTA=%s\n' "$delta_exon"
 printf 'OOS_CATEGORIES_MANGLED=%s\n' "$total_oos_mangled"

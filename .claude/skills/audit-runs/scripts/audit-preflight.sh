@@ -62,17 +62,23 @@ fi
 REMOTE_URL=$(git config --get remote.origin.url 2>/dev/null || true)
 GH_URL=$(gh repo view -R "$REPO" --json url --jq '.url' 2>/dev/null || true)
 
+# Strip https(s)://user:pass@ from URLs before logging (avoid leaking PATs from remote.origin.url).
+strip_url_userinfo() {
+    printf '%s' "$1" | sed -E 's#^(https?://)[^/@]+@#\1#'
+}
+
 # Normalize both to owner/repo form
 normalize_repo() {
     printf '%s' "$1" \
-        | sed -n 's|.*github\.com[:/]\([^/]*/[^/.]*\)\.git|\1|p; s|.*github\.com[:/]\([^/]*/[^/]*\)$|\1|p' \
+        | sed -n 's|.*github\.com[:/]\([^/]*/[^/]*\)\.git|\1|p; s|.*github\.com[:/]\([^/]*/[^/]*\)$|\1|p' \
         | head -1
 }
 REMOTE_REPO=$(normalize_repo "$REMOTE_URL")
 GH_REPO=$(printf '%s' "$GH_URL" | sed 's|https://github.com/||')
 
 if [ -z "$REMOTE_REPO" ] || [ -z "$GH_REPO" ]; then
-    printf 'PREFLIGHT_OK=false\nREASON=could not determine repo identity (remote=%s gh=%s)\n' "$REMOTE_URL" "$GH_URL"
+    safe_remote=$(strip_url_userinfo "$REMOTE_URL")
+    printf 'PREFLIGHT_OK=false\nREASON=could not determine repo identity (remote=%s gh=%s)\n' "$safe_remote" "$GH_URL"
     exit 0
 fi
 if [ "$REMOTE_REPO" != "$GH_REPO" ]; then
