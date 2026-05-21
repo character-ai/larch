@@ -5,6 +5,8 @@ set -euo pipefail
 export LARCH_QUIET_DISABLE=1
 
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)
+export CLAUDE_PLUGIN_ROOT="$REPO_ROOT"
+unset LARCH_QUIET_BREADCRUMBS LARCH_QUIET_BREADCRUMB_FD || true
 SCRIPT="$REPO_ROOT/skills/review/scripts/review-core.sh"
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/test-review-core.XXXXXX")
 trap 'rm -rf "$TMP"' EXIT
@@ -94,18 +96,37 @@ STUB
 set -euo pipefail
 findings=""
 oos=""
+rtmp=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --findings-file) findings="$2"; shift 2 ;;
     --oos-file) oos="$2"; shift 2 ;;
+    --review-tmpdir) rtmp="$2"; shift 2 ;;
     --external-output-files|--claude-output-files) shift; while [[ $# -gt 0 && "$1" != --* ]]; do shift; done ;;
     *) shift 2 ;;
   esac
 done
 mkdir -p "$(dirname "$findings")"
 : > "$oos"
+if [[ -n "${TEST_REVIEW_CORE_AGG_ORDER:-}" ]]; then
+  rtmp="${rtmp:-$(dirname "$findings")}"
+  printf 'collect\n' >> "$rtmp/invoke-order.log"
+fi
 if [[ "${TEST_FINDINGS:-0}" -eq 0 ]]; then
   : > "$findings"
+elif [[ -n "${TEST_REVIEW_CORE_AGG_ORDER:-}" ]]; then
+  cat > "$findings" <<'EOF'
+### FINDING_1: First stub finding
+- **Reviewer**: stub-one-output.txt
+- **Concern**: concern one
+- **Suggested revision**: fix it
+
+### FINDING_2: Second stub finding
+- **Reviewer**: stub-two-output.txt
+- **Concern**: concern two
+- **Suggested revision**: fix it
+
+EOF
 else
   cat > "$findings" <<'EOF'
 ### FINDING_1: Example
@@ -225,6 +246,9 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 mkdir -p "$review_tmpdir"
+if [[ -n "${TEST_REVIEW_CORE_AGG_ORDER:-}" ]]; then
+  printf 'voters\n' >> "$review_tmpdir/invoke-order.log"
+fi
 printf 'FINDING_1: YES\n' > "$review_tmpdir/claude-vote-output.txt"
 printf 'FINDING_1: YES\n' > "$review_tmpdir/codex-vote-output.txt"
 printf 'FINDING_1: YES\n' > "$review_tmpdir/cursor-vote-output.txt"
@@ -239,14 +263,84 @@ else
 fi
 printf 'DISPATCH_OK=true\n'
 STUB
+    cat > "$TMP/aggregate-dispatch.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+slots=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --slots-file) slots="${2:?}"; shift 2 ;;
+        --codex-present|--cursor-present|--mode) shift 2 ;;
+        --diff-file|--plan-file|--feature-file|--scope-files|--description-text) shift 2 ;;
+        *) shift 1 ;;
+    esac
+done
+[[ -n "$slots" && -f "$slots" ]] || exit 2
+out=$(jq -r '.output' "$slots")
+mode="${AGGREGATE_STUB_MODE:-ok}"
+case "$mode" in
+    fail_dispatch)
+        printf 'DISPATCH_OK=false\nALL_OUTPUT_FILES=\n'
+        ;;
+    ok)
+        cat > "$out" <<'EOF'
+### FINDING_1: merged example
+- **Reviewer(s)**: stub-one-output.txt, stub-two-output.txt
+- **Concern**: merged concern
+- **Suggested revision**: fix it
+
+EOF
+        printf 'DISPATCH_OK=true\nALL_OUTPUT_FILES=%s\n' "$out"
+        ;;
+    *)
+        echo "stub: bad AGGREGATE_STUB_MODE" >&2
+        exit 2
+        ;;
+esac
+STUB
+    cat > "$TMP/aggregate-log.sh" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+AGG="$REPO_ROOT/skills/review/scripts/aggregate-findings.sh"
+rtmp=""
+args=("\$@")
+i=0
+while [[ \$i -lt \${#args[@]} ]]; do
+  if [[ "\${args[i]}" == --review-tmpdir ]]; then
+    rtmp="\${args[i+1]}"
+    break
+  fi
+  i=\$((i + 1))
+done
+printf 'aggregate\n' >> "\${rtmp:?}/invoke-order.log"
+exec "\$AGG" "\$@"
+EOF
     chmod +x "$TMP"/*.sh
+}
+
+run_core_agg_order() {
+    local outdir="$1"
+    local args=(--mode diff --output-dir "$outdir" --codex-available true --cursor-available true --panel simple --round-num "${TEST_ROUND_NUM:-1}")
+    unset LARCH_AGGREGATOR_DISABLED || true
+    AGGREGATE_DISPATCH_SH="$TMP/aggregate-dispatch.sh" \
+    AGGREGATE_STUB_MODE=ok \
+    REVIEW_CORE_AGGREGATE_FINDINGS_SH="$TMP/aggregate-log.sh" \
+    REVIEW_CORE_GATHER_CONTEXT_SH="$TMP/gather.sh" \
+    REVIEW_CORE_DISPATCH_PANEL_SH="$TMP/dispatch.sh" \
+    REVIEW_CORE_COLLECT_FINDINGS_SH="$TMP/collect.sh" \
+    REVIEW_CORE_TALLY_VOTES_SH="$TMP/tally.sh" \
+    REVIEW_CORE_EMIT_TALLY_SH="$TMP/emit.sh" \
+    REVIEW_CORE_CHECK_DIRTY_TREE_SH="$TMP/check-dirty.sh" \
+    REVIEW_CORE_CHECK_THRESHOLD_SH="$TMP/check-threshold.sh" \
+    REVIEW_CORE_DISPATCH_VOTERS_SH="$TMP/dispatch-voters.sh" \
+    "$SCRIPT" "${args[@]}"
 }
 
 run_core() {
     local outdir="$1" mode="${2:-diff}" session_env="${3:-}"
     local args=(--mode "$mode" --output-dir "$outdir" --codex-available true --cursor-available true --panel simple --round-num "${TEST_ROUND_NUM:-1}")
     [[ -n "$session_env" ]] && args+=(--session-env-path "$session_env")
-    REVIEW_CORE_GATHER_CONTEXT_SH="$TMP/gather.sh" \
+    LARCH_AGGREGATOR_DISABLED=1 REVIEW_CORE_GATHER_CONTEXT_SH="$TMP/gather.sh" \
     REVIEW_CORE_DISPATCH_PANEL_SH="$TMP/dispatch.sh" \
     REVIEW_CORE_COLLECT_FINDINGS_SH="$TMP/collect.sh" \
     REVIEW_CORE_TALLY_VOTES_SH="$TMP/tally.sh" \
@@ -274,7 +368,7 @@ STUB
     local args=(--mode diff --output-dir "$outdir" --codex-available true --cursor-available true --panel simple --run-id test-run)
     [[ -n "$session_env" ]] && args+=(--session-env-path "$session_env")
     IMPLEMENT_TMPDIR="$impl_tmp" \
-    REVIEW_CORE_GATHER_CONTEXT_SH="$TMP/gather.sh" \
+    LARCH_AGGREGATOR_DISABLED=1 REVIEW_CORE_GATHER_CONTEXT_SH="$TMP/gather.sh" \
     REVIEW_CORE_DISPATCH_PANEL_SH="$TMP/dispatch.sh" \
     REVIEW_CORE_COLLECT_FINDINGS_SH="$TMP/collect.sh" \
     REVIEW_CORE_TALLY_VOTES_SH="$TMP/tally.sh" \
@@ -439,5 +533,27 @@ set -e
 [[ "$rc" -eq 0 ]] || { echo "FAIL: empty LARCH_DYNAMIC_ARCHETYPES_MAX expected exit 0 got $rc" >&2; echo "$out" >&2; exit 1; }
 assert_contains "$out" 'REVIEW_CORE_STATUS=zero-findings'
 assert_contains "$out" 'DYNAMIC_SLOTS=0'
+
+ord="$TMP/aggregate-order"
+mkdir -p "$ord"
+: > "$ord/invoke-order.log"
+out=$(TEST_FINDINGS=1 TEST_ACCEPTED=1 TEST_REVIEW_CORE_AGG_ORDER=1 run_core_agg_order "$ord")
+assert_contains "$out" 'REVIEW_CORE_STATUS=fix-required'
+grep -Fxq 'collect' "$ord/invoke-order.log" || { echo "FAIL: invoke-order missing collect" >&2; exit 1; }
+grep -Fxq 'aggregate' "$ord/invoke-order.log" || { echo "FAIL: invoke-order missing aggregate" >&2; exit 1; }
+grep -Fxq 'voters' "$ord/invoke-order.log" || { echo "FAIL: invoke-order missing voters" >&2; exit 1; }
+awk 'BEGIN{n=0} /^collect$/{c++} /^aggregate$/{a++} /^voters$/{v++} END{if(c!=1||a!=1||v!=1) exit 1}' "$ord/invoke-order.log" || {
+    echo "FAIL: invoke-order should contain exactly one collect, aggregate, voters line each" >&2
+    cat "$ord/invoke-order.log" >&2
+    exit 1
+}
+first=$(head -n1 "$ord/invoke-order.log")
+mid=$(sed -n '2p' "$ord/invoke-order.log")
+last=$(tail -n1 "$ord/invoke-order.log")
+[[ "$first" == collect && "$mid" == aggregate && "$last" == voters ]] || {
+    echo "FAIL: expected collect → aggregate → voters ordering" >&2
+    cat "$ord/invoke-order.log" >&2
+    exit 1
+}
 
 echo "All assertions passed."

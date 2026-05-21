@@ -12,7 +12,7 @@
 | `reviewer_for_block <block_file>` | per-block markdown file | stdout: reviewer attribution string (or `unknown`) | 0 |
 | `is_security_block <block_file>` | per-block markdown file | — | 0 (security tag found, unfenced) \| 1 (not found) |
 | `accept_finding <yes> <no> <exonerate> <eligible>` | vote counts and eligible voter count | — | 0 (accept) \| 1 (reject) |
-| `split_ballot_to_blocks <ballot_file> <out_dir>` | ballot file, output dir | per-ID `<id>.md` files in `out_dir` | 0 |
+| `split_ballot_to_blocks <ballot_file> <out_dir>` | ballot file, output dir | per-ID `<id>.md` files in `out_dir` | 0 \| 1 (duplicate `### FINDING_N` / `### OOS_N` headings) |
 | `classify_result <yes> <no> <exonerate> <eligible>` | vote counts and eligible voter count | stdout: `accepted` \| `rejected` \| `neutral` \| `exonerated` | 0 |
 | `panel_tier <eligible>` | eligible voter count | stdout: `full-3` \| `unanimous-2` \| `single-judge` \| `main-agent-required` | 0 |
 
@@ -37,7 +37,7 @@ For multi-voter panels, `classify_result` applies exoneration after acceptance a
 
 ## Reviewer attribution
 
-`reviewer_for_block` extracts only anchored reviewer attribution lines: `- **Reviewer**: ...`, `- **Reviewers**: ...`, or unbolded line-start `Reviewer:`/`Reviewers:` fallbacks. Prose containing `Reviewer` elsewhere in the block is ignored and returns `unknown` when no attribution line exists.
+`reviewer_for_block` extracts only anchored reviewer attribution lines: `- **Reviewer(s)**: ...`, `- **Reviewer**: ...`, `- **Reviewers**: ...`, or unbolded line-start `Reviewer(s):` / `Reviewer:` / `Reviewers:` fallbacks. Prose containing `Reviewer` elsewhere in the block is ignored and returns `unknown` when no attribution line exists.
 
 ## Security tag
 

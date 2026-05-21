@@ -147,7 +147,10 @@ extract_category() {
 
 extract_reviewer_from_body() {
     LC_ALL=C awk -F: '
-        /^[[:space:]-]*\*\*Reviewers?\*\*:/ || /^[[:space:]-]*Reviewers?:/ {
+        /^[[:space:]-]*\*\*Reviewer\(s\)\*\*:/ ||
+        /^[[:space:]-]*\*\*Reviewers?\*\*:/ ||
+        /^[[:space:]-]*Reviewer\(s\):/ ||
+        /^[[:space:]-]*Reviewers?:/ {
             sub(/^[[:space:]-]*/, "", $1)
             $1=""
             sub(/^:[[:space:]]*/, "", $0)
@@ -165,22 +168,24 @@ FINDINGS_TOTAL=0
 
 emit_record() {
     local id="$1" phase="$2" outcome="$3" reviewer="$4" body="$5" round_num="$6"
-    local reviewer_redacted body_redacted category strict_cat=0
+    local reviewer_redacted body_redacted category strict_cat=0 reviewer_slots_json
     reviewer_redacted="$(redact_field "$reviewer")" || fail "redaction failed for reviewer in $id"
     body_redacted="$(redact_field "$body")" || fail "redaction failed for prose_body in $id"
     [[ "$outcome" == "out_of_scope" ]] && strict_cat=1
     category="$(extract_category "$body_redacted" "$strict_cat")"
+    reviewer_slots_json=$(jq -nc --arg r "$reviewer_redacted" '($r | split(",") | map(sub("^[[:space:]]+";"") | sub("[[:space:]]+$";"")) | map(select(length > 0))) | if length == 0 then ["panel"] else . end')
     # JSONL: one compact JSON object per line. jq handles string escaping.
     jq -nc \
         --arg id "$id" \
         --arg issue_number "$ISSUE" \
         --arg phase "$phase" \
         --arg outcome "$outcome" \
-        --arg reviewer "$reviewer_redacted" \
         --arg round_num "$round_num" \
         --arg category "$category" \
         --arg prose_body "$body_redacted" \
-        '{id: $id, issue_number: $issue_number, phase: $phase, outcome: $outcome, reviewer: $reviewer, round_num: $round_num, category: $category, prose_body: $prose_body}' \
+        --arg schema_version "2" \
+        --argjson reviewer_slots "$reviewer_slots_json" \
+        '{id: $id, issue_number: $issue_number, phase: $phase, outcome: $outcome, schema_version: $schema_version, reviewer_slots: $reviewer_slots, round_num: $round_num, category: $category, prose_body: $prose_body}' \
         >> "$TMP_OUT" || fail "failed to write JSONL record for $id"
     FINDINGS_TOTAL=$((FINDINGS_TOTAL + 1))
 }

@@ -1,0 +1,11 @@
+Gathering the branch diff, commit list, and scanning consumers of the `reviewer` / `reviewer_slots` schema.
+
+### In-Scope Findings
+
+- **architecture** `docs/run-logs.md:150` — The backward-compat guidance tells miners to distinguish shapes with `has("reviewer_slots")` versus `has("reviewer")`, but the same paragraph admits a third class (“Sparse historical stub rows” with other partial shapes). A literal two-way `has()` branch never handles that third class, so the example is incomplete relative to the stated log reality and can encourage jq that silently skips lines or errors on unexpected envelopes. Additionally, `has("reviewer_slots")` is true even when the value is `null` or not an array, so treating it as proof of v2 before iterating is not mechanically safe. **Suggested fix:** Document a three-way normalization (v2 array, legacy string `reviewer`, else explicit skip/unknown with logging), and use `(has("reviewer_slots") and (.reviewer_slots | type == "array"))` as the v2 discriminator; keep `has("reviewer")` as the legacy path only when v2 is absent, and align the duplicate legacy-contract sentence in `scripts/compose-review-findings.md:31` so both docs show the same jq-shaped recipe.
+
+### Out-of-Scope Observations
+
+- In-repo shell consumers of committed `review-findings-full.jsonl` were checked for `.reviewer` / `has("reviewer")`-style access: there are no remaining jq/bash readers of a JSONL `.reviewer` field, and `derive_code_review_tally_from_composed_findings` in `skills/review-and-fix/scripts/review-and-fix.sh:514-527` only filters on `phase`/`outcome`, so the runtime tally path is not coupled to the renamed field.
+- `SECURITY.md:58` still lists only `id`, `phase`, `outcome`, `round_num` as “script-derived” bounded fields and omits the new literal `schema_version` / structured `reviewer_slots` envelope; that is documentation drift around the new batch shape, not a functional regression in the diff itself.
+- Large `larch-logs/implement/EF527D59-…` artifacts appearing in the branch diff are operational run-log noise relative to schema-compat auditing, not a consumer contract bug.

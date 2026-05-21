@@ -1,0 +1,34 @@
+Reading the ballot and nearby context files to verify findings.
+
+Reading provided `diff-context.txt` and `plan-context.txt` for verification.
+
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: NO -- verified audit shows no remaining `.reviewer` coupling worth a tracking issue
+FINDING_6: EXONERATE -- run-log noise is real but not issue-worthy for this PR scope
+FINDING_7: EXONERATE -- slot-only-OOS labeling is intentional; merge-tag gap is already FINDING_2/3
+FINDING_8: EXONERATE -- telemetry quirk is real but low impact vs a dedicated issue
+FINDING_9: EXONERATE -- doc drift is minor; SECURITY already notes slots; full issue is heavy-handed
+FINDING_10: EXONERATE -- pre-existing behavior; global hardening is separate scope
+FINDING_11: EXONERATE -- indirect coverage exists; dedicated test is optional polish
+FINDING_12: YES
+FINDING_13: EXONERATE -- consolidation is large churn for a hypothetical label skew
+FINDING_14: EXONERATE -- comment-only nit with low safety impact
+FINDING_15: YES
+FINDING_16: EXONERATE -- test-only KV mismatch does not affect agg-order behavior under test
+FINDING_17: EXONERATE -- duplicates FINDING_8/26; same telemetry concern
+FINDING_18: YES
+FINDING_19: YES
+FINDING_20: YES
+FINDING_21: YES
+FINDING_22: EXONERATE -- duplicates FINDING_15/21 plan-vs-awk point
+FINDING_23: YES
+FINDING_24: YES
+FINDING_25: EXONERATE -- overlaps FINDING_11; optional harness addition
+FINDING_26: EXONERATE -- same disabled-count telemetry as FINDING_8/17
+FINDING_27: EXONERATE -- jq is a baseline dependency; broad pre-check is more noise than fix
+FINDING_28: EXONERATE -- narrow regression surface; nice-to-have test only
+FINDING_29: EXONERATE -- validator path likely covered indirectly; extra stub is optional
+FINDING_30: NO -- `>( )` is valid Bash 3.2 process substitution when `set +o posix` / bash mode applies as in review-core

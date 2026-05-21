@@ -145,7 +145,21 @@ is not separately enumerated in the tally envelope counters.
 
 **Mode**: replace (line-delimited JSON). **Written**: Step 5, immediately after the `code-review-tally` batch.
 
-Per-finding payloads for plan-review accepted, plan-review rejected, and code-review entries. One JSON object per line with keys `id`, `issue_number`, `phase` (`plan-review` | `code-review`), `outcome` (`accepted` | `rejected` | `out_of_scope`), `reviewer`, `round_num` (empty outside numbered review rounds), `category` (best-effort, extracted from a leading `## <cat>: ...` body line — may be empty), and `prose_body` (redacted). See `scripts/compose-review-findings.md` for the producer contract.
+Per-finding payloads for plan-review accepted, plan-review rejected, and code-review entries. One JSON object per line with keys `id`, `issue_number`, `phase` (`plan-review` | `code-review`), `outcome` (`accepted` | `rejected` | `out_of_scope`), `schema_version` (`2`), `reviewer_slots` (array of redacted reviewer labels), `round_num` (empty outside numbered review rounds), `category` (best-effort, extracted from a leading `## <cat>: ...` body line — may be empty), and `prose_body` (redacted). See `scripts/compose-review-findings.md` for the producer contract.
+
+**Backward compatibility**: Committed `larch-logs/**/review-findings-full.jsonl` may mix envelopes across runs. Normalize each line in three ways: **(1) v2** when `(has("reviewer_slots") and (.reviewer_slots | type == "array"))` — use `reviewer_slots` (and optional `schema_version`) as the canonical slot list. **(2) Legacy** only when v2 is absent: a string `reviewer` field (often without `schema_version`). **(3) Unknown / partial** — sparse historical stub rows may omit both usable shapes; log and skip (or count as unknown) rather than assuming a full v2 field set or treating `reviewer_slots: null`/non-array as v2. Example `jq` sketch:
+
+```jq
+if (has("reviewer_slots") and (.reviewer_slots | type == "array")) then
+  .reviewer_slots
+elif has("reviewer") and (.reviewer | type == "string") then
+  [.reviewer]
+else
+  empty   # or: log "unknown row" to stderr
+end
+```
+
+See `scripts/compose-review-findings.md` for the same mixed-stream contract.
 
 ### version-bump-reasoning.md
 

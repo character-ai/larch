@@ -54,12 +54,13 @@ Round stages:
 
 1. Gather context with `gather-context.sh --mode <mode> --output-dir "$REVIEW_TMPDIR"`.
 2. Dispatch the reviewer panel with `dispatch-panel.sh --mode "$MODE" --review-tmpdir "$REVIEW_TMPDIR" --panel "$PANEL" --dynamic-archetypes "$DYNAMIC_ARCHETYPES"`.
-3. Collect findings, run dirty-tree recovery, tally votes, and emit tally artifacts. Zero-findings rounds still invoke `tally-code-votes.sh` with the collector results + manifest inputs so degraded `NOT_SUBSTANTIVE` slots show up in `voting-tally.md` even when no findings were proposed. If the tally emits `TALLY_STATUS=main-agent-vote-required`, skip `emit-tally.sh`, emit `REVIEW_CORE_STATUS=main-agent-vote-required`, and hand the findings ballot back to the caller for main-agent adjudication.
+3. Collect findings with `collect-findings.sh`, run dirty-tree recovery (`recover_dirty_tree` immediately after collection on the reviewer output paths), run `aggregate-findings.sh` (non-fatal LLM merge of cross-reviewer `FINDING_N` blocks when enabled), dispatch voters, run `tally-code-votes.sh`, and emit tally artifacts. Zero-findings rounds still invoke `tally-code-votes.sh` with the collector results + manifest inputs so degraded `NOT_SUBSTANTIVE` slots show up in `voting-tally.md` even when no findings were proposed. If the tally emits `TALLY_STATUS=main-agent-vote-required`, skip `emit-tally.sh`, emit `REVIEW_CORE_STATUS=main-agent-vote-required`, and hand the findings ballot back to the caller for main-agent adjudication.
 4. Copy parent tmpdir artifacts when `SESSION_ENV_PATH` is set.
 
 Artifact paths under `$REVIEW_TMPDIR`:
 
-- `findings.md`
+- `findings.md` (optionally rewritten by `aggregate-findings.sh` when aggregation succeeds)
+- `aggregator-output.txt`, `review-core-aggregate.env` — aggregator slot output and stdout capture when the merge pass runs
 - `accepted-findings.md`
 - `rejected-findings.md`
 - `oos-accepted-review.md`

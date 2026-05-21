@@ -36,7 +36,10 @@ vote_for_id() {
 reviewer_for_block() {
     local block="$1" reviewer
     reviewer=$(awk -F: '
-      /^[[:space:]-]*\*\*Reviewers?\*\*:/ || /^[[:space:]-]*Reviewers?:/ {
+      /^[[:space:]-]*\*\*Reviewer\(s\)\*\*:/ ||
+      /^[[:space:]-]*\*\*Reviewers?\*\*:/ ||
+      /^[[:space:]-]*Reviewer\(s\):/ ||
+      /^[[:space:]-]*Reviewers?:/ {
         sub(/^[[:space:]-]*/, "", $1)
         $1=""
         sub(/^:[[:space:]]*/, "", $0)
@@ -93,7 +96,7 @@ accept_finding() {
 # split_ballot_to_blocks: splits a ballot file into per-ID block files inside
 # the supplied output directory. Block file name = "<id>.md" (e.g. FINDING_1.md,
 # OOS_2.md). Heading lines are kept in the block; voter-instruction prose before
-# the first heading is dropped.
+# the first heading is dropped. Duplicate FINDING_/OOS_ headings exit 1 (stderr).
 split_ballot_to_blocks() {
     local ballot_file="$1" out_dir="$2"
     mkdir -p "$out_dir"
@@ -101,12 +104,18 @@ split_ballot_to_blocks() {
       /^### (FINDING_[0-9]+|OOS_[0-9]+):/ {
         id=$2
         sub(/:$/, "", id)
+        if (id in seen) {
+          printf("duplicate ballot heading %s\n", id) > "/dev/stderr"
+          dup = 1
+          exit 1
+        }
+        seen[id] = 1
         out=dir "/" id ".md"
         print > out
         next
       }
       out != "" { print >> out }
-    ' "$ballot_file"
+    ' "$ballot_file" || return 1
 }
 
 # classify_result: derives a per-finding result label (accepted | rejected |

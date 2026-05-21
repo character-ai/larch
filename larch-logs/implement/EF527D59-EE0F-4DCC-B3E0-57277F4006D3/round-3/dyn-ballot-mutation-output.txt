@@ -1,0 +1,11 @@
+Gathering the diff, commit list, and full `aggregate-findings.sh` / `review-core.sh` sections for risk-integration review.
+
+Inspecting `review-core.sh` aggregation invocation and whether `awk` redirection risks truncation.
+
+### In-Scope Findings
+
+- **risk-integration** `skills/review/scripts/aggregate-findings.sh:331-337` — The only successful merge path replaces the live ballot with `awk 1 "$cand" > "$FINDINGS_FILE"`, which opens `findings.md` with truncate-on-open before `awk` finishes copying; any abrupt failure after open (I/O error, `awk` non-zero exit, `SIGKILL`/`SIGPIPE`, full disk) can leave `findings.md` empty or truncated. `skills/review/scripts/review-core.sh:505-512` only treats a non-zero aggregator exit as unexpected and logs it, then `skills/review/scripts/review-core.sh:527-537` still dispatches voters against whatever is on disk, so the “non-fatal fallback preserves the raw ballot” contract is not guaranteed on this branch—only the earlier branches that never reach line 332 are safe. **Suggested fix:** Stage the merged text to a new regular file under the resolved review tmpdir (for example `findings.md.new.$$` or `mktemp` there), run `awk` into that staging file, verify it is non-empty and passes the same validation as today, then atomically replace the ballot with `mv` (same filesystem) so any failure before the final `mv` leaves the original `findings.md` untouched; optionally add an explicit guard that the dispatch output path is not the same resolved path as the ballot before running any in-place consumer logic.
+
+### Out-of-Scope Observations
+
+The failure branches before the final replace (disabled mode, `<2` blocks, missing template, non-zero dispatch RC, `DISPATCH_OK≠true`, missing/non-regular/empty output, output path outside `REVIEW_TMPDIR` after `pwd -P` canonicalization, symlink rejection on both ballot and output, Python validation failure) avoid rewriting `findings.md` and exit `0` as intended; `review-core.sh`’s `set +e` / `set -e` wrapper around the aggregator matches the intended “log and continue” behavior for genuine non-zero exits when the ballot was never opened for write.

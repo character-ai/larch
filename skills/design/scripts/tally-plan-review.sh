@@ -79,7 +79,10 @@ cleanup() {
 trap cleanup EXIT
 
 BLOCK_DIR="$WORKDIR/blocks"
-split_ballot_to_blocks "$BALLOT_FILE" "$BLOCK_DIR"
+if ! split_ballot_to_blocks "$BALLOT_FILE" "$BLOCK_DIR"; then
+    larch_err "tally-plan-review.sh: duplicate or malformed FINDING/OOS headings in ballot"
+    exit 2
+fi
 
 shopt -s nullglob
 block_files=("$BLOCK_DIR"/*.md)

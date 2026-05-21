@@ -111,6 +111,11 @@ EOF
 got=$(reviewer_for_block "$block"); assert_eq "canonical bold plural slots" "$got" "slot-a, slot-b"
 cat > "$block" <<'EOF'
 ### FINDING_1: short title
+- **Reviewer(s)**: slot-a, slot-b
+EOF
+got=$(reviewer_for_block "$block"); assert_eq "canonical bold Reviewer(s) slots" "$got" "slot-a, slot-b"
+cat > "$block" <<'EOF'
+### FINDING_1: short title
 Reviewer: codex-output.txt
 EOF
 got=$(reviewer_for_block "$block"); assert_eq "unbolded line-start reviewer" "$got" "codex-output.txt"
@@ -187,6 +192,24 @@ assert_eq "OOS_1.md split" "$got" "ok"
 # Voter instructions before first heading must NOT be in any block.
 got=$( (grep -h "voter instructions" "$blocks"/*.md 2>/dev/null || true) | wc -l | tr -d ' ')
 assert_eq "voter prose excluded from blocks" "$got" "0"
+
+echo "# split_ballot_to_blocks duplicate headings"
+ballot_dup="$WORKDIR/ballot-dup.md"
+blocks_dup="$WORKDIR/blocks-dup"
+mkdir -p "$blocks_dup"
+cat > "$ballot_dup" <<'EOF'
+### FINDING_1: first
+- **Concern**: a
+
+### FINDING_1: duplicate id
+- **Concern**: b
+EOF
+if split_ballot_to_blocks "$ballot_dup" "$blocks_dup"; then
+    printf '  FAIL duplicate FINDING_1 headings should be rejected\n'
+    FAIL=1
+else
+    printf '  ok   duplicate FINDING_1 headings rejected\n'
+fi
 
 echo "# classify_result"
 got=$(classify_result 2 0 0 3); assert_eq "2Y/3 → accepted" "$got" "accepted"

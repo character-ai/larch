@@ -1,0 +1,11 @@
+Gathering the pre-computed diff and commit history for a read-only edge-case and failure-recovery review.
+
+Searching the large diff for relevant files and reading key sections.
+
+Checking how `collect-findings` emits reviewer lines and whether multi-slot input can reach the aggregator.
+
+Confirming how OOS is represented in the ballot and whether the validator constrains it:
+
+Identifying a critical gap: the prompt instructs OOS separation but the Python validator doesn't enforce `[OUT_OF_SCOPE]` preservation or forbid merging OOS with in-scope findings.
+
+
