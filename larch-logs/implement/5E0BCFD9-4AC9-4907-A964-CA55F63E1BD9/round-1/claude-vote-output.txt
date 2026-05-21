@@ -1,0 +1,25 @@
+FINDING_1: YES
+FINDING_2: EXONERATE -- agent-lint exclusions, doc updates, and run-log artifacts are all appropriate and necessary; plan text imprecision has no behavioral risk
+FINDING_3: EXONERATE -- legitimate refactoring concern but beyond scope of the additive PR; duplication is benign for 5 co-authored scripts
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: EXONERATE -- standard pattern for pre-wired scripts with explanatory comment; exclusions are temporary and documented
+FINDING_10: EXONERATE -- repo string is interpolated into a gh CLI URL path, not eval'd; gh CLI rejects malformed paths with stable errors before any shell execution
+FINDING_11: EXONERATE -- test-only stub with controlled inputs from production scripts; no real exploit path
+FINDING_12: YES
+FINDING_13: EXONERATE -- by-design behavior matching clarify-comment-post.sh's marker-on-line-1 posting contract; not a real miss
+FINDING_14: EXONERATE -- emitting the prior round's response ID under awaiting-response is useful context and not a correctness bug; doc clarification is low priority
+FINDING_15: YES
+FINDING_16: EXONERATE -- shipped .md contract and code are internally consistent; only the plan text carried the |false notation, not the shipped contract doc
+FINDING_17: EXONERATE -- single-page case covers virtually all real usage for new issues; multi-page pagination stub is a minor edge-case gap
+FINDING_18: EXONERATE -- same as FINDING_11; test-only stubs with controlled production-script inputs
+FINDING_19: YES
+FINDING_20: YES
+FINDING_21: NO -- trivial run-log artifact formatting noise; not worth filing an issue
+FINDING_22: NO -- informational observation with no actionable finding
+FINDING_23: NO -- subsumed by FINDING_15; no independent action needed
+FINDING_24: NO -- confirms correct behavior; no concern
+FINDING_25: NO -- informational context for FINDING_12; no standalone action

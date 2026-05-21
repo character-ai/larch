@@ -1,0 +1,13 @@
+Gathering the diff, commit list, and key source files for a correctness-focused review.
+
+Reading implementation files and the state-machine doc; sampling the diff for Makefile/harness changes.
+
+Verifying `gh api --paginate --slurp` behavior and reading the doc's clarify rules.
+
+Verifying jq merge behavior for slurped paginated GitHub API output:
+
+### In-Scope Findings
+- **correctness** `scripts/clarify-state.sh:91-101` — The merge step uses `jq -s 'add // []'` on the output of `gh api --paginate --slurp`. For GitHub’s slurp shape (one JSON value that is an array of per-page arrays, e.g. `[[{...}],[{...}]]`, including the single-page `[[{...}]]` case shown in repo docs such as the #184 note in `CHANGELOG.md`), `jq -s` wraps that whole value as a single slurp input and `add` no longer flattens comment objects; the merged value stays nested. The next pipeline stage `printf '%s' "$MERGED" | jq -r '.[] | (.body // …)'` then either errors (`Cannot index array with string "body"`) under `set -e` or mis-reads page arrays as comments. In-tree callers use `jq 'add // []'` (no `-s`) after the same `gh` invocation, e.g. `skills/fix-issue/scripts/issue-lifecycle.sh` around lines 111–112. The offline harness only feeds a flat `[{...}]` or two adjacent JSON roots (`scripts/test-clarify-state.sh:132-136`), so it never reproduces the nested slurp document and can pass while live `gh` fails. **Suggested fix:** Change the pipeline to `… | jq 'add // []'` (and keep stderr capture as today), update `scripts/clarify-state.md` to match, and adjust `run_case_dual` (or add a case) so the stub prints one JSON document shaped like `[[...],[...]]` and assert the script still reaches `STATE=response-pending`.
+
+### Out-of-Scope Observations
+NO_ISSUES_FOUND
