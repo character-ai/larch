@@ -315,32 +315,32 @@
       {
         "step": "Step 3 — checks first pass",
         "totals": {
-          "input": 10,
-          "cache_read": 2910840,
-          "cache_create": 2662,
-          "output": 2260,
-          "total": 2915772
+          "input": 17,
+          "cache_read": 4680088,
+          "cache_create": 285702,
+          "output": 4567,
+          "total": 4970374
         },
         "skills": [
           {
             "skill": "bump-version",
             "totals": {
-              "input": 10,
-              "cache_read": 2910840,
-              "cache_create": 2662,
-              "output": 2260,
-              "total": 2915772
+              "input": 17,
+              "cache_read": 4680088,
+              "cache_create": 285702,
+              "output": 4567,
+              "total": 4970374
             }
           }
         ]
       }
     ],
     "totals": {
-      "input": 300,
-      "cache_read": 60967191,
-      "cache_create": 1951153,
-      "output": 169914,
-      "total": 63088558
+      "input": 307,
+      "cache_read": 62736439,
+      "cache_create": 2234193,
+      "output": 172221,
+      "total": 65143160
     }
   },
   "codex": {
@@ -573,16 +573,16 @@
       {
         "step": "Step 3 — checks first pass",
         "totals": {
-          "input": 0,
-          "output": 0,
-          "total": 0
+          "input": 37,
+          "output": 40,
+          "total": 122
         }
       }
     ],
     "totals": {
-      "input": 1752579,
-      "output": 210281,
-      "total": 38451820
+      "input": 1752616,
+      "output": 210321,
+      "total": 38451942
     }
   }
 }
