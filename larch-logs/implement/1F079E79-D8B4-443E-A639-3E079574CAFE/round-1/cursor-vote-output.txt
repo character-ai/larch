@@ -1,0 +1,36 @@
+Reading the ballot and nearby session files for verification.
+
+Verifying ballot claims against diff/plan context and source files.
+
+FINDING_1: EXONERATE -- merge-scope nit does not warrant a standalone tracking issue beyond normal PR hygiene.
+FINDING_2: EXONERATE -- duplicate of FINDING_1; same branch-mixing concern, not backlog-worthy alone.
+FINDING_3: EXONERATE -- committed run logs are documented operational artifacts, not a defect to ticket.
+FINDING_4: YES
+FINDING_5: EXONERATE -- latent path traversal concern predates this work; track only if hardening RUN_ID becomes an explicit security initiative.
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: EXONERATE -- optional note-lines branch duplicates two invocations by design; refactor risk outweighs marginal DRY gain.
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: YES
+FINDING_18: YES
+FINDING_19: YES
+FINDING_20: YES
+FINDING_21: EXONERATE -- same PR-scope concern as FINDING_1/2; no separate issue needed.
+FINDING_22: EXONERATE -- stderr suppression matches best-effort refresh contract; dedicated logging is optional polish.
+FINDING_23: YES
+FINDING_24: YES
+FINDING_25: YES
+FINDING_26: EXONERATE -- harness stderr discard is a minor test-quality nit next to FINDING_25/27 coverage gaps.
+FINDING_27: YES
+FINDING_28: EXONERATE -- overlaps FINDING_26/27; bundle stderr assertions with broader harness expansion rather than ticket alone.
+FINDING_29: YES
+FINDING_30: YES
+FINDING_31: YES
+FINDING_32: EXONERATE -- predictable /tmp names are same-user local threat model; hardening is niche versus typical single-user dev runs.
