@@ -1,0 +1,8 @@
+FINDING_1: EXONERATE -- legitimate edge case, but inner `### FINDING_` handling is pre-existing and uncommon enough that a refactor is not warranted here.
+FINDING_2: NO -- informational verification record, not an actionable finding.
+FINDING_3: YES
+FINDING_4: EXONERATE -- legitimate documentation nuance, but not worth a future tracking issue.
+FINDING_5: EXONERATE -- real but rare historical-comparison behavior change, already reflected in the local compose contract.
+FINDING_6: EXONERATE -- legitimate pre-existing edge case, but not issue-worthy without evidence it affects real composed bodies.
+FINDING_7: EXONERATE -- additional prose-body assertions would be nice, but the current diff does not materially change prose-body construction.
+FINDING_8: EXONERATE -- ancillary context is legitimate, but none of it warrants a future issue for this compose fix.
