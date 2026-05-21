@@ -60,7 +60,7 @@ if grep -q '"operator_cwd":' "$manifest"; then pass "manifest operator cwd"; els
 if grep -q '"operator_repo_root":' "$manifest"; then pass "manifest operator repo root"; else fail "manifest operator repo root"; fi
 if grep -q '"operator_cwd": "<OPERATOR_CWD>"' "$manifest"; then pass "manifest operator cwd redacted"; else fail "manifest operator cwd redacted"; fi
 if grep -q '"operator_repo_root": "<REPO_ROOT>"' "$manifest"; then pass "manifest operator repo root redacted"; else fail "manifest operator repo root redacted"; fi
-if grep -q '"status": "in-progress"' "$manifest"; then pass "manifest status"; else fail "manifest status"; fi
+if grep -q '"steps_ran": {}' "$manifest" || grep -q '"steps_ran":{}' "$manifest"; then pass "manifest steps_ran default object"; else fail "manifest steps_ran default object"; fi
 
 echo "=== replace write is redacted and idempotent ==="
 payload="$TMP/payload.md"
@@ -176,12 +176,23 @@ Run scripts/test-larch-log.sh.
 EOF
 (cd "$_repo" && "$LARCH_LOG" init --log-root "$_staging/larch-logs" --skill implement --run-id "$_rid" --issue 42) >/dev/null
 (cd "$_repo" && "$LARCH_LOG" write --log-root "$_staging/larch-logs" --skill implement --run-id "$_rid" --batch plan-goals-test --input-file "$_cpayload") >/dev/null
+_mf_staging="$_staging/larch-logs/implement/$_rid/manifest.json"
+if command -v jq >/dev/null 2>&1; then
+    _commit_ts_before="$(jq -r '.updated_at' "$_mf_staging")"
+    sleep 1
+else
+    _commit_ts_before=""
+fi
 _commit_out="$(cd "$_repo" && "$LARCH_LOG" commit --log-root "$_staging/larch-logs" --skill implement --run-id "$_rid")"
 assert_contains "$_commit_out" "LOG_WRITTEN=true" "commit reports written"
 _batch="$_repo/larch-logs/implement/$_rid/plan-goals-test.md"
 if [ -f "$_batch" ]; then pass "commit copies batch to repo under larch-logs/<skill>/<run-id>/"; else fail "commit copies batch to repo (missing $_batch)"; fi
 _mf="$_repo/larch-logs/implement/$_rid/manifest.json"
 if [ -f "$_mf" ]; then pass "commit copies manifest to repo"; else fail "commit copies manifest to repo (missing $_mf)"; fi
+if [ -n "$_commit_ts_before" ] && command -v jq >/dev/null 2>&1; then
+    _commit_ts_after="$(jq -r '.updated_at' "$_mf")"
+    if [ "$_commit_ts_before" != "$_commit_ts_after" ]; then pass "commit refreshes manifest updated_at"; else fail "commit did not refresh manifest updated_at"; fi
+fi
 if git -C "$_repo" log -1 --format=%s | grep -qF "larch-logs"; then pass "commit creates git commit in repo"; else fail "commit creates git commit in repo"; fi
 export LARCH_LOG_ROOT="$_saved_log_root"
 

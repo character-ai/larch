@@ -42,18 +42,21 @@ after="$(cat "$manifest")"
     exit 1
 }
 
-before_ts="$(jq -r '.updated_at' "$manifest")"
-"$LARCH_LOG" manifest --skill design --run-id run999 --field attempt=2 >/dev/null
-after_ts="$(jq -r '.updated_at' "$manifest")"
-after_attempt="$(jq -r '.attempt' "$manifest")"
-[ "$before_ts" != "$after_ts" ] || {
-    echo "FAIL: manifest cmd did not refresh updated_at" >&2
-    exit 1
-}
-[ "$after_attempt" = "2" ] || {
-    echo "FAIL: manifest cmd did not apply attempt field" >&2
-    exit 1
-}
+if command -v jq >/dev/null 2>&1; then
+    before_ts="$(jq -r '.updated_at' "$manifest")"
+    sleep 1
+    "$LARCH_LOG" manifest --skill design --run-id run999 --field attempt=2 >/dev/null
+    after_ts="$(jq -r '.updated_at' "$manifest")"
+    after_attempt="$(jq -r '.attempt' "$manifest")"
+    [ "$before_ts" != "$after_ts" ] || {
+        echo "FAIL: manifest cmd did not refresh updated_at" >&2
+        exit 1
+    }
+    [ "$after_attempt" = "2" ] || {
+        echo "FAIL: manifest cmd did not apply attempt field" >&2
+        exit 1
+    }
+fi
 
 leftovers="$(find "$(dirname "$manifest")" -name '.tmp.manifest.*' -print)"
 [ -z "$leftovers" ] || {

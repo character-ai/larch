@@ -109,7 +109,7 @@ The swap is mechanical: move the existing fallback block to before `pick_newest_
 - Remove the `.status == "in-progress"` assertion
 - Add: no `.pr_number` field, `.steps_ran` is an object, `updated_at` refreshed after manifest cmd
 
-**tests/test-audit-runs.sh** — add Test 50 and Test 51:
+**.claude/skills/audit-runs/scripts/test-audit-runs.sh** — add Test 50 and Test 51:
 - Test 50: `required-file-presence` does NOT fail when `manifest.json` has `steps_ran.step9a1=false`
   and `oos-issues.ndjson` / `run-statistics.md` are absent
 - Test 51: `required-file-presence` DOES fail when `manifest.json` has no `steps_ran` 

@@ -155,7 +155,7 @@ for PR_NUM in "${PR_ARRAY[@]}"; do
         fi
     fi
 
-    if [ -z "$RUN_ID" ]; then
+    if [ "$gh_ok" = true ] && [ -z "$RUN_ID" ]; then
         MANIFEST_FILE=""
         pick_newest_manifest_among_pr
         if [ -n "$MANIFEST_FILE" ]; then

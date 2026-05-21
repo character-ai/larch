@@ -436,13 +436,29 @@ ended_at_null=false
 pr_number_null=false
 self_deploying_gap=false
 if [ -f "$MANIFEST" ]; then
-    ea=$(jq -r '.ended_at // empty' "$MANIFEST" 2>/dev/null || true)
-    [ -z "$ea" ] && ended_at_null=true
-    pn=$(jq -r '.pr_number // empty' "$MANIFEST" 2>/dev/null || true)
-    [ -z "$pn" ] && pr_number_null=true
-    if [ -n "$pn" ] && [ "$pn" != "$PR_NUM" ]; then
-        self_deploying_gap=true
-    fi
+    # schema_version >= 2 omits pr_number/ended_at in normal manifests; only treat
+    # *_null as integrity signals when the key exists (legacy v1 uses empty-as-null).
+    read -r ended_at_null pr_number_null self_deploying_gap <<EOF
+$(jq -r --argjson audited_pr "$PR_NUM" '
+  def is_v2: ((.schema_version | type) == "number") and .schema_version >= 2;
+  (if is_v2 then
+     (has("ended_at") and (.ended_at == null or .ended_at == ""))
+   else
+     ((.ended_at // "") | tostring) == ""
+   end) as $ea
+  | (if is_v2 then
+       (has("pr_number") and (.pr_number == null))
+     else
+       (.pr_number == null) or ((.pr_number | tostring) == "")
+     end) as $pn
+  | ((.pr_number != null) and ((.pr_number | tostring) != "")
+     and ((.pr_number | tostring) != ($audited_pr | tostring))) as $gap
+  | [ (if $ea then "true" else "false" end),
+      (if $pn then "true" else "false" end),
+      (if $gap then "true" else "false" end) ]
+  | @tsv
+' "$MANIFEST" 2>/dev/null || printf 'false\tfalse\tfalse\n')
+EOF
 fi
 ended_json=false
 pr_number_json=false

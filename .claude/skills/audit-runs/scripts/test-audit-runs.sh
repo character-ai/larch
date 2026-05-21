@@ -890,18 +890,66 @@ else
     echo "  SKIP: audit-pacific-timestamp.sh not executable (not found at $PACIFIC_SCRIPT)"
 fi
 
-# Test 31: audit-map-runs.sh against fixture log root (real script; no gh)
+# Test 31: audit-map-runs.sh against fixture log root (gh stub: success, no Closes → manifest fallback)
 echo "Test 31: audit-map-runs.sh fixture newest manifest"
 MAP_SCRIPT="$SCRIPT_DIR/audit-map-runs.sh"
 if [ -x "$MAP_SCRIPT" ]; then
+    MAP_GH_OK=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-map-gh-XXXXXX")
+    cat > "$MAP_GH_OK/gh" <<'EOSGH31'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "${1:-}" == "pr" && "${2:-}" == "view" ]]; then
+    printf '\n'
+    exit 0
+fi
+printf 'stub gh unsupported: %s\n' "$*" >&2
+exit 1
+EOSGH31
+    chmod +x "$MAP_GH_OK/gh"
     MAP_TMP=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-map-XXXXXX")
     mkdir -p "$MAP_TMP/RUNA" "$MAP_TMP/RUNB"
     printf '%s\n' '{"pr_number":999001,"started_at":"2026-01-01T00:00:00Z","larch_version":"1.0.0"}' > "$MAP_TMP/RUNA/manifest.json"
     printf '%s\n' '{"pr_number":999001,"started_at":"2026-02-01T00:00:00Z","larch_version":"2.0.0"}' > "$MAP_TMP/RUNB/manifest.json"
-    row=$(bash "$MAP_SCRIPT" --pr-list "999001" --log-root "$MAP_TMP")
+    row=$(PATH="$MAP_GH_OK:$PATH" bash "$MAP_SCRIPT" --pr-list "999001" --log-root "$MAP_TMP")
     rid=$(printf '%s' "$row" | cut -f2)
     assert_equal "$rid" "RUNB" "[31] newest started_at manifest wins"
-    rm -rf "$MAP_TMP"
+    rm -rf "$MAP_TMP" "$MAP_GH_OK"
+else
+    echo "  SKIP: audit-map-runs.sh not executable (not found at $MAP_SCRIPT)"
+fi
+
+# Test 31b: gh pr view failure must not fall back to manifest-by-pr_number
+echo "Test 31b: audit-map-runs.sh gh failure skips manifest fallback"
+MAP_SCRIPT="$SCRIPT_DIR/audit-map-runs.sh"
+if [ -x "$MAP_SCRIPT" ]; then
+    MAP_GH_FAIL=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-map-ghfail-XXXXXX")
+    cat > "$MAP_GH_FAIL/gh" <<'EOSGH31B'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "${1:-}" == "pr" && "${2:-}" == "view" ]]; then
+    printf 'simulated gh network failure\n' >&2
+    exit 1
+fi
+printf 'stub gh unsupported: %s\n' "$*" >&2
+exit 1
+EOSGH31B
+    chmod +x "$MAP_GH_FAIL/gh"
+    MAP_TMPB=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-map-b-XXXXXX")
+    mkdir -p "$MAP_TMPB/RUNX"
+    printf '%s\n' '{"pr_number":999002,"started_at":"2026-02-01T00:00:00Z","larch_version":"9.0.0"}' > "$MAP_TMPB/RUNX/manifest.json"
+    MAP_ERR=$(mktemp "${TMPDIR:-/tmp}/audit-map-31b-err.XXXXXX")
+    row=$(PATH="$MAP_GH_FAIL:$PATH" bash "$MAP_SCRIPT" --pr-list "999002" --log-root "$MAP_TMPB" 2>"$MAP_ERR")
+    rid=$(printf '%s' "$row" | cut -f2)
+    assert_equal "$rid" "" "[31b] gh failure → empty run_id despite legacy manifest"
+    if grep -q 'MAP_GH_PR_VIEW_FAILED=true' "$MAP_ERR"; then
+        PASS=$((PASS + 1))
+        echo "  ok: [31b] stderr documents MAP_GH_PR_VIEW_FAILED"
+    else
+        FAIL=$((FAIL + 1))
+        FAILED_TESTS+=("[31b] expected MAP_GH_PR_VIEW_FAILED on stderr")
+        echo "  FAIL: [31b] missing MAP_GH_PR_VIEW_FAILED (got: $(head -1 "$MAP_ERR"))" >&2
+    fi
+    rm -rf "$MAP_TMPB" "$MAP_GH_FAIL" "$MAP_ERR"
 else
     echo "  SKIP: audit-map-runs.sh not executable (not found at $MAP_SCRIPT)"
 fi
@@ -1407,6 +1455,32 @@ else
     echo "  SKIP: audit-scan-run.sh not executable (not found at $SCAN_SCRIPT)"
 fi
 
+# Test 49: audit-scan-run jstr() (shared implementation with audit-scan-run.sh)
+echo "Test 49: audit-scan-run jstr() round-trip + edge vectors"
+SCAN_SCRIPT="${SCAN_SCRIPT:-$SCRIPT_DIR/audit-scan-run.sh}"
+# shellcheck source=.claude/skills/audit-runs/scripts/audit-scan-run-jstr.inc.bash
+. "$SCRIPT_DIR/audit-scan-run-jstr.inc.bash"
+if [ -x "$SCAN_SCRIPT" ]; then
+    for s in "29.8.62" "34.0.0" "oos-issues.ndjson" "run-statistics.md"; do
+        assert_equal "$(jstr "$s")" "$s" "[49] jstr identity for: $s"
+    done
+    assert_equal "$(jstr "")" "" "[49e] jstr empty string"
+    _s49q=$(printf 'a\x22b')
+    _e49q=$(printf 'a\x5c\x22b')
+    assert_equal "$(jstr "$_s49q")" "$_e49q" "[49f] jstr embedded quote"
+    _s49bs=$(printf 'a\x5cb')
+    _e49bs=$(printf 'a\x5c\x5cb')
+    assert_equal "$(jstr "$_s49bs")" "$_e49bs" "[49g] jstr backslash"
+    _s49t=$(printf 'a\tb')
+    _e49t=$(printf 'a\x5c\x74b')
+    assert_equal "$(jstr "$_s49t")" "$_e49t" "[49h] jstr tab"
+    _s49n=$'a\nb'
+    _e49n=$'a\\nb'
+    assert_equal "$(jstr "$_s49n")" "$_e49n" "[49i] jstr newline"
+else
+    echo "  SKIP: audit-scan-run.sh not executable (not found at $SCAN_SCRIPT)"
+fi
+
 # Test 50: audit-scan-run.sh — steps_ran.<step>=false skips conditional required files
 echo "Test 50: audit-scan-run steps_ran false skips step9a1 requirements"
 SCAN_SCRIPT="${SCAN_SCRIPT:-$SCRIPT_DIR/audit-scan-run.sh}"
@@ -1602,6 +1676,7 @@ if [ -x "$APP_TF" ]; then
 else
     echo "  SKIP: append-tool-failure.sh not executable at $APP_TF"
 fi
+
 
 # ---------------------------------------------------------------------------
 # Summary

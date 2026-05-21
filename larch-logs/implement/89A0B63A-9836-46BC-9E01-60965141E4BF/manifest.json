@@ -6,8 +6,6 @@
   "operator_repo_root": "<REPO_ROOT>",
   "parent_skill": null,
   "issue_number": 2513,
-  "pr_number": null,
-  "status": "in-progress",
   "larch_version": "34.0.3",
   "model_roster": {"main": "unknown"},
   "effort": "max",
@@ -16,5 +14,6 @@
   "attempt": 1,
   "superseded_by": null,
   "stalled_at_step": null,
+  "steps_ran": {},
   "flags": {}
 }

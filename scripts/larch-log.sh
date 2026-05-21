@@ -401,6 +401,8 @@ case "$cmd" in
             esac
             case "$key" in
                 schema_version|skill|run_id|started_at|operator_cwd|operator_repo_root) larch_log_fail 1 "manifest field is immutable: $key" ;;
+                steps_ran)
+                    larch_log_fail 1 "manifest field steps_ran cannot be set as a flat key; use steps_ran.<step>=true|false" ;;
                 steps_ran.*)
                     step_key="${key#steps_ran.}"
                     [ -n "$step_key" ] || larch_log_fail 1 "invalid --field: $field"
