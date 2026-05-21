@@ -14,7 +14,7 @@ clarify-state.sh --issue <N> [--repo OWNER/REPO]
 
 - `LAST_REQUEST_ID=<n or empty>`
 - `LAST_RESPONSE_ID=<n or empty>`
-- `STATE=clean|awaiting-response|response-pending|ambiguous`
+- `STATE=clean|awaiting-response|response-pending|ambiguous` — `response-pending` only when the latest request has a matching response **and** every lower-numbered request id that appears in the thread already has a response (otherwise `ambiguous`).
 - `gh` / `jq` failure: `FAILED=true`, `ERROR=…`, exit 2.
 
 ## Test Harness

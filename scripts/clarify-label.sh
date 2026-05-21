@@ -39,12 +39,16 @@ resolve_repo() {
 }
 
 redact_gh_error() {
-    local err_text="$1" redacted
+    local err_text="$1" redacted status=0
     if [ ! -x "$REDACT_HELPER" ]; then
-        printf '%s' "$err_text" | tr '\n' ' ' | head -c 500
-        return
+        printf '%s' 'gh stderr redaction unavailable'
+        return 0
     fi
-    redacted=$(printf '%s' "$err_text" | "$REDACT_HELPER") || printf '%s' "$err_text"
+    redacted=$(printf '%s' "$err_text" | "$REDACT_HELPER") || status=$?
+    if [ "$status" -ne 0 ]; then
+        printf '%s' 'gh stderr redaction failed'
+        return 0
+    fi
     printf '%s' "$redacted" | tr '\n' ' ' | head -c 500
 }
 

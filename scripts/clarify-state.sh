@@ -39,12 +39,16 @@ resolve_repo() {
 }
 
 redact_gh_error() {
-    local err_text="$1" redacted
+    local err_text="$1" redacted status=0
     if [ ! -x "$REDACT_HELPER" ]; then
-        printf '%s' "$err_text" | tr '\n' ' ' | head -c 500
-        return
+        printf '%s' 'gh stderr redaction unavailable'
+        return 0
     fi
-    redacted=$(printf '%s' "$err_text" | "$REDACT_HELPER") || printf '%s' "$err_text"
+    redacted=$(printf '%s' "$err_text" | "$REDACT_HELPER") || status=$?
+    if [ "$status" -ne 0 ]; then
+        printf '%s' 'gh stderr redaction failed'
+        return 0
+    fi
     printf '%s' "$redacted" | tr '\n' ' ' | head -c 500
 }
 
@@ -150,6 +154,15 @@ END {
         if (kind[i]=="response" && id[i]==rid) has_match=1
     if (!has_match) {
         printf "STATE=awaiting-response\n"
+        printf "LAST_REQUEST_ID=%s\n", rid
+        printf "LAST_RESPONSE_ID=%s\n", (last_resp==""?"":last_resp)
+        exit 0
+    }
+    gap_unsat=0
+    for (k=1;k<rid;k++)
+        if (rq[k]>0 && sc[k]==0) gap_unsat=1
+    if (gap_unsat) {
+        printf "STATE=ambiguous\n"
         printf "LAST_REQUEST_ID=%s\n", rid
         printf "LAST_RESPONSE_ID=%s\n", (last_resp==""?"":last_resp)
         exit 0

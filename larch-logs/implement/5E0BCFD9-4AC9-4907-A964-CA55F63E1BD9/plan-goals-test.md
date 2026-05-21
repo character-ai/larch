@@ -1,5 +1,5 @@
 ## Goal
-Add 5 issue-anchored plan helper scripts (plan-block-read/write, clarify-comment-post, clarify-state, clarify-label) plus 3 test harnesses wired into make lint, per issue #2484; pure addition with no edits to existing skills or scripts.
+Add 5 issue-anchored plan helper scripts (`plan-block-read/write`, `clarify-comment-post`, `clarify-state`, `clarify-label`) plus 3 test harnesses wired into `make lint`, per issue #2484. Expect coordinated edits to `Makefile`, `agent-lint.toml`, `docs/issue-anchored-plan.md`, and harnesses; shipped `skills/` workflows do not invoke the helpers yet. Committed `/implement` run logs under `larch-logs/implement/` follow `docs/run-logs.md` when present.
 
 ## Implementation Plan
 ## Implementation Plan — Issue-Anchored Plan Helper Scripts (#2484)

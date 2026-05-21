@@ -14,7 +14,7 @@ plan-block-read.sh --issue <N> --output <path> [--repo OWNER/REPO]
 
 - Well-formed unique pair: `BLOCK_PRESENT=true`, `OUTPUT=<path>`, exit 0.
 - No markers: `BLOCK_PRESENT=false`, empty output file, exit 0.
-- Malformed: `MALFORMED=<token>` (`start-without-end`, `end-without-start`, `multiple-start`, `multiple-end`, `end-before-start`), exit 1.
+- Malformed: `MALFORMED=<token>` (`start-without-end`, `end-without-start`, `multiple-start`, `multiple-end`, `end-before-start`), exit 1. On every malformed exit the script truncates `--output` to an empty file first so callers cannot read stale inner markdown from a prior successful extraction.
 - `gh` / JSON failure: `FAILED=true`, `ERROR=<single line>`, exit 2.
 
 ## Primary Callers

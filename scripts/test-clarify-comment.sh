@@ -77,6 +77,22 @@ set -e
 [ "$rc" = "1" ] || fail "id0 exit $rc"
 echo "$out" | grep -q 'ERROR=invalid-id' || fail "invalid-id missing: $out"
 
+echo "=== invalid id -1 ==="
+set +e
+out="$(PATH="$STUB:$ORIG_PATH" "$POST" --issue 42 --kind request --id -1 --content-file "$CONTENT" --repo owner/repo 2>&1)"
+rc=$?
+set -e
+[ "$rc" = "1" ] || fail "id-1 exit $rc"
+echo "$out" | grep -q 'ERROR=invalid-id' || fail "invalid-id -1: $out"
+
+echo "=== invalid id abc ==="
+set +e
+out="$(PATH="$STUB:$ORIG_PATH" "$POST" --issue 42 --kind request --id abc --content-file "$CONTENT" --repo owner/repo 2>&1)"
+rc=$?
+set -e
+[ "$rc" = "1" ] || fail "id abc exit $rc"
+echo "$out" | grep -q 'ERROR=invalid-id' || fail "invalid-id abc: $out"
+
 echo "=== invalid kind ==="
 set +e
 out="$(PATH="$STUB:$ORIG_PATH" "$POST" --issue 42 --kind blah --id 1 --content-file "$CONTENT" --repo owner/repo 2>&1)"

@@ -42,12 +42,16 @@ resolve_repo() {
 }
 
 redact_gh_error() {
-    local err_text="$1" redacted
+    local err_text="$1" redacted status=0
     if [ ! -x "$REDACT_HELPER" ]; then
-        printf '%s' "$err_text" | tr '\n' ' ' | head -c 500
-        return
+        printf '%s' 'gh stderr redaction unavailable'
+        return 0
     fi
-    redacted=$(printf '%s' "$err_text" | "$REDACT_HELPER") || printf '%s' "$err_text"
+    redacted=$(printf '%s' "$err_text" | "$REDACT_HELPER") || status=$?
+    if [ "$status" -ne 0 ]; then
+        printf '%s' 'gh stderr redaction failed'
+        return 0
+    fi
     printf '%s' "$redacted" | tr '\n' ' ' | head -c 500
 }
 
@@ -90,7 +94,7 @@ ERR_TMP=$(mktemp "${TMPDIR:-/tmp}/plan-block-read-err.XXXXXX")
 trap 'rm -f "$ERR_TMP"' EXIT
 
 BODY=""
-if ! BODY=$(gh issue view "$ISSUE" --repo "$REPO" --json body --jq -r '(.body // "")' 2>"$ERR_TMP"); then
+if ! BODY=$(gh issue view "$ISSUE" --repo "$REPO" --json body 2>"$ERR_TMP" | jq -r '.body // ""' 2>>"$ERR_TMP"); then
     ERR_CONTENT=$(cat "$ERR_TMP" 2>/dev/null || true)
     emit_gh_failure "$ERR_CONTENT"
 fi
@@ -104,6 +108,7 @@ start_count=$(grep -c -E "$MARK_START" "$BODY_TMP" 2>/dev/null) || start_count=0
 end_count=$(grep -c -E "$MARK_END" "$BODY_TMP" 2>/dev/null) || end_count=0
 
 malformed_out() {
+    : >"$OUT_PATH"
     emit_kv MALFORMED "$1"
     rm -f "$BODY_TMP"
     exit 1

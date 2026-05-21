@@ -36,7 +36,7 @@ if [ "$1" = "issue" ] && [ "$2" = "view" ]; then
         echo "stub: missing BODY_FILE" >&2
         exit 2
     fi
-    cat "$BODY_FILE"
+    jq -n --rawfile b "$BODY_FILE" '{body: $b}' | jq -c .
     exit 0
 fi
 if [ "$1" = "issue" ] && [ "$2" = "edit" ]; then
@@ -134,6 +134,35 @@ set -e
 [ "$rc" = "1" ] || fail "multiple start exit $rc"
 grep -q 'MALFORMED=multiple-start' "$TMP/read5.out" || fail "multiple-start"
 
+echo "=== read: multiple end ==="
+cat > "$BODY_FILE" <<'B'
+<!-- larch:plan:start -->
+x
+<!-- larch:plan:end -->
+<!-- larch:plan:end -->
+B
+set +e
+PATH="$STUB:$ORIG_PATH" "$READ" --issue 1 --output "$OUT" --repo owner/repo >"$TMP/read5b.out"
+rc=$?
+set -e
+[ "$rc" = "1" ] || fail "multiple end exit $rc"
+grep -q 'MALFORMED=multiple-end' "$TMP/read5b.out" || fail "multiple-end"
+[ ! -s "$OUT" ] || fail "malformed read should truncate --output"
+
+echo "=== read: malformed truncates stale --output ==="
+printf 'STALE_INNER\n' > "$OUT"
+cat > "$BODY_FILE" <<'B'
+<!-- larch:plan:start -->
+only start
+B
+set +e
+PATH="$STUB:$ORIG_PATH" "$READ" --issue 1 --output "$OUT" --repo owner/repo >"$TMP/read3b.out"
+rc=$?
+set -e
+[ "$rc" = "1" ] || fail "stale truncate exit $rc"
+grep -q 'MALFORMED=start-without-end' "$TMP/read3b.out" || fail "stale truncate token"
+[ ! -s "$OUT" ] || fail "stale inner markdown should be cleared"
+
 echo "=== read: end before start ==="
 cat > "$BODY_FILE" <<'B'
 <!-- larch:plan:end -->
@@ -201,6 +230,20 @@ rc=$?
 set -e
 [ "$rc" = "1" ] || fail "write malformed exit $rc"
 grep -q 'MALFORMED=start-without-end' "$TMP/w3.out" || fail "write malformed token"
+
+echo "=== write: multiple end ==="
+cat > "$BODY_FILE" <<'B'
+<!-- larch:plan:start -->
+x
+<!-- larch:plan:end -->
+<!-- larch:plan:end -->
+B
+set +e
+PATH="$STUB:$ORIG_PATH" "$WRITE" --issue 99 --content-file "$CONTENT" --repo owner/repo >"$TMP/w3b.out"
+rc=$?
+set -e
+[ "$rc" = "1" ] || fail "write multiple-end exit $rc"
+grep -q 'MALFORMED=multiple-end' "$TMP/w3b.out" || fail "write multiple-end token"
 
 echo "=== write: empty body append ==="
 : > "$BODY_FILE"

@@ -149,7 +149,8 @@ and labels. **Non-normative (tooling)**: `scripts/clarify-state.sh` derives
 |---|---|
 | `clean` | No open clarification request; plan is current |
 | `awaiting-response` | A `larch:clarify-request` exists with no matching response yet |
-| `response-pending` | A matched response exists; `/implement` has not yet re-checked |
+| `response-pending` | A matched response exists for the latest request **and** every lower-numbered request id that appears in the thread has a response; `/implement` has not yet re-checked |
+| `ambiguous` | Marker pairing, ordering, or id monotonicity is broken — see the **Rules** list above and `scripts/clarify-state.md` |
 
 ## Lifecycle Examples
 
