@@ -283,10 +283,18 @@ def main():
     outtext = open(output_path, encoding="utf-8").read()
     oos_slots = oos_attributed_slots(intext)
     input_slot_set = set()
+    non_oos_input_slots = set()
     for block in input_blocks(intext):
         _line, slots = reviewer_line_slots(block)
+        is_oos = "[OUT_OF_SCOPE]" in heading_line(block)
         for sl in slots:
             input_slot_set.add(sl)
+            if not is_oos:
+                non_oos_input_slots.add(sl)
+    # Only flag reviewers who are EXCLUSIVELY OOS in the input. A reviewer that
+    # contributed both OOS and in-scope input findings is legitimately attributed
+    # to non-OOS merged output blocks (see issue #2491).
+    oos_only_slots = oos_slots - non_oos_input_slots
     if not input_slot_set:
         print("no input reviewer labels", file=sys.stderr)
         return 1
@@ -314,10 +322,10 @@ def main():
             return 1
         if not is_oos_out:
             for sl in slots:
-                if sl in oos_slots:
+                if sl in oos_only_slots:
                     print(
                         "merged output lacks [OUT_OF_SCOPE] while listing reviewer %r "
-                        "that appears on an OOS-tagged input finding" % (sl,),
+                        "that appears only on OOS-tagged input findings" % (sl,),
                         file=sys.stderr,
                     )
                     return 1
