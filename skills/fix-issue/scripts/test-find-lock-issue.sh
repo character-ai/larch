@@ -427,7 +427,7 @@ assert_equal() {
 }
 
 # Comment fixture builder.
-# Args: "GO" (non-IN_PROGRESS tail), "IN PROGRESS", "EMPTY", or "DOUBLE_LOCK"
+# Args: "GO" (non-IN_PROGRESS tail), "IN PROGRESS", or "EMPTY"
 # — controls the synthetic last-comment body for `gh api .../comments`.
 make_comments_json() {
     local last_body="$1"
@@ -442,11 +442,6 @@ make_comments_json() {
             ;;
         EMPTY)
             echo '[[]]'
-            ;;
-        DOUBLE_LOCK)
-            # Last tail is not IN PROGRESS, but post-lock re-check returns 2×
-            # IN PROGRESS — used by lock-fail fixture to exercise duplicate detection.
-            echo '[[{"id":42,"body":"GO","created_at":"2024-01-01T00:00:00Z"},{"id":99,"body":"IN PROGRESS","created_at":"2024-01-02T00:00:00Z"},{"id":100,"body":"IN PROGRESS","created_at":"2024-01-03T00:00:00Z"}]]'
             ;;
     esac
 }
