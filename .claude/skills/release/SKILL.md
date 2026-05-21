@@ -17,7 +17,7 @@ Publish the newest `character-ai/larch` GitHub release for consumption, then upg
 $PWD/.claude/skills/release/scripts/promote-latest-release.sh
 ```
 
-On a live run, confirm the script prints `RELEASE_TAG=<tag>`, `RELEASE_IS_PRERELEASE=false`, and `RELEASE_IS_LATEST=true`. With `--dry-run`, the script exits before editing and only prints `RELEASE_TAG`, `RELEASE_WAS_PRERELEASE`, `RELEASE_WAS_LATEST`, and `DRY_RUN=true` — do not expect `RELEASE_IS_*` keys in that case. If the script prints an `ERROR=` line or exits non-zero, stop and surface the failure; do not run `/upgrade-larch`.
+On a live run, stdout always begins with this prelude (in order): `RELEASE_REPO`, `RELEASE_TAG`, `RELEASE_PUBLISHED_AT`, `RELEASE_WAS_PRERELEASE`, `RELEASE_WAS_LATEST`. After the prelude, if you see `RELEASE_ALREADY_LATEST=true`, the newest non-draft release is already promoted: the script exits without editing and does not emit `RELEASE_IS_PRERELEASE` / `RELEASE_IS_LATEST`. If you see `RELEASE_ALREADY_LATEST=false` instead, the script ran `gh release edit` (or is about to verify it) and then prints `RELEASE_IS_PRERELEASE=false` and `RELEASE_IS_LATEST=true`. With `--dry-run`, the script exits before editing and only prints the prelude keys plus `DRY_RUN=true` — do not expect `RELEASE_ALREADY_LATEST` or `RELEASE_IS_*` keys in that case. If the script prints an `ERROR=` line or exits non-zero, stop and surface the failure; do not run `/upgrade-larch`.
 
 See `$PWD/.claude/skills/release/scripts/promote-latest-release.md` for the script contract and failure details.
 

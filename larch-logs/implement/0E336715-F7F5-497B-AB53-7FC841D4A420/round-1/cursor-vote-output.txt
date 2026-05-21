@@ -1,0 +1,8 @@
+Reading the ballot and any referenced context files.
+
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: EXONERATE -- accurate but minor doc gap; a GitHub issue would be disproportionate
+FINDING_4: NO -- meta summary, not a defect or change request
+FINDING_5: EXONERATE -- real gap, but a mocked `gh` harness is more machinery than this private helper warrants
+FINDING_6: EXONERATE -- true of any patch; CI/PR process is the right place to evidence manual checks

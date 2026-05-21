@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [34.0.16] - 2026-05-21
+
+### Changed
+
+- Avoid redundant gh release edit when the selected release is already latest and not a pre-release.
+- Document RELEASE_ALREADY_LATEST and align the private release skill with the new early-exit contract.
+
 ## [34.0.15] - 2026-05-21
 
 ### Changed
