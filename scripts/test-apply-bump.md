@@ -10,13 +10,19 @@ Covered cases:
 
 1. Success with a differing origin version emits `APPLIED=true`, creates exactly one `Bump version to 2.0.0` commit, updates `plugin.json`, and removes the backup.
 2. Fetch failure emits `APPLIED=false`, restores `plugin.json`, unstages the index, removes the backup, and creates no commit.
-3. Same-version origin emits `APPLIED=false`, restores `plugin.json`, unstages the index, removes the backup, and creates no commit.
+3. Same-version origin retries (MAJOR bump type) and succeeds with a higher version: `plugin.json` has the re-classified version, exactly one new commit, backup removed, one breadcrumb on stdout.
 4. Differing origin version commits successfully.
 5. Malformed origin `plugin.json` fails closed with rollback.
 6. Pre-existing dirty worktree still fails before any mutation and includes the `/implement` phantom-file guidance substring.
 7. Commit failure still uses the post-commit rollback path.
-8. Regression guard (NEW_VERSION < ORIGIN_VERSION) emits `APPLIED=false`, restores `plugin.json`, unstages the index, removes the backup, and creates no commit.
+8. Regression guard (NEW_VERSION < ORIGIN_VERSION) retries (MAJOR bump type) and succeeds with a higher version: `plugin.json` has the re-classified version, exactly one new commit, backup removed, one breadcrumb on stdout.
 9. Larch-internal untracked artifacts (`*.launcher-stderr`, `*.redacted.log`) are tolerated: `apply-bump.sh` succeeds (APPLIED=true), creates the bump commit, and emits a WARN line to stderr naming the tolerated files.
+10. In-progress merge/rebase (unmerged paths) exits 4 with a distinct error before any mutation.
+11. Single collision then success (Sub-test K): first fetch collides, retry re-classifies and lands; asserts version, commit count, and breadcrumb count.
+12. Multiple collisions then success (Sub-test L): two fetches collide before the third succeeds; asserts correct final version and two breadcrumbs.
+13. Cap exhaustion (Sub-test M): all 10 retries collide; bails with `APPLIED=false ERROR=origin/main bump race: could not land version after 10 retries ...`; asserts `plugin.json` restored and exactly 10 breadcrumbs.
+14. No collision baseline (Sub-test N): first attempt succeeds; asserts no breadcrumb emitted.
+15. Breadcrumb shape (Sub-test O): verifies the exact format `apply-bump: retry 1/10 origin/main=X.Y.Z new-version=X.Y.Z` on a single-collision case.
 
 ## Fixture Layout
 
