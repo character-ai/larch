@@ -1,0 +1,17 @@
+### In-Scope Findings
+
+1. - **security** `scripts/check-reviewers.sh:280-360` (`larch_run_one_cursor_probe`, `larch_run_one_codex_probe`) — No EXIT trap is registered to clean up probe temp files. Both functions create `mktemp` files before spawning background CLIs: for Cursor, merged stdout+stderr (including auth error messages that may contain diagnostic token fragments) goes into `probe_out`; for Codex, `probe_out` and `probe_side`. All three explicit return paths (success, retry, fail) clean up the files, but SIGKILL arriving inside the 1-second `sleep 1` poll loop orphans both the background PID and the temp files. `mktemp` defaults to mode 600, so inter-user exposure is prevented, but auth-diagnostic output from cursor/codex (which routinely includes token hints in error strings) persisting in `/tmp` between sessions is a latent risk. **Suggested fix:** add `PROBE_TMPFILES=()` at script top; append each created temp path (`probe_out`, `probe_side`) to the array immediately after `mktemp`; register `trap 'rm -f "${PROBE_TMPFILES[@]:-}"' EXIT` before any mktemp call so SIGKILL/errexit still cleans up.
+
+2. - **correctness** `scripts/test-check-reviewers.sh:1596` (Test 3e error check) — `! grep -Eiq 'error|fatal|failed' <<<"$ERR"` is checked against the full stderr of the dispatcher run with `LARCH_QUIET_DISABLE=1`. In quiet-disabled mode the dispatcher emits all diagnostic output; common legitimate progress strings from `launch-cursor-implement.sh` (e.g. "cursor launch step N failed", "auth validation failed – proceeding") would trigger this grep and produce a false-positive test failure that is indistinguishable from a real error. The test would then incorrectly mark the stub-cursor happy path as broken. **Suggested fix:** either narrow to a specific known-bad pattern (`grep -Eq 'FATAL|assertion failed'`) or redirect only truly unexpected fatal output to a separate file and assert on that, rather than rejecting any occurrence of common English words in a verbose-mode run.
+
+### Out-of-Scope Observations
+
+No out-of-scope observations.
+
+---
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	latent	security	scripts/check-reviewers.sh:280-360	No EXIT trap for probe temp files; cursor probe captures merged stdout+stderr (auth diagnostics) in a mode-600 mktemp file that persists on SIGKILL	SIGKILL arrives inside the 1-second sleep poll loop; background cursor/codex PID is orphaned; probe_out with auth error strings (token hints in cursor diagnostics) remains in $TMPDIR until next reboot or manual cleanup	Add PROBE_TMPFILES=() at script top; append each mktemp path immediately after creation; register trap 'rm -f "${PROBE_TMPFILES[@]:-}"' EXIT before first mktemp call
+1	in_scope	nit	correctness	scripts/test-check-reviewers.sh:1596	Test 3e error gate uses grep -Eiq 'error|fatal|failed' against full LARCH_QUIET_DISABLE=1 stderr; common progress messages from launch-cursor-implement.sh may match these words	Dispatcher emits a legitimate diagnostic line containing "failed" (e.g. auth validation failed - proceeding); test falsely fails the stub-cursor happy path without any real error	Narrow the pattern to an unambiguously fatal string (e.g. FATAL or assertion failed) or split fatal vs informational stderr into separate files before asserting
+```

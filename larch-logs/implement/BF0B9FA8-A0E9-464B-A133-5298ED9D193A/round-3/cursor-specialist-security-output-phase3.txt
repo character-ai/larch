@@ -1,0 +1,25 @@
+Now I have everything I need to write the review.
+
+### In-Scope Findings
+
+1. **latent** `security` `scripts/check-reviewers.sh:73-76,118-124` — `TMPDIR` is used without canonicalization or traversal-checking in both the stamp path constructor (`larch_stamp_path`) and the `mktemp -p "${TMPDIR:-/tmp}"` call inside `larch_write_bool_stamp`. An operator running in a CI environment where an attacker controls `TMPDIR` (e.g., `TMPDIR=/tmp/foo/../../root/.ssh`) could redirect stamp `mktemp` calls and the subsequent `mv` to arbitrary filesystem locations writable by the current user. Stamp content is restricted to `true`/`false`, so confidentiality is not at risk, but unexpected file creation at attacker-chosen paths is possible. The `mktemp || return 1` guard means the attack fails if the directory is not writable, limiting practical impact. **Suggested fix:** at script entry add a guard such as `[[ -d "${TMPDIR:-/tmp}" && -w "${TMPDIR:-/tmp}" ]] || TMPDIR=/tmp` before `TMPDIR` is used in probe-file and stamp-path construction.
+
+2. **latent** `security` `scripts/check-reviewers.sh:179-181` — The Codex probe sidecar is derived from the `mktemp` output as `probe_out + ".sidecar"` without its own `mktemp` call, then created with `: >"$probe_side"`. In a shared `/tmp`, an attacker monitoring the directory for newly created files matching the prefix could race to place a symlink at `probe_out.sidecar` pointing to a user-writable victim file before `: >"$probe_side"` runs, causing that file to be truncated. The race window is extremely narrow (two consecutive shell statements), but the pattern is structurally TOCTOU-unsafe. **Suggested fix:** create the sidecar with its own `mktemp` call (`probe_side=$(mktemp "${TMPDIR:-/tmp}/larch-codex-probe-side.XXXXXX")`) so both files get independently random names, eliminating the predictable relationship.
+
+3. **nit** `code-quality` `scripts/session-setup.sh:424-429` — `CALLER_CODEX_BINARY_FOUND` and `CALLER_CURSOR_BINARY_FOUND` read from the caller-env file are passed to `emit_kv` without first validating they are exactly `true` or `false`. The new keys follow the same pre-existing pattern as `CALLER_CODEX_PRESENT`. Downstream `write-session-env.sh` does validate the values before writing to session-env, so the overall chain catches bad inputs, but a tampered caller-env value propagates further into `session-setup.sh` stdout than needed before being rejected. **Suggested fix:** add a `[[ "$CALLER_CODEX_BINARY_FOUND" == "true" || "$CALLER_CODEX_BINARY_FOUND" == "false" ]]` guard before `emit_kv`, matching the style used by `write-session-env.sh` for the same values.
+
+---
+
+### Out-of-Scope Observations
+
+1. **latent** `security` `scripts/check-reviewers.sh` (and `scripts/launch-codex-ci.sh:128`) — `HOLD="${LARCH_EXTERNAL_SERIAL_LOCK_DELAY:-0.5}"` is not validated unlike the three new probe env knobs. An invalid value would silently degrade mutex-delay behavior. Pre-existing pattern in `launch-codex-ci.sh`; not introduced by this diff.
+
+---
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	latent	security	scripts/check-reviewers.sh:73-76,118-124	TMPDIR not canonicalized before use in stamp paths and mktemp -p calls	Attacker-controlled TMPDIR (e.g. via CI env) directs stamp mktemp and mv to an unexpected user-writable directory, creating a predictably-named file with content "true" or "false" at an attacker-chosen path	Add guard at script entry: [[ -d "${TMPDIR:-/tmp}" && -w "${TMPDIR:-/tmp}" ]] || TMPDIR=/tmp before TMPDIR is used in probe-file and stamp path construction
+1	in_scope	latent	security	scripts/check-reviewers.sh:179-181	Codex probe sidecar derived from mktemp output without its own mktemp; TOCTOU symlink race	Attacker in shared /tmp races to place probe_out.sidecar symlink before ": >"$probe_side"" runs, truncating a user-writable target file	Create sidecar with its own mktemp call: probe_side=$(mktemp "${TMPDIR:-/tmp}/larch-codex-probe-side.XXXXXX") so names are independently random
+1	in_scope	nit	code-quality	scripts/session-setup.sh:424-429	CALLER_CODEX_BINARY_FOUND and CALLER_CURSOR_BINARY_FOUND emitted via emit_kv before boolean validation	Tampered caller-env with e.g. CODEX_BINARY_FOUND="; echo injected" propagates into session-setup.sh stdout before write-session-env.sh catches it; emit_kv does not execute so no injection, but the value travels further than needed	Add true|false guard before emit_kv, matching the write-session-env.sh validation style
+1	out_of_scope	latent	security	scripts/check-reviewers.sh (and scripts/launch-codex-ci.sh:128)	LARCH_EXTERNAL_SERIAL_LOCK_DELAY (HOLD) not validated unlike the three new probe env knobs	Invalid HOLD value silently degrades mutex-delay behavior	Pre-existing pattern; validate like other env knobs for consistency
+```

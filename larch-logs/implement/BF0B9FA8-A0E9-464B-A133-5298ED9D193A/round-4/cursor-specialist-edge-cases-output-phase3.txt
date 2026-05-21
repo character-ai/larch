@@ -1,0 +1,29 @@
+Now I have enough to write the full review.
+
+---
+
+### In-Scope Findings
+
+- **correctness** `scripts/session-setup.sh:428-431,440-443` — **Latent**: In the passthrough branch (`CHECK_REVIEWERS=false`), when `CODEX_BINARY_FOUND` / `CURSOR_BINARY_FOUND` is absent from caller-env but `*_PRESENT=false` is present, the code infers `_passthrough_codex_bin="$CALLER_CODEX_PRESENT"` (i.e., `BINARY_FOUND=false`). This conflates two distinct states: "binary not on PATH" and "binary present but probe failed." A legacy caller-env (pre-`BINARY_FOUND`) where `CODEX_PRESENT=false` because the probe timed-out or failed auth will cause `SKILL.md` Step 1 to print `**⚠ Codex not available (binary not found)**` rather than the correct "runtime probe failed" message. Behavior is correct (tool treated as unavailable); only the diagnostic is wrong. Scenario: user upgrades larch mid-run, resumes with an old session-env as `--caller-env`. **Suggested fix**: do not infer `BINARY_FOUND` from `PRESENT` in the passthrough branch; emit `CODEX_BINARY_FOUND` only when it is explicitly present in caller-env, letting the key be absent for legacy envs, and document in `session-setup.md` that "absent `BINARY_FOUND` in caller-env is left absent downstream."
+
+- **architecture** `scripts/check-reviewers.sh:168,200` — **Nit**: `larch_run_one_cursor_probe` and `larch_run_one_codex_probe` both read `AUTH_ATTEMPT` as an undeclared global from their calling scope. The dependency is enforced only by `set -u` catching an unset variable (unset → error; stale-but-set value → silent wrong behavior). A refactor that calls these functions without first setting `AUTH_ATTEMPT` in the outer scope, or that resets `AUTH_ATTEMPT` between cursor and codex loops (the current code does reset it correctly at line 266, but only by convention), will silently alter retry semantics. **Suggested fix**: add a short comment documenting the required caller-set global, or pass `AUTH_ATTEMPT` / `MAX_AUTH_RETRIES` as function parameters.
+
+- **correctness** `skills/implement/SKILL.md:1084,1087` — **Latent**: The "absent from session-env" sub-bullet for both `CURSOR_BINARY_FOUND` and `CODEX_BINARY_FOUND` maps to `BINARY_FOUND=false` and prints the "binary not found" bail message. `check-reviewers.sh` emits all six keys in a single end-of-script batch (lines 286–291); they are all emitted or none are. If the script exits abnormally before that block (e.g., a sourced-lib function calls `exit` on an unexpected error), the session-env has `*_PRESENT` from an earlier run but no `*_BINARY_FOUND`. An explicit-coder bail in that state says "binary not found" when the binary may be installed. The action (bail) is correct; the message is misleading. **Suggested fix**: distinguish the absent case explicitly: print `--coder=cursor requested but CURSOR_BINARY_FOUND could not be determined (Step 0 may have failed). Re-run to re-probe.` rather than conflating it with the confirmed-missing case.
+
+- **risk-integration** `scripts/test-check-reviewers.sh:321-331` — **Nit**: The `session-setup.sh` integration test at lines 321–331 does not set `TMPDIR` to an isolated scratch subdirectory. With `LARCH_PROBE_TTL_SECONDS=0` the stamp files are never *read* during this test (correct), but `larch_write_bool_stamp` writes `larch-cursor-present-${USER}.stamp` and `larch-codex-present-${USER}.stamp` to `${TMPDIR:-/tmp}` — the real system temp dir. A subsequent invocation of `check-reviewers.sh` by the user (outside the test context) with the default TTL of 60 seconds would read the stub-created `true` stamp and skip the actual runtime probe. **Suggested fix**: add `TMPDIR="$SCRATCH/sess-env-test"` to the env prefix on the session-setup.sh invocation at line 323.
+
+---
+
+### Out-of-Scope Observations
+
+No pre-existing issues worth surfacing independently of this change.
+
+---
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	latent	correctness	scripts/session-setup.sh:428-431,440-443	Passthrough branch infers BINARY_FOUND=false from PRESENT=false, conflating binary-missing with probe-failed	Legacy caller-env (CODEX_PRESENT=false, no CODEX_BINARY_FOUND) causes Step 1 to print "binary not found" when the binary is installed but probe failed; wrong diagnostic, correct behavior	Do not infer BINARY_FOUND from PRESENT in passthrough; emit BINARY_FOUND only when explicitly present in caller-env
+1	in_scope	nit	architecture	scripts/check-reviewers.sh:168,200	larch_run_one_cursor_probe and larch_run_one_codex_probe silently depend on global AUTH_ATTEMPT without declaring or documenting the coupling	Future refactor calling these functions without setting AUTH_ATTEMPT first will silently alter retry semantics if the variable is set-but-stale; caught by set -u only if unset	Add a comment documenting the required caller-set global, or pass AUTH_ATTEMPT as a function parameter
+1	in_scope	latent	correctness	skills/implement/SKILL.md:1084,1087	CURSOR_BINARY_FOUND absent from session-env is equated with false and prints "binary not found" bail message	If check-reviewers.sh exits abnormally before the end-of-script emit block, session-env has *_PRESENT but no *_BINARY_FOUND; user sees "binary not found" even when the binary is installed	Print a distinct message for the absent case ("BINARY_FOUND could not be determined, Step 0 may have failed") rather than conflating it with confirmed binary-missing
+1	in_scope	nit	risk-integration	scripts/test-check-reviewers.sh:321-331	session-setup.sh integration test does not isolate TMPDIR; writes cursor/codex stamps to real system temp dir	Subsequent real invocations of check-reviewers.sh within the TTL window read stub-created "true" stamps and skip the actual runtime probe, masking real unhealthy state	Add TMPDIR="$SCRATCH/sess-env-test" to the env prefix on the session-setup.sh invocation at line 323
+```

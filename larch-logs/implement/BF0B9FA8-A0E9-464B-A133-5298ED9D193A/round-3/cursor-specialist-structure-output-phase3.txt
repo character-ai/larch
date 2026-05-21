@@ -1,0 +1,27 @@
+Now I have a complete read. Writing up findings.
+
+---
+
+### In-Scope Findings
+
+1. **Latent** `code-quality` `scripts/test-check-reviewers.sh:997-998,1013-1014,1079,1093` — Stamp path construction in tests uses `${USER:-larch}` verbatim, but `larch_stamp_path()` in `check-reviewers.sh` first strips characters via `${USER//[^A-Za-z0-9._-]/}`. In a CI environment where `$USER` contains characters outside `[A-Za-z0-9._-]` (e.g. an email-format username like `bot@example.com`), the sanitised script path and the unsanitised test path diverge — the stamp written by the test will not be found by the script, turning stamp-hit tests (t4, t5, t10, t11) into accidental cache-miss runs that then succeed or fail on the stub's own exit code rather than on the cached value, producing misleading test outcomes. **Suggested fix:** Replicate the sanitisation expression in the test: `stamp="$SCRATCH/t4/larch-cursor-present-${USER//[^A-Za-z0-9._-]/}.stamp"` (with a fallback to `larch` when the sanitised string is empty).
+
+2. **Nit** `code-quality` `scripts/check-reviewers.sh:227-235` — `PROBE_PIDS` is populated with every spawned PID, and the EXIT trap loops over it calling `kill`. But `larch_poll_probe_pid` always kills-and-waits the process before returning (via `kill "$probe_pid" 2>/dev/null || true; wait "$probe_pid" 2>/dev/null || true` on timeout, or via `wait "$probe_pid"` on normal exit), so every PID in `PROBE_PIDS` is already reaped by the time the EXIT trap fires. The kill loop is unreachable dead code on the normal execution path and is only meaningful on signals like `SIGKILL` where the poll loop itself is interrupted. **Suggested fix:** Add a brief comment `# safety net for abnormal interruption; poll loop already reaps PIDs on normal paths` so future maintainers don't remove it thinking it's unnecessary, or alternatively remove the PID array entirely and rely solely on `PROBE_TMPFILES` cleanup if the signal-safety property is not needed.
+
+3. **Nit** `code-quality` `scripts/check-reviewers.sh:320-321` — `larch_run_one_cursor_probe` uses `${CURSOR_AUTH_ARGS[@]+"${CURSOR_AUTH_ARGS[@]}"}` without declaring or documenting the dependency. The function silently reads a global populated three call-sites above in the outer script body (`cursor_auth_argv` writes into it), which is invisible from the function signature. If the function were ever called from a different code path (e.g. a refactor reorders the auth setup) the array would be empty and the auth arguments would be silently dropped. **Suggested fix:** Add a one-line comment above the expansion: `# CURSOR_AUTH_ARGS populated by cursor_auth_argv in the outer scope before this function is called`.
+
+4. **Nit** `code-quality` `scripts/check-reviewers.sh:296` — `larch_poll_probe_pid` assigns `SECONDS=0` unconditionally, resetting the Bash shell-uptime builtin for the entire process. Because the Cursor and Codex probe loops are sequential and nothing else in this script reads `SECONDS`, this is safe today. However, any future caller that adds elapsed-time logic (e.g. a probe-set-level timeout) before invoking this helper will silently see their counter reset with no warning in the code. **Suggested fix:** Add an inline comment `# reset shell elapsed-time counter for per-attempt timeout tracking`.
+
+---
+
+### Out-of-Scope Observations
+
+No pre-existing issues to surface.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	latent	code-quality	scripts/test-check-reviewers.sh:997-998,1013-1014,1079,1093	Stamp paths constructed as ${USER:-larch} without sanitising, but larch_stamp_path() strips non-[A-Za-z0-9._-] chars	In a CI env with USER=bot@example.com the sanitised script path differs from the test's path; stamp-hit tests (t4 t5 t10 t11) silently behave as cache misses and assert on probe result not cached value	Replicate the sanitisation: stamp="$SCRATCH/tN/larch-cursor-present-${USER//[^A-Za-z0-9._-]/}.stamp" with ${...:-larch} fallback
+1	in_scope	nit	code-quality	scripts/check-reviewers.sh:227-235	PROBE_PIDS EXIT trap kills already-reaped PIDs — dead code on normal path	larch_poll_probe_pid always kills+waits the PID before returning; every PID in PROBE_PIDS is reaped by the time the EXIT trap fires	Add comment "# safety net for abnormal interruption; poll loop already reaps PIDs on normal paths" to document intent
+1	in_scope	nit	code-quality	scripts/check-reviewers.sh:320-321	larch_run_one_cursor_probe silently reads outer-scope CURSOR_AUTH_ARGS with no declaration or comment	If the function were ever called before cursor_auth_argv runs the auth args would be silently dropped; invisible coupling	Add inline comment: "# CURSOR_AUTH_ARGS populated by cursor_auth_argv in outer scope before this function is called"
+1	in_scope	nit	code-quality	scripts/check-reviewers.sh:296	larch_poll_probe_pid resets global SECONDS=0 — invisible side effect on the whole process	Any future code in this script that tracks elapsed wall time via $SECONDS before calling a probe will silently have its counter reset	Add comment: "# reset shell elapsed-time counter for per-attempt timeout tracking"
+```

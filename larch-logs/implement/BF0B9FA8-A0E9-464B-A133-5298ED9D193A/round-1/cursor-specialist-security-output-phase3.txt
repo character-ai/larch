@@ -1,0 +1,15 @@
+### In-Scope Findings
+
+1. **security** `scripts/check-reviewers.sh:225-231` — `${USER:-larch}` is interpolated directly into stamp file paths in `larch_stamp_path_cursor` and `larch_stamp_path_codex` without any sanitization. If an attacker controls the process environment (e.g., via a malicious CI runner or wrapper script), setting `USER='../../etc/cron.d/evil'` causes `larch_write_bool_stamp` to create or overwrite a file at an arbitrary path outside `$TMPDIR` — the full path resolves via the shell to whatever the adversarial `USER` component dictates. The atomicity of `mktemp+mv` doesn't help here because the *destination* path is the vector. **Suggested fix:** Sanitize `USER` before embedding it in the path, e.g., `local _u="${USER//[^A-Za-z0-9._-]/}"; printf '%s' "${TMPDIR:-/tmp}/larch-cursor-present-${_u:-larch}.stamp"`.
+
+2. **security** `scripts/check-reviewers.sh:322-323` — In `larch_run_one_codex_probe`, `probe_side="${probe_out}.sidecar"` derives the sidecar path by appending a fixed suffix to a mktemp filename, then creates it non-atomically with `: >"$probe_side"`. Although the random suffix inherited from `probe_out` makes the path hard to predict, the sidecar is not itself mktemp'd — there is a TOCTOU window between derivation and creation that a same-UID attacker on a sticky-less `/tmp` could exploit with a pre-placed symlink, redirecting the stderr from the `codex exec` background process to an arbitrary file owned by the victim. **Suggested fix:** Replace the derived name with a second `mktemp` call: `probe_side=$(mktemp "${TMPDIR:-/tmp}/larch-codex-probe-side.XXXXXX") || { rm -f "$probe_out"; return 1; }`.
+
+### Out-of-Scope Observations
+
+No pre-existing issues worth surfacing beyond the in-scope findings above.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	latent	security	scripts/check-reviewers.sh:225-231	${USER:-larch} interpolated unsanitized into stamp file paths (larch_stamp_path_cursor and larch_stamp_path_codex)	Adversarially-set USER='../../etc/cron.d/evil' causes larch_write_bool_stamp to write outside $TMPDIR; the mktemp+mv atomicity does not protect against a poisoned destination path	Sanitize USER before embedding: local _u="${USER//[^A-Za-z0-9._-]/}"; use ${_u:-larch} in the path
+1	in_scope	nit	security	scripts/check-reviewers.sh:322-323	probe_side="${probe_out}.sidecar" creates sidecar non-atomically with : > (touch) rather than an independent mktemp call	Same-UID attacker on sticky-less /tmp pre-creates a symlink at the predictably-named sidecar path before the touch; codex exec stderr redirects to the symlink target	Use mktemp: probe_side=$(mktemp "${TMPDIR:-/tmp}/larch-codex-probe-side.XXXXXX") || { rm -f "$probe_out"; return 1; }
+```

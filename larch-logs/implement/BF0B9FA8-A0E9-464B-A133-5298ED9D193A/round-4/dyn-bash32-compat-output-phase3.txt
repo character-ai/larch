@@ -1,0 +1,6 @@
+### In-Scope Findings
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+
+- **architecture** `scripts/check-reviewers.sh:173` — `larch_poll_probe_pid()` resets the global `SECONDS` special variable (`SECONDS=0`) at the top of each call. `SECONDS` cannot be `local`-ized (special variable), so this mutates shell-wide elapsed-time state. As of this diff `SECONDS` is not used anywhere else in `check-reviewers.sh`, so there is no observable impact; but any future caller that adds timing instrumentation around the probe calls (e.g., an overall-probe-time breadcrumb) will silently get incorrect measurements because each retry resets the clock. **Suggested fix:** No change required now; add a comment near the assignment noting it intentionally resets the global timer, so future contributors don't accidentally rely on `SECONDS` for outer timing in this script.
