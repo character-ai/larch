@@ -1,0 +1,24 @@
+FINDING_1: YES
+FINDING_2: EXONERATE -- Legitimate drift risk, but factoring shared bash condition logic is more complexity than this scoped change warrants.
+FINDING_3: EXONERATE -- The nested helpers are not a behavioral problem, and moving them only for style would add churn.
+FINDING_4: YES
+FINDING_5: NO -- The pattern remains a descriptive match condition; expected_outcome and severity already carry the new informational semantics.
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: NO -- The downgrade from fail to informational is intentional, and the emitted scan row still exposes the version lag.
+FINDING_12: YES
+FINDING_13: EXONERATE -- A dispatch basename-only assertion is too narrow if production-path coverage is added for the warning text.
+FINDING_14: YES
+FINDING_15: NO -- Absolute TSV paths are still prefixed by RUN_DIR, so this does not create the claimed escape behavior.
+FINDING_16: EXONERATE -- Legitimate harness limitation, but later-step reachability already has targeted coverage and does not need a separate issue.
+FINDING_17: EXONERATE -- The trusted manifest glob risk is real but too small to track separately from any shared validation work.
+FINDING_18: YES
+FINDING_19: NO -- This is only a benign observation about nullglob restoration, not a defect.
+FINDING_20: NO -- This describes expected bash predicate behavior and does not identify a concrete bug.
+FINDING_21: NO -- This is an observation confirming current behavior, not a defect.
+FINDING_22: EXONERATE -- Legitimate maintenance concern, but it overlaps the consolidation/testing findings and is not worth a separate issue.
+FINDING_23: NO -- Committed implement run-log artifacts are expected for this repository’s workflow.
+FINDING_24: EXONERATE -- Correct observation, but it is covered by the broader condition-sync and verifier-test findings.
