@@ -1,0 +1,18 @@
+Gathering the diff, commit list, and full `clarify-state.sh` for the awk state-machine review.
+
+Verifying `gh issue view` `--jq` usage and re-analyzing the state machine for the "gap" scenario.
+
+### In-Scope Findings
+
+- **correctness** `scripts/plan-block-read.sh:93` — `gh issue view` only accepts a single `--jq expression` argument; the invocation `--json body --jq -r '(.body // "")'` makes `gh` fail with `accepts 1 arg(s), received 2` (verified against the live CLI), so the body is never fetched in real runs. The same pattern is duplicated in `scripts/plan-block-write.sh:145`. **Suggested fix:** pass one expression to `--jq` (for example `--jq '(.body // "")'`) and, if you need raw text without JSON string quoting, pipe the JSON through `jq -r '.body'` or use `gh`’s template formatting (`gh help formatting`) so the marker logic sees the real issue body.
+
+- **correctness** `scripts/clarify-state.sh:108-166` — The `END` block treats `STATE=response-pending` whenever the chronologically last `request` has a later matching `response` and `rid == max_all`, but it never enforces the wire-format rule that a `larch:clarify-response id=<N+1>` must not appear before every lower `id` round-trip is satisfied (`docs/issue-anchored-plan.md:123-128`). Example timeline: `request id=1`, `request id=2`, `response id=2` only — the script yields `STATE=response-pending` with `LAST_REQUEST_ID=2`, yet the spec calls this **ambiguous** (gap: `id=1` still has no response when `id=2` is answered). **Suggested fix:** after locating the first matching `response` for the last request’s `rid`, require that every request id strictly less than `rid` already has a `response` with the same id at some earlier comment index (or otherwise emit `STATE=ambiguous`); extend `scripts/test-clarify-state.sh` with a fixture for this sequence.
+
+- **code-quality** `scripts/test-clarify-state.sh:176-181` — The harness covers multi-round completion and in-progress cases but not the “response skips an earlier request id” gap from `docs/issue-anchored-plan.md:123-128`, so the misclassification above can ship without failing `make test-clarify-state`. **Suggested fix:** add a `run_case` whose comment JSON is `[{"body":"<!-- larch:clarify-request id=1 -->"},{"body":"<!-- larch:clarify-request id=2 -->"},{"body":"<!-- larch:clarify-response id=2 -->"}]` and assert `STATE=ambiguous` (after fixing `clarify-state.sh`).
+
+- **risk-integration** `larch-logs/implement/5E0BCFD9-4AC9-4907-A964-CA55F63E1BD9/manifest.json:1-20` — The branch adds a committed implement run manifest (and related run-log files under the same directory) alongside the helper scripts; that is operational noise for a feature PR and is easy to mis-merge unless your run-log policy explicitly expects these paths. **Suggested fix:** drop the run-log directory from the PR unless you are deliberately publishing that run per `docs/run-logs.md` / team convention.
+
+### Out-of-Scope Observations
+
+- The multi-round completed path (`request`/`response` pairs `1` then `2` in order) matches the harness in `scripts/test-clarify-state.sh:181-182` and behaves consistently with the stated `response-pending` rule for that scenario; the forward scan from `last_req_i` does find a later `response` with the same `id` as the final `request`.
+- `last_req` / `last_req_i` track the **last `request` marker in timeline order**, not the maximum request id over the whole thread; under **monotonic request ids** that matches “latest round,” but it does not subsume the doc’s stronger **gap / ordering** constraints, which is where the defect above appears.

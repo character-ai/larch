@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [34.0.2] - 2026-05-21
+
+### Changed
+
+- Add GitHub-backed helpers so issue bodies and comments can carry larch plan and clarification markers ahead of a future /implement cutover.
+- Ship offline harnesses plus Makefile shard wiring so plan-block parsing, clarify posting, and clarify state logic stay regression-safe under make lint.
+- Refresh issue-anchored-plan.md so the wire-format doc matches the new scripts while still marking skills integration as pending.
+- Register new Makefile-only scripts in agent-lint suppressions to match existing harness policy.
+
 ## [34.0.0] - 2026-05-21
 
 ### Changed

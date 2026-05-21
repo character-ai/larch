@@ -1,0 +1,19 @@
+Reviewing the diff and key scripts for gh-stub fidelity and correctness.
+
+Checking `gh api --paginate --slurp` output shape vs the stub and whether `grep -c` behavior is handled on macOS.
+
+### In-Scope Findings
+
+- **risk-integration** `Makefile:9-10`, `agent-lint.toml:155-172`, `docs/issue-anchored-plan.md:1-152`, `larch-logs/implement/5E0BCFD9-4AC9-4907-A964-CA55F63E1BD9/manifest.json:1-20` — The #2484 narrative in the attached plan called for a narrowly scoped additive change (and even claimed a single `Makefile` touch for wiring); the branch also edits `agent-lint.toml`, rewrites portions of `docs/issue-anchored-plan.md`, and adds a full `/implement` run directory under `larch-logs/implement/5E0BCFD9-4AC9-4907-A964-CA55F63E1BD9/` (manifest, parent-issue, plan artifacts). That widens review/CI surface and may violate repo norms about committing ephemeral implement logs unless that is an explicit convention for this workstream. **Suggested fix:** Drop the `larch-logs/...` commit from the PR unless policy requires it, and realign the PR/issue text so `agent-lint.toml` and doc edits are listed as intentional scope (or revert them if the goal was strictly `scripts/` + `Makefile`).
+
+- **correctness** `docs/issue-anchored-plan.md:148-152` — The “`STATE` values” table still lists only `clean`, `awaiting-response`, and `response-pending`, while `scripts/clarify-state.sh` and `scripts/clarify-state.md` advertise and emit `STATE=ambiguous` for several pairing violations. After the doc now points readers at `clarify-state.sh`, the missing table row is a normative gap between shipped helper output and the operator-facing summary. **Suggested fix:** Extend the table with an `ambiguous` row (and a one-line “automation must stop until reconciled” pointer back to the marker rules).
+
+- **correctness** `scripts/test-clarify-state.sh:1746-1757` — The `gh api` stub always `cat`s a single JSON array from `COMMENTS_JSON`, so the harness never exercises the real `gh api --paginate --slurp … | jq -s 'add // []'` ingestion path (multi-root / multi-page aggregation, ordering between pages, or stderr-only failures from `gh` vs `jq`). Passing tests therefore under-constrain the highest-risk integration boundary of `scripts/clarify-state.sh:88-97`. **Suggested fix:** Add a fixture where the stub prints two paginated JSON arrays (the shape `jq -s` consumes) and assert the merged timeline matches the single-array cases already covered.
+
+- **code-quality** `scripts/test-plan-block.sh:42-52`, `scripts/test-clarify-comment.sh:1643-1652` — The `--body-file` discovery loop uses `eval "a=\${$i}"` / `eval "bf=\${$n}"`, which is fragile if a future refactor ever passes a `--body-file` path containing spaces or shell metacharacters (the real `gh` accepts arbitrary paths). **Suggested fix:** Replace the eval-based index walk with a straight `while [ $# -gt 0 ]; do case $1 in --body-file) ...;; esac; shift` parser inside the stub (still Bash 3.2–safe).
+
+### Out-of-Scope Observations
+
+- **`test-plan-block.sh` `gh issue view` stub vs `--json/--jq`:** `scripts/plan-block-read.sh:1283` and `scripts/plan-block-write.sh:1521` invoke `gh issue view … --json body --jq -r '(.body // "")'`, whose final stdout is the decoded issue body string (not JSON). The stub’s `cat "$BODY_FILE"` matches that stdout shape for representative fixtures, so this is not a functional mismatch for the behaviors the harness asserts.
+
+- **`ambiguous` in prose vs table:** The marker rules section of `docs/issue-anchored-plan.md` already discusses ambiguous threads in prose; the gap called out above is specifically the summary table’s incomplete alignment with the new helper’s stdout contract.

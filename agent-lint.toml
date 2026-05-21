@@ -564,6 +564,9 @@ exclude = [
   # (sibling contract), matching the same Makefile-only pattern.
   "scripts/test-check-clean-tree.sh",
   "scripts/test-check-clean-tree.md",
+  # Issue-anchored plan helpers (#2484): runtime scripts + harnesses are
+  # listed under "## Issue-anchored plan helpers (machine reachability)"
+  # in skills/implement/SKILL.md for agent-lint G004 reachability.
   # scripts/test-check-stale-plugin.sh is the regression harness for
   # scripts/check-stale-plugin.sh (version-skew detection). Referenced only
   # from Makefile (test-check-stale-plugin target) and
