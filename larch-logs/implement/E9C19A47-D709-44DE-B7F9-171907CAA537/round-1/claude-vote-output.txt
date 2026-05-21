@@ -1,0 +1,16 @@
+FINDING_1: YES
+FINDING_2: EXONERATE -- style improvement (split bullets); no semantic defect, more complexity than the concern warrants
+FINDING_3: EXONERATE -- pre-existing wording untouched by this diff; not issue-worthy
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: EXONERATE -- pre-existing text untouched by this diff; optional hygiene, not issue-worthy
+FINDING_8: YES
+FINDING_9: EXONERATE -- minor pre-existing comment in a test file not touched by this diff
+FINDING_10: YES
+FINDING_11: EXONERATE -- "per conflict-resolution.md" is a cross-reference convention; potential ambiguity but not a double-abort correctness defect
+FINDING_12: EXONERATE -- pre-existing intro imprecision not introduced by this diff
+FINDING_13: YES
+FINDING_14: EXONERATE -- changelog entries are historical by definition; no correction needed
+FINDING_15: EXONERATE -- run-log artifacts are normal implement infrastructure, not a caller_kind defect
+FINDING_16: EXONERATE -- fully subsumed by FINDING_8; no distinct tracking value

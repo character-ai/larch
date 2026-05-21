@@ -1,0 +1,1 @@
+{"schema_version":1,"phase":"code-review","batch":"code-review-tally","mode":"hard","rounds":1,"accepted_count":6,"rejected_count":0,"exonerated_count":2,"neutral_count":0,"body":"Review-and-fix completed. Accepted: 6, Rejected: 0, Exonerated: 2, Neutral: 0, Rounds: 1. All 6 accepted findings were applied by Cursor (commit 88e4e72). No rejected findings.\n"}

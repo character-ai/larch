@@ -1,0 +1,17 @@
+Gathering the diff and commit list, then tracing `caller_kind=step8b_rebase` through the documented handoffs.
+
+Verifying cross-doc consistency and whether SKILL/scripts still describe plain `--no-push` (doc vs runtime).
+
+### In-Scope Findings
+
+- **correctness** `skills/implement/references/rebase-rebump-subprocedure.md:16` — The `rebase_already_done` input still says that when `true`, steps 1–2 are skipped because the rebase has “already happened and been **pushed** by the caller,” citing Step 12 Phase 4’s `rebase-push.sh --continue`. The new `caller_kind=step8b_rebase` path sets `rebase_already_done=true` after `conflict-resolution.md` Phase 4’s **`--continue --no-push`** exit 0, so the rebase is complete **locally only** and has **not** been pushed. That makes the Inputs contract wrong for the new handoff and can mislead orchestrators about whether a push already happened before step 5 / postbump. **Suggested fix:** Split the parenthetical into two cases (Step 12: pushed by Phase 4’s full `continue`; `step8b_rebase`: rebase complete locally only, no Phase 4 push) or replace “pushed” with neutral wording (“finished by the caller”) and spell out push ownership per `caller_kind`.
+
+- **correctness** `skills/implement/references/rebase-rebump-subprocedure.md:177` — The step 7 bullet for **`step8b_rebase`** still attributes the return only to “Step 8b’s `rebase-push.sh --no-push` exit 1 handler,” while the branch adds a second normative entry: Phase 4 exit 0 dispatch with `rebase_already_done=true, caller_kind=step8b_rebase` (see step 2 exit-1 branch and `### caller_kind=step8b_rebase`). A reader tracing `caller_kind=step8b_rebase` may think the step 7 table applies only to the initial Step 8b dispatch, not to the Phase 4 re-entry, even though the Phase 4 caller-path subsection says the same postbump return. **Suggested fix:** Extend the parenthetical on line 177 to include “or `rebase_already_done=true` re-entry after `conflict-resolution.md` Phase 4 exit 0,” so the step 7 contract matches both lifetimes of the same token.
+
+### Out-of-Scope Observations
+
+- The branch diff also adds new files under `larch-logs/implement/E9C19A47-D709-44DE-B7F9-171907CAA537/` (manifest, plan artifacts, tally) via commit `d9354f17`, which goes beyond the stated “two markdown files only” scope in `<feature_description>` / `<implementation_plan>`; not a `caller_kind` threading bug, but it widens the change surface relative to that scope text.
+
+- **Token threading otherwise looks consistent in the edited docs:** step 2 exit 1 uses `caller_kind=step8b_rebase`; `conflict-resolution.md` Phase 4 exit 0 invokes the sub-procedure with `rebase_already_done=true, caller_kind=step8b_rebase`; the Phase 4 caller-path subsection keeps `step12_phase4` and `step8b_rebase` separate (step 5 skipped only for `step8b_rebase`, step 7 return explicitly tied to postbump for `step8b_rebase`). No separate `step12_phase4` overwrite of the `step8b_rebase` step 7 row was introduced.
+
+- **Doc vs automation:** `rebase_already_done` / “pushed” wording aside, the lifecycle assumes the orchestrator adopts `--no-push --keep-on-conflict` in sub-procedure step 2 for `step8b_rebase`; there are no script changes in this diff, so any drift from `skills/implement/SKILL.md` or shell helpers is outside this diff’s verification.

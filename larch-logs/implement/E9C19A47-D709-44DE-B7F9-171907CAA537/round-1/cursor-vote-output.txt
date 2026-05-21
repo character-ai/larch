@@ -1,0 +1,16 @@
+FINDING_1: YES
+FINDING_2: EXONERATE -- stylistic nit; dense bullets already clarified by structure and optional wrap later
+FINDING_3: EXONERATE -- real wording drift but non-blocking and better folded into a future Inputs edit than a standalone issue
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: EXONERATE -- minor Phase 1–3 phrasing drift in a warning string, not worth a tracking issue
+FINDING_8: YES
+FINDING_9: EXONERATE -- comment-only drift in a test file not touched here, fix opportunistically
+FINDING_10: YES
+FINDING_11: EXONERATE -- explicit abort reminder matches bail invariant and aids skimming without double-execution risk in prose
+FINDING_12: EXONERATE -- intro is broadly correct with caller-family bullets below; no issue needed
+FINDING_13: EXONERATE -- SKILL alignment is real but explicitly outside this doc-only thread
+FINDING_14: EXONERATE -- historical changelog entries are expected to lag reference docs
+FINDING_15: YES
+FINDING_16: EXONERATE -- overlaps FINDING_8; one follow-up track suffices, not a second issue
