@@ -128,9 +128,9 @@ larch_poll_probe_pid() {
     local probe_pid="$1"
     local __rc_name="$2"
     local _poll_rc=""
-    SECONDS=0
+    local _start=$SECONDS
     while kill -0 "$probe_pid" 2>/dev/null; do
-        if (( SECONDS >= LARCH_PROBE_TIMEOUT_SECONDS )); then
+        if (( SECONDS - _start >= LARCH_PROBE_TIMEOUT_SECONDS )); then
             kill "$probe_pid" 2>/dev/null || true
             wait "$probe_pid" 2>/dev/null || true
             _poll_rc=124

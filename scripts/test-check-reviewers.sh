@@ -29,7 +29,7 @@ run_cr() {
     local tmp="$1"
     shift
     mkdir -p "$tmp"
-    cd "$REPO_ROOT" && TMPDIR="$tmp" LARCH_QUIET_DISABLE=1 "$@"
+    ( cd "$REPO_ROOT" && TMPDIR="$tmp" LARCH_QUIET_DISABLE=1 "$@" )
 }
 
 # --- Baseline stubs (exit 0) ---
@@ -67,11 +67,14 @@ out=$(run_cr "$SCRATCH/t0c" env PATH="$STUB_BIN:/usr/bin:/bin" LARCH_PROBE_TTL_S
 assert_line "skip codex present" "CODEX_PRESENT=false" "$out"
 assert_line "skip codex bin" "CODEX_BINARY_FOUND=true" "$out"
 assert_line "skip codex cursor still present" "CURSOR_PRESENT=true" "$out"
+assert_line "skip codex cursor binary" "CURSOR_BINARY_FOUND=true" "$out"
 
 out=$(run_cr "$SCRATCH/t0d" env PATH="$STUB_BIN:/usr/bin:/bin" LARCH_PROBE_TTL_SECONDS=0 \
     LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Linux "$CR" --skip-cursor-probe)
 assert_line "skip cursor" "CURSOR_PRESENT=false" "$out"
 assert_line "skip cursor codex still present" "CODEX_PRESENT=true" "$out"
+assert_line "skip cursor codex binary" "CODEX_BINARY_FOUND=true" "$out"
+assert_line "skip cursor cursor binary" "CURSOR_BINARY_FOUND=true" "$out"
 
 # --- Cursor: probe failure non-auth ---
 SB1="$SCRATCH/bin1"
@@ -190,7 +193,8 @@ cat > "$SB6/cursor" <<'STUB'
 exit 127
 STUB
 chmod +x "$SB6/cursor"
-out=$(run_cr "$SCRATCH/t6" env PATH="$SB6:/usr/bin:/bin" LARCH_PROBE_TTL_SECONDS=0 LARCH_EXTERNAL_AUTH_RETRIES=3 "$CR")
+out=$(run_cr "$SCRATCH/t6" env PATH="$SB6:/usr/bin:/bin" LARCH_PROBE_TTL_SECONDS=0 \
+    LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Linux LARCH_EXTERNAL_AUTH_RETRIES=3 "$CR")
 assert_line "codex ok" "CODEX_PRESENT=true" "$out"
 assert_line "codex ok binary" "CODEX_BINARY_FOUND=true" "$out"
 
@@ -207,7 +211,8 @@ cat > "$SB7/cursor" <<'STUB'
 exit 127
 STUB
 chmod +x "$SB7/cursor"
-out=$(run_cr "$SCRATCH/t7" env PATH="$SB7:/usr/bin:/bin" LARCH_PROBE_TTL_SECONDS=0 LARCH_EXTERNAL_AUTH_RETRIES=3 "$CR")
+out=$(run_cr "$SCRATCH/t7" env PATH="$SB7:/usr/bin:/bin" LARCH_PROBE_TTL_SECONDS=0 \
+    LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Linux LARCH_EXTERNAL_AUTH_RETRIES=3 "$CR")
 assert_line "codex non-auth" "CODEX_PRESENT=false" "$out"
 assert_line "codex non-auth binary" "CODEX_BINARY_FOUND=true" "$out"
 
@@ -231,7 +236,8 @@ exit 127
 STUB
 chmod +x "$SB8/cursor"
 out=$(run_cr "$SCRATCH/t8" env PATH="$SB8:/usr/bin:/bin" LARCH_PROBE_TTL_SECONDS=0 \
-    LARCH_TEST_CODEX_STATE="$SCRATCH/t8/c" LARCH_EXTERNAL_AUTH_RETRIES=5 "$CR")
+    LARCH_TEST_CODEX_STATE="$SCRATCH/t8/c" \
+    LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Linux LARCH_EXTERNAL_AUTH_RETRIES=5 "$CR")
 assert_line "codex auth retry" "CODEX_PRESENT=true" "$out"
 
 SB9="$SCRATCH/bin9"
@@ -247,7 +253,8 @@ cat > "$SB9/cursor" <<'STUB'
 exit 127
 STUB
 chmod +x "$SB9/cursor"
-out=$(run_cr "$SCRATCH/t9" env PATH="$SB9:/usr/bin:/bin" LARCH_PROBE_TTL_SECONDS=0 LARCH_EXTERNAL_AUTH_RETRIES=2 "$CR")
+out=$(run_cr "$SCRATCH/t9" env PATH="$SB9:/usr/bin:/bin" LARCH_PROBE_TTL_SECONDS=0 \
+    LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Linux LARCH_EXTERNAL_AUTH_RETRIES=2 "$CR")
 assert_line "codex auth exhaust" "CODEX_PRESENT=false" "$out"
 assert_line "codex auth exhaust binary" "CODEX_BINARY_FOUND=true" "$out"
 
@@ -267,7 +274,8 @@ chmod +x "$SB10/cursor"
 st10="$SCRATCH/t10/larch-codex-present-${STAMP_USER}.stamp"
 printf 'true\n' >"$st10"
 touch "$st10"
-out=$(run_cr "$SCRATCH/t10" env PATH="$SB10:/usr/bin:/bin" LARCH_PROBE_TTL_SECONDS=3600 LARCH_EXTERNAL_AUTH_RETRIES=3 "$CR")
+out=$(run_cr "$SCRATCH/t10" env PATH="$SB10:/usr/bin:/bin" LARCH_PROBE_TTL_SECONDS=3600 \
+    LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Linux LARCH_EXTERNAL_AUTH_RETRIES=3 "$CR")
 assert_line "codex stamp hit" "CODEX_PRESENT=true" "$out"
 assert_line "codex stamp hit binary" "CODEX_BINARY_FOUND=true" "$out"
 
@@ -287,7 +295,8 @@ chmod +x "$SB11/cursor"
 st11="$SCRATCH/t11/larch-codex-present-${STAMP_USER}.stamp"
 printf 'false\n' >"$st11"
 touch -t 200001010000 "$st11" 2>/dev/null || touch -A "-876000" "$st11" 2>/dev/null || true
-out=$(run_cr "$SCRATCH/t11" env PATH="$SB11:/usr/bin:/bin" LARCH_PROBE_TTL_SECONDS=60 LARCH_EXTERNAL_AUTH_RETRIES=3 "$CR")
+out=$(run_cr "$SCRATCH/t11" env PATH="$SB11:/usr/bin:/bin" LARCH_PROBE_TTL_SECONDS=60 \
+    LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Linux LARCH_EXTERNAL_AUTH_RETRIES=3 "$CR")
 assert_line "codex stamp expired" "CODEX_PRESENT=true" "$out"
 assert_line "codex stamp expired binary" "CODEX_BINARY_FOUND=true" "$out"
 
@@ -303,7 +312,8 @@ cat > "$SB12/cursor" <<'STUB'
 exit 127
 STUB
 chmod +x "$SB12/cursor"
-out=$(run_cr "$SCRATCH/t12" env PATH="$SB12:/usr/bin:/bin" LARCH_PROBE_TTL_SECONDS=0 "$CR" --skip-codex-probe)
+out=$(run_cr "$SCRATCH/t12" env PATH="$SB12:/usr/bin:/bin" LARCH_PROBE_TTL_SECONDS=0 \
+    LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Linux "$CR" --skip-codex-probe)
 assert_line "codex skip" "CODEX_PRESENT=false" "$out"
 assert_line "skip codex bin found" "CODEX_BINARY_FOUND=true" "$out"
 
@@ -320,7 +330,8 @@ assert_line "auth retries zero normalizes" "CURSOR_PRESENT=true" "$out"
 
 SESS_W="$SCRATCH/written-session.env"
 rm -f "$SESS_W"
-cd "$REPO_ROOT" && PATH="$STUB_BIN:/usr/bin:/bin" LARCH_QUIET_DISABLE=1 \
+mkdir -p "$SCRATCH/sess-env-test"
+cd "$REPO_ROOT" && TMPDIR="$SCRATCH/sess-env-test" PATH="$STUB_BIN:/usr/bin:/bin" LARCH_QUIET_DISABLE=1 \
     LARCH_PROBE_TTL_SECONDS=0 LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Linux \
     "$REPO_ROOT/scripts/session-setup.sh" \
     --prefix larch-tchkrev-ss \
