@@ -12,7 +12,8 @@ Add per-role output-channel stall detection (180s) to scripts/launch-cursor-ci.s
 - Args: channel, output_file, stall_threshold, diag_file, target_pid
 - Supports 3 channel types: `stdout` (watch $OUTPUT file size), `file:<path>` (watch specific file mtime/size), `tree:<path>` (watch directory tree for any mtime change excluding .git)
 - Poll cadence: `${RUN_EXTERNAL_AGENT_POLL_INTERVAL:-10}` seconds (shared with run-external-agent.sh test infrastructure)
-- On stall detected: append diagnostic to diag_file (channel, time_since_last_progress, ps -o pid,pcpu,etime,stat of target_pid and cursor-related processes), kill target_pid with SIGTERM + 2s + SIGKILL, return 0
+- Stdout channel: while `${OUTPUT}` is missing or remains zero bytes, treat as progress for at most the first `stall_threshold` seconds after monitor start (run-external-agent/capture startup); avoids counting capture spin-up as a stall
+- On stall detected: append diagnostic to diag_file (channel, time_since_last_progress, `ps` snapshot of `target_pid` and its direct child PIDs without argv columns — avoids copying unrelated processes' command lines), kill inner child PIDs then `target_pid` with SIGTERM + 2s + SIGKILL, return 0
 - On target_pid exits normally: return 0
 - Bash 3.2 compatible: no declare -A, no mapfile, use date +%s for timestamps, wc -c for sizes, find -newer for tree
 - Tree baseline: mktemp file; touch to update when progress detected; cleaned up on return
@@ -46,7 +47,7 @@ Fixture 1 — stdout-role 0-byte stall:
 - Stub: cursor binary that sleeps 300s with no output
 - Run with --role fix --timeout 1800
 - Assert: exits in <20s (well before 1800s wall-clock cap)
-- Assert: exits non-zero
+- Assert: `launch-cursor-ci.sh` bash process exits 0 (always; see `emit_kv` / `exit 0`); harness reads `LAUNCHER_EXIT` from capture and asserts non-zero (stall kill / failure path)
 - Assert: ${OUTPUT}.diag contains "Stall detected"
 
 Fixture 2 — stdout-role progress-then-stall:
@@ -71,9 +72,11 @@ Fixture 4 — progress within stall window (anti-regression):
 
 Fixture 5 — wall-clock cap still fires:
 - Stub: cursor binary that writes 1 byte every 0.5s indefinitely
-- Run with --role fix --timeout 5 (short wall-clock cap), stall threshold=3
+- Run with --role fix --timeout 5 (short wall-clock cap)
+- Stall threshold: **300s** for this fixture only (`export LARCH_CURSOR_CI_STALL_THRESHOLD=300` after `stall_env`). A 3s stall budget together with tiny stdout writes and bash’s `>file` capture path can lag on-disk size growth on hosts without `stdbuf(1)` (typical macOS), so the stall monitor may fire before `run-external-agent`’s wall-clock timeout and the test would no longer prove wall-clock wins. Fixtures 1–4 and 6 still use the 3s threshold.
 - Assert: exits 124 (run-external-agent.sh timeout exit code)
 - Assert: elapsed < 15s (killed by wall-clock cap, not stall)
+- Optional harness: set `RUN_EXTERNAL_AGENT_CAPTURE_STDOUT_STDBUF=1` on Linux (where `stdbuf` exists) to experiment with a 3s stall budget for this scenario without the 300s bump
 
 Fixture 6 — diagnostic record shape:
 - Stub: cursor binary that sleeps 300s

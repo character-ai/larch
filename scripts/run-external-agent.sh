@@ -189,11 +189,24 @@ fi
     printf 'CMD_JSON=%s\n' "$META_CMD_JSON"
 } > "${OUTPUT_FILE}.meta"
 
+# Optional: when redirecting captured stdout to a file, libc may fully buffer the
+# writer even when the tool uses unbuffered Python (-u); stall monitors that
+# poll the output file size then see false stalls. Harnesses may set
+# RUN_EXTERNAL_AGENT_CAPTURE_STDOUT_STDBUF=1 to wrap the capture path with
+# stdbuf -o0 -e0 when stdbuf(1) is available (common on Linux CI).
+_launch_capture_stdout_only() {
+    if [[ "${RUN_EXTERNAL_AGENT_CAPTURE_STDOUT_STDBUF:-}" == "1" ]] && command -v stdbuf >/dev/null 2>&1; then
+        stdbuf -o0 -e0 "$@" > "$OUTPUT_FILE" 2> "${OUTPUT_FILE}.diag" &
+    else
+        "$@" > "$OUTPUT_FILE" 2> "${OUTPUT_FILE}.diag" &
+    fi
+}
+
 # Launch the agent in the background
 if [ "$CAPTURE_STDOUT" = true ]; then
     "$@" > "$OUTPUT_FILE" 2>&1 &
 elif [ "$CAPTURE_STDOUT_ONLY" = true ]; then
-    "$@" > "$OUTPUT_FILE" 2> "${OUTPUT_FILE}.diag" &
+    _launch_capture_stdout_only "$@"
 else
     "$@" &
 fi

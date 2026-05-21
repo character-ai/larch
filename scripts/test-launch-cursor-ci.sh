@@ -206,8 +206,9 @@ else
 
     # --- Stall fixture 5: wall-clock timeout wins (not stall-killed) ---
     # Use a large stall budget here: tiny stdout writes through bash's redirect
-    # can lag on-disk size growth enough to false-trigger the short stall window
-    # before run-external-agent's wall-clock timeout; production default stays 180s.
+    # can lag on-disk size growth enough to false-trigger a 3s stall window
+    # before run-external-agent's wall-clock timeout on runners without stdbuf(1)
+    # (typical macOS). Other fixtures keep LARCH_CURSOR_CI_STALL_THRESHOLD=3.
     STUB5="$TMPDIR_BASE/stub5"
     write_cursor_stub_infinite_bytes "$STUB5"
     OUT5="$TMPDIR_BASE/out5.json"
@@ -224,6 +225,7 @@ else
     if [[ "$le5" == 124 ]]; then ok "stall fixture 5 LAUNCHER_EXIT 124"; else fail "stall fixture 5 LAUNCHER_EXIT 124 (got $le5)"; fi
     if [[ $((end5 - start5)) -lt 15 ]]; then ok "stall fixture 5 elapsed <15s"; else fail "stall fixture 5 elapsed <15s ($((end5 - start5)))"; fi
     if grep -q 'Stall detected' "${OUT5}.diag" 2>/dev/null; then fail "stall fixture 5 should not be stall-killed"; else ok "stall fixture 5 no stall kill"; fi
+    unset LARCH_CURSOR_CI_STALL_THRESHOLD
 
     # --- Stall fixture 6: diagnostic shape + execution-issues ---
     STUB6="$TMPDIR_BASE/stub6"

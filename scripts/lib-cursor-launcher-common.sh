@@ -88,6 +88,7 @@ cursor_launcher_run_stall_monitor() {
     local last_prog_ts now elapsed has_prog
     local last_size=0 cur_size=0
     local last_mtime=0 cur_mtime=0 last_fsize=0 cur_fsize=0
+    local monitor_start_ts
 
     # shellcheck disable=SC2209 # case arms assign string tags to mode=, not command substitutions
     case "$channel" in
@@ -102,12 +103,15 @@ cursor_launcher_run_stall_monitor() {
     if [[ "$mode" == tree ]]; then
         tree_baseline=$(mktemp "${TMPDIR:-/tmp}/larch-stall-tree.XXXXXX") || return 0
         if ! touch "$tree_baseline"; then
-            rm -f "$tree_baseline"
+            if [[ -n "${tree_baseline:-}" ]]; then
+                rm -f "$tree_baseline"
+            fi
             return 0
         fi
     fi
 
     last_prog_ts=$(date +%s)
+    monitor_start_ts=$last_prog_ts
     if [[ "$mode" == stdout ]]; then
         if [[ -f "$output_file" ]]; then
             last_size=$(wc -c <"$output_file" 2>/dev/null | tr -d ' ' || echo 0)
@@ -143,6 +147,12 @@ cursor_launcher_run_stall_monitor() {
                 if [[ "$cur_size" != "$last_size" ]]; then
                     has_prog=true
                     last_size=$cur_size
+                elif [[ ! -f "$output_file" ]] && kill -0 "$target_pid" 2>/dev/null; then
+                    # Capture file not created yet while the wrapper is still starting.
+                    has_prog=true
+                elif [[ "$cur_size" == "0" ]] && ((now - monitor_start_ts < stall_threshold)) && kill -0 "$target_pid" 2>/dev/null; then
+                    # Zero-byte capture while run-external-agent/cursor spins up; not a stall window yet.
+                    has_prog=true
                 fi
                 ;;
             file)
@@ -165,7 +175,12 @@ cursor_launcher_run_stall_monitor() {
                 fi
                 ;;
             tree)
-                if find "$tree_root" \( -name .git -prune \) -o -newer "$tree_baseline" -print 2>/dev/null | head -n 1 | grep -q .; then
+                # Avoid find|head under inherited pipefail: SIGPIPE from head can make the
+                # pipeline status non-zero even when a path matched, starving last_prog_ts.
+                if (
+                    set +o pipefail
+                    find "$tree_root" \( -name .git -prune \) -o -newer "$tree_baseline" -print 2>/dev/null | head -n 1 | grep -q .
+                ); then
                     has_prog=true
                     touch "$tree_baseline" || true
                 fi
@@ -182,21 +197,43 @@ cursor_launcher_run_stall_monitor() {
                 printf '%s\n' "Stall detected: channel=${channel} time_since_last_progress=${elapsed}s"
                 printf '%s\n' "--- stall ps snapshot (target pid=${target_pid}) ---"
                 ps -p "$target_pid" -o pid,pcpu,etime,stat 2>/dev/null || printf '%s\n' "(target not found)"
-                printf '%s\n' "--- stall ps snapshot (cursor-related) ---"
-                # shellcheck disable=SC2009 # ps columns per contract; pgrep cannot emit this shape
-                ps axww -o pid,pcpu,etime,stat,command 2>/dev/null | grep '[c]ursor' | head -n 20 || true
+                printf '%s\n' "--- stall ps snapshot (direct children of target; no argv) ---"
+                if command -v pgrep >/dev/null 2>&1; then
+                    while read -r _cpid; do
+                        [[ -n "${_cpid:-}" ]] || continue
+                        ps -p "$_cpid" -o pid,pcpu,etime,stat 2>/dev/null || true
+                    done < <(pgrep -P "$target_pid" 2>/dev/null || true)
+                fi
             } >>"$diag_file"
+            # Kill inner agent PIDs first (run-external-agent's child), then the wrapper, so
+            # SIGKILL on the wrapper cannot leave a long-lived cursor/sleep orphan.
+            if command -v pgrep >/dev/null 2>&1; then
+                while read -r _cpid; do
+                    [[ -n "${_cpid:-}" ]] || continue
+                    kill -TERM "$_cpid" 2>/dev/null || true
+                done < <(pgrep -P "$target_pid" 2>/dev/null || true)
+            fi
             kill -TERM "$target_pid" 2>/dev/null || true
             sleep 2
+            if command -v pgrep >/dev/null 2>&1; then
+                while read -r _cpid; do
+                    [[ -n "${_cpid:-}" ]] || continue
+                    kill -KILL "$_cpid" 2>/dev/null || true
+                done < <(pgrep -P "$target_pid" 2>/dev/null || true)
+            fi
             kill -KILL "$target_pid" 2>/dev/null || true
-            rm -f "$tree_baseline"
+            if [[ -n "${tree_baseline:-}" ]]; then
+                rm -f "$tree_baseline"
+            fi
             return 0
         fi
 
         sleep "$poll_iv"
     done
 
-    rm -f "$tree_baseline"
+    if [[ -n "${tree_baseline:-}" ]]; then
+        rm -f "$tree_baseline"
+    fi
     return 0
 }
 
