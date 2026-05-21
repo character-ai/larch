@@ -34,7 +34,7 @@ Plugin ships the entire repo. **Runtime surface**: `skills/`, `agents/`, `hooks/
 - `docs/external-reviewers.md`, `docs/collaborative-sketches.md` — Codex/Cursor integration
 - `docs/topology.md` — generated consumer-doc topology projection
 - `docs/run-logs.md` — committed run-log directory structure, batch file reference, and tracking-issue comment contracts
-- `docs/issue-anchored-plan.md` — wire format for the /design ↔ /implement plan handoff and clarification round-trip
+- `docs/issue-anchored-plan.md` — target wire format (not yet implemented in-tree) for the /design ↔ /implement plan handoff and clarification round-trip
 - `scripts/lib-quiet.md` — quiet-by-default contract stream for larch scripts (FD 3, `emit`/`emit_kv`/`emit_breadcrumb` API, `LARCH_QUIET_DISABLE` escape hatch)
 - `scripts/larch-log.md`, `scripts/larch-log-batches.md` — committed run-log contract and batch table
 - `.claude/skills/bump-version/SKILL.md` — authoritative version classification rules

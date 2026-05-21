@@ -1,9 +1,23 @@
 # Issue-Anchored Plan: Wire Format and Clarification Round-Trip
 
-This document specifies the wire format that `/design` and `/implement` use
-when exchanging a plan through a GitHub issue body, and the clarification
-round-trip protocol that resolves audit rejections before implementation
-proceeds.
+This document is the **target** normative wire format for exchanging a plan
+through a GitHub **issue body** and completing a **clarification round-trip** in
+issue **comments** before `/implement` proceeds. The markers and label
+semantics here are a **specification to implement**—they are **not** yet parsed
+or emitted by shipped `skills/` or `scripts/` in this repository; operators
+should not assume matching runtime behavior until tooling lands in-tree.
+
+## Disambiguation: issue-body `larch:plan:*` vs tracking-issue `<!-- larch:plan v1 … -->`
+
+Do **not** confuse this document's paired **issue-body** HTML comment
+delimiters (`<!-- larch:plan:start -->` … `<!-- larch:plan:end -->`) with the
+**shipped** slim tracking-issue comment marker `<!-- larch:plan v1 runid=<R> -->`
+used when `/implement` publishes plan-related digests on a run's tracking
+issue. The former embeds a full plan in the **issue description body**; the
+latter is a single-line marker prefix inside a **GitHub comment** on the
+tracking issue. See `docs/run-logs.md` (tracking-issue comment contracts) and
+`skills/implement/references/summary-comment-template.md`. The name family
+overlaps (`larch:plan`); the **surface and syntax differ**.
 
 ## Plan Block Format
 
@@ -35,6 +49,10 @@ When `/implement`'s audit step refuses to proceed, it posts a clarification
 request as an issue comment. After `/design` resolves the questions and updates
 the plan, it posts a matching response.
 
+Each marker below is a **single** HTML comment line in an **issue comment
+body**; there is **no** paired “end” marker bounding the markdown (unlike the
+plan block's `larch:plan:start` / `larch:plan:end` pair).
+
 ### Clarification Request (posted by `/implement`)
 
 ```
@@ -56,23 +74,33 @@ the plan, it posts a matching response.
 Rules:
 
 - `id=<N>` is a monotonically increasing integer, incremented for each new
-  round-trip on the same issue.
+  round-trip on the same issue. **No** `id=0` markers are used: when no prior
+  `larch:clarify-request` exists, the first request uses `id=1`.
 - Each `larch:clarify-request` is paired with **at most one**
   `larch:clarify-response` carrying the same `id`.
+- If more than one `larch:clarify-response` appears with the same `id`, the
+  thread is **ambiguous**; automation SHOULD refuse further progress until
+  operators reconcile the comment stream so exactly one canonical response
+  remains for that `id`.
 - Multiple round-trips stack as successive `id` values (1, 2, 3, …).
 
 ## Label State Machine
 
 The `needs-design-clarification` label tracks whether the plan is currently
-awaiting a clarification response.
+awaiting a clarification response. **Label transitions are not enforced by
+shipped `skills/` or `scripts/` in this repository**; they may be applied
+manually or by automation outside this tree until in-repo hooks or helpers
+exist.
 
 | Event | Label action |
 |---|---|
 | `/implement` posts a `larch:clarify-request` | Add `needs-design-clarification` |
 | `/design` posts the matching `larch:clarify-response` | Remove `needs-design-clarification` |
 
-`clarify-state.sh` (from the helpers PR) derives the current state from the
-comment stream:
+The `STATE` values below describe the **semantic** situation implied by markers
+and labels. **Non-normative (tooling)**: a helper script to derive `STATE` from
+the comment stream is not checked into this repository yet; operators derive
+state manually or via external tooling until a named in-repo path ships.
 
 | `STATE` value | Meaning |
 |---|---|
@@ -91,8 +119,8 @@ comment stream:
 
 ### Single-Round Clarification
 
-1. `/design` embeds the initial plan (id counter starts at 0; no clarify
-   comments yet).
+1. `/design` embeds the initial plan (no prior `larch:clarify-request` markers;
+   the first request will use `id=1`).
 2. `/implement` audits the plan, finds ambiguity, and posts:
    ```
    <!-- larch:clarify-request id=1 -->
@@ -137,4 +165,4 @@ out of scope:
 - Audit judgment (how `/implement` decides to reject a plan)
 - Design tier selection (`--quick`, `--hard`, sketch topology)
 
-Those concerns live in the `/design` and `/implement` SKILL.md files.
+Those concerns live in `skills/design/SKILL.md` and `skills/implement/SKILL.md`.
