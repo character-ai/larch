@@ -1,0 +1,25 @@
+FINDING_1: YES
+FINDING_2: EXONERATE -- `|| true` prevents real harm; PID-reuse window is vanishingly small; removing PIDs from the array adds bookkeeping complexity for negligible gain
+FINDING_3: EXONERATE -- `CURSOR_AUTH_ARGS` dependency is clear from the surrounding code block; a one-line comment does not justify a blocking finding
+FINDING_4: EXONERATE -- `SECONDS` reset is correct for its current use; the hypothetical future-caller hazard is speculative and does not justify swapping to `date +%s` overhead now
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: EXONERATE -- stamp content is only `true`/`false`; attacker-controlled `TMPDIR` can create/overwrite a boolean file but cannot leak secrets or corrupt state; fix complexity not warranted
+FINDING_14: EXONERATE -- sidecar path is derivable only from the random mktemp base; an attacker cannot predict it without already knowing `probe_out`
+FINDING_15: YES
+FINDING_16: EXONERATE -- pre-existing pattern not introduced by this diff; low impact even if exploited
+FINDING_17: YES
+FINDING_18: EXONERATE -- unconditional cleanup is the established larch launcher pattern; `cursor_launcher_cleanup_private_config_dir` is expected to be a no-op when setup never ran
+FINDING_19: EXONERATE -- no evidence the sourced lib functions set EXIT traps; concern is speculative and would be a lib bug, not a check-reviewers.sh bug
+FINDING_20: YES
+FINDING_21: YES
+FINDING_22: YES
+FINDING_23: YES
+FINDING_24: YES
+FINDING_25: NO -- the mismatch was already fixed in this diff; no issue to file

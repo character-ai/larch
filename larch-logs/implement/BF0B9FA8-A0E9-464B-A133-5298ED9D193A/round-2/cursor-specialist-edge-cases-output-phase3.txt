@@ -1,0 +1,42 @@
+Now I have everything I need. Here is the full review.
+
+---
+
+### In-Scope Findings
+
+1. **Important** · **architecture** · `skills/shared/external-reviewers.md:12-17`, `skills/implement/SKILL.md:~1388`
+
+   `external-reviewers.md` says "Set mental flags `codex_available` and `cursor_available` from `CODEX_PRESENT` / `CURSOR_PRESENT`", making `codex_available = (CODEX_PRESENT == "true")`. But a session-env with `CODEX_PRESENT=true` (stale from a caller-env skip-probe passthrough) and `CODEX_BINARY_FOUND=false` (fresh `command -v` result when binary was removed after the last session) is a reachable state in `session-setup.sh`: when `CALLER_CODEX_PRESENT=true` triggers `--skip-codex-probe`, `check-reviewers.sh` emits the fresh binary check value for `CODEX_BINARY_FOUND`, but the skip-probe override logic at `session-setup.sh:~703` restores `PROBED_CODEX_PRESENT` from the caller value without touching `PROBED_CODEX_BINARY_FOUND`. In that state, the "binary not found" warning fires but `codex_available` is still `true`, causing Codex reviewer/implementer slots to be dispatched against a missing binary; the waterfall catches the failure but wastes a slot and emits a confusing trace. **Suggested fix:** In `external-reviewers.md` and SKILL.md Step 0, state explicitly that `codex_available` (and its Cursor mirror) is `false` whenever **either** `CODEX_BINARY_FOUND=false` or `CODEX_PRESENT=false`, not only when `CODEX_PRESENT=false`.
+
+2. **Latent** · **risk-integration** · `scripts/check-reviewers.sh:214-216`
+
+   `cursor_preread_service_token` and `cursor_auth_argv` are called bare inside `set -euo pipefail` with no `|| true` guard, in a new probe context that was not covered by existing launch tests. If either function fails (e.g., missing service-token helper on a non-standard install), the script exits before the `emit_kv` block, and `session-setup.sh`—which runs `check-reviewers.sh` with `|| true`—silently receives empty output, treating both Cursor **and** Codex as unprobed for the session. Separately, no EXIT trap exists to kill background probe PIDs (`cursor agent &`, `codex exec &`) or clean up temp files on unexpected exit, so orphan processes and stale `/tmp` files accumulate. Both issues exist because the probe reuses launcher-library functions that assume a normal launcher lifecycle, not a probe. **Suggested fix:** Wrap the auth-setup calls with `|| { CURSOR_PRESENT=false; cursor_launcher_cleanup_private_config_dir || true; larch_write_bool_stamp ... || true; }` to handle failure gracefully rather than exiting; add a `trap 'kill "$probe_pid" 2>/dev/null || true; rm -f "$probe_out"' EXIT` or equivalent.
+
+3. **Nit** · **correctness** · `scripts/test-check-reviewers.sh:~SB12 / t12`
+
+   Test t12 (`--skip-codex-probe` with a codex stub on PATH) asserts `CODEX_PRESENT=false` but not `CODEX_BINARY_FOUND=true`. The symmetrically structured test t0c for cursor skip explicitly asserts `CODEX_BINARY_FOUND=true`. A regression that stops emitting `CODEX_BINARY_FOUND` in the skip-probe path would pass t12 silently. **Suggested fix:** Add `assert_line "skip codex bin" "CODEX_BINARY_FOUND=true" "$out"` to t12.
+
+4. **Nit** · **correctness** · `scripts/test-check-reviewers.sh:~t13`
+
+   The env-normalization test (t13) covers `LARCH_PROBE_TTL_SECONDS=abc` (invalid string → default 60) and `LARCH_PROBE_TIMEOUT_SECONDS=0` (zero → default 30), but not `LARCH_EXTERNAL_AUTH_RETRIES=0` → default 5. The validation line `''|*[!0-9]*|0) MAX_AUTH_RETRIES=5` has the `0` case but no test exercises it. **Suggested fix:** Add a sub-case to t13 setting `LARCH_EXTERNAL_AUTH_RETRIES=0` alongside the other invalid-env values.
+
+5. **Nit** · **architecture** · `skills/shared/external-reviewers.md:14`
+
+   The revised bullet list for availability now reads: "If `CODEX_BINARY_FOUND=false`: …Print…" then "Else if `CODEX_PRESENT=false`: …Print…" then "Else: `codex_available=true`". Neither of the two failure cases explicitly states `codex_available=false`; the reader must infer it from the chain structure. The removed old text was explicit (`If CODEX_AVAILABLE=false: codex_available=false`). Combined with Finding 1, this omission is load-bearing. **Suggested fix:** Add `codex_available=false` (and Cursor mirror) to both failure-case bullets, mirroring the old explicit assignment.
+
+---
+
+### Out-of-Scope Observations
+
+No pre-existing out-of-scope issues identified.
+
+---
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	architecture	skills/shared/external-reviewers.md:12-17, skills/implement/SKILL.md:~1388	codex_available derived only from CODEX_PRESENT; BINARY_FOUND=false is ignored for routing	When CALLER_CODEX_PRESENT=true skips re-probe and binary was removed: session-env gets CODEX_PRESENT=true (stale) + CODEX_BINARY_FOUND=false (fresh); codex_available=true; "binary not found" warning fires but Codex slots are still dispatched and fail	Explicitly state codex_available=false whenever CODEX_BINARY_FOUND=false OR CODEX_PRESENT=false in both external-reviewers.md and SKILL.md
+1	in_scope	latent	risk-integration	scripts/check-reviewers.sh:214-216	cursor_preread_service_token and cursor_auth_argv called without || true under set -euo pipefail; no EXIT trap for background probe PIDs or temp files	If either auth-setup function fails in a non-standard environment, script exits before emit_kv block; session-setup.sh receives empty output and treats both tools as unprobed. Orphan probe subprocesses and /tmp files accumulate on any unexpected exit.	Guard auth-setup calls to fail gracefully (CURSOR_PRESENT=false + stamp + cleanup); add EXIT trap to kill probe PIDs and remove temp files
+1	in_scope	nit	correctness	scripts/test-check-reviewers.sh:~t12 (SB12 block)	t12 (--skip-codex-probe with codex stub on PATH) asserts CODEX_PRESENT=false but not CODEX_BINARY_FOUND=true	A regression that stops emitting CODEX_BINARY_FOUND on the skip-probe path would pass t12 silently; t0c for cursor skip does have the corresponding assertion	Add assert_line "skip codex bin" "CODEX_BINARY_FOUND=true" to t12
+1	in_scope	nit	correctness	scripts/test-check-reviewers.sh:~t13 (env normalization test)	LARCH_EXTERNAL_AUTH_RETRIES=0 normalization (should default to 5) is not covered	The 0 case in MAX_AUTH_RETRIES normalization (''|*[!0-9]*|0) MAX_AUTH_RETRIES=5) is untested; unlike TTL=abc and TIMEOUT=0 which are covered	Add LARCH_EXTERNAL_AUTH_RETRIES=0 to the t13 env-normalization invocation
+1	in_scope	nit	architecture	skills/shared/external-reviewers.md:14	CODEX_BINARY_FOUND=false case does not explicitly state codex_available=false; reader must infer from the Else: codex_available=true at the end	Makes the routing contract ambiguous; compounds Finding 1 since the omission affects both the prose and the mental-flag derivation	Add explicit codex_available=false (and cursor_available=false mirror) to both failure-case bullets
+```

@@ -282,6 +282,8 @@ Then:
     --repo-unavailable <value>
     --codex-present <value>
     --cursor-present <value>
+    --codex-binary-found <value>
+    --cursor-binary-found <value>
     --timing-ledger "$IMPLEMENT_TMPDIR/timing-ledger.tsv"
     --token-session-id "$LARCH_TOKEN_SESSION_ID"
     --prev-implement-tmpdir "$IMPLEMENT_TMPDIR"
@@ -296,7 +298,7 @@ Then:
   ```
   Step 1 compares this value to the design manifest's `SESSION_ID` before reusing any exported plan.
 - If `REPO_UNAVAILABLE=true`: print `**⚠ Could not determine repository name. CI monitoring (Steps 10, 12) and merge (Step 12b) will be skipped.**` Set `repo_unavailable=true`.
-- If `CODEX_AVAILABLE=false`: print `**⚠ Codex not available (binary not found). Proceeding without Codex reviewer.**` Else if `CODEX_PRESENT=false`: print `**⚠ Codex not present for this session. Using Claude replacement.**` Same for Cursor (only check `*_PRESENT` when `*_AVAILABLE=true`).
+- If `CODEX_BINARY_FOUND=false` (read via `read-session-env-key.sh --key CODEX_BINARY_FOUND` from `$IMPLEMENT_TMPDIR/session-env.sh` after Step 0 writes it): print `**⚠ Codex not available (binary not found). Proceeding without Codex reviewer.**` Else if `CODEX_PRESENT=false`: print `**⚠ Codex not healthy for this session (runtime probe failed, skipped probe, auth error, or timeout). Using Claude replacement.**` Mirror the same two-tier pattern for Cursor using `CURSOR_BINARY_FOUND` / `CURSOR_PRESENT`. Derive mental flags `codex_available` / `cursor_available` as `true` only when **both** the corresponding `*_BINARY_FOUND` and `*_PRESENT` keys are `true`; otherwise treat the flag as `false` (covers stale `*_PRESENT=true` when the binary is later missing).
 
 The session-env file is passed to `/design` (Step 1) and `review-and-fix.sh` (Step 5) via `--session-env-path`. It also carries `LARCH_CLAUDE_PLUGIN_ROOT` so later Bash blocks can recover `${CLAUDE_PLUGIN_ROOT}` without sourcing the file.
 
@@ -928,7 +930,7 @@ When the task is not SIMPLE: set `ROUTER_CLASSIFICATION=HARD`, leave `quick_mode
 
 **Both-externals-down inline-plan branch**: if `codex_available=false AND cursor_available=false AND design_only=false`, do NOT invoke `/design` via the Skill tool. The full `/design` pipeline expands to 4 Claude-subagent sketches + 4 Claude-subagent reviewers + judge panels — token-expensive and architecturally brittle when no external can produce independent perspectives anyway. Take the same inline-plan path as quick mode (`### Quick mode (quick_mode=true)` above) — same branch handling, same inline plan composition, same `$IMPLEMENT_TMPDIR/design-export/plan.txt` + `voting-tally.md` writes — except the breadcrumb is `⚡ 1: design plan — both-externals-down, inline plan` and the voting-tally fallback text is `Both externals unavailable — no plan review voting.` (replaces the quick-mode `Quick mode — no plan review voting.`). Print `**⚠ 1: design plan — both Codex and Cursor unavailable; skipping /design and producing inline plan in main agent.**`, then record `"${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" workflow-path "HARD" || true`, then skip `### Normal mode` and the post-`/design` sections and run the same Step 1 tail as quick mode: **`### Capture branch name`** → **`### Larch-log batches`** (write `plan-goals-test` + `plan-review-tally` batches and post the `larch:plan` summary when `$ISSUE_NUMBER` is set) → **`### Implementer waterfall`** → **`### Rebase onto latest main`** → Step 2.
 
-The `design_only=false` gate is load-bearing: `--design-only`'s contract is to publish design artifacts (plan, plan-review tally, diagrams, OOS) to the tracking issue as the run's deliverable. It is mutually exclusive with `--quick` precisely because quick mode produces a degraded plan with no plan-review voting. Inheriting that degradation here when externals are down would silently violate the same contract. When `codex_available=false AND cursor_available=false AND design_only=true`, do NOT skip /design — print `**⚠ 1: design plan — both Codex and Cursor unavailable but --design-only requires external-backed plan-review. Bailing to cleanup.**`, set `STALL_TRACKING=true`, and skip to Step 18.
+The `design_only=false` gate is load-bearing: `--design-only`'s contract is to publish design artifacts (plan, plan-review tally, diagrams, OOS) to the tracking issue as the run's deliverable. It is mutually exclusive with `--quick` precisely because quick mode produces a degraded plan with no plan-review voting. Inheriting that degradation here when externals are down would silently violate the same contract. When `codex_available=false AND cursor_available=false AND design_only=true`, do NOT skip /design — print `**⚠ 1: design plan — --design-only requires external-backed plan-review but no external reviewer is available. Bailing to cleanup.**` and include per-tool diagnostics in the same message (or immediately following lines): for Codex, if `CODEX_BINARY_FOUND=false` say the Codex binary was not found; if `CODEX_BINARY_FOUND=true` but `codex_available=false`, say Codex runtime probe failed / auth error. Mirror the same split for Cursor (`CURSOR_BINARY_FOUND` vs `cursor_available`). Then set `STALL_TRACKING=true`, and skip to Step 18.
 
 On the design-only normal path (external-backed `/design` proceeds), record the HARD path before the Skill invocation:
 
@@ -1074,7 +1076,15 @@ If `design_only=true`:
 
 Runs unconditionally in both quick and normal modes (i.e. all `Proceed to Step 2` paths, including the manifest-reuse fast path) UNLESS `design_only=true` — design-only never reaches Step 2, so implementer selection is moot.
 
-When `coder_explicit=true`, the explicit value wins. Do not apply the Cursor → Codex → Claude waterfall, and do not modify `coder_explicit` itself.
+When `coder_explicit=true`:
+
+- If the explicit coder is `cursor` AND `cursor_available=false` AND `CURSOR_BINARY_FOUND=false`: print `**⚠ /implement Step 1: --coder=cursor requested but Cursor binary not found. Re-run without --coder, or with --coder=codex|claude.**`, set `STALL_TRACKING=true`, and skip to Step 18.
+- If the explicit coder is `cursor` AND `cursor_available=false` AND (`CURSOR_BINARY_FOUND` is absent from `session-env.sh` **or** `read-session-env-key.sh --key CURSOR_BINARY_FOUND --default ""` returns empty): print `**⚠ /implement Step 1: --coder=cursor requested but CURSOR_BINARY_FOUND could not be determined (Step 0 may have failed). Re-run to re-probe.**`, set `STALL_TRACKING=true`, and skip to Step 18. **Do not** proceed with an unchecked explicit coder.
+- If the explicit coder is `cursor` AND `cursor_available=false` AND `CURSOR_BINARY_FOUND=true`: print `**⚠ /implement Step 1: --coder=cursor requested but Cursor runtime probe failed / auth error. Re-run without --coder, or with --coder=codex|claude.**`, set `STALL_TRACKING=true`, and skip to Step 18.
+- If the explicit coder is `codex` AND `codex_available=false` AND `CODEX_BINARY_FOUND=false`: print `**⚠ /implement Step 1: --coder=codex requested but Codex binary not found. Re-run without --coder, or with --coder=cursor|claude.**`, set `STALL_TRACKING=true`, and skip to Step 18.
+- If the explicit coder is `codex` AND `codex_available=false` AND (`CODEX_BINARY_FOUND` is absent from `session-env.sh` **or** `read-session-env-key.sh --key CODEX_BINARY_FOUND --default ""` returns empty): print `**⚠ /implement Step 1: --coder=codex requested but CODEX_BINARY_FOUND could not be determined (Step 0 may have failed). Re-run to re-probe.**`, set `STALL_TRACKING=true`, and skip to Step 18. **Do not** proceed with an unchecked explicit coder.
+- If the explicit coder is `codex` AND `codex_available=false` AND `CODEX_BINARY_FOUND=true`: print `**⚠ /implement Step 1: --coder=codex requested but Codex runtime probe failed / auth error. Re-run without --coder, or with --coder=cursor|claude.**`, set `STALL_TRACKING=true`, and skip to Step 18.
+- Otherwise (explicit coder is available, or explicit coder is `claude`): the explicit value wins. Proceed to Step 2 with `coder=$coder`. Do not modify `coder_explicit` itself.
 
 When `coder_explicit=false` AND `design_only=false`, route by availability. The `diff_lines: <N>` line in `plan.txt` and `design-export/diff-lines.txt` remain useful informational sizing context from `/design`; they do not select the implementer.
 

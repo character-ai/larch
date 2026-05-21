@@ -1,0 +1,32 @@
+Now I have what I need. I checked:
+- The actual `external_is_auth_failure` patterns for cursor (`authentication (failed|required)`) and codex (`login required`) — both match the test stubs correctly.
+- No `test-write-session-env.sh` exists, so no gap there.
+- The diff is complete.
+
+---
+
+### In-Scope Findings
+
+1. **risk-integration** `scripts/test-check-reviewers.sh:899-909` — The new test suite drops all four `*_AVAILABLE` alias assertions that existed in the old harness (`CODEX_AVAILABLE=true`, `CURSOR_AVAILABLE=true`, `CODEX_AVAILABLE=false`, `CURSOR_AVAILABLE=false`). `check-reviewers.sh` still emits `CODEX_AVAILABLE`/`CURSOR_AVAILABLE` (visible at diff line 444-445), and `session-setup.sh` still parses `CODEX_AVAILABLE`/`CURSOR_AVAILABLE` in its loop (diff line 693-694). A future edit that silently breaks alias emission would pass the full test harness undetected. **Suggested fix:** Restore `assert_line "codex available alias" "CODEX_AVAILABLE=true" "$out"` and its false/skip counterparts in tests t0, t0b, and the skip-flag tests (four assertions total, matching the old harness).
+
+2. **risk-integration** `skills/implement/scripts/test-step2-dispatch.sh:~241` — Test 3e's negative-stderr assertion `! grep -Eiq 'error|fatal|failed' <<<"$ERR"` is fragile. On Darwin the Cursor auth path invokes `external_serial_lock_acquire`, `cursor_auth_preflight`, and `cursor_launcher_setup_private_config_dir` — any of which could emit a line like "auth-retry failed" or "cursor config setup error" in test mode. A single such diagnostic line flips the pass condition to fail without any real breakage in the code under test. **Suggested fix:** Drop the `ERR` filter entirely, or restrict it to a specific fatal-boot pattern like `grep -Fq 'FATAL'` — the `STATUS=`, `REASON=`, `TOOL=`, `ORCHESTRATOR_EDIT_AUTHORITY=`, and `step2-spawn-coder.txt` assertions already fully cover the observable postconditions.
+
+3. **risk-integration** `scripts/test-check-reviewers.sh` — `LARCH_EXTERNAL_AUTH_RETRIES=0` normalization (the `|0)` branch in `check-reviewers.sh:221`) is the only path in the `case` validator that no test exercises. If an off-by-one were introduced (e.g., changing `|0)` to drop the zero case), auth-exhaustion behavior with the default retry count could silently change. **Suggested fix:** Add a test variant that sets `LARCH_EXTERNAL_AUTH_RETRIES=0` against the always-auth-failing stub and asserts `CURSOR_PRESENT=false` (confirming that the 0-value normalizes to 5, not to 0, which would mean no retries at all).
+
+4. **correctness** `skills/implement/SKILL.md:1433-1434` — The Option A bail bullets say "runtime probe failed" for both cursor and codex bail cases, but `cursor_available=false` also fires when `CURSOR_BINARY_FOUND=false` (binary absent from PATH). The Step 0 block has already printed "binary not found" in that case, so the orchestrator would emit two conflicting diagnoses for the same condition. **Suggested fix:** Key the bail message on `CURSOR_BINARY_FOUND`: if `false`, say "Cursor binary not found"; if `true` but `cursor_available=false`, say "Cursor runtime probe failed / auth error". This mirrors the two-tier Step 0 message pattern already introduced by this diff.
+
+---
+
+### Out-of-Scope Observations
+
+No out-of-scope observations.
+
+---
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	risk-integration	scripts/test-check-reviewers.sh:899-909	All four *_AVAILABLE alias assertions removed from the test harness	A future change silently breaks CODEX_AVAILABLE/CURSOR_AVAILABLE emission; the harness passes because those lines are no longer asserted, while session-setup.sh downstream consumers that read CODEX_AVAILABLE/CURSOR_AVAILABLE silently receive stale or missing values	Restore assert_line calls for CODEX_AVAILABLE=true CURSOR_AVAILABLE=true CODEX_AVAILABLE=false CURSOR_AVAILABLE=false in tests t0, t0b, t0c, t0d mirroring the original four assertions
+1	in_scope	important	risk-integration	skills/implement/scripts/test-step2-dispatch.sh:~241	Test 3e's stderr filter grep -Eiq 'error|fatal|failed' triggers on any diagnostic message containing those substrings	On Darwin or noisy test envs, cursor auth wiring (external_serial_lock_acquire, lib-cursor-auth.sh) can emit messages like "auth-retry failed" — flipping the assertion to FAIL with no real code defect	Drop the ERR filter or narrow it to an unambiguous fatal string; the STATUS/REASON/TOOL/ORCHESTRATOR_EDIT_AUTHORITY/step2-spawn-coder.txt assertions already fully exercise the decision paths
+1	in_scope	latent	risk-integration	scripts/test-check-reviewers.sh	LARCH_EXTERNAL_AUTH_RETRIES=0 normalization path (the |0) case) is never exercised	An off-by-one that drops the zero normalization would not be caught; a user setting RETRIES=0 expecting the documented default=5 semantics would get zero retries instead	Add a test variant with LARCH_EXTERNAL_AUTH_RETRIES=0 against an always-auth-failing cursor stub and assert CURSOR_PRESENT=false confirming retry-default behavior
+1	in_scope	nit	correctness	skills/implement/SKILL.md:1433-1434	Option A bail message says "runtime probe failed" for both binary-missing and probe-failed cases	When CURSOR_BINARY_FOUND=false the orchestrator prints "binary not found" at Step 0 and then "runtime probe failed" at the waterfall bail — conflicting diagnoses for the same condition	Branch on CURSOR_BINARY_FOUND: emit "binary not found" bail message when false, "runtime probe failed" when true-but-unavailable, matching the two-tier pattern this diff establishes everywhere else
+```

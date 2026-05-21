@@ -1,0 +1,12 @@
+FINDING_1: EXONERATE -- SKILL.md maps both the absent-key case and confirmed-false to the same "binary not found" message, so the fix produces identical behavior; legitimate diagnostic concern but zero behavioral impact makes it not worth the change.
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: EXONERATE -- pre-existing, functionally harmless (init reaps on exit), not issue-worthy
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: EXONERATE -- TMPDIR poisoning only affects tool-availability detection, not any real security boundary; low impact, standard TMPDIR trust model
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES

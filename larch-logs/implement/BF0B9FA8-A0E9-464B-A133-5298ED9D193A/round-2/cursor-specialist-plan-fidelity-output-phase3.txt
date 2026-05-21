@@ -1,0 +1,42 @@
+I've now read the complete diff and traced all 14 plan requirements against the implementation. Here is the review.
+
+---
+
+### In-Scope Findings
+
+1. - **correctness** `skills/implement/scripts/test-step2-dispatch.sh:1596` — Test 3e's stderr guard `! grep -Eiq 'error|fatal|failed' <<<"$ERR"` is too broad: any incidental log line emitted by the Cursor launcher scaffolding that contains "failed" (e.g. an auth-token refresh "token refresh failed" note, a timing entry, or a teardown message) will produce a false-positive test failure, permanently masking the real assertion. The word "failed" is common in diagnostic log prose. **Suggested fix:** Either drop the catch-all stderr filter and add a targeted assertion on specific expected lines (e.g. `! grep -q "ERROR" <<<"$ERR"`), or restrict the pattern to known fatal-only strings (e.g. `'^ERROR'` or `'^FATAL'`).
+
+2. - **correctness** `scripts/test-check-reviewers.sh` — The rewrite drops all assertions on `CODEX_AVAILABLE` and `CURSOR_AVAILABLE` backward-compat alias emission that the old test covered (`assert_line "codex available alias" "CODEX_AVAILABLE=true"`, etc.). `check-reviewers.sh` still emits `emit_kv CODEX_AVAILABLE "$CODEX_PRESENT"` and `emit_kv CURSOR_AVAILABLE "$CURSOR_PRESENT"`, but no test now verifies these aliases survive the rewrite. Any future refactor that accidentally drops an `emit_kv` call for the aliases would go undetected. **Suggested fix:** Add `assert_line "codex alias" "CODEX_AVAILABLE=true"` and `assert_line "cursor alias" "CURSOR_AVAILABLE=true"` to the t0 happy-path block (mirroring the dropped assertions).
+
+3. - **architecture** `skills/shared/external-reviewers.md:1671` — The final line of the file, "Do not write runtime failure status back to session env. `CODEX_PRESENT` and `CURSOR_PRESENT` describe static session-start presence only." was not updated. The word "static" previously contrasted binary-detection (once, cheap) with per-slot runtime failures; it now reads as though `*_PRESENT` is still binary-only, contradicting the two-tier semantics introduced earlier in the same file and in `session-setup.md`. Plan item 7 called for updating availability semantics in this file. **Suggested fix:** Change "static session-start presence only" to something like "set once at session start via the runtime health probe; they are not updated mid-session by per-slot launch failures."
+
+---
+
+### Out-of-Scope Observations
+
+None.
+
+---
+
+All 14 plan items are accounted for in the diff:
+- `check-reviewers.sh`: full runtime probe, mutex, auth-retry loop, TTL stamp, env-var validation ✓
+- `check-reviewers.md`: reversed "no runtime probe" statement, new output-key doc, env knobs, edit-in-sync table ✓
+- `test-check-reviewers.sh`: full rewrite with all specified scenarios ✓
+- `test-check-reviewers.md`: updated fixture coverage ✓
+- `cursor-wrap-prompt.md`: single-invocation-per-retry note ✓
+- `session-setup.md`: "runtime health probe" prose, `*_BINARY_FOUND` keys ✓
+- `external-reviewers.md`: two-tier `BINARY_FOUND` vs `PRESENT` semantics (see finding 3 for a residual stale phrase) ✓
+- `SKILL.md`: Option A three-bullet bail + `STALL_TRACKING=true` + `BINARY_FOUND`-gated warning messages ✓
+- `test-step2-dispatch.sh`: Test 3e added ✓
+- `test-step2-dispatch.md`: Test 3e + 3b description updated ✓
+- `test-implement-step2-routing.sh`: old assertion removed, new Option A bail assertions added ✓
+- `docs/configuration-and-permissions.md`: all three new env knobs documented ✓
+- `write-session-env.sh`: `--codex-binary-found`/`--cursor-binary-found` flags + validation ✓
+- `session-setup.sh`: parser + passthrough + WSE forwarding for both new keys ✓
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	nit	correctness	skills/implement/scripts/test-step2-dispatch.sh:1596	Test 3e stderr filter grep -Eiq 'error|fatal|failed' is too broad	Any launcher log line containing the word "failed" (auth-token refresh note, timing teardown) triggers false-positive test failure masking the real assertion	Drop catch-all or restrict to unambiguous fatal-only pattern (e.g. '^ERROR'); add targeted assertions on known bad lines instead
+1	in_scope	nit	correctness	scripts/test-check-reviewers.sh	Rewrite drops all CODEX_AVAILABLE / CURSOR_AVAILABLE backward-compat alias assertions	A future refactor that removes either emit_kv CODEX_AVAILABLE or emit_kv CURSOR_AVAILABLE from check-reviewers.sh will go undetected	Add assert_line "codex alias" "CODEX_AVAILABLE=true" and "CURSOR_AVAILABLE=true" to the t0 happy-path block
+1	in_scope	nit	architecture	skills/shared/external-reviewers.md:1671	Trailing "static session-start presence only" phrase not updated; implies binary-detection-only semantics	New readers see "static" and conclude CODEX_PRESENT is still binary-only rather than a runtime-probed boolean	Change to "set once at session start via the runtime health probe; not updated mid-session by per-slot launch failures"
+```

@@ -1,0 +1,5 @@
+### In-Scope Findings
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+- **code-quality** `scripts/test-check-reviewers.sh:910-924` — The "stamp expired re-probe" test (t5) is vacuously correct regardless of whether the backdating actually succeeds. The stamp holds `true` and the stub exits 0. If both `touch -t 200001010000` and `touch -A "-876000"` fail silently (the `|| true` absorbs all failures), the stamp retains the current mtime, the freshness check passes, the stamp cache is hit and returns `true` — the same assertion value as a successful re-probe. The test cannot distinguish "expired path worked" from "stamp stayed fresh and hit". The t4 (stamp hit) test uses a *failing* stub to catch the hit path, but t5's counterpart uses a *passing* stub and is therefore non-discriminating when backdating fails. **Suggested fix:** use a separate failing stub for the "expired but then re-probes successfully" case: create a subdirectory whose stamps hold `false`, backdate them, then run with a passing stub and assert `CURSOR_PRESENT=true`. That way, if backdating fails, the hit path returns `false` (not `true`), and the test catches the regression.

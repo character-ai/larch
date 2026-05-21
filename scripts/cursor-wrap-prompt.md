@@ -33,7 +33,7 @@ Cursor also has no way to configure a non-default model via config file that ove
 
 ## Non-callers (intentional exclusions)
 
-- `scripts/check-reviewers.sh` — health probe. The probe's sole purpose is reachability and auth validation; max-mode adds latency and cost without diagnostic value. The two cursor-agent lines in that file (initial probe and retry probe) deliberately pass the probe prompt `"Respond with OK"` verbatim.
+- `scripts/check-reviewers.sh` — health probe for Step 0 / session-setup. The probe uses a **single** `cursor agent …` invocation per auth-retry attempt (plus Darwin mutex / private config / auth argv wiring from `lib-cursor-launcher-common.sh`). There is **no** `cursor-wrap-prompt.sh` / `/max-mode on.` prefix — max-mode is intentionally excluded to keep the probe fast and cheap; production reviews and implementers still wrap prompts where required.
 - `scripts/run-external-agent.sh` header example — illustrative of the wrapper's own tool interface, not a real invocation.
 
 ## Edit-in-sync rules

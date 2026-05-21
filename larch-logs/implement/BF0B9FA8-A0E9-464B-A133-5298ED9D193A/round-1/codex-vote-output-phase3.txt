@@ -1,0 +1,14 @@
+FINDING_1: YES
+FINDING_2: EXONERATE -- duplication is safe Bash 3.2 pattern; generic helper would require namerefs or eval, both forbidden or fragile under the project constraints
+FINDING_3: EXONERATE -- purely cosmetic naming asymmetry in sequential code with no behavioral impact
+FINDING_4: YES
+FINDING_5: EXONERATE -- one missing comment line with no behavioral impact; too trivial to warrant an issue
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: EXONERATE -- minor test gap for a single `|0)` branch; low impact and coverage is otherwise thorough
+FINDING_11: YES
+FINDING_12: EXONERATE -- TOCTOU is technically valid but /tmp sticky bit renders same-UID exploitation moot for this local dev tool
+FINDING_13: YES
+FINDING_14: YES

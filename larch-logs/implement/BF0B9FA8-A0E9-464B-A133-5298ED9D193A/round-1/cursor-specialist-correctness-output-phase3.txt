@@ -1,0 +1,21 @@
+Now I have enough context. Let me write the review.
+
+---
+
+### In-Scope Findings
+
+1. **correctness** `scripts/session-setup.sh:23` (diff comment hunk) and `scripts/session-setup.sh:135-147` — The diff adds `CODEX_BINARY_FOUND, CURSOR_BINARY_FOUND` to the `--caller-env` "Recognized keys" comment, but the actual `case "$key"` parsing loop at lines 135-147 has no branch for either key — they fall silently to `*) ;;`. In the passthrough branch (`else`, no `--check-reviewers`), `FINAL_CODEX_BINARY_FOUND=""` and `FINAL_CURSOR_BINARY_FOUND=""` are set without reading from caller-env, so `write-session-env.sh` is never invoked with `--codex-binary-found`/`--cursor-binary-found` on this path. A continuation run that feeds a prior session-env as `--caller-env` (without re-running `--check-reviewers`) produces a fresh session-env file missing both keys; `read-session-env-key.sh --key CODEX_BINARY_FOUND` then returns empty (not `false`), so the `CODEX_BINARY_FOUND=false` branch in SKILL.md's two-tier warning silently never fires. **Suggested fix:** Either add `CODEX_BINARY_FOUND) CALLER_CODEX_BINARY_FOUND="$value" ;;` / `CURSOR_BINARY_FOUND) CALLER_CURSOR_BINARY_FOUND="$value" ;;` to the caller-env parsing loop and forward them as `FINAL_*` in the passthrough branch (mirrors the `CODEX_PRESENT` pattern), or remove these keys from the "Recognized keys" comment to avoid a false contract promise.
+
+2. **risk-integration** `skills/implement/scripts/test-step2-dispatch.sh:255` (Test 3e) — `[[ -z "$ERR" ]]` is asserted while `LARCH_QUIET_DISABLE=1` is active in the same subshell. With quiet disabled, `lib-quiet.sh::larch_quiet_init` returns early and `LARCH_QUIET_PID` is never set to `$$`; every subsequent `larch_err`/`larch_errf` call in the dispatcher and cursor-launcher chain writes to plain `>&2`, which is captured in `$STDERR_3E`. Any informational diagnostic emitted via `larch_err` in the normal launcher path (auth wiring, timing marks, etc.) causes a false test failure. All other tests in this file use `2>&1` to avoid this brittleness. The assertion will pass only in environments where the entire launcher chain happens to produce zero `larch_err` output on the happy path — a fragile invariant. **Suggested fix:** Replace `[[ -z "$ERR" ]]` with a targeted negative grep (e.g., `! grep -iq "error\|fatal\|failed" "$STDERR_3E"`) that allows informational stderr while still catching real failures, or capture combined output with `2>&1` and drop the separate `$STDERR_3E` capture entirely.
+
+---
+
+### Out-of-Scope Observations
+
+None.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/session-setup.sh:135-147	CODEX_BINARY_FOUND / CURSOR_BINARY_FOUND listed in --caller-env comment as recognized keys but not parsed in the case loop; passthrough branch sets FINAL_*_BINARY_FOUND="" without reading caller-env	Continuation run feeding prior session-env as --caller-env (without --check-reviewers) produces a session-env missing BINARY_FOUND keys; read-session-env-key.sh returns empty not "false"; SKILL.md two-tier warning never fires	Add CODEX_BINARY_FOUND / CURSOR_BINARY_FOUND cases to the caller-env parsing loop and forward them in FINAL_* in the passthrough branch, or remove them from the Recognized keys comment
+1	in_scope	latent	risk-integration	skills/implement/scripts/test-step2-dispatch.sh:255	Test 3e asserts [[ -z "$ERR" ]] while LARCH_QUIET_DISABLE=1; with quiet disabled larch_err writes to plain >&2 (captured in $STDERR_3E) so any informational diagnostic from the launcher chain causes false failure	Any larch_err / larch_errf call in launch-cursor-implement.sh or its deps on the happy path — even non-error diagnostics — populates $STDERR_3E and breaks the assertion	Replace [[ -z "$ERR" ]] with a targeted negative grep or combine stderr with stdout (2>&1) matching the rest of the file
+```

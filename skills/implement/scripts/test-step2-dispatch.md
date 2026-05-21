@@ -4,7 +4,9 @@
 1. `--coder claude` emits `STATUS=claude_fallback` and `ORCHESTRATOR_EDIT_AUTHORITY=allowed` (and no other KV keys — no `MANIFEST=`, no `TRANSCRIPT=`, etc.), and writes no baseline files.
 1b. Default coder (no flag) is cursor — verified via non-git cwd with no `--cursor-present`: dispatcher exits 0 with `STATUS=claude_fallback` (cursor presence check fires before git-tree lookup; codex default would exit 2 instead).
 1c. Legacy `--codex-available false` still emits `STATUS=claude_fallback` and prints a deprecation warning to stderr.
-3b. `--coder cursor --cursor-present false` emits `STATUS=claude_fallback` with no baseline-file leak (cursor unavailable → claude fallback).
+2. `step2-implement.sh` does not accept `--auto-mode` (removed per issue #2497); passing it exits 2 with `unknown flag: --auto-mode`.
+3b. `--coder cursor --cursor-present false` emits `STATUS=claude_fallback` with no baseline-file leak (`coder_explicit=true` with unhealthy Cursor — Step 2 backstop gate; Option A still allows Step 1 to bail early when the explicit tool fails its runtime probe).
+3e. `--coder cursor --cursor-present true` in a git repo with a PATH-stubbed `cursor` that writes a `bailed` manifest confirms `STATUS=bailed REASON=stub-bailed` with `TOOL=cursor` (explicit + healthy path reaches the external Cursor launcher; distinct from Test 1b's omitted-`--coder` default and from Test 3b's `claude_fallback`).
 3b2. `--coder cursor` with no `--cursor-present` defaults to false and falls back to `STATUS=claude_fallback`.
 3b3. `--coder cursor --cursor-present ""` treats empty as false and falls back to `STATUS=claude_fallback`.
 3b4. `--coder cursor --cursor-present bogus` exits with code 2.

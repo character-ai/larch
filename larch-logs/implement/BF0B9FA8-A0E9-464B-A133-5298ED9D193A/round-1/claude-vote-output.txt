@@ -1,0 +1,14 @@
+FINDING_1: YES
+FINDING_2: EXONERATE -- the probe functions diverge meaningfully (Cursor has preflight/auth/config-dir; Codex doesn't); a Bash 3.2-compatible generic retry helper would require `printf -v` indirection that adds more complexity than the 12-line duplication it removes
+FINDING_3: EXONERATE -- cosmetic variable naming in purely sequential code; no functional impact, not worth an issue
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: EXONERATE -- the TOCTOU window is microseconds on a path derived from a cryptographically-random mktemp suffix; same-UID exploitation on sticky /tmp is extremely theoretical for a developer tool, and a second mktemp adds non-trivial cleanup overhead for negligible practical gain
+FINDING_13: YES
+FINDING_14: YES

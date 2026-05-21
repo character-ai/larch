@@ -5,12 +5,16 @@
 #   write-session-env.sh --output <path> --repo <owner/repo> \
 #                        --repo-unavailable <true|false> \
 #                        [--codex-present <true|false>] [--cursor-present <true|false>] \
+#                        [--codex-binary-found <true|false>] [--cursor-binary-found <true|false>] \
+#                        [--auto-mode <true|false>] \
 #                        [--timing-ledger <path>] [--token-session-id <id>] \
 #                        [--claude-source-file <path>] [--prev-implement-tmpdir <path>]
 #
 # Options:
 #   --repo may be empty when --repo-unavailable is true (repo discovery failed).
-#   --codex-present/--cursor-present are optional (reviewer binary presence from setup).
+#   --codex-present/--cursor-present are optional (runtime probe result from setup).
+#   --codex-binary-found/--cursor-binary-found are optional (command -v before probe/skip).
+#   --auto-mode is optional (`true|false` for downstream implement routing).
 #   --timing-ledger is optional (shared timing ledger path for nested skills).
 #   --token-session-id is optional (token ledger session id for nested skills).
 #   --claude-source-file is optional (Claude transcript snapshot for token reports).
@@ -35,6 +39,9 @@ REPO=""
 REPO_UNAVAILABLE=""
 CODEX_PRESENT=""
 CURSOR_PRESENT=""
+CODEX_BINARY_FOUND=""
+CURSOR_BINARY_FOUND=""
+AUTO_MODE=""
 TIMING_LEDGER=""
 TOKEN_SESSION_ID=""
 CLAUDE_SOURCE_FILE=""
@@ -49,6 +56,9 @@ while [[ $# -gt 0 ]]; do
     --repo-unavailable) REPO_UNAVAILABLE="$2"; shift 2 ;;
     --codex-present)    CODEX_PRESENT="$2"; shift 2 ;;
     --cursor-present)   CURSOR_PRESENT="$2"; shift 2 ;;
+    --codex-binary-found)  CODEX_BINARY_FOUND="$2"; shift 2 ;;
+    --cursor-binary-found) CURSOR_BINARY_FOUND="$2"; shift 2 ;;
+    --auto-mode)        AUTO_MODE="$2"; shift 2 ;;
     --timing-ledger)    TIMING_LEDGER="$2"; shift 2 ;;
     --token-session-id) TOKEN_SESSION_ID="$2"; shift 2 ;;
     --claude-source-file) CLAUDE_SOURCE_FILE="$2"; shift 2 ;;
@@ -70,6 +80,21 @@ fi
 
 if [[ -n "$CURSOR_PRESENT" && "$CURSOR_PRESENT" != "true" && "$CURSOR_PRESENT" != "false" ]]; then
   larch_err "ERROR=Invalid --cursor-present: must be true or false"
+  exit 1
+fi
+
+if [[ -n "$CODEX_BINARY_FOUND" && "$CODEX_BINARY_FOUND" != "true" && "$CODEX_BINARY_FOUND" != "false" ]]; then
+  larch_err "ERROR=Invalid --codex-binary-found: must be true or false"
+  exit 1
+fi
+
+if [[ -n "$CURSOR_BINARY_FOUND" && "$CURSOR_BINARY_FOUND" != "true" && "$CURSOR_BINARY_FOUND" != "false" ]]; then
+  larch_err "ERROR=Invalid --cursor-binary-found: must be true or false"
+  exit 1
+fi
+
+if [[ -n "$AUTO_MODE" && "$AUTO_MODE" != "true" && "$AUTO_MODE" != "false" ]]; then
+  larch_err "ERROR=Invalid --auto-mode: must be true or false"
   exit 1
 fi
 
@@ -123,9 +148,15 @@ REPO_UNAVAILABLE=$REPO_UNAVAILABLE"
 [[ -n "$CODEX_PRESENT" ]] && CONTENT="$CONTENT
 CODEX_PRESENT=$CODEX_PRESENT
 CODEX_AVAILABLE=$CODEX_PRESENT"
+[[ -n "$CODEX_BINARY_FOUND" ]] && CONTENT="$CONTENT
+CODEX_BINARY_FOUND=$CODEX_BINARY_FOUND"
 [[ -n "$CURSOR_PRESENT" ]] && CONTENT="$CONTENT
 CURSOR_PRESENT=$CURSOR_PRESENT
 CURSOR_AVAILABLE=$CURSOR_PRESENT"
+[[ -n "$CURSOR_BINARY_FOUND" ]] && CONTENT="$CONTENT
+CURSOR_BINARY_FOUND=$CURSOR_BINARY_FOUND"
+[[ -n "$AUTO_MODE" ]] && CONTENT="$CONTENT
+LARCH_AUTO_MODE=$AUTO_MODE"
 [[ -n "$TIMING_LEDGER" ]] && CONTENT="$CONTENT
 LARCH_TIMING_LEDGER=$TIMING_LEDGER"
 [[ -n "$TOKEN_SESSION_ID" ]] && CONTENT="$CONTENT

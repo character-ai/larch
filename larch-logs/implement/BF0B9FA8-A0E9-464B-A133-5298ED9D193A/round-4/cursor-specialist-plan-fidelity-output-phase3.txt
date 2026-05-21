@@ -1,0 +1,37 @@
+Having read the complete diff and traced every plan requirement, here is my review.
+
+---
+
+### In-Scope Findings
+
+1. **Latent** `correctness` `scripts/session-setup.sh:748-771` — The passthrough branch (when `CHECK_REVIEWERS != true` and caller-env is inherited) synthesizes `*_BINARY_FOUND` from `*_PRESENT` when the caller-env lacks the new key: `_passthrough_codex_bin="$CALLER_CODEX_PRESENT"`. While backward-compat correct for pre-PR session-envs (where `PRESENT=false` was only ever written on binary-absent), a new-code caller-env with `CURSOR_PRESENT=false` (runtime probe failed, binary present) and no `CURSOR_BINARY_FOUND` key will propagate `BINARY_FOUND=false` — causing SKILL.md Step 1 to print the "binary not found" message rather than the "runtime probe failed" message when `--coder=cursor` is explicit. The plan specifies that `BINARY_FOUND` should be parsed from probe output and passed through, but does not define a fallback inference rule for the no-probe path. **Suggested fix:** When `CALLER_CURSOR_BINARY_FOUND` is absent (not in caller-env), do not emit `CURSOR_BINARY_FOUND` at all in the passthrough branch, allowing SKILL.md's "absent → treat as `BINARY_FOUND=false`" safe-default rule to fire; or document the inference rule in `check-reviewers.md`'s edit-in-sync table.
+
+---
+
+### Plan Completeness Verdict
+
+All 14 files listed in the plan are implemented:
+
+| Plan Item | File | Status |
+|-----------|------|--------|
+| 1 | `scripts/check-reviewers.sh` | ✅ binary check, TTL stamp, mutex, auth retry, preflight, private config, env validation |
+| 2 | `scripts/check-reviewers.md` | ✅ reversed "no probe" statement, documented all behavior, exit-1 for `--probe`, edit-in-sync table |
+| 3 | `scripts/test-check-reviewers.sh` | ✅ full rewrite: 15 isolated scenarios including timeout test and session-setup integration |
+| 4 | `scripts/test-check-reviewers.md` | ✅ fixture coverage updated to match |
+| 5 | `scripts/cursor-wrap-prompt.md` | ✅ non-callers note updated |
+| 6 | `scripts/session-setup.md` | ✅ "static binary detection" → "runtime health probe" |
+| 7 | `skills/shared/external-reviewers.md` | ✅ two-tier `BINARY_FOUND` vs `PRESENT` semantics |
+| 8 | `skills/implement/SKILL.md` | ✅ Option A bail bullets, design-only per-tool diagnostics |
+| 9 | `skills/implement/scripts/test-step2-dispatch.sh` | ✅ Test 3e added |
+| 10 | `skills/implement/scripts/test-step2-dispatch.md` | ✅ Test 3e inventory, Test 3b description updated |
+| 11 | `scripts/test-implement-step2-routing.sh` | ✅ old assertion replaced, 5 new assertions, `assert_not_contains` for removed sentence |
+| 12 | `docs/configuration-and-permissions.md` | ✅ probe-tuning section with all 3 new env vars |
+| 13 | `scripts/write-session-env.sh` | ✅ `--codex-binary-found`/`--cursor-binary-found` with validation |
+| 14 | `scripts/session-setup.sh` | ✅ parses, emits, and passes through both new keys |
+
+All plan-specified env var defaults match the implementation: `LARCH_PROBE_TTL_SECONDS=60` (0 valid/cache-disabling), `LARCH_PROBE_TIMEOUT_SECONDS=30` (0 invalid → 30), `LARCH_EXTERNAL_AUTH_RETRIES=5` (0 invalid → 5). Bash 3.2 compliance preserved throughout (no `declare -A`, no `mapfile`, no `${var^^}`, `printf -v` for variable-name returns, `${#arr[@]}` array append idiom). The auth retry fence `if (( AUTH_ATTEMPT < MAX_AUTH_RETRIES ))` inside each probe function correctly produces exactly `MAX_AUTH_RETRIES` total auth-failure attempts before giving up.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	latent	correctness	scripts/session-setup.sh:748-771	Passthrough branch synthesizes BINARY_FOUND from PRESENT when BINARY_FOUND is absent from caller-env	A new-code caller-env with CURSOR_PRESENT=false (probe failed, binary present) and no CURSOR_BINARY_FOUND key propagates BINARY_FOUND=false, triggering the "binary not found" diagnostic in SKILL.md Step 1 instead of "runtime probe failed"	Either: omit CURSOR_BINARY_FOUND emission when CALLER_CURSOR_BINARY_FOUND is absent (let SKILL.md absent→false rule fire), or document the inference rule in check-reviewers.md edit-in-sync table
+```

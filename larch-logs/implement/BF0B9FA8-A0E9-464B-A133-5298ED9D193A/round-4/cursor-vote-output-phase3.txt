@@ -1,0 +1,12 @@
+FINDING_1: YES
+FINDING_2: EXONERATE -- functions are only called from bounded retry loops in the same file where AUTH_ATTEMPT is always initialized first; set -u guards against unset; comment would help but adding parameters would be over-engineering a purely internal module
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: EXONERATE -- pre-existing, functionally harmless (parent exits immediately after trap; init reaps zombies)
+FINDING_6: YES
+FINDING_7: NO -- cursor_launcher_cleanup_private_config_dir already guards with `[[ -n "${CURSOR_CONFIG_DIR_TMP:-}" ]]` (lib-cursor-launcher-common.sh:67); uncalled setup leaves the var unset so cleanup is a no-op
+FINDING_8: YES
+FINDING_9: EXONERATE -- TMPDIR is user-owned in a developer tool; attacker controlling TMPDIR already has full user-process access; stamp poisoning causes a false-positive probe result that then fails at real launch (recoverable); fix to $HOME/.cache does not meaningfully raise the bar
+FINDING_10: EXONERATE -- pre-existing pattern shared across all Cursor launchers; not introduced by this diff
+FINDING_11: YES
+FINDING_12: YES
