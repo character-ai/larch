@@ -192,14 +192,47 @@
           "total": 0
         },
         "skills": []
+      },
+      {
+        "step": "Step 8a — changelog",
+        "totals": {
+          "input": 0,
+          "cache_read": 0,
+          "cache_create": 0,
+          "output": 0,
+          "total": 0
+        },
+        "skills": []
+      },
+      {
+        "step": "Step 8b — rebase",
+        "totals": {
+          "input": 11,
+          "cache_read": 1883550,
+          "cache_create": 5887,
+          "output": 4856,
+          "total": 1894304
+        },
+        "skills": [
+          {
+            "skill": "larch:implement",
+            "totals": {
+              "input": 11,
+              "cache_read": 1883550,
+              "cache_create": 5887,
+              "output": 4856,
+              "total": 1894304
+            }
+          }
+        ]
       }
     ],
     "totals": {
-      "input": 84,
-      "cache_read": 12498432,
-      "cache_create": 509651,
-      "output": 41643,
-      "total": 13049810
+      "input": 95,
+      "cache_read": 14381982,
+      "cache_create": 515538,
+      "output": 46499,
+      "total": 14944114
     }
   },
   "codex": {
@@ -270,6 +303,22 @@
       },
       {
         "step": "Step 6 — checks second pass",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 8a — changelog",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 8b — rebase",
         "totals": {
           "input": 0,
           "output": 0,
@@ -351,6 +400,22 @@
       },
       {
         "step": "Step 6 — checks second pass",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 8a — changelog",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 8b — rebase",
         "totals": {
           "input": 0,
           "output": 0,

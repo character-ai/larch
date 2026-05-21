@@ -1,12 +1,12 @@
 # Version Bump Reasoning
 
-- **Base commit**: `969c474f` (Fixes #2469: Rework audit-runs user gate for bug issues (#2470))
-- **Current version**: `29.8.55`
+- **Base commit**: `b1a1e70a` (Fixes #2468: Standardize end-of-run summary for /implement and /fix-issue (#2476))
+- **Current version**: `29.8.56`
 - **Classification scope**: `skills/**` and `agents/**` only (public plugin surface).
 
 ## Result: PATCH
 
-- **New version**: `29.8.56`
+- **New version**: `29.8.57`
 
 ### PATCH rationale
 
