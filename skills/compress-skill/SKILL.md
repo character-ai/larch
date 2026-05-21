@@ -9,6 +9,8 @@ allowed-tools: Bash, Skill
 
 Rewrite an existing skill's Markdown prose to reduce size while preserving meaning, grammar, and every structural element. Pure delegator: validates the target, enumerates the transitively-reachable `.md` set inside the skill directory, snapshots baseline sizes, and hands off to `/implement --merge --auto` for branch creation, `/design`, implementation (the actual file-by-file prose rewrite), code review, `/relevant-checks`, version bump, PR creation with the token-budget delta table in the body, CI wait, and auto-merge.
 
+**Pipeline weight (vs. legacy quick-implement shortcuts).** This path runs the full `/implement` envelope: `/design` (including the heavy phase when applicable) and the unified hard Step 5 review loop — not the removed `/implement --quick` envelope. Unattended or low-budget runs can time out or exhaust tokens; hosts without `SendMessage` cannot recover from `/design` subagent suspend. When you need `/design` in the parent context, add `--inline` to the Step 3 `/implement` args (same skill invocation — see `skills/implement/SKILL.md` `--inline`). For plan-only runs without merge/PR, invoke `/implement --design-only` directly instead of this skill (`--design-only` is mutually exclusive with `--merge`).
+
 Example: `/compress-skill implement` compresses `skills/implement/SKILL.md` plus every `.md` file reachable from it that resolves inside the `skills/implement/` directory tree.
 
 ## Scope

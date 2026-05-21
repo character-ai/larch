@@ -18,8 +18,10 @@
 #   (a5) Invocation contains "[--hard if hard_mode]" — /fix-issue forwards --hard
 #        when the operator sets it; otherwise no HARD/SIMPLE control flag is sent
 #        and /implement uses its normal routing.
-#   (a6) Removed /implement --quick must not reappear as a forwarded token in the
-#        Step 5a /implement invocation template (CI guard against resurrecting the flag).
+#   (a6) Removed /implement --quick must not reappear as a forwarded token on the
+#        Step 5a line that spells the `/implement --merge …` invocation template (CI guard
+#        against resurrecting the flag); the check is scoped to that line so unrelated
+#        prose such as `/design --quick` elsewhere in the Step 5a block cannot false-trip.
 #   (a7) Invocation contains "[--inline if inline_mode and hard_mode]" — encodes
 #        that --inline is forwarded only when --hard is also set (because --inline
 #        only matters when /design runs, which requires HARD mode).
@@ -129,8 +131,21 @@ assert_contains "a4: invocation forwards [--auto if auto_mode]" '[--auto if auto
 # otherwise no workflow forcing flag is sent.
 assert_contains "a5: invocation contains [--hard if hard_mode]" '[--hard if hard_mode]'
 
-# (a6) Removed /implement --quick must not appear as a CLI forward in Step 5a prose.
-assert_not_contains "a6: Step 5a block must not forward removed --quick flag" ' --quick'
+# (a6) Removed /implement --quick must not appear on the Step 5a `/implement --merge …`
+# invocation template line (see header — whole-block scan would false-trip on `/design --quick`).
+STEP5A_IMPLEMENT_INVOCATION=$(printf '%s\n' "$STEP5A_BLOCK" | grep -F '`/implement --merge' || true)
+if [[ -z "$STEP5A_IMPLEMENT_INVOCATION" ]]; then
+    echo "  FAIL: a6: could not locate Step 5a /implement invocation template line" >&2
+    exit 1
+fi
+if ! grep -qF -- ' --quick' <<<"$STEP5A_IMPLEMENT_INVOCATION"; then
+    PASS_COUNT=$((PASS_COUNT + 1))
+    echo "  PASS: a6: Step 5a /implement invocation template must not forward removed --quick flag"
+else
+    echo "  FAIL: a6: Step 5a /implement invocation template must not forward removed --quick flag" >&2
+    echo "    unexpected literal found:  --quick" >&2
+    exit 1
+fi
 
 # (a7) [--inline if inline_mode and hard_mode] — encodes that --inline is only
 # forwarded when --hard is also set (--inline only matters when /design runs,
