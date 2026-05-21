@@ -1,0 +1,36 @@
+Reading the ballot and any referenced context files.
+
+Verifying key script claims against the repo (read-only file reads).
+
+FINDING_1: EXONERATE -- Affirmative plan-fidelity check; no actionable defect beyond boilerplate “address” text.
+FINDING_2: EXONERATE -- Same: symmetric doc matches `token-tally.sh`; nothing further required.
+FINDING_3: EXONERATE -- Guard placement, pattern, KVs, and exit `1` match `refresh-run-logs.sh` and precede `run_dir`/`mkdir -p` as claimed.
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: EXONERATE -- Legitimate precision trade-off; not worth a standalone tracking issue.
+FINDING_11: NO -- Process nit only; no GitHub issue warranted.
+FINDING_12: NO -- Explicitly “none required”; not incorrect.
+FINDING_13: EXONERATE -- Accurate pre-existing behavior note; separate hardening, not issue-worthy.
+FINDING_14: EXONERATE -- Matches `refresh-run-logs.sh` trade-off by design; acceptable.
+FINDING_15: NO -- Positive verification; nothing to file as an issue.
+FINDING_16: EXONERATE -- Policy reminder; optional SECURITY note does not need an issue for this small guard.
+FINDING_17: EXONERATE -- Low-risk asymmetry; parity is optional follow-up, not issue material.
+FINDING_18: NO -- Latent pre-existing behavior; not introduced here.
+FINDING_19: EXONERATE -- Vague doc debt; not a crisp issue without a tighter spec.
+FINDING_20: NO -- Duplicate empty-`RUN_ID` note.
+FINDING_21: NO -- Same empty-`RUN_ID` duplication.
+FINDING_22: EXONERATE -- Duplicate of FINDING_16-style nit; no issue required.
+FINDING_23: EXONERATE -- Nice-to-have test; plan did not require it and cost is optional follow-up.
+FINDING_24: NO -- Same empty-`RUN_ID` point again.
+FINDING_25: EXONERATE -- Duplicated tables are intentional; cross-link note is optional polish.
+FINDING_26: EXONERATE -- Same as FINDING_25; centralizing tables adds churn for marginal gain now.
+FINDING_27: EXONERATE -- Same doc tweak as FINDING_7; one edit suffices—no extra structural work.
+FINDING_28: EXONERATE -- Same skip-vs-fail doc point as FINDING_7.
+FINDING_29: EXONERATE -- Early `exit 1` already prevents summary/upsert; narrowing wording is optional nit.
+FINDING_30: EXONERATE -- Theoretical ID charset concern; mirrors existing `refresh-run-logs.sh` policy.
+FINDING_31: EXONERATE -- Duplicate skip-vs-fail operator-confusion note vs FINDING_7.
+FINDING_32: EXONERATE -- Legitimate CI gap but adding harness cases exceeds this PR’s warranted scope.

@@ -1,0 +1,13 @@
+Gathering the diff, commit list, and surrounding script context for a correctness-focused review.
+
+Verifying the guard mirrors `refresh-run-logs.sh` and spot-checking token scripts against the new documentation.
+
+### In-Scope Findings
+- **correctness** `scripts/token-cost.md:43-44` — The new comparison-table row for “Cost display” nests multiple single-backtick spans (`from `awk` `%.2f` …` and `` `awk` `$%.4f` ``), which is not reliably parseable in GitHub-flavored Markdown table cells and can truncate or mis-render the intended `awk` / format-string text so readers no longer see a faithful description of the scripts’ output. **Suggested fix:** Rewrite those cells without nested inline code (for example plain prose like “awk, two decimal places, no dollar prefix” / “awk, dollar-prefixed four decimal places”), use `<code>…</code>`, or use the usual doubled-backtick outer delimiter with padded inner spaces so every delimiter pair is unambiguous.
+
+- **correctness** `scripts/token-tally.md:76` — The symmetric “Cost display” cell repeats the same nested-backtick pattern (`Markdown cost suffix from `awk` `$%.4f` …` and `Dollar strings from `awk` `%.2f` …`), so it carries the same Markdown rendering risk as `scripts/token-cost.md:43-44`. **Suggested fix:** Apply the same formatting change as for `scripts/token-cost.md` so both contract docs stay readable where they are meant to clarify intentional divergence.
+
+### Out-of-Scope Observations
+- [AGENTS.md](AGENTS.md) instructs updating [SECURITY.md](SECURITY.md) when security-relevant behavior changes; this branch adds a RUN_ID path-component guard in [skills/implement/scripts/write-final-report.sh](skills/implement/scripts/write-final-report.sh) but does not update `SECURITY.md`, so the security changelog may lag the new fail-closed surface unless that policy is intentionally waived here.
+- Empty `RUN_ID` still passes the new `case` guard (only `/` and substring `..` are rejected) and was already able to reach `run_dir` / `mkdir -p` before this change; tightening empty IDs would be a separate hardening pass, not introduced by the diff.
+- The `*/*|*'..'*` pattern matches any substring `..` (for example inside `...`), the same tradeoff as [scripts/refresh-run-logs.sh](scripts/refresh-run-logs.sh) lines 39–40; exotic legitimate IDs containing two consecutive dots would still be rejected.
