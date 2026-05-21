@@ -1991,13 +1991,13 @@ else
     FAILED_TESTS+=("[61c] missing Posted-by footer")
     echo "  FAIL: [61c] missing footer" >&2
 fi
-if printf '%s' "$sum59" | grep -qF '| Target issue | Action | Comment URL |'; then
+if printf '%s' "$sum61" | grep -qF '| Target issue | Action | Comment URL |'; then
     PASS=$((PASS + 1))
-    echo "  ok: [59d] Augmentations table header present"
+    echo "  ok: [61d] Augmentations table header present"
 else
     FAIL=$((FAIL + 1))
-    FAILED_TESTS+=("[59d] missing Augmentations table header")
-    echo "  FAIL: [59d] missing Augmentations table header" >&2
+    FAILED_TESTS+=("[61d] missing Augmentations table header")
+    echo "  FAIL: [61d] missing Augmentations table header" >&2
 fi
 
 # Test 62: session-summary with skip-filing — all skipped rows
