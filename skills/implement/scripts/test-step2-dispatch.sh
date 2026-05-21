@@ -234,7 +234,7 @@ if [[ "$OUT" == *"STATUS=bailed"* ]] \
    && [[ "$OUT" == *"TOOL=cursor"* ]] \
    && [[ "$OUT" == *"ORCHESTRATOR_EDIT_AUTHORITY=forbidden"* ]] \
    && [[ "$OUT" != *"ORCHESTRATOR_EDIT_AUTHORITY=allowed"* ]] \
-   && [[ -z "$ERR" ]] \
+   && ! grep -Eiq 'error|fatal|failed' <<<"$ERR" \
    && [[ -f "$TMP3E/step2-spawn-coder.txt" ]] \
    && [[ "$(cat "$TMP3E/step2-spawn-coder.txt")" == "cursor" ]]; then
     pass

@@ -60,10 +60,12 @@ out=$(run_cr "$SCRATCH/t0c" env PATH="$STUB_BIN:/usr/bin:/bin" LARCH_PROBE_TTL_S
     LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Linux "$CR" --skip-codex-probe)
 assert_line "skip codex present" "CODEX_PRESENT=false" "$out"
 assert_line "skip codex bin" "CODEX_BINARY_FOUND=true" "$out"
+assert_line "skip codex cursor still present" "CURSOR_PRESENT=true" "$out"
 
 out=$(run_cr "$SCRATCH/t0d" env PATH="$STUB_BIN:/usr/bin:/bin" LARCH_PROBE_TTL_SECONDS=0 \
     LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Linux "$CR" --skip-cursor-probe)
 assert_line "skip cursor" "CURSOR_PRESENT=false" "$out"
+assert_line "skip cursor codex still present" "CODEX_PRESENT=true" "$out"
 
 # --- Cursor: probe failure non-auth ---
 SB1="$SCRATCH/bin1"
@@ -138,7 +140,7 @@ STUB
 chmod +x "$SB5/cursor"
 mkdir -p "$SCRATCH/t5"
 stamp5="$SCRATCH/t5/larch-cursor-present-${USER:-larch}.stamp"
-printf 'true\n' >"$stamp5"
+printf 'false\n' >"$stamp5"
 touch -t 200001010000 "$stamp5" 2>/dev/null || touch -A "-876000" "$stamp5" 2>/dev/null || true
 out=$(run_cr "$SCRATCH/t5" env PATH="$SB5:/usr/bin:/bin" LARCH_PROBE_TTL_SECONDS=60 \
     LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Linux LARCH_EXTERNAL_AUTH_RETRIES=3 "$CR")
@@ -218,7 +220,7 @@ exit 0
 STUB
 chmod +x "$SB11/codex"
 st11="$SCRATCH/t11/larch-codex-present-${USER:-larch}.stamp"
-printf 'true\n' >"$st11"
+printf 'false\n' >"$st11"
 touch -t 200001010000 "$st11" 2>/dev/null || touch -A "-876000" "$st11" 2>/dev/null || true
 out=$(run_cr "$SCRATCH/t11" env PATH="$SB11:/usr/bin:/bin" LARCH_PROBE_TTL_SECONDS=60 LARCH_EXTERNAL_AUTH_RETRIES=3 "$CR")
 assert_line "codex stamp expired" "CODEX_PRESENT=true" "$out"

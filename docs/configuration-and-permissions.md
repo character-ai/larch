@@ -186,7 +186,7 @@ Model configuration is also available via plugin `userConfig` — environment va
 The model name to pass to Cursor's `--model` flag (e.g., `gpt-5.4-medium`, `claude-sonnet-4-6`).
 
 **When set:**
-- All Cursor invocations (reviews, sketches, voting, Step 0 `check-reviewers.sh` probes, negotiations, and implement when `--coder=cursor`) use this model
+- All Cursor invocations (reviews, sketches, voting, negotiations, and implement when `--coder=cursor`) use this model
 - The model flag is injected by `scripts/agent-model-args.sh` as line-token argv, then consumed through Bash arrays
 
 **When not set:**
@@ -199,7 +199,7 @@ The model name to pass to Cursor's `--model` flag (e.g., `gpt-5.4-medium`, `clau
 The model name to pass to Codex's `-m` flag (e.g., `o3`, `o4-mini`).
 
 **When set:**
-- All Codex invocations (reviews, sketches, voting, Step 0 `check-reviewers.sh` probes, negotiations) use this model
+- All Codex invocations (reviews, sketches, voting, negotiations) use this model
 - The model flag is injected by `scripts/agent-model-args.sh` as line-token argv, then consumed through Bash arrays
 
 **When not set:**

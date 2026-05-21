@@ -58,11 +58,13 @@ esac
 HOLD="${LARCH_EXTERNAL_SERIAL_LOCK_DELAY:-0.5}"
 
 larch_stamp_path_cursor() {
-    printf '%s' "${TMPDIR:-/tmp}/larch-cursor-present-${USER:-larch}.stamp"
+    local _u="${USER//[^A-Za-z0-9._-]/}"
+    printf '%s' "${TMPDIR:-/tmp}/larch-cursor-present-${_u:-larch}.stamp"
 }
 
 larch_stamp_path_codex() {
-    printf '%s' "${TMPDIR:-/tmp}/larch-codex-present-${USER:-larch}.stamp"
+    local _u="${USER//[^A-Za-z0-9._-]/}"
+    printf '%s' "${TMPDIR:-/tmp}/larch-codex-present-${_u:-larch}.stamp"
 }
 
 # Reads stamp if fresh; sets named variable from first line; returns 0 on hit.
@@ -115,7 +117,7 @@ larch_run_one_cursor_probe() {
     probe_out=$(mktemp "${TMPDIR:-/tmp}/larch-cursor-probe.XXXXXX") || return 1
 
     _SERIAL_LOCK=""
-    external_serial_lock_acquire _SERIAL_LOCK "cursor"
+    external_serial_lock_acquire _SERIAL_LOCK "cursor" || { rm -f "$probe_out"; return 1; }
     # shellcheck disable=SC2086
     cursor agent -p "Respond with OK" --trust --workspace "$PWD" \
         ${CURSOR_AUTH_ARGS[@]+"${CURSOR_AUTH_ARGS[@]}"} >"$probe_out" 2>&1 &
@@ -158,7 +160,7 @@ larch_run_one_codex_probe() {
     : >"$probe_side"
 
     _SERIAL_LOCK=""
-    external_serial_lock_acquire _SERIAL_LOCK "codex"
+    external_serial_lock_acquire _SERIAL_LOCK "codex" || { rm -f "$probe_out" "$probe_side"; return 1; }
     codex exec --sandbox read-only -C "$PWD" --output-last-message "$probe_out" -- "Respond with OK" \
         >/dev/null 2>>"$probe_side" &
     probe_pid=$!
@@ -207,7 +209,7 @@ else
         cursor_auth_preflight || _pf_rc=$?
         if (( _pf_rc == 2 )); then
             CURSOR_PRESENT=false
-            larch_write_bool_stamp "$(larch_stamp_path_cursor)" "$CURSOR_PRESENT"
+            larch_write_bool_stamp "$(larch_stamp_path_cursor)" "$CURSOR_PRESENT" || true
         else
             CURSOR_AUTH_ARGS=()
             cursor_preread_service_token
@@ -233,7 +235,7 @@ else
                 done
             fi
             cursor_launcher_cleanup_private_config_dir
-            larch_write_bool_stamp "$(larch_stamp_path_cursor)" "$CURSOR_PRESENT"
+            larch_write_bool_stamp "$(larch_stamp_path_cursor)" "$CURSOR_PRESENT" || true
         fi
     fi
 fi
@@ -264,7 +266,7 @@ else
             CODEX_PRESENT=false
             break
         done
-        larch_write_bool_stamp "$(larch_stamp_path_codex)" "$CODEX_PRESENT"
+        larch_write_bool_stamp "$(larch_stamp_path_codex)" "$CODEX_PRESENT" || true
     fi
 fi
 

@@ -42,6 +42,7 @@
 #   REPO_UNAVAILABLE=true|false Output unless --skip-repo-check
 #   CODEX_PRESENT=true|false    Output when --check-reviewers, or passthrough from --caller-env
 #   CURSOR_PRESENT=true|false   Output when --check-reviewers, or passthrough from --caller-env
+#   CODEX_AVAILABLE/CURSOR_AVAILABLE  Backward-compat aliases for CODEX_PRESENT/CURSOR_PRESENT
 #   CODEX_BINARY_FOUND=true|false  Output when --check-reviewers (command -v before probe)
 #   CURSOR_BINARY_FOUND=true|false Output when --check-reviewers
 #   LARCH_TOKEN_SESSION_ID=<id> Output when passthrough from --caller-env, in both probe and passthrough branches
@@ -113,6 +114,8 @@ CALLER_REPO=""
 CALLER_REPO_UNAVAILABLE=""
 CALLER_CODEX_PRESENT=""
 CALLER_CURSOR_PRESENT=""
+CALLER_CODEX_BINARY_FOUND=""
+CALLER_CURSOR_BINARY_FOUND=""
 CALLER_TOKEN_SESSION_ID=""
 CALLER_CLAUDE_SOURCE_FILE=""
 CALLER_TIMING_LEDGER=""
@@ -137,6 +140,8 @@ if [[ -n "$CALLER_ENV" && -f "$CALLER_ENV" ]]; then
             REPO_UNAVAILABLE)  CALLER_REPO_UNAVAILABLE="$value" ;;
             CODEX_PRESENT|CODEX_AVAILABLE)     CALLER_CODEX_PRESENT="$value" ;;
             CURSOR_PRESENT|CURSOR_AVAILABLE)    CALLER_CURSOR_PRESENT="$value" ;;
+            CODEX_BINARY_FOUND) CALLER_CODEX_BINARY_FOUND="$value" ;;
+            CURSOR_BINARY_FOUND) CALLER_CURSOR_BINARY_FOUND="$value" ;;
             LARCH_TOKEN_SESSION_ID) CALLER_TOKEN_SESSION_ID="$value" ;;
             LARCH_CLAUDE_SOURCE_FILE) CALLER_CLAUDE_SOURCE_FILE="$value" ;;
             LARCH_TIMING_LEDGER) CALLER_TIMING_LEDGER="$value" ;;
@@ -416,6 +421,12 @@ else
         emit_kv CURSOR_PRESENT "$CALLER_CURSOR_PRESENT"
         emit_kv CURSOR_AVAILABLE "$CALLER_CURSOR_PRESENT"
     fi
+    if [[ -n "$CALLER_CODEX_BINARY_FOUND" ]]; then
+        emit_kv CODEX_BINARY_FOUND "$CALLER_CODEX_BINARY_FOUND"
+    fi
+    if [[ -n "$CALLER_CURSOR_BINARY_FOUND" ]]; then
+        emit_kv CURSOR_BINARY_FOUND "$CALLER_CURSOR_BINARY_FOUND"
+    fi
     if [[ -n "$CALLER_TOKEN_SESSION_ID" ]]; then
         emit_kv LARCH_TOKEN_SESSION_ID "$CALLER_TOKEN_SESSION_ID"
     fi
@@ -424,8 +435,8 @@ else
     fi
     FINAL_CODEX_PRESENT="${CALLER_CODEX_PRESENT:-}"
     FINAL_CURSOR_PRESENT="${CALLER_CURSOR_PRESENT:-}"
-    FINAL_CODEX_BINARY_FOUND=""
-    FINAL_CURSOR_BINARY_FOUND=""
+    FINAL_CODEX_BINARY_FOUND="${CALLER_CODEX_BINARY_FOUND:-}"
+    FINAL_CURSOR_BINARY_FOUND="${CALLER_CURSOR_BINARY_FOUND:-}"
 fi
 
 if [[ "$CHECK_REVIEWERS" == "true" ]]; then
