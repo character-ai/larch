@@ -46,9 +46,24 @@ are written outside `larch-log.sh` batch plumbing, such as `final-summary.md`.
 
 ## Testing override
 
-When `LARCH_VERIFY_MANIFEST` is set to an absolute or repo-relative path, the
-verifier reads that TSV instead of `docs/run-logs-required-files.tsv`. This is
-intended for harnesses only; production callers should omit it.
+When `LARCH_VERIFY_MANIFEST` is set to a non-empty value, the verifier reads
+that TSV instead of `docs/run-logs-required-files.tsv`. This is intended for
+harnesses only; production callers should omit it.
+
+- **Absolute paths** are used as given.
+- **Relative paths** are resolved from the repository root (the directory
+  containing `docs/` inferred from `verify-run-log-completeness.sh`'s install
+  location), not from the process current working directory. A leading `./` is
+  stripped; repeated `//` segments in the joined path are collapsed.
+
+Do **not** export `LARCH_VERIFY_MANIFEST` from shell profiles, shared CI
+images, or other ambient environment: an exported value silently overrides the
+canonical manifest. Prefer a per-command assignment
+(`LARCH_VERIFY_MANIFEST=… cmd …`) when an explicit override is required. The
+`make test-verify-run-log-completeness` recipe runs under `env -u
+LARCH_VERIFY_MANIFEST`, and `scripts/test-verify-run-log-completeness.sh`
+unsets any inherited value at startup so default-case assertions use
+`docs/run-logs-required-files.tsv`.
 
 ## Callers
 

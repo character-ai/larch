@@ -3,6 +3,9 @@
 
 set -euo pipefail
 
+# Drop inherited ambient override so default-case tests use the canonical manifest.
+unset LARCH_VERIFY_MANIFEST
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 VERIFY="$SCRIPT_DIR/verify-run-log-completeness.sh"
 MANIFEST="$SCRIPT_DIR/../docs/run-logs-required-files.tsv"
@@ -85,6 +88,10 @@ run_ok="$TMP/run-ok"
 make_complete_run_dir "$run_ok"
 out="$("$VERIFY" "$run_ok" 2>&1 || true)"
 assert_contains "complete run emits OK" "$out" "OK"
+
+# Test 15: repo-relative LARCH_VERIFY_MANIFEST resolves under REPO_ROOT (not process cwd)
+out="$(cd "$TMP" && LARCH_VERIFY_MANIFEST="docs/run-logs-required-files.tsv" "$VERIFY" "$run_ok" 2>&1 || true)"
+assert_contains "relative manifest path resolves from repo root" "$out" "OK"
 
 # Test 2: missing execution-issues.ndjson from a Step-7a-complete run → MISSING reported
 run_missing_step7a="$TMP/run-missing-step7a"

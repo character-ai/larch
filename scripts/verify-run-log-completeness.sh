@@ -6,7 +6,20 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd -P)"
-MANIFEST="${LARCH_VERIFY_MANIFEST:-$REPO_ROOT/docs/run-logs-required-files.tsv}"
+if [[ -n "${LARCH_VERIFY_MANIFEST:-}" ]]; then
+    if [[ "$LARCH_VERIFY_MANIFEST" = /* ]]; then
+        MANIFEST="$LARCH_VERIFY_MANIFEST"
+    else
+        # Relative paths resolve from repository root, not the process cwd.
+        _rel="${LARCH_VERIFY_MANIFEST#./}"
+        MANIFEST="$REPO_ROOT/$_rel"
+        while [[ "$MANIFEST" == *//* ]]; do
+            MANIFEST="${MANIFEST//\/\//\/}"
+        done
+    fi
+else
+    MANIFEST="$REPO_ROOT/docs/run-logs-required-files.tsv"
+fi
 
 usage() {
     printf 'Usage: verify-run-log-completeness.sh <larch-logs/implement/RUN_ID/>\n' >&2

@@ -659,7 +659,7 @@ test-capture-session-transcript:
 	bash scripts/harness-timer.sh $@ bash scripts/test-capture-session-transcript.sh
 
 test-verify-run-log-completeness:
-	bash scripts/harness-timer.sh $@ bash scripts/test-verify-run-log-completeness.sh
+	env -u LARCH_VERIFY_MANIFEST bash scripts/harness-timer.sh $@ bash scripts/test-verify-run-log-completeness.sh
 
 test-local-cleanup:
 	bash scripts/harness-timer.sh $@ bash scripts/test-local-cleanup.sh
