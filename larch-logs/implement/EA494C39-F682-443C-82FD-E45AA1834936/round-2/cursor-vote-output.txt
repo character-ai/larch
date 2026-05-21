@@ -1,0 +1,32 @@
+Reading diff/plan context and verifying cited files in the workspace.
+
+FINDING_1: YES
+FINDING_2: EXONERATE -- release changelog already ties JSONL/harness changes to this bump; splitting is optional process churn
+FINDING_3: EXONERATE -- HARD-only stderr note is minor asymmetry with little operational cost versus duplicating noise on SIMPLE
+FINDING_4: YES
+FINDING_5: EXONERATE -- scope mixing is real but belongs in PR narrative, not a new tracking issue
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: EXONERATE -- same low-value symmetry argument as FINDING_3
+FINDING_9: EXONERATE -- CHANGELOG and compose docs already flag strict category/schema behavior for this release
+FINDING_10: YES
+FINDING_11: EXONERATE -- ballot itself treats large run-log churn as intentional policy, not actionable debt
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: EXONERATE -- other Step 5 / larch-log structure assertions still anchor the SKILL contract after the planned grep removal
+FINDING_15: EXONERATE -- README, AGENTS, and configuration-and-permissions already remove /imaq / /imq and describe strict-permissions forms
+FINDING_16: EXONERATE -- optional stderr substring test adds CI fragility for limited signal
+FINDING_17: YES
+FINDING_18: YES
+FINDING_19: YES
+FINDING_20: YES
+FINDING_21: YES
+FINDING_22: EXONERATE -- duplicate of FINDING_3/8; same rationale
+FINDING_23: YES
+FINDING_24: YES
+FINDING_25: YES
+FINDING_26: EXONERATE -- same rationale as FINDING_2; plan fidelity satisfied via changelog coupling
+FINDING_27: YES
+FINDING_28: EXONERATE -- CHANGELOG explicitly documents legacy QUICK_MODE persistence as intentional compatibility
+FINDING_29: EXONERATE -- stacked-topic branch is process guidance, not defect tracking
+FINDING_30: EXONERATE -- Pattern B is an illustrative shorthand; full fix-issue Step 5a remains authoritative in the skill

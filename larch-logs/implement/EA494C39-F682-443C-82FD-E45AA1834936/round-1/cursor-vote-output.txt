@@ -1,0 +1,36 @@
+Reading the ballot and nearby session files for verification.
+
+Reading key workspace files to verify ballot claims (diff-context exceeds size limits).
+
+FINDING_1: YES
+FINDING_2: EXONERATE -- landing one PR with explicit CHANGELOG/PR scope beats splitting compose miner work mid-release
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: EXONERATE -- script header already flags historical Makefile name and unified contract
+FINDING_6: EXONERATE -- one-line doc example; fix opportunistically without opening an issue
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: EXONERATE -- plan omission is recoverable via PR summary without blocking merge on a split
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: EXONERATE -- commit-shape noise is not product-defect material for an issue
+FINDING_13: YES
+FINDING_14: EXONERATE -- same rationale as FINDING_2 for same-branch compose tests
+FINDING_15: EXONERATE -- docs-sync harness plus existing Step 5 structural checks already cover major drift
+FINDING_16: EXONERATE -- committed run logs are policy-driven noise outside functional review
+FINDING_17: EXONERATE -- orthogonal doc as ballot states; no plan-fidelity gap
+FINDING_18: YES
+FINDING_19: EXONERATE -- vague replacement grep risks false positives without proportional gain
+FINDING_20: YES
+FINDING_21: YES
+FINDING_22: EXONERATE -- generic transcript blast-radius concern not introduced by this PR’s logic
+FINDING_23: YES
+FINDING_24: YES
+FINDING_25: YES
+FINDING_26: YES
+FINDING_27: EXONERATE -- same as FINDING_5; comments already mitigate confusion
+FINDING_28: EXONERATE -- same as FINDING_9; PR body can own extra harness scope
+FINDING_29: YES
+FINDING_30: YES
+FINDING_31: EXONERATE -- out-of-scope per ballot; no plan item gap
+FINDING_32: EXONERATE -- out-of-scope run-log policy per ballot
