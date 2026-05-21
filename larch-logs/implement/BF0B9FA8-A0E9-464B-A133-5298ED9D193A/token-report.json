@@ -222,14 +222,47 @@
           "total": 0
         },
         "skills": []
+      },
+      {
+        "step": "Step 8a — changelog",
+        "totals": {
+          "input": 0,
+          "cache_read": 0,
+          "cache_create": 0,
+          "output": 0,
+          "total": 0
+        },
+        "skills": []
+      },
+      {
+        "step": "Step 8b — rebase",
+        "totals": {
+          "input": 11,
+          "cache_read": 3226454,
+          "cache_create": 7121,
+          "output": 5503,
+          "total": 3239089
+        },
+        "skills": [
+          {
+            "skill": "inferred:Step 8b — rebase",
+            "totals": {
+              "input": 11,
+              "cache_read": 3226454,
+              "cache_create": 7121,
+              "output": 5503,
+              "total": 3239089
+            }
+          }
+        ]
       }
     ],
     "totals": {
-      "input": 229,
-      "cache_read": 47495284,
-      "cache_create": 1904501,
-      "output": 110422,
-      "total": 49510436
+      "input": 240,
+      "cache_read": 50721738,
+      "cache_create": 1911622,
+      "output": 115925,
+      "total": 52749525
     }
   }
 }
