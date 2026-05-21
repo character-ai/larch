@@ -176,9 +176,28 @@ $matches"
   fi
 done
 
-# Check 6: SKILL.md Step 3 'all reviewers OK' branch must reference Step 3.5 (not Step 3a/3b).
+# Check 6: SKILL.md Step 3 'all reviewers OK' branch must reference Step 3.5 (not Step 3a/3b),
+# and Step 3.5 must precede Step 3b in the file so routing cannot skip discussion r2.
 grep -qF 'proceed to Step 3.5' "$SKILL_MD" \
   || fail "SKILL.md Step 3 'all reviewers OK' branch must point forward to 'Step 3.5' (issue #453: Step-3a removal residue pin)"
+grep -qF '<!-- step:3b' "$SKILL_MD" \
+  || fail "SKILL.md must retain the Step 3b step marker after Step 3.5 (routing fail-closed pin)"
+awk '
+  index($0, "<!-- step:3.5") && !s { s = NR }
+  index($0, "<!-- step:3b") && !b { b = NR }
+  END {
+    if (!s) exit 2
+    if (!b) exit 3
+    if (s >= b) exit 1
+  }
+' "$SKILL_MD" || check6_order=$?
+case "${check6_order:-0}" in
+  0) ;;
+  1) fail "SKILL.md must place <!-- step:3.5 before <!-- step:3b (no Step-3.5→3b routing skip)" ;;
+  2) fail "SKILL.md missing <!-- step:3.5 marker (Step 3.5 routing pin)" ;;
+  3) fail "SKILL.md missing <!-- step:3b marker (Step 3b routing pin)" ;;
+  *) fail "unexpected Check 6 step-order awk exit: ${check6_order:-?}" ;;
+esac
 
 # Check 7 (#661): plan-review.md collect-agent-results.sh invocation must carry
 # both --substantive-validation AND --validation-mode on the SAME line as --timeout

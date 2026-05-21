@@ -18,6 +18,6 @@
 
 Extraction boundary: `^### 5a` (start, prefix match) through `^<!-- step:6` (end, prefix match; the real anchor is `<!-- step:6 — Finalize -->`). This scopes the assertions to Step 5a so stray mentions of these literals elsewhere in `SKILL.md` cannot false-pass the harness.
 
-The harness is wired into `make lint` via the `test-fix-issue-bail-detection` target in `Makefile`. It is added to `agent-lint.toml`'s `exclude` list alongside its sibling contract `.md` because agent-lint's dead-script and S030/orphaned-skill-files rules do not follow Makefile-only references. The paired token-literal assertion on the emitter side lives in `scripts/test-implement-structure.sh` (pins the same token in `skills/implement/SKILL.md`); a rename of the bail token is therefore a dual-repo change caught by CI.
+The harness is wired into `make lint` via the `test-fix-issue-bail-detection` target in `Makefile`. It is added to `agent-lint.toml`'s `exclude` list alongside its sibling contract `.md` because agent-lint's dead-script and S030/orphaned-skill-files rules do not follow Makefile-only references. `scripts/test-implement-structure.sh` pins unrelated `/implement` SKILL.md invariants separately; changing Step 5a literals still requires updating this harness and this contract in the same PR as `skills/fix-issue/SKILL.md`.
 
 Edit-in-sync: if the Step 5a narrative rewords any of the literal assertions or restructures the bail branch, update this harness and this contract in the same PR.
