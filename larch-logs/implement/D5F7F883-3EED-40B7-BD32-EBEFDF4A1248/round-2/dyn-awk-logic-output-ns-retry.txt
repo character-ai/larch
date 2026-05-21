@@ -1,0 +1,15 @@
+Gathering the diff and relevant source context for the awk logic review.
+
+Reading the full `extract_category` awk program to compare the `^##` and `^### FINDING_` branches and verify strict/non-strict behavior.
+
+Checking how `jsonl-field` scan patterns are parsed and whether the new `rej-category-blank` jq expression is valid.
+
+Checking jq `test()` regex: the scan uses a single `#` in the pattern string — verify it doesn't break jq.
+
+Creating the plan file is not requested — the user asked for a formatted review only. Responding with the required headers and content.
+
+### In-Scope Findings
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+NO_ISSUES_FOUND

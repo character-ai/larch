@@ -1,0 +1,5 @@
+Gathering the diff and commit list for a security-focused review.
+
+Reading `extract_category` invocation and surrounding code for shell/awk safety.
+
+NO_ISSUES_FOUND

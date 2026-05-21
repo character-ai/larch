@@ -1,0 +1,19 @@
+FINDING_1: YES
+FINDING_2: EXONERATE -- pre-existing path not touched by this diff; redaction guards bound the exposure
+FINDING_3: NO -- committed larch-logs are normal and intentional per repo conventions
+FINDING_4: NO -- this is a positive acknowledgment that jq works, not a bug; no issue to file
+FINDING_5: YES
+FINDING_6: EXONERATE -- duplicate of FINDING_5
+FINDING_7: NO -- finding itself says "pre-existing intentional run-log snapshot noise per docs, not a product bug"
+FINDING_8: NO -- same as FINDING_7
+FINDING_9: EXONERATE -- stricter triple-hash behavior is intentional and the updated md documents it; plan wording alignment is trivial churn
+FINDING_10: YES
+FINDING_11: EXONERATE -- duplicate of FINDING_1
+FINDING_12: YES
+FINDING_13: EXONERATE -- duplicate of FINDING_1
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: EXONERATE -- intentional asymmetry; the ## path is deliberately more permissive and the strict triple-hash behavior is the design goal
+FINDING_17: EXONERATE -- duplicate of FINDING_16
+FINDING_18: EXONERATE -- duplicate of FINDING_12
+FINDING_19: EXONERATE -- adding jq fixture infrastructure for audit scan rows exceeds the benefit of this narrow coverage gap
