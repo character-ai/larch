@@ -1329,13 +1329,42 @@ set +e
 set -e
 if [ -f "$sentinel_dir/larch-log-calls.txt" ]; then
     if grep -q "manifest" "$sentinel_dir/larch-log-calls.txt" && \
-       grep -q "status=done" "$sentinel_dir/larch-log-calls.txt"; then
-        ok "postmerge manifest finalization calls larch-log manifest with status=done when PR_CLOSED=true"
+       grep -q "status=done" "$sentinel_dir/larch-log-calls.txt" && \
+       grep -q "^LARCH_LOG_ARGS=commit" "$sentinel_dir/larch-log-calls.txt"; then
+        ok "postmerge manifest finalization calls larch-log manifest with status=done and post-merge log commit when PR_CLOSED=true"
     else
-        fail "postmerge manifest finalization: expected larch-log manifest with status=done; got: $(cat "$sentinel_dir/larch-log-calls.txt")"
+        fail "postmerge manifest finalization: expected larch-log manifest with status=done and commit; got: $(cat "$sentinel_dir/larch-log-calls.txt")"
     fi
 else
     fail "postmerge manifest finalization: larch-log.sh stub was not called (PR_CLOSED=true path)"
+fi
+rm -rf "$sentinel_dir"
+
+# Postmerge: LARCH_NO_LOGS_COMMIT skips the post-merge larch-log commit (manifest + report still run).
+root=$(make_repo postmerge_no_logs_commit)
+tmp=$(make_tmpdir)
+sentinel_dir=$(mktemp -d /tmp/ship-pr-postmerge-no-logs-commit.XXXXXX)
+mkdir -p "$tmp/larch-logs/implement/test-run"
+printf '{"status":"in-progress"}\n' > "$tmp/larch-logs/implement/test-run/manifest.json"
+write_state "$tmp/ship-pr-state.sh" postmerge
+awk -F= '{if ($1=="PR_CLOSED") print "PR_CLOSED=true"; else print}' \
+    "$tmp/ship-pr-state.sh" > "$tmp/ship-pr-state.sh.new" \
+    && mv "$tmp/ship-pr-state.sh.new" "$tmp/ship-pr-state.sh"
+set +e
+(cd "$root" && LARCH_LOG_STUB_SENTINEL_DIR="$sentinel_dir" CLAUDE_PLUGIN_ROOT="$root" \
+    "$root/scripts/ship-pr.sh" --state-file "$tmp/ship-pr-state.sh" --implement-tmpdir "$tmp" \
+    --merge true --draft false --forked false --repo owner/repo --no-logs-commit true \
+    > "$tmp/stdout-postmerge-nolc" 2>&1)
+set -e
+if [ -f "$sentinel_dir/larch-log-calls.txt" ]; then
+    if grep -q "status=done" "$sentinel_dir/larch-log-calls.txt" && \
+       ! grep -q "^LARCH_LOG_ARGS=commit" "$sentinel_dir/larch-log-calls.txt"; then
+        ok "postmerge with LARCH_NO_LOGS_COMMIT skips larch-log commit after manifest"
+    else
+        fail "postmerge no-logs-commit: expected manifest status=done without commit; got: $(cat "$sentinel_dir/larch-log-calls.txt")"
+    fi
+else
+    fail "postmerge no-logs-commit: larch-log.sh stub was not called"
 fi
 rm -rf "$sentinel_dir"
 

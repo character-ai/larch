@@ -1682,7 +1682,7 @@ EOF
 }
 
 run_postmerge_phase() {
-    local rc fail_file
+    local rc fail_file final_report_output
     emit_breadcrumb "→ ship-pr: postmerge"
     write_finalize_state
     fail_file=$(failure_capture_path postmerge)
@@ -1741,6 +1741,24 @@ run_postmerge_phase() {
                 > "$fail_file" 2>&1
             rc=$?
             [ "$rc" -eq 0 ] || record_failure postmerge "larch-log.sh manifest" "$rc" "$fail_file" Warnings
+            # Re-render final-summary.md now that MERGE_RESULT is set in state, so the
+            # committed run-log reflects OUTCOME=merged (pre-merge pass wrote bailed).
+            fail_file=$(failure_capture_path postmerge)
+            final_report_output=$("$SCRIPT_DIR/../skills/implement/scripts/write-final-report.sh" \
+                --implement-tmpdir "$IMPLEMENT_TMPDIR" 2>"$fail_file")
+            rc=$?
+            printf '%s\n' "$final_report_output" >> "$fail_file"
+            [ "$rc" -eq 0 ] || record_failure postmerge "write-final-report.sh (postmerge)" "$rc" "$fail_file" Warnings
+            if [ "${LARCH_NO_LOGS_COMMIT:-false}" != "true" ]; then
+                fail_file=$(failure_capture_path postmerge)
+                "$SCRIPT_DIR/larch-log.sh" commit \
+                    --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
+                    --skill implement \
+                    --run-id "$flush_run_id" \
+                    > "$fail_file" 2>&1
+                rc=$?
+                [ "$rc" -eq 0 ] || record_failure postmerge "larch-log.sh commit (postmerge)" "$rc" "$fail_file" Warnings
+            fi
         fi
     fi
     advance_phase "done"
