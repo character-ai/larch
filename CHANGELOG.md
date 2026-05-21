@@ -13,6 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Route final markdown through write-final-report with --print-stdout, persist post-plan flags for accurate mode display, and refresh final-summary on every pre-push log refresh without waiting for PR_URL.
 - Document per-vendor rate env vars, run-log final-summary shape, and tighten structure tests plus agent-lint exclusions for Makefile-only harnesses.
 
+- Empty invocations should follow the same since-last-audit PR window instead of failing on usage alone.
+- Prior audit-report discovery and frontmatter errors stay aligned with the explicit since-last-audit path.
+- Refresh the SKILL contract and offline harness so docs and tests describe the same default.
 ## [29.8.55] - 2026-05-20
 
 ### Changed
