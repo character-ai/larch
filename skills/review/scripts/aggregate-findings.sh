@@ -280,6 +280,8 @@ def finding_id_from_block(block):
 
 
 def normalize_slot(sl):
+    # Symmetric contract: input and output slot tokens strip one trailing
+    # parenthetical suffix so labels that differ only by "(...)" collapse.
     return re.sub(r"\s*\([^)]*\)\s*$", "", sl).strip()
 
 
@@ -309,8 +311,7 @@ def main():
         return 1
     blocks = output_blocks(outtext)
     if not blocks:
-        if not input_blocks(intext):
-            return 0
+        # input_slot_set non-empty (checked above) ⇒ structured input findings exist.
         if not any(line.strip() == EMPTY_MERGE_ATTESTATION for line in outtext.splitlines()):
             print(
                 "zero merged FINDING blocks while input had findings; "
@@ -376,7 +377,13 @@ fi
 # Atomic replace: never truncate the live ballot until the staged copy validates.
 merged_tmp="$(mktemp "$REVIEW_TMPDIR/findings.md.merged.XXXXXX")"
 trap 'rm -f "${merged_tmp:-}"' EXIT
-awk 1 "$cand" > "$merged_tmp"
+if [[ "$(count_finding_blocks "$cand")" -eq 0 ]]; then
+    # Attestation is validated on raw vendor output; strip before persisting the ballot.
+    grep -v -x 'LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED' "$cand" >"$merged_tmp" || true
+    [[ -s "$merged_tmp" ]] || printf '\n' >"$merged_tmp"
+else
+    awk 1 "$cand" >"$merged_tmp"
+fi
 [[ -s "$merged_tmp" ]] || {
     REASON="validation-failed"
     FAILURE_LOG="$REVIEW_TMPDIR/aggregator-empty-merge.stderr"
@@ -390,8 +397,5 @@ trap - EXIT
 MERGED_COUNT="$(count_finding_blocks "$FINDINGS_FILE")"
 AGGREGATED=true
 REASON="ok"
-if [[ "$MERGED_COUNT" -eq 0 && "$INPUT_COUNT" -ge 2 ]]; then
-    REASON="ok-zero-findings"
-fi
 emit_result
 exit 0

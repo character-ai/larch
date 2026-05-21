@@ -33,8 +33,10 @@ Primary output is the structured finding list. For each finding include:
 
 Do not vote, reject, or apply fixes. Do not include raw reviewer transcripts unless the caller explicitly asks for diagnostic output.
 
-When your structured output contains **no** `### FINDING_N:` blocks (every input finding was treated as a duplicate or otherwise fully subsumed), include a final line exactly:
+When your structured output contains **no** `### FINDING_N:` blocks (every input finding was treated as a duplicate or otherwise fully subsumed), end the file with this exact line as plain text (no backticks, no list markers, no Markdown wrappers):
 
-`LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED`
+```text
+LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED
+```
 
-That line is machine-verified; omitting it fails aggregation. You may precede it with brief narrative explaining the empty merge.
+That token is machine-verified; omitting it fails aggregation. You may precede it with brief narrative explaining the empty merge.

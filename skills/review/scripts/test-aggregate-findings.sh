@@ -97,6 +97,12 @@ LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED
 
 EOF
                 ;;
+            zero_findings_no_attest)
+                cat > "$out" <<'EOF'
+Aggregator narrative: all input findings were resolved as duplicates; no merged FINDING blocks.
+
+EOF
+                ;;
             labelled_slot)
                 cat > "$out" <<'EOF'
 ### FINDING_1: merged title
@@ -319,10 +325,28 @@ AGGREGATE_STUB_MERGE_KIND=zero_findings \
     --cursor-present true \
     --mode diff >"$TMP/out-zero.env"
 grep -Fq 'AGGREGATED=true' "$TMP/out-zero.env" || fail "zero-findings AGGREGATED"
-grep -Fq 'REASON=ok-zero-findings' "$TMP/out-zero.env" || fail "zero-findings REASON"
+grep -Fq 'REASON=ok' "$TMP/out-zero.env" || fail "zero-findings REASON"
 grep -Fq 'MERGED_COUNT=0' "$TMP/out-zero.env" || fail "zero-findings MERGED_COUNT"
 grep -Fq 'INPUT_COUNT=3' "$TMP/out-zero.env" || fail "zero-findings INPUT_COUNT"
 [[ "$(grep -c '^### FINDING_' "$TMP/in3-zero.md" | tr -d '[:space:]')" == "0" ]] || fail "expected zero FINDING blocks after zero-findings merge"
+grep -Fq 'LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED' "$TMP/in3-zero.md" && fail "attestation must not persist in findings.md"
+cmp -s "$TMP/in3.md" "$TMP/in3-zero.md" && fail "expected findings.md rewritten on zero-findings merge"
+
+echo "=== zero output without empty-merge attestation fails validation ==="
+cp "$TMP/in3.md" "$TMP/in3-zero-na.md"
+write_stub_dispatch
+AGGREGATE_DISPATCH_SH="$TMP/stub-dispatch.sh" \
+AGGREGATE_STUB_MODE=ok \
+AGGREGATE_STUB_MERGE_KIND=zero_findings_no_attest \
+"$AGG" \
+    --findings-file "$TMP/in3-zero-na.md" \
+    --review-tmpdir "$TMP" \
+    --codex-present true \
+    --cursor-present true \
+    --mode diff >"$TMP/out-zero-na.env"
+grep -Fq 'AGGREGATED=false' "$TMP/out-zero-na.env" || fail "no-attest AGGREGATED"
+grep -Fq 'REASON=validation-failed' "$TMP/out-zero-na.env" || fail "no-attest REASON"
+cmp -s "$TMP/in3.md" "$TMP/in3-zero-na.md" || fail "findings unchanged when attestation missing"
 
 echo "=== labelled reviewer slot suffix accepted (#2536) ==="
 cp "$TMP/in3.md" "$TMP/in3-label.md"
