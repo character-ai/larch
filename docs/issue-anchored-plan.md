@@ -19,6 +19,29 @@ tracking issue. See `docs/run-logs.md` (tracking-issue comment contracts) and
 `skills/implement/references/summary-comment-template.md`. The name family
 overlaps (`larch:plan`); the **surface and syntax differ**.
 
+### Which issue carries the plan body vs clarification vs tracking summaries
+
+- **Plan body** (`<!-- larch:plan:start -->` … `<!-- larch:plan:end -->`): lives
+  on the **plan anchor issue** — the GitHub issue whose description is the
+  canonical home for the embedded plan (often the feature or design issue for
+  the work item).
+- **Clarification markers** (`larch:clarify-request` / `larch:clarify-response`):
+  MUST appear in **issue comments on the same plan anchor issue** as the body
+  markers they pair with. Automation pairs requests and responses by `id`
+  within that issue’s comment stream; it MUST NOT infer pairing from a
+  different issue’s thread.
+- **Tracking-issue summaries** (`<!-- larch:plan v1 runid=<R> -->` and related
+  digest comments): live on the **tracking issue** for the `/implement` run
+  (see `docs/run-logs.md`). They are **not** interchangeable with the plan
+  anchor’s body markers or clarification comments.
+
+When operators keep human plan prose on an issue **other than** the tracking
+issue, tooling MUST still treat only the issue that contains the
+`larch:plan:start` / `larch:plan:end` pair as the clarification and plan-update
+anchor. Tracking-issue digest markers do not relocate or substitute for that
+pairing surface unless an explicit, documented bridge (out of scope here)
+copies or links the threads.
+
 ## Plan Block Format
 
 A plan block is embedded in an issue body between two HTML comment markers:
@@ -45,15 +68,21 @@ Rules:
 
 ## Clarification Comment Markers
 
-When `/implement`'s audit step refuses to proceed, it posts a clarification
-request as an issue comment. After `/design` resolves the questions and updates
-the plan, it posts a matching response.
+**Target workflow (not yet implemented in-tree):** The markers in this section
+describe the intended wire format for a future clarification round-trip. Until
+in-repo tooling emits and parses them, operators MUST NOT assume that shipped
+`skills/` or `scripts/` will post or honor these comments.
+
+When a conforming `/implement` audit step would refuse to proceed, it would
+post a clarification request as an issue comment on the plan anchor issue.
+After `/design` resolves the questions and updates the plan body, it would
+post a matching response on that same issue.
 
 Each marker below is a **single** HTML comment line in an **issue comment
 body**; there is **no** paired “end” marker bounding the markdown (unlike the
 plan block's `larch:plan:start` / `larch:plan:end` pair).
 
-### Clarification Request (posted by `/implement`)
+### Clarification Request (target: to be posted by `/implement`)
 
 ```
 <!-- larch:clarify-request id=<N> -->
@@ -62,7 +91,7 @@ plan block's `larch:plan:start` / `larch:plan:end` pair).
 - Q2: ...
 ```
 
-### Clarification Response (posted by `/design`)
+### Clarification Response (target: to be posted by `/design`)
 
 ```
 <!-- larch:clarify-response id=<N> -->
@@ -82,6 +111,18 @@ Rules:
   thread is **ambiguous**; automation SHOULD refuse further progress until
   operators reconcile the comment stream so exactly one canonical response
   remains for that `id`.
+- If more than one `larch:clarify-request` appears with the same `id`, the
+  thread is **ambiguous**; automation SHOULD refuse further progress until
+  operators reconcile the comment stream so exactly one **canonical**
+  `larch:clarify-request` remains for that `id` before pairing with a
+  `larch:clarify-response`.
+- **Non-monotonic** `id` values (a later marker uses a smaller `id` than an
+  earlier marker in the anchor issue’s comment timeline) or **gaps** before any
+  response (e.g. a `larch:clarify-response id=<N>` appears while no canonical
+  `larch:clarify-request id=<N>` exists, or a response for `id=<N+1>` appears
+  before a canonical request for `id=<N>` has been satisfied) render pairing
+  **ambiguous**; automation SHOULD refuse further progress until identifiers and
+  ordering are reconciled.
 - Multiple round-trips stack as successive `id` values (1, 2, 3, …).
 
 ## Label State Machine
