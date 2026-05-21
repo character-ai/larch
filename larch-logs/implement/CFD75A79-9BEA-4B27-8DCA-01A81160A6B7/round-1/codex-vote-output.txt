@@ -1,0 +1,13 @@
+FINDING_1: NO -- larch-log flush metadata is expected and excluded from functional review scope.
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: EXONERATE -- the repeated Args wording is mild doc noise and the sub-bullet adds useful error-path detail.
+FINDING_6: EXONERATE -- the duplicate default wording is legitimate but not worth removing here.
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: EXONERATE -- the adjacency is mildly confusing but a comment is not worth requiring.
+FINDING_10: EXONERATE -- whitespace-only behavior is ambiguous but outside the requested empty/omitted default change.
+FINDING_11: YES
+FINDING_12: EXONERATE -- an integrated precedence test would add more harness complexity than this doc-level change warrants.
+FINDING_13: EXONERATE -- the test gap is real, but building a shared composed resolver is disproportionate for this change.

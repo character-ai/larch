@@ -1,0 +1,13 @@
+FINDING_1: EXONERATE -- factual larch-logs churn is out-of-scope noise but not worth opening a standalone tracking issue.
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: EXONERATE -- two adjacent Arg lines say the same default; drift risk is low versus doc churn.
+FINDING_6: EXONERATE -- duplicates FINDING_5 without adding a distinct defect surface.
+FINDING_7: EXONERATE -- same gap as FINDING_2/3 already captured; extra sentence adds little beyond Args.
+FINDING_8: YES
+FINDING_9: EXONERATE -- section headers already separate parser stubs from orchestration-level empty handling.
+FINDING_10: YES
+FINDING_11: EXONERATE -- duplicates FINDING_2’s normalization gap; one SKILL clarification fixes both.
+FINDING_12: EXONERATE -- speculative reorder failure without evidence tests are fragile to that mistake today.
+FINDING_13: EXONERATE -- deeper composed coverage is heavier than the incremental regression signal justified here.

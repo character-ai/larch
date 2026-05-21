@@ -1,0 +1,329 @@
+{
+  "vendors": [
+    "claude",
+    "codex",
+    "cursor"
+  ],
+  "claude": {
+    "per_step": [
+      {
+        "step": "Step 0 — preflight",
+        "totals": {
+          "input": 1,
+          "cache_read": 136381,
+          "cache_create": 845,
+          "output": 753,
+          "total": 137980
+        },
+        "skills": [
+          {
+            "skill": "larch:implement",
+            "totals": {
+              "input": 1,
+              "cache_read": 136381,
+              "cache_create": 845,
+              "output": 753,
+              "total": 137980
+            }
+          }
+        ]
+      },
+      {
+        "step": "Step 0.5 — tracking issue",
+        "totals": {
+          "input": 10,
+          "cache_read": 1382137,
+          "cache_create": 6372,
+          "output": 4275,
+          "total": 1392794
+        },
+        "skills": [
+          {
+            "skill": "larch:implement",
+            "totals": {
+              "input": 10,
+              "cache_read": 1382137,
+              "cache_create": 6372,
+              "output": 4275,
+              "total": 1392794
+            }
+          }
+        ]
+      },
+      {
+        "step": "Step 1 — design plan",
+        "totals": {
+          "input": 27,
+          "cache_read": 3966644,
+          "cache_create": 38498,
+          "output": 13796,
+          "total": 4018965
+        },
+        "skills": [
+          {
+            "skill": "larch:implement",
+            "totals": {
+              "input": 27,
+              "cache_read": 3966644,
+              "cache_create": 38498,
+              "output": 13796,
+              "total": 4018965
+            }
+          }
+        ]
+      },
+      {
+        "step": "Step 2 — implementation",
+        "totals": {
+          "input": 4,
+          "cache_read": 624782,
+          "cache_create": 2390,
+          "output": 1710,
+          "total": 628886
+        },
+        "skills": [
+          {
+            "skill": "larch:implement",
+            "totals": {
+              "input": 4,
+              "cache_read": 624782,
+              "cache_create": 2390,
+              "output": 1710,
+              "total": 628886
+            }
+          }
+        ]
+      },
+      {
+        "step": "Step 3 — checks first pass",
+        "totals": {
+          "input": 8,
+          "cache_read": 1260021,
+          "cache_create": 2574,
+          "output": 2738,
+          "total": 1265341
+        },
+        "skills": [
+          {
+            "skill": "larch:implement",
+            "totals": {
+              "input": 8,
+              "cache_read": 1260021,
+              "cache_create": 2574,
+              "output": 2738,
+              "total": 1265341
+            }
+          }
+        ]
+      },
+      {
+        "step": "Step 5 — code review",
+        "totals": {
+          "input": 12,
+          "cache_read": 1487340,
+          "cache_create": 446216,
+          "output": 7049,
+          "total": 1940617
+        },
+        "skills": [
+          {
+            "skill": "larch:implement",
+            "totals": {
+              "input": 12,
+              "cache_read": 1487340,
+              "cache_create": 446216,
+              "output": 7049,
+              "total": 1940617
+            }
+          }
+        ]
+      },
+      {
+        "step": "Step 6 — checks second pass",
+        "totals": {
+          "input": 15,
+          "cache_read": 2467251,
+          "cache_create": 6516,
+          "output": 5152,
+          "total": 2478934
+        },
+        "skills": [
+          {
+            "skill": "larch:implement",
+            "totals": {
+              "input": 15,
+              "cache_read": 2467251,
+              "cache_create": 6516,
+              "output": 5152,
+              "total": 2478934
+            }
+          }
+        ]
+      },
+      {
+        "step": "Step 8 — version bump",
+        "totals": {
+          "input": 0,
+          "cache_read": 0,
+          "cache_create": 0,
+          "output": 0,
+          "total": 0
+        },
+        "skills": []
+      }
+    ],
+    "totals": {
+      "input": 77,
+      "cache_read": 11324556,
+      "cache_create": 503411,
+      "output": 35473,
+      "total": 11863517
+    }
+  },
+  "codex": {
+    "per_step": [
+      {
+        "step": "Step 0 — preflight",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 0.5 — tracking issue",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 1 — design plan",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 2 — implementation",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 3 — checks first pass",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 5 — code review",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 41984
+        }
+      },
+      {
+        "step": "Step 6 — checks second pass",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 8 — version bump",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      }
+    ],
+    "totals": {
+      "input": 0,
+      "output": 0,
+      "total": 41984
+    }
+  },
+  "cursor": {
+    "per_step": [
+      {
+        "step": "Step 0 — preflight",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 0.5 — tracking issue",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 1 — design plan",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 2 — implementation",
+        "totals": {
+          "input": 30448,
+          "output": 4344,
+          "total": 276968
+        }
+      },
+      {
+        "step": "Step 3 — checks first pass",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 5 — code review",
+        "totals": {
+          "input": 173954,
+          "output": 33459,
+          "total": 1027381
+        }
+      },
+      {
+        "step": "Step 6 — checks second pass",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 8 — version bump",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      }
+    ],
+    "totals": {
+      "input": 204402,
+      "output": 37803,
+      "total": 1304349
+    }
+  }
+}
