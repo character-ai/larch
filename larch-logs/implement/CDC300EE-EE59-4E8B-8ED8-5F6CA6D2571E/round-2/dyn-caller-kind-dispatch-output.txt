@@ -1,0 +1,7 @@
+Gathering the diff, commit list, and references to `CALLER_KIND` / step8 tokens across the repo.
+
+### In-Scope Findings
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+- **architecture** `larch-logs/implement/*` (e.g. transcripts and older run artifacts under paths such as `larch-logs/implement/D5BFD794-E813-4433-8BB0-FDD2CB625417/session-transcript.jsonl` and `larch-logs/implement/E9C19A47-D709-44DE-B7F9-171907CAA537/`) — Pre-existing committed logs still mention the legacy `step8b_same_version` orchestrator phrasing; they are archival, not part of the `ship-pr.sh` / `SKILL.md` / harness wire contract, and were not required to change for exit-5 routing correctness. The new flushed tree `larch-logs/implement/CDC300EE-EE59-4E8B-8ED8-5F6CA6D2571E/plan-goals-test.md` intentionally documents the rename and therefore still contains the old token in narrative; that is documentation inside logs, not a runtime reader. **`scripts/implement-finalize.sh`** continues to emit `CALLER_KIND=step8b_rebase` only for the postbump conflict envelope (`scripts/implement-finalize.sh` around line 391 per repo grep); it does not participate in the same-version exit-5 path, so no matching change was required there. **`scripts/ship-pr.sh`** main-loop `CALLER_KIND` dispatch at `scripts/ship-pr.sh:1809-1814` only branches `step10_rebase_then_evaluate` vs default for `evaluate-failure`; it does not match on the step8 same-version token, so the rename does not affect that `case` arm.

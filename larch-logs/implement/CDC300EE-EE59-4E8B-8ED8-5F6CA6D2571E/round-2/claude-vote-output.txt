@@ -1,0 +1,6 @@
+FINDING_1: YES
+FINDING_2: EXONERATE -- cross-version resume is a narrow theoretical scenario; ship-pr.sh writes and reads the token within the same session/plugin version, making legacy-token passthrough essentially impossible in practice
+FINDING_3: EXONERATE -- garbled plan bullet is in an ephemeral run-log artifact, not in the codebase; reviewer self-assessed it as ignorable noise
+FINDING_4: EXONERATE -- committed run-log narrative is a historical artifact, not runtime behavior; no fix needed
+FINDING_5: EXONERATE -- under-described PR narrative for a specific run is not a general code defect worth tracking as a future issue
+FINDING_6: EXONERATE -- the code changes are correct; plan-context.txt is an older/narrower plan artifact that predates the fuller plan-goals-test.md; the inconsistency is editorial, not functional

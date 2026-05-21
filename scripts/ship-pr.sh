@@ -781,11 +781,11 @@ run_bump_phase() {
                 error_text=$(kv_value ERROR "$apply_out")
                 case "$error_text" in
                     origin/main\ has\ already\ bumped\ to*)
-                        state_set_many RESUME_PHASE bump CALLER_KIND step8b_same_version
+                        state_set_many RESUME_PHASE bump CALLER_KIND step8_apply_bump_same_version
                         exit 5
                         ;;
                     version\ regression:*)
-                        state_set_many RESUME_PHASE bump CALLER_KIND step8b_same_version
+                        state_set_many RESUME_PHASE bump CALLER_KIND step8_apply_bump_same_version
                         exit 5
                         ;;
                     *) exit_stall 8 ;;

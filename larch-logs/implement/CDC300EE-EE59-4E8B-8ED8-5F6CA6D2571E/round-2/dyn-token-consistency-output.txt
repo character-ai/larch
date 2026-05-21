@@ -1,0 +1,8 @@
+Gathering the diff, commit list, and repository-wide token occurrences for the review.
+
+### In-Scope Findings
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+- **code-quality** `scripts/ship-pr.md:44-72` — Exit code `5` is described only generically (`RESUME_PHASE` and `CALLER_KIND` are written), and the invariants section still documents only `CALLER_KIND=step8b_rebase` for postbump conflict, with no mention that the same exit code can persist `CALLER_KIND=step8_apply_bump_same_version` on the `apply-bump.sh` same-version and version-regression paths now implemented in `scripts/ship-pr.sh`. **Suggested fix:** Extend `scripts/ship-pr.md` (under exit `5` or invariants) to list both exit-5 `CALLER_KIND` wire values so operator-facing script docs stay aligned with `scripts/test-ship-pr.md` and `skills/implement/SKILL.md`.
+- **architecture** `larch-logs/implement/CDC300EE-EE59-4E8B-8ED8-5F6CA6D2571E/plan-goals-test.md:2-20` — The flushed run plan artifact still contains the literal substring `step8b_same_version` as historical migration narrative, while the branch’s stated narrow goal in `<feature_description>` was SKILL-only alignment; the functional change set correctly updates `scripts/`, `skills/`, and harnesses together. **Suggested fix:** No code change required for wire correctness; if maintainers want repo-wide greps for the legacy token to stay clean, scrub or rephrase those lines in committed run logs (policy-dependent).

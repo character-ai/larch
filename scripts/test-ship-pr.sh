@@ -866,14 +866,14 @@ tmp=$(make_tmpdir)
 write_state "$tmp/ship-pr-state.sh" bump
 STUB_APPLY_SAME_VERSION=true run_subject "$root" "$tmp" "$tmp/rc"
 assert_rc "$tmp/rc" 5 "same-version bump exits 5"
-assert_state_line "$tmp/ship-pr-state.sh" "CALLER_KIND=step8b_same_version" "same-version writes caller kind"
+assert_state_line "$tmp/ship-pr-state.sh" "CALLER_KIND=step8_apply_bump_same_version" "same-version writes caller kind"
 
 root=$(make_repo version_regression)
 tmp=$(make_tmpdir)
 write_state "$tmp/ship-pr-state.sh" bump
 STUB_APPLY_VERSION_REGRESSION=true run_subject "$root" "$tmp" "$tmp/rc"
 assert_rc "$tmp/rc" 5 "version-regression bump exits 5"
-assert_state_line "$tmp/ship-pr-state.sh" "CALLER_KIND=step8b_same_version" "version-regression writes caller kind"
+assert_state_line "$tmp/ship-pr-state.sh" "CALLER_KIND=step8_apply_bump_same_version" "version-regression writes caller kind"
 
 root=$(make_repo ci_initial)
 tmp=$(make_tmpdir)
