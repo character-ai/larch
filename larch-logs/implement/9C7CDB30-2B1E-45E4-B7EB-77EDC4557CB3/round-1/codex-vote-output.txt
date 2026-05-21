@@ -1,0 +1,12 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: NO -- category-stats is a separate broad metric, while cumulative mangled counters already use the narrowed oos-category-mangle scan.
+FINDING_4: EXONERATE -- the tests are shape-level, but factoring orchestration builders for a prompt-driven skill is more machinery than warranted here.
+FINDING_5: NO -- the harness numbering is internally sequential because a prior Test 55 already exists; mismatch with the transient plan is not a code defect.
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: NO -- the examples use placeholders/quoted arguments, and the claimed shell-injection risk is not demonstrated as a defect.
+FINDING_10: EXONERATE -- the committed run-log tree appears intentional under repo policy and is not worth a future tracking issue.
+FINDING_11: EXONERATE -- live gh/git integration coverage would be useful, but the offline harness limitation is acceptable and not issue-worthy.
+FINDING_12: NO -- this is a clarification/red herring, not an actionable future issue.

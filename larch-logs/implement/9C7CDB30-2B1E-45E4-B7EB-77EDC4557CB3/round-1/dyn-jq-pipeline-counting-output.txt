@@ -1,0 +1,15 @@
+Reviewing the diff and `scan_oos_category_mangle` vs `rej-category-blank` for correctness. Gathering the cited file regions.
+
+Checking how a failing `jq` in a command substitution behaves with `set -e` and `pipefail` in this script context:
+
+### In-Scope Findings
+
+- **correctness** `.claude/skills/audit-runs/scripts/audit-scan-run.sh:196-207` — `scan_oos_category_mangle` assigns `count` from `jq … | wc -l | tr …` with **no** trailing `|| echo 0`, while this script runs under `set -euo pipefail` (see lines 11–12). With `pipefail`, a **non-zero `jq` exit** (invalid JSONL, truncated file, I/O error) makes the **whole command substitution fail**, so execution aborts before emitting the `oos-category-mangle` NDJSON line instead of degrading to a controlled `pass`/`error` outcome. The prior implementation ended with `grep … || true`, which masked failures and always yielded a numeric `count`; sibling logic `scan_rej_category_blank` (lines 218–223) and the `category-stats` block (lines 418–422) both use `|| echo 0` on comparable `jq | wc -l | tr` pipelines, so this scan is now the **odd one out** and is **strictly less fault-tolerant** than `rej-category-blank` for the same input file. **Suggested fix:** align with `scan_rej_category_blank` / `category-stats` by appending `|| echo 0` to the substitution (or use the same `jq … 2>/dev/null || echo 0` pattern as `scan_changelog_rebase_conflicts` at lines 375–381), and decide explicitly whether a parse error should emit `result:"error"` for this scan versus silently counting zero.
+
+### Out-of-Scope Observations
+
+- **code-quality** `larch-logs/implement/9C7CDB30-2B1E-45E4-B7EB-77EDC4557CB3/` (new tree in the diff) — The branch adds a full implement run directory (`manifest.json`, `parent-issue.md`, `plan-goals-test.md`, etc.) via commit `4dedd457 chore(larch-logs): flush implement run …`. That is unrelated to the audit-runs behavior under review and looks like **local run-log noise** that normally should not ride along with a focused skill fix unless the repo intentionally commits such artifacts per policy.
+
+- **code-quality** `.claude/skills/audit-runs/scripts/test-audit-runs.sh` — New tests are numbered 56–61 in the diff while the attached implementation plan referenced 55–60; behavior is fine, only **label drift** versus the written plan.
+
+- Regarding **`.id` null** and `wc -l` (from the scout notes): for rows that pass `select`, `jq -r … | .id` emits one text line per matched object (`null` for JSON null), so `wc -l` still counts **one row per offending object**; that is not inherently miscounting versus the old category-line approach. The substantive issue is **`jq` failure handling under `pipefail`**, not the `null` literal edge case.

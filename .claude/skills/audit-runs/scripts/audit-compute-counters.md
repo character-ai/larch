@@ -28,7 +28,9 @@ CATEGORY_STATS_PARTIAL=false
 
 `SCAN_FILES_FOUND` counts readable `scan-results-*.ndjson` files actually aggregated (zero means no scan NDJSON was read — likely a wrong `--scan-results-dir` or filename pattern).
 
-`CATEGORY_STATS_PARTIAL=true` when any `scan-results-*.ndjson` contains a `category-stats` object with `partial_data: true` (missing `review-findings-full.jsonl` for that PR). In that case `OOS_CLEAN_DELTA` / `OOS_BLANK_DELTA` omit category-stats contributions for those PRs; totals still add other scans.
+`CATEGORY_STATS_PARTIAL=true` when any `scan-results-*.ndjson` contains a `category-stats` object with `partial_data: true` (missing JSONL, or jq/mangled aggregate unavailable while other fields may still be measured).
+
+`OOS_CLEAN_DELTA` / `OOS_BLANK_DELTA` omit category-stats contributions **only** when `partial_data` is paired with the missing-file detail `review-findings-full.jsonl not found` (zero placeholders for those counters). Other `partial_data` cases (for example mangled-category jq failure) still add `canonical` / `oos_blank` from the line; totals still add other scans.
 
 ## Schema stability / migration
 

@@ -237,6 +237,7 @@ audited_prs: [2440,2441,2442,2443,2444,2445,2446,2447,2448,2449,2450]
 prior_report_issue: 2463
 proposed_new_issues: []
 proposed_augmentations: []
+version_window_checks: []
 cumulative_counters:
   exon_misclassifications: 3
   oos_categories_mangled: 2
@@ -261,6 +262,10 @@ assert_equal "$ts" "2026-05-20T12:30-07:00" "[10b] audit_timestamp round-trips"
 # Extract prior_report_issue
 prior=$(awk '/^---$/{f=!f;next} f && /prior_report_issue:/{gsub(/.*prior_report_issue:[[:space:]]*/,""); print; exit}' "$TMPDIR_TEST/report.md")
 assert_equal "$prior" "2463" "[10c] prior_report_issue round-trips"
+
+# Extract version_window_checks (scalar empty list form)
+vwc=$(awk '/^---$/{f=!f;next} f && /^version_window_checks:/{gsub(/^[[:space:]]*version_window_checks:[[:space:]]*/,""); print; exit}' "$TMPDIR_TEST/report.md")
+assert_equal "$vwc" "[]" "[10d] version_window_checks round-trips"
 
 # ---------------------------------------------------------------------------
 # Test 11: concurrency guard — fires when recent report exists
@@ -1116,8 +1121,46 @@ if [ -x "$COMP_SCRIPT" ]; then
     part=$(printf '%s' "$comp_out" | sed -n 's/^CATEGORY_STATS_PARTIAL=//p')
     assert_equal "$scf" "1" "[34c] SCAN_FILES_FOUND counts NDJSON inputs"
     assert_equal "$chg_delta" "4" "[34] CHANGELOG_DELTA sums scan NDJSON count"
-    assert_equal "$part" "true" "[34b] partial category-stats flagged in KV output"
+    assert_equal "$part" "true" "[34d] partial category-stats flagged in KV output"
     rm -rf "$COMP_TMP"
+else
+    echo "  SKIP: audit-compute-counters.sh not executable (not found at $COMP_SCRIPT)"
+fi
+
+# Test 34b: audit-compute-counters.sh — partial category-stats (jq/mangled) still adds clean/blank deltas
+echo "Test 34b: audit-compute-counters partial jq path still counts canonical/oos_blank"
+COMP_SCRIPT="${COMP_SCRIPT:-$SCRIPT_DIR/audit-compute-counters.sh}"
+if [ -x "$COMP_SCRIPT" ]; then
+    C34B_TMP=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-comp-34b-XXXXXX")
+    {
+        printf '%s\n' '{"scan":"category-stats","pr":1,"partial_data":true,"detail":"mangled-category aggregate unavailable after oos-category-mangle jq error","canonical":5,"oos_blank":2}'
+    } > "$C34B_TMP/scan-results-990034b.ndjson"
+    c34b_out=$(bash "$COMP_SCRIPT" --scan-results-dir "$C34B_TMP")
+    c34b_clean=$(printf '%s' "$c34b_out" | sed -n 's/^OOS_CLEAN_DELTA=//p')
+    c34b_blank=$(printf '%s' "$c34b_out" | sed -n 's/^OOS_BLANK_DELTA=//p')
+    c34b_part=$(printf '%s' "$c34b_out" | sed -n 's/^CATEGORY_STATS_PARTIAL=//p')
+    assert_equal "$c34b_clean" "5" "[34e] partial (non-missing-file) category-stats → OOS_CLEAN_DELTA uses canonical"
+    assert_equal "$c34b_blank" "2" "[34f] partial (non-missing-file) category-stats → OOS_BLANK_DELTA uses oos_blank"
+    assert_equal "$c34b_part" "true" "[34g] CATEGORY_STATS_PARTIAL still true for any partial_data"
+    rm -rf "$C34B_TMP"
+else
+    echo "  SKIP: audit-compute-counters.sh not executable (not found at $COMP_SCRIPT)"
+fi
+
+# Test 34c: audit-compute-counters.sh — missing-jsonl partial skips clean/blank (even if numeric fields non-zero)
+echo "Test 34c: audit-compute-counters missing-file partial omits OOS clean/blank deltas"
+COMP_SCRIPT="${COMP_SCRIPT:-$SCRIPT_DIR/audit-compute-counters.sh}"
+if [ -x "$COMP_SCRIPT" ]; then
+    C34C_TMP=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-comp-34c-XXXXXX")
+    {
+        printf '%s\n' '{"scan":"category-stats","pr":1,"partial_data":true,"detail":"review-findings-full.jsonl not found","canonical":99,"oos_blank":7}'
+    } > "$C34C_TMP/scan-results-990034c.ndjson"
+    c34c_out=$(bash "$COMP_SCRIPT" --scan-results-dir "$C34C_TMP")
+    c34c_clean=$(printf '%s' "$c34c_out" | sed -n 's/^OOS_CLEAN_DELTA=//p')
+    c34c_blank=$(printf '%s' "$c34c_out" | sed -n 's/^OOS_BLANK_DELTA=//p')
+    assert_equal "$c34c_clean" "0" "[34c] missing-file partial → OOS_CLEAN_DELTA skips category-stats canonical"
+    assert_equal "$c34c_blank" "0" "[34c2] missing-file partial → OOS_BLANK_DELTA skips category-stats oos_blank"
+    rm -rf "$C34C_TMP"
 else
     echo "  SKIP: audit-compute-counters.sh not executable (not found at $COMP_SCRIPT)"
 fi
@@ -1155,6 +1198,34 @@ if [ -x "$SCAN_SCRIPT" ]; then
     assert_equal "$ns_reasons" '{"NO_ISSUES_FOUND_TOO_THIN":1}' "[35e] ns-retry-sidecars reasons object"
     assert_equal "$ex_res" "fail" "[35d] execution-issues-categories non-Warnings → fail"
     rm -rf "$R35_TMP"
+else
+    echo "  SKIP: audit-scan-run.sh not executable (not found at $SCAN_SCRIPT)"
+fi
+
+# Test 35b: audit-scan-run.sh — invalid JSONL → oos jq error + category-stats partial (mangled placeholder)
+echo "Test 35b: audit-scan-run invalid review-findings JSONL (oos error + category-stats partial)"
+SCAN_SCRIPT="${SCAN_SCRIPT:-$SCRIPT_DIR/audit-scan-run.sh}"
+if [ -x "$SCAN_SCRIPT" ]; then
+    R35B_TMP=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-scan-35b-XXXXXX")
+    printf '%s\n' 'name	type	pattern	expected_outcome	severity' > "$R35B_TMP/oos-only.tsv"
+    printf '%s\n' 'oos-category-mangle	jsonl-field	x	y	medium' >> "$R35B_TMP/oos-only.tsv"
+    printf '%s\n' 'relative_path	condition	batch_slug	extension' > "$R35B_TMP/required-empty.tsv"
+    mkdir -p "$R35B_TMP/run"
+    printf '%s\n' '{' > "$R35B_TMP/run/review-findings-full.jsonl"
+    r35b_lines=$(bash "$SCAN_SCRIPT" \
+        --run-dir "$R35B_TMP/run" --pr 990035 \
+        --scans-tsv "$R35B_TMP/oos-only.tsv" \
+        --required-files-tsv "$R35B_TMP/required-empty.tsv" \
+        --current-version "29.0.0")
+    r35b_oos=$(printf '%s\n' "$r35b_lines" | jq -r 'select(.scan=="oos-category-mangle") | .result // empty' | head -1)
+    r35b_partial=$(printf '%s\n' "$r35b_lines" | jq -r 'select(.scan=="category-stats") | .partial_data | tostring' | head -1)
+    r35b_mangled=$(printf '%s\n' "$r35b_lines" | jq -r 'select(.scan=="category-stats") | .mangled // empty' | head -1)
+    r35b_detail=$(printf '%s\n' "$r35b_lines" | jq -r 'select(.scan=="category-stats") | .detail // empty' | head -1)
+    assert_equal "$r35b_oos" "error" "[35m] invalid JSONL → oos-category-mangle result error"
+    assert_equal "$r35b_partial" "true" "[35m2] category-stats partial_data on mangled jq failure"
+    assert_equal "$r35b_mangled" "0" "[35m3] mangled count is zero placeholder when jq failed"
+    assert_equal "$r35b_detail" "mangled-category aggregate unavailable after oos-category-mangle jq error" "[35m4] category-stats detail explains mangled aggregate unavailable"
+    rm -rf "$R35B_TMP"
 else
     echo "  SKIP: audit-scan-run.sh not executable (not found at $SCAN_SCRIPT)"
 fi
@@ -1796,6 +1867,274 @@ else
     echo "  SKIP: append-tool-failure.sh not executable at $APP_TF"
 fi
 
+# ===========================================================================
+# Issue #2523 follow-ups: classification + oos-category-mangle + session summary
+# ===========================================================================
+echo "=== test-audit-runs: audit-runs #2523 (classification / scan / session summary) ==="
+
+# Test 58: C.1 — classify from hermetic gh issue JSON (noise-title exclusion, open precedence over closed)
+echo "Test 58: C.1 gh-issue JSON → proposed_augmentations vs proposed_new_issues"
+classify_c1_bucket_from_gh_issues_json() {
+    jq -rn --argjson issues "$1" '
+        def is_open: (.state | ascii_downcase) == "open";
+        def is_noise:
+            (.title | type == "string" and test("^\\[Run Logs Audit Report"));
+        ([$issues[] | select(is_open and (is_noise | not))]) as $eligible_open
+        | if ($eligible_open | length) > 0 then
+            "proposed_augmentations"
+        else
+            "proposed_new_issues"
+        end
+    '
+}
+result=$(classify_c1_bucket_from_gh_issues_json '[{"number":1,"title":"[IN PROGRESS] widget bug","state":"OPEN"}]')
+assert_equal "$result" "proposed_augmentations" "[58] open [IN PROGRESS] title counts as augmentation match (not search-excluded)"
+result=$(classify_c1_bucket_from_gh_issues_json '[{"number":1,"title":"[Run Logs Audit Report] 2026-01","state":"OPEN"}]')
+assert_equal "$result" "proposed_new_issues" "[58b] audit-report noise title alone → no eligible open match → proposed_new_issues"
+result=$(classify_c1_bucket_from_gh_issues_json '[{"number":1,"title":"[Run Logs Audit Report] noise","state":"OPEN"},{"number":2,"title":"[IN PROGRESS] same bug","state":"OPEN"}]')
+assert_equal "$result" "proposed_augmentations" "[58c] noise open + real open → precedence to augmentations"
+result=$(classify_c1_bucket_from_gh_issues_json '[{"number":1,"title":"widget bug","state":"CLOSED"},{"number":2,"title":"widget bug","state":"OPEN"}]')
+assert_equal "$result" "proposed_augmentations" "[58d] mixed closed+open (--state all style payload) → open wins → augmentations"
+result=$(classify_c1_bucket_from_gh_issues_json '[{"number":1,"title":"widget bug","state":"CLOSED"}]')
+assert_equal "$result" "proposed_new_issues" "[58e] closed-only payload → proposed_new_issues (version-window step is separate)"
+
+# Test 59: oos-category-mangle — code-review accepted prose category → pass (narrowed scan)
+echo "Test 59: audit-scan-run oos-category-mangle pass (code-review accepted prose)"
+SCAN_SCRIPT="${SCAN_SCRIPT:-$SCRIPT_DIR/audit-scan-run.sh}"
+if [ -x "$SCAN_SCRIPT" ]; then
+    T59=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-oos59-XXXXXX")
+    printf '%s\n' 'name	type	pattern	expected_outcome	severity' > "$T59/scans.tsv"
+    printf '%s\n' 'oos-category-mangle	jsonl-field	x	x	high' >> "$T59/scans.tsv"
+    printf '%s\n' 'relative_path	condition	batch_slug	extension' > "$T59/required.tsv"
+    mkdir -p "$T59/run"
+    printf '%s\n' '{"phase":"code-review","outcome":"accepted","category":"fixes auth","id":"ACC_001"}' > "$T59/run/review-findings-full.jsonl"
+    t59_out=$(bash "$SCAN_SCRIPT" --run-dir "$T59/run" --pr 990059 \
+        --scans-tsv "$T59/scans.tsv" --required-files-tsv "$T59/required.tsv" \
+        --current-version "34.0.0")
+    t59_res=$(printf '%s\n' "$t59_out" | jq -r 'select(.scan=="oos-category-mangle") | .result // empty' | head -1)
+    assert_equal "$t59_res" "pass" "[59] code-review accepted prose → pass"
+    rm -rf "$T59"
+else
+    echo "  SKIP: audit-scan-run.sh not executable (not found at $SCAN_SCRIPT)"
+fi
+
+# Test 60: oos-category-mangle — plan-review accepted prose category → fail
+echo "Test 60: audit-scan-run oos-category-mangle fail (plan-review accepted prose)"
+SCAN_SCRIPT="${SCAN_SCRIPT:-$SCRIPT_DIR/audit-scan-run.sh}"
+if [ -x "$SCAN_SCRIPT" ]; then
+    T60=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-oos60-XXXXXX")
+    printf '%s\n' 'name	type	pattern	expected_outcome	severity' > "$T60/scans.tsv"
+    printf '%s\n' 'oos-category-mangle	jsonl-field	x	x	high' >> "$T60/scans.tsv"
+    printf '%s\n' 'relative_path	condition	batch_slug	extension' > "$T60/required.tsv"
+    mkdir -p "$T60/run"
+    printf '%s\n' '{"phase":"plan-review","outcome":"accepted","category":"fixes auth","id":"ACC_002"}' > "$T60/run/review-findings-full.jsonl"
+    t60_out=$(bash "$SCAN_SCRIPT" --run-dir "$T60/run" --pr 990060 \
+        --scans-tsv "$T60/scans.tsv" --required-files-tsv "$T60/required.tsv" \
+        --current-version "34.0.0")
+    t60_res=$(printf '%s\n' "$t60_out" | jq -r 'select(.scan=="oos-category-mangle") | .result // empty' | head -1)
+    t60_cnt=$(printf '%s\n' "$t60_out" | jq -r 'select(.scan=="oos-category-mangle") | .count // empty' | head -1)
+    assert_equal "$t60_res" "fail" "[60] plan-review accepted prose → fail"
+    assert_equal "$t60_cnt" "1" "[60b] count is 1"
+    rm -rf "$T60"
+else
+    echo "  SKIP: audit-scan-run.sh not executable (not found at $SCAN_SCRIPT)"
+fi
+
+# Test 61: session-summary markdown (file-all, two findings)
+echo "Test 61: post-report session-summary markdown composition"
+build_session_summary_stub() {
+    local decision="$1"
+    cat <<EOF
+## Post-report session summary
+
+**3-way decision**: ${decision}
+
+**Per-finding actions**:
+
+| Finding | Decision | Filed as | URL |
+|---|---|---|---|
+| EXON regression | filed-as-drafted | #9001 | https://example.invalid/9001 |
+| OOS mangle | modified | #9002 | https://example.invalid/9002 |
+
+**Augmentations**:
+
+| Target issue | Action | Comment URL |
+|---|---|---|
+| #2400 | posted | https://example.invalid/c1 |
+
+---
+*Posted by /audit-runs post-report session-summary step.*
+EOF
+}
+sum61=$(build_session_summary_stub "file-all")
+if printf '%s' "$sum61" | grep -q '^## Post-report session summary'; then
+    PASS=$((PASS + 1))
+    echo "  ok: [61] session summary has heading"
+else
+    FAIL=$((FAIL + 1))
+    FAILED_TESTS+=("[61] missing Post-report session summary heading")
+    echo "  FAIL: [61] missing heading" >&2
+fi
+if printf '%s' "$sum61" | grep -qF '| Finding | Decision | Filed as | URL |'; then
+    PASS=$((PASS + 1))
+    echo "  ok: [61b] per-finding table header present"
+else
+    FAIL=$((FAIL + 1))
+    FAILED_TESTS+=("[61b] missing per-finding table header")
+    echo "  FAIL: [61b] missing table header" >&2
+fi
+if printf '%s' "$sum61" | grep -qF '*Posted by /audit-runs'; then
+    PASS=$((PASS + 1))
+    echo "  ok: [61c] Posted-by footer present"
+else
+    FAIL=$((FAIL + 1))
+    FAILED_TESTS+=("[61c] missing Posted-by footer")
+    echo "  FAIL: [61c] missing footer" >&2
+fi
+if printf '%s' "$sum61" | grep -qF '| Target issue | Action | Comment URL |'; then
+    PASS=$((PASS + 1))
+    echo "  ok: [61d] Augmentations table header present"
+else
+    FAIL=$((FAIL + 1))
+    FAILED_TESTS+=("[61d] missing Augmentations table header")
+    echo "  FAIL: [61d] missing Augmentations table header" >&2
+fi
+
+# Test 62: session-summary with skip-filing — all skipped rows
+echo "Test 62: session-summary skip-filing shows skipped rows"
+build_session_summary_skip_all() {
+    cat <<'EOF'
+## Post-report session summary
+
+**3-way decision**: skip-filing
+
+**Per-finding actions**:
+
+| Finding | Decision | Filed as | URL |
+|---|---|---|---|
+| EXON regression | skipped | — | — |
+| OOS mangle | skipped | — | — |
+
+---
+*Posted by /audit-runs post-report session-summary step.*
+EOF
+}
+sum62=$(build_session_summary_skip_all)
+if printf '%s' "$sum62" | grep -qF '**3-way decision**: skip-filing'; then
+    PASS=$((PASS + 1))
+    echo "  ok: [62] skip-filing decision echoed"
+else
+    FAIL=$((FAIL + 1))
+    FAILED_TESTS+=("[62] skip-filing decision missing")
+    echo "  FAIL: [62] skip-filing decision missing" >&2
+fi
+if printf '%s' "$sum62" | grep -qF '| EXON regression | skipped | — | — |' \
+    && printf '%s' "$sum62" | grep -qF '| OOS mangle | skipped | — | — |'; then
+    PASS=$((PASS + 1))
+    echo "  ok: [62b] all-skipped per-finding rows"
+else
+    FAIL=$((FAIL + 1))
+    FAILED_TESTS+=("[62b] expected all-skipped table rows")
+    echo "  FAIL: [62b] expected all-skipped table rows" >&2
+fi
+if ! printf '%s' "$sum62" | grep -qF '**Augmentations**'; then
+    PASS=$((PASS + 1))
+    echo "  ok: [62c] no Augmentations block when none"
+else
+    FAIL=$((FAIL + 1))
+    FAILED_TESTS+=("[62c] empty skip-filing summary must omit Augmentations heading")
+    echo "  FAIL: [62c] unexpected **Augmentations** in skip-all summary" >&2
+fi
+
+# Test 63: zero-PR short-circuit — no session-summary posted (no audit-report number)
+echo "Test 63: no session-summary when no audit-report filed"
+should_post_session_summary_comment() {
+    local audit_report_number="$1"
+    local zero_findings_short_circuit="${2:-false}"
+    if [[ -z "$audit_report_number" ]]; then
+        echo "skip"
+    elif [[ "$zero_findings_short_circuit" == "true" ]]; then
+        echo "skip"
+    else
+        echo "post"
+    fi
+}
+result=$(should_post_session_summary_comment "")
+assert_equal "$result" "skip" "[63] empty audit report number → skip session-summary step"
+result=$(should_post_session_summary_comment "424242")
+assert_equal "$result" "post" "[63b] non-empty number → post path"
+result=$(should_post_session_summary_comment "424242" "true")
+assert_equal "$result" "skip" "[63c] zero-findings short-circuit → skip even when report number exists"
+
+# Test 62: C.2 semver normalization — numeric component ordering (not lexical dotted strings)
+echo "Test 62: C.2 dotted version compare (strip v, 1.10 > 1.9)"
+if ! command -v jq >/dev/null 2>&1; then
+    echo "  SKIP: jq not installed"
+else
+    v_gt=$(jq -n --arg a 'v1.10.0' --arg b '1.9.999' '
+        def parts($s): ($s | ltrimstr("v") | split(".") | map(tonumber));
+        def gt($x; $y):
+            if $x[0] > $y[0] then true
+            elif $x[0] < $y[0] then false
+            elif ($x|length) < 2 or ($y|length) < 2 then false
+            elif $x[1] > $y[1] then true
+            elif $x[1] < $y[1] then false
+            elif ($x|length) < 3 or ($y|length) < 3 then false
+            else $x[2] > $y[2]
+            end;
+        gt(parts($a); parts($b))
+    ')
+    assert_equal "$v_gt" "true" "[62] v1.10.0 numerically greater than 1.9.999 after normalization"
+fi
+
+# Test 63: C.2 version-window table (fix_shipped vs audited batch → skip|propose)
+echo "Test 63: C.2 version-window decision table"
+if ! command -v jq >/dev/null 2>&1; then
+    echo "  SKIP: jq not installed"
+else
+    c2_decision() {
+        jq -nr --arg fix "$1" --argjson audited "$2" '
+            def parse3:
+                if . == null or . == "" then null
+                else
+                    (tostring | ltrimstr("v")) as $t
+                    | if ($t | test("^[0-9]+\\.[0-9]+\\.[0-9]+$")) then
+                        ($t | split(".") | map(tonumber))
+                    else null end
+                end;
+            def gt3($a; $b):
+                if $a[0] > $b[0] then true
+                elif $a[0] < $b[0] then false
+                elif $a[1] > $b[1] then true
+                elif $a[1] < $b[1] then false
+                else $a[2] > $b[2]
+                end;
+            ($fix | parse3) as $fp
+            | if $fp == null then "propose"
+              else
+                ($audited | map(parse3)) as $avs
+                | if ($avs | length) == 0 then "propose"
+                  elif any($avs[]; . == null) then "propose"
+                  elif all($avs[]; gt3($fp; .)) then "skip"
+                  else "propose"
+                  end
+              end
+        '
+    }
+    while IFS=$'\t' read -r fix audited expect label; do
+        [[ -z "$fix" || "$fix" == \#* ]] && continue
+        got=$(c2_decision "$fix" "$audited")
+        assert_equal "$got" "$expect" "$label"
+    done <<'EOF'
+2.0.0	["1.0.0","1.5.0"]	skip	[63] fix newer than every audited → skip (suppress)
+1.0.0	["1.0.0","2.0.0"]	propose	[63b] fix not strictly greater than all → propose
+unknown	["1.0.0"]	propose	[63c] unknown fix → propose
+2.0.0	["2.0.0"]	propose	[63d] fix equal to an audited run → propose
+34.0.0-rc1	["1.0.0"]	propose	[63e] unparseable fix token → propose
+2.0.0	["1.0.0","not-a-semver"]	propose	[63f] unparseable audited row → propose
+v2.0.0	["1.0.0"]	skip	[63g] strip v and compare → skip
+EOF
+fi
 
 # ---------------------------------------------------------------------------
 # Summary

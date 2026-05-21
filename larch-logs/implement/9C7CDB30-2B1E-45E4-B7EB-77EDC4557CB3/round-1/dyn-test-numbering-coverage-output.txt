@@ -1,0 +1,17 @@
+Gathering the diff, commit list, and `test-audit-runs.sh` sections around the #2523 tests for a correctness-focused review.
+
+Verifying `test-audit-runs.sh` line numbers and the `jq` pipeline in `audit-scan-run.sh` for pipefail/exit-code behavior.
+
+Review complete. The user asked for a specific response format (not CreatePlan). Delivering the review.
+
+### In-Scope Findings
+
+- **correctness** `.claude/skills/audit-runs/scripts/test-audit-runs.sh:1565-1578` — The C.1 coverage is a two-branch stub `route_finding_by_open_match` driven only by the literals `yes`/`no`; it never inspects issue titles, `state`, or any stand-in for `gh issue list --state all`, so it cannot detect accidental regressions to the real contract in `.claude/skills/audit-runs/SKILL.md` (for example restoring an `[IN PROGRESS]` title exclusion or searching `--state open` only). The assertion text claims an “[IN PROGRESS] title in GH results” path, but the code under test does not model that. The issue #2523 plan also called for tests 55–60 after test 54; the harness jumps to labels 56–61 with no “test 55,” which weakens traceability to the written verification plan. **Suggested fix:** Replace the stub with a hermetic classifier over fixed mock issue JSON (including at least one open issue whose title starts with `[IN PROGRESS]`) that implements the SKILL precedence and exclusion rules, or factor the branching into a sourced shell module and unit-test that; renumber or document the mapping to the plan’s test IDs so reviewers can align expectations.
+
+- **correctness** `.claude/skills/audit-runs/SKILL.md:110-125` and `245-251` — C.2 adds non-trivial behavior (open+closed search, fix merge/close time, `git log` “Bump version” correlation, semantic version ordering against each batch `larch_version`, `fix_shipped_in: unknown` handling, and `version_window_checks` rows) with no corresponding automated checks in `test-audit-runs.sh`, while C.3’s `oos-category-mangle` jq change does get integration-style tests (`1579-1620`). That asymmetry means mistakes in comparator direction, date parsing assumptions, or frontmatter shape for `version_window_checks` would not fail CI. **Suggested fix:** Add offline golden cases (mock issues + mock plugin.json bump history or a tiny extracted shell function) asserting `skip` vs `proposed_new_issues` and the emitted YAML row fields, matching the SKILL bullets, so the version-window contract is as guarded as the scan logic.
+
+### Out-of-Scope Observations
+
+- The diff also adds `larch-logs/implement/9C7CDB30-2B1E-45E4-B7EB-77EDC4557CB3/` including `manifest.json` with placeholder strings such as `<OPERATOR_CWD>`; that is orthogonal to the audit-runs code behavior under review but may deserve a separate hygiene check against your run-log commit conventions.
+
+- Tests 59–61 only validate locally built markdown strings and a trivial “empty audit report number” guard; they do not exercise `gh issue comment` failure handling described in `.claude/skills/audit-runs/SKILL.md` (acceptable limitation for an offline harness, not a regression in existing coverage).

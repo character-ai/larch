@@ -1,0 +1,19 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: EXONERATE -- functional gap already captured in FINDING_1; meta-process checklist suggestion adds no standalone value
+FINDING_5: YES
+FINDING_6: NO -- archived run-log plan text is immutable historical record; no operational impact from stale claim there
+FINDING_7: YES
+FINDING_8: EXONERATE -- C.2 is LLM-orchestrated workflow over gh/git; Tests 62-63 cover the pure logic; full integration test requires mock gh/git infrastructure not available in this harness
+FINDING_9: NO -- tautological scope confirmation; run logs are explicitly outside the automated test surface by convention; nothing actionable
+FINDING_10: EXONERATE -- dev-only operator tool; 400-byte truncation limits exposure; jq parse errors contain no secrets; debugging value exceeds risk in this controlled context
+FINDING_11: NO -- pre-existing behavior not introduced by this branch; no change in attack surface from new code
+FINDING_12: EXONERATE -- new jq helper is documented in SKILL.md; omission from run-log plan's file list is cosmetic; not worth a separate issue
+FINDING_13: NO -- test numbering is a cosmetic implementation detail; plan labels were illustrative; actual sequential numbers adjusted for gaps
+FINDING_14: EXONERATE -- jq -r outputs literal "null" for null/missing .id (still one countable line); jq always appends newlines to raw output; stated null-suppression failure mode is incorrect
+FINDING_15: EXONERATE -- catstr's array/object→"" treatment appears deliberate given selective number/boolean handling; producer schema is larch-internal; a jq comment suffices over an issue ticket
+FINDING_16: NO -- run-log artifacts are conventional commits per docs/run-logs.md contract; not unrelated surface area
+FINDING_17: NO -- SKILL.md and test-audit-runs.sh changes are explicitly in scope per the issue plan (C.1, C.2, C.4)
+FINDING_18: EXONERATE -- normative step 4 prose correctly specifies both conditions; flow diagram is a secondary summary; not a spec defect worth filing an issue over
+FINDING_19: YES

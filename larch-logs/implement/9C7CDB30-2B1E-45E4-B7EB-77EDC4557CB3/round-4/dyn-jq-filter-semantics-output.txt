@@ -1,0 +1,17 @@
+Gathering the diff and jq/shell code for a correctness-focused review.
+
+Verifying `wc -l` behavior without a trailing newline and whether `jq -r` omits a final newline (potential undercount).
+
+### In-Scope Findings
+
+- **correctness** `.claude/skills/audit-runs/scripts/audit-scan-run-mangled-rows.jq:3-13` — The program ends with `select(...) | .id` and `audit-scan-run.sh` turns that stream into a count via `wc -l` on `jq -r` output (`audit-scan-run.sh:201-202` and the analogous `category-stats` path around `438-439`). For rows that match the mangled-category predicate but have a missing or JSON-null `.id`, `jq -r` typically emits **no characters** (and often no line) for that value, so **one or more bad category rows can still yield a line count of zero** and the scan can report `pass` with `count:0` while the underlying JSONL still contains plan-review accepted non-canonical categories. **Suggested fix:** Count inside jq (for example emit one sentinel per match with `jq -n '[inputs | select(...)] | length'`, or keep the filter but map matches to `1` and `add`, or emit a stable non-empty token per match such as `"\n"` or use `jq -r '... | .id // empty | if . == "" then "MISSING_ID" else . end'` only if you explicitly want to surface id gaps).
+
+- **correctness** `.claude/skills/audit-runs/scripts/audit-scan-run-mangled-rows.jq:4-7` — For non-string `.category` values that are **arrays or objects**, `catstr` collapses to `""` after the `else ""` branch, so `(catstr != "")` is false and the row is **never treated as mangled** even when `phase`/`outcome` indicate a plan-review accepted record with a clearly non-canonical structured `category` payload. That is a **false negative** relative to “non-empty non-canonical category” intent (the scout’s “non-string types” angle); numbers and booleans are coerced via `tostring` and can still fail the canonical regex. **Suggested fix:** Decide whether structured `category` should be an error/`fail`, counted as mangled (for example `tostring` for arrays/objects too, or a dedicated `type != "string"` branch that forces a match), or documented as intentionally ignored only if the producer schema forbids non-strings entirely.
+
+- **correctness** `.claude/skills/audit-runs/scripts/audit-scan-run.sh:201-202` — Relying on `wc -l` counts **newline-terminated records** in the temp file; if `jq -r` ever wrote exactly one `.id` value **without a trailing newline** into the file, POSIX `wc -l` can report **0** despite one logical match, producing another undercount path beside the null-`.id` case. **Suggested fix:** Prefer jq-side counting (previous bullet) so the aggregate does not depend on newline bookkeeping from raw string output.
+
+### Out-of-Scope Observations
+
+- The same branch diff also adds under `larch-logs/implement/9C7CDB30-2B1E-45E4-B7EB-77EDC4557CB3/` local implement run artifacts (`manifest.json`, `parent-issue.md`, `plan-goals-test.md`, `plan-review-tally.json`), which do not participate in the jq filter semantics but add unrelated surface area to the PR versus the stated audit-runs skill fixes.
+
+- Documentation and harness-only updates in `.claude/skills/audit-runs/SKILL.md` and `.claude/skills/audit-runs/scripts/test-audit-runs.sh` (C.1/C.2/C.4 classification tables, session-summary stubs) are outside the `audit-scan-run-mangled-rows.jq` / `wc -l` correctness focus but look directionally consistent with the feature description.

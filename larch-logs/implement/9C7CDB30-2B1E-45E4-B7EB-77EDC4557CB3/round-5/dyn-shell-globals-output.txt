@@ -1,0 +1,9 @@
+Reading the pre-computed diff and `audit-scan-run.sh` sections for `_audit_scan_mangled_jq_failed` and `_audit_mangled_jq_cache_file`.
+
+Reading `audit-scan-run.sh` for exit paths between the scan loop and category-stats and verifying the success path when `oos-category-mangle` is absent from `scans.tsv`.
+
+### In-Scope Findings
+- **risk-integration** `.claude/skills/audit-runs/scripts/audit-scan-run.sh:200-423` — After a successful `jq` in `scan_oos_category_mangle`, the mangled-row output is left in a temp file whose path is stored in `_audit_mangled_jq_cache_file` until the `category-stats` block (lines 428–454) reads it and `rm -f` it. The main scan loop can still terminate the whole script before that block runs—for example `exit 1` on an unknown `scans.tsv` name (lines 421–423) or `exit 1` from `scan_required_file_presence` on unsupported registry conditions (lines 129–131) when those scans are ordered after `oos-category-mangle`. Any such early exit leaves the `mktemp`-created `audit-scan-oos-out-*` file in `${TMPDIR:-/tmp}` with no cleanup, so repeated failures (bad TSVs, CI, or local iteration) can accumulate garbage temp files. **Suggested fix:** Register an `EXIT` trap (or `RETURN` trap if refactored) to `rm -f` the cached mangled output whenever `_audit_mangled_jq_cache_file` is non-empty, clearing the variable after removal; alternatively avoid cross-phase temp reuse and keep the “no duplicate jq” optimization by stashing only the integer `mangled_count` from `scan_oos_category_mangle` in a global instead of a file path.
+
+### Out-of-Scope Observations
+NO_ISSUES_FOUND

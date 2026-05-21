@@ -50,7 +50,7 @@ Read `PR_LIST`, `PR_COUNT`, `IMPLICIT_SINCE_LAST_AUDIT`, `PRIOR_REPORT_NUMBER`, 
 
 ## Scan Registry
 
-The scan list is externalized in `.claude/skills/audit-runs/scans.tsv` (one row per scan: `name`, `type`, `pattern`, `expected_outcome`, `severity`). JSON string escaping for NDJSON payloads is implemented in `.claude/skills/audit-runs/scripts/audit-scan-run-jstr.inc.bash` (sourced by `audit-scan-run.sh` and `test-audit-runs.sh`). **Adding a scan** requires coordinated updates: (1) a new `scans.tsv` row, (2) a matching `case` branch (and scan function) in `audit-scan-run.sh`, (3) any counter wiring in `audit-compute-counters.sh` / `audit-compute-counters.md` when the scan feeds cumulative totals, (4) `audit-scan-run.md` / `SKILL.md` scan tables if the operator-facing baseline changes, and (5) hermetic coverage in `test-audit-runs.sh` for the new NDJSON shape and counter path. **Plan fidelity**: substantive changes to that surface (new counters, new cumulative YAML keys, or registry-wide behavior) should be tracked in their own issue/PR when they go beyond a routine scan-row + test update — routine `changelog-rebase-conflicts` / `changelog_rebase_conflicts` / `ns_retries_cursor_specialist` wiring is part of this skill’s maintained baseline, not an ad-hoc add-on.
+The scan list is externalized in `.claude/skills/audit-runs/scans.tsv` (one row per scan: `name`, `type`, `pattern`, `expected_outcome`, `severity`). JSON string escaping for NDJSON payloads is implemented in `.claude/skills/audit-runs/scripts/audit-scan-run-jstr.inc.bash` (sourced by `audit-scan-run.sh` and `test-audit-runs.sh`). The plan-review / accepted / non-canonical-category filter shared by `oos-category-mangle` and `category-stats` lives in `.claude/skills/audit-runs/scripts/audit-scan-run-mangled-rows.jq` (invoked via `jq -f` from `audit-scan-run.sh`). **Adding a scan** requires coordinated updates: (1) a new `scans.tsv` row, (2) a matching `case` branch (and scan function) in `audit-scan-run.sh`, (3) any counter wiring in `audit-compute-counters.sh` / `audit-compute-counters.md` when the scan feeds cumulative totals, (4) `audit-scan-run.md` / `SKILL.md` scan tables if the operator-facing baseline changes, and (5) hermetic coverage in `test-audit-runs.sh` for the new NDJSON shape and counter path. **Plan fidelity**: substantive changes to that surface (new counters, new cumulative YAML keys, or registry-wide behavior) should be tracked in their own issue/PR when they go beyond a routine scan-row + test update — routine `changelog-rebase-conflicts` / `changelog_rebase_conflicts` / `ns_retries_cursor_specialist` wiring is part of this skill’s maintained baseline, not an ad-hoc add-on.
 
 Read the registry at runtime:
 ```bash
@@ -63,7 +63,7 @@ SCANS_TSV="$PWD/.claude/skills/audit-runs/scans.tsv"
 |---|---|---|
 | Required-file presence | Compare against `docs/run-logs-required-files.tsv` (NDJSON `result` is `pass` / `fail` / `skip` / `error`) | run-log root |
 | EXON misclassification | `\| FINDING_.* \| 0 \| 0 \| [1-9]+ \|.*\| rejected \|` | `round-*/voting-tally.md` |
-| OOS category mangle | `category` field not in `{code-quality, risk-integration, correctness, architecture, security}` | `review-findings-full.jsonl` |
+| OOS category mangle | plan-review **accepted** rows only: non-empty `category` not in `{code-quality, risk-integration, correctness, architecture, security}` (code-review accepted prose categories are ignored by design) | `review-findings-full.jsonl` |
 | NS-retry sidecars | files matching `*-ns-retry*` (see `scans.tsv`; first-pass trailing-content checks are the separate `trailing-content-no-issues-found` scan) | `round-*/` |
 | Codex round-1 adherence | round 2+ panel-manifest should not contain `tool=codex` | `round-N/panel-manifest.ndjson` |
 | Codex generalist waste | `codex-generalist-output.txt` is `NO_ISSUES_FOUND` only AND timing > 120s | `round-1/` + `timing-report.json` |
@@ -102,10 +102,35 @@ Read `scan-results-*.ndjson` files as NDJSON (one JSON object per scan per line)
 
 At scan time, **only** record findings as proposals. **Never** auto-file a bug issue and **never** auto-post augmentation comments during the scan.
 
-- **`proposed_new_issues`**: findings with no matching open issue (excluding titles matching `^\[Run Logs Audit Report` or `^\[IN PROGRESS\]` when searching). Always present in the audit-report frontmatter (possibly empty).
-- **`proposed_augmentations`**: findings that match an existing open issue (same title search as today). Always present in the audit-report frontmatter (possibly empty).
+- **`proposed_new_issues`**: findings that warrant a new bug issue after classification: no matching **open** issue, and when the only matches are **closed**, the version-window check (below) does not suppress the proposal. When searching, exclude only audit-report noise: titles matching `^\[Run Logs Audit Report` (anti-recursion). **Do not** exclude `[IN PROGRESS]` — those issues are open and match the search; route those hits to **`proposed_augmentations`** instead. Always present in the audit-report frontmatter (possibly empty).
+- **`proposed_augmentations`**: findings that match at least one **open** issue (same keyword search). This includes titles beginning with `[IN PROGRESS]` (still open on GitHub). Always present in the audit-report frontmatter (possibly empty).
 
-For each finding, classify it into one of these two lists (search open issues with `gh issue list --state open --repo <repo> --search "<finding keywords>" --json number,title`); do not file or comment until after the post-report user prompt below.
+For each finding, classify it into one of these two lists using GitHub + repo history; do not file or comment until after the post-report user prompt below.
+
+1. **Search issues (open + closed):**
+   ```bash
+   gh issue list --state all --repo <repo> --search "<finding keywords>" --json number,title,state,closedAt
+   ```
+2. **Open matches** (including `[IN PROGRESS] …` titles): **`proposed_augmentations`**. In **`## Open issues snapshot`**, when an augmented issue’s title starts with `[IN PROGRESS]`, note that the finding **recurred in this batch (pre-fix)** for that issue number.
+3. **Closed matches only** (no open match for this finding): apply the **version-window** check before proposing `proposed_new_issues`:
+   - Resolve fix merge time: prefer `gh pr list --state merged --search "closes #<N>" --repo <repo> --json number,mergedAt,title,body` and pick **one** merged PR you attribute to the fix (see **PR disambiguation** below). If that query returns **no** candidates, fall back to `gh issue view <N> --json closedAt,createdAt` for timing only and set `matched_pr` / merge metadata to unknown in your notes / `version_window_checks` rationale.
+   - **PR disambiguation (normative):** When multiple merged PRs match the search, prefer the PR whose `body`/`title` contains an explicit closing reference for `#<N>` (`closes`, `fixes`, `resolved`, case-insensitive). If still tied, prefer the PR with `mergedAt` closest **after** the issue `createdAt` (smallest positive delta). **If no candidate has `mergedAt` strictly after `createdAt`**, use the candidate with the latest `mergedAt` (ISO-8601 timestamps sort lexicographically). If still ambiguous, **do not** silently suppress: treat as **in-scope** (`decision: propose`, `in_scope: true`) and record both PR numbers plus a one-line operator rationale in the audit-report prose (or in the `finding` slug row’s implied narrative). When the search returns **zero** PRs, use issue `closedAt` only; keep `fix_shipped_in: unknown` unless you can attribute a merge elsewhere.
+   - Find the next plugin version shipped after that instant (file-shaped contract, not subject-line guessing alone):
+     ```bash
+     git log --oneline --grep="Bump version" --after="<mergedAt-or-closedAt-ISO>" --reverse -- .claude-plugin/plugin.json | head -1
+     ```
+     Let `BUMP_SHA` be that commit hash (first field of the line). Read the shipped plugin version from the tree at that commit:
+     ```bash
+     git show "$BUMP_SHA:.claude-plugin/plugin.json" | jq -r '.version // empty'
+     ```
+     **Normalize** the returned dotted version for comparisons: strip a single leading `v`, trim ASCII whitespace, require three **integer** components `MAJOR.MINOR.PATCH`, then compare **numerically per component** (so `1.10.0` is greater than `1.9.999`; do **not** use naive string sort on the dotted token). If **no** bump commit exists after that instant **or** `.version` is empty, set `fix_shipped_in: unknown` — **do not** skip the proposal solely for missing bump metadata (treat as in-scope for recurrence unless other reasoning applies).
+   - If either `fix_shipped_version` or an audited `larch_version` fails that three-integer parse (for example `34.0.0-rc1`, extra dotted segments, or odd strings), treat that side as `unknown` for the inequality: you cannot prove the fix is strictly newer than **every** audited run, so **do not** apply closed-only suppression on that basis alone — **propose** and record the parse gap in `version_window_checks`.
+   - Compare `fix_shipped_version` (parsed semantic version, or `unknown`) against each audited run’s `manifest.json::larch_version` from this batch’s run-map / scan inputs (normalize each batch version the same way).
+   - If `fix_shipped_version` is known and **strictly greater than** every audited `larch_version`, the fix post-dates all audited runs → **do not** propose a new issue for this closed-only match.
+   - If `fix_shipped_version` is `unknown`, **or** `fix_shipped_version ≤` any audited `larch_version`, the closed fix was in scope for at least one run → propose **`proposed_new_issues`** (recurrence).
+4. **Record** each closed-issue evaluation in **`version_window_checks`** (see **Frontmatter**). Use `version_window_checks: []` when no closed issue was evaluated for any finding.
+
+**Precedence:** any **open** match for the finding → `proposed_augmentations` only (even if older closed duplicates exist).
 
 ### Post-report user prompt
 
@@ -117,6 +142,35 @@ After the audit report issue is filed and prior reports are handled per **Close 
    - **File/augment all**: file new issues via `/larch:issue` (dedup ON); post augmentation comments with `gh issue comment <N> --repo "<repo>" --body-file "$TMPDIR/audit-augment-<N>.md"` (write the **Augmentation comment shape** markdown to that file first — same `--body-file` pattern as `create-one.sh`; do not pass multi-line tables through an inline `--body` string).
    - **Discuss first**: wait for operator direction; file or augment per finding only as approved.
    - **Skip filing**: exit cleanly; the audit report already captures proposed findings for the historical record.
+
+4. **Post-report session summary (audit-report issue only):** **only when** an audit-report issue was actually filed (`create-one.sh` returned a non-empty issue number / `AUDIT_REPORT_NUMBER`) **and** you did **not** end the run at step 2’s **zero-findings short-circuit** (that path exits immediately after the chat message — no 3-way walkthrough, **no** session-summary). After step 3’s per-finding walkthrough completes (filed, augmented, skipped, or mixed), compose `$TMPDIR/session-summary.md` and post it as a single comment on that audit-report issue (supplementary history). **Skip** this entire step whenever **no** audit-report issue exists — for example the zero-PR `since last audit` short-circuit (no `create-one.sh` call), preflight/resolve failures before filing, or any other path that never yields an audit-report issue number (there is nothing to comment on).
+
+   ```markdown
+   ## Post-report session summary
+
+   **3-way decision**: <file-all | discuss-first | skip-filing>
+
+   **Per-finding actions**:
+
+   | Finding | Decision | Filed as | URL |
+   |---|---|---|---|
+   | ... | filed-as-drafted \| modified \| skipped | #N or — | url or — |
+
+   **Augmentations**:
+
+   | Target issue | Action | Comment URL |
+   |---|---|---|
+   | #N | posted \| skipped | url or — |
+
+   ---
+   *Posted by /audit-runs post-report session-summary step.*
+   ```
+
+   ```bash
+   gh issue comment "$AUDIT_REPORT_NUMBER" --repo "<repo>" --body-file "$TMPDIR/session-summary.md"
+   ```
+
+   **When** this step runs, even **skip-filing** should populate the tables with **skipped** rows (useful operator history). Omit empty **Augmentations** table section when there were no augmentation rows. If `gh issue comment` fails, print stderr to chat but **do not** fail the overall audit run (this comment is supplementary).
 
 The audit report issue is **never** edited after creation (chain-of-history).
 
@@ -176,7 +230,7 @@ COUNTERS_OUT=$(bash "$PWD/.claude/skills/audit-runs/scripts/audit-compute-counte
   [--prior-frontmatter "$TMPDIR/prior-report-body.md"])
 ```
 
-Read `SCAN_FILES_FOUND`, `EXON_MISCLASSIFICATIONS`, `EXON_DELTA`, `OOS_CATEGORIES_MANGLED`, `OOS_MANGLED_DELTA`, `OOS_CATEGORIES_CLEAN`, `OOS_CLEAN_DELTA`, `OOS_CATEGORIES_BLANK`, `OOS_BLANK_DELTA`, `NS_RETRIES_CURSOR_SPECIALIST`, `NS_RETRIES_DELTA`, `CHANGELOG_REBASE_CONFLICTS`, `CHANGELOG_DELTA`, and `CATEGORY_STATS_PARTIAL` (`true` when any PR scan lacked `review-findings-full.jsonl`, so `OOS_*_DELTA` for clean/blank skipped those rows). Contract: `audit-compute-counters.md`.
+Read `SCAN_FILES_FOUND`, `EXON_MISCLASSIFICATIONS`, `EXON_DELTA`, `OOS_CATEGORIES_MANGLED`, `OOS_MANGLED_DELTA`, `OOS_CATEGORIES_CLEAN`, `OOS_CLEAN_DELTA`, `OOS_CATEGORIES_BLANK`, `OOS_BLANK_DELTA`, `NS_RETRIES_CURSOR_SPECIALIST`, `NS_RETRIES_DELTA`, `CHANGELOG_REBASE_CONFLICTS`, `CHANGELOG_DELTA`, and `CATEGORY_STATS_PARTIAL` (`true` when any PR’s `category-stats` line has `partial_data: true` — missing JSONL, or jq/mangled aggregate unavailable; `OOS_*_DELTA` for clean/blank omit category-stats only for the missing-file case per `audit-compute-counters.md`). Contract: `audit-compute-counters.md`.
 
 ### Frontmatter (YAML block between `---` markers at top of body)
 
@@ -193,7 +247,39 @@ audited_pr_range:
 audited_prs: [N, ..., M]   # explicit list when range has gaps
 prior_report_issue: <N | null>
 proposed_new_issues: [...]        # always present; findings with no matching open issue
-proposed_augmentations: [...]     # always present; findings matched to an existing issue
+proposed_augmentations: [...]     # always present; findings matched to an existing open issue
+version_window_checks:           # always present; one row per closed-issue match evaluated (possibly empty [])
+  - finding: <slug>
+    matched_issue: <N>
+    matched_state: closed
+    fix_shipped_in: vX.Y.Z | unknown
+    audited_versions: [34.0.0, 34.0.1]
+    in_scope: false
+    decision: skip | propose
+  # Example A — fix shipped strictly after every audited run → suppress new issue
+  - finding: exon-regression-example
+    matched_issue: 2401
+    matched_state: closed
+    fix_shipped_in: v35.0.0
+    audited_versions: [34.0.0, 34.0.1]
+    in_scope: false
+    decision: skip
+  # Example B — unknown shipped version → cannot prove post-dates batch → propose recurrence
+  - finding: oos-mangle-example
+    matched_issue: 2402
+    matched_state: closed
+    fix_shipped_in: unknown
+    audited_versions: [34.0.0]
+    in_scope: true
+    decision: propose
+  # Example C — fix version overlaps at least one audited run → in scope
+  - finding: ns-retry-example
+    matched_issue: 2403
+    matched_state: closed
+    fix_shipped_in: v34.0.0
+    audited_versions: [34.0.0, 34.0.1]
+    in_scope: true
+    decision: propose
 cumulative_counters:
   exon_misclassifications: N
   oos_categories_mangled: N
@@ -208,7 +294,7 @@ cumulative_counters:
 - `## Summary` (when any audited run’s `cache-freshness` line shows `run_version` strictly less than `--current-version`, prepend a bold one-line banner immediately under the heading: **Self-deploying lens:** runs in this batch were on `<run_version(s)>`; current `main` is `<current-version>`. Use the scan NDJSON values; do not invent versions.)
 - `## Delta from prior audit` (omit when `prior_report_issue` is null)
 - `## Per-PR findings` (one `####` subsection per PR)
-- `## Open issues snapshot` (list every open audit-eligible issue: number, title, last-seen-symptom-count)
+- `## Open issues snapshot` (list every open audit-eligible issue: number, title, last-seen-symptom-count; when an issue title begins with `[IN PROGRESS]` and received an augmentation for this batch, annotate that it **recurred this batch (pre-fix)**)
 - `## Scan results` (table: scan-name → pass/fail/finding count, plus issue cross-references)
 
 ## Close Prior Reports
@@ -254,14 +340,15 @@ audit-map-runs.sh            → run-map.tsv
 for each PR:
   audit-scan-run.sh          → scan-results-NNNN.ndjson
 audit-compute-counters.sh    → COUNTERS_OUT (KV lines on stdout; treat as counters input)
-[LLM: classify proposed_new_issues / proposed_augmentations via gh search + reasoning]
+[LLM: classify proposed_new_issues / proposed_augmentations via gh issue search (open+closed), version-window reasoning, and version_window_checks]
 audit-pacific-timestamp.sh   → PACIFIC_TIMESTAMP (extract from stdout KV)
 audit-title.sh               → TITLE
 [LLM: write report prose — Summary, Delta, Per-PR findings, Open issues, Scan results table
        reading from COUNTERS_OUT + scan-results-*.ndjson as structured input]
 create-one.sh                → file audit report
 audit-close-priors.sh        → close prior audit-report issues
-[LLM: post-report 3-way question if proposed issues exist]
+[LLM: post-report 3-way question if proposed issues exist — or zero-findings short-circuit when both proposal lists are empty]
+[LLM: if audit-report issue number exists: post session-summary comment on that issue; else skip (no report filed)]
 ```
 
 ## Scripts

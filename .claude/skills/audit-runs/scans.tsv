@@ -1,7 +1,7 @@
 name	type	pattern	expected_outcome	severity
 required-file-presence	file-exists	docs/run-logs-required-files.tsv	all required files present in run-log root	warning
 exon-misclassification	grep-pattern	\| FINDING_.* \| 0 \| 0 \| [1-9][0-9]* \|.*\| rejected \|	no EXON misclassifications in voting-tally.md	high
-oos-category-mangle	jsonl-field	.category not in ["code-quality","risk-integration","correctness","architecture","security"]	all OOS category fields use canonical values	high
+oos-category-mangle	jsonl-field	plan-review accepted rows: .phase=="plan-review" and .outcome=="accepted" and (.category//""!="") and category not canonical	all plan-review accepted category fields use canonical values	high
 rej-category-blank	jsonl-field	review-findings-full.jsonl: ((.id//"")|type=="string" and startswith("REJ_")) and ((.category//"")=="") and ((.prose_body//"")|test("###[[:space:]]+FINDING_[0-9A-Za-z_]+:[[:space:]]*(code-quality|risk-integration|correctness|architecture|security)(:|\n|$)"))	no REJ_* rows with blank category when prose_body has a category-shaped ### FINDING_ inner line (canonical tag, optional location colon)	medium
 ns-retry-sidecars	file-glob	round-*/*-ns-retry*.txt	no NS-retry sidecar files present	medium
 codex-round1-adherence	jsonl-field	round-([2-9]|[1-9][0-9]+)/panel-manifest.ndjson: .tool=="codex"	Codex absent from round 2+ panel manifests	medium

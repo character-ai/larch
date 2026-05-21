@@ -1,0 +1,12 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: EXONERATE -- category-stats intentionally counts across all phases as a broad diagnostic; oos-category-mangle narrowing is intentional scope divergence
+FINDING_4: EXONERATE -- LLM-driven orchestration skills can only be tested at shape/contract level; demanding orchestration-faithful test machinery would be over-engineering
+FINDING_5: EXONERATE -- test numbering off-by-one is a cosmetic traceability gap not worth a standalone issue
+FINDING_6: YES
+FINDING_7: EXONERATE -- skip condition is explicitly documented in the step prose; diagram omission is a minor inconsistency not worth a separate issue
+FINDING_8: YES
+FINDING_9: EXONERATE -- these are LLM orchestration instructions, not human shell scripts; the LLM constructs actual commands at runtime with appropriate quoting
+FINDING_10: NO -- committed run-log trees are intentional per run-log policy
+FINDING_11: EXONERATE -- offline harness limitations are expected and acceptable for an LLM-driven skill
+FINDING_12: NO -- clarification note about a red herring, not an actionable defect to track

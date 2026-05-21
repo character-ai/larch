@@ -1,0 +1,14 @@
+FINDING_1: EXONERATE -- counter wiring not shown here; dual-path risk is plausible but unproven and extra gating/tests add avoidable complexity.
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: EXONERATE -- rare mktemp failure; added checks are low value versus shell noise.
+FINDING_6: YES
+FINDING_7: EXONERATE -- contract doc already narrows mangled scope; further operator docs are optional polish.
+FINDING_8: EXONERATE -- minor echo/label mismatch in harness only.
+FINDING_9: EXONERATE -- internal examples; argv-safety sermon would outweigh practical risk.
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: EXONERATE -- harness table already maps empty audited_versions to propose; vacuous suppress is not exhibited.
+FINDING_14: EXONERATE -- meta/noise observations do not merit a tracking issue.

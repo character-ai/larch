@@ -1,0 +1,113 @@
+Structured finding list after merging duplicate concerns and preserving `[OUT_OF_SCOPE]` on out-of-scope-only items.
+
+```text
+### FINDING_1: Harness contract markdown lags new tests and frontmatter
+- **Reviewer(s)**: cursor-specialist-structure-output.txt
+- **Concern**: `test-audit-runs.md` is treated as the harness index but does not document #2523 coverage (C.1–C.4) or `version_window_checks`, so onboarding and maintenance drift from what CI actually exercises.
+- **Suggested revision**: Update “What is tested” and edit-in-sync notes in [.claude/skills/audit-runs/scripts/test-audit-runs.md](.claude/skills/audit-runs/scripts/test-audit-runs.md) to list C.1–C.4 and `version_window_checks` alongside the new tests.
+
+### FINDING_2: jq failures on JSONL scans silently become zero matches
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-correctness-output.txt, cursor-specialist-edge-cases-output.txt
+- **Concern**: In `audit-scan-run.sh` (review-findings JSONL path), stderr is discarded and the pipeline falls back to `0` on failure, so corrupt/unreadable JSONL can make scans such as `oos-category-mangle` pass with a zero count instead of surfacing parse/jq errors.
+- **Suggested revision**: Treat non-zero `jq` exit as a scan error/skip in NDJSON (or otherwise fail closed) instead of coercing to zero; optionally drop the silent `|| echo 0` pattern for that probe.
+
+### FINDING_3: Plan, harness echoes, and archived plan text disagree on test IDs and C.1 contract
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-correctness-output.txt, cursor-specialist-plan-fidelity-output.txt, cursor-specialist-edge-cases-output.txt
+- **Concern**: Test numbering/labels in `test-audit-runs.sh` and echoed plan-goals text diverge from the implementation plan (e.g. “Test 55” vs other uses of 55, ranges 55–60 vs 56–62), and a committed `plan-goals-test.md` fragment still describes C.1 as open-only while C.2 and shipped `SKILL.md` imply a broader contract—operators auditing the run can misread what shipped.
+- **Suggested revision**: Align numbering across plan, harness messages, and any canonical doc, or add an explicit ID mapping table; for the archived plan snapshot, either annotate it as historical or align text with shipped `SKILL.md` if log-edit policy allows.
+
+### FINDING_4: Duplicated minimal harness setup for scan-run tests
+- **Reviewer(s)**: cursor-specialist-structure-output.txt
+- **Concern**: Two tests duplicate the same `scans.tsv` / `required.tsv` bootstrap; a TSV shape change requires two coordinated edits.
+- **Suggested revision**: Extract shared variables or a small helper for the shared bootstrap to single-source the fixture shape.
+
+### FINDING_5: [OUT_OF_SCOPE] EXON scan masks per-file grep errors
+- **Reviewer(s)**: cursor-specialist-structure-output.txt
+- **Concern**: `grep || true` in the EXON scan hides per-file errors; reviewers treat this as a pre-existing pattern outside the PR’s functional scope.
+- **Suggested revision**: Defer to a separate hardening change if EXON scan reliability should improve.
+
+### FINDING_6: Session-summary comment gating tests omit zero-findings short-circuit vs filed report
+- **Reviewer(s)**: cursor-specialist-correctness-output.txt, cursor-specialist-testing-output.txt, cursor-specialist-edge-cases-output.txt, dyn-test-gap-output.txt
+- **Concern**: `should_post_session_summary_comment` / Test 61-style coverage only distinguishes empty vs non-empty `AUDIT_REPORT_NUMBER` and would still expect `post` whenever a report number exists, but `SKILL.md` step 4 requires skipping session-summary when a report is filed yet step 2 took the zero-findings short-circuit (both proposal lists empty). A regression that always posts when `AUDIT_REPORT_NUMBER` is set would stay green.
+- **Suggested revision**: Extend the predicate (e.g. `zero_findings_short_circuit` or equivalent) and add cases for `(filed && zero_findings) → skip`, `(filed && full walk) → post`, `(not filed) → skip`.
+
+### FINDING_7: Session-summary / plan traceability: “zero-PR” scenario not explicitly asserted
+- **Reviewer(s)**: cursor-specialist-plan-fidelity-output.txt
+- **Concern**: Tests gate session-summary on missing `AUDIT_REPORT_NUMBER` but do not explicitly assert the plan-named “zero-PR short-circuit” scenario, weakening traceability from plan text to harness behavior.
+- **Suggested revision**: Rename/clarify the test framing or add a dedicated stub/assertion that matches the plan’s named scenario.
+
+### FINDING_8: `category-stats.mangled_count` semantics diverge from `oos-category-mangle` filtering
+- **Reviewer(s)**: cursor-specialist-correctness-output.txt, cursor-specialist-testing-output.txt
+- **Concern**: `mangled_count` can include non-canonical categories across phases while `oos-category-mangle` and related deltas restrict to plan-review accepted rows, so a run can show `oos-category-mangle` pass while `category-stats` reports `mangled>0`, misleading consumers who equate the fields.
+- **Suggested revision**: Align the `mangled_count` jq with the same filters as `oos-category-mangle`, split into two metrics, or document the intentional divergence in `audit-scan-run.md` / `SKILL.md`.
+
+### FINDING_9: Phase/outcome string comparisons are case-sensitive in jq
+- **Reviewer(s)**: cursor-specialist-edge-cases-output.txt
+- **Concern**: Equality checks on phase/outcome are case-sensitive; future non-lowercase producer values could skip mangled plan-review rows and yield false passes.
+- **Suggested revision**: Normalize with `ascii_downcase` (or enforce canonical casing at the producer).
+
+### FINDING_10: Closed-issue / version-window operator workflow depends on thin `gh` search
+- **Reviewer(s)**: cursor-specialist-edge-cases-output.txt
+- **Concern**: C.2 relies on `gh issue` search for closed matches; missed issues can skew proposals or `version_window_checks`.
+- **Suggested revision**: Document fallback queries or explicit `gh issue view` / broader search patterns when results look incomplete.
+
+### FINDING_11: Ambiguous `version_window_checks` frontmatter comment
+- **Reviewer(s)**: cursor-specialist-edge-cases-output.txt
+- **Concern**: The inline comment about rows vs empty list is easy to mis-fill when authoring frontmatter.
+- **Suggested revision**: Clarify wording so authors know the key is always present and an empty list is valid.
+
+### FINDING_12: `proposed_new_issues` YAML comment understates C.2 closed-only suppression
+- **Reviewer(s)**: cursor-specialist-plan-fidelity-output.txt
+- **Concern**: The frontmatter comment can be read as “every unmatched finding becomes `proposed_new_issues`,” conflicting with the post–version-window “warrants new issue” rule.
+- **Suggested revision**: Update the YAML comment to match the prose definition of recurrence vs suppression.
+
+### FINDING_13: C.2 shipped workflow lacks hermetic integration coverage beyond inline semver jq
+- **Reviewer(s)**: cursor-specialist-testing-output.txt, dyn-test-gap-output.txt
+- **Concern**: The full C.2 wiring (`gh issue list --state all`, closed branch, PR/issue timing, `git log`/`git show` bump discovery) is not exercised with stubbed `gh`/`git` fixtures; only isolated semver ordering jq is tested, so wiring/timestamp regressions may not fail CI.
+- **Suggested revision**: Add an offline table-driven or stubbed-path test (fixtures + fake `gh`/`git` on `PATH`) or extract and unit-test a small “bump after instant” function.
+
+### FINDING_14: Semver harness does not assert invalid / non-three-part normalization contract
+- **Reviewer(s)**: cursor-specialist-plan-fidelity-output.txt, cursor-specialist-testing-output.txt (via C.2 coverage gap), dyn-test-gap-output.txt
+- **Concern**: Existing semver tests cover ordering but not invalid or non–three-integer-component strings per C.2’s stated normalization, so malformed inputs can regress unnoticed (complements FINDING_13’s broader wiring gap).
+- **Suggested revision**: Add focused jq assertions for invalid/non-three-part inputs per `SKILL.md` rules.
+
+### FINDING_15: Test 10 audit body fixture omits `version_window_checks`
+- **Reviewer(s)**: dyn-test-gap-output.txt
+- **Concern**: Round-trip coverage for the always-present `version_window_checks` key is missing from the legacy-style sample body, risking parser/tooling drift.
+- **Suggested revision**: Add `version_window_checks: []` (and optionally a representative row) to the fixture and assert it survives the same extraction path.
+
+### FINDING_16: Session-summary skip-filing test does not assert absence of empty **Augmentations** block
+- **Reviewer(s)**: dyn-test-gap-output.txt
+- **Concern**: The stub omits augmentations per `SKILL.md`, but tests only check the decision line and skipped rows—an empty **Augmentations** table would not fail.
+- **Suggested revision**: Add negative assertions on the rendered summary (e.g. no `**Augmentations**` header) for the no-augmentation case.
+
+### FINDING_17: `SKILL.md` does not define behavior when three-integer semver parse fails
+- **Reviewer(s)**: dyn-version-window-logic-output.txt
+- **Concern**: The suppression rule compares `fix_shipped_version` to every audited `larch_version` after requiring `MAJOR.MINOR.PATCH` integers, but does not specify handling for pre-releases, extra segments, or odd strings—ambiguous handling can vacuously satisfy “greater than every audited version” and wrongly suppress recurrence.
+- **Suggested revision**: Add an explicit rule (e.g. parse failures → `unknown` for that side’s comparison, conservative branch that still proposes, and record in `version_window_checks`).
+
+### FINDING_18: `git log --after` anchoring can skip or mis-order bump commits near merge/close instants
+- **Reviewer(s)**: dyn-version-window-logic-output.txt
+- **Concern**: Strictly-after semantics plus coarse ISO timestamps from `gh` can pick the second bump after a fix or mis-anchor `fix_shipped_version`, incorrectly triggering suppression.
+- **Suggested revision**: Document and implement a conservative rule (verified `--since` semantics for your Git version, small epsilon, merge-commit attribution, etc.) and align `SKILL.md` wording to that choice.
+
+### FINDING_19: Session-summary failure path may echo raw `gh` stderr (paths / TMPDIR) into shared surfaces
+- **Reviewer(s)**: cursor-specialist-security-output.txt
+- **Concern**: New guidance to surface `gh` stderr on failure can leak absolute `--body-file` paths and local environment context into operator chat or pasted logs.
+- **Suggested revision**: Prefer redacted summaries or private-only stderr handling instead of verbatim stderr in shared channels.
+
+### FINDING_20: [OUT_OF_SCOPE] Committed implement run artifacts under `larch-logs/implement/9C7CDB30-…/`
+- **Reviewer(s)**: cursor-specialist-testing-output.txt, cursor-specialist-plan-fidelity-output.txt, dyn-version-window-logic-output.txt, dyn-test-gap-output.txt
+- **Concern**: Multiple reviewers flag the flushed implement run directory as review noise or orthogonal to audit-runs behavior; no functional regression implied unless the directory was not meant to ship.
+- **Suggested revision**: None for audit-runs correctness; confirm intent to ship or handle via separate chore/policy if unwanted.
+
+### FINDING_21: [OUT_OF_SCOPE] Harness `ltrimstr("v")` strips multiple leading `v` characters vs skill’s single-`v` rule
+- **Reviewer(s)**: dyn-version-window-logic-output.txt
+- **Concern**: The Test 62 jq snippet can strip more than one leading `v`, which is not a faithful literal of the skill’s single-`v` strip; reviewers mark as out of scope for the version-window spec PR.
+- **Suggested revision**: Align test normalization with the documented rule in a follow-up if strict fidelity matters.
+
+### FINDING_22: [OUT_OF_SCOPE] Scout verification: version-window examples and PR tie-break appear conservative
+- **Reviewer(s)**: dyn-version-window-logic-output.txt
+- **Concern**: Reviewer prose records explicit checks (e.g. equality vs “strictly greater than every,” positive-delta tie-break with ambiguous `mergedAt`/`createdAt` falling through to “propose”) as consistent with conservative outcomes—not an actionable defect in this list unless contradicted elsewhere.
+- **Suggested revision**: No code change implied; treat as recorded verification unless a conflicting bug is filed.
+```

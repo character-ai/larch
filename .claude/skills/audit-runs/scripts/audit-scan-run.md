@@ -8,7 +8,7 @@ One NDJSON line per scan, plus summary objects:
 
 ```json
 {"scan":"exon-misclassification","pr":2476,"result":"pass","count":0}
-{"scan":"oos-category-mangle","pr":2476,"result":"fail","count":12,"detail":"12 plan-review-phase rows with prose category"}
+{"scan":"oos-category-mangle","pr":2476,"result":"fail","count":12,"detail":"12 plan-review accepted rows with prose category (not canonical)"}
 {"scan":"required-file-presence","pr":2476,"result":"fail","missing":["run-statistics.md"]}
 {"scan":"cache-freshness","pr":2476,"result":"informational","run_version":"29.8.54","current_version":"29.8.61","detail":"run plugin version behind current"}
 {"scan":"changelog-rebase-conflicts","pr":2476,"result":"fail","count":2}
@@ -34,9 +34,9 @@ All scans in `scans.tsv`: `required-file-presence`, `exon-misclassification`, `o
 
 A `name` in `scans.tsv` with no matching `case` arm emits an `{"scan":"<name>","result":"error",...}` NDJSON line and exits non-zero (registry drift vs this script).
 
-**`ns-retry-sidecars` reasons field**: the `ns-retry-sidecars` scan now includes a `reasons` object alongside `count` in its NDJSON output (e.g., `{"scan":"ns-retry-sidecars","pr":N,"result":"fail","count":3,"reasons":{"NO_ISSUES_FOUND_TOO_THIN":2,"UNKNOWN":1}}`). Reasons are parsed from `NS_RETRY_REASON=` in each `*-ns-retry*.txt.meta` sidecar. Sidecars that lack a `NS_RETRY_REASON=` line (e.g., produced before this change landed) contribute an `UNKNOWN` count. The pass-result variant always emits `"reasons":{}`. When `count` is positive but the histogram step cannot be built (e.g., `jq` failure), the line rolls up to `reasons:{"UNKNOWN":<count>}` and may include `reasons_detail` explaining the fallback.
+**`ns-retry-sidecars` reasons field**: the `ns-retry-sidecars` scan now includes a `reasons` object alongside `count` in its NDJSON output (e.g., `{“scan”:”ns-retry-sidecars”,”pr”:N,”result”:”fail”,”count”:3,”reasons”:{“NO_ISSUES_FOUND_TOO_THIN”:2,”UNKNOWN”:1}}`). Reasons are parsed from `NS_RETRY_REASON=` in each `*-ns-retry*.txt.meta` sidecar. Sidecars that lack a `NS_RETRY_REASON=` line (e.g., produced before this change landed) contribute an `UNKNOWN` count. The pass-result variant always emits `”reasons”:{}`. When `count` is positive but the histogram step cannot be built (e.g., `jq` failure), the line rolls up to `reasons:{“UNKNOWN”:<count>}` and may include `reasons_detail` explaining the fallback.
 
-`category-stats` always emits. When `review-findings-full.jsonl` is missing, `partial_data` is `true` and numeric fields are zero placeholders (not “measured clean”).
+`category-stats` always emits. When `review-findings-full.jsonl` is missing, `partial_data` is `true` and numeric fields are zero placeholders (not “measured clean”). When the file is present but the shared mangled-category jq program (`audit-scan-run-mangled-rows.jq`) cannot run successfully — including when `oos-category-mangle` already emitted `result:”error”` for a jq/parse failure on that JSONL — `partial_data` is `true`, `mangled` is a zero placeholder (not “measured clean”), and a `detail` string may be present; `canonical` / `oos_blank` / `rej_blank` may still reflect jq over the raw JSONL. When `oos-category-mangle` jq succeeds, `category-stats` reuses that single jq pass for `mangled` (no duplicate `jq -f` on the same file). The `mangled` count otherwise uses the same `plan-review` / `accepted` / non-canonical-category filter as the `oos-category-mangle` scan (not “any phase” prose categories).
 
 `cross-cutting` summarizes manifest integrity with **version-aware** rules (mirrors `audit-scan-run.sh` `jq`):
 

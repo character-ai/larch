@@ -1,0 +1,26 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: NO -- test label numbering vs plan is cosmetic and has no functional impact
+FINDING_5: NO -- committed run-log flush is intentional per policy
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: NO -- YAML comments are valid YAML syntax; strict consumers will not reject them
+FINDING_9: NO -- historical run-log artifact with no code impact
+FINDING_10: EXONERATE -- YAML flow-scalar context allows `|` as a string character; `decision: skip | propose` parses correctly as a string
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: NO -- YAML comments are valid syntax, same as FINDING_8
+FINDING_16: NO -- plan-vs-implementation file list drift is a normal consequence of iterative development; not issue-worthy
+FINDING_17: NO -- same as FINDING_4; cosmetic test numbering
+FINDING_18: YES
+FINDING_19: NO -- frozen historical run-log artifact; no code impact
+FINDING_20: YES
+FINDING_21: NO -- committed run-log is per policy; same as FINDING_5
+FINDING_22: NO -- informational scout observation, not an actionable finding
+FINDING_23: YES
+FINDING_24: NO -- verification scout observation, not an actionable finding
+FINDING_25: NO -- commit-list information, not an actionable finding
+FINDING_26: NO -- duplicate assertion label `[34c]` affects only failure triage ergonomics; trivially cosmetic
