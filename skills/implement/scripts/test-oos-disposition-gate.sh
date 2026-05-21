@@ -107,7 +107,7 @@ assert_rc "non-security OOS with filed URL passes" 0 "$rc"
 # --- Case: security-routed block excluded from obligation set ---
 cat >"$TMP/sec.md" <<'EOF'
 ### OOS_1: Secret thing
-- **Description**: focus-area = security issue
+- **focus-area**: security
 - **Phase**: implement
 EOF
 set +e
@@ -148,6 +148,58 @@ set +e
 rc=$?
 set -e
 assert_rc "non-security OOS without disposition fails" 1 "$rc"
+
+# --- Case: invalid commit-range is exit 2 ---
+set +e
+(
+  cd "$ORPHAN_TMP"
+  bash "$GATE" \
+    --accepted-files "$TMP/bad.md" \
+    --filed-urls-file "$TMP/empty-urls.md" \
+    --commit-range 'HEAD~99..HEAD' >/dev/null 2>&1
+)
+rc=$?
+set -e
+assert_rc "invalid commit-range yields exit 2" 2 "$rc"
+
+# --- Case: prose 'focus-area = security' in Description is NOT security-routed ---
+cat >"$TMP/false-sec.md" <<'EOF'
+### OOS_1: Doc mention
+- **Description**: focus-area = security issue (prose only)
+- **Phase**: implement
+EOF
+set +e
+(
+  cd "$ORPHAN_TMP"
+  bash "$GATE" \
+    --accepted-files "$TMP/false-sec.md" \
+    --filed-urls-file "$TMP/empty-urls.md" \
+    --commit-range HEAD >/dev/null 2>&1
+)
+rc=$?
+set -e
+assert_rc "description prose mentioning focus-area=security still requires disposition" 1 "$rc"
+
+# --- Case: explicit rejection markers in oos-issues.ndjson satisfy disposition ---
+cat >"$TMP/rej-acc.md" <<'EOF'
+### OOS_1: Out of scope item
+- **Phase**: implement
+EOF
+cat >"$TMP/rej.ndjson" <<'EOF'
+{"phase":"code-review","step":"9a.1","category":"OOS","body":"## Rejected / Out-of-Scope Observations (not filed)\n\n### OOS_1: Out of scope item\nPanel rejected.\n"}
+EOF
+set +e
+(
+  cd "$ORPHAN_TMP"
+  bash "$GATE" \
+    --accepted-files "$TMP/rej-acc.md" \
+    --filed-urls-file "$TMP/empty-urls.md" \
+    --oos-issues-ndjson "$TMP/rej.ndjson" \
+    --commit-range HEAD >/dev/null 2>&1
+)
+rc=$?
+set -e
+assert_rc "rejected OOS markers in ndjson satisfy gate without URLs" 0 "$rc"
 
 # --- Case: two OOS blocks + two inline lines on commit range ---
 cat >"$TMP/two.md" <<'EOF'

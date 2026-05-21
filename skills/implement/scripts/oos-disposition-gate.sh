@@ -1,16 +1,24 @@
 #!/usr/bin/env bash
 # oos-disposition-gate.sh — Mechanical guard: non-security accepted OOS entries
-# must have either filed issue URLs or Inline-triage commit breadcrumbs.
+# must have either filed issue URLs, Inline-triage commit breadcrumbs, or
+# explicit rejection markers in the oos-issues NDJSON batch.
 #
 # Exit 0: pass or skipped (--fork-mode / --repo-unavailable).
-# Exit 1: disposition gap (non_security > 0, filed == 0, inline < non_security).
+# Exit 1: disposition gap (non_security > 0, filed == 0, inline < non_security,
+#   rejected markers < non_security).
 # Exit 2: bad arguments or unreadable inputs required for a non-skip run.
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+OOS_COUNT_AWK="$SCRIPT_DIR/oos-non-security-block-count.awk"
+# shellcheck source=skills/implement/scripts/oos-disposition-shared.inc.bash
+. "$SCRIPT_DIR/oos-disposition-shared.inc.bash"
+
 usage() {
   printf 'usage: oos-disposition-gate.sh [--fork-mode] [--repo-unavailable] \\\n' >&2
-  printf '  --accepted-files CSV --filed-urls-file PATH --commit-range RANGE\n' >&2
+  printf '  --accepted-files CSV --filed-urls-file PATH \\\n' >&2
+  printf '  [--oos-issues-ndjson PATH] --commit-range RANGE\n' >&2
 }
 
 count_non_security_oos() {
@@ -19,37 +27,12 @@ count_non_security_oos() {
   while IFS= read -r f; do
     [ -z "$f" ] && continue
     [ -f "$f" ] || continue
-    n=$(awk '
-      BEGIN { n = 0; inblk = 0; sec = 0 }
-      /^###[[:space:]]+OOS_/ {
-        if (inblk && !sec) n++
-        inblk = 1
-        sec = 0
-        next
-      }
-      inblk && /focus-area[[:space:]]*=[[:space:]]*security/ {
-        sec = 1
-      }
-      END {
-        if (inblk && !sec) n++
-        print n + 0
-      }
-    ' "$f" 2>/dev/null || printf '0')
+    n=$(awk -f "$OOS_COUNT_AWK" "$f" 2>/dev/null || printf '0')
     sum=$((sum + n))
   done <<EOF
 $(printf '%s' "$csv" | tr ',' '\n')
 EOF
   printf '%s' "$sum"
-}
-
-count_filed_urls() {
-  local file="$1"
-  if [ ! -f "$file" ] || [ ! -s "$file" ]; then
-    printf '0'
-    return
-  fi
-  # De-dupe URLs across the sentinel / sidecar file.
-  grep -Eo 'https://[^[:space:]]+/issues/[0-9]+' "$file" 2>/dev/null | sort -u | wc -l | tr -d '[:space:]'
 }
 
 count_inline_triage() {
@@ -77,6 +60,7 @@ count_inline_triage() {
 
 ACCEPTED_FILES=""
 FILED_URLS_FILE=""
+OOS_ISSUES_NDJSON=""
 COMMIT_RANGE=""
 FORK_MODE=false
 REPO_UNAVAILABLE=false
@@ -97,6 +81,14 @@ while [ $# -gt 0 ]; do
         exit 2
       }
       FILED_URLS_FILE="$2"
+      shift 2
+      ;;
+    --oos-issues-ndjson)
+      [ $# -ge 2 ] || {
+        usage
+        exit 2
+      }
+      OOS_ISSUES_NDJSON="$2"
       shift 2
       ;;
     --commit-range)
@@ -131,7 +123,15 @@ if [ -z "$ACCEPTED_FILES" ] || [ -z "$FILED_URLS_FILE" ] || [ -z "$COMMIT_RANGE"
 fi
 
 non_sec=$(count_non_security_oos "$ACCEPTED_FILES")
-filed=$(count_filed_urls "$FILED_URLS_FILE")
+if [ -n "$OOS_ISSUES_NDJSON" ] && [ -f "$OOS_ISSUES_NDJSON" ]; then
+  filed=$(count_filed_urls_union_files "$FILED_URLS_FILE" "$OOS_ISSUES_NDJSON")
+else
+  filed=$(count_filed_urls_union_files "$FILED_URLS_FILE")
+fi
+rejected=0
+if [ -n "$OOS_ISSUES_NDJSON" ] && [ -f "$OOS_ISSUES_NDJSON" ]; then
+  rejected=$(count_rejected_oos_markers_from_ndjson "$OOS_ISSUES_NDJSON")
+fi
 inline_raw=$(count_inline_triage "$COMMIT_RANGE") || exit 2
 inline=$inline_raw
 
@@ -147,6 +147,10 @@ if [ "${inline:-0}" -ge "${non_sec:-0}" ]; then
   exit 0
 fi
 
-printf 'oos-disposition-gate: FAIL non_security_oos=%s filed_urls=%s inline_triage_lines=%s (commit-range %s)\n' \
-  "$non_sec" "$filed" "$inline" "$COMMIT_RANGE" >&2
+if [ "${rejected:-0}" -ge "${non_sec:-0}" ]; then
+  exit 0
+fi
+
+printf 'oos-disposition-gate: FAIL non_security_oos=%s filed_urls=%s inline_triage_lines=%s rejected_oos_markers=%s (commit-range %s)\n' \
+  "$non_sec" "$filed" "$inline" "$rejected" "$COMMIT_RANGE" >&2
 exit 1

@@ -31,6 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- OOS disposition gate and `oos-silent-drop` audit scan now honor `oos-issues.ndjson` URLs, explicit rejected-OOS markers, tighter security `focus-area` detection, and git-log Inline-triage aligned with the gate's revision walk (with a narrow artifact fallback when git is unavailable); merge-base-empty branches use `origin/main..HEAD` when `origin/main` resolves.
 - Closed: #2539
 
 ## [34.0.14] - 2026-05-21

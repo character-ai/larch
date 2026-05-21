@@ -13,6 +13,10 @@ set -euo pipefail
 _audit_scan_run_self_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=.claude/skills/audit-runs/scripts/audit-scan-run-jstr.inc.bash
 . "$_audit_scan_run_self_dir/audit-scan-run-jstr.inc.bash"
+_OOS_IMPL_SCRIPTS="$(cd "${_audit_scan_run_self_dir}/../../../../skills/implement/scripts" && pwd)"
+# shellcheck source=skills/implement/scripts/oos-disposition-shared.inc.bash
+. "$_OOS_IMPL_SCRIPTS/oos-disposition-shared.inc.bash"
+_OOS_BLK_AWK="$_OOS_IMPL_SCRIPTS/oos-non-security-block-count.awk"
 
 # Set to 1 when mangled-category jq on review-findings-full.jsonl fails (oos-category-mangle scan).
 _audit_scan_mangled_jq_failed=0
@@ -77,6 +81,38 @@ fi
 
 # ---- Helpers ----
 emit() { printf '%s\n' "$1"; }
+
+# Inline-triage evidence aligned with oos-disposition-gate.sh: prefer the same
+# git revision walk when a work tree is available; otherwise fall back to a
+# narrow allowlist of commit-bearing artifacts under the run directory.
+_audit_oos_inline_triage_hits() {
+    local run_dir="$1" repo range c
+    repo=$(git rev-parse --show-toplevel 2>/dev/null || true)
+    if [ -n "$repo" ]; then
+        range="HEAD"
+        if git -C "$repo" rev-parse -q --verify origin/main >/dev/null 2>&1; then
+            local mb
+            mb=$(git -C "$repo" merge-base HEAD origin/main 2>/dev/null || true)
+            if [ -n "$mb" ]; then
+                range="${mb}..HEAD"
+            else
+                range="origin/main..HEAD"
+            fi
+        fi
+        if git -C "$repo" rev-list -1 "$range" >/dev/null 2>&1; then
+            c=$(git -C "$repo" log --format=%B "$range" 2>/dev/null | grep -cF 'Inline-triage rule' || true)
+            printf '%s' "${c:-0}"
+            return
+        fi
+    fi
+    c=0
+    local f
+    for f in "$run_dir/codex-commit-message.txt" "$run_dir/session-transcript.jsonl"; do
+        [ -f "$f" ] || continue
+        c=$((c + $(grep -cF 'Inline-triage rule' "$f" 2>/dev/null || true)))
+    done
+    printf '%s' "${c:-0}"
+}
 
 # Map a raw NS_RETRY_REASON value from .meta to a JSON-safe audit token (unknown → UNKNOWN).
 _audit_normalize_ns_retry_reason_token() {
@@ -444,28 +480,13 @@ scan_trailing_content_no_issues_found() {
 
 # ---- Scan: oos-silent-drop (retroactive disposition heuristic) ----
 scan_oos_silent_drop() {
-    local f c acc_total filed_count inline_count gf n oos_json
+    local f c acc_total filed_count inline_count oos_json rejected_count
     oos_json="$RUN_DIR/oos-issues.ndjson"
     acc_total=0
     while IFS= read -r f; do
         [ -n "$f" ] || continue
         [ -f "$f" ] || continue
-        c=$(awk '
-      BEGIN { n = 0; inblk = 0; sec = 0 }
-      /^###[[:space:]]+OOS_/ {
-        if (inblk && !sec) n++
-        inblk = 1
-        sec = 0
-        next
-      }
-      inblk && /focus-area[[:space:]]*=[[:space:]]*security/ {
-        sec = 1
-      }
-      END {
-        if (inblk && !sec) n++
-        print n + 0
-      }
-    ' "$f" 2>/dev/null || printf '0')
+        c=$(awk -f "$_OOS_BLK_AWK" "$f" 2>/dev/null || printf '0')
         acc_total=$((acc_total + c))
     done <<EOF
 $(find "$RUN_DIR" -name 'oos-accepted*.md' -type f 2>/dev/null | LC_ALL=C sort)
@@ -475,25 +496,23 @@ EOF
         return
     fi
     filed_count=0
+    rejected_count=0
     if [ -f "$oos_json" ]; then
-        filed_count=$(grep -Eo 'https://[^[:space:]]+/issues/[0-9]+' "$oos_json" 2>/dev/null | sort -u | wc -l | tr -d '[:space:]')
+        rejected_count=$(count_rejected_oos_markers_from_ndjson "$oos_json")
     fi
-    inline_count=0
-    while IFS= read -r gf; do
-        [ -f "$gf" ] || continue
-        case "$gf" in
-            *.md | *.json | *.ndjson) ;;
-            *) continue ;;
-        esac
-        n=$(grep -cF 'Inline-triage rule' "$gf" 2>/dev/null || true)
-        inline_count=$((inline_count + n))
-    done <<EOF
-$(find "$RUN_DIR" -type f \( -name '*.md' -o -name '*.json' -o -name '*.ndjson' \) 2>/dev/null | LC_ALL=C sort)
-EOF
-    if [ "${filed_count:-0}" -gt 0 ] || [ "${inline_count:-0}" -ge "$acc_total" ]; then
-        emit "{\"scan\":\"oos-silent-drop\",\"pr\":$PR_NUM,\"result\":\"pass\",\"non_security_oos_blocks\":$acc_total,\"issue_urls\":$filed_count,\"inline_triage_hits\":$inline_count}"
+    local url_files=()
+    [ -f "$oos_json" ] && url_files+=("$oos_json")
+    [ -f "$RUN_DIR/oos-issues-created.md" ] && url_files+=("$RUN_DIR/oos-issues-created.md")
+    if [ "${#url_files[@]}" -gt 0 ]; then
+        filed_count=$(count_filed_urls_union_files "${url_files[@]}")
     else
-        emit "{\"scan\":\"oos-silent-drop\",\"pr\":$PR_NUM,\"result\":\"fail\",\"non_security_oos_blocks\":$acc_total,\"issue_urls\":$filed_count,\"inline_triage_hits\":$inline_count,\"detail\":\"$(jstr "accepted OOS blocks without filed URLs or sufficient Inline-triage breadcrumbs in run log")\"}"
+        filed_count=0
+    fi
+    inline_count=$(_audit_oos_inline_triage_hits "$RUN_DIR")
+    if [ "${filed_count:-0}" -gt 0 ] || [ "${inline_count:-0}" -ge "$acc_total" ] || [ "${rejected_count:-0}" -ge "$acc_total" ]; then
+        emit "{\"scan\":\"oos-silent-drop\",\"pr\":$PR_NUM,\"result\":\"pass\",\"non_security_oos_blocks\":$acc_total,\"issue_urls\":$filed_count,\"inline_triage_hits\":$inline_count,\"rejected_oos_markers\":$rejected_count}"
+    else
+        emit "{\"scan\":\"oos-silent-drop\",\"pr\":$PR_NUM,\"result\":\"fail\",\"non_security_oos_blocks\":$acc_total,\"issue_urls\":$filed_count,\"inline_triage_hits\":$inline_count,\"rejected_oos_markers\":$rejected_count,\"detail\":\"$(jstr "accepted OOS blocks without filed URLs, sufficient Inline-triage breadcrumbs, or explicit rejected-OOS markers in oos-issues.ndjson")\"}"
     fi
 }
 
