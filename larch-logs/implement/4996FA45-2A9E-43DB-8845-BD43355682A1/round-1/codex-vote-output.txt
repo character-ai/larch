@@ -1,0 +1,5 @@
+FINDING_1: YES
+FINDING_2: EXONERATE -- Locale consistency is legitimate but the literal star probe has negligible risk and does not warrant extra churn.
+FINDING_3: EXONERATE -- The contract mismatch is real, but the trusted manifest surface makes this too minor for a tracking issue.
+FINDING_4: YES
+FINDING_5: NO -- These are clarifications and diff-hygiene notes, not an actionable future defect.

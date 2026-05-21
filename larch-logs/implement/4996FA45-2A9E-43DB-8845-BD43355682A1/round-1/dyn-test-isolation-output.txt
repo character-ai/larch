@@ -1,0 +1,19 @@
+Gathering the diff, commit log, and relevant script sections for a read-only review focused on test isolation and `LARCH_VERIFY_MANIFEST`.
+
+Checking how the harness invokes the verifier and whether `LARCH_VERIFY_MANIFEST` is documented as repo-relative vs how paths resolve.
+
+### In-Scope Findings
+
+- **risk-integration** `scripts/test-verify-run-log-completeness.sh:84-219` — `scripts/verify-run-log-completeness.sh:9` now reads `LARCH_VERIFY_MANIFEST` from the child process environment for every `"$VERIFY"` invocation, but tests 1–13 do not clear a **pre-exported** `LARCH_VERIFY_MANIFEST` from the harness parent; if a developer or outer wrapper runs `export LARCH_VERIFY_MANIFEST=…` before the harness, every earlier test uses the wrong manifest (false failures or false passes), while test 14’s `LARCH_VERIFY_MANIFEST="$bad_manifest" "$VERIFY"` form only guarantees isolation when the variable is not already exported from outside. **Suggested fix:** After `trap 'rm -rf "$TMP"' EXIT` (or immediately before the first `"$VERIFY"` use), run `unset LARCH_VERIFY_MANIFEST` / `export -n LARCH_VERIFY_MANIFEST`, or prefix each default-case `"$VERIFY"` call with `env -u LARCH_VERIFY_MANIFEST`, reserving the `VAR=value cmd` prefix only for test 14.
+
+- **correctness** `scripts/verify-run-log-completeness.md:47-51` — The new “Testing override” section describes the value as an “absolute or **repo-relative** path,” but `scripts/verify-run-log-completeness.sh:97` only runs `[ -f "$MANIFEST" ]`, so a non-absolute path is resolved relative to the verifier’s **current working directory**, not `REPO_ROOT`, and “repo-relative” is only true if the caller happens to run from the repository root. **Suggested fix:** Either document “absolute or cwd-relative (typically run from repo root)” or resolve non-absolute `LARCH_VERIFY_MANIFEST` against `REPO_ROOT` before the existence check.
+
+### Out-of-Scope Observations
+
+- Test 14 uses the per-command form `LARCH_VERIFY_MANIFEST="$bad_manifest" "$VERIFY" …`, so that assignment does **not** persist in the parent shell after the command substitution; it is not the source of env leakage between cases when the variable is not exported from outside.
+
+- `bad_manifest` and `run_bad_chars` are both rooted under `TMP` from `mktemp` and the harness uses `trap 'rm -rf "$TMP"' EXIT` (`scripts/test-verify-run-log-completeness.sh:13-14`), matching cleanup for other tests’ artifacts under `$TMP`.
+
+- The synthetic manifest header and column order in test 14 match `docs/run-logs-required-files.tsv:1` (`relative_path`, `condition`, `batch_slug`, `extension`).
+
+- The branch diff also adds `larch-logs/implement/4996FA45-2A9E-43DB-8845-BD43355682A1/` run metadata and plan files alongside the script changes; that is orthogonal noise for reviewers focused only on the verifier hardening.

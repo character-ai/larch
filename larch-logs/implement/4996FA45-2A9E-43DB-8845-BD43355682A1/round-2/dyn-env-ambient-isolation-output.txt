@@ -1,0 +1,15 @@
+Gathering the diff, commit list, and files relevant to `LARCH_VERIFY_MANIFEST` isolation.
+
+Checking whether the verifier exports the variable and locating all callers of `verify-run-log-completeness.sh`.
+
+### In-Scope Findings
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+- **code-quality** `larch-logs/implement/4996FA45-2A9E-43DB-8845-BD43355682A1/` — The same branch diff adds new implement run-log files (`manifest.json`, `parent-issue.md`, `plan-goals-test.md`, `plan-review-tally.json`) that duplicate the feature text and are unrelated to the verifier hardening; they look like an `/implement` flush that should not ride along on a focused PR unless intentional. **Suggested fix:** Drop those paths from the PR (or move them to a dedicated run-log PR) so review and dirty-tree tooling stay scoped to the script/Makefile/docs change.
+
+- **risk-integration** `Makefile:661-662` — The new `env -u LARCH_VERIFY_MANIFEST` guard is correct for clearing an inherited export before `harness-timer.sh` and the harness child, but it depends on a non-POSIX `env -u` flag; very old or minimal `/usr/bin/env` builds could reject it. **Suggested fix:** If you ever need broader portability, replace with a tiny `bash -c 'unset LARCH_VERIFY_MANIFEST; exec "$@"' bash …` wrapper or document the `env -u` requirement next to the target.
+
+**Evidence checked (read-only):** `scripts/verify-run-log-completeness.sh` has no `export`, so `LARCH_VERIFY_MANIFEST` cannot be propagated into the parent harness by the verifier; tests use per-invocation assignment or `$(…)` subshells; repo-wide search shows no Makefile or CI workflow invoking `verify-run-log-completeness.sh` except via [`scripts/test-verify-run-log-completeness.sh`](scripts/test-verify-run-log-completeness.sh), which clears the variable at startup (`unset LARCH_VERIFY_MANIFEST`).
+
+**Commits** (`git merge-base HEAD main`..HEAD): `56f6d7a0` Harden verify-run-log-completeness manifest path validation; `237d72e1` chore(larch-logs) flush implement run 4996FA45-…; `2bae9527` Address code review feedback (round 1); `f5b8abb6` Apply /relevant-checks fixes (Step 5).

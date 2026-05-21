@@ -3,6 +3,9 @@
 
 set -euo pipefail
 
+# Drop inherited ambient override so default-case tests use the canonical manifest.
+unset LARCH_VERIFY_MANIFEST
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 VERIFY="$SCRIPT_DIR/verify-run-log-completeness.sh"
 MANIFEST="$SCRIPT_DIR/../docs/run-logs-required-files.tsv"
@@ -85,6 +88,21 @@ run_ok="$TMP/run-ok"
 make_complete_run_dir "$run_ok"
 out="$("$VERIFY" "$run_ok" 2>&1 || true)"
 assert_contains "complete run emits OK" "$out" "OK"
+
+# Test 15: repo-relative LARCH_VERIFY_MANIFEST resolves under REPO_ROOT (not process cwd)
+if out="$(cd "$TMP" && LARCH_VERIFY_MANIFEST="docs/run-logs-required-files.tsv" "$VERIFY" "$run_ok" 2>&1)"; then
+    :
+else
+    :
+fi
+assert_contains "relative manifest path resolves from repo root" "$out" "OK"
+
+# Test 16: LARCH_VERIFY_MANIFEST relative path cannot escape repo with ..
+if out="$(LARCH_VERIFY_MANIFEST='../outside-manifest.tsv' "$VERIFY" "$run_ok" 2>&1)"; then
+    fail "expected non-zero exit for .. in LARCH_VERIFY_MANIFEST"
+else
+    assert_contains "manifest .. segment rejected" "$out" ".."
+fi
 
 # Test 2: missing execution-issues.ndjson from a Step-7a-complete run → MISSING reported
 run_missing_step7a="$TMP/run-missing-step7a"
@@ -217,6 +235,20 @@ printf '%s\n' '{"body":"merged output failed validation"}' > "$run_exn_ok/execut
 printf 'stub\n' > "$run_exn_ok/round-1/aggregator-validate.stderr"
 out="$("$VERIFY" "$run_exn_ok" 2>&1 || true)"
 assert_contains "exn-agg validate with stderr present emits OK" "$out" "OK"
+
+# Test 14: manifest relative_path with invalid characters → error (LARCH_VERIFY_MANIFEST)
+bad_manifest="$TMP/bad-chars-manifest.tsv"
+{
+    printf '%s\t%s\t%s\t%s\n' relative_path condition batch_slug extension
+    printf '%s\t%s\t%s\t%s\n' 'bad path.txt' always direct-file md
+} > "$bad_manifest"
+run_bad_chars="$TMP/run-bad-chars"
+mkdir -p "$run_bad_chars"
+if out="$(LARCH_VERIFY_MANIFEST="$bad_manifest" "$VERIFY" "$run_bad_chars" 2>&1)"; then
+    fail "invalid chars in manifest relative_path: expected non-zero verifier exit"
+else
+    assert_contains "invalid chars in manifest relative_path" "$out" "invalid characters"
+fi
 
 echo
 echo "Passed: $PASS"
