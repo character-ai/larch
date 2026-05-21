@@ -1,0 +1,19 @@
+Reading the ballot and nearby session files for verification.
+
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: EXONERATE -- pure readability preference with no functional impact
+FINDING_4: YES
+FINDING_5: EXONERATE -- risk is theoretical; narrowing the regex would add complexity beyond current need
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: NO -- validator already requires a non-empty parsed `input_slot_set` before the empty-output path, so the hypothesized attestation bypass via mismatched counts does not follow from the shown control flow
+FINDING_10: YES
+FINDING_11: NO -- pre-existing integration detail, not worth a standalone tracking issue
+FINDING_12: NO -- doc drift alone does not warrant a security issue ticket
+FINDING_13: NO -- historical run-log snapshots are expected to age versus shipped behavior
+FINDING_14: NO -- harmless redundant guard, not worth tracking
+FINDING_15: NO -- informational counterpoint, not an actionable defect
+FINDING_16: NO -- orthogonal hygiene concern, not incorrect
+FINDING_17: NO -- informational confirmation only

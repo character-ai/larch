@@ -1,0 +1,10 @@
+Gathering the diff and source context to verify correctness of the validator, empty-merge attestation path, and slot normalization.
+
+Verifying the grep strip path vs. Python attestation matching and checking edge cases in the full script.
+
+### In-Scope Findings
+- **correctness** `skills/review/scripts/aggregate-findings.sh:313-323,380-383` — The Python gate treats a line as the empty-merge attestation when `line.strip() == EMPTY_MERGE_ATTESTATION`, but the persist-time scrub uses `grep -v -x 'LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED'`, which matches only when the **entire raw line** equals that string (no leading/trailing spaces, no stray `\r`, and no locale oddities). Any vendor output that satisfies the validator via padded lines (or other characters `str.strip()` removes but `-x` does not) will still leave the token (or a visually confusing variant) in the rewritten ballot, contradicting the documented “strip before replace” contract and the harness’s `grep -Fq` check for absence. **Suggested fix:** Strip with the same semantics as validation (for example a tiny Python/stdin filter, or `awk` that drops lines whose trimmed content equals the token, or normalize newlines then match trimmed lines) so every accepted attestation line is removed from `FINDINGS_FILE`.
+
+### Out-of-Scope Observations
+- The review prompt’s `<feature_description>` calls for treating zero `### FINDING_` blocks as an unconditional clean pass; the branch instead requires `LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED` whenever the parsed input reviewer set is non-empty, with a negative test—this is stricter than that one-liner but internally consistent with `agents/orchestrator-aggregator.md`, `aggregate-findings.md`, and `SECURITY.md` in the diff.
+- The diff also adds committed `larch-logs/implement/2E97A1B1-00F0-4ED0-9846-7608AD1C6016/*` files (manifest, plan snapshot, tally); that is process/release-surface noise rather than an aggregator logic defect, but worth confirming against your run-log commit conventions before merge.

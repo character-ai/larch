@@ -1,0 +1,14 @@
+Reading the ballot and any referenced context files.
+
+Checking the session directory for diff/plan context files referenced alongside the ballot.
+
+FINDING_1: EXONERATE -- long bullet matches the implemented validation contract; splitting prose is optional churn with no functional gain.
+FINDING_2: EXONERATE -- planned single trailing `(...)` suffix matches the regex; nested/stacked cases are edge labels outside the stated #2536 scope.
+FINDING_3: YES
+FINDING_4: EXONERATE -- harness `^### FINDING_` vs stricter parsers only diverges for malformed non-canonical headings not covered by these tests.
+FINDING_5: YES
+FINDING_6: EXONERATE -- `AGGREGATED=true` with `MERGED_COUNT=0` and `REASON=ok` already machine-readably signal a zero-block merge per the intended behavior.
+FINDING_7: EXONERATE -- successful zero-block validation has little to add on stderr; failures still surface via `REASON` / `FAILURE_LOG` paths.
+FINDING_8: EXONERATE -- run-log artifacts are policy/PR-hygiene noise, not something that needs a standalone tracking issue.
+FINDING_9: EXONERATE -- argv path handling is a long-standing execution contract; hardening belongs only if untrusted invocation becomes a requirement.
+FINDING_10: EXONERATE -- bash/Python heading regex skew predates this change and matters only for deliberately malformed headings.

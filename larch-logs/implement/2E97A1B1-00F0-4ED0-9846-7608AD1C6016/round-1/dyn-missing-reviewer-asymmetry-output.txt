@@ -1,0 +1,11 @@
+Gathering the diff, commit list, and validator logic to assess the missing-reviewer asymmetry.
+
+Verifying whether input reviewer slots can include parentheticals (scout_notes asymmetry) by checking how `input_slot_set` is populated upstream.
+
+Checking how `in3.md` defines reviewer lines in the harness to confirm the input contract.
+
+### In-Scope Findings
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+Under the ballot contract enforced upstream in [`skills/review/scripts/collect-findings.sh`](skills/review/scripts/collect-findings.sh), each stored reviewer label is passed through `normalize_reviewer_label` and must match `-output.txt$` at the end of the string (see the gate around lines 385–393 in the current file). A token such as `cursor-a-output.txt (via C.2 coverage gap)` therefore cannot appear as a collected label, because the suffix after `.txt` prevents the `-output.txt$` match and the row is skipped. In that regime, every member of `input_slot_set` is already equal to `normalize_slot` of itself, so keeping `input_slot_set` raw while filling `all_out_slots` with `normalize_slot(sl)` for output slots does not make the final `missing = sorted(s for s in input_slot_set if s not in all_out_slots)` check falsely report absences for the failure shape #2536 is meant to fix. The same contract means `oos_only_slots` is built from the same canonical basenames the aggregator is expected to echo (optionally with a trailing parenthetical that `normalize_slot` strips), so `if normalize_slot(sl) in oos_only_slots` stays aligned with the intended OOS-only rule for pipeline-produced inputs. The branch also adds committed implement run material under `larch-logs/implement/2E97A1B1-00F0-4ED0-9846-7608AD1C6016/`, which is unrelated to validator correctness but widens the PR surface beyond `skills/review/scripts/*`.
