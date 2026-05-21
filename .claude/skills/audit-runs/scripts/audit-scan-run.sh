@@ -217,8 +217,10 @@ scan_oos_category_mangle() {
         emit "{\"scan\":\"oos-category-mangle\",\"pr\":$PR_NUM,\"result\":\"skip\",\"detail\":\"review-findings-full.jsonl not found\"}"
         return
     fi
-    local count detail
-    count=$(jq -r '
+    local count detail jq_out jq_err
+    jq_out=$(mktemp "${TMPDIR:-/tmp}/audit-scan-oos-out-XXXXXX")
+    jq_err=$(mktemp "${TMPDIR:-/tmp}/audit-scan-oos-err-XXXXXX")
+    if jq -r '
         def catstr:
             (.category // "" |
                 if type == "string" then .
@@ -229,7 +231,15 @@ scan_oos_category_mangle() {
             .outcome == "accepted" and
             (catstr != "") and
             (catstr | test("^(code-quality|risk-integration|correctness|architecture|security)$") | not)
-        ) | .id' "$jsonl" 2>/dev/null | wc -l | tr -d '[:space:]' || echo 0)
+        ) | .id' "$jsonl" >"$jq_out" 2>"$jq_err"; then
+        count=$(wc -l <"$jq_out" | tr -d '[:space:]')
+        rm -f "$jq_out" "$jq_err"
+    else
+        detail=$(head -c 400 "$jq_err" 2>/dev/null | tr -d '\r' || true)
+        rm -f "$jq_out" "$jq_err"
+        emit "{\"scan\":\"oos-category-mangle\",\"pr\":$PR_NUM,\"result\":\"error\",\"detail\":\"$(jstr "jq failed (oos-category-mangle): ${detail:-unknown}")\"}"
+        return
+    fi
     if [ "$count" -eq 0 ]; then
         emit "{\"scan\":\"oos-category-mangle\",\"pr\":$PR_NUM,\"result\":\"pass\",\"count\":0}"
     else
@@ -480,7 +490,18 @@ JSONL="$RUN_DIR/review-findings-full.jsonl"
 if [ -f "$JSONL" ]; then
     canonical_count=$(jq -r 'select((.category|type)=="string" and (.category | test("^(code-quality|risk-integration|correctness|architecture|security)$"))) | .category' "$JSONL" 2>/dev/null | wc -l | tr -d '[:space:]' || echo 0)
     blank_count=$(jq -r 'select((.category // "") == "") | .category' "$JSONL" 2>/dev/null | wc -l | tr -d '[:space:]' || echo 0)
-    mangled_count=$(jq -r 'select((.category|type)=="string" and (.category != "") and (.category | test("^(code-quality|risk-integration|correctness|architecture|security)$") | not)) | .category' "$JSONL" 2>/dev/null | wc -l | tr -d '[:space:]' || echo 0)
+    mangled_count=$(jq -r '
+        def catstr:
+            (.category // "" |
+                if type == "string" then .
+                elif type == "number" or type == "boolean" then tostring
+                else "" end);
+        select(
+            .phase == "plan-review" and
+            .outcome == "accepted" and
+            (catstr != "") and
+            (catstr | test("^(code-quality|risk-integration|correctness|architecture|security)$") | not)
+        ) | .id' "$JSONL" 2>/dev/null | wc -l | tr -d '[:space:]' || echo 0)
     oos_blank=$(jq -r 'select((.id // "" | startswith("OOS_")) and ((.category // "") == "")) | .id' "$JSONL" 2>/dev/null | wc -l | tr -d '[:space:]' || echo 0)
     rej_blank=$(jq -r 'select((.id // "" | startswith("REJ_")) and ((.category // "") == "")) | .id' "$JSONL" 2>/dev/null | wc -l | tr -d '[:space:]' || echo 0)
     emit "{\"scan\":\"category-stats\",\"pr\":$PR_NUM,\"partial_data\":false,\"canonical\":${canonical_count:-0},\"blank\":${blank_count:-0},\"mangled\":${mangled_count:-0},\"oos_blank\":${oos_blank:-0},\"rej_blank\":${rej_blank:-0}}"

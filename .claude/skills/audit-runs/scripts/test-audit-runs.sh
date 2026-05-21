@@ -237,6 +237,7 @@ audited_prs: [2440,2441,2442,2443,2444,2445,2446,2447,2448,2449,2450]
 prior_report_issue: 2463
 proposed_new_issues: []
 proposed_augmentations: []
+version_window_checks: []
 cumulative_counters:
   exon_misclassifications: 3
   oos_categories_mangled: 2
@@ -261,6 +262,10 @@ assert_equal "$ts" "2026-05-20T12:30-07:00" "[10b] audit_timestamp round-trips"
 # Extract prior_report_issue
 prior=$(awk '/^---$/{f=!f;next} f && /prior_report_issue:/{gsub(/.*prior_report_issue:[[:space:]]*/,""); print; exit}' "$TMPDIR_TEST/report.md")
 assert_equal "$prior" "2463" "[10c] prior_report_issue round-trips"
+
+# Extract version_window_checks (scalar empty list form)
+vwc=$(awk '/^---$/{f=!f;next} f && /^version_window_checks:/{gsub(/^[[:space:]]*version_window_checks:[[:space:]]*/,""); print; exit}' "$TMPDIR_TEST/report.md")
+assert_equal "$vwc" "[]" "[10d] version_window_checks round-trips"
 
 # ---------------------------------------------------------------------------
 # Test 11: concurrency guard — fires when recent report exists
@@ -1966,21 +1971,34 @@ else
     FAILED_TESTS+=("[62b] expected all-skipped table rows")
     echo "  FAIL: [62b] expected all-skipped table rows" >&2
 fi
+if ! printf '%s' "$sum60" | grep -qF '**Augmentations**'; then
+    PASS=$((PASS + 1))
+    echo "  ok: [60c] no Augmentations block when none"
+else
+    FAIL=$((FAIL + 1))
+    FAILED_TESTS+=("[60c] empty skip-filing summary must omit Augmentations heading")
+    echo "  FAIL: [60c] unexpected **Augmentations** in skip-all summary" >&2
+fi
 
 # Test 63: zero-PR short-circuit — no session-summary posted (no audit-report number)
 echo "Test 63: no session-summary when no audit-report filed"
 should_post_session_summary_comment() {
     local audit_report_number="$1"
-    if [[ -n "$audit_report_number" ]]; then
-        echo "post"
-    else
+    local zero_findings_short_circuit="${2:-false}"
+    if [[ -z "$audit_report_number" ]]; then
         echo "skip"
+    elif [[ "$zero_findings_short_circuit" == "true" ]]; then
+        echo "skip"
+    else
+        echo "post"
     fi
 }
 result=$(should_post_session_summary_comment "")
 assert_equal "$result" "skip" "[63] empty audit report number → skip session-summary step"
 result=$(should_post_session_summary_comment "424242")
 assert_equal "$result" "post" "[63b] non-empty number → post path"
+result=$(should_post_session_summary_comment "424242" "true")
+assert_equal "$result" "skip" "[63c] zero-findings short-circuit → skip even when report number exists"
 
 # Test 62: C.2 semver normalization — numeric component ordering (not lexical dotted strings)
 echo "Test 62: C.2 dotted version compare (strip v, 1.10 > 1.9)"
@@ -2001,6 +2019,55 @@ else
         gt(parts($a); parts($b))
     ')
     assert_equal "$v_gt" "true" "[62] v1.10.0 numerically greater than 1.9.999 after normalization"
+fi
+
+# Test 63: C.2 version-window table (fix_shipped vs audited batch → skip|propose)
+echo "Test 63: C.2 version-window decision table"
+if ! command -v jq >/dev/null 2>&1; then
+    echo "  SKIP: jq not installed"
+else
+    c2_decision() {
+        jq -nr --arg fix "$1" --argjson audited "$2" '
+            def parse3:
+                if . == null or . == "" then null
+                else
+                    (tostring | ltrimstr("v")) as $t
+                    | if ($t | test("^[0-9]+\\.[0-9]+\\.[0-9]+$")) then
+                        ($t | split(".") | map(tonumber))
+                    else null end
+                end;
+            def gt3($a; $b):
+                if $a[0] > $b[0] then true
+                elif $a[0] < $b[0] then false
+                elif $a[1] > $b[1] then true
+                elif $a[1] < $b[1] then false
+                else $a[2] > $b[2]
+                end;
+            ($fix | parse3) as $fp
+            | if $fp == null then "propose"
+              else
+                ($audited | map(parse3)) as $avs
+                | if ($avs | length) == 0 then "propose"
+                  elif any($avs[]; . == null) then "propose"
+                  elif all($avs[]; gt3($fp; .)) then "skip"
+                  else "propose"
+                  end
+              end
+        '
+    }
+    while IFS=$'\t' read -r fix audited expect label; do
+        [[ -z "$fix" || "$fix" == \#* ]] && continue
+        got=$(c2_decision "$fix" "$audited")
+        assert_equal "$got" "$expect" "$label"
+    done <<'EOF'
+2.0.0	["1.0.0","1.5.0"]	skip	[63] fix newer than every audited → skip (suppress)
+1.0.0	["1.0.0","2.0.0"]	propose	[63b] fix not strictly greater than all → propose
+unknown	["1.0.0"]	propose	[63c] unknown fix → propose
+2.0.0	["2.0.0"]	propose	[63d] fix equal to an audited run → propose
+34.0.0-rc1	["1.0.0"]	propose	[63e] unparseable fix token → propose
+2.0.0	["1.0.0","not-a-semver"]	propose	[63f] unparseable audited row → propose
+v2.0.0	["1.0.0"]	skip	[63g] strip v and compare → skip
+EOF
 fi
 
 # ---------------------------------------------------------------------------
