@@ -1,0 +1,23 @@
+FINDING_1: EXONERATE -- Duplication is real, but centralizing small shell helpers across scripts is more churn than this hardening needs.
+FINDING_2: YES
+FINDING_3: EXONERATE -- Branch scope concern is real, but splitting an already stacked review branch is process overhead rather than a necessary code fix.
+FINDING_4: EXONERATE -- Future sentinel drift is worth noting, but a shared machine contract is heavier than warranted for this local marker check.
+FINDING_5: EXONERATE -- Inconsistent fallback wording is minor operator polish and not worth shared constants or helper churn.
+FINDING_6: YES
+FINDING_7: EXONERATE -- Legitimate observability gap, but not issue-worthy without evidence operators need those WARN lines on read paths.
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: EXONERATE -- String normalization would be cosmetic and not worth changing otherwise working failure paths.
+FINDING_11: EXONERATE -- Legitimate review-noise concern, but branch hygiene is not useful as a future tracking issue.
+FINDING_12: EXONERATE -- The filename typo is real but too trivial to track as a separate GitHub issue.
+FINDING_13: YES
+FINDING_14: EXONERATE -- The loose marker concern is plausible, but a new shared contract is more complexity than this narrow guard warrants.
+FINDING_15: EXONERATE -- Path-redaction alignment is legitimate, but the risk is mild and not clearly worth a tracked follow-up.
+FINDING_16: YES
+FINDING_17: EXONERATE -- Shared-helper centralization would add cross-script coupling beyond what the duplicated small function justifies.
+FINDING_18: YES
+FINDING_19: EXONERATE -- Different generic strings are low-impact diagnostics polish, not a necessary code-review fix.
+FINDING_20: NO -- Over-sanitizing a rare literal marker in gh stderr is acceptable fail-closed behavior, not a correctness bug.
+FINDING_21: EXONERATE -- Same mild WARN visibility gap as the read-path stderr finding and not worth issue tracking.
+FINDING_22: EXONERATE -- The unrelated diff noise is real but not a durable issue to file for future work.
+FINDING_23: EXONERATE -- Plan traceability is muddied by the stacked diff, but filing an issue would not usefully improve this code change.

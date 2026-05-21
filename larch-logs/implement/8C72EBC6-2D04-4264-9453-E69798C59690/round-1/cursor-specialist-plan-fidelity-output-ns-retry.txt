@@ -1,0 +1,14 @@
+Gathering the diff and commit list for Plan Fidelity review.
+
+Searching the diff for plan-relevant files; the diff file is very large.
+
+### In-Scope Findings
+No in-scope issues found.
+
+### Out-of-Scope Observations
+- **risk-integration** `merge-base..HEAD` (commits `87d38a92`, `d22f751b`, `7a1c592f`) — The supplied implementation plan only enumerates redact_gh_error hardening across six shell helpers plus `scripts/test-tracking-issue-write.sh`, `scripts/tracking-issue-write.md`, and `SECURITY.md`, but the branch-vs-main diff also carries unrelated product changes (for example apply-bump retry work and aggregator run-log completeness wiring visible in the same diff around `docs/linting.md`, `scripts/larch-log.sh`, and `scripts/test-verify-run-log-completeness.sh`), so the full branch diff is not co-extensive with that single plan’s file list. **Suggested fix:** Either narrow the reviewed diff to the redact-focused commit or expand the written plan to cover every delivered change set so plan-fidelity reviewers can walk requirement-by-requirement without conflating separate concerns.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	out_of_scope	nit	risk-integration	merge-base..HEAD	Multi-commit branch diff bundles #2518 and #2520 work alongside the redact_gh_error plan; the stated plan’s file list does not describe those deltas.	Plan-fidelity traceability against only the redact plan is ambiguous when the precomputed diff includes unrelated surfaces.	Scope the diff to the redact commit or update the plan to list every touched artifact for one-to-one traceability.
+```

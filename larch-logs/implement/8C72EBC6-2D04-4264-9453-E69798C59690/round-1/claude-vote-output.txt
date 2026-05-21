@@ -1,0 +1,23 @@
+FINDING_1: EXONERATE -- legitimate structural concern but centralizing 7 self-contained scripts into a shared lib is a separate refactoring effort, not a fix for this PR
+FINDING_2: YES
+FINDING_3: EXONERATE -- branch-scope concern is process feedback with no actionable code fix; not issue-worthy after merge
+FINDING_4: YES
+FINDING_5: EXONERATE -- nit-level inconsistency in generic strings across scripts; not worth a standalone tracking issue
+FINDING_6: EXONERATE -- tracking-issue-read.md line 52 already cites redact_gh_error by name; adding "fail-closed" is a one-line doc nit not worth tracking
+FINDING_7: EXONERATE -- pre-existing behavior not introduced or worsened by this diff; not worth a standalone issue
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: EXONERATE -- same nit as FINDING_5; inconsistency is real but not tracking-worthy
+FINDING_11: EXONERATE -- process concern about PR scope; not an actionable code issue
+FINDING_12: EXONERATE -- pre-existing doc issue not introduced by this diff; minor
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: EXONERATE -- same as FINDING_1; centralization is a separate refactoring scope
+FINDING_18: YES
+FINDING_19: EXONERATE -- same as FINDING_5; nit
+FINDING_20: YES
+FINDING_21: EXONERATE -- pre-existing observability gap, not worsened; not worth standalone issue
+FINDING_22: EXONERATE -- process concern about PR scope; not actionable as a code issue
+FINDING_23: EXONERATE -- same as FINDING_22

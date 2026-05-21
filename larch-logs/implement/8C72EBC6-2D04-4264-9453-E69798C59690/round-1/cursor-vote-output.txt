@@ -1,0 +1,25 @@
+Verifying script-level claims in the workspace (read-only).
+
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: EXONERATE -- multi-topic branch is real but re-splitting already-integrated commits is usually more churn than review payoff
+FINDING_4: EXONERATE -- depends on redact-secrets changing its marker while still exiting zero, which is an unlikely contract break
+FINDING_5: EXONERATE -- cosmetic operator log strings with no functional impact
+FINDING_6: YES
+FINDING_7: EXONERATE -- pre-existing stderr discard; opening an issue would add tracking noise for marginal gain
+FINDING_8: EXONERATE -- same stderr-path exit-2-vs-3 concern already captured in FINDING_2
+FINDING_9: YES
+FINDING_10: EXONERATE -- duplicate of the low-impact string-shape nit in FINDING_5
+FINDING_11: EXONERATE -- scope creep is visible in commits but does not warrant a standalone tracking issue
+FINDING_12: NO -- SECURITY.md lists `scripts/test-tracking-issue-write.md` but the harness is `scripts/test-tracking-issue-write.sh`, a trivial inline doc fix
+FINDING_13: YES
+FINDING_14: EXONERATE -- overlaps the marker-prefix coupling already noted in FINDING_4
+FINDING_15: EXONERATE -- tmpdir path redaction gap is real but explicitly out of scope for this change set
+FINDING_16: YES
+FINDING_17: EXONERATE -- duplicate centralization ask versus FINDING_1
+FINDING_18: EXONERATE -- same truncation-marker harness gap as FINDING_13
+FINDING_19: EXONERATE -- duplicate inconsistent generic ERROR= wording nit
+FINDING_20: EXONERATE -- duplicate loose substring truncation concern versus FINDING_4
+FINDING_21: EXONERATE -- same 2>/dev/null WARN visibility point as FINDING_7
+FINDING_22: EXONERATE -- same bundled-branch scope concern as FINDING_11
+FINDING_23: EXONERATE -- advisory plan/diff traceability mismatch, not defect-level backlog work
