@@ -2037,13 +2037,13 @@ else
     FAILED_TESTS+=("[62b] expected all-skipped table rows")
     echo "  FAIL: [62b] expected all-skipped table rows" >&2
 fi
-if ! printf '%s' "$sum60" | grep -qF '**Augmentations**'; then
+if ! printf '%s' "$sum62" | grep -qF '**Augmentations**'; then
     PASS=$((PASS + 1))
-    echo "  ok: [60c] no Augmentations block when none"
+    echo "  ok: [62c] no Augmentations block when none"
 else
     FAIL=$((FAIL + 1))
-    FAILED_TESTS+=("[60c] empty skip-filing summary must omit Augmentations heading")
-    echo "  FAIL: [60c] unexpected **Augmentations** in skip-all summary" >&2
+    FAILED_TESTS+=("[62c] empty skip-filing summary must omit Augmentations heading")
+    echo "  FAIL: [62c] unexpected **Augmentations** in skip-all summary" >&2
 fi
 
 # Test 63: zero-PR short-circuit — no session-summary posted (no audit-report number)
