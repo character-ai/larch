@@ -1394,7 +1394,7 @@ if [ -x "$SCAN_SCRIPT" ]; then
     printf '%s\n' 'name	type	pattern	expected_outcome	severity' > "$P48/scans.tsv"
     printf '%s\n' 'required-file-presence	file-glob	x	x	low' >> "$P48/scans.tsv"
     printf '%s\n' 'relative_path	condition	batch_slug	extension' > "$P48/req.tsv"
-    printf '%s\n' '../outside.txt	any	x	x' >> "$P48/req.tsv"
+    printf '%s\n' '../outside.txt	always	x	x' >> "$P48/req.tsv"
     mkdir -p "$P48/run"
     p48_out=$(bash "$SCAN_SCRIPT" --run-dir "$P48/run" --pr 1002 \
         --scans-tsv "$P48/scans.tsv" \
@@ -1431,6 +1431,130 @@ if [ -x "$SCAN_SCRIPT" ]; then
     assert_equal "$(jstr "$_s49n")" "$_e49n" "[49i] jstr newline"
 else
     echo "  SKIP: audit-scan-run.sh not executable (not found at $SCAN_SCRIPT)"
+fi
+
+# Test 50: audit-scan-run.sh — cache-freshness informational when run lags current
+echo "Test 50: audit-scan-run cache-freshness informational (version gap)"
+SCAN_SCRIPT="${SCAN_SCRIPT:-$SCRIPT_DIR/audit-scan-run.sh}"
+if [ -x "$SCAN_SCRIPT" ]; then
+    T50=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-t50-XXXXXX")
+    printf '%s\n' 'name	type	pattern	expected_outcome	severity' > "$T50/scans.tsv"
+    printf '%s\n' 'cache-freshness	manifest-field	x	x	low' >> "$T50/scans.tsv"
+    printf '%s\n' 'relative_path	condition	batch_slug	extension' > "$T50/required.tsv"
+    mkdir -p "$T50/run"
+    printf '%s\n' '{"larch_version":"29.8.62"}' > "$T50/run/manifest.json"
+    t50_out=$(bash "$SCAN_SCRIPT" --run-dir "$T50/run" --pr 990050 \
+        --scans-tsv "$T50/scans.tsv" --required-files-tsv "$T50/required.tsv" \
+        --current-version "34.0.0")
+    t50_res=$(printf '%s\n' "$t50_out" | jq -r 'select(.scan=="cache-freshness") | .result // empty' | head -1)
+    t50_rv=$(printf '%s\n' "$t50_out" | jq -r 'select(.scan=="cache-freshness") | .run_version // empty' | head -1)
+    t50_cv=$(printf '%s\n' "$t50_out" | jq -r 'select(.scan=="cache-freshness") | .current_version // empty' | head -1)
+    assert_equal "$t50_res" "informational" "[50] cache-freshness behind current → informational (not fail)"
+    assert_equal "$t50_rv" "29.8.62" "[50b] run_version preserved"
+    assert_equal "$t50_cv" "34.0.0" "[50c] current_version preserved"
+    rm -rf "$T50"
+else
+    echo "  SKIP: audit-scan-run.sh not executable (not found at $SCAN_SCRIPT)"
+fi
+
+# Test 51: audit-scan-run.sh — cache-freshness pass when versions match
+echo "Test 51: audit-scan-run cache-freshness pass (same version)"
+SCAN_SCRIPT="${SCAN_SCRIPT:-$SCRIPT_DIR/audit-scan-run.sh}"
+if [ -x "$SCAN_SCRIPT" ]; then
+    T51=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-t51-XXXXXX")
+    printf '%s\n' 'name	type	pattern	expected_outcome	severity' > "$T51/scans.tsv"
+    printf '%s\n' 'cache-freshness	manifest-field	x	x	low' >> "$T51/scans.tsv"
+    printf '%s\n' 'relative_path	condition	batch_slug	extension' > "$T51/required.tsv"
+    mkdir -p "$T51/run"
+    printf '%s\n' '{"larch_version":"34.0.0"}' > "$T51/run/manifest.json"
+    t51_out=$(bash "$SCAN_SCRIPT" --run-dir "$T51/run" --pr 990051 \
+        --scans-tsv "$T51/scans.tsv" --required-files-tsv "$T51/required.tsv" \
+        --current-version "34.0.0")
+    t51_res=$(printf '%s\n' "$t51_out" | jq -r 'select(.scan=="cache-freshness") | .result // empty' | head -1)
+    assert_equal "$t51_res" "pass" "[51] cache-freshness same version → pass"
+    rm -rf "$T51"
+else
+    echo "  SKIP: audit-scan-run.sh not executable (not found at $SCAN_SCRIPT)"
+fi
+
+# Test 55: audit-scan-run.sh — cache-freshness fail when larch_version empty
+echo "Test 55: audit-scan-run cache-freshness fail (empty larch_version)"
+SCAN_SCRIPT="${SCAN_SCRIPT:-$SCRIPT_DIR/audit-scan-run.sh}"
+if [ -x "$SCAN_SCRIPT" ]; then
+    T55=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-t55-XXXXXX")
+    printf '%s\n' 'name	type	pattern	expected_outcome	severity' > "$T55/scans.tsv"
+    printf '%s\n' 'cache-freshness	manifest-field	x	x	low' >> "$T55/scans.tsv"
+    printf '%s\n' 'relative_path	condition	batch_slug	extension' > "$T55/required.tsv"
+    mkdir -p "$T55/run"
+    printf '%s\n' '{"larch_version":""}' > "$T55/run/manifest.json"
+    t55_out=$(bash "$SCAN_SCRIPT" --run-dir "$T55/run" --pr 990055 \
+        --scans-tsv "$T55/scans.tsv" --required-files-tsv "$T55/required.tsv" \
+        --current-version "34.0.0")
+    t55_res=$(printf '%s\n' "$t55_out" | jq -r 'select(.scan=="cache-freshness") | .result // empty' | head -1)
+    t55_detail=$(printf '%s\n' "$t55_out" | jq -r 'select(.scan=="cache-freshness") | .detail // empty' | head -1)
+    assert_equal "$t55_res" "fail" "[55] empty larch_version → fail"
+    assert_equal "$t55_detail" "manifest larch_version empty" "[55b] detail names empty version"
+    rm -rf "$T55"
+else
+    echo "  SKIP: audit-scan-run.sh not executable (not found at $SCAN_SCRIPT)"
+fi
+
+# Test 52 / 53: aggregate-findings phrases (shared include with production)
+echo "Test 52: aggregate-findings failure ref points at committed round path"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd -P)"
+# shellcheck source=skills/review/scripts/aggregate-findings-phrases.inc.bash
+source "$REPO_ROOT/skills/review/scripts/aggregate-findings-phrases.inc.bash"
+T52_BASE=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-t52-XXXXXX")
+mkdir -p "$T52_BASE/round-2"
+FAIL52="$T52_BASE/round-2/aggregator-validate.stderr"
+printf 'validation failed\n' > "$FAIL52"
+SESSION_ENV_PATH="$T52_BASE/session-env.sh" REVIEW_TMPDIR_CANON="$(cd "$T52_BASE/round-2" && pwd -P)" \
+    ph52="$(failure_see_phrase "$FAIL52")"
+assert_equal "$ph52" "See round-2/aggregator-validate.stderr in the committed run log." "[52] SESSION_ENV + round-* → committed round-relative hint"
+SESSION_ENV_PATH="" REVIEW_TMPDIR_CANON="/tmp/review" \
+    ph52b="$(failure_see_phrase "/tmp/review/aggregator-validate.stderr")"
+assert_equal "$ph52b" "See /tmp/review/aggregator-validate.stderr." "[52b] no SESSION_ENV → raw failure path in See phrase"
+rm -rf "$T52_BASE"
+
+echo "Test 53: aggregate-findings failure ref (zero-byte stderr still names file)"
+T53_BASE=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-t53-XXXXXX")
+mkdir -p "$T53_BASE/round-1"
+FAIL53="$T53_BASE/round-1/aggregator-validate.stderr"
+: > "$FAIL53"
+SESSION_ENV_PATH="$T53_BASE/session-env.sh" REVIEW_TMPDIR_CANON="$(cd "$T53_BASE/round-1" && pwd -P)" \
+    ph53="$(failure_see_phrase "$FAIL53")"
+assert_equal "$ph53" "See round-1/aggregator-validate.stderr in the committed run log." "[53] empty stderr still referenced by committed path"
+rm -rf "$T53_BASE"
+
+echo "Test 54: append-tool-failure cursor-ci style embeds body (no output path leak)"
+APP_TF="$REPO_ROOT/scripts/append-tool-failure.sh"
+if [ -x "$APP_TF" ]; then
+    T54=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-t54-XXXXXX")
+    LOG54="$T54/execution-issues.md"
+    OUT54="$T54/cursor-ci-failure.stderr"
+    printf 'simulated cursor-ci stderr\n' > "$OUT54"
+    if bash "$APP_TF" --log "$LOG54" --site "5" --tool "cursor-ci" --exit-code 1 \
+        --category "CI Issues" --output-file "$OUT54" >/dev/null 2>&1; then
+        if grep -Fq "$OUT54" "$LOG54" 2>/dev/null; then
+            FAIL=$((FAIL + 1))
+            FAILED_TESTS+=("[54] execution-issues should not embed OUTPUT_FILE path")
+            echo "  FAIL: [54] execution-issues should not embed OUTPUT_FILE path" >&2
+        elif ! grep -Fq 'simulated cursor-ci stderr' "$LOG54" 2>/dev/null; then
+            FAIL=$((FAIL + 1))
+            FAILED_TESTS+=("[54] execution-issues lost embedded stderr body")
+            echo "  FAIL: [54] execution-issues lost embedded stderr body" >&2
+        else
+            PASS=$((PASS + 1))
+            echo "  ok: [54] append-tool-failure body omits tmp output path"
+        fi
+    else
+        FAIL=$((FAIL + 1))
+        FAILED_TESTS+=("[54] append-tool-failure invocation failed")
+        echo "  FAIL: [54] append-tool-failure invocation failed" >&2
+    fi
+    rm -rf "$T54"
+else
+    echo "  SKIP: append-tool-failure.sh not executable at $APP_TF"
 fi
 
 # ---------------------------------------------------------------------------

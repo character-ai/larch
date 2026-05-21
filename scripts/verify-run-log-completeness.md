@@ -30,6 +30,10 @@ mis-bind columns in the verifier.
 - `step7a` — required once the Step 7a pre-bump flush has been reached.
 - `step8` — required once the Step 8 version-bump phase has been reached.
 - `step9a1` — required once the Step 9a.1 OOS/statistics phase has been reached.
+- `exn-agg-validate-fail` — applies only when `execution-issues.ndjson` records a findings-aggregator validation failure (`merged output failed validation`). When active, at least one `round-*/aggregator-validate.stderr` file must exist in the run directory (glob row in the TSV).
+- `exn-agg-dispatch-fail` — applies only when `execution-issues.ndjson` records a findings-aggregator dispatch failure (`dispatch-with-waterfall exited non-zero` or `DISPATCH_OK=false`). When active, at least one `round-*/aggregator-dispatch.stderr` file must exist.
+
+`relative_path` may contain a single `*` segment (for example `round-*/aggregator-validate.stderr`) to require a matching committed round artifact when the corresponding `exn-*` condition is active.
 
 The verifier infers later-phase reachability from committed run-dir signals
 already present in the tree (for example `final-summary.md`, `oos-issues.ndjson`,

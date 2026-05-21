@@ -7,7 +7,7 @@ ns-retry-sidecars	file-glob	round-*/*-ns-retry*.txt	no NS-retry sidecar files pr
 codex-round1-adherence	jsonl-field	round-([2-9]|[1-9][0-9]+)/panel-manifest.ndjson: .tool=="codex"	Codex absent from round 2+ panel manifests	medium
 codex-generalist-waste	composite	codex-generalist-output.txt == NO_ISSUES_FOUND AND timing > 120s	Codex generalist not wasting time when finding nothing	low
 execution-issues-categories	jsonl-field	.category != "Warnings"	no non-Warnings entries in execution-issues.ndjson	medium
-cache-freshness	manifest-field	manifest.json::larch_version < latest	run used current or recent plugin version	high
+cache-freshness	manifest-field	manifest.json::larch_version < latest	run plugin matches or lags current (informational when behind)	low
 changelog-rebase-conflicts	jsonl-field	execution-issues.ndjson: body mentions changelog with rebase/conflict	heuristic count for cumulative changelog-rebase delta	medium
 coder-tool	env-field	round-*/coder.env: CODER_TOOL	coder tool recorded in each round	low
 trailing-content-no-issues-found	grep-pattern	^NO_ISSUES_FOUND\n.+	no first-pass files with trailing content after NO_ISSUES_FOUND	medium

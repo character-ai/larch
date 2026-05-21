@@ -1,0 +1,17 @@
+Gathering the diff, commit log, and focused code sections for the scout_notes checklist.
+
+Reading full implementations for `shopt`/nested-function behavior, `REVIEW_TMPDIR_CANON`, and any `set -e` interactions.
+
+Verifying `set -e` behavior for the `&& grep` pattern:
+
+### In-Scope Findings
+
+- **correctness** `.claude/skills/audit-runs/scripts/audit-scan-run.sh:83-133` — `scan_required_file_presence()` defines `_rf_condition_met` so unknown `condition` values hit the `*)` arm and `return 1`, and the caller does `_rf_condition_met "$req_condition" || continue`, which **drops the manifest row entirely** (the path is never checked). `scripts/verify-run-log-completeness.sh:47-90` instead treats unknown conditions as fatal (`unsupported manifest condition` and `exit 1`). So a typo or future new `condition` token present in `docs/run-logs-required-files.tsv` can make CI / local verify fail while `audit-scan-run` still emits `required-file-presence` **pass**, hiding registry drift from the audit scan path. **Suggested fix:** Align with the verifier—on unknown `condition`, emit an `{"scan":"required-file-presence",...,"result":"error",...}` line (or `exit 1` if that matches the script’s other registry-drift handling) instead of treating unknown conditions as “not reached.”
+
+### Out-of-Scope Observations
+
+- **correctness (scout_notes / `shopt` + `break`)** In both `.claude/skills/audit-runs/scripts/audit-scan-run.sh:135-144` and `scripts/verify-run-log-completeness.sh:121-130`, `shopt -u nullglob` runs immediately after the `for` loop’s `done`, including when the loop exits via `break`, so `nullglob` is not left enabled by normal control flow.
+- **correctness (scout_notes / `set -e` + `grep` in `&&`)** `_rf_condition_met` / `condition_reached` are only used from `_rf_condition_met "$req_condition" || continue` and `condition_reached "$condition" || continue`, so a non-match from `grep -Fq` after a successful `[ -f ... ]` returns non-zero **without** tripping `set -e` the way a bare `[ -f ... ] && grep ...` would at top level (bash suppresses `-e` for failures in the predicate of `cmd1 || cmd2` when `cmd1` is a shell function).
+- **correctness (scout_notes / nested functions + `_rf_mstat` / `_rf_mpr`)** Nested `_rf_has_file` / `_rf_condition_met` are valid bash; `_rf_mstat` / `_rf_mpr` are initialized before use and populated under `|| true` so failed `jq` does not abort and leaves empty strings, which matches how `step9a1` uses them.
+- **risk-integration** `docs/run-logs-required-files.tsv` + `condition_reached` + `_rf_condition_met` now triplicate the same `exn-agg-*` heuristics; any future wording change in `execution-issues.ndjson` risks partial updates (operational drift, not a single clear logic bug in the diff).
+- **code-quality** The branch adds a committed `larch-logs/implement/CC9A85B9-225F-46DC-909D-1F6692E53814/` tree (partial `in-progress` manifest plus embedded plan text); that may be intentional for the implementing run but is extra surface unrelated to the functional code paths under review.

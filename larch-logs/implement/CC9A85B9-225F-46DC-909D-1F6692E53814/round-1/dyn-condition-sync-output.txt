@@ -1,0 +1,15 @@
+Gathering the diff and comparing condition-predicate implementations across the three files.
+
+Verifying the two scripts' predicate blocks are character-for-character aligned and checking for other references to these strings.
+
+### In-Scope Findings
+
+- **architecture** `test-audit-runs.sh:1482-1508` — Tests 52–53 reimplement `committed_ref()` / `failure_see_phrase()` logic inline (`cref_agg` / `phrase_agg`) instead of calling or sourcing [`skills/review/scripts/aggregate-findings.sh`](skills/review/scripts/aggregate-findings.sh) (see `committed_ref` / `failure_see_phrase` there), so wording, basename rules, or allowed `aggregator-*.stderr` basenames can drift between production and the harness without a failing test. **Suggested fix:** Have the test source a small shared include used by `aggregate-findings.sh`, or shell out to a dry-run helper that prints the resolved phrase, so one implementation owns the contract.
+
+- **architecture** `.claude/skills/audit-runs/scripts/audit-scan-run.sh:83-114` and `scripts/verify-run-log-completeness.sh:47-92` — `_rf_condition_met` and `condition_reached` duplicate the full step ladder plus the new `exn-agg-validate-fail` / `exn-agg-dispatch-fail` arms; today the `grep -Fq` literals (`merged output failed validation`, `dispatch-with-waterfall exited non-zero`, `DISPATCH_OK=false`) and `execution-issues.ndjson` file checks match between the two files, but there is no fixture test proving that a synthetic run directory gets the same conditional requirements from `audit-scan-run.sh`’s `required-file-presence` scan and from `verify-run-log-completeness.sh`, so a future one-sided edit can desynchronize the auditor and verifier silently. **Suggested fix:** Factor the shared `case` arms into one sourced bash fragment both scripts `source`, and add a minimal golden run-dir test that both tools must agree on for the new TSV rows.
+
+### Out-of-Scope Observations
+
+- For the scout’s predicate comparison: [`audit-scan-run.sh`](.claude/skills/audit-runs/scripts/audit-scan-run.sh) lines 101–108 and [`verify-run-log-completeness.sh`](scripts/verify-run-log-completeness.sh) lines 77–85 use the same three fixed substrings and the same `execution-issues.ndjson` existence guard; tests 52–53 do **not** encode those greps—they only cover the “See … committed run log” path—so there is no third independent predicate implementation in [`test-audit-runs.sh`](.claude/skills/audit-runs/scripts/test-audit-runs.sh) to compare for substring drift.
+
+- The branch diff also adds a full [`larch-logs/implement/CC9A85B9-225F-46DC-909D-1F6692E53814/`](larch-logs/implement/CC9A85B9-225F-46DC-909D-1F6692E53814/) tree (manifest, plan files, etc.); that is orthogonal to condition-sync architecture unless deliberately part of the product change set.

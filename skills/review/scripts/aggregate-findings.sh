@@ -57,6 +57,8 @@ case "$_findings_canon" in
         ;;
 esac
 unset _findings_canon
+# shellcheck source=skills/review/scripts/aggregate-findings-phrases.inc.bash
+source "$PLUGIN_ROOT/skills/review/scripts/aggregate-findings-phrases.inc.bash"
 [[ "$CODEX_PRESENT" == "true" || "$CODEX_PRESENT" == "false" ]] || { larch_err "aggregate-findings.sh: --codex-present must be true or false"; exit 2; }
 [[ "$CURSOR_PRESENT" == "true" || "$CURSOR_PRESENT" == "false" ]] || { larch_err "aggregate-findings.sh: --cursor-present must be true or false"; exit 2; }
 [[ "$MODE" == "diff" || "$MODE" == "description" ]] || { larch_err "aggregate-findings.sh: --mode must be diff or description"; exit 2; }
@@ -180,7 +182,7 @@ set -e
 if [[ "$dispatch_rc" -ne 0 ]]; then
     REASON="dispatch-failed"
     FAILURE_LOG="$REVIEW_TMPDIR/aggregator-dispatch.stderr"
-    append_warning "- **findings aggregator**: dispatch-with-waterfall exited non-zero (rc=$dispatch_rc); leaving findings.md unchanged. See $FAILURE_LOG."
+    append_warning "- **findings aggregator**: dispatch-with-waterfall exited non-zero (rc=$dispatch_rc); leaving findings.md unchanged. $(failure_see_phrase "$FAILURE_LOG")"
     emit_result
     exit 0
 fi
@@ -189,7 +191,7 @@ DISPATCH_OK=$(kv_get "$dispatch_out" DISPATCH_OK)
 if [[ "$DISPATCH_OK" != "true" ]]; then
     REASON="dispatch-failed"
     FAILURE_LOG="$REVIEW_TMPDIR/aggregator-dispatch.stderr"
-    append_warning "- **findings aggregator**: DISPATCH_OK=$DISPATCH_OK; leaving findings.md unchanged."
+    append_warning "- **findings aggregator**: DISPATCH_OK=$DISPATCH_OK; leaving findings.md unchanged. $(failure_see_phrase "$FAILURE_LOG")"
     emit_result
     exit 0
 fi
@@ -348,7 +350,7 @@ PY
 if ! python3 "$validate_py" "$FINDINGS_FILE" "$cand" 2>"$REVIEW_TMPDIR/aggregator-validate.stderr"; then
     REASON="validation-failed"
     FAILURE_LOG="$REVIEW_TMPDIR/aggregator-validate.stderr"
-    append_warning "- **findings aggregator**: merged output failed validation; leaving findings.md unchanged. See $FAILURE_LOG."
+    append_warning "- **findings aggregator**: merged output failed validation; leaving findings.md unchanged. $(failure_see_phrase "$FAILURE_LOG")"
     emit_result
     exit 0
 fi

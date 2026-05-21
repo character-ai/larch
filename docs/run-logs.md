@@ -37,6 +37,7 @@ larch-logs/
         review-round-summary.md
         review-summary.json
         voting-tally.md
+        aggregator-validate.stderr / aggregator-dispatch.stderr (when the findings aggregator fails; committed under the round directory when `write-round` runs)
         *-output.txt
         *-output.txt.meta
         *-output.txt.json
@@ -218,6 +219,9 @@ produces additional registered artifacts (for example coder-side files).
 
 Contains a curated set of per-round artifacts: the aggregate `findings.md`,
 accepted / rejected findings, OOS review markdown, voting tally and summary,
+`aggregator-dispatch.stderr` / `aggregator-validate.stderr` when the findings
+aggregator fails (so execution issues can point at committed paths instead of
+`$REVIEW_TMPDIR`),
 per-voter outputs (the byte-identical vote prompts and the raw per-specialist
 reviewer outputs are excluded by `round_artifact_included` in
 `scripts/larch-log.sh` because the aggregates already cover their content),

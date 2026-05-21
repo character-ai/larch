@@ -185,6 +185,39 @@ assert_contains "done-status emits MISSING" "$out" "MISSING="
 assert_contains "done-status requires run statistics" "$out" "run-statistics.md"
 assert_contains "done-status requires oos issues" "$out" "oos-issues.ndjson"
 
+# Test 11: exn-agg-validate-fail + glob — signal present but no matching stderr file → MISSING glob token
+run_exn_val="$TMP/run-exn-validate-missing"
+mkdir -p "$run_exn_val"
+for f in manifest.json plan-goals-test.md plan-review-tally.json code-review-tally.json review-findings-full.jsonl token-report.json timing-report.json session-transcript.jsonl; do
+    printf 'placeholder\n' > "$run_exn_val/$f"
+done
+printf '%s\n' '{"body":"merged output failed validation"}' > "$run_exn_val/execution-issues.ndjson"
+out="$("$VERIFY" "$run_exn_val" 2>&1 || true)"
+assert_contains "exn-agg validate signal without stderr → MISSING glob" "$out" "MISSING="
+assert_contains "exn-agg validate MISSING names aggregator-validate glob" "$out" "round-*/aggregator-validate.stderr"
+
+# Test 12: exn-agg-dispatch-fail + glob — dispatch signal but no stderr file
+run_exn_disp="$TMP/run-exn-dispatch-missing"
+mkdir -p "$run_exn_disp"
+for f in manifest.json plan-goals-test.md plan-review-tally.json code-review-tally.json review-findings-full.jsonl token-report.json timing-report.json session-transcript.jsonl; do
+    printf 'placeholder\n' > "$run_exn_disp/$f"
+done
+printf '%s\n' '{"body":"DISPATCH_OK=false"}' > "$run_exn_disp/execution-issues.ndjson"
+out="$("$VERIFY" "$run_exn_disp" 2>&1 || true)"
+assert_contains "exn-agg dispatch signal without stderr → MISSING glob" "$out" "MISSING="
+assert_contains "exn-agg dispatch MISSING names aggregator-dispatch glob" "$out" "round-*/aggregator-dispatch.stderr"
+
+# Test 13: exn-agg-validate-fail satisfied when round stderr exists → OK
+run_exn_ok="$TMP/run-exn-validate-ok"
+mkdir -p "$run_exn_ok/round-1"
+for f in manifest.json plan-goals-test.md plan-review-tally.json code-review-tally.json review-findings-full.jsonl token-report.json timing-report.json session-transcript.jsonl; do
+    printf 'placeholder\n' > "$run_exn_ok/$f"
+done
+printf '%s\n' '{"body":"merged output failed validation"}' > "$run_exn_ok/execution-issues.ndjson"
+printf 'stub\n' > "$run_exn_ok/round-1/aggregator-validate.stderr"
+out="$("$VERIFY" "$run_exn_ok" 2>&1 || true)"
+assert_contains "exn-agg validate with stderr present emits OK" "$out" "OK"
+
 echo
 echo "Passed: $PASS"
 echo "Failed: $FAIL"

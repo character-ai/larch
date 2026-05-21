@@ -1,0 +1,2 @@
+{"phase":"implement","step":"9a.1","category":"OOS","body":"Accepted OOS: [OOS] verify-run-log-completeness: unquoted glob in manifest-fixed path scan — filed as #2519"}
+{"phase":"implement","step":"9a.1","category":"OOS","body":"Rejected/Neutral OOS: FINDING_15 (neutral), FINDING_16 (rejected), FINDING_18 (neutral), FINDING_19 (rejected) — not filed"}
