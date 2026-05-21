@@ -218,6 +218,29 @@ stdout="$("$COMPOSE" --implement-tmpdir "$TMP/j-impl" --issue 49 --output "$out"
 [[ "$(record_field_by_id "$out" REJ_C1 reviewer)" == "cursor-specialist-testing-output.txt" ]] \
     || fail "body reviewer rejected attribution"
 
+echo "=== REJ_* category from ### FINDING_ triple-hash inner heading ==="
+mkdir -p "$TMP/rej-cat-impl"
+cat > "$TMP/rej-cat-impl/rejected-findings-full.md" <<'EOF'
+### [rejected] FINDING_A
+
+### FINDING_A: architecture: scripts/foo.sh:1-3
+- **Reviewer**: rej-arch-reviewer.txt
+- **Concern**: rejected architecture follow-up.
+
+### [rejected] FINDING_B
+
+### FINDING_B: security: token handling
+- **Reviewer**: rej-sec-reviewer.txt
+- **Concern**: rejected security follow-up.
+EOF
+out="$TMP/rej-cat.jsonl"
+stdout="$("$COMPOSE" --implement-tmpdir "$TMP/rej-cat-impl" --issue 2479 --output "$out")"
+[[ "$stdout" == *"FINDINGS_TOTAL=2"* ]] || fail "REJ triple-hash category total: $stdout"
+[[ "$(record_field_by_id "$out" REJ_C1 category)" == "architecture" ]] \
+    || fail "REJ_C1 category: got $(record_field_by_id "$out" REJ_C1 category)"
+[[ "$(record_field_by_id "$out" REJ_C2 category)" == "security" ]] \
+    || fail "REJ_C2 category: got $(record_field_by_id "$out" REJ_C2 category)"
+
 echo "=== preserve inner headings inside OOS code-review blocks ==="
 mkdir -p "$TMP/k-impl/round-1"
 cat > "$TMP/k-impl/round-1/oos.md" <<'EOF'

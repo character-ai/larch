@@ -57,7 +57,9 @@ redact_field() {
 }
 
 # Extract the category from a finding body. Bodies typically open with a
-# '## <category>: …' line or '## **<category>** — …'; if absent, returns the empty string.
+# '## <category>: …' line or '## **<category>** — …'. Rejected findings may instead
+# lead with a triple-hash inner line '### FINDING_<id>: <category>: …' (no synthetic
+# '## ' prefix). If absent, returns the empty string.
 # For out_of_scope (strict=1), the extracted token must be one of the five focus-area tags
 # or the result is treated as unknown and the empty string is returned (prevents bogus OOS
 # headings from populating category). For other outcomes (strict=0), any non-empty
@@ -65,6 +67,27 @@ redact_field() {
 extract_category() {
     local body="$1" strict="${2:-0}"
     LC_ALL=C awk -v strict="$strict" '
+        /^### FINDING_/ {
+            sub(/^### FINDING_[^:]*:/, "")
+            sub(/^[[:space:]]+/, "", $0)
+            n = index($0, ":")
+            if (n > 0) {
+                candidate = substr($0, 1, n - 1)
+            } else {
+                candidate = $0
+            }
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", candidate)
+            if (strict == 1) {
+                if (candidate == "code-quality" || candidate == "risk-integration" ||
+                    candidate == "correctness" || candidate == "architecture" ||
+                    candidate == "security") {
+                    print candidate
+                }
+            } else if (candidate != "") {
+                print candidate
+            }
+            exit
+        }
         /^## / {
             sub(/^## /, "")
             if (substr($0, 1, 2) == "**") {

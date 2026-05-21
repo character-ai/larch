@@ -28,7 +28,7 @@ phase         string  — plan-review | code-review
 outcome       string  — accepted | rejected | out_of_scope
 reviewer      string  — the reviewer label (redacted); extracted from the body when present, otherwise "panel"
 round_num     string  — review round number for code-review round artifacts; empty for plan-review and legacy fallback artifacts
-category      string  — best-effort extract from a leading `##` body line: static `## <cat>: <file:lines>` (colon after the category) or dynamic-reviewer bold markdown `## **<cat>** — [\`file\`](...)`, validated against the five known focus-area tags (`code-quality`, `risk-integration`, `correctness`, `architecture`, `security`); empty when absent or when the extracted token is not a recognized tag
+category      string  — best-effort extract from a leading `##` body line: static `## <cat>: <file:lines>` (colon after the category) or dynamic-reviewer bold markdown `## **<cat>** — [\`file\`](...)`, validated against the five known focus-area tags (`code-quality`, `risk-integration`, `correctness`, `architecture`, `security`); rejected findings may use `### FINDING_N: <cat>: …` (triple-hash inner heading) instead of a synthetic `##` line; empty when absent or when the extracted token is not a recognized tag (OOS strict mode only allows the five tags)
 prose_body    string  — the full finding body (redacted; not HTML-escaped — consumers parse JSON)
 ```
 
