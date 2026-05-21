@@ -110,19 +110,19 @@ result=$(parse_pr_ref "")
 assert_equal "$result" "unknown" "[4c] empty description → unknown"
 
 # ---------------------------------------------------------------------------
-# Test 5: empty description → usage error
+# Test 5: empty description → since_last_audit (implicit default)
 # ---------------------------------------------------------------------------
-echo "Test 5: empty description → usage error"
+echo "Test 5: empty description → since_last_audit"
 check_empty() {
     local desc="$1"
     if [[ -z "$desc" ]]; then
-        echo "usage_error"
+        echo "since_last_audit"
     else
         echo "ok"
     fi
 }
 result=$(check_empty "")
-assert_equal "$result" "usage_error" "[5] empty description → usage_error"
+assert_equal "$result" "since_last_audit" "[5] empty description → since_last_audit"
 result=$(check_empty "last 3 PRs")
 assert_equal "$result" "ok" "[5b] non-empty → ok"
 

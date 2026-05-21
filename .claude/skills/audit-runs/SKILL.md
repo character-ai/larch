@@ -13,19 +13,19 @@ This is a **dev-only** operator skill (`.claude/skills/`). It is NOT shipped wit
 ## Usage
 
 ```
-/larch:audit-runs <verbal-description> [--repo owner/name] [--allow-concurrent]
+/larch:audit-runs [<verbal-description>] [--repo owner/name] [--allow-concurrent]
 ```
 
 (Plugin slash-alias: `/audit-runs …` may also resolve to this skill depending on marketplace wiring; prefer `/larch:audit-runs` when unsure.)
 
 ### Args
 
-- `<verbal-description>` (mandatory positional): describes which PRs to audit. Supported forms:
+- `<verbal-description>` (optional positional): when present, describes which PRs to audit. When omitted or empty, treat as `since last audit` (same error paths as that form). Supported forms:
   - `last N PRs` — N most-recently-merged PRs targeting `main`
   - `since last audit` — PRs merged after the prior audit report's `audited_pr_range.last`; error if no prior report exists or no new PRs have merged (do NOT file an empty report)
   - `since <ISO-timestamp>` — PRs merged after the given timestamp
   - `#N` or `PR #N` — exactly one PR
-  - Default when empty: fail with usage error
+  - Default when empty: treat as `since last audit` (requires a prior audit-report issue; continues to error if no prior report or malformed frontmatter — same as the explicit `since last audit` form)
 - `--repo <owner/name>`: target repo. Default: `character-ai/larch`
 - `--allow-concurrent`: override the 5-minute concurrency guard
 - **Removed flag**: `--no-fix-issues` is not supported. If any token in the skill argv is exactly `--no-fix-issues`, refuse immediately with a clear usage error (flag removed); do not proceed or silently ignore it.
