@@ -109,23 +109,28 @@ fail_usage() {
 
 # redact_gh_error <captured-stderr> — pipe captured gh error text through
 # scripts/redact-secrets.sh, flatten to one line, cap at 500 bytes, and
-# print the result. Parity with tracking-issue-write.sh's outbound
-# redaction posture: 4xx API responses can echo token-bearing request
-# bodies, so every ERROR= emission from a gh failure path MUST go through
-# this helper. The scrubber location is resolved from SCRIPT_DIR; if
-# missing, a best-effort fallback flattens the raw text so the error
-# envelope is still emitted (read.sh is fail-open on missing scrubber
-# since a read is not a publishing path, unlike the write side which is
-# strictly fail-closed).
+# print the result. Fails closed: if the scrubber is unavailable, exits
+# non-zero, or emits the truncation marker, a generic token-free string is
+# returned so no original stderr bytes reach ERROR=.
 redact_gh_error() {
     local text="$1"
     local scrubber="$SCRIPT_DIR/redact-secrets.sh"
-    local redacted
-    if [[ -x "$scrubber" ]]; then
-        redacted=$(printf '%s' "$text" | "$scrubber" 2>/dev/null || printf '%s' "$text")
-    else
-        redacted="$text"
+    local redacted status=0
+    if [[ ! -x "$scrubber" ]]; then
+        printf '%s' 'gh failure: redaction unavailable'
+        return 0
     fi
+    redacted=$(printf '%s' "$text" | "$scrubber" 2>/dev/null) || status=$?
+    if [ "$status" -ne 0 ]; then
+        printf '%s' 'gh failure: redaction unavailable'
+        return 0
+    fi
+    case "$redacted" in
+        *'[content truncated'*)
+            printf '%s' 'gh failure: redaction unavailable'
+            return 0
+            ;;
+    esac
     printf '%s' "$redacted" | tr '\n' ' ' | head -c 500
 }
 

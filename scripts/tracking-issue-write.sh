@@ -58,11 +58,14 @@
 #     through scripts/redact-secrets.sh, THEN apply truncation. Never the
 #     reverse. Token-shaped byte sequences must not be sliced before
 #     redaction. Placement mirrors create-one.sh's single-choke-point
-#     comment (create-one.sh:202-208).
-#   * gh-failure redaction — every gh invocation captures stdout and
-#     stderr separately. On non-success paths, captured stderr is piped
-#     through scripts/redact-secrets.sh before emission in ERROR=. This
-#     mirrors create-one.sh:247-280's posture for /issue outbound.
+#     comment.
+#   * gh-failure redaction (fail-closed) — every gh invocation captures
+#     stderr separately. On non-success paths, captured stderr is passed
+#     through redact_gh_error, which runs the full redact-tmpdir-paths.sh |
+#     redact-secrets.sh pipeline. If that pipeline is unavailable, exits
+#     non-zero, or emits the truncation marker ([content truncated —
+#     unterminated PEM block…]), a generic token-free string is emitted in
+#     ERROR= and no original stderr bytes are included.
 #   * Summary comments are owned by tracking-issue-summary.sh; durable run
 #     payloads are owned by larch-log.sh.
 #
@@ -205,14 +208,24 @@ redact() {
     printf '%s' "$1" | "$REDACT_TMPDIR_HELPER" | "$REDACT_HELPER"
 }
 
-# redact_gh_error <captured-stderr-text> — same as redact but used on gh
-# failure paths to scrub 4xx API responses / token-bearing error text
-# before emission in ERROR=. Flattens newlines and truncates to 500 chars
-# matching create-one.sh's outbound pattern.
+# redact_gh_error <captured-stderr-text> — scrubs 4xx API responses /
+# token-bearing error text before emission in ERROR=. Fails closed: if the
+# redact pipeline is unavailable, exits non-zero, or emits the truncation
+# marker, a generic token-free string is returned and no original stderr
+# bytes are included. Flattens newlines and truncates to 500 chars.
 redact_gh_error() {
-    local err_text="$1"
-    local redacted
-    redacted=$(redact "$err_text") || emit_redaction_failure
+    local err_text="$1" redacted status=0
+    redacted=$(redact "$err_text") || status=$?
+    if [ "$status" -ne 0 ]; then
+        printf '%s' 'gh failure: redaction unavailable'
+        return 0
+    fi
+    case "$redacted" in
+        *'[content truncated'*)
+            printf '%s' 'gh failure: redaction unavailable'
+            return 0
+            ;;
+    esac
     printf '%s' "$redacted" | tr '\n' ' ' | head -c 500
 }
 

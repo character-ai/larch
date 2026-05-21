@@ -45,7 +45,10 @@ Exit codes:
 
 All outbound body and title content is composed in memory, passed through
 `redact-tmpdir-paths.sh` and `redact-secrets.sh`, then sent to `gh`. Captured
-`gh` stderr is also redacted before it is surfaced in `ERROR=`.
+`gh` stderr is redacted before surfacing in `ERROR=` via the `redact_gh_error`
+helper, which fails closed: if the pipeline is unavailable, exits non-zero, or
+emits the truncation marker, a generic token-free string is emitted instead and
+no original stderr bytes reach `ERROR=`.
 
 `append-comment --lifecycle-marker` accepts only `[A-Za-z0-9._:-]` and rejects
 the substring `--` before synthesizing the HTML marker comment.

@@ -52,6 +52,12 @@ redact_gh_error() {
         printf '%s' 'gh stderr redaction failed'
         return 0
     fi
+    case "$redacted" in
+        *'[content truncated'*)
+            printf '%s' 'gh stderr redaction unavailable'
+            return 0
+            ;;
+    esac
     printf '%s' "$redacted" | tr '\n' ' ' | head -c 500
 }
 

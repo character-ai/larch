@@ -105,4 +105,65 @@ set -e
 [ "$rc" = "1" ] || fail "find-anchor exit $rc"
 [[ "$removed" == *"Unknown subcommand: find-anchor"* ]] || fail "find-anchor rejection missing"
 
+echo "=== redact_gh_error: redactor binary missing ==="
+# Fake tree: tracking-issue-write.sh + lib-quiet.sh; redact helpers intentionally absent.
+# rename subcommand reaches emit_gh_failure before any body/title redact calls.
+FAKE_MISSING="$TMP/fake-missing-redact"
+mkdir -p "$FAKE_MISSING/scripts"
+cp "$WRITE" "$FAKE_MISSING/scripts/tracking-issue-write.sh"
+cp "$REPO_ROOT/scripts/lib-quiet.sh" "$FAKE_MISSING/scripts/lib-quiet.sh"
+STUB_MISSING="$TMP/stubs-missing-redact"
+mkdir -p "$STUB_MISSING"
+secret_missing='sk-ant-FAKESECRET-MISSING-1234'
+cat > "$STUB_MISSING/gh" <<GHSTUB_MISSING
+#!/usr/bin/env bash
+if [ "\$1" = "repo" ]; then echo "owner/repo"; exit 0; fi
+if [ "\$1" = "issue" ] && [ "\$2" = "view" ]; then
+    echo "API error: token $secret_missing rejected" >&2
+    exit 1
+fi
+exit 1
+GHSTUB_MISSING
+chmod +x "$STUB_MISSING/gh"
+set +e
+out_missing=$(PATH="$STUB_MISSING:$ORIG_PATH" \
+  bash "$FAKE_MISSING/scripts/tracking-issue-write.sh" rename \
+  --issue 42 --state 'done' --repo owner/repo 2>&1)
+set -e
+[[ "$out_missing" == *"FAILED=true"* ]] || fail "missing-redactor: FAILED=true missing: $out_missing"
+[[ "$out_missing" == *"ERROR=gh failure: redaction unavailable"* ]] || fail "missing-redactor: ERROR fallback missing: $out_missing"
+[[ "$out_missing" != *"$secret_missing"* ]] || fail "missing-redactor: raw secret leaked in output: $out_missing"
+
+echo "=== redact_gh_error: redactor exits non-zero ==="
+# Fake tree: passthrough redact-tmpdir-paths.sh; redact-secrets.sh exits 1.
+FAKE_FAILING="$TMP/fake-failing-redact"
+mkdir -p "$FAKE_FAILING/scripts"
+cp "$WRITE" "$FAKE_FAILING/scripts/tracking-issue-write.sh"
+cp "$REPO_ROOT/scripts/lib-quiet.sh" "$FAKE_FAILING/scripts/lib-quiet.sh"
+printf '#!/usr/bin/env bash\ncat\n' > "$FAKE_FAILING/scripts/redact-tmpdir-paths.sh"
+chmod +x "$FAKE_FAILING/scripts/redact-tmpdir-paths.sh"
+printf '#!/usr/bin/env bash\nexit 1\n' > "$FAKE_FAILING/scripts/redact-secrets.sh"
+chmod +x "$FAKE_FAILING/scripts/redact-secrets.sh"
+STUB_FAILING="$TMP/stubs-failing-redact"
+mkdir -p "$STUB_FAILING"
+secret_failing='sk-ant-FAKESECRET-NONZERO-5678'
+cat > "$STUB_FAILING/gh" <<GHSTUB_FAILING
+#!/usr/bin/env bash
+if [ "\$1" = "repo" ]; then echo "owner/repo"; exit 0; fi
+if [ "\$1" = "issue" ] && [ "\$2" = "view" ]; then
+    echo "API error: token $secret_failing rejected" >&2
+    exit 1
+fi
+exit 1
+GHSTUB_FAILING
+chmod +x "$STUB_FAILING/gh"
+set +e
+out_failing=$(PATH="$STUB_FAILING:$ORIG_PATH" \
+  bash "$FAKE_FAILING/scripts/tracking-issue-write.sh" rename \
+  --issue 42 --state 'done' --repo owner/repo 2>&1)
+set -e
+[[ "$out_failing" == *"FAILED=true"* ]] || fail "failing-redactor: FAILED=true missing: $out_failing"
+[[ "$out_failing" == *"ERROR=gh failure: redaction unavailable"* ]] || fail "failing-redactor: ERROR fallback missing: $out_failing"
+[[ "$out_failing" != *"$secret_failing"* ]] || fail "failing-redactor: raw secret leaked in output: $out_failing"
+
 echo "All assertions passed."
