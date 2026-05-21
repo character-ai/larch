@@ -1,0 +1,9 @@
+FINDING_1: EXONERATE -- legitimate navigability concern but too cosmetic for a dedicated issue; the cross-ref text is descriptive prose, not a fragment anchor claim
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: EXONERATE -- the disambiguation section immediately below the intro already narrows the "not emitted" claim to the issue-body markers; the overlap concern is already addressed
+FINDING_5: NO -- the file uses standard ASCII double-quotes around "end" (line 53), not curly/typographic quotes; finding is based on an incorrect observation
+FINDING_6: YES
+FINDING_7: EXONERATE -- the opening paragraph's disclaimer is prominent and clear; adding target-sequence qualifiers to every numbered lifecycle step would add more noise than clarity
+FINDING_8: YES
+FINDING_9: NO -- this is a meta-complaint about review-bundle setup, not a defect in the delivered documentation; the plan artifact is present in the provided context

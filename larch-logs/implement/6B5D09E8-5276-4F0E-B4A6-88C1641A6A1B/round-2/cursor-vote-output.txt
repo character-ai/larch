@@ -1,0 +1,11 @@
+Reading the ballot and nearby context files for verification.
+
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: EXONERATE -- STATE rows already define `response-pending` vs `clean`; extra label/STATE reconciliation prose is optional bulk for v1.
+FINDING_4: YES
+FINDING_5: NO -- Rules use ASCII backticks for `start`/`end`; no curly-quote typography around those tokens in the doc.
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: NO -- missing review-bundle artifacts is a rerun/input issue, not a defect in the proposed docs.
