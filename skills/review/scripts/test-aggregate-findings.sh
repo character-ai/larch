@@ -77,10 +77,15 @@ EOF
                 ;;
             oos_shared_slot_merge)
                 cat > "$out" <<'EOF'
-### FINDING_1: merged in scope
+### FINDING_1: in-scope A
 - **Reviewer(s)**: cursor-a-output.txt
-- **Concern**: merged
+- **Concern**: x
 - **Suggested revision**: fix
+
+### FINDING_2: [OUT_OF_SCOPE] **code-quality** [`x`]
+- **Reviewer(s)**: cursor-a-output.txt
+- **Concern**: oos
+- **Suggested revision**: n/a
 
 EOF
                 ;;
@@ -254,7 +259,7 @@ grep -Fq 'AGGREGATED=false' "$TMP/out-oos.env" || fail "oos-drop AGGREGATED"
 grep -Fq 'REASON=validation-failed' "$TMP/out-oos.env" || fail "oos-drop REASON"
 cmp -s "$TMP/in-oos.md" "$TMP/in-oos-work.md" || fail "findings unchanged on OOS tag drop"
 
-echo "=== validation rejects merge when OOS-tagged input shares a reviewer with in-scope merge ==="
+echo "=== validation accepts merge when reviewer has both OOS and in-scope input findings (#2491) ==="
 cat > "$TMP/in-oos-shared.md" <<'EOF'
 ### FINDING_1: in-scope A
 - **Reviewer**: cursor-a-output.txt
@@ -278,9 +283,11 @@ AGGREGATE_STUB_MERGE_KIND=oos_shared_slot_merge \
     --codex-present true \
     --cursor-present true \
     --mode diff >"$TMP/out-oos-shared.env"
-grep -Fq 'AGGREGATED=false' "$TMP/out-oos-shared.env" || fail "oos-shared AGGREGATED"
-grep -Fq 'REASON=validation-failed' "$TMP/out-oos-shared.env" || fail "oos-shared REASON"
-cmp -s "$TMP/in-oos-shared.md" "$TMP/in-oos-shared-work.md" || fail "findings unchanged on OOS shared-slot merge"
+grep -Fq 'AGGREGATED=true' "$TMP/out-oos-shared.env" || fail "oos-shared AGGREGATED"
+grep -Fq 'REASON=ok' "$TMP/out-oos-shared.env" || fail "oos-shared REASON"
+grep -Fq 'MERGED_COUNT=2' "$TMP/out-oos-shared.env" || fail "oos-shared MERGED_COUNT"
+[[ "$(grep -c '^### FINDING_' "$TMP/in-oos-shared-work.md" | tr -d '[:space:]')" == "2" ]] || fail "expected two FINDING blocks after OOS shared-slot merge"
+grep -Fq '[OUT_OF_SCOPE]' "$TMP/in-oos-shared-work.md" || fail "expected [OUT_OF_SCOPE] preserved in OOS shared-slot merge"
 
 issues_parent="$TMP/agg-exec-issues"
 mkdir -p "$issues_parent"
