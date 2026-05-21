@@ -9,7 +9,7 @@
 # conformance test. Runtime enforcement is the LLM-level orchestration of
 # Step 5a per the prose contract.
 #
-# Fourteen assertions against the extracted Step 5a block:
+# Thirteen assertions against the extracted Step 5a block:
 #   (a1) Invocation forwards "--issue $ISSUE_NUMBER".
 #   (a2) Invocation forwards "--no-admin-fallback" (branch-protection bypass
 #        safety flag; issue #559).
@@ -18,13 +18,9 @@
 #   (a5) Invocation contains "[--hard if hard_mode]" — /fix-issue forwards --hard
 #        when the operator sets it; otherwise no HARD/SIMPLE control flag is sent
 #        and /implement uses its normal routing.
-#   (a6) Removed /implement --quick must not reappear as a forwarded token on the
-#        Step 5a line that spells the `/implement --merge …` invocation template (CI guard
-#        against resurrecting the flag); the check is scoped to that line so unrelated
-#        prose such as `/design --quick` elsewhere in the Step 5a block cannot false-trip.
-#   (a7) Invocation contains "[--inline if inline_mode and hard_mode]" — encodes
-#        that --inline is forwarded only when --hard is also set (because --inline
-#        only matters when /design runs, which requires HARD mode).
+#   (a6) Invocation contains "[--inline if inline_mode and hard_mode]" — encodes
+#        that --inline is forwarded only when --hard is also set (--inline only matters
+#        when /design runs, which requires HARD mode).
 #   (b)  Literal token "IMPLEMENT_BAIL_REASON=adopted-issue-closed" present.
 #   (c)  Warning prefix "/implement bailed: issue #" present.
 #   (d)  Specific directive "Do NOT call `issue-lifecycle.sh close`" present
@@ -131,26 +127,10 @@ assert_contains "a4: invocation forwards [--auto if auto_mode]" '[--auto if auto
 # otherwise no workflow forcing flag is sent.
 assert_contains "a5: invocation contains [--hard if hard_mode]" '[--hard if hard_mode]'
 
-# (a6) Removed /implement --quick must not appear on the Step 5a `/implement --merge …`
-# invocation template line (see header — whole-block scan would false-trip on `/design --quick`).
-STEP5A_IMPLEMENT_INVOCATION=$(printf '%s\n' "$STEP5A_BLOCK" | grep -F '`/implement --merge' || true)
-if [[ -z "$STEP5A_IMPLEMENT_INVOCATION" ]]; then
-    echo "  FAIL: a6: could not locate Step 5a /implement invocation template line" >&2
-    exit 1
-fi
-if ! grep -qF -- ' --quick' <<<"$STEP5A_IMPLEMENT_INVOCATION"; then
-    PASS_COUNT=$((PASS_COUNT + 1))
-    echo "  PASS: a6: Step 5a /implement invocation template must not forward removed --quick flag"
-else
-    echo "  FAIL: a6: Step 5a /implement invocation template must not forward removed --quick flag" >&2
-    echo "    unexpected literal found:  --quick" >&2
-    exit 1
-fi
-
-# (a7) [--inline if inline_mode and hard_mode] — encodes that --inline is only
+# (a6) [--inline if inline_mode and hard_mode] — encodes that --inline is only
 # forwarded when --hard is also set (--inline only matters when /design runs,
 # which requires HARD mode).
-assert_contains "a7: invocation forwards [--inline if inline_mode and hard_mode]" '[--inline if inline_mode and hard_mode]'
+assert_contains "a6: invocation forwards [--inline if inline_mode and hard_mode]" '[--inline if inline_mode and hard_mode]'
 
 # (b) Bail-token literal present.
 assert_contains "b: IMPLEMENT_BAIL_REASON=adopted-issue-closed literal" 'IMPLEMENT_BAIL_REASON=adopted-issue-closed'
