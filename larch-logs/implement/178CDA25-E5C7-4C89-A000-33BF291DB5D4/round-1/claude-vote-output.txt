@@ -1,0 +1,6 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: EXONERATE -- stub regression-guard for a targeted flag check; flattened-argv matching is adequate for this narrow use case
+FINDING_4: NO -- run-log artifacts are intentional per docs/run-logs.md policy; no tracking issue warranted
+FINDING_5: EXONERATE -- speculative future coupling, not a current defect; stubs would need updating anyway if invocation shape changes
+FINDING_6: NO -- observation confirms the change is correct with no pre-existing defect introduced; no action required

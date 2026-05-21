@@ -1,0 +1,12 @@
+Reading the pre-computed diff and commit history, then inspecting `jstr()` and related code for correctness.
+
+Verifying `jstr()` behavior with `jq` and checking how it's used in the script.
+
+### In-Scope Findings
+
+- **correctness** `.claude/skills/audit-runs/scripts/test-audit-runs.sh:1469-1485` — Test 49 reimplements `jstr()` inline (`jstr_test49`) instead of calling the helper defined in `.claude/skills/audit-runs/scripts/audit-scan-run.sh:64-72`, so the suite can stay green if `jstr()` in the script is regressed or diverges again while the copy in the test still matches the old expression; the four identity cases also omit the edge cases from the review brief (empty string, embedded quotes, backslashes, control characters) where the `jq` path vs `sed` fallback matters most. **Suggested fix:** Drive the real implementation (for example a minimal wrapper script that `source`s only the helper block, or a small shared `jstr.sh` included by both), and extend assertions with a short vector list covering `""`, a string containing `"` and `\`, and at least one newline or tab so failures surface on the path the scan script actually uses.
+
+### Out-of-Scope Observations
+
+- The same branch also adds implement run artifacts under `larch-logs/implement/178CDA25-E5C7-4C89-A000-33BF291DB5D4/` (separate `chore(larch-logs)` commit); that is unrelated to the audit-runs script behavior and may be an intentional run log flush or something to split from the functional fix depending on repo policy.
+- The `jstr()` `sed` fallback and macOS `sed`/`tr` behavior for control characters were already part of the helper before this change; the `@json` fix aligns the primary path with how `jq` encodes JSON string contents, and the `${_j:1:${#_j}-2}` pattern is appropriate for standard `jq` `@json` output under `-nj` for non-defective `jq` builds.

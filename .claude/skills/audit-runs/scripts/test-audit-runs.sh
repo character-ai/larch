@@ -1230,8 +1230,8 @@ else
     echo "  SKIP: audit-resolve-prs.sh not executable (not found at $RESOLVE_SCRIPT)"
 fi
 
-# Test 44: audit-preflight.sh — stub git+gh happy path
-echo "Test 44: audit-preflight stub git+gh PREFLIGHT_OK=true"
+# Test 44: audit-preflight.sh — stub git+gh happy path + strict gh rejects -R
+echo "Test 44: audit-preflight stub git+gh (happy path + strict -R reject)"
 PREFLIGHT_SCRIPT="$SCRIPT_DIR/audit-preflight.sh"
 if [ -x "$PREFLIGHT_SCRIPT" ]; then
     PF_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-pf-XXXXXX")
@@ -1263,6 +1263,11 @@ EOSGIT
 set -euo pipefail
 line="$*"
 if [[ "$line" == *"repo view"* && "$line" == *"--json url"* ]]; then
+    # gh repo view is positional-only; -R/--repo on this subcommand is invalid and masks regressions.
+    if [[ "$line" == *" -R "* ]] || [[ "$line" == *" -R" ]] || [[ "$line" == "-R"* ]] || [[ "$line" == *" --repo "* ]]; then
+        printf 'stub gh: repo view must not use -R/--repo (positional OWNER/REPO only)\n' >&2
+        exit 1
+    fi
     if [[ "$line" == *"--jq .url"* ]]; then
         printf '%s\n' "https://github.com/character-ai/larch"
     else
@@ -1283,6 +1288,14 @@ EOSGH
     pf_out=$(cd "$PF_ROOT" && PATH="$PF_STUBS:$PATH" bash "$PREFLIGHT_SCRIPT" --repo character-ai/larch)
     pf_ok=$(printf '%s' "$pf_out" | sed -n 's/^PREFLIGHT_OK=//p')
     assert_equal "$pf_ok" "true" "[44] stubbed git+gh → PREFLIGHT_OK=true"
+    set +e
+    "$PF_STUBS/gh" repo view -R character-ai/larch --json url --jq .url >/dev/null 2>&1
+    gh44b_bad_rc=$?
+    set -e
+    assert_equal "$gh44b_bad_rc" "1" "[44b0] strict stub rejects gh repo view -R"
+    pf44b_out=$(cd "$PF_ROOT" && PATH="$PF_STUBS:$PATH" bash "$PREFLIGHT_SCRIPT" --repo character-ai/larch)
+    pf44b_ok=$(printf '%s' "$pf44b_out" | sed -n 's/^PREFLIGHT_OK=//p')
+    assert_equal "$pf44b_ok" "true" "[44b] preflight ok with strict gh (positional repo view)"
     rm -rf "$PF_ROOT" "$PF_STUBS"
 else
     echo "  SKIP: audit-preflight.sh not executable (not found at $PREFLIGHT_SCRIPT)"
@@ -1390,6 +1403,32 @@ if [ -x "$SCAN_SCRIPT" ]; then
     res48=$(printf '%s' "$p48_out" | jq -r 'select(.scan=="required-file-presence") | .result // empty' | head -1)
     assert_equal "$res48" "fail" "[48] .. in required-files path → fail (not probed)"
     rm -rf "$P48"
+else
+    echo "  SKIP: audit-scan-run.sh not executable (not found at $SCAN_SCRIPT)"
+fi
+
+# Test 49: audit-scan-run jstr() (shared implementation with audit-scan-run.sh)
+echo "Test 49: audit-scan-run jstr() round-trip + edge vectors"
+SCAN_SCRIPT="${SCAN_SCRIPT:-$SCRIPT_DIR/audit-scan-run.sh}"
+# shellcheck source=.claude/skills/audit-runs/scripts/audit-scan-run-jstr.inc.bash
+. "$SCRIPT_DIR/audit-scan-run-jstr.inc.bash"
+if [ -x "$SCAN_SCRIPT" ]; then
+    for s in "29.8.62" "34.0.0" "oos-issues.ndjson" "run-statistics.md"; do
+        assert_equal "$(jstr "$s")" "$s" "[49] jstr identity for: $s"
+    done
+    assert_equal "$(jstr "")" "" "[49e] jstr empty string"
+    _s49q=$(printf 'a\x22b')
+    _e49q=$(printf 'a\x5c\x22b')
+    assert_equal "$(jstr "$_s49q")" "$_e49q" "[49f] jstr embedded quote"
+    _s49bs=$(printf 'a\x5cb')
+    _e49bs=$(printf 'a\x5c\x5cb')
+    assert_equal "$(jstr "$_s49bs")" "$_e49bs" "[49g] jstr backslash"
+    _s49t=$(printf 'a\tb')
+    _e49t=$(printf 'a\x5c\x74b')
+    assert_equal "$(jstr "$_s49t")" "$_e49t" "[49h] jstr tab"
+    _s49n=$'a\nb'
+    _e49n=$'a\\nb'
+    assert_equal "$(jstr "$_s49n")" "$_e49n" "[49i] jstr newline"
 else
     echo "  SKIP: audit-scan-run.sh not executable (not found at $SCAN_SCRIPT)"
 fi
