@@ -2,10 +2,12 @@
 
 This document is the **target** normative wire format for exchanging a plan
 through a GitHub **issue body** and completing a **clarification round-trip** in
-issue **comments** before `/implement` proceeds. The markers and label
-semantics here are a **specification to implement**—they are **not** yet parsed
-or emitted by shipped `skills/` or `scripts/` in this repository; operators
-should not assume matching runtime behavior until tooling lands in-tree.
+issue **comments** before `/implement` proceeds. Low-level helpers that read
+and write the issue-body markers and clarification comments live under
+`scripts/plan-block-*.sh`, `scripts/clarify-*.sh`, and their sibling `.md`
+contracts; shipped `skills/` workflows do **not** invoke them yet, so operators
+should not assume `/design` or `/implement` enforce this format end-to-end until
+follow-up wiring lands.
 
 ## Disambiguation: issue-body `larch:plan:*` vs tracking-issue `<!-- larch:plan v1 … -->`
 
@@ -68,10 +70,12 @@ Rules:
 
 ## Clarification Comment Markers
 
-**Target workflow (not yet implemented in-tree):** The markers in this section
-describe the intended wire format for a future clarification round-trip. Until
-in-repo tooling emits and parses them, operators MUST NOT assume that shipped
-`skills/` or `scripts/` will post or honor these comments.
+**Target workflow (skills not wired yet):** The markers in this section
+describe the intended wire format for a clarification round-trip.
+`scripts/clarify-comment-post.sh` can post conforming comments, and
+`scripts/clarify-state.sh` can read them, but shipped `skills/` do not invoke
+these helpers yet—operators MUST NOT assume `/implement` or `/design` post or
+enforce these comments automatically until follow-up wiring lands.
 
 When a conforming `/implement` audit step would refuse to proceed, it would
 post a clarification request as an issue comment on the plan anchor issue.
@@ -129,9 +133,8 @@ Rules:
 
 The `needs-design-clarification` label tracks whether the plan is currently
 awaiting a clarification response. **Label transitions are not enforced by
-shipped `skills/` or `scripts/` in this repository**; they may be applied
-manually or by automation outside this tree until in-repo hooks or helpers
-exist.
+shipped `skills/`**; `scripts/clarify-label.sh` provides an idempotent add/remove
+helper, but `/design` and `/implement` do not call it yet.
 
 | Event | Label action |
 |---|---|
@@ -139,9 +142,8 @@ exist.
 | `/design` posts the matching `larch:clarify-response` | Remove `needs-design-clarification` |
 
 The `STATE` values below describe the **semantic** situation implied by markers
-and labels. **Non-normative (tooling)**: a helper script to derive `STATE` from
-the comment stream is not checked into this repository yet; operators derive
-state manually or via external tooling until a named in-repo path ships.
+and labels. **Non-normative (tooling)**: `scripts/clarify-state.sh` derives
+`STATE` from the comment stream; shipped skills do not invoke it yet.
 
 | `STATE` value | Meaning |
 |---|---|

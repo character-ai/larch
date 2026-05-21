@@ -564,6 +564,24 @@ exclude = [
   # (sibling contract), matching the same Makefile-only pattern.
   "scripts/test-check-clean-tree.sh",
   "scripts/test-check-clean-tree.md",
+  # Issue-anchored plan helpers (#2484): runtime scripts + harnesses are
+  # Makefile-referenced only until /design ↔ /implement wiring lands.
+  "scripts/plan-block-read.sh",
+  "scripts/plan-block-read.md",
+  "scripts/plan-block-write.sh",
+  "scripts/plan-block-write.md",
+  "scripts/clarify-comment-post.sh",
+  "scripts/clarify-comment-post.md",
+  "scripts/clarify-state.sh",
+  "scripts/clarify-state.md",
+  "scripts/clarify-label.sh",
+  "scripts/clarify-label.md",
+  "scripts/test-plan-block.sh",
+  "scripts/test-plan-block.md",
+  "scripts/test-clarify-comment.sh",
+  "scripts/test-clarify-comment.md",
+  "scripts/test-clarify-state.sh",
+  "scripts/test-clarify-state.md",
   # scripts/test-check-stale-plugin.sh is the regression harness for
   # scripts/check-stale-plugin.sh (version-skew detection). Referenced only
   # from Makefile (test-check-stale-plugin target) and
