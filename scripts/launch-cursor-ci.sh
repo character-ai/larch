@@ -75,6 +75,14 @@ if [[ -n "$CONFLICT_FILES" ]]; then
     larch_validate_vendor_conflict_csv "$CONFLICT_FILES" || die "invalid --conflict-files"
 fi
 
+STALL_THRESHOLD=${LARCH_CURSOR_CI_STALL_THRESHOLD:-180}
+case "$STALL_THRESHOLD" in ''|*[!0-9]*|0) STALL_THRESHOLD=180 ;; esac
+STALL_CHANNEL=""
+case "$ROLE" in
+    fix|bump-classify|changelog-draft) STALL_CHANNEL=stdout ;;
+    resolve-conflict) STALL_CHANNEL="tree:${PWD}" ;;
+esac
+
 MODEL_ARGS=()
 cursor_launcher_load_model_args
 cursor_launcher_setup_auth_argv
@@ -137,7 +145,10 @@ while (( AUTH_ATTEMPT <= MAX_AUTH_RETRIES )); do
         ${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"} \
         ${CURSOR_AUTH_ARGS[@]+"${CURSOR_AUTH_ARGS[@]}"} \
         --workspace "$PWD" \
-        "$WRAPPED_PROMPT" || LAUNCHER_EXIT=$?
+        "$WRAPPED_PROMPT" &
+    _REA_PID=$!
+    cursor_launcher_run_stall_monitor "$STALL_CHANNEL" "$OUTPUT" "$STALL_THRESHOLD" "${OUTPUT}.diag" "$_REA_PID" || true
+    wait "$_REA_PID" && LAUNCHER_EXIT=0 || LAUNCHER_EXIT=$?
     if (( LAUNCHER_EXIT != 0 && AUTH_ATTEMPT < MAX_AUTH_RETRIES )) && external_is_auth_failure "cursor" "${OUTPUT}.diag"; then
         AUTH_ATTEMPT=$((AUTH_ATTEMPT + 1))
         : > "${OUTPUT}.diag" 2>/dev/null || true
@@ -167,7 +178,7 @@ END_S=$(date +%s)
     --status "$([ "$LAUNCHER_EXIT" -eq 0 ] && echo complete || echo signal)" >/dev/null 2>&1 || true
 
 if command -v jq >/dev/null 2>&1 && [ -f "$OUTPUT" ]; then
-    read -r INP OUT CR CW < <(jq -r '.usage // {} | "\(.inputTokens // 0) \(.outputTokens // 0) \(.cacheReadTokens // 0) \(.cacheWriteTokens // 0)"' "$OUTPUT" 2>/dev/null || echo "0 0 0 0")
+    read -r INP OUT CR CW < <(jq -r '.usage // {} | "\(.inputTokens // 0) \(.outputTokens // 0) \(.cacheReadTokens // 0) \(.cacheWriteTokens // 0)"' "$OUTPUT" 2>/dev/null || echo "0 0 0 0") || true
     if [[ "$INP" =~ ^[0-9]+$ && "$OUT" =~ ^[0-9]+$ && "$CR" =~ ^[0-9]+$ && "$CW" =~ ^[0-9]+$ ]]; then
         TOTAL=$((INP + OUT + CR + CW))
         printf 'TOOL=cursor\nINPUT=%s\nOUTPUT=%s\nCACHE_READ=%s\nCACHE_CREATE=%s\nTOTAL=%s\nRAW=cursor_ci_fix\n' \

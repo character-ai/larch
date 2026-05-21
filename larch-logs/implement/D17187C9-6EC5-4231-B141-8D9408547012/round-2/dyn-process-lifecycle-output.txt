@@ -1,0 +1,21 @@
+Reviewing the diff and tracing PID/stdbuf/stall-monitor interactions. Gathering the diff, commit log, and relevant source sections.
+
+Reading `run-external-agent.sh` and the modified sections of `launch-cursor-ci.sh` for PID/wait/timeout interaction.
+
+Checking sentinel handling when the wrapper is SIGKILL'd and whether `promote_inner_done` compensates.
+
+Checking how the background job relates to `run-external-agent` for `pgrep -P` (direct children only):
+
+### In-Scope Findings
+
+- **risk-integration** `scripts/lib-cursor-launcher-common.sh:208-224` — The stall path ends with `kill -KILL` on `target_pid`, which for `launch-cursor-ci.sh` is the `run-external-agent.sh` wrapper (`scripts/launch-cursor-ci.sh:136-151`). `SIGKILL` cannot run `_write_sentinel_on_exit` in `scripts/run-external-agent.sh:146-156`, so `${OUTPUT}.inner.done` may never be written even though `launch-cursor-ci.sh` still calls `cursor_launcher_promote_inner_done` (`scripts/launch-cursor-ci.sh:167-168`). That diverges from the built-in timeout path (`scripts/run-external-agent.sh:221-236`), which only `kill -9`s the inner capture PID and then exits the wrapper normally so the EXIT trap can still emit the sentinel. Anything relying on the `${OUTPUT}.done` contract described at `scripts/run-external-agent.sh:143-144` and exercised by `collect-agent-results.sh` can see a missing or stale completion sentinel after a stall kill. **Suggested fix:** After `wait "$_REA_PID"` in `scripts/launch-cursor-ci.sh:151`, if `${OUTPUT}.inner.done` is still absent and the wrapper is gone, best-effort synthesize the same sentinel shape the EXIT trap would have written (or stop escalating to `SIGKILL` on the wrapper once the inner capture PID is already gone and the wrapper is exiting).
+
+- **risk-integration** `scripts/lib-cursor-launcher-common.sh:196-207` and `scripts/run-external-agent.sh:197-201` — The stall monitor appends diagnostics with `>>"$diag_file"` on `${OUTPUT}.diag` while `_launch_capture_stdout_only` redirects the agent’s stderr to that same path via `2> "${OUTPUT_FILE}.diag"` without `O_APPEND` on the child’s descriptor, so stderr bytes and `Stall detected:` blocks can be interleaved at arbitrary byte boundaries. That can garble auth-oriented greps in `external_is_auth_failure` (`scripts/lib-external-launcher-common.sh:97-105`) and complicate post-mortem reading of `${OUTPUT}.diag`. **Suggested fix:** Write stall diagnostics to a separate sidecar (for example `${OUTPUT}.stall`) and only merge or tail it into `${OUTPUT}.diag` after the child has exited, or coordinate writes with `flock` / a dedicated fd opened with append from the child side.
+
+### Out-of-Scope Observations
+
+- The scout note about `RUN_EXTERNAL_AGENT_CAPTURE_STDOUT_STDBUF=1` and `$!` applies to `PID=$!` inside `scripts/run-external-agent.sh:197-213` (the capture-job root, typically the process that owns the redirected stdout/stderr), not to `_REA_PID=$!` in `scripts/launch-cursor-ci.sh:148-151`, which correctly captures the `run-external-agent.sh` wrapper PID for `wait` and for `kill -0` in the stall loop.
+
+- The branch also adds committed implement run metadata under `larch-logs/implement/D17187C9-6EC5-4231-B141-8D9408547012/` (manifest, plan files, tally). That is unrelated to process-lifecycle semantics but adds noise to the diff versus the functional change in `scripts/`.
+
+- `scripts/launch-cursor-ci.sh:180-181` adds `|| true` after `read` from the `jq` process substitution; that is defensive against `read`/`pipefail` edge cases and does not change the background `run-external-agent` / stall integration.

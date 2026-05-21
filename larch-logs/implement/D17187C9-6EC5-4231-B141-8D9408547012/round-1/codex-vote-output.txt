@@ -1,0 +1,31 @@
+FINDING_1: YES
+FINDING_2: EXONERATE -- The best-effort monitor call should not be allowed to abort the launcher if its contract regresses.
+FINDING_3: YES
+FINDING_4: EXONERATE -- Token extraction is best-effort and the guard avoids making malformed usage JSON fatal.
+FINDING_5: YES
+FINDING_6: NO -- python3 is already a documented repository prerequisite and widely used by existing harnesses.
+FINDING_7: EXONERATE -- The exit-0 plus LAUNCHER_EXIT contract is unchanged and not worth a tracking issue here.
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: NO -- python3 is already an existing documented prerequisite for this repo’s test/lint environment.
+FINDING_13: EXONERATE -- One stdout-role stall fixture covers the shared monitor path; per-role copies add more harness cost than signal.
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: EXONERATE -- The docs gap is minor and covered by existing Python/lint prerequisite documentation.
+FINDING_18: YES
+FINDING_19: NO -- find defaults to not following symlinks, so the claimed symlink traversal escape is not present.
+FINDING_20: YES
+FINDING_21: EXONERATE -- The run-log mismatch is legitimate but not worth a separate future GitHub issue.
+FINDING_22: YES
+FINDING_23: EXONERATE -- Watching .git would weaken stall detection for the intended resolve-conflict signal.
+FINDING_24: EXONERATE -- Stall monitoring is best-effort; failing closed on monitor setup problems risks worse launcher behavior.
+FINDING_25: YES
+FINDING_26: YES
+FINDING_27: EXONERATE -- The token sidecar is best-effort and skipping it on extraction failure is acceptable.
+FINDING_28: YES
+FINDING_29: YES
+FINDING_30: YES
+FINDING_31: EXONERATE -- The jq/read guard is unrelated and not issue-worthy as a future tracking item.

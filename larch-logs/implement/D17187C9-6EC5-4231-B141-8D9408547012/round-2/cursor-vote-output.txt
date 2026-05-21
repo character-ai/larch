@@ -1,0 +1,27 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: EXONERATE -- optional `file:` channel is low-risk without callers; dedicated fixture or removal would add churn for little gain
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: NO -- `find` uses `-name .git -prune`, so paths under `.git` are not evaluated for `-newer`/progress
+FINDING_9: EXONERATE -- expected trade-off of excluding `.git`; note in docs suffices unless `.git`-only workflows must count
+FINDING_10: YES
+FINDING_11: EXONERATE -- `tree:${PWD}` makes a flag-like `tree_root` practically impossible; `--` would be minor hardening only
+FINDING_12: EXONERATE -- `file:` is unused from launchers today; allowlisting/parsing paths adds complexity beyond the threat model
+FINDING_13: EXONERATE -- JSON stdout captures are bounded; switching to `stat` is optional perf polish, not a correctness fix
+FINDING_14: YES
+FINDING_15: EXONERATE -- stall kills are intentionally hard-stop; reshaping sentinels after SIGKILL is heavy for marginal contract gain
+FINDING_16: YES
+FINDING_17: EXONERATE -- cosmetic only; removing `|| true` is negligible benefit
+FINDING_18: YES
+FINDING_19: YES
+FINDING_20: YES
+FINDING_21: YES
+FINDING_22: EXONERATE -- a standalone issue for a single docs table row would be noise; update in a normal docs pass
+FINDING_23: EXONERATE -- pre-existing ordering quirk; no need to track separately from any real product decision
+FINDING_24: EXONERATE -- implement logs are process artifacts; no GitHub issue warranted for “diff noise” alone
+FINDING_25: NO -- informational scope correction with no actionable defect
+FINDING_26: NO -- duplicates the in-scope masking debate without adding a distinct defect
+FINDING_27: NO -- explicitly labeled non-issues in the ballot

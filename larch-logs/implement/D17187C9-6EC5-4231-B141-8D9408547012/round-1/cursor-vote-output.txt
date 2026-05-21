@@ -1,0 +1,33 @@
+Reading the ballot and nearby context files to verify findings.
+
+FINDING_1: YES
+FINDING_2: EXONERATE -- redundant `|| true` is harmless noise versus churn from removing it without a contract change.
+FINDING_3: YES
+FINDING_4: EXONERATE -- `|| true` matches intentional `set -e` hardening around `read`/jq; a comment would be polish, not a revert.
+FINDING_5: YES
+FINDING_6: EXONERATE -- `python3` is a normal CI baseline here; optional doc note, not a harness defect.
+FINDING_7: NO -- accurately describes pre-existing `emit_kv`/`exit 0` contract, not worth an issue.
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: EXONERATE -- poll-interval slack is implied by shared poll env; extra “ceil-by-poll” prose is optional.
+FINDING_11: YES
+FINDING_12: EXONERATE -- hard-failing a targeted new block on missing `python3` is reasonable; skip-mode would add complexity for little gain.
+FINDING_13: EXONERATE -- extra per-role stdout stall copies are low ROI given shared argv path and role wiring.
+FINDING_14: YES
+FINDING_15: EXONERATE -- bounds are already loose versus stall budgets; residual flake risk does not warrant widening without evidence.
+FINDING_16: EXONERATE -- argv leakage is theoretically real but mitigated by typical CI isolation; same theme as FINDING_18 without stronger scope.
+FINDING_17: EXONERATE -- doc table drift is real but does not merit its own tracking issue versus a normal docs pass.
+FINDING_18: YES
+FINDING_19: EXONERATE -- hostile symlink checkout is outside the stated trust model for this tree probe; `-P` is optional hardening.
+FINDING_20: EXONERATE -- concern folds into FINDING_18’s “narrow/redact diagnostics” fix without a separate redaction pipeline requirement.
+FINDING_21: EXONERATE -- committed run log mismatch is documentation-only and overlaps FINDING_5/9/25.
+FINDING_22: YES
+FINDING_23: EXONERATE -- excluding `.git` matches the written plan/tree-channel design, not an implementation bug.
+FINDING_24: EXONERATE -- fail-open avoids breaking launches on benign misconfig; fail-closed would trade new failure modes for marginal safety.
+FINDING_25: YES
+FINDING_26: YES
+FINDING_27: EXONERATE -- same `set -e`/token-parse hardening as FINDING_4; narrowing further is low value.
+FINDING_28: YES
+FINDING_29: YES
+FINDING_30: YES
+FINDING_31: NO -- correctly out of scope noise about `|| true`, not issue material.
