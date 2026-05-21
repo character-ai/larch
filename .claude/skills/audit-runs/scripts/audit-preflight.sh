@@ -60,7 +60,7 @@ fi
 
 # Step 2: repo-identity verification
 REMOTE_URL=$(git config --get remote.origin.url 2>/dev/null || true)
-GH_URL=$(gh repo view -R "$REPO" --json url --jq '.url' 2>/dev/null || true)
+GH_URL=$(gh repo view "$REPO" --json url --jq '.url' 2>/dev/null || true)
 
 # Strip https(s)://user:pass@ from URLs before logging (avoid leaking PATs from remote.origin.url).
 strip_url_userinfo() {
@@ -82,7 +82,7 @@ if [ -z "$REMOTE_REPO" ] || [ -z "$GH_REPO" ]; then
     exit 0
 fi
 if [ "$REMOTE_REPO" != "$GH_REPO" ]; then
-    printf 'PREFLIGHT_OK=false\nREASON=repo mismatch: normalized_remote_origin=%s gh_repo_identity=%s (expected clone to match gh repo view -R %s)\n' "$REMOTE_REPO" "$GH_REPO" "$REPO"
+    printf 'PREFLIGHT_OK=false\nREASON=repo mismatch: normalized_remote_origin=%s gh_repo_identity=%s (expected clone to match gh repo view %s)\n' "$REMOTE_REPO" "$GH_REPO" "$REPO"
     exit 0
 fi
 
