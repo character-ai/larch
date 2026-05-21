@@ -1,0 +1,12 @@
+Gathering the diff, commit list, and the three implementations the scout notes cite for cross-file consistency.
+
+Checking whether the schema removal affects `verify-run-log-completeness.sh`'s `step9a1` logic and comparing with the diff.
+
+Checking jq behavior for `steps_ran` as an empty array vs Python `or {}`:
+
+### In-Scope Findings
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+- **architecture** `scripts/verify-run-log-completeness.sh:66-134` vs `.claude/skills/audit-runs/scripts/audit-scan-run.sh:68-111` — `verify-run-log-completeness.sh` still treats each TSV row with `condition_reached … || continue`, so Step-9a.1–conditioned rows can be skipped whenever the step9a1 heuristic OR-chain is false, while `audit-scan-run.sh` enforces any conditional row unless `steps_ran.<condition>` is exactly JSON `false`. That yields the long-standing pattern where the same directory can **audit fail** yet **verify OK** on incomplete trees; this branch **narrows** that gap for the common case by adding `has_file final-summary.md` to the `step9a1` branch (see diff around `verify-run-log-completeness.sh` step9a1), but the two tools are still not structurally equivalent.
+- **risk-integration** `scripts/ship-pr.sh:1692-1744` — post-merge paths still call `larch-log.sh manifest` with `status=done` and `pr_number=…` when `PR_CLOSED=true`, so `MANIFEST_STATUS` / `MANIFEST_PR_NUMBER` in verify remain meaningful for **merge-finalized** snapshots even though init templates omit those keys (`scripts/ship-pr.md` in the diff documents this).

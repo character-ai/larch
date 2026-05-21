@@ -1,0 +1,16 @@
+FINDING_1: YES
+FINDING_2: NO -- plan-goals-test.md is an intentional registered batch committed by design; pre-existing convention not introduced by this diff
+FINDING_3: YES
+FINDING_4: EXONERATE -- two small Python one-shots are clear and correct; a combined reader would add complexity for marginal maintenance benefit
+FINDING_5: NO -- test-write-final-report.sh in this diff adds fixtures for stalled (existing), bailed (new impl_bl case), and bailed-needs-user-input that explicitly assert the Outcome bullet is present
+FINDING_6: YES
+FINDING_7: NO -- jq == is type-strict so 0 != false, and Python uses `is False` identity; the described numeric-falsy divergence cannot occur
+FINDING_8: YES
+FINDING_9: EXONERATE -- gh-failure→no-manifest-fallback is intentional design documented in audit-map-runs.md and validated by test 31b; MAP_GH_PR_VIEW_FAILED stderr signal exists
+FINDING_10: YES
+FINDING_11: EXONERATE -- Outcome bullet suppression for success cases is the explicit stated goal; outcome remains in the heading; parser migration is intentional behavior change
+FINDING_12: YES
+FINDING_13: EXONERATE -- pre-existing surface not introduced by this diff; gh handles malformed repo values with its own errors
+FINDING_14: EXONERATE -- pre-existing behavior not introduced or worsened by this diff
+FINDING_15: YES
+FINDING_16: EXONERATE -- historical run-log artifacts are frozen by design; nothing actionable unless maintained as living templates elsewhere

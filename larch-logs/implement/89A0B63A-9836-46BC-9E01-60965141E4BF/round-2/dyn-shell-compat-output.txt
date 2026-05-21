@@ -1,0 +1,14 @@
+Gathering the diff, commit list, and Bash 3.2 authoring rules for a portability-focused correctness review.
+
+Searching the diff for Bash 3.2 portability issues and reading key hunks.
+
+Continuing to read the diff for `larch-log.sh`, `implement-finalize.sh`, `write-final-report.sh`, `render-run-summary.sh`, and remaining tests.
+
+### In-Scope Findings
+
+- **correctness** `.claude/skills/audit-runs/scripts/audit-scan-run.md:29` — The new contract text says the `steps_ran` gate uses `jq -n`, but the implementation uses `jq -ne` (`-n` for null stdin plus `-e` so the exit status reflects the boolean). Readers and future edits may pick the wrong flags or miss why the probe is exit-code–driven. **Suggested fix:** Update that sentence to name `jq -ne` (or spell out “`jq -n -e` / `jq -ne`”) and briefly note that `-e` maps the boolean to the process exit code, matching `audit-scan-run.sh`.
+
+### Out-of-Scope Observations
+
+- `[[ ... ]]` appears in new `gh` stubs inside `test-audit-runs.sh` and is already used elsewhere in that file; it is valid on macOS Bash 3.2 and is not among the constructs flagged by `scripts/lint-bash32.sh` (which only scans `*.sh` for the listed Bash 4+ features).
+- The branch adds a full `larch-logs/implement/89A0B63A-9836-46BC-9E01-60965141E4BF/` tree including a long `plan-goals-test.md`; that is policy/process noise for reviewers rather than a shell-compat or logic defect in the scripts under review.
