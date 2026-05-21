@@ -1,0 +1,15 @@
+Gathering the diff, commit list, and path-resolution context from `ship-pr.sh`.
+
+Checking how `run_pr_create_phase` invokes `write-final-report.sh` and whether postmerge omits error handling.
+
+### In-Scope Findings
+
+- **correctness** `scripts/ship-pr.sh:1737-1763` — The new post-merge block always runs `write-final-report.sh` and (when `LARCH_NO_LOGS_COMMIT` is not `true`) `larch-log.sh commit` after `larch-log.sh manifest` without checking the manifest call’s exit status, and it still runs `larch-log.sh commit` when `write-final-report.sh` returns non-zero, so a failed manifest update or failed re-render can still produce a log commit whose tree does not reliably reflect `status=done` plus an updated merged `final-summary.md`. **Suggested fix:** Save the manifest step’s exit code and skip the flush/commit unless it is zero, then only call `larch-log.sh commit` when `write-final-report.sh` exits zero (or explicitly document and test a different fail-closed policy).
+
+- **correctness** `scripts/ship-pr.sh:1748-1753` — The first pre-PR `write-final-report.sh` path classifies combined stderr/stdout with `is_transient_net_signature` and can `exit_transient_net` (`scripts/ship-pr.sh:966-968`), but the new post-merge `write-final-report.sh` invocation only uses `record_failure` Warnings, so the same class of transient GitHub/API failures can be treated as soft while the phase still advances to `done`. **Suggested fix:** Mirror the pr-create envelope handling (scan the captured `$fail_file`, `exit_transient_net` when the signature matches) so post-merge failures that should retry are not silently folded into “done.”
+
+### Out-of-Scope Observations
+
+- Path resolution: the post-merge helper path `"$SCRIPT_DIR/../skills/implement/scripts/write-final-report.sh"` matches the existing pr-create invocations in the same file (`scripts/ship-pr.sh:962-963`, `scripts/ship-pr.sh:1018-1019`) under `SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"` (`scripts/ship-pr.sh:11`), so this diff does not introduce a new resolution pattern relative to the rest of `ship-pr.sh`; using `PLUGIN_ROOT` (`scripts/ship-pr.sh:15`) everywhere would be optional hardening, not a regression from this change alone.
+
+- The cached diff also adds `larch-logs/implement/3890E7C4-6C5E-4070-BD32-F9974BFA66DB/*` run artifacts; that is orthogonal to the `run_postmerge_phase` logic and may be an unintended PR surface depending on repo policy for committed run logs.

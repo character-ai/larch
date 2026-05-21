@@ -1682,15 +1682,20 @@ EOF
 }
 
 run_postmerge_phase() {
-    local rc fail_file
+    local rc fail_file final_report_output
     emit_breadcrumb "→ ship-pr: postmerge"
     write_finalize_state
     fail_file=$(failure_capture_path postmerge)
     "$SCRIPT_DIR/implement-finalize.sh" postmerge --state-file "$IMPLEMENT_TMPDIR/finalize-state.sh" --final-bail-reason-file "$IMPLEMENT_TMPDIR/final-bail-reason.txt" > "$fail_file" 2>&1
     rc=$?
     [ "$rc" -eq 0 ] || record_failure postmerge "implement-finalize.sh postmerge" "$rc" "$fail_file"
-    # Merge-time manifest: status=done + pr_number survive here (local tmpdir)
-    # even when v2 pre-merge flushes omitted them; see scripts/ship-pr.md.
+    # Finalize manifest to status=done here so the update survives if the
+    # LLM session ends before prompt-side Step 18 teardown runs. The tmpdir
+    # manifest is updated first; when the downstream gates pass, a scoped
+    # `larch-log.sh commit` (see `LARCH_LOG_COMMIT_POSTMERGE_SHIP_PR` in
+    # `scripts/larch-log.sh`) copies the run tree into the repo and commits so
+    # `manifest.json` + refreshed `final-summary.md` can land on the current
+    # branch even if Step 18 never runs.
     local flush_run_id pr_num manifest_path_pm flush_issue_num recovery_ok
     flush_run_id=$(read_state RUN_ID)
     pr_num=$(read_state PR_NUMBER)
@@ -1732,6 +1737,7 @@ run_postmerge_phase() {
             # Skip commit: manifest synthesis failed, committing would produce a partial dir.
             :
         else
+            local manifest_ok=false final_report_rc=1
             fail_file=$(failure_capture_path postmerge)
             "$SCRIPT_DIR/larch-log.sh" manifest \
                 --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
@@ -1740,7 +1746,39 @@ run_postmerge_phase() {
                 --field "pr_number=$pr_num" \
                 > "$fail_file" 2>&1
             rc=$?
-            [ "$rc" -eq 0 ] || record_failure postmerge "larch-log.sh manifest" "$rc" "$fail_file" Warnings
+            if [ "$rc" -eq 0 ]; then
+                manifest_ok=true
+            else
+                record_failure postmerge "larch-log.sh manifest" "$rc" "$fail_file" Warnings
+            fi
+            final_report_rc=1
+            final_report_output=""
+            if [ "$manifest_ok" = true ]; then
+                # Re-render final-summary.md now that MERGE_RESULT is set in state, so the
+                # committed run-log reflects OUTCOME=merged (pre-merge pass wrote bailed).
+                fail_file=$(failure_capture_path postmerge)
+                final_report_output=$("$SCRIPT_DIR/../skills/implement/scripts/write-final-report.sh" \
+                    --implement-tmpdir "$IMPLEMENT_TMPDIR" 2>"$fail_file")
+                final_report_rc=$?
+                printf '%s\n' "$final_report_output" >> "$fail_file"
+                if [ "$final_report_rc" -ne 0 ] && is_transient_net_signature "$(cat "$fail_file" 2>/dev/null)"; then
+                    record_failure postmerge "write-final-report.sh (postmerge)" "$final_report_rc" "$fail_file" Warnings
+                    exit_transient_net "write-final-report (postmerge): $final_report_output"
+                fi
+                if [ "$final_report_rc" -ne 0 ]; then
+                    record_failure postmerge "write-final-report.sh (postmerge)" "$final_report_rc" "$fail_file" Warnings
+                fi
+            fi
+            if [ "${LARCH_NO_LOGS_COMMIT:-false}" != "true" ] && [ "$manifest_ok" = true ] && [ "$final_report_rc" -eq 0 ]; then
+                fail_file=$(failure_capture_path postmerge)
+                LARCH_LOG_COMMIT_POSTMERGE_SHIP_PR=1 "$SCRIPT_DIR/larch-log.sh" commit \
+                    --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
+                    --skill implement \
+                    --run-id "$flush_run_id" \
+                    > "$fail_file" 2>&1
+                rc=$?
+                [ "$rc" -eq 0 ] || record_failure postmerge "larch-log.sh commit (postmerge)" "$rc" "$fail_file" Warnings
+            fi
         fi
     fi
     advance_phase "done"

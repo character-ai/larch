@@ -36,7 +36,11 @@ Primary verbs:
 - `commit` stages and commits one run directory without pushing. It refuses
   with a stderr diagnostic when `$IMPLEMENT_TMPDIR/post-merge-sentinel` exists
   or when the current branch is `main`/the `origin/HEAD` default branch,
-  preventing post-merge log-only commits.
+  preventing incidental post-merge log-only commits from prompt-side and
+  refresh paths. **Exception**: `scripts/ship-pr.sh` `run_postmerge_phase`
+  sets `LARCH_LOG_COMMIT_POSTMERGE_SHIP_PR=1` for a single post-merge commit
+  invocation only when the sentinel file is already present, reconciling the
+  merged-outcome flush with the guardrails.
 
 Every verb emits a quiet KEY=value envelope:
 

@@ -7,7 +7,7 @@ allowed-tools: AskUserQuestion, Bash, Read, Edit, Write, Grep, Glob, Agent, Task
 
 # Implement Skill
 
-End-to-end: design, plan review, code, validate, commit, code review, validate, commit, code flow diagram, version bump, PR, CI monitor, cleanup. With `--merge`: also CI+rebase+merge loop, local branch delete, main verification.
+End-to-end: design, plan review, code, validate, commit, code review, validate, commit, code flow diagram, version bump, PR, CI monitor, cleanup. With `--merge`: also CI+rebase+merge loop, local branch delete, main verification, and (inside `ship-pr.sh` before exit) a post-merge `write-final-report.sh` pass plus scoped `larch-log.sh commit` so merged `final-summary.md` / tracking-issue `larch:final-summary` can match `MERGE_RESULT` even when Step 18 teardown is skipped. Step 18 still performs teardown, token/timing refresh, and the remaining terminal safety-net.
 
 **Protocol Execution Directive.** You are now the `/implement` orchestrator. After parsing flags and checking for mutually exclusive options, your FIRST external action MUST be Step 0: first `${CLAUDE_PLUGIN_ROOT}/scripts/create-branch.sh --check`, then `${CLAUDE_PLUGIN_ROOT}/scripts/session-entry-gate.sh`, then `${CLAUDE_PLUGIN_ROOT}/scripts/session-setup.sh` with `--skip-branch-check` toggled by the entry gate. When `--forked` was parsed, `${CLAUDE_PLUGIN_ROOT}/scripts/implement-fork-env.sh` is the only permitted pre-setup exception and runs before those three setup calls.
 
@@ -494,7 +494,7 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 
 Resolve a stable `ISSUE_NUMBER` and `RUN_ID` for the session. Committed `larch-logs/implement/<RUN_ID>/` files are the single source of truth for Phase 3+ report content (voting tallies, version bump reasoning, OOS list, execution issues, run statistics, token reports, and timing reports); the tracking issue carries only four slim marker-keyed summary comments, and the PR body remains a slim projection.
 
-**MANDATORY — READ ENTIRE FILE** before composing any tracking-issue summary comment at Steps 0.5, 1, 9a.1, 11, or 18: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/summary-comment-template.md`. It defines the four allowed marker literals (`larch:metadata`, `larch:diagrams`, `larch:plan`, `larch:final-summary`) and the rule that bulky payloads live in `larch-logs/`, not in GitHub comments.
+**MANDATORY — READ ENTIRE FILE** before composing any tracking-issue summary comment at Steps 0.5, 1, 9a.1, 11, 18, or the ship-pr post-merge `write-final-report.sh` pass (merged runs): `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/summary-comment-template.md`. It defines the four allowed marker literals (`larch:metadata`, `larch:diagrams`, `larch:plan`, `larch:final-summary`) and the rule that bulky payloads live in `larch-logs/`, not in GitHub comments.
 
 **Early exit — `design_only=true` AND `no_issues=true`**: check this before all branches. If both are set: set `deferred=true`, leave `$ISSUE_NUMBER` unset. Local artifacts may still be prepared under `$IMPLEMENT_TMPDIR`, but no tracking issue is created, no sentinel is written, and `$IMPLEMENT_TMPDIR/execution-issues.md` is the only audit trail (removed at Step 18). Print `⏩ 0.5: tracking issue status=skip reason=design-only-no-issues elapsed=<elapsed>`. Proceed to Step 1.
 
