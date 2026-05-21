@@ -266,7 +266,7 @@ def oos_attributed_slots(text):
             continue
         _line, slots = reviewer_line_slots(block)
         for sl in slots:
-            out.add(sl)
+            out.add(normalize_slot(sl))
     return out
 
 
@@ -283,6 +283,9 @@ def normalize_slot(sl):
     return re.sub(r"\s*\([^)]*\)\s*$", "", sl).strip()
 
 
+EMPTY_MERGE_ATTESTATION = "LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED"
+
+
 def main():
     input_path, output_path = sys.argv[1], sys.argv[2]
     intext = open(input_path, encoding="utf-8").read()
@@ -294,9 +297,9 @@ def main():
         _line, slots = reviewer_line_slots(block)
         is_oos = "[OUT_OF_SCOPE]" in heading_line(block)
         for sl in slots:
-            input_slot_set.add(sl)
+            input_slot_set.add(normalize_slot(sl))
             if not is_oos:
-                non_oos_input_slots.add(sl)
+                non_oos_input_slots.add(normalize_slot(sl))
     # Only flag reviewers who are EXCLUSIVELY OOS in the input. A reviewer that
     # contributed both OOS and in-scope input findings is legitimately attributed
     # to non-OOS merged output blocks (see issue #2491).
@@ -306,6 +309,16 @@ def main():
         return 1
     blocks = output_blocks(outtext)
     if not blocks:
+        if not input_blocks(intext):
+            return 0
+        if not any(line.strip() == EMPTY_MERGE_ATTESTATION for line in outtext.splitlines()):
+            print(
+                "zero merged FINDING blocks while input had findings; "
+                "output must include a line exactly %r (machine-readable attestation)"
+                % (EMPTY_MERGE_ATTESTATION,),
+                file=sys.stderr,
+            )
+            return 1
         return 0
     seen_merge_ids = set()
     for b in blocks:
@@ -377,5 +390,8 @@ trap - EXIT
 MERGED_COUNT="$(count_finding_blocks "$FINDINGS_FILE")"
 AGGREGATED=true
 REASON="ok"
+if [[ "$MERGED_COUNT" -eq 0 && "$INPUT_COUNT" -ge 2 ]]; then
+    REASON="ok-zero-findings"
+fi
 emit_result
 exit 0

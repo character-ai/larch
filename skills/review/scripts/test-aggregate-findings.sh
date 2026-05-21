@@ -93,6 +93,8 @@ EOF
                 cat > "$out" <<'EOF'
 Aggregator narrative: all input findings were resolved as duplicates; no merged FINDING blocks.
 
+LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED
+
 EOF
                 ;;
             labelled_slot)
@@ -317,8 +319,9 @@ AGGREGATE_STUB_MERGE_KIND=zero_findings \
     --cursor-present true \
     --mode diff >"$TMP/out-zero.env"
 grep -Fq 'AGGREGATED=true' "$TMP/out-zero.env" || fail "zero-findings AGGREGATED"
-grep -Fq 'REASON=ok' "$TMP/out-zero.env" || fail "zero-findings REASON"
+grep -Fq 'REASON=ok-zero-findings' "$TMP/out-zero.env" || fail "zero-findings REASON"
 grep -Fq 'MERGED_COUNT=0' "$TMP/out-zero.env" || fail "zero-findings MERGED_COUNT"
+grep -Fq 'INPUT_COUNT=3' "$TMP/out-zero.env" || fail "zero-findings INPUT_COUNT"
 [[ "$(grep -c '^### FINDING_' "$TMP/in3-zero.md" | tr -d '[:space:]')" == "0" ]] || fail "expected zero FINDING blocks after zero-findings merge"
 
 echo "=== labelled reviewer slot suffix accepted (#2536) ==="

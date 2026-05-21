@@ -22,7 +22,7 @@ Your job is to normalize reviewer findings into one structured finding list:
 - Preserve source attribution by listing every reviewer slot that raised the finding.
 - Keep out-of-scope observations separate from in-scope findings when the source output distinguishes them. When merging an `[OUT_OF_SCOPE]`-tagged source finding with in-scope text, the merged `### FINDING_N:` heading **must** retain `[OUT_OF_SCOPE]` (never drop the tag from the merged first line).
 
-Output only the structured finding list. For each finding include:
+Primary output is the structured finding list. For each finding include:
 
 ```text
 ### FINDING_N: <short title>
@@ -32,3 +32,9 @@ Output only the structured finding list. For each finding include:
 ```
 
 Do not vote, reject, or apply fixes. Do not include raw reviewer transcripts unless the caller explicitly asks for diagnostic output.
+
+When your structured output contains **no** `### FINDING_N:` blocks (every input finding was treated as a duplicate or otherwise fully subsumed), include a final line exactly:
+
+`LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED`
+
+That line is machine-verified; omitting it fails aggregation. You may precede it with brief narrative explaining the empty merge.
