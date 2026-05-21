@@ -37,8 +37,26 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-[[ -n "$FINDINGS_FILE" && -f "$FINDINGS_FILE" ]] || { larch_err "aggregate-findings.sh: --findings-file must name an existing file"; exit 2; }
+[[ -n "$FINDINGS_FILE" ]] || { larch_err "aggregate-findings.sh: --findings-file is required"; exit 2; }
 [[ -n "$REVIEW_TMPDIR" ]] || { larch_err "aggregate-findings.sh: --review-tmpdir is required"; exit 2; }
+REVIEW_TMPDIR_CANON="$(cd "$REVIEW_TMPDIR" && pwd -P)" || {
+    larch_err "aggregate-findings.sh: cannot resolve --review-tmpdir: $REVIEW_TMPDIR"
+    exit 2
+}
+[[ -f "$FINDINGS_FILE" && ! -L "$FINDINGS_FILE" ]] || {
+    larch_err "aggregate-findings.sh: --findings-file must name an existing regular file (not a symlink): $FINDINGS_FILE"
+    exit 2
+}
+_findings_canon="$(cd "$(dirname "$FINDINGS_FILE")" && pwd -P)/$(basename "$FINDINGS_FILE")"
+case "$_findings_canon" in
+    "$REVIEW_TMPDIR_CANON"/* | "$REVIEW_TMPDIR_CANON")
+        ;;
+    *)
+        larch_err "aggregate-findings.sh: --findings-file must resolve under --review-tmpdir ($REVIEW_TMPDIR_CANON): $FINDINGS_FILE"
+        exit 2
+        ;;
+esac
+unset _findings_canon
 [[ "$CODEX_PRESENT" == "true" || "$CODEX_PRESENT" == "false" ]] || { larch_err "aggregate-findings.sh: --codex-present must be true or false"; exit 2; }
 [[ "$CURSOR_PRESENT" == "true" || "$CURSOR_PRESENT" == "false" ]] || { larch_err "aggregate-findings.sh: --cursor-present must be true or false"; exit 2; }
 [[ "$MODE" == "diff" || "$MODE" == "description" ]] || { larch_err "aggregate-findings.sh: --mode must be diff or description"; exit 2; }
@@ -179,12 +197,23 @@ fi
 # ALL_OUTPUT_FILES is space-separated; single-slot aggregator uses the first path.
 cand=$(kv_get "$dispatch_out" ALL_OUTPUT_FILES)
 cand="${cand%% *}"
-[[ -n "$cand" && -f "$cand" && -s "$cand" ]] || {
+[[ -n "$cand" && -f "$cand" && -s "$cand" && ! -L "$cand" ]] || {
     REASON="dispatch-failed"
     append_warning "- **findings aggregator**: missing or empty aggregator output file; leaving findings.md unchanged."
     emit_result
     exit 0
 }
+_cand_canon="$(cd "$(dirname "$cand")" && pwd -P)/$(basename "$cand")"
+case "$_cand_canon" in
+    "$REVIEW_TMPDIR_CANON"/* | "$REVIEW_TMPDIR_CANON") ;;
+    *)
+        REASON="dispatch-failed"
+        append_warning "- **findings aggregator**: aggregator output path resolves outside --review-tmpdir; leaving findings.md unchanged."
+        emit_result
+        exit 0
+        ;;
+esac
+unset _cand_canon
 
 validate_py="$REVIEW_TMPDIR/aggregate-validate.py"
 cat > "$validate_py" <<'PY'

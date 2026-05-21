@@ -147,6 +147,8 @@ is not separately enumerated in the tally envelope counters.
 
 Per-finding payloads for plan-review accepted, plan-review rejected, and code-review entries. One JSON object per line with keys `id`, `issue_number`, `phase` (`plan-review` | `code-review`), `outcome` (`accepted` | `rejected` | `out_of_scope`), `schema_version` (`2`), `reviewer_slots` (array of redacted reviewer labels), `round_num` (empty outside numbered review rounds), `category` (best-effort, extracted from a leading `## <cat>: ...` body line — may be empty), and `prose_body` (redacted). See `scripts/compose-review-findings.md` for the producer contract.
 
+**Backward compatibility**: Committed `larch-logs/**/review-findings-full.jsonl` may mix envelopes across runs. Treat `schema_version` with `reviewer_slots` as the v2 record shape when those keys are present. Older lines may omit `schema_version` and carry a string `reviewer` field instead; whole-repo miners should fall back to `reviewer` when v2 keys are absent (for example branch on `has("reviewer_slots")` vs `has("reviewer")` in JSON parsers). Sparse historical stub rows may use other partial shapes, so consumers must not assume every line matches the full v2 field set.
+
 ### version-bump-reasoning.md
 
 **Mode**: replace. **Written**: Step 8, after `ship-pr.sh` completes the version-bump phase.

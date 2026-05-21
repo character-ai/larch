@@ -84,6 +84,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Breaking (downstream JSONL consumers)**: `scripts/compose-review-findings.sh` now emits `review-findings-full.jsonl` rows with `schema_version` and `reviewer_slots` instead of a string `reviewer` field. Parsers must accept both shapes when reading mixed committed logs (see `docs/run-logs.md` and `scripts/compose-review-findings.md`).
 - Document the `review-and-fix.sh` applied-fixes contract change: accepted findings applied by the coder now complete with exit `0` plus `REVIEW_AND_FIX_STATUS=fix-applied`, and `review-and-fix-summary.json` now records `.status = "fix-applied"` instead of the old `fix-required`/exit-3 checkpoint shape. External wrappers, jq filters, and dashboards must key on the new status fields rather than exit `3`.
 - Extend the plan-voter harnesses to cover healthy Codex/Cursor dispatch and retry-path waterfall promotion, so phase-2/phase-3 structured retry outputs cannot be dropped silently.
 - Align description-mode specialist prompts with diff-mode’s pinned single-bullet finding grammar, and enforce the full scout closing-sentence repair in both code and tests.
