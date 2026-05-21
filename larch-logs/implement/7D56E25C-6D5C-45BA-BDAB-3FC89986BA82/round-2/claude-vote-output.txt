@@ -1,0 +1,32 @@
+FINDING_1: NO -- positive plan-fidelity confirmation with no actionable concern raised
+FINDING_2: NO -- positive plan-fidelity confirmation with no actionable concern raised
+FINDING_3: NO -- positive plan-fidelity confirmation with no actionable concern raised
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: NO -- acknowledged trade-off in the finding itself; not issue-worthy
+FINDING_11: NO -- acceptable doc follow-through outside the enumerated plan list; trivial
+FINDING_12: EXONERATE -- legitimate future hardening but pre-existing and explicitly out of this plan's scope
+FINDING_13: EXONERATE -- same pre-existing empty-RUN_ID gap as FINDING_12
+FINDING_14: EXONERATE -- intentional mirroring of refresh-run-logs.sh tradeoff; no new risk introduced
+FINDING_15: NO -- positive verification result; no concern
+FINDING_16: YES
+FINDING_17: YES
+FINDING_18: EXONERATE -- pre-existing latent behavior with unchanged code; not issue-worthy
+FINDING_19: EXONERATE -- nit-level doc ambiguity about Always vs early-exit paths; too minor for an issue
+FINDING_20: EXONERATE -- pre-existing, same empty-RUN_ID gap as FINDING_12/13
+FINDING_21: EXONERATE -- pre-existing, same empty-RUN_ID gap as FINDING_12/13/20
+FINDING_22: NO -- duplicate of FINDING_16 which is already voted YES
+FINDING_23: YES
+FINDING_24: EXONERATE -- pre-existing, same empty-RUN_ID gap as FINDING_12/13/20/21
+FINDING_25: YES
+FINDING_26: EXONERATE -- same concern as FINDING_25; filing a second issue would be duplicate
+FINDING_27: EXONERATE -- duplicate of FINDING_7 which covers the same doc-accuracy issue
+FINDING_28: EXONERATE -- duplicate of FINDING_7
+FINDING_29: EXONERATE -- exit-before-all-writes is clear from the code; scope clarification is nit-level
+FINDING_30: EXONERATE -- intentional mirroring of refresh-run-logs.sh; same tradeoff as FINDING_14
+FINDING_31: EXONERATE -- duplicate of FINDING_7
+FINDING_32: YES
