@@ -142,7 +142,7 @@ The feature to implement is described by `$ARGUMENTS` after flag stripping.
 
 **Flags**: Parse flags from the start of `$ARGUMENTS` before treating the remainder as the feature description. Flags may appear in any order; stop at the first non-flag token. After stripping, save the remainder as `FEATURE_DESCRIPTION` (use this — not raw `$ARGUMENTS` — everywhere the human description is needed). **All boolean flags default to `false`. Only set a flag to `true` when its `--flag` token is explicitly present. Flags are independent — presence of one must not alter the default of another.**
 
-- `--hard`: `hard_mode=true`. Forces the full `/design` ceremony (collaborative sketches, plan review, voting) regardless of apparent scope. Default: `hard_mode=false`. Use this when the task clearly warrants the full design path even if the post-plan router would otherwise choose `WORKFLOW_PATH=SIMPLE`. Independent of all other flags.
+- `--hard`: `hard_mode=true`. Forces the full `/design` ceremony (collaborative sketches, plan review, voting) regardless of apparent scope, skipping the simplicity classification preamble. Default: `hard_mode=false`. Use this when the task clearly warrants full design even if the auto-classifier would route to SIMPLE. Independent of all other flags.
 - `--auto`: `auto_mode=true`. (a) forward `--auto` to `/design` in Step 1, suppressing its interactive checkpoints; (b) suppress this skill's Step 2 opportunistic questions; (c) in Step 12 merge-conflict resolution, suppress `AskUserQuestion` and use best-effort (bail if confidence too low). Reviewer dirty-tree changes recovered by `review-core.sh` are always auto-discarded regardless of `--auto` — no `AskUserQuestion` is fired for reviewer dirty trees.
 - `--forked`: `forked_target=true`. Run the workflow as a fork-CI dry-run: target fork PR operations at `origin` (`FORK_REPO`), compare freshness against `upstream/main`, disable tracking-issue lifecycle, skip version bump / CHANGELOG / merge, and print a final upstream-PR command for the operator. Compatible with `--draft`, `--design-only`, `--auto`, `--no-logs-commit`, `--issue`, and `--coder=...`. **Mutually exclusive with `--merge`**; if both are present, print `**⚠ --forked and --merge are mutually exclusive. Aborting.**` and exit without Step 0.
 - `--merge`: `merge=true`. Steps 12–15 run (CI+rebase+merge loop, local cleanup, main verification). Otherwise those steps are skipped — PR is created and workflow stops after initial CI wait, rejected findings, final report, and temp cleanup. **Mutually exclusive with `--draft`.**
@@ -872,11 +872,32 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" workflow-path "HARD" || true
 ```
 
-Otherwise (no reusable manifest), continue below.
+Otherwise (no reusable manifest), continue with the normal-mode flow below (simplicity classification, then the inline-plan branch or the standard `/design` invocation).
 
-Set `ROUTER_CLASSIFICATION=HARD` for every run that invokes `/design` via the Skill tool (the prior simplicity-based auto-router was removed). When `hard_mode=true`, print `**⚡ 1: design plan — HARD workflow forced by --hard.**` before that invocation.
+**Simplicity classification preamble — skip condition**: classification runs only when `design_only=false` AND `hard_mode=false`; otherwise skip it entirely and continue below. When `hard_mode=true`, set `ROUTER_CLASSIFICATION=HARD`, print `**⚡ 1: design plan — HARD workflow forced by --hard; skipping simplicity classification.**`, record `"${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" workflow-path "HARD" || true`, and continue.
 
-**Both-externals-down inline-plan branch**: if `codex_available=false AND cursor_available=false AND design_only=false`, do NOT invoke `/design` via the Skill tool. The full `/design` pipeline expands to 4 Claude-subagent sketches + 4 Claude-subagent reviewers + judge panels — token-expensive and architecturally brittle when no external can produce independent perspectives anyway. Print `**⚠ 1: design plan — both Codex and Cursor unavailable; skipping /design and producing inline plan in main agent.**`, then run:
+**Simplicity classification**: when the preamble condition holds, classify the task before invoking `/design`. Use `FEATURE_DESCRIPTION` plus a light codebase scan (Read / Grep / Glob of the obvious target files) to decide whether the work is SIMPLE or HARD. Store the result as `ROUTER_CLASSIFICATION`; do not persist it in session-env.
+
+**Default to SIMPLE.** A task is HARD only when running `/design` — with competing sketches, a voting panel, and a full reviewer suite — would produce meaningfully better outcomes than just implementing the obvious approach. That bar is high.
+
+A task is HARD when at least one of these is true:
+- The correct approach is genuinely uncertain: reasonable engineers would propose substantially different architectures, and the choice between them has meaningful long-term consequences.
+- The work introduces a major new shared abstraction whose interface must be carefully designed (e.g., a new cross-skill workflow contract, data model, or protocol — NOT just a new helper function or script).
+- A mistake would be very hard to detect or revert, or would silently corrupt data or break a non-obvious invariant.
+
+Explicitly NOT sufficient for HARD:
+- Multi-file changes (even 20+ files), when the individual edits follow a clear pattern described in the issue.
+- "Architectural decisions" that the issue body or existing codebase patterns already resolve.
+- Needing to add tests or follow parity rules — these are known requirements, not ambiguous design choices.
+- Mechanical edits across many call sites (e.g., renaming a flag, removing a prose string from N launchers).
+
+When in doubt, classify SIMPLE — the cost of a lighter design pass on a genuinely hard task is manageable; unnecessary design ceremony on a simple task is pure waste and significantly delays delivery.
+
+When SIMPLE: set `ROUTER_CLASSIFICATION=SIMPLE`, print `**⚡ 1: design plan — task classified SIMPLE; skipping /design, producing inline plan.**`, record `"${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" workflow-path "SIMPLE" || true`, and fall through to the inline-plan branch immediately below.
+
+When HARD: set `ROUTER_CLASSIFICATION=HARD` and skip the inline-plan branch; continue to the `/design` Skill invocation.
+
+**Inline-plan branch** (SIMPLE classification OR both externals down): when `ROUTER_CLASSIFICATION=SIMPLE` (set above) OR (`codex_available=false AND cursor_available=false`), AND `design_only=false`, do NOT invoke `/design` via the Skill tool. The SIMPLE announcement was already printed above; when triggered by both externals being down print `**⚠ 1: design plan — both Codex and Cursor unavailable; skipping /design and producing inline plan in main agent.**` Then run:
 
 ```bash
 IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR"
@@ -889,7 +910,7 @@ LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh"
 LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
 LARCH_TIMING_LEDGER=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
 export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
-"${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" workflow-path "HARD" || true
+"${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" workflow-path "${ROUTER_CLASSIFICATION:-HARD}" || true
 ```
 
 **Branch handling** (replicated from `/design` Step 1 since `/design` is skipped):
@@ -897,13 +918,13 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 - `IS_USER_BRANCH=true`: verify `CURRENT_BRANCH` aligns with the feature. If unrelated, print `**⚠ Current branch '<branch-name>' may not match the requested feature. Creating a new branch from main.**` and create a new branch. Else use the existing branch.
 - Otherwise: print `**⚠ Currently on branch '<branch-name>' which doesn't match the expected '<USER_PREFIX>/*' pattern. Creating a new branch from main.**` and create a new branch.
 
-**Inline design**: research the codebase (Read / Grep / Glob), then produce a concrete plan under `## Implementation Plan`: files to modify, approach, edge cases, testing strategy (TDD where applicable; else a concrete verification — `/relevant-checks`, grep, dry-run, or manual repro), failure modes. Same content `/design` would produce, without collaborative sketches, plan review, or voting. Print: `⚡ 1: design plan — both-externals-down, inline plan`
+**Inline design**: research the codebase (Read / Grep / Glob), then produce a concrete plan under `## Implementation Plan`: files to modify, approach, edge cases, testing strategy (TDD where applicable; else a concrete verification — `/relevant-checks`, grep, dry-run, or manual repro), failure modes. Same content `/design` would produce, without collaborative sketches, plan review, or voting. Print: `⚡ 1: design plan — SIMPLE, inline plan` when `ROUTER_CLASSIFICATION=SIMPLE`; `⚡ 1: design plan — both-externals-down, inline plan` when triggered by external unavailability.
 
-Create the export directory if needed (`mkdir -p "$IMPLEMENT_TMPDIR/design-export"`), then write the inline plan to `$IMPLEMENT_TMPDIR/design-export/plan.txt` (basename exactly `plan.txt`) and set `PLAN_FILE` to that path. Also write `$IMPLEMENT_TMPDIR/design-export/voting-tally.md` containing `Both externals unavailable — no plan review voting.` and set `PLAN_REVIEW_TALLY_FILE` to that path so the Step 1 `plan-review-tally` batch composer (and downstream PR-body composition) have a file-backed source. The Step 1 batch composer MUST call `${CLAUDE_PLUGIN_ROOT}/scripts/write-tally.sh --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --phase plan-review --mode hard --body-file "$PLAN_REVIEW_TALLY_FILE"`, which composes the JSON record and writes the `plan-review-tally` batch atomically; never write `voting-tally.md` directly to the `.json` batch.
+Create the export directory if needed (`mkdir -p "$IMPLEMENT_TMPDIR/design-export"`), then write the inline plan to `$IMPLEMENT_TMPDIR/design-export/plan.txt` (basename exactly `plan.txt`) and set `PLAN_FILE` to that path. Also write `$IMPLEMENT_TMPDIR/design-export/voting-tally.md` containing `SIMPLE path — no plan review voting.` (when `ROUTER_CLASSIFICATION=SIMPLE`) or `Both externals unavailable — no plan review voting.` (when triggered by external unavailability) and set `PLAN_REVIEW_TALLY_FILE` to that path so the Step 1 `plan-review-tally` batch composer (and downstream PR-body composition) have a file-backed source. The Step 1 batch composer MUST call `${CLAUDE_PLUGIN_ROOT}/scripts/write-tally.sh --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --phase plan-review --mode hard --body-file "$PLAN_REVIEW_TALLY_FILE"`, which composes the JSON record and writes the `plan-review-tally` batch atomically; never write `voting-tally.md` directly to the `.json` batch.
 
 Skip the `/design` Skill invocation and the post-`/design` wrapper below. Run the Step 1 tail in order: **`### Capture branch name`** → **`### Larch-log batches`** → **`### Implementer waterfall`** → **`### Rebase onto latest main`** → Step 2.
 
-The `design_only=false` gate is load-bearing: `--design-only`'s contract is to publish design artifacts (plan, plan-review tally, diagrams, OOS) from external-backed `/design` to the tracking issue. The both-externals inline path cannot satisfy that contract, so it is disabled when `design_only=true`. When `codex_available=false AND cursor_available=false AND design_only=true`, do NOT take the inline path — print `**⚠ 1: design plan — --design-only requires external-backed plan-review but no external reviewer is available (both Codex and Cursor unavailable). Bailing to cleanup.**`, set `STALL_TRACKING=true`, and skip to Step 18.
+The `design_only=false` gate is load-bearing: `--design-only`'s contract is to publish design artifacts (plan, plan-review tally, diagrams, OOS) from external-backed `/design` to the tracking issue. Neither SIMPLE classification nor the both-externals inline path can satisfy that contract, so both are disabled when `design_only=true`. SIMPLE classification is also blocked by the preamble's `design_only=false` condition above. When `codex_available=false AND cursor_available=false AND design_only=true`, do NOT take the inline path — print `**⚠ 1: design plan — --design-only requires external-backed plan-review but no external reviewer is available (both Codex and Cursor unavailable). Bailing to cleanup.**`, set `STALL_TRACKING=true`, and skip to Step 18.
 
 On the design-only normal path (external-backed `/design` proceeds), record the HARD path before the Skill invocation:
 
