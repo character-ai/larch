@@ -45,6 +45,9 @@ echo "=== accepted and rejected findings ==="
 mkdir -p "$TMP/b-design" "$TMP/b-impl/round-1"
 cat > "$TMP/b-design/accepted-plan-findings.md" <<'EOF'
 ### FINDING_1: Architecture boundary
+
+## architecture: scripts/foo.sh
+
 - **Concern**: scripts/foo.sh:42 does too much.
 - **Resolution**: Split the helper.
 EOF
@@ -101,9 +104,10 @@ done < "$out"
 [[ "$(record_reviewer_slot0 "$out" FINDING_2)" == "Codex-Structure" ]] || fail "FINDING_2 reviewer"
 [[ "$(record_field_by_id "$out" FINDING_2 round_num)" == "1" ]] || fail "FINDING_2 round_num"
 
-# Best-effort category from the synthetic '## <title>' line (non-OOS is not tag-whitelisted).
-[[ "$(record_field_by_id "$out" FINDING_1 category)" == "Architecture boundary" ]] \
+# Plan-review accepted uses strict canonical '##' scanning (synthetic prose title skipped).
+[[ "$(record_field_by_id "$out" FINDING_1 category)" == "architecture" ]] \
     || fail "FINDING_1 category: got $(record_field_by_id "$out" FINDING_1 category)"
+# Code-review accepted still uses best-effort category from the synthetic '## <title>' line.
 [[ "$(record_field_by_id "$out" FINDING_2 category)" == "Runtime bug" ]] \
     || fail "FINDING_2 category: got $(record_field_by_id "$out" FINDING_2 category)"
 
