@@ -390,7 +390,7 @@ merged_tmp="$(mktemp "$REVIEW_TMPDIR/findings.md.merged.XXXXXX")"
 trap 'rm -f "${merged_tmp:-}"' EXIT
 # Strip empty-merge attestation lines using the same trimmed-line predicate as
 # aggregate-validate.py (padding or stray whitespace must not survive into findings.md).
-python3 - "$cand" <<'PY' >"$merged_tmp" || true
+if ! python3 - "$cand" <<'PY' >"$merged_tmp" 2>"$REVIEW_TMPDIR/aggregator-strip.stderr"
 import sys
 
 EMPTY_MERGE_ATTESTATION = "LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED"
@@ -401,14 +401,21 @@ with open(path, encoding="utf-8") as f:
             continue
         sys.stdout.write(line)
 PY
+then
+    REASON="validation-failed"
+    FAILURE_LOG="$REVIEW_TMPDIR/aggregator-strip.stderr"
+    append_warning "- **findings aggregator**: empty-merge attestation strip failed; leaving findings.md unchanged. $(failure_see_phrase "$FAILURE_LOG")"
+    emit_result
+    exit 0
+fi
 if [[ "$(count_finding_blocks "$cand")" -eq 0 ]]; then
     [[ -s "$merged_tmp" ]] || printf '\n' >"$merged_tmp"
 fi
 [[ -s "$merged_tmp" ]] || {
     REASON="validation-failed"
     FAILURE_LOG="$REVIEW_TMPDIR/aggregator-empty-merge.stderr"
-    printf '%s\n' "staged merge output empty after copy" >"$FAILURE_LOG"
-    append_warning "- **findings aggregator**: staged merge output empty; leaving findings.md unchanged."
+    printf '%s\n' "staged merge output empty after successful strip (zero FINDING blocks in vendor output; expected narrative or whitespace)" >"$FAILURE_LOG"
+    append_warning "- **findings aggregator**: staged merge output empty after strip; leaving findings.md unchanged. $(failure_see_phrase "$FAILURE_LOG")"
     emit_result
     exit 0
 }
