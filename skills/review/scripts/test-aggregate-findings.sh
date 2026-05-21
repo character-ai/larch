@@ -75,6 +75,15 @@ EOF
 
 EOF
                 ;;
+            oos_shared_slot_merge)
+                cat > "$out" <<'EOF'
+### FINDING_1: merged in scope
+- **Reviewer(s)**: cursor-a-output.txt
+- **Concern**: merged
+- **Suggested revision**: fix
+
+EOF
+                ;;
             *)
                 echo "stub: bad AGGREGATE_STUB_MERGE_KIND" >&2
                 exit 2
@@ -244,6 +253,34 @@ AGGREGATE_STUB_MERGE_KIND=oos_drop_tag \
 grep -Fq 'AGGREGATED=false' "$TMP/out-oos.env" || fail "oos-drop AGGREGATED"
 grep -Fq 'REASON=validation-failed' "$TMP/out-oos.env" || fail "oos-drop REASON"
 cmp -s "$TMP/in-oos.md" "$TMP/in-oos-work.md" || fail "findings unchanged on OOS tag drop"
+
+echo "=== validation rejects merge when OOS-tagged input shares a reviewer with in-scope merge ==="
+cat > "$TMP/in-oos-shared.md" <<'EOF'
+### FINDING_1: in-scope A
+- **Reviewer**: cursor-a-output.txt
+- **Concern**: x
+- **Suggested revision**: fix
+
+### FINDING_2: [OUT_OF_SCOPE] **code-quality** [`x`]
+- **Reviewer**: cursor-a-output.txt
+- **Concern**: oos
+- **Suggested revision**: n/a
+
+EOF
+cp "$TMP/in-oos-shared.md" "$TMP/in-oos-shared-work.md"
+write_stub_dispatch
+AGGREGATE_DISPATCH_SH="$TMP/stub-dispatch.sh" \
+AGGREGATE_STUB_MODE=ok \
+AGGREGATE_STUB_MERGE_KIND=oos_shared_slot_merge \
+"$AGG" \
+    --findings-file "$TMP/in-oos-shared-work.md" \
+    --review-tmpdir "$TMP" \
+    --codex-present true \
+    --cursor-present true \
+    --mode diff >"$TMP/out-oos-shared.env"
+grep -Fq 'AGGREGATED=false' "$TMP/out-oos-shared.env" || fail "oos-shared AGGREGATED"
+grep -Fq 'REASON=validation-failed' "$TMP/out-oos-shared.env" || fail "oos-shared REASON"
+cmp -s "$TMP/in-oos-shared.md" "$TMP/in-oos-shared-work.md" || fail "findings unchanged on OOS shared-slot merge"
 
 issues_parent="$TMP/agg-exec-issues"
 mkdir -p "$issues_parent"

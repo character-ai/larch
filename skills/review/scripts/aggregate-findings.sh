@@ -255,26 +255,33 @@ def heading_line(block):
     return ""
 
 
-def only_oos_reviewer_slots(text):
-    in_scope = set()
-    oos = set()
+def oos_attributed_slots(text):
+    """Reviewer labels that appear on any OOS-tagged input finding."""
+    out = set()
     for block in input_blocks(text):
         head = heading_line(block)
-        is_oos = "[OUT_OF_SCOPE]" in head
+        if "[OUT_OF_SCOPE]" not in head:
+            continue
         _line, slots = reviewer_line_slots(block)
         for sl in slots:
-            if is_oos:
-                oos.add(sl)
-            else:
-                in_scope.add(sl)
-    return oos - in_scope
+            out.add(sl)
+    return out
+
+
+def finding_id_from_block(block):
+    for line in block.splitlines():
+        t = line.strip()
+        m = re.match(r"^### (FINDING_[0-9]+):", t)
+        if m:
+            return m.group(1)
+    return None
 
 
 def main():
     input_path, output_path = sys.argv[1], sys.argv[2]
     intext = open(input_path, encoding="utf-8").read()
     outtext = open(output_path, encoding="utf-8").read()
-    only_oos = only_oos_reviewer_slots(intext)
+    oos_slots = oos_attributed_slots(intext)
     input_slot_set = set()
     for block in input_blocks(intext):
         _line, slots = reviewer_line_slots(block)
@@ -287,6 +294,16 @@ def main():
     if not blocks:
         print("no output FINDING blocks", file=sys.stderr)
         return 1
+    seen_merge_ids = set()
+    for b in blocks:
+        mid = finding_id_from_block(b)
+        if not mid:
+            print("output block missing ### FINDING_N: heading", file=sys.stderr)
+            return 1
+        if mid in seen_merge_ids:
+            print("duplicate merged FINDING id: %r" % (mid,), file=sys.stderr)
+            return 1
+        seen_merge_ids.add(mid)
     all_out_slots = set()
     for b in blocks:
         head = heading_line(b)
@@ -297,10 +314,10 @@ def main():
             return 1
         if not is_oos_out:
             for sl in slots:
-                if sl in only_oos:
+                if sl in oos_slots:
                     print(
                         "merged output lacks [OUT_OF_SCOPE] while listing reviewer %r "
-                        "that appears only on OOS input findings" % (sl,),
+                        "that appears on an OOS-tagged input finding" % (sl,),
                         file=sys.stderr,
                     )
                     return 1
@@ -329,7 +346,20 @@ if ! python3 "$validate_py" "$FINDINGS_FILE" "$cand" 2>"$REVIEW_TMPDIR/aggregato
 fi
 
 # Preserve trailing newline (match collect-findings / ballot conventions).
-awk 1 "$cand" > "$FINDINGS_FILE"
+# Atomic replace: never truncate the live ballot until the staged copy validates.
+merged_tmp="$(mktemp "$REVIEW_TMPDIR/findings.md.merged.XXXXXX")"
+trap 'rm -f "${merged_tmp:-}"' EXIT
+awk 1 "$cand" > "$merged_tmp"
+[[ -s "$merged_tmp" ]] || {
+    REASON="validation-failed"
+    FAILURE_LOG="$REVIEW_TMPDIR/aggregator-empty-merge.stderr"
+    printf '%s\n' "staged merge output empty after copy" >"$FAILURE_LOG"
+    append_warning "- **findings aggregator**: staged merge output empty; leaving findings.md unchanged."
+    emit_result
+    exit 0
+}
+mv -f "$merged_tmp" "$FINDINGS_FILE"
+trap - EXIT
 MERGED_COUNT="$(count_finding_blocks "$FINDINGS_FILE")"
 AGGREGATED=true
 REASON="ok"

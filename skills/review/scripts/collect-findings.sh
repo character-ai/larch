@@ -368,8 +368,10 @@ for f in "${CLAUDE_OUTPUT_FILES[@]+"${CLAUDE_OUTPUT_FILES[@]}"}"; do
     cat "$per_tmp" >> "$tmp"
 done
 
-# Drop identical TSV rows from overlapping collectors while preserving first-seen order.
-awk '!seen[$0]++' "$tmp" > "$tmp.sorted"
+# Preserve duplicate TSV rows (including identical title/label/body) so the
+# downstream aggregator can apply merge-time dedup; row-level awk dedup was
+# removed in favor of that contract.
+cp "$tmp" "$tmp.sorted"
 : > "$FINDINGS_FILE"
 : > "$OOS_FILE"
 count=0

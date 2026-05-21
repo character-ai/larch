@@ -88,7 +88,10 @@ cleanup() { rm -rf "$WORKDIR"; }
 trap cleanup EXIT
 
 BLOCK_DIR="$WORKDIR/blocks"
-split_ballot_to_blocks "$BALLOT_FILE" "$BLOCK_DIR"
+if ! split_ballot_to_blocks "$BALLOT_FILE" "$BLOCK_DIR"; then
+    larch_err "tally-code-votes.sh: duplicate or malformed FINDING/OOS headings in ballot"
+    exit 2
+fi
 
 shopt -s nullglob
 block_files=("$BLOCK_DIR"/*.md)
@@ -333,9 +336,11 @@ write_archetype_map "$MANIFEST_FILE" "$archetype_map"
         [[ "$is_oos" == "true" ]] && kind="oos"
         printf '%s' "$reviewer" | awk -v kind="$kind" -v result="$result" -F',' '
         {
+            delete seen
             for (i = 1; i <= NF; i++) {
                 gsub(/^[[:space:]]+|[[:space:]]+$/, "", $i)
-                if ($i != "") {
+                if ($i != "" && !($i in seen)) {
+                    seen[$i] = 1
                     print $i "\t" kind "\t" result
                 }
             }
