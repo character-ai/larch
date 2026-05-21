@@ -1,0 +1,27 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: NO -- informational observation that existing code already handles this correctly; no action needed
+FINDING_5: NO -- positive survey confirming no broken consumers; not a concern
+FINDING_6: NO -- historical narrative in archived files; no runtime coupling
+FINDING_7: EXONERATE -- minor doc gap in informational .md; low priority for a standalone issue
+FINDING_8: EXONERATE -- doc nit; test coverage exists and tally-code-votes.md is informational
+FINDING_9: EXONERATE -- pre-existing codebase pattern not introduced by this change
+FINDING_10: NO -- reviewer explicitly states no change required
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: EXONERATE -- intentionally documented in aggregate-findings.md as not computed in disabled mode
+FINDING_16: EXONERATE -- aggregate-findings.sh validator already rejects unknown slots; comma-in-label case practically impossible for -output.txt names
+FINDING_17: EXONERATE -- MERGED_COUNT equals block count in unchanged findings.md, which is semantically correct; AGGREGATED=false already signals no merging occurred
+FINDING_18: YES
+FINDING_19: YES
+FINDING_20: EXONERATE -- consistent with codebase-wide convention of || true on non-fatal execution-issue appends
+FINDING_21: YES
+FINDING_22: YES
+FINDING_23: EXONERATE -- same root as FINDING_15; documented intentional behavior
+FINDING_24: YES
+FINDING_25: EXONERATE -- same root as FINDING_16; validator-constrained slots
+FINDING_26: EXONERATE -- ordering probe covers the enabled aggregate path; per-feature coverage in test-aggregate-findings.sh
+FINDING_27: YES

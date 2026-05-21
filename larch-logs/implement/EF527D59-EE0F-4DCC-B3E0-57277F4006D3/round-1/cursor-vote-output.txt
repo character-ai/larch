@@ -1,0 +1,28 @@
+Verifying ballot claims against the repo; reading cited regions.
+
+FINDING_1: NO -- ballot marks concern N/A and not introduced by the branch.
+FINDING_2: EXONERATE -- optional execution-issues assertion; not worth a standalone tracking issue.
+FINDING_3: NO -- extended pre-existing stub pattern is not a runtime defect.
+FINDING_4: EXONERATE -- planned `sort -u` removal risk is acknowledged; aggregator addresses duplicates without a new issue.
+FINDING_5: EXONERATE -- same missing `Reviewer(s)` harness gap as FINDING_17; one test addition suffices.
+FINDING_6: YES
+FINDING_7: EXONERATE -- duplicate doc-sync concern covered by FINDING_6.
+FINDING_8: YES
+FINDING_9: EXONERATE -- duplicate of FINDING_8 doc/ordering mismatch.
+FINDING_10: EXONERATE -- duplicate of FINDING_8 doc/ordering mismatch.
+FINDING_11: EXONERATE -- shared-parser refactor is high churn for moderate drift risk versus current tests.
+FINDING_12: EXONERATE -- comma delimiter is the established slot convention; relabeling format is disproportionate.
+FINDING_13: EXONERATE -- duplicate of FINDING_8 disabled-mode contract mismatch.
+FINDING_14: NO -- collected ballots use single-slot `- **Reviewer**:` lines so comma-split skew on validator input does not apply.
+FINDING_15: YES
+FINDING_16: EXONERATE -- same comma-delimiter convention as FINDING_12; no new issue warranted.
+FINDING_17: YES
+FINDING_18: EXONERATE -- prompts already treat findings as untrusted; extra SECURITY prose is optional noise.
+FINDING_19: EXONERATE -- duplicate stderr-loss concern covered by FINDING_21.
+FINDING_20: EXONERATE -- duplicate stderr-loss concern covered by FINDING_21.
+FINDING_21: YES
+FINDING_22: EXONERATE -- duplicate optional warning-assertion coverage versus FINDING_2.
+FINDING_23: YES
+FINDING_24: EXONERATE -- duplicate wiring-coverage gap covered by FINDING_23.
+FINDING_25: YES
+FINDING_26: EXONERATE -- duplicate scoreboard/comma coverage gap covered by FINDING_25.

@@ -1,0 +1,7 @@
+Gathering the pre-computed diff, commit list, and relevant source sections for the sort-removal / dedup review.
+
+Confirming: `sort -u` deduped byte-identical `title\tlabel\tbody` rows; cross-reviewer “same issue” rows differ in the reviewer column, so they were not collapsed. Checking whether `aggregate-findings.sh` mishandles `INPUT_COUNT` when disabled (scout mentioned `<2`).
+
+Having verified behavior: `sort -u` collapsed only identical full TSV lines (including identical normalized reviewer labels). Cross-reviewer duplicates differ in the reviewer column and were not collapsed. Primary regression: duplicate identical rows from the same normalized slot (duplicate bullets or phase-normalization collisions). `test-collect-findings.sh` contains no assertions for that dedup. Creating a concise plan record of the review.
+
+

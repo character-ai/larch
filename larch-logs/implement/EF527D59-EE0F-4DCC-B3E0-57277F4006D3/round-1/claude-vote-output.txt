@@ -1,0 +1,26 @@
+FINDING_1: EXONERATE -- reviewer flags it as pre-existing and explicitly marks N/A; not introduced by this diff
+FINDING_2: YES
+FINDING_3: EXONERATE -- reviewer flags it as a test-pattern extension and explicitly marks N/A; not a runtime concern
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: EXONERATE -- reviewer-column validation enforces *-output.txt format which structurally prevents commas; concern is real but not issue-worthy given existing enforcement
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: EXONERATE -- same structural enforcement as FINDING_12; *-output.txt labels cannot contain commas
+FINDING_17: YES
+FINDING_18: EXONERATE -- aggregator uses the same dispatch-with-waterfall untrusted-input wrapping; existing SECURITY.md "wrap context as untrusted input" posture already covers this hop
+FINDING_19: YES
+FINDING_20: YES
+FINDING_21: YES
+FINDING_22: YES
+FINDING_23: YES
+FINDING_24: YES
+FINDING_25: YES
+FINDING_26: YES
