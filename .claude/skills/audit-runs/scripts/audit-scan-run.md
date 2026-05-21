@@ -14,7 +14,11 @@ One NDJSON line per scan, plus summary objects:
 {"scan":"changelog-rebase-conflicts","pr":2476,"result":"fail","count":2}
 {"scan":"category-stats","pr":2476,"partial_data":false,"canonical":38,"blank":1,"mangled":12,"oos_blank":0,"rej_blank":1}
 {"scan":"cross-cutting","pr":2476,"ended_at_null":true,"pr_number_null":true,"manifest_pr_number_mismatch_with_audited_pr":false,"self_deploying_gap":false}
+{"scan":"cross-cutting","pr":2476,"ended_at_null":false,"pr_number_null":false,"manifest_pr_number_mismatch_with_audited_pr":false,"self_deploying_gap":false}
+{"scan":"cross-cutting","pr":2476,"ended_at_null":false,"pr_number_null":false,"manifest_pr_number_mismatch_with_audited_pr":true,"self_deploying_gap":true}
 ```
+
+The first `cross-cutting` line illustrates **legacy `manifest.json` (schema_version &lt; 2)** semantics: `ended_at_null` / `pr_number_null` mean the corresponding fields are **empty or JSON null** (treated as “missing” for dashboards). The second line illustrates a typical **flushed v2** manifest (`schema_version >= 2`) that **omits** `ended_at` and `pr_number`: `jq` `has("field")` is false, so both `*_null` flags are **`false`** even though the run is incomplete in a human sense — **do not** read v2 `false` as “field populated”; read it as “key absent or not null-shaped.” The third line is the same audited `--pr` but a manifest that records a **different** non-null `pr_number` (here vs the run under audit): `manifest_pr_number_mismatch_with_audited_pr` (and `self_deploying_gap`) flip to **`true`** when `pr_number` **exists**, is non-null / non-empty, and **differs** from the audited `--pr` argument.
 
 Missing `--run-dir` (not a directory): emits a `run-dir-missing` NDJSON line (`incomplete: true`, `result:"error"`, `detail` explains the path) to stdout and exits non-zero — **do not treat stdout as a complete scan set** for aggregation.
 
@@ -32,7 +36,11 @@ A `name` in `scans.tsv` with no matching `case` arm emits an `{"scan":"<name>","
 
 `category-stats` always emits. When `review-findings-full.jsonl` is missing, `partial_data` is `true` and numeric fields are zero placeholders (not “measured clean”).
 
-`cross-cutting` summarizes manifest integrity: `ended_at_null` / `pr_number_null` flag empty `manifest.json` fields; **`manifest_pr_number_mismatch_with_audited_pr`** is `true` when `manifest.json`’s `pr_number` is present and differs from the audited `--pr` (run-log vs audited PR skew). **`self_deploying_gap`** duplicates that boolean for backward compatibility (same meaning as `manifest_pr_number_mismatch_with_audited_pr`; prefer the explicit name in new consumers).
+`cross-cutting` summarizes manifest integrity with **version-aware** rules (mirrors `audit-scan-run.sh` `jq`):
+
+- **`schema_version` &lt; 2 (or non-numeric / absent — treated as v1-style):** `ended_at_null` is `true` when `ended_at` is empty after string coercion; `pr_number_null` is `true` when `pr_number` is JSON null or stringifies to empty. These flags match the older NDJSON “missing field” mental model.
+- **`schema_version >= 2`:** `ended_at_null` is `true` only when the **`ended_at` key exists** and is JSON null or empty string (omitted key ⇒ `false`). Likewise `pr_number_null` is `true` only when the **`pr_number` key exists** and is JSON null (omitted key ⇒ `false`). Typical flushed v2 manifests omit both keys, yielding **`false`** / **`false`** for the two `*_null` booleans — **not** the same signal as v1 empties.
+- **`manifest_pr_number_mismatch_with_audited_pr`:** `true` when `pr_number` is present, non-empty / non-null, and **not equal** to the audited `--pr` (use this to detect skew even when `pr_number_null` is `false` because the field is populated). **`self_deploying_gap`** duplicates that boolean for backward compatibility (prefer the explicit name in new consumers).
 
 ## Edit-in-sync
 

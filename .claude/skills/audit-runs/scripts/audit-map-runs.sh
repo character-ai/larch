@@ -2,7 +2,7 @@
 # audit-map-runs.sh — Map each PR to its run-log directory.
 #
 # For each PR in --pr-list:
-#   1. Primary: gh pr view → closing keyword (Closes / Fixes / Resolves) #N → parent-issue.md with ISSUE_NUMBER=N
+#   1. Primary: gh pr view → closing keyword lines (see extract_closing_issue_from_pr_body) → parent-issue.md with ISSUE_NUMBER=N
 #   2. Fallback: newest manifest.json whose pr_number matches N (number or string; legacy runs)
 #
 # Output: TSV to stdout (no header), one row per PR:
@@ -42,6 +42,29 @@ fi
 
 # Split comma-separated list (no shell expansion — PR_LIST is untrusted data)
 IFS=',' read -r -a PR_ARRAY <<<"$PR_LIST"
+
+# Keyword priority: Closes, then Fixes, then Resolves (GitHub treats them equivalently for
+# auto-close; order in the body is not semantic). Within one keyword class, multiple distinct
+# issue numbers → refuse mapping (stderr MAP_PR_BODY_CLOSING_AMBIGUOUS) instead of picking an
+# arbitrary first grep match.
+extract_closing_issue_from_pr_body() {
+    local body="$1"
+    local kw nums uniq n
+    for kw in Closes Fixes Resolves; do
+        nums=$(printf '%s' "$body" | grep -oiE "${kw}[[:space:]]+#[0-9]+" | grep -oE '[0-9]+$' || true)
+        [ -z "$nums" ] && continue
+        uniq=$(printf '%s\n' "$nums" | sort -u | sed '/^$/d')
+        [ -z "$uniq" ] && continue
+        n=$(printf '%s\n' "$uniq" | wc -l | tr -d '[:space:]')
+        if [ "$n" -gt 1 ]; then
+            printf 'audit-map-runs.sh: MAP_PR_BODY_CLOSING_AMBIGUOUS=true KEYWORD=%s\n' "$kw" >&2
+            return 0
+        fi
+        printf '%s' "$uniq"
+        return 0
+    done
+    return 0
+}
 
 manifest_started_epoch() {
     local mf="$1"
@@ -98,7 +121,7 @@ for PR_NUM in "${PR_ARRAY[@]}"; do
     fi
 
     if [ "$gh_ok" = true ]; then
-        CLOSES_ISSUE=$(printf '%s' "$PR_BODY" | grep -oiE '(Closes|Fixes|Resolves)[[:space:]]+#[0-9]+' | grep -oE '[0-9]+$' | head -1 || true)
+        CLOSES_ISSUE=$(extract_closing_issue_from_pr_body "$PR_BODY")
 
         if [ -n "$CLOSES_ISSUE" ]; then
             matches=()
