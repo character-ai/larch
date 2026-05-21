@@ -74,6 +74,26 @@ else
 fi
 grep -Fq 'STATUS=OK' "$TMP/voting-tally.md" || { FAIL=1; printf '  FAIL clean 3-voter fixture should populate live row Status=OK\n'; }
 
+echo "# Case: merged ballot — comma-separated **Reviewer(s)** fans out scoreboard rows"
+TMP="$WORKDIR/case_comma_reviewers"
+mkdir -p "$TMP"
+cat > "$TMP/ballot.md" <<'EOF'
+### FINDING_1: merged finding
+- **Reviewer(s)**: cursor-a-output.txt, cursor-b-output.txt, cursor-c-output.txt
+- **Concern**: one concern.
+- **Suggested revision**: fix it
+EOF
+printf 'FINDING_1: YES\n' > "$TMP/cursor-vote-output.txt"
+printf 'FINDING_1: YES\n' > "$TMP/codex-vote-output.txt"
+printf 'FINDING_1: YES\n' > "$TMP/claude-vote-output.txt"
+out="$TMP/out.env"
+"$SCRIPT" --ballot-file "$TMP/ballot.md" \
+    --voter-files "$TMP/cursor-vote-output.txt" "$TMP/codex-vote-output.txt" "$TMP/claude-vote-output.txt" \
+    --review-tmpdir "$TMP" > "$out"
+grep -Fq '| cursor-a |' "$TMP/voting-tally.md" || { FAIL=1; printf '  FAIL scoreboard missing cursor-a row for comma-split Reviewer(s)\n'; }
+grep -Fq '| cursor-b |' "$TMP/voting-tally.md" || { FAIL=1; printf '  FAIL scoreboard missing cursor-b row\n'; }
+grep -Fq '| cursor-c |' "$TMP/voting-tally.md" || { FAIL=1; printf '  FAIL scoreboard missing cursor-c row\n'; }
+
 echo "# Case: voter parse-rate diag emits degraded voter banner"
 TMP="$WORKDIR/case_voter_parse_banner"
 mkdir -p "$TMP"

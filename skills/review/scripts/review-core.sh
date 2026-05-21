@@ -162,6 +162,15 @@ emit_tally_with_failure_isolation() {
     return "$rc"
 }
 
+append_review_execution_issue() {
+    local entry="$1"
+    [[ -x "$PLUGIN_ROOT/scripts/append-execution-issue.sh" ]] || return 0
+    "$PLUGIN_ROOT/scripts/append-execution-issue.sh" \
+        --log "$(execution_issues_log)" \
+        --category "External Reviewer Issues" \
+        --entry "$entry" 2>/dev/null || true
+}
+
 flush_round_log() {
     local flush_err rc=0
     [[ -n "$RUN_ID" ]] || return 0
@@ -492,9 +501,15 @@ aggregate_args=(
 [[ -n "$SESSION_ENV_PATH" ]] && aggregate_args+=(--session-env-path "$SESSION_ENV_PATH")
 [[ -n "$DIFF_FILE" ]] && aggregate_args+=(--diff-file "$DIFF_FILE")
 [[ -n "$PLAN_FILE" ]] && aggregate_args+=(--plan-file "$PLAN_FILE")
+aggregate_stderr="$REVIEW_TMPDIR/review-core-aggregate.stderr"
 set +e
-"$AGGREGATE_FINDINGS_SH" "${aggregate_args[@]}" > "$aggregate_out" 2>/dev/null
+"$AGGREGATE_FINDINGS_SH" "${aggregate_args[@]}" > "$aggregate_out" 2> >(tee "$aggregate_stderr" >&2)
+aggregate_rc=$?
 set -e
+if [[ "$aggregate_rc" -ne 0 ]]; then
+    emit_breadcrumb "⚠ review-core: aggregate-findings exited non-zero (rc=$aggregate_rc; see $aggregate_stderr)"
+    append_review_execution_issue "- **review-core / aggregate-findings**: subprocess exited with rc=$aggregate_rc (unexpected; see $aggregate_stderr)."
+fi
 
 tally_out="$REVIEW_TMPDIR/review-core-tally.env"
 

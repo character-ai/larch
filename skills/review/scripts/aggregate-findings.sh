@@ -75,20 +75,8 @@ count_finding_blocks() {
     LC_ALL=C grep -c '^### FINDING_[0-9]' "$f" 2>/dev/null || true
 }
 
-strip_agent_frontmatter() {
-    # Skip YAML fence: --- ... --- then print body.
-    awk '
-        BEGIN { c = 0 }
-        /^---$/ {
-            c++
-            next
-        }
-        c >= 2 { print }
-    ' "$1"
-}
-
-INPUT_COUNT="$(count_finding_blocks "$FINDINGS_FILE")"
-MERGED_COUNT="$INPUT_COUNT"
+INPUT_COUNT=""
+MERGED_COUNT=""
 AGGREGATED=false
 REASON="ok"
 FAILURE_LOG=""
@@ -104,10 +92,27 @@ emit_result() {
 }
 
 if [[ "${LARCH_AGGREGATOR_DISABLED:-}" == "1" ]]; then
+    INPUT_COUNT="0"
+    MERGED_COUNT="0"
     REASON="disabled"
     emit_result
     exit 0
 fi
+
+strip_agent_frontmatter() {
+    # Skip YAML fence: --- ... --- then print body.
+    awk '
+        BEGIN { c = 0 }
+        /^---$/ {
+            c++
+            next
+        }
+        c >= 2 { print }
+    ' "$1"
+}
+
+INPUT_COUNT="$(count_finding_blocks "$FINDINGS_FILE")"
+MERGED_COUNT="$INPUT_COUNT"
 
 if [[ "$INPUT_COUNT" -lt 2 ]]; then
     REASON="insufficient-input"
@@ -187,25 +192,9 @@ import re
 import sys
 
 
-def input_labels(text):
-    labels = []
-    for block in re.split(r"(?m)^### FINDING_[0-9]+:", text):
-        if not block.strip():
-            continue
-        for line in block.splitlines():
-            s = line.strip()
-            m = re.match(
-                r"^-\s*\*\*Reviewer\(s\)\*\*:\s*(.+)$",
-                s,
-            ) or re.match(r"^-\s*\*\*Reviewers?\*\*:\s*(.+)$", s)
-            if m:
-                labels.append(m.group(1).strip())
-                break
-            m = re.match(r"^Reviewer\(s\):\s*(.+)$", s) or re.match(r"^Reviewers?:\s*(.+)$", s)
-            if m:
-                labels.append(m.group(1).strip())
-                break
-    return labels
+def input_blocks(text):
+    parts = re.split(r"(?m)^(?=### FINDING_[0-9]+:)", text)
+    return [p for p in parts if re.match(r"^### FINDING_[0-9]+:", p, re.M)]
 
 
 def output_blocks(text):
@@ -229,31 +218,69 @@ def reviewer_line_slots(block):
     return None, []
 
 
+def heading_line(block):
+    for line in block.splitlines():
+        t = line.strip()
+        if t:
+            return t
+    return ""
+
+
+def only_oos_reviewer_slots(text):
+    in_scope = set()
+    oos = set()
+    for block in input_blocks(text):
+        head = heading_line(block)
+        is_oos = "[OUT_OF_SCOPE]" in head
+        _line, slots = reviewer_line_slots(block)
+        for sl in slots:
+            if is_oos:
+                oos.add(sl)
+            else:
+                in_scope.add(sl)
+    return oos - in_scope
+
+
 def main():
     input_path, output_path = sys.argv[1], sys.argv[2]
     intext = open(input_path, encoding="utf-8").read()
     outtext = open(output_path, encoding="utf-8").read()
-    inputs = input_labels(intext)
-    if not inputs:
+    only_oos = only_oos_reviewer_slots(intext)
+    input_slot_set = set()
+    for block in input_blocks(intext):
+        _line, slots = reviewer_line_slots(block)
+        for sl in slots:
+            input_slot_set.add(sl)
+    if not input_slot_set:
         print("no input reviewer labels", file=sys.stderr)
         return 1
-    input_set = set(inputs)
     blocks = output_blocks(outtext)
     if not blocks:
         print("no output FINDING blocks", file=sys.stderr)
         return 1
     all_out_slots = set()
     for b in blocks:
+        head = heading_line(b)
+        is_oos_out = "[OUT_OF_SCOPE]" in head
         _line, slots = reviewer_line_slots(b)
         if not slots:
             print("block missing reviewer attribution line", file=sys.stderr)
             return 1
+        if not is_oos_out:
+            for sl in slots:
+                if sl in only_oos:
+                    print(
+                        "merged output lacks [OUT_OF_SCOPE] while listing reviewer %r "
+                        "that appears only on OOS input findings" % (sl,),
+                        file=sys.stderr,
+                    )
+                    return 1
         for sl in slots:
-            if sl not in input_set:
+            if sl not in input_slot_set:
                 print("unknown reviewer slot in merge output: %r" % (sl,), file=sys.stderr)
                 return 1
             all_out_slots.add(sl)
-    missing = [lb for lb in inputs if lb not in all_out_slots]
+    missing = sorted(s for s in input_slot_set if s not in all_out_slots)
     if missing:
         print("input reviewers missing from merge output: %r" % (missing,), file=sys.stderr)
         return 1

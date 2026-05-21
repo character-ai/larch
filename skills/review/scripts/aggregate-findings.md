@@ -17,7 +17,7 @@
 
 ## Escape hatch
 
-`LARCH_AGGREGATOR_DISABLED=1` — no-op pass-through: does not read or rewrite `findings.md`; stdout includes `AGGREGATED=false` and `REASON=disabled`.
+`LARCH_AGGREGATOR_DISABLED=1` — no-op pass-through: does not read or rewrite `findings.md` (no block-count probe, no LLM/dispatch); stdout includes `AGGREGATED=false`, `REASON=disabled`, and `INPUT_COUNT=0` / `MERGED_COUNT=0` (counts are intentionally not computed in this mode).
 
 ## Behavior summary
 

@@ -66,6 +66,15 @@ EOF
 
 EOF
                 ;;
+            oos_drop_tag)
+                cat > "$out" <<'EOF'
+### FINDING_1: merged without OOS tag
+- **Reviewer(s)**: cursor-a-output.txt, cursor-b-output.txt
+- **Concern**: merged
+- **Suggested revision**: fix
+
+EOF
+                ;;
             *)
                 echo "stub: bad AGGREGATE_STUB_MERGE_KIND" >&2
                 exit 2
@@ -104,6 +113,8 @@ LARCH_AGGREGATOR_DISABLED=1 "$AGG" \
     --mode diff >"$TMP/out-disabled.env"
 grep -Fq 'AGGREGATED=false' "$TMP/out-disabled.env" || fail "disabled AGGREGATED"
 grep -Fq 'REASON=disabled' "$TMP/out-disabled.env" || fail "disabled REASON"
+grep -Fq 'INPUT_COUNT=0' "$TMP/out-disabled.env" || fail "disabled INPUT_COUNT"
+grep -Fq 'MERGED_COUNT=0' "$TMP/out-disabled.env" || fail "disabled MERGED_COUNT"
 cmp -s "$TMP/f1.md" "$TMP/f1-copy.md" || fail "findings changed when disabled"
 
 echo "=== insufficient input (<2 blocks) ==="
@@ -205,5 +216,51 @@ AGGREGATE_STUB_MERGE_KIND=missing_input_reviewer \
 grep -Fq 'AGGREGATED=false' "$TMP/out-miss.env" || fail "missing-reviewer AGGREGATED"
 grep -Fq 'REASON=validation-failed' "$TMP/out-miss.env" || fail "missing-reviewer REASON"
 cmp -s "$TMP/in3.md" "$TMP/in3-miss.md" || fail "findings unchanged when input reviewer dropped"
+
+echo "=== validation rejects merge that drops [OUT_OF_SCOPE] for only-OOS reviewer ==="
+cat > "$TMP/in-oos.md" <<'EOF'
+### FINDING_1: in-scope A
+- **Reviewer**: cursor-a-output.txt
+- **Concern**: x
+- **Suggested revision**: fix
+
+### FINDING_2: [OUT_OF_SCOPE] **code-quality** [`x`]
+- **Reviewer**: cursor-b-output.txt
+- **Concern**: oos
+- **Suggested revision**: n/a
+
+EOF
+cp "$TMP/in-oos.md" "$TMP/in-oos-work.md"
+write_stub_dispatch
+AGGREGATE_DISPATCH_SH="$TMP/stub-dispatch.sh" \
+AGGREGATE_STUB_MODE=ok \
+AGGREGATE_STUB_MERGE_KIND=oos_drop_tag \
+"$AGG" \
+    --findings-file "$TMP/in-oos-work.md" \
+    --review-tmpdir "$TMP" \
+    --codex-present true \
+    --cursor-present true \
+    --mode diff >"$TMP/out-oos.env"
+grep -Fq 'AGGREGATED=false' "$TMP/out-oos.env" || fail "oos-drop AGGREGATED"
+grep -Fq 'REASON=validation-failed' "$TMP/out-oos.env" || fail "oos-drop REASON"
+cmp -s "$TMP/in-oos.md" "$TMP/in-oos-work.md" || fail "findings unchanged on OOS tag drop"
+
+issues_parent="$TMP/agg-exec-issues"
+mkdir -p "$issues_parent"
+: > "$issues_parent/execution-issues.md"
+touch "$issues_parent/session-env.sh"
+cp "$TMP/in3.md" "$TMP/in3-session.md"
+write_stub_dispatch
+AGGREGATE_DISPATCH_SH="$TMP/stub-dispatch.sh" \
+AGGREGATE_STUB_MODE=ok \
+AGGREGATE_STUB_MERGE_KIND=malformed \
+"$AGG" \
+    --findings-file "$TMP/in3-session.md" \
+    --review-tmpdir "$TMP" \
+    --codex-present true \
+    --cursor-present true \
+    --mode diff \
+    --session-env-path "$issues_parent/session-env.sh" >"$TMP/out-session.env"
+grep -Fq 'findings aggregator' "$issues_parent/execution-issues.md" || fail "execution-issues missing aggregator warning"
 
 echo "All aggregate-findings harness assertions passed."
