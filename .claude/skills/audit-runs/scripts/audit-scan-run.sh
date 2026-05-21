@@ -11,7 +11,7 @@
 set -euo pipefail
 
 _audit_scan_run_self_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=audit-scan-run-jstr.inc.bash
+# shellcheck source=.claude/skills/audit-runs/scripts/audit-scan-run-jstr.inc.bash
 . "$_audit_scan_run_self_dir/audit-scan-run-jstr.inc.bash"
 
 RUN_DIR=""

@@ -1410,7 +1410,7 @@ fi
 # Test 49: audit-scan-run jstr() (shared implementation with audit-scan-run.sh)
 echo "Test 49: audit-scan-run jstr() round-trip + edge vectors"
 SCAN_SCRIPT="${SCAN_SCRIPT:-$SCRIPT_DIR/audit-scan-run.sh}"
-# shellcheck source=audit-scan-run-jstr.inc.bash
+# shellcheck source=.claude/skills/audit-runs/scripts/audit-scan-run-jstr.inc.bash
 . "$SCRIPT_DIR/audit-scan-run-jstr.inc.bash"
 if [ -x "$SCAN_SCRIPT" ]; then
     for s in "29.8.62" "34.0.0" "oos-issues.ndjson" "run-statistics.md"; do
