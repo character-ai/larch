@@ -8,7 +8,7 @@ One NDJSON line per scan, plus summary objects:
 
 ```json
 {"scan":"exon-misclassification","pr":2476,"result":"pass","count":0}
-{"scan":"oos-category-mangle","pr":2476,"result":"fail","count":12,"detail":"12 plan-review-phase rows with prose category"}
+{"scan":"oos-category-mangle","pr":2476,"result":"fail","count":12,"detail":"12 plan-review accepted rows with prose category (not canonical)"}
 {"scan":"required-file-presence","pr":2476,"result":"fail","missing":["run-statistics.md"]}
 {"scan":"cache-freshness","pr":2476,"result":"informational","run_version":"29.8.54","current_version":"29.8.61","detail":"run plugin version behind current"}
 {"scan":"changelog-rebase-conflicts","pr":2476,"result":"fail","count":2}

@@ -63,7 +63,7 @@ SCANS_TSV="$PWD/.claude/skills/audit-runs/scans.tsv"
 |---|---|---|
 | Required-file presence | Compare against `docs/run-logs-required-files.tsv` (NDJSON `result` is `pass` / `fail` / `skip` / `error`) | run-log root |
 | EXON misclassification | `\| FINDING_.* \| 0 \| 0 \| [1-9]+ \|.*\| rejected \|` | `round-*/voting-tally.md` |
-| OOS category mangle | `category` field not in `{code-quality, risk-integration, correctness, architecture, security}` | `review-findings-full.jsonl` |
+| OOS category mangle | plan-review **accepted** rows only: non-empty `category` not in `{code-quality, risk-integration, correctness, architecture, security}` (code-review accepted prose categories are ignored by design) | `review-findings-full.jsonl` |
 | NS-retry sidecars | files matching `*-ns-retry*` (see `scans.tsv`; first-pass trailing-content checks are the separate `trailing-content-no-issues-found` scan) | `round-*/` |
 | Codex round-1 adherence | round 2+ panel-manifest should not contain `tool=codex` | `round-N/panel-manifest.ndjson` |
 | Codex generalist waste | `codex-generalist-output.txt` is `NO_ISSUES_FOUND` only AND timing > 120s | `round-1/` + `timing-report.json` |
@@ -102,10 +102,29 @@ Read `scan-results-*.ndjson` files as NDJSON (one JSON object per scan per line)
 
 At scan time, **only** record findings as proposals. **Never** auto-file a bug issue and **never** auto-post augmentation comments during the scan.
 
-- **`proposed_new_issues`**: findings with no matching open issue (excluding titles matching `^\[Run Logs Audit Report` or `^\[IN PROGRESS\]` when searching). Always present in the audit-report frontmatter (possibly empty).
-- **`proposed_augmentations`**: findings that match an existing open issue (same title search as today). Always present in the audit-report frontmatter (possibly empty).
+- **`proposed_new_issues`**: findings that warrant a new bug issue after classification: no matching **open** issue, and when the only matches are **closed**, the version-window check (below) does not suppress the proposal. When searching, exclude only audit-report noise: titles matching `^\[Run Logs Audit Report` (anti-recursion). **Do not** exclude `[IN PROGRESS]` — those issues are open and match the search; route those hits to **`proposed_augmentations`** instead. Always present in the audit-report frontmatter (possibly empty).
+- **`proposed_augmentations`**: findings that match at least one **open** issue (same keyword search). This includes titles beginning with `[IN PROGRESS]` (still open on GitHub). Always present in the audit-report frontmatter (possibly empty).
 
-For each finding, classify it into one of these two lists (search open issues with `gh issue list --state open --repo <repo> --search "<finding keywords>" --json number,title`); do not file or comment until after the post-report user prompt below.
+For each finding, classify it into one of these two lists using GitHub + repo history; do not file or comment until after the post-report user prompt below.
+
+1. **Search issues (open + closed):**
+   ```bash
+   gh issue list --state all --repo <repo> --search "<finding keywords>" --json number,title,state,closedAt
+   ```
+2. **Open matches** (including `[IN PROGRESS] …` titles): **`proposed_augmentations`**. In **`## Open issues snapshot`**, when an augmented issue’s title starts with `[IN PROGRESS]`, note that the finding **recurred in this batch (pre-fix)** for that issue number.
+3. **Closed matches only** (no open match for this finding): apply the **version-window** check before proposing `proposed_new_issues`:
+   - Resolve fix merge time: prefer `gh pr list --state merged --search "closes #<N>" --repo <repo> --json number,mergedAt` and use the merged PR you attribute to the fix; if that is empty or ambiguous, fall back to `gh issue view <N> --json closedAt`.
+   - Find the next plugin version shipped after that instant:
+     ```bash
+     git log --oneline --grep="Bump version" --after="<mergedAt-or-closedAt-ISO>" --reverse -- .claude-plugin/plugin.json | head -1
+     ```
+     Derive `vX.Y.Z` from that commit. If **no** such bump commit exists after that date, set `fix_shipped_in: unknown` — **do not** skip the proposal solely for missing bump metadata (treat as in-scope for recurrence unless other reasoning applies).
+   - Compare `fix_shipped_version` (parsed semantic version, or `unknown`) against each audited run’s `manifest.json::larch_version` from this batch’s run-map / scan inputs.
+   - If `fix_shipped_version` is known and **strictly greater than** every audited `larch_version`, the fix post-dates all audited runs → **do not** propose a new issue for this closed-only match.
+   - If `fix_shipped_version` is `unknown`, **or** `fix_shipped_version ≤` any audited `larch_version`, the closed fix was in scope for at least one run → propose **`proposed_new_issues`** (recurrence).
+4. **Record** each closed-issue evaluation in **`version_window_checks`** (see **Frontmatter**). Use `version_window_checks: []` when no closed issue was evaluated for any finding.
+
+**Precedence:** any **open** match for the finding → `proposed_augmentations` only (even if older closed duplicates exist).
 
 ### Post-report user prompt
 
@@ -117,6 +136,35 @@ After the audit report issue is filed and prior reports are handled per **Close 
    - **File/augment all**: file new issues via `/larch:issue` (dedup ON); post augmentation comments with `gh issue comment <N> --repo "<repo>" --body-file "$TMPDIR/audit-augment-<N>.md"` (write the **Augmentation comment shape** markdown to that file first — same `--body-file` pattern as `create-one.sh`; do not pass multi-line tables through an inline `--body` string).
    - **Discuss first**: wait for operator direction; file or augment per finding only as approved.
    - **Skip filing**: exit cleanly; the audit report already captures proposed findings for the historical record.
+
+4. **Post-report session summary (audit-report issue):** after the per-finding walkthrough completes (filed, augmented, skipped, or mixed), compose `$TMPDIR/session-summary.md` and post it as a single comment on the audit-report issue (supplementary history). **Skip** this entire step when no audit-report issue was filed (for example the zero-PR `since last audit` short-circuit — there is no audit-report issue number).
+
+   ```markdown
+   ## Post-report session summary
+
+   **3-way decision**: <file-all | discuss-first | skip-filing>
+
+   **Per-finding actions**:
+
+   | Finding | Decision | Filed as | URL |
+   |---|---|---|---|
+   | ... | filed-as-drafted \| modified \| skipped | #N or — | url or — |
+
+   **Augmentations**:
+
+   | Target issue | Action | Comment URL |
+   |---|---|---|
+   | #N | posted \| skipped | url or — |
+
+   ---
+   *Posted by /audit-runs post-report session-summary step.*
+   ```
+
+   ```bash
+   gh issue comment "$AUDIT_REPORT_NUMBER" --repo "<repo>" --body-file "$TMPDIR/session-summary.md"
+   ```
+
+   Run whenever an audit report exists: even **skip-filing** should populate the tables with **skipped** rows (useful operator history). Omit empty **Augmentations** table section when there were no augmentation rows. If `gh issue comment` fails, print stderr to chat but **do not** fail the overall audit run (this comment is supplementary).
 
 The audit report issue is **never** edited after creation (chain-of-history).
 
@@ -193,7 +241,15 @@ audited_pr_range:
 audited_prs: [N, ..., M]   # explicit list when range has gaps
 prior_report_issue: <N | null>
 proposed_new_issues: [...]        # always present; findings with no matching open issue
-proposed_augmentations: [...]     # always present; findings matched to an existing issue
+proposed_augmentations: [...]     # always present; findings matched to an existing open issue
+version_window_checks:           # always present; one row per closed-issue match evaluated (possibly empty [])
+  - finding: <slug>
+    matched_issue: <N>
+    matched_state: closed
+    fix_shipped_in: vX.Y.Z | unknown
+    audited_versions: [34.0.0, 34.0.1]
+    in_scope: false
+    decision: skip | propose
 cumulative_counters:
   exon_misclassifications: N
   oos_categories_mangled: N
@@ -208,7 +264,7 @@ cumulative_counters:
 - `## Summary` (when any audited run’s `cache-freshness` line shows `run_version` strictly less than `--current-version`, prepend a bold one-line banner immediately under the heading: **Self-deploying lens:** runs in this batch were on `<run_version(s)>`; current `main` is `<current-version>`. Use the scan NDJSON values; do not invent versions.)
 - `## Delta from prior audit` (omit when `prior_report_issue` is null)
 - `## Per-PR findings` (one `####` subsection per PR)
-- `## Open issues snapshot` (list every open audit-eligible issue: number, title, last-seen-symptom-count)
+- `## Open issues snapshot` (list every open audit-eligible issue: number, title, last-seen-symptom-count; when an issue title begins with `[IN PROGRESS]` and received an augmentation for this batch, annotate that it **recurred this batch (pre-fix)**)
 - `## Scan results` (table: scan-name → pass/fail/finding count, plus issue cross-references)
 
 ## Close Prior Reports
@@ -254,7 +310,7 @@ audit-map-runs.sh            → run-map.tsv
 for each PR:
   audit-scan-run.sh          → scan-results-NNNN.ndjson
 audit-compute-counters.sh    → COUNTERS_OUT (KV lines on stdout; treat as counters input)
-[LLM: classify proposed_new_issues / proposed_augmentations via gh search + reasoning]
+[LLM: classify proposed_new_issues / proposed_augmentations via gh issue search (open+closed), version-window reasoning, and version_window_checks]
 audit-pacific-timestamp.sh   → PACIFIC_TIMESTAMP (extract from stdout KV)
 audit-title.sh               → TITLE
 [LLM: write report prose — Summary, Delta, Per-PR findings, Open issues, Scan results table
@@ -262,6 +318,7 @@ audit-title.sh               → TITLE
 create-one.sh                → file audit report
 audit-close-priors.sh        → close prior audit-report issues
 [LLM: post-report 3-way question if proposed issues exist]
+[LLM: post session-summary comment on audit-report issue]
 ```
 
 ## Scripts

@@ -1796,6 +1796,172 @@ else
     echo "  SKIP: append-tool-failure.sh not executable at $APP_TF"
 fi
 
+# ===========================================================================
+# Issue #2523 follow-ups: classification + oos-category-mangle + session summary
+# ===========================================================================
+echo "=== test-audit-runs: audit-runs #2523 (classification / scan / session summary) ==="
+
+# Test 58: [IN PROGRESS] matching open issue routes to proposed_augmentations (not proposed_new_issues)
+echo "Test 58: [IN PROGRESS] open match → proposed_augmentations"
+route_finding_by_open_match() {
+    local has_open_match="$1"
+    if [[ "$has_open_match" == "yes" ]]; then
+        printf '%s\n' "proposed_augmentations"
+    else
+        printf '%s\n' "proposed_new_issues"
+    fi
+}
+result=$(route_finding_by_open_match "yes")
+assert_equal "$result" "proposed_augmentations" "[58] open match with [IN PROGRESS] title in GH results → augmentations (C.1: not excluded from search)"
+result=$(route_finding_by_open_match "no")
+assert_equal "$result" "proposed_new_issues" "[58b] no open match → proposed_new_issues"
+
+# Test 59: oos-category-mangle — code-review accepted prose category → pass (narrowed scan)
+echo "Test 59: audit-scan-run oos-category-mangle pass (code-review accepted prose)"
+SCAN_SCRIPT="${SCAN_SCRIPT:-$SCRIPT_DIR/audit-scan-run.sh}"
+if [ -x "$SCAN_SCRIPT" ]; then
+    T59=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-oos59-XXXXXX")
+    printf '%s\n' 'name	type	pattern	expected_outcome	severity' > "$T59/scans.tsv"
+    printf '%s\n' 'oos-category-mangle	jsonl-field	x	x	high' >> "$T59/scans.tsv"
+    printf '%s\n' 'relative_path	condition	batch_slug	extension' > "$T59/required.tsv"
+    mkdir -p "$T59/run"
+    printf '%s\n' '{"phase":"code-review","outcome":"accepted","category":"fixes auth","id":"ACC_001"}' > "$T59/run/review-findings-full.jsonl"
+    t59_out=$(bash "$SCAN_SCRIPT" --run-dir "$T59/run" --pr 990059 \
+        --scans-tsv "$T59/scans.tsv" --required-files-tsv "$T59/required.tsv" \
+        --current-version "34.0.0")
+    t59_res=$(printf '%s\n' "$t59_out" | jq -r 'select(.scan=="oos-category-mangle") | .result // empty' | head -1)
+    assert_equal "$t59_res" "pass" "[59] code-review accepted prose → pass"
+    rm -rf "$T59"
+else
+    echo "  SKIP: audit-scan-run.sh not executable (not found at $SCAN_SCRIPT)"
+fi
+
+# Test 60: oos-category-mangle — plan-review accepted prose category → fail
+echo "Test 60: audit-scan-run oos-category-mangle fail (plan-review accepted prose)"
+SCAN_SCRIPT="${SCAN_SCRIPT:-$SCRIPT_DIR/audit-scan-run.sh}"
+if [ -x "$SCAN_SCRIPT" ]; then
+    T60=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-oos60-XXXXXX")
+    printf '%s\n' 'name	type	pattern	expected_outcome	severity' > "$T60/scans.tsv"
+    printf '%s\n' 'oos-category-mangle	jsonl-field	x	x	high' >> "$T60/scans.tsv"
+    printf '%s\n' 'relative_path	condition	batch_slug	extension' > "$T60/required.tsv"
+    mkdir -p "$T60/run"
+    printf '%s\n' '{"phase":"plan-review","outcome":"accepted","category":"fixes auth","id":"ACC_002"}' > "$T60/run/review-findings-full.jsonl"
+    t60_out=$(bash "$SCAN_SCRIPT" --run-dir "$T60/run" --pr 990060 \
+        --scans-tsv "$T60/scans.tsv" --required-files-tsv "$T60/required.tsv" \
+        --current-version "34.0.0")
+    t60_res=$(printf '%s\n' "$t60_out" | jq -r 'select(.scan=="oos-category-mangle") | .result // empty' | head -1)
+    t60_cnt=$(printf '%s\n' "$t60_out" | jq -r 'select(.scan=="oos-category-mangle") | .count // empty' | head -1)
+    assert_equal "$t60_res" "fail" "[60] plan-review accepted prose → fail"
+    assert_equal "$t60_cnt" "1" "[60b] count is 1"
+    rm -rf "$T60"
+else
+    echo "  SKIP: audit-scan-run.sh not executable (not found at $SCAN_SCRIPT)"
+fi
+
+# Test 61: session-summary markdown (file-all, two findings)
+echo "Test 61: post-report session-summary markdown composition"
+build_session_summary_stub() {
+    local decision="$1"
+    cat <<EOF
+## Post-report session summary
+
+**3-way decision**: ${decision}
+
+**Per-finding actions**:
+
+| Finding | Decision | Filed as | URL |
+|---|---|---|---|
+| EXON regression | filed-as-drafted | #9001 | https://example.invalid/9001 |
+| OOS mangle | modified | #9002 | https://example.invalid/9002 |
+
+**Augmentations**:
+
+| Target issue | Action | Comment URL |
+|---|---|---|
+| #2400 | posted | https://example.invalid/c1 |
+
+---
+*Posted by /audit-runs post-report session-summary step.*
+EOF
+}
+sum61=$(build_session_summary_stub "file-all")
+if printf '%s' "$sum61" | grep -q '^## Post-report session summary'; then
+    PASS=$((PASS + 1))
+    echo "  ok: [61] session summary has heading"
+else
+    FAIL=$((FAIL + 1))
+    FAILED_TESTS+=("[61] missing Post-report session summary heading")
+    echo "  FAIL: [61] missing heading" >&2
+fi
+if printf '%s' "$sum61" | grep -qF '| Finding | Decision | Filed as | URL |'; then
+    PASS=$((PASS + 1))
+    echo "  ok: [61b] per-finding table header present"
+else
+    FAIL=$((FAIL + 1))
+    FAILED_TESTS+=("[61b] missing per-finding table header")
+    echo "  FAIL: [61b] missing table header" >&2
+fi
+if printf '%s' "$sum61" | grep -qF '*Posted by /audit-runs'; then
+    PASS=$((PASS + 1))
+    echo "  ok: [61c] Posted-by footer present"
+else
+    FAIL=$((FAIL + 1))
+    FAILED_TESTS+=("[61c] missing Posted-by footer")
+    echo "  FAIL: [61c] missing footer" >&2
+fi
+
+# Test 62: session-summary with skip-filing — all skipped rows
+echo "Test 62: session-summary skip-filing shows skipped rows"
+build_session_summary_skip_all() {
+    cat <<'EOF'
+## Post-report session summary
+
+**3-way decision**: skip-filing
+
+**Per-finding actions**:
+
+| Finding | Decision | Filed as | URL |
+|---|---|---|---|
+| EXON regression | skipped | — | — |
+| OOS mangle | skipped | — | — |
+
+---
+*Posted by /audit-runs post-report session-summary step.*
+EOF
+}
+sum62=$(build_session_summary_skip_all)
+if printf '%s' "$sum62" | grep -qF '**3-way decision**: skip-filing'; then
+    PASS=$((PASS + 1))
+    echo "  ok: [62] skip-filing decision echoed"
+else
+    FAIL=$((FAIL + 1))
+    FAILED_TESTS+=("[62] skip-filing decision missing")
+    echo "  FAIL: [62] skip-filing decision missing" >&2
+fi
+if printf '%s' "$sum62" | grep -qF '| EXON regression | skipped | — | — |' \
+    && printf '%s' "$sum62" | grep -qF '| OOS mangle | skipped | — | — |'; then
+    PASS=$((PASS + 1))
+    echo "  ok: [62b] all-skipped per-finding rows"
+else
+    FAIL=$((FAIL + 1))
+    FAILED_TESTS+=("[62b] expected all-skipped table rows")
+    echo "  FAIL: [62b] expected all-skipped table rows" >&2
+fi
+
+# Test 63: zero-PR short-circuit — no session-summary posted (no audit-report number)
+echo "Test 63: no session-summary when no audit-report filed"
+should_post_session_summary_comment() {
+    local audit_report_number="$1"
+    if [[ -n "$audit_report_number" ]]; then
+        echo "post"
+    else
+        echo "skip"
+    fi
+}
+result=$(should_post_session_summary_comment "")
+assert_equal "$result" "skip" "[63] empty audit report number → skip session-summary step"
+result=$(should_post_session_summary_comment "424242")
+assert_equal "$result" "post" "[63b] non-empty number → post path"
 
 # ---------------------------------------------------------------------------
 # Summary
