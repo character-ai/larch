@@ -1,0 +1,22 @@
+FINDING_1: YES
+FINDING_2: EXONERATE -- legitimate process note but splitting the branch now adds more churn than it saves versus documenting the batch in changelog/PR.
+FINDING_3: EXONERATE -- real drift risk, yet extracting a shared Bash redactor across many scripts is disproportionate surface for this release.
+FINDING_4: NO -- pre-existing stderr discard nit; not worth a standalone tracking issue.
+FINDING_5: NO -- cosmetic ERROR= wording mismatch; filing an issue would be noise.
+FINDING_6: EXONERATE -- same 34.0.6 changelog gap as FINDING_1; one bullet fixes all duplicate findings.
+FINDING_7: EXONERATE -- same stacked-branch concern as FINDING_2; no extra action beyond clearer release notes or future hygiene.
+FINDING_8: YES
+FINDING_9: EXONERATE -- absence of pasted make output in the bundle is normal; mandatory CI covers the verification gap in practice.
+FINDING_10: EXONERATE -- weaker required-file-presence signal is the intended #2522 tradeoff; a new scan is more machinery than the residual risk here.
+FINDING_11: EXONERATE -- fail-closed path is tied to the documented truncation marker contract; rewording without updating the guard would be caught by review/tests, not worth extra coupling work now.
+FINDING_12: EXONERATE -- operator grep ergonomics nit; normalizing strings across helpers is low ROI churn.
+FINDING_13: EXONERATE -- duplicate of FINDING_1’s changelog omission; no separate fix beyond that entry.
+FINDING_14: EXONERATE -- pre-existing redaction pipeline asymmetry; not issue-worthy as scoped.
+FINDING_15: NO -- duplicate of the read-path stderr visibility nit; no issue.
+FINDING_16: EXONERATE -- duplicate of FINDING_1; same changelog bullet suffices.
+FINDING_17: EXONERATE -- duplicate of FINDING_3; centralization cost still outweighs benefit for this pass.
+FINDING_18: EXONERATE -- duplicate of FINDING_12; same low-value normalization concern.
+FINDING_19: NO -- stacking/bisect noise alone does not merit a GitHub issue.
+FINDING_20: NO -- same read-path stderr concern as FINDING_4/15; no issue.
+FINDING_21: YES
+FINDING_22: EXONERATE -- plan already lists verification commands and CI is the practical proof channel; the long ballot text largely restates FINDING_9.

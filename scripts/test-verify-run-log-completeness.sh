@@ -185,7 +185,6 @@ assert_contains "pr-number-only requires version bump reasoning" "$out" "version
 assert_contains "pr-number-only requires final summary" "$out" "final-summary.md"
 assert_contains "pr-number-only requires run statistics" "$out" "run-statistics.md"
 assert_contains "pr-number-only requires session transcript" "$out" "session-transcript.jsonl"
-assert_contains "pr-number-only requires oos issues" "$out" "oos-issues.ndjson"
 
 # Test 10: pretty-printed status=done should trigger Step-9a.1 requirements
 run_done_status="$TMP/run-done-status"
@@ -204,7 +203,6 @@ done
 out="$("$VERIFY" "$run_done_status" 2>&1 || true)"
 assert_contains "done-status emits MISSING" "$out" "MISSING="
 assert_contains "done-status requires run statistics" "$out" "run-statistics.md"
-assert_contains "done-status requires oos issues" "$out" "oos-issues.ndjson"
 
 # Test 11: exn-agg-validate-fail + glob — signal present but no matching stderr file → MISSING glob token
 run_exn_val="$TMP/run-exn-validate-missing"
@@ -253,7 +251,21 @@ else
     assert_contains "invalid chars in manifest relative_path" "$out" "invalid characters"
 fi
 
-# Test 17: v2-style tree — final-summary without pr_number/status still requires Step-9a.1 batches
+# Test 15: oos-issues.ndjson alone satisfies step9a1 while run-statistics.md is missing → still MISSING run-statistics
+run_oos_step9a1="$TMP/run-oos-step9a1-missing-run-stats"
+mkdir -p "$run_oos_step9a1"
+cat > "$run_oos_step9a1/manifest.json" <<'EOF'
+{}
+EOF
+for f in plan-goals-test.md plan-review-tally.json code-review-tally.json review-findings-full.jsonl token-report.json timing-report.json execution-issues.ndjson session-transcript.jsonl version-bump-reasoning.md final-summary.md; do
+    printf 'placeholder\n' > "$run_oos_step9a1/$f"
+done
+printf 'placeholder\n' > "$run_oos_step9a1/oos-issues.ndjson"
+out="$("$VERIFY" "$run_oos_step9a1" 2>&1 || true)"
+assert_contains "oos-only step9a1 emits MISSING" "$out" "MISSING="
+assert_contains "oos-only step9a1 requires run statistics" "$out" "run-statistics.md"
+
+# Test 16: v2-style tree — final-summary without pr_number/status still requires Step-9a.1 batches
 run_v2_final="$TMP/run-v2-final"
 mkdir -p "$run_v2_final"
 cat > "$run_v2_final/manifest.json" <<'EOF'
@@ -263,8 +275,7 @@ for f in plan-goals-test.md plan-review-tally.json code-review-tally.json review
     printf 'placeholder\n' > "$run_v2_final/$f"
 done
 out="$("$VERIFY" "$run_v2_final" 2>&1 || true)"
-assert_contains "v2 final-summary requires oos" "$out" "MISSING="
-assert_contains "v2 final-summary requires oos file" "$out" "oos-issues.ndjson"
+assert_contains "v2 final-summary requires step9a1" "$out" "MISSING="
 assert_contains "v2 final-summary requires run-statistics" "$out" "run-statistics.md"
 
 echo

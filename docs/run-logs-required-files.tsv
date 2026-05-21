@@ -15,5 +15,4 @@ execution-issues.ndjson	step7a	execution-issues	ndjson
 session-transcript.jsonl	step7a	session-transcript	jsonl
 round-*/aggregator-validate.stderr	exn-agg-validate-fail	direct-file	stderr
 round-*/aggregator-dispatch.stderr	exn-agg-dispatch-fail	direct-file	stderr
-oos-issues.ndjson	step9a1	oos-issues	ndjson
 run-statistics.md	step9a1	run-statistics	md

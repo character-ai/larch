@@ -40,6 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Closed: #2511
 - Record `NS_RETRY_REASON=` tokens in `*-ns-retry*.txt.meta` sidecars and emit a sorted `reasons` histogram on `ns-retry-sidecars` audit NDJSON lines for operators and tooling (#2521).
+- Run-log completeness manifest and verification no longer treat `oos-issues.ndjson` as a required-file-presence row; Step 9a.1 coverage still gates `run-statistics.md` and related checks (#2522).
 
 ## [34.0.5] - 2026-05-21
 
