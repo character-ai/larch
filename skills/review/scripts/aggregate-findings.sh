@@ -87,6 +87,38 @@ append_warning() {
         --entry "$entry" 2>/dev/null || true
 }
 
+# When SESSION_ENV_PATH is set, map tmpdir-sidecar paths to stable round-relative
+# names for execution-issue text (write-round commits these under round-N/).
+committed_ref() {
+    local failure_log="$1"
+    if [[ -n "${SESSION_ENV_PATH:-}" ]]; then
+        local round_name flbase
+        round_name="$(basename "$REVIEW_TMPDIR_CANON")"
+        flbase="$(basename "$failure_log")"
+        case "$round_name" in
+            round-*)
+                case "$flbase" in
+                    aggregator-dispatch.stderr | aggregator-validate.stderr)
+                        printf '%s/%s' "$round_name" "$flbase"
+                        return
+                        ;;
+                esac
+                ;;
+        esac
+    fi
+    printf '%s' "$failure_log"
+}
+
+failure_see_phrase() {
+    local failure_log="$1" cref
+    cref="$(committed_ref "$failure_log")"
+    if [[ "$cref" == "$failure_log" ]]; then
+        printf 'See %s.' "$cref"
+    else
+        printf 'See %s in the committed run log.' "$cref"
+    fi
+}
+
 count_finding_blocks() {
     local f="$1"
     [[ -f "$f" ]] || { printf '0'; return 0; }
@@ -180,7 +212,7 @@ set -e
 if [[ "$dispatch_rc" -ne 0 ]]; then
     REASON="dispatch-failed"
     FAILURE_LOG="$REVIEW_TMPDIR/aggregator-dispatch.stderr"
-    append_warning "- **findings aggregator**: dispatch-with-waterfall exited non-zero (rc=$dispatch_rc); leaving findings.md unchanged. See $FAILURE_LOG."
+    append_warning "- **findings aggregator**: dispatch-with-waterfall exited non-zero (rc=$dispatch_rc); leaving findings.md unchanged. $(failure_see_phrase "$FAILURE_LOG")"
     emit_result
     exit 0
 fi
@@ -348,7 +380,7 @@ PY
 if ! python3 "$validate_py" "$FINDINGS_FILE" "$cand" 2>"$REVIEW_TMPDIR/aggregator-validate.stderr"; then
     REASON="validation-failed"
     FAILURE_LOG="$REVIEW_TMPDIR/aggregator-validate.stderr"
-    append_warning "- **findings aggregator**: merged output failed validation; leaving findings.md unchanged. See $FAILURE_LOG."
+    append_warning "- **findings aggregator**: merged output failed validation; leaving findings.md unchanged. $(failure_see_phrase "$FAILURE_LOG")"
     emit_result
     exit 0
 fi

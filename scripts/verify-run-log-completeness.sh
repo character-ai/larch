@@ -74,6 +74,16 @@ condition_reached() {
                 [ -n "$MANIFEST_PR_NUMBER" ] ||
                 [ "$MANIFEST_STATUS" = "done" ]
             ;;
+        exn-agg-validate-fail)
+            [ -f "$RUN_DIR/execution-issues.ndjson" ] &&
+                grep -Fq 'merged output failed validation' "$RUN_DIR/execution-issues.ndjson" 2>/dev/null
+            ;;
+        exn-agg-dispatch-fail)
+            [ -f "$RUN_DIR/execution-issues.ndjson" ] && {
+                grep -Fq 'dispatch-with-waterfall exited non-zero' "$RUN_DIR/execution-issues.ndjson" 2>/dev/null ||
+                    grep -Fq 'DISPATCH_OK=false' "$RUN_DIR/execution-issues.ndjson" 2>/dev/null
+            }
+            ;;
         *)
             printf 'verify-run-log-completeness.sh: unsupported manifest condition: %s\n' "$condition" >&2
             exit 1
@@ -101,7 +111,31 @@ while IFS='	' read -r relative_path condition _rest; do
 
     condition_reached "$condition" || continue
 
-    if [ ! -f "$RUN_DIR/$relative_path" ]; then
+    case "$relative_path" in
+        *..*)
+            printf 'verify-run-log-completeness.sh: invalid relative_path (..): %s\n' "$relative_path" >&2
+            exit 1
+            ;;
+    esac
+
+    if printf '%s' "$relative_path" | grep -q '\*'; then
+        found_glob=0
+        shopt -s nullglob
+        for _gf in "$RUN_DIR"/$relative_path; do
+            if [ -f "$_gf" ]; then
+                found_glob=1
+                break
+            fi
+        done
+        shopt -u nullglob
+        if [ "$found_glob" -eq 0 ]; then
+            if [ -n "$missing" ]; then
+                missing="$missing,$relative_path"
+            else
+                missing="$relative_path"
+            fi
+        fi
+    elif [ ! -f "$RUN_DIR/$relative_path" ]; then
         if [ -n "$missing" ]; then
             missing="$missing,$relative_path"
         else

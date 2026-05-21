@@ -10,7 +10,7 @@ One NDJSON line per scan, plus summary objects:
 {"scan":"exon-misclassification","pr":2476,"result":"pass","count":0}
 {"scan":"oos-category-mangle","pr":2476,"result":"fail","count":12,"detail":"12 plan-review-phase rows with prose category"}
 {"scan":"required-file-presence","pr":2476,"result":"fail","missing":["oos-issues.ndjson"]}
-{"scan":"cache-freshness","pr":2476,"result":"fail","run_version":"29.8.54","current_version":"29.8.61","detail":"run plugin version behind current"}
+{"scan":"cache-freshness","pr":2476,"result":"informational","run_version":"29.8.54","current_version":"29.8.61","detail":"run plugin version behind current"}
 {"scan":"changelog-rebase-conflicts","pr":2476,"result":"fail","count":2}
 {"scan":"category-stats","pr":2476,"partial_data":false,"canonical":38,"blank":1,"mangled":12,"oos_blank":0,"rej_blank":1}
 {"scan":"cross-cutting","pr":2476,"ended_at_null":true,"pr_number_null":true,"manifest_pr_number_mismatch_with_audited_pr":false,"self_deploying_gap":false}

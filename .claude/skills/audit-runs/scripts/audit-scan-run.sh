@@ -71,9 +71,51 @@ scan_required_file_presence() {
         emit "{\"scan\":\"required-file-presence\",\"pr\":$PR_NUM,\"result\":\"skip\",\"detail\":\"required-files-tsv not provided\"}"
         return
     fi
-    local missing=""
+    local missing="" mf="$RUN_DIR/manifest.json"
+    local _rf_mstat="" _rf_mpr=""
+    if [ -f "$mf" ]; then
+        _rf_mstat=$(jq -r '.status // empty' "$mf" 2>/dev/null || true)
+        _rf_mpr=$(jq -r 'if (.pr_number|type)=="number" then (.pr_number|tostring) elif (.pr_number|type)=="string" and (.pr_number|test("^\\s*$")|not) then .pr_number else empty end' "$mf" 2>/dev/null || true)
+    fi
+
+    _rf_has_file() { [ -f "$RUN_DIR/$1" ]; }
+
+    _rf_condition_met() {
+        local c="$1"
+        case "$c" in
+            always)
+                return 0
+                ;;
+            step5)
+                _rf_has_file code-review-tally.json || _rf_has_file review-findings-full.jsonl || _rf_condition_met step7a
+                ;;
+            step7a)
+                _rf_has_file token-report.json || _rf_has_file timing-report.json || _rf_has_file execution-issues.ndjson || _rf_has_file session-transcript.jsonl || _rf_condition_met step8
+                ;;
+            step8)
+                _rf_has_file version-bump-reasoning.md || _rf_has_file final-summary.md || [ -n "$_rf_mpr" ] || _rf_condition_met step9a1
+                ;;
+            step9a1)
+                _rf_has_file run-statistics.md || _rf_has_file oos-issues.ndjson || [ -n "$_rf_mpr" ] || [ "$_rf_mstat" = "done" ]
+                ;;
+            exn-agg-validate-fail)
+                [ -f "$RUN_DIR/execution-issues.ndjson" ] && grep -Fq 'merged output failed validation' "$RUN_DIR/execution-issues.ndjson" 2>/dev/null
+                ;;
+            exn-agg-dispatch-fail)
+                [ -f "$RUN_DIR/execution-issues.ndjson" ] && {
+                    grep -Fq 'dispatch-with-waterfall exited non-zero' "$RUN_DIR/execution-issues.ndjson" 2>/dev/null ||
+                        grep -Fq 'DISPATCH_OK=false' "$RUN_DIR/execution-issues.ndjson" 2>/dev/null
+                }
+                ;;
+            *)
+                return 1
+                ;;
+        esac
+    }
+
+    local missing_piece found_glob
     # Read TSV (skip comment lines and header)
-    while IFS=$'\t' read -r rel_path _condition _rest; do
+    while IFS=$'\t' read -r rel_path req_condition _rest; do
         [ -z "$rel_path" ] && continue
         printf '%s' "$rel_path" | grep -q '^#' && continue
         [ "$rel_path" = "relative_path" ] && continue
@@ -88,7 +130,23 @@ scan_required_file_presence() {
             fi
             continue
         fi
-        if [ ! -f "$RUN_DIR/$rel_path" ]; then
+        _rf_condition_met "$req_condition" || continue
+        missing_piece=1
+        if printf '%s' "$rel_path" | grep -q '\*'; then
+            found_glob=0
+            shopt -s nullglob
+            for _gf in "$RUN_DIR"/$rel_path; do
+                if [ -f "$_gf" ]; then
+                    found_glob=1
+                    break
+                fi
+            done
+            shopt -u nullglob
+            [ "$found_glob" -eq 1 ] && missing_piece=0
+        elif [ -f "$RUN_DIR/$rel_path" ]; then
+            missing_piece=0
+        fi
+        if [ "$missing_piece" -eq 1 ]; then
             if [ -z "$missing" ]; then
                 missing="\"$(jstr "$rel_path")\""
             else
@@ -255,7 +313,7 @@ scan_cache_freshness() {
     local older
     older=$(printf '%s\n' "$run_version" "$CURRENT_VERSION" | sort -V | head -1)
     if [ "$older" = "$run_version" ] && [ "$run_version" != "$CURRENT_VERSION" ]; then
-        emit "{\"scan\":\"cache-freshness\",\"pr\":$PR_NUM,\"result\":\"fail\",\"run_version\":\"$(jstr "$run_version")\",\"current_version\":\"$(jstr "$CURRENT_VERSION")\",\"detail\":\"run plugin version behind current\"}"
+        emit "{\"scan\":\"cache-freshness\",\"pr\":$PR_NUM,\"result\":\"informational\",\"run_version\":\"$(jstr "$run_version")\",\"current_version\":\"$(jstr "$CURRENT_VERSION")\",\"detail\":\"run plugin version behind current\"}"
     else
         emit "{\"scan\":\"cache-freshness\",\"pr\":$PR_NUM,\"result\":\"pass\",\"run_version\":\"$(jstr "$run_version")\",\"current_version\":\"$(jstr "$CURRENT_VERSION")\"}"
     fi
