@@ -213,6 +213,7 @@ EOF
 chmod +x "$STUB_CURSOR_3E"
 STDOUT_3E="$TMP3E/stdout.txt"
 STDERR_3E="$TMP3E/stderr.txt"
+set +e
 (
     cd "$REPO_ROOT" && \
     PATH="$STUB_BIN_3E:$PATH" \
@@ -227,8 +228,13 @@ STDERR_3E="$TMP3E/stderr.txt"
     "$DISPATCHER" --tmpdir "$TMP3E" --plan-file "$PLAN" --feature-file "$FEATURE" \
         --auto-mode false --coder cursor --cursor-present true >"$STDOUT_3E" 2>"$STDERR_3E"
 )
+_3e_rc=$?
+set -e
 OUT=$(cat "$STDOUT_3E")
 ERR=$(cat "$STDERR_3E")
+if [[ "$_3e_rc" -ne 0 ]]; then
+    fail 3e "explicit healthy cursor dispatcher exited non-zero (rc=$_3e_rc) out=$(cat "$STDOUT_3E" 2>/dev/null || true) err=$(cat "$STDERR_3E" 2>/dev/null || true)"
+fi
 if [[ "$OUT" == *"STATUS=bailed"* ]] \
    && [[ "$OUT" == *"REASON=stub-bailed"* ]] \
    && [[ "$OUT" == *"TOOL=cursor"* ]] \

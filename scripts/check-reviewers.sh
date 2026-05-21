@@ -118,7 +118,7 @@ larch_try_read_fresh_stamp() {
 larch_write_bool_stamp() {
     local stamp_path="$1" val="$2"
     local stamp_tmp
-    stamp_tmp=$(mktemp -p "${TMPDIR:-/tmp}" "larch-probe-stamp.XXXXXX") || return 1
+    stamp_tmp=$(mktemp "${TMPDIR:-/tmp}/larch-probe-stamp.XXXXXX") || return 1
     printf '%s\n' "$val" >"$stamp_tmp"
     mv -f "$stamp_tmp" "$stamp_path"
 }
@@ -151,7 +151,7 @@ larch_run_one_cursor_probe() {
 
     _SERIAL_LOCK=""
     external_serial_lock_acquire _SERIAL_LOCK "cursor" || { rm -f "$probe_out"; return 1; }
-    # shellcheck disable=SC2086
+    # shellcheck disable=SC2068
     cursor agent -p "Respond with OK" --trust --workspace "$PWD" \
         ${CURSOR_AUTH_ARGS[@]+"${CURSOR_AUTH_ARGS[@]}"} >"$probe_out" 2>&1 &
     probe_pid=$!
@@ -177,9 +177,9 @@ larch_run_one_cursor_probe() {
 larch_run_one_codex_probe() {
     local probe_out probe_side probe_pid probe_rc _SERIAL_LOCK
     probe_out=$(mktemp "${TMPDIR:-/tmp}/larch-codex-probe.XXXXXX") || return 1
+    PROBE_TMPFILES[${#PROBE_TMPFILES[@]}]="$probe_out"
     probe_side="${probe_out}.sidecar"
     : >"$probe_side"
-    PROBE_TMPFILES[${#PROBE_TMPFILES[@]}]="$probe_out"
     PROBE_TMPFILES[${#PROBE_TMPFILES[@]}]="$probe_side"
 
     _SERIAL_LOCK=""

@@ -32,7 +32,10 @@ assert_contains "$IMPLEMENT_SKILL" '### Implementer waterfall' "implementer wate
 assert_contains "$IMPLEMENT_SKILL" 'Cursor → Codex → Claude' "implement waterfall"
 # shellcheck disable=SC2016 # literal markdown/code-span text, not shell.
 assert_contains "$IMPLEMENT_SKILL" '--coder=cursor requested but Cursor runtime probe failed' "explicit cursor unavailable bail"
+assert_contains "$IMPLEMENT_SKILL" '--coder=cursor requested but Cursor binary not found' "explicit cursor binary not found bail"
+assert_contains "$IMPLEMENT_SKILL" '--coder=codex requested but Codex binary not found' "explicit codex binary not found bail"
 assert_contains "$IMPLEMENT_SKILL" '--coder=codex requested but Codex runtime probe failed' "explicit codex unavailable bail"
+assert_contains "$IMPLEMENT_SKILL" '--design-only requires external-backed plan-review but no external reviewer is available' "design-only externals-down bail"
 assert_not_contains "$IMPLEMENT_SKILL" "When \`coder_explicit=true\`, the explicit value wins. Do not apply the Cursor → Codex → Claude waterfall" "removed blanket explicit-coder bypass sentence"
 assert_contains "$IMPLEMENT_SKILL" 'coder_fallback=true' "coder fallback manifest flag"
 assert_contains "$IMPLEMENT_SKILL" 'Cursor and Codex both unavailable' "both-down warning"

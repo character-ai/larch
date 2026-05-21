@@ -421,11 +421,29 @@ else
         emit_kv CURSOR_PRESENT "$CALLER_CURSOR_PRESENT"
         emit_kv CURSOR_AVAILABLE "$CALLER_CURSOR_PRESENT"
     fi
-    if [[ -n "$CALLER_CODEX_BINARY_FOUND" ]]; then
-        emit_kv CODEX_BINARY_FOUND "$CALLER_CODEX_BINARY_FOUND"
+    _passthrough_codex_bin="${CALLER_CODEX_BINARY_FOUND}"
+    if [[ -n "$_passthrough_codex_bin" && "$_passthrough_codex_bin" != "true" && "$_passthrough_codex_bin" != "false" ]]; then
+        _passthrough_codex_bin=""
     fi
-    if [[ -n "$CALLER_CURSOR_BINARY_FOUND" ]]; then
-        emit_kv CURSOR_BINARY_FOUND "$CALLER_CURSOR_BINARY_FOUND"
+    if [[ -z "$_passthrough_codex_bin" ]]; then
+        if [[ "$CALLER_CODEX_PRESENT" == "true" || "$CALLER_CODEX_PRESENT" == "false" ]]; then
+            _passthrough_codex_bin="$CALLER_CODEX_PRESENT"
+        fi
+    fi
+    if [[ "$_passthrough_codex_bin" == "true" || "$_passthrough_codex_bin" == "false" ]]; then
+        emit_kv CODEX_BINARY_FOUND "$_passthrough_codex_bin"
+    fi
+    _passthrough_cursor_bin="${CALLER_CURSOR_BINARY_FOUND}"
+    if [[ -n "$_passthrough_cursor_bin" && "$_passthrough_cursor_bin" != "true" && "$_passthrough_cursor_bin" != "false" ]]; then
+        _passthrough_cursor_bin=""
+    fi
+    if [[ -z "$_passthrough_cursor_bin" ]]; then
+        if [[ "$CALLER_CURSOR_PRESENT" == "true" || "$CALLER_CURSOR_PRESENT" == "false" ]]; then
+            _passthrough_cursor_bin="$CALLER_CURSOR_PRESENT"
+        fi
+    fi
+    if [[ "$_passthrough_cursor_bin" == "true" || "$_passthrough_cursor_bin" == "false" ]]; then
+        emit_kv CURSOR_BINARY_FOUND "$_passthrough_cursor_bin"
     fi
     if [[ -n "$CALLER_TOKEN_SESSION_ID" ]]; then
         emit_kv LARCH_TOKEN_SESSION_ID "$CALLER_TOKEN_SESSION_ID"
@@ -435,8 +453,8 @@ else
     fi
     FINAL_CODEX_PRESENT="${CALLER_CODEX_PRESENT:-}"
     FINAL_CURSOR_PRESENT="${CALLER_CURSOR_PRESENT:-}"
-    FINAL_CODEX_BINARY_FOUND="${CALLER_CODEX_BINARY_FOUND:-}"
-    FINAL_CURSOR_BINARY_FOUND="${CALLER_CURSOR_BINARY_FOUND:-}"
+    FINAL_CODEX_BINARY_FOUND="$_passthrough_codex_bin"
+    FINAL_CURSOR_BINARY_FOUND="$_passthrough_cursor_bin"
 fi
 
 if [[ "$CHECK_REVIEWERS" == "true" ]]; then
