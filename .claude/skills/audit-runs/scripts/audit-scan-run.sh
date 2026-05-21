@@ -10,6 +10,10 @@
 
 set -euo pipefail
 
+_audit_scan_run_self_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=audit-scan-run-jstr.inc.bash
+. "$_audit_scan_run_self_dir/audit-scan-run-jstr.inc.bash"
+
 RUN_DIR=""
 PR_NUM=""
 SCANS_TSV=""
@@ -60,17 +64,6 @@ fi
 
 # ---- Helpers ----
 emit() { printf '%s\n' "$1"; }
-
-jstr() {
-    # JSON-escape for embedding in double-quoted JSON string segments (jq handles controls/unicode).
-    local _j
-    _j=$(jq -nj --arg s "$1" '$s | @json' 2>/dev/null) || _j=""
-    if [ -z "$_j" ] || [ "${#_j}" -lt 2 ]; then
-        printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\r/\\r/g; s/\n/\\n/g; s/\t/\\t/g' | LC_ALL=C tr -d '\000-\010\013\014\016-\037\177'
-        return
-    fi
-    printf '%s' "${_j:1:${#_j}-2}"
-}
 
 # ---- Scan: required-file-presence ----
 scan_required_file_presence() {
