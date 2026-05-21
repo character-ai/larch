@@ -219,7 +219,7 @@ trap 'rm -rf "$TMPDIR_TEST"' EXIT
 
 REPORT_BODY="---
 audit_schema_version: 1
-audit_timestamp: 2026-05-20T19:30Z
+audit_timestamp: 2026-05-20T12:30-07:00
 audited_repo: character-ai/larch
 audited_pr_range:
   first: 2440
@@ -247,7 +247,7 @@ assert_equal "$schema_version" "1" "[10] schema_version round-trips"
 
 # Extract audit_timestamp
 ts=$(awk '/^---$/{f=!f;next} f && /audit_timestamp:/{gsub(/.*audit_timestamp:[[:space:]]*/,""); print; exit}' "$TMPDIR_TEST/report.md")
-assert_equal "$ts" "2026-05-20T19:30Z" "[10b] audit_timestamp round-trips"
+assert_equal "$ts" "2026-05-20T12:30-07:00" "[10b] audit_timestamp round-trips"
 
 # Extract prior_report_issue
 prior=$(awk '/^---$/{f=!f;next} f && /prior_report_issue:/{gsub(/.*prior_report_issue:[[:space:]]*/,""); print; exit}' "$TMPDIR_TEST/report.md")
@@ -351,9 +351,9 @@ title_matches_audit_report_exclusion() {
     local title="$1"
     printf '%s' "$title" | grep -qE '^\[Run Logs Audit Report' && echo "excluded" || echo "pickable"
 }
-result=$(title_matches_audit_report_exclusion "[Run Logs Audit Report 2026-05-20T19:30Z] PRs #2440-#2450")
+result=$(title_matches_audit_report_exclusion "[Run Logs Audit Report 2026-05-20T12:30-07:00] PRs #2440-#2450")
 assert_equal "$result" "excluded" "[14] audit report title matches self-exclusion prefix"
-result=$(title_matches_audit_report_exclusion "[Run Logs Audit Report 2026-05-20T19:30Z] PRs #2440, #2445")
+result=$(title_matches_audit_report_exclusion "[Run Logs Audit Report 2026-05-20T12:30-07:00] PRs #2440, #2445")
 assert_equal "$result" "excluded" "[14b] non-contiguous audit report title also excluded"
 result=$(title_matches_audit_report_exclusion "Fix EXON regression in voting tally")
 assert_equal "$result" "pickable" "[14c] normal bug issue title is NOT excluded"
@@ -366,7 +366,7 @@ title_matches_has_report_prefix() {
     local title="$1"
     printf '%s' "$title" | grep -qiE '^\[[^]]*[[:space:]]+report\]' && echo "matched" || echo "no_match"
 }
-result=$(title_matches_has_report_prefix "[Run Logs Audit Report 2026-05-20T19:30Z] PRs #2440-#2450")
+result=$(title_matches_has_report_prefix "[Run Logs Audit Report 2026-05-20T12:30-07:00] PRs #2440-#2450")
 assert_equal "$result" "no_match" "[14e] audit report title does NOT match has_report_prefix (label filter is primary guard)"
 result=$(title_matches_has_report_prefix "[AUDIT REPORT] Q3 analysis")
 assert_equal "$result" "matched" "[14f] generic [... Report] title still matches has_report_prefix"
@@ -394,7 +394,7 @@ has_empty_proposals() {
 }
 ZERO_FM_BODY='---
 audit_schema_version: 1
-audit_timestamp: 2026-05-20T19:30Z
+audit_timestamp: 2026-05-20T12:30-07:00
 audited_repo: character-ai/larch
 audited_pr_range:
   first: 2440
@@ -435,7 +435,7 @@ SHORT_CIRCUIT='No findings — no bug issues to file.'
 echo "Test 16: proposed_new_issues non-empty, proposed_augmentations empty"
 ASYM_NEW_ONLY_BODY='---
 audit_schema_version: 1
-audit_timestamp: 2026-05-20T19:30Z
+audit_timestamp: 2026-05-20T12:30-07:00
 audited_repo: character-ai/larch
 audited_pr_range:
   first: 2440
@@ -468,7 +468,7 @@ fi
 echo "Test 16b: proposed_new_issues empty, proposed_augmentations non-empty"
 ASYM_AUG_ONLY_BODY='---
 audit_schema_version: 1
-audit_timestamp: 2026-05-20T19:30Z
+audit_timestamp: 2026-05-20T12:30-07:00
 audited_repo: character-ai/larch
 audited_pr_range:
   first: 2440

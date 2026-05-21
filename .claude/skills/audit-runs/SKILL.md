@@ -56,8 +56,8 @@ Run these checks before doing any work:
 1. **Normalize empty or omitted positional**: If `<verbal-description>` is absent or whitespace-only after trimming, set **effective description** to the canonical phrase `since last audit` and set **implicit since-last-audit** to true. Otherwise set **effective description** to the trimmed operator text and **implicit since-last-audit** to false. Do **not** run generic pattern matching on an empty string.
 2. **`since last audit` scope (explicit phrase or effective description from step 1)**: When **effective description** matches the `since last audit` form (including after empty/omitted normalization):
    - Read the most-recent issue matching label `audit-report` (sorted `createdAt DESC`, both states): `gh issue list --state all --label audit-report --json number,title,body,createdAt --jq 'sort_by(.createdAt) | reverse | .[0]'`
-   - Parse its YAML frontmatter for `audited_pr_range.last`
-   - Query for PRs merged after that PR's `mergedAt` timestamp
+   - Parse its YAML frontmatter for `audited_pr_range.last` (an integer PR number — NOT `audit_timestamp`)
+   - Query for PRs merged after that PR's `mergedAt` timestamp (UTC from the GitHub API — no timezone conversion needed; `audit_timestamp` is not used in this comparison)
    - Error if no prior report exists OR its frontmatter is malformed/unparseable
    - Error if the query yields zero new PRs (do NOT file an empty report; exit cleanly with a message)
 3. **Other supported forms**: When **effective description** is not `since last audit`, parse it and resolve to a concrete PR list using `gh pr list --repo <repo> --state merged --base main` with appropriate filters (`last N PRs`, `since <ISO-timestamp>`, `#N` / `PR #N`, etc.).
@@ -144,7 +144,7 @@ Always file an audit report after the scan, EXCEPT when the scope is `since last
 
 - Contiguous range: `[Run Logs Audit Report <ISO-timestamp>] PRs #X-#Y`
 - Non-contiguous (≤4 PRs): `[Run Logs Audit Report <ISO-timestamp>] PRs #X, #Y`
-- ISO-timestamp: UTC with `Z` suffix, minute precision (e.g. `2026-05-20T19:30Z`)
+- ISO-timestamp: Pacific time with UTC offset, minute precision (e.g. `2026-05-20T12:30-07:00` during PDT, `2026-05-20T12:30-08:00` during PST)
 
 ### Label
 
