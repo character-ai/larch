@@ -12,6 +12,8 @@
 #      that flag combo; Step 1.m, Step 8b, and the Rebase + Re-bump Sub-procedure use `--no-push`
 #      alone). Also asserts the 7.r Apply invocation is inside the Step 7 slice and that all
 #      three `--no-push`-only call sites (Step 1.m + Step 8b + Sub-procedure) remain.
+#  (I) `rebase-rebump-subprocedure.md` + `conflict-resolution.md` pin the normative `step8b_rebase`
+#      `--keep-on-conflict` entry/continue shapes and the shared Phase 4 exit-0 dispatch token.
 #
 # Exit 0 on pass, exit 1 on any assertion failure.
 # shellcheck disable=SC2016 # single-quoted strings are intentional grep literals — backticks and ${...} must not expand
@@ -164,5 +166,23 @@ no_push_only_count=$(grep -chE 'rebase-push\.sh --no-push$' "$SKILL_MD" "$SUBPRO
 [[ "$no_push_only_count" == "2" ]] \
   || fail "(H) expected exactly 2 'rebase-push.sh --no-push' (without --skip-if-pushed) call sites across SKILL.md (Step 1.m) + references/rebase-rebump-subprocedure.md, found $no_push_only_count — Step 1.m or Rebase + Re-bump Sub-procedure was accidentally altered (Step 8b's rebase moved into implement-finalize.sh postbump Phase 3 per issue #1493)"
 
-echo "PASS: test-implement-rebase-macro.sh — all structural invariants hold (A-C, E-H)"
+# ---------------------------------------------------------------------------
+# (I) Cross-doc pins: step8b_rebase keep-on-conflict shapes + shared dispatch token.
+# ---------------------------------------------------------------------------
+CONFLICT_MD="$REPO_ROOT/skills/implement/references/conflict-resolution.md"
+[[ -f "$CONFLICT_MD" ]] || fail "(I) skills/implement/references/conflict-resolution.md missing: $CONFLICT_MD"
+
+grep -Fq 'rebase-push.sh --no-push --keep-on-conflict' "$SUBPROC_MD" \
+  || fail "(I) sub-procedure must retain step8b_rebase step2 'rebase-push.sh --no-push --keep-on-conflict' prose"
+
+pin_dispatch='rebase_already_done=true, caller_kind=step8b_rebase'
+grep -Fq "$pin_dispatch" "$SUBPROC_MD" \
+  || fail "(I) sub-procedure missing normative Phase 4 dispatch token: $pin_dispatch"
+grep -Fq "$pin_dispatch" "$CONFLICT_MD" \
+  || fail "(I) conflict-resolution.md missing normative Phase 4 dispatch token: $pin_dispatch"
+
+grep -Fq 'rebase-push.sh --continue --no-push --keep-on-conflict' "$CONFLICT_MD" \
+  || fail "(I) conflict-resolution.md must retain step8b_rebase/early_rebase Phase 4 --continue --no-push --keep-on-conflict invocation"
+
+echo "PASS: test-implement-rebase-macro.sh — all structural invariants hold (A-C, E-I)"
 exit 0
