@@ -21,7 +21,8 @@ if command -v jq >/dev/null 2>&1; then
       (.operator_repo_root == "<REPO_ROOT>" or .operator_repo_root == null) and
       .parent_skill == "implement" and
       .issue_number == 7 and
-      .status == "in-progress" and
+      (.pr_number | not) and
+      (.steps_ran | type == "object") and
       (.model_roster | type == "object") and
       (.model_roster.main | type == "string" and length > 0) and
       (.flags | type == "object")
@@ -40,6 +41,30 @@ after="$(cat "$manifest")"
     echo "FAIL: init retry changed manifest" >&2
     exit 1
 }
+
+if command -v jq >/dev/null 2>&1; then
+    before_ts="$(jq -r '.updated_at' "$manifest")"
+    sleep 1
+    "$LARCH_LOG" manifest --skill design --run-id run999 --field attempt=2 >/dev/null
+    after_ts="$(jq -r '.updated_at' "$manifest")"
+    after_attempt="$(jq -r '.attempt' "$manifest")"
+    [ "$before_ts" != "$after_ts" ] || {
+        echo "FAIL: manifest cmd did not refresh updated_at" >&2
+        exit 1
+    }
+    [ "$after_attempt" = "2" ] || {
+        echo "FAIL: manifest cmd did not apply attempt field" >&2
+        exit 1
+    }
+    "$LARCH_LOG" manifest --skill design --run-id run999 --field steps_ran.step9a1=false --field steps_ran.step8=true >/dev/null
+    jq -e '
+      (.steps_ran.step9a1 == false) and (.steps_ran.step8 == true) and
+      (.updated_at | type == "string") and (.updated_at | length) > 0
+    ' "$manifest" >/dev/null || {
+        echo "FAIL: multiple steps_ran.* updates did not compose" >&2
+        exit 1
+    }
+fi
 
 leftovers="$(find "$(dirname "$manifest")" -name '.tmp.manifest.*' -print)"
 [ -z "$leftovers" ] || {

@@ -1,0 +1,9 @@
+Reading the precomputed diff and relevant source sections for jq correctness.
+
+Verifying `jq -e` exit semantics for the probe and checking for edge cases in the `read`/`@tsv` block.
+
+### In-Scope Findings
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+NO_ISSUES_FOUND

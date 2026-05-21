@@ -1,0 +1,46 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: EXONERATE -- Intentional summary contract change is documented; restoring Outcome bullets for all outcomes adds compatibility surface without clear need.
+FINDING_5: NO -- The markdown already states the Outcome bullet is emitted only for stalled/bailed outcomes.
+FINDING_6: YES
+FINDING_7: EXONERATE -- Legitimate doc follow-up, but it is covered by reconciling the in-scope ship-pr manifest policy rather than a separate future issue.
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: EXONERATE -- Legitimate drift, but it should be fixed with the in-scope cross-cutting semantics change rather than tracked separately.
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: NO -- Stalled and bailed-needs-user-input Outcome bullets are already covered through test-write-final-report.sh, which exercises the renderer.
+FINDING_18: NO -- The harness already invokes the real audit-map-runs.sh for manifest fallback, parent-issue mapping, and ambiguity paths.
+FINDING_19: YES
+FINDING_20: YES
+FINDING_21: YES
+FINDING_22: EXONERATE -- The path typo is real but too minor and already covered by the in-scope committed plan text cleanup.
+FINDING_23: YES
+FINDING_24: YES
+FINDING_25: YES
+FINDING_26: YES
+FINDING_27: EXONERATE -- The doc is accurate for the current ship-pr code; any edit belongs with the accepted ship-pr policy fix.
+FINDING_28: YES
+FINDING_29: YES
+FINDING_30: YES
+FINDING_31: YES
+FINDING_32: EXONERATE -- True numbering nit, but not worth a future tracking issue.
+FINDING_33: YES
+FINDING_34: YES
+FINDING_35: YES
+FINDING_36: YES
+FINDING_37: YES
+FINDING_38: YES
+FINDING_39: YES
+FINDING_40: YES
+FINDING_41: EXONERATE -- Duplicate of the in-scope ship-pr manifest policy/doc issue, not separate future tracking.
+FINDING_42: EXONERATE -- Legitimate doc drift, but it should be handled with the verifier semantics fix rather than a separate future issue.
+FINDING_43: NO -- This reads a different schema_version 1 launcher manifest, not the larch-log manifest affected by this change.
+FINDING_44: NO -- The item itself reports no defect.
+FINDING_45: YES
+FINDING_46: EXONERATE -- Legitimate fixture inconsistency, but it duplicates in-scope manifest-schema findings and is not a separate future issue.

@@ -90,6 +90,8 @@ Transient network classification uses `is_transient_net_signature` from `scripts
 
 `run_postmerge_phase` calls `implement-finalize.sh postmerge` (Steps 14+15: local cleanup and verify-main), then finalizes the staged larch-log manifest (`status=done`, `pr_number=N`) best-effort. Before the final status update, it probes `$IMPLEMENT_TMPDIR/larch-logs/implement/<RUN_ID>/manifest.json`; when missing, it runs `larch-log.sh init` and tags the synthesized manifest with `status=partial` plus `recovery_reason=manifest_lost_mid_run` so partial run-log directories remain identifiable. It does not create a dedicated log-flush commit; log commits are produced by explicit lifecycle flush points before postmerge. Session-transcript capture is owned by Step 7a and later `scripts/refresh-run-logs.sh` retries before each push; Step 18 is reserved for prompt-side teardown and the remaining terminal refresh/safety-net work such as final tracking-issue summary updates. `$IMPLEMENT_TMPDIR` remains intact for Step 18 to use.
 
+Schema note: v2 flushed run snapshots often omit `pr_number` and `status` until merge. **`ship-pr.sh` postmerge is the intentional merge-time writer** of `status=done` and `pr_number` on the manifest when `PR_CLOSED=true` — do not assume those keys are absent from every historical or post-merge committed manifest.
+
 ## Log Refresh
 
 `run_pr_create_phase` writes and commits the placeholder `final-summary.md`

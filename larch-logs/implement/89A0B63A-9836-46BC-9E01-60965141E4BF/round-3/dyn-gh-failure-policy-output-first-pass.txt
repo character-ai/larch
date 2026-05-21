@@ -1,0 +1,5 @@
+Gathering the diff, commit list, and `audit-map-runs.sh` / tests around gh-first lookup and fallbacks.
+
+Reading `audit-map-runs.sh`, related tests, and the contract doc for exact control flow and line numbers.
+
+

@@ -1,0 +1,29 @@
+Gathering the branch diff and commit list for a correctness-focused review.
+
+Searching the codebase for remaining `manifest` consumers of `pr_number`/`status` and verifying the `steps_ran` manifest key handling.
+
+Checking `render-run-summary.sh` heading vs. suppressed Outcome for non-bailed outcomes (e.g. `forked-dry-run`).
+
+### In-Scope Findings
+
+- **correctness** `scripts/test-larch-log.sh:63,120-124` — Init no longer writes `"status": "in-progress"` (see `scripts/larch-log.sh` template in the branch diff), but this harness still requires that substring and still asserts `manifest` updates `status=done` and `pr_number=99`. `make test-harnesses-3` / `make test-larch-log` will fail until these expectations match the new schema (e.g. assert `steps_ran` object, drop or replace status/pr_number checks, and align the manifest-update test with supported fields). **Suggested fix:** Update `scripts/test-larch-log.sh` to match `scripts/test-larch-logs-manifest.sh` and the new `write_manifest_file` / `manifest` contract (or adjust `Makefile`/harness grouping if the test is intentionally retired).
+
+- **correctness** `scripts/ship-pr.sh:1692-1743` — `run_postmerge_phase` still calls `larch-log.sh manifest` with `--field "status=done"` and `--field "pr_number=$pr_num"` on the `PR_CLOSED=true` path. That was not changed in the reviewed diff while init/teardown dropped those fields, so new runs can still gain `status` / `pr_number` from this path and the “removed from manifest schema / post-flush lifecycle” story is inconsistent across writers. **Suggested fix:** Either remove or replace this postmerge manifest write (and `scripts/test-ship-pr.sh` expectations) so a single policy applies repo-wide, or explicitly document that only this path may set legacy fields and accept them in schema docs until a later migration.
+
+- **correctness** `scripts/verify-run-log-completeness.sh:47-76,90-91` — Step reachability for `step8` / `step9a1` still uses `MANIFEST_PR_NUMBER` and `MANIFEST_STATUS` from `manifest.json`. If `pr_number` / terminal `status` are no longer written on normal paths, runs that skip Step 9a.1 but omit `oos-issues.ndjson` / `run-statistics.md` can be misclassified vs `audit-scan-run.sh`’s new `steps_ran.<step>=false` gate (which the diff adds only to the audit scanner). **Suggested fix:** Mirror the `steps_ran` conditional semantics (or an equivalent reachability signal) in `verify-run-log-completeness.sh` and extend `scripts/test-verify-run-log-completeness.sh` so the two checkers stay aligned.
+
+- **correctness** `scripts/larch-log.sh:402-428` — The `steps_ran.*` branch only matches keys with a dot; a bare `--field steps_ran=…` falls through to the generic `*)` arm and can assign a non-object to `.steps_ran`, corrupting the manifest shape that `audit-scan-run.sh` assumes is an object for `--argjson`. **Suggested fix:** Reject bare `steps_ran` (require `steps_ran.<step>` only) or treat `steps_ran` as immutable like other structural keys.
+
+- **correctness** `larch-logs/implement/89A0B63A-9836-46BC-9E01-60965141E4BF/manifest.json:1-20` — The new committed run-log `manifest.json` in the diff still contains `"pr_number": null` and `"status": "in-progress"` without `steps_ran`, which contradicts the updated init template (`steps_ran`, no `pr_number`/`status`). That skews schema consistency in the very tree meant to demonstrate the change. **Suggested fix:** Regenerate or hand-edit that committed manifest to match the new schema before merge, or drop the flush commit if it was only for local validation.
+
+### Out-of-Scope Observations
+
+- **risk-integration** `scripts/ship-pr.md:91` (and related operator docs) still describe postmerge manifest finalization with `status=done` / `pr_number=N`; this predates or trails the partial doc updates in the diff and can confuse operators until ship-pr behavior and docs are reconciled.
+
+- **correctness** `scripts/verify-run-log-completeness.md:36` — Mentions `manifest.json` `pr_number` / `status=done` as signals; same documentation drift as the verifier script if the schema migration is meant to be complete.
+
+- **correctness** `skills/implement/scripts/step2-implement.sh:444` — Reads `.status` from a different manifest artifact (`MANIFEST_RAW_PATH`); not introduced by this diff’s larch-log manifest template change.
+
+- The `steps_ran.*` / `sn`+`v` jq binding pattern in `scripts/larch-log.sh` is internally consistent for multiple `steps_ran.*` fields in one invocation (indices advance with each `--arg` / `--argjson` triple). No collision defect found there.
+
+NO_ISSUES_FOUND does not apply; in-scope findings are listed above.

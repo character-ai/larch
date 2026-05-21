@@ -714,18 +714,41 @@ assert_equal "$result" "1" "[21c] wrong PR number → no match"
 result=$(manifest_pr_jq '{"pr_number": 24760}' "2476")
 assert_equal "$result" "1" "[21d] PR 24760 does not match pr 2476 (no substring false positive)"
 
-# Test 22: fallback — Closes #N extraction from PR body
-echo "Test 22: audit-map-runs closes-issue fallback"
-extract_closes_issue() {
+# Test 22: PR-body closing keyword extraction (keep in sync with audit-map-runs.sh extract_closing_issue_from_pr_body)
+echo "Test 22: audit-map-runs closing-issue extraction (keyword priority + ambiguity)"
+extract_closing_issue_from_pr_body() {
     local body="$1"
-    printf '%s' "$body" | grep -oiE 'Closes[[:space:]]+#[0-9]+' | grep -oE '[0-9]+$' | head -1 || true
+    local kw nums uniq n
+    for kw in Closes Fixes Resolves; do
+        nums=$(printf '%s' "$body" | grep -oiE "${kw}[[:space:]]+#[0-9]+" | grep -oE '[0-9]+$' || true)
+        [ -z "$nums" ] && continue
+        uniq=$(printf '%s\n' "$nums" | sort -u | sed '/^$/d')
+        [ -z "$uniq" ] && continue
+        n=$(printf '%s\n' "$uniq" | wc -l | tr -d '[:space:]')
+        if [ "$n" -gt 1 ]; then
+            printf 'audit-map-runs.sh: MAP_PR_BODY_CLOSING_AMBIGUOUS=true KEYWORD=%s\n' "$kw" >&2
+            return 0
+        fi
+        printf '%s' "$uniq"
+        return 0
+    done
+    return 0
 }
-result=$(extract_closes_issue "This PR fixes the bug. Closes #2468")
+result=$(extract_closing_issue_from_pr_body "This PR fixes the bug. Closes #2468")
 assert_equal "$result" "2468" "[22] 'Closes #N' extracted from PR body"
-result=$(extract_closes_issue "closes #1234 and closes #5678")
-assert_equal "$result" "1234" "[22b] first Closes taken"
-result=$(extract_closes_issue "No closes reference here")
-assert_equal "$result" "" "[22c] no Closes → empty"
+amb22=$(mktemp "${TMPDIR:-/tmp}/test22-amb.XXXXXX")
+result=$(extract_closing_issue_from_pr_body "closes #1234 and closes #5678" 2>"$amb22")
+assert_equal "$result" "" "[22b] two distinct Closes → refuse (empty stdout)"
+assert_equal "$(grep -c 'MAP_PR_BODY_CLOSING_AMBIGUOUS=true' "$amb22" || true)" "1" "[22b2] ambiguous Closes → stderr marker"
+rm -f "$amb22"
+result=$(extract_closing_issue_from_pr_body "No closes reference here")
+assert_equal "$result" "" "[22c] no closing keywords → empty"
+result=$(extract_closing_issue_from_pr_body "Upstream work.\n\nFixes #8888")
+assert_equal "$result" "8888" "[22d] Fixes-only body → issue from Fixes tier"
+result=$(extract_closing_issue_from_pr_body "Fixes #1111
+
+Closes #2222")
+assert_equal "$result" "2222" "[22e] Closes outranks earlier Fixes line"
 
 # ===========================================================================
 # Tests for audit-scan-run.sh logic
@@ -890,18 +913,66 @@ else
     echo "  SKIP: audit-pacific-timestamp.sh not executable (not found at $PACIFIC_SCRIPT)"
 fi
 
-# Test 31: audit-map-runs.sh against fixture log root (real script; no gh)
+# Test 31: audit-map-runs.sh against fixture log root (gh stub: success, no Closes → manifest fallback)
 echo "Test 31: audit-map-runs.sh fixture newest manifest"
 MAP_SCRIPT="$SCRIPT_DIR/audit-map-runs.sh"
 if [ -x "$MAP_SCRIPT" ]; then
+    MAP_GH_OK=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-map-gh-XXXXXX")
+    cat > "$MAP_GH_OK/gh" <<'EOSGH31'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "${1:-}" == "pr" && "${2:-}" == "view" ]]; then
+    printf '\n'
+    exit 0
+fi
+printf 'stub gh unsupported: %s\n' "$*" >&2
+exit 1
+EOSGH31
+    chmod +x "$MAP_GH_OK/gh"
     MAP_TMP=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-map-XXXXXX")
     mkdir -p "$MAP_TMP/RUNA" "$MAP_TMP/RUNB"
     printf '%s\n' '{"pr_number":999001,"started_at":"2026-01-01T00:00:00Z","larch_version":"1.0.0"}' > "$MAP_TMP/RUNA/manifest.json"
     printf '%s\n' '{"pr_number":999001,"started_at":"2026-02-01T00:00:00Z","larch_version":"2.0.0"}' > "$MAP_TMP/RUNB/manifest.json"
-    row=$(bash "$MAP_SCRIPT" --pr-list "999001" --log-root "$MAP_TMP")
+    row=$(PATH="$MAP_GH_OK:$PATH" bash "$MAP_SCRIPT" --pr-list "999001" --log-root "$MAP_TMP")
     rid=$(printf '%s' "$row" | cut -f2)
     assert_equal "$rid" "RUNB" "[31] newest started_at manifest wins"
-    rm -rf "$MAP_TMP"
+    rm -rf "$MAP_TMP" "$MAP_GH_OK"
+else
+    echo "  SKIP: audit-map-runs.sh not executable (not found at $MAP_SCRIPT)"
+fi
+
+# Test 31b: gh pr view failure must not fall back to manifest-by-pr_number
+echo "Test 31b: audit-map-runs.sh gh failure skips manifest fallback"
+MAP_SCRIPT="$SCRIPT_DIR/audit-map-runs.sh"
+if [ -x "$MAP_SCRIPT" ]; then
+    MAP_GH_FAIL=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-map-ghfail-XXXXXX")
+    cat > "$MAP_GH_FAIL/gh" <<'EOSGH31B'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "${1:-}" == "pr" && "${2:-}" == "view" ]]; then
+    printf 'simulated gh network failure\n' >&2
+    exit 1
+fi
+printf 'stub gh unsupported: %s\n' "$*" >&2
+exit 1
+EOSGH31B
+    chmod +x "$MAP_GH_FAIL/gh"
+    MAP_TMPB=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-map-b-XXXXXX")
+    mkdir -p "$MAP_TMPB/RUNX"
+    printf '%s\n' '{"pr_number":999002,"started_at":"2026-02-01T00:00:00Z","larch_version":"9.0.0"}' > "$MAP_TMPB/RUNX/manifest.json"
+    MAP_ERR=$(mktemp "${TMPDIR:-/tmp}/audit-map-31b-err.XXXXXX")
+    row=$(PATH="$MAP_GH_FAIL:$PATH" bash "$MAP_SCRIPT" --pr-list "999002" --log-root "$MAP_TMPB" 2>"$MAP_ERR")
+    rid=$(printf '%s' "$row" | cut -f2)
+    assert_equal "$rid" "" "[31b] gh failure → empty run_id despite legacy manifest"
+    if grep -q 'MAP_GH_PR_VIEW_FAILED=true' "$MAP_ERR"; then
+        PASS=$((PASS + 1))
+        echo "  ok: [31b] stderr documents MAP_GH_PR_VIEW_FAILED"
+    else
+        FAIL=$((FAIL + 1))
+        FAILED_TESTS+=("[31b] expected MAP_GH_PR_VIEW_FAILED on stderr")
+        echo "  FAIL: [31b] missing MAP_GH_PR_VIEW_FAILED (got: $(head -1 "$MAP_ERR"))" >&2
+    fi
+    rm -rf "$MAP_TMPB" "$MAP_GH_FAIL" "$MAP_ERR"
 else
     echo "  SKIP: audit-map-runs.sh not executable (not found at $MAP_SCRIPT)"
 fi
@@ -970,6 +1041,62 @@ if [ -x "$SCAN_SCRIPT" ]; then
     assert_equal "$changelog_res" "fail" "[33c] changelog-rebase-conflicts result aligns with non-zero count"
     assert_equal "$partial" "true" "[33b] missing review-findings-full.jsonl → category-stats partial_data"
     rm -rf "$SC_TMP"
+else
+    echo "  SKIP: audit-scan-run.sh not executable (not found at $SCAN_SCRIPT)"
+fi
+
+# Test 33d: audit-scan-run.sh — cross-cutting NDJSON: v1 empty fields vs v2 omitted keys vs v2 pr skew
+echo "Test 33d: audit-scan-run cross-cutting v1 vs v2 semantics"
+SCAN_SCRIPT="${SCAN_SCRIPT:-$SCRIPT_DIR/audit-scan-run.sh}"
+if [ -x "$SCAN_SCRIPT" ]; then
+    CC_TMP=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-scan-cc-XXXXXX")
+    printf '%s\n' 'name	type	pattern	expected_outcome	severity' > "$CC_TMP/minimal-scans.tsv"
+    printf '%s\n' 'changelog-rebase-conflicts	jsonl-field	x	y	medium' >> "$CC_TMP/minimal-scans.tsv"
+    printf '%s\n' 'relative_path	condition	batch_slug	extension' > "$CC_TMP/required-empty.tsv"
+    mkdir -p "$CC_TMP/runv1" "$CC_TMP/runv2omit" "$CC_TMP/runv2gap" "$CC_TMP/runv2pnnull"
+    printf '%s\n' '{"schema_version":1,"ended_at":"","pr_number":null}' > "$CC_TMP/runv1/manifest.json"
+    printf '%s\n' '{"schema_version":2,"skill":"implement","run_id":"rv2"}' > "$CC_TMP/runv2omit/manifest.json"
+    printf '%s\n' '{"schema_version":2,"pr_number":9999}' > "$CC_TMP/runv2gap/manifest.json"
+    printf '%s\n' '{"schema_version":2,"pr_number":null}' > "$CC_TMP/runv2pnnull/manifest.json"
+    printf '%s\n' '{"category":"Warnings","body":"changelog rebase needed"}' > "$CC_TMP/runv1/execution-issues.ndjson"
+    cp "$CC_TMP/runv1/execution-issues.ndjson" "$CC_TMP/runv2omit/execution-issues.ndjson"
+    cp "$CC_TMP/runv1/execution-issues.ndjson" "$CC_TMP/runv2gap/execution-issues.ndjson"
+    cp "$CC_TMP/runv1/execution-issues.ndjson" "$CC_TMP/runv2pnnull/execution-issues.ndjson"
+    cc_v1=$(bash "$SCAN_SCRIPT" \
+        --run-dir "$CC_TMP/runv1" --pr 100 \
+        --scans-tsv "$CC_TMP/minimal-scans.tsv" \
+        --required-files-tsv "$CC_TMP/required-empty.tsv" \
+        --current-version "29.0.0")
+    cc_v2o=$(bash "$SCAN_SCRIPT" \
+        --run-dir "$CC_TMP/runv2omit" --pr 100 \
+        --scans-tsv "$CC_TMP/minimal-scans.tsv" \
+        --required-files-tsv "$CC_TMP/required-empty.tsv" \
+        --current-version "29.0.0")
+    cc_v2g=$(bash "$SCAN_SCRIPT" \
+        --run-dir "$CC_TMP/runv2gap" --pr 100 \
+        --scans-tsv "$CC_TMP/minimal-scans.tsv" \
+        --required-files-tsv "$CC_TMP/required-empty.tsv" \
+        --current-version "29.0.0")
+    cc_v2n=$(bash "$SCAN_SCRIPT" \
+        --run-dir "$CC_TMP/runv2pnnull" --pr 100 \
+        --scans-tsv "$CC_TMP/minimal-scans.tsv" \
+        --required-files-tsv "$CC_TMP/required-empty.tsv" \
+        --current-version "29.0.0")
+    v1_e=$(printf '%s\n' "$cc_v1" | jq -r 'select(.scan=="cross-cutting") | .ended_at_null')
+    v1_p=$(printf '%s\n' "$cc_v1" | jq -r 'select(.scan=="cross-cutting") | .pr_number_null')
+    v1_g=$(printf '%s\n' "$cc_v1" | jq -r 'select(.scan=="cross-cutting") | .manifest_pr_number_mismatch_with_audited_pr')
+    assert_equal "$v1_e" "true" "[33d] v1 empty ended_at + null pr_number → ended_at_null true"
+    assert_equal "$v1_p" "true" "[33d2] v1 → pr_number_null true"
+    assert_equal "$v1_g" "false" "[33d3] v1 absent pr_number value → no audited skew flag"
+    v2o_e=$(printf '%s\n' "$cc_v2o" | jq -r 'select(.scan=="cross-cutting") | .ended_at_null')
+    v2o_p=$(printf '%s\n' "$cc_v2o" | jq -r 'select(.scan=="cross-cutting") | .pr_number_null')
+    assert_equal "$v2o_e" "false" "[33d4] v2 omitted ended_at → ended_at_null false"
+    assert_equal "$v2o_p" "false" "[33d5] v2 omitted pr_number → pr_number_null false"
+    v2g_g=$(printf '%s\n' "$cc_v2g" | jq -r 'select(.scan=="cross-cutting") | .manifest_pr_number_mismatch_with_audited_pr')
+    assert_equal "$v2g_g" "true" "[33d6] v2 pr_number present and != audited --pr → mismatch true"
+    v2n_p=$(printf '%s\n' "$cc_v2n" | jq -r 'select(.scan=="cross-cutting") | .pr_number_null')
+    assert_equal "$v2n_p" "true" "[33d7] v2 explicit pr_number:null → pr_number_null true"
+    rm -rf "$CC_TMP"
 else
     echo "  SKIP: audit-scan-run.sh not executable (not found at $SCAN_SCRIPT)"
 fi
@@ -1087,6 +1214,36 @@ else
     echo "  SKIP: audit-map-runs.sh not executable (not found at $MAP_SCRIPT)"
 fi
 
+# Test 37b: audit-map-runs — Closes tier wins over an earlier Fixes line (integration)
+echo "Test 37b: audit-map-runs Closes outranks Fixes in PR body"
+MAP_SCRIPT="${MAP_SCRIPT:-$SCRIPT_DIR/audit-map-runs.sh}"
+if [ -x "$MAP_SCRIPT" ]; then
+    GH37B=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-map-gh37b-XXXXXX")
+    cat > "$GH37B/gh" <<'EOSH37B'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "${1:-}" == "pr" && "${2:-}" == "view" ]]; then
+    printf '%s\n' '{"body":"Fixes #550099\n\nPrep\n\nCloses #550011"}'
+    exit 0
+fi
+printf 'stub gh: unsupported %s\n' "$*" >&2
+exit 1
+EOSH37B
+    chmod +x "$GH37B/gh"
+    MAP37B_TMP=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-map37b-XXXXXX")
+    mkdir -p "$MAP37B_TMP/RUNZ"
+    printf '%s\n' 'ISSUE_NUMBER=550011' > "$MAP37B_TMP/RUNZ/parent-issue.md"
+    printf '%s\n' '{"pr_number":1,"started_at":"2025-06-01T00:00:00Z","larch_version":"9.0.0"}' > "$MAP37B_TMP/RUNZ/manifest.json"
+    row37b=$(PATH="$GH37B:$PATH" bash "$MAP_SCRIPT" --pr-list "999889" --repo "character-ai/larch" --log-root "$MAP37B_TMP")
+    rid37b=$(printf '%s' "$row37b" | cut -f2)
+    ci37b=$(printf '%s' "$row37b" | cut -f5)
+    assert_equal "$rid37b" "RUNZ" "[37b] later Closes #550011 maps run, not Fixes #550099"
+    assert_equal "$ci37b" "550011" "[37b2] TSV closes_issue reflects Closes tier"
+    rm -rf "$GH37B" "$MAP37B_TMP"
+else
+    echo "  SKIP: audit-map-runs.sh not executable (not found at $MAP_SCRIPT)"
+fi
+
 # Test 38: audit-map-runs.sh — ambiguous parent-issue matches → stderr + empty run_id
 echo "Test 38: audit-map-runs parent-issue ambiguity"
 MAP_SCRIPT="${MAP_SCRIPT:-$SCRIPT_DIR/audit-map-runs.sh}"
@@ -1120,6 +1277,39 @@ EOSH38
     assert_equal "$amb" "1" "[38b] stderr reports MAP_PARENT_ISSUE_AMBIGUOUS"
     assert_equal "$map38_rc" "0" "[38c] script exits 0 after emitting TSV row"
     rm -rf "$GH38" "$MAP38_TMP" "$err38"
+else
+    echo "  SKIP: audit-map-runs.sh not executable (not found at $MAP_SCRIPT)"
+fi
+
+# Test 38a: audit-map-runs — ambiguous Closes in PR body → stderr; manifest-by-pr fallback still runs
+echo "Test 38a: audit-map-runs ambiguous PR-body Closes + manifest fallback"
+MAP_SCRIPT="${MAP_SCRIPT:-$SCRIPT_DIR/audit-map-runs.sh}"
+if [ -x "$MAP_SCRIPT" ]; then
+    GH38A=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-map-gh38a-XXXXXX")
+    cat > "$GH38A/gh" <<'EOSH38A'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "${1:-}" == "pr" && "${2:-}" == "view" ]]; then
+    printf '%s\n' '{"body":"Closes #111\nCloses #222"}'
+    exit 0
+fi
+printf 'stub gh: unsupported %s\n' "$*" >&2
+exit 1
+EOSH38A
+    chmod +x "$GH38A/gh"
+    MAP38A_TMP=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-map38a-XXXXXX")
+    mkdir -p "$MAP38A_TMP/RUNM"
+    printf '%s\n' 'ISSUE_NUMBER=111' > "$MAP38A_TMP/RUNM/parent-issue.md"
+    printf '%s\n' '{"pr_number":424242,"started_at":"2026-03-01T00:00:00Z","larch_version":"1.2.3","closes_issue":424242}' > "$MAP38A_TMP/RUNM/manifest.json"
+    err38a=$(mktemp "${TMPDIR:-/tmp}/test-map38a-err.XXXXXX")
+    row38a=$(PATH="$GH38A:$PATH" bash "$MAP_SCRIPT" --pr-list "424242" --repo "character-ai/larch" --log-root "$MAP38A_TMP" 2>"$err38a")
+    rid38a=$(printf '%s' "$row38a" | cut -f2)
+    ci38a=$(printf '%s' "$row38a" | cut -f5)
+    amb38a=$(grep -c 'MAP_PR_BODY_CLOSING_AMBIGUOUS=true' "$err38a" || true)
+    assert_equal "$rid38a" "RUNM" "[38a] manifest fallback maps run_id despite ambiguous Closes lines"
+    assert_equal "$ci38a" "424242" "[38a2] closes_issue column comes from manifest closes_issue"
+    assert_equal "$amb38a" "1" "[38a3] stderr reports MAP_PR_BODY_CLOSING_AMBIGUOUS"
+    rm -rf "$GH38A" "$MAP38A_TMP" "$err38a"
 else
     echo "  SKIP: audit-map-runs.sh not executable (not found at $MAP_SCRIPT)"
 fi
@@ -1433,8 +1623,54 @@ else
     echo "  SKIP: audit-scan-run.sh not executable (not found at $SCAN_SCRIPT)"
 fi
 
-# Test 50: audit-scan-run.sh — cache-freshness informational when run lags current
-echo "Test 50: audit-scan-run cache-freshness informational (version gap)"
+# Test 50: audit-scan-run.sh — steps_ran.<step>=false skips conditional required files
+echo "Test 50: audit-scan-run steps_ran false skips step9a1 requirements"
+SCAN_SCRIPT="${SCAN_SCRIPT:-$SCRIPT_DIR/audit-scan-run.sh}"
+if [ -x "$SCAN_SCRIPT" ]; then
+    P50=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-steps50-XXXXXX")
+    printf '%s\n' 'name	type	pattern	expected_outcome	severity' > "$P50/scans.tsv"
+    printf '%s\n' 'required-file-presence	file-glob	x	x	low' >> "$P50/scans.tsv"
+    printf '%s\n' 'relative_path	condition	batch_slug	extension' > "$P50/req.tsv"
+    printf '%s\n' 'oos-issues.ndjson	step9a1	x	x' >> "$P50/req.tsv"
+    printf '%s\n' 'run-statistics.md	step9a1	x	x' >> "$P50/req.tsv"
+    mkdir -p "$P50/run"
+    printf '%s\n' '{"schema_version":2,"steps_ran":{"step9a1":false}}' > "$P50/run/manifest.json"
+    p50_out=$(bash "$SCAN_SCRIPT" --run-dir "$P50/run" --pr 2001 \
+        --scans-tsv "$P50/scans.tsv" \
+        --required-files-tsv "$P50/req.tsv" \
+        --current-version "1.0.0")
+    res50=$(printf '%s' "$p50_out" | jq -r 'select(.scan=="required-file-presence") | .result // empty' | head -1)
+    assert_equal "$res50" "pass" "[50] steps_ran.step9a1=false skips missing step9a1 files"
+    rm -rf "$P50"
+else
+    echo "  SKIP: audit-scan-run.sh not executable (not found at $SCAN_SCRIPT)"
+fi
+
+# Test 51: audit-scan-run.sh — absent steps_ran.step9a1 default still enforces step9a1 files
+echo "Test 51: audit-scan-run missing steps_ran enforces step9a1 requirements"
+SCAN_SCRIPT="${SCAN_SCRIPT:-$SCRIPT_DIR/audit-scan-run.sh}"
+if [ -x "$SCAN_SCRIPT" ]; then
+    P51=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-steps51-XXXXXX")
+    printf '%s\n' 'name	type	pattern	expected_outcome	severity' > "$P51/scans.tsv"
+    printf '%s\n' 'required-file-presence	file-glob	x	x	low' >> "$P51/scans.tsv"
+    printf '%s\n' 'relative_path	condition	batch_slug	extension' > "$P51/req.tsv"
+    printf '%s\n' 'oos-issues.ndjson	step9a1	x	x' >> "$P51/req.tsv"
+    printf '%s\n' 'run-statistics.md	step9a1	x	x' >> "$P51/req.tsv"
+    mkdir -p "$P51/run"
+    printf '%s\n' '{"schema_version":2}' > "$P51/run/manifest.json"
+    p51_out=$(bash "$SCAN_SCRIPT" --run-dir "$P51/run" --pr 2002 \
+        --scans-tsv "$P51/scans.tsv" \
+        --required-files-tsv "$P51/req.tsv" \
+        --current-version "1.0.0")
+    res51=$(printf '%s' "$p51_out" | jq -r 'select(.scan=="required-file-presence") | .result // empty' | head -1)
+    assert_equal "$res51" "fail" "[51] no steps_ran.step9a1=false → missing step9a1 files fail"
+    rm -rf "$P51"
+else
+    echo "  SKIP: audit-scan-run.sh not executable (not found at $SCAN_SCRIPT)"
+fi
+
+# Test 56: audit-scan-run.sh — cache-freshness informational when run lags current
+echo "Test 56: audit-scan-run cache-freshness informational (version gap)"
 SCAN_SCRIPT="${SCAN_SCRIPT:-$SCRIPT_DIR/audit-scan-run.sh}"
 if [ -x "$SCAN_SCRIPT" ]; then
     T50=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-t50-XXXXXX")
@@ -1449,16 +1685,16 @@ if [ -x "$SCAN_SCRIPT" ]; then
     t50_res=$(printf '%s\n' "$t50_out" | jq -r 'select(.scan=="cache-freshness") | .result // empty' | head -1)
     t50_rv=$(printf '%s\n' "$t50_out" | jq -r 'select(.scan=="cache-freshness") | .run_version // empty' | head -1)
     t50_cv=$(printf '%s\n' "$t50_out" | jq -r 'select(.scan=="cache-freshness") | .current_version // empty' | head -1)
-    assert_equal "$t50_res" "informational" "[50] cache-freshness behind current → informational (not fail)"
-    assert_equal "$t50_rv" "29.8.62" "[50b] run_version preserved"
-    assert_equal "$t50_cv" "34.0.0" "[50c] current_version preserved"
+    assert_equal "$t50_res" "informational" "[56] cache-freshness behind current → informational (not fail)"
+    assert_equal "$t50_rv" "29.8.62" "[56b] run_version preserved"
+    assert_equal "$t50_cv" "34.0.0" "[56c] current_version preserved"
     rm -rf "$T50"
 else
     echo "  SKIP: audit-scan-run.sh not executable (not found at $SCAN_SCRIPT)"
 fi
 
-# Test 51: audit-scan-run.sh — cache-freshness pass when versions match
-echo "Test 51: audit-scan-run cache-freshness pass (same version)"
+# Test 57: audit-scan-run.sh — cache-freshness pass when versions match
+echo "Test 57: audit-scan-run cache-freshness pass (same version)"
 SCAN_SCRIPT="${SCAN_SCRIPT:-$SCRIPT_DIR/audit-scan-run.sh}"
 if [ -x "$SCAN_SCRIPT" ]; then
     T51=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-t51-XXXXXX")
@@ -1471,7 +1707,7 @@ if [ -x "$SCAN_SCRIPT" ]; then
         --scans-tsv "$T51/scans.tsv" --required-files-tsv "$T51/required.tsv" \
         --current-version "34.0.0")
     t51_res=$(printf '%s\n' "$t51_out" | jq -r 'select(.scan=="cache-freshness") | .result // empty' | head -1)
-    assert_equal "$t51_res" "pass" "[51] cache-freshness same version → pass"
+    assert_equal "$t51_res" "pass" "[57] cache-freshness same version → pass"
     rm -rf "$T51"
 else
     echo "  SKIP: audit-scan-run.sh not executable (not found at $SCAN_SCRIPT)"
@@ -1556,6 +1792,7 @@ if [ -x "$APP_TF" ]; then
 else
     echo "  SKIP: append-tool-failure.sh not executable at $APP_TF"
 fi
+
 
 # ---------------------------------------------------------------------------
 # Summary

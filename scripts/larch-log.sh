@@ -141,7 +141,6 @@ write_manifest_file() {
     local path="$1"
     local parent_skill="$2"
     local issue="$3"
-    local status="$4"
     local ts version parent_json issue_json model_json effort_json operator_repo_root operator_cwd_json operator_repo_root_json tmp
     ts="$(now_utc)"
     version="$(plugin_version)"
@@ -176,8 +175,6 @@ write_manifest_file() {
   "operator_repo_root": $operator_repo_root_json,
   "parent_skill": $parent_json,
   "issue_number": $issue_json,
-  "pr_number": null,
-  "status": "$status",
   "larch_version": "$version",
   "model_roster": {"main": $model_json},
   "effort": $effort_json,
@@ -186,6 +183,7 @@ write_manifest_file() {
   "attempt": 1,
   "superseded_by": null,
   "stalled_at_step": null,
+  "steps_ran": {},
   "flags": {}
 }
 EOF
@@ -221,7 +219,7 @@ case "$cmd" in
             larch_log_emit_success "$path" false true
             exit 0
         fi
-        write_manifest_file "$path" "$PARENT_SKILL" "$ISSUE" "in-progress"
+        write_manifest_file "$path" "$PARENT_SKILL" "$ISSUE"
         larch_log_emit_success "$path" true false
         ;;
 
@@ -403,17 +401,36 @@ case "$cmd" in
             esac
             case "$key" in
                 schema_version|skill|run_id|started_at|operator_cwd|operator_repo_root) larch_log_fail 1 "manifest field is immutable: $key" ;;
+                steps_ran)
+                    larch_log_fail 1 "manifest field steps_ran cannot be set as a flat key; use steps_ran.<step>=true|false" ;;
+                steps_ran.*)
+                    step_key="${key#steps_ran.}"
+                    [ -n "$step_key" ] || larch_log_fail 1 "invalid --field: $field"
+                    case "$step_key" in *[!A-Za-z0-9_]*) larch_log_fail 1 "invalid steps_ran step: $step_key" ;; esac
+                    case "$value" in true|false) ;;
+                    *) larch_log_fail 1 "steps_ran field requires true/false: $field" ;;
+                    esac
+                    sn="s${#args[@]}"
+                    args+=(--arg "$sn" "$step_key")
+                    var="v${#args[@]}"
+                    args+=(--argjson "$var" "$value")
+                    filter="$filter | (.steps_ran //= {}) | .steps_ran[\$$sn] = \$$var"
+                    ;;
+                steps_ran*)
+                    larch_log_fail 1 "invalid steps_ran manifest key '$key'; use steps_ran.<step>=true|false only" ;;
                 *[!A-Za-z0-9_]*|"") larch_log_fail 1 "invalid manifest field: $key" ;;
+                *)
+                    var="v${#args[@]}"
+                    # Use --argjson for JSON-native scalar types so numeric fields
+                    # like pr_number are stored as numbers rather than strings.
+                    if printf '%s' "$value" | grep -Eq '^(null|true|false|-?[0-9]+)$'; then
+                        args+=(--argjson "$var" "$value")
+                    else
+                        args+=(--arg "$var" "$value")
+                    fi
+                    filter="$filter | .$key = \$$var"
+                    ;;
             esac
-            var="v${#args[@]}"
-            # Use --argjson for JSON-native scalar types so numeric fields
-            # like pr_number are stored as numbers rather than strings.
-            if printf '%s' "$value" | grep -Eq '^(null|true|false|-?[0-9]+)$'; then
-                args+=(--argjson "$var" "$value")
-            else
-                args+=(--arg "$var" "$value")
-            fi
-            filter="$filter | .$key = \$$var"
         done
         tmp="$(mktemp "$(dirname "$path")/.tmp.manifest.XXXXXX")" || larch_log_fail 2 "cannot create manifest temp"
         jq "${args[@]}" "$filter" "$path" > "$tmp" || {
@@ -453,6 +470,17 @@ case "$cmd" in
         src_path="$(larch_log_run_dir "$SKILL" "$RUN_ID")"
         repo_path="$(larch_log_repo_run_dir "$SKILL" "$RUN_ID")"
         [ -d "$src_path" ] || larch_log_fail 1 "log directory not found: $src_path"
+        if [ -f "$src_path/manifest.json" ]; then
+            mf_commit_tmp="$(mktemp "$(dirname "$src_path/manifest.json")/.tmp.manifest-commit.XXXXXX")" || larch_log_fail 2 "cannot create manifest commit temp"
+            jq --arg ts "$(now_utc)" '.updated_at = $ts' "$src_path/manifest.json" > "$mf_commit_tmp" || {
+                rm -f "$mf_commit_tmp"
+                larch_log_fail 2 "manifest updated_at refresh failed"
+            }
+            mv -f "$mf_commit_tmp" "$src_path/manifest.json" || {
+                rm -f "$mf_commit_tmp"
+                larch_log_fail 2 "cannot publish manifest updated_at"
+            }
+        fi
         if [ "$src_path" != "$repo_path" ]; then
             mkdir -p "$repo_path" || larch_log_fail 3 "cannot create repo log directory"
             cp -rp "$src_path/." "$repo_path/" || larch_log_fail 3 "cannot copy logs from temp to repo"

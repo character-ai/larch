@@ -72,13 +72,18 @@ scan_required_file_presence() {
         return
     fi
     local missing="" mf="$RUN_DIR/manifest.json"
-    local _rf_mstat="" _rf_mpr=""
+    local steps_ran_obj="{}"
     if [ -f "$mf" ]; then
-        _rf_mstat=$(jq -r '.status // empty' "$mf" 2>/dev/null || true)
-        _rf_mpr=$(jq -r 'if (.pr_number|type)=="number" then (.pr_number|tostring) elif (.pr_number|type)=="string" and (.pr_number|test("^\\s*$")|not) then .pr_number else empty end' "$mf" 2>/dev/null || true)
+        steps_ran_obj=$(jq -c '.steps_ran // {}' "$mf" 2>/dev/null || echo "{}")
     fi
 
     _rf_has_file() { [ -f "$RUN_DIR/$1" ]; }
+
+    # _rf_steps_ran_false: return 0 (true) when manifest explicitly records
+    # that the step did NOT run; otherwise return 1 so heuristics can decide.
+    _rf_steps_ran_false() {
+        jq -ne --arg c "$1" --argjson sr "$steps_ran_obj" '($sr[$c] == false)' >/dev/null 2>&1
+    }
 
     _rf_condition_met() {
         local c="$1"
@@ -87,16 +92,27 @@ scan_required_file_presence() {
                 return 0
                 ;;
             step5)
+                _rf_steps_ran_false step5 && return 1
                 _rf_has_file code-review-tally.json || _rf_has_file review-findings-full.jsonl || _rf_condition_met step7a
                 ;;
             step7a)
+                _rf_steps_ran_false step7a && return 1
                 _rf_has_file token-report.json || _rf_has_file timing-report.json || _rf_has_file execution-issues.ndjson || _rf_has_file session-transcript.jsonl || _rf_condition_met step8
                 ;;
             step8)
-                _rf_has_file version-bump-reasoning.md || _rf_has_file final-summary.md || [ -n "$_rf_mpr" ] || _rf_condition_met step9a1
+                _rf_steps_ran_false step8 && return 1
+                _rf_has_file version-bump-reasoning.md || _rf_has_file final-summary.md || _RF_STEP9A1_MODE=chain _rf_condition_met step9a1
                 ;;
             step9a1)
-                _rf_has_file run-statistics.md || _rf_has_file oos-issues.ndjson || [ -n "$_rf_mpr" ] || [ "$_rf_mstat" = "done" ]
+                _rf_steps_ran_false step9a1 && return 1
+                # Direct required-file rows: default to "step ran" unless manifest says false.
+                # When invoked from step8's chain (_RF_STEP9A1_MODE=chain), keep the file
+                # heuristics so step8 does not widen solely from an empty run directory.
+                if [ "${_RF_STEP9A1_MODE:-}" = chain ]; then
+                    _rf_has_file run-statistics.md || _rf_has_file oos-issues.ndjson
+                else
+                    return 0
+                fi
                 ;;
             exn-agg-validate-fail)
                 [ -f "$RUN_DIR/execution-issues.ndjson" ] && grep -Fq 'merged output failed validation' "$RUN_DIR/execution-issues.ndjson" 2>/dev/null
@@ -427,13 +443,29 @@ ended_at_null=false
 pr_number_null=false
 self_deploying_gap=false
 if [ -f "$MANIFEST" ]; then
-    ea=$(jq -r '.ended_at // empty' "$MANIFEST" 2>/dev/null || true)
-    [ -z "$ea" ] && ended_at_null=true
-    pn=$(jq -r '.pr_number // empty' "$MANIFEST" 2>/dev/null || true)
-    [ -z "$pn" ] && pr_number_null=true
-    if [ -n "$pn" ] && [ "$pn" != "$PR_NUM" ]; then
-        self_deploying_gap=true
-    fi
+    # schema_version >= 2 omits pr_number/ended_at in normal manifests; only treat
+    # *_null as integrity signals when the key exists (legacy v1 uses empty-as-null).
+    read -r ended_at_null pr_number_null self_deploying_gap <<EOF
+$(jq -r --argjson audited_pr "$PR_NUM" '
+  def is_v2: ((.schema_version | type) == "number") and .schema_version >= 2;
+  (if is_v2 then
+     (has("ended_at") and (.ended_at == null or .ended_at == ""))
+   else
+     ((.ended_at // "") | tostring) == ""
+   end) as $ea
+  | (if is_v2 then
+       (has("pr_number") and (.pr_number == null))
+     else
+       (.pr_number == null) or ((.pr_number | tostring) == "")
+     end) as $pn
+  | ((.pr_number != null) and ((.pr_number | tostring) != "")
+     and ((.pr_number | tostring) != ($audited_pr | tostring))) as $gap
+  | [ (if $ea then "true" else "false" end),
+      (if $pn then "true" else "false" end),
+      (if $gap then "true" else "false" end) ]
+  | @tsv
+' "$MANIFEST" 2>/dev/null || printf 'false\tfalse\tfalse\n')
+EOF
 fi
 ended_json=false
 pr_number_json=false

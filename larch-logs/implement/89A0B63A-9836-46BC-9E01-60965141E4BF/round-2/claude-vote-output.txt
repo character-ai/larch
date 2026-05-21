@@ -1,0 +1,23 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: EXONERATE -- updated write-final-report.md already states the bailed*/stalled constraint at the top of the file; 9-enum list documents outcome values, not rendering behavior
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: EXONERATE -- git-committed content provides appropriate trust boundary for an internal audit tool; documenting the assumption is nice but not issue-worthy
+FINDING_9: EXONERATE -- intentional design choice explicitly tested by test 31b and documented in audit-map-runs.md; trade-off is clearly stated
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: EXONERATE -- larch-log.sh template always writes schema_version as a JSON number literal; string-typed schema_version has no production path; purely theoretical
+FINDING_13: EXONERATE -- larch-log.sh manifest uses --argjson for steps_ran values, ensuring JSON boolean false; string "false" has no canonical production path
+FINDING_14: EXONERATE -- all current step IDs (step9a1, etc.) fit the alphanumeric+underscore charset; hyphenated IDs are speculative future requirements not currently planned
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: NO -- trivial editorial; committed plan artifacts are normal run-log output, not a defect worth filing
+FINDING_18: NO -- pre-existing behavior; finding itself states no change required
+FINDING_19: NO -- correctly identified as non-issue; `[[` is valid in bash stubs on macOS and not flagged by lint-bash32
+FINDING_20: YES
+FINDING_21: EXONERATE -- split is intentional: ship-pr.sh handles merge-time writes (documented as local-only in its own comment), finalize teardown handles stall-only; not a doc conflict worth filing
+FINDING_22: NO -- intentionally permissive for recovery paths; enforcing schema at larch-log.sh manifest level would block legitimate recovery tagging
+FINDING_23: EXONERATE -- the updated larch-log.md text explicitly mentions "recovery tagging" as the exception; minor imprecision already partially addressed by the diff
