@@ -1496,21 +1496,7 @@ run_teardown() {
             "$SCRIPT_DIR/larch-log.sh" manifest \
                 --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
                 --skill implement --run-id "$larch_flush_run_id" \
-                --field "status=stalled" \
                 --field "stalled_at_step=$stall_step" \
-                2>/dev/null || true
-        elif [ -n "$pr_number" ]; then
-            "$SCRIPT_DIR/larch-log.sh" manifest \
-                --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
-                --skill implement --run-id "$larch_flush_run_id" \
-                --field "status=done" \
-                --field "pr_number=$pr_number" \
-                2>/dev/null || true
-        elif [ "$design_only" = "true" ]; then
-            "$SCRIPT_DIR/larch-log.sh" manifest \
-                --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
-                --skill implement --run-id "$larch_flush_run_id" \
-                --field "status=done" \
                 2>/dev/null || true
         fi
     fi

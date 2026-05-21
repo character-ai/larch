@@ -185,14 +185,16 @@ trap cleanup EXIT
 
 {
     printf '## /%s run %s — %s\n\n' "$SKILL" "$RUN_ID" "$OUTCOME"
-    printf -- '- **Outcome**: %s\n' "$OUTCOME"
+    case "$OUTCOME" in bailed*|stalled) printf -- '- **Outcome**: %s\n' "$OUTCOME" ;; esac
     printf -- '- **Mode**: %s\n' "$mode_disp"
     printf -- '- **Path**: %s\n' "$path_disp"
     printf -- '- **Duration**: %s\n' "$dur_disp"
     printf -- '- **Tokens**: %sk total — Claude %sk, Codex %sk, Cursor %sk\n' "$ct" "$ck" "$dk" "$uk"
     printf -- '- **Cost**: %s\n' "$(cost_bullet)"
     printf -- '- **Issue**: %s\n' "$iss_disp"
-    printf -- '- **PR**: %s\n' "$pr_disp"
+    if [ "$pr_disp" != "N/A" ]; then
+        printf -- '- **PR**: %s\n' "$pr_disp"
+    fi
     printf -- '- **Plan review**: %s\n' "$plan_disp"
     printf -- '- **Code review**: %s\n' "$code_disp"
     printf -- '- **OOS filed**: %s\n' "$oos_disp"

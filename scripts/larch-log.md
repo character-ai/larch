@@ -11,7 +11,9 @@ Primary verbs:
   and `null` otherwise, and `model_roster.main` comes from
   `${CLAUDE_CODE_MODEL:-${CLAUDE_MODEL:-unknown}}`. The manifest keeps these
   fields for schema compatibility without committing operator-local absolute
-  paths.
+  paths. New runs include an empty `steps_ran` object for per-step skip flags;
+  `pr_number` and in-progress `status` are not written at init (post-flush
+  lifecycle fields are owned by explicit flush paths and recovery tagging).
 - `write` atomically replaces replace-mode batches.
 - `write-round` copies registered per-round review artifacts from
   `--source-dir` into `round-<N>/` under the run directory. It strips `CMD_JSON`
@@ -30,7 +32,7 @@ Primary verbs:
   root (no nested `dynamic-archetypes/` directory in committed output).
 - `append` atomically appends append-mode NDJSON batches.
 - `exists` probes a batch path.
-- `manifest` updates mutable manifest fields. Values that look like JSON-native scalars (`null`, `true`, `false`, integers) are passed via `--argjson` so they are stored with the correct JSON type; all other values are passed via `--arg` (stored as strings). This matters for numeric fields like `pr_number`.
+- `manifest` updates mutable manifest fields. Dotted keys `steps_ran.<step>` set per-step boolean flags under `.steps_ran` (shell step name after the dot; value must be `true` or `false`). Other keys use flat `field=value` syntax. Values that look like JSON-native scalars (`null`, `true`, `false`, integers) are passed via `--argjson` so they are stored with the correct JSON type; all other values are passed via `--arg` (stored as strings).
 - `commit` stages and commits one run directory without pushing. It refuses
   with a stderr diagnostic when `$IMPLEMENT_TMPDIR/post-merge-sentinel` exists
   or when the current branch is `main`/the `origin/HEAD` default branch,
@@ -80,7 +82,9 @@ a descriptive error in that case.
 `larch_log_repo_run_dir` (always `$LARCH_LOG_REPO_ROOT/larch-logs/<skill>/<run-id>/`).
 When the two paths differ, `commit` copies the staging tree into the repo path before
 running `git add` / `git commit`. When they are equal (the explicit log root already
-points at the canonical repo subtree), no copy is performed. The `rel` pathspec passed
+points at the canonical repo subtree), no copy is performed. Before copy or git
+operations, `commit` refreshes `manifest.json` `updated_at` in the source tree so the
+committed manifest timestamp reflects flush time. The `rel` pathspec passed
 to all git operations is built explicitly as `larch-logs/<skill>/<run-id>` (not derived
 by stripping the repo root prefix from `repo_path`) so the commit is always scoped to
 exactly the current run's directory regardless of symlink resolution differences.

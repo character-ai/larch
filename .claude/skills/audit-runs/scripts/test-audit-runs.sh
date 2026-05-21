@@ -1407,6 +1407,52 @@ else
     echo "  SKIP: audit-scan-run.sh not executable (not found at $SCAN_SCRIPT)"
 fi
 
+# Test 50: audit-scan-run.sh — steps_ran.<step>=false skips conditional required files
+echo "Test 50: audit-scan-run steps_ran false skips step9a1 requirements"
+SCAN_SCRIPT="${SCAN_SCRIPT:-$SCRIPT_DIR/audit-scan-run.sh}"
+if [ -x "$SCAN_SCRIPT" ]; then
+    P50=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-steps50-XXXXXX")
+    printf '%s\n' 'name	type	pattern	expected_outcome	severity' > "$P50/scans.tsv"
+    printf '%s\n' 'required-file-presence	file-glob	x	x	low' >> "$P50/scans.tsv"
+    printf '%s\n' 'relative_path	condition	batch_slug	extension' > "$P50/req.tsv"
+    printf '%s\n' 'oos-issues.ndjson	step9a1	x	x' >> "$P50/req.tsv"
+    printf '%s\n' 'run-statistics.md	step9a1	x	x' >> "$P50/req.tsv"
+    mkdir -p "$P50/run"
+    printf '%s\n' '{"schema_version":2,"steps_ran":{"step9a1":false}}' > "$P50/run/manifest.json"
+    p50_out=$(bash "$SCAN_SCRIPT" --run-dir "$P50/run" --pr 2001 \
+        --scans-tsv "$P50/scans.tsv" \
+        --required-files-tsv "$P50/req.tsv" \
+        --current-version "1.0.0")
+    res50=$(printf '%s' "$p50_out" | jq -r 'select(.scan=="required-file-presence") | .result // empty' | head -1)
+    assert_equal "$res50" "pass" "[50] steps_ran.step9a1=false skips missing step9a1 files"
+    rm -rf "$P50"
+else
+    echo "  SKIP: audit-scan-run.sh not executable (not found at $SCAN_SCRIPT)"
+fi
+
+# Test 51: audit-scan-run.sh — absent steps_ran.step9a1 default still enforces step9a1 files
+echo "Test 51: audit-scan-run missing steps_ran enforces step9a1 requirements"
+SCAN_SCRIPT="${SCAN_SCRIPT:-$SCRIPT_DIR/audit-scan-run.sh}"
+if [ -x "$SCAN_SCRIPT" ]; then
+    P51=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-steps51-XXXXXX")
+    printf '%s\n' 'name	type	pattern	expected_outcome	severity' > "$P51/scans.tsv"
+    printf '%s\n' 'required-file-presence	file-glob	x	x	low' >> "$P51/scans.tsv"
+    printf '%s\n' 'relative_path	condition	batch_slug	extension' > "$P51/req.tsv"
+    printf '%s\n' 'oos-issues.ndjson	step9a1	x	x' >> "$P51/req.tsv"
+    printf '%s\n' 'run-statistics.md	step9a1	x	x' >> "$P51/req.tsv"
+    mkdir -p "$P51/run"
+    printf '%s\n' '{"schema_version":2}' > "$P51/run/manifest.json"
+    p51_out=$(bash "$SCAN_SCRIPT" --run-dir "$P51/run" --pr 2002 \
+        --scans-tsv "$P51/scans.tsv" \
+        --required-files-tsv "$P51/req.tsv" \
+        --current-version "1.0.0")
+    res51=$(printf '%s' "$p51_out" | jq -r 'select(.scan=="required-file-presence") | .result // empty' | head -1)
+    assert_equal "$res51" "fail" "[51] no steps_ran.step9a1=false → missing step9a1 files fail"
+    rm -rf "$P51"
+else
+    echo "  SKIP: audit-scan-run.sh not executable (not found at $SCAN_SCRIPT)"
+fi
+
 # Test 49: audit-scan-run jstr() (shared implementation with audit-scan-run.sh)
 echo "Test 49: audit-scan-run jstr() round-trip + edge vectors"
 SCAN_SCRIPT="${SCAN_SCRIPT:-$SCRIPT_DIR/audit-scan-run.sh}"

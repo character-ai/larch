@@ -120,7 +120,7 @@ if [ -z "$ISSUE_URL" ] || [ "$ISSUE_URL" = "N/A" ]; then
 fi
 
 # --- Outcome ---
-OUTCOME="bailed"
+OUTCOME=""
 if [ "$STALL_TRACKING" = "true" ]; then
     OUTCOME="stalled"
 elif [ "$FORKED_TARGET" = "true" ]; then
@@ -135,6 +135,9 @@ elif [ -n "$PR_NUMBER" ] && [ "$PR_NUMBER" != "0" ] && [ "$DRAFT" = "true" ]; th
     OUTCOME="pr-created-draft"
 elif [ -n "$PR_NUMBER" ] && [ "$PR_NUMBER" != "0" ] && [ "$DRAFT" = "false" ] && [ "$MERGE" = "false" ]; then
     OUTCOME="pr-created"
+fi
+if [ -z "$OUTCOME" ]; then
+    OUTCOME="bailed"
 fi
 
 if [ "$BAIL_USER" = "true" ] && [ "$OUTCOME" = "bailed" ]; then

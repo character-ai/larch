@@ -21,7 +21,8 @@ if command -v jq >/dev/null 2>&1; then
       (.operator_repo_root == "<REPO_ROOT>" or .operator_repo_root == null) and
       .parent_skill == "implement" and
       .issue_number == 7 and
-      .status == "in-progress" and
+      (.pr_number | not) and
+      (.steps_ran | type == "object") and
       (.model_roster | type == "object") and
       (.model_roster.main | type == "string" and length > 0) and
       (.flags | type == "object")
@@ -38,6 +39,19 @@ before="$(cat "$manifest")"
 after="$(cat "$manifest")"
 [ "$before" = "$after" ] || {
     echo "FAIL: init retry changed manifest" >&2
+    exit 1
+}
+
+before_ts="$(jq -r '.updated_at' "$manifest")"
+"$LARCH_LOG" manifest --skill design --run-id run999 --field attempt=2 >/dev/null
+after_ts="$(jq -r '.updated_at' "$manifest")"
+after_attempt="$(jq -r '.attempt' "$manifest")"
+[ "$before_ts" != "$after_ts" ] || {
+    echo "FAIL: manifest cmd did not refresh updated_at" >&2
+    exit 1
+}
+[ "$after_attempt" = "2" ] || {
+    echo "FAIL: manifest cmd did not apply attempt field" >&2
     exit 1
 }
 

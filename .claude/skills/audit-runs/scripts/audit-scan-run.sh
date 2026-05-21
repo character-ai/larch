@@ -72,13 +72,18 @@ scan_required_file_presence() {
         return
     fi
     local missing="" mf="$RUN_DIR/manifest.json"
-    local _rf_mstat="" _rf_mpr=""
+    local steps_ran_obj="{}"
     if [ -f "$mf" ]; then
-        _rf_mstat=$(jq -r '.status // empty' "$mf" 2>/dev/null || true)
-        _rf_mpr=$(jq -r 'if (.pr_number|type)=="number" then (.pr_number|tostring) elif (.pr_number|type)=="string" and (.pr_number|test("^\\s*$")|not) then .pr_number else empty end' "$mf" 2>/dev/null || true)
+        steps_ran_obj=$(jq -c '.steps_ran // {}' "$mf" 2>/dev/null || echo "{}")
     fi
 
     _rf_has_file() { [ -f "$RUN_DIR/$1" ]; }
+
+    # _rf_steps_ran_false: return 0 (true) when manifest explicitly records
+    # that the step did NOT run; otherwise return 1 so heuristics can decide.
+    _rf_steps_ran_false() {
+        jq -ne --arg c "$1" --argjson sr "$steps_ran_obj" '($sr[$c] == false)' >/dev/null 2>&1
+    }
 
     _rf_condition_met() {
         local c="$1"
@@ -87,16 +92,20 @@ scan_required_file_presence() {
                 return 0
                 ;;
             step5)
+                _rf_steps_ran_false step5 && return 1
                 _rf_has_file code-review-tally.json || _rf_has_file review-findings-full.jsonl || _rf_condition_met step7a
                 ;;
             step7a)
+                _rf_steps_ran_false step7a && return 1
                 _rf_has_file token-report.json || _rf_has_file timing-report.json || _rf_has_file execution-issues.ndjson || _rf_has_file session-transcript.jsonl || _rf_condition_met step8
                 ;;
             step8)
-                _rf_has_file version-bump-reasoning.md || _rf_has_file final-summary.md || [ -n "$_rf_mpr" ] || _rf_condition_met step9a1
+                _rf_steps_ran_false step8 && return 1
+                _rf_has_file version-bump-reasoning.md || _rf_has_file final-summary.md || _rf_condition_met step9a1
                 ;;
             step9a1)
-                _rf_has_file run-statistics.md || _rf_has_file oos-issues.ndjson || [ -n "$_rf_mpr" ] || [ "$_rf_mstat" = "done" ]
+                _rf_steps_ran_false step9a1 && return 1
+                _rf_has_file run-statistics.md || _rf_has_file oos-issues.ndjson
                 ;;
             exn-agg-validate-fail)
                 [ -f "$RUN_DIR/execution-issues.ndjson" ] && grep -Fq 'merged output failed validation' "$RUN_DIR/execution-issues.ndjson" 2>/dev/null

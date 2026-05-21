@@ -36,6 +36,9 @@ bash scripts/render-run-summary.sh \
   (never mixed into `--print-stdout` markdown).
 - **`--print-stdout`**: prints the full markdown body (including note appendix)
   to the contract stdout stream (FD 3 when `lib-quiet.sh` is active, else FD 1).
+- **Outcome / PR bullets**: `- **Outcome**:` is emitted only when `--outcome`
+  matches `bailed*` or `stalled`. `- **PR**:` is omitted when the normalized PR
+  display resolves to `N/A`.
 
 ## Sentinel
 

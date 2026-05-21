@@ -44,7 +44,9 @@ LARCH_CLAUDE_RATE_PER_M=1 LARCH_CODEX_RATE_PER_M=2 LARCH_CURSOR_RATE_PER_M=3 \
     --output-file "$TMP" >/dev/null 2>/dev/null
 
 grep -Fq '<!-- larch:run-summary v=1 -->' "$TMP" || fail 'missing sentinel'
-grep -Fq '**Outcome**: merged' "$TMP" || fail 'missing outcome'
+grep -Fq '## /implement run RUN-X — merged' "$TMP" || fail 'missing title outcome'
+if grep -Fq '**Outcome**:' "$TMP"; then fail 'merged run must not emit Outcome bullet'; fi
+grep -Fq '**PR**:' "$TMP" || fail 'missing PR bullet when URL known'
 grep -Fq '**Note:** fixture note' "$TMP" || fail 'missing appended note'
 grep -Fq "TOTAL ~\$5.00" "$TMP" || fail 'missing expected total cost line (approx prefix)'
 pass 'render body shape + sentinel + notes + cost'
@@ -76,6 +78,7 @@ LARCH_CLAUDE_RATE_PER_M=0 LARCH_CODEX_RATE_PER_M=0 LARCH_CURSOR_RATE_PER_M=0 LAR
     --output-file "$TMP_NA" >/dev/null 2>/dev/null
 grep -Fq 'TOTAL N/A' "$TMP_NA" || fail 'all-N/A cost line'
 grep -Fq 'Claude N/A' "$TMP_NA" || fail 'all-N/A claude slot'
+if grep -Fq '**PR**:' "$TMP_NA"; then fail 'PR bullet omitted when display is N/A'; fi
 pass 'all-N/A cost semantics'
 
 # Partial N/A: one priced lane + others N/A.

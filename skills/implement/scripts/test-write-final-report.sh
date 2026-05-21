@@ -13,6 +13,7 @@ PASS=0; FAIL=0
 pass(){ PASS=$((PASS+1)); printf 'PASS: %s\n' "$1"; }
 fail(){ FAIL=$((FAIL+1)); printf 'FAIL: %s\n' "$1" >&2; }
 assert_contains(){ case "$2" in *"$1"*) pass "$3" ;; *) fail "$3 (missing $1)"; printf 'ACTUAL: %s\n' "$2" >&2 ;; esac; }
+assert_not_contains(){ case "$2" in *"$1"*) fail "$3 (unexpected $1)"; printf 'ACTUAL: %s\n' "$2" >&2 ;; *) pass "$3" ;; esac; }
 finish(){ [ "$FAIL" -eq 0 ] || exit 1; printf 'PASS=%s\n' "$PASS"; }
 
 plugin="$TMP_ROOT/plugin"; mkdir -p "$plugin/scripts"
@@ -52,9 +53,11 @@ assert_contains 'STATUS=ok' "$out" 'happy path status ok'
 assert_contains 'COMMENT_URL=https://example.test/comment/final' "$out" 'comment URL emitted'
 assert_contains 'https://example.test/pr/5' "$(cat "$TMP_ROOT/content.md")" 'summary includes PR URL'
 assert_contains '<!-- larch:run-summary v=1 -->' "$(cat "$TMP_ROOT/content.md")" 'summary includes run-summary sentinel'
-assert_contains '**Outcome**: merged' "$(cat "$TMP_ROOT/content.md")" 'summary outcome merged'
+assert_contains '## /implement run run-5 — merged' "$(cat "$TMP_ROOT/content.md")" 'summary title shows merged outcome'
+assert_not_contains '**Outcome**:' "$(cat "$TMP_ROOT/content.md")" 'success path omits Outcome bullet'
 if [ -s "$impl_dir/larch-logs/implement/run-5/final-summary.md" ]; then pass 'final summary file written'; else fail 'final summary file written'; fi
-assert_contains '**Outcome**: merged' "$(cat "$impl_dir/larch-logs/implement/run-5/final-summary.md")" 'final summary includes merged outcome'
+assert_contains '## /implement run run-5 — merged' "$(cat "$impl_dir/larch-logs/implement/run-5/final-summary.md")" 'final summary title merged'
+assert_not_contains '**Outcome**:' "$(cat "$impl_dir/larch-logs/implement/run-5/final-summary.md")" 'final summary omits Outcome bullet on success'
 
 # Comment-only path leaves the tracked run-log file untouched while still
 # emitting the live tracking-comment projection.
@@ -119,7 +122,8 @@ printf 'DESIGN_ONLY_DONE=true\nBAIL_NEEDS_USER_INPUT=false\n' > "$impl_do/finali
 out=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-do.md" \
       "$HELPER" --implement-tmpdir "$impl_do")
 assert_contains 'STATUS=ok' "$out" 'design-only status ok'
-assert_contains '**Outcome**: design-only' "$(cat "$TMP_ROOT/content-do.md")" 'design-only outcome'
+assert_contains '## /implement run run-do — design-only' "$(cat "$TMP_ROOT/content-do.md")" 'design-only title'
+assert_not_contains '**Outcome**:' "$(cat "$TMP_ROOT/content-do.md")" 'design-only success omits Outcome bullet'
 
 # BAIL_NEEDS_USER_INPUT → distinct outcome when still bailed
 impl_bu="$TMP_ROOT/impl-bu"; mkdir -p "$impl_bu"

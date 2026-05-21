@@ -2,8 +2,8 @@
 # audit-map-runs.sh — Map each PR to its run-log directory.
 #
 # For each PR in --pr-list:
-#   1. grep larch-logs/implement/*/manifest.json for "pr_number": N
-#   2. Fallback: read parent-issue.md for ISSUE_NUMBER, cross-ref PR body Closes #N
+#   1. Primary: gh pr view → Closes #N → parent-issue.md with ISSUE_NUMBER=N
+#   2. Fallback: grep larch-logs/implement/*/manifest.json for "pr_number": N (old-format runs)
 #
 # Output: TSV to stdout (no header), one row per PR:
 #   pr_number<TAB>run_id<TAB>started_at<TAB>larch_version<TAB>closes_issue
@@ -82,33 +82,18 @@ for PR_NUM in "${PR_ARRAY[@]}"; do
     LARCH_VERSION=""
     CLOSES_ISSUE=""
 
-    # Primary: newest manifest.json (by parsed started_at) whose pr_number matches
-    MANIFEST_FILE=""
-    pick_newest_manifest_among_pr
-
-    if [ -n "$MANIFEST_FILE" ]; then
-        RUN_DIR=$(dirname "$MANIFEST_FILE")
-        RUN_ID=$(basename "$RUN_DIR")
-        STARTED_AT=$(jq -r '.started_at // empty' "$MANIFEST_FILE" 2>/dev/null || true)
-        LARCH_VERSION=$(jq -r '.larch_version // empty' "$MANIFEST_FILE" 2>/dev/null || true)
-        CLOSES_ISSUE=$(jq -r '.closes_issue // empty' "$MANIFEST_FILE" 2>/dev/null || true)
-    else
-        # Fallback: find via parent-issue.md cross-referenced with PR body Closes #N
-        gh_stderr=$(mktemp "${TMPDIR:-/tmp}/audit-map-gh.XXXXXX")
-        PR_BODY=""
-        if ! PR_BODY=$(gh pr view "$PR_NUM" --repo "$REPO" --json body --jq '.body // empty' 2>"$gh_stderr"); then
-            printf 'audit-map-runs.sh: MAP_GH_PR_VIEW_FAILED=true REASON=%s\n' "$(tr '\n' ' ' <"$gh_stderr" | sed 's/[[:space:]]\+/ /g')" >&2
-            rm -f "$gh_stderr"
-            printf '%s\t%s\t%s\t%s\t%s\n' \
-                "$PR_NUM" \
-                "${RUN_ID:-}" \
-                "${STARTED_AT:-}" \
-                "${LARCH_VERSION:-}" \
-                "${CLOSES_ISSUE:-}"
-            continue
-        fi
+    gh_stderr=$(mktemp "${TMPDIR:-/tmp}/audit-map-gh.XXXXXX")
+    PR_BODY=""
+    gh_ok=false
+    if PR_BODY=$(gh pr view "$PR_NUM" --repo "$REPO" --json body --jq '.body // empty' 2>"$gh_stderr"); then
+        gh_ok=true
         rm -f "$gh_stderr"
+    else
+        printf 'audit-map-runs.sh: MAP_GH_PR_VIEW_FAILED=true REASON=%s\n' "$(tr '\n' ' ' <"$gh_stderr" | sed 's/[[:space:]]\+/ /g')" >&2
+        rm -f "$gh_stderr"
+    fi
 
+    if [ "$gh_ok" = true ]; then
         CLOSES_ISSUE=$(printf '%s' "$PR_BODY" | grep -oiE 'Closes[[:space:]]+#[0-9]+' | grep -oE '[0-9]+$' | head -1 || true)
 
         if [ -n "$CLOSES_ISSUE" ]; then
@@ -167,6 +152,18 @@ for PR_NUM in "${PR_ARRAY[@]}"; do
                     fi
                 fi
             fi
+        fi
+    fi
+
+    if [ -z "$RUN_ID" ]; then
+        MANIFEST_FILE=""
+        pick_newest_manifest_among_pr
+        if [ -n "$MANIFEST_FILE" ]; then
+            RUN_DIR=$(dirname "$MANIFEST_FILE")
+            RUN_ID=$(basename "$RUN_DIR")
+            STARTED_AT=$(jq -r '.started_at // empty' "$MANIFEST_FILE" 2>/dev/null || true)
+            LARCH_VERSION=$(jq -r '.larch_version // empty' "$MANIFEST_FILE" 2>/dev/null || true)
+            CLOSES_ISSUE=$(jq -r '.closes_issue // empty' "$MANIFEST_FILE" 2>/dev/null || true)
         fi
     fi
 
