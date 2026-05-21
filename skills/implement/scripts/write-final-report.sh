@@ -74,7 +74,8 @@ ISSUE="$(read_kv ISSUE_NUMBER "$PARENT_ISSUE")"; [ -n "$ISSUE" ] || ISSUE="0"
 RUN_ID="$(read_kv RUN_ID "$PARENT_ISSUE")"
 [ -n "$RUN_ID" ] || RUN_ID="$(tr -d '\r\n' < "$IMPLEMENT_TMPDIR/session-id" 2>/dev/null || true)"
 case "$RUN_ID" in
-    */*|*'..'*) emit_kv_out STATUS failed
+    */*|*'..'*) emit_kv_out COMMENT_URL ""
+                emit_kv_out STATUS failed
                 emit_kv_out ERROR "invalid RUN_ID (path-traversal characters rejected)"
                 exit 1 ;;
 esac

@@ -71,8 +71,9 @@ Wired into Makefile via `.PHONY` line, exactly one `test-harnesses-N:` shard pre
 | Dimension | `token-tally.sh` (this file) | `token-cost.sh` |
 |-----------|------------------------------|-----------------|
 | Callers | `/research` only | `/implement`, `/fix-issue` |
-| Rate env vars | Single `LARCH_TOKEN_RATE_PER_M` across all lanes | Three separate vendor rates: `LARCH_CLAUDE_RATE_PER_M`, `LARCH_CODEX_RATE_PER_M`, `LARCH_CURSOR_RATE_PER_M` |
-| N/A behavior | `$` column omitted entirely when rate is unset/zero | Each vendor independently shows `N/A` when its rate is unset/zero |
+| Rate env vars | Single `LARCH_TOKEN_RATE_PER_M` across all lanes | Per-vendor `LARCH_CLAUDE_RATE_PER_M`, `LARCH_CODEX_RATE_PER_M`, `LARCH_CURSOR_RATE_PER_M`; **Claude-only**: when the Claude rate is unset, empty, or zero, `token-cost.sh` falls back to `LARCH_TOKEN_RATE_PER_M` (Codex/Cursor never use that var). |
+| N/A behavior | `$` column omitted when `LARCH_TOKEN_RATE_PER_M` is unset, malformed, or non-positive | Each vendor uses `rate_or_na` on its effective raw rate: Claude can still yield a numeric `CLAUDE_COST` when only `LARCH_TOKEN_RATE_PER_M` is set; Codex/Cursor show `N/A` without their rates. `TOTAL_COST` sums only numeric vendor costs. |
+| Cost display | Markdown cost suffix from `awk` `$%.4f` beside totals. | Dollar strings from `awk` `%.2f` (no `$` prefix in KV values). |
 | Output shape | Markdown `## Token Spend` section with phase rows | Flat KV lines (`CLAUDE_COST=`, `CODEX_COST=`, etc.) |
 
 Do not assume parity between the two surfaces; changes to one do not imply the other needs matching updates.

@@ -60,7 +60,7 @@ When set, the script exports `PRINT_STDOUT=true` and prints the rendered markdow
 
 ## `RUN_ID` validation
 
-After resolving `RUN_ID` from `parent-issue.md` or `session-id`, the script rejects values that contain `/` or `..` — the same path-traversal guard used in `scripts/refresh-run-logs.sh`. A rejected `RUN_ID` emits `STATUS=failed ERROR="invalid RUN_ID (path-traversal characters rejected)"` and exits non-zero without touching the filesystem.
+After resolving `RUN_ID` from `parent-issue.md` or `session-id`, the script rejects values that contain `/` or `..` — the same path-traversal guard used in `scripts/refresh-run-logs.sh`. A rejected `RUN_ID` emits `COMMENT_URL=` (empty), `STATUS=failed`, and `ERROR="invalid RUN_ID (path-traversal characters rejected)"`, and exits non-zero without creating or modifying anything under the run log directory tree (`larch-logs/implement/<RUN_ID>/`).
 
 ## `--comment-only`
 
