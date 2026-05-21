@@ -1,0 +1,7 @@
+Gathering the diff and commit history for the security review.
+
+Searching the diff for security-sensitive changes (shell, gh, user input).
+
+Delivering the mandated review format. Findings: stale Step 0 exit documentation and public doc drift; no injection/secret issues identified in the diff.
+
+

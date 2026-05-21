@@ -2,8 +2,7 @@
 # test-find-lock-issue.sh — Regression harness for find-lock-issue.sh.
 #
 # Hermetic offline test using a PATH-prepended `gh` stub. Validates the
-# combined Find + Lock + Rename pipeline introduced by the fold-find-and-lock
-# refactor (closes #496). The fixtures below cover the script's exit-code
+# explicit-target Lock + Rename pipeline. Fixtures cover the script's exit-code
 # matrix, stdout contract, and pre-lock dirty-tree abort behavior:
 #   1. eligible + lock OK + rename OK  → exit 0; LOCK_ACQUIRED=true RENAMED=true
 #   2. eligible + lock fail → exit 3; LOCK_ACQUIRED=false
@@ -16,12 +15,7 @@
 #       state is unreachable from this harness's contract surface. Fixture 4
 #       prints a coverage-deferred note and increments PASS without
 #       executing assertions.
-#   5. ineligible (managed prefix on explicit --issue mode) → exit 2
-#   6. auto-pick + no eligible candidates → exit 1
-#   7. auto-pick + Urgent preference (case-insensitive whole-word match,
-#      "non-urgent" rejected, oldest-within-tier) → exit 0; ISSUE_NUMBER=20
-#   8. auto-pick + no Urgent → oldest-first preserved → exit 0;
-#      ISSUE_NUMBER=10
+#   5. ineligible (managed prefix on explicit mode) → exit 2
 #   9. explicit issue with a GHE-style host (host-generic URL parsing —
 #      closes #766) → exit 0; ISSUE_NUMBER=55 LOCK_ACQUIRED=true
 #      RENAMED=true (mirrors fixture 1's full success contract)
@@ -35,44 +29,24 @@
 #      UMBRELLA_ACTION=dispatched UMBRELLA_NUMBER=1100 ISSUE_NUMBER=1102.
 #      Confirms the integration of pick-child's full native+prose blocker
 #      check (issue #768 fix), the post-pick all_open_blockers defense-in-
-#      depth, and the lock-no-go + rename pipeline.
-#  12. auto-pick skips umbrella issue (Anti-pattern #7 regression,
-#      closes #753) → exit 1; ELIGIBLE=false. A single candidate with
-#      umbrella-style title ("Umbrella: …") and GO as last comment is
-#      skipped in auto-pick mode. Confirms the umbrella-detection block
-#      in the auto-pick loop prevents umbrella issues from being picked.
+#      depth, and the lock+rename pipeline.
 #  13. explicit-target detect failure exits 2 (issue #891 regression).
 #      umbrella-handler.sh detect fails (gh issue view for title,body
 #      returns non-zero) → exit 2; ELIGIBLE=false with detect-failure
 #      error. Confirms detect failures are fatal in explicit-target mode
 #      instead of silently falling through to the ordinary-issue path.
-#  14. auto-pick skips archival-prefixed titles while preserving substring
-#      non-collisions (`Researches`, `Investigation`) → exit 0;
-#      ISSUE_NUMBER=106.
-#  15. auto-pick treats `[ROUND-TRIP]` alone as pickable while continuing
-#      to reject lifecycle-prefixed round-trip titles.
 #  16. explicit-target eligible + dirty tree → exit 2 before lock; no `gh
 #      issue comment` or rename call recorded.
-#  17. auto-pick eligible + dirty tree → exit 2 before lock; no lock call.
 #  18. umbrella dispatch + dirty tree → exit 2 before child lock; umbrella
 #      context keys include UMBRELLA_TITLE and LOCK_ACQUIRED=false.
 #  19. git status probe failure under the pre-lock --fail-closed probe →
 #      exit 2 with Cannot determine working-tree cleanliness and no lock call.
-#  20. auto-pick skips [UMBRELLA]-prefixed title (#1612) → exit 1;
-#      ELIGIBLE=false. Confirms the new [UMBRELLA] bracket-block signal is
-#      recognised by is_umbrella_title and skipped in auto-pick mode.
-#  21. auto-pick picks an issue with no GO comment (no-GO path) → exit 0;
-#      ISSUE_NUMBER=210 LOCK_ACQUIRED=true. Confirms --lock-no-go is used
-#      when the last comment is neither GO nor IN PROGRESS.
-#  22. explicit-target picks an issue with no GO comment (no-GO path) →
-#      exit 0; ISSUE_NUMBER=220 LOCK_ACQUIRED=true. Confirms the explicit
-#      path uses --lock-no-go when GO is absent.
-#  23. auto-pick skips audit-report labeled issue (#2462 regression) →
-#      exit 0; ISSUE_NUMBER=231 (audit-report #230 skipped). Confirms the
-#      label filter in auto-pick rejects issues labeled 'audit-report'.
+#  22. explicit-target lock path (no prior comments) → exit 0;
+#      ISSUE_NUMBER=220 LOCK_ACQUIRED=true. Confirms --lock succeeds.
 #  24. explicit-target refuses audit-report labeled issue (#2462 regression)
 #      → exit 2; ELIGIBLE=false with error mentioning 'audit-report'.
 #      Confirms the label check in the explicit-target path.
+#  25. no-arg invocation → exit 2; ELIGIBLE=false with usage error.
 #
 # Stub gh dispatches on positional + json args. Each fixture writes a stub
 # state file under a per-fixture tmpdir; the stub reads the file to decide
@@ -96,8 +70,7 @@ set -euo pipefail
 export LARCH_QUIET_DISABLE=1
 
 # Stub-gh fixtures return synthetic comment state instantly; skip the
-# 1-second GitHub-propagation pause inside issue-lifecycle.sh's lock + lock-no-go
-# post-checks. Production callers (real gh) inherit the default 1s.
+# 1-second GitHub-propagation pause inside issue-lifecycle.sh's lock post-checks.
 export ISSUE_LIFECYCLE_LOCK_SETTLE_SECONDS=0
 
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)
@@ -238,7 +211,7 @@ dispatch_issue_edit() {
 # fixture): record the posted comment in a per-issue runtime file under
 # $RUNTIME_COMMENTS_DIR. Subsequent `gh api .../comments` calls read that
 # file (merged on top of the static ISSUE_<N>_COMMENTS env var) so the
-# lock-no-go post-check can find the just-posted id.
+# lock post-check can find the just-posted id.
 dispatch_issue_comment() {
     if [[ "${COMMENT_FAIL:-false}" == "true" ]]; then
         echo "Error: failed to post comment" >&2
@@ -454,7 +427,8 @@ assert_equal() {
 }
 
 # Comment fixture builder.
-# Args: "GO" or "IN PROGRESS" — last comment body
+# Args: "GO" (non-IN_PROGRESS tail), "IN PROGRESS", or "EMPTY"
+# — controls the synthetic last-comment body for `gh api .../comments`.
 make_comments_json() {
     local last_body="$1"
     case "$last_body" in
@@ -469,11 +443,6 @@ make_comments_json() {
         EMPTY)
             echo '[[]]'
             ;;
-        DOUBLE_LOCK)
-            # Last is GO, but post-lock re-check returns 2 IN PROGRESS — used
-            # by lock-fail fixture to exercise duplicate detection.
-            echo '[[{"id":42,"body":"GO","created_at":"2024-01-01T00:00:00Z"},{"id":99,"body":"IN PROGRESS","created_at":"2024-01-02T00:00:00Z"},{"id":100,"body":"IN PROGRESS","created_at":"2024-01-03T00:00:00Z"}]]'
-            ;;
     esac
 }
 
@@ -481,7 +450,7 @@ make_comments_json() {
 # Note on test scope:
 #
 # This harness exercises the stdout-contract surface of find-lock-issue.sh
-# at the granularity that production runs depend on (exit codes 0/1/2/3 +
+# at the granularity that production runs depend on (exit codes 0/2/3/4/5 +
 # the LOCK_ACQUIRED + RENAMED keys + best-effort rename-failure stderr
 # WARNING). Stub fidelity is intentionally limited — the stub gh handles
 # only the API call shapes find-lock-issue.sh + its delegates issue
@@ -506,9 +475,12 @@ echo "Running test-find-lock-issue against $SCRIPT"
 # ---------------------------------------------------------------------------
 echo "Fixture 1: eligible + lock OK + rename OK"
 run_fixture "fixture-1"
+mkdir -p "$TMPROOT/fixture-1/runtime-comments"
+export RUNTIME_COMMENTS_DIR="$TMPROOT/fixture-1/runtime-comments"
 {
     echo "ISSUE_STATE=OPEN"
     echo "ISSUE_TITLE='Real bug'"
+    echo "RUNTIME_COMMENTS_DIR=\"\${RUNTIME_COMMENTS_DIR:-}\""
     echo "COMMENTS_JSON='$(make_comments_json GO)'"
     echo "RENAME_FAIL=false"
 } > "$STUB_STATE_FILE"
@@ -528,6 +500,7 @@ assert_contains "$OUT" "LOCK_ACQUIRED=true" "[1] LOCK_ACQUIRED=true on stdout"
 assert_contains "$OUT" "RENAMED=true" "[1] RENAMED=true on stdout"
 assert_not_contains "$OUT" "COMMENTED=true" "[1] COMMENTED= filtered from stdout (delegate auxiliary key)"
 assert_not_contains "$OUT" "NEW_TITLE=" "[1] NEW_TITLE= filtered from stdout (delegate auxiliary key)"
+unset RUNTIME_COMMENTS_DIR
 
 # ---------------------------------------------------------------------------
 # Fixture 2: eligible + lock fail → exit 3
@@ -568,9 +541,12 @@ assert_not_contains "$OUT" "COMMENTED=" "[2] COMMENTED= filtered from stdout"
 # ---------------------------------------------------------------------------
 echo "Fixture 3: eligible + lock OK + rename fails best-effort"
 run_fixture "fixture-3"
+mkdir -p "$TMPROOT/fixture-3/runtime-comments"
+export RUNTIME_COMMENTS_DIR="$TMPROOT/fixture-3/runtime-comments"
 {
     echo "ISSUE_STATE=OPEN"
     echo "ISSUE_TITLE='Rename fails'"
+    echo "RUNTIME_COMMENTS_DIR=\"\${RUNTIME_COMMENTS_DIR:-}\""
     echo "COMMENTS_JSON='$(make_comments_json GO)'"
     echo "RENAME_FAIL=true"
 } > "$STUB_STATE_FILE"
@@ -587,6 +563,7 @@ assert_equal "$EXIT_CODE" "0" "[3] exit code 0 (lock is correctness boundary)"
 assert_contains "$OUT" "LOCK_ACQUIRED=true" "[3] LOCK_ACQUIRED=true (lock succeeded)"
 assert_contains "$OUT" "RENAMED=false" "[3] RENAMED=false (best-effort failure)"
 assert_contains "$ERR" "WARNING: title rename failed" "[3] stderr WARNING surfaces rename failure"
+unset RUNTIME_COMMENTS_DIR
 
 # ---------------------------------------------------------------------------
 # Fixture 4: eligible + lock OK + rename idempotent no-op (title already
@@ -618,10 +595,9 @@ PASS=$((PASS + 1))
 echo "  ok: [4] coverage deferred (production-path eligibility filter prevents this state)"
 
 # ---------------------------------------------------------------------------
-# Fixture 5: ineligible — explicit --issue mode rejects managed-prefix
-# title.
+# Fixture 5: ineligible — managed-prefix title on explicit-target path.
 # ---------------------------------------------------------------------------
-echo "Fixture 5: ineligible (managed prefix on explicit --issue)"
+echo "Fixture 5: ineligible (managed prefix on explicit-target path)"
 run_fixture "fixture-5"
 {
     echo "ISSUE_STATE=OPEN"
@@ -637,116 +613,10 @@ with_sterile_repo "fixture-5" "$SCRIPT" 45 >"$OUT_FILE" 2>"$ERR_FILE" || EXIT_CO
 
 OUT=$(cat "$OUT_FILE")
 
-assert_equal "$EXIT_CODE" "2" "[5] exit code 2 (explicit --issue rejected)"
+assert_equal "$EXIT_CODE" "2" "[5] exit code 2 (explicit target rejected)"
 assert_contains "$OUT" "ELIGIBLE=false" "[5] ELIGIBLE=false on stdout"
 assert_contains "$OUT" "managed lifecycle title prefix" "[5] error message identifies prefix exclusion"
 assert_not_contains "$OUT" "LOCK_ACQUIRED=" "[5] LOCK_ACQUIRED= absent (lock never attempted)"
-
-# ---------------------------------------------------------------------------
-# Fixture 6: auto-pick mode + no eligible candidates → exit 1.
-# ---------------------------------------------------------------------------
-echo "Fixture 6: auto-pick mode + no eligible candidates"
-run_fixture "fixture-6"
-{
-    echo "ISSUE_STATE=OPEN"
-    echo "ISSUE_TITLE="
-    echo "OPEN_ISSUES_JSON="
-    echo "COMMENTS_JSON='$(make_comments_json EMPTY)'"
-    echo "RENAME_FAIL=false"
-} > "$STUB_STATE_FILE"
-
-OUT_FILE="$TMPROOT/fixture-6/stdout.txt"
-ERR_FILE="$TMPROOT/fixture-6/stderr.txt"
-EXIT_CODE=0
-with_sterile_repo "fixture-6" "$SCRIPT" >"$OUT_FILE" 2>"$ERR_FILE" || EXIT_CODE=$?
-
-OUT=$(cat "$OUT_FILE")
-
-assert_equal "$EXIT_CODE" "1" "[6] exit code 1 (no eligible candidates)"
-assert_contains "$OUT" "ELIGIBLE=false" "[6] ELIGIBLE=false on stdout"
-
-# ---------------------------------------------------------------------------
-# Fixture 7: auto-pick mode + Urgent preference. Five issues; the picker
-# must select the lowest-numbered Urgent-tagged issue ahead of any
-# non-Urgent issue and ahead of higher-numbered Urgent issues. The
-# Urgent match is a case-insensitive WHOLE-WORD regex (`\burgent\b`),
-# so the included `non-urgent` title MUST be classified as non-Urgent
-# (substring would mis-classify it).
-#
-# Layout (OPEN_ISSUES_JSON lines):
-#   #5  "Fix non-urgent cleanup"   — non-Urgent (substring trap; lowest number)
-#   #10 "Plain old issue"          — non-Urgent (oldest plain title)
-#   #20 "Critical urgent fix"      — Urgent (lowercase whole word); should win
-#   #30 "Plain new issue"          — non-Urgent
-#   #40 "URGENT system broken"     — Urgent (uppercase); higher-numbered, loses tiebreaker
-#
-# Asserting ISSUE_NUMBER=20 verifies all three behaviors: word-boundary
-# regex (so #5 is rejected despite containing the letters "urgent"),
-# Urgent-tier-first (so #20 beats #10), AND oldest-first within the
-# Urgent tier (so #20 beats #40).
-# ---------------------------------------------------------------------------
-echo "Fixture 7: auto-pick + Urgent preference (case-insensitive whole-word, non-urgent rejected, oldest-within-tier)"
-run_fixture "fixture-7"
-{
-    echo "ISSUE_STATE=OPEN"
-    echo "ISSUE_TITLE='Critical urgent fix'"
-    # JSONL — one JSON object per line; the production --jq filter is applied
-    # server-side in real gh, but the bash stub ignores --jq, so we emit the
-    # already-filtered shape here (matches fixture 6's empty-stream contract).
-    OPEN_ISSUES_LINES='{"number":5,"title":"Fix non-urgent cleanup"}
-{"number":10,"title":"Plain old issue"}
-{"number":20,"title":"Critical urgent fix"}
-{"number":30,"title":"Plain new issue"}
-{"number":40,"title":"URGENT system broken"}'
-    # Single-quote the value so newlines survive the shell-source round-trip.
-    printf "OPEN_ISSUES_JSON='%s'\n" "$OPEN_ISSUES_LINES"
-    echo "COMMENTS_JSON='$(make_comments_json GO)'"
-    echo "RENAME_FAIL=false"
-} > "$STUB_STATE_FILE"
-
-OUT_FILE="$TMPROOT/fixture-7/stdout.txt"
-ERR_FILE="$TMPROOT/fixture-7/stderr.txt"
-EXIT_CODE=0
-with_sterile_repo "fixture-7" "$SCRIPT" >"$OUT_FILE" 2>"$ERR_FILE" || EXIT_CODE=$?
-
-OUT=$(cat "$OUT_FILE")
-
-assert_equal "$EXIT_CODE" "0" "[7] exit code 0 (Urgent candidate picked + locked)"
-assert_contains "$OUT" "ELIGIBLE=true" "[7] ELIGIBLE=true on stdout"
-assert_contains "$OUT" "ISSUE_NUMBER=20" "[7] ISSUE_NUMBER=20 (Urgent issue, lowest number among Urgent tier)"
-assert_not_contains "$OUT" "ISSUE_NUMBER=5" "[7] 'non-urgent' title #5 NOT picked (word-boundary regex rejects substring inside another word)"
-assert_not_contains "$OUT" "ISSUE_NUMBER=10" "[7] non-Urgent #10 not picked despite oldest"
-assert_not_contains "$OUT" "ISSUE_NUMBER=40" "[7] higher-numbered Urgent #40 not picked"
-assert_contains "$OUT" "LOCK_ACQUIRED=true" "[7] LOCK_ACQUIRED=true"
-
-# ---------------------------------------------------------------------------
-# Fixture 8: auto-pick mode + no Urgent issues falls back to oldest-first.
-# Confirms the preference is a soft signal — when no Urgent candidate
-# exists, the pre-existing oldest-first ordering is preserved unchanged.
-# ---------------------------------------------------------------------------
-echo "Fixture 8: auto-pick + no Urgent → oldest-first preserved"
-run_fixture "fixture-8"
-{
-    echo "ISSUE_STATE=OPEN"
-    echo "ISSUE_TITLE='Plain old issue'"
-    OPEN_ISSUES_LINES='{"number":10,"title":"Plain old issue"}
-{"number":20,"title":"Another normal one"}
-{"number":30,"title":"Plain new issue"}'
-    printf "OPEN_ISSUES_JSON='%s'\n" "$OPEN_ISSUES_LINES"
-    echo "COMMENTS_JSON='$(make_comments_json GO)'"
-    echo "RENAME_FAIL=false"
-} > "$STUB_STATE_FILE"
-
-OUT_FILE="$TMPROOT/fixture-8/stdout.txt"
-ERR_FILE="$TMPROOT/fixture-8/stderr.txt"
-EXIT_CODE=0
-with_sterile_repo "fixture-8" "$SCRIPT" >"$OUT_FILE" 2>"$ERR_FILE" || EXIT_CODE=$?
-
-OUT=$(cat "$OUT_FILE")
-
-assert_equal "$EXIT_CODE" "0" "[8] exit code 0 (oldest non-Urgent candidate picked)"
-assert_contains "$OUT" "ISSUE_NUMBER=10" "[8] ISSUE_NUMBER=10 (oldest, no Urgent tier exists)"
-assert_contains "$OUT" "LOCK_ACQUIRED=true" "[8] LOCK_ACQUIRED=true"
 
 # ---------------------------------------------------------------------------
 # Fixture 9: explicit-issue mode with a GitHub-Enterprise-style host. The
@@ -758,10 +628,13 @@ assert_contains "$OUT" "LOCK_ACQUIRED=true" "[8] LOCK_ACQUIRED=true"
 # ---------------------------------------------------------------------------
 echo "Fixture 9: explicit issue with GHE host (host-generic URL parsing, closes #766)"
 run_fixture "fixture-9"
+mkdir -p "$TMPROOT/fixture-9/runtime-comments"
+export RUNTIME_COMMENTS_DIR="$TMPROOT/fixture-9/runtime-comments"
 {
     echo "ISSUE_STATE=OPEN"
     echo "ISSUE_TITLE='GHE test issue'"
     echo "ISSUE_URL_HOST=ghe.example.com"
+    echo "RUNTIME_COMMENTS_DIR=\"\${RUNTIME_COMMENTS_DIR:-}\""
     echo "COMMENTS_JSON='$(make_comments_json GO)'"
     echo "RENAME_FAIL=false"
 } > "$STUB_STATE_FILE"
@@ -779,16 +652,17 @@ assert_contains "$OUT" "ISSUE_NUMBER=55" "[9] ISSUE_NUMBER=55 on stdout"
 assert_contains "$OUT" "LOCK_ACQUIRED=true" "[9] LOCK_ACQUIRED=true on stdout"
 assert_contains "$OUT" "RENAMED=true" "[9] RENAMED=true on stdout (mirrors Fixture 1)"
 assert_not_contains "$OUT" "Cannot parse repository from issue URL" "[9] no parse-failure error"
+unset RUNTIME_COMMENTS_DIR
 
 # ---------------------------------------------------------------------------
 # Fixture 10: explicit-target umbrella with managed-prefix title (issue #819
 # DECISION_1 regression). Asserts the reorder lets `[IN PROGRESS] Umbrella:
 # foo` reach the umbrella dispatcher rather than failing the managed-prefix
 # early-reject. Slimmer NO_ELIGIBLE_CHILD design (per #819 plan-review
-# FINDING_7): title-only umbrella with no body literal and no parseable
-# task-list children → handle_umbrella emits exit 5 + UMBRELLA_ACTION=
-# no-eligible-child. Avoids coupling to issue-lifecycle.sh lock-no-go and
-# the stub's single-issue ISSUE_TITLE/BODY model.
+# FINDING_7): title-only umbrella with no parseable task-list children →
+# handle_umbrella emits exit 5 + UMBRELLA_ACTION=no-eligible-child. Avoids
+# tight coupling to issue-lifecycle.sh duplicate-IN-PROGRESS post-check
+# mechanics and the stub's single-issue ISSUE_TITLE/BODY model.
 # ---------------------------------------------------------------------------
 echo "Fixture 10: explicit-target umbrella with [IN PROGRESS] managed-prefix title (#819)"
 run_fixture "fixture-10"
@@ -818,19 +692,19 @@ assert_not_contains "$OUT" "managed lifecycle title prefix" "[10] managed-prefix
 # second child (issue #768). End-to-end integration covering the full
 # find-lock-issue.sh → umbrella-handler.sh → blocker-helpers.sh wiring,
 # including the post-pick all_open_blockers defense-in-depth check and the
-# lock-no-go + rename pipeline.
+# lock + rename pipeline.
 #
 # Setup: umbrella #1100 with body "- [ ] #1101" (prose-blocked) and
 # "- [ ] #1102" (ready). Child #1101's body has "Depends on #1199" with
 # #1199 OPEN. Child #1102 has clean body. Expected: pick-child returns
 # #1102 (skipping prose-blocked #1101); the post-pick guard re-runs
-# all_open_blockers on #1102 (empty); lock-no-go succeeds; rename to
-# [IN PROGRESS] succeeds; emit IS_UMBRELLA=true UMBRELLA_ACTION=dispatched
+# all_open_blockers on #1102 (empty); `issue-lifecycle.sh comment --lock`
+# succeeds; rename to [IN PROGRESS] succeeds; emit IS_UMBRELLA=true
 # UMBRELLA_NUMBER=1100 ISSUE_NUMBER=1102 LOCK_ACQUIRED=true RENAMED=true.
 # ---------------------------------------------------------------------------
 echo "Fixture 11: e2e umbrella dispatch with prose-blocked first child (#768)"
 run_fixture "fixture-11"
-# Enable stateful comment-posting so the lock-no-go post-check can find
+# Enable stateful comment-posting so the lock post-check can find
 # the just-posted IN PROGRESS comment id.
 mkdir -p "$TMPROOT/fixture-11/runtime-comments"
 export RUNTIME_COMMENTS_DIR="$TMPROOT/fixture-11/runtime-comments"
@@ -868,45 +742,10 @@ assert_contains "$OUT" "UMBRELLA_NUMBER=1100" "[11] UMBRELLA_NUMBER=1100"
 assert_contains "$OUT" "ISSUE_NUMBER=1102" "[11] ISSUE_NUMBER=1102 (skipped prose-blocked #1101)"
 assert_not_contains "$OUT" "ISSUE_NUMBER=1101" "[11] does NOT lock prose-blocked first child"
 assert_contains "$OUT" "LOCK_ACQUIRED=true" "[11] LOCK_ACQUIRED=true"
-assert_contains "$OUT" "RENAMED=true" "[11] RENAMED=true (lock-no-go + rename pipeline succeeded)"
+assert_contains "$OUT" "RENAMED=true" "[11] RENAMED=true (lock + rename pipeline succeeded)"
 ERR=$(cat "$ERR_FILE")
 assert_not_contains "$ERR" "WARNING: title rename failed" "[11] no rename-failure warning on stderr"
 unset RUNTIME_COMMENTS_DIR
-
-# ---------------------------------------------------------------------------
-# Fixture 12: auto-pick skips umbrella issues (Anti-pattern #7 regression).
-# A single candidate with an umbrella-style title ("Umbrella: ...") and GO
-# as its last comment must be skipped in auto-pick mode. The auto-pick loop
-# calls `umbrella-handler.sh detect` on each GO-tagged candidate; when
-# IS_UMBRELLA=true, the candidate is skipped with a diagnostic on stderr.
-# With no other candidates, the scan ends with exit 1 (no eligible issues).
-# ---------------------------------------------------------------------------
-echo "Fixture 12: auto-pick skips umbrella issue (Anti-pattern #7 regression)"
-run_fixture "fixture-12"
-{
-    echo "ISSUE_STATE=OPEN"
-    OPEN_ISSUES_LINES='{"number":200,"title":"Umbrella: deploy pipeline refactor (3 children)"}'
-    printf "OPEN_ISSUES_JSON='%s'\n" "$OPEN_ISSUES_LINES"
-    echo "ISSUE_200_TITLE='Umbrella: deploy pipeline refactor (3 children)'"
-    echo "ISSUE_200_BODY='No task-list children in this fixture.'"
-    echo "ISSUE_200_STATE=OPEN"
-    echo "ISSUE_200_COMMENTS='$(make_comments_json GO)'"
-    echo "COMMENTS_JSON='$(make_comments_json GO)'"
-    echo "RENAME_FAIL=false"
-} > "$STUB_STATE_FILE"
-
-OUT_FILE="$TMPROOT/fixture-12/stdout.txt"
-ERR_FILE="$TMPROOT/fixture-12/stderr.txt"
-EXIT_CODE=0
-with_sterile_repo "fixture-12" "$SCRIPT" >"$OUT_FILE" 2>"$ERR_FILE" || EXIT_CODE=$?
-
-OUT=$(cat "$OUT_FILE")
-ERR=$(cat "$ERR_FILE")
-
-assert_equal "$EXIT_CODE" "1" "[12] exit code 1 (no eligible candidates — umbrella skipped)"
-assert_contains "$OUT" "ELIGIBLE=false" "[12] ELIGIBLE=false on stdout"
-assert_not_contains "$OUT" "LOCK_ACQUIRED=" "[12] LOCK_ACQUIRED= absent (lock never attempted)"
-assert_contains "$ERR" "Skipping issue #200: umbrella issue" "[12] stderr diagnostic confirms umbrella skip"
 
 # ---------------------------------------------------------------------------
 # Fixture 13: explicit-target detect failure exits 2 (issue #891 regression).
@@ -942,94 +781,8 @@ assert_contains "$OUT" "#300" "[13] ERROR mentions issue number"
 assert_not_contains "$OUT" "LOCK_ACQUIRED=" "[13] LOCK_ACQUIRED= absent (lock never attempted)"
 
 # ---------------------------------------------------------------------------
-# Fixture 14: auto-pick skips archival-prefixed titles but does not treat
-# substring-prefix collisions as archival. The first five candidates carry the
-# exact archival prefixes and must be skipped before comment fetch. Candidate
-# #105 starts with "Researches" and must NOT get the archival-skip diagnostic;
-# its last comment is IN PROGRESS, so the loop continues. Candidate #106 starts
-# with "Investigation" and must be picked.
-# ---------------------------------------------------------------------------
-echo "Fixture 14: auto-pick skips archival prefixes without substring collisions"
-run_fixture "fixture-14"
-{
-    echo "ISSUE_STATE=OPEN"
-    OPEN_ISSUES_LINES='{"number":97,"title":"[Analysis Report] perf summary"}
-{"number":98,"title":"[Perf Report] 2025 results"}
-{"number":100,"title":"Research old duplicate report"}
-{"number":101,"title":"[Research] archived finding"}
-{"number":102,"title":"Investigate flaky hook"}
-{"number":103,"title":"[Investigate] old branch cleanup"}
-{"number":104,"title":"[Research Report] queue audit"}
-{"number":105,"title":"Researches went for a walk"}
-{"number":106,"title":"Investigation of slow query"}'
-    printf "OPEN_ISSUES_JSON='%s'\n" "$OPEN_ISSUES_LINES"
-    echo "ISSUE_105_COMMENTS='$(make_comments_json IN_PROGRESS)'"
-    echo "ISSUE_106_TITLE='Investigation of slow query'"
-    echo "ISSUE_106_COMMENTS='$(make_comments_json GO)'"
-    echo "RENAME_FAIL=false"
-} > "$STUB_STATE_FILE"
-
-OUT_FILE="$TMPROOT/fixture-14/stdout.txt"
-ERR_FILE="$TMPROOT/fixture-14/stderr.txt"
-EXIT_CODE=0
-with_sterile_repo "fixture-14" "$SCRIPT" >"$OUT_FILE" 2>"$ERR_FILE" || EXIT_CODE=$?
-
-OUT=$(cat "$OUT_FILE")
-ERR=$(cat "$ERR_FILE")
-
-assert_equal "$EXIT_CODE" "0" "[14] exit code 0 (non-archival collision candidate picked)"
-assert_contains "$OUT" "ELIGIBLE=true" "[14] ELIGIBLE=true on stdout"
-assert_contains "$OUT" "ISSUE_NUMBER=106" "[14] ISSUE_NUMBER=106 (Investigation is not archival)"
-assert_contains "$OUT" "LOCK_ACQUIRED=true" "[14] LOCK_ACQUIRED=true"
-assert_contains "$ERR" "Skipping issue #97: report title prefix" "[14] Analysis Report prefix skipped via has_report_prefix"
-assert_contains "$ERR" "Skipping issue #98: report title prefix" "[14] Perf Report prefix skipped via has_report_prefix"
-assert_contains "$ERR" "Skipping issue #100: archival title prefix" "[14] bare Research prefix skipped"
-assert_contains "$ERR" "Skipping issue #101: archival title prefix" "[14] bracketed Research prefix skipped"
-assert_contains "$ERR" "Skipping issue #102: archival title prefix" "[14] bare Investigate prefix skipped"
-assert_contains "$ERR" "Skipping issue #103: archival title prefix" "[14] bracketed Investigate prefix skipped"
-assert_contains "$ERR" "Skipping issue #104: archival title prefix" "[14] Research Report prefix skipped by has_archival_prefix"
-assert_not_contains "$ERR" "Skipping issue #105: archival title prefix" "[14] Researches collision is not archival-skipped"
-assert_not_contains "$ERR" "Skipping issue #106: archival title prefix" "[14] Investigation collision is not archival-skipped"
-assert_not_contains "$ERR" "Skipping issue #105: report title prefix" "[14] Researches collision is not report-skipped"
-assert_not_contains "$ERR" "Skipping issue #106: report title prefix" "[14] Investigation collision is not report-skipped"
-
-# ---------------------------------------------------------------------------
-# Fixture 15: [ROUND-TRIP]-only titles remain pickable; lifecycle prefixes
-# still reject even when followed by [ROUND-TRIP].
-# ---------------------------------------------------------------------------
-echo "Fixture 15: auto-pick [ROUND-TRIP]-only title is pickable"
-run_fixture "fixture-15"
-{
-    echo "ISSUE_STATE=OPEN"
-    OPEN_ISSUES_LINES='{"number":120,"title":"[IN PROGRESS] [ROUND-TRIP] active"}
-{"number":121,"title":"[DONE] [ROUND-TRIP] complete"}
-{"number":122,"title":"[STALLED] [ROUND-TRIP] stalled"}
-{"number":123,"title":"[ROUND-TRIP] Pickable"}'
-    printf "OPEN_ISSUES_JSON='%s'\n" "$OPEN_ISSUES_LINES"
-    echo "ISSUE_123_TITLE='[ROUND-TRIP] Pickable'"
-    echo "ISSUE_123_COMMENTS='$(make_comments_json GO)'"
-    echo "RENAME_FAIL=false"
-} > "$STUB_STATE_FILE"
-
-OUT_FILE="$TMPROOT/fixture-15/stdout.txt"
-ERR_FILE="$TMPROOT/fixture-15/stderr.txt"
-EXIT_CODE=0
-with_sterile_repo "fixture-15" "$SCRIPT" >"$OUT_FILE" 2>"$ERR_FILE" || EXIT_CODE=$?
-
-OUT=$(cat "$OUT_FILE")
-ERR=$(cat "$ERR_FILE")
-
-assert_equal "$EXIT_CODE" "0" "[15] exit code 0"
-assert_contains "$OUT" "ISSUE_NUMBER=123" "[15] [ROUND-TRIP]-only title picked"
-assert_contains "$OUT" "LOCK_ACQUIRED=true" "[15] lock acquired"
-assert_contains "$ERR" "Skipping issue #120: managed lifecycle title prefix" "[15] [IN PROGRESS] [ROUND-TRIP] rejected"
-assert_contains "$ERR" "Skipping issue #121: managed lifecycle title prefix" "[15] [DONE] [ROUND-TRIP] rejected"
-assert_contains "$ERR" "Skipping issue #122: managed lifecycle title prefix" "[15] [STALLED] [ROUND-TRIP] rejected"
-assert_not_contains "$ERR" "Skipping issue #123: managed lifecycle title prefix" "[15] [ROUND-TRIP]-only is not managed-prefix rejected"
-
-# ---------------------------------------------------------------------------
 # Fixture 16: explicit-target eligible issue + dirty tree. The pre-lock probe
-# must abort before issue-lifecycle.sh deletes GO or posts IN PROGRESS.
+# must abort before issue-lifecycle.sh posts IN PROGRESS or runs rename.
 # ---------------------------------------------------------------------------
 echo "Fixture 16: explicit-target dirty tree aborts before lock"
 run_fixture "fixture-16"
@@ -1057,38 +810,8 @@ assert_equal "$(gh_log_count "$STUB_LOG" '^issue comment')" "0" "[16] no lock co
 assert_equal "$(gh_log_count "$STUB_LOG" '^issue edit')" "0" "[16] no rename attempted"
 
 # ---------------------------------------------------------------------------
-# Fixture 17: auto-pick eligible issue + dirty tree. Candidate discovery still
-# runs, but lock acquisition is blocked before the first GitHub mutation.
-# ---------------------------------------------------------------------------
-echo "Fixture 17: auto-pick dirty tree aborts before lock"
-run_fixture "fixture-17"
-{
-    OPEN_ISSUES_LINES='{"number":150,"title":"Dirty auto-pick candidate"}'
-    printf "OPEN_ISSUES_JSON='%s'\n" "$OPEN_ISSUES_LINES"
-    echo "ISSUE_150_TITLE='Dirty auto-pick candidate'"
-    echo "ISSUE_150_STATE=OPEN"
-    echo "ISSUE_150_COMMENTS='$(make_comments_json GO)'"
-    echo "RENAME_FAIL=false"
-} > "$STUB_STATE_FILE"
-dirty_repo=$(ensure_sterile_repo "fixture-17")
-printf 'dirty\n' > "$dirty_repo/untracked.txt"
-
-OUT_FILE="$TMPROOT/fixture-17/stdout.txt"
-ERR_FILE="$TMPROOT/fixture-17/stderr.txt"
-EXIT_CODE=0
-with_sterile_repo "fixture-17" "$SCRIPT" >"$OUT_FILE" 2>"$ERR_FILE" || EXIT_CODE=$?
-
-OUT=$(cat "$OUT_FILE")
-
-assert_equal "$EXIT_CODE" "2" "[17] exit code 2 (auto-pick dirty pre-lock abort)"
-assert_contains "$OUT" "ELIGIBLE=false" "[17] ELIGIBLE=false on stdout"
-assert_contains "$OUT" "ERROR=Working tree is not clean." "[17] dirty-tree ERROR prefix"
-assert_equal "$(gh_log_count "$STUB_LOG" '^issue comment')" "0" "[17] no lock comment posted"
-assert_equal "$(gh_log_count "$STUB_LOG" '^issue edit')" "0" "[17] no rename attempted"
-
-# ---------------------------------------------------------------------------
 # Fixture 18: umbrella dispatch + dirty tree. The child is selected, then the
-# pre-lock probe aborts before --lock-no-go mutates the child.
+# pre-lock probe aborts before --lock mutates the child.
 # ---------------------------------------------------------------------------
 echo "Fixture 18: umbrella dispatch dirty tree aborts before child lock"
 run_fixture "fixture-18"
@@ -1155,85 +878,11 @@ assert_equal "$(gh_log_count "$STUB_LOG" '^issue comment')" "0" "[19] no lock co
 assert_equal "$(gh_log_count "$STUB_LOG" '^issue edit')" "0" "[19] no rename attempted"
 
 # ---------------------------------------------------------------------------
-# Fixture 20: auto-pick skips [UMBRELLA]-prefixed title (#1612).
-# A single candidate with a [UMBRELLA] prefix title and GO as its last
-# comment must be skipped in auto-pick mode — the new [UMBRELLA] bracket-block
-# signal in is_umbrella_title returns IS_UMBRELLA=true and the auto-pick loop
-# skips it. With no other candidates the scan ends with exit 1.
-# ---------------------------------------------------------------------------
-echo "Fixture 20: auto-pick skips [UMBRELLA]-prefixed title (#1612 new signal)"
-run_fixture "fixture-20"
-{
-    echo "ISSUE_STATE=OPEN"
-    OPEN_ISSUES_LINES='{"number":201,"title":"[UMBRELLA] Token savings drive II"}'
-    printf "OPEN_ISSUES_JSON='%s'\n" "$OPEN_ISSUES_LINES"
-    echo "ISSUE_201_TITLE='[UMBRELLA] Token savings drive II'"
-    echo "ISSUE_201_BODY='Umbrella tracking issue for work items.'"
-    echo "ISSUE_201_STATE=OPEN"
-    echo "ISSUE_201_COMMENTS='$(make_comments_json GO)'"
-    echo "COMMENTS_JSON='$(make_comments_json GO)'"
-    echo "RENAME_FAIL=false"
-} > "$STUB_STATE_FILE"
-
-OUT_FILE="$TMPROOT/fixture-20/stdout.txt"
-ERR_FILE="$TMPROOT/fixture-20/stderr.txt"
-EXIT_CODE=0
-with_sterile_repo "fixture-20" "$SCRIPT" >"$OUT_FILE" 2>"$ERR_FILE" || EXIT_CODE=$?
-
-OUT=$(cat "$OUT_FILE")
-ERR=$(cat "$ERR_FILE")
-
-assert_equal "$EXIT_CODE" "1" "[20] exit code 1 (no eligible candidates — [UMBRELLA] title skipped)"
-assert_contains "$OUT" "ELIGIBLE=false" "[20] ELIGIBLE=false on stdout"
-assert_not_contains "$OUT" "LOCK_ACQUIRED=" "[20] LOCK_ACQUIRED= absent (lock never attempted)"
-assert_contains "$ERR" "Skipping issue #201: umbrella issue" "[20] stderr diagnostic confirms umbrella skip"
-
-# ---------------------------------------------------------------------------
-# Fixture 21: auto-pick picks an issue with no GO comment (no-GO path uses
-# --lock-no-go). Candidate #210 has an empty comment list; #211 is IN
-# PROGRESS (locked); #212 also has no comments. Expect #210 picked.
-# Requires RUNTIME_COMMENTS_DIR so the --lock-no-go post-check can find
-# the just-posted IN PROGRESS comment id (same as fixture 11).
-# ---------------------------------------------------------------------------
-echo "Fixture 21: auto-pick no-GO path (--lock-no-go)"
-run_fixture "fixture-21"
-mkdir -p "$TMPROOT/fixture-21/runtime-comments"
-export RUNTIME_COMMENTS_DIR="$TMPROOT/fixture-21/runtime-comments"
-{
-    echo "ISSUE_STATE=OPEN"
-    echo "RUNTIME_COMMENTS_DIR=\"\${RUNTIME_COMMENTS_DIR:-}\""
-    OPEN_ISSUES_LINES='{"number":210,"title":"No-GO eligible issue"}
-{"number":211,"title":"Locked issue"}
-{"number":212,"title":"Also no-GO eligible"}'
-    printf "OPEN_ISSUES_JSON='%s'\n" "$OPEN_ISSUES_LINES"
-    echo "ISSUE_210_COMMENTS='$(make_comments_json EMPTY)'"
-    echo "ISSUE_211_COMMENTS='$(make_comments_json IN_PROGRESS)'"
-    echo "ISSUE_212_COMMENTS='$(make_comments_json EMPTY)'"
-    echo "RENAME_FAIL=false"
-} > "$STUB_STATE_FILE"
-
-OUT_FILE="$TMPROOT/fixture-21/stdout.txt"
-ERR_FILE="$TMPROOT/fixture-21/stderr.txt"
-EXIT_CODE=0
-with_sterile_repo "fixture-21" "$SCRIPT" >"$OUT_FILE" 2>"$ERR_FILE" || EXIT_CODE=$?
-
-OUT=$(cat "$OUT_FILE")
-ERR=$(cat "$ERR_FILE")
-
-assert_equal "$EXIT_CODE" "0" "[21] exit code 0 (no-GO issue picked)"
-assert_contains "$OUT" "ELIGIBLE=true" "[21] ELIGIBLE=true on stdout"
-assert_contains "$OUT" "ISSUE_NUMBER=210" "[21] ISSUE_NUMBER=210 (first no-GO candidate)"
-assert_contains "$OUT" "LOCK_ACQUIRED=true" "[21] LOCK_ACQUIRED=true (--lock-no-go succeeded)"
-assert_contains "$OUT" "RENAMED=true" "[21] RENAMED=true"
-unset RUNTIME_COMMENTS_DIR
-
-# ---------------------------------------------------------------------------
-# Fixture 22: explicit-target issue with no GO comment (no-GO path uses
-# --lock-no-go). Expect ELIGIBLE=true, LOCK_ACQUIRED=true.
-# Requires RUNTIME_COMMENTS_DIR so the --lock-no-go post-check can find
+# Fixture 22: explicit-target lock path (no prior comments).
+# Requires RUNTIME_COMMENTS_DIR so the --lock post-check can find
 # the just-posted IN PROGRESS comment id.
 # ---------------------------------------------------------------------------
-echo "Fixture 22: explicit-target no-GO path (--lock-no-go)"
+echo "Fixture 22: explicit-target lock path (empty comment list)"
 run_fixture "fixture-22"
 mkdir -p "$TMPROOT/fixture-22/runtime-comments"
 export RUNTIME_COMMENTS_DIR="$TMPROOT/fixture-22/runtime-comments"
@@ -1252,47 +901,11 @@ with_sterile_repo "fixture-22" "$SCRIPT" 220 >"$OUT_FILE" 2>"$ERR_FILE" || EXIT_
 
 OUT=$(cat "$OUT_FILE")
 
-assert_equal "$EXIT_CODE" "0" "[22] exit code 0 (explicit no-GO issue picked)"
+assert_equal "$EXIT_CODE" "0" "[22] exit code 0 (explicit-target lock succeeded)"
 assert_contains "$OUT" "ELIGIBLE=true" "[22] ELIGIBLE=true on stdout"
 assert_contains "$OUT" "ISSUE_NUMBER=220" "[22] ISSUE_NUMBER=220"
-assert_contains "$OUT" "LOCK_ACQUIRED=true" "[22] LOCK_ACQUIRED=true (--lock-no-go succeeded)"
+assert_contains "$OUT" "LOCK_ACQUIRED=true" "[22] LOCK_ACQUIRED=true"
 assert_contains "$OUT" "RENAMED=true" "[22] RENAMED=true"
-unset RUNTIME_COMMENTS_DIR
-
-# ---------------------------------------------------------------------------
-# Fixture 23: auto-pick skips an issue labeled 'audit-report'.
-# Two candidates: #230 (audit-report label) and #231 (no label).
-# Expect #231 to be picked; #230 skipped with "has label 'audit-report'".
-# ---------------------------------------------------------------------------
-echo "Fixture 23: auto-pick skips audit-report labeled issue"
-run_fixture "fixture-23"
-mkdir -p "$TMPROOT/fixture-23/runtime-comments"
-export RUNTIME_COMMENTS_DIR="$TMPROOT/fixture-23/runtime-comments"
-{
-    echo "RUNTIME_COMMENTS_DIR=\"\${RUNTIME_COMMENTS_DIR:-}\""
-    # Stub ignores --jq; emit the already-filtered shape with labels included.
-    # #230 has audit-report label; #231 has no labels.
-    OPEN_ISSUES_LINES='{"number":230,"title":"Audit report issue","labels":["audit-report"]}
-{"number":231,"title":"Normal eligible issue","labels":[]}'
-    printf "OPEN_ISSUES_JSON='%s'\n" "$OPEN_ISSUES_LINES"
-    echo "ISSUE_230_COMMENTS='$(make_comments_json GO)'"
-    echo "ISSUE_231_COMMENTS='$(make_comments_json GO)'"
-    echo "RENAME_FAIL=false"
-} > "$STUB_STATE_FILE"
-
-OUT_FILE="$TMPROOT/fixture-23/stdout.txt"
-ERR_FILE="$TMPROOT/fixture-23/stderr.txt"
-EXIT_CODE=0
-with_sterile_repo "fixture-23" "$SCRIPT" >"$OUT_FILE" 2>"$ERR_FILE" || EXIT_CODE=$?
-
-OUT=$(cat "$OUT_FILE")
-ERR=$(cat "$ERR_FILE")
-
-assert_equal "$EXIT_CODE" "0" "[23] exit code 0 (eligible issue picked despite audit-report candidate)"
-assert_contains "$OUT" "ELIGIBLE=true" "[23] ELIGIBLE=true"
-assert_contains "$OUT" "ISSUE_NUMBER=231" "[23] ISSUE_NUMBER=231 (audit-report #230 skipped)"
-assert_contains "$OUT" "LOCK_ACQUIRED=true" "[23] LOCK_ACQUIRED=true"
-assert_contains "$ERR" "Skipping issue #230: has label 'audit-report'" "[23] stderr confirms audit-report skip"
 unset RUNTIME_COMMENTS_DIR
 
 # ---------------------------------------------------------------------------
@@ -1319,6 +932,29 @@ ERR=$(cat "$ERR_FILE")
 assert_equal "$EXIT_CODE" "2" "[24] exit code 2 (audit-report issue refused)"
 assert_contains "$OUT" "ELIGIBLE=false" "[24] ELIGIBLE=false"
 assert_contains "$OUT" "audit-report" "[24] error mentions audit-report label"
+
+# ---------------------------------------------------------------------------
+# Fixture 25: no-arg invocation → exit 2 with usage error.
+# find-lock-issue.sh now requires a positional issue number or URL.
+# ---------------------------------------------------------------------------
+echo "Fixture 25: no-arg → exit 2 with usage error"
+run_fixture "fixture-25"
+{
+    echo "ISSUE_STATE=OPEN"
+    echo "RENAME_FAIL=false"
+} > "$STUB_STATE_FILE"
+
+OUT_FILE="$TMPROOT/fixture-25/stdout.txt"
+ERR_FILE="$TMPROOT/fixture-25/stderr.txt"
+EXIT_CODE=0
+with_sterile_repo "fixture-25" "$SCRIPT" >"$OUT_FILE" 2>"$ERR_FILE" || EXIT_CODE=$?
+
+OUT=$(cat "$OUT_FILE")
+
+assert_equal "$EXIT_CODE" "2" "[25] exit code 2 (no argument provided)"
+assert_contains "$OUT" "ELIGIBLE=false" "[25] ELIGIBLE=false on stdout"
+assert_contains "$OUT" "Usage:" "[25] ERROR contains usage hint"
+assert_not_contains "$OUT" "LOCK_ACQUIRED=" "[25] LOCK_ACQUIRED= absent (no lock attempted)"
 
 # ---------------------------------------------------------------------------
 # Summary

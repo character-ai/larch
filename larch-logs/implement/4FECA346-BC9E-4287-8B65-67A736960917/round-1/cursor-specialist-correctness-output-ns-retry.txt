@@ -1,0 +1,36 @@
+Reading the pre-computed diff and commit history for a correctness-focused review.
+
+Scanning the diff structure and key hunks for correctness issues.
+
+Fetching post-change line numbers for cited locations:
+
+### In-Scope Findings
+
+- **Important** `skills/fix-issue/SKILL.md:98-104` — Step 0 still documents **Exit 1** (`write-final-report.sh --outcome no-candidate`), but `find-lock-issue.sh` no longer returns exit code 1 after removing auto-pick (only 0,2,3,4,5 remain). **Concrete scenario:** an operator or wrapper implements the published matrix and keeps dead `exit 1` handling forever, or mis-tunes monitoring expecting `no-candidate`; in production `find-lock-issue.sh` never reaches that branch, so incident runbooks keyed on exit 1 mis-describe reality. **Suggested fix:** delete the Exit 1 subsection and align Step 0 exit handling with the script’s current exit set (per the implementation plan’s “remove exit code 1 handling” item).
+
+- **Important** `skills/fix-issue/SKILL.md:392` — Step 8 cleanup prose still says Step 0 may have **“exited 1 / 2 / 3”** and equates exit 1 with **“no eligible issue”**, which is false after this change (missing-arg / usage failures are exit 2 from `find-lock-issue.sh`). **Concrete scenario:** someone triaging cleanup messaging infers exit 1 still means “empty queue” and mis-classifies a mandatory-arg failure or other exit-2 path. **Suggested fix:** drop exit 1 from the Step 8 guard text and describe only the exit codes `find-lock-issue.sh` actually emits.
+
+- **Important** `README.md:76` and `docs/skills.md:81` — Public argument lines still show **`[<number-or-url>]`** (optional), contradicting the branch intent and the updated `skills/fix-issue/SKILL.md` / `find-lock-issue.sh` contract (mandatory positional). **Concrete scenario:** a consumer reads the README or `docs/skills.md` table, runs `/fix-issue` without an issue number expecting optional behavior, and only then hits the usage error from `find-lock-issue.sh` instead of being steered by docs. **Suggested fix:** change the displayed signature to a required `<number-or-url>` (no square-bracket optionality) in both places.
+
+- **Nit** `skills/fix-issue/scripts/find-lock-issue.md:42` — Stderr contract still mentions a **“deprecated-flag warning”** even though `find-lock-issue.sh` removed the deprecated `--issue` path. **Suggested fix:** reword stderr examples to match only diagnostics the script can still emit.
+
+- **Nit** `skills/fix-issue/scripts/find-lock-issue.sh:319-322` — Comment still talks about distinguishing **“no candidate”** from a lock race; explicit-target-only mode no longer has a “no candidate” scan. **Suggested fix:** update the comment to “eligibility passed but lock lost the race / delegate failed.”
+
+- **Nit** `skills/fix-issue/scripts/test-find-lock-issue.sh:603-606,622` — Fixture 5 titles/assertions still say **“explicit --issue”** though the CLI no longer accepts `--issue`. **Suggested fix:** rename to “explicit positional target” so the harness matches current UX.
+
+- **Nit** `skills/fix-issue/scripts/test-find-lock-issue.sh:791` — Fixture 16 header comment still claims the pre-lock abort happens before **`issue-lifecycle.sh` deletes GO**, but `--lock` no longer deletes GO. **Suggested fix:** delete the GO-deletion phrase so the comment matches `issue-lifecycle.sh` behavior.
+
+### Out-of-Scope Observations
+
+(None identified from this diff.)
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	risk-integration	skills/fix-issue/SKILL.md:98-104	Step 0 documents Exit 1 / no-candidate handling but find-lock-issue.sh no longer exits 1 after auto-pick removal.	Runbooks, wrappers, or humans following SKILL.md keep a dead branch or expect exit 1 for empty-queue semantics; exit 1 never occurs from find-lock-issue.sh on this branch.	Remove the Exit 1 subsection and align Step 0 with the script’s actual exit codes.
+1	in_scope	important	correctness	skills/fix-issue/SKILL.md:392	Step 8 cleanup text still claims Step 0 can exit 1 for no eligible issue.	Operators infer wrong meaning for early Step 0 exits (e.g., conflating old exit 1 with new exit 2 usage / eligibility failures).	Update the Step 8 guard text to omit exit 1 and describe only real outcomes.
+1	in_scope	important	risk-integration	README.md:76 and docs/skills.md:81	/fix-issue signature still shows optional [<number-or-url>] in the public tables while the branch makes the argument mandatory.	Users rely on README/docs and omit the issue number expecting supported no-arg behavior; they only discover the requirement via runtime usage error.	Update both docs to show required <number-or-url> without optionality brackets.
+1	in_scope	nit	code-quality	skills/fix-issue/scripts/find-lock-issue.md:42	Stderr contract mentions deprecated-flag warnings after removing deprecated --issue handling.	Maintainers grep for diagnostics that no longer exist and mis-trust the contract doc.	Reword the stderr bullet to match actual stderr sources.
+1	in_scope	nit	code-quality	skills/fix-issue/scripts/find-lock-issue.sh:319-322	Stale comment references auto-pick-era no candidate vs lock-fail distinction.	Future edits may preserve wrong mental model of eligibility scanning.	Update the comment to explicit-target wording only.
+1	in_scope	nit	code-quality	skills/fix-issue/scripts/test-find-lock-issue.sh:603-606,622	Fixture 5 prose/assertions reference explicit --issue though that flag was removed from find-lock-issue.sh.	Harness readers think --issue remains supported.	Rename fixture text to explicit positional invocation.
+1	in_scope	nit	code-quality	skills/fix-issue/scripts/test-find-lock-issue.sh:791	Fixture 16 comment still says issue-lifecycle deletes GO before posting IN PROGRESS.	Test comment contradicts merged --lock semantics (no GO deletion).	Remove GO deletion from the fixture comment.
+```

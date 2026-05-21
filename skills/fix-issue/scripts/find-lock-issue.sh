@@ -1,56 +1,34 @@
 #!/usr/bin/env bash
-# find-lock-issue.sh — Find an eligible issue, lock it, and rename it to [IN PROGRESS].
+# find-lock-issue.sh — Verify an explicit issue, lock it, and rename it to [IN PROGRESS].
 #
-# Combined Find + Lock + Rename pipeline invoked by /fix-issue Step 0. Runs
-# four operations in sequence:
-#   1. Find candidate (eligibility scan or explicit-issue verification).
+# Explicit-target-only pipeline invoked by /fix-issue Step 0. Requires a
+# positional issue number or URL argument. Runs four operations in sequence:
+#   1. Verify the explicit issue (open, not managed-prefix, not blocked).
 #   2. Probe the local working tree with scripts/check-clean-tree.sh
 #      --fail-closed. Dirty or unknown cleanliness aborts before any GitHub
 #      mutation so the original title remains intact.
 #   3. Acquire the comment-based concurrency lock by delegating to
-#      issue-lifecycle.sh comment --lock (when GO is the last comment:
-#      deletes GO, posts "IN PROGRESS", post-checks for duplicate races) or
-#      --lock-no-go (when GO is absent: posts "IN PROGRESS", post-checks for
-#      races without deleting any prior comment). GO is no longer required
-#      for eligibility; its presence only selects the lock mode.
-#      The comment lock is the correctness invariant.
+#      issue-lifecycle.sh comment --lock (posts "IN PROGRESS", post-checks
+#      for duplicate races). The comment lock is the correctness invariant.
 #   4. Rename the issue title to "[IN PROGRESS] <title>" by delegating to
 #      tracking-issue-write.sh rename --state in-progress. Best-effort: a
 #      rename failure does NOT undo the lock — the script still exits 0
 #      with LOCK_ACQUIRED=true RENAMED=false. /implement Step 0.5 Branch 2
 #      is the safety net (idempotent re-attempt on the next run-segment).
 #
-# Without --issue: lists open issues, excludes issues locked with
-# "IN PROGRESS", excludes issues blocked by other open issues (via GitHub's
-# native issue dependencies and prose blockers), excludes issues whose titles
-# start with a managed lifecycle prefix ([IN PROGRESS], [DONE], [STALLED]),
-# excludes issues matching the [... Report] pattern (case-insensitive
-# bracket-enclosed phrase ending with "report"), excludes archival
-# research/investigation titles ("research ", "[research] ", "investigate ",
-# "[investigate] ", "[research report] " after leading-whitespace trim +
-# lowercase — explicit-target mode is intentionally exempt from the archival
-# filter), and emits the first match. Selection order is two-key: titles
-# matching the whole word "urgent" (case-insensitive, word-boundary regex —
-# does NOT match "non-urgent") come first, then within each tier oldest-first
-# by issue number. The preference is a soft re-ordering, not an eligibility
-# filter — a non-Urgent issue is still picked when no Urgent eligible
-# candidate exists.
-#
-# With --issue: targets a specific issue (by number or GitHub URL), verifies
-# it is open, runs umbrella detection FIRST (issue #819 DECISION_1 — if the
-# issue is an umbrella, the umbrella branch is taken and managed-prefix
-# rejection is bypassed so umbrellas with `[IN PROGRESS]` / `[DONE]` /
-# `[STALLED]` titles remain explicitly targetable), then for non-umbrellas
-# verifies the title does not carry a managed lifecycle title prefix or a
-# [... Report] pattern, and has no currently-open blocking dependencies.
-# Auto-pick path is intentionally NOT mirrored — it excludes umbrellas
-# regardless of order.
+# Targets a specific issue (by number or GitHub URL), verifies it is open,
+# runs umbrella detection FIRST (issue #819 DECISION_1 — if the issue is an
+# umbrella, the umbrella branch is taken and managed-prefix rejection is
+# bypassed so umbrellas with `[IN PROGRESS]` / `[DONE]` / `[STALLED]`
+# titles remain explicitly targetable), then for non-umbrellas verifies the
+# title does not carry a managed lifecycle title prefix or a [... Report]
+# pattern, and has no currently-open blocking dependencies.
 #
 # Two orthogonal mechanisms coexist:
 #   1) Comment-based "IN PROGRESS" lock — concurrency control on the
 #      fix-issue subject issue. Acquired here at /fix-issue Step 0 (last
 #      comment = exactly "IN PROGRESS"); cleared when work completes.
-#      Prevents two concurrent /fix-issue runners from picking the same
+#      Prevents two concurrent /fix-issue runners from colliding on the same
 #      subject.
 #   2) Title-based "[IN PROGRESS]" / "[DONE]" / "[STALLED]" lifecycle —
 #      machine-owned tracking-issue state. Applied here at lock time so
@@ -61,8 +39,7 @@
 #      against a non-pre-marked issue.
 #
 # Usage:
-#   find-lock-issue.sh [<number-or-url>]
-#   find-lock-issue.sh [--issue <number-or-url>]  (deprecated)
+#   find-lock-issue.sh <number-or-url>
 #
 # Output (KEY=value lines on stdout):
 #   ELIGIBLE=true|false
@@ -84,8 +61,7 @@
 #   IS_UMBRELLA=true          (only on umbrella paths — exit 0 dispatch,
 #                              exit 3 child-lock-fail, exit 4 complete,
 #                              exit 5 no-eligible-child)
-#   UMBRELLA_NUMBER=<U>       (the umbrella issue number; ALWAYS absent on
-#                              non-umbrella paths and on auto-pick exits)
+#   UMBRELLA_NUMBER=<U>       (the umbrella issue number)
 #   UMBRELLA_TITLE=<title>    (umbrella's title, when IS_UMBRELLA=true)
 #   UMBRELLA_ACTION           (one of: dispatched | complete | no-eligible-
 #                              child — describes the umbrella outcome)
@@ -94,18 +70,16 @@
 #   0 — eligible issue found, comment lock acquired. On umbrella paths,
 #       UMBRELLA_ACTION=dispatched and ISSUE_NUMBER refers to the chosen
 #       child (rename may have failed best-effort — RENAMED=false signals).
-#   1 — no eligible issues (auto-pick mode only)
-#   2 — error: gh CLI failure, explicit issue not eligible, umbrella
-#       blocked by open dependencies, or umbrella-handler.sh detect
-#       failure in explicit-target mode (closes #891). Also used for
-#       pre-lock dirty-tree aborts before any GitHub mutation: ordinary
-#       paths emit ELIGIBLE=false ERROR=Working tree is not clean..., while
-#       umbrella child paths also emit IS_UMBRELLA=true UMBRELLA_NUMBER,
-#       UMBRELLA_TITLE, ISSUE_NUMBER, ISSUE_TITLE, and LOCK_ACQUIRED=false.
+#   2 — error: missing argument, gh CLI failure, explicit issue not eligible,
+#       umbrella blocked by open dependencies, or umbrella-handler.sh detect
+#       failure (closes #891). Also used for pre-lock dirty-tree aborts
+#       before any GitHub mutation: ordinary paths emit ELIGIBLE=false
+#       ERROR=Working tree is not clean..., while umbrella child paths also
+#       emit IS_UMBRELLA=true UMBRELLA_NUMBER, UMBRELLA_TITLE, ISSUE_NUMBER,
+#       ISSUE_TITLE, and LOCK_ACQUIRED=false.
 #   3 — eligible issue found but comment lock could not be acquired
-#       (concurrent runner won the race, or GO sentinel changed between
-#       eligibility scan and lock attempt; on umbrella paths, the failure
-#       is on the chosen child and ERROR carries umbrella context)
+#       (concurrent runner won the race; on umbrella paths, the failure is
+#       on the chosen child and ERROR carries umbrella context)
 #   4 — umbrella complete: all parsed children are CLOSED. SKILL.md Step 0
 #       invokes finalize-umbrella.sh on this path. ELIGIBLE=true with
 #       LOCK_ACQUIRED=false (no lock; finalization is a different state
@@ -122,18 +96,17 @@
 # etc.) are filtered out so the SKILL.md parser sees a clean unified
 # contract.
 #
-# Umbrella support (explicit-issue path only — auto-pick mode never selects
-# umbrellas, per the design dialectic's DECISION_1):
+# Umbrella support (explicit-issue path only):
 #   When the explicit issue is detected as an umbrella (title-only post-#846
 #   — case-sensitive, after stripping zero or more leading bracket-blocks of
 #   the form `[...]` and/or `(...)` per #819, the remainder begins with
 #   `Umbrella: ` or `Umbrella — `; body content is NOT consulted), delegate
 #   to umbrella-handler.sh to either:
 #     - dispatch to the next-eligible child (pick-child returns CHILD_NUMBER),
-#       lock the CHILD using --lock-no-go (no GO required), rename the CHILD
-#       to [IN PROGRESS]. Emit IS_UMBRELLA=true UMBRELLA_NUMBER=<U>
-#       UMBRELLA_TITLE=<T> UMBRELLA_ACTION=dispatched alongside the existing
-#       ISSUE_NUMBER (= child) keys. Exit 0.
+#       lock the CHILD using --lock, rename the CHILD to [IN PROGRESS]. Emit
+#       IS_UMBRELLA=true UMBRELLA_NUMBER=<U> UMBRELLA_TITLE=<T>
+#       UMBRELLA_ACTION=dispatched alongside the existing ISSUE_NUMBER
+#       (= child) keys. Exit 0.
 #     - finalize the umbrella when all parsed children are CLOSED
 #       (pick-child returns ALL_CLOSED=true). Emit IS_UMBRELLA=true
 #       UMBRELLA_NUMBER=<U> UMBRELLA_TITLE=<T> UMBRELLA_ACTION=complete.
@@ -144,8 +117,8 @@
 #   On child lock failure, emit exit 3 with ERROR carrying the umbrella
 #   context ("Failed to lock chosen child #C of umbrella #U: <reason>").
 #   UMBRELLA_NUMBER is emitted ONLY when an umbrella was detected — absent
-#   on the normal (non-umbrella) explicit-issue exit-0 path AND on auto-pick
-#   exits, per FINDING_1 from the umbrella-PR plan review.
+#   on the normal (non-umbrella) explicit-issue exit-0 path, per FINDING_1
+#   from the umbrella-PR plan review.
 
 set -euo pipefail
 
@@ -168,22 +141,6 @@ has_managed_prefix() {
         '[DONE] '*)        return 0 ;;
         '[STALLED] '*)     return 0 ;;
         *)                 return 1 ;;
-    esac
-}
-
-# Returns 0 if the title starts with an archival research/investigation prefix
-# used by /issue dedup snapshots, 1 otherwise. Case-insensitive, leading
-# whitespace trimmed, and trailing-space-sensitive to avoid substring collisions.
-has_archival_prefix() {
-    local t
-    t=$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed 's/^[[:space:]]*//')
-    case "$t" in
-        'research '*)          return 0 ;;
-        '[research] '*)        return 0 ;;
-        'investigate '*)       return 0 ;;
-        '[investigate] '*)     return 0 ;;
-        '[research report] '*) return 0 ;;
-        *)                     return 1 ;;
     esac
 }
 
@@ -212,15 +169,6 @@ ISSUE_ARG=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --issue)
-            larch_err "WARNING: --issue is deprecated; pass the issue number or URL as a positional argument instead."
-            if [[ $# -lt 2 ]]; then
-                emit_kv ELIGIBLE false
-                emit_kv ERROR "--issue requires a value"
-                exit 2
-            fi
-            ISSUE_ARG="$2"; shift 2
-            ;;
         -*)
             emit_kv ELIGIBLE false
             emit_kv ERROR "Unknown option: $1"
@@ -237,6 +185,12 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+if [[ -z "$ISSUE_ARG" ]]; then
+    emit_kv ELIGIBLE false
+    emit_kv ERROR "Usage: find-lock-issue.sh <issue-number-or-url>"
+    exit 2
+fi
 
 # ---------------------------------------------------------------------------
 # Resolve repo identity
@@ -277,7 +231,7 @@ source "$BLOCKER_HELPERS" || {
 # Runs the local working-tree cleanliness probe immediately before lock
 # acquisition. The predicate itself lives in scripts/check-clean-tree.sh so
 # this pre-lock guard and preflight.sh share one git-status contract.
-# find-lock-issue.sh uses --fail-closed because it must not delete GO, post
+# find-lock-issue.sh uses --fail-closed because it must not post
 # IN PROGRESS, or rename an issue when local cleanliness cannot be determined.
 # preflight.sh intentionally calls the same helper in default fail-open mode
 # to preserve its historical setup behavior.
@@ -351,7 +305,7 @@ lock_and_rename_then_emit() {
 
     _emit_dirty_tree_pre_lock_abort "$issue_num" "$issue_title" "" ""
 
-    # ---- Step 2: acquire comment lock (correctness invariant) ----
+    # ---- Acquire comment lock (correctness invariant) ----
     local lock_out lock_exit=0
     lock_out=$("$lock_script" comment --issue "$issue_num" --body "IN PROGRESS" --lock 2>&1) || lock_exit=$?
 
@@ -364,8 +318,8 @@ lock_and_rename_then_emit() {
 
     if [ "$lock_acquired" != "true" ] || [ "$lock_exit" -ne 0 ]; then
         # Lock failed. Surface the unified contract; preserve eligibility
-        # signal so callers can distinguish "no candidate" from "candidate
-        # found but lost the race".
+        # signal (ELIGIBLE=true) so callers can distinguish eligibility-pass
+        # from successful lock acquisition.
         emit_kv ELIGIBLE true
         emit_kv ISSUE_NUMBER "$issue_num"
         emit_kv ISSUE_TITLE "$issue_title"
@@ -378,7 +332,7 @@ lock_and_rename_then_emit() {
         exit 3
     fi
 
-    # ---- Step 3: rename title (best-effort) ----
+    # ---- Rename title (best-effort) ----
     local rename_out rename_exit=0 renamed=false rename_error=""
     rename_out=$("$rename_script" rename --issue "$issue_num" --state in-progress --repo "$REPO" 2>&1) || rename_exit=$?
 
@@ -417,77 +371,11 @@ lock_and_rename_then_emit() {
 }
 
 # ---------------------------------------------------------------------------
-# lock_no_go_and_rename_then_emit <issue-num> <issue-title>
-#
-# Same shape as lock_and_rename_then_emit but uses --lock-no-go. Used when the
-# issue does not have a GO comment (GO is no longer required for eligibility;
-# it is only removed when present via --lock).
-# ---------------------------------------------------------------------------
-lock_no_go_and_rename_then_emit() {
-    local issue_num="$1"
-    local issue_title="$2"
-    local lock_script rename_script
-    lock_script="${SCRIPT_DIR}/issue-lifecycle.sh"
-    rename_script="${SCRIPT_DIR}/../../../scripts/tracking-issue-write.sh"
-
-    _emit_dirty_tree_pre_lock_abort "$issue_num" "$issue_title" "" ""
-
-    local lock_out lock_exit=0
-    lock_out=$("$lock_script" comment --issue "$issue_num" --body "IN PROGRESS" --lock-no-go 2>&1) || lock_exit=$?
-
-    local lock_acquired lock_error
-    lock_acquired=$(echo "$lock_out" | awk -F= '/^LOCK_ACQUIRED=/ { v=$2 } END { print v }')
-    lock_error=$(echo "$lock_out" | awk -F= '/^ERROR=/ { sub(/^ERROR=/, "", $0); v=$0 } END { print v }')
-
-    if [ "$lock_acquired" != "true" ] || [ "$lock_exit" -ne 0 ]; then
-        emit_kv ELIGIBLE true
-        emit_kv ISSUE_NUMBER "$issue_num"
-        emit_kv ISSUE_TITLE "$issue_title"
-        emit_kv LOCK_ACQUIRED false
-        if [ -n "$lock_error" ]; then
-            emit_kv ERROR "$lock_error"
-        else
-            emit_kv ERROR "Lock acquisition failed (issue-lifecycle.sh exit $lock_exit)"
-        fi
-        exit 3
-    fi
-
-    local rename_out rename_exit=0 renamed=false rename_error=""
-    rename_out=$("$rename_script" rename --issue "$issue_num" --state in-progress --repo "$REPO" 2>&1) || rename_exit=$?
-
-    local rename_failed
-    renamed=$(echo "$rename_out" | awk -F= '/^RENAMED=/ { v=$2 } END { print v }')
-    rename_failed=$(echo "$rename_out" | awk -F= '/^FAILED=/ { v=$2 } END { print v }')
-    rename_error=$(echo "$rename_out" | awk -F= '/^ERROR=/ { sub(/^ERROR=/, "", $0); v=$0 } END { print v }')
-
-    if [ "$rename_exit" -ne 0 ] || [ "$rename_failed" = "true" ]; then
-        if [ -n "$rename_error" ]; then
-            larch_err "WARNING: title rename failed for issue #$issue_num: $rename_error"
-        else
-            larch_err "WARNING: title rename failed for issue #$issue_num (tracking-issue-write.sh exit $rename_exit)"
-        fi
-        renamed="false"
-    fi
-
-    if [ -z "$renamed" ]; then
-        renamed="false"
-    fi
-
-    emit_kv ELIGIBLE true
-    emit_kv ISSUE_NUMBER "$issue_num"
-    emit_kv ISSUE_TITLE "$issue_title"
-    emit_kv LOCK_ACQUIRED true
-    emit_kv RENAMED "$renamed"
-    exit 0
-}
-
-# ---------------------------------------------------------------------------
-# lock_no_go_and_rename_then_emit_for_child <child-num> <child-title>
-#                                           <umbrella-num> <umbrella-title>
+# lock_and_rename_then_emit_for_child <child-num> <child-title>
+#                                     <umbrella-num> <umbrella-title>
 #
 # Umbrella child-dispatch lock path. Same shape as
-# lock_and_rename_then_emit (above), but uses issue-lifecycle.sh comment
-# --lock-no-go (no GO requirement) and emits the unified contract WITH
+# lock_and_rename_then_emit (above), but emits the unified contract WITH
 # umbrella-context keys (IS_UMBRELLA, UMBRELLA_NUMBER, UMBRELLA_TITLE,
 # UMBRELLA_ACTION=dispatched).
 #
@@ -495,7 +383,7 @@ lock_no_go_and_rename_then_emit() {
 # child and the umbrella so SKILL.md Step 0's exit-3 branch can present a
 # clear error to the operator.
 # ---------------------------------------------------------------------------
-lock_no_go_and_rename_then_emit_for_child() {
+lock_and_rename_then_emit_for_child() {
     local child_num="$1"
     local child_title="$2"
     local umbrella_num="$3"
@@ -506,9 +394,9 @@ lock_no_go_and_rename_then_emit_for_child() {
 
     _emit_dirty_tree_pre_lock_abort "$child_num" "$child_title" "$umbrella_num" "$umbrella_title"
 
-    # ---- Lock without GO ----
+    # ---- Acquire comment lock ----
     local lock_out lock_exit=0
-    lock_out=$("$lock_script" comment --issue "$child_num" --body "IN PROGRESS" --lock-no-go 2>&1) || lock_exit=$?
+    lock_out=$("$lock_script" comment --issue "$child_num" --body "IN PROGRESS" --lock 2>&1) || lock_exit=$?
 
     local lock_acquired lock_error
     lock_acquired=$(echo "$lock_out" | awk -F= '/^LOCK_ACQUIRED=/ { v=$2 } END { print v }')
@@ -568,7 +456,7 @@ lock_no_go_and_rename_then_emit_for_child() {
 # Invoked from the explicit-issue path AFTER the umbrella detector has
 # returned IS_UMBRELLA=true. Calls umbrella-handler.sh pick-child and
 # branches on the outcome:
-#   - CHILD_NUMBER → lock_no_go_and_rename_then_emit_for_child (terminal)
+#   - CHILD_NUMBER → lock_and_rename_then_emit_for_child (terminal)
 #   - ALL_CLOSED   → emit exit-4 contract (SKILL.md finalizes umbrella)
 #   - NO_ELIGIBLE_CHILD → emit exit-5 contract
 # ---------------------------------------------------------------------------
@@ -614,7 +502,7 @@ handle_umbrella() {
             emit_kv ERROR "Umbrella #$umbrella_num child #$child_number is blocked by open dependencies: $formatted"
             exit 5
         fi
-        lock_no_go_and_rename_then_emit_for_child "$child_number" "$child_title" "$umbrella_num" "$umbrella_title"
+        lock_and_rename_then_emit_for_child "$child_number" "$child_title" "$umbrella_num" "$umbrella_title"
         # terminal — exits 0 or 3
     fi
     if [ "$all_closed" = "true" ]; then
@@ -643,7 +531,7 @@ handle_umbrella() {
 }
 
 # ---------------------------------------------------------------------------
-# Explicit issue mode (--issue provided)
+# Explicit issue path (positional issue number or URL)
 # ---------------------------------------------------------------------------
 if [[ -n "$ISSUE_ARG" ]]; then
     # gh issue view accepts both bare numbers and full GitHub URLs natively.
@@ -710,8 +598,7 @@ if [[ -n "$ISSUE_ARG" ]]; then
     fi
 
     # Exclude issues labeled 'audit-report' — these are /audit-runs chain-of-
-    # history issues, not fix-issue candidates (both auto-pick and
-    # explicit-target paths enforce this). Labels must be a JSON array;
+    # history issues, not fix-issue candidates. Labels must be a JSON array;
     # jq failures are fail-closed (do not treat as "not labeled").
     set +e
     echo "$ISSUE_JSON" | jq -e '.labels | type == "array"' >/dev/null 2>&1
@@ -751,18 +638,14 @@ if [[ -n "$ISSUE_ARG" ]]; then
         exit 2
     fi
 
-    # Umbrella detection (explicit-issue path only — auto-pick mode never
-    # runs this; per the design dialectic's DECISION_1, auto-pick keeps its
-    # GO-tail invariant). Detection runs BEFORE both the managed-prefix
-    # early-reject AND the GO-tail check so umbrella issues do NOT need a
-    # GO comment AND so umbrella titles carrying a managed lifecycle prefix
-    # (e.g. `[IN PROGRESS] Umbrella: foo`, `[DONE] Umbrella: foo`,
-    # `[STALLED] Umbrella: foo`) reach the umbrella dispatcher. Without
-    # this ordering, `is_umbrella_title`'s post-#819 bracket-prefix peel
-    # would be unreachable in the explicit-target path for hand-authored
-    # umbrellas — see issue #819 design DECISION_1 (voted, 2-1) for the
-    # rationale. Auto-pick path is intentionally NOT mirrored: auto-pick
-    # excludes umbrellas regardless of order. Detection is title-only
+    # Umbrella detection (explicit-issue path only): runs BEFORE both the
+    # managed-prefix early-reject AND the last-comment `IN PROGRESS` lock
+    # guard so umbrella titles carrying a managed lifecycle prefix (e.g.
+    # `[IN PROGRESS] Umbrella: foo`, `[DONE] Umbrella: foo`,
+    # `[STALLED] Umbrella: foo`) reach the umbrella dispatcher. Without this
+    # ordering, `is_umbrella_title`'s post-#819 bracket-prefix peel would be
+    # unreachable for hand-authored umbrellas — see issue #819 design
+    # DECISION_1 (voted, 2-1) for the rationale. Detection is title-only
     # post-#846 (the prior body-literal substring match caused false
     # positives like #753); the umbrella's existence is the approval signal
     # — children inherit approval from the umbrella's existence.
@@ -866,12 +749,11 @@ if [[ -n "$ISSUE_ARG" ]]; then
         exit 2
     fi
 
-    # Fetch the last comment to detect concurrent locks and to determine
-    # which lock mode to use (--lock removes GO; --lock-no-go when absent).
-    # Using --slurp so `jq` sees a single array-of-arrays and can select the
-    # globally-last comment via `add // [] | .[-1]`. The older `--jq '.[-1].body'`
-    # pattern ran the filter per page and was only accidentally correct because
-    # the last page contains the globally-last comment. See `prose_open_blockers`
+    # Fetch the last comment to detect concurrent locks. Using --slurp so
+    # `jq` sees a single array-of-arrays and can select the globally-last
+    # comment via `add // [] | .[-1]`. The older `--jq '.[-1].body'` pattern
+    # ran the filter per page and was only accidentally correct because the
+    # last page contains the globally-last comment. See `prose_open_blockers`
     # in `blocker-helpers.sh` for the canonical reference use of this `add // []`
     # slurp pattern.
     LAST_COMMENT=$(gh api --paginate --slurp "repos/${REPO}/issues/${ISSUE_NUM}/comments" 2>/dev/null \
@@ -890,10 +772,6 @@ if [[ -n "$ISSUE_ARG" ]]; then
         exit 2
     fi
 
-    # GO is no longer required for eligibility. When GO is present it is
-    # removed by --lock (preserving existing behavior); when absent --lock-no-go
-    # is used instead.
-
     BLOCKERS=$(all_open_blockers "$ISSUE_NUM")
     if [ -n "$BLOCKERS" ]; then
         # Format as comma-separated #N list for the error message
@@ -904,170 +782,7 @@ if [[ -n "$ISSUE_ARG" ]]; then
     fi
 
     # Eligibility confirmed — acquire lock + best-effort title rename, emit
-    # unified contract, exit (terminal). Use --lock when GO is present (removes
-    # the sentinel); fall back to --lock-no-go otherwise.
-    if [ "$TRIMMED" = "GO" ]; then
-        lock_and_rename_then_emit "$ISSUE_NUM" "$ISSUE_TITLE"
-    else
-        lock_no_go_and_rename_then_emit "$ISSUE_NUM" "$ISSUE_TITLE"
-    fi
+    # unified contract, exit (terminal).
+    lock_and_rename_then_emit "$ISSUE_NUM" "$ISSUE_TITLE"
 fi
 
-# ---------------------------------------------------------------------------
-# Auto-pick mode (no --issue): scan open issues — Urgent-first, then
-# oldest-first within each tier (see the two-key sort comment below).
-#
-# Use `gh api --paginate` so there is no fixed cap — `gh issue list --limit N`
-# has no "unlimited" sentinel (0 and -1 are rejected), and a hardcoded ceiling
-# silently starves older issues once a repo exceeds it. The REST issues
-# endpoint returns PRs alongside issues; filter them with
-# `select(.pull_request == null)` since `gh issue list` does this implicitly.
-# ---------------------------------------------------------------------------
-ISSUES_JSONL=$(gh api --paginate "repos/${REPO}/issues?state=open&per_page=100" \
-    --jq '.[] | select(.pull_request == null) | {number, title, labels: [.labels[]?.name]}' 2>/dev/null) || {
-    emit_kv ELIGIBLE false
-    emit_kv ERROR "Failed to list issues"
-    exit 2
-}
-
-# Sort with two keys, then iterate. `-s` slurps the JSONL stream emitted by
-# `--jq '.[]'` into an array so we can sort it.
-#
-# Sort keys (jq sorts arrays lexicographically; false < true for booleans):
-#   1. (title | test("(?<![-A-Za-z0-9_])urgent(?![-A-Za-z0-9_])"; "i") | not)
-#      — Urgent-tagged issues (case-insensitive whole-word match anywhere in
-#      the title, with hyphens treated as word-internal so "non-urgent" is
-#      NOT a match) get `false` and sort BEFORE non-Urgent issues. The
-#      explicit lookaround character class `[-A-Za-z0-9_]` is required
-#      because jq's Oniguruma regex (a) does not accept `\w` inside a
-#      lookbehind ("invalid pattern in look-behind"), and (b) jq's `\b`
-#      word boundary treats `-` as a non-word char, so `\burgent\b` would
-#      match "non-urgent" — producing the wrong tier. The class is
-#      deliberately broader than `\b`: it rejects compound forms like
-#      "non-urgent", "insurgent", and "urgently" (the last because the
-#      following `l` is in the class, so the lookahead fails).
-#   2. .number ascending — within each preference tier, fall back to the
-#      pre-existing oldest-first selection order.
-#
-# The preference is a soft signal: it only changes the order in which
-# candidates are evaluated, not which candidates are eligible. A non-Urgent
-# eligible issue is still picked when no Urgent eligible issue exists.
-SORTED=$(echo "$ISSUES_JSONL" | jq -s -c 'sort_by([((.title // "") | test("(?<![-A-Za-z0-9_])urgent(?![-A-Za-z0-9_])"; "i") | not), .number]) | .[]')
-
-if [ -z "$SORTED" ]; then
-    emit_kv ELIGIBLE false
-    exit 1
-fi
-
-while IFS= read -r issue_row; do
-    ISSUE_NUM=$(echo "$issue_row" | jq -r '.number')
-    ISSUE_TITLE=$(echo "$issue_row" | jq -r '.title')
-
-    # Skip issues with a managed lifecycle title prefix
-    # ([IN PROGRESS] / [DONE] / [STALLED]) — machine-owned tracking
-    # issues, not fix-issue candidates. Placed BEFORE the comment
-    # pagination to save one API round-trip per excluded issue.
-    if has_managed_prefix "$ISSUE_TITLE"; then
-        larch_err "Skipping issue #$ISSUE_NUM: managed lifecycle title prefix"
-        continue
-    fi
-
-    if has_archival_prefix "$ISSUE_TITLE"; then
-        larch_err "Skipping issue #$ISSUE_NUM: archival title prefix"
-        continue
-    fi
-
-    if has_report_prefix "$ISSUE_TITLE"; then
-        larch_err "Skipping issue #$ISSUE_NUM: report title prefix"
-        continue
-    fi
-
-    if has_run_logs_audit_report_title "$ISSUE_TITLE"; then
-        larch_err "Skipping issue #$ISSUE_NUM: run-logs audit report title"
-        continue
-    fi
-
-    # Skip issues labeled 'audit-report' — these are /audit-runs chain-of-
-    # history report issues, not fix-issue candidates. Missing/null `.labels`
-    # is treated as an empty label set (matches GitHub's usual shape and
-    # offline harness rows); non-array `.labels` or jq failure is fail-closed.
-    set +e
-    echo "$issue_row" | jq -e '
-      (.labels
-        | if . == null then []
-          elif type == "array" then .
-          else error("issue labels must be a JSON array or null")
-          end)
-      | index("audit-report") != null
-    ' >/dev/null 2>&1
-    row_audit_label_rc=$?
-    set -e
-    case "$row_audit_label_rc" in
-        0)
-            larch_err "Skipping issue #$ISSUE_NUM: has label 'audit-report'"
-            continue
-            ;;
-        1) ;;
-        *)
-            emit_kv ELIGIBLE false
-            emit_kv ERROR "Cannot verify audit-report label for issue #$ISSUE_NUM (jq exit $row_audit_label_rc); refusing auto-pick"
-            exit 2
-            ;;
-    esac
-
-    # Get the globally-last comment body. See the explicit-issue path above for
-    # the rationale on `--slurp` + `add // [] | .[-1]`.
-    LAST_COMMENT=$(gh api --paginate --slurp "repos/${REPO}/issues/${ISSUE_NUM}/comments" 2>/dev/null \
-        | jq -r 'add // [] | .[-1].body // empty') || {
-        emit_kv ELIGIBLE false
-        emit_kv ERROR "Failed to fetch comments for issue #$ISSUE_NUM"
-        exit 2
-    }
-
-    # Trim whitespace for strict comparison
-    TRIMMED=$(echo "$LAST_COMMENT" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-
-    # Skip if last comment is IN PROGRESS (locked by another run)
-    if [ "$TRIMMED" = "IN PROGRESS" ]; then
-        continue
-    fi
-
-    # GO is no longer required for eligibility. Auto-pick must NEVER select
-    # umbrella issues, per the design dialectic DECISION_1 (voted 2-1
-    # ANTI_THESIS): umbrella handling is restricted to the explicit-issue path.
-    UMBRELLA_HANDLER="${SCRIPT_DIR}/umbrella-handler.sh"
-    if [[ -x "$UMBRELLA_HANDLER" ]]; then
-        UMBRELLA_DETECT_OUT=""
-        if UMBRELLA_DETECT_OUT=$("$UMBRELLA_HANDLER" detect --issue "$ISSUE_NUM" 2>/dev/null); then
-            IS_UMBRELLA_DETECT=$(echo "$UMBRELLA_DETECT_OUT" | awk -F= '/^IS_UMBRELLA=/ { v=$2 } END { print v }')
-            if [ "$IS_UMBRELLA_DETECT" = "true" ]; then
-                larch_err "Skipping issue #$ISSUE_NUM: umbrella issue (auto-pick excludes umbrellas; use \`/fix-issue $ISSUE_NUM\` to dispatch a child)"
-                continue
-            fi
-        fi
-        # detect failure (non-zero exit) — fail-open: treat as non-umbrella
-        # and continue with the standard auto-pick flow rather than
-        # blocking the queue. The explicit-issue path's handler-missing
-        # branch is the user-facing diagnostic surface; auto-pick is best-
-        # effort.
-    fi
-    BLOCKERS=$(all_open_blockers "$ISSUE_NUM")
-    if [ -n "$BLOCKERS" ]; then
-        # Blocked by at least one open dependency — log on stderr and keep scanning.
-        FORMATTED=$(echo "$BLOCKERS" | tr ' ' '\n' | sed 's/^/#/' | paste -sd ',' -)
-        larch_err "Skipping issue #$ISSUE_NUM: blocked by open dependencies ($FORMATTED)"
-        continue
-    fi
-    # Eligibility confirmed — acquire lock + best-effort title rename, emit
-    # unified contract, exit (terminal). Use --lock when GO is present (removes
-    # the sentinel); fall back to --lock-no-go otherwise.
-    if [ "$TRIMMED" = "GO" ]; then
-        lock_and_rename_then_emit "$ISSUE_NUM" "$ISSUE_TITLE"
-    else
-        lock_no_go_and_rename_then_emit "$ISSUE_NUM" "$ISSUE_TITLE"
-    fi
-done <<< "$SORTED"
-
-# No eligible issues found
-emit_kv ELIGIBLE false
-exit 1

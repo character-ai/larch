@@ -4,7 +4,7 @@
 
 **Contract**: Authoritative detail for the triage checks, the not-material closure flow, the intent dimension (PR vs NON_PR) with its "default to PR only when genuinely ambiguous" rule, and the complexity dimension (SIMPLE vs HARD, evaluated only when `INTENT=PR`) with its "default to SIMPLE when uncertain" rule. SKILL.md carries the step-level breadcrumbs, the `issue-lifecycle.sh close` invocations, and the Step 4 breadcrumb (including `COMPLEXITY=**$COMPLEXITY**` when `INTENT=PR`); this file carries the judgment-heavy detail that would bloat the main-file knowledge delta.
 
-**When to load**: before executing Step 3 (Triage) OR Step 4 (Classify). Load once — the two step-bodies consume the same detail. **Do NOT load** in any other step — Steps 0 / 1 / 2 / 5 / 6 / 7 / 8 do not consume this content. **Do NOT load** on any path that has already branched to Step 8 — concrete examples: Step 0 `find-lock-issue.sh` exit 1 / 2 / 3 (no eligible issue, error, or lock-failed-after-eligibility-pass), Step 1 setup abort (`REPO_UNAVAILABLE=true`). Steps 3 and 4 do not run on those paths.
+**When to load**: before executing Step 3 (Triage) OR Step 4 (Classify). Load once — the two step-bodies consume the same detail. **Do NOT load** in any other step — Steps 0 / 1 / 2 / 5 / 6 / 7 / 8 do not consume this content. **Do NOT load** on any path that has already branched to Step 8 — concrete examples: Step 0 `find-lock-issue.sh` exit 2 / 3 / 4 / 5 (error, lock-failed-after-eligibility-pass, umbrella finalize short-circuit, or umbrella no-eligible-child), Step 1 setup abort (`REPO_UNAVAILABLE=true`). Steps 3 and 4 do not run on those paths.
 
 **Sibling**: `skills/fix-issue/references/non-pr-execution.md` owns the NON_PR-path execution detail consumed by Step 5b.
 

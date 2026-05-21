@@ -1,7 +1,7 @@
 ---
 name: issue
-description: "Use when creating GitHub issues with LLM-based semantic duplicate detection plus always-on inter-issue blocker-dependency analysis. Single or batch mode. Flags: --go, --dry-run, --no-dedup, --no-dep-llm, --title-prefix, --label."
-argument-hint: "[--input-file FILE] [--intra-batch-deps-file FILE] [--blocked-by-issue N] [--title-prefix PREFIX] [--label LABEL]... [--body-file FILE] [--dry-run] [--go] [--no-dedup] [--no-dep-llm] [--sentinel-file PATH] [<issue description or title>]"
+description: "Use when creating GitHub issues with LLM-based semantic duplicate detection plus always-on inter-issue blocker-dependency analysis. Single or batch mode. Flags: --dry-run, --no-dedup, --no-dep-llm, --title-prefix, --label."
+argument-hint: "[--input-file FILE] [--intra-batch-deps-file FILE] [--blocked-by-issue N] [--title-prefix PREFIX] [--label LABEL]... [--body-file FILE] [--dry-run] [--no-dedup] [--no-dep-llm] [--sentinel-file PATH] [<issue description or title>]"
 allowed-tools: Bash, Read, Write
 ---
 
@@ -9,8 +9,8 @@ allowed-tools: Bash, Read, Write
 
 Create one or more GitHub issues in the current repository with **LLM-based semantic duplicate detection**. Two modes:
 
-- **Single mode** (no `--input-file`): a free-form description is the issue body; an optional `--go` posts a `GO` comment on the new issue.
-- **Batch mode** (`--input-file FILE`): parse a multi-item markdown file (OOS format from `/implement`, or a generic `### <title>` + body fallback) and create N issues in one pass; an optional `--go` posts a `GO` comment on each successfully-created issue (duplicates, failed creates, and dry-run items never receive a GO comment).
+- **Single mode** (no `--input-file`): a free-form description is the issue body.
+- **Batch mode** (`--input-file FILE`): parse a multi-item markdown file (OOS format from `/implement`, or a generic `### <title>` + body fallback) and create N issues in one pass.
 
 Both modes run the same 2-phase dedup pipeline against open + recently-closed issues (default 90-day window), unless `--no-dedup` is set (which skips Steps 4–5 entirely). Phase 1 triages by title; Phase 2 reads full bodies + comments for shortlisted candidates and filters. Dedup fails **open**: any helper failure (network, rate limit, gh auth) produces a warning on stderr and falls through to create-all.
 
@@ -34,8 +34,7 @@ Supported flags (all optional):
 - `--title-prefix PREFIX` — string prepended to every created issue's title (e.g. `[OOS]`). Case-insensitively deduplicates if the input title already carries the prefix.
 - `--label LABEL` — repeatable. Each label is probed against the target repo; missing labels are silently dropped with a stderr warning.
 - `--body-file FILE` — single-mode body source. When combined with a trailing positional argument, the trailing arg is the explicit title and the file content is the body. When used alone, the file is both body and title source (title derived from first non-empty line).
-- `--dry-run` — run Phase 1+2 dedup normally (unless `--no-dedup` is also set, in which case Steps 4–5 are skipped and dep-edge preview lines are omitted); **do not** call `gh issue create`. Emit structured output tagged `DRY_RUN=true`. When combined with `--go`, the GO comment is suppressed (dry-run has no side effects) and no `ISSUE_<i>_GO_POSTED` lines are emitted. **Preview-parse use case**: when authoring batch-mode input files by hand, run with `--dry-run` first to inspect `ITEMS_TOTAL` and per-item titles on stdout (`ITEM_<i>_TITLE=…` lines) and the parse count on stderr (via the `▶ parse-input: …` breadcrumb) before committing to the create pass.
-- `--go` — post `GO` as the final comment on each newly-created issue so it becomes eligible for `/fix-issue` automation. Works in both single and batch modes: Step 6 handles the GO post inline after each successful CREATE. Duplicates, failed creates, and dry-run items never get a GO comment.
+- `--dry-run` — run Phase 1+2 dedup normally (unless `--no-dedup` is also set, in which case Steps 4–5 are skipped and dep-edge preview lines are omitted); **do not** call `gh issue create`. Emit structured output tagged `DRY_RUN=true`. **Preview-parse use case**: when authoring batch-mode input files by hand, run with `--dry-run` first to inspect `ITEMS_TOTAL` and per-item titles on stdout (`ITEM_<i>_TITLE=…` lines) and the parse count on stderr (via the `▶ parse-input: …` breadcrumb) before committing to the create pass.
 - `--repo OWNER/REPO` — explicit repo (otherwise inferred from the current working directory via `gh repo view`).
 - `--closed-window-days N` — override the closed-issue dedup window (default 90; set 0 to skip closed-issue dedup).
 - `--no-dedup` — skip the entire dedup + dependency analysis pipeline (Steps 4 and 5). Jump directly to Step 6 (Create) with all non-malformed items set to `VERDICT=CREATE` and no blocker edges. Useful for archival issues (e.g., `/research` reports) where each run produces genuinely different content and dedup is wasteful.
@@ -54,7 +53,7 @@ After flag stripping:
   If `--body-file` is not set, the remainder is `DESCRIPTION`.
 
 Validations:
-- `MODE=single` with empty `DESCRIPTION` and no `EXPLICIT_TITLE`: abort with `**ERROR: Usage: /issue [--go] [--title-prefix P] [--label L]... [--body-file F] <issue description or title>**`
+- `MODE=single` with empty `DESCRIPTION` and no `EXPLICIT_TITLE`: abort with `**ERROR: Usage: /issue [--title-prefix P] [--label L]... [--body-file F] <issue description or title>**`
 - `MODE=single` with `EXPLICIT_TITLE` set and empty `DESCRIPTION` (empty body file): abort with `**ERROR: --body-file content is empty.**`
 - `MODE=batch` + missing or empty `INPUT_FILE`: abort with `**ERROR: --input-file must point to a non-empty file.**`
 - `--no-dedup` + `--intra-batch-deps-file`: abort with `**ERROR: --no-dedup and --intra-batch-deps-file are mutually exclusive (--no-dedup skips Steps 4–5 where caller-supplied edges are merged).**`
@@ -316,16 +315,6 @@ For each non-malformed new item, emit exactly one verdict line plus zero or more
 
 <!-- step:6 — Create Surviving Items -->
 
-**Single-mode duplicate + `--go` pre-flight** (MODE=single only; runs before the iteration below): if `MODE=single` AND `--go` is set AND the sole item resolved to `DUPLICATE` (either `DUPLICATE_OF=<N>` or `DUPLICATE_OF_ITEM=<j>`), abort with:
-
-```
-**ERROR: this looks like a duplicate of #<N> (<url>). Re-run without --go to confirm, or manually comment GO on #<N> if appropriate.**
-```
-
-Exit non-zero. No issue is created and no GO comment is posted. `<N>` and `<url>` are the resolved target identifiers from Phase 2's verdict (for intra-run matches, use the earlier item's resolved number/URL; for snapshot matches, use the Phase 1 snapshot URL).
-
-This pre-flight applies only when `MODE=single`. In `MODE=batch`, per-item duplicates are handled individually in the iteration below; no batch-level abort.
-
 **Topological order (issue #546)**: instead of iterating in input-file order, build the directed dependency graph over non-duplicate items using:
 - BLOCKED_BY edges: each `ITEM_<i>_BLOCKED_BY=ITEM_<j>` becomes edge `j → i` (j precedes i).
 - DUPLICATE_OF_ITEM synthetic edges: each `ITEM_<i>_VERDICT=DUPLICATE DUPLICATE_OF_ITEM=<j>` becomes synthetic edge `j → i`.
@@ -394,7 +383,7 @@ Iterate over `order[0..ITEMS_TOTAL-1]` (each iteration's value is one original i
     - `ISSUE_<i>_TITLE=<final-title>` — taken directly from `ISSUE_TITLE=…` in create-one.sh's output, which applies the `--title-prefix` with `[OOS]` double-prefix normalization. Do not reimplement title-prefix logic in prompt text.
     - Increment `ISSUES_CREATED`. Append the created issue to an in-memory snapshot so later intra-run dedup iterations can also reference it if the LLM Phase 2 missed an equivalence.
 
-    **Apply blocker dependencies (issue #546)** — runs immediately after a successful create, BEFORE the GO comment. For each entry in `ITEM_<i>_BLOCKED_BY=` (post-validation list from Step 5, or Step-5-skip-path augmentation when applicable), invoke `add-blocked-by.sh`:
+    **Apply blocker dependencies (issue #546)** — runs immediately after a successful create. For each entry in `ITEM_<i>_BLOCKED_BY=` (post-validation list from Step 5, or Step-5-skip-path augmentation when applicable), invoke `add-blocked-by.sh`:
       - If the entry is `<M>` (existing OPEN issue from snapshot): `add-blocked-by.sh --client-issue $N --blocker-issue $M --repo "$REPO"`. The helper resolves `M → id` via one extra `gh api` lookup.
       - If the entry equals `BLOCKED_BY_ISSUE`: `add-blocked-by.sh --client-issue $N --blocker-issue $BLOCKED_BY_ISSUE --blocker-id $BLOCKED_BY_ISSUE_ID --repo "$REPO"`. The cached id from the Step 4.0 probe avoids the helper's blocker lookup.
       - If the entry is `ITEM_<j>` (batch sibling): `add-blocked-by.sh --client-issue $N --blocker-issue ${ISSUE_<j>_NUMBER} --blocker-id ${ISSUE_<j>_ID} --repo "$REPO"`. The cached `ISSUE_<j>_ID` (from create-one.sh's prior output for `j`) avoids the lookup. Topological order guarantees `j` was processed before `i` for any `BLOCKED_BY=ITEM_<j>` edge, so `ISSUE_<j>_ID` is always set at this point.
@@ -412,29 +401,18 @@ Iterate over `order[0..ITEMS_TOTAL-1]` (each iteration's value is one original i
       4. Do NOT decrement `ISSUES_CREATED` for `i` — the issue WAS created (it just got rolled back); operators inspecting GitHub will see the closed orphan.
       5. Continue to next non-failed topological node.
 
-    On all dep-edge entries succeeding (or no edges to apply): emit `ISSUE_<i>_BLOCKER_LINKS_APPLIED=<count>`. Then proceed to the GO comment.
-
-    **Post-create GO comment** (only when `--go` is set; applies to both single and batch modes). The GO post fires only AFTER all blocker edges for issue `i` succeed (issue #546 — see "GO timing" note below). Bind `$N` to the issue number from THIS iteration's `create-one.sh` `ISSUE_NUMBER=<N>` output — never reuse a number from an earlier iteration. Then:
-      ```bash
-      gh issue comment -R "$REPO" "$N" --body "GO" 2>"$ISSUE_TMPDIR/go-stderr-$i.txt"
-      ```
-      - On exit 0: emit `ISSUE_<i>_GO_POSTED=true` on stdout.
-      - On non-zero exit: pipe the captured stderr through `${CLAUDE_PLUGIN_ROOT}/scripts/redact-secrets.sh` before emitting; emit `ISSUE_<i>_GO_POSTED=false` on stdout; emit on stderr: `**⚠ /issue: GO comment failed for item <i> (#$N): <redacted-stderr>. Add 'GO' as a final comment manually to approve for /fix-issue.**`. The item still counts as CREATED; do NOT decrement `ISSUES_CREATED`.
+    On all dep-edge entries succeeding (or no edges to apply): emit `ISSUE_<i>_BLOCKER_LINKS_APPLIED=<count>`.
   - On `ISSUE_FAILED=true` + `ISSUE_ERROR=<msg>`: emit
     - `ISSUE_<i>_FAILED=true`
     - `ISSUE_<i>_TITLE=<input-title>` (the pre-prefix title from the input item — helper did not apply the prefix on failure)
     - Append a warning to stderr: `**⚠ /issue: create failed for item <i>: <msg>**`
     - Increment `ISSUES_FAILED`.
-    - Do NOT post GO and do NOT emit `ISSUE_<i>_GO_POSTED` (no issue exists to comment on).
   - On `DRY_RUN=true` + `ISSUE_TITLE=<final-title>` (when `--dry-run` was passed): emit
     - `ISSUE_<i>_DRY_RUN=true`
     - `ISSUE_<i>_TITLE=<final-title>` — from create-one.sh's `ISSUE_TITLE=…` line.
     - **Do NOT emit `ISSUE_<i>_ID`** — dry-run makes no API call so no real id exists (issue #546 plan-review FINDING_1).
     - **Dep-edge dry-run** (issue #546): emit `ISSUE_<i>_BLOCKED_BY=<list>` and `ISSUE_<i>_BLOCKS=<list>` (post-validation lists from Step 5) along with `ISSUE_<i>_DRY_RUN_DEPS=true` so operators see what blocker links WOULD have been applied. Do NOT call `add-blocked-by.sh`. Do NOT call `cleanup-failed-issue.sh`.
     - Increment `ISSUES_CREATED` (conceptually — dry-run counts as a successful create for contract-completeness).
-    - Do NOT post GO and do NOT emit `ISSUE_<i>_GO_POSTED` (dry-run skips the side effect).
-
-For `DUPLICATE` outcomes (both `DUPLICATE_OF=<N>` and `DUPLICATE_OF_ITEM=<j>` branches above), do NOT post GO and do NOT emit `ISSUE_<i>_GO_POSTED` (no new issue was created). `ISSUE_<i>_GO_POSTED` is emitted only on the CREATE path when `--go` is set.
 
 ## Dependency Analysis (issue #546)
 
@@ -444,9 +422,8 @@ For `DUPLICATE` outcomes (both `DUPLICATE_OF=<N>` and `DUPLICATE_OF_ITEM=<j>` br
 - **Detection** (Step 4–5): Tier 1 of Phase 1 emits dep-candidate flags per open snapshot row; Phase 2 emits `ITEM_<i>_BLOCKED_BY=<list>` and `ITEM_<i>_BLOCKS=<list>` for each surviving non-duplicate item, with conservative ("near-certain") thresholds.
 - **Validation** (Step 5b): snapshot membership (open-only for deps), intra-batch range, DUPLICATE override + chain-collapse, SCC-based cycle resolution, DUPLICATE_OF_ITEM as topological prerequisite.
 - **Caller-supplied inputs**: `--intra-batch-deps-file` can inject pre-validated sibling edges into Phase 2, and `--blocked-by-issue` can inject a probe-validated existing open issue number as a policy blocker for every newly created batch item. Both inputs feed the same Step 5 validation and Step 6 application machinery as LLM-emitted edges.
-- **Application** (Step 6): each edge is POSTed via `add-blocked-by.sh` after the create succeeds and BEFORE the GO comment. Retry contract: 3 attempts with 10s/30s pre-retry sleeps; idempotent on 422-with-pinned-message ("already exists" / "already tracked" / "already added" / "duplicate dependency"); 404 on the dependencies sub-resource → immediate fail (feature-unavailable on this host).
+- **Application** (Step 6): each edge is POSTed via `add-blocked-by.sh` after the create succeeds. Retry contract: 3 attempts with 10s/30s pre-retry sleeps; idempotent on 422-with-pinned-message ("already exists" / "already tracked" / "already added" / "duplicate dependency"); 404 on the dependencies sub-resource → immediate fail (feature-unavailable on this host).
 - **Failure recovery** (Step 6): on retry exhaustion for any edge of item `i`, `cleanup-failed-issue.sh` closes the just-created orphan, `ISSUE_<i>_FAILED=true` is emitted, and **transitive descendants** are marked `ISSUE_<d>_FAILED=true ERROR=transitive-failure` and skipped from creation. Per-item rollback; the run continues with non-failed topological nodes. Final exit non-zero iff `ISSUES_FAILED>0`.
-- **GO timing**: when `--go` is set, GO is posted on issue `i` ONLY after all of `i`'s blocker edges have been applied. An issue may briefly exist on GitHub without a GO comment during /issue's dep-wiring (typically <1s; up to ~40s if both retry sleeps fire). `/fix-issue` will not pick up such an issue until /issue completes the GO post. See `skills/fix-issue/SKILL.md` for the receiving side of this contract.
 - **Out-of-scope**: dependency analysis is bounded to OPEN issues at the snapshot moment. Closed issues never carry dep flags. The analysis does NOT walk transitive existing-issue dependency chains; it only emits edges between new items and direct existing/sibling neighbors.
 - **Dry-run** (`--dry-run`): dep edges are computed and emitted as `ISSUE_<i>_BLOCKED_BY=` / `ISSUE_<i>_BLOCKS=` with `ISSUE_<i>_DRY_RUN_DEPS=true`. No API calls fire; no `ISSUE_<i>_ID` is emitted (no real id exists).
 
@@ -473,7 +450,7 @@ ISSUES_DEDUPLICATED=<N>
 Plus the per-item `ISSUE_<i>_*` lines accumulated above.
 
 **Channel discipline**:
-- All machine lines (`ISSUES_*`, `ISSUE_<i>_*` — including `ISSUE_<i>_GO_POSTED=true|false` emitted only on the CREATE path when `--go` is set, per Step 6 — and `DRY_RUN=true`) go to **stdout** only.
+- All machine lines (`ISSUES_*`, `ISSUE_<i>_*` — and `DRY_RUN=true`) go to **stdout** only.
 - All warnings (`**⚠ …`), fail-open notes, and human prose go to **stderr**.
 - No sentinel terminator. The consumer (e.g. `/implement` Step 9a.1) parses any line matching `^(ISSUES?_[A-Z0-9_]+)=(.*)$` from stdout.
 
@@ -531,9 +508,7 @@ TIMESTAMP=<ISO 8601 UTC>
 
 Only when `MODE=single`, also print one human-readable summary line (after all machine lines, to stderr so it does not corrupt the structured stdout stream for programmatic consumers):
 
-- `ISSUES_CREATED=1`, no `--go`: `Created issue #<N> — <URL>`
-- `ISSUES_CREATED=1`, `--go` and `ISSUE_1_GO_POSTED=true` (GO comment succeeded in Step 6): `Created issue #<N> with GO comment — <URL>`
-- `ISSUES_CREATED=1`, `--go` and `ISSUE_1_GO_POSTED=false` (GO comment failed in Step 6; the per-item warning was already emitted there): `Created issue #<N> — <URL> (⚠ GO comment failed — see warning above)`
+- `ISSUES_CREATED=1`: `Created issue #<N> — <URL>`
 - `ISSUES_DEDUPLICATED=1`: `ℹ Skipped as duplicate of #<N> — <URL>`
 - `ISSUES_FAILED=1`: `**⚠ Create failed: <error>**`
 - `DRY_RUN=true`: `ℹ Dry-run: would create "<title>"`
