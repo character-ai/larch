@@ -21,7 +21,7 @@ Baseline mode uses strict git probing: `git status --porcelain`, `git diff --nam
 
 **Limitations**: ignored files are not covered because the detector uses `git ls-files --others --exclude-standard`. A bounded denylist scan for ignored sensitive paths is deferred. If the untracked baseline is missing and current untracked files exist, the detector emits `STATUS=unknown REASON=baseline-missing-untracked-ambiguous` and leaves `NEW_UNTRACKED_PATHS_FILE` absent so callers do not auto-clean files they cannot classify.
 
-**`--auto` carve-out**: dirty-tree recovery prompts are not suppressed by `--auto`. Callers must surface `STATUS=dirty` and `STATUS=unknown` via `AskUserQuestion`.
+Dirty-tree recovery prompts are always surfaced to the operator via `AskUserQuestion`.
 
 **Harness**: `scripts/test-check-mid-run-dirty-tree.sh`, wired by `make test-check-mid-run-dirty-tree`.
 
