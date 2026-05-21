@@ -2,7 +2,21 @@
 
 Builds the **rich markdown** final run summary, writes the committed `final-summary.md` (unless `--comment-only`), upserts the tracking-issue `larch:final-summary` comment, and optionally mirrors the body to chat via `--print-stdout`.
 
-The markdown body is produced by [`scripts/render-run-summary.sh`](../../../scripts/render-run-summary.md) (starts with `<!-- larch:run-summary v=1 -->`). Optional per-lane USD lines use [`scripts/token-cost.sh`](../../../scripts/token-cost.sh) and the env vars documented under **Per-vendor rates** in [`docs/configuration-and-permissions.md`](../../../docs/configuration-and-permissions.md).
+The markdown body is produced by [`scripts/render-run-summary.sh`](../../../scripts/render-run-summary.md): a `## /<skill> run <run-id> — <outcome>` heading, the normalized bullet list, then the `<!-- larch:run-summary v=1 -->` sentinel (see that script’s contract). Optional per-lane USD lines use [`scripts/token-cost.sh`](../../../scripts/token-cost.sh) and the env vars documented under **Per-vendor rates** in [`docs/configuration-and-permissions.md`](../../../docs/configuration-and-permissions.md).
+
+## Implement outcome enum (`**Outcome**:` / `--outcome` display)
+
+These nine values are the complete set emitted for `/implement` runs (computed in `write-final-report.sh` from `ship-pr-state.sh`, `finalize-state.sh`, and related inputs). The harness `test-write-final-report.sh` is expected to stay aligned with this list.
+
+1. `stalled` — `STALL_TRACKING=true` in ship-pr state (or finalize state when ship-pr left it false).
+2. `forked-dry-run` — `FORKED_TARGET=true`.
+3. `design-only` — `DESIGN_ONLY_DONE=true`.
+4. `merged` — `MERGE_RESULT` is `merged` or `admin_merged`.
+5. `force-merged-externally` — `MERGE_RESULT=already_merged`.
+6. `pr-created-draft` — non-zero `PR_NUMBER` and `DRAFT=true`.
+7. `pr-created` — non-zero `PR_NUMBER`, `DRAFT=false`, `MERGE=false`.
+8. `bailed` — none of the above success/partial paths matched (default).
+9. `bailed-needs-user-input` — `BAIL_NEEDS_USER_INPUT=true` on finalize state **and** the outcome would otherwise be `bailed` (distinct bail class for operator follow-up).
 
 ## Usage
 
