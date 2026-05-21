@@ -311,6 +311,14 @@ if grep -Fq "$RETRY_CONTENT" "$NSR_RETRY_OUTPUT" 2>/dev/null; then
 else
     fail "C_NSR retry artifact missing retry content"
 fi
+# C_NSR_REASON: the ns-retry .meta sidecar must contain NS_RETRY_REASON=NO_ISSUES_FOUND_TOO_THIN
+# (exit 2 from validate-research-output.sh — body too thin — maps to that token).
+NSR_RETRY_META="${NSR_RETRY_OUTPUT}.meta"
+if grep -Fq "NS_RETRY_REASON=NO_ISSUES_FOUND_TOO_THIN" "$NSR_RETRY_META" 2>/dev/null; then
+    ok "C_NSR_REASON ns-retry .meta has NS_RETRY_REASON=NO_ISSUES_FOUND_TOO_THIN"
+else
+    fail "C_NSR_REASON ns-retry .meta missing NS_RETRY_REASON=NO_ISSUES_FOUND_TOO_THIN (meta: $(cat "$NSR_RETRY_META" 2>/dev/null || echo '<missing>'))"
+fi
 
 # C_NS_STRUCTURED: section 3.6 downgrade must re-run structured validation
 # before restoring STATUS=OK, publish retry prose back to the original path,

@@ -243,13 +243,40 @@ scan_rej_category_blank() {
 # ---- Scan: ns-retry-sidecars ----
 scan_ns_retry_sidecars() {
     local count=0
+    local reasons_json
+    local _reasons_list=""
+    local reason meta
     for f in "$RUN_DIR"/round-*/*-ns-retry*.txt; do
-        [ -f "$f" ] && count=$((count + 1))
+        [ -f "$f" ] || continue
+        count=$((count + 1))
+        meta="${f}.meta"
+        reason=""
+        if [ -f "$meta" ]; then
+            reason=$(awk -F= '/^NS_RETRY_REASON=/ { print $2; exit }' "$meta" 2>/dev/null || true)
+        fi
+        [ -z "$reason" ] && reason="UNKNOWN"
+        _reasons_list="${_reasons_list}${reason}"$'\n'
     done
+    # Build reasons JSON object: count occurrences per reason token with awk.
+    # Reason tokens are alphanumeric+underscore — no JSON escaping needed.
+    reasons_json=$(printf '%s' "$_reasons_list" | awk '
+        NF > 0 { counts[$0]++ }
+        END {
+            printf "{"
+            first = 1
+            for (k in counts) {
+                if (!first) printf ","
+                printf "\"%s\":%d", k, counts[k]
+                first = 0
+            }
+            printf "}"
+        }
+    ' 2>/dev/null || printf '{}')
+    [ -z "$reasons_json" ] && reasons_json="{}"
     if [ "$count" -eq 0 ]; then
-        emit "{\"scan\":\"ns-retry-sidecars\",\"pr\":$PR_NUM,\"result\":\"pass\",\"count\":0}"
+        emit "{\"scan\":\"ns-retry-sidecars\",\"pr\":$PR_NUM,\"result\":\"pass\",\"count\":0,\"reasons\":{}}"
     else
-        emit "{\"scan\":\"ns-retry-sidecars\",\"pr\":$PR_NUM,\"result\":\"fail\",\"count\":$count}"
+        emit "{\"scan\":\"ns-retry-sidecars\",\"pr\":$PR_NUM,\"result\":\"fail\",\"count\":$count,\"reasons\":$reasons_json}"
     fi
 }
 

@@ -34,6 +34,8 @@ All scans in `scans.tsv`: `required-file-presence`, `exon-misclassification`, `o
 
 A `name` in `scans.tsv` with no matching `case` arm emits an `{"scan":"<name>","result":"error",...}` NDJSON line and exits non-zero (registry drift vs this script).
 
+**`ns-retry-sidecars` reasons field**: the `ns-retry-sidecars` scan now includes a `reasons` object alongside `count` in its NDJSON output (e.g., `{"scan":"ns-retry-sidecars","pr":N,"result":"fail","count":3,"reasons":{"NO_ISSUES_FOUND_TOO_THIN":2,"UNKNOWN":1}}`). Reasons are parsed from `NS_RETRY_REASON=` in each `*-ns-retry*.txt.meta` sidecar. Sidecars that lack a `NS_RETRY_REASON=` line (e.g., produced before this change landed) contribute an `UNKNOWN` count. The pass-result variant always emits `"reasons":{}`.
+
 `category-stats` always emits. When `review-findings-full.jsonl` is missing, `partial_data` is `true` and numeric fields are zero placeholders (not “measured clean”).
 
 `cross-cutting` summarizes manifest integrity with **version-aware** rules (mirrors `audit-scan-run.sh` `jq`):
