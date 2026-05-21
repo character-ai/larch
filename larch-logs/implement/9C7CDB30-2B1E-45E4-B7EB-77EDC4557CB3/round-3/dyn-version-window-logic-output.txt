@@ -1,0 +1,12 @@
+Gathering diff content, commit history, and version-window logic in SKILL.md and tests.
+
+Checking SKILL.md for the version-window section and test 63's empty-array case.
+
+### In-Scope Findings
+
+- **correctness** `.claude/skills/audit-runs/SKILL.md:128-131` — The suppression rule is stated only as “if `fix_shipped_version` is known and **strictly greater than** every audited `larch_version`” without guarding the zero-audited-version case. Taken literally (universal quantification over an empty set), that condition is vacuously true when there are no comparable batch versions, which would wrongly justify skipping a recurrence proposal; the harness in `test-audit-runs.sh` explicitly forces `propose` when the audited version list is empty (`if ($avs | length) == 0 then "propose"`, around 1810–1811) specifically to avoid vacuous `all(...)` behavior. **Suggested fix:** Add an explicit normative sentence next to those bullets: closed-only suppression applies only when there is at least one successfully parsed audited `larch_version` from the batch; if the normalized audited-version set is empty, do not suppress—propose and record why in `version_window_checks`.
+
+### Out-of-Scope Observations
+
+- The branch also adds a flushed implement run under `larch-logs/implement/9C7CDB30-2B1E-45E4-B7EB-77EDC4557CB3/` (manifest, parent-issue, plan files); that is orthogonal to the version-window algorithm itself but widens the PR beyond the audit-runs skill surface described in the feature text.
+- For the requested checklist items otherwise: `gt3($fp; .)` under `all($avs[]; …)` matches “fix strictly greater than each audited triple” (not inverted); `fix_shipped_in: unknown` paths in SKILL (lines 126–127, 130) align with proposing, including when `git log` finds no bump; PR disambiguation’s “still ambiguous → in-scope / propose” (line 117) is consistent with not silently suppressing when explicit closing references do not resolve the tie.

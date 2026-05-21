@@ -1,0 +1,15 @@
+Gathering the pre-computed diff and commit list for a security-focused read-only review.
+
+Checking how `jstr` handles embedded error text from the new jq error path (security-relevant).
+
+Reviewed the precomputed diff and commit list (`e1e69c99` … `0f47381e`). Focused on shell invocation, temp files, JSON embedding, and GitHub interaction changes.
+
+### In-Scope Findings
+
+No in-scope issues found.
+
+### Out-of-Scope Observations
+
+None.
+
+**Notes (non-findings):** New jq error text is passed through existing `jstr()` ([`.claude/skills/audit-runs/scripts/audit-scan-run-jstr.inc.bash`](.claude/skills/audit-runs/scripts/audit-scan-run-jstr.inc.bash)), which uses `jq --arg` + `@json` so NDJSON `detail` fields are not a practical command-injection or JSON-breakout vector from attacker-controlled `review-findings-full.jsonl` content. `jq -f` loads a fixed path under the script directory, not user input. Session-summary guidance prefers `--body-file`, which avoids shell-quoting hazards for comment bodies compared to inline `--body`.

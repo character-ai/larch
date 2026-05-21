@@ -1,0 +1,36 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: EXONERATE -- nit about numbering offset; mismatch is explained by test 55 already existing, not a correctness gap
+FINDING_4: EXONERATE -- minor test setup duplication; standard test isolation; not worth abstracting two similar tests
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: EXONERATE -- run logs are immutable historical records; plan text evolving mid-run is expected
+FINDING_9: YES
+FINDING_10: EXONERATE -- duplicate of FINDING_6
+FINDING_11: YES
+FINDING_12: EXONERATE -- duplicate of FINDING_7
+FINDING_13: NO -- run log artifacts are intentionally committed per project conventions
+FINDING_14: EXONERATE -- TMPDIR paths in gh stderr are not sensitive; printing failures to chat is appropriate UX
+FINDING_15: EXONERATE -- duplicate of FINDING_6
+FINDING_16: EXONERATE -- duplicate of FINDING_2
+FINDING_17: EXONERATE -- producer-controlled fields are always lowercase; defensive downcase adds complexity without clear benefit
+FINDING_18: EXONERATE -- SKILL already documents the gh issue view fallback for when PR search returns no candidates
+FINDING_19: NO -- "always present; one row per closed-issue match evaluated (possibly empty [])" is sufficiently clear
+FINDING_20: NO -- plan text numbering in a historical run log artifact is not issue-worthy
+FINDING_21: YES
+FINDING_22: EXONERATE -- duplicate nit of FINDING_3
+FINDING_23: EXONERATE -- test correctly captures the no-filed-report condition; naming is a nit
+FINDING_24: EXONERATE -- parse-failure gap is the substance of FINDING_26; semver ordering test is sufficient for ordering contract
+FINDING_25: NO -- run log artifacts are intentionally committed per project conventions
+FINDING_26: YES
+FINDING_27: YES
+FINDING_28: NO -- ltrimstr("v") strips exactly one leading "v" per jq semantics; reviewer's premise is factually incorrect
+FINDING_29: NO -- run log artifacts are intentionally committed
+FINDING_30: NO -- this is an observation that existing code is correct, not a finding
+FINDING_31: EXONERATE -- duplicate of FINDING_6
+FINDING_32: YES
+FINDING_33: EXONERATE -- duplicate of FINDING_11
+FINDING_34: YES
+FINDING_35: NO -- informational; behavioral coverage is present under the renumbered label
+FINDING_36: NO -- run log artifacts are intentionally committed per project conventions

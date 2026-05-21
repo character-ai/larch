@@ -1,0 +1,19 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: EXONERATE -- archived plan drift is low-impact versus opening a tracking issue
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: NO -- meta observation with no actionable defect
+FINDING_10: YES
+FINDING_11: EXONERATE -- pre-existing trust-model issue, not introduced by this diff
+FINDING_12: EXONERATE -- small traceability gap, not worth a dedicated change
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: EXONERATE -- breadth is expected for the issue, no separate tracking needed
+FINDING_18: YES
+FINDING_19: YES

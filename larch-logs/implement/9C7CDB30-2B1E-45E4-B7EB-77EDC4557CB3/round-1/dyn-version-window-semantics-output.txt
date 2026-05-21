@@ -1,0 +1,23 @@
+Gathering the branch diff and commit list for a correctness-focused review of version-window semantics.
+
+Reading `.claude/skills/audit-runs/SKILL.md` for exact line numbers on the version-window and frontmatter sections.
+
+Checking how `rej-category-blank` handles `jq` in the same file for consistency:
+
+### In-Scope Findings
+
+- **correctness** `.claude/skills/audit-runs/SKILL.md:122-124` — The version-window gate hinges on comparing `fix_shipped_version` to every audited `manifest.json::larch_version` using “parsed semantic version” semantics, but the skill does not prescribe a mechanical comparator; ad‑hoc string ordering can mis-rank valid semver (for example `34.0.10` vs `34.0.9`) and mixed `v` prefixes or pre-release suffixes can further skew an LLM-operated comparison. **Suggested fix:** Spell out a normative recipe (strip a leading `v`, then compare with a semver-aware tool such as `python -c` using `packaging.version`, or a documented `sort -V` pairwise check after normalization) and require the same normalization for both `fix_shipped_version` and each audited `larch_version`.
+
+- **correctness** `.claude/skills/audit-runs/SKILL.md:117-121` — The procedure selects the first `git log --oneline` line matching `--grep="Bump version"` and then says “derive `vX.Y.Z` from that commit” without binding extraction to a file-shaped source; oneline subjects are not a stable contract across bump commits, and `head -1` can silently pick a non-version or wrong bump if grep matches multiple styles. **Suggested fix:** Define extraction as reading `.claude-plugin/plugin.json` at the chosen commit (for example `git show <rev>:.claude-plugin/plugin.json` parsed with `jq -r .version`) and document fallback behavior when that path is missing at that revision.
+
+- **correctness** `.claude/skills/audit-runs/SKILL.md:115-116` — Fix timing uses `gh pr list … --search "closes #<N>"` “and use the merged PR you attribute to the fix” when results are empty or ambiguous, but there is no tie-break when several merged PRs match (different `mergedAt` and different subsequent bump commits), so the version window can shift materially based on undocumented operator judgment. **Suggested fix:** Add explicit disambiguation rules (prefer latest `mergedAt`, prefer PR linked from the closing event, or require recording multiple candidate PR numbers in `version_window_checks` with the chosen attribution rationale).
+
+- **correctness** `.claude/skills/audit-runs/SKILL.md:245-252` — The `version_window_checks` YAML example documents only `matched_state: closed` with `in_scope: false` and `decision: skip`, while the decision grammar also allows `decision: propose`; the relationship between `in_scope` and `decision` is not fully specified, so reporters can emit inconsistent pairs or omit the “propose recurrence” row shape. **Suggested fix:** Add a second illustrative row (or a short bullet table) mapping outcomes: post-dates-all-runs → `decision: skip` / `in_scope: false`, in-scope recurrence → `decision: propose` / `in_scope: true`, and `unknown` bump → `decision: propose` with `fix_shipped_in: unknown` and a note that `in_scope` reflects batch overlap not certainty of causality.
+
+- **correctness** `.claude/skills/audit-runs/scripts/audit-scan-run.sh:196-204` — `scan_oos_category_mangle` assigns `count` from a `jq … | wc -l` pipeline under `set -euo pipefail` without a trailing `|| echo 0` (unlike nearby scans such as `scan_changelog_rebase_conflicts` at `.claude/skills/audit-runs/scripts/audit-scan-run.sh:375-381` and `scan_rej_category_blank` per the diff’s pattern); a `jq` parse failure on malformed `review-findings-full.jsonl` can abort the entire `audit-scan-run.sh` run instead of degrading to a localized scan error/pass boundary. **Suggested fix:** Mirror the defensive pattern used elsewhere in this script: append `|| echo 0` (or emit a dedicated `result:"error"` NDJSON for this scan) and validate `${count:-0}` before the numeric branch.
+
+### Out-of-Scope Observations
+
+- The branch also adds committed `/implement` scaffolding under `larch-logs/implement/9C7CDB30-2B1E-45E4-B7EB-77EDC4557CB3/` (for example `manifest.json`, `plan-goals-test.md`); that is process/run-log noise relative to the audit-runs behavior under review and does not change the version-window semantics in `SKILL.md`.
+
+- New tests in `.claude/skills/audit-runs/scripts/test-audit-runs.sh:416-576` mostly stub routing helpers and markdown shape checks rather than exercising real `gh` issue search or `git log` bump resolution, so they do not mitigate the operational ambiguities called out above (acceptable as lightweight harness, but not validation of C.2 end-to-end).
