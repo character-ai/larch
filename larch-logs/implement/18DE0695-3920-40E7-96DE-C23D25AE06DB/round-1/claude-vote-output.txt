@@ -1,0 +1,17 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: EXONERATE -- purpose line stale is a trivial one-line doc nitpick not worth a separate issue
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: EXONERATE -- single-increment-per-retry is intentional and correct; the "multi-step delta" framing misreads the algorithm
+FINDING_11: EXONERATE -- count=0 case is never passed to assert_stdout_match_count in this PR; the issue is real in principle but dormant here
+FINDING_12: NO -- fixtures are hardcoded semver literals; there is no user-supplied input; jq --arg would add noise with no security benefit
+FINDING_13: EXONERATE -- implementation and test O are mutually consistent; plan format string was advisory; no behavioral divergence
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: NO -- reviewer explicitly states no change required for this PR; pre-existing behavior, out of scope even for a tracking issue
+FINDING_17: EXONERATE -- failure in stub advancement would produce a false FAIL (wrong version/count assertions), not a false PASS; risk is theoretical in a controlled tmpdir; fix complexity exceeds benefit

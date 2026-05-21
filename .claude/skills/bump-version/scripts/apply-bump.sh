@@ -51,6 +51,28 @@ semver_lt() {
   return 1
 }
 
+# Derives MAJOR/MINOR/PATCH from an (original_current, initial_target) pair.
+_infer_bump_type() {
+  local c_maj c_min n_maj n_min
+  IFS='.' read -r c_maj c_min _ <<< "$1"
+  IFS='.' read -r n_maj n_min _ <<< "$2"
+  if [[ $n_maj -gt $c_maj ]]; then printf '%s\n' MAJOR
+  elif [[ $n_min -gt $c_min ]]; then printf '%s\n' MINOR
+  else printf '%s\n' PATCH
+  fi
+}
+
+# Applies a bump type to a base version and prints the result.
+_apply_bump_type() {
+  local maj min pat
+  IFS='.' read -r maj min pat <<< "$1"
+  case "$2" in
+    MAJOR) printf '%s\n' "$((maj+1)).0.0" ;;
+    MINOR) printf '%s\n' "${maj}.$((min+1)).0" ;;
+    *)     printf '%s\n' "${maj}.${min}.$((pat+1))" ;;
+  esac
+}
+
 NEW_VERSION=""
 
 while [[ $# -gt 0 ]]; do
@@ -124,40 +146,59 @@ fi
 # Step 2: Validate plugin.json parses.
 [[ -f "$PLUGIN_JSON" ]] || fail "$PLUGIN_JSON not found"
 jq empty "$PLUGIN_JSON" 2>/dev/null || fail "$PLUGIN_JSON is not valid JSON"
-
-# Step 3: Backup before mutation.
-cp "$PLUGIN_JSON" "$BACKUP"
-
-# Step 4: Atomic rewrite via jq + mv.
-TMP_JSON="$PLUGIN_JSON.tmp.$$"
-if ! jq --arg v "$NEW_VERSION" '.version = $v' "$PLUGIN_JSON" > "$TMP_JSON"; then
-  rm -f "$TMP_JSON" "$BACKUP"
-  fail "jq rewrite failed"
-fi
-mv "$TMP_JSON" "$PLUGIN_JSON"
-
-# Step 5: Stage and commit.
-git add "$PLUGIN_JSON"
-if ! git fetch origin main --quiet 2>/dev/null; then
-  rollback_before_commit
-  fail "git fetch origin main failed; cannot verify origin/main version guards"
+ORIGINAL_CURRENT_VERSION=$(jq -r '.version // empty' "$PLUGIN_JSON")
+if [[ ! "$ORIGINAL_CURRENT_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  fail "plugin.json version is not strict semver X.Y.Z (got: '${ORIGINAL_CURRENT_VERSION:-}')"
 fi
 
-ORIGIN_VERSION=$(git show origin/main:.claude-plugin/plugin.json 2>/dev/null | jq -r -e '.version // empty' 2>/dev/null || echo "")
-if [[ ! "$ORIGIN_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-  rollback_before_commit
-  fail "could not parse origin/main published version"
-fi
+# _backup_rewrite_stage: back up, atomically rewrite plugin.json to $NEW_VERSION,
+# and stage the file. Calls fail() (exit 1) on jq rewrite error.
+_backup_rewrite_stage() {
+  cp "$PLUGIN_JSON" "$BACKUP"
+  local _tmp="$PLUGIN_JSON.tmp.$$"
+  if ! jq --arg v "$NEW_VERSION" '.version = $v' "$PLUGIN_JSON" > "$_tmp"; then
+    rm -f "$_tmp" "$BACKUP"
+    fail "jq rewrite failed"
+  fi
+  mv "$_tmp" "$PLUGIN_JSON"
+  git add "$PLUGIN_JSON"
+}
 
-if [[ "$ORIGIN_VERSION" == "$NEW_VERSION" ]]; then
-  rollback_before_commit
-  fail "origin/main has already bumped to $NEW_VERSION; re-classify needed"
-fi
+# Steps 3–5: backup, rewrite, stage, then fetch-and-verify in a retry loop.
+# On a same-version or version-regression collision, silently re-classify and
+# retry up to _max_retries times before bailing loudly.
+INITIAL_NEW_VERSION="$NEW_VERSION"
+_retry_count=0
+_max_retries=10
 
-if semver_lt "$NEW_VERSION" "$ORIGIN_VERSION"; then
-  rollback_before_commit
-  fail "version regression: $NEW_VERSION < origin/main $ORIGIN_VERSION; rebase conflict may have been resolved to branch stale version — re-resolve and re-bump"
-fi
+_backup_rewrite_stage
+
+while true; do
+  if ! git fetch origin main --quiet 2>/dev/null; then
+    rollback_before_commit
+    fail "git fetch origin main failed; cannot verify origin/main version guards"
+  fi
+
+  ORIGIN_VERSION=$(git show origin/main:.claude-plugin/plugin.json 2>/dev/null | jq -r -e '.version // empty' 2>/dev/null || echo "")
+  if [[ ! "$ORIGIN_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    rollback_before_commit
+    fail "could not parse origin/main published version"
+  fi
+
+  if [[ "$ORIGIN_VERSION" == "$NEW_VERSION" ]] || semver_lt "$NEW_VERSION" "$ORIGIN_VERSION"; then
+    rollback_before_commit
+    if [[ $_retry_count -ge $_max_retries ]]; then
+      fail "origin/main bump race: could not land version after $_max_retries retries (last origin/main=$ORIGIN_VERSION)"
+    fi
+    _bump_type=$(_infer_bump_type "$ORIGINAL_CURRENT_VERSION" "$INITIAL_NEW_VERSION")
+    NEW_VERSION=$(_apply_bump_type "$ORIGIN_VERSION" "$_bump_type")
+    emit_breadcrumb "apply-bump: retry $((_retry_count+1))/$_max_retries origin/main=$ORIGIN_VERSION new-version=$NEW_VERSION"
+    _retry_count=$((_retry_count+1))
+    _backup_rewrite_stage
+    continue
+  fi
+  break
+done
 
 COMMIT_MSG="Bump version to $NEW_VERSION"
 if git commit -m "$COMMIT_MSG" --quiet; then

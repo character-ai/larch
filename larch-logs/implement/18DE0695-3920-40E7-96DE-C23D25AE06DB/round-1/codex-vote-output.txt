@@ -1,0 +1,17 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: EXONERATE -- cap exhaustion already represents retry failure, so routing it to a normal stall is acceptable absent a concrete recovery path
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: EXONERATE -- fixtures are trusted literals and jq-based JSON construction adds more machinery than this harness risk warrants
+FINDING_13: NO -- the implemented contract and updated test intentionally use the new breadcrumb format, so the stale plan regex is not binding
+FINDING_14: EXONERATE -- quiet-disable mode explicitly preserves raw stdout and this is already covered by the broader breadcrumb-routing documentation issue
+FINDING_15: YES
+FINDING_16: NO -- current `emit_breadcrumb` behavior matches the documented opt-in surfacing contract
+FINDING_17: YES

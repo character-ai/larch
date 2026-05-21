@@ -6,6 +6,10 @@
 
 set -euo pipefail
 
+# Isolate from an inherited larch quiet session (agent/CI may export
+# LARCH_QUIET_BREADCRUMBS / LARCH_QUIET_BREADCRUMB_FD); stale FDs break
+# emit_breadcrumb inside apply-bump.sh.
+unset LARCH_QUIET_BREADCRUMBS LARCH_QUIET_BREADCRUMB_FD LARCH_QUIET_ACTIVE LARCH_QUIET_PID LARCH_QUIET_LOG_FILE LARCH_QUIET_LOG 2>/dev/null || true
 export LARCH_QUIET_DISABLE=1
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -42,6 +46,26 @@ case "$1" in
         ;;
     show)
         if [[ "${2:-}" == "origin/main:.claude-plugin/plugin.json" ]]; then
+            if [[ -n "${STUB_ORIGIN_VERSION_SEQ_FILE:-}" && -f "$STUB_ORIGIN_VERSION_SEQ_FILE" ]]; then
+                _seq_ver=$(head -n 1 "$STUB_ORIGIN_VERSION_SEQ_FILE") || {
+                    printf '%s\n' "stub git: failed to read origin version sequence head" >&2
+                    exit 4
+                }
+                if [[ -n "$_seq_ver" ]]; then
+                    if ! tail -n +2 "$STUB_ORIGIN_VERSION_SEQ_FILE" > "${STUB_ORIGIN_VERSION_SEQ_FILE}.tmp"; then
+                        printf '%s\n' "stub git: sequence advance (tail) failed" >&2
+                        exit 4
+                    fi
+                    if ! mv "${STUB_ORIGIN_VERSION_SEQ_FILE}.tmp" "$STUB_ORIGIN_VERSION_SEQ_FILE"; then
+                        printf '%s\n' "stub git: sequence advance (mv) failed" >&2
+                        exit 4
+                    fi
+                    printf '{"version":"%s"}' "$_seq_ver"
+                else
+                    printf '%s' '{"version":"1.0.0"}'
+                fi
+                exit 0
+            fi
             if [[ "${STUB_ORIGIN_PLUGIN_JSON+x}" == "x" ]]; then
                 printf '%s' "$STUB_ORIGIN_PLUGIN_JSON"
             else
@@ -104,6 +128,14 @@ invoke_apply() {
     local repo_dir="$1"
     shift
     (cd "$repo_dir" && env "$@" bash "$REPO_ROOT/.claude/skills/bump-version/scripts/apply-bump.sh" --new-version 2.0.0)
+}
+
+# shellcheck disable=SC2317  # invoked indirectly via run_case "$runner"
+invoke_apply_v() {
+    local repo_dir="$1"
+    local new_version="$2"
+    shift 2
+    (cd "$repo_dir" && env "$@" bash "$REPO_ROOT/.claude/skills/bump-version/scripts/apply-bump.sh" --new-version "$new_version")
 }
 
 # shellcheck disable=SC2317  # invoked indirectly via run_case "$runner"
@@ -174,6 +206,35 @@ assert_stderr_contains() {
     else
         fail "$label"
         sed 's/^/    stderr: /' "$TMPDIR_BASE/$case_name/stderr.log"
+    fi
+}
+
+assert_stdout_not_matches() {
+    local case_name="$1"
+    local pattern="$2"
+    local label="$3"
+
+    if ! grep -Eq "$pattern" "$TMPDIR_BASE/$case_name/stdout.log"; then
+        ok "$label"
+    else
+        fail "$label"
+        sed 's/^/    stdout: /' "$TMPDIR_BASE/$case_name/stdout.log"
+    fi
+}
+
+assert_stdout_match_count() {
+    local case_name="$1"
+    local pattern="$2"
+    local expected="$3"
+    local label="$4"
+
+    local actual
+    actual=$(grep -Ec "$pattern" "$TMPDIR_BASE/$case_name/stdout.log" 2>/dev/null || echo 0)
+    if [[ "$actual" == "$expected" ]]; then
+        ok "$label"
+    else
+        fail "$label (expected $expected matching lines, got $actual)"
+        sed 's/^/    stdout: /' "$TMPDIR_BASE/$case_name/stdout.log"
     fi
 }
 
@@ -270,15 +331,17 @@ assert_backup_absent "fetch_failure" "B: backup removed"
 assert_commit_count "fetch_failure" "1" "B: no new commit"
 
 echo
-echo "Sub-test C: same-version origin rolls back before commit"
+echo "Sub-test C: same-version origin retries and succeeds with a higher version"
 run_case "same_version" invoke_apply STUB_ORIGIN_PLUGIN_JSON='{"version":"2.0.0"}'
-assert_exit_code "same_version" "1" "C: same-version exits 1"
-assert_stdout_contains "same_version" "APPLIED=false" "C: same-version emits APPLIED=false"
-assert_stdout_matches "same_version" "^ERROR=origin/main has already bumped to 2\\.0\\.0" "C: same-version error is stable"
-assert_plugin_version "same_version" "1.0.0" "C: plugin.json restored"
-assert_index_unstaged "same_version" "C: index unstaged"
+assert_exit_code "same_version" "0" "C: same-version retries and exits 0"
+assert_stdout_contains "same_version" "APPLIED=true" "C: same-version retries and emits APPLIED=true"
+assert_stdout_matches "same_version" "^COMMIT_SHA=[0-9a-f]+$" "C: same-version retry emits commit SHA"
+assert_plugin_version "same_version" "3.0.0" "C: plugin.json has bumped version after retry (MAJOR: 2.0.0 → 3.0.0)"
 assert_backup_absent "same_version" "C: backup removed"
-assert_commit_count "same_version" "1" "C: no new commit"
+assert_commit_count "same_version" "2" "C: exactly one new commit after retry"
+assert_head_subject "same_version" "Bump version to 3.0.0" "C: retry commit subject"
+assert_index_unstaged "same_version" "C: index clean after commit"
+assert_stdout_match_count "same_version" "^apply-bump: retry" "1" "C: exactly one breadcrumb emitted"
 
 echo
 echo "Sub-test D: differing origin version still commits"
@@ -321,15 +384,17 @@ assert_backup_absent "commit_failure" "G: backup removed"
 assert_commit_count "commit_failure" "1" "G: no new commit"
 
 echo
-echo "Sub-test H: regression guard rejects NEW_VERSION < ORIGIN_VERSION"
+echo "Sub-test H: regression guard retries and succeeds with a higher version"
 run_case "regression_guard" invoke_apply STUB_ORIGIN_PLUGIN_JSON='{"version":"3.0.0"}'
-assert_exit_code "regression_guard" "1" "H: regression guard exits 1"
-assert_stdout_contains "regression_guard" "APPLIED=false" "H: regression guard emits APPLIED=false"
-assert_stdout_matches "regression_guard" "^ERROR=version regression: 2\.0\.0 < origin/main 3\.0\.0" "H: regression guard error is stable"
-assert_plugin_version "regression_guard" "1.0.0" "H: plugin.json restored"
-assert_index_unstaged "regression_guard" "H: index unstaged"
+assert_exit_code "regression_guard" "0" "H: regression retries and exits 0"
+assert_stdout_contains "regression_guard" "APPLIED=true" "H: regression retries and emits APPLIED=true"
+assert_stdout_matches "regression_guard" "^COMMIT_SHA=[0-9a-f]+$" "H: regression retry emits commit SHA"
+assert_plugin_version "regression_guard" "4.0.0" "H: plugin.json has bumped version after retry (MAJOR: 3.0.0 → 4.0.0)"
 assert_backup_absent "regression_guard" "H: backup removed"
-assert_commit_count "regression_guard" "1" "H: no new commit"
+assert_commit_count "regression_guard" "2" "H: exactly one new commit after retry"
+assert_head_subject "regression_guard" "Bump version to 4.0.0" "H: retry commit subject"
+assert_index_unstaged "regression_guard" "H: index clean after commit"
+assert_stdout_match_count "regression_guard" "^apply-bump: retry" "1" "H: exactly one breadcrumb emitted"
 
 echo
 echo "Sub-test I: larch-internal untracked artifacts are tolerated"
@@ -381,6 +446,103 @@ run_case "unmerged_paths" invoke_unmerged_apply
 assert_exit_code "unmerged_paths" "4" "J: unmerged paths exits 4"
 assert_stdout_contains "unmerged_paths" "APPLIED=false" "J: unmerged paths emits APPLIED=false"
 assert_stdout_matches "unmerged_paths" "^ERROR=unmerged paths present:" "J: unmerged paths error is stable"
+
+echo
+echo "Sub-test K: single collision then success"
+# plugin.json=1.0.0, --new-version 1.0.1 (PATCH); origin returns 1.0.1 once,
+# then 1.0.0; retry re-classifies as PATCH relative to 1.0.1 → 1.0.2.
+seq_file_k="$TMPDIR_BASE/origin-seq-k.txt"
+printf '%s\n' "1.0.1" "1.0.0" > "$seq_file_k"
+# shellcheck disable=SC2317
+invoke_apply_v_k() {
+    local repo_dir="$1"
+    invoke_apply_v "$repo_dir" "1.0.1" STUB_ORIGIN_VERSION_SEQ_FILE="$seq_file_k"
+}
+run_case "retry_single" invoke_apply_v_k
+assert_exit_code "retry_single" "0" "K: single collision exits 0"
+assert_stdout_contains "retry_single" "APPLIED=true" "K: single collision emits APPLIED=true"
+assert_stdout_matches "retry_single" "^COMMIT_SHA=[0-9a-f]+$" "K: single collision emits commit SHA"
+assert_plugin_version "retry_single" "1.0.2" "K: plugin.json has version 1.0.2 after retry"
+assert_backup_absent "retry_single" "K: backup removed"
+assert_commit_count "retry_single" "2" "K: exactly one new commit"
+assert_head_subject "retry_single" "Bump version to 1.0.2" "K: retry commit subject"
+assert_stdout_match_count "retry_single" "^apply-bump: retry" "1" "K: exactly one breadcrumb emitted"
+
+echo
+echo "Sub-test L: multiple collisions then success"
+# plugin.json=1.0.0, --new-version 1.0.1; origin advances 1.0.1, 1.0.2 before
+# stabilising at 1.0.2 → two retries, lands at 1.0.3.
+seq_file_l="$TMPDIR_BASE/origin-seq-l.txt"
+printf '%s\n' "1.0.1" "1.0.2" "1.0.2" > "$seq_file_l"
+# shellcheck disable=SC2317
+invoke_apply_v_l() {
+    local repo_dir="$1"
+    invoke_apply_v "$repo_dir" "1.0.1" STUB_ORIGIN_VERSION_SEQ_FILE="$seq_file_l"
+}
+run_case "retry_multi" invoke_apply_v_l
+assert_exit_code "retry_multi" "0" "L: multiple collisions exits 0"
+assert_stdout_contains "retry_multi" "APPLIED=true" "L: multiple collisions emits APPLIED=true"
+assert_stdout_matches "retry_multi" "^COMMIT_SHA=[0-9a-f]+$" "L: multiple collisions emits commit SHA"
+assert_plugin_version "retry_multi" "1.0.3" "L: plugin.json has version 1.0.3 after retries"
+assert_backup_absent "retry_multi" "L: backup removed"
+assert_commit_count "retry_multi" "2" "L: exactly one new commit"
+assert_head_subject "retry_multi" "Bump version to 1.0.3" "L: retry commit subject"
+assert_stdout_match_count "retry_multi" "^apply-bump: retry" "2" "L: exactly two breadcrumbs emitted"
+
+echo
+echo "Sub-test M: cap exhaustion — loud fail after 10 retries"
+# plugin.json=1.0.0, --new-version 1.0.1; origin advances on every attempt
+# (11 entries: 1.0.1 through 1.0.11); all 10 retries collide, script bails.
+seq_file_m="$TMPDIR_BASE/origin-seq-m.txt"
+printf '%s\n' "1.0.1" "1.0.2" "1.0.3" "1.0.4" "1.0.5" \
+              "1.0.6" "1.0.7" "1.0.8" "1.0.9" "1.0.10" "1.0.11" > "$seq_file_m"
+# shellcheck disable=SC2317
+invoke_apply_v_m() {
+    local repo_dir="$1"
+    invoke_apply_v "$repo_dir" "1.0.1" STUB_ORIGIN_VERSION_SEQ_FILE="$seq_file_m"
+}
+run_case "retry_cap" invoke_apply_v_m
+assert_exit_code "retry_cap" "1" "M: cap exhaustion exits 1"
+assert_stdout_contains "retry_cap" "APPLIED=false" "M: cap exhaustion emits APPLIED=false"
+assert_stdout_matches "retry_cap" "^ERROR=origin/main bump race: could not land version after 10 retries" "M: cap exhaustion error is stable"
+assert_plugin_version "retry_cap" "1.0.0" "M: plugin.json restored after cap exhaustion"
+assert_index_unstaged "retry_cap" "M: index unstaged after cap exhaustion"
+assert_backup_absent "retry_cap" "M: backup removed"
+assert_commit_count "retry_cap" "1" "M: no new commit after cap exhaustion"
+assert_stdout_match_count "retry_cap" "^apply-bump: retry" "10" "M: exactly 10 breadcrumbs emitted"
+
+echo
+echo "Sub-test N: no collision baseline — succeeds on first attempt, no retry"
+# shellcheck disable=SC2317
+invoke_apply_v_n() {
+    local repo_dir="$1"
+    invoke_apply_v "$repo_dir" "1.0.1" STUB_ORIGIN_PLUGIN_JSON='{"version":"1.0.0"}'
+}
+run_case "no_collision" invoke_apply_v_n
+assert_exit_code "no_collision" "0" "N: no collision exits 0"
+assert_stdout_contains "no_collision" "APPLIED=true" "N: no collision emits APPLIED=true"
+assert_stdout_matches "no_collision" "^COMMIT_SHA=[0-9a-f]+$" "N: no collision emits commit SHA"
+assert_plugin_version "no_collision" "1.0.1" "N: plugin.json has version 1.0.1"
+assert_backup_absent "no_collision" "N: backup removed"
+assert_commit_count "no_collision" "2" "N: exactly one new commit"
+assert_stdout_not_matches "no_collision" "^apply-bump: retry" "N: no breadcrumb on first-attempt success"
+
+echo
+echo "Sub-test O: breadcrumb shape per retry"
+# Verifies the exact breadcrumb format on a single-collision case.
+seq_file_o="$TMPDIR_BASE/origin-seq-o.txt"
+printf '%s\n' "1.0.1" "1.0.0" > "$seq_file_o"
+# shellcheck disable=SC2317
+invoke_apply_v_o() {
+    local repo_dir="$1"
+    invoke_apply_v "$repo_dir" "1.0.1" STUB_ORIGIN_VERSION_SEQ_FILE="$seq_file_o"
+}
+run_case "breadcrumb_shape" invoke_apply_v_o
+assert_exit_code "breadcrumb_shape" "0" "O: breadcrumb-shape test exits 0"
+assert_stdout_matches "breadcrumb_shape" \
+    "^apply-bump: retry 1/10 origin/main=1\\.0\\.1 new-version=1\\.0\\.2$" \
+    "O: breadcrumb line matches expected format"
+assert_stdout_match_count "breadcrumb_shape" "^apply-bump: retry" "1" "O: exactly one breadcrumb line"
 
 echo
 if [[ "$FAIL_COUNT" -eq 0 ]]; then

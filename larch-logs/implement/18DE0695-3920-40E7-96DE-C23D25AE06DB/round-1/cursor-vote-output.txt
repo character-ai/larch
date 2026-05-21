@@ -1,0 +1,17 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: EXONERATE -- ship-pr.sh not in provided diff-context so stall-routing mismatch is unverified
+FINDING_9: YES
+FINDING_10: EXONERATE -- single-step reclassify matches the attached plan; broadening is extra complexity
+FINDING_11: EXONERATE -- grep -Ec with `|| echo 0` is a normal macOS/bash counting idiom here
+FINDING_12: EXONERATE -- harness feeds fixed semver tokens; widening inputs is hypothetical
+FINDING_13: YES
+FINDING_14: EXONERATE -- edge-case integration noise; dedicated FD1 contract doc is more complexity than payoff
+FINDING_15: YES
+FINDING_16: EXONERATE -- explicitly optional global lib-quiet tightening, not this PR’s win
+FINDING_17: YES
