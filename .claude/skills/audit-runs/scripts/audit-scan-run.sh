@@ -280,10 +280,17 @@ scan_ns_retry_sidecars() {
         | from_entries
     ' -c 2>/dev/null || printf '{}')
     [ -z "$reasons_json" ] && reasons_json="{}"
+    local reasons_detail_kv=""
+    # If jq failed (or produced an empty object) while files were counted, roll up so count matches reasons.
+    if [ "$count" -gt 0 ] && [ "$reasons_json" = "{}" ]; then
+        reasons_json=$(jq -nc --argjson n "$count" '{"UNKNOWN":$n}' 2>/dev/null || true)
+        [ -z "$reasons_json" ] && reasons_json=$(printf '{"UNKNOWN":%s}' "$count")
+        reasons_detail_kv=",\"reasons_detail\":\"$(jstr 'reasons histogram unavailable (jq failed or empty output); rolled up to UNKNOWN')\""
+    fi
     if [ "$count" -eq 0 ]; then
         emit "{\"scan\":\"ns-retry-sidecars\",\"pr\":$PR_NUM,\"result\":\"pass\",\"count\":0,\"reasons\":{}}"
     else
-        emit "{\"scan\":\"ns-retry-sidecars\",\"pr\":$PR_NUM,\"result\":\"fail\",\"count\":$count,\"reasons\":$reasons_json}"
+        emit "{\"scan\":\"ns-retry-sidecars\",\"pr\":$PR_NUM,\"result\":\"fail\",\"count\":$count,\"reasons\":$reasons_json$reasons_detail_kv}"
     fi
 }
 
