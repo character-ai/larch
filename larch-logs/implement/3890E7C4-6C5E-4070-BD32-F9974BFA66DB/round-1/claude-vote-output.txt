@@ -1,0 +1,13 @@
+FINDING_1: YES
+FINDING_2: EXONERATE -- post-merge context is non-retryable; `exit_transient_net` semantics don't apply after merge, best-effort is appropriate
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: EXONERATE -- Postmerge section already drops "such as final tracking-issue summary updates" from Step 18's description; any residual intro gap is minor
+FINDING_6: EXONERATE -- unit test stubs record calls for assertion and do not need to replicate all production guard behavior
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: EXONERATE -- CLI flag → export path is a one-hop trace; comment inaccuracy is negligible
+FINDING_10: YES
+FINDING_11: NO -- committed run-log artifacts under larch-logs/ are by-design larch behavior; this is expected PR churn
+FINDING_12: YES
+FINDING_13: YES

@@ -1,0 +1,13 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: NO -- trivial comment wording; the flag-to-env export is already documented in ship-pr.md and exercised by the test.
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: EXONERATE -- legitimate but duplicative of the broader postmerge write-final-report test coverage gap.
+FINDING_13: EXONERATE -- legitimate future fixture note, but not issue-worthy until content-level final-summary assertions are added.

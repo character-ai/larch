@@ -1,0 +1,14 @@
+Gathering the diff, commit list, and relevant `ship-pr.sh` sections for correctness review.
+
+Reading `write-final-report.sh`, `is_transient_net_signature` usage, and `ship-pr.sh` argument parsing for `LARCH_NO_LOGS_COMMIT`.
+
+### In-Scope Findings
+
+- **correctness** `scripts/ship-pr.sh:1764-1785` — On a post-merge `write-final-report.sh` failure classified as transient, the new branch calls `exit_transient_net` (which `exit 6`s the whole script) before `advance_phase "done"` at lines 1784–1785, so `PHASE` can remain `postmerge` even though the PR is already merged and local cleanup has run. A non-transient failure on the same helper only `record_failure`s and still advances to `done`, so transient vs non-transient outcomes differ in whether the state machine reaches the terminal phase; operators relying on `PHASE=done` or a clean exit after merge may see an inconsistent contract unless every caller treats exit `6` from the post-merge tail as an explicit retry path. **Suggested fix:** Either document and enforce that exit `6` from `postmerge` must resume with `--resume-phase postmerge` (and verify that path is idempotent), or align semantics with the non-transient branch by recording the failure, still advancing `done`, and surfacing retry through a mechanism that does not strand `PHASE` short of `done` after a successful merge.
+
+### Out-of-Scope Observations
+
+- The `final_report_output=$(… 2>"$fail_file")` plus `printf … >> "$fail_file"` pattern, and using `is_transient_net_signature "$(cat "$fail_file")"` afterward, matches the existing pre-PR `run_pr_create_phase` `write-final-report.sh` handling (see `scripts/ship-pr.sh:961-968`); with `write-final-report.sh` under `larch_quiet_init`, contract lines go to the capture FD and are appended before the signature check, so this does not newly invent the capture/append/`cat` hazard beyond the established design.
+- `${LARCH_NO_LOGS_COMMIT:-false}` is consistent with `export LARCH_NO_LOGS_COMMIT="$NO_LOGS_COMMIT"` where `NO_LOGS_COMMIT` is validated as a bool (`scripts/ship-pr.sh:167` and `:1772`).
+- Initial `final_report_rc=1` with skipping of the `write-final-report` block when `manifest_ok` is false correctly prevents the post-merge `larch-log.sh commit` gate from running without a successful manifest update.
+- The branch also adds committed material under `larch-logs/implement/3890E7C4-6C5E-4070-BD32-F9974BFA66DB/` (including `plan-goals-test.md`); that is orthogonal to the `run_postmerge_phase` logic but may be an unwanted PR surface depending on repo policy for run logs.

@@ -1,0 +1,18 @@
+Reading the ballot and any referenced context files to verify findings.
+
+FINDING_1: EXONERATE -- harmless duplicate reset with no functional or review hazard worth a follow-up change.
+FINDING_2: YES
+FINDING_3: EXONERATE -- bypass is scoped, prefix-set on one invocation, and already documented in shipped docs without needing SECURITY.md or extra mechanical coupling in this PR.
+FINDING_4: EXONERATE -- real-script E2E harness would be disproportionate while stubs already assert bypass and ordering for this change set.
+FINDING_5: EXONERATE -- transient early exit vs best-effort non-transient path matches typical retry semantics and is reflected in updated ship-pr documentation.
+FINDING_6: EXONERATE -- best-effort flush on failure matches the stated plan and explicit record_failure warnings rather than an audit bug in this rollout.
+FINDING_7: EXONERATE -- ARG_MAX on captured stderr is theoretical and not a credible operational threat here.
+FINDING_8: EXONERATE -- risk is generic; no evidence this path materially worsens redaction beyond existing report/logging contracts.
+FINDING_9: EXONERATE -- committed implement run-log material is consistent with repo run-log practice and does not warrant a separate tracking issue.
+FINDING_10: EXONERATE -- optional stronger assertions are nice-to-have, not issue-worthy.
+FINDING_11: EXONERATE -- pre-existing finalize semantics; no new regression tied to this diff.
+FINDING_12: EXONERATE -- small SKILL.md alignment is proportionate to the ship-pr behavior change.
+FINDING_13: EXONERATE -- harness unset is a reasonable flake guard, not a plan-fidelity defect.
+FINDING_14: EXONERATE -- cross-doc updates beyond the two-file plan are appropriate for this behavior.
+FINDING_15: NO -- process/meta observation, not an actionable code defect.
+FINDING_16: NO -- reviewer confirmation of intended patterns, not a separate finding.
