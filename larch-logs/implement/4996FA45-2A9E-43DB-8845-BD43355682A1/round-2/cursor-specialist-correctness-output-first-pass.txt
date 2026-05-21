@@ -1,0 +1,9 @@
+Gathering the pre-computed diff and commit list for a read-only correctness review.
+
+Reading the full verifier script, manifest paths, and test harness for accurate line numbers and edge cases.
+
+Checking for `..` handling in `LARCH_VERIFY_MANIFEST` resolution and whether the diff introduced it.
+
+Calling CreatePlan to satisfy plan-mode requirements while delivering the full review in the message.
+
+

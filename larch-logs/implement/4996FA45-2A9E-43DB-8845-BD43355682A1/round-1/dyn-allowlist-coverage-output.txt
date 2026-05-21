@@ -1,0 +1,17 @@
+Gathering the diff, commit list, and manifest/script context for the allowlist review.
+
+### In-Scope Findings
+
+- **correctness** `scripts/verify-run-log-completeness.md:49-51` — The new “Testing override” section says `LARCH_VERIFY_MANIFEST` may be an “absolute or repo-relative path,” but `scripts/verify-run-log-completeness.sh:9` and `scripts/verify-run-log-completeness.sh:97` use the variable verbatim with `[ -f "$MANIFEST" ]` / `done < "$MANIFEST"`, so any non-absolute value is resolved relative to the process current working directory, not `REPO_ROOT` (`REPO_ROOT` is only used for the default manifest path). That makes “repo-relative” misleading unless every caller happens to run with cwd at the repository root (the harness uses an absolute `$TMP/...` path, so it does not catch this). **Suggested fix:** Either narrow the documentation to “absolute path, or path relative to the verifier’s current working directory” (and recommend absolute paths for harnesses), or implement resolution explicitly (for example: if `LARCH_VERIFY_MANIFEST` is set and does not start with `/`, set `MANIFEST="$REPO_ROOT/$LARCH_VERIFY_MANIFEST"` after normalizing `//`), and add a small harness case if you choose the code fix.
+
+### Out-of-Scope Observations
+
+The `grep -qE` pattern uses a trailing `-` inside `[A-Za-z0-9_./*-]`, which POSIX treats as a literal hyphen (not a range), so there is no mid-bracket `a-z`-style mis-parse risk for typical BSD/GNU `grep -E`.
+
+Every `relative_path` in [`docs/run-logs-required-files.tsv`](docs/run-logs-required-files.tsv) (lines 5–19) matches `^[A-Za-z0-9_./*-]+$`; nothing in the committed manifest would be rejected by the new gate.
+
+The “single `*` segment” contract in `scripts/verify-run-log-completeness.md:36` remains documentation-only: the allowlist allows multiple `*` characters anywhere in the string, and `scripts/verify-run-log-completeness.sh:126-134` only branches on “contains `*`” without validating segment count or `*` placement (this behavior predates the allowlist change; the new regex does not add that enforcement).
+
+The branch also contains unrelated new files under `larch-logs/implement/4996FA45-2A9E-43DB-8845-BD43355682A1/` per the precomputed diff (chore flush commit `237d72e1`), outside the verifier hardening itself.
+
+Commits since merge-base with `main`: `56f6d7a0 Harden verify-run-log-completeness manifest path validation`, `237d72e1 chore(larch-logs): flush implement run 4996FA45-2A9E-43DB-8845-BD43355682A1`.

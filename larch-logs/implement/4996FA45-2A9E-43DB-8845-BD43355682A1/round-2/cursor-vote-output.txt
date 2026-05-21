@@ -1,0 +1,12 @@
+FINDING_1: EXONERATE -- mirrors Test 1’s substring `OK` check and weak exit handling; the empty if/else is noise but not a unique regression gap.
+FINDING_2: EXONERATE -- non-monotonic “Test 15” label is mildly confusing; wholesale renumber/reorder is churn for little gain.
+FINDING_3: EXONERATE -- literal `\*` probe is effectively locale-stable; aligning `LC_ALL=C` would be consistency polish only.
+FINDING_4: YES
+FINDING_5: NO -- speculative repo-wide `grep` locale hygiene does not merit its own issue.
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: EXONERATE -- legitimate broad harness debt but not something to ticket from this change alone.
+FINDING_9: EXONERATE -- pre-existing CLI surface concern; no standalone issue justified by this diff.
+FINDING_10: EXONERATE -- pre-existing `manifest_field` behavior; separate hardening if ever prioritized, not a filing trigger here.
+FINDING_11: EXONERATE -- bundled `larch-logs/implement/…` slice matches typical implement run-log recording in-repo; not an automatic defect.
+FINDING_12: EXONERATE -- duplicates FINDING_8 theme; no extra tracking value.

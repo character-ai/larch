@@ -1,0 +1,15 @@
+Gathering the diff and commit list for review.
+
+Reading the verifier script, the manifest TSV, and the rest of the diff for completeness.
+
+### In-Scope Findings
+
+- **correctness** `scripts/verify-run-log-completeness.sh:9-19` — Relative `LARCH_VERIFY_MANIFEST` is joined as `MANIFEST="$REPO_ROOT/$_rel"` with no rejection of `..` segments, so `_rel` like `../outside/manifest.tsv` resolves outside `REPO_ROOT` and the verifier silently reads an arbitrary manifest path if it exists. **Concrete scenario:** `LARCH_VERIFY_MANIFEST=../../../tmp/x.tsv` with a valid TSV at that path makes completeness checks apply to the wrong manifest versus the repo’s `docs/run-logs-required-files.tsv`, yielding false OK/MISSING for the intended run-dir contract (same class of issue as path traversal for the override the new docs position as repo-root–relative). **Tag:** `correctness` (source: `plan` + `requirements`: plan’s testability override and feature goal of safe manifest-driven checks). **Suggested fix:** Reject manifest paths whose relative tail contains `..` or `//`, or resolve with `realpath`/`readlink -f` and require the resolved path stay prefixed by `REPO_ROOT` (and keep absolute paths either allowlisted to test dirs or documented as trusted-only).
+
+- **risk-integration** `scripts/test-verify-run-log-completeness.sh:186-192` — “Test 15” is inserted immediately after Test 1 while later tests keep original numbering, so the harness’s numeric story no longer matches the plan’s “add test 14” sequencing and is harder to grep or extend consistently. **Concrete scenario:** a maintainer looks for “test 15” near other high-numbered tests and misses this block, duplicating coverage or renumbering inconsistently. **Tag:** `risk-integration` (source: `plan`). **Suggested fix:** Renumber/reorder so tests ascend (or rename to non-numeric labels) to match the documented test matrix.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/verify-run-log-completeness.sh:9-19	Relative LARCH_VERIFY_MANIFEST joined to REPO_ROOT without forbidding .. segments; MANIFEST can resolve outside the repository.	LARCH_VERIFY_MANIFEST=../../../tmp/x.tsv points the verifier at an out-of-repo TSV; required-file checks then enforce the wrong manifest, producing false OK or false MISSING relative to docs/run-logs-required-files.tsv.	Reject .. in the relative tail, collapse/normalize path, or realpath-prefix-check under REPO_ROOT.
+1	in_scope	nit	risk-integration	scripts/test-verify-run-log-completeness.sh:186-192	Test 15 placed between Test 1 and Test 2; numbering is non-monotonic vs the rest of the file and the plan’s test-14 add.	Maintainers searching or extending tests by ascending number can miss or duplicate this case.	Renumber tests in ascending order or switch to descriptive test labels.
+```
