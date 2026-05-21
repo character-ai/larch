@@ -1394,7 +1394,7 @@ if [ -x "$SCAN_SCRIPT" ]; then
     printf '%s\n' 'name	type	pattern	expected_outcome	severity' > "$P48/scans.tsv"
     printf '%s\n' 'required-file-presence	file-glob	x	x	low' >> "$P48/scans.tsv"
     printf '%s\n' 'relative_path	condition	batch_slug	extension' > "$P48/req.tsv"
-    printf '%s\n' '../outside.txt	any	x	x' >> "$P48/req.tsv"
+    printf '%s\n' '../outside.txt	always	x	x' >> "$P48/req.tsv"
     mkdir -p "$P48/run"
     p48_out=$(bash "$SCAN_SCRIPT" --run-dir "$P48/run" --pr 1002 \
         --scans-tsv "$P48/scans.tsv" \
@@ -1477,44 +1477,42 @@ else
     echo "  SKIP: audit-scan-run.sh not executable (not found at $SCAN_SCRIPT)"
 fi
 
-# Test 52 / 53: mirror aggregate-findings committed failure reference (bash 3.2)
+# Test 55: audit-scan-run.sh — cache-freshness fail when larch_version empty
+echo "Test 55: audit-scan-run cache-freshness fail (empty larch_version)"
+SCAN_SCRIPT="${SCAN_SCRIPT:-$SCRIPT_DIR/audit-scan-run.sh}"
+if [ -x "$SCAN_SCRIPT" ]; then
+    T55=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-t55-XXXXXX")
+    printf '%s\n' 'name	type	pattern	expected_outcome	severity' > "$T55/scans.tsv"
+    printf '%s\n' 'cache-freshness	manifest-field	x	x	low' >> "$T55/scans.tsv"
+    printf '%s\n' 'relative_path	condition	batch_slug	extension' > "$T55/required.tsv"
+    mkdir -p "$T55/run"
+    printf '%s\n' '{"larch_version":""}' > "$T55/run/manifest.json"
+    t55_out=$(bash "$SCAN_SCRIPT" --run-dir "$T55/run" --pr 990055 \
+        --scans-tsv "$T55/scans.tsv" --required-files-tsv "$T55/required.tsv" \
+        --current-version "34.0.0")
+    t55_res=$(printf '%s\n' "$t55_out" | jq -r 'select(.scan=="cache-freshness") | .result // empty' | head -1)
+    t55_detail=$(printf '%s\n' "$t55_out" | jq -r 'select(.scan=="cache-freshness") | .detail // empty' | head -1)
+    assert_equal "$t55_res" "fail" "[55] empty larch_version → fail"
+    assert_equal "$t55_detail" "manifest larch_version empty" "[55b] detail names empty version"
+    rm -rf "$T55"
+else
+    echo "  SKIP: audit-scan-run.sh not executable (not found at $SCAN_SCRIPT)"
+fi
+
+# Test 52 / 53: aggregate-findings phrases (shared include with production)
 echo "Test 52: aggregate-findings failure ref points at committed round path"
-cref_agg() {
-    local SESSION_ENV_PATH="$1" REVIEW_TMPDIR_CANON="$2" failure_log="$3"
-    if [[ -n "$SESSION_ENV_PATH" ]]; then
-        local round_name flbase
-        round_name="$(basename "$REVIEW_TMPDIR_CANON")"
-        flbase="$(basename "$failure_log")"
-        case "$round_name" in
-            round-*)
-                case "$flbase" in
-                    aggregator-dispatch.stderr | aggregator-validate.stderr)
-                        printf '%s/%s' "$round_name" "$flbase"
-                        return
-                        ;;
-                esac
-                ;;
-        esac
-    fi
-    printf '%s' "$failure_log"
-}
-phrase_agg() {
-    local SESSION_ENV_PATH="$1" REVIEW_TMPDIR_CANON="$2" failure_log="$3"
-    local cref
-    cref="$(cref_agg "$SESSION_ENV_PATH" "$REVIEW_TMPDIR_CANON" "$failure_log")"
-    if [[ "$cref" == "$failure_log" ]]; then
-        printf 'See %s.' "$cref"
-    else
-        printf 'See %s in the committed run log.' "$cref"
-    fi
-}
+REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd -P)"
+# shellcheck source=skills/review/scripts/aggregate-findings-phrases.inc.bash
+source "$REPO_ROOT/skills/review/scripts/aggregate-findings-phrases.inc.bash"
 T52_BASE=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-t52-XXXXXX")
 mkdir -p "$T52_BASE/round-2"
 FAIL52="$T52_BASE/round-2/aggregator-validate.stderr"
 printf 'validation failed\n' > "$FAIL52"
-ph52=$(phrase_agg "$T52_BASE/session-env.sh" "$(cd "$T52_BASE/round-2" && pwd -P)" "$FAIL52")
+SESSION_ENV_PATH="$T52_BASE/session-env.sh" REVIEW_TMPDIR_CANON="$(cd "$T52_BASE/round-2" && pwd -P)" \
+    ph52="$(failure_see_phrase "$FAIL52")"
 assert_equal "$ph52" "See round-2/aggregator-validate.stderr in the committed run log." "[52] SESSION_ENV + round-* → committed round-relative hint"
-ph52b=$(phrase_agg "" "/tmp/review" "/tmp/review/aggregator-validate.stderr")
+SESSION_ENV_PATH="" REVIEW_TMPDIR_CANON="/tmp/review" \
+    ph52b="$(failure_see_phrase "/tmp/review/aggregator-validate.stderr")"
 assert_equal "$ph52b" "See /tmp/review/aggregator-validate.stderr." "[52b] no SESSION_ENV → raw failure path in See phrase"
 rm -rf "$T52_BASE"
 
@@ -1523,12 +1521,12 @@ T53_BASE=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-t53-XXXXXX")
 mkdir -p "$T53_BASE/round-1"
 FAIL53="$T53_BASE/round-1/aggregator-validate.stderr"
 : > "$FAIL53"
-ph53=$(phrase_agg "$T53_BASE/session-env.sh" "$(cd "$T53_BASE/round-1" && pwd -P)" "$FAIL53")
+SESSION_ENV_PATH="$T53_BASE/session-env.sh" REVIEW_TMPDIR_CANON="$(cd "$T53_BASE/round-1" && pwd -P)" \
+    ph53="$(failure_see_phrase "$FAIL53")"
 assert_equal "$ph53" "See round-1/aggregator-validate.stderr in the committed run log." "[53] empty stderr still referenced by committed path"
 rm -rf "$T53_BASE"
 
 echo "Test 54: append-tool-failure cursor-ci style embeds body (no output path leak)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd -P)"
 APP_TF="$REPO_ROOT/scripts/append-tool-failure.sh"
 if [ -x "$APP_TF" ]; then
     T54=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-t54-XXXXXX")
@@ -1541,6 +1539,10 @@ if [ -x "$APP_TF" ]; then
             FAIL=$((FAIL + 1))
             FAILED_TESTS+=("[54] execution-issues should not embed OUTPUT_FILE path")
             echo "  FAIL: [54] execution-issues should not embed OUTPUT_FILE path" >&2
+        elif ! grep -Fq 'simulated cursor-ci stderr' "$LOG54" 2>/dev/null; then
+            FAIL=$((FAIL + 1))
+            FAILED_TESTS+=("[54] execution-issues lost embedded stderr body")
+            echo "  FAIL: [54] execution-issues lost embedded stderr body" >&2
         else
             PASS=$((PASS + 1))
             echo "  ok: [54] append-tool-failure body omits tmp output path"

@@ -61,14 +61,14 @@ SCANS_TSV="$PWD/.claude/skills/audit-runs/scans.tsv"
 
 | Scan | What | Where |
 |---|---|---|
-| Required-file presence | Compare against `docs/run-logs-required-files.tsv` | run-log root |
+| Required-file presence | Compare against `docs/run-logs-required-files.tsv` (NDJSON `result` is `pass` / `fail` / `skip` / `error`) | run-log root |
 | EXON misclassification | `\| FINDING_.* \| 0 \| 0 \| [1-9]+ \|.*\| rejected \|` | `round-*/voting-tally.md` |
 | OOS category mangle | `category` field not in `{code-quality, risk-integration, correctness, architecture, security}` | `review-findings-full.jsonl` |
 | NS-retry sidecars | files matching `*-ns-retry*` (see `scans.tsv`; first-pass trailing-content checks are the separate `trailing-content-no-issues-found` scan) | `round-*/` |
 | Codex round-1 adherence | round 2+ panel-manifest should not contain `tool=codex` | `round-N/panel-manifest.ndjson` |
 | Codex generalist waste | `codex-generalist-output.txt` is `NO_ISSUES_FOUND` only AND timing > 120s | `round-1/` + `timing-report.json` |
 | Execution-issues categories | non-Warnings entries in `execution-issues.ndjson` | `execution-issues.ndjson` |
-| Cache freshness | `manifest.json::larch_version` vs latest plugin version (`result: informational` when the run lags current; empty `larch_version` remains `fail`) | `manifest.json` |
+| Cache freshness | `manifest.json::larch_version` vs latest plugin version (`result: informational` when the run lags current; empty `larch_version` remains `fail`; other rows may emit `skip`/`error`) | `manifest.json` |
 | Changelog rebase/conflicts (heuristic) | `execution-issues.ndjson` bodies mentioning changelog + rebase/conflict | `execution-issues.ndjson` |
 | Coder tool | `CODER_TOOL` field | `round-*/coder.env` |
 | Trailing-content NO_ISSUES_FOUND | first-pass content matches `^NO_ISSUES_FOUND\n` plus extra | `*-first-pass.txt` |
@@ -94,7 +94,7 @@ bash "$PWD/.claude/skills/audit-runs/scripts/audit-scan-run.sh" \
   > "$TMPDIR/scan-results-<PR_NUM>.ndjson"
 ```
 
-Read `scan-results-*.ndjson` files as NDJSON (one JSON object per scan per line). Contract: `.claude/skills/audit-runs/scripts/audit-scan-run.md`.
+Read `scan-results-*.ndjson` files as NDJSON (one JSON object per scan per line). Each line’s `result` is not limited to pass/fail: treat **`informational`**, **`skip`**, and **`error`** as first-class outcomes when writing the report (for example `cache-freshness` behind current vs missing inputs vs manifest/registry drift). Contract: `.claude/skills/audit-runs/scripts/audit-scan-run.md`.
 
 **Cross-cutting checks (NDJSON + operator judgment):** the synthetic `cross-cutting` object (and `cache-freshness` / manifest fields) flags **manifest integrity** — empty `ended_at` / `pr_number`, and `manifest_pr_number_mismatch_with_audited_pr` / legacy `self_deploying_gap` when `manifest.json`’s `pr_number` disagrees with the audited PR (run-log vs merge skew / self-deploying version gaps). When `run_version < current_version`, `cache-freshness` emits **`result: informational`** (not `fail`): treat it as a self-deploying lens on the batch, not a defect signal versus the fix stream. **`proposed_new_issues` / `proposed_augmentations`** must be reconciled against **actually filed or closed** bug issues after the report (per **Post-report user prompt**); do not assume a proposal row implies an open issue without `gh` verification.
 

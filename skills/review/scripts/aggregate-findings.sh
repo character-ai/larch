@@ -57,6 +57,8 @@ case "$_findings_canon" in
         ;;
 esac
 unset _findings_canon
+# shellcheck source=skills/review/scripts/aggregate-findings-phrases.inc.bash
+source "$PLUGIN_ROOT/skills/review/scripts/aggregate-findings-phrases.inc.bash"
 [[ "$CODEX_PRESENT" == "true" || "$CODEX_PRESENT" == "false" ]] || { larch_err "aggregate-findings.sh: --codex-present must be true or false"; exit 2; }
 [[ "$CURSOR_PRESENT" == "true" || "$CURSOR_PRESENT" == "false" ]] || { larch_err "aggregate-findings.sh: --cursor-present must be true or false"; exit 2; }
 [[ "$MODE" == "diff" || "$MODE" == "description" ]] || { larch_err "aggregate-findings.sh: --mode must be diff or description"; exit 2; }
@@ -85,38 +87,6 @@ append_warning() {
         --log "$(execution_issues_log)" \
         --category "External Reviewer Issues" \
         --entry "$entry" 2>/dev/null || true
-}
-
-# When SESSION_ENV_PATH is set, map tmpdir-sidecar paths to stable round-relative
-# names for execution-issue text (write-round commits these under round-N/).
-committed_ref() {
-    local failure_log="$1"
-    if [[ -n "${SESSION_ENV_PATH:-}" ]]; then
-        local round_name flbase
-        round_name="$(basename "$REVIEW_TMPDIR_CANON")"
-        flbase="$(basename "$failure_log")"
-        case "$round_name" in
-            round-*)
-                case "$flbase" in
-                    aggregator-dispatch.stderr | aggregator-validate.stderr)
-                        printf '%s/%s' "$round_name" "$flbase"
-                        return
-                        ;;
-                esac
-                ;;
-        esac
-    fi
-    printf '%s' "$failure_log"
-}
-
-failure_see_phrase() {
-    local failure_log="$1" cref
-    cref="$(committed_ref "$failure_log")"
-    if [[ "$cref" == "$failure_log" ]]; then
-        printf 'See %s.' "$cref"
-    else
-        printf 'See %s in the committed run log.' "$cref"
-    fi
 }
 
 count_finding_blocks() {
@@ -221,7 +191,7 @@ DISPATCH_OK=$(kv_get "$dispatch_out" DISPATCH_OK)
 if [[ "$DISPATCH_OK" != "true" ]]; then
     REASON="dispatch-failed"
     FAILURE_LOG="$REVIEW_TMPDIR/aggregator-dispatch.stderr"
-    append_warning "- **findings aggregator**: DISPATCH_OK=$DISPATCH_OK; leaving findings.md unchanged."
+    append_warning "- **findings aggregator**: DISPATCH_OK=$DISPATCH_OK; leaving findings.md unchanged. $(failure_see_phrase "$FAILURE_LOG")"
     emit_result
     exit 0
 fi

@@ -119,6 +119,13 @@ scan_required_file_presence() {
         [ -z "$rel_path" ] && continue
         printf '%s' "$rel_path" | grep -q '^#' && continue
         [ "$rel_path" = "relative_path" ] && continue
+        case "$req_condition" in
+            always | step5 | step7a | step8 | step9a1 | exn-agg-validate-fail | exn-agg-dispatch-fail) ;;
+            *)
+                emit "{\"scan\":\"required-file-presence\",\"pr\":$PR_NUM,\"result\":\"error\",\"detail\":\"unsupported required-files condition (registry drift): $(jstr "$req_condition")\"}"
+                exit 1
+                ;;
+        esac
         # Reject absolute paths and ".." segments (path escape / out-of-subtree probes)
         if [ "${rel_path#/}" != "$rel_path" ] || printf '%s' "$rel_path" | grep -qF '..'; then
             local invalid_detail
