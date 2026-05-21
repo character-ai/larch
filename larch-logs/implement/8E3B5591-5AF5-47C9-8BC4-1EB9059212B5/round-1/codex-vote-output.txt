@@ -1,0 +1,22 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: EXONERATE -- Duplication is real, but centralizing these shell helpers is more churn than this small guard change warrants.
+FINDING_4: EXONERATE -- Pre-existing low-severity observability gap, not worth filing as separate tracking from this ballot.
+FINDING_5: EXONERATE -- The wording divergence is real but operationally minor and not worth a standalone issue.
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: EXONERATE -- Verification should be enforced by CI/review process, not treated as a code defect from the static diff alone.
+FINDING_10: YES
+FINDING_11: NO -- The marker prefix is already covered by regression tests and the substring match is intentionally tolerant, not loose in a dangerous way.
+FINDING_12: EXONERATE -- The inconsistency is legitimate but too minor to justify centralization or extra documentation here.
+FINDING_13: YES
+FINDING_14: EXONERATE -- The asymmetry is pre-existing and low-risk enough that it is not issue-worthy from this review.
+FINDING_15: EXONERATE -- Pre-existing WARN visibility gap, but not worth a standalone tracking issue.
+FINDING_16: YES
+FINDING_17: EXONERATE -- Drift risk is legitimate, but extracting or guarding all copies adds more complexity than the current change warrants.
+FINDING_18: EXONERATE -- Stable wording would be nicer, but this is a minor operator convenience issue.
+FINDING_19: EXONERATE -- Legitimate process concern for this branch, but not useful as a future GitHub issue.
+FINDING_20: EXONERATE -- Pre-existing observability gap, not issue-worthy here.
+FINDING_21: YES
+FINDING_22: EXONERATE -- Missing pasted verification output is a review-process gap, not a code finding when CI can enforce it.

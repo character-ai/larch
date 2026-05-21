@@ -1,0 +1,3 @@
+Aggregating duplicate reviewer items into a single ordered list. Treating the edge-cases stacking note (input FINDING_19) as a separate **[OUT_OF_SCOPE]** item per “keep OOS separate when distinguished,” because merging it into the in-scope stacking finding would force an **[OUT_OF_SCOPE]** heading on the whole merged item.
+
+
