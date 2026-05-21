@@ -29,11 +29,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Kill hung cursor-ci runs early by watching stdout or working-tree progress instead of waiting the full 30-minute wall-clock budget.
-- Centralize stall polling and SIGTERM/SIGKILL handling in cursor_launcher_run_stall_monitor for reuse and consistent diagnostics.
-- Harden token-record parsing after abrupt exits so stalled runs still emit LAUNCHER_EXIT for the dispatcher.
+- Closed: #2523
 
-- Closed: #2513
 ## [34.0.6] - 2026-05-21
 
 ### Changed
