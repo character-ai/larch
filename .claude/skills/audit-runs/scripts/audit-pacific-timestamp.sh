@@ -11,14 +11,19 @@
 
 set -euo pipefail
 
+if [ "$#" -gt 0 ]; then
+    printf 'audit-pacific-timestamp.sh: unexpected argument(s)\n' >&2
+    exit 1
+fi
+
 # Try TZ-based approach first (most reliable)
 get_pacific_via_tz() {
     local ts
     # GNU date with TZ
-    ts=$(TZ="America/Los_Angeles" date +"%Y-%m-%dT%H:%M%z" 2>/dev/null || true)
+        ts=$(TZ="America/Los_Angeles" date +"%Y-%m-%dT%H:%M%z" 2>/dev/null || true)
     if [ -n "$ts" ]; then
-        # Convert +HHMM to +HH:MM
-        printf '%s' "$ts" | sed 's/\([+-][0-9][0-9]\)\([0-9][0-9]\)$/\1:\2/'
+        # Convert +HHMM or -HHMM to +HH:MM / -HH:MM (also tolerate trailing Z from odd hosts)
+        printf '%s' "$ts" | sed -E 's/([+-][0-9]{2})([0-9]{2})$/\1:\2/'
         return 0
     fi
     return 1
@@ -77,6 +82,11 @@ fi
 
 if [ -z "$TS" ]; then
     # Last resort: UTC
+    TS=$(date -u +"%Y-%m-%dT%H:%MZ" 2>/dev/null || date +"%Y-%m-%dT%H:%MZ")
+fi
+
+# Require minute precision with explicit offset or Z (reject mis-shaped "Pacific" labels)
+if ! printf '%s' "$TS" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}([+-][0-9]{2}:[0-9]{2}|Z)$'; then
     TS=$(date -u +"%Y-%m-%dT%H:%MZ" 2>/dev/null || date +"%Y-%m-%dT%H:%MZ")
 fi
 

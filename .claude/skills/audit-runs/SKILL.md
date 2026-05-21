@@ -137,6 +137,7 @@ Always file an audit report after the scan, EXCEPT when the scope is `since last
 
 ```bash
 PACIFIC_OUT=$(bash "$PWD/.claude/skills/audit-runs/scripts/audit-pacific-timestamp.sh")
+PACIFIC_TIMESTAMP=$(printf '%s\n' "$PACIFIC_OUT" | sed -n 's/^PACIFIC_TIMESTAMP=//p')
 # → PACIFIC_TIMESTAMP=2026-05-20T21:59-07:00
 
 TITLE_OUT=$(bash "$PWD/.claude/skills/audit-runs/scripts/audit-title.sh" \
@@ -245,12 +246,12 @@ audit-resolve-prs.sh         → PR_LIST, PRIOR_REPORT_NUMBER, RESOLVED_ECHO
 audit-map-runs.sh            → run-map.tsv
 for each PR:
   audit-scan-run.sh          → scan-results-NNNN.ndjson
-audit-compute-counters.sh    → counters.env
+audit-compute-counters.sh    → COUNTERS_OUT (KV lines on stdout; treat as counters input)
 [LLM: classify proposed_new_issues / proposed_augmentations via gh search + reasoning]
-audit-pacific-timestamp.sh   → PACIFIC_TIMESTAMP
+audit-pacific-timestamp.sh   → PACIFIC_TIMESTAMP (extract from stdout KV)
 audit-title.sh               → TITLE
 [LLM: write report prose — Summary, Delta, Per-PR findings, Open issues, Scan results table
-       reading from counters.env + scan-results-*.ndjson as structured input]
+       reading from COUNTERS_OUT + scan-results-*.ndjson as structured input]
 create-one.sh                → file audit report
 audit-close-priors.sh        → close prior audit-report issues
 [LLM: post-report 3-way question if proposed issues exist]

@@ -21,7 +21,10 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --new-issue-number) NEW_ISSUE="$2"; shift 2 ;;
         --repo) REPO="$2"; shift 2 ;;
-        *) shift ;;
+        *)
+            printf 'audit-close-priors.sh: unknown argument: %s\n' "$1" >&2
+            exit 1
+            ;;
     esac
 done
 
@@ -31,8 +34,11 @@ if [ -z "$NEW_ISSUE" ]; then
 fi
 
 # List open audit-report issues
-OPEN_ISSUES=$(gh issue list --state open --label audit-report --repo "$REPO" \
-    --json number --jq '.[].number' 2>/dev/null || true)
+if ! OPEN_ISSUES=$(gh issue list --state open --label audit-report --repo "$REPO" \
+    --json number --jq '.[].number' 2>/dev/null); then
+    printf 'ISSUE_LIST_FAILED=true\nREASON=gh issue list failed\n' >&2
+    exit 1
+fi
 
 if [ -z "$OPEN_ISSUES" ]; then
     exit 0

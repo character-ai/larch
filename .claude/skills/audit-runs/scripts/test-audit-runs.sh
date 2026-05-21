@@ -603,20 +603,24 @@ assert_equal "$result" "" "[20b] missing frontmatter → empty"
 # ===========================================================================
 echo "=== test-audit-runs: audit-map-runs.sh logic ==="
 
-# Test 21: pr_number grep pattern matching
-echo "Test 21: audit-map-runs manifest grep patterns"
-manifest_has_pr() {
+# Test 21: manifest pr_number match via jq (delimiter-safe vs substring grep)
+echo "Test 21: audit-map-runs manifest pr_number (jq)"
+manifest_pr_jq() {
     local content="$1" pr="$2"
-    printf '%s' "$content" | grep -q "\"pr_number\": $pr" 2>/dev/null || \
-    printf '%s' "$content" | grep -q "\"pr_number\":$pr" 2>/dev/null
-    echo $?
+    if printf '%s' "$content" | jq -e --argjson p "$pr" '.pr_number == $p' >/dev/null 2>&1; then
+        echo "0"
+    else
+        echo "1"
+    fi
 }
-result=$(manifest_has_pr '{"pr_number": 2476, "larch_version": "29.8.54"}' "2476")
+result=$(manifest_pr_jq '{"pr_number": 2476, "larch_version": "29.8.54"}' "2476")
 assert_equal "$result" "0" "[21] manifest with pr_number matches"
-result=$(manifest_has_pr '{"pr_number":2476,"larch_version":"29.8.54"}' "2476")
+result=$(manifest_pr_jq '{"pr_number":2476,"larch_version":"29.8.54"}' "2476")
 assert_equal "$result" "0" "[21b] compact JSON matches"
-result=$(manifest_has_pr '{"pr_number": 2477}' "2476")
+result=$(manifest_pr_jq '{"pr_number": 2477}' "2476")
 assert_equal "$result" "1" "[21c] wrong PR number → no match"
+result=$(manifest_pr_jq '{"pr_number": 24760}' "2476")
+assert_equal "$result" "1" "[21d] PR 24760 does not match pr 2476 (no substring false positive)"
 
 # Test 22: fallback — Closes #N extraction from PR body
 echo "Test 22: audit-map-runs closes-issue fallback"
@@ -655,10 +659,9 @@ assert_equal "$result" "0" "[23c] accepted line not matched"
 echo "Test 24: audit-scan-run trailing-content check"
 has_trailing_content() {
     local content="$1"
-    # First line must be NO_ISSUES_FOUND and more lines follow
     local first_line line_count
-    first_line=$(printf '%s' "$content" | head -1)
-    line_count=$(printf '%s' "$content" | wc -l | tr -d '[:space:]')
+    first_line=$(printf '%s' "$content" | head -1 | tr -d '\r' | sed 's/[[:space:]]*$//')
+    line_count=$(printf '%s' "$content" | awk 'END{print NR+0}')
     if [[ "$first_line" == "NO_ISSUES_FOUND" ]] && [[ "$line_count" -gt 1 ]]; then
         echo "fail"
     else
@@ -736,7 +739,7 @@ echo "Test 28: audit-title contiguous range"
 is_contiguous() {
     local pr_list="$1"
     local sorted first last count expected
-    sorted=$(printf '%s' "$pr_list" | tr ',' '\n' | sort -n)
+    sorted=$(printf '%s' "$pr_list" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | grep -E '^[0-9]+$' | sort -n)
     first=$(printf '%s' "$sorted" | head -1)
     last=$(printf '%s' "$sorted" | tail -1)
     count=$(printf '%s' "$sorted" | grep -c .)
@@ -761,6 +764,9 @@ if [ -x "$TITLE_SCRIPT" ]; then
     result=$(bash "$TITLE_SCRIPT" --pr-list "2476,2477,2480" --timestamp "2026-05-20T22:00-07:00" | grep -oE 'TITLE=.*' | sed 's/TITLE=//')
     assert_equal "$result" "[Run Logs Audit Report 2026-05-20T22:00-07:00] PRs #2476, #2477, #2480" "[29b] non-contiguous title"
 
+    result=$(bash "$TITLE_SCRIPT" --pr-list "2476, 2477 , 2478" --timestamp "2026-05-20T22:00-07:00" | grep -oE 'TITLE=.*' | sed 's/TITLE=//')
+    assert_equal "$result" "[Run Logs Audit Report 2026-05-20T22:00-07:00] PRs #2476-#2478" "[29d] spaced comma PR list → contiguous title"
+
     result=$(bash "$TITLE_SCRIPT" --pr-list "2476" --timestamp "2026-05-20T22:00-07:00" | grep -oE 'TITLE=.*' | sed 's/TITLE=//')
     assert_equal "$result" "[Run Logs Audit Report 2026-05-20T22:00-07:00] PRs #2476" "[29c] single PR title"
 else
@@ -782,6 +788,22 @@ if [ -x "$PACIFIC_SCRIPT" ]; then
     fi
 else
     echo "  SKIP: audit-pacific-timestamp.sh not executable (not found at $PACIFIC_SCRIPT)"
+fi
+
+# Test 31: audit-map-runs.sh against fixture log root (real script; no gh)
+echo "Test 31: audit-map-runs.sh fixture newest manifest"
+MAP_SCRIPT="$SCRIPT_DIR/audit-map-runs.sh"
+if [ -x "$MAP_SCRIPT" ]; then
+    MAP_TMP=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-map-XXXXXX")
+    mkdir -p "$MAP_TMP/RUNA" "$MAP_TMP/RUNB"
+    printf '%s\n' '{"pr_number":999001,"started_at":"2026-01-01T00:00:00Z","larch_version":"1.0.0"}' > "$MAP_TMP/RUNA/manifest.json"
+    printf '%s\n' '{"pr_number":999001,"started_at":"2026-02-01T00:00:00Z","larch_version":"2.0.0"}' > "$MAP_TMP/RUNB/manifest.json"
+    row=$(bash "$MAP_SCRIPT" --pr-list "999001" --log-root "$MAP_TMP")
+    rid=$(printf '%s' "$row" | cut -f2)
+    assert_equal "$rid" "RUNB" "[31] newest started_at manifest wins"
+    rm -rf "$MAP_TMP"
+else
+    echo "  SKIP: audit-map-runs.sh not executable (not found at $MAP_SCRIPT)"
 fi
 
 # ---------------------------------------------------------------------------

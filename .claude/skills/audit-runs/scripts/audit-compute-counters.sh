@@ -18,7 +18,10 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --scan-results-dir) SCAN_RESULTS_DIR="$2"; shift 2 ;;
         --prior-frontmatter) PRIOR_FRONTMATTER="$2"; shift 2 ;;
-        *) shift ;;
+        *)
+            printf 'audit-compute-counters.sh: unknown argument: %s\n' "$1" >&2
+            exit 1
+            ;;
     esac
 done
 
@@ -102,6 +105,11 @@ for ndjson_file in "$SCAN_RESULTS_DIR"/scan-results-*.ndjson; do
     val=$(jq -r 'select(.scan=="ns-retry-sidecars") | .count // 0' "$ndjson_file" 2>/dev/null | head -1 || echo 0)
     val=$(num_or_zero "${val:-0}")
     delta_ns_retries=$((delta_ns_retries + val))
+
+    # changelog-rebase-conflicts count (from audit-scan-run NDJSON)
+    val=$(jq -r 'select(.scan=="changelog-rebase-conflicts") | .count // 0' "$ndjson_file" 2>/dev/null | head -1 || echo 0)
+    val=$(num_or_zero "${val:-0}")
+    delta_changelog=$((delta_changelog + val))
 done
 
 # Compute cumulative totals

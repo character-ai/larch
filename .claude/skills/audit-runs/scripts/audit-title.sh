@@ -21,7 +21,10 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --pr-list) PR_LIST="$2"; shift 2 ;;
         --timestamp) TIMESTAMP="$2"; shift 2 ;;
-        *) shift ;;
+        *)
+            printf 'audit-title.sh: unknown argument: %s\n' "$1" >&2
+            exit 1
+            ;;
     esac
 done
 
@@ -30,9 +33,10 @@ if [ -z "$PR_LIST" ] || [ -z "$TIMESTAMP" ]; then
     exit 1
 fi
 
-# Parse comma-separated PR list into sorted integers
-# Use tr + sort for Bash 3.2 compatibility
-SORTED_PRS=$(printf '%s' "$PR_LIST" | tr ',' '\n' | tr -d '[:space:]' | grep -E '^[0-9]+$' | sort -n)
+# Parse comma-separated PR list into sorted integers (trim per token; never merge digits across separators)
+SORTED_PRS=$(
+    printf '%s' "$PR_LIST" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | grep -E '^[0-9]+$' | sort -n
+)
 PR_COUNT=$(printf '%s' "$SORTED_PRS" | grep -c .)
 
 if [ "$PR_COUNT" -eq 0 ]; then
@@ -57,8 +61,6 @@ if [ "$EXPECTED_COUNT" -eq "$PR_COUNT" ]; then
 fi
 
 # Non-contiguous: build explicit list
-PR_REFS=$(printf '%s' "$SORTED_PRS" | awk '{printf "#%s%s", $1, (NR==1?"":"")} END{print ""}' | sed 's/ /, /g')
-# Use simpler join via paste/tr
-PR_REFS=$(printf '%s' "$SORTED_PRS" | while read -r n; do printf '#%s ' "$n"; done | sed 's/  */ /g; s/ $//; s/ /, /g')
+PR_REFS=$(printf '%s\n' "$SORTED_PRS" | while IFS= read -r n || [ -n "$n" ]; do [ -z "$n" ] && continue; printf '#%s ' "$n"; done | sed 's/  */ /g; s/ $//; s/ /, /g')
 
 printf 'TITLE=[Run Logs Audit Report %s] PRs %s\n' "$TIMESTAMP" "$PR_REFS"

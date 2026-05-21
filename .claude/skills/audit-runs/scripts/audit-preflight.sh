@@ -18,7 +18,10 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --repo) REPO="$2"; shift 2 ;;
         --allow-concurrent) ALLOW_CONCURRENT=true; shift ;;
-        *) shift ;;
+        *)
+            printf 'audit-preflight.sh: unknown argument: %s\n' "$1" >&2
+            exit 1
+            ;;
     esac
 done
 
@@ -27,14 +30,26 @@ if [ -z "$REPO" ]; then
     exit 0
 fi
 
-# Step 1: git fetch + pull
+# Step 1: git fetch + fast-forward main when applicable
 if ! git fetch origin main 2>/dev/null; then
     printf 'PREFLIGHT_OK=false\nREASON=git fetch origin main failed\n'
     exit 0
 fi
-if ! git pull --ff-only 2>/dev/null; then
-    printf 'PREFLIGHT_OK=false\nREASON=git pull --ff-only failed (working tree may be dirty or branch is not ff-only)\n'
-    exit 0
+CURRENT_BRANCH=$(git branch --show-current 2>/dev/null || printf '%s' "")
+if [ "$CURRENT_BRANCH" = "main" ]; then
+    if ! git pull --ff-only origin main 2>/dev/null; then
+        printf 'PREFLIGHT_OK=false\nREASON=git pull --ff-only origin main failed (working tree may be dirty or branch is not ff-only)\n'
+        exit 0
+    fi
+else
+    if git show-ref --verify --quiet refs/heads/main 2>/dev/null && git show-ref --verify --quiet refs/remotes/origin/main 2>/dev/null; then
+        lm=$(git rev-parse main 2>/dev/null || true)
+        om=$(git rev-parse origin/main 2>/dev/null || true)
+        if [ -n "$lm" ] && [ -n "$om" ] && [ "$lm" != "$om" ] && git merge-base --is-ancestor "$lm" "$om" 2>/dev/null; then
+            printf 'PREFLIGHT_OK=false\nREASON=local branch main is behind origin/main; fast-forward main (git checkout main && git pull --ff-only origin main) before auditing\n'
+            exit 0
+        fi
+    fi
 fi
 
 # Dirty tree check
@@ -79,9 +94,12 @@ if [ "$ALLOW_CONCURRENT" = "false" ]; then
         exit 0
     fi
 
-    RECENT=$(gh issue list --state all --label audit-report --repo "$REPO" \
+    RECENT=false
+    if gh issue list --state all --label audit-report --repo "$REPO" \
         --json number,createdAt --limit 50 2>/dev/null \
-        | jq -e --arg c "$CUTOFF" 'any(.[]; .createdAt > $c)' 2>/dev/null && echo "true" || echo "false")
+        | jq -e --arg c "$CUTOFF" 'any(.[]; .createdAt > $c)' >/dev/null 2>&1; then
+        RECENT=true
+    fi
 
     if [ "$RECENT" = "true" ]; then
         printf 'PREFLIGHT_OK=false\nREASON=audit-report filed within the 5-minute concurrency window; use --allow-concurrent to override\n'

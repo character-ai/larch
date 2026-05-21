@@ -23,7 +23,10 @@ while [ $# -gt 0 ]; do
         --pr-list) PR_LIST="$2"; shift 2 ;;
         --repo) REPO="$2"; shift 2 ;;
         --log-root) LOG_ROOT="$2"; shift 2 ;;
-        *) shift ;;
+        *)
+            printf 'audit-map-runs.sh: unknown argument: %s\n' "$1" >&2
+            exit 1
+            ;;
     esac
 done
 
@@ -51,14 +54,18 @@ for PR_NUM in "${PR_ARRAY[@]}"; do
     LARCH_VERSION=""
     CLOSES_ISSUE=""
 
-    # Primary: grep manifest.json files for pr_number
+    # Primary: newest manifest.json (by started_at) whose pr_number matches
     MANIFEST_FILE=""
+    best_started=""
     for mf in "$LOG_ROOT"/*/manifest.json; do
         [ -f "$mf" ] || continue
-        if grep -q "\"pr_number\": $PR_NUM" "$mf" 2>/dev/null || \
-           grep -q "\"pr_number\":$PR_NUM" "$mf" 2>/dev/null; then
+        if ! jq -e --argjson pn "$PR_NUM" '(.pr_number | type == "number") and .pr_number == $pn' "$mf" >/dev/null 2>&1; then
+            continue
+        fi
+        st=$(jq -r '.started_at // ""' "$mf" 2>/dev/null || true)
+        if [ -z "$MANIFEST_FILE" ] || { [ -n "$st" ] && { [ -z "$best_started" ] || [[ "$st" > "$best_started" ]]; }; }; then
             MANIFEST_FILE="$mf"
-            break
+            best_started="$st"
         fi
     done
 
