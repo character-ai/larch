@@ -70,8 +70,7 @@ set -euo pipefail
 export LARCH_QUIET_DISABLE=1
 
 # Stub-gh fixtures return synthetic comment state instantly; skip the
-# 1-second GitHub-propagation pause inside issue-lifecycle.sh's lock + lock-no-go
-# post-checks. Production callers (real gh) inherit the default 1s.
+# 1-second GitHub-propagation pause inside issue-lifecycle.sh's lock post-checks.
 export ISSUE_LIFECYCLE_LOCK_SETTLE_SECONDS=0
 
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)
@@ -212,7 +211,7 @@ dispatch_issue_edit() {
 # fixture): record the posted comment in a per-issue runtime file under
 # $RUNTIME_COMMENTS_DIR. Subsequent `gh api .../comments` calls read that
 # file (merged on top of the static ISSUE_<N>_COMMENTS env var) so the
-# lock-no-go post-check can find the just-posted id.
+# lock post-check can find the just-posted id.
 dispatch_issue_comment() {
     if [[ "${COMMENT_FAIL:-false}" == "true" ]]; then
         echo "Error: failed to post comment" >&2
@@ -428,7 +427,8 @@ assert_equal() {
 }
 
 # Comment fixture builder.
-# Args: "GO" or "IN PROGRESS" — last comment body
+# Args: "GO" (non-IN_PROGRESS tail), "IN PROGRESS", "EMPTY", or "DOUBLE_LOCK"
+# — controls the synthetic last-comment body for `gh api .../comments`.
 make_comments_json() {
     local last_body="$1"
     case "$last_body" in
@@ -444,8 +444,8 @@ make_comments_json() {
             echo '[[]]'
             ;;
         DOUBLE_LOCK)
-            # Last is GO, but post-lock re-check returns 2 IN PROGRESS — used
-            # by lock-fail fixture to exercise duplicate detection.
+            # Last tail is not IN PROGRESS, but post-lock re-check returns 2×
+            # IN PROGRESS — used by lock-fail fixture to exercise duplicate detection.
             echo '[[{"id":42,"body":"GO","created_at":"2024-01-01T00:00:00Z"},{"id":99,"body":"IN PROGRESS","created_at":"2024-01-02T00:00:00Z"},{"id":100,"body":"IN PROGRESS","created_at":"2024-01-03T00:00:00Z"}]]'
             ;;
     esac
@@ -455,7 +455,7 @@ make_comments_json() {
 # Note on test scope:
 #
 # This harness exercises the stdout-contract surface of find-lock-issue.sh
-# at the granularity that production runs depend on (exit codes 0/1/2/3 +
+# at the granularity that production runs depend on (exit codes 0/2/3/4/5 +
 # the LOCK_ACQUIRED + RENAMED keys + best-effort rename-failure stderr
 # WARNING). Stub fidelity is intentionally limited — the stub gh handles
 # only the API call shapes find-lock-issue.sh + its delegates issue
@@ -600,10 +600,9 @@ PASS=$((PASS + 1))
 echo "  ok: [4] coverage deferred (production-path eligibility filter prevents this state)"
 
 # ---------------------------------------------------------------------------
-# Fixture 5: ineligible — explicit --issue mode rejects managed-prefix
-# title.
+# Fixture 5: ineligible — managed-prefix title on explicit-target path.
 # ---------------------------------------------------------------------------
-echo "Fixture 5: ineligible (managed prefix on explicit --issue)"
+echo "Fixture 5: ineligible (managed prefix on explicit-target path)"
 run_fixture "fixture-5"
 {
     echo "ISSUE_STATE=OPEN"
@@ -619,7 +618,7 @@ with_sterile_repo "fixture-5" "$SCRIPT" 45 >"$OUT_FILE" 2>"$ERR_FILE" || EXIT_CO
 
 OUT=$(cat "$OUT_FILE")
 
-assert_equal "$EXIT_CODE" "2" "[5] exit code 2 (explicit --issue rejected)"
+assert_equal "$EXIT_CODE" "2" "[5] exit code 2 (explicit target rejected)"
 assert_contains "$OUT" "ELIGIBLE=false" "[5] ELIGIBLE=false on stdout"
 assert_contains "$OUT" "managed lifecycle title prefix" "[5] error message identifies prefix exclusion"
 assert_not_contains "$OUT" "LOCK_ACQUIRED=" "[5] LOCK_ACQUIRED= absent (lock never attempted)"
@@ -665,10 +664,10 @@ unset RUNTIME_COMMENTS_DIR
 # DECISION_1 regression). Asserts the reorder lets `[IN PROGRESS] Umbrella:
 # foo` reach the umbrella dispatcher rather than failing the managed-prefix
 # early-reject. Slimmer NO_ELIGIBLE_CHILD design (per #819 plan-review
-# FINDING_7): title-only umbrella with no body literal and no parseable
-# task-list children → handle_umbrella emits exit 5 + UMBRELLA_ACTION=
-# no-eligible-child. Avoids coupling to issue-lifecycle.sh lock-no-go and
-# the stub's single-issue ISSUE_TITLE/BODY model.
+# FINDING_7): title-only umbrella with no parseable task-list children →
+# handle_umbrella emits exit 5 + UMBRELLA_ACTION=no-eligible-child. Avoids
+# tight coupling to issue-lifecycle.sh duplicate-IN-PROGRESS post-check
+# mechanics and the stub's single-issue ISSUE_TITLE/BODY model.
 # ---------------------------------------------------------------------------
 echo "Fixture 10: explicit-target umbrella with [IN PROGRESS] managed-prefix title (#819)"
 run_fixture "fixture-10"
@@ -704,8 +703,8 @@ assert_not_contains "$OUT" "managed lifecycle title prefix" "[10] managed-prefix
 # "- [ ] #1102" (ready). Child #1101's body has "Depends on #1199" with
 # #1199 OPEN. Child #1102 has clean body. Expected: pick-child returns
 # #1102 (skipping prose-blocked #1101); the post-pick guard re-runs
-# all_open_blockers on #1102 (empty); lock-no-go succeeds; rename to
-# [IN PROGRESS] succeeds; emit IS_UMBRELLA=true UMBRELLA_ACTION=dispatched
+# all_open_blockers on #1102 (empty); `issue-lifecycle.sh comment --lock`
+# succeeds; rename to [IN PROGRESS] succeeds; emit IS_UMBRELLA=true
 # UMBRELLA_NUMBER=1100 ISSUE_NUMBER=1102 LOCK_ACQUIRED=true RENAMED=true.
 # ---------------------------------------------------------------------------
 echo "Fixture 11: e2e umbrella dispatch with prose-blocked first child (#768)"
@@ -788,7 +787,7 @@ assert_not_contains "$OUT" "LOCK_ACQUIRED=" "[13] LOCK_ACQUIRED= absent (lock ne
 
 # ---------------------------------------------------------------------------
 # Fixture 16: explicit-target eligible issue + dirty tree. The pre-lock probe
-# must abort before issue-lifecycle.sh deletes GO or posts IN PROGRESS.
+# must abort before issue-lifecycle.sh posts IN PROGRESS or runs rename.
 # ---------------------------------------------------------------------------
 echo "Fixture 16: explicit-target dirty tree aborts before lock"
 run_fixture "fixture-16"

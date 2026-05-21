@@ -28,7 +28,7 @@ KEY=value lines on stdout. The script captures delegate stdout into local shell 
 
 | Key | Emitted when | Value |
 |-----|--------------|-------|
-| `ELIGIBLE` | always | `true` (eligibility pass) or `false` (no candidate / error) |
+| `ELIGIBLE` | always | `true` (eligibility pass) or `false` (ineligibility, umbrella no-eligible-child, or error) |
 | `ISSUE_NUMBER` | `ELIGIBLE=true` | the candidate issue number. **On the umbrella-dispatch path (`UMBRELLA_ACTION=dispatched`, exit 0), this is the CHOSEN CHILD's number — not the umbrella's.** On the umbrella-complete path (exit 4), `ISSUE_NUMBER` is the umbrella's own number (the operator targeted the umbrella, and the next stage is finalizing it). On exit 5 (`UMBRELLA_ACTION=no-eligible-child`), `ISSUE_NUMBER` is omitted — `UMBRELLA_NUMBER` carries the umbrella's identity. |
 | `ISSUE_TITLE` | `ELIGIBLE=true` | the candidate issue title (chosen child's title on dispatch; umbrella's own title on complete). |
 | `LOCK_ACQUIRED` | `ELIGIBLE=true` | `true` (exit 0 — child or non-umbrella issue locked) or `false` (exit 3 — child lock failed; or exit 4 — umbrella complete, no lock attempted). |
@@ -39,7 +39,7 @@ KEY=value lines on stdout. The script captures delegate stdout into local shell 
 | `UMBRELLA_TITLE` | only when `IS_UMBRELLA=true` AND the umbrella was successfully detected (exit 0/3/4 paths; absent on exit-2-blocked-umbrella path because the title isn't load-bearing for that error) | the umbrella's title. |
 | `UMBRELLA_ACTION` | only when `IS_UMBRELLA=true` AND not exit 2 | one of `dispatched` (exit 0 — child locked), `complete` (exit 4 — finalize), `no-eligible-child` (exit 5 — skip). |
 
-Stderr carries diagnostics (skipping-blocked-by messages, deprecated-flag warning, rename-failure WARNING — for both ordinary issues and umbrella children) and is not part of the stdout contract.
+Stderr carries diagnostics from this script and its delegates (for example: rename-failure `WARNING` lines when `tracking-issue-write.sh rename` fails best-effort; `WARNING` when `umbrella-handler.sh list-children` fails during umbrella blocker filtering; stderr merged from `issue-lifecycle.sh` / `gh` on lock and rename paths because those delegates are invoked with stdout+stderr captured together). Stderr is not part of the stdout KEY=value contract.
 
 ## Stdout-contract sub-cases for exit 2
 

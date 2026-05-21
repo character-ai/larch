@@ -28,7 +28,7 @@
 #   1) Comment-based "IN PROGRESS" lock — concurrency control on the
 #      fix-issue subject issue. Acquired here at /fix-issue Step 0 (last
 #      comment = exactly "IN PROGRESS"); cleared when work completes.
-#      Prevents two concurrent /fix-issue runners from picking the same
+#      Prevents two concurrent /fix-issue runners from colliding on the same
 #      subject.
 #   2) Title-based "[IN PROGRESS]" / "[DONE]" / "[STALLED]" lifecycle —
 #      machine-owned tracking-issue state. Applied here at lock time so
@@ -231,7 +231,7 @@ source "$BLOCKER_HELPERS" || {
 # Runs the local working-tree cleanliness probe immediately before lock
 # acquisition. The predicate itself lives in scripts/check-clean-tree.sh so
 # this pre-lock guard and preflight.sh share one git-status contract.
-# find-lock-issue.sh uses --fail-closed because it must not delete GO, post
+# find-lock-issue.sh uses --fail-closed because it must not post
 # IN PROGRESS, or rename an issue when local cleanliness cannot be determined.
 # preflight.sh intentionally calls the same helper in default fail-open mode
 # to preserve its historical setup behavior.
@@ -318,8 +318,8 @@ lock_and_rename_then_emit() {
 
     if [ "$lock_acquired" != "true" ] || [ "$lock_exit" -ne 0 ]; then
         # Lock failed. Surface the unified contract; preserve eligibility
-        # signal so callers can distinguish "no candidate" from "candidate
-        # found but lost the race".
+        # signal (ELIGIBLE=true) so callers can distinguish eligibility-pass
+        # from successful lock acquisition.
         emit_kv ELIGIBLE true
         emit_kv ISSUE_NUMBER "$issue_num"
         emit_kv ISSUE_TITLE "$issue_title"
@@ -531,7 +531,7 @@ handle_umbrella() {
 }
 
 # ---------------------------------------------------------------------------
-# Explicit issue mode (--issue provided)
+# Explicit issue path (positional issue number or URL)
 # ---------------------------------------------------------------------------
 if [[ -n "$ISSUE_ARG" ]]; then
     # gh issue view accepts both bare numbers and full GitHub URLs natively.
@@ -598,8 +598,7 @@ if [[ -n "$ISSUE_ARG" ]]; then
     fi
 
     # Exclude issues labeled 'audit-report' — these are /audit-runs chain-of-
-    # history issues, not fix-issue candidates (both auto-pick and
-    # explicit-target paths enforce this). Labels must be a JSON array;
+    # history issues, not fix-issue candidates. Labels must be a JSON array;
     # jq failures are fail-closed (do not treat as "not labeled").
     set +e
     echo "$ISSUE_JSON" | jq -e '.labels | type == "array"' >/dev/null 2>&1
@@ -639,18 +638,14 @@ if [[ -n "$ISSUE_ARG" ]]; then
         exit 2
     fi
 
-    # Umbrella detection (explicit-issue path only — auto-pick mode never
-    # runs this; per the design dialectic's DECISION_1, auto-pick keeps its
-    # GO-tail invariant). Detection runs BEFORE both the managed-prefix
-    # early-reject AND the GO-tail check so umbrella issues do NOT need a
-    # GO comment AND so umbrella titles carrying a managed lifecycle prefix
-    # (e.g. `[IN PROGRESS] Umbrella: foo`, `[DONE] Umbrella: foo`,
-    # `[STALLED] Umbrella: foo`) reach the umbrella dispatcher. Without
-    # this ordering, `is_umbrella_title`'s post-#819 bracket-prefix peel
-    # would be unreachable in the explicit-target path for hand-authored
-    # umbrellas — see issue #819 design DECISION_1 (voted, 2-1) for the
-    # rationale. Auto-pick path is intentionally NOT mirrored: auto-pick
-    # excludes umbrellas regardless of order. Detection is title-only
+    # Umbrella detection (explicit-issue path only): runs BEFORE both the
+    # managed-prefix early-reject AND the last-comment `IN PROGRESS` lock
+    # guard so umbrella titles carrying a managed lifecycle prefix (e.g.
+    # `[IN PROGRESS] Umbrella: foo`, `[DONE] Umbrella: foo`,
+    # `[STALLED] Umbrella: foo`) reach the umbrella dispatcher. Without this
+    # ordering, `is_umbrella_title`'s post-#819 bracket-prefix peel would be
+    # unreachable for hand-authored umbrellas — see issue #819 design
+    # DECISION_1 (voted, 2-1) for the rationale. Detection is title-only
     # post-#846 (the prior body-literal substring match caused false
     # positives like #753); the umbrella's existence is the approval signal
     # — children inherit approval from the umbrella's existence.

@@ -78,7 +78,7 @@ Design an implementation plan with collaborative multi-reviewer review. The [ske
 
 ## `/fix-issue`
 
-**Arguments**: `[--auto] [--no-admin-fallback] [--no-logs-commit] [--coder=<value>] [--inline] [--hard] [<number-or-url>]`
+**Arguments**: `[--auto] [--no-admin-fallback] [--no-logs-commit] [--coder=<value>] [--inline] [--hard] <number-or-url>` (positional issue number or URL is **required**)
 
 **Source**: [`skills/fix-issue/SKILL.md`](../skills/fix-issue/SKILL.md)
 

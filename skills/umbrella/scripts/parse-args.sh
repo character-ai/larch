@@ -12,7 +12,6 @@
 #   REPO=<owner/repo — empty if not specified>
 #   CLOSED_WINDOW_DAYS=<integer — empty if not specified>
 #   DRY_RUN=<true|false>
-#   GO=<true|false>
 #   INPUT_FILE=<path — empty if --input-file not specified>
 #   UMBRELLA_SUMMARY_FILE=<path — empty if --umbrella-summary-file not specified>
 #   PIECES_JSON=<path — empty if --pieces-json not specified>
@@ -65,7 +64,6 @@ TITLE_PREFIX=""
 REPO=""
 CLOSED_WINDOW_DAYS=""
 DRY_RUN="false"
-GO="false"
 INPUT_FILE=""
 UMBRELLA_SUMMARY_FILE=""
 PIECES_JSON=""
@@ -307,7 +305,6 @@ while :; do
           esac
           ;;
         --dry-run) DRY_RUN="true" ;;
-        --go) GO="true" ;;
         --input-file)
           read_flag_value "--input-file" "$i"
           i="$TOKEN_END"
@@ -414,7 +411,6 @@ emit_kv TITLE_PREFIX "$TITLE_PREFIX"
 emit_kv REPO "$REPO"
 emit_kv CLOSED_WINDOW_DAYS "$CLOSED_WINDOW_DAYS"
 emit_kv DRY_RUN "$DRY_RUN"
-emit_kv GO "$GO"
 emit_kv INPUT_FILE "$INPUT_FILE"
 emit_kv UMBRELLA_SUMMARY_FILE "$UMBRELLA_SUMMARY_FILE"
 emit_kv PIECES_JSON "$PIECES_JSON"
