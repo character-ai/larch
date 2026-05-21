@@ -310,12 +310,23 @@ def main():
         print("no input reviewer labels", file=sys.stderr)
         return 1
     blocks = output_blocks(outtext)
+    has_attest_line = any(
+        line.strip() == EMPTY_MERGE_ATTESTATION for line in outtext.splitlines()
+    )
+    if blocks and has_attest_line:
+        print(
+            "empty-merge attestation %r must not appear when merged FINDING blocks exist"
+            % (EMPTY_MERGE_ATTESTATION,),
+            file=sys.stderr,
+        )
+        return 1
     if not blocks:
         # input_slot_set non-empty (checked above) ⇒ structured input findings exist.
-        if not any(line.strip() == EMPTY_MERGE_ATTESTATION for line in outtext.splitlines()):
+        if not has_attest_line:
             print(
                 "zero merged FINDING blocks while input had findings; "
-                "output must include a line exactly %r (machine-readable attestation)"
+                "output must include a line whose trimmed text equals %r "
+                "(machine-readable attestation; leading/trailing whitespace ignored)"
                 % (EMPTY_MERGE_ATTESTATION,),
                 file=sys.stderr,
             )
@@ -377,12 +388,21 @@ fi
 # Atomic replace: never truncate the live ballot until the staged copy validates.
 merged_tmp="$(mktemp "$REVIEW_TMPDIR/findings.md.merged.XXXXXX")"
 trap 'rm -f "${merged_tmp:-}"' EXIT
+# Strip empty-merge attestation lines using the same trimmed-line predicate as
+# aggregate-validate.py (padding or stray whitespace must not survive into findings.md).
+python3 - "$cand" <<'PY' >"$merged_tmp" || true
+import sys
+
+EMPTY_MERGE_ATTESTATION = "LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED"
+path = sys.argv[1]
+with open(path, encoding="utf-8") as f:
+    for line in f:
+        if line.strip() == EMPTY_MERGE_ATTESTATION:
+            continue
+        sys.stdout.write(line)
+PY
 if [[ "$(count_finding_blocks "$cand")" -eq 0 ]]; then
-    # Attestation is validated on raw vendor output; strip before persisting the ballot.
-    grep -v -x 'LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED' "$cand" >"$merged_tmp" || true
     [[ -s "$merged_tmp" ]] || printf '\n' >"$merged_tmp"
-else
-    awk 1 "$cand" >"$merged_tmp"
 fi
 [[ -s "$merged_tmp" ]] || {
     REASON="validation-failed"

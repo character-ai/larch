@@ -103,6 +103,25 @@ Aggregator narrative: all input findings were resolved as duplicates; no merged 
 
 EOF
                 ;;
+            zero_findings_padded_attest)
+                cat > "$out" <<'EOF'
+Aggregator narrative: padded empty-merge token line.
+
+  LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED  
+
+EOF
+                ;;
+            merge_plus_spurious_attest)
+                cat > "$out" <<'EOF'
+### FINDING_1: merged title
+- **Reviewer(s)**: cursor-a-output.txt, cursor-b-output.txt, cursor-c-output.txt
+- **Concern**: normalized concern
+- **Suggested revision**: fix it
+
+LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED
+
+EOF
+                ;;
             labelled_slot)
                 cat > "$out" <<'EOF'
 ### FINDING_1: merged title
@@ -347,6 +366,102 @@ AGGREGATE_STUB_MERGE_KIND=zero_findings_no_attest \
 grep -Fq 'AGGREGATED=false' "$TMP/out-zero-na.env" || fail "no-attest AGGREGATED"
 grep -Fq 'REASON=validation-failed' "$TMP/out-zero-na.env" || fail "no-attest REASON"
 cmp -s "$TMP/in3.md" "$TMP/in3-zero-na.md" || fail "findings unchanged when attestation missing"
+
+echo "=== zero output accepts whitespace-padded empty-merge attestation (#2536) ==="
+cp "$TMP/in3.md" "$TMP/in3-zero-pad.md"
+write_stub_dispatch
+AGGREGATE_DISPATCH_SH="$TMP/stub-dispatch.sh" \
+AGGREGATE_STUB_MODE=ok \
+AGGREGATE_STUB_MERGE_KIND=zero_findings_padded_attest \
+"$AGG" \
+    --findings-file "$TMP/in3-zero-pad.md" \
+    --review-tmpdir "$TMP" \
+    --codex-present true \
+    --cursor-present true \
+    --mode diff >"$TMP/out-zero-pad.env"
+grep -Fq 'AGGREGATED=true' "$TMP/out-zero-pad.env" || fail "padded-attest AGGREGATED"
+grep -Fq 'REASON=ok' "$TMP/out-zero-pad.env" || fail "padded-attest REASON"
+grep -Fq 'MERGED_COUNT=0' "$TMP/out-zero-pad.env" || fail "padded-attest MERGED_COUNT"
+grep -Fq 'LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED' "$TMP/in3-zero-pad.md" && fail "attestation must not persist (padded)"
+[[ "$(grep -c '^### FINDING_' "$TMP/in3-zero-pad.md" | tr -d '[:space:]')" == "0" ]] || fail "expected zero FINDING blocks after padded-attest merge"
+
+echo "=== merged FINDING blocks plus spurious empty-merge token fails validation ==="
+cp "$TMP/in3.md" "$TMP/in3-spurious.md"
+write_stub_dispatch
+AGGREGATE_DISPATCH_SH="$TMP/stub-dispatch.sh" \
+AGGREGATE_STUB_MODE=ok \
+AGGREGATE_STUB_MERGE_KIND=merge_plus_spurious_attest \
+"$AGG" \
+    --findings-file "$TMP/in3-spurious.md" \
+    --review-tmpdir "$TMP" \
+    --codex-present true \
+    --cursor-present true \
+    --mode diff >"$TMP/out-spurious.env"
+grep -Fq 'AGGREGATED=false' "$TMP/out-spurious.env" || fail "spurious-attest AGGREGATED"
+grep -Fq 'REASON=validation-failed' "$TMP/out-spurious.env" || fail "spurious-attest REASON"
+cmp -s "$TMP/in3.md" "$TMP/in3-spurious.md" || fail "findings unchanged when spurious attestation with blocks"
+
+echo "=== input reviewer parenthetical suffixes normalize on successful merge ==="
+cat > "$TMP/in3-inparen.md" <<'EOF'
+### FINDING_1: Dup A
+- **Reviewer**: cursor-a-output.txt (slot note A)
+- **Concern**: same bug
+- **Suggested revision**: fix
+
+### FINDING_2: Dup B
+- **Reviewer**: cursor-b-output.txt (slot note B)
+- **Concern**: same bug other words
+- **Suggested revision**: fix
+
+### FINDING_3: Dup C
+- **Reviewer**: cursor-c-output.txt (slot note C)
+- **Concern**: same bug again
+- **Suggested revision**: fix
+
+EOF
+cp "$TMP/in3-inparen.md" "$TMP/in3-inparen-work.md"
+write_stub_dispatch
+AGGREGATE_DISPATCH_SH="$TMP/stub-dispatch.sh" \
+AGGREGATE_STUB_MODE=ok \
+AGGREGATE_STUB_MERGE_KIND=merge \
+"$AGG" \
+    --findings-file "$TMP/in3-inparen-work.md" \
+    --review-tmpdir "$TMP" \
+    --codex-present true \
+    --cursor-present true \
+    --mode diff >"$TMP/out-inparen.env"
+grep -Fq 'AGGREGATED=true' "$TMP/out-inparen.env" || fail "input-paren AGGREGATED"
+grep -Fq 'REASON=ok' "$TMP/out-inparen.env" || fail "input-paren REASON"
+grep -Fq 'MERGED_COUNT=1' "$TMP/out-inparen.env" || fail "input-paren MERGED_COUNT"
+[[ "$(grep -c '^### FINDING_' "$TMP/in3-inparen-work.md" | tr -d '[:space:]')" == "1" ]] || fail "expected one FINDING block after input-paren merge"
+
+echo "=== input reviewer parenthetical suffixes interact with OOS-only rule ==="
+cat > "$TMP/in-oos-paren.md" <<'EOF'
+### FINDING_1: in-scope A
+- **Reviewer**: cursor-a-output.txt (note)
+- **Concern**: x
+- **Suggested revision**: fix
+
+### FINDING_2: [OUT_OF_SCOPE] **code-quality** [`x`]
+- **Reviewer**: cursor-b-output.txt (OOS attribution)
+- **Concern**: oos
+- **Suggested revision**: n/a
+
+EOF
+cp "$TMP/in-oos-paren.md" "$TMP/in-oos-paren-work.md"
+write_stub_dispatch
+AGGREGATE_DISPATCH_SH="$TMP/stub-dispatch.sh" \
+AGGREGATE_STUB_MODE=ok \
+AGGREGATE_STUB_MERGE_KIND=oos_drop_tag \
+"$AGG" \
+    --findings-file "$TMP/in-oos-paren-work.md" \
+    --review-tmpdir "$TMP" \
+    --codex-present true \
+    --cursor-present true \
+    --mode diff >"$TMP/out-oos-paren.env"
+grep -Fq 'AGGREGATED=false' "$TMP/out-oos-paren.env" || fail "oos-paren AGGREGATED"
+grep -Fq 'REASON=validation-failed' "$TMP/out-oos-paren.env" || fail "oos-paren REASON"
+cmp -s "$TMP/in-oos-paren.md" "$TMP/in-oos-paren-work.md" || fail "findings unchanged on OOS tag drop (input parens)"
 
 echo "=== labelled reviewer slot suffix accepted (#2536) ==="
 cp "$TMP/in3.md" "$TMP/in3-label.md"
