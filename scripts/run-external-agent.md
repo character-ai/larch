@@ -20,7 +20,15 @@ The current line parser in `scripts/collect-agent-results.sh` uses `${meta_line%
 
 - Default: the child manages its own output path; wrapper stdout/stderr are not captured into `--output`.
 
+- `--capture-stdout`: redirect the child's stdout and stderr together to `--output` (`> "$OUTPUT_FILE" 2>&1`).
+
+- `--capture-stdout-only`: redirect stdout to `--output` and stderr to `<output>.diag`. This is the shape used for JSON-on-stdout protocols (for example Cursor CI via `launch-cursor-ci.sh`) so stderr noise cannot corrupt the parse.
+
 The capture flags are mutually exclusive. Metadata includes both `CAPTURE_STDOUT` and `CAPTURE_STDOUT_ONLY`; retry callers must preserve the original mode.
+
+### Line buffering / `stdbuf` (`RUN_EXTERNAL_AGENT_CAPTURE_STDOUT_STDBUF`)
+
+When `--capture-stdout-only` is active, the wrapper spawns the child with shell redirect `> "$OUTPUT_FILE" 2> "${OUTPUT_FILE}.diag"`. libc may fully buffer the writer even when the tool uses unbuffered Python (`-u`), so poll-based stall monitors that watch the output file's byte size can observe false stalls. If `RUN_EXTERNAL_AGENT_CAPTURE_STDOUT_STDBUF` is set to `1` and `stdbuf(1)` is on `PATH`, the wrapper wraps the child with `stdbuf -o0 -e0` for that capture path so line-buffered writers flush promptly (common on Linux CI). When `stdbuf` is unavailable or the env var is unset / not `1`, the wrapper runs the command without `stdbuf` (typical macOS).
 
 ## Inner-sentinel mode
 
@@ -63,8 +71,16 @@ There is no backward compatibility with the old `CMD=` metadata line. A collecto
 
 ## Poll interval (`RUN_EXTERNAL_AGENT_POLL_INTERVAL`)
 
+Seconds between `kill -0` polls in the wrapper's wait loop (and the cadence for per-minute progress lines). Default **10**. The value must be a positive number; decimals are allowed (for example **0.05** in harnesses) so stub agents that exit quickly do not sleep a full 10s per iteration. The same variable name is read by `cursor_launcher_run_stall_monitor` in `scripts/lib-cursor-launcher-common.sh` when launchers align stall polling with the wrapper.
+
 ## Call sites
+
+Production entry points include `scripts/launch-review.sh` (per-tool review lanes), `scripts/launch-cursor-implement.sh`, `scripts/launch-codex-implement.sh`, `scripts/launch-gemini-implement.sh`, `scripts/launch-cursor-ci.sh`, `scripts/launch-codex-ci.sh`, `scripts/dispatch-plan-voters.sh`, and `skills/review-and-fix/scripts/review-and-fix.sh` (indirectly via those launchers). Prefer the sibling launcher `.md` files for argv and timeout specifics.
 
 ## Test harness
 
+`scripts/test-run-external-agent.sh` exercises timeout behavior, sentinel contracts, `CMD_JSON` failure paths, and related edge cases. Stall-detection integration for Cursor CI lives in `scripts/test-launch-cursor-ci.sh`.
+
 ## Edit-in-sync
+
+Keep this file aligned with `scripts/run-external-agent.sh`, `scripts/collect-agent-results.sh` (`.meta` / retry reader), and any launcher that changes capture or sentinel semantics.

@@ -77,7 +77,9 @@ cursor_launcher_cleanup_private_config_dir() {
 #
 # Args: channel output_file stall_threshold_seconds diag_file target_pid
 # channel:
-#   stdout — watch output_file byte size (missing file = 0 bytes)
+#   stdout — watch output_file byte size; only size changes count as progress
+#            (a missing file or persistent zero-byte capture does not refresh
+#            the last-progress clock, so stall detection matches stall_threshold)
 #   file:<path> — watch path size + mtime
 #   tree:<root> — watch for any filesystem change under root excluding .git
 #                 (baseline temp file + find -newer; touch baseline on progress)
@@ -88,7 +90,6 @@ cursor_launcher_run_stall_monitor() {
     local last_prog_ts now elapsed has_prog
     local last_size=0 cur_size=0
     local last_mtime=0 cur_mtime=0 last_fsize=0 cur_fsize=0
-    local monitor_start_ts
 
     # shellcheck disable=SC2209 # case arms assign string tags to mode=, not command substitutions
     case "$channel" in
@@ -111,7 +112,6 @@ cursor_launcher_run_stall_monitor() {
     fi
 
     last_prog_ts=$(date +%s)
-    monitor_start_ts=$last_prog_ts
     if [[ "$mode" == stdout ]]; then
         if [[ -f "$output_file" ]]; then
             last_size=$(wc -c <"$output_file" 2>/dev/null | tr -d ' ' || echo 0)
@@ -147,12 +147,6 @@ cursor_launcher_run_stall_monitor() {
                 if [[ "$cur_size" != "$last_size" ]]; then
                     has_prog=true
                     last_size=$cur_size
-                elif [[ ! -f "$output_file" ]] && kill -0 "$target_pid" 2>/dev/null; then
-                    # Capture file not created yet while the wrapper is still starting.
-                    has_prog=true
-                elif [[ "$cur_size" == "0" ]] && ((now - monitor_start_ts < stall_threshold)) && kill -0 "$target_pid" 2>/dev/null; then
-                    # Zero-byte capture while run-external-agent/cursor spins up; not a stall window yet.
-                    has_prog=true
                 fi
                 ;;
             file)
