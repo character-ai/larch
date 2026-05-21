@@ -1464,6 +1464,7 @@ root=$(make_repo postmerge_missing_manifest)
 tmp=$(make_tmpdir)
 sentinel_dir=$(mktemp -d /tmp/ship-pr-postmerge-recovery.XXXXXX)
 mkdir -p "$tmp/larch-logs/implement/test-run"
+touch "$tmp/post-merge-sentinel"
 write_state "$tmp/ship-pr-state.sh" postmerge
 awk -F= '{if ($1=="PR_CLOSED") print "PR_CLOSED=true"; else print}' \
     "$tmp/ship-pr-state.sh" > "$tmp/ship-pr-state.sh.new" \
@@ -1477,10 +1478,22 @@ set -e
 if [ -f "$sentinel_dir/larch-log-calls.txt" ]; then
     if grep -q "^LARCH_LOG_ARGS=init" "$sentinel_dir/larch-log-calls.txt" && \
        grep -q "recovery_reason=manifest_lost_mid_run" "$sentinel_dir/larch-log-calls.txt" && \
-       grep -q -- "--issue" "$sentinel_dir/larch-log-calls.txt"; then
-        ok "postmerge manifest finalization synthesizes and tags a missing manifest (with --issue) before final status"
+       grep -q -- "--issue" "$sentinel_dir/larch-log-calls.txt" && \
+       grep -q "status=done" "$sentinel_dir/larch-log-calls.txt" && \
+       grep -q "^LARCH_LOG_ARGS=commit" "$sentinel_dir/larch-log-calls.txt"; then
+        exp=$(printf '%s\n' \
+            'larch-log init' \
+            'larch-log manifest' \
+            'larch-log manifest' \
+            'write-final-report' \
+            'larch-log commit')
+        if [[ "$(cat "$sentinel_dir/postmerge-order.log")" == "$exp" ]]; then
+            ok "postmerge missing-manifest recovery: init + partial tag, then manifest done, write-final-report, and post-merge log commit"
+        else
+            fail "postmerge missing-manifest ordering: expected init, two manifests, write-final-report, commit; got: $(cat "$sentinel_dir/postmerge-order.log")"
+        fi
     else
-        fail "postmerge missing-manifest recovery: expected init + partial tag + --issue; got: $(cat "$sentinel_dir/larch-log-calls.txt")"
+        fail "postmerge missing-manifest recovery: expected init + partial + --issue + status=done + commit; got: $(cat "$sentinel_dir/larch-log-calls.txt")"
     fi
 else
     fail "postmerge missing-manifest recovery: larch-log.sh stub was not called"
