@@ -184,32 +184,54 @@
       {
         "step": "Step 7a — code flow diagram",
         "totals": {
-          "input": 25,
-          "cache_read": 5220289,
-          "cache_create": 36822,
-          "output": 25130,
-          "total": 5282266
+          "input": 30,
+          "cache_read": 6320738,
+          "cache_create": 41982,
+          "output": 29157,
+          "total": 6391907
         },
         "skills": [
           {
             "skill": "inferred:Step 7a — code flow diagram",
             "totals": {
-              "input": 25,
-              "cache_read": 5220289,
-              "cache_create": 36822,
-              "output": 25130,
-              "total": 5282266
+              "input": 30,
+              "cache_read": 6320738,
+              "cache_create": 41982,
+              "output": 29157,
+              "total": 6391907
+            }
+          }
+        ]
+      },
+      {
+        "step": "Step 6 — checks second pass",
+        "totals": {
+          "input": 1,
+          "cache_read": 222387,
+          "cache_create": 370,
+          "output": 314,
+          "total": 223072
+        },
+        "skills": [
+          {
+            "skill": "inferred:Step 6 — checks second pass",
+            "totals": {
+              "input": 1,
+              "cache_read": 222387,
+              "cache_create": 370,
+              "output": 314,
+              "total": 223072
             }
           }
         ]
       }
     ],
     "totals": {
-      "input": 125,
-      "cache_read": 21912909,
-      "cache_create": 597728,
-      "output": 58971,
-      "total": 22569733
+      "input": 131,
+      "cache_read": 23235745,
+      "cache_create": 603258,
+      "output": 63312,
+      "total": 23902446
     }
   },
   "codex": {
@@ -280,6 +302,14 @@
       },
       {
         "step": "Step 7a — code flow diagram",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 6 — checks second pass",
         "totals": {
           "input": 0,
           "output": 0,
@@ -361,6 +391,14 @@
       },
       {
         "step": "Step 7a — code flow diagram",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 6 — checks second pass",
         "totals": {
           "input": 0,
           "output": 0,
