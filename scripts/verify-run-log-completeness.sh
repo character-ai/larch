@@ -6,7 +6,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd -P)"
-MANIFEST="$REPO_ROOT/docs/run-logs-required-files.tsv"
+MANIFEST="${LARCH_VERIFY_MANIFEST:-$REPO_ROOT/docs/run-logs-required-files.tsv}"
 
 usage() {
     printf 'Usage: verify-run-log-completeness.sh <larch-logs/implement/RUN_ID/>\n' >&2
@@ -117,6 +117,11 @@ while IFS='	' read -r relative_path condition _rest; do
             exit 1
             ;;
     esac
+
+    if ! printf '%s' "$relative_path" | LC_ALL=C grep -qE '^[A-Za-z0-9_./*-]+$'; then
+        printf 'verify-run-log-completeness.sh: invalid characters in relative_path: %s\n' "$relative_path" >&2
+        exit 1
+    fi
 
     if printf '%s' "$relative_path" | grep -q '\*'; then
         found_glob=0

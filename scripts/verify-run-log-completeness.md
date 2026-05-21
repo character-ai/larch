@@ -44,6 +44,12 @@ partial directories do not produce false missing-file failures for later batches
 `direct-file` covers committed files that are part of the run-dir contract but
 are written outside `larch-log.sh` batch plumbing, such as `final-summary.md`.
 
+## Testing override
+
+When `LARCH_VERIFY_MANIFEST` is set to an absolute or repo-relative path, the
+verifier reads that TSV instead of `docs/run-logs-required-files.tsv`. This is
+intended for harnesses only; production callers should omit it.
+
 ## Callers
 
 - `make test-verify-run-log-completeness` — local verification

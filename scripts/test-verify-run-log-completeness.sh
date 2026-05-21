@@ -218,6 +218,17 @@ printf 'stub\n' > "$run_exn_ok/round-1/aggregator-validate.stderr"
 out="$("$VERIFY" "$run_exn_ok" 2>&1 || true)"
 assert_contains "exn-agg validate with stderr present emits OK" "$out" "OK"
 
+# Test 14: manifest relative_path with invalid characters → error (LARCH_VERIFY_MANIFEST)
+bad_manifest="$TMP/bad-chars-manifest.tsv"
+{
+    printf '%s\t%s\t%s\t%s\n' relative_path condition batch_slug extension
+    printf '%s\t%s\t%s\t%s\n' 'bad path.txt' always direct-file md
+} > "$bad_manifest"
+run_bad_chars="$TMP/run-bad-chars"
+mkdir -p "$run_bad_chars"
+out="$(LARCH_VERIFY_MANIFEST="$bad_manifest" "$VERIFY" "$run_bad_chars" 2>&1 || true)"
+assert_contains "invalid chars in manifest relative_path" "$out" "invalid characters"
+
 echo
 echo "Passed: $PASS"
 echo "Failed: $FAIL"
