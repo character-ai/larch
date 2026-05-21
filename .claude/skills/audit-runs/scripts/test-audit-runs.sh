@@ -76,7 +76,7 @@ assert_equal "$result" "unknown" "[2b] case-sensitive match required"
 # ---------------------------------------------------------------------------
 # Test 3: parse_verbal_description — "since <ISO8601-instant>"
 # ---------------------------------------------------------------------------
-echo "Test 3: parse 'since <ISO>'"
+echo "Test 3: parse 'since <ISO8601-instant>'"
 parse_since_ts() {
     local desc="$1"
     if [[ "$desc" =~ ^since[[:space:]]+([0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}(:[0-9]{2})?(Z|[+-][0-9]{2}:[0-9]{2})?) ]]; then
@@ -341,7 +341,8 @@ assert_equal "$result" "proposed_augmentations:EXON regression in PR #2450" "[13
 # ---------------------------------------------------------------------------
 # Test 14: audit report title matches the exclusion pattern used by
 # the skill's own bug-search filter (prevents self-augmentation).
-# The audit report title format is: [Run Logs Audit Report <ISO>] PRs #X-#Y
+# The audit report title format is: [Run Logs Audit Report <Pacific-ISO-timestamp>] PRs #X-#Y
+# (America/Los_Angeles wall time with explicit -07:00 or -08:00 offset in the bracket.)
 # The skill uses the prefix pattern ^\[Run Logs Audit Report
 # (the ISO timestamp is INSIDE the bracket so the generic [... Report]
 # pattern from has_report_prefix does not match; the skill uses its own
