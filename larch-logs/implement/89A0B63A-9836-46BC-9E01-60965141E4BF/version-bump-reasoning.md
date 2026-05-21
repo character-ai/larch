@@ -1,12 +1,12 @@
 # Version Bump Reasoning
 
-- **Base commit**: `ad473602` (Fixes #2506: Fix audit-runs preflight gh repo view and scan jstr escaping (#2512))
-- **Current version**: `34.0.6`
+- **Base commit**: `53cdb4ce` (Fixes #2515: Add cursor-ci stall detection and regression harness (#2526))
+- **Current version**: `34.0.7`
 - **Classification scope**: `skills/**` and `agents/**` only (public plugin surface).
 
 ## Result: PATCH
 
-- **New version**: `34.0.7`
+- **New version**: `34.0.8`
 
 ### PATCH rationale
 
