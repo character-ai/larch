@@ -818,6 +818,12 @@ exclude = [
   # harnesses above.
   "scripts/test-harness-timer.sh",
   "scripts/test-harness-timer.md",
+  # scripts/test-render-run-summary.sh is the offline harness for
+  # scripts/render-run-summary.sh. Referenced from Makefile
+  # (test-render-run-summary target) and scripts/test-render-run-summary.md
+  # (sibling contract).
+  "scripts/test-render-run-summary.sh",
+  "scripts/test-render-run-summary.md",
   "scripts/test-lint-skill-invocations.sh",
   "scripts/test-lint-literal-counts.sh",
   "scripts/lint-no-raw-stderr-after-quiet-init.md",
@@ -835,6 +841,7 @@ exclude = [
   "skills/fix-issue/scripts/test-find-lock-issue.sh",
   "skills/fix-issue/scripts/test-umbrella-handler.sh",
   "skills/fix-issue/scripts/test-finalize-umbrella.sh",
+  "skills/fix-issue/scripts/test-write-final-report.sh",
   "skills/set-up-forked-open-source-repo/scripts/lib-remotes.sh",
   "skills/set-up-forked-open-source-repo/scripts/test-setup-forked-open-source-repo.sh",
   # skills/implement/scripts/test-check-review-changes.sh is the offline
@@ -1147,6 +1154,7 @@ exclude = [
   "skills/fix-issue/scripts/test-find-lock-issue.md",
   "skills/fix-issue/scripts/test-umbrella-handler.md",
   "skills/fix-issue/scripts/test-finalize-umbrella.md",
+  "skills/fix-issue/scripts/test-write-final-report.md",
   "skills/set-up-forked-open-source-repo/scripts/lib-remotes.md",
   "skills/set-up-forked-open-source-repo/scripts/setup-forked-open-source-repo.md",
   "skills/set-up-forked-open-source-repo/scripts/test-setup-forked-open-source-repo.md",

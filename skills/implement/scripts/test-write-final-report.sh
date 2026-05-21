@@ -17,6 +17,9 @@ finish(){ [ "$FAIL" -eq 0 ] || exit 1; printf 'PASS=%s\n' "$PASS"; }
 
 plugin="$TMP_ROOT/plugin"; mkdir -p "$plugin/scripts"
 cp "$REPO_ROOT/scripts/lib-quiet.sh" "$plugin/scripts/lib-quiet.sh"
+cp "$REPO_ROOT/scripts/render-run-summary.sh" "$plugin/scripts/render-run-summary.sh"
+cp "$REPO_ROOT/scripts/token-cost.sh" "$plugin/scripts/token-cost.sh"
+chmod +x "$plugin/scripts/render-run-summary.sh" "$plugin/scripts/token-cost.sh"
 cat > "$plugin/scripts/tracking-issue-summary.sh" <<'STUB'
 #!/usr/bin/env bash
 if [ "${TRACKING_FAIL:-false}" = "true" ]; then
@@ -32,24 +35,35 @@ chmod +x "$plugin/scripts/tracking-issue-summary.sh"
 impl_dir="$TMP_ROOT/impl"; mkdir -p "$impl_dir"
 printf 'ISSUE_NUMBER=7\nRUN_ID=run-5\nADOPTED=true\n' > "$impl_dir/parent-issue.md"
 printf 'REPO=owner/repo\n' > "$impl_dir/session-env.sh"
-printf 'PR_URL=https://example.test/pr/5\nSTALL_TRACKING=false\n' > "$impl_dir/ship-pr-state.sh"
+{
+    printf 'PR_URL=https://example.test/pr/5\n'
+    printf 'PR_NUMBER=5\n'
+    printf 'STALL_TRACKING=false\n'
+    printf 'MERGE_RESULT=merged\n'
+    printf 'MERGE=true\n'
+    printf 'DRAFT=false\n'
+    printf 'FORKED_TARGET=false\n'
+} > "$impl_dir/ship-pr-state.sh"
+printf 'DESIGN_ONLY_DONE=false\n' > "$impl_dir/finalize-state.sh"
 
 out=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content.md" \
       "$HELPER" --implement-tmpdir "$impl_dir")
 assert_contains 'STATUS=ok' "$out" 'happy path status ok'
 assert_contains 'COMMENT_URL=https://example.test/comment/final' "$out" 'comment URL emitted'
-assert_contains 'PR: https://example.test/pr/5' "$(cat "$TMP_ROOT/content.md")" 'summary includes PR'
+assert_contains 'https://example.test/pr/5' "$(cat "$TMP_ROOT/content.md")" 'summary includes PR URL'
+assert_contains '<!-- larch:run-summary v=1 -->' "$(cat "$TMP_ROOT/content.md")" 'summary includes run-summary sentinel'
+assert_contains '**Outcome**: merged' "$(cat "$TMP_ROOT/content.md")" 'summary outcome merged'
 if [ -s "$impl_dir/larch-logs/implement/run-5/final-summary.md" ]; then pass 'final summary file written'; else fail 'final summary file written'; fi
-assert_contains 'Status: false' "$(cat "$impl_dir/larch-logs/implement/run-5/final-summary.md")" 'final summary includes stall status'
+assert_contains '**Outcome**: merged' "$(cat "$impl_dir/larch-logs/implement/run-5/final-summary.md")" 'final summary includes merged outcome'
 
 # Comment-only path leaves the tracked run-log file untouched while still
 # emitting the live tracking-comment projection.
-printf 'Status: false\nPR: stale\nLogs: larch-logs/implement/run-5/\n' > "$impl_dir/larch-logs/implement/run-5/final-summary.md"
+printf 'legacy-stale-marker-do-not-touch\n' > "$impl_dir/larch-logs/implement/run-5/final-summary.md"
 out=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-comment-only.md" \
       "$HELPER" --implement-tmpdir "$impl_dir" --comment-only)
 assert_contains 'STATUS=ok' "$out" 'comment-only status ok'
-assert_contains 'PR: https://example.test/pr/5' "$(cat "$TMP_ROOT/content-comment-only.md")" 'comment-only summary includes live PR'
-assert_contains 'PR: stale' "$(cat "$impl_dir/larch-logs/implement/run-5/final-summary.md")" 'comment-only does not rewrite tracked final summary'
+assert_contains 'https://example.test/pr/5' "$(cat "$TMP_ROOT/content-comment-only.md")" 'comment-only summary includes live PR'
+assert_contains 'legacy-stale-marker-do-not-touch' "$(cat "$impl_dir/larch-logs/implement/run-5/final-summary.md")" 'comment-only does not rewrite tracked final summary'
 
 # Upsert failure → STATUS=failed + non-zero exit
 set +e
@@ -68,5 +82,62 @@ rc=$?
 set -e
 if [ "$rc" -ne 0 ]; then pass 'missing arg exits non-zero'; else fail 'missing arg exits non-zero'; fi
 assert_contains 'STATUS=failed' "$bad" 'missing arg emits envelope'
+
+# Stalled outcome (STALL_TRACKING=true)
+impl_st="$TMP_ROOT/impl-stall"; mkdir -p "$impl_st"
+printf 'ISSUE_NUMBER=2\nRUN_ID=run-st\nADOPTED=true\n' > "$impl_st/parent-issue.md"
+printf 'REPO=owner/repo\n' > "$impl_st/session-env.sh"
+{
+    printf 'PR_URL=https://example.test/pr/2\n'
+    printf 'PR_NUMBER=2\n'
+    printf 'STALL_TRACKING=true\n'
+    printf 'MERGE_RESULT=\n'
+    printf 'MERGE=false\n'
+    printf 'DRAFT=false\n'
+    printf 'FORKED_TARGET=false\n'
+} > "$impl_st/ship-pr-state.sh"
+printf 'DESIGN_ONLY_DONE=false\nBAIL_NEEDS_USER_INPUT=false\n' > "$impl_st/finalize-state.sh"
+out=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-stall.md" \
+      "$HELPER" --implement-tmpdir "$impl_st")
+assert_contains 'STATUS=ok' "$out" 'stalled path status ok'
+assert_contains '**Outcome**: stalled' "$(cat "$TMP_ROOT/content-stall.md")" 'stalled outcome in summary'
+
+# Design-only outcome
+impl_do="$TMP_ROOT/impl-do"; mkdir -p "$impl_do"
+printf 'ISSUE_NUMBER=3\nRUN_ID=run-do\nADOPTED=true\n' > "$impl_do/parent-issue.md"
+printf 'REPO=owner/repo\n' > "$impl_do/session-env.sh"
+{
+    printf 'PR_URL=N/A\n'
+    printf 'PR_NUMBER=\n'
+    printf 'STALL_TRACKING=false\n'
+    printf 'MERGE_RESULT=\n'
+    printf 'MERGE=false\n'
+    printf 'DRAFT=false\n'
+    printf 'FORKED_TARGET=false\n'
+} > "$impl_do/ship-pr-state.sh"
+printf 'DESIGN_ONLY_DONE=true\nBAIL_NEEDS_USER_INPUT=false\n' > "$impl_do/finalize-state.sh"
+out=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-do.md" \
+      "$HELPER" --implement-tmpdir "$impl_do")
+assert_contains 'STATUS=ok' "$out" 'design-only status ok'
+assert_contains '**Outcome**: design-only' "$(cat "$TMP_ROOT/content-do.md")" 'design-only outcome'
+
+# BAIL_NEEDS_USER_INPUT → distinct outcome when still bailed
+impl_bu="$TMP_ROOT/impl-bu"; mkdir -p "$impl_bu"
+printf 'ISSUE_NUMBER=4\nRUN_ID=run-bu\nADOPTED=true\n' > "$impl_bu/parent-issue.md"
+printf 'REPO=owner/repo\n' > "$impl_bu/session-env.sh"
+{
+    printf 'PR_URL=N/A\n'
+    printf 'PR_NUMBER=\n'
+    printf 'STALL_TRACKING=false\n'
+    printf 'MERGE_RESULT=\n'
+    printf 'MERGE=false\n'
+    printf 'DRAFT=false\n'
+    printf 'FORKED_TARGET=false\n'
+} > "$impl_bu/ship-pr-state.sh"
+printf 'DESIGN_ONLY_DONE=false\nBAIL_NEEDS_USER_INPUT=true\n' > "$impl_bu/finalize-state.sh"
+out=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-bu.md" \
+      "$HELPER" --implement-tmpdir "$impl_bu")
+assert_contains 'STATUS=ok' "$out" 'bail-user path status ok'
+assert_contains '**Outcome**: bailed-needs-user-input' "$(cat "$TMP_ROOT/content-bu.md")" 'bail-user outcome'
 
 finish

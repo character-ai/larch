@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [29.8.56] - 2026-05-20
+
+### Changed
+
+- Unify /implement and /fix-issue terminal summaries behind a shared renderer so operators see the same fields, sentinel, and optional per-vendor cost semantics every run.
+- Route final markdown through write-final-report with --print-stdout, persist post-plan flags for accurate mode display, and refresh final-summary on every pre-push log refresh without waiting for PR_URL.
+- Document per-vendor rate env vars, run-log final-summary shape, and tighten structure tests plus agent-lint exclusions for Makefile-only harnesses.
+
 ## [29.8.55] - 2026-05-20
 
 ### Changed

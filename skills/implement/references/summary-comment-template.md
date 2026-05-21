@@ -11,6 +11,14 @@
 <!-- larch:final-summary v1 runid=<R> -->
 ```
 
+The `larch:final-summary` body is rich markdown produced by
+`scripts/render-run-summary.sh`: it opens with a `## /…` header and bullet lines,
+then emits the `<!-- larch:run-summary v=1 -->` sentinel **before** any optional
+note lines from `--note-lines-file` (sentinel is the last line of the
+standardized block, not the first line of the file).
+`/implement` and `/fix-issue` share this renderer for the committed
+`final-summary.md` projection and the GitHub upsert payload (`summary-final.md`).
+
 Large runtime payloads are not embedded in these comments. They are written to
 `larch-logs/<skill>/<run-id>/` by `scripts/larch-log.sh` and committed at the
 terminal log-flush step. **Exception**: `larch:diagrams` embeds diagram bodies

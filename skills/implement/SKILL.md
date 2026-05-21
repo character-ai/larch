@@ -997,6 +997,11 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/persist-post-plan-keys.sh \
     --plan-file "$PLAN_FILE" \
     --feature-file "$IMPLEMENT_TMPDIR/feature-description.txt" \
     --workflow-path "$WORKFLOW_PATH"
+${CLAUDE_PLUGIN_ROOT}/scripts/persist-implement-run-flags.sh \
+    --implement-tmpdir "$IMPLEMENT_TMPDIR" \
+    --quick-mode "${quick_mode:-false}" \
+    --no-issues "${no_issues:-false}" \
+    --workflow-path "$WORKFLOW_PATH"
 ```
 
 Exit 2 from this call is fatal: it means either an invalid input or the post-condition assertion caught a half-written `session-env.sh`. Surface the error and skip to Step 18 with `STALL_TRACKING=true`. Do NOT attempt to recover by writing `session-env.sh` from prompt-side shell — `run-step1-plan-log.sh` and `run-step5-review.sh` carry a belt-and-braces `design-export/plan.txt` fallback that lets the run progress (with a loud stderr warning naming this script as the bug), but the supported recovery surface is to fix the writer, not to improvise. Feature file path is the fixed conventional path `$IMPLEMENT_TMPDIR/feature-description.txt` regardless of how the plan was produced. Downstream review/round logic reads `POST_PLAN_WORKFLOW_PATH` via `read-session-env-key.sh`; no existing `design_classification`, `sketch_budget`, or manifest variable is changed.
@@ -1845,31 +1850,19 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 # timing-mark Step 17 — final report
 ```
 
-If `DESIGN_ONLY_DONE=true`, continue to the token summary.
-
-If `forked_target=true` and `DESIGN_ONLY_DONE` is not true: print a fork CI dry-run report with:
-- `## Fork CI Dry-Run Complete` header, then `Fork PR: <PR_URL>`
-- Upstream PR values: `UPSTREAM_REPO`, `FORK_OWNER`, `BRANCH`, `BASE_REF` (upstream default branch, fallback main)
-- `gh pr create` command template substituting those four values
-- Caveats (5 bullets): Actions must be enabled; secrets skip; `github.repository` guard skips; green on fork ≠ green upstream; `FORK_CI_NO_CHECKS=true` means no CI signal observed
-
-If `UPSTREAM_DESIGN_ISSUE` is set, append: `You may include Closes #<UPSTREAM_DESIGN_ISSUE> in the upstream PR body when you compose it manually.` If accepted-OOS items were skipped by Step 9a.1, append them under `## Out-of-Scope Observations` as text only. **Precedence**: `DESIGN_ONLY_DONE=true` wins over fork-mode report; never print fork-CI / fork-PR language on design-only completion.
-
-If `quick_mode=true` and `DESIGN_ONLY_DONE` is not true, continue to the token summary.
-
-If `quick_mode=false` and `DESIGN_ONLY_DONE` is not true: print a summary noting plan review findings were written by `/design` into larch-log batches and code review findings by `review-and-fix.sh` (visible above).
-
-Write/post the terminal `larch:final-summary` projection before the token summary:
+Write/post the terminal `larch:final-summary` projection before the token summary (single call — the script resolves outcome, mode, path, notes, and partial fields internally), including design-only runs — do not branch around this call.
 
 ```bash
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
   CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
 fi
 export CLAUDE_PLUGIN_ROOT
-${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/write-final-report.sh --implement-tmpdir "$IMPLEMENT_TMPDIR"
+"${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/write-final-report.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR" --print-stdout || true
 ```
 
-If `write-final-report.sh` exits non-zero or emits `STATUS=failed`, log the captured stdout/stderr to `Tool Failures` and continue to the token summary. `STATUS=skipped` is reserved for the no-tracking-issue path (`ISSUE_NUMBER=0`), not for GitHub upsert failures.
+The markdown body is produced by `${CLAUDE_PLUGIN_ROOT}/scripts/render-run-summary.sh` (optional per-lane USD via `${CLAUDE_PLUGIN_ROOT}/scripts/token-cost.sh`).
+
+On non-zero exit or `STATUS=failed` on the script envelope, capture stdout/stderr to `$IMPLEMENT_TMPDIR/step17-write-final-report.failure.log` (or split `.stdout.log` / `.stderr.log`) and append with `append-tool-failure.sh` under `Tool Failures` per the Step 18 pattern, then continue to the token summary. `STATUS=skipped` is reserved for the no-tracking-issue path (`ISSUE_NUMBER=0`) and `repo-unavailable`, not for GitHub upsert failures.
 
 Print a token summary to chat. When `LARCH_VERBOSE_TOKENS=true`, print the full per-step table; otherwise print a single grand-total line. The full breakdown is appended to the `token-report` and `timing-report` log batches at the pre-bump log flush (Step 7a tail); on each retry `scripts/refresh-run-logs.sh` (Triggers A-C in `ship-pr.sh`) re-renders and commits the batches before each push so the merged PR carries the most recent data (unless `--no-logs-commit` is set, in which case log files stay in the session tmpdir only).
 
@@ -1919,9 +1912,7 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 # timing-mark Step 18 — cleanup
 ```
 
-Repeat any external reviewer warnings from earlier (from `/design`, Step 5 review, or runtime-fallback flips). Examples: `**⚠ Codex not available: <reason>**`, `**⚠ Cursor review failed: <reason>**`.
-
-If `DESIGN_ONLY_DONE=true` AND `no_issues=true`, remind: `**Note: --design-only --no-issues was set. No PR was created and no tracking issue was opened. Design artifacts are ephemeral and were removed with the session tmpdir.**` Else if `DESIGN_ONLY_DONE=true`, remind: `**Note: --design-only was set. No PR was created. The tracking issue's summary comments point to the committed plan, plan-review tally, and accepted/rejected findings; diagrams (if any) were posted to the larch:diagrams summary comment.**` Otherwise, if `draft=true`, remind: `**Note: --draft was set. Draft PR created; local branch retained. Mark the PR ready-for-review and merge manually when ready.**` Otherwise if `merge=false`, remind: `**Note: --merge was not set. PR was created but not merged. Merge manually when ready.**`
+Repeat any external reviewer warnings from earlier (from `/design`, Step 5 review, or runtime-fallback flips). Examples: `**⚠ Codex not available: <reason>**`, `**⚠ Cursor review failed: <reason>**`. Mode-specific reminders (`--design-only`, `--draft`, `--merge`, fork CI dry-run notes, upstream design issue, fork-mode OOS appendix) are emitted by `write-final-report.sh` into the same markdown block as the run summary when applicable — do not duplicate them as free-form Step 18 prose.
 
 Before teardown, refresh the token report artifact (the log batches and flush commit were already written at the pre-bump log flush step):
 
@@ -1937,9 +1928,7 @@ LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.s
 LARCH_TIMING_LEDGER=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
 export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --full --format json --output "$IMPLEMENT_TMPDIR/token-report-rendered.json" || true
-if [ "${forked_target:-false}" != "true" ] && [ "${repo_unavailable:-false}" != "true" ]; then
-  ${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/write-final-report.sh --implement-tmpdir "$IMPLEMENT_TMPDIR" || true
-fi
+${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/write-final-report.sh --implement-tmpdir "$IMPLEMENT_TMPDIR" --print-stdout || true
 ```
 
 For Step 18's `token-report.sh` and `write-final-report.sh`, preserve the best-effort behavior but capture any non-zero stdout/stderr to `$IMPLEMENT_TMPDIR/step18-<tool>.failure.log` and append with `append-tool-failure.sh` before continuing.

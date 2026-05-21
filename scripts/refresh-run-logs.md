@@ -1,7 +1,8 @@
 # refresh-run-logs.sh
 
 Re-renders the JSON `token-report` and `timing-report` larch-log batches from the
-current session state, refreshes `final-summary.md` only once `PR_URL` is known,
+current session state, refreshes `final-summary.md` on every run via
+`write-final-report.sh` (best-effort; placeholder PR data is fine pre-create),
 flushes any post-Step-7a `execution-issues.md` tail once the Step 7a checkpoint
 has been reached, and commits the updated files to the branch, so every push
 (rebase, CI-fix, version-bump retry) carries up-to-date log artifacts.
@@ -55,9 +56,9 @@ Always exits 0.
   `skills/implement/scripts/flush-execution-issues.sh --step-label pre-push`
   before refreshing the JSON batches. This keeps later postbump / CI warnings in
   the committed audit trail without re-emitting already-flushed content.
-- **Final-summary gating**: `write-final-report.sh` runs only when `PR_URL` is
-  present in `ship-pr-state.sh`, so Trigger C (pre-PR-create) cannot commit a
-  `final-summary.md` projection with `PR: N/A`.
+- **Final-summary refresh**: `write-final-report.sh` runs unconditionally (before
+  token/timing re-renders). `PR_URL` may still be `N/A` on early pushes; later
+  refreshes pick up the live URL from `ship-pr-state.sh`.
 - **`NO_LOGS_COMMIT` honoured**: reads the flag from the state file; skips the commit
   when `true` (mirrors `ship-pr.sh`'s pre-rebase larch-log flush behaviour).
 
