@@ -1801,20 +1801,31 @@ fi
 # ===========================================================================
 echo "=== test-audit-runs: audit-runs #2523 (classification / scan / session summary) ==="
 
-# Test 58: [IN PROGRESS] matching open issue routes to proposed_augmentations (not proposed_new_issues)
-echo "Test 58: [IN PROGRESS] open match → proposed_augmentations"
-route_finding_by_open_match() {
-    local has_open_match="$1"
-    if [[ "$has_open_match" == "yes" ]]; then
-        printf '%s\n' "proposed_augmentations"
-    else
-        printf '%s\n' "proposed_new_issues"
-    fi
+# Test 58: C.1 — classify from hermetic gh issue JSON (noise-title exclusion, open precedence over closed)
+echo "Test 58: C.1 gh-issue JSON → proposed_augmentations vs proposed_new_issues"
+classify_c1_bucket_from_gh_issues_json() {
+    jq -rn --argjson issues "$1" '
+        def is_open: (.state | ascii_downcase) == "open";
+        def is_noise:
+            (.title | type == "string" and test("^\\[Run Logs Audit Report"));
+        ([$issues[] | select(is_open and (is_noise | not))]) as $eligible_open
+        | if ($eligible_open | length) > 0 then
+            "proposed_augmentations"
+        else
+            "proposed_new_issues"
+        end
+    '
 }
-result=$(route_finding_by_open_match "yes")
-assert_equal "$result" "proposed_augmentations" "[58] open match with [IN PROGRESS] title in GH results → augmentations (C.1: not excluded from search)"
-result=$(route_finding_by_open_match "no")
-assert_equal "$result" "proposed_new_issues" "[58b] no open match → proposed_new_issues"
+result=$(classify_c1_bucket_from_gh_issues_json '[{"number":1,"title":"[IN PROGRESS] widget bug","state":"OPEN"}]')
+assert_equal "$result" "proposed_augmentations" "[58] open [IN PROGRESS] title counts as augmentation match (not search-excluded)"
+result=$(classify_c1_bucket_from_gh_issues_json '[{"number":1,"title":"[Run Logs Audit Report] 2026-01","state":"OPEN"}]')
+assert_equal "$result" "proposed_new_issues" "[58b] audit-report noise title alone → no eligible open match → proposed_new_issues"
+result=$(classify_c1_bucket_from_gh_issues_json '[{"number":1,"title":"[Run Logs Audit Report] noise","state":"OPEN"},{"number":2,"title":"[IN PROGRESS] same bug","state":"OPEN"}]')
+assert_equal "$result" "proposed_augmentations" "[58c] noise open + real open → precedence to augmentations"
+result=$(classify_c1_bucket_from_gh_issues_json '[{"number":1,"title":"widget bug","state":"CLOSED"},{"number":2,"title":"widget bug","state":"OPEN"}]')
+assert_equal "$result" "proposed_augmentations" "[58d] mixed closed+open (--state all style payload) → open wins → augmentations"
+result=$(classify_c1_bucket_from_gh_issues_json '[{"number":1,"title":"widget bug","state":"CLOSED"}]')
+assert_equal "$result" "proposed_new_issues" "[58e] closed-only payload → proposed_new_issues (version-window step is separate)"
 
 # Test 59: oos-category-mangle — code-review accepted prose category → pass (narrowed scan)
 echo "Test 59: audit-scan-run oos-category-mangle pass (code-review accepted prose)"
@@ -1909,6 +1920,14 @@ else
     FAILED_TESTS+=("[61c] missing Posted-by footer")
     echo "  FAIL: [61c] missing footer" >&2
 fi
+if printf '%s' "$sum59" | grep -qF '| Target issue | Action | Comment URL |'; then
+    PASS=$((PASS + 1))
+    echo "  ok: [59d] Augmentations table header present"
+else
+    FAIL=$((FAIL + 1))
+    FAILED_TESTS+=("[59d] missing Augmentations table header")
+    echo "  FAIL: [59d] missing Augmentations table header" >&2
+fi
 
 # Test 62: session-summary with skip-filing — all skipped rows
 echo "Test 62: session-summary skip-filing shows skipped rows"
@@ -1962,6 +1981,27 @@ result=$(should_post_session_summary_comment "")
 assert_equal "$result" "skip" "[63] empty audit report number → skip session-summary step"
 result=$(should_post_session_summary_comment "424242")
 assert_equal "$result" "post" "[63b] non-empty number → post path"
+
+# Test 62: C.2 semver normalization — numeric component ordering (not lexical dotted strings)
+echo "Test 62: C.2 dotted version compare (strip v, 1.10 > 1.9)"
+if ! command -v jq >/dev/null 2>&1; then
+    echo "  SKIP: jq not installed"
+else
+    v_gt=$(jq -n --arg a 'v1.10.0' --arg b '1.9.999' '
+        def parts($s): ($s | ltrimstr("v") | split(".") | map(tonumber));
+        def gt($x; $y):
+            if $x[0] > $y[0] then true
+            elif $x[0] < $y[0] then false
+            elif ($x|length) < 2 or ($y|length) < 2 then false
+            elif $x[1] > $y[1] then true
+            elif $x[1] < $y[1] then false
+            elif ($x|length) < 3 or ($y|length) < 3 then false
+            else $x[2] > $y[2]
+            end;
+        gt(parts($a); parts($b))
+    ')
+    assert_equal "$v_gt" "true" "[62] v1.10.0 numerically greater than 1.9.999 after normalization"
+fi
 
 # ---------------------------------------------------------------------------
 # Summary

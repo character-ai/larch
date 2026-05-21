@@ -113,13 +113,18 @@ For each finding, classify it into one of these two lists using GitHub + repo hi
    ```
 2. **Open matches** (including `[IN PROGRESS] …` titles): **`proposed_augmentations`**. In **`## Open issues snapshot`**, when an augmented issue’s title starts with `[IN PROGRESS]`, note that the finding **recurred in this batch (pre-fix)** for that issue number.
 3. **Closed matches only** (no open match for this finding): apply the **version-window** check before proposing `proposed_new_issues`:
-   - Resolve fix merge time: prefer `gh pr list --state merged --search "closes #<N>" --repo <repo> --json number,mergedAt` and use the merged PR you attribute to the fix; if that is empty or ambiguous, fall back to `gh issue view <N> --json closedAt`.
-   - Find the next plugin version shipped after that instant:
+   - Resolve fix merge time: prefer `gh pr list --state merged --search "closes #<N>" --repo <repo> --json number,mergedAt,title,body` and pick **one** merged PR you attribute to the fix (see **PR disambiguation** below). If that query returns **no** candidates, fall back to `gh issue view <N> --json closedAt,createdAt` for timing only and set `matched_pr` / merge metadata to unknown in your notes / `version_window_checks` rationale.
+   - **PR disambiguation (normative):** When multiple merged PRs match the search, prefer the PR whose `body`/`title` contains an explicit closing reference for `#<N>` (`closes`, `fixes`, `resolved`, case-insensitive). If still tied, prefer the PR with `mergedAt` closest **after** the issue `createdAt` (smallest positive delta). If still ambiguous, **do not** silently suppress: treat as **in-scope** (`decision: propose`, `in_scope: true`) and record both PR numbers plus a one-line operator rationale in the audit-report prose (or in the `finding` slug row’s implied narrative). When the search returns **zero** PRs, use issue `closedAt` only; keep `fix_shipped_in: unknown` unless you can attribute a merge elsewhere.
+   - Find the next plugin version shipped after that instant (file-shaped contract, not subject-line guessing alone):
      ```bash
      git log --oneline --grep="Bump version" --after="<mergedAt-or-closedAt-ISO>" --reverse -- .claude-plugin/plugin.json | head -1
      ```
-     Derive `vX.Y.Z` from that commit. If **no** such bump commit exists after that date, set `fix_shipped_in: unknown` — **do not** skip the proposal solely for missing bump metadata (treat as in-scope for recurrence unless other reasoning applies).
-   - Compare `fix_shipped_version` (parsed semantic version, or `unknown`) against each audited run’s `manifest.json::larch_version` from this batch’s run-map / scan inputs.
+     Let `BUMP_SHA` be that commit hash (first field of the line). Read the shipped plugin version from the tree at that commit:
+     ```bash
+     git show "$BUMP_SHA:.claude-plugin/plugin.json" | jq -r '.version // empty'
+     ```
+     **Normalize** the returned dotted version for comparisons: strip a single leading `v`, trim ASCII whitespace, require three **integer** components `MAJOR.MINOR.PATCH`, then compare **numerically per component** (so `1.10.0` is greater than `1.9.999`; do **not** use naive string sort on the dotted token). If **no** bump commit exists after that instant **or** `.version` is empty, set `fix_shipped_in: unknown` — **do not** skip the proposal solely for missing bump metadata (treat as in-scope for recurrence unless other reasoning applies).
+   - Compare `fix_shipped_version` (parsed semantic version, or `unknown`) against each audited run’s `manifest.json::larch_version` from this batch’s run-map / scan inputs (normalize each batch version the same way).
    - If `fix_shipped_version` is known and **strictly greater than** every audited `larch_version`, the fix post-dates all audited runs → **do not** propose a new issue for this closed-only match.
    - If `fix_shipped_version` is `unknown`, **or** `fix_shipped_version ≤` any audited `larch_version`, the closed fix was in scope for at least one run → propose **`proposed_new_issues`** (recurrence).
 4. **Record** each closed-issue evaluation in **`version_window_checks`** (see **Frontmatter**). Use `version_window_checks: []` when no closed issue was evaluated for any finding.
@@ -137,7 +142,7 @@ After the audit report issue is filed and prior reports are handled per **Close 
    - **Discuss first**: wait for operator direction; file or augment per finding only as approved.
    - **Skip filing**: exit cleanly; the audit report already captures proposed findings for the historical record.
 
-4. **Post-report session summary (audit-report issue):** after the per-finding walkthrough completes (filed, augmented, skipped, or mixed), compose `$TMPDIR/session-summary.md` and post it as a single comment on the audit-report issue (supplementary history). **Skip** this entire step when no audit-report issue was filed (for example the zero-PR `since last audit` short-circuit — there is no audit-report issue number).
+4. **Post-report session summary (audit-report issue only):** **only when** an audit-report issue was actually filed (`create-one.sh` returned a non-empty issue number / `AUDIT_REPORT_NUMBER`) **and** you did **not** end the run at step 2’s **zero-findings short-circuit** (that path exits immediately after the chat message — no 3-way walkthrough, **no** session-summary). After step 3’s per-finding walkthrough completes (filed, augmented, skipped, or mixed), compose `$TMPDIR/session-summary.md` and post it as a single comment on that audit-report issue (supplementary history). **Skip** this entire step whenever **no** audit-report issue exists — for example the zero-PR `since last audit` short-circuit (no `create-one.sh` call), preflight/resolve failures before filing, or any other path that never yields an audit-report issue number (there is nothing to comment on).
 
    ```markdown
    ## Post-report session summary
@@ -164,7 +169,7 @@ After the audit report issue is filed and prior reports are handled per **Close 
    gh issue comment "$AUDIT_REPORT_NUMBER" --repo "<repo>" --body-file "$TMPDIR/session-summary.md"
    ```
 
-   Run whenever an audit report exists: even **skip-filing** should populate the tables with **skipped** rows (useful operator history). Omit empty **Augmentations** table section when there were no augmentation rows. If `gh issue comment` fails, print stderr to chat but **do not** fail the overall audit run (this comment is supplementary).
+   **When** this step runs, even **skip-filing** should populate the tables with **skipped** rows (useful operator history). Omit empty **Augmentations** table section when there were no augmentation rows. If `gh issue comment` fails, print stderr to chat but **do not** fail the overall audit run (this comment is supplementary).
 
 The audit report issue is **never** edited after creation (chain-of-history).
 
@@ -250,6 +255,30 @@ version_window_checks:           # always present; one row per closed-issue matc
     audited_versions: [34.0.0, 34.0.1]
     in_scope: false
     decision: skip | propose
+  # Example A — fix shipped strictly after every audited run → suppress new issue
+  - finding: exon-regression-example
+    matched_issue: 2401
+    matched_state: closed
+    fix_shipped_in: v35.0.0
+    audited_versions: [34.0.0, 34.0.1]
+    in_scope: false
+    decision: skip
+  # Example B — unknown shipped version → cannot prove post-dates batch → propose recurrence
+  - finding: oos-mangle-example
+    matched_issue: 2402
+    matched_state: closed
+    fix_shipped_in: unknown
+    audited_versions: [34.0.0]
+    in_scope: true
+    decision: propose
+  # Example C — fix version overlaps at least one audited run → in scope
+  - finding: ns-retry-example
+    matched_issue: 2403
+    matched_state: closed
+    fix_shipped_in: v34.0.0
+    audited_versions: [34.0.0, 34.0.1]
+    in_scope: true
+    decision: propose
 cumulative_counters:
   exon_misclassifications: N
   oos_categories_mangled: N
@@ -317,8 +346,8 @@ audit-title.sh               → TITLE
        reading from COUNTERS_OUT + scan-results-*.ndjson as structured input]
 create-one.sh                → file audit report
 audit-close-priors.sh        → close prior audit-report issues
-[LLM: post-report 3-way question if proposed issues exist]
-[LLM: post session-summary comment on audit-report issue]
+[LLM: post-report 3-way question if proposed issues exist — or zero-findings short-circuit when both proposal lists are empty]
+[LLM: if audit-report issue number exists: post session-summary comment on that issue; else skip (no report filed)]
 ```
 
 ## Scripts

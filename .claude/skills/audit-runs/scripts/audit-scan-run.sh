@@ -218,12 +218,18 @@ scan_oos_category_mangle() {
         return
     fi
     local count detail
-    count=$(jq -r 'select(
-        .phase == "plan-review" and
-        .outcome == "accepted" and
-        (.category // "") != "" and
-        ((.category // "") | test("^(code-quality|risk-integration|correctness|architecture|security)$") | not)
-    ) | .id' "$jsonl" 2>/dev/null | wc -l | tr -d '[:space:]')
+    count=$(jq -r '
+        def catstr:
+            (.category // "" |
+                if type == "string" then .
+                elif type == "number" or type == "boolean" then tostring
+                else "" end);
+        select(
+            .phase == "plan-review" and
+            .outcome == "accepted" and
+            (catstr != "") and
+            (catstr | test("^(code-quality|risk-integration|correctness|architecture|security)$") | not)
+        ) | .id' "$jsonl" 2>/dev/null | wc -l | tr -d '[:space:]' || echo 0)
     if [ "$count" -eq 0 ]; then
         emit "{\"scan\":\"oos-category-mangle\",\"pr\":$PR_NUM,\"result\":\"pass\",\"count\":0}"
     else
