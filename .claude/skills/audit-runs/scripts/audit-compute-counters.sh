@@ -100,14 +100,14 @@ for ndjson_file in "$SCAN_RESULTS_DIR"/scan-results-*.ndjson; do
     delta_oos_mangled=$((delta_oos_mangled + val))
 
     partial_flag=$(jq -r 'select(.scan=="category-stats") | .partial_data // false' "$ndjson_file" 2>/dev/null | head -1 || echo false)
-    detail_val=$(jq -r 'select(.scan=="category-stats") | .detail // ""' "$ndjson_file" 2>/dev/null | head -1 || echo "")
+    partial_reason_val=$(jq -r 'select(.scan=="category-stats") | .partial_reason // ""' "$ndjson_file" 2>/dev/null | head -1 || echo "")
     if [ "$partial_flag" = "true" ]; then
         category_stats_partial_any=true
     fi
     # Omit clean/blank deltas only when category-stats is partial because review-findings-full.jsonl
     # was missing (zero placeholders). jq/mangled partial rows still carry measured canonical/oos_blank.
     skip_cs_clean_blank=false
-    if [ "$partial_flag" = "true" ] && printf '%s' "$detail_val" | grep -Fq "review-findings-full.jsonl not found"; then
+    if [ "$partial_flag" = "true" ] && [ "$partial_reason_val" = "missing_review_findings_jsonl" ]; then
         skip_cs_clean_blank=true
     fi
     if [ "$skip_cs_clean_blank" != true ]; then

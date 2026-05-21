@@ -19,6 +19,14 @@ _audit_scan_mangled_jq_failed=0
 # When oos-category-mangle jq succeeds, path to its temp output (mangled rows) for category-stats reuse.
 _audit_mangled_jq_cache_file=""
 
+_audit_cleanup_mangled_jq_cache() {
+    if [ -n "${_audit_mangled_jq_cache_file:-}" ]; then
+        rm -f "$_audit_mangled_jq_cache_file"
+        _audit_mangled_jq_cache_file=""
+    fi
+}
+trap '_audit_cleanup_mangled_jq_cache' EXIT
+
 RUN_DIR=""
 PR_NUM=""
 SCANS_TSV=""
@@ -521,7 +529,7 @@ if [ -f "$JSONL" ]; then
         emit "{\"scan\":\"category-stats\",\"pr\":$PR_NUM,\"partial_data\":false,\"canonical\":${canonical_count:-0},\"blank\":${blank_count:-0},\"mangled\":${mangled_count:-0},\"oos_blank\":${oos_blank:-0},\"rej_blank\":${rej_blank:-0}}"
     fi
 else
-    emit "{\"scan\":\"category-stats\",\"pr\":$PR_NUM,\"partial_data\":true,\"detail\":\"review-findings-full.jsonl not found\",\"canonical\":0,\"blank\":0,\"mangled\":0,\"oos_blank\":0,\"rej_blank\":0}"
+    emit "{\"scan\":\"category-stats\",\"pr\":$PR_NUM,\"partial_data\":true,\"partial_reason\":\"missing_review_findings_jsonl\",\"detail\":\"review-findings-full.jsonl not found\",\"canonical\":0,\"blank\":0,\"mangled\":0,\"oos_blank\":0,\"rej_blank\":0}"
 fi
 
 # ---- Cross-cutting metadata ----
