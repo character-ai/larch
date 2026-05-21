@@ -1,0 +1,18 @@
+Gathering the diff and commit list for a read-only documentation review.
+
+Verifying cross-references cited in the new doc exist and scanning referenced files for consistency.
+
+### In-Scope Findings
+
+1. **Accuracy** — [docs/issue-anchored-plan.md](docs/issue-anchored-plan.md):48–50 — The “Clarification Comment Markers” intro uses present tense (“refuses”, “posts”) as if `/implement` and `/design` already perform these actions, while lines 6–8 state markers are **not** yet parsed or emitted in-tree; a reader who skips the opening can treat aspirational flow as current shipped behavior. Prefix that paragraph with an explicit **target / once implemented** qualifier (or future tense) aligned with the opening disclaimer.
+
+2. **Accuracy** — [docs/issue-anchored-plan.md](docs/issue-anchored-plan.md):111–157 — The “Lifecycle Examples” numbered steps use the same present-tense, operational voice (`/design` embeds…, `/implement` reads…, posts…) without repeating that this sequence is **not** available until tooling lands, so the same skim-vs-intro contradiction applies as in finding 1. Add a short lead-in such as “Target sequence (not shipped yet):” or rephrase steps in future tense / conditional (“would post”, “would embed”).
+
+3. **Clarity (integration)** — [docs/issue-anchored-plan.md](docs/issue-anchored-plan.md):3–8,18–20 — The wire format names “issue body” and “issue comments” but never states whether that issue is the same entity as the `/implement` **tracking issue** (where `larch:plan v1` summaries live per `docs/run-logs.md`) versus a separate upstream/feature issue; implementers can wire the wrong issue or duplicate markers across two issues. Add one explicit sentence on intended issue identity (same issue vs tracking vs feature) and how it relates to the tracking-issue comment contracts.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	docs/issue-anchored-plan.md:48-50	Present-tense clarification intro contradicts opening not-shipped disclaimer	Reader skims Clarification section and assumes /implement already posts larch:clarify-request comments in production	Add target-once-implemented qualifier or future tense at start of Clarification Comment Markers intro
+1	in_scope	important	correctness	docs/issue-anchored-plan.md:111-157	Lifecycle examples read as current shipped behavior despite spec-not-implemented warning	Operator follows numbered happy path as runbook for today and misconfigures workflow or files false tooling gaps	Prefix section with target-sequence label or rephrase steps as conditional future behavior
+1	in_scope	latent	risk-integration	docs/issue-anchored-plan.md:3-8,18-20	Plan body and clarification thread issue identity vs tracking issue not specified	Automation attaches markers to tracking issue while human plan lives on feature issue (or vice versa), breaking pairing rules across threads	Document whether body markers and clarify markers target the same issue as tracking-issue summaries and how they relate
+```

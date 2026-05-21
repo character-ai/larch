@@ -1,0 +1,7 @@
+Gathering the pre-computed diff and commit history (read-only) for a documentation-focused review.
+
+Verifying cross-references and factual claims against the repository.
+
+Confirming clarification markers and issue-body plan blocks aren't referenced elsewhere; the spec's present-tense lifecycle can read as shipped behavior. Creating the plan record and delivering the full review.
+
+
