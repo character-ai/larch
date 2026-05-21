@@ -1290,6 +1290,12 @@ if [[ "$SUBSTANTIVE_VALIDATION" == "true" || "$STRUCTURED_REVIEWER_VALIDATION" =
                 _ns_meta_reason=$(result_field_value "${RESULTS[$IDX]}" "NS_RETRY_REASON" || true)
                 [[ -z "$_ns_meta_reason" ]] && _ns_meta_reason="UNKNOWN"
 
+                # Write classification reason before any branch-local `continue` so audit bins always see it.
+                NS_RETRY_META="${NS_RETRY_OUTPUT}.meta"
+                if [[ -f "$NS_RETRY_META" && ! -L "$NS_RETRY_META" ]]; then
+                    printf 'NS_RETRY_REASON=%s\n' "$_ns_meta_reason" >> "$NS_RETRY_META" 2>/dev/null || true
+                fi
+
                 if [[ -f "$NS_RETRY_SENTINEL" && -s "$NS_RETRY_OUTPUT" ]]; then
                     NS_EXIT=$(cat "$NS_RETRY_SENTINEL" 2>/dev/null || echo "99")
                     case "$NS_EXIT" in ''|*[!0-9]*) NS_EXIT=99 ;; esac
@@ -1334,12 +1340,6 @@ if [[ "$SUBSTANTIVE_VALIDATION" == "true" || "$STRUCTURED_REVIEWER_VALIDATION" =
                             fi
                         fi
                     fi
-                fi
-                # Annotate the ns-retry .meta sidecar with the classification reason
-                # so audit scans can bin ns-retry occurrences by cause.
-                NS_RETRY_META="${NS_RETRY_OUTPUT}.meta"
-                if [[ -f "$NS_RETRY_META" && ! -L "$NS_RETRY_META" ]]; then
-                    printf 'NS_RETRY_REASON=%s\n' "$_ns_meta_reason" >> "$NS_RETRY_META" 2>/dev/null || true
                 fi
             done
         fi

@@ -1137,6 +1137,7 @@ if [ -x "$SCAN_SCRIPT" ]; then
     mkdir -p "$R35_TMP/run/round-1"
     printf '%s\n' '{"id":"OOS_1","category":"code-quality","prose_body":"ok"}' > "$R35_TMP/run/review-findings-full.jsonl"
     : > "$R35_TMP/run/round-1/panel-ns-retry-sidecar.txt"
+    printf '%s\n' 'NS_RETRY_REASON=NO_ISSUES_FOUND_TOO_THIN' > "$R35_TMP/run/round-1/panel-ns-retry-sidecar.txt.meta"
     printf '%s\n' '{"category":"Errors","body":"not a warning"}' > "$R35_TMP/run/execution-issues.ndjson"
     r35_lines=$(bash "$SCAN_SCRIPT" \
         --run-dir "$R35_TMP/run" --pr 990035 \
@@ -1150,6 +1151,8 @@ if [ -x "$SCAN_SCRIPT" ]; then
     assert_equal "$rej_res" "pass" "[35] rej-category-blank clean fixture → pass"
     assert_equal "$ns_res" "fail" "[35b] ns-retry-sidecars detects sidecar file → fail"
     assert_equal "$ns_cnt" "1" "[35c] ns-retry-sidecars count"
+    ns_reasons=$(printf '%s\n' "$r35_lines" | jq -c 'select(.scan=="ns-retry-sidecars") | .reasons // empty' | head -1)
+    assert_equal "$ns_reasons" '{"NO_ISSUES_FOUND_TOO_THIN":1}' "[35e] ns-retry-sidecars reasons object"
     assert_equal "$ex_res" "fail" "[35d] execution-issues-categories non-Warnings → fail"
     rm -rf "$R35_TMP"
 else
