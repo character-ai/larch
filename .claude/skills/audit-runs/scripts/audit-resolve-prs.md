@@ -21,7 +21,7 @@ Always exits 0. Caller reads `PR_LIST` and `ERROR`.
 |---|---|
 | empty / omitted | Implicit `since last audit`; `IMPLICIT_SINCE_LAST_AUDIT=true` |
 | `since last audit` | Reads most-recent `audit-report` issue, parses `audited_pr_range.last`, queries PRs merged after that PR's `mergedAt` |
-| `last N PRs` | `gh pr list --limit N --state merged --base main` |
+| `last N PRs` | Paginated `gh api repos/{owner}/{repo}/pulls` (merged to `main`), sorted by `merged_at`, then the last *N* PRs by merge time (not `gh pr list` default order) |
 | `since <ISO8601>` | Filters PRs with `mergedAt > <ISO>` |
 | `#N` / `PR #N` | Exactly one PR |
 

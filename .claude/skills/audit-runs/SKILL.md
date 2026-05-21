@@ -50,7 +50,7 @@ Read `PR_LIST`, `PR_COUNT`, `IMPLICIT_SINCE_LAST_AUDIT`, `PRIOR_REPORT_NUMBER`, 
 
 ## Scan Registry
 
-The scan list is externalized in `.claude/skills/audit-runs/scans.tsv` (one row per scan: `name`, `type`, `pattern`, `expected_outcome`, `severity`). Adding a scan = adding a TSV row, no SKILL.md edit needed.
+The scan list is externalized in `.claude/skills/audit-runs/scans.tsv` (one row per scan: `name`, `type`, `pattern`, `expected_outcome`, `severity`). **Adding a scan** requires coordinated updates: (1) a new `scans.tsv` row, (2) a matching `case` branch (and scan function) in `audit-scan-run.sh`, (3) any counter wiring in `audit-compute-counters.sh` / `audit-compute-counters.md` when the scan feeds cumulative totals, (4) `audit-scan-run.md` / `SKILL.md` scan tables if the operator-facing baseline changes, and (5) hermetic coverage in `test-audit-runs.sh` for the new NDJSON shape and counter path.
 
 Read the registry at runtime:
 ```bash
@@ -172,11 +172,11 @@ COUNTERS_OUT=$(bash "$PWD/.claude/skills/audit-runs/scripts/audit-compute-counte
   [--prior-frontmatter "$TMPDIR/prior-report-body.md"])
 ```
 
-Read `EXON_MISCLASSIFICATIONS`, `EXON_DELTA`, `OOS_CATEGORIES_MANGLED`, `OOS_MANGLED_DELTA`, `OOS_CATEGORIES_CLEAN`, `OOS_CLEAN_DELTA`, `NS_RETRIES_CURSOR_SPECIALIST`, `NS_RETRIES_DELTA` etc. Contract: `audit-compute-counters.md`.
+Read `EXON_MISCLASSIFICATIONS`, `EXON_DELTA`, `OOS_CATEGORIES_MANGLED`, `OOS_MANGLED_DELTA`, `OOS_CATEGORIES_CLEAN`, `OOS_CLEAN_DELTA`, `OOS_CATEGORIES_BLANK`, `OOS_BLANK_DELTA`, `NS_RETRIES_CURSOR_SPECIALIST`, `NS_RETRIES_DELTA`, `CHANGELOG_REBASE_CONFLICTS`, `CHANGELOG_DELTA`, and `CATEGORY_STATS_PARTIAL` (`true` when any PR scan lacked `review-findings-full.jsonl`, so `OOS_*_DELTA` for clean/blank skipped those rows). Contract: `audit-compute-counters.md`.
 
 ### Frontmatter (YAML block between `---` markers at top of body)
 
-`audit_timestamp` matches **Title Format** `<Pacific-ISO-timestamp>`: Pacific wall time with explicit `-07:00` or `-08:00` and minute precision (not the `since <ISO8601-instant>` filter convention and not UTC `Z` by itself). Populate `cumulative_counters` from `audit-compute-counters.sh` output.
+`audit_timestamp` matches **Title Format** `<Pacific-ISO-timestamp>`: Pacific wall time with explicit `-07:00` or `-08:00` and minute precision when `audit-pacific-timestamp.sh` can resolve `America/Los_Angeles` (or its manual heuristic). It is **not** the `since <ISO8601-instant>` filter convention. **UTC `Z` is allowed only** as the script’s last-resort fallback when Pacific resolution fails (same shape as `audit-pacific-timestamp.sh` may emit). Populate `cumulative_counters` from `audit-compute-counters.sh` output keys below.
 
 ```yaml
 audit_schema_version: 1
@@ -194,8 +194,9 @@ cumulative_counters:
   exon_misclassifications: N
   oos_categories_mangled: N
   oos_categories_clean: N
+  oos_categories_blank: N
   ns_retries_cursor_specialist: N
-  ns_retries_cursor_specialist_launches: N
+  changelog_rebase_conflicts: N
 ```
 
 ### Report Sections (in this order, exact `##` headers with a trailing space before the title; use `####` for internal subheadings)

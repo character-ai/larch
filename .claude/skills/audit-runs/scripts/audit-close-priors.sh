@@ -36,7 +36,7 @@ fi
 # List open audit-report issues
 if ! OPEN_ISSUES=$(gh issue list --state open --label audit-report --repo "$REPO" \
     --json number --jq '.[].number' 2>/dev/null); then
-    printf 'ISSUE_LIST_FAILED=true\nREASON=gh issue list failed\n' >&2
+    printf 'ISSUE_LIST_FAILED=true\nREASON=gh issue list failed\n'
     exit 1
 fi
 

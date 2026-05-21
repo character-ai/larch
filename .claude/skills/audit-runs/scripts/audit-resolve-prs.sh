@@ -145,22 +145,18 @@ fi
 # "last N PRs"
 if printf '%s' "$VERBAL" | grep -qE '^last[[:space:]]+[0-9]+[[:space:]]+PRs?$'; then
     N=$(printf '%s' "$VERBAL" | grep -oE '[0-9]+')
-    set +e
-    PR_JSON=$(gh pr list --repo "$REPO" --state merged --base main \
-        --json number,mergedAt --limit "$N" \
-        --jq 'sort_by(.mergedAt) | [.[].number]' 2>/dev/null)
-    gh_rc=$?
-    set -e
-    if [ "$gh_rc" -ne 0 ]; then
-        emit_error "gh pr list failed (exit $gh_rc)"
+    if ! ALL_MERGED=$(fetch_merged_main_prs_json); then
+        emit_error "gh api failed listing merged PRs (network or auth)"
     fi
+    PR_JSON=$(printf '%s' "$ALL_MERGED" | jq --argjson n "$N" \
+        'sort_by(.mergedAt) | if ($n <= 0) then [] else .[-($n):] end | [.[].number]' 2>/dev/null || true)
     if [ -z "$PR_JSON" ] || [ "$PR_JSON" = "[]" ]; then
-        emit_error "empty PR list from gh pr list (last ${N} PRs)"
+        emit_error "empty PR list after merge-time sort (last ${N} PRs)"
     fi
     PR_LIST=$(printf '%s' "$PR_JSON" | jq -r 'join(",")' 2>/dev/null || true)
     PR_COUNT=$(printf '%s' "$PR_JSON" | jq 'length' 2>/dev/null || echo 0)
     if [ -z "$PR_LIST" ] || [ "${PR_COUNT:-0}" -eq 0 ]; then
-        emit_error "empty PR list from gh pr list (last ${N} PRs)"
+        emit_error "empty PR list after merge-time sort (last ${N} PRs)"
     fi
     ECHO_LINE="Resolved last $N PRs to: [$(printf '%s' "$PR_JSON" | jq -r '[.[] | "#\(.)"] | join(", ")')]. Proceeding."
     emit_ok "false" "" "$PR_LIST" "$PR_COUNT" "$ECHO_LINE"

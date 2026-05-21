@@ -22,7 +22,10 @@ NS_RETRIES_CURSOR_SPECIALIST=10
 NS_RETRIES_DELTA=5
 CHANGELOG_REBASE_CONFLICTS=3
 CHANGELOG_DELTA=1
+CATEGORY_STATS_PARTIAL=false
 ```
+
+`CATEGORY_STATS_PARTIAL=true` when any `scan-results-*.ndjson` contains a `category-stats` object with `partial_data: true` (missing `review-findings-full.jsonl` for that PR). In that case `OOS_CLEAN_DELTA` / `OOS_BLANK_DELTA` omit category-stats contributions for those PRs; totals still add other scans.
 
 ## Edit-in-sync
 

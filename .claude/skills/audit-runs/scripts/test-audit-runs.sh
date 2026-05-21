@@ -235,8 +235,9 @@ cumulative_counters:
   exon_misclassifications: 3
   oos_categories_mangled: 2
   oos_categories_clean: 45
+  oos_categories_blank: 0
   ns_retries_cursor_specialist: 1
-  ns_retries_cursor_specialist_launches: 8
+  changelog_rebase_conflicts: 0
 ---
 ## Summary
 Test report."
@@ -411,8 +412,9 @@ cumulative_counters:
   exon_misclassifications: 0
   oos_categories_mangled: 0
   oos_categories_clean: 50
+  oos_categories_blank: 0
   ns_retries_cursor_specialist: 0
-  ns_retries_cursor_specialist_launches: 0
+  changelog_rebase_conflicts: 0
 ---
 ## Summary
 Clean run.'
@@ -452,8 +454,9 @@ cumulative_counters:
   exon_misclassifications: 1
   oos_categories_mangled: 0
   oos_categories_clean: 50
+  oos_categories_blank: 0
   ns_retries_cursor_specialist: 0
-  ns_retries_cursor_specialist_launches: 0
+  changelog_rebase_conflicts: 0
 ---
 ## Summary
 Has proposals.'
@@ -485,8 +488,9 @@ cumulative_counters:
   exon_misclassifications: 0
   oos_categories_mangled: 0
   oos_categories_clean: 50
+  oos_categories_blank: 0
   ns_retries_cursor_specialist: 0
-  ns_retries_cursor_specialist_launches: 0
+  changelog_rebase_conflicts: 0
 ---
 ## Summary
 Augmentation proposals only.'
@@ -804,6 +808,113 @@ if [ -x "$MAP_SCRIPT" ]; then
     rm -rf "$MAP_TMP"
 else
     echo "  SKIP: audit-map-runs.sh not executable (not found at $MAP_SCRIPT)"
+fi
+
+# Test 32: audit-resolve-prs.sh — last N PRs uses merge-time sort (real script + fake gh)
+echo "Test 32: audit-resolve-prs last N via gh api merge order"
+RESOLVE_SCRIPT="$SCRIPT_DIR/audit-resolve-prs.sh"
+if [ -x "$RESOLVE_SCRIPT" ]; then
+    GH_STUB_DIR=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-gh-XXXXXX")
+    cat > "$GH_STUB_DIR/gh" <<'EOSH'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "${1:-}" != "api" ]]; then
+    printf 'fake gh: unsupported %s\n' "$*" >&2
+    exit 1
+fi
+shift
+url="${1:-}"
+shift
+jq_filter=""
+while (($# > 0)); do
+    if [[ "$1" == "--jq" && $# -ge 2 ]]; then
+        jq_filter="$2"
+        shift 2
+    else
+        shift
+    fi
+done
+if [[ "$url" == repos/*/pulls* ]]; then
+    raw='[{"number":10,"merged_at":"2025-01-01T00:00:00Z","base":{"ref":"main"}},{"number":20,"merged_at":"2025-06-01T00:00:00Z","base":{"ref":"main"}},{"number":30,"merged_at":"2025-12-01T00:00:00Z","base":{"ref":"main"}}]'
+    printf '%s' "$raw" | jq -c "$jq_filter"
+    exit 0
+fi
+printf 'fake gh: bad url %s\n' "$url" >&2
+exit 1
+EOSH
+    chmod +x "$GH_STUB_DIR/gh"
+    resolve_out=$(PATH="$GH_STUB_DIR:$PATH" bash "$RESOLVE_SCRIPT" --repo character-ai/larch --verbal-description "last 2 PRs")
+    pr_list=$(printf '%s' "$resolve_out" | sed -n 's/^PR_LIST=//p')
+    assert_equal "$pr_list" "20,30" "[32] last 2 PRs are merge-time last two, not arbitrary list order"
+    rm -rf "$GH_STUB_DIR"
+else
+    echo "  SKIP: audit-resolve-prs.sh not executable (not found at $RESOLVE_SCRIPT)"
+fi
+
+# Test 33: audit-scan-run.sh — changelog-rebase-conflicts + category-stats partial (real script)
+echo "Test 33: audit-scan-run changelog-rebase-conflicts NDJSON"
+SCAN_SCRIPT="$SCRIPT_DIR/audit-scan-run.sh"
+if [ -x "$SCAN_SCRIPT" ]; then
+    SC_TMP=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-scan-changelog-XXXXXX")
+    printf '%s\n' 'name	type	pattern	expected_outcome	severity' > "$SC_TMP/minimal-scans.tsv"
+    printf '%s\n' 'changelog-rebase-conflicts	jsonl-field	x	y	medium' >> "$SC_TMP/minimal-scans.tsv"
+    printf '%s\n' 'relative_path	condition	batch_slug	extension' > "$SC_TMP/required-empty.tsv"
+    mkdir -p "$SC_TMP/run"
+    printf '%s\n' '{"category":"Warnings","body":"changelog rebase needed"}' > "$SC_TMP/run/execution-issues.ndjson"
+    printf '%s\n' '{"category":"Warnings","body":"CHANGELOG merge conflict"}' >> "$SC_TMP/run/execution-issues.ndjson"
+    scan_lines=$(bash "$SCAN_SCRIPT" \
+        --run-dir "$SC_TMP/run" --pr 990001 \
+        --scans-tsv "$SC_TMP/minimal-scans.tsv" \
+        --required-files-tsv "$SC_TMP/required-empty.tsv" \
+        --current-version "29.0.0")
+    changelog_cnt=$(printf '%s\n' "$scan_lines" | jq -r 'select(.scan=="changelog-rebase-conflicts") | .count // empty' | head -1)
+    partial=$(printf '%s\n' "$scan_lines" | jq -r 'select(.scan=="category-stats") | .partial_data // empty' | head -1)
+    assert_equal "$changelog_cnt" "2" "[33] changelog-rebase-conflicts counts matching bodies"
+    assert_equal "$partial" "true" "[33b] missing review-findings-full.jsonl → category-stats partial_data"
+    rm -rf "$SC_TMP"
+else
+    echo "  SKIP: audit-scan-run.sh not executable (not found at $SCAN_SCRIPT)"
+fi
+
+# Test 34: audit-compute-counters.sh — CHANGELOG_DELTA + CATEGORY_STATS_PARTIAL (real script)
+echo "Test 34: audit-compute-counters changelog + partial category-stats"
+COMP_SCRIPT="$SCRIPT_DIR/audit-compute-counters.sh"
+if [ -x "$COMP_SCRIPT" ]; then
+    COMP_TMP=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-comp-XXXXXX")
+    {
+        printf '%s\n' '{"scan":"changelog-rebase-conflicts","pr":1,"result":"pass","count":4}'
+        printf '%s\n' '{"scan":"category-stats","pr":1,"partial_data":true,"canonical":0,"oos_blank":0}'
+    } > "$COMP_TMP/scan-results-990001.ndjson"
+    comp_out=$(bash "$COMP_SCRIPT" --scan-results-dir "$COMP_TMP")
+    chg_delta=$(printf '%s' "$comp_out" | sed -n 's/^CHANGELOG_DELTA=//p')
+    part=$(printf '%s' "$comp_out" | sed -n 's/^CATEGORY_STATS_PARTIAL=//p')
+    assert_equal "$chg_delta" "4" "[34] CHANGELOG_DELTA sums scan NDJSON count"
+    assert_equal "$part" "true" "[34b] partial category-stats flagged in KV output"
+    rm -rf "$COMP_TMP"
+else
+    echo "  SKIP: audit-compute-counters.sh not executable (not found at $COMP_SCRIPT)"
+fi
+
+# Test 35: audit-scan-run.sh — unknown scan name in registry exits non-zero
+echo "Test 35: audit-scan-run unknown scan registry drift"
+SCAN_SCRIPT="${SCAN_SCRIPT:-$SCRIPT_DIR/audit-scan-run.sh}"
+if [ -x "$SCAN_SCRIPT" ]; then
+    U_TMP=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-unknown-scan-XXXXXX")
+    printf '%s\n' 'name	type	pattern	expected_outcome	severity' > "$U_TMP/bad-scans.tsv"
+    printf '%s\n' 'not-a-registered-scan-name	jsonl-field	x	x	low' >> "$U_TMP/bad-scans.tsv"
+    printf '%s\n' 'relative_path	condition	batch_slug	extension' > "$U_TMP/required-empty.tsv"
+    mkdir -p "$U_TMP/run"
+    printf '%s\n' '{}' > "$U_TMP/run/execution-issues.ndjson"
+    set +e
+    bash "$SCAN_SCRIPT" \
+        --run-dir "$U_TMP/run" --pr 990002 \
+        --scans-tsv "$U_TMP/bad-scans.tsv" \
+        --required-files-tsv "$U_TMP/required-empty.tsv" \
+        --current-version "29.0.0" >/dev/null 2>&1
+    unknown_rc=$?
+    set -e
+    assert_equal "$unknown_rc" "1" "[35] unknown scan name → exit 1"
+    rm -rf "$U_TMP"
 fi
 
 # ---------------------------------------------------------------------------

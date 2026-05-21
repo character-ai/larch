@@ -7,7 +7,11 @@ Closes prior open `audit-report` issues after a new report is filed.
 ```
 CLOSED_NUMBER=<N>         (one line per successfully closed issue)
 CLOSE_FAILED=<N>  REASON=<msg>   (on failure)
+ISSUE_LIST_FAILED=true
+REASON=gh issue list failed
 ```
+
+`ISSUE_LIST_FAILED` / `REASON` print to stdout (same stream as `CLOSED_NUMBER=`) when `gh issue list` fails, then the script exits non-zero.
 
 ## Behavior
 
