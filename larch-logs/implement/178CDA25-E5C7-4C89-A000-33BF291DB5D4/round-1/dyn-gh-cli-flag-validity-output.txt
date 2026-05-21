@@ -1,0 +1,15 @@
+Gathering the branch diff and commit list, then verifying `gh repo view` flag behavior against documentation.
+
+Verifying `gh repo view` flag behavior with read-only `gh` help output.
+
+Checking how `REPO` is set in `audit-preflight.sh` and whether `gh repo view` accepts the same form as `gh issue list --repo`.
+
+Verifying `jq` `@json` behavior for the Test 49 strings (read-only):
+
+### In-Scope Findings
+
+- **correctness** `.claude/skills/audit-runs/scripts/test-audit-runs.sh:1469-1485` — Test 49 re-implements `jstr()` inline (`jstr_test49`) instead of exercising the function in [`audit-scan-run.sh`](.claude/skills/audit-runs/scripts/audit-scan-run.sh) (lines 64–73), so the regression test can stay green if someone edits production `jstr()` and forgets to update the copy, which weakens the guarantee the feature text describes (“asserting identity” for the real helper). **Suggested fix:** keep the jq/`@json`/slice/sed fallback logic in one place (for example a tiny `source`d helper used by both the scanner and the test) or add an explicit lockstep comment plus a cheap check that hashes or `diff`s the two bodies in CI; at minimum, document in the test that it must mirror `jstr()` exactly and treat any `jstr` edit as requiring a matching test edit.
+
+### Out-of-Scope Observations
+
+NO_ISSUES_FOUND

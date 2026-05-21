@@ -1,0 +1,6 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: EXONERATE -- legitimate stub limitation, but explicit argv parsing adds complexity beyond the current regression coverage need.
+FINDING_4: EXONERATE -- committed run logs are intentional per docs/run-logs.md and not issue-worthy here.
+FINDING_5: NO -- hypothetical future CLI shape is not a current defect in the stub for the emitted command.
+FINDING_6: EXONERATE -- pre-existing fallback hardening may be legitimate, but it is not introduced by this delta or worth a tracking issue here.
