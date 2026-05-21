@@ -24,29 +24,38 @@ count_filed_urls_union_files() {
 
 count_rejected_oos_markers_from_ndjson() {
   local ndjson="$1"
-  local sum=0 line b tail n
+  local line b tail tag
+  declare -A seen_oos=()
   [ ! -f "$ndjson" ] || [ ! -s "$ndjson" ] && {
     printf '0'
-    return
+    return 0
   }
   while IFS= read -r line || [ -n "${line:-}" ]; do
     [ -z "$line" ] && continue
-    b=$(printf '%s' "$line" | jq -r '.body // empty' 2>/dev/null) || continue
+    if ! b=$(printf '%s' "$line" | jq -r '.body // empty'); then
+      printf '%s\n' 'oos-disposition-shared: jq failed parsing oos-issues.ndjson line' >&2
+      return 2
+    fi
     case "$b" in
       *'Rejected / Out-of-Scope'* | *'## Rejected'*) ;;
       *) continue ;;
     esac
     tail=$(printf '%s\n' "$b" | awk '
       BEGIN { inj = 0 }
-      /^##[[:space:]]*Rejected/ { inj = 1; next }
-      inj == 1 && /^##[[:space:]]+/ && !/^##[[:space:]]*Rejected/ { exit }
+      function rej_heading(l,    t) {
+        t = tolower(l)
+        return (t ~ /^##[[:space:]]*rejected/ || t ~ /rejected[[:space:]]*\/[[:space:]]*out-of-scope/)
+      }
+      rej_heading($0) { inj = 1; next }
+      inj == 1 && /^##[[:space:]]+/ && !rej_heading($0) { exit }
       inj == 1 { print }
     ')
-    n=0
     if [ -n "$tail" ]; then
-      n=$(printf '%s\n' "$tail" | grep -cE '^###[[:space:]]+OOS_|^[[:space:]]*-[[:space:]]*\*\*OOS_[0-9]' 2>/dev/null || true)
+      while IFS= read -r tag || [ -n "${tag:-}" ]; do
+        [ -z "$tag" ] && continue
+        seen_oos["${tag#OOS_}"]=1
+      done < <(printf '%s\n' "$tail" | grep -ohE 'OOS_[0-9]+' | sort -u)
     fi
-    sum=$((sum + n))
   done <"$ndjson"
-  printf '%s' "$sum"
+  printf '%s' "${#seen_oos[@]}"
 }

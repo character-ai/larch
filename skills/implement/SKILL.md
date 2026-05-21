@@ -1785,11 +1785,25 @@ if [ -n "$_repo_root" ] && git -C "$_repo_root" rev-parse -q --verify origin/mai
   fi
 fi
 _RUN_ID=$(tr -d '\r\n' < "$IMPLEMENT_TMPDIR/session-id" 2>/dev/null || true)
+_oos_ndjson=""
+if [ -n "$_RUN_ID" ]; then
+  _oos_ndjson="$IMPLEMENT_TMPDIR/larch-logs/implement/$_RUN_ID/oos-issues.ndjson"
+fi
+if [ -z "$_oos_ndjson" ] || [ ! -f "$_oos_ndjson" ]; then
+  _oos_list=$(find "$IMPLEMENT_TMPDIR/larch-logs/implement" -mindepth 2 -maxdepth 2 -name oos-issues.ndjson -type f 2>/dev/null | LC_ALL=C sort || true)
+  _oos_n=$(printf '%s\n' "$_oos_list" | sed '/^$/d' | wc -l | tr -d '[:space:]')
+  if [ "${_oos_n:-0}" -eq 1 ]; then
+    _oos_ndjson=$(printf '%s\n' "$_oos_list" | sed '/^$/d' | head -n 1)
+  elif [ "${_oos_n:-0}" -gt 1 ] && [ -z "$_RUN_ID" ]; then
+    printf '%s\n' 'implement: ambiguous oos-issues.ndjson without session-id; cannot pass --oos-issues-ndjson' >&2
+    exit 2
+  fi
+fi
 _gate_extra=()
 [ "${_forked:-false}" = "true" ] && _gate_extra+=(--fork-mode)
 [ "${_repo_unavail:-false}" = "true" ] && _gate_extra+=(--repo-unavailable)
-if [ -n "$_RUN_ID" ]; then
-  _gate_extra+=(--oos-issues-ndjson "$IMPLEMENT_TMPDIR/larch-logs/implement/$_RUN_ID/oos-issues.ndjson")
+if [ -n "$_oos_ndjson" ] && [ -f "$_oos_ndjson" ]; then
+  _gate_extra+=(--oos-issues-ndjson "$_oos_ndjson")
 fi
 _oos_gate_log="$IMPLEMENT_TMPDIR/oos-disposition-gate.stderr.log"
 set +e

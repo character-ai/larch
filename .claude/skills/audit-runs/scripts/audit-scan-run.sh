@@ -82,11 +82,23 @@ fi
 # ---- Helpers ----
 emit() { printf '%s\n' "$1"; }
 
-# Inline-triage evidence aligned with oos-disposition-gate.sh: prefer the same
-# git revision walk when a work tree is available; otherwise fall back to a
-# narrow allowlist of commit-bearing artifacts under the run directory.
+# Inline-triage evidence aligned with oos-disposition-gate.sh: when run-log
+# commit-bearing artifacts exist under the run directory, count only those
+# hits (copied RUN_DIR audits must not use the live workspace git range).
+# Otherwise use the same git revision walk as the disposition gate.
 _audit_oos_inline_triage_hits() {
-    local run_dir="$1" repo range c
+    local run_dir="$1" repo range c artifact_any=false
+    c=0
+    local f
+    for f in "$run_dir/codex-commit-message.txt" "$run_dir/session-transcript.jsonl"; do
+        [ -f "$f" ] || continue
+        artifact_any=true
+        c=$((c + $(grep -cF 'Inline-triage rule' "$f" 2>/dev/null || true)))
+    done
+    if [ "$artifact_any" = true ]; then
+        printf '%s' "${c:-0}"
+        return
+    fi
     repo=$(git rev-parse --show-toplevel 2>/dev/null || true)
     if [ -n "$repo" ]; then
         range="HEAD"
@@ -105,12 +117,6 @@ _audit_oos_inline_triage_hits() {
             return
         fi
     fi
-    c=0
-    local f
-    for f in "$run_dir/codex-commit-message.txt" "$run_dir/session-transcript.jsonl"; do
-        [ -f "$f" ] || continue
-        c=$((c + $(grep -cF 'Inline-triage rule' "$f" 2>/dev/null || true)))
-    done
     printf '%s' "${c:-0}"
 }
 
@@ -483,16 +489,16 @@ scan_oos_silent_drop() {
     local f c acc_total filed_count inline_count oos_json rejected_count
     oos_json="$RUN_DIR/oos-issues.ndjson"
     acc_total=0
-    while IFS= read -r f; do
-        [ -n "$f" ] || continue
+    for f in \
+        "$RUN_DIR/oos-accepted-main-agent.md" \
+        "$RUN_DIR/oos-accepted-design.md" \
+        "$RUN_DIR/oos-accepted-review.md"; do
         [ -f "$f" ] || continue
         c=$(awk -f "$_OOS_BLK_AWK" "$f" 2>/dev/null || printf '0')
         acc_total=$((acc_total + c))
-    done <<EOF
-$(find "$RUN_DIR" -name 'oos-accepted*.md' -type f 2>/dev/null | LC_ALL=C sort)
-EOF
+    done
     if [ "$acc_total" -eq 0 ]; then
-        emit "{\"scan\":\"oos-silent-drop\",\"pr\":$PR_NUM,\"result\":\"skip\",\"detail\":\"no non-security OOS blocks in oos-accepted*.md\"}"
+        emit "{\"scan\":\"oos-silent-drop\",\"pr\":$PR_NUM,\"result\":\"skip\",\"detail\":\"no non-security OOS blocks in canonical oos-accepted-*.md\"}"
         return
     fi
     filed_count=0

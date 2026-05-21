@@ -122,6 +122,24 @@ rc=$?
 set -e
 assert_rc "security-only accepted block passes without URLs" 0 "$rc"
 
+# --- Case: security-hardening focus-area is security-routed (case / compound token) ---
+cat >"$TMP/sec-hard.md" <<'EOF'
+### OOS_1: Hardening item
+- **focus-area**: Security-Hardening
+- **Phase**: implement
+EOF
+set +e
+(
+  cd "$GIT_TMP"
+  bash "$GATE" \
+    --accepted-files "$TMP/sec-hard.md" \
+    --filed-urls-file "$TMP/empty-urls.md" \
+    --commit-range HEAD >/dev/null 2>&1
+)
+rc=$?
+set -e
+assert_rc "security-hardening focus-area passes without URLs" 0 "$rc"
+
 # --- Case: non-security OOS + no URLs + no inline fails (isolated repo) ---
 cat >"$TMP/bad.md" <<'EOF'
 ### OOS_1: Orphan
@@ -200,6 +218,27 @@ set +e
 rc=$?
 set -e
 assert_rc "rejected OOS markers in ndjson satisfy gate without URLs" 0 "$rc"
+
+# --- Case: filed URLs only in NDJSON (union with empty oos-issues-created) ---
+cat >"$TMP/ndjson-url-acc.md" <<'EOF'
+### OOS_1: Tracked elsewhere
+- **Phase**: implement
+EOF
+cat >"$TMP/ndjson-url-only.ndjson" <<'EOF'
+{"phase":"code-review","step":"9a.1","category":"OOS","body":"Filed https://github.com/example/larch/issues/77 from batch.\n"}
+EOF
+set +e
+(
+  cd "$ORPHAN_TMP"
+  bash "$GATE" \
+    --accepted-files "$TMP/ndjson-url-acc.md" \
+    --filed-urls-file "$TMP/empty-urls.md" \
+    --oos-issues-ndjson "$TMP/ndjson-url-only.ndjson" \
+    --commit-range HEAD >/dev/null 2>&1
+)
+rc=$?
+set -e
+assert_rc "filed issue URL only in oos-issues ndjson passes via union" 0 "$rc"
 
 # --- Case: two OOS blocks + two inline lines on commit range ---
 cat >"$TMP/two.md" <<'EOF'
