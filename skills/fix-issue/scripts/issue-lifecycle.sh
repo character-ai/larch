@@ -5,31 +5,21 @@
 #
 # Usage:
 #   issue-lifecycle.sh comment --issue NUMBER --body TEXT [--lock]
-#   issue-lifecycle.sh comment --issue NUMBER --body TEXT --lock-no-go
 #   issue-lifecycle.sh close   --issue NUMBER [--comment TEXT] [--pr-url URL] [--close-class CLASS] [--mark-false-positive-if-keyword]
 #   issue-lifecycle.sh update-body --issue NUMBER --pr-url URL
 #
 # Subcommands:
 #   comment    — Post a comment on an issue.
-#                With --lock: verify last comment is "GO", DELETE that GO
-#                comment, then post the new comment (typically "IN PROGRESS").
-#                Re-reads afterward to detect concurrent duplicate locks via
-#                "IN PROGRESS" comments created after the deleted GO timestamp.
-#                Called by `find-lock-issue.sh` at /fix-issue Step 0 for
-#                the existing GO-tail leaf-issue path.
-#                With --lock-no-go: lock without requiring a GO comment in
-#                the tail. Used for umbrella-dispatched children (which
-#                inherit approval from the umbrella's own existence as the
-#                approval signal — no per-child GO required). Refuses if the
-#                tail is already "IN PROGRESS"; snapshots the last comment's
-#                created_at as the duplicate-detection anchor (or the issue's
-#                own createdAt when the issue has zero comments — a no-comment
-#                safe fallback, FINDING_4 from the umbrella-PR plan review);
-#                posts "IN PROGRESS"; post-checks for OTHER "IN PROGRESS"
-#                comments (excluding the runner's own just-posted comment by
-#                id) created at >= snapshot_ts. The two flags are mutually
-#                exclusive. Called by `find-lock-issue.sh` for the umbrella
-#                child-dispatch path.
+#                With --lock: lock without requiring or deleting any prior
+#                comment. Refuses if the tail is already "IN PROGRESS";
+#                snapshots the last comment's created_at as the duplicate-
+#                detection anchor (or the issue's own createdAt when the
+#                issue has zero comments — a no-comment safe fallback,
+#                FINDING_4 from the umbrella-PR plan review); posts
+#                "IN PROGRESS"; post-checks for OTHER "IN PROGRESS" comments
+#                (excluding the runner's own just-posted comment by id)
+#                created at >= snapshot_ts. Called by `find-lock-issue.sh`
+#                at /fix-issue Step 0.
 #   close      — Close an issue. Optionally post a comment first.
 #                With --pr-url: update the issue body with the PR link before closing.
 #                With --close-class CLASS (one of false-positive|duplicate|
@@ -90,86 +80,37 @@ GH_ISSUE_REPO_ARGS=(--repo "$REPO")
 # Subcommand: comment
 # ---------------------------------------------------------------------------
 cmd_comment() {
-    local issue="" body="" lock=false lock_no_go=false
+    local issue="" body="" lock=false
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --issue) issue="${2:?--issue requires a value}"; shift 2 ;;
             --body) body="${2:?--body requires a value}"; shift 2 ;;
             --lock) lock=true; shift ;;
-            --lock-no-go) lock_no_go=true; shift ;;
             *) larch_err "Unknown option for comment: $1"; exit 2 ;;
         esac
     done
 
     if [[ -z "$issue" ]] || [[ -z "$body" ]]; then
-        larch_err "Usage: issue-lifecycle.sh comment --issue N --body TEXT [--lock | --lock-no-go]"
+        larch_err "Usage: issue-lifecycle.sh comment --issue N --body TEXT [--lock]"
         exit 2
     fi
 
-    if [ "$lock" = true ] && [ "$lock_no_go" = true ]; then
-        emit_kv LOCK_ACQUIRED false
-        emit_kv ERROR "--lock and --lock-no-go are mutually exclusive"
-        exit 1
-    fi
-
-    local go_ts=""
     local snapshot_ts=""
     local just_posted_id=""
 
-    # --lock: verify last comment is "GO", capture its id + timestamp, then
-    # delete it so the GO sentinel does not remain on the issue after locking.
+    # --lock: lock without requiring or deleting any prior comment. Refuse if
+    # the tail is already "IN PROGRESS". Snapshot the duplicate-detection
+    # anchor BEFORE posting: prefer the last comment's created_at; fall back
+    # to the issue's own createdAt when the issue has zero comments (FINDING_4
+    # — a no-comment-safe anchor for fresh /umbrella batch-created children).
+    # The runner's own just-posted comment id is captured after posting so the
+    # post-check can exclude it via id mismatch.
     if [ "$lock" = true ]; then
         local comments_json
         comments_json=$(gh api --paginate --slurp "repos/${REPO}/issues/${issue}/comments" 2>/dev/null | jq 'add // []') || {
             emit_kv LOCK_ACQUIRED false
-            emit_kv ERROR "Failed to read comments for lock verification"
-            exit 1
-        }
-
-        local last_body last_id
-        last_body=$(echo "$comments_json" | jq -r '.[-1].body // empty')
-        last_id=$(echo "$comments_json" | jq -r '.[-1].id // empty')
-        go_ts=$(echo "$comments_json" | jq -r '.[-1].created_at // empty')
-
-        local trimmed
-        trimmed=$(echo "$last_body" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-
-        if [ "$trimmed" != "GO" ]; then
-            emit_kv LOCK_ACQUIRED false
-            emit_kv ERROR "Last comment is no longer GO (found: ${trimmed:-empty})"
-            exit 1
-        fi
-
-        if [[ -z "$last_id" ]] || [[ -z "$go_ts" ]]; then
-            emit_kv LOCK_ACQUIRED false
-            emit_kv ERROR "Failed to extract GO comment id/timestamp for deletion"
-            exit 1
-        fi
-
-        # Delete the GO comment. The post-check below uses $go_ts (captured
-        # above) as the duplicate-detection sentinel in place of a surviving
-        # GO anchor.
-        gh api -X DELETE "repos/${REPO}/issues/comments/${last_id}" >/dev/null 2>&1 || {
-            emit_kv LOCK_ACQUIRED false
-            emit_kv ERROR "Failed to delete GO comment on issue #$issue"
-            exit 1
-        }
-    fi
-
-    # --lock-no-go: lock without requiring or deleting a GO comment. Refuse
-    # if the tail is already "IN PROGRESS" (would conflict with a concurrent
-    # /fix-issue runner already holding the lock). Snapshot the duplicate-
-    # detection anchor BEFORE posting: prefer the last comment's created_at;
-    # fall back to the issue's own createdAt when the issue has zero comments
-    # (FINDING_4 — a no-comment-safe anchor for fresh /umbrella batch-created
-    # children). The runner's own just-posted comment id is captured after
-    # posting so the post-check can exclude it via id mismatch.
-    if [ "$lock_no_go" = true ]; then
-        local comments_json
-        comments_json=$(gh api --paginate --slurp "repos/${REPO}/issues/${issue}/comments" 2>/dev/null | jq 'add // []') || {
-            emit_kv LOCK_ACQUIRED false
-            emit_kv ERROR "Failed to read comments for lock-no-go pre-check"
+            emit_kv ERROR "Failed to read comments for lock pre-check"
             exit 1
         }
 
@@ -211,92 +152,53 @@ cmd_comment() {
         exit 1
     }
 
-    # Capture the just-posted comment's id for --lock-no-go post-check
-    # (FINDING_4: explicit id exclusion makes the >= snapshot_ts comparator
-    # safe even when same-second timestamps tie). `gh issue comment` does NOT
-    # print the comment id, so we re-fetch the most recent comment whose body
-    # matches the posted body — its id is the runner's own. If multiple
-    # matches exist (a duplicate race), this pick matches the most recent
-    # one; the post-check below will still detect duplicates because both
-    # IN PROGRESS comments will have created_at >= snapshot_ts and only ONE
-    # will be excluded by id, leaving the other to trigger the >0 race count.
-    if [ "$lock_no_go" = true ]; then
+    # Capture the just-posted comment's id for --lock post-check (FINDING_4:
+    # explicit id exclusion makes the >= snapshot_ts comparator safe even when
+    # same-second timestamps tie). `gh issue comment` does NOT print the
+    # comment id, so we re-fetch the most recent comment whose body matches
+    # the posted body — its id is the runner's own. If multiple matches exist
+    # (a duplicate race), this pick matches the most recent one; the post-check
+    # below will still detect duplicates because both IN PROGRESS comments will
+    # have created_at >= snapshot_ts and only ONE will be excluded by id,
+    # leaving the other to trigger the >0 race count.
+    if [ "$lock" = true ]; then
         # Brief pause to let GitHub propagate
         sleep "$ISSUE_LIFECYCLE_LOCK_SETTLE_SECONDS"
         local refresh_json
         refresh_json=$(gh api --paginate --slurp "repos/${REPO}/issues/${issue}/comments" 2>/dev/null | jq 'add // []') || {
             emit_kv LOCK_ACQUIRED false
-            emit_kv ERROR "Failed to refresh comments for lock-no-go id capture"
+            emit_kv ERROR "Failed to refresh comments for lock id capture"
             exit 1
         }
         just_posted_id=$(echo "$refresh_json" | jq --arg b "$body" --arg ts "$snapshot_ts" '
             [.[] | select(.body == $b and .created_at >= $ts)] | sort_by(.created_at) | (.[-1].id // empty)' \
             | tr -d '"')
-        # Fail closed if id capture returned empty: the post-check below
-        # excludes the runner's own comment via `(.id | tostring) != $self`,
-        # and an empty $self would never match, so the runner's own IN PROGRESS
-        # would be counted in race_count and produce a spurious duplicate-
-        # detection failure. An empty id here is unrecoverable — the post-
-        # check's exclusion semantics are not defensible — so surface the
-        # condition explicitly rather than letting the lock surface a mis-
-        # diagnosed "Duplicate IN PROGRESS" error a few lines down.
+        # Fail closed if id capture returned empty: an empty $self would never
+        # match, so the runner's own IN PROGRESS would be counted in race_count
+        # and produce a spurious duplicate-detection failure.
         if [[ -z "$just_posted_id" ]]; then
             emit_kv LOCK_ACQUIRED false
-            emit_kv ERROR "Failed to identify just-posted IN PROGRESS comment id for lock-no-go duplicate check"
-            exit 1
-        fi
-    fi
-
-    # --lock post-check: verify no duplicate lock comment
-    if [ "$lock" = true ]; then
-        # Brief pause to let GitHub propagate
-        sleep "$ISSUE_LIFECYCLE_LOCK_SETTLE_SECONDS"
-
-        local comments_json
-        comments_json=$(gh api --paginate --slurp "repos/${REPO}/issues/${issue}/comments" 2>/dev/null | jq 'add // []') || {
-            emit_kv LOCK_ACQUIRED false
-            emit_kv ERROR "Failed to re-read comments for duplicate check"
-            exit 1
-        }
-
-        # Count IN PROGRESS comments created strictly after the deleted GO's
-        # timestamp. Two concurrent runners that both raced the pre-check will
-        # see count > 1 here.
-        local lock_count
-        lock_count=$(echo "$comments_json" | jq --arg ts "$go_ts" '
-            [.[] | select(.body == "IN PROGRESS" and .created_at > $ts)] | length')
-
-        if [ "$lock_count" -gt 1 ]; then
-            emit_kv LOCK_ACQUIRED false
-            emit_kv ERROR "Duplicate IN PROGRESS detected ($lock_count found) — concurrent lock race"
+            emit_kv ERROR "Failed to identify just-posted IN PROGRESS comment id for lock duplicate check"
             exit 1
         fi
 
-        emit_kv LOCK_ACQUIRED true
-    fi
-
-    # --lock-no-go post-check: count OTHER IN PROGRESS comments with
-    # created_at >= snapshot_ts (excluding the runner's own just-posted id).
-    # `>0` means another runner won the race. The comparator is `>=`
-    # (inclusive) — distinct from `--lock`'s strict `>` because the snapshot
-    # anchor itself remains in the comment stream (whereas --lock deletes the
-    # GO comment, making strict `>` correct there). The runner's own comment
-    # is excluded by id, so >= can never count this runner's own post.
-    if [ "$lock_no_go" = true ]; then
-        local refresh_json
-        refresh_json=$(gh api --paginate --slurp "repos/${REPO}/issues/${issue}/comments" 2>/dev/null | jq 'add // []') || {
+        # --lock post-check: count OTHER IN PROGRESS comments with
+        # created_at >= snapshot_ts (excluding the runner's own just-posted id).
+        # `>0` means another runner won the race.
+        local refresh_json2
+        refresh_json2=$(gh api --paginate --slurp "repos/${REPO}/issues/${issue}/comments" 2>/dev/null | jq 'add // []') || {
             emit_kv LOCK_ACQUIRED false
-            emit_kv ERROR "Failed to re-read comments for lock-no-go duplicate check"
+            emit_kv ERROR "Failed to re-read comments for lock duplicate check"
             exit 1
         }
 
         local race_count
-        race_count=$(echo "$refresh_json" | jq --arg ts "$snapshot_ts" --arg self "$just_posted_id" '
+        race_count=$(echo "$refresh_json2" | jq --arg ts "$snapshot_ts" --arg self "$just_posted_id" '
             [.[] | select(.body == "IN PROGRESS" and .created_at >= $ts and ((.id | tostring) != $self))] | length')
 
         if [ "$race_count" -gt 0 ]; then
             emit_kv LOCK_ACQUIRED false
-            emit_kv ERROR "Duplicate IN PROGRESS detected ($race_count concurrent) — lock-no-go race"
+            emit_kv ERROR "Duplicate IN PROGRESS detected ($race_count concurrent) — lock race"
             exit 1
         fi
 
