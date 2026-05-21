@@ -4,7 +4,6 @@
 1. `--coder claude` emits `STATUS=claude_fallback` and `ORCHESTRATOR_EDIT_AUTHORITY=allowed` (and no other KV keys — no `MANIFEST=`, no `TRANSCRIPT=`, etc.), and writes no baseline files.
 1b. Default coder (no flag) is cursor — verified via non-git cwd with no `--cursor-present`: dispatcher exits 0 with `STATUS=claude_fallback` (cursor presence check fires before git-tree lookup; codex default would exit 2 instead).
 1c. Legacy `--codex-available false` still emits `STATUS=claude_fallback` and prints a deprecation warning to stderr.
-2. Missing required flag (`--auto-mode`) exits with code 2.
 3b. `--coder cursor --cursor-present false` emits `STATUS=claude_fallback` with no baseline-file leak (cursor unavailable → claude fallback).
 3b2. `--coder cursor` with no `--cursor-present` defaults to false and falls back to `STATUS=claude_fallback`.
 3b3. `--coder cursor --cursor-present ""` treats empty as false and falls back to `STATUS=claude_fallback`.

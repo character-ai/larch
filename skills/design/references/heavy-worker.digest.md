@@ -10,7 +10,7 @@
 
 ## Inputs
 
-Pass explicitly to the subagent: `DESIGN_TMPDIR`, `IMPLEMENT_TMPDIR`, `SESSION_ENV_PATH`, `FEATURE_DESCRIPTION`, `quick_mode`, `auto_mode`, current branch info, reviewer presence flags (`codex_available`, `cursor_available`, `CODEX_PRESENT`, `CURSOR_PRESENT`).
+Pass explicitly to the subagent: `DESIGN_TMPDIR`, `IMPLEMENT_TMPDIR`, `SESSION_ENV_PATH`, `FEATURE_DESCRIPTION`, `quick_mode`, current branch info, reviewer presence flags (`codex_available`, `cursor_available`, `CODEX_PRESENT`, `CURSOR_PRESENT`).
 
 ## Artifact Contract
 
@@ -18,14 +18,14 @@ Subagent writes under `$DESIGN_TMPDIR/`:
 
 - **Required non-empty**: `approach-synthesis.txt`, `plan.txt`, `diff-lines.txt`, `voting-tally.md`
 - **Required, may be empty**: `contested-decisions.md`, `oos.md`, `rejected-findings.md`, `accepted-plan-findings.md`
-- **Conditional**: `dialectic-resolutions.md` (empty file when dialectic skipped), `architecture-diagram.md` (`auto_mode=true` only), `dirty-tree-detected.env` (on dirty-tree at any collection boundary)
+- **Conditional**: `dialectic-resolutions.md` (empty file when dialectic skipped), `dirty-tree-detected.env` (on dirty-tree at any collection boundary)
 
 **Return sentinel** (only content in the Agent-tool return text): `DESIGN_HEAVY=complete` on success; `DESIGN_HEAVY=failed REASON=<token>` on failure. No plan/prose in return text — artifacts stay in files.
 
 ## Key Invariants
 
 - **SendMessage dependency**: without `SendMessage`, any subagent yield becomes a fatal stall — pass `--inline` to avoid subagent dispatch.
-- **Dirty-tree recovery**: on `DESIGN_HEAVY=failed REASON=dirty-tree`, read `$DESIGN_TMPDIR/dirty-tree-detected.env` (`STATUS`, `STAGE`, `RECOVERY_REQUIRED=true`) and prompt for recovery — not suppressed by `--auto`.
+- **Dirty-tree recovery**: on `DESIGN_HEAVY=failed REASON=dirty-tree`, read `$DESIGN_TMPDIR/dirty-tree-detected.env` (`STATUS`, `STAGE`, `RECOVERY_REQUIRED=true`) and prompt for recovery.
 
 ## Mid-Run Dirty-Tree Probe Contract
 

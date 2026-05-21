@@ -72,7 +72,6 @@ larch_quiet_init
 TMPDIR_ARG=""
 PLAN_FILE=""
 FEATURE_FILE=""
-AUTO_MODE=""
 CODER=""
 CODEX_AVAILABLE=""
 CURSOR_PRESENT_ARG=""
@@ -84,7 +83,6 @@ while [[ $# -gt 0 ]]; do
         --tmpdir)            TMPDIR_ARG="${2:?--tmpdir requires a value}"; shift 2 ;;
         --plan-file)         PLAN_FILE="${2:?--plan-file requires a value}"; shift 2 ;;
         --feature-file)      FEATURE_FILE="${2:?--feature-file requires a value}"; shift 2 ;;
-        --auto-mode)         AUTO_MODE="${2:?--auto-mode requires a value}"; shift 2 ;;
         --coder)             CODER="${2:?--coder requires a value}"; shift 2 ;;
         --codex-available)   CODEX_AVAILABLE="${2:?--codex-available requires a value}"; shift 2 ;;
         --cursor-present)    CURSOR_PRESENT_ARG="${2-}"; shift 2 ;;
@@ -134,7 +132,7 @@ if ! larch_is_implementer_coder "$CODER"; then
     exit 2
 fi
 
-for var in TMPDIR_ARG PLAN_FILE FEATURE_FILE AUTO_MODE; do
+for var in TMPDIR_ARG PLAN_FILE FEATURE_FILE; do
     if [[ -z "${!var}" ]]; then
         flag_lc=$(printf '%s' "$var" | tr '[:upper:]' '[:lower:]' | tr '_' '-')
         larch_err "step2-implement.sh: --$flag_lc is required"
@@ -156,10 +154,6 @@ if [[ -s "$TMPDIR_ARG/claude-source.env" ]]; then
 fi
 [[ -f "$PLAN_FILE" ]]  || { larch_err "step2-implement.sh: --plan-file not found: $PLAN_FILE"; exit 2; }
 [[ -f "$FEATURE_FILE" ]] || { larch_err "step2-implement.sh: --feature-file not found: $FEATURE_FILE"; exit 2; }
-case "$AUTO_MODE" in
-    true|false) ;;
-    *) larch_err "step2-implement.sh: --auto-mode must be 'true' or 'false', got: $AUTO_MODE"; exit 2 ;;
-esac
 
 WORKFLOW_PATH="${WORKFLOW_PATH:-SIMPLE}"
 case "$WORKFLOW_PATH" in

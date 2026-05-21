@@ -12,7 +12,7 @@ generate-alias.sh --name <alias-name> --target <target-skill> --flags "<preset-f
 |------|-----------|---------|
 | `--name <alias-name>` | yes | The slash-command name of the new alias (e.g., `i`, `f`). Lowercase + hyphens; matches `^[a-z][a-z0-9-]*$` (validated at the SKILL.md call site, not here). |
 | `--target <target-skill>` | yes | The skill the alias forwards to (e.g., `implement`, `fix-issue`). No leading slash. |
-| `--flags "<preset-flags>"` | no | Preset flags to forward to the target. Empty string is valid (pure rename shortcut). May contain multiple flags separated by spaces (e.g., `"--merge --auto"`). The string is YAML-escaped and inlined into the rendered description. |
+| `--flags "<preset-flags>"` | no | Preset flags to forward to the target. Empty string is valid (pure rename shortcut). May contain multiple flags separated by spaces (e.g., `"--merge --quick"`). The string is YAML-escaped and inlined into the rendered description. |
 | `--version <version>` | no | Plugin semver string for the footer (e.g., `2.1.4`). Omit or pass empty when `jq` cannot read `plugin.json` — the footer simply omits the `vX.Y.Z` suffix. |
 
 ## Output

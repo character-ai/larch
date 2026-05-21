@@ -19,6 +19,13 @@ fail() {
 [[ -f "$SKILL_MD" ]] || fail "skills/implement/SKILL.md missing"
 [[ -d "$REFS_DIR" ]] || fail "skills/implement/references missing"
 
+# Issue #2497: /implement docs must not reintroduce removed --auto / --auto-mode flag surfaces.
+if grep -Eq '(^|[[:space:]])--auto([^A-Za-z0-9_-]|$)' "$SKILL_MD"; then
+  fail "SKILL.md must not document standalone --auto flag token (issue #2497 structural pin)"
+fi
+grep -Fq -- '--auto-mode' "$SKILL_MD" \
+  && fail "SKILL.md must not document --auto-mode flag (issue #2497 structural pin)"
+
 for heading in "## Load-Bearing Invariants" "## NEVER List" "## Rebase Checkpoint Macro"; do
   count="$(grep -c "^$heading$" "$SKILL_MD" || true)"
   [[ "$count" == "1" ]] || fail "expected exactly one $heading heading, found $count"

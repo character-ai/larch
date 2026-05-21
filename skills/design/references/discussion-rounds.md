@@ -2,15 +2,15 @@
 
 **Consumer**: `/design` Steps 1c, 1d, and 3.5.
 
-**Contract**: owns the three discussion-round bodies (Step 1c clarifying questions, Step 1d round 1, Step 3.5 round 2) with their decision-tree walks, question caps, output schemas (`$DESIGN_TMPDIR/discussion-round1.md`, `$DESIGN_TMPDIR/discussion-round2.md`), and the terse-answer rule. SKILL.md retains the `auto_mode` gate + skip breadcrumbs inline; this file owns body content only.
+**Contract**: owns the three discussion-round bodies (Step 1c clarifying questions, Step 1d round 1, Step 3.5 round 2) with their decision-tree walks, question caps, output schemas (`$DESIGN_TMPDIR/discussion-round1.md`, `$DESIGN_TMPDIR/discussion-round2.md`), and the terse-answer rule.
 
-**When to load**: once the calling step in SKILL.md has passed its `auto_mode=false` gate. Do NOT load when `auto_mode=true` at Steps 1c/1d/3.5.
+**When to load**: before executing Steps 1c, 1d, or 3.5.
 
-**Binding convention**: single normative source for discussion-round behavior (decision-tree walk, question caps, output schemas, terse-answer rule). Each consumer step in SKILL.md performs its own `auto_mode=false` gate before dispatching here; this file assumes the caller has already passed that gate. The `auto_mode=true` skip breadcrumb remains inline in SKILL.md so it is emitted without loading this file.
+**Binding convention**: single normative source for discussion-round behavior (decision-tree walk, question caps, output schemas, terse-answer rule).
 
 ---
 
-<!-- step:1c — Clarifying Questions (auto_mode=false body) -->
+<!-- step:1c — Clarifying Questions -->
 
 Before launching the expensive collaborative sketch phase, use `AskUserQuestion` to clarify any ambiguities in the feature description. This is the highest-value question point — answers here reshape what the sketch agents explore.
 
@@ -28,7 +28,7 @@ After the user responds, incorporate their answers into your understanding of th
 
 ---
 
-<!-- step:1d — Design Discussion Round 1 (auto_mode=false body) -->
+<!-- step:1d — Design Discussion Round 1 -->
 
 Before launching the expensive collaborative sketch phase, stress-test the feature's scope and requirements by walking through the decision tree one question at a time. This is a deeper, sequential interrogation that resolves dependencies between decisions — each answer may reshape subsequent questions.
 
@@ -73,7 +73,7 @@ Record `<N>` decisions resolved.
 
 ---
 
-<!-- step:3.5 — Design Discussion Round 2 (auto_mode=false body) -->
+<!-- step:3.5 — Design Discussion Round 2 -->
 
 After the plan has been reviewed and revised, stress-test the remaining design decisions that were either (a) not covered in Round 1, or (b) deemed suboptimal by reviewers, or (c) introduced by the plan itself (decisions that didn't exist at the feature-description stage).
 

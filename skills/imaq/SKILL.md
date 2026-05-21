@@ -1,6 +1,6 @@
 ---
 name: imaq
-description: "Use when implementing a feature quickly and autonomously with auto-merge. Shortcut for /implement --merge --auto --quick."
+description: "Use when implementing a feature quickly with auto-merge. Shortcut for /implement --merge --quick."
 argument-hint: "<arguments>"
 allowed-tools: Skill
 ---
@@ -9,7 +9,7 @@ Auto-generated alias created by larch /alias. Invokes /implement with preset fla
 
 ## Usage
 
-/imaq <arguments> is equivalent to /implement --merge --auto --quick <arguments>
+/imaq <arguments> is equivalent to /implement --merge --quick <arguments>
 
 ## Flags
 
@@ -19,7 +19,7 @@ All `/implement` flags are accepted, including `--run-id <ID>` (optional run ide
 
 Invoke the Skill tool:
 - Try skill: "implement" first (bare name). If no skill matches, try skill: "larch:implement" (fully-qualified plugin name).
-- args: --merge --auto --quick $ARGUMENTS
+- args: --merge --quick $ARGUMENTS
 
 After the Skill tool loads /implement, the child skill MUST begin execution at its Step 0 (session setup). Do not investigate the codebase, plan, or implement anything before Step 0 completes.
 

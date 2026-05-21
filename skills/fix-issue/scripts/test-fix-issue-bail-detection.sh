@@ -9,12 +9,11 @@
 # conformance test. Runtime enforcement is the LLM-level orchestration of
 # Step 5a per the prose contract.
 #
-# Fourteen assertions against the extracted Step 5a block:
+# Thirteen assertions against the extracted Step 5a block:
 #   (a1) Invocation forwards "--issue $ISSUE_NUMBER".
 #   (a2) Invocation forwards "--no-admin-fallback" (branch-protection bypass
 #        safety flag; issue #559).
 #   (a3) Invocation forwards "--coder=$coder" (pass-through implementer flag).
-#   (a4) Invocation forwards "[--auto if auto_mode]" (autonomous-mode flag).
 #   (a5) Invocation contains "[--hard if hard_mode]" — /fix-issue delegates
 #        HARD/SIMPLE selection to /implement via this conditional flag.
 #   (a6) Invocation does NOT unconditionally contain "--quick" — the old SIMPLE
@@ -122,9 +121,6 @@ assert_contains "a2: invocation forwards --no-admin-fallback" '--no-admin-fallba
 # Without this guard, /fix-issue --coder=<value> callers would silently fall
 # back to /implement's default coder.
 assert_contains "a3: invocation forwards --coder=\$coder" '--coder=$coder'
-
-# (a4) --auto forwarding — pass-through autonomous-mode flag.
-assert_contains "a4: invocation forwards [--auto if auto_mode]" '[--auto if auto_mode]'
 
 # (a5) [--hard if hard_mode] — /fix-issue delegates HARD/SIMPLE selection to
 # /implement. When --hard is passed by the operator, it is forwarded; otherwise

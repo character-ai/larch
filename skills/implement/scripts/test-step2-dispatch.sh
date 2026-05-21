@@ -7,7 +7,6 @@
 #   - default coder (no --coder flag) is cursor.
 #   - Default cursor path outside a git work-tree, no --cursor-present → claude_fallback (exit 0).
 #   - Legacy --codex-available false → STATUS=claude_fallback + deprecation warning on stderr.
-#   - Missing required flag (--auto-mode) → exit 2.
 #   - Bad --coder enum value → exit 2 and names {claude,codex,cursor}.
 #   - --coder cursor with false/missing/empty health → STATUS=claude_fallback (no baseline-file leak).
 #   - Bad --cursor-present enum value → exit 2.
@@ -71,7 +70,7 @@ echo "fake feature" > "$FEATURE"
 # ---------------------------------------------------------------------------
 TMP1="$SCRATCH/test1"; mkdir -p "$TMP1"
 OUT=$("$DISPATCHER" --tmpdir "$TMP1" --plan-file "$PLAN" --feature-file "$FEATURE" \
-    --auto-mode false --coder claude 2>&1)
+    --coder claude 2>&1)
 if [[ "$OUT" == *"STATUS=claude_fallback"* ]] \
    && [[ "$OUT" == *"ORCHESTRATOR_EDIT_AUTHORITY=allowed"* ]] \
    && [[ "$OUT" != *"ORCHESTRATOR_EDIT_AUTHORITY=forbidden"* ]] \
@@ -126,7 +125,7 @@ STDERR_1B="$TMP1B/stderr.txt"
     LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 \
     LIB_CURSOR_AUTH_TEST_UNAME="Linux" \
     "$DISPATCHER" --tmpdir "$TMP1B" --plan-file "$PLAN" --feature-file "$FEATURE" \
-        --auto-mode false --cursor-present true >"$STDOUT_1B" 2>"$STDERR_1B"
+        --cursor-present true >"$STDOUT_1B" 2>"$STDERR_1B"
 )
 OUT=$(cat "$STDOUT_1B")
 ERR=$(cat "$STDERR_1B")
@@ -148,9 +147,9 @@ fi
 # ---------------------------------------------------------------------------
 TMP1C="$SCRATCH/test1c"; mkdir -p "$TMP1C"
 ERR=$("$DISPATCHER" --tmpdir "$TMP1C" --plan-file "$PLAN" --feature-file "$FEATURE" \
-    --auto-mode false --codex-available false 2>&1 >/dev/null)
+    --codex-available false 2>&1 >/dev/null)
 OUT=$("$DISPATCHER" --tmpdir "$TMP1C" --plan-file "$PLAN" --feature-file "$FEATURE" \
-    --auto-mode false --codex-available false 2>/dev/null)
+    --codex-available false 2>/dev/null)
 if [[ "$OUT" == *"STATUS=claude_fallback"* ]] \
    && [[ "$OUT" == *"ORCHESTRATOR_EDIT_AUTHORITY=allowed"* ]] \
    && [[ "$ERR" == *"deprecated"* ]]; then
@@ -160,20 +159,12 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Test 2: missing required flag (--auto-mode) → exit 2.
-# ---------------------------------------------------------------------------
-EXIT=0
-"$DISPATCHER" --tmpdir "$SCRATCH/test2" --plan-file "$PLAN" --feature-file "$FEATURE" \
-    --coder claude >/dev/null 2>&1 || EXIT=$?
-if [[ "$EXIT" == "2" ]]; then pass; else fail 2 "missing --auto-mode should exit 2, got $EXIT"; fi
-
-# ---------------------------------------------------------------------------
 # Test 3: bad --coder enum value → exit 2.
 # ---------------------------------------------------------------------------
 TMP3="$SCRATCH/test3"; mkdir -p "$TMP3"
 EXIT=0
 ERR=$("$DISPATCHER" --tmpdir "$TMP3" --plan-file "$PLAN" --feature-file "$FEATURE" \
-    --auto-mode false --coder bogus 2>&1 >/dev/null) || EXIT=$?
+    --coder bogus 2>&1 >/dev/null) || EXIT=$?
 if [[ "$EXIT" == "2" ]] && [[ "$ERR" == *"{claude,codex,cursor}"* ]]; then
     pass
 else
@@ -185,7 +176,7 @@ fi
 # ---------------------------------------------------------------------------
 TMP3B="$SCRATCH/test3b"; mkdir -p "$TMP3B"
 OUT=$(cd "$REPO_ROOT" && "$DISPATCHER" --tmpdir "$TMP3B" --plan-file "$PLAN" --feature-file "$FEATURE" \
-    --auto-mode false --coder cursor --cursor-present false 2>&1)
+    --coder cursor --cursor-present false 2>&1)
 if [[ "$OUT" == *"STATUS=claude_fallback"* ]] && [[ "$OUT" == *"ORCHESTRATOR_EDIT_AUTHORITY=allowed"* ]]; then
     pass
 else
@@ -202,7 +193,7 @@ fi
 # ---------------------------------------------------------------------------
 TMP3B2="$SCRATCH/test3b2"; mkdir -p "$TMP3B2"
 OUT=$(cd "$REPO_ROOT" && "$DISPATCHER" --tmpdir "$TMP3B2" --plan-file "$PLAN" --feature-file "$FEATURE" \
-    --auto-mode false --coder cursor 2>&1)
+    --coder cursor 2>&1)
 if [[ "$OUT" == *"STATUS=claude_fallback"* ]] && [[ "$OUT" == *"ORCHESTRATOR_EDIT_AUTHORITY=allowed"* ]]; then
     pass
 else
@@ -214,7 +205,7 @@ fi
 # ---------------------------------------------------------------------------
 TMP3B3="$SCRATCH/test3b3"; mkdir -p "$TMP3B3"
 OUT=$(cd "$REPO_ROOT" && "$DISPATCHER" --tmpdir "$TMP3B3" --plan-file "$PLAN" --feature-file "$FEATURE" \
-    --auto-mode false --coder cursor --cursor-present "" 2>&1)
+    --coder cursor --cursor-present "" 2>&1)
 if [[ "$OUT" == *"STATUS=claude_fallback"* ]] && [[ "$OUT" == *"ORCHESTRATOR_EDIT_AUTHORITY=allowed"* ]]; then
     pass
 else
@@ -227,7 +218,7 @@ fi
 TMP3B4="$SCRATCH/test3b4"; mkdir -p "$TMP3B4"
 EXIT=0
 ERR=$(cd "$REPO_ROOT" && "$DISPATCHER" --tmpdir "$TMP3B4" --plan-file "$PLAN" --feature-file "$FEATURE" \
-    --auto-mode false --coder cursor --cursor-present bogus 2>&1 >/dev/null) || EXIT=$?
+    --coder cursor --cursor-present bogus 2>&1 >/dev/null) || EXIT=$?
 if [[ "$EXIT" == "2" ]] && [[ "$ERR" == *"--cursor-present must be 'true', 'false', or empty"* ]]; then
     pass
 else
@@ -239,7 +230,7 @@ fi
 # ---------------------------------------------------------------------------
 TMP3B5="$SCRATCH/test3b5"; mkdir -p "$TMP3B5"
 OUT=$("$DISPATCHER" --tmpdir "$TMP3B5" --plan-file "$PLAN" --feature-file "$FEATURE" \
-    --auto-mode false --coder claude --cursor-present "" 2>&1)
+    --coder claude --cursor-present "" 2>&1)
 if [[ "$OUT" == *"STATUS=claude_fallback"* ]] && [[ "$OUT" == *"ORCHESTRATOR_EDIT_AUTHORITY=allowed"* ]]; then
     pass
 else
@@ -252,7 +243,7 @@ fi
 TMP3B6="$SCRATCH/test3b6"; mkdir -p "$TMP3B6"
 NON_GIT_CURSOR_DIR="$SCRATCH/not-a-repo-cursor"; mkdir -p "$NON_GIT_CURSOR_DIR"
 OUT=$(cd "$NON_GIT_CURSOR_DIR" && "$DISPATCHER" --tmpdir "$TMP3B6" --plan-file "$PLAN" --feature-file "$FEATURE" \
-    --auto-mode false --coder cursor --cursor-present false 2>&1)
+    --coder cursor --cursor-present false 2>&1)
 if [[ "$OUT" == *"STATUS=claude_fallback"* ]] && [[ "$OUT" == *"ORCHESTRATOR_EDIT_AUTHORITY=allowed"* ]]; then
     pass
 else
@@ -264,7 +255,7 @@ fi
 # ---------------------------------------------------------------------------
 EXIT=0
 ERR=$("$DISPATCHER" --tmpdir "$SCRATCH/test3c" --plan-file "$PLAN" --feature-file "$FEATURE" \
-    --auto-mode false --coder claude --codex-available false 2>&1 >/dev/null) || EXIT=$?
+    --coder claude --codex-available false 2>&1 >/dev/null) || EXIT=$?
 if [[ "$EXIT" == "2" ]] && [[ "$ERR" == *"mutually exclusive"* ]]; then
     pass
 else
@@ -276,7 +267,7 @@ fi
 # ---------------------------------------------------------------------------
 EXIT=0
 "$DISPATCHER" --tmpdir "$SCRATCH/test3d" --plan-file "$PLAN" --feature-file "$FEATURE" \
-    --auto-mode false --codex-available maybe >/dev/null 2>&1 || EXIT=$?
+    --codex-available maybe >/dev/null 2>&1 || EXIT=$?
 if [[ "$EXIT" == "2" ]]; then pass; else fail 3d "bad --codex-available value should exit 2, got $EXIT"; fi
 
 # ---------------------------------------------------------------------------
@@ -284,7 +275,7 @@ if [[ "$EXIT" == "2" ]]; then pass; else fail 3d "bad --codex-available value sh
 # ---------------------------------------------------------------------------
 EXIT=0
 "$DISPATCHER" --tmpdir "$SCRATCH/nonexistent" --plan-file "$PLAN" --feature-file "$FEATURE" \
-    --auto-mode false --coder codex >/dev/null 2>&1 || EXIT=$?
+    --coder codex >/dev/null 2>&1 || EXIT=$?
 if [[ "$EXIT" == "2" ]]; then pass; else fail 4 "missing tmpdir should exit 2, got $EXIT"; fi
 
 # ---------------------------------------------------------------------------
@@ -305,7 +296,7 @@ ANSWERS="$SCRATCH/answers.json"
 echo '{"answers":[{"id":"q1","text":"x"}]}' > "$ANSWERS"
 
 OUT=$(cd "$REPO_ROOT" && "$DISPATCHER" --tmpdir "$TMP5" --plan-file "$PLAN" --feature-file "$FEATURE" \
-    --auto-mode false --coder codex --answers "$ANSWERS" 2>&1)
+    --coder codex --answers "$ANSWERS" 2>&1)
 if [[ "$OUT" == *"STATUS=bailed"* ]] \
    && [[ "$OUT" == *"REASON=qa-loop-exceeded"* ]] \
    && [[ "$OUT" == *"ORCHESTRATOR_EDIT_AUTHORITY=forbidden"* ]] \
@@ -325,7 +316,7 @@ fi
 # ---------------------------------------------------------------------------
 EXIT=0
 ( cd "$REPO_ROOT" && "$DISPATCHER" --tmpdir "$TMP5" --plan-file "$PLAN" --feature-file "$FEATURE" \
-    --auto-mode false --coder codex --answers "$SCRATCH/missing-answers.json" \
+    --coder codex --answers "$SCRATCH/missing-answers.json" \
     >/dev/null 2>&1 ) || EXIT=$?
 if [[ "$EXIT" == "2" ]]; then pass; else fail 6 "missing --answers file should exit 2, got $EXIT"; fi
 
@@ -343,7 +334,7 @@ else
 fi
 echo "garbage" > "$TMP7/codex-resume-count.txt"
 OUT=$(cd "$REPO_ROOT" && "$DISPATCHER" --tmpdir "$TMP7" --plan-file "$PLAN" --feature-file "$FEATURE" \
-    --auto-mode false --coder codex --answers "$ANSWERS" 2>&1)
+    --coder codex --answers "$ANSWERS" 2>&1)
 if [[ "$OUT" == *"STATUS=bailed"* ]] \
    && [[ "$OUT" == *"REASON=manifest-schema-invalid"* ]] \
    && [[ "$OUT" == *"ORCHESTRATOR_EDIT_AUTHORITY=forbidden"* ]]; then
@@ -362,7 +353,7 @@ TMP8="$SCRATCH/test8"; mkdir -p "$TMP8"
 NON_GIT_DIR="$SCRATCH/not-a-repo"; mkdir -p "$NON_GIT_DIR"
 EXIT=0
 ERR=$(cd "$NON_GIT_DIR" && "$DISPATCHER" --tmpdir "$TMP8" --plan-file "$PLAN" --feature-file "$FEATURE" \
-    --auto-mode false --coder codex 2>&1 >/dev/null) || EXIT=$?
+    --coder codex 2>&1 >/dev/null) || EXIT=$?
 if [[ "$EXIT" == "2" ]] && [[ "$ERR" == *"must be invoked from within a git working tree"* ]]; then
     pass
 else
@@ -391,7 +382,7 @@ else
 fi
 echo "5" > "$TMP9/codex-resume-count.txt"
 OUT=$(cd "$REPO_ROOT" && "$DISPATCHER" --tmpdir "$TMP9" --plan-file "$PLAN" --feature-file "$FEATURE" \
-    --auto-mode false --coder codex --answers "$ANSWERS" 2>&1)
+    --coder codex --answers "$ANSWERS" 2>&1)
 if [[ -f "$TMP9/step2-spawn-coder.txt" ]] && [[ "$(cat "$TMP9/step2-spawn-coder.txt")" == "codex" ]]; then
     pass
 else
@@ -415,7 +406,7 @@ else
 fi
 echo "codex" > "$TMP10/step2-spawn-coder.txt"
 OUT=$(cd "$REPO_ROOT" && "$DISPATCHER" --tmpdir "$TMP10" --plan-file "$PLAN" --feature-file "$FEATURE" \
-    --auto-mode false --coder cursor --cursor-present true 2>&1)
+    --coder cursor --cursor-present true 2>&1)
 if [[ "$OUT" == *"STATUS=bailed"* ]] \
    && [[ "$OUT" == *"REASON=coder-mismatch-tmpdir-reuse"* ]] \
    && [[ "$OUT" == *"TOOL=cursor"* ]] \
@@ -447,7 +438,7 @@ fi
 # ---------------------------------------------------------------------------
 TMP11A="$SCRATCH/test11a"; mkdir -p "$TMP11A"
 OUT_A=$("$DISPATCHER" --tmpdir "$TMP11A" --plan-file "$PLAN" --feature-file "$FEATURE" \
-    --auto-mode false --coder claude 2>&1)
+    --coder claude 2>&1)
 AUTH_A_LINES=$(printf '%s\n' "$OUT_A" | grep -c '^ORCHESTRATOR_EDIT_AUTHORITY=' || true)
 if [[ "$AUTH_A_LINES" == "1" ]] \
    && [[ "$OUT_A" == *"STATUS=claude_fallback"* ]] \
@@ -467,7 +458,7 @@ else
 fi
 echo "5" > "$TMP11B/codex-resume-count.txt"
 OUT_B=$(cd "$REPO_ROOT" && "$DISPATCHER" --tmpdir "$TMP11B" --plan-file "$PLAN" --feature-file "$FEATURE" \
-    --auto-mode false --coder codex --answers "$ANSWERS" 2>&1)
+    --coder codex --answers "$ANSWERS" 2>&1)
 AUTH_B_LINES=$(printf '%s\n' "$OUT_B" | grep -c '^ORCHESTRATOR_EDIT_AUTHORITY=' || true)
 if [[ "$AUTH_B_LINES" == "1" ]] \
    && [[ "$OUT_B" == *"STATUS=bailed"* ]] \
@@ -521,7 +512,7 @@ OUT_12A=$(cd "$REPO_ROOT" && \
     LARCH_TOKEN_SESSION_ID=stale-step2 \
     LARCH_CODEX_MODEL=stub-codex-model \
     "$DISPATCHER" --tmpdir "$TMP12A" --plan-file "$PLAN" --feature-file "$FEATURE" \
-        --auto-mode false --coder codex 2>&1)
+        --coder codex 2>&1)
 if [[ "$OUT_12A" == *"STATUS=bailed"* ]] \
    && [[ "$OUT_12A" == *"REASON=stub-bailed"* ]] \
    && [[ "$(cat "$TOKEN12A")" == "fresh-step2-A" ]]; then
@@ -540,7 +531,7 @@ OUT_12B=$(cd "$REPO_ROOT" && \
     STEP2_MANIFEST_PATH="$TMP12B/manifest.json" \
     LARCH_CODEX_MODEL=stub-codex-model \
     "$DISPATCHER" --tmpdir "$TMP12B" --plan-file "$PLAN" --feature-file "$FEATURE" \
-        --auto-mode false --coder codex 2>&1)
+        --coder codex 2>&1)
 if [[ "$OUT_12B" == *"STATUS=bailed"* ]] && [[ "$(cat "$TOKEN12B")" == "fresh-step2-B" ]]; then
     pass
 else
@@ -609,7 +600,7 @@ OUT_13=$(cd "$SCRATCH_REPO" && \
     STEP2_MANIFEST_PATH="$TMP13/manifest.json" \
     LARCH_CODEX_MODEL=stub-codex-model \
     "$DISPATCHER" --tmpdir "$TMP13" --plan-file "$PLAN" --feature-file "$FEATURE" \
-        --auto-mode false --coder codex 2>&1)
+        --coder codex 2>&1)
 
 if [[ "$OUT_13" == *"STATUS=complete"* ]] \
    && [[ "$OUT_13" != *"REASON=protected-path-modified"* ]] \
@@ -640,7 +631,7 @@ OUT_14=$(cd "$REPO_ROOT" && \
     LARCH_TOKEN_BUDGET_CAP_IMPLEMENT=1 \
     LARCH_CODEX_MODEL=stub-codex-model \
     "$DISPATCHER" --tmpdir "$TMP14" --plan-file "$PLAN" --feature-file "$FEATURE" \
-        --auto-mode false --coder codex 2>&1)
+        --coder codex 2>&1)
 rm -f "$CH14_LEDGER"
 
 if [[ "$OUT_14" == *"STATUS=bailed"* ]] \
@@ -657,7 +648,7 @@ fi
 # ---------------------------------------------------------------------------
 TMP15A="$SCRATCH/test15a"; mkdir -p "$TMP15A"
 OUT=$(  "$DISPATCHER" --tmpdir "$TMP15A" --plan-file "$PLAN" --feature-file "$FEATURE" \
-    --auto-mode false --coder claude --workflow SIMPLE 2>&1)
+    --coder claude --workflow SIMPLE 2>&1)
 if [[ "$OUT" == *"STATUS=claude_fallback"* ]] && [[ "$OUT" == *"ORCHESTRATOR_EDIT_AUTHORITY=allowed"* ]]; then
     pass
 else
@@ -669,7 +660,7 @@ fi
 # ---------------------------------------------------------------------------
 TMP15B="$SCRATCH/test15b"; mkdir -p "$TMP15B"
 OUT=$(  "$DISPATCHER" --tmpdir "$TMP15B" --plan-file "$PLAN" --feature-file "$FEATURE" \
-    --auto-mode false --coder claude --workflow HARD 2>&1)
+    --coder claude --workflow HARD 2>&1)
 if [[ "$OUT" == *"STATUS=claude_fallback"* ]] && [[ "$OUT" == *"ORCHESTRATOR_EDIT_AUTHORITY=allowed"* ]]; then
     pass
 else
@@ -682,7 +673,7 @@ fi
 TMP15C="$SCRATCH/test15c"; mkdir -p "$TMP15C"
 EXIT=0
 ERR=$("$DISPATCHER" --tmpdir "$TMP15C" --plan-file "$PLAN" --feature-file "$FEATURE" \
-    --auto-mode false --coder claude --workflow bogus 2>&1 >/dev/null) || EXIT=$?
+    --coder claude --workflow bogus 2>&1 >/dev/null) || EXIT=$?
 if [[ "$EXIT" == "2" ]] && [[ "$ERR" == *"--workflow must be 'SIMPLE' or 'HARD'"* ]]; then
     pass
 else
@@ -743,7 +734,7 @@ OUT_16=$(cd "$SCRATCH_REPO16" && \
     STEP2_MANIFEST_PATH="$TMP16/manifest.json" \
     LARCH_CODEX_MODEL=stub-codex-model \
     "$DISPATCHER" --tmpdir "$TMP16" --plan-file "$PLAN" --feature-file "$FEATURE" \
-        --auto-mode false --coder codex 2>&1)
+        --coder codex 2>&1)
 
 if [[ "$OUT_16" == *"STATUS=needs_qa"* ]] \
    && [[ "$OUT_16" != *"STATUS=bailed"* ]] \
@@ -805,7 +796,7 @@ OUT_17A=$(cd "$REPO_ROOT" && \
     STEP2_MANIFEST_PATH="$TMP17A/manifest.json" \
     LARCH_CODEX_MODEL=stub-codex-model \
     "$DISPATCHER" --tmpdir "$TMP17A" --plan-file "$PLAN" --feature-file "$FEATURE" \
-        --auto-mode false --coder codex --workflow SIMPLE 2>&1)
+        --coder codex --workflow SIMPLE 2>&1)
 META17A="$TMP17A/codex-impl-transcript.txt.meta"
 TIMEOUT17A=$(awk -F= '/^TIMEOUT=/{print $2; exit}' "$META17A" 2>/dev/null || true)
 if [[ "$TIMEOUT17A" == "3600" ]]; then
@@ -823,7 +814,7 @@ OUT_17B=$(cd "$REPO_ROOT" && \
     STEP2_MANIFEST_PATH="$TMP17B/manifest.json" \
     LARCH_CODEX_MODEL=stub-codex-model \
     "$DISPATCHER" --tmpdir "$TMP17B" --plan-file "$PLAN" --feature-file "$FEATURE" \
-        --auto-mode false --coder codex --workflow HARD 2>&1)
+        --coder codex --workflow HARD 2>&1)
 META17B="$TMP17B/codex-impl-transcript.txt.meta"
 TIMEOUT17B=$(awk -F= '/^TIMEOUT=/{print $2; exit}' "$META17B" 2>/dev/null || true)
 if [[ "$TIMEOUT17B" == "7200" ]]; then
@@ -841,7 +832,7 @@ OUT_17C=$(cd "$REPO_ROOT" && \
     STEP2_MANIFEST_PATH="$TMP17C/manifest.json" \
     LARCH_CODEX_MODEL=stub-codex-model \
     "$DISPATCHER" --tmpdir "$TMP17C" --plan-file "$PLAN" --feature-file "$FEATURE" \
-        --auto-mode false --coder codex 2>&1)
+        --coder codex 2>&1)
 META17C="$TMP17C/codex-impl-transcript.txt.meta"
 TIMEOUT17C=$(awk -F= '/^TIMEOUT=/{print $2; exit}' "$META17C" 2>/dev/null || true)
 if [[ "$TIMEOUT17C" == "3600" ]]; then
@@ -905,7 +896,7 @@ OUT_18=$(cd "$SCRATCH_REPO18" && \
     STEP2_MANIFEST_PATH="$TMP18/manifest.json" \
     LARCH_CODEX_MODEL=stub-codex-model \
     "$DISPATCHER" --tmpdir "$TMP18" --plan-file "$PLAN" --feature-file "$FEATURE" \
-        --auto-mode false --coder codex 2>&1)
+        --coder codex 2>&1)
 
 if [[ "$OUT_18" == *"STATUS=complete"* ]] \
    && [[ -s "$TMP18/execution-issues.md" ]] \

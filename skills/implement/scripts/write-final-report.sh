@@ -104,7 +104,6 @@ WORKFLOW_PATH="$(read_kv WORKFLOW_PATH "$RUN_FLAGS")"
 [ -n "$WORKFLOW_PATH" ] || WORKFLOW_PATH="$(read_kv POST_PLAN_WORKFLOW_PATH "$SESSION_ENV")"
 [ -n "$WORKFLOW_PATH" ] || WORKFLOW_PATH="N/A"
 
-AUTO_MODE="$(read_kv AUTO_MODE "$SESSION_ENV")"; [ -n "$AUTO_MODE" ] || AUTO_MODE=""
 UPSTREAM_ISSUE="$(read_kv UPSTREAM_DESIGN_ISSUE "$SESSION_ENV")"
 
 run_dir="$IMPLEMENT_TMPDIR/larch-logs/implement/$RUN_ID"
@@ -152,7 +151,6 @@ mode_parts=()
 [ "$MERGE" = "false" ] && mode_parts+=("--no-merge")
 [ "$FORKED_TARGET" = "true" ] && mode_parts+=("--forked")
 [ "$REPO_UNAV" = "true" ] && mode_parts+=("--repo-unavailable")
-[ "$AUTO_MODE" = "true" ] && mode_parts+=("--auto")
 mode_str="N/A"
 if [ "${#mode_parts[@]}" -gt 0 ]; then
     mode_str=$(IFS=', '; echo "${mode_parts[*]}")

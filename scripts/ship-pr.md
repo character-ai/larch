@@ -5,7 +5,7 @@
 ## Interface
 
 ```text
-ship-pr.sh --state-file PATH --implement-tmpdir PATH --merge true|false --draft true|false --forked true|false --repo OWNER/REPO [--auto-mode true|false] [--no-admin-fallback true|false] [--no-logs-commit true|false] [--resume-phase PHASE]
+ship-pr.sh --state-file PATH --implement-tmpdir PATH --merge true|false --draft true|false --forked true|false --repo OWNER/REPO [--no-admin-fallback true|false] [--no-logs-commit true|false] [--resume-phase PHASE]
 ```
 
 `--no-logs-commit true` is exported as `LARCH_NO_LOGS_COMMIT=true` so child lifecycle helpers suppress explicit larch-log commit calls. Log files are still written to `$IMPLEMENT_TMPDIR/larch-logs/` for local inspection; they are simply not committed to the branch by `ship-pr.sh` lifecycle flush points. Default: `false`.

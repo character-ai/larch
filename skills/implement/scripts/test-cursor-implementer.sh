@@ -544,7 +544,7 @@ STEP2_OUT=$(cd "$STEP2_REPO" && \
     LARCH_TIMING_LEDGER="$STEP2_LEDGER" \
     LARCH_CURSOR_MODEL=$'bad\nmodel' \
     "$DISPATCHER" --tmpdir "$STEP2_TMP" --plan-file "$PLAN" --feature-file "$FEATURE" \
-        --auto-mode false --coder cursor --cursor-present true 2>&1)
+        --coder cursor --cursor-present true 2>&1)
 STEP2_ROWS=$(awk -F'\t' '$2 == "vendor" && $6 == "cursor" && $7 == "cursor-implement" && $12 != "0" { c++ } END { print c + 0 }' "$STEP2_LEDGER" 2>/dev/null || echo 0)
 if [[ "$STEP2_OUT" == *"STATUS=bailed"* ]] \
    && [[ "$STEP2_OUT" == *"REASON=cursor-runtime-failure"* ]] \

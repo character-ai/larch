@@ -19,7 +19,6 @@ Derived sources:
   - `PLAN_FILE`: forwarded as `--plan-file`.
   - `CURSOR_PRESENT`: forwarded as `--cursor-present`.
   - `POST_PLAN_WORKFLOW_PATH`: forwarded as `--workflow`.
-  - `LARCH_AUTO_MODE`: forwarded as `--auto-mode`.
   - `LARCH_CLAUDE_PLUGIN_ROOT`: resolves the downstream script path when
     `CLAUDE_PLUGIN_ROOT` is not already set.
 - `$IMPLEMENT_TMPDIR/feature-description.txt`: forwarded as `--feature-file`.
