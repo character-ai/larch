@@ -9,7 +9,7 @@ PREFLIGHT_OK=true|false
 REASON=<empty when ok; human-readable message when false>
 ```
 
-Always exits 0; caller reads `PREFLIGHT_OK`.
+Normal outcomes exit `0`; caller reads `PREFLIGHT_OK` from stdout. **Unknown argv** (unrecognized flags/arguments) exits `1` with a stderr-only diagnostic — do not assume exit `0` implies a successful preflight parse.
 
 ## Steps
 

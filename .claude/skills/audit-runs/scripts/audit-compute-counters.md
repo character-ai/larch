@@ -27,6 +27,10 @@ CATEGORY_STATS_PARTIAL=false
 
 `CATEGORY_STATS_PARTIAL=true` when any `scan-results-*.ndjson` contains a `category-stats` object with `partial_data: true` (missing `review-findings-full.jsonl` for that PR). In that case `OOS_CLEAN_DELTA` / `OOS_BLANK_DELTA` omit category-stats contributions for those PRs; totals still add other scans.
 
+## Schema stability / migration
+
+`cumulative_counters` YAML keys in filed audit reports are derived from the KV keys this script prints (and from `--prior-frontmatter` on the next run). **Renaming or dropping a counter key is a breaking change** for out-of-repo consumers that parse cumulative totals. When a key must change, keep the old key as an alias (duplicate value) for at least one release cycle, or publish an explicit migration note in the audit-runs skill changelog before removal.
+
 ## Edit-in-sync
 
 Update tests in `test-audit-runs.sh` (compute-counters section) when counter field names or arithmetic change. Update frontmatter YAML key names in `SKILL.md` in the same PR.

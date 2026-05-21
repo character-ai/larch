@@ -13,7 +13,7 @@ RESOLVED_ECHO=<human-readable confirmation line>
 ERROR=<empty when ok; error message when PR_LIST is empty>
 ```
 
-Always exits 0. Caller reads `PR_LIST` and `ERROR`.
+Normal outcomes exit `0`; caller reads `PR_LIST` and `ERROR`. **Unknown argv** exits `1` with a stderr-only diagnostic (no KV lines on stdout) — treat a missing `ERROR=` line as a hard parse failure, not an empty PR list.
 
 ## Supported forms
 

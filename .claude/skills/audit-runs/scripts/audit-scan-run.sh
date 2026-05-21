@@ -40,13 +40,13 @@ done
 
 if [ ! -d "$RUN_DIR" ]; then
     jq -nc --argjson pr "$PR_NUM" --arg rd "$RUN_DIR" \
-        '{scan:"setup",pr:$pr,result:"error",detail:("run-dir not found: "+$rd)}'
+        '{scan:"required-file-presence",pr:$pr,result:"error",detail:("run-dir not found: "+$rd)}'
     exit 1
 fi
 
 if [ ! -f "$SCANS_TSV" ]; then
     jq -nc --argjson pr "$PR_NUM" --arg sp "$SCANS_TSV" \
-        '{scan:"setup",pr:$pr,result:"error",detail:("scans-tsv not found: "+$sp)}'
+        '{scan:"required-file-presence",pr:$pr,result:"error",detail:("scans-tsv not found: "+$sp)}'
     exit 1
 fi
 
@@ -292,7 +292,11 @@ scan_changelog_rebase_conflicts() {
             or ((.body // "") | ascii_downcase | contains("conflict"))
         )
     )] | length' "$f" 2>/dev/null || echo 0)
-    emit "{\"scan\":\"changelog-rebase-conflicts\",\"pr\":$PR_NUM,\"result\":\"pass\",\"count\":$count}"
+    if [ "${count:-0}" -eq 0 ]; then
+        emit "{\"scan\":\"changelog-rebase-conflicts\",\"pr\":$PR_NUM,\"result\":\"pass\",\"count\":0}"
+    else
+        emit "{\"scan\":\"changelog-rebase-conflicts\",\"pr\":$PR_NUM,\"result\":\"fail\",\"count\":$count}"
+    fi
 }
 
 # ---- Run all scans in registry order ----

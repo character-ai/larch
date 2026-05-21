@@ -13,7 +13,7 @@ TITLE=[Run Logs Audit Report <timestamp>] PRs #X, #Y, #Z
 
 - **Single PR**: `PRs #N`
 - **Contiguous range** (`last - first + 1 == count`): `PRs #X-#Y`
-- **Non-contiguous** (any count): `PRs #X, #Y, #Z, ...` (explicit sorted list)
+- **Non-contiguous** (any count): `PRs #X, #Y, #Z, ...` (explicit sorted list; PR numbers are printed in canonical decimal form, with no leading zeros, even if `--pr-list` tokens included leading zeros)
 
 ## Edit-in-sync
 

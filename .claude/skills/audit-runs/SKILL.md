@@ -142,7 +142,8 @@ PACIFIC_TIMESTAMP=$(printf '%s\n' "$PACIFIC_OUT" | sed -n 's/^PACIFIC_TIMESTAMP=
 
 TITLE_OUT=$(bash "$PWD/.claude/skills/audit-runs/scripts/audit-title.sh" \
   --pr-list "$PR_LIST" --timestamp "$PACIFIC_TIMESTAMP")
-# → TITLE=[Run Logs Audit Report <ts>] PRs #X-#Y
+# stdout is KV-shaped: each line is `KEY=value`. The title script prints `TITLE=...` (not a bare title string).
+TITLE=$(printf '%s\n' "$TITLE_OUT" | sed -n 's/^TITLE=//p')
 ```
 
 Contracts: `audit-pacific-timestamp.md`, `audit-title.md`.
@@ -216,7 +217,9 @@ bash "$PWD/.claude/skills/audit-runs/scripts/audit-close-priors.sh" \
   --new-issue-number "<ISSUE_NUMBER>" --repo "<repo>"
 ```
 
-Each closed issue emits `CLOSED_NUMBER=<N>` to stdout. Contract: `audit-close-priors.md`.
+Stdout is KV-shaped. Successful closes emit `CLOSED_NUMBER=<N>` (one line per issue). Failures can still exit `0` while emitting `CLOSE_FAILED=<N>` then a **TAB**-separated `REASON=...` continuation on the same line (see `audit-close-priors.md`). If `gh issue list` fails up front, the script prints `ISSUE_LIST_FAILED=true` plus `REASON=...` and exits non-zero. After any `audit-close-priors.sh` invocation, scan stdout for `CLOSE_FAILED=` / `ISSUE_LIST_FAILED=` even when the exit code is `0` — do not treat “some `CLOSED_NUMBER=` lines” as unconditional full success.
+
+Contract: `audit-close-priors.md`.
 
 ## Output to chat
 

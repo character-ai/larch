@@ -659,14 +659,17 @@ ACCEPTED_LINE="| FINDING_ABC | 0 | 0 | 3 | foo | accepted |"
 result=$(count_exon_lines "$ACCEPTED_LINE")
 assert_equal "$result" "0" "[23c] accepted line not matched"
 
-# Test 24: trailing-content-no-issues-found logic
+# Test 24: trailing-content-no-issues-found logic (matches audit-scan-run.sh: non-whitespace tail)
 echo "Test 24: audit-scan-run trailing-content check"
 has_trailing_content() {
     local content="$1"
-    local first_line line_count
+    local first_line
     first_line=$(printf '%s' "$content" | head -1 | tr -d '\r' | sed 's/[[:space:]]*$//')
-    line_count=$(printf '%s' "$content" | awk 'END{print NR+0}')
-    if [[ "$first_line" == "NO_ISSUES_FOUND" ]] && [[ "$line_count" -gt 1 ]]; then
+    if [[ "$first_line" != "NO_ISSUES_FOUND" ]]; then
+        echo "pass"
+        return
+    fi
+    if printf '%s' "$content" | tail -n +2 | grep -qE '[^[:space:]]' 2>/dev/null; then
         echo "fail"
     else
         echo "pass"
@@ -677,6 +680,8 @@ Extra content here")
 assert_equal "$result" "fail" "[24] NO_ISSUES_FOUND with trailing content → fail"
 result=$(has_trailing_content "NO_ISSUES_FOUND")
 assert_equal "$result" "pass" "[24b] bare NO_ISSUES_FOUND → pass"
+result=$(has_trailing_content "$(printf 'NO_ISSUES_FOUND\n\n\n')")
+assert_equal "$result" "pass" "[24d] whitespace-only trailing lines → pass (non-semantic)"
 result=$(has_trailing_content "Some findings here")
 assert_equal "$result" "pass" "[24c] content not starting with NO_ISSUES_FOUND → pass"
 
@@ -738,16 +743,16 @@ assert_equal "$result" "" "[27c] missing key → empty"
 # ===========================================================================
 echo "=== test-audit-runs: audit-title.sh logic ==="
 
-# Test 28: contiguous range detection
+# Test 28: contiguous range detection (dedupe + decimal radix for leading zeros)
 echo "Test 28: audit-title contiguous range"
 is_contiguous() {
     local pr_list="$1"
     local sorted first last count expected
-    sorted=$(printf '%s' "$pr_list" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | grep -E '^[0-9]+$' | sort -n)
+    sorted=$(printf '%s' "$pr_list" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | grep -E '^[0-9]+$' | sort -n -u)
     first=$(printf '%s' "$sorted" | head -1)
     last=$(printf '%s' "$sorted" | tail -1)
-    count=$(printf '%s' "$sorted" | grep -c .)
-    expected=$(( last - first + 1 ))
+    count=$(printf '%s' "$sorted" | awk 'NF { c++ } END { print c + 0 }')
+    expected=$(( 10#$last - 10#$first + 1 ))
     if [ "$expected" -eq "$count" ]; then echo "contiguous"; else echo "non-contiguous"; fi
 }
 result=$(is_contiguous "2476,2477,2478,2479,2480")
@@ -756,6 +761,10 @@ result=$(is_contiguous "2476,2477,2480")
 assert_equal "$result" "non-contiguous" "[28b] gap in sequence → non-contiguous"
 result=$(is_contiguous "2476")
 assert_equal "$result" "contiguous" "[28c] single PR → contiguous"
+result=$(is_contiguous "2476,2476,2477")
+assert_equal "$result" "contiguous" "[28d] duplicate PR tokens dedupe → contiguous"
+result=$(is_contiguous "0010,0011,0012")
+assert_equal "$result" "contiguous" "[28e] leading-zero tokens use decimal radix"
 
 # Test 29: title format for contiguous/non-contiguous
 echo "Test 29: audit-title title format"
@@ -868,8 +877,10 @@ if [ -x "$SCAN_SCRIPT" ]; then
         --required-files-tsv "$SC_TMP/required-empty.tsv" \
         --current-version "29.0.0")
     changelog_cnt=$(printf '%s\n' "$scan_lines" | jq -r 'select(.scan=="changelog-rebase-conflicts") | .count // empty' | head -1)
+    changelog_res=$(printf '%s\n' "$scan_lines" | jq -r 'select(.scan=="changelog-rebase-conflicts") | .result // empty' | head -1)
     partial=$(printf '%s\n' "$scan_lines" | jq -r 'select(.scan=="category-stats") | .partial_data // empty' | head -1)
     assert_equal "$changelog_cnt" "2" "[33] changelog-rebase-conflicts counts matching bodies"
+    assert_equal "$changelog_res" "fail" "[33c] changelog-rebase-conflicts result aligns with non-zero count"
     assert_equal "$partial" "true" "[33b] missing review-findings-full.jsonl → category-stats partial_data"
     rm -rf "$SC_TMP"
 else
@@ -882,7 +893,7 @@ COMP_SCRIPT="$SCRIPT_DIR/audit-compute-counters.sh"
 if [ -x "$COMP_SCRIPT" ]; then
     COMP_TMP=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-comp-XXXXXX")
     {
-        printf '%s\n' '{"scan":"changelog-rebase-conflicts","pr":1,"result":"pass","count":4}'
+        printf '%s\n' '{"scan":"changelog-rebase-conflicts","pr":1,"result":"fail","count":4}'
         printf '%s\n' '{"scan":"category-stats","pr":1,"partial_data":true,"canonical":0,"oos_blank":0}'
     } > "$COMP_TMP/scan-results-990001.ndjson"
     comp_out=$(bash "$COMP_SCRIPT" --scan-results-dir "$COMP_TMP")
@@ -895,8 +906,147 @@ else
     echo "  SKIP: audit-compute-counters.sh not executable (not found at $COMP_SCRIPT)"
 fi
 
-# Test 35: audit-scan-run.sh — unknown scan name in registry exits non-zero
-echo "Test 35: audit-scan-run unknown scan registry drift"
+# Test 35: audit-scan-run.sh — supplemental registry scans (real script; NDJSON pass/fail paths)
+echo "Test 35: audit-scan-run supplemental registry scans NDJSON"
+SCAN_SCRIPT="${SCAN_SCRIPT:-$SCRIPT_DIR/audit-scan-run.sh}"
+if [ -x "$SCAN_SCRIPT" ]; then
+    R35_TMP=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-scan-reg-XXXXXX")
+    {
+        printf '%s\n' 'name	type	pattern	expected_outcome	severity'
+        printf '%s\n' 'rej-category-blank	jsonl-field	x	x	medium'
+        printf '%s\n' 'ns-retry-sidecars	file-glob	x	x	medium'
+        printf '%s\n' 'execution-issues-categories	jsonl-field	x	x	medium'
+    } > "$R35_TMP/sub-scans.tsv"
+    printf '%s\n' 'relative_path	condition	batch_slug	extension' > "$R35_TMP/required-empty.tsv"
+    mkdir -p "$R35_TMP/run/round-1"
+    printf '%s\n' '{"id":"OOS_1","category":"code-quality","prose_body":"ok"}' > "$R35_TMP/run/review-findings-full.jsonl"
+    : > "$R35_TMP/run/round-1/panel-ns-retry-sidecar.txt"
+    printf '%s\n' '{"category":"Errors","body":"not a warning"}' > "$R35_TMP/run/execution-issues.ndjson"
+    r35_lines=$(bash "$SCAN_SCRIPT" \
+        --run-dir "$R35_TMP/run" --pr 990035 \
+        --scans-tsv "$R35_TMP/sub-scans.tsv" \
+        --required-files-tsv "$R35_TMP/required-empty.tsv" \
+        --current-version "29.0.0")
+    rej_res=$(printf '%s\n' "$r35_lines" | jq -r 'select(.scan=="rej-category-blank") | .result // empty' | head -1)
+    ns_res=$(printf '%s\n' "$r35_lines" | jq -r 'select(.scan=="ns-retry-sidecars") | .result // empty' | head -1)
+    ns_cnt=$(printf '%s\n' "$r35_lines" | jq -r 'select(.scan=="ns-retry-sidecars") | .count // empty' | head -1)
+    ex_res=$(printf '%s\n' "$r35_lines" | jq -r 'select(.scan=="execution-issues-categories") | .result // empty' | head -1)
+    assert_equal "$rej_res" "pass" "[35] rej-category-blank clean fixture → pass"
+    assert_equal "$ns_res" "fail" "[35b] ns-retry-sidecars detects sidecar file → fail"
+    assert_equal "$ns_cnt" "1" "[35c] ns-retry-sidecars count"
+    assert_equal "$ex_res" "fail" "[35d] execution-issues-categories non-Warnings → fail"
+    rm -rf "$R35_TMP"
+else
+    echo "  SKIP: audit-scan-run.sh not executable (not found at $SCAN_SCRIPT)"
+fi
+
+# Test 36: audit-compute-counters.sh — --prior-frontmatter additive totals (real script)
+echo "Test 36: audit-compute-counters prior-frontmatter cumulative"
+COMP_SCRIPT="${COMP_SCRIPT:-$SCRIPT_DIR/audit-compute-counters.sh}"
+if [ -x "$COMP_SCRIPT" ]; then
+    C36_TMP=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-comp-prior-XXXXXX")
+    cat > "$C36_TMP/prior.md" <<'EOFMD'
+---
+audit_schema_version: 1
+cumulative_counters:
+  exon_misclassifications: 50
+  oos_categories_mangled: 0
+  oos_categories_clean: 0
+  oos_categories_blank: 0
+  ns_retries_cursor_specialist: 0
+  changelog_rebase_conflicts: 0
+---
+EOFMD
+    printf '%s\n' '{"scan":"exon-misclassification","pr":1,"result":"fail","count":3}' > "$C36_TMP/scan-results-990035.ndjson"
+    c36_out=$(bash "$COMP_SCRIPT" --scan-results-dir "$C36_TMP" --prior-frontmatter "$C36_TMP/prior.md")
+    exon_tot=$(printf '%s' "$c36_out" | sed -n 's/^EXON_MISCLASSIFICATIONS=//p')
+    exon_delta=$(printf '%s' "$c36_out" | sed -n 's/^EXON_DELTA=//p')
+    assert_equal "$exon_delta" "3" "[36] EXON_DELTA from scan NDJSON"
+    assert_equal "$exon_tot" "53" "[36b] prior exon 50 + delta 3 → cumulative"
+    rm -rf "$C36_TMP"
+else
+    echo "  SKIP: audit-compute-counters.sh not executable (not found at $COMP_SCRIPT)"
+fi
+
+# Test 37: audit-map-runs.sh — parent-issue fallback with stub gh pr view
+echo "Test 37: audit-map-runs parent-issue fallback (stub gh)"
+MAP_SCRIPT="${MAP_SCRIPT:-$SCRIPT_DIR/audit-map-runs.sh}"
+if [ -x "$MAP_SCRIPT" ]; then
+    GH37=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-map-gh37-XXXXXX")
+    cat > "$GH37/gh" <<'EOSH37'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "${1:-}" == "pr" && "${2:-}" == "view" ]]; then
+    printf '%s\n' '{"body":"Prep work\n\nCloses #550011"}'
+    exit 0
+fi
+printf 'stub gh: unsupported %s\n' "$*" >&2
+exit 1
+EOSH37
+    chmod +x "$GH37/gh"
+    MAP37_TMP=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-map37-XXXXXX")
+    mkdir -p "$MAP37_TMP/RUNZ"
+    printf '%s\n' 'ISSUE_NUMBER=550011' > "$MAP37_TMP/RUNZ/parent-issue.md"
+    printf '%s\n' '{"pr_number":1,"started_at":"2025-06-01T00:00:00Z","larch_version":"9.0.0"}' > "$MAP37_TMP/RUNZ/manifest.json"
+    row37=$(PATH="$GH37:$PATH" bash "$MAP_SCRIPT" --pr-list "999888" --repo "character-ai/larch" --log-root "$MAP37_TMP")
+    rid37=$(printf '%s' "$row37" | cut -f2)
+    assert_equal "$rid37" "RUNZ" "[37] Closes #N maps to matching parent-issue run_id"
+    rm -rf "$GH37" "$MAP37_TMP"
+else
+    echo "  SKIP: audit-map-runs.sh not executable (not found at $MAP_SCRIPT)"
+fi
+
+# Test 38: audit-map-runs.sh — ambiguous parent-issue matches → stderr + empty run_id
+echo "Test 38: audit-map-runs parent-issue ambiguity"
+MAP_SCRIPT="${MAP_SCRIPT:-$SCRIPT_DIR/audit-map-runs.sh}"
+if [ -x "$MAP_SCRIPT" ]; then
+    GH38=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-map-gh38-XXXXXX")
+    cat > "$GH38/gh" <<'EOSH38'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "${1:-}" == "pr" && "${2:-}" == "view" ]]; then
+    printf '%s\n' '{"body":"Closes #550022"}'
+    exit 0
+fi
+printf 'stub gh: unsupported %s\n' "$*" >&2
+exit 1
+EOSH38
+    chmod +x "$GH38/gh"
+    MAP38_TMP=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-map38-XXXXXX")
+    mkdir -p "$MAP38_TMP/RUN1" "$MAP38_TMP/RUN2"
+    printf '%s\n' 'ISSUE_NUMBER=550022' > "$MAP38_TMP/RUN1/parent-issue.md"
+    printf '%s\n' 'ISSUE_NUMBER=550022' > "$MAP38_TMP/RUN2/parent-issue.md"
+    printf '%s\n' '{"pr_number":1,"started_at":"2026-01-01T00:00:00Z"}' > "$MAP38_TMP/RUN1/manifest.json"
+    printf '%s\n' '{"pr_number":1,"started_at":"2026-01-01T00:00:00Z"}' > "$MAP38_TMP/RUN2/manifest.json"
+    err38=$(mktemp "${TMPDIR:-/tmp}/test-map38-err.XXXXXX")
+    set +e
+    row38=$(PATH="$GH38:$PATH" bash "$MAP_SCRIPT" --pr-list "999777" --repo "character-ai/larch" --log-root "$MAP38_TMP" 2>"$err38")
+    map38_rc=$?
+    set -e
+    rid38=$(printf '%s' "$row38" | cut -f2)
+    amb=$(grep -c 'MAP_PARENT_ISSUE_AMBIGUOUS=true' "$err38" || true)
+    assert_equal "$rid38" "" "[38] ambiguous parent-issue leaves run_id empty"
+    assert_equal "$amb" "1" "[38b] stderr reports MAP_PARENT_ISSUE_AMBIGUOUS"
+    assert_equal "$map38_rc" "0" "[38c] script exits 0 after emitting TSV row"
+    rm -rf "$GH38" "$MAP38_TMP" "$err38"
+else
+    echo "  SKIP: audit-map-runs.sh not executable (not found at $MAP_SCRIPT)"
+fi
+
+# Test 39: audit-title.sh — long non-contiguous list + leading-zero contiguous (real script)
+echo "Test 39: audit-title long PR list + leading zeros"
+TITLE_SCRIPT="${TITLE_SCRIPT:-$SCRIPT_DIR/audit-title.sh}"
+if [ -x "$TITLE_SCRIPT" ]; then
+    long_title=$(bash "$TITLE_SCRIPT" --pr-list "2400,2401,2402,2403,2405,2407,2409,2411" --timestamp "2026-05-20T22:00-07:00" | sed -n 's/^TITLE=//p')
+    assert_equal "$long_title" "[Run Logs Audit Report 2026-05-20T22:00-07:00] PRs #2400, #2401, #2402, #2403, #2405, #2407, #2409, #2411" "[39] long explicit non-contiguous title snapshot"
+    lz_title=$(bash "$TITLE_SCRIPT" --pr-list "0002476,0002477,0002478" --timestamp "2026-05-20T22:00-07:00" | sed -n 's/^TITLE=//p')
+    assert_equal "$lz_title" "[Run Logs Audit Report 2026-05-20T22:00-07:00] PRs #2476-#2478" "[39b] leading-zero tokens form contiguous range"
+else
+    echo "  SKIP: audit-title.sh not executable (not found at $TITLE_SCRIPT)"
+fi
+
+# Test 40: audit-scan-run.sh — unknown scan name in registry exits non-zero
+echo "Test 40: audit-scan-run unknown scan registry drift"
 SCAN_SCRIPT="${SCAN_SCRIPT:-$SCRIPT_DIR/audit-scan-run.sh}"
 if [ -x "$SCAN_SCRIPT" ]; then
     U_TMP=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-unknown-scan-XXXXXX")
@@ -913,7 +1063,7 @@ if [ -x "$SCAN_SCRIPT" ]; then
         --current-version "29.0.0" >/dev/null 2>&1
     unknown_rc=$?
     set -e
-    assert_equal "$unknown_rc" "1" "[35] unknown scan name → exit 1"
+    assert_equal "$unknown_rc" "1" "[40] unknown scan name → exit 1"
     rm -rf "$U_TMP"
 fi
 

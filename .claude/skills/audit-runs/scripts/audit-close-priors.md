@@ -6,7 +6,7 @@ Closes prior open `audit-report` issues after a new report is filed.
 
 ```
 CLOSED_NUMBER=<N>         (one line per successfully closed issue)
-CLOSE_FAILED=<N>  REASON=<msg>   (on failure)
+CLOSE_FAILED=<N><TAB>REASON=<msg>   (TAB between CLOSE_FAILED value and REASON; on per-issue failure)
 ISSUE_LIST_FAILED=true
 REASON=gh issue list failed
 ```
