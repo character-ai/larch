@@ -573,16 +573,16 @@
       {
         "step": "Step 3 — checks first pass",
         "totals": {
-          "input": 37,
-          "output": 40,
-          "total": 122
+          "input": 42,
+          "output": 46,
+          "total": 148
         }
       }
     ],
     "totals": {
-      "input": 1752616,
-      "output": 210321,
-      "total": 38451942
+      "input": 1752621,
+      "output": 210327,
+      "total": 38451968
     }
   }
 }

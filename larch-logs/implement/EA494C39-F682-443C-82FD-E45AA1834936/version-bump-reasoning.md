@@ -1,11 +1,17 @@
 # Version Bump Reasoning
 
-- **Base commit**: `1a64f9bb` (Fixes #2497: Remove --auto flag from /implement, /design, /fix-issue, agnix-fix, and all helper scripts (#2501))
+- **Base commit**: `2e37f78a` (Fixes #2481: Harden check-reviewers.sh: replace binary-only probe with runtime health probe (mutex+retry+TTL), add Option A explicit-coder bail at Step 1 (#2504))
 - **Current version**: `32.0.0`
 - **Classification scope**: `skills/**` and `agents/**` only (public plugin surface).
 
-## Result: NONE (already bumped)
+## Result: MAJOR
 
-HEAD is a version bump commit: `b2a70bba` — "Bump version to 32.0.0"
+- **New version**: `33.0.0`
 
-No additional bump will be applied.
+### MAJOR evidence
+- Removed `--quick` from argument-hint in `skills/design/SKILL.md`
+- Deleted `skills/imaq/SKILL.md`
+- Removed `--quick` from argument-hint in `skills/implement/SKILL.md`
+- Deleted `skills/imq/SKILL.md`
+### MINOR evidence
+- Added `--auto` to argument-hint in `skills/implement/SKILL.md`
