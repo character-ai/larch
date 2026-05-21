@@ -3,8 +3,8 @@
 - **Outcome**: bailed
 - **Mode**: N/A
 - **Path**: SIMPLE
-- **Duration**: 01:23:13
-- **Tokens**: 92129k total — Claude 53576k, Codex 102k, Cursor 38452k
+- **Duration**: 01:30:25
+- **Tokens**: 101642k total — Claude 63089k, Codex 102k, Cursor 38452k
 - **Cost**: TOTAL N/A — Claude N/A, Codex N/A, Cursor N/A
 - **Issue**: #2496 — https://github.com/character-ai/larch/issues/2496
 - **PR**: N/A
