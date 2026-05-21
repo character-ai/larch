@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [34.0.8] - 2026-05-21
+
+### Changed
+
+- Prevent manifest rows from widening glob expansion beyond a safe path grammar.
+- Let the offline harness point the verifier at a synthetic TSV via LARCH_VERIFY_MANIFEST.
+- Document the override so future harness authors know the supported escape hatch.
+
 ## [34.0.7] - 2026-05-21
 
 ### Changed
