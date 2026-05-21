@@ -1,0 +1,9 @@
+Gathering the diff, commit list, and relevant file context for the timezone/DST review.
+
+Searching audit-runs scripts for how `audit_timestamp` and titles are generated at runtime.
+
+### In-Scope Findings
+- **correctness** `.claude/skills/audit-runs/SKILL.md:142-146` — Switching the normative title/frontmatter timestamp from fixed UTC `Z` to Pacific **numeric offsets** makes correctness depend on picking the right offset for “now,” but the Title Format section still only shows static examples and never tells the operator to derive the instant from an IANA zone (for example `TZ=America/Los_Angeles`), so mistaken year-round use of `-07:00` or `-08:00` is easy; separately, the examples use `±HH:MM` offsets while a typical macOS `date +'%z'` expands to `-0700` without the colon, so a naive shell recipe can disagree with the documented canonical shape even when the zone is right. **Suggested fix:** Add a short, explicit “generate `audit_timestamp`/title time” recipe under Title Format or Pre-flight: set `TZ=America/Los_Angeles` (or document the equivalent), show GNU and BSD `date`/`strftime` patterns, and state that the stored string must normalize the offset to `±HH:MM` (or explicitly allow `±HHMM` if you want to align with stock macOS `%z`).
+
+### Out-of-Scope Observations
+NO_ISSUES_FOUND

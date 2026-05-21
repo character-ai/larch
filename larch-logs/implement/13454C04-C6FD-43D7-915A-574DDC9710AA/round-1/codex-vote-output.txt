@@ -1,0 +1,10 @@
+FINDING_1: YES
+FINDING_2: NO -- This is an exonerating observation, not a defect to track.
+FINDING_3: EXONERATE -- Legitimate fixture drift, but the timestamp is irrelevant to the tested label-exclusion behavior.
+FINDING_4: EXONERATE -- Legitimate fixture drift, but not worth a separate tracking issue.
+FINDING_5: EXONERATE -- Legitimate fixture drift, but not worth a separate tracking issue.
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: EXONERATE -- The SKILL text already specifies audited_pr_range.last, and this extra regression test is more guardrail than needed.
+FINDING_10: YES

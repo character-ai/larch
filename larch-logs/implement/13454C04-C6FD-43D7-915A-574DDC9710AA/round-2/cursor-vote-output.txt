@@ -1,0 +1,30 @@
+Reading the ballot and nearby session files for verification.
+
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: NO -- merge-base commit listing is informational, not an actionable defect to track as an issue
+FINDING_4: EXONERATE -- real doc skew but too minor to warrant a standalone tracking issue
+FINDING_5: EXONERATE -- scout confirmation with no defect; filing an issue would be noise
+FINDING_6: EXONERATE -- duplicate of the same low-impact doc nit as other items
+FINDING_7: EXONERATE -- duplicate doc nit; no separate security issue warranted
+FINDING_8: EXONERATE -- duplicate structure/doc nit; fix alongside SKILL when convenient
+FINDING_9: EXONERATE -- duplicate harness-doc drift; one optional follow-up suffices
+FINDING_10: EXONERATE -- same companion-doc wording drift as FINDING_4/9; not issue-sized alone
+FINDING_11: EXONERATE -- illustrative fixture using Z is still valid; optional style alignment only
+FINDING_12: EXONERATE -- wording could confuse skimmers but SKILL step 3 already disambiguates PR number vs time
+FINDING_13: EXONERATE -- hypothetical strictness for a hermetic mirror regex; tightening is more churn than value now
+FINDING_14: EXONERATE -- behavior is documented; adding a redundant invariant test would be low ROI complexity
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: YES
+FINDING_18: YES
+FINDING_19: YES
+FINDING_20: YES
+FINDING_21: YES
+FINDING_22: YES
+FINDING_23: YES
+FINDING_24: YES
+FINDING_25: YES
+FINDING_26: YES
+FINDING_27: YES
+FINDING_28: EXONERATE -- fractional-seconds edge case is speculative; SKILL already ties to GitHub mergedAt forms
