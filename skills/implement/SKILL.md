@@ -284,7 +284,6 @@ Then:
     --cursor-present <value>
     --codex-binary-found <value>
     --cursor-binary-found <value>
-    --auto-mode "$auto_mode"
     --timing-ledger "$IMPLEMENT_TMPDIR/timing-ledger.tsv"
     --token-session-id "$LARCH_TOKEN_SESSION_ID"
     --prev-implement-tmpdir "$IMPLEMENT_TMPDIR"
