@@ -921,7 +921,7 @@ run_implement_round() {
         CURSOR_AVAILABLE="$cursor_present"
     fi
 
-    # Resolve dynamic-archetypes cap: CLI > non-empty process env > session-env > 4 (implement mode default) > 0
+    # Resolve dynamic-archetypes cap: CLI > non-empty process env > session-env > 6 (implement mode default) > 0
     local DYNAMIC_ARCHETYPES
     if [[ -n "$DYNAMIC_ARCHETYPES_CLI" ]]; then
         DYNAMIC_ARCHETYPES="$DYNAMIC_ARCHETYPES_CLI"
@@ -936,7 +936,7 @@ run_implement_round() {
         if [[ -n "$_da_env" ]]; then
             DYNAMIC_ARCHETYPES="$_da_env"
         elif [[ -n "$IMPLEMENT_TMPDIR" ]]; then
-            DYNAMIC_ARCHETYPES="4"
+            DYNAMIC_ARCHETYPES="6"
         else
             DYNAMIC_ARCHETYPES="0"
         fi

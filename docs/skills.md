@@ -28,7 +28,7 @@ Reference for every slash command shipped by the larch plugin. Each section belo
 
 **Source**: [`skills/alias/SKILL.md`](../skills/alias/SKILL.md)
 
-Create an alias for a larch skill with preset flags. Delegates to `/implement --quick --auto` for the full pipeline (code review, version bump, PR). `--merge` also merges the PR.
+Create an alias for a larch skill with preset flags. Delegates to `/implement --auto` for the full pipeline (code review, version bump, PR). `--merge` also merges the PR.
 
 **Target directory** is auto-resolved: inside a Claude plugin source repo (detected by the two-file predicate `.claude-plugin/plugin.json` AND `skills/implement/SKILL.md` at the git repo root), the alias is generated under `skills/<alias-name>/SKILL.md` (exported plugin skill, ships with the plugin); anywhere else, it's generated under `.claude/skills/<alias-name>/SKILL.md` (dev-only repo-private). `--private` forces `.claude/skills/<alias-name>/` even inside a plugin repo (escape hatch); in non-plugin repos it's a no-op.
 
@@ -88,11 +88,11 @@ Process one approved GitHub issue per invocation, classifying intent and delegat
 
 ## `/implement`
 
-**Arguments**: `[--quick] [--auto] [--forked] [--design-only] [--no-issues] [--inline] [--merge | --draft] [--no-admin-fallback] [--no-logs-commit] [--coder=claude|codex|cursor] [--session-env <path>] [--issue <N>] <feature description>`
+**Arguments**: `[--auto] [--forked] [--design-only] [--no-issues] [--inline] [--merge | --draft] [--no-admin-fallback] [--no-logs-commit] [--coder=claude|codex|cursor] [--session-env <path>] [--issue <N>] <feature description>`
 
 **Source**: [`skills/implement/SKILL.md`](../skills/implement/SKILL.md) · [Diagram](../skills/implement/diagram.svg)
 
-Full implementation workflow spanning design through PR merge. In `--quick` (and SIMPLE auto-switch) paths, Step 5 runs `review-and-fix.sh --panel simple`: up to **5 rounds**, a **3-judge panel on round 1** (Claude opus + Codex + Cursor; Claude replacement when an external is unhealthy) and a **2-judge panel on rounds 2+** (Claude + Cursor; Codex voter omitted), and the **simple review panel** (6 Cursor specialists including **Cursor edge-cases**). The `--design-only` flag publishes design artifacts then exits without implementation (mutually exclusive with `--quick`).
+Full implementation workflow spanning design through PR merge. Step 5 always runs `review-and-fix.sh` with `--panel hard` (unified hard panel): up to **5 rounds** (base cap 5, plus degraded-round inflation on argv), a **3-judge panel on round 1** (Claude opus + Codex + Cursor; Claude replacement when an external is unhealthy) and a **2-judge panel on rounds 2+** (Claude + Cursor; Codex voter omitted), and the **hard review panel** with **6 Cursor specialists** (plus optional dynamic archetypes). The `--design-only` flag publishes design artifacts then exits without implementation (mutually exclusive with `--merge`).
 
 ## `/issue`
 

@@ -32,7 +32,7 @@ write-final-report.sh --implement-tmpdir PATH [--comment-only] [--print-stdout]
 | `session-env.sh` | `REPO`, `REPO_UNAVAILABLE`, `UPSTREAM_DESIGN_ISSUE`, `POST_PLAN_WORKFLOW_PATH` (fallback) |
 | `ship-pr-state.sh` | `PR_URL`, `PR_NUMBER`, `STALL_TRACKING`, `MERGE_RESULT`, `MERGE`, `DRAFT`, `FORKED_TARGET` |
 | `finalize-state.sh` | `DESIGN_ONLY_DONE`, `BAIL_NEEDS_USER_INPUT`, optional `STALL_TRACKING` |
-| `run-flags.sh` | `QUICK_MODE`, `NO_ISSUES`, `WORKFLOW_PATH` (from `persist-implement-run-flags.sh`) |
+| `run-flags.sh` | `NO_ISSUES`, `WORKFLOW_PATH` (from `persist-implement-run-flags.sh`); legacy `QUICK_MODE` line may exist but is ignored |
 | `larch-logs/implement/<RUN_ID>/` | `token-report.json`, `timing-report.json`, review tallies, OOS / execution-issues batches |
 
 ## Outputs

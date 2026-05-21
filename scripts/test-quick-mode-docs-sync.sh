@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
 # test-quick-mode-docs-sync.sh — Cross-validation harness asserting that the
-# public quick-mode description in the user-facing docs (README.md,
+# public Step 5 description in the user-facing docs (README.md,
 # docs/review-agents.md, docs/workflow-lifecycle.md, docs/skills.md) stays
-# aligned with the normative `/implement --quick` contract in
-# skills/implement/SKILL.md Step 5 (closes #370; rounds-1-3 topology markers
-# added per #1002).
+# aligned with the normative unified hard-panel contract in
+# skills/implement/SKILL.md Step 5 (historical name retained for Makefile wiring).
 #
 # Without this harness, drift between the canonical contract and the public
 # mirrors is silent: an editor rewriting Step 5 without propagating to the
@@ -20,15 +19,12 @@
 #
 #   1. POSITIVE ANCHORS (required markers) — each target file MUST contain
 #      all of the following strings:
+#        - "unified hard panel"          (case-INSENSITIVE, grep -iF)
 #        - "5 rounds"                    (case-sensitive, grep -F)
-#        - "3-judge panel on round 1"    (case-INSENSITIVE, grep -iF)
-#        - "simple review panel"         (case-INSENSITIVE, grep -iF)
-#        - "Cursor edge-cases"           (case-sensitive, grep -F)
-#        - "6 Cursor specialists"        (case-sensitive, grep -F)
-#      The round-cap and judge-panel markers pair with `simple review panel`,
-#      `Cursor edge-cases`, and `6 Cursor specialists` so future Step 5 quick-mode
-#      reviewer-composition changes that don't propagate to every public surface
-#      fail CI.
+#        - "3-judge panel on round 1"  (case-INSENSITIVE, grep -iF)
+#        - "--panel hard"               (case-sensitive, grep -F)
+#        - "hard review panel"          (case-INSENSITIVE, grep -iF)
+#        - "6 Cursor specialists"       (case-sensitive, grep -F)
 #
 #   2. NEGATIVE CHECKS (forbidden stale phrases) — the four public-doc
 #      targets (README.md, docs/review-agents.md, docs/workflow-lifecycle.md,
@@ -37,6 +33,8 @@
 #        - "1 Claude Code Reviewer subagent, 1 round"
 #        - "no external reviewers"
 #        - "no externals, no voting"
+#        - "simple review panel"
+#        - "/implement --quick"
 #      SKILL.md is EXEMPT from negative checks. Audit performed during #370
 #      implementation: grep -F against each stale phrase returned no matches in
 #      skills/implement/SKILL.md, so the exemption is currently safe. If a
@@ -67,8 +65,8 @@
 # assertions). Proves both check mechanics on every invocation — a broken
 # harness cannot silently go green in CI.
 #
-# Edit-in-sync rule: if skills/implement/SKILL.md Step 5 quick-mode contract
-# changes, update (a) POS_MARKERS / STALE_PHRASES below FIRST, (b) the
+# Edit-in-sync rule: if skills/implement/SKILL.md Step 5 unified hard-panel
+# contract changes, update (a) POS_MARKERS / STALE_PHRASES below FIRST, (b) the
 # sibling scripts/test-quick-mode-docs-sync.md, (c) then the public docs. The
 # positive-anchor check will enforce the new contract across all targets once
 # updated. Keep this script and its sibling .md in sync in the same PR.
@@ -84,10 +82,11 @@ REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # Format: "marker|casing" where casing is "sensitive" or "insensitive".
 # To add a marker, append a new entry — `check_file` iterates this array.
 readonly POS_MARKERS=(
+  "unified hard panel|insensitive"
   "5 rounds|sensitive"
   "3-judge panel on round 1|insensitive"
-  "simple review panel|insensitive"
-  "Cursor edge-cases|sensitive"
+  "--panel hard|sensitive"
+  "hard review panel|insensitive"
   "6 Cursor specialists|sensitive"
 )
 
@@ -96,6 +95,8 @@ readonly STALE_PHRASES=(
   "1 Claude Code Reviewer subagent, 1 round"
   "no external reviewers"
   "no externals, no voting"
+  "simple review panel"
+  "/implement --quick"
 )
 
 # Target files: relative paths from REPO_ROOT.
@@ -286,10 +287,11 @@ run_self_test() {
 
   # Canonical-correct fixture: contains all positive markers, no stale phrases.
   cat > "$good" <<'EOF'
-This is a fixture describing quick-mode behavior.
+This is a fixture describing /implement Step 5.
+Unified hard panel: review-and-fix.sh --panel hard.
 The review loop runs up to 5 rounds.
 The loop runs a 3-judge panel on round 1 (Claude opus + Codex + Cursor) and a 2-judge panel on rounds 2+ (Claude + Cursor).
-It uses the simple review panel: 6 Cursor specialists (including Cursor edge-cases).
+It uses the hard review panel: 6 Cursor specialists.
 EOF
 
   # Stale-phrase fixture: contains ALL positive markers PLUS exactly one stale
@@ -300,9 +302,10 @@ EOF
   # designed to catch.
   cat > "$bad" <<'EOF'
 Stale-phrase fixture: contains every positive marker so only the stale phrase can drive failure.
+Unified hard panel: review-and-fix.sh --panel hard.
 The review loop runs up to 5 rounds.
 The loop runs a 3-judge panel on round 1 (Claude opus + Codex + Cursor) and a 2-judge panel on rounds 2+ (Claude + Cursor).
-It uses the simple review panel: 6 Cursor specialists (including Cursor edge-cases).
+It uses the hard review panel: 6 Cursor specialists.
 Stale phrase intentionally embedded: simplified code review (1 Claude Code Reviewer subagent, 1 round).
 EOF
 

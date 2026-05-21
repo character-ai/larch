@@ -1,13 +1,13 @@
 ---
 name: create-skill
-description: "Use when scaffolding a new larch skill (new SKILL.md). Validates name and description, then delegates to /im --quick which runs render-skill-md.sh and auto-merges. Default: .claude/skills/; --plugin: skills/."
+description: "Use when scaffolding a new larch skill (new SKILL.md). Validates name and description, then delegates to /im --auto which runs render-skill-md.sh and auto-merges. Default: .claude/skills/; --plugin: skills/."
 argument-hint: "[--plugin] [--multi-step] [--merge] <skill-name> <description>  (--merge is a backward-compat no-op; /im auto-merges)"
 allowed-tools: Bash, Skill, Write
 ---
 
 # Create Skill
 
-Scaffold a new larch-style skill and delegate to `/im --quick` for the full pipeline (implementation, code review, version bump, PR, auto-merge). `/im` is larch's `/implement --merge` alias — auto-merge is now the default for scaffolded skills. Pass `--merge` to be explicit (a backward-compat no-op since `/im` already merges).
+Scaffold a new larch-style skill and delegate to `/im --auto` for the full pipeline (implementation, code review, version bump, PR, auto-merge). `/im` is larch's `/implement --merge` alias — auto-merge is now the default for scaffolded skills. Pass `--merge` to be explicit (a backward-compat no-op since `/im` already merges).
 
 Example: `/create-skill foo "Use when doing X"` creates `.claude/skills/foo/SKILL.md` in the consumer repo. With `--plugin`, creates `skills/foo/SKILL.md` inside the larch plugin repo.
 

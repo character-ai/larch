@@ -121,7 +121,7 @@ $case_dir
 --mode
 diff
 --panel
-simple
+hard
 --round-num
 3
 --round-cap
@@ -153,7 +153,7 @@ hard
 --round-num
 1
 --round-cap
-7
+5
 --session-env-path
 $case_dir/session-env.sh
 --codex-available
@@ -178,7 +178,7 @@ printf 'DEGRADED_ROUND=false\n' > "$case_dir/round-2/review-and-fix.env"
 argv_file="$TMP/degraded-cap.argv"
 RUN_STEP5_REVIEW_SH="$SPY" RUN_STEP5_ARGV_FILE="$argv_file" "$LAUNCHER" --implement-tmpdir "$case_dir" --round-num 3 >/dev/null
 assert_contains "$(cat "$argv_file")" "--round-cap
-6" "degraded prior rounds add back onto simple round cap"
+6" "degraded prior rounds add back onto unified base round cap"
 
 echo "=== canonical RUN_ID prefers sentinel over session-id ==="
 case_dir="$TMP/run-id-sentinel"

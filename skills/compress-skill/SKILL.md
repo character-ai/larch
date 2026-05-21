@@ -1,13 +1,15 @@
 ---
 name: compress-skill
-description: "Use when compressing an existing skill's prose. Rewrites SKILL.md and all transitively included .md files (excluding sub-skills), applying Strunk & White's Elements of Style adapted for technical writing. Delegates to /imaq so changes ship as a PR."
+description: "Use when compressing an existing skill's prose. Rewrites SKILL.md and reachable .md (excluding sub-skills) with Strunk & White style. Delegates to `/implement --merge --auto` for a PR."
 argument-hint: "<skill-name-or-path>"
 allowed-tools: Bash, Skill
 ---
 
 # compress-skill
 
-Rewrite an existing skill's Markdown prose to reduce size while preserving meaning, grammar, and every structural element. Pure delegator: validates the target, enumerates the transitively-reachable `.md` set inside the skill directory, snapshots baseline sizes, and hands off to `/imaq` (= `/implement --merge --quick`) for branch creation, implementation, code review, PR creation, and auto-merge.
+Rewrite an existing skill's Markdown prose to reduce size while preserving meaning, grammar, and every structural element. Pure delegator: validates the target, enumerates the transitively-reachable `.md` set inside the skill directory, snapshots baseline sizes, and hands off to `/implement --merge --auto` for branch creation, `/design`, implementation (the actual file-by-file prose rewrite), code review, `/relevant-checks`, version bump, PR creation with the token-budget delta table in the body, CI wait, and auto-merge.
+
+**Pipeline weight (vs. legacy quick-implement shortcuts).** This path runs the full `/implement` envelope: `/design` (including the heavy phase when applicable) and the unified hard Step 5 review loop — not the removed `/implement --quick` envelope. Unattended or low-budget runs can time out or exhaust tokens; hosts without `SendMessage` cannot recover from `/design` subagent suspend. When you need `/design` in the parent context, add `--inline` to the Step 3 `/implement` args (same skill invocation — see `skills/implement/SKILL.md` `--inline`). For plan-only runs without merge/PR, invoke `/implement --design-only` directly instead of this skill (`--design-only` is mutually exclusive with `--merge`).
 
 Example: `/compress-skill implement` compresses `skills/implement/SKILL.md` plus every `.md` file reachable from it that resolves inside the `skills/implement/` directory tree.
 
@@ -56,9 +58,10 @@ ${CLAUDE_PLUGIN_ROOT}/skills/compress-skill/scripts/build-feature-description.sh
 
 The coordinator invokes `discover-md-set.sh` internally to BFS the transitive `.md` set from `SKILL.md`, then measures each file's byte and line count for the baseline. The style guide, anti-patterns, and judgment rules are embedded in the feature description so that `/implement`'s Step 2 has them inline.
 
-<!-- step:3 — Delegate to /imaq -->
+<!-- step:3 — Delegate to /implement -->
 
 Invoke the Skill tool:
-- Try skill: `"imaq"` first (bare name). If no skill matches, try skill: `"larch:imaq"` (fully-qualified plugin name).
+- Try skill: `"implement"` first (bare name). If no skill matches, try skill: `"larch:implement"` (fully-qualified plugin name).
+- args: `--merge --auto` immediately followed by one space and the `FEATURE_DESCRIPTION` text read from `FEATURE_FILE` in Step 2 (bind this in the orchestrator's context before Step 2's `rm -f "$FEATURE_FILE"` cleanup — do not rely on re-reading the temp path in Step 3).
 
-The `/imaq` → `/implement --merge --quick` chain runs branch creation, inline plan, implementation (the actual file-by-file prose rewrite), quick-mode code review loop, `/relevant-checks`, version bump, PR creation with the token-budget delta table in the body, CI wait, and auto-merge. No post-invocation verification is needed at this level — `/implement`'s own internal gates (CI green, merge) are the authoritative signal, and this skill runs no further steps after `/imaq` returns.
+The `/implement --merge --auto` run covers branch creation, design, Step 2 implementation, the unified Step 5 review loop, `/relevant-checks`, version bump, PR creation with the token-budget delta table in the body, CI wait, and auto-merge. No post-invocation verification is needed at this level — `/implement`'s own internal gates (CI green, merge) are the authoritative signal, and this skill runs no further steps after the child returns.

@@ -14,15 +14,13 @@
 #   (a2) Invocation forwards "--no-admin-fallback" (branch-protection bypass
 #        safety flag; issue #559).
 #   (a3) Invocation forwards "--coder=$coder" (pass-through implementer flag).
-#   (a5) Invocation contains "[--hard if hard_mode]" — /fix-issue delegates
-#        HARD/SIMPLE selection to /implement via this conditional flag.
-#   (a6) Invocation does NOT unconditionally contain "--quick" — the old SIMPLE
-#        path that passed --quick unconditionally is gone; /implement now decides
-#        SIMPLE vs HARD via its own simplicity classification when --hard is
-#        absent.
-#   (a7) Invocation contains "[--inline if inline_mode and hard_mode]" — encodes
-#        that --inline is forwarded only when --hard is also set (because --inline
-#        only matters when /design runs, which requires HARD mode).
+#   (a4) Invocation forwards "[--auto if auto_mode]" (autonomous-mode flag).
+#   (a5) Invocation contains "[--hard if hard_mode]" — /fix-issue forwards --hard
+#        when the operator sets it; otherwise no HARD/SIMPLE control flag is sent
+#        and /implement uses its normal routing.
+#   (a6) Invocation contains "[--inline if inline_mode and hard_mode]" — encodes
+#        that --inline is forwarded only when --hard is also set (--inline only matters
+#        when /design runs, which requires HARD mode).
 #   (b)  Literal token "IMPLEMENT_BAIL_REASON=adopted-issue-closed" present.
 #   (c)  Warning prefix "/implement bailed: issue #" present.
 #   (d)  Specific directive "Do NOT call `issue-lifecycle.sh close`" present
@@ -122,35 +120,17 @@ assert_contains "a2: invocation forwards --no-admin-fallback" '--no-admin-fallba
 # back to /implement's default coder.
 assert_contains "a3: invocation forwards --coder=\$coder" '--coder=$coder'
 
-# (a5) [--hard if hard_mode] — /fix-issue delegates HARD/SIMPLE selection to
-# /implement. When --hard is passed by the operator, it is forwarded; otherwise
-# no HARD/SIMPLE control flag is sent and /implement decides via its own
-# simplicity classification.
+# (a4) --auto forwarding — pass-through autonomous-mode flag.
+assert_contains "a4: invocation forwards [--auto if auto_mode]" '[--auto if auto_mode]'
+
+# (a5) [--hard if hard_mode] — when the operator passes --hard, /fix-issue forwards it;
+# otherwise no workflow forcing flag is sent.
 assert_contains "a5: invocation contains [--hard if hard_mode]" '[--hard if hard_mode]'
 
-# (a6) Invocation line does NOT unconditionally contain "--quick". The old
-# SIMPLE path that always passed --quick to /implement is removed; HARD/SIMPLE
-# selection is now delegated to /implement. Check for the unconditional token
-# "--quick" followed by a space or end-of-token (not part of "[--quick ...]").
-INVOCATION_LINE=$(grep -F -- '/implement --merge' <<<"$STEP5A_BLOCK" | head -1 || true)
-if [[ -n "$INVOCATION_LINE" && "$INVOCATION_LINE" != *" --quick "* && "$INVOCATION_LINE" != *"--quick]"* ]]; then
-    PASS_COUNT=$((PASS_COUNT + 1))
-    echo "  PASS: a6: invocation does NOT unconditionally contain --quick"
-else
-    echo "  FAIL: a6: invocation does NOT unconditionally contain --quick" >&2
-    if [[ -z "$INVOCATION_LINE" ]]; then
-        echo "    /implement --merge invocation line not found" >&2
-    else
-        echo "    invocation line: $INVOCATION_LINE" >&2
-        echo "    found unconditional --quick in invocation" >&2
-    fi
-    exit 1
-fi
-
-# (a7) [--inline if inline_mode and hard_mode] — encodes that --inline is only
+# (a6) [--inline if inline_mode and hard_mode] — encodes that --inline is only
 # forwarded when --hard is also set (--inline only matters when /design runs,
 # which requires HARD mode).
-assert_contains "a7: invocation forwards [--inline if inline_mode and hard_mode]" '[--inline if inline_mode and hard_mode]'
+assert_contains "a6: invocation forwards [--inline if inline_mode and hard_mode]" '[--inline if inline_mode and hard_mode]'
 
 # (b) Bail-token literal present.
 assert_contains "b: IMPLEMENT_BAIL_REASON=adopted-issue-closed literal" 'IMPLEMENT_BAIL_REASON=adopted-issue-closed'

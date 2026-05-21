@@ -7,8 +7,8 @@ Primary caller: `make test-run-step5-review`.
 Coverage:
 
 - Missing required flags exit 2.
-- `POST_PLAN_WORKFLOW_PATH=SIMPLE` derives `--panel simple --round-cap 5`.
-- `POST_PLAN_WORKFLOW_PATH=HARD` derives `--panel hard --round-cap 7`.
+- `POST_PLAN_WORKFLOW_PATH=SIMPLE` derives `--panel hard --round-cap 5`.
+- `POST_PLAN_WORKFLOW_PATH=HARD` derives `--panel hard --round-cap 5`.
 - `LARCH_DYNAMIC_ARCHETYPES_MAX` in session-env is forwarded as an explicit
   `--dynamic-archetypes <N>` arg so `/implement` operator flags override any
   ambient shell env in downstream `review-and-fix.sh` resolution.
