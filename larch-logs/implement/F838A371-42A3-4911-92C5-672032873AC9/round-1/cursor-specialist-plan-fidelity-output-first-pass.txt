@@ -1,0 +1,9 @@
+Gathering the pre-computed diff and commit list for plan-fidelity review.
+
+Searching the diff for plan-relevant patterns and sampling key hunks.
+
+Checking the workspace for remaining `--auto` / `auto_mode` / `LARCH_AUTO_MODE` references and scanning the diff for added lines that still mention them.
+
+Creating a concise plan documenting follow-up items from the review.
+
+

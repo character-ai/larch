@@ -1,0 +1,20 @@
+Reading the ballot and session context files to verify findings.
+
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: EXONERATE -- duplicate of FINDING_1 (same README stale `[--auto]` rows)
+FINDING_4: EXONERATE -- duplicate of FINDING_1 (same `/imaq` README line 169 vs `skills/imaq/SKILL.md`)
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: EXONERATE -- fold into same doc-sync as other `--auto` removals; no separate issue
+FINDING_10: EXONERATE -- duplicate of FINDING_6 (same Step 2.3 `auto-mode` sentence)
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: EXONERATE -- duplicate of FINDING_8 (same Check 6 weakness in `scripts/test-design-structure.sh`)
+FINDING_14: EXONERATE -- duplicate of FINDING_5; separate tracking issue unnecessary
+FINDING_15: EXONERATE -- duplicate of FINDING_1
+FINDING_16: EXONERATE -- duplicate of FINDING_2
+FINDING_17: EXONERATE -- duplicate of FINDING_5
+FINDING_18: YES
