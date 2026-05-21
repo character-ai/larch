@@ -90,7 +90,11 @@ out="$("$VERIFY" "$run_ok" 2>&1 || true)"
 assert_contains "complete run emits OK" "$out" "OK"
 
 # Test 15: repo-relative LARCH_VERIFY_MANIFEST resolves under REPO_ROOT (not process cwd)
-out="$(cd "$TMP" && LARCH_VERIFY_MANIFEST="docs/run-logs-required-files.tsv" "$VERIFY" "$run_ok" 2>&1 || true)"
+if out="$(cd "$TMP" && LARCH_VERIFY_MANIFEST="docs/run-logs-required-files.tsv" "$VERIFY" "$run_ok" 2>&1)"; then
+    :
+else
+    :
+fi
 assert_contains "relative manifest path resolves from repo root" "$out" "OK"
 
 # Test 2: missing execution-issues.ndjson from a Step-7a-complete run → MISSING reported
