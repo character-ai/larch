@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [29.8.61] - 2026-05-20
+
+### Changed
+
+- LLM-merge cross-reviewer findings before voting with safe degradation and LARCH_AGGREGATOR_DISABLED=1 escape hatch
+- Credit each comma-separated reviewer slot on the competition scoreboard after merged ballots
+- Emit review-findings-full JSONL schema_version 2 with reviewer_slots arrays split from attribution lines
+- Stop byte-level dedupe in collect-findings so distinct same-title rows survive until aggregation
+
 ## [29.8.60] - 2026-05-20
 
 ### Changed
