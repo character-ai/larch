@@ -7,8 +7,10 @@ Idempotently adds or removes the `needs-design-clarification` label on an issue 
 ## Interface
 
 ```
-clarify-label.sh --issue <N> --action add|remove [--repo OWNER/REPO]
+clarify-label.sh --issue <N> --action add|remove [--create-if-missing] [--repo OWNER/REPO]
 ```
+
+When `--create-if-missing` is set together with `--action add`, the script runs `gh label create needs-design-clarification` (idempotent via `|| true`) before `gh issue edit --add-label`, so the label exists on the repo even when it has never been created.
 
 ## Output Contract
 

@@ -144,12 +144,10 @@ fi
 
 case "$WORKFLOW_PATH" in
     SIMPLE)
-        REVIEW_PANEL="hard"
         # Base Step 5 round cap is intentionally 5 for SIMPLE and HARD (unified panel).
         ROUND_CAP="5"
         ;;
     HARD)
-        REVIEW_PANEL="hard"
         ROUND_CAP="5"
         ;;
     *)
@@ -176,7 +174,6 @@ REVIEW_AND_FIX_SH="${RUN_STEP5_REVIEW_SH:-$PLUGIN_ROOT/skills/review-and-fix/scr
 REVIEW_AND_FIX_ARGS=(
     --implement-tmpdir "$IMPLEMENT_TMPDIR"
     --mode diff
-    --panel "$REVIEW_PANEL"
     --round-num "$ROUND_NUM"
     --round-cap "$ROUND_CAP"
     --session-env-path "$SESSION_ENV_PATH"

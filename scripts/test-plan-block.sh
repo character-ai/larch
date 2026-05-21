@@ -253,4 +253,8 @@ PATH="$STUB:$ORIG_PATH" "$WRITE" --issue 99 --content-file "$CONTENT" --repo own
 grep -q 'MODE=appended' "$TMP/w4.out" || fail "empty append mode"
 head -1 "$EDIT_CAPTURE" | grep -q '<!-- larch:plan:start -->' || fail "empty body should start with marker block"
 
+LABEL_HELPER="$REPO_ROOT/scripts/clarify-label.sh"
+[ -x "$LABEL_HELPER" ] || fail "clarify-label.sh not executable"
+grep -Fq -- '--create-if-missing' "$LABEL_HELPER" || fail "clarify-label.sh missing --create-if-missing flag"
+
 echo "All assertions passed."

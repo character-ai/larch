@@ -139,4 +139,46 @@ run_case_dual 'paginate_merge' \
     '[{"body":"<!-- larch:clarify-response id=1 -->"}]' \
     'STATE=response-pending' 'LAST_REQUEST_ID=1' 'LAST_RESPONSE_ID=1'
 
+LABEL="$REPO_ROOT/scripts/clarify-label.sh"
+[ -x "$LABEL" ] || fail "clarify-label.sh not executable"
+grep -Fq -- '--create-if-missing' "$LABEL" || fail "clarify-label.sh missing --create-if-missing argv"
+
+echo "=== clarify-label: --create-if-missing stubbed gh ==="
+LABEL_STUB="$TMP/label-stub"
+LABEL_LOG="$TMP/gh-label-create.log"
+mkdir -p "$LABEL_STUB"
+: > "$LABEL_LOG"
+cat > "$LABEL_STUB/gh" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+if [ "\$1" = "repo" ] && [ "\$2" = "view" ]; then
+    printf '%s\n' 'owner/repo'
+    exit 0
+fi
+if [ "\$1" = "issue" ] && [ "\$2" = "view" ]; then
+    printf '%s\n' 'needs-other-label'
+    exit 0
+fi
+if [ "\$1" = "label" ] && [ "\$2" = "create" ]; then
+    printf 'create\n' >> "$LABEL_LOG"
+    exit 0
+fi
+if [ "\$1" = "issue" ] && [ "\$2" = "edit" ]; then
+    exit 0
+fi
+echo "label-stub: unhandled \$*" >&2
+exit 2
+EOF
+chmod +x "$LABEL_STUB/gh"
+set +e
+out1="$(PATH="$LABEL_STUB:$ORIG_PATH" "$LABEL" --issue 7 --action add --create-if-missing --repo owner/repo 2>&1)"
+rc1=$?
+out2="$(PATH="$LABEL_STUB:$ORIG_PATH" "$LABEL" --issue 7 --action add --create-if-missing --repo owner/repo 2>&1)"
+rc2=$?
+set -e
+[ "$rc1" = "0" ] || fail "clarify-label first add exit $rc1: $out1"
+[ "$rc2" = "0" ] || fail "clarify-label second add exit $rc2: $out2"
+creates=$(wc -l < "$LABEL_LOG" | tr -d ' ')
+[ "$creates" = "2" ] || fail "expected gh label create twice (once per invocation), got $creates"
+
 echo "All assertions passed."

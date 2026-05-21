@@ -218,20 +218,18 @@ grep 'collect-agent-results.sh' "$PLAN_REVIEW_MD" \
 PLAN_REVIEW_QUICK_MD="$REPO_ROOT/skills/design/references/plan-review-quick.md"
 [[ -f "$PLAN_REVIEW_QUICK_MD" ]] || fail "(7b) plan-review-quick.md missing: $PLAN_REVIEW_QUICK_MD"
 
-# Check 8: nested /implement design handoff must use the file-backed manifest
-# writer and heavy-worker contract, while standalone mode skips the manifest.
+# Check 8: issue-anchored plan handoff uses plan-block-write.sh; heavy-worker
+# contract remains file-backed under $DESIGN_TMPDIR/.
 [[ -f "$REPO_ROOT/skills/design/references/heavy-worker.md" ]] \
   || fail "(8) heavy-worker.md missing — subagent /design heavy phase has no subagent runbook"
-[[ -x "$REPO_ROOT/skills/design/scripts/write-design-manifest.sh" ]] \
-  || fail "(8) write-design-manifest.sh missing or not executable"
-[[ -x "$REPO_ROOT/skills/design/scripts/read-design-manifest.sh" ]] \
-  || fail "(8) read-design-manifest.sh missing or not executable"
+PBW_SH="$REPO_ROOT/scripts/plan-block-write.sh"
+[[ -x "$PBW_SH" ]] \
+  || fail "(8) plan-block-write.sh missing or not executable at $PBW_SH"
 # shellcheck disable=SC2016 # fixed-string grep literals contain shell variables/backticks
-grep -Fq 'write-design-manifest.sh --design-tmpdir "$DESIGN_TMPDIR" --implement-tmpdir "$(dirname "$SESSION_ENV_PATH")"' "$SKILL_MD" \
-  || fail "(8) SKILL.md lacks Step 5 write-design-manifest.sh invocation with DESIGN_TMPDIR + dirname(SESSION_ENV_PATH)"
-# shellcheck disable=SC2016 # fixed-string grep literal contains markdown backticks
-grep -Fq 'If `SESSION_ENV_PATH` is empty, skip this manifest write' "$SKILL_MD" \
-  || fail "(8) SKILL.md lacks standalone-mode manifest-skip branch"
+grep -Fq 'scripts/plan-block-write.sh" --issue "$ISSUE_NUMBER" --content-file' "$SKILL_MD" \
+  || fail "(8) SKILL.md lacks Step 5 plan-block-write.sh --issue --content-file invocation"
+grep -Fq 'PLAN_WRITE_OK=true' "$SKILL_MD" \
+  || fail "(8) SKILL.md lacks Step 5 PLAN_WRITE_OK gating for cleanup"
 # shellcheck disable=SC2016 # fixed-string grep literal contains markdown backticks
 grep -Fq 'read the Step 3 external reviewer launch Bash blocks directly from `${CLAUDE_PLUGIN_ROOT}/skills/design/SKILL.md`' "$REPO_ROOT/skills/design/references/heavy-worker.md" \
   || fail "(8) heavy-worker.md must tell the subagent to read Step 3 reviewer launch blocks from \${CLAUDE_PLUGIN_ROOT}/skills/design/SKILL.md"

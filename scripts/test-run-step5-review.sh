@@ -120,8 +120,6 @@ assert_file_equals "$argv_file" "--implement-tmpdir
 $case_dir
 --mode
 diff
---panel
-hard
 --round-num
 3
 --round-cap
@@ -148,8 +146,6 @@ assert_file_equals "$argv_file" "--implement-tmpdir
 $case_dir
 --mode
 diff
---panel
-hard
 --round-num
 1
 --round-cap
