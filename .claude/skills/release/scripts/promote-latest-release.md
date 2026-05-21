@@ -8,14 +8,9 @@ The script queries GitHub releases with `gh release list --exclude-drafts --limi
 
 It prints machine-readable key-value lines on stdout:
 
-- `RELEASE_REPO`
-- `RELEASE_TAG`
-- `RELEASE_PUBLISHED_AT`
-- `RELEASE_WAS_PRERELEASE`
-- `RELEASE_WAS_LATEST`
-- `RELEASE_ALREADY_LATEST` (live runs only; omitted on `--dry-run`)
-- `RELEASE_IS_PRERELEASE`
-- `RELEASE_IS_LATEST`
+- **Prelude (every successful live run; also the full stdout set for `--dry-run` except `DRY_RUN=true` is appended):** `RELEASE_REPO`, `RELEASE_TAG`, `RELEASE_PUBLISHED_AT`, `RELEASE_WAS_PRERELEASE`, `RELEASE_WAS_LATEST` (in that order).
+- **After the prelude on a live run:** `RELEASE_ALREADY_LATEST` (`true` or `false`; omitted on `--dry-run`).
+- **Post-edit verification (live runs only, and only when `RELEASE_ALREADY_LATEST=false`):** `RELEASE_IS_PRERELEASE`, `RELEASE_IS_LATEST`. These keys are absent when `RELEASE_ALREADY_LATEST=true` (early exit) and absent on `--dry-run`.
 
 Failure diagnostics are `ERROR=` lines on stderr with a non-zero exit.
 
