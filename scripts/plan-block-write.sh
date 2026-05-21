@@ -144,6 +144,8 @@ CUR_BODY_FILE=$(mktemp "${TMPDIR:-/tmp}/plan-block-write-cur.XXXXXX")
 COMPOSED=$(mktemp "${TMPDIR:-/tmp}/plan-block-write-new.XXXXXX")
 BLOCK_TMP=$(mktemp "${TMPDIR:-/tmp}/plan-block-write-blk.XXXXXX")
 REDACTED_OUT=$(mktemp "${TMPDIR:-/tmp}/plan-block-write-red.XXXXXX")
+EDIT_TMP=""
+trap 'rm -f "$ERR_TMP" "$CUR_BODY_FILE" "$COMPOSED" "$BLOCK_TMP" "$REDACTED_OUT"; [ -n "${EDIT_TMP:-}" ] && rm -f "$EDIT_TMP"' EXIT
 
 BODY=""
 if ! BODY=$(gh issue view "$ISSUE" --repo "$REPO" --json body 2>"$ERR_TMP" | jq -r '.body // ""' 2>>"$ERR_TMP"); then
@@ -200,7 +202,6 @@ fi
 BODY_BYTES=$(wc -c < "$REDACTED_OUT" | tr -d ' ')
 
 EDIT_TMP=$(mktemp "${TMPDIR:-/tmp}/plan-block-write-edit.XXXXXX")
-trap 'rm -f "$ERR_TMP" "$CUR_BODY_FILE" "$COMPOSED" "$BLOCK_TMP" "$REDACTED_OUT" "$EDIT_TMP"' EXIT
 cp "$REDACTED_OUT" "$EDIT_TMP"
 
 if ! gh issue edit "$ISSUE" --repo "$REPO" --body-file "$EDIT_TMP" 2>"$ERR_TMP"; then

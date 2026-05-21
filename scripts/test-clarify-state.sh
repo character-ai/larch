@@ -93,6 +93,10 @@ run_case_dual() {
 echo "=== zero comments ==="
 run_case 'clean' '[]' 'STATE=clean' 'LAST_REQUEST_ID=' 'LAST_RESPONSE_ID='
 
+echo "=== clarify marker id=0 ignored (aligns with posting helper) ==="
+run_case 'id0ignored' '[{"body":"<!-- larch:clarify-request id=0 -->\nmore"}]' \
+    'STATE=clean' 'LAST_REQUEST_ID=' 'LAST_RESPONSE_ID='
+
 echo "=== one request no response ==="
 run_case 'await' '[{"body":"<!-- larch:clarify-request id=1 -->\nhi"}]' \
     'STATE=awaiting-response' 'LAST_REQUEST_ID=1' 'LAST_RESPONSE_ID='

@@ -57,17 +57,44 @@ fail() {
 CONTENT="$TMP/c.txt"
 printf 'line1\nline2\n' > "$CONTENT"
 
+expect_kv() {
+    local haystack="$1" key="$2" val="$3"
+    printf '%s\n' "$haystack" | grep -Fxq "${key}=${val}" || fail "missing ${key}=${val} in output"
+}
+
+REDACT="$REPO_ROOT/scripts/redact-secrets.sh"
+
+expect_body_file() {
+    local path="$1"
+    local marker="$2"
+    local raw="$TMP/expected-body-raw.txt"
+    local exp="$TMP/expected-body-red.txt"
+    {
+        printf '%s\n' "$marker"
+        cat "$CONTENT"
+    } > "$raw"
+    [ -x "$REDACT" ] || fail "redact-secrets.sh not executable"
+    "$REDACT" < "$raw" > "$exp" || fail "redact-secrets failed building expected body"
+    cmp -s "$path" "$exp" || fail "posted body mismatch (expected redacted marker + content-file bytes)"
+}
+
 echo "=== request marker prefix ==="
 rm -f "$CAPTURE"
 out="$(PATH="$STUB:$ORIG_PATH" "$POST" --issue 42 --kind request --id 1 --content-file "$CONTENT" --repo owner/repo)"
-echo "$out" | grep -q 'POSTED=true' || fail "POSTED"
-echo "$out" | grep -q 'MARKER=<!-- larch:clarify-request id=1 -->' || fail "marker"
-head -1 "$CAPTURE" | grep -q '^<!-- larch:clarify-request id=1 -->$' || fail "first line marker"
+expect_kv "$out" POSTED true
+expect_kv "$out" COMMENT_ID 7001
+expect_kv "$out" COMMENT_URL "https://github.com/owner/repo/issues/42#issuecomment-7001"
+expect_kv "$out" MARKER "<!-- larch:clarify-request id=1 -->"
+expect_body_file "$CAPTURE" "<!-- larch:clarify-request id=1 -->"
 
 echo "=== response marker prefix ==="
 rm -f "$CAPTURE"
 out="$(PATH="$STUB:$ORIG_PATH" "$POST" --issue 42 --kind response --id 1 --content-file "$CONTENT" --repo owner/repo)"
-head -1 "$CAPTURE" | grep -q '^<!-- larch:clarify-response id=1 -->$' || fail "response first line"
+expect_kv "$out" POSTED true
+expect_kv "$out" COMMENT_ID 7001
+expect_kv "$out" COMMENT_URL "https://github.com/owner/repo/issues/42#issuecomment-7001"
+expect_kv "$out" MARKER "<!-- larch:clarify-response id=1 -->"
+expect_body_file "$CAPTURE" "<!-- larch:clarify-response id=1 -->"
 
 echo "=== invalid id 0 ==="
 set +e

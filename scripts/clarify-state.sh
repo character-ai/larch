@@ -15,7 +15,7 @@ larch_quiet_init
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 REDACT_HELPER="$REPO_ROOT/scripts/redact-secrets.sh"
 
-MARK_LINE='^[[:space:]]*<!--[[:space:]]+larch:clarify-(request|response)[[:space:]]+id=[0-9]+[[:space:]]*-->[[:space:]]*$'
+MARK_LINE='^[[:space:]]*<!--[[:space:]]+larch:clarify-(request|response)[[:space:]]+id=[1-9][0-9]*[[:space:]]*-->[[:space:]]*$'
 
 usage() {
     while IFS= read -r line; do larch_err "$line"; done <<'USAGE'
@@ -103,8 +103,8 @@ printf '%s' "$MERGED" | jq -r '.[] | (.body // "" | (split("\n")[0] // ""))' > "
 while IFS= read -r line || [ -n "$line" ]; do
     [ -z "$line" ] && continue
     if printf '%s' "$line" | grep -q -E "$MARK_LINE"; then
-        kind=$(printf '%s' "$line" | sed -E 's/^[[:space:]]*<!--[[:space:]]+larch:clarify-(request|response)[[:space:]]+id=([0-9]+)[[:space:]]*-->.*/\1/')
-        mid=$(printf '%s' "$line" | sed -E 's/^[[:space:]]*<!--[[:space:]]+larch:clarify-(request|response)[[:space:]]+id=([0-9]+)[[:space:]]*-->.*/\2/')
+        kind=$(printf '%s' "$line" | sed -E 's/^[[:space:]]*<!--[[:space:]]+larch:clarify-(request|response)[[:space:]]+id=([1-9][0-9]*)[[:space:]]*-->.*/\1/')
+        mid=$(printf '%s' "$line" | sed -E 's/^[[:space:]]*<!--[[:space:]]+larch:clarify-(request|response)[[:space:]]+id=([1-9][0-9]*)[[:space:]]*-->.*/\2/')
         printf '%s %s\n' "$kind" "$mid" >> "$EVENTS"
     fi
 done < "$FIRST_LINES"
