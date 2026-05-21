@@ -1,0 +1,10 @@
+FINDING_1: EXONERATE -- doc style concern with no correctness impact; one-long-sentence convention is pre-existing in this file
+FINDING_2: EXONERATE -- production case is a single flat parenthetical; loop logic for nested/stacked suffixes would be over-engineering for a shape not observed in practice
+FINDING_3: YES -- asymmetric normalization is a real design gap; the input-clean invariant is asserted in the plan but unenforced and undocumented in code
+FINDING_4: EXONERATE -- pattern divergence predates this change; the new tests use the same grep as all pre-existing tests, so no regression is introduced
+FINDING_5: YES -- a one-line assertion gap that would let INPUT_COUNT regressions go undetected while MERGED_COUNT and REASON still pass
+FINDING_6: YES -- zero-block acceptance can silently replace a non-empty findings.md with no machine-readable failure signal; a faulty or injected aggregator could drop all blocks undetected
+FINDING_7: EXONERATE -- the bash layer emits REASON=ok, which is sufficient for the common observability path; verbose Python stderr adds complexity without addressing the zero-block design question
+FINDING_8: EXONERATE -- run-log commits in the branch are intentional policy per docs/run-logs.md; no issue warranted
+FINDING_9: EXONERATE -- pre-existing surface fully constrained by the bash wrapper; this change introduces no new exposure
+FINDING_10: EXONERATE -- pre-existing pattern skew; the zero-block and labelled-slot paths added by this change never exercise malformed-heading scenarios

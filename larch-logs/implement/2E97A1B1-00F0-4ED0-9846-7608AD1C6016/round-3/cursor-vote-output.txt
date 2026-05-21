@@ -1,0 +1,17 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: EXONERATE -- one-suffix behavior is already called out in the committed plan-goals-test edge cases; looping/extra tests is low ROI for rare double-suffix labels.
+FINDING_4: EXONERATE -- non-empty `input_slot_set` here already implies parsed reviewer slot tokens (empty set fails earlier), so the comment is only mildly imprecise.
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: EXONERATE -- supplied diff excerpt does not include `count_finding_blocks`, so the bash/Python mismatch claim is not verifiable from the provided context alone.
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: EXONERATE -- `zero_findings_no_attest` is already listed in the committed `plan-goals-test.md` regression bullets shown in the diff.
+FINDING_14: EXONERATE -- `<2` blocks remain intentionally `insufficient-input` by contract; no GitHub issue needed unless product scope changes.
+FINDING_15: EXONERATE -- artifact mismatch is reviewer hygiene, not a defect warranting a tracked issue.
+FINDING_16: EXONERATE -- runtime/docs were updated for the stricter branch; residual prompt drift can be fixed opportunistically without a dedicated issue.
+FINDING_17: EXONERATE -- follow existing `larch-logs/` merge conventions in PR review rather than opening a meta-issue.

@@ -266,7 +266,7 @@ def oos_attributed_slots(text):
             continue
         _line, slots = reviewer_line_slots(block)
         for sl in slots:
-            out.add(sl)
+            out.add(normalize_slot(sl))
     return out
 
 
@@ -277,6 +277,15 @@ def finding_id_from_block(block):
         if m:
             return m.group(1)
     return None
+
+
+def normalize_slot(sl):
+    # Symmetric contract: input and output slot tokens strip one trailing
+    # parenthetical suffix so labels that differ only by "(...)" collapse.
+    return re.sub(r"\s*\([^)]*\)\s*$", "", sl).strip()
+
+
+EMPTY_MERGE_ATTESTATION = "LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED"
 
 
 def main():
@@ -290,9 +299,9 @@ def main():
         _line, slots = reviewer_line_slots(block)
         is_oos = "[OUT_OF_SCOPE]" in heading_line(block)
         for sl in slots:
-            input_slot_set.add(sl)
+            input_slot_set.add(normalize_slot(sl))
             if not is_oos:
-                non_oos_input_slots.add(sl)
+                non_oos_input_slots.add(normalize_slot(sl))
     # Only flag reviewers who are EXCLUSIVELY OOS in the input. A reviewer that
     # contributed both OOS and in-scope input findings is legitimately attributed
     # to non-OOS merged output blocks (see issue #2491).
@@ -301,9 +310,28 @@ def main():
         print("no input reviewer labels", file=sys.stderr)
         return 1
     blocks = output_blocks(outtext)
-    if not blocks:
-        print("no output FINDING blocks", file=sys.stderr)
+    has_attest_line = any(
+        line.strip() == EMPTY_MERGE_ATTESTATION for line in outtext.splitlines()
+    )
+    if blocks and has_attest_line:
+        print(
+            "empty-merge attestation %r must not appear when merged FINDING blocks exist"
+            % (EMPTY_MERGE_ATTESTATION,),
+            file=sys.stderr,
+        )
         return 1
+    if not blocks:
+        # input_slot_set non-empty (checked above) ⇒ structured input findings exist.
+        if not has_attest_line:
+            print(
+                "zero merged FINDING blocks while input had findings; "
+                "output must include a line whose trimmed text equals %r "
+                "(machine-readable attestation; leading/trailing whitespace ignored)"
+                % (EMPTY_MERGE_ATTESTATION,),
+                file=sys.stderr,
+            )
+            return 1
+        return 0
     seen_merge_ids = set()
     for b in blocks:
         mid = finding_id_from_block(b)
@@ -324,7 +352,7 @@ def main():
             return 1
         if not is_oos_out:
             for sl in slots:
-                if sl in oos_only_slots:
+                if normalize_slot(sl) in oos_only_slots:
                     print(
                         "merged output lacks [OUT_OF_SCOPE] while listing reviewer %r "
                         "that appears only on OOS-tagged input findings" % (sl,),
@@ -332,10 +360,11 @@ def main():
                     )
                     return 1
         for sl in slots:
-            if sl not in input_slot_set:
+            normalized = normalize_slot(sl)
+            if normalized not in input_slot_set:
                 print("unknown reviewer slot in merge output: %r" % (sl,), file=sys.stderr)
                 return 1
-            all_out_slots.add(sl)
+            all_out_slots.add(normalized)
     missing = sorted(s for s in input_slot_set if s not in all_out_slots)
     if missing:
         print("input reviewers missing from merge output: %r" % (missing,), file=sys.stderr)
@@ -359,12 +388,34 @@ fi
 # Atomic replace: never truncate the live ballot until the staged copy validates.
 merged_tmp="$(mktemp "$REVIEW_TMPDIR/findings.md.merged.XXXXXX")"
 trap 'rm -f "${merged_tmp:-}"' EXIT
-awk 1 "$cand" > "$merged_tmp"
+# Strip empty-merge attestation lines using the same trimmed-line predicate as
+# aggregate-validate.py (padding or stray whitespace must not survive into findings.md).
+if ! python3 - "$cand" <<'PY' >"$merged_tmp" 2>"$REVIEW_TMPDIR/aggregator-strip.stderr"
+import sys
+
+EMPTY_MERGE_ATTESTATION = "LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED"
+path = sys.argv[1]
+with open(path, encoding="utf-8") as f:
+    for line in f:
+        if line.strip() == EMPTY_MERGE_ATTESTATION:
+            continue
+        sys.stdout.write(line)
+PY
+then
+    REASON="validation-failed"
+    FAILURE_LOG="$REVIEW_TMPDIR/aggregator-strip.stderr"
+    append_warning "- **findings aggregator**: empty-merge attestation strip failed; leaving findings.md unchanged. $(failure_see_phrase "$FAILURE_LOG")"
+    emit_result
+    exit 0
+fi
+if [[ "$(count_finding_blocks "$cand")" -eq 0 ]]; then
+    [[ -s "$merged_tmp" ]] || printf '\n' >"$merged_tmp"
+fi
 [[ -s "$merged_tmp" ]] || {
     REASON="validation-failed"
     FAILURE_LOG="$REVIEW_TMPDIR/aggregator-empty-merge.stderr"
-    printf '%s\n' "staged merge output empty after copy" >"$FAILURE_LOG"
-    append_warning "- **findings aggregator**: staged merge output empty; leaving findings.md unchanged."
+    printf '%s\n' "staged merge output empty after successful strip (zero FINDING blocks in vendor output; expected narrative or whitespace)" >"$FAILURE_LOG"
+    append_warning "- **findings aggregator**: staged merge output empty after strip; leaving findings.md unchanged. $(failure_see_phrase "$FAILURE_LOG")"
     emit_result
     exit 0
 }

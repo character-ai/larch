@@ -1,0 +1,16 @@
+Gathering the diff and commit list, then auditing slot-normalization consistency in the validator.
+
+Reading the full inline Python validator in `aggregate-findings.sh` to verify all slot paths use normalization consistently.
+
+Checking bash logic before validation: when aggregation runs and whether `input_slot_set` can be non-empty without structured input findings.
+
+Checking whether `count_finding_blocks` can disagree with Python’s `output_blocks` for edge-case headings.
+
+### In-Scope Findings
+
+- **correctness** `aggregate-findings.sh:92-96,231-233,312-386` — The new empty-merge path treats “no Python-parseable `### FINDING_N:` blocks” (`output_blocks` / `input_blocks`) as success when `LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED` is present, but persistence and attestation stripping branch on `count_finding_blocks`, which uses `grep '^### FINDING_[0-9]'` and does not require the colon or the same heading shape Python enforces. Vendor text can therefore contain a line that increments the grep count (for example a malformed heading without `:` or with a space before `:`) while Python still sees zero blocks; validation returns 0, yet the bash path takes the non-empty branch (`awk` copy), so the attestation line may remain in the rewritten ballot and `MERGED_COUNT` can disagree with the validator’s notion of structured output—whereas previously `not blocks` always failed validation. **Suggested fix:** Use one shared definition of “structured FINDING block” for validation, strip, and counts (for example tighten `count_finding_blocks` to match the Python lookahead/`re.match` contract, or additionally require `count_finding_blocks "$cand" -eq 0` before accepting an attested empty merge and before stripping the token).
+
+### Out-of-Scope Observations
+
+- The branch also adds committed implement run metadata under [`larch-logs/implement/2E97A1B1-00F0-4ED0-9846-7608AD1C6016/`](larch-logs/implement/2E97A1B1-00F0-4ED0-9846-7608AD1C6016/) (manifest, plan snapshot, tally); that is process/repo-surface noise rather than an aggregator logic bug, but reviewers may still want it split or dropped from the PR depending on project policy for `larch-logs/`.
+- Slot normalization in the inline validator is applied consistently on the input side when populating `input_slot_set`, `non_oos_input_slots`, and `oos_slots` (via `oos_attributed_slots`), and on the output side for the OOS-only check, unknown-slot check, and `all_out_slots`, so the `missing` comparison is normalized-to-normalized; no separate finding there.

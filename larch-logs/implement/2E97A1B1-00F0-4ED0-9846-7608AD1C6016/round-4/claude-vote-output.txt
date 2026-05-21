@@ -1,0 +1,12 @@
+FINDING_1: EXONERATE -- attestation gate is intentional and aligned across orchestrator-aggregator.md, SECURITY.md, and plan-goals-test.md; the original plan-context.txt was superseded by design evolution, not an oversight
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: EXONERATE -- both copies are in the same file; desync fails visibly (token persists in ballot) rather than silently replacing content; centralizing across two separate Python heredocs adds non-trivial bash/Python bridging
+FINDING_5: EXONERATE -- misdirected comment is a minor maintenance nuisance; developer finds the validator heredoc within a few lines
+FINDING_6: EXONERATE -- BOM in model-generated aggregator output is a theoretical edge case with negligible real-world probability
+FINDING_7: EXONERATE -- validator accepting the token anywhere (vs prompt's "final line") is looser than the prompt constraint, which is the safer direction; no security regression
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: NO -- committed larch-logs run artifacts are expected behavior per repo conventions; not issue-worthy
+FINDING_11: NO -- Python late-binding means no runtime defect; purely cosmetic ordering preference not worth tracking
+FINDING_12: NO -- reviewer noise commentary, not a code defect

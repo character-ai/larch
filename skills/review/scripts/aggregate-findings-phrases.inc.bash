@@ -15,7 +15,7 @@ committed_ref() {
         case "$round_name" in
             round-*)
                 case "$flbase" in
-                    aggregator-dispatch.stderr | aggregator-validate.stderr)
+                    aggregator-dispatch.stderr | aggregator-validate.stderr | aggregator-strip.stderr)
                         printf '%s/%s' "$round_name" "$flbase"
                         return
                         ;;

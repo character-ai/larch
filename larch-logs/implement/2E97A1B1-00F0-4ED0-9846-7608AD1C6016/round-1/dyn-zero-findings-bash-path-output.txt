@@ -1,0 +1,13 @@
+Gathering the diff, commit list, and full `aggregate-findings.sh` context for the post-validator bash path.
+
+Checking `in3.md` fixture content and any interaction between zero-block validation and the `missing`-reviewer rule.
+
+Tracing the post-validator bash path in [`skills/review/scripts/aggregate-findings.sh`](skills/review/scripts/aggregate-findings.sh): `python3` exit 0 leads to `awk 1 "$cand" > "$merged_tmp"` (lines 364–366), then `[[ -s "$merged_tmp" ]]` (367–373), then `mv -f "$merged_tmp" "$FINDINGS_FILE"` (375), then `MERGED_COUNT="$(count_finding_blocks "$FINDINGS_FILE")"` (377), `AGGREGATED=true`, `REASON="ok"` (378–379). The `zero_findings` stub writes non-empty narrative (see [`skills/review/scripts/test-aggregate-findings.sh`](skills/review/scripts/test-aggregate-findings.sh) lines 92–96), so the existing `-s "$cand"` gate (202–207) and `-s "$merged_tmp"` gate both pass; `MERGED_COUNT` becomes 0 because `count_finding_blocks` counts only `^### FINDING_[0-9]` headings (92–96). No early-exit treats zero output blocks differently after validation.
+
+### In-Scope Findings
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+- **risk-integration** `larch-logs/implement/2E97A1B1-00F0-4ED0-9846-7608AD1C6016/` (whole tree) — The branch also adds flushed `/implement` run artifacts (manifest, parent-issue, plan copies) alongside the script fix; that is orthogonal to aggregator correctness and can complicate review or release hygiene if those paths were not meant to ship with the functional change. **Suggested fix:** Keep the fix commits limited to `skills/review/scripts/*` (and docs) unless the repo’s run-log policy explicitly requires recording this run in-tree.
+
+- **correctness** `skills/review/scripts/aggregate-findings.sh:282-284` — `normalize_slot` strips only one trailing `\s*\([^)]*\)\s*$`; a reviewer token shaped like `cursor-a-output.txt (via A) (via B)` would normalize once to `cursor-a-output.txt (via A)` and could still fail the `input_slot_set` check even though the intent matches a single base slot. This is an inherent limitation of single-pass stripping, not a regression in the bash path. **Suggested fix:** If that shape appears in the wild, either document it as unsupported or apply repeated normalization until the string is stable (with a max-iteration guard), accepting the small risk of over-stripping pathological labels.

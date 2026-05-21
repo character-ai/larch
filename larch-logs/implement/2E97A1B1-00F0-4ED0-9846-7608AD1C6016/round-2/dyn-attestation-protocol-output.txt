@@ -1,0 +1,21 @@
+Gathering the diff, commit log, and key files for the attestation and validator logic.
+
+Reading `aggregate-findings.sh` for flow around `INPUT_COUNT`, insufficient-input, and validator invocation.
+
+Checking how `in3.md` is defined in tests and whether `count_finding_blocks` can diverge from Python's `input_blocks`.
+
+Checking for a `CreatePlan` requirement: the user mandated a specific review format, so we're delivering that structured review (read-only).
+
+### In-Scope Findings
+
+- **correctness** `skills/review/scripts/aggregate-findings.sh:311-322` — When merge output has no `### FINDING_N:` blocks, the validator returns success without an empty-merge attestation if `input_blocks(intext)` is empty (`return 0` at line 312–313), but bash already decided to aggregate using `count_finding_blocks` on `^### FINDING_[0-9]`, which does not require a colon after the id the way `input_blocks` / `output_blocks` do (`### FINDING_[0-9]+:`). Two malformed headings that satisfy the grep count but not the Python split can therefore reach this branch with zero output blocks and no `LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED`, yet validation passes and `findings.md` can be replaced—undermining the new attestation contract and risking loss of the ballot. **Suggested fix:** Remove the `if not input_blocks(intext): return 0` shortcut (fail closed unless attested), or pass the bash-derived `INPUT_COUNT` into the validator and require `EMPTY_MERGE_ATTESTATION` whenever that count is at least 2, after aligning the heading grammar between `count_finding_blocks` and the Python parser.
+
+- **correctness** `agents/orchestrator-aggregator.md:36-40` — The instructions require a “final line exactly” equal to `LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED`, but the exemplar line in the prompt is written as Markdown inline code (backticks around the token), while the implementation only accepts a stripped full line equal to the bare string (`aggregate-findings.sh:314`). Models often copy delimiter characters from the prompt, so output like `` `LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED` `` or bullet-prefixed lines would fail attestation despite intent to comply. **Suggested fix:** Document the line as plain text only (for example a fenced `text` block showing the line with no backticks, or explicit wording such as “no backticks, bullets, or surrounding markdown”), matching the predicate the script uses.
+
+### Out-of-Scope Observations
+
+- **risk-integration** `larch-logs/implement/2E97A1B1-00F0-4ED0-9846-7608AD1C6016/plan-goals-test.md:1-157` — The committed implement run plan still describes the earlier “unconditional `return 0` on zero output blocks” approach and `REASON=ok`, which no longer matches [`skills/review/scripts/aggregate-findings.sh`](skills/review/scripts/aggregate-findings.sh) or [`skills/review/scripts/aggregate-findings.md`](skills/review/scripts/aggregate-findings.md); that mismatch is confusing for anyone auditing the run but is log content, not runtime behavior.
+
+- **correctness** [`skills/review/scripts/test-aggregate-findings.sh`](skills/review/scripts/test-aggregate-findings.sh) — The new `zero_findings` case covers the happy path with attestation and `REASON=ok-zero-findings`; there is still no harness case asserting that zero output blocks **without** the attestation line leaves `findings.md` unchanged and yields `validation-failed` (would lock in the attestation contract).
+
+- **correctness** `skills/review/scripts/aggregate-findings.sh:137-140` and `393-395` — Aggregation (and thus `ok-zero-findings`) only runs when `INPUT_COUNT` is at least 2, so `REASON=ok-zero-findings` cannot occur for the `insufficient-input` path; the extra `"$INPUT_COUNT" -ge 2` guard on lines 393–395 is redundant but consistent with the stated intent.

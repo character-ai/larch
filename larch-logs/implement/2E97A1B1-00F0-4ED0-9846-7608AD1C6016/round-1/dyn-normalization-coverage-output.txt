@@ -1,0 +1,14 @@
+Gathering the diff, commit list, and validator code to assess correctness of `normalize_slot` and related logic.
+
+Reading the validator and surrounding bash logic for `MERGED_COUNT` and slot parsing.
+
+Checking `count_finding_blocks` for consistency with the Python block definition:
+
+### In-Scope Findings
+- **correctness** `skills/review/scripts/aggregate-findings.sh:282-283` — `normalize_slot` uses a single trailing match `\s*\([^)]*\)\s*$`, so any reviewer suffix whose parentheses are not one flat `(…)` group fails to strip: nested cases such as `cursor-a-output.txt (via C.2 (gap))` leave `)` unmatched at the end, so `re.sub` does nothing and the token still fails the `input_slot_set` membership check, causing false `validation-failed` even though the base slot is correct. **Suggested fix:** Either document this as an unsupported shape and keep tests only for the flat suffix, or normalize with a loop/repeated suffix strip, or use a safer rule (for example strip only known prefixes like ` (via …)` or repeatedly apply the suffix pattern until stable while guarding against infinite loops).
+
+- **correctness** `skills/review/scripts/aggregate-findings.sh:282-283` — The same one-shot suffix removal means tokens with two stacked flat annotations, e.g. `file.txt (note1) (note2)`, normalize once to `file.txt (note1)`, which will not match an input key `file.txt`, so validation can still fail for plausible LLM output even though the doc claims stripping of a trailing parenthetical. **Suggested fix:** Apply `normalize_slot` in a `while` loop until the string stops changing (with a small iteration cap), or strip all trailing `\s*\([^)]*\)` segments in a bounded loop, and add a regression test for `slot (a) (b)` if that output is considered valid.
+
+### Out-of-Scope Observations
+- The branch also adds implement run artifacts under [larch-logs/implement/2E97A1B1-00F0-4ED0-9846-7608AD1C6016/](larch-logs/implement/2E97A1B1-00F0-4ED0-9846-7608AD1C6016/) (manifest, plan copies, tally); that is unrelated to aggregator correctness but increases PR surface area versus the stated “~50 diff lines” scope.
+- Bash `count_finding_blocks` uses the pattern `^### FINDING_[0-9]` while the Python validator’s `output_blocks` requires `^### FINDING_[0-9]+:`; that skew predates this change and only matters for malformed headings, not for the new zero-block or labelled-slot paths.

@@ -1,0 +1,17 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: EXONERATE -- pure readability nit in embedded heredoc Python with no functional impact; not worth a dedicated fix
+FINDING_4: YES
+FINDING_5: EXONERATE -- production slot names are file paths like `cursor-a-output.txt` that never legitimately end with parentheticals; theoretical risk only
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: EXONERATE -- `if not input_slot_set: return 1` fires before the attestation check whenever Python sees no input blocks, making the proposed bypass impossible
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: EXONERATE -- historical run-log snapshots are expected to reflect earlier plan iterations; editing them retroactively is neither required nor useful
+FINDING_14: NO -- the guard `INPUT_COUNT -ge 2` is consistent with intent and acts as readable documentation of the invariant; not worth an issue
+FINDING_15: NO -- pure informational counterpoint confirming no bug exists; no issue warranted
+FINDING_16: NO -- larch-logs entries are per-spec per docs/run-logs.md; not a hygiene defect
+FINDING_17: NO -- informational confirmation with no actionable change; not issue-worthy
