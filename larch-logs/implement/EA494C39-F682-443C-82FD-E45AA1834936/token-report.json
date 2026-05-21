@@ -217,32 +217,86 @@
       {
         "step": "Step 7a — code flow diagram",
         "totals": {
-          "input": 5,
-          "cache_read": 1040067,
-          "cache_create": 2250,
-          "output": 2423,
-          "total": 1044745
+          "input": 8,
+          "cache_read": 1668907,
+          "cache_create": 6979,
+          "output": 4160,
+          "total": 1680054
         },
         "skills": [
           {
             "skill": "inferred:Step 7a — code flow diagram",
             "totals": {
-              "input": 5,
-              "cache_read": 1040067,
-              "cache_create": 2250,
-              "output": 2423,
-              "total": 1044745
+              "input": 8,
+              "cache_read": 1668907,
+              "cache_create": 6979,
+              "output": 4160,
+              "total": 1680054
+            }
+          }
+        ]
+      },
+      {
+        "step": "Step 6 — checks second pass",
+        "totals": {
+          "input": 54,
+          "cache_read": 12611281,
+          "cache_create": 106839,
+          "output": 36057,
+          "total": 12754231
+        },
+        "skills": [
+          {
+            "skill": "inferred:Step 6 — checks second pass",
+            "totals": {
+              "input": 54,
+              "cache_read": 12611281,
+              "cache_create": 106839,
+              "output": 36057,
+              "total": 12754231
+            }
+          }
+        ]
+      },
+      {
+        "step": "Step 3 — checks first pass",
+        "totals": {
+          "input": 63,
+          "cache_read": 16242180,
+          "cache_create": 64897,
+          "output": 37510,
+          "total": 16344650
+        },
+        "skills": [
+          {
+            "skill": "bump-version",
+            "totals": {
+              "input": 55,
+              "cache_read": 14211656,
+              "cache_create": 62689,
+              "output": 35916,
+              "total": 14310316
+            }
+          },
+          {
+            "skill": "inferred:Step 3 — checks first pass",
+            "totals": {
+              "input": 8,
+              "cache_read": 2030524,
+              "cache_create": 2208,
+              "output": 1594,
+              "total": 2034334
             }
           }
         ]
       }
     ],
     "totals": {
-      "input": 147,
-      "cache_read": 22001598,
-      "cache_create": 1756848,
-      "output": 83004,
-      "total": 23841597
+      "input": 267,
+      "cache_read": 51483899,
+      "cache_create": 1933313,
+      "output": 158308,
+      "total": 53575787
     }
   },
   "codex": {
@@ -321,6 +375,22 @@
       },
       {
         "step": "Step 7a — code flow diagram",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 6 — checks second pass",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 3 — checks first pass",
         "totals": {
           "input": 0,
           "output": 0,
@@ -410,6 +480,22 @@
       },
       {
         "step": "Step 7a — code flow diagram",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 6 — checks second pass",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 3 — checks first pass",
         "totals": {
           "input": 0,
           "output": 0,
