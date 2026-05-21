@@ -1,0 +1,14 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: EXONERATE -- Covered by FINDING_8; GO-as-fixture-data is a weak signal, not separately issue-worthy.
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: EXONERATE -- Historical changelog entries are legitimate history, not a runtime contract needing follow-up.
+FINDING_14: NO -- The plan did not require docs/installation-and-setup.md, and that file has no affected workflow contract to update.
