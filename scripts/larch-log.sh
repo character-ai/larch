@@ -456,14 +456,28 @@ case "$cmd" in
                 *) usage; larch_log_fail 1 "unknown option for commit: $1" ;;
             esac
         done
-        if [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -e "$IMPLEMENT_TMPDIR/post-merge-sentinel" ]; then
-            printf 'larch-log.sh: refusing commit after post-merge sentinel exists: %s\n' "$IMPLEMENT_TMPDIR/post-merge-sentinel" >&2
-            exit 1
+        # Narrow bypass: `scripts/ship-pr.sh` `run_postmerge_phase` alone may flush
+        # merged-outcome logs after `post-merge-sentinel` exists and local cleanup
+        # left the worktree on the default branch. Any other caller must not set
+        # `LARCH_LOG_COMMIT_POSTMERGE_SHIP_PR=1` (unset/false everywhere else).
+        postmerge_ship_pr_flush=false
+        if [ "${LARCH_LOG_COMMIT_POSTMERGE_SHIP_PR:-}" = "1" ] \
+            && [ -n "${IMPLEMENT_TMPDIR:-}" ] \
+            && [ -e "$IMPLEMENT_TMPDIR/post-merge-sentinel" ]; then
+            postmerge_ship_pr_flush=true
         fi
-        [ -n "$REPO_ROOT" ] || larch_log_fail 1 "commit requires a git worktree (PWD is not inside a git repo)"
-        if current_branch_is_default; then
-            printf 'larch-log.sh: refusing commit on default branch/main after post-merge cleanup guard\n' >&2
-            exit 1
+        if [ "$postmerge_ship_pr_flush" != true ]; then
+            if [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -e "$IMPLEMENT_TMPDIR/post-merge-sentinel" ]; then
+                printf 'larch-log.sh: refusing commit after post-merge sentinel exists: %s\n' "$IMPLEMENT_TMPDIR/post-merge-sentinel" >&2
+                exit 1
+            fi
+            [ -n "$REPO_ROOT" ] || larch_log_fail 1 "commit requires a git worktree (PWD is not inside a git repo)"
+            if current_branch_is_default; then
+                printf 'larch-log.sh: refusing commit on default branch/main after post-merge cleanup guard\n' >&2
+                exit 1
+            fi
+        else
+            [ -n "$REPO_ROOT" ] || larch_log_fail 1 "commit requires a git worktree (PWD is not inside a git repo)"
         fi
         require_log_root
         require_common
