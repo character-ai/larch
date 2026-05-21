@@ -1,7 +1,7 @@
 ---
 name: design
 description: "Use when designing non-trivial features, refactors, or architecture changes. Adaptive sketches (0 trivial, 2 quick/simple, 4 full) propose approaches; 10-reviewer panel (5 personalities × 2 tools) validates via 3-voter dialectic."
-argument-hint: "[--quick] [--full] [--subagent] [--session-env <path>] [--design-classification <value>] <feature description>"
+argument-hint: "[--full] [--subagent] [--session-env <path>] [--design-classification <value>] <feature description>"
 allowed-tools: AskUserQuestion, Bash, Read, Edit, Write, Grep, Glob, Agent, Task, WebFetch, WebSearch
 ---
 
@@ -13,7 +13,8 @@ Design an implementation plan for a feature and review it with a 10-reviewer pan
 
 | Flag | Default | Purpose | Load-bearing detail |
 |------|---------|---------|---------------------|
-| `--quick` | `false` | Quick review mode; caps sketch fan-out at 2 unless `--full` is also set | See `flags.md` for `/implement --quick` vs `/design --quick` distinction |
+| `--auto` | `false` | Skip interactive question checkpoints (1c, 1d, 3.5) | Dirty-tree recovery prompts are not suppressed when forwarded from `/implement` |
+| `--quick` | `false` | Quick review mode; caps sketch fan-out at 2 unless `--full` is also set | Independent of `--auto`; see `flags.md` for `/design` vs `/implement` (which always runs `/design` on the Skill path unless both externals are down) |
 | `--full` | `false` | Force full sketch fan-out | Sets `full_mode=true`; forces `sketch_budget=4` even with `--quick`; plan review still follows `quick_mode` |
 | `--subagent` | `false` | Run Step 2a heavy phase in an isolated Agent-tool subagent (`heavy-worker.md`); writes artifacts only to `$DESIGN_TMPDIR/` and returns terse status; standalone (`--session-env` empty) parents replay artifacts before cleanup | No-op when `--quick` is set; orthogonal to `--session-env` |
 | `--session-env <path>` | empty | Forward discovered session values to `session-setup.sh` | Empty = standalone invocation, full discovery |

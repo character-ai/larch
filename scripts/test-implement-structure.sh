@@ -63,9 +63,6 @@ grep 'code-quality / risk-integration / correctness / architecture' "$SKILL_MD" 
 
 grep -Fq '### Larch-log batches' "$SKILL_MD" \
   || fail "SKILL.md must contain the Larch-log batches section heading"
-grep -q 'Skip.*Normal mode.*post.*design.*sections' "$SKILL_MD" \
-  || fail "quick mode must explicitly skip Normal mode before the Larch-log batches tail"
-
 # shellcheck disable=SC2016
 grep -qE 'NEVER write, recreate, or modify .\$IMPLEMENT_TMPDIR/finalize-state\.sh' "$SKILL_MD" \
   || fail "SKILL.md must contain NEVER bullet for finalize-state.sh write prohibition"

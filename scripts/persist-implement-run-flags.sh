@@ -6,7 +6,9 @@
 #
 # Usage:
 #   persist-implement-run-flags.sh --implement-tmpdir PATH \
-#       --quick-mode true|false --no-issues true|false --workflow-path SIMPLE|HARD|N/A
+#       [--quick-mode true|false] --no-issues true|false --workflow-path SIMPLE|HARD|N/A
+#
+# When --quick-mode is omitted, QUICK_MODE=false is written (quick mode was removed from /implement).
 #
 # Exit 2 on validation failure.
 
@@ -47,6 +49,7 @@ done
 
 [[ -n "$IMPLEMENT_TMPDIR" ]] || fail "--implement-tmpdir is required"
 [[ -d "$IMPLEMENT_TMPDIR" ]] || fail "--implement-tmpdir not a directory"
+[[ -n "$QUICK_MODE" ]] || QUICK_MODE="false"
 case "$QUICK_MODE" in true|false) ;; *) fail "--quick-mode must be true or false" ;; esac
 case "$NO_ISSUES" in true|false) ;; *) fail "--no-issues must be true or false" ;; esac
 case "$WORKFLOW_PATH" in SIMPLE|HARD|N/A) ;; *) fail "--workflow-path must be SIMPLE, HARD, or N/A" ;; esac

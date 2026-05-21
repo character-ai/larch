@@ -144,11 +144,9 @@ fi
 
 # --- Mode flags (display) ---
 mode_parts=()
-[ "$QUICK_MODE" = "true" ] && mode_parts+=("--quick")
 [ "$NO_ISSUES" = "true" ] && mode_parts+=("--no-issues")
 [ "$DESIGN_ONLY_DONE" = "true" ] && mode_parts+=("--design-only")
 [ "$DRAFT" = "true" ] && mode_parts+=("--draft")
-[ "$MERGE" = "false" ] && mode_parts+=("--no-merge")
 [ "$FORKED_TARGET" = "true" ] && mode_parts+=("--forked")
 [ "$REPO_UNAV" = "true" ] && mode_parts+=("--repo-unavailable")
 mode_str="N/A"
@@ -181,9 +179,7 @@ fi
 
 # --- Plan / code review lines ---
 PLAN_LINE="N/A"
-if [ "$QUICK_MODE" = "true" ]; then
-    PLAN_LINE="skipped (quick mode)"
-elif [ -f "$run_dir/plan-review-tally.json" ]; then
+if [ -f "$run_dir/plan-review-tally.json" ]; then
     read -r pa pr _ < <(jq -r '[.accepted_count // 0, .rejected_count // 0, .mode // ""] | @tsv' "$run_dir/plan-review-tally.json" 2>/dev/null || printf '0\t0\t\n')
     tot=$((pa + pr))
     if [ "$tot" -gt 0 ] 2>/dev/null; then

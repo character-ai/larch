@@ -144,12 +144,12 @@ fi
 
 case "$WORKFLOW_PATH" in
     SIMPLE)
-        REVIEW_PANEL="simple"
+        REVIEW_PANEL="hard"
         ROUND_CAP="5"
         ;;
     HARD)
         REVIEW_PANEL="hard"
-        ROUND_CAP="7"
+        ROUND_CAP="5"
         ;;
     *)
         fail "POST_PLAN_WORKFLOW_PATH must be SIMPLE or HARD, got: ${WORKFLOW_PATH:-<empty>}"

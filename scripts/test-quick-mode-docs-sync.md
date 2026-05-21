@@ -1,10 +1,10 @@
 # test-quick-mode-docs-sync.sh
 
-Cross-validation harness with three check families: (1) positive anchors — required markers in `skills/implement/SKILL.md` Step 5 and the public user-facing documentation in `README.md`, `docs/review-agents.md`, `docs/workflow-lifecycle.md`, and `docs/skills.md`; (2) negative checks — forbidden stale phrases in the public docs (closes #370; rounds-1-3 topology markers and `docs/skills.md` target added per #1002); and (3) required cross-references — currently `docs/review-agents.md` → `skills/shared/voting-protocol.md` (closes #377). See the Target files and Required cross-references sections below for full coverage.
+Cross-validation harness with three check families: (1) positive anchors — required markers in `skills/implement/SKILL.md` Step 5 and the public user-facing documentation in `README.md`, `docs/review-agents.md`, `docs/workflow-lifecycle.md`, and `docs/skills.md`; (2) negative checks — forbidden stale phrases in the public docs (closes #370; `docs/skills.md` target added per #1002); and (3) required cross-references — currently `docs/review-agents.md` → `skills/shared/voting-protocol.md` (closes #377). See the Target files and Required cross-references sections below for full coverage.
 
 ## Purpose
 
-Without this harness, drift between the canonical quick-mode contract and its public mirrors (see Target files below) is silent. The bug that triggered #370 — "simplified code review (1 Claude Code Reviewer subagent, 1 round)" persisting in the public docs long after SKILL.md evolved to a multi-round external-review loop with no voting panel — is exactly the class this harness prevents: a SKILL.md edit that does not propagate to the public mirrors, or a public-doc edit that re-introduces a contradiction with SKILL.md.
+Without this harness, drift between the canonical Step 5 unified hard-panel contract and its public mirrors (see Target files below) is silent. The bug that triggered #370 — "simplified code review (1 Claude Code Reviewer subagent, 1 round)" persisting in the public docs long after SKILL.md evolved to a multi-round external-review loop with no voting panel — is exactly the class this harness prevents: a SKILL.md edit that does not propagate to the public mirrors, or a public-doc edit that re-introduces a contradiction with SKILL.md.
 
 ## Invariants enforced
 
@@ -24,13 +24,14 @@ Each target file MUST contain all markers in `POS_MARKERS` inside `test-quick-mo
 
 | Marker | Casing | Rationale |
 |--------|--------|-----------|
-| `5 rounds` | case-sensitive `grep -F` | Pins the 5-round cap for simple (quick) mode. |
+| `unified hard panel` | **case-insensitive** `grep -iF` | Pins the unified Step 5 banner contract. |
+| `5 rounds` | case-sensitive `grep -F` | Pins the base round-cap language shared with public docs. |
 | `3-judge panel on round 1` | **case-insensitive** `grep -iF` | Pins the round-1 Codex-inclusive judge panel; rounds 2+ omit Codex. |
-| `simple review panel` | **case-insensitive** `grep -iF` | Pins that quick mode uses the delegated `--panel simple` topology. |
-| `Cursor edge-cases` | case-sensitive `grep -F` | Pins one of the 6 Cursor specialist slots in the simple panel. |
-| `6 Cursor specialists` | case-sensitive `grep -F` | Pins the Cursor-only simple-panel layout in the public mirrors. |
+| `--panel hard` | case-sensitive `grep -F` | Pins the delegated `review-and-fix.sh` posture. |
+| `hard review panel` | **case-insensitive** `grep -iF` | Pins the hard-panel specialist layout wording. |
+| `6 Cursor specialists` | case-sensitive `grep -F` | Pins the static Cursor specialist count in the panel. |
 
-Together these markers encode the canonical Step 5 quick-mode contract. Without them, a SKILL.md edit that re-shuffled the quick-mode reviewer or judge composition could ship without the public docs being updated.
+Together these markers encode the canonical Step 5 contract. Without them, a SKILL.md edit that re-shuffled the reviewer or judge composition could ship without the public docs being updated.
 
 ### Negative checks (forbidden in public docs only)
 
@@ -39,8 +40,10 @@ Public docs (`README.md`, `docs/review-agents.md`, `docs/workflow-lifecycle.md`,
 - `1 Claude Code Reviewer subagent, 1 round` — full stale README phrase.
 - `no external reviewers` — legacy claim contradicting the actual external reviewer panel.
 - `no externals, no voting` — legacy short-form variant.
+- `simple review panel` — legacy `/implement` quick-mode wording (superseded by unified `--panel hard`).
+- `/implement --quick` — removed flag string (must not reappear in public docs).
 
-All three are matched as fixed strings (`grep -F`) to avoid false positives on unrelated prose.
+All are matched as fixed strings (`grep -F`) to avoid false positives on unrelated prose.
 
 ### Required cross-references
 
@@ -103,8 +106,8 @@ Listed in `agent-lint.toml`'s `exclude` list because `agent-lint` does not follo
 
 Whenever any of the following change, update them in the same PR:
 
-- **The canonical contract in `skills/implement/SKILL.md` Step 5 quick-mode changes** — update the `POS_MARKERS` and `STALE_PHRASES` arrays at the top of `test-quick-mode-docs-sync.sh` FIRST (and the matching positive-marker / stale-phrase tables above); then update this `.md`; then propagate the new phrasing to each public doc target. If the marker change requires adjusting the self-test fixtures, update the good and bad fixtures in lockstep so the bad fixture continues to fail exactly once on the stale phrase.
-- **A new public doc surfaces that also describes `/implement --quick`** — add it to the `PUBLIC_DOCS` array in the script and list it in the Target Files table above.
+- **The canonical contract in `skills/implement/SKILL.md` Step 5 changes** — update the `POS_MARKERS` and `STALE_PHRASES` arrays at the top of `test-quick-mode-docs-sync.sh` FIRST (and the matching positive-marker / stale-phrase tables above); then update this `.md`; then propagate the new phrasing to each public doc target. If the marker change requires adjusting the self-test fixtures, update the good and bad fixtures in lockstep so the bad fixture continues to fail exactly once on the stale phrase.
+- **A new public doc surfaces that also describes `/implement` Step 5** — add it to the `PUBLIC_DOCS` array in the script and list it in the Target Files table above.
 - **The self-test fixture shape needs to change** — keep `check_file` usage byte-identical between default mode and self-test so self-test exercises the same code path. Same rule for `check_xref`: default-mode and self-test must call the same function.
 - **Note A's cited path in `docs/review-agents.md` is renamed / moved / replaced** — update the `XREF_PATH` constant in the script to the new path AND update the "Required cross-references" table above in the same PR. If the rename's intent is to drop the xref entirely, remove the `check_xref` call from `run_default` plus its self-test fixtures, and delete the corresponding row from the table.
 

@@ -1,6 +1,6 @@
 ---
 name: agnix-fix
-description: "Use when fixing an open agent-sh/agnix issue end-to-end via fork-CI dry-run from this larch clone. Fetches the upstream issue body, idempotently provisions the skip-changelog label on the fork, then forwards to /implement --forked --quick with CI-monitoring guidance for the deterministic add-to-project fork-CI failure. Private to the larch source tree (dev-only)."
+description: "Use when fixing an open agent-sh/agnix issue end-to-end via fork-CI dry-run from this larch clone. Fetches the upstream issue body, idempotently provisions the skip-changelog label on the fork, then forwards to /implement --forked --auto with CI-monitoring guidance for the deterministic add-to-project fork-CI failure. Private to the larch source tree (dev-only)."
 argument-hint: "<upstream-issue-number> [extra-flags...]"
 allowed-tools: Bash, Skill
 ---
@@ -149,6 +149,6 @@ GUIDANCE
 Invoke the Skill tool:
 
 - Try skill `"implement"` first (bare name). On `Unknown skill`, try `"larch:implement"` (fully-qualified plugin name).
-- args: the literal string `--forked --quick --coder=codex $EXTRA $(cat "$FEATURE_FILE")` with `$EXTRA` and `$FEATURE_FILE` expanded.
+- args: the literal string `--forked --auto --coder=codex $EXTRA $(cat "$FEATURE_FILE")` with `$EXTRA` and `$FEATURE_FILE` expanded.
 
 `--coder=codex` is passed explicitly so the auto-route to the main agent for small surgical plans (per issue #1481) does NOT fire on agnix work — agnix is a Rust codebase and Codex is the appropriate implementer regardless of plan size. Issue #1475 (the protected-path-modified false-positive) has landed, so the older `--coder=claude` workaround is no longer needed.

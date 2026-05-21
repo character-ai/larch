@@ -17,7 +17,7 @@
 #   Anthropic:     anthropic, claude
 #   larch static:  design, implement, review, research, alias,
 #                  relevant-checks, bump-version, fix-issue,
-#                  im, imaq, create-skill, issue
+#                  im, create-skill, issue
 #   Plugin skills: ls "${CLAUDE_PLUGIN_ROOT}/skills" (if present)
 #   Local skills:  ls "$PWD/.claude/skills" (if present)
 #
@@ -89,7 +89,6 @@ LARCH_RESERVED=(
   design
   fix-issue
   im
-  imaq
   implement
   issue
   relevant-checks
