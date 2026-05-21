@@ -1,0 +1,10 @@
+FINDING_1: YES
+FINDING_2: EXONERATE -- accurate inventory; no GitHub issue adds value
+FINDING_3: EXONERATE -- real example drift but not worth a tracking issue
+FINDING_4: EXONERATE -- same fixture nit as FINDING_3; no issue needed
+FINDING_5: EXONERATE -- duplicate of FINDING_3/4; no issue needed
+FINDING_6: EXONERATE -- same doc gap as FINDING_1; one cross-reference fixes both
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: EXONERATE -- SKILL already pins comparison to last PR; extra fixture is low ROI
+FINDING_10: YES

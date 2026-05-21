@@ -1,0 +1,22 @@
+# Review Round 2
+
+- Mode: `diff`
+- Accepted findings: 2
+- Rejected findings: 0
+- Exonerated findings: 3
+- Neutral findings: 12
+
+## Accepted Findings
+
+### FINDING_1: **code-quality** `.claude/skills/audit-runs/scripts/test-audit-runs.sh:342-344` — The Test 14 comment block still documents the title as `[Run Logs Audit Report <ISO>]`, while the assertions and `SKILL.md` now use Pacific wall time with a numeric offset in the bracket. That mismatch was left behind while the example titles were updated, so the file’s own comments no longer describe what the tests exercise. **Suggested fix:** Update those comment lines to say Pacific ISO with explicit `-07:00`/`-08:00` (or reference `<Pacific-ISO-timestamp>`) so the narrative matches `### Title Format` in `SKILL.md` and the literals in the same test block.
+- **Reviewer**: dyn-timezone-semantics-output.txt
+- **Concern**: - **code-quality** `.claude/skills/audit-runs/scripts/test-audit-runs.sh:342-344` — The Test 14 comment block still documents the title as `[Run Logs Audit Report <ISO>]`, while the assertions and `SKILL.md` now use Pacific wall time with a numeric offset in the bracket. That mismatch was left behind while the example titles were updated, so the file’s own comments no longer describe what the tests exercise. **Suggested fix:** Update those comment lines to say Pacific ISO with explicit `-07:00`/`-08:00` (or reference `<Pacific-ISO-timestamp>`) so the narrative matches `### Title Format` in `SKILL.md` and the literals in the same test block.
+- **Suggested revision**: Address the concern above.
+
+
+### FINDING_2: **code-quality** `.claude/skills/audit-runs/scripts/test-audit-runs.sh:77-79` — The Test 3 section header was renamed to `since <ISO8601-instant>` (matching `SKILL.md`), but the progress `echo` still prints `since <ISO>`, so the harness text disagrees with the skill’s public naming for the same verbal form. **Suggested fix:** Change the `echo` line to use the same `ISO8601-instant` wording (or a neutral phrase like `since <timestamp>`) so operators grepping the test output stay aligned with `SKILL.md`.
+- **Reviewer**: dyn-timezone-semantics-output.txt
+- **Concern**: - **code-quality** `.claude/skills/audit-runs/scripts/test-audit-runs.sh:77-79` — The Test 3 section header was renamed to `since <ISO8601-instant>` (matching `SKILL.md`), but the progress `echo` still prints `since <ISO>`, so the harness text disagrees with the skill’s public naming for the same verbal form. **Suggested fix:** Change the `echo` line to use the same `ISO8601-instant` wording (or a neutral phrase like `since <timestamp>`) so operators grepping the test output stay aligned with `SKILL.md`.
+- **Suggested revision**: Address the concern above.
+
+

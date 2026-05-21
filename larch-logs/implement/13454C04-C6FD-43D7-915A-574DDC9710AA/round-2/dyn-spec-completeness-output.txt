@@ -1,0 +1,17 @@
+Gathering the diff, commit list, and full SKILL/test files for a spec-completeness architecture review.
+
+Scanning SKILL.md and the test script for remaining UTC/ISO/Z references and regex edge cases.
+
+Checking whether the diff touched `test-audit-runs.md` and scanning for other `audit_timestamp` / title examples in the audit-runs skill tree.
+
+### In-Scope Findings
+
+- **architecture** `.claude/skills/audit-runs/scripts/test-audit-runs.md:11,20` — The harness contract still documents supported forms as ``since <ISO>`` and describes the bracketed token after `Run Logs Audit Report` as an “ISO timestamp,” while [SKILL.md](.claude/skills/audit-runs/SKILL.md) now uses `since <ISO8601-instant>` for the filter and `<Pacific-ISO-timestamp>` / Pacific offsets for titles and `audit_timestamp`; SKILL.md also names this file as the harness contract, so the branch leaves authoritative docs out of sync with the skill’s own “Edit-in-sync” expectation. **Suggested fix:** Update the “What is tested” bullet to the same `since <ISO8601-instant>` wording as the skill and rewrite the Test-14-related bullet to refer to the Pacific-offset wall-clock token inside the brackets (keeping the regex/prefix facts unchanged).
+
+- **architecture** `.claude/skills/audit-runs/scripts/test-audit-runs.sh:79,89-91,344-347` — Test 3’s `echo`/assert labels still say `since <ISO>`, and Test 14’s block comments still describe the title placeholder as `<ISO>` and call it an “ISO timestamp,” which contradicts the renamed `<Pacific-ISO-timestamp>` convention and the frontmatter note that audit titles are not UTC `Z`. **Suggested fix:** Rename user-facing test strings/comments to `ISO8601-instant` where they describe the `since` filter and to Pacific-offset / `<Pacific-ISO-timestamp>` where they describe audit report titles.
+
+- **architecture** `.claude/skills/audit-runs/scripts/test-audit-runs.sh:82-93` — The `parse_since_ts` mirror regex still makes the `(Z|±offset)` suffix optional (`…)?` at the end of line 82), so a zone-less `since YYYY-MM-DDThh:mm` would match even though SKILL.md ties `since <ISO8601-instant>` to GitHub `mergedAt`-style instants with `…Z` or explicit `±HH:MM`; new test coverage only adds `-07:00` ([3c]) and does not exercise `-08:00` despite SKILL.md’s paired PDT/PST examples. **Suggested fix:** Add a `[3d]` case for a `-08:00` instant, decide whether zone-less input should be rejected and adjust the regex plus a negative assertion accordingly (or state explicitly in SKILL.md that the shell illustration is permissive and not normative if that is intentional).
+
+### Out-of-Scope Observations
+
+NO_ISSUES_FOUND
