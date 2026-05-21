@@ -98,7 +98,6 @@ fi
 REPO="$(read_kv REPO "$SESSION_ENV")"
 REPO_UNAV="$(read_kv REPO_UNAVAILABLE "$SESSION_ENV")"; [ -n "$REPO_UNAV" ] || REPO_UNAV="false"
 
-QUICK_MODE="$(read_kv QUICK_MODE "$RUN_FLAGS")"; [ -n "$QUICK_MODE" ] || QUICK_MODE="false"
 NO_ISSUES="$(read_kv NO_ISSUES "$RUN_FLAGS")"; [ -n "$NO_ISSUES" ] || NO_ISSUES="false"
 WORKFLOW_PATH="$(read_kv WORKFLOW_PATH "$RUN_FLAGS")"
 [ -n "$WORKFLOW_PATH" ] || WORKFLOW_PATH="$(read_kv POST_PLAN_WORKFLOW_PATH "$SESSION_ENV")"

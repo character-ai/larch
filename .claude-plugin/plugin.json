@@ -1,7 +1,7 @@
 {
   "name": "larch",
   "version": "32.0.0",
-  "description": "Multi-agent workflow automation for Claude Code: design, code review, implementation, and PR automation. Code review runs a 7-reviewer specialist panel (6 Cursor specialists + 1 Codex generic) in SIMPLE mode or a 12-reviewer panel (6 Cursor + 6 Codex specialists) in HARD mode, both with a 3-judge voting panel every round (Claude opus + Codex + Cursor; Claude replacement when an external is unhealthy); plan review runs a 4-reviewer diagonal panel (2 Cursor: Arch, Edge + 2 Codex: Innovation, Pragmatic); design sketches run a 4-agent diverge-then-converge phase in regular mode (2 Cursor + 2 Codex) or 2 in quick mode.",
+  "description": "Multi-agent workflow automation for Claude Code: design, code review, implementation, and PR automation. SIMPLE vs HARD (`POST_PLAN_WORKFLOW_PATH`) classifies post-plan and `/design` depth only; `/implement` Step 5 code review always runs the unified hard panel (`--panel hard`) with the same base round cap (five rounds, extended when prior rounds were degraded), dynamic archetypes up to the session cap, specialist slots per `review-and-fix.sh`, and a three-judge voting panel each round (Claude + Codex + Cursor; replacements when an external is unhealthy). Plan review uses a four-reviewer diagonal panel (2 Cursor + 2 Codex). `/design` sketch fan-out stays adaptive (0/2/4 agents) via `/design --quick` / `--full` and the router — independent of removed `/implement --quick`.",
   "author": {
     "name": "Sergey Zhupanov",
     "email": "zhupanov@yahoo.com"

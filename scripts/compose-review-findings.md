@@ -61,4 +61,6 @@ by the review tally.
 is no longer produced by this script. On non-zero exit, `FAILURE_LOG=<path>`
 may appear on stdout.
 
+**Compatibility (2026-05):** Accepted plan-review rows still use `schema_version` literal `"2"`. Strict canonical `##` scanning means `category` may be `""` even when `schema_version` is `2`; consumers must bucket from `prose_body` / `id` when `category` is empty (see `category` row above).
+
 Harness: `scripts/test-compose-review-findings.sh`.

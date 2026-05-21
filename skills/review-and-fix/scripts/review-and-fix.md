@@ -42,7 +42,7 @@ Flags:
 - `--run-id ID`
 - `--codex-available true|false`
 - `--cursor-available true|false`
-- `--dynamic-archetypes 0-8` (default: `4` in orchestrator mode, `0` in standalone mode)
+- `--dynamic-archetypes 0-8` (default: `6` in orchestrator mode when `--implement-tmpdir` is set, `0` in standalone mode)
 - `--no-dynamic-archetypes` (equivalent to `--dynamic-archetypes 0`)
 - `--convergence-threshold N` (default: `3`) — two consecutive rounds with `ACCEPTED_COUNT ≤ N`
   (and no Important findings in either round) trigger early-termination with

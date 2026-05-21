@@ -145,6 +145,7 @@ fi
 case "$WORKFLOW_PATH" in
     SIMPLE)
         REVIEW_PANEL="hard"
+        # Base Step 5 round cap is intentionally 5 for SIMPLE and HARD (unified panel).
         ROUND_CAP="5"
         ;;
     HARD)
@@ -161,6 +162,10 @@ case "$DEGRADED_ROUNDS" in
     ''|*[!0-9]*) fail "degraded round count must be numeric, got: ${DEGRADED_ROUNDS:-<empty>}" ;;
 esac
 ROUND_CAP="$((ROUND_CAP + DEGRADED_ROUNDS))"
+
+if [[ "$WORKFLOW_PATH" == "HARD" && "$ROUND_NUM" == "1" ]]; then
+    printf "run-step5-review.sh: HARD workflow shares SIMPLE's base Step 5 review round cap (5); degraded prior rounds extend the effective cap (this round: %s).\n" "$ROUND_CAP" >&2
+fi
 
 case "$CODEX_PRESENT" in true|false) ;; *) fail "CODEX_PRESENT must be true or false, got: $CODEX_PRESENT" ;; esac
 case "$CURSOR_PRESENT" in true|false) ;; *) fail "CURSOR_PRESENT must be true or false, got: $CURSOR_PRESENT" ;; esac

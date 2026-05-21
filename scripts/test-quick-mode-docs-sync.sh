@@ -65,8 +65,8 @@
 # assertions). Proves both check mechanics on every invocation — a broken
 # harness cannot silently go green in CI.
 #
-# Edit-in-sync rule: if skills/implement/SKILL.md Step 5 quick-mode contract
-# changes, update (a) POS_MARKERS / STALE_PHRASES below FIRST, (b) the
+# Edit-in-sync rule: if skills/implement/SKILL.md Step 5 unified hard-panel
+# contract changes, update (a) POS_MARKERS / STALE_PHRASES below FIRST, (b) the
 # sibling scripts/test-quick-mode-docs-sync.md, (c) then the public docs. The
 # positive-anchor check will enforce the new contract across all targets once
 # updated. Keep this script and its sibling .md in sync in the same PR.
