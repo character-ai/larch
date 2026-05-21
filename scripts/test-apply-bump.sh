@@ -6,6 +6,10 @@
 
 set -euo pipefail
 
+# Isolate from an inherited larch quiet session (agent/CI may export
+# LARCH_QUIET_BREADCRUMBS / LARCH_QUIET_BREADCRUMB_FD); stale FDs break
+# emit_breadcrumb inside apply-bump.sh.
+unset LARCH_QUIET_BREADCRUMBS LARCH_QUIET_BREADCRUMB_FD LARCH_QUIET_ACTIVE LARCH_QUIET_PID LARCH_QUIET_LOG_FILE LARCH_QUIET_LOG 2>/dev/null || true
 export LARCH_QUIET_DISABLE=1
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -43,10 +47,19 @@ case "$1" in
     show)
         if [[ "${2:-}" == "origin/main:.claude-plugin/plugin.json" ]]; then
             if [[ -n "${STUB_ORIGIN_VERSION_SEQ_FILE:-}" && -f "$STUB_ORIGIN_VERSION_SEQ_FILE" ]]; then
-                _seq_ver=$(head -1 "$STUB_ORIGIN_VERSION_SEQ_FILE" 2>/dev/null || true)
+                _seq_ver=$(head -n 1 "$STUB_ORIGIN_VERSION_SEQ_FILE") || {
+                    printf '%s\n' "stub git: failed to read origin version sequence head" >&2
+                    exit 4
+                }
                 if [[ -n "$_seq_ver" ]]; then
-                    tail -n +2 "$STUB_ORIGIN_VERSION_SEQ_FILE" > "${STUB_ORIGIN_VERSION_SEQ_FILE}.tmp" 2>/dev/null || true
-                    mv "${STUB_ORIGIN_VERSION_SEQ_FILE}.tmp" "$STUB_ORIGIN_VERSION_SEQ_FILE" 2>/dev/null || true
+                    if ! tail -n +2 "$STUB_ORIGIN_VERSION_SEQ_FILE" > "${STUB_ORIGIN_VERSION_SEQ_FILE}.tmp"; then
+                        printf '%s\n' "stub git: sequence advance (tail) failed" >&2
+                        exit 4
+                    fi
+                    if ! mv "${STUB_ORIGIN_VERSION_SEQ_FILE}.tmp" "$STUB_ORIGIN_VERSION_SEQ_FILE"; then
+                        printf '%s\n' "stub git: sequence advance (mv) failed" >&2
+                        exit 4
+                    fi
                     printf '{"version":"%s"}' "$_seq_ver"
                 else
                     printf '%s' '{"version":"1.0.0"}'
@@ -328,6 +341,7 @@ assert_backup_absent "same_version" "C: backup removed"
 assert_commit_count "same_version" "2" "C: exactly one new commit after retry"
 assert_head_subject "same_version" "Bump version to 3.0.0" "C: retry commit subject"
 assert_index_unstaged "same_version" "C: index clean after commit"
+assert_stdout_match_count "same_version" "^apply-bump: retry" "1" "C: exactly one breadcrumb emitted"
 
 echo
 echo "Sub-test D: differing origin version still commits"
@@ -380,6 +394,7 @@ assert_backup_absent "regression_guard" "H: backup removed"
 assert_commit_count "regression_guard" "2" "H: exactly one new commit after retry"
 assert_head_subject "regression_guard" "Bump version to 4.0.0" "H: retry commit subject"
 assert_index_unstaged "regression_guard" "H: index clean after commit"
+assert_stdout_match_count "regression_guard" "^apply-bump: retry" "1" "H: exactly one breadcrumb emitted"
 
 echo
 echo "Sub-test I: larch-internal untracked artifacts are tolerated"

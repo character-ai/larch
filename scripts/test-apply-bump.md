@@ -1,6 +1,6 @@
 # `scripts/test-apply-bump.sh` — contract
 
-**Purpose**: offline regression test for `.claude/skills/bump-version/scripts/apply-bump.sh`, especially the pre-commit `origin/main` same-version probe and rollback paths.
+**Purpose**: offline regression test for `.claude/skills/bump-version/scripts/apply-bump.sh`, covering the pre-commit `origin/main` probe, rollback paths, same-version and regression **retry** re-classification (including cap exhaustion), and sequence-driven multi-collision fixtures (sub-tests K–O).
 
 ## Coverage
 

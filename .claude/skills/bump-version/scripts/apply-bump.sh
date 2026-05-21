@@ -147,6 +147,9 @@ fi
 [[ -f "$PLUGIN_JSON" ]] || fail "$PLUGIN_JSON not found"
 jq empty "$PLUGIN_JSON" 2>/dev/null || fail "$PLUGIN_JSON is not valid JSON"
 ORIGINAL_CURRENT_VERSION=$(jq -r '.version // empty' "$PLUGIN_JSON")
+if [[ ! "$ORIGINAL_CURRENT_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  fail "plugin.json version is not strict semver X.Y.Z (got: '${ORIGINAL_CURRENT_VERSION:-}')"
+fi
 
 # _backup_rewrite_stage: back up, atomically rewrite plugin.json to $NEW_VERSION,
 # and stage the file. Calls fail() (exit 1) on jq rewrite error.
