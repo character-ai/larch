@@ -9,13 +9,13 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/session-setup.sh --prefix <name> [--skip-preflight
 
 **Session-env override**: If `--caller-env` provides a non-empty `CODEX_PRESENT` or `CURSOR_PRESENT` value (either `true` or `false`), the script auto-sets the corresponding `--skip-codex-probe` / `--skip-cursor-probe` flag internally and propagates the caller value — you do not need to pass these explicitly when using `--caller-env`.
 
-Set mental flags `codex_available` and `cursor_available` from `CODEX_PRESENT` / `CURSOR_PRESENT` in the session-env / `session-setup.sh` stdout (aliases `CODEX_AVAILABLE` / `CURSOR_AVAILABLE` mirror the same booleans). Use `CODEX_BINARY_FOUND` / `CURSOR_BINARY_FOUND` when you need to split the cases:
+Set mental flags `codex_available` and `cursor_available` from session-env / `session-setup.sh` stdout. Treat `codex_available` as `true` only when **both** `CODEX_BINARY_FOUND=true` **and** `CODEX_PRESENT=true`; if **either** `CODEX_BINARY_FOUND=false` **or** `CODEX_PRESENT=false`, set `codex_available=false` (aliases `CODEX_AVAILABLE` / `CURSOR_AVAILABLE` mirror the same booleans). Use `CODEX_BINARY_FOUND` / `CURSOR_BINARY_FOUND` when you need to split the cases:
 
-- If `CODEX_BINARY_FOUND=false`: the Codex CLI is not on `PATH`. Print: `**⚠ Codex not available (binary not found). Proceeding without Codex reviewer.**`
-- Else if `CODEX_PRESENT=false`: the binary exists but the Step 0 runtime probe reported unhealthy (skipped probe, non-auth failure, auth failure after retries, or timeout). Print: `**⚠ Codex not healthy for this session (runtime probe failed). Using Claude replacement.**`
+- If `CODEX_BINARY_FOUND=false`: `codex_available=false` — the Codex CLI is not on `PATH`. Print: `**⚠ Codex not available (binary not found). Proceeding without Codex reviewer.**`
+- Else if `CODEX_PRESENT=false`: `codex_available=false` — the binary exists but the Step 0 runtime probe reported unhealthy (skipped probe, non-auth failure, auth failure after retries, or timeout). Print: `**⚠ Codex not healthy for this session (runtime probe failed). Using Claude replacement.**`
 - Else: `codex_available=true`
 
-Mirror the same two-tier pattern for Cursor (`CURSOR_BINARY_FOUND` / `CURSOR_PRESENT`).
+Mirror the same two-tier pattern for Cursor (`CURSOR_BINARY_FOUND` / `CURSOR_PRESENT`): `cursor_available=false` when **either** `CURSOR_BINARY_FOUND=false` **or** `CURSOR_PRESENT=false`; `cursor_available=true` only when both are `true`.
 
 **Note**: `*_AVAILABLE` remains a backward-compatible alias for `*_PRESENT`; it does **not** mean "binary on `PATH`" by itself.
 
@@ -35,7 +35,7 @@ Use this warning template when a slot reaches Phase 3:
 
 Where `<FAILURE_REASON>` is the `FAILURE_REASON` value from `collect-agent-results.sh` output (or from the `.diag` file if collecting results manually). Always include the reason so the user can diagnose the root cause (e.g., timeout duration, exit code, last error output).
 
-Do not write runtime failure status back to session env. `CODEX_PRESENT` and `CURSOR_PRESENT` describe static session-start presence only.
+Do not write runtime failure status back to session env. `CODEX_PRESENT` and `CURSOR_PRESENT` are set once at session start via the runtime health probe; they are not updated mid-session by per-slot launch failures.
 
 ## Collecting External Reviewer Results
 

@@ -57,14 +57,22 @@ esac
 
 HOLD="${LARCH_EXTERNAL_SERIAL_LOCK_DELAY:-0.5}"
 
-larch_stamp_path_cursor() {
-    local _u="${USER//[^A-Za-z0-9._-]/}"
-    printf '%s' "${TMPDIR:-/tmp}/larch-cursor-present-${_u:-larch}.stamp"
+PROBE_TMPFILES=()
+PROBE_PIDS=()
+larch_probe_exit_cleanup() {
+    local i
+    for ((i = 0; i < ${#PROBE_TMPFILES[@]}; i++)); do
+        rm -f "${PROBE_TMPFILES[i]}"
+    done
+    for ((i = 0; i < ${#PROBE_PIDS[@]}; i++)); do
+        kill "${PROBE_PIDS[i]}" 2>/dev/null || true
+    done
 }
+trap 'larch_probe_exit_cleanup' EXIT
 
-larch_stamp_path_codex() {
+larch_stamp_path() {
     local _u="${USER//[^A-Za-z0-9._-]/}"
-    printf '%s' "${TMPDIR:-/tmp}/larch-codex-present-${_u:-larch}.stamp"
+    printf '%s' "${TMPDIR:-/tmp}/larch-${1}-present-${_u:-larch}.stamp"
 }
 
 # Reads stamp if fresh; sets named variable from first line; returns 0 on hit.
@@ -91,6 +99,9 @@ larch_try_read_fresh_stamp() {
 
     now=$(date +%s)
     age=$((now - mtime))
+    if (( age < 0 )); then
+        return 1
+    fi
     if (( age > LARCH_PROBE_TTL_SECONDS )); then
         return 1
     fi
@@ -112,9 +123,31 @@ larch_write_bool_stamp() {
     mv -f "$stamp_tmp" "$stamp_path"
 }
 
+# Sets second argument to wait exit status (0 ok, 124 timeout).
+larch_poll_probe_pid() {
+    local probe_pid="$1"
+    local __rc_name="$2"
+    local _poll_rc=""
+    SECONDS=0
+    while kill -0 "$probe_pid" 2>/dev/null; do
+        if (( SECONDS >= LARCH_PROBE_TIMEOUT_SECONDS )); then
+            kill "$probe_pid" 2>/dev/null || true
+            wait "$probe_pid" 2>/dev/null || true
+            _poll_rc=124
+            break
+        fi
+        sleep 1
+    done
+    if [[ -z "${_poll_rc:-}" ]]; then
+        wait "$probe_pid" && _poll_rc=0 || _poll_rc=$?
+    fi
+    printf -v "$__rc_name" '%s' "$_poll_rc"
+}
+
 larch_run_one_cursor_probe() {
     local probe_out probe_pid probe_rc _SERIAL_LOCK
     probe_out=$(mktemp "${TMPDIR:-/tmp}/larch-cursor-probe.XXXXXX") || return 1
+    PROBE_TMPFILES[${#PROBE_TMPFILES[@]}]="$probe_out"
 
     _SERIAL_LOCK=""
     external_serial_lock_acquire _SERIAL_LOCK "cursor" || { rm -f "$probe_out"; return 1; }
@@ -122,22 +155,10 @@ larch_run_one_cursor_probe() {
     cursor agent -p "Respond with OK" --trust --workspace "$PWD" \
         ${CURSOR_AUTH_ARGS[@]+"${CURSOR_AUTH_ARGS[@]}"} >"$probe_out" 2>&1 &
     probe_pid=$!
+    PROBE_PIDS[${#PROBE_PIDS[@]}]="$probe_pid"
     external_serial_lock_release_after "$_SERIAL_LOCK" "$HOLD"
 
-    SECONDS=0
-    probe_rc=""
-    while kill -0 "$probe_pid" 2>/dev/null; do
-        if (( SECONDS >= LARCH_PROBE_TIMEOUT_SECONDS )); then
-            kill "$probe_pid" 2>/dev/null || true
-            wait "$probe_pid" 2>/dev/null || true
-            probe_rc=124
-            break
-        fi
-        sleep 1
-    done
-    if [[ -z "${probe_rc:-}" ]]; then
-        wait "$probe_pid" && probe_rc=0 || probe_rc=$?
-    fi
+    larch_poll_probe_pid "$probe_pid" probe_rc
 
     if (( probe_rc == 0 )); then
         rm -f "$probe_out"
@@ -158,28 +179,18 @@ larch_run_one_codex_probe() {
     probe_out=$(mktemp "${TMPDIR:-/tmp}/larch-codex-probe.XXXXXX") || return 1
     probe_side="${probe_out}.sidecar"
     : >"$probe_side"
+    PROBE_TMPFILES[${#PROBE_TMPFILES[@]}]="$probe_out"
+    PROBE_TMPFILES[${#PROBE_TMPFILES[@]}]="$probe_side"
 
     _SERIAL_LOCK=""
     external_serial_lock_acquire _SERIAL_LOCK "codex" || { rm -f "$probe_out" "$probe_side"; return 1; }
     codex exec --sandbox read-only -C "$PWD" --output-last-message "$probe_out" -- "Respond with OK" \
         >/dev/null 2>>"$probe_side" &
     probe_pid=$!
+    PROBE_PIDS[${#PROBE_PIDS[@]}]="$probe_pid"
     external_serial_lock_release_after "$_SERIAL_LOCK" "$HOLD"
 
-    SECONDS=0
-    probe_rc=""
-    while kill -0 "$probe_pid" 2>/dev/null; do
-        if (( SECONDS >= LARCH_PROBE_TIMEOUT_SECONDS )); then
-            kill "$probe_pid" 2>/dev/null || true
-            wait "$probe_pid" 2>/dev/null || true
-            probe_rc=124
-            break
-        fi
-        sleep 1
-    done
-    if [[ -z "${probe_rc:-}" ]]; then
-        wait "$probe_pid" && probe_rc=0 || probe_rc=$?
-    fi
+    larch_poll_probe_pid "$probe_pid" probe_rc
 
     if (( probe_rc == 0 )); then
         rm -f "$probe_out" "$probe_side"
@@ -202,19 +213,21 @@ elif [[ "$SKIP_CURSOR_PROBE" == "true" ]]; then
     CURSOR_PRESENT=false
 else
     _CACHED=""
-    if larch_try_read_fresh_stamp "$(larch_stamp_path_cursor)" _CACHED; then
+    if larch_try_read_fresh_stamp "$(larch_stamp_path cursor)" _CACHED; then
         CURSOR_PRESENT="$_CACHED"
     else
         _pf_rc=0
         cursor_auth_preflight || _pf_rc=$?
         if (( _pf_rc == 2 )); then
             CURSOR_PRESENT=false
-            larch_write_bool_stamp "$(larch_stamp_path_cursor)" "$CURSOR_PRESENT" || true
+            larch_write_bool_stamp "$(larch_stamp_path cursor)" "$CURSOR_PRESENT" || true
         else
             CURSOR_AUTH_ARGS=()
-            cursor_preread_service_token
-            cursor_auth_argv
-            if ! cursor_launcher_setup_private_config_dir; then
+            if ! {
+                cursor_preread_service_token &&
+                cursor_auth_argv &&
+                cursor_launcher_setup_private_config_dir
+            }; then
                 CURSOR_PRESENT=false
             else
                 AUTH_ATTEMPT=1
@@ -235,7 +248,7 @@ else
                 done
             fi
             cursor_launcher_cleanup_private_config_dir
-            larch_write_bool_stamp "$(larch_stamp_path_cursor)" "$CURSOR_PRESENT" || true
+            larch_write_bool_stamp "$(larch_stamp_path cursor)" "$CURSOR_PRESENT" || true
         fi
     fi
 fi
@@ -247,7 +260,7 @@ elif [[ "$SKIP_CODEX_PROBE" == "true" ]]; then
     CODEX_PRESENT=false
 else
     _CACHED_C=""
-    if larch_try_read_fresh_stamp "$(larch_stamp_path_codex)" _CACHED_C; then
+    if larch_try_read_fresh_stamp "$(larch_stamp_path codex)" _CACHED_C; then
         CODEX_PRESENT="$_CACHED_C"
     else
         AUTH_ATTEMPT=1
@@ -266,7 +279,7 @@ else
             CODEX_PRESENT=false
             break
         done
-        larch_write_bool_stamp "$(larch_stamp_path_codex)" "$CODEX_PRESENT" || true
+        larch_write_bool_stamp "$(larch_stamp_path codex)" "$CODEX_PRESENT" || true
     fi
 fi
 

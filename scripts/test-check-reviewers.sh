@@ -49,12 +49,16 @@ assert_line "codex binary" "CODEX_BINARY_FOUND=true" "$out"
 assert_line "cursor binary" "CURSOR_BINARY_FOUND=true" "$out"
 assert_line "codex present" "CODEX_PRESENT=true" "$out"
 assert_line "cursor present" "CURSOR_PRESENT=true" "$out"
+assert_line "codex available alias" "CODEX_AVAILABLE=true" "$out"
+assert_line "cursor available alias" "CURSOR_AVAILABLE=true" "$out"
 
 out=$(run_cr "$SCRATCH/t0b" env PATH="/usr/bin:/bin" LARCH_PROBE_TTL_SECONDS=0 "$CR")
 assert_line "codex absent binary" "CODEX_BINARY_FOUND=false" "$out"
 assert_line "cursor absent binary" "CURSOR_BINARY_FOUND=false" "$out"
 assert_line "codex absent" "CODEX_PRESENT=false" "$out"
 assert_line "cursor absent" "CURSOR_PRESENT=false" "$out"
+assert_line "codex available alias absent" "CODEX_AVAILABLE=false" "$out"
+assert_line "cursor available alias absent" "CURSOR_AVAILABLE=false" "$out"
 
 out=$(run_cr "$SCRATCH/t0c" env PATH="$STUB_BIN:/usr/bin:/bin" LARCH_PROBE_TTL_SECONDS=0 \
     LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Linux "$CR" --skip-codex-probe)
@@ -234,11 +238,17 @@ STUB
 chmod +x "$SB12/codex"
 out=$(run_cr "$SCRATCH/t12" env PATH="$SB12:/usr/bin:/bin" LARCH_PROBE_TTL_SECONDS=0 "$CR" --skip-codex-probe)
 assert_line "codex skip" "CODEX_PRESENT=false" "$out"
+assert_line "skip codex bin found" "CODEX_BINARY_FOUND=true" "$out"
 
 out=$(run_cr "$SCRATCH/t13" env PATH="$STUB_BIN:/usr/bin:/bin" \
     LARCH_PROBE_TTL_SECONDS=abc LARCH_PROBE_TIMEOUT_SECONDS=0 \
     LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Linux LARCH_EXTERNAL_AUTH_RETRIES=3 "$CR")
 assert_line "env norm" "CURSOR_PRESENT=true" "$out"
+
+out=$(run_cr "$SCRATCH/t14" env PATH="$SB2:/usr/bin:/bin" LARCH_PROBE_TTL_SECONDS=0 \
+    LARCH_TEST_CURSOR_STATE="$SCRATCH/t14/attempts" \
+    LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Linux LARCH_EXTERNAL_AUTH_RETRIES=0 "$CR")
+assert_line "auth retries zero normalizes" "CURSOR_PRESENT=true" "$out"
 
 set +e
 "$CR" --probe >/dev/null 2>"$SCRATCH/unknown.stderr"
