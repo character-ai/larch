@@ -279,6 +279,10 @@ def finding_id_from_block(block):
     return None
 
 
+def normalize_slot(sl):
+    return re.sub(r"\s*\([^)]*\)\s*$", "", sl).strip()
+
+
 def main():
     input_path, output_path = sys.argv[1], sys.argv[2]
     intext = open(input_path, encoding="utf-8").read()
@@ -302,8 +306,7 @@ def main():
         return 1
     blocks = output_blocks(outtext)
     if not blocks:
-        print("no output FINDING blocks", file=sys.stderr)
-        return 1
+        return 0
     seen_merge_ids = set()
     for b in blocks:
         mid = finding_id_from_block(b)
@@ -324,7 +327,7 @@ def main():
             return 1
         if not is_oos_out:
             for sl in slots:
-                if sl in oos_only_slots:
+                if normalize_slot(sl) in oos_only_slots:
                     print(
                         "merged output lacks [OUT_OF_SCOPE] while listing reviewer %r "
                         "that appears only on OOS-tagged input findings" % (sl,),
@@ -332,10 +335,11 @@ def main():
                     )
                     return 1
         for sl in slots:
-            if sl not in input_slot_set:
+            normalized = normalize_slot(sl)
+            if normalized not in input_slot_set:
                 print("unknown reviewer slot in merge output: %r" % (sl,), file=sys.stderr)
                 return 1
-            all_out_slots.add(sl)
+            all_out_slots.add(normalized)
     missing = sorted(s for s in input_slot_set if s not in all_out_slots)
     if missing:
         print("input reviewers missing from merge output: %r" % (missing,), file=sys.stderr)

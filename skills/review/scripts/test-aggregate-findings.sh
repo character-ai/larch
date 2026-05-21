@@ -89,6 +89,21 @@ EOF
 
 EOF
                 ;;
+            zero_findings)
+                cat > "$out" <<'EOF'
+Aggregator narrative: all input findings were resolved as duplicates; no merged FINDING blocks.
+
+EOF
+                ;;
+            labelled_slot)
+                cat > "$out" <<'EOF'
+### FINDING_1: merged title
+- **Reviewer(s)**: cursor-a-output.txt (via C.2 coverage gap), cursor-b-output.txt, cursor-c-output.txt
+- **Concern**: normalized concern
+- **Suggested revision**: fix it
+
+EOF
+                ;;
             *)
                 echo "stub: bad AGGREGATE_STUB_MERGE_KIND" >&2
                 exit 2
@@ -288,6 +303,39 @@ grep -Fq 'REASON=ok' "$TMP/out-oos-shared.env" || fail "oos-shared REASON"
 grep -Fq 'MERGED_COUNT=2' "$TMP/out-oos-shared.env" || fail "oos-shared MERGED_COUNT"
 [[ "$(grep -c '^### FINDING_' "$TMP/in-oos-shared-work.md" | tr -d '[:space:]')" == "2" ]] || fail "expected two FINDING blocks after OOS shared-slot merge"
 grep -Fq '[OUT_OF_SCOPE]' "$TMP/in-oos-shared-work.md" || fail "expected [OUT_OF_SCOPE] preserved in OOS shared-slot merge"
+
+echo "=== zero output FINDING blocks accepts clean pass (#2536) ==="
+cp "$TMP/in3.md" "$TMP/in3-zero.md"
+write_stub_dispatch
+AGGREGATE_DISPATCH_SH="$TMP/stub-dispatch.sh" \
+AGGREGATE_STUB_MODE=ok \
+AGGREGATE_STUB_MERGE_KIND=zero_findings \
+"$AGG" \
+    --findings-file "$TMP/in3-zero.md" \
+    --review-tmpdir "$TMP" \
+    --codex-present true \
+    --cursor-present true \
+    --mode diff >"$TMP/out-zero.env"
+grep -Fq 'AGGREGATED=true' "$TMP/out-zero.env" || fail "zero-findings AGGREGATED"
+grep -Fq 'REASON=ok' "$TMP/out-zero.env" || fail "zero-findings REASON"
+grep -Fq 'MERGED_COUNT=0' "$TMP/out-zero.env" || fail "zero-findings MERGED_COUNT"
+[[ "$(grep -c '^### FINDING_' "$TMP/in3-zero.md" | tr -d '[:space:]')" == "0" ]] || fail "expected zero FINDING blocks after zero-findings merge"
+
+echo "=== labelled reviewer slot suffix accepted (#2536) ==="
+cp "$TMP/in3.md" "$TMP/in3-label.md"
+write_stub_dispatch
+AGGREGATE_DISPATCH_SH="$TMP/stub-dispatch.sh" \
+AGGREGATE_STUB_MODE=ok \
+AGGREGATE_STUB_MERGE_KIND=labelled_slot \
+"$AGG" \
+    --findings-file "$TMP/in3-label.md" \
+    --review-tmpdir "$TMP" \
+    --codex-present true \
+    --cursor-present true \
+    --mode diff >"$TMP/out-label.env"
+grep -Fq 'AGGREGATED=true' "$TMP/out-label.env" || fail "labelled-slot AGGREGATED"
+grep -Fq 'REASON=ok' "$TMP/out-label.env" || fail "labelled-slot REASON"
+grep -Fq 'MERGED_COUNT=1' "$TMP/out-label.env" || fail "labelled-slot MERGED_COUNT"
 
 issues_parent="$TMP/agg-exec-issues"
 mkdir -p "$issues_parent"
