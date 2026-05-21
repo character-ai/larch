@@ -368,7 +368,7 @@ for f in "${CLAUDE_OUTPUT_FILES[@]+"${CLAUDE_OUTPUT_FILES[@]}"}"; do
     cat "$per_tmp" >> "$tmp"
 done
 
-sort -u "$tmp" > "$tmp.sorted"
+cp "$tmp" "$tmp.sorted"
 : > "$FINDINGS_FILE"
 : > "$OOS_FILE"
 count=0

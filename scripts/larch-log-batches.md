@@ -50,7 +50,7 @@ batch slug; `mode` is `simple` or `hard`; counts are non-negative integers;
 
 The `json-object` sanitizer validates these tally batches before replace writes.
 `review-findings-full.jsonl` is line-delimited JSON (one finding per line, with
-keys `id`, `issue_number`, `phase`, `outcome`, `reviewer`, `round_num`,
+keys `id`, `issue_number`, `phase`, `outcome`, `schema_version`, `reviewer_slots`, `round_num`,
 `category`, `prose_body`); it uses no sanitizer beyond the standard tmpdir and
 secret redaction pipeline because `jq` handles JSON string escaping for each
 record.

@@ -27,6 +27,10 @@ record_field_by_id() {
     jq -r --arg id "$2" --arg field "$3" \
         'select(.id == $id) | .[$field] // empty' "$1"
 }
+record_reviewer_slot0() {
+    # $1: file, $2: id → first reviewer_slots entry (or empty).
+    jq -r --arg id "$2" 'select(.id == $id) | .reviewer_slots[0] // empty' "$1"
+}
 
 echo "=== empty inputs ==="
 mkdir -p "$TMP/a-design" "$TMP/a-impl"
@@ -80,20 +84,21 @@ stdout="$("$COMPOSE" --design-artifacts-dir "$TMP/b-design" --implement-tmpdir "
 
 # Each JSONL record must parse and have the expected fields.
 while IFS= read -r line; do
-    printf '%s' "$line" | jq -e 'has("id") and has("issue_number") and has("phase") and has("outcome") and has("reviewer") and has("round_num") and has("category") and has("prose_body")' >/dev/null \
+    printf '%s' "$line" | jq -e 'has("id") and has("issue_number") and has("phase") and has("outcome") and has("reviewer_slots") and has("schema_version") and has("round_num") and has("category") and has("prose_body")' >/dev/null \
         || fail "missing required keys in record: $line"
+    [[ "$(printf '%s' "$line" | jq -r '.schema_version')" == "2" ]] || fail "schema_version must be 2: $line"
 done < "$out"
 
 # Plan-review accepted finding
 [[ "$(record_field_by_id "$out" FINDING_1 phase)" == "plan-review" ]] || fail "FINDING_1 phase"
 [[ "$(record_field_by_id "$out" FINDING_1 outcome)" == "accepted" ]] || fail "FINDING_1 outcome"
-[[ "$(record_field_by_id "$out" FINDING_1 reviewer)" == "panel" ]] || fail "FINDING_1 reviewer"
+[[ "$(record_reviewer_slot0 "$out" FINDING_1)" == "panel" ]] || fail "FINDING_1 reviewer"
 [[ "$(record_field_by_id "$out" FINDING_1 round_num)" == "" ]] || fail "FINDING_1 round_num"
 
 # Code-review accepted finding
 [[ "$(record_field_by_id "$out" FINDING_2 phase)" == "code-review" ]] || fail "FINDING_2 phase"
 [[ "$(record_field_by_id "$out" FINDING_2 outcome)" == "accepted" ]] || fail "FINDING_2 outcome"
-[[ "$(record_field_by_id "$out" FINDING_2 reviewer)" == "Codex-Structure" ]] || fail "FINDING_2 reviewer"
+[[ "$(record_reviewer_slot0 "$out" FINDING_2)" == "Codex-Structure" ]] || fail "FINDING_2 reviewer"
 [[ "$(record_field_by_id "$out" FINDING_2 round_num)" == "1" ]] || fail "FINDING_2 round_num"
 
 # Best-effort category from the synthetic '## <title>' line (non-OOS is not tag-whitelisted).
@@ -105,13 +110,13 @@ done < "$out"
 # Plan-review rejected finding
 [[ "$(record_field_by_id "$out" REJ_P1 phase)" == "plan-review" ]] || fail "REJ_P1 phase"
 [[ "$(record_field_by_id "$out" REJ_P1 outcome)" == "rejected" ]] || fail "REJ_P1 outcome"
-[[ "$(record_field_by_id "$out" REJ_P1 reviewer)" == "Cursor-Architecture" ]] || fail "REJ_P1 reviewer"
+[[ "$(record_reviewer_slot0 "$out" REJ_P1)" == "Cursor-Architecture" ]] || fail "REJ_P1 reviewer"
 [[ "$(record_field_by_id "$out" REJ_P1 round_num)" == "" ]] || fail "REJ_P1 round_num"
 
 # Code-review rejected finding
 [[ "$(record_field_by_id "$out" REJ_CR1_1 phase)" == "code-review" ]] || fail "REJ_CR1_1 phase"
 [[ "$(record_field_by_id "$out" REJ_CR1_1 outcome)" == "rejected" ]] || fail "REJ_CR1_1 outcome"
-[[ "$(record_field_by_id "$out" REJ_CR1_1 reviewer)" == "Cursor-Security" ]] || fail "REJ_CR1_1 reviewer"
+[[ "$(record_reviewer_slot0 "$out" REJ_CR1_1)" == "Cursor-Security" ]] || fail "REJ_CR1_1 reviewer"
 [[ "$(record_field_by_id "$out" REJ_CR1_1 round_num)" == "1" ]] || fail "REJ_CR1_1 round_num"
 
 # Token-shaped secret is redacted in the prose_body
@@ -135,7 +140,7 @@ EOF
 out="$TMP/e.jsonl"
 stdout="$("$COMPOSE" --implement-tmpdir "$TMP/e-impl" --issue 44 --output "$out")"
 [[ "$stdout" == *"FINDINGS_TOTAL=1"* ]] || fail "legacy rejected total: $stdout"
-[[ "$(record_field_by_id "$out" REJ_C1 reviewer)" == "Legacy-Reviewer" ]] || fail "legacy reviewer"
+[[ "$(record_reviewer_slot0 "$out" REJ_C1)" == "Legacy-Reviewer" ]] || fail "legacy reviewer"
 [[ "$(record_field_by_id "$out" REJ_C1 outcome)" == "rejected" ]] || fail "legacy outcome"
 [[ "$(record_field_by_id "$out" REJ_C1 round_num)" == "" ]] || fail "legacy round_num"
 grep -qF 'Legacy rejected body.' <<<"$(record_field_by_id "$out" REJ_C1 prose_body)" \
@@ -200,8 +205,8 @@ for id in OOS_CR1_1 OOS_CR1_2 OOS_CR1_3; do
     [[ "$(record_field_by_id "$out" "$id" outcome)" == "out_of_scope" ]] || fail "$id outcome"
     [[ "$(record_field_by_id "$out" "$id" round_num)" == "1" ]] || fail "$id round_num"
 done
-[[ "$(record_field_by_id "$out" OOS_CR1_2 reviewer)" == "codex-testing-output.txt" ]] || fail "OOS_CR1_2 reviewer"
-[[ "$(record_field_by_id "$out" OOS_CR1_3 reviewer)" == "cursor-cleanup-output.txt" ]] || fail "OOS_CR1_3 reviewer"
+[[ "$(record_reviewer_slot0 "$out" OOS_CR1_2)" == "codex-testing-output.txt" ]] || fail "OOS_CR1_2 reviewer"
+[[ "$(record_reviewer_slot0 "$out" OOS_CR1_3)" == "cursor-cleanup-output.txt" ]] || fail "OOS_CR1_3 reviewer"
 
 echo "=== rejected [rejected] headers use body reviewer attribution ==="
 mkdir -p "$TMP/j-impl"
@@ -215,7 +220,7 @@ EOF
 out="$TMP/j.jsonl"
 stdout="$("$COMPOSE" --implement-tmpdir "$TMP/j-impl" --issue 49 --output "$out")"
 [[ "$stdout" == *"FINDINGS_TOTAL=1"* ]] || fail "body reviewer rejected total: $stdout"
-[[ "$(record_field_by_id "$out" REJ_C1 reviewer)" == "cursor-specialist-testing-output.txt" ]] \
+[[ "$(record_reviewer_slot0 "$out" REJ_C1)" == "cursor-specialist-testing-output.txt" ]] \
     || fail "body reviewer rejected attribution"
 [[ -z "$(record_field_by_id "$out" REJ_C1 category)" ]] \
     || fail "title-only ### FINDING_ inner line must leave category empty, got $(record_field_by_id "$out" REJ_C1 category)"
@@ -286,7 +291,7 @@ EOF
 out="$TMP/l.jsonl"
 stdout="$("$COMPOSE" --implement-tmpdir "$TMP/l-impl" --issue 51 --output "$out")"
 [[ "$stdout" == *"FINDINGS_TOTAL=1"* ]] || fail "legacy OOS total: $stdout"
-[[ "$(record_field_by_id "$out" OOS_CR1_1 reviewer)" == "legacy-oos-reviewer.txt" ]] || fail "legacy OOS reviewer"
+[[ "$(record_reviewer_slot0 "$out" OOS_CR1_1)" == "legacy-oos-reviewer.txt" ]] || fail "legacy OOS reviewer"
 grep -qF 'Legacy follow-up docs drift' <<<"$(record_field_by_id "$out" OOS_CR1_1 prose_body)" \
     || fail "legacy OOS body missing"
 
@@ -308,8 +313,8 @@ EOF
 out="$TMP/m.jsonl"
 stdout="$("$COMPOSE" --implement-tmpdir "$TMP/m-impl" --issue 52 --output "$out")"
 [[ "$stdout" == *"FINDINGS_TOTAL=1"* ]] || fail "security OOS holdback total: $stdout"
-[[ "$(record_field_by_id "$out" OOS_CR1_1 reviewer)" == "public-reviewer.txt" ]] || fail "public OOS reviewer"
-[[ -z "$(record_field_by_id "$out" OOS_CR1_2 reviewer)" ]] || fail "security-tagged OOS should be held back"
+[[ "$(record_reviewer_slot0 "$out" OOS_CR1_1)" == "public-reviewer.txt" ]] || fail "public OOS reviewer"
+[[ -z "$(record_reviewer_slot0 "$out" OOS_CR1_2)" ]] || fail "security-tagged OOS should be held back"
 
 echo "=== synthetic rejected ids are unique across rounds ==="
 mkdir -p "$TMP/n-impl/round-1" "$TMP/n-impl/round-2"
@@ -330,8 +335,8 @@ EOF
 out="$TMP/n.jsonl"
 stdout="$("$COMPOSE" --implement-tmpdir "$TMP/n-impl" --issue 53 --output "$out")"
 [[ "$stdout" == *"FINDINGS_TOTAL=2"* ]] || fail "multi-round rejected total: $stdout"
-[[ "$(record_field_by_id "$out" REJ_CR1_1 reviewer)" == "round-1-reviewer.txt" ]] || fail "REJ_CR1_1 reviewer"
-[[ "$(record_field_by_id "$out" REJ_CR2_1 reviewer)" == "round-2-reviewer.txt" ]] || fail "REJ_CR2_1 reviewer"
+[[ "$(record_reviewer_slot0 "$out" REJ_CR1_1)" == "round-1-reviewer.txt" ]] || fail "REJ_CR1_1 reviewer"
+[[ "$(record_reviewer_slot0 "$out" REJ_CR2_1)" == "round-2-reviewer.txt" ]] || fail "REJ_CR2_1 reviewer"
 
 echo "=== JSONL preserves XML-like tags literally (no HTML escaping) ==="
 mkdir -p "$TMP/c-impl/round-1"
@@ -433,6 +438,23 @@ stdout="$("$COMPOSE" --implement-tmpdir "$TMP/mangled-oos-impl" --issue 2447 --o
     || fail "security category: got $(record_field_by_id "$out" OOS_CR1_7 category)"
 [[ -z "$(record_field_by_id "$out" OOS_CR1_8 category)" ]] \
     || fail "non-whitelisted bold OOS heading should yield empty category, got $(record_field_by_id "$out" OOS_CR1_8 category)"
+
+echo "=== **Reviewer(s):** splits into reviewer_slots array ==="
+mkdir -p "$TMP/rsplit-impl/round-1"
+cat > "$TMP/rsplit-impl/round-1/accepted-findings.md" <<'EOF'
+### FINDING_88: merged slots
+- **Reviewer(s)**: cursor-a-output.txt, codex-b-output.txt
+- **Concern**: combined concern.
+
+- **Suggested revision**: fix it.
+EOF
+out="$TMP/rsplit.jsonl"
+stdout="$("$COMPOSE" --implement-tmpdir "$TMP/rsplit-impl" --issue 2483 --output "$out")"
+[[ "$stdout" == *"FINDINGS_TOTAL=1"* ]] || fail "reviewer(s) split total: $stdout"
+[[ "$(jq -r 'select(.id == "FINDING_88") | .schema_version' "$out")" == "2" ]] \
+    || fail "schema_version for FINDING_88"
+jq -e 'select(.id == "FINDING_88") | (.reviewer_slots | length) == 2 and .reviewer_slots[0] == "cursor-a-output.txt" and .reviewer_slots[1] == "codex-b-output.txt"' "$out" >/dev/null \
+    || fail "reviewer_slots split mismatch for FINDING_88"
 
 echo "=== invalid issue fails ==="
 set +e

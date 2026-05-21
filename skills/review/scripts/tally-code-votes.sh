@@ -331,7 +331,15 @@ write_archetype_map "$MANIFEST_FILE" "$archetype_map"
         fi
         kind="finding"
         [[ "$is_oos" == "true" ]] && kind="oos"
-        printf '%s\t%s\t%s\n' "$reviewer" "$kind" "$result" >> "$score_rows"
+        printf '%s' "$reviewer" | awk -v kind="$kind" -v result="$result" -F',' '
+        {
+            for (i = 1; i <= NF; i++) {
+                gsub(/^[[:space:]]+|[[:space:]]+$/, "", $i)
+                if ($i != "") {
+                    print $i "\t" kind "\t" result
+                }
+            }
+        }' >> "$score_rows"
 
         security=false
         if is_security_block "$block" 2>/dev/null; then

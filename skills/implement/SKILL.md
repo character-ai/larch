@@ -1424,7 +1424,7 @@ After the `review-and-fix.sh` loop completes, compose the `code-review-tally` ba
 
 ### Larch-log batch — `review-findings-full`
 
-After the `code-review-tally` batch is written above, compose the `review-findings-full` JSONL records that persist per-finding payloads (id, phase, outcome, reviewer, round number, category, and verbatim prose body) for plan-review accepted, plan-review rejected, and code-review entries found under `$IMPLEMENT_TMPDIR/round-*/`. This batch carries the load-bearing miner content per issue #1402.
+After the `code-review-tally` batch is written above, compose the `review-findings-full` JSONL records that persist per-finding payloads (id, phase, outcome, schema_version, reviewer_slots, round number, category, and verbatim prose body) for plan-review accepted, plan-review rejected, and code-review entries found under `$IMPLEMENT_TMPDIR/round-*/`. This batch carries the load-bearing miner content per issue #1402.
 
 ```bash
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then

@@ -88,6 +88,7 @@ mkdir -p "$REVIEW_TMPDIR"
 GATHER_CONTEXT_SH="${REVIEW_CORE_GATHER_CONTEXT_SH:-$SCRIPT_DIR/gather-context.sh}"
 DISPATCH_PANEL_SH="${REVIEW_CORE_DISPATCH_PANEL_SH:-$SCRIPT_DIR/dispatch-panel.sh}"
 COLLECT_FINDINGS_SH="${REVIEW_CORE_COLLECT_FINDINGS_SH:-$SCRIPT_DIR/collect-findings.sh}"
+AGGREGATE_FINDINGS_SH="${REVIEW_CORE_AGGREGATE_FINDINGS_SH:-$SCRIPT_DIR/aggregate-findings.sh}"
 TALLY_VOTES_SH="${REVIEW_CORE_TALLY_VOTES_SH:-$SCRIPT_DIR/tally-code-votes.sh}"
 EMIT_TALLY_SH="${REVIEW_CORE_EMIT_TALLY_SH:-$SCRIPT_DIR/emit-tally.sh}"
 CHECK_DIRTY_TREE_SH="${REVIEW_CORE_CHECK_DIRTY_TREE_SH:-$PLUGIN_ROOT/scripts/check-mid-run-dirty-tree.sh}"
@@ -479,6 +480,21 @@ if [[ "$findings_count" == "0" ]]; then
     [[ -n "$zero_voting_tally_file" ]] && emit_kv VOTING_TALLY_FILE "$zero_voting_tally_file"
     exit 0
 fi
+
+aggregate_out="$REVIEW_TMPDIR/review-core-aggregate.env"
+aggregate_args=(
+    --findings-file "$REVIEW_TMPDIR/findings.md"
+    --review-tmpdir "$REVIEW_TMPDIR"
+    --codex-present "$CODEX_AVAILABLE"
+    --cursor-present "$CURSOR_AVAILABLE"
+    --mode "$MODE"
+)
+[[ -n "$SESSION_ENV_PATH" ]] && aggregate_args+=(--session-env-path "$SESSION_ENV_PATH")
+[[ -n "$DIFF_FILE" ]] && aggregate_args+=(--diff-file "$DIFF_FILE")
+[[ -n "$PLAN_FILE" ]] && aggregate_args+=(--plan-file "$PLAN_FILE")
+set +e
+"$AGGREGATE_FINDINGS_SH" "${aggregate_args[@]}" > "$aggregate_out" 2>/dev/null
+set -e
 
 tally_out="$REVIEW_TMPDIR/review-core-tally.env"
 

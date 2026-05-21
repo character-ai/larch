@@ -246,7 +246,7 @@ run_core() {
     local outdir="$1" mode="${2:-diff}" session_env="${3:-}"
     local args=(--mode "$mode" --output-dir "$outdir" --codex-available true --cursor-available true --panel simple --round-num "${TEST_ROUND_NUM:-1}")
     [[ -n "$session_env" ]] && args+=(--session-env-path "$session_env")
-    REVIEW_CORE_GATHER_CONTEXT_SH="$TMP/gather.sh" \
+    LARCH_AGGREGATOR_DISABLED=1 REVIEW_CORE_GATHER_CONTEXT_SH="$TMP/gather.sh" \
     REVIEW_CORE_DISPATCH_PANEL_SH="$TMP/dispatch.sh" \
     REVIEW_CORE_COLLECT_FINDINGS_SH="$TMP/collect.sh" \
     REVIEW_CORE_TALLY_VOTES_SH="$TMP/tally.sh" \
@@ -274,7 +274,7 @@ STUB
     local args=(--mode diff --output-dir "$outdir" --codex-available true --cursor-available true --panel simple --run-id test-run)
     [[ -n "$session_env" ]] && args+=(--session-env-path "$session_env")
     IMPLEMENT_TMPDIR="$impl_tmp" \
-    REVIEW_CORE_GATHER_CONTEXT_SH="$TMP/gather.sh" \
+    LARCH_AGGREGATOR_DISABLED=1 REVIEW_CORE_GATHER_CONTEXT_SH="$TMP/gather.sh" \
     REVIEW_CORE_DISPATCH_PANEL_SH="$TMP/dispatch.sh" \
     REVIEW_CORE_COLLECT_FINDINGS_SH="$TMP/collect.sh" \
     REVIEW_CORE_TALLY_VOTES_SH="$TMP/tally.sh" \
