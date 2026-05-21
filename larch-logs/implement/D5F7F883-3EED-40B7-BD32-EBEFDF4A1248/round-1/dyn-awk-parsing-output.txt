@@ -1,0 +1,12 @@
+Gathering the diff and `extract_category` implementation for a correctness-focused review.
+
+Checking how finding bodies are assembled for rejected vs accepted paths and whether `### FINDING_` can appear before a `##` line.
+
+### In-Scope Findings
+
+- **correctness** `scripts/compose-review-findings.sh:70-90` — The new `/^### FINDING_/` rule runs before `^## /` and, on the first matching inner-heading line, takes the text after the stripped `### FINDING_<id>:` prefix and treats everything up to the next `:` as the category, or the whole remainder if there is no `:` (same structure as the `^## /` branch). For rejected blocks whose inner line is the title-only shape `### FINDING_<id>: <free-form title>` with no second `:` (for example the existing fixture `### FINDING_18: Review finding title` in `scripts/test-compose-review-findings.sh:241-245`), that remainder is a sentence-style title, not a focus-area tag; the script previously left `category` empty because no `##` line matched, but with this change `category` becomes non-empty junk (e.g. `Review finding title`), which is a behavioral regression for any consumer that assumed “non-empty category means a real focus-area tag” or that relied on emptiness for title-only rejections. **Suggested fix:** Narrow the `### FINDING_` branch so single-colon bodies only yield a category when the candidate is one of the five canonical tags (matching the spirit of the new `rej-category-blank` guardrail), or require a second `:` in the line (true `### FINDING_n: <tag>: <location>` form) before treating the first segment as `category`, while still allowing the documented `### FINDING_n: architecture` case if you explicitly whitelist the tag when no second colon is present.
+
+### Out-of-Scope Observations
+
+- The branch also adds committed implement run artifacts under `larch-logs/implement/D5F7F883-3EED-40B7-BD32-EBEFDF4A1248/` (see diff hunks for `manifest.json`, `parent-issue.md`, etc.), which is unrelated noise for the stated #2479 fix and may be undesirable for reviewers and repo size even though it does not affect runtime correctness of `extract_category`.
+- `sub(/^### FINDING_[^:]*:/, "")` followed by `index($0, ":")` is consistent with POSIX awk behavior (`sub` updates `$0` before `index` runs); no stale-field issue there, and `exit` prevents the `^## /` rule from running on the same record once a `### FINDING_` line has matched.

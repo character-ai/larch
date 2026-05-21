@@ -57,14 +57,61 @@ redact_field() {
 }
 
 # Extract the category from a finding body. Bodies typically open with a
-# '## <category>: …' line or '## **<category>** — …'; if absent, returns the empty string.
+# '## <category>: …' line or '## **<category>** — …'. Rejected findings may instead
+# lead with a triple-hash inner line '### FINDING_<id>: <category>: …' (no synthetic
+# '## ' prefix). If absent, returns the empty string.
 # For out_of_scope (strict=1), the extracted token must be one of the five focus-area tags
 # or the result is treated as unknown and the empty string is returned (prevents bogus OOS
-# headings from populating category). For other outcomes (strict=0), any non-empty
-# candidate after parsing is returned (best-effort label for downstream consumers).
+# headings from populating category). For other outcomes (strict=0), '## …' lines still
+# return any non-empty parsed label; triple-hash '### FINDING_<id>: …' lines only populate
+# category for canonical focus-area tags or true '<tag>: <location>' shapes (two colons).
 extract_category() {
     local body="$1" strict="${2:-0}"
     LC_ALL=C awk -v strict="$strict" '
+        function is_canonical(c) {
+            return (c == "code-quality" || c == "risk-integration" ||
+                c == "correctness" || c == "architecture" || c == "security")
+        }
+        /^###[[:space:]]+FINDING_[0-9A-Za-z_]+:/ {
+            if (!sub(/^###[[:space:]]+FINDING_[0-9A-Za-z_]+:[[:space:]]*/, "")) {
+                next
+            }
+            sub(/^[[:space:]]+/, "", $0)
+            rest = $0
+            n1 = index(rest, ":")
+            if (n1 == 0) {
+                candidate = rest
+                gsub(/^[[:space:]]+|[[:space:]]+$/, "", candidate)
+                if (candidate == "" || !is_canonical(candidate)) {
+                    next
+                }
+                print candidate
+                exit
+            }
+            seg1 = substr(rest, 1, n1 - 1)
+            after1 = substr(rest, n1 + 1)
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", seg1)
+            n2 = index(after1, ":")
+            if (n2 > 0) {
+                candidate = seg1
+            } else if (is_canonical(seg1)) {
+                candidate = seg1
+            } else {
+                next
+            }
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", candidate)
+            if (candidate == "") {
+                next
+            }
+            if (strict == 1) {
+                if (is_canonical(candidate)) {
+                    print candidate
+                }
+            } else if (candidate != "") {
+                print candidate
+            }
+            exit
+        }
         /^## / {
             sub(/^## /, "")
             if (substr($0, 1, 2) == "**") {

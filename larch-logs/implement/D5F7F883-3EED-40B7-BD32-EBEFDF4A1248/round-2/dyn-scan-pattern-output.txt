@@ -1,0 +1,13 @@
+Gathering the diff and commit list for a correctness-focused review.
+
+Verifying jq precedence in the new scan row and how `jsonl-field` scans are evaluated. Reading `scans.tsv` and the consumer code.
+
+Verifying how `pending_title` is set for `[rejected]` lines and whether `flush_pending` prepends `##`.
+
+### In-Scope Findings
+- **correctness** `.claude/skills/audit-runs/scans.tsv:5` — The `rej-category-blank` `pattern` uses `test("### FINDING_[0-9A-Za-z_]+:")`, which only matches a single ASCII space after `###`, while `extract_category` in `scripts/compose-review-findings.sh` matches `^###[[:space:]]+FINDING_` (any run of spaces/tabs). A rejected body whose inner heading is `###␠␠FINDING_1: …` would still yield a blank `category` from the awk rules but would not be detected by this scan (false negative relative to the stated acceptance goal). **Suggested fix:** Narrow the gap by aligning the jq regex with the awk/header grammar, e.g. use `test("###[[:space:]]+FINDING_[0-9A-Za-z_]+:")` (and keep the existing `((.prose_body//"")|…)` plumbing) so the audit signal tracks the same whitespace-flexible header the composer treats as authoritative.
+
+### Out-of-Scope Observations
+- The branch also adds committed implement run material under `larch-logs/implement/D5F7F883-3EED-40B7-BD32-EBEFDF4A1248/` (manifest, `parent-issue.md`, plan artifacts); that is orthogonal to the REJ category fix and may or may not match your repo’s usual policy for flushed run logs (including placeholder fields such as `<OPERATOR_CWD>` in `manifest.json`).
+- `.claude/skills/audit-runs/SKILL.md`’s human-readable scan table (around lines 77–88) was not updated to mention the new `rej-category-blank` scan; `scans.tsv` remains the machine registry per that skill, so this is documentation drift rather than a logic bug in the new row itself.
+- The embedded jq expression was sanity-checked with `jq` on representative objects: it evaluates to a boolean, and `|` / `and` precedence behaves as intended for `REJ_` id filtering and `prose_body` matching when the header uses the common single-space form.
