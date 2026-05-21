@@ -53,14 +53,15 @@ Run these checks before doing any work:
 
 ## Verbal-Description Resolution
 
-1. Parse the description and resolve to a concrete PR list using `gh pr list --repo <repo> --state merged --base main` with appropriate filters.
-2. Echo the resolved PR list BEFORE running the audit: `Resolved <description> to: [#X, #Y, #Z]. Proceeding.`
-3. For "since last audit":
+1. **Normalize empty or omitted positional**: If `<verbal-description>` is absent or whitespace-only after trimming, set **effective description** to the canonical phrase `since last audit` and set **implicit since-last-audit** to true. Otherwise set **effective description** to the trimmed operator text and **implicit since-last-audit** to false. Do **not** run generic pattern matching on an empty string.
+2. **`since last audit` scope (explicit phrase or effective description from step 1)**: When **effective description** matches the `since last audit` form (including after empty/omitted normalization):
    - Read the most-recent issue matching label `audit-report` (sorted `createdAt DESC`, both states): `gh issue list --state all --label audit-report --json number,title,body,createdAt --jq 'sort_by(.createdAt) | reverse | .[0]'`
    - Parse its YAML frontmatter for `audited_pr_range.last`
    - Query for PRs merged after that PR's `mergedAt` timestamp
    - Error if no prior report exists OR its frontmatter is malformed/unparseable
    - Error if the query yields zero new PRs (do NOT file an empty report; exit cleanly with a message)
+3. **Other supported forms**: When **effective description** is not `since last audit`, parse it and resolve to a concrete PR list using `gh pr list --repo <repo> --state merged --base main` with appropriate filters (`last N PRs`, `since <ISO-timestamp>`, `#N` / `PR #N`, etc.).
+4. **Echo before the audit**: If **implicit since-last-audit** is true: `Resolved since last audit (implicit default: empty/omitted positional) to: [#X, #Y, #Z]. Proceeding.` Otherwise: `Resolved <effective description> to: [#X, #Y, #Z]. Proceeding.`
 
 ## Scan Registry
 
@@ -137,7 +138,7 @@ Previous cumulative: X → Now: X+M
 
 ## Audit Report
 
-Always file an audit report after the scan, EXCEPT when `since last audit` yields zero new PRs (exit cleanly without filing).
+Always file an audit report after the scan, EXCEPT when the scope is `since last audit` (including an empty/omitted positional normalized to that form per **Verbal-Description Resolution**) and the query yields zero new PRs (exit cleanly without filing).
 
 ### Title Format
 
