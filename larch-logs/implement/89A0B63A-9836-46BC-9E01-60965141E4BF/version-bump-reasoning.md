@@ -1,12 +1,12 @@
 # Version Bump Reasoning
 
-- **Base commit**: `53cdb4ce` (Fixes #2515: Add cursor-ci stall detection and regression harness (#2526))
-- **Current version**: `34.0.7`
+- **Base commit**: `9960a01d` (Fixes #2519: Harden verify-run-log-completeness manifest path validation (#2528))
+- **Current version**: `34.0.8`
 - **Classification scope**: `skills/**` and `agents/**` only (public plugin surface).
 
 ## Result: PATCH
 
-- **New version**: `34.0.8`
+- **New version**: `34.0.9`
 
 ### PATCH rationale
 
