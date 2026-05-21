@@ -217,6 +217,8 @@ stdout="$("$COMPOSE" --implement-tmpdir "$TMP/j-impl" --issue 49 --output "$out"
 [[ "$stdout" == *"FINDINGS_TOTAL=1"* ]] || fail "body reviewer rejected total: $stdout"
 [[ "$(record_field_by_id "$out" REJ_C1 reviewer)" == "cursor-specialist-testing-output.txt" ]] \
     || fail "body reviewer rejected attribution"
+[[ -z "$(record_field_by_id "$out" REJ_C1 category)" ]] \
+    || fail "title-only ### FINDING_ inner line must leave category empty, got $(record_field_by_id "$out" REJ_C1 category)"
 
 echo "=== REJ_* category from ### FINDING_ triple-hash inner heading ==="
 mkdir -p "$TMP/rej-cat-impl"
@@ -240,6 +242,21 @@ stdout="$("$COMPOSE" --implement-tmpdir "$TMP/rej-cat-impl" --issue 2479 --outpu
     || fail "REJ_C1 category: got $(record_field_by_id "$out" REJ_C1 category)"
 [[ "$(record_field_by_id "$out" REJ_C2 category)" == "security" ]] \
     || fail "REJ_C2 category: got $(record_field_by_id "$out" REJ_C2 category)"
+
+echo "=== REJ_* category from ### FINDING_ canonical tag without location colon ==="
+mkdir -p "$TMP/rej-cat-tagonly-impl"
+cat > "$TMP/rej-cat-tagonly-impl/rejected-findings-full.md" <<'EOF'
+### [rejected] FINDING_REG
+
+### FINDING_REG: correctness
+- **Reviewer**: rej-tagonly-reviewer.txt
+- **Concern**: synthetic REJ body with tag-only triple-hash line (no trailing location colon).
+EOF
+out="$TMP/rej-cat-tagonly.jsonl"
+stdout="$("$COMPOSE" --implement-tmpdir "$TMP/rej-cat-tagonly-impl" --issue 2480 --output "$out")"
+[[ "$stdout" == *"FINDINGS_TOTAL=1"* ]] || fail "REJ tag-only triple-hash category total: $stdout"
+[[ "$(record_field_by_id "$out" REJ_C1 category)" == "correctness" ]] \
+    || fail "REJ_C1 tag-only category: got $(record_field_by_id "$out" REJ_C1 category)"
 
 echo "=== preserve inner headings inside OOS code-review blocks ==="
 mkdir -p "$TMP/k-impl/round-1"
