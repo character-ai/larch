@@ -1121,8 +1121,46 @@ if [ -x "$COMP_SCRIPT" ]; then
     part=$(printf '%s' "$comp_out" | sed -n 's/^CATEGORY_STATS_PARTIAL=//p')
     assert_equal "$scf" "1" "[34c] SCAN_FILES_FOUND counts NDJSON inputs"
     assert_equal "$chg_delta" "4" "[34] CHANGELOG_DELTA sums scan NDJSON count"
-    assert_equal "$part" "true" "[34b] partial category-stats flagged in KV output"
+    assert_equal "$part" "true" "[34d] partial category-stats flagged in KV output"
     rm -rf "$COMP_TMP"
+else
+    echo "  SKIP: audit-compute-counters.sh not executable (not found at $COMP_SCRIPT)"
+fi
+
+# Test 34b: audit-compute-counters.sh — partial category-stats (jq/mangled) still adds clean/blank deltas
+echo "Test 34b: audit-compute-counters partial jq path still counts canonical/oos_blank"
+COMP_SCRIPT="${COMP_SCRIPT:-$SCRIPT_DIR/audit-compute-counters.sh}"
+if [ -x "$COMP_SCRIPT" ]; then
+    C34B_TMP=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-comp-34b-XXXXXX")
+    {
+        printf '%s\n' '{"scan":"category-stats","pr":1,"partial_data":true,"detail":"mangled-category aggregate unavailable after oos-category-mangle jq error","canonical":5,"oos_blank":2}'
+    } > "$C34B_TMP/scan-results-990034b.ndjson"
+    c34b_out=$(bash "$COMP_SCRIPT" --scan-results-dir "$C34B_TMP")
+    c34b_clean=$(printf '%s' "$c34b_out" | sed -n 's/^OOS_CLEAN_DELTA=//p')
+    c34b_blank=$(printf '%s' "$c34b_out" | sed -n 's/^OOS_BLANK_DELTA=//p')
+    c34b_part=$(printf '%s' "$c34b_out" | sed -n 's/^CATEGORY_STATS_PARTIAL=//p')
+    assert_equal "$c34b_clean" "5" "[34e] partial (non-missing-file) category-stats → OOS_CLEAN_DELTA uses canonical"
+    assert_equal "$c34b_blank" "2" "[34f] partial (non-missing-file) category-stats → OOS_BLANK_DELTA uses oos_blank"
+    assert_equal "$c34b_part" "true" "[34g] CATEGORY_STATS_PARTIAL still true for any partial_data"
+    rm -rf "$C34B_TMP"
+else
+    echo "  SKIP: audit-compute-counters.sh not executable (not found at $COMP_SCRIPT)"
+fi
+
+# Test 34c: audit-compute-counters.sh — missing-jsonl partial skips clean/blank (even if numeric fields non-zero)
+echo "Test 34c: audit-compute-counters missing-file partial omits OOS clean/blank deltas"
+COMP_SCRIPT="${COMP_SCRIPT:-$SCRIPT_DIR/audit-compute-counters.sh}"
+if [ -x "$COMP_SCRIPT" ]; then
+    C34C_TMP=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-comp-34c-XXXXXX")
+    {
+        printf '%s\n' '{"scan":"category-stats","pr":1,"partial_data":true,"detail":"review-findings-full.jsonl not found","canonical":99,"oos_blank":7}'
+    } > "$C34C_TMP/scan-results-990034c.ndjson"
+    c34c_out=$(bash "$COMP_SCRIPT" --scan-results-dir "$C34C_TMP")
+    c34c_clean=$(printf '%s' "$c34c_out" | sed -n 's/^OOS_CLEAN_DELTA=//p')
+    c34c_blank=$(printf '%s' "$c34c_out" | sed -n 's/^OOS_BLANK_DELTA=//p')
+    assert_equal "$c34c_clean" "0" "[34c] missing-file partial → OOS_CLEAN_DELTA skips category-stats canonical"
+    assert_equal "$c34c_blank" "0" "[34c2] missing-file partial → OOS_BLANK_DELTA skips category-stats oos_blank"
+    rm -rf "$C34C_TMP"
 else
     echo "  SKIP: audit-compute-counters.sh not executable (not found at $COMP_SCRIPT)"
 fi
@@ -1160,6 +1198,34 @@ if [ -x "$SCAN_SCRIPT" ]; then
     assert_equal "$ns_reasons" '{"NO_ISSUES_FOUND_TOO_THIN":1}' "[35e] ns-retry-sidecars reasons object"
     assert_equal "$ex_res" "fail" "[35d] execution-issues-categories non-Warnings → fail"
     rm -rf "$R35_TMP"
+else
+    echo "  SKIP: audit-scan-run.sh not executable (not found at $SCAN_SCRIPT)"
+fi
+
+# Test 35b: audit-scan-run.sh — invalid JSONL → oos jq error + category-stats partial (mangled placeholder)
+echo "Test 35b: audit-scan-run invalid review-findings JSONL (oos error + category-stats partial)"
+SCAN_SCRIPT="${SCAN_SCRIPT:-$SCRIPT_DIR/audit-scan-run.sh}"
+if [ -x "$SCAN_SCRIPT" ]; then
+    R35B_TMP=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-scan-35b-XXXXXX")
+    printf '%s\n' 'name	type	pattern	expected_outcome	severity' > "$R35B_TMP/oos-only.tsv"
+    printf '%s\n' 'oos-category-mangle	jsonl-field	x	y	medium' >> "$R35B_TMP/oos-only.tsv"
+    printf '%s\n' 'relative_path	condition	batch_slug	extension' > "$R35B_TMP/required-empty.tsv"
+    mkdir -p "$R35B_TMP/run"
+    printf '%s\n' '{' > "$R35B_TMP/run/review-findings-full.jsonl"
+    r35b_lines=$(bash "$SCAN_SCRIPT" \
+        --run-dir "$R35B_TMP/run" --pr 990035 \
+        --scans-tsv "$R35B_TMP/oos-only.tsv" \
+        --required-files-tsv "$R35B_TMP/required-empty.tsv" \
+        --current-version "29.0.0")
+    r35b_oos=$(printf '%s\n' "$r35b_lines" | jq -r 'select(.scan=="oos-category-mangle") | .result // empty' | head -1)
+    r35b_partial=$(printf '%s\n' "$r35b_lines" | jq -r 'select(.scan=="category-stats") | .partial_data | tostring' | head -1)
+    r35b_mangled=$(printf '%s\n' "$r35b_lines" | jq -r 'select(.scan=="category-stats") | .mangled // empty' | head -1)
+    r35b_detail=$(printf '%s\n' "$r35b_lines" | jq -r 'select(.scan=="category-stats") | .detail // empty' | head -1)
+    assert_equal "$r35b_oos" "error" "[35m] invalid JSONL → oos-category-mangle result error"
+    assert_equal "$r35b_partial" "true" "[35m2] category-stats partial_data on mangled jq failure"
+    assert_equal "$r35b_mangled" "0" "[35m3] mangled count is zero placeholder when jq failed"
+    assert_equal "$r35b_detail" "mangled-category aggregate unavailable after oos-category-mangle jq error" "[35m4] category-stats detail explains mangled aggregate unavailable"
+    rm -rf "$R35B_TMP"
 else
     echo "  SKIP: audit-scan-run.sh not executable (not found at $SCAN_SCRIPT)"
 fi

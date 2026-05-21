@@ -16,6 +16,8 @@ _audit_scan_run_self_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Set to 1 when mangled-category jq on review-findings-full.jsonl fails (oos-category-mangle scan).
 _audit_scan_mangled_jq_failed=0
+# When oos-category-mangle jq succeeds, path to its temp output (mangled rows) for category-stats reuse.
+_audit_mangled_jq_cache_file=""
 
 RUN_DIR=""
 PR_NUM=""
@@ -225,9 +227,11 @@ scan_oos_category_mangle() {
     jq_err=$(mktemp "${TMPDIR:-/tmp}/audit-scan-oos-err-XXXXXX")
     if jq -r -f "$_audit_scan_run_self_dir/audit-scan-run-mangled-rows.jq" "$jsonl" >"$jq_out" 2>"$jq_err"; then
         count=$(wc -l <"$jq_out" | tr -d '[:space:]')
-        rm -f "$jq_out" "$jq_err"
+        rm -f "$jq_err"
+        _audit_mangled_jq_cache_file="$jq_out"
     else
         _audit_scan_mangled_jq_failed=1
+        _audit_mangled_jq_cache_file=""
         detail=$(head -c 400 "$jq_err" 2>/dev/null | tr -d '\r' || true)
         rm -f "$jq_out" "$jq_err"
         emit "{\"scan\":\"oos-category-mangle\",\"pr\":$PR_NUM,\"result\":\"error\",\"detail\":\"$(jstr "jq failed (oos-category-mangle): ${detail:-unknown}")\"}"
@@ -489,6 +493,10 @@ if [ -f "$JSONL" ]; then
     if [ "$_audit_scan_mangled_jq_failed" -eq 1 ]; then
         category_stats_partial=true
         category_stats_detail="mangled-category aggregate unavailable after oos-category-mangle jq error"
+    elif [ -n "${_audit_mangled_jq_cache_file:-}" ] && [ -f "$_audit_mangled_jq_cache_file" ]; then
+        mangled_count=$(wc -l <"$_audit_mangled_jq_cache_file" | tr -d '[:space:]')
+        rm -f "$_audit_mangled_jq_cache_file"
+        _audit_mangled_jq_cache_file=""
     else
         mangled_jq_out=$(mktemp "${TMPDIR:-/tmp}/audit-scan-cs-mangled-out-XXXXXX")
         mangled_jq_err=$(mktemp "${TMPDIR:-/tmp}/audit-scan-cs-mangled-err-XXXXXX")

@@ -100,15 +100,21 @@ for ndjson_file in "$SCAN_RESULTS_DIR"/scan-results-*.ndjson; do
     delta_oos_mangled=$((delta_oos_mangled + val))
 
     partial_flag=$(jq -r 'select(.scan=="category-stats") | .partial_data // false' "$ndjson_file" 2>/dev/null | head -1 || echo false)
+    detail_val=$(jq -r 'select(.scan=="category-stats") | .detail // ""' "$ndjson_file" 2>/dev/null | head -1 || echo "")
     if [ "$partial_flag" = "true" ]; then
         category_stats_partial_any=true
-    else
-        # canonical OOS count from category-stats (skip when partial_data: category file missing)
+    fi
+    # Omit clean/blank deltas only when category-stats is partial because review-findings-full.jsonl
+    # was missing (zero placeholders). jq/mangled partial rows still carry measured canonical/oos_blank.
+    skip_cs_clean_blank=false
+    if [ "$partial_flag" = "true" ] && printf '%s' "$detail_val" | grep -Fq "review-findings-full.jsonl not found"; then
+        skip_cs_clean_blank=true
+    fi
+    if [ "$skip_cs_clean_blank" != true ]; then
         val=$(jq -r 'select(.scan=="category-stats") | .canonical // 0' "$ndjson_file" 2>/dev/null | head -1 || echo 0)
         val=$(num_or_zero "${val:-0}")
         delta_oos_clean=$((delta_oos_clean + val))
 
-        # blank OOS count from category-stats
         val=$(jq -r 'select(.scan=="category-stats") | .oos_blank // 0' "$ndjson_file" 2>/dev/null | head -1 || echo 0)
         val=$(num_or_zero "${val:-0}")
         delta_oos_blank=$((delta_oos_blank + val))
