@@ -54,7 +54,10 @@ harnesses only; production callers should omit it.
 - **Relative paths** are resolved from the repository root (the directory
   containing `docs/` inferred from `verify-run-log-completeness.sh`'s install
   location), not from the process current working directory. A leading `./` is
-  stripped; repeated `//` segments in the joined path are collapsed.
+  stripped; repeated `//` segments in the joined path are collapsed. `..`
+  segments in the relative tail are rejected, and when the manifest parent
+  directory exists the resolved path is canonicalized and must remain under the
+  repository root.
 
 Do **not** export `LARCH_VERIFY_MANIFEST` from shell profiles, shared CI
 images, or other ambient environment: an exported value silently overrides the

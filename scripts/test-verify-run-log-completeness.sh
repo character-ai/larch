@@ -97,6 +97,13 @@ else
 fi
 assert_contains "relative manifest path resolves from repo root" "$out" "OK"
 
+# Test 16: LARCH_VERIFY_MANIFEST relative path cannot escape repo with ..
+if out="$(LARCH_VERIFY_MANIFEST='../outside-manifest.tsv' "$VERIFY" "$run_ok" 2>&1)"; then
+    fail "expected non-zero exit for .. in LARCH_VERIFY_MANIFEST"
+else
+    assert_contains "manifest .. segment rejected" "$out" ".."
+fi
+
 # Test 2: missing execution-issues.ndjson from a Step-7a-complete run → MISSING reported
 run_missing_step7a="$TMP/run-missing-step7a"
 make_complete_run_dir "$run_missing_step7a"
@@ -237,8 +244,11 @@ bad_manifest="$TMP/bad-chars-manifest.tsv"
 } > "$bad_manifest"
 run_bad_chars="$TMP/run-bad-chars"
 mkdir -p "$run_bad_chars"
-out="$(LARCH_VERIFY_MANIFEST="$bad_manifest" "$VERIFY" "$run_bad_chars" 2>&1 || true)"
-assert_contains "invalid chars in manifest relative_path" "$out" "invalid characters"
+if out="$(LARCH_VERIFY_MANIFEST="$bad_manifest" "$VERIFY" "$run_bad_chars" 2>&1)"; then
+    fail "invalid chars in manifest relative_path: expected non-zero verifier exit"
+else
+    assert_contains "invalid chars in manifest relative_path" "$out" "invalid characters"
+fi
 
 echo
 echo "Passed: $PASS"

@@ -12,10 +12,34 @@ if [[ -n "${LARCH_VERIFY_MANIFEST:-}" ]]; then
     else
         # Relative paths resolve from repository root, not the process cwd.
         _rel="${LARCH_VERIFY_MANIFEST#./}"
+        case "$_rel" in
+            *..*)
+                printf 'verify-run-log-completeness.sh: LARCH_VERIFY_MANIFEST relative path must not contain .. segments\n' >&2
+                exit 1
+                ;;
+        esac
         MANIFEST="$REPO_ROOT/$_rel"
         while [[ "$MANIFEST" == *//* ]]; do
             MANIFEST="${MANIFEST//\/\//\/}"
         done
+        case "$MANIFEST" in
+            "$REPO_ROOT"/*) ;;
+            *)
+                printf 'verify-run-log-completeness.sh: LARCH_VERIFY_MANIFEST resolves outside repository root\n' >&2
+                exit 1
+                ;;
+        esac
+        if [[ -d "$(dirname "$MANIFEST")" ]]; then
+            _manifest_dir="$(cd "$(dirname "$MANIFEST")" && pwd -P)"
+            MANIFEST="$_manifest_dir/$(basename "$MANIFEST")"
+            case "$MANIFEST" in
+                "$REPO_ROOT"/*) ;;
+                *)
+                    printf 'verify-run-log-completeness.sh: LARCH_VERIFY_MANIFEST resolves outside repository root\n' >&2
+                    exit 1
+                    ;;
+            esac
+        fi
     fi
 else
     MANIFEST="$REPO_ROOT/docs/run-logs-required-files.tsv"
@@ -137,6 +161,11 @@ while IFS='	' read -r relative_path condition _rest; do
     fi
 
     if printf '%s' "$relative_path" | grep -q '\*'; then
+        _star_count="${relative_path//[^*]/}"
+        if [ "${#_star_count}" -gt 1 ]; then
+            printf 'verify-run-log-completeness.sh: relative_path must contain at most one * wildcard: %s\n' "$relative_path" >&2
+            exit 1
+        fi
         found_glob=0
         shopt -s nullglob
         for _gf in "$RUN_DIR"/$relative_path; do
