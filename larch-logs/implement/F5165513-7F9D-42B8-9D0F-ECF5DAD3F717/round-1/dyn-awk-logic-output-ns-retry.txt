@@ -1,0 +1,11 @@
+Reading the pre-computed diff and relevant source for the awk `extract_category` logic.
+
+Reading the full `extract_category` awk program to verify interaction between the `### FINDING_` and `/^## /` rules under strict vs loose mode.
+
+Checking whether committed `larch-logs/implement/` entries are normal for this repo.
+
+### In-Scope Findings
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+- **correctness** `scripts/compose-review-findings.sh:76-114` — The `### FINDING_<id>:` handler still ends with an unconditional `exit` after the first matching inner line, so for `strict==1` inputs where the string passed to `extract_category` actually begins with a `### FINDING_…` line before any canonical `## <tag>:` line, category would still be decided (or left blank) from that `###` stanza and later `##` lines would never be scanned; this pattern already applied to `out_of_scope` and is unchanged by the branch, and `flush_pending` plan-review accepted bodies normally omit the `###` header from `pending_body`. **Suggested fix:** Only if real bodies can interleave a leading `### FINDING_` line with later canonical `##` lines under `strict==1`: consider continuing the scan when strict mode does not print, analogous to the new `##` non-canonical `next` behavior.

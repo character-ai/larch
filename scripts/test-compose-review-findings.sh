@@ -45,6 +45,9 @@ echo "=== accepted and rejected findings ==="
 mkdir -p "$TMP/b-design" "$TMP/b-impl/round-1"
 cat > "$TMP/b-design/accepted-plan-findings.md" <<'EOF'
 ### FINDING_1: Architecture boundary
+
+## architecture: scripts/foo.sh
+
 - **Concern**: scripts/foo.sh:42 does too much.
 - **Resolution**: Split the helper.
 EOF
@@ -101,9 +104,10 @@ done < "$out"
 [[ "$(record_reviewer_slot0 "$out" FINDING_2)" == "Codex-Structure" ]] || fail "FINDING_2 reviewer"
 [[ "$(record_field_by_id "$out" FINDING_2 round_num)" == "1" ]] || fail "FINDING_2 round_num"
 
-# Best-effort category from the synthetic '## <title>' line (non-OOS is not tag-whitelisted).
-[[ "$(record_field_by_id "$out" FINDING_1 category)" == "Architecture boundary" ]] \
+# Plan-review accepted uses strict canonical '##' scanning (synthetic prose title skipped).
+[[ "$(record_field_by_id "$out" FINDING_1 category)" == "architecture" ]] \
     || fail "FINDING_1 category: got $(record_field_by_id "$out" FINDING_1 category)"
+# Code-review accepted still uses best-effort category from the synthetic '## <title>' line.
 [[ "$(record_field_by_id "$out" FINDING_2 category)" == "Runtime bug" ]] \
     || fail "FINDING_2 category: got $(record_field_by_id "$out" FINDING_2 category)"
 
@@ -129,6 +133,35 @@ grep -qF 'Suggested revision' <<<"$body_with_token" || fail "rejected body lost 
 # JSONL preserves literal '<', '>', and '&' (no HTML escaping).
 grep -qF '<config> & test' <<<"$body_with_token" \
     || fail "JSONL prose_body should preserve literal angle brackets and ampersand"
+
+echo "=== plan-review accepted: empty category when only non-canonical ##; multi-skip before canonical ==="
+mkdir -p "$TMP/pr-empty-cat-design" "$TMP/pr-empty-cat-impl"
+cat > "$TMP/pr-empty-cat-design/accepted-plan-findings.md" <<'EOF'
+### FINDING_EMPTY: Prose-only plan title
+
+## notes: not a focus-area tag
+## Discussion — unordered list style
+
+- **Concern**: Strict scan should skip non-canonical ## lines and leave category empty.
+
+### FINDING_MULTI: Another title
+
+## junk heading one: still not canonical
+## junk heading two: also not canonical
+## architecture: scripts/plan.md
+
+- **Concern**: Multiple junk ## lines then canonical tag should yield architecture.
+EOF
+out="$TMP/pr-empty-cat.jsonl"
+stdout="$("$COMPOSE" --design-artifacts-dir "$TMP/pr-empty-cat-design" --implement-tmpdir "$TMP/pr-empty-cat-impl" --issue 2484 --output "$out")"
+[[ "$stdout" == *"FINDINGS_TOTAL=2"* ]] || fail "plan-review empty-category total: $stdout"
+[[ -z "$(record_field_by_id "$out" FINDING_EMPTY category)" ]] \
+    || fail "FINDING_EMPTY category must be empty, got $(record_field_by_id "$out" FINDING_EMPTY category)"
+body_empty=$(record_field_by_id "$out" FINDING_EMPTY prose_body)
+grep -qF '## notes:' <<<"$body_empty" || fail "FINDING_EMPTY prose_body should retain non-canonical ## lines"
+grep -qF 'Strict scan should skip' <<<"$body_empty" || fail "FINDING_EMPTY prose_body lost concern bullet"
+[[ "$(record_field_by_id "$out" FINDING_MULTI category)" == "architecture" ]] \
+    || fail "FINDING_MULTI category: got $(record_field_by_id "$out" FINDING_MULTI category)"
 
 echo "=== legacy code review rejected header is accepted ==="
 mkdir -p "$TMP/e-impl"

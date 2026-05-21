@@ -60,11 +60,12 @@ redact_field() {
 # '## <category>: …' line or '## **<category>** — …'. Rejected findings may instead
 # lead with a triple-hash inner line '### FINDING_<id>: <category>: …' (no synthetic
 # '## ' prefix). If absent, returns the empty string.
-# For out_of_scope (strict=1), the extracted token must be one of the five focus-area tags
-# or the result is treated as unknown and the empty string is returned (prevents bogus OOS
-# headings from populating category). For other outcomes (strict=0), '## …' lines still
-# return any non-empty parsed label; triple-hash '### FINDING_<id>: …' lines only populate
-# category for canonical focus-area tags or true '<tag>: <location>' shapes (two colons).
+# For out_of_scope and plan-review accepted (strict=1), '## …' lines must match a canonical
+# focus-area tag or scanning continues; non-canonical '##' tokens are skipped (so a synthetic
+# prose title line prepended by flush_pending does not steal category from a later canonical
+# '## <tag>: …' line). For other outcomes (strict=0), the first non-empty '## …' label wins.
+# Triple-hash '### FINDING_<id>: …' lines only populate category for canonical focus-area tags
+# or true '<tag>: <location>' shapes (two colons) per the strict/loose branches inside awk.
 extract_category() {
     local body="$1" strict="${2:-0}"
     LC_ALL=C awk -v strict="$strict" '
@@ -132,12 +133,14 @@ extract_category() {
             }
             gsub(/^[[:space:]]+|[[:space:]]+$/, "", candidate)
             if (strict == 1) {
-                if (candidate == "code-quality" || candidate == "risk-integration" ||
-                    candidate == "correctness" || candidate == "architecture" ||
-                    candidate == "security") {
+                if (is_canonical(candidate)) {
                     print candidate
+                    exit
                 }
-            } else if (candidate != "") {
+                # Non-canonical in strict mode: skip and continue scanning
+                next
+            }
+            if (candidate != "") {
                 print candidate
             }
             exit
@@ -172,6 +175,7 @@ emit_record() {
     reviewer_redacted="$(redact_field "$reviewer")" || fail "redaction failed for reviewer in $id"
     body_redacted="$(redact_field "$body")" || fail "redaction failed for prose_body in $id"
     [[ "$outcome" == "out_of_scope" ]] && strict_cat=1
+    [[ "$phase" == "plan-review" && "$outcome" == "accepted" ]] && strict_cat=1
     category="$(extract_category "$body_redacted" "$strict_cat")"
     reviewer_slots_json=$(jq -nc --arg r "$reviewer_redacted" '($r | split(",") | map(sub("^[[:space:]]+";"") | sub("[[:space:]]+$";"")) | map(select(length > 0))) | if length == 0 then ["panel"] else . end')
     # JSONL: one compact JSON object per line. jq handles string escaping.

@@ -1,0 +1,5 @@
+Gathering the pre-computed diff and commit list for a read-only correctness review.
+
+Reading `extract_category` and `flush_pending` in `compose-review-findings.sh` to verify control flow and interactions.
+
+NO_ISSUES_FOUND

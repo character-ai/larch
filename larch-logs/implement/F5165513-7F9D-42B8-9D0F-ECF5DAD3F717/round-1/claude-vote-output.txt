@@ -1,0 +1,8 @@
+FINDING_1: EXONERATE -- `###` branch already filters non-canonical candidates with `next` before reaching the strict check; the two-colon edge case that could exit early is an unlikely body shape for plan-review accepted or OOS contexts
+FINDING_2: NO -- Purely informational verification record with no actionable concern
+FINDING_3: YES -- Missing test coverage for the strict-scan path that exhausts all `##` lines and yields `category=""`; the multi-skip regression path is untested
+FINDING_4: NO -- `scripts/compose-review-findings.md` was updated in this diff to document the strict-scan behavior; the cross-reference is sufficient
+FINDING_5: EXONERATE -- Behavior change for OOS is a correctness improvement; CHANGELOG entry for an internal JSONL format edge case with negligible real-world occurrence adds noise without benefit
+FINDING_6: NO -- Pre-existing behavior explicitly acknowledged in suggested revision as requiring no PR-scoped change
+FINDING_7: EXONERATE -- Category assertions fully cover the fix intent; adding `prose_body` substring checks would increase test surface complexity beyond what this targeted fix requires
+FINDING_8: NO -- Informational review notes with no actionable concern; larch-logs artifacts in the diff are expected per committed run-log convention
