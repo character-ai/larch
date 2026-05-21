@@ -250,7 +250,7 @@ Invoke `/implement` via the Skill tool using `larch:implement` as the `skill:` f
 
 `/implement --merge [--hard if hard_mode] --session-env $FIX_ISSUE_TMPDIR/session-env.sh --issue $ISSUE_NUMBER [--auto if auto_mode] [--no-admin-fallback if no_admin_fallback] [--no-logs-commit if no_logs_commit] [--coder=$coder if coder set] [--inline if inline_mode and hard_mode] <feature description>`
 
-After `/implement` completes, capture the PR URL and PR number from its output. Save as `PR_URL` and `PR_NUMBER`.
+After `/implement` completes, capture the PR URL and PR number from its output. Save as `PR_URL` and `PR_NUMBER`. Also parse a `MERGE_RESULT=` line from the same captured stdout when present (`merged`, `admin_merged`, `already_merged`, etc. — same vocabulary as `ship-pr-state.sh`) and export it as shell variable `MERGE_RESULT` for Step 6c.
 
 > **Continue after child returns (success path only).** If `/implement` succeeded and `PR_URL` / `PR_NUMBER` are captured, your next user-facing output MUST be the Step 6 breadcrumb (`> **🔶 /fix-issue 6: finalize**`) — do NOT end the turn (neither silently nor after text output), and do NOT write a summary, status recap, or "returning to caller" message first. If `/implement` failed or bailed, ignore this directive and follow the failure-path branch below. → shared/subskill-invocation.md#anti-halt
 
@@ -356,13 +356,17 @@ fi
 
 Best-effort: on `FAILED=true` / non-zero exit / `FINALIZED=false` non-idempotent error, log to `Tool Failures` and continue. The next `/fix-issue <umbrella#>` invocation will re-attempt finalization via the Step 0 exit-4 path. The `finalize-umbrella.sh` idempotency guard ensures concurrent or repeated invocations do not double-comment (FINDING_2). If `$UMBRELLA_NUMBER` is empty, this hook is a no-op.
 
-When `/implement` succeeded and `PR_URL` / `PR_NUMBER` were captured, append PR fields and emit a terminal-only run summary (GitHub upsert remains owned by `/implement`). Set `OUTCOME` to `pr-merged` when the child run merged the PR; use `pr-open` when a PR exists but was not merged in-session.
+When `/implement` succeeded and `PR_URL` / `PR_NUMBER` were captured, append PR fields and emit a terminal-only run summary (GitHub upsert remains owned by `/implement`). Derive `OUTCOME` from the parsed `MERGE_RESULT` token (not from a free-form `OUTCOME` shell default): use `pr-merged` when `MERGE_RESULT` is `merged` or `admin_merged`; otherwise use `pr-open` when a PR number/URL was captured but the child did not report an in-session merge.
 
 ```bash
+case "${MERGE_RESULT:-}" in
+  merged|admin_merged) FIX_ISSUE_PR_OUTCOME=pr-merged ;;
+  *) FIX_ISSUE_PR_OUTCOME=pr-open ;;
+esac
 {
   printf 'PR_NUMBER=%s\n' "$PR_NUMBER"
   printf 'PR_URL=%s\n' "$PR_URL"
-  printf 'OUTCOME=%s\n' "${OUTCOME:-pr-open}"
+  printf 'OUTCOME=%s\n' "$FIX_ISSUE_PR_OUTCOME"
 } >> "$FIX_ISSUE_TMPDIR/final-report-state.sh"
 ${CLAUDE_PLUGIN_ROOT}/skills/fix-issue/scripts/write-final-report.sh --fix-issue-tmpdir "$FIX_ISSUE_TMPDIR" --print-stdout || true
 ```

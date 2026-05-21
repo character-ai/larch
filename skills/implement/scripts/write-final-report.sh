@@ -133,6 +133,10 @@ elif [ -n "$PR_NUMBER" ] && [ "$PR_NUMBER" != "0" ] && [ "$DRAFT" = "false" ] &&
     OUTCOME="pr-created"
 fi
 
+if [ "$BAIL_USER" = "true" ] && [ "$OUTCOME" = "bailed" ]; then
+    OUTCOME="bailed-needs-user-input"
+fi
+
 # --- Mode flags (display) ---
 mode_parts=()
 [ "$QUICK_MODE" = "true" ] && mode_parts+=("--quick")

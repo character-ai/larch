@@ -94,7 +94,7 @@ ISSUE_URL=$(issue_url_from_repo "$REPO_ARG" "$ISSUE" || true)
 
 skip_upsert=false
 case "$OUTCOME" in
-    pr-merged|pr-open|no-candidate|lock-failed) skip_upsert=true ;;
+    pr-merged|pr-open|no-candidate|lock-failed|bailed-implement-failed|bailed-adopted-issue-closed) skip_upsert=true ;;
 esac
 
 mode_str="/fix-issue"
@@ -160,6 +160,8 @@ if [ "$skip_upsert" = true ] || [ "$ISSUE" = "0" ]; then
     emit_kv_out REASON "fix-issue-summary-not-posted"
     exit 0
 fi
+
+case "$ISSUE" in *[!0-9]*|"") emit_kv_out COMMENT_URL ""; emit_kv_out STATUS failed; emit_kv_out ERROR "ISSUE_NUMBER must be numeric"; exit 1 ;; esac
 
 summary_tmp="$(mktemp "${TMPDIR:-/tmp}/fix-wfr-summary.XXXXXX")"
 cp "$body_tmp" "$summary_tmp"

@@ -1850,21 +1850,19 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 # timing-mark Step 17 — final report
 ```
 
-If `DESIGN_ONLY_DONE=true`, continue to the token summary.
-
-Write/post the terminal `larch:final-summary` projection before the token summary (single call — the script resolves outcome, mode, path, notes, and partial fields internally):
+Write/post the terminal `larch:final-summary` projection before the token summary (single call — the script resolves outcome, mode, path, notes, and partial fields internally), including design-only runs — do not branch around this call.
 
 ```bash
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
   CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
 fi
 export CLAUDE_PLUGIN_ROOT
-${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/write-final-report.sh --implement-tmpdir "$IMPLEMENT_TMPDIR" --print-stdout
+"${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/write-final-report.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR" --print-stdout || true
 ```
 
 The markdown body is produced by `${CLAUDE_PLUGIN_ROOT}/scripts/render-run-summary.sh` (optional per-lane USD via `${CLAUDE_PLUGIN_ROOT}/scripts/token-cost.sh`).
 
-If `write-final-report.sh` exits non-zero or emits `STATUS=failed`, log the captured stdout/stderr to `Tool Failures` and continue to the token summary. `STATUS=skipped` is reserved for the no-tracking-issue path (`ISSUE_NUMBER=0`) and `repo-unavailable`, not for GitHub upsert failures.
+On non-zero exit or `STATUS=failed` on the script envelope, capture stdout/stderr to `$IMPLEMENT_TMPDIR/step17-write-final-report.failure.log` (or split `.stdout.log` / `.stderr.log`) and append with `append-tool-failure.sh` under `Tool Failures` per the Step 18 pattern, then continue to the token summary. `STATUS=skipped` is reserved for the no-tracking-issue path (`ISSUE_NUMBER=0`) and `repo-unavailable`, not for GitHub upsert failures.
 
 Print a token summary to chat. When `LARCH_VERBOSE_TOKENS=true`, print the full per-step table; otherwise print a single grand-total line. The full breakdown is appended to the `token-report` and `timing-report` log batches at the pre-bump log flush (Step 7a tail); on each retry `scripts/refresh-run-logs.sh` (Triggers A-C in `ship-pr.sh`) re-renders and commits the batches before each push so the merged PR carries the most recent data (unless `--no-logs-commit` is set, in which case log files stay in the session tmpdir only).
 

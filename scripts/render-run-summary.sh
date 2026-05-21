@@ -129,8 +129,10 @@ fmt_usd() {
 }
 
 cost_bullet() {
+    local tc_disp
+    case "$tc" in N/A|"") tc_disp="N/A" ;; *) tc_disp="~$(fmt_usd "$tc")" ;; esac
     printf 'TOTAL %s — Claude %s, Codex %s, Cursor %s' \
-        "$(fmt_usd "$tc")" "$(fmt_usd "$cc")" "$(fmt_usd "$dc")" "$(fmt_usd "$uc")"
+        "$tc_disp" "$(fmt_usd "$cc")" "$(fmt_usd "$dc")" "$(fmt_usd "$uc")"
 }
 
 mode_disp=$(na "$MODE_STR")

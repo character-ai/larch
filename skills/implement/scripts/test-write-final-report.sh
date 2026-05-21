@@ -83,4 +83,61 @@ set -e
 if [ "$rc" -ne 0 ]; then pass 'missing arg exits non-zero'; else fail 'missing arg exits non-zero'; fi
 assert_contains 'STATUS=failed' "$bad" 'missing arg emits envelope'
 
+# Stalled outcome (STALL_TRACKING=true)
+impl_st="$TMP_ROOT/impl-stall"; mkdir -p "$impl_st"
+printf 'ISSUE_NUMBER=2\nRUN_ID=run-st\nADOPTED=true\n' > "$impl_st/parent-issue.md"
+printf 'REPO=owner/repo\n' > "$impl_st/session-env.sh"
+{
+    printf 'PR_URL=https://example.test/pr/2\n'
+    printf 'PR_NUMBER=2\n'
+    printf 'STALL_TRACKING=true\n'
+    printf 'MERGE_RESULT=\n'
+    printf 'MERGE=false\n'
+    printf 'DRAFT=false\n'
+    printf 'FORKED_TARGET=false\n'
+} > "$impl_st/ship-pr-state.sh"
+printf 'DESIGN_ONLY_DONE=false\nBAIL_NEEDS_USER_INPUT=false\n' > "$impl_st/finalize-state.sh"
+out=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-stall.md" \
+      "$HELPER" --implement-tmpdir "$impl_st")
+assert_contains 'STATUS=ok' "$out" 'stalled path status ok'
+assert_contains '**Outcome**: stalled' "$(cat "$TMP_ROOT/content-stall.md")" 'stalled outcome in summary'
+
+# Design-only outcome
+impl_do="$TMP_ROOT/impl-do"; mkdir -p "$impl_do"
+printf 'ISSUE_NUMBER=3\nRUN_ID=run-do\nADOPTED=true\n' > "$impl_do/parent-issue.md"
+printf 'REPO=owner/repo\n' > "$impl_do/session-env.sh"
+{
+    printf 'PR_URL=N/A\n'
+    printf 'PR_NUMBER=\n'
+    printf 'STALL_TRACKING=false\n'
+    printf 'MERGE_RESULT=\n'
+    printf 'MERGE=false\n'
+    printf 'DRAFT=false\n'
+    printf 'FORKED_TARGET=false\n'
+} > "$impl_do/ship-pr-state.sh"
+printf 'DESIGN_ONLY_DONE=true\nBAIL_NEEDS_USER_INPUT=false\n' > "$impl_do/finalize-state.sh"
+out=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-do.md" \
+      "$HELPER" --implement-tmpdir "$impl_do")
+assert_contains 'STATUS=ok' "$out" 'design-only status ok'
+assert_contains '**Outcome**: design-only' "$(cat "$TMP_ROOT/content-do.md")" 'design-only outcome'
+
+# BAIL_NEEDS_USER_INPUT → distinct outcome when still bailed
+impl_bu="$TMP_ROOT/impl-bu"; mkdir -p "$impl_bu"
+printf 'ISSUE_NUMBER=4\nRUN_ID=run-bu\nADOPTED=true\n' > "$impl_bu/parent-issue.md"
+printf 'REPO=owner/repo\n' > "$impl_bu/session-env.sh"
+{
+    printf 'PR_URL=N/A\n'
+    printf 'PR_NUMBER=\n'
+    printf 'STALL_TRACKING=false\n'
+    printf 'MERGE_RESULT=\n'
+    printf 'MERGE=false\n'
+    printf 'DRAFT=false\n'
+    printf 'FORKED_TARGET=false\n'
+} > "$impl_bu/ship-pr-state.sh"
+printf 'DESIGN_ONLY_DONE=false\nBAIL_NEEDS_USER_INPUT=true\n' > "$impl_bu/finalize-state.sh"
+out=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-bu.md" \
+      "$HELPER" --implement-tmpdir "$impl_bu")
+assert_contains 'STATUS=ok' "$out" 'bail-user path status ok'
+assert_contains '**Outcome**: bailed-needs-user-input' "$(cat "$TMP_ROOT/content-bu.md")" 'bail-user outcome'
+
 finish
