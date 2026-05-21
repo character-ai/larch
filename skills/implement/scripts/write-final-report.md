@@ -58,6 +58,10 @@ When set, the script exports `PRINT_STDOUT=true` and prints the rendered markdow
 
 `STATUS=skipped` when `ISSUE_NUMBER=0` or `REPO_UNAVAILABLE=true`. GitHub upsert failure → `STATUS=failed`, non-zero exit.
 
+## `RUN_ID` validation
+
+After resolving `RUN_ID` from `parent-issue.md` or `session-id`, the script rejects values that contain `/` or `..` — the same path-traversal guard used in `scripts/refresh-run-logs.sh`. A rejected `RUN_ID` emits `STATUS=failed ERROR="invalid RUN_ID (path-traversal characters rejected)"` and exits non-zero without touching the filesystem.
+
 ## `--comment-only`
 
 Still refreshes `summary-final.md` for the upsert but **does not** overwrite `larch-logs/.../final-summary.md`. Used by `ship-pr.sh` after PR creation so the tracking comment picks up the live URL without dirtying the run-log tree before the next flush.

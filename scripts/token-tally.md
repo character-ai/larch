@@ -64,6 +64,19 @@ Both subcommands validate `--dir` is under `/tmp/`, `/private/tmp/`, or the larc
 
 Wired into Makefile via `.PHONY` line, exactly one `test-harnesses-N:` shard prerequisite list, and a dedicated `test-token-tally:` recipe.
 
+## Note on `/implement` and `/fix-issue` — intentional divergence from `token-cost.sh`
+
+`/implement` and `/fix-issue` use `token-cost.sh`, which has deliberately different semantics:
+
+| Dimension | `token-tally.sh` (this file) | `token-cost.sh` |
+|-----------|------------------------------|-----------------|
+| Callers | `/research` only | `/implement`, `/fix-issue` |
+| Rate env vars | Single `LARCH_TOKEN_RATE_PER_M` across all lanes | Three separate vendor rates: `LARCH_CLAUDE_RATE_PER_M`, `LARCH_CODEX_RATE_PER_M`, `LARCH_CURSOR_RATE_PER_M` |
+| N/A behavior | `$` column omitted entirely when rate is unset/zero | Each vendor independently shows `N/A` when its rate is unset/zero |
+| Output shape | Markdown `## Token Spend` section with phase rows | Flat KV lines (`CLAUDE_COST=`, `CODEX_COST=`, etc.) |
+
+Do not assume parity between the two surfaces; changes to one do not imply the other needs matching updates.
+
 ## Edit-in-sync rules
 
 When editing `token-tally.sh`:

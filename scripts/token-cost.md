@@ -32,7 +32,15 @@ Lines of the form `KEY=value`:
 - `CLAUDE_COST`, `CODEX_COST`, `CURSOR_COST`, `TOTAL_COST` — `0.00` style or `N/A`
 - `CLAUDE_TOKENS`, `CODEX_TOKENS`, `CURSOR_TOKENS`, `TOTAL_TOKENS` — integers
 
-## Note on `/research`
+## Note on `/research` — intentional divergence from `token-tally.sh`
 
-`/research` uses `token-tally.sh` with a single-rate column — different
-semantics from this helper. Do not assume parity between the two surfaces.
+`/research` uses `token-tally.sh`, which has deliberately different semantics:
+
+| Dimension | `token-cost.sh` (this file) | `token-tally.sh` |
+|-----------|----------------------------|------------------|
+| Callers | `/implement`, `/fix-issue` | `/research` only |
+| Rate env vars | Three separate vendor rates: `LARCH_CLAUDE_RATE_PER_M`, `LARCH_CODEX_RATE_PER_M`, `LARCH_CURSOR_RATE_PER_M` | Single `LARCH_TOKEN_RATE_PER_M` across all lanes |
+| N/A behavior | Each vendor independently shows `N/A` when its rate is unset/zero | `$` column omitted entirely when `LARCH_TOKEN_RATE_PER_M` is unset/zero |
+| Output shape | Flat KV lines (`CLAUDE_COST=`, `CODEX_COST=`, etc.) | Markdown `## Token Spend` section with phase rows |
+
+Do not assume parity between the two surfaces; changes to one do not imply the other needs matching updates.
