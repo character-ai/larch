@@ -20,6 +20,8 @@ When `--substantive-validation` or `--structured-reviewer-validation` is passed 
 
 **Temp prompt cleanup**: the temp prompt file is removed via a background wait-and-cleanup child after the retry process exits.
 
+**NS_RETRY_REASON annotation**: at the moment of NOT_SUBSTANTIVE classification in sections 3.5 and 3.6, the collector derives an `NS_RETRY_REASON` token from the `validate-research-output.sh` exit code and records it in the pipe-delimited RESULTS entry. After waiting for the retry, the token is appended as `NS_RETRY_REASON=<token>` to `<base>-ns-retry.txt.meta` (best-effort, skipped when the meta file is absent or is a symlink). Token vocabulary: `NO_ISSUES_FOUND_TOO_THIN` (exit 2 or 3 from substantive mode — body too thin or no provenance marker); `OUTPUT_EMPTY` (exit 4 — file missing or unreadable); `JSON_PARSE_FAIL` (exit 5 in structured mode — structured records not found); `UNKNOWN` (fallback for unmapped exits).
+
 ## Structured reviewer validation (`--structured-reviewer-validation`)
 
 When `--structured-reviewer-validation` is passed, the collector adds a Section 3.6 pass after substantive validation for each `STATUS=OK` entry. This flag is used for renderer-backed specialist slots (e.g., Cursor and Codex plan-review archetype slots in `skills/design/references/plan-review.md`) that emit JSONL/TSV structured records alongside prose output. Generic external reviewer slots launched with inline prompts are NOT wired to this flag.

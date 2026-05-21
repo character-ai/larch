@@ -1,0 +1,15 @@
+Reading the ballot and verifying against session context files.
+
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: EXONERATE -- UNKNOWN normalization caps drift; shared source would add sourcing complexity for a tiny vocabulary
+FINDING_4: EXONERATE -- refactor churn outweighs benefit; SECURITY.md already centralizes the fail-closed contract across siblings
+FINDING_5: EXONERATE -- append plus last-line-wins in the audit scan matches the intended contract without JSON key hygiene
+FINDING_6: EXONERATE -- process noise only; opening an issue would restate obvious PR hygiene
+FINDING_7: EXONERATE -- exit 2 and 3 are intentionally co-binned and explained in the shipped collector doc string
+FINDING_8: EXONERATE -- incremental harness coverage matches the scoped feature; full token matrix is optional follow-up
+FINDING_9: EXONERATE -- same bundle concern as FINDING_6; no issue needed
+FINDING_10: YES
+FINDING_11: EXONERATE -- ballot already frames widening tests as optional unless parity is a requirement
+FINDING_12: NO -- explicitly not a functional defect and no tracking issue is warranted
+FINDING_13: EXONERATE -- C_NSR_REASON in the harness is self-explanatory versus the plan typo

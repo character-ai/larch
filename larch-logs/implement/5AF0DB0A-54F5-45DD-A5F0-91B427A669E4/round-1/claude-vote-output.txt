@@ -1,0 +1,13 @@
+FINDING_1: YES
+FINDING_2: EXONERATE -- centralization is a legitimate maintainability concern but extracting a shared lib is a separate refactoring; the function bodies are correct
+FINDING_3: YES
+FINDING_4: EXONERATE -- awk -F= truncation risk is real but current token vocabulary (alphanumeric+underscore) makes it moot; first-wins is consistent with single-write design
+FINDING_5: NO -- naming divergence between plan prose and harness label is a trivial doc nit, not worth tracking
+FINDING_6: EXONERATE -- legitimate follow-up gap already documented; not issue-worthy
+FINDING_7: NO -- intentional per repo run-log policy; not a defect
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: EXONERATE -- substring match on a well-chosen PEM-specific marker phrase is not a plausible false-positive risk for real gh error text
+FINDING_11: YES
+FINDING_12: EXONERATE -- pre-existing observability gap not introduced by this diff; not worth a standalone issue
+FINDING_13: EXONERATE -- branch scope concern is process feedback, not a trackable defect

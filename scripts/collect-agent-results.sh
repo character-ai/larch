@@ -346,6 +346,27 @@ result_field_value() {
     return 1
 }
 
+# --- Helper: map NOT_SUBSTANTIVE classification to NS_RETRY_REASON token ---
+# args: val_exit (validate-research-output.sh exit code), ns_mode (substantive|structured)
+# output: one of NO_ISSUES_FOUND_TOO_THIN OUTPUT_EMPTY JSON_PARSE_FAIL UNKNOWN
+derive_ns_retry_reason() {
+    local val_exit="$1"
+    local ns_mode="$2"
+    case "$ns_mode" in
+        structured)
+            case "$val_exit" in
+                5) printf 'JSON_PARSE_FAIL' ;;
+                *) printf 'UNKNOWN' ;;
+            esac ;;
+        *)
+            case "$val_exit" in
+                2|3) printf 'NO_ISSUES_FOUND_TOO_THIN' ;;
+                4)   printf 'OUTPUT_EMPTY' ;;
+                *)   printf 'UNKNOWN' ;;
+            esac ;;
+    esac
+}
+
 # --- Helper: build failure reason from .diag file or status ---
 build_failure_reason() {
     local output_file="$1"
@@ -1139,7 +1160,7 @@ if [[ "$SUBSTANTIVE_VALIDATION" == "true" ]]; then
             if [[ "$VAL_EXIT" -eq 5 ]]; then
                 RESULTS[j]="REVIEWER_FILE=$REVIEWER_FILE|TOOL=$ENTRY_TOOL|STATUS=CURSOR_EMPTY_RESPONSE|EXIT_CODE=0|FAILURE_REASON=$DIAG_SAN"
             else
-                RESULTS[j]="REVIEWER_FILE=$REVIEWER_FILE|TOOL=$ENTRY_TOOL|STATUS=NOT_SUBSTANTIVE|EXIT_CODE=0|NS_RETRY_MODE=substantive|FAILURE_REASON=$DIAG_SAN"
+                RESULTS[j]="REVIEWER_FILE=$REVIEWER_FILE|TOOL=$ENTRY_TOOL|STATUS=NOT_SUBSTANTIVE|EXIT_CODE=0|NS_RETRY_MODE=substantive|NS_RETRY_REASON=$(derive_ns_retry_reason "$VAL_EXIT" "substantive")|FAILURE_REASON=$DIAG_SAN"
             fi
         fi
     done
@@ -1175,7 +1196,7 @@ if [[ "$STRUCTURED_REVIEWER_VALIDATION" == "true" ]]; then
             RESULTS[j]=$(with_structured_sidecar_field "$entry" "$STRUCTURED_SIDECAR")
         else
             DIAG_SAN=$(printf '%s' "$DIAG" | tr '|\n' '/ ' | tr -s '[:space:]' ' ' | sed 's/^ //; s/ $//' | cut -c1-200)
-            RESULTS[j]="REVIEWER_FILE=$REVIEWER_FILE|TOOL=$ENTRY_TOOL|STATUS=NOT_SUBSTANTIVE|EXIT_CODE=0|NS_RETRY_MODE=structured|STRUCTURED_SIDECAR=|FAILURE_REASON=$DIAG_SAN"
+            RESULTS[j]="REVIEWER_FILE=$REVIEWER_FILE|TOOL=$ENTRY_TOOL|STATUS=NOT_SUBSTANTIVE|EXIT_CODE=0|NS_RETRY_MODE=structured|NS_RETRY_REASON=$(derive_ns_retry_reason "$VAL_EXIT" "structured")|STRUCTURED_SIDECAR=|FAILURE_REASON=$DIAG_SAN"
         fi
     done
 fi
@@ -1265,6 +1286,15 @@ if [[ "$SUBSTANTIVE_VALIDATION" == "true" || "$STRUCTURED_REVIEWER_VALIDATION" =
                 NS_RETRY_OUTPUT="${ORIG_OUTPUT%.txt}-ns-retry.txt"
                 NS_RETRY_SENTINEL="${NS_RETRY_OUTPUT}.done"
                 IDX="${NS_RETRY_INDICES[$j]}"
+                # Extract before RESULTS[IDX] may be overwritten on retry success.
+                _ns_meta_reason=$(result_field_value "${RESULTS[$IDX]}" "NS_RETRY_REASON" || true)
+                [[ -z "$_ns_meta_reason" ]] && _ns_meta_reason="UNKNOWN"
+
+                # Write classification reason before any branch-local `continue` so audit bins always see it.
+                NS_RETRY_META="${NS_RETRY_OUTPUT}.meta"
+                if [[ -f "$NS_RETRY_META" && ! -L "$NS_RETRY_META" ]]; then
+                    printf 'NS_RETRY_REASON=%s\n' "$_ns_meta_reason" >> "$NS_RETRY_META" 2>/dev/null || true
+                fi
 
                 if [[ -f "$NS_RETRY_SENTINEL" && -s "$NS_RETRY_OUTPUT" ]]; then
                     NS_EXIT=$(cat "$NS_RETRY_SENTINEL" 2>/dev/null || echo "99")

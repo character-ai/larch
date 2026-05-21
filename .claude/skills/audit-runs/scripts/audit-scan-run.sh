@@ -65,6 +65,15 @@ fi
 # ---- Helpers ----
 emit() { printf '%s\n' "$1"; }
 
+# Map a raw NS_RETRY_REASON value from .meta to a JSON-safe audit token (unknown → UNKNOWN).
+_audit_normalize_ns_retry_reason_token() {
+    local raw="$1"
+    case "$raw" in
+        NO_ISSUES_FOUND_TOO_THIN|OUTPUT_EMPTY|JSON_PARSE_FAIL|UNKNOWN) printf '%s' "$raw" ;;
+        *) printf 'UNKNOWN' ;;
+    esac
+}
+
 # ---- Scan: required-file-presence ----
 scan_required_file_presence() {
     if [ -z "$REQUIRED_FILES_TSV" ] || [ ! -f "$REQUIRED_FILES_TSV" ]; then
@@ -243,13 +252,45 @@ scan_rej_category_blank() {
 # ---- Scan: ns-retry-sidecars ----
 scan_ns_retry_sidecars() {
     local count=0
+    local reasons_json
+    local _reasons_list=""
+    local reason meta raw_line
     for f in "$RUN_DIR"/round-*/*-ns-retry*.txt; do
-        [ -f "$f" ] && count=$((count + 1))
+        [ -f "$f" ] || continue
+        count=$((count + 1))
+        meta="${f}.meta"
+        reason=""
+        if [ -f "$meta" ]; then
+            # Last matching line wins (collector may append); strip fixed prefix so '=' in values is preserved.
+            raw_line=$(grep -E '^NS_RETRY_REASON=' "$meta" 2>/dev/null | tail -n 1 || true)
+            reason="${raw_line#NS_RETRY_REASON=}"
+            reason=$(printf '%s' "$reason" | tr -d '\r')
+        fi
+        [ -z "$reason" ] && reason="UNKNOWN"
+        reason=$(_audit_normalize_ns_retry_reason_token "$reason")
+        _reasons_list="${_reasons_list}${reason}"$'\n'
     done
+    # Build reasons JSON via jq so keys/values are always JSON-safe and keys sort for stable NDJSON.
+    reasons_json=$(printf '%s' "$_reasons_list" | jq -Rs '
+        split("\n")
+        | map(select(length > 0))
+        | reduce .[] as $t ({}; .[$t] += 1)
+        | to_entries
+        | sort_by(.key)
+        | from_entries
+    ' -c 2>/dev/null || printf '{}')
+    [ -z "$reasons_json" ] && reasons_json="{}"
+    local reasons_detail_kv=""
+    # If jq failed (or produced an empty object) while files were counted, roll up so count matches reasons.
+    if [ "$count" -gt 0 ] && [ "$reasons_json" = "{}" ]; then
+        reasons_json=$(jq -nc --argjson n "$count" '{"UNKNOWN":$n}' 2>/dev/null || true)
+        [ -z "$reasons_json" ] && reasons_json=$(printf '{"UNKNOWN":%s}' "$count")
+        reasons_detail_kv=",\"reasons_detail\":\"$(jstr 'reasons histogram unavailable (jq failed or empty output); rolled up to UNKNOWN')\""
+    fi
     if [ "$count" -eq 0 ]; then
-        emit "{\"scan\":\"ns-retry-sidecars\",\"pr\":$PR_NUM,\"result\":\"pass\",\"count\":0}"
+        emit "{\"scan\":\"ns-retry-sidecars\",\"pr\":$PR_NUM,\"result\":\"pass\",\"count\":0,\"reasons\":{}}"
     else
-        emit "{\"scan\":\"ns-retry-sidecars\",\"pr\":$PR_NUM,\"result\":\"fail\",\"count\":$count}"
+        emit "{\"scan\":\"ns-retry-sidecars\",\"pr\":$PR_NUM,\"result\":\"fail\",\"count\":$count,\"reasons\":$reasons_json$reasons_detail_kv}"
     fi
 }
 

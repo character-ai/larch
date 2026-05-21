@@ -1,0 +1,9 @@
+Gathering the branch diff and commit list for a read-only review focused on tests, CI, and regression risk.
+
+Searching the large diff for files from the implementation plan and related hunks.
+
+Checking for other `continue` statements in that loop that skip the meta append:
+
+Confirming: `continue` at lines 1311, 1314, and 1331 skips the meta block (lines 1338–1343) for that loop iteration — a correctness gap for the feature.
+
+
