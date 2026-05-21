@@ -74,7 +74,7 @@ result=$(parse_since_last_audit "Since Last Audit")
 assert_equal "$result" "unknown" "[2b] case-sensitive match required"
 
 # ---------------------------------------------------------------------------
-# Test 3: parse_verbal_description — "since <ISO-timestamp>"
+# Test 3: parse_verbal_description — "since <ISO8601-instant>"
 # ---------------------------------------------------------------------------
 echo "Test 3: parse 'since <ISO>'"
 parse_since_ts() {
@@ -89,6 +89,8 @@ result=$(parse_since_ts "since 2026-05-01T00:00Z")
 assert_equal "$result" "since_ts:2026-05-01T00:00Z" "[3] 'since <ISO>' parses"
 result=$(parse_since_ts "since 2026-05-01T12:30:00Z")
 assert_equal "$result" "since_ts:2026-05-01T12:30:00Z" "[3b] full ISO with seconds parses"
+result=$(parse_since_ts "since 2026-05-01T12:30-07:00")
+assert_equal "$result" "since_ts:2026-05-01T12:30-07:00" "[3c] explicit -07:00 offset parses"
 
 # ---------------------------------------------------------------------------
 # Test 4: parse_verbal_description — "#N" / "PR #N"

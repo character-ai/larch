@@ -23,7 +23,7 @@ This is a **dev-only** operator skill (`.claude/skills/`). It is NOT shipped wit
 - `<verbal-description>` (optional positional): when present, describes which PRs to audit. When omitted or empty, treat as `since last audit` (same error paths as that form). Supported forms:
   - `last N PRs` — N most-recently-merged PRs targeting `main`
   - `since last audit` — PRs merged after the prior audit report's `audited_pr_range.last`; error if no prior report exists or no new PRs have merged (do NOT file an empty report)
-  - `since <ISO-timestamp>` — PRs merged after the given timestamp
+  - `since <ISO8601-instant>` — PRs merged after that instant (same interpretable forms as GitHub `mergedAt`: `…Z` or explicit `±HH:MM` offset). This filter is **not** tied to the Pacific wall-clock convention used for audit report titles and `audit_timestamp`.
   - `#N` or `PR #N` — exactly one PR
   - Default when empty: treat as `since last audit` (requires a prior audit-report issue; continues to error if no prior report or malformed frontmatter — same as the explicit `since last audit` form)
 - `--repo <owner/name>`: target repo. Default: `character-ai/larch`
@@ -142,9 +142,9 @@ Always file an audit report after the scan, EXCEPT when the scope is `since last
 
 ### Title Format
 
-- Contiguous range: `[Run Logs Audit Report <ISO-timestamp>] PRs #X-#Y`
-- Non-contiguous (≤4 PRs): `[Run Logs Audit Report <ISO-timestamp>] PRs #X, #Y`
-- ISO-timestamp: Pacific time with UTC offset, minute precision (e.g. `2026-05-20T12:30-07:00` during PDT, `2026-05-20T12:30-08:00` during PST)
+- Contiguous range: `[Run Logs Audit Report <Pacific-ISO-timestamp>] PRs #X-#Y`
+- Non-contiguous (≤4 PRs): `[Run Logs Audit Report <Pacific-ISO-timestamp>] PRs #X, #Y`
+- `<Pacific-ISO-timestamp>`: Pacific wall time with UTC offset, minute precision (e.g. `2026-05-20T12:30-07:00` during PDT; e.g. `2026-01-15T12:30-08:00` during PST — US Pacific uses `-08:00` only in winter, not on a May date)
 
 ### Label
 
@@ -163,9 +163,11 @@ Use `create-one.sh` directly (bypasses the batch parser's `###` heading-trap):
 
 ### Frontmatter (YAML block between `---` markers at top of body)
 
+`audit_timestamp` matches **Title Format** `<Pacific-ISO-timestamp>`: Pacific wall time with explicit `-07:00` or `-08:00` and minute precision (not the `since <ISO8601-instant>` filter convention and not UTC `Z` by itself).
+
 ```yaml
 audit_schema_version: 1
-audit_timestamp: <ISO-timestamp>
+audit_timestamp: <Pacific-ISO-timestamp>
 audited_repo: <owner/name>
 audited_pr_range:
   first: N
