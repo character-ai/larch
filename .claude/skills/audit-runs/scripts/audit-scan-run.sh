@@ -101,11 +101,18 @@ scan_required_file_presence() {
                 ;;
             step8)
                 _rf_steps_ran_false step8 && return 1
-                _rf_has_file version-bump-reasoning.md || _rf_has_file final-summary.md || _rf_condition_met step9a1
+                _rf_has_file version-bump-reasoning.md || _rf_has_file final-summary.md || _RF_STEP9A1_MODE=chain _rf_condition_met step9a1
                 ;;
             step9a1)
                 _rf_steps_ran_false step9a1 && return 1
-                _rf_has_file run-statistics.md || _rf_has_file oos-issues.ndjson
+                # Direct required-file rows: default to "step ran" unless manifest says false.
+                # When invoked from step8's chain (_RF_STEP9A1_MODE=chain), keep the file
+                # heuristics so step8 does not widen solely from an empty run directory.
+                if [ "${_RF_STEP9A1_MODE:-}" = chain ]; then
+                    _rf_has_file run-statistics.md || _rf_has_file oos-issues.ndjson
+                else
+                    return 0
+                fi
                 ;;
             exn-agg-validate-fail)
                 [ -f "$RUN_DIR/execution-issues.ndjson" ] && grep -Fq 'merged output failed validation' "$RUN_DIR/execution-issues.ndjson" 2>/dev/null

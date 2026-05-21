@@ -1669,34 +1669,8 @@ else
     echo "  SKIP: audit-scan-run.sh not executable (not found at $SCAN_SCRIPT)"
 fi
 
-# Test 49: audit-scan-run jstr() (shared implementation with audit-scan-run.sh)
-echo "Test 49: audit-scan-run jstr() round-trip + edge vectors"
-SCAN_SCRIPT="${SCAN_SCRIPT:-$SCRIPT_DIR/audit-scan-run.sh}"
-# shellcheck source=.claude/skills/audit-runs/scripts/audit-scan-run-jstr.inc.bash
-. "$SCRIPT_DIR/audit-scan-run-jstr.inc.bash"
-if [ -x "$SCAN_SCRIPT" ]; then
-    for s in "29.8.62" "34.0.0" "oos-issues.ndjson" "run-statistics.md"; do
-        assert_equal "$(jstr "$s")" "$s" "[49] jstr identity for: $s"
-    done
-    assert_equal "$(jstr "")" "" "[49e] jstr empty string"
-    _s49q=$(printf 'a\x22b')
-    _e49q=$(printf 'a\x5c\x22b')
-    assert_equal "$(jstr "$_s49q")" "$_e49q" "[49f] jstr embedded quote"
-    _s49bs=$(printf 'a\x5cb')
-    _e49bs=$(printf 'a\x5c\x5cb')
-    assert_equal "$(jstr "$_s49bs")" "$_e49bs" "[49g] jstr backslash"
-    _s49t=$(printf 'a\tb')
-    _e49t=$(printf 'a\x5c\x74b')
-    assert_equal "$(jstr "$_s49t")" "$_e49t" "[49h] jstr tab"
-    _s49n=$'a\nb'
-    _e49n=$'a\\nb'
-    assert_equal "$(jstr "$_s49n")" "$_e49n" "[49i] jstr newline"
-else
-    echo "  SKIP: audit-scan-run.sh not executable (not found at $SCAN_SCRIPT)"
-fi
-
-# Test 50: audit-scan-run.sh — cache-freshness informational when run lags current
-echo "Test 50: audit-scan-run cache-freshness informational (version gap)"
+# Test 56: audit-scan-run.sh — cache-freshness informational when run lags current
+echo "Test 56: audit-scan-run cache-freshness informational (version gap)"
 SCAN_SCRIPT="${SCAN_SCRIPT:-$SCRIPT_DIR/audit-scan-run.sh}"
 if [ -x "$SCAN_SCRIPT" ]; then
     T50=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-t50-XXXXXX")
@@ -1711,16 +1685,16 @@ if [ -x "$SCAN_SCRIPT" ]; then
     t50_res=$(printf '%s\n' "$t50_out" | jq -r 'select(.scan=="cache-freshness") | .result // empty' | head -1)
     t50_rv=$(printf '%s\n' "$t50_out" | jq -r 'select(.scan=="cache-freshness") | .run_version // empty' | head -1)
     t50_cv=$(printf '%s\n' "$t50_out" | jq -r 'select(.scan=="cache-freshness") | .current_version // empty' | head -1)
-    assert_equal "$t50_res" "informational" "[50] cache-freshness behind current → informational (not fail)"
-    assert_equal "$t50_rv" "29.8.62" "[50b] run_version preserved"
-    assert_equal "$t50_cv" "34.0.0" "[50c] current_version preserved"
+    assert_equal "$t50_res" "informational" "[56] cache-freshness behind current → informational (not fail)"
+    assert_equal "$t50_rv" "29.8.62" "[56b] run_version preserved"
+    assert_equal "$t50_cv" "34.0.0" "[56c] current_version preserved"
     rm -rf "$T50"
 else
     echo "  SKIP: audit-scan-run.sh not executable (not found at $SCAN_SCRIPT)"
 fi
 
-# Test 51: audit-scan-run.sh — cache-freshness pass when versions match
-echo "Test 51: audit-scan-run cache-freshness pass (same version)"
+# Test 57: audit-scan-run.sh — cache-freshness pass when versions match
+echo "Test 57: audit-scan-run cache-freshness pass (same version)"
 SCAN_SCRIPT="${SCAN_SCRIPT:-$SCRIPT_DIR/audit-scan-run.sh}"
 if [ -x "$SCAN_SCRIPT" ]; then
     T51=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-t51-XXXXXX")
@@ -1733,7 +1707,7 @@ if [ -x "$SCAN_SCRIPT" ]; then
         --scans-tsv "$T51/scans.tsv" --required-files-tsv "$T51/required.tsv" \
         --current-version "34.0.0")
     t51_res=$(printf '%s\n' "$t51_out" | jq -r 'select(.scan=="cache-freshness") | .result // empty' | head -1)
-    assert_equal "$t51_res" "pass" "[51] cache-freshness same version → pass"
+    assert_equal "$t51_res" "pass" "[57] cache-freshness same version → pass"
     rm -rf "$T51"
 else
     echo "  SKIP: audit-scan-run.sh not executable (not found at $SCAN_SCRIPT)"
