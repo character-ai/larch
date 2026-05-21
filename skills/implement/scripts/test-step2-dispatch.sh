@@ -226,7 +226,7 @@ set +e
     LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 \
     LIB_CURSOR_AUTH_TEST_UNAME="Linux" \
     "$DISPATCHER" --tmpdir "$TMP3E" --plan-file "$PLAN" --feature-file "$FEATURE" \
-        --auto-mode false --coder cursor --cursor-present true >"$STDOUT_3E" 2>"$STDERR_3E"
+        --coder cursor --cursor-present true >"$STDOUT_3E" 2>"$STDERR_3E"
 )
 _3e_rc=$?
 set -e
