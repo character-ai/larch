@@ -1,0 +1,30 @@
+Reading the ballot and session context files to verify findings.
+
+Verifying key ballot claims against the codebase.
+
+FINDING_1: YES
+FINDING_2: EXONERATE -- bounded dev-only audit timestamps with explicit fallback path
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: EXONERATE -- no evidence of real mis-normalized remotes
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: EXONERATE -- optional test parity not worth an issue
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: EXONERATE -- Tests 23–25, 33, 35, 40 already exercise many NDJSON scan paths
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: EXONERATE -- operator-controlled strings; hardening cost outweighs threat here
+FINDING_18: YES
+FINDING_19: YES
+FINDING_20: EXONERATE -- longstanding stderr silence; optional improvement only
+FINDING_21: YES
+FINDING_22: YES
+FINDING_23: YES
+FINDING_24: YES
+FINDING_25: YES
+FINDING_26: EXONERATE -- fix alongside other SKILL table edits, no separate issue needed

@@ -1,0 +1,26 @@
+FINDING_1: YES
+FINDING_2: EXONERATE -- fallback is explicitly documented as simplified; primary TZ-based path is correct; fixing edge-case month rollover adds complexity for a last-resort path
+FINDING_3: YES
+FINDING_4: EXONERATE -- operator verbal descriptions are expected to follow documented lowercase forms; case-normalizing adds complexity for a trivial user-error scenario
+FINDING_5: EXONERATE -- KV and TSV values in these scripts are constructed from integers and fixed strings; embedded-newline injection via programmatic output is theoretical
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: EXONERATE -- `gh repo view --json url` returns a consistent format without trailing slash; asymmetry causes no false mismatch in practice; diagnostic message is clear enough for operators
+FINDING_9: NO -- both the script (line 47-48) and the contract .md explicitly state `scan:"setup"` for the missing-run-dir error; no actual disagreement
+FINDING_10: YES
+FINDING_11: EXONERATE -- values in PR_LIST, PRIOR_REPORT_NUMBER, and ERROR are programmatically constructed from integers and fixed strings without embedded newlines; injection is theoretical for this call chain
+FINDING_12: EXONERATE -- required-files TSV is a repo-internal trusted file, not user-provided; path traversal via TSV rows would require repo compromise
+FINDING_13: EXONERATE -- operator tool in authenticated dev environment; SSH remote URLs contain no credentials, and HTTPS URLs with embedded credentials are unusual in modern git setups
+FINDING_14: YES
+FINDING_15: EXONERATE -- by design, changelog-rebase-conflicts is a heuristic counter scan; emitting result:pass while count>0 is intentional; audit-compute-counters.sh aggregates by .count not .result
+FINDING_16: YES
+FINDING_17: YES
+FINDING_18: NO -- `IFS=',' read -r -a` for indexed arrays is valid Bash 3.2; the "breakage" claim is incorrect; BASH_AUTHORING.md prohibits `declare -A` (associative arrays) not `read -a`
+FINDING_19: YES
+FINDING_20: YES
+FINDING_21: NO -- lexicographic comparison of ISO-8601 timestamps via `[[` is a correctness-not-portability concern; `[[` is fully supported in Bash 3.2; finding is mislabeled as a portability issue
+FINDING_22: NO -- the new `audit-title.md` contract says "Non-contiguous (any count): explicit sorted list" which matches the script; old SKILL.md size-dependent prose was replaced; no actionable mismatch remains
+FINDING_23: YES
+FINDING_24: YES
+FINDING_25: YES
+FINDING_26: YES

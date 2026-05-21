@@ -32,40 +32,25 @@ This is a **dev-only** operator skill (`.claude/skills/`). It is NOT shipped wit
 
 ## Pre-flight
 
-Run these checks before doing any work:
+```bash
+PREFLIGHT_OUT=$(bash "$PWD/.claude/skills/audit-runs/scripts/audit-preflight.sh" \
+  --repo "<owner/name>" [--allow-concurrent])
+```
 
-1. `git fetch origin main && git pull --ff-only`. Refuse if working tree is dirty.
-2. Verify `pwd` is a clone of `--repo`. Compare `gh repo view -R <owner/name> --json url` (substitute the same `owner/name` you passed to `--repo`) with `git config --get remote.origin.url`. Fail-fast if they don't match.
-3. Concurrency guard: GitHub issue search `created:` filters expect **absolute** dates, not rolling windows like `5m`, so do **not** rely on `gh issue list --search 'created:>5m'`. Instead list `audit-report` issues with `--json number,createdAt` and filter in `jq` against a UTC cutoff for **now − 5 minutes** (unless `--allow-concurrent`).
-
-   Compute `CUTOFF` portably, for example:
-
-   - GNU `date`: `CUTOFF="$(date -u -d '5 minutes ago' +'%Y-%m-%dT%H:%M:%SZ')"`
-   - macOS `date`: `CUTOFF="$(date -u -v-5M +'%Y-%m-%dT%H:%M:%SZ')"`
-
-   Then refuse when any row is newer than `CUTOFF`:
-
-   ```bash
-   gh issue list --state all --label audit-report --repo "<owner/name>" --json number,createdAt --limit 50 \
-     | jq -e --arg c "$CUTOFF" 'any(.[]; .createdAt > $c)' >/dev/null \
-     && { echo "Refuse: audit-report filed within the 5-minute concurrency window"; exit 1; }
-   ```
+Read `PREFLIGHT_OK` and `REASON` from stdout. Fail-fast when `PREFLIGHT_OK=false`; print `REASON` to the user. Contract: `.claude/skills/audit-runs/scripts/audit-preflight.md`.
 
 ## Verbal-Description Resolution
 
-1. **Normalize empty or omitted positional**: If `<verbal-description>` is absent or whitespace-only after trimming, set **effective description** to the canonical phrase `since last audit` and set **implicit since-last-audit** to true. Otherwise set **effective description** to the trimmed operator text and **implicit since-last-audit** to false. Do **not** run generic pattern matching on an empty string.
-2. **`since last audit` scope (explicit phrase or effective description from step 1)**: When **effective description** matches the `since last audit` form (including after empty/omitted normalization):
-   - Read the most-recent issue matching label `audit-report` (sorted `createdAt DESC`, both states): `gh issue list --state all --label audit-report --json number,title,body,createdAt --jq 'sort_by(.createdAt) | reverse | .[0]'`
-   - Parse its YAML frontmatter for `audited_pr_range.last` (an integer PR number — NOT `audit_timestamp`)
-   - Query for PRs merged after that PR's `mergedAt` timestamp (UTC from the GitHub API — no timezone conversion needed; `audit_timestamp` is not used in this comparison)
-   - Error if no prior report exists OR its frontmatter is malformed/unparseable
-   - Error if the query yields zero new PRs (do NOT file an empty report; exit cleanly with a message)
-3. **Other supported forms**: When **effective description** is not `since last audit`, parse it and resolve to a concrete PR list using `gh pr list --repo <repo> --state merged --base main` with appropriate filters (`last N PRs`, `since <ISO-timestamp>`, `#N` / `PR #N`, etc.).
-4. **Echo before the audit**: If **implicit since-last-audit** is true: `Resolved since last audit (implicit default: empty/omitted positional) to: [#X, #Y, #Z]. Proceeding.` Otherwise: `Resolved <effective description> to: [#X, #Y, #Z]. Proceeding.`
+```bash
+RESOLVE_OUT=$(bash "$PWD/.claude/skills/audit-runs/scripts/audit-resolve-prs.sh" \
+  --repo "<owner/name>" [--verbal-description "<verbal-description>"])
+```
+
+Read `PR_LIST`, `PR_COUNT`, `IMPLICIT_SINCE_LAST_AUDIT`, `PRIOR_REPORT_NUMBER`, `RESOLVED_ECHO`, and `ERROR` from stdout. Fail-fast when `ERROR` is non-empty; print it to the user. Print `RESOLVED_ECHO` before scanning. Contract: `.claude/skills/audit-runs/scripts/audit-resolve-prs.md`.
 
 ## Scan Registry
 
-The scan list is externalized in `.claude/skills/audit-runs/scans.tsv` (one row per scan: `name`, `type`, `pattern`, `expected_outcome`, `severity`). Adding a scan = adding a TSV row, no SKILL.md edit needed.
+The scan list is externalized in `.claude/skills/audit-runs/scans.tsv` (one row per scan: `name`, `type`, `pattern`, `expected_outcome`, `severity`). **Adding a scan** requires coordinated updates: (1) a new `scans.tsv` row, (2) a matching `case` branch (and scan function) in `audit-scan-run.sh`, (3) any counter wiring in `audit-compute-counters.sh` / `audit-compute-counters.md` when the scan feeds cumulative totals, (4) `audit-scan-run.md` / `SKILL.md` scan tables if the operator-facing baseline changes, and (5) hermetic coverage in `test-audit-runs.sh` for the new NDJSON shape and counter path. **Plan fidelity**: substantive changes to that surface (new counters, new cumulative YAML keys, or registry-wide behavior) should be tracked in their own issue/PR when they go beyond a routine scan-row + test update — routine `changelog-rebase-conflicts` / `changelog_rebase_conflicts` / `ns_retries_cursor_specialist` wiring is part of this skill’s maintained baseline, not an ad-hoc add-on.
 
 Read the registry at runtime:
 ```bash
@@ -84,23 +69,34 @@ SCANS_TSV="$PWD/.claude/skills/audit-runs/scans.tsv"
 | Codex generalist waste | `codex-generalist-output.txt` is `NO_ISSUES_FOUND` only AND timing > 120s | `round-1/` + `timing-report.json` |
 | Execution-issues categories | non-Warnings entries in `execution-issues.ndjson` | `execution-issues.ndjson` |
 | Cache freshness | `manifest.json::larch_version` vs latest plugin version | `manifest.json` |
+| Changelog rebase/conflicts (heuristic) | `execution-issues.ndjson` bodies mentioning changelog + rebase/conflict | `execution-issues.ndjson` |
 | Coder tool | `CODER_TOOL` field | `round-*/coder.env` |
 | Trailing-content NO_ISSUES_FOUND | first-pass content matches `^NO_ISSUES_FOUND\n` plus extra | `*-first-pass.txt` |
 
 ## Scanning
 
-For each audited PR:
+```bash
+# Map each PR to its run-log directory
+RUN_MAP_TSV=$(bash "$PWD/.claude/skills/audit-runs/scripts/audit-map-runs.sh" \
+  --pr-list "$PR_LIST" --repo "<owner/name>")
+# TSV: pr_number<TAB>run_id<TAB>started_at<TAB>larch_version<TAB>closes_issue
+```
 
-1. Look up the PR's run-log directory: find the most recent `larch-logs/implement/<RUN_ID>/` directory whose `manifest.json` has a `pr_number` matching the PR.
-2. Run each scan from `scans.tsv` against the appropriate files in that run-log root.
-3. Collect findings per PR, per scan.
+Then for each PR row in the TSV:
 
-### Cross-cutting Checks
+```bash
+bash "$PWD/.claude/skills/audit-runs/scripts/audit-scan-run.sh" \
+  --run-dir "larch-logs/implement/<RUN_ID>" \
+  --pr <PR_NUM> \
+  --scans-tsv "$PWD/.claude/skills/audit-runs/scans.tsv" \
+  --required-files-tsv "$PWD/docs/run-logs-required-files.tsv" \
+  --current-version "<latest-plugin-version>" \
+  > "$TMPDIR/scan-results-<PR_NUM>.ndjson"
+```
 
-Run for each audited PR:
+Read `scan-results-*.ndjson` files as NDJSON (one JSON object per scan per line). Contract: `.claude/skills/audit-runs/scripts/audit-scan-run.md`.
 
-- **Self-deploying gap detection**: cross-reference `manifest.json::larch_version` with the version that contains the PR's `Closes #N` fix. Warn loudly if the run used a version BEFORE the fix landed (the bug-being-fixed exhibits in the very run that fixes it).
-- **Closed-issue cross-reference**: parse `Closes #N` from the PR body. Check if the run still exhibits the bug that `#N` claims to fix.
+**Cross-cutting checks (NDJSON + operator judgment):** the synthetic `cross-cutting` object (and `cache-freshness` / manifest fields) flags **manifest integrity** — empty `ended_at` / `pr_number`, and `manifest_pr_number_mismatch_with_audited_pr` / legacy `self_deploying_gap` when `manifest.json`’s `pr_number` disagrees with the audited PR (run-log vs merge skew / self-deploying version gaps). Treat **plugin version behind current** (`cache-freshness` fail) as the version-gap signal versus the fix stream. **`proposed_new_issues` / `proposed_augmentations`** must be reconciled against **actually filed or closed** bug issues after the report (per **Post-report user prompt**); do not assume a proposal row implies an open issue without `gh` verification.
 
 ## Proposed bug-issue actions
 
@@ -142,9 +138,18 @@ Always file an audit report after the scan, EXCEPT when the scope is `since last
 
 ### Title Format
 
-- Contiguous range: `[Run Logs Audit Report <Pacific-ISO-timestamp>] PRs #X-#Y`
-- Non-contiguous (≤4 PRs): `[Run Logs Audit Report <Pacific-ISO-timestamp>] PRs #X, #Y`
-- `<Pacific-ISO-timestamp>`: Pacific wall time with UTC offset, minute precision (e.g. `2026-05-20T12:30-07:00` during PDT; e.g. `2026-01-15T12:30-08:00` during PST — US Pacific uses `-08:00` only in winter, not on a May date)
+```bash
+PACIFIC_OUT=$(bash "$PWD/.claude/skills/audit-runs/scripts/audit-pacific-timestamp.sh")
+PACIFIC_TIMESTAMP=$(printf '%s\n' "$PACIFIC_OUT" | sed -n 's/^PACIFIC_TIMESTAMP=//p')
+# → PACIFIC_TIMESTAMP=2026-05-20T21:59-07:00
+
+TITLE_OUT=$(bash "$PWD/.claude/skills/audit-runs/scripts/audit-title.sh" \
+  --pr-list "$PR_LIST" --timestamp "$PACIFIC_TIMESTAMP")
+# stdout is KV-shaped: each line is `KEY=value`. The title script prints `TITLE=...` (not a bare title string).
+TITLE=$(printf '%s\n' "$TITLE_OUT" | sed -n 's/^TITLE=//p')
+```
+
+Contracts: `audit-pacific-timestamp.md`, `audit-title.md`.
 
 ### Label
 
@@ -161,9 +166,21 @@ Use `create-one.sh` directly (bypasses the batch parser's `###` heading-trap):
   --repo "<repo>"
 ```
 
+### Counter Computation
+
+Before composing the report body, run `audit-compute-counters.sh` to get cumulative totals:
+
+```bash
+COUNTERS_OUT=$(bash "$PWD/.claude/skills/audit-runs/scripts/audit-compute-counters.sh" \
+  --scan-results-dir "$TMPDIR" \
+  [--prior-frontmatter "$TMPDIR/prior-report-body.md"])
+```
+
+Read `SCAN_FILES_FOUND`, `EXON_MISCLASSIFICATIONS`, `EXON_DELTA`, `OOS_CATEGORIES_MANGLED`, `OOS_MANGLED_DELTA`, `OOS_CATEGORIES_CLEAN`, `OOS_CLEAN_DELTA`, `OOS_CATEGORIES_BLANK`, `OOS_BLANK_DELTA`, `NS_RETRIES_CURSOR_SPECIALIST`, `NS_RETRIES_DELTA`, `CHANGELOG_REBASE_CONFLICTS`, `CHANGELOG_DELTA`, and `CATEGORY_STATS_PARTIAL` (`true` when any PR scan lacked `review-findings-full.jsonl`, so `OOS_*_DELTA` for clean/blank skipped those rows). Contract: `audit-compute-counters.md`.
+
 ### Frontmatter (YAML block between `---` markers at top of body)
 
-`audit_timestamp` matches **Title Format** `<Pacific-ISO-timestamp>`: Pacific wall time with explicit `-07:00` or `-08:00` and minute precision (not the `since <ISO8601-instant>` filter convention and not UTC `Z` by itself).
+`audit_timestamp` matches **Title Format** `<Pacific-ISO-timestamp>`: Pacific wall time with explicit `-07:00` or `-08:00` and minute precision when `audit-pacific-timestamp.sh` resolves `America/Los_Angeles` (`PACIFIC_TIMESTAMP_SOURCE=tz_america_los_angeles`). It is **not** the `since <ISO8601-instant>` filter convention. **UTC `Z` is allowed only** as the script’s last-resort fallback when Pacific resolution fails (`PACIFIC_TIMESTAMP_SOURCE=utc_fallback`; same shape as `audit-pacific-timestamp.sh` may emit). Populate `cumulative_counters` from `audit-compute-counters.sh` output keys below.
 
 ```yaml
 audit_schema_version: 1
@@ -181,8 +198,9 @@ cumulative_counters:
   exon_misclassifications: N
   oos_categories_mangled: N
   oos_categories_clean: N
+  oos_categories_blank: N
   ns_retries_cursor_specialist: N
-  ns_retries_cursor_specialist_launches: N
+  changelog_rebase_conflicts: N
 ```
 
 ### Report Sections (in this order, exact `##` headers with a trailing space before the title; use `####` for internal subheadings)
@@ -196,9 +214,15 @@ cumulative_counters:
 ## Close Prior Reports
 
 After the new audit report is filed:
-1. Find all OPEN issues with label `audit-report` in the target repo (excluding the just-filed one): `gh issue list --state open --label audit-report --repo <repo> --json number`
-2. For each: post `Superseded by #<new>` as a comment, then close via `gh issue close <N> --repo <repo>`
-3. Order: file new first, then close priors (if close-priors fails, orphaned open prior is cosmetic)
+
+```bash
+bash "$PWD/.claude/skills/audit-runs/scripts/audit-close-priors.sh" \
+  --new-issue-number "<ISSUE_NUMBER>" --repo "<repo>"
+```
+
+Stdout is KV-shaped. Successful closes emit `CLOSED_NUMBER=<N>` (one line per issue). Failures can still exit `0` while emitting `CLOSE_FAILED=<N>` then a **TAB**-separated `REASON=...` continuation on the same line (see `audit-close-priors.md`). If `gh issue list` fails up front, the script prints `ISSUE_LIST_FAILED=true` plus `REASON=...` and exits non-zero. After any `audit-close-priors.sh` invocation, scan stdout for `CLOSE_FAILED=` / `ISSUE_LIST_FAILED=` even when the exit code is `0` — do not treat “some `CLOSED_NUMBER=` lines” as unconditional full success.
+
+Contract: `audit-close-priors.md`.
 
 ## Output to chat
 
@@ -221,9 +245,36 @@ Optional stdout-style summary after the chat contract (for example per-scan PASS
 - `docs/run-logs-required-files.tsv` must exist in the repo root (for the Required-file presence scan)
 - `larch-logs/implement/` directory must exist in the repo root (for all scans)
 
+## Revised Orchestrator Flow
+
+```
+audit-preflight.sh           → PREFLIGHT_OK / fail-fast
+audit-resolve-prs.sh         → full stdout KV contract (see `audit-resolve-prs.md`: IMPLICIT_SINCE_LAST_AUDIT, PRIOR_REPORT_NUMBER, PR_LIST, PR_COUNT, RESOLVED_ECHO, ERROR)
+audit-map-runs.sh            → run-map.tsv
+for each PR:
+  audit-scan-run.sh          → scan-results-NNNN.ndjson
+audit-compute-counters.sh    → COUNTERS_OUT (KV lines on stdout; treat as counters input)
+[LLM: classify proposed_new_issues / proposed_augmentations via gh search + reasoning]
+audit-pacific-timestamp.sh   → PACIFIC_TIMESTAMP (extract from stdout KV)
+audit-title.sh               → TITLE
+[LLM: write report prose — Summary, Delta, Per-PR findings, Open issues, Scan results table
+       reading from COUNTERS_OUT + scan-results-*.ndjson as structured input]
+create-one.sh                → file audit report
+audit-close-priors.sh        → close prior audit-report issues
+[LLM: post-report 3-way question if proposed issues exist]
+```
+
 ## Scripts
 
-- `.claude/skills/audit-runs/scripts/test-audit-runs.sh` (contract: `.claude/skills/audit-runs/scripts/test-audit-runs.md`) — offline unit test harness for verbal-description parsing, guard logic, frontmatter round-trip, and title exclusion regex.
+- `.claude/skills/audit-runs/scripts/audit-preflight.sh` (contract: `audit-preflight.md`) — git fetch/pull, repo-identity, concurrency guard
+- `.claude/skills/audit-runs/scripts/audit-resolve-prs.sh` (contract: `audit-resolve-prs.md`) — verbal-description → PR_LIST
+- `.claude/skills/audit-runs/scripts/audit-map-runs.sh` (contract: `audit-map-runs.md`) — PR → run-log directory mapping (TSV)
+- `.claude/skills/audit-runs/scripts/audit-scan-run.sh` (contract: `audit-scan-run.md`) — all scans against one run-log dir; NDJSON output
+- `.claude/skills/audit-runs/scripts/audit-compute-counters.sh` (contract: `audit-compute-counters.md`) — sum scan deltas + prior totals; KV output
+- `.claude/skills/audit-runs/scripts/audit-pacific-timestamp.sh` (contract: `audit-pacific-timestamp.md`) — portable Pacific timestamp
+- `.claude/skills/audit-runs/scripts/audit-title.sh` (contract: `audit-title.md`) — generate report title string
+- `.claude/skills/audit-runs/scripts/audit-close-priors.sh` (contract: `audit-close-priors.md`) — close prior audit-report issues
+- `.claude/skills/audit-runs/scripts/test-audit-runs.sh` (contract: `.claude/skills/audit-runs/scripts/test-audit-runs.md`) — offline unit test harness
 
 ## Anti-patterns
 

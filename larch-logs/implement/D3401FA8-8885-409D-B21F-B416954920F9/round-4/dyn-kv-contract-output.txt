@@ -1,0 +1,17 @@
+Gathering the diff, commit list, and script/SKILL sections for KV-contract review.
+
+Reading scripts and SKILL.md for KV emission on all paths and parsing compatibility.
+
+Verifying the `CLOSE_FAILED` line uses a literal tab and checking `audit-resolve-prs` for other KV-unsafe interpolations:
+
+### In-Scope Findings
+
+- **correctness** `audit-resolve-prs.sh:127-131,137-142,184-190` — `RESOLVED_ECHO` and `ERROR` embed the raw `--verbal-description` value (`Resolved $VERBAL…`, `unrecognized verbal description: $VERBAL`). If that string contains a newline, `emit_ok` / `emit_error` still use a single `printf` format with `%s` for the whole message, so stdout becomes multiple physical lines while only the first line is a well-formed `KEY=value` row; line-oriented parsing (the same `sed -n 's/^KEY=//p'` style used elsewhere in this skill) then drops the tail of the value and leaves following lines as unprefixed garbage, which is easy to misread as truncated output or unrelated noise. **Suggested fix:** Normalize user-controlled text to a single line before interpolation (for example replace newlines with spaces or reject multiline input up front) and state that rule explicitly in `audit-resolve-prs.md` next to the “confirmation line” contract.
+
+- **correctness** `audit-compute-counters.sh:28-36` and `audit-compute-counters.md:10-37` — For missing `--scan-results-dir`, a non-existent directory, or unknown argv, the script exits `1` with stderr-only diagnostics and prints no KV lines on stdout. `audit-compute-counters.md` documents only the success KV block and never specifies these failure modes, unlike `audit-preflight.md` / `audit-resolve-prs.md`, which explicitly call out “unknown argv → exit 1, no stdout KV.” A caller that ignores exit status and treats missing `sed` matches as zero will silently write wrong cumulative counters into the audit report frontmatter. **Suggested fix:** Document required exit-code handling (fatal on non-zero) in `audit-compute-counters.md`, and optionally add a machine-readable `COMPUTE_OK=false` / `REASON=…` pair on failure for parity with the preflight pattern.
+
+- **code-quality** `audit-close-priors.sh:7-11` — The file header documents failures as `CLOSE_FAILED=<N>  REASON=<msg>` with apparent ASCII spaces, while `audit-close-priors.md:9` and the live `printf` calls at `audit-close-priors.sh:60` and `audit-close-priors.sh:63` use a literal TAB between the issue number field and `REASON=`. That mismatch risks someone “fixing” the script to match the header or writing a parser that splits on spaces instead of tabs. **Suggested fix:** Align the shell header comment with the markdown contract (explicitly show `<TAB>`) so maintainers and parsers stay consistent with `SKILL.md:220`.
+
+### Out-of-Scope Observations
+
+NO_ISSUES_FOUND

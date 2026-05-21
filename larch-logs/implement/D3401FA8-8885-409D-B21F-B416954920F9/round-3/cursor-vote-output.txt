@@ -1,0 +1,43 @@
+Reading additional sections of `diff-context.txt` to verify ballot claims.
+
+FINDING_1: YES
+FINDING_2: EXONERATE -- subprocess refactor is heavy versus incremental stub hardening for a dev-only harness.
+FINDING_3: EXONERATE -- heuristic and UTC `Z` fallback are already documented in the Pacific contract text in the diff.
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: EXONERATE -- caching merged PR JSON adds real complexity for a modest `gh api` win on typical runs.
+FINDING_7: EXONERATE -- opportunistic test dedup does not warrant a standalone tracking issue.
+FINDING_8: YES
+FINDING_9: EXONERATE -- tightening normalization is easy but strict tokens match the current contract; document-first is proportionate.
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: YES
+FINDING_18: EXONERATE -- integration-only posture is documented; filing an issue would restate policy without a concrete change.
+FINDING_19: YES
+FINDING_20: EXONERATE -- `owner/name` is operator-controlled input to `gh`; strict slug checks are hygiene, not a clear exploit path here.
+FINDING_21: EXONERATE -- same trusted `--repo` boundary as other `gh` calls in this skill.
+FINDING_22: EXONERATE -- issue number is expected from `create-one.sh` output in normal flow; validation is cheap but not clearly warranted as a security finding.
+FINDING_23: EXONERATE -- timestamp is normally produced by `audit-pacific-timestamp.sh`, not arbitrary attacker-controlled text.
+FINDING_24: YES
+FINDING_25: EXONERATE -- hardening log-root walks is large for an operator-run audit tool with local trust assumptions.
+FINDING_26: EXONERATE -- `eval` indexes fixed variable names only; replacing it is low value versus churn.
+FINDING_27: EXONERATE -- `--pr` is fed from resolver output in the intended flow; numeric validation is minor hardening.
+FINDING_28: YES
+FINDING_29: YES
+FINDING_30: NO -- `read -r -a` and indexed arrays are supported in Bash 3.2; the portability worry is misplaced.
+FINDING_31: YES
+FINDING_32: EXONERATE -- header/comment drift only; fix is cosmetic.
+FINDING_33: YES
+FINDING_34: YES
+FINDING_35: YES
+FINDING_36: YES
+FINDING_37: YES
+FINDING_38: YES
+FINDING_39: NO -- meta-note that no violations were found is not an actionable review finding.
+FINDING_40: EXONERATE -- repeats the known manual-approximation concern without adding a distinct Bash-portability defect.
+FINDING_41: EXONERATE -- external tool/version matrix belongs in docs or CI policy, not as a defect ticket by itself.

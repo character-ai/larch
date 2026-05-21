@@ -8,7 +8,7 @@ Validates the parsing and guard logic that the `/audit-runs` skill orchestrator 
 
 ## What is tested
 
-- Verbal description parsing for all supported forms (`last N PRs`, `since last audit`, `since <ISO>`, `#N`, `PR #N`, empty → usage error)
+- Verbal description parsing for all supported forms (`last N PRs`, `since last audit`, `since <ISO>`, `#N`, `PR #N`, empty → implicit `since last audit`)
 - "since last audit" error cases: no prior report, malformed frontmatter, no new PRs (no report filed)
 - Audit report close-prior filter (just-filed report is excluded from close-prior pass)
 - Frontmatter YAML round-trip for all required fields

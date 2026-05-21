@@ -1,0 +1,25 @@
+Gathering the diff and the jq/awk sections the scout notes flagged for correctness review.
+
+Checking `parent-issue.md` format in the repo for the `ISSUE_NUMBER` grep pattern.
+
+Verifying `audit-title.sh` PR-list parsing with a non-mutating shell check:
+
+### In-Scope Findings
+
+- **correctness** `.claude/skills/audit-runs/scripts/audit-title.sh:33-36` — After splitting on commas, `tr -d '[:space:]'` removes **newlines** as well as spaces (POSIX `[:space:]` includes newline), so the stream collapses to a single token such as `247624772478` instead of three PRs; `grep -E '^[0-9]+$'` then treats that as one number, so contiguous range detection, `PR_COUNT`, and the emitted title can be wrong for normal comma-separated lists. **Suggested fix:** Only strip horizontal whitespace per line (for example `sed 's/^[[:space:]]*//;s/[[:space:]]*$//'` on each line after `tr ',' '\n'`), or `tr -d ' \t'` if that is sufficient, and keep newlines so each PR stays on its own line before `sort -n`.
+
+- **correctness** `.claude/skills/audit-runs/scripts/audit-compute-counters.sh:81-104` — Each delta uses `jq ... "$ndjson_file" | head -1`. For a given `scan` value, `jq` emits **one output line per matching NDJSON object**; `head -1` keeps only the first match and drops the rest, so totals are wrong if the file ever contains duplicate lines for the same scan (corruption, double append, or future script change). **Suggested fix:** Aggregate in `jq` (for example `jq -s 'map(select(.scan=="exon-misclassification")) | map(.count // 0) | add // 0'`) or sum all matching lines without `head -1`.
+
+- **correctness** `.claude/skills/audit-runs/scripts/audit-scan-run.sh:125-130,204-206,286-290` — Several counts end with `... | wc -l | tr -d '[:space:]'`. `wc -l` counts **newline-terminated** lines; when the last jq-emitted line has **no trailing newline**, common `wc -l` behavior undercounts by one, so `rej-category-blank`, `execution-issues-categories`, and `category-stats` can report counts one too low. **Suggested fix:** Prefer `jq -s 'map(select(...)) | length'` (or append a guaranteed newline before `wc -l`, or use `grep -c '^'` on a jq stream forced to one record per line with a final newline).
+
+- **correctness** `.claude/skills/audit-runs/scripts/audit-scan-run.sh:286` — `select(.category | test("^(code-quality|risk-integration|correctness|architecture|security)$"))` applies `test` to `.category` **before** the `select` can filter; for objects where `category` is JSON `null`, `test` on `null` makes `jq` error for that input (stderr is discarded with `2>/dev/null`), which can zero out or distort `canonical_count` depending on `pipefail` and pipeline fallbacks, unlike `mangled_count`/`blank_count` which guard null explicitly. **Suggested fix:** Narrow first, e.g. `select((.category | type) == "string") | select(.category | test("^..."))` or `select(.category? // "" | test("^..."))` with jq-safe handling of null/absent.
+
+- **correctness** `.claude/skills/audit-runs/scripts/audit-scan-run.sh:204-206` — `select(.category != "Warnings")` is **true** when `.category` is `null` or absent (because `null != "Warnings"` in jq), so such rows are counted as **non-warnings** and can flip a run from pass to fail compared to intent (“non-Warnings **entries**” usually implies a real category string). **Suggested fix:** Count only rows with a string category not equal to `"Warnings"`, e.g. `select((.category | type) == "string" and .category != "Warnings")`.
+
+### Out-of-Scope Observations
+
+- Committed run logs use `parent-issue.md` line 1 as `ISSUE_NUMBER=<digits>` (for example `larch-logs/implement/EF527D59-EE0F-4DCC-B3E0-57277F4006D3/parent-issue.md`), so `grep -oE 'ISSUE_NUMBER=[0-9]+'` in `.claude/skills/audit-runs/scripts/audit-map-runs.sh:79` matches the on-disk format; no issue noted there.
+
+- In `.claude/skills/audit-runs/scripts/audit-scan-run.sh:108-109`, `select(.category != null)` excludes JSON `null` and absent keys (both read as null in jq) but **does not** exclude the empty string `""`; those lines still flow into `grep -cvE '^(canonical set)$'`, so empty categories contribute to the “mangled” count. That is consistent with treating “not in the canonical five” as failure unless you intended empty to be tracked only under `category-stats` / blank logic.
+
+- `.claude/skills/audit-runs/scripts/audit-compute-counters.sh:43-51` `parse_prior` matches the first `key:` line inside the first `---` … `---` frontmatter block; typical reports nest counters under `cumulative_counters:` and the keys used match that layout. A malformed report with the same key both at top level and under `cumulative_counters` would pick whichever appears first—unlikely for normal audit bodies.

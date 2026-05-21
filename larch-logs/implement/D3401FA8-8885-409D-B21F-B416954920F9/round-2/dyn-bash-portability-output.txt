@@ -1,0 +1,17 @@
+Reading the pre-computed diff and BASH_AUTHORING portability rules to audit new shell scripts.
+
+Searching new shell scripts for Bash 4+ constructs and other portability issues.
+
+### In-Scope Findings
+
+- **code-quality** `.claude/skills/audit-runs/scripts/audit-scan-run.sh:237-238` — `cache-freshness` uses `sort -V` for semver ordering; that flag is not guaranteed on every BSD/macOS `/usr/bin/sort` userspace the repo still targets next to Bash 3.2, and under `set -euo pipefail` a non-supporting `sort` exits non-zero and aborts the whole script before the rest of the scans and summary NDJSON run. **Suggested fix:** Avoid a hard dependency on `sort -V` (for example compare dotted version tuples in `awk`, use an explicit `jq` numeric compare on split segments, or feature-detect `sort -V` and fall back to a portable comparator) so cache comparison cannot take down the entire scan driver on older toolchains.
+
+- **code-quality** `.claude/skills/audit-runs/scripts/audit-scan-run.sh:157-167,247-256` — In `scan_codex_round1_adherence` and `scan_coder_tool`, loop-scratch assignments (`round_dir`, `round_num`, `tool`) are not `local`, unlike most other scan helpers in the same file, so each invocation mutates the global namespace and makes ordering/refactors brittle under `set -u` or future shared helpers. **Suggested fix:** Mark those temporaries as `local` (or assign into `local` variables) so each `scan_*` function stays side-effect free and consistent with the rest of the file.
+
+### Out-of-Scope Observations
+
+- No uses of the explicitly forbidden Bash 4+ constructs from [BASH_AUTHORING.md](BASH_AUTHORING.md) (`declare -A`, `mapfile`/`readarray`, `${var^^}` / `${var,,}`, `&>>`, `coproc`) appear in the new `.claude/skills/audit-runs/scripts/*.sh` files; `IFS=',' read -r -a PR_ARRAY` in `.claude/skills/audit-runs/scripts/audit-map-runs.sh:43-48` is valid Bash 3.2 array splitting for a `#!/usr/bin/env bash` script.
+
+- `[[ "$st" > "$best_started" ]]` in `.claude/skills/audit-runs/scripts/audit-map-runs.sh:66` is lexicographic string ordering, which is acceptable for Bash 3.2 when `started_at` values share a stable ISO-8601 shape; mixed or partial timestamps would be a **correctness** concern, not a Bash-level feature gap.
+
+- [`.claude/skills/audit-runs/scripts/audit-title.md`](.claude/skills/audit-runs/scripts/audit-title.md) still describes distinct formatting for non-contiguous lists by size, while [`.claude/skills/audit-runs/scripts/audit-title.sh`](.claude/skills/audit-runs/scripts/audit-title.sh) emits one explicit comma form for every non-contiguous case; that is a contract/behavior mismatch outside the Bash-portability checklist.
