@@ -1,0 +1,6 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: EXONERATE -- Legitimate minor docs gap, but not worth a separate future issue.
+FINDING_4: NO -- Informational item, not an actionable defect.
+FINDING_5: EXONERATE -- Legitimate coverage gap, but a new mocked harness is more complexity than this narrow dev-only script change warrants.
+FINDING_6: NO -- Patch-visible proof of manual checks is not required, and session context includes relevant-checks output.
