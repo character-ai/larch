@@ -50,8 +50,13 @@
 #   0 — success
 #   1 — invocation-usage error OR validated-content rejection (disambiguate via ERROR=)
 #   2 — gh failure OR fail-closed content-state error (e.g., multiple anchor
-#       comments found) — FAILED=true / ERROR= already emitted on stdout
-#   3 — redaction helper failure (FAILED=true / ERROR=redaction:…)
+#       comments found) — FAILED=true / ERROR= already emitted on stdout.
+#       Includes stderr-side fail-closed paths in redact_gh_error (pipeline
+#       unavailable, non-zero helper exit, or truncation marker in helper
+#       output): those use this same exit 2 envelope with a generic token-free
+#       ERROR=, not exit 3.
+#   3 — body/title compose-time redaction helper failure only (FAILED=true /
+#       ERROR=redaction:… via emit_redaction_failure)
 #
 # Security posture (see SECURITY.md "tracking-issue-write.sh outbound path"):
 #   * Structural choke point — compose full logical body in memory, pipe
@@ -65,7 +70,8 @@
 #     redact-secrets.sh pipeline. If that pipeline is unavailable, exits
 #     non-zero, or emits the truncation marker ([content truncated —
 #     unterminated PEM block…]), a generic token-free string is emitted in
-#     ERROR= and no original stderr bytes are included.
+#     ERROR= and no original stderr bytes are included; the caller still exits
+#     2 (gh failure class), not 3 (compose-time redaction helper class).
 #   * Summary comments are owned by tracking-issue-summary.sh; durable run
 #     payloads are owned by larch-log.sh.
 #

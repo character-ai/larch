@@ -38,8 +38,8 @@ Exit codes:
 |---|---|
 | 0 | Success |
 | 1 | Usage or validated-content rejection |
-| 2 | `gh` failure |
-| 3 | Redaction helper failure |
+| 2 | `gh` failure. Includes the stderr redaction fail-closed path: when `redact_gh_error` cannot safely surface captured `gh` stderr (pipeline unavailable, non-zero exit, or truncation marker in helper output), the script emits the same `FAILED=true` / generic token-free `ERROR=` as other `gh` failures — **not** exit 3. |
+| 3 | Body/title compose-time redaction helper failure (`ERROR=redaction:` prefix from `emit_redaction_failure`) |
 
 ## Security
 
@@ -48,7 +48,9 @@ All outbound body and title content is composed in memory, passed through
 `gh` stderr is redacted before surfacing in `ERROR=` via the `redact_gh_error`
 helper, which fails closed: if the pipeline is unavailable, exits non-zero, or
 emits the truncation marker, a generic token-free string is emitted instead and
-no original stderr bytes reach `ERROR=`.
+no original stderr bytes reach `ERROR=`. That stderr-side path intentionally
+uses the exit **2** `gh` failure envelope (via `emit_gh_failure`), distinct from
+exit **3** body/title redaction helper failures (`redaction:` in `ERROR=`).
 
 `append-comment --lifecycle-marker` accepts only `[A-Za-z0-9._:-]` and rejects
 the substring `--` before synthesizing the HTML marker comment.

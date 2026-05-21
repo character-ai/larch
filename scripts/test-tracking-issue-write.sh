@@ -166,4 +166,80 @@ set -e
 [[ "$out_failing" == *"ERROR=gh failure: redaction unavailable"* ]] || fail "failing-redactor: ERROR fallback missing: $out_failing"
 [[ "$out_failing" != *"$secret_failing"* ]] || fail "failing-redactor: raw secret leaked in output: $out_failing"
 
+echo "=== redact_gh_error: truncation marker on stdout with exit 0 plus fake token ==="
+FAKE_TRUNC_TOKEN="$TMP/fake-trunc-token-redact"
+mkdir -p "$FAKE_TRUNC_TOKEN/scripts"
+cp "$WRITE" "$FAKE_TRUNC_TOKEN/scripts/tracking-issue-write.sh"
+cp "$REPO_ROOT/scripts/lib-quiet.sh" "$FAKE_TRUNC_TOKEN/scripts/lib-quiet.sh"
+printf '#!/usr/bin/env bash\ncat\n' > "$FAKE_TRUNC_TOKEN/scripts/redact-tmpdir-paths.sh"
+chmod +x "$FAKE_TRUNC_TOKEN/scripts/redact-tmpdir-paths.sh"
+trunc_marker='[content truncated — unterminated PEM block; tail of body dropped for safety]'
+token_trunc='sk-ant-FAKETRUNC-TOKEN-1234567890123456789AB'
+cat > "$FAKE_TRUNC_TOKEN/scripts/redact-secrets.sh" <<SECRETS_TRUNC_TOKEN
+#!/usr/bin/env bash
+cat >/dev/null
+printf '%s%s' "${trunc_marker}" "${token_trunc}"
+SECRETS_TRUNC_TOKEN
+chmod +x "$FAKE_TRUNC_TOKEN/scripts/redact-secrets.sh"
+STUB_TRUNC_TOKEN="$TMP/stubs-trunc-token-redact"
+mkdir -p "$STUB_TRUNC_TOKEN"
+cat > "$STUB_TRUNC_TOKEN/gh" <<GHSTUB_TRUNC_TOKEN
+#!/usr/bin/env bash
+if [ "\$1" = "repo" ]; then echo "owner/repo"; exit 0; fi
+if [ "\$1" = "issue" ] && [ "\$2" = "view" ]; then
+    echo "API error: something went wrong" >&2
+    exit 1
+fi
+exit 1
+GHSTUB_TRUNC_TOKEN
+chmod +x "$STUB_TRUNC_TOKEN/gh"
+set +e
+out_trunc_token=$(PATH="$STUB_TRUNC_TOKEN:$ORIG_PATH" \
+  bash "$FAKE_TRUNC_TOKEN/scripts/tracking-issue-write.sh" rename \
+  --issue 42 --state 'done' --repo owner/repo 2>&1)
+rc_trunc_token=$?
+set -e
+[ "$rc_trunc_token" = "2" ] || fail "trunc-token-redactor: expected exit 2, got $rc_trunc_token"
+[[ "$out_trunc_token" == *"FAILED=true"* ]] || fail "trunc-token-redactor: FAILED=true missing: $out_trunc_token"
+[[ "$out_trunc_token" == *"ERROR=gh failure: redaction unavailable"* ]] || fail "trunc-token-redactor: ERROR fallback missing: $out_trunc_token"
+[[ "$out_trunc_token" != *"$token_trunc"* ]] || fail "trunc-token-redactor: fake token leaked in output: $out_trunc_token"
+
+echo "=== redact_gh_error: truncation marker with exit 0 scrubs gh stderr ==="
+FAKE_TRUNC_OK="$TMP/fake-trunc-ok-redact"
+mkdir -p "$FAKE_TRUNC_OK/scripts"
+cp "$WRITE" "$FAKE_TRUNC_OK/scripts/tracking-issue-write.sh"
+cp "$REPO_ROOT/scripts/lib-quiet.sh" "$FAKE_TRUNC_OK/scripts/lib-quiet.sh"
+printf '#!/usr/bin/env bash\ncat\n' > "$FAKE_TRUNC_OK/scripts/redact-tmpdir-paths.sh"
+chmod +x "$FAKE_TRUNC_OK/scripts/redact-tmpdir-paths.sh"
+secret_trunc_ok='sk-ant-FAKETRUNC-OK-1234567890123456789AB'
+cat > "$FAKE_TRUNC_OK/scripts/redact-secrets.sh" <<SECRETS_TRUNC_OK
+#!/usr/bin/env bash
+# Consume stdin (would contain API error + secret); emit only documented marker.
+cat >/dev/null
+printf '%s' "${trunc_marker}"
+SECRETS_TRUNC_OK
+chmod +x "$FAKE_TRUNC_OK/scripts/redact-secrets.sh"
+STUB_TRUNC_OK="$TMP/stubs-trunc-ok-redact"
+mkdir -p "$STUB_TRUNC_OK"
+cat > "$STUB_TRUNC_OK/gh" <<GHSTUB_TRUNC_OK
+#!/usr/bin/env bash
+if [ "\$1" = "repo" ]; then echo "owner/repo"; exit 0; fi
+if [ "\$1" = "issue" ] && [ "\$2" = "view" ]; then
+    echo "API error: token $secret_trunc_ok rejected" >&2
+    exit 1
+fi
+exit 1
+GHSTUB_TRUNC_OK
+chmod +x "$STUB_TRUNC_OK/gh"
+set +e
+out_trunc_ok=$(PATH="$STUB_TRUNC_OK:$ORIG_PATH" \
+  bash "$FAKE_TRUNC_OK/scripts/tracking-issue-write.sh" rename \
+  --issue 42 --state 'done' --repo owner/repo 2>&1)
+rc_trunc_ok=$?
+set -e
+[ "$rc_trunc_ok" = "2" ] || fail "trunc-ok-redactor: expected exit 2, got $rc_trunc_ok"
+[[ "$out_trunc_ok" == *"FAILED=true"* ]] || fail "trunc-ok-redactor: FAILED=true missing: $out_trunc_ok"
+[[ "$out_trunc_ok" == *"ERROR=gh failure: redaction unavailable"* ]] || fail "trunc-ok-redactor: ERROR fallback missing: $out_trunc_ok"
+[[ "$out_trunc_ok" != *"$secret_trunc_ok"* ]] || fail "trunc-ok-redactor: gh stderr secret leaked in output: $out_trunc_ok"
+
 echo "All assertions passed."
