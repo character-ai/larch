@@ -182,7 +182,7 @@ Two sub-blocks per record: accepted OOS observations that were filed as GitHub i
 
 ### run-statistics.md
 
-**Mode**: replace. **Written**: Step 9a.1 alongside `oos-issues`.
+**Mode**: replace. **Written**: Step 9a.1.
 
 Summary statistics for the run: number of accepted and rejected OOS items, filed-issue URLs, round counts, and other aggregate metrics.
 

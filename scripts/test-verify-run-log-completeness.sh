@@ -185,7 +185,6 @@ assert_contains "pr-number-only requires version bump reasoning" "$out" "version
 assert_contains "pr-number-only requires final summary" "$out" "final-summary.md"
 assert_contains "pr-number-only requires run statistics" "$out" "run-statistics.md"
 assert_contains "pr-number-only requires session transcript" "$out" "session-transcript.jsonl"
-assert_contains "pr-number-only requires oos issues" "$out" "oos-issues.ndjson"
 
 # Test 10: pretty-printed status=done should trigger Step-9a.1 requirements
 run_done_status="$TMP/run-done-status"
@@ -204,7 +203,6 @@ done
 out="$("$VERIFY" "$run_done_status" 2>&1 || true)"
 assert_contains "done-status emits MISSING" "$out" "MISSING="
 assert_contains "done-status requires run statistics" "$out" "run-statistics.md"
-assert_contains "done-status requires oos issues" "$out" "oos-issues.ndjson"
 
 # Test 11: exn-agg-validate-fail + glob — signal present but no matching stderr file → MISSING glob token
 run_exn_val="$TMP/run-exn-validate-missing"
