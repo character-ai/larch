@@ -1,0 +1,126 @@
+#!/usr/bin/env bash
+# audit-compute-counters.sh — Sum scan-result deltas across PRs, add to prior totals.
+#
+# Reads all audit-scan-run.sh NDJSON outputs from --scan-results-dir,
+# plus the prior report's YAML frontmatter block from --prior-frontmatter.
+#
+# Output KV (stdout): counters with deltas vs prior report.
+#
+# Usage:
+#   audit-compute-counters.sh --scan-results-dir DIR [--prior-frontmatter FILE]
+
+set -euo pipefail
+
+SCAN_RESULTS_DIR=""
+PRIOR_FRONTMATTER=""
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --scan-results-dir) SCAN_RESULTS_DIR="$2"; shift 2 ;;
+        --prior-frontmatter) PRIOR_FRONTMATTER="$2"; shift 2 ;;
+        *) shift ;;
+    esac
+done
+
+if [ -z "$SCAN_RESULTS_DIR" ]; then
+    printf 'audit-compute-counters.sh: --scan-results-dir is required\n' >&2
+    exit 1
+fi
+
+if [ ! -d "$SCAN_RESULTS_DIR" ]; then
+    printf 'audit-compute-counters.sh: directory not found: %s\n' "$SCAN_RESULTS_DIR" >&2
+    exit 1
+fi
+
+# ---- Read prior frontmatter ----
+prior_exon=0
+prior_oos_mangled=0
+prior_oos_clean=0
+prior_oos_blank=0
+prior_ns_retries=0
+prior_changelog=0
+
+parse_prior() {
+    local key="$1" default="${2:-0}"
+    if [ -z "$PRIOR_FRONTMATTER" ] || [ ! -f "$PRIOR_FRONTMATTER" ]; then
+        printf '%s' "$default"
+        return
+    fi
+    awk -v key="$key" \
+        '/^---$/{f=!f;next} f && index($0,key":"){gsub(/.*:/,""); gsub(/[[:space:]]/,""); print; exit}' \
+        "$PRIOR_FRONTMATTER" 2>/dev/null || printf '%s' "$default"
+}
+
+prior_exon=$(parse_prior "exon_misclassifications" 0)
+prior_oos_mangled=$(parse_prior "oos_categories_mangled" 0)
+prior_oos_clean=$(parse_prior "oos_categories_clean" 0)
+prior_oos_blank=$(parse_prior "oos_categories_blank" 0)
+prior_ns_retries=$(parse_prior "ns_retries_cursor_specialist" 0)
+prior_changelog=$(parse_prior "changelog_rebase_conflicts" 0)
+
+# Default to 0 for any non-numeric prior
+num_or_zero() { printf '%s' "$1" | grep -oE '^[0-9]+$' || echo 0; }
+prior_exon=$(num_or_zero "$prior_exon")
+prior_oos_mangled=$(num_or_zero "$prior_oos_mangled")
+prior_oos_clean=$(num_or_zero "$prior_oos_clean")
+prior_oos_blank=$(num_or_zero "$prior_oos_blank")
+prior_ns_retries=$(num_or_zero "$prior_ns_retries")
+prior_changelog=$(num_or_zero "$prior_changelog")
+
+# ---- Sum deltas from NDJSON files ----
+delta_exon=0
+delta_oos_mangled=0
+delta_oos_clean=0
+delta_oos_blank=0
+delta_ns_retries=0
+delta_changelog=0
+
+for ndjson_file in "$SCAN_RESULTS_DIR"/scan-results-*.ndjson; do
+    [ -f "$ndjson_file" ] || continue
+
+    # exon-misclassification count
+    val=$(jq -r 'select(.scan=="exon-misclassification") | .count // 0' "$ndjson_file" 2>/dev/null | head -1 || echo 0)
+    val=$(num_or_zero "${val:-0}")
+    delta_exon=$((delta_exon + val))
+
+    # oos-category-mangle count
+    val=$(jq -r 'select(.scan=="oos-category-mangle") | .count // 0' "$ndjson_file" 2>/dev/null | head -1 || echo 0)
+    val=$(num_or_zero "${val:-0}")
+    delta_oos_mangled=$((delta_oos_mangled + val))
+
+    # canonical OOS count from category-stats
+    val=$(jq -r 'select(.scan=="category-stats") | .canonical // 0' "$ndjson_file" 2>/dev/null | head -1 || echo 0)
+    val=$(num_or_zero "${val:-0}")
+    delta_oos_clean=$((delta_oos_clean + val))
+
+    # blank OOS count from category-stats
+    val=$(jq -r 'select(.scan=="category-stats") | .oos_blank // 0' "$ndjson_file" 2>/dev/null | head -1 || echo 0)
+    val=$(num_or_zero "${val:-0}")
+    delta_oos_blank=$((delta_oos_blank + val))
+
+    # ns-retry-sidecars count
+    val=$(jq -r 'select(.scan=="ns-retry-sidecars") | .count // 0' "$ndjson_file" 2>/dev/null | head -1 || echo 0)
+    val=$(num_or_zero "${val:-0}")
+    delta_ns_retries=$((delta_ns_retries + val))
+done
+
+# Compute cumulative totals
+total_exon=$((prior_exon + delta_exon))
+total_oos_mangled=$((prior_oos_mangled + delta_oos_mangled))
+total_oos_clean=$((prior_oos_clean + delta_oos_clean))
+total_oos_blank=$((prior_oos_blank + delta_oos_blank))
+total_ns_retries=$((prior_ns_retries + delta_ns_retries))
+total_changelog=$((prior_changelog + delta_changelog))
+
+printf 'EXON_MISCLASSIFICATIONS=%s\n' "$total_exon"
+printf 'EXON_DELTA=%s\n' "$delta_exon"
+printf 'OOS_CATEGORIES_MANGLED=%s\n' "$total_oos_mangled"
+printf 'OOS_MANGLED_DELTA=%s\n' "$delta_oos_mangled"
+printf 'OOS_CATEGORIES_CLEAN=%s\n' "$total_oos_clean"
+printf 'OOS_CLEAN_DELTA=%s\n' "$delta_oos_clean"
+printf 'OOS_CATEGORIES_BLANK=%s\n' "$total_oos_blank"
+printf 'OOS_BLANK_DELTA=%s\n' "$delta_oos_blank"
+printf 'NS_RETRIES_CURSOR_SPECIALIST=%s\n' "$total_ns_retries"
+printf 'NS_RETRIES_DELTA=%s\n' "$delta_ns_retries"
+printf 'CHANGELOG_REBASE_CONFLICTS=%s\n' "$total_changelog"
+printf 'CHANGELOG_DELTA=%s\n' "$delta_changelog"

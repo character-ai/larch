@@ -501,6 +501,289 @@ else
     echo "  ok: [16d] short-circuit absent when proposed_augmentations is non-empty"
 fi
 
+# ===========================================================================
+# Tests for audit-preflight.sh logic
+# ===========================================================================
+echo "=== test-audit-runs: audit-preflight.sh logic ==="
+
+# Test 17: concurrency guard fires when recent report exists
+echo "Test 17: audit-preflight concurrency guard"
+preflight_concurrency_check() {
+    local recent_ts="$1" cutoff="$2" allow="$3"
+    if [[ "$allow" == "true" ]]; then
+        echo "allowed"
+        return
+    fi
+    if [[ "$recent_ts" > "$cutoff" ]]; then
+        echo "error:concurrent_audit_in_progress"
+    else
+        echo "allowed"
+    fi
+}
+result=$(preflight_concurrency_check "2026-05-20T22:05:00Z" "2026-05-20T22:00:00Z" "false")
+assert_equal "$result" "error:concurrent_audit_in_progress" "[17] recent report > cutoff → concurrency error"
+result=$(preflight_concurrency_check "2026-05-20T21:55:00Z" "2026-05-20T22:00:00Z" "false")
+assert_equal "$result" "allowed" "[17b] old report < cutoff → allowed"
+result=$(preflight_concurrency_check "2026-05-20T22:05:00Z" "2026-05-20T22:00:00Z" "true")
+assert_equal "$result" "allowed" "[17c] allow-concurrent bypasses guard"
+
+# Test 18: repo-identity normalization
+echo "Test 18: audit-preflight repo normalization"
+normalize_repo_url() {
+    local url="$1"
+    printf '%s' "$url" \
+        | sed -n 's|.*github\.com[:/]\([^/]*/[^/.]*\)\.git|\1|p; s|.*github\.com[:/]\([^/]*/[^/]*\)$|\1|p' \
+        | head -1
+}
+result=$(normalize_repo_url "git@github.com:character-ai/larch.git")
+assert_equal "$result" "character-ai/larch" "[18] ssh remote normalizes"
+result=$(normalize_repo_url "https://github.com/character-ai/larch")
+assert_equal "$result" "character-ai/larch" "[18b] https remote normalizes"
+result=$(normalize_repo_url "git@github.com:other/repo.git")
+assert_equal "$result" "other/repo" "[18c] different repo normalizes correctly"
+
+# ===========================================================================
+# Tests for audit-resolve-prs.sh logic
+# ===========================================================================
+echo "=== test-audit-runs: audit-resolve-prs.sh logic ==="
+
+# Test 19: form dispatch — all 5 forms recognized
+echo "Test 19: audit-resolve-prs verbal description dispatch"
+classify_verbal() {
+    local desc="$1"
+    desc=$(printf '%s' "$desc" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+    if [[ -z "$desc" ]]; then echo "implicit-since-last-audit"; return; fi
+    if [[ "$desc" == "since last audit" ]]; then echo "since-last-audit"; return; fi
+    if printf '%s' "$desc" | grep -qE '^last[[:space:]]+[0-9]+[[:space:]]+PRs?$'; then echo "last-n-prs"; return; fi
+    if printf '%s' "$desc" | grep -qE '^since[[:space:]]+[0-9]{4}-[0-9]{2}-[0-9]{2}'; then echo "since-iso"; return; fi
+    if printf '%s' "$desc" | grep -qE '^(PR[[:space:]]+)?#[0-9]+$'; then echo "pr-ref"; return; fi
+    echo "unknown"
+}
+result=$(classify_verbal "")
+assert_equal "$result" "implicit-since-last-audit" "[19] empty → implicit-since-last-audit"
+result=$(classify_verbal "since last audit")
+assert_equal "$result" "since-last-audit" "[19b] 'since last audit' form"
+result=$(classify_verbal "last 5 PRs")
+assert_equal "$result" "last-n-prs" "[19c] 'last N PRs' form"
+result=$(classify_verbal "last 1 PR")
+assert_equal "$result" "last-n-prs" "[19d] singular 'last 1 PR' form"
+result=$(classify_verbal "since 2026-05-01T00:00Z")
+assert_equal "$result" "since-iso" "[19e] 'since <ISO>' form"
+result=$(classify_verbal "#42")
+assert_equal "$result" "pr-ref" "[19f] '#N' form"
+result=$(classify_verbal "PR #42")
+assert_equal "$result" "pr-ref" "[19g] 'PR #N' form"
+result=$(classify_verbal "some random text")
+assert_equal "$result" "unknown" "[19h] unrecognized → unknown"
+
+# Test 20: YAML frontmatter audited_pr_range.last parsing
+echo "Test 20: audit-resolve-prs frontmatter parsing"
+parse_last_pr_from_frontmatter() {
+    local body="$1"
+    printf '%s' "$body" \
+        | awk '/^---$/{f=!f;next} f && /audited_pr_range:/{in_range=1} in_range && /[[:space:]]last:/{gsub(/.*last:[[:space:]]*/,""); print; exit}'
+}
+GOOD_FRONTMATTER="---
+audit_schema_version: 1
+audited_pr_range:
+  first: 2400
+  last: 2488
+  count: 5
+---
+## Summary"
+result=$(parse_last_pr_from_frontmatter "$GOOD_FRONTMATTER")
+assert_equal "$result" "2488" "[20] audited_pr_range.last parses correctly"
+BAD_FRONTMATTER="## Summary
+No frontmatter here."
+result=$(parse_last_pr_from_frontmatter "$BAD_FRONTMATTER")
+assert_equal "$result" "" "[20b] missing frontmatter → empty"
+
+# ===========================================================================
+# Tests for audit-map-runs.sh logic
+# ===========================================================================
+echo "=== test-audit-runs: audit-map-runs.sh logic ==="
+
+# Test 21: pr_number grep pattern matching
+echo "Test 21: audit-map-runs manifest grep patterns"
+manifest_has_pr() {
+    local content="$1" pr="$2"
+    printf '%s' "$content" | grep -q "\"pr_number\": $pr" 2>/dev/null || \
+    printf '%s' "$content" | grep -q "\"pr_number\":$pr" 2>/dev/null
+    echo $?
+}
+result=$(manifest_has_pr '{"pr_number": 2476, "larch_version": "29.8.54"}' "2476")
+assert_equal "$result" "0" "[21] manifest with pr_number matches"
+result=$(manifest_has_pr '{"pr_number":2476,"larch_version":"29.8.54"}' "2476")
+assert_equal "$result" "0" "[21b] compact JSON matches"
+result=$(manifest_has_pr '{"pr_number": 2477}' "2476")
+assert_equal "$result" "1" "[21c] wrong PR number → no match"
+
+# Test 22: fallback — Closes #N extraction from PR body
+echo "Test 22: audit-map-runs closes-issue fallback"
+extract_closes_issue() {
+    local body="$1"
+    printf '%s' "$body" | grep -oiE 'Closes[[:space:]]+#[0-9]+' | grep -oE '[0-9]+$' | head -1 || true
+}
+result=$(extract_closes_issue "This PR fixes the bug. Closes #2468")
+assert_equal "$result" "2468" "[22] 'Closes #N' extracted from PR body"
+result=$(extract_closes_issue "closes #1234 and closes #5678")
+assert_equal "$result" "1234" "[22b] first Closes taken"
+result=$(extract_closes_issue "No closes reference here")
+assert_equal "$result" "" "[22c] no Closes → empty"
+
+# ===========================================================================
+# Tests for audit-scan-run.sh logic
+# ===========================================================================
+echo "=== test-audit-runs: audit-scan-run.sh logic ==="
+
+# Test 23: EXON misclassification grep pattern
+echo "Test 23: audit-scan-run exon-misclassification pattern"
+count_exon_lines() {
+    printf '%s\n' "$1" | grep -cE '\| FINDING_.* \| 0 \| 0 \| [1-9][0-9]* \|.*\| rejected \|' || true
+}
+EXON_LINE="| FINDING_ABC | 0 | 0 | 3 | foo | rejected |"
+result=$(count_exon_lines "$EXON_LINE")
+assert_equal "$result" "1" "[23] EXON pattern matches misclassified line"
+CLEAN_LINE="| FINDING_XYZ | 1 | 2 | 0 | bar | rejected |"
+result=$(count_exon_lines "$CLEAN_LINE")
+assert_equal "$result" "0" "[23b] non-EXON pattern does not match"
+ACCEPTED_LINE="| FINDING_ABC | 0 | 0 | 3 | foo | accepted |"
+result=$(count_exon_lines "$ACCEPTED_LINE")
+assert_equal "$result" "0" "[23c] accepted line not matched"
+
+# Test 24: trailing-content-no-issues-found logic
+echo "Test 24: audit-scan-run trailing-content check"
+has_trailing_content() {
+    local content="$1"
+    # First line must be NO_ISSUES_FOUND and more lines follow
+    local first_line line_count
+    first_line=$(printf '%s' "$content" | head -1)
+    line_count=$(printf '%s' "$content" | wc -l | tr -d '[:space:]')
+    if [[ "$first_line" == "NO_ISSUES_FOUND" ]] && [[ "$line_count" -gt 1 ]]; then
+        echo "fail"
+    else
+        echo "pass"
+    fi
+}
+result=$(has_trailing_content "NO_ISSUES_FOUND
+Extra content here")
+assert_equal "$result" "fail" "[24] NO_ISSUES_FOUND with trailing content → fail"
+result=$(has_trailing_content "NO_ISSUES_FOUND")
+assert_equal "$result" "pass" "[24b] bare NO_ISSUES_FOUND → pass"
+result=$(has_trailing_content "Some findings here")
+assert_equal "$result" "pass" "[24c] content not starting with NO_ISSUES_FOUND → pass"
+
+# Test 25: OOS category mangle — canonical set
+echo "Test 25: audit-scan-run oos-category-mangle canonical categories"
+is_canonical_category() {
+    local cat="$1"
+    printf '%s' "$cat" | grep -qE '^(code-quality|risk-integration|correctness|architecture|security)$' && echo "canonical" || echo "mangled"
+}
+result=$(is_canonical_category "code-quality")
+assert_equal "$result" "canonical" "[25] code-quality is canonical"
+result=$(is_canonical_category "correctness")
+assert_equal "$result" "canonical" "[25b] correctness is canonical"
+result=$(is_canonical_category "prose-category")
+assert_equal "$result" "mangled" "[25c] prose-category is mangled"
+result=$(is_canonical_category "")
+assert_equal "$result" "mangled" "[25d] empty string is mangled"
+
+# ===========================================================================
+# Tests for audit-compute-counters.sh logic
+# ===========================================================================
+echo "=== test-audit-runs: audit-compute-counters.sh logic ==="
+
+# Test 26: counter arithmetic
+echo "Test 26: audit-compute-counters arithmetic"
+compute_total() {
+    local prior="$1" delta="$2"
+    echo $((prior + delta))
+}
+result=$(compute_total "103" "12")
+assert_equal "$result" "115" "[26] counter addition: 103 + 12 = 115"
+result=$(compute_total "0" "5")
+assert_equal "$result" "5" "[26b] zero prior + delta = delta"
+result=$(compute_total "50" "0")
+assert_equal "$result" "50" "[26c] prior + zero delta = prior"
+
+# Test 27: frontmatter counter extraction
+echo "Test 27: audit-compute-counters frontmatter parsing"
+extract_counter() {
+    local key="$1" body="$2"
+    printf '%s' "$body" \
+        | awk -v k="$key" '/^---$/{f=!f;next} f && index($0,k":"){gsub(/.*:/,""); gsub(/[[:space:]]/,""); print; exit}'
+}
+COUNTER_FM="---
+audit_schema_version: 1
+cumulative_counters:
+  exon_misclassifications: 103
+  oos_categories_mangled: 55
+---"
+result=$(extract_counter "exon_misclassifications" "$COUNTER_FM")
+assert_equal "$result" "103" "[27] exon_misclassifications extracted from frontmatter"
+result=$(extract_counter "oos_categories_mangled" "$COUNTER_FM")
+assert_equal "$result" "55" "[27b] oos_categories_mangled extracted from frontmatter"
+result=$(extract_counter "missing_key" "$COUNTER_FM")
+assert_equal "$result" "" "[27c] missing key → empty"
+
+# ===========================================================================
+# Tests for audit-title.sh logic
+# ===========================================================================
+echo "=== test-audit-runs: audit-title.sh logic ==="
+
+# Test 28: contiguous range detection
+echo "Test 28: audit-title contiguous range"
+is_contiguous() {
+    local pr_list="$1"
+    local sorted first last count expected
+    sorted=$(printf '%s' "$pr_list" | tr ',' '\n' | sort -n)
+    first=$(printf '%s' "$sorted" | head -1)
+    last=$(printf '%s' "$sorted" | tail -1)
+    count=$(printf '%s' "$sorted" | grep -c .)
+    expected=$(( last - first + 1 ))
+    if [ "$expected" -eq "$count" ]; then echo "contiguous"; else echo "non-contiguous"; fi
+}
+result=$(is_contiguous "2476,2477,2478,2479,2480")
+assert_equal "$result" "contiguous" "[28] consecutive PRs → contiguous"
+result=$(is_contiguous "2476,2477,2480")
+assert_equal "$result" "non-contiguous" "[28b] gap in sequence → non-contiguous"
+result=$(is_contiguous "2476")
+assert_equal "$result" "contiguous" "[28c] single PR → contiguous"
+
+# Test 29: title format for contiguous/non-contiguous
+echo "Test 29: audit-title title format"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+TITLE_SCRIPT="$SCRIPT_DIR/audit-title.sh"
+if [ -x "$TITLE_SCRIPT" ]; then
+    result=$(bash "$TITLE_SCRIPT" --pr-list "2476,2477,2478" --timestamp "2026-05-20T22:00-07:00" | grep -oE 'TITLE=.*' | sed 's/TITLE=//')
+    assert_equal "$result" "[Run Logs Audit Report 2026-05-20T22:00-07:00] PRs #2476-#2478" "[29] contiguous range title"
+
+    result=$(bash "$TITLE_SCRIPT" --pr-list "2476,2477,2480" --timestamp "2026-05-20T22:00-07:00" | grep -oE 'TITLE=.*' | sed 's/TITLE=//')
+    assert_equal "$result" "[Run Logs Audit Report 2026-05-20T22:00-07:00] PRs #2476, #2477, #2480" "[29b] non-contiguous title"
+
+    result=$(bash "$TITLE_SCRIPT" --pr-list "2476" --timestamp "2026-05-20T22:00-07:00" | grep -oE 'TITLE=.*' | sed 's/TITLE=//')
+    assert_equal "$result" "[Run Logs Audit Report 2026-05-20T22:00-07:00] PRs #2476" "[29c] single PR title"
+else
+    echo "  SKIP: audit-title.sh not executable (not found at $TITLE_SCRIPT)"
+fi
+
+# Test 30: audit-pacific-timestamp.sh produces well-formed output
+echo "Test 30: audit-pacific-timestamp output format"
+PACIFIC_SCRIPT="$SCRIPT_DIR/audit-pacific-timestamp.sh"
+if [ -x "$PACIFIC_SCRIPT" ]; then
+    result=$(bash "$PACIFIC_SCRIPT" | grep -oE 'PACIFIC_TIMESTAMP=.*' | sed 's/PACIFIC_TIMESTAMP=//')
+    if printf '%s' "$result" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}'; then
+        PASS=$((PASS + 1))
+        echo "  ok: [30] PACIFIC_TIMESTAMP has expected format: $result"
+    else
+        FAIL=$((FAIL + 1))
+        FAILED_TESTS+=("[30] PACIFIC_TIMESTAMP format unexpected: $result")
+        echo "  FAIL: [30] PACIFIC_TIMESTAMP format unexpected: $result" >&2
+    fi
+else
+    echo "  SKIP: audit-pacific-timestamp.sh not executable (not found at $PACIFIC_SCRIPT)"
+fi
+
 # ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
