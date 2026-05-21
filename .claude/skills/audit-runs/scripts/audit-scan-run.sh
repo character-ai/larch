@@ -442,6 +442,61 @@ scan_trailing_content_no_issues_found() {
     fi
 }
 
+# ---- Scan: oos-silent-drop (retroactive disposition heuristic) ----
+scan_oos_silent_drop() {
+    local f c acc_total filed_count inline_count gf n oos_json
+    oos_json="$RUN_DIR/oos-issues.ndjson"
+    acc_total=0
+    while IFS= read -r f; do
+        [ -n "$f" ] || continue
+        [ -f "$f" ] || continue
+        c=$(awk '
+      BEGIN { n = 0; inblk = 0; sec = 0 }
+      /^###[[:space:]]+OOS_/ {
+        if (inblk && !sec) n++
+        inblk = 1
+        sec = 0
+        next
+      }
+      inblk && /focus-area[[:space:]]*=[[:space:]]*security/ {
+        sec = 1
+      }
+      END {
+        if (inblk && !sec) n++
+        print n + 0
+      }
+    ' "$f" 2>/dev/null || printf '0')
+        acc_total=$((acc_total + c))
+    done <<EOF
+$(find "$RUN_DIR" -name 'oos-accepted*.md' -type f 2>/dev/null | LC_ALL=C sort)
+EOF
+    if [ "$acc_total" -eq 0 ]; then
+        emit "{\"scan\":\"oos-silent-drop\",\"pr\":$PR_NUM,\"result\":\"skip\",\"detail\":\"no non-security OOS blocks in oos-accepted*.md\"}"
+        return
+    fi
+    filed_count=0
+    if [ -f "$oos_json" ]; then
+        filed_count=$(grep -Eo 'https://[^[:space:]]+/issues/[0-9]+' "$oos_json" 2>/dev/null | sort -u | wc -l | tr -d '[:space:]')
+    fi
+    inline_count=0
+    while IFS= read -r gf; do
+        [ -f "$gf" ] || continue
+        case "$gf" in
+            *.md | *.json | *.ndjson) ;;
+            *) continue ;;
+        esac
+        n=$(grep -cF 'Inline-triage rule' "$gf" 2>/dev/null || true)
+        inline_count=$((inline_count + n))
+    done <<EOF
+$(find "$RUN_DIR" -type f \( -name '*.md' -o -name '*.json' -o -name '*.ndjson' \) 2>/dev/null | LC_ALL=C sort)
+EOF
+    if [ "${filed_count:-0}" -gt 0 ] || [ "${inline_count:-0}" -ge "$acc_total" ]; then
+        emit "{\"scan\":\"oos-silent-drop\",\"pr\":$PR_NUM,\"result\":\"pass\",\"non_security_oos_blocks\":$acc_total,\"issue_urls\":$filed_count,\"inline_triage_hits\":$inline_count}"
+    else
+        emit "{\"scan\":\"oos-silent-drop\",\"pr\":$PR_NUM,\"result\":\"fail\",\"non_security_oos_blocks\":$acc_total,\"issue_urls\":$filed_count,\"inline_triage_hits\":$inline_count,\"detail\":\"$(jstr "accepted OOS blocks without filed URLs or sufficient Inline-triage breadcrumbs in run log")\"}"
+    fi
+}
+
 # ---- Scan: changelog-rebase-conflicts (heuristic; feeds CHANGELOG_DELTA) ----
 scan_changelog_rebase_conflicts() {
     local f="$RUN_DIR/execution-issues.ndjson"
@@ -483,6 +538,7 @@ while IFS=$'\t' read -r scan_name _scan_type _rest; do
         changelog-rebase-conflicts) scan_changelog_rebase_conflicts ;;
         coder-tool)                 scan_coder_tool ;;
         trailing-content-no-issues-found) scan_trailing_content_no_issues_found ;;
+        oos-silent-drop)              scan_oos_silent_drop ;;
         *)
             emit "{\"scan\":\"$(jstr "$scan_name")\",\"pr\":$PR_NUM,\"result\":\"error\",\"detail\":\"unknown scan name in scans.tsv (registry drift vs audit-scan-run.sh)\"}"
             exit 1

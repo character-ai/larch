@@ -258,4 +258,10 @@ awk '
 [[ "$stall12d_directive_status" == "0" ]] \
   || fail "ship-pr.sh must emit the ORCHESTRATOR DIRECTIVE (STALL_STEP=12d) DO NOT improvise diagnostic on the STALL_STEP=12d exit 4 path"
 
+grep -Fq '**Terminal disposition invariant:**' "$SKILL_MD" \
+  || fail "SKILL.md must retain OOS Terminal disposition invariant paragraph"
+
+grep -Fq 'NEVER silently drop a voted-in OOS finding' "$SKILL_MD" \
+  || fail "SKILL.md must retain NEVER rule prohibiting silent OOS drops"
+
 echo "All assertions passed."
