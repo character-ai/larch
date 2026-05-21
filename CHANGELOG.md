@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [34.0.5] - 2026-05-21
+
+### Changed
+
+- Point aggregator failure execution issues at committed round-relative stderr paths when nested under a session, instead of ephemeral TMPDIR paths.
+- Treat plugin version lag in audit cache-freshness scans as informational and document the self-deploying lens banner for audit reports.
+- Allowlist aggregator stderr for write-round commits and gate them in the run-log completeness manifest only when the matching aggregator failure signals appear.
+
 ## [34.0.4] - 2026-05-21
 
 ### Changed
