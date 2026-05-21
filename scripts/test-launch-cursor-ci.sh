@@ -173,7 +173,9 @@ else
     MINIGIT="$TMPDIR_BASE/minigit"
     mkdir -p "$MINIGIT"
     git -C "$MINIGIT" -c user.email=t@e -c user.name=t init
-    git -C "$MINIGIT" commit --allow-empty -m init
+    # Repeat identity on commit: `git init`'s -c flags do not persist, and CI
+    # runners often have no global user.name/user.email (fixture 3 regression).
+    git -C "$MINIGIT" -c user.email=t@e -c user.name=t commit --allow-empty -m init
     STUB3="$TMPDIR_BASE/stub3"
     write_cursor_stub_sleep "$STUB3"
     OUT3="$TMPDIR_BASE/out3.json"
