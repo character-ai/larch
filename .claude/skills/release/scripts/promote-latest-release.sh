@@ -81,6 +81,12 @@ if [[ "$DRY_RUN" == "true" ]]; then
   exit 0
 fi
 
+if [[ "$was_prerelease" == "false" && "$was_latest" == "true" ]]; then
+  echo 'RELEASE_ALREADY_LATEST=true'
+  exit 0
+fi
+echo 'RELEASE_ALREADY_LATEST=false'
+
 gh release edit "$tag" \
   --repo "$REPO" \
   --prerelease=false \

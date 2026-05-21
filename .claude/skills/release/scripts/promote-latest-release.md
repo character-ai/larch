@@ -4,7 +4,7 @@
 
 ## Behavior
 
-The script queries GitHub releases with `gh release list --exclude-drafts --limit 100`, sorts by `publishedAt` descending in jq, and selects the newest non-draft release. It then runs `gh release edit <tag> --prerelease=false --latest`. After editing, it verifies the result via `gh release list` scoped to non-draft releases and confirms `isPrerelease=false` and `isLatest=true`.
+The script queries GitHub releases with `gh release list --exclude-drafts --limit 100`, sorts by `publishedAt` descending in jq, and selects the newest non-draft release. On a live run, if that release is already `isPrerelease=false` and `isLatest=true`, the script prints `RELEASE_ALREADY_LATEST=true` and exits without calling `gh release edit`. Otherwise it prints `RELEASE_ALREADY_LATEST=false`, runs `gh release edit <tag> --prerelease=false --latest`, then verifies the result via `gh release list` scoped to non-draft releases and confirms `isPrerelease=false` and `isLatest=true`.
 
 It prints machine-readable key-value lines on stdout:
 
@@ -13,6 +13,7 @@ It prints machine-readable key-value lines on stdout:
 - `RELEASE_PUBLISHED_AT`
 - `RELEASE_WAS_PRERELEASE`
 - `RELEASE_WAS_LATEST`
+- `RELEASE_ALREADY_LATEST` (live runs only; omitted on `--dry-run`)
 - `RELEASE_IS_PRERELEASE`
 - `RELEASE_IS_LATEST`
 
@@ -27,7 +28,7 @@ Failure diagnostics are `ERROR=` lines on stderr with a non-zero exit.
 ## Invariants
 
 - Draft releases are ignored.
-- The edit must be followed by a verification query before the script exits 0.
+- When the script performs `gh release edit`, that edit is followed by a verification query before the script exits 0. When the release is already latest and not a pre-release, the script skips the edit and exits 0 after printing `RELEASE_ALREADY_LATEST=true`.
 - The script depends on `gh` and `jq`; it fails before mutation if either binary is unavailable.
 
 ## Edit-in-sync
