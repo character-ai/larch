@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [34.0.14] - 2026-05-21
+
+### Changed
+
+- Document step8b_rebase conflict recovery through the same Phase 1-2 + local Phase 4 loop as early_rebase so non-bump conflicts can be resolved before PR creation.
+- Dispatch Phase 4 exit 0 back into the Rebase + Re-bump Sub-procedure with rebase_already_done=true so step 8b keeps postbump force-push ownership without a reviewer panel in Phase 3.
+- Leave step8_apply_bump_same_version on plain --no-push with immediate stall on conflict, matching the narrowed scope for that caller.
+
 ## [34.0.11] - 2026-05-21
 
 ### Changed
