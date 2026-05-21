@@ -2,8 +2,8 @@
 # audit-map-runs.sh — Map each PR to its run-log directory.
 #
 # For each PR in --pr-list:
-#   1. Primary: gh pr view → Closes #N → parent-issue.md with ISSUE_NUMBER=N
-#   2. Fallback: grep larch-logs/implement/*/manifest.json for "pr_number": N (old-format runs)
+#   1. Primary: gh pr view → closing keyword (Closes / Fixes / Resolves) #N → parent-issue.md with ISSUE_NUMBER=N
+#   2. Fallback: newest manifest.json whose pr_number matches N (number or string; legacy runs)
 #
 # Output: TSV to stdout (no header), one row per PR:
 #   pr_number<TAB>run_id<TAB>started_at<TAB>larch_version<TAB>closes_issue
@@ -55,7 +55,11 @@ pick_newest_manifest_among_pr() {
     best_epoch=-9223372036854775808
     for mf in "$LOG_ROOT"/*/manifest.json; do
         [ -f "$mf" ] || continue
-        if ! jq -e --argjson pn "$PR_NUM" '(.pr_number | type == "number") and .pr_number == $pn' "$mf" >/dev/null 2>&1; then
+        if ! jq -e --argjson pn "$PR_NUM" '
+            (.pr_number | type) as $t
+            | ($t == "number" and .pr_number == $pn)
+              or ($t == "string" and ((.pr_number | tonumber) == $pn))
+          ' "$mf" >/dev/null 2>&1; then
             continue
         fi
         cur_epoch=$(manifest_started_epoch "$mf")
@@ -94,7 +98,7 @@ for PR_NUM in "${PR_ARRAY[@]}"; do
     fi
 
     if [ "$gh_ok" = true ]; then
-        CLOSES_ISSUE=$(printf '%s' "$PR_BODY" | grep -oiE 'Closes[[:space:]]+#[0-9]+' | grep -oE '[0-9]+$' | head -1 || true)
+        CLOSES_ISSUE=$(printf '%s' "$PR_BODY" | grep -oiE '(Closes|Fixes|Resolves)[[:space:]]+#[0-9]+' | grep -oE '[0-9]+$' | head -1 || true)
 
         if [ -n "$CLOSES_ISSUE" ]; then
             matches=()

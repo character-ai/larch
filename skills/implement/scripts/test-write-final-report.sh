@@ -144,4 +144,24 @@ out=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-bu.md
 assert_contains 'STATUS=ok' "$out" 'bail-user path status ok'
 assert_contains '**Outcome**: bailed-needs-user-input' "$(cat "$TMP_ROOT/content-bu.md")" 'bail-user outcome'
 
+# Plain bailed outcome (early exit without user-input flag)
+impl_bl="$TMP_ROOT/impl-bl"; mkdir -p "$impl_bl"
+printf 'ISSUE_NUMBER=9\nRUN_ID=run-bl\nADOPTED=true\n' > "$impl_bl/parent-issue.md"
+printf 'REPO=owner/repo\n' > "$impl_bl/session-env.sh"
+{
+    printf 'PR_URL=N/A\n'
+    printf 'PR_NUMBER=\n'
+    printf 'STALL_TRACKING=false\n'
+    printf 'MERGE_RESULT=\n'
+    printf 'MERGE=false\n'
+    printf 'DRAFT=false\n'
+    printf 'FORKED_TARGET=false\n'
+} > "$impl_bl/ship-pr-state.sh"
+printf 'DESIGN_ONLY_DONE=false\nBAIL_NEEDS_USER_INPUT=false\n' > "$impl_bl/finalize-state.sh"
+printf 'NO_ISSUES=false\n' > "$impl_bl/run-flags.sh"
+out=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-bl.md" \
+      "$HELPER" --implement-tmpdir "$impl_bl")
+assert_contains 'STATUS=ok' "$out" 'bailed path status ok'
+assert_contains '**Outcome**: bailed' "$(cat "$TMP_ROOT/content-bl.md")" 'plain bailed outcome in summary'
+
 finish

@@ -103,6 +103,33 @@ if [ -s "$issue_log" ] && { [ -f "$checkpoint" ] || [ -f "$sentinel" ] || [ -f "
         2>/dev/null || true
 fi
 
+# Persist steps_ran.step9a1 for audit/required-file tooling (explicit false when Step 9a.1
+# is skipped by mode; true when OOS/statistics batches exist on disk).
+mf_impl="$log_root/implement/$run_id/manifest.json"
+if [ -f "$mf_impl" ]; then
+    forked_target=$(kv FORKED_TARGET)
+    [ -n "$forked_target" ] || forked_target=false
+    design_done=""
+    no_issues=""
+    [ -f "$IMPL_TMPDIR/finalize-state.sh" ] && design_done=$(awk -F= '$1=="DESIGN_ONLY_DONE"{print $2;exit}' "$IMPL_TMPDIR/finalize-state.sh" 2>/dev/null || true)
+    [ -n "$design_done" ] || design_done=false
+    [ -f "$IMPL_TMPDIR/run-flags.sh" ] && no_issues=$(awk -F= '$1=="NO_ISSUES"{print $2;exit}' "$IMPL_TMPDIR/run-flags.sh" 2>/dev/null || true)
+    [ -n "$no_issues" ] || no_issues=false
+    step9_flag=""
+    if [ "$forked_target" = "true" ]; then
+        step9_flag=false
+    elif [ "$design_done" = "true" ] && [ "$no_issues" = "true" ]; then
+        step9_flag=false
+    elif [ -f "$log_root/implement/$run_id/oos-issues.ndjson" ] || [ -f "$log_root/implement/$run_id/run-statistics.md" ]; then
+        step9_flag=true
+    fi
+    if [ -n "$step9_flag" ]; then
+        "$SCRIPT_DIR/larch-log.sh" manifest \
+            --log-root "$log_root" --skill implement --run-id "$run_id" \
+            --field "steps_ran.step9a1=$step9_flag" >/dev/null 2>&1 || true
+    fi
+fi
+
 # Commit via larch-log.sh, which handles the tmpdir→repo copy and git operations.
 # No push — caller owns the push.
 commit_out=$("$SCRIPT_DIR/larch-log.sh" commit \

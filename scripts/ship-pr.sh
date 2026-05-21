@@ -1689,10 +1689,8 @@ run_postmerge_phase() {
     "$SCRIPT_DIR/implement-finalize.sh" postmerge --state-file "$IMPLEMENT_TMPDIR/finalize-state.sh" --final-bail-reason-file "$IMPLEMENT_TMPDIR/final-bail-reason.txt" > "$fail_file" 2>&1
     rc=$?
     [ "$rc" -eq 0 ] || record_failure postmerge "implement-finalize.sh postmerge" "$rc" "$fail_file"
-    # Finalize manifest to status=done here so the update survives if the
-    # LLM session ends before prompt-side Step 18 teardown runs. The manifest
-    # status=done update is local-only; the last committed snapshot remains
-    # in-progress (by design — the transcript was flushed at Step 7a before merge).
+    # Merge-time manifest: status=done + pr_number survive here (local tmpdir)
+    # even when v2 pre-merge flushes omitted them; see scripts/ship-pr.md.
     local flush_run_id pr_num manifest_path_pm flush_issue_num recovery_ok
     flush_run_id=$(read_state RUN_ID)
     pr_num=$(read_state PR_NUMBER)

@@ -1485,11 +1485,11 @@ run_teardown() {
                     2>/dev/null || warn_line '**⚠ 18: larch-log manifest recovery partial-tag failed. Continuing.**'
             fi
         fi
-        # Finalize manifest status before committing so the update lands in the
-        # same flush commit. Best-effort recovery above synthesizes a manifest
-        # when the run directory survived but manifest.json was lost mid-run.
-        # Skip all manifest + commit calls when synthesis failed (larch_recovery_ok=false)
-        # to avoid committing a manifest-less run directory.
+        # Finalize manifest only on stall paths: record stalled_at_step for operator
+        # recovery. Normal teardown does not write post-flush manifest fields such as
+        # status=done or pr_number (those are merge-time fields written from ship-pr.sh
+        # postmerge when applicable, or recovery-only status=partial when manifest.json
+        # was lost mid-run — see scripts/implement-finalize.md / scripts/ship-pr.md).
         if [ "$larch_recovery_ok" = "false" ]; then
             :
         elif [ "$stall_tracking" = "true" ]; then

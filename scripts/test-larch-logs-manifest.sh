@@ -56,6 +56,14 @@ if command -v jq >/dev/null 2>&1; then
         echo "FAIL: manifest cmd did not apply attempt field" >&2
         exit 1
     }
+    "$LARCH_LOG" manifest --skill design --run-id run999 --field steps_ran.step9a1=false --field steps_ran.step8=true >/dev/null
+    jq -e '
+      (.steps_ran.step9a1 == false) and (.steps_ran.step8 == true) and
+      (.updated_at | type == "string") and (.updated_at | length) > 0
+    ' "$manifest" >/dev/null || {
+        echo "FAIL: multiple steps_ran.* updates did not compose" >&2
+        exit 1
+    }
 fi
 
 leftovers="$(find "$(dirname "$manifest")" -name '.tmp.manifest.*' -print)"

@@ -26,7 +26,7 @@ Invalid `--pr` (non-decimal): emits an `audit-scan-run-args` NDJSON line (`resul
 
 All scans in `scans.tsv`: `required-file-presence`, `exon-misclassification`, `oos-category-mangle`, `rej-category-blank`, `ns-retry-sidecars`, `codex-round1-adherence`, `codex-generalist-waste`, `execution-issues-categories`, `cache-freshness`, `changelog-rebase-conflicts`, `coder-tool`, `trailing-content-no-issues-found`. Plus synthetic `category-stats` and `cross-cutting` objects.
 
-`required-file-presence` reads `docs/run-logs-required-files.tsv`-shaped rows: when the `condition` column is neither empty nor `always`, a missing file is ignored (informational) if `manifest.json` contains `"steps_ran": { "<condition>": false }` for that step key — committed runs that skipped Step 9a.1 may omit those batches without failing the scan. The gate uses `jq -n` so the probe does not read stdin (TTY-safe in harnesses).
+`required-file-presence` reads `docs/run-logs-required-files.tsv`-shaped rows: when the `condition` column is neither empty nor `always`, a missing file is ignored (informational) if `manifest.json` contains `"steps_ran": { "<condition>": false }` for that step key — committed runs that skipped Step 9a.1 may omit those batches without failing the scan. The gate uses `jq -ne` (equivalently `jq -n -e`) so the boolean drives process exit status while stdin stays unused (TTY-safe in harnesses).
 
 A `name` in `scans.tsv` with no matching `case` arm emits an `{"scan":"<name>","result":"error",...}` NDJSON line and exits non-zero (registry drift vs this script).
 

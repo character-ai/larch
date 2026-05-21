@@ -154,14 +154,17 @@ assert_contains "partial step7a requires execution-issues" "$out" "execution-iss
 assert_contains "partial step7a requires timing-report" "$out" "timing-report.json"
 assert_contains "partial step7a requires session-transcript" "$out" "session-transcript.jsonl"
 
-# Test 8: Step-8 tree should not require Step-9a.1-only run-statistics
+# Test 8: Step-8 tree with explicit steps_ran.step9a1=false should not require Step-9a.1-only batches
 run_step8="$TMP/run-step8"
 mkdir -p "$run_step8"
-for f in manifest.json plan-goals-test.md plan-review-tally.json code-review-tally.json review-findings-full.jsonl token-report.json timing-report.json execution-issues.ndjson session-transcript.jsonl version-bump-reasoning.md final-summary.md; do
+cat > "$run_step8/manifest.json" <<'EOF'
+{"schema_version":2,"steps_ran":{"step9a1":false}}
+EOF
+for f in plan-goals-test.md plan-review-tally.json code-review-tally.json review-findings-full.jsonl token-report.json timing-report.json execution-issues.ndjson session-transcript.jsonl version-bump-reasoning.md final-summary.md; do
     printf 'placeholder\n' > "$run_step8/$f"
 done
 out="$("$VERIFY" "$run_step8" 2>&1 || true)"
-assert_contains "step8 partial emits OK" "$out" "OK"
+assert_contains "step8 partial with step9a1 skipped emits OK" "$out" "OK"
 
 # Test 9: pr_number-only later-phase signal should trigger Step-8/9a.1 requirements
 run_pr_number="$TMP/run-pr-number"
@@ -249,6 +252,20 @@ if out="$(LARCH_VERIFY_MANIFEST="$bad_manifest" "$VERIFY" "$run_bad_chars" 2>&1)
 else
     assert_contains "invalid chars in manifest relative_path" "$out" "invalid characters"
 fi
+
+# Test 17: v2-style tree — final-summary without pr_number/status still requires Step-9a.1 batches
+run_v2_final="$TMP/run-v2-final"
+mkdir -p "$run_v2_final"
+cat > "$run_v2_final/manifest.json" <<'EOF'
+{"schema_version":2,"steps_ran":{}}
+EOF
+for f in plan-goals-test.md plan-review-tally.json code-review-tally.json review-findings-full.jsonl token-report.json timing-report.json execution-issues.ndjson session-transcript.jsonl version-bump-reasoning.md final-summary.md; do
+    printf 'placeholder\n' > "$run_v2_final/$f"
+done
+out="$("$VERIFY" "$run_v2_final" 2>&1 || true)"
+assert_contains "v2 final-summary requires oos" "$out" "MISSING="
+assert_contains "v2 final-summary requires oos file" "$out" "oos-issues.ndjson"
+assert_contains "v2 final-summary requires run-statistics" "$out" "run-statistics.md"
 
 echo
 echo "Passed: $PASS"

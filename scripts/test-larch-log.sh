@@ -123,6 +123,14 @@ assert_contains "$out" "LOG_WRITTEN=true" "manifest update writes"
 if grep -q '"status": "done"' "$manifest"; then pass "manifest status updated"; else fail "manifest status updated"; fi
 if grep -q '"pr_number": 99' "$manifest"; then pass "manifest field stored as JSON number"; else fail "manifest field stored as JSON number"; fi
 
+echo "=== manifest rejects invalid steps_ran-prefixed keys ==="
+set +e
+out="$("$LARCH_LOG" manifest --skill implement --run-id abc123 --field steps_ranxfoo=true 2>&1)"
+rc=$?
+set -e
+if [ "$rc" -ne 0 ]; then pass "manifest rejects steps_ran typo key"; else fail "manifest rejects steps_ran typo key"; fi
+assert_contains "$out" "invalid steps_ran manifest key" "manifest error names steps_ran guard"
+
 echo "=== missing log root fails closed ==="
 _saved_log_root="$LARCH_LOG_ROOT"
 unset LARCH_LOG_ROOT

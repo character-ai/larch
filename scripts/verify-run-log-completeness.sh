@@ -77,6 +77,25 @@ elif key == "status":
 PY
 }
 
+# True when manifest records an explicit Step 9a.1 skip (matches audit-scan-run
+# required-file-presence gate: only explicit false suppresses step9a1 rows).
+manifest_step9a1_explicitly_skipped() {
+    python3 - "$RUN_DIR/manifest.json" <<'PY'
+import json
+import sys
+path = sys.argv[1]
+try:
+    with open(path, "r", encoding="utf-8") as fh:
+        data = json.load(fh)
+    sr = data.get("steps_ran") or {}
+    if isinstance(sr, dict) and sr.get("step9a1") is False:
+        sys.exit(0)
+except Exception:
+    pass
+sys.exit(1)
+PY
+}
+
 has_file() {
     [ -f "$RUN_DIR/$1" ]
 }
@@ -106,10 +125,14 @@ condition_reached() {
                 condition_reached step9a1
             ;;
         step9a1)
+            if manifest_step9a1_explicitly_skipped; then
+                return 1
+            fi
             has_file run-statistics.md ||
                 has_file oos-issues.ndjson ||
                 [ -n "$MANIFEST_PR_NUMBER" ] ||
-                [ "$MANIFEST_STATUS" = "done" ]
+                [ "$MANIFEST_STATUS" = "done" ] ||
+                has_file final-summary.md
             ;;
         exn-agg-validate-fail)
             [ -f "$RUN_DIR/execution-issues.ndjson" ] &&

@@ -416,6 +416,8 @@ case "$cmd" in
                     args+=(--argjson "$var" "$value")
                     filter="$filter | (.steps_ran //= {}) | .steps_ran[\$$sn] = \$$var"
                     ;;
+                steps_ran*)
+                    larch_log_fail 1 "invalid steps_ran manifest key '$key'; use steps_ran.<step>=true|false only" ;;
                 *[!A-Za-z0-9_]*|"") larch_log_fail 1 "invalid manifest field: $key" ;;
                 *)
                     var="v${#args[@]}"
