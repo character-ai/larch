@@ -13,10 +13,14 @@ One NDJSON line per scan, plus summary objects:
 {"scan":"cache-freshness","pr":2476,"result":"fail","run_version":"29.8.54","current_version":"29.8.61","detail":"run plugin version behind current"}
 {"scan":"changelog-rebase-conflicts","pr":2476,"result":"fail","count":2}
 {"scan":"category-stats","pr":2476,"partial_data":false,"canonical":38,"blank":1,"mangled":12,"oos_blank":0,"rej_blank":1}
-{"scan":"cross-cutting","pr":2476,"ended_at_null":true,"pr_number_null":true,"self_deploying_gap":false}
+{"scan":"cross-cutting","pr":2476,"ended_at_null":true,"pr_number_null":true,"manifest_pr_number_mismatch_with_audited_pr":false,"self_deploying_gap":false}
 ```
 
-Missing `--run-dir` / missing `scans.tsv` path: emits a `required-file-presence` NDJSON line (`result:"error"`, `detail` explains the path problem) to stdout and exits non-zero (caller must not scan).
+Missing `--run-dir` (not a directory): emits a `run-dir-missing` NDJSON line (`incomplete: true`, `result:"error"`, `detail` explains the path) to stdout and exits non-zero — **do not treat stdout as a complete scan set** for aggregation.
+
+Missing `scans.tsv` path: emits a `scans-registry` NDJSON line (`result:"error"`, `detail` explains the path problem) to stdout and exits non-zero.
+
+Invalid `--pr` (non-decimal): emits an `audit-scan-run-args` NDJSON line (`result:"error"`) to stdout and exits non-zero.
 
 ## Scans implemented
 
@@ -26,7 +30,7 @@ A `name` in `scans.tsv` with no matching `case` arm emits an `{"scan":"<name>","
 
 `category-stats` always emits. When `review-findings-full.jsonl` is missing, `partial_data` is `true` and numeric fields are zero placeholders (not “measured clean”).
 
-Unrecognized CLI flags or arguments: prints a stderr diagnostic and exits non-zero (no NDJSON contract on that path).
+`cross-cutting` summarizes manifest integrity: `ended_at_null` / `pr_number_null` flag empty `manifest.json` fields; **`manifest_pr_number_mismatch_with_audited_pr`** is `true` when `manifest.json`’s `pr_number` is present and differs from the audited `--pr` (run-log vs audited PR skew). **`self_deploying_gap`** duplicates that boolean for backward compatibility (same meaning as `manifest_pr_number_mismatch_with_audited_pr`; prefer the explicit name in new consumers).
 
 ## Edit-in-sync
 

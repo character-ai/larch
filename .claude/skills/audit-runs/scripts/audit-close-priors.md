@@ -22,4 +22,4 @@ REASON=gh issue list failed
 
 ## Edit-in-sync
 
-No unit tests (requires real `gh`); behavior is covered by integration testing during manual audit-runs invocations.
+Update the close-priors section in `test-audit-runs.sh` when the stdout KV contract or `gh` call flow changes.

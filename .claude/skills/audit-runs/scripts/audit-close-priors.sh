@@ -6,8 +6,8 @@
 #
 # Output: per-issue KV lines to stdout:
 #   CLOSED_NUMBER=<N>
-# Plus error lines on failure:
-#   CLOSE_FAILED=<N>  REASON=<msg>
+# Plus error lines on failure (TAB separates issue number from REASON on the same line):
+#   CLOSE_FAILED=<N><TAB>REASON=<msg>
 #
 # Usage:
 #   audit-close-priors.sh --new-issue-number N --repo OWNER/NAME

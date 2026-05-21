@@ -31,6 +31,8 @@ CATEGORY_STATS_PARTIAL=false
 
 `cumulative_counters` YAML keys in filed audit reports are derived from the KV keys this script prints (and from `--prior-frontmatter` on the next run). **Renaming or dropping a counter key is a breaking change** for out-of-repo consumers that parse cumulative totals. When a key must change, keep the old key as an alias (duplicate value) for at least one release cycle, or publish an explicit migration note in the audit-runs skill changelog before removal.
 
+Prior reports may still carry **`ns_retries_cursor_specialist_launches`** under `cumulative_counters`; it is treated as a legacy alias for **`ns_retries_cursor_specialist`** (this script takes the numeric max of the two when both appear).
+
 ## Edit-in-sync
 
 Update tests in `test-audit-runs.sh` (compute-counters section) when counter field names or arithmetic change. Update frontmatter YAML key names in `SKILL.md` in the same PR.

@@ -50,7 +50,7 @@ Read `PR_LIST`, `PR_COUNT`, `IMPLICIT_SINCE_LAST_AUDIT`, `PRIOR_REPORT_NUMBER`, 
 
 ## Scan Registry
 
-The scan list is externalized in `.claude/skills/audit-runs/scans.tsv` (one row per scan: `name`, `type`, `pattern`, `expected_outcome`, `severity`). **Adding a scan** requires coordinated updates: (1) a new `scans.tsv` row, (2) a matching `case` branch (and scan function) in `audit-scan-run.sh`, (3) any counter wiring in `audit-compute-counters.sh` / `audit-compute-counters.md` when the scan feeds cumulative totals, (4) `audit-scan-run.md` / `SKILL.md` scan tables if the operator-facing baseline changes, and (5) hermetic coverage in `test-audit-runs.sh` for the new NDJSON shape and counter path.
+The scan list is externalized in `.claude/skills/audit-runs/scans.tsv` (one row per scan: `name`, `type`, `pattern`, `expected_outcome`, `severity`). **Adding a scan** requires coordinated updates: (1) a new `scans.tsv` row, (2) a matching `case` branch (and scan function) in `audit-scan-run.sh`, (3) any counter wiring in `audit-compute-counters.sh` / `audit-compute-counters.md` when the scan feeds cumulative totals, (4) `audit-scan-run.md` / `SKILL.md` scan tables if the operator-facing baseline changes, and (5) hermetic coverage in `test-audit-runs.sh` for the new NDJSON shape and counter path. **Plan fidelity**: substantive changes to that surface (new counters, new cumulative YAML keys, or registry-wide behavior) should be tracked in their own issue/PR when they go beyond a routine scan-row + test update — routine `changelog-rebase-conflicts` / `changelog_rebase_conflicts` / `ns_retries_cursor_specialist` wiring is part of this skill’s maintained baseline, not an ad-hoc add-on.
 
 Read the registry at runtime:
 ```bash
@@ -69,6 +69,7 @@ SCANS_TSV="$PWD/.claude/skills/audit-runs/scans.tsv"
 | Codex generalist waste | `codex-generalist-output.txt` is `NO_ISSUES_FOUND` only AND timing > 120s | `round-1/` + `timing-report.json` |
 | Execution-issues categories | non-Warnings entries in `execution-issues.ndjson` | `execution-issues.ndjson` |
 | Cache freshness | `manifest.json::larch_version` vs latest plugin version | `manifest.json` |
+| Changelog rebase/conflicts (heuristic) | `execution-issues.ndjson` bodies mentioning changelog + rebase/conflict | `execution-issues.ndjson` |
 | Coder tool | `CODER_TOOL` field | `round-*/coder.env` |
 | Trailing-content NO_ISSUES_FOUND | first-pass content matches `^NO_ISSUES_FOUND\n` plus extra | `*-first-pass.txt` |
 
@@ -94,6 +95,8 @@ bash "$PWD/.claude/skills/audit-runs/scripts/audit-scan-run.sh" \
 ```
 
 Read `scan-results-*.ndjson` files as NDJSON (one JSON object per scan per line). Contract: `.claude/skills/audit-runs/scripts/audit-scan-run.md`.
+
+**Cross-cutting checks (NDJSON + operator judgment):** the synthetic `cross-cutting` object (and `cache-freshness` / manifest fields) flags **manifest integrity** — empty `ended_at` / `pr_number`, and `manifest_pr_number_mismatch_with_audited_pr` / legacy `self_deploying_gap` when `manifest.json`’s `pr_number` disagrees with the audited PR (run-log vs merge skew / self-deploying version gaps). Treat **plugin version behind current** (`cache-freshness` fail) as the version-gap signal versus the fix stream. **`proposed_new_issues` / `proposed_augmentations`** must be reconciled against **actually filed or closed** bug issues after the report (per **Post-report user prompt**); do not assume a proposal row implies an open issue without `gh` verification.
 
 ## Proposed bug-issue actions
 

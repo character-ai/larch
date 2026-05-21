@@ -55,7 +55,8 @@ fetch_merged_main_prs_json() {
     local repo="${REPO#*/}"
     local page=1
     local acc='[]'
-    while [ "$page" -le 100 ]; do
+    local max_page=10000
+    while [ "$page" -le "$max_page" ]; do
         local batch
         if ! batch=$(gh api "repos/$owner/$repo/pulls?state=closed&per_page=100&page=$page" \
             --jq '[.[] | select(.merged_at != null and .base.ref == "main") | {number: .number, mergedAt: .merged_at}]' 2>/dev/null); then
@@ -68,11 +69,15 @@ fetch_merged_main_prs_json() {
             break
         fi
         acc=$(jq -n --argjson a "$acc" --argjson b "$batch" '$a + $b' 2>/dev/null || printf '%s\n' "$acc")
-        page=$((page + 1))
         if [ "${n:-0}" -lt 100 ]; then
             break
         fi
+        page=$((page + 1))
     done
+    if [ "$page" -gt "$max_page" ]; then
+        printf 'audit-resolve-prs: merged-PR pagination exceeded safety cap (%s pages)\n' "$max_page" >&2
+        return 1
+    fi
     printf '%s' "$acc" | jq 'unique_by(.number) | sort_by(.mergedAt)' 2>/dev/null || printf '%s\n' '[]'
 }
 
@@ -95,8 +100,9 @@ resolve_since_last_audit() {
     # Parse audited_pr_range.last from YAML frontmatter (between --- markers)
     LAST_PR=$(printf '%s' "$PRIOR_ISSUE_BODY" \
         | awk '/^---$/{f=!f;next} f && /audited_pr_range:/{in_range=1} in_range && /[[:space:]]last:/{gsub(/.*last:[[:space:]]*/,""); print; exit}')
-
-    if [ -z "$LAST_PR" ]; then
+    # Strip YAML quoting / whitespace; require a numeric PR id
+    LAST_PR=$(printf '%s' "$LAST_PR" | tr -d '\r' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | sed 's/^"\([0-9][0-9]*\)"$/\1/;s/^'"'"'\([0-9][0-9]*\)'"'"'$/\1/')
+    if ! printf '%s' "$LAST_PR" | grep -qE '^[0-9]+$'; then
         emit_error "prior audit-report #${PRIOR_NUM} has malformed or missing frontmatter (audited_pr_range.last)"
     fi
 
@@ -162,9 +168,12 @@ if printf '%s' "$VERBAL" | grep -qE '^last[[:space:]]+[0-9]+[[:space:]]+PRs?$'; 
     emit_ok "false" "" "$PR_LIST" "$PR_COUNT" "$ECHO_LINE"
 fi
 
-# "since <ISO>"
-if printf '%s' "$VERBAL" | grep -qE '^since[[:space:]]+[0-9]{4}-[0-9]{2}-[0-9]{2}'; then
+# "since <ISO8601 instant>" — require full date+time (+ optional fractional sec) + Z or ±HH:MM (reject date-only prefixes)
+if printf '%s' "$VERBAL" | grep -qE '^since[[:space:]]+'; then
     TS=$(printf '%s' "$VERBAL" | sed 's/^since[[:space:]]*//')
+    if ! printf '%s' "$TS" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}(:[0-9]{2})?(\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$'; then
+        emit_error "since <ISO> must be a full instant (YYYY-MM-DDThh:mm[:ss][.frac][Z|±hh:mm]); got: $TS"
+    fi
     if ! ALL_MERGED=$(fetch_merged_main_prs_json); then
         emit_error "gh api failed listing merged PRs (network or auth)"
     fi

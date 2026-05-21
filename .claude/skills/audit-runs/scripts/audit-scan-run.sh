@@ -38,15 +38,23 @@ for arg in RUN_DIR PR_NUM SCANS_TSV; do
     fi
 done
 
+case "$PR_NUM" in
+    *[!0-9]*|'')
+        jq -nc --arg bad "$PR_NUM" \
+            '{scan:"audit-scan-run-args",pr:null,result:"error",detail:("--pr must be a non-empty decimal integer: " + $bad)}'
+        exit 1
+        ;;
+esac
+
 if [ ! -d "$RUN_DIR" ]; then
     jq -nc --argjson pr "$PR_NUM" --arg rd "$RUN_DIR" \
-        '{scan:"required-file-presence",pr:$pr,result:"error",detail:("run-dir not found: "+$rd)}'
+        '{scan:"run-dir-missing",pr:$pr,"incomplete":true,result:"error",detail:("run-dir not found: "+$rd)}'
     exit 1
 fi
 
 if [ ! -f "$SCANS_TSV" ]; then
     jq -nc --argjson pr "$PR_NUM" --arg sp "$SCANS_TSV" \
-        '{scan:"required-file-presence",pr:$pr,result:"error",detail:("scans-tsv not found: "+$sp)}'
+        '{scan:"scans-registry",pr:$pr,result:"error",detail:("scans-tsv not found: "+$sp)}'
     exit 1
 fi
 
@@ -70,6 +78,17 @@ scan_required_file_presence() {
         [ -z "$rel_path" ] && continue
         printf '%s' "$rel_path" | grep -q '^#' && continue
         [ "$rel_path" = "relative_path" ] && continue
+        # Reject absolute paths and ".." segments (path escape / out-of-subtree probes)
+        if [ "${rel_path#/}" != "$rel_path" ] || printf '%s' "$rel_path" | grep -qF '..'; then
+            local invalid_detail
+            invalid_detail=$(jstr "$rel_path (invalid path)")
+            if [ -z "$missing" ]; then
+                missing="\"$invalid_detail\""
+            else
+                missing="$missing,\"$invalid_detail\""
+            fi
+            continue
+        fi
         if [ ! -f "$RUN_DIR/$rel_path" ]; then
             if [ -z "$missing" ]; then
                 missing="\"$(jstr "$rel_path")\""
@@ -352,4 +371,15 @@ if [ -f "$MANIFEST" ]; then
         self_deploying_gap=true
     fi
 fi
-emit "{\"scan\":\"cross-cutting\",\"pr\":$PR_NUM,\"ended_at_null\":$ended_at_null,\"pr_number_null\":$pr_number_null,\"self_deploying_gap\":$self_deploying_gap}"
+ended_json=false
+pr_number_json=false
+gap_json=false
+[ "$ended_at_null" = true ] && ended_json=true
+[ "$pr_number_null" = true ] && pr_number_json=true
+[ "$self_deploying_gap" = true ] && gap_json=true
+emit "$(jq -nc \
+    --argjson pr "$PR_NUM" \
+    --argjson ended "$ended_json" \
+    --argjson pr_null "$pr_number_json" \
+    --argjson gap "$gap_json" \
+    '{scan:"cross-cutting",pr:$pr,ended_at_null:$ended,pr_number_null:$pr_null,manifest_pr_number_mismatch_with_audited_pr:$gap,self_deploying_gap:$gap}')"

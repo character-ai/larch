@@ -76,7 +76,7 @@ if [ -z "$REMOTE_REPO" ] || [ -z "$GH_REPO" ]; then
     exit 0
 fi
 if [ "$REMOTE_REPO" != "$GH_REPO" ]; then
-    printf 'PREFLIGHT_OK=false\nREASON=repo mismatch: remote=%s expected=%s\n' "$REMOTE_REPO" "$REPO"
+    printf 'PREFLIGHT_OK=false\nREASON=repo mismatch: normalized_remote_origin=%s gh_repo_identity=%s (expected clone to match gh repo view -R %s)\n' "$REMOTE_REPO" "$GH_REPO" "$REPO"
     exit 0
 fi
 

@@ -59,6 +59,7 @@ prior_oos_mangled=$(parse_prior "oos_categories_mangled" 0)
 prior_oos_clean=$(parse_prior "oos_categories_clean" 0)
 prior_oos_blank=$(parse_prior "oos_categories_blank" 0)
 prior_ns_retries=$(parse_prior "ns_retries_cursor_specialist" 0)
+prior_ns_legacy=$(parse_prior "ns_retries_cursor_specialist_launches" 0)
 prior_changelog=$(parse_prior "changelog_rebase_conflicts" 0)
 
 # Default to 0 for any non-numeric prior
@@ -68,6 +69,10 @@ prior_oos_mangled=$(num_or_zero "$prior_oos_mangled")
 prior_oos_clean=$(num_or_zero "$prior_oos_clean")
 prior_oos_blank=$(num_or_zero "$prior_oos_blank")
 prior_ns_retries=$(num_or_zero "$prior_ns_retries")
+prior_ns_legacy=$(num_or_zero "$prior_ns_legacy")
+if [ "$prior_ns_legacy" -gt "$prior_ns_retries" ]; then
+    prior_ns_retries=$prior_ns_legacy
+fi
 prior_changelog=$(num_or_zero "$prior_changelog")
 
 # ---- Sum deltas from NDJSON files ----

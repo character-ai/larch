@@ -79,18 +79,24 @@ assert_equal "$result" "unknown" "[2b] case-sensitive match required"
 echo "Test 3: parse 'since <ISO8601-instant>'"
 parse_since_ts() {
     local desc="$1"
-    if [[ "$desc" =~ ^since[[:space:]]+([0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}(:[0-9]{2})?(Z|[+-][0-9]{2}:[0-9]{2})?) ]]; then
-        echo "since_ts:${BASH_REMATCH[1]}"
-    else
-        echo "unknown"
+    local ts
+    if [[ "$desc" =~ ^since[[:space:]]+(.+)$ ]]; then
+        ts="${BASH_REMATCH[1]}"
+        if printf '%s' "$ts" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}(:[0-9]{2})?(\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$'; then
+            echo "since_ts:$ts"
+            return
+        fi
     fi
+    echo "unknown"
 }
 result=$(parse_since_ts "since 2026-05-01T00:00Z")
-assert_equal "$result" "since_ts:2026-05-01T00:00Z" "[3] 'since <ISO>' parses"
+assert_equal "$result" "since_ts:2026-05-01T00:00Z" "[3] 'since <ISO>' parses (compact minutes + Z)"
 result=$(parse_since_ts "since 2026-05-01T12:30:00Z")
 assert_equal "$result" "since_ts:2026-05-01T12:30:00Z" "[3b] full ISO with seconds parses"
 result=$(parse_since_ts "since 2026-05-01T12:30-07:00")
 assert_equal "$result" "since_ts:2026-05-01T12:30-07:00" "[3c] explicit -07:00 offset parses"
+result=$(parse_since_ts "since 2026-05-01")
+assert_equal "$result" "unknown" "[3d] date-only prefix rejected (not a full instant)"
 
 # ---------------------------------------------------------------------------
 # Test 4: parse_verbal_description — "#N" / "PR #N"
@@ -559,7 +565,14 @@ classify_verbal() {
     if [[ -z "$desc" ]]; then echo "implicit-since-last-audit"; return; fi
     if [[ "$desc" == "since last audit" ]]; then echo "since-last-audit"; return; fi
     if printf '%s' "$desc" | grep -qE '^last[[:space:]]+[0-9]+[[:space:]]+PRs?$'; then echo "last-n-prs"; return; fi
-    if printf '%s' "$desc" | grep -qE '^since[[:space:]]+[0-9]{4}-[0-9]{2}-[0-9]{2}'; then echo "since-iso"; return; fi
+    if printf '%s' "$desc" | grep -qE '^since[[:space:]]+'; then
+        local ts
+        ts=$(printf '%s' "$desc" | sed 's/^since[[:space:]]*//')
+        if printf '%s' "$ts" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}(:[0-9]{2})?(\.[0-9]+)?(Z|[+-][0-9]{2}:[0-9]{2})$'; then
+            echo "since-iso"
+            return
+        fi
+    fi
     if printf '%s' "$desc" | grep -qE '^(PR[[:space:]]+)?#[0-9]+$'; then echo "pr-ref"; return; fi
     echo "unknown"
 }
@@ -573,6 +586,8 @@ result=$(classify_verbal "last 1 PR")
 assert_equal "$result" "last-n-prs" "[19d] singular 'last 1 PR' form"
 result=$(classify_verbal "since 2026-05-01T00:00Z")
 assert_equal "$result" "since-iso" "[19e] 'since <ISO>' form"
+result=$(classify_verbal "since 2026-05-01")
+assert_equal "$result" "unknown" "[19e2] date-only since-ISO rejected"
 result=$(classify_verbal "#42")
 assert_equal "$result" "pr-ref" "[19f] '#N' form"
 result=$(classify_verbal "PR #42")
@@ -1065,6 +1080,242 @@ if [ -x "$SCAN_SCRIPT" ]; then
     set -e
     assert_equal "$unknown_rc" "1" "[40] unknown scan name → exit 1"
     rm -rf "$U_TMP"
+fi
+
+# Test 41: audit-resolve-prs.sh — PR ref form (real script; no gh)
+echo "Test 41: audit-resolve-prs #N verbal form"
+RESOLVE_SCRIPT="${RESOLVE_SCRIPT:-$SCRIPT_DIR/audit-resolve-prs.sh}"
+if [ -x "$RESOLVE_SCRIPT" ]; then
+    r41=$(bash "$RESOLVE_SCRIPT" --repo character-ai/larch --verbal-description "#4242")
+    pl41=$(printf '%s' "$r41" | sed -n 's/^PR_LIST=//p')
+    er41=$(printf '%s' "$r41" | sed -n 's/^ERROR=//p')
+    assert_equal "$pl41" "4242" "[41] #N resolves to single PR list"
+    assert_equal "$er41" "" "[41b] no ERROR on #N path"
+else
+    echo "  SKIP: audit-resolve-prs.sh not executable (not found at $RESOLVE_SCRIPT)"
+fi
+
+# Test 42: audit-resolve-prs.sh — since full ISO (real script + fake gh)
+echo "Test 42: audit-resolve-prs since ISO via stub gh"
+RESOLVE_SCRIPT="${RESOLVE_SCRIPT:-$SCRIPT_DIR/audit-resolve-prs.sh}"
+if [ -x "$RESOLVE_SCRIPT" ]; then
+    GH42=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-gh42-XXXXXX")
+    cat > "$GH42/gh" <<'EOSH42'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "${1:-}" != "api" ]]; then
+    printf 'fake gh: unsupported %s\n' "$*" >&2
+    exit 1
+fi
+shift
+url="${1:-}"
+shift
+jq_filter=""
+while (($# > 0)); do
+    if [[ "$1" == "--jq" && $# -ge 2 ]]; then
+        jq_filter="$2"
+        shift 2
+    else
+        shift
+    fi
+done
+if [[ "$url" == repos/*/pulls* ]]; then
+    raw='[{"number":10,"merged_at":"2025-01-01T00:00:00Z","base":{"ref":"main"}},{"number":20,"merged_at":"2025-06-01T00:00:00Z","base":{"ref":"main"}},{"number":30,"merged_at":"2025-12-01T00:00:00Z","base":{"ref":"main"}}]'
+    printf '%s' "$raw" | jq -c "$jq_filter"
+    exit 0
+fi
+printf 'fake gh: bad url %s\n' "$url" >&2
+exit 1
+EOSH42
+    chmod +x "$GH42/gh"
+    r42=$(PATH="$GH42:$PATH" bash "$RESOLVE_SCRIPT" --repo character-ai/larch --verbal-description "since 2025-05-01T00:00:00Z")
+    pl42=$(printf '%s' "$r42" | sed -n 's/^PR_LIST=//p')
+    assert_equal "$pl42" "20,30" "[42] since ISO filters mergedAt > cutoff"
+    rm -rf "$GH42"
+else
+    echo "  SKIP: audit-resolve-prs.sh not executable (not found at $RESOLVE_SCRIPT)"
+fi
+
+# Test 43: audit-resolve-prs.sh — date-only since form errors
+echo "Test 43: audit-resolve-prs rejects date-only since"
+RESOLVE_SCRIPT="${RESOLVE_SCRIPT:-$SCRIPT_DIR/audit-resolve-prs.sh}"
+if [ -x "$RESOLVE_SCRIPT" ]; then
+    r43=$(bash "$RESOLVE_SCRIPT" --repo character-ai/larch --verbal-description "since 2025-05-01")
+    er43=$(printf '%s' "$r43" | sed -n 's/^ERROR=//p')
+    case "$er43" in
+        *full\ instant*) PASS=$((PASS + 1)); echo "  ok: [43] date-only since → ERROR mentions full instant" ;;
+        *)
+            FAIL=$((FAIL + 1))
+            FAILED_TESTS+=("[43] expected ERROR about full instant, got: $er43")
+            echo "  FAIL: [43] expected ERROR about full instant" >&2
+            ;;
+    esac
+else
+    echo "  SKIP: audit-resolve-prs.sh not executable (not found at $RESOLVE_SCRIPT)"
+fi
+
+# Test 44: audit-preflight.sh — stub git+gh happy path
+echo "Test 44: audit-preflight stub git+gh PREFLIGHT_OK=true"
+PREFLIGHT_SCRIPT="$SCRIPT_DIR/audit-preflight.sh"
+if [ -x "$PREFLIGHT_SCRIPT" ]; then
+    PF_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-pf-XXXXXX")
+    PF_STUBS=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-pf-stub-XXXXXX")
+    cat > "$PF_STUBS/git" <<'EOSGIT'
+#!/usr/bin/env bash
+set -euo pipefail
+sub=${1:-}
+shift || true
+case "$sub" in
+    fetch) exit 0 ;;
+    branch)
+        echo "not-on-main-branch"
+        exit 0
+        ;;
+    show-ref) exit 1 ;;
+    status) exit 0 ;;
+    config)
+        if [[ "${1:-}" == "--get" && "${2:-}" == "remote.origin.url" ]]; then
+            printf '%s\n' "https://github.com/character-ai/larch.git"
+        fi
+        exit 0
+        ;;
+    *) exit 1 ;;
+esac
+EOSGIT
+    cat > "$PF_STUBS/gh" <<'EOSGH'
+#!/usr/bin/env bash
+set -euo pipefail
+line="$*"
+if [[ "$line" == *"repo view"* && "$line" == *"--json url"* ]]; then
+    if [[ "$line" == *"--jq .url"* ]]; then
+        printf '%s\n' "https://github.com/character-ai/larch"
+    else
+        printf '%s\n' '{"url":"https://github.com/character-ai/larch"}'
+    fi
+    exit 0
+fi
+if [[ "$line" == *"issue list"* ]]; then
+    printf '%s\n' "[]"
+    exit 0
+fi
+printf 'stub gh unsupported: %s\n' "$line" >&2
+exit 1
+EOSGH
+    chmod +x "$PF_STUBS/git" "$PF_STUBS/gh"
+    REAL_GIT=$(command -v git)
+    (cd "$PF_ROOT" && "$REAL_GIT" init -q && "$REAL_GIT" remote add origin "https://github.com/character-ai/larch.git")
+    pf_out=$(cd "$PF_ROOT" && PATH="$PF_STUBS:$PATH" bash "$PREFLIGHT_SCRIPT" --repo character-ai/larch)
+    pf_ok=$(printf '%s' "$pf_out" | sed -n 's/^PREFLIGHT_OK=//p')
+    assert_equal "$pf_ok" "true" "[44] stubbed git+gh → PREFLIGHT_OK=true"
+    rm -rf "$PF_ROOT" "$PF_STUBS"
+else
+    echo "  SKIP: audit-preflight.sh not executable (not found at $PREFLIGHT_SCRIPT)"
+fi
+
+# Test 45: audit-close-priors.sh — stub gh closes peers (real script)
+echo "Test 45: audit-close-priors stub gh"
+CLOSE_SCRIPT="$SCRIPT_DIR/audit-close-priors.sh"
+if [ -x "$CLOSE_SCRIPT" ]; then
+    GH45=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-close45-XXXXXX")
+    cat > "$GH45/gh" <<'EOSH45'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "${1:-}" == "issue" && "${2:-}" == "list" ]]; then
+    printf '%s\n' "101"
+    printf '%s\n' "202"
+    exit 0
+fi
+if [[ "${1:-}" == "issue" && "${2:-}" == "comment" ]]; then
+    exit 0
+fi
+if [[ "${1:-}" == "issue" && "${2:-}" == "close" ]]; then
+    exit 0
+fi
+printf 'stub gh unsupported: %s\n' "$*" >&2
+exit 1
+EOSH45
+    chmod +x "$GH45/gh"
+    c45=$(PATH="$GH45:$PATH" bash "$CLOSE_SCRIPT" --new-issue-number 202 --repo character-ai/larch)
+    n45=$(printf '%s' "$c45" | grep -c '^CLOSED_NUMBER=101$' || true)
+    assert_equal "$n45" "1" "[45] prior issue 101 closed; new issue skipped"
+    rm -rf "$GH45"
+else
+    echo "  SKIP: audit-close-priors.sh not executable (not found at $CLOSE_SCRIPT)"
+fi
+
+# Test 46: audit-compute-counters.sh — legacy ns_retries_cursor_specialist_launches alias
+echo "Test 46: audit-compute-counters legacy NS prior key"
+COMP_SCRIPT="${COMP_SCRIPT:-$SCRIPT_DIR/audit-compute-counters.sh}"
+if [ -x "$COMP_SCRIPT" ]; then
+    C46_TMP=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-comp46-XXXXXX")
+    cat > "$C46_TMP/prior.md" <<'EOF46'
+---
+audit_schema_version: 1
+cumulative_counters:
+  exon_misclassifications: 0
+  oos_categories_mangled: 0
+  oos_categories_clean: 0
+  oos_categories_blank: 0
+  ns_retries_cursor_specialist_launches: 7
+  changelog_rebase_conflicts: 0
+---
+EOF46
+    printf '%s\n' '{"scan":"ns-retry-sidecars","pr":1,"result":"fail","count":2}' > "$C46_TMP/scan-results-990046.ndjson"
+    c46=$(bash "$COMP_SCRIPT" --scan-results-dir "$C46_TMP" --prior-frontmatter "$C46_TMP/prior.md")
+    ns_tot=$(printf '%s' "$c46" | sed -n 's/^NS_RETRIES_CURSOR_SPECIALIST=//p')
+    assert_equal "$ns_tot" "9" "[46] legacy prior key 7 + delta 2 → cumulative 9"
+    rm -rf "$C46_TMP"
+else
+    echo "  SKIP: audit-compute-counters.sh not executable (not found at $COMP_SCRIPT)"
+fi
+
+# Test 47: audit-scan-run.sh — invalid --pr NDJSON + missing run-dir scan label
+echo "Test 47: audit-scan-run bootstrap error scans"
+SCAN_SCRIPT="${SCAN_SCRIPT:-$SCRIPT_DIR/audit-scan-run.sh}"
+if [ -x "$SCAN_SCRIPT" ]; then
+    set +e
+    bad_pr=$(bash "$SCAN_SCRIPT" --run-dir "/nope/nope" --pr 'abc' \
+        --scans-tsv "/nope/scans.tsv" \
+        --required-files-tsv "/nope/req.tsv" \
+        --current-version "1.0.0" 2>/dev/null)
+    bad_rc=$?
+    set -e
+    assert_equal "$bad_rc" "1" "[47] invalid --pr exits 1"
+    s47=$(printf '%s' "$bad_pr" | jq -r '.scan // empty' | head -1)
+    assert_equal "$s47" "audit-scan-run-args" "[47b] invalid --pr → audit-scan-run-args scan"
+    set +e
+    miss_rd=$(bash "$SCAN_SCRIPT" --run-dir "/nope/absent-run-dir" --pr 1001 \
+        --scans-tsv "/nope/x.tsv" \
+        --required-files-tsv "/nope/y.tsv" \
+        --current-version "1.0.0" 2>/dev/null)
+    set -e
+    s47c=$(printf '%s' "$miss_rd" | jq -r '.scan // empty' | head -1)
+    inc=$(printf '%s' "$miss_rd" | jq -r '.incomplete // empty' | head -1)
+    assert_equal "$s47c" "run-dir-missing" "[47c] missing run-dir → run-dir-missing scan"
+    assert_equal "$inc" "true" "[47d] missing run-dir marks incomplete"
+else
+    echo "  SKIP: audit-scan-run.sh not executable (not found at $SCAN_SCRIPT)"
+fi
+
+# Test 48: audit-scan-run.sh — required-files TSV rejects .. path segments
+echo "Test 48: audit-scan-run required-file path guard"
+SCAN_SCRIPT="${SCAN_SCRIPT:-$SCRIPT_DIR/audit-scan-run.sh}"
+if [ -x "$SCAN_SCRIPT" ]; then
+    P48=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-path48-XXXXXX")
+    printf '%s\n' 'name	type	pattern	expected_outcome	severity' > "$P48/scans.tsv"
+    printf '%s\n' 'required-file-presence	file-glob	x	x	low' >> "$P48/scans.tsv"
+    printf '%s\n' 'relative_path	condition	batch_slug	extension' > "$P48/req.tsv"
+    printf '%s\n' '../outside.txt	any	x	x' >> "$P48/req.tsv"
+    mkdir -p "$P48/run"
+    p48_out=$(bash "$SCAN_SCRIPT" --run-dir "$P48/run" --pr 1002 \
+        --scans-tsv "$P48/scans.tsv" \
+        --required-files-tsv "$P48/req.tsv" \
+        --current-version "1.0.0")
+    res48=$(printf '%s' "$p48_out" | jq -r 'select(.scan=="required-file-presence") | .result // empty' | head -1)
+    assert_equal "$res48" "fail" "[48] .. in required-files path → fail (not probed)"
+    rm -rf "$P48"
+else
+    echo "  SKIP: audit-scan-run.sh not executable (not found at $SCAN_SCRIPT)"
 fi
 
 # ---------------------------------------------------------------------------
