@@ -1,27 +1,24 @@
 ## Goal
-Align `CALLER_KIND` wire token `step8b_same_version` to canonical `step8_apply_bump_same_version` across SKILL contract, `ship-pr.sh`, and harnesses.
+Align step8b_same_version to canonical step8_apply_bump_same_version in SKILL.md
 
 ## Implementation Plan
 
-**Objective**: Emit and assert the canonical `step8_apply_bump_same_version` token everywhere runtime state and tests depend on it, matching `skills/implement/SKILL.md`, `skills/implement/references/rebase-rebump-subprocedure.md`, and related docs.
+**Objective**: Align the `step8b_same_version` token in `skills/implement/SKILL.md` to the canonical `step8_apply_bump_same_version` token defined in `skills/implement/references/rebase-rebump-subprocedure.md`.
 
 **Files to modify**:
-- `skills/implement/SKILL.md` (NEVER #15 and Step 8+ exit-5 handler prose, if any legacy name remains)
-- `scripts/ship-pr.sh` (`state_set_many` for exit `5` same-version / version-regression paths)
-- `scripts/test-ship-pr.sh` and `scripts/test-ship-pr.md` (assertions and harness bullet list)
+- `skills/implement/SKILL.md` (2 occurrences of `step8b_same_version`)
 
 **Occurrences to replace**:
-1. `ship-pr.sh`: persist `CALLER_KIND=step8_apply_bump_same_version` (not `step8b_same_version`) when exiting `5` for `apply-bump.sh` same-version race and version-regression errors.
-2. Harness/docs: update expected `CALLER_KIND` lines to `step8_apply_bump_same_version`.
-3. `SKILL.md`: any remaining `step8b_same_version` prose → `step8_apply_bump_same_version` alongside `step8b_rebase` where the wire value is described.
+1. NEVER #15 (~line 62): "currently `step8b_same_version` and `step8b_rebase`" → "currently `step8_apply_bump_same_version` and `step8b_rebase`"
+2. Step 8+ exit-5 handler (~line 1752): "(`step8b_rebase` or `step8b_same_version`)" → "(`step8b_rebase` or `step8b_same_version`)" (also `step8b_same_version`)
 
-**Approach**: Edit writers and tests together so `ship-pr-state.sh` matches the markdown contract; grep the repo (excluding historical `larch-logs/` transcripts) for `step8b_same_version` and eliminate runtime/script/skill occurrences.
+**Approach**: Use `sed` or `Edit` tool for a replace_all substitution. The canonical token `step8_apply_bump_same_version` is established in `rebase-rebump-subprocedure.md` as a "do NOT rename" contract token. No script files change — the sub-procedure already uses the canonical name.
 
-**Verification**: Run `/relevant-checks` after edits. Scoped grep: `step8b_same_version` must not appear under `scripts/`, `skills/`, or `agents/`; `step8_apply_bump_same_version` must appear in `ship-pr.sh` exit-5 paths and harness expectations.
+**Verification**: Run `/relevant-checks` after edit to confirm no lint failures.
 
-**Edge cases**: Old session trees or committed run logs may still mention the legacy token; do not treat those as authoritative wire values.
+**Edge cases**: Confirm no other occurrences elsewhere (e.g., in scripts or agents). Grep confirms the two SKILL.md occurrences are the only divergence.
 
-**Test strategy**: `make test-ship-pr` where applicable, plus `/relevant-checks` (pre-commit + agent-lint).
+**Test strategy**: `make lint` / `/relevant-checks` (pre-commit + agent-lint).
 
 ## Test plan
 (no test plan section in plan-file)

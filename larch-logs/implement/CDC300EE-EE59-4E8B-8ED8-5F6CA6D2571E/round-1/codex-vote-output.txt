@@ -1,0 +1,7 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: NO -- Session context includes relevant-checks/step3-1.log with pre-commit and agent-lint passing.
+FINDING_4: EXONERATE -- Legitimate archive metadata noise, but not worth a separate future issue.
+FINDING_5: EXONERATE -- Legitimate mismatch, but FINDING_1 covers the needed current fix so a separate issue is redundant.
+FINDING_6: EXONERATE -- Historical log snapshots are legitimate noise but not issue-worthy.
+FINDING_7: EXONERATE -- Legitimate duplicate of the plan-log inconsistency, but not worth separate future tracking.
