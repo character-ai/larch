@@ -903,7 +903,7 @@ Create the export directory if needed (`mkdir -p "$IMPLEMENT_TMPDIR/design-expor
 
 Skip the `/design` Skill invocation and the post-`/design` wrapper below. Run the Step 1 tail in order: **`### Capture branch name`** → **`### Larch-log batches`** → **`### Implementer waterfall`** → **`### Rebase onto latest main`** → Step 2.
 
-The `design_only=false` gate is load-bearing: `--design-only`'s contract is to publish design artifacts (plan, plan-review tally, diagrams, OOS) from external-backed `/design` to the tracking issue. The both-externals inline path cannot satisfy that contract, so it is disabled when `design_only=true`. When `codex_available=false AND cursor_available=false AND design_only=true`, do NOT take the inline path — print `**⚠ 1: design plan — both Codex and Cursor unavailable but --design-only requires external-backed plan-review. Bailing to cleanup.**`, set `STALL_TRACKING=true`, and skip to Step 18.
+The `design_only=false` gate is load-bearing: `--design-only`'s contract is to publish design artifacts (plan, plan-review tally, diagrams, OOS) from external-backed `/design` to the tracking issue. The both-externals inline path cannot satisfy that contract, so it is disabled when `design_only=true`. When `codex_available=false AND cursor_available=false AND design_only=true`, do NOT take the inline path — print `**⚠ 1: design plan — --design-only requires external-backed plan-review but no external reviewer is available (both Codex and Cursor unavailable). Bailing to cleanup.**`, set `STALL_TRACKING=true`, and skip to Step 18.
 
 On the design-only normal path (external-backed `/design` proceeds), record the HARD path before the Skill invocation:
 
