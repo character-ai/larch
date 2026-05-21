@@ -1,0 +1,15 @@
+Reading the ballot and session context files to verify findings.
+
+FINDING_1: YES
+FINDING_2: EXONERATE -- shared-sourcing churn outweighs modest drift risk across tiny helpers
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: EXONERATE -- harness label differs from plan text only; behavior is clear
+FINDING_6: EXONERATE -- known read/write parity gap already called out in SECURITY.md
+FINDING_7: NO -- explicitly intentional run-log policy, not a product defect
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: EXONERATE -- prefix matches documented redactor marker; false-positive risk negligible
+FINDING_11: EXONERATE -- writer emits fixed vocabulary tokens; jq adds complexity for little gain here
+FINDING_12: EXONERATE -- long-standing observability nit, not worth a standalone issue
+FINDING_13: EXONERATE -- mixed-scope implement diffs are normal; no durable defect to track

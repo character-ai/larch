@@ -1,0 +1,11 @@
+Gathering the diff and commit list for a read-only review.
+
+Searching the large diff for relevant hunks.
+
+Checking whether `NS_RETRY_REASON` is written when the retry sentinel branch is skipped and scanning `tracking-issue-write.sh` for `redact_gh_error` consistency with tests.
+
+Identifying a control-flow issue: inner `continue` statements skip the post-loop `NS_RETRY_REASON` append. Verifying all `continue` sites in that loop.
+
+Having confirmed inner-loop `continue` skips the new `.meta` append, assembling the required review output and submitting the plan-mode artifact.
+
+
