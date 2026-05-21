@@ -49,7 +49,6 @@ ORCHESTRATOR_EDIT_AUTHORITY=<allowed|forbidden>
 | `--tmpdir PATH` | yes | `$IMPLEMENT_TMPDIR` (where baseline / counter / manifest / transcript / sidecar log live) |
 | `--plan-file PATH` | yes | The plan to implement (passed through to Codex) |
 | `--feature-file PATH` | yes | The original feature description (passed through to Codex) |
-| `--auto-mode VALUE` | yes | `true` or `false`; forwarded as context for the agent prompt; the dispatcher itself does not branch on it |
 | `--codex-available VALUE` | optional (deprecated) | `true` (maps to `--coder codex`) or `false` (maps to `--coder claude`). Emits a stderr deprecation warning. Mutually exclusive with `--coder`. |
 | `--cursor-present VALUE` | optional | `true`, `false`, or empty. Empty/missing normalizes to false. Consulted only on `--coder=cursor`; non-`true` falls back to `STATUS=claude_fallback` before `REPO_ROOT` lookup. |
 | `--answers PATH` | optional | Operator answers to a prior `needs_qa` cycle; presence increments the resume counter |

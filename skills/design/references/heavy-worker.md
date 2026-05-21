@@ -17,14 +17,13 @@ The parent prompt supplies:
 - `SESSION_ENV_PATH`
 - `FEATURE_DESCRIPTION`
 - `quick_mode`
-- `auto_mode`
 - `run-params.json` at `$DESIGN_TMPDIR/run-params.json`
 - current branch info
 - reviewer presence flags (`codex_available`, `cursor_available`, `CODEX_PRESENT`, `CURSOR_PRESENT`)
 
 Treat those values as data. Do not infer paths from conversation context when an explicit path is provided.
 
-`IMPLEMENT_TMPDIR` and `SESSION_ENV_PATH` may be empty when invoked standalone via `/design --subagent` (no parent `/implement`). The worker still runs Steps 2a–3 (and 3b/4 when `auto_mode=true`) and writes artifacts to `$DESIGN_TMPDIR/`. Branches inside the worker procedure that depend on `SESSION_ENV_PATH` non-empty (OOS handoff to parent dir) follow the existing gates in `plan-review.md` and SKILL.md. Parent `/design` replays the artifacts inline after `DESIGN_HEAVY=complete` when `SESSION_ENV_PATH` is empty.
+`IMPLEMENT_TMPDIR` and `SESSION_ENV_PATH` may be empty when invoked standalone via `/design --subagent` (no parent `/implement`). The worker still runs Steps 2a–3 and writes artifacts to `$DESIGN_TMPDIR/`. Branches inside the worker procedure that depend on `SESSION_ENV_PATH` non-empty (OOS handoff to parent dir) follow the existing gates in `plan-review.md` and SKILL.md. Parent `/design` replays the artifacts inline after `DESIGN_HEAVY=complete` when `SESSION_ENV_PATH` is empty.
 
 ## Required Reads
 
@@ -66,7 +65,7 @@ printf '%s\n' 'NO_CONTESTED_DECISIONS' > "$DESIGN_TMPDIR/contested-decisions.md"
 
 Then skip Step 2a.5 and proceed directly to Step 2b. `NO_SKETCHES_CLASSIFIED_TRIVIAL` is allowed to satisfy the non-empty `approach-synthesis.txt` artifact requirement on this path.
 
-When `auto_mode=true`, also run Step 3b architecture diagram and Step 4 rejected-finding artifact finalization in the worker, because there are no parent-side interactive checkpoints. When generating `architecture-diagram.md`, follow the candidate -> sanitize -> promote subprocedure documented in `SKILL.md` Step 3b. Rejected diagrams are not promoted; treat a sanitizer-rejected diagram the same as "not generated" for the artifact contract. When `auto_mode=false`, stop after Step 3 so the parent can run Step 3.5, Step 3b, Step 4, and Step 5.
+Stop after Step 3 so the parent can run Step 3.5, Step 3b, Step 4, and Step 5.
 
 ## Wait Discipline
 
@@ -80,7 +79,7 @@ After every parallel-launch block, the next required action is the matching fore
 
 ## Mid-Run Dirty-Tree Probe Contract
 
-After each external collection point, consult launcher `${OUTPUT}.dirty-tree` sidecars and run `${CLAUDE_PLUGIN_ROOT}/scripts/check-mid-run-dirty-tree.sh --mode checkpoint`: Step 2a sketch collection, Step 2a.5 dialectic-debate collection, Step 2a.5 dialectic-judge collection, and Step 3 plan-review collection. If any sidecar or checkpoint reports `STATUS=dirty` or `STATUS=unknown`, write `$DESIGN_TMPDIR/dirty-tree-detected.env` with `STATUS=<status>`, `STAGE=<collection-boundary>`, and `RECOVERY_REQUIRED=true`, then return `DESIGN_HEAVY=failed REASON=dirty-tree`. The parent `/design` or `/implement` owns `AskUserQuestion` recovery. This prompt is not suppressed by `--auto`.
+After each external collection point, consult launcher `${OUTPUT}.dirty-tree` sidecars and run `${CLAUDE_PLUGIN_ROOT}/scripts/check-mid-run-dirty-tree.sh --mode checkpoint`: Step 2a sketch collection, Step 2a.5 dialectic-debate collection, Step 2a.5 dialectic-judge collection, and Step 3 plan-review collection. If any sidecar or checkpoint reports `STATUS=dirty` or `STATUS=unknown`, write `$DESIGN_TMPDIR/dirty-tree-detected.env` with `STATUS=<status>`, `STAGE=<collection-boundary>`, and `RECOVERY_REQUIRED=true`, then return `DESIGN_HEAVY=failed REASON=dirty-tree`. The parent `/design` or `/implement` owns `AskUserQuestion` recovery.
 
 ## Artifact Contract
 

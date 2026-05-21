@@ -27,8 +27,8 @@ Used when the parent runs setup, forwards `--session-env`, invokes the child, an
 ```
 Invoke `/implement` via the Skill tool:
 
-- **SIMPLE**: `/implement --auto --quick --merge --session-env $FIX_ISSUE_TMPDIR/session-env.sh <feature description>`
-- **HARD**:   `/implement --auto --merge --session-env $FIX_ISSUE_TMPDIR/session-env.sh <feature description>`
+- **SIMPLE**: `/implement --quick --merge --session-env $FIX_ISSUE_TMPDIR/session-env.sh <feature description>`
+- **HARD**:   `/implement --merge --session-env $FIX_ISSUE_TMPDIR/session-env.sh <feature description>`
 ```
 
 The step heading + explicit Skill-tool line + variant bullets shape makes the invocation impossible to miss and keeps the argument list scannable. Do **not** collapse Pattern B into a single paragraph — see `## Avoid conditional phrasing for sub-skill invocations` below.
@@ -222,7 +222,7 @@ When an orchestrator (e.g. `/implement`) delegates heavy planning to `/design`, 
 
 The worst shape, and the one that gets skipped most often, is a single-line conditional paragraph like:
 
-> If the classification is HARD, call `/implement --auto --merge --session-env $TMPDIR/session-env.sh <description>`; otherwise call `/implement --auto --quick --merge --session-env $TMPDIR/session-env.sh <description>`.
+> If the classification is HARD, call `/implement --merge --session-env $TMPDIR/session-env.sh <description>`; otherwise call `/implement --quick --merge --session-env $TMPDIR/session-env.sh <description>`.
 
 Prose conditionals bury the invocation and reliably slip past the executing model — especially mid-run. Rewrite as an explicit two-branch step, each branch its own numbered sub-step with its own `🔶` breadcrumb (or as Pattern B's heading + variant bullets shape), so the Skill-tool call is the visual center of the step.
 

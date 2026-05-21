@@ -159,8 +159,7 @@ step_output="$(cd /tmp && "$REPO_ROOT/skills/implement/scripts/step2-implement.s
     --coder claude \
     --tmpdir "$step_tmp" \
     --plan-file "$step_plan" \
-    --feature-file "$step_feature" \
-    --auto-mode false)"
+    --feature-file "$step_feature")"
 assert_contains "step2 nested-cwd claude fallback" "STATUS=claude_fallback" "$step_output"
 rm -rf "$step_tmp"
 

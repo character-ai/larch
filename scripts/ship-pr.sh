@@ -25,7 +25,6 @@ IMPLEMENT_TMPDIR=""
 MERGE=""
 DRAFT=""
 FORKED_TARGET=""
-AUTO_MODE="false"
 NO_ADMIN_FALLBACK="false"
 NO_LOGS_COMMIT="false"
 REPO_ARG=""
@@ -34,7 +33,7 @@ RESUME_PHASE=""
 usage() {
     while IFS= read -r line; do larch_err "$line"; done <<'USAGE'
 Usage:
-  ship-pr.sh --state-file PATH --implement-tmpdir PATH --merge true|false --draft true|false --forked true|false --repo OWNER/REPO [--auto-mode true|false] [--no-admin-fallback true|false] [--no-logs-commit true|false] [--resume-phase PHASE]
+  ship-pr.sh --state-file PATH --implement-tmpdir PATH --merge true|false --draft true|false --forked true|false --repo OWNER/REPO [--no-admin-fallback true|false] [--no-logs-commit true|false] [--resume-phase PHASE]
 USAGE
 }
 
@@ -140,7 +139,6 @@ while [ $# -gt 0 ]; do
         --merge) [ $# -ge 2 ] || die_usage "--merge requires a value"; MERGE=$2; shift 2 ;;
         --draft) [ $# -ge 2 ] || die_usage "--draft requires a value"; DRAFT=$2; shift 2 ;;
         --forked) [ $# -ge 2 ] || die_usage "--forked requires a value"; FORKED_TARGET=$2; shift 2 ;;
-        --auto-mode) [ $# -ge 2 ] || die_usage "--auto-mode requires a value"; AUTO_MODE=$2; shift 2 ;;
         --no-admin-fallback) [ $# -ge 2 ] || die_usage "--no-admin-fallback requires a value"; NO_ADMIN_FALLBACK=$2; shift 2 ;;
         --no-logs-commit) [ $# -ge 2 ] || die_usage "--no-logs-commit requires a value"; NO_LOGS_COMMIT=$2; shift 2 ;;
         --repo) [ $# -ge 2 ] || die_usage "--repo requires a value"; REPO_ARG=$2; shift 2 ;;
@@ -156,7 +154,6 @@ is_tmp_path "$STATE_FILE" || die_usage "--state-file must be under /tmp/, /priva
 is_tmp_path "$IMPLEMENT_TMPDIR" || die_usage "--implement-tmpdir must be under /tmp/, /private/tmp/, /var/folders/, or the larch cache sessions root"
 [ -d "$IMPLEMENT_TMPDIR" ] || die_usage "--implement-tmpdir must exist"
 case "$STATE_FILE" in "$IMPLEMENT_TMPDIR"/*) ;; *) die_usage "--state-file must live under --implement-tmpdir" ;; esac
-is_bool "$AUTO_MODE" || die_usage "--auto-mode must be true or false"
 is_bool "$NO_ADMIN_FALLBACK" || die_usage "--no-admin-fallback must be true or false"
 is_bool "$NO_LOGS_COMMIT" || die_usage "--no-logs-commit must be true or false"
 [ -z "$MERGE" ] || is_bool "$MERGE" || die_usage "--merge must be true or false"

@@ -176,13 +176,9 @@ $matches"
   fi
 done
 
-# Check 6: SKILL.md Step 3 and Step 3.5 auto-mode forward-pointers must reference Step 3b (not Step 3a).
-# shellcheck disable=SC2016 # single quotes intentional — pattern includes literal backticks
-grep -qF 'or Step 3b if `auto_mode=true`' "$SKILL_MD" \
-  || fail "SKILL.md Step 3 'all reviewers OK' branch must point forward to 'Step 3b if auto_mode=true' (issue #453: Step-3a removal residue pin)"
-
-grep -qF 'and proceed to Step 3b' "$SKILL_MD" \
-  || fail "SKILL.md Step 3.5 auto-mode branch must 'proceed to Step 3b' (issue #453: Step-3a removal residue pin)"
+# Check 6: SKILL.md Step 3 'all reviewers OK' branch must reference Step 3.5 (not Step 3a/3b).
+grep -qF 'proceed to Step 3.5' "$SKILL_MD" \
+  || fail "SKILL.md Step 3 'all reviewers OK' branch must point forward to 'Step 3.5' (issue #453: Step-3a removal residue pin)"
 
 # Check 7 (#661): plan-review.md collect-agent-results.sh invocation must carry
 # both --substantive-validation AND --validation-mode on the SAME line as --timeout

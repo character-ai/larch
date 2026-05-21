@@ -1,6 +1,6 @@
 ---
 name: agnix-fix
-description: "Use when fixing an open agent-sh/agnix issue end-to-end via fork-CI dry-run from this larch clone. Fetches the upstream issue body, idempotently provisions the skip-changelog label on the fork, then forwards to /implement --forked --quick --auto with CI-monitoring guidance for the deterministic add-to-project fork-CI failure. Private to the larch source tree (dev-only)."
+description: "Use when fixing an open agent-sh/agnix issue end-to-end via fork-CI dry-run from this larch clone. Fetches the upstream issue body, idempotently provisions the skip-changelog label on the fork, then forwards to /implement --forked --quick with CI-monitoring guidance for the deterministic add-to-project fork-CI failure. Private to the larch source tree (dev-only)."
 argument-hint: "<upstream-issue-number> [extra-flags...]"
 allowed-tools: Bash, Skill
 ---
@@ -107,7 +107,7 @@ Assemble a feature description that gives `/implement` everything it needs deter
 
 The variable-interpolated header uses `printf`; the static guidance block uses a single-quoted heredoc so backticks in the prose are literal (no command substitution, no escaping).
 
-The upstream issue body is wrapped in unique per-run delimiter tags with an explicit instruction so the implementer treats embedded directives as data, not commands — relevant because the body is fetched from a public GitHub issue and a malicious or compromised author could otherwise inject workflow / secret / CI control instructions into an `--auto` run. The delimiter is randomized per run and refused if the body already contains it, eliminating the trivial escape `</untrusted-issue-body>`-in-body attack.
+The upstream issue body is wrapped in unique per-run delimiter tags with an explicit instruction so the implementer treats embedded directives as data, not commands — relevant because the body is fetched from a public GitHub issue and a malicious or compromised author could otherwise inject workflow / secret / CI control instructions. The delimiter is randomized per run and refused if the body already contains it, eliminating the trivial escape `</untrusted-issue-body>`-in-body attack.
 
 ```bash
 FEATURE_FILE=$(mktemp -t agnix-fix-feature.XXXXXX)
@@ -149,6 +149,6 @@ GUIDANCE
 Invoke the Skill tool:
 
 - Try skill `"implement"` first (bare name). On `Unknown skill`, try `"larch:implement"` (fully-qualified plugin name).
-- args: the literal string `--forked --quick --auto --coder=codex $EXTRA $(cat "$FEATURE_FILE")` with `$EXTRA` and `$FEATURE_FILE` expanded.
+- args: the literal string `--forked --quick --coder=codex $EXTRA $(cat "$FEATURE_FILE")` with `$EXTRA` and `$FEATURE_FILE` expanded.
 
 `--coder=codex` is passed explicitly so the auto-route to the main agent for small surgical plans (per issue #1481) does NOT fire on agnix work — agnix is a Rust codebase and Codex is the appropriate implementer regardless of plan size. Issue #1475 (the protected-path-modified false-positive) has landed, so the older `--coder=claude` workaround is no longer needed.

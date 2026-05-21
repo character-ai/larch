@@ -7,8 +7,8 @@ Primary caller: `make test-run-step2-dispatch`.
 Coverage:
 
 - Missing required flags exit 2.
-- `PLAN_FILE`, `POST_PLAN_WORKFLOW_PATH`, `LARCH_AUTO_MODE`, and
-  `CURSOR_PRESENT` are derived from `$IMPLEMENT_TMPDIR/session-env.sh`.
+- `PLAN_FILE`, `POST_PLAN_WORKFLOW_PATH`, and `CURSOR_PRESENT` are derived from
+  `$IMPLEMENT_TMPDIR/session-env.sh`.
 - `$IMPLEMENT_TMPDIR/feature-description.txt` is forwarded as the conventional
   `--feature-file`.
 - Downstream stdout remains visible to the caller for Step 2 envelope parsing.

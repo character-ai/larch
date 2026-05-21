@@ -7,7 +7,7 @@ allowed-tools: Bash, Skill
 
 # compress-skill
 
-Rewrite an existing skill's Markdown prose to reduce size while preserving meaning, grammar, and every structural element. Pure delegator: validates the target, enumerates the transitively-reachable `.md` set inside the skill directory, snapshots baseline sizes, and hands off to `/imaq` (= `/implement --merge --auto --quick`) for branch creation, implementation, code review, PR creation, and auto-merge.
+Rewrite an existing skill's Markdown prose to reduce size while preserving meaning, grammar, and every structural element. Pure delegator: validates the target, enumerates the transitively-reachable `.md` set inside the skill directory, snapshots baseline sizes, and hands off to `/imaq` (= `/implement --merge --quick`) for branch creation, implementation, code review, PR creation, and auto-merge.
 
 Example: `/compress-skill implement` compresses `skills/implement/SKILL.md` plus every `.md` file reachable from it that resolves inside the `skills/implement/` directory tree.
 
@@ -61,4 +61,4 @@ The coordinator invokes `discover-md-set.sh` internally to BFS the transitive `.
 Invoke the Skill tool:
 - Try skill: `"imaq"` first (bare name). If no skill matches, try skill: `"larch:imaq"` (fully-qualified plugin name).
 
-The `/imaq` → `/implement --merge --auto --quick` chain runs branch creation, inline plan, implementation (the actual file-by-file prose rewrite), quick-mode code review loop, `/relevant-checks`, version bump, PR creation with the token-budget delta table in the body, CI wait, and auto-merge. No post-invocation verification is needed at this level — `/implement`'s own internal gates (CI green, merge) are the authoritative signal, and this skill runs no further steps after `/imaq` returns.
+The `/imaq` → `/implement --merge --quick` chain runs branch creation, inline plan, implementation (the actual file-by-file prose rewrite), quick-mode code review loop, `/relevant-checks`, version bump, PR creation with the token-budget delta table in the body, CI wait, and auto-merge. No post-invocation verification is needed at this level — `/implement`'s own internal gates (CI green, merge) are the authoritative signal, and this skill runs no further steps after `/imaq` returns.

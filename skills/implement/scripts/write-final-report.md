@@ -29,7 +29,7 @@ write-final-report.sh --implement-tmpdir PATH [--comment-only] [--print-stdout]
 | File | Keys / role |
 |------|----------------|
 | `parent-issue.md` | `ISSUE_NUMBER`, `RUN_ID`, optional `ISSUE_URL` |
-| `session-env.sh` | `REPO`, `REPO_UNAVAILABLE`, `AUTO_MODE`, `UPSTREAM_DESIGN_ISSUE`, `POST_PLAN_WORKFLOW_PATH` (fallback) |
+| `session-env.sh` | `REPO`, `REPO_UNAVAILABLE`, `UPSTREAM_DESIGN_ISSUE`, `POST_PLAN_WORKFLOW_PATH` (fallback) |
 | `ship-pr-state.sh` | `PR_URL`, `PR_NUMBER`, `STALL_TRACKING`, `MERGE_RESULT`, `MERGE`, `DRAFT`, `FORKED_TARGET` |
 | `finalize-state.sh` | `DESIGN_ONLY_DONE`, `BAIL_NEEDS_USER_INPUT`, optional `STALL_TRACKING` |
 | `run-flags.sh` | `QUICK_MODE`, `NO_ISSUES`, `WORKFLOW_PATH` (from `persist-implement-run-flags.sh`) |

@@ -45,7 +45,7 @@ assert_file_equals() {
 }
 
 make_tmpdir() {
-    local dir="$1" workflow="$2" auto_mode="$3" cursor="$4"
+    local dir="$1" workflow="$2" cursor="$3"
     mkdir -p "$dir"
     printf '%s\n' "Feature description" > "$dir/feature-description.txt"
     printf '%s\n' "Plan body with enough text for the Step 2 launcher harness." > "$dir/plan.txt"
@@ -53,7 +53,6 @@ make_tmpdir() {
         printf 'LARCH_CLAUDE_PLUGIN_ROOT=%s\n' "$REPO_ROOT"
         printf 'PLAN_FILE=%s\n' "$dir/plan.txt"
         printf 'POST_PLAN_WORKFLOW_PATH=%s\n' "$workflow"
-        printf 'LARCH_AUTO_MODE=%s\n' "$auto_mode"
         printf 'CURSOR_PRESENT=%s\n' "$cursor"
     } > "$dir/session-env.sh"
 }
@@ -77,7 +76,7 @@ assert_contains "$out" "--implement-tmpdir is required" "missing implement tmpdi
 
 echo "=== reject invalid workflow enum ==="
 case_dir="$TMP/bad-workflow"
-make_tmpdir "$case_dir" BROKEN true false
+make_tmpdir "$case_dir" BROKEN false
 set +e
 out="$("$LAUNCHER" --implement-tmpdir "$case_dir" --coder codex 2>&1)"
 rc=$?
@@ -85,19 +84,9 @@ set -e
 if [[ "$rc" -eq 2 ]]; then pass "bad workflow exits 2"; else fail "bad workflow rc=$rc"; fi
 assert_contains "$out" "POST_PLAN_WORKFLOW_PATH must be SIMPLE or HARD" "bad workflow error"
 
-echo "=== reject invalid auto-mode boolean ==="
-case_dir="$TMP/bad-auto"
-make_tmpdir "$case_dir" HARD maybe false
-set +e
-out="$("$LAUNCHER" --implement-tmpdir "$case_dir" --coder codex 2>&1)"
-rc=$?
-set -e
-if [[ "$rc" -eq 2 ]]; then pass "bad auto-mode exits 2"; else fail "bad auto-mode rc=$rc"; fi
-assert_contains "$out" "LARCH_AUTO_MODE must be true or false" "bad auto-mode error"
-
 echo "=== reject missing answers path ==="
 case_dir="$TMP/missing-answers"
-make_tmpdir "$case_dir" HARD true false
+make_tmpdir "$case_dir" HARD false
 set +e
 out="$("$LAUNCHER" --implement-tmpdir "$case_dir" --coder codex --answers "$case_dir/nope.json" 2>&1)"
 rc=$?
@@ -107,7 +96,7 @@ assert_contains "$out" "--answers path does not exist" "missing answers error"
 
 echo "=== first dispatch argv derivation ==="
 case_dir="$TMP/case"
-make_tmpdir "$case_dir" HARD true false
+make_tmpdir "$case_dir" HARD false
 argv_file="$TMP/step2.argv"
 out="$(RUN_STEP2_IMPLEMENT_SH="$SPY" RUN_STEP2_ARGV_FILE="$argv_file" "$LAUNCHER" --implement-tmpdir "$case_dir" --coder cursor)"
 assert_contains "$out" "STATUS=claude_fallback" "downstream stdout passes through"
@@ -117,8 +106,6 @@ $case_dir
 $case_dir/plan.txt
 --feature-file
 $case_dir/feature-description.txt
---auto-mode
-true
 --coder
 cursor
 --cursor-present
@@ -136,8 +123,6 @@ $case_dir
 $case_dir/plan.txt
 --feature-file
 $case_dir/feature-description.txt
---auto-mode
-true
 --coder
 codex
 --cursor-present

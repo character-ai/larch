@@ -1,7 +1,7 @@
 ---
 name: design
 description: "Use when designing non-trivial features, refactors, or architecture changes. Adaptive sketches (0 trivial, 2 quick/simple, 4 full) propose approaches; 10-reviewer panel (5 personalities × 2 tools) validates via 3-voter dialectic."
-argument-hint: "[--auto] [--quick] [--full] [--subagent] [--session-env <path>] [--design-classification <value>] <feature description>"
+argument-hint: "[--quick] [--full] [--subagent] [--session-env <path>] [--design-classification <value>] <feature description>"
 allowed-tools: AskUserQuestion, Bash, Read, Edit, Write, Grep, Glob, Agent, Task, WebFetch, WebSearch
 ---
 
@@ -13,8 +13,7 @@ Design an implementation plan for a feature and review it with a 10-reviewer pan
 
 | Flag | Default | Purpose | Load-bearing detail |
 |------|---------|---------|---------------------|
-| `--auto` | `false` | Skip interactive question checkpoints (1c, 1d, 3.5) | No-op when `/implement --quick` skips `/design` entirely; dirty-tree recovery prompts are not suppressed |
-| `--quick` | `false` | Quick review mode; caps sketch fan-out at 2 unless `--full` is also set | Independent of `--auto`; see `flags.md` for `/implement --quick` vs `/design --quick` distinction |
+| `--quick` | `false` | Quick review mode; caps sketch fan-out at 2 unless `--full` is also set | See `flags.md` for `/implement --quick` vs `/design --quick` distinction |
 | `--full` | `false` | Force full sketch fan-out | Sets `full_mode=true`; forces `sketch_budget=4` even with `--quick`; plan review still follows `quick_mode` |
 | `--subagent` | `false` | Run Step 2a heavy phase in an isolated Agent-tool subagent (`heavy-worker.md`); writes artifacts only to `$DESIGN_TMPDIR/` and returns terse status; standalone (`--session-env` empty) parents replay artifacts before cleanup | No-op when `--quick` is set; orthogonal to `--session-env` |
 | `--session-env <path>` | empty | Forward discovered session values to `session-setup.sh` | Empty = standalone invocation, full discovery |
@@ -272,9 +271,7 @@ SESSION_ENV_PATH="$SESSION_ENV_PATH" LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_
 
 Print: `> **🔶 /design 1c: questions**`
 
-**If `auto_mode=true`**: Print `⏩ 1c: questions — skipped (auto mode) (<elapsed>)` and proceed to Step 1d.
-
-**If `auto_mode=false`**: **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/discussion-rounds.md` completely. Execute the Step 1c body in that file. **Do NOT load `discussion-rounds.md` when `auto_mode=true`** — the short-circuit above exits first.
+**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/discussion-rounds.md` completely. Execute the Step 1c body in that file.
 
 <!-- step:1d — Design Discussion (Round 1) -->
 
@@ -288,9 +285,7 @@ SESSION_ENV_PATH="$SESSION_ENV_PATH" LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_
 
 Print: `> **🔶 /design 1d: discussion r1**`
 
-**If `auto_mode=true`**: Print `⏩ 1d: discussion r1 — skipped (auto mode) (<elapsed>)` and proceed to Step 2a.
-
-**If `auto_mode=false`**: Execute the Step 1d body in `${CLAUDE_PLUGIN_ROOT}/skills/design/references/discussion-rounds.md`. If already loaded at Step 1c, no need to re-load; otherwise **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/discussion-rounds.md` completely.
+Execute the Step 1d body in `${CLAUDE_PLUGIN_ROOT}/skills/design/references/discussion-rounds.md`. If already loaded at Step 1c, no need to re-load; otherwise **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/discussion-rounds.md` completely.
 
 <!-- step:2a — Collaborative Approach Sketches -->
 ## Step 2a — Collaborative Approach Sketches
@@ -341,9 +336,9 @@ When the assigned external is unavailable, the slot's Claude fallback uses the s
 
 Print `> **🔶 /design 2a: sketches**`.
 
-**Subagent heavy phase**: If `subagent_mode=true` (i.e., `--subagent` was passed) AND `quick_mode=false`, invoke a single Agent-tool subagent (subagent_type: `general-purpose`) for the heavy non-interactive phase before entering 2a.2. The subagent MUST read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/heavy-worker.md`, receive `DESIGN_TMPDIR`, `IMPLEMENT_TMPDIR`, `SESSION_ENV_PATH`, `FEATURE_DESCRIPTION`, `quick_mode`, `auto_mode`, `$DESIGN_TMPDIR/run-params.json`, branch info, and reviewer presence flags as explicit data, and write raw artifacts to `$DESIGN_TMPDIR/`. The subagent returns a terse KV block whose first line is `DESIGN_HEAVY=complete` (optionally followed by `DESIGN_SUMMARY_FILE=<path>`) or a single failure line `DESIGN_HEAVY=failed REASON=<short-token>`; it does not write the manifest and does not return plan/reviewer/tally prose.
+**Subagent heavy phase**: If `subagent_mode=true` (i.e., `--subagent` was passed) AND `quick_mode=false`, invoke a single Agent-tool subagent (subagent_type: `general-purpose`) for the heavy non-interactive phase before entering 2a.2. The subagent MUST read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/heavy-worker.md`, receive `DESIGN_TMPDIR`, `IMPLEMENT_TMPDIR`, `SESSION_ENV_PATH`, `FEATURE_DESCRIPTION`, `quick_mode`, `$DESIGN_TMPDIR/run-params.json`, branch info, and reviewer presence flags as explicit data, and write raw artifacts to `$DESIGN_TMPDIR/`. The subagent returns a terse KV block whose first line is `DESIGN_HEAVY=complete` (optionally followed by `DESIGN_SUMMARY_FILE=<path>`) or a single failure line `DESIGN_HEAVY=failed REASON=<short-token>`; it does not write the manifest and does not return plan/reviewer/tally prose.
 
-Immediately after the Agent tool returns, parse the heavy-worker status line. Before following the success path, fail closed if the worker omitted a valid status line or returned success without the required artifacts. The gate has two tiers, drawn from two distinct normative sources: **Tier 1 (non-empty)** for substantive artifacts the `heavy-worker.md` "Artifact Contract" mandates as non-empty regardless of manifest export; **Tier 2 (must-exist)** for may-be-empty artifacts that `skills/design/scripts/write-design-manifest.sh` requires on disk for manifest export (`copy_required_may_be_empty` calls in that script). On the nested+`auto_mode=true` path, parent Step 4 (which creates missing empty files) is skipped, so Tier 2 is the load-bearing existence check before manifest export at Step 5; Tier 1 is the heavy-worker contract check independent of manifest export.
+Immediately after the Agent tool returns, parse the heavy-worker status line. Before following the success path, fail closed if the worker omitted a valid status line or returned success without the required artifacts. The gate has two tiers, drawn from two distinct normative sources: **Tier 1 (non-empty)** for substantive artifacts the `heavy-worker.md` "Artifact Contract" mandates as non-empty regardless of manifest export; **Tier 2 (must-exist)** for may-be-empty artifacts that `skills/design/scripts/write-design-manifest.sh` requires on disk for manifest export (`copy_required_may_be_empty` calls in that script). Tier 2 is the load-bearing existence check before manifest export at Step 5; Tier 1 is the heavy-worker contract check independent of manifest export.
 
 ```bash
 if [[ "${DESIGN_HEAVY:-}" != "complete" && "${DESIGN_HEAVY:-}" != "failed" ]]; then
@@ -364,13 +359,13 @@ elif [[ "${DESIGN_HEAVY:-}" == "complete" ]] && {
 fi
 ```
 
-Tier 1 (non-empty `-s` checks) pins the substantive artifacts mandated as non-empty by `heavy-worker.md` "Artifact Contract"; this tier is independent of manifest export and includes `approach-synthesis.txt`, which `write-design-manifest.sh` does not stage. `diff-lines.txt` is included because `/design` exports it (and `/implement` receives it under `design-export/` after manifest export) as optional informational diff sizing alongside `plan.txt`'s `diff_lines: <N>` line — sizing context only; `/implement`'s `### Implementer waterfall` does not use these values to pick the coder. Tier 2 (existence `-f` checks) pins may-be-empty manifest-required artifacts (`contested-decisions.md`, `oos.md`, `rejected-findings.md`, `accepted-plan-findings.md`) that `write-design-manifest.sh` stages via `copy_required_may_be_empty`. Two artifacts are intentionally NOT in the gate: `dialectic-resolutions.md` (`heavy-worker.md` "Artifact Contract" requires it as an empty file when dialectic does not run, but `dialectic-protocol.md` allows absence on the `NO_CONTESTED_DECISIONS` short-circuit and the zero-externals guardrail — adding `-f` would false-positive on those legitimate paths until the two normative sources are reconciled, which is out of scope for this gate) and `architecture-diagram.md` (optional; `auto_mode=true` only). A failure from this gate routes through the normal `DESIGN_HEAVY=failed` branch below.
+Tier 1 (non-empty `-s` checks) pins the substantive artifacts mandated as non-empty by `heavy-worker.md` "Artifact Contract"; this tier is independent of manifest export and includes `approach-synthesis.txt`, which `write-design-manifest.sh` does not stage. `diff-lines.txt` is included because `/design` exports it (and `/implement` receives it under `design-export/` after manifest export) as optional informational diff sizing alongside `plan.txt`'s `diff_lines: <N>` line — sizing context only; `/implement`'s `### Implementer waterfall` does not use these values to pick the coder. Tier 2 (existence `-f` checks) pins may-be-empty manifest-required artifacts (`contested-decisions.md`, `oos.md`, `rejected-findings.md`, `accepted-plan-findings.md`) that `write-design-manifest.sh` stages via `copy_required_may_be_empty`. Two artifacts are intentionally NOT in the gate: `dialectic-resolutions.md` (`heavy-worker.md` "Artifact Contract" requires it as an empty file when dialectic does not run, but `dialectic-protocol.md` allows absence on the `NO_CONTESTED_DECISIONS` short-circuit and the zero-externals guardrail — adding `-f` would false-positive on those legitimate paths until the two normative sources are reconciled, which is out of scope for this gate) and `architecture-diagram.md` (optional). A failure from this gate routes through the normal `DESIGN_HEAVY=failed` branch below.
 
 On `DESIGN_HEAVY=complete`:
 - Parse `DESIGN_SUMMARY_FILE` from the worker's return KV block as a routing signal only. For security, ignore the returned path value if it differs from the fixed path `$DESIGN_TMPDIR/design-summary.json`.
 - Validate the fixed summary path if present: it must be a non-symlink regular file, size ≤2 KB, `jq . "$DESIGN_TMPDIR/design-summary.json"` must parse, and `.schema_version == 1`. On validation failure or absence, fall back to the existing full-file reads and artifact gates silently.
-- **If `SESSION_ENV_PATH` is non-empty (nested under /implement)**: use valid `design-summary.json` fields for lightweight routing/status decisions, including accepted/rejected plan-review counts when a compact status line is needed; do not read or print bulky artifact bodies. If `auto_mode=false` proceed directly to Step 3.5; if `auto_mode=true` proceed directly to Step 5 because the worker ran Step 3b and Step 4. (Parent /implement reads the manifest written at Step 5.)
-- **If `SESSION_ENV_PATH` is empty (standalone /design --subagent — NEW capability)**: read and print `$DESIGN_TMPDIR/plan.txt` under `## Implementation Plan`, `$DESIGN_TMPDIR/voting-tally.md` under `## Voting Tally and Reviewer Competition Scoreboard`, `$DESIGN_TMPDIR/accepted-plan-findings.md` under `## Plan Review Findings (Voted In)` (skip header if file is empty or missing), `$DESIGN_TMPDIR/oos.md` under `## Out-of-Scope Observations` (skip header if file is empty or missing), and — when `auto_mode=true` AND `$DESIGN_TMPDIR/architecture-diagram.md` exists and is non-empty — `$DESIGN_TMPDIR/architecture-diagram.md` under `## Architecture Diagram` with the mermaid fence (when `auto_mode=true` AND the file is missing/empty, print `**⚠ Architecture diagram unavailable (rejected by sanitizer).**` if the session's Warnings section contains a `mermaid sanitizer rejected` entry; otherwise print `**⚠ Architecture diagram unavailable (Step 3b generation failed in subagent).**`). When `auto_mode=true`, also read `$DESIGN_TMPDIR/rejected-findings.md`: if non-empty, print it under `## Unimplemented Plan Review Suggestions`; if empty or missing, print `## Plan Review — All Suggestions Implemented` (matches Step 4's standalone output). Then if `auto_mode=false` proceed to Step 3.5 (Discussion Round 2 still runs interactively against the displayed artifacts); if `auto_mode=true` proceed to Step 5 (cleanup). This replay matches the inline standalone output that today's empty-`SESSION_ENV_PATH` path produces, so the user sees the deliverables that `cleanup-tmpdir.sh` would otherwise delete.
+- **If `SESSION_ENV_PATH` is non-empty (nested under /implement)**: use valid `design-summary.json` fields for lightweight routing/status decisions, including accepted/rejected plan-review counts when a compact status line is needed; do not read or print bulky artifact bodies. Proceed directly to Step 3.5. (Parent /implement reads the manifest written at Step 5.)
+- **If `SESSION_ENV_PATH` is empty (standalone /design --subagent — NEW capability)**: read and print `$DESIGN_TMPDIR/plan.txt` under `## Implementation Plan`, `$DESIGN_TMPDIR/voting-tally.md` under `## Voting Tally and Reviewer Competition Scoreboard`, `$DESIGN_TMPDIR/accepted-plan-findings.md` under `## Plan Review Findings (Voted In)` (skip header if file is empty or missing), `$DESIGN_TMPDIR/oos.md` under `## Out-of-Scope Observations` (skip header if file is empty or missing). Also read `$DESIGN_TMPDIR/rejected-findings.md`: if non-empty, print it under `## Unimplemented Plan Review Suggestions`; if empty or missing, print `## Plan Review — All Suggestions Implemented` (matches Step 4's standalone output). Then proceed to Step 3.5 (Discussion Round 2 runs interactively against the displayed artifacts). This replay matches the inline standalone output that today's empty-`SESSION_ENV_PATH` path produces, so the user sees the deliverables that `cleanup-tmpdir.sh` would otherwise delete.
 
 On `DESIGN_HEAVY=failed`:
 - **If `SESSION_ENV_PATH` is non-empty (nested)**: write the failure reason to `$DESIGN_TMPDIR/manifest-failure.md`, emit no inline warning, proceed to Step 5 for cleanup/export checks (Step 5 sets `MANIFEST_EXPORT_OK=false`, skips `cleanup-tmpdir.sh`, preserves `$DESIGN_TMPDIR`), and do not run the inline heavy steps. **Recovery**: the parent `/implement` Step 1 reads the manifest after `/design` returns; on missing/failed manifest it sets `STALL_TRACKING=true` and bails to Step 18 cleanup. To retry transient subagent failures (network blip, model timeout), the operator re-runs the same `/implement` invocation — Step 0.5 sentinel idempotency reuses the already-created tracking issue, and `/design` runs fresh.
@@ -432,7 +427,7 @@ Parse the structured output for each reviewer's `STATUS` and `REVIEWER_FILE`. Fo
 
 For every non-`OK` sketch collector result, compose `$DESIGN_TMPDIR/sketch-collector-<reviewer>.failure.log` with the structured collector block, the full `REVIEWER_FILE` content if present, and the full `${REVIEWER_FILE}.diag` content if present. When `SESSION_ENV_PATH` is non-empty, append that file with `${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh --log "$(dirname "$SESSION_ENV_PATH")/execution-issues.md" --site "design Step 2a.3" --tool "collect-agent-results.sh <tool> <status>" --exit-code <EXIT_CODE-or-1> --category "External Reviewer Issues" --output-file "$failure_log" --redact || true`.
 
-After this collection boundary, consult any `${OUTPUT}.dirty-tree` launcher sidecars for launched Cursor/Codex outputs, then run `${CLAUDE_PLUGIN_ROOT}/scripts/check-mid-run-dirty-tree.sh --mode checkpoint`. If a sidecar or checkpoint reports `STATUS=dirty` or `STATUS=unknown`, write `$DESIGN_TMPDIR/dirty-tree-detected.env` with `STATUS`, `STAGE=sketch-collection`, and `RECOVERY_REQUIRED=true`, then fire the dirty-tree recovery `AskUserQuestion` regardless of `auto_mode`. Use a `$DESIGN_TMPDIR/.dirty-tree-prompted-sketch-collection` flag so one logical boundary prompts once.
+After this collection boundary, consult any `${OUTPUT}.dirty-tree` launcher sidecars for launched Cursor/Codex outputs, then run `${CLAUDE_PLUGIN_ROOT}/scripts/check-mid-run-dirty-tree.sh --mode checkpoint`. If a sidecar or checkpoint reports `STATUS=dirty` or `STATUS=unknown`, write `$DESIGN_TMPDIR/dirty-tree-detected.env` with `STATUS`, `STAGE=sketch-collection`, and `RECOVERY_REQUIRED=true`, then fire the dirty-tree recovery `AskUserQuestion`. Use a `$DESIGN_TMPDIR/.dirty-tree-prompted-sketch-collection` flag so one logical boundary prompts once.
 
 ### 2a.4 — Synthesis
 
@@ -514,7 +509,7 @@ Otherwise, read `$DESIGN_TMPDIR/approach-synthesis.txt` — this provides `{SYNT
 
 Execute steps 6 through final dialectic resolution writing as documented in `${CLAUDE_PLUGIN_ROOT}/skills/design/references/dialectic-execution.md` (loaded via the MANDATORY directive above). That file is the single normative source for dialectic-execution mechanics. The final `Write $DESIGN_TMPDIR/dialectic-resolutions.md` sub-step (including the per-disposition field rules) lives inside that reference; print the `## Dialectic Resolutions` header at the end.
 
-After each dialectic collection boundary (debate results and judge results), follow the dirty-tree probe contract in `references/heavy-worker.digest.md`: consult launcher sidecars, run `check-mid-run-dirty-tree.sh --mode checkpoint`, and ask for recovery on dirty/unknown regardless of `auto_mode`, deduped by `$DESIGN_TMPDIR/.dirty-tree-prompted-<boundary>`.
+After each dialectic collection boundary (debate results and judge results), follow the dirty-tree probe contract in `references/heavy-worker.digest.md`: consult launcher sidecars, run `check-mid-run-dirty-tree.sh --mode checkpoint`, and ask for recovery on dirty/unknown, deduped by `$DESIGN_TMPDIR/.dirty-tree-prompted-<boundary>`.
 
 <!-- step:2b — Design the Implementation Plan -->
 
@@ -583,7 +578,7 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 
 Read `review_budget` from `$DESIGN_TMPDIR/run-params.json`. Valid values are `quick` and `full`; if absent or invalid, derive the fallback from `quick_mode` (`quick` when true, otherwise `full`).
 
-**If `review_budget=quick`**: **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/plan-review-quick.md` completely. It defines the quick-mode plan-review procedure (self-review checklist, output file requirements, acceptance policy). After executing the procedure, proceed to Step 3.5 if `auto_mode=false`, or Step 3b if `auto_mode=true`.
+**If `review_budget=quick`**: **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/plan-review-quick.md` completely. It defines the quick-mode plan-review procedure (self-review checklist, output file requirements, acceptance policy). After executing the procedure, proceed to Step 3.5.
 
 **If `review_budget=full`**:
 
@@ -696,11 +691,11 @@ printf '%s\n' 'ACTION=EMIT_PLAN' \
 
 If the second `EMIT_PLAN` fails, repair the revised plan before continuing.
 
-After the plan-review collection boundary, consult launcher `${OUTPUT}.dirty-tree` sidecars, run `check-mid-run-dirty-tree.sh --mode checkpoint`, and ask for recovery on dirty/unknown regardless of `auto_mode`, deduped by `$DESIGN_TMPDIR/.dirty-tree-prompted-plan-review`.
+After the plan-review collection boundary, consult launcher `${OUTPUT}.dirty-tree` sidecars, run `check-mid-run-dirty-tree.sh --mode checkpoint`, and ask for recovery on dirty/unknown, deduped by `$DESIGN_TMPDIR/.dirty-tree-prompted-plan-review`.
 
-If **all reviewers** report no in-scope issues and no out-of-scope observations, skip voting and proceed to Step 3.5 if `auto_mode=false`, or Step 3b if `auto_mode=true`.
+If **all reviewers** report no in-scope issues and no out-of-scope observations, skip voting and proceed to Step 3.5.
 
-> **Continue to Step 3.5 or Step 3b IMMEDIATELY.** The plan-review result is not terminal — follow the `auto_mode` branch into discussion or diagram generation.
+> **Continue to Step 3.5 IMMEDIATELY.** The plan-review result is not terminal — proceed to discussion round 2.
 
 <!-- step:3.5 — Design Discussion (Round 2) -->
 
@@ -718,9 +713,7 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
 
 Print: `> **🔶 /design 3.5: discussion r2**`
 
-**If `auto_mode=true`**: Print `⏩ 3.5: discussion r2 — skipped (auto mode) (<elapsed>)` and proceed to Step 3b. **Do NOT load `discussion-rounds.md` when `auto_mode=true`.**
-
-**If `auto_mode=false`**: Execute the Step 3.5 body in `${CLAUDE_PLUGIN_ROOT}/skills/design/references/discussion-rounds.md`. If already loaded at Step 1c, no need to re-load; otherwise **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/discussion-rounds.md` completely. The body defines Inputs, Behavior (still-contested criteria including close 2-1 voted, fallback-to-synthesis, bucket-skipped, over-cap), Short-circuit, Output schema, Cap, and Terse-answer rules.
+Execute the Step 3.5 body in `${CLAUDE_PLUGIN_ROOT}/skills/design/references/discussion-rounds.md`. If already loaded at Step 1c, no need to re-load; otherwise **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/discussion-rounds.md` completely. The body defines Inputs, Behavior (still-contested criteria including close 2-1 voted, fallback-to-synthesis, bucket-skipped, over-cap), Short-circuit, Output schema, Cap, and Terse-answer rules.
 
 <!-- step:3b — Architecture Diagram -->
 
