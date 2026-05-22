@@ -9,9 +9,11 @@
 #
 # Environment:
 #   IMPLEMENT_TMPDIR — optional; when set and `parent-issue.md` matches `--issue`,
-#     may short-circuit to pass with `RESUME=true` (crash-resume sentinel). When
-#     `parent-issue.md` contains `RUN_ID=`, export the same `RUN_ID` or admission
-#     re-runs the full gate (see `scripts/implement-admission.md`).
+#     may short-circuit to pass with `RESUME=true` (crash-resume sentinel) after
+#     a successful `gh issue view` (GitHub must be reachable — see
+#     `scripts/implement-admission.md`). When `parent-issue.md` contains `RUN_ID=`,
+#     export the same `RUN_ID` or admission re-runs the full gate (see
+#     `scripts/implement-admission.md`).
 #
 # Exit codes:
 #   0 — ADMISSION_RESULT=pass (optional RESUME=true)
@@ -75,7 +77,7 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-if [[ -z "$ISSUE" || "$ISSUE" == *[!0-9]* ]]; then
+if [[ -z "$ISSUE" || ! "$ISSUE" =~ ^[1-9][0-9]*$ ]]; then
     emit_kv ADMISSION_ERROR "--issue must be a positive integer"
     exit 2
 fi
@@ -137,6 +139,19 @@ if [[ -n "${IMPLEMENT_TMPDIR:-}" && -f "${IMPLEMENT_TMPDIR}/parent-issue.md" ]];
             fi
         fi
         if [[ "$resume_ok" == 1 ]]; then
+            # shellcheck disable=SC1091
+            # shellcheck source=blocker-helpers.sh
+            if ! source "$SCRIPT_DIR/blocker-helpers.sh" 2>/dev/null; then
+                emit_kv ADMISSION_ERROR "failed to source blocker-helpers.sh"
+                exit 2
+            fi
+            BLOCKERS=$(all_open_blockers "$ISSUE" || true)
+            BLOCKERS=$(printf '%s' "$BLOCKERS" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+            if [[ -n "$BLOCKERS" ]]; then
+                emit_kv ADMISSION_RESULT has-blockers
+                emit_kv BLOCKERS "$BLOCKERS"
+                exit 4
+            fi
             emit_kv ADMISSION_RESULT pass
             emit_kv RESUME true
             exit 0

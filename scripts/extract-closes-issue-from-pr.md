@@ -5,7 +5,7 @@
 Extract the first `Closes #<N>` issue number from the body of the PR
 associated with the current git branch. Wraps the multi-pipe `gh pr view |
 grep | head | grep` invocation that previously lived inline in
-`skills/implement/SKILL.md` Step 0.5 Branch 3 (PR-body recovery), so the
+`skills/implement/SKILL.md` **Step 0** (PR-body recovery branch inside the folded tracking-adoption block), so the
 SKILL.md prose owns intent and the shell pipeline lives in a single
 testable location (per `.claude/rules/script-md-siblings.md`).
 
@@ -29,13 +29,13 @@ expected `grep` no-match) propagate via `pipefail`, but the trailing
 
 ## Caller
 
-Single caller: `skills/implement/SKILL.md` Step 0.5 Branch 3 ("PR on
+Single caller: `skills/implement/SKILL.md` **Step 0** PR-body recovery branch ("PR on
 current branch with `Closes #<N>`"). The caller assigns the captured
 stdout to `RECOVERED_N` and treats an empty value as "fall through to
-Branch 4".
+the next adopt-by-number branch".
 
 ## Edit-in-sync rules
 
-If the recovery grammar in Branch 3 changes (e.g. accepts `Fixes #<N>` in
+If the recovery grammar in that branch changes (e.g. accepts `Fixes #<N>` in
 addition to `Closes #<N>`), update both this script's pipeline and the
-prose in `skills/implement/SKILL.md` Step 0.5 Branch 3 in the same PR.
+prose in `skills/implement/SKILL.md` **Step 0** (PR-body recovery) in the same PR.

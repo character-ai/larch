@@ -153,6 +153,19 @@ run_case() {
             fi
             ;;
         5|7)
+            local exp_result
+            if [[ "$expect_rc" == "5" ]]; then
+                exp_result='ADMISSION_RESULT=managed-prefix'
+            else
+                exp_result='ADMISSION_RESULT=report-title'
+            fi
+            if ! printf '%s' "$out" | grep -Fq "$exp_result"; then
+                fail "$name: exit $expect_rc missing $exp_result in stdout; output=$out"
+                unset STUB_LOG STUB_VIEW_JSON STUB_VIEW_FAIL STUB_VIEW_FAIL_COUNT_FILE STUB_VIEW_FAIL_MAX \
+                  STUB_API_BLOCKED_BY_JSON STUB_API_BLOCKED_BY_EXIT STUB_REPO_VIEW_EXIT STUB_REPO_VIEW_OUT \
+                  STUB_COMMENTS_JSON STUB_ISSUE_BODY_JSON STUB_ISSUE_BODY_ONLY || true
+                return
+            fi
             if ! printf '%s' "$out" | grep -Fq 'TITLE='; then
                 fail "$name: exit $expect_rc missing TITLE= on stdout; output=$out"
                 unset STUB_LOG STUB_VIEW_JSON STUB_VIEW_FAIL STUB_VIEW_FAIL_COUNT_FILE STUB_VIEW_FAIL_MAX \
@@ -258,6 +271,58 @@ export STUB_VIEW_JSON='{"title":"[IN PROGRESS] sentinel","state":"OPEN","labels"
   else
     PASS=$((PASS + 1))
     echo "PASS: sentinel-aware-pass"
+  fi
+)
+
+# --- sentinel resume without RUN_ID in parent-issue (older tmpdirs) ---
+sd="$TMPROOT/s7a"
+make_gh_stub "$sd"
+sent_nr="$TMPROOT/s7a/tmp"
+mkdir -p "$sent_nr"
+printf 'ISSUE_NUMBER=5\nADOPTED=true\n' > "$sent_nr/parent-issue.md"
+export STUB_VIEW_JSON='{"title":"[IN PROGRESS] no-runid-sentinel","state":"OPEN","labels":[]}'
+export STUB_API_BLOCKED_BY_JSON='[]'
+(
+  export IMPLEMENT_TMPDIR="$sent_nr"
+  export PATH="$sd:$PATH"
+  unset RUN_ID
+  out=$("$SCRIPT" --issue 5 --repo o/r 2>&1) || rc=$?
+  rc=${rc:-0}
+  if [[ "$rc" != 0 ]]; then
+    fail "sentinel-no-runid: expected 0 got $rc out=$out"
+  elif ! printf '%s' "$out" | grep -Fq 'ADMISSION_RESULT=pass'; then
+    fail "sentinel-no-runid: missing ADMISSION_RESULT=pass in $out"
+  elif ! printf '%s' "$out" | grep -Fq 'RESUME=true'; then
+    fail "sentinel-no-runid: missing RESUME=true in $out"
+  else
+    PASS=$((PASS + 1))
+    echo "PASS: sentinel-resume-without-runid-line"
+  fi
+)
+
+# --- resume path honors open blockers ---
+sd="$TMPROOT/s7block"
+make_gh_stub "$sd"
+sent_bl="$TMPROOT/s7block/tmp"
+mkdir -p "$sent_bl"
+printf 'ISSUE_NUMBER=5\nRUN_ID=rid2\nADOPTED=true\n' > "$sent_bl/parent-issue.md"
+export STUB_VIEW_JSON='{"title":"[IN PROGRESS] resume-blocked","state":"OPEN","labels":[]}'
+export STUB_API_BLOCKED_BY_JSON='[{"number":99,"state":"open"}]'
+(
+  export IMPLEMENT_TMPDIR="$sent_bl"
+  export RUN_ID=rid2
+  export PATH="$sd:$PATH"
+  out=$("$SCRIPT" --issue 5 --repo o/r 2>&1) || rc=$?
+  rc=${rc:-0}
+  if [[ "$rc" != 4 ]]; then
+    fail "sentinel-blockers: expected exit 4 got $rc out=$out"
+  elif ! printf '%s' "$out" | grep -Fq 'ADMISSION_RESULT=has-blockers'; then
+    fail "sentinel-blockers: missing ADMISSION_RESULT=has-blockers in $out"
+  elif ! printf '%s' "$out" | grep -Fq 'BLOCKERS='; then
+    fail "sentinel-blockers: missing BLOCKERS= in $out"
+  else
+    PASS=$((PASS + 1))
+    echo "PASS: sentinel-resume-blockers-exit-4"
   fi
 )
 
@@ -375,6 +440,7 @@ make_gh_stub "$sd"
 run_case "missing-issue-flag-value" 2 "$sd" --issue
 run_case "missing-repo-flag-value" 2 "$sd" --issue 1 --repo
 run_case "non-numeric-issue" 2 "$sd" --issue abc --repo o/r
+run_case "issue-zero-rejected" 2 "$sd" --issue 0 --repo o/r
 
 # --- hard gh failure ---
 sd="$TMPROOT/s11"

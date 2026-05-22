@@ -263,7 +263,7 @@ emit_bailed() {
     exit 0
 }
 
-# Step 0.5: cross-coder tmpdir-reuse guard. The shared baseline files written
+# Step 0 tracking/issue tmpdir phase: cross-coder tmpdir-reuse guard. The shared baseline files written
 # below (step2-baseline.txt, step2-spawn-branch.txt, step2-plugin-json-baseline.txt)
 # and the per-tool ${TOOL_TAG}-resume-count.txt file would desynchronize if a
 # tmpdir from a prior --coder=codex run were reused for --coder=cursor (or vice

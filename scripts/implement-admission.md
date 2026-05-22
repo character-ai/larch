@@ -6,6 +6,10 @@
 
 **Environment**: `gh` on `PATH`. Optional `IMPLEMENT_TMPDIR` — when set and `$IMPLEMENT_TMPDIR/parent-issue.md` exists and its `ISSUE_NUMBER=` matches `--issue`, admission may return pass with `RESUME=true` (crash-resume sentinel per `/implement` Step 0). When that file also contains `RUN_ID=`, the caller MUST export the same `RUN_ID` in the environment before invoking this script; otherwise admission falls through to the full gate (prevents a stale tmpdir whose `parent-issue.md` still lists the same issue from bypassing managed-prefix / blocker / audit checks after a different session wrote the file).
 
+**Ordering / crash-resume vs `gh`**: The script always runs `gh issue view` (with one retry) and validates JSON before evaluating the crash-resume sentinel. A failed view yields exit **2** with `ADMISSION_ERROR=` even when `parent-issue.md` matches `--issue` and optional `RUN_ID` — operators cannot re-enter on resume alone while GitHub is unavailable; recovery requires a successful live issue read first.
+
+**Resume vs managed-title / audit gates**: The crash-resume path still skips managed-title and audit-label checks (intentional for in-flight runs) but re-runs `all_open_blockers` before emitting `RESUME=true`, so newly opened native or prose blockers are observed on resume the same as on a full pass.
+
 **Stdout**: `KEY=value` lines (`ADMISSION_RESULT=`, `ADMISSION_ERROR=`, `BLOCKERS=`, `TITLE=`, `RESUME=`). Operators and the orchestrator parse these; keep values single-line. GitHub-controlled titles emitted in `TITLE=` are normalized to a single line (CR/LF flattened to spaces) before `emit_kv`.
 
 **Exit 5 recovery (`managed-prefix`)**: without a surviving `$IMPLEMENT_TMPDIR` to pair with Preflight, rename the GitHub issue title in the web UI (or via `gh issue edit`) to remove the `[IN PROGRESS]` / `[DONE]` / `[STALLED]` prefix, then retry `/implement`.
@@ -20,7 +24,7 @@
 | 6 | `ADMISSION_RESULT=audit-report-label` — issue has `audit-report` label |
 | 7 | `ADMISSION_RESULT=report-title` — title matches `[... Report]` pattern (same family as historical find-lock-issue rejection) |
 
-**Blocker semantics (D3 fail-open)**: `all_open_blockers` inherits the fail-open posture from `scripts/blocker-helpers.sh` — native or prose dependency reads that error out degrade to “no blockers found” rather than failing closed. On GitHub API outage this can produce a **false negative** (run proceeds when blockers might exist). `/implement` documents this under Preflight; operators accept the trade-off for availability.
+**Blocker semantics (D3 fail-open)**: `all_open_blockers` inherits the fail-open posture from `scripts/blocker-helpers.sh` — native or prose dependency reads that error out degrade to “no blockers found” rather than failing closed. On GitHub API outage this can produce a **false negative** (run proceeds when blockers might exist). `/implement` documents this under Preflight; operators accept the trade-off for availability. The same fail-open applies on the resume branch: dependency reads that error out still yield an empty blocker list.
 
 **Native-first short-circuit**: when `native_open_blockers` returns a non-empty list, `all_open_blockers` skips the prose dependency scan entirely (see `scripts/blocker-helpers.md` and `skills/implement/SKILL.md` Preflight admission gate note). Trade-off: stderr / operator messaging may list only native blocker numbers until native blockers clear, even when prose dependencies would also apply.
 
