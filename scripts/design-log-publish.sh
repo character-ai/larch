@@ -68,13 +68,11 @@ if ! [[ "$ISSUE" =~ ^[1-9][0-9]*$ ]]; then
     exit 0
 fi
 
-case "$RUN_ID" in
-    ""|*[!A-Za-z0-9._-]*|.*|*..*|*/*|*\\*)
-        larch_err "design-log-publish: invalid --run-id slug"
-        emit_publish_result false
-        exit 0
-        ;;
-esac
+if ! larch_log_slug_is_valid "$RUN_ID"; then
+    larch_err "design-log-publish: invalid --run-id slug"
+    emit_publish_result false
+    exit 0
+fi
 
 if [[ ! -d "$DESIGN_TMPDIR" ]]; then
     larch_err "design-log-publish: design tmpdir not found: $DESIGN_TMPDIR"
@@ -153,8 +151,17 @@ wt_cleanup() {
 }
 trap wt_cleanup EXIT
 
+if git -C "$REPO_ROOT" worktree list | grep -Fq " [$WT_BRANCH]"; then
+    larch_err "design-log-publish: branch $WT_BRANCH is already checked out in another worktree; concurrent or stale publish for this RUN_ID"
+    emit_publish_result false
+    exit 0
+fi
 if git -C "$REPO_ROOT" show-ref --verify --quiet "refs/heads/$WT_BRANCH"; then
-    git -C "$REPO_ROOT" branch -D "$WT_BRANCH" >/dev/null 2>&1 || true
+    if ! git -C "$REPO_ROOT" branch -D "$WT_BRANCH" >/dev/null 2>&1; then
+        larch_err "design-log-publish: cannot delete existing local branch $WT_BRANCH (still in use?)"
+        emit_publish_result false
+        exit 0
+    fi
 fi
 
 if ! WT_PARENT=$(mktemp -d "${TMPDIR:-/tmp}/design-log-publish.XXXXXX"); then
@@ -203,7 +210,7 @@ design_publish_stage_file() {
                 return 1
             }
             ;;
-        *.json)
+        *-output*.json)
             larch_redact_strip_json_result "$src" "$trim_tmp" || {
                 rm -f "$trim_tmp"
                 return 1
@@ -255,10 +262,25 @@ done <"$_top_files"
 rm -f "$_top_files"
 ENUM_TOP_TMP=""
 
-if [[ -d "$DESIGN_TMPDIR/render-cache" ]]; then
+if [[ -e "$DESIGN_TMPDIR/render-cache" ]]; then
+    if [[ -L "$DESIGN_TMPDIR/render-cache" ]]; then
+        larch_err "design-log-publish: render-cache must not be a symlink"
+        emit_publish_result false
+        exit 0
+    fi
+    if [[ ! -d "$DESIGN_TMPDIR/render-cache" ]]; then
+        larch_err "design-log-publish: render-cache exists but is not a directory"
+        emit_publish_result false
+        exit 0
+    fi
+    rc_root=$(cd "$DESIGN_TMPDIR/render-cache" && pwd -P) || {
+        larch_err "design-log-publish: cannot resolve render-cache directory"
+        emit_publish_result false
+        exit 0
+    }
     _rc_files=$(mktemp "${TMPDIR:-/tmp}/design-log-publish-rc.XXXXXX")
     ENUM_RC_TMP="$_rc_files"
-    if ! find "$DESIGN_TMPDIR/render-cache" -type f | LC_ALL=C sort >"$_rc_files"; then
+    if ! find "$rc_root" -type f | LC_ALL=C sort >"$_rc_files"; then
         rm -f "$_rc_files"
         ENUM_RC_TMP=""
         larch_err "design-log-publish: failed to enumerate render-cache files"
@@ -267,7 +289,15 @@ if [[ -d "$DESIGN_TMPDIR/render-cache" ]]; then
     fi
     while IFS= read -r f || [[ -n "$f" ]]; do
         [[ -z "$f" ]] && continue
-        rel=${f#"$DESIGN_TMPDIR/render-cache/"}
+        case "$f" in
+            "$rc_root"/*) ;;
+            *)
+                larch_err "design-log-publish: render-cache path outside resolved root: $f"
+                emit_publish_result false
+                exit 0
+                ;;
+        esac
+        rel=${f#"$rc_root/"}
         design_publish_stage_file "$f" "$RUN_DEST/render-cache/$rel" || {
             larch_err "design-log-publish: staging failed for $f"
             emit_publish_result false
@@ -295,7 +325,13 @@ if ! mv -f "$mf_tmp" "$MF"; then
 fi
 
 rel="larch-logs/design/$RUN_ID"
-if ! git -C "$WT_DIR" status --porcelain -- "$rel" | grep -q .; then
+_porcelain=""
+if ! _porcelain=$(git -C "$WT_DIR" status --porcelain -- "$rel" 2>&1); then
+    larch_err "design-log-publish: git status failed for $rel"
+    emit_publish_result false
+    exit 0
+fi
+if [[ -z "$_porcelain" ]]; then
     emit_publish_result true "" ""
     exit 0
 fi
@@ -357,7 +393,7 @@ if [[ -z "$PR_NUM" ]]; then
 fi
 
 merge_rc=0
-gh pr merge "${gh_repo_args[@]}" "$PR_NUM" --squash --admin --delete-branch >/dev/null 2>&1 || merge_rc=$?
+gh pr merge "${gh_repo_args[@]}" "$PR_NUM" --squash --admin --delete-branch >/dev/null || merge_rc=$?
 
 git -C "$REPO_ROOT" worktree remove --force "$WT_DIR" 2>/dev/null || true
 rm -rf "${WT_PARENT:-}" 2>/dev/null || true

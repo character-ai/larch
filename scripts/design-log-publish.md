@@ -5,22 +5,29 @@
 branch by:
 
 1. Validating `--run-id` with the same slug rules as `scripts/larch-log.sh`
-   (`larch_log_validate_slug` family: ASCII letters, digits, `.`, `_`, `-`;
-   reject empty, `..`, `/`, `\`, leading `.`).
+   (`larch_log_slug_is_valid` / `larch_log_validate_slug` family: ASCII letters,
+   digits, `.`, `_`, `-`; reject empty, `..`, `/`, `\`, leading `.`).
 2. Resolving `REPO_ROOT` via `git rev-parse --show-toplevel` and the default
    base branch via `git symbolic-ref refs/remotes/origin/HEAD` (same family as
    `larch-log.sh commit`'s default-branch guard — not a `main`-only string
    compare).
 3. Creating a disposable git worktree on branch `larch-log-design-<RUN_ID>`
-   from `origin/<default>`.
+   from `origin/<default>`. Before `git worktree add`, the script refuses to
+   start when that branch name is already checked out in another worktree, and
+   it does not ignore a failed `git branch -D` for an existing local branch with
+   the same name. Unlike `/implement` and `/fix-issue`, `/design` does not
+   globally serialize publishers: two concurrent runs must not share the same
+   `RUN_ID` slug on one clone, or they will collide on this branch/worktree slot.
 4. Running `larch-log.sh init` under `larch-logs/` in that worktree (schema v2
    `manifest.json` for skill `design`).
 5. Copying design artifacts: top-level regular files (maxdepth 1) plus all
-   regular files under `render-cache/` (recursive). Symlinks are skipped.
+   regular files under `render-cache/` (recursive). Symlinks at the top level
+   are skipped; `render-cache/` itself must be a real directory (not a symlink).
    Each file is trimmed then redacted: `*.meta` strips leading `CMD_JSON=`
-   lines (`larch_redact_strip_meta_cmd_json`); every `*.json` file deletes a
-   top-level `.result` object when valid JSON (`larch_redact_strip_json_result`,
-   fail-closed on trim error); then `redact-tmpdir-paths.sh` and
+   lines (`larch_redact_strip_meta_cmd_json`); files whose names match
+   `*-output*.json` delete a top-level `.result` object when valid JSON
+   (`larch_redact_strip_json_result`, fail-closed on trim error); other paths
+   copy through without that JSON trim; then `redact-tmpdir-paths.sh` and
    `redact-secrets.sh` (in-process pipeline, same redactors as
    `larch_log_redact_file` without the larch-log stdout contract).
 6. Committing `larch-logs/design/<RUN_ID>/` with message containing `[skip ci]`.

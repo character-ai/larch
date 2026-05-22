@@ -183,8 +183,8 @@ git -C "$clone" pull -q origin main
 [[ -f "$clone/larch-logs/design/RUNPUB1/render-cache/nested/c.txt" ]] || fail "render-cache nested missing"
 grep -q '^keep$' "$clone/larch-logs/design/RUNPUB1/out.txt.meta" || fail "meta trim failed"
 ! grep -q CMD_JSON "$clone/larch-logs/design/RUNPUB1/out.txt.meta" || fail "CMD_JSON should be stripped"
-! grep -q '"result"' "$clone/larch-logs/design/RUNPUB1/voter-output-1.json" || fail ".result should be stripped"
-! grep -q '"result"' "$clone/larch-logs/design/RUNPUB1/plain.json" || fail ".result should be stripped in plain.json"
+! grep -q '"result"' "$clone/larch-logs/design/RUNPUB1/voter-output-1.json" || fail ".result should be stripped from *-output*.json"
+grep -q '"result"' "$clone/larch-logs/design/RUNPUB1/plain.json" || fail "plain.json should retain .result (not *-output*.json)"
 grep -qE '"ok"[[:space:]]*:[[:space:]]*1' "$clone/larch-logs/design/RUNPUB1/voter-output-1.json" || fail "json body missing"
 grep -q 'pr create' "$GH_STUB_LOG" || fail "expected gh pr create in log"
 grep -q 'pr merge' "$GH_STUB_LOG" || fail "expected gh pr merge in log"
@@ -238,6 +238,43 @@ out_m=$(
 grep -q 'pr merge' "$GH_STUB_LOG" || fail "expected pr merge in stub log"
 unset GH_STUB_MERGE_RC
 
+echo "=== git push failure after commit preserves recovery ref; no gh pr merge ==="
+_PRE_PUSH_PATH="$PATH"
+TMP_PUSH=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-pushfail.XXXXXX")
+clone_pf=$(setup_clone_with_origin_head "$TMP_PUSH")
+stub_pf="$TMP_PUSH/ghstub"
+GH_STUB_LOG_PF="$TMP_PUSH/gh-pushfail.log"
+: >"$GH_STUB_LOG_PF"
+export GH_STUB_LOG="$GH_STUB_LOG_PF"
+make_gh_stub "$stub_pf"
+REAL_GIT=$(command -v git)
+mkdir -p "$TMP_PUSH/gitstub"
+cat >"$TMP_PUSH/gitstub/git" <<GITS
+#!/usr/bin/env bash
+for arg in "\$@"; do
+  if [[ "\$arg" == "push" ]] && [[ "\${GIT_STUB_FAIL_PUSH:-}" == "1" ]]; then
+    echo "stub: push refused" >&2
+    exit 1
+  fi
+done
+exec "$REAL_GIT" "\$@"
+GITS
+chmod +x "$TMP_PUSH/gitstub/git"
+export PATH="$TMP_PUSH/gitstub:$stub_pf:$PATH"
+unset TEST_CLONE_ROOT TEST_MERGE_BRANCH
+export GIT_STUB_FAIL_PUSH=1
+mkdir -p "$TMP_PUSH/design"
+printf 'p\n' >"$TMP_PUSH/design/pushfail.txt"
+out_pf=$(
+    (cd "$clone_pf" && bash "$PUBLISH" --design-tmpdir "$TMP_PUSH/design" --run-id "RUNPUSHFAIL1" --issue 5 --repo owner/repo) 2>/dev/null || true
+)
+[[ "$out_pf" == *"PUBLISH_OK=false"* ]] || fail "push fail PUBLISH_OK: $out_pf"
+git -C "$clone_pf" show-ref --verify --quiet "refs/heads/larch-log-design-recovery-RUNPUSHFAIL1" || fail "recovery branch missing"
+! grep -q 'pr merge' "$GH_STUB_LOG_PF" || fail "gh pr merge should not run when push fails"
+unset GIT_STUB_FAIL_PUSH
+rm -rf "$TMP_PUSH"
+export PATH="$_PRE_PUSH_PATH"
+
 echo "=== trim fail-closed on bad json sidecar ==="
 TMP2=$(mktemp -d "${TMPDIR:-/tmp}/tdlp2.XXXXXX")
 clone2=$(setup_clone_with_origin_head "$TMP2")
@@ -246,7 +283,7 @@ make_gh_stub "$stub2"
 export PATH="$stub2:$PATH"
 unset TEST_CLONE_ROOT TEST_MERGE_BRANCH GH_STUB_LOG
 mkdir -p "$TMP2/design"
-printf 'not-json' >"$TMP2/design/bad.json"
+printf 'not-json' >"$TMP2/design/bad-output.json"
 out2=$(
     (cd "$clone2" && bash "$PUBLISH" --design-tmpdir "$TMP2/design" --run-id "RUNBAD1" --issue 1 --repo owner/repo) 2>/dev/null || true
 )

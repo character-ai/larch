@@ -853,7 +853,7 @@ if [[ -n "$ISSUE_ARG" ]]; then
     fi
 
     # Exclude issues with a managed lifecycle title prefix
-    # ([IN PROGRESS] / [DONE] / [STALLED]). These are machine-owned
+    # ([IN PROGRESS] / [DONE] / [STALLED] / [PLANNED]). These are machine-owned
     # tracking issues (/implement),
     # not candidates for /fix-issue automated work. Runs AFTER umbrella
     # detection (per #819 DECISION_1) so an umbrella whose title carries

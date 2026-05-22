@@ -48,7 +48,7 @@
 # approval from the umbrella's own existence as the approval signal):
 #   - issue is OPEN
 #   - title does not start with a managed lifecycle prefix
-#     ([IN PROGRESS] / [DONE] / [STALLED])
+#     ([IN PROGRESS] / [DONE] / [STALLED] / [PLANNED])
 #   - last comment is NOT exactly "IN PROGRESS" (not locked by a concurrent
 #     /fix-issue runner)
 #   - all_open_blockers (from blocker-helpers.sh) returns empty — i.e., no
@@ -208,14 +208,15 @@ is_umbrella_title() {
 }
 
 # has_managed_prefix — same shape as find-lock-issue.sh's helper. Returns 0
-# if the title starts with [IN PROGRESS] / [DONE] / [STALLED] followed by a
-# single space.
+# if the title starts with [IN PROGRESS] / [DONE] / [STALLED] / [PLANNED]
+# followed by a single space.
 has_managed_prefix() {
     local t="$1"
     case "$t" in
         '[IN PROGRESS] '*) return 0 ;;
         '[DONE] '*)        return 0 ;;
         '[STALLED] '*)     return 0 ;;
+        '[PLANNED] '*)     return 0 ;;
         *)                 return 1 ;;
     esac
 }
