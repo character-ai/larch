@@ -237,7 +237,7 @@ Print: `> **🔶 /design 1e: gate A**`
 
 **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/approval-gates.md` completely. It is the single normative source for Gate A / B / C prompts, severity rubric, and loop semantics.
 
-Execute the Gate A body in `approval-gates.md`. When the user picks **Ready for review** on first-time entry from Step 1d, proceed to Step 2a. When entered from Gate B(c) or Gate C(b) (post-plan), **Ready for review** proceeds directly to Step 3 with the current `$DESIGN_TMPDIR/plan.txt` — do NOT re-run Step 2a (sketches) or Step 2a.5 (dialectic).
+Execute the Gate A body in `approval-gates.md`. When the user picks **Ready for review** on first-time entry from Step 1d, proceed to Step 2a. When entered from Gate B(c) or Gate C(b) (post-plan), Gate A presents three options (Show latest design proposal / Ready for review / Discuss more); selecting **Show latest design proposal** re-displays `$DESIGN_TMPDIR/plan.txt` under a `## Latest Design Plan` header and re-fires the same prompt, while **Ready for review** proceeds directly to Step 3 with the current `$DESIGN_TMPDIR/plan.txt` — do NOT re-run Step 2a (sketches) or Step 2a.5 (dialectic).
 
 <!-- step:2a — Collaborative Approach Sketches -->
 ## Step 2a — Collaborative Approach Sketches
