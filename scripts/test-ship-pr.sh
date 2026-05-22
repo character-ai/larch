@@ -896,6 +896,44 @@ run_subject "$root" "$tmp" "$tmp/rc"
 assert_rc "$tmp/rc" 4 "bump branch guard exits 4 when current branch mismatches BRANCH_NAME"
 assert_state_line "$tmp/ship-pr-state.sh" "STALL_STEP=bump-branch-guard" "bump branch guard records STALL_STEP for branch mismatch"
 
+root=$(make_repo bump_branch_guard_master)
+tmp=$(make_tmpdir)
+write_state "$tmp/ship-pr-state.sh" bump
+sed -i.bak 's/^BRANCH_NAME=.*/BRANCH_NAME=master/' "$tmp/ship-pr-state.sh"
+run_subject "$root" "$tmp" "$tmp/rc"
+assert_rc "$tmp/rc" 4 "bump branch guard exits 4 when BRANCH_NAME is master"
+assert_state_line "$tmp/ship-pr-state.sh" "STALL_STEP=bump-branch-guard" "bump branch guard records STALL_STEP for master BRANCH_NAME"
+
+root=$(make_repo bump_branch_guard_empty_branch)
+tmp=$(make_tmpdir)
+git -C "$root" checkout -q --detach
+write_state "$tmp/ship-pr-state.sh" bump
+sed -i.bak 's/^BRANCH_NAME=.*/BRANCH_NAME=/' "$tmp/ship-pr-state.sh"
+run_subject "$root" "$tmp" "$tmp/rc"
+assert_rc "$tmp/rc" 4 "bump branch guard exits 4 when BRANCH_NAME empty on detached HEAD"
+assert_state_line "$tmp/ship-pr-state.sh" "STALL_STEP=bump-branch-guard" "bump branch guard records STALL_STEP for empty BRANCH_NAME"
+
+root=$(make_repo bump_forked_main_ok)
+tmp=$(make_tmpdir)
+if git -C "$root" show-ref -q --verify refs/heads/main; then
+    git -C "$root" checkout -q main
+    _guard_default_branch=main
+elif git -C "$root" show-ref -q --verify refs/heads/master; then
+    git -C "$root" checkout -q master
+    _guard_default_branch=master
+else
+    printf 'bump_forked_main_ok: expected main or master ref\n' >&2
+    exit 1
+fi
+write_state "$tmp/ship-pr-state.sh" bump
+awk -v br="$_guard_default_branch" '
+    /^BRANCH_NAME=/ { print "BRANCH_NAME=" br; next }
+    /^FORKED_TARGET=/ { print "FORKED_TARGET=true"; next }
+    { print }
+' "$tmp/ship-pr-state.sh" > "$tmp/ship-pr-state.sh.new" && mv "$tmp/ship-pr-state.sh.new" "$tmp/ship-pr-state.sh"
+run_subject "$root" "$tmp" "$tmp/rc"
+assert_rc "$tmp/rc" 0 "forked bump allows protected default branch name when checkout matches"
+
 root=$(make_repo ci_initial)
 tmp=$(make_tmpdir)
 write_state "$tmp/ship-pr-state.sh" ci-initial

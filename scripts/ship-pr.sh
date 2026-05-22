@@ -807,10 +807,24 @@ run_checks_with_lint_fix_loop() {
 run_bump_phase() {
     local forked has_bump commits_before classify_out apply_out finalize_out status resume_phase error_text rc fail_file \
         _bump_guard_branch _bump_guard_state_branch _bump_guard_fail
+    forked=$(read_state FORKED_TARGET)
     _bump_guard_state_branch=$(read_state BRANCH_NAME)
     _bump_guard_branch=$(git branch --show-current 2>/dev/null || echo "")
-    if [[ "$_bump_guard_state_branch" == "main" || "$_bump_guard_state_branch" == "master" \
-        || "$_bump_guard_branch" != "$_bump_guard_state_branch" ]]; then
+    if [[ -z "$_bump_guard_state_branch" || -z "$_bump_guard_branch" ]]; then
+        _bump_guard_fail=$(failure_capture_path bump)
+        printf 'bump-branch-guard: BRANCH_NAME=%s current=%s\n' \
+            "$_bump_guard_state_branch" "$_bump_guard_branch" > "$_bump_guard_fail"
+        record_failure bump "bump-branch-guard" 1 "$_bump_guard_fail"
+        exit_stall bump-branch-guard
+    fi
+    if [[ "$_bump_guard_branch" != "$_bump_guard_state_branch" ]]; then
+        _bump_guard_fail=$(failure_capture_path bump)
+        printf 'bump-branch-guard: BRANCH_NAME=%s current=%s\n' \
+            "$_bump_guard_state_branch" "$_bump_guard_branch" > "$_bump_guard_fail"
+        record_failure bump "bump-branch-guard" 1 "$_bump_guard_fail"
+        exit_stall bump-branch-guard
+    fi
+    if [[ "$forked" != "true" ]] && { [[ "$_bump_guard_state_branch" == "main" ]] || [[ "$_bump_guard_state_branch" == "master" ]]; }; then
         _bump_guard_fail=$(failure_capture_path bump)
         printf 'bump-branch-guard: BRANCH_NAME=%s current=%s\n' \
             "$_bump_guard_state_branch" "$_bump_guard_branch" > "$_bump_guard_fail"
@@ -818,7 +832,6 @@ run_bump_phase() {
         exit_stall bump-branch-guard
     fi
     emit_breadcrumb "→ ship-pr: version bump"
-    forked=$(read_state FORKED_TARGET)
     has_bump=$(read_state HAS_BUMP)
     if [ "$forked" = "true" ] || [ "$has_bump" = "false" ]; then
         state_set_many HAS_BUMP false BUMP_TYPE NONE NEW_VERSION "" BUMP_REASONING_FILE ""

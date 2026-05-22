@@ -42,6 +42,11 @@ grep -Fq 'scripts/tracking-issue-summary.sh' "$SKILL_MD" \
 grep -Fq 'summary-comment-template.md' "$SKILL_MD" \
   || fail "SKILL.md must reference summary-comment-template.md"
 
+grep -Fq 'git-current-branch.sh' "$SKILL_MD" \
+  || fail "SKILL.md Step 2.2 must reference git-current-branch.sh (post-dispatch branch assertion)"
+grep -Fq 'FINAL_BAIL_REASON=main-branch-post-dispatch' "$SKILL_MD" \
+  || fail "SKILL.md Step 2.2 must document FINAL_BAIL_REASON=main-branch-post-dispatch"
+
 if grep -Eiq '(^|[^[:alpha:]])user has( made| fixed)?([^[:alpha:]]|$)' \
     "$SKILL_MD" \
     "$REPO_ROOT/skills/review-and-fix/scripts/review-and-fix.md" \

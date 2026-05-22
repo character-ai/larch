@@ -37,8 +37,9 @@
 #   - --workflow HARD passed to a stub-Codex run results in --timeout 7200.
 #   - --workflow omitted (default) passed to a stub-Codex run results in --timeout 3600
 #     (default workflow resolves to SIMPLE).
-#   - Test 19: scratch repo on `main` + `session-env.sh` with `ISSUE_NUMBER` →
-#     `main-branch-prohibited` before stub Cursor runs.
+#   - Test 19 / 19a / 19b: protected spawn branch (`main` or `master`) +
+#     issue-anchored tmpdir → `main-branch-prohibited` before stub Cursor runs
+#     (19b: `ISSUE_NUMBER` from `parent-issue.md` when absent from session-env).
 #
 # External-implementer spawning paths (manifest validation, dispatcher-side commit,
 # sanitization, launcher-retry) are covered by separate launcher / end-to-end tests;
@@ -968,7 +969,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Test 19: cursor path on protected spawn branch → main-branch-prohibited
+# Test 19 / 19a / 19b: cursor path on protected spawn branch → main-branch-prohibited
 # before any external launcher runs (issue: commits on main when branch
 # creation fails).
 # ---------------------------------------------------------------------------
@@ -999,6 +1000,14 @@ exit 99
 EOF
 chmod +x "$STUB_CURSOR_19"
 
+assert_main_branch_prohibited_cursor() {
+    local out=$1
+    [[ "$out" == *"STATUS=bailed"* ]] \
+        && [[ "$out" == *"REASON=main-branch-prohibited"* ]] \
+        && [[ "$out" == *"TOOL=cursor"* ]] \
+        && [[ "$out" == *"ORCHESTRATOR_EDIT_AUTHORITY=forbidden"* ]]
+}
+
 OUT_19=$(cd "$SCRATCH_REPO19" && \
     PATH="$STUB_BIN_19:$PATH" \
     RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
@@ -1010,13 +1019,74 @@ OUT_19=$(cd "$SCRATCH_REPO19" && \
     "$DISPATCHER" --tmpdir "$TMP19" --plan-file "$PLAN" --feature-file "$FEATURE" \
         --coder cursor --cursor-present true 2>&1)
 
-if [[ "$OUT_19" == *"STATUS=bailed"* ]] \
-   && [[ "$OUT_19" == *"REASON=main-branch-prohibited"* ]] \
-   && [[ "$OUT_19" == *"TOOL=cursor"* ]] \
-   && [[ "$OUT_19" == *"ORCHESTRATOR_EDIT_AUTHORITY=forbidden"* ]]; then
+if assert_main_branch_prohibited_cursor "$OUT_19"; then
     pass
 else
-    fail 19 "repo on main with healthy cursor should bail main-branch-prohibited before launcher, got: $OUT_19"
+    fail 19 "expected main-branch-prohibited bail before PATH-stubbed cursor runs; stub must not execute; got: $OUT_19"
+fi
+
+TMP19A="$SCRATCH/test19a"; mkdir -p "$TMP19A"
+printf 'fresh-step2-19a\n' > "$TMP19A/session-id"
+SCRATCH_REPO19A="$SCRATCH/scratch-repo-19a"
+mkdir -p "$SCRATCH_REPO19A"
+git -C "$SCRATCH_REPO19A" init -q -b master
+git -C "$SCRATCH_REPO19A" config user.email "test@example.com"
+git -C "$SCRATCH_REPO19A" config user.name "Test"
+echo "initial" > "$SCRATCH_REPO19A/README.md"
+git -C "$SCRATCH_REPO19A" add README.md
+git -C "$SCRATCH_REPO19A" commit -q -m "init"
+cat > "$TMP19A/session-env.sh" <<'ENV'
+ISSUE_NUMBER=2486
+FORKED_TARGET=false
+ENV
+
+OUT_19A=$(cd "$SCRATCH_REPO19A" && \
+    PATH="$STUB_BIN_19:$PATH" \
+    RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
+    LARCH_QUIET_DISABLE=1 \
+    LARCH_CURSOR_MODEL="stub-model" \
+    CURSOR_API_KEY="" \
+    LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 \
+    LIB_CURSOR_AUTH_TEST_UNAME="Linux" \
+    "$DISPATCHER" --tmpdir "$TMP19A" --plan-file "$PLAN" --feature-file "$FEATURE" \
+        --coder cursor --cursor-present true 2>&1)
+
+if assert_main_branch_prohibited_cursor "$OUT_19A"; then
+    pass
+else
+    fail "19-master" "expected main-branch-prohibited on master spawn branch before stub cursor; got: $OUT_19A"
+fi
+
+TMP19B="$SCRATCH/test19b"; mkdir -p "$TMP19B"
+printf 'fresh-step2-19b\n' > "$TMP19B/session-id"
+SCRATCH_REPO19B="$SCRATCH/scratch-repo-19b"
+mkdir -p "$SCRATCH_REPO19B"
+git -C "$SCRATCH_REPO19B" init -q -b main
+git -C "$SCRATCH_REPO19B" config user.email "test@example.com"
+git -C "$SCRATCH_REPO19B" config user.name "Test"
+echo "initial" > "$SCRATCH_REPO19B/README.md"
+git -C "$SCRATCH_REPO19B" add README.md
+git -C "$SCRATCH_REPO19B" commit -q -m "init"
+cat > "$TMP19B/session-env.sh" <<'ENV'
+FORKED_TARGET=false
+ENV
+printf 'ISSUE_NUMBER=2486\nRUN_ID=r-test\nADOPTED=true\n' > "$TMP19B/parent-issue.md"
+
+OUT_19B=$(cd "$SCRATCH_REPO19B" && \
+    PATH="$STUB_BIN_19:$PATH" \
+    RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
+    LARCH_QUIET_DISABLE=1 \
+    LARCH_CURSOR_MODEL="stub-model" \
+    CURSOR_API_KEY="" \
+    LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 \
+    LIB_CURSOR_AUTH_TEST_UNAME="Linux" \
+    "$DISPATCHER" --tmpdir "$TMP19B" --plan-file "$PLAN" --feature-file "$FEATURE" \
+        --coder cursor --cursor-present true 2>&1)
+
+if assert_main_branch_prohibited_cursor "$OUT_19B"; then
+    pass
+else
+    fail "19-parent-issue" "expected main-branch-prohibited from parent-issue ISSUE_NUMBER without session ISSUE_NUMBER; got: $OUT_19B"
 fi
 
 # ---------------------------------------------------------------------------

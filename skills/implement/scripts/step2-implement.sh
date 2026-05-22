@@ -296,16 +296,31 @@ if [[ ! -f "$SPAWN_BRANCH_FILE" ]]; then
 fi
 SPAWN_BRANCH=$(cat "$SPAWN_BRANCH_FILE")
 
-# Bail if spawned on a protected branch during an issue-anchored implement run
-# (session-env carries ISSUE_NUMBER; fork mode skips this guard).
+# Bail if spawned on a protected branch during an issue-anchored implement run.
+# Issue identity may live in parent-issue.md (Step 0.5) while session-env does
+# not always persist ISSUE_NUMBER; treat either durable parent-issue ISSUE_NUMBER
+# or the presence of session-env as sufficient signal that this is an /implement
+# tmpdir (fail-closed on main/master). Fork mode skips via FORKED_TARGET.
 SESSION_ENV_FILE="$TMPDIR_ARG/session-env.sh"
+PARENT_ISSUE_FILE="$TMPDIR_ARG/parent-issue.md"
+_issue_from_parent=""
+if [[ -f "$PARENT_ISSUE_FILE" ]]; then
+    _issue_from_parent=$(awk 'BEGIN{FS="="} /^ISSUE_NUMBER=/ { print $2; exit }' "$PARENT_ISSUE_FILE" 2>/dev/null || true)
+    _issue_from_parent=${_issue_from_parent//$'\r'/}
+fi
 if [[ "$SPAWN_BRANCH" == "main" || "$SPAWN_BRANCH" == "master" ]]; then
+    _forked_target="false"
     if [[ -f "$SESSION_ENV_FILE" ]]; then
         _forked_target=$("$PLUGIN_ROOT/scripts/read-session-env-key.sh" --file "$SESSION_ENV_FILE" --key FORKED_TARGET --default "false" 2>/dev/null || printf '%s\n' "false")
-        _session_issue=$("$PLUGIN_ROOT/scripts/read-session-env-key.sh" --file "$SESSION_ENV_FILE" --key ISSUE_NUMBER --default "" 2>/dev/null || true)
-        if [[ "$_forked_target" != "true" && -n "$_session_issue" ]]; then
-            emit_bailed "main-branch-prohibited"
-        fi
+    fi
+    _issue_anchored=false
+    if [[ -n "$_issue_from_parent" ]]; then
+        _issue_anchored=true
+    elif [[ -f "$SESSION_ENV_FILE" ]]; then
+        _issue_anchored=true
+    fi
+    if [[ "$_forked_target" != "true" && "$_issue_anchored" == "true" ]]; then
+        emit_bailed "main-branch-prohibited"
     fi
 fi
 

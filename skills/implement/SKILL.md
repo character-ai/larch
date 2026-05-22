@@ -491,7 +491,7 @@ Probe locations:
   path only: `--step 2-post-dispatch`. Do not probe when
   `STATUS=claude_fallback`; Claude-fallback implementation files are
   uncommitted until Step 4. On the same `STATUS=complete` path, after this
-  probe, the orchestrator runs the §2.2 post-dispatch branch assertion
+  probe, the orchestrator runs the Section 2.2 post-dispatch branch assertion
   (`git-current-branch.sh` vs Step 1 `BRANCH_NAME`) before Step 3.
 - After Step 4.r: `--step 4.r-post-rebase`.
 - After Step 7.r, only when `FILES_CHANGED=true`: `--step 7.r-post-rebase`.
