@@ -33,10 +33,21 @@ fi
 if [[ "$1" == "pr" ]]; then
     case "$2" in
         create)
+            if [[ -n "${GH_STUB_CREATE_RC:-}" && "${GH_STUB_CREATE_RC}" != "0" ]]; then
+                echo "stub pr create failed" >&2
+                exit "${GH_STUB_CREATE_RC}"
+            fi
+            if [[ "${GH_STUB_CREATE_NO_URL:-}" == "1" ]]; then
+                echo "PR created (no URL line in stub output)"
+                exit 0
+            fi
             echo "https://github.com/owner/repo/pull/101"
             exit 0
             ;;
         merge)
+            if [[ -n "${GH_STUB_MERGE_RC:-}" && "${GH_STUB_MERGE_RC}" != "0" ]]; then
+                exit "${GH_STUB_MERGE_RC}"
+            fi
             if [[ -n "${TEST_CLONE_ROOT:-}" && -n "${TEST_MERGE_BRANCH:-}" ]]; then
                 git -C "$TEST_CLONE_ROOT" fetch origin "$TEST_MERGE_BRANCH" >/dev/null 2>&1 || true
                 git -C "$TEST_CLONE_ROOT" merge FETCH_HEAD -m "test merge design log" >/dev/null 2>&1 || true
@@ -49,7 +60,11 @@ if [[ "$1" == "pr" ]]; then
             exit 0
             ;;
         list)
-            echo '[{"number":101}]'
+            if printf '%s\n' "$*" | grep -q -- '--jq'; then
+                echo '101'
+            else
+                echo '[{"number":101}]'
+            fi
             exit 0
             ;;
     esac
@@ -79,25 +94,65 @@ setup_clone_with_origin_head() {
     printf '%s\n' "$clone"
 }
 
-echo "=== dry-run emits ok without gh ==="
-TMPDR=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-dry.XXXXXX")
-trap 'rm -rf "$TMPDR"' EXIT
-mkdir -p "$TMPDR/design"
-printf 'x\n' >"$TMPDR/design/a.txt"
+echo "=== dry-run preflight inside git worktree ==="
+DRYROOT=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-dry.XXXXXX")
+trap 'rm -rf "$DRYROOT"' EXIT
+DRYCLONE=$(setup_clone_with_origin_head "$DRYROOT")
+STUBDR="$DRYROOT/minigh"
+mkdir -p "$STUBDR"
+cat >"$STUBDR/gh" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+chmod +x "$STUBDR/gh"
+mkdir -p "$DRYROOT/design"
+printf 'x\n' >"$DRYROOT/design/a.txt"
 out=$(
-    cd "$TMPDR" && bash "$PUBLISH" --design-tmpdir "$TMPDR/design" --run-id "RUN1AB" --issue 9 --dry-run
+    cd "$DRYCLONE" && PATH="$STUBDR:$PATH" bash "$PUBLISH" --design-tmpdir "$DRYROOT/design" --run-id "RUN1AB" --issue 9 --dry-run
 )
 [[ "$out" == *"PUBLISH_OK=true"* ]] || fail "dry-run missing PUBLISH_OK=true: $out"
 
+echo "=== invalid issue 0 ==="
+out=$(
+    (cd "$DRYCLONE" && PATH="$STUBDR:$PATH" bash "$PUBLISH" --design-tmpdir "$DRYROOT/design" --run-id "RUN1AB" --issue 0 --dry-run) 2>/dev/null || true
+)
+[[ "$out" == *"PUBLISH_OK=false"* ]] || fail "issue 0 should fail: $out"
+
 echo "=== invalid run-id ==="
 out=$(
-    (cd "$TMPDR" && bash "$PUBLISH" --design-tmpdir "$TMPDR/design" --run-id '../bad' --issue 9) 2>/dev/null || true
+    (cd "$DRYCLONE" && PATH="$STUBDR:$PATH" bash "$PUBLISH" --design-tmpdir "$DRYROOT/design" --run-id '../bad' --issue 9) 2>/dev/null || true
 )
 [[ "$out" == *"PUBLISH_OK=false"* ]] || fail "bad slug should fail: $out"
 
+echo "=== jq required for non-dry-run ==="
+JQTEST=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-jq.XXXXXX")
+trap 'rm -rf "$DRYROOT" "$JQTEST"' EXIT
+clone_j=$(setup_clone_with_origin_head "$JQTEST")
+stub_j="$JQTEST/stub"
+mkdir -p "$stub_j"
+cat >"$stub_j/gh" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+chmod +x "$stub_j/gh"
+cat >"$stub_j/jq" <<'EOF'
+#!/usr/bin/env bash
+exit 127
+EOF
+chmod +x "$stub_j/jq"
+GH_STUB_LOG="$JQTEST/gh.log"
+: >"$GH_STUB_LOG"
+export GH_STUB_LOG
+mkdir -p "$JQTEST/design"
+printf 'a\n' >"$JQTEST/design/f.txt"
+out_j=$(
+    (cd "$clone_j" && PATH="$stub_j:$PATH" GH_STUB_LOG="$GH_STUB_LOG" bash "$PUBLISH" --design-tmpdir "$JQTEST/design" --run-id "RUNJQ1" --issue 1 --repo owner/repo) 2>/dev/null || true
+)
+[[ "$out_j" == *"PUBLISH_OK=false"* ]] || fail "broken jq stub should fail publish: $out_j"
+
 echo "=== happy path + sidecar trim + render-cache ==="
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/tdlp.XXXXXX")
-trap 'rm -rf "$TMP" "$TMPDR"' EXIT
+trap 'rm -rf "$DRYROOT" "$JQTEST" "$TMP"' EXIT
 clone=$(setup_clone_with_origin_head "$TMP")
 stub="$TMP/stub"
 GH_STUB_LOG="$TMP/gh.log"
@@ -107,11 +162,13 @@ make_gh_stub "$stub"
 export PATH="$stub:$PATH"
 export TEST_CLONE_ROOT="$clone"
 export TEST_MERGE_BRANCH="larch-log-design-RUNPUB1"
+unset GH_STUB_CREATE_NO_URL GH_STUB_CREATE_RC GH_STUB_MERGE_RC
 
 mkdir -p "$TMP/design/render-cache/nested"
 printf 'body\n' >"$TMP/design/plan.txt"
 printf 'CMD_JSON=["secret"]\nkeep\n' >"$TMP/design/out.txt.meta"
 printf '{"ok":1,"result":{"token":"x"}}\n' >"$TMP/design/voter-output-1.json"
+printf '{"x":1,"result":{"y":2}}\n' >"$TMP/design/plain.json"
 printf 'deep\n' >"$TMP/design/render-cache/nested/c.txt"
 
 (
@@ -127,9 +184,59 @@ git -C "$clone" pull -q origin main
 grep -q '^keep$' "$clone/larch-logs/design/RUNPUB1/out.txt.meta" || fail "meta trim failed"
 ! grep -q CMD_JSON "$clone/larch-logs/design/RUNPUB1/out.txt.meta" || fail "CMD_JSON should be stripped"
 ! grep -q '"result"' "$clone/larch-logs/design/RUNPUB1/voter-output-1.json" || fail ".result should be stripped"
+! grep -q '"result"' "$clone/larch-logs/design/RUNPUB1/plain.json" || fail ".result should be stripped in plain.json"
 grep -qE '"ok"[[:space:]]*:[[:space:]]*1' "$clone/larch-logs/design/RUNPUB1/voter-output-1.json" || fail "json body missing"
 grep -q 'pr create' "$GH_STUB_LOG" || fail "expected gh pr create in log"
 grep -q 'pr merge' "$GH_STUB_LOG" || fail "expected gh pr merge in log"
+
+wt_lines=$(git -C "$clone" worktree list | wc -l | tr -d ' ')
+[[ "$wt_lines" == "1" ]] || fail "expected single worktree, got: $(git -C "$clone" worktree list)"
+[[ $(git -C "$clone" branch --list 'larch-log-design-*' | wc -l | tr -d ' ') -eq 0 ]] || fail "unexpected local larch-log-design-* branch after publish"
+[[ -z $(git -C "$clone" status --porcelain) ]] || fail "clone should be clean: $(git -C "$clone" status --porcelain)"
+
+echo "=== pr create without URL falls back to pr list/view ==="
+TMPU=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-url.XXXXXX")
+clone_u=$(setup_clone_with_origin_head "$TMPU")
+stub_u="$TMPU/stub"
+make_gh_stub "$stub_u"
+export PATH="$stub_u:$PATH"
+export TEST_CLONE_ROOT="$clone_u"
+export TEST_MERGE_BRANCH="larch-log-design-RUNURL1"
+export GH_STUB_CREATE_NO_URL=1
+unset GH_STUB_CREATE_RC GH_STUB_MERGE_RC
+mkdir -p "$TMPU/design"
+printf 'z\n' >"$TMPU/design/p.txt"
+(
+    cd "$clone_u" || exit 1
+    outu=$(bash "$PUBLISH" --design-tmpdir "$TMPU/design" --run-id "RUNURL1" --issue 7 --repo owner/repo)
+    [[ "$outu" == *"PUBLISH_OK=true"* ]] || fail "fallback URL path PUBLISH_OK: $outu"
+    [[ "$outu" == *"PR_NUMBER=101"* ]] || fail "fallback URL path PR_NUMBER: $outu"
+)
+unset GH_STUB_CREATE_NO_URL
+
+echo "=== merge failure preserves PR lines and RECOVERY_BRANCH ==="
+TMPM=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-merge.XXXXXX")
+clone_m=$(setup_clone_with_origin_head "$TMPM")
+stub_m="$TMPM/stub"
+GH_STUB_LOG="$TMPM/gh-merge.log"
+: >"$GH_STUB_LOG"
+export GH_STUB_LOG
+make_gh_stub "$stub_m"
+export PATH="$stub_m:$PATH"
+export TEST_CLONE_ROOT="$clone_m"
+export TEST_MERGE_BRANCH="larch-log-design-RUNMERGE1"
+export GH_STUB_MERGE_RC=1
+unset GH_STUB_CREATE_NO_URL GH_STUB_CREATE_RC
+mkdir -p "$TMPM/design"
+printf 'm\n' >"$TMPM/design/m.txt"
+out_m=$(
+    (cd "$clone_m" && bash "$PUBLISH" --design-tmpdir "$TMPM/design" --run-id "RUNMERGE1" --issue 3 --repo owner/repo) 2>/dev/null || true
+)
+[[ "$out_m" == *"PUBLISH_OK=false"* ]] || fail "merge fail PUBLISH_OK: $out_m"
+[[ "$out_m" == *"PR_NUMBER=101"* ]] || fail "merge fail PR_NUMBER: $out_m"
+[[ "$out_m" == *"RECOVERY_BRANCH=larch-log-design-RUNMERGE1"* ]] || fail "merge fail RECOVERY_BRANCH: $out_m"
+grep -q 'pr merge' "$GH_STUB_LOG" || fail "expected pr merge in stub log"
+unset GH_STUB_MERGE_RC
 
 echo "=== trim fail-closed on bad json sidecar ==="
 TMP2=$(mktemp -d "${TMPDIR:-/tmp}/tdlp2.XXXXXX")
@@ -137,9 +244,9 @@ clone2=$(setup_clone_with_origin_head "$TMP2")
 stub2="$TMP2/stub"
 make_gh_stub "$stub2"
 export PATH="$stub2:$PATH"
-unset TEST_CLONE_ROOT TEST_MERGE_BRANCH
+unset TEST_CLONE_ROOT TEST_MERGE_BRANCH GH_STUB_LOG
 mkdir -p "$TMP2/design"
-printf 'not-json' >"$TMP2/design/bad-output-x.json"
+printf 'not-json' >"$TMP2/design/bad.json"
 out2=$(
     (cd "$clone2" && bash "$PUBLISH" --design-tmpdir "$TMP2/design" --run-id "RUNBAD1" --issue 1 --repo owner/repo) 2>/dev/null || true
 )
