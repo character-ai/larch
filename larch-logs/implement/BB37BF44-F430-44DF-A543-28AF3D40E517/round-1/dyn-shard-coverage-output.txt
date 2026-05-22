@@ -1,0 +1,13 @@
+Gathering the diff and commit list to audit Makefile shard assignments for duplicates, drops, and coverage-guard ordering.
+
+Extracting all `test-harnesses-N` prerequisites from the Makefile on main and HEAD to verify set equality and duplicates. Read-only shell commands.
+
+### In-Scope Findings
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+- **risk-integration** `larch-logs/implement/BB37BF44-F430-44DF-A543-28AF3D40E517` (new files on branch) — The branch adds a flushed `/implement` run directory (`manifest.json`, `parent-issue.md`, `plan-goals-test.md`, `plan-review-tally.json`) alongside the CI/Makefile edits; that is unrelated to shard correctness and may be intentional process noise, but it widens the PR blast radius beyond the stated CI-speed goal. **Suggested fix:** If the PR is meant to be narrowly scoped to CI, omit the larch-logs commit; if run logs are required by repo policy, keep them and mention the issue/run id in the PR body for reviewers.
+
+- **code-quality** `Makefile:115-118` — The updated shard comment says remaining harnesses were “greedy-packed into shards 5–20 by count (LPT tie-break)”, which mixes “by count” with LPT wording in a way that does not match a strict longest-processing-time-first description. **Suggested fix:** Tighten the comment to describe the actual procedure (e.g., measured timings for heavy harnesses, then greedy fill of the rest using the recorded weights) so future rebalances follow the same recipe as `docs/linting.md`.
+
+**Shard-coverage audit (basis for NO_ISSUES_FOUND):** Compared `test-harnesses-1`–`20` prerequisites on `main` vs `HEAD` as sorted unique sets — identical, so nothing was dropped or newly orphaned on those lines. `uniq -d` over all shard prerequisites on `HEAD` is empty — no duplicate assignments. `test-harness-shards-coverage` is the first prerequisite on `test-harnesses-5` (`Makefile:50`). Isolated targets `test-dispatch-code-voters-retry-claude`, `test-dispatch-code-voters-retry-codex-success`, `test-dispatch-code-voters-retry-cursor`, `test-dispatch-code-voters-retry-codex-fail-and-fallback`, `test-plan-block`, `test-clarify-comment`, and `test-clarify-state` each appear exactly once on shard lines `17`, `19`, `20`, `18`, `20`, `9`, and `10` respectively (`Makefile:58-80`).
