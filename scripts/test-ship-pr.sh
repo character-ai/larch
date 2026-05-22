@@ -904,6 +904,28 @@ run_subject "$root" "$tmp" "$tmp/rc"
 assert_rc "$tmp/rc" 4 "bump branch guard exits 4 when BRANCH_NAME is master"
 assert_state_line "$tmp/ship-pr-state.sh" "STALL_STEP=bump-branch-guard" "bump branch guard records STALL_STEP for master BRANCH_NAME"
 
+root=$(make_repo bump_branch_guard_aligned_nonfork)
+tmp=$(make_tmpdir)
+if git -C "$root" show-ref -q --verify refs/heads/main; then
+    git -C "$root" checkout -q main
+    _align_default=main
+elif git -C "$root" show-ref -q --verify refs/heads/master; then
+    git -C "$root" checkout -q master
+    _align_default=master
+else
+    printf 'bump_branch_guard_aligned_nonfork: expected main or master ref\n' >&2
+    exit 1
+fi
+write_state "$tmp/ship-pr-state.sh" bump
+awk -v br="$_align_default" '
+    /^BRANCH_NAME=/ { print "BRANCH_NAME=" br; next }
+    /^FORKED_TARGET=/ { print "FORKED_TARGET=false"; next }
+    { print }
+' "$tmp/ship-pr-state.sh" > "$tmp/ship-pr-state.sh.new" && mv "$tmp/ship-pr-state.sh.new" "$tmp/ship-pr-state.sh"
+run_subject "$root" "$tmp" "$tmp/rc"
+assert_rc "$tmp/rc" 4 "bump branch guard exits 4 when checkout matches main/master and FORKED_TARGET=false"
+assert_state_line "$tmp/ship-pr-state.sh" "STALL_STEP=bump-branch-guard" "aligned default-branch bump uses protected-name bump-branch-guard path"
+
 root=$(make_repo bump_branch_guard_empty_branch)
 tmp=$(make_tmpdir)
 git -C "$root" checkout -q --detach
@@ -933,6 +955,33 @@ awk -v br="$_guard_default_branch" '
 ' "$tmp/ship-pr-state.sh" > "$tmp/ship-pr-state.sh.new" && mv "$tmp/ship-pr-state.sh.new" "$tmp/ship-pr-state.sh"
 run_subject "$root" "$tmp" "$tmp/rc"
 assert_rc "$tmp/rc" 0 "forked bump allows protected default branch name when checkout matches"
+
+root=$(make_repo bump_resume_phase_branch_guard)
+tmp=$(make_tmpdir)
+cat > "$root/.claude/skills/bump-version/scripts/classify-bump.sh" <<'STUB'
+#!/usr/bin/env bash
+printf 'classify-bump invoked before bump-branch-guard\n' >&2
+exit 99
+STUB
+chmod +x "$root/.claude/skills/bump-version/scripts/classify-bump.sh"
+if git -C "$root" show-ref -q --verify refs/heads/main; then
+    git -C "$root" checkout -q main
+    _resume_bump_branch=main
+elif git -C "$root" show-ref -q --verify refs/heads/master; then
+    git -C "$root" checkout -q master
+    _resume_bump_branch=master
+else
+    printf 'bump_resume_phase_branch_guard: expected main or master ref\n' >&2
+    exit 1
+fi
+write_state "$tmp/ship-pr-state.sh" bump
+awk -v br="$_resume_bump_branch" '
+    /^BRANCH_NAME=/ { print "BRANCH_NAME=" br; next }
+    { print }
+' "$tmp/ship-pr-state.sh" > "$tmp/ship-pr-state.sh.new" && mv "$tmp/ship-pr-state.sh.new" "$tmp/ship-pr-state.sh"
+run_subject "$root" "$tmp" "$tmp/rc" --resume-phase bump
+assert_rc "$tmp/rc" 4 "--resume-phase bump re-entry runs bump-branch-guard before classify bump"
+assert_state_line "$tmp/ship-pr-state.sh" "STALL_STEP=bump-branch-guard" "resume bump records bump-branch-guard on protected default branch"
 
 root=$(make_repo ci_initial)
 tmp=$(make_tmpdir)

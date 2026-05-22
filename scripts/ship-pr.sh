@@ -826,10 +826,11 @@ run_bump_phase() {
         record_failure bump "bump-branch-guard" 1 "$_bump_guard_fail"
         exit_stall bump-branch-guard
     fi
-    # FORKED_TARGET=true is a runbook/state trust signal: when BRANCH_NAME matches
-    # checkout, bump may proceed on main/master (forked upstream-target flow).
-    # A mistaken FORKED_TARGET=true is operator mis-configuration; there is no
-    # extra fork-evidence probe beyond state + branch-name alignment.
+    # FORKED_TARGET=true is an intentional operator/runbook trust signal
+    # documented in scripts/ship-pr.md: when BRANCH_NAME matches checkout, bump may
+    # proceed on main/master for forked upstream-target flows. Non-forked runs
+    # always stall here on those branch names even when checkout matches.
+    # There is no extra fork-evidence probe beyond state + branch-name alignment.
     if [[ "$forked" != "true" ]] && { [[ "$_bump_guard_state_branch" == "main" ]] || [[ "$_bump_guard_state_branch" == "master" ]]; }; then
         _bump_guard_fail=$(failure_capture_path bump)
         printf 'bump-branch-guard: BRANCH_NAME=%s current=%s\n' \

@@ -32,4 +32,6 @@ All tokens route to Step 12d.
 
 `main-branch-prohibited` — `step2-implement.sh` pre-launcher guard when spawn-time branch is `main` or `master` on an issue-anchored, non-forked run (`parent-issue.md` `ISSUE_NUMBER=` **or** `session-env.sh` present; `FORKED_TARGET` from session-env when that file exists).
 
+`detached-head-prohibited` — same predicates when spawn-time symbolic branch is empty (detached / no branch) or legacy `HEAD` from older spawn-branch captures.
+
 Free-form: any other implementer-authored string; preserved verbatim (KV-sanitized, capped ~200 chars).

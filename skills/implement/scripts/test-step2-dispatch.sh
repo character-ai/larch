@@ -40,6 +40,9 @@
 #   - Test 19 / 19a / 19b: protected spawn branch (`main` or `master`) +
 #     issue-anchored tmpdir → `main-branch-prohibited` before stub Cursor runs
 #     (19b: `ISSUE_NUMBER` from `parent-issue.md` when absent from session-env).
+#   - Test 19d: `main` spawn with neither session-env nor parent-issue (unanchored
+#     harness tmpdir) → must not emit `main-branch-prohibited`; stub launcher runs.
+#   - Test 19e: detached HEAD + issue-anchored session-env → `detached-head-prohibited`.
 #
 # External-implementer spawning paths (manifest validation, dispatcher-side commit,
 # sanitization, launcher-retry) are covered by separate launcher / end-to-end tests;
@@ -1123,6 +1126,74 @@ elif [[ "$OUT_19C" != *"REASON=cursor-runtime-failure"* ]] || [[ "$OUT_19C" != *
     fail 19c "fork carve-out: expected launcher attempt (cursor-runtime-failure + TOOL=cursor); got: $OUT_19C"
 else
     pass
+fi
+
+# Test 19d: main spawn without issue-anchor signals — must not main-branch-prohibited.
+TMP19D="$SCRATCH/test19d"; mkdir -p "$TMP19D"
+printf 'fresh-step2-19d\n' > "$TMP19D/session-id"
+SCRATCH_REPO19D="$SCRATCH/scratch-repo-19d"
+mkdir -p "$SCRATCH_REPO19D"
+git -C "$SCRATCH_REPO19D" init -q -b main
+git -C "$SCRATCH_REPO19D" config user.email "test@example.com"
+git -C "$SCRATCH_REPO19D" config user.name "Test"
+echo "initial" > "$SCRATCH_REPO19D/README.md"
+git -C "$SCRATCH_REPO19D" add README.md
+git -C "$SCRATCH_REPO19D" commit -q -m "init"
+
+OUT_19D=$(cd "$SCRATCH_REPO19D" && \
+    PATH="$STUB_BIN_19:$PATH" \
+    RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
+    LARCH_QUIET_DISABLE=1 \
+    LARCH_CURSOR_MODEL="stub-model" \
+    CURSOR_API_KEY="" \
+    LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 \
+    LIB_CURSOR_AUTH_TEST_UNAME="Linux" \
+    "$DISPATCHER" --tmpdir "$TMP19D" --plan-file "$PLAN" --feature-file "$FEATURE" \
+        --coder cursor --cursor-present true 2>&1)
+
+if [[ "$OUT_19D" == *"REASON=main-branch-prohibited"* ]]; then
+    fail 19d "unanchored tmpdir must not emit main-branch-prohibited on main; got: $OUT_19D"
+elif [[ "$OUT_19D" != *"REASON=cursor-runtime-failure"* ]] || [[ "$OUT_19D" != *"TOOL=cursor"* ]]; then
+    fail 19d "unanchored main: expected launcher attempt (cursor-runtime-failure + TOOL=cursor); got: $OUT_19D"
+else
+    pass
+fi
+
+# Test 19e: detached HEAD + issue-anchored session-env → detached-head-prohibited.
+TMP19E="$SCRATCH/test19e"; mkdir -p "$TMP19E"
+printf 'fresh-step2-19e\n' > "$TMP19E/session-id"
+SCRATCH_REPO19E="$SCRATCH/scratch-repo-19e"
+mkdir -p "$SCRATCH_REPO19E"
+git -C "$SCRATCH_REPO19E" init -q -b main
+git -C "$SCRATCH_REPO19E" config user.email "test@example.com"
+git -C "$SCRATCH_REPO19E" config user.name "Test"
+echo "initial" > "$SCRATCH_REPO19E/README.md"
+git -C "$SCRATCH_REPO19E" add README.md
+git -C "$SCRATCH_REPO19E" commit -q -m "init"
+git -C "$SCRATCH_REPO19E" checkout -q --detach
+cat > "$TMP19E/session-env.sh" <<'ENV'
+ISSUE_NUMBER=2486
+FORKED_TARGET=false
+ENV
+
+OUT_19E=$(cd "$SCRATCH_REPO19E" && \
+    PATH="$STUB_BIN_19:$PATH" \
+    RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
+    LARCH_QUIET_DISABLE=1 \
+    LARCH_CURSOR_MODEL="stub-model" \
+    CURSOR_API_KEY="" \
+    LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 \
+    LIB_CURSOR_AUTH_TEST_UNAME="Linux" \
+    "$DISPATCHER" --tmpdir "$TMP19E" --plan-file "$PLAN" --feature-file "$FEATURE" \
+        --coder cursor --cursor-present true 2>&1)
+
+if [[ "$OUT_19E" == *"STATUS=bailed"* ]] \
+    && [[ "$OUT_19E" == *"REASON=detached-head-prohibited"* ]] \
+    && [[ "$OUT_19E" == *"TOOL=cursor"* ]] \
+    && [[ "$OUT_19E" == *"ORCHESTRATOR_EDIT_AUTHORITY=forbidden"* ]]; then
+    pass
+else
+    fail 19e "expected detached-head-prohibited before stub cursor on detached HEAD; got: $OUT_19E"
 fi
 
 # ---------------------------------------------------------------------------

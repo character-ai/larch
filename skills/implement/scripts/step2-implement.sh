@@ -291,10 +291,14 @@ fi
 BASELINE_SHA=$(cat "$BASELINE_FILE")
 
 if [[ ! -f "$SPAWN_BRANCH_FILE" ]]; then
-    git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD > "$SPAWN_BRANCH_FILE.tmp"
+    # Match scripts/git-current-branch.sh / ship-pr bump guard: symbolic-ref is
+    # empty on detached HEAD; rev-parse --abbrev-ref mis-reports "HEAD".
+    {
+        git -C "$REPO_ROOT" symbolic-ref -q --short HEAD 2>/dev/null || true
+    } > "$SPAWN_BRANCH_FILE.tmp"
     mv "$SPAWN_BRANCH_FILE.tmp" "$SPAWN_BRANCH_FILE"
 fi
-SPAWN_BRANCH=$(cat "$SPAWN_BRANCH_FILE")
+SPAWN_BRANCH=$(tr -d '\r\n' < "$SPAWN_BRANCH_FILE" || true)
 
 # Bail if spawned on a protected branch during an issue-anchored implement run.
 # Issue identity may live in parent-issue.md (Step 0.5) while session-env does
@@ -308,17 +312,23 @@ if [[ -f "$PARENT_ISSUE_FILE" ]]; then
     _issue_from_parent=$(awk 'BEGIN{FS="="} /^ISSUE_NUMBER=/ { print $2; exit }' "$PARENT_ISSUE_FILE" 2>/dev/null || true)
     _issue_from_parent=${_issue_from_parent//$'\r'/}
 fi
+_forked_target="false"
+if [[ -f "$SESSION_ENV_FILE" ]]; then
+    _forked_target=$("$PLUGIN_ROOT/scripts/read-session-env-key.sh" --file "$SESSION_ENV_FILE" --key FORKED_TARGET --default "false" 2>/dev/null || printf '%s\n' "false")
+fi
+_issue_anchored=false
+if [[ -n "$_issue_from_parent" ]]; then
+    _issue_anchored=true
+elif [[ -f "$SESSION_ENV_FILE" ]]; then
+    _issue_anchored=true
+fi
+# Legacy spawn files may still contain "HEAD" from older rev-parse --abbrev-ref captures.
+if [[ "$_forked_target" != "true" && "$_issue_anchored" == "true" ]]; then
+    if [[ -z "$SPAWN_BRANCH" || "$SPAWN_BRANCH" == "HEAD" ]]; then
+        emit_bailed "detached-head-prohibited"
+    fi
+fi
 if [[ "$SPAWN_BRANCH" == "main" || "$SPAWN_BRANCH" == "master" ]]; then
-    _forked_target="false"
-    if [[ -f "$SESSION_ENV_FILE" ]]; then
-        _forked_target=$("$PLUGIN_ROOT/scripts/read-session-env-key.sh" --file "$SESSION_ENV_FILE" --key FORKED_TARGET --default "false" 2>/dev/null || printf '%s\n' "false")
-    fi
-    _issue_anchored=false
-    if [[ -n "$_issue_from_parent" ]]; then
-        _issue_anchored=true
-    elif [[ -f "$SESSION_ENV_FILE" ]]; then
-        _issue_anchored=true
-    fi
     if [[ "$_forked_target" != "true" && "$_issue_anchored" == "true" ]]; then
         emit_bailed "main-branch-prohibited"
     fi
