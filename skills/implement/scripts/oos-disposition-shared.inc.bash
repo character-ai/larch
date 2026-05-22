@@ -24,7 +24,7 @@ count_filed_urls_union_files() {
 
 count_rejected_oos_markers_from_ndjson() {
   local ndjson="$1"
-  local line b tail tmp uniq_n
+  local line b tail tmp uniq_n jq_failed=0
   tmp=$(mktemp "${TMPDIR:-/tmp}/oos-rej-oos-tags.XXXXXX")
   : >"$tmp"
   [ ! -f "$ndjson" ] || [ ! -s "$ndjson" ] && {
@@ -34,10 +34,12 @@ count_rejected_oos_markers_from_ndjson() {
   }
   while IFS= read -r line || [ -n "${line:-}" ]; do
     [ -z "$line" ] && continue
-    b=$(printf '%s' "$line" | jq -r '.body // empty' 2>/dev/null) || {
-      printf '%s\n' 'oos-disposition-shared: jq failed parsing oos-issues.ndjson line (skipping line)' >&2
+    if ! printf '%s' "$line" | jq -e 'type == "object"' >/dev/null 2>&1; then
+      printf '%s\n' 'oos-disposition-shared: jq failed parsing oos-issues.ndjson line' >&2
+      jq_failed=1
       continue
-    }
+    fi
+    b=$(printf '%s' "$line" | jq -r '.body // ""')
     case "$b" in
       *'Rejected / Out-of-Scope'* | *'## Rejected'*) ;;
       *) continue ;;
@@ -62,4 +64,8 @@ count_rejected_oos_markers_from_ndjson() {
   fi
   rm -f "$tmp"
   printf '%s' "${uniq_n:-0}"
+  if [ "$jq_failed" -ne 0 ]; then
+    return 2
+  fi
+  return 0
 }

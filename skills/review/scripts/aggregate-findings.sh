@@ -288,6 +288,13 @@ def normalize_slot(sl):
 
 EMPTY_MERGE_ATTESTATION = "LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED"
 
+# End of "Suggested revisions" sub-list: only known top-level finding fields,
+# not arbitrary "- **Capital..." lines that may appear inside folded revision text.
+_REVISION_SUBLIST_END_HEADING = re.compile(
+    r"^-\s*\*\*(?:Reviewer(?:\(s\))?|Reviewers?|Concern|Justification|Suggested revisions?)\*\*:",
+    re.IGNORECASE,
+)
+
 
 def input_blocks_by_slot(text):
     """Map each normalized slot to a list of raw block texts that cite it."""
@@ -312,7 +319,7 @@ def suggested_revisions_bullets(block):
             continue
         if in_revisions:
             # New top-level field stops the sub-list
-            if re.match(r"^-\s*\*\*[A-Z]", s):
+            if _REVISION_SUBLIST_END_HEADING.match(s):
                 if pending_from:
                     bullets.append(
                         (pending_from[0], " ".join(pending_from[1]).strip())
@@ -399,14 +406,31 @@ def check_revision_traceability(input_text, output_blocks_list):
         output_slots_norm = output_reviewer_slots_norm(block)
         bullets = suggested_revisions_bullets(block)
         singular = singular_suggested_revision(block)
-        if singular and not bullets:
-            bullets = [("(merged reviewers)", singular)]
-        if not bullets:
+        bid = finding_id_from_block(block) or "?"
+        if singular and bullets:
+            warnings.append(
+                "both legacy singular Suggested revision and multi-reviewer revision "
+                "bullets present in %s" % (bid,)
+            )
+        if not bullets and not singular:
             continue
-        for slot_label, revision_text in bullets:
-            norm_slot = normalize_slot(slot_label) if slot_label != "(merged reviewers)" else None
+        trace_items = []
+        if bullets:
+            trace_items.extend(bullets)
+        if singular:
+            trace_items.append(
+                ("(legacy singular Suggested revision)", singular)
+                if bullets
+                else ("(merged reviewers)", singular)
+            )
+        for slot_label, revision_text in trace_items:
+            norm_slot = (
+                None
+                if slot_label
+                in ("(merged reviewers)", "(legacy singular Suggested revision)")
+                else normalize_slot(slot_label)
+            )
             if norm_slot is not None and norm_slot not in slot_map:
-                bid = finding_id_from_block(block) or "?"
                 warnings.append(
                     "unknown From slot label %r in %s (not present on any input finding)"
                     % (slot_label, bid)
@@ -425,7 +449,6 @@ def check_revision_traceability(input_text, output_blocks_list):
                 )
             found = revision_traceable_in_blocks(revision_text, scoped)
             if not found:
-                bid = finding_id_from_block(block) or "?"
                 warnings.append(
                     "fix text for slot %r in %s not traceable to scoped input "
                     "(first 80 chars: %r)" % (slot_label, bid, revision_text[:80])
