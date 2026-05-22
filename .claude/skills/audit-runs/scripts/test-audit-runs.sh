@@ -1228,10 +1228,12 @@ if [ -x "$SCAN_SCRIPT" ]; then
         --current-version "29.0.0")
     st_res=$(printf '%s\n' "$r35c_lines" | jq -r 'select(.scan=="cursor-ci-stall-causes") | .result // empty' | head -1)
     st_cnt=$(printf '%s\n' "$r35c_lines" | jq -r 'select(.scan=="cursor-ci-stall-causes") | .count // empty' | head -1)
+    st_pf=$(printf '%s\n' "$r35c_lines" | jq -r 'select(.scan=="cursor-ci-stall-causes") | .parsed_files // empty' | head -1)
     st_ch=$(printf '%s\n' "$r35c_lines" | jq -c -S 'select(.scan=="cursor-ci-stall-causes") | .channels // empty' | head -1)
     want_ch=$(printf '%s\n' '{"stdout":1,"tree:/tmp/x":1,"UNKNOWN":1}' | jq -c -S .)
     assert_equal "$st_res" "informational" "[35c] cursor-ci-stall-causes → informational when sidecars exist"
     assert_equal "$st_cnt" "3" "[35c2] cursor-ci-stall-causes counts all glob matches"
+    assert_equal "$st_pf" "2" "[35c2b] cursor-ci-stall-causes parsed_files counts jq-parseable files"
     assert_equal "$st_ch" "$want_ch" "[35c3] cursor-ci-stall-causes channel histogram"
     rm -rf "$R35C_TMP"
 else

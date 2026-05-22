@@ -406,7 +406,7 @@ scan_ns_retry_sidecars() {
 
 # ---- Scan: cursor-ci-stall-causes ----
 scan_cursor_ci_stall_causes() {
-    local files=() channels_json payload
+    local files=() channels_json payload parsed=0 channels_detail_kv=""
     shopt -s nullglob
     for f in "$RUN_DIR"/round-*/cursor-ci-stall-*.json; do
         [ -f "$f" ] || continue
@@ -414,16 +414,24 @@ scan_cursor_ci_stall_causes() {
     done
     shopt -u nullglob
     if [ "${#files[@]}" -eq 0 ]; then
-        emit "{\"scan\":\"cursor-ci-stall-causes\",\"pr\":$PR_NUM,\"result\":\"pass\",\"count\":0,\"channels\":{}}"
+        emit "{\"scan\":\"cursor-ci-stall-causes\",\"pr\":$PR_NUM,\"result\":\"pass\",\"count\":0,\"parsed_files\":0,\"channels\":{}}"
         return
     fi
     payload=""
     for f in "${files[@]}"; do
+        if jq -e . "$f" >/dev/null 2>&1; then
+            parsed=$((parsed + 1))
+        fi
         payload+=$(jq -c '{c:(.channel//"UNKNOWN"|tostring)}' "$f" 2>/dev/null || echo '{"c":"UNKNOWN"}')$'\n'
     done
-    channels_json=$(printf '%s' "$payload" | jq -s 'map(.c) | sort | group_by(.) | map({(.[0]): length}) | add // {}' 2>/dev/null || printf '{}')
+    channels_json=$(printf '%s' "$payload" | jq -sc 'map(.c) | sort | group_by(.) | map({(.[0]): length}) | add // {}' 2>/dev/null || printf '{}')
     [ -z "$channels_json" ] && channels_json="{}"
-    emit "{\"scan\":\"cursor-ci-stall-causes\",\"pr\":$PR_NUM,\"result\":\"informational\",\"count\":${#files[@]},\"channels\":$channels_json}"
+    # If jq failed (or produced an empty object) while files were counted, roll up so count matches channels.
+    if [ "${#files[@]}" -gt 0 ] && [ "$channels_json" = "{}" ]; then
+        channels_json=$(jq -nc --argjson n "${#files[@]}" '{"UNKNOWN":$n}' 2>/dev/null || printf '{"UNKNOWN":%s}' "${#files[@]}")
+        channels_detail_kv=",\"channels_detail\":\"$(jstr 'channel histogram unavailable (jq failed or empty output); rolled up to UNKNOWN')\""
+    fi
+    emit "{\"scan\":\"cursor-ci-stall-causes\",\"pr\":$PR_NUM,\"result\":\"informational\",\"count\":${#files[@]},\"parsed_files\":$parsed,\"channels\":$channels_json$channels_detail_kv}"
 }
 
 # ---- Scan: codex-round1-adherence ----

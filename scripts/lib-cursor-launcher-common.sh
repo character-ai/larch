@@ -113,11 +113,22 @@ cursor_launcher_cursor_ci_stall_sidecar_dir() {
     return 1
 }
 
-# Emit round-N/cursor-ci-stall-<unix_ts>.json under the implement run log when
+# Pipe stdin through scripts/redact-secrets.sh when executable; passthrough on miss/fail.
+cursor_launcher_redact_stdin() {
+    local h="${SCRIPT_DIR:-}"
+    [[ -z "$h" ]] && h="$(cd "${BASH_SOURCE[0]%/*}" && pwd)"
+    if [[ -x "$h/redact-secrets.sh" ]]; then
+        "$h/redact-secrets.sh" 2>/dev/null || cat
+    else
+        cat
+    fi
+}
+
+# Emit round-N/cursor-ci-stall-<unix_ts>-<pid>-<rand>.json under the implement run log when
 # jq(1) is available. Best-effort only; failures are ignored.
 cursor_launcher_emit_cursor_ci_stall_json_sidecar() {
     local channel="$1" target_pid="$2" elapsed="$3" output_file="$4" diag_file="$5"
-    local sidecar_dir out_json tmp_json ps_tmp lsof_tmp tr_tmp
+    local sidecar_dir out_json tmp_json ps_tmp lsof_tmp tr_tmp myuid os _scr _rf _p
     if ! command -v jq >/dev/null 2>&1; then
         return 0
     fi
@@ -136,6 +147,8 @@ cursor_launcher_emit_cursor_ci_stall_json_sidecar() {
         return 0
     }
 
+    myuid=$(id -u 2>/dev/null || echo 0)
+    os=$(uname -s 2>/dev/null || echo "")
     {
         printf '%s\n' "--- stall ps snapshot (target pid=${target_pid}) ---"
         ps -p "$target_pid" -o pid,pcpu,etime,stat 2>/dev/null || printf '%s\n' "(target not found)"
@@ -146,30 +159,96 @@ cursor_launcher_emit_cursor_ci_stall_json_sidecar() {
                 ps -p "$_cpid" -o pid,pcpu,etime,stat 2>/dev/null || true
             done < <(pgrep -P "$target_pid" 2>/dev/null || true)
         fi
-        printf '%s\n' "--- stall ps snapshot (ps -ef | grep [c]ursor; capped) ---"
-        # shellcheck disable=SC2009 # full argv context for stall forensics; pgrep -af is narrower than ps -ef
-        ps -ef 2>/dev/null | grep '[c]ursor' | head -n 80 || true
+        printf '%s\n' "--- stall ps snapshot (this uid only; argv; capped; residual cross-uid argv match risk) ---"
+        # shellcheck disable=SC2009 # argv snapshot for stall forensics; scope to operator uid to avoid unrelated users on shared hosts
+        case "$os" in
+            Darwin) ps -ax -u "$myuid" -o pid=,pcpu=,etime=,command= 2>/dev/null | grep '[c]ursor' | head -n 80 || true ;;
+            *) ps -u "$myuid" -ww -o pid=,pcpu=,etime=,args= 2>/dev/null | grep '[c]ursor' | head -n 80 || true ;;
+        esac
     } >"$ps_tmp" || : >"$ps_tmp"
 
     if command -v lsof >/dev/null 2>&1; then
-        lsof -nP -p "$target_pid" 2>/dev/null | head -n 400 >"$lsof_tmp" || : >"$lsof_tmp"
+        if command -v timeout >/dev/null 2>&1; then
+            timeout 3 lsof -nP -p "$target_pid" 2>/dev/null | head -n 400 >"$lsof_tmp" || : >"$lsof_tmp"
+        elif command -v gtimeout >/dev/null 2>&1; then
+            gtimeout 3 lsof -nP -p "$target_pid" 2>/dev/null | head -n 400 >"$lsof_tmp" || : >"$lsof_tmp"
+        else
+            lsof -nP -p "$target_pid" 2>/dev/null | head -n 400 >"$lsof_tmp" || : >"$lsof_tmp"
+        fi
     else
         : >"$lsof_tmp"
     fi
 
     {
         printf '%s\n' "--- stdout tail ---"
-        tail -n 25 "$output_file" 2>/dev/null || true
+        tail -n 50 "$output_file" 2>/dev/null || true
         printf '%s\n' "--- stderr diag tail ---"
-        tail -n 25 "$diag_file" 2>/dev/null || true
+        tail -n 50 "$diag_file" 2>/dev/null || true
     } >"$tr_tmp" || : >"$tr_tmp"
 
-    local git_porcelain="" rebase_patch=""
-    git_porcelain=$(git status --porcelain 2>/dev/null || true)
-    rebase_patch=$(git rebase --show-current-patch 2>/dev/null | head -n 80 || true)
+    _scr="${SCRIPT_DIR:-}"
+    [[ -z "$_scr" ]] && _scr="$(cd "${BASH_SOURCE[0]%/*}" && pwd)"
+    _rf="$_scr/redact-secrets.sh"
+    if [[ -x "$_rf" ]]; then
+        if command -v timeout >/dev/null 2>&1; then
+            for _p in "$ps_tmp" "$lsof_tmp" "$tr_tmp"; do
+                rm -f "${_p}.r"
+                if timeout 8 "$_rf" <"$_p" >"${_p}.r" 2>/dev/null; then
+                    mv -f "${_p}.r" "$_p" 2>/dev/null || rm -f "${_p}.r"
+                else
+                    rm -f "${_p}.r"
+                fi
+            done
+        elif command -v gtimeout >/dev/null 2>&1; then
+            for _p in "$ps_tmp" "$lsof_tmp" "$tr_tmp"; do
+                rm -f "${_p}.r"
+                if gtimeout 8 "$_rf" <"$_p" >"${_p}.r" 2>/dev/null; then
+                    mv -f "${_p}.r" "$_p" 2>/dev/null || rm -f "${_p}.r"
+                else
+                    rm -f "${_p}.r"
+                fi
+            done
+        else
+            for _p in "$ps_tmp" "$lsof_tmp" "$tr_tmp"; do
+                rm -f "${_p}.r"
+                if "$_rf" <"$_p" >"${_p}.r" 2>/dev/null; then
+                    mv -f "${_p}.r" "$_p" 2>/dev/null || rm -f "${_p}.r"
+                else
+                    rm -f "${_p}.r"
+                fi
+            done
+        fi
+    fi
 
-    out_json="${sidecar_dir}/cursor-ci-stall-$(date +%s).json"
-    tmp_json="${out_json}.tmp"
+    local git_porcelain="" rebase_patch=""
+    if command -v timeout >/dev/null 2>&1; then
+        git_porcelain=$(timeout 3 git status --porcelain 2>/dev/null | head -n 200 || true)
+    elif command -v gtimeout >/dev/null 2>&1; then
+        git_porcelain=$(gtimeout 3 git status --porcelain 2>/dev/null | head -n 200 || true)
+    else
+        git_porcelain=$(git status --porcelain 2>/dev/null | head -n 200 || true)
+    fi
+    git_porcelain=$(printf '%s' "$git_porcelain" | head -c 32000)
+    git_porcelain=$(printf '%s' "$git_porcelain" | cursor_launcher_redact_stdin)
+    if [[ -d .git/rebase-merge || -d .git/rebase-apply ]]; then
+        if command -v timeout >/dev/null 2>&1; then
+            rebase_patch=$(timeout 3 git rebase --show-current-patch 2>/dev/null | head -n 80 || true)
+        elif command -v gtimeout >/dev/null 2>&1; then
+            rebase_patch=$(gtimeout 3 git rebase --show-current-patch 2>/dev/null | head -n 80 || true)
+        else
+            rebase_patch=$(git rebase --show-current-patch 2>/dev/null | head -n 80 || true)
+        fi
+        rebase_patch=$(printf '%s' "$rebase_patch" | head -c 32000)
+        rebase_patch=$(printf '%s' "$rebase_patch" | cursor_launcher_redact_stdin)
+    else
+        rebase_patch=""
+    fi
+
+    out_json="${sidecar_dir}/cursor-ci-stall-$(date +%s)-$$-${RANDOM}.json"
+    tmp_json=$(mktemp "${sidecar_dir}/.cursor-ci-stall.XXXXXX") || {
+        rm -f "$ps_tmp" "$lsof_tmp" "$tr_tmp"
+        return 0
+    }
     if ! jq -nc \
         --arg channel "$channel" \
         --argjson pid "$target_pid" \
@@ -187,9 +266,10 @@ cursor_launcher_emit_cursor_ci_stall_json_sidecar() {
             ps: $ps,
             lsof: $lsof,
             git_state: {status_porcelain: $git_status, rebase_patch_excerpt: $rebase_patch},
+            transcript_tail_contract: "non_interleaved: stdout_block_then_stderr_block",
             last_transcript_lines: (
               $lines
-              | if length > 50 then .[-50:] else . end
+              | if length > 110 then .[-110:] else . end
             )
           }' >"$tmp_json" 2>/dev/null; then
         rm -f "$ps_tmp" "$lsof_tmp" "$tr_tmp" "$tmp_json"
@@ -329,7 +409,6 @@ cursor_launcher_run_stall_monitor() {
                     done < <(pgrep -P "$target_pid" 2>/dev/null || true)
                 fi
             } >>"$diag_file"
-            cursor_launcher_emit_cursor_ci_stall_json_sidecar "$channel" "$target_pid" "$elapsed" "$output_file" "$diag_file" || true
             # Kill inner agent PIDs first (run-external-agent's child), then the wrapper, so
             # SIGKILL on the wrapper cannot leave a long-lived cursor/sleep orphan.
             if command -v pgrep >/dev/null 2>&1; then
@@ -339,6 +418,8 @@ cursor_launcher_run_stall_monitor() {
                 done < <(pgrep -P "$target_pid" 2>/dev/null || true)
             fi
             kill -TERM "$target_pid" 2>/dev/null || true
+            # Heavy stall JSON (ps/lsof/git/tails) runs after SIGTERM so diagnostics cannot block kill delivery.
+            cursor_launcher_emit_cursor_ci_stall_json_sidecar "$channel" "$target_pid" "$elapsed" "$output_file" "$diag_file" || true
             sleep 2
             if command -v pgrep >/dev/null 2>&1; then
                 while read -r _cpid; do

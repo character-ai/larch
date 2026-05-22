@@ -271,6 +271,7 @@ else
         ps_nonempty=$(jq -r '.ps' "$sc0" 2>/dev/null | wc -c | tr -d ' ')
         if [[ "$ch7" == "stdout" ]]; then ok "stall fixture 7 channel stdout"; else fail "stall fixture 7 channel (got $ch7)"; fi
         if [[ "${ps_nonempty:-0}" -gt 20 ]]; then ok "stall fixture 7 ps payload"; else fail "stall fixture 7 ps too small ($ps_nonempty)"; fi
+        if ! jq -e '.git_state | type == "object" and (.status_porcelain | type == "string") and (.rebase_patch_excerpt | type == "string")' "$sc0" >/dev/null 2>&1; then fail "stall fixture 7 git_state shape"; else ok "stall fixture 7 git_state shape"; fi
         if command -v lsof >/dev/null 2>&1; then
             lz=$(jq -r '.lsof // empty' "$sc0" 2>/dev/null | wc -c | tr -d ' ')
             if [[ "${lz:-0}" -gt 10 ]]; then ok "stall fixture 7 lsof captured"; else fail "stall fixture 7 lsof empty ($lz)"; fi
