@@ -1,17 +1,17 @@
 ---
 name: compress-skill
-description: "Use when compressing an existing skill's prose. Rewrites SKILL.md and reachable .md (excluding sub-skills) with Strunk & White style. Delegates to `/implement --merge --auto` for a PR."
-argument-hint: "<skill-name-or-path>"
+description: "Use when compressing an existing skill's prose. Rewrites SKILL.md and reachable .md (excluding sub-skills) with Strunk & White style. Delegates to `/implement --merge` with a positional issue after `/design` has written the plan to that issue."
+argument-hint: "<issue-N> <skill-name-or-path>"
 allowed-tools: Bash, Skill
 ---
 
 # compress-skill
 
-Rewrite an existing skill's Markdown prose to reduce size while preserving meaning, grammar, and every structural element. Pure delegator: validates the target, enumerates the transitively-reachable `.md` set inside the skill directory, snapshots baseline sizes, and hands off to `/implement --merge --auto` for branch creation, `/design`, implementation (the actual file-by-file prose rewrite), code review, `/relevant-checks`, version bump, PR creation with the token-budget delta table in the body, CI wait, and auto-merge.
+Rewrite an existing skill's Markdown prose to reduce size while preserving meaning, grammar, and every structural element. Pure delegator: validates the target, enumerates the transitively-reachable `.md` set inside the skill directory, snapshots baseline sizes, and hands off to `/implement --merge <issue-N>` via the Skill tool for branch creation, implementation (the actual file-by-file prose rewrite), code review, `/relevant-checks`, version bump, PR creation with the token-budget delta table in the body, CI wait, and auto-merge. **Prerequisite flow**: run `/design <issue-N>` first so the GitHub issue body contains a valid `larch:plan` block; then run `/implement <issue-N>` via the Skill tool (with `--merge` when using this skill) — `/compress-skill` does **not** invoke `/design` from inside `/implement`, and `/implement` does not self-heal a missing plan.
 
-**Pipeline weight (vs. legacy quick-implement shortcuts).** This path runs the full `/implement` envelope: `/design` (including the heavy phase when applicable) and the unified hard Step 5 review loop — not the removed `/implement --quick` envelope. Unattended or low-budget runs can time out or exhaust tokens; hosts without `SendMessage` cannot recover from `/design` subagent suspend. When you need `/design` in the parent context, add `--inline` to the Step 3 `/implement` args (same skill invocation — see `skills/implement/SKILL.md` `--inline`). For plan-only runs without merge/PR, invoke `/implement --design-only` directly instead of this skill (`--design-only` is mutually exclusive with `--merge`).
+**Pipeline weight.** This path runs the full `/implement` envelope (including the unified hard Step 5 review loop) — not legacy quick-implement shortcuts. Unattended or low-budget runs can time out or exhaust tokens; hosts without `SendMessage` cannot recover from `/design` subagent suspend — use `/design --inline` on the **design** skill when required (see `skills/design/references/flags.md`). There is no `/implement --design-only` split: plan-only work is `/design` alone.
 
-Example: `/compress-skill implement` compresses `skills/implement/SKILL.md` plus every `.md` file reachable from it that resolves inside the `skills/implement/` directory tree.
+Example: `/compress-skill 123 implement` runs `/implement --merge 123` via the Skill tool after issue `#123` carries an in-body `larch:plan` that scopes compression of `skills/implement/`.
 
 ## Scope
 
@@ -29,25 +29,27 @@ The directory-tree restriction is the mechanical filter: references to files out
 
 1. **NEVER descend into sub-skills invoked via the `Skill` tool.** **Why:** sub-skills are independent compression targets with their own PR histories — pulling them into one refactor produces a PR too large to review. The coordinator enumerates only `.md` files physically under the target skill directory (plus transitive references that resolve inside it).
 2. **NEVER run `/compress-skill` on a skill with no `SKILL.md`.** **Why:** the resolver probes the plugin tree (`${CLAUDE_PLUGIN_ROOT}/skills/`), the in-plugin-repo `skills/` layout (for working inside larch itself), and the consumer-repo `.claude/skills/` layout — and fails closed when none contains the target. A missing `SKILL.md` means there is nothing to compress.
-3. **NEVER introduce feature or behavior changes during the compression pass.** **Why:** behavior-preserving is the contract; a semantic change disguised as a prose rewrite violates reviewer expectations and destabilizes downstream callers. The feature description pinned for `/implement` names this explicitly.
+3. **NEVER introduce feature or behavior changes during the compression pass.** **Why:** behavior-preserving is the contract; a semantic change disguised as a prose rewrite violates reviewer expectations and destabilizes downstream callers. The issue body's `larch:plan` (authored via `/design <issue-N>`) is the canonical scope contract for `/implement`.
 4. **NEVER target a plugin-namespaced form (e.g., `larch:implement`).** **Why:** the colon is not a valid directory character in the resolver's probed paths; the resolver rejects it. Pass the bare skill name only.
 5. **NEVER inline shell logic in this `SKILL.md`.** **Why:** Mechanical rule B — non-trivial shell lives in `.sh` scripts. Keeps this `SKILL.md` scannable; avoids copy-paste drift with `/simplify-skill`, `/alias`, and `/create-skill`.
 
 <!-- step:1 — Parse Arguments -->
 
-Parse flags from the start of `$ARGUMENTS` before the first positional token.
+Parse flags from the start of `$ARGUMENTS` before positional tokens.
 
 - `--run-id <ID>`: Optional run identifier; when set, used as the run ID for this invocation instead of the auto-generated one. Default: empty (auto-generate).
 
-After flag stripping, the next positional token is the **target skill name** (bare form, e.g. `implement`) or an **absolute path** to a skill directory. Strip a leading `/` if present on a bare name. Reject names containing `:` (no plugin-qualified forms — see NEVER #4).
+After flag stripping, the **first** positional token MUST match `^[0-9]+$` — bind as `ISSUE_NUMBER` (GitHub issue that already contains the `larch:plan` for this compression run). The **second** positional token is the **target skill name** (bare form, e.g. `implement`) or an **absolute path** to a skill directory. Strip a leading `/` if present on a bare name. Reject names containing `:` (no plugin-qualified forms — see NEVER #4). If fewer than two positionals remain after flags, refuse with a clear usage error.
 
 <!-- step:2 — Resolve Target and Build Feature Description -->
 
-Resolve the target skill directory, enumerate the in-scope `.md` files, snapshot baseline sizes, and compose the feature description for `/implement`. All of this runs in a single coordinator script per mechanical rule C (no consecutive Bash calls). The full stdout contract, exit-code semantics, and resolution order are documented in the sibling contract `${CLAUDE_PLUGIN_ROOT}/skills/compress-skill/scripts/build-feature-description.md`.
+Resolve the target skill directory, enumerate the in-scope `.md` files, snapshot baseline sizes, and compose a local feature-description artifact (for operator visibility and `/design` drafting). All of this runs in a single coordinator script per mechanical rule C (no consecutive Bash calls). The full stdout contract, exit-code semantics, and resolution order are documented in the sibling contract `${CLAUDE_PLUGIN_ROOT}/skills/compress-skill/scripts/build-feature-description.md`.
 
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/skills/compress-skill/scripts/build-feature-description.sh <skill-name-or-path>
 ```
+
+Use the **second** positional (`<skill-name-or-path>`) as the script argument (not the issue number).
 
 **Fail-closed verification.** Parse stdout for `STATUS`, `TARGET_DIR`, `SKILL_NAME`, `FILE_COUNT`, and `FEATURE_FILE`, then validate the result before proceeding:
 
@@ -56,12 +58,12 @@ ${CLAUDE_PLUGIN_ROOT}/skills/compress-skill/scripts/build-feature-description.sh
 - **`STATUS=bad_name`** — print the `ERROR=<message>` line from stdout and abort.
 - **No `STATUS=` line (script exited non-zero)** — print the error text from stderr and abort.
 
-The coordinator invokes `discover-md-set.sh` internally to BFS the transitive `.md` set from `SKILL.md`, then measures each file's byte and line count for the baseline. The style guide, anti-patterns, and judgment rules are embedded in the feature description so that `/implement`'s Step 2 has them inline.
+The coordinator invokes `discover-md-set.sh` internally to BFS the transitive `.md` set from `SKILL.md`, then measures each file's byte and line count for the baseline. The style guide, anti-patterns, and judgment rules are embedded in the generated feature description file so they can be copied into the issue plan during `/design` if they are not already present — `/implement` consumes the **issue body's plan**, not this temp file.
 
 <!-- step:3 — Delegate to /implement -->
 
 Invoke the Skill tool:
 - Try skill: `"implement"` first (bare name). If no skill matches, try skill: `"larch:implement"` (fully-qualified plugin name).
-- args: `--merge --auto` immediately followed by one space and the `FEATURE_DESCRIPTION` text read from `FEATURE_FILE` in Step 2 (bind this in the orchestrator's context before Step 2's `rm -f "$FEATURE_FILE"` cleanup — do not rely on re-reading the temp path in Step 3).
+- args: `--merge` immediately followed by one ASCII space and the **positional** GitHub issue number (digits only) for the tracking issue that already carries the `larch:plan` block and work scope. Bind the issue number in the orchestrator's context before Step 2's `rm -f "$FEATURE_FILE"` cleanup — do not rely on re-reading the temp path in Step 3.
 
-The `/implement --merge --auto` run covers branch creation, design, Step 2 implementation, the unified Step 5 review loop, `/relevant-checks`, version bump, PR creation with the token-budget delta table in the body, CI wait, and auto-merge. No post-invocation verification is needed at this level — `/implement`'s own internal gates (CI green, merge) are the authoritative signal, and this skill runs no further steps after the child returns.
+The `/implement --merge <issue-N>` run covers branch creation, Step 2 implementation, the unified Step 5 review loop, `/relevant-checks`, version bump, PR creation with the token-budget delta table in the body, CI wait, and auto-merge. No post-invocation verification is needed at this level — `/implement`'s own internal gates (CI green, merge) are the authoritative signal, and this skill runs no further steps after the child returns.

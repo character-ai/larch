@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
-# hook-post-design.sh — PostToolUse hook for post-/design boundary breadcrumbs.
+# hook-post-design.sh — PostToolUse hook after /design Skill tool use.
+#
+# Issue #2485: post-design-boundary dispatch was retired. This hook retains
+# only the session-id export for tmpdir resolution; it does not inject
+# hookSpecificOutput or invoke post-design-boundary.sh.
 #
 # set -e omitted: every probe must fail open; the hook must not block tool
 # completion. Intentional per .claude/rules/shell-strict-mode.md.
@@ -26,47 +30,15 @@ esac
 
 HOOK_CWD=$(printf '%s' "$INPUT" | jq -r '.cwd // ""' 2>/dev/null) || HOOK_CWD=""
 
-# Surface the active Claude Code session_id (passed by Claude Code in every
-# hook event payload) into LARCH_TOKEN_SESSION_ID so the resolver's
-# session-id binding branch is reachable in production. Without this,
-# `/implement` Step 0's in-bash export does not propagate to hook
-# subprocesses, leaving the resolver on the TTL-only fallback path. Empty
-# / missing / null session_id falls through to TTL — the resolver treats
-# unset LARCH_TOKEN_SESSION_ID as "no session signal available". See
-# lib-resolve-implement-tmpdir.sh session-id binding for the resolver-side
-# .larch-keepalive SESSION_ID match this export feeds.
 SID=$(printf '%s' "$INPUT" | jq -r '.session_id // ""' 2>/dev/null) || SID=""
 [[ -n "$SID" ]] && export LARCH_TOKEN_SESSION_ID="$SID"
 
 # shellcheck source=lib-resolve-implement-tmpdir.sh
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/lib-resolve-implement-tmpdir.sh"
-
 IMPLEMENT_TMPDIR=$(resolve_implement_tmpdir "$HOOK_CWD")
 [[ -n "$IMPLEMENT_TMPDIR" ]] || exit 0
 
-DESIGN_ONLY=false
-DO_FILE="$IMPLEMENT_TMPDIR/.design-only"
-if [[ -f "$DO_FILE" ]]; then
-    DO_VAL=$(head -n1 "$DO_FILE" 2>/dev/null | tr -d '[:space:]')
-    [[ "$DO_VAL" = "true" ]] && DESIGN_ONLY=true
-fi
-
-TMPOUT=$(mktemp 2>/dev/null) || exit 0
-trap 'rm -f "$TMPOUT"' EXIT
-
-if ! "$PLUGIN_ROOT/skills/implement/scripts/post-design-boundary.sh" \
-    --implement-tmpdir "$IMPLEMENT_TMPDIR" \
-    --session-env "$IMPLEMENT_TMPDIR/session-env.sh" \
-    --design-only "$DESIGN_ONLY" \
-    --hook-mode true \
-    > "$TMPOUT" 2>/dev/null; then
-    exit 0
-fi
-
-HOOK_OUTPUT=$(jq -cn --rawfile ctx "$TMPOUT" \
-    '{hookSpecificOutput:{hookEventName:"PostToolUse",additionalContext:$ctx}}' \
-    2>/dev/null) || exit 0
-emit "$HOOK_OUTPUT"
+emit_breadcrumb "ℹ hook-post-design: boundary injection retired (#2485); LARCH_TOKEN_SESSION_ID export retained."
 
 exit 0

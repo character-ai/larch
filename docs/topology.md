@@ -20,4 +20,4 @@ This document is a consumer-doc projection of runtime authorities. The runtime a
 | <a id="implement.conflict_review.rounds_max"></a>`implement.conflict_review.rounds_max` | 2 total | resolution-review rounds | `skills/implement/references/conflict-resolution.md` |
 | <a id="research.lanes"></a>`research.lanes` | four research lanes | architecture + edge cases + external comparisons + security | `skills/research/references/research-phase.md` |
 | <a id="research.validation_panel"></a>`research.validation_panel` | 3 reviewer lanes | Claude Code Reviewer subagent + Codex + Cursor | `skills/research/references/validation-phase.md` |
-| <a id="implement.review_and_fix.panel_hard"></a>`implement.review_and_fix.panel_hard` | 6 Cursor specialists | Hard and simple panels share the same static layout | `skills/review/scripts/dispatch-panel.sh` |
+| <a id="implement.review_and_fix.panel_hard"></a>`implement.review_and_fix.panel_hard` | 6 Cursor specialists | Unified hard review panel layout. SIMPLE/HARD differ only in Step 5 round-cap via workflow path | `skills/review/scripts/dispatch-panel.sh` |

@@ -279,7 +279,7 @@ run_orchestrator_case() {
     initial_head=$(git -C "$work" rev-parse HEAD)
     set +e
     out=$(TEST_AGENT_BEHAVIOR="$behavior" run_review_and_fix "$work" \
-        --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 --session-env-path "$implement_tmp/session-env.sh" --run-id "$label-run")
+        --implement-tmpdir "$implement_tmp" --mode diff --round-num 1 --session-env-path "$implement_tmp/session-env.sh" --run-id "$label-run")
     rc=$?
     set -e
     [[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "$label expected exit 0 got $rc"; }
@@ -348,7 +348,7 @@ out=$(
     REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-capture-dynamic-stub.sh" \
     REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
     REVIEW_AND_FIX_SCRUB_SUBMODULE_PATHS_SH="${REVIEW_AND_FIX_SCRUB_SUBMODULE_PATHS_SH:-$REPO_ROOT/scripts/scrub-submodule-paths.sh}" \
-    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 --session-env-path "$implement_tmp/session-env.sh" --run-id empty-env-run
+    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --round-num 1 --session-env-path "$implement_tmp/session-env.sh" --run-id empty-env-run
 )
 rc=$?
 set -e
@@ -364,7 +364,7 @@ printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env
 initial_head=$(git -C "$work_no_changes" rev-parse HEAD)
 set +e
 out=$(TEST_AGENT_BEHAVIOR=codex-no-changes run_review_and_fix "$work_no_changes" \
-    --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 --session-env-path "$implement_tmp/session-env.sh" --run-id no-changes-run)
+    --implement-tmpdir "$implement_tmp" --mode diff --round-num 1 --session-env-path "$implement_tmp/session-env.sh" --run-id no-changes-run)
 rc=$?
 set -e
 [[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "no-changes expected exit 0 got $rc"; }
@@ -384,7 +384,7 @@ mkdir -p "$implement_tmp"
 printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
 set +e
 out=$(TEST_CORE_STATUS=main-agent-vote-required run_review_and_fix "$work_main_agent" \
-    --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 --session-env-path "$implement_tmp/session-env.sh" --run-id main-agent-run)
+    --implement-tmpdir "$implement_tmp" --mode diff --round-num 1 --session-env-path "$implement_tmp/session-env.sh" --run-id main-agent-run)
 rc=$?
 set -e
 [[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "main-agent required expected exit 0 got $rc"; }
@@ -433,7 +433,7 @@ out=$(
     CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
     REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-rejected-stub.sh" \
     REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
-    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 --session-env-path "$implement_tmp/session-env.sh" --run-id rejected-full-run
+    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --round-num 1 --session-env-path "$implement_tmp/session-env.sh" --run-id rejected-full-run
 )
 grep -Fq 'REVIEW_AND_FIX_STATUS=complete' <<< "$out" || fail "rejected-full status"
 grep -Fq '## Round 1' "$implement_tmp/rejected-findings.md" || fail "rejected-full run-root missing round header"
@@ -460,7 +460,7 @@ out=$(
     CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
     REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-rejected-stub.sh" \
     REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
-    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 2 --session-env-path "$implement_tmp/session-env.sh" --run-id rejected-aggregate-run
+    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --round-num 2 --session-env-path "$implement_tmp/session-env.sh" --run-id rejected-aggregate-run
 )
 grep -Fq 'REVIEW_AND_FIX_STATUS=complete' <<< "$out" || fail "rejected-aggregate status"
 grep -Fq '## Round 1' "$implement_tmp/rejected-findings.md" || fail "rejected-aggregate missing round 1 header"
@@ -511,7 +511,7 @@ out=$(
     CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
     REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-rejected-fallback-stub.sh" \
     REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
-    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 --session-env-path "$implement_tmp/session-env.sh" --run-id rejected-fallback-run
+    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --round-num 1 --session-env-path "$implement_tmp/session-env.sh" --run-id rejected-fallback-run
 )
 grep -Fq 'REVIEW_AND_FIX_STATUS=complete' <<< "$out" || fail "rejected-fallback status"
 if grep -Fq '## Round 1' "$implement_tmp/rejected-findings.md"; then
@@ -526,7 +526,7 @@ mkdir -p "$implement_tmp"
 printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
 set +e
 out=$(TEST_CORE_STATUS=tally-fidelity TEST_AGENT_BEHAVIOR=codex-success run_review_and_fix "$work_tally" \
-    --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 --session-env-path "$implement_tmp/session-env.sh" --run-id tally-fidelity-run)
+    --implement-tmpdir "$implement_tmp" --mode diff --round-num 1 --session-env-path "$implement_tmp/session-env.sh" --run-id tally-fidelity-run)
 rc=$?
 set -e
 [[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "tally-fidelity expected exit 0 got $rc"; }
@@ -559,7 +559,7 @@ mkdir -p "$implement_tmp"
 printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
 set +e
 out=$(LARCH_QUIET_BREADCRUMBS=1 REVIEW_AND_FIX_COMPOSE_REVIEW_FINDINGS_SH="$TMP/compose-review-findings-fail-stub.sh" TEST_CORE_STATUS=zero run_review_and_fix "$work_compose_fail" \
-    --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 --session-env-path "$implement_tmp/session-env.sh" --run-id compose-fail-run)
+    --implement-tmpdir "$implement_tmp" --mode diff --round-num 1 --session-env-path "$implement_tmp/session-env.sh" --run-id compose-fail-run)
 rc=$?
 set -e
 [[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "compose-fail expected exit 0 got $rc"; }
@@ -574,7 +574,7 @@ mkdir -p "$implement_tmp"
 printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
 set +e
 out=$(TEST_AGENT_BEHAVIOR=claude-success run_review_and_fix "$work_claude" \
-    --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 --session-env-path "$implement_tmp/session-env.sh")
+    --implement-tmpdir "$implement_tmp" --mode diff --round-num 1 --session-env-path "$implement_tmp/session-env.sh")
 rc=$?
 set -e
 [[ "$rc" -eq 2 ]] || { echo "$out" >&2; fail "claude removed expected exit 2 got $rc"; }
@@ -589,7 +589,7 @@ mkdir -p "$implement_tmp"
 printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
 set +e
 out=$(TEST_AGENT_BEHAVIOR=all-fail run_review_and_fix "$work_fail" \
-    --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 --session-env-path "$implement_tmp/session-env.sh")
+    --implement-tmpdir "$implement_tmp" --mode diff --round-num 1 --session-env-path "$implement_tmp/session-env.sh")
 rc=$?
 set -e
 [[ "$rc" -eq 2 ]] || { echo "$out" >&2; fail "all-fail expected exit 2 got $rc"; }
@@ -604,7 +604,7 @@ mkdir -p "$implement_tmp"
 printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
 set +e
 out=$(LARCH_QUIET_BREADCRUMBS=1 CLAUDE_PLUGIN_OPTION_CURSOR_MODEL=' ' TEST_AGENT_BEHAVIOR=all-fail run_review_and_fix "$work_fail_early" \
-    --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 --session-env-path "$implement_tmp/session-env.sh")
+    --implement-tmpdir "$implement_tmp" --mode diff --round-num 1 --session-env-path "$implement_tmp/session-env.sh")
 rc=$?
 set -e
 [[ "$rc" -eq 2 ]] || { echo "$out" >&2; fail "all-fail early breadcrumb expected exit 2 got $rc"; }
@@ -626,7 +626,7 @@ mkdir -p "$implement_tmp"
 printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
 set +e
 out=$(TEST_AGENT_BEHAVIOR=submodule-violation run_review_and_fix "$work_sub" \
-    --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 --session-env-path "$implement_tmp/session-env.sh")
+    --implement-tmpdir "$implement_tmp" --mode diff --round-num 1 --session-env-path "$implement_tmp/session-env.sh")
 rc=$?
 set -e
 [[ "$rc" -eq 2 ]] || { echo "$out" >&2; fail "submodule violation expected exit 2 got $rc"; }
@@ -650,7 +650,7 @@ mkdir -p "$implement_tmp"
 printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
 set +e
 out=$(TEST_AGENT_BEHAVIOR=submodule-untracked-violation run_review_and_fix "$work_sub_untracked" \
-    --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 --session-env-path "$implement_tmp/session-env.sh")
+    --implement-tmpdir "$implement_tmp" --mode diff --round-num 1 --session-env-path "$implement_tmp/session-env.sh")
 rc=$?
 set -e
 [[ "$rc" -eq 2 ]] || { echo "$out" >&2; fail "submodule untracked violation expected exit 2 got $rc"; }
@@ -672,7 +672,7 @@ mkdir -p "$implement_tmp"
 printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
 set +e
 out=$(TEST_CORE_STATUS=submodule-finding TEST_AGENT_BEHAVIOR=all-fail run_review_and_fix "$work_scrubbed" \
-    --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 --session-env-path "$implement_tmp/session-env.sh")
+    --implement-tmpdir "$implement_tmp" --mode diff --round-num 1 --session-env-path "$implement_tmp/session-env.sh")
 rc=$?
 set -e
 [[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "scrubbed-out expected exit 0 got $rc"; }
@@ -694,7 +694,7 @@ mkdir -p "$implement_tmp"
 printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
 set +e
 out=$(REVIEW_AND_FIX_SCRUB_SUBMODULE_PATHS_SH="$TMP/scrub-fails-stub.sh" TEST_AGENT_BEHAVIOR=codex-success run_review_and_fix "$work_scrub_fail" \
-    --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 --session-env-path "$implement_tmp/session-env.sh")
+    --implement-tmpdir "$implement_tmp" --mode diff --round-num 1 --session-env-path "$implement_tmp/session-env.sh")
 rc=$?
 set -e
 [[ "$rc" -eq 2 ]] || { echo "$out" >&2; fail "scrub fail expected exit 2 got $rc"; }
@@ -709,7 +709,7 @@ mkdir -p "$implement_tmp"
 printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
 set +e
 out=$(TEST_CORE_STATUS=zero run_review_and_fix "$work_zero" \
-    --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 --session-env-path "$implement_tmp/session-env.sh" --run-id zero-run)
+    --implement-tmpdir "$implement_tmp" --mode diff --round-num 1 --session-env-path "$implement_tmp/session-env.sh" --run-id zero-run)
 rc=$?
 set -e
 [[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "zero expected exit 0 got $rc"; }
@@ -732,7 +732,7 @@ printf '# Review Round 2\nearly round\n' > "$implement_tmp/round-2/review-round-
 printf '{"schema_version":1,"rounds_completed":10,"accepted_count":0,"rejected_count":0}\n' > "$implement_tmp/round-10/review-summary.json"
 set +e
 out=$(TEST_CORE_STATUS=zero run_review_and_fix "$work_sorted" \
-    --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 10 --session-env-path "$implement_tmp/session-env.sh" --run-id sorted-run)
+    --implement-tmpdir "$implement_tmp" --mode diff --round-num 10 --session-env-path "$implement_tmp/session-env.sh" --run-id sorted-run)
 rc=$?
 set -e
 [[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "sorted summaries expected exit 0 got $rc"; }
@@ -764,7 +764,7 @@ cat > "$implement_tmp/round-2/rejected-findings.md" <<'EOF_REJECTED_COMPACT'
 EOF_REJECTED_COMPACT
 set +e
 out=$(TEST_CORE_STATUS=zero run_review_and_fix "$work_rejected_mix" \
-    --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 3 --session-env-path "$implement_tmp/session-env.sh" --run-id rejected-mix-run)
+    --implement-tmpdir "$implement_tmp" --mode diff --round-num 3 --session-env-path "$implement_tmp/session-env.sh" --run-id rejected-mix-run)
 rc=$?
 set -e
 [[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "mixed rejected aggregate expected exit 0 got $rc"; }
@@ -806,7 +806,7 @@ cat > "$implement_tmp/round-3/rejected-findings.md" <<'EOF_REJECTED_LEADING_BLAN
 EOF_REJECTED_LEADING_BLANK
 set +e
 out=$(TEST_CORE_STATUS=zero run_review_and_fix "$work_rejected_heading_edges" \
-    --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 4 --session-env-path "$implement_tmp/session-env.sh" --run-id rejected-heading-edges-run)
+    --implement-tmpdir "$implement_tmp" --mode diff --round-num 4 --session-env-path "$implement_tmp/session-env.sh" --run-id rejected-heading-edges-run)
 rc=$?
 set -e
 [[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "heading-edge rejected aggregate expected exit 0 got $rc"; }
@@ -835,7 +835,7 @@ mkdir -p "$implement_tmp"
 printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
 set +e
 out=$(TEST_CORE_STATUS=zero LARCH_QUIET_BREADCRUMBS=1 REVIEW_AND_FIX_WRITE_TALLY_SH="$TMP/write-tally-fails-stub.sh" run_review_and_fix "$work_flush_warn" \
-    --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 --session-env-path "$implement_tmp/session-env.sh" --run-id flush-warning-run 2>&1)
+    --implement-tmpdir "$implement_tmp" --mode diff --round-num 1 --session-env-path "$implement_tmp/session-env.sh" --run-id flush-warning-run 2>&1)
 rc=$?
 set -e
 [[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "flush warning expected exit 0 got $rc"; }
@@ -911,7 +911,7 @@ out=$(
     REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-skipped-stub.sh" \
     REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-skipped-stub.sh" \
     REVIEW_AND_FIX_LAUNCH_CLAUDE_SUBPROCESS_SH="$TMP/launch-claude-subprocess-stub.sh" \
-    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 --session-env-path "$implement_tmp/session-env.sh"
+    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --round-num 1 --session-env-path "$implement_tmp/session-env.sh"
 )
 rc=$?
 set -e
@@ -944,7 +944,7 @@ out=$(
     REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-skipped-stub.sh" \
     REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-skipped-stub.sh" \
     REVIEW_AND_FIX_LAUNCH_CLAUDE_SUBPROCESS_SH="$TMP/launch-claude-subprocess-stub.sh" \
-    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 --session-env-path "$implement_tmp/session-env.sh"
+    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --round-num 1 --session-env-path "$implement_tmp/session-env.sh"
 )
 rc=$?
 set -e
@@ -1018,7 +1018,7 @@ mkdir -p "$implement_tmp"
 printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
 set +e
 out=$(TEST_AGENT_BEHAVIOR=codex-success REVIEW_AND_FIX_LARCH_LOG_SH="$TMP/larch-log-write-round-fail-stub.sh" run_review_and_fix "$work_late_flush" \
-    --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 --session-env-path "$implement_tmp/session-env.sh" --run-id late-flush-run)
+    --implement-tmpdir "$implement_tmp" --mode diff --round-num 1 --session-env-path "$implement_tmp/session-env.sh" --run-id late-flush-run)
 rc=$?
 set -e
 [[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "late flush warning expected exit 0 got $rc"; }
@@ -1092,7 +1092,7 @@ out=$(
     REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
     REVIEW_AND_FIX_SCRUB_SUBMODULE_PATHS_SH="$REPO_ROOT/scripts/scrub-submodule-paths.sh" \
     TEST_SCOUT_STATUS=ok \
-    "$SCRIPT" --implement-tmpdir "$scout_impl_tmp" --mode diff --panel simple \
+    "$SCRIPT" --implement-tmpdir "$scout_impl_tmp" --mode diff \
         --round-num 1 --session-env-path "$scout_impl_tmp/session-env.sh" \
         --run-id "$scout_run_id"
 )
@@ -1131,7 +1131,7 @@ out=$(
     REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
     REVIEW_AND_FIX_SCRUB_SUBMODULE_PATHS_SH="$REPO_ROOT/scripts/scrub-submodule-paths.sh" \
     TEST_SCOUT_STATUS=panel-failed \
-    "$SCRIPT" --implement-tmpdir "$scout_panel_failed_impl_tmp" --mode diff --panel simple \
+    "$SCRIPT" --implement-tmpdir "$scout_panel_failed_impl_tmp" --mode diff \
         --round-num 1 --session-env-path "$scout_panel_failed_impl_tmp/session-env.sh" \
         --run-id "$scout_panel_failed_run_id"
 )
@@ -1165,7 +1165,7 @@ out=$(
     REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
     REVIEW_AND_FIX_SCRUB_SUBMODULE_PATHS_SH="$REPO_ROOT/scripts/scrub-submodule-paths.sh" \
     TEST_SCOUT_STATUS=na \
-    "$SCRIPT" --implement-tmpdir "$scout_na_impl_tmp" --mode diff --panel simple \
+    "$SCRIPT" --implement-tmpdir "$scout_na_impl_tmp" --mode diff \
         --round-num 1 --session-env-path "$scout_na_impl_tmp/session-env.sh" \
         --run-id "$scout_na_run_id"
 )
@@ -1203,7 +1203,7 @@ out=$(
     REVIEW_AND_FIX_SCRUB_SUBMODULE_PATHS_SH="$REPO_ROOT/scripts/scrub-submodule-paths.sh" \
     TEST_SCOUT_STATUS=ok \
     TEST_DYNAMIC_SLOTS=bogus \
-    "$SCRIPT" --implement-tmpdir "$scout_invalid_impl_tmp" --mode diff --panel simple \
+    "$SCRIPT" --implement-tmpdir "$scout_invalid_impl_tmp" --mode diff \
         --round-num 1 --session-env-path "$scout_invalid_impl_tmp/session-env.sh" \
         --run-id "$scout_invalid_run_id"
 )
@@ -1244,7 +1244,7 @@ out=$(
     TEST_SCOUT_STATUS=ok \
     TEST_SCOUT_MANIFEST_PATH="$scout_missing_files_impl_tmp/round-1/not-present/scout-round1-manifest.json" \
     TEST_YIELD_TSV_PATH="$scout_missing_files_impl_tmp/round-1/not-present/scout-archetype-yield.tsv" \
-    "$SCRIPT" --implement-tmpdir "$scout_missing_files_impl_tmp" --mode diff --panel simple \
+    "$SCRIPT" --implement-tmpdir "$scout_missing_files_impl_tmp" --mode diff \
         --round-num 1 --session-env-path "$scout_missing_files_impl_tmp/session-env.sh" \
         --run-id "$scout_missing_files_run_id"
 )
@@ -1312,7 +1312,7 @@ out=$(
     CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
     REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-small-stub.sh" \
     REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
-    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 3 \
+    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --round-num 3 \
         --session-env-path "$implement_tmp/session-env.sh" --run-id converge-two-small-run
 )
 rc=$?
@@ -1364,7 +1364,7 @@ out=$(
     CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
     REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-important-stub.sh" \
     REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
-    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 3 \
+    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --round-num 3 \
         --session-env-path "$implement_tmp/session-env.sh" --run-id converge-important-run
 )
 rc=$?
@@ -1390,7 +1390,7 @@ out=$(
     CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
     REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-small-stub.sh" \
     REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
-    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 3 \
+    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --round-num 3 \
         --session-env-path "$implement_tmp/session-env.sh" --run-id converge-degraded-gap-run
 )
 rc=$?
@@ -1421,7 +1421,7 @@ out=$(
     CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
     REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-small-stub.sh" \
     REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
-    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 3 \
+    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --round-num 3 \
         --session-env-path "$implement_tmp/session-env.sh" --run-id converge-structured-important-run
 )
 rc=$?
@@ -1446,7 +1446,7 @@ out=$(
     CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
     REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-small-stub.sh" \
     REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
-    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 3 \
+    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --round-num 3 \
         --session-env-path "$implement_tmp/session-env.sh" --run-id prior-degraded-run
 )
 rc=$?
@@ -1496,7 +1496,7 @@ out=$(
     CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
     REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-degraded-stub.sh" \
     REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
-    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 3 \
+    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --round-num 3 \
         --session-env-path "$implement_tmp/session-env.sh" --run-id degraded-excluded-run 2>&1
 )
 rc=$?
@@ -1551,7 +1551,7 @@ out=$(
     CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
     REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-degraded-then-clean.sh" \
     REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
-    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 \
+    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --round-num 1 \
         --session-env-path "$implement_tmp/session-env.sh" --run-id degraded-retry-clean-run 2>&1
 )
 rc=$?
@@ -1609,7 +1609,7 @@ out=$(
     CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
     REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-stale-retry-recovered.sh" \
     REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
-    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 \
+    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --round-num 1 \
         --session-env-path "$implement_tmp/session-env.sh" --run-id degraded-retry-stale-run 2>&1
 )
 rc=$?
@@ -1633,7 +1633,7 @@ out=$(
     CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
     REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-degraded-then-clean.sh" \
     REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
-    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 \
+    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --round-num 1 \
         --session-env-path "$implement_tmp/session-env.sh" --run-id degraded-retry-done-stale-run 2>&1
 )
 rc=$?
@@ -1655,7 +1655,7 @@ out=$(
     CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
     REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-degraded-stub.sh" \
     REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
-    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 \
+    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --round-num 1 \
         --session-env-path "$implement_tmp/session-env.sh" --run-id degraded-retry-exhausted-run 2>&1
 )
 rc=$?
@@ -1706,7 +1706,7 @@ out=$(
     CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
     REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-degraded-oos-then-clean.sh" \
     REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
-    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 \
+    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --round-num 1 \
         --session-env-path "$implement_tmp/session-env.sh" --run-id degraded-retry-oos-run
 )
 rc=$?
@@ -1725,7 +1725,7 @@ printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env
 write_prior_round "$implement_tmp" 1 1 false
 set +e
 out=$(TEST_AGENT_BEHAVIOR=codex-success run_review_and_fix "$work_fix_applied" \
-    --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 2 --session-env-path "$implement_tmp/session-env.sh" --run-id fix-applied-round-run)
+    --implement-tmpdir "$implement_tmp" --mode diff --round-num 2 --session-env-path "$implement_tmp/session-env.sh" --run-id fix-applied-round-run)
 rc=$?
 set -e
 [[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "fix-applied-not-overwritten expected exit 0 got $rc"; }
@@ -1740,7 +1740,7 @@ printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env
 write_prior_round "$implement_tmp" 1 0 false
 set +e
 out=$(TEST_CORE_STATUS=main-agent-vote-required run_review_and_fix "$work_vote_required" \
-    --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 2 --session-env-path "$implement_tmp/session-env.sh" --run-id main-agent-vote-round-run)
+    --implement-tmpdir "$implement_tmp" --mode diff --round-num 2 --session-env-path "$implement_tmp/session-env.sh" --run-id main-agent-vote-round-run)
 rc=$?
 set -e
 [[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "main-agent-vote-not-overwritten expected exit 0 got $rc"; }
@@ -1783,7 +1783,7 @@ out=$(
     CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
     REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-churn-stub.sh" \
     REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
-    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 3 \
+    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --round-num 3 \
         --session-env-path "$implement_tmp/session-env.sh" --run-id churn-run 2>&1
 )
 rc=$?
@@ -1808,7 +1808,7 @@ out=$(
     CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
     REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-small-stub.sh" \
     REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
-    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 2 \
+    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --round-num 2 \
         --session-env-path "$implement_tmp/session-env.sh" --run-id single-small-run
 )
 rc=$?
@@ -1832,7 +1832,7 @@ out=$(
     CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
     REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-small-stub.sh" \
     REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
-    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 2 \
+    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --round-num 2 \
         --convergence-threshold 1 \
         --session-env-path "$implement_tmp/session-env.sh" --run-id threshold-one-run
 )
@@ -1857,7 +1857,7 @@ out=$(
     CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
     REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-small-stub.sh" \
     REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
-    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 2 \
+    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --round-num 2 \
         --convergence-threshold 1 \
         --session-env-path "$implement_tmp/session-env.sh" --run-id threshold-one-positive-run
 )
@@ -1879,7 +1879,7 @@ out=$(
     CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
     REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-small-stub.sh" \
     REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
-    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 \
+    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --round-num 1 \
         --convergence-threshold nope \
         --session-env-path "$implement_tmp/session-env.sh" --run-id threshold-invalid-run 2>&1
 )
@@ -1922,7 +1922,7 @@ out=$(
     CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
     REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-shell-literal.sh" \
     REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
-    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 \
+    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --round-num 1 \
         --session-env-path "$implement_tmp/session-env.sh" --run-id review-env-literal-run
 )
 rc=$?
@@ -1948,7 +1948,7 @@ out=$(
     CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
     REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-small-stub.sh" \
     REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
-    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 2 \
+    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --round-num 2 \
         --session-env-path "$implement_tmp/session-env.sh" --run-id missing-findings-run 2>&1
 )
 rc=$?
@@ -1969,7 +1969,7 @@ out=$(
     CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
     REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-small-stub.sh" \
     REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
-    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 \
+    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --round-num 1 \
         --session-env-path "$implement_tmp/session-env.sh" --run-id round1-small-run
 )
 rc=$?
@@ -1989,7 +1989,7 @@ mkdir -p "$implement_tmp"
 printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
 set +e
 out=$(LARCH_QUIET_BREADCRUMBS=1 TEST_CORE_STATUS=zero run_review_and_fix "$work_breadcrumb_round" \
-    --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 \
+    --implement-tmpdir "$implement_tmp" --mode diff --round-num 1 \
     --session-env-path "$implement_tmp/session-env.sh" --run-id breadcrumb-round-run 2>&1)
 rc=$?
 set -e
@@ -2003,7 +2003,7 @@ mkdir -p "$implement_tmp"
 printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
 set +e
 out=$(LARCH_QUIET_BREADCRUMBS=1 TEST_AGENT_BEHAVIOR=codex-success run_review_and_fix "$work_breadcrumb_coder" \
-    --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 \
+    --implement-tmpdir "$implement_tmp" --mode diff --round-num 1 \
     --session-env-path "$implement_tmp/session-env.sh" --run-id breadcrumb-coder-run 2>&1)
 rc=$?
 set -e
@@ -2016,7 +2016,7 @@ mkdir -p "$implement_tmp"
 printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
 set +e
 out=$(LARCH_QUIET_BREADCRUMBS=1 TEST_AGENT_BEHAVIOR=codex-no-changes run_review_and_fix "$work_breadcrumb_no_changes" \
-    --implement-tmpdir "$implement_tmp" --mode diff --panel simple --round-num 1 \
+    --implement-tmpdir "$implement_tmp" --mode diff --round-num 1 \
     --session-env-path "$implement_tmp/session-env.sh" --run-id breadcrumb-no-changes-run 2>&1)
 rc=$?
 set -e
@@ -2024,5 +2024,22 @@ set -e
 grep -Fq 'coder dispatch exited 0 but did not modify the working tree' <<< "$out" \
     || fail "breadcrumb no-changes: missing halting breadcrumb"
 fi  # end section: dispatch (breadcrumb additions)
+
+grep -Fq -- '--panel hard' "$SCRIPT" \
+    || fail "review-and-fix.sh must invoke review-core with literal --panel hard"
+
+work_reject_panel="$TMP/reject-public-panel"
+make_work_repo "$work_reject_panel"
+impl_rp="$work_reject_panel/implement"
+mkdir -p "$impl_rp"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$impl_rp/session-env.sh"
+set +e
+out=$(run_review_and_fix "$work_reject_panel" \
+    --implement-tmpdir "$impl_rp" --mode diff --panel simple --round-num 1 \
+    --session-env-path "$impl_rp/session-env.sh" 2>&1)
+rc=$?
+set -e
+[[ "$rc" -eq 2 ]] || fail "public --panel argv must exit 2, got $rc"
+printf '%s\n' "$out" | grep -qi 'unknown option' || fail "expected unknown option for --panel"
 
 echo "test-review-and-fix: ok"

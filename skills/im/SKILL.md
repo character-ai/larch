@@ -13,7 +13,7 @@ Auto-generated alias created by larch /alias. Invokes /implement with preset fla
 
 ## Flags
 
-All `/implement` flags are accepted, including `--run-id <ID>` (optional run identifier), and passed through via `$ARGUMENTS`.
+All `/implement` **public** flags (`--merge`, `--forked`, `--draft`, `--no-admin-fallback`, `--no-logs-commit`, `--coder`, `--no-dynamic-archetypes`, `--dynamic-archetypes`, `--run-id`) may appear in `$ARGUMENTS` after `--merge` and are forwarded verbatim **when supported**; removed argv surfaces (`--auto`, `--quick`, `--inline`, `--issue`, `--session-env`, verbal feature tails, etc.) MUST NOT be forwarded. The **positional** `<issue-N>` (digits only) is mandatory and is forwarded as the **sole** non-flag tail after all flags.
 
 ## Behavior
 

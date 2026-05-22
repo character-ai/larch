@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # clarify-label.sh — idempotent add/remove of needs-design-clarification label.
 #
-# Usage: clarify-label.sh --issue <N> --action add|remove [--repo OWNER/REPO]
+# Usage: clarify-label.sh --issue <N> --action add|remove [--create-if-missing] [--repo OWNER/REPO]
 #
 # Stdout: CHANGED=, ACTION=, LABEL=needs-design-clarification
 
@@ -19,7 +19,7 @@ LABEL_NAME="needs-design-clarification"
 
 usage() {
     while IFS= read -r line; do larch_err "$line"; done <<'USAGE'
-Usage: clarify-label.sh --issue <N> --action add|remove [--repo OWNER/REPO]
+Usage: clarify-label.sh --issue <N> --action add|remove [--create-if-missing] [--repo OWNER/REPO]
 USAGE
 }
 
@@ -69,12 +69,14 @@ emit_gh_failure() {
 ISSUE=""
 ACTION=""
 REPO_ARG=""
+CREATE_IF_MISSING=false
 while [ $# -gt 0 ]; do
     case "$1" in
         --issue) ISSUE="${2:?}"; shift 2 ;;
         --action) ACTION="${2:?}"; shift 2 ;;
         --repo) REPO_ARG="${2:?}"; shift 2 ;;
-        *) larch_err "clarify-label.sh: unknown option: $1"; usage; exit 1 ;;
+        --create-if-missing) CREATE_IF_MISSING=true; shift ;;
+        *) larch_err "clarify-label.sh: unknown option: $1"; usage; exit 2 ;;
     esac
 done
 
@@ -120,6 +122,20 @@ case "$ACTION" in
         if [ "$HAS" = "true" ]; then
             CHANGED=false
         else
+            if [ "$CREATE_IF_MISSING" = true ]; then
+                if ! gh label create "$LABEL_NAME" \
+                    --repo "$REPO" \
+                    --color D73A4A \
+                    --description "Issue plan requires clarification before /implement can proceed" \
+                    2>"$ERR_TMP"; then
+                    ERR_CONTENT=$(cat "$ERR_TMP" 2>/dev/null || true)
+                    if printf '%s\n' "$ERR_CONTENT" | grep -qiE 'already exists|already been taken'; then
+                        :
+                    else
+                        emit_gh_failure "$ERR_CONTENT"
+                    fi
+                fi
+            fi
             if ! gh issue edit "$ISSUE" --repo "$REPO" --add-label "$LABEL_NAME" 2>"$ERR_TMP"; then
                 ERR_CONTENT=$(cat "$ERR_TMP" 2>/dev/null || true)
                 emit_gh_failure "$ERR_CONTENT"

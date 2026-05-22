@@ -28,11 +28,11 @@ Reference for every slash command shipped by the larch plugin. Each section belo
 
 **Source**: [`skills/alias/SKILL.md`](../skills/alias/SKILL.md)
 
-Create an alias for a larch skill with preset flags. Delegates to `/implement --auto` for the full pipeline (code review, version bump, PR). `--merge` also merges the PR.
+Create an alias for a larch skill with preset flags. Delegates to `/implement` with `--auto` (and other preset flags) for the full pipeline per `skills/alias/SKILL.md` (code review, version bump, PR). `--merge` also merges the PR.
 
 **Target directory** is auto-resolved: inside a Claude plugin source repo (detected by the two-file predicate `.claude-plugin/plugin.json` AND `skills/implement/SKILL.md` at the git repo root), the alias is generated under `skills/<alias-name>/SKILL.md` (exported plugin skill, ships with the plugin); anywhere else, it's generated under `.claude/skills/<alias-name>/SKILL.md` (dev-only repo-private). `--private` forces `.claude/skills/<alias-name>/` even inside a plugin repo (escape hatch); in non-plugin repos it's a no-op.
 
-Example (in a plugin repo): `/alias i implement --merge` creates `<repo-root>/skills/i/SKILL.md` so that `/i <feature>` is equivalent to `/implement --merge <feature>`.
+Example (in a plugin repo): `/alias i implement --merge` creates `<repo-root>/skills/i/SKILL.md` so that `/i <issue-N>` forwards to `/implement --merge <issue-N>` with any additional preset flags captured in the alias body.
 
 Example with `--private` or in a consumer repo: `/alias i implement --merge` creates `<repo-root>/.claude/skills/i/SKILL.md` (dev-only).
 
@@ -70,15 +70,15 @@ Scaffold a new larch-style skill from a name and description.
 
 ## `/design`
 
-**Arguments**: `[--auto] [--quick] [--full] [--subagent] [--session-env <path>] <feature description>`
+**Arguments**: `[--trivial|--simple|--hard] [--no-dedup] <issue-N | feature description>`
 
 **Source**: [`skills/design/SKILL.md`](../skills/design/SKILL.md) · [Diagram](../skills/design/diagram.svg)
 
-Design an implementation plan with collaborative multi-reviewer review. The [sketch topology](topology.md#design.sketch.regular_slots) documented in [Collaborative Sketches](collaborative-sketches.md) independently proposes architectural approaches when the router assigns a non-zero sketch budget, then the dialectic debate and [judge panel](topology.md#design.dialectic.judge_panel) described in `skills/shared/dialectic-protocol.md` resolves contested decisions. The [validation panel](topology.md#design.plan_review.cursor_archetypes) documented in [Review Agents](review-agents.md) then reviews the full plan. `--auto` suppresses all interactive question checkpoints. `--quick` caps sketch fan-out at the [quick sketch topology](topology.md#design.sketch.quick_slots) and uses quick plan review; `--full` forces the full sketch fan-out.
+Design an implementation plan with collaborative multi-reviewer review. The [sketch topology](topology.md#design.sketch.regular_slots) documented in [Collaborative Sketches](collaborative-sketches.md) independently proposes architectural approaches when the router assigns a non-zero sketch budget, then the dialectic debate and [judge panel](topology.md#design.dialectic.judge_panel) described in `skills/shared/dialectic-protocol.md` resolves contested decisions. The [validation panel](topology.md#design.plan_review.cursor_archetypes) documented in [Review Agents](review-agents.md) then reviews the full plan. Tier flags (`--trivial` / `--simple` / `--hard`) select sketch + plan-review depth; internal-only flags live in `skills/design/references/flags.md`.
 
 ## `/fix-issue`
 
-**Arguments**: `[--auto] [--no-admin-fallback] [--no-logs-commit] [--coder=<value>] [--inline] [--hard] <number-or-url>` (positional issue number or URL is **required**)
+**Arguments**: `[--merge] [--no-admin-fallback] [--no-logs-commit] [--no-dedup] [--coder=<value>] [--run-id <ID>] <number-or-url>` (positional issue number or URL is **required**)
 
 **Source**: [`skills/fix-issue/SKILL.md`](../skills/fix-issue/SKILL.md)
 
@@ -88,11 +88,11 @@ Process one approved GitHub issue per invocation, classifying intent and delegat
 
 ## `/implement`
 
-**Arguments**: `[--auto] [--forked] [--design-only] [--no-issues] [--inline] [--merge | --draft] [--no-admin-fallback] [--no-logs-commit] [--coder=claude|codex|cursor] [--session-env <path>] [--issue <N>] <feature description>`
+**Arguments**: `[--merge] [--forked] [--draft] [--no-admin-fallback] [--no-logs-commit] [--coder <claude|codex|cursor>] [--no-dynamic-archetypes] [--dynamic-archetypes <N>] [--run-id <ID>] <issue-N>`
 
 **Source**: [`skills/implement/SKILL.md`](../skills/implement/SKILL.md) · [Diagram](../skills/implement/diagram.svg)
 
-Full implementation workflow spanning design through PR merge. Step 5 always runs `review-and-fix.sh` with `--panel hard`: up to **5 rounds** (base cap 5, plus degraded-round inflation on argv), a **3-judge panel on round 1** (Claude opus + Codex + Cursor; Claude replacement when an external is unhealthy) and a **2-judge panel on rounds 2+** (Claude + Cursor; Codex voter omitted), and the **review panel** with **6 Cursor specialists** (plus optional dynamic archetypes). The `--design-only` flag publishes design artifacts then exits without implementation (mutually exclusive with `--merge`).
+Full implementation workflow spanning design through PR merge. Preflight consumes the **positional** GitHub `<issue-N>` after `/design` has written `larch:plan` into that issue's body. Step 5 invokes `run-step5-review.sh`, which derives `effective_round_cap` from base cap **5** plus degraded-round inflation, does **not** forward `--panel` on the public argv, and applies the panel only inside `review-and-fix.sh` → `review-core.sh`: a **3-judge panel on round 1** (Claude opus + Codex + Cursor; Claude replacement when an external is unhealthy) and a **2-judge panel on rounds 2+** (Claude + Cursor; Codex voter omitted), with the **review panel** and **6 Cursor specialists** (plus optional dynamic archetypes). `--merge` enables CI+merge; `--forked` is mutually exclusive with `--merge`.
 
 ## `/issue`
 

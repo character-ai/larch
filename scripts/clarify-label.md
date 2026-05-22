@@ -7,8 +7,10 @@ Idempotently adds or removes the `needs-design-clarification` label on an issue 
 ## Interface
 
 ```
-clarify-label.sh --issue <N> --action add|remove [--repo OWNER/REPO]
+clarify-label.sh --issue <N> --action add|remove [--create-if-missing] [--repo OWNER/REPO]
 ```
+
+When `--create-if-missing` is set together with `--action add`, the script runs `gh label create needs-design-clarification` (idempotent via `|| true`) before `gh issue edit --add-label`, so the label exists on the repo even when it has never been created.
 
 ## Output Contract
 
@@ -17,7 +19,7 @@ clarify-label.sh --issue <N> --action add|remove [--repo OWNER/REPO]
 
 ## Test Harness
 
-No dedicated harness yet; behavior is thin `gh` delegation.
+Offline coverage lives in `scripts/test-clarify-state.sh` and `scripts/test-clarify-comment.sh` (Makefile `test-clarify-state` / `test-clarify-comment` targets). This script is thin `gh` delegation; those harnesses exercise marker parsing, state derivation, and comment posting envelopes.
 
 ## Edit-in-sync
 

@@ -141,26 +141,28 @@ log_argv="$TMP/log-manifest.argv"
 RUN_STEP1_COMPOSE_SH="$COMPOSE_SPY" RUN_STEP1_LARCH_LOG_SH="$LOG_SPY" RUN_STEP1_COMPOSE_ARGV_FILE="$compose_argv" RUN_STEP1_LOG_ARGV_FILE="$log_argv" "$LAUNCHER" --implement-tmpdir "$case_dir" --goal-text "Ship manifest" >/dev/null
 assert_contains "$(cat "$log_argv")" "manifest-run" "manifest RUN_ID overrides session-id"
 
-echo "=== PLAN_FILE missing: fallback to design-export/plan.txt with loud warning (#2326) ==="
-case_dir="$TMP/plan-file-fallback"
+echo "=== PLAN_FILE missing: fail closed even when design-export/plan.txt exists ==="
+case_dir="$TMP/plan-file-missing"
 make_tmpdir "$case_dir"
-# Strip PLAN_FILE from session-env to simulate the silent-write bug.
 grep -v '^PLAN_FILE=' "$case_dir/session-env.sh" > "$case_dir/session-env.sh.new"
 mv "$case_dir/session-env.sh.new" "$case_dir/session-env.sh"
-# Provide design-export/plan.txt as the recovery source.
 mkdir -p "$case_dir/design-export"
-printf '%s\n' "Recovered plan body from design-export." > "$case_dir/design-export/plan.txt"
-compose_argv="$TMP/compose-fallback.argv"
-log_argv="$TMP/log-fallback.argv"
+printf '%s\n' "Stale local export must not mask missing PLAN_FILE." > "$case_dir/design-export/plan.txt"
+compose_argv="$TMP/compose-missing.argv"
+log_argv="$TMP/log-missing.argv"
 set +e
-out="$(RUN_STEP1_COMPOSE_SH="$COMPOSE_SPY" RUN_STEP1_LARCH_LOG_SH="$LOG_SPY" RUN_STEP1_COMPOSE_ARGV_FILE="$compose_argv" RUN_STEP1_LOG_ARGV_FILE="$log_argv" "$LAUNCHER" --implement-tmpdir "$case_dir" --goal-text "Ship fallback" 2>&1)"
+out="$(RUN_STEP1_COMPOSE_SH="$COMPOSE_SPY" RUN_STEP1_LARCH_LOG_SH="$LOG_SPY" RUN_STEP1_COMPOSE_ARGV_FILE="$compose_argv" RUN_STEP1_LOG_ARGV_FILE="$log_argv" "$LAUNCHER" --implement-tmpdir "$case_dir" --goal-text "Should fail" 2>&1)"
 rc=$?
 set -e
-if [[ "$rc" -eq 0 ]]; then pass "fallback continues (exit 0)"; else fail "fallback rc=$rc"; fi
-assert_contains "$out" "PLAN_FILE missing from session-env" "fallback emits PLAN_FILE-missing warning"
-assert_contains "$out" "recovering from design-export/plan.txt" "fallback names recovery source"
-assert_contains "$out" "THIS IS A BUG" "fallback flags as bug"
-assert_contains "$(cat "$compose_argv")" "$case_dir/design-export/plan.txt" "fallback passes design-export plan to compose"
+if [[ "$rc" -eq 2 ]]; then pass "PLAN_FILE missing exits 2 even with design-export"; else fail "PLAN_FILE missing rc=$rc"; fi
+assert_contains "$out" "PLAN_FILE missing from session-env" "step1 emits PLAN_FILE-missing error"
+assert_contains "$out" "persist-post-plan-keys.sh" "step1 error names writer contract"
+[[ ! -f "$compose_argv" ]] || fail "compose helper should not run when PLAN_FILE missing"
+
+echo "=== issue-anchored Step 1 plan copy contract (SKILL pin) ==="
+plan_copy_literal=$'cp "$PREFLIGHT_TMPDIR/plan-from-issue.txt" "$IMPLEMENT_TMPDIR/plan.txt"'
+grep -Fq "$plan_copy_literal" "$REPO_ROOT/skills/implement/SKILL.md" \
+  || fail "missing Step 1 issue-body plan materialization copy literal in implement SKILL"
 
 echo "=== PLAN_FILE missing AND design-export missing: fail loud ==="
 case_dir="$TMP/plan-file-fail"

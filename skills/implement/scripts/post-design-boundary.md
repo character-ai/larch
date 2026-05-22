@@ -1,6 +1,8 @@
 # skills/implement/scripts/post-design-boundary.sh — contract
 
-`post-design-boundary.sh` is the mandatory mechanical gate immediately after `/design` returns in `/implement` Step 1 normal mode. It delegates manifest validation to `skills/design/scripts/read-design-manifest.sh --emit-load-breadcrumb`, captures the current branch, and ends successful stdout with an imperative continuation directive.
+`post-design-boundary.sh` is the mandatory mechanical gate immediately after `/design` returns in `/implement` Step 1 normal mode when the **manifest-export / nested-design** path is active. It delegates manifest validation to `skills/design/scripts/read-design-manifest.sh --emit-load-breadcrumb`, captures the current branch, and ends successful stdout with an imperative continuation directive.
+
+**Issue-anchored note**: the happy-path issue-body `larch:plan` flow does not use this wrapper as the Preflight gate — see `skills/implement/SKILL.md` Preflight and NEVER #12 archival text.
 
 Inputs:
 - `--implement-tmpdir <path>` is required. It must be an absolute path to an existing directory and must not contain ASCII control characters.

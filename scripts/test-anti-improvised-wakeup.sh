@@ -26,6 +26,7 @@ REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 
 PROJECT_TOKEN='NEVER improvise ScheduleWakeup outside skill-script direction'
 IMPLEMENT_LEGACY_TOKEN="NEVER call \`ScheduleWakeup\` anywhere in the \`/implement\` orchestrator"
+IMPLEMENT_NEVER12_ARCHIVAL_TOKEN="issue #2485; the post-/design boundary halt rule was retired"
 MANDATORY_TOKEN='MANDATORY at session start'
 
 PROJECT_ANCHORS=(
@@ -77,6 +78,10 @@ done
 echo ""
 echo "--- /implement legacy ScheduleWakeup ratchet ---"
 check_token_present "$IMPLEMENT_LEGACY_ANCHOR" "$IMPLEMENT_LEGACY_TOKEN" "implement legacy token"
+
+echo ""
+echo "--- /implement NEVER #12 archival (post-design boundary retired) ---"
+check_token_present "$IMPLEMENT_LEGACY_ANCHOR" "$IMPLEMENT_NEVER12_ARCHIVAL_TOKEN" "implement NEVER #12 archival token"
 
 echo ""
 echo "=== SUMMARY: $PASS_COUNT passed, $FAIL_COUNT failed ==="

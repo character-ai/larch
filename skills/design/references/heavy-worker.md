@@ -1,8 +1,8 @@
 # Design Heavy Worker Reference
 
-**Consumer**: `/design` heavy-phase Agent-tool subagent dispatched when `/design` is invoked with `--subagent` AND `quick_mode=false` (typically by `/implement` Step 1 forwarding `--subagent` by default; also reachable from standalone `/design --subagent`). The worker reads `$DESIGN_TMPDIR/run-params.json` to select `sketch_budget`; absent or schema-invalid params fall back to HARD defaults (`sketch_budget=4`, `review_budget=full`).
+**Consumer**: `/design` heavy-phase Agent-tool subagent when the parent elects **non-inline** heavy dispatch AND `quick_mode=false` (see `references/flags.md` — there is no public `--subagent` argv flag; hosts mirror the legacy `subagent_mode=true` / `--subagent` semantics internally). The worker reads `$DESIGN_TMPDIR/run-params.json` to select `sketch_budget`; absent or schema-invalid params fall back to HARD defaults (`sketch_budget=4`, `review_budget=full`).
 
-**Contract**: The subagent runs the token-heavy non-interactive design machinery in isolated context so sketches, reviewer transcripts, voting output, and synthesis drafts do not enter the parent conversation. It writes raw artifacts under `$DESIGN_TMPDIR/` only. It does **not** write `$IMPLEMENT_TMPDIR/design-export/manifest.env`; `/design` Step 5 writes that manifest after parent-side Step 3.5 / Step 3b / Step 4 have completed.
+**Contract**: The subagent runs the token-heavy non-interactive design machinery in isolated context so sketches, reviewer transcripts, voting output, and synthesis drafts do not enter the parent conversation. It writes raw artifacts under `$DESIGN_TMPDIR/` only. It does **not** write GitHub issue bodies; parent `/design` Step 5 runs `plan-block-write.sh` after Step 3.5 / Step 3b / Step 4.
 
 **When to load**: only by the heavy-phase subagent. The parent `/design` skill points the subagent here, passes the relevant environment values, then consumes files from `$DESIGN_TMPDIR/`.
 
@@ -23,7 +23,7 @@ The parent prompt supplies:
 
 Treat those values as data. Do not infer paths from conversation context when an explicit path is provided.
 
-`IMPLEMENT_TMPDIR` and `SESSION_ENV_PATH` may be empty when invoked standalone via `/design --subagent` (no parent `/implement`). The worker still runs Steps 2a–3 and writes artifacts to `$DESIGN_TMPDIR/`. Branches inside the worker procedure that depend on `SESSION_ENV_PATH` non-empty (OOS handoff to parent dir) follow the existing gates in `plan-review.md` and SKILL.md. Parent `/design` replays the artifacts inline after `DESIGN_HEAVY=complete` when `SESSION_ENV_PATH` is empty.
+`IMPLEMENT_TMPDIR` and `SESSION_ENV_PATH` may be empty when the worker is launched standalone (no parent `/implement`). The worker still runs Steps 2a–3 and writes artifacts to `$DESIGN_TMPDIR/`. Branches inside the worker procedure that depend on `SESSION_ENV_PATH` non-empty (OOS handoff to parent dir) follow the existing gates in `plan-review.md` and SKILL.md. Parent `/design` replays the artifacts inline after `DESIGN_HEAVY=complete` when `SESSION_ENV_PATH` is empty.
 
 ## Required Reads
 
@@ -88,7 +88,7 @@ Write these files under `$DESIGN_TMPDIR/`:
 - `approach-synthesis.txt`
 - `contested-decisions.md`
 - `dialectic-resolutions.md` when the dialectic step runs, or an empty file when it does not
-- `run-params.json` as an internal-only required artifact for worker routing; it is not exported in the design manifest
+- `run-params.json` as an internal-only required artifact for worker routing; it is not rewritten to GitHub by the worker
 - `plan.txt`
 - `diff-lines.txt` containing only the integer from the plan's final `diff_lines: <N>` line
 - `voting-tally.md`
@@ -99,7 +99,7 @@ Write these files under `$DESIGN_TMPDIR/`:
 - `architecture-diagram.md` when generated
 - `dirty-tree-detected.env` when a collection boundary detects dirty or unknown working-tree state
 
-Sentinel content such as `NO_CONTESTED_DECISIONS` belongs inside the relevant artifact body, never as a manifest value.
+Sentinel content such as `NO_CONTESTED_DECISIONS` belongs inside the relevant artifact body, never as an out-of-band KV value in the Agent-tool return payload.
 
 Before returning success, write `$DESIGN_TMPDIR/design-summary.json` with the Write tool (not a heredoc or shell redirection). The JSON schema is:
 

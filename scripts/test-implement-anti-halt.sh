@@ -76,8 +76,8 @@ check_contains "Post-/bump-version boundary — rebase-rebump path references Po
 # Post-/design and post-/review boundary silent-halt directives (issue #1814):
 # pins that these two boundaries explicitly say "do NOT end the turn" and not
 # just "do NOT write a summary" (the same gap 9d639da fixed at Step 8).
-check_contains "Post-/design boundary — silent halt covered" "skills/implement/SKILL.md" \
-  "boundary wrapper + larch-log batch writes + Step 1.r rebase checkpoint + Step 2 breadcrumb in order — do NOT end the turn"
+check_contains "Post-preflight boundary — silent halt covered" "skills/implement/SKILL.md" \
+  "do NOT end the turn on the audit-pass envelope"
 check_contains "Post-/review boundary — silent halt covered" "skills/implement/SKILL.md" \
   "Cross-Skill Presence Propagation + Track Rejected Code Review Findings + Step 6 breadcrumb in order — do NOT end the turn"
 

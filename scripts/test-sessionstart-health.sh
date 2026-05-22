@@ -379,24 +379,21 @@ assert_eq "$rc" "0" "case 11b: exit code 0"
 stdout=$(cat "$tmp/c11b.out")
 assert_empty "$stdout" "case 11b: stdout empty on malformed json"
 
-echo "=== Case 12: SessionStart detects pending post-/design boundary ==="
+echo "=== Case 12: SessionStart does not emit legacy post-/design boundary for manifest.env alone ==="
 mkdir -p "$tmp/c12-cwd"
 impl=$(make_impl_tmpdir c12-design "$tmp/c12-cwd" "sid-12")
 printf 'MANIFEST_OK=true\n' > "$impl/design-export/manifest.env"
 rc=$(run_with_stdin "$tmp/real_bin" "$tmp/c12-cwd" '{"cwd":"'"$tmp/c12-cwd"'","session_id":"sid-12"}' "$XDG_TEST" "$tmp/c12.out" "$tmp/c12.err")
 assert_eq "$rc" "0" "case 12: exit code 0"
 stdout=$(cat "$tmp/c12.out")
-assert_valid_json "$stdout" "case 12"
-ctx=$(ctx_from_stdout "$stdout")
-assert_contains "$ctx" "post-/design boundary" "case 12: design boundary advisory"
-assert_contains "$ctx" "post-design-boundary.sh" "case 12: design boundary names wrapper"
+assert_empty "$stdout" "case 12: stdout empty (no legacy design-boundary advisory)"
 
-echo "=== Case 12b: .boundary-gate-passed suppresses post-/design advisory ==="
+echo "=== Case 12b: .boundary-gate-passed still harmless when manifest exists ==="
 touch "$impl/.boundary-gate-passed"
 rc=$(run_with_stdin "$tmp/real_bin" "$tmp/c12-cwd" '{"cwd":"'"$tmp/c12-cwd"'","session_id":"sid-12"}' "$XDG_TEST" "$tmp/c12b.out" "$tmp/c12b.err")
 assert_eq "$rc" "0" "case 12b: exit code 0"
 stdout=$(cat "$tmp/c12b.out")
-assert_empty "$stdout" "case 12b: stdout empty after boundary gate"
+assert_empty "$stdout" "case 12b: stdout empty (manifest + gate file)"
 assert_not_contains "$stdout" "post-/design boundary" "case 12b: no design boundary advisory"
 
 echo "=== Case 13: .run-cleaned-up suppresses boundary advisories ==="
@@ -451,7 +448,7 @@ stdout=$(cat "$tmp/c15b.out")
 assert_empty "$stdout" "case 15b: stdout empty after postbump state"
 assert_not_contains "$stdout" "post-/bump-version boundary" "case 15b: no bump boundary advisory"
 
-echo "=== Case 16: all three pending boundaries concatenate into one advisory ==="
+echo "=== Case 16: pending review + bump boundaries concatenate (no legacy design gate) ==="
 mkdir -p "$tmp/c16-cwd"
 impl=$(make_impl_tmpdir c16-all-boundaries "$tmp/c16-cwd")
 printf 'MANIFEST_OK=true\n' > "$impl/design-export/manifest.env"
@@ -462,7 +459,7 @@ assert_eq "$rc" "0" "case 16: exit code 0"
 stdout=$(cat "$tmp/c16.out")
 assert_valid_json "$stdout" "case 16"
 ctx=$(ctx_from_stdout "$stdout")
-assert_contains "$ctx" "post-/design boundary" "case 16: design boundary advisory"
+assert_not_contains "$ctx" "post-/design boundary" "case 16: no legacy design boundary advisory"
 assert_contains "$ctx" "post-/review boundary" "case 16: review boundary advisory"
 assert_contains "$ctx" "post-/bump-version boundary" "case 16: bump boundary advisory"
 

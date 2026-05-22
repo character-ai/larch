@@ -131,25 +131,16 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 REVIEW_AND_FIX_ARGS=()
 
 if [[ -z "$PLAN_FILE" ]]; then
-    # Belt-and-braces fallback: see run-step1-plan-log.sh for the rationale (#2326).
-    DESIGN_EXPORT_PLAN="$IMPLEMENT_TMPDIR/design-export/plan.txt"
-    if [[ -s "$DESIGN_EXPORT_PLAN" ]]; then
-        printf '**⚠ run-step5-review.sh: PLAN_FILE missing from session-env; recovering from design-export/plan.txt. THIS IS A BUG — investigate the Step 1 writer (persist-post-plan-keys.sh).**\n' >&2
-        PLAN_FILE="$DESIGN_EXPORT_PLAN"
-    else
-        fail "PLAN_FILE missing from session-env"
-    fi
+    fail "PLAN_FILE missing from session-env; fix scripts/persist-post-plan-keys.sh (or other session-env writers). Issue-anchored runs must not recover from design-export/plan.txt."
 fi
 [[ -f "$PLAN_FILE" ]] || fail "PLAN_FILE not found: $PLAN_FILE"
 
 case "$WORKFLOW_PATH" in
     SIMPLE)
-        REVIEW_PANEL="hard"
         # Base Step 5 round cap is intentionally 5 for SIMPLE and HARD (unified panel).
         ROUND_CAP="5"
         ;;
     HARD)
-        REVIEW_PANEL="hard"
         ROUND_CAP="5"
         ;;
     *)
@@ -176,7 +167,6 @@ REVIEW_AND_FIX_SH="${RUN_STEP5_REVIEW_SH:-$PLUGIN_ROOT/skills/review-and-fix/scr
 REVIEW_AND_FIX_ARGS=(
     --implement-tmpdir "$IMPLEMENT_TMPDIR"
     --mode diff
-    --panel "$REVIEW_PANEL"
     --round-num "$ROUND_NUM"
     --round-cap "$ROUND_CAP"
     --session-env-path "$SESSION_ENV_PATH"

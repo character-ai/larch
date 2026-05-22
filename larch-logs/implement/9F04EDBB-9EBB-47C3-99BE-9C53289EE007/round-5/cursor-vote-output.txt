@@ -1,0 +1,24 @@
+Verifying findings against the repo: reading context files and sampling cited sources.
+
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: EXONERATE -- repo `skills/implement/SKILL.md` and `.claude/skills/agnix-fix/SKILL.md` already standardize exit **3** for audit refuse; diff-context shows agnix-fix table landed.
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: EXONERATE -- tree vs skill harnesses assert different surfaces (manifest reader vs hook/stop wiring); optional consolidation, not a latent correctness hole by itself.
+FINDING_11: EXONERATE -- exhaustive `rg` sweep was a one-shot cutover step; baking it into CI would be ongoing allowlist churn beyond this ballot’s proportional fix.
+FINDING_12: EXONERATE -- editorial greps match the stated goal (normative SKILL pins); deeper shell tests are optional extra coverage, not a defect in current tests.
+FINDING_13: EXONERATE -- fixed tags plus explicit “data not instructions” framing is an accepted tradeoff; reverting to random delimiters system-wide would be disproportionate churn for marginal gain here.
+FINDING_14: EXONERATE -- unknown-flag `exit 2` matches common `review-and-fix.sh` style; no evidence strict argv-vs-`gh` split callers exist for `clarify-label.sh`.
+FINDING_15: EXONERATE -- same Step 1 block already instructs fork mode to use `$TARGET_ISSUE_NUMBER` and `--repo "$UPSTREAM_REPO"` immediately after the fenced example.
+FINDING_16: EXONERATE -- concurrent issue-body edits between Preflight and Step 1 are a rare TOCTOU; adding hash/`updatedAt` fail-closed gates is heavy for the reported risk.
+FINDING_17: EXONERATE -- `skills/fix-issue/SKILL.md` documents `find-lock-issue.sh --require-plan-block` decomposition; remaining gap is plan-artifact wording, not behavior.
+FINDING_18: EXONERATE -- accurate PR hygiene note but not worth a dedicated GitHub issue for tracking alone.
+FINDING_19: EXONERATE -- pre-existing exotic-path note; optional hardening explicitly out of cutover scope.
+FINDING_20: EXONERATE -- intentional run-log policy per sources; no issue warranted.
+FINDING_21: EXONERATE -- documented product scope (`NON_PR`); not a cutover regression to track separately.
+FINDING_22: EXONERATE -- `skills/review/SKILL.md` still correctly documents `review-core.sh --panel hard`; orthogonal if implement-only argv removal was the sweep goal.

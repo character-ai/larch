@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 # Regression harness for classify-issue.sh.
+# Note: classification reads feature text + optional diff — it does not parse
+# removed `/design --quick/--full` argv; tier/sketch_budget mapping lives in
+# `/design` (`skills/design/references/flags.md`), not this script.
 
 set -euo pipefail
 

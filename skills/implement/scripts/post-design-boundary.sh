@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# post-design-boundary.sh — Mechanical gate immediately after /design returns.
+# post-design-boundary.sh — DEPRECATED (issue #2485 Decision 2).
+#
+# Physical deletion is deferred; callers must not rely on this script.
+# Issue-anchored /implement materializes the plan from the GitHub issue body
+# and does not invoke this wrapper on the happy path.
+#
+# Contract: always exit 0. Emit a single-line deprecation warning to stderr.
+# Do not read manifests, mutate session-env, write .boundary-gate-passed, or
+# touch design-export/manifest.env.
 
 set -euo pipefail
-
-# shellcheck disable=SC2317
-on_err() {
-    emit_kv MANIFEST_FAILED true
-    emit_kv ERROR internal-error
-    exit 0
-}
-trap on_err ERR
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
 REPO_ROOT=$(cd "$SCRIPT_DIR/../../.." && pwd -P)
@@ -20,162 +20,15 @@ QUIET_LIB="$PLUGIN_ROOT/scripts/lib-quiet.sh"
 source "$QUIET_LIB"
 larch_quiet_init
 
-IMPLEMENT_TMPDIR=""
-SESSION_ENV_PATH=""
-DESIGN_ONLY=false
-HOOK_MODE=false
-
-fail_closed() {
-    emit_kv MANIFEST_FAILED true
-    emit_kv ERROR "$1"
-    exit 0
-}
-
-has_control_char() {
-    local value="$1"
-    case "$value" in
-        *$'\001'*|*$'\002'*|*$'\003'*|*$'\004'*|*$'\005'*|*$'\006'*|*$'\007'*|*$'\010'*|*$'\011'*|*$'\012'*|*$'\013'*|*$'\014'*|*$'\015'*|*$'\016'*|*$'\017'*|*$'\020'*|*$'\021'*|*$'\022'*|*$'\023'*|*$'\024'*|*$'\025'*|*$'\026'*|*$'\027'*|*$'\030'*|*$'\031'*|*$'\032'*|*$'\033'*|*$'\034'*|*$'\035'*|*$'\036'*|*$'\037'*|*$'\177'*)
-            return 0
-            ;;
-    esac
-    return 1
-}
-
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --implement-tmpdir)
-            [[ $# -ge 2 ]] || fail_closed "missing-implement-tmpdir"
-            IMPLEMENT_TMPDIR="$2"
-            shift 2
-            ;;
-        --session-env)
-            [[ $# -ge 2 ]] || fail_closed "missing-session-env"
-            SESSION_ENV_PATH="$2"
-            shift 2
-            ;;
-        --design-only)
-            [[ $# -ge 2 ]] || fail_closed "missing-design-only"
-            DESIGN_ONLY="$2"
-            shift 2
-            ;;
-        --hook-mode)
-            [[ $# -ge 2 ]] || fail_closed "missing-hook-mode"
-            HOOK_MODE="$2"
-            shift 2
-            ;;
-        *)
-            fail_closed "unknown-flag"
-            ;;
+        --implement-tmpdir) shift 2 ;;
+        --session-env) shift 2 ;;
+        --design-only) shift 2 ;;
+        --hook-mode) shift 2 ;;
+        *) shift ;;
     esac
 done
 
-case "$DESIGN_ONLY" in
-    true|false) ;;
-    *) fail_closed "invalid-design-only" ;;
-esac
-case "$HOOK_MODE" in
-    true|false) ;;
-    *) fail_closed "invalid-hook-mode" ;;
-esac
-
-if [[ -z "$IMPLEMENT_TMPDIR" || "$IMPLEMENT_TMPDIR" != /* ]] || has_control_char "$IMPLEMENT_TMPDIR" || [[ ! -d "$IMPLEMENT_TMPDIR" ]]; then
-    fail_closed "invalid-tmpdir"
-fi
-if [[ -n "$SESSION_ENV_PATH" ]]; then
-    if [[ "$SESSION_ENV_PATH" != /* ]] || has_control_char "$SESSION_ENV_PATH"; then
-        fail_closed "invalid-session-env"
-    fi
-fi
-
-READER_OUT=$("$PLUGIN_ROOT/skills/design/scripts/read-design-manifest.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR" --emit-load-breadcrumb)
-if printf '%s\n' "$READER_OUT" | grep -q '^MANIFEST_FAILED=true$'; then
-    emit "$READER_OUT"
-    exit 0
-fi
-if ! printf '%s\n' "$READER_OUT" | grep -q '^MANIFEST_OK=true$'; then
-    fail_closed "manifest-reader-no-status"
-fi
-
-WARNINGS=""
-
-# Persist PLAN_FILE and FEATURE_FILE to session-env so run-step2-dispatch.sh
-# finds them regardless of whether the orchestrator runs the prose block.
-_PLAN_FILE_PARSED=$(printf '%s\n' "$READER_OUT" | awk -F= '/^PLAN_FILE=/{print substr($0, index($0,"=")+1); exit}')
-if [[ -n "$_PLAN_FILE_PARSED" && -n "$SESSION_ENV_PATH" && -f "$SESSION_ENV_PATH" ]]; then
-    _FEATURE_FILE_PATH="$IMPLEMENT_TMPDIR/feature-description.txt"
-    _SE_TMP=$(mktemp "${SESSION_ENV_PATH}.tmp.XXXXXX")
-    if { grep -v '^PLAN_FILE=' "$SESSION_ENV_PATH" | grep -v '^FEATURE_FILE='; \
-         printf 'PLAN_FILE=%s\n' "$_PLAN_FILE_PARSED"; \
-         printf 'FEATURE_FILE=%s\n' "$_FEATURE_FILE_PATH"; } > "$_SE_TMP"; then
-        mv "$_SE_TMP" "$SESSION_ENV_PATH"
-    else
-        rm -f "$_SE_TMP"
-    fi
-fi
-
-append_warning() {
-    WARNINGS+="WARN=$1"$'\n'
-}
-
-capture_branch_once() {
-    local out branch
-    out=$("$PLUGIN_ROOT/scripts/git-current-branch.sh" 2>/dev/null) || return 1
-    branch=$(printf '%s\n' "$out" | awk -F= '/^BRANCH=/{print substr($0, 8); exit}')
-    [[ -n "$branch" ]] || return 1
-    printf '%s\n' "$branch"
-}
-
-BRANCH=""
-if ! BRANCH=$(capture_branch_once); then
-    if ! BRANCH=$(capture_branch_once); then
-        fail_closed "branch-capture-failed"
-    fi
-fi
-
-if [[ "$HOOK_MODE" = true ]]; then
-    # Hook-mode: do NOT create .boundary-gate-passed. The Stop hook blocks when
-    # the sentinel is absent, so skipping the touch here ensures that if the
-    # orchestrator ignores the injected directive and halts, the Stop hook fires
-    # and blocks the session. The orchestrator's mandatory Bash call (non-hook-mode)
-    # is the load-bearing gate that creates the sentinel.
-    # All hard gates passed — emit success envelope immediately (no late-failure path).
-    emit "$READER_OUT"
-    emit_kv BRANCH "$BRANCH"
-    if [[ "$DESIGN_ONLY" = true ]]; then
-        emit_kv NEXT_ACTION plan-goals-test-and-plan-review-tally-then-diagrams-summary-then-step-9a1
-    else
-        emit_kv NEXT_ACTION larch-log-batches-then-1r-then-step2
-    fi
-    emit_kv POST_DESIGN_BOUNDARY_HOOK_INJECTED true
-    [[ -z "$WARNINGS" ]] || emit "$WARNINGS"
-    if [[ "$DESIGN_ONLY" = true ]]; then
-        emit "➡️ 1: design plan — hook injected boundary context (design-only); NEXT REQUIRED: invoke $PLUGIN_ROOT/skills/implement/scripts/post-design-boundary.sh --implement-tmpdir \"$IMPLEMENT_TMPDIR\" --session-env \"${SESSION_ENV_PATH:-$IMPLEMENT_TMPDIR/session-env.sh}\" --design-only $DESIGN_ONLY as a Bash tool call — do NOT skip the wrapper call"
-    else
-        emit "➡️ 1: design plan — hook injected boundary context; NEXT REQUIRED: invoke $PLUGIN_ROOT/skills/implement/scripts/post-design-boundary.sh --implement-tmpdir \"$IMPLEMENT_TMPDIR\" --session-env \"${SESSION_ENV_PATH:-$IMPLEMENT_TMPDIR/session-env.sh}\" --design-only $DESIGN_ONLY as a Bash tool call — do NOT skip the wrapper call"
-    fi
-else
-    # Normal (orchestrator-driven) mode: write the sentinel BEFORE emitting buffered
-    # reader output. Failure is fatal because the Stop hook treats sentinel absence as
-    # "halted mid-Step-1" and would otherwise trap a legitimate success path.
-    # Buffering avoids the dual-envelope footgun where MANIFEST_OK and a later
-    # MANIFEST_FAILED could coexist on a late-failure path.
-    if ! touch "$IMPLEMENT_TMPDIR/.boundary-gate-passed" 2>/dev/null; then
-        fail_closed "boundary-gate-sentinel-write-failed"
-    fi
-    # All hard gates have passed. Emit the unified success envelope:
-    # (1) reader stdout (MANIFEST_OK + KV + 📥 breadcrumb), then (2) wrapper extensions.
-    emit "$READER_OUT"
-    emit_kv BRANCH "$BRANCH"
-    if [[ "$DESIGN_ONLY" = true ]]; then
-        emit_kv NEXT_ACTION plan-goals-test-and-plan-review-tally-then-diagrams-summary-then-step-9a1
-    else
-        emit_kv NEXT_ACTION larch-log-batches-then-1r-then-step2
-    fi
-    emit_kv POST_DESIGN_BOUNDARY_OK true
-    [[ -z "$WARNINGS" ]] || emit "$WARNINGS"
-    if [[ "$DESIGN_ONLY" = true ]]; then
-        emit "➡️ 1: design plan — boundary gate passed (design-only); NEXT REQUIRED: write plan-goals-test + plan-review-tally log batches → post larch:diagrams summary comment → Step 9a.1 OOS pipeline"
-    else
-        emit "➡️ 1: design plan — boundary gate passed; NEXT REQUIRED: write larch-log batches → Step 1.r rebase → Step 2 entry"
-    fi
-fi
+larch_err "post-design-boundary.sh: deprecated no-op (issue #2485); remove stray invocations."
+exit 0

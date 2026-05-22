@@ -1,31 +1,29 @@
 ---
 name: design
-description: "Use when designing non-trivial features, refactors, or architecture changes. Adaptive sketches (0 trivial, 2 quick/simple, 4 full) propose approaches; 10-reviewer panel (5 personalities × 2 tools) validates via 3-voter dialectic."
-argument-hint: "[--full] [--subagent] [--session-env <path>] [--design-classification <value>] <feature description>"
+description: "Use when authoring or vetting an issue-anchored implementation plan in GitHub (plan markers in the issue body). Tiered sketches (0/2/4) plus a 10-reviewer panel and clarify loop; verbal prompts create an issue first."
+argument-hint: "[--trivial|--simple|--hard] [--no-dedup] <issue-N | feature description>"
 allowed-tools: AskUserQuestion, Bash, Read, Edit, Write, Grep, Glob, Agent, Task, WebFetch, WebSearch
 ---
 
 # Design Skill
 
-Design an implementation plan for a feature and review it with a 10-reviewer panel (5 personalities × Cursor + Codex: Arch, Edge, Innovation, Pragmatic, Requirements — each personality runs on both tools), adjudicated by a 3-voter panel (Claude + Codex + Cursor). The sketch phase (Step 2a) reads `run-params.json` and runs 0 agents for codebase-scan-confirmed trivial doc-only work, 2 generic agents for quick/simple work, or 4 agents in full mode (Cursor-Arch + Cursor-Edge + Codex-Innovation + Codex-Pragmatic — one personality per vendor in a diagonal split).
+Design an implementation plan for a feature and review it with a **full** panel when using `--simple` or `--hard` (10 reviewers on the full diagonal: 5 personalities × Cursor + Codex, plus adjudication and voting as documented in this file). The **`--trivial`** tier intentionally uses a **smaller** plan-review budget (`review_budget=quick` per `skills/design/references/flags.md`) and **`sketch_budget` 0** — do not extrapolate the full 10-reviewer cost model to trivial runs. The sketch phase (Step 2a) reads `run-params.json`: **`sketch_budget` is 0, 2, or 4** from the selected **tier** (`trivial` / `simple` / `hard`). Plan + acceptance are written back to the issue body via `plan-block-write.sh` (no design manifest export).
 
-**Flags**: Parse flags from the start of `$ARGUMENTS` before treating the remainder as the feature description. Flags may appear in any order; stop at the first non-flag token. **All boolean flags default to `false`. Only set a flag to `true` when its `--flag` token is explicitly present in the arguments. Flags are independent — the presence of one flag must not influence the default value of any other flag.**
+**Flags**: Parse flags from the start of `$ARGUMENTS` before consuming the positional tail. **Public argv** allows only `--trivial`, `--simple`, `--hard`, `--no-dedup`, and `--run-id` (see table). **All boolean flags default to `false`.** At most one tier flag may appear on argv (mutual exclusion). If no tier flag is set after the clarify / already-planned routers in Step 0, the orchestrator MUST run the tier `AskUserQuestion` gate there before sketches.
 
-| Flag | Default | Purpose | Load-bearing detail |
-|------|---------|---------|---------------------|
-| `--auto` | `false` | Skip interactive question checkpoints (1c, 1d, 3.5) | Dirty-tree recovery prompts are not suppressed when forwarded from `/implement` |
-| `--quick` | `false` | Quick review mode; caps sketch fan-out at 2 unless `--full` is also set | Independent of `--auto`; see `flags.md` for `/design` vs `/implement` (which always runs `/design` on the Skill path unless both externals are down) |
-| `--full` | `false` | Force full sketch fan-out | Sets `full_mode=true`; forces `sketch_budget=4` even with `--quick`; plan review still follows `quick_mode` |
-| `--subagent` | `false` | Run Step 2a heavy phase in an isolated Agent-tool subagent (`heavy-worker.md`); writes artifacts only to `$DESIGN_TMPDIR/` and returns terse status; standalone (`--session-env` empty) parents replay artifacts before cleanup | No-op when `--quick` is set; orthogonal to `--session-env` |
-| `--session-env <path>` | empty | Forward discovered session values to `session-setup.sh` | Empty = standalone invocation, full discovery |
-| `--step-prefix <prefix>` | empty | Nested-numbering prefix from `/implement` | `::` delimiter splits numeric prefix, breadcrumb path, and optional parent skill path; `"1."` (bare numeric) is backward-compat |
-| `--branch-info <values>` | — | Skip redundant branch-state check when called from `/implement` | 4 keys required: `IS_MAIN`/`IS_USER_BRANCH`/`USER_PREFIX`/`CURRENT_BRANCH`; fallback on validation failure to `create-branch.sh --check`; power-user / nested-call flag with no standalone value validation |
-| `--design-classification <value>` | empty | Accept caller-forwarded `TRIVIAL_DOC_ONLY`/`SIMPLE`/`HARD` classification | Trusted only when `branch_info_supplied=true`; standalone `/design` ignores it and classifies locally |
-| `--run-id <ID>` | empty | Optional run identifier | When set, used as the run ID for this invocation instead of the auto-generated one |
+| Flag | Default | Purpose |
+|------|---------|---------|
+| `--trivial` | `false` | Tier: `sketch_budget=0`, `quick_mode=true`, `review_budget=quick` (main-agent plan + quick self-review path) |
+| `--simple` | `false` | Tier: `sketch_budget=2`, `quick_mode=true`, `review_budget=full` (2 generic sketches + 10-reviewer panel + auto-applied findings) |
+| `--hard` | `false` | Tier: `sketch_budget=4`, `quick_mode=false`, `review_budget=full` (4 sketches + panel + per-finding approval on accepted findings) |
+| `--no-dedup` | `false` | Forward to `/larch:issue` when the verbal path creates a tracking issue |
+| `--run-id <ID>` | empty | Optional run identifier |
 
-**MANDATORY — READ ENTIRE FILE before parsing argument flags**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/flags.md` completely. This reference is the single normative source for flag semantics — validation rules, fallback behaviors, `::` delimiter encoding spec, 4-key `--branch-info` requirement, and backward-compat notes. The table above is a non-normative index.
+**Mutual exclusion**: at most one of `--trivial` / `--simple` / `--hard` may be set; if two or more tier flags appear, print a clear error and abort before Step 0.
 
-The feature to design is described by the remainder of `$ARGUMENTS` after flags are stripped.
+**MANDATORY — READ ENTIRE FILE before parsing argument flags**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/flags.md` completely. This reference is the single normative source for tier mapping, internal `--inline`, and validation rules. The table above is a non-normative index.
+
+**Positional tail**: after flags, the first non-flag token is either **`issue-N`** (all digits, `^[0-9]+$`) or a **verbal feature description** (any other text). Verbal text triggers `/larch:issue` first (forward `--no-dedup` when set), then binds `ISSUE_NUMBER` to the created issue and continues as the issue path.
 
 **Anti-halt continuation reminder.** After every `Bash` tool call that completes a numbered step or sub-step, and after every visible output (plans, diagrams, voting tallies, skip breadcrumbs), IMMEDIATELY continue with this skill's NEXT numbered step — do NOT end the turn on a Bash result, a status message, or a deliverable-looking output, and do NOT write a summary, handoff, status recap, or "returning to parent" message — those are halts in disguise. This applies to ALL step boundaries from Step 0 through Step 5, and to ALL sub-step transitions (1c→1d→2a→2a.5→2b→3→3.5→3b→4→5). **Critical: the implementation plan (Step 2b) and architecture diagram (Step 3b) are intermediate deliverables, NOT the end of the design — plan review (Step 3) and cleanup (Step 5) must still execute.** The rule is strictly subordinate to any explicit non-sequential control-flow directive in THIS file (e.g., `skip to Step N`, `bail to cleanup`, `jump back`, `proceed to Step N`). A normal sequential `proceed to Step N+1` instruction is the default continuation this rule reinforces, NOT an exception.
 
@@ -47,7 +45,7 @@ The feature to design is described by the remainder of `$ARGUMENTS` after flags 
 
 **Suppressed output:** explanatory prose, script paths, rationale for decisions between tool calls, per-reviewer individual completion messages.
 
-When `SESSION_ENV_PATH` is non-empty (nested under `/implement`), follow `${CLAUDE_PLUGIN_ROOT}/skills/shared/subskill-invocation.md` section Artifact-only return contract (nested mode): suppress step breadcrumbs and bulky inline artifact bodies for the implementation plan, voting tally, architecture diagram, rejected findings, and discussion syntheses; rely on the files under `$DESIGN_TMPDIR/` plus the Step 5 design manifest. When `SESSION_ENV_PATH` is empty (standalone `/design`), preserve the existing verbose inline output and skip manifest export entirely.
+When `SESSION_ENV_PATH` is non-empty (nested under another skill), follow `${CLAUDE_PLUGIN_ROOT}/skills/shared/subskill-invocation.md` section Artifact-only return contract (nested mode): suppress step breadcrumbs and bulky inline artifact bodies for the implementation plan, voting tally, architecture diagram, rejected findings, and discussion syntheses; rely on the files under `$DESIGN_TMPDIR/`. When `SESSION_ENV_PATH` is empty (standalone `/design`), preserve verbose inline output.
 
 **Compact reviewer status table**: After launching sketch agents (Step 2a) or plan reviewers (Step 3), maintain a mental tracker of each agent's status. Print a compact table after EACH status change:
 
@@ -91,32 +89,28 @@ Consolidated NEVER rules collected from the procedural steps below. Each rule st
 
 6. **NEVER conflate the two timeout families.** **Why:** sketch-phase timeouts (sketches are shorter) differ from plan-review + dialectic timeouts (longer, deeper reasoning). **How to apply:** use `timeout: 1260000` (Bash tool) / `--timeout 1260` (collector) / `--timeout 1200` (reviewer script) for sketch-phase launches and sketch collection; use `timeout: 1860000` / `--timeout 1860` / `--timeout 1800` for plan-review launches, dialectic debaters, and dialectic judges.
 
-7. **NEVER emit step breadcrumbs when `SESSION_ENV_PATH` is non-empty.** **Why:** nested `/design` runs under `/implement`, whose parent-visible transcript must obey the artifact-only return contract. **How to apply:** write human-readable content to `$DESIGN_TMPDIR` artifacts, export the Step 5 design manifest, and emit only file-backed artifact paths plus the manifest machine footer. **Exception:** the single terminal continuation directive from Step 5b (`➡️ 5: cleanup — manifest written; NEXT REQUIRED: …`) is explicitly permitted as a machine continuation signal — it is not a decorative breadcrumb but a load-bearing instruction to the parent `/implement` orchestrator. It must be the last output line and nothing may follow it.
+7. **NEVER emit step breadcrumbs when `SESSION_ENV_PATH` is non-empty.** **Why:** nested `/design` runs under `/implement`, whose parent-visible transcript must obey the artifact-only return contract. **How to apply:** write human-readable content to `$DESIGN_TMPDIR` artifacts and emit only file-backed artifact paths plus a single terminal machine line after `plan-block-write.sh` succeeds (see Step 5). **Exception:** that one-line machine footer is explicitly permitted as a continuation signal — it is not a decorative breadcrumb. It must be the last output line and nothing may follow it.
 
 <!-- step:0 — Session Setup -->
 ## Step 0 — Session Setup
 
 Print: `> **🔶 /design 0: setup**`
 
+Bind `branch_info_supplied`: `true` when `SESSION_ENV_PATH` is non-empty (nested `/implement` handoff — parent already satisfied the entry gate); `false` when standalone. **Public argv** no longer exposes `--branch-info`; the nested gate is keyed off parent session-env presence only.
+
+### 0a — Branch + reviewer session (`DESIGN_TMPDIR`)
+
+`branch_info_supplied=false` for standalone public `/design` (no `--branch-info` on argv). When `branch_info_supplied=true` (nested), `/implement` is presumed to have already run the entry gate, so `session-entry-gate.sh` will emit `SKIP_BRANCH_CHECK=true`. Run `create-branch.sh --check`, then `session-entry-gate.sh`, then `session-setup.sh` as in the historical flow (include `--caller-env "$SESSION_ENV_PATH"` only when that variable is non-empty — Anti-pattern #4). Parse `SESSION_TMPDIR` → set `DESIGN_TMPDIR`. Derive `codex_available` / `cursor_available` from `session-setup.sh` output. Preserve nested `execution-issues.md` logging unchanged.
+
 ```bash
+branch_info_supplied=false
+[ -n "${SESSION_ENV_PATH:-}" ] && branch_info_supplied=true
+export branch_info_supplied
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
   CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$SESSION_ENV_PATH" 2>/dev/null || true)
 fi
 export CLAUDE_PLUGIN_ROOT
 SESSION_ENV_PATH="$SESSION_ENV_PATH" LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 0 — session setup" || true
-```
-
-Define `branch_info_supplied=true` only when the caller passed valid `--branch-info` containing all 4 keys: `IS_MAIN`, `IS_USER_BRANCH`, `USER_PREFIX`, and `CURRENT_BRANCH`. `SESSION_ENV_PATH` being non-empty is not a nesting signal by itself; `--session-env` is an exposed argument and can be passed manually.
-
-If `branch_info_supplied=true` (trusted caller-supplied branch state, normally from `/implement`), use the parsed `--branch-info` values for `CURRENT_BRANCH`, `IS_MAIN`, `IS_USER_BRANCH`, and `USER_PREFIX`. The four key values are accepted as-is and not cross-checked against the working tree (see the `--branch-info` "Sharp edge" note in `${CLAUDE_PLUGIN_ROOT}/skills/design/references/flags.md`). `/implement` is presumed to have already run the entry gate, so `session-entry-gate.sh` below will emit `SKIP_BRANCH_CHECK=true`.
-
-If `branch_info_supplied=false` (standalone, regardless of `SESSION_ENV_PATH`), check the current branch before setup:
-
-```bash
-if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
-  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$SESSION_ENV_PATH" 2>/dev/null || true)
-fi
-export CLAUDE_PLUGIN_ROOT
 ${CLAUDE_PLUGIN_ROOT}/scripts/create-branch.sh --check
 ```
 
@@ -154,7 +148,7 @@ export CLAUDE_PLUGIN_ROOT
 ${CLAUDE_PLUGIN_ROOT}/scripts/session-setup.sh --prefix claude-design --skip-branch-check --skip-repo-check --check-reviewers [--caller-env "$SESSION_ENV_PATH"] [--skip-codex-probe] [--skip-cursor-probe]
 ```
 
-If `SKIP_BRANCH_CHECK=false`, run setup without `--skip-branch-check`; `preflight.sh` runs in default mode and enforces clean `main` plus fetch/rebase before design work begins:
+If `SKIP_BRANCH_CHECK=false`, run setup without `--skip-branch-check`:
 
 ```bash
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
@@ -164,44 +158,32 @@ export CLAUDE_PLUGIN_ROOT
 ${CLAUDE_PLUGIN_ROOT}/scripts/session-setup.sh --prefix claude-design --skip-repo-check --check-reviewers [--caller-env "$SESSION_ENV_PATH"] [--skip-codex-probe] [--skip-cursor-probe]
 ```
 
-Only include `--caller-env "$SESSION_ENV_PATH"` if `SESSION_ENV_PATH` is non-empty. This Anti-pattern #4 predicate is orthogonal to `branch_info_supplied`: session-env controls parent presence I/O; branch-info controls whether `/design` trusts `/implement`'s already-gated branch state. If `SESSION_ENV_PATH` provides `CODEX_PRESENT=false` or `CURSOR_PRESENT=false`, the script auto-sets the corresponding `--skip-codex-probe` / `--skip-cursor-probe` flag — you do not need to pass these explicitly when using `--caller-env`.
+Only include `--caller-env "$SESSION_ENV_PATH"` if `SESSION_ENV_PATH` is non-empty (Anti-pattern #4). If `SESSION_ENV_PATH` provides `CODEX_PRESENT=false` or `CURSOR_PRESENT=false`, the script auto-sets the corresponding `--skip-codex-probe` / `--skip-cursor-probe` flag.
 
 If the script exits non-zero, always print the raw `PREFLIGHT_ERROR=...` line first. Then print the normalized skill-level message and abort:
 
 **⚠ /design requires clean main to start. To continue, choose one of: (a) `git checkout main && git status` clean → re-run; (b) check out or create a `<USER_PREFIX>/*` feature branch and re-run (the branch naming convention is the explicit opt-in to continue from current state); (c) commit or stash uncommitted changes on `main` first.**
 
-Parse the output for `SESSION_TMPDIR`, `CODEX_AVAILABLE`, `CURSOR_AVAILABLE`, `CODEX_PRESENT`, `CURSOR_PRESENT`. Set `DESIGN_TMPDIR` = `SESSION_TMPDIR`. Substitute the actual path in every command below.
+Parse the output for `SESSION_TMPDIR`, `CODEX_AVAILABLE`, `CURSOR_AVAILABLE`, `CODEX_PRESENT`, `CURSOR_PRESENT`. Set `DESIGN_TMPDIR` = `SESSION_TMPDIR`.
 
-Set mental flags `codex_available` and `cursor_available` based on the output:
-- If `CODEX_AVAILABLE=false`: `codex_available=false`. Print: `**⚠ Codex not available (binary not found). Proceeding without Codex reviewer.**`
-- Else if `CODEX_PRESENT=false`: `codex_available=false`. Print: `**⚠ Codex not present for this session. Using Claude replacement.**`
-- Else: `codex_available=true`
-- Same logic for Cursor.
-
-Reviewer presence is static for the session. Runtime failures are handled by per-slot waterfall fallback instead of session-env mutation.
+Set mental flags `codex_available` and `cursor_available` based on the output (same two-tier pattern as the historical Step 0).
 
 **Execution-issues logging for nested runs**: When `SESSION_ENV_PATH` is non-empty, the parent log is `$(dirname "$SESSION_ENV_PATH")/execution-issues.md`. Any failing Bash tool, external reviewer launch, external reviewer collector status not equal to `OK`, or Agent-tool fallback failure must append the full captured stdout/stderr or returned text verbatim through `${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh` under `External Reviewer Issues` (or `Warnings` for diagram generation/sanitizer failures). Capture into a `$DESIGN_TMPDIR/*-failure.log` file first; include `${OUTPUT}.diag` sidecar content for reviewer collector failures. Do not summarize or truncate these captures.
 
-<!-- step:0 tail — Run-Depth Router -->
+### 0b — Parse argv, issue binding, clarify / already-planned routers, tier → `run-params.json`
 
-After `session-setup.sh` returns and `DESIGN_TMPDIR` is confirmed, compute run parameters once and write them to `$DESIGN_TMPDIR/run-params.json`:
-
-1. If `--design-classification <value>` was supplied AND `branch_info_supplied=true`, accept the forwarded value (`TRIVIAL_DOC_ONLY`, `SIMPLE`, or `HARD`) without re-classifying. Set `design_classification_source=caller-forwarded`.
-2. Otherwise, write the feature text to `$DESIGN_TMPDIR/feature-description.txt` and classify through the ACTION driver. Set `design_classification_source=router-pre-design` for `write-run-params.sh`; the richer `CLASSIFICATION_SOURCE=deterministic|cursor-validated|cursor-fallback` value from `classify-issue.sh` is diagnostic stdout only and is not written to `run-params.json`.
-
-```bash
-printf '%s\n' "$FEATURE_DESCRIPTION" > "$DESIGN_TMPDIR/feature-description.txt"
-printf 'ACTION=CLASSIFY ARGS=--feature-description %s\n' "$DESIGN_TMPDIR/feature-description.txt" \
-  | "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-driver.sh" --design-tmpdir "$DESIGN_TMPDIR"
-```
-
-Parse `CLASSIFICATION=<value>` and `CLASSIFICATION_REASON=<text>` from the driver output. If the driver exits non-zero or emits no valid classification, default to `HARD` with reason `classification failed`.
-3. `TRIVIAL_DOC_ONLY` is allowed only when the codebase scan confirms the change is documentation/prose-only and no runtime files, scripts, hooks, generated artifacts, or security behavior need edits. If the scan cannot confirm that, default to `SIMPLE`.
-4. Derive `sketch_budget`: if `full_mode=true`, use `4`; else if `quick_mode=true`, use `min(classification_budget, 2)` — where `classification_budget` is derived in the next step (so `TRIVIAL_DOC_ONLY -> 0`, `SIMPLE -> 2`, `HARD -> 4`; the min preserves the 0-budget path, not just caps non-trivial tasks); else use `classification_budget` directly.
-5. Derive `review_budget`: `quick` when `quick_mode=true`, otherwise `full`.
-6. Derive `workflow_path`: `SIMPLE` for `TRIVIAL_DOC_ONLY` or `SIMPLE`, otherwise `HARD`.
-
-Write the file using the shared helper:
+1. Parse public flags (`--trivial|--simple|--hard`, `--no-dedup`, `--run-id`) from the start of `$ARGUMENTS`. Remaining tokens after flags:
+   - If the first token matches `^[0-9]+$`, set `ISSUE_NUMBER` to that value.
+   - Else the remainder is **verbal feature text**: invoke **`/larch:issue`** via the Skill tool (forward `--no-dedup` when set). Parse the created issue number into `ISSUE_NUMBER`.
+2. **Fetch issue**: `gh issue view "$ISSUE_NUMBER" --json body,labels,number,title` with **2× retry** on transient failure.
+3. **Clarify loop** when `needs-design-clarification` label is present — follow `skills/implement/SKILL.md` Preflight clarify semantics: `clarify-state.sh`, fetch request comment body, `AskUserQuestion`, compose plan sections, `redact-secrets.sh`, `plan-block-write.sh --content-file`, `clarify-comment-post.sh --kind response`, `clarify-label.sh --action remove`, then Step 5 hygiene and exit **0** on success.
+4. **Already-planned branch** when a `larch:plan` block exists and clarification is clean: `AskUserQuestion` **(a)** replace via full flow, **(b)** ad-hoc Q&A only, **(c)** cancel — on cancel print `**ℹ /design cancelled by operator.**` and exit **0**.
+5. **Tier gate**: if no tier flag on argv, `AskUserQuestion` with **three options** `trivial` / `simple` / `hard` (descriptions per issue #2485). Non-tier `Other` answers → `**ℹ /design cancelled by operator.**` exit **0**.
+6. **Write** `$DESIGN_TMPDIR/feature-description.txt` from issue title+body (or verbal prompt). **Tier mapping** to `write-run-params.sh`:
+   - `trivial`: `sketch_budget=0`, `quick_mode=true`, `review_budget=quick`, `workflow_path=SIMPLE` (classification follows existing trivial doc-only carve-out when the router scan applies).
+   - `simple`: `sketch_budget=2`, `quick_mode=true`, `review_budget=full`, `workflow_path=SIMPLE`.
+   - `hard`: `sketch_budget=4`, `quick_mode=false`, `review_budget=full`, `workflow_path=HARD`.
+   Set `design_classification_source=tier-flag`. When the trivial tier still needs a doc-only confirmation, optionally pipe `ACTION=CLASSIFY ARGS=--feature-description …` through `design-driver.sh` (same contract as historical Step 0) before `write-run-params.sh`; otherwise skip.
 
 ```bash
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
@@ -218,7 +200,11 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/write-run-params.sh \
   --output "$DESIGN_TMPDIR/run-params.json"
 ```
 
-If the helper exits non-zero, print `**⚠ 0: router — run-params write failed; defaulting to HARD sketch budget.**`, set in-memory defaults `design_classification=HARD`, `sketch_budget=4`, `review_budget=full`, `workflow_path=HARD`, and continue. Consumers treat missing or schema-invalid `run-params.json` the same way.
+If the helper exits non-zero, print `**⚠ 0: router — run-params write failed; defaulting to HARD sketch budget.**`, set in-memory defaults `design_classification=HARD`, `sketch_budget=4`, `review_budget=full`, `workflow_path=HARD`, and continue.
+
+### 0c — Plan-relevant symbol breadcrumb
+
+Before sketches, run one codebase `Grep` pass for salient symbols from the issue/plan; if zero hits, print a single warning breadcrumb and continue (non-gating).
 
 <!-- step:1 — Create Branch -->
 
@@ -234,9 +220,7 @@ SESSION_ENV_PATH="$SESSION_ENV_PATH" LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_
 
 ### 1a — Check current branch state
 
-**If `branch_info_supplied=true`** (via `--branch-info`): Use the values parsed from the flag (`CURRENT_BRANCH`, `IS_MAIN`, `IS_USER_BRANCH`, `USER_PREFIX`). Skip the `create-branch.sh --check` call.
-
-**Otherwise** (standalone invocation or validation failed): Use the values parsed from Step 0's standalone `create-branch.sh --check` call. If Step 0 did not capture those values for any reason, run the `create-branch.sh` script in check mode before proceeding:
+Use the values parsed from Step 0's `create-branch.sh --check` call. If Step 0 did not capture those values for any reason, run the `create-branch.sh` script in check mode before proceeding:
 
 ```bash
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
@@ -335,11 +319,13 @@ When the assigned external is unavailable, the slot's Claude fallback uses the s
 
 ### Heavy phase dispatch (regular and quick mode)
 
+**CI string pin #1036 (not public argv):** searchable literals `--subagent` and `subagent_mode=true` name the internal host-only heavy dispatch; operators never pass `--subagent` on argv (see `references/flags.md`).
+
 Print `> **🔶 /design 2a: sketches**`.
 
-**Subagent heavy phase**: If `subagent_mode=true` (i.e., `--subagent` was passed) AND `quick_mode=false`, invoke a single Agent-tool subagent (subagent_type: `general-purpose`) for the heavy non-interactive phase before entering 2a.2. The subagent MUST read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/heavy-worker.md`, receive `DESIGN_TMPDIR`, `IMPLEMENT_TMPDIR`, `SESSION_ENV_PATH`, `FEATURE_DESCRIPTION`, `quick_mode`, `$DESIGN_TMPDIR/run-params.json`, branch info, and reviewer presence flags as explicit data, and write raw artifacts to `$DESIGN_TMPDIR/`. The subagent returns a terse KV block whose first line is `DESIGN_HEAVY=complete` (optionally followed by `DESIGN_SUMMARY_FILE=<path>`) or a single failure line `DESIGN_HEAVY=failed REASON=<short-token>`; it does not write the manifest and does not return plan/reviewer/tally prose.
+**Subagent heavy phase** (only when `quick_mode=false` **and** the host elects **non-inline** heavy dispatch per `references/flags.md` / `references/heavy-worker.md` — there is **no** public `--subagent` argv flag): invoke a single Agent-tool subagent (`subagent_type: general-purpose`) for the heavy non-interactive phase before entering 2a.2. The subagent MUST read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/heavy-worker.md`, receive `DESIGN_TMPDIR`, `IMPLEMENT_TMPDIR`, `SESSION_ENV_PATH`, `FEATURE_DESCRIPTION`, `quick_mode`, `$DESIGN_TMPDIR/run-params.json`, branch facts, and reviewer presence flags as explicit data, and write raw artifacts to `$DESIGN_TMPDIR/`. The subagent returns a terse KV block whose first line is `DESIGN_HEAVY=complete` (optionally followed by `DESIGN_SUMMARY_FILE=<path>`) or a single failure line `DESIGN_HEAVY=failed REASON=<short-token>`.
 
-Immediately after the Agent tool returns, parse the heavy-worker status line. Before following the success path, fail closed if the worker omitted a valid status line or returned success without the required artifacts. The gate has two tiers, drawn from two distinct normative sources: **Tier 1 (non-empty)** for substantive artifacts the `heavy-worker.md` "Artifact Contract" mandates as non-empty regardless of manifest export; **Tier 2 (must-exist)** for may-be-empty artifacts that `skills/design/scripts/write-design-manifest.sh` requires on disk for manifest export (`copy_required_may_be_empty` calls in that script). Tier 2 is the load-bearing existence check before manifest export at Step 5; Tier 1 is the heavy-worker contract check independent of manifest export.
+Immediately after the Agent tool returns, parse the heavy-worker status line. Before following the success path, fail closed if the worker omitted a valid status line or returned success without the required artifacts. The gate matches `heavy-worker.md` **Artifact Contract** plus existence checks for the may-be-empty files listed in the bash gate below (same checks as before the issue-anchored cutover, but **not** tied to any manifest writer).
 
 ```bash
 if [[ "${DESIGN_HEAVY:-}" != "complete" && "${DESIGN_HEAVY:-}" != "failed" ]]; then
@@ -360,19 +346,17 @@ elif [[ "${DESIGN_HEAVY:-}" == "complete" ]] && {
 fi
 ```
 
-Tier 1 (non-empty `-s` checks) pins the substantive artifacts mandated as non-empty by `heavy-worker.md` "Artifact Contract"; this tier is independent of manifest export and includes `approach-synthesis.txt`, which `write-design-manifest.sh` does not stage. `diff-lines.txt` is included because `/design` exports it (and `/implement` receives it under `design-export/` after manifest export) as optional informational diff sizing alongside `plan.txt`'s `diff_lines: <N>` line — sizing context only; `/implement`'s `### Implementer waterfall` does not use these values to pick the coder. Tier 2 (existence `-f` checks) pins may-be-empty manifest-required artifacts (`contested-decisions.md`, `oos.md`, `rejected-findings.md`, `accepted-plan-findings.md`) that `write-design-manifest.sh` stages via `copy_required_may_be_empty`. Two artifacts are intentionally NOT in the gate: `dialectic-resolutions.md` (`heavy-worker.md` "Artifact Contract" requires it as an empty file when dialectic does not run, but `dialectic-protocol.md` allows absence on the `NO_CONTESTED_DECISIONS` short-circuit and the zero-externals guardrail — adding `-f` would false-positive on those legitimate paths until the two normative sources are reconciled, which is out of scope for this gate) and `architecture-diagram.md` (optional). A failure from this gate routes through the normal `DESIGN_HEAVY=failed` branch below.
-
 On `DESIGN_HEAVY=complete`:
 - Parse `DESIGN_SUMMARY_FILE` from the worker's return KV block as a routing signal only. For security, ignore the returned path value if it differs from the fixed path `$DESIGN_TMPDIR/design-summary.json`.
 - Validate the fixed summary path if present: it must be a non-symlink regular file, size ≤2 KB, `jq . "$DESIGN_TMPDIR/design-summary.json"` must parse, and `.schema_version == 1`. On validation failure or absence, fall back to the existing full-file reads and artifact gates silently.
-- **If `SESSION_ENV_PATH` is non-empty (nested under /implement)**: use valid `design-summary.json` fields for lightweight routing/status decisions, including accepted/rejected plan-review counts when a compact status line is needed; do not read or print bulky artifact bodies. Proceed directly to Step 3.5. (Parent /implement reads the manifest written at Step 5.)
-- **If `SESSION_ENV_PATH` is empty (standalone /design --subagent — NEW capability)**: read and print `$DESIGN_TMPDIR/plan.txt` under `## Implementation Plan`, `$DESIGN_TMPDIR/voting-tally.md` under `## Voting Tally and Reviewer Competition Scoreboard`, `$DESIGN_TMPDIR/accepted-plan-findings.md` under `## Plan Review Findings (Voted In)` (skip header if file is empty or missing), `$DESIGN_TMPDIR/oos.md` under `## Out-of-Scope Observations` (skip header if file is empty or missing). Also read `$DESIGN_TMPDIR/rejected-findings.md`: if non-empty, print it under `## Unimplemented Plan Review Suggestions`; if empty or missing, print `## Plan Review — All Suggestions Implemented` (matches Step 4's standalone output). Then proceed to Step 3.5 (Discussion Round 2 runs interactively against the displayed artifacts). This path replays the plan-review text artifacts above so they remain visible before Step 5 cleanup removes `$DESIGN_TMPDIR`; it is not byte-identical to the inline standalone flow (subagent vs inline dispatch and optional Step 3b diagram handling differ).
+- **If `SESSION_ENV_PATH` is non-empty (nested under `/implement`)**: use valid `design-summary.json` fields for lightweight routing/status decisions; do not read or print bulky artifact bodies. Proceed directly to Step 3.5. The parent session reads the vetted plan from the GitHub issue body after `/design` completes (issue-anchored cutover).
+- **If `SESSION_ENV_PATH` is empty (standalone heavy dispatch)**: read and print `$DESIGN_TMPDIR/plan.txt` under `## Implementation Plan`, `$DESIGN_TMPDIR/voting-tally.md` under `## Voting Tally and Reviewer Competition Scoreboard`, `$DESIGN_TMPDIR/accepted-plan-findings.md` under `## Plan Review Findings (Voted In)` (skip header if file is empty or missing), `$DESIGN_TMPDIR/oos.md` under `## Out-of-Scope Observations` (skip header if file is empty or missing). Also read `$DESIGN_TMPDIR/rejected-findings.md`: if non-empty, print it under `## Unimplemented Plan Review Suggestions`; if empty or missing, print `## Plan Review — All Suggestions Implemented` (matches Step 4's standalone output). Then proceed to Step 3.5.
 
 On `DESIGN_HEAVY=failed`:
-- **If `SESSION_ENV_PATH` is non-empty (nested)**: write the failure reason to `$DESIGN_TMPDIR/manifest-failure.md`, emit no inline warning, proceed to Step 5 for cleanup/export checks (Step 5 sets `MANIFEST_EXPORT_OK=false`, skips `cleanup-tmpdir.sh`, preserves `$DESIGN_TMPDIR`), and do not run the inline heavy steps. **Recovery**: the parent `/implement` Step 1 reads the manifest after `/design` returns; on missing/failed manifest it sets `STALL_TRACKING=true` and bails to Step 18 cleanup. To retry transient subagent failures (network blip, model timeout), the operator re-runs the same `/implement` invocation — Step 0.5 sentinel idempotency reuses the already-created tracking issue, and `/design` runs fresh.
-- **If `SESSION_ENV_PATH` is empty (standalone)**: print `**⚠ 2a: sketches — heavy worker subagent failed: $REASON. Preserving $DESIGN_TMPDIR for inspection.**`, set the mental flag `STANDALONE_HEAVY_FAILED=true`, skip the inline heavy steps, and proceed to Step 5. Step 5 sees `STANDALONE_HEAVY_FAILED=true` and skips `cleanup-tmpdir.sh`, preserving `$DESIGN_TMPDIR` so the operator can inspect partial artifacts. (No parent /implement consumer; no manifest needed for standalone.)
+- **If `SESSION_ENV_PATH` is non-empty (nested)**: write the failure reason to `$DESIGN_TMPDIR/heavy-worker-failure.md`, emit no inline warning, preserve `$DESIGN_TMPDIR`, skip the inline heavy steps, and proceed to Step 5 (plan write will likely fail closed). **Recovery**: fix the subagent environment and re-run `/design` on the same issue; `/implement` does not consume design manifests.
+- **If `SESSION_ENV_PATH` is empty (standalone)**: print `**⚠ 2a: sketches — heavy worker subagent failed: $REASON. Preserving $DESIGN_TMPDIR for inspection.**`, set `STANDALONE_HEAVY_FAILED=true`, skip the inline heavy steps, and proceed to Step 5. Step 5 skips `cleanup-tmpdir.sh` when `STANDALONE_HEAVY_FAILED=true`.
 
-If `subagent_mode=false` (or `quick_mode=true`), proceed to 2a.2 and run the inline flow below. (`SESSION_ENV_PATH` continues to govern nested I/O semantics — verbosity suppression, manifest export, OOS routing — orthogonally to dispatch mode.)
+If the host runs the heavy phase **inline** (`quick_mode=true` **or** inline dispatch per `references/flags.md`), proceed to 2a.2 and run the inline flow below. `SESSION_ENV_PATH` continues to govern nested verbosity / OOS routing orthogonally to dispatch mode.
 
 ### 2a.2 — Launch Sketches in Parallel
 
@@ -460,7 +444,7 @@ Read all sketches (or their Claude fallbacks if an external tool was unavailable
 
    List decisions in priority order: High impact first, then by degree of sketch disagreement (more agents on different sides = higher priority), then by order of appearance in the synthesis. If no sketches diverged (all agents agreed on all points), write exactly `NO_CONTESTED_DECISIONS` as the entire file content.
 
-Write the synthesis to `$DESIGN_TMPDIR/approach-synthesis.txt` so it can be referenced by Step 2b. If `SESSION_ENV_PATH` is empty, also print it under an `## Approach Synthesis` header. If `SESSION_ENV_PATH` is non-empty, print nothing for this save and continue; the Step 5 manifest is the parent-visible handoff.
+Write the synthesis to `$DESIGN_TMPDIR/approach-synthesis.txt` so it can be referenced by Step 2b. If `SESSION_ENV_PATH` is empty, also print it under an `## Approach Synthesis` header. If `SESSION_ENV_PATH` is non-empty, print nothing for this save and continue; the parent-visible handoff is the issue-body `larch:plan` block written in Step 5.
 
 ### 2a.5 — Dialectic Resolution of Contested Decisions
 
@@ -548,7 +532,7 @@ Produce a plan that includes:
 - **Testing strategy**: What tests will be added or modified.
 - **Diff size estimate**: Estimate the total diff size in changed lines for the planned implementation. Append a final line `diff_lines: <N>` to `$DESIGN_TMPDIR/plan.txt`, where `<N>` is a non-negative integer. This estimate is informational for `/implement` operators and logs (it is not a Step 1 coder-routing trigger); use best judgment, but do not omit the line.
 
-Write the plan to `$DESIGN_TMPDIR/plan.txt` with basename exactly `plan.txt`. If `SESSION_ENV_PATH` is empty, print the plan to the user under a `## Implementation Plan` header so reviewers can see it. If `SESSION_ENV_PATH` is non-empty, print nothing for this save; `/implement` reads the exported plan file through the Step 5 manifest. The plan is an intermediate deliverable — IMMEDIATELY continue to Step 3 (Plan Review) after saving/printing. Do NOT halt, summarize, or treat the plan as the end of the design.
+Write the plan to `$DESIGN_TMPDIR/plan.txt` with basename exactly `plan.txt`. If `SESSION_ENV_PATH` is empty, print the plan to the user under a `## Implementation Plan` header so reviewers can see it. If `SESSION_ENV_PATH` is non-empty, print nothing for this save; `/implement` materializes the plan from the GitHub issue body after `/design` completes. The plan is an intermediate deliverable — IMMEDIATELY continue to Step 3 (Plan Review) after saving/printing. Do NOT halt, summarize, or treat the plan as the end of the design.
 
 Immediately after saving `plan.txt`, emit the mechanical plan-validation ACTION. This writes `$DESIGN_TMPDIR/diff-lines.txt` atomically and fails closed if the final `diff_lines: <N>` line is missing or malformed:
 
@@ -736,7 +720,7 @@ Print: `> **🔶 /design 3b: arch diagram**`
 
 Before generating the diagram, classify the plan type by reading `$DESIGN_TMPDIR/plan.txt`. The plan is **non-architectural** when ALL files to be modified are exclusively: documentation files (`.md`, `CHANGELOG`, `docs/**`), configuration files (`.json`, `.yaml`, `.yml`, `.tsv`), or plain text (`.txt`) — with no new behavioral components, public APIs, or cross-skill contracts introduced. Apply a **conservative classifier** — SKILL.md files, `.sh` scripts, and `.py` scripts count as potentially architectural regardless of change size; when uncertain, generate the diagram rather than skip.
 
-If the plan is non-architectural: do NOT write `$DESIGN_TMPDIR/architecture-diagram.md`. When `SESSION_ENV_PATH` is empty, print `⏩ 3b: arch diagram status=skip reason=no-architectural-change elapsed=<elapsed>`. When `SESSION_ENV_PATH` is non-empty, print nothing. Then IMMEDIATELY continue to Step 4. Leaving `architecture-diagram.md` absent ensures `write-design-manifest.sh` omits `ARCHITECTURE_DIAGRAM_FILE` from the manifest so consumers render `"Architecture diagram not available."` rather than a plain-text placeholder.
+If the plan is non-architectural: do NOT write `$DESIGN_TMPDIR/architecture-diagram.md`. When `SESSION_ENV_PATH` is empty, print `⏩ 3b: arch diagram status=skip reason=no-architectural-change elapsed=<elapsed>`. When `SESSION_ENV_PATH` is non-empty, print nothing. Then IMMEDIATELY continue to Step 4. Leaving `architecture-diagram.md` absent is valid; Step 5's composed plan omits diagram prose when no diagram file exists.
 
 **Otherwise** (plan is architectural): generate a mermaid Architecture Diagram that represents the high-level system/component structure of the feature based on the finalized implementation plan (revised or original). The diagram should focus on **modules, boundaries, and their relationships** — not runtime behavior or code flow.
 
@@ -767,7 +751,7 @@ On `STATUS=ok`, rename the candidate to `$DESIGN_TMPDIR/architecture-diagram.md`
 ```
 ```
 
-**If diagram generation and sanitizer validation succeed**, continue to Step 4; the Step 5 manifest carries the artifact path when `SESSION_ENV_PATH` is non-empty.
+**If diagram generation and sanitizer validation succeed**, continue to Step 4; when `SESSION_ENV_PATH` is non-empty, print nothing (nested verbosity contract).
 
 **If the sanitizer returns `STATUS=rejected` or exits 2**, do NOT promote the candidate. Delete `$DESIGN_TMPDIR/architecture-diagram.candidate.md`. When `SESSION_ENV_PATH` is empty, print `**⚠ 3b: architecture diagram — rejected by mermaid sanitizer (REASON_TOKEN=<token>); proceeding without diagram.**`. When `SESSION_ENV_PATH` is non-empty, emit no inline warning; capture the sanitizer's full stdout/stderr to `$DESIGN_TMPDIR/architecture-diagram-sanitizer.failure.log` and append it under `### Warnings` in `$(dirname "$SESSION_ENV_PATH")/execution-issues.md` via `${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh --site "design Step 3b" --tool "sanitize-mermaid-fragment.sh architecture" --exit-code <exit-code-or-2> --category Warnings --output-file "$DESIGN_TMPDIR/architecture-diagram-sanitizer.failure.log" --redact || true`. Then continue to Step 4.
 
@@ -789,7 +773,7 @@ SESSION_ENV_PATH="$SESSION_ENV_PATH" LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_
 
 Print any rejected plan review findings:
 
-1. Emit `ACTION=FINALIZE` to ensure `$DESIGN_TMPDIR/rejected-findings.md`, `$DESIGN_TMPDIR/accepted-plan-findings.md`, and `$DESIGN_TMPDIR/oos.md` exist and to validate non-empty manifest-required artifacts before Step 5 export:
+1. Emit `ACTION=FINALIZE` to ensure `$DESIGN_TMPDIR/rejected-findings.md`, `$DESIGN_TMPDIR/accepted-plan-findings.md`, and `$DESIGN_TMPDIR/oos.md` exist and to validate non-empty finalize-required artifacts before Step 5:
    ```bash
    printf '%s\n' 'ACTION=FINALIZE' \
      | "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-driver.sh" --design-tmpdir "$DESIGN_TMPDIR"
@@ -797,12 +781,12 @@ Print any rejected plan review findings:
    If this exits non-zero, repair the missing artifact before Step 5.
 2. Check if `$DESIGN_TMPDIR/rejected-findings.md` exists and is non-empty.
 3. If it has content and `SESSION_ENV_PATH` is empty, print it under a `## Unimplemented Plan Review Suggestions` header, formatted clearly with the reviewer name, the suggestion, and the reason for each.
-4. If it has content and `SESSION_ENV_PATH` is non-empty, print nothing; the Step 5 manifest carries the rejected-findings artifact path.
+4. If it has content and `SESSION_ENV_PATH` is non-empty, print nothing (nested verbosity contract).
 5. If `$DESIGN_TMPDIR/rejected-findings.md` is empty (it always exists after item 1), continue.
 
 After printing rejected findings (or the "all implemented" message), IMMEDIATELY continue to Step 5 — do NOT halt or treat this as the end of the design.
 
-> **Continue to Step 5 IMMEDIATELY.** Rejected-findings output is not terminal — cleanup and manifest export still must run.
+> **Continue to Step 5 IMMEDIATELY.** Rejected-findings output is not terminal — issue plan write + cleanup still must run.
 
 <!-- step:5 — Cleanup and Final Warnings -->
 
@@ -818,31 +802,20 @@ SESSION_ENV_PATH="$SESSION_ENV_PATH" LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_
 
 ### 5a — Update Reviewer Presence Status
 
-### 5b — Remove Temp Directory
+### 5b — Final approval gate + write `larch:plan` to GitHub
 
-If `SESSION_ENV_PATH` is non-empty, export design artifacts before cleanup:
+Before cleanup, present the synthesized plan + acceptance + `diff_lines` estimate via `AskUserQuestion` (**accept** / **regenerate** / **cancel**). On **accept**:
 
-```bash
-if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
-  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$SESSION_ENV_PATH" 2>/dev/null || true)
-fi
-export CLAUDE_PLUGIN_ROOT
-${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/write-design-manifest.sh --design-tmpdir "$DESIGN_TMPDIR" --implement-tmpdir "$(dirname "$SESSION_ENV_PATH")"
-```
+1. Compose `$DESIGN_TMPDIR/composed-plan.md` containing `## Plan`, `## Acceptance`, and a trailing `diff_lines: <N>` line (integer from `$DESIGN_TMPDIR/diff-lines.txt` or best-effort estimate).
+2. Run `cat "$DESIGN_TMPDIR/composed-plan.md" | "${CLAUDE_PLUGIN_ROOT}/scripts/redact-secrets.sh" > "$DESIGN_TMPDIR/composed-plan.redacted.md"`.
+3. Run `"${CLAUDE_PLUGIN_ROOT}/scripts/plan-block-write.sh" --issue "$ISSUE_NUMBER" --content-file "$DESIGN_TMPDIR/composed-plan.redacted.md"`.
+4. Set `PLAN_WRITE_OK=true` on success; on failure print `**⚠ 5: plan-block-write failed — preserving $DESIGN_TMPDIR**`, set `PLAN_WRITE_OK=false`, and skip cleanup below.
 
-Parse `MANIFEST_WRITTEN=<path>` from stdout and set the mental flag `MANIFEST_EXPORT_OK=true` if the command exited 0 AND the manifest file exists AND is non-empty. Otherwise set `MANIFEST_EXPORT_OK=false`; when `SESSION_ENV_PATH` is empty, print `**⚠ 5: cleanup — design manifest export failed. Preserving $DESIGN_TMPDIR for inspection.**`; when `SESSION_ENV_PATH` is non-empty, emit no inline warning because the missing/failed manifest is the parent-visible machine signal. SKIP the `cleanup-tmpdir.sh` step below entirely so the parent /implement (or operator) can inspect the partial artifacts. If `SESSION_ENV_PATH` is empty, skip this manifest write and treat `MANIFEST_EXPORT_OK` as `true` for cleanup-gating purposes (standalone `/design` preserves visible inline output, has no parent consumer, and always cleans up on the normal path).
+On **cancel**, exit **0** with `**ℹ /design cancelled by operator.**` after optional Step 5a bookkeeping.
 
-**Manifest helper contracts** (per `${CLAUDE_PLUGIN_ROOT}/.claude/rules/script-md-siblings.md`):
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-driver.sh` — ACTION dispatcher for scriptable `/design` mechanics. Sibling contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-driver.md`.
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/classify-issue.sh` — deterministic plus Cursor-validated run-depth classifier used by the `ACTION=CLASSIFY` path. Sibling contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/classify-issue.md`.
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/emit-plan.sh` — fail-closed `plan.txt` / `diff-lines.txt` validator used by the `ACTION=EMIT_PLAN` path. Sibling contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/emit-plan.md`.
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/tally-plan-review.sh` — design-local vote tally and scoreboard renderer used by the `ACTION=TALLY` path. Sibling contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/tally-plan-review.md`.
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/finalize-plan.sh` — final design artifact validator used by the `ACTION=FINALIZE` path. Sibling contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/finalize-plan.md`.
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/write-design-manifest.sh` — atomic writer invoked above; it also exports `diff-lines.txt` so `/implement` retains informational diff sizing after `$DESIGN_TMPDIR` cleanup (sizing context only; `/implement` Step 1's `### Implementer waterfall` does not use `diff_lines` / `diff-lines.txt` to pick the coder). Sibling contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/write-design-manifest.md`.
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/read-design-manifest.sh` — consumer-side reader/verifier invoked from `skills/implement/SKILL.md` Step 1 after `/design` returns. Producer/reader colocation under `skills/design/scripts/` is intentional (plan-review FINDING_12 vote: keep colocated, do not relocate to `skills/implement/scripts/`). Sibling contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/read-design-manifest.md`.
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-design-manifest.sh` — regression harness for both writer and reader (atomicity, missing-required-artifact rejection, KV grammar, source/eval injection rejection, path-traversal rejection, symlink rejection, control-character rejection, malformed-key rejection). Wired into `make lint` via the `test-design-manifest` Makefile target. Sibling contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-design-manifest.md`.
+### 5c — Remove temp directory
 
-Remove the session temp directory and all files within it. Run `cleanup-tmpdir.sh` only when `MANIFEST_EXPORT_OK=true` AND `STANDALONE_HEAVY_FAILED` is unset or `false`; otherwise skip cleanup so `$DESIGN_TMPDIR` is preserved for inspection. `STANDALONE_HEAVY_FAILED=true` is set by the Step 2a `Subagent heavy phase` failure branch when `SESSION_ENV_PATH` is empty (standalone `/design --subagent` failed); `MANIFEST_EXPORT_OK=false` is set by Step 5b's writer-invocation failure (nested `/implement` path):
+Remove the session temp directory and all files within it. Run `cleanup-tmpdir.sh` only when `PLAN_WRITE_OK=true` AND `STANDALONE_HEAVY_FAILED` is unset or `false`; otherwise skip cleanup so `$DESIGN_TMPDIR` is preserved for inspection.
 
 ```bash
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
@@ -852,6 +825,20 @@ export CLAUDE_PLUGIN_ROOT
 ${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-tmpdir.sh --dir "$DESIGN_TMPDIR"
 ```
 
+**Plan helper contracts** (per `${CLAUDE_PLUGIN_ROOT}/.claude/rules/script-md-siblings.md`):
+- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-driver.sh` — ACTION dispatcher. Sibling: `design-driver.md`.
+- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/classify-issue.sh` — classifier for legacy ACTION paths. Sibling: `classify-issue.md`.
+- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/emit-plan.sh` — `ACTION=EMIT_PLAN`. Sibling: `emit-plan.md`.
+- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/tally-plan-review.sh` — `ACTION=TALLY`. Sibling: `tally-plan-review.md`.
+- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/finalize-plan.sh` — `ACTION=FINALIZE`. Sibling: `finalize-plan.md`.
+- `${CLAUDE_PLUGIN_ROOT}/scripts/plan-block-write.sh` — writes the `larch:plan` block into the issue body. Sibling: `plan-block-write.md` (under `scripts/`).
+- `${CLAUDE_PLUGIN_ROOT}/scripts/write-run-params.sh` — persists tier-derived `run-params.json` (Step 0). Sibling: `write-run-params.md`.
+- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/write-design-manifest.md` — manifest writer contract (regression harness / Makefile targets only).
+- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/read-design-manifest.md` — manifest reader contract (regression harness only).
+- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-design-manifest.md` — regression harness contract for manifest reader/writer.
+- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/write-design-manifest.sh` — manifest writer implementation (regression harness only).
+- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/read-design-manifest.sh` — manifest reader implementation (regression harness only).
+
 **Repeat any external reviewer warnings** from earlier steps (Step 0 reviewer-availability checks via `session-setup.sh`, Step 2a sketch-phase failures/timeouts, Step 3 runtime failures, or Step 3b diagram generation failure) so they are visible at the end of the workflow. For example:
 - `**⚠ Codex not available: <reason>**`
 - `**⚠ Cursor review failed: <reason>**`
@@ -859,8 +846,8 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-tmpdir.sh --dir "$DESIGN_TMPDIR"
 - `**⚠ Codex sketch timed out / produced empty output**`
 - `**⚠ 3b: arch diagram — generation failed, proceeding without diagram (<elapsed>)**`
 
-Do NOT write any farewell message such as "Design complete", "Returning to the /implement orchestrator", "Handing back control", or any other prose that signals the skill is done — those are halts in disguise that make the Skill tool appear to return a completed response and prompt the parent session to end its turn without invoking the mandatory `post-design-boundary.sh` Bash wrapper.
+Do NOT write any farewell message such as "Design complete", "Returning to the /implement orchestrator", "Handing back control", or any other prose that signals the skill is done — those are halts in disguise.
 
-When `SESSION_ENV_PATH` is non-empty (nested `/implement` mode) and `MANIFEST_EXPORT_OK=true`, this directive is the **final output line** of this skill — after repeating warnings (or immediately after cleanup when there are none). It replaces the bare `MANIFEST_WRITTEN=<path>` as the terminal visible signal from `/design`; it is unambiguously an input to the next step, not a completion signal. Do not emit anything after it:
+When `PLAN_WRITE_OK=true`, emit exactly one terminal machine footer as the **last output line** of this skill (after repeating warnings, or immediately after cleanup when there are none). Do not emit anything after it:
 
-`➡️ 5: cleanup — manifest written; NEXT REQUIRED: parent /implement must invoke post-design-boundary.sh immediately as a Bash tool call — do NOT end the orchestrator turn`
+`➡️ 5: cleanup — plan written to issue #<N>; NEXT REQUIRED: continue`

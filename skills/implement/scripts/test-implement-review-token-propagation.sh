@@ -4,6 +4,15 @@
 set -euo pipefail
 
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)
+cd "$REPO_ROOT"
+# review-and-fix.sh honors CLAUDE_PLUGIN_ROOT; a dev shell may point it at a
+# cached plugin tree, which breaks sourcing and fails before the stub runs.
+export CLAUDE_PLUGIN_ROOT="$REPO_ROOT"
+# Inherit no half-open quiet-stream session from the operator shell (e.g. a
+# parent /implement sets LARCH_QUIET_BREADCRUMB_FD without a valid FD in this
+# process); review-and-fix would then die in emit_breadcrumb before review-core.
+unset LARCH_QUIET_ACTIVE LARCH_QUIET_PID LARCH_QUIET_LOG_FILE LARCH_QUIET_LOG \
+    LARCH_QUIET_BREADCRUMB_FD LARCH_QUIET_BREADCRUMBS 2>/dev/null || true
 SESSION_SETUP="$REPO_ROOT/scripts/session-setup.sh"
 READ_KEY="$REPO_ROOT/scripts/read-session-env-key.sh"
 REVIEW_AND_FIX="$REPO_ROOT/skills/review-and-fix/scripts/review-and-fix.sh"
@@ -76,6 +85,10 @@ CORE_STUB="$TMP/review-core-stub.sh"
 cat > "$CORE_STUB" <<'EOF_CORE'
 #!/usr/bin/env bash
 set -euo pipefail
+: "${CORE_CAPTURE_FILE:?}"
+printf 'REVIEW_CORE_ARGV' >> "$CORE_CAPTURE_FILE"
+printf ' %q' "$@" >> "$CORE_CAPTURE_FILE"
+printf '\n' >> "$CORE_CAPTURE_FILE"
 out=""
 session_env=""
 round="1"
@@ -84,11 +97,12 @@ while [[ $# -gt 0 ]]; do
         --output-dir) out="$2"; shift 2 ;;
         --session-env-path) session_env="$2"; shift 2 ;;
         --round-num) round="$2"; shift 2 ;;
+        --mode|--diff-file|--plan-file|--feature-file|--run-id|--commit-count|--dynamic-archetypes|--codex-available|--cursor-available) shift 2 ;;
         *) shift; [[ $# -gt 0 && "$1" != --* ]] && shift || true ;;
     esac
 done
 mkdir -p "$out"
-printf 'SESSION_ENV_PATH=%s\n' "$session_env" > "${CORE_CAPTURE_FILE:?}"
+printf 'SESSION_ENV_PATH=%s\n' "$session_env" >> "$CORE_CAPTURE_FILE"
 printf 'LARCH_TOKEN_SESSION_ID=%s\n' "${LARCH_TOKEN_SESSION_ID:-}" >> "$CORE_CAPTURE_FILE"
 printf 'LARCH_CLAUDE_SOURCE_FILE=%s\n' "${LARCH_CLAUDE_SOURCE_FILE:-}" >> "$CORE_CAPTURE_FILE"
 printf 'LARCH_TIMING_LEDGER=%s\n' "${LARCH_TIMING_LEDGER:-}" >> "$CORE_CAPTURE_FILE"
@@ -105,22 +119,40 @@ IMPLEMENT_TMPDIR="$TMP/claude-implement-token-test"
 mkdir -p "$IMPLEMENT_TMPDIR"
 cp "$REVIEW_ENV" "$IMPLEMENT_TMPDIR/session-env.sh"
 CORE_CAPTURE="$TMP/review-core-capture.env"
-CORE_CAPTURE_FILE="$CORE_CAPTURE" \
-    LARCH_TOKEN_SESSION_ID="$token_session_id" \
+export CORE_CAPTURE_FILE="$CORE_CAPTURE"
+set +e
+LARCH_TOKEN_SESSION_ID="$token_session_id" \
     LARCH_CLAUDE_SOURCE_FILE="$claude_source_file" \
     LARCH_TIMING_LEDGER="$timing_ledger" \
     REVIEW_AND_FIX_REVIEW_CORE_SH="$CORE_STUB" \
     "$REVIEW_AND_FIX" \
         --implement-tmpdir "$IMPLEMENT_TMPDIR" \
         --mode diff \
-        --panel simple \
         --round-num 1 \
         --session-env-path "$IMPLEMENT_TMPDIR/session-env.sh" \
         --codex-available true \
-        --cursor-available true >/dev/null
+        --cursor-available true >/dev/null 2>"$IMPLEMENT_TMPDIR/review-and-fix.err"
+rfa=$?
+set -e
+[[ "$rfa" -eq 0 ]] || {
+    echo "review-and-fix rc=$rfa" >&2
+    cat "$IMPLEMENT_TMPDIR/review-and-fix.err" >&2 || true
+    ls -la "$IMPLEMENT_TMPDIR" >&2 || true
+    ls -la "$IMPLEMENT_TMPDIR/round-1" >&2 || true
+    cat "$IMPLEMENT_TMPDIR/round-1/review-core.env" >&2 || true
+    cat "$CORE_CAPTURE" >&2 || true
+    fail "review-and-fix exited $rfa (diagnostics above)"
+}
 
 grep -Fq "SESSION_ENV_PATH=$IMPLEMENT_TMPDIR/session-env.sh" "$CORE_CAPTURE" \
     || fail "review-and-fix did not pass implement session-env path to review-core"
+grep -Fq "REVIEW_CORE_ARGV" "$CORE_CAPTURE" \
+    || fail "review-core stub did not record argv capture header"
+argv_line=$(grep '^REVIEW_CORE_ARGV' "$CORE_CAPTURE" || true)
+case "$argv_line" in
+    *"--panel"*"hard"*) ;;
+    *) fail "review-core argv did not include internal --panel hard (see REVIEW_CORE_ARGV line in capture)" ;;
+esac
 grep -Fq "LARCH_TOKEN_SESSION_ID=parent-implement-session" "$CORE_CAPTURE" \
     || fail "review-core subprocess did not inherit parent token session id"
 grep -Fq "LARCH_CLAUDE_SOURCE_FILE=$TMP/claude-source.env" "$CORE_CAPTURE" \

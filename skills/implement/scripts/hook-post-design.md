@@ -1,9 +1,14 @@
 # skills/implement/scripts/hook-post-design.sh — contract
 
-`hook-post-design.sh` is the plugin-shipped `PostToolUse` hook registered for the `Skill` tool. It reads Claude Code hook JSON on stdin, fires only when `tool_name` is `Skill` and `tool_input.skill` or `tool_input.skill_name` is `design` or `larch:design`, resolves the active `/implement` tmpdir through `lib-resolve-implement-tmpdir.sh` using the stdin `cwd` field, and runs `post-design-boundary.sh` with `--design-only` read from `$IMPLEMENT_TMPDIR/.design-only` **and `--hook-mode true`**.
+`hook-post-design.sh` is the plugin-shipped `PostToolUse` hook registered for the `Skill` tool. It reads Claude Code hook JSON on stdin and **no-ops** unless `tool_name` is `Skill` and `tool_input.skill` or `tool_input.skill_name` is `design` or `larch:design`.
 
-Passing `--hook-mode true` prevents the PostToolUse hook from creating the `.boundary-gate-passed` sentinel prematurely. With the sentinel absent, the Stop hook (`hook-stop-fail-close.sh`) remains armed: if the orchestrator ignores the injected `➡️` directive and halts, the Stop hook blocks the session stop and forces the orchestrator to run its mandatory Bash wrapper. The hook emits `POST_DESIGN_BOUNDARY_HOOK_INJECTED=true` (not `POST_DESIGN_BOUNDARY_OK=true`) so the orchestrator knows the boundary was not yet fully crossed and the Bash wrapper must still run.
+On a match, the hook:
 
-Stdout is either empty or a JSON object with `hookSpecificOutput.hookEventName="PostToolUse"` and `hookSpecificOutput.additionalContext` containing byte-preserved boundary wrapper stdout. The hook captures wrapper stdout in a temp file and emits JSON with `jq --rawfile` so trailing newlines survive. Exit code is always 0; non-design Skill calls, missing `jq`, malformed stdin, and no qualifying tmpdir are fail-open no-ops. If `jq` is absent, the orchestrator-driven Step 1 Bash invocation remains the load-bearing boundary gate.
+1. Parses `session_id` from stdin and, when non-empty, exports `LARCH_TOKEN_SESSION_ID` so downstream helpers can resolve the active `/implement` tmpdir.
+2. Sources `lib-resolve-implement-tmpdir.sh`, resolves `IMPLEMENT_TMPDIR` from the stdin `cwd` field, and emits a single quiet-stream breadcrumb: boundary injection was retired (issue #2485); only the session-id export remains.
 
-The `additionalContext` shape was verified against the Claude Code hooks reference at `https://code.claude.com/docs/en/hooks` on May 8, 2026. Edit in sync with `lib-resolve-implement-tmpdir.sh`, `post-design-boundary.sh`, `hooks/hooks.json`, and `skills/implement/scripts/test-post-design-boundary.sh`.
+**Issue #2485 / post-design-boundary retirement**: Historical `post-design-boundary.sh` dispatch, `hookSpecificOutput` JSON injection, and Stop-hook coupling described in older docs are **not** implemented here. For archive semantics and why the boundary wrapper path was retired, see deprecated `post-design-boundary` material in the repo history and issue #2485. Do not assume this hook injects orchestrator directives or `additionalContext` payloads.
+
+**Fail-open behavior**: `set -e` is intentionally omitted. Missing `jq`, malformed stdin, non-design Skill calls, and missing tmpdir all exit **0** without blocking tool completion.
+
+**Edit-in-sync**: `lib-resolve-implement-tmpdir.sh`, `hooks/hooks.json`, and `skills/implement/scripts/test-post-design-boundary.sh` (or successor harnesses) when tmpdir resolution or hook registration changes.

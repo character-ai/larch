@@ -120,8 +120,6 @@ assert_file_equals "$argv_file" "--implement-tmpdir
 $case_dir
 --mode
 diff
---panel
-hard
 --round-num
 3
 --round-cap
@@ -148,8 +146,6 @@ assert_file_equals "$argv_file" "--implement-tmpdir
 $case_dir
 --mode
 diff
---panel
-hard
 --round-num
 1
 --round-cap
@@ -201,23 +197,22 @@ argv_file="$TMP/run-id-manifest.argv"
 RUN_STEP5_REVIEW_SH="$SPY" RUN_STEP5_ARGV_FILE="$argv_file" "$LAUNCHER" --implement-tmpdir "$case_dir" --round-num 2 >/dev/null
 assert_contains "$(cat "$argv_file")" "review-manifest-run" "manifest RUN_ID overrides session-id"
 
-echo "=== PLAN_FILE missing: fallback to design-export/plan.txt with loud warning (#2326) ==="
-case_dir="$TMP/plan-file-fallback"
+echo "=== PLAN_FILE missing: fail closed even when design-export/plan.txt exists ==="
+case_dir="$TMP/plan-file-missing"
 make_tmpdir "$case_dir" SIMPLE true false
 grep -v '^PLAN_FILE=' "$case_dir/session-env.sh" > "$case_dir/session-env.sh.new"
 mv "$case_dir/session-env.sh.new" "$case_dir/session-env.sh"
 mkdir -p "$case_dir/design-export"
-printf '%s\n' "Recovered plan body from design-export." > "$case_dir/design-export/plan.txt"
-argv_file="$TMP/fallback.argv"
+printf '%s\n' "Stale local export must not mask missing PLAN_FILE." > "$case_dir/design-export/plan.txt"
+argv_file="$TMP/missing-plan.argv"
 set +e
 out="$(RUN_STEP5_REVIEW_SH="$SPY" RUN_STEP5_ARGV_FILE="$argv_file" "$LAUNCHER" --implement-tmpdir "$case_dir" --round-num 1 2>&1)"
 rc=$?
 set -e
-if [[ "$rc" -eq 0 ]]; then pass "step5 fallback continues (exit 0)"; else fail "step5 fallback rc=$rc"; fi
-assert_contains "$out" "PLAN_FILE missing from session-env" "step5 fallback emits PLAN_FILE-missing warning"
-assert_contains "$out" "recovering from design-export/plan.txt" "step5 fallback names recovery source"
-assert_contains "$out" "THIS IS A BUG" "step5 fallback flags as bug"
-assert_contains "$(cat "$argv_file")" "$case_dir/design-export/plan.txt" "step5 fallback passes design-export plan to review"
+if [[ "$rc" -eq 2 ]]; then pass "step5: PLAN_FILE missing exits 2 even with design-export"; else fail "step5 PLAN_FILE missing rc=$rc"; fi
+assert_contains "$out" "PLAN_FILE missing from session-env" "step5 emits PLAN_FILE-missing error"
+assert_contains "$out" "persist-post-plan-keys.sh" "step5 error names writer contract"
+[[ ! -f "$argv_file" ]] || fail "review helper should not run when PLAN_FILE missing"
 
 echo "=== PLAN_FILE missing AND design-export missing: fail loud ==="
 case_dir="$TMP/plan-file-fail"

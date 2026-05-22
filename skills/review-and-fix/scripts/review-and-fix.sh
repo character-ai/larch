@@ -34,7 +34,7 @@ source "$PLUGIN_ROOT/scripts/lib-submodule-prohibition.sh"
 usage() {
     larch_err "Usage:"
     larch_err "  review-and-fix.sh --findings-file FILE --review-tmpdir DIR [--session-env-path FILE]"
-    larch_err "  review-and-fix.sh --implement-tmpdir DIR --mode diff --panel simple|hard --round-num N [--convergence-threshold N] [context flags]"
+    larch_err "  review-and-fix.sh --implement-tmpdir DIR --mode diff --round-num N [--convergence-threshold N] [context flags]"
 }
 
 FINDINGS_FILE=""
@@ -47,7 +47,6 @@ WRITE_TALLY_SH="${REVIEW_AND_FIX_WRITE_TALLY_SH:-$PLUGIN_ROOT/scripts/write-tall
 COMPOSE_REVIEW_FINDINGS_SH="${REVIEW_AND_FIX_COMPOSE_REVIEW_FINDINGS_SH:-$PLUGIN_ROOT/scripts/compose-review-findings.sh}"
 LARCH_LOG_SH="${REVIEW_AND_FIX_LARCH_LOG_SH:-$PLUGIN_ROOT/scripts/larch-log.sh}"
 IMPLEMENT_TMPDIR=""
-PANEL=""
 MODE=""
 DIFF_FILE=""
 COMMIT_COUNT="0"
@@ -67,7 +66,6 @@ while [[ $# -gt 0 ]]; do
         --review-tmpdir) REVIEW_TMPDIR="${2:?--review-tmpdir requires a value}"; shift 2 ;;
         --session-env-path|--session-env) SESSION_ENV_PATH="${2:?--session-env-path requires a value}"; shift 2 ;;
         --implement-tmpdir) IMPLEMENT_TMPDIR="${2:?--implement-tmpdir requires a value}"; shift 2 ;;
-        --panel) PANEL="${2:?--panel requires a value}"; shift 2 ;;
         --mode) MODE="${2:?--mode requires a value}"; shift 2 ;;
         --diff-file) DIFF_FILE="${2:?--diff-file requires a value}"; shift 2 ;;
         --commit-count) COMMIT_COUNT="${2:?--commit-count requires a value}"; shift 2 ;;
@@ -542,7 +540,7 @@ render_rejected_findings_for_tally() {
 }
 
 flush_review_batches() {
-    local impl_tmpdir="$1" run_id="$2" panel="$3" rounds="$4" accepted="$5" rejected="$6" exonerated="${7:-0}" neutral="${8:-0}" composed_findings_source="${9:-}"
+    local impl_tmpdir="$1" run_id="$2" rounds="$3" accepted="$4" rejected="$5" exonerated="${6:-0}" neutral="${7:-0}" composed_findings_source="${8:-}"
     local batch_input_dir body_file findings_file voting_tally="" summary_file
     local tally_out="" tally_rc=0 derived_accepted=0 derived_rejected=0
     local derived_counts=""
@@ -550,7 +548,6 @@ flush_review_batches() {
 
     [[ -n "$impl_tmpdir" && -d "$impl_tmpdir" ]] || return 0
     [[ -n "$run_id" ]] || return 0
-    [[ "$panel" == "simple" || "$panel" == "hard" ]] || return 0
     [[ "$rounds" =~ ^[0-9]+$ ]] || rounds=0
     [[ "$accepted" =~ ^[0-9]+$ ]] || accepted=0
     [[ "$rejected" =~ ^[0-9]+$ ]] || rejected=0
@@ -661,7 +658,7 @@ flush_review_batches() {
         --skill implement \
         --run-id "$run_id" \
         --phase code-review \
-        --mode "$panel" \
+        --mode hard \
         --rounds "$rounds" \
         --accepted "$derived_accepted" \
         --rejected "$derived_rejected" \
@@ -898,7 +895,6 @@ run_findings_mode() {
 
 run_implement_round() {
     [[ "$MODE" == "diff" ]] || { larch_err "review-and-fix.sh: orchestrator mode currently requires --mode diff"; exit 2; }
-    [[ "$PANEL" == "simple" || "$PANEL" == "hard" ]] || { larch_err "review-and-fix.sh: --panel must be simple or hard"; exit 2; }
     case "$ROUND_NUM" in ''|*[!0-9]*) larch_err "review-and-fix.sh: --round-num must be a positive integer"; exit 2 ;; esac
     (( 10#$ROUND_NUM > 0 )) || { larch_err "review-and-fix.sh: --round-num must be a positive integer"; exit 2; }
     round_num_dec=$((10#$ROUND_NUM))
@@ -990,7 +986,7 @@ run_implement_round() {
         --session-env-path "$SESSION_ENV_PATH"
         --codex-available "$CODEX_AVAILABLE"
         --cursor-available "$CURSOR_AVAILABLE"
-        --panel "$PANEL"
+        --panel hard
         --round-num "$round_num_dec"
         --dynamic-archetypes "$DYNAMIC_ARCHETYPES"
     )
@@ -1365,11 +1361,11 @@ run_implement_round() {
     emit_kv DEGRADED_ROUND "$degraded_this_round"
     if [[ "$exit_code" -eq 0 ]]; then
         if [[ "$composed_findings_ok" == true ]]; then
-            if ! flush_review_batches "$IMPLEMENT_TMPDIR" "$RUN_ID" "$PANEL" "$round_num_dec" "$total_accepted" "$total_rejected" "$total_exonerated" "$total_neutral" "$composed_findings_file"; then
+            if ! flush_review_batches "$IMPLEMENT_TMPDIR" "$RUN_ID" "$round_num_dec" "$total_accepted" "$total_rejected" "$total_exonerated" "$total_neutral" "$composed_findings_file"; then
                 emit_breadcrumb "⚠ review-and-fix: code-review tally flush skipped after local batch write failure"
             fi
         else
-            if ! flush_review_batches "$IMPLEMENT_TMPDIR" "$RUN_ID" "$PANEL" "$round_num_dec" "$total_accepted" "$total_rejected" "$total_exonerated" "$total_neutral"; then
+            if ! flush_review_batches "$IMPLEMENT_TMPDIR" "$RUN_ID" "$round_num_dec" "$total_accepted" "$total_rejected" "$total_exonerated" "$total_neutral"; then
                 emit_breadcrumb "⚠ review-and-fix: code-review tally flush skipped after local batch write failure"
             fi
         fi

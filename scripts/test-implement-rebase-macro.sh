@@ -9,9 +9,11 @@
 #  (G) Macro section body contains the keep-on-conflict rebase-push.sh invocation, the
 #      early_rebase conflict-resolution dispatch, and the non-conflict bail line.
 #  (H) Exactly 1 `rebase-push.sh --no-push --skip-if-pushed --keep-on-conflict` occurrence (only the macro M1 uses
-#      that flag combo; Step 1.m, Step 8b, and the Rebase + Re-bump Sub-procedure use `--no-push`
-#      alone). Also asserts the 7.r Apply invocation is inside the Step 7 slice and that all
-#      three `--no-push`-only call sites (Step 1.m + Step 8b + Sub-procedure) remain.
+#      that flag combo; Step 8b and the Rebase + Re-bump Sub-procedure use `--no-push`
+#      alone). Issue #2485 removed Step 1.m's pre-design `rebase-push.sh --no-push` call from
+#      SKILL.md. Also asserts the 7.r Apply invocation is inside the Step 7 slice and that the
+#      remaining `--no-push`-only call sites (Sub-procedure only on the issue-anchored SKILL.md
+#      surface) stay wired.
 #  (I) `rebase-rebump-subprocedure.md` + `conflict-resolution.md` pin the normative `step8b_rebase`
 #      `--keep-on-conflict` entry/continue shapes and the shared Phase 4 exit-0 dispatch token.
 #
@@ -152,19 +154,19 @@ rebase_push_skip_count=$(grep -cF '${CLAUDE_PLUGIN_ROOT}/scripts/rebase-push.sh 
 [[ "$rebase_push_skip_count" == "1" ]] \
   || fail "(H) expected exactly 1 'rebase-push.sh --no-push --skip-if-pushed --keep-on-conflict' occurrence (macro M1 only), found $rebase_push_skip_count — residual inline rebase block may have survived the refactor"
 
-# Sanity check: all three non-macro --no-push call sites must still exist:
-#   - Step 1.m in SKILL.md (pre-Step-1 main freshness)
+# Sanity check: non-macro --no-push call sites (lines ending in `rebase-push.sh --no-push` only):
 #   - Rebase + Re-bump Sub-procedure in references/rebase-rebump-subprocedure.md
-# Step 8b's pre-PR-creation freshness rebase moved into scripts/implement-finalize.sh
-# postbump Phase 3 (issue #1493) — no longer present in SKILL.md.
+# Step 1.m's pre-design `rebase-push.sh --no-push` was removed from SKILL.md (issue #2485).
+# Step 8b's pre-PR-creation freshness rebase moved into scripts/implement-finalize.sh postbump
+# Phase 3 (issue #1493) — no longer present in SKILL.md.
 # Count lines ending with 'rebase-push.sh --no-push' across both files (indentation tolerated;
-# --skip-if-pushed excluded because its lines do NOT end with --no-push). Expect exactly 2 —
-# one per remaining call site. This catches accidental removal of ANY site.
+# --skip-if-pushed excluded because its lines do NOT end with --no-push). Expect exactly 1 —
+# the sub-procedure site only. This catches accidental removal of that remaining call site.
 SUBPROC_MD="$REPO_ROOT/skills/implement/references/rebase-rebump-subprocedure.md"
 [[ -f "$SUBPROC_MD" ]] || fail "(H) references/rebase-rebump-subprocedure.md missing: $SUBPROC_MD"
 no_push_only_count=$(grep -chE 'rebase-push\.sh --no-push$' "$SKILL_MD" "$SUBPROC_MD" | awk '{s+=$1} END {print s+0}')
-[[ "$no_push_only_count" == "2" ]] \
-  || fail "(H) expected exactly 2 'rebase-push.sh --no-push' (without --skip-if-pushed) call sites across SKILL.md (Step 1.m) + references/rebase-rebump-subprocedure.md, found $no_push_only_count — Step 1.m or Rebase + Re-bump Sub-procedure was accidentally altered (Step 8b's rebase moved into implement-finalize.sh postbump Phase 3 per issue #1493)"
+[[ "$no_push_only_count" == "1" ]] \
+  || fail "(H) expected exactly 1 'rebase-push.sh --no-push' (without --skip-if-pushed) call site across SKILL.md + references/rebase-rebump-subprocedure.md (sub-procedure only — Step 1.m removed per issue #2485), found $no_push_only_count — Rebase + Re-bump Sub-procedure entry was accidentally altered (Step 8b's rebase moved into implement-finalize.sh postbump Phase 3 per issue #1493)"
 
 # ---------------------------------------------------------------------------
 # (I) Cross-doc pins: step8b_rebase keep-on-conflict shapes + shared dispatch token.

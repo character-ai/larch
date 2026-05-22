@@ -83,19 +83,33 @@ REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # Format: "marker|casing" where casing is "sensitive" or "insensitive".
 # To add a marker, append a new entry — `check_file` iterates this array.
 readonly POS_MARKERS=(
-  "5 rounds|sensitive"
   "3-judge panel on round 1|insensitive"
-  "--panel hard|sensitive"
   "6 Cursor specialists|sensitive"
 )
 
 # Stale phrases (forbidden in public docs; SKILL.md exempt).
+# After the issue-anchored-plan cutover, public docs must not mention the
+# /implement flags removed by #2485 (--auto, --hard, --inline, --quick,
+# --design-only, --no-issues, --issue, --design-classification,
+# --branch-info, --step-prefix, --subagent, --full). The public `--panel`
+# argv on review-and-fix.sh is also removed; SKILL.md may reference it in
+# internal contexts only.
 readonly STALE_PHRASES=(
   "1 Claude Code Reviewer subagent, 1 round"
   "no external reviewers"
   "no externals, no voting"
   "simple review panel"
   "/implement --quick"
+  "/implement --auto"
+  "/implement --hard"
+  "/implement --inline"
+  "/implement --design-only"
+  "/implement --no-issues"
+  "/implement --subagent"
+  "/implement --full"
+  "/implement --design-classification"
+  "/implement --branch-info"
+  "/implement --step-prefix"
   "unified hard panel"
   "Unified hard panel"
   "hard review panel"
@@ -246,21 +260,18 @@ run_default() {
   # Required cross-reference: Note A in docs/review-agents.md -> voting-protocol.md
   check_xref "$REPO_ROOT/$XREF_DOC" "$XREF_DOC (Note A xref)" "$XREF_PATH" "$REPO_ROOT" || true
 
-  # Round 2 FINDING_H: --design-only doc-sync guard. The flag was added to
-  # /implement and now appears in README.md, docs/skills.md, and
-  # docs/workflow-lifecycle.md. Without an anchor, a future SKILL.md edit
-  # that renames or removes the flag could leave the public docs silently
-  # advertising a non-existent flag (or vice versa). Each target must contain
-  # the literal "--design-only" substring; SKILL.md is the canonical source
-  # and is also asserted so a future grand rename is caught at the source.
+  # Cutover (#2485): /implement no longer accepts --design-only. The literal
+  # is now BANNED from public docs to catch any prose that still advertises
+  # the removed flag. SKILL.md is exempt because it may legitimately reference
+  # the flag in historical anti-patterns / changelog-style prose.
   local design_only_target
-  for design_only_target in README.md docs/skills.md docs/workflow-lifecycle.md "$SKILL_MD"; do
+  for design_only_target in README.md docs/skills.md docs/workflow-lifecycle.md; do
     if grep -Fq -- '--design-only' "$REPO_ROOT/$design_only_target"; then
-      echo "PASS: $design_only_target — contains --design-only literal"
-      PASS_COUNT=$((PASS_COUNT + 1))
-    else
-      echo "FAIL: $design_only_target — missing required literal: '--design-only'" >&2
+      echo "FAIL: $design_only_target — must NOT contain removed flag literal: '--design-only'" >&2
       FAIL_COUNT=$((FAIL_COUNT + 1))
+    else
+      echo "PASS: $design_only_target — '--design-only' literal absent (post-cutover)"
+      PASS_COUNT=$((PASS_COUNT + 1))
     fi
   done
 

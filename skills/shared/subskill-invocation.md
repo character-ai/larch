@@ -22,13 +22,15 @@ Note: `/create-skill` forwards to `/im` (not directly to `/implement`); `/im` in
 
 ### Pattern B — Stateful orchestrator (inline)
 
-Used when the parent runs setup, forwards `--session-env`, invokes the child, and then parses structured output to continue. Appears in `skills/fix-issue/SKILL.md § Step 5 — Execute` (parent step heading + explicit "Invoke `/implement` via the Skill tool" line + SIMPLE/HARD variant bullets) and in `skills/implement/SKILL.md § Step 1 — Ensure Design Plan Exists`, `skills/implement/SKILL.md § Step 5 — Code Review`, `skills/implement/SKILL.md § Step 8+ — Ship PR State Machine` (around `/design`, `/review`, `/bump-version` calls). Canonical form:
+Used when the parent runs setup, exports `SESSION_ENV_PATH` for the child session merge, invokes the child, and then parses structured output to continue. Appears in `skills/fix-issue/SKILL.md § Step 5 — Execute` (parent step heading + explicit "Invoke `/implement` via the Skill tool" line + positional issue tail) and in `skills/implement/SKILL.md` (nested `/review` / `/bump-version` calls; `/design` runs separately before `/implement` on the issue-anchored happy path). Canonical form:
 
 ```
 Invoke `/implement` via the Skill tool:
 
-- `/implement --merge [--hard if hard_mode] --session-env $FIX_ISSUE_TMPDIR/session-env.sh [--auto if auto_mode] <feature description>`
+- `/implement --merge [--no-admin-fallback if no_admin_fallback] [--no-logs-commit if no_logs_commit] [--coder=<value> if coder set] [--forked if forked_mode] [--draft if draft_mode] [--no-dynamic-archetypes|--dynamic-archetypes N when set] [--run-id <ID> if set] $ISSUE_NUMBER`
 ```
+
+Export `SESSION_ENV_PATH="$FIX_ISSUE_TMPDIR/session-env.sh"` in the environment before the Skill tool call when the parent owns a caller session-env file — `/implement` Step 0 merges from `SESSION_ENV_PATH` via `session-setup.sh --caller-env` when set; do **not** pass removed `--session-env` argv.
 
 The step heading + explicit Skill-tool line + scannable args shape makes the invocation impossible to miss. Do **not** collapse Pattern B into a single paragraph — see `## Avoid conditional phrasing for sub-skill invocations` below.
 
@@ -161,8 +163,8 @@ This is deliberately separate from the `Continue after child returns` micro-remi
 
 Canonical producers and consumers in the live tree:
 
-- `skills/fix-issue/SKILL.md § Step 1 — Setup` writes `$FIX_ISSUE_TMPDIR/session-env.sh` and passes it to `/implement` (Step 0 acquires the `IN PROGRESS` comment lock and applies the `[IN PROGRESS]` title prefix before the tmpdir / session-env exist).
-- `skills/implement/SKILL.md § Step 0 — Session Setup` accepts `--session-env` from its parent and propagates a fresh `$IMPLEMENT_TMPDIR/session-env.sh` to `/design` and `/review` via `--session-env` on each invocation. It also writes `PREV_IMPLEMENT_TMPDIR=$IMPLEMENT_TMPDIR` so a future `/implement` session can copy the previous session's `larch-logs` subtree into its fresh tmpdir, and `LARCH_CLAUDE_PLUGIN_ROOT` so later Bash blocks can recover `${CLAUDE_PLUGIN_ROOT}` without sourcing the file.
+- `skills/fix-issue/SKILL.md § Step 0 — Setup` runs `session-setup.sh` and seeds `$FIX_ISSUE_TMPDIR/session-env.sh` via `write-session-env.sh` before later steps acquire the GitHub lock; Step 5a exports `SESSION_ENV_PATH` for `/implement` Step 0 to merge via `session-setup.sh --caller-env` (do **not** pass removed `--session-env` argv on the `/implement` Skill line).
+- `skills/implement/SKILL.md § Step 0 — Session Setup` allocates `$IMPLEMENT_TMPDIR/session-env.sh` and merges caller keys when `SESSION_ENV_PATH` is set. On the issue-anchored path `/implement` does **not** Skill-invoke `/design` — Preflight reads `larch:plan` from the GitHub issue and Step 1 materializes plan files. Child surfaces that still nest under `/implement` (e.g. review/relevant-checks Bash contracts keyed off `$IMPLEMENT_TMPDIR/session-env.sh`) continue to read the same session-env file per that skill's Bash blocks. It also writes `PREV_IMPLEMENT_TMPDIR=$IMPLEMENT_TMPDIR` so a future `/implement` session can copy the previous session's `larch-logs` subtree into its fresh tmpdir, and `LARCH_CLAUDE_PLUGIN_ROOT` so later Bash blocks can recover `${CLAUDE_PLUGIN_ROOT}` without sourcing the file.
 - The same `/implement` handoff may also carry `LARCH_DYNAMIC_ARCHETYPES_MAX=<0..8>` when the parent operator selected `--dynamic-archetypes <N>` or `--no-dynamic-archetypes`; nested review launchers should preserve that validated key through `session-setup.sh --caller-env` / `--write-session-env` so Step 5 can replay the chosen cap.
 - `skills/design/SKILL.md § Step 0 — Session Setup` and `skills/review/SKILL.md § Step 0 — Session Setup` both accept `--session-env` as an `--caller-env` forward; their Bash blocks also read `LARCH_CLAUDE_PLUGIN_ROOT` directly from that file when `${CLAUDE_PLUGIN_ROOT}` needs rehydration before helper invocation.
 
@@ -193,33 +195,21 @@ When your skill consumes a session-env file, always route through `session-setup
 
 ## Subagent execution topology
 
-`--session-env` and `--subagent` address orthogonal concerns. Forward both when a parent orchestrator delegates heavy work to `/design`.
+`--session-env` forwarding and `/design`'s internal heavy-worker dispatch address orthogonal concerns.
 
-- **`--subagent` — execution topology.** Runs `/design`'s heavy non-interactive phase (adaptive sketches → plan → plan review → optional architecture diagram) inside an isolated Agent-tool subagent. The subagent reads `$DESIGN_TMPDIR/run-params.json`, writes raw artifacts to `$DESIGN_TMPDIR/`, and returns terse status; the parent's transcript stays small. Without `--subagent`, the heavy phase runs in `/design`'s own in-turn context — richer transcript, higher token cost in the parent. See `skills/design/SKILL.md § Step 2a — Collaborative Approach Sketches` (Subagent heavy phase).
+- **`/design` heavy phase topology.** Standalone `/design` can run sketches → dialectic → plan review → finalize inside an isolated Agent-tool subagent when the internal heavy-worker gate applies (`skills/design/SKILL.md § Step 2a — Collaborative Approach Sketches`). The subagent reads `$DESIGN_TMPDIR/run-params.json` (`quick_mode`, `sketch_budget`, tier-derived fields per `skills/design/references/flags.md`), writes artifacts under `$DESIGN_TMPDIR/`, and returns terse status. Operators without `SendMessage` should use `/design`'s internal `--inline` escape hatch (documented only in `skills/design/references/flags.md`) so the heavy phase stays in the parent context instead of a suspend-prone subagent.
 
-The two flags are independent: `--session-env` shapes what crosses the call boundary; `--subagent` shapes where heavy work executes. Verbosity suppression remains gated on `SESSION_ENV_PATH` regardless of dispatch mode.
+`SESSION_ENV_PATH` / `--caller-env` shape what crosses the parent/child call boundary; the heavy-worker decision shapes where `/design`'s long-running work executes. When `/design` is nested under another orchestrator with a non-empty session env, verbosity suppression in `/design` still follows that nested contract.
 
-### Normative pattern for nested orchestrators
+### Normative pattern for issue-anchored `/implement`
 
-When an orchestrator (e.g. `/implement`) delegates heavy planning to `/design`, forward both flags. `/implement` controls the `--subagent` decision through its own `--inline` flag:
-
-- Default (`inline_mode=false`): `/implement` appends `--subagent` to its Step 1 `/design` invocation. The heavy phase runs in an isolated subagent; only terse breadcrumbs reach the parent.
-- `--inline` (`inline_mode=true`): `/implement` omits `--subagent`. The heavy phase runs in `/design`'s in-turn context; the full reviewer transcript is visible at higher token cost.
-
-`--inline` controls execution topology only — verbosity suppression in the child is unchanged because `SESSION_ENV_PATH` remains non-empty under both settings. See `skills/implement/SKILL.md § Step 1 — Ensure Design Plan Exists` (canonical invocation order) and the `--inline` flag definition at the top of that file.
-
-`--quick`, `--full`, and caller-forwarded classification interact with `--subagent` along these paths:
-
-- **`/implement`** always invokes `/design` on the Skill path unless the both-externals-down inline-plan branch applies; the `--inline` vs `--subagent` distinction matters for that `/design` invocation.
-- **`/design`** still runs the sketch and plan-review flow, but `--subagent` is ignored: `/design`'s Step 2a heavy-subagent branch is gated on `subagent_mode=true AND quick_mode=false`, so quick mode falls back to the inline path.
-- **`/design --full`** forces `sketch_budget=4`. When combined with `--quick`, the sketch budget stays full while plan review remains quick.
-- **`/implement`** passes `--design-classification HARD` on the canonical `/design` argument list (simplicity-based pre-design routing was removed). `/design` trusts that value only with complete `--branch-info`; standalone invocations classify locally and write `design_classification_source=router-pre-design`.
+`/design` authors the `larch:plan` GitHub issue block; `/implement <issue-N>` runs Preflight + plan-adequacy audit, then Step 0 and `skills/implement/SKILL.md § Step 1 — Materialize plan from issue body` copy the parsed plan into `$IMPLEMENT_TMPDIR/plan.txt` and call `persist-post-plan-keys.sh` — the anti-halt banner pins treating the `AUDIT=pass` envelope as **non-terminal** (`do NOT end the turn on the audit-pass envelope`). `/implement` does not dispatch `/design` on this happy path.
 
 ## Avoid conditional phrasing for sub-skill invocations
 
 The worst shape, and the one that gets skipped most often, is a single-line conditional paragraph that buries the Skill-tool invocation:
 
-> If the classification is HARD, call `/implement --auto --merge --session-env $TMPDIR/session-env.sh <description>`; otherwise call `/implement --auto --merge --session-env $TMPDIR/session-env.sh <description>` (same invocation — do not branch on a pre-design "SIMPLE" guess).
+> If the classification is HARD, call `/implement --merge $ISSUE_NUMBER` after exporting `SESSION_ENV_PATH="$TMPDIR/session-env.sh"`; otherwise call `/implement --merge $ISSUE_NUMBER` with the same `SESSION_ENV_PATH` (same invocation — do not branch on a pre-design "SIMPLE" guess).
 
 Prose conditionals bury the invocation and reliably slip past the executing model — especially mid-run. Rewrite as an explicit numbered sub-step whose center is the `Skill` tool call (or as Pattern B's heading + variant bullets shape), so the Skill-tool call is the visual center of the step.
 

@@ -19,7 +19,7 @@ Twelve assertions — nine textual literal pins (1-8, 12) plus three operational
 
 Block extraction boundaries for assertions 9-11: `<!-- step:0 — Find and Lock -->` (start, exact line match) through `<!-- step:1 — Setup -->` (end, exact line match) for Step 0; `<!-- step:1 — Setup -->` (start) through `<!-- step:2` (end, prefix match — anchor is `<!-- step:2 — Read Issue Details -->`) for Step 1. Assertion 12 uses a separate preamble extraction: line 1 through (but not including) the first line matching `^<!-- step:`. The block-scoped assertions are the load-bearing guard against a regression where a future edit keeps the registry rows, anchors, and breadcrumbs intact while moving the matched literal out of its expected location.
 
-The harness uses an accumulator pattern (`fail=1` set on each failure, exit at end) so all failures are reported in a single run. Exits 0 when all 12 assertions pass; exits 1 after running every assertion if any failed.
+The harness uses an accumulator pattern (`fail=1` set on each failure, exit at end) so all failures are reported in a single run. Exits 0 when all 15 assertions pass; exits 1 after running every assertion if any failed.
 
 The harness is wired into `make lint` via the `test-fix-issue-step-order` target in `Makefile`. It is added to `agent-lint.toml`'s `exclude` list alongside this sibling contract because agent-lint's dead-script and S030/orphaned-skill-files rules do not follow Makefile-only references.
 
