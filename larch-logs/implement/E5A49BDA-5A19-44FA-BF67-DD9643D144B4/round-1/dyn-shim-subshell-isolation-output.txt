@@ -1,0 +1,9 @@
+Reviewing the diff and full test file for Case 8 HOME isolation and failure propagation.
+
+Checking how the writer resolves the symlink path when `--claude-pid` is omitted and sampling the diff for the test file.
+
+### In-Scope Findings
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+- **correctness** `skills/design/scripts/test-write-design-current-env.sh:192-214` — Case 8 sets `HOME` to `$TMPROOT/shim-home` at the start of the subshell, and `scripts/write-design-current-env.sh` resolves the symlink directory as `${HOME}/.cache/larch/sessions` ([`write-design-current-env.sh:126-134`](<OPERATOR_REPO_PATH>/scripts/write-design-current-env.sh)), so the shim run and `_legacy="$HOME/.cache/larch/sessions/current-design-env.sh"` both use the same subshell-local `HOME`. Cases 1–7 only create PID-suffixed links under the outer `$TMPROOT/home` ([`test-write-design-current-env.sh:25-29,65-68,154-159`](<OPERATOR_REPO_PATH>/skills/design/scripts/test-write-design-current-env.sh)), not `current-design-env.sh`, so a mistaken outer-`HOME` `_legacy` would fail `[ -L "$_legacy" ]`, not pass by accident. Inner `fail` calls `exit 1` in the subshell; the closing `) || fail "case8: shim subshell failed (exit $?)"` ([`test-write-design-current-env.sh:214`](<OPERATOR_REPO_PATH>/skills/design/scripts/test-write-design-current-env.sh)) still runs in the parent and exits the harness, so failures propagate (with a generic wrapper message after any inner `FAIL:` line).

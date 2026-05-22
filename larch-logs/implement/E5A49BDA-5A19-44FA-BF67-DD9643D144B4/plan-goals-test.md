@@ -33,7 +33,7 @@ The actual session env file still lives under `$DESIGN_TMPDIR/source-env.sh` (pe
 
 ### Files to modify
 
-1. **`scripts/write-design-current-env.sh`** (≈10 lines) — add `--claude-pid <pid>` flag (validate `^[1-9][0-9]{0,6}$` — positive integer, no leading zero, at most seven decimal digits). Symlink path becomes `${SYMLINK_DIR}/current-design-env-${CLAUDE_PID}.sh`. Transition shim: when `--claude-pid` is omitted, fall back to legacy unkeyed name and emit a stderr warning; remove the shim in a follow-up release.
+1. **`scripts/write-design-current-env.sh`** (≈10 lines) — add `--claude-pid <pid>` flag (validate `^[1-9][0-9]*$`, max 7 digits). Symlink path becomes `${SYMLINK_DIR}/current-design-env-${CLAUDE_PID}.sh`. Transition shim: when `--claude-pid` is omitted, fall back to legacy unkeyed name and emit a stderr warning; remove the shim in a follow-up release.
 2. **`scripts/write-design-current-env.md`** (≈20 lines) — replace `## Single-runner invariant` with `## Per-Claude-process symlink keying`. Document `--claude-pid`, the empirical verification, the legacy fallback, and an operator cleanup snippet for stale symlinks (`find ~/.cache/larch/sessions -name 'current-design-env-*.sh' -type l ! -exec test -e {} \; -delete`).
 3. **`skills/design/SKILL.md`** (≈27 edits) — update `### Bash block prelude` prose and fenced canonical line to `current-design-env-$PPID.sh`; append `--claude-pid "$PPID"` in the Step 0a `_wdce_args=(...)` block; `replace_all` every remaining `current-design-env.sh` occurrence (25 prelude blocks + 1 explanatory paragraph) with `current-design-env-$PPID.sh`.
 4. **`scripts/test-design-structure.sh`** (≈5 lines) — update check-11 `grep -Fq 'current-design-env.sh'` probes (line 256 comment + lines 279-280 assertions) to `'current-design-env-$PPID.sh'`. Add a new probe asserting `--claude-pid "$PPID"` appears literally in Step 0a (guards against future `bash -c` wrapping).
@@ -62,7 +62,7 @@ The actual session env file still lives under `$DESIGN_TMPDIR/source-env.sh` (pe
 
 ## Acceptance
 
-1. `scripts/write-design-current-env.sh` accepts `--claude-pid <pid>` and writes the symlink at `~/.cache/larch/sessions/current-design-env-${CLAUDE_PID}.sh` (validated PID grammar: `^[1-9][0-9]{0,6}$`). Omitting `--claude-pid` falls back to the legacy unkeyed name with a stderr warning (transition shim).
+1. `scripts/write-design-current-env.sh` accepts `--claude-pid <pid>` and writes the symlink at `~/.cache/larch/sessions/current-design-env-${CLAUDE_PID}.sh` (validated PID grammar: `^[1-9][0-9]*$`). Omitting `--claude-pid` falls back to the legacy unkeyed name with a stderr warning (transition shim).
 2. `skills/design/SKILL.md` Step 0a invokes the writer with `--claude-pid "$PPID"`. All 26 prelude occurrences source `current-design-env-$PPID.sh`. The `### Bash block prelude` section prose reflects the PID-keyed form.
 3. Two concurrent `/design` invocations from different working trees on the same machine (e.g., `~/larch5` and `~/larch3`) each write their own tmpdir; neither's prelude resolves to the other's session. Verified by the new `test-write-design-current-env.sh` two-PID independence assertion.
 4. `scripts/test-design-structure.sh` check 11 passes against the new prelude shape AND asserts `--claude-pid "$PPID"` appears literally in Step 0a.

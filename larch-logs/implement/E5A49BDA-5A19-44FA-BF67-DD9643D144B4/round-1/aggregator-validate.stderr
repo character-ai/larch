@@ -1,0 +1,4 @@
+warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_5 not traceable to scoped input (first 80 chars: 'Add loop entry or subtest for `--claude-pid ""` asserting exit 1 and Invalid --c')
+warning: fix text for slot 'cursor-specialist-plan-fidelity-output.txt' in FINDING_5 not traceable to scoped input (first 80 chars: 'Parse `--claude-pid` presence distinctly; reject empty with Invalid --claude-pid')
+warning: fix text for slot 'cursor-specialist-security-output.txt' in FINDING_8 not traceable to scoped input (first 80 chars: 'Make `--claude-pid` mandatory after deprecation or gate legacy shim behind expli')
+warning: fix text for slot 'dyn-pid-regex-completeness-output.txt' in FINDING_11 not traceable to scoped input (first 80 chars: 'Update those committed plan bodies to `^[1-9][0-9]{0,6}$` (or equivalent prose: ')

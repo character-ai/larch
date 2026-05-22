@@ -1,0 +1,11 @@
+FINDING_1: NO -- AGENTS.md already states cross-clone `/design` no longer races on the symlink while preserving a per-repo workflow invariant.
+FINDING_2: YES
+FINDING_3: NO -- the seven-digit cap covers the documented supported PID ceilings; the real mismatch is the separate regex/docs drift.
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: NO -- committed run logs are explicitly allowed by repo policy and are not a defect here.
+FINDING_7: YES
+FINDING_8: EXONERATE -- the legacy unkeyed path is an intentional transition shim and normal `/design` now passes `--claude-pid`.
+FINDING_9: EXONERATE -- the same-UID symlink risk is real but already covered by the documented trust model and not issue-worthy here.
+FINDING_10: EXONERATE -- the stale follow-up writer note is minor documentation cleanup, not worth filing as a separate issue.
+FINDING_11: YES
