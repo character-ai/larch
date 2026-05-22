@@ -520,6 +520,61 @@ record_failure() {
         --output-file "$output_file"
 }
 
+# Mechanical OOS disposition check before any ship-pr path clears OOS_PENDING to
+# false (mirrors skills/implement/SKILL.md Step 8+ gate argv shape).
+run_oos_disposition_gate_if_required_before_oos_pending_false() {
+    local gate_script="$PLUGIN_ROOT/skills/implement/scripts/oos-disposition-gate.sh"
+    local forked repo_un repo_root oos_mb oos_range run_id oos_ndjson oos_list oos_n gate_log gate_rc
+    forked=$(read_state FORKED_TARGET)
+    repo_un=$(read_state REPO_UNAVAILABLE)
+    if [ "$forked" = "true" ] || [ "$repo_un" = "true" ]; then
+        return 0
+    fi
+    if [ ! -f "$gate_script" ]; then
+        larch_err "ship-pr.sh: oos-disposition-gate.sh missing at $gate_script"
+        return 2
+    fi
+    repo_root=$(git rev-parse --show-toplevel 2>/dev/null || true)
+    oos_range="HEAD"
+    if [ -n "$repo_root" ] && git -C "$repo_root" rev-parse -q --verify origin/main >/dev/null 2>&1; then
+        oos_mb=$(git -C "$repo_root" merge-base HEAD origin/main 2>/dev/null || true)
+        if [ -n "$oos_mb" ]; then
+            oos_range="${oos_mb}..HEAD"
+        else
+            oos_range="origin/main..HEAD"
+        fi
+    fi
+    run_id=$(tr -d '\r\n' < "$IMPLEMENT_TMPDIR/session-id" 2>/dev/null || true)
+    oos_ndjson=""
+    if [ -n "$run_id" ]; then
+        oos_ndjson="$IMPLEMENT_TMPDIR/larch-logs/implement/$run_id/oos-issues.ndjson"
+    fi
+    if [ -z "$oos_ndjson" ] || [ ! -f "$oos_ndjson" ]; then
+        oos_list=$(find "$IMPLEMENT_TMPDIR/larch-logs/implement" -mindepth 2 -maxdepth 2 -name oos-issues.ndjson -type f 2>/dev/null | LC_ALL=C sort || true)
+        oos_n=$(printf '%s\n' "$oos_list" | sed '/^$/d' | wc -l | tr -d '[:space:]')
+        if [ "${oos_n:-0}" -eq 1 ]; then
+            oos_ndjson=$(printf '%s\n' "$oos_list" | sed '/^$/d' | head -n 1)
+        elif [ "${oos_n:-0}" -gt 1 ] && [ -z "$run_id" ]; then
+            larch_err "ship-pr.sh: ambiguous oos-issues.ndjson without session-id; refusing to clear OOS_PENDING"
+            return 2
+        fi
+    fi
+    gate_extra=()
+    if [ -n "$oos_ndjson" ] && [ -f "$oos_ndjson" ]; then
+        gate_extra+=(--oos-issues-ndjson "$oos_ndjson")
+    fi
+    gate_log="$IMPLEMENT_TMPDIR/oos-disposition-gate.stderr.log"
+    set +e
+    bash "$gate_script" \
+        "${gate_extra[@]+"${gate_extra[@]}"}" \
+        --accepted-files "$IMPLEMENT_TMPDIR/oos-accepted-main-agent.md,$IMPLEMENT_TMPDIR/oos-accepted-design.md,$IMPLEMENT_TMPDIR/oos-accepted-review.md" \
+        --filed-urls-file "$IMPLEMENT_TMPDIR/oos-issues-created.md" \
+        --commit-range "$oos_range" 2>"$gate_log"
+    gate_rc=$?
+    set -e
+    return "$gate_rc"
+}
+
 state_set() {
     local key=$1 value=$2 tmp
     tmp="$STATE_FILE.tmp.$$"
@@ -889,7 +944,7 @@ sanitize_diagram_or_placeholder() {
 }
 
 run_pr_prep_phase() {
-    local summary tests closes architecture_file code_flow_file composed_summary plan_goals_file run_id
+    local summary tests closes architecture_file code_flow_file composed_summary plan_goals_file run_id fail_file gate_rc
     emit_breadcrumb "→ ship-pr: PR prep"
     summary=$(manifest_summary)
     if [ -z "$summary" ]; then
@@ -930,6 +985,18 @@ run_pr_prep_phase() {
         state_set OOS_PENDING true
         advance_phase pr-create
         exit 0
+    fi
+    fail_file=$(failure_capture_path pr-prep)
+    set +e
+    run_oos_disposition_gate_if_required_before_oos_pending_false
+    gate_rc=$?
+    set -e
+    if [ "$gate_rc" -ne 0 ]; then
+        if [ -f "$IMPLEMENT_TMPDIR/oos-disposition-gate.stderr.log" ]; then
+            cp "$IMPLEMENT_TMPDIR/oos-disposition-gate.stderr.log" "$fail_file" 2>/dev/null || true
+        fi
+        record_failure pr-prep "oos-disposition-gate.sh" "$gate_rc" "$fail_file" Warnings
+        exit_stall 9a1
     fi
     state_set OOS_PENDING false
     advance_phase pr-create

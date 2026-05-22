@@ -14,7 +14,7 @@ On any branch other than `main` the check is a no-op (exits 0 with `SYNC_STATUS=
 check-main-sync.sh
 ```
 
-No flags. Callers are responsible for fetching `origin/main` before invoking this script when an up-to-date comparison is needed (e.g. `preflight.sh` fetches before calling this; `find-lock-issue.sh` calls this without fetching, relying on the locally-cached `origin/main` ref).
+No flags. Callers are responsible for fetching `origin/main` before invoking this script when an up-to-date comparison is needed (e.g. `preflight.sh` fetches before calling this; `find-lock-issue.sh` calls this without fetching, relying on the locally-cached `origin/main` ref). **`find-lock-issue` on `main` when `origin/main` exists**: if `check-main-sync.sh` exits 2 with `SYNC_STATUS=probe-error`, refresh with `git fetch origin main` before retrying — the pre-lock path fail-closes that case so a stale or flaky `origin/main` comparison cannot silently authorize a lock. When `origin/main` is not configured locally, the pre-lock path may still fail-open on probe-error (missing-remote / harness checkouts).
 
 ## Output Contract
 

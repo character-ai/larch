@@ -155,6 +155,13 @@ has_report_prefix() {
     printf '%s' "$1" | grep -qiE '^\[[^]]*[[:space:]]+report\]'
 }
 
+# Legacy chain-of-history titles placed "Report" before the timestamp inside
+# the bracket (`[Run Logs Audit Report <ts>] …`). They do not match
+# `has_report_prefix`; keep an explicit guard until old issues are fully gone.
+has_legacy_run_logs_audit_report_bracket_prefix() {
+    printf '%s' "$1" | grep -qiE '^\[Run Logs Audit Report'
+}
+
 ISSUE_ARG=""
 
 while [[ $# -gt 0 ]]; do
@@ -268,10 +275,26 @@ _emit_dirty_tree_pre_lock_abort() {
             emit_kv ERROR "${sync_error:-local main is ahead of origin/main with non-log commits; push or reconcile before re-running /fix-issue. No issue was locked.}"
             exit 2
         fi
-        # Exit 2 with SYNC_STATUS=probe-error only: fail-open (same rationale as
-        # preflight); other non-zero exits fail closed before lock.
+        # Exit 2 with SYNC_STATUS=probe-error: fail closed when origin/main is
+        # present (stale ref / flaky git can hide unsafe ahead state). When
+        # origin/main is absent (fresh repo, offline harness), keep fail-open
+        # so the comment-lock invariant is not blocked on missing remotes.
         if [ "$sync_exit" -eq 2 ] && [ "$sync_status" = "probe-error" ]; then
-            :
+            local repo_top
+            repo_top=$(git rev-parse --show-toplevel 2>/dev/null || true)
+            if [ -n "$repo_top" ] && git -C "$repo_top" rev-parse -q --verify origin/main >/dev/null 2>&1; then
+                emit_kv ELIGIBLE false
+                if [ -n "$umbrella_num" ]; then
+                    emit_kv IS_UMBRELLA true
+                    emit_kv UMBRELLA_NUMBER "$umbrella_num"
+                    emit_kv UMBRELLA_TITLE "$umbrella_title"
+                    emit_kv ISSUE_NUMBER "$issue_num"
+                    emit_kv ISSUE_TITLE "$issue_title"
+                    emit_kv LOCK_ACQUIRED false
+                fi
+                emit_kv ERROR "Cannot verify local main is in sync with origin/main (git probe failed). Run: git fetch origin main — then retry /fix-issue. No issue was locked."
+                exit 2
+            fi
         elif [ "$sync_exit" -ne 0 ]; then
             emit_kv ELIGIBLE false
             if [ -n "$umbrella_num" ]; then
@@ -774,7 +797,7 @@ if [[ -n "$ISSUE_ARG" ]]; then
 
     # Exclude report issues (titles matching "[... Report]"). These are
     # analytics/reporting issues not meant for automated fixing.
-    if has_report_prefix "$ISSUE_TITLE"; then
+    if has_report_prefix "$ISSUE_TITLE" || has_legacy_run_logs_audit_report_bracket_prefix "$ISSUE_TITLE"; then
         emit_kv ELIGIBLE false
         emit_kv ERROR "Issue #$ISSUE_NUM has a report title prefix ([... Report]); not a fix-issue candidate"
         exit 2

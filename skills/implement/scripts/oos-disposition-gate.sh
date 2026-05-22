@@ -12,8 +12,9 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 OOS_COUNT_AWK="$SCRIPT_DIR/oos-non-security-block-count.awk"
-# shellcheck source=skills/implement/scripts/oos-disposition-shared.inc.bash
-. "$SCRIPT_DIR/oos-disposition-shared.inc.bash"
+_REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+# shellcheck source=scripts/oos-disposition-shared.inc.bash
+. "$_REPO_ROOT/scripts/oos-disposition-shared.inc.bash"
 
 usage() {
   printf 'usage: oos-disposition-gate.sh [--fork-mode] [--repo-unavailable] \\\n' >&2

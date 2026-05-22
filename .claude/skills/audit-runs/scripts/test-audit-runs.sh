@@ -363,7 +363,15 @@ assert_equal "$result" "proposed_augmentations:EXON regression in PR #2450" "[13
 echo "Test 14: audit report title matches self-exclusion prefix"
 title_matches_audit_report_exclusion() {
     local title="$1"
-    printf '%s' "$title" | grep -qE '^\[Run Logs Audit .* Report\]' && echo "excluded" || echo "pickable"
+    if printf '%s' "$title" | grep -qE '^\[Run Logs Audit .* Report\]'; then
+        echo "excluded"
+        return
+    fi
+    if printf '%s' "$title" | grep -qE '^\[Run Logs Audit Report'; then
+        echo "excluded"
+        return
+    fi
+    echo "pickable"
 }
 result=$(title_matches_audit_report_exclusion "[Run Logs Audit 2026-05-20T12:30-07:00 Report] PRs #2440-#2450")
 assert_equal "$result" "excluded" "[14] audit report title matches self-exclusion prefix"
@@ -373,6 +381,8 @@ result=$(title_matches_audit_report_exclusion "Fix EXON regression in voting tal
 assert_equal "$result" "pickable" "[14c] normal bug issue title is NOT excluded"
 result=$(title_matches_audit_report_exclusion "[IN PROGRESS] Create /larch:audit-runs skill")
 assert_equal "$result" "pickable" "[14d] non-audit-report title not excluded"
+result=$(title_matches_audit_report_exclusion "[Run Logs Audit Report 2026-05-20T19:30Z] PRs #2430-#2440")
+assert_equal "$result" "excluded" "[14g] legacy audit bracket prefix excluded (union with new shape)"
 
 # Test 14e: find-lock-issue.sh has_report_prefix matches the audit report title
 # (space before "report]" inside the bracket); label-based exclusion is still primary.
@@ -1877,7 +1887,10 @@ classify_c1_bucket_from_gh_issues_json() {
     jq -rn --argjson issues "$1" '
         def is_open: (.state | ascii_downcase) == "open";
         def is_noise:
-            (.title | type == "string" and test("^\\[Run Logs Audit .* Report\\]"));
+            (.title | type == "string" and (
+                test("^\\[Run Logs Audit .* Report\\]")
+                or test("^\\[Run Logs Audit Report")
+            ));
         ([$issues[] | select(is_open and (is_noise | not))]) as $eligible_open
         | if ($eligible_open | length) > 0 then
             "proposed_augmentations"
@@ -1896,6 +1909,8 @@ result=$(classify_c1_bucket_from_gh_issues_json '[{"number":1,"title":"widget bu
 assert_equal "$result" "proposed_augmentations" "[58d] mixed closed+open (--state all style payload) → open wins → augmentations"
 result=$(classify_c1_bucket_from_gh_issues_json '[{"number":1,"title":"widget bug","state":"CLOSED"}]')
 assert_equal "$result" "proposed_new_issues" "[58e] closed-only payload → proposed_new_issues (version-window step is separate)"
+result=$(classify_c1_bucket_from_gh_issues_json '[{"number":1,"title":"[Run Logs Audit Report 2026-01-01Z] legacy","state":"OPEN"}]')
+assert_equal "$result" "proposed_new_issues" "[58f] legacy audit title alone → proposed_new_issues"
 
 # Test 59: oos-category-mangle — code-review accepted prose category → pass (narrowed scan)
 echo "Test 59: audit-scan-run oos-category-mangle pass (code-review accepted prose)"

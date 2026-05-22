@@ -313,6 +313,26 @@ rc=$?
 set -e
 assert_rc "two OOS entries + single filed URL passes" 0 "$rc"
 
+# --- Case: off-host https://…/issues/<n> URL must not satisfy disposition ---
+cat >"$TMP/offhost-acc.md" <<'EOF'
+### OOS_1: Needs real GitHub filing
+- **Phase**: implement
+EOF
+cat >"$TMP/offhost-url.md" <<'EOF'
+Filed https://evil.example.com/org/repo/issues/999 for tracking.
+EOF
+set +e
+(
+  cd "$ORPHAN_TMP"
+  bash "$GATE" \
+    --accepted-files "$TMP/offhost-acc.md" \
+    --filed-urls-file "$TMP/offhost-url.md" \
+    --commit-range HEAD >/dev/null 2>&1
+)
+rc=$?
+set -e
+assert_rc "off-host issues URL is not counted as filed (exit 1 disposition gap)" 1 "$rc"
+
 if [ "$FAIL" -ne 0 ]; then
   echo "$FAIL case(s) failed, $PASS passed" >&2
   exit 1

@@ -46,6 +46,8 @@
 #  24. explicit-target refuses audit-report labeled issue (#2462 regression)
 #      → exit 2; ELIGIBLE=false with error mentioning 'audit-report'.
 #      Confirms the label check in the explicit-target path.
+#  24b. legacy run-logs audit title without audit-report label → exit 2;
+#      ELIGIBLE=false with report-prefix error (label-only guard insufficient).
 #  25. no-arg invocation → exit 2; ELIGIBLE=false with usage error.
 #
 # Stub gh dispatches on positional + json args. Each fixture writes a stub
@@ -932,6 +934,30 @@ ERR=$(cat "$ERR_FILE")
 assert_equal "$EXIT_CODE" "2" "[24] exit code 2 (audit-report issue refused)"
 assert_contains "$OUT" "ELIGIBLE=false" "[24] ELIGIBLE=false"
 assert_contains "$OUT" "audit-report" "[24] error mentions audit-report label"
+
+# ---------------------------------------------------------------------------
+# Fixture 24b: legacy bracket audit title without audit-report label → report
+# prefix exclusion (not label-based).
+# ---------------------------------------------------------------------------
+echo "Fixture 24b: legacy audit title without audit-report label refused"
+run_fixture "fixture-24b"
+{
+    echo "ISSUE_STATE=OPEN"
+    echo "ISSUE_TITLE='[Run Logs Audit Report 2026-05-20T19:30Z] PRs #2430-#2440'"
+    echo "ISSUE_241_LABELS='[\"bug\"]'"
+    echo "RENAME_FAIL=false"
+} > "$STUB_STATE_FILE"
+
+OUT_FILE="$TMPROOT/fixture-24b/stdout.txt"
+ERR_FILE="$TMPROOT/fixture-24b/stderr.txt"
+EXIT_CODE=0
+with_sterile_repo "fixture-24b" "$SCRIPT" 241 >"$OUT_FILE" 2>"$ERR_FILE" || EXIT_CODE=$?
+
+OUT=$(cat "$OUT_FILE")
+
+assert_equal "$EXIT_CODE" "2" "[24b] exit code 2 (legacy audit title refused)"
+assert_contains "$OUT" "ELIGIBLE=false" "[24b] ELIGIBLE=false"
+assert_contains "$OUT" "report title prefix" "[24b] error mentions report title prefix"
 
 # ---------------------------------------------------------------------------
 # Fixture 25: no-arg invocation → exit 2 with usage error.
