@@ -1,0 +1,15 @@
+Reading the pre-computed diff and relevant test/scaffold sections to verify test coverage and correctness.
+
+Pre-computed diff is empty; reviewing the workspace implementation directly. Reading `make_repo`, `write_state`, bump-guard tests, `emit_bailed`, and Test 19.
+
+### In-Scope Findings
+
+- **correctness** `scripts/test-ship-pr.sh:883-897` — `run_bump_phase` rejects `BRANCH_NAME=master` as well as `main` in [`scripts/ship-pr.sh`](scripts/ship-pr.sh) (see the `master` comparison in the guard), but the new harness only rewrites state to `BRANCH_NAME=main` and never to `master`, so losing the `master` half of the condition would not fail CI. **Suggested fix:** Add a third scenario (or parameterize the existing one) that sets `BRANCH_NAME=master` via the same `sed` pattern and asserts exit code `4` and `STALL_STEP=bump-branch-guard`.
+
+- **correctness** `skills/implement/scripts/test-step2-dispatch.sh:970-1020` — Test 19 correctly matches [`emit_bailed`](skills/implement/scripts/step2-implement.sh) (`STATUS`, `REASON`, `TOOL`, `ORCHESTRATOR_EDIT_AUTHORITY=forbidden` on stdout), but it only builds a repo on `main`; [`step2-implement.sh`](skills/implement/scripts/step2-implement.sh) also treats `master` as a protected spawn branch with no test proving that path emits the same bail envelope. **Suggested fix:** Add a parallel case using `git init -q -b master` (same `session-env.sh` and stub launcher) and assert the same substrings as Test 19.
+
+### Out-of-Scope Observations
+
+- The pre-computed diff at `<TMPDIR>/round-1/diff.txt` was empty, so this review used the current workspace copies of the listed files instead of that artifact.
+- `write_state` / `make_repo` now agree on `feature/test-issue-7` and each bump-guard test uses a fresh `make_tmpdir` + `make_repo` pair, so the scout concern about stale `master`-based assumptions in existing assertions did not surface as a defect in the reviewed tree.
+- [`step2-implement.sh:299-309`](skills/implement/scripts/step2-implement.sh) gates `main-branch-prohibited` on session-env plus non-empty `ISSUE_NUMBER` and not `FORKED_TARGET=true`, which is narrower than the unconditional snippet in the written plan; that is a product/contract choice rather than a test-scaffolding regression, and Test 19 matches the shipped conditional.
