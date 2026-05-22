@@ -1,0 +1,13 @@
+Tracing the aggregator pipeline in the branch diff and full file context for repair → validate → strip ordering.
+
+Diff cache is empty. Reading the bash driver around model output, `cand`, repair, validate, and strip.
+
+Verifying the `if`/`fi` structure around the strip heredoc and running read-only `git log`.
+
+### In-Scope Findings
+- **risk-integration** `skills/review/scripts/aggregate-findings.sh:668-698` — The repair step always materializes repair stdout into a temp file and then runs `mv -f "$cand_repaired_tmp" "$cand"` **before** `python3 "$validate_py" "$FINDINGS_FILE" "$cand"` (validation) and **before** the strip heredoc that reads `"$cand"`. So the path the dispatcher wrote (typically `aggregator-output.txt` via `out_file` / `ALL_OUTPUT_FILES`) is **no longer guaranteed to match the vendor’s raw bytes** after a failed validation: `findings.md` stays untouched on the `validation-failed` exit at 693–698, but `cand` has already been replaced, which breaks the old symmetry where the on-disk merge artifact stayed vendor-pure until a successful commit path and also conflicts with wording in the attached plan that `aggregator-output.txt` still reflects “raw model output.” **Suggested fix:** keep the dispatch output immutable until validation (and ideally strip) succeed—for example validate and strip against `cand_repaired_tmp` (or a renamed stable temp), then on the success-only path atomically replace `cand` and `FINDINGS_FILE`, or write vendor bytes to a dedicated `aggregator-output-raw.txt` before repair and only update `aggregator-output.txt` after success, and align `aggregate-findings.md` with whichever artifact contract you choose.
+
+### Out-of-Scope Observations
+- The precomputed diff at `<TMPDIR>/round-3/diff.txt` was empty, so this review used the current tree contents of `aggregate-findings.sh` only.
+- `git log $(git merge-base HEAD main)..HEAD --oneline` produced no lines in this environment (no commits listed in that range relative to `main`).
+- Within the current script, the **happy-path** ordering for a successful round is repair output applied to `cand`, then validation on that same path, then strip from `cand` into `merged_tmp` with no intermediate branch that skips strip after a passing validate (707–724 follows 693–699 unconditionally on success).

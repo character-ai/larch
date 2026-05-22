@@ -1,0 +1,26 @@
+Reading the ballot and any referenced context files to verify findings.
+
+FINDING_1: EXONERATE -- two small slot-set loops are easy to keep aligned; a shared helper buys little versus extra indirection.
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: EXONERATE -- always `mv` from a temp staging file is simple and correct; skipping `mv` saves little versus edge cases.
+FINDING_5: YES
+FINDING_6: EXONERATE -- repeated hard constraints are deliberate for LLM adherence; consolidating risks losing emphasis.
+FINDING_7: EXONERATE -- generic refactor of an embedded validator is not worth a standalone tracking issue for this work.
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: EXONERATE -- empty sidecar diff is a launcher/session artifact, not a product defect warranting an issue.
+FINDING_12: EXONERATE -- behavior and guardrail limits are already documented in aggregate-findings.md/SECURITY.md; further UX is optional policy.
+FINDING_13: EXONERATE -- log wording mismatch is minor triage friction only.
+FINDING_14: EXONERATE -- known broad trust boundary; filing a vague hardening issue adds noise without a scoped delta.
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: EXONERATE -- naming nit; meaning is clear from code/docs context.
+FINDING_18: EXONERATE -- hypothetical parser drift refactor is not issue-worthy for this branch.
+FINDING_19: YES
+FINDING_20: YES
+FINDING_21: EXONERATE -- tests are clearly labeled in prose; exact planned identifier is optional traceability polish.
+FINDING_22: YES
+FINDING_23: EXONERATE -- same empty-diff/merge-base tooling noise as FINDING_11; not worth a GitHub issue.
+FINDING_24: NO -- touching SECURITY.md for this trust-model update is appropriate and expected, not scope creep.

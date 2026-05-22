@@ -1,0 +1,9 @@
+Gathering the diff and relevant code to verify breadcrumb emission and tests for risk-integration.
+
+diff.txt is empty. Reading implementation and tests via `git diff` (read-only) and file reads.
+
+### In-Scope Findings
+- **risk-integration** `skills/review/scripts/test-aggregate-findings.sh:436-441` — The synthesis regression case only checks `grep -Fq 'ATTESTATION_SYNTHESIZED=true'` on `aggregator-repair.stderr`, so CI would not catch a regression that drops the `input_slots=<N>` audit field, changes its format, or splits the breadcrumb across lines while still printing a substring match. **Suggested fix:** Assert the full single-line machine-readable record (for example anchor `aggregator-repair.stderr` with `grep -Eq '^ATTESTATION_SYNTHESIZED=true input_slots=[0-9]+$'` and, if useful, pin the expected count to `3` for the `in3.md` fixture so audits and `/audit-runs` style tooling can rely on the same contract as `skills/review/scripts/aggregate-findings.sh:500-503` and `skills/review/scripts/aggregate-findings.md:28`).
+
+### Out-of-Scope Observations
+The precomputed diff at `<TMPDIR>/round-1/diff.txt` was empty, so this review used direct reads of the current tree. Passthrough behavior omits `aggregator-repair.stderr` when the repair step prints nothing to stderr (rather than emitting `ATTESTATION_SYNTHESIZED=false`), which still satisfies the “absent” branch of the stated contract. `--review-tmpdir` is required and canonicalized before the repair `mktemp` paths run (`skills/review/scripts/aggregate-findings.sh:40-45`, `605-621`), so the breadcrumb path is not dependent on an unset `REVIEW_TMPDIR`. In this workspace snapshot, `git merge-base HEAD main` equals `HEAD`, so `git log $(git merge-base HEAD main)..HEAD --oneline` produced no lines even though `git log -1` shows commit `cc6fd03` on the branch tip.

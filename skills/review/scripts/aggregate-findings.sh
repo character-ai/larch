@@ -288,6 +288,59 @@ def normalize_slot(sl):
 
 EMPTY_MERGE_ATTESTATION = "LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED"
 
+_STRICT_FINDING_HEADING = re.compile(r"^### FINDING_[0-9]+:")
+
+
+def line_has_impure_empty_merge_attestation(line):
+    """True when trimmed line begins with the attestation token but is not exactly it."""
+    st = line.strip()
+    return st.startswith(EMPTY_MERGE_ATTESTATION) and st != EMPTY_MERGE_ATTESTATION
+
+
+def drop_impure_empty_merge_attestation_lines(text):
+    """Remove near-attestation lines that would survive exact-line strip (suffix/format drift)."""
+    if not text:
+        return text
+    ends_nl = text.endswith("\n")
+    kept = [
+        line
+        for line in text.splitlines()
+        if not line_has_impure_empty_merge_attestation(line)
+    ]
+    out = "\n".join(kept)
+    if ends_nl:
+        out += "\n"
+    return out
+
+
+def line_opens_valid_finding_block(line):
+    """True when this line starts a validator-recognized ### FINDING_N: block."""
+    ls = line.lstrip("\t ")
+    return bool(_STRICT_FINDING_HEADING.match(ls))
+
+
+# Drifted pseudo-heading: ### optional spaces FINDING_<digit>… but not the strict
+# "### FINDING_<digits>:" block opener (e.g. ###FINDING_1: typo, or ### FINDING_1 x).
+# Require a digit after FINDING_ so prose like "### FINDING_ids …" does not suppress
+# empty-merge synthesis (issue: FINDING_ids line with zero real blocks).
+_PSEUDO_FINDING_HEADING = re.compile(r"^###\s*FINDING_[0-9]")
+
+
+def has_nonconforming_finding_heading_markers(text):
+    """
+    True when a line looks like a FINDING heading but is not ### FINDING_<digits>:
+    (prevents empty-merge synthesis from rescuing narrative that contains drifted
+    pseudo-headings that no longer parse as structured blocks).
+    """
+    for line in text.splitlines():
+        ls = line.lstrip("\t ")
+        if not ls.startswith("###"):
+            continue
+        if _PSEUDO_FINDING_HEADING.match(ls) and not line_opens_valid_finding_block(line):
+            return True
+    return False
+
+
 # End of "Suggested revisions" sub-list: only known top-level finding fields,
 # not arbitrary "- **Capital..." lines that may appear inside folded revision text.
 _REVISION_SUBLIST_END_HEADING = re.compile(
@@ -470,10 +523,63 @@ def check_revision_traceability(input_text, output_blocks_list):
     return warnings
 
 
+def _attempt_attestation_repair(raw_text, input_text):
+    """If merge output is empty-merge shaped but missing the attestation line, append it."""
+    raw_text = drop_impure_empty_merge_attestation_lines(raw_text)
+    blocks = output_blocks(raw_text)
+    input_slot_set = set()
+    for block in input_blocks(input_text):
+        _line, slots = reviewer_line_slots(block)
+        for sl in slots:
+            input_slot_set.add(normalize_slot(sl))
+    has_attest_line = any(
+        line.strip() == EMPTY_MERGE_ATTESTATION for line in raw_text.splitlines()
+    )
+    n_findings = len(input_blocks(input_text))
+    if not blocks and input_slot_set and not has_attest_line:
+        if has_nonconforming_finding_heading_markers(raw_text):
+            print(
+                "AGGREGATOR_SYNTHESIS_SUPPRESSED=nonconforming_finding_heading_markers",
+                file=sys.stderr,
+            )
+            return raw_text, False, len(input_slot_set), n_findings
+        return (
+            raw_text + "\n" + EMPTY_MERGE_ATTESTATION + "\n",
+            True,
+            len(input_slot_set),
+            n_findings,
+        )
+    return raw_text, False, len(input_slot_set), n_findings
+
+
+def repair_attestation_main():
+    input_path, output_path = sys.argv[2], sys.argv[3]
+    intext = open(input_path, encoding="utf-8").read()
+    raw = open(output_path, encoding="utf-8").read()
+    repaired, synthesized, nslots, n_findings = _attempt_attestation_repair(raw, intext)
+    sys.stdout.write(repaired)
+    if synthesized:
+        print(
+            "ATTESTATION_SYNTHESIZED=true unique_input_reviewers=%d input_slots=%d input_findings=%d"
+            % (nslots, nslots, n_findings),
+            file=sys.stderr,
+        )
+    return 0
+
+
 def main():
     input_path, output_path = sys.argv[1], sys.argv[2]
     intext = open(input_path, encoding="utf-8").read()
     outtext = open(output_path, encoding="utf-8").read()
+    outtext = drop_impure_empty_merge_attestation_lines(outtext)
+    for line in outtext.splitlines():
+        if line_has_impure_empty_merge_attestation(line):
+            print(
+                "empty-merge attestation line must be exactly %r when present (found impure line)"
+                % (EMPTY_MERGE_ATTESTATION,),
+                file=sys.stderr,
+            )
+            return 1
     oos_slots = oos_attributed_slots(intext)
     input_slot_set = set()
     non_oos_input_slots = set()
@@ -561,10 +667,39 @@ def main():
 
 
 if __name__ == "__main__":
+    if len(sys.argv) >= 4 and sys.argv[1] == "--repair-attestation":
+        raise SystemExit(repair_attestation_main())
     raise SystemExit(main())
 PY
 
-if ! python3 "$validate_py" "$FINDINGS_FILE" "$cand" 2>"$REVIEW_TMPDIR/aggregator-validate.stderr"; then
+# Deterministic recovery: synthesize empty-merge attestation into a temp merge
+# candidate when the vendor output is narrative-only but the ballot had structured findings.
+rm -f "$REVIEW_TMPDIR/aggregator-repair.stderr"
+repair_err_tmp="$(mktemp "$REVIEW_TMPDIR/aggregate-repair-err.XXXXXX")"
+cand_repaired_tmp="$(mktemp "$REVIEW_TMPDIR/aggregate-repair-out.XXXXXX")"
+if ! python3 "$validate_py" --repair-attestation "$FINDINGS_FILE" "$cand" >"$cand_repaired_tmp" 2>"$repair_err_tmp"; then
+    rm -f "$repair_err_tmp" "$cand_repaired_tmp"
+    REASON="validation-failed"
+    FAILURE_LOG="$REVIEW_TMPDIR/aggregate-repair-failed.stderr"
+    printf '%s\n' "aggregate-validate.py --repair-attestation exited non-zero" >"$FAILURE_LOG"
+    append_warning "- **findings aggregator**: empty-merge attestation repair step failed; leaving findings.md unchanged. $(failure_see_phrase "$FAILURE_LOG")"
+    emit_result
+    exit 0
+fi
+if [[ -s "$repair_err_tmp" ]]; then
+    # Isolate repair telemetry: ignore stray Python warnings on stderr.
+    grep -E '^(ATTESTATION_SYNTHESIZED=|AGGREGATOR_SYNTHESIS_SUPPRESSED=)' "$repair_err_tmp" \
+        >"$REVIEW_TMPDIR/aggregator-repair.stderr" \
+        || rm -f "$REVIEW_TMPDIR/aggregator-repair.stderr"
+    rm -f "$repair_err_tmp"
+else
+    rm -f "$repair_err_tmp" "$REVIEW_TMPDIR/aggregator-repair.stderr"
+fi
+
+# Validate and strip against the repair-stage temp only; keep dispatch bytes in
+# "$cand" until both validation and strip succeed (then replace atomically).
+if ! python3 "$validate_py" "$FINDINGS_FILE" "$cand_repaired_tmp" 2>"$REVIEW_TMPDIR/aggregator-validate.stderr"; then
+    rm -f "$cand_repaired_tmp"
     REASON="validation-failed"
     FAILURE_LOG="$REVIEW_TMPDIR/aggregator-validate.stderr"
     append_warning "- **findings aggregator**: merged output failed validation; leaving findings.md unchanged. $(failure_see_phrase "$FAILURE_LOG")"
@@ -578,7 +713,7 @@ merged_tmp="$(mktemp "$REVIEW_TMPDIR/findings.md.merged.XXXXXX")"
 trap 'rm -f "${merged_tmp:-}"' EXIT
 # Strip empty-merge attestation lines using the same trimmed-line predicate as
 # aggregate-validate.py (padding or stray whitespace must not survive into findings.md).
-if ! python3 - "$cand" <<'PY' >"$merged_tmp" 2>"$REVIEW_TMPDIR/aggregator-strip.stderr"
+if ! python3 - "$cand_repaired_tmp" <<'PY' >"$merged_tmp" 2>"$REVIEW_TMPDIR/aggregator-strip.stderr"
 import sys
 
 EMPTY_MERGE_ATTESTATION = "LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED"
@@ -590,16 +725,18 @@ with open(path, encoding="utf-8") as f:
         sys.stdout.write(line)
 PY
 then
+    rm -f "$cand_repaired_tmp"
     REASON="validation-failed"
     FAILURE_LOG="$REVIEW_TMPDIR/aggregator-strip.stderr"
     append_warning "- **findings aggregator**: empty-merge attestation strip failed; leaving findings.md unchanged. $(failure_see_phrase "$FAILURE_LOG")"
     emit_result
     exit 0
 fi
-if [[ "$(count_finding_blocks "$cand")" -eq 0 ]]; then
+if [[ "$(count_finding_blocks "$cand_repaired_tmp")" -eq 0 ]]; then
     [[ -s "$merged_tmp" ]] || printf '\n' >"$merged_tmp"
 fi
 [[ -s "$merged_tmp" ]] || {
+    rm -f "$cand_repaired_tmp"
     REASON="validation-failed"
     FAILURE_LOG="$REVIEW_TMPDIR/aggregator-empty-merge.stderr"
     printf '%s\n' "staged merge output empty after successful strip (zero FINDING blocks in vendor output; expected narrative or whitespace)" >"$FAILURE_LOG"
@@ -608,6 +745,7 @@ fi
     exit 0
 }
 mv -f "$merged_tmp" "$FINDINGS_FILE"
+mv -f "$cand_repaired_tmp" "$cand"
 trap - EXIT
 MERGED_COUNT="$(count_finding_blocks "$FINDINGS_FILE")"
 AGGREGATED=true
