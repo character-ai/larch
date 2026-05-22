@@ -1,0 +1,162 @@
+# Implementation Plan — Delete 6 larch skills
+
+## Scope summary
+
+Delete 6 larch skills (skill-evolver, simplify-skill, show-skill, compress-skill, create-skill, umbrella) including their directories, tests, and documentation. Update runtime references so no live consumer of the deleted skills remains. Leave CHANGELOG.md entries and `larch-logs/` run records intact as historical artifacts. Replace `/review` description-mode auto-issue-filing (which went through `/umbrella`) with no-op + manual /issue follow-up (drop the auto-filing path entirely).
+
+Two scope decisions from Round 1 frame this plan:
+- **Decision 1 (Runtime refs only)**: scrub references in runtime files; leave CHANGELOG.md and `larch-logs/` untouched.
+- **Decision 2 (Scrub umbrella broadly)**: remove `/umbrella` prose from SECURITY.md and /issue scripts; keep `/issue`'s `--blocked-by-issue` flag (caller-agnostic) but remove `/umbrella`-specific prose.
+
+## Files to delete (entire trees)
+
+```
+skills/skill-evolver/      (SKILL.md + scripts/validate-args.{sh,md})
+skills/simplify-skill/     (SKILL.md + scripts/build-feature-description.{sh,md})
+skills/show-skill/         (SKILL.md + scripts/{show.{sh,md}, test-show-skill.{sh,md}})
+skills/compress-skill/     (SKILL.md + scripts/{build-feature-description.{sh,md}, discover-md-set.{sh,py}})
+skills/create-skill/       (SKILL.md + scripts/parse-args.{sh,md} + prepare-description.{sh,md} + post-scaffold-hints.{sh,md} + render-skill-md.{sh,md} + test-render-skill-md.{sh,md} + validate-args.sh)
+skills/umbrella/           (SKILL.md + 24 scripts/* files: helpers.{sh,md}, parse-args.{sh,md}, render-batch-input.{sh,md}, render-umbrella-body.{sh,md}, validate-pieces-json.{sh,md}, test-helpers.{sh,md}, test-render-batch-input.{sh,md}, test-render-umbrella-body.{sh,md}, test-umbrella-blocked-by-issue.{sh,md}, test-umbrella-emit-output-contract.{sh,md}, test-umbrella-parse-args.{sh,md}, test-validate-pieces-json.{sh,md})
+```
+
+### Top-level test harnesses (test deleted skills)
+
+```
+scripts/test-post-scaffold-hints.{sh,md}    (tests skills/create-skill/scripts/post-scaffold-hints.sh)
+scripts/test-prepare-description.{sh,md}    (tests skills/create-skill/scripts/prepare-description.sh)
+scripts/test-parse-args.{sh,md}             (tests skills/create-skill/scripts/parse-args.sh)
+```
+
+## Files to modify
+
+### Runtime configuration
+
+- `.claude/settings.json` — Remove permission entries for the 6 skills at lines 11–12 (Bash `compress-skill/scripts/*`, `create-skill/scripts/*`), 17–19 (Bash `show-skill`, `simplify-skill`, `skill-evolver/scripts/*`), 160–161 (`Skill(compress-skill)`, `Skill(create-skill)`), 169–170 (`Skill(larch:compress-skill)`, `Skill(larch:create-skill)`), 179–182 (`Skill(larch:{show-skill,simplify-skill,skill-evolver,umbrella})`), 189–191 (`Skill({show-skill,simplify-skill,skill-evolver})`), 194 (`Skill(umbrella)`). Net 14 lines removed.
+
+- `agent-lint.toml`:
+  - Remove allowed-path entries at lines 525, 1067, 1075, 1126 (`skills/{create-skill,simplify-skill}/scripts/*`).
+  - Update or remove comments at lines 79–90 (create-skill post-scaffold-hints rationale), 866 (parse-args sibling note), 873 (prepare-description Step 1.5/1.6 note), 1068 (test-render-skill-md sibling note).
+  - Update the comment at line 164: the pure-delegators enumeration currently reads "im, imaq, create-skill, simplify-skill, compress-skill". After Phase 5 strips `skills/{create-skill,simplify-skill,compress-skill}/SKILL.md` from `scripts/test-anti-halt-banners.sh`'s `DELEGATORS` array, this comment must mirror the trimmed list — leave only "im, imaq". This keeps the prose and the harness in sync.
+  - **KEEP** the GitHub issue umbrella references at lines 286 ("under umbrella #413"), 896 ("Phase 1 of umbrella #348"), 975 ("Phase 3 of umbrella #413") — these are GitHub issue trackers, not `/umbrella` skill.
+
+### Makefile
+
+- Remove these test-* targets (and their recipe bodies): `test-post-scaffold-hints`, `test-prepare-description`, `test-parse-args`, `test-render-skill` (NOTE: this target's recipe has TWO lines — one invokes `skills/create-skill/scripts/test-render-skill-md.sh` and the other invokes `skills/show-skill/scripts/test-show-skill.sh`; both are removed by deleting the target), `test-show-skill`, `test-umbrella-helpers`, `test-umbrella-parse-args`, `test-umbrella-blocked-by-issue`, `test-umbrella-emit-output-contract`, `test-umbrella-render-batch-input`, `test-render-umbrella-body`, `test-validate-pieces-json`.
+- Remove the same target names from `.PHONY` (line 4).
+- Remove the same target names from shard prerequisite lists: `test-harnesses-5` (test-umbrella-blocked-by-issue), `test-harnesses-6` (test-umbrella-emit-output-contract), `test-harnesses-7` (test-post-scaffold-hints), `test-harnesses-8` (test-umbrella-helpers), `test-harnesses-9` (test-umbrella-parse-args), `test-harnesses-10` (test-prepare-description, test-umbrella-render-batch-input), `test-harnesses-13` (test-render-skill), `test-harnesses-15` (test-parse-args, test-render-umbrella-body, test-validate-pieces-json), `test-harnesses-18` (test-show-skill).
+- After editing, run `make test-harness-shards-coverage` to verify no shard is left malformed. Manual rebalancing across shards is optional but not required for the harness to pass.
+
+### Documentation
+
+- `README.md`:
+  - Remove skill table rows at lines 58 (`/compress-skill`), 64 (`/create-skill`), 124 (`/show-skill`), 130 (`/simplify-skill`), 136–139 (`/skill-evolver` two-row block), 142–145 (`/umbrella` two-row block).
+  - Update the `/review` table row: drop the `(--no-issues to suppress)` parenthetical in the description since the auto-issue-filing chain (`/umbrella` invocation) is being removed. New text describes description mode without the suppression flag.
+- `docs/skills.md`:
+  - Remove TOC entries at lines 7, 8, 18, 19, 20, 21 and full sections (header + description body) for `/compress-skill` (54–60ish), `/create-skill` (62–...), `/show-skill` (152–...), `/simplify-skill` (160–...), `/skill-evolver` (168–174), `/umbrella` (176–182).
+  - Update the `/review` description-mode entry to drop the `--no-issues to suppress` framing — with auto-filing removed there is nothing to suppress.
+- `docs/installation-and-setup.md` line 200 — Remove `/create-skill`, `/simplify-skill`, `/compress-skill` from the inline skill list.
+- `docs/configuration-and-permissions.md` — Remove permission-entry rows at lines 17–18 (`Skill(compress-skill)`, `Skill(create-skill)`), 26–27 (`Skill(larch:compress-skill)`, `Skill(larch:create-skill)`), 36–38 (`Skill(larch:{show-skill,simplify-skill,umbrella})`), 43–45 (`Skill({show-skill,simplify-skill,umbrella})`). Update the ordering-note prose at line 48 (drop the `umbrella` example) and delete the entire "Implication for the umbrella stall (issue #566)" section (lines 85–87).
+- `docs/linting.md`:
+  - Update the `make test-analyze` description at line 190 — the `Tracking/umbrella` category label is still emitted by `analyze.py` for historical issues whose bodies start with "Tracking issue for". KEEP the label discussion (it documents the analyzer's behavior); but drop any prose framing `/umbrella` as the *creator* of those issues (the category remains; the producer is now historical).
+  - Delete `make test-umbrella-parse-args` (273), `make test-umbrella-blocked-by-issue` (274), `make test-umbrella-emit-output-contract` (275), `make test-render-umbrella-body` (278) target-description rows.
+  - **KEEP** the Makefile "umbrella target" references at lines 39, 136, 139 (test-harnesses umbrella).
+- `docs/workflow-lifecycle.md` — Major rewrite of the diagram and prose:
+  - Lines 7 / 17 / 18 — remove `/skill-evolver` from orchestrators and its edges to `/research` and `/umbrella`.
+  - Line 34 — delete the `/skill-evolver` description block.
+  - Lines 38, 42, 43, 44 — drop `/create-skill`, `/simplify-skill`, `/compress-skill` from delegators.
+  - Lines 58, 60, 61, 62 — delete the four delegator description blocks (one per deleted skill: `/create-skill`, `/show-skill`, `/simplify-skill`, `/compress-skill`).
+  - Line 64 — update the pure-forwarders parenthetical to drop `/create-skill`, `/show-skill`, `/simplify-skill`, `/compress-skill`.
+  - Lines 114, 116 — delete `/show-skill` and `/skill-evolver` from Standalone Usage.
+  - In the `/review` Standalone Usage entry (search for the `[--no-issues]` argument hint), drop `--no-issues` from the argument list and remove the `--no-issues to suppress` parenthetical at the end. After the auto-filing chain is deleted, the suppression flag has no consumer.
+
+### Shared docs
+
+- `skills/shared/voting-protocol.md`:
+  - Line 241 — remove the phrase "by `/review` Step 4b directly via `/umbrella` (default behavior; suppressed by `--no-issues`)" and replace with prose explaining that accepted OOS items are filed by `/implement` only (the `/review` description-mode auto-file path is being removed).
+  - Line 286 — same substitution (`/review` Step 4b via `/umbrella` → `/implement` Step 9a.1 only).
+- `skills/shared/subskill-invocation.md`:
+  - Lines 11, 21 — Pattern A discussion: drop `/create-skill` and the `/im → /implement` chained-delegation example, or update to use `/im` and `/alias` as remaining canonical examples.
+  - Line 46 — drop `skills/create-skill/SKILL.md` from the validator-then-delegator example.
+  - Lines 55, 90 — drop `/create-skill`, `/simplify-skill`, `/compress-skill` from the pure-forwarder exemption lists.
+  - Lines 139–141 — drop `skills/{create-skill,simplify-skill,compress-skill}/SKILL.md` from the cited-source-example list.
+  - Line 243 — update the closing paragraph to drop `/create-skill` (and the `render-skill-md.sh` + `test-render-skill-md.sh` references — those files are deleted).
+- `skills/shared/skill-design-principles.md`:
+  - Line 3 — drop the `skills/create-skill/SKILL.md` cited-by callout; keep the file as a general canonical source for skill-design principles.
+  - Line 37 — drop the "applies to every new skill scaffolded by `/create-skill`" framing; reframe as "applies to every existing larch skill under edit".
+  - Line 123 — drop the `skills/create-skill/SKILL.md` consumer reference in the trailer.
+
+### Other skills that reference these
+
+- `skills/review/SKILL.md` line 55 — Update Step 4 description-mode prose to drop the auto-issue-filing flow via `/umbrella`. Specifically: (a) drop the `/umbrella` invocation; (b) drop the pieces.json composition; (c) keep the security-tagged findings holding-local behavior; (d) keep or simplify `--no-issues` to a no-op flag for backward-compat. Recommendation: remove `--no-issues` entirely and rely on description-mode never auto-filing post-deletion.
+- `skills/issue/scripts/create-one.sh` line 189 — Delete the comment `# /umbrella forwards operator --label values verbatim through /issue.` (the `grep -Fqx` rationale stands without the /umbrella motivator).
+- `skills/issue/scripts/create-one.md` line 5 — In the "Label-existence probe" paragraph, drop the sentence "Active-current-path concern: `/umbrella` forwards operator `--label` values verbatim through `/issue` to here, so labels with regex metacharacters are a live shipped-path input." Replace with a single neutral sentence acknowledging that caller-supplied label values may contain regex metacharacters and the `-Fqx` doctrine handles them.
+- `skills/issue/scripts/parse-input.md` lines 15–27 — Delete the entire `## Reverse coupling: /umbrella's piece bodies (#831)` subsection. The reverse-coupling story for `/research` (already documented at lines 25–27) remains intact; only the `/umbrella` half goes away.
+- `skills/alias/scripts/resolve-target.sh` line 16 — Drop the comment `# skills/create-skill/scripts/validate-args.sh:133 — both` (the two-file rule predicate is duplicated inline in this script's body; the cross-reference is no longer needed).
+- `skills/alias/scripts/resolve-target.md` line 47 — Rewrite the paragraph to inline the two-file rule description (was: "This matches the predicate at `skills/create-skill/scripts/validate-args.sh:133`. The two-file rule guards against...") so the doc is self-contained.
+
+### SECURITY.md
+
+- Line 152 — Remove `skills/skill-evolver/SKILL.md` from the transitive callers list of `/research --no-issue`. (`scripts/eval-research.sh` remains.)
+- Lines 154–156 — Delete the `### /umbrella --blocked-by-issue` subsection entirely (heading + body paragraph).
+- Line 166 — In the `skills/issue/scripts/create-one.sh:182` bullet, drop the phrase "Active shipped path: `/umbrella` forwards operator `--label` values verbatim through `/issue` to here." Keep the regex-injection rationale.
+- Lines 167–169 — Delete all three `skills/umbrella/scripts/helpers.sh` wire-dag bullets (back-link probe, existing-edge probe, --umbrella arg-parse boundary).
+
+### Scripts
+
+- `scripts/test-anti-halt-banners.sh` lines 48–50 — Remove three entries from the `DELEGATORS=()` array: `"skills/create-skill/SKILL.md"`, `"skills/simplify-skill/SKILL.md"`, `"skills/compress-skill/SKILL.md"`. The harness still runs against `/im` and `/block-issue` plus the BANNER_ONLY_ORCHESTRATORS list.
+- `scripts/test-review-structure.sh` lines 370–385 — Delete test case (18) entirely (the `--pieces-json` forwarding assertion to `/umbrella`). The review SKILL.md no longer composes pieces.json so the contract being pinned is gone. Renumber subsequent cases only if downstream tests reference numeric IDs (they don't; cases are top-down sequential).
+- `scripts/blocker-helpers.sh` line 5 — Update header comment: remove `skills/umbrella/scripts helpers, ` from the list of callers (current: "Sourced by scripts/implement-admission.sh, skills/umbrella/scripts helpers, and historically by fix-issue-era scripts."). New text mentions only `scripts/implement-admission.sh` plus the historical-fix-issue caller.
+- `scripts/repro-claude-p-edit-permissions.sh` line 41 — Change `EDIT_TARGET="skills/umbrella/SKILL.md"` to `EDIT_TARGET="skills/issue/SKILL.md"` (a stable, tracked, non-load-bearing file remaining after the deletion).
+- `scripts/repro-claude-p-edit-permissions.md` lines 19, 49, 70, 91, 115 — Replace every `skills/umbrella/SKILL.md` literal with `skills/issue/SKILL.md` to mirror the `.sh` change. The reproducer's narrative reasoning ("isolated tracked file used as a permission-stall fixture") is unaffected.
+
+### Hooks and plugin manifests
+
+- `hooks/hooks.json` — No changes (no references).
+- `.claude-plugin/marketplace.json`, `.claude-plugin/plugin.json` — No changes (no references).
+
+## Files NOT to touch (historical / non-relevant)
+
+- `CHANGELOG.md` — All historical entries mentioning these skills remain intact (immutable narrative).
+- `larch-logs/**` — All historical run records remain intact.
+- `scripts/test-harness-shards-coverage.sh` — Every `umbrella` token in this file refers to the Makefile `test-harnesses` umbrella target, not the `/umbrella` skill.
+- `skills/research/scripts/test-validate-citations.md` line 60 — "umbrella" = Makefile target.
+- `skills/issue/scripts/test-{intra-batch-deps,body-file-title,blocked-by-issue}.md` line 5 each — "umbrella" = Makefile target.
+- `skills/implement/SKILL.md` line 30 — "umbrella #348" = GitHub issue umbrella.
+- `agent-lint.toml` lines 286, 896, 975 — GitHub issue umbrella references.
+- `.claude/skills/analyze-issues/scripts/analyze.py` line 266, `test-analyze.{sh,md}` — "Tracking/umbrella" is an issue category name applied to issues whose bodies start with "Tracking issue for"; historical Tracking issues remain in the GitHub repo with that classification, so the analyzer's category label and its test fixture remain useful.
+
+## Approach
+
+1. **Phase 1 — Bulk deletes**: `git rm -rf skills/{skill-evolver,simplify-skill,show-skill,compress-skill,create-skill,umbrella}` and `git rm scripts/test-{post-scaffold-hints,prepare-description,parse-args}.{sh,md}`.
+2. **Phase 2 — Runtime configs**: edit `.claude/settings.json`, `agent-lint.toml`, `Makefile` (targets + `.PHONY` + shard lists). Verify `make test-harness-shards-coverage` passes after Makefile edits.
+3. **Phase 3 — Docs**: edit `README.md`, `docs/skills.md`, `docs/installation-and-setup.md`, `docs/configuration-and-permissions.md`, `docs/linting.md`, `docs/workflow-lifecycle.md`.
+4. **Phase 4 — Shared + cross-skill refs**: edit `skills/shared/{voting-protocol,subskill-invocation,skill-design-principles}.md`, `skills/review/SKILL.md`, `skills/issue/scripts/{create-one.sh,create-one.md,parse-input.md}`, `skills/alias/scripts/resolve-target.{sh,md}`, `SECURITY.md`.
+5. **Phase 5 — Test harnesses + reproducer**: edit `scripts/{test-anti-halt-banners.sh,test-review-structure.sh,blocker-helpers.sh,repro-claude-p-edit-permissions.sh,repro-claude-p-edit-permissions.md}`.
+6. **Phase 6 — Verify**: run `make lint` (shellcheck, markdownlint, jsonlint, actionlint, agent-lint, agnix, gitleaks, trufflehog) and `make test-harnesses` (or at minimum `make test-harness-shards-coverage` + the harnesses that test files we modified). Manual smoke test of `/issue` (single mode + label probe path) and `/alias`.
+
+## Edge cases
+
+- **Makefile shard balance**: removing ~12 test targets from various shards may unevenly distribute remaining harnesses across shards. `test-harness-shards-coverage` only checks that every target lives in exactly one shard (not balance). The CI matrix can still pass with an uneven distribution; rebalancing is optional polish.
+- **`/review` description mode behavior change**: removing the `/umbrella`-driven auto-issue-filing changes default behavior — OOS findings in `oos.md` are no longer auto-filed as GitHub issues. Users follow up with `/issue` manually. This is the explicit consequence of the "scrub umbrella refs broadly" decision.
+- **`/issue --blocked-by-issue` flag**: kept (caller-agnostic per the user's Decision 2 framing). The `/umbrella` consumer is gone, but other callers (operators, future skills) may still supply the flag.
+- **Plugin permission caching**: `.claude/settings.json` changes take effect on the next session. Existing in-progress sessions hold cached permissions; this is a known property of the plugin lifecycle and does not affect this PR.
+- **`/im` skill survival**: `/im` remains. Its public-facing caller `/create-skill` is being deleted, but `/im` is still useful for standalone use and is invoked via the Skill tool from `/alias`. KEEP.
+- **`/alias` skill survival**: KEEP — `/alias` is for general delegation aliases. Its create-skill cross-reference is updated inline in `resolve-target.md`.
+
+## Failure modes (3 most likely)
+
+1. **Missed reference → broken doc cross-link or stale agent-lint allow-list path**. *Signal*: `make markdownlint` finds a broken `skills/<deleted>/...` link, OR `make agent-lint` reports an allowed-list path that no longer exists. *Mitigation*: comprehensive grep before commit (`grep -rE 'skill-evolver|simplify-skill|show-skill|compress-skill|create-skill|/umbrella|skill:umbrella|larch:umbrella' ...`) plus the Phase 6 `make lint` gate.
+2. **Makefile shard imbalance breaks `test-harness-shards-coverage`**. *Signal*: `make test-harness-shards-coverage` reports "umbrella missing shard targets" or "umbrella has unexpected prerequisites". *Mitigation*: after each `.PHONY` / shard edit, re-run the coverage check; adjust until clean.
+3. **`/review` description-mode runtime failure if SKILL.md is half-updated**. *Signal*: a `/review` description-mode run would invoke `/umbrella` via the Skill tool, find no `/umbrella` skill, and stall or error. *Mitigation*: update `skills/review/SKILL.md` in the same commit as the `skills/umbrella/` deletion; never land a half-state. CI does not run `/review` end-to-end, so this is caught only by `make test-review-structure` (which the Phase 5 edits to `scripts/test-review-structure.sh` should keep clean) plus manual smoke-test.
+
+## Testing strategy
+
+- After each phase, run `make lint`: shellcheck, markdownlint, jsonlint, actionlint, agent-lint, agnix, gitleaks, trufflehog. Agent-lint catches orphaned allow-list paths.
+- `make test-harness-shards-coverage` — verify shard balance after Makefile edits.
+- `make test-review-structure` — verify Phase 5 edit to `test-review-structure.sh` is internally consistent (case 18 removal).
+- `make test-anti-halt` — verify Phase 5 edit to `test-anti-halt-banners.sh` is consistent (delegators list reduced).
+- Manual smoke-test `/issue` single-mode (label probe path uses the `-Fqx` doctrine — unchanged).
+- Manual smoke-test `/alias` (resolve-target.{sh,md} two-file rule still discriminates correctly).
+- Verify `git grep -E 'skill-evolver|simplify-skill|show-skill|compress-skill|create-skill|/umbrella|skill:umbrella|larch:umbrella'` (excluding `CHANGELOG.md` and `larch-logs/`) returns zero matches after Phase 5 — single command, deterministic.
+
+diff_lines: 1050
