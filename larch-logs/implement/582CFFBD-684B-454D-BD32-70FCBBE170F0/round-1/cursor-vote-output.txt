@@ -1,0 +1,14 @@
+Reading the ballot and session context files for verification.
+
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: EXONERATE -- plan centers the audit-report label and renamed legacy titles; extra title/Lock guards add more branching than the stated migration warrants.
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: EXONERATE -- changed-file set centers implement/audit paths; wiring the gate into ship-pr too is plausible but not evidenced as the minimal missing invariant here.
+FINDING_7: EXONERATE -- run-log NDJSON is already trusted input; GitHub-host pinning buys little versus added coupling and fork/enterprise URL shapes.
+FINDING_8: NO -- concern is plausible but not established from the provided excerpts alone.
+FINDING_9: EXONERATE
+FINDING_10: EXONERATE -- tightening fail-closed behavior is easy to over-correct; documenting fetch/health expectations is enough for this surface.
+FINDING_11: YES
+FINDING_12: YES

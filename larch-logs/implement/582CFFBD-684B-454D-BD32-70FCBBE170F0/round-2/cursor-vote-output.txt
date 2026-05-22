@@ -1,0 +1,31 @@
+Reading the ballot and nearby session files for verification.
+
+Verifying cited code against `diff-context.txt`, `plan-context.txt`, and workspace sources.
+
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: EXONERATE -- PR-scoping guidance does not warrant a tracking issue
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: EXONERATE -- umbrella path on legacy-shaped non-audit titles is too speculative to drive a code change
+FINDING_8: EXONERATE -- bundling/release note is process noise, not defect tracking
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: EXONERATE -- broad `.*` is an explicit migration tradeoff; tightening risks churn for marginal gain
+FINDING_12: EXONERATE -- same legacy-vs-plan drift already captured in FINDING_1
+FINDING_13: EXONERATE -- workflow suggestion, not issue material
+FINDING_14: EXONERATE -- minor doc drift out of scope of this diff
+FINDING_15: YES
+FINDING_16: EXONERATE -- semantics belong in caller contracts; SECURITY.md would mostly duplicate
+FINDING_17: EXONERATE -- preflight post-fetch vs find-lock no-fetch caller contracts differ by design
+FINDING_18: YES
+FINDING_19: YES
+FINDING_20: EXONERATE -- same prefix concern as FINDING_5
+FINDING_21: EXONERATE -- same greedy-regex tradeoff as FINDING_11
+FINDING_22: NO -- nearby comment already states matching is case-insensitive
+FINDING_23: EXONERATE -- separate implement/OOS workstream, no new issue needed here
+FINDING_24: EXONERATE -- orthogonal OOS scan already covered by FINDING_9
+FINDING_25: YES
+FINDING_26: YES
+FINDING_27: YES

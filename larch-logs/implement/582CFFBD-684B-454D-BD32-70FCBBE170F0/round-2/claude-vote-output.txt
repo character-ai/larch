@@ -1,0 +1,27 @@
+FINDING_1: YES
+FINDING_2: EXONERATE -- misleading error text but behavior is correct; message still correctly rejects the issue
+FINDING_3: YES
+FINDING_4: NO -- trivial PR-scope observation with no actionable fix; not issue-worthy
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: EXONERATE -- legacy audit title without audit-report label is an implausible scenario; label filter is primary guard
+FINDING_8: NO -- PR bundling observation, no actionable fix; not issue-worthy
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: EXONERATE -- broad regex is intentional for anti-recursion; audit-report label filter is the primary guard
+FINDING_12: YES
+FINDING_13: NO -- workflow guidance only, not worth filing
+FINDING_14: NO -- doc not in diff, trivial follow-up
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: EXONERATE -- intentional asymmetry between preflight and pre-lock callers is documented in check-main-sync.md
+FINDING_18: YES
+FINDING_19: YES
+FINDING_20: YES
+FINDING_21: EXONERATE -- intentionally broad for anti-recursion; audit-report label is primary guard
+FINDING_22: EXONERATE -- trivial comment wording nit with no behavior impact
+FINDING_23: NO -- OOS disposition work is covered by #2540; no new tracking needed
+FINDING_24: NO -- oos-silent-drop scan is part of #2540 already; not a separate issue
+FINDING_25: YES
+FINDING_26: YES
+FINDING_27: YES

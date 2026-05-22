@@ -1,0 +1,3 @@
+Merging duplicate reviewer themes (legacy audit-title vs plan, permissive `.* Report]` regex, bundled PRs, pre-lock reset/observability, security/docs) while keeping distinct concerns separate. Delivering the structured list as the plan artifact.
+
+
