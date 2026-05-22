@@ -1,0 +1,47 @@
+FINDING_1: YES
+FINDING_2: EXONERATE -- no-op path returning PUBLISH_OK=true is correct semantics; git porcelain false-negative is purely speculative
+FINDING_3: EXONERATE -- duplication is intentional; larch_log_validate_slug calls larch_log_fail which exits with LOG_WRITTEN=false output, breaking the PUBLISH_OK stdout contract
+FINDING_4: YES
+FINDING_5: EXONERATE -- fallback via gh pr list already handles parse failures; fixing primary parser adds complexity for a speculative gh output format change
+FINDING_6: NO -- trivial Makefile whitespace, not issue-worthy
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: EXONERATE -- feature description predates this diff and reflects a deferred scope decision, not a shipped code bug
+FINDING_10: YES
+FINDING_11: NO -- trivial harness nit, not issue-worthy
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: YES
+FINDING_18: YES
+FINDING_19: EXONERATE -- mktemp-generated paths cannot start with `-`; theoretical concern with near-zero real risk
+FINDING_20: YES
+FINDING_21: YES
+FINDING_22: YES
+FINDING_23: YES
+FINDING_24: YES
+FINDING_25: EXONERATE -- SKILL.md Step 6 already handles PUBLISH_OK=false gracefully; exotic hostname charset collision is very unlikely in practice
+FINDING_26: YES
+FINDING_27: YES
+FINDING_28: YES
+FINDING_29: EXONERATE -- same reasoning as FINDING_3; intentional duplication required by different exit semantics
+FINDING_30: YES
+FINDING_31: YES
+FINDING_32: YES
+FINDING_33: YES
+FINDING_34: YES
+FINDING_35: YES
+FINDING_36: YES
+FINDING_37: EXONERATE -- pre-existing SECURITY.md documentation tension not introduced by this diff
+FINDING_38: EXONERATE -- pre-existing gitleaks posture; risk not meaningfully amplified by this diff alone
+FINDING_39: NO -- reviewer verified the code is correct; "Suggested fix: None" confirms no real problem
+FINDING_40: NO -- same as FINDING_39; reviewer confirmed correctness
+FINDING_41: EXONERATE -- pre-existing CHANGELOG drift, not introduced by this diff
+FINDING_42: YES
+FINDING_43: YES
+FINDING_44: YES
+FINDING_45: NO -- positive harness observation, not an actionable finding
+FINDING_46: NO -- positive harness observation, not an actionable finding
+FINDING_47: NO -- positive harness observation, not an actionable finding

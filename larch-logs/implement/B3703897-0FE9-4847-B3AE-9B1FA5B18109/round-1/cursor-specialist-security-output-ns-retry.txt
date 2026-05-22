@@ -1,0 +1,23 @@
+Reading the pre-computed diff and commit history for the security review.
+
+Pre-computed diff file is empty. Fetching branch diff vs `main` with read-only `git diff`.
+
+Verifying dry-run ordering and `--issue` edge cases in `scripts/design-log-publish.sh`.
+
+### In-Scope Findings
+
+1. **Important**
+- **risk-integration** `scripts/design-log-publish.sh:86-88` and `scripts/design-log-publish.md:40-42` — `--dry-run` exits with `PUBLISH_OK=true` after only required argv presence, tmpdir existence, and basic `--issue`/`--run-id` shape checks; it does not run the non-mutating preconditions the real path needs (`command -v jq`, `git rev-parse --show-toplevel`, `git symbolic-ref refs/remotes/origin/HEAD`, `command -v gh`), while the contract claims dry-run validates “required tools” aside from `jq`. **Suggested fix:** Either run those read-only checks before emitting `PUBLISH_OK=true`, or rewrite the contract to state dry-run is argv plus “tmpdir exists” only so automation cannot treat `PUBLISH_OK=true` as “publish will succeed next invocation.”
+
+2. **Nit**
+- **correctness** `scripts/design-log-publish.sh:64-70` — The stderr text says “expected positive integer,” but the `case "$ISSUE"` pattern accepts `0`, so invalid GitHub issue `0` slips through until later `gh`/`larch-log.sh` failures. **Suggested fix:** Reject `0` explicitly (for example `[[ "$ISSUE" == "0" ]]`) with the same `emit_publish_result false` pattern used for other validation failures.
+
+3. **Nit**
+- **security** `scripts/design-log-publish.sh:194-205` — `find` is invoked without a `--` separator before the root path, so a `--design-tmpdir` value that begins with `-` can be parsed as find options instead of a path. **Suggested fix:** Use `find -- "$DESIGN_TMPDIR" ...` and `find -- "$DESIGN_TMPDIR/render-cache" ...` so the roots are always positional operands.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	risk-integration	scripts/design-log-publish.sh:86-88;scripts/design-log-publish.md:40-42	dry-run emits PUBLISH_OK=true without git/gh/jq/origin-HEAD preflight despite contract claiming required-tool validation (minus jq).	CI or wrappers treat dry-run as a publishability gate; immediate non-dry run fails on missing jq/gh or non-git cwd, producing false greens or wasted operator steps.	Align behavior with docs by adding read-only preflight checks before PUBLISH_OK=true, or narrow the contract to argv plus tmpdir presence only.
+1	in_scope	nit	correctness	scripts/design-log-publish.sh:64-70	--issue accepts 0 while messaging claims positive integer.	Callers pass issue 0; later gh or larch-log errors are noisier and less uniform than an upfront validation failure.	Explicitly reject 0 with the same machine-parseable failure path as other invalid issues.
+1	in_scope	nit	security	scripts/design-log-publish.sh:194-205	find lacks -- before user-supplied DESIGN_TMPDIR roots.	Rare pathological tmpdir names starting with - could be misparsed as find flags, skipping or mis-staging files.	Use find -- "$DESIGN_TMPDIR" and find -- "$DESIGN_TMPDIR/render-cache" before predicates.
+```

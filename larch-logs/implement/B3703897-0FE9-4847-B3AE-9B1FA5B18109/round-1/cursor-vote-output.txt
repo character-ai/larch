@@ -1,0 +1,49 @@
+Reading the ballot and related context files to verify findings.
+
+FINDING_1: YES
+FINDING_2: EXONERATE -- unlikely false-empty porcelain vs complexity of new flags
+FINDING_3: EXONERATE -- small duplication; shared helper not worth mandatory refactor now
+FINDING_4: YES
+FINDING_5: EXONERATE -- acceptable brittleness; structured gh is optional polish
+FINDING_6: NO -- blame-only nit, not worth a tracking issue
+FINDING_7: EXONERATE -- same worktree/set -e contract gap as FINDING_1
+FINDING_8: YES
+FINDING_9: EXONERATE -- product copy vs shipped scope; no silent functional bug
+FINDING_10: YES
+FINDING_11: NO -- optional stub hardening, not incorrect
+FINDING_12: YES
+FINDING_13: EXONERATE -- same --issue 0 gap as FINDING_10
+FINDING_14: EXONERATE -- nice-to-have harness breadth, not a defect in shipped code
+FINDING_15: EXONERATE -- overlaps FINDING_4 empty-find masking
+FINDING_16: EXONERATE -- session artifact gap, not repo-worthy issue overhead
+FINDING_17: EXONERATE -- same dry-run/doc mismatch as FINDING_12
+FINDING_18: EXONERATE -- same --issue 0 wording mismatch as FINDING_10
+FINDING_19: EXONERATE -- DESIGN_TMPDIR is not untrusted argv-style find input
+FINDING_20: YES
+FINDING_21: YES
+FINDING_22: EXONERATE -- same SKILL step-3 failure wording problem as FINDING_8
+FINDING_23: EXONERATE -- same --issue 0 acceptance as FINDING_10
+FINDING_24: EXONERATE -- same dry-run contract mismatch as FINDING_12
+FINDING_25: EXONERATE -- uuidgen path dominates; edge hostname slug rare
+FINDING_26: EXONERATE -- same empty sidecar diff note as FINDING_16
+FINDING_27: YES
+FINDING_28: EXONERATE -- same numeric issue validation gap as FINDING_10
+FINDING_29: EXONERATE -- same slug helper duplication as FINDING_3
+FINDING_30: EXONERATE -- same launcher diff hygiene as FINDING_16
+FINDING_31: EXONERATE -- narrative vs plan scope, not an implementation contradiction
+FINDING_32: YES
+FINDING_33: YES
+FINDING_34: EXONERATE -- known operator reconcile posture; extra automation is heavy
+FINDING_35: EXONERATE -- hypothetical JSON names without evidence / parity already limited
+FINDING_36: EXONERATE -- same larch_log_redact_file exit contract as FINDING_32
+FINDING_37: EXONERATE -- doc inconsistency is real but broad/low-urgency for this ballot
+FINDING_38: EXONERATE -- documents existing allowlist posture, not a new flaw
+FINDING_39: NO -- reviewer affirms correctness, no problem to fix
+FINDING_40: NO -- reviewer affirms correctness, no problem to fix
+FINDING_41: NO -- pre-existing changelog gap, not introduced here
+FINDING_42: EXONERATE -- extra stub branch for merge failure is optional harness depth
+FINDING_43: EXONERATE -- fallback path coverage is nice-to-have, not required for merge
+FINDING_44: EXONERATE -- stronger isolation assertions add harness cost for modest signal
+FINDING_45: NO -- describes adequate coverage, not a defect
+FINDING_46: NO -- describes adequate coverage, not a defect
+FINDING_47: NO -- describes adequate coverage, not a defect

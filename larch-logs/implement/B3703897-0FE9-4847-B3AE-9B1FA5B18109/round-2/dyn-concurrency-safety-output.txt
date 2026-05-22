@@ -1,0 +1,19 @@
+Reviewing the pre-computed diff and commit history for concurrency and integration risks.
+
+Cached diff is empty; gathering the branch diff with read-only git commands.
+
+Checking how `SESSION_ID` is generated and whether `larch_log_validate_slug` differs from the script's run-id validation.
+
+### In-Scope Findings
+
+- **risk-integration** `scripts/design-log-publish.sh:156-175` — The script unconditionally attempts `git branch -D "$WT_BRANCH"` when `refs/heads/$WT_BRANCH` exists, ignores delete failures (`|| true`), then runs `git worktree add -b "$WT_BRANCH"`. If another publisher (or a leftover worktree) still holds that branch name, `worktree add` can fail while the error is only surfaced as the generic `design-log-publish: git worktree add failed`, so collisions on the same `RUN_ID` slug are hard to diagnose and there is no upfront check that the branch/worktree slot is free. **Suggested fix:** Before mutating refs, inspect `git worktree list` (and/or `git show-ref`) and fail with an explicit “branch `larch-log-design-<RUN_ID>` already in use” message when the branch is checked out elsewhere; avoid masking `branch -D` failures when the branch is still in use, and document in `scripts/design-log-publish.md` that concurrent publishes must not share a `RUN_ID` (and that `/design` is not serialized like `/implement` / `/fix-issue`).
+
+- **risk-integration** `scripts/design-log-publish.sh:319-326` — On `git push` failure the script runs `git -C "$REPO_ROOT" branch -f "larch-log-design-recovery-${RUN_ID}" "$commit_sha"`, so every recovery ref for a slug is a single fixed name; two overlapping invocations that both reach this path with the same `RUN_ID` (e.g. two manual retries in parallel) can race on that ref and the later `-f` can erase the earlier recovery pointer. **Suggested fix:** Make recovery refs unique per attempt (`$$`, short random suffix, or timestamp) and emit which ref was written, or use a file lock / flock around the whole publish for a given `(REPO_ROOT, RUN_ID)` if you need a stable recovery name.
+
+### Out-of-Scope Observations
+
+- **risk-integration** (pre-existing / not amplified by this diff) — `AGENTS.md` still states a single-runner invariant only for `/implement` and `/fix-issue`; there is no matching serialization for `/design`, so GitHub-side races (two `/design` runs on the same issue) remain a process-level concern rather than something this script resolves.
+
+- **risk-integration** (mitigating, no issue) — Default `SESSION_ID` from `session-setup.sh` uses `uuidgen` when available ([`scripts/session-setup.sh:238-245`](<OPERATOR_REPO_PATH>/scripts/session-setup.sh)), so `larch-log-design-${RUN_ID}` branch names are practically unique across concurrent normal `/design` sessions; collision risk concentrates in reused or manually chosen identical `--run-id` values passed into `design-log-publish.sh`, not “same second” timestamps.
+
+**Note:** The precomputed diff at `<TMPDIR>/round-2/diff.txt` was empty; analysis used the current tree’s [`scripts/design-log-publish.sh`](<OPERATOR_REPO_PATH>/scripts/design-log-publish.sh) and related files. Read-only `git log $(git merge-base HEAD main)..HEAD` on this checkout was empty because `HEAD` is `main`; commits were inferred from `git diff origin/main..HEAD --stat` (local `main` ahead of `origin/main` by two commits).

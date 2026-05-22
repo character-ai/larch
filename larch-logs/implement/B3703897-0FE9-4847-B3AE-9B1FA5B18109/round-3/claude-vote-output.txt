@@ -1,0 +1,15 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: EXONERATE -- meta-observation about review session setup, not actionable as a code issue
+FINDING_9: YES
+FINDING_10: EXONERATE -- explicitly accepted design choice documented in SECURITY.md; alternatives are complex and defeat the log-pipeline purpose
+FINDING_11: EXONERATE -- post-merge scope observation, not issue-worthy
+FINDING_12: YES
+FINDING_13: EXONERATE -- intentional per plan ("skip symlinks"); find -type f already excludes them, no defect
+FINDING_14: EXONERATE -- parenthetical "(use `printf`, not `print`)" adequately disambiguates; rewrite adds no meaningful risk reduction
+FINDING_15: EXONERATE -- finding itself labels this "optionally"; current stub coverage is adequate for the exercised paths
