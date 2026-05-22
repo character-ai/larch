@@ -253,7 +253,7 @@ fi
 
 # Check 11: Step 0 branch-state-agnostic session setup (issue #2588). No
 # create-branch.sh --check or session-entry-gate.sh; env handoff via
-# write-design-current-env.sh and the stable current-design-env.sh symlink.
+# write-design-current-env.sh and the PID-keyed current-design-env-$PPID.sh symlink.
 step0_section=$(awk '
   /^<!-- step:0 — Session Setup -->$/ { flag=1; next }
   /^<!-- step:1c / && flag { flag=0 }
@@ -276,8 +276,12 @@ printf '%s\n' "$step0_section" | grep -Fq '`/implement` owns the feature-branch 
   || fail "(11) Step 0 must document that /implement owns the feature-branch lifecycle"
 printf '%s\n' "$step0_section" | grep -Fq 'write-design-current-env.sh' \
   || fail "(11) Step 0 must invoke write-design-current-env.sh"
-printf '%s\n' "$step0_section" | grep -Fq 'current-design-env.sh' \
-  || fail "(11) Step 0 must reference the stable current-design-env.sh symlink"
+# shellcheck disable=SC2016 # grep -F literal; $PPID is markdown text, not expansion
+printf '%s\n' "$step0_section" | grep -Fq 'current-design-env-$PPID.sh' \
+  || fail "(11) Step 0 must reference the PID-keyed current-design-env-$PPID.sh symlink"
+# shellcheck disable=SC2016 # grep -F literal; quotes are part of the SKILL.md source line
+printf '%s\n' "$step0_section" | grep -Fq -- '--claude-pid "$PPID"' \
+  || fail "(11) Step 0 must pass --claude-pid \"\$PPID\" to write-design-current-env.sh"
 printf '%s\n' "$step0_section" | grep -Fq 'source-env.sh' \
   || fail "(11) Step 0 must materialize source-env.sh via write-design-current-env --output"
 printf '%s\n' "$step0_section" | grep -Fq '# Contract pin for CI (scripts/test-design-structure.sh): session-setup.sh --prefix claude-design --skip-branch-check --skip-repo-check --check-reviewers' \
