@@ -1242,7 +1242,7 @@ if [ -x "$SCAN_SCRIPT" ]; then
     R35G0_TMP=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-scan-stall-empty-XXXXXX")
     {
         printf '%s\n' 'name	type	pattern	expected_outcome	severity'
-        printf '%s\n' 'cursor-ci-stall-causes	glob	round-*/cursor-ci-stall-*.json	informational	low'
+        printf '%s\n' 'cursor-ci-stall-causes	glob	round-*/cursor-ci-stall-*.json	stall JSON sidecars: channel histogram when present	low'
     } > "$R35G0_TMP/sub-scans.tsv"
     printf '%s\n' 'relative_path	condition	batch_slug	extension' > "$R35G0_TMP/required-empty.tsv"
     mkdir -p "$R35G0_TMP/run/round-1"
@@ -1262,7 +1262,7 @@ if [ -x "$SCAN_SCRIPT" ]; then
     R35G_TMP=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-scan-stall-XXXXXX")
     {
         printf '%s\n' 'name	type	pattern	expected_outcome	severity'
-        printf '%s\n' 'cursor-ci-stall-causes	glob	round-*/cursor-ci-stall-*.json	informational	low'
+        printf '%s\n' 'cursor-ci-stall-causes	glob	round-*/cursor-ci-stall-*.json	stall JSON sidecars: channel histogram when present	low'
     } > "$R35G_TMP/sub-scans.tsv"
     printf '%s\n' 'relative_path	condition	batch_slug	extension' > "$R35G_TMP/required-empty.tsv"
     mkdir -p "$R35G_TMP/run/round-1"

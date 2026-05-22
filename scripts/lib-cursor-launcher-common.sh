@@ -106,25 +106,52 @@ cursor_launcher_cursor_ci_stall_sidecar_dir() {
     return 1
 }
 
-# Pipe stdin through scripts/redact-secrets.sh when executable; passthrough when missing.
-# On redactor non-zero exit, emit a placeholder (never passthrough unredacted on failure).
-cursor_launcher_redact_stdin() {
-    local h="${SCRIPT_DIR:-}"
-    [[ -z "$h" ]] && h="$(cd "${BASH_SOURCE[0]%/*}" && pwd)"
-    if [[ -x "$h/redact-secrets.sh" ]]; then
-        if ! "$h/redact-secrets.sh" 2>/dev/null; then
-            printf '%s\n' '[redaction failed]'
+# Redact a bounded UTF-8-ish blob for stall JSON git_state fields using the same
+# wall-clock envelope as ps/lsof/transcript captures.
+_cursor_launcher_redact_stall_blob() {
+    local _blob="$1" _rf="$2" _tb
+    _tb=$(mktemp "${TMPDIR:-/tmp}/larch-stall-gitblob.XXXXXX") || {
+        printf '%s' '[omitted: redact-secrets temp failed]'
+        return 0
+    }
+    printf '%s' "$_blob" >"$_tb" || {
+        rm -f "$_tb"
+        printf '%s' '[omitted: redact-secrets temp failed]'
+        return 0
+    }
+    if [[ ! -x "$_rf" ]]; then
+        rm -f "$_tb"
+        printf '%s' '[omitted: redact-secrets unavailable or not executable]'
+        return 0
+    fi
+    if command -v timeout >/dev/null 2>&1; then
+        if timeout 8 "$_rf" <"$_tb" >"${_tb}.r" 2>/dev/null; then
+            cat "${_tb}.r"
+        else
+            printf '%s' '[omitted: redact-secrets failed or timed out]'
         fi
+        rm -f "$_tb" "${_tb}.r"
+    elif command -v gtimeout >/dev/null 2>&1; then
+        if gtimeout 8 "$_rf" <"$_tb" >"${_tb}.r" 2>/dev/null; then
+            cat "${_tb}.r"
+        else
+            printf '%s' '[omitted: redact-secrets failed or timed out]'
+        fi
+        rm -f "$_tb" "${_tb}.r"
     else
-        cat
+        rm -f "$_tb"
+        printf '%s' '[omitted: redact-secrets skipped without timeout(1) wall-clock wrapper]'
     fi
 }
 
 # Emit round-N/cursor-ci-stall-<unix_ts>-<pid>-<rand>.json under the implement run log when
 # jq(1) is available. Best-effort only; failures are ignored.
+# Optional 6th arg: path to a pre-filled transcript tail snapshot (captured before SIGTERM);
+# when empty or unreadable, tails are read after the caller's signal phase (legacy fallback).
 cursor_launcher_emit_cursor_ci_stall_json_sidecar() {
-    local channel="$1" target_pid="$2" elapsed="$3" output_file="$4" diag_file="$5"
+    local channel="$1" target_pid="$2" elapsed="$3" output_file="$4" diag_file="$5" transcript_pre="${6:-}"
     local sidecar_dir out_json tmp_json ps_tmp lsof_tmp tr_tmp myuid os _scr _rf _p
+    local transcript_tail_phase="post_sigterm" _tr_owned=1
     if ! command -v jq >/dev/null 2>&1; then
         return 0
     fi
@@ -138,10 +165,17 @@ cursor_launcher_emit_cursor_ci_stall_json_sidecar() {
         rm -f "$ps_tmp"
         return 0
     }
-    tr_tmp=$(mktemp "${TMPDIR:-/tmp}/larch-stall-tr.XXXXXX") || {
-        rm -f "$ps_tmp" "$lsof_tmp"
-        return 0
-    }
+
+    if [[ -n "$transcript_pre" && -f "$transcript_pre" ]]; then
+        tr_tmp="$transcript_pre"
+        _tr_owned=0
+        transcript_tail_phase="pre_sigterm"
+    else
+        tr_tmp=$(mktemp "${TMPDIR:-/tmp}/larch-stall-tr.XXXXXX") || {
+            rm -f "$ps_tmp" "$lsof_tmp"
+            return 0
+        }
+    fi
 
     myuid=$(id -u 2>/dev/null || echo 0)
     os=$(uname -s 2>/dev/null || echo "")
@@ -183,12 +217,14 @@ cursor_launcher_emit_cursor_ci_stall_json_sidecar() {
         : >"$lsof_tmp"
     fi
 
-    {
-        printf '%s\n' "--- stdout tail ---"
-        tail -n 50 "$output_file" 2>/dev/null || true
-        printf '%s\n' "--- stderr diag tail ---"
-        tail -n 50 "$diag_file" 2>/dev/null || true
-    } >"$tr_tmp" || : >"$tr_tmp"
+    if [[ "$_tr_owned" -eq 1 ]]; then
+        {
+            printf '%s\n' "--- stdout tail ---"
+            tail -n 50 "$output_file" 2>/dev/null || true
+            printf '%s\n' "--- stderr diag tail ---"
+            tail -n 50 "$diag_file" 2>/dev/null || true
+        } >"$tr_tmp" || : >"$tr_tmp"
+    fi
 
     _scr="${SCRIPT_DIR:-}"
     [[ -z "$_scr" ]] && _scr="$(cd "${BASH_SOURCE[0]%/*}" && pwd)"
@@ -219,6 +255,10 @@ cursor_launcher_emit_cursor_ci_stall_json_sidecar() {
                 printf '%s\n' '[omitted: redact-secrets skipped without timeout(1) wall-clock wrapper]' >"$_p"
             done
         fi
+    else
+        for _p in "$ps_tmp" "$lsof_tmp" "$tr_tmp"; do
+            printf '%s\n' '[omitted: redact-secrets unavailable or not executable]' >"$_p"
+        done
     fi
 
     local git_porcelain="" rebase_patch=""
@@ -230,7 +270,7 @@ cursor_launcher_emit_cursor_ci_stall_json_sidecar() {
         git_porcelain=""
     fi
     git_porcelain=$(printf '%s' "$git_porcelain" | head -c 32000)
-    git_porcelain=$(printf '%s' "$git_porcelain" | cursor_launcher_redact_stdin)
+    git_porcelain=$(_cursor_launcher_redact_stall_blob "$git_porcelain" "$_rf")
     if [[ -d .git/rebase-merge || -d .git/rebase-apply ]]; then
         if command -v timeout >/dev/null 2>&1; then
             rebase_patch=$(timeout 3 git rebase --show-current-patch 2>/dev/null | head -n 80 || true)
@@ -240,22 +280,24 @@ cursor_launcher_emit_cursor_ci_stall_json_sidecar() {
             rebase_patch=""
         fi
         rebase_patch=$(printf '%s' "$rebase_patch" | head -c 32000)
-        rebase_patch=$(printf '%s' "$rebase_patch" | cursor_launcher_redact_stdin)
+        rebase_patch=$(_cursor_launcher_redact_stall_blob "$rebase_patch" "$_rf")
     else
         rebase_patch=""
     fi
 
     out_json="${sidecar_dir}/cursor-ci-stall-$(date +%s)-$$-${RANDOM}.json"
     tmp_json=$(mktemp "${sidecar_dir}/.cursor-ci-stall.XXXXXX") || {
-        rm -f "$ps_tmp" "$lsof_tmp" "$tr_tmp"
+        rm -f "$ps_tmp" "$lsof_tmp"
+        [[ -n "${tr_tmp:-}" ]] && rm -f "$tr_tmp"
         return 0
     }
-    local _cap_note='JSON ps/lsof/git/tail fields are captured after SIGTERM to the monitored wrapper and its direct children; the first Stall detected block in OUTPUT.diag is appended before that signal and reflects an immediate pre-kill snapshot.'
+    local _cap_note='ps/lsof/git_state fields are captured after SIGTERM to the monitored wrapper and its direct children; merged stdout/stderr transcript tails in last_transcript_lines are snapshotted at stall detection before those signals (transcript_tail_capture_phase). The first Stall detected block in OUTPUT.diag is appended before SIGTERM and reflects an immediate pre-kill ps snapshot.'
     if ! jq -nc \
         --arg channel "$channel" \
         --argjson pid "$target_pid" \
         --argjson time_since_last_progress "$elapsed" \
         --arg capture_phase "post_sigterm" \
+        --arg transcript_tail_capture_phase "$transcript_tail_phase" \
         --arg diag_capture_note "$_cap_note" \
         --rawfile ps "$ps_tmp" \
         --rawfile lsof "$lsof_tmp" \
@@ -268,6 +310,7 @@ cursor_launcher_emit_cursor_ci_stall_json_sidecar() {
             pid: $pid,
             time_since_last_progress: $time_since_last_progress,
             capture_phase: $capture_phase,
+            transcript_tail_capture_phase: $transcript_tail_capture_phase,
             diag_capture_note: $diag_capture_note,
             ps: $ps,
             lsof: $lsof,
@@ -281,10 +324,12 @@ cursor_launcher_emit_cursor_ci_stall_json_sidecar() {
         {
             printf '%s\n' "cursor-ci-stall-json: jq assembly failed (sidecar omitted); channel=${channel} pid=${target_pid} elapsed=${elapsed}s"
         } >>"$diag_file" 2>/dev/null || true
-        rm -f "$ps_tmp" "$lsof_tmp" "$tr_tmp" "$tmp_json"
+        rm -f "$ps_tmp" "$lsof_tmp" "$tmp_json"
+        [[ -n "${tr_tmp:-}" ]] && rm -f "$tr_tmp"
         return 0
     fi
-    rm -f "$ps_tmp" "$lsof_tmp" "$tr_tmp"
+    rm -f "$ps_tmp" "$lsof_tmp"
+    [[ -n "${tr_tmp:-}" ]] && rm -f "$tr_tmp"
     mv -f "$tmp_json" "$out_json" 2>/dev/null || rm -f "$tmp_json"
     return 0
 }
@@ -406,6 +451,16 @@ cursor_launcher_run_stall_monitor() {
 
         elapsed=$((now - last_prog_ts))
         if [[ "$elapsed" -ge "$stall_threshold" ]]; then
+            local tr_pre=""
+            tr_pre=$(mktemp "${TMPDIR:-/tmp}/larch-stall-tr-pre.XXXXXX") || tr_pre=""
+            if [[ -n "$tr_pre" ]]; then
+                {
+                    printf '%s\n' "--- stdout tail ---"
+                    tail -n 50 "$output_file" 2>/dev/null || true
+                    printf '%s\n' "--- stderr diag tail ---"
+                    tail -n 50 "$diag_file" 2>/dev/null || true
+                } >"$tr_pre" || : >"$tr_pre"
+            fi
             {
                 printf '%s\n' "Stall detected: channel=${channel} time_since_last_progress=${elapsed}s"
                 printf '%s\n' "--- stall ps snapshot (target pid=${target_pid}) ---"
@@ -427,8 +482,11 @@ cursor_launcher_run_stall_monitor() {
                 done < <(pgrep -P "$target_pid" 2>/dev/null || true)
             fi
             kill -TERM "$target_pid" 2>/dev/null || true
-            # Heavy stall JSON (ps/lsof/git/tails) runs after SIGTERM so diagnostics cannot block kill delivery.
-            cursor_launcher_emit_cursor_ci_stall_json_sidecar "$channel" "$target_pid" "$elapsed" "$output_file" "$diag_file" || true
+            # Stall JSON assembly (jq/redact/git) runs concurrently with the TERM grace window so
+            # heavy forensics cannot extend the window before SIGKILL.
+            local emit_pid=""
+            ( cursor_launcher_emit_cursor_ci_stall_json_sidecar "$channel" "$target_pid" "$elapsed" "$output_file" "$diag_file" "$tr_pre" ) &
+            emit_pid=$!
             sleep 2
             if command -v pgrep >/dev/null 2>&1; then
                 while read -r _cpid; do
@@ -437,6 +495,9 @@ cursor_launcher_run_stall_monitor() {
                 done < <(pgrep -P "$target_pid" 2>/dev/null || true)
             fi
             kill -KILL "$target_pid" 2>/dev/null || true
+            if [[ -n "${emit_pid:-}" ]]; then
+                wait "$emit_pid" 2>/dev/null || true
+            fi
             if [[ -n "${tree_baseline:-}" ]]; then
                 rm -f "$tree_baseline"
             fi
