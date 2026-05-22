@@ -1,0 +1,16 @@
+Replace `/relevant-checks` skill invocation in `/implement` with `scripts/relevant-checks.sh`
+
+## Problem
+
+Currently, `/implement` uses the `/relevant-checks` skill (if present) in the repo it works in, skipping it if the skill is not defined in this repo. Because `/relevant-checks` is a skill, it can only be called from an agent, not from a script, which is majorly inconvenient as well as wasteful (skill-tool invocation requires agent-level orchestration when a plain script-level subprocess would suffice).
+
+## Proposed change
+
+Change the convention to:
+
+1. `/implement` expects the repo it works in to contain `scripts/relevant-checks.sh`. If this script does not exist, `/implement` skips the local-tests step. If it is present, `/implement` runs this script (rather than invoking the skill).
+2. All mentions of the `/relevant-checks` skill in the documentation must be replaced by `scripts/relevant-checks.sh`.
+
+## Goal
+
+Eliminate agent overhead for the relevant-checks step in `/implement` by making it a direct script invocation, and align documentation with the new convention.

@@ -1,0 +1,25 @@
+Reading the plan and referenced code paths.
+
+Validating plan line numbers and integration points against the repository.
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	AGENTS.md:18 skills/implement/SKILL.md:16,988 docs/linting.md:24 skills/shared/subskill-invocation.md:98 skills/alias/SKILL.md:37,112 skills/compress-skill/SKILL.md:10,69 skills/simplify-skill/SKILL.md:51 skills/design/references/plan-review-quick.md:16 agent-lint.toml:762-763	PR-final grep demands zero `\b/relevant-checks\b` outside CHANGELOG but many tracked files still need that literal today for accurate operator guidance	Gate from plan.txt:160-161 fails on first run or forces awkward rewrites without a documented spelling policy	Either narrow relax the verify regex (e.g. allow listed paths), accept rewritten phrasing everywhere (no slash token), or drop the zero-hit requirement; expand the doc-sweep checklist accordingly
+1	in_scope	important	risk-integration	Makefile:61,75,253-266 agent-lint.toml:514-523 hooks/hooks.json:24-33	Hook harness and Makefile shard wiring are easy to leave dangling when deleting `scripts/test-hook-block-skill-relevant-checks.sh`	Merge fails `make lint` or agent-lint orphan-path errors after hook deletion	Remove `test-hook-block-skill-relevant-checks` from `.PHONY`, `test-harnesses-11` or `18`, and the dedicated target; prune `agent-lint.toml` allowlist entries and comments that name the deleted harness
+1	in_scope	important	architecture	AGENTS.md:18	Canonical contributor workflow still says run the slash skill after edits	Contributors follow stale instructions post-cutover	Replace with `scripts/relevant-checks.sh` or `make test-relevant-checks` wording plus note that wrapper may emit `RELEVANT_CHECKS_SKIPPED=true`
+1	in_scope	latent	security	SECURITY.md:64-94 scripts/run-relevant-checks-captured.sh:133-137 (planned)	Changing missing script from fail-closed rc 127 to exit 0 skip lets merges proceed with no pre-commit or agent-lint in consumer trees	Downstream repos without `scripts/relevant-checks.sh` silently lose local checks while automation treats rc 0 as healthy	Extend SECURITY bounded-stdout section with `RELEVANT_CHECKS_SKIPPED=true`, stderr breadcrumb contract, and explicit operator risk; keep CHANGELOG migration loud
+1	in_scope	nit	correctness	skills/review/SKILL.md:48-50	Step 3e text tells rerunning the helper until clean without naming the new skip terminal line	Orchestrator might treat SKIPPED like a checks failure and loop or stall	Add explicit SKIPPED branch alongside OK in both the fenced continuation block and the Step 3e prose before Step 3f
+1	in_scope	nit	correctness	scripts/test-relevant-checks-helper-failure.sh:1-72 plan.txt:66-68	Plan promises removing a `missing-check-script` assertion from this harness but the file never asserts that envelope today	Implementer searches for code that is absent and doubts other plan steps	Retarget the testing bullet to add a new skip-path assertion only and drop the removal language unless another harness actually pins 127
+
+1. **[correctness]** `AGENTS.md:18`, `skills/implement/SKILL.md:16,988`, `docs/linting.md:24`, `skills/shared/subskill-invocation.md:98`, `skills/alias/SKILL.md:37,112`, `skills/compress-skill/SKILL.md:10,69`, `skills/simplify-skill/SKILL.md:51`, `skills/design/references/plan-review-quick.md:16`, `agent-lint.toml:762-763` — The PR-final grep in the plan conflicts with many live literals; reconcile the verification command with the real doc surface or broaden the sweep checklist.
+
+2. **[risk-integration]** `Makefile:61,75,253-266`, `agent-lint.toml:514-523`, `hooks/hooks.json:24-33` — Deleting the hook harness must include Makefile shard / `.PHONY` cleanup and `agent-lint.toml` pruning so CI does not reference removed paths.
+
+3. **[architecture]** `AGENTS.md:18` — The plan only mentions AGENTS under “canonical sources”; the operational “after any change” line must migrate off the slash-skill spelling.
+
+4. **[security]** `SECURITY.md:64-94` plus the proposed wrapper skip at `scripts/run-relevant-checks-captured.sh:133-137` — Document the new success-equivalent skip line and the downstream “no local checks ran” hazard so the security story stays aligned with exit 0.
+
+5. **[correctness]** `skills/review/SKILL.md:48-50` — Align “rerun until clean” prose with `RELEVANT_CHECKS_SKIPPED=true` as a terminal non-failure alongside `RELEVANT_CHECKS_OK=true`.
+
+6. **[correctness]** `scripts/test-relevant-checks-helper-failure.sh:1-72` vs `plan.txt:66-68` — Tighten the plan text: today’s harness does not assert `missing-check-script`; describe adding skip coverage without claiming removal of a nonexistent assertion.
+
+[OUT_OF_SCOPE] Historical copies under `larch-logs/implement/**` (multiple `dyn-*.md` prompts near lines 105-297) still mention `/relevant-checks`; the plan’s grep excludes `larch-logs/`, so operators who search the full tree without that flag will still see stale wording—worth tracking only if you ever bulk-edit logs or widen verification.

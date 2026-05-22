@@ -1,0 +1,72 @@
+# Approach Synthesis — Step 2a.4
+
+## Sketch participation
+
+- **Cursor-Generic**: produced only a 2-line planning header; no architectural content. Treated as empty input.
+- **Codex-Generic**: produced 3 substantive paragraphs covering architectural sequencing, file touch list, hidden coupling, and risks. Single substantive source for this synthesis.
+
+## Agreement (Codex + my codebase research)
+
+1. **Script move + wrapper repoint**: promote `.claude/skills/relevant-checks/scripts/run-checks.sh` → `scripts/relevant-checks.sh`; the wrapper `scripts/run-relevant-checks-captured.sh` only repoints `CHECK_SCRIPT`. The wrapper retains tmpdir validation, log dir creation, redaction pipeline, structured stdout, and byte-budget contract.
+
+2. **Skip path is a new explicit state**: missing script → emit `RELEVANT_CHECKS_SKIPPED=true SITE=<site>` on stdout, stderr breadcrumb, exit 0. Replaces `STATUS=fail FAILURE_REASON=missing-check-script EXIT_CODE=127`. Per the explicit user choice in Step 1c, this is NOT a green-line alias.
+
+3. **Banner-classifier coupling stays preserved**: `=== Running pre-commit`, `=== Running agent-lint ===`, `WARNING: agent-lint not found on PATH` must keep matching the wrapper's coverage classifier — the rewrite reconciles old skill-path comments but keeps these external banner strings byte-identical (the simplest path; updating both classifier and banners in lockstep is permitted but unnecessarily large).
+
+4. **Hard cutover scope**: runtime + tests + hooks + docs all migrate in one PR. No two-convention period. Delete `.claude/skills/relevant-checks/`, the vestigial hook (`scripts/hook-block-skill-relevant-checks.{sh,md}` + test + `hooks/hooks.json` Skill-matcher entry).
+
+5. **Test-harness retarget**: existing `scripts/test-relevant-checks-*.sh`, `scripts/test-review-relevant-checks-helper.sh`, `skills/implement/scripts/test-implement-relevant-checks-anti-halt.sh` survive, retargeted to the new contract. The old `.claude/skills/relevant-checks/scripts/test-run-checks.sh` is repurposed into a script-level harness for `scripts/relevant-checks.sh` itself.
+
+## Codex insights incorporated
+
+1. **Critical hidden coupling — ship-pr.sh parser sites** (verified by direct codebase grep): `scripts/ship-pr.sh` has **4 grep sites** (lines 686, 709, 763, 789) that match `^RELEVANT_CHECKS_OK=true ` exactly. A `RELEVANT_CHECKS_SKIPPED=true` line returning rc=0 would fail all 4 greps, falling through to `record_failure` and producing a false stall. The plan MUST update these parsers to also recognize the skip line as a non-failing terminal state. This is the single highest-risk bug in the cutover.
+
+2. **Parser-site prose updates in `/implement` and `/review`**:
+   - `skills/implement/SKILL.md` Step 3 (line 1107), Step 5 (line 1210), Step 6 (line 1306): "Continue after child returns. On `RELEVANT_CHECKS_OK=true`, …" — each needs a third branch for `RELEVANT_CHECKS_SKIPPED=true` ("execute the next step's flow next — skip-path is success-equivalent for control flow").
+   - `skills/review/SKILL.md` Step 3e (line 48): same pattern.
+   - `skills/review-and-fix/SKILL.md` reference at line 28 also needs alignment if it documents the contract.
+
+3. **Test-fixture synthesis sites**: several harnesses currently synthesize the path `.claude/skills/relevant-checks/scripts/run-checks.sh` as a fixture file. They must synthesize `scripts/relevant-checks.sh` instead. Specific files to audit: `test-relevant-checks-byte-budget.sh`, `test-relevant-checks-helper-failure.sh`, `test-relevant-checks-validation.sh`, `test-review-relevant-checks-helper.sh`, `test-implement-relevant-checks-anti-halt.sh`.
+
+4. **Doc-sweep depth**: README.md skill-catalog row, AGENTS.md canonical sources, SECURITY.md wording, docs/skills.md, docs/installation-and-setup.md, docs/linting.md (Makefile targets), `.pre-commit-config.yaml` comments, agent-lint.toml, agents/{_implementer-base,codex-implementer,cursor-implementer}.md, skills/shared/subskill-invocation.md, skills/{alias,compress-skill,simplify-skill,create-skill,design/references/plan-review-quick,review/references/domain-rules}/* references, `.claude/skills/release/scripts/promote-latest-release.md`, generated topology references. CHANGELOG.md gets a new entry describing the migration step for downstream consumers.
+
+## Resolution of architectural-direction questions (binding from Round 1)
+
+These are NOT contested between sketches; they were resolved by the user before sketches launched. Recording them here so Step 2b plan honors them:
+
+- **Wrapper retained, target repointed** (Round 1 Decision 1).
+- **All callers migrate in one PR** (Round 1 Decision 2).
+- **Silent skip + breadcrumb** (Round 1 Decision 3).
+- **Larch repo migrates + skill deleted** (Round 1 Decision 4).
+- **Structured skip line** `RELEVANT_CHECKS_SKIPPED=true SITE=<site>` (Round 1 Decision 5).
+- **Rewrite permitted; internal references reconciled** (Round 1 Decision 6).
+- **Migrate + retarget test harnesses** (Round 1 Decision 7).
+- **Delete the hook + registration + test** (Round 1 Decision 8).
+
+## Architectural concerns surfaced
+
+- **Parser-site survey is the load-bearing risk**. Every place in the runtime that parses wrapper stdout must learn about the skip line. Codex flagged ship-pr.sh; my grep confirms 4 sites there plus 3 in `/implement` SKILL.md and 1 in `/review` SKILL.md. The plan must enumerate each, with the exact replacement text.
+
+- **Banner literals preservation is load-bearing**. The wrapper greps for 3 banner strings to classify coverage. The script rewrite (Round 1 Decision 6) must preserve them byte-identical, or the wrapper classifier updates in lockstep. Sketches and my reading both agree preserving the banners is the simplest path.
+
+- **No new check categories**. The new `scripts/relevant-checks.sh` runs the same pre-commit + agent-lint phases the existing `run-checks.sh` runs.
+
+- **Anti-halt invariant preservation**: `skills/implement/scripts/test-implement-relevant-checks-anti-halt.sh` must continue to assert that the orchestrator continues after `run-relevant-checks-captured.sh` returns. Migration must not weaken this assertion; if anything, it should add an assertion for the new `RELEVANT_CHECKS_SKIPPED=true` continuation path.
+
+## Pragmatism / regression risk
+
+- **Highest-risk regression**: parser-site false-stall on skip (per Codex). Mitigation: enumerate all parser sites in the plan; update each in lockstep with the wrapper's skip emission.
+- **Test fixture risk**: harness setups must synthesize the new path. Mitigation: enumerate test harnesses with their fixture-creation lines.
+- **Doc-staleness risk**: 58 files matched the initial grep. Mitigation: doc sweep is its own plan section, with a `grep` verification step in the acceptance criteria (no surviving `\.claude/skills/relevant-checks` or bare `/relevant-checks` skill references in live docs after the change; CHANGELOG.md gets a migration note).
+
+## Innovation / alternatives considered but rejected
+
+- **Backward-compat shim**: detect either `scripts/relevant-checks.sh` OR `.claude/skills/relevant-checks/scripts/run-checks.sh` in the wrapper, with a deprecation warning when the old path is found. Rejected because the user explicitly chose a hard cutover (Round 1 Decision 4); supporting both adds complexity for no remaining caller.
+
+- **Conflate skip with green**: emit `RELEVANT_CHECKS_OK=true COVERAGE=skipped` instead of a separate `RELEVANT_CHECKS_SKIPPED=true` line. Rejected by the user in Step 1c (option c "Repurpose existing RELEVANT_CHECKS_OK=true").
+
+- **Move + thin wrapper for the script itself** (i.e., `scripts/relevant-checks.sh` becomes a 2-line shim that calls `.claude/skills/relevant-checks/scripts/run-checks.sh` then `exec`s out). Rejected because the skill directory is being deleted in this PR.
+
+## Path through Step 2a.5 dialectic
+
+Only one substantive sketch; no inter-sketch divergence to resolve. `contested-decisions.md` will be written as `NO_CONTESTED_DECISIONS`; Step 2a.5 dialectic short-circuits and proceeds directly to Step 2b.

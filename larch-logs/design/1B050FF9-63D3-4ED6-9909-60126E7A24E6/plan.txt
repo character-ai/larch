@@ -1,0 +1,232 @@
+## Implementation Plan — Issue #2586 (revised post-review)
+
+Replace `/relevant-checks` skill invocation in `/implement` (and peer skills/scripts) with a direct invocation of `scripts/relevant-checks.sh` (consumer-repo top-level). Hard cutover in one PR.
+
+## Approach
+
+The wrapper helper `scripts/run-relevant-checks-captured.sh` stays as the orchestration boundary; only its hardcoded `CHECK_SCRIPT` target moves. The check script itself migrates out of the skill directory to `scripts/relevant-checks.sh`, the skill is deleted, and every caller's stdout-parser site learns about a new `RELEVANT_CHECKS_SKIPPED=true SITE=<site>` terminal state that replaces the current `STATUS=fail FAILURE_REASON=missing-check-script` envelope.
+
+**Skip vs structural-failure distinction (revised per FINDING_1)**: The wrapper distinguishes "consumer has not configured local checks" from "consumer's script is broken." Absent file → skip with exit 0 + structured `RELEVANT_CHECKS_SKIPPED=true SITE=<site>` line. Present file that is not executable OR not a regular file → structured failure envelope `STATUS=fail EXIT_CODE=126 FAILURE_REASON=check-script-not-executable`. This avoids silent acceptance of a broken migration.
+
+Order of edits (within the single PR):
+
+1. Create `scripts/relevant-checks.sh` + `scripts/relevant-checks.md` (sibling per `.claude/rules/script-md-siblings.md`).
+2. Update `scripts/run-relevant-checks-captured.sh` + sibling `.md` (repoint `CHECK_SCRIPT`; split missing-script branch into skip-on-absent + fail-on-not-executable; add `cd "$REPO_ROOT"` before invoking the check script).
+3. Update every wrapper-stdout parser site in lockstep: `scripts/ship-pr.sh` (4 grep sites), `skills/implement/SKILL.md` Step 3 / Step 5 / Step 6 "Continue after child returns" blocks PLUS lines 14-16, 988, 1059, 1576 (per FINDING_20), `skills/review/SKILL.md` Step 3e (reorder + add SKIPPED branch per FINDING_16), `skills/review-and-fix/SKILL.md` (verify line 28).
+4. Update / migrate test harnesses to the new contract.
+5. Delete `.claude/skills/relevant-checks/` directory entirely.
+6. Delete the vestigial hook (`scripts/hook-block-skill-relevant-checks.{sh,md}` + test + `hooks/hooks.json` Skill-matcher entry + `.claude/settings.json` permission row at line 6 + the `Skill(relevant-checks)` allow entry at line 184) + the orphan helper `scripts/lib-resolve-active-larch-session.{sh,md}` after verifying its caller surface (per FINDING_8).
+7. Lockstep CI/lint registrations (new sub-section per FINDING_5): `Makefile`, `agent-lint.toml`, `docs/linting.md`.
+8. Doc sweep across the runtime + reference surface (expanded per FINDING_2, FINDING_6, FINDING_7, FINDING_10, FINDING_20).
+9. CHANGELOG.md entry calling out the migration step for downstream consumers, with explicit observability wording per FINDING_15.
+
+Verification at the end: `make lint`, `make test-harnesses` (or equivalent target), halt-rate regression harness per `docs/linting.md`, plus the refined grep gate (per FINDING_4) that confirms no surviving `/relevant-checks` skill references in live docs.
+
+## Files to modify / create
+
+### NEW
+
+- `scripts/relevant-checks.sh` — migrated and rewritten from `.claude/skills/relevant-checks/scripts/run-checks.sh`. Behavior preserved byte-for-byte for: banner literals (`=== Running pre-commit`, `=== Running agent-lint ===`, `WARNING: agent-lint not found on PATH`), exit codes (0 / 1 / 2), modified-file collection rules (branch diff + staged + unstaged + untracked union, `[ -f ]` filter, deletions branch), and the `PHASES_RUN` zero-coverage guard. Rewritten parts: comment headers ("private to the `/relevant-checks` skill" → "repo-local validation script"), any internal reference to the deleted skill path. `chmod +x`. Bash 3.2 compatible. Strict mode rules apply: keeps the existing `set -uo pipefail` deliberate non-`-e` posture with a comment explaining it. **REPO_ROOT derivation**: keep the existing `git rev-parse --show-toplevel` call (the wrapper now `cd`s to `REPO_ROOT` before invoking — per FINDING_9 resolution, the cd happens in the wrapper; the script needs no internal change).
+
+- `scripts/relevant-checks.md` — sibling contract. Documents purpose, primary callers (`scripts/run-relevant-checks-captured.sh`; direct human operator invocation; `make test-relevant-checks` target), the banner-classifier coupling with the wrapper, the failure-mode taxonomy (mirrors the table from the old `.claude/skills/relevant-checks/SKILL.md`), the regression-harness sibling, the maintenance / re-run-after-structural-edit guidance, and the edit-in-sync rule.
+
+- `scripts/test-relevant-checks.sh` + `scripts/test-relevant-checks.md` — script-level regression harness migrated from `.claude/skills/relevant-checks/scripts/test-run-checks.sh`. Same exit-path assertions (binary-missing, not-in-git-repo, zero-phases, pre-commit-fail, agent-lint-fail, agent-lint-missing-but-changed-file-phase-ran). Wire into `Makefile` (replace `test-run-checks` target with `test-relevant-checks`; update test-harness shard list).
+
+### MODIFIED — wrapper + parsers
+
+- `scripts/run-relevant-checks-captured.sh`:
+  - Line 133: change `CHECK_SCRIPT="$REPO_ROOT/.claude/skills/relevant-checks/scripts/run-checks.sh"` → `CHECK_SCRIPT="$REPO_ROOT/scripts/relevant-checks.sh"`.
+  - Lines 134-137: **split into three branches** (per FINDING_1):
+    ```bash
+    if [[ ! -e "$CHECK_SCRIPT" ]]; then
+        larch_err "scripts/relevant-checks.sh not present in this repo — skipping local checks"
+        emit "RELEVANT_CHECKS_SKIPPED=true SITE=$SITE"
+        exit 0
+    fi
+    if [[ ! -f "$CHECK_SCRIPT" || ! -x "$CHECK_SCRIPT" ]]; then
+        emit "STATUS=fail EXIT_CODE=126 FAILURE_REASON=check-script-not-executable"
+        exit 126
+    fi
+    ```
+  - Add `cd "$REPO_ROOT"` before invoking `"$CHECK_SCRIPT"` (per FINDING_9) so the script's `git rev-parse --show-toplevel` resolves under the intended tree regardless of orchestrator PWD.
+  - Byte-budget: the new skip line (`RELEVANT_CHECKS_SKIPPED=true SITE=<site>`) is shorter than the existing green line; ≤120-byte assertion still holds. The new fail envelope is a multi-line KV emit using `emit_kv` like other fail paths, so byte-budget does not apply (existing red paths emit similarly).
+
+- `scripts/run-relevant-checks-captured.md` (per FINDING_12):
+  - Update primary callers list to match current invocation sites: Steps 3, 5-review-fixes, 6 in `/implement`; Step 3e in `/review`; phases inside `ship-pr.sh` and `lint-fix-loop.sh`.
+  - Update the success-grammar block to enumerate all three terminal states: green (`RELEVANT_CHECKS_OK=true SITE=… COVERAGE=… [WARN=…]`), skip (`RELEVANT_CHECKS_SKIPPED=true SITE=…`), red (`STATUS=fail EXIT_CODE=… [LOG_FILE=… REDACTED_LOG_FILE=… PHASE=…] [FAILURE_REASON=…]`).
+  - Document the new `FAILURE_REASON=check-script-not-executable` shape and its difference from the skip path.
+  - Remove any reference to the old `.claude/skills/relevant-checks/scripts/run-checks.sh` path.
+
+- `scripts/ship-pr.sh` lines 686 / 709 / 763 / 789: each `grep -q '^RELEVANT_CHECKS_OK=true '` becomes a call to a new local helper `is_relevant_checks_clean()` that recognizes both green and skip terminal states. Add the helper once near the top of `ship-pr.sh`:
+  ```bash
+  is_relevant_checks_clean() {
+      local out="$1"
+      printf '%s\n' "$out" | grep -qE '^RELEVANT_CHECKS_(OK|SKIPPED)=true '
+  }
+  ```
+  Replace each of the 4 grep sites with `if [ "$rc" -eq 0 ] && is_relevant_checks_clean "$out"; then …`.
+
+- `scripts/ship-pr.md`: update the contract section that describes ship-pr.sh parser behavior to mention the new skip terminal state and the `is_relevant_checks_clean()` helper.
+
+- `skills/implement/SKILL.md`:
+  - Step 3 "Continue after child returns" block at line 1107: add a third branch — "On `RELEVANT_CHECKS_SKIPPED=true`, proceed directly to Step 4 (skip path is success-equivalent for control flow); the local-checks step is opt-in per repository." Drop `missing-check-script` from the `FAILURE_REASON` enum list; add `check-script-not-executable`.
+  - Step 5 block at line 1210: same pattern (skip → proceed to re-review gate); update FAILURE_REASON enum.
+  - Step 6 block at line 1306: same pattern (skip → proceed to Step 7 commit); update FAILURE_REASON enum.
+  - **Additional references** (per FINDING_20):
+    - Lines 14-16 (anti-halt continuation reminder, "including `run-relevant-checks-captured.sh`"): leave the helper reference intact; if there is residual slash-skill prose nearby, update it.
+    - Line 988 ("/relevant-checks invocations" in the always-permitted-writes prose): rewrite to "captured relevant-checks helper invocations" or equivalent.
+    - Line 1059 ("the relevant-checks helper, grep, dry-run, or minimal manual repro"): the helper reference is fine; verify there is no surviving slash-skill literal in surrounding prose.
+    - Line 1576 (stall narrative around `STALL_STEP=6 / PHASE=checks`): retain helper references; check for surviving slash-skill literals.
+
+- `skills/review/SKILL.md`:
+  - Step 3e at line 48 + line 50: **reorder per FINDING_16**. New ordering:
+    1. The fenced `run-relevant-checks-captured.sh --site review-step3e --tmpdir "$REVIEW_TMPDIR"` invocation comes first.
+    2. Then the parser-prose enumerating the three terminal states: `RELEVANT_CHECKS_OK=true` (proceed to Step 3f classification), `RELEVANT_CHECKS_SKIPPED=true` (same as OK — proceed to Step 3f), `STATUS=fail` (read `REDACTED_LOG_FILE` for diagnosis; check `FAILURE_REASON` for `check-script-not-executable` separately from checks failures).
+  - Anti-halt reminder at line 12: verify the helper reference is intact; if there are surviving slash-skill literals, update them.
+
+- `skills/review-and-fix/SKILL.md` line 28: update the contract-reference sentence if it documents the wrapper's stdout shape (currently it just names the helper script invocation, but verify before editing).
+
+### MODIFIED — test harnesses
+
+- `scripts/test-relevant-checks-byte-budget.sh` + `.md`: add a test case for the skip-line byte budget (`RELEVANT_CHECKS_SKIPPED=true SITE=<site>` ≤ 120 bytes). Existing green-line assertion stays.
+
+- `scripts/test-relevant-checks-helper-failure.sh` + `.md` (per FINDING_13 — drop the "remove" language):
+  - **Add** a missing-script-skip test case: when `$REPO_ROOT/scripts/relevant-checks.sh` is absent, expect `RELEVANT_CHECKS_SKIPPED=true SITE=<site>` on stdout, stderr breadcrumb, exit 0.
+  - **Add** a present-but-not-executable test case: when `$REPO_ROOT/scripts/relevant-checks.sh` exists but is not executable, expect `STATUS=fail EXIT_CODE=126 FAILURE_REASON=check-script-not-executable`, exit 126.
+  - Other failure-envelope assertions (`tmpdir-validation`, `site-validation`, `repo-root-unresolved`, `redaction-failed`) survive unchanged.
+
+- `scripts/test-relevant-checks-validation.sh` + `.md`: retarget fixture-creation lines that synthesize `.claude/skills/relevant-checks/scripts/run-checks.sh` so they synthesize `scripts/relevant-checks.sh` instead. Add a test for the new skip path. Add the FINDING_9 regression: a fixture where the wrapper is invoked with `PWD != CLAUDE_PROJECT_DIR` (different git tree); assert that the script validates the `CLAUDE_PROJECT_DIR` tree, not PWD's tree.
+
+- `scripts/test-review-relevant-checks-helper.sh` + `.md`: same fixture retarget + green-token assertion stays; add a skip-token assertion alternation (`RELEVANT_CHECKS_OK=true` OR `RELEVANT_CHECKS_SKIPPED=true`) in the Step 3e window once `skills/review/SKILL.md` documents skip.
+
+- `skills/implement/scripts/test-implement-relevant-checks-anti-halt.sh` + `.md`: anti-halt invariants stay; add an assertion that the orchestrator continues after a `RELEVANT_CHECKS_SKIPPED=true` reply (the new third terminal state must not become a halt-in-disguise).
+
+- `scripts/test-ship-pr.sh` lines 44 / 2253 / 2308 / 2372: existing fixtures emitting `RELEVANT_CHECKS_OK=true SITE=...` stay; add at least one test case emitting `RELEVANT_CHECKS_SKIPPED=true SITE=...` so `ship-pr.sh`'s `is_relevant_checks_clean()` path is exercised in all 4 grep-replacement sites.
+
+### DELETIONS
+
+- `.claude/skills/relevant-checks/` (entire directory):
+  - `.claude/skills/relevant-checks/SKILL.md`
+  - `.claude/skills/relevant-checks/scripts/run-checks.sh`
+  - `.claude/skills/relevant-checks/scripts/run-checks.md`
+  - `.claude/skills/relevant-checks/scripts/test-run-checks.sh`
+  - `.claude/skills/relevant-checks/scripts/test-run-checks.md`
+- `scripts/hook-block-skill-relevant-checks.sh`
+- `scripts/hook-block-skill-relevant-checks.md`
+- `scripts/test-hook-block-skill-relevant-checks.sh`
+- `scripts/test-hook-block-skill-relevant-checks.md`
+- `scripts/lib-resolve-active-larch-session.sh` + `scripts/lib-resolve-active-larch-session.md` **after verifying orphan** (per FINDING_8): grep for callers across `skills/`, `hooks/`, `scripts/`, `.claude/settings.json`, `.github/workflows/`. If the hook is the sole caller, delete both files. If another caller exists, document it in the implementation note and leave the helper.
+- `hooks/hooks.json`: remove the PreToolUse → Skill matcher entry that invokes `hook-block-skill-relevant-checks.sh` (the structural `{ "matcher": "Skill", "hooks": [ ... ] }` block under PreToolUse — current lines ~24-33; describe by JSON structure rather than fragile line numbers).
+- `.claude/settings.json`:
+  - Line 6 row `"Bash($PWD/.claude/skills/relevant-checks/scripts/*)"` — remove.
+  - Line ~184 row `"Skill(relevant-checks)"` (per FINDING_3) — remove. Verify no other namespaced variants (e.g., `"Skill(larch:relevant-checks)"`) survive.
+
+### NEW SUB-SECTION — Lockstep CI/lint registrations (per FINDING_5)
+
+- `Makefile`:
+  - Remove `.PHONY: test-hook-block-skill-relevant-checks` and the matching target.
+  - Rename `test-run-checks` target → `test-relevant-checks`; update `.PHONY` accordingly.
+  - Update `test-harnesses-11` shard membership (was `test-run-checks`, now `test-relevant-checks`).
+  - Remove `test-hook-block-skill-relevant-checks` from `test-harnesses-18` shard membership.
+  - Ensure `test-relevant-checks` is in `test-harnesses` shard list.
+- `agent-lint.toml`:
+  - Lines ~514-523: remove any allowlist row referencing `scripts/test-hook-block-skill-relevant-checks.sh` or `.md`.
+  - Lines ~762-763: remove rows referencing `.claude/skills/relevant-checks/` paths.
+  - Add `scripts/test-relevant-checks.sh` and `scripts/test-relevant-checks.md` to the reachability allowlist if needed.
+  - Update any inline comments that reference the deleted skill or hook.
+- `docs/linting.md`:
+  - Remove the table row for `test-hook-block-skill-relevant-checks`.
+  - Update the row for `test-run-checks` → `test-relevant-checks` with the new target name.
+  - Update the section that documents the `/relevant-checks` skill to reference `scripts/relevant-checks.sh` instead.
+
+### MODIFIED — doc sweep (expanded)
+
+- `README.md` — remove or update the `/relevant-checks` row from the skill catalog; mention `scripts/relevant-checks.sh` as the convention. Update line 8 if it anchors consumer dependency on `/relevant-checks`.
+- `AGENTS.md`:
+  - Line 18 (per FINDING_2): rewrite the standing rule "After any change, run `/relevant-checks`" → "After any change, run `bash scripts/relevant-checks.sh`" (or `make test-relevant-checks`). Drop the slash-skill wording.
+  - Update Canonical-sources list if it references `.claude/skills/relevant-checks/SKILL.md`.
+- `SECURITY.md` (per FINDING_7 — mandatory, not conditional): Document the new skip semantics. Specifically:
+  - Add a section / paragraph explaining `RELEVANT_CHECKS_SKIPPED=true SITE=<site>` (exit 0) as a first-class wrapper terminal state, distinct from `RELEVANT_CHECKS_OK=true` (checks ran and passed).
+  - State explicitly that an unobserved skip line means "no local checks ran" — operator-trust implication.
+  - Document the stderr breadcrumb (`larch_err` line indicating skip).
+  - Document the new `STATUS=fail FAILURE_REASON=check-script-not-executable` envelope (exit 126).
+- `CHANGELOG.md` (per FINDING_15 — tighten wording): add a new entry under the next release header:
+  > `/implement` and peer skills (`/review`, `ship-pr.sh`, `lint-fix-loop.sh`) now expect `scripts/relevant-checks.sh` in the consumer repo, replacing the previous `.claude/skills/relevant-checks/` convention. Repositories integrating larch must add `scripts/relevant-checks.sh` (see `scripts/relevant-checks.md` for the contract). Missing script → **non-blocking skip with stderr breadcrumb + `RELEVANT_CHECKS_SKIPPED=true SITE=<site>` stdout signal** (exit 0). Present but non-executable script → `STATUS=fail FAILURE_REASON=check-script-not-executable` (exit 126). The vestigial `/relevant-checks`-blocking PreToolUse hook is removed.
+- `docs/installation-and-setup.md` (per FINDING_6 — full section rewrite for lines 202-217): drop the skill-scaffold steps (creating `.claude/skills/relevant-checks/`, SKILL.md, scripts); rewrite the entire consumer-dependency section for the `scripts/relevant-checks.sh` model; update the hooks-narrative subsection after `hook-block-skill-relevant-checks.sh` removal. Document the skip line and the not-executable failure envelope.
+- `docs/linting.md` — see Lockstep CI/lint registrations sub-section above. Also update any narrative about the `/relevant-checks` skill.
+- `docs/skills.md` — remove `/relevant-checks` from the catalog; add a `scripts/relevant-checks.sh` reference where appropriate.
+- `agent-lint.toml` — see Lockstep CI/lint registrations sub-section above.
+- `.pre-commit-config.yaml` — update any inline comments referencing the skill.
+- `agents/_implementer-base.md`, `agents/codex-implementer.md`, `agents/cursor-implementer.md` — update implementer-prompt text that names the skill.
+- `skills/shared/subskill-invocation.md` (per FINDING_10): lines 98-99 generic anti-halt clause currently says "every direct `/relevant-checks` Skill invocation"; rewrite to reference `run-relevant-checks-captured.sh` and optionally `bash scripts/relevant-checks.sh`. Remove `/relevant-checks` from the catalog scope list if it appears elsewhere in the file.
+- `skills/design/references/plan-review-quick.md` — update if it references the skill.
+- `skills/review/references/domain-rules.md` — update if it references the skill.
+- `skills/alias/SKILL.md` — update if its examples or catalog references the skill.
+- `skills/compress-skill/SKILL.md` + `skills/compress-skill/scripts/build-feature-description.sh` — update if they reference the skill name.
+- `skills/simplify-skill/SKILL.md` + `skills/simplify-skill/scripts/build-feature-description.sh` — same.
+- `skills/create-skill/scripts/post-scaffold-hints.sh` — update if it mentions the skill in scaffold hints.
+- `.claude/skills/release/scripts/promote-latest-release.md` — update if it references the skill.
+- `scripts/external-tool-registry.md` — update if it lists the skill.
+- `scripts/pre-commit-shellcheck.md` — update if it references the skill.
+
+### Refined verification gate (per FINDING_4)
+
+Replace the previous broad alternation with two separate, sharper checks at PR-finalize time:
+
+1. **Old skill path**: `grep -rn '\.claude/skills/relevant-checks' --include='*.md' --include='*.sh' --include='*.json' --include='*.toml' --include='*.yaml' --include='*.yml' --exclude-dir=larch-logs --exclude=CHANGELOG.md` returns zero results.
+2. **Slash-command form**: `grep -rnE '(^|[^[:alnum:]_./-])/relevant-checks\b' --include='*.md' --include='*.sh' --include='*.json' --include='*.toml' --include='*.yaml' --include='*.yml' --exclude-dir=larch-logs --exclude=CHANGELOG.md` returns zero results. The regex excludes `scripts/relevant-checks.sh` (preceded by `/`, which is in the exclusion class) and `bash scripts/relevant-checks.sh` (preceded by `/`).
+3. **CHANGELOG migration note presence**: positive assertion that the new release section of `CHANGELOG.md` contains the migration note (grep for the migration sentinel string, e.g., `RELEVANT_CHECKS_SKIPPED`).
+
+The `--exclude-dir=larch-logs` keeps committed historical run logs out of the gate (they are immutable by repo convention).
+
+## Edge cases
+
+- **Missing `scripts/relevant-checks.sh` in larch itself**: the new script IS created in this PR; running `/implement` on larch must continue to perform checks. Verified by /implement own dogfooding.
+
+- **Present but non-executable**: per FINDING_1, this is now distinct from "missing." The wrapper emits a structured failure envelope (exit 126); harness coverage for both branches.
+
+- **`PWD != CLAUDE_PROJECT_DIR`**: the wrapper `cd`s to `REPO_ROOT` (per FINDING_9) before invoking the check script. The check script's internal `git rev-parse --show-toplevel` then resolves under the intended tree. Harness regression covers this scenario.
+
+- **Mid-PR state**: between commits, the working tree may have the new `scripts/relevant-checks.sh` AND the old `.claude/skills/relevant-checks/`. The wrapper after step 2 of "Order of edits" looks at `scripts/relevant-checks.sh` only; the old skill files are dead-weight but harmless until step 5 deletes them. No race risk because each Bash invocation is independent.
+
+- **Pre-commit hook racing**: `git commit` triggers `pre-commit run` on staged files. Commit test retargets in the same commit or earlier commit as the deletion (step 4 before step 5 of "Order of edits").
+
+- **Skip path on green-line callers**: any caller that branches on `grep -q '^RELEVANT_CHECKS_OK=true '` (currently 4 in ship-pr.sh, 3 in /implement SKILL.md, 1 in /review SKILL.md) would treat a SKIPPED line as failure if not updated. Mitigated by the in-PR update sites enumerated above; the refined verification gate at the end catches any survivor.
+
+- **Larger banner change**: the rewrite is permitted to change banner literals only if the wrapper's coverage classifier is updated in lockstep AND every fixture-emitting test harness updates in lockstep. Recommendation: keep banner literals byte-identical to avoid this entire risk class; the rewrite is for comments and structure only.
+
+- **`make lint` ordering**: `make lint` runs structural linters that may flag a renamed skill. Run `make lint` after each milestone in "Order of edits" to catch drift early; the final pass before PR must be clean.
+
+- **Sandboxed permission rows**: `.claude/settings.json` lines 6 and ~184 are narrowly scoped to the deleted skill. The cleanup deletes both rows. Confirm the rows are exactly `"Bash($PWD/.claude/skills/relevant-checks/scripts/*)"` and `"Skill(relevant-checks)"` before deleting.
+
+- **Orphan helper verification (per FINDING_8)**: before deleting `scripts/lib-resolve-active-larch-session.{sh,md}`, run a targeted grep across `skills/`, `hooks/`, `scripts/`, `.claude/settings.json`, `.github/workflows/`. If the only caller is `scripts/hook-block-skill-relevant-checks.sh`, deletion is safe. Otherwise document the retained caller and leave the helper.
+
+## Failure modes
+
+1. **False-stall in ship-pr.sh on skip path** — caller mid-step records the SKIPPED line as a failure because the parser was not updated. Earliest warning: the test-ship-pr.sh new fixture asserting the skip path fails. Mitigation: add the ship-pr.sh `is_relevant_checks_clean()` helper + the 4 grep-site replacements + new test fixtures in the same commit as the wrapper's skip-emission update.
+
+2. **Banner-string regression silently flips coverage classification** — a small rewrite of the new `scripts/relevant-checks.sh` changes a banner string, the wrapper classifier no longer matches, and `COVERAGE=...` reports the wrong value (or `WARN=agent-lint-missing` is no longer detected). Earliest warning: `test-relevant-checks-validation.sh` coverage-classification assertions fail. Mitigation: preserve the three banner strings byte-identical (the simplest path); if the rewrite changes them, update the wrapper's classifier in lockstep + add a banner-anchor grep assertion to `test-relevant-checks-validation.sh`.
+
+3. **Downstream-consumer breakage on first invocation post-merge** — a third-party repo using larch as a plugin has `.claude/skills/relevant-checks/` but no `scripts/relevant-checks.sh`. After this PR merges, every `/implement` run on that repo silently skips local checks. Earliest warning: post-merge feedback from the downstream operator (no automated signal in this repo); the wrapper emits a stderr breadcrumb + machine line per FINDING_15 wording so observability is preserved. Mitigation: CHANGELOG.md entry clearly describes the migration step; SECURITY.md (per FINDING_7) documents the trust implication; OOS_1 tracks the broader downstream communication follow-up.
+
+## Testing strategy
+
+Existing harness coverage migrates to the new contract:
+
+- `scripts/test-relevant-checks.sh` (new, replaces `test-run-checks.sh`): exit-path assertions for the new `scripts/relevant-checks.sh` — binary-missing, not-in-git-repo, zero-phases, pre-commit-fail, agent-lint-fail, agent-lint-missing-but-changed-file-phase-ran.
+- `scripts/test-relevant-checks-byte-budget.sh`: green-line ≤120 bytes (preserved) + new skip-line ≤120 bytes.
+- `scripts/test-relevant-checks-helper-failure.sh` (per FINDING_13): existing failure envelopes (`tmpdir-validation`, `site-validation`, `repo-root-unresolved`, `redaction-failed`) preserved; new skip-path test added; new present-but-not-executable test added.
+- `scripts/test-relevant-checks-validation.sh`: fixture-creation paths retargeted; new skip-path test (no fixture script → SKIPPED line); new `PWD != CLAUDE_PROJECT_DIR` regression (per FINDING_9).
+- `scripts/test-review-relevant-checks-helper.sh`: fixture retarget; green-token assertion preserved; new skip-token alternation in the Step 3e window.
+- `skills/implement/scripts/test-implement-relevant-checks-anti-halt.sh`: anti-halt invariants preserved; new anti-halt assertion for SKIPPED continuation path.
+- `scripts/test-ship-pr.sh`: existing OK fixtures preserved; new SKIPPED fixtures added covering each of the 4 grep sites.
+
+End-to-end verification at PR-finalize time:
+
+- `make lint` clean.
+- `make test-harnesses` (or `make test`) green.
+- Halt-rate regression harness per `docs/linting.md` not regressing.
+- Refined grep gate (per FINDING_4): old-skill-path grep zero hits; slash-command-form grep zero hits; CHANGELOG migration note present.
+- Local `/implement` self-run on larch: Step 3 / Step 5 / Step 6 invocations of `run-relevant-checks-captured.sh --site step{3,5-review-fixes,6}` all return `RELEVANT_CHECKS_OK=true` (since `scripts/relevant-checks.sh` exists post-merge).
+
+diff_lines: 1100
