@@ -18,7 +18,7 @@ Claude reviews the plan inline — no external reviewers, no voting panel. Check
 
 Accept when the concern is clear and unambiguous. Reject nits and speculative concerns. Mark valid but out-of-scope items as OOS.
 
-Revise `$DESIGN_TMPDIR/plan.txt` for each accepted finding, preserving and updating the final `diff_lines: <N>` line. Write the same integer plus a trailing newline to `$DESIGN_TMPDIR/diff-lines.txt`, then write the output files.
+**Do NOT revise `$DESIGN_TMPDIR/plan.txt`** in this step. Quick-mode review only collects findings into the output files below; plan revision is owned by Gate B (Step 3.5) per explicit user choice. Leave `plan.txt` and `diff-lines.txt` unchanged.
 
 ## Output (verbosity depends on SESSION_ENV_PATH)
 

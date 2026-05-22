@@ -1,10 +1,10 @@
 # Discussion Rounds Reference
 
-**Consumer**: `/design` Steps 1c, 1d, and 3.5.
+**Consumer**: `/design` Steps 1c, 1d, and the post-plan discussion sub-round body invoked by Step 1e Gate A on re-entry from Gate B(c) / Gate C(b).
 
-**Contract**: owns the three discussion-round bodies (Step 1c clarifying questions, Step 1d round 1, Step 3.5 round 2) with their decision-tree walks, question caps, output schemas (`$DESIGN_TMPDIR/discussion-round1.md`, `$DESIGN_TMPDIR/discussion-round2.md`), and the terse-answer rule.
+**Contract**: owns the three discussion-round bodies (Step 1c clarifying questions, Step 1d round 1, and the post-plan Round 2 body) with their decision-tree walks, question caps, output schemas (`$DESIGN_TMPDIR/discussion-round1.md`, `$DESIGN_TMPDIR/discussion-round2.md`), and the terse-answer rule. Round 2 is no longer an auto-step at Step 3.5 — Step 3.5 is now Gate B (the post-review chooser, see `approval-gates.md`). The Round 2 body remains the normative template for the discussion sub-round that Gate A executes on each "Discuss more" iteration when re-entered post-plan.
 
-**When to load**: before executing Steps 1c, 1d, or 3.5.
+**When to load**: before executing Steps 1c, 1d, or a Gate A discussion sub-round (the Round 2 body in the last section).
 
 **Binding convention**: single normative source for discussion-round behavior (decision-tree walk, question caps, output schemas, terse-answer rule).
 
@@ -73,9 +73,11 @@ Record `<N>` decisions resolved.
 
 ---
 
-<!-- step:3.5 — Design Discussion Round 2 -->
+<!-- post-plan discussion sub-round body (invoked from Step 1e Gate A on re-entry; the legacy <!-- step:3.5 marker is intentionally retained below for tooling that anchors on it) -->
 
-After the plan has been reviewed and revised, stress-test the remaining design decisions that were either (a) not covered in Round 1, or (b) deemed suboptimal by reviewers, or (c) introduced by the plan itself (decisions that didn't exist at the feature-description stage).
+<!-- step:3.5 — Post-Plan Discussion Sub-Round body (referenced from Gate A re-entry) -->
+
+After the plan has been reviewed (and possibly partially revised via Gate B), stress-test the remaining design decisions that were either (a) not covered in Round 1, or (b) deemed suboptimal by reviewers, or (c) introduced by the plan itself (decisions that didn't exist at the feature-description stage). This body is invoked from Step 1e Gate A on each re-entry from Gate B(c) "switch to discussion mode" or Gate C(b) "discuss further" — it is no longer an auto-step.
 
 ## Inputs
 
@@ -116,7 +118,7 @@ Write resolved decisions to `$DESIGN_TMPDIR/discussion-round2.md` using the same
 - **Source**: user / codebase
 ```
 
-**Auto-revise**: Update the implementation plan in-place based on answers. Print the revised plan only if substantive changes were made.
+**Plan revision authority**: This sub-round body is invoked from Gate A on a re-entry path. The orchestrator MAY revise `$DESIGN_TMPDIR/plan.txt` to incorporate user-resolved decisions from this sub-round **directly**, because the user has explicitly engaged in the discussion and any plan change follows from their answers. After revising, re-run `ACTION=EMIT_PLAN` so `diff-lines.txt` reflects the new plan. Reviewer findings, however, are NEVER applied here — those are owned exclusively by Gate B's Apply all / per-finding Apply choices, regardless of how the discussion went. Print the revised plan only if substantive changes were made.
 
 ## Cap
 

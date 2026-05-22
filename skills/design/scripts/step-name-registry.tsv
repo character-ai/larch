@@ -3,11 +3,13 @@ step	name
 1	branch
 1c	questions
 1d	discussion r1
+1e	gate A
 2a	sketches
 2a.5	dialectic
 2b	full plan
 3	plan review
-3.5	discussion r2
+3.5	gate B
 3b	arch diagram
 4	rejected findings
+4b	gate C
 5	cleanup
