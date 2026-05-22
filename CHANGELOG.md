@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [36.0.3] - 2026-05-21
+
+### Changed
+
+- Treat /design as a prerequisite peer that anchors larch:plan in the issue body instead of a nested /implement sub-invocation.
+- Shorten AGENTS.md SendMessage and session-env bullets into tier-scoped and NEVER #14 pointers.
+- Update workflow-lifecycle, run-logs, README, and agents docs for issue-anchored materialization and remove retired --design-only and catalog flag rows.
+
 ## [36.0.2] - 2026-05-21
 
 ### Changed
