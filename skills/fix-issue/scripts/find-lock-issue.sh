@@ -19,8 +19,8 @@
 # Targets a specific issue (by number or GitHub URL), verifies it is open,
 # runs umbrella detection FIRST (issue #819 DECISION_1 — if the issue is an
 # umbrella, the umbrella branch is taken and managed-prefix rejection is
-# bypassed so umbrellas with `[IN PROGRESS]` / `[DONE]` / `[STALLED]`
-# titles remain explicitly targetable), then for non-umbrellas verifies the
+# bypassed so umbrellas with `[IN PROGRESS]` / `[DONE]` / `[STALLED]` /
+# `[PLANNED]` titles remain explicitly targetable), then for non-umbrellas verifies the
 # title does not carry a managed lifecycle title prefix or a [... Report]
 # pattern, and has no currently-open blocking dependencies.
 #
@@ -34,7 +34,8 @@
 #      machine-owned tracking-issue state. Applied here at lock time so
 #      the title reflects active work immediately, instead of the
 #      multi-minute delay incurred when only /implement Step 0.5 Branch 2
-#      did the rename. /implement still re-attempts the rename idempotently
+#      did the rename. `/design` writers may apply `[PLANNED]` via
+#      `tracking-issue-write.sh rename --state planned`. /implement still re-attempts the rename idempotently
 #      so standalone /implement remains correct when invoked with positional
 #      <issue-N> against a non-pre-marked issue.
 #

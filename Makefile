@@ -76,7 +76,7 @@ test-harnesses-18: test-audit-runs test-check-reviewer-failure-threshold test-co
 
 test-harnesses-19: test-auto-resolve-changelog test-check-stale-plugin test-commit-review-fixes test-dispatch-code-voters-retry-codex-success test-find-lock-issue test-implement-anti-halt test-larch-log test-lint-no-raw-stderr-after-quiet-init test-pipe-sigpipe-safety test-references-headers test-resolve-repo test-scoreboard test-slack-issue-announce test-tracking-issue-summary test-wait-for-reviewers
 
-test-harnesses-20: test-ballot-parse test-check-topology-rule-paths test-compose-architecture-sketch test-design-log-publish test-dispatch-code-voters-retry-cursor test-fix-issue-bail-detection test-implement-anti-polling-rule test-larch-log-write-round test-lint-skill-invocations test-plan-block test-refresh-execution-issues test-restore-finalize-state test-scout-dynamic-archetypes test-step-8a-changelog test-tracking-issue-write test-write-final-report
+test-harnesses-20: test-ballot-parse test-check-topology-rule-paths test-compose-architecture-sketch test-design-log-publish test-dispatch-code-voters-retry-cursor test-fix-issue-bail-detection test-implement-anti-polling-rule test-larch-log-write-round test-lib-title-markers test-lint-skill-invocations test-plan-block test-refresh-execution-issues test-restore-finalize-state test-scout-dynamic-archetypes test-step-8a-changelog test-tracking-issue-write test-write-final-report
 
 test-pipe-sigpipe-safety:
 	bash scripts/harness-timer.sh $@ bash scripts/test-pipe-sigpipe-safety.sh
@@ -345,6 +345,9 @@ test-design-driver:
 
 test-design-log-publish:
 	bash scripts/harness-timer.sh $@ bash scripts/test-design-log-publish.sh
+
+test-lib-title-markers:
+	bash scripts/harness-timer.sh $@ bash scripts/test-lib-title-markers.sh
 
 test-classify-issue:
 	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-classify-issue.sh

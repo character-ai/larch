@@ -189,6 +189,30 @@ grep -qE '"ok"[[:space:]]*:[[:space:]]*1' "$clone/larch-logs/design/RUNPUB1/vote
 grep -q 'pr create' "$GH_STUB_LOG" || fail "expected gh pr create in log"
 grep -q 'pr merge' "$GH_STUB_LOG" || fail "expected gh pr merge in log"
 
+echo "=== pr create non-zero with pr list/view recovery (plan publish path) ==="
+TMPCR=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-createfail.XXXXXX")
+clone_cr=$(setup_clone_with_origin_head "$TMPCR")
+stub_cr="$TMPCR/stub"
+GH_STUB_LOG_CR="$TMPCR/gh-createfail.log"
+: >"$GH_STUB_LOG_CR"
+export GH_STUB_LOG="$GH_STUB_LOG_CR"
+make_gh_stub "$stub_cr"
+export PATH="$stub_cr:$PATH"
+export TEST_CLONE_ROOT="$clone_cr"
+export TEST_MERGE_BRANCH="larch-log-design-RUNCREATE1"
+export GH_STUB_CREATE_RC=1
+unset GH_STUB_CREATE_NO_URL GH_STUB_MERGE_RC
+mkdir -p "$TMPCR/design"
+printf 'c\n' >"$TMPCR/design/c.txt"
+out_cr=$(
+    (cd "$clone_cr" && bash "$PUBLISH" --design-tmpdir "$TMPCR/design" --run-id "RUNCREATE1" --issue 11 --repo owner/repo) 2>/dev/null || true
+)
+[[ "$out_cr" == *"PUBLISH_OK=true"* ]] || fail "create-fail recovery PUBLISH_OK: $out_cr"
+[[ "$out_cr" == *"PR_NUMBER=101"* ]] || fail "create-fail recovery PR_NUMBER: $out_cr"
+grep -q 'pr create' "$GH_STUB_LOG_CR" || fail "expected pr create attempt in log"
+grep -q 'pr merge' "$GH_STUB_LOG_CR" || fail "expected pr merge after list recovery"
+unset GH_STUB_CREATE_RC
+
 wt_lines=$(git -C "$clone" worktree list | wc -l | tr -d ' ')
 [[ "$wt_lines" == "1" ]] || fail "expected single worktree, got: $(git -C "$clone" worktree list)"
 [[ $(git -C "$clone" branch --list 'larch-log-design-*' | wc -l | tr -d ' ') -eq 0 ]] || fail "unexpected local larch-log-design-* branch after publish"
@@ -288,5 +312,20 @@ out2=$(
     (cd "$clone2" && bash "$PUBLISH" --design-tmpdir "$TMP2/design" --run-id "RUNBAD1" --issue 1 --repo owner/repo) 2>/dev/null || true
 )
 [[ "$out2" == *"PUBLISH_OK=false"* ]] || fail "bad json should fail publish: $out2"
+
+echo "=== malformed *.meta CMD_JSON fails publish closed ==="
+TMPMETA=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-meta.XXXXXX")
+clone_meta=$(setup_clone_with_origin_head "$TMPMETA")
+stub_meta="$TMPMETA/stub"
+make_gh_stub "$stub_meta"
+export PATH="$stub_meta:$PATH"
+unset TEST_CLONE_ROOT TEST_MERGE_BRANCH GH_STUB_LOG GH_STUB_CREATE_RC GH_STUB_CREATE_NO_URL GH_STUB_MERGE_RC
+mkdir -p "$TMPMETA/design"
+printf 'body\n' >"$TMPMETA/design/plan.txt"
+printf 'CMD_JSON=this is not valid json\n' >"$TMPMETA/design/wrong.meta"
+out_meta=$(
+    (cd "$clone_meta" && bash "$PUBLISH" --design-tmpdir "$TMPMETA/design" --run-id "RUNMETA1" --issue 2 --repo owner/repo) 2>/dev/null || true
+)
+[[ "$out_meta" == *"PUBLISH_OK=false"* ]] || fail "malformed meta should fail publish: $out_meta"
 
 echo "All design-log-publish harness assertions passed."
