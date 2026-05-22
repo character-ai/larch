@@ -84,23 +84,16 @@ cursor_launcher_cursor_ci_stall_sidecar_dir() {
         round-[0-9]*) printf '%s' "$parent"; return 0 ;;
     esac
     if [[ -n "$impl" && -d "$impl" ]]; then
-        local d best="" n1 n2
+        local d best="" bn n max_n=-1
         shopt -s nullglob
         for d in "$impl"/round-[0-9]*; do
             [[ -d "$d" ]] || continue
-            if [[ -z "$best" ]]; then
+            bn="${d##*/}"
+            [[ "$bn" =~ ^round-([0-9]+)$ ]] || continue
+            n="${BASH_REMATCH[1]}"
+            if ((10#$n > 10#$max_n)); then
+                max_n=$n
                 best="$d"
-            else
-                n1="${d##*/round-}"
-                n2="${best##*/round-}"
-                n1="${n1%%[^0-9]*}"
-                n2="${n2%%[^0-9]*}"
-                case "$n1$n2" in
-                    *[!0-9]*) ;;
-                    *)
-                        if ((10#$n1 > 10#$n2)); then best="$d"; fi
-                        ;;
-                esac
             fi
         done
         shopt -u nullglob
@@ -113,12 +106,15 @@ cursor_launcher_cursor_ci_stall_sidecar_dir() {
     return 1
 }
 
-# Pipe stdin through scripts/redact-secrets.sh when executable; passthrough on miss/fail.
+# Pipe stdin through scripts/redact-secrets.sh when executable; passthrough when missing.
+# On redactor non-zero exit, emit a placeholder (never passthrough unredacted on failure).
 cursor_launcher_redact_stdin() {
     local h="${SCRIPT_DIR:-}"
     [[ -z "$h" ]] && h="$(cd "${BASH_SOURCE[0]%/*}" && pwd)"
     if [[ -x "$h/redact-secrets.sh" ]]; then
-        "$h/redact-secrets.sh" 2>/dev/null || cat
+        if ! "$h/redact-secrets.sh" 2>/dev/null; then
+            printf '%s\n' '[redaction failed]'
+        fi
     else
         cat
     fi
@@ -169,11 +165,19 @@ cursor_launcher_emit_cursor_ci_stall_json_sidecar() {
 
     if command -v lsof >/dev/null 2>&1; then
         if command -v timeout >/dev/null 2>&1; then
-            timeout 3 lsof -nP -p "$target_pid" 2>/dev/null | head -n 400 >"$lsof_tmp" || : >"$lsof_tmp"
+            # Subshell + pipefail off: SIGPIPE from head must not clobber a partial lsof snapshot.
+            (
+                set +o pipefail
+                timeout 3 lsof -nP -p "$target_pid" 2>/dev/null | head -n 400
+            ) >"$lsof_tmp" || true
         elif command -v gtimeout >/dev/null 2>&1; then
-            gtimeout 3 lsof -nP -p "$target_pid" 2>/dev/null | head -n 400 >"$lsof_tmp" || : >"$lsof_tmp"
+            (
+                set +o pipefail
+                gtimeout 3 lsof -nP -p "$target_pid" 2>/dev/null | head -n 400
+            ) >"$lsof_tmp" || true
         else
-            lsof -nP -p "$target_pid" 2>/dev/null | head -n 400 >"$lsof_tmp" || : >"$lsof_tmp"
+            # No wall-clock wrapper for lsof(1): omit rather than risk an unbounded hang.
+            : >"$lsof_tmp"
         fi
     else
         : >"$lsof_tmp"
@@ -197,6 +201,7 @@ cursor_launcher_emit_cursor_ci_stall_json_sidecar() {
                     mv -f "${_p}.r" "$_p" 2>/dev/null || rm -f "${_p}.r"
                 else
                     rm -f "${_p}.r"
+                    printf '%s\n' '[omitted: redact-secrets failed or timed out]' >"$_p"
                 fi
             done
         elif command -v gtimeout >/dev/null 2>&1; then
@@ -206,16 +211,12 @@ cursor_launcher_emit_cursor_ci_stall_json_sidecar() {
                     mv -f "${_p}.r" "$_p" 2>/dev/null || rm -f "${_p}.r"
                 else
                     rm -f "${_p}.r"
+                    printf '%s\n' '[omitted: redact-secrets failed or timed out]' >"$_p"
                 fi
             done
         else
             for _p in "$ps_tmp" "$lsof_tmp" "$tr_tmp"; do
-                rm -f "${_p}.r"
-                if "$_rf" <"$_p" >"${_p}.r" 2>/dev/null; then
-                    mv -f "${_p}.r" "$_p" 2>/dev/null || rm -f "${_p}.r"
-                else
-                    rm -f "${_p}.r"
-                fi
+                printf '%s\n' '[omitted: redact-secrets skipped without timeout(1) wall-clock wrapper]' >"$_p"
             done
         fi
     fi
@@ -226,7 +227,7 @@ cursor_launcher_emit_cursor_ci_stall_json_sidecar() {
     elif command -v gtimeout >/dev/null 2>&1; then
         git_porcelain=$(gtimeout 3 git status --porcelain 2>/dev/null | head -n 200 || true)
     else
-        git_porcelain=$(git status --porcelain 2>/dev/null | head -n 200 || true)
+        git_porcelain=""
     fi
     git_porcelain=$(printf '%s' "$git_porcelain" | head -c 32000)
     git_porcelain=$(printf '%s' "$git_porcelain" | cursor_launcher_redact_stdin)
@@ -236,7 +237,7 @@ cursor_launcher_emit_cursor_ci_stall_json_sidecar() {
         elif command -v gtimeout >/dev/null 2>&1; then
             rebase_patch=$(gtimeout 3 git rebase --show-current-patch 2>/dev/null | head -n 80 || true)
         else
-            rebase_patch=$(git rebase --show-current-patch 2>/dev/null | head -n 80 || true)
+            rebase_patch=""
         fi
         rebase_patch=$(printf '%s' "$rebase_patch" | head -c 32000)
         rebase_patch=$(printf '%s' "$rebase_patch" | cursor_launcher_redact_stdin)
@@ -249,10 +250,13 @@ cursor_launcher_emit_cursor_ci_stall_json_sidecar() {
         rm -f "$ps_tmp" "$lsof_tmp" "$tr_tmp"
         return 0
     }
+    local _cap_note='JSON ps/lsof/git/tail fields are captured after SIGTERM to the monitored wrapper and its direct children; the first Stall detected block in OUTPUT.diag is appended before that signal and reflects an immediate pre-kill snapshot.'
     if ! jq -nc \
         --arg channel "$channel" \
         --argjson pid "$target_pid" \
         --argjson time_since_last_progress "$elapsed" \
+        --arg capture_phase "post_sigterm" \
+        --arg diag_capture_note "$_cap_note" \
         --rawfile ps "$ps_tmp" \
         --rawfile lsof "$lsof_tmp" \
         --rawfile transcript "$tr_tmp" \
@@ -263,6 +267,8 @@ cursor_launcher_emit_cursor_ci_stall_json_sidecar() {
             channel: $channel,
             pid: $pid,
             time_since_last_progress: $time_since_last_progress,
+            capture_phase: $capture_phase,
+            diag_capture_note: $diag_capture_note,
             ps: $ps,
             lsof: $lsof,
             git_state: {status_porcelain: $git_status, rebase_patch_excerpt: $rebase_patch},
@@ -272,6 +278,9 @@ cursor_launcher_emit_cursor_ci_stall_json_sidecar() {
               | if length > 110 then .[-110:] else . end
             )
           }' >"$tmp_json" 2>/dev/null; then
+        {
+            printf '%s\n' "cursor-ci-stall-json: jq assembly failed (sidecar omitted); channel=${channel} pid=${target_pid} elapsed=${elapsed}s"
+        } >>"$diag_file" 2>/dev/null || true
         rm -f "$ps_tmp" "$lsof_tmp" "$tr_tmp" "$tmp_json"
         return 0
     fi
