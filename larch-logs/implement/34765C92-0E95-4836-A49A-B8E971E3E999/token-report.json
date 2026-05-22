@@ -235,14 +235,69 @@
             }
           }
         ]
+      },
+      {
+        "step": "Step 8a — changelog",
+        "totals": {
+          "input": 0,
+          "cache_read": 0,
+          "cache_create": 0,
+          "output": 0,
+          "total": 0
+        },
+        "skills": []
+      },
+      {
+        "step": "Step 8b — rebase",
+        "totals": {
+          "input": 29,
+          "cache_read": 4460348,
+          "cache_create": 35161,
+          "output": 23218,
+          "total": 4518756
+        },
+        "skills": [
+          {
+            "skill": "inferred:Step 8b — rebase",
+            "totals": {
+              "input": 29,
+              "cache_read": 4460348,
+              "cache_create": 35161,
+              "output": 23218,
+              "total": 4518756
+            }
+          }
+        ]
+      },
+      {
+        "step": "Step 3 — checks first pass",
+        "totals": {
+          "input": 15,
+          "cache_read": 2482395,
+          "cache_create": 9586,
+          "output": 10060,
+          "total": 2502056
+        },
+        "skills": [
+          {
+            "skill": "inferred:Step 3 — checks first pass",
+            "totals": {
+              "input": 15,
+              "cache_read": 2482395,
+              "cache_create": 9586,
+              "output": 10060,
+              "total": 2502056
+            }
+          }
+        ]
       }
     ],
     "totals": {
-      "input": 111,
-      "cache_read": 11753027,
-      "cache_create": 1026136,
-      "output": 37889,
-      "total": 12817163
+      "input": 155,
+      "cache_read": 18695770,
+      "cache_create": 1070883,
+      "output": 71167,
+      "total": 19837975
     }
   },
   "codex": {
@@ -321,6 +376,30 @@
       },
       {
         "step": "Step 6 — checks second pass",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 8a — changelog",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 8b — rebase",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 3 — checks first pass",
         "totals": {
           "input": 0,
           "output": 0,
@@ -410,6 +489,30 @@
       },
       {
         "step": "Step 6 — checks second pass",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 8a — changelog",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 8b — rebase",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 3 — checks first pass",
         "totals": {
           "input": 0,
           "output": 0,

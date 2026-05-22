@@ -1,12 +1,12 @@
 # Version Bump Reasoning
 
-- **Base commit**: `df111eaf` (Fixes #2561: sessionstart-health: remove retired post-/design boundary references (#2565))
-- **Current version**: `36.0.5`
+- **Base commit**: `8f0bc0bd` (Bump version to 36.0.6 (#2578))
+- **Current version**: `36.0.6`
 - **Classification scope**: `skills/**` and `agents/**` only (public plugin surface).
 
 ## Result: PATCH
 
-- **New version**: `36.0.6`
+- **New version**: `36.0.7`
 
 ### PATCH rationale
 
