@@ -58,6 +58,7 @@ function is_invocation_site(line) {
         found = 0
         has_redacted = 0
         has_raw_warning = 0
+        has_skipped = 0
         for (i = NR - 5; i < NR; i++) {
             if (i > 0 && index(previous[i % 6], opener) > 0) {
                 found = 1
@@ -68,9 +69,18 @@ function is_invocation_site(line) {
             if (i > 0 && index(previous[i % 6], "NOT raw `LOG_FILE`") > 0) {
                 has_raw_warning = 1
             }
+            if (i > 0 && index(previous[i % 6], "RELEVANT_CHECKS_SKIPPED=true") > 0) {
+                has_skipped = 1
+            }
         }
         if (!found) {
             printf("FAIL: invocation site at line %d lacks canonical opener within 5 preceding lines.\n", NR) > "/dev/stderr"
+            printf("  line: %s\n", $0) > "/dev/stderr"
+            aborted = 1
+            exit 1
+        }
+        if (!has_skipped) {
+            printf("FAIL: invocation site at line %d lacks RELEVANT_CHECKS_SKIPPED=true continuation guidance within 5 preceding lines.\n", NR) > "/dev/stderr"
             printf("  line: %s\n", $0) > "/dev/stderr"
             aborted = 1
             exit 1

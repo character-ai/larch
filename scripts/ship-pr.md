@@ -48,7 +48,7 @@ The script also writes `$IMPLEMENT_TMPDIR/postbump-state.sh` before `implement-f
 
 `ship-pr.sh` parses stdout envelopes from existing helpers rather than relying only on exit status:
 
-- `run-relevant-checks-captured.sh` success requires `RELEVANT_CHECKS_OK=true`. When checks fail during `run_checks_phase`, the phase calls `scripts/lint-fix-loop.sh --site ship-pr-ci-initial` to dispatch a Codex/Cursor coder for repairs (up to 3 fix dispatches); every `LINT_FIX_STATUS=applied` is followed by a verification run, including after the third/final dispatch; on `failed`, `main-agent-required`, or a structural failure (no `REDACTED_LOG_FILE` in output), the phase falls back to `exit_stall 6`.
+- `run-relevant-checks-captured.sh` success is a clean envelope on exit `0`: `RELEVANT_CHECKS_OK=true` **or** `RELEVANT_CHECKS_SKIPPED=true` (same predicate as `is_relevant_checks_clean` in `ship-pr.sh`). When checks fail during `run_checks_phase`, the phase calls `scripts/lint-fix-loop.sh --site ship-pr-ci-initial` to dispatch a Codex/Cursor coder for repairs (up to 3 fix dispatches); every `LINT_FIX_STATUS=applied` is followed by a verification run, including after the third/final dispatch; on `failed`, `main-agent-required`, or a structural failure (no `REDACTED_LOG_FILE` in output), the phase falls back to `exit_stall 6`.
 - `implement-finalize.sh postbump` uses the last `STATUS=` line.
 - `create-pr.sh` emits `PR_NUMBER`, `PR_URL`, `PR_TITLE`, and `PR_STATUS`; existing PRs trigger `gh-pr-body-update.sh`.
 - `ci-wait.sh` emits `ACTION`, counters, `FAILED_RUN_ID`, and `BAIL_REASON`.

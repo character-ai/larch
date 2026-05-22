@@ -84,6 +84,16 @@ rc=0
 out=$(XDG_CACHE_HOME="$xdg" CLAUDE_PROJECT_DIR="$repo_bad" "$HELPER" --site step3 --tmpdir "$session") || rc=$?
 [[ "$rc" -eq 126 ]] || fail "non-executable script expected rc 126, got $rc"
 [[ "$out" == *"STATUS=fail"* ]] || fail "non-executable missing fail envelope: $out"
+[[ "$out" == *"EXIT_CODE=126"* ]] || fail "non-executable missing EXIT_CODE=126 in: $out"
 [[ "$out" == *"FAILURE_REASON=check-script-not-executable"* ]] || fail "non-executable missing failure reason: $out"
+
+repo_broken_symlink="$tmp/repo-broken-symlink"
+mkdir -p "$repo_broken_symlink/scripts"
+ln -sf /nonexistent/larch-relevant-checks-missing-target "$repo_broken_symlink/scripts/relevant-checks.sh"
+rc=0
+out=$(XDG_CACHE_HOME="$xdg" CLAUDE_PROJECT_DIR="$repo_broken_symlink" "$HELPER" --site step3 --tmpdir "$session") || rc=$?
+[[ "$rc" -eq 1 ]] || fail "broken symlink expected rc 1, got $rc"
+[[ "$out" == *"STATUS=fail"* ]] || fail "broken symlink missing fail envelope: $out"
+[[ "$out" == *"FAILURE_REASON=check-script-symlink-broken"* ]] || fail "broken symlink missing failure reason: $out"
 
 echo "test-relevant-checks-helper-failure: ok"

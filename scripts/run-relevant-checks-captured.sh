@@ -131,6 +131,12 @@ fi
 [[ -n "$REPO_ROOT" ]] || fail "repo-root-unresolved" 1
 
 CHECK_SCRIPT="$REPO_ROOT/scripts/relevant-checks.sh"
+# A dangling symlink is not an intentional omit — fail closed so broken wiring
+# cannot masquerade as RELEVANT_CHECKS_SKIPPED (same as missing target for -e).
+if [[ -L "$CHECK_SCRIPT" && ! -e "$CHECK_SCRIPT" ]]; then
+    emit "STATUS=fail EXIT_CODE=1 FAILURE_REASON=check-script-symlink-broken"
+    exit 1
+fi
 if [[ ! -e "$CHECK_SCRIPT" ]]; then
     emit "RELEVANT_CHECKS_SKIPPED=true SITE=$SITE"
     larch_err "relevant-checks: scripts/relevant-checks.sh absent; skipping local checks"
