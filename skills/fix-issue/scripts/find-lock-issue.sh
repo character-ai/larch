@@ -91,8 +91,11 @@
 #
 # Stdout contract policy: delegate stdout (issue-lifecycle.sh, tracking-
 # issue-write.sh) is captured into local shell variables and parsed
-# key-by-key; never streamed. find-lock-issue.sh emits ONLY the keys
-# declared above. Auxiliary delegate keys (COMMENTED, FAILED, NEW_TITLE,
+# key-by-key; never streamed. find-lock-issue.sh emits the keys declared
+# above. Before a successful lock, the pre-lock gate may emit
+# `MAIN_SYNC_HARD_RESET=true` and `SYNC_STATUS=reset` when check-main-sync
+# auto-reset local `main` to `origin/main` (see `_pre_lock_clean_tree_and_main_sync_gate`).
+# Auxiliary delegate keys (COMMENTED, FAILED, NEW_TITLE,
 # etc.) are filtered out so the SKILL.md parser sees a clean unified
 # contract.
 #
@@ -145,24 +148,14 @@ has_managed_prefix() {
 }
 
 # Returns 0 if the title matches the [... Report] pattern — a bracket-enclosed
-# phrase ending with " Report" (case-insensitive) at the start of the title
+# phrase ending with " report]" (case-insensitive) at the start of the title
 # (e.g. "[Weekly Report]", "[AUDIT REPORT] Q3", "[analysis report]"). These
-# are report/analytics issues not meant for automated fixing.
+# are report/analytics issues not meant for automated fixing. Run-logs audit
+# report titles use `[Run Logs Audit <timestamp> Report] …`, which also match
+# this pattern; combined with the `audit-report` label check, they stay
+# excluded from /fix-issue.
 has_report_prefix() {
     printf '%s' "$1" | grep -qiE '^\[[^]]*[[:space:]]+report\]'
-}
-
-# Returns 0 when the title uses the stable run-logs audit-report prefix
-# (`[Run Logs Audit Report …]`), which is not matched by has_report_prefix
-# because the closing `]` follows the ISO timestamp, not immediately after
-# the word "Report". Used as a secondary guard when the audit-report label is
-# missing or unreadable.
-has_run_logs_audit_report_title() {
-    local t="$1"
-    case "$t" in
-        '[Run Logs Audit Report '*) return 0 ;;
-        *)                         return 1 ;;
-    esac
 }
 
 ISSUE_ARG=""
@@ -225,18 +218,24 @@ source "$BLOCKER_HELPERS" || {
 }
 
 # ---------------------------------------------------------------------------
-# _emit_dirty_tree_pre_lock_abort <issue-num> <issue-title>
-#                                 [<umbrella-num> <umbrella-title>]
+# _pre_lock_clean_tree_and_main_sync_gate <issue-num> <issue-title>
+#                                        [<umbrella-num> <umbrella-title>]
 #
-# Runs the local working-tree cleanliness probe immediately before lock
-# acquisition. The predicate itself lives in scripts/check-clean-tree.sh so
-# this pre-lock guard and preflight.sh share one git-status contract.
-# find-lock-issue.sh uses --fail-closed because it must not post
-# IN PROGRESS, or rename an issue when local cleanliness cannot be determined.
-# preflight.sh intentionally calls the same helper in default fail-open mode
-# to preserve its historical setup behavior.
+# Step A — working tree: runs scripts/check-clean-tree.sh --fail-closed
+# immediately before lock acquisition (shared contract with preflight.sh;
+# find-lock-issue uses fail-closed so IN PROGRESS is never posted when
+# cleanliness cannot be determined; preflight keeps historical fail-open).
+#
+# Step B — main sync (only when Step A reports CLEAN=true): runs
+# scripts/check-main-sync.sh without fetching. When local `main` is ahead only
+# of `origin/main` with `chore(larch-logs): flush *` commits touching
+# `larch-logs/` alone, that script may run **git reset --hard origin/main** —
+# a destructive branch move. Operators must treat a successful reset as
+# dropping local-only SHAs on main until they re-fetch/reconcile elsewhere.
+# Emits MAIN_SYNC_HARD_RESET=true and SYNC_STATUS=reset on stdout when a reset
+# occurred (breadcrumb for transcripts); see find-lock-issue.md.
 # ---------------------------------------------------------------------------
-_emit_dirty_tree_pre_lock_abort() {
+_pre_lock_clean_tree_and_main_sync_gate() {
     local issue_num="$1"
     local issue_title="$2"
     local umbrella_num="${3:-}"
@@ -278,10 +277,26 @@ _emit_dirty_tree_pre_lock_abort() {
             emit_kv ERROR "${sync_error:-local main is ahead of origin/main with non-log commits; push or reconcile before re-running /fix-issue. No issue was locked.}"
             exit 2
         fi
-        # Exit 2 with SYNC_STATUS=probe-error only: fail-open (same rationale as
-        # preflight); other non-zero exits fail closed before lock.
+        # Exit 2 with SYNC_STATUS=probe-error: fail closed when origin/main is
+        # present (stale ref / flaky git can hide unsafe ahead state). When
+        # origin/main is absent (fresh repo, offline harness), keep fail-open
+        # so the comment-lock invariant is not blocked on missing remotes.
         if [ "$sync_exit" -eq 2 ] && [ "$sync_status" = "probe-error" ]; then
-            :
+            local repo_top
+            repo_top=$(git rev-parse --show-toplevel 2>/dev/null || true)
+            if [ -n "$repo_top" ] && git -C "$repo_top" rev-parse -q --verify origin/main >/dev/null 2>&1; then
+                emit_kv ELIGIBLE false
+                if [ -n "$umbrella_num" ]; then
+                    emit_kv IS_UMBRELLA true
+                    emit_kv UMBRELLA_NUMBER "$umbrella_num"
+                    emit_kv UMBRELLA_TITLE "$umbrella_title"
+                    emit_kv ISSUE_NUMBER "$issue_num"
+                    emit_kv ISSUE_TITLE "$issue_title"
+                    emit_kv LOCK_ACQUIRED false
+                fi
+                emit_kv ERROR "Cannot verify local main is in sync with origin/main (git probe failed). Run: git fetch origin main — then retry /fix-issue. No issue was locked."
+                exit 2
+            fi
         elif [ "$sync_exit" -ne 0 ]; then
             emit_kv ELIGIBLE false
             if [ -n "$umbrella_num" ]; then
@@ -297,6 +312,10 @@ _emit_dirty_tree_pre_lock_abort() {
         fi
         # SYNC_STATUS=reset means flush commits were auto-cleared; ok or
         # not-main also mean the run can proceed.
+        if [ "$sync_status" = "reset" ]; then
+            emit_kv MAIN_SYNC_HARD_RESET true
+            emit_kv SYNC_STATUS reset
+        fi
         return 0
     fi
 
@@ -350,7 +369,7 @@ lock_and_rename_then_emit() {
     lock_script="${SCRIPT_DIR}/issue-lifecycle.sh"
     rename_script="${SCRIPT_DIR}/../../../scripts/tracking-issue-write.sh"
 
-    _emit_dirty_tree_pre_lock_abort "$issue_num" "$issue_title" "" ""
+    _pre_lock_clean_tree_and_main_sync_gate "$issue_num" "$issue_title" "" ""
 
     # ---- Acquire comment lock (correctness invariant) ----
     local lock_out lock_exit=0
@@ -439,7 +458,7 @@ lock_and_rename_then_emit_for_child() {
     lock_script="${SCRIPT_DIR}/issue-lifecycle.sh"
     rename_script="${SCRIPT_DIR}/../../../scripts/tracking-issue-write.sh"
 
-    _emit_dirty_tree_pre_lock_abort "$child_num" "$child_title" "$umbrella_num" "$umbrella_title"
+    _pre_lock_clean_tree_and_main_sync_gate "$child_num" "$child_title" "$umbrella_num" "$umbrella_title"
 
     # ---- Acquire comment lock ----
     local lock_out lock_exit=0
@@ -678,12 +697,6 @@ if [[ -n "$ISSUE_ARG" ]]; then
             exit 2
             ;;
     esac
-
-    if has_run_logs_audit_report_title "$ISSUE_TITLE"; then
-        emit_kv ELIGIBLE false
-        emit_kv ERROR "Issue #$ISSUE_NUM has a run-logs audit report title; not a fix-issue candidate"
-        exit 2
-    fi
 
     # Umbrella detection (explicit-issue path only): runs BEFORE both the
     # managed-prefix early-reject AND the last-comment `IN PROGRESS` lock

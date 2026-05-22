@@ -1,15 +1,30 @@
 # Shared helpers for OOS disposition gate and audit oos-silent-drop scan.
 # shellcheck shell=bash
-# Intended to be dotted from oos-disposition-gate.sh (same directory) or
-# audit-scan-run.sh (relative path to this repo's skills/implement/scripts/).
+# Dotted from `scripts/oos-disposition-gate.sh` (via repo `scripts/`) and
+# `.claude/skills/audit-runs/scripts/audit-scan-run.sh` — single contract
+# surface for URL / rejection counting helpers.
+
+# Count GitHub issue URLs on github.com, or on $GH_HOST when set for
+# Enterprise Server (still https:// only; arbitrary hosts are ignored).
+_oos_github_issue_url_ere() {
+  local esc host_ere
+  if [ -n "${GH_HOST:-}" ] && [ "$GH_HOST" != "github.com" ]; then
+    esc=$(printf '%s\n' "$GH_HOST" | sed 's/\./\\./g')
+    host_ere="(${esc}|github\\.com)"
+  else
+    host_ere="github\\.com"
+  fi
+  printf '%s' "https://${host_ere}/[^[:space:]/]+/[^[:space:]/]+/issues/[0-9]+"
+}
 
 count_filed_urls_union_files() {
-  local tmp acc
+  local tmp acc ere
+  ere=$(_oos_github_issue_url_ere)
   tmp=$(mktemp "${TMPDIR:-/tmp}/oos-disposition-urls.XXXXXX")
   : >"$tmp"
   for f in "$@"; do
     if [ -f "$f" ] && [ -s "$f" ]; then
-      grep -EhEo 'https://[^[:space:]]+/issues/[0-9]+' "$f" 2>/dev/null >>"$tmp" || true
+      grep -EhEo "$ere" "$f" 2>/dev/null >>"$tmp" || true
     fi
   done
   if [ ! -s "$tmp" ]; then

@@ -13,9 +13,10 @@ set -euo pipefail
 _audit_scan_run_self_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=.claude/skills/audit-runs/scripts/audit-scan-run-jstr.inc.bash
 . "$_audit_scan_run_self_dir/audit-scan-run-jstr.inc.bash"
+_audit_repo_root="$(cd "${_audit_scan_run_self_dir}/../../../../" && pwd)"
+# shellcheck source=scripts/oos-disposition-shared.inc.bash
+. "$_audit_repo_root/scripts/oos-disposition-shared.inc.bash"
 _OOS_IMPL_SCRIPTS="$(cd "${_audit_scan_run_self_dir}/../../../../skills/implement/scripts" && pwd)"
-# shellcheck source=skills/implement/scripts/oos-disposition-shared.inc.bash
-. "$_OOS_IMPL_SCRIPTS/oos-disposition-shared.inc.bash"
 _OOS_BLK_AWK="$_OOS_IMPL_SCRIPTS/oos-non-security-block-count.awk"
 
 # Set to 1 when mangled-category jq on review-findings-full.jsonl fails (oos-category-mangle scan).

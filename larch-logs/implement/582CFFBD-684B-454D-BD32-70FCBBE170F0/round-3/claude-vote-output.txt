@@ -1,0 +1,19 @@
+FINDING_1: EXONERATE -- mixed-scope is real process friction but intentional across coordinated runs; not issue-worthy
+FINDING_2: YES
+FINDING_3: EXONERATE -- audit (retroactive log artifacts) and gate (live git commits) use different mechanisms by design; semantic divergence is inherent, not a drift bug
+FINDING_4: EXONERATE -- operator note is adjacent to the scan it qualifies; minor doc organization debt not worth a tracking issue
+FINDING_5: EXONERATE -- case-insensitivity of `has_report_prefix` is verifiable from code; comment inaccuracy is minor
+FINDING_6: EXONERATE -- "same shape as" wording doesn't claim identity; docs correctly identify label guard as primary; minor clarity concern
+FINDING_7: YES
+FINDING_8: EXONERATE -- 14g (self-exclusion regex) and 58f (augmentation classification) serve distinct purposes and are internally consistent; cross-link would help but is not issue-worthy
+FINDING_9: NO -- trivially correct observation; no workflow changes are needed and none are missing
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: NO -- bulk run-log flush is expected per project run-log policy; not a defect
+FINDING_13: EXONERATE -- pre-existing check-main-sync.sh heuristics not amplified by this change; legitimate safety class concern but not introduced here
+FINDING_14: EXONERATE -- test 58f explicitly documents legacy titles as intentionally non-noise; the design is stated, not accidental
+FINDING_15: EXONERATE -- oos-silent-drop work has its own plan in `plan-goals-test.md` for run 525C2F1F; plan-fidelity gap between two coordinated runs is not separately actionable
+FINDING_16: EXONERATE -- same reasoning as FINDING_15; check-main-sync predates or is adjacent to the audit-title plan
+FINDING_17: NO -- plan line-number drift (105 vs 106) is trivially minor and not worth a tracking issue
+FINDING_18: EXONERATE -- behavioral change is intentional and documented by test 58f; operator awareness is noted in the test comment
+FINDING_19: NO -- merged commit narrative is normal run-log flush; no issue needed

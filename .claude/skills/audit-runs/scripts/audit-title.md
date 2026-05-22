@@ -5,8 +5,8 @@ Generates the audit report title string from a PR list and timestamp.
 ## Output KV (stdout)
 
 ```
-TITLE=[Run Logs Audit Report <timestamp>] PRs #X-#Y
-TITLE=[Run Logs Audit Report <timestamp>] PRs #X, #Y, #Z
+TITLE=[Run Logs Audit <timestamp> Report] PRs #X-#Y
+TITLE=[Run Logs Audit <timestamp> Report] PRs #X, #Y, #Z
 ```
 
 ## Title rules
