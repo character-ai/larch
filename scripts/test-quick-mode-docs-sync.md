@@ -38,8 +38,11 @@ Public docs (`README.md`, `docs/review-agents.md`, `docs/workflow-lifecycle.md`,
 - `1 Claude Code Reviewer subagent, 1 round` — full stale README phrase.
 - `no external reviewers` — legacy claim contradicting the actual external reviewer panel.
 - `no externals, no voting` — legacy short-form variant.
-- `simple review panel` — legacy `/implement` quick-mode wording (superseded by unified `--panel hard`).
+- `simple review panel` — legacy `/implement` quick-mode wording (superseded by `--panel hard` on the delegated review loop).
 - `/implement --quick` — removed flag string (must not reappear in public docs).
+- `unified hard panel` — retired Step 5 branding (case-sensitive literal; see also `Unified hard panel`).
+- `Unified hard panel` — retired Step 5 branding (sentence-start casing variant).
+- `hard review panel` — retired Step 5 wording for the delegated review posture.
 
 All are matched as fixed strings (`grep -F`) to avoid false positives on unrelated prose.
 
@@ -61,7 +64,7 @@ The check is implemented by `check_xref` (a dedicated function kept separate fro
 
 `skills/implement/SKILL.md` is **exempted from negative checks**. Rationale: SKILL.md is the canonical contract and may legitimately quote historical/comment references to these phrases in unrelated contexts (e.g. NEVER-list examples, changelog-style prose).
 
-**Audit performed during #370 implementation**: `grep -F` against each of the three stale phrases returned no matches in `skills/implement/SKILL.md`. The exemption is currently factual (no stale phrases present) rather than merely defensive. If a future SKILL.md edit introduces one of these phrases in a historical context, the exemption still holds by design — SKILL.md's positive anchors alone assert that the current contract is stated somewhere in the file; the canonical source-of-truth assertion does not require the file to be free of historical references.
+**Audit performed during #370 implementation**: `grep -F` against each stale phrase on the list returned no matches in `skills/implement/SKILL.md`. The exemption is currently factual (no stale phrases present) rather than merely defensive. If a future SKILL.md edit introduces one of these phrases in a historical context, the exemption still holds by design — SKILL.md's positive anchors alone assert that the current contract is stated somewhere in the file; the canonical source-of-truth assertion does not require the file to be free of historical references.
 
 If the canonical contract itself changes (e.g. the round cap changes again, the reviewer topology changes, or the rounds-1-3 topology changes), edit the `POS_MARKERS` array in `test-quick-mode-docs-sync.sh` and this sibling `.md` FIRST, then propagate to the public docs. The positive-anchor check enforces the new contract across all targets once the markers are updated.
 

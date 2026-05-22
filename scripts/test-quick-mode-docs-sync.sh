@@ -33,6 +33,9 @@
 #        - "no externals, no voting"
 #        - "simple review panel"
 #        - "/implement --quick"
+#        - "unified hard panel"
+#        - "Unified hard panel"
+#        - "hard review panel"
 #      SKILL.md is EXEMPT from negative checks. Audit performed during #370
 #      implementation: grep -F against each stale phrase returned no matches in
 #      skills/implement/SKILL.md, so the exemption is currently safe. If a
@@ -93,6 +96,9 @@ readonly STALE_PHRASES=(
   "no externals, no voting"
   "simple review panel"
   "/implement --quick"
+  "unified hard panel"
+  "Unified hard panel"
+  "hard review panel"
 )
 
 # Target files: relative paths from REPO_ROOT.
@@ -284,10 +290,10 @@ run_self_test() {
   # Canonical-correct fixture: contains all positive markers, no stale phrases.
   cat > "$good" <<'EOF'
 This is a fixture describing /implement Step 5.
-Unified hard panel: review-and-fix.sh --panel hard.
+Step 5 delegates to review-and-fix.sh --panel hard.
 The review loop runs up to 5 rounds.
 The loop runs a 3-judge panel on round 1 (Claude opus + Codex + Cursor) and a 2-judge panel on rounds 2+ (Claude + Cursor).
-It uses the hard review panel: 6 Cursor specialists.
+The review loop uses 6 Cursor specialists in the Step 5 posture.
 EOF
 
   # Stale-phrase fixture: contains ALL positive markers PLUS exactly one stale
@@ -298,10 +304,10 @@ EOF
   # designed to catch.
   cat > "$bad" <<'EOF'
 Stale-phrase fixture: contains every positive marker so only the stale phrase can drive failure.
-Unified hard panel: review-and-fix.sh --panel hard.
+Step 5 delegates to review-and-fix.sh --panel hard.
 The review loop runs up to 5 rounds.
 The loop runs a 3-judge panel on round 1 (Claude opus + Codex + Cursor) and a 2-judge panel on rounds 2+ (Claude + Cursor).
-It uses the hard review panel: 6 Cursor specialists.
+The review loop uses 6 Cursor specialists in the Step 5 posture.
 Stale phrase intentionally embedded: simplified code review (1 Claude Code Reviewer subagent, 1 round).
 EOF
 
