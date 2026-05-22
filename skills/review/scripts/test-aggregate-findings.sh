@@ -119,6 +119,22 @@ Aggregator narrative: pseudo-heading blocks synthesis rescue.
 
 EOF
                 ;;
+            zero_findings_nospace_pseudo_heading)
+                cat > "$out" <<'EOF'
+Aggregator narrative: tight ###FINDING_ typo blocks synthesis rescue.
+
+###FINDING_1: not a strict heading (no space after ###)
+
+EOF
+                ;;
+            zero_findings_prose_finding_ids)
+                cat > "$out" <<'EOF'
+Aggregator narrative: empty merge; prose mentions FINDING_ids.
+
+### FINDING_ids are stable across reviewers.
+
+EOF
+                ;;
             zero_findings_padded_attest)
                 cat > "$out" <<'EOF'
 Aggregator narrative: padded empty-merge token line.
@@ -454,7 +470,7 @@ grep -Fq 'REASON=ok' "$TMP/out-zero-na.env" || fail "synth no-attest REASON"
 grep -Fq 'MERGED_COUNT=0' "$TMP/out-zero-na.env" || fail "synth no-attest MERGED_COUNT"
 grep -Eq '^ATTESTATION_SYNTHESIZED=true unique_input_reviewers=3 input_slots=3 input_findings=3$' "$TMP/aggregator-repair.stderr" || fail "missing or malformed synthesis breadcrumb"
 grep -Fq 'LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED' "$TMP/in3-zero-na.md" && fail "attestation must not persist in findings.md (strip)"
-grep -Fq 'LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED' "$TMP/aggregator-output.txt" || fail "synthesized token must appear in committed raw aggregator-output.txt"
+grep -Fq 'LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED' "$TMP/aggregator-output.txt" || fail "synthesized token must appear in post-repair staged aggregator-output.txt after successful merge"
 [[ "$(grep -c '^### FINDING_' "$TMP/in3-zero-na.md" | tr -d '[:space:]')" == "0" ]] || fail "expected zero FINDING blocks after synthesized empty merge"
 EX="$TMP/exec-issues-synth-ok"
 mkdir -p "$EX"
@@ -509,6 +525,42 @@ grep -Fq 'REASON=validation-failed' "$TMP/out-nonconf.env" || fail "nonconformin
 [[ -f "$TMP/aggregator-repair.stderr" ]] || fail "expected aggregator-repair.stderr after nonconforming-heading run"
 grep -Fq 'ATTESTATION_SYNTHESIZED=true' "$TMP/aggregator-repair.stderr" && fail "unexpected synthesis breadcrumb when pseudo-heading blocks rescue"
 grep -Fq 'AGGREGATOR_SYNTHESIS_SUPPRESSED=nonconforming_finding_heading_markers' "$TMP/aggregator-repair.stderr" || fail "expected synthesis-suppressed breadcrumb on aggregator-repair.stderr"
+
+echo "=== zero_findings_nospace_pseudo_heading: validation-failed, synthesis suppressed ==="
+cp "$TMP/in3.md" "$TMP/in3-nospace-pseudo.md"
+write_stub_dispatch
+rm -f "$TMP/aggregator-repair.stderr"
+AGGREGATE_DISPATCH_SH="$TMP/stub-dispatch.sh" \
+AGGREGATE_STUB_MODE=ok \
+AGGREGATE_STUB_MERGE_KIND=zero_findings_nospace_pseudo_heading \
+"$AGG" \
+    --findings-file "$TMP/in3-nospace-pseudo.md" \
+    --review-tmpdir "$TMP" \
+    --codex-present true \
+    --cursor-present true \
+    --mode diff >"$TMP/out-nospace-pseudo.env"
+grep -Fq 'AGGREGATED=false' "$TMP/out-nospace-pseudo.env" || fail "nospace-pseudo AGGREGATED"
+grep -Fq 'REASON=validation-failed' "$TMP/out-nospace-pseudo.env" || fail "nospace-pseudo REASON"
+grep -Fq 'AGGREGATOR_SYNTHESIS_SUPPRESSED=nonconforming_finding_heading_markers' "$TMP/aggregator-repair.stderr" || fail "expected synthesis-suppressed for ###FINDING_ typo"
+grep -Fq 'ATTESTATION_SYNTHESIZED=true' "$TMP/aggregator-repair.stderr" && fail "unexpected synthesis when ###FINDING_ pseudo-heading blocks rescue"
+
+echo "=== zero_findings_prose_finding_ids: FINDING_ids prose does not suppress synthesis ==="
+cp "$TMP/in3.md" "$TMP/in3-finding-ids-prose.md"
+write_stub_dispatch
+rm -f "$TMP/aggregator-repair.stderr"
+AGGREGATE_DISPATCH_SH="$TMP/stub-dispatch.sh" \
+AGGREGATE_STUB_MODE=ok \
+AGGREGATE_STUB_MERGE_KIND=zero_findings_prose_finding_ids \
+"$AGG" \
+    --findings-file "$TMP/in3-finding-ids-prose.md" \
+    --review-tmpdir "$TMP" \
+    --codex-present true \
+    --cursor-present true \
+    --mode diff >"$TMP/out-finding-ids-prose.env"
+grep -Fq 'AGGREGATED=true' "$TMP/out-finding-ids-prose.env" || fail "finding-ids-prose AGGREGATED"
+grep -Fq 'REASON=ok' "$TMP/out-finding-ids-prose.env" || fail "finding-ids-prose REASON"
+grep -Fq 'AGGREGATOR_SYNTHESIS_SUPPRESSED=' "$TMP/aggregator-repair.stderr" && fail "prose FINDING_ids must not trigger synthesis-suppressed breadcrumb"
+grep -Eq '^ATTESTATION_SYNTHESIZED=true unique_input_reviewers=3 input_slots=3 input_findings=3$' "$TMP/aggregator-repair.stderr" || fail "expected synthesis breadcrumb for prose FINDING_ids empty merge"
 
 echo "=== empty_merge_existing_token_passthrough: model token present, no synthesis stderr ==="
 RR="$TMP/empty-merge-passthrough"

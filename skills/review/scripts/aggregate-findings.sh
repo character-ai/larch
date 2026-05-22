@@ -319,6 +319,13 @@ def line_opens_valid_finding_block(line):
     return bool(_STRICT_FINDING_HEADING.match(ls))
 
 
+# Drifted pseudo-heading: ### optional spaces FINDING_<digit>… but not the strict
+# "### FINDING_<digits>:" block opener (e.g. ###FINDING_1: typo, or ### FINDING_1 x).
+# Require a digit after FINDING_ so prose like "### FINDING_ids …" does not suppress
+# empty-merge synthesis (issue: FINDING_ids line with zero real blocks).
+_PSEUDO_FINDING_HEADING = re.compile(r"^###\s*FINDING_[0-9]")
+
+
 def has_nonconforming_finding_heading_markers(text):
     """
     True when a line looks like a FINDING heading but is not ### FINDING_<digits>:
@@ -329,7 +336,7 @@ def has_nonconforming_finding_heading_markers(text):
         ls = line.lstrip("\t ")
         if not ls.startswith("###"):
             continue
-        if re.match(r"^###\s+FINDING_", ls) and not line_opens_valid_finding_block(line):
+        if _PSEUDO_FINDING_HEADING.match(ls) and not line_opens_valid_finding_block(line):
             return True
     return False
 
@@ -665,8 +672,8 @@ if __name__ == "__main__":
     raise SystemExit(main())
 PY
 
-# Deterministic recovery: synthesize empty-merge attestation before validation when
-# the vendor output is narrative-only but the ballot had structured findings.
+# Deterministic recovery: synthesize empty-merge attestation into a temp merge
+# candidate when the vendor output is narrative-only but the ballot had structured findings.
 rm -f "$REVIEW_TMPDIR/aggregator-repair.stderr"
 repair_err_tmp="$(mktemp "$REVIEW_TMPDIR/aggregate-repair-err.XXXXXX")"
 cand_repaired_tmp="$(mktemp "$REVIEW_TMPDIR/aggregate-repair-out.XXXXXX")"
@@ -688,9 +695,11 @@ if [[ -s "$repair_err_tmp" ]]; then
 else
     rm -f "$repair_err_tmp" "$REVIEW_TMPDIR/aggregator-repair.stderr"
 fi
-mv -f "$cand_repaired_tmp" "$cand"
 
-if ! python3 "$validate_py" "$FINDINGS_FILE" "$cand" 2>"$REVIEW_TMPDIR/aggregator-validate.stderr"; then
+# Validate and strip against the repair-stage temp only; keep dispatch bytes in
+# "$cand" until both validation and strip succeed (then replace atomically).
+if ! python3 "$validate_py" "$FINDINGS_FILE" "$cand_repaired_tmp" 2>"$REVIEW_TMPDIR/aggregator-validate.stderr"; then
+    rm -f "$cand_repaired_tmp"
     REASON="validation-failed"
     FAILURE_LOG="$REVIEW_TMPDIR/aggregator-validate.stderr"
     append_warning "- **findings aggregator**: merged output failed validation; leaving findings.md unchanged. $(failure_see_phrase "$FAILURE_LOG")"
@@ -704,7 +713,7 @@ merged_tmp="$(mktemp "$REVIEW_TMPDIR/findings.md.merged.XXXXXX")"
 trap 'rm -f "${merged_tmp:-}"' EXIT
 # Strip empty-merge attestation lines using the same trimmed-line predicate as
 # aggregate-validate.py (padding or stray whitespace must not survive into findings.md).
-if ! python3 - "$cand" <<'PY' >"$merged_tmp" 2>"$REVIEW_TMPDIR/aggregator-strip.stderr"
+if ! python3 - "$cand_repaired_tmp" <<'PY' >"$merged_tmp" 2>"$REVIEW_TMPDIR/aggregator-strip.stderr"
 import sys
 
 EMPTY_MERGE_ATTESTATION = "LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED"
@@ -716,16 +725,18 @@ with open(path, encoding="utf-8") as f:
         sys.stdout.write(line)
 PY
 then
+    rm -f "$cand_repaired_tmp"
     REASON="validation-failed"
     FAILURE_LOG="$REVIEW_TMPDIR/aggregator-strip.stderr"
     append_warning "- **findings aggregator**: empty-merge attestation strip failed; leaving findings.md unchanged. $(failure_see_phrase "$FAILURE_LOG")"
     emit_result
     exit 0
 fi
-if [[ "$(count_finding_blocks "$cand")" -eq 0 ]]; then
+if [[ "$(count_finding_blocks "$cand_repaired_tmp")" -eq 0 ]]; then
     [[ -s "$merged_tmp" ]] || printf '\n' >"$merged_tmp"
 fi
 [[ -s "$merged_tmp" ]] || {
+    rm -f "$cand_repaired_tmp"
     REASON="validation-failed"
     FAILURE_LOG="$REVIEW_TMPDIR/aggregator-empty-merge.stderr"
     printf '%s\n' "staged merge output empty after successful strip (zero FINDING blocks in vendor output; expected narrative or whitespace)" >"$FAILURE_LOG"
@@ -734,6 +745,7 @@ fi
     exit 0
 }
 mv -f "$merged_tmp" "$FINDINGS_FILE"
+mv -f "$cand_repaired_tmp" "$cand"
 trap - EXIT
 MERGED_COUNT="$(count_finding_blocks "$FINDINGS_FILE")"
 AGGREGATED=true

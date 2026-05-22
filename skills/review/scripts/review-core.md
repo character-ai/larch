@@ -60,7 +60,7 @@ Round stages:
 Artifact paths under `$REVIEW_TMPDIR`:
 
 - `findings.md` (optionally rewritten by `aggregate-findings.sh` when aggregation succeeds)
-- `aggregator-output.txt`, `review-core-aggregate.env` — staged aggregator slot output and stdout capture when the merge pass runs (`aggregator-output.txt` may be rewritten after dispatch for deterministic empty-merge attestation recovery; see `skills/review/scripts/aggregate-findings.md` and `SECURITY.md` “Pre-vote findings aggregation”)
+- `aggregator-output.txt`, `review-core-aggregate.env` — aggregator slot output path (dispatch capture under `aggregator-output.txt` until a successful merge; after empty-merge attestation recovery it holds the validated post-repair staged bytes, which may differ from the model’s first write; see `skills/review/scripts/aggregate-findings.md` and `SECURITY.md` “Pre-vote findings aggregation”)
 - `accepted-findings.md`
 - `rejected-findings.md`
 - `oos-accepted-review.md`
