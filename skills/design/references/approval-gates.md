@@ -16,16 +16,28 @@
 
 **When**: after Step 1d Round 1 settles (decisions recorded to `$DESIGN_TMPDIR/discussion-round1.md`, or the short-circuit breadcrumb printed). Also re-entered from Gate B option (c) and Gate C option (b).
 
-**Behavior**: when the orchestrator believes the open scope/requirements questions are discussed, prompt the user via `AskUserQuestion` with exactly two options:
+**Behavior**: when the orchestrator believes the open scope/requirements questions are discussed, prompt the user via `AskUserQuestion`. The prompt has **two shapes** depending on entry path:
+
+**Shape 1 — first-time entry (from Step 1d)**: exactly two options.
 
 - **Ready for review** — exit Gate A; proceed to Step 2a (collaborative sketches → plan → Step 3 review).
 - **Discuss more** — remain in Gate A; conduct another discussion sub-round, then re-prompt.
 
-Question text: `"All open design questions appear discussed. Ready to launch the design review, or would you like to discuss more first?"` Header: `"Design discussion"`.
+The **Show latest design proposal** option is **absent on first-time Gate A** because `$DESIGN_TMPDIR/plan.txt` does not yet exist (Step 2b has not run).
+
+**Shape 2 — re-entry from Gate B(c) or Gate C(b) (post-plan)**: exactly three options.
+
+- **Show latest design proposal** — re-display the current `$DESIGN_TMPDIR/plan.txt` under a `## Latest Design Plan` header (verbatim, no diff vs. prior version) and re-fire the same 3-option Gate A `AskUserQuestion`. This option never advances state; it loops back to the prompt.
+- **Ready for review** — exit Gate A; proceed directly to Step 3 with the current `$DESIGN_TMPDIR/plan.txt` (Step 2a sketches and Step 2a.5 dialectic are NOT re-run on re-entry per the existing loop-exit semantics below).
+- **Discuss more** — remain in Gate A; conduct another discussion sub-round, then re-prompt.
+
+The trigger for Shape 2 is exactly "Gate A entered from Gate B(c) or Gate C(b)" — the same trigger that already routes the discussion sub-round body to `discussion-round2.md`.
+
+Question text (both shapes): `"All open design questions appear discussed. Ready to launch the design review, or would you like to discuss more first?"` Header: `"Design discussion"`.
 
 ### Discussion sub-round body
 
-When the user picks **Discuss more**, the orchestrator either (a) asks the user what additional aspect to discuss via a free-form follow-up, or (b) walks any remaining branch from the Step 1d decision tree that was deferred. Then re-prompt with the same two-option `AskUserQuestion`. Append resolved decisions to `$DESIGN_TMPDIR/discussion-round1.md` (or `discussion-round2.md` when re-entered post-review — see "Re-entry from Gate B/C" below) using the existing Q&A schema in `discussion-rounds.md`.
+When the user picks **Discuss more**, the orchestrator either (a) asks the user what additional aspect to discuss via a free-form follow-up, or (b) walks any remaining branch from the Step 1d decision tree that was deferred. Then re-prompt with the **same Gate A shape as the prior prompt**: Shape 1 uses the same two-option `AskUserQuestion` (Ready for review / Discuss more); Shape 2 uses the same three-option `AskUserQuestion` (Show latest design proposal / Ready for review / Discuss more). Append resolved decisions to `$DESIGN_TMPDIR/discussion-round1.md` (or `discussion-round2.md` when re-entered post-review — see "Re-entry from Gate B/C" below) using the existing Q&A schema in `discussion-rounds.md`.
 
 **Per-tier behavior** (the prompt is always fired at least once before sketches/review; further iterations follow the user's **Discuss more** choice):
 - `--trivial`: after Step 1d's short-circuit (`⏩ 1d: discussion r1 — no scope decisions require discussion`) prints, the user typically picks **Ready for review** on the first prompt. The loop still accommodates **Discuss more** if the user wants to add context.
@@ -35,6 +47,8 @@ When the user picks **Discuss more**, the orchestrator either (a) asks the user 
 ### Re-entry from Gate B(c) or Gate C(b)
 
 When Gate A is re-entered from Gate B option (c) ("switch to discussion mode") or Gate C option (b) ("discuss further"), the orchestrator is now post-plan. Write any new resolved decisions to `$DESIGN_TMPDIR/discussion-round2.md` rather than `discussion-round1.md` (Round 1 is closed once Step 2a begins). The plan-modification authority remains with Gate B's user choices — Gate A re-entries do NOT silently revise `plan.txt`. If the user agrees during discussion that a specific Gate B finding should now be applied, record the agreement in `discussion-round2.md` and apply it explicitly during the subsequent Gate B(b) iteration or Gate B(a) batch.
+
+**Show latest design proposal branch (re-entry only)**: when the user picks Show latest design proposal on Shape 2, the orchestrator reads `$DESIGN_TMPDIR/plan.txt` and prints its content under a `## Latest Design Plan` header, then immediately re-fires the same 3-option Gate A `AskUserQuestion` until the user picks Ready for review or Discuss more. The Show-plan branch performs no state mutation and writes nothing to `discussion-round2.md`. If `$DESIGN_TMPDIR/plan.txt` is missing or empty on re-entry (should not happen — re-entry is post-plan by definition), print `**⚠ plan.txt missing or empty; nothing to show.**` and re-prompt anyway.
 
 ### Loop exit
 

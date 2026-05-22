@@ -773,6 +773,10 @@ exclude = [
   "scripts/test-alias-structure.sh",
   "scripts/test-design-structure.sh",
   "skills/design/scripts/test-design-driver.sh",
+  # skills/design/scripts/test-write-design-current-env.sh — offline harness
+  # for scripts/write-design-current-env.sh (Makefile test-write-design-
+  # current-env target). Same Makefile-only pattern as other design test-*.
+  "skills/design/scripts/test-write-design-current-env.sh",
   "skills/design/scripts/test-emit-plan.sh",
   "skills/design/scripts/test-tally-plan-review.sh",
   "skills/design/scripts/test-finalize-plan.sh",
@@ -1092,6 +1096,7 @@ exclude = [
   # refactor. The primary scripts are cited from /design runtime prose; the
   # harnesses are referenced only from Makefile and their sibling contracts.
   "skills/design/scripts/test-design-driver.md",
+  "skills/design/scripts/test-write-design-current-env.md",
   "skills/design/scripts/test-emit-plan.md",
   "skills/design/scripts/test-tally-plan-review.md",
   "skills/design/scripts/test-finalize-plan.md",
