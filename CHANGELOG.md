@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [36.0.4] - 2026-05-21
+
+### Changed
+
+- Stop false-positive audit failures on bailed /implement runs that never reached Step 9a.1 by persisting explicit steps_ran skips in the run log manifest when write-final-report runs.
+- Align audit-scan and verify-run-log-completeness with a backward-compatible bail-signal fallback when legacy manifests still have an empty steps_ran object.
+- Add regression coverage in both harnesses for bailed versus completed final-summary headings and for explicit step9a1=false.
+
 ## [36.0.3] - 2026-05-21
 
 ### Changed

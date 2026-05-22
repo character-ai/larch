@@ -6,6 +6,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd -P)"
+# shellcheck source=scripts/run-log-terminal-outcomes.inc.bash
+. "$SCRIPT_DIR/run-log-terminal-outcomes.inc.bash"
 if [[ -n "${LARCH_VERIFY_MANIFEST:-}" ]]; then
     if [[ "$LARCH_VERIFY_MANIFEST" = /* ]]; then
         MANIFEST="$LARCH_VERIFY_MANIFEST"
@@ -79,6 +81,10 @@ PY
 
 # True when manifest records an explicit Step 9a.1 skip (matches audit-scan-run
 # required-file-presence gate: only explicit false suppresses step9a1 rows).
+# Empty steps_ran + final-summary bail-signal is handled in condition_reached
+# (manifest_steps_ran_empty / final_summary_heading_bail_signal), not here.
+# When steps_ran is missing/null, jq semantics in audit use .steps_ran // {} (no
+# explicit step9a1 key), so this helper still returns false.
 manifest_step9a1_explicitly_skipped() {
     python3 - "$RUN_DIR/manifest.json" <<'PY'
 import json
@@ -93,6 +99,71 @@ try:
 except Exception:
     pass
 sys.exit(1)
+PY
+}
+
+# True when steps_ran is absent, null, or an empty object (matches jq '.steps_ran // {}'
+# + empty-object detection in audit-scan-run bail fallback).
+manifest_steps_ran_empty() {
+    python3 - "$RUN_DIR/manifest.json" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+try:
+    with open(path, "r", encoding="utf-8") as fh:
+        data = json.load(fh)
+    sr = data.get("steps_ran")
+    if sr is None:
+        sr = {}
+    elif not isinstance(sr, dict):
+        sys.exit(1)
+    sys.exit(0 if len(sr) == 0 else 1)
+except Exception:
+    sys.exit(1)
+PY
+}
+
+# First non-empty line of final-summary.md ends with a terminal non-merge outcome
+# string persisted by write-final-report (same set as manifest honesty updates).
+final_summary_heading_bail_signal() {
+    python3 - "$RUN_DIR/final-summary.md" "$RUN_LOG_TERMINAL_OUTCOME_SUFFIX_EGREP" <<'PY'
+import re
+import sys
+
+path = sys.argv[1]
+_heading_suffix = re.compile(sys.argv[2])
+try:
+    with open(path, "r", encoding="utf-8", errors="replace") as fh:
+        for line in fh:
+            if line.strip():
+                if _heading_suffix.search(line.rstrip("\r\n")):
+                    sys.exit(0)
+                break
+except Exception:
+    pass
+sys.exit(1)
+PY
+}
+
+# True when steps_ran is a non-empty object without a step9a1 key (audit-scan-run parity).
+manifest_steps_ran_nonempty_without_step9a1() {
+    python3 - "$RUN_DIR/manifest.json" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+try:
+    with open(path, "r", encoding="utf-8") as fh:
+        data = json.load(fh)
+    sr = data.get("steps_ran")
+    if not isinstance(sr, dict) or len(sr) == 0:
+        sys.exit(1)
+    if "step9a1" in sr:
+        sys.exit(1)
+    sys.exit(0)
+except Exception:
+    sys.exit(1)
 PY
 }
 
@@ -112,6 +183,13 @@ condition_reached() {
                 condition_reached step7a
             ;;
         step7a)
+            if manifest_steps_ran_empty && final_summary_heading_bail_signal &&
+                ! {
+                    has_file token-report.json || has_file timing-report.json ||
+                        has_file execution-issues.ndjson || has_file session-transcript.jsonl
+                }; then
+                return 1
+            fi
             has_file token-report.json ||
                 has_file timing-report.json ||
                 has_file execution-issues.ndjson ||
@@ -119,6 +197,10 @@ condition_reached() {
                 condition_reached step8
             ;;
         step8)
+            if manifest_steps_ran_empty && final_summary_heading_bail_signal &&
+                ! has_file version-bump-reasoning.md; then
+                return 1
+            fi
             has_file version-bump-reasoning.md ||
                 has_file final-summary.md ||
                 [ -n "$MANIFEST_PR_NUMBER" ] ||
@@ -126,6 +208,14 @@ condition_reached() {
             ;;
         step9a1)
             if manifest_step9a1_explicitly_skipped; then
+                return 1
+            fi
+            if manifest_steps_ran_empty && final_summary_heading_bail_signal &&
+                ! { has_file run-statistics.md || has_file oos-issues.ndjson; }; then
+                return 1
+            fi
+            if final_summary_heading_bail_signal && ! has_file run-statistics.md &&
+                manifest_steps_ran_nonempty_without_step9a1; then
                 return 1
             fi
             has_file run-statistics.md ||

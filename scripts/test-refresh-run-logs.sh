@@ -13,9 +13,17 @@ FAIL=0
 pass() { printf 'PASS: %s\n' "$1"; PASS=$((PASS + 1)); }
 fail() { printf 'FAIL: %s\n' "$1"; FAIL=$((FAIL + 1)); }
 
+# GitHub-hosted runners often have no global user.*; scope identity to the temp
+# repo only (never --global) so init + refresh-run-logs commits succeed.
+git_test_repo_identity() {
+    git -C "$1" config user.email "larch-harness@users.noreply.github.com"
+    git -C "$1" config user.name "Larch Harness"
+}
+
 setup_plugin_stub() {
     local root=$1
     mkdir -p "$root/scripts"
+    cp "$SCRIPT_DIR/run-log-terminal-outcomes.inc.bash" "$root/scripts/run-log-terminal-outcomes.inc.bash"
     cp "$SCRIPT_DIR/../skills/implement/scripts/flush-execution-issues.sh" "$root/scripts/flush-execution-issues.sh"
     cp "$SCRIPT_DIR/../skills/implement/scripts/write-final-report.sh" "$root/scripts/write-final-report.sh"
     cp "$SCRIPT_DIR/render-run-summary.sh" "$root/scripts/render-run-summary.sh"
@@ -107,6 +115,7 @@ run_flush_helper() {
 
     # Set up a minimal git repo.
     git -C "$tmp" init -q
+    git_test_repo_identity "$tmp"
     git -C "$tmp" commit -q --allow-empty -m "init"
 
     # Build a state file that looks pre-merge (no MERGE_RESULT key).
@@ -221,6 +230,7 @@ ISSUES
     tmp=$(mktemp -d)
 
     git -C "$tmp" init -q
+    git_test_repo_identity "$tmp"
     git -C "$tmp" commit -q --allow-empty -m "init"
 
     impl_tmpdir="$tmp/impl"

@@ -1,0 +1,32 @@
+Verifying cited code in the repo with read-only file reads.
+
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: EXONERATE -- duplicate plan-or-code gap already captured in FINDING_20
+FINDING_5: EXONERATE -- common jq|head scan extraction; not worth a tracking issue
+FINDING_6: EXONERATE -- same pr_number bail gap and tests as FINDING_20
+FINDING_7: YES
+FINDING_8: EXONERATE -- same dead step8 disjunct as FINDING_1
+FINDING_9: EXONERATE -- same missing pr_number disjunct/tests concern as FINDING_20
+FINDING_10: EXONERATE -- worthwhile hardening but optional versus shipping risk
+FINDING_11: EXONERATE -- same dead step8 branch as FINDING_1
+FINDING_12: YES
+FINDING_13: EXONERATE -- legacy log tamper scenario outside stated integrity model
+FINDING_14: EXONERATE -- same dead step8 guard as FINDING_1
+FINDING_15: EXONERATE -- same dead step8 mirror as FINDING_1 for verify
+FINDING_16: EXONERATE -- duplicate missing pr_number bail probe vs FINDING_20
+FINDING_17: EXONERATE -- COMMENT_ONLY path is intentional; at most a small doc note
+FINDING_18: EXONERATE -- vague malformed-manifest edge without concrete misfire
+FINDING_19: EXONERATE -- observational recovery note, not issue material
+FINDING_20: YES
+FINDING_21: YES
+FINDING_22: EXONERATE -- duplicate empty-diff launcher note vs FINDING_12
+FINDING_23: NO -- concurrence on correctness is not a defect to action
+FINDING_24: EXONERATE -- duplicate pr_number plan drift vs FINDING_20
+FINDING_25: YES
+FINDING_26: EXONERATE -- duplicate empty-diff note vs FINDING_12
+FINDING_27: NO -- documents existing harness behavior, not a problem
+FINDING_28: NO -- generic shell-test teardown caveat, not introduced here
+FINDING_29: YES
+FINDING_30: EXONERATE -- duplicate pr_number/plan-or-docs gap vs FINDING_20

@@ -16,6 +16,8 @@ _audit_scan_run_self_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 _audit_repo_root="$(cd "${_audit_scan_run_self_dir}/../../../../" && pwd)"
 # shellcheck source=scripts/oos-disposition-shared.inc.bash
 . "$_audit_repo_root/scripts/oos-disposition-shared.inc.bash"
+# shellcheck source=scripts/run-log-terminal-outcomes.inc.bash
+. "$_audit_repo_root/scripts/run-log-terminal-outcomes.inc.bash"
 _OOS_IMPL_SCRIPTS="$(cd "${_audit_scan_run_self_dir}/../../../../skills/implement/scripts" && pwd)"
 _OOS_BLK_AWK="$_OOS_IMPL_SCRIPTS/oos-non-security-block-count.awk"
 
@@ -126,8 +128,12 @@ scan_required_file_presence() {
     fi
     local missing="" mf="$RUN_DIR/manifest.json"
     local steps_ran_obj="{}"
+    local steps_ran_parse_ok=true
     if [ -f "$mf" ]; then
-        steps_ran_obj=$(jq -c '.steps_ran // {}' "$mf" 2>/dev/null || echo "{}")
+        if ! steps_ran_obj=$(jq -c '.steps_ran // {}' "$mf" 2>/dev/null); then
+            steps_ran_parse_ok=false
+            steps_ran_obj="{}"
+        fi
     fi
 
     _rf_has_file() { [ -f "$RUN_DIR/$1" ]; }
@@ -135,7 +141,37 @@ scan_required_file_presence() {
     # _rf_steps_ran_false: return 0 (true) when manifest explicitly records
     # that the step did NOT run; otherwise return 1 so heuristics can decide.
     _rf_steps_ran_false() {
+        [ "$steps_ran_parse_ok" = true ] || return 1
         jq -ne --arg c "$1" --argjson sr "$steps_ran_obj" '($sr[$c] == false)' >/dev/null 2>&1
+    }
+
+    # True when manifest has no steps_ran entries (empty object or absent steps_ran).
+    _rf_steps_ran_empty() {
+        [ "$steps_ran_parse_ok" = true ] || return 1
+        jq -ne --argjson sr "$steps_ran_obj" '($sr | type == "object") and (($sr | keys | length) == 0)' >/dev/null 2>&1
+    }
+
+    # First non-empty line of final-summary.md ends with a terminal non-merge outcome
+    # persisted by write-final-report (verify-run-log-completeness mirrors this set).
+    _rf_final_summary_bail_signal() {
+        local fs="$RUN_DIR/final-summary.md" line
+        [ -f "$fs" ] || return 1
+        line=$(awk 'NF { print; exit }' "$fs" 2>/dev/null || true)
+        line="${line//$'\r'/}"
+        [ -n "$line" ] || return 1
+        printf '%s\n' "$line" | grep -Eq "$RUN_LOG_TERMINAL_OUTCOME_SUFFIX_EGREP"
+    }
+
+    _rf_bail_empty_steps_ran_skip() {
+        _rf_steps_ran_empty && _rf_final_summary_bail_signal
+    }
+
+    # Non-empty steps_ran object with no step9a1 key (verify-run-log-completeness parity).
+    _rf_steps_ran_nonempty_without_step9a1() {
+        [ "$steps_ran_parse_ok" = true ] || return 1
+        jq -ne --argjson sr "$steps_ran_obj" \
+            '($sr | type == "object") and (($sr | keys | length) > 0) and ($sr | has("step9a1") | not)' \
+            >/dev/null 2>&1
     }
 
     _rf_condition_met() {
@@ -150,14 +186,32 @@ scan_required_file_presence() {
                 ;;
             step7a)
                 _rf_steps_ran_false step7a && return 1
+                if _rf_bail_empty_steps_ran_skip &&
+                    ! {
+                        _rf_has_file token-report.json || _rf_has_file timing-report.json ||
+                            _rf_has_file execution-issues.ndjson || _rf_has_file session-transcript.jsonl
+                    }; then
+                    return 1
+                fi
                 _rf_has_file token-report.json || _rf_has_file timing-report.json || _rf_has_file execution-issues.ndjson || _rf_has_file session-transcript.jsonl || _rf_condition_met step8
                 ;;
             step8)
                 _rf_steps_ran_false step8 && return 1
+                if _rf_bail_empty_steps_ran_skip && ! _rf_has_file version-bump-reasoning.md; then
+                    return 1
+                fi
                 _rf_has_file version-bump-reasoning.md || _rf_has_file final-summary.md || _RF_STEP9A1_MODE=chain _rf_condition_met step9a1
                 ;;
             step9a1)
                 _rf_steps_ran_false step9a1 && return 1
+                if _rf_bail_empty_steps_ran_skip &&
+                    ! { _rf_has_file run-statistics.md || _rf_has_file oos-issues.ndjson; }; then
+                    return 1
+                fi
+                if _rf_final_summary_bail_signal && ! _rf_has_file run-statistics.md &&
+                    _rf_steps_ran_nonempty_without_step9a1; then
+                    return 1
+                fi
                 # Direct required-file rows: default to "step ran" unless manifest says false.
                 # When invoked from step8's chain (_RF_STEP9A1_MODE=chain), keep the file
                 # heuristics so step8 does not widen solely from an empty run directory.

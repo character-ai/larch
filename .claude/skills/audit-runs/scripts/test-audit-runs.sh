@@ -1748,6 +1748,174 @@ else
     echo "  SKIP: audit-scan-run.sh not executable (not found at $SCAN_SCRIPT)"
 fi
 
+# Test 52: audit-scan-run — empty steps_ran + bailed final-summary heading → step9a1 files not required
+echo "Test 52: audit-scan-run bail-signal + empty steps_ran skips step9a1 requirements"
+SCAN_SCRIPT="${SCAN_SCRIPT:-$SCRIPT_DIR/audit-scan-run.sh}"
+if [ -x "$SCAN_SCRIPT" ]; then
+    P52=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-steps52-XXXXXX")
+    printf '%s\n' 'name	type	pattern	expected_outcome	severity' > "$P52/scans.tsv"
+    printf '%s\n' 'required-file-presence	file-glob	x	x	low' >> "$P52/scans.tsv"
+    printf '%s\n' 'relative_path	condition	batch_slug	extension' > "$P52/req.tsv"
+    printf '%s\n' 'oos-issues.ndjson	step9a1	x	x' >> "$P52/req.tsv"
+    printf '%s\n' 'run-statistics.md	step9a1	x	x' >> "$P52/req.tsv"
+    mkdir -p "$P52/run"
+    printf '%s\n' '{"schema_version":2,"steps_ran":{}}' > "$P52/run/manifest.json"
+    printf '%s\n' '## /implement run test-run — bailed' > "$P52/run/final-summary.md"
+    p52_out=$(bash "$SCAN_SCRIPT" --run-dir "$P52/run" --pr 2003 \
+        --scans-tsv "$P52/scans.tsv" \
+        --required-files-tsv "$P52/req.tsv" \
+        --current-version "1.0.0")
+    res52=$(printf '%s' "$p52_out" | jq -r 'select(.scan=="required-file-presence") | .result // empty' | head -1)
+    assert_equal "$res52" "pass" "[52] empty steps_ran + bailed summary → pass (step9a1 not inferred)"
+    rm -rf "$P52"
+else
+    echo "  SKIP: audit-scan-run.sh not executable (not found at $SCAN_SCRIPT)"
+fi
+
+# Test 52b: audit-scan-run — bailed-needs-user-input heading (suffix coverage)
+echo "Test 52b: audit-scan-run bail-needs-user-input + empty steps_ran skips step9a1"
+SCAN_SCRIPT="${SCAN_SCRIPT:-$SCRIPT_DIR/audit-scan-run.sh}"
+if [ -x "$SCAN_SCRIPT" ]; then
+    P52b=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-steps52b-XXXXXX")
+    printf '%s\n' 'name	type	pattern	expected_outcome	severity' > "$P52b/scans.tsv"
+    printf '%s\n' 'required-file-presence	file-glob	x	x	low' >> "$P52b/scans.tsv"
+    printf '%s\n' 'relative_path	condition	batch_slug	extension' > "$P52b/req.tsv"
+    printf '%s\n' 'oos-issues.ndjson	step9a1	x	x' >> "$P52b/req.tsv"
+    printf '%s\n' 'run-statistics.md	step9a1	x	x' >> "$P52b/req.tsv"
+    mkdir -p "$P52b/run"
+    printf '%s\n' '{"schema_version":2,"steps_ran":{}}' > "$P52b/run/manifest.json"
+    printf '%s\n' '## /implement run test-run — bailed-needs-user-input' > "$P52b/run/final-summary.md"
+    p52b_out=$(bash "$SCAN_SCRIPT" --run-dir "$P52b/run" --pr 2003 \
+        --scans-tsv "$P52b/scans.tsv" \
+        --required-files-tsv "$P52b/req.tsv" \
+        --current-version "1.0.0")
+    res52b=$(printf '%s' "$p52b_out" | jq -r 'select(.scan=="required-file-presence") | .result // empty' | head -1)
+    assert_equal "$res52b" "pass" "[52b] empty steps_ran + bailed-needs-user-input summary → pass"
+    rm -rf "$P52b"
+else
+    echo "  SKIP: audit-scan-run.sh not executable (not found at $SCAN_SCRIPT)"
+fi
+
+# Test 52c: audit-scan-run — manifest omits steps_ran key + bailed heading (jq // {} parity)
+echo "Test 52c: audit-scan-run omit steps_ran key + bailed skips step9a1"
+SCAN_SCRIPT="${SCAN_SCRIPT:-$SCRIPT_DIR/audit-scan-run.sh}"
+if [ -x "$SCAN_SCRIPT" ]; then
+    P52c=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-steps52c-XXXXXX")
+    printf '%s\n' 'name	type	pattern	expected_outcome	severity' > "$P52c/scans.tsv"
+    printf '%s\n' 'required-file-presence	file-glob	x	x	low' >> "$P52c/scans.tsv"
+    printf '%s\n' 'relative_path	condition	batch_slug	extension' > "$P52c/req.tsv"
+    printf '%s\n' 'oos-issues.ndjson	step9a1	x	x' >> "$P52c/req.tsv"
+    printf '%s\n' 'run-statistics.md	step9a1	x	x' >> "$P52c/req.tsv"
+    mkdir -p "$P52c/run"
+    printf '%s\n' '{"schema_version":2}' > "$P52c/run/manifest.json"
+    printf '%s\n' '## /implement run test-run — bailed' > "$P52c/run/final-summary.md"
+    p52c_out=$(bash "$SCAN_SCRIPT" --run-dir "$P52c/run" --pr 2003 \
+        --scans-tsv "$P52c/scans.tsv" \
+        --required-files-tsv "$P52c/req.tsv" \
+        --current-version "1.0.0")
+    res52c=$(printf '%s' "$p52c_out" | jq -r 'select(.scan=="required-file-presence") | .result // empty' | head -1)
+    assert_equal "$res52c" "pass" "[52c] omit steps_ran key + bailed summary → pass"
+    rm -rf "$P52c"
+else
+    echo "  SKIP: audit-scan-run.sh not executable (not found at $SCAN_SCRIPT)"
+fi
+
+# Test 52d: audit-scan-run — nonempty steps_ran without step9a1 + bail + missing run-statistics → pass
+echo "Test 52d: audit-scan-run nonempty steps_ran without step9a1 + bail skips step9a1"
+SCAN_SCRIPT="${SCAN_SCRIPT:-$SCRIPT_DIR/audit-scan-run.sh}"
+if [ -x "$SCAN_SCRIPT" ]; then
+    P52d=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-steps52d-XXXXXX")
+    printf '%s\n' 'name	type	pattern	expected_outcome	severity' > "$P52d/scans.tsv"
+    printf '%s\n' 'required-file-presence	file-glob	x	x	low' >> "$P52d/scans.tsv"
+    printf '%s\n' 'relative_path	condition	batch_slug	extension' > "$P52d/req.tsv"
+    printf '%s\n' 'oos-issues.ndjson	step9a1	x	x' >> "$P52d/req.tsv"
+    printf '%s\n' 'run-statistics.md	step9a1	x	x' >> "$P52d/req.tsv"
+    mkdir -p "$P52d/run"
+    printf '%s\n' '{"schema_version":2,"steps_ran":{"step8":true}}' > "$P52d/run/manifest.json"
+    printf '%s\n' '## /implement run test-run — bailed' > "$P52d/run/final-summary.md"
+    p52d_out=$(bash "$SCAN_SCRIPT" --run-dir "$P52d/run" --pr 2003 \
+        --scans-tsv "$P52d/scans.tsv" \
+        --required-files-tsv "$P52d/req.tsv" \
+        --current-version "1.0.0")
+    res52d=$(printf '%s' "$p52d_out" | jq -r 'select(.scan=="required-file-presence") | .result // empty' | head -1)
+    assert_equal "$res52d" "pass" "[52d] nonempty steps_ran without step9a1 + bailed → pass"
+    rm -rf "$P52d"
+else
+    echo "  SKIP: audit-scan-run.sh not executable (not found at $SCAN_SCRIPT)"
+fi
+
+# Test 52e: audit-scan-run — corrupt manifest.json + bail must not collapse steps_ran to empty
+echo "Test 52e: audit-scan-run corrupt manifest + bail still enforces step9a1"
+SCAN_SCRIPT="${SCAN_SCRIPT:-$SCRIPT_DIR/audit-scan-run.sh}"
+if [ -x "$SCAN_SCRIPT" ]; then
+    P52e=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-steps52e-XXXXXX")
+    printf '%s\n' 'name	type	pattern	expected_outcome	severity' > "$P52e/scans.tsv"
+    printf '%s\n' 'required-file-presence	file-glob	x	x	low' >> "$P52e/scans.tsv"
+    printf '%s\n' 'relative_path	condition	batch_slug	extension' > "$P52e/req.tsv"
+    printf '%s\n' 'oos-issues.ndjson	step9a1	x	x' >> "$P52e/req.tsv"
+    printf '%s\n' 'run-statistics.md	step9a1	x	x' >> "$P52e/req.tsv"
+    mkdir -p "$P52e/run"
+    printf '%s\n' '{not valid json' > "$P52e/run/manifest.json"
+    printf '%s\n' '## /implement run test-run — bailed' > "$P52e/run/final-summary.md"
+    p52e_out=$(bash "$SCAN_SCRIPT" --run-dir "$P52e/run" --pr 2006 \
+        --scans-tsv "$P52e/scans.tsv" \
+        --required-files-tsv "$P52e/req.tsv" \
+        --current-version "1.0.0")
+    res52e=$(printf '%s' "$p52e_out" | jq -r 'select(.scan=="required-file-presence") | .result // empty' | head -1)
+    assert_equal "$res52e" "fail" "[52e] corrupt manifest + bailed → fail (do not fake empty steps_ran)"
+    rm -rf "$P52e"
+else
+    echo "  SKIP: audit-scan-run.sh not executable (not found at $SCAN_SCRIPT)"
+fi
+
+# Test 53: audit-scan-run — empty steps_ran + completed-like heading → still fail (real incomplete)
+echo "Test 53: audit-scan-run empty steps_ran + non-bail summary still enforces step9a1"
+SCAN_SCRIPT="${SCAN_SCRIPT:-$SCRIPT_DIR/audit-scan-run.sh}"
+if [ -x "$SCAN_SCRIPT" ]; then
+    P53=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-steps53-XXXXXX")
+    printf '%s\n' 'name	type	pattern	expected_outcome	severity' > "$P53/scans.tsv"
+    printf '%s\n' 'required-file-presence	file-glob	x	x	low' >> "$P53/scans.tsv"
+    printf '%s\n' 'relative_path	condition	batch_slug	extension' > "$P53/req.tsv"
+    printf '%s\n' 'oos-issues.ndjson	step9a1	x	x' >> "$P53/req.tsv"
+    printf '%s\n' 'run-statistics.md	step9a1	x	x' >> "$P53/req.tsv"
+    mkdir -p "$P53/run"
+    printf '%s\n' '{"schema_version":2,"steps_ran":{}}' > "$P53/run/manifest.json"
+    printf '%s\n' '## /implement run test-run — completed' > "$P53/run/final-summary.md"
+    p53_out=$(bash "$SCAN_SCRIPT" --run-dir "$P53/run" --pr 2004 \
+        --scans-tsv "$P53/scans.tsv" \
+        --required-files-tsv "$P53/req.tsv" \
+        --current-version "1.0.0")
+    res53=$(printf '%s' "$p53_out" | jq -r 'select(.scan=="required-file-presence") | .result // empty' | head -1)
+    assert_equal "$res53" "fail" "[53] empty steps_ran + completed summary → fail"
+    rm -rf "$P53"
+else
+    echo "  SKIP: audit-scan-run.sh not executable (not found at $SCAN_SCRIPT)"
+fi
+
+# Test 54: audit-scan-run — explicit steps_ran.step9a1=false (implement-side fix) → pass
+echo "Test 54: audit-scan-run explicit step9a1=false still skips step9a1 files"
+SCAN_SCRIPT="${SCAN_SCRIPT:-$SCRIPT_DIR/audit-scan-run.sh}"
+if [ -x "$SCAN_SCRIPT" ]; then
+    P54=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-steps54-XXXXXX")
+    printf '%s\n' 'name	type	pattern	expected_outcome	severity' > "$P54/scans.tsv"
+    printf '%s\n' 'required-file-presence	file-glob	x	x	low' >> "$P54/scans.tsv"
+    printf '%s\n' 'relative_path	condition	batch_slug	extension' > "$P54/req.tsv"
+    printf '%s\n' 'oos-issues.ndjson	step9a1	x	x' >> "$P54/req.tsv"
+    printf '%s\n' 'run-statistics.md	step9a1	x	x' >> "$P54/req.tsv"
+    mkdir -p "$P54/run"
+    printf '%s\n' '{"schema_version":2,"steps_ran":{"step9a1":false}}' > "$P54/run/manifest.json"
+    printf '%s\n' '## /implement run test-run — completed' > "$P54/run/final-summary.md"
+    p54_out=$(bash "$SCAN_SCRIPT" --run-dir "$P54/run" --pr 2005 \
+        --scans-tsv "$P54/scans.tsv" \
+        --required-files-tsv "$P54/req.tsv" \
+        --current-version "1.0.0")
+    res54=$(printf '%s' "$p54_out" | jq -r 'select(.scan=="required-file-presence") | .result // empty' | head -1)
+    assert_equal "$res54" "pass" "[54] explicit step9a1=false + non-bail summary → pass"
+    rm -rf "$P54"
+else
+    echo "  SKIP: audit-scan-run.sh not executable (not found at $SCAN_SCRIPT)"
+fi
+
 # Test 56: audit-scan-run.sh — cache-freshness informational when run lags current
 echo "Test 56: audit-scan-run cache-freshness informational (version gap)"
 SCAN_SCRIPT="${SCAN_SCRIPT:-$SCRIPT_DIR/audit-scan-run.sh}"
@@ -1814,60 +1982,60 @@ else
     echo "  SKIP: audit-scan-run.sh not executable (not found at $SCAN_SCRIPT)"
 fi
 
-# Test 52 / 53: aggregate-findings phrases (shared include with production)
-echo "Test 52: aggregate-findings failure ref points at committed round path"
+# Test 64 / 65: aggregate-findings phrases (shared include with production)
+echo "Test 64: aggregate-findings failure ref points at committed round path"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd -P)"
 # shellcheck source=skills/review/scripts/aggregate-findings-phrases.inc.bash
 source "$REPO_ROOT/skills/review/scripts/aggregate-findings-phrases.inc.bash"
-T52_BASE=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-t52-XXXXXX")
-mkdir -p "$T52_BASE/round-2"
-FAIL52="$T52_BASE/round-2/aggregator-validate.stderr"
-printf 'validation failed\n' > "$FAIL52"
-SESSION_ENV_PATH="$T52_BASE/session-env.sh" REVIEW_TMPDIR_CANON="$(cd "$T52_BASE/round-2" && pwd -P)" \
-    ph52="$(failure_see_phrase "$FAIL52")"
-assert_equal "$ph52" "See round-2/aggregator-validate.stderr in the committed run log." "[52] SESSION_ENV + round-* → committed round-relative hint"
+T64_BASE=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-t64-XXXXXX")
+mkdir -p "$T64_BASE/round-2"
+FAIL64="$T64_BASE/round-2/aggregator-validate.stderr"
+printf 'validation failed\n' > "$FAIL64"
+SESSION_ENV_PATH="$T64_BASE/session-env.sh" REVIEW_TMPDIR_CANON="$(cd "$T64_BASE/round-2" && pwd -P)" \
+    ph64="$(failure_see_phrase "$FAIL64")"
+assert_equal "$ph64" "See round-2/aggregator-validate.stderr in the committed run log." "[64] SESSION_ENV + round-* → committed round-relative hint"
 SESSION_ENV_PATH="" REVIEW_TMPDIR_CANON="/tmp/review" \
-    ph52b="$(failure_see_phrase "/tmp/review/aggregator-validate.stderr")"
-assert_equal "$ph52b" "See /tmp/review/aggregator-validate.stderr." "[52b] no SESSION_ENV → raw failure path in See phrase"
-rm -rf "$T52_BASE"
+    ph64b="$(failure_see_phrase "/tmp/review/aggregator-validate.stderr")"
+assert_equal "$ph64b" "See /tmp/review/aggregator-validate.stderr." "[64b] no SESSION_ENV → raw failure path in See phrase"
+rm -rf "$T64_BASE"
 
-echo "Test 53: aggregate-findings failure ref (zero-byte stderr still names file)"
-T53_BASE=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-t53-XXXXXX")
-mkdir -p "$T53_BASE/round-1"
-FAIL53="$T53_BASE/round-1/aggregator-validate.stderr"
-: > "$FAIL53"
-SESSION_ENV_PATH="$T53_BASE/session-env.sh" REVIEW_TMPDIR_CANON="$(cd "$T53_BASE/round-1" && pwd -P)" \
-    ph53="$(failure_see_phrase "$FAIL53")"
-assert_equal "$ph53" "See round-1/aggregator-validate.stderr in the committed run log." "[53] empty stderr still referenced by committed path"
-rm -rf "$T53_BASE"
+echo "Test 65: aggregate-findings failure ref (zero-byte stderr still names file)"
+T65_BASE=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-t65-XXXXXX")
+mkdir -p "$T65_BASE/round-1"
+FAIL65="$T65_BASE/round-1/aggregator-validate.stderr"
+: > "$FAIL65"
+SESSION_ENV_PATH="$T65_BASE/session-env.sh" REVIEW_TMPDIR_CANON="$(cd "$T65_BASE/round-1" && pwd -P)" \
+    ph65="$(failure_see_phrase "$FAIL65")"
+assert_equal "$ph65" "See round-1/aggregator-validate.stderr in the committed run log." "[65] empty stderr still referenced by committed path"
+rm -rf "$T65_BASE"
 
-echo "Test 54: append-tool-failure cursor-ci style embeds body (no output path leak)"
+echo "Test 66: append-tool-failure cursor-ci style embeds body (no output path leak)"
 APP_TF="$REPO_ROOT/scripts/append-tool-failure.sh"
 if [ -x "$APP_TF" ]; then
-    T54=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-t54-XXXXXX")
-    LOG54="$T54/execution-issues.md"
-    OUT54="$T54/cursor-ci-failure.stderr"
-    printf 'simulated cursor-ci stderr\n' > "$OUT54"
-    if bash "$APP_TF" --log "$LOG54" --site "5" --tool "cursor-ci" --exit-code 1 \
-        --category "CI Issues" --output-file "$OUT54" >/dev/null 2>&1; then
-        if grep -Fq "$OUT54" "$LOG54" 2>/dev/null; then
+    T66=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-t66-XXXXXX")
+    LOG66="$T66/execution-issues.md"
+    OUT66="$T66/cursor-ci-failure.stderr"
+    printf 'simulated cursor-ci stderr\n' > "$OUT66"
+    if bash "$APP_TF" --log "$LOG66" --site "5" --tool "cursor-ci" --exit-code 1 \
+        --category "CI Issues" --output-file "$OUT66" >/dev/null 2>&1; then
+        if grep -Fq "$OUT66" "$LOG66" 2>/dev/null; then
             FAIL=$((FAIL + 1))
-            FAILED_TESTS+=("[54] execution-issues should not embed OUTPUT_FILE path")
-            echo "  FAIL: [54] execution-issues should not embed OUTPUT_FILE path" >&2
-        elif ! grep -Fq 'simulated cursor-ci stderr' "$LOG54" 2>/dev/null; then
+            FAILED_TESTS+=("[66] execution-issues should not embed OUTPUT_FILE path")
+            echo "  FAIL: [66] execution-issues should not embed OUTPUT_FILE path" >&2
+        elif ! grep -Fq 'simulated cursor-ci stderr' "$LOG66" 2>/dev/null; then
             FAIL=$((FAIL + 1))
-            FAILED_TESTS+=("[54] execution-issues lost embedded stderr body")
-            echo "  FAIL: [54] execution-issues lost embedded stderr body" >&2
+            FAILED_TESTS+=("[66] execution-issues lost embedded stderr body")
+            echo "  FAIL: [66] execution-issues lost embedded stderr body" >&2
         else
             PASS=$((PASS + 1))
-            echo "  ok: [54] append-tool-failure body omits tmp output path"
+            echo "  ok: [66] append-tool-failure body omits tmp output path"
         fi
     else
         FAIL=$((FAIL + 1))
-        FAILED_TESTS+=("[54] append-tool-failure invocation failed")
-        echo "  FAIL: [54] append-tool-failure invocation failed" >&2
+        FAILED_TESTS+=("[66] append-tool-failure invocation failed")
+        echo "  FAIL: [66] append-tool-failure invocation failed" >&2
     fi
-    rm -rf "$T54"
+    rm -rf "$T66"
 else
     echo "  SKIP: append-tool-failure.sh not executable at $APP_TF"
 fi

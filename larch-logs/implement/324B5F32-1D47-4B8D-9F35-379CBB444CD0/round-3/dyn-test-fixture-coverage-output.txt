@@ -1,0 +1,21 @@
+Gathering the branch diff and inspecting the test harnesses for the five fixture cases, isolation, and assertion specificity.
+
+Pre-computed diff is empty; comparing branch to `main` and reading the test harness files.
+
+Inspecting how audit tests capture results and whether assertions target `run-statistics.md` specifically; reading fixture setup/teardown.
+
+Checking how `audit-scan-run.sh` emits `required-file-presence` results and how `test-verify-run-log-completeness.sh` initializes `$TMP`.
+
+### In-Scope Findings
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+- The cached diff at `<TMPDIR>/round-3/diff.txt` was empty; review used the current tree. `git log $(git merge-base HEAD main)..HEAD --oneline` was empty here because `HEAD` and `main` resolve to the same commit in this environment, so there was no commit-range delta to list.
+- The plan’s five cases are satisfied or exceeded: [.claude/skills/audit-runs/scripts/test-audit-runs.sh](.claude/skills/audit-runs/scripts/test-audit-runs.sh) has empty `steps_ran` + bailed heading → pass (Tests 52, 52b, 52c), empty `steps_ran` + completed-like heading → fail (Test 53), and explicit `steps_ran.step9a1=false` with a non-bail summary → pass (Test 54), plus explicit false without relying on bail text (Test 50). [.claude/skills/audit-runs/scripts/audit-scan-run.sh](.claude/skills/audit-runs/scripts/audit-scan-run.sh) emits a single NDJSON record per `required-file-presence` invocation when `scans.tsv` lists that scan once, so `jq 'select(.scan=="required-file-presence") | .result' | head -1` targets that scan’s aggregate outcome, not the process exit code.
+- [.claude/skills/audit-runs/scripts/test-audit-runs.sh](.claude/skills/audit-runs/scripts/test-audit-runs.sh) uses `mktemp -d` per case and `rm -rf` on the fixture dir after assertions. [.claude/skills/audit-runs/scripts/test-audit-runs.sh:1709-1723](.claude/skills/audit-runs/scripts/test-audit-runs.sh:1709-1723) and [.claude/skills/audit-runs/scripts/test-audit-runs.sh:1851-1866](.claude/skills/audit-runs/scripts/test-audit-runs.sh:1851-1866) overlap on “explicit `step9a1=false` → pass” (Test 50 vs Test 54); Test 54 adds the completed-style `final-summary.md` line, which is useful extra coverage rather than a defect.
+- [.claude/skills/audit-runs/scripts/test-audit-runs.sh:1728-1745](.claude/skills/audit-runs/scripts/test-audit-runs.sh:1728-1745) (Test 51) exercises a manifest with no `steps_ran` key rather than `"steps_ran":{}`; that is a reasonable extra variant alongside Test 53’s explicit `{}` object.
+- [.claude/skills/audit-runs/scripts/test-audit-runs.sh:1739](.claude/skills/audit-runs/scripts/test-audit-runs.sh:1739) and [.claude/skills/audit-runs/scripts/test-audit-runs.sh:1810](.claude/skills/audit-runs/scripts/test-audit-runs.sh:1810) reuse `--pr 2003` across distinct temp dirs; harmless.
+- [.claude/skills/audit-runs/scripts/test-audit-runs.sh:1823-1841](.claude/skills/audit-runs/scripts/test-audit-runs.sh:1823-1841) asserts `fail` on the aggregate `required-file-presence` result only; the emitted `missing` array is not inspected. Tightening that would be optional hardening, not a regression introduced by the current wiring (the scan builds `missing` and `result` together in one function).
+- [.claude/skills/audit-runs/scripts/test-audit-runs.sh:1871-1893](.claude/skills/audit-runs/scripts/test-audit-runs.sh:1871-1893) shows Tests 56–57 ordered before Test 55; that numbering/order quirk predates this feature area.
+- [.claude/skills/audit-runs/scripts/test-audit-runs.sh](.claude/skills/audit-runs/scripts/test-audit-runs.sh) and [.claude/skills/audit-runs/scripts/audit-scan-run.sh](.claude/skills/audit-runs/scripts/audit-scan-run.sh) live under `.claude/`; if the shipped plugin omits `.claude/` from the consumer bundle, these tests would not run in some installs—that is a pre-existing packaging concern, not introduced by the fixture additions alone.
+- [.claude/skills/audit-runs/scripts/audit-scan-run.sh:198-215](.claude/skills/audit-runs/scripts/audit-scan-run.sh:198-215) documents non-chain `step9a1` as defaulting to “step ran”; the new fixtures align with that contract and the bail/empty-`steps_ran` helper paths above it.

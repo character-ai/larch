@@ -1,0 +1,13 @@
+Gathering the branch diff and commit list, then inspecting manifest bail-path logic for correctness.
+
+diff cache is empty; comparing working tree to `main` via git.
+
+Inspecting `larch-log.sh` manifest handling and the full `write-final-report.sh` block for atomicity and field-merge semantics.
+
+### In-Scope Findings
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+- The precomputed diff at `<TMPDIR>/round-4/diff.txt` was empty; review used `git diff origin/main...HEAD` for the four local commits on `main` instead.
+- The written plan mentioned using `manifest.json::pr_number` missing/null as an extra bail signal; the branch only uses an empty `steps_ran` object (after successful JSON parse), the `final-summary.md` first-line terminal-outcome suffix, and the “nonempty `steps_ran` without `step9a1`” branch. Omitting `pr_number` is consistent with v2 manifest semantics where that key is often absent even on healthy runs (see cross-cutting notes in the audit skill docs), so this is an intentional narrowing relative to the prose plan, not a defect in the diff itself.
+- Test harness renumbering (former aggregate tests 52/53/54 → 64/65/66) may confuse anyone who grepped old test numbers in external notes; purely operational churn.

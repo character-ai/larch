@@ -1,0 +1,15 @@
+FINDING_1: NO -- pr-created outcomes are already handled by `RUN_LOG_TERMINAL_OUTCOME_SUFFIX_EGREP` matching `final-summary.md`; the bail-signal fallback covers all non-merge terminal states without `pr_number`
+FINDING_2: EXONERATE -- current pattern uses only basic ERE/Python-compatible constructs; theoretical divergence risk does not justify consolidation complexity
+FINDING_3: YES -- confirmed: bail run with `oos-issues.ndjson` present but `run-statistics.md` absent bypasses both bail short-circuits (empty-steps_ran check fails because oos file exists; nonempty-without-step9a1 check fails because steps_ran is empty), leaving step9a1 reached and requiring the missing `run-statistics.md`
+FINDING_4: YES -- confirmed: two separate tests are labeled "Test 62" (session-summary vs C.2 semver) and two labeled "Test 63" (zero-PR vs C.2 version-window), producing ambiguous CI output
+FINDING_5: NO -- plan text guessed `write-manifest.sh`; actual implementation uses `write-final-report.sh`; no functional issue; not worth an issue
+FINDING_6: EXONERATE -- `write-final-report.sh` always writes the heading as the first line of `final-summary.md` (both primary render path and fallback); first-non-empty-line assumption is a system invariant
+FINDING_7: EXONERATE -- post-copy manifest stamp failure exits non-zero; the bail-signal fallback in audit/verify still classifies the run correctly; retry/recovery adds unjustified complexity
+FINDING_8: YES -- confirmed line 1580 of `SKILL.md` uses "PR-created-without-merge" while canonical tokens in `run-log-terminal-outcomes.inc.bash` are `pr-created` / `pr-created-draft`
+FINDING_9: EXONERATE -- pre-existing asymmetry (verify uses `MANIFEST_PR_NUMBER` in step8 disjunction; audit does not); not introduced by this change; finding itself says leave unless parity is a goal
+FINDING_10: EXONERATE -- unimplemented plan idea that the coder consciously deferred; no concrete bug introduced; aligning with schema v2 semantics is distinct follow-on work
+FINDING_11: EXONERATE -- documented design tradeoff for an internal tool; cross-artifact signing would be disproportionate infrastructure
+FINDING_12: EXONERATE -- mirrors existing `PLUGIN_ROOT` trust; not a new attack class; no change needed
+FINDING_13: EXONERATE -- pre-existing broad disjunction; no change needed for this feature per the finding itself
+FINDING_14: NO -- meta finding about empty diff artifact in the review environment; not a code issue
+FINDING_15: YES -- `test-verify-run-log-completeness.sh` lacks a corrupt-`manifest.json` + bail regression case, creating contract divergence risk between verify and audit on parse-failure paths

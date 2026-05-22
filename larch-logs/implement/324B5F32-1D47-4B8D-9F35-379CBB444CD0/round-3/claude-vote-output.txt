@@ -1,0 +1,21 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: EXONERATE -- drift risk is real but mirrored regression tests already guard it; shared predicates would add cross-language build complexity
+FINDING_4: EXONERATE -- COMMENT_ONLY is a well-defined special mode; the concern is legitimate but a SKILL.md documentation note is sufficient
+FINDING_5: EXONERATE -- pre-existing OR-chain not introduced here; reviewer marked N/A; tracking issue adds noise for known stable behavior
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: EXONERATE -- silently skipping when manifest.json is absent on bail path is defensible; hard-failing would trigger on legitimately absent manifests
+FINDING_9: NO -- plan-text vs implementation file name is historical documentation drift, not a code defect worth raising
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: NO -- cosmetic duplicate test number; trivial pre-existing nit not worth a tracking issue
+FINDING_15: YES
+FINDING_16: NO -- benign additional source with no new attack surface
+FINDING_17: YES
+FINDING_18: YES
+FINDING_19: NO -- empty diff.txt is a review-tooling generation artifact, not a code defect in the shipped scripts
+FINDING_20: YES
+FINDING_21: YES
