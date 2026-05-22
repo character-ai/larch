@@ -1,0 +1,13 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: NO -- bundling is intentional per commit history ("Pre-apply 2588 plan items") and already landed; filing a tracking issue adds no value
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: EXONERATE -- `--output` is passed exclusively from SKILL.md Bash steps with a hard-coded path; path confinement validation adds complexity without meaningful security benefit for an internal sanctioned writer
+FINDING_9: NO -- acknowledged documented limitation with no planned mitigation; tracking issue adds no value
+FINDING_10: NO -- pre-existing Bash allow posture unchanged by this feature; tightening is a separate orthogonal track
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: NO -- OOS process reminder about filing a separate follow-up issue; not actionable as a code-review finding

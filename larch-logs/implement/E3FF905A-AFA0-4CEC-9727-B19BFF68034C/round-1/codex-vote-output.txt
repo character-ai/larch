@@ -1,0 +1,13 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: EXONERATE -- legitimate review-scope concern, but not worth a separate future issue.
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: EXONERATE -- documented single-runner limitation does not warrant tracking until locking is desired.
+FINDING_10: EXONERATE -- pre-existing broad permission posture is real but not issue-worthy for this change.
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: YES
