@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # Regression harness for design-driver.sh.
+# Note: this harness exercises `design-driver.sh` action stepping only; it does
+# not pin removed `/implement` argv surfaces.
 
 set -euo pipefail
 

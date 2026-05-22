@@ -136,10 +136,9 @@ if [[ -n "$HOOK_CWD" ]]; then
         if [[ -n "$IMPLEMENT_TMPDIR" && ! -f "$IMPLEMENT_TMPDIR/.run-cleaned-up" ]]; then
             TMPDIR_BASENAME=$(basename "$IMPLEMENT_TMPDIR" 2>/dev/null) \
                 || TMPDIR_BASENAME="<implement-tmpdir>"
-            if [[ -f "$IMPLEMENT_TMPDIR/design-export/manifest.env" && \
-                  ! -f "$IMPLEMENT_TMPDIR/.boundary-gate-passed" ]]; then
-                append_msg "larch hook preflight: pending post-/design boundary in active /implement tmpdir (${TMPDIR_BASENAME}); NEXT REQUIRED: run skills/implement/scripts/post-design-boundary.sh against the active /implement tmpdir and continue per its terminal directive."
-            fi
+            # Issue-anchored cutover: `design-export/manifest.env` alone is not a
+            # load-bearing "post-/design boundary" gate for `/implement` Preflight.
+            # Do not emit the legacy post-design-boundary advisory here.
             if [[ -f "$IMPLEMENT_TMPDIR/review-round-summary.md" && \
                   ! -f "$IMPLEMENT_TMPDIR/.review-boundary-passed" ]]; then
                 append_msg "larch hook preflight: pending post-/review boundary in active /implement tmpdir (${TMPDIR_BASENAME}); NEXT REQUIRED: execute Cross-Skill Presence Propagation + Track Rejected Code Review Findings + Step 6 breadcrumb in order per skills/implement/SKILL.md Step 5, then touch .review-boundary-passed."

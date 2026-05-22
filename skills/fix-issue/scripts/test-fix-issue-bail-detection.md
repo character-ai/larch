@@ -2,12 +2,12 @@
 
 `skills/fix-issue/scripts/test-fix-issue-bail-detection.sh` is the regression harness for the Phase 4 bail-detection prose in `skills/fix-issue/SKILL.md` Step 5a (originally Phase 4 of umbrella #348; renumbered from Step 6a to Step 5a by the fold-find-and-lock refactor closes #496). It is offline, hermetic, and runs against the committed `SKILL.md` — no network, no git state change, no mocks. The harness guards against accidental removal of literal assertions inside the Step 5a block, covering thirteen conceptual checks:
 
-- `--issue $ISSUE_NUMBER` in the invocation (forwarded to `/implement` so it adopts the queue issue via Phase 3 Branch 2).
+- Positional `$ISSUE_NUMBER` tail after `--merge` (issue-anchored `/implement` adopts via argv position, not removed `--issue`).
 - `--no-admin-fallback` in the invocation (issue #559 — branch-protection bypass safety flag forwarded so `/fix-issue --no-admin-fallback` callers are not silently exposed to an `--admin` override).
 - `--coder=$coder` in the invocation (pass-through implementer-selection flag forwarded so `/fix-issue --coder=<value>` callers reach `/implement` Step 2's coder selector).
-- `[--hard if hard_mode]` in the invocation — encodes that `/fix-issue` delegates HARD/SIMPLE selection to `/implement` via this conditional forward. When `--hard` is not passed, no mode-selection flag is sent and `/implement` decides via its own simplicity classification.
-- The invocation does NOT unconditionally contain `--quick` — the old SIMPLE path that always passed `--quick` to `/implement` is removed; `/implement` now decides SIMPLE vs HARD.
-- `[--inline if inline_mode and hard_mode]` in the invocation — encodes that `--inline` is forwarded only when `--hard` is also set (because `--inline` only matters when `/design` runs, which requires HARD mode).
+- `[--no-logs-commit if no_logs_commit]` in the invocation — optional larch-log suppression flag.
+- `SESSION_ENV_PATH="$FIX_ISSUE_TMPDIR/session-env.sh"` export prose — caller session-env merge for `/implement` Step 0 (`session-setup.sh --caller-env`).
+- The literal forward `--session-env $FIX_ISSUE_TMPDIR` is absent — guards the removed argv surface.
 - `IMPLEMENT_BAIL_REASON=adopted-issue-closed` — the exact machine token `/implement` emits when the adopted issue is CLOSED; `/fix-issue` scans captured output for this literal.
 - `/implement bailed: issue #` — the user-visible warning prefix printed on the bail branch.
 - `` Do NOT call `issue-lifecycle.sh close` `` — specific directive fragment (not a bare `Do NOT call` substring) that prevents silent re-routing of the bail path back to Step 6's close call. The full phrase is required because the awk extraction window also includes section 5b, which contains an unrelated `Do NOT call \`/implement\`` sentence.

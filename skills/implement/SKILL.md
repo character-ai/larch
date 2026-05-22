@@ -253,6 +253,8 @@ Run **before Step 0** once `TARGET_ISSUE_NUMBER` is known and flag mutual-exclus
    - Redact: `cat "$PREFLIGHT_TMPDIR/audit-questions.md" | "${CLAUDE_PLUGIN_ROOT}/scripts/redact-secrets.sh" > "$PREFLIGHT_TMPDIR/audit-questions.redacted.md"`.
    - Post: `"${CLAUDE_PLUGIN_ROOT}/scripts/clarify-comment-post.sh" --issue <N> --kind request --id "$NEXT_ID" --content-file "$PREFLIGHT_TMPDIR/audit-questions.redacted.md"`.
    - Label: `"${CLAUDE_PLUGIN_ROOT}/scripts/clarify-label.sh" --issue <N> --action add --create-if-missing`.
+   - **Ordering**: always **comment first, label second** on the refuse path so the thread shows the request even if label mutation fails.
+   - **Partial failure / idempotency**: exit **3** means “audit refused — operator must run `/design`.” If `clarify-comment-post.sh` succeeds but `clarify-label.sh` fails (or vice versa), automation MUST treat exit **3** as terminal for this `/implement` attempt regardless; a retry may re-hit `clarify-state.sh` — re-posting the same `id` is an error, so operators repair failed `gh` mutations manually before retrying. If `STATE=ambiguous`, Preflight exits **3** **before** either mutation. Re-running refuse on a clean thread uses `NEXT_ID` from `clarify-state.sh` (monotonic). Duplicate `gh issue edit --add-label` when the label is already present is harmless (`clarify-label.sh` emits `CHANGED=false`).
    - Breadcrumb: `⚠ /implement preflight refused — audit refuse on issue #<N>; clarify-request id=<NEXT_ID> posted, label added. Run /design <N> to clarify.`
    - Exit **3** (do not run Step 0).
 
@@ -379,7 +381,7 @@ Then:
       "") ;;
       [0-8]) dynamic_archetypes_value="$caller_dynamic_archetypes" ;;
       *)
-        printf '**⚠ /implement: ignoring invalid LARCH_DYNAMIC_ARCHETYPES_MAX from --session-env (must be 0..8).**\n'
+        printf '**⚠ /implement: ignoring invalid LARCH_DYNAMIC_ARCHETYPES_MAX from caller session-env (must be 0..8).**\n'
         ;;
     esac
   fi

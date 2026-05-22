@@ -19,7 +19,7 @@ When `--create-if-missing` is set together with `--action add`, the script runs 
 
 ## Test Harness
 
-No dedicated harness yet; behavior is thin `gh` delegation.
+Offline coverage lives in `scripts/test-clarify-state.sh` and `scripts/test-clarify-comment.sh` (Makefile `test-clarify-state` / `test-clarify-comment` targets). This script is thin `gh` delegation; those harnesses exercise marker parsing, state derivation, and comment posting envelopes.
 
 ## Edit-in-sync
 

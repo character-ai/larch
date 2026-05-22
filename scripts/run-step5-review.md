@@ -6,6 +6,8 @@ derive review context from the implement tmpdir.
 
 Caller: `skills/implement/SKILL.md` Step 5.
 
+**Issue-anchored note**: `/implement` consumes a positional GitHub issue for Preflight; `PLAN_FILE` in `session-env.sh` is still the materialized plan excerpt for review prompts — `run-step5-review.sh` does not re-parse argv for a verbal feature tail.
+
 Arguments:
 
 - `--implement-tmpdir PATH` is required.

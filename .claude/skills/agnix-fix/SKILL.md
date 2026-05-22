@@ -1,6 +1,6 @@
 ---
 name: agnix-fix
-description: "Use when fixing an open agent-sh/agnix issue end-to-end via fork-CI dry-run from this larch clone. Fetches the upstream issue body, idempotently provisions the skip-changelog label on the fork, then forwards to /implement --forked --auto with CI-monitoring guidance for the deterministic add-to-project fork-CI failure. Private to the larch source tree (dev-only)."
+description: "Use when fixing an open agent-sh/agnix issue end-to-end via fork-CI dry-run from this larch clone. Fetches the upstream issue body, idempotently provisions the skip-changelog label on the fork, then forwards to `/implement --forked` with a positional upstream issue number after `/design` has written `larch:plan` to that issue. Private to the larch source tree (dev-only)."
 argument-hint: "<upstream-issue-number> [extra-flags...]"
 allowed-tools: Bash, Skill
 ---
@@ -140,6 +140,8 @@ CI monitoring (bake into the run): treat the `add` check (from `add-to-project.y
 Changelog: for issues touching only `knowledge-base/`, `crates/agnix-rules/`, or `website/docs/rules/generated/`, prefix the PR title with `[skip changelog]`. For issues materially changing behavior or user-facing surfaces, author a `CHANGELOG.md` entry as part of the implementation.
 
 After fork CI is green, /implement's final report prints a ready-to-paste `gh pr create --repo agent-sh/agnix --base main --head $FORK_OWNER:$BRANCH_NAME` template. The operator opens the upstream PR manually after reviewing the fork-side diff; closing the fork-side dry-run PR is also operator-driven. /agnix-fix does NOT auto-create the upstream PR — the human checkpoint at the upstream-PR boundary is intentional.
+
+**`/implement` exit codes**: exit **3** means Preflight **audit refused** (clarify request posted on the issue) — treat as terminal for this attempt: run `/design $ISSUE_NUMBER` on the **same** issue until the plan satisfies Preflight, then re-invoke `/agnix-fix`. Exit **2** is the generic hard-error class (missing plan markers, argv errors, `gh` failures). Do not confuse exit **3** with success exit **0**.
 GUIDANCE
 } > "$FEATURE_FILE"
 ```
@@ -149,6 +151,8 @@ GUIDANCE
 Invoke the Skill tool:
 
 - Try skill `"implement"` first (bare name). On `Unknown skill`, try `"larch:implement"` (fully-qualified plugin name).
-- args: the literal string `--forked --auto --coder=codex $EXTRA $(cat "$FEATURE_FILE")` with `$EXTRA` and `$FEATURE_FILE` expanded.
+- args: `--forked --coder=codex` then one ASCII space, then the upstream issue number `$ISSUE_NUMBER` as the **positional** `<issue-N>` tail, then any optional extra flag tokens from `$EXTRA` (must be `/implement`-supported flags only — no removed `--auto`, no verbal feature tails).
 
 `--coder=codex` is passed explicitly so the auto-route to the main agent for small surgical plans (per issue #1481) does NOT fire on agnix work — agnix is a Rust codebase and Codex is the appropriate implementer regardless of plan size. Issue #1475 (the protected-path-modified false-positive) has landed, so the older `--coder=claude` workaround is no longer needed.
+
+**Prerequisite**: `/design $ISSUE_NUMBER` must have written a valid `larch:plan` block to the upstream issue body before delegation — `/implement` rejects verbal feature argv and reads the plan from GitHub.

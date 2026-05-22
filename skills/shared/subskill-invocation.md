@@ -22,13 +22,15 @@ Note: `/create-skill` forwards to `/im` (not directly to `/implement`); `/im` in
 
 ### Pattern B — Stateful orchestrator (inline)
 
-Used when the parent runs setup, forwards `--session-env`, invokes the child, and then parses structured output to continue. Appears in `skills/fix-issue/SKILL.md § Step 5 — Execute` (parent step heading + explicit "Invoke `/implement` via the Skill tool" line + SIMPLE/HARD variant bullets) and in `skills/implement/SKILL.md § Step 1 — Ensure Design Plan Exists`, `skills/implement/SKILL.md § Step 5 — Code Review`, `skills/implement/SKILL.md § Step 8+ — Ship PR State Machine` (around `/design`, `/review`, `/bump-version` calls). Canonical form:
+Used when the parent runs setup, exports `SESSION_ENV_PATH` for the child session merge, invokes the child, and then parses structured output to continue. Appears in `skills/fix-issue/SKILL.md § Step 5 — Execute` (parent step heading + explicit "Invoke `/implement` via the Skill tool" line + positional issue tail) and in `skills/implement/SKILL.md` (nested `/design`, `/review`, `/bump-version` calls). Canonical form:
 
 ```
 Invoke `/implement` via the Skill tool:
 
-- `/implement --merge [--hard if hard_mode] --session-env $FIX_ISSUE_TMPDIR/session-env.sh [--auto if auto_mode] <feature description>`
+- `/implement --merge [--no-admin-fallback if no_admin_fallback] [--no-logs-commit if no_logs_commit] [--coder=<value> if coder set] [--forked if forked_mode] [--draft if draft_mode] [--no-dynamic-archetypes|--dynamic-archetypes N when set] [--run-id <ID> if set] $ISSUE_NUMBER`
 ```
+
+Export `SESSION_ENV_PATH="$FIX_ISSUE_TMPDIR/session-env.sh"` in the environment before the Skill tool call when the parent owns a caller session-env file — `/implement` Step 0 merges from `SESSION_ENV_PATH` via `session-setup.sh --caller-env` when set; do **not** pass removed `--session-env` argv.
 
 The step heading + explicit Skill-tool line + scannable args shape makes the invocation impossible to miss. Do **not** collapse Pattern B into a single paragraph — see `## Avoid conditional phrasing for sub-skill invocations` below.
 

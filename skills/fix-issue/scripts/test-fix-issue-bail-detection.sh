@@ -10,17 +10,13 @@
 # Step 5a per the prose contract.
 #
 # Thirteen assertions against the extracted Step 5a block:
-#   (a1) Invocation forwards "--issue $ISSUE_NUMBER".
+#   (a1) Invocation ends with positional "$ISSUE_NUMBER" (not removed --issue).
 #   (a2) Invocation forwards "--no-admin-fallback" (branch-protection bypass
 #        safety flag; issue #559).
 #   (a3) Invocation forwards "--coder=$coder" (pass-through implementer flag).
-#   (a4) Invocation forwards "[--auto if auto_mode]" (autonomous-mode flag).
-#   (a5) Invocation contains "[--hard if hard_mode]" — /fix-issue forwards --hard
-#        when the operator sets it; otherwise no HARD/SIMPLE control flag is sent
-#        and /implement uses its normal routing.
-#   (a6) Invocation contains "[--inline if inline_mode and hard_mode]" — encodes
-#        that --inline is forwarded only when --hard is also set (--inline only matters
-#        when /design runs, which requires HARD mode).
+#   (a4) Invocation forwards "[--no-logs-commit if no_logs_commit]" (logs flag).
+#   (a5) SESSION_ENV_PATH export appears in Step 5a prose (caller-env merge).
+#   (a6) Invocation does NOT contain removed "--session-env" argv token.
 #   (b)  Literal token "IMPLEMENT_BAIL_REASON=adopted-issue-closed" present.
 #   (c)  Warning prefix "/implement bailed: issue #" present.
 #   (d)  Specific directive "Do NOT call `issue-lifecycle.sh close`" present
@@ -107,8 +103,8 @@ assert_not_contains() {
 
 echo "Running test-fix-issue-bail-detection against $SKILL_MD"
 
-# (a1) --issue $ISSUE_NUMBER must appear in the /implement invocation.
-assert_contains "a1: invocation forwards --issue \$ISSUE_NUMBER" '--issue $ISSUE_NUMBER'
+# (a1) Positional issue tail — /implement adopts via argv position, not --issue.
+assert_contains "a1: invocation ends with positional \$ISSUE_NUMBER" '$ISSUE_NUMBER'
 
 # (a2) --no-admin-fallback forwarding — branch-protection bypass safety flag (issue #559).
 # Without this guard, a future refactor could silently strip the forward, leaving
@@ -120,17 +116,14 @@ assert_contains "a2: invocation forwards --no-admin-fallback" '--no-admin-fallba
 # back to /implement's default coder.
 assert_contains "a3: invocation forwards --coder=\$coder" '--coder=$coder'
 
-# (a4) --auto forwarding — pass-through autonomous-mode flag.
-assert_contains "a4: invocation forwards [--auto if auto_mode]" '[--auto if auto_mode]'
+# (a4) --no-logs-commit forwarding — optional larch-log suppression flag.
+assert_contains "a4: invocation forwards [--no-logs-commit if no_logs_commit]" '[--no-logs-commit if no_logs_commit]'
 
-# (a5) [--hard if hard_mode] — when the operator passes --hard, /fix-issue forwards it;
-# otherwise no workflow forcing flag is sent.
-assert_contains "a5: invocation contains [--hard if hard_mode]" '[--hard if hard_mode]'
+# (a5) SESSION_ENV_PATH export — caller session-env merge for nested telemetry keys.
+assert_contains "a5: Step 5a exports SESSION_ENV_PATH for /implement Step 0 merge" 'SESSION_ENV_PATH="$FIX_ISSUE_TMPDIR/session-env.sh"'
 
-# (a6) [--inline if inline_mode and hard_mode] — encodes that --inline is only
-# forwarded when --hard is also set (--inline only matters when /design runs,
-# which requires HARD mode).
-assert_contains "a6: invocation forwards [--inline if inline_mode and hard_mode]" '[--inline if inline_mode and hard_mode]'
+# (a6) Removed argv guard — do not forward `--session-env <path>` on the Skill args line.
+assert_not_contains "a6: removed --session-env argv forward absent from Step 5a block" '--session-env $FIX_ISSUE_TMPDIR'
 
 # (b) Bail-token literal present.
 assert_contains "b: IMPLEMENT_BAIL_REASON=adopted-issue-closed literal" 'IMPLEMENT_BAIL_REASON=adopted-issue-closed'

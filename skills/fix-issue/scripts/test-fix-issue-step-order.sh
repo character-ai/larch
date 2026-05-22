@@ -10,7 +10,8 @@
 # fold or stale renumbering.
 #
 # Twelve assertions — nine textual literal pins (1-8, 12) plus three
-# operational ordering pins (10-12) via awk-scoped block extraction.
+# operational ordering pins (10-12) via awk-scoped block extraction, plus
+# three Step 4a plan-probe pins (13-15).
 # Assertions (1), (2), (7), and (8) target the TSV; the rest target SKILL.md:
 #   (1) step-name-registry.tsv has step=0, name="find & lock".
 #   (2) step-name-registry.tsv has step=1, name="setup".
@@ -207,9 +208,36 @@ else
     fi
 fi
 
+assert_contains '<!-- step:4a — Plan anchor probe (PR path) -->' '(13) section anchor "step:4a — Plan anchor probe" present'
+
+STEP4A_BLOCK=$(awk '
+    /^<!-- step:4a / { in_block=1; next }
+    /^<!-- step:5 / { in_block=0 }
+    in_block { print }
+' "$SKILL_MD")
+
+STEP5_BLOCK=$(awk '
+    /^<!-- step:5 / { in_block=1; next }
+    /^<!-- step:6 / { in_block=0 }
+    in_block { print }
+' "$SKILL_MD")
+
+if [[ -z "$STEP4A_BLOCK" ]]; then
+    echo 'FAIL: (14) Step 4a block extraction produced empty output (heading boundary missing?)' >&2
+    fail=1
+elif ! grep -qF -- 'plan-block-read.sh' <<<"$STEP4A_BLOCK"; then
+    echo 'FAIL: (14) Step 4a block does not contain `plan-block-read.sh`' >&2
+    fail=1
+fi
+
+if [[ -n "$STEP5_BLOCK" ]] && grep -qF -- 'plan-block-read.sh' <<<"$STEP5_BLOCK"; then
+    echo 'FAIL: (15) Step 5 block unexpectedly contains `plan-block-read.sh` (probe must stay in Step 4a)' >&2
+    fail=1
+fi
+
 if [[ $fail -ne 0 ]]; then
     echo "test-fix-issue-step-order: FAILED" >&2
     exit 1
 fi
 
-echo "test-fix-issue-step-order: 12 assertions passed."
+echo "test-fix-issue-step-order: 15 assertions passed."

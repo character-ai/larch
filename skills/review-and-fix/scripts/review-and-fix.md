@@ -3,7 +3,7 @@
 `skills/review-and-fix/scripts/review-and-fix.sh` has two modes:
 
 1. Accepted-findings mode for the internal `/review-and-fix` skill, selected by `--findings-file`.
-2. `/implement` orchestrator mode, selected by `--implement-tmpdir`, which runs one `review-core.sh` round and applies in-scope accepted fixes through coder dispatch.
+2. `/implement` orchestrator mode, selected by `--implement-tmpdir`, which runs one `review-core.sh` round and applies in-scope accepted fixes through coder dispatch. Issue-anchored `/implement` supplies `PLAN_FILE` from Preflight materialization; the outer `/implement` argv surface is positional `<issue-N>` only (no removed `--session-env` / `--issue` tokens on `/implement` itself — caller env merges via `SESSION_ENV_PATH` at Step 0).
 
 Flags:
 
