@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Document terminal disposition rules and NEVER-list enforcement in the implement skill next to the Step 8+ OOS checkpoint.
 - Add an audit-runs oos-silent-drop scan for retroactive detection in committed run logs.
 - Register the gate harness in the Makefile and pin key prose in test-implement-structure.sh.
+- Closed: #2544
 
 ## [34.0.18] - 2026-05-21
 
