@@ -28,7 +28,7 @@ Registered in `scripts/generators.tsv` as the row `scripts/generate-topology-doc
 
 ## Out Of Scope
 
-`/implement` Step 5 unified hard-panel phrases (`unified hard panel`, `5 rounds`, `--panel hard`, `hard review panel`, `6 Cursor specialists`, and adjacent public-doc markers) are excluded from `skills/shared/topology.tsv`. They are owned by `scripts/test-quick-mode-docs-sync.sh` and its sibling contract.
+`/implement` Step 5 phrases pinned by `scripts/test-quick-mode-docs-sync.sh` (`5 rounds`, `--panel hard`, `3-judge panel on round 1`, `6 Cursor specialists`, and adjacent public-doc markers) are excluded from `skills/shared/topology.tsv`. They are owned by `scripts/test-quick-mode-docs-sync.sh` and its sibling contract.
 
 ## Edit In Sync
 

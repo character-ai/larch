@@ -2,7 +2,7 @@
 # test-quick-mode-docs-sync.sh — Cross-validation harness asserting that the
 # public Step 5 description in the user-facing docs (README.md,
 # docs/review-agents.md, docs/workflow-lifecycle.md, docs/skills.md) stays
-# aligned with the normative unified hard-panel contract in
+# aligned with the normative Step 5 code-review contract in
 # skills/implement/SKILL.md Step 5 (historical name retained for Makefile wiring).
 #
 # Without this harness, drift between the canonical contract and the public
@@ -19,11 +19,9 @@
 #
 #   1. POSITIVE ANCHORS (required markers) — each target file MUST contain
 #      all of the following strings:
-#        - "unified hard panel"          (case-INSENSITIVE, grep -iF)
 #        - "5 rounds"                    (case-sensitive, grep -F)
 #        - "3-judge panel on round 1"  (case-INSENSITIVE, grep -iF)
 #        - "--panel hard"               (case-sensitive, grep -F)
-#        - "hard review panel"          (case-INSENSITIVE, grep -iF)
 #        - "6 Cursor specialists"       (case-sensitive, grep -F)
 #
 #   2. NEGATIVE CHECKS (forbidden stale phrases) — the four public-doc
@@ -65,8 +63,8 @@
 # assertions). Proves both check mechanics on every invocation — a broken
 # harness cannot silently go green in CI.
 #
-# Edit-in-sync rule: if skills/implement/SKILL.md Step 5 unified hard-panel
-# contract changes, update (a) POS_MARKERS / STALE_PHRASES below FIRST, (b) the
+# Edit-in-sync rule: if skills/implement/SKILL.md Step 5 code-review contract
+# changes, update (a) POS_MARKERS / STALE_PHRASES below FIRST, (b) the
 # sibling scripts/test-quick-mode-docs-sync.md, (c) then the public docs. The
 # positive-anchor check will enforce the new contract across all targets once
 # updated. Keep this script and its sibling .md in sync in the same PR.
@@ -82,11 +80,9 @@ REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # Format: "marker|casing" where casing is "sensitive" or "insensitive".
 # To add a marker, append a new entry — `check_file` iterates this array.
 readonly POS_MARKERS=(
-  "unified hard panel|insensitive"
   "5 rounds|sensitive"
   "3-judge panel on round 1|insensitive"
   "--panel hard|sensitive"
-  "hard review panel|insensitive"
   "6 Cursor specialists|sensitive"
 )
 

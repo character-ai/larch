@@ -92,7 +92,7 @@ Process one approved GitHub issue per invocation, classifying intent and delegat
 
 **Source**: [`skills/implement/SKILL.md`](../skills/implement/SKILL.md) · [Diagram](../skills/implement/diagram.svg)
 
-Full implementation workflow spanning design through PR merge. Step 5 always runs `review-and-fix.sh` with `--panel hard` (unified hard panel): up to **5 rounds** (base cap 5, plus degraded-round inflation on argv), a **3-judge panel on round 1** (Claude opus + Codex + Cursor; Claude replacement when an external is unhealthy) and a **2-judge panel on rounds 2+** (Claude + Cursor; Codex voter omitted), and the **hard review panel** with **6 Cursor specialists** (plus optional dynamic archetypes). The `--design-only` flag publishes design artifacts then exits without implementation (mutually exclusive with `--merge`).
+Full implementation workflow spanning design through PR merge. Step 5 always runs `review-and-fix.sh` with `--panel hard`: up to **5 rounds** (base cap 5, plus degraded-round inflation on argv), a **3-judge panel on round 1** (Claude opus + Codex + Cursor; Claude replacement when an external is unhealthy) and a **2-judge panel on rounds 2+** (Claude + Cursor; Codex voter omitted), and the **review panel** with **6 Cursor specialists** (plus optional dynamic archetypes). The `--design-only` flag publishes design artifacts then exits without implementation (mutually exclusive with `--merge`).
 
 ## `/issue`
 

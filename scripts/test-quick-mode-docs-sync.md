@@ -4,7 +4,7 @@ Cross-validation harness with three check families: (1) positive anchors — req
 
 ## Purpose
 
-Without this harness, drift between the canonical Step 5 unified hard-panel contract and its public mirrors (see Target files below) is silent. The bug that triggered #370 — "simplified code review (1 Claude Code Reviewer subagent, 1 round)" persisting in the public docs long after SKILL.md evolved to a multi-round external-review loop with no voting panel — is exactly the class this harness prevents: a SKILL.md edit that does not propagate to the public mirrors, or a public-doc edit that re-introduces a contradiction with SKILL.md.
+Without this harness, drift between the canonical Step 5 code-review contract and its public mirrors (see Target files below) is silent. The bug that triggered #370 — "simplified code review (1 Claude Code Reviewer subagent, 1 round)" persisting in the public docs long after SKILL.md evolved to a multi-round external-review loop with no voting panel — is exactly the class this harness prevents: a SKILL.md edit that does not propagate to the public mirrors, or a public-doc edit that re-introduces a contradiction with SKILL.md.
 
 ## Invariants enforced
 
@@ -24,11 +24,9 @@ Each target file MUST contain all markers in `POS_MARKERS` inside `test-quick-mo
 
 | Marker | Casing | Rationale |
 |--------|--------|-----------|
-| `unified hard panel` | **case-insensitive** `grep -iF` | Pins the unified Step 5 banner contract. |
 | `5 rounds` | case-sensitive `grep -F` | Pins the base round-cap language shared with public docs. |
 | `3-judge panel on round 1` | **case-insensitive** `grep -iF` | Pins the round-1 Codex-inclusive judge panel; rounds 2+ omit Codex. |
 | `--panel hard` | case-sensitive `grep -F` | Pins the delegated `review-and-fix.sh` posture. |
-| `hard review panel` | **case-insensitive** `grep -iF` | Pins the hard-panel specialist layout wording. |
 | `6 Cursor specialists` | case-sensitive `grep -F` | Pins the static Cursor specialist count in the panel. |
 
 Together these markers encode the canonical Step 5 contract. Without them, a SKILL.md edit that re-shuffled the reviewer or judge composition could ship without the public docs being updated.
