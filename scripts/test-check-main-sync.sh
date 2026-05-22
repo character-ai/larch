@@ -71,6 +71,9 @@ make_repo_pair() {
     printf 'init\n' > "$local_repo/README.md"
     git -C "$local_repo" add README.md
     git -C "$local_repo" commit -q -m "init"
+    # Normalize default branch name (git's default may be master); check-main-sync
+    # only runs its ahead-of-origin logic on a branch literally named main.
+    git -C "$local_repo" branch -M main
     git -C "$local_repo" push -q origin HEAD:main
 
     printf '%s\n' "$local_repo"

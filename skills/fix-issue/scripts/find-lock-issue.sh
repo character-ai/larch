@@ -263,8 +263,7 @@ _emit_dirty_tree_pre_lock_abort() {
         sync_out=$(bash "$sync_script" 2>&1) || sync_exit=$?
         local sync_status
         sync_status=$(printf '%s\n' "$sync_out" | awk -F= '/^SYNC_STATUS=/ { v=$2 } END { print v }')
-        if [ "$sync_exit" -eq 1 ] || [ "$sync_status" = "blocked" ] \
-            || [ "$sync_exit" -eq 2 ] || [ "$sync_status" = "probe-error" ]; then
+        if [ "$sync_exit" -eq 1 ] || [ "$sync_status" = "blocked" ]; then
             local sync_error
             sync_error=$(printf '%s\n' "$sync_out" | awk -F= '/^ERROR=/ { sub(/^ERROR=/, "", $0); v=$0 } END { print v }')
             emit_kv ELIGIBLE false
@@ -279,7 +278,11 @@ _emit_dirty_tree_pre_lock_abort() {
             emit_kv ERROR "${sync_error:-local main is ahead of origin/main with non-log commits; push or reconcile before re-running /fix-issue. No issue was locked.}"
             exit 2
         fi
-        if [ "$sync_exit" -ne 0 ]; then
+        # Exit 2 with SYNC_STATUS=probe-error only: fail-open (same rationale as
+        # preflight); other non-zero exits fail closed before lock.
+        if [ "$sync_exit" -eq 2 ] && [ "$sync_status" = "probe-error" ]; then
+            :
+        elif [ "$sync_exit" -ne 0 ]; then
             emit_kv ELIGIBLE false
             if [ -n "$umbrella_num" ]; then
                 emit_kv IS_UMBRELLA true

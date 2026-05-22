@@ -50,7 +50,7 @@ Exit 2 covers several failure classes. Consumers that need to distinguish them m
 - `gh` API failure or explicit issue not eligible: `ELIGIBLE=false ERROR=<reason>`.
 - Pre-lock dirty-tree abort on ordinary paths: `ELIGIBLE=false ERROR=Working tree is not clean. Commit or stash changes, then re-run /fix-issue. No issue was locked.`
 - Pre-lock dirty-tree abort on umbrella child paths: `ELIGIBLE=false IS_UMBRELLA=true UMBRELLA_NUMBER=<U> UMBRELLA_TITLE=<T> ISSUE_NUMBER=<C> ISSUE_TITLE=<child-title> LOCK_ACQUIRED=false ERROR=Working tree is not clean...`
-- Pre-lock probe failure: `ELIGIBLE=false ERROR=Cannot determine working-tree cleanliness: <summary>`. The umbrella child path includes the same umbrella and child keys as the dirty-tree abort.
+- Pre-lock probe failure: `ELIGIBLE=false ERROR=Cannot determine working-tree cleanliness: <summary>`. The umbrella child path includes the same umbrella and child keys as the dirty-tree abort. (This is the **clean-tree** helper only — `check-main-sync.sh` `SYNC_STATUS=probe-error` is fail-open and does not emit this contract.)
 - Umbrella detect failure, umbrella blocked by dependencies, or pick-child failure: existing umbrella error shape; `UMBRELLA_TITLE` is absent unless the umbrella was already detected and a child dispatch reached the pre-lock probe.
 
 Stable prefixes for dirty-tree automation are `ERROR=Working tree is not clean.` for porcelain-non-empty failures and `ERROR=Cannot determine working-tree cleanliness:` for probe failures.
