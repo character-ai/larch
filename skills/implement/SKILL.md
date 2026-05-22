@@ -99,6 +99,10 @@ Prompt-side orchestration steps delegate to these script contracts:
 **Structured invocation pin** (agent-lint / docs): when a workflow needs the PR-body `Closes #N` extractor, call it with no argv:
 
 ```bash
+if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
+  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
+fi
+export CLAUDE_PLUGIN_ROOT
 "${CLAUDE_PLUGIN_ROOT}/scripts/extract-closes-issue-from-pr.sh"
 ```
 
@@ -833,6 +837,16 @@ After Preflight passed (`AUDIT=pass`) and Step 0.5 resolved the subject issue (`
 
 3. **Bind post-plan workflow**: issue-anchored runs default **`POST_PLAN_WORKFLOW_PATH=HARD`** (round-cap 5 for both SIMPLE and HARD downstream per the unified review contract). Record:
    ```bash
+   IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR"
+   export IMPLEMENT_TMPDIR
+   if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
+     CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
+   fi
+   export CLAUDE_PLUGIN_ROOT
+   LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
+   LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
+   LARCH_TIMING_LEDGER=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
+   export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
    "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" workflow-path "HARD" || true
    ```
 

@@ -13,7 +13,7 @@
 ## Public `/design` flags
 
 - `--trivial`: mutually exclusive tier. Maps to `sketch_budget=0`, `quick_mode=true`, `review_budget=quick`, `workflow_path=SIMPLE` when writing `run-params.json` (trivial doc-only carve-out still follows the ACTION classifier when applicable).
-- `--simple`: mutually exclusive tier. Maps to `sketch_budget=2`, `quick_mode=true`, `review_budget=full`, `workflow_path=SIMPLE`.
+- `--simple`: mutually exclusive tier. Maps to `sketch_budget=2`, `quick_mode=true`, `review_budget=full`, `workflow_path=SIMPLE` (2 sketch agents on the quick path per `sketch-launch.md`).
 - `--hard`: mutually exclusive tier. Maps to `sketch_budget=4`, `quick_mode=false`, `review_budget=full`, `workflow_path=HARD`.
 - `--no-dedup`: forward to `/larch:issue` on the verbal-create path. Default `false`.
 - `--run-id <ID>`: optional stable run id. Default empty.
