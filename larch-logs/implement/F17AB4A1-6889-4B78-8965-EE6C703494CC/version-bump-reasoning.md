@@ -1,12 +1,12 @@
 # Version Bump Reasoning
 
-- **Base commit**: `da47ae7f` (Fixes #2539: fix(implement): align step8 same-version caller_kind token in SKILL.md (#2541))
-- **Current version**: `34.0.18`
+- **Base commit**: `cf73a0a3` (Fixes #2540: fix(implement): gate OOS disposition before clearing OOS_PENDING (#2551))
+- **Current version**: `34.0.19`
 - **Classification scope**: `skills/**` and `agents/**` only (public plugin surface).
 
 ## Result: PATCH
 
-- **New version**: `34.0.19`
+- **New version**: `34.0.20`
 
 ### PATCH rationale
 
