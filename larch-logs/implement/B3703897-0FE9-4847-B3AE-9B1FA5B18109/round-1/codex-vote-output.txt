@@ -1,0 +1,47 @@
+FINDING_1: YES
+FINDING_2: EXONERATE -- status false-negative is speculative and a separate skip flag adds more process than this edge warrants.
+FINDING_3: EXONERATE -- duplicated slug logic is small and avoids the shared helper's exiting stdout contract.
+FINDING_4: YES
+FINDING_5: EXONERATE -- fallback PR discovery limits impact and structured create parsing is not worth raising here.
+FINDING_6: EXONERATE -- legitimate blame noise, but not worth a future issue.
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: EXONERATE -- stub tightening is plausible but too narrow to track separately.
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: YES
+FINDING_18: YES
+FINDING_19: EXONERATE -- dash-prefixed tmpdirs are too pathological to justify this portability-sensitive change.
+FINDING_20: YES
+FINDING_21: YES
+FINDING_22: YES
+FINDING_23: YES
+FINDING_24: YES
+FINDING_25: EXONERATE -- only exotic no-uuidgen hostnames hit this, so it is not worth current churn.
+FINDING_26: YES
+FINDING_27: YES
+FINDING_28: YES
+FINDING_29: EXONERATE -- duplicated slug logic is small and avoids the shared helper's exiting behavior.
+FINDING_30: YES
+FINDING_31: YES
+FINDING_32: YES
+FINDING_33: YES
+FINDING_34: YES
+FINDING_35: YES
+FINDING_36: YES
+FINDING_37: YES
+FINDING_38: EXONERATE -- the allowlist risk is known and documented, and the actionable gap is covered by the redaction finding.
+FINDING_39: NO -- this describes correct existing behavior and proposes no fix.
+FINDING_40: NO -- this describes correct existing behavior and proposes no fix.
+FINDING_41: NO -- historical changelog prose is not a live contract that needs backfilling.
+FINDING_42: YES
+FINDING_43: YES
+FINDING_44: YES
+FINDING_45: NO -- this is a positive coverage note, not a defect or future issue.
+FINDING_46: NO -- this is a positive coverage note, not a defect or future issue.
+FINDING_47: NO -- this is a positive coverage note, not a defect or future issue.

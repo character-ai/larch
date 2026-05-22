@@ -6,7 +6,7 @@ lifecycle operations that still write directly to GitHub issues:
 ```text
 tracking-issue-write.sh create-issue --title T --body-file F [--repo OWNER/REPO]
 tracking-issue-write.sh append-comment --issue N --body-file F [--lifecycle-marker ID] [--repo OWNER/REPO]
-tracking-issue-write.sh rename --issue N --state in-progress|done|stalled [--round-trip BOOL] [--repo OWNER/REPO]
+tracking-issue-write.sh rename --issue N --state in-progress|done|stalled|planned [--round-trip BOOL] [--repo OWNER/REPO]
 tracking-issue-write.sh mark-false-positive --issue N [--repo OWNER/REPO]
 ```
 
@@ -54,6 +54,15 @@ exit **3** body/title redaction helper failures (`redaction:` in `ERROR=`).
 
 `append-comment --lifecycle-marker` accepts only `[A-Za-z0-9._:-]` and rejects
 the substring `--` before synthesizing the HTML marker comment.
+
+## Rename semantics
+
+`rename --state` accepts `in-progress`, `done`, `stalled`, and `planned`. Each
+maps to a managed lifecycle bracket prefix in the GitHub title (`[IN PROGRESS]`,
+`[DONE]`, `[STALLED]`, `[PLANNED]`) followed by exactly one ASCII space before
+the user tail, matching `tracking-issue-write.sh`. Strip/recompose rules: strip
+at most one leading lifecycle prefix, preserve optional `[ROUND-TRIP]` marker,
+redact before outbound title.
 
 ## Tests
 

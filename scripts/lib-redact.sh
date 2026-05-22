@@ -6,7 +6,20 @@ set -euo pipefail
 larch_redact_strip_meta_cmd_json() {
     local input="$1"
     local output="$2"
-    awk '!match($0, /^[[:space:]]*CMD_JSON=/) { print }' "$input" > "$output"
+    local line
+    # Require a working jq before validating CMD_JSON values. A broken jq
+    # earlier on PATH must not block the awk strip path (see
+    # test-larch-log-write-round.sh python-only-bin probe).
+    if command -v jq >/dev/null 2>&1 && jq -n . >/dev/null 2>&1; then
+        while IFS= read -r line || [[ -n "$line" ]]; do
+            if [[ "$line" =~ ^[[:space:]]*CMD_JSON=(.+)$ ]]; then
+                if ! printf '%s' "${BASH_REMATCH[1]}" | jq -e . >/dev/null 2>&1; then
+                    return 1
+                fi
+            fi
+        done <"$input"
+    fi
+    awk '!match($0, /^[[:space:]]*CMD_JSON=/) { print }' "$input" >"$output" || return 1
 }
 
 larch_redact_strip_json_result() {

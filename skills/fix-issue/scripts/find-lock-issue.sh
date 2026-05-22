@@ -19,8 +19,8 @@
 # Targets a specific issue (by number or GitHub URL), verifies it is open,
 # runs umbrella detection FIRST (issue #819 DECISION_1 — if the issue is an
 # umbrella, the umbrella branch is taken and managed-prefix rejection is
-# bypassed so umbrellas with `[IN PROGRESS]` / `[DONE]` / `[STALLED]`
-# titles remain explicitly targetable), then for non-umbrellas verifies the
+# bypassed so umbrellas with `[IN PROGRESS]` / `[DONE]` / `[STALLED]` /
+# `[PLANNED]` titles remain explicitly targetable), then for non-umbrellas verifies the
 # title does not carry a managed lifecycle title prefix or a [... Report]
 # pattern, and has no currently-open blocking dependencies.
 #
@@ -30,11 +30,12 @@
 #      comment = exactly "IN PROGRESS"); cleared when work completes.
 #      Prevents two concurrent /fix-issue runners from colliding on the same
 #      subject.
-#   2) Title-based "[IN PROGRESS]" / "[DONE]" / "[STALLED]" lifecycle —
+#   2) Title-based "[IN PROGRESS]" / "[DONE]" / "[STALLED]" / "[PLANNED]" lifecycle —
 #      machine-owned tracking-issue state. Applied here at lock time so
 #      the title reflects active work immediately, instead of the
 #      multi-minute delay incurred when only /implement Step 0.5 Branch 2
-#      did the rename. /implement still re-attempts the rename idempotently
+#      did the rename. `/design` writers may apply `[PLANNED]` via
+#      `tracking-issue-write.sh rename --state planned`. /implement still re-attempts the rename idempotently
 #      so standalone /implement remains correct when invoked with positional
 #      <issue-N> against a non-pre-marked issue.
 #
@@ -135,7 +136,7 @@ source "$SCRIPT_DIR/../../../scripts/lib-quiet.sh"
 larch_quiet_init
 
 # Returns 0 if the title starts with a managed lifecycle prefix
-# ("[IN PROGRESS] ", "[DONE] ", "[STALLED] "), 1 otherwise. Anchored at
+# ("[IN PROGRESS] ", "[DONE] ", "[STALLED] ", "[PLANNED] "), 1 otherwise. Anchored at
 # the start; trailing-space-sensitive (matches the helper exactly — no
 # fuzzy match, so user titles containing the literal substring "[IN
 # PROGRESS]" mid-text are NOT excluded). The optional "[ROUND-TRIP] "
@@ -147,6 +148,7 @@ has_managed_prefix() {
         '[IN PROGRESS] '*) return 0 ;;
         '[DONE] '*)        return 0 ;;
         '[STALLED] '*)     return 0 ;;
+        '[PLANNED] '*)     return 0 ;;
         *)                 return 1 ;;
     esac
 }
@@ -852,7 +854,7 @@ if [[ -n "$ISSUE_ARG" ]]; then
     fi
 
     # Exclude issues with a managed lifecycle title prefix
-    # ([IN PROGRESS] / [DONE] / [STALLED]). These are machine-owned
+    # ([IN PROGRESS] / [DONE] / [STALLED] / [PLANNED]). These are machine-owned
     # tracking issues (/implement),
     # not candidates for /fix-issue automated work. Runs AFTER umbrella
     # detection (per #819 DECISION_1) so an umbrella whose title carries
@@ -860,7 +862,7 @@ if [[ -n "$ISSUE_ARG" ]]; then
     # `handle_umbrella` above and never falls through here.
     if has_managed_prefix "$ISSUE_TITLE"; then
         emit_kv ELIGIBLE false
-        emit_kv ERROR "Issue #$ISSUE_NUM has a managed lifecycle title prefix ([IN PROGRESS] / [DONE] / [STALLED]); not a fix-issue candidate"
+        emit_kv ERROR "Issue #$ISSUE_NUM has a managed lifecycle title prefix ([IN PROGRESS] / [DONE] / [STALLED] / [PLANNED]); not a fix-issue candidate"
         exit 2
     fi
 

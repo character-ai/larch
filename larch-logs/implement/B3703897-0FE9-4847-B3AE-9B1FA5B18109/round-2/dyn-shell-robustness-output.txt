@@ -1,0 +1,14 @@
+Reviewing the pre-computed diff and commit history for shell robustness (error handling, cleanup, `set -e`).
+
+Pre-computed diff file is empty. Gathering changes with read-only `git diff`.
+
+Diff vs local `main` was empty (HEAD equals local main). Fetched `origin/main` and inspecting feature-related shell files: reading `design-log-publish.sh`, its test harness, and related edits.
+
+### In-Scope Findings
+- **correctness** `scripts/design-log-publish.sh:297-301` — The “no tracked changes under `larch-logs/design/$RUN_ID`” fast path is implemented as `if ! git -C "$WT_DIR" status --porcelain -- "$rel" | grep -q .; then … PUBLISH_OK=true …`. With `set -o pipefail`, any **non-zero** pipeline status—including a **failed** `git status` (disk/repo error, broken worktree, etc.)—is treated the same as “grep found no lines”, because both yield a failing pipeline and `!` flips that into a successful `if` condition. That can emit `PUBLISH_OK=true` with empty `PR_NUMBER`/`PR_URL` even though nothing was verified as clean or published. **Suggested fix:** avoid coupling failure to emptiness; e.g. run `git status` to a temp file or variable with an explicit `git … status` success check first, then separately test `-s`/non-empty output, or use a two-step `if git …; then …; else … fi` pattern so only true “empty porcelain for `$rel`” hits the no-op success path.
+
+- **code-quality** `scripts/design-log-publish.sh:115-136` — Non-`--dry-run` mode requires `jq` up front but does not similarly preflight `gh` before allocating the disposable worktree, initializing logs, staging, trimming, and redacting. A missing/broken `gh` only surfaces at PR creation time, wasting work and making failures harder to reason about in automation. **Suggested fix:** after the `jq` check (and alongside `git rev-parse` / `ORIGIN_DEFAULT` resolution), add `command -v gh`/`gh auth status` (per repo policy) and fail fast with `PUBLISH_OK=false` before `worktree add`.
+
+### Out-of-Scope Observations
+- The path `<TMPDIR>/round-2/diff.txt` was empty, so review used the current tree and a focused `git diff origin/main..HEAD` for the listed shell files; the broader branch diff also contains large unrelated churn (for example under `larch-logs/` and `skills/review/scripts/`) that this shell-robustness pass did not treat as part of the scoped feature surface.
+- `git log "$(git merge-base HEAD main)"..HEAD --oneline` was empty because local `HEAD` matches local `main`; commits on top of upstream `main` were `4173ce19` and `d8df7c0c` per `git log origin/main..HEAD --oneline`.

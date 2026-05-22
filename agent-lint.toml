@@ -984,6 +984,11 @@ exclude = [
   # (test-render-specialist-prompt target) and scripts/test-render-specialist-prompt.md
   # (sibling contract), matching the same Makefile-only pattern.
   "scripts/test-render-specialist-prompt.sh",
+  # scripts/test-design-log-publish.sh exercises design-log-publish.sh
+  # (Makefile test-design-log-publish target + sibling .md). Same
+  # Makefile-only harness pattern as test-tracking-issue-write.sh.
+  "scripts/test-design-log-publish.sh",
+  "scripts/test-design-log-publish.md",
   # Phase 1 of umbrella #348 (tracking-issue foundation helpers) —
   # test harness ships with no runtime consumers yet. Phase 3 is the
   # first consumer via skills/implement/SKILL.md (not in this phase).
@@ -992,6 +997,10 @@ exclude = [
   # lib-title-markers.sh and false-positive-keywords.sh are sourced-only
   # libraries; test-false-positive-keywords.sh is Makefile-only.
   "scripts/lib-title-markers.sh",
+  # scripts/test-lib-title-markers.sh — regression for insert_signal_marker
+  # ([PLANNED] titles); lib-title-markers.sh is sourced from
+  # scripts/tracking-issue-write.sh. Makefile test-lib-title-markers target only.
+  "scripts/test-lib-title-markers.sh",
   "scripts/false-positive-keywords.sh",
   "scripts/test-false-positive-keywords.sh",
   # scripts/test-round-trip-detect.sh is the regression harness for

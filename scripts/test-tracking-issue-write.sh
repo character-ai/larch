@@ -97,6 +97,50 @@ out="$("$WRITE" rename --issue 42 --state "done" --repo owner/repo)"
 [[ "$out" == *"RENAMED=true"* ]] || fail "rename RENAMED missing: $out"
 [ "$(cat "$TITLE_CAPTURE")" = "[DONE] Existing title" ] || fail "rename title was $(cat "$TITLE_CAPTURE")"
 
+echo "=== rename planned prefix from in-progress title ==="
+cat > "$stub/gh" <<'GHSTUB2'
+#!/usr/bin/env bash
+if [ "$1" = "repo" ]; then
+    echo "owner/repo"
+    exit 0
+fi
+if [ "$1" = "issue" ] && [ "$2" = "view" ]; then
+    echo "[IN PROGRESS] Feature title"
+    exit 0
+fi
+if [ "$1" = "issue" ] && [ "$2" = "edit" ]; then
+    for ((i=1; i<=$#; i++)); do
+        if [ "${!i}" = "--title" ]; then
+            next=$((i + 1))
+            printf '%s' "${!next}" > "$TITLE_CAPTURE"
+        fi
+    done
+    exit 0
+fi
+exit 1
+GHSTUB2
+chmod +x "$stub/gh"
+out="$("$WRITE" rename --issue 42 --state "planned" --repo owner/repo)"
+[[ "$out" == *"RENAMED=true"* ]] || fail "planned rename RENAMED: $out"
+[ "$(cat "$TITLE_CAPTURE")" = "[PLANNED] Feature title" ] || fail "planned title was $(cat "$TITLE_CAPTURE")"
+
+echo "=== rename planned idempotent when already canonical ==="
+cat > "$stub/gh" <<'GHSTUB3'
+#!/usr/bin/env bash
+if [ "$1" = "repo" ]; then echo "owner/repo"; exit 0; fi
+if [ "$1" = "issue" ] && [ "$2" = "view" ]; then
+    echo "[PLANNED] Feature title"
+    exit 0
+fi
+if [ "$1" = "issue" ] && [ "$2" = "edit" ]; then exit 1; fi
+exit 1
+GHSTUB3
+chmod +x "$stub/gh"
+rm -f "$TITLE_CAPTURE"
+out="$("$WRITE" rename --issue 42 --state "planned" --repo owner/repo)"
+[[ "$out" == *"RENAMED=false"* ]] || fail "planned idempotent RENAMED: $out"
+[[ ! -f "$TITLE_CAPTURE" ]] || fail "planned idempotent must not call gh issue edit"
+
 echo "=== removed anchor subcommands are rejected ==="
 set +e
 removed="$("$WRITE" find-anchor --issue 42 --repo owner/repo 2>&1)"

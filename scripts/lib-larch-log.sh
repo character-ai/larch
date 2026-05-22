@@ -26,12 +26,22 @@ larch_log_fail() {
     exit "$code"
 }
 
+# Returns 0 when value matches the slug rules shared with larch_log_validate_slug;
+# returns 1 with no stdout (for callers that must not emit the larch-log contract).
+larch_log_slug_is_valid() {
+    local value="$1"
+    case "$value" in
+        ""|*[!A-Za-z0-9._-]*|.*|*..*|*/*|*\\*) return 1 ;;
+        *) return 0 ;;
+    esac
+}
+
 larch_log_validate_slug() {
     local kind="$1"
     local value="$2"
-    case "$value" in
-        ""|*[!A-Za-z0-9._-]*|.*|*..*|*/*|*\\*) larch_log_fail 1 "invalid $kind: $value" ;;
-    esac
+    if ! larch_log_slug_is_valid "$value"; then
+        larch_log_fail 1 "invalid $kind: $value"
+    fi
 }
 
 larch_log_root() {

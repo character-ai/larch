@@ -41,7 +41,7 @@ The helper resolves `REPO` once with `scripts/resolve-repo.sh`. Direct `gh issue
 
   **Per-child eligibility** (no GO required — children inherit approval from the umbrella's existence, per dialectic DECISION_1):
   - State is `OPEN`.
-  - Title does not start with a managed lifecycle prefix (`[IN PROGRESS]` / `[DONE]` / `[STALLED]`).
+  - Title does not start with a managed lifecycle prefix (`[IN PROGRESS]` / `[DONE]` / `[STALLED]` / `[PLANNED]`).
   - Last comment is NOT exactly `IN PROGRESS` (not locked by a concurrent `/fix-issue` runner).
   - `all_open_blockers` returns empty — no open native or prose blockers (native-first short-circuit applies, so prose pagination only fires when native is empty). Prose blockers ARE checked here, fixing issue #768's stall-on-prose-blocked-first-child.
 
