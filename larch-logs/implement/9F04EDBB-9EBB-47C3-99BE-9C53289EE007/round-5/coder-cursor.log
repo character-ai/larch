@@ -1,0 +1,7 @@
+APPLIED: FINDING_1
+APPLIED: FINDING_2
+APPLIED: FINDING_3
+APPLIED: FINDING_4
+APPLIED: FINDING_5
+SKIPPED: FINDING_8 - exit code 6 already documented in `find-lock-issue.sh` header Exit codes block
+APPLIED: FINDING_9

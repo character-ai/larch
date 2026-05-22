@@ -1,0 +1,3 @@
+Aggregating the supplied reviewer items: merging duplicates, preserving `[OUT_OF_SCOPE]` on merged headings when any source was tagged, and emitting a single structured list with stable IDs in first-seen order (by earliest original finding in each merged group).
+
+

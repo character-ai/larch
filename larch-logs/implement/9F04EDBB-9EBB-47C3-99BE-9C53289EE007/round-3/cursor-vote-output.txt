@@ -1,0 +1,27 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: EXONERATE -- design SKILL already mandates `flags.md` as normative; cross-surface drift is low versus suggested churn.
+FINDING_5: NO -- `find-lock-issue.md`/flow were updated for `--require-plan-block` and positional `/implement`; cited `/implement --issue` prose was removed from the lock contract slice.
+FINDING_6: EXONERATE -- acceptable probe-in-helper tradeoff; filing an issue would be noise.
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: EXONERATE -- harness now targets Step 5a block and positional tail; residual ambiguity is minor versus added a0 pins.
+FINDING_16: YES
+FINDING_17: YES
+FINDING_18: EXONERATE -- committed run logs are policy-expected artifacts, not a defect ticket.
+FINDING_19: EXONERATE -- partial GH mutation + exit 3 handling is now spelled out in `skills/implement/SKILL.md` / fix-issue prose.
+FINDING_20: EXONERATE -- fixed XML wrap is the chosen contract; random sentinels add complexity without a scoped threat model change.
+FINDING_21: YES
+FINDING_22: NO -- argv/`--repo` treated as operator-trusted per stated model.
+FINDING_23: EXONERATE -- optional doc polish only.
+FINDING_24: EXONERATE -- minor wording drift; helpers still legitimately use `--issue` for `gh`.
+FINDING_25: NO -- NEVER placeholder strategy avoids harmful renumbering in the diff.
+FINDING_26: YES
+FINDING_27: EXONERATE -- aggregate-findings edits are ancillary to the cutover plan body.
