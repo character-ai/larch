@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [36.0.2] - 2026-05-21
+
+### Changed
+
+- Align SessionStart health copy and regression harness with the retired post-/design boundary so operators are not pointed at dead hook paths.
+- Delete harness cases that only asserted non-emission of a removed advisory and drop banned literal pins from the four acceptance-scanned files.
+- Keep bump-boundary and cleanup-suppression cases meaningful by anchoring tmpdir resolution on review-round-summary fixtures where the resolver requires a manifest marker.
+
 ## [36.0.1] - 2026-05-22
 
 ### Changed
