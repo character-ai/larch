@@ -3,8 +3,8 @@
 # whether the URL points at a pull request.
 #
 # Wraps the inline `gh issue view <N> --json state,url --jq '{state,url}'`
-# probe used at /implement Step 0.5 (Branches 2 and 3) for PR-vs-issue
-# detection and CLOSED-state detection on adopted issues.
+# probe used at /implement Step 0 tracking adoption (Branch 2 and related
+# paths) for PR-vs-issue detection and CLOSED-state detection on adopted issues.
 #
 # Usage:
 #   get-issue-state.sh --issue N [--repo OWNER/REPO]

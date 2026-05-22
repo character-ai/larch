@@ -96,12 +96,12 @@
 - **expected_keywords**: anthropic.com, multi-agent, low-hanging fruit, eval, prompt
 - **notes**: External comparison; should cite the Anthropic multi-agent post directly and reproduce the caveat that the gain is from low-hanging-fruit identification, not a sustained delta.
 
-### eval-13: fix-issue-implement-concurrency
-- **question**: What concurrency hazards exist when `/fix-issue` and `/implement` run against the same tracking issue, and how does the IN PROGRESS comment lock interact with the `parent-issue.md` sentinel?
+### eval-13: implement-concurrency-admission-sentinel
+- **question**: What concurrency hazards exist when two `/implement` sessions target the same repository or tracking issue, and how do Preflight admission (`scripts/implement-admission.sh`), the `parent-issue.md` / `RUN_ID` crash-resume sentinel, and the single-runner assumption interact?
 - **category**: risk-assessment
 - **expected_provenance_count**: 2
-- **expected_keywords**: IN PROGRESS, find-lock-issue.sh, single-runner, sentinel, ADOPTED
-- **notes**: Risk; should describe the comment-stream locking pattern, the duplicate-creation mode if Branch 4 is interrupted between issue-create and sentinel-write, and the Known Limitations note about single-runner assumption.
+- **expected_keywords**: implement-admission.sh, single-runner, sentinel, RESUME, ADOPTED
+- **notes**: Risk; should describe dirty-tree / working-tree interleaving risks, how admission re-checks open blockers on resume while skipping some title/label gates, and the Known Limitations note about one runner per clone.
 
 ### eval-14: implement-cursor-timeout-mid-sketch
 - **question**: What happens to a `/implement` run if `/design`'s Cursor sketch lane times out mid-sketch, and how do `cursor_available` versus `dialectic_cursor_available` differ in their session scope?

@@ -777,8 +777,9 @@ Steps 0 (plan batches), 2, 5, 7a, 8, 9a.1, 11, and 18 write durable run payloads
 
 ### Session untracked baseline
 
-Before leaving Step 0 tracking adoption, capture the session-wide untracked baseline used by
-the Phantom Untracked Probe:
+After tracking adoption and fork/repo-unavailable routing (and the intervening
+larch-log reference material above), immediately before plan materialization,
+capture the session-wide untracked baseline used by the Phantom Untracked Probe:
 
 ```bash
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then

@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Extract the first `Closes #<N>` issue number from the current branch's PR
 # body. Wraps the inline pipeline previously embedded in skills/implement/
-# SKILL.md Step 0.5 Branch 3 (PR-body recovery).
+# SKILL.md; see "Structured invocation pin" under "Extracted Script Registry"
+# for the live call-site contract (PR-body recovery when a PR already exists).
 #
 # Inputs: none.
 # Output: issue number on stdout, or empty when no PR exists on the current
@@ -19,8 +20,7 @@ REPO=$("$SCRIPT_DIR/resolve-repo.sh" 2>/dev/null) || REPO=""
 # no PR / no Closes line". Calling `gh pr view` without --repo could silently
 # match a different default repo's PR and emit its Closes #N (silent mis-
 # routing, exactly what threading --repo is supposed to prevent). Exit 0
-# with empty stdout — callers (Step 0.5 Branch 3 in /implement) treat that
-# as "no PR found" and fall through to Branch 4.
+# with empty stdout — callers treat that as "no PR found" and fall through.
 if [[ -z "$REPO" ]]; then
   exit 0
 fi

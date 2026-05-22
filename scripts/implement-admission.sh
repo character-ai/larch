@@ -77,10 +77,17 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-if [[ -z "$ISSUE" || ! "$ISSUE" =~ ^[1-9][0-9]*$ ]]; then
+# Normalize argv digit strings (e.g. `042` → `42`) so decimal forms agree with
+# `parent-issue.md` and `gh issue view` without rejecting leading zeros.
+if [[ -z "$ISSUE" || ! "$ISSUE" =~ ^[0-9]+$ ]]; then
     emit_kv ADMISSION_ERROR "--issue must be a positive integer"
     exit 2
 fi
+if [[ "$ISSUE" =~ ^0+$ ]]; then
+    emit_kv ADMISSION_ERROR "--issue must be a positive integer"
+    exit 2
+fi
+ISSUE=$((10#$ISSUE))
 
 if [[ -n "$REPO_ARG" ]]; then
     REPO="$REPO_ARG"
@@ -122,6 +129,20 @@ if [[ "$STATE" == "CLOSED" ]]; then
     exit 2
 fi
 
+has_managed_prefix() {
+    local t="$1"
+    case "$t" in
+        '[IN PROGRESS] '*) return 0 ;;
+        '[DONE] '*)        return 0 ;;
+        '[STALLED] '*)     return 0 ;;
+        *)                 return 1 ;;
+    esac
+}
+
+has_report_prefix() {
+    printf '%s' "$1" | grep -qiE '^\[[^]]*[[:space:]]+report\]'
+}
+
 # Resume sentinel: same session re-run after crash before parent-issue write
 # is irrelevant — sentinel matches only when file lists this issue. When
 # parent-issue.md records RUN_ID=, require the same RUN_ID in the environment
@@ -152,26 +173,17 @@ if [[ -n "${IMPLEMENT_TMPDIR:-}" && -f "${IMPLEMENT_TMPDIR}/parent-issue.md" ]];
                 emit_kv BLOCKERS "$BLOCKERS"
                 exit 4
             fi
+            if has_report_prefix "$TITLE"; then
+                emit_kv ADMISSION_RESULT report-title
+                emit_kv TITLE "$(admission_kv_value "$TITLE")"
+                exit 7
+            fi
             emit_kv ADMISSION_RESULT pass
             emit_kv RESUME true
             exit 0
         fi
     fi
 fi
-
-has_managed_prefix() {
-    local t="$1"
-    case "$t" in
-        '[IN PROGRESS] '*) return 0 ;;
-        '[DONE] '*)        return 0 ;;
-        '[STALLED] '*)     return 0 ;;
-        *)                 return 1 ;;
-    esac
-}
-
-has_report_prefix() {
-    printf '%s' "$1" | grep -qiE '^\[[^]]*[[:space:]]+report\]'
-}
 
 if has_managed_prefix "$TITLE"; then
     emit_kv ADMISSION_RESULT managed-prefix

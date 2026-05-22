@@ -357,8 +357,9 @@ assert_equal "$result" "proposed_augmentations:EXON regression in PR #2450" "[13
 # (America/Los_Angeles wall time with explicit -07:00 or -08:00 offset in the bracket.)
 # The skill uses the prefix pattern ^\[Run Logs Audit .* Report\]
 # (timestamp before the word "Report" inside the bracket). The generic
-# has_report_prefix pattern in find-lock-issue.sh also matches this shape;
-# the audit-report GitHub label filter remains the primary /fix-issue exclusion guard.
+# `has_report_prefix` in `scripts/implement-admission.sh` (see `/implement`
+# Preflight in `skills/implement/SKILL.md`) also matches this broad `[... Report]`
+# family; the `audit-report` label remains a separate admission gate there.
 # ---------------------------------------------------------------------------
 echo "Test 14: audit report title matches self-exclusion prefix"
 title_matches_audit_report_exclusion() {

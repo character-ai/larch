@@ -198,6 +198,12 @@ export STUB_VIEW_JSON='{"title":"Plain feature","state":"OPEN","labels":[]}'
 export STUB_API_BLOCKED_BY_JSON='[]'
 run_case "pass-open-no-blockers" 0 "$sd" --issue 42 --repo o/r
 
+sd="$TMPROOT/s1z"
+make_gh_stub "$sd"
+export STUB_VIEW_JSON='{"title":"Plain feature","state":"OPEN","labels":[]}'
+export STUB_API_BLOCKED_BY_JSON='[]'
+run_case "pass-leading-zeros-normalized" 0 "$sd" --issue 042 --repo o/r
+
 # --- closed ---
 sd="$TMPROOT/s2"
 make_gh_stub "$sd"
@@ -209,6 +215,16 @@ sd="$TMPROOT/s3"
 make_gh_stub "$sd"
 export STUB_VIEW_JSON='{"title":"[IN PROGRESS] my work","state":"OPEN","labels":[]}'
 run_case "managed-prefix-exit-5" 5 "$sd" --issue 3 --repo o/r
+
+sd="$TMPROOT/s3-done"
+make_gh_stub "$sd"
+export STUB_VIEW_JSON='{"title":"[DONE] shipped","state":"OPEN","labels":[]}'
+run_case "managed-prefix-done-exit-5" 5 "$sd" --issue 3 --repo o/r
+
+sd="$TMPROOT/s3-stalled"
+make_gh_stub "$sd"
+export STUB_VIEW_JSON='{"title":"[STALLED] blocked","state":"OPEN","labels":[]}'
+run_case "managed-prefix-stalled-exit-5" 5 "$sd" --issue 3 --repo o/r
 
 # --- report title ---
 sd="$TMPROOT/s4"
@@ -255,7 +271,8 @@ sent="$TMPROOT/s7/tmp"
 mkdir -p "$sent"
 printf 'ISSUE_NUMBER=5\nRUN_ID=rid\nADOPTED=true\n' > "$sent/parent-issue.md"
 export STUB_VIEW_JSON='{"title":"[IN PROGRESS] sentinel","state":"OPEN","labels":[]}'
-# Admission should pass before blocker checks when sentinel matches
+# Sentinel short-circuits managed-title / audit-label gates but still runs
+# all_open_blockers before emitting RESUME=true.
 (
   export IMPLEMENT_TMPDIR="$sent"
   export RUN_ID=rid

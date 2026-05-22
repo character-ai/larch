@@ -6,7 +6,7 @@ allowed-tools: Bash, Read, Write
 
 # Combine Issues
 
-Reduce open issue count by merging related issues into combined ones. The primary goal is saving tokens — fewer, broader issues mean fewer `/fix-issue` invocations and less duplicated context loading.
+Reduce open issue count by merging related issues into combined ones. The primary goal is saving tokens — fewer, broader issues mean fewer `/design` + `/implement` execution cycles and less duplicated context loading.
 
 ## When to Combine
 
