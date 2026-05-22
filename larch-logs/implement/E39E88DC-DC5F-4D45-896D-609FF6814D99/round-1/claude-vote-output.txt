@@ -1,0 +1,35 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: EXONERATE -- emit_bailed exits 0 is the established codebase bail contract; acceptance wording mismatch is a docs issue, not a code defect
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: NO -- pre-existing shard duplication not introduced by this change
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: EXONERATE -- non-standard default branch names are an acknowledged known scoped limitation
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: EXONERATE -- SKILL.md orchestrator directives are inherently not CI-testable; the limitation is architectural, not fixable in this PR
+FINDING_18: YES
+FINDING_19: YES
+FINDING_20: YES
+FINDING_21: YES
+FINDING_22: NO -- incomplete plan file list is a minor traceability nit, not actionable
+FINDING_23: YES
+FINDING_24: NO -- reviewer methodology note, not a code finding
+FINDING_25: NO -- reviewer methodology note, not a code finding
+FINDING_26: NO -- confirms implementation intent, not actionable
+FINDING_27: EXONERATE -- plan explicitly excluded run_rebase_rebump from the guard; adding it here contradicts the stated design decision
+FINDING_28: NO -- reviewer methodology note, not a code finding
+FINDING_29: NO -- describes intended state-file behavior, not a bug
+FINDING_30: NO -- duplicate of non-OOS concerns already captured in FINDING_1/4/10/16/19
+FINDING_31: YES
+FINDING_32: YES
+FINDING_33: NO -- reviewer methodology note, not a code finding
+FINDING_34: NO -- confirms absence of defect, not actionable
+FINDING_35: NO -- confirms implementation intent, not actionable

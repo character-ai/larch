@@ -490,7 +490,9 @@ Probe locations:
 - After Step 2 dispatch returns on the external-implementer `STATUS=complete`
   path only: `--step 2-post-dispatch`. Do not probe when
   `STATUS=claude_fallback`; Claude-fallback implementation files are
-  uncommitted until Step 4.
+  uncommitted until Step 4. On the same `STATUS=complete` path, after this
+  probe, the orchestrator runs the Section 2.2 post-dispatch branch assertion
+  (`git-current-branch.sh` vs Step 1 `BRANCH_NAME`) before Step 3.
 - After Step 4.r: `--step 4.r-post-rebase`.
 - After Step 7.r, only when `FILES_CHANGED=true`: `--step 7.r-post-rebase`.
 - After Step 7a.r: `--step 7a.r-post-rebase`.
@@ -1033,9 +1035,11 @@ If any check fails, synthesize an orchestrator-local bail: set `STATUS=bailed`, 
 
 **2.2 — Branch on `STATUS`**:
 
-- `STATUS=complete` → set `$MANIFEST_PATH=$MANIFEST`, run the Phantom Untracked Probe with `--step 2-post-dispatch`, and proceed to Step 3. Steps 4 / 8a / 9a / 9a.1 read this manifest; the orchestrator does not run `git diff` to figure out what changed. This probe runs only on the external-implementer complete path, after the dispatcher has committed; do not run it on `STATUS=claude_fallback`.
+- `STATUS=complete` → set `$MANIFEST_PATH=$MANIFEST`, run the Phantom Untracked Probe with `--step 2-post-dispatch`, then run **post-dispatch branch assertion** (external-implementer path only): `${CLAUDE_PLUGIN_ROOT}/scripts/git-current-branch.sh` — parse `BRANCH=<name>` into `CURRENT_BRANCH_POST_DISPATCH`. Compare to the `BRANCH_NAME` value from Step 1's issue-anchored capture (§ "Capture branch name (`BRANCH_NAME`)"). If the script exits non-zero (detached HEAD / not in a git work tree) or `CURRENT_BRANCH_POST_DISPATCH` is not byte-identical to `BRANCH_NAME`, print `**⚠ /implement Step 2: post-dispatch branch mismatch (expected $BRANCH_NAME).**`, append a `Warnings` bullet to `$IMPLEMENT_TMPDIR/execution-issues.md` via `${CLAUDE_PLUGIN_ROOT}/scripts/append-execution-issue.sh` describing `main-branch-post-dispatch` (expected vs observed; sanitize session-derived strings), set `FINAL_BAIL_REASON=main-branch-post-dispatch` and `STALL_TRACKING=true`, and bail to Step 12d without consuming Step 3 onward. Otherwise proceed to Step 3. Steps 4 / 8a / 9a / 9a.1 read this manifest; the orchestrator does not run `git diff` to figure out what changed. The Phantom Untracked Probe runs only on the external-implementer complete path, after the dispatcher has committed; do not run it on `STATUS=claude_fallback`.
 - `STATUS=needs_qa` → run the Q/A loop in 2.3. Note: the dispatcher may have repaired a non-standard `qa-pending.json` (e.g., `items[]` → `questions[]`) before emitting this status; the Q/A loop always reads canonical `questions[]` format from `$QA_PENDING`.
 - `STATUS=claude_fallback` (with `ORCHESTRATOR_EDIT_AUTHORITY=allowed`, validated mechanically in 2.1.5) → run the Claude-fallback branch in 2.4. If `ORCHESTRATOR_EDIT_AUTHORITY != allowed`, treat as envelope failure per 2.1.5 (do NOT enter 2.4).
+
+**Branch enforcement on `claude_fallback`**: the `git-current-branch.sh` vs `BRANCH_NAME` assertion in the `STATUS=complete` bullet above is scoped to `STATUS=complete` only (see NEVER #10 / envelope rules). On `claude_fallback`, the dispatcher returns before that post-dispatch gate; wrong-branch work is still blocked later by `scripts/ship-pr.sh` `run_bump_phase` `bump-branch-guard` (state `BRANCH_NAME` vs checked-out symbolic branch) before version bump classify/apply, which is the canonical ship-time backstop for branch alignment. That guard also refuses `BRANCH_NAME` of `main` or `master` unless `FORKED_TARGET=true` in `ship-pr-state.sh` **and** the checkout still matches — forked upstream-target flows may use the default branch name in state; every other run stalls there before classify/apply (see `scripts/ship-pr.md` bump-branch-guard bullet).
 
 **2.3 — Q/A loop** (when `STATUS=needs_qa`):
 

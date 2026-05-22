@@ -1,0 +1,17 @@
+Tracing `run_bump_phase` / `run_rebase_rebump` entry points and reading the precomputed diff plus commit history.
+
+Precomputed diff is empty. Gathering changes via read-only `git diff` and reading `run_bump_phase`, `run_rebase_rebump`, and resume-phase wiring.
+
+Checking `run_rebase_rebump` for branch assumptions and reviewing `step2-implement.sh` and `SKILL.md` changes. Workspace matches `main` (empty diff); reviewing current files for line-accurate citations.
+
+### In-Scope Findings
+
+- **risk-integration** `scripts/ship-pr.sh:1349-1391` — `run_rebase_rebump` still skips the new `bump-branch-guard` logic (see the explicit operator-invariant comment at `scripts/ship-pr.sh:1357-1359`) yet immediately runs `drop-bump-commit.sh` and later `classify-bump.sh` / `apply-bump.sh` (`scripts/ship-pr.sh:1386-1597`), so the strong alignment enforced at `run_bump_phase` entry (`scripts/ship-pr.sh:807-839`) does not apply on CI-merge recovery paths (`scripts/ship-pr.sh:1720-1757`); a later checkout that no longer matches `read_state BRANCH_NAME` is not caught before rebump work the way resume `--resume-phase bump` is (`scripts/ship-pr.sh:1879-1894`). **Suggested fix:** Either reuse the same `git symbolic-ref` vs `read_state BRANCH_NAME` checks (including the `FORKED_TARGET` carve-out at `scripts/ship-pr.sh:829-838`) at the top of `run_rebase_rebump` before `drop-bump-commit.sh`, or tighten `scripts/ship-pr.md` with a normative recovery checklist that states this path assumes an already-correct named branch and what to do when `HEAD` drift is suspected.
+
+- **risk-integration** `skills/implement/scripts/step2-implement.sh:311-324` — The `main-branch-prohibited` bail only runs when `SPAWN_BRANCH` is `main`/`master` **and** `_forked_target != "true"` **and** `_issue_anchored` is true, where `_issue_anchored` is derived solely from `parent-issue.md` carrying `ISSUE_NUMBER` or the mere presence of `session-env.sh` (`skills/implement/scripts/step2-implement.sh:316-321`), not from byte identity with Step 1 `BRANCH_NAME`; a tmpdir that is meant to be issue-anchored but lacks both signals could still launch the external implementer from `main`/`master`, deferring detection to later gates (`skills/implement/SKILL.md` post-dispatch assertion and `run_bump_phase`). **Suggested fix:** Narrow the condition so any durable issue-anchored marker used elsewhere in `/implement` (for example manifest presence or an explicit env key written before Step 2) also forces `_issue_anchored`, or fail closed on `main`/`master` whenever `ISSUE_NUMBER` is non-empty in any canonical source, not only those two files.
+
+### Out-of-Scope Observations
+
+- The precomputed diff at `<TMPDIR>/round-3/diff.txt` was empty; review used the current tree’s `scripts/ship-pr.sh`, `skills/implement/scripts/step2-implement.sh`, and related tests. Local `HEAD` equals `main` (`46619920`), so `git diff main...HEAD` and `git log $(git merge-base HEAD main)..HEAD --oneline` show no branch-only delta versus `main`; the behavioral review above reflects what is present in the working tree, not a separate feature branch diff.
+
+- **risk-integration** `scripts/ship-pr.sh:916-935` — `scripts/test-ship-pr.sh` exercises `forked bump allows protected default branch name when checkout matches`, documenting that `FORKED_TARGET=true` is an intentional bypass of the non-fork `main`/`master` rejection (`scripts/ship-pr.sh:829-832`); mistaken `FORKED_TARGET=true` remains a configuration foot-gun called out in-script, not a logic bug introduced without awareness.

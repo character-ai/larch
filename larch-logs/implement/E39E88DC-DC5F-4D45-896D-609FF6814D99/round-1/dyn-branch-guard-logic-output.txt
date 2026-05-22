@@ -1,0 +1,13 @@
+Reading the pre-computed diff and commit list to review branch-guard logic for correctness.
+
+Pre-computed diff is empty; gathering read-only git state and reading the modified files referenced in the plan.
+
+Reading critical sections to verify empty-state handling, `exit_stall`, and alignment between docs and `step2-implement.sh`.
+
+### In-Scope Findings
+- **correctness** `scripts/ship-pr.sh:807-818` — When `read_state BRANCH_NAME` yields an empty string (missing key, `BRANCH_NAME=`, or corrupted state) and the checkout is detached so `git branch --show-current` is also empty, the condition `[[ "$_bump_guard_branch" != "$_bump_guard_state_branch" ]]` is false and neither `main` nor `master` matches, so the guard does not stall and the bump phase can run without a reliable branch identity—contrary to the stated edge case that empty `BRANCH_NAME` should stall. **Suggested fix:** Extend the guard to treat an empty `BRANCH_NAME` (and/or an empty current branch when a non-empty `BRANCH_NAME` is required) as an immediate stall, and add a regression test with `BRANCH_NAME=` on a detached HEAD fixture.
+
+### Out-of-Scope Observations
+- The pre-computed diff at `<TMPDIR>/round-1/diff.txt` was empty; review used a read-only `git diff origin/main...HEAD` against the local tree instead.
+- `git log "$(git merge-base HEAD main)"..HEAD --oneline` produced no lines because `HEAD` is `main` and matches the merge-base, so the single commit ahead of `origin/main` is not in that range.
+- `skills/implement/scripts/step2-implement.sh:299-310` intentionally narrows `main-branch-prohibited` to issue-anchored runs (`session-env.sh`, non-empty `ISSUE_NUMBER`, `FORKED_TARGET` not `true`); runs without `session-env.sh` can still launch on `main`, which matches the new docs and is a deliberate tradeoff rather than a regression from the stricter pseudo-code in the feature text.

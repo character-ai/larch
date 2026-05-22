@@ -1,0 +1,33 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: NO -- trivial reviewer environment issue (wrong git base), not a product defect worth tracking
+FINDING_7: YES
+FINDING_8: NO -- exact duplicate of FINDING_1
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: EXONERATE -- operator-invariant comment at 1357-1359 explicitly documents this gap as accepted design; not issue-worthy
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: YES
+FINDING_18: EXONERATE -- same explicitly documented operator-invariant design decision as FINDING_14; not issue-worthy
+FINDING_19: YES
+FINDING_20: YES
+FINDING_21: YES
+FINDING_22: YES
+FINDING_23: YES
+FINDING_24: YES
+FINDING_25: YES
+FINDING_26: YES
+FINDING_27: EXONERATE -- symbolic-ref substitution is correct, older-Git compatibility rationale is in adjacent comment; plan-text mismatch not worth filing
+FINDING_28: EXONERATE -- ancillary-files plan checklist drift is process noise, not a code defect worth a standalone issue
+FINDING_29: YES
+FINDING_30: YES
+FINDING_31: YES
+FINDING_32: NO -- duplicate of FINDING_29; same empty-diff infrastructure concern already captured
+FINDING_33: NO -- reviewer confirming documented intentional behavior (FORKED_TARGET bypass in test), not raising a new concern
