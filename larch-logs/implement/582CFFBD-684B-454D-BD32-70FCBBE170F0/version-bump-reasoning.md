@@ -1,12 +1,12 @@
 # Version Bump Reasoning
 
-- **Base commit**: `234131af` (Fixes #2543: fix(local-cleanup): diff orphan-drop guard against pre-fetch origin/main (#2547))
-- **Current version**: `34.0.22`
+- **Base commit**: `8721568d` (Fixes #2549: feat(review): vote on problems not fix proposals; pass fix list to coder (#2557))
+- **Current version**: `34.0.23`
 - **Classification scope**: `skills/**` and `agents/**` only (public plugin surface).
 
 ## Result: PATCH
 
-- **New version**: `34.0.23`
+- **New version**: `34.0.24`
 
 ### PATCH rationale
 
