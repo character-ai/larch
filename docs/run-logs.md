@@ -2,7 +2,7 @@
 
 On a default `/implement --merge` run, a directory of structured log files is committed alongside the PR. These committed files are the single source of truth for full run content — voting tallies, rejected findings, version-bump reasoning, OOS observations, execution issues, run statistics, token/timing reports, and the session transcript. The tracking issue and PR body carry only slim projections.
 
-Exceptions: `--design-only --no-issues` and `repo_unavailable=true` produce no committed log at all (`$IMPLEMENT_TMPDIR/execution-issues.md` is the only audit trail and is removed at cleanup). `--design-only` runs with a tracking issue can still commit partial `larch-logs/implement/<RUN_ID>/` directories, but they stop before Step 7a and therefore omit Step-7a-only batches such as `session-transcript.jsonl`. Fork dry-run mode (`--forked`) does not create a tracking issue. In all cases, session-derived content in `larch-logs/` passes through secrets and tmpdir-path redaction, but redaction is best-effort — operators should avoid pasting sensitive content into `/implement` prompts.
+Exceptions: `repo_unavailable=true` produces no committed log at all (`$IMPLEMENT_TMPDIR/execution-issues.md` is the only audit trail and is removed at cleanup). Fork dry-run mode (`--forked`) does not create a tracking issue. In all cases, session-derived content in `larch-logs/` passes through secrets and tmpdir-path redaction, but redaction is best-effort — operators should avoid pasting sensitive content into `/implement` prompts.
 
 ## Directory structure
 
@@ -80,7 +80,7 @@ For current `/implement` runs, the committed manifest is normally an `"in-progre
 
 **Mode**: replace (one file per run). **Written**: Step 1, after the design plan is finalized.
 
-Contains the implementation plan: goal statement, files to modify, approach, edge cases, and testing strategy. In normal mode the content comes from `/design`'s exported `plan.txt`; in quick mode it is the inline plan produced by the orchestrator.
+Contains the implementation plan: goal statement, files to modify, approach, edge cases, and testing strategy. The content is materialized from the tracking issue body's `larch:plan` block (see `docs/issue-anchored-plan.md`) after `/design` has written or refreshed that anchor; `/implement` Step 1 copies it into this batch — it is not produced by a nested `/design` sub-invocation inside `/implement`.
 
 ### parent-issue.md
 
@@ -116,14 +116,14 @@ bailout paths may not produce them.
 One JSON object per `/implement` session. The tally envelope shape is shared with
 `code-review-tally.json`: `schema_version`, `phase`, `batch`, `mode`, `rounds`,
 `accepted_count`, `rejected_count`, `exonerated_count`, `neutral_count`, and
-`body`. For plan review the extra counters are normally `0`. The `body` contains
+`body`. For plan review the extra counters are normally `0`. Plan review voting itself runs during `/design`; this batch is often a stub or summary that references that outcome. The `body` contains
 the plan-review voting outcome (accepted count, rejected count, round summaries)
 plus any rejected plan-review findings under a `## Rejected Plan Review Findings`
-sub-header. In quick mode the body contains `"Quick mode — no plan review voting."`.
+sub-header. When no voting artifact is attached for this run, the body may note that plan review was completed in the `/design` phase instead of duplicating ballots here.
 
 ### code-review-tally.json
 
-**Mode**: replace (JSON object). **Written**: Step 5, after `/review` returns (normal mode) or the quick-mode review loop completes.
+**Mode**: replace (JSON object). **Written**: Step 5, after the Step 5 review loop completes (via `review-and-fix.sh` / `review-core.sh`; standalone `/review` is a separate skill).
 
 One JSON object per `/implement` session with the same tally envelope fields as
 `plan-review-tally.json`. `exonerated_count` covers findings voted `exonerated`
@@ -172,7 +172,7 @@ Markdown explanation of the version bump classification: which bump type was cho
 
 **Mode**: replace. **Written**: Step 8+ before PR creation and refreshed later by terminal summary paths.
 
-Committed **rich markdown** projection of the run: outcome, mode flags, workflow path, token totals (Claude / Codex / Cursor), optional per-lane USD estimates when [`scripts/token-cost.sh`](../scripts/token-cost.sh) rates are configured, duration, plan/code review tallies, OOS and execution-issue counts, log directory pointer, and operator-facing notes (fork dry-run, design-only, draft, no-merge, upstream issue, fork OOS stubs). The body is produced by [`scripts/render-run-summary.sh`](../scripts/render-run-summary.sh): it begins with a `## /<skill> run <run-id> — <outcome>` heading and a normalized markdown bullet list (including `**PR**:` when a PR is known; `- **Outcome**:` only for `stalled` / `bailed*` outcomes; the other fields follow the renderer contract). A versioned HTML sentinel (`<!-- larch:run-summary v=1 -->`) appears on its own line after that bullet block (and before any optional trailing note lines) so consumers can detect the standardized block while the opening line stays human-readable. The `- **PR**:` bullet is omitted when no PR number is known; otherwise `#<number> — <url>` or `#<number>` when the URL is unknown. The tracking-issue `larch:final-summary` comment is the canonical live projection once upserted.
+Committed **rich markdown** projection of the run: outcome, mode flags, workflow path, token totals (Claude / Codex / Cursor), optional per-lane USD estimates when [`scripts/token-cost.sh`](../scripts/token-cost.sh) rates are configured, duration, plan/code review tallies, OOS and execution-issue counts, log directory pointer, and operator-facing notes (fork dry-run, draft, no-merge, upstream issue, fork OOS stubs). The body is produced by [`scripts/render-run-summary.sh`](../scripts/render-run-summary.sh): it begins with a `## /<skill> run <run-id> — <outcome>` heading and a normalized markdown bullet list (including `**PR**:` when a PR is known; `- **Outcome**:` only for `stalled` / `bailed*` outcomes; the other fields follow the renderer contract). A versioned HTML sentinel (`<!-- larch:run-summary v=1 -->`) appears on its own line after that bullet block (and before any optional trailing note lines) so consumers can detect the standardized block while the opening line stays human-readable. The `- **PR**:` bullet is omitted when no PR number is known; otherwise `#<number> — <url>` or `#<number>` when the URL is unknown. The tracking-issue `larch:final-summary` comment is the canonical live projection once upserted.
 
 ### oos-issues.ndjson
 
@@ -206,7 +206,7 @@ Log of noteworthy events during the run, grouped by category: `Pre-existing Code
 
 ### session-transcript.jsonl
 
-**Mode**: replace. **Written**: Step 7a tail (pre-bump log flush) for runs that reach Step 7a. `--design-only` and other pre-Step-7a bailout paths do not write this batch. The transcript is truncated at the pre-bump boundary — Steps 8+ (version bump, PR creation, CI, merge, cleanup) are not included. On each CI retry `scripts/refresh-run-logs.sh` (Triggers A-C in `ship-pr.sh`) re-captures and refreshes the batch before each push, so the final merged PR carries the most up-to-date transcript available before merge.
+**Mode**: replace. **Written**: Step 7a tail (pre-bump log flush) for runs that reach Step 7a. Runs that bail out before Step 7a do not write this batch. The transcript is truncated at the pre-bump boundary — Steps 8+ (version bump, PR creation, CI, merge, cleanup) are not included. On each CI retry `scripts/refresh-run-logs.sh` (Triggers A-C in `ship-pr.sh`) re-captures and refreshes the batch before each push, so the final merged PR carries the most up-to-date transcript available before merge.
 
 A filtered, machine-readable rendering of the Claude Code session, produced by `scripts/render-session-transcript.py` from the raw session JSONL. The first line is a `{"v": 1, "source_basename": ..., "turns": N}` header; subsequent lines are per-turn objects with a `blocks` array. Blocks carry user-typed slash commands and text, assistant prose, `tool_call` entries with full input objects, and `tool_result` entries — full body when the result reported an error or warning (`is_error: true`, Bash `^Exit code [1-9]` / `^Error:`, or `warning:`), otherwise collapsed to an `elided_bytes` count. Assistant `thinking` blocks are kept only when at least one `tool_use` in the same turn produced an errored result. Harness-injected SKILL.md expansions, attachments, and housekeeping events are dropped. Redacted for tmpdir paths and secrets before commit. The `session-transcript` capture records `SESSION_TRANSCRIPT_STATUS` in the execution-issues `Warnings` section for every capture outcome, including refresh/deferred-commit `captured` outcomes and `render-failed` / `render-empty` when the renderer cannot produce a usable output (the run continues; nothing is committed). For runs that reach Step 7a, `session-transcript.jsonl` is part of the required-file completeness manifest; pre-Step-7a partial directories remain excluded by the verifier's step reachability rules. The recovery warning records only the discovered transcript basename, not the full operator-local path. See `scripts/render-session-transcript.md` for the complete schema.
 
@@ -248,11 +248,11 @@ Content: run ID, log directory path (`larch-logs/implement/<RUN_ID>/`), agent (i
 
 Written at Step 1 tail after the plan is finalized.
 
-Content: a slim pointer to `larch-logs/implement/<RUN_ID>/plan-goals-test.md` plus the current plan-review tally status (voting outcome or quick-mode note).
+Content: a slim pointer to `larch-logs/implement/<RUN_ID>/plan-goals-test.md` plus the current plan-review tally status (voting outcome when present, or a pointer that detailed plan review lives in the `/design` run artifacts).
 
 ### `larch:diagrams`
 
-Written at Step 7a for full implementation runs. For `--design-only` runs with a tracking issue, this comment is posted at Step 1 tail alongside `larch:plan` (implementation steps including 7a are skipped).
+Written at Step 7a for runs that reach the pre-bump log flush. This comment is posted after implementation-phase artifacts (including the committed diff-derived code-flow diagram) exist.
 
 Content: the Architecture Diagram (from `/design`) and Code Flow Diagram (generated at Step 7a from the committed implementation diff), both embedded as Mermaid fences. Diagrams are embedded directly in this comment rather than written as a larch-log batch.
 
@@ -263,9 +263,7 @@ PR creation, where `ship-pr.sh` renders and commits `final-summary.md` with
 placeholder PR fields before `create-pr.sh` pushes the branch, and later
 refreshed during Step 18 terminal cleanup. The tracking-issue comment may also
 be refreshed immediately after PR creation with the live URL, without a second
-log commit. For `--design-only` runs, Step 8+ and PR creation are skipped, but
-the terminal cleanup path still runs and may refresh the tracking summary with
-`PR: N/A`.
+log commit. Runs that never reach PR creation still run terminal cleanup and may refresh the tracking summary with `PR: N/A` when no PR exists.
 
 Content: final run status (`STALL_TRACKING` value), PR URL, and log directory path. The committed `final-summary.md` in the PR tree may carry placeholder `PR: N/A`; the tracking-issue comment is the canonical live source for the PR URL.
 

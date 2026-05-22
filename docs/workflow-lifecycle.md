@@ -8,8 +8,8 @@ Skills are not invoked in a flat sequence. They form a hierarchical call graph w
 
 ```mermaid
 graph TD
-    IMPLEMENT["/implement"] -->|invokes| DESIGN["/design"]
-    IMPLEMENT -->|runs helper for| STEP5["run-step5-review.sh"]
+    DESIGN["/design"]
+    IMPLEMENT["/implement"] -->|runs helper for| STEP5["run-step5-review.sh"]
     IMPLEMENT -->|runs helper for| CHECKS["project relevant-checks script"]
     IMPLEMENT -->|invokes| BUMP["/bump-version"]
     IMPLEMENT -->|invokes| ISSUE_OOS["/issue (OOS filing)"]
@@ -31,7 +31,8 @@ graph TD
     style ISSUE_OOS fill:#555,color:#fff
 ```
 
-- **`/implement`** — top-level orchestrator. Runs the full design → code → review → PR workflow by default; Step 5 invokes `run-step5-review.sh`, which derives `effective_round_cap` from base cap **5** plus degraded-round inflation, does **not** forward `--panel` on the public argv, and applies the panel only inside `review-and-fix.sh` → `review-core.sh` (see [Review Agents](review-agents.md) Note A for the **3-judge panel on round 1**, **review panel**, and **6 Cursor specialists** contract). With the `--merge` flag, also runs the CI+rebase+merge loop and local cleanup after PR creation. Step 0.5 resolves tracking-issue state (sentinel reuse, positional issue adoption, or `Closes #<N>` recovery from the current branch's PR body); committed larch-log batches are the single source of truth for full report content (voting tallies, rejected findings, version-bump reasoning, diagrams, OOS observation links, execution issues, run statistics), with the PR body as a slim projection (Summary + diagrams + Test plan + `Closes #<N>` — diagrams appear in both places by design). Step 9a.1 additionally invokes `/issue` in batch mode to file accepted OOS findings as GitHub issues.
+- **`/design`** — standalone orchestrator that authors or refreshes the issue-body `larch:plan` (and clarification round-trip) before `/implement` runs; it is not a sub-invocation nested inside `/implement`.
+- **`/implement`** — top-level orchestrator. Materializes the implementation from the issue-anchored `larch:plan` (Preflight enforces plan presence per `docs/issue-anchored-plan.md`), then runs code → review → PR by default; Step 5 invokes `run-step5-review.sh`, which derives `effective_round_cap` from base cap **5** plus degraded-round inflation, does **not** forward `--panel` on the public argv, and applies the panel only inside `review-and-fix.sh` → `review-core.sh` (see [Review Agents](review-agents.md) Note A for the **3-judge panel on round 1**, **review panel**, and **6 Cursor specialists** contract). With the `--merge` flag, also runs the CI+rebase+merge loop and local cleanup after PR creation. Step 0.5 resolves tracking-issue state (sentinel reuse, positional issue adoption, or `Closes #<N>` recovery from the current branch's PR body); committed larch-log batches are the single source of truth for full report content (voting tallies, rejected findings, version-bump reasoning, diagrams, OOS observation links, execution issues, run statistics), with the PR body as a slim projection (Summary + diagrams + Test plan + `Closes #<N>` — diagrams appear in both places by design). Step 9a.1 additionally invokes `/issue` in batch mode to file accepted OOS findings as GitHub issues.
 - **`/fix-issue`** — processes one approved GitHub issue per invocation. Step 0 (`find-lock-issue.sh`) atomically finds an eligible candidate (open, with `GO` sentinel comment as last comment, no managed lifecycle title prefix, not already locked, no open blockers), acquires the comment lock, and renames the title to `[IN PROGRESS]` immediately on lock so the visual lifecycle reflects the active run without a multi-minute delay. Triages, and classifies intent (PR/NON_PR) and — for PR tasks — complexity (SIMPLE/HARD). PR tasks delegate to `/implement` with optional `--merge` and other `/fix-issue` forwards, passing the **same positional** `<issue-N>` the lock path selected (no separate `--issue` argv); NON_PR tasks run inline (typically filing findings via `/issue`) and never call `/implement`. **Umbrella support (explicit-target only)**: `/fix-issue <umbrella#>` accepts an umbrella issue (detected post-#846 by title-only — title prefix `Umbrella:` / `Umbrella —` after stripping leading bracket-blocks per #819; body content is NOT consulted) and dispatches to the next eligible child without requiring `GO` on either the umbrella or the chosen child; auto-pick mode (no positional argument) NEVER selects umbrellas. When the umbrella's last open child closes, the umbrella is automatically renamed to `[DONE]` and closed.
 - **`/skill-evolver`** — research-and-file-issues orchestrator targeting an existing skill. Validates `<skill-name>` (regex + plugin-repo CWD + target SKILL.md exists at `skills/<name>/` or `.claude/skills/<name>/`) via `skills/skill-evolver/scripts/validate-args.sh`, then invokes `/research --no-issue` with a templated prompt that asks the documented lane fan-out to identify concrete actionable improvements with citations — repo-local sibling-skill `file:line` references plus reputable external sources (Anthropic / OpenAI / DeepMind / ≥500-star OSS). On `≥1` improvement, distills the findings into a task description and delegates to `/umbrella` with `--label evolved-by:skill-evolver --label skill:<name> --title-prefix "[skill-evolver:<name>] "`. `/umbrella`'s own classifier decides one-shot (single issue, no umbrella) vs multi-piece (umbrella + one child per piece — very small items may be bundled into a single composed piece per Step 3B.1's bundling rule) on the distilled description — `/skill-evolver` does not pre-commit to the final shape. The label and title-prefix tag whatever `/umbrella` files for later filtering. On `0` improvements, exits cleanly without filing. The skill itself does NOT modify the target skill's files — implementation lands later via `/fix-issue` (per child). Stateful orchestrator: NOT a pure forwarder (post-`/research` decision logic + conditional `/umbrella` invocation) and therefore subject to the post-invocation-verification + anti-halt-continuation rules.
 
@@ -71,23 +72,9 @@ The full lifecycle when running `/implement <issue-N>`:
 
 ```mermaid
 flowchart TD
-    START([Start]) --> DESIGN_PHASE
+    START([Start]) --> DESIGN_DONE["Prerequisite: /design wrote larch:plan in the issue body"]
 
-    subgraph DESIGN_PHASE["Design Phase (/design)"]
-        BRANCH[Create branch] --> QUESTIONS[Clarifying questions]
-        QUESTIONS --> DISCUSS1[Design discussion round 1]
-        DISCUSS1 --> ROUTER[Run-depth router]
-        ROUTER --> SKETCHES[Adaptive collaborative sketches]
-        SKETCHES --> SYNTHESIS[Approach synthesis]
-        SYNTHESIS --> DIALECTIC[Dialectic: debate + judge adjudication on contested decisions]
-        DIALECTIC --> PLAN[Write implementation plan]
-        PLAN --> PLAN_REVIEW[Plan review panel]
-        PLAN_REVIEW --> VOTE1[Voting panel adjudicates findings]
-        VOTE1 --> REVISE[Revise plan if needed]
-        REVISE --> DISCUSS2[Design discussion round 2]
-    end
-
-    DESIGN_PHASE --> IMPL_PHASE
+    DESIGN_DONE --> IMPL_PHASE
 
     subgraph IMPL_PHASE["Implementation Phase"]
         CODE[Implement feature] --> VALIDATE1[Validation checks]
@@ -123,7 +110,7 @@ flowchart TD
 
 Not every task requires the full `/implement` pipeline. Skills can be used independently:
 
-- **`/design [--full] <feature>`** — Plan a feature without implementing it. Creates a branch, writes run parameters once, runs the collaborative sketch topology documented in [Collaborative Sketches](collaborative-sketches.md) when the sketch budget is non-zero, writes the plan, and reviews it with the validation panel + voting. `--quick` caps sketches and uses quick plan review; `--full` forces full sketch fan-out.
+- **`/design [--trivial|--simple|--hard] <issue-N | feature description>`** — Author or refresh an issue-anchored implementation plan in GitHub (`larch:plan` markers in the issue body per [Issue-anchored plan](issue-anchored-plan.md)). Tier flags select sketch and plan-review depth (`--trivial` is the quick-budget tier; `--simple` / `--hard` use larger sketch fan-outs). Creates a branch when needed, runs the collaborative sketch topology documented in [Collaborative Sketches](collaborative-sketches.md) when the sketch budget is non-zero, and runs the validation panel + voting on the plan text.
 - **`/review [--diff] [--no-issues] [<description>]`** — Supports `--diff`, which reviews the current branch's changes (implements accepted fixes in a recursive loop), and positional `<description>`, which reviews existing code and files accepted findings as GitHub issues by default (`--no-issues` to suppress).
 - **`/research [--no-issue] <topic>`** — Best-effort read-only-repo investigation with the fixed-shape topology documented in the research skill: a planner pre-pass (always on) decomposes the question into focused subquestions, then Codex-first research lanes by angle fan out, followed by the validation panel. Step 2.5 (citation validation, unconditional) runs between validation and synthesis: a deterministic shell validator extracts cited URLs / DOIs / file:line references, HEAD-fetches URLs under SSRF guards, validates DOIs, spot-checks file:line ranges against the git tree, and writes the PASS / FAIL / UNKNOWN ledger sidecar that Step 3 splices into the final report — fail-soft (the report is never blocked). On a TTY, the planner pauses after subquestion proposal so the operator can review, edit, or abort; on non-TTY, the run continues without prompting. Does not create branches or make commits. The skill-scoped `scripts/deny-edit-write.sh` PreToolUse hook mechanically guards Claude's `Edit`/`Write`/`NotebookEdit` tool surface, permitting only paths under canonical `/tmp`; **the hook does not cover Bash or external reviewers** (Cursor/Codex launch directly against `$PWD` with full filesystem access — non-modification is prompt-enforced only). See [`SECURITY.md` § External reviewer write surface in /research](../SECURITY.md#external-reviewer-write-surface-in-research) for the full residual-risk framing. Step 3.5 auto-archives the full report as a GitHub issue on each successful run (via `/issue` single mode); `--no-issue` skips this step. May also invoke `/issue` via the Skill tool when the research brief calls for filing findings as issues.
 - **`/block-issue <ISSUE_A> <ISSUE_B>`** — Express a native GitHub blocked-by relationship between two issues using the `addBlockedBy` GraphQL mutation. Both arguments are plain issue numbers. Auto-detects the repo from `gh repo view`; accepts optional `--repo owner/name` to override. Verifies the relationship was recorded before confirming.
@@ -142,9 +129,7 @@ Flags modify behavior across the skill hierarchy:
 
 | Flag | Available on | Effect |
 |---|---|---|
-| `--quick` | `/design` | Caps sketch fan-out at the quick topology and uses quick plan review. |
-| `--full` | `/design` | Forces full sketch fan-out. When combined with `/design`, sketches use the full topology while plan review remains quick. |
-| `--auto` | `/design`, `/fix-issue` (forwarded to `/implement` on PR paths when the child skill still documents it), `/alias` (preset forwarding per `skills/alias/SKILL.md`) | Suppresses interactive checkpoints on supported child surfaces; `/implement`'s public argv is issue-anchored — follow `skills/implement/SKILL.md` for the exact forwarded flag set. |
+| `--auto` | `/fix-issue` (forwarded to `/implement` on PR paths when the child skill still documents it), `/alias` (preset forwarding per `skills/alias/SKILL.md`) | Suppresses interactive checkpoints on supported child surfaces; `/implement`'s public argv is issue-anchored — follow `skills/implement/SKILL.md` for the exact forwarded flag set. |
 | `--no-issue` | `/research` | Skips the Step 3.5 auto-archive that files the full report as a GitHub issue. Default off (issue is filed). |
 
 ## Conditional Steps

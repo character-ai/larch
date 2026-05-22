@@ -38,7 +38,7 @@ This pattern is used for:
 
 ### Sequential Composition
 
-Skills invoke other skills in sequence, each building on the previous result. For example, `/implement` invokes `/design` first, then implements the resulting plan, then invokes `/review` on the implementation.
+Skills invoke other skills in sequence, each building on the previous result. For example, `/design` is a prerequisite peer that writes the issue-body `larch:plan`; `/implement` materializes and lands the work from that anchor; Step 5 runs `review-and-fix.sh` on the implementation diff (standalone `/review` is a separate skill).
 
 ## Agent Types
 
