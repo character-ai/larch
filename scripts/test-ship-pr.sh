@@ -1384,8 +1384,13 @@ set +e
     > "$tmp/stdout-no-orphan" 2>&1)
 set -e
 head_after=$(git -C "$root" rev-parse HEAD 2>/dev/null || true)
-orphan_count=$(git -C "$root" rev-list --count origin/main..HEAD 2>/dev/null || echo "error")
-if [[ "$orphan_count" == "0" ]]; then
+set +e
+orphan_count=$(git -C "$root" rev-list --count origin/main..HEAD 2>/dev/null)
+orphan_rev_list_rc=$?
+set -e
+if [[ "$orphan_rev_list_rc" -ne 0 ]]; then
+    fail "postmerge phase: git rev-list --count origin/main..HEAD failed (rc=$orphan_rev_list_rc, HEAD=$head_after)"
+elif [[ "$orphan_count" == "0" ]]; then
     ok "postmerge phase leaves origin/main..HEAD empty (no commits past upstream tip after run_postmerge_phase)"
 else
     fail "postmerge phase left $orphan_count commit(s) in origin/main..HEAD (HEAD=$head_after)"
@@ -1472,7 +1477,8 @@ set +e
 set -e
 if [ -f "$sentinel_dir/larch-log-calls.txt" ]; then
     if grep -q "status=done" "$sentinel_dir/larch-log-calls.txt" && \
-       grep -qFx "stub_env LARCH_NO_LOGS_COMMIT=true" "$sentinel_dir/stub-env.log" 2>/dev/null; then
+       grep -qFx "stub_env LARCH_NO_LOGS_COMMIT=true" "$sentinel_dir/stub-env.log" 2>/dev/null && \
+       ! grep -q "^LARCH_LOG_ARGS=commit" "$sentinel_dir/larch-log-calls.txt"; then
         exp=$(printf '%s\n' 'larch-log manifest' 'write-final-report')
         if [[ "$(cat "$sentinel_dir/postmerge-order.log")" == "$exp" ]]; then
             ok "postmerge with --no-logs-commit true runs manifest then write-final-report with LARCH_NO_LOGS_COMMIT exported"

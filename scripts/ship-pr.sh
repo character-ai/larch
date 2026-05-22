@@ -1732,7 +1732,8 @@ run_postmerge_phase() {
             fi
         fi
         if [ "$recovery_ok" = "false" ]; then
-            # Skip commit: manifest synthesis failed, committing would produce a partial dir.
+            # Manifest recovery failed; skip final manifest (status=done), final-summary re-render,
+            # and write-final-report.sh — downstream assumes a coherent manifest tree.
             :
         else
             local manifest_ok=false final_report_rc=1
@@ -1752,8 +1753,9 @@ run_postmerge_phase() {
             final_report_rc=1
             final_report_output=""
             if [ "$manifest_ok" = true ]; then
-                # Re-render final-summary.md now that MERGE_RESULT is set in state, so the
-                # committed run-log reflects OUTCOME=merged (pre-merge pass wrote bailed).
+                # Re-render final-summary.md under $IMPLEMENT_TMPDIR now that MERGE_RESULT is set
+                # in state, so tmpdir final-summary.md / report output aligns with merged OUTCOME
+                # (pre-merge pass wrote bailed). NEVER #19: no post-merge git commit publishes this.
                 fail_file=$(failure_capture_path postmerge)
                 final_report_output=$("$SCRIPT_DIR/../skills/implement/scripts/write-final-report.sh" \
                     --implement-tmpdir "$IMPLEMENT_TMPDIR" 2>"$fail_file")
