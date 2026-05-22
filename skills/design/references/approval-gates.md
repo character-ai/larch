@@ -27,8 +27,8 @@ Question text: `"All open design questions appear discussed. Ready to launch the
 
 When the user picks **Discuss more**, the orchestrator either (a) asks the user what additional aspect to discuss via a free-form follow-up, or (b) walks any remaining branch from the Step 1d decision tree that was deferred. Then re-prompt with the same two-option `AskUserQuestion`. Append resolved decisions to `$DESIGN_TMPDIR/discussion-round1.md` (or `discussion-round2.md` when re-entered post-review — see "Re-entry from Gate B/C" below) using the existing Q&A schema in `discussion-rounds.md`.
 
-**Per-tier behavior**:
-- `--trivial`: after Step 1d's short-circuit (`⏩ 1d: discussion r1 — no scope decisions require discussion`) prints, fire the Gate A prompt exactly once. Users may still pick **Discuss more** to add context before review.
+**Per-tier behavior** (the prompt is always fired at least once before sketches/review; further iterations follow the user's **Discuss more** choice):
+- `--trivial`: after Step 1d's short-circuit (`⏩ 1d: discussion r1 — no scope decisions require discussion`) prints, the user typically picks **Ready for review** on the first prompt. The loop still accommodates **Discuss more** if the user wants to add context.
 - `--simple`: fire after Step 1d. Users typically pick **Ready for review** on the first prompt; the loop accommodates iteration without forcing it.
 - `--hard`: same prompt; users are more likely to iterate.
 
@@ -63,14 +63,14 @@ When the concern text is ambiguous, prefer the lower bucket and surface the ambi
 
 Print a table under the header `## Plan Review Findings — Review` listing every accepted finding, in `FINDING_N` order, with columns: ID, Severity, Reviewer(s), Concern. The Concern column is a 1-10 line description drawn from the finding's `**Concern**:` field (truncate to 10 lines max; never paraphrase the concern text). After the table, also print the rejected and OOS sections for context (read from `rejected-findings.md` and `oos.md`).
 
-When `SESSION_ENV_PATH` is non-empty, suppress this inline print and rely on the artifact files; the parent reads them.
+**Always show the table**, even when `SESSION_ENV_PATH` is non-empty (nested under `/implement`). The user must see what they are approving via the subsequent `AskUserQuestion`; the nested-mode token-reduction contract does NOT apply here because the choice is interactive and depends on visible content. In nested mode, omit the optional rejected/OOS context blocks (the artifact files remain available to the parent), but the accepted-findings table itself is mandatory.
 
 ### Prompt
 
 `AskUserQuestion` with exactly three options:
 
-- **Apply all** — Apply every accepted in-scope finding to `$DESIGN_TMPDIR/plan.txt`, write the revised plan via the Write tool (full file replacement, preserving `diff_lines: <N>`), then re-emit `ACTION=EMIT_PLAN` so `diff-lines.txt` reflects the final plan. Proceed to Gate C.
-- **Go through each** — Iterate findings in `FINDING_N` order. For each, fire `AskUserQuestion` (batch up to 4 findings per call) with three options: apply / skip / switch to discussion mode. After all findings resolved, revise `plan.txt` to incorporate only the applied subset, re-emit `ACTION=EMIT_PLAN`, then proceed to Gate C. If at any per-finding prompt the user picks "switch to discussion mode", stop the iteration immediately, discard any unapplied per-finding intent, and exit to Gate A (no plan revision occurs on this exit path).
+- **Apply all** — Apply every accepted in-scope finding to `$DESIGN_TMPDIR/plan.txt`, write the revised plan via the Write tool (full file replacement, preserving `diff_lines: <N>`), then re-emit `ACTION=EMIT_PLAN` so `diff-lines.txt` reflects the final plan. Proceed to Step 3b (architecture diagram) — Step 4 (rejected-findings report) and Step 4b (Gate C) follow in normal sequence.
+- **Go through each** — Iterate findings in `FINDING_N` order. For each, fire `AskUserQuestion` (batch up to 4 findings per call) with three options: apply / skip / switch to discussion mode. After all findings resolved, revise `plan.txt` to incorporate only the applied subset, re-emit `ACTION=EMIT_PLAN`, then proceed to Step 3b. If at any per-finding prompt the user picks "switch to discussion mode", stop the iteration immediately, discard any unapplied per-finding intent, and exit to Gate A (no plan revision occurs on this exit path).
 - **Switch to discussion mode** — Skip plan revision entirely. Exit to Gate A. `plan.txt` remains as it was before Step 3.
 
 Question text: `"Plan review returned N findings (C critical / H high / M medium / L low). How would you like to handle them?"` Header: `"Plan findings"`. Substitute the actual counts before asking.
@@ -88,13 +88,13 @@ After iteration completes (all findings answered without an early abort), the or
 
 ### Zero-findings short-circuit
 
-When `$DESIGN_TMPDIR/accepted-plan-findings.md` is empty (no accepted in-scope findings — either no reviewer raised any, or voting rejected all), Gate B prints `⏩ 3.5: Gate B — no accepted findings; nothing to apply` and proceeds directly to Gate C. No prompt fires.
+When `$DESIGN_TMPDIR/accepted-plan-findings.md` is empty (no accepted in-scope findings — either no reviewer raised any, or voting rejected all), Gate B prints `⏩ 3.5: Gate B — no accepted findings; nothing to apply` and proceeds directly to Step 3b. No prompt fires; Step 3b → Step 4 → Step 4b (Gate C) run in normal sequence.
 
 ---
 
 ## Gate C — Final-Approval Loop (Step 4b)
 
-**When**: after Step 4 (rejected-findings report) completes. Also re-entered from Gate B(a) and Gate B(b) when iteration finishes without abort.
+**When**: after Step 4 (rejected-findings report) completes. Step 4 is reached on every Gate B settled path: Apply all → Step 3b → Step 4 → Step 4b; Go through each (without abort) → Step 3b → Step 4 → Step 4b; zero-findings short-circuit → Step 3b → Step 4 → Step 4b. Gate B(c) "switch to discussion mode" exits to Gate A and never reaches Gate C until the user later picks "Ready for review" + the new review completes its own Gate B settled path. Gate C is also re-entered from Gate C(b) "discuss further" → Gate A loop → eventual re-review → Step 4 → Step 4b.
 
 ### Presentation
 

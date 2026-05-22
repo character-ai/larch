@@ -24,13 +24,18 @@ branch by:
    regular files under `render-cache/` (recursive). Symlinks at the top level
    are skipped; `render-cache/` itself must be a real directory (not a symlink).
    Files whose basename matches the suffix deny-list are skipped before any
-   trim/redact work (`design_artifact_excluded`, mirrors the
+   trim/redact work (`design_artifact_excluded`, narrows the
    `round_artifact_included` deny patterns in `scripts/larch-log.sh` for
-   `/implement`): `*.sidecar`, `*.dirty-tree`, `*.untracked-baseline`,
-   `*.done`, `*.diag`, `*-output.txt.prompt`, `*-output-*.txt.prompt`. All
-   other basenames pass through (deny-only model — `/design` has many file
-   types `/implement` does not, so the design path is default-allow). Each
-   included file is trimmed then redacted: `*.meta` strips leading `CMD_JSON=`
+   `/implement` to the sidecar/operational-scratch family that also appears
+   in design tmpdirs): `*.sidecar`, `*.dirty-tree`, `*.untracked-baseline`,
+   `*.done`, `*.diag`, `*-output.txt.prompt`, `*-output-*.txt.prompt`. Other
+   `/implement`-specific deny patterns (`coder-output.log`, `coder-codex.log`,
+   `cursor-specialist-*-output.txt`, `*-vote-prompt.txt`, the known empty
+   placeholders) are intentionally NOT included — those basenames do not
+   appear in design tmpdirs. All other basenames pass through (deny-only
+   model — `/design` has many file types `/implement` does not, so the design
+   path is default-allow). Each included file is trimmed then redacted:
+   `*.meta` strips leading `CMD_JSON=`
    lines (`larch_redact_strip_meta_cmd_json`); files whose names match
    `*-output*.json` delete a top-level `.result` object when valid JSON
    (`larch_redact_strip_json_result`, fail-closed on trim error); other paths

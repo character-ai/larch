@@ -44,7 +44,7 @@ Write to `$DESIGN_TMPDIR/` after completing the review and plan revision:
 ```
 ### FINDING_N: <title>
 - **Concern**: <what was raised>
-- **Resolution**: <how the plan was revised>
+- **Proposed resolution**: <suggested change to the plan; applied at Step 3.5 Gate B only if the user chooses to apply this finding>
 ```
 
 ```
