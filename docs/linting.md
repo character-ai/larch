@@ -38,7 +38,7 @@ When adding a new pre-commit hook, decide explicitly whether `lint`, the dedicat
 
 `make test-harnesses` remains the local umbrella target and runs every regression harness wired into the `test-harnesses-N` shards plus the partition guard (`make test-harness-shards-coverage` reports the active inventory; the `Makefile` is the source of truth). CI fans the same inventory out across twenty parallel matrix cells named `test-harnesses (1)` through `test-harnesses (20)`, each invoking `make test-harnesses-N`.
 
-The shard lists live directly in `Makefile` and are balanced by measured per-harness wall-clock time. New harnesses must be assigned to exactly one `test-harnesses-N:` prerequisite list; `make test-harness-shards-coverage` checks for missing, orphaned, duplicated, wrapped, or non-standard harness entries. The matrix uses `fail-fast: false`, so all twenty shards finish even after one fails. This spends more CI minutes but preserves complete diagnostics.
+The shard lists live directly in `Makefile`. Rebalances use measured per-harness wall-clock times, but the checked-in layout is a **hybrid**, not a single global LPT minimax pass across all twenty shards: the slowest harnesses are pinned to shards 1–4 from observed CI (or local) timings, then the remainder are greedy-packed into shards 5–20 by **equal harness count** with an LPT-style tie-break only when choosing among bins that already have the same number of harnesses — so slow tail harnesses can still co-locate on one mid shard, and wall time is not guaranteed to match a full per-harness LPT optimum. The authoritative narrative is the `test-harnesses:` comment block in `Makefile`. New harnesses must be assigned to exactly one `test-harnesses-N:` prerequisite list; `make test-harness-shards-coverage` checks for missing, orphaned, duplicated, wrapped, or non-standard harness entries. The matrix uses `fail-fast: false`, so all twenty shards finish even after one fails. This spends more CI minutes but preserves complete diagnostics.
 
 Local ordering changed: under `make test-harnesses` and therefore `make lint`, harnesses now execute in shard order (`test-harnesses-1`, then `test-harnesses-2`, and so on), not in the old single prerequisite-list order. Direct `make test-X` invocations are unchanged. CI shards run on separate VMs; local `make -j20 test-harnesses` can run shard targets concurrently, so fixed `/tmp` paths in individual harnesses remain a local-parallelism limitation even though the CI split is isolated.
 
@@ -77,7 +77,7 @@ If you are working on an older branch that predates `scripts/harness-timer.sh`,
 or debugging a wrapper-emission issue, the old manual `date +%s` loop remains a
 fallback only.
 
-Feed the results to an LPT bin-packer:
+Optional reference: a **full** greedy LPT bin-packer across all twenty shards (always assign the next-longest harness to the lightest bin by cumulative seconds) approximates a minimax-style spread of total wall time per shard. The **committed** shard lines instead follow the hybrid above (manual pins for shards 1–4, equal-count remainder). Use the snippet only if you are intentionally regenerating an all-shard LPT layout and will reconcile it with `test-harness-shards-coverage` placement and any pin decisions.
 
 ```python
 import sys

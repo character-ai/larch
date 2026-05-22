@@ -1,0 +1,9 @@
+Gathering the branch diff and commit list for a read-only security review.
+
+Verifying the site-packages cache path against GitHub Actions + `setup-python` behavior (correctness affects CI reliability).
+
+Confirming one more detail: `setup-python` exposes outputs we can cite. Checking the action version in use:
+
+Creating a concise plan record for plan-mode compliance. Findings: the site-packages cache path likely doesn't match where `pip install` installs packages on `setup-python` runners, and the interpolated `python-version` output may not match the `python3.12` directory layout under `~/.local`.
+
+

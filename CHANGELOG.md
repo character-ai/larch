@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [36.0.1] - 2026-05-22
+
+### Changed
+
+- Cache installed site-packages in `test-harnesses` CI shards to skip `pip install` on cache hits; install only `pyyaml==6.0.2` via a new `requirements-test-harnesses.txt` (dropping `pre-commit` from the harness install path).
+- Rebalance 20 `test-harnesses` Makefile shards using actual CI wall-clock timing (LPT greedy), targeting ~30 s per shard and isolating the four slowest tests as solo shards.
+
 ## [35.0.0] - 2026-05-21
 
 ### Changed

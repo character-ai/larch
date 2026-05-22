@@ -1,0 +1,27 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: EXONERATE -- Legitimate log-quality nit, but not worth a future issue.
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: EXONERATE -- Legitimate run-log polish concern, but not issue-worthy.
+FINDING_17: YES
+FINDING_18: YES
+FINDING_19: YES
+FINDING_20: YES
+FINDING_21: NO -- This is a scope note about expected artifacts, not an actionable defect.
+FINDING_22: YES
+FINDING_23: NO -- This is an unaudited-scope note, not a proposed future issue.
+FINDING_24: NO -- This is explanatory context about the cache failure mode, not an actionable out-of-scope issue.
+FINDING_25: YES
+FINDING_26: NO -- This is an unaudited-scope note, not a proposed future issue.
+FINDING_27: NO -- Listing branch commits is not an actionable finding.

@@ -1,0 +1,29 @@
+Reading the ballot and nearby session files for verification.
+
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: EXONERATE -- empty manifest noise has no CI impact and needs no tracking issue
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: EXONERATE -- PyYAML is single-purpose here; extra pin-sync prose adds little over repo grep when pins change
+FINDING_16: EXONERATE -- placeholder run-log fields are cosmetic; no GitHub issue warranted
+FINDING_17: YES
+FINDING_18: YES
+FINDING_19: YES
+FINDING_20: YES
+FINDING_21: NO -- explicitly no plan defect and no actionable issue
+FINDING_22: YES
+FINDING_23: NO -- reviewer scope disclaimer is not a defect to file
+FINDING_24: NO -- explanatory note, not a discrete bug or follow-up
+FINDING_25: YES
+FINDING_26: NO -- same as FINDING_23
+FINDING_27: NO -- commit-count observation is not product-trackable work
