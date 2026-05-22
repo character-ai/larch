@@ -150,7 +150,7 @@ out_j=$(
 )
 [[ "$out_j" == *"PUBLISH_OK=false"* ]] || fail "broken jq stub should fail publish: $out_j"
 
-echo "=== happy path + sidecar trim + render-cache ==="
+echo "=== happy path + sidecar trim + render-cache + suffix deny-list ==="
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/tdlp.XXXXXX")
 trap 'rm -rf "$DRYROOT" "$JQTEST" "$TMP"' EXIT
 clone=$(setup_clone_with_origin_head "$TMP")
@@ -170,6 +170,17 @@ printf 'CMD_JSON=["secret"]\nkeep\n' >"$TMP/design/out.txt.meta"
 printf '{"ok":1,"result":{"token":"x"}}\n' >"$TMP/design/voter-output-1.json"
 printf '{"x":1,"result":{"y":2}}\n' >"$TMP/design/plain.json"
 printf 'deep\n' >"$TMP/design/render-cache/nested/c.txt"
+# Files that MUST be denied by the suffix deny-list (mirrors /implement's
+# round_artifact_included deny patterns):
+printf 'noisy raw transcript\n' >"$TMP/design/codex-plan-arch-output.txt.sidecar"
+printf 'STATUS=clean\n' >"$TMP/design/codex-plan-arch-output.txt.dirty-tree"
+: >"$TMP/design/codex-plan-arch-output.txt.untracked-baseline"
+printf 'OK\n' >"$TMP/design/codex-plan-arch-output.txt.done"
+: >"$TMP/design/cursor-plan-arch-output.txt.diag"
+printf 'launcher prompt body\n' >"$TMP/design/codex-plan-arch-output.txt.prompt"
+printf 'phased launcher prompt\n' >"$TMP/design/codex-plan-arch-output-phase2.txt.prompt"
+# Same suffix family in render-cache must also be denied:
+printf 'rc noisy\n' >"$TMP/design/render-cache/cached-output.txt.sidecar"
 
 (
     cd "$clone" || exit 1
@@ -188,6 +199,18 @@ grep -q '"result"' "$clone/larch-logs/design/RUNPUB1/plain.json" || fail "plain.
 grep -qE '"ok"[[:space:]]*:[[:space:]]*1' "$clone/larch-logs/design/RUNPUB1/voter-output-1.json" || fail "json body missing"
 grep -q 'pr create' "$GH_STUB_LOG" || fail "expected gh pr create in log"
 grep -q 'pr merge' "$GH_STUB_LOG" || fail "expected gh pr merge in log"
+# Verify suffix deny-list dropped each denied basename at both top-level and render-cache:
+for denied in \
+    "codex-plan-arch-output.txt.sidecar" \
+    "codex-plan-arch-output.txt.dirty-tree" \
+    "codex-plan-arch-output.txt.untracked-baseline" \
+    "codex-plan-arch-output.txt.done" \
+    "cursor-plan-arch-output.txt.diag" \
+    "codex-plan-arch-output.txt.prompt" \
+    "codex-plan-arch-output-phase2.txt.prompt"; do
+    [[ ! -f "$clone/larch-logs/design/RUNPUB1/$denied" ]] || fail "denied basename leaked into top-level: $denied"
+done
+[[ ! -f "$clone/larch-logs/design/RUNPUB1/render-cache/cached-output.txt.sidecar" ]] || fail "denied basename leaked into render-cache"
 
 echo "=== pr create non-zero with pr list/view recovery (plan publish path) ==="
 TMPCR=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-createfail.XXXXXX")

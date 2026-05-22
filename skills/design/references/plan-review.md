@@ -90,7 +90,7 @@ For every non-`OK` result, append the collector failure capture described in the
 2. Deduplicate in-scope findings separately. Assign each a stable sequential ID (`FINDING_1`, `FINDING_2`, etc.) and note which reviewer(s) proposed each.
 3. Deduplicate out-of-scope observations separately. Assign each an `OOS_` prefixed ID (`OOS_1`, `OOS_2`, etc.). If the same issue appears in both in-scope and OOS from different reviewers, merge under the in-scope finding (in-scope takes precedence).
 
-If **all reviewers** report no in-scope issues and no out-of-scope observations, write `$DESIGN_TMPDIR/voting-tally.md` with `No findings were raised — voting was not needed.`, write empty `$DESIGN_TMPDIR/accepted-plan-findings.md`, `$DESIGN_TMPDIR/rejected-findings.md`, and `$DESIGN_TMPDIR/oos.md`, skip voting, and proceed to Step 3.5 (Design Discussion Round 2).
+If **all reviewers** report no in-scope issues and no out-of-scope observations, write `$DESIGN_TMPDIR/voting-tally.md` with `No findings were raised — voting was not needed.`, write empty `$DESIGN_TMPDIR/accepted-plan-findings.md`, `$DESIGN_TMPDIR/rejected-findings.md`, and `$DESIGN_TMPDIR/oos.md`, skip voting, and proceed to Step 3.5 (Gate B — Post-Review Chooser; the zero-findings short-circuit in `approval-gates.md` will pass straight through to Step 3b).
 
 ---
 
@@ -123,24 +123,21 @@ eval "$_plan_voter_dispatch"
 ## Finalize Plan Review
 
 If any in-scope findings were **accepted by vote**:
-1. When `SESSION_ENV_PATH` is empty (standalone), print them under a `## Plan Review Findings (Voted In)` header with vote counts. When `SESSION_ENV_PATH` is non-empty (nested under `/implement`), suppress the inline print — the parent reads the file written in step 5 instead. (Token-reduction contract: nested runs MUST NOT push the full findings list back into the parent context.)
-2. Revise the implementation plan to address each accepted in-scope finding.
-3. When `SESSION_ENV_PATH` is empty (standalone), print the revised plan under a `## Revised Implementation Plan` header. When `SESSION_ENV_PATH` is non-empty, skip the inline print — the revised plan is read from `$DESIGN_TMPDIR/plan.txt` written in step 4.
-4. Use the **Write tool** (not Bash) to write the complete revised plan content — including all plan sections and an updated `diff_lines: <N>` line at the end — as a full file replacement of `$DESIGN_TMPDIR/plan.txt`. **Do NOT use Bash commands to strip or modify `plan.txt` in place.** In particular, `head -n -N` with a negative count fails on BSD/macOS, and piping its output back to the same file via a shell redirect truncates the file on any platform. Write the same integer and a trailing newline to `$DESIGN_TMPDIR/diff-lines.txt`; `/implement` reads the exported `diff-lines.txt` for Step 1 coder routing.
-5. Write the accepted in-scope findings to `$DESIGN_TMPDIR/accepted-plan-findings.md` so Step 3.5 (Design Discussion Round 2) has a stable artifact to read. **Only include in-scope `FINDING_*` items — do not include OOS items.** Use the `FINDING_N` template below. If no in-scope findings were accepted, write an empty `$DESIGN_TMPDIR/accepted-plan-findings.md`.
+1. When `SESSION_ENV_PATH` is empty (standalone), print them under a `## Plan Review Findings (Voted In)` header with vote counts. When `SESSION_ENV_PATH` is non-empty (nested under `/implement`), suppress the inline print — the parent reads the file written in step 2 instead. (Token-reduction contract: nested runs MUST NOT push the full findings list back into the parent context.)
+2. Write the accepted in-scope findings to `$DESIGN_TMPDIR/accepted-plan-findings.md` so Step 3.5 (Gate B — Post-Review Chooser) has a stable artifact to read. **Only include in-scope `FINDING_*` items — do not include OOS items.** Use the `FINDING_N` template below. If no in-scope findings were accepted, write an empty `$DESIGN_TMPDIR/accepted-plan-findings.md`. **Do NOT revise `$DESIGN_TMPDIR/plan.txt`** in this step — plan revision is owned by Gate B per explicit user choice (Apply all or per-finding Apply). Step 3 only collects findings; it never silently applies them.
 
 **OOS items accepted by vote**: These are accepted for GitHub issue filing, NOT for plan revision. **Only when `SESSION_ENV_PATH` is non-empty**: write accepted OOS items to `$(dirname "$SESSION_ENV_PATH")/oos-accepted-design.md` using the `oos-accepted-design.md` format block below, excluding security-tagged findings. Security-tagged findings are held locally and NEVER written to this public OOS issue artifact (per SECURITY.md). The canonical token match is `focus-area\s*=\s*security` anywhere inside the accepted `### OOS_N:` block, case-insensitively, with optional whitespace around `=`; if prose indicates security without the literal token, apply the same "if uncertain whether security, do not file publicly" guidance. **Match discrimination (false-positive guard)**: for every literal occurrence of the canonical token in the block, classify as **fenced** when inside an inline backtick code span or triple-backtick fenced code region, and **unfenced** otherwise. Route as security only when at least one unfenced occurrence exists; if every occurrence is fenced, the block is meta-discussion and routes through the normal public OOS path. **Security counter-invariant**: real security findings MUST include at least one unfenced occurrence. When `SESSION_ENV_PATH` is empty (standalone invocation), skip the OOS artifact write — there is no parent `/implement` to consume it.
 
 Write all OOS visibility content (accepted and non-accepted) to `$DESIGN_TMPDIR/oos.md`, excluding security-tagged accepted OOS findings from this visibility export as well. Security-tagged accepted OOS findings are held locally per SECURITY.md and are NOT included in `oos.md`. Apply the same canonical `focus-area\s*=\s*security` block match, prose-security judgment, **Match discrimination (false-positive guard)**, and **Security counter-invariant** described above. The file may be empty when there are no OOS observations. Print any non-accepted OOS items under a `## Out-of-Scope Observations` header for visibility only when `SESSION_ENV_PATH` is empty. These are not filed as issues but are recorded for future attention.
 
-If voting rejects all in-scope findings, write an empty `$DESIGN_TMPDIR/accepted-plan-findings.md` and leave `$DESIGN_TMPDIR/plan.txt` unchanged. Print: `**ℹ Voting panel rejected all in-scope findings. Plan unchanged.**` (OOS items accepted for issue filing are processed separately by `/implement`.) Proceed to Step 3.5 (Design Discussion Round 2).
+If voting rejects all in-scope findings, write an empty `$DESIGN_TMPDIR/accepted-plan-findings.md` and leave `$DESIGN_TMPDIR/plan.txt` unchanged. Print: `**ℹ Voting panel rejected all in-scope findings. Plan unchanged.**` (OOS items accepted for issue filing are processed separately by `/implement`.) Proceed to Step 3.5 (Gate B — Post-Review Chooser; the zero-findings short-circuit will pass straight through to Step 3b).
 
 ### Accepted FINDING_N template (byte-preserved)
 
 ```markdown
 ### FINDING_N: <title>
 - **Concern**: <what was raised>
-- **Resolution**: <how the plan was revised>
+- **Proposed resolution**: <suggested change to the plan; applied at Step 3.5 Gate B only if the user chooses to apply this finding>
 ```
 
 ### Accepted OOS format (byte-preserved)

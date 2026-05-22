@@ -1,10 +1,10 @@
 # Discussion Rounds Reference
 
-**Consumer**: `/design` Steps 1c, 1d, and 3.5.
+**Consumer**: `/design` Steps 1c, 1d, and the post-plan discussion sub-round body invoked by Step 1e Gate A on re-entry from Gate B(c) / Gate C(b).
 
-**Contract**: owns the three discussion-round bodies (Step 1c clarifying questions, Step 1d round 1, Step 3.5 round 2) with their decision-tree walks, question caps, output schemas (`$DESIGN_TMPDIR/discussion-round1.md`, `$DESIGN_TMPDIR/discussion-round2.md`), and the terse-answer rule.
+**Contract**: owns the three discussion-round bodies (Step 1c clarifying questions, Step 1d round 1, and the post-plan Round 2 body) with their decision-tree walks, question caps, output schemas (`$DESIGN_TMPDIR/discussion-round1.md`, `$DESIGN_TMPDIR/discussion-round2.md`), and the terse-answer rule. Round 2 is no longer an auto-step at Step 3.5 — Step 3.5 is now Gate B (the post-review chooser, see `approval-gates.md`). The Round 2 body remains the normative template for the discussion sub-round that Gate A executes on each "Discuss more" iteration when re-entered post-plan.
 
-**When to load**: before executing Steps 1c, 1d, or 3.5.
+**When to load**: before executing Steps 1c, 1d, or a Gate A discussion sub-round (the Round 2 body in the last section).
 
 **Binding convention**: single normative source for discussion-round behavior (decision-tree walk, question caps, output schemas, terse-answer rule).
 
@@ -46,7 +46,7 @@ Then walk each branch one question at a time via sequential `AskUserQuestion` ca
 
 ## Short-circuit
 
-If the feature is straightforward with fewer than 2 scope decision branches, print `⏩ 1d: discussion r1 — no scope decisions require discussion (<elapsed>)` and proceed to Step 2a.
+If the feature is straightforward with fewer than 2 scope decision branches, print `⏩ 1d: discussion r1 — no scope decisions require discussion (<elapsed>)` and proceed to Step 1e (Gate A). Step 1e always fires after Step 1d, including on this short-circuit path — users may still pick "Discuss more" to add context before sketches.
 
 ## Output
 
@@ -63,7 +63,7 @@ This file captures scope boundaries and hard constraints only — NOT architectu
 
 ## Cap
 
-At most **7 `AskUserQuestion` calls** in this step. If more than 7 decision branches remain after 7 questions, print: `⏩ Remaining scope questions deferred to implementation.` and proceed.
+At most **7 `AskUserQuestion` calls** in this step. If more than 7 decision branches remain after 7 questions, print: `⏩ Remaining scope questions deferred to implementation.` and proceed to Step 1e (Gate A) — users may pick "Discuss more" there to surface any deferred branches before sketches launch.
 
 ## Terse answers
 
@@ -73,15 +73,17 @@ Record `<N>` decisions resolved.
 
 ---
 
-<!-- step:3.5 — Design Discussion Round 2 -->
+<!-- post-plan discussion sub-round body (invoked from Step 1e Gate A on re-entry; the legacy <!-- step:3.5 marker is intentionally retained below for tooling that anchors on it) -->
 
-After the plan has been reviewed and revised, stress-test the remaining design decisions that were either (a) not covered in Round 1, or (b) deemed suboptimal by reviewers, or (c) introduced by the plan itself (decisions that didn't exist at the feature-description stage).
+<!-- step:3.5 — Post-Plan Discussion Sub-Round body (referenced from Gate A re-entry) -->
+
+After the plan has been reviewed (and possibly partially revised via Gate B), stress-test the remaining design decisions that were either (a) not covered in Round 1, or (b) deemed suboptimal by reviewers, or (c) introduced by the plan itself (decisions that didn't exist at the feature-description stage). This body is invoked from Step 1e Gate A on each re-entry from Gate B(c) "switch to discussion mode" or Gate C(b) "discuss further" — it is no longer an auto-step.
 
 ## Inputs
 
 Read the following artifacts:
 - `$DESIGN_TMPDIR/discussion-round1.md` — If it exists and is non-empty, use it to identify decisions already covered in Round 1 (avoid re-asking). **If it does not exist or is empty** (Round 1 short-circuited or was skipped), treat all candidate decisions as uncovered by Round 1 and proceed normally.
-- `$DESIGN_TMPDIR/plan.txt` — The finalized implementation plan from Step 3. Read this file instead of retrieving the plan from conversation context.
+- `$DESIGN_TMPDIR/plan.txt` — The latest implementation plan (initial Step 2b write, or with any Gate B applied findings on a post-plan re-entry). Read this file instead of retrieving the plan from conversation context.
 - `$DESIGN_TMPDIR/accepted-plan-findings.md` — If it exists and is non-empty, use it to identify decisions that reviewers challenged as suboptimal or that required plan revision.
 - `$DESIGN_TMPDIR/contested-decisions.md` — Decisions that sketch agents disagreed on.
 - `$DESIGN_TMPDIR/dialectic-resolutions.md` — How contested decisions were resolved.
@@ -103,11 +105,11 @@ Unlike Round 1, Round 2 MAY ask about architectural decisions and implementation
 
 ## Short-circuit
 
-If all plan decisions are already covered by Round 1, no reviewer findings challenged them, and no decisions in `dialectic-resolutions.md` match the still-contested criteria above (no close 2-1 voted splits, no fallback-to-synthesis, no bucket-skipped, no over-cap entries), print `⏩ 3.5: discussion r2 — no additional decisions require discussion (<elapsed>)` and proceed to Step 3b.
+If all plan decisions are already covered by Round 1, no reviewer findings challenged them, and no decisions in `dialectic-resolutions.md` match the still-contested criteria above (no close 2-1 voted splits, no fallback-to-synthesis, no bucket-skipped, no over-cap entries), print `⏩ post-plan discussion — no additional decisions require discussion (<elapsed>)` and return to the calling Gate A prompt (re-fire the "ready for review / discuss more" `AskUserQuestion`). This body is invoked from Gate A's "Discuss more" branch on a post-plan re-entry — control returns to Gate A, NOT to Step 3b. Gate A's own exit decides where to go next ("Ready for review" on a post-plan re-entry proceeds to Step 3, not Step 3b).
 
 ## Output
 
-Write resolved decisions to `$DESIGN_TMPDIR/discussion-round2.md` using the same format as Round 1:
+The caller (Gate A) selects the target file: write resolved decisions to `$DESIGN_TMPDIR/discussion-round1.md` on first-time Gate A entry (when the body is invoked because Step 1d Round 1's main flow ran short), or to `$DESIGN_TMPDIR/discussion-round2.md` on post-plan Gate A re-entries (from Gate B(c) or Gate C(b)). Use the same Q&A format as Round 1:
 
 ```markdown
 ## Decision 1: <short title>
@@ -116,7 +118,7 @@ Write resolved decisions to `$DESIGN_TMPDIR/discussion-round2.md` using the same
 - **Source**: user / codebase
 ```
 
-**Auto-revise**: Update the implementation plan in-place based on answers. Print the revised plan only if substantive changes were made.
+**Plan revision authority**: This sub-round body is invoked from Gate A on a re-entry path. The orchestrator MAY revise `$DESIGN_TMPDIR/plan.txt` to incorporate user-resolved decisions from this sub-round **directly**, because the user has explicitly engaged in the discussion and any plan change follows from their answers. After revising, re-run `ACTION=EMIT_PLAN` so `diff-lines.txt` reflects the new plan. Reviewer findings, however, are NEVER applied here — those are owned exclusively by Gate B's Apply all / per-finding Apply choices, regardless of how the discussion went. Print the revised plan only if substantive changes were made.
 
 ## Cap
 
