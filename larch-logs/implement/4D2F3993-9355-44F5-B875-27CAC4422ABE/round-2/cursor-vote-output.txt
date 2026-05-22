@@ -1,0 +1,14 @@
+Reading the ballot and related context files to verify findings.
+
+findings.md appears incomplete. Searching for ballot FINDING_ headings in the session.
+
+Verifying the eight raw findings from the aggregator input against `diff.txt` (ballot file lacks structured headings).
+
+FINDING_1: YES
+FINDING_2: EXONERATE -- legitimate brittleness but consolidating pins is optional churn without clear payoff
+FINDING_3: NO -- cosmetic script-name confusion only; explicitly no PR action and not worth an issue
+FINDING_4: YES
+FINDING_5: EXONERATE -- real handoff risk but full runbook/automation sweep is disproportionate to a single merge
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: EXONERATE -- plan checklist drift only; changes are coherent ancillary doc/rule sync

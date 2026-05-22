@@ -3,18 +3,18 @@
 ```mermaid
 flowchart TD
     user[User]
-    design[/design Skill]
-    implement[/implement Skill]
+    design["/design Skill"]
+    implement["/implement Skill"]
     issue[GitHub Issue + larch:plan]
 
-    subgraph session [/design Session Setup]
+    subgraph session["/design Session Setup"]
         setup[session-setup.sh]
         writer[write-design-current-env.sh NEW]
         envfile[SESSION_TMPDIR/source-env.sh]
         symlink["~/.cache/larch/sessions/current-design-env.sh<br/>stable symlink"]
     end
 
-    subgraph design_steps [/design Steps]
+    subgraph design_steps["/design Steps"]
         step0[Step 0 setup<br/>no Step 1 branch step]
         step1c[Step 1c questions]
         step1d[Step 1d Round 1]
@@ -26,7 +26,7 @@ flowchart TD
         publish[Step 5 plan-block-write + log publish]
     end
 
-    subgraph implement_branch [/implement Branch Lifecycle UNCHANGED]
+    subgraph implement_branch["/implement Branch Lifecycle UNCHANGED"]
         ibranch[Step 0 + Step 2<br/>create feature branch]
         iimpl[implementation]
         iship[ship-pr]
@@ -41,14 +41,14 @@ flowchart TD
     writer -- writes --> envfile
     writer -- updates --> symlink
     envfile -- sourced by --> design_steps
-    symlink -. points to .-> envfile
+    symlink -. "points to" .-> envfile
 
     step0 --> step1c --> step1d --> gateA
     gateA -- first-time Ready --> plan
     gateA -- re-entry Show-plan --> gateA
     gateA -- re-entry Ready --> review
     plan --> review --> gateB
-    gateB -- Apply / Iterate --> gateC
+    gateB -- "Apply / Iterate" --> gateC
     gateB -- Discuss --> gateA
     gateC -- Discuss --> gateA
     gateC -- Re-run --> review

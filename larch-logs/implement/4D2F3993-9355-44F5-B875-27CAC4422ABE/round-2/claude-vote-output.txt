@@ -1,0 +1,1 @@
+The ballot file contains only the aggregator's empty-merge attestation (`LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED`) and no `FINDING_N:` items. There are no ballot items to vote on.

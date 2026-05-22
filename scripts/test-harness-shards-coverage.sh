@@ -36,7 +36,7 @@ append_section() {
 }
 
 # Single source of truth for documented standalone carve-outs (test-* recipe
-# targets that are deliberately NOT part of the test-harnesses umbrella). When
+# targets that are deliberately NOT part of the test-harnesses aggregate). When
 # adding another standalone carve-out, append it to this list AND update the
 # Makefile comments near that target AND scripts/test-harness-shards-coverage.md.
 # The carve-out list is consumed by every awk program in this script via the
@@ -45,7 +45,7 @@ append_section() {
 CARVE_OUTS="test-eval-set-structure test-eval-research-baseline-flag test-review-and-fix"
 
 # Awk snippet (used as -v CARVE=... -v COVERAGE=... and a BEGIN block) that
-# returns 1 from is_carve_out(name) for any name matching the umbrella, the
+# returns 1 from is_carve_out(name) for any name matching the aggregate, the
 # shard targets, the coverage harness itself, or any documented carve-out.
 # Embedded as a string so each awk block can splice it in.
 CARVE_OUT_FN='
@@ -141,7 +141,7 @@ extract_shard_prereqs() {
   done
 }
 
-extract_umbrella_prereqs() {
+extract_test_harnesses_prereqs() {
   local makefile="$1"
   local out="$2"
   local count
@@ -151,7 +151,7 @@ extract_umbrella_prereqs() {
   : > "$out"
   count="$(grep -Ec '^test-harnesses:' "$makefile" || true)"
   if [[ "$count" != "1" ]]; then
-    printf 'test-harnesses umbrella must be declared exactly once (found %s)\n' "$count" >> "$UMBRELLA_ERRORS"
+    printf 'test-harnesses aggregate must be declared exactly once (found %s)\n' "$count" >> "$ROLLUP_DECL_ERRORS"
     return
   fi
 
@@ -167,10 +167,10 @@ validate_makefile() {
 
   REPORT="$TMPDIR_SHARDS/report"
   MISSING_SHARD_RULES="$TMPDIR_SHARDS/missing-shard-rules"
-  UMBRELLA_ERRORS="$TMPDIR_SHARDS/umbrella-errors"
+  ROLLUP_DECL_ERRORS="$TMPDIR_SHARDS/rollup-decl-errors"
   : > "$REPORT"
   : > "$MISSING_SHARD_RULES"
-  : > "$UMBRELLA_ERRORS"
+  : > "$ROLLUP_DECL_ERRORS"
 
   local naming_violations="$TMPDIR_SHARDS/naming-violations"
   local continuation_violations="$TMPDIR_SHARDS/continuation-violations"
@@ -180,15 +180,15 @@ validate_makefile() {
   local duplicates="$TMPDIR_SHARDS/duplicates"
   local missing="$TMPDIR_SHARDS/missing"
   local orphan="$TMPDIR_SHARDS/orphan"
-  local umbrella="$TMPDIR_SHARDS/umbrella"
-  local umbrella_expected="$TMPDIR_SHARDS/umbrella-expected"
-  local umbrella_missing="$TMPDIR_SHARDS/umbrella-missing"
-  local umbrella_extra="$TMPDIR_SHARDS/umbrella-extra"
+  local th_prereqs="$TMPDIR_SHARDS/th-prereqs-actual"
+  local th_prereqs_expected="$TMPDIR_SHARDS/th-prereqs-expected"
+  local th_prereqs_missing="$TMPDIR_SHARDS/th-prereqs-missing"
+  local th_prereqs_extra="$TMPDIR_SHARDS/th-prereqs-extra"
   local phony="$TMPDIR_SHARDS/phony"
   local phony_missing="$TMPDIR_SHARDS/phony-missing"
 
   # Naming violation = any test-prefixed recipe target whose full name does
-  # not match ^test-[a-z0-9-]+$. Carve-outs (umbrella, shards, coverage,
+  # not match ^test-[a-z0-9-]+$. Carve-outs (aggregate roll-up, shards, coverage,
   # standalone evals) are excluded from this check — they're known-good by
   # construction. This replaces the prior `^test[^a-z:-].*:` heuristic, which
   # only inspected the character immediately after `test` and missed names
@@ -211,22 +211,22 @@ validate_makefile() {
   grep -nE "^test-harnesses-[0-9]+:.*\\\\" "$makefile" > "$continuation_violations" || true
 
   extract_individual_targets "$makefile" > "$individual"
-  extract_shard_prereqs "$makefile" "$shard_all" "$umbrella_expected"
+  extract_shard_prereqs "$makefile" "$shard_all" "$th_prereqs_expected"
 
   grep -Fxv 'test-harness-shards-coverage' "$shard_all" | sort -u > "$shard_no_self" || true
   sort "$shard_all" | uniq -d > "$duplicates"
   comm -23 "$individual" "$shard_no_self" > "$missing"
   comm -13 "$individual" "$shard_no_self" > "$orphan"
 
-  extract_umbrella_prereqs "$makefile" "$umbrella"
-  # umbrella_expected was populated by extract_shard_prereqs above using the
+  extract_test_harnesses_prereqs "$makefile" "$th_prereqs"
+  # th_prereqs_expected was populated by extract_shard_prereqs above using the
   # set of test-harnesses-N rules actually declared in the Makefile (any N≥1),
   # so the partition guard stays shard-count-agnostic — adding or removing a
   # shard updates the comparison automatically.
-  sort -u "$umbrella_expected" -o "$umbrella_expected"
-  sort -u "$umbrella" > "$umbrella.sorted"
-  comm -23 "$umbrella_expected" "$umbrella.sorted" > "$umbrella_missing"
-  comm -13 "$umbrella_expected" "$umbrella.sorted" > "$umbrella_extra"
+  sort -u "$th_prereqs_expected" -o "$th_prereqs_expected"
+  sort -u "$th_prereqs" > "$th_prereqs.sorted"
+  comm -23 "$th_prereqs_expected" "$th_prereqs.sorted" > "$th_prereqs_missing"
+  comm -13 "$th_prereqs_expected" "$th_prereqs.sorted" > "$th_prereqs_extra"
 
   # .PHONY membership check (R2_F9): every shard-bound test-* target must
   # appear in some .PHONY declaration. The Makefile may have multiple .PHONY
@@ -266,9 +266,9 @@ validate_makefile() {
   append_section "missing from shards" "-" "$missing"
   append_section "orphan in shards" "+" "$orphan"
   append_section "duplicate across shards" "!" "$duplicates"
-  append_section "umbrella declaration errors" "!" "$UMBRELLA_ERRORS"
-  append_section "umbrella missing shard targets" "-" "$umbrella_missing"
-  append_section "umbrella has unexpected prerequisites" "+" "$umbrella_extra"
+  append_section "test-harnesses aggregate declaration errors" "!" "$ROLLUP_DECL_ERRORS"
+  append_section "test-harnesses aggregate missing shard targets" "-" "$th_prereqs_missing"
+  append_section "test-harnesses aggregate has unexpected prerequisites" "+" "$th_prereqs_extra"
   append_section "missing from .PHONY" "-" "$phony_missing"
 
   if ! grep -Fxq 'test-harness-shards-coverage' "$shard_all"; then
@@ -393,14 +393,14 @@ run_self_case() {
       awk '{ sub(/^test-harnesses: test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesses-4 test-harnesses-5$/, "test-harnesses: test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesses-4 test-harnesses-5 test-harnesses-6"); sub(/^test-harnesses-5: test-harness-shards-coverage test-zeta$/, "test-harnesses-5: test-harness-shards-coverage"); print } END { print "test-harnesses-6: test-zeta" }' "$fixture" > "$fixture.tmp"
       mv "$fixture.tmp" "$fixture"
       ;;
-    umbrella-missing-shard)
-      # FINDING_3: assert failure when the umbrella does not list every
-      # test-harnesses-N. Drop test-harnesses-5 from the umbrella.
+    harnesses-aggregate-missing-shard)
+      # FINDING_3: assert failure when test-harnesses: does not list every
+      # test-harnesses-N. Drop test-harnesses-5 from the aggregate line.
       awk '{ sub(/^test-harnesses: test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesses-4 test-harnesses-5$/, "test-harnesses: test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesses-4"); print }' "$fixture" > "$fixture.tmp"
       mv "$fixture.tmp" "$fixture"
       ;;
-    umbrella-extra-shard)
-      # FINDING_3: assert failure when the umbrella lists an unexpected
+    harnesses-aggregate-extra-shard)
+      # FINDING_3: assert failure when test-harnesses: lists an unexpected
       # prerequisite (typo / orphan shard target).
       awk '{ sub(/^test-harnesses: test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesses-4 test-harnesses-5$/, "test-harnesses: test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesses-4 test-harnesses-5 test-harnesses-6"); print }' "$fixture" > "$fixture.tmp"
       mv "$fixture.tmp" "$fixture"
@@ -458,8 +458,8 @@ self_test() {
   run_self_case underscore-naming-violation 1 "harness recipe target uses non-standard naming"
   run_self_case self-reference-not-first 1 "self-reference misplaced"
   run_self_case self-reference-non-last 0 ""
-  run_self_case umbrella-missing-shard 1 "umbrella missing shard targets"
-  run_self_case umbrella-extra-shard 1 "umbrella has unexpected prerequisites"
+  run_self_case harnesses-aggregate-missing-shard 1 "test-harnesses aggregate missing shard targets"
+  run_self_case harnesses-aggregate-extra-shard 1 "test-harnesses aggregate has unexpected prerequisites"
   run_self_case missing-phony 1 "missing from .PHONY"
   run_self_case missing-phony-self 1 "missing from .PHONY"
 }

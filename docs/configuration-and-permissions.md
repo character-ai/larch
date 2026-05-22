@@ -14,8 +14,6 @@
 "Skill(alias)",
 "Skill(block-issue)",
 "Skill(cleanup)",
-"Skill(compress-skill)",
-"Skill(create-skill)",
 "Skill(design)",
 "Skill(im)",
 "Skill(implement)",
@@ -23,8 +21,6 @@
 "Skill(larch:alias)",
 "Skill(larch:block-issue)",
 "Skill(larch:cleanup)",
-"Skill(larch:compress-skill)",
-"Skill(larch:create-skill)",
 "Skill(larch:design)",
 "Skill(larch:im)",
 "Skill(larch:implement)",
@@ -33,19 +29,13 @@
 "Skill(larch:research)",
 "Skill(larch:review)",
 "Skill(larch:set-up-forked-open-source-repo)",
-"Skill(larch:show-skill)",
-"Skill(larch:simplify-skill)",
-"Skill(larch:umbrella)",
 "Skill(report-tokens)",
 "Skill(research)",
 "Skill(review)",
-"Skill(set-up-forked-open-source-repo)",
-"Skill(show-skill)",
-"Skill(simplify-skill)",
-"Skill(umbrella)"
+"Skill(set-up-forked-open-source-repo)"
 ```
 
-Note the ordering: because `Skill(larch:...)` begins with `l` followed by `a`, all `larch:`-prefixed entries sort **before** `Skill(research)`, `Skill(review)`, and `Skill(umbrella)` (whose first letters are `r`, `r`, and `u`). Sort the whole block with `sort -u` to verify if you extend it. This section reflects currently-documented Claude Code behavior; consult the upstream docs above if matching semantics change in a future release.
+Note the ordering: because `Skill(larch:...)` begins with `l` followed by `a`, all `larch:`-prefixed entries sort **before** `Skill(research)` and `Skill(review)` (whose first letters are `r` and `r`). Sort the whole block with `sort -u` to verify if you extend it. This section reflects currently-documented Claude Code behavior; consult the upstream docs above if matching semantics change in a future release.
 
 ## `claude -p` permission propagation
 
@@ -81,10 +71,6 @@ The `--debug-file` log's `Applying permission update` lines reveal a three-bucke
 - **`userSettings`** — populated from `~/.claude/settings.json`, when present. In the audited shape this destination did not receive any allow-rule additions because the audited host's `~/.claude/settings.json` had no `permissions.allow` entries that needed to be merged in.
 
 Project settings cannot be silently downgraded by user-level files for entries that already exist project-side — the destinations are independent allow lists.
-
-### Implication for the umbrella stall (issue #566)
-
-Because the bare `"Edit"` allow rule IS honored by `claude -p` and `defaultMode: bypassPermissions` IS in effect, the umbrella stall reported in [#566](https://github.com/character-ai/larch/issues/566) (where a `/umbrella` iteration hit a permission-prompt stall on `Edit` against `skills/umbrella/SKILL.md`) is **not caused by missing or insufficient on-disk permissions**. The decisive remedy is the kernel-side fix tracked in [#585](https://github.com/character-ai/larch/issues/585) (pin the permission contract at the `invoke_claude_p` invocation site, e.g., via explicit `--permission-mode bypassPermissions` and/or `--allowedTools` flags), which removes the dependence on settings discovery entirely.
 
 This audit therefore does **not** modify `.claude/settings.json`. The settings are correct as-shipped; no path-qualified `Edit($PWD/.claude/skills/**)` entry is needed.
 

@@ -45,9 +45,6 @@ BANNER_ONLY_ORCHESTRATORS=(
 DELEGATORS=(
   "skills/im/SKILL.md"
   "skills/block-issue/SKILL.md"     # pure delegator: resolve node IDs + call addBlockedBy mutation; no post-delegation logic
-  "skills/create-skill/SKILL.md"
-  "skills/simplify-skill/SKILL.md"  # pure delegator: validate target + build feature description + forward to /im; no post-delegation logic
-  "skills/compress-skill/SKILL.md"  # pure delegator: validate target + build feature description + forward to /implement; no post-delegation logic
 )
 
 FAIL_COUNT=0

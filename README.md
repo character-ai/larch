@@ -55,18 +55,6 @@ Larch is a Claude Code workflow automation framework that orchestrates multi-age
     <tr><td colspan="2">Express a native GitHub blocked-by relationship between two issues using the <code>addBlockedBy</code> GraphQL mutation.</td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
-      <td><a href="docs/skills.md#compress-skill"><code>/compress-skill</code></a></td>
-      <td><code>&lt;skill-name-or-path&gt;</code></td>
-    </tr>
-    <tr><td colspan="2">Compress a skill's Markdown prose via a behavior-preserving rewrite.</td></tr>
-    <tr><td colspan="2"><hr></td></tr>
-    <tr>
-      <td><a href="docs/skills.md#create-skill"><code>/create-skill</code></a></td>
-      <td><code>[--plugin] [--multi-step] [--merge] &lt;skill-name&gt; &lt;description&gt;</code></td>
-    </tr>
-    <tr><td colspan="2">Scaffold a new larch-style skill from a name and description.</td></tr>
-    <tr><td colspan="2"><hr></td></tr>
-    <tr>
       <td><a href="docs/skills.md#design"><code>/design</code></a></td>
       <td><code>[--trivial|--simple|--hard] [--no-dedup] [--run-id &lt;ID&gt;] &lt;issue-N | feature description&gt;</code></td>
     </tr>
@@ -104,9 +92,9 @@ Larch is a Claude Code workflow automation framework that orchestrates multi-age
     <tr><td colspan="2"><hr></td></tr>
     <tr>
       <td><a href="docs/skills.md#review"><code>/review</code></a></td>
-      <td><code>[--diff] [--no-issues] [&lt;description&gt;]</code></td>
+      <td><code>[--diff] [&lt;description&gt;]</code></td>
     </tr>
-    <tr><td colspan="2">Code review with the specialist panel described in <code>docs/review-agents.md</code>. <code>--diff</code>: review branch changes and implement fixes. <code>&lt;description&gt;</code>: review existing code and file accepted findings as GitHub issues (default; <code>--no-issues</code> to suppress).</td></tr>
+    <tr><td colspan="2">Code review with the specialist panel described in <code>docs/review-agents.md</code>. <code>--diff</code>: review branch changes and implement fixes. <code>&lt;description&gt;</code>: review existing code; description mode records voting outcomes and OOS artifacts locally — file follow-up issues with <code>/issue</code> when you want GitHub tracking.</td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
       <td><a href="docs/skills.md#review-and-fix"><code>/review-and-fix</code></a></td>
@@ -119,30 +107,6 @@ Larch is a Claude Code workflow automation framework that orchestrates multi-age
       <td><code>--upstream &lt;owner/repo&gt; --fork &lt;owner/repo&gt; [--mirror-confirmed] [--init-submodules]</code></td>
     </tr>
     <tr><td colspan="2">Configure the current checkout for upstream/fork OSS contribution: verify the fork, optionally sync it from upstream, rewire remotes, disable upstream pushes, and set <code>main</code> tracking.</td></tr>
-    <tr><td colspan="2"><hr></td></tr>
-    <tr>
-      <td><a href="docs/skills.md#show-skill"><code>/show-skill</code></a></td>
-      <td><code>&lt;skill-name&gt;</code></td>
-    </tr>
-    <tr><td colspan="2">Display the contents of any skill's <code>SKILL.md</code> file. Accepts bare name, <code>larch:</code>-prefixed, or <code>/</code>-prefixed form.</td></tr>
-    <tr><td colspan="2"><hr></td></tr>
-    <tr>
-      <td><a href="docs/skills.md#simplify-skill"><code>/simplify-skill</code></a></td>
-      <td><code>&lt;skill-name&gt;</code></td>
-    </tr>
-    <tr><td colspan="2">Refactor a skill for stronger adherence to design principles and reduced SKILL.md footprint.</td></tr>
-    <tr><td colspan="2"><hr></td></tr>
-    <tr>
-      <td><a href="docs/skills.md#skill-evolver"><code>/skill-evolver</code></a></td>
-      <td><code>&lt;skill-name&gt;</code></td>
-    </tr>
-    <tr><td colspan="2">Evolve an existing larch skill by running <code>/research</code> against repo-local sibling skills and reputable external sources, then delegating any actionable findings to <code>/umbrella</code> (research-and-file-issues only — does not modify the target skill's files).</td></tr>
-    <tr><td colspan="2"><hr></td></tr>
-    <tr>
-      <td><a href="docs/skills.md#umbrella"><code>/umbrella</code></a></td>
-      <td><code>[--label L]... [--title-prefix P] [--repo OWNER/REPO] [--closed-window-days N] [--blocked-by-issue N] [--dry-run] &lt;task description or empty to deduce from context&gt;</code></td>
-    </tr>
-    <tr><td colspan="2">Plan-to-issues orchestrator: classifies a task description as one-shot or multi-piece, delegates GitHub issue creation to <code>/issue</code> (batch mode plus an umbrella tracking issue when multi-piece), and wires native blocked-by edges plus child→umbrella back-links. <code>--blocked-by-issue N</code> is forwarded to <code>/issue</code> on both Step 3A (one-shot) and Step 3B.2 (batch children); only batch child creation can succeed with the policy edge — single-mode is rejected by <code>/issue</code>'s canonical batch-mode-only error. Typically invoked transitively by <code>/review</code> (description-mode finding filing) and <code>/skill-evolver</code>.</td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
       <td><a href="docs/skills.md#upgrade-larch"><code>/upgrade-larch</code></a></td>

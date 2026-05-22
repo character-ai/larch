@@ -1,6 +1,6 @@
 # Sub-skill Invocation Conventions
 
-Canonical style guide for larch skills that delegate to other skills via the `Skill` tool. Cited throughout by `/create-skill`'s scaffold and by `AGENTS.md`. When you author a new skill that invokes another skill, follow the patterns below. When you change a convention here, update the cited source-example skills in the same PR (or file a follow-up issue) so the examples stay in sync with the rules.
+Canonical style guide for larch skills that delegate to other skills via the `Skill` tool. Cited by `AGENTS.md`. When you author a new skill that invokes another skill, follow the patterns below. When you change a convention here, update the cited source-example skills in the same PR (or file a follow-up issue) so the examples stay in sync with the rules.
 
 ## Two invocation patterns
 
@@ -8,7 +8,7 @@ Every larch skill that invokes another skill uses exactly one of two first-class
 
 ### Pattern A — Pure delegator (bulleted)
 
-Used when the parent skill mostly forwards to a child with preset flags or light argument assembly. Appears in `skills/im/SKILL.md § Behavior` and `skills/create-skill/SKILL.md § Step 3 — Delegate to /im`. Canonical form:
+Used when the parent skill mostly forwards to a child with preset flags or light argument assembly. Appears in `skills/im/SKILL.md § Behavior`. Canonical form:
 
 ```
 Invoke the Skill tool:
@@ -17,8 +17,6 @@ Invoke the Skill tool:
 ```
 
 Keep the block together. The bare-name-first rule is important — see `## Bare-name-then-fully-qualified fallback` below.
-
-Note: `/create-skill` forwards to `/im` (not directly to `/implement`); `/im` in turn forwards to `/implement --merge` per its own Pattern A definition. The chained delegation gives `/create-skill` auto-merge semantics while keeping each hop as a minimal pure forwarder.
 
 ### Pattern B — Stateful orchestrator (inline)
 
@@ -43,7 +41,7 @@ Set `allowed-tools` to the minimum needed by the parent skill itself — never m
 | Tier | `allowed-tools` | Example (with stable anchor) |
 |---|---|---|
 | Pure delegator | `Skill` | `skills/im/SKILL.md` frontmatter (allowed-tools line) — forwards only |
-| Delegator that validates first | `Bash, Skill` | `skills/create-skill/SKILL.md` frontmatter — runs validation scripts before delegating |
+| Delegator that validates first | `Bash, Skill` | `skills/block-issue/SKILL.md` frontmatter — runs Bash helpers before delegating |
 | Hybrid orchestrator | `Skill` plus whatever the parent needs | `skills/implement/SKILL.md`, `skills/review/SKILL.md`, `skills/alias/SKILL.md`, `skills/research/SKILL.md` — parent runs setup, file I/O, git ops, and in `/alias`'s case a post-delegation sentinel-file verification. |
 
 `allowed-tools: Skill` alone is **neither necessary nor sufficient** to classify a skill as a pure delegator — some delegators need `Bash` for input validation. Conversely, a skill with `Skill` in its allowed list is not automatically a delegator; hybrid orchestrators include `Skill` as one tool among many.
@@ -52,7 +50,7 @@ When in doubt, start narrow and widen only for tools the parent actually uses. I
 
 ## Post-invocation verification
 
-**Scope**: this rule applies to **orchestrators that continue execution based on a child skill's side effects** — e.g., a parent that reads the child's output to decide the next step. Pure forwarders (`/im`, `/block-issue`, `/create-skill`, `/simplify-skill`, `/compress-skill`) are exempt — once they delegate, they do nothing further, so there is nothing to verify.
+**Scope**: this rule applies to **orchestrators that continue execution based on a child skill's side effects** — e.g., a parent that reads the child's output to decide the next step. Pure forwarders (`/im`, `/block-issue`) are exempt — once they delegate, they do nothing further, so there is nothing to verify.
 
 For every mandatory sub-skill call inside an orchestrator's step, pair the call with a **mechanical check that the parent cannot satisfy without the child's side effects**. The check must read the filesystem, parse stdout, or compare counters — never rely on the child's prose acknowledgement. If the child silently skipped or internally bailed, the check must notice.
 
@@ -87,7 +85,7 @@ See `## Anti-halt continuation reminder` below — the two sections govern the s
 <a id="anti-halt"></a>
 ## Anti-halt continuation reminder
 
-**Scope**: this rule applies to the same orchestrator set as `## Post-invocation verification` above — stateful orchestrators (`/implement`, `/review`, `/alias`, `/research`) that run additional steps after a child `Skill` tool call returns. Pure forwarders (`/im`, `/create-skill`, `/simplify-skill`, `/compress-skill`) are exempt — once they delegate, they do nothing further. The two sections are complementary: `## Post-invocation verification` asks **"did the child run?"**; this section asks **"did the parent continue?"** Both failure modes are distinct and real (see GitHub issue #177 for the originating report).
+**Scope**: this rule applies to the same orchestrator set as `## Post-invocation verification` above — stateful orchestrators (`/implement`, `/review`, `/alias`, `/research`) that run additional steps after a child `Skill` tool call returns. Pure forwarders (`/im`, `/block-issue`) are exempt — once they delegate, they do nothing further. The two sections are complementary: `## Post-invocation verification` asks **"did the child run?"**; this section asks **"did the parent continue?"** Both failure modes are distinct and real (see GitHub issue #177 for the originating report).
 
 **The rule**: after every child `Skill` tool call (`/design`, `/review`, `/bump-version`, `/issue`, `/implement`) returns AND after every `Bash` tool call that completes a numbered step or sub-step, including `run-relevant-checks-captured.sh`, the main agent MUST immediately continue with the parent skill's NEXT step. The child's cleanup / summary output and helper stdout are NOT end-of-turn. Visible outputs (plans, diagrams, voting tallies, skip breadcrumbs, PR URLs, helper KEY=VALUE envelopes) are intermediate artifacts, NOT stopping points. Likewise, a summary, handoff, status recap, or "returning to parent" turn-ending message is a halt in disguise, not a valid continuation. In long sessions where the child produces many tokens (e.g., `/design` with 3 reviewers + voting easily produces 15k+ tokens), the main agent's attention can drift to the child's local "mission accomplished" framing and lose the parent orchestration frame. A short, standardized banner at the top of every orchestrator plus short per-call-site micro-reminders reinforce the rule where attention is most at risk.
 
@@ -136,9 +134,6 @@ The banner MUST NOT appear in pure-delegator SKILL.md files:
 
 - `skills/im/SKILL.md`
 - `skills/block-issue/SKILL.md`
-- `skills/create-skill/SKILL.md`
-- `skills/simplify-skill/SKILL.md`
-- `skills/compress-skill/SKILL.md`
 
 Both presence and absence are enforced by `${CLAUDE_PLUGIN_ROOT}/scripts/test-anti-halt-banners.sh`, wired into `make lint` via the `test-anti-halt` target.
 
@@ -240,4 +235,4 @@ All `subagent_type` references in larch skills use the qualified name `larch:cod
 
 ## Update triggers
 
-This file is the canonical source for sub-skill invocation conventions (Pattern A bulleted vs Pattern B inline, `allowed-tools` narrowing heuristic, post-invocation verification for orchestrators, anti-halt continuation reminder for orchestrators (closes #177), `session-env` handoff and safe-parse rule, artifact-only return contract for nested child skills, subagent execution topology and the dual-flag (`--session-env` + `--subagent`) handoff for nested orchestrators (closes #1039), anti-conditional-phrasing for Skill-tool calls, bare-name-then-fully-qualified fallback, agent-type qualified-name-first fallback). Runtime surface (ships to consumers under `skills/`). No generated artifact — update directly. Update trigger: when a cited source-example skill (`/im`, `/alias`, `/create-skill`, `/implement`, `/review`) changes its invocation pattern, artifact-only nested return behavior, or its anti-halt banner/micro-reminder, update the corresponding example in the guide in the same PR. Additional trigger: when `/design` (`skills/design/SKILL.md` or `skills/design/references/heavy-worker.md`) changes `--subagent`, `--quick`, `--session-env`, manifest export, or nested verbosity behavior, update the `## Subagent execution topology` section in the same PR. `skills/create-skill/scripts/render-skill-md.sh` emits a `## Sub-skill Invocation` reminder block referencing this file into every scaffolded skill; `skills/create-skill/scripts/test-render-skill-md.sh` is the regression harness guarding that emission (wired into `make lint` via the `test-render-skill` target). `scripts/test-anti-halt-banners.sh` is the paired regression harness for the anti-halt banner and micro-reminder — it asserts banner presence in the four orchestrator SKILL.md files (`/implement`, `/review`, `/alias`, `/research`), absence in the five pure-delegator SKILL.md files (`/im`, `/block-issue`, `/create-skill`, `/simplify-skill`, `/compress-skill`), and micro-reminder presence in each of the orchestrators. `/alias` is classified as an orchestrator because its Step 4 runs a sentinel-file verification after `/implement` returns. `/research` is classified as an orchestrator because it may invoke `/issue` via the Skill tool and continue to its report/cleanup steps. Wired into `make lint` via the `test-anti-halt` target.
+This file is the canonical source for sub-skill invocation conventions (Pattern A bulleted vs Pattern B inline, `allowed-tools` narrowing heuristic, post-invocation verification for orchestrators, anti-halt continuation reminder for orchestrators (closes #177), `session-env` handoff and safe-parse rule, artifact-only return contract for nested child skills, subagent execution topology and the dual-flag (`--session-env` + `--subagent`) handoff for nested orchestrators (closes #1039), anti-conditional-phrasing for Skill-tool calls, bare-name-then-fully-qualified fallback, agent-type qualified-name-first fallback). Runtime surface (ships to consumers under `skills/`). No generated artifact — update directly. Update trigger: when a cited source-example skill (`/im`, `/alias`, `/implement`, `/review`) changes its invocation pattern, artifact-only nested return behavior, or its anti-halt banner/micro-reminder, update the corresponding example in the guide in the same PR. Additional trigger: when `/design` (`skills/design/SKILL.md` or `skills/design/references/heavy-worker.md`) changes `--subagent`, `--quick`, `--session-env`, manifest export, or nested verbosity behavior, update the `## Subagent execution topology` section in the same PR. `scripts/test-anti-halt-banners.sh` is the regression harness for the anti-halt banner and micro-reminder — it asserts banner presence in the four orchestrator SKILL.md files (`/implement`, `/review`, `/alias`, `/research`), absence in the two pure-delegator SKILL.md files (`/im`, `/block-issue`), and micro-reminder presence in each of the orchestrators. `/alias` is classified as an orchestrator because its Step 4 runs a sentinel-file verification after `/implement` returns. `/research` is classified as an orchestrator because it may invoke `/issue` via the Skill tool and continue to its report/cleanup steps. Wired into `make lint` via the `test-anti-halt` target.

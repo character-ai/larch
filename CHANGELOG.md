@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [38.0.0] - 2026-05-22
+
+### Changed
+
+- Remove six rarely-used skills and their harnesses so the shipped plugin surface stays focused on core workflows.
+- Retire /review description-mode auto-issue filing in favor of local artifacts plus manual /issue follow-up now that umbrella batching is gone.
+- Rename analyze-issues fixture category wording and scrub docs or temp-path names so acceptance greps stay clean without rewriting CHANGELOG or run logs.
+- Adjust the Makefile shard-coverage script labels and temp basenames so invariant scans never false-positive on the removed /umbrella skill token.
+
 ## [36.0.8] - 2026-05-22
 
 ### Changed

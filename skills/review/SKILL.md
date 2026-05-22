@@ -1,7 +1,7 @@
 ---
 name: review
-description: "Use when reviewing code changes (--diff for branch diff, or positional text for existing code review). Description mode files findings as issues by default (--no-issues suppresses)."
-argument-hint: "[--diff] [--subagent] [--no-issues] [--dynamic-archetypes <N>] [--session-env <path>] [--step-prefix <prefix>] [<description>]"
+description: "Use when reviewing code changes (--diff for branch diff, or positional text for existing code review). Description mode records accepted OOS items in local artifacts for manual `/issue` follow-up."
+argument-hint: "[--diff] [--subagent] [--dynamic-archetypes <N>] [--session-env <path>] [--step-prefix <prefix>] [<description>]"
 allowed-tools: AskUserQuestion, Bash, Read, Edit, Write, Grep, Glob, Agent, Task, WebFetch, Skill
 ---
 
@@ -11,9 +11,9 @@ Thin wrapper around `${CLAUDE_PLUGIN_ROOT}/skills/review/scripts/review-core.sh`
 
 **Anti-halt continuation reminder.** After every child `Skill` tool call (e.g., `/design`, `/review`, `/bump-version`, `/issue`, `/implement`) returns AND after every `Bash` tool call that completes a numbered step or sub-step, including `run-relevant-checks-captured.sh`, IMMEDIATELY continue with this skill's NEXT numbered step — do NOT end the turn on the child's cleanup output, on a Bash result, or on a status message, and do NOT write a summary, handoff, status recap, or "returning to parent" message — those are halts in disguise. This applies to ALL step boundaries from Step 0 through Step 5, and to ALL sub-step transitions within Step 3's review loop (3a→3b→3c→3d→3e→3f→loop back to Step 1). **Critical: in diff mode, the review loop (Steps 1→2→3) repeats until convergence (0 findings, or Step 3f classifies the just-fixed round as non-substantial — a main-agent classification of accepted-and-fixed work, not a reading of reviewer prose) or the 3-round safety limit — completing one round's substantial fixes does NOT mean the review is done.** → shared/subskill-invocation.md#anti-halt **Continue after child returns.** Treat every script and child-skill result as input to the next step, not as a stopping point.
 
-Parse flags from `$ARGUMENTS`: `--diff`, `--no-issues`, `--dynamic-archetypes <N>`, `--session-env <path>`, `--step-prefix <prefix>`, `--subagent`, and `--run-id <ID>`. Flags may appear in any order before the positional description; `--diff` and positional description are the two mode activators and are mutually exclusive. `--dynamic-archetypes` must be `0..8`; when absent, `LARCH_DYNAMIC_ARCHETYPES_MAX` may supply the same range, default `0`.
+Parse flags from `$ARGUMENTS`: `--diff`, `--dynamic-archetypes <N>`, `--session-env <path>`, `--step-prefix <prefix>`, `--subagent`, and `--run-id <ID>`. Flags may appear in any order before the positional description; `--diff` and positional description are the two mode activators and are mutually exclusive. `--dynamic-archetypes` must be `0..8`; when absent, `LARCH_DYNAMIC_ARCHETYPES_MAX` may supply the same range, default `0`.
 
-Mode activation is fail-closed: if `--diff` and positional description are both present, print `**⚠ --diff cannot be combined with a description. Use --diff alone for branch diff review, or provide a description without --diff. Aborting.**` and exit. If neither is present, print `**⚠ /review requires either --diff (branch diff review) or a description of what to review. Examples: /review --diff, /review implementation of auth module, /review --no-issues error handling in scripts/. Aborting.**` and exit.
+Mode activation is fail-closed: if `--diff` and positional description are both present, print `**⚠ --diff cannot be combined with a description. Use --diff alone for branch diff review, or provide a description without --diff. Aborting.**` and exit. If neither is present, print `**⚠ /review requires either --diff (branch diff review) or a description of what to review. Examples: /review --diff, /review implementation of auth module, /review error handling in scripts/. Aborting.**` and exit.
 
 Progress and prompt pins: read `step-name-registry.tsv`; reviewer prompts preserve `code-quality / risk-integration / correctness / architecture / security`; specialist prompts are rendered through `${CLAUDE_PLUGIN_ROOT}/scripts/render-specialist-prompt.sh`; description mode preserves the `### In-Scope Findings` / `### Out-of-Scope Observations` dual-list contract hints.
 
@@ -52,7 +52,7 @@ After the child returns, run `"${CLAUDE_PLUGIN_ROOT}/scripts/run-relevant-checks
 <!-- step:4 — Final Summary and Issues -->
 ## Step 4 — Final Summary And Issues
 
-Print `> **🔶 /review 4: final summary**`. Standalone diff mode prints `review-round-summary.md`; nested mode copies artifacts and emits only the `### review-result` footer. **Continue to Step 4d IMMEDIATELY** after summary-side artifacts — the review-result footer is not terminal for the remainder of Step 4 (larch-log batches, `/umbrella`, etc.). Description mode composes issue pieces, then invokes `/umbrella` via the Skill tool with `--pieces-json` unless `--no-issues` is set, and holds security-tagged findings locally.
+Print `> **🔶 /review 4: final summary**`. Standalone diff mode prints `review-round-summary.md`; nested mode copies artifacts and emits only the `### review-result` footer. **Continue to Step 4d IMMEDIATELY** after summary-side artifacts — the review-result footer is not terminal for the remainder of Step 4 (larch-log batches, etc.). Description mode composes issue-oriented artifacts for operator inspection; accepted OOS items are not auto-filed — use `/issue` manually when you want GitHub tracking. Security-tagged findings continue to be held locally per the voting protocol.
 
 If `RUN_ID` is non-empty, write flat review larch-log batches with `${CLAUDE_PLUGIN_ROOT}/skills/review/scripts/log-phase.sh`: `review-context`, `review-panel-manifest`, `review-findings`, `review-tally`, `review-scout-manifest`, and `review-round-summary`. This wrapper is the only place `log-phase.sh` is called.
 

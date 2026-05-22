@@ -12,8 +12,7 @@
 # Stderr: human-readable diagnostics on error.
 # Exit: 0 on success; 1 on usage error or fail-closed git failure.
 #
-# Plugin-repo detection uses the two-file predicate matching
-# skills/create-skill/scripts/validate-args.sh:133 — both
+# Plugin-repo detection uses the two-file predicate: both
 # .claude-plugin/plugin.json AND skills/implement/SKILL.md must exist
 # at the git repo root for PLUGIN_REPO=true. This guards against
 # routing arbitrary Claude plugin repos (containing only plugin.json)

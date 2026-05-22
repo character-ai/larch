@@ -4,8 +4,6 @@ Reference for every slash command shipped by the larch plugin. Each section belo
 
 - [`/alias`](#alias)
 - [`/cleanup`](#cleanup)
-- [`/compress-skill`](#compress-skill)
-- [`/create-skill`](#create-skill)
 - [`/design`](#design)
 - [`/implement`](#implement)
 - [`/issue`](#issue)
@@ -15,10 +13,6 @@ Reference for every slash command shipped by the larch plugin. Each section belo
 - [`/review`](#review)
 - [`/review-and-fix`](#review-and-fix)
 - [`/set-up-forked-open-source-repo`](#set-up-forked-open-source-repo)
-- [`/show-skill`](#show-skill)
-- [`/simplify-skill`](#simplify-skill)
-- [`/skill-evolver`](#skill-evolver)
-- [`/umbrella`](#umbrella)
 - [`/upgrade-larch`](#upgrade-larch)
 
 ## `/alias`
@@ -50,22 +44,6 @@ Express a native GitHub blocked-by relationship between two issues using the `ad
 **Source**: [`skills/cleanup/SKILL.md`](../skills/cleanup/SKILL.md)
 
 Remove leftover larch session temp directories from `~/.cache/larch/sessions/` and `/tmp`. Checks for active sessions (`.larch-keepalive`) before deleting cache dirs, and aborts entirely if more than one `claude` process is detected. Reports counts removed from each location.
-
-## `/compress-skill`
-
-**Arguments**: `<skill-name-or-path>`
-
-**Source**: [`skills/compress-skill/SKILL.md`](../skills/compress-skill/SKILL.md)
-
-Compress a skill's Markdown prose via a behavior-preserving rewrite.
-
-## `/create-skill`
-
-**Arguments**: `[--plugin] [--multi-step] [--merge] <skill-name> <description>`
-
-**Source**: [`skills/create-skill/SKILL.md`](../skills/create-skill/SKILL.md)
-
-Scaffold a new larch-style skill from a name and description.
 
 ## `/design`
 
@@ -117,7 +95,7 @@ Run pre-commit linters (shellcheck, markdownlint, jsonlint, actionlint, gitleaks
 
 Collaborative best-effort read-only research with a fixed-shape topology. The research phase always runs a planner pre-pass that decomposes `RESEARCH_QUESTION` into focused subquestions, then the [Codex-first lanes](topology.md#research.lanes) listed in the research skill (architecture / edge cases / external comparisons / security) with a per-lane Claude `Agent` fallback when Codex is unavailable. The validation phase runs the [panel](topology.md#research.validation_panel) described in [Review Agents](review-agents.md), with Claude fallbacks when an external tool is unavailable. Cursor is NOT used in research lanes (it remains a validation reviewer).
 
-**Step 2.5 — Citation Validation (unconditional)**: between Step 2 (validation) and Step 2.6 (critique loop) the deterministic shell validator `skills/research/scripts/validate-citations.sh` extracts cited URLs / DOIs / file:line references from the synthesis, HEAD-fetches URLs under SSRF guards (HTTPS-only, `--max-redirs 0`, `--noproxy '*'`, RFC1918/IPv6 link-local/RFC6598 hostname pre-rejection, DNS resolved-IP private-range check, connection-pinning via `--resolve` to mitigate rebinding TOCTOU), validates DOIs syntactically + via `doi.org` HEAD, and spot-checks file:line ranges against the git tree (with `realpath` containment). Output is a 3-state ledger (PASS / FAIL / UNKNOWN with reason classifier) sidecar at `$RESEARCH_TMPDIR/citation-validation.md` that Step 3 splices as a `## Citation Validation` section into `research-report-final.md`. Fail-soft: per-claim failures surface as advisory warnings only; the validator always exits 0; Step 3 is never blocked.
+**Step 2.5 — Citation Validation (unconditional)**: between Step 2 (validation) and Step 2.6 (critique loop) the deterministic shell validator `skills/research/scripts/validate-citations.sh` extracts cited URLs / DOIs / `file:line` references from the synthesis, HEAD-fetches URLs under SSRF guards (HTTPS-only, `--max-redirs 0`, `--noproxy '*'`, RFC1918/IPv6 link-local/RFC6598 hostname pre-rejection, DNS resolved-IP private-range check, connection-pinning via `--resolve` to mitigate rebinding TOCTOU), validates DOIs syntactically + via `doi.org` HEAD, and spot-checks `file:line` ranges against the git tree (with `realpath` containment). Output is a 3-state ledger (PASS / FAIL / UNKNOWN with reason classifier) sidecar at `$RESEARCH_TMPDIR/citation-validation.md` that Step 3 splices as a `## Citation Validation` section into `research-report-final.md`. Fail-soft: per-claim failures surface as advisory warnings only; the validator always exits 0; Step 3 is never blocked.
 
 The run produces a structured report with findings, risk assessment, difficulty estimates, and feasibility verdict.
 
@@ -125,11 +103,11 @@ The run produces a structured report with findings, risk assessment, difficulty 
 
 ## `/review`
 
-**Arguments**: `[--diff] [--no-issues] [<description>]`
+**Arguments**: `[--diff] [<description>]`
 
 **Source**: [`skills/review/SKILL.md`](../skills/review/SKILL.md) · [Diagram](../skills/review/diagram.svg)
 
-Code review with the specialist panel described in [Review Agents](review-agents.md). Supports `--diff`, which reviews branch changes vs main and implements accepted suggestions in a recursive loop, and positional `<description>`, which reviews existing code and files accepted findings as GitHub issues by default (`--no-issues` to suppress).
+Code review with the specialist panel described in [Review Agents](review-agents.md). Supports `--diff`, which reviews branch changes vs main and implements accepted suggestions in a recursive loop, and positional `<description>`, which reviews existing code. Description mode records voting outcomes and OOS artifacts locally; file follow-up GitHub issues with `/issue` when you want tracking.
 
 ## `/review-and-fix`
 
@@ -148,38 +126,6 @@ Apply accepted review findings as code fixes. Internal sub-skill invoked by `/re
 Configure the current checkout for upstream/fork OSS contribution. The skill verifies that the fork exists on GitHub and that its immediate parent is the declared upstream, probes both repositories' `refs/heads/main`, optionally performs a destructive fork sync of branches and tags after explicit confirmation, then rewires local remotes so `origin` points at the fork and `upstream` points at upstream. It disables upstream pushes with an invalid-scheme push URL, fetches `origin`, sets `main` to track `origin/main`, and fast-forwards only from a clean `main` checkout.
 
 The workflow is intentionally single-clone (per-clone single-flight lock; multiple clones may run concurrently) and supports any GitHub-compatible host, with github.com as the default. It refuses dirty linked worktrees, in-progress git operations in any linked worktree, missing local `main`, non-`main` checkouts, local `main` ahead of `origin/main`, diverged local/remote `main`, ambiguous remote layouts, non-parseable / mixed-host URLs, duplicate fork remotes, multi-fetch URL remotes, and multi-push URL remotes. If the fork is missing, it prints fork-creation instructions and exits without local mutation. `--init-submodules` is opt-in; default runs ignore submodules.
-
-## `/show-skill`
-
-**Arguments**: `<skill-name>`
-
-**Source**: [`skills/show-skill/SKILL.md`](../skills/show-skill/SKILL.md)
-
-Display the contents of a skill's `SKILL.md` file. Accepts bare name (e.g., `implement`), `larch:`-prefixed form (e.g., `larch:review`), or leading-`/` form. Searches the plugin `skills/` tree first, then the consumer repo's `.claude/skills/`.
-
-## `/simplify-skill`
-
-**Arguments**: `<skill-name>`
-
-**Source**: [`skills/simplify-skill/SKILL.md`](../skills/simplify-skill/SKILL.md)
-
-Refactor a skill for stronger adherence to design principles and reduced SKILL.md footprint.
-
-## `/skill-evolver`
-
-**Arguments**: `<skill-name>`
-
-**Source**: [`skills/skill-evolver/SKILL.md`](../skills/skill-evolver/SKILL.md)
-
-Evolve an existing larch skill by researching concrete improvements and filing them as GitHub issues. Validates `<skill-name>` against `^[a-z][a-z0-9-]*$` and resolves it to `skills/<name>/SKILL.md` (plugin tree) or `.claude/skills/<name>/SKILL.md` (project-local fallback); aborts cleanly if the target does not exist. Then invokes `/research` with a templated prompt that asks the documented lane fan-out to produce concrete actionable improvements with citations — repo-local sibling-skill comparisons via `file:line` references and reputable external sources (Anthropic / OpenAI / DeepMind / ≥500-star OSS) via URLs. If the research lane surfaces ≥1 actionable improvement, distills the findings into a task description and delegates to `/umbrella`. Zero improvements → clean exit, no issues filed. The skill itself does NOT modify the target skill's files. Example: `/skill-evolver design`.
-
-## `/umbrella`
-
-**Arguments**: `[--label L]... [--title-prefix P] [--repo OWNER/REPO] [--closed-window-days N] [--blocked-by-issue N] [--dry-run] <task description or empty to deduce from context>`
-
-**Source**: [`skills/umbrella/SKILL.md`](../skills/umbrella/SKILL.md)
-
-Plan-to-issues orchestrator. Takes a task description (or deduces it from session context), classifies it as one-shot or multi-piece, and delegates GitHub issue creation to `/issue` — adding native blocked-by dependencies to form an execution DAG and back-linking children to the umbrella when multi-piece. Typically invoked transitively by `/review` (description-mode finding filing) and `/skill-evolver` (research-finding filing) rather than called directly by humans, though direct invocation is supported. The one-shot path emits a single child issue and skips umbrella creation; the multi-piece path emits an umbrella tracking issue plus one child per piece (very small items may be bundled into a single composed piece per Step 3B.1's bundling rule), with `Closes #<umbrella>` blocked-by edges wired between children and the umbrella. `--blocked-by-issue N` is a caller-supplied policy blocker; `N` is a positive integer issue number, forwarded verbatim to `/issue` on both Step 3A (one-shot) and Step 3B.2 (batch children). Only batch child creation can succeed with the policy edge — single-mode is rejected by `/issue`'s frozen batch-mode-only error, providing fail-fast on misclassified one-shot runs (no silent drop). The flag is intentionally NOT forwarded to the Step 3B.3 umbrella-create call — the policy edge is meant for children, not the umbrella itself. `--dry-run` previews the proposed batch without GitHub mutations. Example: `/umbrella refactor the auth subsystem across schema, middleware, and tests`.
 
 ## `/upgrade-larch`
 

@@ -185,8 +185,9 @@ for L in "${LABELS[@]+"${LABELS[@]}"}"; do
     # Fixed-string whole-line match (closes #775 — unified grep -F doctrine).
     # Without -F, $L is interpreted as a BRE: labels like `bug.feature` or
     # `release[2026]` would have BRE metacharacters in `.` and `[]` change the
-    # match semantics from byte-exact to pattern-matched. Active current path:
-    # /umbrella forwards operator --label values verbatim through /issue.
+    # match semantics from byte-exact to pattern-matched. Caller-supplied
+    # `--label` values may contain regex metacharacters; the fixed-string probe
+    # prevents false positives against `gh label list` output.
     if gh label list --repo "$REPO" --search "$L" --json name --jq '.[].name' 2>/dev/null | grep -Fqx -- "$L"; then
         VALID_LABELS+=("$L")
     else
