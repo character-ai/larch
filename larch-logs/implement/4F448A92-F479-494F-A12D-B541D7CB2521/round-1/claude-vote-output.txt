@@ -1,0 +1,16 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: EXONERATE -- cosmetic fixture-prep changes don't affect test correctness and the concern is style-only
+FINDING_4: YES
+FINDING_5: EXONERATE -- optional symmetry note; too minor to track as a standalone issue
+FINDING_6: NO -- larch-logs commits are expected by project policy per AGENTS.md and run-logs.md
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: NO -- historical changelog entries are intentionally immutable; the grep exclusion already accounts for this
+FINDING_11: NO -- run-log content is expected and covered by larch-logs grep exclusions
+FINDING_12: YES
+FINDING_13: EXONERATE -- skip-on-missing is an explicitly documented design decision; automation can observe SKIPPED; adding a strict mode is a future enhancement, not a defect in this PR
+FINDING_14: NO -- correctly characterized as documented policy, not worth a tracking issue
+FINDING_15: NO -- the hook is intentionally removed because the skill it guarded no longer exists; fork-custom skill authors must register their own hooks
+FINDING_16: EXONERATE -- splitting FAILURE_REASON by non-invokable sub-case adds more complexity than it resolves; documenting the umbrella in the contract is sufficient

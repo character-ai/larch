@@ -141,7 +141,7 @@ Then atomic-write `<MANIFEST_PATH>` and exit with status 0. The dispatcher inspe
 - You do NOT `git add` or `git commit`. The dispatcher commits using `manifest.commit_message`.
 - You do NOT push the branch. The orchestrator handles all pushes.
 - You do NOT open a PR.
-- You do NOT run `/relevant-checks` or any larch skill. The orchestrator handles validation.
+- You do NOT run `scripts/relevant-checks.sh` or any larch skill. The orchestrator handles validation.
 - You do NOT print progress narration to stdout for Claude to read. The dispatcher captures stdout to a sidecar log on disk; nothing reaches Claude's context unless something goes wrong and the operator inspects the log manually.
 - You do NOT modify the manifest after writing it. One atomic write per invocation, then exit.
 

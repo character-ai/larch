@@ -1,7 +1,7 @@
 # Larch pre-commit configuration
 # Single source of truth for linter definitions.
 # CI uses: make lint (repo-wide via pre-commit run --all-files)
-# /relevant-checks uses: pre-commit run --files <changed-files> (scoped)
+# scripts/relevant-checks.sh uses: pre-commit run --files <changed-files> (scoped)
 # Developers use: pre-commit install (opt-in git hook)
 
 exclude: ^(\.venv/|node_modules/)

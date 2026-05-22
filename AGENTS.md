@@ -15,7 +15,7 @@ Plugin ships the entire repo. **Runtime surface**: `skills/`, `agents/`, `hooks/
 ## Editing rules
 
 - Always respect `scripts/block-submodule-edit.sh`. If a hook blocks a write, investigate and resolve the underlying issue. The guard ships via `hooks/hooks.json` only — `.claude/settings.json` no longer mirrors it, so contributors developing in this repo must load larch as a plugin (`claude --plugin-dir .` or the local marketplace) to pick up the guard.
-- After any change, run `/relevant-checks`.
+- After any change, run `bash scripts/relevant-checks.sh` (or `make lint`, which exercises the same pre-commit hooks repo-wide).
 - Update `SECURITY.md` when security-relevant behavior changes.
 
 ## Common editing tasks

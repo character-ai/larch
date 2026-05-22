@@ -40,6 +40,10 @@ write_stubs() {
     cat > "$root/scripts/run-relevant-checks-captured.sh" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
+if [[ "${STUB_CHECKS_SKIPPED:-false}" == true ]]; then
+  echo "RELEVANT_CHECKS_SKIPPED=true SITE=step6"
+  exit 0
+fi
 if [[ "${STUB_CHECKS_OK:-true}" == true ]]; then
   echo "RELEVANT_CHECKS_OK=true SITE=step6 COVERAGE=full"
   exit 0
@@ -454,7 +458,7 @@ make_repo_rebase_autoresolve_prep() {
     mkdir -p "$root/origin.git"
     git init --bare "$root/origin.git" -q
     git -C "$root" remote add origin "$root/origin.git"
-    git -C "$root" checkout -b main -q
+    git -C "$root" checkout -B main -q
     touch "$root/README.md"
     cat > "$root/CHANGELOG.md" <<'EOF'
 # Changelog
@@ -534,7 +538,7 @@ make_repo_rebase_autoresolve_rst_prep() {
     mkdir -p "$root/origin.git"
     git init --bare "$root/origin.git" -q
     git -C "$root" remote add origin "$root/origin.git"
-    git -C "$root" checkout -b main -q
+    git -C "$root" checkout -B main -q
     touch "$root/README.md"
     cat > "$root/CHANGELOG.rst" <<'EOF'
 Changelog
@@ -611,7 +615,7 @@ make_repo_rebase_autoresolve_bare_changelog_prep() {
     mkdir -p "$root/origin.git"
     git init --bare "$root/origin.git" -q
     git -C "$root" remote add origin "$root/origin.git"
-    git -C "$root" checkout -b main -q
+    git -C "$root" checkout -B main -q
     touch "$root/README.md"
     cat > "$root/CHANGELOG" <<'EOF'
 Changelog
@@ -688,7 +692,7 @@ make_repo_rebase_plugin_json_prep() {
     mkdir -p "$root/origin.git"
     git init --bare "$root/origin.git" -q
     git -C "$root" remote add origin "$root/origin.git"
-    git -C "$root" checkout -b main -q
+    git -C "$root" checkout -B main -q
     touch "$root/README.md"
     mkdir -p "$root/.claude-plugin"
     cat > "$root/.claude-plugin/plugin.json" <<'EOF'
@@ -731,7 +735,7 @@ make_repo_rebase_dual_conflict_prep() {
     mkdir -p "$root/origin.git"
     git init --bare "$root/origin.git" -q
     git -C "$root" remote add origin "$root/origin.git"
-    git -C "$root" checkout -b main -q
+    git -C "$root" checkout -B main -q
     printf 'm0\n' > "$root/other.txt"
     touch "$root/README.md"
     cat > "$root/CHANGELOG.md" <<'EOF'
@@ -822,6 +826,13 @@ write_state "$tmp/ship-pr-state.sh" checks
 STUB_CHECKS_OK=false run_subject "$root" "$tmp" "$tmp/rc"
 assert_rc "$tmp/rc" 4 "checks failure exits 4"
 assert_state_line "$tmp/ship-pr-state.sh" "STALL_TRACKING=true" "checks failure marks stall"
+
+root=$(make_repo checks_skip)
+tmp=$(make_tmpdir)
+write_state "$tmp/ship-pr-state.sh" checks
+STUB_CHECKS_SKIPPED=true run_subject "$root" "$tmp" "$tmp/rc"
+assert_rc "$tmp/rc" 0 "checks skipped stub completes ship-pr"
+assert_state_line "$tmp/ship-pr-state.sh" "STALL_TRACKING=false" "checks skip does not stall"
 
 root=$(make_repo checks_verbose_failure)
 tmp=$(make_tmpdir)

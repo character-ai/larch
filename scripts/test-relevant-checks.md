@@ -1,0 +1,13 @@
+# test-relevant-checks.sh
+
+Purpose: regression-test `scripts/relevant-checks.sh` exit-code and banner behavior with disposable git repositories and controlled PATH stubs.
+
+Primary callers: `make test-relevant-checks` and the `test-harnesses-11` Makefile shard.
+
+Invariants: create one isolated git repo per assertion family; set fake `HOME`, `GIT_CONFIG_GLOBAL=/dev/null`, and `GIT_CONFIG_SYSTEM=/dev/null`; invoke `relevant-checks.sh` as a black box; provide executable `pre-commit` and `agent-lint` stubs only for scenarios that require them; keep `/usr/local/bin` out of PATH so host-installed `agent-lint` cannot satisfy absent-tool cases; assert both stdout banners and exit codes. Branch coverage: zero-phase exit 2 (empty `MODIFIED_FILES` and deletions-only branch), `agent-lint` exit-code propagation (rc=0 and rc=7) on BOTH the empty-`MODIFIED_FILES` post-checks-only path AND the changed-file dual-phase path (pre-commit success then `run_post_checks` invokes `agent-lint`), changed-file dual-phase happy path (pre-commit + agent-lint both succeed), changed-file pre-commit-fails path (script propagates pre-commit's exit code without invoking the `run_post_checks` agent-lint phase), changed-file pre-commit-success + agent-lint-absent path (`WARNING: agent-lint not found on PATH — skipping` banner), pre-commit-missing preflight (`ERROR: pre-commit not found`), and not-inside-a-git-repo (`ERROR: not inside a git repository`). Assumes `pre-commit` and `agent-lint` are NOT present in `/usr/bin` or `/bin` on the host — both tools are conventionally pip-installed under user / virtualenv / `/usr/local/bin` paths in this repo's developer environments.
+
+Makefile wiring: `test-relevant-checks` runs this script directly; `test-harnesses-11` includes `test-relevant-checks` so CI and `make test-harnesses` cover it.
+
+Test harness: this file is itself the harness. Run `bash scripts/test-relevant-checks.sh` after edits, then `make test-relevant-checks` to verify Makefile wiring.
+
+Edit in sync: update this contract, `scripts/relevant-checks.md`, and the Makefile target wiring whenever `relevant-checks.sh` phase counting, changed-file detection, preflight checks, agent-lint fallback behavior, observable banners, or exit-code contracts change.

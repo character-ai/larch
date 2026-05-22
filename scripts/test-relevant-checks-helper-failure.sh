@@ -17,8 +17,8 @@ fail() {
 }
 
 fixture_repo="$tmp/repo"
-mkdir -p "$fixture_repo/.claude/skills/relevant-checks/scripts"
-cat > "$fixture_repo/.claude/skills/relevant-checks/scripts/run-checks.sh" <<'SCRIPT'
+mkdir -p "$fixture_repo/scripts"
+cat > "$fixture_repo/scripts/relevant-checks.sh" <<'SCRIPT'
 #!/usr/bin/env bash
 set -euo pipefail
 echo "=== Running pre-commit on 1 changed file(s) ==="
@@ -28,7 +28,7 @@ echo "=== Running agent-lint ==="
 echo "agent-lint failure"
 exit 1
 SCRIPT
-chmod +x "$fixture_repo/.claude/skills/relevant-checks/scripts/run-checks.sh"
+chmod +x "$fixture_repo/scripts/relevant-checks.sh"
 
 xdg="$tmp/cache"
 session="$xdg/larch/sessions/claude-implement-repo-FAIL"
@@ -68,5 +68,32 @@ out=$(XDG_CACHE_HOME="$xdg" CLAUDE_PROJECT_DIR="$fixture_repo" "$fixture_scripts
 [[ "$rc" -eq 1 ]] || fail "redaction-failed path expected rc 1, got $rc"
 [[ "$out" == "STATUS=fail FAILURE_REASON=redaction-failed" ]] || fail "redaction failure stdout mismatch: $out"
 [[ "$out" != *"LOG_FILE="* ]] || fail "redaction failure leaked raw log path"
+
+repo_skip="$tmp/repo-skip"
+mkdir -p "$repo_skip"
+rc=0
+out=$(XDG_CACHE_HOME="$xdg" CLAUDE_PROJECT_DIR="$repo_skip" "$HELPER" --site step3 --tmpdir "$session") || rc=$?
+[[ "$rc" -eq 0 ]] || fail "missing script expected rc 0, got $rc"
+[[ "$out" == "RELEVANT_CHECKS_SKIPPED=true SITE=step3" ]] || fail "skip stdout mismatch: $out"
+
+repo_bad="$tmp/repo-bad-exec"
+mkdir -p "$repo_bad/scripts"
+printf '#!/usr/bin/env bash\necho noop\n' > "$repo_bad/scripts/relevant-checks.sh"
+chmod a-x "$repo_bad/scripts/relevant-checks.sh" || true
+rc=0
+out=$(XDG_CACHE_HOME="$xdg" CLAUDE_PROJECT_DIR="$repo_bad" "$HELPER" --site step3 --tmpdir "$session") || rc=$?
+[[ "$rc" -eq 126 ]] || fail "non-executable script expected rc 126, got $rc"
+[[ "$out" == *"STATUS=fail"* ]] || fail "non-executable missing fail envelope: $out"
+[[ "$out" == *"EXIT_CODE=126"* ]] || fail "non-executable missing EXIT_CODE=126 in: $out"
+[[ "$out" == *"FAILURE_REASON=check-script-not-executable"* ]] || fail "non-executable missing failure reason: $out"
+
+repo_broken_symlink="$tmp/repo-broken-symlink"
+mkdir -p "$repo_broken_symlink/scripts"
+ln -sf /nonexistent/larch-relevant-checks-missing-target "$repo_broken_symlink/scripts/relevant-checks.sh"
+rc=0
+out=$(XDG_CACHE_HOME="$xdg" CLAUDE_PROJECT_DIR="$repo_broken_symlink" "$HELPER" --site step3 --tmpdir "$session") || rc=$?
+[[ "$rc" -eq 1 ]] || fail "broken symlink expected rc 1, got $rc"
+[[ "$out" == *"STATUS=fail"* ]] || fail "broken symlink missing fail envelope: $out"
+[[ "$out" == *"FAILURE_REASON=check-script-symlink-broken"* ]] || fail "broken symlink missing failure reason: $out"
 
 echo "test-relevant-checks-helper-failure: ok"

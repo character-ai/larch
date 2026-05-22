@@ -45,9 +45,11 @@ Wrapper loop: set `round_cap=5`; for each round call `review-core.sh --mode <dif
 
 If `REVIEW_CORE_STATUS=fix-required`, invoke `/review-and-fix` via the Skill tool with `--findings-file "$ACCEPTED_FINDINGS_FILE" --review-tmpdir "$REVIEW_TMPDIR" [--session-env "$SESSION_ENV_PATH"]`; fix application is performed by Codex via `review-and-fix.sh`, with Cursor and Claude-subagent fallbacks when needed.
 
-> **Continue after child returns.** On `RELEVANT_CHECKS_OK=true`, execute the Step 3f classification next; do NOT end the turn on helper output alone. On `STATUS=fail` from the Step 3e helper, read `REDACTED_LOG_FILE` for diagnosis — NOT raw `LOG_FILE`. The non-substantial re-review convergence line is not terminal — continue into Step 4.
+After the Step 3 segment's child tools complete (including `/review-and-fix` when invoked), run `"${CLAUDE_PLUGIN_ROOT}/scripts/run-relevant-checks-captured.sh" --site review-step3e --tmpdir "$REVIEW_TMPDIR"`.
 
-After the child returns, run `"${CLAUDE_PLUGIN_ROOT}/scripts/run-relevant-checks-captured.sh" --site review-step3e --tmpdir "$REVIEW_TMPDIR"`. On `STATUS=fail`, first check `FAILURE_REASON`; otherwise read `REDACTED_LOG_FILE`, diagnose, fix, and rerun until clean. Then classify the just-fixed round as substantial or non-substantial using main-agent judgment. If substantial and under the cap, increment `round_num` and call `review-core.sh` again; if non-substantial, no-findings, description mode, cap reached, or voting converged to `REVIEW_CORE_STATUS=ok` with no accepted findings left to fix, proceed to Step 4.
+> **Continue after child returns.** On `RELEVANT_CHECKS_OK=true` or `RELEVANT_CHECKS_SKIPPED=true`, execute the Step 3f classification next; do NOT end the turn on helper output alone. On `STATUS=fail`, first check `FAILURE_REASON` (structural — e.g. `tmpdir-validation`, `site-validation`, `repo-root-unresolved`, `check-script-not-executable`, `check-script-symlink-broken`, `redaction-failed`; act on the reason, no log file is produced). Otherwise read `REDACTED_LOG_FILE` for diagnosis — NOT raw `LOG_FILE` — then diagnose, fix, and rerun the helper until it returns `RELEVANT_CHECKS_OK=true` or `RELEVANT_CHECKS_SKIPPED=true`. The non-substantial re-review convergence line is not terminal — continue into Step 4.
+
+Then classify the just-fixed round as substantial or non-substantial using main-agent judgment. If substantial and under the cap, increment `round_num` and call `review-core.sh` again; if non-substantial, no-findings, description mode, cap reached, or voting converged to `REVIEW_CORE_STATUS=ok` with no accepted findings left to fix, proceed to Step 4.
 
 <!-- step:4 — Final Summary and Issues -->
 ## Step 4 — Final Summary And Issues

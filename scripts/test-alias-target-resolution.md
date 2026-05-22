@@ -42,4 +42,4 @@ When modifying `skills/alias/scripts/resolve-target.sh`:
 1. Update `skills/alias/scripts/resolve-target.md` (contract).
 2. Update this test harness if the case matrix shifts (e.g., a new flag, a new return key).
 3. Run the harness: `bash scripts/test-alias-target-resolution.sh`.
-4. Run `/relevant-checks` to confirm `pre-commit` + `agent-lint` are green.
+4. Run `bash scripts/relevant-checks.sh` to confirm `pre-commit` + `agent-lint` are green.

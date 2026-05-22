@@ -13,7 +13,7 @@ Claude reviews the plan inline — no external reviewers, no voting panel. Check
 1. **Completeness**: does the plan cover every part of the feature description?
 2. **Correctness**: is the approach logically sound? Any obvious logic errors?
 3. **Risk/integration**: breaking changes, security concerns, obvious failure modes?
-4. **Verification**: concrete post-change check (`/relevant-checks`, a test, or a dry-run)?
+4. **Verification**: concrete post-change check (`bash scripts/relevant-checks.sh`, a test, or a dry-run)?
 5. **Scope**: stays within stated boundaries with no speculative additions?
 
 Accept when the concern is clear and unambiguous. Reject nits and speculative concerns. Mark valid but out-of-scope items as OOS.

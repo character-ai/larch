@@ -130,10 +130,22 @@ else
 fi
 [[ -n "$REPO_ROOT" ]] || fail "repo-root-unresolved" 1
 
-CHECK_SCRIPT="$REPO_ROOT/.claude/skills/relevant-checks/scripts/run-checks.sh"
-if [[ ! -x "$CHECK_SCRIPT" ]]; then
-    emit "STATUS=fail EXIT_CODE=127 FAILURE_REASON=missing-check-script"
-    exit 127
+CHECK_SCRIPT="$REPO_ROOT/scripts/relevant-checks.sh"
+# A dangling symlink is not an intentional omit — fail closed so broken wiring
+# cannot masquerade as RELEVANT_CHECKS_SKIPPED (same as missing target for -e).
+if [[ -L "$CHECK_SCRIPT" && ! -e "$CHECK_SCRIPT" ]]; then
+    emit "STATUS=fail EXIT_CODE=1 FAILURE_REASON=check-script-symlink-broken"
+    exit 1
+fi
+if [[ ! -e "$CHECK_SCRIPT" ]]; then
+    emit "RELEVANT_CHECKS_SKIPPED=true SITE=$SITE"
+    larch_err "relevant-checks: scripts/relevant-checks.sh absent; skipping local checks"
+    exit 0
+fi
+
+if [[ ! -f "$CHECK_SCRIPT" || ! -x "$CHECK_SCRIPT" ]]; then
+    emit "STATUS=fail EXIT_CODE=126 FAILURE_REASON=check-script-not-executable"
+    exit 126
 fi
 
 umask 077
@@ -173,7 +185,7 @@ while (( attempt <= 100 )); do
 done
 [[ -n "$LOG_FILE" ]] || fail "log-allocation-attempt-cap" 1
 
-if "$CHECK_SCRIPT" >"$LOG_FILE" 2>&1; then
+if (cd "$REPO_ROOT" && "$CHECK_SCRIPT") >"$LOG_FILE" 2>&1; then
     rc=0
 else
     rc=$?

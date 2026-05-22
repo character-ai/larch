@@ -499,8 +499,9 @@ exclude = [
   "scripts/test-relevant-checks-byte-budget.sh",
   "scripts/test-relevant-checks-validation.sh",
   "scripts/test-relevant-checks-helper-failure.sh",
+  "scripts/test-relevant-checks.sh",
+  "scripts/relevant-checks.sh",
   "scripts/test-run-negotiation-round.sh",
-  "scripts/test-hook-block-skill-relevant-checks.sh",
   "scripts/test-hook-anti-read-poll.sh",
   "scripts/test-review-relevant-checks-helper.sh",
   "scripts/lib-count-commits.sh",
@@ -740,7 +741,7 @@ exclude = [
   # above. Both the .sh and the .md are excluded.
   "skills/implement/scripts/test-check-review-changes.sh",
   # skills/implement/scripts/test-implement-relevant-checks-anti-halt.sh is
-  # the offline structural guard for per-site /relevant-checks continuation
+  # the offline structural guard for per-site run-relevant-checks-captured.sh continuation
   # callouts in skills/implement/SKILL.md (issue #1381). Referenced only from
   # Makefile (test-implement-relevant-checks-anti-halt target) and the sibling
   # contract below, matching the same Makefile-only pattern as the other
@@ -1063,8 +1064,9 @@ exclude = [
   "scripts/test-relevant-checks-byte-budget.md",
   "scripts/test-relevant-checks-validation.md",
   "scripts/test-relevant-checks-helper-failure.md",
+  "scripts/test-relevant-checks.md",
+  "scripts/relevant-checks.md",
   "scripts/test-run-negotiation-round.md",
-  "scripts/test-hook-block-skill-relevant-checks.md",
   "scripts/test-hook-anti-read-poll.md",
   "scripts/hook-anti-read-poll.md",
   "scripts/test-review-relevant-checks-helper.md",

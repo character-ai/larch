@@ -199,22 +199,21 @@ For the at-rest secret-persistence tradeoff (the API key appears in `.meta` `CMD
 |---|---|
 | Skills | `/design`, `/implement`, `/review`, `/research`, `/issue`, `/set-up-forked-open-source-repo`, `/upgrade-larch`, `/alias`, `/im` |
 | Agents | `code-reviewer` (unified archetype covering code quality, risk/integration, correctness, architecture, security) |
-| PreToolUse hooks | `block-submodule-edit.sh` blocks `Edit`/`Write` on files inside any checked-out git submodule of the consuming project; `hook-block-skill-relevant-checks.sh` blocks `/relevant-checks` Skill calls inside active `/implement` or `/review` sessions so orchestrators use the captured helper |
+| PreToolUse hooks | `block-submodule-edit.sh` blocks `Edit`/`Write` on files inside any checked-out git submodule of the consuming project |
 | SessionStart hook | `sessionstart-health.sh` — at session start/resume/clear/compact, probes `jq` and `git` on `PATH`; if either is missing, injects an advisory into session context so the issue is visible before the first `Edit`/`Write`. Non-blocking (always exits 0); silent when both tools are present |
 
-## `/relevant-checks` — required consumer dependency
+## `scripts/relevant-checks.sh` — required consumer contract
 
-> **Important:** `/implement` and `/review` run the project-local relevant-checks script after code changes. If your repo does not provide one, these workflows will fail at the validation step.
+> **Important:** `/implement` and `/review` run `scripts/relevant-checks.sh` after code changes when the file exists. If your repo omits it, orchestrators observe `RELEVANT_CHECKS_SKIPPED=true` (exit 0) from `run-relevant-checks-captured.sh` — treat that as explicit observability that local checks did **not** run; it is not equivalent to a green `make lint` / CI result.
 
-The `/relevant-checks` skill is **not part of the plugin surface** — it is present in the install directory but not loaded by the plugin runtime. Each consuming repo must provide its own project-level `.claude/skills/relevant-checks/` directory with build and lint commands tailored to that repo. Human operators can invoke that Skill directly; larch orchestrators call `.claude/skills/relevant-checks/scripts/run-checks.sh` through the plugin helper `scripts/run-relevant-checks-captured.sh` so successful checks do not spend LLM tokens.
+Each consuming repo should ship an executable `scripts/relevant-checks.sh` tailored to that repo's linters and tests. Larch's own repository includes a reference implementation at `scripts/relevant-checks.sh` plus `scripts/relevant-checks.md`.
 
-**To create one for your repo:**
+**To adopt the contract in another repo:**
 
-1. Create `.claude/skills/relevant-checks/SKILL.md` with `allowed-tools: Bash`
-2. Add a `scripts/run-checks.sh` that runs your repo's linters, tests, or validators
-3. Keep the script executable and preserve the documented exit-path matrix: success exits 0 after at least one validation phase, check failures return the underlying tool exit code, and zero validation coverage exits non-zero with an `ERROR:` line.
+1. Add `scripts/relevant-checks.sh` (executable) that runs your repo's linters/tests.
+2. Keep the documented exit-path matrix aligned with `scripts/relevant-checks.md`: success exits 0 after at least one validation phase, check failures return the underlying tool exit code, and zero validation coverage exits non-zero with an `ERROR:` line.
 
-Larch's own copy at `.claude/skills/relevant-checks/` serves as a reference implementation — it runs `pre-commit` linters plus `agent-lint` (if available on PATH).
+Human operators can run `bash scripts/relevant-checks.sh` directly; larch orchestrators always go through `scripts/run-relevant-checks-captured.sh` so stdout stays bounded.
 
 ## Clean-main entry contract for `/implement` and `/design`
 

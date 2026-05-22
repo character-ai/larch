@@ -28,4 +28,4 @@ Failure diagnostics are `ERROR=` lines on stderr with a non-zero exit.
 
 ## Edit-in-sync
 
-When changing CLI flags, output keys, release-selection semantics, or verification behavior, update `.claude/skills/release/SKILL.md` and this sibling contract in the same change. Run `/relevant-checks` after edits.
+When changing CLI flags, output keys, release-selection semantics, or verification behavior, update `.claude/skills/release/SKILL.md` and this sibling contract in the same change. Run `bash scripts/relevant-checks.sh` after edits.

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Tells `/implement` Step 6 whether the code review step (Step 5: `/review` skill in normal mode, or the inline reviewer loop in quick mode) modified the working tree. The result gates Step 6's `/relevant-checks` second pass and Step 7's "Address code review feedback" commit. False positives here produce phantom commits that may absorb stray operator files; false negatives mean review-induced changes are skipped.
+Tells `/implement` Step 6 whether the code review step (Step 5: `/review` skill in normal mode, or the inline reviewer loop in quick mode) modified the working tree. The result gates Step 6's second `run-relevant-checks-captured.sh` pass and Step 7's "Address code review feedback" commit. False positives here produce phantom commits that may absorb stray operator files; false negatives mean review-induced changes are skipped.
 
 ## Contract
 

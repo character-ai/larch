@@ -18,7 +18,7 @@ When changes touch `.claude/settings.json`, verify that the `permissions.allow` 
 
 ## Skill and Script Genericity
 
-When changes touch files under `scripts/` or `skills/shared/`, verify the changes do not introduce repo-specific content: no repo-specific paths (e.g., `server/`, `cli/`, `myservice`), cluster names (e.g., `prod-1`, `staging-2`), service-specific environment variable names, or hardcoded project references that would break when the file is used in a different repository.
+When changes touch files under this repository's top-level `scripts/` tree or under `skills/shared/`, verify the changes do not introduce repo-specific content: no repo-specific paths (e.g., `server/`, `cli/`, `myservice`), cluster names (e.g., `prod-1`, `staging-2`), service-specific environment variable names, or hardcoded project references that would break when the file is used in a different repository.
 
-- **Generic directories**: `scripts/`, `skills/shared/` — changes to files here must not introduce repo-specific references.
-- **Repo-specific directories**: individual skill-specific script directories (e.g., `skills/implement/scripts/`), and the private `.claude/skills/relevant-checks/` skill — files here are repo-specific by design and exempt from this rule.
+- **Generic surfaces (this repository)**: the top-level `scripts/` directory and `skills/shared/` — edits here must stay portable across consuming repositories.
+- **Exempt from this genericity rule**: per-skill script trees under `skills/<skill>/scripts/` (e.g., `skills/implement/scripts/`), which are intentionally skill-scoped. Consumer repositories may ship their own top-level `scripts/` files (for example `scripts/relevant-checks.sh`); those live in the **consumer** checkout and are not the same obligation surface as the larch plugin's `scripts/` tree reviewed here — do not treat "consumer added a `scripts/foo.sh`" as an exemption that relaxes genericity for files under **this** repo's `scripts/`.

@@ -39,4 +39,4 @@ When modifying `skills/alias/SKILL.md` Steps 2/3/4 or NEVER rules #5–#7:
 1. Run this harness: `bash scripts/test-alias-structure.sh`.
 2. Update assertion text here if structural literals shifted.
 3. Run `bash scripts/test-alias-target-resolution.sh` to confirm the helper still meets its contract.
-4. Run `/relevant-checks` to confirm `pre-commit` + `agent-lint` are green.
+4. Run `bash scripts/relevant-checks.sh` to confirm `pre-commit` + `agent-lint` are green.
