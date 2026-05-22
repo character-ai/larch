@@ -1359,13 +1359,194 @@ is_head_divergence_recoverable() {
     git merge-base --is-ancestor "$pr_head_oid" "$current_head" 2>/dev/null
 }
 
+# True when every path in the comma-separated vendor conflict list is a
+# non-bump file (exclude CHANGELOG.md, CHANGELOG.rst, bare CHANGELOG,
+# .claude-plugin/plugin.json, bump-adjacent basenames handled by the deterministic
+# pre-pass, and any repo-relative path listed in LARCH_BUMP_FILES when set —
+# aligned with run_rebase_rebump's deterministic loop and conflict-resolution.md).
+ship_pr_vendor_conflict_csv_is_non_bump_only() {
+    local csv=$1 _ofs _p _bn _seg _trimmed _bf
+    local -a _bump_set=()
+    [ -n "$csv" ] || return 1
+    if [[ -n "${LARCH_BUMP_FILES+x}" && -n "${LARCH_BUMP_FILES}" ]]; then
+        local -a _segments=()
+        IFS=':' read -ra _segments <<< "$LARCH_BUMP_FILES" || true
+        for _seg in "${_segments[@]+"${_segments[@]}"}"; do
+            _trimmed="${_seg#"${_seg%%[![:space:]]*}"}"
+            _trimmed="${_trimmed%"${_trimmed##*[![:space:]]}"}"
+            [[ -n "$_trimmed" ]] && _bump_set+=("$_trimmed")
+        done
+    fi
+    _ofs=$IFS
+    IFS=,
+    set -f
+    for _p in $csv; do
+        IFS=$_ofs
+        set +f
+        _bn=${_p##*/}
+        case "$_bn" in
+            CHANGELOG.md|CHANGELOG.rst|CHANGELOG) return 1 ;;
+        esac
+        if [[ "$_p" == .claude-plugin/plugin.json || "$_p" == */.claude-plugin/plugin.json ]]; then
+            return 1
+        fi
+        case "$_bn" in
+            version.go|go.sum) return 1 ;;
+        esac
+        for _bf in "${_bump_set[@]+"${_bump_set[@]}"}"; do
+            if [[ "$_p" == "$_bf" ]]; then
+                return 1
+            fi
+        done
+    done
+    IFS=$_ofs
+    set +f
+    return 0
+}
+
+_run_rebase_rebump_verify_plain_no_push() {
+    local phase=$1 rebase_out rebase_rc fail_file
+    fail_file=$(failure_capture_path rebase)
+    rebase_out=$("$SCRIPT_DIR/rebase-push.sh" --no-push 2>"$fail_file")
+    rebase_rc=$?
+    printf '%s\n' "$rebase_out" >> "$fail_file"
+    if [ "$rebase_rc" -ne 0 ]; then
+        record_failure rebase "rebase-push.sh --no-push" "$rebase_rc" "$fail_file" "CI Issues"
+        emit_breadcrumb "⚠ ship-pr: merge conflict on rebase"
+        exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12)"
+    fi
+}
+
+_run_rebase_rebump_from_step3() {
+    local phase=$1 fail_file rc classify_out classify_rc apply_out
+    local new_version bump_type reasoning_file reasoning_log_file
+    local _origin_ver="" _classified_version="" _corrected=""
+    local run_id pr_n repo_r
+
+    # 3. Fast-forward local main so classify-bump.sh uses the correct merge-base
+    fail_file=$(failure_capture_path rebase)
+    "$SCRIPT_DIR/git-sync-local-main.sh" > "$fail_file" 2>&1
+    rc=$?
+    [ "$rc" -eq 0 ] || record_failure rebase "git-sync-local-main.sh" "$rc" "$fail_file" Warnings
+
+    # 4. Re-bump using classify-bump.sh + apply-bump.sh directly
+    if [ "$(read_state HAS_BUMP)" != "false" ]; then
+        fail_file=$(failure_capture_path rebase)
+        classify_out=$("$PLUGIN_ROOT/.claude/skills/bump-version/scripts/classify-bump.sh" 2>"$fail_file")
+        classify_rc=$?
+        printf '%s\n' "$classify_out" >> "$fail_file"
+        if [ "$classify_rc" -ne 0 ]; then
+            record_failure rebase "classify-bump.sh" "$classify_rc" "$fail_file" "CI Issues"
+            exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12)"
+        fi
+        new_version=$(kv_value NEW_VERSION "$classify_out")
+        bump_type=$(kv_value BUMP_TYPE "$classify_out")
+        reasoning_file=$(kv_value REASONING_FILE "$classify_out")
+        reasoning_log_file=$reasoning_file
+        _classified_version="$new_version"
+        # Version-regression guard: when rebase conflict was resolved to the branch's
+        # stale version instead of origin/main's, classify-bump produces NEW_VERSION <
+        # ORIGIN_VERSION. Correct by applying bump_type to origin/main's version.
+        if [ "$bump_type" != "NONE" ] && [ -n "$new_version" ]; then
+            if [[ ! "$new_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+                printf 'ERROR: run_rebase_rebump: classify-bump produced invalid NEW_VERSION: %s\n' \
+                    "$new_version" >> "$fail_file"
+                record_failure rebase "classify-bump.sh" 1 "$fail_file" "CI Issues"
+                exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12)"
+            fi
+            _origin_ver=$(git show origin/main:.claude-plugin/plugin.json 2>/dev/null \
+                | jq -r '.version // empty' 2>/dev/null || echo "")
+            if [[ "$_origin_ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] && semver_lt "$new_version" "$_origin_ver"; then
+                IFS='.' read -r _ov_maj _ov_min _ov_pat <<< "$_origin_ver"
+                case "$bump_type" in
+                    MAJOR) _corrected="$(( _ov_maj + 1 )).0.0" ;;
+                    MINOR) _corrected="${_ov_maj}.$(( _ov_min + 1 )).0" ;;
+                    PATCH) _corrected="${_ov_maj}.${_ov_min}.$(( _ov_pat + 1 ))" ;;
+                    *)     _corrected="$new_version" ;;
+                esac
+                printf 'WARN: run_rebase_rebump: version regression detected: classify-bump produced %s < origin/main %s; corrected to %s\n' \
+                    "$new_version" "$_origin_ver" "$_corrected" >> "$fail_file"
+                new_version="$_corrected"
+                if [ -n "$reasoning_file" ] && [ -f "$reasoning_file" ]; then
+                    if ! rewrite_reasoning_new_version "$reasoning_file" "$_classified_version" "$_origin_ver" "$_corrected"; then
+                        reasoning_log_file=$(write_corrected_reasoning_fallback \
+                            "$reasoning_file" "$_classified_version" "$_origin_ver" "$_corrected" 2>/dev/null || true)
+                        if [ -n "$reasoning_log_file" ] && [ -f "$reasoning_log_file" ]; then
+                            printf 'WARN: run_rebase_rebump: failed to rewrite reasoning file after version correction; using fallback reasoning snapshot: %s\n' \
+                                "$reasoning_log_file" >> "$fail_file"
+                        else
+                            printf 'WARN: run_rebase_rebump: failed to rewrite reasoning file after version correction and could not build fallback snapshot: %s\n' \
+                                "$reasoning_file" >> "$fail_file"
+                            reasoning_log_file=""
+                        fi
+                    fi
+                fi
+            fi
+        fi
+        state_set_many BUMP_TYPE "$bump_type" NEW_VERSION "$new_version" BUMP_REASONING_FILE "$reasoning_log_file"
+        if [ "$bump_type" != "NONE" ] && [ -n "$new_version" ]; then
+            fail_file=$(failure_capture_path rebase)
+            apply_out=$("$PLUGIN_ROOT/.claude/skills/bump-version/scripts/apply-bump.sh" \
+                --new-version "$new_version" 2>"$fail_file")
+            rc=$?
+            printf '%s\n' "$apply_out" >> "$fail_file"
+            if [ "$rc" -ne 0 ] || [ "$(kv_value APPLIED "$apply_out")" != "true" ]; then
+                record_failure rebase "apply-bump.sh" "$rc" "$fail_file" "CI Issues"
+                exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12)"
+            fi
+            pr_n=$(read_state PR_NUMBER); repo_r=$(read_state REPO)
+            if [ -n "$pr_n" ] && [ -n "$repo_r" ]; then
+                gh pr edit "$pr_n" --repo "$repo_r" \
+                    --title "Bump version to $new_version" >/dev/null 2>&1 || true
+            fi
+            if [ -n "$reasoning_log_file" ] && [ -f "$reasoning_log_file" ]; then
+                run_id=$(read_state RUN_ID)
+                if [ -n "$run_id" ]; then
+                    "$SCRIPT_DIR/larch-log.sh" write \
+                        --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
+                        --skill implement \
+                        --run-id "$run_id" \
+                        --batch version-bump-reasoning \
+                        --input-file "$reasoning_log_file" 2>/dev/null || true
+                fi
+            fi
+        fi
+    fi
+
+    fail_file=$(failure_capture_path rebase)
+    "$SCRIPT_DIR/refresh-run-logs.sh" \
+        --state-file "$STATE_FILE" \
+        --implement-tmpdir "$IMPLEMENT_TMPDIR" > "$fail_file" 2>&1 || true
+
+    fail_file=$(failure_capture_path rebase)
+    "$SCRIPT_DIR/git-force-push.sh" > "$fail_file" 2>&1
+    rc=$?
+    if [ "$rc" -ne 0 ]; then
+        record_failure rebase "git-force-push.sh" "$rc" "$fail_file" "CI Issues"
+        exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12)"
+    fi
+
+    state_set_many \
+        REBASE_COUNT "$(( $(read_state REBASE_COUNT) + 1 ))" \
+        ITERATION "$(( $(read_state ITERATION) + 1 ))" \
+        TRANSIENT_RETRIES 0
+}
+
 run_rebase_rebump() {
-    local phase=$1 drop_out rebase_out rebase_rc conflict_out run_id classify_out classify_rc
-    local apply_out new_version bump_type reasoning_file
+    local phase=$1 drop_out rebase_out rebase_rc conflict_out run_id
     local fail_file rc tool_label plan_file
     local plan_args=()
-    local _origin_ver="" _classified_version="" _corrected=""
     emit_breadcrumb "⚠ ship-pr: rebase + re-bump"
+
+    # Resume after prompt-side Conflict Resolution Procedure (Phase 1–4) for
+    # non-bump conflicts: skip drop/rebase replay; verify tree then continue.
+    if [ -f "${IMPLEMENT_TMPDIR}/ship-pr-rrr-after-phase14.flag" ]; then
+        _run_rebase_rebump_verify_plain_no_push "$phase"
+        _run_rebase_rebump_from_step3 "$phase"
+        rm -f "${IMPLEMENT_TMPDIR}/ship-pr-rrr-after-phase14.flag"
+        state_set_many RESUME_PHASE "" CALLER_KIND ""
+        return 0
+    fi
 
     # Operator invariant: unlike `run_bump_phase`, this path does not re-run the
     # bump-branch-guard (empty branch / name mismatch / non-forked main|master)
@@ -1411,8 +1592,8 @@ run_rebase_rebump() {
     rebase_rc=$?
     printf '%s\n' "$rebase_out" >> "$fail_file"
     if [ "$rebase_rc" -eq 1 ]; then
-        record_failure rebase "rebase-push.sh --keep-on-conflict" "$rebase_rc" "$fail_file" "CI Issues"
-        # Conflict — deterministic pre-pass, then optional vendor resolve-conflict role
+        # Conflict — deterministic pre-pass, then Phase 1–4 (non-bump) or vendor resolve-conflict
+        emit_breadcrumb "⚠ ship-pr: rebase-push keep-on-conflict pause (exit 1); deterministic pre-pass / vendor / Phase 1–4 handoff follows"
         conflict_files_kv=$(kv_value CONFLICT_FILES "$rebase_out")
         _orchestrator_conflict_csv="$conflict_files_kv"
         skip_vendor=false
@@ -1489,6 +1670,21 @@ run_rebase_rebump() {
             vendor_conflict_csv=$_orchestrator_conflict_csv
         fi
 
+        if [ "$skip_vendor" = false ] && [ "$needs_vendor" = true ] && [ -n "$vendor_conflict_csv" ] \
+            && ship_pr_vendor_conflict_csv_is_non_bump_only "$vendor_conflict_csv"; then
+            local _rrr_phase14_flag
+            _rrr_phase14_flag="${IMPLEMENT_TMPDIR}/ship-pr-rrr-after-phase14.flag"
+            if ! : >"$_rrr_phase14_flag"; then
+                printf 'ERROR: ship-pr: cannot write %s\n' "$_rrr_phase14_flag" >> "$fail_file"
+                record_failure rebase "ship-pr-rrr-after-phase14.flag" 1 "$fail_file" "CI Issues"
+                exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12)"
+            fi
+            state_set_many RESUME_PHASE ship-pr-rrr-phase14 CALLER_KIND ship_pr_pre_push
+            emit_breadcrumb "⚠ ship-pr: dispatching Phase 1–4 conflict-resolution (caller_kind=ship_pr_pre_push; aggregator-dispatch=conflict-resolution.md)"
+            emit_kv CONFLICT_FILES "$vendor_conflict_csv"
+            exit 5
+        fi
+
         if [ "$skip_vendor" = false ]; then
             conflict_out="$IMPLEMENT_TMPDIR/rebase-conflict-$(date +%s).out"
             fail_file=$(failure_capture_path conflict-resolution)
@@ -1517,15 +1713,7 @@ run_rebase_rebump() {
         # Fresh rebase after vendor fix: if vendor ran git rebase --continue, the
         # branch is already rebased and this returns SKIPPED_ALREADY_FRESH. If the
         # vendor left a conflict or broke the tree it fails, causing exit_stall.
-        fail_file=$(failure_capture_path rebase)
-        rebase_out=$("$SCRIPT_DIR/rebase-push.sh" --no-push 2>"$fail_file")
-        rebase_rc=$?
-        printf '%s\n' "$rebase_out" >> "$fail_file"
-        if [ "$rebase_rc" -ne 0 ]; then
-            record_failure rebase "rebase-push.sh --no-push" "$rebase_rc" "$fail_file" "CI Issues"
-            emit_breadcrumb "⚠ ship-pr: merge conflict on rebase"
-            exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12)"
-        fi
+        _run_rebase_rebump_verify_plain_no_push "$phase"
     elif [ "$rebase_rc" -ne 0 ]; then
         record_failure rebase "rebase-push.sh --keep-on-conflict" "$rebase_rc" "$fail_file" "CI Issues"
         # Classify against combined stderr + stdout — git/network helpers
@@ -1537,121 +1725,7 @@ run_rebase_rebump() {
         exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12)"
     fi
 
-    # 3. Fast-forward local main so classify-bump.sh uses the correct merge-base
-    fail_file=$(failure_capture_path rebase)
-    "$SCRIPT_DIR/git-sync-local-main.sh" > "$fail_file" 2>&1
-    rc=$?
-    [ "$rc" -eq 0 ] || record_failure rebase "git-sync-local-main.sh" "$rc" "$fail_file" Warnings
-
-    # 4. Re-bump using classify-bump.sh + apply-bump.sh directly
-    if [ "$(read_state HAS_BUMP)" != "false" ]; then
-        fail_file=$(failure_capture_path rebase)
-        classify_out=$("$PLUGIN_ROOT/.claude/skills/bump-version/scripts/classify-bump.sh" 2>"$fail_file")
-        classify_rc=$?
-        printf '%s\n' "$classify_out" >> "$fail_file"
-        if [ "$classify_rc" -ne 0 ]; then
-            record_failure rebase "classify-bump.sh" "$classify_rc" "$fail_file" "CI Issues"
-            exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12)"
-        fi
-        new_version=$(kv_value NEW_VERSION "$classify_out")
-        bump_type=$(kv_value BUMP_TYPE "$classify_out")
-        reasoning_file=$(kv_value REASONING_FILE "$classify_out")
-        reasoning_log_file=$reasoning_file
-        _classified_version="$new_version"
-        # Version-regression guard: when rebase conflict was resolved to the branch's
-        # stale version instead of origin/main's, classify-bump produces NEW_VERSION <
-        # ORIGIN_VERSION. Correct by applying bump_type to origin/main's version.
-        if [ "$bump_type" != "NONE" ] && [ -n "$new_version" ]; then
-            if [[ ! "$new_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-                printf 'ERROR: run_rebase_rebump: classify-bump produced invalid NEW_VERSION: %s\n' \
-                    "$new_version" >> "$fail_file"
-                record_failure rebase "classify-bump.sh" 1 "$fail_file" "CI Issues"
-                exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12)"
-            fi
-            _origin_ver=$(git show origin/main:.claude-plugin/plugin.json 2>/dev/null \
-                | jq -r '.version // empty' 2>/dev/null || echo "")
-            if [[ "$_origin_ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] && semver_lt "$new_version" "$_origin_ver"; then
-                IFS='.' read -r _ov_maj _ov_min _ov_pat <<< "$_origin_ver"
-                case "$bump_type" in
-                    MAJOR) _corrected="$(( _ov_maj + 1 )).0.0" ;;
-                    MINOR) _corrected="${_ov_maj}.$(( _ov_min + 1 )).0" ;;
-                    PATCH) _corrected="${_ov_maj}.${_ov_min}.$(( _ov_pat + 1 ))" ;;
-                    *)     _corrected="$new_version" ;;
-                esac
-                printf 'WARN: run_rebase_rebump: version regression detected: classify-bump produced %s < origin/main %s; corrected to %s\n' \
-                    "$new_version" "$_origin_ver" "$_corrected" >> "$fail_file"
-                new_version="$_corrected"
-                if [ -n "$reasoning_file" ] && [ -f "$reasoning_file" ]; then
-                    if ! rewrite_reasoning_new_version "$reasoning_file" "$_classified_version" "$_origin_ver" "$_corrected"; then
-                        reasoning_log_file=$(write_corrected_reasoning_fallback \
-                            "$reasoning_file" "$_classified_version" "$_origin_ver" "$_corrected" 2>/dev/null || true)
-                        if [ -n "$reasoning_log_file" ] && [ -f "$reasoning_log_file" ]; then
-                            printf 'WARN: run_rebase_rebump: failed to rewrite reasoning file after version correction; using fallback reasoning snapshot: %s\n' \
-                                "$reasoning_log_file" >> "$fail_file"
-                        else
-                            printf 'WARN: run_rebase_rebump: failed to rewrite reasoning file after version correction and could not build fallback snapshot: %s\n' \
-                                "$reasoning_file" >> "$fail_file"
-                            reasoning_log_file=""
-                        fi
-                    fi
-                fi
-            fi
-        fi
-        state_set_many BUMP_TYPE "$bump_type" NEW_VERSION "$new_version" BUMP_REASONING_FILE "$reasoning_log_file"
-        if [ "$bump_type" != "NONE" ] && [ -n "$new_version" ]; then
-            fail_file=$(failure_capture_path rebase)
-            apply_out=$("$PLUGIN_ROOT/.claude/skills/bump-version/scripts/apply-bump.sh" \
-                --new-version "$new_version" 2>"$fail_file")
-            rc=$?
-            printf '%s\n' "$apply_out" >> "$fail_file"
-            if [ "$rc" -ne 0 ] || [ "$(kv_value APPLIED "$apply_out")" != "true" ]; then
-                record_failure rebase "apply-bump.sh" "$rc" "$fail_file" "CI Issues"
-                exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12)"
-            fi
-            # Sync the PR title to the re-bumped version so the squash-merge
-            # commit on main is not misattributed to the superseded version.
-            local pr_n repo_r
-            pr_n=$(read_state PR_NUMBER); repo_r=$(read_state REPO)
-            if [ -n "$pr_n" ] && [ -n "$repo_r" ]; then
-                gh pr edit "$pr_n" --repo "$repo_r" \
-                    --title "Bump version to $new_version" >/dev/null 2>&1 || true
-            fi
-            # Refresh version-bump-reasoning larch-log so the audit trail
-            # reflects the actually-landed version rather than the race target.
-            if [ -n "$reasoning_log_file" ] && [ -f "$reasoning_log_file" ]; then
-                run_id=$(read_state RUN_ID)
-                if [ -n "$run_id" ]; then
-                    "$SCRIPT_DIR/larch-log.sh" write \
-                        --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
-                        --skill implement \
-                        --run-id "$run_id" \
-                        --batch version-bump-reasoning \
-                        --input-file "$reasoning_log_file" 2>/dev/null || true
-                fi
-            fi
-        fi
-    fi
-
-    # Refresh larch-log token/timing artifacts before push (Trigger A).
-    fail_file=$(failure_capture_path rebase)
-    "$SCRIPT_DIR/refresh-run-logs.sh" \
-        --state-file "$STATE_FILE" \
-        --implement-tmpdir "$IMPLEMENT_TMPDIR" > "$fail_file" 2>&1 || true
-
-    # 5. Force-push the rebased + re-bumped branch
-    fail_file=$(failure_capture_path rebase)
-    "$SCRIPT_DIR/git-force-push.sh" > "$fail_file" 2>&1
-    rc=$?
-    if [ "$rc" -ne 0 ]; then
-        record_failure rebase "git-force-push.sh" "$rc" "$fail_file" "CI Issues"
-        exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12)"
-    fi
-
-    # 6. Increment counters, reset transient retries
-    state_set_many \
-        REBASE_COUNT "$(( $(read_state REBASE_COUNT) + 1 ))" \
-        ITERATION "$(( $(read_state ITERATION) + 1 ))" \
-        TRANSIENT_RETRIES 0
+    _run_rebase_rebump_from_step3 "$phase"
 }
 
 run_ci_phase() {
@@ -1897,6 +1971,19 @@ if [ -n "$RESUME_PHASE" ]; then
         ci-merge) state_set CI_PASSED false; advance_phase ci-merge ;;
         evaluate-failure) advance_phase evaluate-failure ;;
         postmerge) advance_phase postmerge ;;
+        ship-pr-rrr-phase14)
+            _rrr_ph=$(read_state PHASE)
+            case "$_rrr_ph" in
+                ci-initial|ci-merge) ;;
+                *) die_usage "ship-pr-rrr-phase14 resume requires PHASE ci-initial or ci-merge, got: ${_rrr_ph:-empty}" ;;
+            esac
+            if [ ! -f "${IMPLEMENT_TMPDIR}/ship-pr-rrr-after-phase14.flag" ]; then
+                die_usage "ship-pr-rrr-phase14 resume requires ship-pr-rrr-after-phase14.flag under IMPLEMENT_TMPDIR (missing handoff token)"
+            fi
+            advance_phase "$_rrr_ph"
+            run_rebase_rebump "$_rrr_ph"
+            state_set_many RESUME_PHASE "" CALLER_KIND ""
+            ;;
         *) die_usage "unknown --resume-phase: $RESUME_PHASE" ;;
     esac
 fi

@@ -404,11 +404,12 @@ clear_pr_state() {
 # ──────────────────────────────────────────────────────────────────────────────
 # Section dispatch (closes #2349 by reducing the test-ship-pr ceiling)
 #
-# Scenarios are partitioned into 4 functional sections. Each section becomes a
+# Scenarios are partitioned into functional sections. Each section becomes a
 # separate Makefile target (test-ship-pr-state, -postmerge, -fix-loop,
-# -transient) so the CI matrix can pack them as independent harness rows.
-# Running the script without --section is equivalent to running all four
-# sections sequentially (backward-compat for local dev).
+# -transient, -phase14) so the CI matrix can pack them as independent harness rows.
+# Running the script without --section is equivalent to running all listed
+# sections sequentially (state, postmerge, fix-loop, transient, phase14;
+# backward-compat for local dev).
 # ──────────────────────────────────────────────────────────────────────────────
 SECTION=""
 while [[ $# -gt 0 ]]; do
@@ -1885,18 +1886,22 @@ chmod +x "$root/scripts/launch-cursor-ci.sh"
 _make_rebase_stubs "$root" "$count_dir"
 write_state "$tmp/ship-pr-state.sh" ci-initial
 PATH="$root/scripts:$PATH" SHIP_PR_LAUNCH_SENTINEL_DIR="$count_dir" run_subject "$root" "$tmp" "$tmp/rc"
-assert_rc "$tmp/rc" 0 "mixed CHANGELOG conflict auto-resolve + vendor exits 0"
-if [ ! -f "$count_dir/launcher-calls.txt" ]; then
-    fail "mixed conflict should invoke vendor for remaining file"
+assert_rc "$tmp/rc" 5 "mixed CHANGELOG conflict auto-resolve + Phase 1–4 dispatch exits 5"
+if grep -qF 'CALLER_KIND=ship_pr_pre_push' "$tmp/ship-pr-state.sh" 2>/dev/null; then
+    ok "mixed conflict dispatches Phase 1–4 (CALLER_KIND=ship_pr_pre_push)"
 else
-    if grep -q -- "launch-cursor-ci.sh .*--role resolve-conflict" "$count_dir/launcher-calls.txt" \
-        && grep -qF -- "--conflict-files other.txt" "$count_dir/launcher-calls.txt" \
-        && grep -qF -- "--timeout 600" "$count_dir/launcher-calls.txt"; then
-        ok "mixed conflict forwards only other.txt and 600s timeout"
-    else
-        fail "mixed conflict launcher argv mismatch"
-        sed 's/^/    launcher: /' "$count_dir/launcher-calls.txt" 2>/dev/null || true
-    fi
+    fail "mixed conflict should set CALLER_KIND=ship_pr_pre_push in state"
+fi
+if grep -qF 'CONFLICT_FILES=other.txt' "$tmp/stdout" 2>/dev/null; then
+    ok "mixed conflict emits CONFLICT_FILES=other.txt on stdout"
+else
+    fail "mixed conflict CONFLICT_FILES=other.txt missing from stdout"
+    sed 's/^/    stdout: /' "$tmp/stdout" 2>/dev/null | head -10 || true
+fi
+if [ -f "$count_dir/launcher-calls.txt" ] && grep -q -- "--role resolve-conflict" "$count_dir/launcher-calls.txt" 2>/dev/null; then
+    fail "mixed conflict should NOT invoke vendor (Phase 1–4 owns resolution)"
+else
+    ok "mixed conflict does not invoke vendor launcher"
 fi
 rm -rf "$count_dir"
 
@@ -1941,13 +1946,16 @@ done
 chmod +x "$root/scripts/drop-bump-commit.sh" "$root/scripts/git-sync-local-main.sh" "$root/scripts/git-force-push.sh"
 write_state "$tmp/ship-pr-state.sh" ci-initial
 PATH="$root/scripts:$PATH" SHIP_PR_LAUNCH_SENTINEL_DIR="$call_dir" run_subject "$root" "$tmp" "$tmp/rc"
-assert_rc "$tmp/rc" 0 "non-changelog-only conflict vendor path exits 0"
-if grep -qF -- "--conflict-files locked.bin" "$call_dir/launcher-calls.txt" \
-    && grep -qF -- "--timeout 600" "$call_dir/launcher-calls.txt"; then
-    ok "vendor-only conflict passes --conflict-files and --timeout 600"
+assert_rc "$tmp/rc" 5 "non-changelog-only conflict Phase 1–4 dispatch exits 5"
+if grep -qF 'CALLER_KIND=ship_pr_pre_push' "$tmp/ship-pr-state.sh" 2>/dev/null; then
+    ok "non-changelog conflict dispatches Phase 1–4 (CALLER_KIND=ship_pr_pre_push)"
 else
-    fail "vendor-only conflict argv missing"
-    sed 's/^/    launcher: /' "$call_dir/launcher-calls.txt" 2>/dev/null || true
+    fail "non-changelog conflict should set CALLER_KIND=ship_pr_pre_push in state"
+fi
+if [ -f "$call_dir/launcher-calls.txt" ] && grep -q -- "--role resolve-conflict" "$call_dir/launcher-calls.txt" 2>/dev/null; then
+    fail "non-changelog conflict should NOT invoke vendor (Phase 1–4 owns resolution)"
+else
+    ok "non-changelog conflict does not invoke vendor launcher"
 fi
 rm -rf "$call_dir"
 
@@ -1983,12 +1991,11 @@ chmod +x "$root/scripts/cursor" \
          "$root/scripts/git-force-push.sh"
 write_state "$tmp/ship-pr-state.sh" ci-initial
 LARCH_QUIET_BREADCRUMBS=1 PATH="$root/scripts:$PATH" SHIP_PR_LAUNCH_SENTINEL_DIR="$call_dir" run_subject "$root" "$tmp" "$tmp/rc"
-assert_rc "$tmp/rc" 4 "second rebase conflict exits 4"
-if grep -qF '⚠ ship-pr: merge conflict on rebase' "$tmp/stdout"; then
-    ok "second rebase conflict emits merge-conflict breadcrumb"
+assert_rc "$tmp/rc" 5 "second rebase conflict Phase 1–4 dispatch exits 5"
+if grep -qF 'CALLER_KIND=ship_pr_pre_push' "$tmp/ship-pr-state.sh" 2>/dev/null; then
+    ok "second rebase conflict sets CALLER_KIND=ship_pr_pre_push"
 else
-    fail "second rebase conflict should emit merge-conflict breadcrumb"
-    sed 's/^/    stdout: /' "$tmp/stdout"
+    fail "second rebase conflict should set CALLER_KIND=ship_pr_pre_push in state"
 fi
 rm -rf "$call_dir"
 
@@ -2841,6 +2848,295 @@ assert_state_line "$tmp/ship-pr-state.sh" "STALL_TRACKING=false" "stale stall st
 assert_state_line "$tmp/ship-pr-state.sh" "STALL_STEP=" "stale stall state: skip-merge guard clears STALL_STEP"
 assert_file_absent_or_empty "$tmp/final-bail-reason.txt" "stale stall state: skip-merge guard leaves final-bail-reason.txt empty"
 fi  # end section: transient
+
+if section_runs phase14; then
+# run_rebase_rebump: non-bump-only conflict → exit 5 Phase 1–4 handoff (no keep-on-conflict CI Issues line).
+root=$(make_repo ship_pr_phase14_dispatch)
+tmp=$(make_tmpdir)
+cat > "$root/scripts/rebase-push.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+case "$*" in
+    *--keep-on-conflict*)
+        printf 'CONFLICT_FILES=Makefile\n'
+        exit 1
+        ;;
+    *)
+        exit 0
+        ;;
+esac
+STUB
+chmod +x "$root/scripts/rebase-push.sh"
+cat > "$root/scripts/ci-wait.sh" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'ACTION=rebase\nCI_STATUS=fail\nBEHIND_COUNT=1\nFAILED_RUN_ID=\nBAIL_REASON=\nITERATION=0\nELAPSED=1\n'
+STUB
+chmod +x "$root/scripts/ci-wait.sh"
+_install_rebump_dep_stubs "$root"
+write_state "$tmp/ship-pr-state.sh" ci-initial
+: >"$tmp/execution-issues.md"
+PATH="$root/scripts:$PATH" CLAUDE_PLUGIN_ROOT="$root" IMPLEMENT_TMPDIR="$tmp" \
+    run_subject "$root" "$tmp" "$tmp/rc"
+assert_rc "$tmp/rc" 5 "Makefile-only rebase conflict: ship-pr exits 5 for Phase 1–4 handoff"
+if grep -qFx 'CONFLICT_FILES=Makefile' "$tmp/stdout"; then
+    ok "phase14 dispatch exit-5 stream includes CONFLICT_FILES=Makefile"
+else
+    fail "phase14 dispatch exit-5 stream missing CONFLICT_FILES=Makefile"
+    sed 's/^/    stdout: /' "$tmp/stdout" | head -n 40
+fi
+if [[ -f "$tmp/ship-pr-rrr-after-phase14.flag" ]]; then
+    ok "phase14 dispatch creates resume flag under IMPLEMENT_TMPDIR"
+else
+    fail "expected ship-pr-rrr-after-phase14.flag after exit 5"
+fi
+assert_state_line "$tmp/ship-pr-state.sh" "RESUME_PHASE=ship-pr-rrr-phase14" "phase14 dispatch persists RESUME_PHASE"
+assert_state_line "$tmp/ship-pr-state.sh" "CALLER_KIND=ship_pr_pre_push" "phase14 dispatch persists CALLER_KIND"
+if grep -qF 'aggregator-dispatch=conflict-resolution.md' "$tmp/stdout"; then
+    ok "phase14 dispatch breadcrumb mentions aggregator-dispatch/conflict-resolution"
+else
+    fail "stdout missing phase14 aggregator-dispatch breadcrumb"
+    sed 's/^/    stdout: /' "$tmp/stdout" | head -n 20
+fi
+if grep -qF 'rebase-push.sh --keep-on-conflict' "$tmp/execution-issues.md" 2>/dev/null; then
+    fail "phase14 handoff must not record keep-on-conflict rebase failure before resolution"
+else
+    ok "phase14 handoff skips premature keep-on-conflict execution-issues line"
+fi
+
+# Deep non-bump CONFLICT_FILES CSV (nested path) still reaches exit 5 with the same state keys.
+root=$(make_repo ship_pr_phase14_dispatch_deep_csv)
+tmp=$(make_tmpdir)
+cat > "$root/scripts/rebase-push.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+case "$*" in
+    *--keep-on-conflict*)
+        printf 'CONFLICT_FILES=.claude/skills/audit-runs/scripts/test-audit-runs.md,docs/README.md\n'
+        exit 1
+        ;;
+    *)
+        exit 0
+        ;;
+esac
+STUB
+chmod +x "$root/scripts/rebase-push.sh"
+cat > "$root/scripts/ci-wait.sh" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'ACTION=rebase\nCI_STATUS=fail\nBEHIND_COUNT=1\nFAILED_RUN_ID=\nBAIL_REASON=\nITERATION=0\nELAPSED=1\n'
+STUB
+chmod +x "$root/scripts/ci-wait.sh"
+_install_rebump_dep_stubs "$root"
+write_state "$tmp/ship-pr-state.sh" ci-initial
+: >"$tmp/execution-issues.md"
+PATH="$root/scripts:$PATH" CLAUDE_PLUGIN_ROOT="$root" IMPLEMENT_TMPDIR="$tmp" \
+    run_subject "$root" "$tmp" "$tmp/rc"
+assert_rc "$tmp/rc" 5 "phase14 deep CSV: ship-pr exits 5 for Phase 1–4 handoff"
+if grep -qFx 'CONFLICT_FILES=.claude/skills/audit-runs/scripts/test-audit-runs.md,docs/README.md' "$tmp/stdout"; then
+    ok "phase14 deep CSV exit-5 stream includes post–pre-pass CONFLICT_FILES CSV"
+else
+    fail "phase14 deep CSV exit-5 stream missing expected CONFLICT_FILES= line"
+    sed 's/^/    stdout: /' "$tmp/stdout" | head -n 40
+fi
+if [[ -f "$tmp/ship-pr-rrr-after-phase14.flag" ]]; then
+    ok "phase14 deep CSV creates resume flag under IMPLEMENT_TMPDIR"
+else
+    fail "expected ship-pr-rrr-after-phase14.flag after exit 5 (deep CSV)"
+fi
+assert_state_line "$tmp/ship-pr-state.sh" "RESUME_PHASE=ship-pr-rrr-phase14" "phase14 deep CSV persists RESUME_PHASE"
+assert_state_line "$tmp/ship-pr-state.sh" "CALLER_KIND=ship_pr_pre_push" "phase14 deep CSV persists CALLER_KIND"
+if grep -qF 'aggregator-dispatch=conflict-resolution.md' "$tmp/stdout"; then
+    ok "phase14 deep CSV stdout mentions aggregator-dispatch/conflict-resolution"
+else
+    fail "phase14 deep CSV stdout missing aggregator-dispatch breadcrumb"
+    sed 's/^/    stdout: /' "$tmp/stdout" | head -n 20
+fi
+if grep -qF 'rebase-push.sh --keep-on-conflict' "$tmp/execution-issues.md" 2>/dev/null; then
+    fail "phase14 deep CSV must not record keep-on-conflict execution-issues line before resolution"
+else
+    ok "phase14 deep CSV skips premature keep-on-conflict execution-issues line"
+fi
+
+# Punctuation-heavy CSV remainder survives into exit-5 contract line.
+root=$(make_repo ship_pr_phase14_dispatch_edge_csv)
+tmp=$(make_tmpdir)
+cat > "$root/scripts/rebase-push.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+case "$*" in
+    *--keep-on-conflict*)
+        printf 'CONFLICT_FILES=Makefile,  README.md\n'
+        exit 1
+        ;;
+    *)
+        exit 0
+        ;;
+esac
+STUB
+chmod +x "$root/scripts/rebase-push.sh"
+cat > "$root/scripts/ci-wait.sh" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'ACTION=rebase\nCI_STATUS=fail\nBEHIND_COUNT=1\nFAILED_RUN_ID=\nBAIL_REASON=\nITERATION=0\nELAPSED=1\n'
+STUB
+chmod +x "$root/scripts/ci-wait.sh"
+_install_rebump_dep_stubs "$root"
+write_state "$tmp/ship-pr-state.sh" ci-initial
+: >"$tmp/execution-issues.md"
+PATH="$root/scripts:$PATH" CLAUDE_PLUGIN_ROOT="$root" IMPLEMENT_TMPDIR="$tmp" \
+    run_subject "$root" "$tmp" "$tmp/rc-edge"
+assert_rc "$tmp/rc-edge" 5 "phase14 edge CSV: ship-pr exits 5 for Phase 1–4 handoff"
+if grep -qFx 'CONFLICT_FILES=Makefile,  README.md' "$tmp/stdout"; then
+    ok "phase14 edge CSV exit-5 stream preserves comma-spacing in CONFLICT_FILES"
+else
+    fail "phase14 edge CSV exit-5 stream missing expected CONFLICT_FILES= line"
+    sed 's/^/    stdout: /' "$tmp/stdout" | head -n 40
+fi
+
+# LARCH_BUMP_FILES membership: bump-tagged path must not take the Phase14 exit-5 gate.
+root=$(make_repo ship_pr_phase14_larch_bump_files_gate)
+tmp=$(make_tmpdir)
+mkdir -p "$root/vendor"
+printf 'b\n' >"$root/vendor/bump-owned.md"
+git -C "$root" add vendor/bump-owned.md
+git -C "$root" commit -q -m vendor-bump-owned
+cat > "$root/scripts/rebase-push.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+case "$*" in
+    *--keep-on-conflict*)
+        printf 'CONFLICT_FILES=vendor/bump-owned.md\n'
+        exit 1
+        ;;
+    *)
+        exit 0
+        ;;
+esac
+STUB
+chmod +x "$root/scripts/rebase-push.sh"
+cat > "$root/scripts/ci-wait.sh" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'ACTION=rebase\nCI_STATUS=fail\nBEHIND_COUNT=1\nFAILED_RUN_ID=\nBAIL_REASON=\nITERATION=0\nELAPSED=1\n'
+STUB
+chmod +x "$root/scripts/ci-wait.sh"
+_install_rebump_dep_stubs "$root"
+write_state "$tmp/ship-pr-state.sh" ci-initial
+: >"$tmp/execution-issues.md"
+PATH="$root/scripts:$PATH" CLAUDE_PLUGIN_ROOT="$root" IMPLEMENT_TMPDIR="$tmp" \
+    LARCH_BUMP_FILES=vendor/bump-owned.md \
+    run_subject "$root" "$tmp" "$tmp/rc-bumpgate"
+actual_bumpgate=$(cat "$tmp/rc-bumpgate")
+if [[ "$actual_bumpgate" != 5 ]]; then
+    ok "LARCH_BUMP_FILES gate: ship-pr does not exit 5 when bump-owned path remains (rc=$actual_bumpgate)"
+else
+    fail "LARCH_BUMP_FILES gate: expected non-5 rc when LARCH_BUMP_FILES marks the conflict path"
+fi
+if [[ ! -f "$tmp/ship-pr-rrr-after-phase14.flag" ]]; then
+    ok "LARCH_BUMP_FILES gate: no ship-pr-rrr-after-phase14.flag"
+else
+    fail "LARCH_BUMP_FILES gate: unexpected Phase14 resume flag"
+fi
+
+# ci-merge + ship-pr-rrr-phase14 resume (PHASE=ci-merge at handoff).
+root=$(make_repo ship_pr_phase14_resume_ci_merge)
+tmp=$(make_tmpdir)
+cat > "$root/scripts/rebase-push.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+case "$*" in
+    *--keep-on-conflict*)
+        printf 'CONFLICT_FILES=Makefile\n'
+        exit 1
+        ;;
+    *)
+        exit 0
+        ;;
+esac
+STUB
+chmod +x "$root/scripts/rebase-push.sh"
+cat > "$root/scripts/ci-wait.sh" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+count_file="$tmp/ci-wait-phase14-ci-merge.seq"
+count=\$(cat "\$count_file" 2>/dev/null || echo 0)
+printf '%s\n' "\$((count + 1))" > "\$count_file"
+if [ "\$count" -eq 0 ]; then
+    printf 'ACTION=rebase\nCI_STATUS=fail\nBEHIND_COUNT=1\nFAILED_RUN_ID=\nBAIL_REASON=\nITERATION=0\nELAPSED=1\n'
+else
+    printf 'ACTION=merge\nCI_STATUS=pass\nBEHIND_COUNT=0\nFAILED_RUN_ID=\nBAIL_REASON=\nITERATION=1\nELAPSED=1\n'
+fi
+STUB
+chmod +x "$root/scripts/ci-wait.sh"
+_install_rebump_dep_stubs "$root"
+write_state "$tmp/ship-pr-state.sh" ci-merge
+: >"$tmp/execution-issues.md"
+rm -f "$tmp/ci-wait-phase14-ci-merge.seq"
+PATH="$root/scripts:$PATH" CLAUDE_PLUGIN_ROOT="$root" IMPLEMENT_TMPDIR="$tmp" \
+    run_subject "$root" "$tmp" "$tmp/rc-cm-first"
+assert_rc "$tmp/rc-cm-first" 5 "phase14 ci-merge first leg exits 5 for Phase 1–4 handoff"
+if grep -qFx 'CONFLICT_FILES=Makefile' "$tmp/stdout"; then
+    ok "phase14 ci-merge handoff emits CONFLICT_FILES contract line"
+else
+    fail "phase14 ci-merge handoff missing CONFLICT_FILES=Makefile on stdout"
+    sed 's/^/    stdout: /' "$tmp/stdout" | head -n 40
+fi
+PATH="$root/scripts:$PATH" CLAUDE_PLUGIN_ROOT="$root" IMPLEMENT_TMPDIR="$tmp" \
+    run_subject "$root" "$tmp" "$tmp/rc-cm-second" --resume-phase ship-pr-rrr-phase14
+assert_rc "$tmp/rc-cm-second" 0 "phase14 ci-merge resume completes after run_rebase_rebump tail"
+
+# Resume path: run_rebase_rebump continues after orchestrator-simulated Phase 4 success.
+root=$(make_repo ship_pr_phase14_resume)
+tmp=$(make_tmpdir)
+cat > "$root/scripts/rebase-push.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+case "$*" in
+    *--keep-on-conflict*)
+        printf 'CONFLICT_FILES=Makefile\n'
+        exit 1
+        ;;
+    *)
+        exit 0
+        ;;
+esac
+STUB
+chmod +x "$root/scripts/rebase-push.sh"
+cat > "$root/scripts/ci-wait.sh" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+count_file="$tmp/ci-wait-phase14.seq"
+count=\$(cat "\$count_file" 2>/dev/null || echo 0)
+printf '%s\n' "\$((count + 1))" > "\$count_file"
+if [ "\$count" -eq 0 ]; then
+    printf 'ACTION=rebase\nCI_STATUS=fail\nBEHIND_COUNT=1\nFAILED_RUN_ID=\nBAIL_REASON=\nITERATION=0\nELAPSED=1\n'
+else
+    printf 'ACTION=merge\nCI_STATUS=pass\nBEHIND_COUNT=0\nFAILED_RUN_ID=\nBAIL_REASON=\nITERATION=1\nELAPSED=1\n'
+fi
+STUB
+chmod +x "$root/scripts/ci-wait.sh"
+_install_rebump_dep_stubs "$root"
+write_state "$tmp/ship-pr-state.sh" ci-initial
+rm -f "$tmp/ci-wait-phase14.seq"
+PATH="$root/scripts:$PATH" CLAUDE_PLUGIN_ROOT="$root" IMPLEMENT_TMPDIR="$tmp" \
+    run_subject "$root" "$tmp" "$tmp/rc-first"
+assert_rc "$tmp/rc-first" 5 "phase14 resume prep: first ship-pr exits 5"
+if grep -qFx 'CONFLICT_FILES=Makefile' "$tmp/stdout"; then
+    ok "phase14 resume first leg emits CONFLICT_FILES contract line"
+else
+    fail "phase14 resume first leg missing CONFLICT_FILES=Makefile on stdout"
+    sed 's/^/    stdout: /' "$tmp/stdout" | head -n 40
+fi
+PATH="$root/scripts:$PATH" CLAUDE_PLUGIN_ROOT="$root" IMPLEMENT_TMPDIR="$tmp" \
+    run_subject "$root" "$tmp" "$tmp/rc-second" --resume-phase ship-pr-rrr-phase14
+assert_rc "$tmp/rc-second" 0 "phase14 resume: second ship-pr completes after run_rebase_rebump tail"
+if [[ ! -f "$tmp/ship-pr-rrr-after-phase14.flag" ]]; then
+    ok "phase14 resume consumes the flag file"
+else
+    fail "resume flag should be removed after successful run_rebase_rebump"
+fi
+fi  # end section: phase14
 
 if [[ "$FAIL_COUNT" -ne 0 ]]; then
     echo "test-ship-pr: $FAIL_COUNT failure(s), $PASS_COUNT pass(es)" >&2
