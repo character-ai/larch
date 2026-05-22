@@ -4,6 +4,7 @@ exon-misclassification	grep-pattern	\| FINDING_.* \| 0 \| 0 \| [1-9][0-9]* \|.*\
 oos-category-mangle	jsonl-field	plan-review accepted rows: .phase=="plan-review" and .outcome=="accepted" and (.category//""!="") and category not canonical	all plan-review accepted category fields use canonical values	high
 rej-category-blank	jsonl-field	review-findings-full.jsonl: ((.id//"")|type=="string" and startswith("REJ_")) and ((.category//"")=="") and ((.prose_body//"")|test("###[[:space:]]+FINDING_[0-9A-Za-z_]+:[[:space:]]*(code-quality|risk-integration|correctness|architecture|security)(:|\n|$)"))	no REJ_* rows with blank category when prose_body has a category-shaped ### FINDING_ inner line (canonical tag, optional location colon)	medium
 ns-retry-sidecars	file-glob	round-*/*-ns-retry*.txt	no NS-retry sidecar files present	medium
+cursor-ci-stall-causes	glob	round-*/cursor-ci-stall-*.json	stall JSON sidecars: channel histogram when present (NDJSON uses result informational when files exist)	low
 codex-round1-adherence	jsonl-field	round-([2-9]|[1-9][0-9]+)/panel-manifest.ndjson: .tool=="codex"	Codex absent from round 2+ panel manifests	medium
 codex-generalist-waste	composite	codex-generalist-output.txt == NO_ISSUES_FOUND AND timing > 120s	Codex generalist not wasting time when finding nothing	low
 execution-issues-categories	jsonl-field	.category != "Warnings"	no non-Warnings entries in execution-issues.ndjson	medium

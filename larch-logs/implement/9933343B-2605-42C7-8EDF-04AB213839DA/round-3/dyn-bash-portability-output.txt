@@ -1,0 +1,14 @@
+Gathering the diff, commit list, and shell-script sections for a bash-portability review.
+
+Pre-computed diff is empty. Fetching branch diff vs `main` with read-only git commands.
+
+Reading the new stall sidecar implementation and the new test fixtures for Bash 3.2 and probe-guard issues. `launch-cursor-ci.sh` is unchanged on this branch; logic lives in `lib-cursor-launcher-common.sh`.
+
+### In-Scope Findings
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+- The precomputed diff at `<TMPDIR>/round-3/diff.txt` was empty, so this review used read-only `git diff origin/main...HEAD` plus direct reads. In this clone, `git merge-base HEAD main` equals `HEAD`, so `git log $(git merge-base HEAD main)..HEAD --oneline` is empty; the three commits on top of `origin/main` are `d955504f` (feat), `f5c76d02`, and `d7b8b5f5` (review rounds).
+- Relative to `origin/main`, `scripts/launch-cursor-ci.sh` has **no** byte-level changes; stall JSON capture and `lsof` / `git status` / transcript handling live in [`scripts/lib-cursor-launcher-common.sh`](scripts/lib-cursor-launcher-common.sh) (roughly `cursor_launcher_emit_cursor_ci_stall_json_sidecar` and the stall monitor), which the scout notes did not list but is where the `timeout`/`gtimeout` guards and `|| true` patterns for probes were checked.
+- A `rg` pass over `git diff df111eaf..HEAD` for the touched shell scripts found none of `declare -A`, `mapfile`/`readarray`, `declare -n`/`local -n`, `${var^^}` / `${var,,}` / `${var^}` / `${var,}`, or `&>>`.
+- New harness block in [`scripts/test-launch-cursor-ci.sh`](scripts/test-launch-cursor-ci.sh) (fixtures 7–8) stays within Bash 3.2 (`nullglob`, arrays, `case`, arithmetic); `stall_env` restores `LARCH_CURSOR_CI_STALL_THRESHOLD=3` before those fixtures so the `<25s` wall-clock assertion stays consistent with a 3s stall budget.

@@ -1,0 +1,31 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: EXONERATE -- behavior (25+25=50 combined) is reasonable; FINDING_19 covers the stronger plan-fidelity gap
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: EXONERATE -- nit; junk files matching the glob are very unlikely; per-file fallback already emits UNKNOWN for malformed JSON
+FINDING_14: NO -- PID source is unchanged by this diff; too hypothetical to warrant a standalone issue
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: YES
+FINDING_18: EXONERATE -- minor efficiency observation; not issue-worthy
+FINDING_19: YES
+FINDING_20: YES
+FINDING_21: NO -- lib-only change is the correct factoring; no plan registry entry needs updating; not a code problem
+FINDING_22: YES
+FINDING_23: EXONERATE -- standard post-merge validation note; not issue-worthy
+FINDING_24: YES
+FINDING_25: YES
+FINDING_26: EXONERATE -- generic crash-window artifact, not issue-worthy
+FINDING_27: EXONERATE -- purely informational meta-commentary about review base ref
+FINDING_28: YES
+FINDING_29: EXONERATE -- purely informational, same as FINDING_27
+FINDING_30: NO -- positive compliance confirmation, not a problem finding
+FINDING_31: NO -- positive confirmation, not a problem finding

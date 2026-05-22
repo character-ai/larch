@@ -1198,7 +1198,7 @@ if [ -x "$SCAN_SCRIPT" ]; then
     ex_res=$(printf '%s\n' "$r35_lines" | jq -r 'select(.scan=="execution-issues-categories") | .result // empty' | head -1)
     assert_equal "$rej_res" "pass" "[35] rej-category-blank clean fixture → pass"
     assert_equal "$ns_res" "fail" "[35b] ns-retry-sidecars detects sidecar file → fail"
-    assert_equal "$ns_cnt" "1" "[35c] ns-retry-sidecars count"
+    assert_equal "$ns_cnt" "1" "[35ns-retry-cnt] ns-retry-sidecars count"
     ns_reasons=$(printf '%s\n' "$r35_lines" | jq -c 'select(.scan=="ns-retry-sidecars") | .reasons // empty' | head -1)
     assert_equal "$ns_reasons" '{"NO_ISSUES_FOUND_TOO_THIN":1}' "[35e] ns-retry-sidecars reasons object"
     assert_equal "$ex_res" "fail" "[35d] execution-issues-categories non-Warnings → fail"
@@ -1231,6 +1231,59 @@ if [ -x "$SCAN_SCRIPT" ]; then
     assert_equal "$r35b_mangled" "0" "[35m3] mangled count is zero placeholder when jq failed"
     assert_equal "$r35b_detail" "mangled-category aggregate unavailable after oos-category-mangle jq error" "[35m4] category-stats detail explains mangled aggregate unavailable"
     rm -rf "$R35B_TMP"
+else
+    echo "  SKIP: audit-scan-run.sh not executable (not found at $SCAN_SCRIPT)"
+fi
+
+# Test 35g: audit-scan-run.sh — cursor-ci-stall-causes (zero sidecars pass + informational histogram)
+echo "Test 35g: audit-scan-run cursor-ci-stall-causes scan"
+SCAN_SCRIPT="${SCAN_SCRIPT:-$SCRIPT_DIR/audit-scan-run.sh}"
+if [ -x "$SCAN_SCRIPT" ]; then
+    R35G0_TMP=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-scan-stall-empty-XXXXXX")
+    {
+        printf '%s\n' 'name	type	pattern	expected_outcome	severity'
+        printf '%s\n' 'cursor-ci-stall-causes	glob	round-*/cursor-ci-stall-*.json	stall JSON sidecars: channel histogram when present	low'
+    } > "$R35G0_TMP/sub-scans.tsv"
+    printf '%s\n' 'relative_path	condition	batch_slug	extension' > "$R35G0_TMP/required-empty.tsv"
+    mkdir -p "$R35G0_TMP/run/round-1"
+    r35g0_lines=$(bash "$SCAN_SCRIPT" \
+        --run-dir "$R35G0_TMP/run" --pr 990035 \
+        --scans-tsv "$R35G0_TMP/sub-scans.tsv" \
+        --required-files-tsv "$R35G0_TMP/required-empty.tsv" \
+        --current-version "29.0.0")
+    st0_res=$(printf '%s\n' "$r35g0_lines" | jq -r 'select(.scan=="cursor-ci-stall-causes") | .result // empty' | head -1)
+    st0_cnt=$(printf '%s\n' "$r35g0_lines" | jq -r 'select(.scan=="cursor-ci-stall-causes") | .count // empty' | head -1)
+    st0_pf=$(printf '%s\n' "$r35g0_lines" | jq -r 'select(.scan=="cursor-ci-stall-causes") | .parsed_files // empty' | head -1)
+    assert_equal "$st0_res" "pass" "[35stall-empty] cursor-ci-stall-causes pass when zero sidecars"
+    assert_equal "$st0_cnt" "0" "[35stall-empty2] cursor-ci-stall-causes count 0"
+    assert_equal "$st0_pf" "0" "[35stall-empty3] cursor-ci-stall-causes parsed_files 0"
+    rm -rf "$R35G0_TMP"
+
+    R35G_TMP=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-scan-stall-XXXXXX")
+    {
+        printf '%s\n' 'name	type	pattern	expected_outcome	severity'
+        printf '%s\n' 'cursor-ci-stall-causes	glob	round-*/cursor-ci-stall-*.json	stall JSON sidecars: channel histogram when present	low'
+    } > "$R35G_TMP/sub-scans.tsv"
+    printf '%s\n' 'relative_path	condition	batch_slug	extension' > "$R35G_TMP/required-empty.tsv"
+    mkdir -p "$R35G_TMP/run/round-1"
+    printf '%s\n' '{"channel":"stdout","pid":1}' > "$R35G_TMP/run/round-1/cursor-ci-stall-a.json"
+    printf '%s\n' '{"channel":"tree:/tmp/x","pid":2}' > "$R35G_TMP/run/round-1/cursor-ci-stall-b.json"
+    printf '%s\n' 'not json' > "$R35G_TMP/run/round-1/cursor-ci-stall-bad.json"
+    r35g_lines=$(bash "$SCAN_SCRIPT" \
+        --run-dir "$R35G_TMP/run" --pr 990035 \
+        --scans-tsv "$R35G_TMP/sub-scans.tsv" \
+        --required-files-tsv "$R35G_TMP/required-empty.tsv" \
+        --current-version "29.0.0")
+    st_res=$(printf '%s\n' "$r35g_lines" | jq -r 'select(.scan=="cursor-ci-stall-causes") | .result // empty' | head -1)
+    st_cnt=$(printf '%s\n' "$r35g_lines" | jq -r 'select(.scan=="cursor-ci-stall-causes") | .count // empty' | head -1)
+    st_pf=$(printf '%s\n' "$r35g_lines" | jq -r 'select(.scan=="cursor-ci-stall-causes") | .parsed_files // empty' | head -1)
+    st_ch=$(printf '%s\n' "$r35g_lines" | jq -c -S 'select(.scan=="cursor-ci-stall-causes") | .channels // empty' | head -1)
+    want_ch=$(printf '%s\n' '{"stdout":1,"tree:/tmp/x":1,"UNKNOWN":1}' | jq -c -S .)
+    assert_equal "$st_res" "informational" "[35stall-info] cursor-ci-stall-causes informational when sidecars exist"
+    assert_equal "$st_cnt" "3" "[35stall-cnt] cursor-ci-stall-causes counts all glob matches"
+    assert_equal "$st_pf" "2" "[35stall-parsed] cursor-ci-stall-causes parsed_files jq-parseable"
+    assert_equal "$st_ch" "$want_ch" "[35stall-ch] cursor-ci-stall-causes channel histogram"
+    rm -rf "$R35G_TMP"
 else
     echo "  SKIP: audit-scan-run.sh not executable (not found at $SCAN_SCRIPT)"
 fi
