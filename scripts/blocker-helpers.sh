@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# blocker-helpers.sh — shared blocker-resolution helpers for /fix-issue.
+# blocker-helpers.sh — shared blocker-resolution helpers for /implement
+# admission, umbrella tooling, and other consumers.
 #
-# Sourced by both skills/fix-issue/scripts/find-lock-issue.sh and
-# skills/fix-issue/scripts/umbrella-handler.sh. Owns the canonical
+# Sourced by scripts/implement-admission.sh, skills/umbrella/scripts helpers,
+# and historically by fix-issue-era scripts. Owns the canonical
 # implementations of `native_open_blockers`, `prose_open_blockers`, and
 # `all_open_blockers` so both scripts apply the same native+prose dependency
 # semantics to a candidate issue.
@@ -15,16 +16,15 @@
 #      pipefail aborts).
 #   3. Tolerate a missing or unreadable library file: an unguarded `source`
 #      under `set -e` aborts the script before any stdout contract is emitted,
-#      breaking callers that parse `KEY=VALUE` output. Both find-lock-issue.sh
-#      and umbrella-handler.sh wrap their `source` call with explicit failure
-#      handling so the documented `ELIGIBLE=false ERROR=...` (or per-subcommand
-#      equivalent) contract is preserved on load failure.
+#      breaking callers that parse `KEY=VALUE` output. Callers that need a
+#      graceful contract on load failure MUST wrap `source` with explicit
+#      error handling.
 #
 # All functions follow a fail-open posture: any gh / parser / state-lookup
 # failure degrades to "no blockers known" (empty output, exit 0). The
 # rationale is intentional — dependency-API availability must not become a
-# hard gate on the automation. The Known Limitations sections in
-# skills/fix-issue/SKILL.md document the user-visible consequences.
+# hard gate on the automation. The `/implement` skill documents the
+# user-visible consequences under Known Limitations (admission gate).
 
 # ---------------------------------------------------------------------------
 # native_open_blockers <issue-number>
@@ -50,7 +50,7 @@ native_open_blockers() {
     nums=$(gh api --paginate "repos/${REPO}/issues/${num}/dependencies/blocked_by" \
         --jq '.[] | select(.state == "open") | .number' 2>/dev/null) || return 0
     # Collapse newline-separated numbers into a single space-separated line, trimming trailing whitespace.
-    echo "$nums" | tr '\n' ' ' | sed 's/[[:space:]]*$//'
+    printf '%s' "$nums" | tr '\n' ' ' | sed 's/[[:space:]]*$//;s/^[[:space:]]*//'
 }
 
 # ---------------------------------------------------------------------------
@@ -61,7 +61,7 @@ native_open_blockers() {
 # each referenced same-repo issue's current state, and prints a space-
 # separated list of referenced issues that are currently OPEN.
 #
-# The parser helper at `skills/fix-issue/scripts/parse-prose-blockers.sh`
+# The parser helper at `scripts/parse-prose-blockers.sh`
 # handles the regex matching and number extraction — this function owns
 # the orchestration (fetch → per-document iteration → state resolution).
 #
@@ -144,7 +144,7 @@ prose_open_blockers() {
     done <<< "$unique_refs"
 
     # Trim leading/trailing whitespace for consistent output with native_open_blockers.
-    echo "$open_list" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'
+    printf '%s' "$open_list" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'
 }
 
 # ---------------------------------------------------------------------------
@@ -158,9 +158,9 @@ prose_open_blockers() {
 # so resolving prose blockers would only add API volume without changing the
 # decision. The documented tradeoff is that user-visible skip/error messages
 # may list only the native blocker numbers when both sources apply — see
-# skills/fix-issue/SKILL.md Known Limitations. Closing all listed native
-# blockers and re-running /fix-issue will surface any remaining prose
-# blockers on the next run.
+# skills/implement/SKILL.md Known Limitations (admission gate). Closing all
+# listed native blockers and re-running will surface any remaining prose
+# blockers on the next pass.
 # ---------------------------------------------------------------------------
 all_open_blockers() {
     local num="$1"
@@ -178,4 +178,5 @@ all_open_blockers() {
     if [[ -n "$prose" ]]; then
         echo "$prose" | tr ' ' '\n' | sort -u -n | tr '\n' ' ' | sed 's/[[:space:]]*$//'
     fi
+    return 0
 }

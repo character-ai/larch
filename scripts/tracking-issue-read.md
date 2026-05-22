@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Phase 1 (umbrella #348) foundation layer: inbound helper for the tracking-issue lifecycle. Pure reader — never creates issues. When invoked with `--issue + --prompt`, delegates the prompt post to `scripts/tracking-issue-write.sh append-comment`. No consumers wired in Phase 1; Phase 2 `/fix-issue` forwarding is the first consumer.
+Phase 1 (umbrella #348) foundation layer: inbound helper for the tracking-issue lifecycle. Pure reader — never creates issues. When invoked with `--issue + --prompt`, delegates the prompt post to `scripts/tracking-issue-write.sh append-comment`. Downstream consumers include `/implement` Step 0 (umbrella / tracking-issue flows) and umbrella tooling.
 
 ## Flag combinations
 
@@ -43,7 +43,7 @@ ADOPTED=true|false|
 - **Absence semantics**: an empty `ADOPTED=` line means **"sentinel is not usable for adoption decisions"**. Absent key and explicit empty (`ADOPTED=`) are semantically identical on the output side.
 - **Consumer obligation**: consumers MUST treat empty/absent `ADOPTED=` as "unusable" and fall back to their fresh-creation path. Consumers MUST NOT treat empty as equivalent to `false`. A `false` value is a positive statement ("sentinel records that adoption did not occur"); an empty value is the absence of that statement.
 - **Fail-closed posture**: any non-empty value other than `true` or `false` (e.g. `TRUE`, `True`, `1`, `yes`, or `true` with a trailing space) is rejected with `FAILED=true` / `ERROR=invalid ADOPTED value in sentinel: '<val>' (expected 'true' or 'false' or absent)` and exit 1. Producers writing invalid values see a loud parse failure at the consumer boundary rather than silent misclassification.
-- **Producer semantics** (`/implement` Step 0.5): `ADOPTED=true` is written when a run adopts an existing tracking issue. `ADOPTED=false` is written for a fresh tracking issue. Summary comments are posted by `tracking-issue-summary.sh`; durable payloads are written through `larch-log.sh`.
+- **Producer semantics** (`/implement` Step 0): `ADOPTED=true` is written when a run adopts an existing tracking issue. `ADOPTED=false` is written for a fresh tracking issue. Summary comments are posted by `tracking-issue-summary.sh`; durable payloads are written through `larch-log.sh`.
 
 ### Failure keys
 
@@ -113,7 +113,7 @@ Combination 3 (prompt-only) writes `TASK_FILE` verbatim with no envelope — pro
 
 ## Truncation-marker preservation
 
-Inline `[TRUNCATED — …]` and `[section '<id>' truncated — …]` markers produced by `tracking-issue-write.sh` are preserved verbatim in `TASK_FILE`. This script does NOT reinterpret or strip these markers. Downstream consumers that want marker-free content should strip at the consumer boundary, not at the read boundary. Rationale: the read script's job is transmission, not reinterpretation; existing repo readers are mechanical pass-throughs for truncation markers specifically (`skills/issue/scripts/fetch-issue-details.sh` is a complete pass-through; `skills/fix-issue/scripts/get-issue-details.sh` filters larch summary-marker comments via a separate jq rule but does not strip truncation markers). (DECISION_2 voted 3-0 THESIS at design phase.)
+Inline `[TRUNCATED — …]` and `[section '<id>' truncated — …]` markers produced by `tracking-issue-write.sh` are preserved verbatim in `TASK_FILE`. This script does NOT reinterpret or strip these markers. Downstream consumers that want marker-free content should strip at the consumer boundary, not at the read boundary. Rationale: the read script's job is transmission, not reinterpretation; existing repo readers are mechanical pass-throughs for truncation markers specifically (`skills/issue/scripts/fetch-issue-details.sh` is a complete pass-through). (DECISION_2 voted 3-0 THESIS at design phase.)
 
 ## Known limitation: `--issue + --prompt` is not idempotent
 

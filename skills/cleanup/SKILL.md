@@ -14,7 +14,7 @@ Remove leftover larch session temp directories from `~/.cache/larch/sessions/` (
 
 ## NEVER
 
-1. **NEVER run cleanup when multiple Claude sessions are active.** The script detects this and aborts automatically. Why: a concurrent `/implement` or `/fix-issue` run's session tmpdir could be deleted mid-flight, corrupting its execution state.
+1. **NEVER run cleanup when multiple Claude sessions are active.** The script detects this and aborts automatically. Why: a concurrent `/implement` run's session tmpdir could be deleted mid-flight, corrupting its execution state.
 
 <!-- step:1 — Run cleanup -->
 

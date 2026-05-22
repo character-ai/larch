@@ -1,6 +1,6 @@
 # render-umbrella-body.sh — sibling contract
 
-**Purpose**: compose the umbrella issue body from an LLM-supplied summary plus the resolved children TSV. Derive a one-line `UMBRELLA_TITLE_HINT` from the first sentence of the summary (≤80 chars for the summary part, ellipsis on overflow) and prepend the `[UMBRELLA]` marker (followed by a single space) so `/fix-issue`'s umbrella detection can recognise the tracking issue by title alone. `SKILL.md` Step 3B.3 passes the hint to `/issue` as the explicit title (trailing positional argument combined with `--body-file`).
+**Purpose**: compose the umbrella issue body from an LLM-supplied summary plus the resolved children TSV. Derive a one-line `UMBRELLA_TITLE_HINT` from the first sentence of the summary (≤80 chars for the summary part, ellipsis on overflow) and prepend the `[UMBRELLA]` marker (followed by a single space) so umbrella-shaped tracking issues are recognizable by title alone. `SKILL.md` Step 3B.3 passes the hint to `/issue` as the explicit title (trailing positional argument combined with `--body-file`).
 
 **CLI**: `--tmpdir DIR --summary-file FILE --children-file FILE`. All three required and non-empty. `--tmpdir` must additionally be **writable** by the current user — typically a session-private directory minted by the caller via `mktemp -d`. The script does NOT defend against concurrent renderers sharing the same `--tmpdir` (caller responsibility).
 

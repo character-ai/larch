@@ -13,7 +13,7 @@
 **Stdout contract**: None (silent operation).
 
 **Call sites**:
-- `skills/implement/SKILL.md` Step 0.5 session-wide phantom baseline
+- `skills/implement/SKILL.md` **Step 0** session-wide phantom baseline
 - `skills/implement/SKILL.md` Step 5 pre-review snapshot
 - `scripts/launch-review.sh --tool cursor` and `scripts/launch-review.sh --tool codex` pre-launch dirty-tree baselines
 

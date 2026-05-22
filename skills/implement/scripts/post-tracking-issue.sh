@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# post-tracking-issue.sh — publish the Step 0.5 larch:metadata summary.
+# post-tracking-issue.sh — publish the Step 0 larch:metadata summary (post-adoption).
 # shellcheck disable=SC2016
 #
 # Reads all session state from $IMPLEMENT_TMPDIR files; callers pass only

@@ -74,7 +74,7 @@ sidecar into `larch-logs/`.
 
 ## manifest.json
 
-Created by `scripts/larch-log.sh init` at Step 0.5 when the tracking issue is first resolved. Updated by `larch-log.sh manifest` calls throughout the run. Contains: skill name, run ID, operator CWD, operator repo root, tracking-issue number, PR number (once created), the run status last recorded in that manifest snapshot, and optional routing flags such as `coder_fallback=true` when omitted-`--coder` routing fell past Codex. Authoritative contract: `scripts/larch-log.md`.
+Created by `scripts/larch-log.sh init` during **Step 0** when the tracking issue is first resolved (tracking adoption / post-resolution). Updated by `larch-log.sh manifest` calls throughout the run. Contains: skill name, run ID, operator CWD, operator repo root, tracking-issue number, PR number (once created), the run status last recorded in that manifest snapshot, and optional routing flags such as `coder_fallback=true` when omitted-`--coder` routing fell past Codex. Authoritative contract: `scripts/larch-log.md`.
 
 For current `/implement` runs, the committed manifest is normally an `"in-progress"` snapshot because the post-merge `"done"` update happens inside `$IMPLEMENT_TMPDIR` after the last log commit window. That is not an absolute invariant: older committed runs, tests, or manual/status-update flows can still produce committed manifests with `"done"` or other statuses. To assess completion, read `status` as one signal and correlate it with PR merge state plus the surrounding run-log artifacts.
 
@@ -82,13 +82,13 @@ For current `/implement` runs, the committed manifest is normally an `"in-progre
 
 ### plan-goals-test.md
 
-**Mode**: replace (one file per run). **Written**: Step 1, after the design plan is finalized.
+**Mode**: replace (one file per run). **Written**: **Step 0** materialization tail, after the design plan is finalized.
 
 Contains the implementation plan: goal statement, files to modify, approach, edge cases, and testing strategy. The content is materialized from the tracking issue body's `larch:plan` block (see `docs/issue-anchored-plan.md`) after `/design` has written or refreshed that anchor; `/implement` Step 1 copies it into this batch — it is not produced by a nested `/design` sub-invocation inside `/implement`.
 
 ### parent-issue.md
 
-**Mode**: replace. **Written**: Step 1 and refreshed at the pre-bump flush when
+**Mode**: replace. **Written**: **Step 0** materialization tail and refreshed at the pre-bump flush when
 present.
 
 Tracking-issue sentinel with the adopted or created issue number and run ID.
@@ -115,7 +115,7 @@ bailout paths may not produce them.
 
 ### plan-review-tally.json
 
-**Mode**: replace (JSON object). **Written**: Step 1 tail, after the plan-review voting tally is exported.
+**Mode**: replace (JSON object). **Written**: **Step 0** materialization tail, after the plan-review voting tally is exported.
 
 One JSON object per `/implement` session. The tally envelope shape is shared with
 `code-review-tally.json`: `schema_version`, `phase`, `batch`, `mode`, `rounds`,
@@ -244,13 +244,13 @@ The tracking issue for each run carries four slim marker-keyed summary comments 
 
 ### `larch:metadata`
 
-Written at Step 0.5 when the tracking issue is adopted or created.
+Written during **Step 0** when the tracking issue is adopted or created.
 
 Content: run ID, log directory path (`larch-logs/implement/<RUN_ID>/`), agent (implementer coder), and larch plugin version.
 
 ### `larch:plan`
 
-Written at Step 1 tail after the plan is finalized.
+Written at **Step 0** materialization tail after the plan is finalized.
 
 Content: a slim pointer to `larch-logs/implement/<RUN_ID>/plan-goals-test.md` plus the current plan-review tally status (voting outcome when present, or a pointer that detailed plan review lives in the `/design` run artifacts).
 

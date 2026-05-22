@@ -7,7 +7,6 @@ Reference for every slash command shipped by the larch plugin. Each section belo
 - [`/compress-skill`](#compress-skill)
 - [`/create-skill`](#create-skill)
 - [`/design`](#design)
-- [`/fix-issue`](#fix-issue)
 - [`/implement`](#implement)
 - [`/issue`](#issue)
 - [`/report-tokens`](#report-tokens)
@@ -75,16 +74,6 @@ Scaffold a new larch-style skill from a name and description.
 **Source**: [`skills/design/SKILL.md`](../skills/design/SKILL.md) · [Diagram](../skills/design/diagram.svg)
 
 Design an implementation plan with collaborative multi-reviewer review. The [sketch topology](topology.md#design.sketch.regular_slots) documented in [Collaborative Sketches](collaborative-sketches.md) independently proposes architectural approaches when the router assigns a non-zero sketch budget, then the dialectic debate and [judge panel](topology.md#design.dialectic.judge_panel) described in `skills/shared/dialectic-protocol.md` resolves contested decisions. The [validation panel](topology.md#design.plan_review.cursor_archetypes) documented in [Review Agents](review-agents.md) then reviews the full plan. Tier flags (`--trivial` / `--simple` / `--hard`) select sketch + plan-review depth; internal-only flags live in `skills/design/references/flags.md`.
-
-## `/fix-issue`
-
-**Arguments**: `[--merge] [--no-admin-fallback] [--no-logs-commit] [--no-dedup] [--coder=<value>] [--run-id <ID>] <number-or-url>` (positional issue number or URL is **required**)
-
-**Source**: [`skills/fix-issue/SKILL.md`](../skills/fix-issue/SKILL.md)
-
-Process one approved GitHub issue per invocation, classifying intent and delegating PR work to `/implement`.
-
-**Umbrella support**: when `/fix-issue <umbrella#>` is invoked on an umbrella issue (detected post-#846 by title-only — title prefix `Umbrella:` / `Umbrella —` after stripping leading bracket-blocks per #819; body content is NOT consulted), `/fix-issue` dispatches to the umbrella's next eligible child instead of working on the umbrella body itself. Children are parsed from markdown task-list items (`- [ ] #N — ...`) in body order; cross-repo references (`owner/repo#N`) and prose `#N` mentions are NOT considered children. When all parsed children close, the umbrella is automatically renamed to `[DONE]`, gets a closing comment posted, and is closed (idempotent: concurrent finalize attempts won't double-comment). See `skills/fix-issue/SKILL.md` Known Limitations for the full umbrella contract.
 
 ## `/implement`
 

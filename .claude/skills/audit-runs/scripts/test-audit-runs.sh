@@ -357,8 +357,9 @@ assert_equal "$result" "proposed_augmentations:EXON regression in PR #2450" "[13
 # (America/Los_Angeles wall time with explicit -07:00 or -08:00 offset in the bracket.)
 # The skill uses the prefix pattern ^\[Run Logs Audit .* Report\]
 # (timestamp before the word "Report" inside the bracket). The generic
-# has_report_prefix pattern in find-lock-issue.sh also matches this shape;
-# the audit-report GitHub label filter remains the primary /fix-issue exclusion guard.
+# `has_report_prefix` in `scripts/implement-admission.sh` (see `/implement`
+# Preflight in `skills/implement/SKILL.md`) also matches this broad `[... Report]`
+# family; the `audit-report` label remains a separate admission gate there.
 # ---------------------------------------------------------------------------
 echo "Test 14: audit report title matches self-exclusion prefix"
 title_matches_audit_report_exclusion() {
@@ -380,7 +381,7 @@ assert_equal "$result" "pickable" "[14d] non-audit-report title not excluded"
 result=$(title_matches_audit_report_exclusion "[Run Logs Audit Report 2026-05-20T19:30Z] PRs #2430-#2440")
 assert_equal "$result" "pickable" "[14g] pre-migration audit bracket title not matched by self-exclusion regex (label guard is primary)"
 
-# Test 14e: find-lock-issue.sh has_report_prefix matches the audit report title
+# Test 14e: implement-admission.sh has_report_prefix matches the audit report title
 # (space before "report]" inside the bracket); label-based exclusion is still primary.
 title_matches_has_report_prefix() {
     local title="$1"

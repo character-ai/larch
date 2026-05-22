@@ -427,7 +427,7 @@ Iterate over `order[0..ITEMS_TOTAL-1]` (each iteration's value is one original i
 - **Out-of-scope**: dependency analysis is bounded to OPEN issues at the snapshot moment. Closed issues never carry dep flags. The analysis does NOT walk transitive existing-issue dependency chains; it only emits edges between new items and direct existing/sibling neighbors.
 - **Dry-run** (`--dry-run`): dep edges are computed and emitted as `ISSUE_<i>_BLOCKED_BY=` / `ISSUE_<i>_BLOCKS=` with `ISSUE_<i>_DRY_RUN_DEPS=true`. No API calls fire; no `ISSUE_<i>_ID` is emitted (no real id exists).
 
-**Asymmetry with `/fix-issue`**: `skills/fix-issue/scripts/find-lock-issue.sh` uses the GET counterpart at the same dependencies REST path (read side, fail-open). /issue uses the POST/write side, fail-closed. The divergence is intentional — do not "harmonize" them.
+**Asymmetry with native dependency reads**: some historical automation used a GET counterpart at the same dependencies REST path (read side, fail-open). /issue uses the POST/write side, fail-closed. The divergence is intentional — do not "harmonize" them.
 
 **Helpers and contracts** (per `${CLAUDE_PLUGIN_ROOT}/.claude/rules/script-md-siblings.md`):
 

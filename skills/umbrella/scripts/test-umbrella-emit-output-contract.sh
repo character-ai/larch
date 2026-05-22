@@ -33,7 +33,7 @@
 # This is a *structural* test (literal-substring assertions on awk-extracted
 # blocks), not a runtime conformance test of `helpers.sh emit-output` (which
 # remains exercised indirectly via SKILL.md integration). Pattern matches
-# skills/fix-issue/scripts/test-fix-issue-bail-detection.sh.
+# skills/implement/scripts/test-implement-structure.sh.
 #
 # Wired into `make lint` via the `test-umbrella-emit-output-contract` Makefile
 # target (parallel to test-umbrella-helpers and test-umbrella-parse-args).

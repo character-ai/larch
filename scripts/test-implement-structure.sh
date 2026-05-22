@@ -278,4 +278,58 @@ grep -Fq 'NEVER silently drop a voted-in OOS finding' "$SKILL_MD" \
 grep -Fq 'NEVER set `OOS_PENDING=false` without a passing `oos-disposition-gate.sh` invocation' "$SKILL_MD" \
   || fail "SKILL.md must retain NEVER #18 gate-before-clear pin (OOS_PENDING vs oos-disposition-gate.sh)"
 
+# Folded Step 0 / admission structural pins (fix-issue removal; Step 0 + Preflight admission)
+grep -Fq 'scripts/implement-admission.sh' "$SKILL_MD" \
+  || fail "SKILL.md must reference scripts/implement-admission.sh"
+grep -Fq '1. **Admission gate**' "$SKILL_MD" \
+  || fail "SKILL.md Preflight must contain numbered Admission gate step"
+grep -Fq '**Preflight — admission gate known limitation (D3)**' "$SKILL_MD" \
+  || fail "SKILL.md must document admission gate fail-open limitation (D3)"
+# shellcheck disable=SC2016
+grep -Fq '6. **On `AUDIT=pass` — semantic materiality (comment-only)**' "$SKILL_MD" \
+  || fail "SKILL.md Preflight must retain semantic materiality step (item 6)"
+grep -Fq 'semantic stale notice posted at Preflight item 6' "$SKILL_MD" \
+  || fail "SKILL.md exit table must pin Preflight item 6 semantic stale path"
+grep -Fq '### Step 0 — tracking issue adoption' "$SKILL_MD" \
+  || fail "SKILL.md must contain Step 0 tracking issue adoption heading"
+grep -Fq '### Plan materialization from issue body' "$SKILL_MD" \
+  || fail "SKILL.md must contain plan materialization heading"
+read -r tok0_track <<'EOF'
+"${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 0 — tracking issue"
+EOF
+read -r time0_track <<'EOF'
+"${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 0 — tracking issue"
+EOF
+read -r tok0_plan <<'EOF'
+"${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 0 — plan materialization"
+EOF
+read -r time0_plan <<'EOF'
+"${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 0 — plan materialization"
+EOF
+grep -Fq "$tok0_track" "$SKILL_MD" \
+  || fail "SKILL.md must retain token-ledger Step 0 — tracking issue mark"
+grep -Fq "$time0_track" "$SKILL_MD" \
+  || fail "SKILL.md must retain timing-ledger Step 0 — tracking issue mark"
+grep -Fq '# token-mark Step 0 — tracking issue' "$SKILL_MD" \
+  || fail "SKILL.md must retain token-mark Step 0 — tracking issue comment pair"
+grep -Fq '# timing-mark Step 0 — tracking issue' "$SKILL_MD" \
+  || fail "SKILL.md must retain timing-mark Step 0 — tracking issue comment pair"
+grep -Fq "$tok0_plan" "$SKILL_MD" \
+  || fail "SKILL.md must retain token-ledger Step 0 — plan materialization mark"
+grep -Fq "$time0_plan" "$SKILL_MD" \
+  || fail "SKILL.md must retain timing-ledger Step 0 — plan materialization mark"
+grep -Fq '# token-mark Step 0 — plan materialization' "$SKILL_MD" \
+  || fail "SKILL.md must retain token-mark Step 0 — plan materialization comment pair"
+grep -Fq '# timing-mark Step 0 — plan materialization' "$SKILL_MD" \
+  || fail "SKILL.md must retain timing-mark Step 0 — plan materialization comment pair"
+if grep -Fq '<!-- step:0.5' "$SKILL_MD"; then
+  fail "SKILL.md must not reintroduce <!-- step:0.5 session anchor"
+fi
+if grep -Fq '<!-- step:1 —' "$SKILL_MD"; then
+  fail "SKILL.md must not reintroduce retired <!-- step:1 — session anchor"
+fi
+if grep -Fq '### /fix-issue coordination' "$SKILL_MD"; then
+  fail "SKILL.md must not contain /fix-issue coordination subsection"
+fi
+
 echo "All assertions passed."

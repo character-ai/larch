@@ -9,7 +9,7 @@ allowed-tools: Bash, Read, Skill
 
 Plan improvements for an existing larch skill in a single research-and-file-issues pass. Take a mandatory `<skill-name>` (must already exist under `skills/<name>/` or `.claude/skills/<name>/` in the current plugin repo), invoke `/research` via the Skill tool against repo-local sibling skills + reputable external sources (Anthropic, OpenAI, DeepMind, ≥500-star OSS), and — if the research lane surfaces ≥1 actionable improvement with citations — invoke `/umbrella` via the Skill tool to file the resulting GitHub issue(s). `/research` runs the fixed 4 research + 3 validation lane shape internally. `/umbrella` runs its own one-shot vs multi-piece classifier on the distilled task description.
 
-The skill itself does NOT modify the target skill's files. Implementation of each improvement happens later via `/fix-issue`. This skill is research-and-file-issues only.
+The skill itself does NOT modify the target skill's files. Implementation of each improvement happens later via `/design` + `/implement` on the filed issues. This skill is research-and-file-issues only.
 
 Example: `/skill-evolver design` or `/skill-evolver review`.
 
@@ -26,7 +26,7 @@ Example: `/skill-evolver design` or `/skill-evolver review`.
 
 ## Anti-patterns
 
-- **NEVER modify the target skill's files from inside this skill.** Why: the contract is research-and-file-issues only. Editing `<SKILL_DIR>/` here would bypass the umbrella + child-issue tracking, the per-change `/review` panel, and the `/fix-issue` lifecycle that downstream agents depend on. Implementation lands later via `/fix-issue`.
+- **NEVER modify the target skill's files from inside this skill.** Why: the contract is research-and-file-issues only. Editing `<SKILL_DIR>/` here would bypass the umbrella + child-issue tracking, the per-change `/review` panel, and the `/implement` lifecycle that downstream agents depend on. Implementation lands later via `/design` + `/implement`.
 - **NEVER inline the target SKILL.md body into the `/research` prompt.** Why: deep-mode fan-out spawns 5 research lanes + 5 validation lanes — each receives the full prompt. Inlining the target body multiplies token cost by 10× without benefit; the lanes have full Read/Grep/Glob access and should read `<SKILL_DIR>/SKILL.md` themselves. Pass the **path**, not the contents.
 - **NEVER pass the verbatim `/research` report as the `/umbrella` task description.** Why: `/umbrella`'s classifier expects a multi-piece task description naming distinct phases, not a multi-section research narrative with reviewer commentary and validation tables. Distill the actionable improvements into a numbered phase list (one phase per improvement, citations preserved) before invoking `/umbrella`.
 - **NEVER call `/umbrella` when `/research` returns zero actionable improvements.** Why: an empty umbrella creates a tracking issue with no children — pure noise. Print the canonical Step 3 zero-branch message (the `**ℹ /skill-evolver: …**` line whose verbatim text lives in Step 3) and exit cleanly.
@@ -72,7 +72,7 @@ What I want from this research:
 
 1. **Repo-local survey.** Read every other SKILL.md under `skills/` and `.claude/skills/`. Identify capabilities, prompt patterns, mechanical-rule applications (Section III A/B/C), anti-pattern formulations, progressive-disclosure techniques (Section II), or freedom-calibration choices (Section VII) present in sibling skills that `/<SKILL_NAME>` could adopt to improve quality, robustness, or token efficiency. Each comparison must cite the specific sibling skill and a `file:line` reference.
 
-3. **Concrete, actionable improvements for `/<SKILL_NAME>`.** Each finding must specify: (a) the exact file path inside the target skill that should change; (b) what to modify; (c) the cited evidence (sibling skill `file:line` or external URL); (d) a one-paragraph proposed implementation that a `/fix-issue` agent can execute without re-doing this research. Vague suggestions ("improve clarity", "add more examples", "consider refactoring") are explicitly out of scope.
+3. **Concrete, actionable improvements for `/<SKILL_NAME>`.** Each finding must specify: (a) the exact file path inside the target skill that should change; (b) what to modify; (c) the cited evidence (sibling skill `file:line` or external URL); (d) a one-paragraph proposed implementation that a `/design` + `/implement` agent pair can execute without re-doing this research. Vague suggestions ("improve clarity", "add more examples", "consider refactoring") are explicitly out of scope.
 
 Out of scope:
 - Changes requiring new external dependencies the larch plugin does not already use.
@@ -119,6 +119,6 @@ If no such line is present (the `/research` lane synthesis dropped the requested
 
 ## What this skill does NOT do
 
-- Does not modify `<SKILL_DIR>/` files. Implementation happens later via `/fix-issue` (per child issue).
+- Does not modify `<SKILL_DIR>/` files. Implementation happens later via `/design` + `/implement` (per child issue).
 - Does not run benchmarks, quality scoring, or grading.
 - Does not iterate. One invocation = one `/research` invocation (which fans out to 4 research + 3 validation lanes internally) + one (conditional) `/umbrella`. Re-run `/skill-evolver` after children land if you want a fresh research pass against the evolved skill.

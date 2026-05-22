@@ -1,6 +1,6 @@
 # add-blocked-by.sh contract
 
-**Purpose**: apply a single GitHub-native blocker dependency between two issues by POSTing to the Issue Dependencies REST API, with retry-3-times-with-10s/30s-sleeps and fail-closed semantics. The write counterpart to `skills/fix-issue/scripts/find-lock-issue.sh`'s read-side use of the same endpoint family.
+**Purpose**: apply a single GitHub-native blocker dependency between two issues by POSTing to the Issue Dependencies REST API, with retry-3-times-with-10s/30s-sleeps and fail-closed semantics. Read-side dependency probes elsewhere in larch may use the same endpoint family with fail-open semantics — this script is the write path.
 
 **Caller**: `/issue` SKILL.md Step 6 (per-item create loop). Invoked once per dependency edge — one for each `ITEM_<i>_BLOCKED_BY=<entry>` and one for each `ITEM_<i>_BLOCKS=<entry>` (in the latter case, the just-created issue is the blocker, an existing issue is the client).
 
@@ -16,7 +16,7 @@
 
 - The 422-idempotent message-fragment list (`already exists` / `already tracked` / `already added` / `duplicate dependency`) is pinned to `add-blocked-by.sh`'s `attempt_post()` regex. Any change to the GitHub API's idempotent-response phrasing requires updating both the script regex AND the `test-add-blocked-by.sh` fixture rows.
 - The retry schedule (10s/30s sleeps before retries 1 and 2) is pinned by issue #546's hard-fail-with-retries constraint. Any change requires user approval.
-- The fail-closed semantics on the WRITE side intentionally diverge from `skills/fix-issue/scripts/find-lock-issue.sh`'s fail-open posture on the READ side. Do NOT "harmonize" them — the divergence is a feature contract, not an oversight.
+- The fail-closed semantics on the WRITE side intentionally diverge from fail-open read-side dependency probes elsewhere in the ecosystem. Do NOT "harmonize" them — the divergence is a feature contract, not an oversight.
 
 **Test harness**: `test-add-blocked-by.sh` (sibling). Wired into `make lint` via the `test-harnesses` target. Mocks `gh` with a function-shadow approach (matching the pattern in `test-redact-secrets.sh`) and covers: 200-success path, idempotent-422 with each pinned message fragment, non-idempotent 422 → retry → exhaustion, 5xx → retry → success on attempt 2, 5xx → exhaustion → exit 2, 404 → immediate fail with feature-unavailable, secret-leak in error response → redacted output.
 
