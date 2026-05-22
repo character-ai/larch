@@ -1360,11 +1360,23 @@ is_head_divergence_recoverable() {
 }
 
 # True when every path in the comma-separated vendor conflict list is a
-# non-bump file (exclude CHANGELOG.md, CHANGELOG.rst, bare CHANGELOG, and
-# .claude-plugin/plugin.json — matching the deterministic pre-pass basenames).
+# non-bump file (exclude CHANGELOG.md, CHANGELOG.rst, bare CHANGELOG,
+# .claude-plugin/plugin.json, bump-adjacent basenames handled by the deterministic
+# pre-pass, and any repo-relative path listed in LARCH_BUMP_FILES when set —
+# aligned with run_rebase_rebump's deterministic loop and conflict-resolution.md).
 ship_pr_vendor_conflict_csv_is_non_bump_only() {
-    local csv=$1 _ofs _p _bn
+    local csv=$1 _ofs _p _bn _seg _trimmed _bf
+    local -a _bump_set=()
     [ -n "$csv" ] || return 1
+    if [[ -n "${LARCH_BUMP_FILES+x}" && -n "${LARCH_BUMP_FILES}" ]]; then
+        local -a _segments=()
+        IFS=':' read -ra _segments <<< "$LARCH_BUMP_FILES" || true
+        for _seg in "${_segments[@]+"${_segments[@]}"}"; do
+            _trimmed="${_seg#"${_seg%%[![:space:]]*}"}"
+            _trimmed="${_trimmed%"${_trimmed##*[![:space:]]}"}"
+            [[ -n "$_trimmed" ]] && _bump_set+=("$_trimmed")
+        done
+    fi
     _ofs=$IFS
     IFS=,
     set -f
@@ -1378,6 +1390,14 @@ ship_pr_vendor_conflict_csv_is_non_bump_only() {
         if [[ "$_p" == .claude-plugin/plugin.json || "$_p" == */.claude-plugin/plugin.json ]]; then
             return 1
         fi
+        case "$_bn" in
+            version.go|go.sum) return 1 ;;
+        esac
+        for _bf in "${_bump_set[@]+"${_bump_set[@]}"}"; do
+            if [[ "$_p" == "$_bf" ]]; then
+                return 1
+            fi
+        done
     done
     IFS=$_ofs
     set +f
@@ -1391,7 +1411,6 @@ _run_rebase_rebump_verify_plain_no_push() {
     rebase_rc=$?
     printf '%s\n' "$rebase_out" >> "$fail_file"
     if [ "$rebase_rc" -ne 0 ]; then
-        rm -f "${IMPLEMENT_TMPDIR}/ship-pr-rrr-after-phase14.flag" 2>/dev/null || true
         record_failure rebase "rebase-push.sh --no-push" "$rebase_rc" "$fail_file" "CI Issues"
         emit_breadcrumb "⚠ ship-pr: merge conflict on rebase"
         exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12)"
@@ -1522,10 +1541,10 @@ run_rebase_rebump() {
     # Resume after prompt-side Conflict Resolution Procedure (Phase 1–4) for
     # non-bump conflicts: skip drop/rebase replay; verify tree then continue.
     if [ -f "${IMPLEMENT_TMPDIR}/ship-pr-rrr-after-phase14.flag" ]; then
-        rm -f "${IMPLEMENT_TMPDIR}/ship-pr-rrr-after-phase14.flag"
-        state_set_many RESUME_PHASE "" CALLER_KIND ""
         _run_rebase_rebump_verify_plain_no_push "$phase"
         _run_rebase_rebump_from_step3 "$phase"
+        rm -f "${IMPLEMENT_TMPDIR}/ship-pr-rrr-after-phase14.flag"
+        state_set_many RESUME_PHASE "" CALLER_KIND ""
         return 0
     fi
 
@@ -1662,6 +1681,7 @@ run_rebase_rebump() {
             fi
             state_set_many RESUME_PHASE ship-pr-rrr-phase14 CALLER_KIND ship_pr_pre_push
             emit_breadcrumb "⚠ ship-pr: dispatching Phase 1–4 conflict-resolution (caller_kind=ship_pr_pre_push; aggregator-dispatch=conflict-resolution.md)"
+            emit_kv CONFLICT_FILES "$vendor_conflict_csv"
             exit 5
         fi
 
@@ -1957,6 +1977,9 @@ if [ -n "$RESUME_PHASE" ]; then
                 ci-initial|ci-merge) ;;
                 *) die_usage "ship-pr-rrr-phase14 resume requires PHASE ci-initial or ci-merge, got: ${_rrr_ph:-empty}" ;;
             esac
+            if [ ! -f "${IMPLEMENT_TMPDIR}/ship-pr-rrr-after-phase14.flag" ]; then
+                die_usage "ship-pr-rrr-phase14 resume requires ship-pr-rrr-after-phase14.flag under IMPLEMENT_TMPDIR (missing handoff token)"
+            fi
             advance_phase "$_rrr_ph"
             run_rebase_rebump "$_rrr_ph"
             state_set_many RESUME_PHASE "" CALLER_KIND ""

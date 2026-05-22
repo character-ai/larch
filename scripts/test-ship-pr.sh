@@ -2928,6 +2928,12 @@ else
 fi
 assert_state_line "$tmp/ship-pr-state.sh" "RESUME_PHASE=ship-pr-rrr-phase14" "phase14 deep CSV persists RESUME_PHASE"
 assert_state_line "$tmp/ship-pr-state.sh" "CALLER_KIND=ship_pr_pre_push" "phase14 deep CSV persists CALLER_KIND"
+if grep -qF 'aggregator-dispatch=conflict-resolution.md' "$tmp/stdout"; then
+    ok "phase14 deep CSV stdout mentions aggregator-dispatch/conflict-resolution"
+else
+    fail "phase14 deep CSV stdout missing aggregator-dispatch breadcrumb"
+    sed 's/^/    stdout: /' "$tmp/stdout" | head -n 20
+fi
 if grep -qF 'rebase-push.sh --keep-on-conflict' "$tmp/execution-issues.md" 2>/dev/null; then
     fail "phase14 deep CSV must not record keep-on-conflict execution-issues line before resolution"
 else
