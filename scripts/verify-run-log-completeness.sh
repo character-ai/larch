@@ -79,6 +79,10 @@ PY
 
 # True when manifest records an explicit Step 9a.1 skip (matches audit-scan-run
 # required-file-presence gate: only explicit false suppresses step9a1 rows).
+# Empty steps_ran + final-summary bail-signal is handled in condition_reached
+# (manifest_steps_ran_empty / final_summary_heading_bail_signal), not here.
+# When steps_ran is missing/null, jq semantics in audit use .steps_ran // {} (no
+# explicit step9a1 key), so this helper still returns false.
 manifest_step9a1_explicitly_skipped() {
     python3 - "$RUN_DIR/manifest.json" <<'PY'
 import json
@@ -96,7 +100,8 @@ sys.exit(1)
 PY
 }
 
-# True when steps_ran is absent or an empty object (matches audit-scan-run bail fallback).
+# True when steps_ran is absent, null, or an empty object (matches jq '.steps_ran // {}'
+# + empty-object detection in audit-scan-run bail fallback).
 manifest_steps_ran_empty() {
     python3 - "$RUN_DIR/manifest.json" <<'PY'
 import json
@@ -107,7 +112,9 @@ try:
     with open(path, "r", encoding="utf-8") as fh:
         data = json.load(fh)
     sr = data.get("steps_ran")
-    if not isinstance(sr, dict):
+    if sr is None:
+        sr = {}
+    elif not isinstance(sr, dict):
         sys.exit(1)
     sys.exit(0 if len(sr) == 0 else 1)
 except Exception:
@@ -115,18 +122,23 @@ except Exception:
 PY
 }
 
-# First non-empty line of final-summary.md ends with bailed / bailed-needs-user-input.
+# First non-empty line of final-summary.md ends with a terminal non-merge outcome
+# string persisted by write-final-report (same set as manifest honesty updates).
 final_summary_heading_bail_signal() {
     python3 - "$RUN_DIR/final-summary.md" <<'PY'
 import re
 import sys
 
 path = sys.argv[1]
+# Mirrors write-final-report bail_steps_ran outcomes (excluding merge paths).
+_heading_suffix = re.compile(
+    r"(?:bailed(?:-needs-user-input)?|stalled|design-only|forked-dry-run|pr-created(?:-draft)?)$"
+)
 try:
     with open(path, "r", encoding="utf-8", errors="replace") as fh:
         for line in fh:
             if line.strip():
-                if re.search(r"bailed(-needs-user-input)?$", line.rstrip("\r\n")):
+                if _heading_suffix.search(line.rstrip("\r\n")):
                     sys.exit(0)
                 break
 except Exception:

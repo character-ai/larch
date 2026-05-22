@@ -367,11 +367,16 @@ if [ "$COMMENT_ONLY" != "true" ]; then
             mf_fields+=(--field "steps_ran.step7a=false")
         fi
         if [ "${#mf_fields[@]}" -gt 0 ]; then
-            "$PLUGIN_ROOT/scripts/larch-log.sh" manifest \
+            if ! "$PLUGIN_ROOT/scripts/larch-log.sh" manifest \
                 --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
                 --skill implement \
                 --run-id "$RUN_ID" \
-                "${mf_fields[@]}" 2>/dev/null || true
+                "${mf_fields[@]}"; then
+                emit_kv_out COMMENT_URL ""
+                emit_kv_out STATUS failed
+                emit_kv_out ERROR "larch-log.sh manifest steps_ran update failed"
+                exit 1
+            fi
         fi
     fi
 fi

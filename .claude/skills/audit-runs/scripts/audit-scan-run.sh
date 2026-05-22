@@ -143,13 +143,15 @@ scan_required_file_presence() {
         jq -ne --argjson sr "$steps_ran_obj" '($sr | type == "object") and (($sr | keys | length) == 0)' >/dev/null 2>&1
     }
 
-    # First non-empty line of final-summary.md ends with bailed / bailed-needs-user-input.
+    # First non-empty line of final-summary.md ends with a terminal non-merge outcome
+    # persisted by write-final-report (verify-run-log-completeness mirrors this set).
     _rf_final_summary_bail_signal() {
         local fs="$RUN_DIR/final-summary.md" line
         [ -f "$fs" ] || return 1
         line=$(awk 'NF { print; exit }' "$fs" 2>/dev/null || true)
+        line="${line//$'\r'/}"
         [ -n "$line" ] || return 1
-        printf '%s\n' "$line" | grep -Eq 'bailed(-needs-user-input)?$'
+        printf '%s\n' "$line" | grep -Eq '(bailed(-needs-user-input)?|stalled|design-only|forked-dry-run|pr-created(-draft)?)$'
     }
 
     _rf_bail_empty_steps_ran_skip() {

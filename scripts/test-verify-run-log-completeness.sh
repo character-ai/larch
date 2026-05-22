@@ -28,6 +28,12 @@ assert_contains() {
     else fail "$label (missing '$needle'; got '${haystack:0:200}')"; fi
 }
 
+assert_equal() {
+    local label="$1" expected="$2" actual="$3"
+    if [[ "$actual" == "$expected" ]]; then pass "$label"
+    else fail "$label (expected '$expected', got '$actual')"; fi
+}
+
 load_required_files() {
     awk -F '\t' '
         $1 == "relative_path" { next }
@@ -288,8 +294,46 @@ printf '%s\n' '## /implement run test-run — bailed' > "$run_bail_sig/final-sum
 for f in plan-goals-test.md plan-review-tally.json code-review-tally.json review-findings-full.jsonl token-report.json timing-report.json execution-issues.ndjson session-transcript.jsonl version-bump-reasoning.md; do
     printf 'placeholder\n' > "$run_bail_sig/$f"
 done
-out="$("$VERIFY" "$run_bail_sig" 2>&1 || true)"
-assert_contains "bail-signal empty steps_ran emits OK" "$out" "OK"
+if ! out="$("$VERIFY" "$run_bail_sig" 2>&1)"; then
+    fail "bail-signal empty steps_ran: expected verifier exit 0"
+else
+    assert_equal "bail-signal empty steps_ran emits exactly OK" "OK" "$out"
+    case "$out" in *MISSING=*) fail "bail-signal empty steps_ran: output must not contain MISSING=" ;; esac
+fi
+
+# Test 17b: manifest omits steps_ran key + bailed heading → same as jq // {}
+run_bail_omit="$TMP/run-bail-signal-omit-steps-ran"
+mkdir -p "$run_bail_omit"
+cat > "$run_bail_omit/manifest.json" <<'EOF'
+{"schema_version":2}
+EOF
+printf '%s\n' '## /implement run test-run — bailed' > "$run_bail_omit/final-summary.md"
+for f in plan-goals-test.md plan-review-tally.json code-review-tally.json review-findings-full.jsonl token-report.json timing-report.json execution-issues.ndjson session-transcript.jsonl version-bump-reasoning.md; do
+    printf 'placeholder\n' > "$run_bail_omit/$f"
+done
+if ! out="$("$VERIFY" "$run_bail_omit" 2>&1)"; then
+    fail "omit steps_ran key + bailed: expected verifier exit 0"
+else
+    assert_equal "omit steps_ran key + bailed emits exactly OK" "OK" "$out"
+    case "$out" in *MISSING=*) fail "omit steps_ran key + bailed: output must not contain MISSING=" ;; esac
+fi
+
+# Test 17c: bailed-needs-user-input suffix on heading → OK
+run_bail_nui="$TMP/run-bail-needs-user-input-step9a1"
+mkdir -p "$run_bail_nui"
+cat > "$run_bail_nui/manifest.json" <<'EOF'
+{"schema_version":2,"steps_ran":{}}
+EOF
+printf '%s\n' '## /implement run test-run — bailed-needs-user-input' > "$run_bail_nui/final-summary.md"
+for f in plan-goals-test.md plan-review-tally.json code-review-tally.json review-findings-full.jsonl token-report.json timing-report.json execution-issues.ndjson session-transcript.jsonl version-bump-reasoning.md; do
+    printf 'placeholder\n' > "$run_bail_nui/$f"
+done
+if ! out="$("$VERIFY" "$run_bail_nui" 2>&1)"; then
+    fail "bailed-needs-user-input heading: expected verifier exit 0"
+else
+    assert_equal "bailed-needs-user-input heading emits exactly OK" "OK" "$out"
+    case "$out" in *MISSING=*) fail "bailed-needs-user-input: output must not contain MISSING=" ;; esac
+fi
 
 # Test 18: empty steps_ran + completed-like heading → still require run-statistics
 run_completed_sig="$TMP/run-completed-signal-step9a1"
@@ -315,8 +359,12 @@ printf '%s\n' '## /implement run test-run — completed' > "$run_explicit_bail/f
 for f in plan-goals-test.md plan-review-tally.json code-review-tally.json review-findings-full.jsonl token-report.json timing-report.json execution-issues.ndjson session-transcript.jsonl version-bump-reasoning.md; do
     printf 'placeholder\n' > "$run_explicit_bail/$f"
 done
-out="$("$VERIFY" "$run_explicit_bail" 2>&1 || true)"
-assert_contains "explicit step9a1 false with completed heading emits OK" "$out" "OK"
+if ! out="$("$VERIFY" "$run_explicit_bail" 2>&1)"; then
+    fail "explicit step9a1 false with completed heading: expected verifier exit 0"
+else
+    assert_equal "explicit step9a1 false with completed heading emits exactly OK" "OK" "$out"
+    case "$out" in *MISSING=*) fail "explicit step9a1 false: output must not contain MISSING=" ;; esac
+fi
 
 echo
 echo "Passed: $PASS"
