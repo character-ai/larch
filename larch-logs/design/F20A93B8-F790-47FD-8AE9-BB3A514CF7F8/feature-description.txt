@@ -1,0 +1,18 @@
+/design skill improvements
+
+1. when /design asks the user:
+```
+All open design questions appear discussed. Ready to launch the design review, or would you like to discuss more first?
+
+❯ 1. Ready for review
+     Proceed to Step 2b (full plan) and then Step 3 (quick plan review). The 2 scope decisions captured in Step 1c are sufficient.
+  2. Discuss more
+     Add one more discussion sub-round (e.g., specific files you want preserved, lint targets to keep, any cross-skill dependency concerns).
+  3. Type something.
+  4. Chat about this
+```
+it should include another choice: show latest design proposal, which, if chosen, outputs the design proposal with all the results of the discussion with user applied, and again presents the above choices.
+
+2. Currently, /design creates a branch, which is a left-over from the time /design was a part of /implement.  It should stop creating this branch.  I am talking about "feature" branch, not the branch it creates to push larch run logs of /design, which is fine, and happens correctly.  Further, validate that /implement creates the feature branch at the start, and cleans it up after PR is merged in cleanup at the end.
+
+3. Fix env-var persistence across Bash tool calls. Observed during a recent /design --trivial 2588 run at Step 0: SKILL.md assumes the orchestrator can `export DESIGN_TMPDIR=...` in one Bash call and have it stick for the next, but the Claude Code Bash tool does NOT preserve shell state between calls. This caused `cat > "$DESIGN_TMPDIR/feature-description.txt"` to resolve to `/feature-description.txt` (read-only filesystem error) and `--output "$DESIGN_TMPDIR/run-params.json"` to write to `/run-params.json`. The skill must either (a) inline `DESIGN_TMPDIR=...` (and any other required vars) at the top of every Bash block, or (b) write a sanctioned `session-env.sh` in Step 0 and have every later Bash block source it (matching the /implement pattern that already exists, including the AGENTS.md guardrail that bans prompt-side writes to session-env.sh — use the sanctioned writer script). Pick whichever is more robust and apply consistently; document the chosen pattern so future skills don't re-introduce the bug.

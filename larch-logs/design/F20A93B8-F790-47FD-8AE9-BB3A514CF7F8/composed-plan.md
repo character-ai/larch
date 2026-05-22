@@ -1,0 +1,105 @@
+## Plan
+
+# Implementation Plan — /design and /implement post-separation cleanup (issue #2588)
+
+### Scope (from issue body + Step 1c decisions)
+
+Three independent improvements to the `/design` skill now that `/design` and `/implement` are fully separate commands (no nested invocation):
+
+1. **Gate A re-entry: add "Show latest design proposal" option** — only on post-plan re-entries (from Gate B(c) or Gate C(b)), not on first-time Gate A.
+2. **Remove Step 1 (feature-branch creation) from `/design`** — `/design` becomes branch-state-agnostic; `/implement` already owns the feature-branch lifecycle (verified from `skills/implement/SKILL.md`: Step 0 calls `create-branch.sh --check`, Step 2 creates the branch, `finalize-state.sh` + `implement-finalize.sh teardown` cleans up post-PR-merge).
+3. **Fix env-var persistence across Bash tool calls** — `session-setup.sh` writes a sourceable env file at a stable path; every Bash block in `skills/design/SKILL.md` prepends a conditional `source` so `$DESIGN_TMPDIR` (and friends) survive across calls.
+
+Nested-mode logic in `/design` (the `SESSION_ENV_PATH` / `--caller-env` branches) is no longer reachable in production (the user confirmed "/design NEVER runs from /implement EVER"), but ripping out every dormant nested-mode branch is **explicitly out of scope** for this trivial PR. We touch only the branches needed for items 1–3; broader nested-mode dead-code removal goes into a separate follow-up issue (see Acceptance > OOS_1 follow-up).
+
+### Files to modify
+
+**Item 1 — Gate A "Show latest design proposal" option**
+
+- `skills/design/references/approval-gates.md`:
+  - In the "Gate A — Discussion Mode Loop (Step 1e)" section, update the prompt definition to fire **two distinct AskUserQuestion shapes**: a 2-option shape on first-time entry (Ready for review / Discuss more) and a 3-option shape on post-plan re-entries (Show latest design proposal / Ready for review / Discuss more). The trigger for the 3-option shape is exactly "Gate A entered from Gate B(c) or Gate C(b)" — same trigger that already routes the discussion sub-round body to `discussion-round2.md`.
+  - Under "Re-entry from Gate B(c) or Gate C(b)" subsection, add a new bullet describing the Show-plan branch: read `$DESIGN_TMPDIR/plan.txt`, print under a `## Latest Design Plan` header (verbatim, no diff vs. prior version), then immediately re-fire the same 3-option Gate A `AskUserQuestion` until the user picks Ready-for-review or Discuss-more. The Show-plan option never advances state — it loops back to the prompt.
+  - Add one paragraph clarifying that on first-time Gate A (Step 1d → 1e) the Show-plan option is **absent** because `plan.txt` does not exist yet.
+
+- `skills/design/SKILL.md`:
+  - In the Step 1e block ("Execute the Gate A body in approval-gates.md..."), update the second sentence to note: "On post-plan re-entry (from Gate B(c) or Gate C(b)), Gate A presents three options; selecting Show latest design proposal re-displays `plan.txt` and re-prompts."
+
+**Item 2 — Remove feature-branch creation from /design**
+
+- `skills/design/SKILL.md`:
+  - Delete the entire `<!-- step:1 — Create Branch -->` block (the breadcrumb print, sub-steps 1a and 1b, and the Bash blocks that call `create-branch.sh --branch <...>`). The next step after Step 0 becomes Step 1c.
+  - Step 0a: drop the `create-branch.sh --check` call and the `session-entry-gate.sh` call. `session-setup.sh` is called with `--skip-branch-check` unconditionally (no entry-gate routing needed). Drop the "clean main to start" PREFLIGHT_ERROR banner and the `Not on main branch` branch — `/design` no longer cares.
+  - Anti-pattern #4 (`NEVER pass --caller-env to session-setup.sh when SESSION_ENV_PATH is empty`): **leave entirely unchanged** in this PR. The rule remains a correct defensive invariant even though its trigger (non-empty `SESSION_ENV_PATH`) is currently unreachable in production. Its eventual fate (full removal vs. retention as future-proofing) is owned by the follow-up OOS_1 cleanup.
+  - Step 0 narrative: simplify the `branch_info_supplied` and `SKIP_BRANCH_CHECK` branches to the trivial single-path case (always `--skip-branch-check`). The legacy `--branch-info` internal flag stays documented in `references/flags.md` as historical.
+  - "Progress Reporting" section: remove the nested-mode breadcrumb-prefix example (the `/implement:/design 1.1: design plan | branch` example) since /implement no longer invokes /design; replace with a single standalone example.
+  - Update the `> **🔶 /design 1: branch**` Print directive references in surrounding step transitions to point to the new "first numbered step" (Step 1c).
+
+- `skills/design/scripts/step-name-registry.tsv`: delete the `1\tbranch` row.
+
+- `skills/design/references/flags.md`:
+  - In the "Legacy — `--branch-info` and `--step-prefix`" section, append a note that `/design` itself no longer creates a feature branch even when these legacy flags are passed (the branch step is gone); the flags remain documented for orchestration-context propagation only.
+
+- `skills/design/references/approval-gates.md`:
+  - The "Cross-tier invariant" paragraph mentions "Gate A short-circuits on the first prompt"; no functional change needed, but if any line refers to Step 1 (branch) explicitly, drop the reference.
+
+- No changes required to `skills/implement/SKILL.md` — verified that `/implement` already owns the feature-branch lifecycle. Add a confirmation note to the PR description listing the relevant `/implement` line numbers (`skills/implement/SKILL.md` ~Step 0 lines 312, 815, and the postmerge teardown around `finalize-state.sh` references).
+
+**Item 3 — Env-var persistence: sourceable session-env handoff**
+
+- `scripts/write-design-current-env.sh` (NEW, with sibling `scripts/write-design-current-env.md`):
+  - Sanctioned writer (per the AGENTS.md principle that session-env files come from sanctioned writers, not prompt-side shell).
+  - Takes flags: `--output <path>`, `--design-tmpdir <path>`, `--session-id <id>`, `--codex-present <bool>`, `--cursor-present <bool>`, `--codex-available <bool>`, `--cursor-available <bool>`, `--issue-number <n>`.
+  - Writes a sourceable bash file at `--output` containing `export DESIGN_TMPDIR=<shell-quoted>`, etc. Uses `printf '%q'` for shell-quoting to defend against pathological values (defense-in-depth; current values are tame).
+  - Atomic write (temp + mv). `set -euo pipefail`. Quiet by default per `scripts/lib-quiet.md`.
+
+- `skills/design/SKILL.md`:
+  - Step 0, after `session-setup.sh` returns and SESSION_TMPDIR/SESSION_ID/CODEX_PRESENT/CURSOR_PRESENT/CODEX_AVAILABLE/CURSOR_AVAILABLE are parsed from its stdout: add a single Bash call to `scripts/write-design-current-env.sh` that materializes `$SESSION_TMPDIR/source-env.sh` AND updates a stable symlink at `~/.cache/larch/sessions/current-design-env.sh → $SESSION_TMPDIR/source-env.sh`. (The symlink update lives inside the new writer script.)
+  - Add a "Bash block prelude" subsection near the top of SKILL.md (just below "Verbosity Control"). The prelude is a **single canonical line** used everywhere: `[ -f ~/.cache/larch/sessions/current-design-env.sh ] && source ~/.cache/larch/sessions/current-design-env.sh`. The conditional `[ -f ... ] &&` form is used uniformly (not just at Step 0) so that pre-upgrade in-progress runs degrade silently and so that any unexpected absence surfaces as the standard `set -u` "DESIGN_TMPDIR: unbound variable" error rather than a corrupted `source` call.
+  - Prepend the canonical conditional prelude line to every Bash block from Step 1c onward (Steps 1c, 1d, 1e, 2a, 2a.5, 2b, 3, 3.5, 3b, 4, 4b, 5). The Step 0 block (which CREATES the env file) does not prepend it.
+  - Remove (or simplify) the repeated `CLAUDE_PLUGIN_ROOT` bootstrap snippet that appears 20+ times at the top of step Bash blocks — once `source-env.sh` carries `CLAUDE_PLUGIN_ROOT`, the awk fallback is unneeded. **Conservative form for trivial:** keep the existing snippet as-is and just ADD the prelude line above it. Removing the awk fallback can be a follow-up.
+
+- `skills/design/scripts/test-write-design-current-env.sh` (NEW, with sibling .md): regression harness for the new writer — golden-file test that asserts shell-quoting works for paths with spaces, the atomic write is observable, the symlink updates, and re-runs are idempotent. Add to `Makefile` test target list (find the existing `test-write-*` cluster and follow the same Makefile registration pattern).
+
+### Approach
+
+- **Surgical principle:** each of the three items is independent. The Show-plan option only touches `approval-gates.md` + a Step 1e line. The branch-step removal only deletes the Step 1 block and trims a few Step 0 branches. The env-var fix is purely additive (new writer + new prelude line) — no behavior change to existing scripts.
+- **No /implement edits.** Verified from current `skills/implement/SKILL.md` that the feature-branch lifecycle (create at Step 0/Step 2, cleanup via `finalize-state.sh` + `implement-finalize.sh teardown`) is already correct. The PR description will cite the relevant /implement line numbers as the validation receipt.
+- **Stable-path single-runner contract.** The new `~/.cache/larch/sessions/current-design-env.sh` symlink relies on the existing implicit single-`/design`-at-a-time invariant (no `/design` parallelism in practice). Document this in `write-design-current-env.md` and add the same invariant to `AGENTS.md`'s "Conventions" section ("Run only one `/design` per repository at a time, mirroring the `/implement` single-runner invariant").
+- **No renumbering.** Steps 1c/1d/1e keep their labels even though Step 1 (parent) goes away — renumbering would ripple into too many cross-references for a trivial PR. The step-name-registry.tsv just loses its `1\tbranch` row.
+
+### Edge cases
+
+- **Empty `$DESIGN_TMPDIR/plan.txt` on Show-plan**: should not happen (Gate A re-entry is post-plan by definition), but guard with a clear "**⚠ plan.txt missing**" message and re-prompt anyway.
+- **Stale symlink on first run after deploy**: the symlink may point to a removed previous-session tmpdir. The new writer always overwrites the symlink, so this is self-healing on the next /design run.
+- **Concurrent /design runs (against the documented invariant)**: the second run will clobber the first's symlink, breaking the first run's subsequent Bash blocks. Document this in the writer's .md and the AGENTS.md convention; do not add locking (out of scope for trivial).
+- **Existing /design runs in progress at upgrade time**: an in-progress /design started before this change will not have the symlink and will not look for it. SKILL.md prelude uses `[ -f ~/.cache/larch/sessions/current-design-env.sh ] && source ~/.cache/larch/sessions/current-design-env.sh` to defend (silent no-op when missing), but pre-upgrade runs already have the env-var bug, so no regression.
+- **Show-plan option text rendering**: `plan.txt` includes the trailing `diff_lines: <N>` line. Display unchanged (it's informational and useful to the user).
+- **Branch-step removal during nested-runner experiments**: if anyone is still experimenting with nested /design (despite the user's NEVER-AGAIN statement), they lose the create-branch.sh call. Acceptable — they can re-add it locally.
+
+### Testing strategy
+
+- New regression harness `skills/design/scripts/test-write-design-current-env.sh` (following the `test-*.sh` cluster pattern):
+  - Asserts the writer creates a sourceable file (sourcing it inside a subshell sets all expected vars).
+  - Asserts shell-quoting handles a path containing a space.
+  - Asserts the symlink is updated atomically (writes to a temp, renames into place).
+  - Asserts idempotent re-runs (second run overwrites cleanly).
+- Manual smoke test plan (post-implementation, before PR):
+  1. Run `/design --trivial <some-issue>` from `main` and confirm: no feature branch is created; Step 0 succeeds; later Bash blocks see `$DESIGN_TMPDIR` correctly.
+  2. Run `/design` to a real plan, then at Gate A re-entry (after Gate C "Discuss further") verify the third "Show latest design proposal" option appears and re-displays `plan.txt`.
+  3. Run `/larch:relevant-checks` (pre-commit on modified files + agent-lint).
+- No new CI workflow changes; existing `make lint-bash32` and `make test-*` runs will pick up the new harness via the Makefile registration.
+
+## Acceptance
+
+1. `skills/design/SKILL.md`: the `<!-- step:1 — Create Branch -->` block and its sub-steps 1a/1b are fully removed; Step 0 calls `session-setup.sh --skip-branch-check` unconditionally with no `create-branch.sh --check` or `session-entry-gate.sh` calls; the canonical conditional prelude line is present on every Bash block from Step 1c onward; the Step 1e narrative documents the 3-option Gate A on post-plan re-entry.
+2. `skills/design/references/approval-gates.md`: Gate A section documents the 2-option (first-time) vs 3-option (re-entry) shapes; the new "Show latest design proposal" branch reads `$DESIGN_TMPDIR/plan.txt`, prints under `## Latest Design Plan`, and loops back to the same prompt.
+3. `scripts/write-design-current-env.sh` and `scripts/write-design-current-env.md` exist; the script uses `printf '%q'` shell-quoting, atomic temp+mv, and updates the stable symlink at `~/.cache/larch/sessions/current-design-env.sh`; `set -euo pipefail`; quiet-by-default via `lib-quiet.sh`.
+4. `skills/design/scripts/test-write-design-current-env.sh` (+ sibling `.md`) exists with all four assertions and runs green via `make`.
+5. `skills/design/scripts/step-name-registry.tsv` no longer contains the `1\tbranch` row.
+6. `skills/design/references/flags.md`: legacy `--branch-info` section carries the new historical note that `/design` no longer creates a feature branch.
+7. `AGENTS.md` Conventions section contains the new single-`/design` invariant line.
+8. Manual smoke verification: `/design --trivial <issue>` from `main` succeeds with no feature branch created; the next Bash block after Step 0 sees `$DESIGN_TMPDIR` populated correctly.
+9. `/larch:relevant-checks` passes after implementation (pre-commit on modified files + agent-lint on full repo).
+10. **OOS_1 follow-up** (filed separately, not in this PR): a new GitHub issue titled "Remove dormant nested-mode logic from /design SKILL.md" is created, linking back to #2588 for context.
+
+diff_lines: 360
