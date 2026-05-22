@@ -60,6 +60,7 @@ make_voter_prompt_file() {
     {
         printf '%s\n' "$panel_intro"
         printf 'Vote EXONERATE rather than YES when the concern is legitimate but the proposed change introduces more complexity than it warrants.\n'
+        printf 'Do NOT vote NO solely because you dislike the proposed fix — fix proposals are informational; the coder decides the exact change. Vote NO only when the stated problem is not real or not worth raising.\n'
         printf 'For items prefixed with [OUT_OF_SCOPE]: YES means file a GitHub issue for future tracking; NO means trivial/incorrect; EXONERATE means legitimate but not issue-worthy.\n'
         printf 'Do NOT modify files. Do NOT commit. Do NOT push.\n'
         printf '\nRead the ballot from this path: %s\n' "$BALLOT_FILE"

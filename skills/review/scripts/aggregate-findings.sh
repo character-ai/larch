@@ -288,6 +288,81 @@ def normalize_slot(sl):
 EMPTY_MERGE_ATTESTATION = "LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED"
 
 
+def input_blocks_by_slot(text):
+    """Map each normalized slot to a list of raw block texts that cite it."""
+    slot_map = {}
+    for block in input_blocks(text):
+        _line, slots = reviewer_line_slots(block)
+        for sl in slots:
+            slot_map.setdefault(normalize_slot(sl), []).append(block)
+    return slot_map
+
+
+def suggested_revisions_bullets(block):
+    """Return list of (slot_label, revision_text) from a 'Suggested revisions' sub-list."""
+    lines = block.splitlines()
+    in_revisions = False
+    bullets = []
+    for line in lines:
+        s = line.strip()
+        if re.match(r"^-\s*\*\*Suggested revisions", s, re.IGNORECASE):
+            in_revisions = True
+            continue
+        if in_revisions:
+            # New top-level field stops the sub-list
+            if re.match(r"^-\s*\*\*[A-Z]", s):
+                break
+            m = re.match(r"^-\s+From\s+(.+?):\s+(.+)$", s, re.IGNORECASE)
+            if m:
+                bullets.append((m.group(1).strip(), m.group(2).strip()))
+    return bullets
+
+
+def normalize_for_match(text):
+    """Lowercase and collapse whitespace/punctuation for substring matching."""
+    return re.sub(r"[^\w\s]", " ", text.lower())
+
+
+def check_revision_traceability(input_text, output_blocks_list):
+    """Warn when a merged 'Suggested revisions' bullet can't be traced to any input block for that slot."""
+    slot_map = input_blocks_by_slot(input_text)
+    warnings = []
+    for block in output_blocks_list:
+        head = heading_line(block)
+        is_oos = "[OUT_OF_SCOPE]" in head
+        if is_oos:
+            continue
+        bullets = suggested_revisions_bullets(block)
+        if not bullets:
+            continue
+        _, out_slots = reviewer_line_slots(block)
+        for slot_label, revision_text in bullets:
+            norm_slot = normalize_slot(slot_label)
+            if norm_slot not in slot_map:
+                continue
+            rev_norm = normalize_for_match(revision_text)
+            found = False
+            for in_block in slot_map[norm_slot]:
+                in_norm = normalize_for_match(in_block)
+                # Require at least 6 consecutive words of the revision to appear
+                words = rev_norm.split()
+                window = min(6, len(words))
+                if window < 2:
+                    found = True
+                    break
+                needle = " ".join(words[:window])
+                if needle in in_norm:
+                    found = True
+                    break
+            if not found:
+                bid = finding_id_from_block(block) or "?"
+                warnings.append(
+                    "fix text for slot %r in %s not traceable to any input block "
+                    "(first 80 chars: %r)" % (slot_label, bid, revision_text[:80])
+                )
+    return warnings
+
+
 def main():
     input_path, output_path = sys.argv[1], sys.argv[2]
     intext = open(input_path, encoding="utf-8").read()
@@ -369,6 +444,10 @@ def main():
     if missing:
         print("input reviewers missing from merge output: %r" % (missing,), file=sys.stderr)
         return 1
+    # Advisory: warn when 'Suggested revisions' bullets can't be traced back to input.
+    rev_warnings = check_revision_traceability(intext, blocks)
+    for w in rev_warnings:
+        print("warning: " + w, file=sys.stderr)
     return 0
 
 
