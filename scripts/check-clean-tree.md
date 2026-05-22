@@ -55,6 +55,10 @@ bash scripts/test-check-clean-tree.sh
 
 `make test-check-clean-tree` runs the dedicated harness and is included in the `test-harnesses-N` shard partition.
 
+## Related
+
+`scripts/check-main-sync.sh` is the companion script for detecting committed-but-unpushed larch-log flush commits on local `main`. Both scripts are called on the same pre-lock and pre-run paths; `check-clean-tree.sh` covers uncommitted working-tree changes and `check-main-sync.sh` covers ahead commits.
+
 ## Edit-in-sync
 
 When changing this helper's stdout contract, update both callers, `scripts/preflight.md`, `skills/fix-issue/scripts/find-lock-issue.md`, and `scripts/test-check-clean-tree.sh` in the same PR.
