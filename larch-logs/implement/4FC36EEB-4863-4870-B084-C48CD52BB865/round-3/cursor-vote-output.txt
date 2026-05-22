@@ -1,0 +1,39 @@
+Reading the ballot and referenced context files to verify each finding.
+
+FINDING_1: EXONERATE -- intentional filtered telemetry; optional full-stderr capture adds operational noise for rare warnings.
+FINDING_2: EXONERATE -- minor prompt shorthand; meaning matches the documented trimmed-line rule.
+FINDING_3: EXONERATE -- style-only; bullets are long but coherent and already scoped to one subsection.
+FINDING_4: EXONERATE -- defer split is already the stated posture; no tracking issue needed.
+FINDING_5: YES
+FINDING_6: EXONERATE -- real tradeoff but subsumed by tightening FINDING_5’s heading heuristic plus targeted tests.
+FINDING_7: EXONERATE -- test already forbids unexpected synthesis stderr when the file exists; extra assertions are optional.
+FINDING_8: YES
+FINDING_9: EXONERATE -- known grep-vs-validator gap called out as out-of-scope for this PR.
+FINDING_10: EXONERATE -- repair helper exits 0 by design; forcing a non-zero path needs heavy mocking for little signal.
+FINDING_11: EXONERATE -- duplicate counters are explicitly documented as a transitional alias in aggregate-findings.md.
+FINDING_12: NO -- empty session diff is a harness/cache artifact, not a product defect.
+FINDING_13: EXONERATE -- same rationale as FINDING_10.
+FINDING_14: EXONERATE -- same rationale as FINDING_11.
+FINDING_15: EXONERATE -- same rationale as FINDING_1.
+FINDING_16: NO -- same rationale as FINDING_12.
+FINDING_17: EXONERATE -- same rationale as FINDING_10.
+FINDING_18: EXONERATE -- same rationale as FINDING_11.
+FINDING_19: EXONERATE -- same rationale as FINDING_1.
+FINDING_20: NO -- same rationale as FINDING_12.
+FINDING_21: EXONERATE -- mechanical-guardrail limits are already documented; outer gating would be disproportionate here.
+FINDING_22: EXONERATE -- redundant scan is low-cost defensive validation; optional cleanup only.
+FINDING_23: YES
+FINDING_24: EXONERATE -- same stderr-filter tradeoff as FINDING_1; persisting all stderr is optional.
+FINDING_25: EXONERATE -- same rationale as FINDING_22.
+FINDING_26: EXONERATE -- posture already stated in docs; no separate issue required.
+FINDING_27: YES
+FINDING_28: EXONERATE -- extended breadcrumb is intentional and documented versus the shorter plan sketch.
+FINDING_29: EXONERATE -- case id appears in the echo body; title mismatch is cosmetic for audits.
+FINDING_30: NO -- local baseline/diff emptiness is reviewer-environment noise, not a repo defect.
+FINDING_31: EXONERATE -- cannot prove CI from static review; obvious and not worth an issue alone.
+FINDING_32: YES
+FINDING_33: NO -- meta note about empty diff, not an actionable code finding.
+FINDING_34: YES
+FINDING_35: NO -- same rationale as FINDING_33.
+FINDING_36: NO -- environment-only git-range observation.
+FINDING_37: NO -- success-path ordering note does not negate the failed-validation overwrite risk in FINDING_34.

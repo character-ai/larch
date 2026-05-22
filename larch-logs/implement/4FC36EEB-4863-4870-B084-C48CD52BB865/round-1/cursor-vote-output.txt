@@ -1,0 +1,23 @@
+Reading the ballot and nearby context files to verify findings.
+
+FINDING_1: YES
+FINDING_2: EXONERATE -- two small identical loops; extracting a helper adds indirection without fixing a demonstrated skew bug.
+FINDING_3: EXONERATE -- real mild spec drift, optional doc/validator alignment not worth a standalone tracking issue.
+FINDING_4: EXONERATE -- same fenced-example concern as FINDING_1; one doc fix covers it.
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: EXONERATE -- acknowledged low-impact tmpdir clutter on kill; no durable harm worth an issue.
+FINDING_8: EXONERATE -- reviewer baseline hygiene note, not a product defect warranting a GitHub issue.
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: EXONERATE -- same fenced-example concern as FINDING_1/10; redundant with those accepted items.
+FINDING_14: EXONERATE -- same input_slots naming/semantics point as FINDING_6; redundant ballot entry.
+FINDING_15: EXONERATE -- pre-existing pattern skew; optional follow-up, not worth filing unless tightening FINDING detection broadly.
+FINDING_16: YES
+FINDING_17: EXONERATE -- session diff/reviewer logistics, not a codebase defect to track.
+FINDING_18: EXONERATE -- duplicate fenced-example correctness item already covered by FINDING_1/10.
+FINDING_19: NO -- describes correct wiring and inherent recovery tradeoff, not a discrete defect or tracking item.
+FINDING_20: EXONERATE -- factual review-environment note, not an actionable repo issue.
+FINDING_21: EXONERATE -- same test-gap concern as FINDING_9; one stricter assertion addresses both.

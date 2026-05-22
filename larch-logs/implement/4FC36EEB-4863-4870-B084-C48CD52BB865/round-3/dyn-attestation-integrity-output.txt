@@ -1,0 +1,15 @@
+Gathering the branch diff and relevant source sections for a correctness-focused attestation-integrity review.
+
+Diff cache file is empty; branch log is empty. Fetching read-only git diff and reading the implementation files.
+
+HEAD matches `main` (no commits ahead); the cached `diff.txt` is empty. Reading the attestation repair, validation, and strip logic in the repo for a correctness review.
+
+Verifying the `###FINDING_` edge case against the regex behavior:
+
+### In-Scope Findings
+
+- **correctness** `skills/review/scripts/aggregate-findings.sh:322-334` — `has_nonconforming_finding_heading_markers` only treats lines as pseudo-headings when `re.match(r"^###\s+FINDING_", ls)` matches, which **requires** at least one whitespace between `###` and `FINDING_`, so a line like `###FINDING_1: …` (no space) is **not** flagged, while `output_blocks` / the split anchor still see **zero** structured blocks; `_attempt_attestation_repair` can then append `LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED` and `main()` accepts the empty-merge path, treating narrative with a tight `###FINDING_…` typo as a legitimate empty merge. **Suggested fix:** align the pseudo-heading detector with the strict heading / split contract—for example match `^###\s*FINDING_` (or explicitly detect `###` immediately followed by `FINDING_`) whenever `line_opens_valid_finding_block` is false, so this class of malformed heading fails closed like other nonconforming markers.
+
+### Out-of-Scope Observations
+
+- `HEAD` and `main` both resolve to `12233fe3eb23911ad18b29a6b4f00cd5ee5fb516`, `git log $(git merge-base HEAD main)..HEAD --oneline` was empty, and `<TMPDIR>/round-3/diff.txt` was empty, so there was no branch-specific diff to attribute changes against; the finding above comes from static review of the current `aggregate-findings.sh` repair/validation interaction.

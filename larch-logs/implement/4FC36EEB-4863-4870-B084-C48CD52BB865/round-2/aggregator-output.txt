@@ -1,0 +1,3 @@
+Aggregating overlapping reviewer items into stable `FINDING_N` blocks with verbatim per-slot revisions. Merging: nonconforming-heading cluster (inputs 2, 9, 16, 20); breadcrumb/plan naming (3, 17, 19); artifact/plan raw-bytes contract (8, 22); out-of-scope empty diff / invocation (11, 23).
+
+

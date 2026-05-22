@@ -1,0 +1,17 @@
+Gathering the diff, commit list, and full implementation context for the attestation-repair path.
+
+Precomputed diff is empty; comparing working tree to `main` and reading the aggregator implementation.
+
+HEAD matches `main` (no git diff). Reviewing the implemented attestation-repair path in the repo against the plan and scout checklist.
+
+Checking `output_blocks`, `input_blocks`, `count_finding_blocks`, and how `cand` is produced to verify alignment with the validator.
+
+Checking for a `count_finding_blocks` / `output_blocks` mismatch that could affect the post-strip empty-file guard:
+
+### In-Scope Findings
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+- In this workspace `HEAD` and `main` are the same commit (`ad22b2a945f686e7ec73a999aeeec678b29629fb`), `git log $(git merge-base HEAD main)..HEAD --oneline` is empty, and `<TMPDIR>/round-2/diff.txt` is empty, so there is no branch-vs-main diff to attribute changes against here; the review below is against the current tree implementation of the described feature.
+- **`_attempt_attestation_repair`** in [`skills/review/scripts/aggregate-findings.sh`](skills/review/scripts/aggregate-findings.sh) uses the same `output_blocks(raw_text)` predicate as the validator’s `main()` path, the same full-line trimmed attestation check as `main()` and the strip pass, and gates synthesis with `has_nonconforming_finding_heading_markers` so narrative with drifted `### FINDING_`-like lines is not auto-rescued into a passing empty-merge. The bash driver runs `--repair-attestation` and replaces `cand` **before** `python3 "$validate_py" "$FINDINGS_FILE" "$cand"` (validate), and the strip pass runs **after** successful validation on the same `cand` path, so ordering matches the scout checklist.
+- **Pre-existing looseness (unchanged by this feature):** `count_finding_blocks` uses `grep '^### FINDING_[0-9]'`, while Python splitting/validation requires `### FINDING_[0-9]+:` on block boundaries; that mismatch predates the repair hook and is unchanged, but it is the one place where bash-side “zero findings” heuristics could theoretically diverge from Python’s notion of blocks (only relevant to the post-strip empty-file guard at lines 685–687, not to whether synthesis fires).
