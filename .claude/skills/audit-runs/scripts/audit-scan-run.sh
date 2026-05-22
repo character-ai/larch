@@ -128,8 +128,12 @@ scan_required_file_presence() {
     fi
     local missing="" mf="$RUN_DIR/manifest.json"
     local steps_ran_obj="{}"
+    local steps_ran_parse_ok=true
     if [ -f "$mf" ]; then
-        steps_ran_obj=$(jq -c '.steps_ran // {}' "$mf" 2>/dev/null || echo "{}")
+        if ! steps_ran_obj=$(jq -c '.steps_ran // {}' "$mf" 2>/dev/null); then
+            steps_ran_parse_ok=false
+            steps_ran_obj="{}"
+        fi
     fi
 
     _rf_has_file() { [ -f "$RUN_DIR/$1" ]; }
@@ -137,11 +141,13 @@ scan_required_file_presence() {
     # _rf_steps_ran_false: return 0 (true) when manifest explicitly records
     # that the step did NOT run; otherwise return 1 so heuristics can decide.
     _rf_steps_ran_false() {
+        [ "$steps_ran_parse_ok" = true ] || return 1
         jq -ne --arg c "$1" --argjson sr "$steps_ran_obj" '($sr[$c] == false)' >/dev/null 2>&1
     }
 
     # True when manifest has no steps_ran entries (empty object or absent steps_ran).
     _rf_steps_ran_empty() {
+        [ "$steps_ran_parse_ok" = true ] || return 1
         jq -ne --argjson sr "$steps_ran_obj" '($sr | type == "object") and (($sr | keys | length) == 0)' >/dev/null 2>&1
     }
 
@@ -162,6 +168,7 @@ scan_required_file_presence() {
 
     # Non-empty steps_ran object with no step9a1 key (verify-run-log-completeness parity).
     _rf_steps_ran_nonempty_without_step9a1() {
+        [ "$steps_ran_parse_ok" = true ] || return 1
         jq -ne --argjson sr "$steps_ran_obj" \
             '($sr | type == "object") and (($sr | keys | length) > 0) and ($sr | has("step9a1") | not)' \
             >/dev/null 2>&1

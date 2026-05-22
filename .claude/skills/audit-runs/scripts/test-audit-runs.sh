@@ -1820,6 +1820,54 @@ else
     echo "  SKIP: audit-scan-run.sh not executable (not found at $SCAN_SCRIPT)"
 fi
 
+# Test 52d: audit-scan-run — nonempty steps_ran without step9a1 + bail + missing run-statistics → pass
+echo "Test 52d: audit-scan-run nonempty steps_ran without step9a1 + bail skips step9a1"
+SCAN_SCRIPT="${SCAN_SCRIPT:-$SCRIPT_DIR/audit-scan-run.sh}"
+if [ -x "$SCAN_SCRIPT" ]; then
+    P52d=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-steps52d-XXXXXX")
+    printf '%s\n' 'name	type	pattern	expected_outcome	severity' > "$P52d/scans.tsv"
+    printf '%s\n' 'required-file-presence	file-glob	x	x	low' >> "$P52d/scans.tsv"
+    printf '%s\n' 'relative_path	condition	batch_slug	extension' > "$P52d/req.tsv"
+    printf '%s\n' 'oos-issues.ndjson	step9a1	x	x' >> "$P52d/req.tsv"
+    printf '%s\n' 'run-statistics.md	step9a1	x	x' >> "$P52d/req.tsv"
+    mkdir -p "$P52d/run"
+    printf '%s\n' '{"schema_version":2,"steps_ran":{"step8":true}}' > "$P52d/run/manifest.json"
+    printf '%s\n' '## /implement run test-run — bailed' > "$P52d/run/final-summary.md"
+    p52d_out=$(bash "$SCAN_SCRIPT" --run-dir "$P52d/run" --pr 2003 \
+        --scans-tsv "$P52d/scans.tsv" \
+        --required-files-tsv "$P52d/req.tsv" \
+        --current-version "1.0.0")
+    res52d=$(printf '%s' "$p52d_out" | jq -r 'select(.scan=="required-file-presence") | .result // empty' | head -1)
+    assert_equal "$res52d" "pass" "[52d] nonempty steps_ran without step9a1 + bailed → pass"
+    rm -rf "$P52d"
+else
+    echo "  SKIP: audit-scan-run.sh not executable (not found at $SCAN_SCRIPT)"
+fi
+
+# Test 52e: audit-scan-run — corrupt manifest.json + bail must not collapse steps_ran to empty
+echo "Test 52e: audit-scan-run corrupt manifest + bail still enforces step9a1"
+SCAN_SCRIPT="${SCAN_SCRIPT:-$SCRIPT_DIR/audit-scan-run.sh}"
+if [ -x "$SCAN_SCRIPT" ]; then
+    P52e=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-steps52e-XXXXXX")
+    printf '%s\n' 'name	type	pattern	expected_outcome	severity' > "$P52e/scans.tsv"
+    printf '%s\n' 'required-file-presence	file-glob	x	x	low' >> "$P52e/scans.tsv"
+    printf '%s\n' 'relative_path	condition	batch_slug	extension' > "$P52e/req.tsv"
+    printf '%s\n' 'oos-issues.ndjson	step9a1	x	x' >> "$P52e/req.tsv"
+    printf '%s\n' 'run-statistics.md	step9a1	x	x' >> "$P52e/req.tsv"
+    mkdir -p "$P52e/run"
+    printf '%s\n' '{not valid json' > "$P52e/run/manifest.json"
+    printf '%s\n' '## /implement run test-run — bailed' > "$P52e/run/final-summary.md"
+    p52e_out=$(bash "$SCAN_SCRIPT" --run-dir "$P52e/run" --pr 2006 \
+        --scans-tsv "$P52e/scans.tsv" \
+        --required-files-tsv "$P52e/req.tsv" \
+        --current-version "1.0.0")
+    res52e=$(printf '%s' "$p52e_out" | jq -r 'select(.scan=="required-file-presence") | .result // empty' | head -1)
+    assert_equal "$res52e" "fail" "[52e] corrupt manifest + bailed → fail (do not fake empty steps_ran)"
+    rm -rf "$P52e"
+else
+    echo "  SKIP: audit-scan-run.sh not executable (not found at $SCAN_SCRIPT)"
+fi
+
 # Test 53: audit-scan-run — empty steps_ran + completed-like heading → still fail (real incomplete)
 echo "Test 53: audit-scan-run empty steps_ran + non-bail summary still enforces step9a1"
 SCAN_SCRIPT="${SCAN_SCRIPT:-$SCRIPT_DIR/audit-scan-run.sh}"

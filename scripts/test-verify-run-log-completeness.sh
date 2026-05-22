@@ -335,6 +335,23 @@ else
     case "$out" in *MISSING=*) fail "bailed-needs-user-input: output must not contain MISSING=" ;; esac
 fi
 
+# Test 17d: nonempty steps_ran without step9a1 + bail + missing run-statistics (audit-scan-run parity)
+run_nonempty_no_s9a1="$TMP/run-nonempty-steps-ran-no-step9a1-bail"
+mkdir -p "$run_nonempty_no_s9a1"
+cat > "$run_nonempty_no_s9a1/manifest.json" <<'EOF'
+{"schema_version":2,"steps_ran":{"step8":true}}
+EOF
+printf '%s\n' '## /implement run test-run — bailed' > "$run_nonempty_no_s9a1/final-summary.md"
+for f in plan-goals-test.md plan-review-tally.json code-review-tally.json review-findings-full.jsonl token-report.json timing-report.json execution-issues.ndjson session-transcript.jsonl version-bump-reasoning.md; do
+    printf 'placeholder\n' > "$run_nonempty_no_s9a1/$f"
+done
+if ! out="$("$VERIFY" "$run_nonempty_no_s9a1" 2>&1)"; then
+    fail "nonempty steps_ran without step9a1 + bail: expected verifier exit 0"
+else
+    assert_equal "$out" "OK" "nonempty steps_ran without step9a1 + bail emits exactly OK"
+    case "$out" in *MISSING=*) fail "nonempty steps_ran without step9a1 + bail: output must not contain MISSING=" ;; esac
+fi
+
 # Test 18: empty steps_ran + completed-like heading → still require run-statistics
 run_completed_sig="$TMP/run-completed-signal-step9a1"
 mkdir -p "$run_completed_sig"

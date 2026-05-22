@@ -353,7 +353,7 @@ if [ "$COMMENT_ONLY" != "true" ]; then
     fi
     if [ "$bail_steps_ran" = true ] && [ -f "$mf_impl" ]; then
         mf_fields=()
-        if [ ! -f "$run_dir/run-statistics.md" ]; then
+        if [ ! -f "$run_dir/run-statistics.md" ] && [ ! -f "$run_dir/oos-issues.ndjson" ]; then
             mf_fields+=(--field "steps_ran.step9a1=false")
         fi
         if [ ! -f "$run_dir/version-bump-reasoning.md" ]; then

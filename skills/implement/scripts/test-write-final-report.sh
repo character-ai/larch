@@ -18,9 +18,25 @@ finish(){ [ "$FAIL" -eq 0 ] || exit 1; printf 'PASS=%s\n' "$PASS"; }
 
 plugin="$TMP_ROOT/plugin"; mkdir -p "$plugin/scripts"
 cp "$REPO_ROOT/scripts/lib-quiet.sh" "$plugin/scripts/lib-quiet.sh"
+cp "$REPO_ROOT/scripts/run-log-terminal-outcomes.inc.bash" "$plugin/scripts/run-log-terminal-outcomes.inc.bash"
 cp "$REPO_ROOT/scripts/render-run-summary.sh" "$plugin/scripts/render-run-summary.sh"
 cp "$REPO_ROOT/scripts/token-cost.sh" "$plugin/scripts/token-cost.sh"
 chmod +x "$plugin/scripts/render-run-summary.sh" "$plugin/scripts/token-cost.sh"
+cat > "$plugin/scripts/larch-log.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+if [ "$1" != manifest ]; then exit 0; fi
+shift
+if [ "${LARCH_LOG_MANIFEST_FAIL:-false}" = true ]; then
+    printf 'manifest stub failure\n' >&2
+    exit 1
+fi
+log="${LARCH_LOG_MANIFEST_LOG:-}"
+[ -n "$log" ] || exit 0
+printf '%s\n' "$*" >>"$log"
+exit 0
+STUB
+chmod +x "$plugin/scripts/larch-log.sh"
 cat > "$plugin/scripts/tracking-issue-summary.sh" <<'STUB'
 #!/usr/bin/env bash
 if [ "${TRACKING_FAIL:-false}" = "true" ]; then
@@ -163,5 +179,43 @@ out=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-bl.md
       "$HELPER" --implement-tmpdir "$impl_bl")
 assert_contains 'STATUS=ok' "$out" 'bailed path status ok'
 assert_contains '**Outcome**: bailed' "$(cat "$TMP_ROOT/content-bl.md")" 'plain bailed outcome in summary'
+
+# Bail + manifest.json: larch-log manifest stamps steps_ran.* and hard-fails on manifest error
+impl_mfb="$TMP_ROOT/impl-mfb"; mkdir -p "$impl_mfb/larch-logs/implement/run-mfb"
+printf 'ISSUE_NUMBER=11\nRUN_ID=run-mfb\nADOPTED=true\n' > "$impl_mfb/parent-issue.md"
+printf 'REPO=owner/repo\n' > "$impl_mfb/session-env.sh"
+{
+    printf 'PR_URL=N/A\n'
+    printf 'PR_NUMBER=\n'
+    printf 'STALL_TRACKING=false\n'
+    printf 'MERGE_RESULT=\n'
+    printf 'MERGE=false\n'
+    printf 'DRAFT=false\n'
+    printf 'FORKED_TARGET=false\n'
+} > "$impl_mfb/ship-pr-state.sh"
+printf 'DESIGN_ONLY_DONE=false\nBAIL_NEEDS_USER_INPUT=false\n' > "$impl_mfb/finalize-state.sh"
+printf 'NO_ISSUES=false\n' > "$impl_mfb/run-flags.sh"
+printf '{"schema_version":2,"steps_ran":{}}\n' > "$impl_mfb/larch-logs/implement/run-mfb/manifest.json"
+mf_log="$TMP_ROOT/mf-invoke.log"
+: >"$mf_log"
+out=$(CLAUDE_PLUGIN_ROOT="$plugin" LARCH_LOG_MANIFEST_LOG="$mf_log" TRACKING_CONTENT_LOG="$TMP_ROOT/content-mfb.md" \
+      "$HELPER" --implement-tmpdir "$impl_mfb")
+assert_contains 'STATUS=ok' "$out" 'bail manifest stamp path status ok'
+assert_contains 'steps_ran.step9a1=false' "$(cat "$mf_log")" 'manifest stamp includes step9a1 false'
+assert_contains 'steps_ran.step8=false' "$(cat "$mf_log")" 'manifest stamp includes step8 false'
+assert_contains 'steps_ran.step7a=false' "$(cat "$mf_log")" 'manifest stamp includes step7a false'
+assert_contains '--log-root' "$(cat "$mf_log")" 'manifest forwards --log-root'
+assert_contains '--skill implement' "$(cat "$mf_log")" 'manifest forwards --skill'
+assert_contains '--run-id run-mfb' "$(cat "$mf_log")" 'manifest forwards --run-id'
+
+set +e
+out_mf_fail=$(CLAUDE_PLUGIN_ROOT="$plugin" LARCH_LOG_MANIFEST_FAIL=true LARCH_LOG_MANIFEST_LOG="$TMP_ROOT/mf-fail.log" \
+    TRACKING_CONTENT_LOG="$TMP_ROOT/content-mf-fail.md" \
+    "$HELPER" --implement-tmpdir "$impl_mfb" 2>/dev/null)
+rc_mf=$?
+set -e
+if [ "$rc_mf" -eq 1 ]; then pass 'manifest update failure exits non-zero'; else fail 'manifest update failure exits non-zero'; fi
+assert_contains 'STATUS=failed' "$out_mf_fail" 'manifest failure status failed'
+assert_contains 'larch-log.sh manifest steps_ran update failed' "$out_mf_fail" 'manifest failure error text'
 
 finish
