@@ -145,24 +145,14 @@ has_managed_prefix() {
 }
 
 # Returns 0 if the title matches the [... Report] pattern — a bracket-enclosed
-# phrase ending with " Report" (case-insensitive) at the start of the title
+# phrase ending with " report]" (case-insensitive) at the start of the title
 # (e.g. "[Weekly Report]", "[AUDIT REPORT] Q3", "[analysis report]"). These
-# are report/analytics issues not meant for automated fixing.
+# are report/analytics issues not meant for automated fixing. Run-logs audit
+# report titles use `[Run Logs Audit <timestamp> Report] …`, which also match
+# this pattern; combined with the `audit-report` label check, they stay
+# excluded from /fix-issue.
 has_report_prefix() {
     printf '%s' "$1" | grep -qiE '^\[[^]]*[[:space:]]+report\]'
-}
-
-# Returns 0 when the title uses the stable run-logs audit-report prefix
-# (`[Run Logs Audit Report …]`), which is not matched by has_report_prefix
-# because the closing `]` follows the ISO timestamp, not immediately after
-# the word "Report". Used as a secondary guard when the audit-report label is
-# missing or unreadable.
-has_run_logs_audit_report_title() {
-    local t="$1"
-    case "$t" in
-        '[Run Logs Audit Report '*) return 0 ;;
-        *)                         return 1 ;;
-    esac
 }
 
 ISSUE_ARG=""
@@ -678,12 +668,6 @@ if [[ -n "$ISSUE_ARG" ]]; then
             exit 2
             ;;
     esac
-
-    if has_run_logs_audit_report_title "$ISSUE_TITLE"; then
-        emit_kv ELIGIBLE false
-        emit_kv ERROR "Issue #$ISSUE_NUM has a run-logs audit report title; not a fix-issue candidate"
-        exit 2
-    fi
 
     # Umbrella detection (explicit-issue path only): runs BEFORE both the
     # managed-prefix early-reject AND the last-comment `IN PROGRESS` lock

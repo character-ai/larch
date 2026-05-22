@@ -916,7 +916,7 @@ echo "Fixture 24: explicit-target refuses audit-report labeled issue"
 run_fixture "fixture-24"
 {
     echo "ISSUE_STATE=OPEN"
-    echo "ISSUE_TITLE='[Run Logs Audit Report 2026-05-20T19:30Z] PRs #2430-#2440'"
+    echo "ISSUE_TITLE='[Run Logs Audit 2026-05-20T19:30Z Report] PRs #2430-#2440'"
     echo "ISSUE_240_LABELS='[\"audit-report\"]'"
     echo "RENAME_FAIL=false"
 } > "$STUB_STATE_FILE"

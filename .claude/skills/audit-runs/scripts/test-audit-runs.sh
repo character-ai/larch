@@ -353,36 +353,35 @@ assert_equal "$result" "proposed_augmentations:EXON regression in PR #2450" "[13
 # ---------------------------------------------------------------------------
 # Test 14: audit report title matches the exclusion pattern used by
 # the skill's own bug-search filter (prevents self-augmentation).
-# The audit report title format is: [Run Logs Audit Report <Pacific-ISO-timestamp>] PRs #X-#Y
+# The audit report title format is: [Run Logs Audit <Pacific-ISO-timestamp> Report] PRs #X-#Y
 # (America/Los_Angeles wall time with explicit -07:00 or -08:00 offset in the bracket.)
-# The skill uses the prefix pattern ^\[Run Logs Audit Report
-# (the ISO timestamp is INSIDE the bracket so the generic [... Report]
-# pattern from has_report_prefix does not match; the skill uses its own
-# broader pattern for self-exclusion and relies on the audit-report label
-# filter in find-lock-issue.sh for /fix-issue exclusion).
+# The skill uses the prefix pattern ^\[Run Logs Audit .* Report\]
+# (timestamp before the word "Report" inside the bracket). The generic
+# has_report_prefix pattern in find-lock-issue.sh also matches this shape;
+# the audit-report GitHub label filter remains the primary /fix-issue exclusion guard.
 # ---------------------------------------------------------------------------
 echo "Test 14: audit report title matches self-exclusion prefix"
 title_matches_audit_report_exclusion() {
     local title="$1"
-    printf '%s' "$title" | grep -qE '^\[Run Logs Audit Report' && echo "excluded" || echo "pickable"
+    printf '%s' "$title" | grep -qE '^\[Run Logs Audit .* Report\]' && echo "excluded" || echo "pickable"
 }
-result=$(title_matches_audit_report_exclusion "[Run Logs Audit Report 2026-05-20T12:30-07:00] PRs #2440-#2450")
+result=$(title_matches_audit_report_exclusion "[Run Logs Audit 2026-05-20T12:30-07:00 Report] PRs #2440-#2450")
 assert_equal "$result" "excluded" "[14] audit report title matches self-exclusion prefix"
-result=$(title_matches_audit_report_exclusion "[Run Logs Audit Report 2026-05-20T12:30-07:00] PRs #2440, #2445")
+result=$(title_matches_audit_report_exclusion "[Run Logs Audit 2026-05-20T12:30-07:00 Report] PRs #2440, #2445")
 assert_equal "$result" "excluded" "[14b] non-contiguous audit report title also excluded"
 result=$(title_matches_audit_report_exclusion "Fix EXON regression in voting tally")
 assert_equal "$result" "pickable" "[14c] normal bug issue title is NOT excluded"
 result=$(title_matches_audit_report_exclusion "[IN PROGRESS] Create /larch:audit-runs skill")
 assert_equal "$result" "pickable" "[14d] non-audit-report title not excluded"
 
-# Test 14e: the find-lock-issue.sh has_report_prefix does NOT match the audit
-# report title (hence why label-based exclusion is the primary guard)
+# Test 14e: find-lock-issue.sh has_report_prefix matches the audit report title
+# (space before "report]" inside the bracket); label-based exclusion is still primary.
 title_matches_has_report_prefix() {
     local title="$1"
     printf '%s' "$title" | grep -qiE '^\[[^]]*[[:space:]]+report\]' && echo "matched" || echo "no_match"
 }
-result=$(title_matches_has_report_prefix "[Run Logs Audit Report 2026-05-20T12:30-07:00] PRs #2440-#2450")
-assert_equal "$result" "no_match" "[14e] audit report title does NOT match has_report_prefix (label filter is primary guard)"
+result=$(title_matches_has_report_prefix "[Run Logs Audit 2026-05-20T12:30-07:00 Report] PRs #2440-#2450")
+assert_equal "$result" "matched" "[14e] audit report title matches has_report_prefix (label filter is primary guard)"
 result=$(title_matches_has_report_prefix "[AUDIT REPORT] Q3 analysis")
 assert_equal "$result" "matched" "[14f] generic [... Report] title still matches has_report_prefix"
 
@@ -887,16 +886,16 @@ echo "Test 29: audit-title title format"
 TITLE_SCRIPT="$SCRIPT_DIR/audit-title.sh"
 if [ -x "$TITLE_SCRIPT" ]; then
     result=$(bash "$TITLE_SCRIPT" --pr-list "2476,2477,2478" --timestamp "2026-05-20T22:00-07:00" | grep -oE 'TITLE=.*' | sed 's/TITLE=//')
-    assert_equal "$result" "[Run Logs Audit Report 2026-05-20T22:00-07:00] PRs #2476-#2478" "[29] contiguous range title"
+    assert_equal "$result" "[Run Logs Audit 2026-05-20T22:00-07:00 Report] PRs #2476-#2478" "[29] contiguous range title"
 
     result=$(bash "$TITLE_SCRIPT" --pr-list "2476,2477,2480" --timestamp "2026-05-20T22:00-07:00" | grep -oE 'TITLE=.*' | sed 's/TITLE=//')
-    assert_equal "$result" "[Run Logs Audit Report 2026-05-20T22:00-07:00] PRs #2476, #2477, #2480" "[29b] non-contiguous title"
+    assert_equal "$result" "[Run Logs Audit 2026-05-20T22:00-07:00 Report] PRs #2476, #2477, #2480" "[29b] non-contiguous title"
 
     result=$(bash "$TITLE_SCRIPT" --pr-list "2476, 2477 , 2478" --timestamp "2026-05-20T22:00-07:00" | grep -oE 'TITLE=.*' | sed 's/TITLE=//')
-    assert_equal "$result" "[Run Logs Audit Report 2026-05-20T22:00-07:00] PRs #2476-#2478" "[29d] spaced comma PR list → contiguous title"
+    assert_equal "$result" "[Run Logs Audit 2026-05-20T22:00-07:00 Report] PRs #2476-#2478" "[29d] spaced comma PR list → contiguous title"
 
     result=$(bash "$TITLE_SCRIPT" --pr-list "2476" --timestamp "2026-05-20T22:00-07:00" | grep -oE 'TITLE=.*' | sed 's/TITLE=//')
-    assert_equal "$result" "[Run Logs Audit Report 2026-05-20T22:00-07:00] PRs #2476" "[29c] single PR title"
+    assert_equal "$result" "[Run Logs Audit 2026-05-20T22:00-07:00 Report] PRs #2476" "[29c] single PR title"
 else
     echo "  SKIP: audit-title.sh not executable (not found at $TITLE_SCRIPT)"
 fi
@@ -1393,9 +1392,9 @@ echo "Test 39: audit-title long PR list + leading zeros"
 TITLE_SCRIPT="${TITLE_SCRIPT:-$SCRIPT_DIR/audit-title.sh}"
 if [ -x "$TITLE_SCRIPT" ]; then
     long_title=$(bash "$TITLE_SCRIPT" --pr-list "2400,2401,2402,2403,2405,2407,2409,2411" --timestamp "2026-05-20T22:00-07:00" | sed -n 's/^TITLE=//p')
-    assert_equal "$long_title" "[Run Logs Audit Report 2026-05-20T22:00-07:00] PRs #2400, #2401, #2402, #2403, #2405, #2407, #2409, #2411" "[39] long explicit non-contiguous title snapshot"
+    assert_equal "$long_title" "[Run Logs Audit 2026-05-20T22:00-07:00 Report] PRs #2400, #2401, #2402, #2403, #2405, #2407, #2409, #2411" "[39] long explicit non-contiguous title snapshot"
     lz_title=$(bash "$TITLE_SCRIPT" --pr-list "0002476,0002477,0002478" --timestamp "2026-05-20T22:00-07:00" | sed -n 's/^TITLE=//p')
-    assert_equal "$lz_title" "[Run Logs Audit Report 2026-05-20T22:00-07:00] PRs #2476-#2478" "[39b] leading-zero tokens form contiguous range"
+    assert_equal "$lz_title" "[Run Logs Audit 2026-05-20T22:00-07:00 Report] PRs #2476-#2478" "[39b] leading-zero tokens form contiguous range"
 else
     echo "  SKIP: audit-title.sh not executable (not found at $TITLE_SCRIPT)"
 fi
@@ -1878,7 +1877,7 @@ classify_c1_bucket_from_gh_issues_json() {
     jq -rn --argjson issues "$1" '
         def is_open: (.state | ascii_downcase) == "open";
         def is_noise:
-            (.title | type == "string" and test("^\\[Run Logs Audit Report"));
+            (.title | type == "string" and test("^\\[Run Logs Audit .* Report\\]"));
         ([$issues[] | select(is_open and (is_noise | not))]) as $eligible_open
         | if ($eligible_open | length) > 0 then
             "proposed_augmentations"
@@ -1889,9 +1888,9 @@ classify_c1_bucket_from_gh_issues_json() {
 }
 result=$(classify_c1_bucket_from_gh_issues_json '[{"number":1,"title":"[IN PROGRESS] widget bug","state":"OPEN"}]')
 assert_equal "$result" "proposed_augmentations" "[58] open [IN PROGRESS] title counts as augmentation match (not search-excluded)"
-result=$(classify_c1_bucket_from_gh_issues_json '[{"number":1,"title":"[Run Logs Audit Report] 2026-01","state":"OPEN"}]')
+result=$(classify_c1_bucket_from_gh_issues_json '[{"number":1,"title":"[Run Logs Audit 2026-01 Report] tail","state":"OPEN"}]')
 assert_equal "$result" "proposed_new_issues" "[58b] audit-report noise title alone → no eligible open match → proposed_new_issues"
-result=$(classify_c1_bucket_from_gh_issues_json '[{"number":1,"title":"[Run Logs Audit Report] noise","state":"OPEN"},{"number":2,"title":"[IN PROGRESS] same bug","state":"OPEN"}]')
+result=$(classify_c1_bucket_from_gh_issues_json '[{"number":1,"title":"[Run Logs Audit noise Report] more","state":"OPEN"},{"number":2,"title":"[IN PROGRESS] same bug","state":"OPEN"}]')
 assert_equal "$result" "proposed_augmentations" "[58c] noise open + real open → precedence to augmentations"
 result=$(classify_c1_bucket_from_gh_issues_json '[{"number":1,"title":"widget bug","state":"CLOSED"},{"number":2,"title":"widget bug","state":"OPEN"}]')
 assert_equal "$result" "proposed_augmentations" "[58d] mixed closed+open (--state all style payload) → open wins → augmentations"

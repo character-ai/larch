@@ -2,12 +2,12 @@
 # audit-title.sh — Generate audit report title string.
 #
 # Title rules:
-#   Contiguous range:      [Run Logs Audit Report <ts>] PRs #X-#Y
-#   Non-contiguous <= 4:   [Run Logs Audit Report <ts>] PRs #X, #Y, #Z
-#   Non-contiguous > 4:    [Run Logs Audit Report <ts>] PRs #X, #Y, #Z, #A, #B, ...
+#   Contiguous range:      [Run Logs Audit <ts> Report] PRs #X-#Y
+#   Non-contiguous <= 4:   [Run Logs Audit <ts> Report] PRs #X, #Y, #Z
+#   Non-contiguous > 4:    [Run Logs Audit <ts> Report] PRs #X, #Y, #Z, #A, #B, ...
 #
 # Output KV (stdout):
-#   TITLE=[Run Logs Audit Report <ts>] PRs ...
+#   TITLE=[Run Logs Audit <ts> Report] PRs ...
 #
 # Usage:
 #   audit-title.sh --pr-list N,M,... --timestamp STR
@@ -46,7 +46,7 @@ fi
 
 if [ "$PR_COUNT" -eq 1 ]; then
     ONLY=$(printf '%s' "$SORTED_PRS" | head -1)
-    printf 'TITLE=[Run Logs Audit Report %s] PRs #%d\n' "$TIMESTAMP" "$((10#$ONLY))"
+    printf 'TITLE=[Run Logs Audit %s Report] PRs #%d\n' "$TIMESTAMP" "$((10#$ONLY))"
     exit 0
 fi
 
@@ -56,7 +56,7 @@ LAST=$(printf '%s' "$SORTED_PRS" | tail -1)
 # Check if contiguous: last - first + 1 == count (force decimal radix for leading-zero tokens)
 EXPECTED_COUNT=$(( 10#$LAST - 10#$FIRST + 1 ))
 if [ "$EXPECTED_COUNT" -eq "$PR_COUNT" ]; then
-    printf 'TITLE=[Run Logs Audit Report %s] PRs #%d-#%d\n' "$TIMESTAMP" "$((10#$FIRST))" "$((10#$LAST))"
+    printf 'TITLE=[Run Logs Audit %s Report] PRs #%d-#%d\n' "$TIMESTAMP" "$((10#$FIRST))" "$((10#$LAST))"
     exit 0
 fi
 
@@ -66,4 +66,4 @@ PR_REFS=$(printf '%s\n' "$SORTED_PRS" | while IFS= read -r n || [ -n "$n" ]; do
     printf '#%d ' "$((10#$n))"
 done | sed 's/  */ /g; s/ $//; s/ /, /g')
 
-printf 'TITLE=[Run Logs Audit Report %s] PRs %s\n' "$TIMESTAMP" "$PR_REFS"
+printf 'TITLE=[Run Logs Audit %s Report] PRs %s\n' "$TIMESTAMP" "$PR_REFS"
