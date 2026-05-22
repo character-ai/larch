@@ -65,6 +65,7 @@ SCANS_TSV="$PWD/.claude/skills/audit-runs/scans.tsv"
 | EXON misclassification | `\| FINDING_.* \| 0 \| 0 \| [1-9]+ \|.*\| rejected \|` | `round-*/voting-tally.md` |
 | OOS category mangle | plan-review **accepted** rows only: non-empty `category` not in `{code-quality, risk-integration, correctness, architecture, security}` (code-review accepted prose categories are ignored by design) | `review-findings-full.jsonl` |
 | NS-retry sidecars | files matching `*-ns-retry*` (see `scans.tsv`; first-pass trailing-content checks are the separate `trailing-content-no-issues-found` scan) | `round-*/` |
+| Cursor CI stall causes | `cursor-ci-stall-*.json` sidecars: informational histogram of `.channel` values (pass when none) | `round-*/` |
 | Codex round-1 adherence | round 2+ panel-manifest should not contain `tool=codex` | `round-N/panel-manifest.ndjson` |
 | Codex generalist waste | `codex-generalist-output.txt` is `NO_ISSUES_FOUND` only AND timing > 120s | `round-1/` + `timing-report.json` |
 | Execution-issues categories | non-Warnings entries in `execution-issues.ndjson` | `execution-issues.ndjson` |

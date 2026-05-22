@@ -1207,6 +1207,37 @@ else
     echo "  SKIP: audit-scan-run.sh not executable (not found at $SCAN_SCRIPT)"
 fi
 
+# Test 35c: audit-scan-run.sh — cursor-ci-stall-causes informational histogram
+echo "Test 35c: audit-scan-run cursor-ci-stall-causes scan"
+SCAN_SCRIPT="${SCAN_SCRIPT:-$SCRIPT_DIR/audit-scan-run.sh}"
+if [ -x "$SCAN_SCRIPT" ]; then
+    R35C_TMP=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-scan-stall-XXXXXX")
+    {
+        printf '%s\n' 'name	type	pattern	expected_outcome	severity'
+        printf '%s\n' 'cursor-ci-stall-causes	glob	round-*/cursor-ci-stall-*.json	informational	low'
+    } > "$R35C_TMP/sub-scans.tsv"
+    printf '%s\n' 'relative_path	condition	batch_slug	extension' > "$R35C_TMP/required-empty.tsv"
+    mkdir -p "$R35C_TMP/run/round-1"
+    printf '%s\n' '{"channel":"stdout","pid":1}' > "$R35C_TMP/run/round-1/cursor-ci-stall-a.json"
+    printf '%s\n' '{"channel":"tree:/tmp/x","pid":2}' > "$R35C_TMP/run/round-1/cursor-ci-stall-b.json"
+    printf '%s\n' 'not json' > "$R35C_TMP/run/round-1/cursor-ci-stall-bad.json"
+    r35c_lines=$(bash "$SCAN_SCRIPT" \
+        --run-dir "$R35C_TMP/run" --pr 990035 \
+        --scans-tsv "$R35C_TMP/sub-scans.tsv" \
+        --required-files-tsv "$R35C_TMP/required-empty.tsv" \
+        --current-version "29.0.0")
+    st_res=$(printf '%s\n' "$r35c_lines" | jq -r 'select(.scan=="cursor-ci-stall-causes") | .result // empty' | head -1)
+    st_cnt=$(printf '%s\n' "$r35c_lines" | jq -r 'select(.scan=="cursor-ci-stall-causes") | .count // empty' | head -1)
+    st_ch=$(printf '%s\n' "$r35c_lines" | jq -c -S 'select(.scan=="cursor-ci-stall-causes") | .channels // empty' | head -1)
+    want_ch=$(printf '%s\n' '{"stdout":1,"tree:/tmp/x":1,"UNKNOWN":1}' | jq -c -S .)
+    assert_equal "$st_res" "informational" "[35c] cursor-ci-stall-causes → informational when sidecars exist"
+    assert_equal "$st_cnt" "3" "[35c2] cursor-ci-stall-causes counts all glob matches"
+    assert_equal "$st_ch" "$want_ch" "[35c3] cursor-ci-stall-causes channel histogram"
+    rm -rf "$R35C_TMP"
+else
+    echo "  SKIP: audit-scan-run.sh not executable (not found at $SCAN_SCRIPT)"
+fi
+
 # Test 35b: audit-scan-run.sh — invalid JSONL → oos jq error + category-stats partial (mangled placeholder)
 echo "Test 35b: audit-scan-run invalid review-findings JSONL (oos error + category-stats partial)"
 SCAN_SCRIPT="${SCAN_SCRIPT:-$SCRIPT_DIR/audit-scan-run.sh}"

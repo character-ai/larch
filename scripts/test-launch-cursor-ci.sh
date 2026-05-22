@@ -246,6 +246,40 @@ else
     if grep -q 'channel=stdout' "${OUT6}.diag"; then ok "stall fixture 6 channel=stdout"; else fail "stall fixture 6 channel=stdout"; fi
     if grep -q 'time_since_last_progress=' "${OUT6}.diag"; then ok "stall fixture 6 time_since_last_progress"; else fail "stall fixture 6 time_since_last_progress"; fi
     if [[ -f "$IMPL6/execution-issues.md" ]] && grep -q 'cursor-ci' "$IMPL6/execution-issues.md"; then ok "stall fixture 6 execution-issues cursor-ci"; else fail "stall fixture 6 execution-issues cursor-ci"; fi
+
+    # --- Stall fixture 7: JSON sidecar under IMPLEMENT_TMPDIR/round-1 ---
+    if command -v jq >/dev/null 2>&1; then
+        STUB7="$TMPDIR_BASE/stub7"
+        write_cursor_stub_sleep "$STUB7"
+        OUT7="$TMPDIR_BASE/out7.json"
+        CAP7="$TMPDIR_BASE/cap7.txt"
+        IMPL7="$TMPDIR_BASE/impl7"
+        mkdir -p "$IMPL7/round-1"
+        stall_env
+        export IMPLEMENT_TMPDIR="$IMPL7"
+        set +e
+        ( cd "$REPO_ROOT" && PATH="$STUB7:$PATH" bash "$REPO_ROOT/scripts/launch-cursor-ci.sh" \
+            --role fix --output "$OUT7" --run-id s7 --repo owner/repo --timeout 1800 ) >"$CAP7" 2>&1
+        set -e
+        unset IMPLEMENT_TMPDIR
+        shopt -s nullglob
+        sidecars=( "$IMPL7/round-1"/cursor-ci-stall-*.json )
+        shopt -u nullglob
+        if [[ ${#sidecars[@]} -ge 1 ]]; then ok "stall fixture 7 sidecar json emitted"; else fail "stall fixture 7 sidecar missing"; fi
+        sc0="${sidecars[0]}"
+        ch7=$(jq -r '.channel' "$sc0" 2>/dev/null || echo "")
+        ps_nonempty=$(jq -r '.ps' "$sc0" 2>/dev/null | wc -c | tr -d ' ')
+        if [[ "$ch7" == "stdout" ]]; then ok "stall fixture 7 channel stdout"; else fail "stall fixture 7 channel (got $ch7)"; fi
+        if [[ "${ps_nonempty:-0}" -gt 20 ]]; then ok "stall fixture 7 ps payload"; else fail "stall fixture 7 ps too small ($ps_nonempty)"; fi
+        if command -v lsof >/dev/null 2>&1; then
+            lz=$(jq -r '.lsof // empty' "$sc0" 2>/dev/null | wc -c | tr -d ' ')
+            if [[ "${lz:-0}" -gt 10 ]]; then ok "stall fixture 7 lsof captured"; else fail "stall fixture 7 lsof empty ($lz)"; fi
+        fi
+        lt_lines=$(jq '.last_transcript_lines | length' "$sc0" 2>/dev/null || echo 0)
+        if [[ "${lt_lines:-0}" -ge 1 ]]; then ok "stall fixture 7 last_transcript_lines"; else fail "stall fixture 7 last_transcript_lines empty"; fi
+    else
+        echo "  SKIP: jq required for stall fixture 7 sidecar"
+    fi
 fi
 
 if [[ "$FAIL" -ne 0 ]]; then

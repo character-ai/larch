@@ -70,6 +70,136 @@ cursor_launcher_cleanup_private_config_dir() {
     fi
 }
 
+# Resolve run-log directory for cursor-ci stall JSON sidecars: prefer
+# .../round-N/ when OUTPUT lives under a round dir; else highest
+# $IMPLEMENT_TMPDIR/round-*; else mkdir $IMPLEMENT_TMPDIR/round-1.
+# Prints absolute path on success; returns 1 when no writable target.
+cursor_launcher_cursor_ci_stall_sidecar_dir() {
+    local output_file="$1"
+    local impl="${IMPLEMENT_TMPDIR:-}"
+    local parent base
+    parent="${output_file%/*}"
+    base="${parent##*/}"
+    case "$base" in
+        round-[0-9]*) printf '%s' "$parent"; return 0 ;;
+    esac
+    if [[ -n "$impl" && -d "$impl" ]]; then
+        local d best="" n1 n2
+        shopt -s nullglob
+        for d in "$impl"/round-[0-9]*; do
+            [[ -d "$d" ]] || continue
+            if [[ -z "$best" ]]; then
+                best="$d"
+            else
+                n1="${d##*/round-}"
+                n2="${best##*/round-}"
+                n1="${n1%%[^0-9]*}"
+                n2="${n2%%[^0-9]*}"
+                case "$n1$n2" in
+                    *[!0-9]*) ;;
+                    *)
+                        if ((10#$n1 > 10#$n2)); then best="$d"; fi
+                        ;;
+                esac
+            fi
+        done
+        shopt -u nullglob
+        if [[ -n "$best" ]]; then printf '%s' "$best"; return 0; fi
+        if mkdir -p "$impl/round-1" 2>/dev/null && [[ -d "$impl/round-1" ]]; then
+            printf '%s' "$impl/round-1"
+            return 0
+        fi
+    fi
+    return 1
+}
+
+# Emit round-N/cursor-ci-stall-<unix_ts>.json under the implement run log when
+# jq(1) is available. Best-effort only; failures are ignored.
+cursor_launcher_emit_cursor_ci_stall_json_sidecar() {
+    local channel="$1" target_pid="$2" elapsed="$3" output_file="$4" diag_file="$5"
+    local sidecar_dir out_json tmp_json ps_tmp lsof_tmp tr_tmp
+    if ! command -v jq >/dev/null 2>&1; then
+        return 0
+    fi
+    if ! sidecar_dir=$(cursor_launcher_cursor_ci_stall_sidecar_dir "$output_file"); then
+        return 0
+    fi
+    [[ -n "$sidecar_dir" && -d "$sidecar_dir" ]] || return 0
+
+    ps_tmp=$(mktemp "${TMPDIR:-/tmp}/larch-stall-ps.XXXXXX") || return 0
+    lsof_tmp=$(mktemp "${TMPDIR:-/tmp}/larch-stall-lsof.XXXXXX") || {
+        rm -f "$ps_tmp"
+        return 0
+    }
+    tr_tmp=$(mktemp "${TMPDIR:-/tmp}/larch-stall-tr.XXXXXX") || {
+        rm -f "$ps_tmp" "$lsof_tmp"
+        return 0
+    }
+
+    {
+        printf '%s\n' "--- stall ps snapshot (target pid=${target_pid}) ---"
+        ps -p "$target_pid" -o pid,pcpu,etime,stat 2>/dev/null || printf '%s\n' "(target not found)"
+        printf '%s\n' "--- stall ps snapshot (direct children of target; no argv) ---"
+        if command -v pgrep >/dev/null 2>&1; then
+            while read -r _cpid; do
+                [[ -n "${_cpid:-}" ]] || continue
+                ps -p "$_cpid" -o pid,pcpu,etime,stat 2>/dev/null || true
+            done < <(pgrep -P "$target_pid" 2>/dev/null || true)
+        fi
+        printf '%s\n' "--- stall ps snapshot (ps -ef | grep [c]ursor; capped) ---"
+        # shellcheck disable=SC2009 # full argv context for stall forensics; pgrep -af is narrower than ps -ef
+        ps -ef 2>/dev/null | grep '[c]ursor' | head -n 80 || true
+    } >"$ps_tmp" || : >"$ps_tmp"
+
+    if command -v lsof >/dev/null 2>&1; then
+        lsof -nP -p "$target_pid" 2>/dev/null | head -n 400 >"$lsof_tmp" || : >"$lsof_tmp"
+    else
+        : >"$lsof_tmp"
+    fi
+
+    {
+        printf '%s\n' "--- stdout tail ---"
+        tail -n 25 "$output_file" 2>/dev/null || true
+        printf '%s\n' "--- stderr diag tail ---"
+        tail -n 25 "$diag_file" 2>/dev/null || true
+    } >"$tr_tmp" || : >"$tr_tmp"
+
+    local git_porcelain="" rebase_patch=""
+    git_porcelain=$(git status --porcelain 2>/dev/null || true)
+    rebase_patch=$(git rebase --show-current-patch 2>/dev/null | head -n 80 || true)
+
+    out_json="${sidecar_dir}/cursor-ci-stall-$(date +%s).json"
+    tmp_json="${out_json}.tmp"
+    if ! jq -nc \
+        --arg channel "$channel" \
+        --argjson pid "$target_pid" \
+        --argjson time_since_last_progress "$elapsed" \
+        --rawfile ps "$ps_tmp" \
+        --rawfile lsof "$lsof_tmp" \
+        --rawfile transcript "$tr_tmp" \
+        --arg git_status "$git_porcelain" \
+        --arg rebase_patch "$rebase_patch" \
+        '($transcript | split("\n")) as $lines
+        | {
+            channel: $channel,
+            pid: $pid,
+            time_since_last_progress: $time_since_last_progress,
+            ps: $ps,
+            lsof: $lsof,
+            git_state: {status_porcelain: $git_status, rebase_patch_excerpt: $rebase_patch},
+            last_transcript_lines: (
+              $lines
+              | if length > 50 then .[-50:] else . end
+            )
+          }' >"$tmp_json" 2>/dev/null; then
+        rm -f "$ps_tmp" "$lsof_tmp" "$tr_tmp" "$tmp_json"
+        return 0
+    fi
+    rm -f "$ps_tmp" "$lsof_tmp" "$tr_tmp"
+    mv -f "$tmp_json" "$out_json" 2>/dev/null || rm -f "$tmp_json"
+    return 0
+}
+
 # Polls an output channel while target_pid runs; if no progress for stall_threshold
 # wall seconds, appends diagnostics to diag_file and kills target_pid (SIGTERM,
 # brief wait, SIGKILL). Returns 0 when the child exits on its own or after a
@@ -199,6 +329,7 @@ cursor_launcher_run_stall_monitor() {
                     done < <(pgrep -P "$target_pid" 2>/dev/null || true)
                 fi
             } >>"$diag_file"
+            cursor_launcher_emit_cursor_ci_stall_json_sidecar "$channel" "$target_pid" "$elapsed" "$output_file" "$diag_file" || true
             # Kill inner agent PIDs first (run-external-agent's child), then the wrapper, so
             # SIGKILL on the wrapper cannot leave a long-lived cursor/sleep orphan.
             if command -v pgrep >/dev/null 2>&1; then

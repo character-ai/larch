@@ -404,6 +404,28 @@ scan_ns_retry_sidecars() {
     fi
 }
 
+# ---- Scan: cursor-ci-stall-causes ----
+scan_cursor_ci_stall_causes() {
+    local files=() channels_json payload
+    shopt -s nullglob
+    for f in "$RUN_DIR"/round-*/cursor-ci-stall-*.json; do
+        [ -f "$f" ] || continue
+        files+=("$f")
+    done
+    shopt -u nullglob
+    if [ "${#files[@]}" -eq 0 ]; then
+        emit "{\"scan\":\"cursor-ci-stall-causes\",\"pr\":$PR_NUM,\"result\":\"pass\",\"count\":0,\"channels\":{}}"
+        return
+    fi
+    payload=""
+    for f in "${files[@]}"; do
+        payload+=$(jq -c '{c:(.channel//"UNKNOWN"|tostring)}' "$f" 2>/dev/null || echo '{"c":"UNKNOWN"}')$'\n'
+    done
+    channels_json=$(printf '%s' "$payload" | jq -s 'map(.c) | sort | group_by(.) | map({(.[0]): length}) | add // {}' 2>/dev/null || printf '{}')
+    [ -z "$channels_json" ] && channels_json="{}"
+    emit "{\"scan\":\"cursor-ci-stall-causes\",\"pr\":$PR_NUM,\"result\":\"informational\",\"count\":${#files[@]},\"channels\":$channels_json}"
+}
+
 # ---- Scan: codex-round1-adherence ----
 scan_codex_round1_adherence() {
     local found=0
@@ -602,6 +624,7 @@ while IFS=$'\t' read -r scan_name _scan_type _rest; do
         oos-category-mangle)        scan_oos_category_mangle ;;
         rej-category-blank)         scan_rej_category_blank ;;
         ns-retry-sidecars)          scan_ns_retry_sidecars ;;
+        cursor-ci-stall-causes)     scan_cursor_ci_stall_causes ;;
         codex-round1-adherence)     scan_codex_round1_adherence ;;
         codex-generalist-waste)     scan_codex_generalist_waste ;;
         execution-issues-categories) scan_execution_issues_categories ;;
