@@ -20,6 +20,5 @@ When `jq` is available, the hook reads the SessionStart JSON payload on stdin an
 
 Boundary advisories are emitted for:
 
-- post-/design: `design-export/manifest.env` exists without `.boundary-gate-passed`; recovery points to `skills/implement/scripts/post-design-boundary.sh`,
 - post-/review: `review-round-summary.md` exists without `.review-boundary-passed`; recovery points to the Step 5 post-/review actions and Step 6 sentinel,
 - post-/bump-version: `.bump-version-armed` exists without `postbump-state.sh`; recovery points to Step 8 post-bump continuation and `implement-finalize.sh postbump`.

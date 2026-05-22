@@ -7,9 +7,8 @@ preflight hook that probes `jq`, `git`, leftover git state, and pending
 the always-exit-0 invariant, jq-based JSON encoding rule, and fixed-literal
 jq-missing fallback, is owned by `scripts/sessionstart-health.md`.
 
-Boundary coverage includes post-/design manifest detection plus
-`.boundary-gate-passed` and `.run-cleaned-up` suppression, post-/review
+Boundary coverage includes `.run-cleaned-up` suppression, post-/review
 summary detection plus `.review-boundary-passed` suppression, and
 post-/bump-version `.bump-version-armed` detection plus `postbump-state.sh`
-suppression. It also asserts the combined edge case where all three pending
-boundaries appear in one advisory payload.
+suppression. It also asserts the combined edge case where pending review and
+bump boundaries appear in one advisory payload.
