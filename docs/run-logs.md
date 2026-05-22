@@ -84,7 +84,7 @@ For current `/implement` runs, the committed manifest is normally an `"in-progre
 
 **Mode**: replace (one file per run). **Written**: **Step 0** materialization tail, after the design plan is finalized.
 
-Contains the implementation plan: goal statement, files to modify, approach, edge cases, and testing strategy. The content is materialized from the tracking issue body's `larch:plan` block (see `docs/issue-anchored-plan.md`) after `/design` has written or refreshed that anchor; `/implement` Step 1 copies it into this batch — it is not produced by a nested `/design` sub-invocation inside `/implement`.
+Contains the implementation plan: goal statement, files to modify, approach, edge cases, and testing strategy. The content is materialized from the tracking issue body's `larch:plan` block (see `docs/issue-anchored-plan.md`) after `/design` has written or refreshed that anchor; `/implement` Step 1 copies it into this batch — it is not produced by a nested `/design` sub-invocation inside `/implement`. Verbatim plan prose (including historical must-not-touch bullets or path constraints copied from the issue) is a **point-in-time snapshot** for that run only; if it appears to conflict with current run-log policy, treat this document and `docs/issue-anchored-plan.md` as authoritative for what committed `larch-logs/` paths mean.
 
 ### parent-issue.md
 

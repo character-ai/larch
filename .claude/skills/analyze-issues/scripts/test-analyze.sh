@@ -62,7 +62,7 @@ assert_contains "$out" "## Wasteful-work Findings" "wasteful-work findings secti
 assert_contains "$out" "## Reviewer/Persona Tables" "reviewer/persona section"
 
 assert_contains "$out" "Total issues: 10" "issue count"
-assert_contains "$out" "Tracking umbrella" "tracking category"
+assert_contains "$out" "Tracking/umbrella" "tracking category"
 assert_contains "$out" "Bug fix: 3 (" "bug fix category count (pins rule-order; #2/#6 via bug+crash, #10 via 'error' word-boundary; fix-in-fixture / fix-in-prefix no longer alias)"
 assert_contains "$out" "Test coverage: 1 (" "test coverage classification (#7 'Test coverage: add fixture' no longer aliased to Bug fix)"
 assert_contains "$out" "Other: 1 (" "other category for #8 'prefix handling tweak' (fix-in-prefix no longer aliases)"

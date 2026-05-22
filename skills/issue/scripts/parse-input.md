@@ -6,6 +6,8 @@ After emitting `ITEMS_TOTAL`, the parser writes a human-visible breadcrumb to st
 
 `skills/issue/scripts/test-parse-input.sh` is the regression harness, wired into `make lint` via the `test-parse-input` target so parser regressions cannot ship undetected — it covers baseline cases, boundary cases, issues #129/#131/#132/#138, the negative-flag paths, stderr breadcrumb shape for generic and OOS parses, and pins the "no `ITEM_<i>_BODY=` on stdout" invariant via a `grep -E` guard inside `run_parser_capture`.
 
+**Generic-mode `###` split hazard (`/issue --input-file`).** When the parse runs in generic mode (no `### OOS_N:` items), any input line matching `^###[[:space:]]+` starts a **new** item (same boundary rule as `parse-input.sh`'s `^\#\#\#[[:space:]]+(.+)$` match). Bodies that contain heading-shaped markdown (for example `### Notes` inside prose) can therefore split **silently** into multiple items with wrong titles or `depends_on` metadata and no dedicated error — avoid raw `###` lines in generic payloads or escape them (see cross-skill notes below).
+
 ## Reverse coupling: `/research`'s sidecar shape (#510)
 
 `skills/research/scripts/render-findings-batch.sh` emits a sidecar designed to round-trip cleanly through this parser's **generic-mode** path (CURRENT_MODE=generic — `### <title>` heading + free-form body, with no `### OOS_N:` items). The sidecar's metadata lines are intentionally formatted WITHOUT the leading <code>- </code> that would trigger this script's OOS field branches (`- **Description**:` / `- **Reviewer**:` / `- **Vote tally**:` / `- **Phase**:`); they appear as plain `**Source**:` / `**Risk**:` etc. lines and pass through as ordinary body content via the `IN_BODY=true` continuation branch.

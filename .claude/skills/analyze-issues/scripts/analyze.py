@@ -263,7 +263,7 @@ def default_category(issue: Mapping[str, Any]) -> str:
     title = str(issue.get("title") or "")
     body = str(issue.get("body") or "")
     if body.lstrip().lower().startswith("tracking issue for") and "original prompt" in body.lower():
-        return "Tracking umbrella"
+        return "Tracking/umbrella"
     if re.match(r"^\s*(?:\[research[^\]]*\]\s*)?(?:investigate|research)\b", title, re.I):
         return "Research/investigation"
     haystack = issue_text(issue)

@@ -6,7 +6,7 @@ Primary callers: `make test-analyze`, and hand-run via `bash .claude/skills/anal
 
 Invariants: the assertion list mirrors the `test-fixture.json` row-to-code-path coverage matrix. The fixture pins:
 
-- Tracking umbrella detection (#1).
+- Tracking/umbrella detection (#1).
 - `[OOS]` prefix stripping that participates in W1 duplicate-pair detection between #2 and #6 — `strip_prefixes` folds `[OOS] Bug fix: crash in foo` and `Bug fix: crash in foo` to the same key.
 - Bug fix categorization (#2 by `bug`/`crash` keywords; #6 by the same; #10 `Docker build error` by the `\berror\b` whole-word match). `Bug fix: 3 (` is pinned in the breakdown to detect rule-order regressions and to ensure `fix` does NOT alias inside `fixture` (#7) or `prefix` (#8) under the word-boundary regex.
 - Test coverage categorization (#7 `Test coverage: add fixture` — pinned at `Test coverage: 1 (` so a regression to substring matching that re-routes #7 into Bug fix surfaces).

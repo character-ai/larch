@@ -372,6 +372,27 @@ grep 'In diff mode' "$REVIEW_SCRIPTS_DIR/collect-findings.sh" \
   || fail "(17) no collect-findings.sh line carries 'In diff mode', 'single-list output', AND 'entire output' together — Step 3a diff-mode single-list preservation is broken"
 
 # ---------------------------------------------------------------------------
+# (18) Step 4 final summary + larch-log filing pins (description-mode batch path).
+#      Replaces removed --pieces-json structural coverage with stable SKILL.md
+#      phrases for log-phase wiring after umbrella deletion.
+# ---------------------------------------------------------------------------
+grep -Fq '> **🔶 /review 4: final summary**' "$SKILL_MD" \
+  || fail "(18) SKILL.md missing Step 4 progress pin — final summary step drifted"
+grep -Fq 'If `RUN_ID` is non-empty, write flat review larch-log batches' "$SKILL_MD" \
+  || fail "(18) SKILL.md missing Step 4 larch-log batch opener — filing semantics drifted"
+grep -Fq '`review-context`' "$SKILL_MD" \
+  || fail "(18) SKILL.md missing review-context batch token — Step 4 filing list drifted"
+grep -Fq 'log-phase.sh' "$SKILL_MD" \
+  || fail "(18) SKILL.md must reference log-phase.sh in Step 4 — filing wiring drifted"
+
+# ---------------------------------------------------------------------------
+# (19) Step 4 must not reintroduce /umbrella composition (negative structural pin).
+# ---------------------------------------------------------------------------
+grep -Fq '/umbrella' "$SKILL_MD" \
+  && fail "(19) SKILL.md must not reference '/umbrella' — removed umbrella composition must not return" \
+  || true
+
+# ---------------------------------------------------------------------------
 # (20) Security-tag exclusion contract for accepted OOS items. After #2207
 # voting.md is gone; the canonical security regex + invariant prose live in
 # skills/shared/voting-protocol.md, and the mechanical enforcement lives in

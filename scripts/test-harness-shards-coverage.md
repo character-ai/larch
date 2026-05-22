@@ -23,7 +23,7 @@ The Makefile documents opt-in evaluation targets and full-run convenience target
 `Makefile` defines:
 
 - `test-harness-shards-coverage:` running `bash scripts/test-harness-shards-coverage.sh` and `bash scripts/test-harness-shards-coverage.sh --self-test`.
-- The guard-owning `test-harnesses-N:` rule with `test-harness-shards-coverage` as the first prerequisite (currently `test-harnesses-13:`).
+- The guard-owning `test-harnesses-N:` rule with `test-harness-shards-coverage` as the first prerequisite (currently `test-harnesses-5:`; the harness discovers which shard that is — do not rely on a stale hardcoded id).
 - `test-harnesses:` as an aggregate over every declared `test-harnesses-N` (currently `test-harnesses-1` through `test-harnesses-20`).
 
 When adding a new harness target, add it to `.PHONY`, add its recipe, and assign it to exactly one `test-harnesses-N:` shard prerequisite list. Rebalance shard lists when timing drift makes a shard materially slower than the `test-validate-citations` floor documented in `docs/linting.md`.
