@@ -4,7 +4,7 @@ Cross-validation harness with three check families: (1) positive anchors — req
 
 ## Purpose
 
-Without this harness, drift between the canonical Step 5 unified hard-panel contract and its public mirrors (see Target files below) is silent. The bug that triggered #370 — "simplified code review (1 Claude Code Reviewer subagent, 1 round)" persisting in the public docs long after SKILL.md evolved to a multi-round external-review loop with no voting panel — is exactly the class this harness prevents: a SKILL.md edit that does not propagate to the public mirrors, or a public-doc edit that re-introduces a contradiction with SKILL.md.
+Without this harness, drift between the canonical Step 5 code-review contract and its public mirrors (see Target files below) is silent. The bug that triggered #370 — "simplified code review (1 Claude Code Reviewer subagent, 1 round)" persisting in the public docs long after SKILL.md evolved to a multi-round external-review loop with no voting panel — is exactly the class this harness prevents: a SKILL.md edit that does not propagate to the public mirrors, or a public-doc edit that re-introduces a contradiction with SKILL.md.
 
 ## Invariants enforced
 
@@ -24,12 +24,9 @@ Each target file MUST contain all markers in `POS_MARKERS` inside `test-quick-mo
 
 | Marker | Casing | Rationale |
 |--------|--------|-----------|
-| `unified hard panel` | **case-insensitive** `grep -iF` | Pins the unified Step 5 banner contract. |
-| `effective_round_cap` | case-sensitive `grep -F` | Pins the orchestrator-facing name for the inflated round cap. |
-| `same base cap **5**` | case-sensitive `grep -F` | Pins the shared base-cap wording with `skills/implement/SKILL.md`. |
+| `5 rounds` | case-sensitive `grep -F` | Pins the base round-cap language shared with public docs. |
 | `3-judge panel on round 1` | **case-insensitive** `grep -iF` | Pins the round-1 Codex-inclusive judge panel; rounds 2+ omit Codex. |
-| <code>does **not** forward `--panel`</code> | case-sensitive `grep -F` | Pins that the public argv does not forward `--panel` (hard panel is internal to `review-and-fix.sh` → `review-core.sh`). |
-| `hard review panel` | **case-insensitive** `grep -iF` | Pins the hard-panel specialist layout wording. |
+| `--panel hard` | case-sensitive `grep -F` | Pins the delegated `review-and-fix.sh` posture. |
 | `6 Cursor specialists` | case-sensitive `grep -F` | Pins the static Cursor specialist count in the panel. |
 
 Together these markers encode the canonical Step 5 contract. Without them, a SKILL.md edit that re-shuffled the reviewer or judge composition could ship without the public docs being updated.
@@ -41,8 +38,11 @@ Public docs (`README.md`, `docs/review-agents.md`, `docs/workflow-lifecycle.md`,
 - `1 Claude Code Reviewer subagent, 1 round` — full stale README phrase.
 - `no external reviewers` — legacy claim contradicting the actual external reviewer panel.
 - `no externals, no voting` — legacy short-form variant.
-- `simple review panel` — legacy `/implement` quick-mode wording (superseded by the unified internal hard panel; no public `--panel` argv).
+- `simple review panel` — legacy `/implement` quick-mode wording (superseded by `--panel hard` on the delegated review loop).
 - `/implement --quick` — removed flag string (must not reappear in public docs).
+- `unified hard panel` — retired Step 5 branding (case-sensitive literal; see also `Unified hard panel`).
+- `Unified hard panel` — retired Step 5 branding (sentence-start casing variant).
+- `hard review panel` — retired Step 5 wording for the delegated review posture.
 
 All are matched as fixed strings (`grep -F`) to avoid false positives on unrelated prose.
 
@@ -64,7 +64,7 @@ The check is implemented by `check_xref` (a dedicated function kept separate fro
 
 `skills/implement/SKILL.md` is **exempted from negative checks**. Rationale: SKILL.md is the canonical contract and may legitimately quote historical/comment references to these phrases in unrelated contexts (e.g. NEVER-list examples, changelog-style prose).
 
-**Audit performed during #370 implementation**: `grep -F` against each of the three stale phrases returned no matches in `skills/implement/SKILL.md`. The exemption is currently factual (no stale phrases present) rather than merely defensive. If a future SKILL.md edit introduces one of these phrases in a historical context, the exemption still holds by design — SKILL.md's positive anchors alone assert that the current contract is stated somewhere in the file; the canonical source-of-truth assertion does not require the file to be free of historical references.
+**Audit performed during #370 implementation**: `grep -F` against each stale phrase on the list returned no matches in `skills/implement/SKILL.md`. The exemption is currently factual (no stale phrases present) rather than merely defensive. If a future SKILL.md edit introduces one of these phrases in a historical context, the exemption still holds by design — SKILL.md's positive anchors alone assert that the current contract is stated somewhere in the file; the canonical source-of-truth assertion does not require the file to be free of historical references.
 
 If the canonical contract itself changes (e.g. the round cap changes again, the reviewer topology changes, or the rounds-1-3 topology changes), edit the `POS_MARKERS` array in `test-quick-mode-docs-sync.sh` and this sibling `.md` FIRST, then propagate to the public docs. The positive-anchor check enforces the new contract across all targets once the markers are updated.
 

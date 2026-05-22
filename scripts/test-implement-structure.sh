@@ -181,11 +181,11 @@ grep -qE '^[[:space:]]*(source|\.)[[:space:]].*lib-finalize-state-keys\.sh' "$SH
   || fail "ship-pr.sh must source lib-finalize-state-keys.sh"
 
 # shellcheck disable=SC2016
-grep -Fq 'When `hard_mode=true`, skip the plan-size evaluation and set `WORKFLOW_PATH=HARD`' "$SKILL_MD" \
-  || fail "Post-plan router must guard hard_mode=true: set WORKFLOW_PATH=HARD"
-# shellcheck disable=SC2016
-grep -Fq 'When `hard_mode=false`, use plan size' "$SKILL_MD" \
-  || fail "Post-plan router must gate plan-size heuristic under hard_mode=false"
+grep -Fq 'POST_PLAN_WORKFLOW_PATH=HARD' "$SKILL_MD" \
+  || fail "Post-plan router must default POST_PLAN_WORKFLOW_PATH=HARD (cutover removed --hard flag)"
+# Post-cutover: /implement no longer accepts --hard, so hard_mode references must be gone.
+! grep -Fq 'hard_mode' "$SKILL_MD" \
+  || fail "Post-plan router must not reference hard_mode (--hard flag removed in cutover)"
 # shellcheck disable=SC2016
 grep -Fq 'scripts/persist-post-plan-keys.sh' "$SKILL_MD" \
   || fail "Post-plan router must invoke scripts/persist-post-plan-keys.sh (#2326)"
