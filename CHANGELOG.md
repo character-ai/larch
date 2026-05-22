@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Closed: #2549
+- Audit report titles now end the bracket with a space before Report so generic report-prefix filtering matches them without a second title-shape guard.
+- The audit-runs skill anti-recursion search pattern and harness expectations follow the new bracket layout.
+- /fix-issue relies on the audit-report label plus has_report_prefix after removing the redundant run-logs audit title helper.
 
 ## [34.0.22] - 2026-05-21
 
