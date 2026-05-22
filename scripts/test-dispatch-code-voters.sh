@@ -183,6 +183,8 @@ for prompt in "$TMP/happy/claude-vote-prompt.txt" "$TMP/happy/codex-vote-prompt.
 grep -Fq 'Verify silently' "$prompt" || { echo "FAIL: $(basename "$prompt") missing Verify silently directive" >&2; exit 1; }
 grep -Fq 'You may read the ballot file and any provided diff/plan context files for verification' "$prompt" || { echo "FAIL: $(basename "$prompt") missing bounded file-read verification directive" >&2; exit 1; }
 grep -Fq 'Output ONLY vote lines' "$prompt" || { echo "FAIL: $(basename "$prompt") missing Output ONLY vote lines directive" >&2; exit 1; }
+grep -Fq 'fix proposals are informational; the coder decides the exact change' "$prompt" || { echo "FAIL: $(basename "$prompt") missing informational-fix voter guardrail" >&2; exit 1; }
+grep -Fq 'dislike or distrust the proposed fix' "$prompt" || { echo "FAIL: $(basename "$prompt") missing dislike/distrust NO-vote guardrail" >&2; exit 1; }
 done
 
 out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" --ballot-file "$BALLOT" --review-tmpdir "$TMP/absent" --codex-available false --cursor-available false)

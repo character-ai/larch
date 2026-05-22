@@ -372,26 +372,26 @@ def scope_input_blocks_for_merge(norm_slot, output_slots_norm, slot_map):
         in_norms = {normalize_slot(x) for x in islots}
         if in_norms & output_slots_norm:
             scoped.append(in_block)
-    return scoped if scoped else list(candidates)
+    return scoped
 
 
 def revision_traceable_in_blocks(revision_text, in_blocks):
-    """True when normalized revision appears as a substring in scoped input."""
+    """True when normalized revision matches within a single scoped input block."""
     if not in_blocks:
         return False
     rev_norm = normalize_for_match(revision_text).strip()
     if not rev_norm:
         return False
-    corpus = "\n\n".join(in_blocks)
-    corp_norm = normalize_for_match(corpus)
-    if rev_norm in corp_norm:
-        return True
     words = rev_norm.split()
-    if len(words) < 2:
-        return False
-    window = min(6, len(words))
-    needle = " ".join(words[:window])
-    return needle in corp_norm
+    window = min(6, len(words)) if len(words) >= 2 else 0
+    needle = " ".join(words[:window]) if window else ""
+    for block in in_blocks:
+        corp_norm = normalize_for_match(block)
+        if rev_norm in corp_norm:
+            return True
+        if needle and needle in corp_norm:
+            return True
+    return False
 
 
 def check_revision_traceability(input_text, output_blocks_list):
