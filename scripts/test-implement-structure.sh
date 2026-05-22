@@ -285,6 +285,7 @@ grep -Fq '1. **Admission gate**' "$SKILL_MD" \
   || fail "SKILL.md Preflight must contain numbered Admission gate step"
 grep -Fq '**Preflight — admission gate known limitation (D3)**' "$SKILL_MD" \
   || fail "SKILL.md must document admission gate fail-open limitation (D3)"
+# shellcheck disable=SC2016
 grep -Fq '6. **On `AUDIT=pass` — semantic materiality (comment-only)**' "$SKILL_MD" \
   || fail "SKILL.md Preflight must retain semantic materiality step (item 6)"
 grep -Fq 'semantic stale notice posted at Preflight item 6' "$SKILL_MD" \
