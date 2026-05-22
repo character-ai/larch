@@ -404,9 +404,9 @@ clear_pr_state() {
 # ──────────────────────────────────────────────────────────────────────────────
 # Section dispatch (closes #2349 by reducing the test-ship-pr ceiling)
 #
-# Scenarios are partitioned into 4 functional sections. Each section becomes a
+# Scenarios are partitioned into functional sections. Each section becomes a
 # separate Makefile target (test-ship-pr-state, -postmerge, -fix-loop,
-# -transient) so the CI matrix can pack them as independent harness rows.
+# -transient, -phase14) so the CI matrix can pack them as independent harness rows.
 # Running the script without --section is equivalent to running all four
 # sections sequentially (backward-compat for local dev).
 # ──────────────────────────────────────────────────────────────────────────────
@@ -2841,6 +2841,101 @@ assert_state_line "$tmp/ship-pr-state.sh" "STALL_TRACKING=false" "stale stall st
 assert_state_line "$tmp/ship-pr-state.sh" "STALL_STEP=" "stale stall state: skip-merge guard clears STALL_STEP"
 assert_file_absent_or_empty "$tmp/final-bail-reason.txt" "stale stall state: skip-merge guard leaves final-bail-reason.txt empty"
 fi  # end section: transient
+
+if section_runs phase14; then
+# run_rebase_rebump: non-bump-only conflict → exit 5 Phase 1–4 handoff (no keep-on-conflict CI Issues line).
+root=$(make_repo ship_pr_phase14_dispatch)
+tmp=$(make_tmpdir)
+cat > "$root/scripts/rebase-push.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+case "$*" in
+    *--keep-on-conflict*)
+        printf 'CONFLICT_FILES=Makefile\n'
+        exit 1
+        ;;
+    *)
+        exit 0
+        ;;
+esac
+STUB
+chmod +x "$root/scripts/rebase-push.sh"
+cat > "$root/scripts/ci-wait.sh" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'ACTION=rebase\nCI_STATUS=fail\nBEHIND_COUNT=1\nFAILED_RUN_ID=\nBAIL_REASON=\nITERATION=0\nELAPSED=1\n'
+STUB
+chmod +x "$root/scripts/ci-wait.sh"
+_install_rebump_dep_stubs "$root"
+write_state "$tmp/ship-pr-state.sh" ci-initial
+: >"$tmp/execution-issues.md"
+PATH="$root/scripts:$PATH" CLAUDE_PLUGIN_ROOT="$root" IMPLEMENT_TMPDIR="$tmp" \
+    run_subject "$root" "$tmp" "$tmp/rc"
+assert_rc "$tmp/rc" 5 "Makefile-only rebase conflict: ship-pr exits 5 for Phase 1–4 handoff"
+if [[ -f "$tmp/ship-pr-rrr-after-phase14.flag" ]]; then
+    ok "phase14 dispatch creates resume flag under IMPLEMENT_TMPDIR"
+else
+    fail "expected ship-pr-rrr-after-phase14.flag after exit 5"
+fi
+assert_state_line "$tmp/ship-pr-state.sh" "RESUME_PHASE=ship-pr-rrr-phase14" "phase14 dispatch persists RESUME_PHASE"
+assert_state_line "$tmp/ship-pr-state.sh" "CALLER_KIND=ship_pr_pre_push" "phase14 dispatch persists CALLER_KIND"
+if grep -qF 'aggregator-dispatch=conflict-resolution.md' "$tmp/stdout"; then
+    ok "phase14 dispatch breadcrumb mentions aggregator-dispatch/conflict-resolution"
+else
+    fail "stdout missing phase14 aggregator-dispatch breadcrumb"
+    sed 's/^/    stdout: /' "$tmp/stdout" | head -n 20
+fi
+if grep -qF 'rebase-push.sh --keep-on-conflict' "$tmp/execution-issues.md" 2>/dev/null; then
+    fail "phase14 handoff must not record keep-on-conflict rebase failure before resolution"
+else
+    ok "phase14 handoff skips premature keep-on-conflict execution-issues line"
+fi
+
+# Resume path: run_rebase_rebump continues after orchestrator-simulated Phase 4 success.
+root=$(make_repo ship_pr_phase14_resume)
+tmp=$(make_tmpdir)
+cat > "$root/scripts/rebase-push.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+case "$*" in
+    *--keep-on-conflict*)
+        printf 'CONFLICT_FILES=Makefile\n'
+        exit 1
+        ;;
+    *)
+        exit 0
+        ;;
+esac
+STUB
+chmod +x "$root/scripts/rebase-push.sh"
+cat > "$root/scripts/ci-wait.sh" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+count_file="$tmp/ci-wait-phase14.seq"
+count=\$(cat "\$count_file" 2>/dev/null || echo 0)
+printf '%s\n' "\$((count + 1))" > "\$count_file"
+if [ "\$count" -eq 0 ]; then
+    printf 'ACTION=rebase\nCI_STATUS=fail\nBEHIND_COUNT=1\nFAILED_RUN_ID=\nBAIL_REASON=\nITERATION=0\nELAPSED=1\n'
+else
+    printf 'ACTION=merge\nCI_STATUS=pass\nBEHIND_COUNT=0\nFAILED_RUN_ID=\nBAIL_REASON=\nITERATION=1\nELAPSED=1\n'
+fi
+STUB
+chmod +x "$root/scripts/ci-wait.sh"
+_install_rebump_dep_stubs "$root"
+write_state "$tmp/ship-pr-state.sh" ci-initial
+rm -f "$tmp/ci-wait-phase14.seq"
+PATH="$root/scripts:$PATH" CLAUDE_PLUGIN_ROOT="$root" IMPLEMENT_TMPDIR="$tmp" \
+    run_subject "$root" "$tmp" "$tmp/rc-first"
+assert_rc "$tmp/rc-first" 5 "phase14 resume prep: first ship-pr exits 5"
+PATH="$root/scripts:$PATH" CLAUDE_PLUGIN_ROOT="$root" IMPLEMENT_TMPDIR="$tmp" \
+    run_subject "$root" "$tmp" "$tmp/rc-second" --resume-phase ship-pr-rrr-phase14
+assert_rc "$tmp/rc-second" 0 "phase14 resume: second ship-pr completes after run_rebase_rebump tail"
+if [[ ! -f "$tmp/ship-pr-rrr-after-phase14.flag" ]]; then
+    ok "phase14 resume consumes the flag file"
+else
+    fail "resume flag should be removed after successful run_rebase_rebump"
+fi
+fi  # end section: phase14
 
 if [[ "$FAIL_COUNT" -ne 0 ]]; then
     echo "test-ship-pr: $FAIL_COUNT failure(s), $PASS_COUNT pass(es)" >&2
