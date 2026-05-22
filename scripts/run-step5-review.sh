@@ -120,7 +120,6 @@ export CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT"
 export IMPLEMENT_TMPDIR
 
 PLAN_FILE="$IMPLEMENT_TMPDIR/plan.txt"
-WORKFLOW_PATH="HARD"
 CODEX_PRESENT="$(session_get "$SESSION_ENV_PATH" CODEX_PRESENT false)"
 CURSOR_PRESENT="$(session_get "$SESSION_ENV_PATH" CURSOR_PRESENT false)"
 LARCH_TOKEN_SESSION_ID="$(session_get "$SESSION_ENV_PATH" LARCH_TOKEN_SESSION_ID "$RUN_ID")"
@@ -132,18 +131,8 @@ REVIEW_AND_FIX_ARGS=()
 
 [[ -f "$PLAN_FILE" ]] || fail "plan file not found at conventional path: $PLAN_FILE"
 
-case "$WORKFLOW_PATH" in
-    SIMPLE)
-        # Base Step 5 round cap is intentionally 5 for SIMPLE and HARD (unified panel).
-        ROUND_CAP="5"
-        ;;
-    HARD)
-        ROUND_CAP="5"
-        ;;
-    *)
-        fail "WORKFLOW_PATH must be SIMPLE or HARD, got: ${WORKFLOW_PATH:-<empty>}"
-        ;;
-esac
+# Fixed base Step 5 round cap (unified hard workflow contract); see scripts/run-step5-review.md.
+ROUND_CAP="5"
 
 DEGRADED_ROUNDS="$(count_prior_degraded_rounds "$IMPLEMENT_TMPDIR" "$ROUND_NUM")"
 case "$DEGRADED_ROUNDS" in
@@ -151,8 +140,8 @@ case "$DEGRADED_ROUNDS" in
 esac
 ROUND_CAP="$((ROUND_CAP + DEGRADED_ROUNDS))"
 
-if [[ "$WORKFLOW_PATH" == "HARD" && "$ROUND_NUM" == "1" ]]; then
-    printf "run-step5-review.sh: HARD workflow shares SIMPLE's base Step 5 review round cap (5); degraded prior rounds extend the effective cap (this round: %s).\n" "$ROUND_CAP" >&2
+if [[ "$ROUND_NUM" == "1" ]]; then
+    printf "run-step5-review.sh: base Step 5 review round cap is 5; degraded prior rounds extend the effective cap (this round: %s).\n" "$ROUND_CAP" >&2
 fi
 
 case "$CODEX_PRESENT" in true|false) ;; *) fail "CODEX_PRESENT must be true or false, got: $CODEX_PRESENT" ;; esac

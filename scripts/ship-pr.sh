@@ -239,7 +239,11 @@ resolve_plan_file() {
             --category Warnings \
             --entry "PLAN_FILE ($path) set but file not found; proceeding without plan context." \
             >/dev/null 2>&1 || true
-        return 0
+        if [ -f "$IMPLEMENT_TMPDIR/plan.txt" ]; then
+            path="$IMPLEMENT_TMPDIR/plan.txt"
+        else
+            return 0
+        fi
     fi
     printf '%s\n' "$path"
 }
