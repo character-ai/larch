@@ -59,6 +59,43 @@ stall_env() {
     export LARCH_EXTERNAL_AUTH_RETRIES=1
 }
 
+kill_stall_sidecar_wrapper_if_alive() {
+    local sc_path=$1
+    command -v jq >/dev/null 2>&1 || return 0
+    [[ -f "$sc_path" ]] || return 0
+    local wp
+    wp=$(jq -r '.pid // empty' "$sc_path" 2>/dev/null || true)
+    [[ -n "$wp" ]] || return 0
+    if kill -0 "$wp" 2>/dev/null; then
+        kill -KILL "$wp" 2>/dev/null || true
+    fi
+}
+
+assert_stall_sidecar_stable_contract() {
+    local f=$1 label=$2
+    if jq -e '
+        (.channel|type=="string")
+        and (.pid|type=="number")
+        and (.time_since_last_progress|type=="number")
+        and (.time_since_last_progress >= 3)
+        and (.capture_phase == "post_sigterm")
+        and (.transcript_tail_capture_phase|type=="string")
+        and (.diag_capture_note|type=="string")
+        and (.ps|type=="string")
+        and ((.ps|contains("stall ps snapshot")) or (.ps|contains("omitted:")) or (.ps|length > 30))
+        and (.lsof|type=="string")
+        and (.git_state|type=="object")
+        and (.git_state.status_porcelain|type=="string")
+        and (.git_state.rebase_patch_excerpt|type=="string")
+        and (.transcript_tail_contract|type=="string")
+        and (.last_transcript_lines|type=="array")
+    ' "$f" >/dev/null 2>&1; then
+        ok "$label stall sidecar stable contract"
+    else
+        fail "$label stall sidecar stable contract"
+    fi
+}
+
 launcher_exit_from_capture() {
     grep '^LAUNCHER_EXIT=' "$1" | tail -1 | cut -d= -f2-
 }
@@ -248,8 +285,12 @@ else
     if [[ -f "$IMPL6/execution-issues.md" ]] && grep -q 'cursor-ci' "$IMPL6/execution-issues.md"; then ok "stall fixture 6 execution-issues cursor-ci"; else fail "stall fixture 6 execution-issues cursor-ci"; fi
 
     # --- Stall fixtures 7–8: JSON sidecar (jq-dependent assertions; skip when jq absent) ---
+    if [[ -n "${GITHUB_ACTIONS:-}" || "${CI:-}" == true ]] && ! command -v jq >/dev/null 2>&1; then
+        echo "test-launch-cursor-ci: jq is required in CI for stall JSON regression coverage" >&2
+        exit 1
+    fi
     if ! command -v jq >/dev/null 2>&1; then
-        ok "stall fixtures 7–8 skipped (jq not installed; stall JSON sidecars require jq)"
+        ok "stall fixtures 7–8 skipped (jq not installed; stall JSON sidecars require jq — CI must provide jq; see scripts/launch-cursor-ci.md Harness)"
     else
         # --- Stall fixture 7: JSON sidecar under IMPLEMENT_TMPDIR/round-1 ---
         STUB7="$TMPDIR_BASE/stub7"
@@ -297,6 +338,8 @@ else
         if [[ "${lt_lines:-0}" -ge 1 ]]; then ok "stall fixture 7 last_transcript_lines"; else fail "stall fixture 7 last_transcript_lines empty"; fi
         cp7=$(jq -r '.capture_phase // empty' "$sc0" 2>/dev/null || echo "")
         if [[ "$cp7" == "post_sigterm" ]]; then ok "stall fixture 7 capture_phase post_sigterm"; else fail "stall fixture 7 capture_phase (got $cp7)"; fi
+        assert_stall_sidecar_stable_contract "$sc0" "stall fixture 7"
+        kill_stall_sidecar_wrapper_if_alive "$sc0"
 
         # --- Stall fixture 8: tree channel sidecar path + channel prefix ---
         MINIGIT8="$TMPDIR_BASE/minigit8"
@@ -326,6 +369,8 @@ else
         ch8=$(jq -r '.channel' "$sc8" 2>/dev/null || echo "")
         case "$ch8" in tree:*) ok "stall fixture 8 channel tree prefix"; ;; *) fail "stall fixture 8 channel (got $ch8)"; ;; esac
         if [[ $((end8 - start8)) -lt 25 ]]; then ok "stall fixture 8 elapsed <25s"; else fail "stall fixture 8 elapsed <25s ($((end8 - start8)))"; fi
+        assert_stall_sidecar_stable_contract "$sc8" "stall fixture 8"
+        kill_stall_sidecar_wrapper_if_alive "$sc8"
     fi
 fi
 

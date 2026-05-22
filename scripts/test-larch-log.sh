@@ -455,6 +455,7 @@ printf '# dyn-api-contract-prompt\n' > "$_wr_source/dynamic-archetypes/dyn-api-c
 printf 'raw output\n' > "$_wr_source/cursor-specialist-correctness-output.txt"
 printf 'vote prompt\n' > "$_wr_source/main-agent-vote-prompt.txt"
 printf 'pre-retry narrative\n' > "$_wr_source/cursor-vote-output-first-pass.txt"
+printf '{"channel":"stdout","pid":1,"time_since_last_progress":3,"capture_phase":"post_sigterm","transcript_tail_capture_phase":"pre_sigterm","diag_capture_note":"x","ps":"--- stall ps snapshot ---","lsof":"","git_state":{"status_porcelain":"","rebase_patch_excerpt":""},"transcript_tail_contract":"non_interleaved: stdout_block_then_stderr_block","last_transcript_lines":[]}\n' > "$_wr_source/cursor-ci-stall-test.json"
 
 "$LARCH_LOG" init --log-root "$_wr_staging/larch-logs" --skill implement --run-id "$_wr_run" --issue 2356 >/dev/null
 "$LARCH_LOG" write-round \
@@ -514,6 +515,13 @@ if [ ! -f "$_wr_round/main-agent-vote-prompt.txt" ]; then
     pass "write-round denied: *-vote-prompt.txt excluded"
 else
     fail "write-round must exclude *-vote-prompt.txt"
+fi
+
+# Test 5b: cursor-ci stall JSON sidecars (committed round forensics)
+if [ -f "$_wr_round/cursor-ci-stall-test.json" ]; then
+    pass "write-round commits cursor-ci-stall-*.json"
+else
+    fail "write-round must commit cursor-ci-stall-*.json (missing)"
 fi
 
 # Test 6: parse-retry first-pass voter sidecar is included when present

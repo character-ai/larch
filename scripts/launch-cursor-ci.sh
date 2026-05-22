@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 # launch-cursor-ci.sh — Launch Cursor for /implement CI-fix subwork.
+#
+# Stall monitoring and stall JSON sidecars are implemented in
+# scripts/lib-cursor-launcher-common.sh (cursor_launcher_run_stall_monitor,
+# cursor_launcher_emit_cursor_ci_stall_json_sidecar); triage stall behavior there.
 
 set -euo pipefail
 
