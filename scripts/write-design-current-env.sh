@@ -10,17 +10,23 @@
 #                               [--cursor-present <true|false>] \
 #                               [--codex-available <true|false>] \
 #                               [--cursor-available <true|false>] \
-#                               [--issue-number <n>]
+#                               [--issue-number <n>] \
+#                               [--claude-pid <pid>]
 #
 # Output: writes a sourceable bash file at --output (atomic temp+mv), then
-# updates a stable symlink at ~/.cache/larch/sessions/current-design-env.sh
-# pointing at --output (atomic ln -sfn). Values are shell-quoted via
-# printf '%q' so paths containing spaces or shell metacharacters survive
-# round-tripping through `source`.
+# updates a stable symlink under ~/.cache/larch/sessions/ pointing at
+# --output (atomic ln -sfn). With --claude-pid, the symlink is
+# current-design-env-<pid>.sh (one slot per Claude Code process). Omitting
+# --claude-pid uses the legacy current-design-env.sh name and prints a stderr
+# warning (transition shim). Values are shell-quoted via printf '%q' so paths
+# containing spaces or shell metacharacters survive round-tripping through
+# `source`.
 #
-# Single-runner contract: only one /design may run per repository at a time
-# (mirrors the /implement single-runner invariant). Concurrent runs clobber
-# the symlink and corrupt downstream Bash blocks.
+# Callers should pass the Bash-tool subshell parent PID (e.g. --claude-pid
+# "$PPID") from the root Bash-tool invocation so concurrent /design runs in
+# different Claude sessions do not clobber each other's symlink. Wrapping the
+# writer in an extra nested `bash`/`bash -c` layer can change which PID "$PPID"
+# refers to; avoid that unless the caller re-handles --claude-pid explicitly.
 #
 # Exit codes: 0 success, 1 invalid args.
 
@@ -39,6 +45,8 @@ CURSOR_PRESENT=""
 CODEX_AVAILABLE=""
 CURSOR_AVAILABLE=""
 ISSUE_NUMBER=""
+CLAUDE_PID=""
+CLAUDE_PID_SPECIFIED=0
 CLAUDE_PLUGIN_ROOT_VALUE="${CLAUDE_PLUGIN_ROOT:-}"
 
 while [[ $# -gt 0 ]]; do
@@ -51,6 +59,7 @@ while [[ $# -gt 0 ]]; do
     --codex-available)  CODEX_AVAILABLE="$2"; shift 2 ;;
     --cursor-available) CURSOR_AVAILABLE="$2"; shift 2 ;;
     --issue-number)     ISSUE_NUMBER="$2"; shift 2 ;;
+    --claude-pid)       CLAUDE_PID="$2"; CLAUDE_PID_SPECIFIED=1; shift 2 ;;
     *) larch_err "ERROR=Unknown argument: $1"; exit 1 ;;
   esac
 done
@@ -80,6 +89,13 @@ fi
 if [[ ! "$SESSION_ID" =~ ^[A-Za-z0-9_.-]{1,128}$ ]]; then
   larch_err "ERROR=Invalid --session-id: must match ^[A-Za-z0-9_.-]{1,128}$"
   exit 1
+fi
+
+if [[ "$CLAUDE_PID_SPECIFIED" -eq 1 ]]; then
+  if [[ -z "$CLAUDE_PID" || ! "$CLAUDE_PID" =~ ^[1-9][0-9]{0,6}$ ]]; then
+    larch_err "ERROR=Invalid --claude-pid: must be a positive integer of at most 7 decimal digits"
+    exit 1
+  fi
 fi
 
 if [[ "$DESIGN_TMPDIR_ARG" != /* ]]; then
@@ -114,6 +130,11 @@ build_export() {
 mv "${OUTPUT}.tmp.$$" "$OUTPUT"
 
 SYMLINK_DIR="${HOME}/.cache/larch/sessions"
-SYMLINK_PATH="${SYMLINK_DIR}/current-design-env.sh"
+if [[ -n "$CLAUDE_PID" ]]; then
+  SYMLINK_PATH="${SYMLINK_DIR}/current-design-env-${CLAUDE_PID}.sh"
+else
+  SYMLINK_PATH="${SYMLINK_DIR}/current-design-env.sh"
+  larch_err "WARNING=write-design-current-env.sh: --claude-pid omitted; using legacy current-design-env.sh symlink (transition shim; pass --claude-pid)"
+fi
 mkdir -p "$SYMLINK_DIR"
 ln -sfn "$OUTPUT" "$SYMLINK_PATH"

@@ -253,7 +253,7 @@ fi
 
 # Check 11: Step 0 branch-state-agnostic session setup (issue #2588). No
 # create-branch.sh --check or session-entry-gate.sh; env handoff via
-# write-design-current-env.sh and the stable current-design-env.sh symlink.
+# write-design-current-env.sh and the PID-keyed current-design-env-$PPID.sh symlink.
 step0_section=$(awk '
   /^<!-- step:0 — Session Setup -->$/ { flag=1; next }
   /^<!-- step:1c / && flag { flag=0 }
@@ -261,6 +261,16 @@ step0_section=$(awk '
 ' "$SKILL_MD")
 [[ -n "$step0_section" ]] \
   || fail "(11) could not extract /design Step 0 section"
+
+# First fenced ```bash … ``` inside Step 0 — writer / _wdce_args probes must
+# match the executable block, not incidental prose or later-step bash excerpts.
+step0_first_bash=$(printf '%s\n' "$step0_section" | awk '
+  /^```bash$/ { if (!c) { c=1; next } }
+  c && /^```$/ { exit }
+  c { print }
+')
+[[ -n "$step0_first_bash" ]] \
+  || fail "(11) Step 0 section has no opening \`\`\`bash fenced block"
 
 if printf '%s\n' "$step0_section" | grep -Fq 'branch_info_supplied'; then
   fail "(11) Step 0 must not use legacy branch_info_supplied routing (removed in #2588)"
@@ -274,26 +284,39 @@ fi
 # shellcheck disable=SC2016 # grep -F literal; backticks in markdown are not command substitution
 printf '%s\n' "$step0_section" | grep -Fq '`/implement` owns the feature-branch lifecycle' \
   || fail "(11) Step 0 must document that /implement owns the feature-branch lifecycle"
-printf '%s\n' "$step0_section" | grep -Fq 'write-design-current-env.sh' \
-  || fail "(11) Step 0 must invoke write-design-current-env.sh"
-printf '%s\n' "$step0_section" | grep -Fq 'current-design-env.sh' \
-  || fail "(11) Step 0 must reference the stable current-design-env.sh symlink"
-printf '%s\n' "$step0_section" | grep -Fq 'source-env.sh' \
-  || fail "(11) Step 0 must materialize source-env.sh via write-design-current-env --output"
-printf '%s\n' "$step0_section" | grep -Fq '# Contract pin for CI (scripts/test-design-structure.sh): session-setup.sh --prefix claude-design --skip-branch-check --skip-repo-check --check-reviewers' \
-  || fail "(11) Step 0 must retain the session-setup contract pin comment for CI"
-printf '%s\n' "$step0_section" | grep -Fq '_ss_args=(--prefix claude-design --skip-branch-check' \
-  || fail "(11) Step 0 Bash must build _ss_args with --prefix claude-design --skip-branch-check"
+# shellcheck disable=SC2016 # grep -F literal; $PPID is markdown text, not expansion
+printf '%s\n' "$step0_section" | grep -Fq 'current-design-env-$PPID.sh' \
+  || fail "(11) Step 0 must reference the PID-keyed current-design-env-$PPID.sh symlink"
 printf '%s\n' "$step0_section" | grep -Fq 'PREFLIGHT_ERROR' \
   || fail "(11) Step 0 failure guidance must mention PREFLIGHT_ERROR"
 # shellcheck disable=SC2016 # grep -F literal; backticks in markdown are not command substitution
 printf '%s\n' "$step0_section" | grep -Fq 'Only include `--caller-env "$SESSION_ENV_PATH"` in `_ss_args` when `SESSION_ENV_PATH` is non-empty (Anti-pattern #4).' \
   || fail "(11) Step 0 must retain the Anti-pattern #4 caller-env predicate for _ss_args"
 
+printf '%s\n' "$step0_first_bash" | grep -Fq 'write-design-current-env.sh' \
+  || fail "(11) Step 0a first bash block must invoke write-design-current-env.sh"
+# shellcheck disable=SC2016 # grep -F literal; quotes are part of the SKILL.md source line
+printf '%s\n' "$step0_first_bash" | grep -Fq -- '--claude-pid "$PPID"' \
+  || fail "(11) Step 0a first bash block must pass --claude-pid \"\$PPID\" to write-design-current-env.sh"
+printf '%s\n' "$step0_first_bash" | grep -Fq 'source-env.sh' \
+  || fail "(11) Step 0a first bash block must materialize source-env.sh via write-design-current-env --output"
+printf '%s\n' "$step0_first_bash" | grep -Fq '# Contract pin for CI (scripts/test-design-structure.sh): session-setup.sh --prefix claude-design --skip-branch-check --skip-repo-check --check-reviewers' \
+  || fail "(11) Step 0a first bash block must retain the session-setup contract pin comment for CI"
+printf '%s\n' "$step0_first_bash" | grep -Fq '_ss_args=(--prefix claude-design --skip-branch-check' \
+  || fail "(11) Step 0a first bash block must build _ss_args with --prefix claude-design --skip-branch-check"
+if printf '%s\n' "$step0_first_bash" | grep -Fq 'bash -c'; then
+  fail "(11) Step 0a first bash block must not use bash -c (would break the \$PPID / --claude-pid contract)"
+fi
+printf '%s\n' "$step0_first_bash" | grep -Fq '_wdce_args=(' \
+  || fail "(11) Step 0a first bash block must build _wdce_args=( ... ) for the writer"
+# shellcheck disable=SC2016 # grep -F literal; SKILL.md argv-array invocation line
+printf '%s\n' "$step0_first_bash" | grep -Fq '"${_wdce_args[@]}"' \
+  || fail "(11) Step 0a first bash block must invoke the writer via \"\${_wdce_args[@]}\" (argv array)"
+
 # shellcheck disable=SC2016 # fixed-string grep literal contains shell variable syntax
-setup_line=$(printf '%s\n' "$step0_section" | grep -nF '${CLAUDE_PLUGIN_ROOT}/scripts/session-setup.sh' | head -1 | cut -d: -f1 || true)
+setup_line=$(printf '%s\n' "$step0_first_bash" | grep -nF '${CLAUDE_PLUGIN_ROOT}/scripts/session-setup.sh' | head -1 | cut -d: -f1 || true)
 # shellcheck disable=SC2016 # fixed-string grep literal contains shell variable syntax
-wdce_line=$(printf '%s\n' "$step0_section" | grep -nF '${CLAUDE_PLUGIN_ROOT}/scripts/write-design-current-env.sh' | head -1 | cut -d: -f1 || true)
+wdce_line=$(printf '%s\n' "$step0_first_bash" | grep -nF '${CLAUDE_PLUGIN_ROOT}/scripts/write-design-current-env.sh' | head -1 | cut -d: -f1 || true)
 [[ -n "$setup_line" && -n "$wdce_line" ]] \
   || fail "(11) could not locate session-setup.sh and write-design-current-env.sh lines in Step 0"
 if (( setup_line >= wdce_line )); then

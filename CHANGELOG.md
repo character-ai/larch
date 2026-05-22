@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [39.0.2] - 2026-05-22
+
+### Changed
+
+- Key the stable `/design` session-env symlink on Claude PID (`$PPID`) so concurrent `/design` runs across working-tree clones no longer share one global path.
+- Teach `write-design-current-env.sh` `--claude-pid`, keep a legacy unkeyed symlink plus `WARNING=` stderr when omitted, and pass `--claude-pid "$PPID"` from Step 0 with PID-keyed preludes throughout `skills/design/SKILL.md`.
+- Extend `test-write-design-current-env.sh` (two-PID isolation, invalid PID, shim) and `test-design-structure.sh` probes; refresh `AGENTS.md`, `SECURITY.md`, and the writer contract doc.
+
 ## [39.0.1] - 2026-05-22
 
 ### Changed

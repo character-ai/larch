@@ -1,0 +1,29 @@
+Gathering the diff and commit history for a correctness-focused review.
+
+Checking `SECURITY.md` line for the symlink paragraph and whether `test-harnesses` / Makefile references changed:
+
+### In-Scope Findings
+
+- **Important** `correctness` `AGENTS.md:52` — The acceptance text asked the single-`/design` invariant to be rewritten for the new scope (per-Claude-process / no shared symlink); the diff still opens with “Run only one `/design` per repository at a time” while only the trailing clause explains PID-keyed symlinks, so the headline invariant remains tied to the old “serialize /design” framing even though cross-clone concurrent `/design` is now symlink-safe. **Suggested fix:** Split operational guidance from mechanics: either retitle to a non-symlink rationale, or explicitly scope “one `/design`” to human/process reasons while stating that concurrent Claude sessions no longer corrupt env via the cache symlink.
+
+- **Important** `correctness` `skills/design/SKILL.md:68` — Plan/edge-case text claims `$PPID` in a “Bash subshell” tracks Claude; in bash, a nested `( … )` subshell’s `$PPID` is the spawning shell’s PID, not necessarily Claude’s, so the prose over-generalizes the empirical Claude Code Bash-tool observation. **Suggested fix:** Qualify that the contract applies to each **top-level** Bash-tool invocation (where `$PPID` was verified), and avoid implying all subshell forms inherit Claude’s PID.
+
+- **Latent** `correctness` `scripts/write-design-current-env.sh:513-516` — `--claude-pid` rejects integers longer than seven decimal digits; on hosts with `pid_max` above `9999999`, a legitimate PID would fail validation and abort before updating the symlink. **Suggested fix:** Match platform `pid_max`, drop the digit cap, or document/enforce the cap as an explicit portability contract with a clear error.
+
+- **Nit** `correctness` `skills/design/scripts/test-write-design-current-env.sh:1506-1523` — The plan’s invalid-PID list included empty values; case 7 loops `0 abc 12345678 08` but never asserts `--claude-pid ''` is rejected, and the writer treats empty like “omitted” (legacy shim path), so tests and the plan’s “empty is invalid” wording diverge. **Suggested fix:** Either add an explicit empty-string expectation aligned with the writer, or change the writer/docs so “empty” is classified consistently.
+
+- **Latent** `risk-integration` `skills/design/scripts/test-write-design-current-env.sh:1473-1504` — Feature acceptance called for simulating a race from two subshells writing in quick succession; the harness runs two sequential writer invocations with distinct PIDs (sound for symlink independence) but does not interleave concurrent writers or subshell-driven timing stress. **Suggested fix:** Add a small concurrent `&` wait race reproducer or document in-repo that the strict race sim is explicitly deferred per the design plan.
+
+### Out-of-Scope Observations
+
+- **Nit** `architecture` `larch-logs/implement/E5A49BDA-5A19-44FA-BF67-DD9643D144B4/*` — The `chore(larch-logs): flush implement run …` commit adds/updates committed run-log artifacts; per review rules this is intentional shipped logging, not scope drift, so content quality is not flagged unless it broke consumers.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	AGENTS.md:52	Single-/design bullet still mandates one /design per repository while symlink rationale moved to PID keying; acceptance asked invariant scope rewrite.	Operators may keep over-serializing concurrent /design across clones or misread repo-wide rule as still symlink-driven.	Retitle or split operational single-runner rationale from per-Claude symlink safety so acceptance 3/AGENTS wording match the new mechanism.
+1	in_scope	important	correctness	skills/design/SKILL.md:68	SKILL prose generalizes that any Bash subshell $PPID tracks Claude; nested bash subshells can have PPID equal to an intermediate shell.	A future block that runs the prelude only inside ( ) or an extra bash layer could source the wrong PID-keyed file and hit unbound DESIGN_TMPDIR.	Limit the claim to verified top-level Bash-tool invocations or document forbidden nesting patterns.
+1	in_scope	latent	correctness	scripts/write-design-current-env.sh:513-516	Seven-digit cap on --claude-pid rejects longer decimal PIDs.	On systems with pid_max above 9999999, legitimate PIDs make Step 0 writer fail and /design cannot refresh env.	Remove or widen the digit cap after checking supported platforms or gate with explicit portability docs.
+1	in_scope	nit	correctness	skills/design/scripts/test-write-design-current-env.sh:1506-1523	Invalid PID tests omit empty string while plan listed empty as invalid; writer treats empty like omitted shim.	Test suite and contract drift on empty argv edge.	Align tests and writer/docs on whether empty means invalid or legacy shim.
+1	in_scope	latent	risk-integration	skills/design/scripts/test-write-design-current-env.sh:1473-1504	Harness proves two PID symlink independence sequentially, not subshell race timing from acceptance.	Less confidence against true parallel ln -sfn interleaving than acceptance text described.	Add concurrent race reproducer or document explicit deferral of strict race sim.
+1	out_of_scope	nit	architecture	larch-logs/implement/E5A49BDA-5A19-44FA-BF67-DD9643D144B4/	Committed implement run-log flush per repo policy; not introduced as functional defect of PID symlink work.	N/A	N/A
+```

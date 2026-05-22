@@ -65,10 +65,10 @@ Icons: ✅ done (with elapsed time since launch), ⏳ pending/in-progress, ❌ f
 
 ### Bash block prelude
 
-The Claude Code Bash tool does NOT preserve shell state between calls. Step 0 writes a sourceable session-env file via `scripts/write-design-current-env.sh` and refreshes a stable symlink at `~/.cache/larch/sessions/current-design-env.sh`. **Every Bash block from Step 1c onward MUST prepend the canonical conditional prelude line** so `$DESIGN_TMPDIR`, `$SESSION_TMPDIR`, `$SESSION_ID`, `$CLAUDE_PLUGIN_ROOT`, and the reviewer presence/availability booleans survive into the new subshell:
+The Claude Code Bash tool does NOT preserve shell state between calls. Step 0 writes a sourceable session-env file via `scripts/write-design-current-env.sh` and refreshes a stable symlink at `~/.cache/larch/sessions/current-design-env-$PPID.sh` (keyed on `$PPID` from the **root** Bash-tool subshell for that call — in normal `/design` orchestration this matches the Claude Code process for the session; do not nest the Step 0 writer or prelude inside an extra `bash` / `bash -c` layer without an explicit `--claude-pid` re-handoff, because `$PPID` would then name an intermediate shell instead). **Every Bash block from Step 1c onward MUST prepend the canonical conditional prelude line** so `$DESIGN_TMPDIR`, `$SESSION_TMPDIR`, `$SESSION_ID`, `$CLAUDE_PLUGIN_ROOT`, and the reviewer presence/availability booleans survive into the new subshell:
 
 ```bash
-[ -f ~/.cache/larch/sessions/current-design-env.sh ] && source ~/.cache/larch/sessions/current-design-env.sh
+[ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
 ```
 
 The conditional `[ -f ... ] &&` form is uniform across blocks so that pre-upgrade in-progress runs degrade silently and unexpected absence surfaces as the standard `set -u` unbound-variable error rather than a corrupted `source` call. Step 0 itself (which CREATES the env file) does not prepend the line.
@@ -155,6 +155,7 @@ _wdce_args=(
   --output "$DESIGN_TMPDIR/source-env.sh"
   --design-tmpdir "$DESIGN_TMPDIR"
   --session-id "$SESSION_ID"
+  --claude-pid "$PPID"
 )
 [ -n "$CODEX_PRESENT" ] && _wdce_args+=(--codex-present "$CODEX_PRESENT")
 [ -n "$CURSOR_PRESENT" ] && _wdce_args+=(--cursor-present "$CURSOR_PRESENT")
@@ -169,7 +170,7 @@ If `session-setup.sh` exits non-zero, the block prints its captured stdout/stder
 
 **⚠ /design: session-setup.sh failed. Investigate `PREFLIGHT_ERROR` and re-run.**
 
-This writes `$DESIGN_TMPDIR/source-env.sh` and refreshes the stable symlink `~/.cache/larch/sessions/current-design-env.sh` so the prelude line resolves on every later Bash block. `--issue-number "$ISSUE_NUMBER"` may be appended on a follow-up writer invocation once the issue number is bound in Step 0b; the writer accepts a re-invocation to refresh keys.
+This writes `$DESIGN_TMPDIR/source-env.sh` and refreshes the stable symlink `~/.cache/larch/sessions/current-design-env-$PPID.sh` so the prelude line resolves on every later Bash block. `--issue-number "$ISSUE_NUMBER"` may be appended on a follow-up writer invocation once the issue number is bound in Step 0b; the writer accepts a re-invocation to refresh keys (each invocation must still pass `--claude-pid "$PPID"`).
 
 **Execution-issues logging for nested runs**: When `SESSION_ENV_PATH` is non-empty, the parent log is `$(dirname "$SESSION_ENV_PATH")/execution-issues.md`. Any failing Bash tool, external reviewer launch, external reviewer collector status not equal to `OK`, or Agent-tool fallback failure must append the full captured stdout/stderr or returned text verbatim through `${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh` under `External Reviewer Issues` (or `Warnings` for diagram generation/sanitizer failures). Capture into a `$DESIGN_TMPDIR/*-failure.log` file first; include `${OUTPUT}.diag` sidecar content for reviewer collector failures. Do not summarize or truncate these captures.
 
@@ -197,7 +198,7 @@ This writes `$DESIGN_TMPDIR/source-env.sh` and refreshes the stable symlink `~/.
    Set `design_classification_source=caller-forwarded` (the orchestrator forwards tier selection; `run-params.json` is not re-derived from argv here).
 
 ```bash
-[ -f ~/.cache/larch/sessions/current-design-env.sh ] && source ~/.cache/larch/sessions/current-design-env.sh
+[ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
   CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$SESSION_ENV_PATH" 2>/dev/null || true)
 fi
@@ -221,7 +222,7 @@ Before sketches, run one codebase `Grep` pass for salient symbols from the issue
 <!-- step:1c — Clarifying Questions -->
 
 ```bash
-[ -f ~/.cache/larch/sessions/current-design-env.sh ] && source ~/.cache/larch/sessions/current-design-env.sh
+[ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
   CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$SESSION_ENV_PATH" 2>/dev/null || true)
 fi
@@ -236,7 +237,7 @@ Print: `> **🔶 /design 1c: questions**`
 <!-- step:1d — Design Discussion (Round 1) -->
 
 ```bash
-[ -f ~/.cache/larch/sessions/current-design-env.sh ] && source ~/.cache/larch/sessions/current-design-env.sh
+[ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
   CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$SESSION_ENV_PATH" 2>/dev/null || true)
 fi
@@ -251,7 +252,7 @@ Execute the Step 1d body in `${CLAUDE_PLUGIN_ROOT}/skills/design/references/disc
 <!-- step:1e — Discussion Mode Gate (Gate A) -->
 
 ```bash
-[ -f ~/.cache/larch/sessions/current-design-env.sh ] && source ~/.cache/larch/sessions/current-design-env.sh
+[ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
   CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$SESSION_ENV_PATH" 2>/dev/null || true)
 fi
@@ -269,7 +270,7 @@ Execute the Gate A body in `approval-gates.md`. When the user picks **Ready for 
 ## Step 2a — Collaborative Approach Sketches
 
 ```bash
-[ -f ~/.cache/larch/sessions/current-design-env.sh ] && source ~/.cache/larch/sessions/current-design-env.sh
+[ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
   CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$SESSION_ENV_PATH" 2>/dev/null || true)
 fi
@@ -288,7 +289,7 @@ A diverge-then-converge phase where multiple agents independently produce short 
 This path is allowed only when Step 0 classified `TRIVIAL_DOC_ONLY` after a codebase scan. Launch no external agents and no Claude fallback agents. Write sentinel artifacts:
 
 ```bash
-[ -f ~/.cache/larch/sessions/current-design-env.sh ] && source ~/.cache/larch/sessions/current-design-env.sh
+[ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
 printf '%s\n' 'NO_SKETCHES_CLASSIFIED_TRIVIAL' > "$DESIGN_TMPDIR/approach-synthesis.txt"
 printf '%s\n' 'NO_CONTESTED_DECISIONS' > "$DESIGN_TMPDIR/contested-decisions.md"
 : > "$DESIGN_TMPDIR/dialectic-resolutions.md"
@@ -341,7 +342,7 @@ If `sketch_budget=0`, skip this section entirely. Do NOT call `collect-agent-res
 **Regular mode** (4 external output files when both tools available):
 
 ```bash
-[ -f ~/.cache/larch/sessions/current-design-env.sh ] && source ~/.cache/larch/sessions/current-design-env.sh
+[ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
   CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$SESSION_ENV_PATH" 2>/dev/null || true)
 fi
@@ -356,7 +357,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1260 \
 **Quick mode** (2 external output files when both tools available; `sketch_budget=2`):
 
 ```bash
-[ -f ~/.cache/larch/sessions/current-design-env.sh ] && source ~/.cache/larch/sessions/current-design-env.sh
+[ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
   CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$SESSION_ENV_PATH" 2>/dev/null || true)
 fi
@@ -411,7 +412,7 @@ Write the synthesis to `$DESIGN_TMPDIR/approach-synthesis.txt` so it can be refe
 ### 2a.5 — Dialectic Resolution of Contested Decisions
 
 ```bash
-[ -f ~/.cache/larch/sessions/current-design-env.sh ] && source ~/.cache/larch/sessions/current-design-env.sh
+[ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
   CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$SESSION_ENV_PATH" 2>/dev/null || true)
 fi
@@ -464,7 +465,7 @@ After each dialectic collection boundary (debate results and judge results), con
 Print: `> **🔶 /design 2b: full plan**`
 
 ```bash
-[ -f ~/.cache/larch/sessions/current-design-env.sh ] && source ~/.cache/larch/sessions/current-design-env.sh
+[ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
   CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$SESSION_ENV_PATH" 2>/dev/null || true)
 fi
@@ -501,7 +502,7 @@ Write the plan to `$DESIGN_TMPDIR/plan.txt` with basename exactly `plan.txt`. If
 Immediately after saving `plan.txt`, emit the mechanical plan-validation ACTION. This writes `$DESIGN_TMPDIR/diff-lines.txt` atomically and fails closed if the final `diff_lines: <N>` line is missing or malformed:
 
 ```bash
-[ -f ~/.cache/larch/sessions/current-design-env.sh ] && source ~/.cache/larch/sessions/current-design-env.sh
+[ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
 printf '%s\n' 'ACTION=EMIT_PLAN' \
   | "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-driver.sh" --design-tmpdir "$DESIGN_TMPDIR"
 ```
@@ -515,7 +516,7 @@ If the driver exits non-zero or emits `EMIT_PLAN_STATUS=missing-diff-lines`, tre
 Print: `> **🔶 /design 3: plan review**`
 
 ```bash
-[ -f ~/.cache/larch/sessions/current-design-env.sh ] && source ~/.cache/larch/sessions/current-design-env.sh
+[ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
   CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$SESSION_ENV_PATH" 2>/dev/null || true)
 fi
@@ -552,7 +553,7 @@ Pre-render all 10 archetype prompt files (5 Cursor: arch, edge, innovation, prag
 **Step 1 — Pre-render prompts** (run all 10 in one message, blocking Bash calls):
 
 ```bash
-[ -f ~/.cache/larch/sessions/current-design-env.sh ] && source ~/.cache/larch/sessions/current-design-env.sh
+[ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
   CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$SESSION_ENV_PATH" 2>/dev/null || true)
 fi
@@ -580,7 +581,7 @@ done
 **Step 2 — Build manifest and dispatch through waterfall** (blocking Bash call):
 
 ```bash
-[ -f ~/.cache/larch/sessions/current-design-env.sh ] && source ~/.cache/larch/sessions/current-design-env.sh
+[ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
 _manifest="$DESIGN_TMPDIR/plan-review-slots.ndjson"
 : > "$_manifest"
 for _archetype in arch edge innovation pragmatic requirements; do
@@ -623,7 +624,7 @@ Follow `plan-review.md` (loaded via the MANDATORY at the top of Step 3) for: Col
 After `dispatch-plan-voters.sh` returns Voter 2/3 output paths and the local Voter 1 ballot path is available, emit the tally ACTION with explicit files. Use the canonical ballot path `$DESIGN_TMPDIR/ballot.txt` and the voter output paths emitted by `dispatch-plan-voters.sh` (`VOTER_1_PATH` for the Claude Voter 1 output, `VOTER_2_PATH`, `VOTER_3_PATH`). This script writes `$DESIGN_TMPDIR/voting-tally.md`, `$DESIGN_TMPDIR/accepted-plan-findings.md`, `$DESIGN_TMPDIR/rejected-findings.md`, `$DESIGN_TMPDIR/oos.md`, and `$DESIGN_TMPDIR/oos-accepted-design.md` using the design-local parser for `### FINDING_N:` and `### OOS_N:` blocks. When `SESSION_ENV_PATH` is non-empty, accepted non-security OOS is also written to `$(dirname "$SESSION_ENV_PATH")/oos-accepted-design.md`:
 
 ```bash
-[ -f ~/.cache/larch/sessions/current-design-env.sh ] && source ~/.cache/larch/sessions/current-design-env.sh
+[ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
 SESSION_ENV_PATH="$SESSION_ENV_PATH" \
 printf 'ACTION=TALLY ARGS=--ballot-file %s --voter-files %s %s %s --session-env-path %s\n' \
   "$DESIGN_TMPDIR/ballot.txt" \
@@ -647,7 +648,7 @@ If **all reviewers** report no in-scope issues and no out-of-scope observations,
 <!-- step:3.5 — Post-Review Chooser (Gate B) -->
 
 ```bash
-[ -f ~/.cache/larch/sessions/current-design-env.sh ] && source ~/.cache/larch/sessions/current-design-env.sh
+[ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
   CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$SESSION_ENV_PATH" 2>/dev/null || true)
 fi
@@ -670,7 +671,7 @@ If Round 2-style follow-up questions need to be asked (decisions emerging from t
 <!-- step:3b — Architecture Diagram -->
 
 ```bash
-[ -f ~/.cache/larch/sessions/current-design-env.sh ] && source ~/.cache/larch/sessions/current-design-env.sh
+[ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
   CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$SESSION_ENV_PATH" 2>/dev/null || true)
 fi
@@ -699,7 +700,7 @@ Diagram contents must obey `${CLAUDE_PLUGIN_ROOT}/skills/shared/mermaid-safe-con
 Write the diagram to `$DESIGN_TMPDIR/architecture-diagram.candidate.md` first. The candidate file includes the `## Architecture Diagram` heading and mermaid fence. Validate it before promotion:
 
 ```bash
-[ -f ~/.cache/larch/sessions/current-design-env.sh ] && source ~/.cache/larch/sessions/current-design-env.sh
+[ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
   CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$SESSION_ENV_PATH" 2>/dev/null || true)
 fi
@@ -733,7 +734,7 @@ On `STATUS=ok`, rename the candidate to `$DESIGN_TMPDIR/architecture-diagram.md`
 Print: `> **🔶 /design 4: rejected findings**`
 
 ```bash
-[ -f ~/.cache/larch/sessions/current-design-env.sh ] && source ~/.cache/larch/sessions/current-design-env.sh
+[ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
   CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$SESSION_ENV_PATH" 2>/dev/null || true)
 fi
@@ -745,7 +746,7 @@ Print any rejected plan review findings:
 
 1. Emit `ACTION=FINALIZE` to ensure `$DESIGN_TMPDIR/rejected-findings.md`, `$DESIGN_TMPDIR/accepted-plan-findings.md`, and `$DESIGN_TMPDIR/oos.md` exist and to validate non-empty finalize-required artifacts before Step 5:
    ```bash
-   [ -f ~/.cache/larch/sessions/current-design-env.sh ] && source ~/.cache/larch/sessions/current-design-env.sh
+   [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
    printf '%s\n' 'ACTION=FINALIZE' \
      | "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-driver.sh" --design-tmpdir "$DESIGN_TMPDIR"
    ```
@@ -762,7 +763,7 @@ After printing rejected findings (or the "all implemented" message), IMMEDIATELY
 <!-- step:4b — Final-Approval Loop (Gate C) -->
 
 ```bash
-[ -f ~/.cache/larch/sessions/current-design-env.sh ] && source ~/.cache/larch/sessions/current-design-env.sh
+[ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
   CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$SESSION_ENV_PATH" 2>/dev/null || true)
 fi
@@ -783,7 +784,7 @@ Execute the Gate C body in `approval-gates.md`. Present the latest `$DESIGN_TMPD
 Print: `> **🔶 /design 5: cleanup**`
 
 ```bash
-[ -f ~/.cache/larch/sessions/current-design-env.sh ] && source ~/.cache/larch/sessions/current-design-env.sh
+[ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
   CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$SESSION_ENV_PATH" 2>/dev/null || true)
 fi
@@ -809,7 +810,7 @@ Step 4b Gate C already returned **Approve**. Proceed without an additional promp
 
 Remove the session temp directory and all files within it. Run `cleanup-tmpdir.sh` only when `PLAN_WRITE_OK=true` AND `STANDALONE_HEAVY_FAILED` is unset or `false` **and** either `SESSION_ID` is empty (no design log publish was attempted in Step 5b), or `PUBLISH_OK=true` after a Step 5b publish when `SESSION_ID` was non-empty; otherwise skip cleanup so `$DESIGN_TMPDIR` is preserved for inspection, manual `design-log-publish.sh` retry, or redaction diagnostics. When publish failed after a successful plan write, point operators at `$DESIGN_TMPDIR/design-log-publish.failure.log` (and `$DESIGN_TMPDIR/execution-issues.md` when populated) plus the recovery branch notes from `design-log-publish.sh` stderr/stdout.
 ```bash
-[ -f ~/.cache/larch/sessions/current-design-env.sh ] && source ~/.cache/larch/sessions/current-design-env.sh
+[ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
   CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$SESSION_ENV_PATH" 2>/dev/null || true)
 fi

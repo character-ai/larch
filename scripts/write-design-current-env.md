@@ -6,7 +6,8 @@ context (`$DESIGN_TMPDIR`, `$SESSION_TMPDIR`, `$SESSION_ID`,
 `$ISSUE_NUMBER`) after each `Bash` tool call returns to a fresh subshell.
 The Claude Code Bash tool does NOT preserve shell state between calls;
 this writer plus the canonical conditional prelude in
-`skills/design/SKILL.md` (`[ -f ~/.cache/larch/sessions/current-design-env.sh ] && source ~/.cache/larch/sessions/current-design-env.sh`)
+`skills/design/SKILL.md`
+(`[ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh`)
 restores it on every block from Step 1c onward.
 
 ## Outputs
@@ -14,12 +15,13 @@ restores it on every block from Step 1c onward.
 - `--output <path>` — sourceable file, written atomically via `temp+mv`.
   Lines are `export KEY=<printf-%q-quoted-value>` so values containing
   spaces or shell metacharacters survive sourcing.
-- `${HOME}/.cache/larch/sessions/current-design-env.sh` — stable symlink
-  pointing at `--output`. The symlink is replaced with `ln -sfn` (same
-  target path as the file body write, but symlink replacement is not the
-  same atomicity story as `temp+mv` on a regular file — treat races on the
-  stable path as documented operational risk, not a single atomic rename).
-  This is the path the SKILL.md prelude line sources.
+- `${HOME}/.cache/larch/sessions/current-design-env-<pid>.sh` — stable
+  symlink (when `--claude-pid <pid>` is passed) pointing at `--output`.
+  The symlink is replaced with `ln -sfn` (same target path as the file
+  body write, but symlink replacement is not the same atomicity story as
+  `temp+mv` on a regular file — treat races on the stable path as
+  documented operational risk, not a single atomic rename). This is the
+  path the SKILL.md prelude line sources.
 
 ## Keys
 
@@ -30,21 +32,58 @@ whenever it is set in the writer's environment, mirroring
 `scripts/write-session-env.sh`'s `LARCH_CLAUDE_PLUGIN_ROOT` shape but as
 the directly-usable variable name (sourceable, not parsed).
 
+## `--claude-pid`
+
+Required for normal `/design` operation: pass the Bash-tool subshell parent
+PID (e.g. `--claude-pid "$PPID"`). In Claude Code, `$PPID` in each **top-level**
+Bash-tool invocation has been observed to match the Claude Code process for
+that session and to stay stable across Bash tool calls in the same session, so
+different concurrent Claude sessions (including `/design` from different
+working-tree clones) receive different symlink names and no longer clobber each
+other's session env. **Do not** wrap the writer (or the prelude contract) in an
+extra nested `bash` / `bash -c` invocation unless you deliberately re-thread
+`--claude-pid` for the PID namespace that owns the symlink slot — otherwise
+`$PPID` may refer to an intermediate shell, not Claude.
+
+Validation: `--claude-pid` must match `^[1-9][0-9]{0,6}$` (at most seven
+decimal digits, no leading zero).
+
+**Transition shim**: if `--claude-pid` is omitted, the writer falls back
+to the legacy unkeyed path `current-design-env.sh` and prints a stderr
+warning. Callers should migrate; the shim may be removed in a follow-up
+release.
+
+**Cross-skill audit**: only `/design` uses this machine-cache symlink
+pattern. `/implement`, `/research`, and `/review` thread session state
+via `SESSION_ENV_PATH`, explicit per-session paths, or other handoffs —
+they are unaffected by this writer's symlink naming.
+
+## Per-Claude-process symlink keying
+
+Concurrent `/design` runs in **different** Claude Code processes each
+pass a distinct `--claude-pid`, so each session owns its own symlink
+slot under `~/.cache/larch/sessions/`. Multiple `/design` runs in the
+**same** Claude session share one `$PPID` and therefore one slot;
+sequential runs overwrite as intended. `/implement` does not rely on
+this symlink (it uses `SESSION_ENV_PATH` and related contracts), so
+concurrent `/implement` runs do not race on `current-design-env-*.sh`.
+
+**Stale symlinks**: after Claude exits, PID-keyed symlinks may dangle;
+the prelude's `[ -f ... ] &&` guard skips missing targets. Operators
+may prune broken symlinks, for example:
+
+```bash
+find ~/.cache/larch/sessions -name 'current-design-env-*.sh' -type l \
+  ! -exec test -e {} \; -delete
+```
+
 ## Validation
 
 - `--session-id` matches `^[A-Za-z0-9_.-]{1,128}$`.
 - `--design-tmpdir` and `--output` must be absolute paths.
 - `--issue-number` matches `^[0-9]+$` when present.
+- When `--claude-pid` is passed, its value must be non-empty and match `^[1-9][0-9]{0,6}$`. Omitting the flag entirely selects the legacy shim (stderr warning).
 - Presence/availability booleans must be `true` or `false`.
-
-## Single-runner invariant
-
-Only one `/design` may run per repository at a time (mirrors the
-`/implement` single-runner invariant in `AGENTS.md`). The stable symlink
-is a process-wide resource; concurrent `/design` invocations would
-clobber it and corrupt later Bash blocks of the older run. Detection is
-out of scope for this writer — the invariant is documented; locking is a
-follow-up if needed.
 
 ## Edit-in-sync
 
