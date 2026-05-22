@@ -1360,7 +1360,8 @@ is_head_divergence_recoverable() {
 }
 
 # True when every path in the comma-separated vendor conflict list is a
-# non-bump file (exclude CHANGELOG* and .claude-plugin/plugin.json).
+# non-bump file (exclude CHANGELOG.md, CHANGELOG.rst, bare CHANGELOG, and
+# .claude-plugin/plugin.json — matching the deterministic pre-pass basenames).
 ship_pr_vendor_conflict_csv_is_non_bump_only() {
     local csv=$1 _ofs _p _bn
     [ -n "$csv" ] || return 1
@@ -1513,11 +1514,9 @@ _run_rebase_rebump_from_step3() {
 }
 
 run_rebase_rebump() {
-    local phase=$1 drop_out rebase_out rebase_rc conflict_out run_id classify_out classify_rc
-    local apply_out new_version bump_type reasoning_file
+    local phase=$1 drop_out rebase_out rebase_rc conflict_out run_id
     local fail_file rc tool_label plan_file
     local plan_args=()
-    local _origin_ver="" _classified_version="" _corrected=""
     emit_breadcrumb "⚠ ship-pr: rebase + re-bump"
 
     # Resume after prompt-side Conflict Resolution Procedure (Phase 1–4) for
@@ -1575,6 +1574,7 @@ run_rebase_rebump() {
     printf '%s\n' "$rebase_out" >> "$fail_file"
     if [ "$rebase_rc" -eq 1 ]; then
         # Conflict — deterministic pre-pass, then Phase 1–4 (non-bump) or vendor resolve-conflict
+        emit_breadcrumb "⚠ ship-pr: rebase-push keep-on-conflict pause (exit 1); deterministic pre-pass / vendor / Phase 1–4 handoff follows"
         conflict_files_kv=$(kv_value CONFLICT_FILES "$rebase_out")
         _orchestrator_conflict_csv="$conflict_files_kv"
         skip_vendor=false
@@ -1653,7 +1653,13 @@ run_rebase_rebump() {
 
         if [ "$skip_vendor" = false ] && [ "$needs_vendor" = true ] && [ -n "$vendor_conflict_csv" ] \
             && ship_pr_vendor_conflict_csv_is_non_bump_only "$vendor_conflict_csv"; then
-            : >"${IMPLEMENT_TMPDIR}/ship-pr-rrr-after-phase14.flag"
+            local _rrr_phase14_flag
+            _rrr_phase14_flag="${IMPLEMENT_TMPDIR}/ship-pr-rrr-after-phase14.flag"
+            if ! : >"$_rrr_phase14_flag"; then
+                printf 'ERROR: ship-pr: cannot write %s\n' "$_rrr_phase14_flag" >> "$fail_file"
+                record_failure rebase "ship-pr-rrr-after-phase14.flag" 1 "$fail_file" "CI Issues"
+                exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12)"
+            fi
             state_set_many RESUME_PHASE ship-pr-rrr-phase14 CALLER_KIND ship_pr_pre_push
             emit_breadcrumb "⚠ ship-pr: dispatching Phase 1–4 conflict-resolution (caller_kind=ship_pr_pre_push; aggregator-dispatch=conflict-resolution.md)"
             exit 5

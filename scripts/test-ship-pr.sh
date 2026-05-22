@@ -407,8 +407,9 @@ clear_pr_state() {
 # Scenarios are partitioned into functional sections. Each section becomes a
 # separate Makefile target (test-ship-pr-state, -postmerge, -fix-loop,
 # -transient, -phase14) so the CI matrix can pack them as independent harness rows.
-# Running the script without --section is equivalent to running all four
-# sections sequentially (backward-compat for local dev).
+# Running the script without --section is equivalent to running all listed
+# sections sequentially (state, postmerge, fix-loop, transient, phase14;
+# backward-compat for local dev).
 # ──────────────────────────────────────────────────────────────────────────────
 SECTION=""
 while [[ $# -gt 0 ]]; do
@@ -2889,6 +2890,48 @@ if grep -qF 'rebase-push.sh --keep-on-conflict' "$tmp/execution-issues.md" 2>/de
     fail "phase14 handoff must not record keep-on-conflict rebase failure before resolution"
 else
     ok "phase14 handoff skips premature keep-on-conflict execution-issues line"
+fi
+
+# Deep non-bump CONFLICT_FILES CSV (nested path) still reaches exit 5 with the same state keys.
+root=$(make_repo ship_pr_phase14_dispatch_deep_csv)
+tmp=$(make_tmpdir)
+cat > "$root/scripts/rebase-push.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+case "$*" in
+    *--keep-on-conflict*)
+        printf 'CONFLICT_FILES=.claude/skills/audit-runs/scripts/test-audit-runs.md,docs/README.md\n'
+        exit 1
+        ;;
+    *)
+        exit 0
+        ;;
+esac
+STUB
+chmod +x "$root/scripts/rebase-push.sh"
+cat > "$root/scripts/ci-wait.sh" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'ACTION=rebase\nCI_STATUS=fail\nBEHIND_COUNT=1\nFAILED_RUN_ID=\nBAIL_REASON=\nITERATION=0\nELAPSED=1\n'
+STUB
+chmod +x "$root/scripts/ci-wait.sh"
+_install_rebump_dep_stubs "$root"
+write_state "$tmp/ship-pr-state.sh" ci-initial
+: >"$tmp/execution-issues.md"
+PATH="$root/scripts:$PATH" CLAUDE_PLUGIN_ROOT="$root" IMPLEMENT_TMPDIR="$tmp" \
+    run_subject "$root" "$tmp" "$tmp/rc"
+assert_rc "$tmp/rc" 5 "phase14 deep CSV: ship-pr exits 5 for Phase 1–4 handoff"
+if [[ -f "$tmp/ship-pr-rrr-after-phase14.flag" ]]; then
+    ok "phase14 deep CSV creates resume flag under IMPLEMENT_TMPDIR"
+else
+    fail "expected ship-pr-rrr-after-phase14.flag after exit 5 (deep CSV)"
+fi
+assert_state_line "$tmp/ship-pr-state.sh" "RESUME_PHASE=ship-pr-rrr-phase14" "phase14 deep CSV persists RESUME_PHASE"
+assert_state_line "$tmp/ship-pr-state.sh" "CALLER_KIND=ship_pr_pre_push" "phase14 deep CSV persists CALLER_KIND"
+if grep -qF 'rebase-push.sh --keep-on-conflict' "$tmp/execution-issues.md" 2>/dev/null; then
+    fail "phase14 deep CSV must not record keep-on-conflict execution-issues line before resolution"
+else
+    ok "phase14 deep CSV skips premature keep-on-conflict execution-issues line"
 fi
 
 # Resume path: run_rebase_rebump continues after orchestrator-simulated Phase 4 success.

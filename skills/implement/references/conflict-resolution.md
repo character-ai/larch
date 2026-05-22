@@ -42,9 +42,9 @@ For each file in `CONFLICT_FILES`:
 
 ## Phase 2 — User Escalation (for uncertain conflicts)
 
-**If there are no uncertain conflicts**, skip to Phase 3 for Step 12 family callers or Phase 4 for `caller_kind=early_rebase` or `caller_kind=step8b_rebase`.
+**If there are no uncertain conflicts**, skip to Phase 3 for Step 12 family callers or Phase 4 for `caller_kind=early_rebase`, `caller_kind=ship_pr_pre_push`, or `caller_kind=step8b_rebase`.
 
-Call `AskUserQuestion` with the upstream (main) version, the feature branch commit version, and a proposed resolution for each uncertain file, batched into a single call. Use explicit "upstream (main)" and "feature branch commit" labels. Incorporate the user's answer, write the resolved file, and stage with `${CLAUDE_PLUGIN_ROOT}/scripts/git-stage.sh <file>`. If the user indicates the conflict cannot be resolved or asks to abort, run `${CLAUDE_PLUGIN_ROOT}/scripts/git-rebase-abort.sh` and **bail out** to the caller-family destination (Step 12d for Step 12 family; `STALL_TRACKING=true` + Step 18 for `early_rebase` or `step8b_rebase`).
+Call `AskUserQuestion` with the upstream (main) version, the feature branch commit version, and a proposed resolution for each uncertain file, batched into a single call. Use explicit "upstream (main)" and "feature branch commit" labels. Incorporate the user's answer, write the resolved file, and stage with `${CLAUDE_PLUGIN_ROOT}/scripts/git-stage.sh <file>`. If the user indicates the conflict cannot be resolved or asks to abort, run `${CLAUDE_PLUGIN_ROOT}/scripts/git-rebase-abort.sh` and **bail out** to the caller-family destination (Step 12d for Step 12 family; `STALL_TRACKING=true` + Step 18 for `early_rebase`, `ship_pr_pre_push`, or `step8b_rebase`).
 
 ## Phase 3 — Reviewer Panel on Conflict Resolution
 
