@@ -1903,8 +1903,8 @@ result=$(classify_c1_bucket_from_gh_issues_json '[{"number":1,"title":"widget bu
 assert_equal "$result" "proposed_augmentations" "[58d] mixed closed+open (--state all style payload) → open wins → augmentations"
 result=$(classify_c1_bucket_from_gh_issues_json '[{"number":1,"title":"widget bug","state":"CLOSED"}]')
 assert_equal "$result" "proposed_new_issues" "[58e] closed-only payload → proposed_new_issues (version-window step is separate)"
-result=$(classify_c1_bucket_from_gh_issues_json '[{"number":1,"title":"[Run Logs Audit Report 2026-01-01Z] legacy","state":"OPEN"}]')
-assert_equal "$result" "proposed_augmentations" "[58f] legacy audit title alone is not search-noise → eligible open match → proposed_augmentations"
+result=$(classify_c1_bucket_from_gh_issues_json '[{"number":1,"title":"[Run Logs Audit 2026-01-01Z Report] legacy","state":"OPEN"}]')
+assert_equal "$result" "proposed_new_issues" "[58f] canonical audit report title is search-noise → no eligible open match → proposed_new_issues"
 
 # Test 59: oos-category-mangle — code-review accepted prose category → pass (narrowed scan)
 echo "Test 59: audit-scan-run oos-category-mangle pass (code-review accepted prose)"
