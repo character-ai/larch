@@ -1,0 +1,24 @@
+Reading the ballot and any referenced context files.
+
+Locating session context files and verifying cited code in the workspace.
+
+Checking whether `LARCH_LOG_COMMIT_POSTMERGE_SHIP_PR` remains in `larch-log.sh` and verifying `SECURITY.md` and `docs/` paths.
+
+FINDING_1: EXONERATE -- historical committed run logs are out of scope for this PR; no issue needed.
+FINDING_2: EXONERATE -- postmerge_flush already asserts no `LARCH_LOG_ARGS=commit` via the stub call log; rev-list is ancillary.
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: EXONERATE -- stale scout snapshot is cosmetic; not worth a tracking issue.
+FINDING_6: YES
+FINDING_7: EXONERATE -- removal is already reflected in `scripts/ship-pr.md` and `SECURITY.md`; niche env footgun.
+FINDING_8: EXONERATE -- same as FINDING_5 for broader round-2 artifacts.
+FINDING_9: YES
+FINDING_10: EXONERATE -- broader disposable-repo coverage is disproportionate given existing split between stub ship-pr and real `test-larch-log.sh`.
+FINDING_11: YES
+FINDING_12: EXONERATE -- historical log text only; no issue.
+FINDING_13: EXONERATE -- overlaps FINDING_2; call-log grep in `postmerge_flush` already locks the policy.
+FINDING_14: NO -- accurate audit: mentions remain and do not reintroduce a `larch-log.sh`/`ship-pr.sh` bypass.
+FINDING_15: NO -- `docs/larch-log.md` / `docs/ship-pr.md` do not exist; script-local docs are the real surface.
+FINDING_16: NO -- `SECURITY.md` already describes unconditional post-sentinel refusal; nothing to track.
+FINDING_17: YES
+FINDING_18: YES

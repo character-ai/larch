@@ -1,0 +1,15 @@
+Gathering the branch diff and commit list, then cross-checking `run_postmerge_phase`, docs, and tests for ordering and orphan-commit logic.
+
+Verifying `run_postmerge_phase` control flow, `make_repo`/`make_tmpdir` behavior, and whether `docs/` mirrors need updates.
+
+Checking whether the “committed run-log” wording appears elsewhere in the touched `run_postmerge_phase` region and verifying `larch-log.sh` commit guard ordering.
+
+### In-Scope Findings
+
+- **correctness** `scripts/ship-pr.sh:1755-1756` — The inline comment above the post-merge `write-final-report.sh` call still claims the goal is so the **committed** run-log reflects `OUTCOME=merged`, but this change set removes the post-merge `larch-log.sh commit` path and codifies NEVER #19 (no post-merge git commits). After merge, `final-summary.md` and related artifacts are updated under `$IMPLEMENT_TMPDIR` (and the tracking-issue comment via the report helper), not as a new commit on `main`. **Suggested fix:** Reword the comment to describe tmpdir/API outcomes only (for example, that the tmpdir `final-summary.md` / report output aligns with `MERGE_RESULT`), and drop “committed” so it cannot contradict `scripts/ship-pr.md` and NEVER #19.
+
+- **correctness** `scripts/ship-pr.sh:1734-1736` — When `recovery_ok=false`, the branch is a no-op (`:`) but the comment still says “Skip commit” and warns that “committing would produce a partial dir,” even though post-merge `git commit` was removed and the skipped work is the entire `else` tail (`status=done` manifest finalize plus `write-final-report.sh`), not merely a commit step. **Suggested fix:** Replace the comment with wording that matches control flow (skip manifest finalization and final-report when manifest recovery failed, since downstream assumes a coherent manifest tree).
+
+### Out-of-Scope Observations
+
+The offline `postmerge_no_orphan_commit` check (`git remote add origin .` then `git fetch … "+HEAD:refs/remotes/origin/main"` before `ship-pr.sh`, then `git rev-list --count origin/main..HEAD`) correctly pins `origin/main` to the pre-run tip while leaving `HEAD` free to advance if anything performed a local commit; with the stubbed `implement-finalize.sh` postmerge path and the removed `larch-log.sh commit` block, a count of `0` is a meaningful positive signal. A workspace-wide grep may still show historical mentions of `LARCH_LOG_COMMIT_POSTMERGE_SHIP_PR` under committed `larch-logs/` session artifacts; that is unrelated to the runtime behavior changed in the provided diff hunks.

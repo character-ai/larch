@@ -1,0 +1,18 @@
+Gathering the diff, commit list, and repository-wide search for bypass residue.
+
+Searching scripts and docs for remaining references and verifying the new test's git metric vs. the plan.
+
+### In-Scope Findings
+
+- **risk-integration** `scripts/test-ship-pr.sh:1426` — The comment above the stub guard still claims the stub models production “unless bypass env is set,” but this branch changed the stub so post-merge sentinel always refuses `commit` even when `LARCH_LOG_COMMIT_POSTMERGE_SHIP_PR=1`, matching the real `scripts/larch-log.sh` behavior. Leaving the old wording is integration-hazardous because a reader may believe a bypass remains or that the stub and production diverge. **Suggested fix:** Rewrite the comment to state that both the stub and `larch-log.sh` enforce unconditional post-sentinel refusal, and that the second invocation only proves a stray `LARCH_LOG_COMMIT_POSTMERGE_SHIP_PR=1` cannot re-open the path.
+
+- **risk-integration** `scripts/test-ship-pr.sh:1456-1458` — The section header still frames `LARCH_NO_LOGS_COMMIT` as “skips the post-merge larch-log commit,” but `run_postmerge_phase` no longer invokes `larch-log.sh commit` at all, so that flag no longer toggles a distinct post-merge commit gate (only pre-existing/other phases still interpret it). The test remains useful for ordering, but the comment misstates the contract operators should internalize after #2552. **Suggested fix:** Retitle/recomment to describe the invariant under test (postmerge still runs manifest + full `write-final-report` without any `commit` call) and avoid implying `LARCH_NO_LOGS_COMMIT` is what suppresses a post-merge commit that no longer exists.
+
+- **risk-integration** `scripts/test-ship-pr.sh:1366-1388` — The new “no orphan” check uses `git rev-list --count "${head_before}..HEAD"` while the ok text claims “zero orphan commits on local main” and the issue/plan text called for asserting `origin/main..HEAD` is empty. `head_before..HEAD` only proves nothing advanced `HEAD` during that single `ship-pr.sh` invocation; it does not prove the branch is not ahead of `origin/main` (the usual “orphan on main” symptom #2182/#2552 targeted). **Suggested fix:** If `make_repo` always defines `origin/main` at the disposable repo tip, assert `git rev-list --count origin/main..HEAD` (or equivalent) is `0` after postmerge; otherwise narrow the ok/fail message to “no new commits during postmerge” so the test name matches what is actually enforced.
+
+### Out-of-Scope Observations
+
+- Under `scripts/`, `skills/**/*.md`, and `docs/**/*.md`, `LARCH_LOG_COMMIT_POSTMERGE_SHIP_PR` no longer appears except in `scripts/test-ship-pr.sh` (negative coverage) and the historical regression sentence in `skills/implement/SKILL.md` NEVER #19; `scripts/refresh-run-logs.sh` and `scripts/larch-log-flush.sh` do not set or reference that variable (they call `larch-log.sh commit` without it).
+- There are no `docs/larch-log.md` / `docs/ship-pr.md` files in this tree; cross-refs landed under `scripts/larch-log.md`, `scripts/ship-pr.md`, and `scripts/larch-log-flush.md` per the diff.
+- Committed material under `larch-logs/implement/...` still contains older reviewer text about the bypass; that is historical run-log content, not runtime wiring from this change set.
+- Git history on the branch: `1337ef10 Fixes #2552: remove LARCH_LOG_COMMIT_POSTMERGE_SHIP_PR post-merge commit bypass`.

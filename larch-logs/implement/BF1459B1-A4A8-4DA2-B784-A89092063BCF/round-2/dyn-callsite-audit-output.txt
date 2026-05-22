@@ -1,0 +1,13 @@
+Gathering the diff, commit history, and repository-wide references for the review.
+
+Checking `docs/` for cross-references and scanning for other post-merge bypass patterns.
+
+### In-Scope Findings
+
+- **correctness** `scripts/test-ship-pr.sh:1367-1391` — The new `git rev-list --count origin/main..HEAD` check only proves **no new git objects** were added on `HEAD` in this disposable repo; `larch-log.sh` is a stub here and never runs `git commit`, so a regression that **reintroduces a post-merge `larch-log.sh commit` call** (especially one that fails fast and only shows up in `larch-log-calls.txt` / `postmerge-order.log`) would generally **not** move `HEAD` and could still pass this assertion while violating the intended policy. **Suggested fix:** Keep treating the grep / ordering assertions in the adjacent `postmerge_flush` and missing-manifest tests as the primary lock for “no post-merge `commit` invocation,” and either add an explicit `! grep -q '^LARCH_LOG_ARGS=commit'` check to this same scenario or add a short comment above `orphan_count` clarifying it is defense-in-depth for unexpected real `git commit` paths, not a substitute for the stub call-log assertions.
+
+### Out-of-Scope Observations
+
+- Repository-wide search still mentions `LARCH_LOG_COMMIT_POSTMERGE_SHIP_PR` in `skills/implement/SKILL.md` (historical context inside NEVER #19), `scripts/test-ship-pr.sh` (legacy-env negative test), and under tracked `larch-logs/implement/...` session/reviewer artifacts from prior work; none of that reintroduces a runtime bypass in `scripts/larch-log.sh` or `scripts/ship-pr.sh` per the diff.
+- The written implementation plan referenced `docs/larch-log.md` / `docs/ship-pr.md` cross-links; this branch updates [`scripts/larch-log.md`](scripts/larch-log.md) and [`scripts/ship-pr.md`](scripts/ship-pr.md) instead, and there are no matching filenames under `docs/` in this tree, so there is no additional doc surface to reconcile from the diff alone.
+- [`SECURITY.md`](SECURITY.md) `larch-logs/` subsection remains consistent with unconditional post-sentinel refusal (no bypass described there).
