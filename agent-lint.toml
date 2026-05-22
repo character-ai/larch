@@ -140,6 +140,9 @@ suppress = [
 #
 # scripts/test-parse-prose-blockers.sh is the regression harness for
 # scripts/parse-prose-blockers.sh (Makefile `test-parse-prose-blockers`).
+# scripts/parse-prose-blockers.sh is invoked only from scripts/blocker-helpers.sh
+# (dynamic `$(dirname …)/parse-prose-blockers.sh`); agent-lint does not follow
+# `source`, so it is dead-script excluded alongside the harness.
 # scripts/blocker-helpers.sh is sourced by scripts/implement-admission.sh; agent-lint
 # does not follow `source`, so the library + sibling `scripts/blocker-helpers.md` are
 # dead-script excluded. scripts/test-implement-admission.sh is the admission matrix
@@ -739,6 +742,7 @@ exclude = [
   "scripts/test-lint-bash32.sh",
   "scripts/test-lint-bash32.md",
   "scripts/test-parse-prose-blockers.sh",
+  "scripts/parse-prose-blockers.sh",
   "scripts/blocker-helpers.sh",
   "scripts/test-implement-admission.sh",
   "skills/set-up-forked-open-source-repo/scripts/lib-remotes.sh",
