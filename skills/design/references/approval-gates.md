@@ -37,7 +37,7 @@ Question text (both shapes): `"All open design questions appear discussed. Ready
 
 ### Discussion sub-round body
 
-When the user picks **Discuss more**, the orchestrator either (a) asks the user what additional aspect to discuss via a free-form follow-up, or (b) walks any remaining branch from the Step 1d decision tree that was deferred. Then re-prompt with the same two-option `AskUserQuestion`. Append resolved decisions to `$DESIGN_TMPDIR/discussion-round1.md` (or `discussion-round2.md` when re-entered post-review — see "Re-entry from Gate B/C" below) using the existing Q&A schema in `discussion-rounds.md`.
+When the user picks **Discuss more**, the orchestrator either (a) asks the user what additional aspect to discuss via a free-form follow-up, or (b) walks any remaining branch from the Step 1d decision tree that was deferred. Then re-prompt with the **same Gate A shape as the prior prompt**: Shape 1 uses the same two-option `AskUserQuestion` (Ready for review / Discuss more); Shape 2 uses the same three-option `AskUserQuestion` (Show latest design proposal / Ready for review / Discuss more). Append resolved decisions to `$DESIGN_TMPDIR/discussion-round1.md` (or `discussion-round2.md` when re-entered post-review — see "Re-entry from Gate B/C" below) using the existing Q&A schema in `discussion-rounds.md`.
 
 **Per-tier behavior** (the prompt is always fired at least once before sketches/review; further iterations follow the user's **Discuss more** choice):
 - `--trivial`: after Step 1d's short-circuit (`⏩ 1d: discussion r1 — no scope decisions require discussion`) prints, the user typically picks **Ready for review** on the first prompt. The loop still accommodates **Discuss more** if the user wants to add context.

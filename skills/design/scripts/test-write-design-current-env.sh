@@ -113,18 +113,20 @@ target=$(readlink "$symlink")
 ) || fail "case4: re-sourced symlink does not reflect latest run (subshell exit $?)"
 
 # Case 5 — argv validation rejects obvious bad input
+_bad_tmpdir_err="$TMPROOT/wdce-bad-tmpdir.err"
+_bad_session_err="$TMPROOT/wdce-bad-session.err"
 if "$SUBJECT" --output /tmp/x --design-tmpdir relative --session-id RUN-3 \
-        2>/tmp/wdce-bad-tmpdir.err; then
+        2>"$_bad_tmpdir_err"; then
     fail "case5: relative --design-tmpdir was accepted"
 fi
-grep -q "must be an absolute path" /tmp/wdce-bad-tmpdir.err || \
+grep -q "must be an absolute path" "$_bad_tmpdir_err" || \
     fail "case5: relative --design-tmpdir missing expected error"
 
 if "$SUBJECT" --output /tmp/x --design-tmpdir /tmp/y --session-id "bad id" \
-        2>/tmp/wdce-bad-session.err; then
+        2>"$_bad_session_err"; then
     fail "case5: invalid --session-id was accepted"
 fi
-grep -q "Invalid --session-id" /tmp/wdce-bad-session.err || \
+grep -q "Invalid --session-id" "$_bad_session_err" || \
     fail "case5: invalid --session-id missing expected error"
 
 echo "PASS: test-write-design-current-env.sh"

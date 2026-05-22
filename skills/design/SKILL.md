@@ -110,41 +110,66 @@ Print: `> **🔶 /design 0: setup**`
 
 ### 0a — Reviewer session (`DESIGN_TMPDIR`)
 
-`/design` no longer creates or checks a feature branch — `/implement` owns the feature-branch lifecycle. Run `session-setup.sh` with `--skip-branch-check` unconditionally (include `--caller-env "$SESSION_ENV_PATH"` only when that variable is non-empty — Anti-pattern #4). Parse `SESSION_TMPDIR` → set `DESIGN_TMPDIR`. Derive `codex_available` / `cursor_available` from `session-setup.sh` output. Preserve nested `execution-issues.md` logging unchanged.
+`/design` no longer creates or checks a feature branch — `/implement` owns the feature-branch lifecycle. Run `session-setup.sh` with `--skip-branch-check` unconditionally (include `--caller-env "$SESSION_ENV_PATH"` only when that variable is non-empty — Anti-pattern #4). **Use a single Bash block below** so `session-setup.sh` stdout is parsed and `write-design-current-env.sh` runs in the same subshell as the emitted `SESSION_TMPDIR=` / `SESSION_ID=` / reviewer KV lines — do not split setup and writer across separate Bash invocations with bare `$DESIGN_TMPDIR` expansion (Anti-pattern: subshells lose unexported state; a paste can collapse paths to `/source-env.sh`). Parse printed output for `SESSION_TMPDIR`, `SESSION_ID`, `CODEX_AVAILABLE`, `CURSOR_AVAILABLE`, `CODEX_PRESENT`, `CURSOR_PRESENT`. Set `DESIGN_TMPDIR` = `SESSION_TMPDIR` and mental flags `codex_available` / `cursor_available` from that same output (same two-tier pattern as the historical Step 0). Preserve nested `execution-issues.md` logging unchanged.
 
 ```bash
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
   CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$SESSION_ENV_PATH" 2>/dev/null || true)
 fi
 export CLAUDE_PLUGIN_ROOT
-SESSION_ENV_PATH="$SESSION_ENV_PATH" LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 0 — session setup" || true
-${CLAUDE_PLUGIN_ROOT}/scripts/session-setup.sh --prefix claude-design --skip-branch-check --skip-repo-check --check-reviewers [--caller-env "$SESSION_ENV_PATH"] [--skip-codex-probe] [--skip-cursor-probe]
+SESSION_ENV_PATH="${SESSION_ENV_PATH:-}" LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 0 — session setup" || true
+
+# Contract pin for CI (scripts/test-design-structure.sh): session-setup.sh --prefix claude-design --skip-branch-check --skip-repo-check --check-reviewers
+_ss_args=(--prefix claude-design --skip-branch-check --skip-repo-check --check-reviewers)
+if [ -n "${SESSION_ENV_PATH:-}" ]; then
+  _ss_args+=(--caller-env "$SESSION_ENV_PATH")
+fi
+_ss_rc=0
+_ss_out=$("${CLAUDE_PLUGIN_ROOT}/scripts/session-setup.sh" "${_ss_args[@]}" 2>&1) || _ss_rc=$?
+printf '%s\n' "$_ss_out"
+if [ "$_ss_rc" -ne 0 ]; then
+  exit "$_ss_rc"
+fi
+
+SESSION_TMPDIR= SESSION_ID= CODEX_AVAILABLE= CURSOR_AVAILABLE= CODEX_PRESENT= CURSOR_PRESENT=
+while IFS= read -r _line || [ -n "$_line" ]; do
+  [ -z "$_line" ] && continue
+  case "$_line" in
+    SESSION_TMPDIR=*) SESSION_TMPDIR="${_line#SESSION_TMPDIR=}" ;;
+    SESSION_ID=*) SESSION_ID="${_line#SESSION_ID=}" ;;
+    CODEX_AVAILABLE=*) CODEX_AVAILABLE="${_line#CODEX_AVAILABLE=}" ;;
+    CURSOR_AVAILABLE=*) CURSOR_AVAILABLE="${_line#CURSOR_AVAILABLE=}" ;;
+    CODEX_PRESENT=*) CODEX_PRESENT="${_line#CODEX_PRESENT=}" ;;
+    CURSOR_PRESENT=*) CURSOR_PRESENT="${_line#CURSOR_PRESENT=}" ;;
+  esac
+done <<< "$_ss_out"
+
+DESIGN_TMPDIR="${SESSION_TMPDIR:-}"
+if [ -z "$DESIGN_TMPDIR" ] || [ -z "$SESSION_ID" ]; then
+  printf '%s\n' "**⚠ /design: session-setup output missing SESSION_TMPDIR or SESSION_ID**" >&2
+  exit 1
+fi
+
+_wdce_args=(
+  "${CLAUDE_PLUGIN_ROOT}/scripts/write-design-current-env.sh"
+  --output "$DESIGN_TMPDIR/source-env.sh"
+  --design-tmpdir "$DESIGN_TMPDIR"
+  --session-id "$SESSION_ID"
+)
+[ -n "$CODEX_PRESENT" ] && _wdce_args+=(--codex-present "$CODEX_PRESENT")
+[ -n "$CURSOR_PRESENT" ] && _wdce_args+=(--cursor-present "$CURSOR_PRESENT")
+[ -n "$CODEX_AVAILABLE" ] && _wdce_args+=(--codex-available "$CODEX_AVAILABLE")
+[ -n "$CURSOR_AVAILABLE" ] && _wdce_args+=(--cursor-available "$CURSOR_AVAILABLE")
+"${_wdce_args[@]}"
 ```
 
-Only include `--caller-env "$SESSION_ENV_PATH"` if `SESSION_ENV_PATH` is non-empty (Anti-pattern #4). If `SESSION_ENV_PATH` provides `CODEX_PRESENT=false` or `CURSOR_PRESENT=false`, the script auto-sets the corresponding `--skip-codex-probe` / `--skip-cursor-probe` flag.
+Only include `--caller-env "$SESSION_ENV_PATH"` in `_ss_args` when `SESSION_ENV_PATH` is non-empty (Anti-pattern #4). If `SESSION_ENV_PATH` provides `CODEX_PRESENT=false` or `CURSOR_PRESENT=false`, `session-setup.sh` auto-sets the corresponding `--skip-codex-probe` / `--skip-cursor-probe` while reading caller-env; explicit `--skip-*` flags are unnecessary when passing `--caller-env`.
 
-If the script exits non-zero, always print the raw `PREFLIGHT_ERROR=...` line first. Then print the normalized skill-level message and abort:
+If `session-setup.sh` exits non-zero, the block prints its captured stdout/stderr first (including any raw `PREFLIGHT_ERROR=...` line). Then print the normalized skill-level message and abort:
 
 **⚠ /design: session-setup.sh failed. Investigate `PREFLIGHT_ERROR` and re-run.**
 
-Parse the output for `SESSION_TMPDIR`, `SESSION_ID`, `CODEX_AVAILABLE`, `CURSOR_AVAILABLE`, `CODEX_PRESENT`, `CURSOR_PRESENT`. Set `DESIGN_TMPDIR` = `SESSION_TMPDIR`.
-
-Set mental flags `codex_available` and `cursor_available` based on the output (same two-tier pattern as the historical Step 0).
-
-**Materialize the sourceable session-env file** so every Bash block from Step 1c onward can re-establish `$DESIGN_TMPDIR` / `$SESSION_ID` / `$CLAUDE_PLUGIN_ROOT` / reviewer booleans via the canonical conditional prelude (see "Bash block prelude" above):
-
-```bash
-${CLAUDE_PLUGIN_ROOT}/scripts/write-design-current-env.sh \
-  --output "$DESIGN_TMPDIR/source-env.sh" \
-  --design-tmpdir "$DESIGN_TMPDIR" \
-  --session-id "$SESSION_ID" \
-  --codex-present "$CODEX_PRESENT" \
-  --cursor-present "$CURSOR_PRESENT" \
-  --codex-available "$CODEX_AVAILABLE" \
-  --cursor-available "$CURSOR_AVAILABLE"
-```
-
-This writes `$DESIGN_TMPDIR/source-env.sh` and refreshes the stable symlink `~/.cache/larch/sessions/current-design-env.sh` so the prelude line resolves on every later Bash block. `--issue-number "$ISSUE_NUMBER"` may be appended once the issue number is bound in Step 0b; the writer accepts a re-invocation to refresh keys.
+This writes `$DESIGN_TMPDIR/source-env.sh` and refreshes the stable symlink `~/.cache/larch/sessions/current-design-env.sh` so the prelude line resolves on every later Bash block. `--issue-number "$ISSUE_NUMBER"` may be appended on a follow-up writer invocation once the issue number is bound in Step 0b; the writer accepts a re-invocation to refresh keys.
 
 **Execution-issues logging for nested runs**: When `SESSION_ENV_PATH` is non-empty, the parent log is `$(dirname "$SESSION_ENV_PATH")/execution-issues.md`. Any failing Bash tool, external reviewer launch, external reviewer collector status not equal to `OK`, or Agent-tool fallback failure must append the full captured stdout/stderr or returned text verbatim through `${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh` under `External Reviewer Issues` (or `Warnings` for diagram generation/sanitizer failures). Capture into a `$DESIGN_TMPDIR/*-failure.log` file first; include `${OUTPUT}.diag` sidecar content for reviewer collector failures. Do not summarize or truncate these captures.
 
@@ -172,6 +197,7 @@ This writes `$DESIGN_TMPDIR/source-env.sh` and refreshes the stable symlink `~/.
    Set `design_classification_source=caller-forwarded` (the orchestrator forwards tier selection; `run-params.json` is not re-derived from argv here).
 
 ```bash
+[ -f ~/.cache/larch/sessions/current-design-env.sh ] && source ~/.cache/larch/sessions/current-design-env.sh
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
   CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$SESSION_ENV_PATH" 2>/dev/null || true)
 fi
@@ -569,8 +595,8 @@ for _archetype in arch edge innovation pragmatic requirements; do
 done
 _plan_review_dispatch=$("${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-with-waterfall.sh" \
   --slots-file "$_manifest" \
-  --codex-present "$codex_available" \
-  --cursor-present "$cursor_available" \
+  --codex-present "$CODEX_PRESENT" \
+  --cursor-present "$CURSOR_PRESENT" \
   --mode description \
   --plan-file "$DESIGN_TMPDIR/plan.txt" \
   --feature-file "${IMPLEMENT_TMPDIR:-$DESIGN_TMPDIR}/feature-description.txt" \

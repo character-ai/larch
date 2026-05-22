@@ -15,8 +15,11 @@ restores it on every block from Step 1c onward.
   Lines are `export KEY=<printf-%q-quoted-value>` so values containing
   spaces or shell metacharacters survive sourcing.
 - `${HOME}/.cache/larch/sessions/current-design-env.sh` — stable symlink
-  pointing at `--output`. Refreshed atomically via `ln -sfn`. This is the
-  path the SKILL.md prelude line sources.
+  pointing at `--output`. The symlink is replaced with `ln -sfn` (same
+  target path as the file body write, but symlink replacement is not the
+  same atomicity story as `temp+mv` on a regular file — treat races on the
+  stable path as documented operational risk, not a single atomic rename).
+  This is the path the SKILL.md prelude line sources.
 
 ## Keys
 
