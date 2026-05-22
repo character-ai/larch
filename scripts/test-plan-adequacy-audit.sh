@@ -11,6 +11,7 @@ fail() { echo "FAIL: $1" >&2; exit 1; }
 [[ -f "$SKILL" ]] || fail "missing SKILL.md"
 
 grep -Fq '<reviewer_issue_title>' "$SKILL" || fail "missing XML reviewer_issue_title wrap"
+grep -Fq '<reviewer_issue_body>' "$SKILL" || fail "missing XML reviewer_issue_body wrap"
 grep -Fq '<reviewer_plan>' "$SKILL" || fail "missing XML reviewer_plan wrap"
 grep -Fq '**Fixed rubric**' "$SKILL" || fail "missing fixed rubric heading"
 grep -Fq 'AUDIT=pass' "$SKILL" || fail "missing AUDIT=pass envelope"

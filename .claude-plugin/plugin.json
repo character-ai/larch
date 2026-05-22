@@ -1,7 +1,7 @@
 {
   "name": "larch",
   "version": "34.0.24",
-  "description": "Multi-agent workflow automation for Claude Code: design, code review, implementation, and PR automation. SIMPLE vs HARD (`POST_PLAN_WORKFLOW_PATH`) classifies post-plan and `/design` depth only; `/implement` Step 5 code review always runs the unified hard panel (`--panel hard`) with the same base round cap (five rounds, extended when prior rounds were degraded), dynamic archetypes up to the session cap, specialist slots per `review-and-fix.sh`, and a three-judge voting panel each round (Claude + Codex + Cursor; replacements when an external is unhealthy). Plan review uses a four-reviewer diagonal panel (2 Cursor + 2 Codex). `/design` sketch fan-out stays adaptive (0/2/4 agents) via `/design --quick` / `--full` and the router — independent of removed `/implement --quick`.",
+  "description": "Multi-agent workflow automation for Claude Code: issue-anchored `/design` (tier flags `--trivial` / `--simple` / `--hard`) and `/implement` (positional `<issue-N>`, optional `--merge`, `--forked`, `--draft`, `--no-admin-fallback`, `--no-logs-commit`, `--coder`, `--no-dynamic-archetypes`, `--dynamic-archetypes`, `--run-id`). `/implement` Preflight reads the `larch:plan` block from the issue body; `/implement` Step 5 code review always uses the unified hard panel internally (public `--panel` argv removed). Post-plan workflow depth follows `POST_PLAN_WORKFLOW_PATH` from session/plan classification, not a removed `--hard` on `/implement`.",
   "author": {
     "name": "Sergey Zhupanov",
     "email": "zhupanov@yahoo.com"

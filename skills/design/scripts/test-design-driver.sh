@@ -9,6 +9,7 @@ export LARCH_QUIET_DISABLE=1
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd -P)
 SUBJECT="$SCRIPT_DIR/design-driver.sh"
+DESIGN_SKILL="$SCRIPT_DIR/../SKILL.md"
 
 fail() {
     echo "FAIL: $1" >&2
@@ -74,5 +75,17 @@ EOF
 out=$("$SUBJECT" --design-tmpdir "$DESIGN" --action-file "$unknown")
 printf '%s\n' "$out" | grep -q '^ACTION_PASSTHROUGH=hello$' || fail "non-action passthrough missing"
 printf '%s\n' "$out" | grep -q '^ACTION_PASSTHROUGH=ACTION=UNKNOWN ARGS=--flag value$' || fail "unknown action passthrough missing"
+
+[[ -f "$DESIGN_SKILL" ]] || fail "missing skills/design/SKILL.md"
+
+trivial_row=$'| `--trivial` |'
+simple_row=$'| `--simple` |'
+hard_row=$'| `--hard` |'
+grep -Fq "$trivial_row" "$DESIGN_SKILL" || fail "design SKILL missing trivial tier row"
+grep -Fq "$simple_row" "$DESIGN_SKILL" || fail "design SKILL missing simple tier row"
+grep -Fq "$hard_row" "$DESIGN_SKILL" || fail "design SKILL missing hard tier row"
+grep -Fq 'sketch_budget=0' "$DESIGN_SKILL" || fail "design SKILL missing sketch_budget=0 mapping pin"
+grep -Fq 'review_budget=quick' "$DESIGN_SKILL" || fail "design SKILL missing review_budget=quick mapping pin"
+grep -Fq 'workflow_path=HARD' "$DESIGN_SKILL" || fail "design SKILL missing workflow_path=HARD tier mapping pin"
 
 echo "PASS: test-design-driver.sh"

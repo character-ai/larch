@@ -1,7 +1,7 @@
 ---
 name: implement
 description: "Use when implementing from a GitHub issue with a vetted in-body plan (run /design first). Materialize, implement, validate, review, version bump, PR, CI. See /research, /design, /im, /implement --merge."
-argument-hint: "[--merge] [--no-admin-fallback] [--no-logs-commit] [--forked] [--draft] [--coder <claude|codex|cursor>] <issue-N>"
+argument-hint: "[--merge] [--forked] [--draft] [--no-admin-fallback] [--no-logs-commit] [--coder <claude|codex|cursor>] [--no-dynamic-archetypes] [--dynamic-archetypes <N>] [--run-id <ID>] <issue-N>"
 allowed-tools: AskUserQuestion, Bash, Read, Edit, Write, Grep, Glob, Agent, Task, WebFetch, WebSearch, Skill
 ---
 
@@ -9,7 +9,7 @@ allowed-tools: AskUserQuestion, Bash, Read, Edit, Write, Grep, Glob, Agent, Task
 
 End-to-end: preflight-gated plan from the GitHub issue body (`larch:plan`), materialize artifacts, implement, validate, commit, code review, validate, commit, code flow diagram, version bump, PR, CI monitor, cleanup. With `--merge`: also CI+rebase+merge loop, local branch delete, main verification, and (inside `ship-pr.sh` before exit) a post-merge `larch-log.sh manifest` flush to `status=done` plus `write-final-report.sh` so tmpdir `final-summary.md` / tracking-issue `larch:final-summary` can match `MERGE_RESULT` — **without** any post-merge `git commit` (see NEVER #19). Step 18 still performs teardown, token/timing refresh, and the remaining terminal safety-net.
 
-**Protocol Execution Directive.** You are now the `/implement` orchestrator. After parsing flags and checking for mutually exclusive options, your FIRST external actions MUST be: (1) **Preflight — issue-anchored plan** (GitHub issue state + `larch:plan` block + plan-adequacy audit) on the positional `<issue-N>`; then (2) **Step 0** — `${CLAUDE_PLUGIN_ROOT}/scripts/create-branch.sh --check`, `${CLAUDE_PLUGIN_ROOT}/scripts/session-entry-gate.sh`, `${CLAUDE_PLUGIN_ROOT}/scripts/session-setup.sh` with `--skip-branch-check` toggled by the entry gate. When `--forked` was parsed, `${CLAUDE_PLUGIN_ROOT}/scripts/implement-fork-env.sh` is the only permitted exception before the standard three-call sequence and runs before those three setup calls.
+**Protocol Execution Directive.** You are now the `/implement` orchestrator. After parsing flags and checking for mutually exclusive options, your FIRST external actions MUST be: (1) When `forked_target=true`, run `${CLAUDE_PLUGIN_ROOT}/scripts/implement-fork-env.sh` once and parse `UPSTREAM_REPO` (and sibling fork KV lines) from stdout — **before** Preflight `gh` / helper calls so every upstream issue read uses explicit `--repo "$UPSTREAM_REPO"` (fork clones default `gh` to `origin`, which is wrong for the positional upstream design issue). (2) **Preflight — issue-anchored plan** (GitHub issue state + `larch:plan` block + plan-adequacy audit) on the positional `<issue-N>`; when `forked_target=true`, pass `--repo "$UPSTREAM_REPO"` to `gh issue view`, `plan-block-read.sh`, `clarify-state.sh`, `clarify-comment-post.sh`, and `clarify-label.sh` as each supports it. (3) **Step 0** — `${CLAUDE_PLUGIN_ROOT}/scripts/create-branch.sh --check`, `${CLAUDE_PLUGIN_ROOT}/scripts/session-entry-gate.sh`, `${CLAUDE_PLUGIN_ROOT}/scripts/session-setup.sh` with `--skip-branch-check` toggled by the entry gate. When `forked_target=true`, **do not** re-run `implement-fork-env.sh` if `UPSTREAM_REPO` is already set from (1) — reuse the same fork metadata (avoids a second bootstrap tmpdir).
 
 **Anti-halt continuation reminder.** After every child `Skill` tool call (e.g., `/review`, `/bump-version`, `/issue`, `/implement`) returns AND after every `Bash` tool call that completes a numbered step or sub-step, including `run-relevant-checks-captured.sh`, IMMEDIATELY continue with this skill's NEXT numbered step — do NOT end the turn on the child's cleanup output, on a Bash result, or on a status message, and do NOT write a summary, handoff, status recap, or "returning to parent" message — those are halts in disguise. This applies to ALL step boundaries from Preflight through Step 18. The rule is strictly subordinate to any explicit non-sequential control-flow directive in THIS file (e.g., `skip to Step N`, `bail to cleanup`, `jump back`, `loop back`, `fall through`, `break out`). A normal sequential `proceed to Step N+1` instruction is the default continuation this rule reinforces, NOT an exception. Every relevant-checks helper call anywhere in this file is covered by this rule. **Critical boundary: after Step 9b (PR creation) completes, IMMEDIATELY proceed to Step 10 (CI monitor) — PR creation is NOT the end of the run.** **Critical boundary: after `ship-pr.sh` exits (any exit code), do NOT print `✅ 8: version bump`, `⏩ 8: version bump`, or any other Step 8 breadcrumb as orchestrator text output — `ship-pr.sh` emits these lines to its own stdout (issue #1944). Parse `ship-pr-state.sh` silently and re-invoke per the Step 8+ exit-code table. See NEVER #11.** **Critical boundary: after preflight audit passes (`AUDIT=pass` envelope written), IMMEDIATELY proceed to Step 1 file materialization (copy plan + compose `feature-description.txt` + `persist-post-plan-keys.sh`) — do NOT end the turn on the audit-pass envelope.** → shared/subskill-invocation.md#anti-halt
 
@@ -39,7 +39,7 @@ Each rule states WHY; per-site reminders reference by anchor name.
 
 3. **NEVER use the `ours`/`theirs` git labels when describing conflict sides during rebase.** **Why**: during rebase their semantics are inverted vs. merge (`--ours` = base being rebased onto = upstream main); labels cause silent resolution errors. **How to apply**: always use "upstream (main)" and "feature branch commit" in Phase 1 commentary and user prompts.
 
-4. **NEVER skip the code-review step regardless of the nature of changes.** **Why**: all changes — code, skills, documentation, data files, configuration — require reviewer-panel vetting. **How to apply**: Step 5 always invokes `${CLAUDE_PLUGIN_ROOT}/scripts/run-step5-review.sh`, which builds the `review-and-fix.sh` argv **without** any `--panel` token on the public launcher argv (see `scripts/run-step5-review.sh`). The **hard** review panel (`--panel hard`) is applied only inside `review-and-fix.sh` → `review-core.sh` — not on `run-step5-review.sh`'s public argv. Round cap follows `POST_PLAN_WORKFLOW_PATH` (`SIMPLE` or `HARD`) per `run-step5-review.sh` (plus degraded-round inflation where documented).
+4. **NEVER skip the code-review step regardless of the nature of changes.** **Why**: all changes — code, skills, documentation, data files, configuration — require reviewer-panel vetting. **How to apply**: Step 5 always invokes `${CLAUDE_PLUGIN_ROOT}/scripts/run-step5-review.sh`, which assembles the `review-and-fix.sh` argv from session-env + tmpdir artifacts **without** any `--panel` token (see `scripts/run-step5-review.md`). `run-step5-review.sh` derives `--round-cap` from `POST_PLAN_WORKFLOW_PATH` (`SIMPLE` or `HARD` share the same base cap) plus prior-round degraded inflation; the **hard** review panel is applied only inside `review-and-fix.sh` → `review-core.sh`.
 
 5. **NEVER let the Step 9a.1 sentinel short-circuit silently skip the larch-log OOS update.** **Why**: idempotency recovery MUST write the recovered accepted-OOS URLs to the `oos-issues` log batch and refresh the terminal summary content; silent skip breaks the committed run-log contract. **How to apply**: the idempotent-rerun branch in Step 9a.1 performs the same `larch-log.sh append --log-root "$IMPLEMENT_TMPDIR/larch-logs" --batch oos-issues` / `larch-log.sh write --log-root "$IMPLEMENT_TMPDIR/larch-logs" --batch run-statistics` operations using URLs recovered from `oos-issues-created.md` as the normal create-script branch steps. **Fork-mode carve-out**: when `forked_target=true`, tracking-issue lifecycle and OOS issue creation are disabled, so Step 9a.1 skips issue filing and larch-log Accepted-OOS updates; accepted OOS items are emitted in the final report as text only.
 
@@ -184,11 +184,11 @@ and exit **2** (orchestrator stop — do not start Preflight or Step 0).
 
 ## Preflight — issue-anchored plan
 
-Run **before Step 0** once `TARGET_ISSUE_NUMBER` is known and flag mutual-exclusion checks have passed. Uses a shell `mktemp -d` preflight tmpdir (not `$IMPLEMENT_TMPDIR`, which does not exist until Step 0). Keep `PLAN_TMP="$PREFLIGHT_TMPDIR/plan-from-issue.txt"` through Step 1 materialization.
+Run **before Step 0** once `TARGET_ISSUE_NUMBER` is known and flag mutual-exclusion checks have passed. Uses a shell `mktemp -d` preflight tmpdir (not `$IMPLEMENT_TMPDIR`, which does not exist until Step 0). Keep `PLAN_TMP="$PREFLIGHT_TMPDIR/plan-from-issue.txt"` through Step 1 materialization. When `forked_target=true`, `UPSTREAM_REPO` MUST already be set from the Protocol `implement-fork-env.sh` bootstrap — append `--repo "$UPSTREAM_REPO"` to every `gh issue view` in this section and to every `plan-block-read.sh` / `clarify-*.sh` invocation below.
 
-1. **`gh issue view`** (Bash tool): `gh issue view <N> --json body,labels,number,title,state` — on transient `gh` failure, retry once (two attempts total). On hard failure after retries, print a clear error and exit **2**.
+1. **`gh issue view`** (Bash tool): `gh issue view <N> --json body,labels,number,title,state` — when `forked_target=true`, include `--repo "$UPSTREAM_REPO"` — on transient `gh` failure, retry once (two attempts total). On hard failure after retries, print a clear error and exit **2**.
 2. **Reject CLOSED**: if `state == CLOSED`, print a clear error referencing the issue and exit **2** (do not allocate implement session).
-3. **Extract `larch:plan` block**:
+3. **Extract `larch:plan` block** — invoke `plan-block-read.sh` with `--issue <N>` and `--output "$PREFLIGHT_TMPDIR/plan-from-issue.txt"`; when `forked_target=true`, also pass `--repo "$UPSTREAM_REPO"`.
    ```bash
    "${CLAUDE_PLUGIN_ROOT}/scripts/plan-block-read.sh" --issue <N> --output "$PREFLIGHT_TMPDIR/plan-from-issue.txt"
    ```
@@ -249,12 +249,12 @@ Run **before Step 0** once `TARGET_ISSUE_NUMBER` is known and flag mutual-exclus
    **Few-shot B — refuse**: plan says “update docs” with no paths; acceptance empty → `AUDIT=refuse`, `REASONS=missing-files,vague-acceptance`, questions ask which doc paths and what measurable acceptance means.
 
 5. **On `AUDIT=refuse`** — exit **3** (audit refused; automation may branch on this distinct from 0/2):
-   - Run `"${CLAUDE_PLUGIN_ROOT}/scripts/clarify-state.sh" --issue <N>` and parse `STATE=`, `LAST_REQUEST_ID=`. If `STATE=ambiguous`, print a clear error that the operator must repair the issue comment graph manually, and exit **3** before posting.
+   - Run `clarify-state.sh` with `--issue <N>`; when `forked_target=true`, also pass `--repo "$UPSTREAM_REPO"`. Parse `STATE=`, `LAST_REQUEST_ID=`. If `STATE=ambiguous`, print a clear error that the operator must repair the issue comment graph manually, and exit **3** before posting.
    - Compute `NEXT_ID`: if `STATE=clean` or `LAST_REQUEST_ID` is empty, use `NEXT_ID=1`; otherwise `NEXT_ID=$((LAST_REQUEST_ID + 1))`.
    - Compose `$PREFLIGHT_TMPDIR/audit-questions.md` from the `## Concrete questions for /design` section of `audit.txt`.
    - Redact: `cat "$PREFLIGHT_TMPDIR/audit-questions.md" | "${CLAUDE_PLUGIN_ROOT}/scripts/redact-secrets.sh" > "$PREFLIGHT_TMPDIR/audit-questions.redacted.md"`.
-   - Post: `"${CLAUDE_PLUGIN_ROOT}/scripts/clarify-comment-post.sh" --issue <N> --kind request --id "$NEXT_ID" --content-file "$PREFLIGHT_TMPDIR/audit-questions.redacted.md"`.
-   - Label: `"${CLAUDE_PLUGIN_ROOT}/scripts/clarify-label.sh" --issue <N> --action add --create-if-missing`.
+   - Post `clarify-comment-post.sh` with `--issue <N> --kind request --id "$NEXT_ID" --content-file "$PREFLIGHT_TMPDIR/audit-questions.redacted.md"`; when `forked_target=true`, also pass `--repo "$UPSTREAM_REPO"`.
+   - Run `clarify-label.sh` with `--issue <N> --action add --create-if-missing`; when `forked_target=true`, also pass `--repo "$UPSTREAM_REPO"`.
    - **Ordering**: always **comment first, label second** on the refuse path so the thread shows the request even if label mutation fails.
    - **Partial failure / idempotency**: exit **3** means “audit refused — operator must run `/design`.” If `clarify-comment-post.sh` succeeds but `clarify-label.sh` fails (or vice versa), automation MUST treat exit **3** as terminal for this `/implement` attempt regardless; a retry may re-hit `clarify-state.sh` — re-posting the same `id` is an error, so operators repair failed `gh` mutations manually before retrying. If `STATE=ambiguous`, Preflight exits **3** **before** either mutation. Re-running refuse on a clean thread uses `NEXT_ID` from `clarify-state.sh` (monotonic). Duplicate `gh issue edit --add-label` when the label is already present is harmless (`clarify-label.sh` emits `CHANGED=false`).
    - Breadcrumb: `⚠ /implement preflight refused — audit refuse on issue #<N>; clarify-request id=<NEXT_ID> posted, label added. Run /design <N> to clarify.`
@@ -275,13 +275,14 @@ Run **before Step 0** once `TARGET_ISSUE_NUMBER` is known and flag mutual-exclus
 
 Print: `> **🔶 /implement 0: setup**`
 
-If `forked_target=true`, run the single fork pre-setup helper before the standard three-call sequence. Do NOT pass `--tmpdir`: at this point in Step 0, `$IMPLEMENT_TMPDIR` is not yet set (`session-setup.sh` has not run), so the helper allocates its own bootstrap tmpdir via `mktemp -d`. Round 1 plan-review FINDING_1 mandates this ordering — passing `--tmpdir "$IMPLEMENT_TMPDIR"` here would expand to an empty path and silently misroute the caller-env write.
+If `forked_target=true` **and** `UPSTREAM_REPO` is unset (orchestrator skipped Protocol fork bootstrap — recovery only), run the fork pre-setup helper before the standard three-call sequence. When `UPSTREAM_REPO` is already set from Protocol step (1), **skip** this Bash block entirely. Do NOT pass `--tmpdir`: at this point in Step 0, `$IMPLEMENT_TMPDIR` is not yet set (`session-setup.sh` has not run), so the helper allocates its own bootstrap tmpdir via `mktemp -d`. Round 1 plan-review FINDING_1 mandates this ordering — passing `--tmpdir "$IMPLEMENT_TMPDIR"` here would expand to an empty path and silently misroute the caller-env write.
 
 ```bash
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
   CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
 fi
 export CLAUDE_PLUGIN_ROOT
+# forked_target=true AND UPSTREAM_REPO unset only:
 ${CLAUDE_PLUGIN_ROOT}/scripts/implement-fork-env.sh
 ```
 
@@ -827,7 +828,7 @@ After Preflight passed (`AUDIT=pass`) and Step 0.5 resolved the subject issue (`
    ```bash
    gh issue view "$ISSUE_NUMBER" --json title,body --template "{{.title}}\n\n{{.body}}" > "$IMPLEMENT_TMPDIR/feature-description.txt"
    ```
-   (Under `forked_target=true`, substitute `"$TARGET_ISSUE_NUMBER"` for `"$ISSUE_NUMBER"` when fetching upstream design context if `ISSUE_NUMBER` is unset — the file still lands at the conventional path.)
+   (Under `forked_target=true`, substitute `"$TARGET_ISSUE_NUMBER"` for `"$ISSUE_NUMBER"` when fetching upstream design context if `ISSUE_NUMBER` is unset, and append `--repo "$UPSTREAM_REPO"` so `gh` targets the upstream canonical repo — the file still lands at the conventional path.)
 
 3. **Bind post-plan workflow**: issue-anchored runs default **`POST_PLAN_WORKFLOW_PATH=HARD`** (round-cap 5 for both SIMPLE and HARD downstream per the unified review contract). Record:
    ```bash
@@ -1161,7 +1162,7 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 
 ### Scripted review loop
 
-**IMPORTANT: Code review must ALWAYS run.** Never skip regardless of the nature of changes — code, skills, documentation, data files, configuration — all changes require review. Step 5 invokes `${CLAUDE_PLUGIN_ROOT}/scripts/run-step5-review.sh`, which derives the full `${CLAUDE_PLUGIN_ROOT}/skills/review-and-fix/scripts/review-and-fix.sh` argv from `$IMPLEMENT_TMPDIR/session-env.sh` and conventional tmpdir artifacts. Both `POST_PLAN_WORKFLOW_PATH` values (`SIMPLE` and `HARD`) map to the same **internal** hard panel and base round cap of **5 rounds** inside `review-and-fix.sh` / `review-core.sh` (the launcher does **not** put `--panel hard` on its own argv). `run-step5-review.sh` maps both workflow values from `$IMPLEMENT_TMPDIR/session-env.sh` to `review_panel=hard` and `round_cap=5` for session-derived state, then inflates the argv `--round-cap` by `count_prior_degraded_rounds "$IMPLEMENT_TMPDIR" "$ROUND_NUM"`.
+**IMPORTANT: Code review must ALWAYS run.** Never skip regardless of the nature of changes — code, skills, documentation, data files, configuration — all changes require review. Step 5 invokes `${CLAUDE_PLUGIN_ROOT}/scripts/run-step5-review.sh`, which derives the full `${CLAUDE_PLUGIN_ROOT}/skills/review-and-fix/scripts/review-and-fix.sh` argv from `$IMPLEMENT_TMPDIR/session-env.sh` and conventional tmpdir artifacts (see `scripts/run-step5-review.md`). The launcher forwards `--round-cap` computed from `POST_PLAN_WORKFLOW_PATH` (`SIMPLE` or `HARD` — same base cap **5**) plus `count_prior_degraded_rounds "$IMPLEMENT_TMPDIR" "$ROUND_NUM"`; it does **not** forward `--panel`. The unified **hard** panel is applied only inside `review-and-fix.sh` → `review-core.sh`.
 
 Nested review token-context propagation through `review-and-fix.sh` is pinned by `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-implement-review-token-propagation.sh` and `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-implement-review-token-propagation.md`.
 

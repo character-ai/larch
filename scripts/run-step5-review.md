@@ -16,9 +16,14 @@ Arguments:
 Derived sources:
 
 - `$IMPLEMENT_TMPDIR/session-env.sh`
-  - `POST_PLAN_WORKFLOW_PATH`: both `SIMPLE` and `HARD` map to `--panel hard --round-cap 5` (unified review path). Prior completed rounds with
-    `DEGRADED_ROUND=true` in `round-N/review-and-fix.env` are added back onto
-    that cap so degraded panels do not consume a valid review slot.
+  - `POST_PLAN_WORKFLOW_PATH`: must be `SIMPLE` or `HARD`. The launcher derives a
+    **base** Step 5 round cap of **5** for both values, then adds the count of
+    prior rounds whose `round-<k>/review-and-fix.env` records
+    `DEGRADED_ROUND=true` (below the current `--round-num`) so degraded panels do
+    not consume a valid review slot. The effective cap is forwarded as
+    `--round-cap` on the `review-and-fix.sh` argv only (this script does **not**
+    emit `--panel` — the unified hard panel is selected inside
+    `review-and-fix.sh` → `review-core.sh`).
   - `CODEX_PRESENT`: forwarded as `--codex-available`.
   - `CURSOR_PRESENT`: forwarded as `--cursor-available`.
   - `PLAN_FILE`: forwarded as `--plan-file`.

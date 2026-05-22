@@ -123,11 +123,18 @@ case "$ACTION" in
             CHANGED=false
         else
             if [ "$CREATE_IF_MISSING" = true ]; then
-                gh label create "$LABEL_NAME" \
+                if ! gh label create "$LABEL_NAME" \
                     --repo "$REPO" \
                     --color D73A4A \
                     --description "Issue plan requires clarification before /implement can proceed" \
-                    2>"$ERR_TMP" || true
+                    2>"$ERR_TMP"; then
+                    ERR_CONTENT=$(cat "$ERR_TMP" 2>/dev/null || true)
+                    if printf '%s\n' "$ERR_CONTENT" | grep -qiE 'already exists|already been taken'; then
+                        :
+                    else
+                        emit_gh_failure "$ERR_CONTENT"
+                    fi
+                fi
             fi
             if ! gh issue edit "$ISSUE" --repo "$REPO" --add-label "$LABEL_NAME" 2>"$ERR_TMP"; then
                 ERR_CONTENT=$(cat "$ERR_TMP" 2>/dev/null || true)

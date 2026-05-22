@@ -10,7 +10,7 @@ fail() { echo "FAIL: $1" >&2; exit 1; }
 
 [[ -f "$SKILL" ]] || fail "missing SKILL.md"
 
-grep -Fx 'argument-hint: "[--merge] [--no-admin-fallback] [--no-logs-commit] [--forked] [--draft] [--coder <claude|codex|cursor>] <issue-N>"' "$SKILL" \
+grep -Fx 'argument-hint: "[--merge] [--forked] [--draft] [--no-admin-fallback] [--no-logs-commit] [--coder <claude|codex|cursor>] [--no-dynamic-archetypes] [--dynamic-archetypes <N>] [--run-id <ID>] <issue-N>"' "$SKILL" \
   || fail "argument-hint must match issue-anchored positional form exactly"
 
 grep -Fq '**❌ /implement no longer accepts a verbal feature description. Run /design <issue-N> first to write a plan to the issue body, then re-run /implement <issue-N>.**' "$SKILL" \

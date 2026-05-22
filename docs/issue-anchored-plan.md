@@ -236,6 +236,8 @@ out of scope:
 
 Those concerns live in `skills/design/SKILL.md` and `skills/implement/SKILL.md` (Preflight + Step 1 materialization).
 
+**Plan probe placement**: `/fix-issue` PR work gates on `find-lock-issue.sh --require-plan-block`, which delegates to `plan-block-read.sh` before the `IN PROGRESS` lock. Direct `/implement` reads the same markers in **Preflight** via `plan-block-read.sh`; Step 1 only copies the already-extracted plan from the Preflight tmpdir into `$IMPLEMENT_TMPDIR/plan.txt` — it does not substitute a separate literal `/fix-issue` Step 4a sequence inside `/implement`.
+
 ## See also
 
 - **`skills/implement/SKILL.md`** — **Preflight — issue-anchored plan** (read block, adequacy audit, `NEXT_ID`, `clarify-comment-post.sh` + `clarify-label.sh`, exit codes **2** vs **3**).

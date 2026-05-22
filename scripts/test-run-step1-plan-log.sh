@@ -162,6 +162,11 @@ assert_contains "$out" "recovering from design-export/plan.txt" "fallback names 
 assert_contains "$out" "THIS IS A BUG" "fallback flags as bug"
 assert_contains "$(cat "$compose_argv")" "$case_dir/design-export/plan.txt" "fallback passes design-export plan to compose"
 
+echo "=== issue-anchored Step 1 plan copy contract (SKILL pin) ==="
+plan_copy_literal=$'cp "$PREFLIGHT_TMPDIR/plan-from-issue.txt" "$IMPLEMENT_TMPDIR/plan.txt"'
+grep -Fq "$plan_copy_literal" "$REPO_ROOT/skills/implement/SKILL.md" \
+  || fail "missing Step 1 issue-body plan materialization copy literal in implement SKILL"
+
 echo "=== PLAN_FILE missing AND design-export missing: fail loud ==="
 case_dir="$TMP/plan-file-fail"
 make_tmpdir "$case_dir"
