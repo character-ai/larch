@@ -1,0 +1,14 @@
+Gathering the branch diff and commit list for a shell-robustness review of the stall handler.
+
+Pre-computed diff is empty; comparing branch to `main` and inspecting the stall handler in the repo.
+
+Workspace matches `main` (empty precomputed diff). Reviewing the stall-handler implementation in the shared launcher library and related scripts.
+
+### In-Scope Findings
+
+- **code-quality** `scripts/lib-cursor-launcher-common.sh:272-282` — The stall JSON sidecar builder runs as a background subshell from `cursor_launcher_run_stall_monitor` (see `scripts/lib-cursor-launcher-common.sh:487-489`), so it inherits `set -o pipefail` from `launch-cursor-ci.sh` (`set -euo pipefail` at line 3). The truncations `git_porcelain=$(printf '%s' "$git_porcelain" | head -c 32000)` and `rebase_patch=$(printf '%s' "$rebase_patch" | head -c 32000)` can therefore yield a non-zero pipeline status (SIGPIPE / 141) whenever the blob is larger than the byte cap, which aborts the subshell under `set -e` before `jq` runs and drops the sidecar without surfacing a launcher error. **Suggested fix:** Avoid that pipeline under inherited `pipefail` (for example wrap only those lines in `set +o pipefail` / `set -o pipefail`, use a temp file plus `head -c` on the file, or append `|| true` with an explicit empty fallback only if you still validate the truncated content before `jq`).
+
+### Out-of-Scope Observations
+
+- The precomputed diff at `<TMPDIR>/round-4/diff.txt` was empty and `git log "$(git merge-base HEAD main)"..HEAD --oneline` produced no commits because this checkout’s `HEAD` and `main` both resolve to `df3dd544671eae219be3a78c800a14f03f370be2`, so the review used the current tree rather than a non-empty branch delta.
+- Positives not tied to defects: `lsof` is wrapped with `timeout`/`gtimeout` when available and explicitly skipped otherwise (`scripts/lib-cursor-launcher-common.sh:200-217`); the subshell around `lsof|head` disables `pipefail` to avoid SIGPIPE clobbering the capture (`scripts/lib-cursor-launcher-common.sh:202-206`); `git status` / `git rebase --show-current-patch` use wall-clock wrappers or are omitted when no `timeout` exists (`scripts/lib-cursor-launcher-common.sh:265-286`); argv “full tree” probing uses `grep '[c]ursor'` and uid-scoped `ps` instead of a naive `ps -ef|grep cursor` (`scripts/lib-cursor-launcher-common.sh:192-197`), which is more robust on shared hosts.

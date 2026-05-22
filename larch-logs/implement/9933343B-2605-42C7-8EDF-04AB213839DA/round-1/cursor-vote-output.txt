@@ -1,0 +1,31 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: EXONERATE -- duplicates FINDING_1 rollup gap on the same scan
+FINDING_6: EXONERATE -- duplicates FINDING_2 second-granularity collision risk
+FINDING_7: EXONERATE -- nit-level test hardening with modest audit value
+FINDING_8: EXONERATE -- overlaps FINDING_16/19; doc or defer to those fixes
+FINDING_9: EXONERATE -- duplicates FINDING_4 empty-cache/base-ref pitfall
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: EXONERATE -- speculative vs FINDING_11/15 without shown sensitive stdout pattern
+FINDING_13: EXONERATE -- optional noise control; UNKNOWN path already limits channel skew
+FINDING_14: NO -- hypothetical out-of-scope PID misuse not worth tracking
+FINDING_15: YES
+FINDING_16: EXONERATE -- legitimate ordering nuance but same fix surface as FINDING_19
+FINDING_17: EXONERATE -- duplicates FINDING_2/6/24 collision concern
+FINDING_18: NO -- optional dedup polish not issue-worthy
+FINDING_19: YES
+FINDING_20: YES
+FINDING_21: EXONERATE -- cosmetic plan vs touched-file mismatch only
+FINDING_22: EXONERATE -- duplicates FINDING_4 session diff reliability theme
+FINDING_23: EXONERATE -- meta CI attestation gap not a product defect to file
+FINDING_24: EXONERATE -- duplicates FINDING_2 sidecar naming/temp contention
+FINDING_25: EXONERATE -- duplicates FINDING_3 pre-kill diagnostic stall risk
+FINDING_26: NO -- generic interrupted mv tmp artifact not worth an issue
+FINDING_27: NO -- local git topology explanation not an actionable defect
+FINDING_28: YES
+FINDING_29: EXONERATE -- duplicates FINDING_4 empty precomputed diff tracking
+FINDING_30: NO -- Bash 3.2 compliance observation needs no follow-up issue
+FINDING_31: NO -- style note explicitly in-policy and non-actionable

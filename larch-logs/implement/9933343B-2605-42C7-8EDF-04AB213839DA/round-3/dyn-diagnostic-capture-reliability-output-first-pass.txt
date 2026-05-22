@@ -1,0 +1,7 @@
+Gathering the diff, commit list, and stall-handler implementation for a correctness-focused review.
+
+Diff cache file is empty. Fetching branch diff with read-only `git diff`.
+
+Creating the plan file isn't requested — the user asked for a review in a specific format. Delivering the review directly (CreatePlan was for plan mode in other flows; instructions say "present your plan by calling CreatePlan" for plan mode when planning implementation — here the user asked for a **review** with fixed output format, not a CreatePlan). Skipping CreatePlan.
+
+

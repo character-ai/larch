@@ -1,0 +1,21 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: EXONERATE -- tiny duplication with no demonstrated bug
+FINDING_5: EXONERATE -- real review limitation, not worth a tracking issue
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: NO -- correctly scoped away; nothing to file
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: EXONERATE -- porcelain is the sensible interpretation of git status here
+FINDING_16: EXONERATE -- documentation/traceability nit only
+FINDING_17: NO -- informational scope note, no issue warranted
+FINDING_18: YES
+FINDING_19: EXONERATE -- accurate wiring note, not a defect warranting an issue
+FINDING_20: EXONERATE -- intentional scope per scan/counter contract
+FINDING_21: EXONERATE -- inherent static-review limit, not actionable as an issue

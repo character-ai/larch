@@ -1,0 +1,22 @@
+FINDING_1: NO -- launch-cursor-ci.md already ties the JSON sidecar to jq and a resolved round dir and states omission when jq or dir is unavailable.
+FINDING_2: YES
+FINDING_3: EXONERATE -- three small branches are clear; a helper is optional and easy to get wrong across timeout/gtimeout/none.
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: EXONERATE -- jq emits transcript_tail_contract documenting non-interleaved stdout-then-stderr tails.
+FINDING_7: NO -- launch-cursor-ci.md documents unix_ts-pid-rand basenames matching the implementation.
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: EXONERATE -- broad argv risk is inherent and already called out as residual risk in docs; rule churn is open-ended.
+FINDING_14: NO -- tree stall probe runs find|head inside a subshell that disables pipefail for that pipeline.
+FINDING_15: EXONERATE -- launch-cursor-ci.sh still owns the stall_monitor call site even if most logic lives in the library.
+FINDING_16: YES
+FINDING_17: YES
+FINDING_18: YES
+FINDING_19: YES
+FINDING_20: EXONERATE -- valid review-input limitation but not worth a standalone tracking issue.
+FINDING_21: NO -- intentional scoped ps vs literal plan recipe; no defect.
+FINDING_22: NO -- harness/context notes are informational, not a product defect.

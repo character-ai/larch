@@ -1,0 +1,13 @@
+Gathering the diff and implementation details to verify JSON schema alignment between the writer and audit scan.
+
+Diff cache is empty. Reading the implementation files the branch touches to verify writer/reader schema alignment.
+
+Checking for other consumers of stall JSON keys besides the audit scan:
+
+### In-Scope Findings
+- **architecture** `scripts/test-launch-cursor-ci.sh:250-282` — Stall fixture 7 checks `channel`, `ps`, optional `lsof`, and `last_transcript_lines` on the emitted sidecar but never asserts `git_state`, even though `cursor_launcher_emit_cursor_ci_stall_json_sidecar` in `scripts/lib-cursor-launcher-common.sh:167-193` always builds `git_state` as `{status_porcelain, rebase_patch_excerpt}` and the Phase 1 plan called that surface out for rebase-context forensics; dropping or renaming that object would not fail CI. **Suggested fix:** Add a small `jq` check (for example require `type=="object"` on `.git_state` and string-typed `status_porcelain` / `rebase_patch_excerpt`) so the nested shape stays pinned alongside the existing field checks.
+
+### Out-of-Scope Observations
+NO_ISSUES_FOUND
+
+**Notes (review mechanics):** The precomputed diff at `<TMPDIR>/round-1/diff.txt` was empty, so the review used the current tree. `git log $(git merge-base HEAD main)..HEAD --oneline` in this clone returned no lines (no local commits in that range). Writer (`scripts/lib-cursor-launcher-common.sh:173-193`) and reader (`scripts/audit-runs/scripts/audit-scan-run.sh:354-372`) agree on the only aggregated field: top-level string `.channel`, with invalid JSON mapping to `UNKNOWN`. The `scans.tsv` glob `round-*/cursor-ci-stall-*.json` matches files written as `$sidecar_dir/cursor-ci-stall-<unix_ts>.json` where `sidecar_dir` is a `round-*` path from `cursor_launcher_cursor_ci_stall_sidecar_dir` (`scripts/lib-cursor-launcher-common.sh:73-114`), consistent with audit `RUN_DIR` layout. `git_state` is a nested object, which matches [scripts/launch-cursor-ci.md](scripts/launch-cursor-ci.md) prose even though the issue plan text only listed the top-level key names.

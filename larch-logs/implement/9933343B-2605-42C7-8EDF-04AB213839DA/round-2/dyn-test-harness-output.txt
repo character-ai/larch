@@ -1,0 +1,25 @@
+Gathering the diff, commit list, and full test harness context for a risk-integration review.
+
+Diff cache is empty. Checking branch state and obtaining the diff via read-only git commands.
+
+HEAD equals main locally; the cached diff is empty. Inspecting the feature commits and current `scripts/test-launch-cursor-ci.sh` and stall-related code.
+
+Pre-computed diff at the given path was empty; `HEAD` and `main` both point at `f5c76d02`, so the review used the current tree and commits `d955504f` / `f5c76d02`. `git log $(git merge-base HEAD main)..HEAD` is empty because there is no divergence from `main`.
+
+### In-Scope Findings
+
+- **risk-integration** `scripts/test-launch-cursor-ci.sh:275-278` — Fixture 7 requires a non-trivial `.lsof` payload whenever `lsof` is on `PATH`, but `cursor_launcher_run_stall_monitor` in [`scripts/lib-cursor-launcher-common.sh`](scripts/lib-cursor-launcher-common.sh) sends `SIGTERM` to the monitored wrapper (and its children) **before** `cursor_launcher_emit_cursor_ci_stall_json_sidecar` runs `lsof -p "$target_pid"` (see the sequence at approximately `414-422` in that file). A cooperative stub that exits quickly on `SIGTERM` can leave `lsof` empty or nearly empty even when the stall path behaved correctly, producing intermittent false failures on busy or slower runners. **Suggested fix:** Treat `.lsof` as best-effort in the harness (for example assert only when `wc -c` exceeds a threshold, or skip the lsof assertion when the field is empty while still requiring the sidecar file and other fields), or capture `lsof` before signaling the target in production code if a strict test invariant is required.
+
+- **risk-integration** `scripts/test-launch-cursor-ci.sh:251-283` — The JSON sidecar regression is gated on `command -v jq`; if `jq` is missing, the script prints `SKIP` and continues, so the overall script can exit 0 without ever asserting `round-1/cursor-ci-stall-*.json`. That weakens the integration signal for environments that accidentally drop `jq` from CI or minimal dev images. **Suggested fix:** Require `jq` for this test file when the sidecar feature is considered mandatory (fail with a clear message at the start of fixture 7 or the stall suite), or document and enforce `jq` as a hard prerequisite in the CI job that runs this script so SKIP cannot mask a regression.
+
+### Out-of-Scope Observations
+
+- The provided session `diff.txt` was empty and `main...HEAD` had no commits; the review reflects the merged tree at `f5c76d02`.
+
+- Stall fixtures 1–6 remain sequential inside the existing `python3` gate; fixture 7 is an appended block and does not restructure earlier cases.
+
+- The top-level `trap 'rm -rf "$TMPDIR_BASE"' EXIT` cleans the temp tree but does not replace explicit `wait`/kill of leaked PIDs; the launcher’s stall path already tries to terminate `pgrep -P` children before the wrapper, which mitigates orphan `sleep` stubs for these synchronous subshell runs.
+
+- `jq` checks on `.channel` / `git_state` / `last_transcript_lines` are reasonably strict for shape; empty-string `channel` would fail the `stdout` equality check.
+
+NO_ISSUES_FOUND beyond the above for correctness of the `ps` byte-count heuristic (`wc -c` on `jq -r '.ps'`) or for missing explicit background-job cleanup, given the harness does not start detached workers.
