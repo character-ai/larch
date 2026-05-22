@@ -992,16 +992,17 @@ assert_contains "$OUT" "ELIGIBLE=false" "[24] ELIGIBLE=false"
 assert_contains "$OUT" "audit-report" "[24] error mentions audit-report label"
 
 # ---------------------------------------------------------------------------
-# Fixture 24b: legacy bracket audit title without audit-report label remains
-# eligible (no legacy title-prefix grep; label-only guard for audit reports).
+# Fixture 24b: canonical run-logs audit title (`[Run Logs Audit <ts> Report] …`)
+# without audit-report label still hits the generic report-prefix gate
+# (has_report_prefix). Labeled audit issues remain fixture 24's path.
 # ---------------------------------------------------------------------------
-echo "Fixture 24b: legacy audit title without audit-report label → eligible + lock"
+echo "Fixture 24b: canonical audit title without audit-report label → report-prefix refuse"
 run_fixture "fixture-24b"
 mkdir -p "$TMPROOT/fixture-24b/runtime-comments"
 export RUNTIME_COMMENTS_DIR="$TMPROOT/fixture-24b/runtime-comments"
 {
     echo "ISSUE_STATE=OPEN"
-    echo "ISSUE_TITLE='[Run Logs Audit Report 2026-05-20T19:30Z] PRs #2430-#2440'"
+    echo "ISSUE_TITLE='[Run Logs Audit 2026-05-20T19:30Z Report] PRs #2430-#2440'"
     echo "ISSUE_241_LABELS='[\"bug\"]'"
     echo "RUNTIME_COMMENTS_DIR=\"\${RUNTIME_COMMENTS_DIR:-}\""
     echo "COMMENTS_JSON='$(make_comments_json GO)'"
@@ -1015,9 +1016,11 @@ with_sterile_repo "fixture-24b" "$SCRIPT" 241 >"$OUT_FILE" 2>"$ERR_FILE" || EXIT
 
 OUT=$(cat "$OUT_FILE")
 
-assert_equal "$EXIT_CODE" "0" "[24b] exit code 0 (eligible without audit-report label)"
-assert_contains "$OUT" "ELIGIBLE=true" "[24b] ELIGIBLE=true"
-assert_contains "$OUT" "LOCK_ACQUIRED=true" "[24b] lock acquired"
+assert_equal "$EXIT_CODE" "2" "[24b] exit code 2 (report title prefix refused)"
+assert_contains "$OUT" "ELIGIBLE=false" "[24b] ELIGIBLE=false"
+assert_contains "$OUT" "report title prefix" "[24b] error mentions report title prefix gate"
+assert_equal "$(gh_log_count "$STUB_LOG" '^issue comment')" "0" "[24b] no lock comment when report-prefix refused"
+assert_equal "$(gh_log_count "$STUB_LOG" '^issue edit')" "0" "[24b] no rename when report-prefix refused"
 unset RUNTIME_COMMENTS_DIR
 
 # ---------------------------------------------------------------------------
