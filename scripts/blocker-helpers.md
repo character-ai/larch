@@ -16,7 +16,7 @@ Scans the issue body and every comment body separately (per-document iteration t
 
 ### `all_open_blockers <issue-number>`
 
-Unions native and prose blocker sets, dedupes, and returns a space-separated list of OPEN blockers. Native-first short-circuit: if `native_open_blockers` returns a non-empty list, the prose path is skipped entirely (the issue is already ineligible). Documented tradeoff: skip/error messages may list only native blocker numbers when both sources apply — see `skills/implement/SKILL.md` Preflight admission gate (same fail-open posture is intentional).
+Unions native and prose blocker sets, dedupes, and returns a space-separated list of OPEN blockers. Native-first short-circuit: if `native_open_blockers` returns a non-empty list, the prose path is skipped entirely (the issue is already ineligible). Documented tradeoff: skip/error messages may list only native blocker numbers when both sources apply — see `skills/implement/SKILL.md` Preflight section **Preflight — admission gate known limitation (D3)** and the admission-gate note immediately following it (same fail-open posture is intentional).
 
 ## Sourcing requirements
 

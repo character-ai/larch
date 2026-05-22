@@ -201,7 +201,7 @@ When your skill consumes a session-env file, always route through `session-setup
 
 ### Normative pattern for issue-anchored `/implement`
 
-`/design` authors the `larch:plan` GitHub issue block; `/implement <issue-N>` runs Preflight + plan-adequacy audit, then Step 0 and `skills/implement/SKILL.md § Step 1 — Materialize plan from issue body` copy the parsed plan into `$IMPLEMENT_TMPDIR/plan.txt` — the anti-halt banner pins treating the `AUDIT=pass` envelope as **non-terminal** (`do NOT end the turn on the audit-pass envelope`). `/implement` does not dispatch `/design` on this happy path.
+`/design` authors the `larch:plan` GitHub issue block; `/implement <issue-N>` runs Preflight + plan-adequacy audit, then Step 0 and `skills/implement/SKILL.md` § **Plan materialization from issue body** (folded inside Step 0) copy the parsed plan into `$IMPLEMENT_TMPDIR/plan.txt` and call `persist-post-plan-keys.sh` — the anti-halt banner pins treating the `AUDIT=pass` envelope as **non-terminal** (`do NOT end the turn on the audit-pass envelope`). `/implement` does not dispatch `/design` on this happy path.
 
 ## Avoid conditional phrasing for sub-skill invocations
 

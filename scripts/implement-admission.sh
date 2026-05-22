@@ -8,8 +8,10 @@
 #   implement-admission.sh --issue N [--repo OWNER/REPO]
 #
 # Environment:
-#   IMPLEMENT_TMPDIR — optional; when set and parent-issue.md matches --issue,
-#     short-circuits to pass (resume sentinel).
+#   IMPLEMENT_TMPDIR — optional; when set and `parent-issue.md` matches `--issue`,
+#     may short-circuit to pass with `RESUME=true` (crash-resume sentinel). When
+#     `parent-issue.md` contains `RUN_ID=`, export the same `RUN_ID` or admission
+#     re-runs the full gate (see `scripts/implement-admission.md`).
 #
 # Exit codes:
 #   0 — ADMISSION_RESULT=pass (optional RESUME=true)
@@ -30,7 +32,8 @@ LARCH_QUIET_DISABLE=1
 export LARCH_QUIET_DISABLE
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=scripts/lib-quiet.sh
+# shellcheck disable=SC1091
+# shellcheck source=lib-quiet.sh
 source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
 
@@ -38,17 +41,22 @@ usage() {
     larch_err "Usage: implement-admission.sh --issue N [--repo OWNER/REPO]"
 }
 
+# Single-line values for emit_kv stdout contract (GitHub titles / argv may embed newlines).
+admission_kv_value() {
+    printf '%s' "$1" | tr '\r\n' '  ' | sed 's/  */ /g;s/^[[:space:]]*//;s/[[:space:]]*$//'
+}
+
 ISSUE=""
 REPO_ARG=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --issue)
-            [[ $# -ge 2 ]] || { usage; exit 2; }
+            [[ $# -ge 2 ]] || { usage; emit_kv ADMISSION_ERROR "--issue requires a value"; exit 2; }
             ISSUE="${2:-}"
             shift 2
             ;;
         --repo)
-            [[ $# -ge 2 ]] || { usage; exit 2; }
+            [[ $# -ge 2 ]] || { usage; emit_kv ADMISSION_ERROR "--repo requires a value"; exit 2; }
             REPO_ARG="${2:-}"
             shift 2
             ;;
@@ -57,7 +65,11 @@ while [[ $# -gt 0 ]]; do
             exit 0
             ;;
         *)
-            emit_kv ADMISSION_ERROR "unknown option: $1"
+            if [[ "$1" == *[[:cntrl:]]* ]]; then
+                emit_kv ADMISSION_ERROR "unknown option (control characters not allowed in argv tokens)"
+            else
+                emit_kv ADMISSION_ERROR "unknown option: $(admission_kv_value "$1")"
+            fi
             exit 2
             ;;
     esac
@@ -86,6 +98,7 @@ JSON=""
 view_exit=0
 JSON=$(gh_issue_view_json) || view_exit=$?
 if [[ "$view_exit" -ne 0 ]]; then
+    view_exit=0
     JSON=$(gh_issue_view_json) || view_exit=$?
 fi
 if [[ "$view_exit" -ne 0 ]]; then
@@ -103,14 +116,26 @@ if [[ "$STATE" == "CLOSED" ]]; then
 fi
 
 # Resume sentinel: same session re-run after crash before parent-issue write
-# is irrelevant — sentinel matches only when file lists this issue.
+# is irrelevant — sentinel matches only when file lists this issue. When
+# parent-issue.md records RUN_ID=, require the same RUN_ID in the environment
+# so a stale IMPLEMENT_TMPDIR from another session cannot bypass the gate.
 if [[ -n "${IMPLEMENT_TMPDIR:-}" && -f "${IMPLEMENT_TMPDIR}/parent-issue.md" ]]; then
     parent_num=$(awk -F= '/^ISSUE_NUMBER=/{print $2; exit}' "${IMPLEMENT_TMPDIR}/parent-issue.md" 2>/dev/null || true)
     parent_num=$(printf '%s' "$parent_num" | tr -d '\r\n')
+    parent_run_id=$(awk -F= '/^RUN_ID=/{print $2; exit}' "${IMPLEMENT_TMPDIR}/parent-issue.md" 2>/dev/null || true)
+    parent_run_id=$(printf '%s' "$parent_run_id" | tr -d '\r\n')
     if [[ -n "$parent_num" && "$parent_num" == "$ISSUE" ]]; then
-        emit_kv ADMISSION_RESULT pass
-        emit_kv RESUME true
-        exit 0
+        resume_ok=1
+        if [[ -n "$parent_run_id" ]]; then
+            if [[ -z "${RUN_ID:-}" || "$parent_run_id" != "$RUN_ID" ]]; then
+                resume_ok=0
+            fi
+        fi
+        if [[ "$resume_ok" == 1 ]]; then
+            emit_kv ADMISSION_RESULT pass
+            emit_kv RESUME true
+            exit 0
+        fi
     fi
 fi
 
@@ -130,13 +155,13 @@ has_report_prefix() {
 
 if has_managed_prefix "$TITLE"; then
     emit_kv ADMISSION_RESULT managed-prefix
-    emit_kv TITLE "$TITLE"
+    emit_kv TITLE "$(admission_kv_value "$TITLE")"
     exit 5
 fi
 
 if has_report_prefix "$TITLE"; then
     emit_kv ADMISSION_RESULT report-title
-    emit_kv TITLE "$TITLE"
+    emit_kv TITLE "$(admission_kv_value "$TITLE")"
     exit 7
 fi
 
@@ -145,6 +170,8 @@ if printf '%s' "$JSON" | jq -e '.labels // [] | map(.name) | index("audit-report
     exit 6
 fi
 
+# shellcheck disable=SC1091
+# shellcheck source=blocker-helpers.sh
 if ! source "$SCRIPT_DIR/blocker-helpers.sh" 2>/dev/null; then
     emit_kv ADMISSION_ERROR "failed to source blocker-helpers.sh"
     exit 2

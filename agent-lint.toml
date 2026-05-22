@@ -1128,7 +1128,6 @@ exclude = [
   # are the sibling contracts for the two alias-rework regression harnesses
   # added alongside skills/alias/scripts/resolve-target.sh. Same harness-
   # sibling-not-cited-from-SKILL.md pattern as other Makefile-only harness .md files.
-  # test-find-lock-issue.md entries above.
   "scripts/test-alias-target-resolution.md",
   "scripts/test-alias-structure.md",
   # skills/design/scripts/test-*.md files below are sibling contracts for

@@ -289,6 +289,34 @@ grep -Fq '### Step 0 — tracking issue adoption' "$SKILL_MD" \
   || fail "SKILL.md must contain Step 0 tracking issue adoption heading"
 grep -Fq '### Plan materialization from issue body' "$SKILL_MD" \
   || fail "SKILL.md must contain plan materialization heading"
+read -r tok0_track <<'EOF'
+"${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 0 — tracking issue"
+EOF
+read -r time0_track <<'EOF'
+"${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 0 — tracking issue"
+EOF
+read -r tok0_plan <<'EOF'
+"${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 0 — plan materialization"
+EOF
+read -r time0_plan <<'EOF'
+"${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 0 — plan materialization"
+EOF
+grep -Fq "$tok0_track" "$SKILL_MD" \
+  || fail "SKILL.md must retain token-ledger Step 0 — tracking issue mark"
+grep -Fq "$time0_track" "$SKILL_MD" \
+  || fail "SKILL.md must retain timing-ledger Step 0 — tracking issue mark"
+grep -Fq '# token-mark Step 0 — tracking issue' "$SKILL_MD" \
+  || fail "SKILL.md must retain token-mark Step 0 — tracking issue comment pair"
+grep -Fq '# timing-mark Step 0 — tracking issue' "$SKILL_MD" \
+  || fail "SKILL.md must retain timing-mark Step 0 — tracking issue comment pair"
+grep -Fq "$tok0_plan" "$SKILL_MD" \
+  || fail "SKILL.md must retain token-ledger Step 0 — plan materialization mark"
+grep -Fq "$time0_plan" "$SKILL_MD" \
+  || fail "SKILL.md must retain timing-ledger Step 0 — plan materialization mark"
+grep -Fq '# token-mark Step 0 — plan materialization' "$SKILL_MD" \
+  || fail "SKILL.md must retain token-mark Step 0 — plan materialization comment pair"
+grep -Fq '# timing-mark Step 0 — plan materialization' "$SKILL_MD" \
+  || fail "SKILL.md must retain timing-mark Step 0 — plan materialization comment pair"
 if grep -Fq '<!-- step:0.5' "$SKILL_MD"; then
   fail "SKILL.md must not reintroduce <!-- step:0.5 session anchor"
 fi

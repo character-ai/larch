@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2030,SC2031
 # test-implement-admission.sh — Offline regression harness for implement-admission.sh.
 #
 # Uses a PATH-prepended gh stub. Run: bash scripts/test-implement-admission.sh
@@ -58,7 +59,11 @@ if [[ "$1" == "issue" && "$2" == "view" ]]; then
   done
   case "$json" in
     body)
-      printf '%s\n' "${STUB_ISSUE_BODY_ONLY:-{\"body\":\"\"}}"
+      printf '%s\n' "${STUB_ISSUE_BODY_ONLY:-{\"body\":\"\"}}" | jq -r '.body // ""' 2>/dev/null || printf '\n'
+      exit 0
+      ;;
+    state)
+      printf '%s\n' "${STUB_VIEW_JSON}" | jq -r '.state // ""' 2>/dev/null || printf '\n'
       exit 0
       ;;
     *)
@@ -101,18 +106,76 @@ run_case() {
     local name="$1" expect_rc="$2" stub_dir="$3"
     shift 3
     export PATH="$stub_dir:$PATH"
-    unset STUB_LOG STUB_VIEW_JSON STUB_VIEW_FAIL STUB_VIEW_FAIL_COUNT_FILE STUB_VIEW_FAIL_MAX \
-      STUB_API_BLOCKED_BY_JSON STUB_API_BLOCKED_BY_EXIT STUB_REPO_VIEW_EXIT STUB_REPO_VIEW_OUT \
-      STUB_COMMENTS_JSON STUB_ISSUE_BODY_JSON STUB_ISSUE_BODY_ONLY || true
+    unset IMPLEMENT_TMPDIR RUN_ID || true
     local out rc
-    out=$("$SCRIPT" "$@" 2>&1) || rc=$?
+    out=$(env -u IMPLEMENT_TMPDIR -u RUN_ID "$SCRIPT" "$@" 2>&1) || rc=$?
     rc=${rc:-0}
     if [[ "$rc" != "$expect_rc" ]]; then
         fail "$name: expected exit $expect_rc got $rc; output=$out"
+        unset STUB_LOG STUB_VIEW_JSON STUB_VIEW_FAIL STUB_VIEW_FAIL_COUNT_FILE STUB_VIEW_FAIL_MAX \
+          STUB_API_BLOCKED_BY_JSON STUB_API_BLOCKED_BY_EXIT STUB_REPO_VIEW_EXIT STUB_REPO_VIEW_OUT \
+          STUB_COMMENTS_JSON STUB_ISSUE_BODY_JSON STUB_ISSUE_BODY_ONLY || true
         return
     fi
+    case "$expect_rc" in
+        0)
+            if ! printf '%s' "$out" | grep -Fq 'ADMISSION_RESULT=pass'; then
+                fail "$name: missing ADMISSION_RESULT=pass in stdout; output=$out"
+                unset STUB_LOG STUB_VIEW_JSON STUB_VIEW_FAIL STUB_VIEW_FAIL_COUNT_FILE STUB_VIEW_FAIL_MAX \
+                  STUB_API_BLOCKED_BY_JSON STUB_API_BLOCKED_BY_EXIT STUB_REPO_VIEW_EXIT STUB_REPO_VIEW_OUT \
+                  STUB_COMMENTS_JSON STUB_ISSUE_BODY_JSON STUB_ISSUE_BODY_ONLY || true
+                return
+            fi
+            ;;
+        2)
+            if ! printf '%s' "$out" | grep -Fq 'ADMISSION_ERROR='; then
+                fail "$name: exit 2 missing ADMISSION_ERROR= on stdout; output=$out"
+                unset STUB_LOG STUB_VIEW_JSON STUB_VIEW_FAIL STUB_VIEW_FAIL_COUNT_FILE STUB_VIEW_FAIL_MAX \
+                  STUB_API_BLOCKED_BY_JSON STUB_API_BLOCKED_BY_EXIT STUB_REPO_VIEW_EXIT STUB_REPO_VIEW_OUT \
+                  STUB_COMMENTS_JSON STUB_ISSUE_BODY_JSON STUB_ISSUE_BODY_ONLY || true
+                return
+            fi
+            ;;
+        4)
+            if ! printf '%s' "$out" | grep -Fq 'ADMISSION_RESULT=has-blockers'; then
+                fail "$name: exit 4 missing ADMISSION_RESULT=has-blockers; output=$out"
+                unset STUB_LOG STUB_VIEW_JSON STUB_VIEW_FAIL STUB_VIEW_FAIL_COUNT_FILE STUB_VIEW_FAIL_MAX \
+                  STUB_API_BLOCKED_BY_JSON STUB_API_BLOCKED_BY_EXIT STUB_REPO_VIEW_EXIT STUB_REPO_VIEW_OUT \
+                  STUB_COMMENTS_JSON STUB_ISSUE_BODY_JSON STUB_ISSUE_BODY_ONLY || true
+                return
+            fi
+            if ! printf '%s' "$out" | grep -Fq 'BLOCKERS='; then
+                fail "$name: exit 4 missing BLOCKERS= on stdout; output=$out"
+                unset STUB_LOG STUB_VIEW_JSON STUB_VIEW_FAIL STUB_VIEW_FAIL_COUNT_FILE STUB_VIEW_FAIL_MAX \
+                  STUB_API_BLOCKED_BY_JSON STUB_API_BLOCKED_BY_EXIT STUB_REPO_VIEW_EXIT STUB_REPO_VIEW_OUT \
+                  STUB_COMMENTS_JSON STUB_ISSUE_BODY_JSON STUB_ISSUE_BODY_ONLY || true
+                return
+            fi
+            ;;
+        5|7)
+            if ! printf '%s' "$out" | grep -Fq 'TITLE='; then
+                fail "$name: exit $expect_rc missing TITLE= on stdout; output=$out"
+                unset STUB_LOG STUB_VIEW_JSON STUB_VIEW_FAIL STUB_VIEW_FAIL_COUNT_FILE STUB_VIEW_FAIL_MAX \
+                  STUB_API_BLOCKED_BY_JSON STUB_API_BLOCKED_BY_EXIT STUB_REPO_VIEW_EXIT STUB_REPO_VIEW_OUT \
+                  STUB_COMMENTS_JSON STUB_ISSUE_BODY_JSON STUB_ISSUE_BODY_ONLY || true
+                return
+            fi
+            ;;
+        6)
+            if ! printf '%s' "$out" | grep -Fq 'ADMISSION_RESULT=audit-report-label'; then
+                fail "$name: exit 6 missing ADMISSION_RESULT=audit-report-label; output=$out"
+                unset STUB_LOG STUB_VIEW_JSON STUB_VIEW_FAIL STUB_VIEW_FAIL_COUNT_FILE STUB_VIEW_FAIL_MAX \
+                  STUB_API_BLOCKED_BY_JSON STUB_API_BLOCKED_BY_EXIT STUB_REPO_VIEW_EXIT STUB_REPO_VIEW_OUT \
+                  STUB_COMMENTS_JSON STUB_ISSUE_BODY_JSON STUB_ISSUE_BODY_ONLY || true
+                return
+            fi
+            ;;
+    esac
     PASS=$((PASS + 1))
     echo "PASS: $name"
+    unset STUB_LOG STUB_VIEW_JSON STUB_VIEW_FAIL STUB_VIEW_FAIL_COUNT_FILE STUB_VIEW_FAIL_MAX \
+      STUB_API_BLOCKED_BY_JSON STUB_API_BLOCKED_BY_EXIT STUB_REPO_VIEW_EXIT STUB_REPO_VIEW_OUT \
+      STUB_COMMENTS_JSON STUB_ISSUE_BODY_JSON STUB_ISSUE_BODY_ONLY || true
 }
 
 # --- pass (no blockers) ---
@@ -153,7 +216,26 @@ export STUB_VIEW_JSON='{"title":"blocked","state":"OPEN","labels":[]}'
 export STUB_API_BLOCKED_BY_JSON='[{"number":77,"state":"open"}]'
 run_case "native-blocker-exit-4" 4 "$sd" --issue 10 --repo o/r
 
-# --- sentinel resume ---
+# --- prose-only open blockers (native API empty) ---
+sd="$TMPROOT/s6b"
+make_gh_stub "$sd"
+export STUB_VIEW_JSON='{"title":"prose deps","state":"OPEN","labels":[],"body":"Blocked by #88"}'
+export STUB_ISSUE_BODY_ONLY='{"body":"Blocked by #88"}'
+export STUB_API_BLOCKED_BY_JSON='[]'
+run_case "prose-blocker-exit-4" 4 "$sd" --issue 10 --repo o/r
+out_pb=$(PATH="$sd:$PATH" env -u IMPLEMENT_TMPDIR -u RUN_ID \
+  STUB_VIEW_JSON='{"title":"prose deps","state":"OPEN","labels":[],"body":"Blocked by #88"}' \
+  STUB_ISSUE_BODY_ONLY='{"body":"Blocked by #88"}' \
+  STUB_API_BLOCKED_BY_JSON='[]' \
+  "$SCRIPT" --issue 10 --repo o/r 2>&1) || true
+if ! printf '%s' "$out_pb" | grep -Fq 'BLOCKERS=88'; then
+  fail "prose-blocker: expected BLOCKERS=88 on stdout, got: $out_pb"
+else
+  PASS=$((PASS + 1))
+  echo "PASS: prose-blocker-blockers-kv"
+fi
+
+# --- sentinel resume (RUN_ID must match parent-issue nonce) ---
 sd="$TMPROOT/s7"
 make_gh_stub "$sd"
 sent="$TMPROOT/s7/tmp"
@@ -163,18 +245,42 @@ export STUB_VIEW_JSON='{"title":"[IN PROGRESS] sentinel","state":"OPEN","labels"
 # Admission should pass before blocker checks when sentinel matches
 (
   export IMPLEMENT_TMPDIR="$sent"
+  export RUN_ID=rid
   export PATH="$sd:$PATH"
   out=$("$SCRIPT" --issue 5 --repo o/r 2>&1) || rc=$?
   rc=${rc:-0}
   if [[ "$rc" != 0 ]]; then
     fail "sentinel-pass: expected 0 got $rc out=$out"
-  elif ! printf '%s' "$out" | grep -q 'ADMISSION_RESULT=pass'; then
+  elif ! printf '%s' "$out" | grep -Fq 'ADMISSION_RESULT=pass'; then
     fail "sentinel-pass: missing ADMISSION_RESULT=pass in $out"
-  elif ! printf '%s' "$out" | grep -q 'RESUME=true'; then
+  elif ! printf '%s' "$out" | grep -Fq 'RESUME=true'; then
     fail "sentinel-pass: missing RESUME=true in $out"
   else
     PASS=$((PASS + 1))
     echo "PASS: sentinel-aware-pass"
+  fi
+)
+
+# --- stale tmpdir: parent RUN_ID mismatches env -> full gate (managed prefix) ---
+sd="$TMPROOT/s7b"
+make_gh_stub "$sd"
+sentb="$TMPROOT/s7b/tmp"
+mkdir -p "$sentb"
+printf 'ISSUE_NUMBER=5\nRUN_ID=session-a\nADOPTED=true\n' > "$sentb/parent-issue.md"
+export STUB_VIEW_JSON='{"title":"[IN PROGRESS] stale","state":"OPEN","labels":[]}'
+(
+  export IMPLEMENT_TMPDIR="$sentb"
+  export RUN_ID=session-b
+  export PATH="$sd:$PATH"
+  out=$("$SCRIPT" --issue 5 --repo o/r 2>&1) || rc=$?
+  rc=${rc:-0}
+  if [[ "$rc" != 5 ]]; then
+    fail "sentinel-stale-runid: expected exit 5 (managed prefix) got $rc out=$out"
+  elif ! printf '%s' "$out" | grep -Fq 'TITLE='; then
+    fail "sentinel-stale-runid: missing TITLE= in $out"
+  else
+    PASS=$((PASS + 1))
+    echo "PASS: sentinel-stale-runid-falls-through"
   fi
 )
 
@@ -194,7 +300,16 @@ export STUB_VIEW_JSON='{"title":"fork ctx","state":"OPEN","labels":[]}'
 export STUB_REPO_VIEW_EXIT=99
 (
   export PATH="$sd:$PATH"
-  "$SCRIPT" --issue 2 --repo upstream/extra || true
+  out=$("$SCRIPT" --issue 2 --repo upstream/extra 2>&1) || rc=$?
+  rc=${rc:-0}
+  if [[ "$rc" != 0 ]]; then
+    fail "fork-mode: expected exit 0 got $rc out=$out"
+  elif ! printf '%s' "$out" | grep -Fq 'ADMISSION_RESULT=pass'; then
+    fail "fork-mode: missing ADMISSION_RESULT=pass in $out"
+  else
+    PASS=$((PASS + 1))
+    echo "PASS: fork-mode-admission-pass"
+  fi
 )
 if grep -qE 'repo[[:space:]]+view' "$STUB_LOG" 2>/dev/null; then
   fail "fork-mode: gh repo view should not run when --repo passed"
@@ -202,6 +317,7 @@ else
   PASS=$((PASS + 1))
   echo "PASS: fork-mode-no-repo-view"
 fi
+unset STUB_REPO_VIEW_EXIT STUB_REPO_VIEW_OUT STUB_LOG || true
 
 # --- gh view fails twice ---
 sd="$TMPROOT/s10"
@@ -211,6 +327,13 @@ echo 0 > "$STUB_VIEW_FAIL_COUNT_FILE"
 export STUB_VIEW_FAIL_MAX=1
 export STUB_VIEW_JSON='{"title":"late","state":"OPEN","labels":[]}'
 run_case "retry-then-success" 0 "$sd" --issue 9 --repo o/r
+
+# --- argv validation emits ADMISSION_ERROR= (exit 2) ---
+sd="$TMPROOT/s12"
+make_gh_stub "$sd"
+run_case "missing-issue-flag-value" 2 "$sd" --issue
+run_case "missing-repo-flag-value" 2 "$sd" --issue 1 --repo
+run_case "non-numeric-issue" 2 "$sd" --issue abc --repo o/r
 
 # --- hard gh failure ---
 sd="$TMPROOT/s11"

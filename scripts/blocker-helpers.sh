@@ -178,4 +178,5 @@ all_open_blockers() {
     if [[ -n "$prose" ]]; then
         echo "$prose" | tr ' ' '\n' | sort -u -n | tr '\n' ' ' | sed 's/[[:space:]]*$//'
     fi
+    return 0
 }
