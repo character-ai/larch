@@ -1,0 +1,213 @@
+Here is the normalized aggregator output. Multiple input rows described the same underlying risks; duplicates are merged with combined reviewer attribution. Verbatim suggested-revision lines are taken only where the input supplied substantive text other than “Address the concern above.” (that phrase is omitted per your rules).
+
+---
+
+### FINDING_1: Stale `.PHONY` entry for removed `test-persist-post-plan-keys`
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-correctness-output.txt, cursor-specialist-testing-output.txt, cursor-specialist-edge-cases-output.txt, cursor-specialist-plan-fidelity-output.txt
+- **Concern**: After removing the `test-persist-post-plan-keys` recipe and harness, the mega-`.PHONY` line still declares that target. Invoking `make test-persist-post-plan-keys` no longer runs the intended regression; behavior is misleading (reports differ on whether GNU make errors with “no rule” vs treats it as a no-op, but all agree the deleted suite is not exercised). This also drifts from expectations for shard/coverage or hygiene scans that inventory declared targets.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-correctness-output.txt: Remove `test-persist-post-plan-keys` from the mega-`.PHONY` line (and ensure no other stale references).
+  - From cursor-specialist-testing-output.txt: Remove the stale `.PHONY` token and scan docs/scripts for that `make` target.
+  - From cursor-specialist-edge-cases-output.txt: Remove deleted targets from the mega-.PHONY line
+  - From cursor-specialist-plan-fidelity-output.txt: Remove test-persist-post-plan-keys from the mega-.PHONY line
+
+---
+
+### FINDING_2: `run-step2-dispatch.md` still documents session-derived `PLAN_FILE` / `POST_PLAN_WORKFLOW_PATH`
+- **Reviewer(s)**: cursor-specialist-structure-output.txt
+- **Concern**: Contract prose still tells readers that plan/workflow paths come from `session-env` (`PLAN_FILE`, `POST_PLAN_WORKFLOW_PATH`), but `run-step2-dispatch.sh` no longer implements that wiring. Future edits and operators can trust the wrong integration surface.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - *(No slot supplied a substantive suggested revision beyond “Address the concern above.”; the concern text describes the intended doc alignment: match conventional `plan.txt` and hardcoded HARD workflow per `run-step2-dispatch.sh`.)*
+
+Wait - user said "Never paraphrase across distinct proposals" and "If a reviewer provided no fix direction, omit that slot's bullet; do not fabricate a revision." and I should not add fabricated narrative as revision. So for FINDING_2 I should **omit** the entire "Suggested revisions" subsection if there are zero bullets.
+
+Let me fix: FINDING_2 has no suggested revisions section at all.
+
+---
+
+### FINDING_3: Marketplace `description` still advertises `POST_PLAN_WORKFLOW_PATH` / session classification for Step 5 depth
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-correctness-output.txt, cursor-specialist-testing-output.txt, cursor-specialist-plan-fidelity-output.txt
+- **Concern**: `.claude-plugin/plugin.json` marketplace copy still ties post-plan workflow depth to `POST_PLAN_WORKFLOW_PATH` from session/plan classification. Launch behavior is now hardcoded (e.g. `run-step5-review.sh` with `WORKFLOW_PATH=HARD` and conventional `plan.txt`), so consumer-facing metadata and operator triage can chase obsolete session-env semantics.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: Reword description for issue-anchored plan materialization and launcher-hardcoded Step 5 semantics
+  - From cursor-specialist-correctness-output.txt: Rewrite the description for issue-anchored plans, conventional `plan.txt`, and unified Step 5 without session-derived workflow path for the launcher.
+  - From cursor-specialist-testing-output.txt: Rewrite the description to match the implemented launcher behavior.
+  - From cursor-specialist-plan-fidelity-output.txt: Rewrite description for issue-anchored plan + unified Step 5 without obsolete POST_PLAN_WORKFLOW_PATH sentence
+
+---
+
+### FINDING_4: `skills/implement/SKILL.md` still claims Step 5 `--round-cap` is driven by `POST_PLAN_WORKFLOW_PATH` in `session-env`
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-correctness-output.txt, cursor-specialist-plan-fidelity-output.txt
+- **Concern**: Prose (including NEVER #4 / Step 5 copy) still states that `run-step5-review` derives round-cap from `POST_PLAN_WORKFLOW_PATH` in `session-env.sh`, but the launcher path ignores that key (hardcoded workflow). Operators mis-debug Step 5 caps and may re-plumb the wrong session knob.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: Update NEVER #4 and Step 5 scripted-loop copy to match run-step5-review.sh and run-step5-review.md
+  - From cursor-specialist-correctness-output.txt: Update those bullets to match `scripts/run-step5-review.sh` and the contract doc.
+  - From cursor-specialist-plan-fidelity-output.txt: Reword NEVER #4 and the Step 5 review paragraph to match run-step5-review.sh (HARD + conventional plan.txt + degraded inflation)
+
+---
+
+### FINDING_5: [OUT_OF_SCOPE] `docs/review-agents.md` still ties Step 5 `--round-cap` wording to `POST_PLAN_WORKFLOW_PATH`
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-correctness-output.txt, cursor-specialist-testing-output.txt, cursor-specialist-security-output.txt, cursor-specialist-plan-fidelity-output.txt
+- **Concern**: Documented operator mental model for Step 5 round-cap still references `POST_PLAN_WORKFLOW_PATH`; sources uniformly treat this as accepted doc drift / deferred follow-up (OOS_1/OOS_2 style) rather than in-scope for the current change set.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: Track separate doc follow-up when tightening POST_PLAN references repo-wide
+  - From cursor-specialist-correctness-output.txt: fix in a docs pass.
+  - From cursor-specialist-testing-output.txt: Track separate doc PR per OOS_2.
+  - From cursor-specialist-security-output.txt: Track follow-up doc edit per backlog.
+  - From cursor-specialist-plan-fidelity-output.txt: Track via follow-up issue as planned
+
+---
+
+### FINDING_6: [OUT_OF_SCOPE] `skills/shared/subskill-invocation.md` residual manifest / persist / retired-surface wording
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-correctness-output.txt, cursor-specialist-testing-output.txt, cursor-specialist-security-output.txt, cursor-specialist-plan-fidelity-output.txt
+- **Concern**: Shared subskill guidance may still reference retired manifest/persist surfaces or otherwise diverge from the inline-only / cutover design; all sources flag this as explicitly deferred (OOS_1) rather than in-scope here.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: Future issue to align shared subskill doc with inline-only design
+  - From cursor-specialist-correctness-output.txt: separate cleanup issue if desired.
+  - From cursor-specialist-testing-output.txt: File/follow the accepted OOS issue when ready.
+  - From cursor-specialist-security-output.txt: Track follow-up doc edit per backlog.
+  - From cursor-specialist-plan-fidelity-output.txt: Track via follow-up issue as planned
+
+---
+
+### FINDING_7: `scripts/ship-pr.sh` `resolve_plan_file` does not fall back to conventional `plan.txt` when session `PLAN_FILE` is set but invalid
+- **Reviewer(s)**: cursor-specialist-correctness-output.txt, cursor-specialist-security-output.txt
+- **Concern**: `resolve_plan_file` only falls back to `plan.txt` when `PLAN_FILE` is unset, not when it points at a missing under-tmpdir path. Legacy `PLAN_FILE=` plus a missing file can drop plan context for CI-fix/rebase paths even when `$IMPLEMENT_TMPDIR/plan.txt` exists—external agents may lose plan grounding.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-correctness-output.txt: After a missing-file warning, retry `$IMPLEMENT_TMPDIR/plan.txt` when present (and tighten docs).
+  - From cursor-specialist-security-output.txt: After invalid or missing session PLAN_FILE, fall back to IMPLEMENT_TMPDIR/plan.txt before returning empty.
+
+---
+
+### FINDING_8: `scripts/run-step5-review.sh` has a likely-unreachable `SIMPLE` branch because `WORKFLOW_PATH` is always `HARD`
+- **Reviewer(s)**: cursor-specialist-correctness-output.txt, cursor-specialist-plan-fidelity-output.txt
+- **Concern**: With `WORKFLOW_PATH` hardcoded to `HARD`, the `SIMPLE)` arm of the `case` is dead for current launcher behavior. Low user-visible risk today, but increases maintenance confusion for future edits.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-correctness-output.txt: Simplify the `case` or justify both arms explicitly.
+  - From cursor-specialist-plan-fidelity-output.txt: Collapse case branches or document why SIMPLE remains
+
+---
+
+### FINDING_9: `design-driver.sh` stale `ACTION=CLASSIFY` silently becomes passthrough instead of failing closed
+- **Reviewer(s)**: cursor-specialist-testing-output.txt
+- **Concern**: `ACTION=CLASSIFY` is no longer dispatched and becomes `ACTION_PASSTHROUGH`, so stale automation that still emits `CLASSIFY` can skip classification without an explicit error—hiding mis-generated driver files.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-testing-output.txt: Fail closed on `CLASSIFY` or cover with a regression test asserting explicit failure.
+
+---
+
+### FINDING_10: `scripts/run-step5-review.sh` gates `plan.txt` with `-f` but not non-empty `-s`
+- **Reviewer(s)**: cursor-specialist-testing-output.txt
+- **Concern**: A zero-byte `plan.txt` can pass the existence gate and fail later with confusing errors deep in review if empty plans are plausible.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-testing-output.txt: Add a non-empty file check with a clear error if empty plans are plausible.
+
+---
+
+### FINDING_11: Branch delivery shape vs plan (multiple commits / log churn vs single atomic commit)
+- **Reviewer(s)**: cursor-specialist-plan-fidelity-output.txt
+- **Concern**: Plan called for a single atomic deletion+CI commit, but branch history shows multiple commits including `larch-logs` chores—traceability and review scope can blur versus the stated delivery constraint.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-plan-fidelity-output.txt: Prefer squashing or isolating log/doc churn from the mechanical boundary retirement next time
+
+---
+
+### FINDING_12: `skills/fix-issue/scripts/test-fix-issue-bail-detection.sh` may not reflect stated `--auto` forward-assertion removal
+- **Reviewer(s)**: cursor-specialist-plan-fidelity-output.txt
+- **Concern**: Aggregate diff shows no harness edit for a stated `--auto` forward-assertion drop; if `main` still pins forwarding, the plan item may remain unaddressed.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-plan-fidelity-output.txt: Verify main and update the harness if the assertion still exists
+
+---
+
+**Cleanup for FINDING_2**: Remove my mistaken parenthetical block; FINDING_2 should have **no** "Suggested revisions" section.
+
+I'll output the clean final version for the user only.
+
+### FINDING_1: Stale `.PHONY` entry for removed `test-persist-post-plan-keys`
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-correctness-output.txt, cursor-specialist-testing-output.txt, cursor-specialist-edge-cases-output.txt, cursor-specialist-plan-fidelity-output.txt
+- **Concern**: The mega-`.PHONY` line still declares `test-persist-post-plan-keys` after its recipe/harness removal, so `make test-persist-post-plan-keys` no longer runs the intended regression and can yield misleading outcomes (reviewers disagree on whether GNU make errors vs no-ops, but agree the deleted suite is not exercised). This also risks drift versus hygiene/coverage expectations that inventory declared targets.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-correctness-output.txt: Remove `test-persist-post-plan-keys` from the mega-`.PHONY` line (and ensure no other stale references).
+  - From cursor-specialist-testing-output.txt: Remove the stale `.PHONY` token and scan docs/scripts for that `make` target.
+  - From cursor-specialist-edge-cases-output.txt: Remove deleted targets from the mega-.PHONY line
+  - From cursor-specialist-plan-fidelity-output.txt: Remove test-persist-post-plan-keys from the mega-.PHONY line
+
+### FINDING_2: `skills/implement/scripts/run-step2-dispatch.md` documents session-derived `PLAN_FILE` / `POST_PLAN_WORKFLOW_PATH` wiring that scripts no longer implement
+- **Reviewer(s)**: cursor-specialist-structure-output.txt
+- **Concern**: Contract prose still positions `PLAN_FILE` and `POST_PLAN_WORKFLOW_PATH` as session-derived sources of truth for plan/workflow wiring, but `run-step2-dispatch.sh` no longer implements that model—readers can trust the wrong integration surface when editing or operating `/implement`.
+
+### FINDING_3: Marketplace `description` still advertises `POST_PLAN_WORKFLOW_PATH` / session classification for Step 5 depth
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-correctness-output.txt, cursor-specialist-testing-output.txt, cursor-specialist-plan-fidelity-output.txt
+- **Concern**: `.claude-plugin/plugin.json` marketplace copy still ties post-plan workflow depth to `POST_PLAN_WORKFLOW_PATH` from session/plan classification, while launcher behavior is now hardcoded (e.g., unified Step 5 script semantics and conventional `plan.txt` paths). Consumers and operators can audit the wrong knob when debugging.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: Reword description for issue-anchored plan materialization and launcher-hardcoded Step 5 semantics
+  - From cursor-specialist-correctness-output.txt: Rewrite the description for issue-anchored plans, conventional `plan.txt`, and unified Step 5 without session-derived workflow path for the launcher.
+  - From cursor-specialist-testing-output.txt: Rewrite the description to match the implemented launcher behavior.
+  - From cursor-specialist-plan-fidelity-output.txt: Rewrite description for issue-anchored plan + unified Step 5 without obsolete POST_PLAN_WORKFLOW_PATH sentence
+
+### FINDING_4: `skills/implement/SKILL.md` still claims Step 5 `--round-cap` is driven by `POST_PLAN_WORKFLOW_PATH` in `session-env`
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-correctness-output.txt, cursor-specialist-plan-fidelity-output.txt
+- **Concern**: Operator-facing prose (including NEVER #4 / Step 5 sections) still claims `run-step5-review` derives round-cap from `POST_PLAN_WORKFLOW_PATH` via `session-env.sh`, but the launcher path ignores that key (hardcoded workflow), causing mis-debugging and wrong “re-plumbing” attempts.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: Update NEVER #4 and Step 5 scripted-loop copy to match run-step5-review.sh and run-step5-review.md
+  - From cursor-specialist-correctness-output.txt: Update those bullets to match `scripts/run-step5-review.sh` and the contract doc.
+  - From cursor-specialist-plan-fidelity-output.txt: Reword NEVER #4 and the Step 5 review paragraph to match run-step5-review.sh (HARD + conventional plan.txt + degraded inflation)
+
+### FINDING_5: [OUT_OF_SCOPE] `docs/review-agents.md` still ties Step 5 `--round-cap` wording to `POST_PLAN_WORKFLOW_PATH`
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-correctness-output.txt, cursor-specialist-testing-output.txt, cursor-specialist-security-output.txt, cursor-specialist-plan-fidelity-output.txt
+- **Concern**: Operator-facing documentation still describes Step 5 `--round-cap` in terms of `POST_PLAN_WORKFLOW_PATH`; all sources characterize this as accepted doc drift / explicitly deferred follow-up rather than in-scope for the current change set.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: Track separate doc follow-up when tightening POST_PLAN references repo-wide
+  - From cursor-specialist-correctness-output.txt: fix in a docs pass.
+  - From cursor-specialist-testing-output.txt: Track separate doc PR per OOS_2.
+  - From cursor-specialist-security-output.txt: Track follow-up doc edit per backlog.
+  - From cursor-specialist-plan-fidelity-output.txt: Track via follow-up issue as planned
+
+### FINDING_6: [OUT_OF_SCOPE] `skills/shared/subskill-invocation.md` residual manifest / persist / retired-surface wording
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-correctness-output.txt, cursor-specialist-testing-output.txt, cursor-specialist-security-output.txt, cursor-specialist-plan-fidelity-output.txt
+- **Concern**: Shared subskill guidance may still reference retired manifest/persist surfaces (or otherwise diverge from the post-cutover “inline-only” mental model); sources treat this as explicitly deferred (OOS_1) rather than in-scope here.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: Future issue to align shared subskill doc with inline-only design
+  - From cursor-specialist-correctness-output.txt: separate cleanup issue if desired.
+  - From cursor-specialist-testing-output.txt: File/follow the accepted OOS issue when ready.
+  - From cursor-specialist-security-output.txt: Track follow-up doc edit per backlog.
+  - From cursor-specialist-plan-fidelity-output.txt: Track via follow-up issue as planned
+
+### FINDING_7: `scripts/ship-pr.sh` `resolve_plan_file` does not fall back to conventional `plan.txt` when session `PLAN_FILE` is set but invalid
+- **Reviewer(s)**: cursor-specialist-correctness-output.txt, cursor-specialist-security-output.txt
+- **Concern**: Resolution only falls back to `plan.txt` when `PLAN_FILE` is unset, not when it points at a missing under-tmpdir path; legacy `PLAN_FILE` plus a missing file can drop plan context for CI-fix/rebase flows even if `$IMPLEMENT_TMPDIR/plan.txt` exists—risking loss of plan grounding for external agents.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-correctness-output.txt: After a missing-file warning, retry `$IMPLEMENT_TMPDIR/plan.txt` when present (and tighten docs).
+  - From cursor-specialist-security-output.txt: After invalid or missing session PLAN_FILE, fall back to IMPLEMENT_TMPDIR/plan.txt before returning empty.
+
+### FINDING_8: `scripts/run-step5-review.sh` contains a likely-unreachable `SIMPLE` branch with `WORKFLOW_PATH` always `HARD`
+- **Reviewer(s)**: cursor-specialist-correctness-output.txt, cursor-specialist-plan-fidelity-output.txt
+- **Concern**: With `WORKFLOW_PATH` hardcoded to `HARD`, the `SIMPLE)` case arm is dead in practice—low immediate user-visible failure risk, but it confuses future maintenance and edits.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-correctness-output.txt: Simplify the `case` or justify both arms explicitly.
+  - From cursor-specialist-plan-fidelity-output.txt: Collapse case branches or document why SIMPLE remains
+
+### FINDING_9: `skills/design/scripts/design-driver.sh` — stale `ACTION=CLASSIFY` silently becomes passthrough instead of failing closed
+- **Reviewer(s)**: cursor-specialist-testing-output.txt
+- **Concern**: `ACTION=CLASSIFY` is no longer dispatched and becomes `ACTION_PASSTHROUGH`, so stale automation emitting `CLASSIFY` can skip classification without an explicit error—hiding mis-generated driver artifacts.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-testing-output.txt: Fail closed on `CLASSIFY` or cover with a regression test asserting explicit failure.
+
+### FINDING_10: `scripts/run-step5-review.sh` checks `plan.txt` existence (`-f`) but not non-empty (`-s`)
+- **Reviewer(s)**: cursor-specialist-testing-output.txt
+- **Concern**: A zero-byte `plan.txt` can pass the gate and produce confusing failures deeper in review if empty plans are plausible.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-testing-output.txt: Add a non-empty file check with a clear error if empty plans are plausible.
+
+### FINDING_11: Branch delivery shape vs plan fidelity (multiple commits / log churn vs intended single atomic commit)
+- **Reviewer(s)**: cursor-specialist-plan-fidelity-output.txt
+- **Concern**: Plan requested a single atomic deletion+CI commit, but branch history includes multiple commits (including `larch-logs` chores), blurring traceability and review scope relative to the stated delivery constraint.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-plan-fidelity-output.txt: Prefer squashing or isolating log/doc churn from the mechanical boundary retirement next time
+
+### FINDING_12: `skills/fix-issue/scripts/test-fix-issue-bail-detection.sh` may not reflect stated `--auto` forward-assertion removal
+- **Reviewer(s)**: cursor-specialist-plan-fidelity-output.txt
+- **Concern**: Aggregate diff shows no harness edit for a stated `--auto` forward-assertion drop; if `main` still pins forwarding, the plan item may remain unaddressed.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-plan-fidelity-output.txt: Verify main and update the harness if the assertion still exists

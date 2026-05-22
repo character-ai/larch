@@ -1,0 +1,7 @@
+Gathering the branch diff and commit history for a tests/CI/regression review.
+
+Searching the diff for test harnesses, CI, and regression-sensitive changes.
+
+Completing the review: plan-mode requests a stored plan; summarizing review conclusions in CreatePlan.
+
+

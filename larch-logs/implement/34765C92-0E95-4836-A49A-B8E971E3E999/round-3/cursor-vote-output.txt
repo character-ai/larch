@@ -1,0 +1,16 @@
+FINDING_1: YES
+FINDING_2: NO -- diff-context shows no remaining CLASSIFY strings or classify-issue surfaces, so the claimed incomplete removal is not supported by the provided diff.
+FINDING_3: YES
+FINDING_4: EXONERATE -- duplicated guidance is a maintainability nit, not a correctness or operator hazard worth a blocking finding.
+FINDING_5: YES
+FINDING_6: NO -- plan explicitly required updating `scripts/run-step5-review.md` alongside `run-step5-review.sh`, so a lingering `WORKFLOW_PATH` mismatch is unlikely without evidence in the excerpt.
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: EXONERATE -- new `resolve_plan_file` branches may lack dedicated fixtures, but `make test-ship-pr` still exercises `ship-pr.sh` and the regression risk is speculative from the excerpt alone.
+FINDING_10: YES
+FINDING_11: EXONERATE -- large `larch-logs/**` diffs are expected repo noise, not a defect warranting a tracking issue.
+FINDING_12: NO -- version and marketing text churn carries no actionable engineering risk per the ballot itself.
+FINDING_13: EXONERATE -- replacing a duplicated paragraph with “Do not write … see NEVER #14” keeps the prohibition anchored in the normative skill text.
+FINDING_14: EXONERATE -- the `jq` bullet still documents hook short-circuiting, silent degradation, and the SessionStart advisory path after the hook-stack edit shown in the diff.
+FINDING_15: YES
+FINDING_16: YES

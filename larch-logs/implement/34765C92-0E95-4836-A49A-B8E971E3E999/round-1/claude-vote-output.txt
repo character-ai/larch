@@ -1,0 +1,31 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: EXONERATE -- CLASSIFY was retired from SKILL.md so no in-tree caller emits it; passthrough is the correct default for unknown actions and fail-close adds complexity for a defunct path
+FINDING_17: EXONERATE -- zero-byte plan.txt requires a silent upstream writer failure; Preflight rejects planless runs so by Step 5 the file should always have content; -s check adds complexity for an implausible scenario
+FINDING_18: YES
+FINDING_19: YES
+FINDING_20: YES
+FINDING_21: YES
+FINDING_22: YES
+FINDING_23: YES
+FINDING_24: YES
+FINDING_25: YES
+FINDING_26: YES
+FINDING_27: EXONERATE -- larch-logs flush commits are inherently separate by the run-log protocol and distinct from the mechanical deletion commits; the plan's atomic-commit guidance targets the implementation delta, not logging chores
+FINDING_28: NO -- fix-issue/SKILL.md contains no --auto references and test-fix-issue-bail-detection.sh has no --auto forwarding assertions; the claimed plan item does not exist
+FINDING_29: YES
+FINDING_30: YES
+FINDING_31: YES
