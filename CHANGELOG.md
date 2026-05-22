@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [35.0.0] - 2026-05-21
+
+### Changed
+
+- Cut over /design and /implement to issue-anchored GitHub plan blocks with preflight audit and clarify flow (issue #2485).
+- Drop public --panel from review-and-fix; keep internal hard panel for review-core; extend clarify-label with --create-if-missing.
+- Deprecate post-design-boundary and neutralize hooks; add editorial harnesses and satisfy agent-lint allowlist.
+
 ## [34.0.23] - 2026-05-21
 
 ### Changed
