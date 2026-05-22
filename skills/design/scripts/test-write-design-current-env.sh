@@ -175,7 +175,7 @@ _bad_claude_pid="$TMPROOT/wdce-bad-claude-pid.err"
 _inv_tmp="$TMPROOT/inv-tmp"
 _inv_out="$TMPROOT/inv-out.sh"
 mkdir -p "$_inv_tmp"
-for _bad in 0 abc 12345678 08; do
+for _bad in 0 abc 12345678 08 ''; do
     : > "$_bad_claude_pid"
     if CLAUDE_PLUGIN_ROOT="$REPO_ROOT" "$SUBJECT" \
             --output "$_inv_out" \

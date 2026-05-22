@@ -17,8 +17,10 @@ Regression harness for `scripts/write-design-current-env.sh`.
 5. Argv validation rejects relative `--design-tmpdir` and malformed
    `--session-id`.
 6. Two distinct `--claude-pid` values produce independent symlinks and
-   independent sourced session state (concurrency invariant).
-7. Invalid `--claude-pid` values (`0`, non-numeric, eight digits, leading
+   independent sourced session state (concurrency invariant). The harness
+   exercises the two slots **sequentially**; it does not simulate interleaved
+   concurrent `ln -sfn` races (non-goal for this contract file).
+7. Invalid `--claude-pid` values (`0`, empty when the flag is passed, non-numeric, eight digits, leading
    zero) are rejected before symlink update.
 8. Omitting `--claude-pid` uses the legacy `current-design-env.sh` symlink
    and emits a stderr transition warning.

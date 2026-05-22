@@ -65,7 +65,7 @@ Icons: ✅ done (with elapsed time since launch), ⏳ pending/in-progress, ❌ f
 
 ### Bash block prelude
 
-The Claude Code Bash tool does NOT preserve shell state between calls. Step 0 writes a sourceable session-env file via `scripts/write-design-current-env.sh` and refreshes a stable symlink at `~/.cache/larch/sessions/current-design-env-$PPID.sh` (keyed on the Bash subshell's `$PPID`, which tracks the Claude Code parent process for the session). **Every Bash block from Step 1c onward MUST prepend the canonical conditional prelude line** so `$DESIGN_TMPDIR`, `$SESSION_TMPDIR`, `$SESSION_ID`, `$CLAUDE_PLUGIN_ROOT`, and the reviewer presence/availability booleans survive into the new subshell:
+The Claude Code Bash tool does NOT preserve shell state between calls. Step 0 writes a sourceable session-env file via `scripts/write-design-current-env.sh` and refreshes a stable symlink at `~/.cache/larch/sessions/current-design-env-$PPID.sh` (keyed on `$PPID` from the **root** Bash-tool subshell for that call — in normal `/design` orchestration this matches the Claude Code process for the session; do not nest the Step 0 writer or prelude inside an extra `bash` / `bash -c` layer without an explicit `--claude-pid` re-handoff, because `$PPID` would then name an intermediate shell instead). **Every Bash block from Step 1c onward MUST prepend the canonical conditional prelude line** so `$DESIGN_TMPDIR`, `$SESSION_TMPDIR`, `$SESSION_ID`, `$CLAUDE_PLUGIN_ROOT`, and the reviewer presence/availability booleans survive into the new subshell:
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh

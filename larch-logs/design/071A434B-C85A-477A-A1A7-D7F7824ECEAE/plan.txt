@@ -40,7 +40,7 @@ The fix must hold under arbitrary numbers of concurrent `/implement` and `/desig
 ## Files to modify
 
 1. **`scripts/write-design-current-env.sh`** (≈10 lines changed)
-   - Add `--claude-pid <pid>` to the argv parser. Validate as `^[1-9][0-9]*$` (positive integer, no leading zeros, max 7 digits — Linux PID_MAX is 4194304). Reject `--claude-pid 0` and `--claude-pid ""` explicitly.
+   - Add `--claude-pid <pid>` to the argv parser. Validate as `^[1-9][0-9]{0,6}$` (positive integer, no leading zeros, at most seven decimal digits — Linux PID_MAX is 4194304). Reject `--claude-pid 0` and `--claude-pid ""` explicitly.
    - Change the symlink construction:
      ```
      SYMLINK_PATH="${SYMLINK_DIR}/current-design-env-${CLAUDE_PID}.sh"

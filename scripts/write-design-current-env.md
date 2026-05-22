@@ -34,13 +34,16 @@ the directly-usable variable name (sourceable, not parsed).
 
 ## `--claude-pid`
 
-Required for normal `/design` operation: pass the Bash subshell parent
-PID (e.g. `--claude-pid "$PPID"`). In Claude Code, `$PPID` inside each
-Bash-tool subshell has been observed to match the Claude Code process
-for that session and to stay stable across Bash tool calls in the same
-session, so different concurrent Claude sessions (including `/design`
-from different working-tree clones) receive different symlink names and
-no longer clobber each other's session env.
+Required for normal `/design` operation: pass the Bash-tool subshell parent
+PID (e.g. `--claude-pid "$PPID"`). In Claude Code, `$PPID` in each **top-level**
+Bash-tool invocation has been observed to match the Claude Code process for
+that session and to stay stable across Bash tool calls in the same session, so
+different concurrent Claude sessions (including `/design` from different
+working-tree clones) receive different symlink names and no longer clobber each
+other's session env. **Do not** wrap the writer (or the prelude contract) in an
+extra nested `bash` / `bash -c` invocation unless you deliberately re-thread
+`--claude-pid` for the PID namespace that owns the symlink slot — otherwise
+`$PPID` may refer to an intermediate shell, not Claude.
 
 Validation: `--claude-pid` must match `^[1-9][0-9]{0,6}$` (at most seven
 decimal digits, no leading zero).
@@ -79,7 +82,7 @@ find ~/.cache/larch/sessions -name 'current-design-env-*.sh' -type l \
 - `--session-id` matches `^[A-Za-z0-9_.-]{1,128}$`.
 - `--design-tmpdir` and `--output` must be absolute paths.
 - `--issue-number` matches `^[0-9]+$` when present.
-- `--claude-pid` matches `^[1-9][0-9]{0,6}$` when present.
+- When `--claude-pid` is passed, its value must be non-empty and match `^[1-9][0-9]{0,6}$`. Omitting the flag entirely selects the legacy shim (stderr warning).
 - Presence/availability booleans must be `true` or `false`.
 
 ## Edit-in-sync

@@ -22,9 +22,11 @@
 # containing spaces or shell metacharacters survive round-tripping through
 # `source`.
 #
-# Callers should pass the Bash subshell parent PID (e.g. --claude-pid "$PPID")
-# so concurrent /design runs in different Claude sessions do not clobber each
-# other's symlink.
+# Callers should pass the Bash-tool subshell parent PID (e.g. --claude-pid
+# "$PPID") from the root Bash-tool invocation so concurrent /design runs in
+# different Claude sessions do not clobber each other's symlink. Wrapping the
+# writer in an extra nested `bash`/`bash -c` layer can change which PID "$PPID"
+# refers to; avoid that unless the caller re-handles --claude-pid explicitly.
 #
 # Exit codes: 0 success, 1 invalid args.
 
@@ -44,6 +46,7 @@ CODEX_AVAILABLE=""
 CURSOR_AVAILABLE=""
 ISSUE_NUMBER=""
 CLAUDE_PID=""
+CLAUDE_PID_SPECIFIED=0
 CLAUDE_PLUGIN_ROOT_VALUE="${CLAUDE_PLUGIN_ROOT:-}"
 
 while [[ $# -gt 0 ]]; do
@@ -56,7 +59,7 @@ while [[ $# -gt 0 ]]; do
     --codex-available)  CODEX_AVAILABLE="$2"; shift 2 ;;
     --cursor-available) CURSOR_AVAILABLE="$2"; shift 2 ;;
     --issue-number)     ISSUE_NUMBER="$2"; shift 2 ;;
-    --claude-pid)       CLAUDE_PID="$2"; shift 2 ;;
+    --claude-pid)       CLAUDE_PID="$2"; CLAUDE_PID_SPECIFIED=1; shift 2 ;;
     *) larch_err "ERROR=Unknown argument: $1"; exit 1 ;;
   esac
 done
@@ -88,9 +91,11 @@ if [[ ! "$SESSION_ID" =~ ^[A-Za-z0-9_.-]{1,128}$ ]]; then
   exit 1
 fi
 
-if [[ -n "$CLAUDE_PID" && ! "$CLAUDE_PID" =~ ^[1-9][0-9]{0,6}$ ]]; then
-  larch_err "ERROR=Invalid --claude-pid: must be a positive integer of at most 7 decimal digits"
-  exit 1
+if [[ "$CLAUDE_PID_SPECIFIED" -eq 1 ]]; then
+  if [[ -z "$CLAUDE_PID" || ! "$CLAUDE_PID" =~ ^[1-9][0-9]{0,6}$ ]]; then
+    larch_err "ERROR=Invalid --claude-pid: must be a positive integer of at most 7 decimal digits"
+    exit 1
+  fi
 fi
 
 if [[ "$DESIGN_TMPDIR_ARG" != /* ]]; then
