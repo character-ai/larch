@@ -3,15 +3,15 @@
 - **Outcome**: bailed
 - **Mode**: N/A
 - **Path**: HARD
-- **Duration**: 00:51:54
-- **Tokens**: 58121k total — Claude 11953k, Codex 124k, Cursor 46044k
+- **Duration**: 00:52:40
+- **Tokens**: 58985k total — Claude 12817k, Codex 124k, Cursor 46044k
 - **Cost**: TOTAL N/A — Claude N/A, Codex N/A, Cursor N/A
 - **Issue**: #2487 — https://github.com/character-ai/larch/issues/2487
 - **Plan review**: N/A
 - **Code review**: 26/28 accepted
-- **OOS filed**: 0
+- **OOS filed**: 3
 - **Exec issues**: 0
-- **Warnings**: 1
+- **Warnings**: 2
 - **Run logs**: `larch-logs/implement/34765C92-0E95-4836-A49A-B8E971E3E999/`
 
 <!-- larch:run-summary v=1 -->
