@@ -379,27 +379,10 @@ assert_eq "$rc" "0" "case 11b: exit code 0"
 stdout=$(cat "$tmp/c11b.out")
 assert_empty "$stdout" "case 11b: stdout empty on malformed json"
 
-echo "=== Case 12: SessionStart does not emit legacy post-/design boundary for manifest.env alone ==="
-mkdir -p "$tmp/c12-cwd"
-impl=$(make_impl_tmpdir c12-design "$tmp/c12-cwd" "sid-12")
-printf 'MANIFEST_OK=true\n' > "$impl/design-export/manifest.env"
-rc=$(run_with_stdin "$tmp/real_bin" "$tmp/c12-cwd" '{"cwd":"'"$tmp/c12-cwd"'","session_id":"sid-12"}' "$XDG_TEST" "$tmp/c12.out" "$tmp/c12.err")
-assert_eq "$rc" "0" "case 12: exit code 0"
-stdout=$(cat "$tmp/c12.out")
-assert_empty "$stdout" "case 12: stdout empty (no legacy design-boundary advisory)"
-
-echo "=== Case 12b: .boundary-gate-passed still harmless when manifest exists ==="
-touch "$impl/.boundary-gate-passed"
-rc=$(run_with_stdin "$tmp/real_bin" "$tmp/c12-cwd" '{"cwd":"'"$tmp/c12-cwd"'","session_id":"sid-12"}' "$XDG_TEST" "$tmp/c12b.out" "$tmp/c12b.err")
-assert_eq "$rc" "0" "case 12b: exit code 0"
-stdout=$(cat "$tmp/c12b.out")
-assert_empty "$stdout" "case 12b: stdout empty (manifest + gate file)"
-assert_not_contains "$stdout" "post-/design boundary" "case 12b: no design boundary advisory"
-
 echo "=== Case 13: .run-cleaned-up suppresses boundary advisories ==="
 mkdir -p "$tmp/c13-cwd"
 impl=$(make_impl_tmpdir c13-cleaned "$tmp/c13-cwd")
-printf 'MANIFEST_OK=true\n' > "$impl/design-export/manifest.env"
+printf 'review summary\n' > "$impl/review-round-summary.md"
 touch "$impl/.run-cleaned-up"
 rc=$(run_with_stdin "$tmp/real_bin" "$tmp/c13-cwd" '{"cwd":"'"$tmp/c13-cwd"'"}' "$XDG_TEST" "$tmp/c13.out" "$tmp/c13.err")
 assert_eq "$rc" "0" "case 13: exit code 0"
@@ -410,7 +393,6 @@ assert_not_contains "$stdout" "boundary" "case 13: no boundary advisory"
 echo "=== Case 14: SessionStart detects pending post-/review boundary ==="
 mkdir -p "$tmp/c14-cwd"
 impl=$(make_impl_tmpdir c14-review "$tmp/c14-cwd")
-rm -f "$impl/design-export/manifest.env"
 printf 'review summary\n' > "$impl/review-round-summary.md"
 rc=$(run_with_stdin "$tmp/real_bin" "$tmp/c14-cwd" '{"cwd":"'"$tmp/c14-cwd"'"}' "$XDG_TEST" "$tmp/c14.out" "$tmp/c14.err")
 assert_eq "$rc" "0" "case 14: exit code 0"
@@ -430,8 +412,7 @@ assert_not_contains "$stdout" "post-/review boundary" "case 14b: no review bound
 echo "=== Case 15: SessionStart detects pending post-/bump-version boundary ==="
 mkdir -p "$tmp/c15-cwd"
 impl=$(make_impl_tmpdir c15-bump "$tmp/c15-cwd")
-printf 'MANIFEST_OK=true\n' > "$impl/design-export/manifest.env"
-touch "$impl/.boundary-gate-passed"
+# Bump-only fixtures: isolate post-/bump-version SessionStart branch without a pending review boundary.
 touch "$impl/.bump-version-armed"
 rc=$(run_with_stdin "$tmp/real_bin" "$tmp/c15-cwd" '{"cwd":"'"$tmp/c15-cwd"'"}' "$XDG_TEST" "$tmp/c15.out" "$tmp/c15.err")
 assert_eq "$rc" "0" "case 15: exit code 0"
@@ -448,10 +429,9 @@ stdout=$(cat "$tmp/c15b.out")
 assert_empty "$stdout" "case 15b: stdout empty after postbump state"
 assert_not_contains "$stdout" "post-/bump-version boundary" "case 15b: no bump boundary advisory"
 
-echo "=== Case 16: pending review + bump boundaries concatenate (no legacy design gate) ==="
+echo "=== Case 16: pending review + bump boundaries concatenate ==="
 mkdir -p "$tmp/c16-cwd"
 impl=$(make_impl_tmpdir c16-all-boundaries "$tmp/c16-cwd")
-printf 'MANIFEST_OK=true\n' > "$impl/design-export/manifest.env"
 printf 'review summary\n' > "$impl/review-round-summary.md"
 touch "$impl/.bump-version-armed"
 rc=$(run_with_stdin "$tmp/real_bin" "$tmp/c16-cwd" '{"cwd":"'"$tmp/c16-cwd"'"}' "$XDG_TEST" "$tmp/c16.out" "$tmp/c16.err")
@@ -459,7 +439,6 @@ assert_eq "$rc" "0" "case 16: exit code 0"
 stdout=$(cat "$tmp/c16.out")
 assert_valid_json "$stdout" "case 16"
 ctx=$(ctx_from_stdout "$stdout")
-assert_not_contains "$ctx" "post-/design boundary" "case 16: no legacy design boundary advisory"
 assert_contains "$ctx" "post-/review boundary" "case 16: review boundary advisory"
 assert_contains "$ctx" "post-/bump-version boundary" "case 16: bump boundary advisory"
 
