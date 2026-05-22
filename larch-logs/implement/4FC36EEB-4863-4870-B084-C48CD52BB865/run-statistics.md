@@ -1,0 +1,1 @@
+Run 4FC36EEB-4863-4870-B084-C48CD52BB865: 0 OOS issues filed. 2 accepted-OOS items explicitly rejected: FINDING_11 (documentation drift — SECURITY.md update already inline in PR diff), FINDING_15 (pre-existing nit not introduced by this PR; reviewer recommended dedicated follow-up).
