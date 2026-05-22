@@ -1,7 +1,7 @@
 # Version Bump Reasoning
 
-- **Base commit**: `03f517e9` (Fixes #2523: audit-runs: filter findings against in-flight/closed-with-version-window issues + narrow oos-category-mangle scan (#2533))
-- **Current version**: `34.0.23`
+- **Base commit**: `183592ef` (Bump version to 34.0.24 (#2556))
+- **Current version**: `34.0.24`
 - **Classification scope**: `skills/**` and `agents/**` only (public plugin surface).
 
 ## Result: MAJOR
