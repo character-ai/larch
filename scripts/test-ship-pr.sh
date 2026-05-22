@@ -1389,7 +1389,7 @@ if [ "$initial_branch" = "main" ]; then
     git -C "$root" update-ref refs/remotes/origin/main HEAD
     git -C "$root" checkout -q -b pr-title-branch
 else
-    git -C "$root" checkout -q main
+    git -C "$root" checkout -q -b main
     git -C "$root" commit --allow-empty -q -m "base"
     git -C "$root" update-ref refs/remotes/origin/main HEAD
     git -C "$root" checkout -q "$initial_branch"
@@ -1430,7 +1430,7 @@ if [ "$initial_branch" = "main" ]; then
     git -C "$root" update-ref refs/remotes/origin/main HEAD
     git -C "$root" checkout -q -b existing-pr-branch
 else
-    git -C "$root" checkout -q main
+    git -C "$root" checkout -q -b main
     git -C "$root" commit --allow-empty -q -m "base"
     git -C "$root" update-ref refs/remotes/origin/main HEAD
     git -C "$root" checkout -q "$initial_branch"
