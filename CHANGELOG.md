@@ -5,13 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [36.0.4] - 2026-05-21
+## [36.0.4] - 2026-05-22
 
 ### Changed
 
 - Stop false-positive audit failures on bailed /implement runs that never reached Step 9a.1 by persisting explicit steps_ran skips in the run log manifest when write-final-report runs.
 - Align audit-scan and verify-run-log-completeness with a backward-compatible bail-signal fallback when legacy manifests still have an empty steps_ran object.
 - Add regression coverage in both harnesses for bailed versus completed final-summary headings and for explicit step9a1=false.
+- Stall before version bump when ship-pr state branch name is protected or disagrees with the current checkout, preventing bumps on main.
+- Fail closed on issue-anchored external Step 2 when the repo is still on main or master so Cursor/Codex cannot commit before a feature branch exists.
+- Extend the /implement orchestrator Step 2 complete path to assert the post-dispatch branch matches the Step 1 captured feature branch before continuing.
+- Cover the new guards with ship-pr bump scenarios and a step2-dispatch regression that pins main-branch-prohibited with a minimal session-env.
 
 ## [36.0.3] - 2026-05-21
 
