@@ -73,26 +73,78 @@ if [ "$AHEAD" -eq 0 ]; then
 fi
 
 # Inspect the ahead commits. All must be larch-log flush commits.
+# Do not mask git failures when AHEAD>0: mis-read subjects/paths must not
+# authorize a destructive reset.
+_log_exit=0
+_log_output=$(git log origin/main..HEAD --format=%s 2>/dev/null) || _log_exit=$?
+if [ "$_log_exit" -ne 0 ]; then
+    emit_kv SYNC_STATUS probe-error
+    emit_kv AHEAD_COUNT "$AHEAD"
+    emit_kv ERROR "git log failed (exit $_log_exit)"
+    exit 2
+fi
+_log_line_count=$(printf '%s\n' "$_log_output" | awk '/./ { c++ } END { print c+0 }')
+if [ "$_log_line_count" -ne "$AHEAD" ]; then
+    emit_kv SYNC_STATUS probe-error
+    emit_kv AHEAD_COUNT "$AHEAD"
+    emit_kv ERROR "git log subject line count ($_log_line_count) does not match AHEAD ($AHEAD)"
+    exit 2
+fi
+
 _all_flushes=true
-while IFS= read -r _subj; do
+while IFS= read -r _subj || [ -n "$_subj" ]; do
+    [ -z "$_subj" ] && continue
     case "$_subj" in
         "chore(larch-logs): flush "*) ;;
         *) _all_flushes=false; break ;;
     esac
-done < <(git log origin/main..HEAD --format=%s 2>/dev/null || true)
+done < <(printf '%s\n' "$_log_output")
 
 # All touched files must be under larch-logs/.
+_diff_exit=0
+_diff_output=$(git diff --name-only origin/main HEAD 2>/dev/null) || _diff_exit=$?
+if [ "$_diff_exit" -ne 0 ]; then
+    emit_kv SYNC_STATUS probe-error
+    emit_kv AHEAD_COUNT "$AHEAD"
+    emit_kv ERROR "git diff --name-only failed (exit $_diff_exit)"
+    exit 2
+fi
+
 _larch_log_diff_only=true
-while IFS= read -r _f; do
+while IFS= read -r _f || [ -n "$_f" ]; do
+    [ -z "$_f" ] && continue
     case "$_f" in
         "larch-logs/"*) ;;
         *) _larch_log_diff_only=false; break ;;
     esac
-done < <(git diff --name-only origin/main HEAD 2>/dev/null || true)
+done < <(printf '%s\n' "$_diff_output")
 
 if [ "$_all_flushes" = "true" ] && [ "$_larch_log_diff_only" = "true" ]; then
+    # Refuse destructive reset on a dirty tree (e.g. preflight --skip-clean-check).
+    _porcelain_exit=0
+    _porcelain=$(git status --porcelain 2>/dev/null) || _porcelain_exit=$?
+    if [ "$_porcelain_exit" -ne 0 ]; then
+        emit_kv SYNC_STATUS probe-error
+        emit_kv AHEAD_COUNT "$AHEAD"
+        emit_kv ERROR "git status --porcelain failed (exit $_porcelain_exit); refusing reset"
+        exit 2
+    fi
+    if [ -n "$_porcelain" ]; then
+        emit_kv SYNC_STATUS probe-error
+        emit_kv AHEAD_COUNT "$AHEAD"
+        emit_kv ERROR "refusing reset: working tree is not clean (tracked or untracked changes present)"
+        exit 2
+    fi
+
     # All ahead commits are larch-log flush commits. Reset to origin/main.
-    git reset --hard origin/main >/dev/null 2>&1
+    _reset_exit=0
+    _reset_out=$(git reset --hard origin/main 2>&1) || _reset_exit=$?
+    if [ "$_reset_exit" -ne 0 ]; then
+        emit_kv SYNC_STATUS probe-error
+        emit_kv AHEAD_COUNT "$AHEAD"
+        emit_kv ERROR "git reset --hard origin/main failed (exit $_reset_exit): $_reset_out"
+        exit 2
+    fi
     emit_kv SYNC_STATUS reset
     emit_kv AHEAD_COUNT "$AHEAD"
     exit 0

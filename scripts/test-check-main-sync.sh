@@ -160,6 +160,37 @@ set -e
 assert_rc "$RC" 2 "bad-arg: exit 2"
 assert_contains "unknown flag" "$ERR" "bad-arg: stderr diagnostic"
 
+# --- Test 7: missing origin/main ref — rev-list probe fails → probe-error exit 2 ---
+repo=$(make_repo_pair missingorigin)
+git -C "$repo" config user.email "test@test"
+git -C "$repo" config user.name "Test"
+mkdir -p "$repo/larch-logs"
+printf 'x\n' > "$repo/larch-logs/x.md"
+git -C "$repo" add larch-logs/x.md
+git -C "$repo" commit -q -m "chore(larch-logs): flush implement run missingorigin"
+# Drop the remote-tracking ref so origin/main no longer resolves.
+if git -C "$repo" show-ref --verify --quiet refs/remotes/origin/main; then
+    git -C "$repo" update-ref -d refs/remotes/origin/main
+fi
+run_check "$repo"
+assert_rc "$RC" 2 "missing-origin-main: exit 2"
+assert_contains "SYNC_STATUS=probe-error" "$OUT" "missing-origin-main: SYNC_STATUS=probe-error"
+assert_contains "ERROR=" "$OUT" "missing-origin-main: ERROR present"
+
+# --- Test 8: dirty working tree + flush ahead — refuse reset (probe-error exit 2) ---
+repo=$(make_repo_pair flushdirty)
+git -C "$repo" config user.email "test@test"
+git -C "$repo" config user.name "Test"
+mkdir -p "$repo/larch-logs"
+printf 'y\n' > "$repo/larch-logs/y.md"
+git -C "$repo" add larch-logs/y.md
+git -C "$repo" commit -q -m "chore(larch-logs): flush implement run flushdirty"
+printf 'dirty\n' >> "$repo/README.md"
+run_check "$repo"
+assert_rc "$RC" 2 "flush-dirty-tree: exit 2"
+assert_contains "SYNC_STATUS=probe-error" "$OUT" "flush-dirty-tree: SYNC_STATUS=probe-error"
+assert_contains "not clean" "$OUT" "flush-dirty-tree: ERROR mentions dirty tree"
+
 echo
 echo "Results: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

@@ -46,10 +46,19 @@ AHEAD_COUNT=<N>
 ERROR=local main is <N> commit(s) ahead of origin/main with non-log changes; push or reconcile before re-running
 ```
 
-Git probe failure:
+Git probe failure or unsafe reset (`SYNC_STATUS=probe-error`, exit `2`):
+
+The script fail-closes with `probe-error` when any **safety-critical** git step fails or is inconsistent while on `main` with `AHEAD>0`, or when a destructive reset cannot be verified:
+
+1. **`git rev-list --count origin/main..HEAD`** — must succeed and yield a non-empty numeric count (already the first gate when `AHEAD>0`).
+2. **`git log origin/main..HEAD --format=%s`** — must succeed, and the number of non-empty subject lines must equal `AHEAD` (parity guard against partial reads / ambiguous log output).
+3. **`git diff --name-only origin/main HEAD`** — must succeed (names are classified for the flush-only rule).
+4. **Pre-reset working tree** — immediately before `git reset --hard origin/main`, `git status --porcelain` must succeed and be empty; a dirty tree refuses the reset so local tracked edits are not destroyed (for example when a caller used `--skip-clean-check` upstream).
+5. **`git reset --hard origin/main`** — must succeed; stderr is folded into `ERROR=` on failure.
 
 ```
 SYNC_STATUS=probe-error
+AHEAD_COUNT=<N>          (when the failure happens on the ahead-of-origin path)
 ERROR=<summary>
 ```
 
@@ -59,7 +68,7 @@ ERROR=<summary>
 |------|---------|
 | 0 | Sync is ok, check was not applicable (not-main), or flush commits were auto-reset. Run may proceed. |
 | 1 | Blocked: non-log commits on local main ahead of origin/main. Caller should abort. |
-| 2 | Argument validation error or git probe failure. |
+| 2 | Argument validation error, `probe-error` cases above (rev-list / log / diff / porcelain / reset failure), or other inability to classify ahead commits safely. |
 
 ## Primary Callers
 
