@@ -1,0 +1,9 @@
+Reading the ballot and session context files to verify findings.
+
+FINDING_1: YES
+FINDING_2: EXONERATE -- committed run-log snapshots are expected to keep historical wording; a tracking issue would add process noise for little gain.
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: EXONERATE -- remaining anchors still pin the delegated `--panel hard` posture; pinning every human synonym would be brittle and low value.
+FINDING_7: YES
