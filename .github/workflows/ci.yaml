@@ -170,7 +170,7 @@ jobs:
   # requirements-test-harnesses.txt (the lint job uses requirements-lint.txt,
   # which also pulls pre-commit).
   test-harnesses:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     strategy:
       fail-fast: false
@@ -192,7 +192,7 @@ jobs:
         uses: actions/cache@v5
         with:
           path: ${{ steps.site-packages.outputs.path }}
-          key: ${{ runner.os }}-pip-site-${{ steps.setup-python.outputs.python-version }}-${{ hashFiles('.github/workflows/requirements-test-harnesses.txt') }}
+          key: ubuntu-24.04-pip-site-${{ steps.setup-python.outputs.python-version }}-${{ hashFiles('.github/workflows/requirements-test-harnesses.txt') }}
       - name: Install test harness Python dependencies
         if: steps.cache-site-packages.outputs.cache-hit != 'true'
         run: pip install -r .github/workflows/requirements-test-harnesses.txt
