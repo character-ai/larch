@@ -1,0 +1,3 @@
+Normalizing duplicate reviewer themes into merged findings, preserving `[OUT_OF_SCOPE]` on out-of-scope clusters, and ordering clusters by the smallest source finding ID in each cluster. Calling CreatePlan to record the aggregation (read-only).
+
+

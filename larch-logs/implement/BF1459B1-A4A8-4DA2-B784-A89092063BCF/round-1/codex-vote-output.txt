@@ -1,0 +1,41 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: EXONERATE -- historical run-log text is stale but not worth filing or changing for this branch.
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: EXONERATE -- historical changelog wording is legitimate stale context but not issue-worthy.
+FINDING_14: EXONERATE -- archived prompts are historical artifacts and not worth a follow-up issue.
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: YES
+FINDING_18: YES
+FINDING_19: EXONERATE -- committed historical logs are grep noise only and not worth tracking separately.
+FINDING_20: YES
+FINDING_21: YES
+FINDING_22: YES
+FINDING_23: YES
+FINDING_24: EXONERATE -- explicit rev-list failure handling would add more harness detail than this rare diagnostic case warrants.
+FINDING_25: YES
+FINDING_26: YES
+FINDING_27: YES
+FINDING_28: YES
+FINDING_29: YES
+FINDING_30: EXONERATE -- plan-only path mismatch is legitimate but not worth a GitHub issue.
+FINDING_31: YES
+FINDING_32: YES
+FINDING_33: YES
+FINDING_34: EXONERATE -- accurate audit observation, but there is no actionable follow-up needed.
+FINDING_35: EXONERATE -- accurate plan-artifact inconsistency, but not issue-worthy.
+FINDING_36: EXONERATE -- historical run-log residue is legitimate but not worth tracking.
+FINDING_37: NO -- commit history note is not an actionable concern.
+FINDING_38: YES
+FINDING_39: YES
+FINDING_40: EXONERATE -- legitimate plan mismatch, but the HEAD-delta harness substitute is reasonable without a follow-up issue.
+FINDING_41: EXONERATE -- stale heading is real but too minor for an out-of-scope issue.
