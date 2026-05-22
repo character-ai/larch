@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [34.0.19] - 2026-05-21
+
+### Changed
+
+- Add a mechanical oos-disposition gate so accepted non-security OOS items cannot clear OOS_PENDING without filed issues or Inline-triage commit breadcrumbs.
+- Document terminal disposition rules and NEVER-list enforcement in the implement skill next to the Step 8+ OOS checkpoint.
+- Add an audit-runs oos-silent-drop scan for retroactive detection in committed run logs.
+- Register the gate harness in the Makefile and pin key prose in test-implement-structure.sh.
+
 ## [34.0.18] - 2026-05-21
 
 ### Changed
@@ -31,6 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- OOS disposition gate and `oos-silent-drop` audit scan now honor `oos-issues.ndjson` URLs, explicit rejected-OOS markers, tighter security `focus-area` detection, and git-log Inline-triage aligned with the gate's revision walk (with a narrow artifact fallback when git is unavailable); merge-base-empty branches use `origin/main..HEAD` when `origin/main` resolves.
 - Closed: #2539
 
 ## [34.0.14] - 2026-05-21

@@ -13,6 +13,10 @@ set -euo pipefail
 _audit_scan_run_self_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=.claude/skills/audit-runs/scripts/audit-scan-run-jstr.inc.bash
 . "$_audit_scan_run_self_dir/audit-scan-run-jstr.inc.bash"
+_OOS_IMPL_SCRIPTS="$(cd "${_audit_scan_run_self_dir}/../../../../skills/implement/scripts" && pwd)"
+# shellcheck source=skills/implement/scripts/oos-disposition-shared.inc.bash
+. "$_OOS_IMPL_SCRIPTS/oos-disposition-shared.inc.bash"
+_OOS_BLK_AWK="$_OOS_IMPL_SCRIPTS/oos-non-security-block-count.awk"
 
 # Set to 1 when mangled-category jq on review-findings-full.jsonl fails (oos-category-mangle scan).
 _audit_scan_mangled_jq_failed=0
@@ -77,6 +81,48 @@ fi
 
 # ---- Helpers ----
 emit() { printf '%s\n' "$1"; }
+
+# Inline-triage evidence aligned with oos-disposition-gate.sh: when run-log
+# commit-bearing artifacts exist under the run directory, count only those
+# hits (copied RUN_DIR audits must not use the live workspace git range).
+# Otherwise use the same git revision walk as the disposition gate.
+_audit_oos_inline_triage_hits() {
+    local run_dir="$1" repo range c artifact_any=false tmp
+    tmp=$(mktemp "${TMPDIR:-/tmp}/audit-inline-triage.XXXXXX")
+    : >"$tmp"
+    local f
+    for f in "$run_dir/codex-commit-message.txt" "$run_dir/session-transcript.jsonl"; do
+        [ -f "$f" ] || continue
+        artifact_any=true
+        grep -hF 'Inline-triage rule' "$f" 2>/dev/null >>"$tmp" || true
+    done
+    if [ "$artifact_any" = true ]; then
+        c=$(sort -u "$tmp" | wc -l | tr -d '[:space:]')
+        rm -f "$tmp"
+        printf '%s' "${c:-0}"
+        return
+    fi
+    rm -f "$tmp"
+    repo=$(git rev-parse --show-toplevel 2>/dev/null || true)
+    if [ -n "$repo" ]; then
+        range="HEAD"
+        if git -C "$repo" rev-parse -q --verify origin/main >/dev/null 2>&1; then
+            local mb
+            mb=$(git -C "$repo" merge-base HEAD origin/main 2>/dev/null || true)
+            if [ -n "$mb" ]; then
+                range="${mb}..HEAD"
+            else
+                range="origin/main..HEAD"
+            fi
+        fi
+        if git -C "$repo" rev-list -1 "$range" >/dev/null 2>&1; then
+            c=$(git -C "$repo" log --format=%B "$range" 2>/dev/null | grep -cF 'Inline-triage rule' || true)
+            printf '%s' "${c:-0}"
+            return
+        fi
+    fi
+    printf '%s' "${c:-0}"
+}
 
 # Map a raw NS_RETRY_REASON value from .meta to a JSON-safe audit token (unknown → UNKNOWN).
 _audit_normalize_ns_retry_reason_token() {
@@ -442,6 +488,44 @@ scan_trailing_content_no_issues_found() {
     fi
 }
 
+# ---- Scan: oos-silent-drop (retroactive disposition heuristic) ----
+scan_oos_silent_drop() {
+    local f c acc_total filed_count inline_count oos_json rejected_count
+    oos_json="$RUN_DIR/oos-issues.ndjson"
+    acc_total=0
+    for f in \
+        "$RUN_DIR/oos-accepted-main-agent.md" \
+        "$RUN_DIR/oos-accepted-design.md" \
+        "$RUN_DIR/oos-accepted-review.md"; do
+        [ -f "$f" ] || continue
+        c=$(awk -f "$_OOS_BLK_AWK" "$f" 2>/dev/null || printf '0')
+        acc_total=$((acc_total + c))
+    done
+    if [ "$acc_total" -eq 0 ]; then
+        emit "{\"scan\":\"oos-silent-drop\",\"pr\":$PR_NUM,\"result\":\"skip\",\"detail\":\"no non-security OOS blocks in canonical oos-accepted-*.md\"}"
+        return
+    fi
+    filed_count=0
+    rejected_count=0
+    if [ -f "$oos_json" ]; then
+        rejected_count=$(count_rejected_oos_markers_from_ndjson "$oos_json")
+    fi
+    local url_files=()
+    [ -f "$oos_json" ] && url_files+=("$oos_json")
+    [ -f "$RUN_DIR/oos-issues-created.md" ] && url_files+=("$RUN_DIR/oos-issues-created.md")
+    if [ "${#url_files[@]}" -gt 0 ]; then
+        filed_count=$(count_filed_urls_union_files "${url_files[@]}")
+    else
+        filed_count=0
+    fi
+    inline_count=$(_audit_oos_inline_triage_hits "$RUN_DIR")
+    if [ "${filed_count:-0}" -gt 0 ] || [ "${inline_count:-0}" -ge "$acc_total" ] || [ "${rejected_count:-0}" -ge "$acc_total" ]; then
+        emit "{\"scan\":\"oos-silent-drop\",\"pr\":$PR_NUM,\"result\":\"pass\",\"non_security_oos_blocks\":$acc_total,\"issue_urls\":$filed_count,\"inline_triage_hits\":$inline_count,\"rejected_oos_markers\":$rejected_count}"
+    else
+        emit "{\"scan\":\"oos-silent-drop\",\"pr\":$PR_NUM,\"result\":\"fail\",\"non_security_oos_blocks\":$acc_total,\"issue_urls\":$filed_count,\"inline_triage_hits\":$inline_count,\"rejected_oos_markers\":$rejected_count,\"detail\":\"$(jstr "accepted OOS blocks without filed URLs, sufficient Inline-triage breadcrumbs, or explicit rejected-OOS markers in oos-issues.ndjson")\"}"
+    fi
+}
+
 # ---- Scan: changelog-rebase-conflicts (heuristic; feeds CHANGELOG_DELTA) ----
 scan_changelog_rebase_conflicts() {
     local f="$RUN_DIR/execution-issues.ndjson"
@@ -483,6 +567,7 @@ while IFS=$'\t' read -r scan_name _scan_type _rest; do
         changelog-rebase-conflicts) scan_changelog_rebase_conflicts ;;
         coder-tool)                 scan_coder_tool ;;
         trailing-content-no-issues-found) scan_trailing_content_no_issues_found ;;
+        oos-silent-drop)              scan_oos_silent_drop ;;
         *)
             emit "{\"scan\":\"$(jstr "$scan_name")\",\"pr\":$PR_NUM,\"result\":\"error\",\"detail\":\"unknown scan name in scans.tsv (registry drift vs audit-scan-run.sh)\"}"
             exit 1

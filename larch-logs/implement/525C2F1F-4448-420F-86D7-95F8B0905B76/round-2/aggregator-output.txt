@@ -1,0 +1,261 @@
+Here is the normalized structured finding list after merging overlapping concerns. Same behavioral risks merged; distinct fixes kept separate. `[OUT_OF_SCOPE]` preserved on merged headings where any source used it (none of those merges overlapped in-scope text here).
+
+```text
+### FINDING_1: Rejected-marker counting vs heading shapes
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-testing-output.txt
+- **Concern**: Plan parsing documents Rejected / Out-of-Scope heading variants, but marker extraction (awk) only follows a `## Rejected` shape while disposition filters may still treat alternate headings as rejected—yielding zero counted markers and false disposition/audit outcomes. Separately, per-line NDJSON rejected-marker sums can double-count the same OOS index across duplicate rows and mask silent drops elsewhere.
+- **Suggested revision**: Align awk/jq/case logic with documented heading shapes (or narrow documented behavior to match code). For NDJSON, dedupe by OOS index, document writer uniqueness, or clamp/compare counts consistently.
+
+### FINDING_2: Security vs non-security focus-area routing
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-correctness-output.txt, cursor-specialist-edge-cases-output.txt
+- **Concern**: Security routing for `-focus-area:` is delimiter- and case-sensitive (e.g. `security-hardening`, capitalized or compound labels), so security-ish OOS can be miscounted as non-security and stall or mis-route the disposition gate.
+- **Suggested revision**: Deliberately document allowed tokens or broaden prefix/boundary rules with case-folding; add harness cases for capitalized/compound values.
+
+### FINDING_3: Gate / skill snippet omits NDJSON path when RUN_ID is empty
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-correctness-output.txt, cursor-specialist-edge-cases-output.txt
+- **Concern**: When `session-id` is missing or yields empty `_RUN_ID`, disposition logic may omit `--oos-issues-ndjson`, so filed URLs and rejection evidence that exist only in the NDJSON batch are ignored—risking incorrect exit status and violating the NEVER #18 union expectation for pending OOS work.
+- **Suggested revision**: Resolve `RUN_ID` the same way log writers do; always pass the NDJSON path when the file exists; fail closed if pending OOS work exists but the batch path cannot be resolved.
+
+### FINDING_4: Inline-triage grep is overly permissive
+- **Reviewer(s)**: cursor-specialist-structure-output.txt
+- **Concern**: Inline-triage detection uses a substring match, so unrelated commit messages can satisfy inline ≥ non_security without real per-OOS triage breadcrumbs.
+- **Suggested revision**: Tighten the pattern to the intended “Inline-triage rule N:” (or equivalent canonical) shape if false positives matter.
+
+### FINDING_5: Plan traceability omits shared helper paths
+- **Reviewer(s)**: cursor-specialist-structure-output.txt
+- **Concern**: The plan’s file list does not mention shared `.inc` / `.awk` helpers—no runtime impact but weaker traceability for reviewers.
+- **Suggested revision**: Extend the planning template or commit message to list shared helpers when present.
+
+### FINDING_6: [OUT_OF_SCOPE] Archived plan-goals narrative drift
+- **Reviewer(s)**: cursor-specialist-structure-output.txt
+- **Concern**: Archived `plan-goals-test.md` text reflects a pre-fix CALLER_KIND narrative and may mislead human audits of that historical run; not shipped runtime surface.
+- **Suggested revision**: Optional editorial cleanup of that log only if worth the churn.
+
+### FINDING_7: Audit inline-triage probe uses live git history, not run identity
+- **Reviewer(s)**: cursor-specialist-correctness-output.txt, cursor-specialist-edge-cases-output.txt
+- **Concern**: `oos-silent-drop` / inline-triage logic derives ranges from live repo `merge-base..HEAD` (auditor’s checkout), so auditing a copied `RUN_DIR` or a different branch can attribute unrelated `Inline-triage` lines—false pass or false fail.
+- **Suggested revision**: Derive evidence from run-log artifacts or recorded SHAs when available; document cwd/branch coupling or refuse git-based probes without manifest proof.
+
+### FINDING_8: [OUT_OF_SCOPE] ship-pr.md CALLER_KIND documentation gap
+- **Reviewer(s)**: cursor-specialist-correctness-output.txt
+- **Concern**: `ship-pr.md` exit-5 / caller-kind prose is generic and may not list both Step 8 tokens, risking cross-read drift vs `ship-pr.sh`; file not in this diff scope.
+- **Suggested revision**: Doc-only follow-up to align `ship-pr.md` with the exact tokens.
+
+### FINDING_9: oos-silent-drop scan lacks registry doc and harness coverage
+- **Reviewer(s)**: cursor-specialist-testing-output.txt
+- **Concern**: New `oos-silent-drop` behavior is not fully reflected in `audit-scan-run.md` “scans implemented” truth or `test-audit-runs`, risking silent removal or wrong NDJSON expectations without CI signal (“edit in sync” drift).
+- **Suggested revision**: Add pass/skip/fail fixtures for the scan and refresh `audit-scan-run.md` with brief NDJSON field notes.
+
+### FINDING_10: Disposition gate harness lacks NDJSON-only filed-URL case
+- **Reviewer(s)**: cursor-specialist-testing-output.txt
+- **Concern**: Tests never assert filed URLs sourced only from `--oos-issues-ndjson`, so regressions in the union path could ship while CHANGELOG claims NDJSON URLs satisfy disposition.
+- **Suggested revision**: Add a passing harness where filed URLs exist only in the NDJSON sidecar.
+
+### FINDING_11: NEVER #18 wording not pinned in structure tests
+- **Reviewer(s)**: cursor-specialist-testing-output.txt
+- **Concern**: The distinctive NEVER #18 substring for OOS_PENDING clearing is not grep-pinned, so wording-only regressions may slip past `test-implement-structure.sh`.
+- **Suggested revision**: Add a stable grep pin for the NEVER #18 distinctive phrase.
+
+### FINDING_12: [OUT_OF_SCOPE] Orthogonal CALLER_KIND work bundled on branch
+- **Reviewer(s)**: cursor-specialist-testing-output.txt
+- **Concern**: `test-ship-pr.sh` / CALLER_KIND token changes increase review surface alongside OOS work; not required for OOS correctness itself.
+- **Suggested revision**: If splitting later, note both themes in the PR description; otherwise no OOS-specific code change required.
+
+### FINDING_13: _RUN_ID used in NDJSON path without hardening
+- **Reviewer(s)**: cursor-specialist-security-output.txt
+- **Concern**: Interpolating `_RUN_ID` from `session-id` into filesystem paths without validation can allow `../` segments or odd values, weakening disposition enforcement by reading the wrong NDJSON or unintended operator-readable paths.
+- **Suggested revision**: Validate against a safe charset and/or canonicalize and assert prefix under the intended `larch-logs/implement/<id>/` tree.
+
+### FINDING_14: Audit scan follows symlinks when gathering oos-accepted paths
+- **Reviewer(s)**: cursor-specialist-security-output.txt
+- **Concern**: `find` + `awk` on discovered paths without excluding symlinks can read out-of-tree content if `oos-accepted*.md` is a symlink, distorting scan results.
+- **Suggested revision**: Use `find -type f` and/or reject symlinks before `awk`.
+
+### FINDING_15: Unbounded jq extraction of large `.body` fields
+- **Reviewer(s)**: cursor-specialist-security-output.txt
+- **Concern**: Pulling full `.body` per NDJSON line with no size cap can exhaust CPU/memory on hostile or pathological logs during gate or audit.
+- **Suggested revision**: Cap line/body size or fail closed on oversize records.
+
+### FINDING_16: SECURITY.md not updated for disposition/audit trust boundary
+- **Reviewer(s)**: cursor-specialist-security-output.txt
+- **Concern**: OOS disposition gate and audit mechanics changed, but `SECURITY.md` lacks a concise trust-boundary note for operators (including fork/repo-unavailable carve-outs), diverging from repo guidance to update security-relevant behavior docs.
+- **Suggested revision**: Add a short `SECURITY.md` section documenting assumptions and limits of the gate and audit scans.
+
+### FINDING_17: [OUT_OF_SCOPE] eval-based required-arg pattern unchanged
+- **Reviewer(s)**: cursor-specialist-security-output.txt
+- **Concern**: `eval`-based required-arg checking remains in a touched file but is pre-existing, not introduced or amplified by this diff.
+- **Suggested revision**: Refactor separately only if eliminating `eval` is a goal.
+
+### FINDING_18: Audit recursive totals can double-count accepted OOS markdown
+- **Reviewer(s)**: cursor-specialist-edge-cases-output.txt
+- **Concern**: Summing all `oos-accepted*.md` under a run directory can count duplicate copies across review rounds, diverging from the gate’s canonical three-file aggregate and producing false fails or distorted totals on `oos-silent-drop`.
+- **Suggested revision**: Align scan inputs with the gate’s canonical paths or dedupe blocks before totaling.
+
+### FINDING_19: jq failures silently skipped in NDJSON counting
+- **Reviewer(s)**: cursor-specialist-edge-cases-output.txt
+- **Concern**: On corrupt/partial JSONL, `continue` after jq failure can undercount rejected markers and skew gate/audit outcomes without surfacing parse failure.
+- **Suggested revision**: Surface jq errors (non-zero exit / explicit error channel) instead of silent `continue`.
+
+### FINDING_20: NEVER #18 prose mismatches exact state key symbol
+- **Reviewer(s)**: cursor-specialist-edge-cases-output.txt
+- **Concern**: Prose uses `repo_unavailable=true`-style wording while the real key may be `REPO_UNAVAILABLE`, inviting mis-greps and misconfiguration.
+- **Suggested revision**: Align prose with the exact `ship-pr-state.sh` key name.
+
+### FINDING_21: Plan fidelity vs actual branch diff (scope creep)
+- **Reviewer(s)**: cursor-specialist-plan-fidelity-output.txt
+- **Concern**: The written OOS implementation plan does not enumerate substantial related changes (#2539 caller_kind alignment, version bump, `Makefile`, `CHANGELOG`, `larch-logs` flush, `plugin.json`, etc.), so reviewers tracing only the plan bullets cannot explain the full merge-base..HEAD story.
+- **Suggested revision**: Split unrelated work into its own PR or expand the plan to enumerate those paths/commits explicitly.
+```
+
+**Merge notes (for your audit trail only, not part of the required output):** I merged input items **1+13** only partially—I split them back because **FINDING_1** in the input mixed two mechanisms (markdown heading mismatch vs NDJSON dedupe); they need different fixes, so I **split** them into **FINDING_1** (two bullets under one ID) — actually the user asked to merge "same behavioral risk". Heading mismatch and NDJSON dedupe are **different** risks. I should **not** have merged 1 and 13.
+
+Let me re-read my FINDING_1 - I combined structure FINDING_1 (awk headings) with testing FINDING_13 (NDJSON dedupe) in ONE finding with two bullets. The instructions say merge when same behavioral risk; these are different. I need to **split** into two findings.
+
+Revised plan:
+- **FINDING_A**: awk / rejected heading mismatch only - reviewer structure only (input 1)
+- **FINDING_B**: NDJSON duplicate inflation - reviewer testing (input 13)
+
+I'll fix the output - remove merger of 1 and 13, produce two separate findings. That increases count by 1.
+
+Revised list numbering (first-seen after proper splits):
+
+1. Markdown awk vs headings (structure) - alone
+2. Security focus-area (2,8,25)
+3. NDJSON gate omission (3,9,21)
+4. Inline triage substring (4)
+5. Plan omits helpers (5)
+6. [OOS] plan-goals (6)
+7. Audit git wrong tree (7,23)
+8. [OOS] ship-pr.md (10)
+9. audit doc/tests (11)
+10. Harness NDJSON-only URLs (12)
+11. NDJSON dedupe inflation (13) - alone
+12. NEVER #18 pin (14)
+13. [OOS] CALLER_KIND bundle (15)
+14. Path traversal _RUN_ID (16)
+15. Symlink find (17)
+16. jq body unbounded (18)
+17. SECURITY.md (19)
+18. [OOS] eval (20)
+19. Double-count find (22)
+20. jq silent continue (24)
+21. REPO_UNAVAILABLE prose (26)
+22. Plan fidelity (27)
+
+That's 22 findings - same count as before if I split 1 and 13: previously I had 22 with wrong merge. Count: 22 findings.
+
+I'll output corrected version without merging 1 and 13.
+
+Correction: input **FINDING_1** (markdown heading / awk alignment) and **FINDING_13** (NDJSON duplicate-row inflation) are different behavioral risks and fixes—they should **not** be merged. Below is the corrected list only.
+
+```text
+### FINDING_1: Rejected-marker extraction misaligned with documented heading shapes
+- **Reviewer(s)**: cursor-specialist-structure-output.txt
+- **Concern**: The rejected-marker counter documents Rejected / Out-of-Scope heading variants, but awk only captures bodies anchored on `## Rejected`; plans that use only alternate headings can be classified as rejected by filters yet yield zero counted markers, false-failing disposition alignment scans.
+- **Suggested revision**: Align awk capture with documented heading shapes, or narrow jq/case filters to match only what parsing actually implements.
+
+### FINDING_2: Security vs non-security focus-area routing is brittle
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-correctness-output.txt, cursor-specialist-edge-cases-output.txt
+- **Concern**: Security routing depends on narrow prefix/boundary rules and case sensitivity (e.g. `security-hardening`, capitalized or compound labels), miscounting security-ish OOS as non-security and stalling or mis-setting obligations.
+- **Suggested revision**: Document exact allowed tokens or deliberately broaden prefix/boundary rules with case-folding; add harness cases for capitalized/compound values.
+
+### FINDING_3: Gate / skill path omits `--oos-issues-ndjson` when RUN_ID is empty
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-correctness-output.txt, cursor-specialist-edge-cases-output.txt
+- **Concern**: When `session-id` is missing or yields empty `_RUN_ID`, disposition may omit `--oos-issues-ndjson`, skipping URL/rejection evidence that exists only in NDJSON—risking incorrect exits and violating the NEVER #18 union expectation for pending OOS work.
+- **Suggested revision**: Resolve `RUN_ID` like log writers; always pass NDJSON when known; fail closed if pending OOS cannot be evidenced because the batch path is unresolved.
+
+### FINDING_4: Inline-triage detection uses a loose substring match
+- **Reviewer(s)**: cursor-specialist-structure-output.txt
+- **Concern**: Unrelated commit messages containing the substring can satisfy inline ≥ non_security without real per-OOS triage breadcrumbs.
+- **Suggested revision**: Tighten grep to the canonical “Inline-triage rule N:” (or equivalent) shape if false positives matter.
+
+### FINDING_5: Plan file list omits shared helper scripts
+- **Reviewer(s)**: cursor-specialist-structure-output.txt
+- **Concern**: Shared `.inc` / `.awk` helpers are absent from the plan’s touched-files list—traceability-only gap for reviewers.
+- **Suggested revision**: Update planning template or commit message to mention shared helpers when present.
+
+### FINDING_6: [OUT_OF_SCOPE] Archived plan-goals narrative may misread historical run state
+- **Reviewer(s)**: cursor-specialist-structure-output.txt
+- **Concern**: Archived `plan-goals-test.md` reflects pre-fix CALLER_KIND drift narrative; human audit of that run may misread actual state vs later merged fixes. Not shipped runtime surface.
+- **Suggested revision**: Optional editorial cleanup of that archived log only.
+
+### FINDING_7: Audit inline-triage / git-range probe uses auditor checkout, not run identity
+- **Reviewer(s)**: cursor-specialist-correctness-output.txt, cursor-specialist-edge-cases-output.txt
+- **Concern**: `merge-base..HEAD` (or equivalent live git range) ties evidence to the auditor’s cwd/branch; copied `RUN_DIR` audits can attribute unrelated `Inline-triage` lines—false pass or false fail.
+- **Suggested revision**: Prefer run-log artifacts or recorded SHAs for inline evidence; document cwd coupling or refuse git-based probes without manifest proof.
+
+### FINDING_8: [OUT_OF_SCOPE] ship-pr.md caller-kind documentation may lag ship-pr.sh
+- **Reviewer(s)**: cursor-specialist-correctness-output.txt
+- **Concern**: Exit-5 / `CALLER_KIND` prose may remain generic vs both Step 8 tokens, causing cross-read confusion; file called out as untouched by this diff.
+- **Suggested revision**: Doc-only follow-up aligning `ship-pr.md` with exact tokens in `ship-pr.sh`.
+
+### FINDING_9: oos-silent-drop scan lacks synchronized registry doc and harness coverage
+- **Reviewer(s)**: cursor-specialist-testing-output.txt
+- **Concern**: New scan behavior risks drift: `audit-scan-run.md` registry truth and `test-audit-runs` may omit pass/skip/fail fixtures and NDJSON field expectations—silent removal or wrong contracts without CI signal.
+- **Suggested revision**: Add fixtures for oos-silent-drop outcomes and refresh `audit-scan-run.md` scans list with brief NDJSON notes.
+
+### FINDING_10: Disposition gate harness lacks NDJSON-only filed-URL regression case
+- **Reviewer(s)**: cursor-specialist-testing-output.txt
+- **Concern**: No assertion that filed URLs sourced only from `--oos-issues-ndjson` satisfy disposition; union-path regressions could ship while docs claim NDJSON sufficiency.
+- **Suggested revision**: Add a passing harness where filed URLs exist only in the NDJSON sidecar.
+
+### FINDING_11: NDJSON rejected-marker totals can inflate via duplicate rows
+- **Reviewer(s)**: cursor-specialist-testing-output.txt
+- **Concern**: Summing per-line counts without deduping OOS indices lets duplicate NDJSON rows inflate `rejected_oos_markers`, masking silent drops on other blocks.
+- **Suggested revision**: Dedupe by OOS index or document writer uniqueness; optionally clamp/compare counts against `non_security_oos` consistently.
+
+### FINDING_12: NEVER #18 rule text not pinned by structure tests
+- **Reviewer(s)**: cursor-specialist-testing-output.txt
+- **Concern**: Wording-only regressions on the OOS_PENDING clearing rule could slip because the distinctive NEVER #18 substring is not grep-pinned.
+- **Suggested revision**: Add a grep pin for a distinctive NEVER #18 substring in `test-implement-structure.sh`.
+
+### FINDING_13: [OUT_OF_SCOPE] Orthogonal CALLER_KIND / ship-pr harness churn bundled with OOS work
+- **Reviewer(s)**: cursor-specialist-testing-output.txt
+- **Concern**: Increases review surface and confuses “OOS-only” narrative; not inherently required for OOS disposition correctness.
+- **Suggested revision**: If splitting PRs later, call out both themes in description; no OOS-specific code change strictly required.
+
+### FINDING_14: `_RUN_ID` interpolation into NDJSON paths lacks normalization
+- **Reviewer(s)**: cursor-specialist-security-output.txt
+- **Concern**: Path segments like `../` or unexpected values could escape the intended `larch-logs/implement/<id>/` subtree, weakening disposition enforcement or reading wrong operator-readable files.
+- **Suggested revision**: Validate `_RUN_ID` against a safe charset and/or canonicalize and assert path prefix under the intended implement log root.
+
+### FINDING_15: Audit scan discovery can follow symlinks into out-of-tree content
+- **Reviewer(s)**: cursor-specialist-security-output.txt
+- **Concern**: `find` + `awk` without excluding symlinks can process `oos-accepted*.md` symlinks pointing outside `RUN_DIR`, distorting results.
+- **Suggested revision**: Restrict to regular files (`find -type f`) and/or reject symlinks before parsing.
+
+### FINDING_16: Unbounded jq `.body` extraction on NDJSON lines
+- **Reviewer(s)**: cursor-specialist-security-output.txt
+- **Concern**: Extremely large `body` fields can exhaust memory/CPU during gate or audit on hostile logs.
+- **Suggested revision**: Cap line/body size or fail closed on oversize records.
+
+### FINDING_17: SECURITY.md not updated for disposition/audit trust boundary
+- **Reviewer(s)**: cursor-specialist-security-output.txt
+- **Concern**: OOS disposition gate and audit mechanics are security-relevant behavior changes per repo norms, but `SECURITY.md` lacks operator-facing trust-boundary notes (including fork/repo-unavailable carve-outs).
+- **Suggested revision**: Add a concise `SECURITY.md` section documenting assumptions and limits.
+
+### FINDING_18: [OUT_OF_SCOPE] eval-based required-arg check remains pre-existing pattern
+- **Reviewer(s)**: cursor-specialist-security-output.txt
+- **Concern**: `eval` usage in required-arg validation is unchanged structural risk in a touched file; not introduced or amplified by this diff.
+- **Suggested revision**: Refactor separately only if eliminating `eval` is a goal.
+
+### FINDING_19: Audit accepted-OOS totals can double-count across review rounds
+- **Reviewer(s)**: cursor-specialist-edge-cases-output.txt
+- **Concern**: Recursive aggregation of all `oos-accepted*.md` can sum duplicates across rounds vs the gate’s canonical three-file aggregate—false fail or distorted totals on `oos-silent-drop`.
+- **Suggested revision**: Align scan inputs with gate-canonical paths or dedupe blocks before totaling.
+
+### FINDING_20: jq failures in NDJSON loops can be silently skipped
+- **Reviewer(s)**: cursor-specialist-edge-cases-output.txt
+- **Concern**: `continue` on jq failure undercounts rejected markers on corrupted JSONL and can skew gate/audit without surfacing parse errors.
+- **Suggested revision**: Surface jq errors (non-zero exit / explicit diagnostics) instead of silent `continue`.
+
+### FINDING_21: NEVER #18 prose may not match exact ship-pr state key naming
+- **Reviewer(s)**: cursor-specialist-edge-cases-output.txt
+- **Concern**: `repo_unavailable=true`-style wording may diverge from the actual `REPO_UNAVAILABLE` key operators should grep/configure.
+- **Suggested revision**: Align prose with the exact `ship-pr-state.sh` symbol.
+
+### FINDING_22: Written OOS plan does not cover full branch diff surface
+- **Reviewer(s)**: cursor-specialist-plan-fidelity-output.txt
+- **Concern**: Plan bullets omit substantial related changes (#2539 caller_kind alignment, version bump, `Makefile`, `CHANGELOG`, `larch-logs` flush, `plugin.json`, large `ship-pr`/`test-ship-pr` edits), so plan-only tracing cannot explain merge-base..HEAD.
+- **Suggested revision**: Split unrelated work into its own PR or expand the written plan to enumerate those paths/commits explicitly.
+```
