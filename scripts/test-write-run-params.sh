@@ -24,7 +24,7 @@ $(not executed)'
 "$WRITER" \
     --classification SIMPLE \
     --reason "$reason" \
-    --source router-pre-design \
+    --source caller-forwarded \
     --sketch-budget 2 \
     --review-budget quick \
     --workflow-path SIMPLE \
@@ -35,7 +35,7 @@ jq -e '
   .schema_version == 1 and
   .design_classification == "SIMPLE" and
   .design_classification_reason == $reason and
-  .design_classification_source == "router-pre-design" and
+  .design_classification_source == "caller-forwarded" and
   .sketch_budget == 2 and
   .review_budget == "quick" and
   .workflow_path == "SIMPLE"
@@ -44,7 +44,7 @@ jq -e '
 if "$WRITER" \
     --classification MEDIUM \
     --reason bad \
-    --source router-pre-design \
+    --source caller-forwarded \
     --sketch-budget 2 \
     --review-budget quick \
     --workflow-path SIMPLE \
@@ -66,7 +66,7 @@ fi
 if ( cd "$TMPROOT" && "$WRITER" \
     --classification HARD \
     --reason bad \
-    --source router-pre-design \
+    --source caller-forwarded \
     --sketch-budget 4 \
     --review-budget full \
     --workflow-path HARD \
@@ -88,12 +88,23 @@ jq -e '.sketch_budget == 4 and .review_budget == "quick"' "$TMPROOT/full-plus-qu
 "$WRITER" \
     --classification TRIVIAL_DOC_ONLY \
     --reason "doc-only scan confirmed" \
-    --source router-pre-design \
+    --source caller-forwarded \
     --sketch-budget 0 \
     --review-budget full \
     --workflow-path SIMPLE \
     --output "$TMPROOT/trivial.json" >/dev/null
 jq -e '.design_classification == "TRIVIAL_DOC_ONLY" and .sketch_budget == 0' "$TMPROOT/trivial.json" >/dev/null \
     || fail "trivial zero-sketch budget was not represented"
+
+if "$WRITER" \
+    --classification SIMPLE \
+    --reason bad \
+    --source router-pre-design \
+    --sketch-budget 2 \
+    --review-budget quick \
+    --workflow-path SIMPLE \
+    --output "$TMPROOT/rejected-source.json" >/dev/null 2>&1; then
+    fail "obsolete router-pre-design source was accepted"
+fi
 
 echo "PASS: test-write-run-params.sh"

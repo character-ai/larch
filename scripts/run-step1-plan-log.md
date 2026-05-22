@@ -17,8 +17,8 @@ Arguments:
 
 Derived sources:
 
+- `$IMPLEMENT_TMPDIR/plan.txt`: passed to `compose-plan-goals-test.sh --plan-file` (conventional path after Preflight materialization).
 - `$IMPLEMENT_TMPDIR/session-env.sh`
-  - `PLAN_FILE`: passed to `compose-plan-goals-test.sh --plan-file`.
   - `LARCH_CLAUDE_PLUGIN_ROOT`: resolves helper paths when
     `CLAUDE_PLUGIN_ROOT` is not already set.
 - `$IMPLEMENT_TMPDIR/session-id`: passed to `larch-log.sh write --run-id`.

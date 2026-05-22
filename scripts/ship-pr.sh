@@ -218,6 +218,9 @@ read_session_plan_file() {
 resolve_plan_file() {
     local path
     path=$(read_session_plan_file)
+    if [ -z "$path" ] && [ -f "$IMPLEMENT_TMPDIR/plan.txt" ]; then
+        path="$IMPLEMENT_TMPDIR/plan.txt"
+    fi
     [ -n "$path" ] || return 0
     case "$path" in
         "$IMPLEMENT_TMPDIR"/*)

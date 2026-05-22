@@ -7,9 +7,8 @@
 # Catches the turn-boundary halt described in issue #2338, where the orchestrator
 # ends the turn on `APPLIED=true COMMIT_SHA=<sha>` instead of immediately invoking
 # `check-bump-version.sh --mode post --before-count $COMMITS_BEFORE` as the
-# Rebase + Re-bump Sub-procedure step 4 requires. Parallel mechanical pattern to
-# hook-post-design.sh; the Stop-hook block in hook-stop-fail-close.sh remains the
-# session-stop safety net.
+# Rebase + Re-bump Sub-procedure step 4 requires. The Stop-hook block in
+# hook-stop-fail-close.sh remains the session-stop safety net.
 #
 # set -e omitted: every probe must fail open; the hook must not block tool
 # completion. Intentional per .claude/rules/shell-strict-mode.md.
@@ -36,7 +35,7 @@ esac
 
 HOOK_CWD=$(printf '%s' "$INPUT" | jq -r '.cwd // ""' 2>/dev/null) || HOOK_CWD=""
 
-# Surface the active Claude Code session_id (parallels hook-post-design.sh) so
+# Surface the active Claude Code session_id (same pattern as hook-stop-fail-close.sh) so
 # the tmpdir resolver's session-id binding branch is reachable in production.
 SID=$(printf '%s' "$INPUT" | jq -r '.session_id // ""' 2>/dev/null) || SID=""
 [[ -n "$SID" ]] && export LARCH_TOKEN_SESSION_ID="$SID"

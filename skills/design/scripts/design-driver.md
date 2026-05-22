@@ -6,11 +6,9 @@
 
 ## Primary Callers
 
-- `/design` Step 0 tail for `ACTION=CLASSIFY`
 - `/design` Step 2b for `ACTION=EMIT_PLAN`
 - `/design` Step 3 for `ACTION=TALLY` and the second `ACTION=EMIT_PLAN`
 - `/design` Step 4 for `ACTION=FINALIZE`
-- `skills/design/references/heavy-worker.md` when the heavy worker follows the same scriptable mechanics
 
 ## Invariants
 
@@ -19,11 +17,11 @@
 - Most completed steps are skipped on replay via sentinel. Exception: `EMIT_PLAN` is re-runnable and never skipped by the sentinel — `/design` Step 3 may call it a second time after accepted plan-review findings revise `plan.txt`, so it must always update `diff-lines.txt`.
 - `--resume-from STEP` skips earlier actions and resumes at the named step. For `EMIT_PLAN` (no sentinel), the before-resume skip still applies to maintain the resume contract.
 - Unknown or non-`ACTION=` lines are passed through as `ACTION_PASSTHROUGH=...`.
-- The driver does not perform model-judgment work; sketch synthesis, plan authoring, discussion rounds, and AskUserQuestion gates stay in `SKILL.md` or the heavy worker.
+- The driver does not perform model-judgment work; sketch synthesis, plan authoring, discussion rounds, and AskUserQuestion gates stay in `SKILL.md`.
 
 ## Makefile Wiring
 
-The regression harness is `make test-design-driver`, wired into `test-harnesses-1`.
+The regression harness is `make test-design-driver`, wired into `test-harnesses-12`.
 
 ## Harness
 

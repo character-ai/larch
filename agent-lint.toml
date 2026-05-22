@@ -428,14 +428,10 @@ exclude = [
   # the SKILL.md invocation of scripts/run-step5-review.sh.
   "scripts/test-run-step5-review.sh",
   "scripts/test-run-step5-review.md",
-  # Step 1 post-plan keys writer harness is Makefile-only; runtime reachability
-  # is through the SKILL.md invocation of scripts/persist-post-plan-keys.sh.
-  "scripts/test-persist-post-plan-keys.sh",
-  "scripts/test-persist-post-plan-keys.md",
   # scripts/test-compose-collector-failure-log.sh is the Makefile-only
   # regression harness for scripts/compose-collector-failure-log.sh. The
-  # helper is invoked by the /design heavy-worker from skill prose at runtime;
-  # the harness is covered by the test-compose-collector-failure-log target.
+  # helper is invoked from /design sketch collection paths; the harness is
+  # covered by the test-compose-collector-failure-log target.
   "scripts/test-compose-collector-failure-log.sh",
   "scripts/test-compose-collector-failure-log.md",
   "scripts/test-tracking-issue-summary.sh",
@@ -498,14 +494,8 @@ exclude = [
   # runtime prose.
   "skills/implement/scripts/test-oos-issue-cap.sh",
   "skills/implement/scripts/test-oos-issue-cap.md",
-  # Post-/design halt-protection hooks are runtime-registered in
-  # hooks/hooks.json, not invoked from skills/implement/SKILL.md. The resolver
-  # is a sourced-only library for those hooks (no shebang and no `set -e` by
-  # design), so it is excluded from executable/error-handling checks alongside
-  # the hook files that agent-lint's skill graph does not currently follow
-  # through plugin hook registration.
-  "skills/implement/scripts/hook-post-design.sh",
-  "skills/implement/scripts/hook-post-design.md",
+  # Post-/bump-version and Stop-hook helpers are runtime-registered in
+  # hooks/hooks.json, not invoked from skills/implement/SKILL.md.
   "skills/implement/scripts/hook-post-bump-version.sh",
   "skills/implement/scripts/hook-post-bump-version.md",
   "skills/implement/scripts/hook-stop-fail-close.sh",
@@ -898,9 +888,7 @@ exclude = [
   # scripts/test-alias-structure.md. Same Makefile-only pattern.
   "scripts/test-alias-structure.sh",
   "scripts/test-design-structure.sh",
-  "skills/design/scripts/test-design-manifest.sh",
   "skills/design/scripts/test-design-driver.sh",
-  "skills/design/scripts/test-classify-issue.sh",
   "skills/design/scripts/test-emit-plan.sh",
   "skills/design/scripts/test-tally-plan-review.sh",
   "skills/design/scripts/test-finalize-plan.sh",
@@ -957,15 +945,6 @@ exclude = [
   # scripts/test-implement-anti-polling-rule.md (contract), matching the
   # same Makefile-only pattern as the other test-* harnesses above.
   "scripts/test-implement-anti-polling-rule.sh",
-  # scripts/test-implement-post-design-boundary.sh pins the post-/design
-  # boundary checkpoint reminder in skills/implement/SKILL.md Step 1 and
-  # the matching --emit-load-breadcrumb flag handler in
-  # skills/design/scripts/read-design-manifest.sh (closes #1014).
-  # Referenced only from Makefile (test-implement-post-design-boundary
-  # target) and the sibling scripts/test-implement-post-design-boundary.md
-  # (contract), matching the same Makefile-only pattern as the other
-  # test-implement-* harnesses above.
-  "scripts/test-implement-post-design-boundary.sh",
   # scripts/test-implement-anti-halt.sh is the step-boundary anti-halt
   # regression harness for skills/implement/SKILL.md (specific per-boundary
   # literal pins) and the SSOT section heading in
@@ -1253,7 +1232,6 @@ exclude = [
   # refactor. The primary scripts are cited from /design runtime prose; the
   # harnesses are referenced only from Makefile and their sibling contracts.
   "skills/design/scripts/test-design-driver.md",
-  "skills/design/scripts/test-classify-issue.md",
   "skills/design/scripts/test-emit-plan.md",
   "skills/design/scripts/test-tally-plan-review.md",
   "skills/design/scripts/test-finalize-plan.md",

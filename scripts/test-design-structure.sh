@@ -149,12 +149,26 @@ grep -Fq 'NO_SKETCHES_CLASSIFIED_TRIVIAL' "$SKILL_MD" \
 # shellcheck disable=SC2016 # literal backticked command phrase pinned in SKILL.md prose.
 grep -Fq 'Do NOT call `collect-agent-results.sh`' "$SKILL_MD" \
   || fail "(4c) SKILL.md missing zero-sketch collect-agent-results prohibition"
-grep -Fq 'run-params.json' "$REPO_ROOT/skills/design/references/heavy-worker.md" \
-  || fail "(4c) heavy-worker.md must read run-params.json"
-grep -Fq 'internal-only required artifact' "$REPO_ROOT/skills/design/references/heavy-worker.md" \
-  || fail "(4c) heavy-worker.md must document run-params.json as internal-only"
-if grep -Fq 'run-params.json' "$REPO_ROOT/skills/design/scripts/write-design-manifest.sh"; then
-  fail "(4c) write-design-manifest.sh must not export internal-only run-params.json"
+
+# Check 4d: post-cutover absence pins — /design sketch phase is inline-only.
+for needle in \
+  'skills/design/references/heavy-worker.md' \
+  'DESIGN_HEAVY=' \
+  'write-design-manifest' \
+  'classify-issue' \
+  'ACTION=CLASSIFY' \
+  ; do
+  if grep -Fq "$needle" "$SKILL_MD"; then
+    fail "(4d) skills/design/SKILL.md must not contain retired surface: $needle"
+  fi
+done
+for needle in '--subagent' 'subagent_mode=true'; do
+  if grep -Fq -- "$needle" "$SKILL_MD"; then
+    fail "(4d) skills/design/SKILL.md must not contain retired surface: $needle"
+  fi
+done
+if grep -Fq -- 'skills/design/references/heavy-worker.md' "$FLAGS_MD"; then
+  fail "(4d) skills/design/references/flags.md must not reference skills/design/references/heavy-worker.md"
 fi
 
 # Check 5: skills/design/ tree must contain zero Step-3a removal residue tokens (issue #453).
@@ -218,10 +232,7 @@ grep 'collect-agent-results.sh' "$PLAN_REVIEW_MD" \
 PLAN_REVIEW_QUICK_MD="$REPO_ROOT/skills/design/references/plan-review-quick.md"
 [[ -f "$PLAN_REVIEW_QUICK_MD" ]] || fail "(7b) plan-review-quick.md missing: $PLAN_REVIEW_QUICK_MD"
 
-# Check 8: issue-anchored plan handoff uses plan-block-write.sh; heavy-worker
-# contract remains file-backed under $DESIGN_TMPDIR/.
-[[ -f "$REPO_ROOT/skills/design/references/heavy-worker.md" ]] \
-  || fail "(8) heavy-worker.md missing — subagent /design heavy phase has no subagent runbook"
+# Check 8: issue-anchored plan handoff uses plan-block-write.sh.
 PBW_SH="$REPO_ROOT/scripts/plan-block-write.sh"
 [[ -x "$PBW_SH" ]] \
   || fail "(8) plan-block-write.sh missing or not executable at $PBW_SH"
@@ -230,9 +241,6 @@ grep -Fq 'scripts/plan-block-write.sh" --issue "$ISSUE_NUMBER" --content-file' "
   || fail "(8) SKILL.md lacks Step 5 plan-block-write.sh --issue --content-file invocation"
 grep -Fq 'PLAN_WRITE_OK=true' "$SKILL_MD" \
   || fail "(8) SKILL.md lacks Step 5 PLAN_WRITE_OK gating for cleanup"
-# shellcheck disable=SC2016 # fixed-string grep literal contains markdown backticks
-grep -Fq 'read the Step 3 external reviewer launch Bash blocks directly from `${CLAUDE_PLUGIN_ROOT}/skills/design/SKILL.md`' "$REPO_ROOT/skills/design/references/heavy-worker.md" \
-  || fail "(8) heavy-worker.md must tell the subagent to read Step 3 reviewer launch blocks from \${CLAUDE_PLUGIN_ROOT}/skills/design/SKILL.md"
 
 # Check 9: load-bearing conversation-context dependency phrases are absent.
 GREP_TMP=$(mktemp "${TMPDIR:-/tmp}/larch-design-structure-grep.XXXXXX")
@@ -241,27 +249,6 @@ if grep -rnE 'visible in conversation|retrieved from.*conversation' "$REPO_ROOT/
   matches=$(head -5 "$GREP_TMP")
   fail "(9) found forbidden conversation-context dependency phrase:
 $matches"
-fi
-
-# Check 10: --subagent flag and the renamed Step 2a heavy-phase block (issue #1036).
-# (10a) flags.md must carry `--subagent` and `subagent_mode=true` on the same bullet.
-grep -F -- '--subagent' "$FLAGS_MD" \
-  | grep -Fq -- 'subagent_mode=true' \
-  || fail "(10a) flags.md must carry both '--subagent' and 'subagent_mode=true' on the same bullet (issue #1036)"
-# (10b) SKILL.md must contain the literal `--subagent` AND `subagent_mode=true`.
-grep -Fq -- '--subagent' "$SKILL_MD" \
-  || fail "(10b) SKILL.md missing '--subagent' literal (issue #1036)"
-grep -Fq -- 'subagent_mode=true' "$SKILL_MD" \
-  || fail "(10b) SKILL.md missing 'subagent_mode=true' literal (issue #1036)"
-# (10c) SKILL.md must carry the renamed heading `### Heavy phase dispatch` and the
-#       renamed paragraph token `Subagent heavy phase`, AND must NOT carry the old
-#       `Nested heavy phase` token.
-grep -Fq -- '### Heavy phase dispatch' "$SKILL_MD" \
-  || fail "(10c) SKILL.md missing '### Heavy phase dispatch' heading (issue #1036 — Step 2a heavy phase hoisted out of Quick mode)"
-grep -Fq -- 'Subagent heavy phase' "$SKILL_MD" \
-  || fail "(10c) SKILL.md missing 'Subagent heavy phase' renamed paragraph (issue #1036)"
-if grep -Fq -- 'Nested heavy phase' "$SKILL_MD"; then
-  fail "(10c) SKILL.md still contains legacy 'Nested heavy phase' token — should be renamed to 'Subagent heavy phase' (issue #1036)"
 fi
 
 # Check 11: clean-main Step 0 entry gate. The shared helper owns the decision:
@@ -328,68 +315,6 @@ if grep -Fq "$old_design_prose" "$SKILL_MD"; then
   fail "(11) SKILL.md still contains legacy unconditional Step 0 session-setup prose"
 fi
 
-# Check 12: heavy-worker post-return fail-closed gate (issue #1405). The Step 2a
-# fail-closed validation that runs after the heavy-worker subagent returns must
-# pin the REASON token and the gated artifact paths so a future edit cannot
-# silently weaken the gate. The non-empty (`-s`) tier covers the substantive
-# artifacts mandated as non-empty by heavy-worker.md "Artifact Contract"; the
-# existence (`-f`) tier covers may-be-empty manifest-required artifacts staged
-# by `write-design-manifest.sh` via `copy_required_may_be_empty`.
-grep -Fq -- 'REASON=worker-yielded-without-artifacts' "$SKILL_MD" \
-  || fail "(12) SKILL.md missing REASON=worker-yielded-without-artifacts token in heavy-worker fail-closed gate (issue #1405)"
-# shellcheck disable=SC2016 # fixed-string grep literals contain shell variable syntax
-grep -Fq -- '! -s "$DESIGN_TMPDIR/plan.txt"' "$SKILL_MD" \
-  || fail "(12) SKILL.md missing non-empty (-s) check on plan.txt in heavy-worker fail-closed gate (issue #1405)"
-# shellcheck disable=SC2016
-grep -Fq -- '! -s "$DESIGN_TMPDIR/approach-synthesis.txt"' "$SKILL_MD" \
-  || fail "(12) SKILL.md missing non-empty (-s) check on approach-synthesis.txt in heavy-worker fail-closed gate (issue #1405)"
-# shellcheck disable=SC2016
-grep -Fq -- '! -s "$DESIGN_TMPDIR/voting-tally.md"' "$SKILL_MD" \
-  || fail "(12) SKILL.md missing non-empty (-s) check on voting-tally.md in heavy-worker fail-closed gate (issue #1405)"
-# shellcheck disable=SC2016
-grep -Fq -- '! -f "$DESIGN_TMPDIR/contested-decisions.md"' "$SKILL_MD" \
-  || fail "(12) SKILL.md missing existence (-f) check on contested-decisions.md in heavy-worker fail-closed gate (issue #1405)"
-# shellcheck disable=SC2016
-grep -Fq -- '! -f "$DESIGN_TMPDIR/oos.md"' "$SKILL_MD" \
-  || fail "(12) SKILL.md missing existence (-f) check on oos.md in heavy-worker fail-closed gate (issue #1405)"
-# shellcheck disable=SC2016
-grep -Fq -- '! -f "$DESIGN_TMPDIR/rejected-findings.md"' "$SKILL_MD" \
-  || fail "(12) SKILL.md missing existence (-f) check on rejected-findings.md in heavy-worker fail-closed gate (issue #1405)"
-# shellcheck disable=SC2016
-grep -Fq -- '! -f "$DESIGN_TMPDIR/accepted-plan-findings.md"' "$SKILL_MD" \
-  || fail "(12) SKILL.md missing existence (-f) check on accepted-plan-findings.md in heavy-worker fail-closed gate (issue #1405)"
-
-# Check 12b: heavy-worker.md Wait Discipline section pins the foreground-collect
-# rule introduced in issue #1405. The literal subsection header and the
-# "wait for notifications" anti-pattern phrase must remain so a future edit
-# cannot silently drop the prompt-level rule.
-grep -Fq -- '## Wait Discipline' "$REPO_ROOT/skills/design/references/heavy-worker.md" \
-  || fail "(12b) heavy-worker.md missing '## Wait Discipline' subsection header (issue #1405)"
-grep -Fq -- 'wait for notifications' "$REPO_ROOT/skills/design/references/heavy-worker.md" \
-  || fail "(12b) heavy-worker.md missing 'wait for notifications' anti-pattern phrase in Wait Discipline section (issue #1405)"
-
-# Check 12c: write-design-manifest.sh manifest contract pin. The Step 2a
-# fail-closed gate (check 12 above) and the manifest writer share the same
-# four may-be-empty paths; if a future edit adds or renames one of those paths
-# in `write-design-manifest.sh` without updating SKILL.md's Tier 2 list, this
-# check fails so drift is caught at lint time rather than at a nested
-# /design --subagent run that fails at Step 5.
-WDM_SH="$REPO_ROOT/skills/design/scripts/write-design-manifest.sh"
-[[ -f "$WDM_SH" ]] \
-  || fail "(12c) write-design-manifest.sh not found at $WDM_SH (path may have moved)"
-# shellcheck disable=SC2016 # fixed-string grep literals contain shell variable syntax
-grep -Fq -- 'copy_required_may_be_empty "$DESIGN_TMPDIR/contested-decisions.md"' "$WDM_SH" \
-  || fail "(12c) write-design-manifest.sh missing copy_required_may_be_empty for contested-decisions.md — Tier 2 of SKILL.md gate is out of sync (issue #1405)"
-# shellcheck disable=SC2016
-grep -Fq -- 'copy_required_may_be_empty "$DESIGN_TMPDIR/oos.md"' "$WDM_SH" \
-  || fail "(12c) write-design-manifest.sh missing copy_required_may_be_empty for oos.md — Tier 2 of SKILL.md gate is out of sync (issue #1405)"
-# shellcheck disable=SC2016
-grep -Fq -- 'copy_required_may_be_empty "$DESIGN_TMPDIR/rejected-findings.md"' "$WDM_SH" \
-  || fail "(12c) write-design-manifest.sh missing copy_required_may_be_empty for rejected-findings.md — Tier 2 of SKILL.md gate is out of sync (issue #1405)"
-# shellcheck disable=SC2016
-grep -Fq -- 'copy_required_may_be_empty "$DESIGN_TMPDIR/accepted-plan-findings.md"' "$WDM_SH" \
-  || fail "(12c) write-design-manifest.sh missing copy_required_may_be_empty for accepted-plan-findings.md — Tier 2 of SKILL.md gate is out of sync (issue #1405)"
-
 # Check 13: accepted-OOS security exclusion pins. plan-review.md owns both the
 # parent `/implement` accepted-OOS artifact write and the design visibility
 # export; both public-boundary paths must explicitly exclude accepted
@@ -421,13 +346,10 @@ grep -Fq 'security counter-invariant' "$PLAN_REVIEW_QUICK_MD" \
 
 # Check 14: design ACTION dispatcher pins. The focus-area enum must remain in
 # SKILL.md because CI and prompt rendering scan the inline reviewer launch
-# blocks, while scriptable mechanics route through ACTION records and the heavy
-# worker documents the same helper invocations.
+# blocks, while scriptable mechanics route through ACTION records.
 focus_anchor_count=$(grep -Fc 'Focus area enum anchor for CI: code-quality / risk-integration / correctness / architecture / security' "$SKILL_MD")
 [[ "$focus_anchor_count" == "10" ]] \
   || fail "(14a) SKILL.md must keep 10 focus-area enum anchor comments; found $focus_anchor_count"
-grep -Fq 'ACTION=CLASSIFY' "$SKILL_MD" \
-  || fail "(14b) SKILL.md missing ACTION=CLASSIFY emission"
 grep -Fq 'ACTION=EMIT_PLAN' "$SKILL_MD" \
   || fail "(14b) SKILL.md missing ACTION=EMIT_PLAN emission"
 grep -Fq 'ACTION=TALLY' "$SKILL_MD" \
@@ -436,14 +358,6 @@ grep -Fq 'ACTION=FINALIZE' "$SKILL_MD" \
   || fail "(14b) SKILL.md missing ACTION=FINALIZE emission"
 grep -Fq 'design-driver.sh' "$SKILL_MD" \
   || fail "(14b) SKILL.md missing design-driver.sh dispatcher invocation"
-# shellcheck disable=SC2016 # fixed-string grep literal intentionally contains shell variable syntax.
-grep -Fq 'emit-plan.sh --design-tmpdir "$DESIGN_TMPDIR"' "$REPO_ROOT/skills/design/references/heavy-worker.md" \
-  || fail "(14c) heavy-worker.md missing emit-plan.sh invocation pin"
-grep -Fq 'tally-plan-review.sh' "$REPO_ROOT/skills/design/references/heavy-worker.md" \
-  || fail "(14c) heavy-worker.md missing tally-plan-review.sh invocation pin"
-# shellcheck disable=SC2016 # fixed-string grep literal intentionally contains shell variable syntax.
-grep -Fq 'finalize-plan.sh --design-tmpdir "$DESIGN_TMPDIR"' "$REPO_ROOT/skills/design/references/heavy-worker.md" \
-  || fail "(14c) heavy-worker.md missing finalize-plan.sh invocation pin"
 
 echo "PASS: test-design-structure.sh — structural invariants hold (including security OOS exclusions)"
 exit 0

@@ -59,7 +59,7 @@ check_contains "Post-/bump-version boundary — Step 8 direct halt covered" "ski
 check_contains "Post-/bump-version boundary — rebase-rebump path halt covered" "skills/implement/references/rebase-rebump-subprocedure.md" \
   "in the tool result is NOT a run-completion signal"
 # Post-/bump-version boundary mechanical backstops (issue #2338): PostToolUse hook
-# parallel to hook-post-design.sh that injects a continuation directive when
+# on Skill that injects a continuation directive when
 # .bump-version-armed is present without postbump-state.sh.
 check_contains "Post-/bump-version boundary — PostToolUse hook script exists" \
   "skills/implement/scripts/hook-post-bump-version.sh" \

@@ -21,7 +21,7 @@ Design an implementation plan for a feature and review it with a **full** panel 
 
 **Mutual exclusion**: at most one of `--trivial` / `--simple` / `--hard` may be set; if two or more tier flags appear, print a clear error and abort before Step 0.
 
-**MANDATORY — READ ENTIRE FILE before parsing argument flags**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/flags.md` completely. This reference is the single normative source for tier mapping, internal `--inline`, and validation rules. The table above is a non-normative index.
+**MANDATORY — READ ENTIRE FILE before parsing argument flags**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/flags.md` completely. This reference is the single normative source for tier mapping and validation rules. The table above is a non-normative index.
 
 **Positional tail**: after flags, the first non-flag token is either **`issue-N`** (all digits, `^[0-9]+$`) or a **verbal feature description** (any other text). Verbal text triggers `/larch:issue` first (forward `--no-dedup` when set), then binds `ISSUE_NUMBER` to the created issue and continues as the issue path.
 
@@ -183,7 +183,7 @@ Set mental flags `codex_available` and `cursor_available` based on the output (s
    - `trivial`: `sketch_budget=0`, `quick_mode=true`, `review_budget=quick`, `workflow_path=SIMPLE` (classification follows existing trivial doc-only carve-out when the router scan applies).
    - `simple`: `sketch_budget=2`, `quick_mode=true`, `review_budget=full`, `workflow_path=SIMPLE`.
    - `hard`: `sketch_budget=4`, `quick_mode=false`, `review_budget=full`, `workflow_path=HARD`.
-   Set `design_classification_source=tier-flag`. When the trivial tier still needs a doc-only confirmation, optionally pipe `ACTION=CLASSIFY ARGS=--feature-description …` through `design-driver.sh` (same contract as historical Step 0) before `write-run-params.sh`; otherwise skip.
+   Set `design_classification_source=caller-forwarded` (the orchestrator forwards tier selection; `run-params.json` is not re-derived from argv here).
 
 ```bash
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
@@ -317,46 +317,11 @@ When the assigned external is unavailable, the slot's Claude fallback uses the s
 1. **Cursor — Generic** — or **Claude (Generic)** fallback: a broad-scope sketch without personality specialization.
 2. **Codex — Generic** — or **Claude (Generic)** fallback: same generic prompt as Cursor-Generic.
 
-### Heavy phase dispatch (regular and quick mode)
-
-**CI string pin #1036 (not public argv):** searchable literals `--subagent` and `subagent_mode=true` name the internal host-only heavy dispatch; operators never pass `--subagent` on argv (see `references/flags.md`).
+### Sketch phase (regular and quick mode)
 
 Print `> **🔶 /design 2a: sketches**`.
 
-**Subagent heavy phase** (only when `quick_mode=false` **and** the host elects **non-inline** heavy dispatch per `references/flags.md` / `references/heavy-worker.md` — there is **no** public `--subagent` argv flag): invoke a single Agent-tool subagent (`subagent_type: general-purpose`) for the heavy non-interactive phase before entering 2a.2. The subagent MUST read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/heavy-worker.md`, receive `DESIGN_TMPDIR`, `IMPLEMENT_TMPDIR`, `SESSION_ENV_PATH`, `FEATURE_DESCRIPTION`, `quick_mode`, `$DESIGN_TMPDIR/run-params.json`, branch facts, and reviewer presence flags as explicit data, and write raw artifacts to `$DESIGN_TMPDIR/`. The subagent returns a terse KV block whose first line is `DESIGN_HEAVY=complete` (optionally followed by `DESIGN_SUMMARY_FILE=<path>`) or a single failure line `DESIGN_HEAVY=failed REASON=<short-token>`.
-
-Immediately after the Agent tool returns, parse the heavy-worker status line. Before following the success path, fail closed if the worker omitted a valid status line or returned success without the required artifacts. The gate matches `heavy-worker.md` **Artifact Contract** plus existence checks for the may-be-empty files listed in the bash gate below (same checks as before the issue-anchored cutover, but **not** tied to any manifest writer).
-
-```bash
-if [[ "${DESIGN_HEAVY:-}" != "complete" && "${DESIGN_HEAVY:-}" != "failed" ]]; then
-  DESIGN_HEAVY=failed
-  REASON=worker-yielded-without-artifacts
-elif [[ "${DESIGN_HEAVY:-}" == "complete" ]] && {
-  [[ ! -s "$DESIGN_TMPDIR/plan.txt" ]] ||
-  [[ ! -s "$DESIGN_TMPDIR/diff-lines.txt" ]] ||
-  [[ ! -s "$DESIGN_TMPDIR/approach-synthesis.txt" ]] ||
-  [[ ! -s "$DESIGN_TMPDIR/voting-tally.md" ]] ||
-  [[ ! -f "$DESIGN_TMPDIR/contested-decisions.md" ]] ||
-  [[ ! -f "$DESIGN_TMPDIR/oos.md" ]] ||
-  [[ ! -f "$DESIGN_TMPDIR/rejected-findings.md" ]] ||
-  [[ ! -f "$DESIGN_TMPDIR/accepted-plan-findings.md" ]]
-}; then
-  DESIGN_HEAVY=failed
-  REASON=worker-yielded-without-artifacts
-fi
-```
-
-On `DESIGN_HEAVY=complete`:
-- Parse `DESIGN_SUMMARY_FILE` from the worker's return KV block as a routing signal only. For security, ignore the returned path value if it differs from the fixed path `$DESIGN_TMPDIR/design-summary.json`.
-- Validate the fixed summary path if present: it must be a non-symlink regular file, size ≤2 KB, `jq . "$DESIGN_TMPDIR/design-summary.json"` must parse, and `.schema_version == 1`. On validation failure or absence, fall back to the existing full-file reads and artifact gates silently.
-- **If `SESSION_ENV_PATH` is non-empty (nested under `/implement`)**: use valid `design-summary.json` fields for lightweight routing/status decisions; do not read or print bulky artifact bodies. Proceed directly to Step 3.5. The parent session reads the vetted plan from the GitHub issue body after `/design` completes (issue-anchored cutover).
-- **If `SESSION_ENV_PATH` is empty (standalone heavy dispatch)**: read and print `$DESIGN_TMPDIR/plan.txt` under `## Implementation Plan`, `$DESIGN_TMPDIR/voting-tally.md` under `## Voting Tally and Reviewer Competition Scoreboard`, `$DESIGN_TMPDIR/accepted-plan-findings.md` under `## Plan Review Findings (Voted In)` (skip header if file is empty or missing), `$DESIGN_TMPDIR/oos.md` under `## Out-of-Scope Observations` (skip header if file is empty or missing). Also read `$DESIGN_TMPDIR/rejected-findings.md`: if non-empty, print it under `## Unimplemented Plan Review Suggestions`; if empty or missing, print `## Plan Review — All Suggestions Implemented` (matches Step 4's standalone output). Then proceed to Step 3.5.
-
-On `DESIGN_HEAVY=failed`:
-- **If `SESSION_ENV_PATH` is non-empty (nested)**: write the failure reason to `$DESIGN_TMPDIR/heavy-worker-failure.md`, emit no inline warning, preserve `$DESIGN_TMPDIR`, skip the inline heavy steps, and proceed to Step 5 (plan write will likely fail closed). **Recovery**: fix the subagent environment and re-run `/design` on the same issue; `/implement` does not consume design manifests.
-- **If `SESSION_ENV_PATH` is empty (standalone)**: print `**⚠ 2a: sketches — heavy worker subagent failed: $REASON. Preserving $DESIGN_TMPDIR for inspection.**`, set `STANDALONE_HEAVY_FAILED=true`, skip the inline heavy steps, and proceed to Step 5. Step 5 skips `cleanup-tmpdir.sh` when `STANDALONE_HEAVY_FAILED=true`.
-
-If the host runs the heavy phase **inline** (`quick_mode=true` **or** inline dispatch per `references/flags.md`), proceed to 2a.2 and run the inline flow below. `SESSION_ENV_PATH` continues to govern nested verbosity / OOS routing orthogonally to dispatch mode.
+The sketch phase runs **inline** in the orchestrator (no Agent-tool subagent offload for sketches). Launch sketches per the mode sections below, then continue through collection, synthesis, and dialectic in this skill.
 
 ### 2a.2 — Launch Sketches in Parallel
 
@@ -494,7 +459,7 @@ Otherwise, read `$DESIGN_TMPDIR/approach-synthesis.txt` — this provides `{SYNT
 
 Execute steps 6 through final dialectic resolution writing as documented in `${CLAUDE_PLUGIN_ROOT}/skills/design/references/dialectic-execution.md` (loaded via the MANDATORY directive above). That file is the single normative source for dialectic-execution mechanics. The final `Write $DESIGN_TMPDIR/dialectic-resolutions.md` sub-step (including the per-disposition field rules) lives inside that reference; print the `## Dialectic Resolutions` header at the end.
 
-After each dialectic collection boundary (debate results and judge results), follow the dirty-tree probe contract in `references/heavy-worker.digest.md`: consult launcher sidecars, run `check-mid-run-dirty-tree.sh --mode checkpoint`, and ask for recovery on dirty/unknown, deduped by `$DESIGN_TMPDIR/.dirty-tree-prompted-<boundary>`.
+After each dialectic collection boundary (debate results and judge results), consult any `${OUTPUT}.dirty-tree` launcher sidecars for launched Cursor/Codex outputs, then run `${CLAUDE_PLUGIN_ROOT}/scripts/check-mid-run-dirty-tree.sh --mode checkpoint`. If a sidecar or checkpoint reports `STATUS=dirty` or `STATUS=unknown`, write `$DESIGN_TMPDIR/dirty-tree-detected.env` with `STATUS`, `STAGE=dialectic-collection`, and `RECOVERY_REQUIRED=true`, then fire the dirty-tree recovery `AskUserQuestion`. Use a `$DESIGN_TMPDIR/.dirty-tree-prompted-<boundary>` flag so one logical boundary prompts once.
 
 <!-- step:2b — Design the Implementation Plan -->
 
@@ -815,7 +780,7 @@ On **cancel**, exit **0** with `**ℹ /design cancelled by operator.**` after op
 
 ### 5c — Remove temp directory
 
-Remove the session temp directory and all files within it. Run `cleanup-tmpdir.sh` only when `PLAN_WRITE_OK=true` AND `STANDALONE_HEAVY_FAILED` is unset or `false`; otherwise skip cleanup so `$DESIGN_TMPDIR` is preserved for inspection.
+Remove the session temp directory and all files within it. Run `cleanup-tmpdir.sh` only when `PLAN_WRITE_OK=true`; otherwise skip cleanup so `$DESIGN_TMPDIR` is preserved for inspection.
 
 ```bash
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
@@ -827,18 +792,11 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-tmpdir.sh --dir "$DESIGN_TMPDIR"
 
 **Plan helper contracts** (per `${CLAUDE_PLUGIN_ROOT}/.claude/rules/script-md-siblings.md`):
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-driver.sh` — ACTION dispatcher. Sibling: `design-driver.md`.
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/classify-issue.sh` — classifier for legacy ACTION paths. Sibling: `classify-issue.md`.
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/emit-plan.sh` — `ACTION=EMIT_PLAN`. Sibling: `emit-plan.md`.
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/tally-plan-review.sh` — `ACTION=TALLY`. Sibling: `tally-plan-review.md`.
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/finalize-plan.sh` — `ACTION=FINALIZE`. Sibling: `finalize-plan.md`.
 - `${CLAUDE_PLUGIN_ROOT}/scripts/plan-block-write.sh` — writes the `larch:plan` block into the issue body. Sibling: `plan-block-write.md` (under `scripts/`).
 - `${CLAUDE_PLUGIN_ROOT}/scripts/write-run-params.sh` — persists tier-derived `run-params.json` (Step 0). Sibling: `write-run-params.md`.
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/write-design-manifest.md` — manifest writer contract (regression harness / Makefile targets only).
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/read-design-manifest.md` — manifest reader contract (regression harness only).
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-design-manifest.md` — regression harness contract for manifest reader/writer.
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/write-design-manifest.sh` — manifest writer implementation (regression harness only).
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/read-design-manifest.sh` — manifest reader implementation (regression harness only).
-
 **Repeat any external reviewer warnings** from earlier steps (Step 0 reviewer-availability checks via `session-setup.sh`, Step 2a sketch-phase failures/timeouts, Step 3 runtime failures, or Step 3b diagram generation failure) so they are visible at the end of the workflow. For example:
 - `**⚠ Codex not available: <reason>**`
 - `**⚠ Cursor review failed: <reason>**`

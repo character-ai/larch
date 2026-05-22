@@ -45,15 +45,13 @@ assert_file_equals() {
 }
 
 make_tmpdir() {
-    local dir="$1" workflow="$2" codex="$3" cursor="$4" session_id="${5:-run-xyz}" dynamic_archetypes="${6:-}"
+    local dir="$1" _workflow="$2" codex="$3" cursor="$4" session_id="${5:-run-xyz}" dynamic_archetypes="${6:-}"
     mkdir -p "$dir"
     printf '%s\n' "$session_id" > "$dir/session-id"
     printf '%s\n' "Feature description" > "$dir/feature-description.txt"
     printf '%s\n' "Plan body with enough content to be a real plan for launcher tests." > "$dir/plan.txt"
     {
         printf 'LARCH_CLAUDE_PLUGIN_ROOT=%s\n' "$REPO_ROOT"
-        printf 'PLAN_FILE=%s\n' "$dir/plan.txt"
-        printf 'POST_PLAN_WORKFLOW_PATH=%s\n' "$workflow"
         printf 'CODEX_PRESENT=%s\n' "$codex"
         printf 'CURSOR_PRESENT=%s\n' "$cursor"
         printf 'LARCH_TOKEN_SESSION_ID=%s\n' "run-xyz"
@@ -90,16 +88,6 @@ set -e
 if [[ "$rc" -eq 2 ]]; then pass "round-num zero exits 2"; else fail "round-num zero rc=$rc"; fi
 assert_contains "$out" "--round-num must be a positive integer" "round-num zero error"
 
-echo "=== reject invalid workflow enum ==="
-case_dir="$TMP/bad-workflow"
-make_tmpdir "$case_dir" BROKEN true false
-set +e
-out="$(RUN_STEP5_REVIEW_SH="$SPY" RUN_STEP5_ARGV_FILE="$TMP/bad-workflow.argv" "$LAUNCHER" --implement-tmpdir "$case_dir" --round-num 1 2>&1)"
-rc=$?
-set -e
-if [[ "$rc" -eq 2 ]]; then pass "bad workflow exits 2"; else fail "bad workflow rc=$rc"; fi
-assert_contains "$out" "POST_PLAN_WORKFLOW_PATH must be SIMPLE or HARD" "bad workflow error"
-
 echo "=== reject invalid reviewer booleans ==="
 case_dir="$TMP/bad-bool"
 make_tmpdir "$case_dir" SIMPLE maybe false
@@ -135,7 +123,7 @@ $case_dir/plan.txt
 --feature-file
 $case_dir/feature-description.txt
 --run-id
-run-xyz" "SIMPLE workflow resolved argv"
+run-xyz" "conventional plan path resolved argv"
 
 echo "=== HARD workflow argv derivation ==="
 case_dir="$TMP/hard"
@@ -197,34 +185,31 @@ argv_file="$TMP/run-id-manifest.argv"
 RUN_STEP5_REVIEW_SH="$SPY" RUN_STEP5_ARGV_FILE="$argv_file" "$LAUNCHER" --implement-tmpdir "$case_dir" --round-num 2 >/dev/null
 assert_contains "$(cat "$argv_file")" "review-manifest-run" "manifest RUN_ID overrides session-id"
 
-echo "=== PLAN_FILE missing: fail closed even when design-export/plan.txt exists ==="
+echo "=== conventional plan.txt missing: fail closed even when design-export/plan.txt exists ==="
 case_dir="$TMP/plan-file-missing"
 make_tmpdir "$case_dir" SIMPLE true false
-grep -v '^PLAN_FILE=' "$case_dir/session-env.sh" > "$case_dir/session-env.sh.new"
-mv "$case_dir/session-env.sh.new" "$case_dir/session-env.sh"
+rm -f "$case_dir/plan.txt"
 mkdir -p "$case_dir/design-export"
-printf '%s\n' "Stale local export must not mask missing PLAN_FILE." > "$case_dir/design-export/plan.txt"
+printf '%s\n' "Stale local export must not substitute for conventional plan.txt." > "$case_dir/design-export/plan.txt"
 argv_file="$TMP/missing-plan.argv"
 set +e
 out="$(RUN_STEP5_REVIEW_SH="$SPY" RUN_STEP5_ARGV_FILE="$argv_file" "$LAUNCHER" --implement-tmpdir "$case_dir" --round-num 1 2>&1)"
 rc=$?
 set -e
-if [[ "$rc" -eq 2 ]]; then pass "step5: PLAN_FILE missing exits 2 even with design-export"; else fail "step5 PLAN_FILE missing rc=$rc"; fi
-assert_contains "$out" "PLAN_FILE missing from session-env" "step5 emits PLAN_FILE-missing error"
-assert_contains "$out" "persist-post-plan-keys.sh" "step5 error names writer contract"
-[[ ! -f "$argv_file" ]] || fail "review helper should not run when PLAN_FILE missing"
+if [[ "$rc" -eq 2 ]]; then pass "step5: conventional plan.txt missing exits 2 even with design-export"; else fail "step5 plan missing rc=$rc"; fi
+assert_contains "$out" "plan file not found at conventional path" "step5 emits conventional-path error"
+[[ ! -f "$argv_file" ]] || fail "review helper should not run when plan.txt missing"
 
-echo "=== PLAN_FILE missing AND design-export missing: fail loud ==="
+echo "=== conventional plan.txt missing AND design-export missing: fail loud ==="
 case_dir="$TMP/plan-file-fail"
 make_tmpdir "$case_dir" SIMPLE true false
-grep -v '^PLAN_FILE=' "$case_dir/session-env.sh" > "$case_dir/session-env.sh.new"
-mv "$case_dir/session-env.sh.new" "$case_dir/session-env.sh"
+rm -f "$case_dir/plan.txt"
 set +e
 out="$("$LAUNCHER" --implement-tmpdir "$case_dir" --round-num 1 2>&1)"
 rc=$?
 set -e
-if [[ "$rc" -eq 2 ]]; then pass "step5: no PLAN_FILE and no design-export exits 2"; else fail "step5 no-fallback rc=$rc"; fi
-assert_contains "$out" "PLAN_FILE missing from session-env" "step5 no-fallback error"
+if [[ "$rc" -eq 2 ]]; then pass "step5: no conventional plan.txt exits 2"; else fail "step5 no-plan rc=$rc"; fi
+assert_contains "$out" "plan file not found at conventional path" "step5 no-plan error"
 
 TOTAL=$((PASS + FAIL))
 if [[ "$FAIL" -eq 0 ]]; then

@@ -119,8 +119,8 @@ fi
 export CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT"
 export IMPLEMENT_TMPDIR
 
-PLAN_FILE="$(session_get "$SESSION_ENV_PATH" PLAN_FILE "")"
-WORKFLOW_PATH="$(session_get "$SESSION_ENV_PATH" POST_PLAN_WORKFLOW_PATH "")"
+PLAN_FILE="$IMPLEMENT_TMPDIR/plan.txt"
+WORKFLOW_PATH="HARD"
 CODEX_PRESENT="$(session_get "$SESSION_ENV_PATH" CODEX_PRESENT false)"
 CURSOR_PRESENT="$(session_get "$SESSION_ENV_PATH" CURSOR_PRESENT false)"
 LARCH_TOKEN_SESSION_ID="$(session_get "$SESSION_ENV_PATH" LARCH_TOKEN_SESSION_ID "$RUN_ID")"
@@ -130,10 +130,7 @@ DYNAMIC_ARCHETYPES="$(session_get "$SESSION_ENV_PATH" LARCH_DYNAMIC_ARCHETYPES_M
 export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 REVIEW_AND_FIX_ARGS=()
 
-if [[ -z "$PLAN_FILE" ]]; then
-    fail "PLAN_FILE missing from session-env; fix scripts/persist-post-plan-keys.sh (or other session-env writers). Issue-anchored runs must not recover from design-export/plan.txt."
-fi
-[[ -f "$PLAN_FILE" ]] || fail "PLAN_FILE not found: $PLAN_FILE"
+[[ -f "$PLAN_FILE" ]] || fail "plan file not found at conventional path: $PLAN_FILE"
 
 case "$WORKFLOW_PATH" in
     SIMPLE)
@@ -144,7 +141,7 @@ case "$WORKFLOW_PATH" in
         ROUND_CAP="5"
         ;;
     *)
-        fail "POST_PLAN_WORKFLOW_PATH must be SIMPLE or HARD, got: ${WORKFLOW_PATH:-<empty>}"
+        fail "WORKFLOW_PATH must be SIMPLE or HARD, got: ${WORKFLOW_PATH:-<empty>}"
         ;;
 esac
 

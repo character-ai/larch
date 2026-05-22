@@ -80,7 +80,7 @@ read -r -a _all_output_files <<< "$ALL_OUTPUT_FILES"
 ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1860 --substantive-validation --validation-mode --structured-reviewer-validation "${_all_output_files[@]}"
 ```
 
-Immediately after this collection returns, run the Mid-Run Dirty-Tree Probe Contract from `heavy-worker.md` for `STAGE=plan-review-collection`.
+Immediately after this collection returns, run the Mid-Run Dirty-Tree Probe Contract from `${CLAUDE_PLUGIN_ROOT}/skills/review/references/heavy-worker.md` for `STAGE=plan-review-collection`.
 
 Parse the structured output for each reviewer's `STATUS` and `REVIEWER_FILE`. Phase 3 Claude subprocess outputs will appear in `ALL_OUTPUT_FILES` with `TOOL=claude` in the corresponding `ALL_OUTPUT_TOOLS` position. For any reviewer with `STATUS` not `OK`, log the failure via the failure logging contract above but do not re-launch; the waterfall already exhausted all three phases for that slot. Read valid output files.
 

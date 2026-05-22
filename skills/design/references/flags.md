@@ -12,7 +12,7 @@
 
 ## Public `/design` flags
 
-- `--trivial`: mutually exclusive tier. Maps to `sketch_budget=0`, `quick_mode=true`, `review_budget=quick`, `workflow_path=SIMPLE` when writing `run-params.json` (trivial doc-only carve-out still follows the ACTION classifier when applicable).
+- `--trivial`: mutually exclusive tier. Maps to `sketch_budget=0`, `quick_mode=true`, `review_budget=quick`, `workflow_path=SIMPLE` when writing `run-params.json` (the trivial doc-only carve-out follows the Step 0 router scan in `SKILL.md`).
 - `--simple`: mutually exclusive tier. Maps to `sketch_budget=2`, `quick_mode=true`, `review_budget=full`, `workflow_path=SIMPLE` (2 sketch agents on the quick path per `sketch-launch.md`).
 - `--hard`: mutually exclusive tier. Maps to `sketch_budget=4`, `quick_mode=false`, `review_budget=full`, `workflow_path=HARD`.
 - `--no-dedup`: forward to `/larch:issue` on the verbal-create path. Default `false`.
@@ -22,10 +22,9 @@
 
 **Positional tail**: after flags, either `^[0-9]+$` (existing issue) or verbal feature text (create issue via `/larch:issue` first).
 
-## Internal — heavy dispatch (not public argv)
+## Internal — sketch dispatch (not public argv)
 
-- **Internal / CI pin #1036 (not public argv)**: host-controlled heavy dispatch may still align with legacy tokens `--subagent` and `subagent_mode=true` for harness grep stability; **operators never pass `--subagent`**. When `quick_mode=false` and the host elects **non-inline** dispatch, Step 2a runs the Agent-tool heavy worker per `references/heavy-worker.md`.
-- **`--inline` (internal only)**: when the host forces inline heavy work (no Agent-tool subagent), the orchestrator skips the subagent path entirely. **Not** a public argv flag for `/design`. Sessions without `SendMessage` must not rely on non-inline Agent-tool heavy dispatch for `/design` (a suspended worker cannot be resumed). Prefer host-inline heavy routing for `/design`, a tier that avoids that subagent, or the guidance in `skills/shared/subskill-invocation.md` (§ `/design` heavy phase topology). **`/implement` does not accept `--inline`** (removed argv surface per `skills/implement/SKILL.md`). See `AGENTS.md` for the project-wide `SendMessage` dependency note.
+- **`/design` sketch phase is inline-only** (issue #2487): sketches, external collectors, synthesis, dialectic, and plan review run in the orchestrator session per `SKILL.md`. There is no Agent-tool offload path for the sketch phase.
 
 ## Legacy — `--branch-info` and `--step-prefix` (internal orchestration)
 
