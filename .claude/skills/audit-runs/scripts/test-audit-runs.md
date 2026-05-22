@@ -18,6 +18,7 @@ Validates the parsing and guard logic that the `/audit-runs` skill orchestrator 
 - Test 13b: scan-time behavior records into `proposed_new_issues` / `proposed_augmentations` only (no auto-file path)
 - Test 15: zero-findings short-circuit chat message and absence of the 3-way filing prompt when both proposal lists are empty; frontmatter lists `proposed_new_issues: []` and `proposed_augmentations: []`
 - Audit report title self-exclusion prefix (`^\[Run Logs Audit Report` pattern prevents self-augmentation); note that the existing `has_report_prefix` pattern does NOT match audit report titles because the ISO timestamp follows "Report" inside the bracket — the `audit-report` GitHub label filter in `find-lock-issue.sh` is the primary /fix-issue exclusion guard
+- `audit-scan-run.sh` `oos-silent-drop` scan pass/skip/fail and NDJSON jq-error fixtures (`test-audit-runs.sh` Test 60o)
 
 ## Run
 

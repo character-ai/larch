@@ -1,0 +1,11 @@
+Gathering the branch diff and commit history for a read-only security-focused review.
+
+Searching the large diff for files from the implementation plan and related hunks.
+
+Reading diff hunks for the planned files and security-sensitive additions (OOS gate, audit scan).
+
+Scanning the diff for security-sensitive patterns in new/changed shell and gate scripts.
+
+Completing the security review: one latent trust-boundary issue in the new OOS gate’s `git` invocation, and one latent integrity weakness in the new revision-trace heuristic. Creating the plan document summarizing findings and recommended follow-ups.
+
+

@@ -219,6 +219,7 @@ unset _cand_canon
 
 validate_py="$REVIEW_TMPDIR/aggregate-validate.py"
 cat > "$validate_py" <<'PY'
+import os
 import re
 import sys
 
@@ -286,6 +287,187 @@ def normalize_slot(sl):
 
 
 EMPTY_MERGE_ATTESTATION = "LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED"
+
+# End of "Suggested revisions" sub-list: only known top-level finding fields,
+# not arbitrary "- **Capital..." lines that may appear inside folded revision text.
+_REVISION_SUBLIST_END_HEADING = re.compile(
+    r"^-\s*\*\*(?:Reviewer(?:\(s\))?|Reviewers?|Concern|Justification|Suggested revisions?)\*\*:",
+    re.IGNORECASE,
+)
+
+
+def input_blocks_by_slot(text):
+    """Map each normalized slot to a list of raw block texts that cite it."""
+    slot_map = {}
+    for block in input_blocks(text):
+        _line, slots = reviewer_line_slots(block)
+        for sl in slots:
+            slot_map.setdefault(normalize_slot(sl), []).append(block)
+    return slot_map
+
+
+def suggested_revisions_bullets(block, bid="?"):
+    """Parse 'Suggested revisions' sub-list; return (bullets, parse_warnings)."""
+    lines = block.splitlines()
+    in_revisions = False
+    bullets = []
+    parse_warnings = []
+    pending_from = None  # (slot_label, list of text fragments)
+    for line in lines:
+        s = line.strip()
+        if re.match(r"^-\s*\*\*Suggested revisions", s, re.IGNORECASE):
+            in_revisions = True
+            continue
+        if not in_revisions:
+            continue
+        m_from = re.match(r"^-\s+From\s+(.+?):\s+(.+)$", s, re.IGNORECASE)
+        if m_from:
+            if pending_from:
+                bullets.append(
+                    (pending_from[0], " ".join(pending_from[1]).strip())
+                )
+            pending_from = (m_from.group(1).strip(), [m_from.group(2).strip()])
+            continue
+        if _REVISION_SUBLIST_END_HEADING.match(s):
+            if pending_from:
+                # Verbatim fix text can contain lines that look like finding
+                # fields (e.g. "- **Concern**:"); keep folding until the next
+                # "- From ..." bullet or real sub-list end (no active bullet).
+                pending_from[1].append(s)
+                continue
+            parse_warnings.append(
+                "field-like line in Suggested revisions before first 'From:' bullet "
+                "in %s (%r)" % (bid, s[:120])
+            )
+            break
+        if pending_from:
+            pending_from[1].append(s)
+            continue
+        if s:
+            parse_warnings.append(
+                "unexpected line in Suggested revisions sub-list before first "
+                "'From:' bullet in %s (%r)" % (bid, s[:120])
+            )
+    if pending_from:
+        bullets.append((pending_from[0], " ".join(pending_from[1]).strip()))
+    return bullets, parse_warnings
+
+
+def singular_suggested_revision(block):
+    """Legacy singular '- **Suggested revision**:' line body, if any."""
+    for line in block.splitlines():
+        s = line.strip()
+        m = re.match(r"^-\s*\*\*Suggested revision\*\*:\s*(.+)$", s, re.IGNORECASE)
+        if m:
+            return m.group(1).strip()
+    return None
+
+
+def normalize_for_match(text):
+    """Lowercase and collapse whitespace/punctuation for substring matching."""
+    return re.sub(r"[^\w\s]", " ", text.lower())
+
+
+def output_reviewer_slots_norm(block):
+    _line, slots = reviewer_line_slots(block)
+    return {normalize_slot(sl) for sl in slots}
+
+
+def scope_input_blocks_for_merge(norm_slot, output_slots_norm, slot_map):
+    """Input blocks citing norm_slot that share a reviewer with merged output."""
+    candidates = slot_map.get(norm_slot, [])
+    if not output_slots_norm:
+        return list(candidates)
+    scoped = []
+    for in_block in candidates:
+        _il, islots = reviewer_line_slots(in_block)
+        in_norms = {normalize_slot(x) for x in islots}
+        if in_norms & output_slots_norm:
+            scoped.append(in_block)
+    return scoped
+
+
+def revision_traceable_in_blocks(revision_text, in_blocks):
+    """True when normalized revision matches within a single scoped input block."""
+    if not in_blocks:
+        return False
+    rev_norm = normalize_for_match(revision_text).strip()
+    if not rev_norm:
+        return False
+    use_prefix = os.environ.get("LARCH_AGGREGATE_REVISION_TRACE_PREFIX_FALLBACK") == "1"
+    words = rev_norm.split()
+    window = min(6, len(words)) if len(words) >= 2 else 0
+    needle = " ".join(words[:window]) if window else ""
+    for block in in_blocks:
+        corp_norm = normalize_for_match(block)
+        if rev_norm in corp_norm:
+            return True
+        if use_prefix and needle and needle in corp_norm:
+            return True
+    return False
+
+
+def check_revision_traceability(input_text, output_blocks_list):
+    """Warn when merged revision text can't be traced to scoped input for that merge."""
+    slot_map = input_blocks_by_slot(input_text)
+    warnings = []
+    for block in output_blocks_list:
+        head = heading_line(block)
+        is_oos = "[OUT_OF_SCOPE]" in head
+        if is_oos:
+            continue
+        output_slots_norm = output_reviewer_slots_norm(block)
+        bid = finding_id_from_block(block) or "?"
+        bullets, parse_warnings = suggested_revisions_bullets(block, bid)
+        warnings.extend(parse_warnings)
+        singular = singular_suggested_revision(block)
+        if singular and bullets:
+            warnings.append(
+                "both legacy singular Suggested revision and multi-reviewer revision "
+                "bullets present in %s" % (bid,)
+            )
+        if not bullets and not singular:
+            continue
+        trace_items = []
+        if bullets:
+            trace_items.extend(bullets)
+        if singular:
+            trace_items.append(
+                ("(legacy singular Suggested revision)", singular)
+                if bullets
+                else ("(merged reviewers)", singular)
+            )
+        for slot_label, revision_text in trace_items:
+            norm_slot = (
+                None
+                if slot_label
+                in ("(merged reviewers)", "(legacy singular Suggested revision)")
+                else normalize_slot(slot_label)
+            )
+            if norm_slot is not None and norm_slot not in slot_map:
+                warnings.append(
+                    "unknown From slot label %r in %s (not present on any input finding)"
+                    % (slot_label, bid)
+                )
+                continue
+            if norm_slot is None:
+                scoped = []
+                for in_block in input_blocks(input_text):
+                    _il, islots = reviewer_line_slots(in_block)
+                    in_norms = {normalize_slot(x) for x in islots}
+                    if in_norms & output_slots_norm:
+                        scoped.append(in_block)
+            else:
+                scoped = scope_input_blocks_for_merge(
+                    norm_slot, output_slots_norm, slot_map
+                )
+            found = revision_traceable_in_blocks(revision_text, scoped)
+            if not found:
+                warnings.append(
+                    "fix text for slot %r in %s not traceable to scoped input "
+                    "(first 80 chars: %r)" % (slot_label, bid, revision_text[:80])
+                )
+    return warnings
 
 
 def main():
@@ -368,6 +550,12 @@ def main():
     missing = sorted(s for s in input_slot_set if s not in all_out_slots)
     if missing:
         print("input reviewers missing from merge output: %r" % (missing,), file=sys.stderr)
+        return 1
+    # Advisory: warn when 'Suggested revisions' bullets can't be traced back to input.
+    rev_warnings = check_revision_traceability(intext, blocks)
+    for w in rev_warnings:
+        print("warning: " + w, file=sys.stderr)
+    if os.environ.get("LARCH_AGGREGATE_REVISION_TRACE_STRICT") == "1" and rev_warnings:
         return 1
     return 0
 

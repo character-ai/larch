@@ -1940,6 +1940,61 @@ else
     echo "  SKIP: audit-scan-run.sh not executable (not found at $SCAN_SCRIPT)"
 fi
 
+# Test 60o: audit-scan-run.sh — oos-silent-drop pass / skip / fail + jq error path
+echo "Test 60o: audit-scan-run oos-silent-drop pass skip fail and ndjson jq error"
+SCAN_SCRIPT="${SCAN_SCRIPT:-$SCRIPT_DIR/audit-scan-run.sh}"
+if [ -x "$SCAN_SCRIPT" ]; then
+    T60O_BASE=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-oos60o-XXXXXX")
+    printf '%s\n' 'name	type	pattern	expected_outcome	severity' > "$T60O_BASE/scans.tsv"
+    printf '%s\n' 'oos-silent-drop	composite	x	x	high' >> "$T60O_BASE/scans.tsv"
+    printf '%s\n' 'relative_path	condition	batch_slug	extension' > "$T60O_BASE/required.tsv"
+    # skip: no OOS blocks in accepted files (empty accepted file)
+    T60O_SKIP="$T60O_BASE/skip"
+    mkdir -p "$T60O_SKIP/run"
+    : >"$T60O_SKIP/run/oos-accepted-main-agent.md"
+    t60o_skip_out=$(bash "$SCAN_SCRIPT" --run-dir "$T60O_SKIP/run" --pr 990060 \
+        --scans-tsv "$T60O_BASE/scans.tsv" --required-files-tsv "$T60O_BASE/required.tsv" \
+        --current-version "34.0.0")
+    t60o_skip_res=$(printf '%s\n' "$t60o_skip_out" | jq -r 'select(.scan=="oos-silent-drop") | .result // empty' | head -1)
+    assert_equal "$t60o_skip_res" "skip" "[60o1] zero non-security OOS blocks → skip"
+    # pass: one OOS block + filed URL in oos-issues.ndjson
+    T60O_PASS="$T60O_BASE/pass"
+    mkdir -p "$T60O_PASS/run"
+    cat >"$T60O_PASS/run/oos-accepted-main-agent.md" <<'EOFMD'
+### OOS_1: fixture scope
+- **focus-area**: code-quality
+EOFMD
+    printf '%s\n' '{"body":"filed https://github.com/example/repo/issues/42"}' >"$T60O_PASS/run/oos-issues.ndjson"
+    t60o_pass_out=$(bash "$SCAN_SCRIPT" --run-dir "$T60O_PASS/run" --pr 990060 \
+        --scans-tsv "$T60O_BASE/scans.tsv" --required-files-tsv "$T60O_BASE/required.tsv" \
+        --current-version "34.0.0")
+    t60o_pass_res=$(printf '%s\n' "$t60o_pass_out" | jq -r 'select(.scan=="oos-silent-drop") | .result // empty' | head -1)
+    assert_equal "$t60o_pass_res" "pass" "[60o2] filed URL covers OOS block → pass"
+    # fail: OOS block but no disposition evidence
+    T60O_FAIL="$T60O_BASE/fail"
+    mkdir -p "$T60O_FAIL/run"
+    cp "$T60O_PASS/run/oos-accepted-main-agent.md" "$T60O_FAIL/run/oos-accepted-main-agent.md"
+    printf '%s\n' '{"body":"no urls"}' >"$T60O_FAIL/run/oos-issues.ndjson"
+    t60o_fail_out=$(bash "$SCAN_SCRIPT" --run-dir "$T60O_FAIL/run" --pr 990060 \
+        --scans-tsv "$T60O_BASE/scans.tsv" --required-files-tsv "$T60O_BASE/required.tsv" \
+        --current-version "34.0.0")
+    t60o_fail_res=$(printf '%s\n' "$t60o_fail_out" | jq -r 'select(.scan=="oos-silent-drop") | .result // empty' | head -1)
+    assert_equal "$t60o_fail_res" "fail" "[60o3] missing disposition evidence → fail"
+    # error: corrupt NDJSON line when counting rejected markers
+    T60O_ERR="$T60O_BASE/err"
+    mkdir -p "$T60O_ERR/run"
+    cp "$T60O_PASS/run/oos-accepted-main-agent.md" "$T60O_ERR/run/oos-accepted-main-agent.md"
+    printf '%s\n' 'not-json' >"$T60O_ERR/run/oos-issues.ndjson"
+    t60o_err_out=$(bash "$SCAN_SCRIPT" --run-dir "$T60O_ERR/run" --pr 990060 \
+        --scans-tsv "$T60O_BASE/scans.tsv" --required-files-tsv "$T60O_BASE/required.tsv" \
+        --current-version "34.0.0")
+    t60o_err_res=$(printf '%s\n' "$t60o_err_out" | jq -r 'select(.scan=="oos-silent-drop") | .result // empty' | head -1)
+    assert_equal "$t60o_err_res" "error" "[60o4] invalid oos-issues.ndjson line → scan error"
+    rm -rf "$T60O_BASE"
+else
+    echo "  SKIP: audit-scan-run.sh not executable (not found at $SCAN_SCRIPT)"
+fi
+
 # Test 61: session-summary markdown (file-all, two findings)
 echo "Test 61: post-report session-summary markdown composition"
 build_session_summary_stub() {

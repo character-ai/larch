@@ -9,7 +9,7 @@ After reviewers submit findings and findings are deduplicated, a voting panel vo
 | Vote | Meaning |
 |---|---|
 | **YES** | The finding is correct, important, and worth implementing. |
-| **NO** | The finding is incorrect, trivial, or would cause more harm than good. |
+| **NO** | The problem is not real or not worth raising in this PR. **Do not vote NO because you dislike or distrust the proposed fix** — fix proposals are informational; the coder will design the actual fix. |
 | **EXONERATE** | The finding raises a legitimate concern, but is not worth implementing in this PR. Spares the proposing reviewer from losing a point. |
 
 ## Threshold Rules

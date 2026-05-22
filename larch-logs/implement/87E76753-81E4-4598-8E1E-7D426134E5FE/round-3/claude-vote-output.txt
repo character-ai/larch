@@ -1,0 +1,11 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: EXONERATE -- aggregator format is well-defined; non-bold variant tolerance is low-priority forward-compat
+FINDING_6: NO -- speculative concern about ship-pr.sh resume path; not in plan scope and no evidence of regression introduced by this diff
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: EXONERATE -- EXONERATE row already explicitly covers legitimate-but-not-this-PR concerns; NO row correctly focuses on problem validity now
+FINDING_10: EXONERATE -- OOS gate rejected-marker concern from a prior change set; belongs in a separate tracking issue if still open
+FINDING_11: EXONERATE -- legitimate PR-scoping note but not issue-worthy; bundling reflects normal branch workflow

@@ -1801,6 +1801,25 @@ if [ -z "$_oos_ndjson" ] || [ ! -f "$_oos_ndjson" ]; then
     exit 2
   fi
 fi
+_oos_accepted_csv="$IMPLEMENT_TMPDIR/oos-accepted-main-agent.md,$IMPLEMENT_TMPDIR/oos-accepted-design.md,$IMPLEMENT_TMPDIR/oos-accepted-review.md"
+_non_sec_oos=0
+_oos_blk_awk="${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/oos-non-security-block-count.awk"
+while IFS= read -r _acc; do
+  [ -z "$_acc" ] && continue
+  [ -f "$_acc" ] || continue
+  _n=$(awk -f "$_oos_blk_awk" "$_acc" 2>/dev/null | tr -d '[:space:]' || printf '0')
+  _non_sec_oos=$((_non_sec_oos + _n))
+done <<EOF
+$(printf '%s' "$_oos_accepted_csv" | tr ',' '\n')
+EOF
+if [ "${_forked:-false}" != "true" ] && [ "${_repo_unavail:-false}" != "true" ]; then
+  if [ "${_non_sec_oos:-0}" -gt 0 ]; then
+    if [ -z "$_oos_ndjson" ] || [ ! -f "$_oos_ndjson" ]; then
+      printf '%s\n' 'implement: non-security accepted OOS requires a resolved oos-issues.ndjson path for disposition gate (--oos-issues-ndjson); batch missing or undiscoverable' >&2
+      exit 2
+    fi
+  fi
+fi
 _gate_extra=()
 [ "${_forked:-false}" = "true" ] && _gate_extra+=(--fork-mode)
 [ "${_repo_unavail:-false}" = "true" ] && _gate_extra+=(--repo-unavailable)

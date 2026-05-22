@@ -264,4 +264,8 @@ grep -Fq '**Terminal disposition invariant:**' "$SKILL_MD" \
 grep -Fq 'NEVER silently drop a voted-in OOS finding' "$SKILL_MD" \
   || fail "SKILL.md must retain NEVER rule prohibiting silent OOS drops"
 
+# shellcheck disable=SC2016
+grep -Fq 'NEVER set `OOS_PENDING=false` without a passing `oos-disposition-gate.sh` invocation' "$SKILL_MD" \
+  || fail "SKILL.md must retain NEVER #18 gate-before-clear pin (OOS_PENDING vs oos-disposition-gate.sh)"
+
 echo "All assertions passed."

@@ -1,0 +1,20 @@
+Reading the ballot and any referenced context files.
+
+Verifying implementation details referenced by the ballot against the workspace (read-only).
+
+FINDING_4: Current `oos-disposition-shared.inc.bash` has no `declare -A`; the concern is outdated → **NO**.
+
+Output vote lines only:
+
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: NO -- `oos-disposition-shared.inc.bash` has no `declare -A`; concern is outdated JSONL noise, not current code.
+FINDING_5: EXONERATE -- prompts already mark findings as untrusted data; blanket sanitizers/size caps add heavy policy for modest incremental gain.
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: EXONERATE -- small wording asymmetry in the table without clear operational harm.
+FINDING_9: EXONERATE -- real long-term consistency gap but not worth a standalone tracking issue from this thread alone.
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: EXONERATE -- inherent artifact-review limit, not a product defect to implement from the ballot alone.

@@ -85,9 +85,9 @@ emit() { printf '%s\n' "$1"; }
 # Inline-triage evidence aligned with oos-disposition-gate.sh: when run-log
 # commit-bearing artifacts exist under the run directory, count only those
 # hits (copied RUN_DIR audits must not use the live workspace git range).
-# Otherwise use the same git revision walk as the disposition gate.
+# With no such artifacts, return zero — do not infer Inline-triage from ambient HEAD.
 _audit_oos_inline_triage_hits() {
-    local run_dir="$1" repo range c artifact_any=false tmp
+    local run_dir="$1" c artifact_any=false tmp
     tmp=$(mktemp "${TMPDIR:-/tmp}/audit-inline-triage.XXXXXX")
     : >"$tmp"
     local f
@@ -103,25 +103,9 @@ _audit_oos_inline_triage_hits() {
         return
     fi
     rm -f "$tmp"
-    repo=$(git rev-parse --show-toplevel 2>/dev/null || true)
-    if [ -n "$repo" ]; then
-        range="HEAD"
-        if git -C "$repo" rev-parse -q --verify origin/main >/dev/null 2>&1; then
-            local mb
-            mb=$(git -C "$repo" merge-base HEAD origin/main 2>/dev/null || true)
-            if [ -n "$mb" ]; then
-                range="${mb}..HEAD"
-            else
-                range="origin/main..HEAD"
-            fi
-        fi
-        if git -C "$repo" rev-list -1 "$range" >/dev/null 2>&1; then
-            c=$(git -C "$repo" log --format=%B "$range" 2>/dev/null | grep -cF 'Inline-triage rule' || true)
-            printf '%s' "${c:-0}"
-            return
-        fi
-    fi
-    printf '%s' "${c:-0}"
+    # No run-local commit/transcript artifacts: do not attribute ambient workspace
+    # git history to this run directory (partial/copied logs would skew counts).
+    printf '0'
 }
 
 # Map a raw NS_RETRY_REASON value from .meta to a JSON-safe audit token (unknown → UNKNOWN).
@@ -508,7 +492,10 @@ scan_oos_silent_drop() {
     filed_count=0
     rejected_count=0
     if [ -f "$oos_json" ]; then
-        rejected_count=$(count_rejected_oos_markers_from_ndjson "$oos_json")
+        if ! rejected_count=$(count_rejected_oos_markers_from_ndjson "$oos_json"); then
+            emit "{\"scan\":\"oos-silent-drop\",\"pr\":$PR_NUM,\"result\":\"error\",\"detail\":\"$(jstr "jq parse failure while reading oos-issues.ndjson for rejected-OOS markers")\"}"
+            return
+        fi
     fi
     local url_files=()
     [ -f "$oos_json" ] && url_files+=("$oos_json")

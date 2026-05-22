@@ -28,8 +28,12 @@ Primary output is the structured finding list. For each finding include:
 ### FINDING_N: <short title>
 - **Reviewer(s)**: <comma-separated source slots>
 - **Concern**: <normalized concern>
-- **Suggested revision**: <minimal fix direction>
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From <slot-A>: <revision A, verbatim>
+  - From <slot-B>: <revision B, verbatim>
 ```
+
+Quote each reviewer's fix verbatim. Merge two bullets into one only when the wording is literally identical. Never paraphrase across distinct proposals. When a reviewer provided no fix direction, omit that slot's bullet; do not fabricate a revision.
 
 Do not vote, reject, or apply fixes. Do not include raw reviewer transcripts unless the caller explicitly asks for diagnostic output.
 

@@ -163,7 +163,10 @@ else
 fi
 rejected=0
 if [ -n "$OOS_ISSUES_NDJSON" ] && [ -f "$OOS_ISSUES_NDJSON" ]; then
-  rejected=$(count_rejected_oos_markers_from_ndjson "$OOS_ISSUES_NDJSON")
+  if ! rejected=$(count_rejected_oos_markers_from_ndjson "$OOS_ISSUES_NDJSON"); then
+    printf '%s\n' 'oos-disposition-gate: jq parse failure while reading oos-issues.ndjson; refusing disposition' >&2
+    exit 2
+  fi
 fi
 inline_raw=$(count_inline_triage "$COMMIT_RANGE") || exit 2
 inline=$inline_raw
