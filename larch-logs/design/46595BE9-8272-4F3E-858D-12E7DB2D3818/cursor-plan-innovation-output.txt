@@ -1,0 +1,37 @@
+Reading the plan and referenced code paths for the review.
+
+Reading referenced scripts and adjacent integration points.
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/create-pr.sh:97-107	Edge-case text claims committing log subtree clears create-pr pre-push guard	create-pr.sh refuses when any path is dirty; unrelated WIP blocks design-log-publish after log commit	Revise plan edge cases: require full clean porcelain before create-pr or document operator must stash commit discard other changes
+1	in_scope	important	risk-integration	skills/design/SKILL.md:161-169 plan.txt:118-119	Plan assumes SESSION_ID threaded from Step 0 but SKILL currently parses SESSION_TMPDIR not SESSION_ID	Empty or wrong --run-id breaks publish or collides runs	Extend Step 0 parse list for SESSION_ID from session-setup stdout or read DESIGN_TMPDIR session-id file explicitly in SKILL
+1	in_scope	important	risk-integration	skills/shared/subskill-invocation.md:174-179 plan.txt:72-88	Step 5 snippet adds inline print warnings after plan write	Nested SESSION_ENV_PATH nonempty forbids human prose in parent-visible output only machine footer plus paths	Branch new warnings on SESSION_ENV_PATH empty or append to execution-issues.md under nested rule in skills/design/SKILL.md:171
+1	in_scope	nit	code-quality	scripts/tracking-issue-write.sh:11-13 scripts/tracking-issue-write.sh:31-34	Plan omits updating header usage line and Rename semantics comment still list three lifecycle prefixes only	Consumers and agents read stale contract in-script	Include comment usage and Rename semantics block updates when adding planned state
+1	in_scope	latent	architecture	plan.txt:108-110	gh pr merge --squash --admin --delete-branch as default path	Remote feature branch deleted requires admin token orgs may forbid admin merge fork workflows differ	Document operator expectations credential scope and offer non-admin fallback issue for opt-out or leave PR open
+1	in_scope	nit	code-quality	plan.txt:72-84	Detection uses grep for substrings PUBLISH_OK=false and FAILED=true	Future stdout or logs containing token as substring false positive	Prefer structured parse of emit_kv lines or dedicated exit-code contract in design-log-publish.sh
+1	out_of_scope	nit	code-quality	scripts/tracking-issue-write.md:1-11	Contract sibling omits planned in rename argv table	Downstream doc drift same PR should touch	[OUT_OF_SCOPE] Add planned to tracking-issue-write.md usage block with other file edits
+1	out_of_scope	latent	correctness	docs/issue-anchored-plan.md:177-245	Tracking-issue lifecycle prose references IN PROGRESS lock semantics only	Readers may not expect post-design PLANNED title state	[OUT_OF_SCOPE] Add sentence on optional PLANNED title marker after design completes if product wants aligned language
+
+Numbered findings:
+
+1. **[correctness]** [scripts/create-pr.sh:97-107](scripts/create-pr.sh) vs [plan.txt:121-122](file in cache) — The plan claims committing design logs leaves the tree clean enough for `create-pr.sh`. `create-pr.sh` fails on any non-empty `git status --porcelain`. **Suggested revision:** State explicitly that the whole worktree must be clean (not only the log commit), or add a documented operator precondition.
+
+2. **[risk-integration]** [skills/design/SKILL.md:161-169](skills/design/SKILL.md) vs plan “Session ID availability” — `session-setup.sh` emits `SESSION_ID`, but Step 0 currently tells the orchestrator to parse `SESSION_TMPDIR` and reviewer flags, not `SESSION_ID`. **Suggested revision:** Add `SESSION_ID` to the parsed keys (or read `$DESIGN_TMPDIR/session-id`) before invoking `design-log-publish.sh`.
+
+3. **[risk-integration]** [skills/shared/subskill-invocation.md:174-179](skills/shared/subskill-invocation.md), [skills/design/SKILL.md:46-48](skills/design/SKILL.md) vs plan Step 5b snippet — Inline `print "**⚠ …**"` for rename/publish conflicts the nested artifact-only contract (human-readable lines forbidden when `SESSION_ENV_PATH` is set). **Suggested revision:** Gate those prints on standalone mode or log to `execution-issues.md` / file-backed sidecar per nested rules.
+
+4. **[code-quality]** [scripts/tracking-issue-write.sh:11-13](scripts/tracking-issue-write.sh), [scripts/tracking-issue-write.sh:31-34](scripts/tracking-issue-write.sh) — Plan lists code edits but not the in-file usage banner or the “Rename semantics” comment that still documents three lifecycle prefixes. **Suggested revision:** Extend the file list to include these comment blocks so agents do not ship stale contracts.
+
+5. **[architecture]** [plan.txt:108-110](plan.txt) (merge design) — Default path uses `gh pr merge --admin --delete-branch`, which needs elevated token rights and deletes the remote head branch; this is heavier than “flush logs” suggests. **Suggested revision:** Call out fork/contributor and org-policy limitations in docs; consider an opt-out or “open PR only” mode as a follow-up.
+
+6. **[security]** [plan.txt:35-38](plan.txt), [plan.txt:126](plan.txt) — `--admin` merge intentionally bypasses branch protection and CI; redaction is best-effort. **Suggested revision:** In `SECURITY.md` / script sibling, tie admin-merge to trusted-operator assumption and restate secret-handling limits (plan already mentions keys in prompts; link merge privilege to same section).
+
+7. **[code-quality]** [plan.txt:72-84](plan.txt) — Using `grep` for `PUBLISH_OK=false` / `FAILED=true` is brittle if unrelated output contains those substrings. **Suggested revision:** Parse `emit_kv` lines or rely on exit status plus a single sentinel line from helpers.
+
+**[OUT_OF_SCOPE]** [scripts/tracking-issue-write.md:1-11](scripts/tracking-issue-write.md) — Rename usage table should gain `planned`; not listed in the plan’s modify list; include in same change set to avoid contract drift.
+
+**[OUT_OF_SCOPE]** [docs/issue-anchored-plan.md:177-245](docs/issue-anchored-plan.md) — Narrative around tracking-issue `IN PROGRESS` may deserve a clarifying note if `[PLANNED]` becomes a visible post-design state; avoids confusion for implement preflight vs design completion.
+
+**Creative alternative (architecture):** Instead of auto-merge with `--admin`, default to “commit + push + open PR” and emit `PR_URL` for manual merge when policy forbids admin merges—preserves logs without privileged tokens; auto-merge stays behind a flag.
+
+I will not output `{"no_issues_found": true}` because we have findings.
