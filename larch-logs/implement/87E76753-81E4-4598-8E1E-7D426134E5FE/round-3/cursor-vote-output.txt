@@ -1,0 +1,11 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: EXONERATE -- advisory validator documents prefix fallback and STRICT opt-in; acceptable tradeoff
+FINDING_5: YES
+FINDING_6: EXONERATE -- resume drops eager OOS_PENDING clear consistent with NEVER #18 gate-before-clear
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: EXONERATE -- adjacent EXONERATE row still anchors costly-but-not-for-this-PR cases
+FINDING_10: YES
+FINDING_11: EXONERATE -- process-only scope note; no GitHub tracking issue warranted
