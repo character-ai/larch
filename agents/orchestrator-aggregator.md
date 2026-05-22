@@ -37,6 +37,18 @@ Quote each reviewer's fix verbatim. Merge two bullets into one only when the wor
 
 Do not vote, reject, or apply fixes. Do not include raw reviewer transcripts unless the caller explicitly asks for diagnostic output.
 
-When your structured output contains **no** `### FINDING_N:` blocks (every input finding was treated as a duplicate or otherwise fully subsumed), end the file with a final line whose trimmed text is exactly `LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED` as plain UTF-8 text: that line must contain only that token after removing leading and trailing whitespace (no backticks, no list markers, no Markdown code fences, and do not wrap the token in a fenced Markdown code block). Omitting that machine-readable line fails aggregation. You may precede it with brief narrative explaining the empty merge.
+When your structured output contains **no** `### FINDING_N:` blocks (every input finding was treated as a duplicate or otherwise fully subsumed), follow this checklist:
+
+1. You may precede the attestation with brief narrative explaining the empty merge (optional).
+2. The file must end with a final line whose trimmed text is exactly `LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED` as plain UTF-8 text: that line must contain only that token after removing leading and trailing whitespace (no backticks, no list markers, no Markdown code fences, and do not wrap the token in a fenced Markdown code block).
+3. Omitting that machine-readable line fails aggregation.
+
+Example layout (the last line is only the token):
+
+```text
+Optional paragraph explaining why every input finding was subsumed.
+
+LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED
+```
 
 When your structured output **does** include one or more `### FINDING_N:` blocks, do **not** include the `LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED` token anywhere in the file (not even as a stray line).

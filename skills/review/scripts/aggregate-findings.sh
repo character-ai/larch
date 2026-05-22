@@ -470,6 +470,40 @@ def check_revision_traceability(input_text, output_blocks_list):
     return warnings
 
 
+def _attempt_attestation_repair(raw_text, input_text):
+    """If merge output is empty-merge shaped but missing the attestation line, append it."""
+    blocks = output_blocks(raw_text)
+    input_slot_set = set()
+    for block in input_blocks(input_text):
+        _line, slots = reviewer_line_slots(block)
+        for sl in slots:
+            input_slot_set.add(normalize_slot(sl))
+    has_attest_line = any(
+        line.strip() == EMPTY_MERGE_ATTESTATION for line in raw_text.splitlines()
+    )
+    if not blocks and input_slot_set and not has_attest_line:
+        return (
+            raw_text + "\n" + EMPTY_MERGE_ATTESTATION + "\n",
+            True,
+            len(input_slot_set),
+        )
+    return raw_text, False, len(input_slot_set)
+
+
+def repair_attestation_main():
+    input_path, output_path = sys.argv[2], sys.argv[3]
+    intext = open(input_path, encoding="utf-8").read()
+    raw = open(output_path, encoding="utf-8").read()
+    repaired, synthesized, nslots = _attempt_attestation_repair(raw, intext)
+    sys.stdout.write(repaired)
+    if synthesized:
+        print(
+            "ATTESTATION_SYNTHESIZED=true input_slots=%d" % (nslots,),
+            file=sys.stderr,
+        )
+    return 0
+
+
 def main():
     input_path, output_path = sys.argv[1], sys.argv[2]
     intext = open(input_path, encoding="utf-8").read()
@@ -561,8 +595,31 @@ def main():
 
 
 if __name__ == "__main__":
+    if len(sys.argv) >= 4 and sys.argv[1] == "--repair-attestation":
+        raise SystemExit(repair_attestation_main())
     raise SystemExit(main())
 PY
+
+# Deterministic recovery: synthesize empty-merge attestation before validation when
+# the vendor output is narrative-only but the ballot had structured findings.
+rm -f "$REVIEW_TMPDIR/aggregator-repair.stderr"
+repair_err_tmp="$(mktemp "$REVIEW_TMPDIR/aggregate-repair-err.XXXXXX")"
+cand_repaired_tmp="$(mktemp "$REVIEW_TMPDIR/aggregate-repair-out.XXXXXX")"
+if ! python3 "$validate_py" --repair-attestation "$FINDINGS_FILE" "$cand" >"$cand_repaired_tmp" 2>"$repair_err_tmp"; then
+    rm -f "$repair_err_tmp" "$cand_repaired_tmp"
+    REASON="validation-failed"
+    FAILURE_LOG="$REVIEW_TMPDIR/aggregate-repair-failed.stderr"
+    printf '%s\n' "aggregate-validate.py --repair-attestation exited non-zero" >"$FAILURE_LOG"
+    append_warning "- **findings aggregator**: empty-merge attestation repair step failed; leaving findings.md unchanged. $(failure_see_phrase "$FAILURE_LOG")"
+    emit_result
+    exit 0
+fi
+if [[ -s "$repair_err_tmp" ]]; then
+    mv -f "$repair_err_tmp" "$REVIEW_TMPDIR/aggregator-repair.stderr"
+else
+    rm -f "$repair_err_tmp" "$REVIEW_TMPDIR/aggregator-repair.stderr"
+fi
+mv -f "$cand_repaired_tmp" "$cand"
 
 if ! python3 "$validate_py" "$FINDINGS_FILE" "$cand" 2>"$REVIEW_TMPDIR/aggregator-validate.stderr"; then
     REASON="validation-failed"

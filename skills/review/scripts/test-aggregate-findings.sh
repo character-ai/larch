@@ -421,7 +421,7 @@ grep -Fq 'INPUT_COUNT=3' "$TMP/out-zero.env" || fail "zero-findings INPUT_COUNT"
 grep -Fq 'LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED' "$TMP/in3-zero.md" && fail "attestation must not persist in findings.md"
 cmp -s "$TMP/in3.md" "$TMP/in3-zero.md" && fail "expected findings.md rewritten on zero-findings merge"
 
-echo "=== zero output without empty-merge attestation fails validation ==="
+echo "=== zero output without model attestation: script synthesizes token (#2563) ==="
 cp "$TMP/in3.md" "$TMP/in3-zero-na.md"
 write_stub_dispatch
 AGGREGATE_DISPATCH_SH="$TMP/stub-dispatch.sh" \
@@ -433,9 +433,36 @@ AGGREGATE_STUB_MERGE_KIND=zero_findings_no_attest \
     --codex-present true \
     --cursor-present true \
     --mode diff >"$TMP/out-zero-na.env"
-grep -Fq 'AGGREGATED=false' "$TMP/out-zero-na.env" || fail "no-attest AGGREGATED"
-grep -Fq 'REASON=validation-failed' "$TMP/out-zero-na.env" || fail "no-attest REASON"
-cmp -s "$TMP/in3.md" "$TMP/in3-zero-na.md" || fail "findings unchanged when attestation missing"
+grep -Fq 'AGGREGATED=true' "$TMP/out-zero-na.env" || fail "synth no-attest AGGREGATED"
+grep -Fq 'REASON=ok' "$TMP/out-zero-na.env" || fail "synth no-attest REASON"
+grep -Fq 'MERGED_COUNT=0' "$TMP/out-zero-na.env" || fail "synth no-attest MERGED_COUNT"
+grep -Fq 'ATTESTATION_SYNTHESIZED=true' "$TMP/aggregator-repair.stderr" || fail "missing synthesis breadcrumb"
+grep -Fq 'LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED' "$TMP/in3-zero-na.md" && fail "attestation must not persist in findings.md (strip)"
+grep -Fq 'LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED' "$TMP/aggregator-output.txt" || fail "synthesized token must appear in committed raw aggregator-output.txt"
+[[ "$(grep -c '^### FINDING_' "$TMP/in3-zero-na.md" | tr -d '[:space:]')" == "0" ]] || fail "expected zero FINDING blocks after synthesized empty merge"
+
+echo "=== empty_merge_existing_token_passthrough: model token present, no synthesis stderr ==="
+RR="$TMP/empty-merge-passthrough"
+mkdir -p "$RR"
+rm -f "$RR/aggregator-repair.stderr"
+cp "$TMP/in3.md" "$RR/in3.md"
+cp "$RR/in3.md" "$RR/in3-work.md"
+write_stub_dispatch
+AGGREGATE_DISPATCH_SH="$TMP/stub-dispatch.sh" \
+AGGREGATE_STUB_MODE=ok \
+AGGREGATE_STUB_MERGE_KIND=zero_findings \
+"$AGG" \
+    --findings-file "$RR/in3-work.md" \
+    --review-tmpdir "$RR" \
+    --codex-present true \
+    --cursor-present true \
+    --mode diff >"$TMP/out-empty-merge-pass.env"
+grep -Fq 'AGGREGATED=true' "$TMP/out-empty-merge-pass.env" || fail "passthrough AGGREGATED"
+grep -Fq 'REASON=ok' "$TMP/out-empty-merge-pass.env" || fail "passthrough REASON"
+if [[ -f "$RR/aggregator-repair.stderr" ]]; then
+    grep -Fq 'ATTESTATION_SYNTHESIZED=true' "$RR/aggregator-repair.stderr" && fail "unexpected synthesis when model already emitted attestation"
+fi
+grep -Fq 'LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED' "$RR/in3-work.md" && fail "attestation must not persist in findings.md (passthrough)"
 
 echo "=== zero output accepts whitespace-padded empty-merge attestation (#2536) ==="
 cp "$TMP/in3.md" "$TMP/in3-zero-pad.md"
