@@ -1039,6 +1039,8 @@ If any check fails, synthesize an orchestrator-local bail: set `STATUS=bailed`, 
 - `STATUS=needs_qa` → run the Q/A loop in 2.3. Note: the dispatcher may have repaired a non-standard `qa-pending.json` (e.g., `items[]` → `questions[]`) before emitting this status; the Q/A loop always reads canonical `questions[]` format from `$QA_PENDING`.
 - `STATUS=claude_fallback` (with `ORCHESTRATOR_EDIT_AUTHORITY=allowed`, validated mechanically in 2.1.5) → run the Claude-fallback branch in 2.4. If `ORCHESTRATOR_EDIT_AUTHORITY != allowed`, treat as envelope failure per 2.1.5 (do NOT enter 2.4).
 
+**Branch enforcement on `claude_fallback`**: the `git-current-branch.sh` vs `BRANCH_NAME` assertion in the `STATUS=complete` bullet above is scoped to `STATUS=complete` only (see NEVER #10 / envelope rules). On `claude_fallback`, the dispatcher returns before that post-dispatch gate; wrong-branch work is still blocked later by `scripts/ship-pr.sh` `run_bump_phase` `bump-branch-guard` (state `BRANCH_NAME` vs checked-out symbolic branch) before version bump classify/apply, which is the canonical ship-time backstop for branch alignment.
+
 **2.3 — Q/A loop** (when `STATUS=needs_qa`):
 
 1. Read `$QA_PENDING` (a JSON file containing `{"questions": [{"id": "q1", "text": "..."}, ...]}`).

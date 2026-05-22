@@ -42,10 +42,13 @@ grep -Fq 'scripts/tracking-issue-summary.sh' "$SKILL_MD" \
 grep -Fq 'summary-comment-template.md' "$SKILL_MD" \
   || fail "SKILL.md must reference summary-comment-template.md"
 
-grep -Fq 'git-current-branch.sh' "$SKILL_MD" \
-  || fail "SKILL.md Step 2.2 must reference git-current-branch.sh (post-dispatch branch assertion)"
+# Pin post-dispatch branch assertion with stable tokens (not "Step 2.2" prose),
+# matching `skills/implement/SKILL.md` §2.2 `STATUS=complete` bullet.
+# shellcheck disable=SC2016
+grep -Fq 'then run **post-dispatch branch assertion** (external-implementer path only): `${CLAUDE_PLUGIN_ROOT}/scripts/git-current-branch.sh` — parse `BRANCH=<name>` into `CURRENT_BRANCH_POST_DISPATCH`' "$SKILL_MD" \
+  || fail "SKILL.md must retain post-dispatch branch assertion contract (git-current-branch.sh + CURRENT_BRANCH_POST_DISPATCH)"
 grep -Fq 'FINAL_BAIL_REASON=main-branch-post-dispatch' "$SKILL_MD" \
-  || fail "SKILL.md Step 2.2 must document FINAL_BAIL_REASON=main-branch-post-dispatch"
+  || fail "SKILL.md must document FINAL_BAIL_REASON=main-branch-post-dispatch (post-dispatch mismatch bail)"
 
 if grep -Eiq '(^|[^[:alpha:]])user has( made| fixed)?([^[:alpha:]]|$)' \
     "$SKILL_MD" \

@@ -809,7 +809,9 @@ run_bump_phase() {
         _bump_guard_branch _bump_guard_state_branch _bump_guard_fail
     forked=$(read_state FORKED_TARGET)
     _bump_guard_state_branch=$(read_state BRANCH_NAME)
-    _bump_guard_branch=$(git branch --show-current 2>/dev/null || echo "")
+    # Match scripts/git-current-branch.sh: symbolic-ref works on older Git than
+    # `git branch --show-current` (2.22+); empty here means detached / no branch.
+    _bump_guard_branch=$(git symbolic-ref -q --short HEAD 2>/dev/null || echo "")
     if [[ -z "$_bump_guard_state_branch" || -z "$_bump_guard_branch" ]]; then
         _bump_guard_fail=$(failure_capture_path bump)
         printf 'bump-branch-guard: BRANCH_NAME=%s current=%s\n' \
@@ -824,6 +826,10 @@ run_bump_phase() {
         record_failure bump "bump-branch-guard" 1 "$_bump_guard_fail"
         exit_stall bump-branch-guard
     fi
+    # FORKED_TARGET=true is a runbook/state trust signal: when BRANCH_NAME matches
+    # checkout, bump may proceed on main/master (forked upstream-target flow).
+    # A mistaken FORKED_TARGET=true is operator mis-configuration; there is no
+    # extra fork-evidence probe beyond state + branch-name alignment.
     if [[ "$forked" != "true" ]] && { [[ "$_bump_guard_state_branch" == "main" ]] || [[ "$_bump_guard_state_branch" == "master" ]]; }; then
         _bump_guard_fail=$(failure_capture_path bump)
         printf 'bump-branch-guard: BRANCH_NAME=%s current=%s\n' \
@@ -1347,6 +1353,10 @@ run_rebase_rebump() {
     local plan_args=()
     local _origin_ver="" _classified_version="" _corrected=""
     emit_breadcrumb "⚠ ship-pr: rebase + re-bump"
+
+    # Operator invariant: unlike `run_bump_phase`, this path does not re-run the
+    # bump-branch-guard (empty branch / name mismatch / non-forked main|master)
+    # before `drop-bump-commit.sh`; rely on correct checkout + state alignment.
 
     # Cap rebase retries to prevent indefinite storms (e.g. concurrent merges
     # to main that keep triggering ACTION=rebase from ci-wait.sh).

@@ -1089,6 +1089,42 @@ else
     fail "19-parent-issue" "expected main-branch-prohibited from parent-issue ISSUE_NUMBER without session ISSUE_NUMBER; got: $OUT_19B"
 fi
 
+# Test 19c: FORKED_TARGET=true on main — fork carve-out; must not bail
+# main-branch-prohibited before the stubbed launcher runs.
+TMP19C="$SCRATCH/test19c"; mkdir -p "$TMP19C"
+printf 'fresh-step2-19c\n' > "$TMP19C/session-id"
+SCRATCH_REPO19C="$SCRATCH/scratch-repo-19c"
+mkdir -p "$SCRATCH_REPO19C"
+git -C "$SCRATCH_REPO19C" init -q -b main
+git -C "$SCRATCH_REPO19C" config user.email "test@example.com"
+git -C "$SCRATCH_REPO19C" config user.name "Test"
+echo "initial" > "$SCRATCH_REPO19C/README.md"
+git -C "$SCRATCH_REPO19C" add README.md
+git -C "$SCRATCH_REPO19C" commit -q -m "init"
+cat > "$TMP19C/session-env.sh" <<'ENV'
+ISSUE_NUMBER=2486
+FORKED_TARGET=true
+ENV
+
+OUT_19C=$(cd "$SCRATCH_REPO19C" && \
+    PATH="$STUB_BIN_19:$PATH" \
+    RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
+    LARCH_QUIET_DISABLE=1 \
+    LARCH_CURSOR_MODEL="stub-model" \
+    CURSOR_API_KEY="" \
+    LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 \
+    LIB_CURSOR_AUTH_TEST_UNAME="Linux" \
+    "$DISPATCHER" --tmpdir "$TMP19C" --plan-file "$PLAN" --feature-file "$FEATURE" \
+        --coder cursor --cursor-present true 2>&1)
+
+if [[ "$OUT_19C" == *"REASON=main-branch-prohibited"* ]]; then
+    fail 19c "fork carve-out must not emit main-branch-prohibited when FORKED_TARGET=true; got: $OUT_19C"
+elif [[ "$OUT_19C" != *"REASON=cursor-runtime-failure"* ]] || [[ "$OUT_19C" != *"TOOL=cursor"* ]]; then
+    fail 19c "fork carve-out: expected launcher attempt (cursor-runtime-failure + TOOL=cursor); got: $OUT_19C"
+else
+    pass
+fi
+
 # ---------------------------------------------------------------------------
 # Summary.
 # ---------------------------------------------------------------------------
