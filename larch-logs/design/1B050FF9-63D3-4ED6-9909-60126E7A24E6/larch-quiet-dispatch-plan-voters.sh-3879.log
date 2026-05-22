@@ -1,0 +1,24 @@
++ BALLOT_FILE=
++ DESIGN_TMPDIR=
++ CODEX_AVAILABLE=
++ CURSOR_AVAILABLE=
++ SESSION_ENV_PATH=
++ [[ 10 -gt 0 ]]
++ case "$1" in
++ BALLOT_FILE=<TMPDIR>/ballot.txt
++ shift 2
++ [[ 8 -gt 0 ]]
++ case "$1" in
++ DESIGN_TMPDIR=<TMPDIR>
++ shift 2
++ [[ 6 -gt 0 ]]
++ case "$1" in
++ CODEX_AVAILABLE=true
++ shift 2
++ [[ 4 -gt 0 ]]
++ case "$1" in
++ CURSOR_AVAILABLE=true
++ shift 2
++ [[ 2 -gt 0 ]]
++ case "$1" in
+<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/37.0.2/scripts/dispatch-plan-voters.sh: line 28: 2: --session-env-path requires a value

@@ -1,0 +1,5 @@
+Exploring the codebase read-only to map call sites, wrapper behavior, and coupling for the plan.
+
+Creating a plan that consolidates architecture, file touch list, risks, and the resolved scope from issue #2586.
+
+

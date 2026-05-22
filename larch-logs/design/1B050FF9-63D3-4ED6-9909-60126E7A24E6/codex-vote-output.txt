@@ -1,0 +1,23 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: EXONERATE -- off-by-one line drift is harmless because the plan already identifies the PreToolUse Skill matcher structurally.
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: YES
+FINDING_18: EXONERATE -- migration-window backstop is legitimate but conflicts with the explicit hard-cutover deletion decision and keeps dead hook machinery alive.
+FINDING_19: EXONERATE -- a shipped default template would add a separate distribution mechanism beyond this migration.
+FINDING_20: YES
+OOS_1: YES
+OOS_2: NO -- covered by the downstream migration-communication follow-up in OOS_1.
+OOS_3: EXONERATE -- historical run logs are intentionally immutable and already excluded from the live-reference gate.

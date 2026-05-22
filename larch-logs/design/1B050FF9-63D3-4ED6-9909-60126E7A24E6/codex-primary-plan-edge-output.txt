@@ -1,0 +1,21 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/run-relevant-checks-captured.sh:133-136	Planned skip branch conflates missing script with present but unusable script	A consumer adds scripts/relevant-checks.sh but forgets chmod +x or the path is a directory; helper emits RELEVANT_CHECKS_SKIPPED=true and exits 0 so validation is silently bypassed	Distinguish absent from invalid: only skip when the path is absent; fail structurally for present non-file or non-executable with a dedicated FAILURE_REASON and harness coverage
+1	in_scope	important	risk-integration	scripts/run-relevant-checks-captured.sh:126-133	Wrapper selects the check script from CLAUDE_PROJECT_DIR but does not execute it from that repo	The migrated script preserves git rev-parse from current cwd, so if PWD is another git repo the consumer repo script can validate the wrong tree or fail as not-in-git	Have the wrapper cd to REPO_ROOT before invoking CHECK_SCRIPT or have scripts/relevant-checks.sh derive REPO_ROOT from its own location and use git -C; add a regression where CLAUDE_PROJECT_DIR differs from PWD
+1	in_scope	latent	code-quality	agent-lint.toml:514-523	New Makefile-only harness is not called out for agent-lint reachability handling	Plan creates scripts/test-relevant-checks.sh and .md, but the existing allowlist only names the current relevant-checks harnesses; make lint can fail on unreferenced files after the rename	Add exact agent-lint.toml updates to the plan: add scripts/test-relevant-checks.sh and .md, remove deleted hook/test entries, and update the allowlist comment
+1	in_scope	nit	architecture	CHANGELOG.md:1860-1865	Final grep gate conflicts with historical changelog references	The proposed grep for .claude/skills/relevant-checks or /relevant-checks will still match older CHANGELOG entries, creating either a false verification failure or pressure to rewrite historical release notes	Change the verification gate to exclude CHANGELOG.md and separately assert only the new migration note is present in the current release section, or explicitly allow all CHANGELOG matches
+
+1. **[correctness] scripts/run-relevant-checks-captured.sh:133-136**  
+Concern: the planned `[[ ! -x "$CHECK_SCRIPT" ]]` skip treats “missing” and “present but broken” the same.  
+Suggested revision: use separate branches: absent path → `RELEVANT_CHECKS_SKIPPED=true`; present but not regular/executable → `STATUS=fail FAILURE_REASON=check-script-not-executable`.
+
+2. **[risk-integration] scripts/run-relevant-checks-captured.sh:126-133**  
+Concern: the wrapper resolves the script from `CLAUDE_PROJECT_DIR`, but the migrated script’s preserved `git rev-parse` behavior validates the current working directory.  
+Suggested revision: anchor execution to the selected repo root with `cd "$REPO_ROOT"` before invoking, or make `scripts/relevant-checks.sh` derive its repo root from `BASH_SOURCE[0]`.
+
+3. **[code-quality] agent-lint.toml:514-523**  
+Concern: the plan adds `scripts/test-relevant-checks.sh` as a Makefile-only harness but does not explicitly update the agent-lint reachability allowlist.  
+Suggested revision: include exact `agent-lint.toml` add/remove work for the renamed harness and deleted hook harness.
+
+4. **[architecture] CHANGELOG.md:1860-1865**  
+Concern: the final grep gate will still match historical changelog entries.  
+Suggested revision: exclude `CHANGELOG.md` from the zero-reference grep, then separately verify the current release note contains the migration language.

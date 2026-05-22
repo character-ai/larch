@@ -1,0 +1,33 @@
+Reading the plan file and referenced code paths for an edge-case review.
+
+Reading referenced implementation files to validate contracts and integration points.
+
+Checking `docs/installation-and-setup.md` for the failure-vs-skip claim and whether the plan’s doc sweep covers it.
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/ship-pr.sh:678-730	rc=0 success path keys only on RELEVANT_CHECKS_OK=true	After skip semantics, stdout is RELEVANT_CHECKS_SKIPPED only; branch falls through to REDACTED_LOG_FILE parsing and can hit resolve failure then exit_stall 6 (false stall).	Treat SKIPPED like OK before any REDACTED_LOG_FILE handling on all four capture sites; keep ship-pr fixtures that exercise each branch.
+1	in_scope	important	correctness	scripts/run-relevant-checks-captured.sh:133-137 (planned)	-x test lumps missing script and non-executable script	Present but non-executable scripts/relevant-checks.sh skips validation same as absent file with no distinct signal.	Consider fail-closed or distinct FAILURE_REASON when the path exists but is not executable; at minimum document in scripts/relevant-checks.md.
+1	in_scope	important	correctness	docs/installation-and-setup.md:205-217	States workflows fail if consumer lacks relevant-checks	New wrapper exits 0 with RELEVANT_CHECKS_SKIPPED; operators following this page expect a hard failure.	Rewrite section for scripts/relevant-checks.sh path, skip line plus stderr breadcrumb, and migration from .claude/skills/relevant-checks/.
+1	in_scope	nit	architecture	.claude/settings.json:184-184	Skill(relevant-checks) allow entry not listed for removal	Stale allow entry after deleting the skill confuses strict-permissions audits.	Remove Skill(relevant-checks) in the same change set as hooks.json and the Bash row at line 6.
+1	in_scope	nit	code-quality	scripts/run-relevant-checks-captured.md:3-20	Primary callers and success grammar omit third terminal state	Editors may leave parsers or docs inconsistent with SKIPPED.	Update purpose line to scripts/relevant-checks.sh; document RELEVANT_CHECKS_SKIPPED; reconcile Primary callers with skills/implement/SKILL.md (Step 10 or 12c references look stale versus current implement file).
+1	in_scope	important	risk-integration	scripts/test-review-relevant-checks-helper.sh:18-27	Harness only asserts RELEVANT_CHECKS_OK in the Step 3e window	SKIPPED prose could be omitted while tests still pass.	Assert callout contains RELEVANT_CHECKS_SKIPPED or a regex alternation once SKILL.md documents skip.
+1	in_scope	latent	architecture	plan.txt:160-161	Final grep scope limited to a few extensions	Residual references in Dockerfile extensionless configs or other text formats evade the gate.	Extend include globs or add a second audit pass; document allowed leftovers.
+1	in_scope	nit	risk-integration	plan.txt:98-99 (CHANGELOG bullet)	Wording silent skip versus stderr larch_err	Operators may underestimate observability of skipped checks.	Clarify visible stderr plus machine-readable SKIPPED line in CHANGELOG text.
+
+1. **[correctness]** [scripts/ship-pr.sh:678-730](scripts/ship-pr.sh) — `run_checks_phase` and `run_checks_with_lint_fix_loop` treat `rc=0` plus `^RELEVANT_CHECKS_OK=true ` as the only clean path; a `RELEVANT_CHECKS_SKIPPED=true` line alone falls through to `REDACTED_LOG_FILE` extraction and can stall. **Suggested revision:** branch on SKIPPED before any redacted-log handling on all four sites; align with new ship-pr fixtures.
+
+2. **[correctness]** [scripts/run-relevant-checks-captured.sh:133-137](scripts/run-relevant-checks-captured.sh) (planned `! -x` check) — Missing file and non-executable file both produce the same skip envelope and exit 0. **Suggested revision:** differentiate or fail-closed when the path exists but is not executable; document the behavior in [scripts/relevant-checks.md](scripts/relevant-checks.md).
+
+3. **[correctness]** [docs/installation-and-setup.md:205-217](docs/installation-and-setup.md) — The page states workflows will *fail* without a consumer `.claude/skills/relevant-checks/` tree; the migration makes missing `scripts/relevant-checks.sh` a success-equivalent skip. **Suggested revision:** full rewrite of this section for the new path and skip contract (plan lists this file but not the contradiction severity).
+
+4. **[architecture]** [.claude/settings.json:184](.claude/settings.json) — Plan removes the Bash allow row for the old skill scripts but does not mention removing `Skill(relevant-checks)`. **Suggested revision:** delete that allow entry with the skill removal to avoid stale permission surface.
+
+5. **[code-quality]** [scripts/run-relevant-checks-captured.md:3-20](scripts/run-relevant-checks-captured.md) — Still describes `.claude/skills/.../run-checks.sh` and a single success line shape; callers list mentions Step 10 and Step 12c while [skills/implement/SKILL.md](skills/implement/SKILL.md) only wires the helper at Steps 3, 5, and 6 today. **Suggested revision:** sync grammar for `RELEVANT_CHECKS_SKIPPED`, new script path, and accurate caller enumeration.
+
+6. **[risk-integration]** [scripts/test-review-relevant-checks-helper.sh:18-27](scripts/test-review-relevant-checks-helper.sh) — Structural test requires `RELEVANT_CHECKS_OK=true` in the Step 3e window only. **Suggested revision:** require `RELEVANT_CHECKS_SKIPPED` (or alternation) in the same window once [skills/review/SKILL.md](skills/review/SKILL.md) documents skip (plan marks this optional; treat as load-bearing).
+
+7. **[architecture]** [plan.txt:160-161](plan.txt) — Final grep gate uses a narrow `--include` set. **Suggested revision:** add other text-bearing paths or a documented manual follow-up so references cannot hide in e.g. `Dockerfile` or extensionless config.
+
+8. **[risk-integration]** [plan.txt:98-99](plan.txt) — CHANGELOG bullet calls the behavior a “silent skip” though the wrapper plan emits `larch_err` stderr plus a machine line. **Suggested revision:** tighten wording to “non-blocking skip” with explicit observability channels.
+
+**[OUT_OF_SCOPE]** Third-party consumer repos that keep only `.claude/skills/relevant-checks/` after upgrading the plugin: they will get check skips without local failures — track via consumer migration guides or release notes outside this repo. Affected guidance today: [docs/installation-and-setup.md:205-217](docs/installation-and-setup.md), [docs/skills.md:104-117](docs/skills.md).
