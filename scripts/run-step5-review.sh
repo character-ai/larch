@@ -130,6 +130,7 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 REVIEW_AND_FIX_ARGS=()
 
 [[ -f "$PLAN_FILE" ]] || fail "plan file not found at conventional path: $PLAN_FILE"
+[[ -s "$PLAN_FILE" ]] || fail "plan file is empty at conventional path: $PLAN_FILE"
 
 # Fixed base Step 5 round cap (unified hard workflow contract); see scripts/run-step5-review.md.
 ROUND_CAP="5"

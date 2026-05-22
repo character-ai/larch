@@ -93,8 +93,13 @@ jq -e '.sketch_budget == 4 and .review_budget == "quick"' "$TMPROOT/full-plus-qu
     --review-budget full \
     --workflow-path SIMPLE \
     --output "$TMPROOT/trivial.json" >/dev/null
-jq -e '.design_classification == "TRIVIAL_DOC_ONLY" and .sketch_budget == 0' "$TMPROOT/trivial.json" >/dev/null \
-    || fail "trivial zero-sketch budget was not represented"
+jq -e '
+  .design_classification == "TRIVIAL_DOC_ONLY" and
+  .design_classification_source == "caller-forwarded" and
+  .workflow_path == "SIMPLE" and
+  .sketch_budget == 0
+' "$TMPROOT/trivial.json" >/dev/null \
+    || fail "trivial preset JSON did not match expected classification fields"
 
 if "$WRITER" \
     --classification SIMPLE \

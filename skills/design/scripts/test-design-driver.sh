@@ -67,6 +67,15 @@ if "$SUBJECT" --design-tmpdir "$DESIGN3" --action-file "$bad" >/tmp/larch-design
 fi
 grep -q '^STEP_FAILED=EMIT_PLAN REASON=exit-1$' /tmp/larch-design-driver-fail.out || fail "failure status not emitted"
 
+classify_bad="$TMPROOT/classify-actions.txt"
+cat > "$classify_bad" <<'EOF'
+ACTION=CLASSIFY
+EOF
+if "$SUBJECT" --design-tmpdir "$DESIGN" --action-file "$classify_bad" >/tmp/larch-design-driver-classify.out 2>&1; then
+    fail "deprecated CLASSIFY action was accepted"
+fi
+grep -q '^STEP_FAILED=CLASSIFY' /tmp/larch-design-driver-classify.out || fail "CLASSIFY did not fail closed"
+
 unknown="$TMPROOT/unknown-actions.txt"
 cat > "$unknown" <<'EOF'
 hello

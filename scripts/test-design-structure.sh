@@ -351,13 +351,13 @@ focus_anchor_count=$(grep -Fc 'Focus area enum anchor for CI: code-quality / ris
 [[ "$focus_anchor_count" == "10" ]] \
   || fail "(14a) SKILL.md must keep 10 focus-area enum anchor comments; found $focus_anchor_count"
 grep -Fq 'ACTION=EMIT_PLAN' "$SKILL_MD" \
-  || fail "(14b) SKILL.md missing ACTION=EMIT_PLAN emission"
+  || fail "(14b1) SKILL.md missing ACTION=EMIT_PLAN emission"
 grep -Fq 'ACTION=TALLY' "$SKILL_MD" \
-  || fail "(14b) SKILL.md missing ACTION=TALLY emission"
+  || fail "(14b2) SKILL.md missing ACTION=TALLY emission"
 grep -Fq 'ACTION=FINALIZE' "$SKILL_MD" \
-  || fail "(14b) SKILL.md missing ACTION=FINALIZE emission"
+  || fail "(14b3) SKILL.md missing ACTION=FINALIZE emission"
 grep -Fq 'design-driver.sh' "$SKILL_MD" \
-  || fail "(14b) SKILL.md missing design-driver.sh dispatcher invocation"
+  || fail "(14b4) SKILL.md missing design-driver.sh dispatcher invocation"
 
 echo "PASS: test-design-structure.sh — structural invariants hold (including security OOS exclusions)"
 exit 0

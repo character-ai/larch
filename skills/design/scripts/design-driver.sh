@@ -104,6 +104,10 @@ process_line() {
     action="${action%% *}"
     case "$action" in
         EMIT_PLAN|TALLY|FINALIZE) ;;
+        CLASSIFY)
+            emit "STEP_FAILED=CLASSIFY REASON=deprecated-action"
+            return 2
+            ;;
         *)
             emit_kv ACTION_PASSTHROUGH "$line"
             return 0

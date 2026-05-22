@@ -31,6 +31,6 @@ Hardcoded downstream flag:
 
 - `--mode diff`
 
-Exceptions: none. Missing `$IMPLEMENT_TMPDIR/plan.txt` (or an unreadable session env) is a launcher error.
+Exceptions: none. Missing, empty, or unreadable `$IMPLEMENT_TMPDIR/plan.txt` (or an unreadable session env) is a launcher error.
 
 Harness: `scripts/test-run-step5-review.sh`.

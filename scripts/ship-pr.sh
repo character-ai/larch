@@ -231,7 +231,12 @@ resolve_plan_file() {
                 --category Warnings \
                 --entry "PLAN_FILE ($path) is outside IMPLEMENT_TMPDIR; skipping plan context." \
                 >/dev/null 2>&1 || true
-            return 0 ;;
+            if [ -f "$IMPLEMENT_TMPDIR/plan.txt" ]; then
+                path="$IMPLEMENT_TMPDIR/plan.txt"
+            else
+                return 0
+            fi
+            ;;
     esac
     if [ ! -f "$path" ]; then
         "$SCRIPT_DIR/append-execution-issue.sh" \
