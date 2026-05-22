@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # blocker-helpers.sh — shared blocker-resolution helpers for /implement
-# admission, umbrella tooling, and other consumers.
+# admission and other consumers.
 #
-# Sourced by scripts/implement-admission.sh, skills/umbrella/scripts helpers,
-# and historically by fix-issue-era scripts. Owns the canonical
+# Sourced by scripts/implement-admission.sh and historically by fix-issue-era
+# scripts. Owns the canonical
 # implementations of `native_open_blockers`, `prose_open_blockers`, and
 # `all_open_blockers` so both scripts apply the same native+prose dependency
 # semantics to a candidate issue.

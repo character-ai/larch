@@ -24,7 +24,7 @@ The Makefile documents opt-in evaluation targets and full-run convenience target
 
 - `test-harness-shards-coverage:` running `bash scripts/test-harness-shards-coverage.sh` and `bash scripts/test-harness-shards-coverage.sh --self-test`.
 - The guard-owning `test-harnesses-N:` rule with `test-harness-shards-coverage` as the first prerequisite (currently `test-harnesses-13:`).
-- `test-harnesses:` as an umbrella over every declared `test-harnesses-N` (currently `test-harnesses-1` through `test-harnesses-20`).
+- `test-harnesses:` as an aggregate over every declared `test-harnesses-N` (currently `test-harnesses-1` through `test-harnesses-20`).
 
 When adding a new harness target, add it to `.PHONY`, add its recipe, and assign it to exactly one `test-harnesses-N:` shard prerequisite list. Rebalance shard lists when timing drift makes a shard materially slower than the `test-validate-citations` floor documented in `docs/linting.md`.
 
@@ -41,8 +41,8 @@ When adding a new harness target, add it to `.PHONY`, add its recipe, and assign
 - Underscore naming violation (`test-foo_bar:` — bad mid-suffix character; widened parser case).
 - Self-reference not first: `test-harness-shards-coverage` placed second on its owning shard.
 - Self-reference non-last: `test-harness-shards-coverage` remains first on its owning shard while a later shard exists.
-- Umbrella missing shard: `test-harnesses:` drops one of the declared `test-harnesses-N` shards.
-- Umbrella extra shard: `test-harnesses:` lists an unexpected prerequisite.
+- Aggregate missing shard: `test-harnesses:` drops one of the declared `test-harnesses-N` shards.
+- Aggregate extra shard: `test-harnesses:` lists an unexpected prerequisite.
 - Missing `.PHONY`: a shard-bound `test-*` target absent from every `.PHONY:` declaration.
 
 Negative cases assert both non-zero exit and a stable stderr substring.

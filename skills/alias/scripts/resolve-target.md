@@ -44,7 +44,7 @@ Do NOT use `eval "$(resolve-target.sh ...)"` — `eval` of a path that contains 
 1. `.claude-plugin/plugin.json`
 2. `skills/implement/SKILL.md`
 
-This matches the predicate at `skills/create-skill/scripts/validate-args.sh:133`. The two-file rule guards against routing arbitrary Claude plugin repos (which may contain only `plugin.json`) to the larch `skills/<n>/` tree — only the larch plugin source repo, or a structurally-identical fork, gets the public-skill routing.
+This matches the larch plugin source-repo layout (`.claude-plugin/plugin.json` plus `skills/implement/SKILL.md` at the repo root). The two-file rule guards against routing arbitrary Claude plugin repos (which may contain only `plugin.json`) to the larch `skills/<n>/` tree — only the larch plugin source repo, or a structurally-identical fork, gets the public-skill routing.
 
 ## Fail-closed semantics
 

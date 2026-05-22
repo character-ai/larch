@@ -75,23 +75,6 @@ suppress = [
 # excluded; the test script is referenced only from Makefile, matching the
 # same Makefile-only pattern as the test-sessionstart-health.sh entry above.
 #
-# scripts/test-post-scaffold-hints.sh is the regression harness for
-# skills/create-skill/scripts/post-scaffold-hints.sh (the post-scaffold
-# reminder emitter invoked by /create-skill). The hints script itself IS
-# structurally referenced from skills/create-skill/SKILL.md Step 3 and is
-# therefore not excluded; the test script is referenced only from Makefile
-# (test-post-scaffold-hints target) and
-# skills/create-skill/scripts/post-scaffold-hints.md (sibling contract),
-# matching the same Makefile-only pattern as the test-deny-edit-write.sh
-# entry above.
-#
-# skills/create-skill/scripts/test-render-skill-md.sh is the regression
-# harness for render-skill-md.sh (the scaffold generator). The generator
-# itself IS structurally referenced from skills/create-skill/SKILL.md's
-# Step 3 feature-description template and is therefore not excluded; the
-# test script is referenced only from Makefile's test-render-skill target,
-# matching the same Makefile-only pattern as the entries above.
-#
 # scripts/lib-count-commits.sh is a sourced-only shell library (no shebang,
 # not invokable directly). It is referenced from scripts/check-bump-version.sh
 # and scripts/verify-skill-called.sh via `source` directives only — agent-lint
@@ -160,8 +143,7 @@ suppress = [
 # scripts/test-anti-halt-banners.sh is the regression harness for the
 # anti-halt continuation banner (closes #177). The harness asserts banner
 # presence in four orchestrator SKILL.md files (implement, review,
-# alias, research) and absence in five pure-delegator SKILL.md files (im,
-# imaq, create-skill, simplify-skill, compress-skill).
+# alias, research) and absence in two pure-delegator SKILL.md files (im, imaq).
 # It is structurally referenced from Makefile (test-anti-halt target) and
 # skills/shared/subskill-invocation.md (normative scope-list source),
 # matching the same Makefile-only pattern as the other test-* harnesses above.
@@ -521,8 +503,6 @@ exclude = [
   "scripts/test-hook-block-skill-relevant-checks.sh",
   "scripts/test-hook-anti-read-poll.sh",
   "scripts/test-review-relevant-checks-helper.sh",
-  "scripts/test-post-scaffold-hints.sh",
-  "skills/create-skill/scripts/test-render-skill-md.sh",
   "scripts/lib-count-commits.sh",
   # scripts/lib-cursor-auth.sh is a sourced-only shell library (no shebang,
   # not invokable directly). It is referenced from shell consumers via source
@@ -862,19 +842,6 @@ exclude = [
   "scripts/test-implement-anti-halt.md",
   "scripts/test-references-headers.sh",
   "scripts/test-subskill-anchors.sh",
-  # scripts/test-parse-args.sh is the regression harness for
-  # skills/create-skill/scripts/parse-args.sh (closes the sibling parse-args.md
-  # "add a dedicated harness when the stdout grammar changes materially"
-  # from Makefile (test-parse-args target) and
-  # scripts/test-parse-args.md (sibling contract), matching the same
-  # Makefile-only pattern as the other test-* harnesses above.
-  "scripts/test-parse-args.sh",
-  # scripts/test-prepare-description.sh is the regression harness for
-  # skills/create-skill/scripts/prepare-description.sh (the Step 1.5 / Step 1.6
-  # synthesis-flow coordinator added for #549). Invoked only from Makefile
-  # (test-prepare-description target); same Makefile-only pattern as the
-  # test-parse-args entry above.
-  "scripts/test-prepare-description.sh",
   "scripts/test-orchestrator-scope-sync.sh",
   "scripts/test-quick-mode-docs-sync.sh",
   "scripts/test-research-structure.sh",
@@ -1064,15 +1031,6 @@ exclude = [
   "scripts/test-token-vendor-scrapers.md",
   "scripts/test-token-claude-source.md",
   "skills/research/scripts/test-research-angle-prompts.md",
-  "skills/create-skill/scripts/post-scaffold-hints.md",
-  # skills/create-skill/scripts/test-render-skill-md.md is the sibling contract
-  # for the render-skill-md.sh regression harness (closes #568 — added alongside
-  # render-skill-md.md to satisfy the script sibling-contract rule
-  # (.claude/rules/script-md-siblings.md) for both the renderer AND its
-  # harness). The harness contract documents case matrix, Makefile wiring, and
-  # edit-in-sync rules; matches the same harness-sibling-not-cited-from-SKILL.md
-  # pattern as the other Makefile-only test harness contracts above.
-  "skills/create-skill/scripts/test-render-skill-md.md",
   "skills/implement/scripts/check-review-changes.md",
   "skills/implement/scripts/test-check-review-changes.md",
   "skills/implement/scripts/test-implement-relevant-checks-anti-halt.md",
@@ -1123,7 +1081,6 @@ exclude = [
   "scripts/lib-finalize-state-keys.md",
   "scripts/restore-finalize-state.md",
   "scripts/test-restore-finalize-state.md",
-  "skills/simplify-skill/scripts/build-feature-description.md",
   # scripts/test-alias-target-resolution.md and scripts/test-alias-structure.md
   # are the sibling contracts for the two alias-rework regression harnesses
   # added alongside skills/alias/scripts/resolve-target.sh. Same harness-

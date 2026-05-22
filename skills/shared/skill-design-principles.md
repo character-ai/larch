@@ -1,6 +1,6 @@
 # Skill Design Principles
 
-Canonical source for how larch skills are designed and written. Cited by `skills/create-skill/SKILL.md` (both the body `## Principles` section and the Step 3 `/im` feature-description handoff) and by `AGENTS.md` Canonical sources. When you add a new principle or revise an existing one, update the compact A/B/C excerpt in `skills/create-skill/SKILL.md` Step 3 in the same PR only if a Section III mechanical rule changes — Sections I–II and IV–IX are not mirrored elsewhere and evolve independently.
+Canonical source for how larch skills are designed and written. Cited by `AGENTS.md` Canonical sources. When you add a new principle or revise an existing one, update any mirrored excerpts in consuming skills in the same PR when Section III mechanical rules change — Sections I–II and IV–IX are not mirrored elsewhere and evolve independently.
 
 Provenance tags on each section: **[larch]** = rule enforced in this repo (harness or review); **[skill-judge]** = extrapolated from the `skill-judge` plugin's evaluation dimensions; **[skill-creator]** = extrapolated from Anthropic's `skill-creator` plugin.
 
@@ -34,7 +34,7 @@ Rules:
 
 ## Section III — Larch mechanical rules **[larch]**
 
-These rules apply to every new skill scaffolded by `/create-skill` and to every existing larch skill under edit. They are guidance, not mechanically lint-enforced — but they are battle-tested and reviewed on every PR. A change to this section requires updating the compact A/B/C excerpt in `skills/create-skill/SKILL.md` Step 3 in the same PR.
+These rules apply to every new larch skill under edit. They are guidance, not mechanically lint-enforced — but they are battle-tested and reviewed on every PR.
 
 - **A — Express content and logic as bash scripts.** Any non-trivial step belongs in a `.sh` file: shared at `${CLAUDE_PLUGIN_ROOT}/scripts/` when two or more skills can reuse it, or private at `${CLAUDE_PLUGIN_ROOT}/skills/<NAME>/scripts/` when it is skill-specific. Prefer reuse — grep existing `scripts/` before creating a new one. See the owning script's sibling `.md` (co-located contract; convention described in `${CLAUDE_PLUGIN_ROOT}/.claude/rules/script-md-siblings.md`). For shared helpers without their own `.md` (e.g., sourced-only libraries), the contract lives under the primary script's sibling `.md`.
 - **B — No direct command calls via the Bash tool.** Every shell command invoked from a SKILL.md step must be a call to a `.sh` wrapper. Do NOT inline pipelines, loops, or multi-line `bash -c` strings into the SKILL.md. Wrappers keep the SKILL.md scannable, centralize error handling and logging, and make each step auditable without reading prompt prose.
@@ -120,4 +120,4 @@ A well-formed larch skill satisfies every bullet below. Use this list during ski
 
 ## Update triggers
 
-This file is the canonical source for larch skill-design principles (knowledge delta, structure, mechanical rules A/B/C, writing style, anti-patterns, freedom calibration, pattern recognition, verifiable quality criteria). Runtime surface (ships to consumers under `skills/`). No generated artifact — update directly. Precedence: Section III (larch mechanical rules) overrides Section IV (general writing-style guidance) whenever the two conflict. Consumers: `skills/create-skill/SKILL.md` body `## Principles` section (pointer-only) and its Step 3 `/im` feature-description template (compact A/B/C excerpt + MUST-read pointer). Update trigger: when a Section III mechanical rule is added or revised, update the compact A/B/C excerpt inside the Step 3 `/im` feature-description template in the same PR; Section I–II and IV–IX evolve independently and are not mirrored elsewhere.
+This file is the canonical source for larch skill-design principles (knowledge delta, structure, mechanical rules A/B/C, writing style, anti-patterns, freedom calibration, pattern recognition, verifiable quality criteria). Runtime surface (ships to consumers under `skills/`). No generated artifact — update directly. Precedence: Section III (larch mechanical rules) overrides Section IV (general writing-style guidance) whenever the two conflict. Update trigger: when a Section III mechanical rule is added or revised, search for mirrored A/B/C excerpts in other skills' `/im` handoffs and update them in the same PR when they exist; Section I–II and IV–IX evolve independently and are not mirrored elsewhere.

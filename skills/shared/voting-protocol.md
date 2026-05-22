@@ -238,7 +238,7 @@ For out-of-scope items, the vote meanings are:
 - **NO**: Not worth tracking — the observation is trivial or incorrect.
 - **EXONERATE**: Legitimate observation worth documenting, but not worth filing a GitHub issue.
 
-If an OOS item receives 2+ YES votes, it is **accepted** and will be filed as a GitHub issue by `/implement`. In `/review` description mode, accepted OOS items are filed by `/review` Step 4b directly via `/umbrella` (default behavior; suppressed by `--no-issues`), not by `/implement`. Otherwise it remains an observation reported in the PR body.
+If an OOS item receives 2+ YES votes, it is **accepted** and will be filed as a GitHub issue by `/implement` Step 9a.1 (`/issue` batch mode). In `/review` description mode, accepted OOS items are recorded in local artifacts for the operator to file manually via `/issue` (no automatic filing in this mode). Otherwise it remains an observation reported in the PR body.
 
 **OOS items are never implemented in the current PR** — accepted OOS items result in issue creation only. This cleanly separates "fix now" (in-scope findings) from "fix later" (OOS observations).
 
@@ -283,4 +283,4 @@ External reviewers **in diff mode** differ by slot type. **Specialist external s
 
 ## Zero Accepted Findings
 
-If voting filters out **all** in-scope findings (every in-scope finding rejected by the panel), print: `**ℹ Voting panel rejected all in-scope findings. No changes to implement.**` and skip the implementation/revision step. Proceed directly to the rejected findings report. (OOS items accepted for issue filing are processed separately — by `/implement` Step 9a.1, or by `/review` Step 4b via `/umbrella` in description mode (default; suppressed by `--no-issues`) — and do not count as implementation work.)
+If voting filters out **all** in-scope findings (every in-scope finding rejected by the panel), print: `**ℹ Voting panel rejected all in-scope findings. No changes to implement.**` and skip the implementation/revision step. Proceed directly to the rejected findings report. (OOS items accepted for issue filing are processed separately — by `/implement` Step 9a.1 — and do not count as implementation work.)

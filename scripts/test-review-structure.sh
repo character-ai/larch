@@ -372,16 +372,6 @@ grep 'In diff mode' "$REVIEW_SCRIPTS_DIR/collect-findings.sh" \
   || fail "(17) no collect-findings.sh line carries 'In diff mode', 'single-list output', AND 'entire output' together — Step 3a diff-mode single-list preservation is broken"
 
 # ---------------------------------------------------------------------------
-# (18) Step 4b pieces.json composition contract (#778). A single SKILL.md line
-#      carries '--pieces-json' — pinning the /umbrella invocation's pieces.json
-#      forwarding. This is the structural anchor for the inter-finding
-#      dependency edge pipeline: /review composes pieces.json from file-overlap
-#      metadata and forwards it via --pieces-json to /umbrella.
-# ---------------------------------------------------------------------------
-grep -Fq -- '--pieces-json' "$SKILL_MD" \
-  || fail "(18) SKILL.md lacks '--pieces-json' — Step 4b pieces.json composition contract (#778) is broken"
-
-# ---------------------------------------------------------------------------
 # (20) Security-tag exclusion contract for accepted OOS items. After #2207
 # voting.md is gone; the canonical security regex + invariant prose live in
 # skills/shared/voting-protocol.md, and the mechanical enforcement lives in
