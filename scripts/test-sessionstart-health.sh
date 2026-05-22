@@ -412,8 +412,7 @@ assert_not_contains "$stdout" "post-/review boundary" "case 14b: no review bound
 echo "=== Case 15: SessionStart detects pending post-/bump-version boundary ==="
 mkdir -p "$tmp/c15-cwd"
 impl=$(make_impl_tmpdir c15-bump "$tmp/c15-cwd")
-printf 'review summary\n' > "$impl/review-round-summary.md"
-touch "$impl/.review-boundary-passed"
+# Bump-only fixtures: isolate post-/bump-version SessionStart branch without a pending review boundary.
 touch "$impl/.bump-version-armed"
 rc=$(run_with_stdin "$tmp/real_bin" "$tmp/c15-cwd" '{"cwd":"'"$tmp/c15-cwd"'"}' "$XDG_TEST" "$tmp/c15.out" "$tmp/c15.err")
 assert_eq "$rc" "0" "case 15: exit code 0"
