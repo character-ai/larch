@@ -22,7 +22,7 @@ oos-disposition-gate.sh [--fork-mode] [--repo-unavailable] \
 |------|--------|
 | 0 | Skipped (fork / repo-unavailable), or nothing to check (`non_security_oos == 0`), or disposition satisfied (`filed > 0` or `inline_triage_lines >= non_security_oos` or `rejected_oos_markers >= non_security_oos`). |
 | 1 | Disposition gap: `non_security_oos > 0` and `filed == 0` and `inline < non_security_oos` and `rejected_oos_markers < non_security_oos`. |
-| 2 | Bad arguments, invalid `commit-range`, or not inside a git work tree when a scan is required. |
+| 2 | Bad arguments, invalid `commit-range`, not inside a git work tree when a scan is required, `--accepted-files` path exists but is not a readable regular file, or `oos-issues.ndjson` lists filed issue URLs while no CSV path resolves to a regular file (misconfiguration). |
 
 ## Counting rules
 

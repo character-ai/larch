@@ -24,18 +24,20 @@ count_filed_urls_union_files() {
 
 count_rejected_oos_markers_from_ndjson() {
   local ndjson="$1"
-  local line b tail tag
-  declare -A seen_oos=()
+  local line b tail tmp uniq_n
+  tmp=$(mktemp "${TMPDIR:-/tmp}/oos-rej-oos-tags.XXXXXX")
+  : >"$tmp"
   [ ! -f "$ndjson" ] || [ ! -s "$ndjson" ] && {
+    rm -f "$tmp"
     printf '0'
     return 0
   }
   while IFS= read -r line || [ -n "${line:-}" ]; do
     [ -z "$line" ] && continue
-    if ! b=$(printf '%s' "$line" | jq -r '.body // empty'); then
-      printf '%s\n' 'oos-disposition-shared: jq failed parsing oos-issues.ndjson line' >&2
-      return 2
-    fi
+    b=$(printf '%s' "$line" | jq -r '.body // empty' 2>/dev/null) || {
+      printf '%s\n' 'oos-disposition-shared: jq failed parsing oos-issues.ndjson line (skipping line)' >&2
+      continue
+    }
     case "$b" in
       *'Rejected / Out-of-Scope'* | *'## Rejected'*) ;;
       *) continue ;;
@@ -51,11 +53,13 @@ count_rejected_oos_markers_from_ndjson() {
       inj == 1 { print }
     ')
     if [ -n "$tail" ]; then
-      while IFS= read -r tag || [ -n "${tag:-}" ]; do
-        [ -z "$tag" ] && continue
-        seen_oos["${tag#OOS_}"]=1
-      done < <(printf '%s\n' "$tail" | grep -ohE 'OOS_[0-9]+' | sort -u)
+      printf '%s\n' "$tail" | grep -ohE 'OOS_[0-9]+' >>"$tmp" || true
     fi
   done <"$ndjson"
-  printf '%s' "${#seen_oos[@]}"
+  uniq_n=0
+  if [ -s "$tmp" ]; then
+    uniq_n=$(sort -u "$tmp" | wc -l | tr -d '[:space:]')
+  fi
+  rm -f "$tmp"
+  printf '%s' "${uniq_n:-0}"
 }

@@ -87,18 +87,22 @@ emit() { printf '%s\n' "$1"; }
 # hits (copied RUN_DIR audits must not use the live workspace git range).
 # Otherwise use the same git revision walk as the disposition gate.
 _audit_oos_inline_triage_hits() {
-    local run_dir="$1" repo range c artifact_any=false
-    c=0
+    local run_dir="$1" repo range c artifact_any=false tmp
+    tmp=$(mktemp "${TMPDIR:-/tmp}/audit-inline-triage.XXXXXX")
+    : >"$tmp"
     local f
     for f in "$run_dir/codex-commit-message.txt" "$run_dir/session-transcript.jsonl"; do
         [ -f "$f" ] || continue
         artifact_any=true
-        c=$((c + $(grep -cF 'Inline-triage rule' "$f" 2>/dev/null || true)))
+        grep -hF 'Inline-triage rule' "$f" 2>/dev/null >>"$tmp" || true
     done
     if [ "$artifact_any" = true ]; then
+        c=$(sort -u "$tmp" | wc -l | tr -d '[:space:]')
+        rm -f "$tmp"
         printf '%s' "${c:-0}"
         return
     fi
+    rm -f "$tmp"
     repo=$(git rev-parse --show-toplevel 2>/dev/null || true)
     if [ -n "$repo" ]; then
         range="HEAD"

@@ -122,6 +122,39 @@ if [ -z "$ACCEPTED_FILES" ] || [ -z "$FILED_URLS_FILE" ] || [ -z "$COMMIT_RANGE"
   exit 2
 fi
 
+oos_validate_accepted_inputs() {
+  local f any_acc=false filed_probe
+  while IFS= read -r f; do
+    [ -z "$f" ] && continue
+    if [ -e "$f" ]; then
+      if [ ! -f "$f" ] || [ ! -r "$f" ]; then
+        printf 'oos-disposition-gate: accepted file path is not a readable regular file: %s\n' "$f" >&2
+        return 2
+      fi
+    fi
+  done <<EOF
+$(printf '%s' "$ACCEPTED_FILES" | tr ',' '\n')
+EOF
+  if [ -n "$OOS_ISSUES_NDJSON" ] && [ -f "$OOS_ISSUES_NDJSON" ] && [ -s "$OOS_ISSUES_NDJSON" ]; then
+    while IFS= read -r f; do
+      [ -z "$f" ] && continue
+      [ -f "$f" ] && any_acc=true
+    done <<EOF
+$(printf '%s' "$ACCEPTED_FILES" | tr ',' '\n')
+EOF
+    if [ "$any_acc" = false ]; then
+      filed_probe=$(count_filed_urls_union_files "$OOS_ISSUES_NDJSON")
+      if [ "${filed_probe:-0}" -gt 0 ]; then
+        printf '%s\n' 'oos-disposition-gate: oos-issues.ndjson lists filed GitHub issue URLs but no --accepted-files paths exist as regular files (check CSV path list)' >&2
+        return 2
+      fi
+    fi
+  fi
+  return 0
+}
+
+oos_validate_accepted_inputs || exit 2
+
 non_sec=$(count_non_security_oos "$ACCEPTED_FILES")
 if [ -n "$OOS_ISSUES_NDJSON" ] && [ -f "$OOS_ISSUES_NDJSON" ]; then
   filed=$(count_filed_urls_union_files "$FILED_URLS_FILE" "$OOS_ISSUES_NDJSON")

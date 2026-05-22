@@ -69,8 +69,40 @@ rc=$?
 set -e
 assert_rc "missing --commit-range is exit 2" 2 "$rc"
 
-# --- Case: empty accepted files + empty urls passes ---
 : >"$TMP/empty-urls.md"
+
+# --- Case: accepted path exists but is not a regular file (exit 2) ---
+mkdir -p "$TMP/not-a-regular-acc-path"
+set +e
+(
+  cd "$GIT_TMP"
+  bash "$GATE" \
+    --accepted-files "$TMP/not-a-regular-acc-path" \
+    --filed-urls-file "$TMP/empty-urls.md" \
+    --commit-range HEAD >/dev/null 2>&1
+)
+rc=$?
+set -e
+assert_rc "accepted path exists but is not a regular file is exit 2" 2 "$rc"
+
+# --- Case: ndjson lists filed URLs but no accepted-files path exists (exit 2) ---
+cat >"$TMP/orphan-ndjson-urls.ndjson" <<'EOF'
+{"body":"Created https://github.com/example/larch/issues/404\n"}
+EOF
+set +e
+(
+  cd "$GIT_TMP"
+  bash "$GATE" \
+    --accepted-files "$TMP/does-not-exist-acc-a.md,$TMP/does-not-exist-acc-b.md" \
+    --filed-urls-file "$TMP/empty-urls.md" \
+    --oos-issues-ndjson "$TMP/orphan-ndjson-urls.ndjson" \
+    --commit-range HEAD >/dev/null 2>&1
+)
+rc=$?
+set -e
+assert_rc "filed URLs in oos-issues.ndjson without any accepted file path is exit 2" 2 "$rc"
+
+# --- Case: empty accepted files + empty urls passes ---
 set +e
 (
   cd "$GIT_TMP"

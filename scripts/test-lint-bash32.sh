@@ -131,6 +131,18 @@ EOF
 rc="$(run_lint "$stderr_file")"
 assert_case "char-class negation not flagged" 0 "$stderr_file" "$rc"
 
+reset_tree
+write_sh "$TMPROOT/scripts/helper.inc.bash" <<'EOF'
+# shellcheck shell=bash
+declare -A bad=() # lint-bash32: ok fixture
+EOF
+sed '/lint-bash32: ok fixture/s/[[:space:]]*# lint-bash32: ok fixture//' "$TMPROOT/scripts/helper.inc.bash" >"$TMPROOT/scripts/helper-bad.inc.bash"
+rm -f "$TMPROOT/scripts/helper.inc.bash"
+rc="$(run_lint "$stderr_file")"
+assert_case "inc.bash extension is scanned" 1 "$stderr_file" "$rc" \
+    "scripts/helper-bad.inc.bash" \
+    "declare -A associative arrays"
+
 if command -v git >/dev/null 2>&1; then
     reset_tree
     (

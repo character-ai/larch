@@ -44,11 +44,11 @@ trap 'rm -f "$TMP_FILES"' EXIT
 
 list_shell_files() {
     if git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-        git -C "$ROOT" ls-files --cached --others --exclude-standard -z -- '*.sh'
+        git -C "$ROOT" ls-files --cached --others --exclude-standard -z -- '*.sh' '*.inc.bash'
     else
         (
             cd "$ROOT"
-            find . -type f -name '*.sh' ! -path './.git/*' ! -path './node_modules/*' ! -path './.venv/*' ! -path './.agents/*' -print \
+            find . -type f \( -name '*.sh' -o -name '*.inc.bash' \) ! -path './.git/*' ! -path './node_modules/*' ! -path './.venv/*' ! -path './.agents/*' -print \
                 | sed 's#^\./##' \
                 | LC_ALL=C sort \
                 | while IFS= read -r path; do
