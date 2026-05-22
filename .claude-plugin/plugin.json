@@ -1,6 +1,6 @@
 {
   "name": "larch",
-  "version": "36.0.6",
+  "version": "36.0.7",
   "description": "Multi-agent workflow automation for Claude Code: issue-anchored `/design` (tier flags `--trivial` / `--simple` / `--hard`) and `/implement` (positional `<issue-N>`, optional `--merge`, `--forked`, `--draft`, `--no-admin-fallback`, `--no-logs-commit`, `--coder`, `--no-dynamic-archetypes`, `--dynamic-archetypes`, `--run-id`). `/implement` Preflight reads the `larch:plan` block from the issue body; `/implement` Step 5 code review always uses the unified hard panel internally (public `--panel` argv removed). Post-plan workflow depth follows `POST_PLAN_WORKFLOW_PATH` from session/plan classification, not a removed `--hard` on `/implement`.",
   "author": {
     "name": "Sergey Zhupanov",
