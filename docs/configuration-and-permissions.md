@@ -17,7 +17,6 @@
 "Skill(compress-skill)",
 "Skill(create-skill)",
 "Skill(design)",
-"Skill(fix-issue)",
 "Skill(im)",
 "Skill(implement)",
 "Skill(issue)",
@@ -27,7 +26,6 @@
 "Skill(larch:compress-skill)",
 "Skill(larch:create-skill)",
 "Skill(larch:design)",
-"Skill(larch:fix-issue)",
 "Skill(larch:im)",
 "Skill(larch:implement)",
 "Skill(larch:issue)",
@@ -163,7 +161,7 @@ These checks are verified immediately before any merge attempt — the script do
 
 **Audit trail when `--admin` fires.** When the `--admin` attempt succeeds, `/implement` Step 12b posts a best-effort comment on the merged PR explaining that branch protection was overridden after CI and freshness were re-verified. The comment is informational; if posting it fails (e.g., token cannot comment), the failure is logged to `Tool Failures` and the merge stays merged. The existing stderr `**⚠ Merged with --admin (review overridden).**` warning in the run output is also retained.
 
-**Opt out: `--no-admin-fallback`.** Pass `--no-admin-fallback` to `/implement` (or to `/im`, `/fix-issue` — they forward through) to require branch-protection policies to actually deny the merge. With this flag set, `merge-pr.sh` skips the `--admin` attempt once the admin-eligible gate (CI good + branch fresh) is reached, tries only a plain squash merge, returns `MERGE_RESULT=policy_denied` if that plain merge fails, and `/implement` bails to Step 12d with `FINAL_BAIL_REASON="branch protection denied merge; --no-admin-fallback set"`. The opt-out applies to all admin-eligible `mergeStateStatus` values (`CLEAN`, `UNSTABLE`, `HAS_HOOKS`, `BLOCKED`) — not just review-required denials. See `scripts/merge-pr.md` for the script-level contract.
+**Opt out: `--no-admin-fallback`.** Pass `--no-admin-fallback` to `/implement` (or to `/im` — they forward through) to require branch-protection policies to actually deny the merge. With this flag set, `merge-pr.sh` skips the `--admin` attempt once the admin-eligible gate (CI good + branch fresh) is reached, tries only a plain squash merge, returns `MERGE_RESULT=policy_denied` if that plain merge fails, and `/implement` bails to Step 12d with `FINAL_BAIL_REASON="branch protection denied merge; --no-admin-fallback set"`. The opt-out applies to all admin-eligible `mergeStateStatus` values (`CLEAN`, `UNSTABLE`, `HAS_HOOKS`, `BLOCKED`) — not just review-required denials. See `scripts/merge-pr.md` for the script-level contract.
 
 ## Selecting the Step 2 implementer (`--coder`)
 
@@ -238,7 +236,7 @@ Per-million-token cost rate (USD) used by `/research`'s Step 4 token report (`##
 
 **Scope**: Token telemetry covers Claude subagent (Agent-tool) invocations only. Claude inline (orchestrator) and external lanes (Cursor/Codex) are unmeasurable and excluded from both the totals and the cost column. The report labels itself "Claude tokens only; external lanes excluded" so operators see the coverage honestly. See [`scripts/token-tally.md`](../scripts/token-tally.md) for the helper contract.
 
-#### Per-vendor rates (`/implement` / `/fix-issue` final summary)
+#### Per-vendor rates (`/implement` final summary)
 
 [`scripts/token-cost.sh`](../scripts/token-cost.sh) (used by [`scripts/render-run-summary.sh`](../scripts/render-run-summary.md)) computes optional USD estimates per lane when rates are set:
 

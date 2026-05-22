@@ -103,7 +103,7 @@ Official skills tend to follow one of five patterns. Pick the pattern that match
 | **Process** | ~200 | Complex multi-step projects |
 | **Tool** | ~300 | Precise operations on specific formats |
 
-Most larch skills follow the Process pattern (phased workflow, checkpoints, medium freedom) or a hybrid of Process + Tool. `/design`, `/implement`, `/review`, `/fix-issue` are Process-pattern with heavy `references/` layering.
+Most larch skills follow the Process pattern (phased workflow, checkpoints, medium freedom) or a hybrid of Process + Tool. `/design`, `/implement`, `/review` are Process-pattern with heavy `references/` layering.
 
 ## Section IX — Verifiable quality criteria **[larch, skill-judge]**
 

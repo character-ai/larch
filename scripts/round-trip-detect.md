@@ -1,6 +1,6 @@
 # scripts/round-trip-detect.sh — contract
 
-`scripts/round-trip-detect.sh` is the pure detector for the managed <code>[ROUND-TRIP] </code> title marker. Primary callers are `/implement` Step 0.5, Step 12a/12b, `scripts/implement-finalize.sh` Step 18, `/fix-issue` Step 3/6, and `skills/fix-issue/scripts/finalize-umbrella.sh`.
+`scripts/round-trip-detect.sh` is the pure detector for the managed <code>[ROUND-TRIP] </code> title marker. Primary callers are `/implement` Step 0 (tracking-issue adoption / plan materialization), Step 12a/12b, and `scripts/implement-finalize.sh` Step 18.
 
 ## Contract
 

@@ -240,9 +240,9 @@ out of scope:
 - Audit judgment beyond the fixed Preflight rubric (orchestrator applies the rubric; no separate CLI)
 - Design tier selection (`--trivial` / `--simple` / `--hard` public argv; sketch topology and internal `--inline` per `skills/design/references/flags.md`)
 
-Those concerns live in `skills/design/SKILL.md` and `skills/implement/SKILL.md` (Preflight + Step 1 materialization).
+Those concerns live in `skills/design/SKILL.md` and `skills/implement/SKILL.md` (Preflight + Step 0 plan materialization).
 
-**Plan probe placement**: `/fix-issue` PR work gates on `find-lock-issue.sh --require-plan-block`, which delegates to `plan-block-read.sh` before the `IN PROGRESS` lock. Direct `/implement` reads the same markers in **Preflight** via `plan-block-read.sh`; Step 1 only copies the already-extracted plan from the Preflight tmpdir into `$IMPLEMENT_TMPDIR/plan.txt` — it does not substitute a separate literal `/fix-issue` Step 4a sequence inside `/implement`.
+**Plan probe placement**: Direct `/implement` reads `larch:plan` markers in **Preflight** via `plan-block-read.sh` (after the admission gate). Step 0 copies the already-extracted plan from the Preflight tmpdir into `$IMPLEMENT_TMPDIR/plan.txt` — it does not re-run a separate legacy lock-and-probe sequence.
 
 ## See also
 

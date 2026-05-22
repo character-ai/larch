@@ -67,7 +67,7 @@ macro_section_end=$step0_line
 # (B) Call-site registry: four canonical rows present in macro section.
 # ---------------------------------------------------------------------------
 registry_rows=(
-  '| 1.r  | `1.r`           | `design plan`    |'
+  '| 1.r  | `1.r`           | `plan materialization` |'
   '| 4.r  | `4.r`           | `commit (impl)`  |'
   '| 7.r  | `7.r`           | `commit (review)`|'
   '| 7a.r | `7a.r`          | `diagrams`       |'
@@ -90,7 +90,7 @@ invocation_count=$(grep -cE '^Apply the Rebase Checkpoint Macro with ' "$SKILL_M
   || fail "(C) expected exactly 4 'Apply the Rebase Checkpoint Macro with ...' invocations, found $invocation_count"
 
 canonical_invocations=(
-  'Apply the Rebase Checkpoint Macro with `<step-prefix>=1.r` and `<short-name>=design plan`.'
+  'Apply the Rebase Checkpoint Macro with `<step-prefix>=1.r` and `<short-name>=plan materialization`.'
   'Apply the Rebase Checkpoint Macro with `<step-prefix>=4.r` and `<short-name>=commit (impl)`.'
   'Apply the Rebase Checkpoint Macro with `<step-prefix>=7.r` and `<short-name>=commit (review)`.'
   'Apply the Rebase Checkpoint Macro with `<step-prefix>=7a.r` and `<short-name>=diagrams`.'

@@ -1,9 +1,7 @@
 step	name
 0	setup
-0.5	tracking issue
-1	design plan
-1.m	update main
-1.r	rebase
+1.m	update main (Rebase Checkpoint Macro internal label; not a standalone orchestrator step)
+1.r	rebase after plan materialization (Rebase Checkpoint Macro internal label; not a standalone orchestrator step)
 2	implementation
 3	checks (1)
 4	commit (impl)

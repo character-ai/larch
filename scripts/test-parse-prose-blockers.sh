@@ -9,7 +9,7 @@
 # `agent-lint.toml`'s exclude list (Makefile-only harness pattern).
 #
 # Run manually:
-#   bash skills/fix-issue/scripts/test-parse-prose-blockers.sh
+#   bash scripts/test-parse-prose-blockers.sh
 #
 # Exits 0 on success, 1 on the first failed assertion.
 

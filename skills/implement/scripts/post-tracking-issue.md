@@ -1,6 +1,6 @@
 # post-tracking-issue.sh
 
-Publishes the Step 0.5 `larch:metadata` tracking-issue summary.
+Publishes the Step 0 `larch:metadata` tracking-issue summary.
 
 Usage:
 

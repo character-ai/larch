@@ -30,7 +30,6 @@ BANNER_SIGNATURE='**Anti-halt continuation reminder.**'
 MICRO_SIGNATURE='Continue after child returns'
 
 ORCHESTRATORS=(
-  "skills/fix-issue/SKILL.md"
   "skills/implement/SKILL.md"
   "skills/review/SKILL.md"
   "skills/alias/SKILL.md"  # has Step 4 post-delegation verification

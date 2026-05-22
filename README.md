@@ -73,12 +73,6 @@ Larch is a Claude Code workflow automation framework that orchestrates multi-age
     <tr><td colspan="2">Author or refresh an issue-anchored implementation plan in GitHub (plan markers in the issue body). Tier flags select sketch and plan-review depth (<code>--trivial</code> is the quick-budget tier; <code>--simple</code> / <code>--hard</code> use larger sketch fan-outs per <a href="docs/topology.md#design.sketch.regular_slots">topology</a>).</td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
-      <td><a href="docs/skills.md#fix-issue"><code>/fix-issue</code></a></td>
-      <td><code>[--no-admin-fallback] [--no-logs-commit] [--coder=&lt;value&gt;] &lt;number-or-url&gt;</code></td>
-    </tr>
-    <tr><td colspan="2">Process one approved GitHub issue per invocation, classifying intent and delegating PR work to <code>/implement</code>.</td></tr>
-    <tr><td colspan="2"><hr></td></tr>
-    <tr>
       <td><a href="docs/skills.md#implement"><code>/implement</code></a></td>
       <td><code>[--merge] [--forked] [--draft] [--no-admin-fallback] [--no-logs-commit] [--coder &lt;claude|codex|cursor&gt;] [--no-dynamic-archetypes] [--dynamic-archetypes &lt;N&gt;] [--run-id &lt;ID&gt;] &lt;issue-N&gt;</code></td>
     </tr>

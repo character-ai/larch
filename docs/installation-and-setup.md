@@ -61,7 +61,7 @@ claude plugin install larch@larch-local
 
 When larch is installed via the plugin system, Claude Code caches the installed version under `~/.claude/plugins/cache/larch-local/larch/<version>/`. Skills and scripts run from this **cached copy**, not from your live working tree. This means:
 
-- A bug fix committed to your working tree does not take effect until you reinstall or refresh the plugin from that checkout. `/larch:upgrade-larch` updates the latest stable GitHub install; a local checkout install (`claude --plugin-dir .` or `claude plugin marketplace add .`) needs a local reinstall/refresh instead. Until then, every `/implement` or `/fix-issue` run uses the older cached version.
+- A bug fix committed to your working tree does not take effect until you reinstall or refresh the plugin from that checkout. `/larch:upgrade-larch` updates the latest stable GitHub install; a local checkout install (`claude --plugin-dir .` or `claude plugin marketplace add .`) needs a local reinstall/refresh instead. Until then, every `/implement` run uses the older cached version.
 - Multiple concurrent clones (e.g., `larch1/`, `larch2/`) share the same plugin cache. Upgrading from one clone upgrades for all.
 
 **Automatic detection**: when the installed version is behind your working-tree version, larch emits a warning at session setup time:
@@ -72,7 +72,7 @@ Reinstall or refresh the plugin from this checkout before the next run to pick u
 Continuing with the cached version.**
 ```
 
-This warning fires once per `session-setup.sh` invocation from a larch dev clone when preflight is enabled. Typical entrypoints include `/implement` and `/fix-issue`; `/review` skips preflight and does not emit the warning in its default flow. After reinstalling or refreshing the plugin cache, restart Claude Code to pick up the new version.
+This warning fires once per `session-setup.sh` invocation from a larch dev clone when preflight is enabled. Typical entrypoints include `/implement`; `/review` skips preflight and does not emit the warning in its default flow. After reinstalling or refreshing the plugin cache, restart Claude Code to pick up the new version.
 
 ### Mermaid CLI (required for the `lint-mermaid-fences` pre-commit hook)
 
@@ -197,7 +197,7 @@ For the at-rest secret-persistence tradeoff (the API key appears in `.meta` `CMD
 
 | Component | Description |
 |---|---|
-| Skills | `/design`, `/implement`, `/review`, `/research`, `/fix-issue`, `/issue`, `/set-up-forked-open-source-repo`, `/upgrade-larch`, `/alias`, `/create-skill`, `/simplify-skill`, `/compress-skill`, `/im` |
+| Skills | `/design`, `/implement`, `/review`, `/research`, `/issue`, `/set-up-forked-open-source-repo`, `/upgrade-larch`, `/alias`, `/create-skill`, `/simplify-skill`, `/compress-skill`, `/im` |
 | Agents | `code-reviewer` (unified archetype covering code quality, risk/integration, correctness, architecture, security) |
 | PreToolUse hooks | `block-submodule-edit.sh` blocks `Edit`/`Write` on files inside any checked-out git submodule of the consuming project; `hook-block-skill-relevant-checks.sh` blocks `/relevant-checks` Skill calls inside active `/implement` or `/review` sessions so orchestrators use the captured helper |
 | SessionStart hook | `sessionstart-health.sh` — at session start/resume/clear/compact, probes `jq` and `git` on `PATH`; if either is missing, injects an advisory into session context so the issue is visible before the first `Edit`/`Write`. Non-blocking (always exits 0); silent when both tools are present |

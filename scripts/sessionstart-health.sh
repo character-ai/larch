@@ -57,7 +57,7 @@ if [[ "$JQ_AVAILABLE" == "true" && "$GIT_AVAILABLE" == "true" ]]; then
             status_out=""
         fi
         if [[ -n "$status_out" ]]; then
-            append_msg "larch hook preflight: working tree has uncommitted changes; the next /implement or /fix-issue will fail preflight or inherit them."
+            append_msg "larch hook preflight: working tree has uncommitted changes; the next /implement will fail preflight or inherit them."
         fi
 
         if ! stash_out=$(git stash list 2>/dev/null); then

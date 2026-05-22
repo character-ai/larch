@@ -16,7 +16,7 @@ The `larch:final-summary` body is rich markdown produced by
 then emits the `<!-- larch:run-summary v=1 -->` sentinel **before** any optional
 note lines from `--note-lines-file` (sentinel is the last line of the
 standardized block, not the first line of the file).
-`/implement` and `/fix-issue` share this renderer for the committed
+`/implement` uses this renderer for the committed
 `final-summary.md` projection and the GitHub upsert payload (`summary-final.md`).
 
 Large runtime payloads are not embedded in these comments. They are written to
@@ -25,4 +25,4 @@ terminal log-flush step. **Exception**: `larch:diagrams` embeds diagram bodies
 directly (Architecture + Code Flow); diagrams are not written as a larch-log
 batch.
 
-**When to load**: when editing `/implement` tracking-issue publication steps (Steps 0.5, 1, 9a.1, 11, 18).
+**When to load**: when editing `/implement` tracking-issue publication steps (Step 0 tracking + plan materialization tail, 9a.1, 11, 18).

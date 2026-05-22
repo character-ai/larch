@@ -278,4 +278,25 @@ grep -Fq 'NEVER silently drop a voted-in OOS finding' "$SKILL_MD" \
 grep -Fq 'NEVER set `OOS_PENDING=false` without a passing `oos-disposition-gate.sh` invocation' "$SKILL_MD" \
   || fail "SKILL.md must retain NEVER #18 gate-before-clear pin (OOS_PENDING vs oos-disposition-gate.sh)"
 
+# Folded Step 0 / admission structural pins (fix-issue removal; Step 0 + Preflight admission)
+grep -Fq 'scripts/implement-admission.sh' "$SKILL_MD" \
+  || fail "SKILL.md must reference scripts/implement-admission.sh"
+grep -Fq '1. **Admission gate**' "$SKILL_MD" \
+  || fail "SKILL.md Preflight must contain numbered Admission gate step"
+grep -Fq '**Preflight — admission gate known limitation (D3)**' "$SKILL_MD" \
+  || fail "SKILL.md must document admission gate fail-open limitation (D3)"
+grep -Fq '### Step 0 — tracking issue adoption' "$SKILL_MD" \
+  || fail "SKILL.md must contain Step 0 tracking issue adoption heading"
+grep -Fq '### Plan materialization from issue body' "$SKILL_MD" \
+  || fail "SKILL.md must contain plan materialization heading"
+if grep -Fq '<!-- step:0.5' "$SKILL_MD"; then
+  fail "SKILL.md must not reintroduce <!-- step:0.5 session anchor"
+fi
+if grep -Fq '<!-- step:1 —' "$SKILL_MD"; then
+  fail "SKILL.md must not reintroduce retired <!-- step:1 — session anchor"
+fi
+if grep -Fq '### /fix-issue coordination' "$SKILL_MD"; then
+  fail "SKILL.md must not contain /fix-issue coordination subsection"
+fi
+
 echo "All assertions passed."

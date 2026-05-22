@@ -1,9 +1,0 @@
-step	name
-0	setup
-1	read details
-2	triage
-3	classify
-4	find & lock
-5	execute
-6	finalize
-8	cleanup

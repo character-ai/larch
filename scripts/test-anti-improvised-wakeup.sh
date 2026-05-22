@@ -36,7 +36,6 @@ PROJECT_ANCHORS=(
 IMPLEMENT_LEGACY_ANCHOR="skills/implement/SKILL.md"
 
 MANDATORY_ANCHORS=(
-  "skills/fix-issue/SKILL.md"
   "skills/research/SKILL.md"
 )
 
