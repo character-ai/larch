@@ -1,0 +1,21 @@
+Gathering the branch diff and inspecting the new regression fixtures in both test harnesses.
+
+Reading fixture setup and assertion logic in both test files and the bail-signal matcher in the scan script. The cached diff file is empty.
+
+### In-Scope Findings
+
+- **risk-integration** `scripts/test-verify-run-log-completeness.sh:291-319` — Tests 17 and 19 (bail-signal + empty `steps_ran`, and explicit `step9a1=false` with a completed-style heading) follow the same harness pattern as earlier OK cases: they wrap the verifier in `|| true`, so the real exit status is discarded, and they only assert that the combined stdout/stderr string contains `OK`. That is weaker than asserting a zero exit code and that `MISSING=` never appears, so a future regression that printed a misleading `OK` fragment while still failing the check could slip through. **Suggested fix:** For positive-path cases, run the verifier without `|| true`, assert exit status 0, and add a negative check that the output does not contain `MISSING=` (or assert the output is exactly `OK` plus the expected trailing newline).
+
+- **risk-integration** `.claude/skills/audit-runs/scripts/test-audit-runs.sh:1751-1763` — The new bail-signal fixture for Test 52 only covers a first line ending in plain `bailed`, while `_rf_final_summary_bail_signal` in `.claude/skills/audit-runs/scripts/audit-scan-run.sh:146-152` also treats `bailed-needs-user-input` as a bail suffix; the mirrored verifier test (`scripts/test-verify-run-log-completeness.sh:281-287`) has the same gap. A typo or partial mismatch in production templates for the longer suffix would not be caught by these regressions. **Suggested fix:** Add a sibling fixture (or extend Test 52 / Test 17) whose first non-empty `final-summary.md` line ends with `bailed-needs-user-input` and assert the same pass/OK expectation as the plain `bailed` case.
+
+### Out-of-Scope Observations
+
+- The precomputed diff at `<TMPDIR>/round-1/diff.txt` was empty, so this review relied on direct reads of the current workspace files instead of that artifact.
+
+- `git log $(git merge-base HEAD main)..HEAD --oneline` produced no lines here (no merge-base..HEAD commits in this environment), so branch-vs-main commit scope could not be corroborated from history.
+
+- Test 54 versus Test 50: Test 54 correctly stresses the manifest-side path with a **non-bail** completed-style `final-summary.md` plus `steps_ran.step9a1=false`, so it is not redundant with the bail-only fallback in Test 52; Test 19 mirrors that distinction for the verifier.
+
+- The comment above `manifest_step9a1_explicitly_skipped` in `scripts/verify-run-log-completeness.sh:80-81` still claims only explicit `false` suppresses step9a1 handling, which is no longer accurate now that bail-aware empty-`steps_ran` logic exists in the same file; that is documentation drift outside the fixture matrix itself.
+
+- Test numbering jumps from 54 to 56 in `test-audit-runs.sh` (cosmetic only).

@@ -1,0 +1,12 @@
+Reviewing the diff and `_rf_condition_met` implementation for bail-probe correctness.
+
+Diff cache is empty; reading the implementation sections in the repo.
+
+### In-Scope Findings
+- **correctness** `.claude/skills/audit-runs/scripts/audit-scan-run.sh:146-152` — `_rf_final_summary_bail_signal` feeds the first non-empty line from `awk 'NF { print; exit }'` straight into `grep -Eq 'bailed(-needs-user-input)?$'` without stripping a trailing carriage return, while `scripts/verify-run-log-completeness.sh:118-134` normalizes with `line.rstrip("\r\n")`. A CRLF-encoded `final-summary.md` can leave a `\r` before the newline so the line no longer ends with `bailed`, the bail probe fails in the audit path only, and `required-file-presence` can still fail for `run-statistics.md` on a bailed run that the verifier treats as OK (parity break and possible revival of the false-positive for that encoding). **Suggested fix:** Strip `\r` from `line` in `_rf_final_summary_bail_signal` (e.g. bash parameter expansion or `tr -d '\r'`) before `grep`, matching the Python helper’s behavior.
+
+### Out-of-Scope Observations
+- The pre-computed diff at `<TMPDIR>/round-1/diff.txt` was empty; review used the current tree under `<OPERATOR_REPO_PATH>
+- `git log $(git merge-base HEAD main)..HEAD --oneline` produced no lines in this workspace state (no local commits listed since merge-base).
+- The bail probe intentionally keys off outcomes whose canonical heading ends with `bailed` / `bailed-needs-user-input` (see `scripts/render-run-summary.sh:187` and degraded `write-final-report.sh:330`); other terminal outcomes in the same manifest-patching family (e.g. `stalled`, `design-only` in `skills/implement/scripts/write-final-report.sh:348-351`) still yield headings that do not match `bailed$`, so legacy `steps_ran:{}` runs for those outcomes are not helped by this heuristic alone—mitigation is primarily the manifest writer path in the same change set, not the regex.
+- `grep -Eq 'bailed(-needs-user-input)?$'` is suffix-only (no `## /implement run` anchor); that is slightly looser than a heading-only match but aligned with how tests stage headings (e.g. `.claude/skills/audit-runs/scripts/test-audit-runs.sh:1762-1763`) and with production’s `## /… — <outcome>` line ending in the outcome token.

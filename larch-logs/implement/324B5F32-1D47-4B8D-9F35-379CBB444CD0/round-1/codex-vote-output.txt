@@ -1,0 +1,39 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: EXONERATE -- Legitimate cosmetic cleanup, but not worth a future tracking issue.
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: NO -- The cited SKILL text specifically describes `{}` historical runs, which the verifier does handle.
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: EXONERATE -- The markdown fallback is a compatibility heuristic, not a security boundary, and hardening it would undercut the intended legacy behavior.
+FINDING_17: YES
+FINDING_18: YES
+FINDING_19: YES
+FINDING_20: EXONERATE -- The edge is plausible, but broadening the heuristic beyond bail outcomes adds more ambiguity than this fix warrants.
+FINDING_21: YES
+FINDING_22: NO -- Generated final-summary headings do not include trailing spaces, so this is too minor to raise.
+FINDING_23: EXONERATE -- The redundancy is real but harmless and not worth changing for this patch.
+FINDING_24: YES
+FINDING_25: YES
+FINDING_26: YES
+FINDING_27: EXONERATE -- The branch is mostly redundant but not harmful or issue-worthy.
+FINDING_28: YES
+FINDING_29: YES
+FINDING_30: NO -- This is an environment observation, not a defect to track.
+FINDING_31: EXONERATE -- The limitation is real, but the current heuristic intentionally targets bail headings and future runs rely on manifest fields.
+FINDING_32: NO -- The suffix-only match is aligned with the generated heading format and existing tests.
+FINDING_33: NO -- The verifier currently emits `OK` only on the successful path, so the asserted weakness is hypothetical.
+FINDING_34: YES
+FINDING_35: YES
+FINDING_36: NO -- This is an environment observation, not a defect to track.
+FINDING_37: NO -- The item describes correct non-redundant coverage, not a problem.
+FINDING_38: EXONERATE -- The comment drift is real but too small for a separate tracking issue.
+FINDING_39: EXONERATE -- Cosmetic numbering cleanup is legitimate but not issue-worthy.

@@ -1,0 +1,39 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: EXONERATE -- pr_number probe is a plan gap but narrow edge case; plan itself says "or document intentional omission"
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: EXONERATE -- same reasoning as FINDING_3; narrow edge case, optional per plan
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: EXONERATE -- same as FINDING_3/7; plan frames pr_number probe as optional
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: NO -- trivial tooling/session artifact; reviewer worked around it and no code action is needed
+FINDING_16: EXONERATE -- legitimate concern but threat model for internal run logs is very low; explicit steps_ran.step9a1=false is the authoritative fix for new runs
+FINDING_17: YES
+FINDING_18: EXONERATE -- same as FINDING_3/7/12; plan labels it optional follow-up
+FINDING_19: YES
+FINDING_20: EXONERATE -- bail probe limited to bailed* is intentional per the plan's closed decisions; manifest-side fix is primary for other terminal outcomes
+FINDING_21: EXONERATE -- same as FINDING_3/7/12
+FINDING_22: EXONERATE -- trailing spaces in programmatically-generated run-log headers are essentially impossible; adding trim adds complexity for negligible real-world benefit
+FINDING_23: YES
+FINDING_24: NO -- same trivial tooling artifact as FINDING_15
+FINDING_25: YES
+FINDING_26: EXONERATE -- intentional design; FINDING_31 correctly notes heuristic is backward-compat for bailed specifically; manifest-side fix is primary
+FINDING_27: YES
+FINDING_28: YES
+FINDING_29: NO -- transient environment state, not a code issue
+FINDING_30: NO -- transient environment state, not a code issue
+FINDING_31: NO -- trivial clarification; reviewer confirming they understood the intentional design
+FINDING_32: NO -- trivial observation; suffix-only regex is already consistent with how tests stage headings
+FINDING_33: YES
+FINDING_34: YES
+FINDING_35: NO -- same trivial tooling artifact as FINDING_15/24/29
+FINDING_36: NO -- same transient environment state as FINDING_30
+FINDING_37: NO -- trivial positive observation, not an actionable concern
+FINDING_38: EXONERATE -- legitimate documentation drift but already covered by in-scope FINDING_9; no separate issue needed
+FINDING_39: YES

@@ -1,0 +1,23 @@
+Reading the ballot and session context files to verify findings.
+
+FINDING_1: NO -- plan-context.txt’s bail probe is final-summary plus empty steps_ran only; no pr_number requirement is stated there.
+FINDING_2: EXONERATE -- nonempty-without-step9a1 plus bail deliberately treats step9a1 as not reached; widening oos enforcement here trades away the stated partial-manifest forgiveness.
+FINDING_3: EXONERATE -- true dual-language maintenance cost but tests already mirror behavior; extracting shared predicates would add more churn than it saves right now.
+FINDING_4: EXONERATE -- COMMENT_ONLY intentionally skips run_dir writes; downstream ambiguity is narrow and callers already treat it as non-authoritative.
+FINDING_5: NO -- explicitly pre-existing inference and marked N/A; not worth a tracking issue.
+FINDING_6: EXONERATE -- both artifacts absent is the documented empty-object bail shortcut; oos-only with missing run-statistics staying strict matches the acceptance bullets in plan-context.
+FINDING_7: NO -- same as FINDING_1: cached plan-context does not prescribe a pr_number bail OR branch.
+FINDING_8: EXONERATE -- skipping manifest edits when manifest.json is absent is expected; failing the whole finalize for that rare case would be heavier than the risk.
+FINDING_9: YES
+FINDING_10: EXONERATE -- hypothetical jq ordering flake only; opening an issue would be noise.
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: NO -- verify-run-log-completeness step9a1 already ORs MANIFEST_PR_NUMBER, manifest status, and final-summary alongside files.
+FINDING_14: NO -- duplicate “Test 15” labels are cosmetic only.
+FINDING_15: EXONERATE -- tampering committed logs already breaks all audit assumptions; documenting git trust is optional polish, not a defect.
+FINDING_16: NO -- mirrors existing PLUGIN_ROOT sourcing; no new issue class to track.
+FINDING_17: YES
+FINDING_18: NO -- plan-context.txt’s sequenced bail probe does not include a pr_number signal; drift claim targets text not present in the provided plan artifact.
+FINDING_19: EXONERATE -- workflow/sidecar ref hygiene, not a product bug warranting a repo issue from this ballot alone.
+FINDING_20: YES
+FINDING_21: EXONERATE -- force-merged-externally is non-bail terminal naming; inc-file drift is minor and unlikely to affect enforcement paths.

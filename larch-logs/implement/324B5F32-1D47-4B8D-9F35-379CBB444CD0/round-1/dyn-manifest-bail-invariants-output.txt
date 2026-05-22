@@ -1,0 +1,17 @@
+Gathering the diff, commit list, and bail-path manifest code for a correctness-focused review.
+
+Diff cache is empty and the commit range is empty. Comparing the working tree to `main` for actual changes.
+
+Inspecting `larch-log.sh manifest` behavior and full conditional logic in the modified scripts.
+
+Checking how `run_dir` relates to `IMPLEMENT_TMPDIR` and whether `PLUGIN_ROOT` can be wrong when manifest update runs:
+
+Review used `git show 14e3b670` (local `main` is that commit; merge-base diff vs `main` is empty). `larch-log.sh` manifest updates use `mktemp` + `jq` to temp + `mv` (see `scripts/larch-log.sh:435-444`), so the manifest mutation path is atomic when it runs.
+
+### In-Scope Findings
+- **correctness** `skills/implement/scripts/write-final-report.sh:369-374` — The new `steps_ran.*=false` update is wrapped in `2>/dev/null || true`, so any failure from `larch-log.sh manifest` (missing `jq`, bad `--log-root`, “manifest not found”, permissions, etc.) is swallowed and the run can still ship with an ambiguous empty `steps_ran`, contradicting the adjacent SKILL text that says the manifest **MUST NOT** stay ambiguous and undermining the point of the implement-side fix. **Suggested fix:** drop the unconditional `|| true` (and preferably stderr suppression): let the script surface non-zero status, or on failure emit a visible `append-tool-failure` / `emit` breadcrumb and exit non-zero from `write-final-report` if honoring the invariant is load-bearing for the run log contract.
+
+- **correctness** `.claude/skills/audit-runs/scripts/audit-scan-run.sh:146-157` and `scripts/verify-run-log-completeness.sh` (new `final_summary_heading_bail_signal`) — The defensive path only treats the first non-empty `final-summary.md` line as a bail signal when it ends with `bailed` or `bailed-needs-user-input`, while `write-final-report.sh:348-351` records the same manifest honesty for other terminal outcomes (`stalled`, `design-only`, `forked-dry-run`, `pr-created`, etc.). Historical directories with `steps_ran: {}` and a first line ending in `stalled` (or similar) therefore still infer step9a1 as reached and can keep false positives if the manifest update never ran or failed silently. The original problem statement also mentioned a `pr_number` null/absent heuristic, which this diff does not implement. **Suggested fix:** broaden the heading probe to the full set of non-merge terminal outcome suffixes you already persist in `final-summary.md`, and/or add the empty-`steps_ran` + missing-`pr_number` branch so legacy runs match the written dual-signal intent.
+
+### Out-of-Scope Observations
+- The new early-return guard on the `step8` branch in `audit-scan-run.sh:182-185` (and the mirror in `verify-run-log-completeness.sh`) is effectively inert in normal run directories because `final-summary.md` is almost always present once the scan runs, so step8 “skip” still relies on the existing `final-summary` disjunct and the real relaxation for `run-statistics.md` comes from the `step9a1` branch; this is redundant but not a functional regression for the reported bug class.

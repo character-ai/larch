@@ -1,0 +1,17 @@
+Comparing bail-aware logic in both scripts against the branch diff. Reading the precomputed diff and the relevant script sections.
+
+Precomputed diff is empty. Fetching the branch diff and full bail-logic sections with read-only git and file reads.
+
+### In-Scope Findings
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+- **architecture** `scripts/verify-run-log-completeness.sh:99-115` and `.claude/skills/audit-runs/scripts/audit-scan-run.sh:128-143` — `manifest_steps_ran_empty` only treats `steps_ran` as empty when it is a JSON object with length zero, so a manifest that omits `steps_ran` or sets it to `null` is **not** “empty” for the verify bail probe, while `audit-scan-run.sh` loads `.steps_ran // {}` and `_rf_steps_ran_empty` therefore treats those as `{}`. That contradicts the verify comment that this “matches audit-scan-run bail fallback” and can leave audit and runtime verify disagreeing on the same run directory. **Suggested fix:** align `manifest_steps_ran_empty` with jq semantics (treat absent or `null` `steps_ran` like `{}`, and decide explicitly whether non-object types should match audit’s jq errors/fallback).
+
+- **architecture** `scripts/verify-run-log-completeness.sh:118-135` and `.claude/skills/audit-runs/scripts/audit-scan-run.sh:146-157` — bail detection is duplicated in two languages (Python `re` vs `awk` + `grep -E`) rather than a shared helper or sourced fragment, so regex or “first non-empty line” semantics can drift silently even when the patterns look the same today. **Suggested fix:** centralize the predicate in one small shell+jq (or one Python) helper used by both scripts, or add a tiny contract test that both implementations must satisfy the same fixture set beyond the existing harness overlap.
+
+- **architecture** `scripts/verify-run-log-completeness.sh:177-189` and `.claude/skills/audit-runs/scripts/audit-scan-run.sh:188-201` — for `step9a1`, after the shared bail-empty block the verify path still treats `pr_number`, `status=done`, or `final-summary.md` as evidence the step was “reached”, while the audit scanner’s **non-chain** `step9a1` arm returns success unconditionally after the bail check (so required-file presence stays strict). That is a structural behavioral difference, not only an implementation detail; it is mostly masked for `run-statistics.md` when `final-summary.md` exists, but it is not the same state machine as audit. **Suggested fix:** either document this intentional asymmetry and add paired fixtures that lock it, or narrow verify’s `step9a1` branch to mirror `_rf_condition_met`’s direct vs `chain` split.
+
+- Precomputed diff at `<TMPDIR>/round-1/diff.txt` is empty and `git rev-parse HEAD main` resolves both to `14e3b670574fdc079427250b4d1b9aa9fd878358`, so there is no `main...HEAD` delta to attribute; the items above are parity risks in the current tree, not tied to an unpushed commit range.
+
+- The written plan’s extra bail signal (`pr_number` missing/null) does not appear in `_rf_bail_empty_steps_ran_skip` or the verify mirror; both paths rely on empty `steps_ran` plus the `final-summary.md` heading only, so they remain aligned with each other but narrower than that plan text.
