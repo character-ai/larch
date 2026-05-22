@@ -1,0 +1,26 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	risk-integration	plan.txt:34-38; scripts/create-pr.sh:117-157	Plan uses the active branch and create-pr existing-PR fast path for the log PR	If /design runs nested under /implement or on a branch with an existing PR, the log publisher can push logs to the work PR and then squash-merge/delete that branch instead of creating a standalone branch-scoped log PR	Create a dedicated log branch from the default branch, create the PR from that branch explicitly, merge/delete only that log branch, and add tests for existing active PR and nested SESSION_ENV_PATH cases
+1	in_scope	important	correctness	plan.txt:77-82; skills/design/SKILL.md:148-158	Plan passes --repo "$REPO" but does not bind REPO in /design	/design session setup currently uses --skip-repo-check, so REPO may be unset when the new rename/publish calls run, causing expansion failure or empty repo arguments	Define the repo source in the plan, e.g. resolve via scripts/resolve-repo.sh or gh repo view before Step 5, and add a harness assertion for missing/invalid repo handling
+1	in_scope	important	correctness	plan.txt:62-89; skills/design/SKILL.md:178-179	Clarification completion path is not covered by the planned [PLANNED] rename and log flush	The clarify loop writes the plan block and exits successfully without necessarily passing through the normal Step 5b approval snippet, so a completed clarification design may leave no [PLANNED] title and no design log PR	Factor a post-plan-write success routine and call it from both normal accept and clarify-response success paths; add a structural or integration test for the clarify path
+1	in_scope	important	security	plan.txt:29-31; scripts/larch-log.md:18-24	Plan commits DESIGN_TMPDIR .meta and tool-envelope sidecars with only generic redaction	Committed run-log contracts strip CMD_JSON from .meta and top-level .result from output JSON before redaction; the new direct copier can publish raw argv/prompt envelopes or duplicated model output that existing log publishing intentionally trims	Reuse the existing lib-redact sidecar trimmers or explicitly exclude those sidecars, fail closed on trim failure, and add tests for .meta CMD_JSON and *-output.txt.json .result sanitization
+1	in_scope	nit	code-quality	plan.txt:48-54; .claude/rules/script-md-siblings.md:7-12	New test harness lacks a planned sibling contract document	The plan creates scripts/test-design-log-publish.sh but only creates scripts/design-log-publish.md; repo rules require every scripts/*.sh file to have a sibling .md, including harness stubs	Add scripts/test-design-log-publish.md to the file list and Makefile/lint documentation updates
+
+1. **[risk-integration] `plan.txt:34-38`; `scripts/create-pr.sh:117-157`**  
+Concern: the plan says to push `$BRANCH`, call `create-pr.sh`, then `gh pr merge --delete-branch`. `create-pr.sh` first returns an existing open PR for the current branch, so this is not guaranteed to be a standalone branch-scoped log PR. In nested `/implement` use, it could merge/delete the implementation branch before implementation proceeds.  
+Suggested revision: create an isolated log branch from the default branch, pass it explicitly as the PR head, and only merge/delete that log branch. Test existing-PR and nested-session cases.
+
+2. **[correctness] `skills/design/SKILL.md:148-158`; `plan.txt:77-82`**  
+Concern: the planned Step 5 snippet uses `$REPO`, but `/design` setup is run with `--skip-repo-check`, and the current Step 5 does not bind `REPO`.  
+Suggested revision: add an explicit repo-resolution step before rename/publish, or make the new script resolve repo internally when `--repo` is omitted.
+
+3. **[correctness] `skills/design/SKILL.md:178-179`; `plan.txt:62-89`**  
+Concern: the clarify loop is also a successful `/design` completion path, but the plan only places rename/log-publish after the normal Step 5b plan write.  
+Suggested revision: make the post-plan-write hook shared by normal accept and clarify-response success, with coverage for clarify completion.
+
+4. **[security] `scripts/larch-log.md:18-24`; `plan.txt:29-31`**  
+Concern: direct copying of all DESIGN_TMPDIR files only through generic redaction misses existing committed-log trimming for `.meta` `CMD_JSON` and `*.json` `.result` envelopes.  
+Suggested revision: reuse the same sidecar-specific sanitizers or exclude those files, and test both cases.
+
+5. **[code-quality] `.claude/rules/script-md-siblings.md:7-12`; `plan.txt:48-54`**  
+Concern: `scripts/test-design-log-publish.sh` needs its own sibling `.md` stub under repo rules.  
+Suggested revision: add `scripts/test-design-log-publish.md` to the plan.

@@ -1,0 +1,14 @@
+You are an Architecture/Standards architect. Propose a high-level implementation approach for this feature: feat(/design): append [PLANNED] to issue title on completion + branch/logs/PR flow
+
+1. When design process completes (plan written to GitHub issue), append [PLANNED] prefix to the tracking issue title, consistent with [IN PROGRESS], [DONE], [STALLED] bracket convention in tracking-issue-write.sh.
+2. /design should create a branch when it starts the process, save all run logs (all DESIGN_TMPDIR content) directly in its branch's larch-logs/design/<run-id>/ directory just like where /implement flushes its logs, and, after completing its work, create a PR that bypasses CI (using [skip ci] in commit message and gh pr merge --squash --admin) and merge it which contains complete run logs of /design. Delete the branch after merge.
+
+Relevant codebase context:
+- tracking-issue-write.sh rename subcommand supports states: in-progress|done|stalled. Add 'planned' state.
+- lib-title-markers.sh has strip_lifecycle_prefix() function; add [PLANNED] case.
+- scripts/larch-log.sh commit verb does git add + commit to larch-logs/<skill>/<run-id>/ but hardcodes message without [skip ci].
+- /design Step 1 already creates a branch with create-branch.sh.
+- /design Step 5 writes the plan to GitHub issue via plan-block-write.sh, then cleans up DESIGN_TMPDIR.
+- The log flush + PR creation should happen in Step 5 AFTER plan-block-write.sh and BEFORE cleanup-tmpdir.sh.
+- Branch should be deleted after merge.
+- This feature is standalone /design only (no nested mode guard needed).. Your role is to emphasize maintainability, engineering standards, separation of concerns, and reuse of existing libraries (including open-source). Explore the codebase at /Users/zhupanov/larch5. Write 2-3 paragraphs covering: (1) Key architectural decisions — emphasize clean design, proper layering, and whether existing libraries or patterns can be reused, (2) Which files/modules to modify and why — flag any violations of single-responsibility or layer boundaries, (3) Main tradeoffs around long-term maintainability vs. short-term convenience. Do NOT modify files.

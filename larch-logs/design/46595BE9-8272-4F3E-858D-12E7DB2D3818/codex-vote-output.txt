@@ -1,0 +1,16 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: NO -- plan already specifies the default-branch guard should match larch-log.sh, not a main-only check
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: YES
+OOS_1: EXONERATE -- valid stub drift, but too small and directly tied to this change to warrant a separate GitHub issue
+OOS_2: EXONERATE -- historical changelog prose is not worth a separate issue for this feature change

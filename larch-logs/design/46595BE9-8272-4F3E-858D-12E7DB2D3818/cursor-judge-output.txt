@@ -1,0 +1,9 @@
+Reading the ballot and verifying FINDING_1 against the repository.
+
+Verifying cited evidence in the repository for both defenses.
+
+Noting a ballot labeling mismatch (section titled "DECISION_2" but vote is FINDING_1). Verifying Defense A's line-range claim for the accept/write flow (807–812).
+
+Confirming Step 5 opens with `timing-ledger.sh` at line 800 (first read). Both defenses' citations check out. Creating the plan and recording the vote.
+
+

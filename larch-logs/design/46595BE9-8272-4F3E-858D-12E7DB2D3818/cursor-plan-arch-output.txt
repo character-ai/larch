@@ -1,0 +1,31 @@
+Reading the plan and referenced code paths for an architecture/standards review.
+
+Reading referenced scripts and adjacent integration points to validate the plan against the codebase.
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/SKILL.md:167-168	Step 0 parse contract lists SESSION_TMPDIR and reviewer flags but not SESSION_ID while the proposed Step 5 passes --run-id "$SESSION_ID"	design-log-publish receives empty or unset run-id or a hallucinated shell variable unless implementors add a new parse rule or read DESIGN_TMPDIR/session-id	Extend Step 0 parse list to include SESSION_ID from session-setup stdout or document reading tr -d CRNL from DESIGN_TMPDIR/session-id before invoking publish
+2	in_scope	important	risk-integration	scripts/create-pr.sh:117-157 plus plan.txt:34-38 (design-log-publish sequencing)	Head branch for log PR is CURRENT_BRANCH with post-commit push then create-pr existing-PR path and gh pr merge --squash --admin --delete-branch	An already-open PR from that branch merges the full branch diff not log-only files and delete-branch removes the remote feature branch the operator may still need for follow-on work	Use a disposable log-only branch name per run or refuse merge when PR_STATUS=existing and head is not log-only document an explicit operator recovery path without delete-branch on shared feature branches
+3	in_scope	important	architecture	skills/design/SKILL.md:92-92	Nested NEVER rule 7 allows only artifact paths plus one machine line after plan-block-write	Inline print warnings after plan-block-write for nested SESSION_ENV_PATH contradicts the artifact-only parent transcript contract	Log failures to DESIGN_TMPDIR files and emit only paths plus the existing machine footer or amend NEVER 7 with an explicit exception for these two warnings
+4	in_scope	important	correctness	scripts/larch-log.sh:124-137	Default branch detection uses main master and origin symbolic-ref not just main	Plan prose says mirror larch-log commit guard a shallow main-only check would refuse or allow commits on repos whose default branch is not main	Implement design-log-publish default-branch guard by reusing current_branch_is_default logic or factoring a shared helper
+5	in_scope	nit	code-quality	plan.txt:76-82 (skills/design/SKILL.md insertion)	Proposed invocation uses scripts/design-log-publish.sh without ${CLAUDE_PLUGIN_ROOT}	Nested runs or non-repo cwd can fail to resolve the script path consistently with the rest of the skill	Use "${CLAUDE_PLUGIN_ROOT}/scripts/design-log-publish.sh" like other Step 5 helpers
+6	in_scope	nit	code-quality	scripts/tracking-issue-write.sh:12-40 and scripts/tracking-issue-write.md:9-11	Rename usage header and Rename semantics prose still enumerate only in-progress done stalled	Operators and parsers reading the file header miss planned state and drift from runtime behavior	Update usage lines rename semantics paragraph and the anchored prefix description to include PLANNED
+7	in_scope	nit	architecture	.claude/rules/script-md-siblings.md:15-26	New harness scripts/test-design-log-publish.sh is planned without a sibling scripts/test-design-log-publish.md stub	CI or contributors following the sibling-doc rule get an undocumented harness	Add scripts/test-design-log-publish.md stub pointing at design-log-publish.md per existing test-*.md pattern
+8	in_scope	latent	security	plan.txt:108-110 plus docs to add	gh pr merge --squash --admin bypasses branch protection and assumes operator token can admin-merge	Policy denied noisy logs or accidental merges on forks orgs with strict SSO	Document required scopes fork behavior and a non-admin fallback path emit merge-failed and keep logs committed locally for manual PR
+
+1. **[correctness]** [skills/design/SKILL.md:167-168](skills/design/SKILL.md): Step 0 never binds `SESSION_ID` while the plan’s Step 5 snippet uses `--run-id "$SESSION_ID"`; align implementation with `session-setup.sh`’s `SESSION_ID` / `DESIGN_TMPDIR/session-id` contract.
+
+2. **[risk-integration]** [scripts/create-pr.sh:117-157](scripts/create-pr.sh): Pushing `CURRENT_BRANCH` and merging the returned PR can squash-merge unrelated commits if a PR already exists from that branch, and `--delete-branch` drops the remote branch; narrow the PR surface (disposable branch or guards) or drop auto-merge when `PR_STATUS=existing`.
+
+3. **[architecture]** [skills/design/SKILL.md:92-92](skills/design/SKILL.md): Nested artifact-only rule conflicts with printing inline `**⚠**` lines immediately after `plan-block-write`; log to `$DESIGN_TMPDIR/` and surface paths only, or amend the NEVER rule explicitly.
+
+4. **[correctness]** [scripts/larch-log.sh:124-137](scripts/larch-log.sh): `current_branch_is_default` compares `origin/HEAD`; the plan’s “same guard as larch-log commit” must not devolve into a `main`/`master` string check only.
+
+5. **[code-quality]** Plan snippet for `design-log-publish`: prefer `"${CLAUDE_PLUGIN_ROOT}/scripts/design-log-publish.sh"` for parity with other design Step 5 invocations.
+
+6. **[code-quality]** [scripts/tracking-issue-write.sh:12-40](scripts/tracking-issue-write.sh) and [scripts/tracking-issue-write.md:9-11](scripts/tracking-issue-write.md): Update lifecycle documentation when adding `planned` so header comments and the sibling `.md` stay authoritative.
+
+7. **[architecture]** [.claude/rules/script-md-siblings.md:15-26](.claude/rules/script-md-siblings.md): Add `scripts/test-design-log-publish.md` alongside the new harness to satisfy the sibling-doc invariant.
+
+8. **[security]** Plan’s `gh pr merge --admin` path: call out token privilege requirements, fork/SSO policy_denied behavior, and whether auto-merge is acceptable for consumer repos in `SECURITY.md` / `design-log-publish.md`.
+
+**[OUT_OF_SCOPE]** Cross-repo `grep` for new callers under `.github/workflows/`, `hooks/`, and `agent-lint` rule surfaces after adding `scripts/design-log-publish.sh` — [.github/workflows/](.github/workflows/) (entire tree), [hooks/hooks.json](hooks/hooks.json), [agent-lint.toml](agent-lint.toml) if present:1-9999 — worth a follow-up hygiene pass so wiring stays discoverable.

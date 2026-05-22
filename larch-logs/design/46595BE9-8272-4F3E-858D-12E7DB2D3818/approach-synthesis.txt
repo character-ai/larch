@@ -1,0 +1,36 @@
+## Approach Synthesis
+
+All four sketches converge on a narrow extension pattern: add `planned` as a new lifecycle state 
+to `tracking-issue-write.sh` + `lib-title-markers.sh`, and create a new dedicated helper 
+`scripts/design-log-publish.sh` for the log flush + PR + merge tail of Step 5. No modifications 
+to `larch-log.sh commit` (shared by /implement and /review).
+
+### Agreement
+1. `tracking-issue-write.sh`: add `planned → [PLANNED] ` to `state_to_prefix()`; add `[PLANNED]` 
+   case to `strip_lifecycle_prefix()`; update error message and usage string.
+2. `lib-title-markers.sh`: add `[PLANNED] ` to `insert_signal_marker` so false-positive / 
+   bracket insertion handles it consistently.
+3. New `scripts/design-log-publish.sh` (not `skills/design/scripts/`):
+   - Copies all non-symlink files from DESIGN_TMPDIR to `larch-logs/design/<run-id>/` with 
+     redaction (redact-tmpdir-paths.sh + redact-secrets.sh)
+   - Creates `manifest.json` (skill=design, run_id, issue)
+   - `git add larch-logs/design/<run-id>/`
+   - `git commit -m "chore(larch-logs): flush design run <run-id> [skip ci]"`
+   - `git push origin <branch>`
+   - `scripts/create-pr.sh` (creates/detects PR)
+   - `gh pr merge --squash --admin --delete-branch` (direct, not merge-pr.sh)
+   - Emits KEY=VALUE contract
+4. Step 5 order: plan-block-write.sh (5b) → tracking-issue-write.sh rename planned → 
+   design-log-publish.sh → cleanup-tmpdir.sh (5c)
+5. Tests: `scripts/test-tracking-issue-write.sh` + new `scripts/test-design-log-publish.sh` (offline, stubbed git/gh)
+6. Docs: SECURITY.md + docs/run-logs.md
+
+### Contested Decisions
+- **DECISION_1**: Direct `gh pr merge --admin --delete-branch` vs. using merge-pr.sh
+  - Chosen: Direct (merge-pr.sh has CI-pass gate that conflicts with bypass-CI requirement)
+  - Alternative: Extend merge-pr.sh with `--logs-only` mode
+  - Tension: Innovation noted merge-pr.sh requires CI pass before --admin; Pragmatic chose direct
+- **DECISION_2**: Helper location — `scripts/` vs. `skills/design/scripts/`
+  - Chosen: `scripts/` (consistent with larch-log-flush.sh precedent; reusable if other skills add log flush)
+  - Alternative: `skills/design/scripts/` (more isolated, co-located with design skill)
+  - Tension: Minor — Pragmatic said either; Innovation said `scripts/`

@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "design_classification": "HARD",
+  "design_classification_reason": "user-selected tier=hard",
+  "design_classification_source": "caller-forwarded",
+  "sketch_budget": 4,
+  "review_budget": "full",
+  "workflow_path": "HARD"
+}
