@@ -149,10 +149,18 @@ has_report_prefix() {
 # so a stale IMPLEMENT_TMPDIR from another session cannot bypass the gate.
 if [[ -n "${IMPLEMENT_TMPDIR:-}" && -f "${IMPLEMENT_TMPDIR}/parent-issue.md" ]]; then
     parent_num=$(awk -F= '/^ISSUE_NUMBER=/{print $2; exit}' "${IMPLEMENT_TMPDIR}/parent-issue.md" 2>/dev/null || true)
-    parent_num=$(printf '%s' "$parent_num" | tr -d '\r\n')
+    parent_num=$(printf '%s' "$parent_num" | tr -d '\r\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
     parent_run_id=$(awk -F= '/^RUN_ID=/{print $2; exit}' "${IMPLEMENT_TMPDIR}/parent-issue.md" 2>/dev/null || true)
     parent_run_id=$(printf '%s' "$parent_run_id" | tr -d '\r\n')
-    if [[ -n "$parent_num" && "$parent_num" == "$ISSUE" ]]; then
+    # Compare numeric identity with argv-normalized ISSUE (leading zeros / stray whitespace
+    # in parent-issue.md must not defeat crash-resume).
+    resume_sentinel_issue_match=0
+    if [[ -n "$parent_num" && "$parent_num" =~ ^[0-9]+$ && ! "$parent_num" =~ ^0+$ ]]; then
+        if [[ "$((10#$parent_num))" -eq "$ISSUE" ]]; then
+            resume_sentinel_issue_match=1
+        fi
+    fi
+    if [[ "$resume_sentinel_issue_match" -eq 1 ]]; then
         resume_ok=1
         if [[ -n "$parent_run_id" ]]; then
             if [[ -z "${RUN_ID:-}" || "$parent_run_id" != "$RUN_ID" ]]; then

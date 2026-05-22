@@ -381,7 +381,7 @@ assert_equal "$result" "pickable" "[14d] non-audit-report title not excluded"
 result=$(title_matches_audit_report_exclusion "[Run Logs Audit Report 2026-05-20T19:30Z] PRs #2430-#2440")
 assert_equal "$result" "pickable" "[14g] pre-migration audit bracket title not matched by self-exclusion regex (label guard is primary)"
 
-# Test 14e: find-lock-issue.sh has_report_prefix matches the audit report title
+# Test 14e: implement-admission.sh has_report_prefix matches the audit report title
 # (space before "report]" inside the bracket); label-based exclusion is still primary.
 title_matches_has_report_prefix() {
     local title="$1"

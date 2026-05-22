@@ -48,11 +48,11 @@
 - **notes**: Architecture; should explain bucket assignment (decisions 1/3/5 → Cursor, 2/4 → Codex), the shadow-flag pattern that protects orchestrator-wide availability, and the four Disposition values (`voted`, `fallback-to-synthesis`, `bucket-skipped`, `over-cap`).
 
 ### eval-6: parent-issue-sentinel-branches
-- **question**: What is the relationship between `/implement` Step 0.5 Branches 1 through 4 and the `parent-issue.md` sentinel file, and how does the sentinel preserve idempotency across resumed runs?
+- **question**: What is the relationship between `/implement` Step 0 tracking adoption (Branch 1 vs Branch 2) and the `parent-issue.md` sentinel file, and how does the sentinel preserve idempotency across resumed runs?
 - **category**: architecture
 - **expected_provenance_count**: 2
-- **expected_keywords**: parent-issue.md, ADOPTED, Branch 1, Branch 4, Load-Bearing Invariant, tracking-issue-summary.sh
-- **notes**: Architecture; should cover sentinel-reuse (Branch 1), `--issue` adoption (Branch 2), PR-body recovery (Branch 3), fresh creation (Branch 4), and the ordering invariant in Branch 4 (create issue → post summary metadata → write sentinel last).
+- **expected_keywords**: parent-issue.md, ADOPTED, Branch 1, Branch 2, RUN_ID, tracking-issue-summary.sh
+- **notes**: Architecture; should cover sentinel-reuse (Branch 1), positional `--issue` adoption (Branch 2), when `post-tracking-issue.sh` writes the sentinel after successful metadata publication, and how `RUN_ID` / manifest init interact on resume versus fresh adopt.
 
 ### eval-7: rebase-rebump-step12-interaction
 - **question**: How does the rebase-rebump sub-procedure interact with `/implement` Step 12's CI+merge loop, and what is the difference between step12-family and step10-family failure semantics?
