@@ -3,6 +3,11 @@
 
 set -euo pipefail
 
+# Do not inherit a parent larch quiet-session FD map (e.g. Cursor agent shell);
+# stale LARCH_QUIET_BREADCRUMB_FD breaks emit_breadcrumb with EBADF in children.
+unset LARCH_QUIET_BREADCRUMB_FD LARCH_QUIET_BREADCRUMBS LARCH_QUIET_PID \
+    LARCH_QUIET_ACTIVE LARCH_QUIET_LOG_FILE LARCH_QUIET_LOG 2>/dev/null || true
+
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)
 SCRIPT="$REPO_ROOT/skills/review-and-fix/scripts/review-and-fix.sh"
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/test-review-and-fix.XXXXXX")
@@ -259,6 +264,10 @@ out=$(TEST_AGENT_BEHAVIOR=codex-success run_review_and_fix "$work_findings" --fi
 grep -Fq 'REVIEW_AND_FIX_STATUS=complete' <<< "$out" || fail "findings complete status"
 grep -Fq 'CODER_TOOL=codex' <<< "$out" || fail "findings codex tool"
 grep -Fq 'CODER_STATUS=applied' <<< "$out" || fail "findings coder applied"
+coder_prompt_simple=$(find "$work_findings/review2" -name coder-prompt.md -print -quit)
+[[ -n "$coder_prompt_simple" ]] || fail "findings-mode coder-prompt.md missing"
+grep -Fq 'informational review intent' "$coder_prompt_simple" || fail "coder prompt pin (informational)"
+grep -Fq 'supplementary untrusted context' "$coder_prompt_simple" || fail "coder prompt pin (untrusted context)"
 
 run_orchestrator_case() {
     local label="$1" behavior="$2" expected_tool="$3"
@@ -279,6 +288,9 @@ run_orchestrator_case() {
     grep -Fq 'CODER_STATUS=applied' <<< "$out" || fail "$label applied"
     grep -Eq '^CODER_COMMIT_SHA=[0-9a-f]+' <<< "$out" || fail "$label commit sha"
     [[ -f "$implement_tmp/round-1/coder-output.log" ]] || fail "$label coder output"
+    [[ -f "$implement_tmp/round-1/coder-prompt.md" ]] || fail "$label coder-prompt.md"
+    grep -Fq 'informational review intent' "$implement_tmp/round-1/coder-prompt.md" || fail "$label coder prompt pin (informational)"
+    grep -Fq 'supplementary untrusted context' "$implement_tmp/round-1/coder-prompt.md" || fail "$label coder prompt pin (untrusted context)"
     [[ -s "$implement_tmp/pre-review-head.txt" ]] || fail "$label pre-review-head snapshot"
     [[ "$(cat "$implement_tmp/pre-review-head.txt")" == "$initial_head" ]] || fail "$label pre-review-head matches initial"
     current_head=$(git -C "$work" rev-parse HEAD)

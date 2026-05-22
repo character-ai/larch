@@ -306,39 +306,51 @@ def input_blocks_by_slot(text):
     return slot_map
 
 
-def suggested_revisions_bullets(block):
-    """Return list of (slot_label, revision_text) from a 'Suggested revisions' sub-list."""
+def suggested_revisions_bullets(block, bid="?"):
+    """Parse 'Suggested revisions' sub-list; return (bullets, parse_warnings)."""
     lines = block.splitlines()
     in_revisions = False
     bullets = []
+    parse_warnings = []
     pending_from = None  # (slot_label, list of text fragments)
     for line in lines:
         s = line.strip()
         if re.match(r"^-\s*\*\*Suggested revisions", s, re.IGNORECASE):
             in_revisions = True
             continue
-        if in_revisions:
-            # New top-level field stops the sub-list
-            if _REVISION_SUBLIST_END_HEADING.match(s):
-                if pending_from:
-                    bullets.append(
-                        (pending_from[0], " ".join(pending_from[1]).strip())
-                    )
-                break
-            m = re.match(r"^-\s+From\s+(.+?):\s+(.+)$", s, re.IGNORECASE)
-            if m:
-                if pending_from:
-                    bullets.append(
-                        (pending_from[0], " ".join(pending_from[1]).strip())
-                    )
-                pending_from = (m.group(1).strip(), [m.group(2).strip()])
-                continue
+        if not in_revisions:
+            continue
+        m_from = re.match(r"^-\s+From\s+(.+?):\s+(.+)$", s, re.IGNORECASE)
+        if m_from:
             if pending_from:
+                bullets.append(
+                    (pending_from[0], " ".join(pending_from[1]).strip())
+                )
+            pending_from = (m_from.group(1).strip(), [m_from.group(2).strip()])
+            continue
+        if _REVISION_SUBLIST_END_HEADING.match(s):
+            if pending_from:
+                # Verbatim fix text can contain lines that look like finding
+                # fields (e.g. "- **Concern**:"); keep folding until the next
+                # "- From ..." bullet or real sub-list end (no active bullet).
                 pending_from[1].append(s)
                 continue
+            parse_warnings.append(
+                "field-like line in Suggested revisions before first 'From:' bullet "
+                "in %s (%r)" % (bid, s[:120])
+            )
+            break
+        if pending_from:
+            pending_from[1].append(s)
+            continue
+        if s:
+            parse_warnings.append(
+                "unexpected line in Suggested revisions sub-list before first "
+                "'From:' bullet in %s (%r)" % (bid, s[:120])
+            )
     if pending_from:
         bullets.append((pending_from[0], " ".join(pending_from[1]).strip()))
-    return bullets
+    return bullets, parse_warnings
 
 
 def singular_suggested_revision(block):
@@ -382,6 +394,7 @@ def revision_traceable_in_blocks(revision_text, in_blocks):
     rev_norm = normalize_for_match(revision_text).strip()
     if not rev_norm:
         return False
+    use_prefix = os.environ.get("LARCH_AGGREGATE_REVISION_TRACE_PREFIX_FALLBACK") == "1"
     words = rev_norm.split()
     window = min(6, len(words)) if len(words) >= 2 else 0
     needle = " ".join(words[:window]) if window else ""
@@ -389,7 +402,7 @@ def revision_traceable_in_blocks(revision_text, in_blocks):
         corp_norm = normalize_for_match(block)
         if rev_norm in corp_norm:
             return True
-        if needle and needle in corp_norm:
+        if use_prefix and needle and needle in corp_norm:
             return True
     return False
 
@@ -404,9 +417,10 @@ def check_revision_traceability(input_text, output_blocks_list):
         if is_oos:
             continue
         output_slots_norm = output_reviewer_slots_norm(block)
-        bullets = suggested_revisions_bullets(block)
-        singular = singular_suggested_revision(block)
         bid = finding_id_from_block(block) or "?"
+        bullets, parse_warnings = suggested_revisions_bullets(block, bid)
+        warnings.extend(parse_warnings)
+        singular = singular_suggested_revision(block)
         if singular and bullets:
             warnings.append(
                 "both legacy singular Suggested revision and multi-reviewer revision "
