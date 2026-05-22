@@ -6,6 +6,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd -P)"
+# shellcheck source=scripts/run-log-terminal-outcomes.inc.bash
+. "$SCRIPT_DIR/run-log-terminal-outcomes.inc.bash"
 if [[ -n "${LARCH_VERIFY_MANIFEST:-}" ]]; then
     if [[ "$LARCH_VERIFY_MANIFEST" = /* ]]; then
         MANIFEST="$LARCH_VERIFY_MANIFEST"
@@ -125,15 +127,12 @@ PY
 # First non-empty line of final-summary.md ends with a terminal non-merge outcome
 # string persisted by write-final-report (same set as manifest honesty updates).
 final_summary_heading_bail_signal() {
-    python3 - "$RUN_DIR/final-summary.md" <<'PY'
+    python3 - "$RUN_DIR/final-summary.md" "$RUN_LOG_TERMINAL_OUTCOME_SUFFIX_EGREP" <<'PY'
 import re
 import sys
 
 path = sys.argv[1]
-# Mirrors write-final-report bail_steps_ran outcomes (excluding merge paths).
-_heading_suffix = re.compile(
-    r"(?:bailed(?:-needs-user-input)?|stalled|design-only|forked-dry-run|pr-created(?:-draft)?)$"
-)
+_heading_suffix = re.compile(sys.argv[2])
 try:
     with open(path, "r", encoding="utf-8", errors="replace") as fh:
         for line in fh:
@@ -144,6 +143,27 @@ try:
 except Exception:
     pass
 sys.exit(1)
+PY
+}
+
+# True when steps_ran is a non-empty object without a step9a1 key (audit-scan-run parity).
+manifest_steps_ran_nonempty_without_step9a1() {
+    python3 - "$RUN_DIR/manifest.json" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+try:
+    with open(path, "r", encoding="utf-8") as fh:
+        data = json.load(fh)
+    sr = data.get("steps_ran")
+    if not isinstance(sr, dict) or len(sr) == 0:
+        sys.exit(1)
+    if "step9a1" in sr:
+        sys.exit(1)
+    sys.exit(0)
+except Exception:
+    sys.exit(1)
 PY
 }
 
@@ -178,7 +198,7 @@ condition_reached() {
             ;;
         step8)
             if manifest_steps_ran_empty && final_summary_heading_bail_signal &&
-                ! { has_file version-bump-reasoning.md || has_file final-summary.md; }; then
+                ! has_file version-bump-reasoning.md; then
                 return 1
             fi
             has_file version-bump-reasoning.md ||
@@ -192,6 +212,10 @@ condition_reached() {
             fi
             if manifest_steps_ran_empty && final_summary_heading_bail_signal &&
                 ! { has_file run-statistics.md || has_file oos-issues.ndjson; }; then
+                return 1
+            fi
+            if final_summary_heading_bail_signal && ! has_file run-statistics.md &&
+                manifest_steps_ran_nonempty_without_step9a1; then
                 return 1
             fi
             has_file run-statistics.md ||

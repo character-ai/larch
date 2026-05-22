@@ -4,6 +4,9 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
+# shellcheck source=scripts/run-log-terminal-outcomes.inc.bash
+# shellcheck disable=SC1091
+source "$PLUGIN_ROOT/scripts/run-log-terminal-outcomes.inc.bash"
 # shellcheck source=scripts/lib-quiet.sh
 # shellcheck disable=SC1091
 source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
@@ -345,14 +348,12 @@ if [ "$COMMENT_ONLY" != "true" ]; then
     # clearly did not run so audit required-file tooling is not fooled by `{}`.
     mf_impl="$run_dir/manifest.json"
     bail_steps_ran=false
-    case "$OUTCOME" in
-        bailed|bailed-needs-user-input|stalled|design-only|forked-dry-run|pr-created|pr-created-draft)
-            bail_steps_ran=true
-            ;;
-    esac
+    if [[ "$OUTCOME" =~ $RUN_LOG_TERMINAL_OUTCOME_NAME_EREGEX ]]; then
+        bail_steps_ran=true
+    fi
     if [ "$bail_steps_ran" = true ] && [ -f "$mf_impl" ]; then
         mf_fields=()
-        if [ ! -f "$run_dir/run-statistics.md" ] && [ ! -f "$run_dir/oos-issues.ndjson" ]; then
+        if [ ! -f "$run_dir/run-statistics.md" ]; then
             mf_fields+=(--field "steps_ran.step9a1=false")
         fi
         if [ ! -f "$run_dir/version-bump-reasoning.md" ]; then

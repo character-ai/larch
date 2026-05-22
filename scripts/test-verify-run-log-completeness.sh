@@ -29,7 +29,7 @@ assert_contains() {
 }
 
 assert_equal() {
-    local label="$1" expected="$2" actual="$3"
+    local actual="$1" expected="$2" label="$3"
     if [[ "$actual" == "$expected" ]]; then pass "$label"
     else fail "$label (expected '$expected', got '$actual')"; fi
 }
@@ -297,7 +297,7 @@ done
 if ! out="$("$VERIFY" "$run_bail_sig" 2>&1)"; then
     fail "bail-signal empty steps_ran: expected verifier exit 0"
 else
-    assert_equal "bail-signal empty steps_ran emits exactly OK" "OK" "$out"
+    assert_equal "$out" "OK" "bail-signal empty steps_ran emits exactly OK"
     case "$out" in *MISSING=*) fail "bail-signal empty steps_ran: output must not contain MISSING=" ;; esac
 fi
 
@@ -314,7 +314,7 @@ done
 if ! out="$("$VERIFY" "$run_bail_omit" 2>&1)"; then
     fail "omit steps_ran key + bailed: expected verifier exit 0"
 else
-    assert_equal "omit steps_ran key + bailed emits exactly OK" "OK" "$out"
+    assert_equal "$out" "OK" "omit steps_ran key + bailed emits exactly OK"
     case "$out" in *MISSING=*) fail "omit steps_ran key + bailed: output must not contain MISSING=" ;; esac
 fi
 
@@ -331,7 +331,7 @@ done
 if ! out="$("$VERIFY" "$run_bail_nui" 2>&1)"; then
     fail "bailed-needs-user-input heading: expected verifier exit 0"
 else
-    assert_equal "bailed-needs-user-input heading emits exactly OK" "OK" "$out"
+    assert_equal "$out" "OK" "bailed-needs-user-input heading emits exactly OK"
     case "$out" in *MISSING=*) fail "bailed-needs-user-input: output must not contain MISSING=" ;; esac
 fi
 
@@ -349,6 +349,20 @@ out="$("$VERIFY" "$run_completed_sig" 2>&1 || true)"
 assert_contains "completed-signal still MISSING" "$out" "MISSING="
 assert_contains "completed-signal requires run-statistics" "$out" "run-statistics.md"
 
+# Test 18b: manifest omits steps_ran key + completed-like heading → same as Test 18
+run_completed_omit="$TMP/run-completed-signal-omit-steps-ran"
+mkdir -p "$run_completed_omit"
+cat > "$run_completed_omit/manifest.json" <<'EOF'
+{"schema_version":2}
+EOF
+printf '%s\n' '## /implement run test-run — completed' > "$run_completed_omit/final-summary.md"
+for f in plan-goals-test.md plan-review-tally.json code-review-tally.json review-findings-full.jsonl token-report.json timing-report.json execution-issues.ndjson session-transcript.jsonl version-bump-reasoning.md; do
+    printf 'placeholder\n' > "$run_completed_omit/$f"
+done
+out="$("$VERIFY" "$run_completed_omit" 2>&1 || true)"
+assert_contains "completed-signal omit steps_ran still MISSING" "$out" "MISSING="
+assert_contains "completed-signal omit steps_ran requires run-statistics" "$out" "run-statistics.md"
+
 # Test 19: explicit step9a1=false + non-bail summary still OK (manifest-side fix)
 run_explicit_bail="$TMP/run-explicit-step9a1-false"
 mkdir -p "$run_explicit_bail"
@@ -362,7 +376,7 @@ done
 if ! out="$("$VERIFY" "$run_explicit_bail" 2>&1)"; then
     fail "explicit step9a1 false with completed heading: expected verifier exit 0"
 else
-    assert_equal "explicit step9a1 false with completed heading emits exactly OK" "OK" "$out"
+    assert_equal "$out" "OK" "explicit step9a1 false with completed heading emits exactly OK"
     case "$out" in *MISSING=*) fail "explicit step9a1 false: output must not contain MISSING=" ;; esac
 fi
 
