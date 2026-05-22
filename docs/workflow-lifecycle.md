@@ -9,7 +9,8 @@ Skills are not invoked in a flat sequence. They form a hierarchical call graph w
 ```mermaid
 graph TD
     DESIGN["/design"]
-    IMPLEMENT["/implement"] -->|runs helper for| STEP5["run-step5-review.sh"]
+    DESIGN -.->|issue-body larch:plan| IMPLEMENT["/implement"]
+    IMPLEMENT -->|runs helper for| STEP5["run-step5-review.sh"]
     IMPLEMENT -->|runs helper for| CHECKS["project relevant-checks script"]
     IMPLEMENT -->|invokes| BUMP["/bump-version"]
     IMPLEMENT -->|invokes| ISSUE_OOS["/issue (OOS filing)"]

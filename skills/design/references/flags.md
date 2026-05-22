@@ -25,7 +25,7 @@
 ## Internal — heavy dispatch (not public argv)
 
 - **Internal / CI pin #1036 (not public argv)**: host-controlled heavy dispatch may still align with legacy tokens `--subagent` and `subagent_mode=true` for harness grep stability; **operators never pass `--subagent`**. When `quick_mode=false` and the host elects **non-inline** dispatch, Step 2a runs the Agent-tool heavy worker per `references/heavy-worker.md`.
-- **`--inline` (internal only)**: when the host forces inline heavy work (no Agent-tool subagent), the orchestrator skips the subagent path entirely. **Not** a public argv flag for `/design`. Operators lacking `SendMessage` should run `/implement --inline` so `/design` never dispatches a heavy subagent from the parent (see `AGENTS.md`).
+- **`--inline` (internal only)**: when the host forces inline heavy work (no Agent-tool subagent), the orchestrator skips the subagent path entirely. **Not** a public argv flag for `/design`. Sessions without `SendMessage` must not rely on non-inline Agent-tool heavy dispatch for `/design` (a suspended worker cannot be resumed). Prefer host-inline heavy routing for `/design`, a tier that avoids that subagent, or the guidance in `skills/shared/subskill-invocation.md` (§ `/design` heavy phase topology). **`/implement` does not accept `--inline`** (removed argv surface per `skills/implement/SKILL.md`). See `AGENTS.md` for the project-wide `SendMessage` dependency note.
 
 ## Legacy — `--branch-info` and `--step-prefix` (internal orchestration)
 
