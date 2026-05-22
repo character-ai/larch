@@ -250,6 +250,7 @@ Run **before Step 0** once `TARGET_ISSUE_NUMBER` is known and flag mutual-exclus
 
 5. **On `AUDIT=refuse`** — exit **3** (audit refused; automation may branch on this distinct from 0/2):
    - Run `clarify-state.sh` with `--issue <N>`; when `forked_target=true`, also pass `--repo "$UPSTREAM_REPO"`. Parse `STATE=`, `LAST_REQUEST_ID=`. If `STATE=ambiguous`, print a clear error that the operator must repair the issue comment graph manually, and exit **3** before posting.
+   - If `STATE=awaiting-response`, print a clear error that a `larch:clarify-request` for `id=<LAST_REQUEST_ID>` is already open — **do not** post another request or bump ids; the operator must finish the existing thread with `/design <N>` (matching `larch:clarify-response`) before retrying `/implement`. Exit **3** before computing `NEXT_ID` or calling `clarify-comment-post.sh` / `clarify-label.sh`.
    - Compute `NEXT_ID`: if `STATE=clean` or `LAST_REQUEST_ID` is empty, use `NEXT_ID=1`; otherwise `NEXT_ID=$((LAST_REQUEST_ID + 1))`.
    - Compose `$PREFLIGHT_TMPDIR/audit-questions.md` from the `## Concrete questions for /design` section of `audit.txt`.
    - Redact: `cat "$PREFLIGHT_TMPDIR/audit-questions.md" | "${CLAUDE_PLUGIN_ROOT}/scripts/redact-secrets.sh" > "$PREFLIGHT_TMPDIR/audit-questions.redacted.md"`.
@@ -257,7 +258,7 @@ Run **before Step 0** once `TARGET_ISSUE_NUMBER` is known and flag mutual-exclus
    - Run `clarify-label.sh` with `--issue <N> --action add --create-if-missing`; when `forked_target=true`, also pass `--repo "$UPSTREAM_REPO"`.
    - **Ordering**: always **comment first, label second** on the refuse path so the thread shows the request even if label mutation fails.
    - **Partial failure / idempotency**: exit **3** means “audit refused — operator must run `/design`.” If `clarify-comment-post.sh` succeeds but `clarify-label.sh` fails (or vice versa), automation MUST treat exit **3** as terminal for this `/implement` attempt regardless; a retry may re-hit `clarify-state.sh` — re-posting the same `id` is an error, so operators repair failed `gh` mutations manually before retrying. If `STATE=ambiguous`, Preflight exits **3** **before** either mutation. Re-running refuse on a clean thread uses `NEXT_ID` from `clarify-state.sh` (monotonic). Duplicate `gh issue edit --add-label` when the label is already present is harmless (`clarify-label.sh` emits `CHANGED=false`).
-   - Breadcrumb: `⚠ /implement preflight refused — audit refuse on issue #<N>; clarify-request id=<NEXT_ID> posted, label added. Run /design <N> to clarify.`
+   - Breadcrumb: `⚠ /implement preflight refused — audit refuse on issue #<N>; clarify-request id=<NEXT_ID> posted; needs-design-clarification label add attempted. Run /design <N> to clarify.`
    - Exit **3** (do not run Step 0).
 
 6. **On `AUDIT=pass`**: retain `PREFLIGHT_TMPDIR` and `plan-from-issue.txt`; proceed to Step 0.
@@ -268,7 +269,7 @@ Run **before Step 0** once `TARGET_ISSUE_NUMBER` is known and flag mutual-exclus
 |------|------|
 | **0** | Normal completion of the scripted skill path. |
 | **2** | Flag mutual-exclusion, verbal/non-numeric argv tail, missing/malformed `larch:plan`, `gh` / `plan-block-read.sh` hard failures, closed issue at Preflight, `persist-post-plan-keys` / `persist-implement-run-flags` validation failures, and other operator-visible hard errors where this file specifies exit **2**. |
-| **3** | **Preflight audit refused** — `AUDIT=refuse` with operator-visible exit **3** in all refuse-shaped outcomes. **Sub-case A (clarify path)**: `clarify-state.sh` reports a non-ambiguous thread — clarify request is posted and `needs-design-clarification` label is applied per the Preflight bullet list; operator must run `/design <N>` before retrying `/implement`. **Sub-case B (`STATE=ambiguous`)**: Preflight exits **3** **before** posting or labeling — the clarify comment graph must be repaired manually; exit **3** does **not** imply a new clarify thread was posted. |
+| **3** | **Preflight audit refused** — `AUDIT=refuse` with operator-visible exit **3** in all refuse-shaped outcomes. **Sub-case A (clarify post path)**: `STATE` is neither `ambiguous` nor `awaiting-response` (typically `clean` or `response-pending`) — clarify request is posted and `needs-design-clarification` label add is attempted per the Preflight bullet list; operator must run `/design <N>` before retrying `/implement`. **Sub-case B (`STATE=ambiguous`)**: Preflight exits **3** **before** posting or labeling — the clarify comment graph must be repaired manually; exit **3** does **not** imply a new clarify thread was posted. **Sub-case C (`STATE=awaiting-response`)**: Preflight exits **3** **before** posting or labeling — an open clarify request already awaits `/design`; finish that thread first. |
 
 <!-- step:0 — Session Setup -->
 ## Step 0 — Session Setup

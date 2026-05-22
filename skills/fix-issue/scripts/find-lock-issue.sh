@@ -88,6 +88,10 @@
 #       all blocked / locked / managed-prefixed, OR zero parseable children
 #       found in the umbrella body — FINDING_3). ELIGIBLE=false, ERROR
 #       carries the blocking reason.
+#   6 — PR plan probe failed before lock (--require-plan-block only): missing
+#       or malformed larch:plan markers (PLAN_PROBE_FAILED). ELIGIBLE=true,
+#       LOCK_ACQUIRED=false; no IN PROGRESS comment is posted. Aligns with
+#       skills/fix-issue/scripts/find-lock-issue.md.
 #
 # Stdout contract policy: delegate stdout (issue-lifecycle.sh, tracking-
 # issue-write.sh) is captured into local shell variables and parsed
