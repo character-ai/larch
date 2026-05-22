@@ -29,11 +29,11 @@ lint-only:
 # folding Regression 3's claude case into the edge shard as edge-and-r3-claude, and splitting
 # test-review-and-fix into two sections to shrink shard 13). Rebalanced 2026-05-22: isolate
 # slow harnesses (test-check-reviewers, test-launch-cursor-ci, test-dispatch-code-voters-happy,
-# test-dispatch-code-voters-edge-and-r3-claude) to shards 1–4; remaining tests greedy-packed
-# into shards 5–20 by count (LPT tie-break) with test-harness-shards-coverage leading shard 5.
-# Lists are manually adjusted from observed CI timings using LPT bin-packing; see
-# docs/linting.md "Refreshing harness shard balance" for the procedure used to regenerate these
-# lists when imbalance grows. IMPORTANT: each test-harnesses-N rule below stays on a single
+# test-dispatch-code-voters-edge-and-r3-claude) to shards 1–4 using observed CI wall times;
+# remaining harnesses are greedy-packed into shards 5–20 by equal count (LPT tie-break on
+# equal-size bins), with test-harness-shards-coverage leading shard 5 — not full per-harness
+# timing LPT across shards 5–20. When imbalance returns, see docs/linting.md "Refreshing harness
+# shard balance" for the regeneration procedure. IMPORTANT: each test-harnesses-N rule below stays on a single
 # physical line (no `\` continuations); the drift-detection script
 # `scripts/test-harness-shards-coverage.sh` parses these lines literally. New harnesses get
 # appended to one shard line.
