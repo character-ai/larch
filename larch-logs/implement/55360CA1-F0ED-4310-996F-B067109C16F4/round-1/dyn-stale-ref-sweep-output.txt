@@ -1,0 +1,22 @@
+Gathering the pre-computed diff and commit list, then scanning touched files for stale references per the review checklist.
+
+Pre-computed diff is empty; branch may match `main` locally. Fetching the actual diff vs `main` and recent commits.
+
+Verifying doc claims against implement/design behavior: `--no-issues`, log exceptions, and diagram posting.
+
+Checking `docs/workflow-lifecycle.md` for leftover `--auto` on `/design` and verifying the mermaid block.
+
+### In-Scope Findings
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+
+- The precomputed patch at `<TMPDIR>/round-1/diff.txt` was empty. Review used `git diff origin/main...HEAD` instead: one commit (`7bfa1d63`) touching `AGENTS.md`, `README.md`, `docs/agents.md`, `docs/run-logs.md`, and `docs/workflow-lifecycle.md`. Local `HEAD` and ref `main` share the same SHA, so `git log "$(git merge-base HEAD main)"..HEAD --oneline` is empty; the meaningful range is `origin/main..HEAD`.
+
+- Stale-string sweep on those five paths: no remaining `--design-only`, `--inline`, `--quick`, `--full`, `quick_mode`, `invokes /design`, or `exported plan.txt` in the senses the scout listed. `docs/run-logs.md` intro “Exceptions” still documents `repo_unavailable=true`, `--forked`, and the redaction warning; both former `--design-only` exception clauses are gone.
+
+- `docs/workflow-lifecycle.md` mermaid (lines 73–107) is syntactically coherent: `DESIGN_DONE` is a prerequisite node feeding `IMPL_PHASE`; no `IMPLEMENT -->|invokes| DESIGN` edge.
+
+- Wider repo drift (not introduced here): `DESIGN_ONLY_DONE`, “design-only” outcomes, and `--design-only` CLI parsing still appear under `skills/implement/scripts/` and related harnesses, while consumer run-log docs no longer describe that operator mode—reasonable if argv is retired but finalize state remains for compatibility.
+
+- Pre-existing cross-doc tension: [`skills/design/references/flags.md`](skills/design/references/flags.md) still tells operators lacking `SendMessage` to use `/implement --inline`, while [`skills/implement/SKILL.md`](skills/implement/SKILL.md) lists `--inline` among removed public argv surfaces. This branch did not edit `flags.md`; it only shortened [`AGENTS.md`](AGENTS.md) to point at `flags.md` and removed the README footnote that used to steer readers there for internal `--inline`.

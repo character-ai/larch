@@ -36,9 +36,9 @@ This pattern is used for:
 - **Code review** — the specialist panel described in [Review Agents](review-agents.md) examines the diff simultaneously; Claude is a voter only
 - **[Voting](voting-process.md)** — the voting panel evaluates findings in parallel
 
-### Sequential Composition
+### Prerequisite peers and chained work
 
-Skills invoke other skills in sequence, each building on the previous result. For example, `/implement` invokes `/design` first, then implements the resulting plan, then invokes `/review` on the implementation.
+Orchestrators often run in an ordered handoff: `/design` is a **prerequisite peer** (not a nested child of `/implement`) that writes the issue-body `larch:plan`; `/implement` then materializes and lands the work from that anchor; Step 5 runs `review-and-fix.sh` on the implementation diff (standalone `/review` is a separate skill).
 
 ## Agent Types
 

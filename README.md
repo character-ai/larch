@@ -70,7 +70,7 @@ Larch is a Claude Code workflow automation framework that orchestrates multi-age
       <td><a href="docs/skills.md#design"><code>/design</code></a></td>
       <td><code>[--trivial|--simple|--hard] [--no-dedup] [--run-id &lt;ID&gt;] &lt;issue-N | feature description&gt;</code></td>
     </tr>
-    <tr><td colspan="2">Author or refresh an issue-anchored implementation plan in GitHub (plan markers in the issue body). Tier flags select sketch and plan-review depth (<code>--trivial</code> is the quick-budget tier; <code>--simple</code> / <code>--hard</code> use larger sketch fan-outs per <a href="docs/topology.md#design.sketch.regular_slots">topology</a>). Internal <code>--inline</code> is documented only in <code>skills/design/references/flags.md</code> (not a public <code>/implement</code> argv).</td></tr>
+    <tr><td colspan="2">Author or refresh an issue-anchored implementation plan in GitHub (plan markers in the issue body). Tier flags select sketch and plan-review depth (<code>--trivial</code> is the quick-budget tier; <code>--simple</code> / <code>--hard</code> use larger sketch fan-outs per <a href="docs/topology.md#design.sketch.regular_slots">topology</a>).</td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
       <td><a href="docs/skills.md#fix-issue"><code>/fix-issue</code></a></td>

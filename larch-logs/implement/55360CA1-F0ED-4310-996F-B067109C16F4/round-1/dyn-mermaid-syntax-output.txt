@@ -1,0 +1,15 @@
+Reviewing the diff and full mermaid block in `docs/workflow-lifecycle.md` for syntax correctness.
+
+Reading the full first mermaid diagram and checking for undefined node references. The precomputed diff file was empty.
+
+The precomputed diff path returned an empty file, so this review uses the current [`docs/workflow-lifecycle.md`](docs/workflow-lifecycle.md) as checked out in the workspace.
+
+### In-Scope Findings
+
+- **correctness** `docs/workflow-lifecycle.md:9-32` — In the Skill Orchestration Hierarchy `graph TD` block, `DESIGN["/design"]` is declared and styled but has no incoming or outgoing edges after the planned removal of `IMPLEMENT -->|invokes| DESIGN`, so the diagram still parses and renders but no longer encodes any relationship between `/design` and the rest of the orchestration graph despite the prose immediately below stating that `/design` is a standalone orchestrator that runs before `/implement`. **Suggested fix:** Add one or more explicit edges that reflect the real contract without implying sub-invocation (for example a dashed edge `DESIGN -.->|issue-body larch:plan| IMPLEMENT`, or a small prerequisite node between `FIX` and `IMPLEMENT` if you want to keep `/implement` as the only hub).
+
+### Out-of-Scope Observations
+
+- The file at `<TMPDIR>/round-1/diff.txt` was empty, so whether the orphaned `DESIGN` node or any other diagram detail was introduced on this branch could not be confirmed from that artifact; the above is based on the current tree contents.
+
+- **correctness** `docs/workflow-lifecycle.md:73-107` — In the End-to-End `flowchart TD`, `MERGE_FLAG -->|Yes| MERGE_PHASE` enters the merge subgraph, but nothing connects the subgraph’s last step (`VERIFY`) to `POST_ISSUE` or `DONE`, so the “yes merge” path is a dead end in the diagram unless this was intentional as an incomplete sketch; if that layout predates this branch, it is not specific to the IMPLEMENT→DESIGN edge removal. **Suggested fix:** Add `VERIFY --> POST_ISSUE` or `VERIFY --> DONE` (whichever matches the real lifecycle) so every branch reaches completion.
