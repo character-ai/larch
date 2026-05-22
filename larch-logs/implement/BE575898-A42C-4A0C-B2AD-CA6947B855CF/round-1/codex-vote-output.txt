@@ -1,0 +1,7 @@
+FINDING_1: YES
+FINDING_2: EXONERATE -- Archival logs are legitimate grep noise but not worth filing as a future cleanup issue.
+FINDING_3: YES
+FINDING_4: NO -- The comments already accurately say the bad fixture contains all POS_MARKERS plus exactly one stale phrase.
+FINDING_5: YES
+FINDING_6: EXONERATE -- The terminology drift concern is real, but pinning a generic human-facing label in POS_MARKERS over-constrains this harness.
+FINDING_7: YES

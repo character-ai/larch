@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [34.0.21] - 2026-05-21
+
+### Changed
+
+- Retire legacy unified hard panel and hard review panel labels so Step 5 reads as plain review-and-fix plus review panel wording.
+- Tighten the quick-mode docs-sync harness to four byte-pinned anchors and keep topology generator notes aligned with the harness.
+- Refresh README and docs mirrors so public copy matches the canonical SKILL.md Step 5 breadcrumb and tally guidance.
+
 ## [34.0.19] - 2026-05-21
 
 ### Changed
