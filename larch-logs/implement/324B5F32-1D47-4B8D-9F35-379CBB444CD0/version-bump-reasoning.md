@@ -1,12 +1,12 @@
 # Version Bump Reasoning
 
-- **Base commit**: `67c181e0` (Address code review feedback (round 4))
-- **Current version**: `36.0.3`
+- **Base commit**: `b45836f4` (Fixes #2567: Harden findings aggregator empty-merge attestation with synthesis fallback (#2575))
+- **Current version**: `36.0.4`
 - **Classification scope**: `skills/**` and `agents/**` only (public plugin surface).
 
 ## Result: PATCH
 
-- **New version**: `36.0.4`
+- **New version**: `36.0.5`
 
 ### PATCH rationale
 
