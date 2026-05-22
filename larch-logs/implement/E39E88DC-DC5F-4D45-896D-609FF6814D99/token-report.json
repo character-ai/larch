@@ -250,21 +250,21 @@
       {
         "step": "Step 8b — rebase",
         "totals": {
-          "input": 46,
-          "cache_read": 7882723,
-          "cache_create": 58749,
-          "output": 14808,
-          "total": 7956326
+          "input": 65,
+          "cache_read": 11531302,
+          "cache_create": 82956,
+          "output": 30336,
+          "total": 11644659
         },
         "skills": [
           {
             "skill": "bump-version",
             "totals": {
-              "input": 26,
-              "cache_read": 4416994,
-              "cache_create": 15005,
-              "output": 9764,
-              "total": 4441789
+              "input": 45,
+              "cache_read": 8065573,
+              "cache_create": 39212,
+              "output": 25292,
+              "total": 8130122
             }
           },
           {
@@ -281,11 +281,11 @@
       }
     ],
     "totals": {
-      "input": 165,
-      "cache_read": 22899771,
-      "cache_create": 749705,
-      "output": 66123,
-      "total": 23715764
+      "input": 184,
+      "cache_read": 26548350,
+      "cache_create": 773912,
+      "output": 81651,
+      "total": 27404097
     }
   },
   "codex": {
