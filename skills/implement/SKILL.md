@@ -904,7 +904,7 @@ When `coder_explicit=true`:
 - If the explicit coder is `codex` AND `codex_available=false` AND `CODEX_BINARY_FOUND=true`: print `**⚠ /implement Step 1: --coder=codex requested but Codex runtime probe failed / auth error. Re-run without --coder, or with --coder=cursor|claude.**`, set `STALL_TRACKING=true`, and skip to Step 18.
 - Otherwise (explicit coder is available, or explicit coder is `claude`): the explicit value wins. Proceed to Step 2 with `coder=$coder`. Do not modify `coder_explicit` itself.
 
-When `coder_explicit=false`, route by availability. The `diff_lines: <N>` line in `plan.txt` is informational sizing only.
+When `coder_explicit=false`, route by availability. The default availability waterfall prefers **Cursor → Codex → Claude** (Cursor when its probes pass; otherwise Codex when available; otherwise Claude main agent — bullets below). The `diff_lines: <N>` line in `plan.txt` is informational sizing only; **they do not select the implementer.**
 
 - If `cursor_available=true`, set `coder=cursor`. This is the default implementer when `--coder` is omitted.
 - If `cursor_available=false` AND `codex_available=true`, set `coder=codex` and `coder_fallback_target=codex`, print `**⚠ Cursor unavailable — falling back to Codex implementer.**`, and append `Step 1 — Cursor unavailable: waterfall fallback to codex` to the `Warnings` section of `$IMPLEMENT_TMPDIR/execution-issues.md`. Do NOT set `coder_fallback=true` on this path; Codex is an external implementer, not a degraded fallback.
