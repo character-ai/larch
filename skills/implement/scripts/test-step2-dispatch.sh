@@ -37,8 +37,8 @@
 #   - --workflow HARD passed to a stub-Codex run results in --timeout 7200.
 #   - --workflow omitted (default) passed to a stub-Codex run results in --timeout 3600
 #     (default workflow resolves to SIMPLE).
-#   - Stub-Codex complete run with an undeclared working-tree file appends an
-#     OOS warning to execution-issues.md before the dispatcher commits.
+#   - Test 19: scratch repo on `main` + `session-env.sh` with `ISSUE_NUMBER` →
+#     `main-branch-prohibited` before stub Cursor runs.
 #
 # External-implementer spawning paths (manifest validation, dispatcher-side commit,
 # sanitization, launcher-retry) are covered by separate launcher / end-to-end tests;
@@ -965,6 +965,58 @@ if [[ "$OUT_18" == *"STATUS=complete"* ]] \
     pass
 else
     fail 18 "undeclared working-tree path should log OOS warning (undeclared.txt present, README.md absent); out=$OUT_18 issues=$(cat "$TMP18/execution-issues.md" 2>/dev/null)"
+fi
+
+# ---------------------------------------------------------------------------
+# Test 19: cursor path on protected spawn branch → main-branch-prohibited
+# before any external launcher runs (issue: commits on main when branch
+# creation fails).
+# ---------------------------------------------------------------------------
+TMP19="$SCRATCH/test19"; mkdir -p "$TMP19"
+printf 'fresh-step2-19\n' > "$TMP19/session-id"
+
+SCRATCH_REPO19="$SCRATCH/scratch-repo-19"
+mkdir -p "$SCRATCH_REPO19"
+git -C "$SCRATCH_REPO19" init -q -b main
+git -C "$SCRATCH_REPO19" config user.email "test@example.com"
+git -C "$SCRATCH_REPO19" config user.name "Test"
+echo "initial" > "$SCRATCH_REPO19/README.md"
+git -C "$SCRATCH_REPO19" add README.md
+git -C "$SCRATCH_REPO19" commit -q -m "init"
+cat > "$TMP19/session-env.sh" <<'ENV'
+ISSUE_NUMBER=2486
+FORKED_TARGET=false
+ENV
+
+STUB_BIN_19="$SCRATCH/test19-bin"
+mkdir -p "$STUB_BIN_19"
+STUB_CURSOR_19="$STUB_BIN_19/cursor"
+cat > "$STUB_CURSOR_19" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'stub cursor should not run\n' >&2
+exit 99
+EOF
+chmod +x "$STUB_CURSOR_19"
+
+OUT_19=$(cd "$SCRATCH_REPO19" && \
+    PATH="$STUB_BIN_19:$PATH" \
+    RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
+    LARCH_QUIET_DISABLE=1 \
+    LARCH_CURSOR_MODEL="stub-model" \
+    CURSOR_API_KEY="" \
+    LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 \
+    LIB_CURSOR_AUTH_TEST_UNAME="Linux" \
+    "$DISPATCHER" --tmpdir "$TMP19" --plan-file "$PLAN" --feature-file "$FEATURE" \
+        --coder cursor --cursor-present true 2>&1)
+
+if [[ "$OUT_19" == *"STATUS=bailed"* ]] \
+   && [[ "$OUT_19" == *"REASON=main-branch-prohibited"* ]] \
+   && [[ "$OUT_19" == *"TOOL=cursor"* ]] \
+   && [[ "$OUT_19" == *"ORCHESTRATOR_EDIT_AUTHORITY=forbidden"* ]]; then
+    pass
+else
+    fail 19 "repo on main with healthy cursor should bail main-branch-prohibited before launcher, got: $OUT_19"
 fi
 
 # ---------------------------------------------------------------------------

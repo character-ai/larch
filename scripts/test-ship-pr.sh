@@ -272,6 +272,7 @@ make_repo() {
     touch "$root/README.md"
     git -C "$root" add README.md
     git -C "$root" commit -q -m initial
+    git -C "$root" checkout -q -b feature/test-issue-7
     printf '%s\n' "$root"
 }
 
@@ -285,7 +286,7 @@ write_state() {
     state_tmpdir=$(dirname "$file")
     cat > "$file" <<EOF
 PHASE=$phase
-BRANCH_NAME=master
+BRANCH_NAME=feature/test-issue-7
 ISSUE_NUMBER=7
 RUN_ID=test-run
 REPO=owner/repo
@@ -878,6 +879,22 @@ write_state "$tmp/ship-pr-state.sh" bump
 STUB_APPLY_VERSION_REGRESSION=true run_subject "$root" "$tmp" "$tmp/rc"
 assert_rc "$tmp/rc" 5 "version-regression bump exits 5"
 assert_state_line "$tmp/ship-pr-state.sh" "CALLER_KIND=step8_apply_bump_same_version" "version-regression writes caller kind"
+
+root=$(make_repo bump_branch_guard_main)
+tmp=$(make_tmpdir)
+write_state "$tmp/ship-pr-state.sh" bump
+sed -i.bak 's/^BRANCH_NAME=.*/BRANCH_NAME=main/' "$tmp/ship-pr-state.sh"
+run_subject "$root" "$tmp" "$tmp/rc"
+assert_rc "$tmp/rc" 4 "bump branch guard exits 4 when BRANCH_NAME is main"
+assert_state_line "$tmp/ship-pr-state.sh" "STALL_STEP=bump-branch-guard" "bump branch guard records STALL_STEP for main BRANCH_NAME"
+
+root=$(make_repo bump_branch_guard_mismatch)
+tmp=$(make_tmpdir)
+write_state "$tmp/ship-pr-state.sh" bump
+sed -i.bak 's/^BRANCH_NAME=.*/BRANCH_NAME=feature\/wrong-branch/' "$tmp/ship-pr-state.sh"
+run_subject "$root" "$tmp" "$tmp/rc"
+assert_rc "$tmp/rc" 4 "bump branch guard exits 4 when current branch mismatches BRANCH_NAME"
+assert_state_line "$tmp/ship-pr-state.sh" "STALL_STEP=bump-branch-guard" "bump branch guard records STALL_STEP for branch mismatch"
 
 root=$(make_repo ci_initial)
 tmp=$(make_tmpdir)

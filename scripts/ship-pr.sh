@@ -805,7 +805,18 @@ run_checks_with_lint_fix_loop() {
 }
 
 run_bump_phase() {
-    local forked has_bump commits_before classify_out apply_out finalize_out status resume_phase error_text rc fail_file
+    local forked has_bump commits_before classify_out apply_out finalize_out status resume_phase error_text rc fail_file \
+        _bump_guard_branch _bump_guard_state_branch _bump_guard_fail
+    _bump_guard_state_branch=$(read_state BRANCH_NAME)
+    _bump_guard_branch=$(git branch --show-current 2>/dev/null || echo "")
+    if [[ "$_bump_guard_state_branch" == "main" || "$_bump_guard_state_branch" == "master" \
+        || "$_bump_guard_branch" != "$_bump_guard_state_branch" ]]; then
+        _bump_guard_fail=$(failure_capture_path bump)
+        printf 'bump-branch-guard: BRANCH_NAME=%s current=%s\n' \
+            "$_bump_guard_state_branch" "$_bump_guard_branch" > "$_bump_guard_fail"
+        record_failure bump "bump-branch-guard" 1 "$_bump_guard_fail"
+        exit_stall bump-branch-guard
+    fi
     emit_breadcrumb "→ ship-pr: version bump"
     forked=$(read_state FORKED_TARGET)
     has_bump=$(read_state HAS_BUMP)

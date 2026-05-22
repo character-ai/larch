@@ -30,4 +30,6 @@
 
 All tokens route to Step 12d.
 
+`main-branch-prohibited` — `step2-implement.sh` pre-launcher guard when spawn-time branch is `main` or `master` on an issue-anchored run (`session-env.sh` + non-empty `ISSUE_NUMBER`, not fork).
+
 Free-form: any other implementer-authored string; preserved verbatim (KV-sanitized, capped ~200 chars).

@@ -81,6 +81,7 @@ When `status=bailed`, `bail_reason` MUST be one of these stable tokens (downstre
 - `cursor-bailed-no-reason` — Cursor-authored `status=bailed` manifest did not provide a usable `bail_reason`, so the dispatcher substituted the Cursor-specific fallback token.
 - `cursor-modified-history` — Cursor moved `HEAD` before the dispatcher could commit on Cursor's behalf. Set by the dispatcher, not by Cursor itself.
 - `manifest-missing` — manifest file is absent or empty after Codex returned. Set by the dispatcher (defense-in-depth on top of `codex-runtime-failure`'s `MANIFEST_WRITTEN=false` path).
+- `main-branch-prohibited` — `step2-implement.sh` refuses to launch an external implementer when the spawn-time branch is `main` or `master` **and** `$IMPLEMENT_TMPDIR/session-env.sh` exists with a non-empty `ISSUE_NUMBER` while `FORKED_TARGET` is not `true` (issue-anchored `/implement` expects a feature branch). Offline harnesses without `session-env.sh` are unaffected.
 - Free-form Codex-authored token — Codex MAY emit any string in `manifest.bail_reason`; the dispatcher preserves it verbatim in the canonical `manifest.json`. The orchestrator's `REASON=` stdout line is sanitized for KV-grammar safety only (whitespace and ASCII control characters collapsed to single spaces; capped at ~200 characters) so an adversarial or malformed bail token cannot break the orchestrator's stdout parser. Use this for genuine fatal errors Codex itself diagnoses (e.g., `unable-to-resolve-import-cycle`, `external-api-down`).
 
 ## Example: `complete` manifest

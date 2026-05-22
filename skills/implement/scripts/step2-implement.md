@@ -58,6 +58,7 @@ ORCHESTRATOR_EDIT_AUTHORITY=<allowed|forbidden>
 - `complete` — all post-Codex mechanical checks passed; the dispatcher committed Codex's working-tree edits using `manifest.commit_message` (redacted via `scripts/redact-secrets.sh` immediately before `git commit -F`); the canonical manifest is sanitized and emitted at `$TMPDIR/manifest.json`.
 - `needs_qa` — Codex wrote `qa-pending.json` with operator questions; SKILL.md Step 2 collects answers and re-invokes the dispatcher with `--answers`.
 - `bailed` — Codex itself emitted `status=bailed`, OR the dispatcher overrode `complete` because mechanical validation failed. `REASON` token list is in `skills/implement/references/codex-manifest-schema.md` (Bail-reason tokens section). When the dispatcher overrides Codex, the dispatcher's reason wins.
+- **`main-branch-prohibited`** — dispatcher-authored bail before the external launcher runs: spawn-time branch is `main` or `master` while `$TMPDIR_ARG/session-env.sh` exists, `FORKED_TARGET` is not `true`, and `ISSUE_NUMBER` is non-empty (issue-anchored `/implement` expects a feature branch). Harness runs without a session-env file are not affected.
 
 **Bail-reason tokens emitted by the dispatcher** (set internally; full list in `codex-manifest-schema.md`):
 

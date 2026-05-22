@@ -296,6 +296,19 @@ if [[ ! -f "$SPAWN_BRANCH_FILE" ]]; then
 fi
 SPAWN_BRANCH=$(cat "$SPAWN_BRANCH_FILE")
 
+# Bail if spawned on a protected branch during an issue-anchored implement run
+# (session-env carries ISSUE_NUMBER; fork mode skips this guard).
+SESSION_ENV_FILE="$TMPDIR_ARG/session-env.sh"
+if [[ "$SPAWN_BRANCH" == "main" || "$SPAWN_BRANCH" == "master" ]]; then
+    if [[ -f "$SESSION_ENV_FILE" ]]; then
+        _forked_target=$("$PLUGIN_ROOT/scripts/read-session-env-key.sh" --file "$SESSION_ENV_FILE" --key FORKED_TARGET --default "false" 2>/dev/null || printf '%s\n' "false")
+        _session_issue=$("$PLUGIN_ROOT/scripts/read-session-env-key.sh" --file "$SESSION_ENV_FILE" --key ISSUE_NUMBER --default "" 2>/dev/null || true)
+        if [[ "$_forked_target" != "true" && -n "$_session_issue" ]]; then
+            emit_bailed "main-branch-prohibited"
+        fi
+    fi
+fi
+
 if [[ ! -f "$PLUGIN_JSON_BASELINE_FILE" ]]; then
     if [[ -f "$REPO_ROOT/.claude-plugin/plugin.json" ]]; then
         git -C "$REPO_ROOT" hash-object "$REPO_ROOT/.claude-plugin/plugin.json" > "$PLUGIN_JSON_BASELINE_FILE.tmp"
