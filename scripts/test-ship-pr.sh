@@ -1886,18 +1886,22 @@ chmod +x "$root/scripts/launch-cursor-ci.sh"
 _make_rebase_stubs "$root" "$count_dir"
 write_state "$tmp/ship-pr-state.sh" ci-initial
 PATH="$root/scripts:$PATH" SHIP_PR_LAUNCH_SENTINEL_DIR="$count_dir" run_subject "$root" "$tmp" "$tmp/rc"
-assert_rc "$tmp/rc" 0 "mixed CHANGELOG conflict auto-resolve + vendor exits 0"
-if [ ! -f "$count_dir/launcher-calls.txt" ]; then
-    fail "mixed conflict should invoke vendor for remaining file"
+assert_rc "$tmp/rc" 5 "mixed CHANGELOG conflict auto-resolve + Phase 1–4 dispatch exits 5"
+if grep -qF 'CALLER_KIND=ship_pr_pre_push' "$tmp/ship-pr-state.sh" 2>/dev/null; then
+    ok "mixed conflict dispatches Phase 1–4 (CALLER_KIND=ship_pr_pre_push)"
 else
-    if grep -q -- "launch-cursor-ci.sh .*--role resolve-conflict" "$count_dir/launcher-calls.txt" \
-        && grep -qF -- "--conflict-files other.txt" "$count_dir/launcher-calls.txt" \
-        && grep -qF -- "--timeout 600" "$count_dir/launcher-calls.txt"; then
-        ok "mixed conflict forwards only other.txt and 600s timeout"
-    else
-        fail "mixed conflict launcher argv mismatch"
-        sed 's/^/    launcher: /' "$count_dir/launcher-calls.txt" 2>/dev/null || true
-    fi
+    fail "mixed conflict should set CALLER_KIND=ship_pr_pre_push in state"
+fi
+if grep -qF 'CONFLICT_FILES=other.txt' "$tmp/stdout" 2>/dev/null; then
+    ok "mixed conflict emits CONFLICT_FILES=other.txt on stdout"
+else
+    fail "mixed conflict CONFLICT_FILES=other.txt missing from stdout"
+    sed 's/^/    stdout: /' "$tmp/stdout" 2>/dev/null | head -10 || true
+fi
+if [ -f "$count_dir/launcher-calls.txt" ] && grep -q -- "--role resolve-conflict" "$count_dir/launcher-calls.txt" 2>/dev/null; then
+    fail "mixed conflict should NOT invoke vendor (Phase 1–4 owns resolution)"
+else
+    ok "mixed conflict does not invoke vendor launcher"
 fi
 rm -rf "$count_dir"
 
@@ -1942,13 +1946,16 @@ done
 chmod +x "$root/scripts/drop-bump-commit.sh" "$root/scripts/git-sync-local-main.sh" "$root/scripts/git-force-push.sh"
 write_state "$tmp/ship-pr-state.sh" ci-initial
 PATH="$root/scripts:$PATH" SHIP_PR_LAUNCH_SENTINEL_DIR="$call_dir" run_subject "$root" "$tmp" "$tmp/rc"
-assert_rc "$tmp/rc" 0 "non-changelog-only conflict vendor path exits 0"
-if grep -qF -- "--conflict-files locked.bin" "$call_dir/launcher-calls.txt" \
-    && grep -qF -- "--timeout 600" "$call_dir/launcher-calls.txt"; then
-    ok "vendor-only conflict passes --conflict-files and --timeout 600"
+assert_rc "$tmp/rc" 5 "non-changelog-only conflict Phase 1–4 dispatch exits 5"
+if grep -qF 'CALLER_KIND=ship_pr_pre_push' "$tmp/ship-pr-state.sh" 2>/dev/null; then
+    ok "non-changelog conflict dispatches Phase 1–4 (CALLER_KIND=ship_pr_pre_push)"
 else
-    fail "vendor-only conflict argv missing"
-    sed 's/^/    launcher: /' "$call_dir/launcher-calls.txt" 2>/dev/null || true
+    fail "non-changelog conflict should set CALLER_KIND=ship_pr_pre_push in state"
+fi
+if [ -f "$call_dir/launcher-calls.txt" ] && grep -q -- "--role resolve-conflict" "$call_dir/launcher-calls.txt" 2>/dev/null; then
+    fail "non-changelog conflict should NOT invoke vendor (Phase 1–4 owns resolution)"
+else
+    ok "non-changelog conflict does not invoke vendor launcher"
 fi
 rm -rf "$call_dir"
 
@@ -1984,12 +1991,11 @@ chmod +x "$root/scripts/cursor" \
          "$root/scripts/git-force-push.sh"
 write_state "$tmp/ship-pr-state.sh" ci-initial
 LARCH_QUIET_BREADCRUMBS=1 PATH="$root/scripts:$PATH" SHIP_PR_LAUNCH_SENTINEL_DIR="$call_dir" run_subject "$root" "$tmp" "$tmp/rc"
-assert_rc "$tmp/rc" 4 "second rebase conflict exits 4"
-if grep -qF '⚠ ship-pr: merge conflict on rebase' "$tmp/stdout"; then
-    ok "second rebase conflict emits merge-conflict breadcrumb"
+assert_rc "$tmp/rc" 5 "second rebase conflict Phase 1–4 dispatch exits 5"
+if grep -qF 'CALLER_KIND=ship_pr_pre_push' "$tmp/ship-pr-state.sh" 2>/dev/null; then
+    ok "second rebase conflict sets CALLER_KIND=ship_pr_pre_push"
 else
-    fail "second rebase conflict should emit merge-conflict breadcrumb"
-    sed 's/^/    stdout: /' "$tmp/stdout"
+    fail "second rebase conflict should set CALLER_KIND=ship_pr_pre_push in state"
 fi
 rm -rf "$call_dir"
 
