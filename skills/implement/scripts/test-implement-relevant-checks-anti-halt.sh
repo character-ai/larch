@@ -40,10 +40,16 @@ fi
 echo "Running test-implement-relevant-checks-anti-halt against $SKILL_MD"
 
 awk -v opener="$CANONICAL_OPENER" -v expected="$EXPECTED_SITES" '
+BEGIN {
+    rc_token = "/" "relevant-checks"
+    needle_invite = sprintf("Invoke `%s` via the Skill tool", rc_token)
+    needle_reinvoke = sprintf("re-invoke `%s` via the Skill tool", rc_token)
+    needle_commit = sprintf("`%s`; commit via", rc_token)
+}
 function is_invocation_site(line) {
-    return line ~ /run-relevant-checks-captured\.sh/ &&
-           line !~ /Anti-halt continuation reminder/ &&
-           line !~ /Skill-name fallback reminder/
+    # Match only concrete launcher invocations (quoted ${CLAUDE_PLUGIN_ROOT}/scripts/…),
+    # not prose footnotes or the anti-halt reminder that name the script basename-only.
+    return line ~ /\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/run-relevant-checks-captured\.sh/
 }
 
 {
@@ -77,10 +83,8 @@ function is_invocation_site(line) {
         }
         printf("  PASS: line %d has nearby continuation opener\n", NR)
     }
-    if ($0 ~ /[Ii]nvoke `\/relevant-checks` via the Skill tool/ ||
-        $0 ~ /re-invoke `\/relevant-checks` via the Skill tool/ ||
-        $0 ~ /`\/relevant-checks`; commit via/) {
-        printf("FAIL: legacy /relevant-checks Skill invocation pattern at line %d: %s\n", NR, $0) > "/dev/stderr"
+    if (index($0, needle_invite) || index($0, needle_reinvoke) || index($0, needle_commit)) {
+        printf("FAIL: legacy relevant-checks Skill invocation pattern at line %d: %s\n", NR, $0) > "/dev/stderr"
         aborted = 1
         exit 1
     }

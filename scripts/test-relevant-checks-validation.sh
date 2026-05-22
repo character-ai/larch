@@ -24,13 +24,13 @@ run_expect_fail() {
 }
 
 fixture_repo="$tmp/repo"
-mkdir -p "$fixture_repo/.claude/skills/relevant-checks/scripts"
-cat > "$fixture_repo/.claude/skills/relevant-checks/scripts/run-checks.sh" <<'SCRIPT'
+mkdir -p "$fixture_repo/scripts"
+cat > "$fixture_repo/scripts/relevant-checks.sh" <<'SCRIPT'
 #!/usr/bin/env bash
 set -euo pipefail
 echo "=== Running pre-commit on 1 changed file(s) ==="
 SCRIPT
-chmod +x "$fixture_repo/.claude/skills/relevant-checks/scripts/run-checks.sh"
+chmod +x "$fixture_repo/scripts/relevant-checks.sh"
 
 xdg="$tmp/cache"
 session="$xdg/larch/sessions/claude-implement-repo-XYZ"

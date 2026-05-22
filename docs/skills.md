@@ -8,7 +8,7 @@ Reference for every slash command shipped by the larch plugin. Each section belo
 - [`/implement`](#implement)
 - [`/issue`](#issue)
 - [`/report-tokens`](#report-tokens)
-- [`/relevant-checks`](#relevant-checks)
+- [`scripts/relevant-checks.sh`](#relevant-checks-script)
 - [`/research`](#research)
 - [`/review`](#review)
 - [`/review-and-fix`](#review-and-fix)
@@ -79,13 +79,15 @@ Create one or more GitHub issues with LLM-based semantic duplicate detection. Su
 
 Analyze structured token reports across closed GitHub issues in the current larch repository. The skill searches closed issues whose comments contain `token-report-begin`, fetches their bodies and comments via `gh`, writes a raw JSON cache under a temp directory, parses Claude/Codex/Cursor grand-total rows, estimates per-issue costs, classifies issues from `**Workflow path**`, generates SIMPLE and HARD cost-over-time PNGs, and prints a written analysis with top SIMPLE costs, HARD phase breakdown, cache-read dominance, and concrete cost-reduction suggestions. Dollar values are observability estimates, not billing truth; rates are printed and can be overridden with environment variables.
 
-## `/relevant-checks`
+## Relevant checks script
 
-**Arguments**: *(none)*
+**Path**: `scripts/relevant-checks.sh`
 
-**Source**: [`.claude/skills/relevant-checks/SKILL.md`](../.claude/skills/relevant-checks/SKILL.md)
+**Arguments**: *(none — invoked as a Bash script, not a SlashCommand skill)*
 
-Run pre-commit linters (shellcheck, markdownlint, jsonlint, actionlint, gitleaks) scoped to changed files (except gitleaks, which always scans the full working tree; see the relevant-checks skill). Human-invocable for local validation. `/implement` and `/review` use the script-first helper `scripts/run-relevant-checks-captured.sh` to call the same project-local `run-checks.sh` without invoking the Skill on the green path. **Not part of the plugin surface; each consuming repo provides its own.**
+**Source**: consumer repo file at `scripts/relevant-checks.sh` (larch ships a reference implementation in-tree for this repository).
+
+Run pre-commit linters (shellcheck, markdownlint, jsonlint, actionlint, gitleaks) scoped to changed files (except gitleaks, which always scans the full working tree; see `.pre-commit-config.yaml` `pass_filenames: false` hooks). Human operators run it directly with `bash scripts/relevant-checks.sh`. `/implement` and `/review` use `scripts/run-relevant-checks-captured.sh` to call the same project-local script without spending Skill-tool tokens on the green path; when the script is absent, the helper emits `RELEVANT_CHECKS_SKIPPED=true` (exit 0) so the skip is machine-observable. **Not part of the plugin SlashCommand surface; each consuming repo provides its own copy.**
 
 ## `/research`
 

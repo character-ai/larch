@@ -66,6 +66,12 @@ append_unique_paths_file() {
     fi
 }
 
+# True when captured helper stdout reports a non-failing terminal state
+# (checks ran successfully, or the consumer repo omitted scripts/relevant-checks.sh).
+is_relevant_checks_clean() {
+    printf '%s\n' "$1" | grep -qE '^RELEVANT_CHECKS_(OK|SKIPPED)=true '
+}
+
 run_lint_fix_loop_capture() {
     local fail_file=$1 site=$2 redacted_log=$3 out_var=$4 rc_var=$5
     local output rc had_errexit=0
@@ -683,7 +689,7 @@ run_checks_phase() {
     capture_command_output out "$fail_file" "$SCRIPT_DIR/run-relevant-checks-captured.sh" --site step6 --tmpdir "$IMPLEMENT_TMPDIR"
     rc=$?
     printf '%s\n' "$out" >> "$fail_file"
-    if [ "$rc" -eq 0 ] && printf '%s\n' "$out" | grep -q '^RELEVANT_CHECKS_OK=true '; then
+    if [ "$rc" -eq 0 ] && is_relevant_checks_clean "$out"; then
         advance_phase bump
         return 0
     fi
@@ -706,7 +712,7 @@ run_checks_phase() {
                 capture_command_output out "$fail_file" "$SCRIPT_DIR/run-relevant-checks-captured.sh" --site step6 --tmpdir "$IMPLEMENT_TMPDIR"
                 rc=$?
                 printf '%s\n' "$out" >> "$fail_file"
-                if [ "$rc" -eq 0 ] && printf '%s\n' "$out" | grep -q '^RELEVANT_CHECKS_OK=true '; then
+                if [ "$rc" -eq 0 ] && is_relevant_checks_clean "$out"; then
                     advance_phase bump
                     return 0
                 fi
@@ -760,7 +766,7 @@ run_checks_with_lint_fix_loop() {
     capture_command_output out "$fail_file" "$SCRIPT_DIR/run-relevant-checks-captured.sh" --site "$checks_site" --tmpdir "$IMPLEMENT_TMPDIR"
     rc=$?
     printf '%s\n' "$out" >> "$fail_file"
-    if [ "$rc" -eq 0 ] && printf '%s\n' "$out" | grep -q '^RELEVANT_CHECKS_OK=true '; then
+    if [ "$rc" -eq 0 ] && is_relevant_checks_clean "$out"; then
         return 0
     fi
     redacted_log=$(printf '%s\n' "$out" | awk -F= '/^REDACTED_LOG_FILE=/ { print substr($0, index($0,"=")+1); exit }')
@@ -786,7 +792,7 @@ run_checks_with_lint_fix_loop() {
                 capture_command_output out "$fail_file" "$SCRIPT_DIR/run-relevant-checks-captured.sh" --site "$checks_site" --tmpdir "$IMPLEMENT_TMPDIR"
                 rc=$?
                 printf '%s\n' "$out" >> "$fail_file"
-                if [ "$rc" -eq 0 ] && printf '%s\n' "$out" | grep -q '^RELEVANT_CHECKS_OK=true '; then
+                if [ "$rc" -eq 0 ] && is_relevant_checks_clean "$out"; then
                     if [[ -s "$ALL_LINT_FIX_DELTA_PATHS_FILE" ]]; then
                         LAST_LINT_FIX_DELTA_PATHS_FILE="$ALL_LINT_FIX_DELTA_PATHS_FILE"
                     elif [[ "$fix_status" == "applied" && -n "$fix_delta_paths_file" ]]; then

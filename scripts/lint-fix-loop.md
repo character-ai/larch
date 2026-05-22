@@ -33,7 +33,7 @@ Behavior:
    `LINT_FIX_STATUS=main-agent-required` and exit 0.
 4. Compose a prompt that treats the checks log as untrusted command output and
    asks the external coder to make the minimum repository edits required for
-   `/relevant-checks` to pass. The prompt forbids commits; the helper owns any
+   `scripts/relevant-checks.sh` to pass. The prompt forbids commits; the helper owns any
    allowed commit. Literal ````` fence lines in the log are sanitized before
    embedding.
 5. Dispatch Cursor first via `scripts/run-external-agent.sh` when Cursor is
@@ -54,7 +54,7 @@ Behavior:
    `LINT_FIX_STATUS=applied`. Only when the pre-dispatch baseline was clean may
    the helper stage those delta paths and commit through
    `scripts/git-commit.sh --no-trailer` using
-   `Apply /relevant-checks fixes (Step 3)`, `(Step 5)`, or `(Step 6)`. If the
+   `Apply relevant-checks fixes (Step 3)`, `(Step 5)`, or `(Step 6)`. If the
    commit path fails after staging, the helper must reset the staged delta
    paths before emitting failure.
 9. If every available dispatch path fails, emit `LINT_FIX_STATUS=failed`,

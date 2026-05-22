@@ -27,8 +27,8 @@ mode_of() {
 }
 
 fixture_repo="$tmp/repo"
-mkdir -p "$fixture_repo/.claude/skills/relevant-checks/scripts"
-cat > "$fixture_repo/.claude/skills/relevant-checks/scripts/run-checks.sh" <<'SCRIPT'
+mkdir -p "$fixture_repo/scripts"
+cat > "$fixture_repo/scripts/relevant-checks.sh" <<'SCRIPT'
 #!/usr/bin/env bash
 set -euo pipefail
 echo "=== Running pre-commit on 1 changed file(s) ==="
@@ -38,7 +38,7 @@ done
 echo "=== Running agent-lint ==="
 echo "agent lint ok"
 SCRIPT
-chmod +x "$fixture_repo/.claude/skills/relevant-checks/scripts/run-checks.sh"
+chmod +x "$fixture_repo/scripts/relevant-checks.sh"
 
 xdg="$tmp/a a a/cache root with spaces and an intentionally long path segment"
 session="$xdg/larch/sessions/claude-implement-repo-ABC123"
@@ -62,5 +62,12 @@ log_file="$log_dir/step3-1.log"
 [[ -f "$log_file" ]] || fail "captured log missing"
 [[ "$(mode_of "$log_dir")" == "700" ]] || fail "log dir mode not 700: $(mode_of "$log_dir")"
 [[ "$(mode_of "$log_file")" == "600" ]] || fail "log file mode not 600: $(mode_of "$log_file")"
+
+repo_skip="$tmp/repo-skip"
+mkdir -p "$repo_skip"
+out=$(XDG_CACHE_HOME="$xdg" CLAUDE_PROJECT_DIR="$repo_skip" "$HELPER" --site step5-review-fixes --tmpdir "$session")
+[[ "$out" == RELEVANT_CHECKS_SKIPPED=true* ]] || fail "skip line missing: $out"
+bytes=$(printf '%s\n' "$out" | wc -c | tr -d '[:space:]')
+(( bytes <= 120 )) || fail "skip stdout too large: $bytes bytes: $out"
 
 echo "test-relevant-checks-byte-budget: ok"

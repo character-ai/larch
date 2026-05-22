@@ -2,7 +2,7 @@
 
 `skills/implement/scripts/test-implement-relevant-checks-anti-halt.sh` is the offline regression harness for `/implement`'s per-site relevant-checks helper anti-halt reminders in `skills/implement/SKILL.md`. It is hermetic and runs against the checked-in skill prose; it does not invoke the helper, touch git state, or require network access.
 
-The harness scans the three load-bearing `run-relevant-checks-captured.sh` invocation-site forms currently present in `skills/implement/SKILL.md`. Steps 10 and 12c moved into `scripts/ship-pr.sh` (covered by `test-ship-pr.sh`):
+The harness scans the three load-bearing `"${CLAUDE_PLUGIN_ROOT}/scripts/run-relevant-checks-captured.sh"` invocation lines currently present in `skills/implement/SKILL.md` (basename-only prose mentions are ignored). Steps 10 and 12c moved into `scripts/ship-pr.sh` (covered by `test-ship-pr.sh`):
 
 - Step 3 first-pass checks.
 - Step 5 after accepted review fixes from `review-and-fix.sh`.
@@ -10,7 +10,7 @@ The harness scans the three load-bearing `run-relevant-checks-captured.sh` invoc
 
 For each matched site, the harness requires the canonical blockquote opener `> **Continue after child returns.**` within the five physical lines immediately preceding the invocation line. The same local window must mention `REDACTED_LOG_FILE` and explicitly say not to read raw `LOG_FILE`.
 
-The harness also asserts that exactly three invocation sites are matched and that legacy executable phrases such as Invoke `/relevant-checks` via the Skill tool or `` `/relevant-checks`; commit via`` are absent. This count is deliberately load-bearing: if `skills/implement/SKILL.md` gains another helper invocation, update the skill prose with a local continuation callout and update this harness/contract in the same PR.
+The harness also asserts that exactly three invocation sites are matched and that legacy Skill-tool prose for invoking the relevant-checks slash command (for example, invoking it via the Skill tool instead of the captured helper) is absent. This count is deliberately load-bearing: if `skills/implement/SKILL.md` gains another helper invocation, update the skill prose with a local continuation callout and update this harness/contract in the same PR.
 
 It is wired into `make lint` via the `test-implement-relevant-checks-anti-halt` target and one `test-harnesses-N` shard. It is excluded from agent-lint's orphaned-skill-file rule using the same Makefile-only harness pattern as the other `skills/implement/scripts/test-*.sh` harnesses.
 

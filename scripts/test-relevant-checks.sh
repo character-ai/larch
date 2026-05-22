@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Regression harness for .claude/skills/relevant-checks/scripts/run-checks.sh.
+# Regression harness for scripts/relevant-checks.sh.
 #
-# Black-box contract test: invoke run-checks.sh inside disposable git repos
+# Black-box contract test: invoke relevant-checks.sh inside disposable git repos
 # with a controlled PATH so host pre-commit / agent-lint installs cannot change
 # the documented exit-code behavior.
 #
 # Usage:
-#   bash .claude/skills/relevant-checks/scripts/test-run-checks.sh
+#   bash scripts/test-relevant-checks.sh
 #
 # Exit codes:
 #   0 - all assertions passed
@@ -14,8 +14,8 @@
 
 set -euo pipefail
 
-REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)
-SCRIPT="$REPO_ROOT/.claude/skills/relevant-checks/scripts/run-checks.sh"
+REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+SCRIPT="$REPO_ROOT/scripts/relevant-checks.sh"
 
 if [[ ! -f "$SCRIPT" ]]; then
     echo "ERROR: required script not found: $SCRIPT" >&2
@@ -24,7 +24,7 @@ fi
 
 TMPROOT=
 trap '[[ -n "$TMPROOT" ]] && rm -rf "$TMPROOT"' EXIT
-TMPROOT=$(mktemp -d "${TMPDIR:-/tmp}/test-run-checks-XXXXXX")
+TMPROOT=$(mktemp -d "${TMPDIR:-/tmp}/test-relevant-checks-XXXXXX")
 
 export HOME="$TMPROOT/fakehome"
 mkdir -p "$HOME"

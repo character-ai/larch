@@ -26,7 +26,7 @@
 #   r  Skill + total omission AND per-invocation violations in same file → exit 1, both messages present
 #   s  Skill + "invoke the helper script ... `/bump-version`" prose → exit 0 (slash is citation, not object)
 #   t  Skill + "Invoke the **Sub-procedure** ... `/bump-version`" prose → exit 0 (bold-span sub-procedure exempt)
-#   u  Skill + "re-invoke `/relevant-checks`" without "via the Skill tool" → exit 1 (re-invoke is in scope)
+#   u  Skill + bare re-invoke of `/issue` without "via the Skill tool" → exit 1 (re-invoke is in scope)
 #
 # Usage: bash scripts/test-lint-skill-invocations.sh
 # Exit: 0 — all assertions passed; 1 — at least one assertion failed.
@@ -524,7 +524,7 @@ rc=$(run_lint "$stderr_file")
 assert_case "t (Invoke the **Sub-procedure** ... /bump-version — exempt)" 0 "$stderr_file" "$rc"
 rm -f "$stderr_file"
 
-# --- Case u: "re-invoke `/relevant-checks`" is in scope -------------------
+# --- Case u: bare re-invoke of `/issue` is in scope -------------------
 reset_tree
 write_skill "$TMPROOT/skills/case-u/SKILL.md" <<'EOF'
 ---
@@ -537,7 +537,7 @@ allowed-tools: Bash, Skill
 
 To pass total omission: Invoke `/setup` via the Skill tool.
 
-This bare re-invoke should be flagged: re-invoke `/relevant-checks` if needed.
+This bare re-invoke should be flagged: re-invoke `/issue` if needed.
 EOF
 stderr_file=$(mktemp)
 rc=$(run_lint "$stderr_file")

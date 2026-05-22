@@ -93,7 +93,7 @@ See `## Anti-halt continuation reminder` below — the two sections govern the s
 
 **Loop-internal carve-out**: when an orchestrator's step explicitly loops (a hypothetical Skill-tool call inside a loop body), the "next step" of the parent IS the loop-continuation directive, not the first textually-following section header. Use the loop-aware micro-reminder variant at loop-internal child-Skill call sites.
 
-**Generic relevant-checks clause**: every direct `/relevant-checks` Skill invocation and every `run-relevant-checks-captured.sh` helper call anywhere in an orchestrator SKILL.md is covered by this rule. The parent must resume after the check returns — whether that means advancing to the next numbered step, re-running validation after a fix, or committing the fixed files.
+**Generic relevant-checks clause**: every direct `run-relevant-checks-captured.sh` helper call anywhere in an orchestrator SKILL.md is covered by this rule. The parent must resume after the check returns — whether that means advancing to the next numbered step, re-running validation after a fix, or committing the fixed files.
 
 ### Canonical banner (top of each orchestrator SKILL.md, after the title body, before `## Progress Reporting`)
 

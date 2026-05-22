@@ -34,7 +34,7 @@ Example with merge: `/alias --merge i implement --merge` creates the alias AND m
 6. **NEVER hardcode `.claude/skills/<alias-name>` or `skills/<alias-name>` paths anywhere in Steps 2/3/4 — always thread `$TARGET_DIR`.** **Why:** the resolved target directory is the single source of truth (computed once at Step 2 by `resolve-target.sh`); a partial edit that re-introduces a hardcoded path in one site (e.g., the `/implement` recipe) but not another (e.g., the verify sentinel) creates a silent path split where `/implement` writes one tree and Step 4 verifies a different tree. Enforced by `scripts/test-alias-structure.sh` (CI).
 7. **NEVER use `eval "$(resolve-target.sh ...)"` to consume the helper's stdout.** **Why:** `eval` of a path that contains shell metacharacters (spaces, `$(...)`, backticks) creates shell-injection risk if the script's stdout contract ever drifts. Use the non-eval allowlist parser shown in Step 2's bash block. See `skills/alias/scripts/resolve-target.md` "Caller parsing requirement" for the required pattern.
 
-**Anti-halt continuation reminder.** After every child `Skill` tool call (e.g., `/implement`) returns, IMMEDIATELY continue with this skill's NEXT numbered step — do NOT end the turn on the child's cleanup output, and do NOT write a summary, handoff, status recap, or "returning to parent" message — those are halts in disguise. The rule is strictly subordinate to any explicit non-sequential control-flow directive in THIS file (e.g., `bail`, `skip to Step N`). A normal sequential `proceed to Step N+1` instruction is the default continuation this rule reinforces, NOT an exception. Every `/relevant-checks` invocation anywhere in this file is covered by this rule. → shared/subskill-invocation.md#anti-halt; do not load for routine invocations — load only when debugging or adding a child-Skill invocation.
+**Anti-halt continuation reminder.** After every child `Skill` tool call (e.g., `/implement`) returns, IMMEDIATELY continue with this skill's NEXT numbered step — do NOT end the turn on the child's cleanup output, and do NOT write a summary, handoff, status recap, or "returning to parent" message — those are halts in disguise. The rule is strictly subordinate to any explicit non-sequential control-flow directive in THIS file (e.g., `bail`, `skip to Step N`). A normal sequential `proceed to Step N+1` instruction is the default continuation this rule reinforces, NOT an exception. Every `run-relevant-checks-captured.sh` invocation anywhere in this file is covered by this rule. → shared/subskill-invocation.md#anti-halt; do not load for routine invocations — load only when debugging or adding a child-Skill invocation.
 
 <!-- step:1 — Parse Arguments -->
 
@@ -109,7 +109,7 @@ if [[ -z "${CLAUDE_PLUGIN_ROOT:-}" ]]; then
   echo "**ERROR: CLAUDE_PLUGIN_ROOT is unset — cannot probe larch skill tree for reserved-name collision.**"
   exit 1
 fi
-# probe BOTH roots: skills/ (public) and .claude/skills/ (dev-only: bump-version, relevant-checks)
+# probe BOTH roots: skills/ (public) and .claude/skills/ (dev-only: bump-version)
 if test -d "${CLAUDE_PLUGIN_ROOT}/skills/<alias-name>" \
   || test -d "${CLAUDE_PLUGIN_ROOT}/.claude/skills/<alias-name>"; then
   echo "**ERROR: alias name '<alias-name>' shadows an existing larch skill.**"

@@ -5,7 +5,7 @@ Larch is a Claude Code workflow automation framework that orchestrates multi-age
 ## Table of Contents
 
 - **Setup**
-  - [Installation and Setup](docs/installation-and-setup.md) — plugin install, local development, agent setup recipes (Claude / Codex / Cursor), [clean-main entry contract](docs/installation-and-setup.md#clean-main-entry-contract-for-implement-and-design) for `/implement` and `/design`, what the plugin provides, `/relevant-checks` consumer dependency, prerequisites
+  - [Installation and Setup](docs/installation-and-setup.md) — plugin install, local development, agent setup recipes (Claude / Codex / Cursor), [clean-main entry contract](docs/installation-and-setup.md#clean-main-entry-contract-for-implement-and-design) for `/implement` and `/design`, what the plugin provides, the `scripts/relevant-checks.sh` consumer contract, prerequisites
 - **Reference**
   - [Features](#features)
   - [Skills](#skills)
@@ -79,10 +79,10 @@ Larch is a Claude Code workflow automation framework that orchestrates multi-age
     <tr><td colspan="2">Analyze structured token reports across closed GitHub issues, estimate per-issue Claude/Codex/Cursor costs, plot SIMPLE and HARD cost trends, and print cost-reduction suggestions.</td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
-      <td><a href="docs/skills.md#relevant-checks"><code>/relevant-checks</code></a></td>
+      <td><a href="docs/skills.md#relevant-checks-script"><code>scripts/relevant-checks.sh</code></a></td>
       <td><em>(none)</em></td>
     </tr>
-    <tr><td colspan="2">Run pre-commit linters scoped to changed files. <strong>Not part of the plugin surface; each consuming repo provides its own.</strong></td></tr>
+    <tr><td colspan="2">Consumer-provided validation entrypoint (not a SlashCommand skill). Orchestrators call it through <code>scripts/run-relevant-checks-captured.sh</code>. <strong>Not part of the plugin surface; each consuming repo provides its own executable script.</strong></td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
       <td><a href="docs/skills.md#research"><code>/research</code></a></td>

@@ -1,13 +1,13 @@
-# run-checks.sh
+# relevant-checks.sh
 
-Purpose: run the project-local `/relevant-checks` validation pipeline for files modified on the current branch.
+Purpose: run the project-local relevant-checks validation pipeline for files modified on the current branch (pre-commit scoped to changed files, then full-repo `agent-lint` when available).
 
-Primary callers: `.claude/skills/relevant-checks/SKILL.md` invokes this private helper through the Bash tool.
+Primary callers: `scripts/run-relevant-checks-captured.sh` invokes this script from the consumer repo root after validating the session tmpdir.
 
 Invariants: keep `set -uo pipefail` without `-e` so pre-commit and agent-lint exit codes can be captured explicitly; preflight to exit 1 with a stdout line that begins with `ERROR: pre-commit not found` (the full literal carries an installation hint) when `pre-commit` is absent on `PATH`, and exit 1 with a stdout line that begins with `ERROR: not inside a git repository` when `git rev-parse --show-toplevel` fails; collect the union of branch diff, staged changes, unstaged changes, and untracked files; filter via `[ -f "$f" ]` to existing regular files (drops deleted paths, directories, and other non-regular paths) before invoking `pre-commit run --files`; run full-repo `agent-lint --pedantic` when available after changed-file checks pass, when `files[]` is empty but `MODIFIED_FILES` is non-empty (every path was rejected by the regular-file filter — typically deletions, but also directories or other non-regular paths), and when there are no modified files; exit 2 with an `ERROR:` line if zero validation phases actually ran.
 
-Makefile wiring: `make test-run-checks` runs the automated regression harness for this dev-only local skill helper.
+Makefile wiring: `make test-relevant-checks` runs the automated regression harness `scripts/test-relevant-checks.sh`.
 
-Test harness: `.claude/skills/relevant-checks/scripts/test-run-checks.sh` covers the zero-phase, agent-lint propagation, changed-file pre-commit, and preflight failure exit paths. Run it directly after edits, then run `make test-run-checks` to verify Makefile wiring.
+Test harness: `scripts/test-relevant-checks.sh` covers the zero-phase, agent-lint propagation, changed-file pre-commit, and preflight failure exit paths. Run it directly after edits, then run `make test-relevant-checks` to verify Makefile wiring.
 
-Edit in sync: update this contract and `.claude/skills/relevant-checks/SKILL.md` whenever phase counting, observable banners, exit paths, warning/error text, or changed-file detection behavior changes.
+Edit in sync: update this contract and `docs/linting.md` whenever phase counting, observable banners, exit paths, warning/error text, or changed-file detection behavior changes.

@@ -48,7 +48,7 @@ Update this list whenever a new consumer sources the registry.
 5. No change is required in `run-external-agent.sh`: it sanitizes `.meta` `TOOL=` for any input. Prefer a label-safe id (alphanumerics, `.`, `_`, `-`) so `.meta` `TOOL=` matches the registry id verbatim; non-label-safe ids may still collide after sanitization (e.g. `tool/a` and `tool?a` both become `tool_a`), so `.meta` `TOOL=` is not a bijection from arbitrary labels. Only widen the wrapper's allowlist if you intentionally change that contract.
 6. If the new tool produces output collected by `scripts/collect-agent-results.sh`, ensure `derive_tool` can classify the new id from metadata and filenames so dispatcher fallback can attribute results.
 7. Update the relevant sibling `.md` contracts.
-8. Run `make lint` and `/relevant-checks`.
+8. Run `make lint` and `bash scripts/relevant-checks.sh`.
 
 ## Collector integration
 

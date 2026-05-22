@@ -3,7 +3,6 @@
     "allow": [
       "Bash($PWD/.claude/skills/*)",
       "Bash($PWD/.claude/skills/bump-version/scripts/*)",
-      "Bash($PWD/.claude/skills/relevant-checks/scripts/*)",
       "Bash($PWD/scripts/*)",
       "Bash($PWD/skills/alias/scripts/*)",
       "Bash($PWD/skills/block-issue/scripts/*)",
@@ -168,7 +167,6 @@
       "Skill(larch:review)",
       "Skill(larch:set-up-forked-open-source-repo)",
       "Skill(larch:upgrade-larch)",
-      "Skill(relevant-checks)",
       "Skill(report-tokens)",
       "Skill(research)",
       "Skill(review)",

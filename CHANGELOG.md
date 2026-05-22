@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Replace dev-only `.claude/skills/relevant-checks/` with consumer `scripts/relevant-checks.sh`; `run-relevant-checks-captured.sh` now emits `RELEVANT_CHECKS_SKIPPED=true` when the script is absent so downstream automation can detect skips (`RELEVANT_CHECKS_SKIPPED` migration sentinel for operators and fork CI).
 - Closed: #2588
 
 ## [38.0.0] - 2026-05-22
