@@ -26,7 +26,7 @@ REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 
 PROJECT_TOKEN='NEVER improvise ScheduleWakeup outside skill-script direction'
 IMPLEMENT_LEGACY_TOKEN="NEVER call \`ScheduleWakeup\` anywhere in the \`/implement\` orchestrator"
-IMPLEMENT_NEVER12_ARCHIVAL_TOKEN="issue #2485; the post-/design boundary halt rule was retired"
+IMPLEMENT_NEVER12_ARCHIVAL_TOKEN="#2487; the post-/design boundary halt rule and its archival hook scripts were deleted"
 MANDATORY_TOKEN='MANDATORY at session start'
 
 PROJECT_ANCHORS=(
