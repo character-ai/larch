@@ -239,32 +239,32 @@
       {
         "step": "Step 6 — checks second pass",
         "totals": {
-          "input": 1,
-          "cache_read": 143884,
-          "cache_create": 1167,
-          "output": 800,
-          "total": 145852
+          "input": 14,
+          "cache_read": 2062152,
+          "cache_create": 11769,
+          "output": 8752,
+          "total": 2082687
         },
         "skills": [
           {
             "skill": "inferred:Step 6 — checks second pass",
             "totals": {
-              "input": 1,
-              "cache_read": 143884,
-              "cache_create": 1167,
-              "output": 800,
-              "total": 145852
+              "input": 14,
+              "cache_read": 2062152,
+              "cache_create": 11769,
+              "output": 8752,
+              "total": 2082687
             }
           }
         ]
       }
     ],
     "totals": {
-      "input": 132,
-      "cache_read": 13950327,
-      "cache_create": 610205,
-      "output": 48795,
-      "total": 14609459
+      "input": 145,
+      "cache_read": 15868595,
+      "cache_create": 620807,
+      "output": 56747,
+      "total": 16546294
     }
   },
   "codex": {
