@@ -138,8 +138,12 @@ _cursor_launcher_redact_stall_blob() {
 # jq(1) is available. Best-effort only; failures are ignored.
 # Optional 6th arg: path to a pre-filled transcript tail snapshot (captured before SIGTERM);
 # when empty or unreadable, tails are read after the caller's signal phase (legacy fallback).
+# Optional 7th arg: path to a pre-filled lsof snapshot (captured before SIGTERM on the
+# stalled wrapper pid). When non-empty and readable, seeds the sidecar `lsof` field so Linux
+# CI does not lose FD rows after the wrapper exits during the TERM grace window; otherwise
+# falls back to a post-signal `lsof -p` probe.
 cursor_launcher_emit_cursor_ci_stall_json_sidecar() {
-    local channel="$1" target_pid="$2" elapsed="$3" output_file="$4" diag_file="$5" transcript_pre="${6:-}"
+    local channel="$1" target_pid="$2" elapsed="$3" output_file="$4" diag_file="$5" transcript_pre="${6:-}" lsof_pre_path="${7:-}"
     local sidecar_dir out_json tmp_json ps_tmp lsof_tmp tr_tmp myuid os _scr _rf _p
     local transcript_tail_phase="post_sigterm" _tr_owned=1
     local _git_ws="${PWD:-.}"
@@ -194,7 +198,14 @@ cursor_launcher_emit_cursor_ci_stall_json_sidecar() {
         esac
     } >"$ps_tmp" || : >"$ps_tmp"
 
-    if command -v lsof >/dev/null 2>&1; then
+    local lsof_capture_phase="post_sigterm"
+    : >"$lsof_tmp"
+    if [[ -n "$lsof_pre_path" && -f "$lsof_pre_path" ]]; then
+        cat "$lsof_pre_path" >"$lsof_tmp" 2>/dev/null || : >"$lsof_tmp"
+    fi
+    if [[ -s "$lsof_tmp" ]]; then
+        lsof_capture_phase="pre_sigterm"
+    elif command -v lsof >/dev/null 2>&1; then
         if command -v timeout >/dev/null 2>&1; then
             # Subshell + pipefail off: SIGPIPE from head must not clobber a partial lsof snapshot.
             (
@@ -210,8 +221,9 @@ cursor_launcher_emit_cursor_ci_stall_json_sidecar() {
             # No wall-clock wrapper for lsof(1): omit rather than risk an unbounded hang.
             : >"$lsof_tmp"
         fi
-    else
-        : >"$lsof_tmp"
+        if [[ -s "$lsof_tmp" ]]; then
+            lsof_capture_phase="post_sigterm"
+        fi
     fi
 
     if [[ "$_tr_owned" -eq 1 ]]; then
@@ -291,12 +303,13 @@ cursor_launcher_emit_cursor_ci_stall_json_sidecar() {
         [[ -n "${tr_tmp:-}" ]] && rm -f "$tr_tmp"
         return 0
     }
-    local _cap_note="ps/lsof/git_state fields are captured after SIGTERM to the monitored wrapper and its direct children; merged stdout/stderr transcript tails in last_transcript_lines are snapshotted at stall detection before those signals (transcript_tail_capture_phase). The first Stall detected block in OUTPUT.diag is appended before SIGTERM and reflects an immediate pre-kill ps snapshot. The ps field uses uid-scoped ps(1) plus a deliberate grep '[c]ursor' argv filter (capped lines), not a full ps -ef tree — see scripts/launch-cursor-ci.md."
+    local _cap_note="The lsof field prefers a pre-SIGTERM snapshot of the stalled wrapper (lsof_capture_phase pre_sigterm) so FD rows survive fast wrapper exit on Linux CI; when that file is empty, a bounded post-SIGTERM lsof -p probe is used (post_sigterm). ps and argv sections are still captured after SIGTERM (capture_phase post_sigterm for the combined ps blob); merged stdout/stderr transcript tails in last_transcript_lines are snapshotted at stall detection before those signals (transcript_tail_capture_phase). The first Stall detected block in OUTPUT.diag is appended before SIGTERM and reflects an immediate pre-kill ps snapshot. The ps field uses uid-scoped ps(1) plus a deliberate grep '[c]ursor' argv filter (capped lines), not a full ps -ef tree — see scripts/launch-cursor-ci.md."
     if ! jq -nc \
         --arg channel "$channel" \
         --argjson pid "$target_pid" \
         --argjson time_since_last_progress "$elapsed" \
         --arg capture_phase "post_sigterm" \
+        --arg lsof_capture_phase "$lsof_capture_phase" \
         --arg transcript_tail_capture_phase "$transcript_tail_phase" \
         --arg diag_capture_note "$_cap_note" \
         --rawfile ps "$ps_tmp" \
@@ -310,6 +323,7 @@ cursor_launcher_emit_cursor_ci_stall_json_sidecar() {
             pid: $pid,
             time_since_last_progress: $time_since_last_progress,
             capture_phase: $capture_phase,
+            lsof_capture_phase: $lsof_capture_phase,
             transcript_tail_capture_phase: $transcript_tail_capture_phase,
             diag_capture_note: $diag_capture_note,
             ps: $ps,
@@ -468,6 +482,29 @@ cursor_launcher_run_stall_monitor() {
                     tail -n 50 "$diag_file" 2>/dev/null || true
                 } >"$tr_pre" || : >"$tr_pre"
             fi
+            # Snapshot FDs while the stalled wrapper is still alive. Post-SIGTERM lsof in the
+            # sidecar emitter often races a fast-exiting PID on Linux CI, yielding empty output.
+            local lsof_pre=""
+            lsof_pre=$(mktemp "${TMPDIR:-/tmp}/larch-stall-lsof-pre.XXXXXX") || lsof_pre=""
+            if [[ -n "$lsof_pre" ]]; then
+                if command -v lsof >/dev/null 2>&1; then
+                    if command -v timeout >/dev/null 2>&1; then
+                        (
+                            set +o pipefail
+                            timeout 3 lsof -nP -p "$target_pid" 2>/dev/null | head -n 400
+                        ) >"$lsof_pre" || true
+                    elif command -v gtimeout >/dev/null 2>&1; then
+                        (
+                            set +o pipefail
+                            gtimeout 3 lsof -nP -p "$target_pid" 2>/dev/null | head -n 400
+                        ) >"$lsof_pre" || true
+                    else
+                        : >"$lsof_pre"
+                    fi
+                else
+                    : >"$lsof_pre"
+                fi
+            fi
             {
                 printf '%s\n' "Stall detected: channel=${channel} time_since_last_progress=${elapsed}s"
                 printf '%s\n' "--- stall ps snapshot (target pid=${target_pid}) ---"
@@ -492,7 +529,7 @@ cursor_launcher_run_stall_monitor() {
             # Stall JSON assembly (jq/redact/git) runs concurrently with the TERM grace window so
             # heavy forensics cannot extend the window before SIGKILL.
             local emit_pid=""
-            ( cursor_launcher_emit_cursor_ci_stall_json_sidecar "$channel" "$target_pid" "$elapsed" "$output_file" "$diag_file" "$tr_pre" ) &
+            ( cursor_launcher_emit_cursor_ci_stall_json_sidecar "$channel" "$target_pid" "$elapsed" "$output_file" "$diag_file" "$tr_pre" "${lsof_pre:-}" ) &
             emit_pid=$!
             sleep 2
             if command -v pgrep >/dev/null 2>&1; then
@@ -507,6 +544,9 @@ cursor_launcher_run_stall_monitor() {
             fi
             if [[ -n "${tr_pre:-}" ]]; then
                 rm -f "$tr_pre"
+            fi
+            if [[ -n "${lsof_pre:-}" ]]; then
+                rm -f "$lsof_pre"
             fi
             if [[ -n "${tree_baseline:-}" ]]; then
                 rm -f "$tree_baseline"
