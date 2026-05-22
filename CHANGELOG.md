@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [36.0.8] - 2026-05-22
+
+### Changed
+
+- Add `[PLANNED]` lifecycle prefix to tracking-issue rename so `/design` signals plan completion.
+- Introduce `design-log-publish.sh` to flush `/design` session tmpdirs into `larch-logs/design/<run-id>/` via a disposable git worktree, `[skip ci]` commit, and admin squash-merge PR.
+- Wire `/design` Step 0b/5b and the clarify path to parse `SESSION_ID`, rename on completion, and publish logs.
+- Exclude `[PLANNED]`-prefixed issues from `/fix-issue` managed-lifecycle lock to avoid picking up active design sessions.
+- Add offline harnesses for tracking-issue-write `planned` state and design-log-publish happy/edge/failure paths.
+
 ## [36.0.6] - 2026-05-22
 
 ### Changed
