@@ -161,6 +161,33 @@ else
     fail "non-flush-ahead preserves non-flush file"
 fi
 
+# Remote advances with non-larch-logs paths after local flush-only ahead, while
+# origin/main in the clone is still the pre-advance tip until fetch (pre-fetch SHA
+# must gate the diff predicate; post-fetch origin/main would widen the diff).
+squash_gap_repo=$(setup_remote_repo "squash-gap")
+squash_gap_bare=$(git -C "$squash_gap_repo" remote get-url origin)
+commit_path \
+    "$squash_gap_repo" \
+    "larch-logs/implement/squash-gap/session-transcript.jsonl" \
+    '{"type":"message","text":"flush-only"}' \
+    "chore(larch-logs): flush implement run squash-gap"
+squash_gap_pusher="$TMP/squash-gap-pusher"
+git clone -q "$squash_gap_bare" "$squash_gap_pusher"
+config_git_identity "$squash_gap_pusher"
+commit_path \
+    "$squash_gap_pusher" \
+    "landed-from-pr.txt" \
+    "squash simulation" \
+    "feat: simulate post-merge remote advance"
+git -C "$squash_gap_pusher" push -q origin main
+squash_gap_expected=$(git -C "$squash_gap_pusher" rev-parse HEAD)
+run_cleanup "squash-gap" "$squash_gap_repo"
+assert_contains "squash-gap success envelope" "$LAST_CLEANUP_OUT" "CLEANUP_SUCCESS=true"
+assert_contains "squash-gap branch deleted" "$LAST_CLEANUP_OUT" "BRANCH_DELETED=true"
+assert_contains "squash-gap drop warning" "$LAST_CLEANUP_ERR" "Dropping 1 prior-run larch-log flush commit(s) before pull"
+squash_gap_head=$(git -C "$squash_gap_repo" rev-parse HEAD)
+assert_equals "squash-gap reset to origin/main after remote advance" "$squash_gap_head" "$squash_gap_expected"
+
 echo
 echo "Passed: $PASS"
 echo "Failed: $FAIL"

@@ -70,6 +70,7 @@ CURRENT_BRANCH="main"
 
 # --- Step 2: Fetch origin main ---
 echo "🔄 Fetching origin main..." >&2
+_pre_fetch_sha=$(git rev-parse origin/main 2>/dev/null || true)
 if ! git fetch origin main >/dev/null 2>&1; then
     echo "⚠ Failed to fetch origin main (continuing)" >&2
 fi
@@ -94,7 +95,7 @@ if [[ "$ahead_before" -gt 0 ]]; then
             "larch-logs/"*) ;;
             *) _larch_log_diff_only=false; break ;;
         esac
-    done < <(git diff --name-only origin/main HEAD 2>/dev/null || true)
+    done < <(git diff --name-only "${_pre_fetch_sha:-origin/main}" HEAD 2>/dev/null || true)
 
     if [[ "$_all_flushes" == "true" && "$_larch_log_diff_only" == "true" ]]; then
         echo "⚠ Dropping $ahead_before prior-run larch-log flush commit(s) before pull..." >&2
