@@ -69,12 +69,22 @@ bash scripts/test-preflight-args.sh
 
 `make test-preflight-args` runs the dedicated harness and is included in `the test-harnesses-N shard partition`.
 
+## Main-sync check
+
+After a successful `git fetch origin main`, `preflight.sh` calls `scripts/check-main-sync.sh` (without fetching again — the fetch just happened) to detect committed-but-unpushed larch-log flush commits on local `main`. The check runs only when `--skip-branch-check` is not set (because the branch is already verified to be `main` at that point).
+
+- `SYNC_STATUS=reset`: all ahead commits were larch-log flush commits; `git reset --hard origin/main` was applied automatically. The subsequent rebase is a no-op.
+- `SYNC_STATUS=blocked`: non-log commits are present; `preflight.sh` emits `PREFLIGHT=fail` with the error text and exits 3.
+- `SYNC_STATUS=ok` or `SYNC_STATUS=not-main`: no action needed; proceed to rebase.
+- Exit 2 from `check-main-sync.sh` (probe error): treated as non-fatal (fail-open) to match `preflight.sh`'s historical fail-open posture on probe failures.
+
 ## Edit-in-sync
 
 When changing `scripts/preflight.sh`:
 
 - Update this file for any output contract, exit code, or git-state side effect change.
 - Update `scripts/check-clean-tree.md` if the clean-tree helper contract changes.
+- Update `scripts/check-main-sync.md` if the main-sync helper contract changes.
 - Update `skills/fix-issue/scripts/find-lock-issue.md` if dirty-tree messaging equivalence changes.
 - Verify `scripts/session-setup.sh` still captures and re-emits `PREFLIGHT_*` output correctly.
 - Verify `/implement` and `/design` setup prose still matches the default versus `--skip-branch-check` behavior.

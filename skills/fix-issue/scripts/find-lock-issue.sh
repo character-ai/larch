@@ -250,6 +250,53 @@ _emit_dirty_tree_pre_lock_abort() {
     clean_line=$(printf '%s\n' "$probe_out" | awk -F= '/^CLEAN=/ { v=$2 } END { print v }')
 
     if [ "$probe_exit" -eq 0 ] && [ "$clean_line" = "true" ]; then
+        # Working tree is clean. Also check for committed-but-unpushed
+        # larch-log flush commits on main. No fetch: we use the locally-cached
+        # origin/main ref — see check-main-sync.md for the rationale.
+        local sync_script="${SCRIPT_DIR}/../../../scripts/check-main-sync.sh"
+        if [ ! -f "$sync_script" ]; then
+            emit_kv ELIGIBLE false
+            emit_kv ERROR "check-main-sync.sh missing at $sync_script; cannot verify main sync before lock."
+            exit 2
+        fi
+        local sync_out sync_exit=0
+        sync_out=$(bash "$sync_script" 2>&1) || sync_exit=$?
+        local sync_status
+        sync_status=$(printf '%s\n' "$sync_out" | awk -F= '/^SYNC_STATUS=/ { v=$2 } END { print v }')
+        if [ "$sync_exit" -eq 1 ] || [ "$sync_status" = "blocked" ]; then
+            local sync_error
+            sync_error=$(printf '%s\n' "$sync_out" | awk -F= '/^ERROR=/ { sub(/^ERROR=/, "", $0); v=$0 } END { print v }')
+            emit_kv ELIGIBLE false
+            if [ -n "$umbrella_num" ]; then
+                emit_kv IS_UMBRELLA true
+                emit_kv UMBRELLA_NUMBER "$umbrella_num"
+                emit_kv UMBRELLA_TITLE "$umbrella_title"
+                emit_kv ISSUE_NUMBER "$issue_num"
+                emit_kv ISSUE_TITLE "$issue_title"
+                emit_kv LOCK_ACQUIRED false
+            fi
+            emit_kv ERROR "${sync_error:-local main is ahead of origin/main with non-log commits; push or reconcile before re-running /fix-issue. No issue was locked.}"
+            exit 2
+        fi
+        # Exit 2 with SYNC_STATUS=probe-error only: fail-open (same rationale as
+        # preflight); other non-zero exits fail closed before lock.
+        if [ "$sync_exit" -eq 2 ] && [ "$sync_status" = "probe-error" ]; then
+            :
+        elif [ "$sync_exit" -ne 0 ]; then
+            emit_kv ELIGIBLE false
+            if [ -n "$umbrella_num" ]; then
+                emit_kv IS_UMBRELLA true
+                emit_kv UMBRELLA_NUMBER "$umbrella_num"
+                emit_kv UMBRELLA_TITLE "$umbrella_title"
+                emit_kv ISSUE_NUMBER "$issue_num"
+                emit_kv ISSUE_TITLE "$issue_title"
+                emit_kv LOCK_ACQUIRED false
+            fi
+            emit_kv ERROR "check-main-sync.sh exited unexpectedly (exit $sync_exit). No issue was locked."
+            exit 2
+        fi
+        # SYNC_STATUS=reset means flush commits were auto-cleared; ok or
+        # not-main also mean the run can proceed.
         return 0
     fi
 

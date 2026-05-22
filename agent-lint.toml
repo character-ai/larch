@@ -564,6 +564,12 @@ exclude = [
   # (sibling contract), matching the same Makefile-only pattern.
   "scripts/test-check-clean-tree.sh",
   "scripts/test-check-clean-tree.md",
+  # scripts/test-check-main-sync.sh is the regression harness for
+  # scripts/check-main-sync.sh. Referenced only from Makefile
+  # (test-check-main-sync target) and scripts/test-check-main-sync.md
+  # (sibling contract), matching the same Makefile-only pattern.
+  "scripts/test-check-main-sync.sh",
+  "scripts/test-check-main-sync.md",
   # Issue-anchored plan helpers (#2484): runtime scripts + harnesses are
   # listed under "## Issue-anchored plan helpers (machine reachability)"
   # in skills/implement/SKILL.md for agent-lint G004 reachability.

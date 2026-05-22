@@ -75,6 +75,29 @@ if ! git fetch origin main --quiet 2>/dev/null; then
     exit 3
 fi
 
+# After the fetch, check for committed-but-unpushed larch-log flush commits.
+# Auto-resets when all ahead commits are log-only; blocks on non-log commits.
+if [[ "$SKIP_BRANCH_CHECK" == "false" ]]; then
+    _sync_exit=0
+    SYNC_OUT=$("$SCRIPT_DIR/check-main-sync.sh" 2>/dev/null) || _sync_exit=$?
+    SYNC_STATUS=$(echo "$SYNC_OUT" | awk -F= '/^SYNC_STATUS=/ { v=$2 } END { print v }')
+    SYNC_ERROR=$(echo "$SYNC_OUT" | awk -F= '/^ERROR=/ { sub(/^ERROR=/, "", $0); v=$0 } END { print v }')
+    if [[ "$SYNC_STATUS" == "blocked" ]] || [[ "$_sync_exit" -eq 1 ]]; then
+        emit_kv PREFLIGHT fail
+        emit_kv PREFLIGHT_ERROR "${SYNC_ERROR:-local main is ahead of origin/main with non-log changes; push or reconcile before re-running}"
+        exit 3
+    fi
+    # Exit 2 with SYNC_STATUS=probe-error only: fail-open (do not block the run);
+    # other non-zero exits (including exit 2 without probe-error) fail closed.
+    if [[ "$_sync_exit" -eq 2 ]] && [[ "$SYNC_STATUS" == "probe-error" ]]; then
+        :
+    elif [[ "$_sync_exit" -ne 0 ]]; then
+        emit_kv PREFLIGHT fail
+        emit_kv PREFLIGHT_ERROR "${SYNC_ERROR:-check-main-sync.sh exited unexpectedly (exit $_sync_exit)}"
+        exit 3
+    fi
+fi
+
 if [[ "$SKIP_BRANCH_CHECK" == "false" && "$SKIP_CLEAN_CHECK" == "false" ]]; then
     if ! git rebase origin/main --quiet 2>/dev/null; then
         git rebase --abort 2>/dev/null || true

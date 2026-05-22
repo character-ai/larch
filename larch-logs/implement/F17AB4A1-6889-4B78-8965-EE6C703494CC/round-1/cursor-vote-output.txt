@@ -1,0 +1,10 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: EXONERATE -- detached HEAD is handled as not-main by design; edge case not worth expanding HEAD logic here
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: EXONERATE -- harness-only misleading label; trivial assert rename without changing behavior
+FINDING_10: EXONERATE -- broad meta noise; no actionable tracking issue needed

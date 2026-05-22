@@ -12,6 +12,8 @@
 
    The probe is fail-closed here. `scripts/preflight.sh` also calls the same helper with `--fail-closed` (wrapped in `|| true` for `set -e` compatibility), so both callers share fail-closed semantics. Do not reintroduce `2>/dev/null` around this pre-lock probe; doing so would silently reopen the dirty-tree-after-lock failure class.
 
+   **Main-sync check**: when the working-tree probe reports `CLEAN=true`, `_emit_dirty_tree_pre_lock_abort` also calls `scripts/check-main-sync.sh` (without fetching) to detect committed-but-unpushed larch-log flush commits on local `main`. If all ahead commits are flush commits they are auto-reset to `origin/main` before the lock proceeds. If non-log commits are present the probe exits 2 with `ELIGIBLE=false ERROR=local main is ahead of origin/main with non-log commits; ...` — same exit path as a dirty-tree abort, with no GitHub mutation. The check is a no-op when the current branch is not `main` (`SYNC_STATUS=not-main`). `scripts/check-main-sync.sh` exit 2 (probe-error) is treated as non-fatal (not blocking lock acquisition) because the primary correctness invariant is the comment lock, and a transient git probe failure should not prevent an otherwise clean run. See `scripts/check-main-sync.md` for the full contract and the relationship to `local-cleanup.sh` Step 3.
+
 3. **Lock** — delegates to `skills/fix-issue/scripts/issue-lifecycle.sh comment --issue $N --body "IN PROGRESS" --lock` (for both ordinary issues and umbrella children). Refuses if the tail is already `IN PROGRESS`, snapshots a duplicate-detection anchor BEFORE posting, excludes the runner's own just-posted comment id from the post-check, and uses `>= snapshot_ts` for the comparator. See `issue-lifecycle.md` for the full contract.
 
    The lock is the **correctness invariant**: it serializes concurrent `/fix-issue` runners. Lock semantics live in `issue-lifecycle.sh`'s `cmd_comment` and are NOT re-implemented here.
@@ -48,7 +50,7 @@ Exit 2 covers several failure classes. Consumers that need to distinguish them m
 - `gh` API failure or explicit issue not eligible: `ELIGIBLE=false ERROR=<reason>`.
 - Pre-lock dirty-tree abort on ordinary paths: `ELIGIBLE=false ERROR=Working tree is not clean. Commit or stash changes, then re-run /fix-issue. No issue was locked.`
 - Pre-lock dirty-tree abort on umbrella child paths: `ELIGIBLE=false IS_UMBRELLA=true UMBRELLA_NUMBER=<U> UMBRELLA_TITLE=<T> ISSUE_NUMBER=<C> ISSUE_TITLE=<child-title> LOCK_ACQUIRED=false ERROR=Working tree is not clean...`
-- Pre-lock probe failure: `ELIGIBLE=false ERROR=Cannot determine working-tree cleanliness: <summary>`. The umbrella child path includes the same umbrella and child keys as the dirty-tree abort.
+- Pre-lock probe failure: `ELIGIBLE=false ERROR=Cannot determine working-tree cleanliness: <summary>`. The umbrella child path includes the same umbrella and child keys as the dirty-tree abort. (This is the **clean-tree** helper only — `check-main-sync.sh` `SYNC_STATUS=probe-error` is fail-open and does not emit this contract.)
 - Umbrella detect failure, umbrella blocked by dependencies, or pick-child failure: existing umbrella error shape; `UMBRELLA_TITLE` is absent unless the umbrella was already detected and a child dispatch reached the pre-lock probe.
 
 Stable prefixes for dirty-tree automation are `ERROR=Working tree is not clean.` for porcelain-non-empty failures and `ERROR=Cannot determine working-tree cleanliness:` for probe failures.
@@ -89,6 +91,7 @@ The rename failure mode is non-fatal because:
 - If `issue-lifecycle.sh comment --lock`'s stdout contract changes (e.g., new keys added beyond `LOCK_ACQUIRED` / `COMMENTED` / `ERROR`), update the awk-based key extraction in `lock_and_rename_then_emit`.
 - If `tracking-issue-write.sh rename`'s stdout contract changes on omit-`--round-trip` call paths (e.g., new keys beyond `RENAMED` / `NEW_TITLE` / `FAILED` / `ERROR`), update the awk-based key extraction. This script intentionally omits `--round-trip`, so `ROUND_TRIP_APPLIED` is not emitted here.
 - If `scripts/check-clean-tree.sh`'s stdout contract changes, update `_emit_dirty_tree_pre_lock_abort`, `scripts/preflight.md`, and `scripts/check-clean-tree.md` together.
+- If `scripts/check-main-sync.sh`'s stdout contract changes, update `_emit_dirty_tree_pre_lock_abort`, `scripts/preflight.md`, and `scripts/check-main-sync.md` together.
 - If the unified stdout contract grows (new keys), update SKILL.md Step 0's parser, the new test harness `test-find-lock-issue.sh`, and this contract file in lockstep.
 - The exit-3 reservation (lock-acquired-false-after-eligibility-pass) is consumed by `skills/fix-issue/SKILL.md` Step 0; both must change together if the meaning shifts.
 
