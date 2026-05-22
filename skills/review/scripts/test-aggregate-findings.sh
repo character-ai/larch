@@ -103,6 +103,22 @@ Aggregator narrative: all input findings were resolved as duplicates; no merged 
 
 EOF
                 ;;
+            zero_findings_impure_attest)
+                cat > "$out" <<'EOF'
+Aggregator narrative: near-attestation line should be dropped before synthesis.
+
+LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED junk-suffix
+
+EOF
+                ;;
+            zero_findings_nonconforming_heading)
+                cat > "$out" <<'EOF'
+Aggregator narrative: pseudo-heading blocks synthesis rescue.
+
+### FINDING_1 not-a-valid-heading-line
+
+EOF
+                ;;
             zero_findings_padded_attest)
                 cat > "$out" <<'EOF'
 Aggregator narrative: padded empty-merge token line.
@@ -436,10 +452,63 @@ AGGREGATE_STUB_MERGE_KIND=zero_findings_no_attest \
 grep -Fq 'AGGREGATED=true' "$TMP/out-zero-na.env" || fail "synth no-attest AGGREGATED"
 grep -Fq 'REASON=ok' "$TMP/out-zero-na.env" || fail "synth no-attest REASON"
 grep -Fq 'MERGED_COUNT=0' "$TMP/out-zero-na.env" || fail "synth no-attest MERGED_COUNT"
-grep -Eq '^ATTESTATION_SYNTHESIZED=true unique_input_reviewers=3 input_findings=3$' "$TMP/aggregator-repair.stderr" || fail "missing or malformed synthesis breadcrumb"
+grep -Eq '^ATTESTATION_SYNTHESIZED=true unique_input_reviewers=3 input_slots=3 input_findings=3$' "$TMP/aggregator-repair.stderr" || fail "missing or malformed synthesis breadcrumb"
 grep -Fq 'LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED' "$TMP/in3-zero-na.md" && fail "attestation must not persist in findings.md (strip)"
 grep -Fq 'LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED' "$TMP/aggregator-output.txt" || fail "synthesized token must appear in committed raw aggregator-output.txt"
 [[ "$(grep -c '^### FINDING_' "$TMP/in3-zero-na.md" | tr -d '[:space:]')" == "0" ]] || fail "expected zero FINDING blocks after synthesized empty merge"
+EX="$TMP/exec-issues-synth-ok"
+mkdir -p "$EX"
+cp "$TMP/in3.md" "$EX/in.md"
+: >"$EX/execution-issues.md"
+write_stub_dispatch
+LARCH_EXECUTION_ISSUES_LOG="$EX/execution-issues.md" \
+AGGREGATE_DISPATCH_SH="$TMP/stub-dispatch.sh" \
+AGGREGATE_STUB_MODE=ok \
+AGGREGATE_STUB_MERGE_KIND=zero_findings_no_attest \
+"$AGG" \
+    --findings-file "$EX/in.md" \
+    --review-tmpdir "$EX" \
+    --codex-present true \
+    --cursor-present true \
+    --mode diff >"$TMP/out-zero-na-exec.env"
+grep -Fq 'AGGREGATED=true' "$TMP/out-zero-na-exec.env" || fail "synth exec-isolation AGGREGATED"
+grep -Fq 'REASON=ok' "$TMP/out-zero-na-exec.env" || fail "synth exec-isolation REASON"
+grep -Fq 'merged output failed validation' "$EX/execution-issues.md" && fail "synthesis success must not log merged-output validation failure to execution-issues.md"
+
+echo "=== zero_findings_impure_attest: drop near-token line then synthesize ==="
+cp "$TMP/in3.md" "$TMP/in3-zero-impure.md"
+write_stub_dispatch
+AGGREGATE_DISPATCH_SH="$TMP/stub-dispatch.sh" \
+AGGREGATE_STUB_MODE=ok \
+AGGREGATE_STUB_MERGE_KIND=zero_findings_impure_attest \
+"$AGG" \
+    --findings-file "$TMP/in3-zero-impure.md" \
+    --review-tmpdir "$TMP" \
+    --codex-present true \
+    --cursor-present true \
+    --mode diff >"$TMP/out-zero-impure.env"
+grep -Fq 'AGGREGATED=true' "$TMP/out-zero-impure.env" || fail "impure-attest AGGREGATED"
+grep -Fq 'REASON=ok' "$TMP/out-zero-impure.env" || fail "impure-attest REASON"
+grep -Fq 'junk-suffix' "$TMP/in3-zero-impure.md" && fail "impure attestation suffix must not survive into findings.md"
+
+echo "=== zero_findings_nonconforming_heading: validation-failed, no synthesis breadcrumb ==="
+cp "$TMP/in3.md" "$TMP/in3-nonconf.md"
+write_stub_dispatch
+rm -f "$TMP/aggregator-repair.stderr"
+AGGREGATE_DISPATCH_SH="$TMP/stub-dispatch.sh" \
+AGGREGATE_STUB_MODE=ok \
+AGGREGATE_STUB_MERGE_KIND=zero_findings_nonconforming_heading \
+"$AGG" \
+    --findings-file "$TMP/in3-nonconf.md" \
+    --review-tmpdir "$TMP" \
+    --codex-present true \
+    --cursor-present true \
+    --mode diff >"$TMP/out-nonconf.env"
+grep -Fq 'AGGREGATED=false' "$TMP/out-nonconf.env" || fail "nonconforming-heading AGGREGATED"
+grep -Fq 'REASON=validation-failed' "$TMP/out-nonconf.env" || fail "nonconforming-heading REASON"
+[[ -f "$TMP/aggregator-repair.stderr" ]] || fail "expected aggregator-repair.stderr after nonconforming-heading run"
+grep -Fq 'ATTESTATION_SYNTHESIZED=true' "$TMP/aggregator-repair.stderr" && fail "unexpected synthesis breadcrumb when pseudo-heading blocks rescue"
+grep -Fq 'AGGREGATOR_SYNTHESIS_SUPPRESSED=nonconforming_finding_heading_markers' "$TMP/aggregator-repair.stderr" || fail "expected synthesis-suppressed breadcrumb on aggregator-repair.stderr"
 
 echo "=== empty_merge_existing_token_passthrough: model token present, no synthesis stderr ==="
 RR="$TMP/empty-merge-passthrough"

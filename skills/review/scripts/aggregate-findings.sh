@@ -291,6 +291,28 @@ EMPTY_MERGE_ATTESTATION = "LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED"
 _STRICT_FINDING_HEADING = re.compile(r"^### FINDING_[0-9]+:")
 
 
+def line_has_impure_empty_merge_attestation(line):
+    """True when trimmed line begins with the attestation token but is not exactly it."""
+    st = line.strip()
+    return st.startswith(EMPTY_MERGE_ATTESTATION) and st != EMPTY_MERGE_ATTESTATION
+
+
+def drop_impure_empty_merge_attestation_lines(text):
+    """Remove near-attestation lines that would survive exact-line strip (suffix/format drift)."""
+    if not text:
+        return text
+    ends_nl = text.endswith("\n")
+    kept = [
+        line
+        for line in text.splitlines()
+        if not line_has_impure_empty_merge_attestation(line)
+    ]
+    out = "\n".join(kept)
+    if ends_nl:
+        out += "\n"
+    return out
+
+
 def line_opens_valid_finding_block(line):
     """True when this line starts a validator-recognized ### FINDING_N: block."""
     ls = line.lstrip("\t ")
@@ -496,6 +518,7 @@ def check_revision_traceability(input_text, output_blocks_list):
 
 def _attempt_attestation_repair(raw_text, input_text):
     """If merge output is empty-merge shaped but missing the attestation line, append it."""
+    raw_text = drop_impure_empty_merge_attestation_lines(raw_text)
     blocks = output_blocks(raw_text)
     input_slot_set = set()
     for block in input_blocks(input_text):
@@ -508,6 +531,10 @@ def _attempt_attestation_repair(raw_text, input_text):
     n_findings = len(input_blocks(input_text))
     if not blocks and input_slot_set and not has_attest_line:
         if has_nonconforming_finding_heading_markers(raw_text):
+            print(
+                "AGGREGATOR_SYNTHESIS_SUPPRESSED=nonconforming_finding_heading_markers",
+                file=sys.stderr,
+            )
             return raw_text, False, len(input_slot_set), n_findings
         return (
             raw_text + "\n" + EMPTY_MERGE_ATTESTATION + "\n",
@@ -526,8 +553,8 @@ def repair_attestation_main():
     sys.stdout.write(repaired)
     if synthesized:
         print(
-            "ATTESTATION_SYNTHESIZED=true unique_input_reviewers=%d input_findings=%d"
-            % (nslots, n_findings),
+            "ATTESTATION_SYNTHESIZED=true unique_input_reviewers=%d input_slots=%d input_findings=%d"
+            % (nslots, nslots, n_findings),
             file=sys.stderr,
         )
     return 0
@@ -537,6 +564,15 @@ def main():
     input_path, output_path = sys.argv[1], sys.argv[2]
     intext = open(input_path, encoding="utf-8").read()
     outtext = open(output_path, encoding="utf-8").read()
+    outtext = drop_impure_empty_merge_attestation_lines(outtext)
+    for line in outtext.splitlines():
+        if line_has_impure_empty_merge_attestation(line):
+            print(
+                "empty-merge attestation line must be exactly %r when present (found impure line)"
+                % (EMPTY_MERGE_ATTESTATION,),
+                file=sys.stderr,
+            )
+            return 1
     oos_slots = oos_attributed_slots(intext)
     input_slot_set = set()
     non_oos_input_slots = set()
@@ -644,7 +680,11 @@ if ! python3 "$validate_py" --repair-attestation "$FINDINGS_FILE" "$cand" >"$can
     exit 0
 fi
 if [[ -s "$repair_err_tmp" ]]; then
-    mv -f "$repair_err_tmp" "$REVIEW_TMPDIR/aggregator-repair.stderr"
+    # Isolate repair telemetry: ignore stray Python warnings on stderr.
+    grep -E '^(ATTESTATION_SYNTHESIZED=|AGGREGATOR_SYNTHESIS_SUPPRESSED=)' "$repair_err_tmp" \
+        >"$REVIEW_TMPDIR/aggregator-repair.stderr" \
+        || rm -f "$REVIEW_TMPDIR/aggregator-repair.stderr"
+    rm -f "$repair_err_tmp"
 else
     rm -f "$repair_err_tmp" "$REVIEW_TMPDIR/aggregator-repair.stderr"
 fi
