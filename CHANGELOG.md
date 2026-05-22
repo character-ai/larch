@@ -47,7 +47,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [34.0.17] - 2026-05-21
 
-### Changed
+### Fixed
 
 - Treat empty aggregator output (no FINDING blocks) as success so duplicate-only reviews do not fail validation.
 - Normalize trailing parentheticals on reviewer slot labels before matching input slots, covering LLM suffixes such as coverage notes.

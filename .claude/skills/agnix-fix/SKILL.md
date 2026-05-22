@@ -141,7 +141,7 @@ Changelog: for issues touching only `knowledge-base/`, `crates/agnix-rules/`, or
 
 After fork CI is green, /implement's final report prints a ready-to-paste `gh pr create --repo agent-sh/agnix --base main --head $FORK_OWNER:$BRANCH_NAME` template. The operator opens the upstream PR manually after reviewing the fork-side diff; closing the fork-side dry-run PR is also operator-driven. /agnix-fix does NOT auto-create the upstream PR — the human checkpoint at the upstream-PR boundary is intentional.
 
-**`/implement` exit codes**: exit **3** means Preflight **audit refused** (clarify request posted on the issue) — treat as terminal for this attempt: run `/design $ISSUE_NUMBER` on the **same** issue until the plan satisfies Preflight, then re-invoke `/agnix-fix`. Exit **2** is the generic hard-error class (missing plan markers, argv errors, `gh` failures). Do not confuse exit **3** with success exit **0**.
+**`/implement` exit codes**: exit **3** means Preflight **audit refused** — see `skills/implement/SKILL.md` for the two sub-cases (clarify posted vs `STATE=ambiguous` with no post). Treat as terminal for this attempt: run `/design $ISSUE_NUMBER` on the **same** issue when a clarify thread exists; repair the comment graph manually when `STATE=ambiguous`. Exit **2** is the generic hard-error class (missing plan markers, argv errors, `gh` failures). Do not confuse exit **3** with success exit **0**.
 GUIDANCE
 } > "$FEATURE_FILE"
 ```

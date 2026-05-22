@@ -159,9 +159,14 @@ has_report_prefix() {
 }
 
 ISSUE_ARG=""
+REQUIRE_PLAN_BLOCK=false
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
+        --require-plan-block)
+            REQUIRE_PLAN_BLOCK=true
+            shift
+            ;;
         -*)
             emit_kv ELIGIBLE false
             emit_kv ERROR "Unknown option: $1"
@@ -181,7 +186,7 @@ done
 
 if [[ -z "$ISSUE_ARG" ]]; then
     emit_kv ELIGIBLE false
-    emit_kv ERROR "Usage: find-lock-issue.sh <issue-number-or-url>"
+    emit_kv ERROR "Usage: find-lock-issue.sh [--require-plan-block] <issue-number-or-url>"
     exit 2
 fi
 
@@ -341,6 +346,56 @@ _pre_lock_clean_tree_and_main_sync_gate() {
 }
 
 # ---------------------------------------------------------------------------
+# _require_plan_block_before_lock <issue-num> <issue-title>
+#
+# When REQUIRE_PLAN_BLOCK=true (set via argv --require-plan-block), run
+# plan-block-read.sh on the issue that is about to receive the IN PROGRESS
+# lock — after dirty-tree passes, before issue-lifecycle.sh comment --lock.
+# Emits exit 6 with LOCK_ACQUIRED=false when the plan anchor is absent or
+# malformed, or exit 2 on gh/read hard failure.
+# ---------------------------------------------------------------------------
+_require_plan_block_before_lock() {
+    local issue_num="$1" issue_title="$2"
+    if [[ "$REQUIRE_PLAN_BLOCK" != "true" ]]; then
+        return 0
+    fi
+    local plan_read probe_tmp probe_out probe_rc=0
+    plan_read="${SCRIPT_DIR}/../../../scripts/plan-block-read.sh"
+    if [[ ! -f "$plan_read" ]]; then
+        emit_kv ELIGIBLE false
+        emit_kv ERROR "plan-block-read.sh not found at $plan_read"
+        exit 2
+    fi
+    probe_tmp=$(mktemp "${TMPDIR:-/tmp}/find-lock-plan-probe.XXXXXX")
+    probe_out=$("$plan_read" --issue "$issue_num" --output "$probe_tmp" --repo "$REPO" 2>&1) || probe_rc=$?
+    rm -f "$probe_tmp"
+    local block_present="" malformed=""
+    block_present=$(printf '%s' "$probe_out" | awk -F= '/^BLOCK_PRESENT=/ { v=$2 } END { print v }')
+    malformed=$(printf '%s' "$probe_out" | awk -F= '/^MALFORMED=/ { v=$2 } END { print v }')
+    if [[ "$probe_rc" -eq 2 ]]; then
+        local err_flat=""
+        err_flat=$(printf '%s' "$probe_out" | awk -F= '/^ERROR=/ { sub(/^ERROR=/, "", $0); v=$0 } END { print v }')
+        emit_kv ELIGIBLE false
+        emit_kv LOCK_ACQUIRED false
+        emit_kv ERROR "plan-block-read failed before lock: ${err_flat:-gh or repo read error}"
+        exit 2
+    fi
+    if [[ "$probe_rc" -eq 1 ]] || [[ "${block_present:-}" != "true" ]]; then
+        emit_kv ELIGIBLE true
+        emit_kv ISSUE_NUMBER "$issue_num"
+        emit_kv ISSUE_TITLE "$issue_title"
+        emit_kv LOCK_ACQUIRED false
+        emit_kv PLAN_PROBE_FAILED true
+        if [[ -n "$malformed" ]]; then
+            emit_kv MALFORMED "$malformed"
+        fi
+        emit_kv ERROR "missing or malformed larch:plan block — run /design $issue_num before /fix-issue"
+        exit 6
+    fi
+    return 0
+}
+
+# ---------------------------------------------------------------------------
 # lock_and_rename_then_emit <issue-num> <issue-title>
 #
 # Acquires the comment lock by delegating to issue-lifecycle.sh comment --lock,
@@ -370,6 +425,8 @@ lock_and_rename_then_emit() {
     rename_script="${SCRIPT_DIR}/../../../scripts/tracking-issue-write.sh"
 
     _pre_lock_clean_tree_and_main_sync_gate "$issue_num" "$issue_title" "" ""
+
+    _require_plan_block_before_lock "$issue_num" "$issue_title"
 
     # ---- Acquire comment lock (correctness invariant) ----
     local lock_out lock_exit=0
@@ -459,6 +516,8 @@ lock_and_rename_then_emit_for_child() {
     rename_script="${SCRIPT_DIR}/../../../scripts/tracking-issue-write.sh"
 
     _pre_lock_clean_tree_and_main_sync_gate "$child_num" "$child_title" "$umbrella_num" "$umbrella_title"
+
+    _require_plan_block_before_lock "$child_num" "$child_title"
 
     # ---- Acquire comment lock ----
     local lock_out lock_exit=0

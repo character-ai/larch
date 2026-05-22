@@ -9,7 +9,8 @@
 # conformance test. Runtime enforcement is the LLM-level orchestration of
 # Step 5a per the prose contract.
 #
-# Thirteen assertions against the extracted Step 5a block:
+# Fourteen assertions: one full-file marker pin (a0) plus thirteen against the
+# extracted Step 5a block:
 #   (a1) Invocation ends with positional "$ISSUE_NUMBER" (not removed --issue).
 #   (a2) Invocation forwards "--no-admin-fallback" (branch-protection bypass
 #        safety flag; issue #559).
@@ -102,6 +103,16 @@ assert_not_contains() {
 }
 
 echo "Running test-fix-issue-bail-detection against $SKILL_MD"
+
+FULL_SKILL=$(cat "$SKILL_MD")
+
+# (a0) Plan-missing marker for automation / exit-6 path (FINDING_11).
+if ! grep -qF '<!-- larch:plan-missing -->' <<<"$FULL_SKILL"; then
+    echo "  FAIL: a0: <!-- larch:plan-missing --> marker absent from SKILL.md" >&2
+    exit 1
+fi
+echo "  PASS: a0: plan-missing HTML marker present in SKILL.md"
+PASS_COUNT=$((PASS_COUNT + 1))
 
 # (a1) Positional issue tail — /implement adopts via argv position, not --issue.
 assert_contains "a1: invocation ends with positional \$ISSUE_NUMBER" '$ISSUE_NUMBER'
