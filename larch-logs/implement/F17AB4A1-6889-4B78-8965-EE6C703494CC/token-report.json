@@ -280,14 +280,47 @@
           "total": 0
         },
         "skills": []
+      },
+      {
+        "step": "Step 8a — changelog",
+        "totals": {
+          "input": 0,
+          "cache_read": 0,
+          "cache_create": 0,
+          "output": 0,
+          "total": 0
+        },
+        "skills": []
+      },
+      {
+        "step": "Step 8b — rebase",
+        "totals": {
+          "input": 15,
+          "cache_read": 3243638,
+          "cache_create": 6226,
+          "output": 5319,
+          "total": 3255198
+        },
+        "skills": [
+          {
+            "skill": "larch:implement",
+            "totals": {
+              "input": 15,
+              "cache_read": 3243638,
+              "cache_create": 6226,
+              "output": 5319,
+              "total": 3255198
+            }
+          }
+        ]
       }
     ],
     "totals": {
-      "input": 105,
-      "cache_read": 18128326,
-      "cache_create": 760987,
-      "output": 75998,
-      "total": 18965416
+      "input": 120,
+      "cache_read": 21371964,
+      "cache_create": 767213,
+      "output": 81317,
+      "total": 22220614
     }
   },
   "codex": {
@@ -390,6 +423,22 @@
       },
       {
         "step": "Step 6 — checks second pass",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 8a — changelog",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 8b — rebase",
         "totals": {
           "input": 0,
           "output": 0,
@@ -503,6 +552,22 @@
       },
       {
         "step": "Step 6 — checks second pass",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 8a — changelog",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 8b — rebase",
         "totals": {
           "input": 0,
           "output": 0,
