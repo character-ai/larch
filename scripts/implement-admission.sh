@@ -107,6 +107,11 @@ if [[ "$view_exit" -ne 0 ]]; then
     exit 2
 fi
 
+if ! printf '%s' "$JSON" | jq -e . >/dev/null 2>&1; then
+    emit_kv ADMISSION_ERROR "issue json parse failed (malformed gh issue view response)"
+    exit 2
+fi
+
 STATE=$(printf '%s' "$JSON" | jq -r '.state // empty')
 TITLE=$(printf '%s' "$JSON" | jq -r '.title // empty')
 

@@ -319,6 +319,47 @@ else
 fi
 unset STUB_REPO_VIEW_EXIT STUB_REPO_VIEW_OUT STUB_LOG || true
 
+# --- default repo: gh repo view when --repo omitted ---
+sd="$TMPROOT/s-repo-default"
+make_gh_stub "$sd"
+export STUB_LOG="$TMPROOT/s-repo-default/gh.log"
+: > "$STUB_LOG"
+export STUB_REPO_VIEW_OUT='owner/name'
+export STUB_VIEW_JSON='{"title":"Default REPO path","state":"OPEN","labels":[]}'
+export STUB_API_BLOCKED_BY_JSON='[]'
+(
+  export PATH="$sd:$PATH"
+  out=$("$SCRIPT" --issue 55 2>&1) || rc=$?
+  rc=${rc:-0}
+  if [[ "$rc" != 0 ]]; then
+    fail "default-repo: expected exit 0 got $rc out=$out"
+  elif ! printf '%s' "$out" | grep -Fq 'ADMISSION_RESULT=pass'; then
+    fail "default-repo: missing ADMISSION_RESULT=pass in $out"
+  else
+    PASS=$((PASS + 1))
+    echo "PASS: default-repo-admission-pass"
+  fi
+)
+if ! grep -qE 'repo[[:space:]]+view' "$STUB_LOG" 2>/dev/null; then
+  fail "default-repo: expected gh repo view in stub log"
+else
+  PASS=$((PASS + 1))
+  echo "PASS: default-repo-invokes-repo-view"
+fi
+if ! grep -Fq 'owner/name' "$STUB_LOG" 2>/dev/null; then
+  fail "default-repo: expected resolved repo in gh stub log"
+else
+  PASS=$((PASS + 1))
+  echo "PASS: default-repo-issue-view-uses-resolved-repo"
+fi
+unset STUB_LOG STUB_REPO_VIEW_OUT || true
+
+# --- malformed issue JSON (jq parse) ---
+sd="$TMPROOT/s-bad-json"
+make_gh_stub "$sd"
+export STUB_VIEW_JSON='{"title":"truncated'
+run_case "malformed-issue-json-exit-2" 2 "$sd" --issue 1 --repo o/r
+
 # --- gh view fails twice ---
 sd="$TMPROOT/s10"
 make_gh_stub "$sd"
