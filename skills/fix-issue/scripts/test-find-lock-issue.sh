@@ -46,9 +46,15 @@
 #  24. explicit-target refuses audit-report labeled issue (#2462 regression)
 #      → exit 2; ELIGIBLE=false with error mentioning 'audit-report'.
 #      Confirms the label check in the explicit-target path.
-#  24b. legacy run-logs audit title without audit-report label → exit 2;
-#      ELIGIBLE=false with report-prefix error (label-only guard insufficient).
+#  24b. legacy run-logs audit title bracket shape **without** `audit-report`
+#      label → eligible (exit 0); title-prefix exclusion relies on
+#      `has_report_prefix` + label, not a second legacy grep.
 #  25. no-arg invocation → exit 2; ELIGIBLE=false with usage error.
+#  26. main-sync blocked (non-log commit ahead on main) → exit 2 before lock.
+#  27. main-sync probe-error without resolvable origin/main → fail-open; lock
+#      succeeds (flush-ahead + deleted remote-tracking ref).
+#  28. main-sync auto-reset after flush-only ahead commits → exit 0 with
+#      MAIN_SYNC_HARD_RESET=true SYNC_STATUS=reset breadcrumbs before lock.
 #
 # Stub gh dispatches on positional + json args. Each fixture writes a stub
 # state file under a per-fixture tmpdir; the stub reads the file to decide
@@ -389,6 +395,56 @@ fi
 exec "$REAL_GIT" "\$@"
 SHIM_EOF
     chmod +x "$shim_dir/git"
+}
+
+# Local main + origin/main (bare remote) helpers for check-main-sync coverage.
+prepare_main_sync_blocked_repo() {
+    local repo="$1"
+    local bare="${repo}.bare"
+    rm -rf "$repo" "$bare"
+    mkdir -p "$bare" "$repo"
+    git -C "$bare" init -q --bare
+    git -C "$repo" init -q
+    git -C "$repo" remote add origin "$bare"
+    git -C "$repo" config user.email "test@test"
+    git -C "$repo" config user.name "Test"
+    printf 'init\n' > "$repo/README.md"
+    git -C "$repo" add README.md
+    git -C "$repo" commit -q -m "init"
+    git -C "$repo" branch -M main
+    git -C "$repo" push -q origin HEAD:main
+    printf 'block\n' > "$repo/block.txt"
+    git -C "$repo" add block.txt
+    git -C "$repo" commit -q -m "feat: non-log commit blocks main sync gate"
+}
+
+prepare_main_sync_flush_ahead_repo() {
+    local repo="$1"
+    local bare="${repo}.bare"
+    rm -rf "$repo" "$bare"
+    mkdir -p "$bare" "$repo"
+    git -C "$bare" init -q --bare
+    git -C "$repo" init -q
+    git -C "$repo" remote add origin "$bare"
+    git -C "$repo" config user.email "test@test"
+    git -C "$repo" config user.name "Test"
+    printf 'init\n' > "$repo/README.md"
+    git -C "$repo" add README.md
+    git -C "$repo" commit -q -m "init"
+    git -C "$repo" branch -M main
+    git -C "$repo" push -q origin HEAD:main
+    mkdir -p "$repo/larch-logs"
+    printf 'log\n' > "$repo/larch-logs/run.md"
+    git -C "$repo" add larch-logs/run.md
+    git -C "$repo" commit -q -m "chore(larch-logs): flush implement run fixture"
+}
+
+prepare_main_sync_flush_ahead_drop_origin_tracking() {
+    local repo="$1"
+    prepare_main_sync_flush_ahead_repo "$repo"
+    if git -C "$repo" show-ref --verify --quiet refs/remotes/origin/main; then
+        git -C "$repo" update-ref -d refs/remotes/origin/main
+    fi
 }
 
 assert_contains() {
@@ -936,15 +992,19 @@ assert_contains "$OUT" "ELIGIBLE=false" "[24] ELIGIBLE=false"
 assert_contains "$OUT" "audit-report" "[24] error mentions audit-report label"
 
 # ---------------------------------------------------------------------------
-# Fixture 24b: legacy bracket audit title without audit-report label → report
-# prefix exclusion (not label-based).
+# Fixture 24b: legacy bracket audit title without audit-report label remains
+# eligible (no legacy title-prefix grep; label-only guard for audit reports).
 # ---------------------------------------------------------------------------
-echo "Fixture 24b: legacy audit title without audit-report label refused"
+echo "Fixture 24b: legacy audit title without audit-report label → eligible + lock"
 run_fixture "fixture-24b"
+mkdir -p "$TMPROOT/fixture-24b/runtime-comments"
+export RUNTIME_COMMENTS_DIR="$TMPROOT/fixture-24b/runtime-comments"
 {
     echo "ISSUE_STATE=OPEN"
     echo "ISSUE_TITLE='[Run Logs Audit Report 2026-05-20T19:30Z] PRs #2430-#2440'"
     echo "ISSUE_241_LABELS='[\"bug\"]'"
+    echo "RUNTIME_COMMENTS_DIR=\"\${RUNTIME_COMMENTS_DIR:-}\""
+    echo "COMMENTS_JSON='$(make_comments_json GO)'"
     echo "RENAME_FAIL=false"
 } > "$STUB_STATE_FILE"
 
@@ -955,9 +1015,89 @@ with_sterile_repo "fixture-24b" "$SCRIPT" 241 >"$OUT_FILE" 2>"$ERR_FILE" || EXIT
 
 OUT=$(cat "$OUT_FILE")
 
-assert_equal "$EXIT_CODE" "2" "[24b] exit code 2 (legacy audit title refused)"
-assert_contains "$OUT" "ELIGIBLE=false" "[24b] ELIGIBLE=false"
-assert_contains "$OUT" "report title prefix" "[24b] error mentions report title prefix"
+assert_equal "$EXIT_CODE" "0" "[24b] exit code 0 (eligible without audit-report label)"
+assert_contains "$OUT" "ELIGIBLE=true" "[24b] ELIGIBLE=true"
+assert_contains "$OUT" "LOCK_ACQUIRED=true" "[24b] lock acquired"
+unset RUNTIME_COMMENTS_DIR
+
+# ---------------------------------------------------------------------------
+# Fixture 26: main-sync blocked (non-log ahead on main) → exit 2, no lock.
+# ---------------------------------------------------------------------------
+echo "Fixture 26: main-sync blocked aborts before lock"
+run_fixture "fixture-26"
+repo26=$(ensure_sterile_repo "fixture-26")
+prepare_main_sync_blocked_repo "$repo26"
+{
+    echo "ISSUE_STATE=OPEN"
+    echo "ISSUE_TITLE='main sync blocked gate'"
+    echo "ISSUE_260_LABELS='[\"bug\"]'"
+    echo "COMMENTS_JSON='$(make_comments_json GO)'"
+    echo "RENAME_FAIL=false"
+} > "$STUB_STATE_FILE"
+OUT_FILE="$TMPROOT/fixture-26/stdout.txt"
+ERR_FILE="$TMPROOT/fixture-26/stderr.txt"
+EXIT_CODE=0
+with_sterile_repo "fixture-26" "$SCRIPT" 260 >"$OUT_FILE" 2>"$ERR_FILE" || EXIT_CODE=$?
+OUT=$(cat "$OUT_FILE")
+assert_equal "$EXIT_CODE" "2" "[26] exit code 2 (main-sync blocked)"
+assert_contains "$OUT" "ELIGIBLE=false" "[26] ELIGIBLE=false"
+assert_contains "$OUT" "ahead of origin/main" "[26] error mentions ahead of origin/main"
+assert_equal "$(gh_log_count "$STUB_LOG" '^issue comment')" "0" "[26] no lock comment when blocked"
+
+# ---------------------------------------------------------------------------
+# Fixture 27: probe-error + missing origin/main tracking ref → fail-open lock.
+# ---------------------------------------------------------------------------
+echo "Fixture 27: main-sync probe-error fail-open (no origin/main ref)"
+run_fixture "fixture-27"
+repo27=$(ensure_sterile_repo "fixture-27")
+prepare_main_sync_flush_ahead_drop_origin_tracking "$repo27"
+mkdir -p "$TMPROOT/fixture-27/runtime-comments"
+export RUNTIME_COMMENTS_DIR="$TMPROOT/fixture-27/runtime-comments"
+{
+    echo "ISSUE_STATE=OPEN"
+    echo "ISSUE_TITLE='probe-error fail-open gate'"
+    echo "ISSUE_261_LABELS='[\"bug\"]'"
+    echo "RUNTIME_COMMENTS_DIR=\"\${RUNTIME_COMMENTS_DIR:-}\""
+    echo "COMMENTS_JSON='$(make_comments_json GO)'"
+    echo "RENAME_FAIL=false"
+} > "$STUB_STATE_FILE"
+OUT_FILE="$TMPROOT/fixture-27/stdout.txt"
+ERR_FILE="$TMPROOT/fixture-27/stderr.txt"
+EXIT_CODE=0
+with_sterile_repo "fixture-27" "$SCRIPT" 261 >"$OUT_FILE" 2>"$ERR_FILE" || EXIT_CODE=$?
+OUT=$(cat "$OUT_FILE")
+assert_equal "$EXIT_CODE" "0" "[27] exit code 0 (fail-open probe-error allows lock)"
+assert_contains "$OUT" "ELIGIBLE=true" "[27] ELIGIBLE=true"
+assert_contains "$OUT" "LOCK_ACQUIRED=true" "[27] lock acquired"
+unset RUNTIME_COMMENTS_DIR
+
+# ---------------------------------------------------------------------------
+# Fixture 28: flush-only ahead → auto-reset → MAIN_SYNC breadcrumbs + lock.
+# ---------------------------------------------------------------------------
+echo "Fixture 28: main-sync auto-reset emits stdout breadcrumbs"
+run_fixture "fixture-28"
+repo28=$(ensure_sterile_repo "fixture-28")
+prepare_main_sync_flush_ahead_repo "$repo28"
+mkdir -p "$TMPROOT/fixture-28/runtime-comments"
+export RUNTIME_COMMENTS_DIR="$TMPROOT/fixture-28/runtime-comments"
+{
+    echo "ISSUE_STATE=OPEN"
+    echo "ISSUE_TITLE='flush reset gate'"
+    echo "ISSUE_262_LABELS='[\"bug\"]'"
+    echo "RUNTIME_COMMENTS_DIR=\"\${RUNTIME_COMMENTS_DIR:-}\""
+    echo "COMMENTS_JSON='$(make_comments_json GO)'"
+    echo "RENAME_FAIL=false"
+} > "$STUB_STATE_FILE"
+OUT_FILE="$TMPROOT/fixture-28/stdout.txt"
+ERR_FILE="$TMPROOT/fixture-28/stderr.txt"
+EXIT_CODE=0
+with_sterile_repo "fixture-28" "$SCRIPT" 262 >"$OUT_FILE" 2>"$ERR_FILE" || EXIT_CODE=$?
+OUT=$(cat "$OUT_FILE")
+assert_equal "$EXIT_CODE" "0" "[28] exit code 0 after auto-reset"
+assert_contains "$OUT" "MAIN_SYNC_HARD_RESET=true" "[28] reset breadcrumb on stdout"
+assert_contains "$OUT" "SYNC_STATUS=reset" "[28] SYNC_STATUS=reset echoed"
+assert_contains "$OUT" "LOCK_ACQUIRED=true" "[28] lock acquired after reset"
+unset RUNTIME_COMMENTS_DIR
 
 # ---------------------------------------------------------------------------
 # Fixture 25: no-arg invocation → exit 2 with usage error.

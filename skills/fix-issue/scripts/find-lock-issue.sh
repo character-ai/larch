@@ -91,8 +91,11 @@
 #
 # Stdout contract policy: delegate stdout (issue-lifecycle.sh, tracking-
 # issue-write.sh) is captured into local shell variables and parsed
-# key-by-key; never streamed. find-lock-issue.sh emits ONLY the keys
-# declared above. Auxiliary delegate keys (COMMENTED, FAILED, NEW_TITLE,
+# key-by-key; never streamed. find-lock-issue.sh emits the keys declared
+# above. Before a successful lock, the pre-lock gate may emit
+# `MAIN_SYNC_HARD_RESET=true` and `SYNC_STATUS=reset` when check-main-sync
+# auto-reset local `main` to `origin/main` (see `_pre_lock_clean_tree_and_main_sync_gate`).
+# Auxiliary delegate keys (COMMENTED, FAILED, NEW_TITLE,
 # etc.) are filtered out so the SKILL.md parser sees a clean unified
 # contract.
 #
@@ -155,13 +158,6 @@ has_report_prefix() {
     printf '%s' "$1" | grep -qiE '^\[[^]]*[[:space:]]+report\]'
 }
 
-# Legacy chain-of-history titles placed "Report" before the timestamp inside
-# the bracket (`[Run Logs Audit Report <ts>] …`). They do not match
-# `has_report_prefix`; keep an explicit guard until old issues are fully gone.
-has_legacy_run_logs_audit_report_bracket_prefix() {
-    printf '%s' "$1" | grep -qiE '^\[Run Logs Audit Report'
-}
-
 ISSUE_ARG=""
 
 while [[ $# -gt 0 ]]; do
@@ -222,18 +218,24 @@ source "$BLOCKER_HELPERS" || {
 }
 
 # ---------------------------------------------------------------------------
-# _emit_dirty_tree_pre_lock_abort <issue-num> <issue-title>
-#                                 [<umbrella-num> <umbrella-title>]
+# _pre_lock_clean_tree_and_main_sync_gate <issue-num> <issue-title>
+#                                        [<umbrella-num> <umbrella-title>]
 #
-# Runs the local working-tree cleanliness probe immediately before lock
-# acquisition. The predicate itself lives in scripts/check-clean-tree.sh so
-# this pre-lock guard and preflight.sh share one git-status contract.
-# find-lock-issue.sh uses --fail-closed because it must not post
-# IN PROGRESS, or rename an issue when local cleanliness cannot be determined.
-# preflight.sh intentionally calls the same helper in default fail-open mode
-# to preserve its historical setup behavior.
+# Step A — working tree: runs scripts/check-clean-tree.sh --fail-closed
+# immediately before lock acquisition (shared contract with preflight.sh;
+# find-lock-issue uses fail-closed so IN PROGRESS is never posted when
+# cleanliness cannot be determined; preflight keeps historical fail-open).
+#
+# Step B — main sync (only when Step A reports CLEAN=true): runs
+# scripts/check-main-sync.sh without fetching. When local `main` is ahead only
+# of `origin/main` with `chore(larch-logs): flush *` commits touching
+# `larch-logs/` alone, that script may run **git reset --hard origin/main** —
+# a destructive branch move. Operators must treat a successful reset as
+# dropping local-only SHAs on main until they re-fetch/reconcile elsewhere.
+# Emits MAIN_SYNC_HARD_RESET=true and SYNC_STATUS=reset on stdout when a reset
+# occurred (breadcrumb for transcripts); see find-lock-issue.md.
 # ---------------------------------------------------------------------------
-_emit_dirty_tree_pre_lock_abort() {
+_pre_lock_clean_tree_and_main_sync_gate() {
     local issue_num="$1"
     local issue_title="$2"
     local umbrella_num="${3:-}"
@@ -310,6 +312,10 @@ _emit_dirty_tree_pre_lock_abort() {
         fi
         # SYNC_STATUS=reset means flush commits were auto-cleared; ok or
         # not-main also mean the run can proceed.
+        if [ "$sync_status" = "reset" ]; then
+            emit_kv MAIN_SYNC_HARD_RESET true
+            emit_kv SYNC_STATUS reset
+        fi
         return 0
     fi
 
@@ -363,7 +369,7 @@ lock_and_rename_then_emit() {
     lock_script="${SCRIPT_DIR}/issue-lifecycle.sh"
     rename_script="${SCRIPT_DIR}/../../../scripts/tracking-issue-write.sh"
 
-    _emit_dirty_tree_pre_lock_abort "$issue_num" "$issue_title" "" ""
+    _pre_lock_clean_tree_and_main_sync_gate "$issue_num" "$issue_title" "" ""
 
     # ---- Acquire comment lock (correctness invariant) ----
     local lock_out lock_exit=0
@@ -452,7 +458,7 @@ lock_and_rename_then_emit_for_child() {
     lock_script="${SCRIPT_DIR}/issue-lifecycle.sh"
     rename_script="${SCRIPT_DIR}/../../../scripts/tracking-issue-write.sh"
 
-    _emit_dirty_tree_pre_lock_abort "$child_num" "$child_title" "$umbrella_num" "$umbrella_title"
+    _pre_lock_clean_tree_and_main_sync_gate "$child_num" "$child_title" "$umbrella_num" "$umbrella_title"
 
     # ---- Acquire comment lock ----
     local lock_out lock_exit=0
@@ -797,7 +803,7 @@ if [[ -n "$ISSUE_ARG" ]]; then
 
     # Exclude report issues (titles matching "[... Report]"). These are
     # analytics/reporting issues not meant for automated fixing.
-    if has_report_prefix "$ISSUE_TITLE" || has_legacy_run_logs_audit_report_bracket_prefix "$ISSUE_TITLE"; then
+    if has_report_prefix "$ISSUE_TITLE"; then
         emit_kv ELIGIBLE false
         emit_kv ERROR "Issue #$ISSUE_NUM has a report title prefix ([... Report]); not a fix-issue candidate"
         exit 2
