@@ -8,6 +8,10 @@ Exceptions: `repo_unavailable=true` produces no committed log at all (`$IMPLEMEN
 
 ```
 larch-logs/
+  design/
+    <RUN_ID>/
+      manifest.json
+      (design session artifacts: depth-1 files from `$DESIGN_TMPDIR` plus `render-cache/` subtree, trimmed and redacted per `scripts/design-log-publish.md`)
   implement/
     <RUN_ID>/
       manifest.json

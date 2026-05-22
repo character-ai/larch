@@ -677,6 +677,31 @@ assert_contains "$OUT" "managed lifecycle title prefix" "[5] error message ident
 assert_not_contains "$OUT" "LOCK_ACQUIRED=" "[5] LOCK_ACQUIRED= absent (lock never attempted)"
 
 # ---------------------------------------------------------------------------
+# Fixture 5b: ineligible — [PLANNED] managed-prefix title (symmetric with
+# [IN PROGRESS]/[DONE]/[STALLED] machine-owned tracking issues).
+# ---------------------------------------------------------------------------
+echo "Fixture 5b: ineligible ([PLANNED] managed prefix)"
+run_fixture "fixture-5b"
+{
+    echo "ISSUE_STATE=OPEN"
+    echo "ISSUE_TITLE='[PLANNED] planned-only issue'"
+    echo "COMMENTS_JSON='$(make_comments_json GO)'"
+    echo "RENAME_FAIL=false"
+} > "$STUB_STATE_FILE"
+
+OUT_FILE="$TMPROOT/fixture-5b/stdout.txt"
+ERR_FILE="$TMPROOT/fixture-5b/stderr.txt"
+EXIT_CODE=0
+with_sterile_repo "fixture-5b" "$SCRIPT" 46 >"$OUT_FILE" 2>"$ERR_FILE" || EXIT_CODE=$?
+
+OUT=$(cat "$OUT_FILE")
+
+assert_equal "$EXIT_CODE" "2" "[5b] exit code 2 (explicit target rejected)"
+assert_contains "$OUT" "ELIGIBLE=false" "[5b] ELIGIBLE=false on stdout"
+assert_contains "$OUT" "managed lifecycle title prefix" "[5b] error message identifies prefix exclusion"
+assert_not_contains "$OUT" "LOCK_ACQUIRED=" "[5b] LOCK_ACQUIRED= absent (lock never attempted)"
+
+# ---------------------------------------------------------------------------
 # Fixture 9: explicit-issue mode with a GitHub-Enterprise-style host. The
 # repo-ownership parser must NOT pin to github.com (closes #766) — any
 # https://<host>/<owner>/<repo>/issues/<n> URL where <owner>/<repo> matches

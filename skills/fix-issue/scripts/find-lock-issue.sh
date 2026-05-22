@@ -30,7 +30,7 @@
 #      comment = exactly "IN PROGRESS"); cleared when work completes.
 #      Prevents two concurrent /fix-issue runners from colliding on the same
 #      subject.
-#   2) Title-based "[IN PROGRESS]" / "[DONE]" / "[STALLED]" lifecycle —
+#   2) Title-based "[IN PROGRESS]" / "[DONE]" / "[STALLED]" / "[PLANNED]" lifecycle —
 #      machine-owned tracking-issue state. Applied here at lock time so
 #      the title reflects active work immediately, instead of the
 #      multi-minute delay incurred when only /implement Step 0.5 Branch 2
@@ -135,7 +135,7 @@ source "$SCRIPT_DIR/../../../scripts/lib-quiet.sh"
 larch_quiet_init
 
 # Returns 0 if the title starts with a managed lifecycle prefix
-# ("[IN PROGRESS] ", "[DONE] ", "[STALLED] "), 1 otherwise. Anchored at
+# ("[IN PROGRESS] ", "[DONE] ", "[STALLED] ", "[PLANNED] "), 1 otherwise. Anchored at
 # the start; trailing-space-sensitive (matches the helper exactly — no
 # fuzzy match, so user titles containing the literal substring "[IN
 # PROGRESS]" mid-text are NOT excluded). The optional "[ROUND-TRIP] "
@@ -147,6 +147,7 @@ has_managed_prefix() {
         '[IN PROGRESS] '*) return 0 ;;
         '[DONE] '*)        return 0 ;;
         '[STALLED] '*)     return 0 ;;
+        '[PLANNED] '*)     return 0 ;;
         *)                 return 1 ;;
     esac
 }
@@ -860,7 +861,7 @@ if [[ -n "$ISSUE_ARG" ]]; then
     # `handle_umbrella` above and never falls through here.
     if has_managed_prefix "$ISSUE_TITLE"; then
         emit_kv ELIGIBLE false
-        emit_kv ERROR "Issue #$ISSUE_NUM has a managed lifecycle title prefix ([IN PROGRESS] / [DONE] / [STALLED]); not a fix-issue candidate"
+        emit_kv ERROR "Issue #$ISSUE_NUM has a managed lifecycle title prefix ([IN PROGRESS] / [DONE] / [STALLED] / [PLANNED]); not a fix-issue candidate"
         exit 2
     fi
 

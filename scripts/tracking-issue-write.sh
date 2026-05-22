@@ -9,7 +9,7 @@
 # Subcommands:
 #   create-issue   --title T --body-file F [--repo OWNER/REPO]
 #   append-comment --issue N --body-file F [--lifecycle-marker ID] [--repo OWNER/REPO]
-#   rename         --issue N --state in-progress|done|stalled [--round-trip BOOL] [--repo OWNER/REPO]
+#   rename         --issue N --state in-progress|done|stalled|planned [--round-trip BOOL] [--repo OWNER/REPO]
 #   mark-false-positive --issue N [--repo OWNER/REPO]
 #
 # Output contract (KEY=value on stdout; warnings on stderr). NAMESPACE note:
@@ -30,7 +30,7 @@
 #
 # Rename semantics (tracking-issue title-prefix lifecycle):
 #   Strips exactly ONE leading lifecycle prefix (anchored regex
-#   ^\[(IN PROGRESS|DONE|STALLED)\] ) from the current title, preserves or
+#   ^\[(IN PROGRESS|DONE|STALLED|PLANNED)\] ) from the current title, preserves or
 #   adds the optional strict-ASCII "[ROUND-TRIP] " marker, then prepends the
 #   target-state prefix. Lifecycle prefix order is fixed: lifecycle first,
 #   round-trip second. No-op when the composed title matches the current
@@ -99,7 +99,7 @@ usage() {
 Usage:
   tracking-issue-write.sh create-issue   --title T --body-file F [--repo OWNER/REPO]
   tracking-issue-write.sh append-comment --issue N --body-file F [--lifecycle-marker ID] [--repo OWNER/REPO]
-  tracking-issue-write.sh rename         --issue N --state in-progress|done|stalled [--round-trip BOOL] [--repo OWNER/REPO]
+  tracking-issue-write.sh rename         --issue N --state in-progress|done|stalled|planned [--round-trip BOOL] [--repo OWNER/REPO]
   tracking-issue-write.sh mark-false-positive --issue N [--repo OWNER/REPO]
 USAGE
 }
@@ -112,6 +112,7 @@ state_to_prefix() {
         in-progress) printf '[IN PROGRESS] ' ;;
         done)        printf '[DONE] ' ;;
         stalled)     printf '[STALLED] ' ;;
+        planned)     printf '[PLANNED] ' ;;
         *)           return 1 ;;
     esac
 }
@@ -126,6 +127,7 @@ strip_lifecycle_prefix() {
         '[IN PROGRESS] '*) printf '%s' "${t#\[IN PROGRESS\] }" ;;
         '[DONE] '*)        printf '%s' "${t#\[DONE\] }" ;;
         '[STALLED] '*)     printf '%s' "${t#\[STALLED\] }" ;;
+        '[PLANNED] '*)     printf '%s' "${t#\[PLANNED\] }" ;;
         *)                 printf '%s' "$t" ;;
     esac
 }
@@ -454,7 +456,7 @@ case "$cmd" in
         esac
         TARGET_PREFIX=$(state_to_prefix "$STATE") || {
             emit_kv FAILED "true"
-            emit_kv ERROR "invalid --state: $STATE (expected in-progress|done|stalled)"
+            emit_kv ERROR "invalid --state: $STATE (expected in-progress|done|stalled|planned)"
             exit 1
         }
         if [[ -z "$REPO" ]]; then
@@ -515,6 +517,7 @@ case "$cmd" in
             '[IN PROGRESS] '*) CUR_CANON_PREFIXES='[IN PROGRESS] ' ;;
             '[DONE] '*)        CUR_CANON_PREFIXES='[DONE] ' ;;
             '[STALLED] '*)     CUR_CANON_PREFIXES='[STALLED] ' ;;
+            '[PLANNED] '*)     CUR_CANON_PREFIXES='[PLANNED] ' ;;
             *)                 CUR_CANON_PREFIXES="" ;;
         esac
         if [[ "$CUR_CANON_RT_PRESENT" == "true" ]]; then

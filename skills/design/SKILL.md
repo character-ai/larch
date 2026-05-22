@@ -164,7 +164,7 @@ If the script exits non-zero, always print the raw `PREFLIGHT_ERROR=...` line fi
 
 **⚠ /design requires clean main to start. To continue, choose one of: (a) `git checkout main && git status` clean → re-run; (b) check out or create a `<USER_PREFIX>/*` feature branch and re-run (the branch naming convention is the explicit opt-in to continue from current state); (c) commit or stash uncommitted changes on `main` first.**
 
-Parse the output for `SESSION_TMPDIR`, `CODEX_AVAILABLE`, `CURSOR_AVAILABLE`, `CODEX_PRESENT`, `CURSOR_PRESENT`. Set `DESIGN_TMPDIR` = `SESSION_TMPDIR`.
+Parse the output for `SESSION_TMPDIR`, `SESSION_ID`, `CODEX_AVAILABLE`, `CURSOR_AVAILABLE`, `CODEX_PRESENT`, `CURSOR_PRESENT`. Set `DESIGN_TMPDIR` = `SESSION_TMPDIR`.
 
 Set mental flags `codex_available` and `cursor_available` based on the output (same two-tier pattern as the historical Step 0).
 
@@ -176,7 +176,7 @@ Set mental flags `codex_available` and `cursor_available` based on the output (s
    - If the first token matches `^[0-9]+$`, set `ISSUE_NUMBER` to that value.
    - Else the remainder is **verbal feature text**: invoke **`/larch:issue`** via the Skill tool (forward `--no-dedup` when set). Parse the created issue number into `ISSUE_NUMBER`.
 2. **Fetch issue**: `gh issue view "$ISSUE_NUMBER" --json body,labels,number,title` with **2× retry** on transient failure.
-3. **Clarify loop** when `needs-design-clarification` label is present — follow `skills/implement/SKILL.md` Preflight clarify semantics: `clarify-state.sh`, fetch request comment body, `AskUserQuestion`, compose plan sections, `redact-secrets.sh`, `plan-block-write.sh --content-file`, `clarify-comment-post.sh --kind response`, `clarify-label.sh --action remove`, then Step 5 hygiene and exit **0** on success.
+3. **Clarify loop** when `needs-design-clarification` label is present — follow `skills/implement/SKILL.md` Preflight clarify semantics: `clarify-state.sh`, fetch request comment body, `AskUserQuestion`, compose plan sections, `redact-secrets.sh`, `plan-block-write.sh --content-file`, **then** resolve `REPO` (prefer `"${CLAUDE_PLUGIN_ROOT}/scripts/resolve-repo.sh"` from the consumer repo working tree; on failure fall back to `gh repo view --json nameWithOwner --jq '.nameWithOwner'`; leave `REPO` empty when both fail so downstream helpers use the hub default), run `"${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh" rename --issue "$ISSUE_NUMBER" --state planned ${REPO:+--repo "$REPO"}`, and when `SESSION_ID` is non-empty run `"${CLAUDE_PLUGIN_ROOT}/scripts/design-log-publish.sh" --design-tmpdir "$DESIGN_TMPDIR" --run-id "$SESSION_ID" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}` parsing `PUBLISH_OK` from stdout — when `SESSION_ID` is empty print `printf '\n**⚠ /design: SESSION_ID missing; skipping design log publish**\n'` (use `printf`, not `print`); on `PUBLISH_OK=false` append captured stderr to nested `execution-issues.md` via `"${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh"` under `Warnings` and continue, `clarify-comment-post.sh --kind response`, `clarify-label.sh --action remove`, then Step 5 hygiene and exit **0** on success.
 4. **Already-planned branch** when a `larch:plan` block exists and clarification is clean: `AskUserQuestion` **(a)** replace via full flow, **(b)** ad-hoc Q&A only, **(c)** cancel — on cancel print `**ℹ /design cancelled by operator.**` and exit **0**.
 5. **Tier gate**: if no tier flag on argv, `AskUserQuestion` with **three options** `trivial` / `simple` / `hard` (descriptions per issue #2485). Non-tier `Other` answers → `**ℹ /design cancelled by operator.**` exit **0**.
 6. **Write** `$DESIGN_TMPDIR/feature-description.txt` from issue title+body (or verbal prompt). **Tier mapping** to `write-run-params.sh`:
@@ -774,7 +774,10 @@ Before cleanup, present the synthesized plan + acceptance + `diff_lines` estimat
 1. Compose `$DESIGN_TMPDIR/composed-plan.md` containing `## Plan`, `## Acceptance`, and a trailing `diff_lines: <N>` line (integer from `$DESIGN_TMPDIR/diff-lines.txt` or best-effort estimate).
 2. Run `cat "$DESIGN_TMPDIR/composed-plan.md" | "${CLAUDE_PLUGIN_ROOT}/scripts/redact-secrets.sh" > "$DESIGN_TMPDIR/composed-plan.redacted.md"`.
 3. Run `"${CLAUDE_PLUGIN_ROOT}/scripts/plan-block-write.sh" --issue "$ISSUE_NUMBER" --content-file "$DESIGN_TMPDIR/composed-plan.redacted.md"`.
-4. Set `PLAN_WRITE_OK=true` on success; on failure print `**⚠ 5: plan-block-write failed — preserving $DESIGN_TMPDIR**`, set `PLAN_WRITE_OK=false`, and skip cleanup below.
+4. Resolve `REPO` for explicit `gh --repo` threading when the hub default might not match the consumer checkout (for example nested `/implement` shells without a fresh `session-setup.sh` repo probe): prefer `"${CLAUDE_PLUGIN_ROOT}/scripts/resolve-repo.sh"` from the consumer repo working tree; on failure fall back to `gh repo view --json nameWithOwner --jq '.nameWithOwner'`; leave `REPO` empty when both fail so helpers use the hub default.
+5. Run `"${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh" rename --issue "$ISSUE_NUMBER" --state planned ${REPO:+--repo "$REPO"}` (treat `RENAMED=false` as idempotent success).
+6. When `SESSION_ID` is non-empty, run `"${CLAUDE_PLUGIN_ROOT}/scripts/design-log-publish.sh" --design-tmpdir "$DESIGN_TMPDIR" --run-id "$SESSION_ID" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}` and parse `PUBLISH_OK` from stdout. When `SESSION_ID` is empty, print `printf '\n**⚠ /design: SESSION_ID missing; skipping design log publish**\n'` (use `printf`, not `print`). On `PUBLISH_OK=false`, capture stderr and append under `Warnings` in `$(dirname "$SESSION_ENV_PATH")/execution-issues.md` via `"${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh"` when `SESSION_ENV_PATH` is non-empty; continue (do not roll back the GitHub plan write).
+7. When step 3 (`plan-block-write`) succeeds, set `PLAN_WRITE_OK=true`. When step 3 fails, print `**⚠ 5: plan-block-write failed — preserving $DESIGN_TMPDIR**`, set `PLAN_WRITE_OK=false`, and skip cleanup below (steps 4–6 may still have partially mutated GitHub state — operators reconcile manually).
 
 On **cancel**, exit **0** with `**ℹ /design cancelled by operator.**` after optional Step 5a bookkeeping.
 
@@ -796,6 +799,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-tmpdir.sh --dir "$DESIGN_TMPDIR"
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/tally-plan-review.sh` — `ACTION=TALLY`. Sibling: `tally-plan-review.md`.
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/finalize-plan.sh` — `ACTION=FINALIZE`. Sibling: `finalize-plan.md`.
 - `${CLAUDE_PLUGIN_ROOT}/scripts/plan-block-write.sh` — writes the `larch:plan` block into the issue body. Sibling: `plan-block-write.md` (under `scripts/`).
+- `${CLAUDE_PLUGIN_ROOT}/scripts/design-log-publish.sh` — publishes `$DESIGN_TMPDIR` to `larch-logs/design/<RUN_ID>/` via disposable worktree + PR. Sibling: `design-log-publish.md`.
 - `${CLAUDE_PLUGIN_ROOT}/scripts/write-run-params.sh` — persists tier-derived `run-params.json` (Step 0). Sibling: `write-run-params.md`.
 **Repeat any external reviewer warnings** from earlier steps (Step 0 reviewer-availability checks via `session-setup.sh`, Step 2a sketch-phase failures/timeouts, Step 3 runtime failures, or Step 3b diagram generation failure) so they are visible at the end of the workflow. For example:
 - `**⚠ Codex not available: <reason>**`

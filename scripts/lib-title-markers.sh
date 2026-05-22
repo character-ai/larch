@@ -50,6 +50,9 @@ insert_signal_marker() {
         '[STALLED] '*)
             printf '[STALLED] [%s] %s' "$marker" "${title#\[STALLED\] }"
             ;;
+        '[PLANNED] '*)
+            printf '[PLANNED] [%s] %s' "$marker" "${title#\[PLANNED\] }"
+            ;;
         *)
             printf '[%s] %s' "$marker" "$title"
             ;;
