@@ -10,7 +10,8 @@ available.
 - Exits 0 in every case.
 - No-ops when `IMPLEMENT_TMPDIR` is unset, `IMPLEMENT_TMPDIR/session-id` is
   missing or empty, `LARCH_NO_LOGS_COMMIT=true`, or
-  `$IMPLEMENT_TMPDIR/post-merge-sentinel` exists.
+  `$IMPLEMENT_TMPDIR/post-merge-sentinel` exists (see
+  `skills/implement/SKILL.md` NEVER #19 — no commits after merge).
 - Reads the run id from `$IMPLEMENT_TMPDIR/session-id`.
 - When `$IMPLEMENT_TMPDIR/execution-issues.md` is non-empty and Step 7a has
   already been reached (checkpoint file, sentinel, or existing batch present),

@@ -1691,11 +1691,9 @@ run_postmerge_phase() {
     [ "$rc" -eq 0 ] || record_failure postmerge "implement-finalize.sh postmerge" "$rc" "$fail_file"
     # Finalize manifest to status=done here so the update survives if the
     # LLM session ends before prompt-side Step 18 teardown runs. The tmpdir
-    # manifest is updated first; when the downstream gates pass, a scoped
-    # `larch-log.sh commit` (see `LARCH_LOG_COMMIT_POSTMERGE_SHIP_PR` in
-    # `scripts/larch-log.sh`) copies the run tree into the repo and commits so
-    # `manifest.json` + refreshed `final-summary.md` can land on the current
-    # branch even if Step 18 never runs.
+    # manifest and final-summary.md are updated in place; no post-merge git
+    # commit is made (policy: NEVER commit after post-merge-sentinel exists,
+    # see skills/implement/SKILL.md NEVER #19).
     local flush_run_id pr_num manifest_path_pm flush_issue_num recovery_ok
     flush_run_id=$(read_state RUN_ID)
     pr_num=$(read_state PR_NUMBER)
@@ -1768,16 +1766,6 @@ run_postmerge_phase() {
                 if [ "$final_report_rc" -ne 0 ]; then
                     record_failure postmerge "write-final-report.sh (postmerge)" "$final_report_rc" "$fail_file" Warnings
                 fi
-            fi
-            if [ "${LARCH_NO_LOGS_COMMIT:-false}" != "true" ] && [ "$manifest_ok" = true ] && [ "$final_report_rc" -eq 0 ]; then
-                fail_file=$(failure_capture_path postmerge)
-                LARCH_LOG_COMMIT_POSTMERGE_SHIP_PR=1 "$SCRIPT_DIR/larch-log.sh" commit \
-                    --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
-                    --skill implement \
-                    --run-id "$flush_run_id" \
-                    > "$fail_file" 2>&1
-                rc=$?
-                [ "$rc" -eq 0 ] || record_failure postmerge "larch-log.sh commit (postmerge)" "$rc" "$fail_file" Warnings
             fi
         fi
     fi

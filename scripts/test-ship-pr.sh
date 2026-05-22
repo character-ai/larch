@@ -115,7 +115,7 @@ if [[ "${1:-}" == manifest && -n "${STUB_LARCH_MANIFEST_FINAL_FAIL:-}" ]]; then
   case "$*" in *status=done*) echo "stub: larch-log manifest final (status=done) failed" >&2; exit 19;; esac
 fi
 if [[ "${1:-}" == commit ]]; then
-  if [[ -n "${IMPLEMENT_TMPDIR:-}" && -e "$IMPLEMENT_TMPDIR/post-merge-sentinel" && "${LARCH_LOG_COMMIT_POSTMERGE_SHIP_PR:-}" != "1" ]]; then
+  if [[ -n "${IMPLEMENT_TMPDIR:-}" && -e "$IMPLEMENT_TMPDIR/post-merge-sentinel" ]]; then
     echo "stub: larch-log commit refused (post-merge sentinel without bypass)" >&2
     exit 1
   fi
@@ -1348,18 +1348,46 @@ set -e
 if [ -f "$sentinel_dir/larch-log-calls.txt" ]; then
     if grep -q "manifest" "$sentinel_dir/larch-log-calls.txt" && \
        grep -q "status=done" "$sentinel_dir/larch-log-calls.txt" && \
-       grep -q "^LARCH_LOG_ARGS=commit" "$sentinel_dir/larch-log-calls.txt"; then
-        exp=$(printf '%s\n' 'larch-log manifest' 'write-final-report' 'larch-log commit')
+       ! grep -q "^LARCH_LOG_ARGS=commit" "$sentinel_dir/larch-log-calls.txt"; then
+        exp=$(printf '%s\n' 'larch-log manifest' 'write-final-report')
         if [[ "$(cat "$sentinel_dir/postmerge-order.log")" == "$exp" ]]; then
-            ok "postmerge manifest finalization calls larch-log manifest with status=done and post-merge log commit when PR_CLOSED=true"
+            ok "postmerge manifest finalization calls larch-log manifest with status=done but no post-merge commit when PR_CLOSED=true"
         else
-            fail "postmerge ordering: expected manifest then write-final-report then commit; got: $(cat "$sentinel_dir/postmerge-order.log")"
+            fail "postmerge ordering: expected manifest then write-final-report (no commit); got: $(cat "$sentinel_dir/postmerge-order.log")"
         fi
     else
-        fail "postmerge manifest finalization: expected larch-log manifest with status=done and commit; got: $(cat "$sentinel_dir/larch-log-calls.txt")"
+        fail "postmerge manifest finalization: expected larch-log manifest with status=done and no commit; got: $(cat "$sentinel_dir/larch-log-calls.txt")"
     fi
 else
     fail "postmerge manifest finalization: larch-log.sh stub was not called (PR_CLOSED=true path)"
+fi
+rm -rf "$sentinel_dir"
+
+# Positive assertion: run_postmerge_phase must not create a commit on local main (no orphan).
+root=$(make_repo postmerge_no_orphan_commit)
+tmp=$(make_tmpdir)
+sentinel_dir=$(mktemp -d /tmp/ship-pr-postmerge-no-orphan.XXXXXX)
+mkdir -p "$tmp/larch-logs/implement/test-run"
+printf '{"status":"in-progress"}\n' > "$tmp/larch-logs/implement/test-run/manifest.json"
+touch "$tmp/post-merge-sentinel"
+write_state "$tmp/ship-pr-state.sh" postmerge
+awk -F= '{if ($1=="PR_CLOSED") print "PR_CLOSED=true"; else print}' \
+    "$tmp/ship-pr-state.sh" > "$tmp/ship-pr-state.sh.new" \
+    && mv "$tmp/ship-pr-state.sh.new" "$tmp/ship-pr-state.sh"
+# Record HEAD before run_postmerge_phase so we can detect any new commits
+head_before=$(git -C "$root" rev-parse HEAD 2>/dev/null || true)
+set +e
+(cd "$root" && LARCH_LOG_STUB_SENTINEL_DIR="$sentinel_dir" CLAUDE_PLUGIN_ROOT="$root" \
+    "$root/scripts/ship-pr.sh" --state-file "$tmp/ship-pr-state.sh" --implement-tmpdir "$tmp" \
+    --merge true --draft false --forked false --repo owner/repo \
+    > "$tmp/stdout-no-orphan" 2>&1)
+set -e
+head_after=$(git -C "$root" rev-parse HEAD 2>/dev/null || true)
+orphan_count=$(git -C "$root" rev-list --count "${head_before}..HEAD" 2>/dev/null || echo "error")
+if [[ "$orphan_count" == "0" ]]; then
+    ok "postmerge phase creates zero orphan commits on local main after run_postmerge_phase"
+else
+    fail "postmerge phase created $orphan_count unexpected commit(s) on local main (before=$head_before after=$head_after)"
 fi
 rm -rf "$sentinel_dir"
 
@@ -1416,12 +1444,12 @@ set +e
     LARCH_LOG_COMMIT_POSTMERGE_SHIP_PR=1 \
     "$root/scripts/larch-log.sh" commit --log-root "$tmp/larch-logs" --skill implement --run-id z \
     >"$tmp/lc-out2" 2>"$tmp/lc-err2")
-rc_ok=$?
+rc_bypass=$?
 set -e
-if [[ "$rc_ok" -eq 0 ]] && grep -q '^LARCH_LOG_ARGS=commit' "$sentinel_dir/larch-log-calls.txt"; then
-    ok "larch-log stub allows commit with LARCH_LOG_COMMIT_POSTMERGE_SHIP_PR bypass"
+if [[ "$rc_bypass" -eq 1 ]]; then
+    ok "larch-log stub still refuses commit with LARCH_LOG_COMMIT_POSTMERGE_SHIP_PR set (bypass removed)"
 else
-    fail "larch-log stub bypass expected exit 0 and logged commit; got rc=$rc_ok calls=$(cat "$sentinel_dir/larch-log-calls.txt" 2>/dev/null)"
+    fail "larch-log stub bypass expected exit 1 (bypass no longer honored); got rc=$rc_bypass"
 fi
 rm -rf "$sentinel_dir"
 
@@ -1480,20 +1508,19 @@ if [ -f "$sentinel_dir/larch-log-calls.txt" ]; then
        grep -q "recovery_reason=manifest_lost_mid_run" "$sentinel_dir/larch-log-calls.txt" && \
        grep -q -- "--issue" "$sentinel_dir/larch-log-calls.txt" && \
        grep -q "status=done" "$sentinel_dir/larch-log-calls.txt" && \
-       grep -q "^LARCH_LOG_ARGS=commit" "$sentinel_dir/larch-log-calls.txt"; then
+       ! grep -q "^LARCH_LOG_ARGS=commit" "$sentinel_dir/larch-log-calls.txt"; then
         exp=$(printf '%s\n' \
             'larch-log init' \
             'larch-log manifest' \
             'larch-log manifest' \
-            'write-final-report' \
-            'larch-log commit')
+            'write-final-report')
         if [[ "$(cat "$sentinel_dir/postmerge-order.log")" == "$exp" ]]; then
-            ok "postmerge missing-manifest recovery: init + partial tag, then manifest done, write-final-report, and post-merge log commit"
+            ok "postmerge missing-manifest recovery: init + partial tag, then manifest done, write-final-report (no post-merge commit)"
         else
-            fail "postmerge missing-manifest ordering: expected init, two manifests, write-final-report, commit; got: $(cat "$sentinel_dir/postmerge-order.log")"
+            fail "postmerge missing-manifest ordering: expected init, two manifests, write-final-report (no commit); got: $(cat "$sentinel_dir/postmerge-order.log")"
         fi
     else
-        fail "postmerge missing-manifest recovery: expected init + partial + --issue + status=done + commit; got: $(cat "$sentinel_dir/larch-log-calls.txt")"
+        fail "postmerge missing-manifest recovery: expected init + partial + --issue + status=done without commit; got: $(cat "$sentinel_dir/larch-log-calls.txt")"
     fi
 else
     fail "postmerge missing-manifest recovery: larch-log.sh stub was not called"
