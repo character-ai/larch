@@ -4,7 +4,7 @@
 - **Mode**: N/A
 - **Path**: HARD
 - **Duration**: 02:58:21
-- **Tokens**: 255595k total — Claude 189194k, Codex 902k, Cursor 65498k
+- **Tokens**: 367317k total — Claude 300916k, Codex 902k, Cursor 65498k
 - **Cost**: TOTAL N/A — Claude N/A, Codex N/A, Cursor N/A
 - **Issue**: #2485 — https://github.com/character-ai/larch/issues/2485
 - **PR**: #2560 — https://github.com/character-ai/larch/pull/2560
