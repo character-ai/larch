@@ -191,6 +191,16 @@ if ! (cd "$WT_DIR" && "$SCRIPT_DIR/larch-log.sh" init \
     exit 0
 fi
 
+design_artifact_excluded() {
+    local name="$1"
+    case "$name" in
+        *.sidecar|*.dirty-tree|*.untracked-baseline|*.done|*.diag|*-output.txt.prompt|*-output-*.txt.prompt)
+            return 0
+            ;;
+    esac
+    return 1
+}
+
 design_publish_stage_file() {
     local src="$1"
     local dest="$2"
@@ -200,6 +210,9 @@ design_publish_stage_file() {
         return 0
     fi
     if [[ ! -f "$src" ]]; then
+        return 0
+    fi
+    if design_artifact_excluded "$name"; then
         return 0
     fi
     trim_tmp=$(mktemp "${TMPDIR:-/tmp}/design-log-publish-trim.XXXXXX") || return 1

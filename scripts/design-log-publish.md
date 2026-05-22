@@ -23,7 +23,14 @@ branch by:
 5. Copying design artifacts: top-level regular files (maxdepth 1) plus all
    regular files under `render-cache/` (recursive). Symlinks at the top level
    are skipped; `render-cache/` itself must be a real directory (not a symlink).
-   Each file is trimmed then redacted: `*.meta` strips leading `CMD_JSON=`
+   Files whose basename matches the suffix deny-list are skipped before any
+   trim/redact work (`design_artifact_excluded`, mirrors the
+   `round_artifact_included` deny patterns in `scripts/larch-log.sh` for
+   `/implement`): `*.sidecar`, `*.dirty-tree`, `*.untracked-baseline`,
+   `*.done`, `*.diag`, `*-output.txt.prompt`, `*-output-*.txt.prompt`. All
+   other basenames pass through (deny-only model — `/design` has many file
+   types `/implement` does not, so the design path is default-allow). Each
+   included file is trimmed then redacted: `*.meta` strips leading `CMD_JSON=`
    lines (`larch_redact_strip_meta_cmd_json`); files whose names match
    `*-output*.json` delete a top-level `.result` object when valid JSON
    (`larch_redact_strip_json_result`, fail-closed on trim error); other paths
