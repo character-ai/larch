@@ -166,9 +166,9 @@ jobs:
   # Regression harness shards (the `test-*` bash scripts in Makefile). Runs
   # as a parallel matrix in parallel with the `lint` and `shellcheck` jobs so
   # a harness failure can be diagnosed and re-run without waiting on
-  # pre-commit, and vice versa. The shared requirements-lint.txt supplies
-  # PyYAML because test-lint-skill-invocations invokes the python lint
-  # directly outside the pre-commit venv.
+  # pre-commit, and vice versa. Installs only PyYAML via
+  # requirements-test-harnesses.txt (the lint job uses requirements-lint.txt,
+  # which also pulls pre-commit).
   test-harnesses:
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -179,12 +179,20 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
+        id: setup-python
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: .github/workflows/requirements-lint.txt
+          cache-dependency-path: .github/workflows/requirements-test-harnesses.txt
+      - name: Cache installed Python packages
+        id: cache-site-packages
+        uses: actions/cache@v5
+        with:
+          path: ~/.local/lib/python${{ steps.setup-python.outputs.python-version }}/site-packages
+          key: ${{ runner.os }}-pip-site-${{ steps.setup-python.outputs.python-version }}-${{ hashFiles('.github/workflows/requirements-test-harnesses.txt') }}
       - name: Install lint dependencies
-        run: pip install -r .github/workflows/requirements-lint.txt
+        if: steps.cache-site-packages.outputs.cache-hit != 'true'
+        run: pip install -r .github/workflows/requirements-test-harnesses.txt
       # ripgrep (rg) is required by scripts/test-agent-model-args.sh static
       # migration guards (FINDING_11 of /review on PR #1367 hardened the
       # harness to fail fast when rg is missing, rather than silently
