@@ -1,0 +1,19 @@
+Reading the ballot and referenced context files to verify findings.
+
+FINDING_1: YES
+FINDING_2: EXONERATE -- gate implementation and merge-base handling are not present in the capped diff-context, so this stays generic risk without verifiable failure here.
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: EXONERATE -- plan and scan already frame Inline-triage as a heuristic breadcrumb, not per-block proof.
+FINDING_6: EXONERATE -- trivial `case` arm spacing only.
+FINDING_7: EXONERATE -- exit 1 vs 2 distinction can live in gate docs/stderr without expanding SKILL orchestration prose.
+FINDING_8: EXONERATE -- routine semver with functional work; no separate tracking issue warranted.
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: EXONERATE -- org-wide secrets scanning is orthogonal; not a GitHub issue for this gate change.
+FINDING_13: EXONERATE -- mixed scope is visible but splitting is process overhead, not a product defect.
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: EXONERATE -- known pre-existing `/issue` limitation; no new issue needed from this thread.
+FINDING_17: EXONERATE -- bundled #2539 harness/docs are noted but do not warrant a new GitHub issue.

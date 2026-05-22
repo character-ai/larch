@@ -1,0 +1,27 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: EXONERATE -- substring false positives unlikely enough that tightening grep is optional noise
+FINDING_5: YES
+FINDING_6: EXONERATE -- stale archived run text needs no tracking issue
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: EXONERATE -- two nearby OOS pins already catch major drift of NEVER 17/18 prose
+FINDING_15: EXONERATE -- reviewer note only; no issue or code change warranted
+FINDING_16: EXONERATE -- session-id is run-controlled; `../` in RUN_ID is implausible for declared contract
+FINDING_17: NO -- `find … -type f` skips symlink pathnames so awk is not fed symlink targets
+FINDING_18: EXONERATE -- hostile multi‑GB NDJSON is out of scope for local gate/audit threat model
+FINDING_19: EXONERATE -- behavioral guardrails do not change documented trust boundaries enough to mandate SECURITY.md churn
+FINDING_20: EXONERATE -- pre-existing eval pattern; separate refactor if ever prioritized
+FINDING_21: YES
+FINDING_22: YES
+FINDING_23: YES
+FINDING_24: YES
+FINDING_25: YES
+FINDING_26: EXONERATE -- minor prose vs state-key mismatch only
+FINDING_27: YES

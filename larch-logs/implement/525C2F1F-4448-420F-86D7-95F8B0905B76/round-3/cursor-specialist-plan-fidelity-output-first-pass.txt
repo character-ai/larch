@@ -1,0 +1,9 @@
+Gathering the branch diff and commit list to compare the implementation against the plan.
+
+Searching the diff for plan-relevant paths and reading key sections.
+
+Checking whether `lint-bash32` scans `.bash` files and verifying the shared include filename.
+
+Creating the plan document and assembling the required review sections.
+
+
