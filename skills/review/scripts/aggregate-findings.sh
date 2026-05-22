@@ -288,6 +288,30 @@ def normalize_slot(sl):
 
 EMPTY_MERGE_ATTESTATION = "LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED"
 
+_STRICT_FINDING_HEADING = re.compile(r"^### FINDING_[0-9]+:")
+
+
+def line_opens_valid_finding_block(line):
+    """True when this line starts a validator-recognized ### FINDING_N: block."""
+    ls = line.lstrip("\t ")
+    return bool(_STRICT_FINDING_HEADING.match(ls))
+
+
+def has_nonconforming_finding_heading_markers(text):
+    """
+    True when a line looks like a FINDING heading but is not ### FINDING_<digits>:
+    (prevents empty-merge synthesis from rescuing narrative that contains drifted
+    pseudo-headings that no longer parse as structured blocks).
+    """
+    for line in text.splitlines():
+        ls = line.lstrip("\t ")
+        if not ls.startswith("###"):
+            continue
+        if re.match(r"^###\s+FINDING_", ls) and not line_opens_valid_finding_block(line):
+            return True
+    return False
+
+
 # End of "Suggested revisions" sub-list: only known top-level finding fields,
 # not arbitrary "- **Capital..." lines that may appear inside folded revision text.
 _REVISION_SUBLIST_END_HEADING = re.compile(
@@ -481,24 +505,29 @@ def _attempt_attestation_repair(raw_text, input_text):
     has_attest_line = any(
         line.strip() == EMPTY_MERGE_ATTESTATION for line in raw_text.splitlines()
     )
+    n_findings = len(input_blocks(input_text))
     if not blocks and input_slot_set and not has_attest_line:
+        if has_nonconforming_finding_heading_markers(raw_text):
+            return raw_text, False, len(input_slot_set), n_findings
         return (
             raw_text + "\n" + EMPTY_MERGE_ATTESTATION + "\n",
             True,
             len(input_slot_set),
+            n_findings,
         )
-    return raw_text, False, len(input_slot_set)
+    return raw_text, False, len(input_slot_set), n_findings
 
 
 def repair_attestation_main():
     input_path, output_path = sys.argv[2], sys.argv[3]
     intext = open(input_path, encoding="utf-8").read()
     raw = open(output_path, encoding="utf-8").read()
-    repaired, synthesized, nslots = _attempt_attestation_repair(raw, intext)
+    repaired, synthesized, nslots, n_findings = _attempt_attestation_repair(raw, intext)
     sys.stdout.write(repaired)
     if synthesized:
         print(
-            "ATTESTATION_SYNTHESIZED=true input_slots=%d" % (nslots,),
+            "ATTESTATION_SYNTHESIZED=true unique_input_reviewers=%d input_findings=%d"
+            % (nslots, n_findings),
             file=sys.stderr,
         )
     return 0
