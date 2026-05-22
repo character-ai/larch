@@ -1,12 +1,12 @@
 # Version Bump Reasoning
 
-- **Base commit**: `eb99ee2e` (Address code review feedback (round 3))
-- **Current version**: `36.0.3`
+- **Base commit**: `d00f9e58` (Bump version to 36.0.7 (#2580))
+- **Current version**: `36.0.7`
 - **Classification scope**: `skills/**` and `agents/**` only (public plugin surface).
 
 ## Result: PATCH
 
-- **New version**: `36.0.4`
+- **New version**: `36.0.8`
 
 ### PATCH rationale
 
