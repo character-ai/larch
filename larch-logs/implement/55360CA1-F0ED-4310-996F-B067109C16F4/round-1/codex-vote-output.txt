@@ -1,0 +1,11 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: EXONERATE -- Public README catalog can stay high-level; internal dispatch details belong in AGENTS/flags after stale refs are fixed.
+FINDING_4: YES
+FINDING_5: EXONERATE -- Historical changelog mentions are acceptable, and concrete runtime stale paths are covered by narrower findings.
+FINDING_6: NO -- Conditional generator-risk claim has no verified topology drift or failing generated-doc diff.
+FINDING_7: EXONERATE -- Legitimate legacy artifact path, but no current user-facing path was shown to set DESIGN_ONLY_DONE.
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES

@@ -1,0 +1,11 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: EXONERATE -- AGENTS.md line 55 already points to flags.md for the key SendMessage/heavy-dispatch scenario; adding another pointer in README duplicates it
+FINDING_4: YES
+FINDING_5: EXONERATE -- CHANGELOG history retention is expected; concern is speculative without confirmed specific locations
+FINDING_6: EXONERATE -- PR makes only prose changes with no topology count changes; generate-topology-docs.sh expected to produce empty diff per plan
+FINDING_7: EXONERATE -- run logs retaining historical flag references is expected behavior; hygiene-only, not operator-facing breakage
+FINDING_8: YES
+FINDING_9: EXONERATE -- Flags table in workflow-lifecycle.md already carries explicit "follow skills/implement/SKILL.md for the exact forwarded flag set" caveat
+FINDING_10: YES
+FINDING_11: YES

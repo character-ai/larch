@@ -1,0 +1,2 @@
+warning: unknown From slot label 'cursor-specialist-structure-output.txt, cursor-specialist-security-output.txt, cursor-specialist-edge-cases-output.txt' in FINDING_2 (not present on any input finding)
+warning: fix text for slot 'dyn-agents-md-scope-output.txt' in FINDING_11 not traceable to scoped input (first 80 chars: '**correctness** `AGENTS.md:55` — The new bullet only defers SendMessage and heav')
