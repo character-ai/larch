@@ -397,6 +397,25 @@ else
     case "$out" in *MISSING=*) fail "explicit step9a1 false: output must not contain MISSING=" ;; esac
 fi
 
+# Test 20: corrupt manifest.json + bailed final-summary — step9a1 must not be skipped (mirror audit Test 52e)
+run_corrupt_bail="$TMP/run-corrupt-manifest-bail-step9a1"
+mkdir -p "$run_corrupt_bail"
+req_corrupt_bail="$TMP/req-corrupt-manifest-bail.tsv"
+{
+    printf '%s\t%s\t%s\t%s\n' relative_path condition batch_slug extension
+    printf '%s\n' 'oos-issues.ndjson	step9a1	x	x'
+    printf '%s\n' 'run-statistics.md	step9a1	x	x'
+} > "$req_corrupt_bail"
+printf '%s\n' '{not valid json' > "$run_corrupt_bail/manifest.json"
+printf '%s\n' '## /implement run test-run — bailed' > "$run_corrupt_bail/final-summary.md"
+if out="$(LARCH_VERIFY_MANIFEST="$req_corrupt_bail" "$VERIFY" "$run_corrupt_bail" 2>&1)"; then
+    fail "corrupt manifest + bail: expected non-zero verifier exit"
+else
+    assert_contains "corrupt manifest + bail emits MISSING" "$out" "MISSING="
+    assert_contains "corrupt manifest + bail requires run-statistics" "$out" "run-statistics.md"
+    assert_contains "corrupt manifest + bail requires oos-issues" "$out" "oos-issues.ndjson"
+fi
+
 echo
 echo "Passed: $PASS"
 echo "Failed: $FAIL"
