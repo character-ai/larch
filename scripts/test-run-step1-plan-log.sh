@@ -51,7 +51,6 @@ make_tmpdir() {
     printf '%s\n' "Implementation plan body with enough text for the launcher harness." > "$dir/plan.txt"
     {
         printf 'LARCH_CLAUDE_PLUGIN_ROOT=%s\n' "$REPO_ROOT"
-        printf 'PLAN_FILE=%s\n' "$dir/plan.txt"
     } > "$dir/session-env.sh"
 }
 
@@ -141,40 +140,37 @@ log_argv="$TMP/log-manifest.argv"
 RUN_STEP1_COMPOSE_SH="$COMPOSE_SPY" RUN_STEP1_LARCH_LOG_SH="$LOG_SPY" RUN_STEP1_COMPOSE_ARGV_FILE="$compose_argv" RUN_STEP1_LOG_ARGV_FILE="$log_argv" "$LAUNCHER" --implement-tmpdir "$case_dir" --goal-text "Ship manifest" >/dev/null
 assert_contains "$(cat "$log_argv")" "manifest-run" "manifest RUN_ID overrides session-id"
 
-echo "=== PLAN_FILE missing: fail closed even when design-export/plan.txt exists ==="
+echo "=== conventional plan.txt missing: fail closed even when design-export/plan.txt exists ==="
 case_dir="$TMP/plan-file-missing"
 make_tmpdir "$case_dir"
-grep -v '^PLAN_FILE=' "$case_dir/session-env.sh" > "$case_dir/session-env.sh.new"
-mv "$case_dir/session-env.sh.new" "$case_dir/session-env.sh"
+rm -f "$case_dir/plan.txt"
 mkdir -p "$case_dir/design-export"
-printf '%s\n' "Stale local export must not mask missing PLAN_FILE." > "$case_dir/design-export/plan.txt"
+printf '%s\n' "Stale local export must not substitute for conventional plan.txt." > "$case_dir/design-export/plan.txt"
 compose_argv="$TMP/compose-missing.argv"
 log_argv="$TMP/log-missing.argv"
 set +e
 out="$(RUN_STEP1_COMPOSE_SH="$COMPOSE_SPY" RUN_STEP1_LARCH_LOG_SH="$LOG_SPY" RUN_STEP1_COMPOSE_ARGV_FILE="$compose_argv" RUN_STEP1_LOG_ARGV_FILE="$log_argv" "$LAUNCHER" --implement-tmpdir "$case_dir" --goal-text "Should fail" 2>&1)"
 rc=$?
 set -e
-if [[ "$rc" -eq 2 ]]; then pass "PLAN_FILE missing exits 2 even with design-export"; else fail "PLAN_FILE missing rc=$rc"; fi
-assert_contains "$out" "PLAN_FILE missing from session-env" "step1 emits PLAN_FILE-missing error"
-assert_contains "$out" "persist-post-plan-keys.sh" "step1 error names writer contract"
-[[ ! -f "$compose_argv" ]] || fail "compose helper should not run when PLAN_FILE missing"
+if [[ "$rc" -eq 2 ]]; then pass "conventional plan.txt missing exits 2 even with design-export"; else fail "plan missing rc=$rc"; fi
+assert_contains "$out" "plan file not found at conventional path" "step1 emits conventional-path error"
+[[ ! -f "$compose_argv" ]] || fail "compose helper should not run when plan.txt missing"
 
 echo "=== issue-anchored Step 1 plan copy contract (SKILL pin) ==="
 plan_copy_literal=$'cp "$PREFLIGHT_TMPDIR/plan-from-issue.txt" "$IMPLEMENT_TMPDIR/plan.txt"'
 grep -Fq "$plan_copy_literal" "$REPO_ROOT/skills/implement/SKILL.md" \
   || fail "missing Step 1 issue-body plan materialization copy literal in implement SKILL"
 
-echo "=== PLAN_FILE missing AND design-export missing: fail loud ==="
+echo "=== conventional plan.txt missing AND design-export missing: fail loud ==="
 case_dir="$TMP/plan-file-fail"
 make_tmpdir "$case_dir"
-grep -v '^PLAN_FILE=' "$case_dir/session-env.sh" > "$case_dir/session-env.sh.new"
-mv "$case_dir/session-env.sh.new" "$case_dir/session-env.sh"
+rm -f "$case_dir/plan.txt"
 set +e
 out="$("$LAUNCHER" --implement-tmpdir "$case_dir" --goal-text "Should fail" 2>&1)"
 rc=$?
 set -e
-if [[ "$rc" -eq 2 ]]; then pass "no PLAN_FILE and no design-export exits 2"; else fail "no fallback rc=$rc"; fi
-assert_contains "$out" "PLAN_FILE missing from session-env" "no-fallback error"
+if [[ "$rc" -eq 2 ]]; then pass "no conventional plan.txt exits 2"; else fail "no fallback rc=$rc"; fi
+assert_contains "$out" "plan file not found at conventional path" "no-plan error"
 
 TOTAL=$((PASS + FAIL))
 if [[ "$FAIL" -eq 0 ]]; then

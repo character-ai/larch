@@ -77,14 +77,13 @@ fi
 export CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT"
 export IMPLEMENT_TMPDIR
 
-PLAN_FILE="$(session_get "$SESSION_ENV_PATH" PLAN_FILE "")"
+PLAN_FILE="$IMPLEMENT_TMPDIR/plan.txt"
 CURSOR_PRESENT="$(session_get "$SESSION_ENV_PATH" CURSOR_PRESENT false)"
-WORKFLOW_PATH="$(session_get "$SESSION_ENV_PATH" POST_PLAN_WORKFLOW_PATH "")"
+WORKFLOW_PATH="HARD"
 
-[[ -n "$PLAN_FILE" ]] || fail "PLAN_FILE missing from session-env"
-[[ -f "$PLAN_FILE" ]] || fail "PLAN_FILE not found: $PLAN_FILE"
+[[ -f "$PLAN_FILE" ]] || fail "plan file not found at conventional path: $PLAN_FILE"
 case "$CURSOR_PRESENT" in true|false) ;; *) fail "CURSOR_PRESENT must be true or false, got: $CURSOR_PRESENT" ;; esac
-case "$WORKFLOW_PATH" in SIMPLE|HARD) ;; *) fail "POST_PLAN_WORKFLOW_PATH must be SIMPLE or HARD, got: ${WORKFLOW_PATH:-<empty>}" ;; esac
+case "$WORKFLOW_PATH" in SIMPLE|HARD) ;; *) fail "WORKFLOW_PATH must be SIMPLE or HARD, got: ${WORKFLOW_PATH:-<empty>}" ;; esac
 
 DISPATCHER_SH="${RUN_STEP2_IMPLEMENT_SH:-$PLUGIN_ROOT/skills/implement/scripts/step2-implement.sh}"
 [[ -x "$DISPATCHER_SH" ]] || fail "step2-implement.sh not executable: $DISPATCHER_SH"

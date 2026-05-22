@@ -71,9 +71,6 @@ run_action() {
     local action="$1"
     shift
     case "$action" in
-        CLASSIFY)
-            "$SCRIPT_DIR/classify-issue.sh" "$@"
-            ;;
         EMIT_PLAN)
             "$SCRIPT_DIR/emit-plan.sh" --design-tmpdir "$DESIGN_TMPDIR" "$@"
             ;;
@@ -106,7 +103,11 @@ process_line() {
     action="${line#ACTION=}"
     action="${action%% *}"
     case "$action" in
-        CLASSIFY|EMIT_PLAN|TALLY|FINALIZE) ;;
+        EMIT_PLAN|TALLY|FINALIZE) ;;
+        CLASSIFY)
+            emit "STEP_FAILED=CLASSIFY REASON=deprecated-action"
+            return 2
+            ;;
         *)
             emit_kv ACTION_PASSTHROUGH "$line"
             return 0

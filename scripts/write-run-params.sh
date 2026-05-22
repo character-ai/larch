@@ -18,7 +18,7 @@ OUTPUT=""
 
 usage() {
     while IFS= read -r line; do larch_err "$line"; done <<'USAGE'
-usage: write-run-params.sh --classification <TRIVIAL_DOC_ONLY|SIMPLE|HARD> --reason <text> --source <router-pre-design|caller-forwarded> --sketch-budget <0|2|4> --review-budget <quick|full> --workflow-path <SIMPLE|HARD> --output <path>
+usage: write-run-params.sh --classification <TRIVIAL_DOC_ONLY|SIMPLE|HARD> --reason <text> --source <caller-forwarded> --sketch-budget <0|2|4> --review-budget <quick|full> --workflow-path <SIMPLE|HARD> --output <path>
 USAGE
 }
 
@@ -95,7 +95,7 @@ require_present "--workflow-path" "$WORKFLOW_PATH"
 require_present "--output" "$OUTPUT"
 
 require_enum "--classification" "$CLASSIFICATION" TRIVIAL_DOC_ONLY SIMPLE HARD
-require_enum "--source" "$SOURCE" router-pre-design caller-forwarded
+require_enum "--source" "$SOURCE" caller-forwarded
 require_enum "--sketch-budget" "$SKETCH_BUDGET" 0 2 4
 require_enum "--review-budget" "$REVIEW_BUDGET" quick full
 require_enum "--workflow-path" "$WORKFLOW_PATH" SIMPLE HARD

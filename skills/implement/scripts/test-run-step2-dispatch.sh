@@ -45,14 +45,12 @@ assert_file_equals() {
 }
 
 make_tmpdir() {
-    local dir="$1" workflow="$2" cursor="$3"
+    local dir="$1" _workflow="$2" cursor="$3"
     mkdir -p "$dir"
     printf '%s\n' "Feature description" > "$dir/feature-description.txt"
     printf '%s\n' "Plan body with enough text for the Step 2 launcher harness." > "$dir/plan.txt"
     {
         printf 'LARCH_CLAUDE_PLUGIN_ROOT=%s\n' "$REPO_ROOT"
-        printf 'PLAN_FILE=%s\n' "$dir/plan.txt"
-        printf 'POST_PLAN_WORKFLOW_PATH=%s\n' "$workflow"
         printf 'CURSOR_PRESENT=%s\n' "$cursor"
     } > "$dir/session-env.sh"
 }
@@ -73,16 +71,6 @@ rc=$?
 set -e
 if [[ "$rc" -eq 2 ]]; then pass "missing implement tmpdir exits 2"; else fail "missing implement tmpdir rc=$rc"; fi
 assert_contains "$out" "--implement-tmpdir is required" "missing implement tmpdir error"
-
-echo "=== reject invalid workflow enum ==="
-case_dir="$TMP/bad-workflow"
-make_tmpdir "$case_dir" BROKEN false
-set +e
-out="$("$LAUNCHER" --implement-tmpdir "$case_dir" --coder codex 2>&1)"
-rc=$?
-set -e
-if [[ "$rc" -eq 2 ]]; then pass "bad workflow exits 2"; else fail "bad workflow rc=$rc"; fi
-assert_contains "$out" "POST_PLAN_WORKFLOW_PATH must be SIMPLE or HARD" "bad workflow error"
 
 echo "=== reject missing answers path ==="
 case_dir="$TMP/missing-answers"

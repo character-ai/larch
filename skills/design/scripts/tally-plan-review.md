@@ -8,7 +8,6 @@
 
 - `skills/design/scripts/design-driver.sh` for `ACTION=TALLY`
 - `/design` Step 3 after `dispatch-plan-voters.sh` returns Voter 2/3 output paths
-- `skills/design/references/heavy-worker.md` during subagent plan review
 
 ## Invariants
 
@@ -36,6 +35,6 @@ The regression harness is `make test-tally-plan-review`, wired into `test-harnes
 
 ## Edit In Sync
 
-Update this contract, `test-tally-plan-review.sh`, `skills/design/SKILL.md`, `skills/design/references/plan-review.md`, and `skills/design/references/heavy-worker.md` together when ballot or artifact formats change.
+Update this contract, `test-tally-plan-review.sh`, `skills/design/SKILL.md`, and `skills/design/references/plan-review.md` together when ballot or artifact formats change.
 
 On non-zero exit, `FAILURE_LOG=<path>` may appear on stdout.

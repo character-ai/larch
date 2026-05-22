@@ -9,7 +9,6 @@
 - `skills/design/scripts/design-driver.sh` for `ACTION=EMIT_PLAN`
 - `/design` Step 2b after initial plan authoring
 - `/design` Step 3 after accepted plan-review findings revise the plan
-- `skills/design/references/heavy-worker.md` when the heavy worker runs the same mechanics in a subagent
 
 ## Invariants
 
@@ -28,6 +27,6 @@ The regression harness is `make test-emit-plan`, wired into `test-harnesses-1`.
 
 ## Edit In Sync
 
-Update this contract, `test-emit-plan.sh`, `skills/design/SKILL.md`, and `skills/design/references/heavy-worker.md` together when the plan diff-line grammar changes.
+Update this contract, `test-emit-plan.sh`, and `skills/design/SKILL.md` together when the plan diff-line grammar changes.
 
 On non-zero exit, `FAILURE_LOG=<path>` may appear on stdout.

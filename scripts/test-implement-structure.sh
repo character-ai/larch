@@ -194,9 +194,11 @@ grep -Fq 'POST_PLAN_WORKFLOW_PATH=HARD' "$SKILL_MD" \
 # Post-cutover: /implement no longer accepts --hard, so hard_mode references must be gone.
 ! grep -Fq 'hard_mode' "$SKILL_MD" \
   || fail "Post-plan router must not reference hard_mode (--hard flag removed in cutover)"
-# shellcheck disable=SC2016
-grep -Fq 'scripts/persist-post-plan-keys.sh' "$SKILL_MD" \
-  || fail "Post-plan router must invoke scripts/persist-post-plan-keys.sh (#2326)"
+# Post-cutover: plan materialization uses conventional $IMPLEMENT_TMPDIR/plan.txt; do not resurrect persist-post-plan-keys.
+! grep -Fq 'persist-post-plan-keys' "$SKILL_MD" \
+  || fail "skills/implement/SKILL.md must not reference persist-post-plan-keys (retired #2487)"
+! grep -Fq 'post-design-boundary.sh' "$SKILL_MD" \
+  || fail "skills/implement/SKILL.md must not reference post-design-boundary.sh (retired #2487)"
 grep -Fq 'scripts/persist-implement-run-flags.sh' "$SKILL_MD" \
   || fail "Post-plan router must invoke scripts/persist-implement-run-flags.sh"
 

@@ -218,6 +218,9 @@ read_session_plan_file() {
 resolve_plan_file() {
     local path
     path=$(read_session_plan_file)
+    if [ -z "$path" ] && [ -f "$IMPLEMENT_TMPDIR/plan.txt" ]; then
+        path="$IMPLEMENT_TMPDIR/plan.txt"
+    fi
     [ -n "$path" ] || return 0
     case "$path" in
         "$IMPLEMENT_TMPDIR"/*)
@@ -228,7 +231,12 @@ resolve_plan_file() {
                 --category Warnings \
                 --entry "PLAN_FILE ($path) is outside IMPLEMENT_TMPDIR; skipping plan context." \
                 >/dev/null 2>&1 || true
-            return 0 ;;
+            if [ -f "$IMPLEMENT_TMPDIR/plan.txt" ]; then
+                path="$IMPLEMENT_TMPDIR/plan.txt"
+            else
+                return 0
+            fi
+            ;;
     esac
     if [ ! -f "$path" ]; then
         "$SCRIPT_DIR/append-execution-issue.sh" \
@@ -236,7 +244,11 @@ resolve_plan_file() {
             --category Warnings \
             --entry "PLAN_FILE ($path) set but file not found; proceeding without plan context." \
             >/dev/null 2>&1 || true
-        return 0
+        if [ -f "$IMPLEMENT_TMPDIR/plan.txt" ]; then
+            path="$IMPLEMENT_TMPDIR/plan.txt"
+        else
+            return 0
+        fi
     fi
     printf '%s\n' "$path"
 }

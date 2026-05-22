@@ -1,6 +1,6 @@
 # scripts/write-session-id.sh — contract
 
-`scripts/write-session-id.sh` is the single-call wrapper around the `uuidgen`-or-fallback session-id snippet that `/implement` Step 0 emits to `$IMPLEMENT_TMPDIR/session-id`. The id pins design-manifest freshness: `read-design-manifest.sh` rejects a manifest whose stored `SESSION_ID` does not match the value in this file.
+`scripts/write-session-id.sh` is the single-call wrapper around the `uuidgen`-or-fallback session-id snippet that `/implement` Step 0 emits to `$IMPLEMENT_TMPDIR/session-id`. The id is forwarded as `LARCH_TOKEN_SESSION_ID` (and recorded in `session-env.sh`) so token/timing ledgers and hook tmpdir resolution can bind the active run to the correct `claude-implement-*` session root.
 
 ## Inputs
 
@@ -14,7 +14,7 @@
 
 ## When to update
 
-Update this file when the freshness key needs different semantics (e.g., monotonic counter, hash of repo HEAD + timestamp). The current contract is intentionally minimal; expanding it requires updating `read-design-manifest.sh`'s comparison logic in the same PR.
+Update this file when the session-id semantics need to change (e.g., monotonic counter, hash of repo HEAD + timestamp). The current contract is intentionally minimal; expanding it requires updating the `/implement` Step 0 materialization path and any consumers that assume the current shape in the same PR.
 
 ## Test harness
 

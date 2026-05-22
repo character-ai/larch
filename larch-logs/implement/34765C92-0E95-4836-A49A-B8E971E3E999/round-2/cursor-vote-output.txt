@@ -1,0 +1,17 @@
+Verifying ballot claims by reading the referenced files in the workspace.
+
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: EXONERATE -- process wording can be reconciled in PR text without scope creep
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: EXONERATE -- edge-case tmpdir race; re-adding PostToolUse hook is disproportionate
+FINDING_9: NO -- affirms existing hardening, not an actionable defect
+FINDING_10: EXONERATE -- hypothetical symlink bypass, not worth a standalone tracking issue
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: EXONERATE -- squash-at-merge covers revert boundary; advisory plan language only

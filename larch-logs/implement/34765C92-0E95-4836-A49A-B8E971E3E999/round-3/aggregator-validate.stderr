@@ -1,0 +1,2 @@
+warning: unknown From slot label 'cursor-specialist-structure-output.txt, cursor-specialist-edge-cases-output.txt' in FINDING_1 (not present on any input finding)
+warning: fix text for slot 'cursor-specialist-plan-fidelity-output.txt' in FINDING_16 not traceable to scoped input (first 80 chars: 'Address the concern above.  ---  Because this output contains one or more `### F')

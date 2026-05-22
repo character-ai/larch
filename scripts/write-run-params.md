@@ -12,7 +12,7 @@ Primary callers are `/design` Step 0 and prompt-side tests. `/implement` forward
 - Requires an absolute `--output` path and an existing output directory.
 - Requires all schema fields up front: `--classification`, `--reason`, `--source`, `--sketch-budget`, `--review-budget`, `--workflow-path`, and `--output`.
 - Validates `--classification` as `TRIVIAL_DOC_ONLY`, `SIMPLE`, or `HARD`.
-- Validates `--source` as `router-pre-design` or `caller-forwarded`.
+- Validates `--source` as `caller-forwarded` only (obsolete `router-pre-design` is rejected).
 - Validates `--sketch-budget` as `0`, `2`, or `4`.
 - Validates `--review-budget` as `quick` or `full`.
 - Validates `--workflow-path` as `SIMPLE` or `HARD`.
@@ -26,6 +26,6 @@ Primary callers are `/design` Step 0 and prompt-side tests. `/implement` forward
 
 ## Edit In Sync
 
-Update this file, `scripts/test-write-run-params.sh`, `skills/design/SKILL.md`, and `skills/design/references/heavy-worker.md` whenever the `run-params.json` schema or enum set changes.
+Update this file, `scripts/test-write-run-params.sh`, and `skills/design/SKILL.md` whenever the `run-params.json` schema or enum set changes.
 
 On non-zero exit, `FAILURE_LOG=<path>` may appear on stdout.

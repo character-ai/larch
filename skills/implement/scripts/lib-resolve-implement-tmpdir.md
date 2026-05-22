@@ -26,7 +26,7 @@ Candidate eligibility additionally applies two layered checks on top of
    `SESSION_ID` is NOT treated as "missing signal — proceed"). When
    `LARCH_TOKEN_SESSION_ID` is unset, the session check is skipped entirely.
    In production, the env value is surfaced into hook subprocesses by
-   `hook-post-design.sh` and `hook-stop-fail-close.sh`, which parse
+   `hook-stop-fail-close.sh` and `hook-post-bump-version.sh`, which parse
    `.session_id` from the Claude Code hook stdin payload and `export
    LARCH_TOKEN_SESSION_ID="$SID"` before sourcing this lib. `/implement`
    Step 0's in-bash `export` does NOT propagate to hook subprocesses on its
@@ -47,5 +47,5 @@ long-running `/design` session is provably the active session and should still
 arm halt protection. The TTL-only path applies when no authoritative session
 signal is available.
 
-Edit in sync with `hook-post-design.sh`, `hook-stop-fail-close.sh`, and
-`skills/implement/scripts/test-post-design-boundary.sh`.
+Edit in sync with `hook-stop-fail-close.sh`, `hook-post-bump-version.sh`,
+`hooks/hooks.json`, and `scripts/test-implement-anti-halt.sh`.

@@ -3,8 +3,8 @@
 #
 # Wraps the inline snippet at /implement Step 0 that picks `uuidgen` when
 # available and falls back to the session tmpdir's basename otherwise.
-# `/design`'s manifest-freshness check (read-design-manifest.sh) compares
-# this value to its stored SESSION_ID before reusing an exported plan.
+# `/implement` forwards this value as LARCH_TOKEN_SESSION_ID for ledgers and
+# hook-side tmpdir resolution (see skills/implement/SKILL.md Step 0).
 #
 # Usage:
 #   write-session-id.sh --output PATH

@@ -74,11 +74,11 @@
    ```
    The collector no longer updates cross-skill reviewer state; the dialectic phase keeps debate failures scoped to its local availability variables. Block on this call (do NOT use `run_in_background`).
 
-   Immediately after this collection returns, run the Mid-Run Dirty-Tree Probe Contract from `heavy-worker.md` for `STAGE=dialectic-debate-collection`.
+   Immediately after this collection returns, run the Mid-Run Dirty-Tree Probe Contract from `${CLAUDE_PLUGIN_ROOT}/skills/review/references/heavy-worker.md` for `STAGE=dialectic-debate-collection`.
 
 9. **Per-bucket runtime failure handling**. For any reviewer with `STATUS != OK`, print `**⚠ <Tool> dialectic debate (decision <n>, <thesis|antithesis>) failed: <FAILURE_REASON>. Bucket truncated; synthesis decision stands.**` Do NOT flip any flag. The mandatory STATUS pre-check at the top of the "debate quorum rule" below catches the partial-launch case (thesis or antithesis non-OK → decision immediately fails quorum → synthesis decision stands).
 
-   **Recovery discipline.** If you discover any debate launched with broken arguments and decide to re-launch it, re-launch AND immediately call `collect-agent-results.sh` synchronously on the retry outputs in the same Bash message — do NOT yield control back to the parent between the relaunch and the collect. When the parent reclaims control between yield and notification arrival, the bash task-completion notifications cannot reach the suspended subagent and the retry orphans. See `${CLAUDE_PLUGIN_ROOT}/skills/design/references/heavy-worker.md` "Wait Discipline" for the full rationale.
+   **Recovery discipline.** If you discover any debate launched with broken arguments and decide to re-launch it, re-launch AND immediately call `collect-agent-results.sh` synchronously on the retry outputs in the same Bash message — do NOT yield control back to the parent between the relaunch and the collect. When the parent reclaims control between yield and notification arrival, the bash task-completion notifications cannot reach the suspended subagent and the retry orphans. See `${CLAUDE_PLUGIN_ROOT}/skills/review/references/heavy-worker.md` "Wait Discipline" for the full rationale.
 
 **After all external debaters return**, classify each decision's `Disposition` and, for `voted`-eligible decisions, hand off to the 3-judge panel defined in `${CLAUDE_PLUGIN_ROOT}/skills/shared/dialectic-protocol.md`. The orchestrator no longer picks winners by reading tagged output — that role is delegated to the judge panel. See `dialectic-protocol.md` for the authoritative ballot format, judge prompt template, threshold rules, tally algorithm, and resolution schema. The prose below is the call-site contract in Step 2a.5; `dialectic-protocol.md` is the single source of truth for dialectic parser/threshold rules (do NOT reuse `voting-protocol.md` parsers for dialectic — the token sets and ID shapes differ).
 
@@ -109,7 +109,7 @@ If any check fails for either side, print `**⚠ Debate for DECISION_N failed qu
 
 After the eligibility gate finishes, run a fresh presence check right before launching judges. A Cursor/Codex timeout in **debating** must not lock that tool out of **judging** — the debater phase may have snapshotted availability many minutes ago.
 
-After the judge collector returns, run the Mid-Run Dirty-Tree Probe Contract from `heavy-worker.md` for `STAGE=dialectic-judge-collection`.
+After the judge collector returns, run the Mid-Run Dirty-Tree Probe Contract from `${CLAUDE_PLUGIN_ROOT}/skills/review/references/heavy-worker.md` for `STAGE=dialectic-judge-collection`.
 
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/scripts/check-reviewers.sh
