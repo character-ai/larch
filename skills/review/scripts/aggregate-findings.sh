@@ -219,6 +219,7 @@ unset _cand_canon
 
 validate_py="$REVIEW_TMPDIR/aggregate-validate.py"
 cat > "$validate_py" <<'PY'
+import os
 import re
 import sys
 
@@ -303,6 +304,7 @@ def suggested_revisions_bullets(block):
     lines = block.splitlines()
     in_revisions = False
     bullets = []
+    pending_from = None  # (slot_label, list of text fragments)
     for line in lines:
         s = line.strip()
         if re.match(r"^-\s*\*\*Suggested revisions", s, re.IGNORECASE):
@@ -311,11 +313,35 @@ def suggested_revisions_bullets(block):
         if in_revisions:
             # New top-level field stops the sub-list
             if re.match(r"^-\s*\*\*[A-Z]", s):
+                if pending_from:
+                    bullets.append(
+                        (pending_from[0], " ".join(pending_from[1]).strip())
+                    )
                 break
             m = re.match(r"^-\s+From\s+(.+?):\s+(.+)$", s, re.IGNORECASE)
             if m:
-                bullets.append((m.group(1).strip(), m.group(2).strip()))
+                if pending_from:
+                    bullets.append(
+                        (pending_from[0], " ".join(pending_from[1]).strip())
+                    )
+                pending_from = (m.group(1).strip(), [m.group(2).strip()])
+                continue
+            if pending_from:
+                pending_from[1].append(s)
+                continue
+    if pending_from:
+        bullets.append((pending_from[0], " ".join(pending_from[1]).strip()))
     return bullets
+
+
+def singular_suggested_revision(block):
+    """Legacy singular '- **Suggested revision**:' line body, if any."""
+    for line in block.splitlines():
+        s = line.strip()
+        m = re.match(r"^-\s*\*\*Suggested revision\*\*:\s*(.+)$", s, re.IGNORECASE)
+        if m:
+            return m.group(1).strip()
+    return None
 
 
 def normalize_for_match(text):
@@ -323,8 +349,46 @@ def normalize_for_match(text):
     return re.sub(r"[^\w\s]", " ", text.lower())
 
 
+def output_reviewer_slots_norm(block):
+    _line, slots = reviewer_line_slots(block)
+    return {normalize_slot(sl) for sl in slots}
+
+
+def scope_input_blocks_for_merge(norm_slot, output_slots_norm, slot_map):
+    """Input blocks citing norm_slot that share a reviewer with merged output."""
+    candidates = slot_map.get(norm_slot, [])
+    if not output_slots_norm:
+        return list(candidates)
+    scoped = []
+    for in_block in candidates:
+        _il, islots = reviewer_line_slots(in_block)
+        in_norms = {normalize_slot(x) for x in islots}
+        if in_norms & output_slots_norm:
+            scoped.append(in_block)
+    return scoped if scoped else list(candidates)
+
+
+def revision_traceable_in_blocks(revision_text, in_blocks):
+    """True when normalized revision appears as a substring in scoped input."""
+    if not in_blocks:
+        return False
+    rev_norm = normalize_for_match(revision_text).strip()
+    if not rev_norm:
+        return False
+    corpus = "\n\n".join(in_blocks)
+    corp_norm = normalize_for_match(corpus)
+    if rev_norm in corp_norm:
+        return True
+    words = rev_norm.split()
+    if len(words) < 2:
+        return False
+    window = min(6, len(words))
+    needle = " ".join(words[:window])
+    return needle in corp_norm
+
+
 def check_revision_traceability(input_text, output_blocks_list):
-    """Warn when a merged 'Suggested revisions' bullet can't be traced to any input block for that slot."""
+    """Warn when merged revision text can't be traced to scoped input for that merge."""
     slot_map = input_blocks_by_slot(input_text)
     warnings = []
     for block in output_blocks_list:
@@ -332,32 +396,38 @@ def check_revision_traceability(input_text, output_blocks_list):
         is_oos = "[OUT_OF_SCOPE]" in head
         if is_oos:
             continue
+        output_slots_norm = output_reviewer_slots_norm(block)
         bullets = suggested_revisions_bullets(block)
+        singular = singular_suggested_revision(block)
+        if singular and not bullets:
+            bullets = [("(merged reviewers)", singular)]
         if not bullets:
             continue
-        _, out_slots = reviewer_line_slots(block)
         for slot_label, revision_text in bullets:
-            norm_slot = normalize_slot(slot_label)
-            if norm_slot not in slot_map:
+            norm_slot = normalize_slot(slot_label) if slot_label != "(merged reviewers)" else None
+            if norm_slot is not None and norm_slot not in slot_map:
+                bid = finding_id_from_block(block) or "?"
+                warnings.append(
+                    "unknown From slot label %r in %s (not present on any input finding)"
+                    % (slot_label, bid)
+                )
                 continue
-            rev_norm = normalize_for_match(revision_text)
-            found = False
-            for in_block in slot_map[norm_slot]:
-                in_norm = normalize_for_match(in_block)
-                # Require at least 6 consecutive words of the revision to appear
-                words = rev_norm.split()
-                window = min(6, len(words))
-                if window < 2:
-                    found = True
-                    break
-                needle = " ".join(words[:window])
-                if needle in in_norm:
-                    found = True
-                    break
+            if norm_slot is None:
+                scoped = []
+                for in_block in input_blocks(input_text):
+                    _il, islots = reviewer_line_slots(in_block)
+                    in_norms = {normalize_slot(x) for x in islots}
+                    if in_norms & output_slots_norm:
+                        scoped.append(in_block)
+            else:
+                scoped = scope_input_blocks_for_merge(
+                    norm_slot, output_slots_norm, slot_map
+                )
+            found = revision_traceable_in_blocks(revision_text, scoped)
             if not found:
                 bid = finding_id_from_block(block) or "?"
                 warnings.append(
-                    "fix text for slot %r in %s not traceable to any input block "
+                    "fix text for slot %r in %s not traceable to scoped input "
                     "(first 80 chars: %r)" % (slot_label, bid, revision_text[:80])
                 )
     return warnings
@@ -448,6 +518,8 @@ def main():
     rev_warnings = check_revision_traceability(intext, blocks)
     for w in rev_warnings:
         print("warning: " + w, file=sys.stderr)
+    if os.environ.get("LARCH_AGGREGATE_REVISION_TRACE_STRICT") == "1" and rev_warnings:
+        return 1
     return 0
 
 

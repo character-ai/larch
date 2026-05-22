@@ -45,7 +45,7 @@ case "$mode" in
 ### FINDING_1: merged title
 - **Reviewer(s)**: cursor-a-output.txt, cursor-b-output.txt, cursor-c-output.txt
 - **Concern**: normalized concern
-- **Suggested revision**: fix it
+- **Suggested revision**: fix
 
 EOF
                 ;;
@@ -116,7 +116,7 @@ EOF
 ### FINDING_1: merged title
 - **Reviewer(s)**: cursor-a-output.txt, cursor-b-output.txt, cursor-c-output.txt
 - **Concern**: normalized concern
-- **Suggested revision**: fix it
+- **Suggested revision**: fix
 
 LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED
 
@@ -127,7 +127,39 @@ EOF
 ### FINDING_1: merged title
 - **Reviewer(s)**: cursor-a-output.txt (via C.2 coverage gap), cursor-b-output.txt, cursor-c-output.txt
 - **Concern**: normalized concern
-- **Suggested revision**: fix it
+- **Suggested revision**: fix
+
+EOF
+                ;;
+            trace_wrapped)
+                cat > "$out" <<'EOF'
+### FINDING_1: merged
+- **Reviewer(s)**: cursor-a-output.txt, cursor-b-output.txt
+- **Concern**: merged
+- **Suggested revisions**:
+  - From cursor-a-output.txt: alpha one
+    alpha two tail
+  - From cursor-b-output.txt: beta phrase here
+
+EOF
+                ;;
+            unknown_from_slot)
+                cat > "$out" <<'EOF'
+### FINDING_1: merged
+- **Reviewer(s)**: cursor-a-output.txt, cursor-b-output.txt, cursor-c-output.txt
+- **Concern**: merged
+- **Suggested revisions**:
+  - From cursor-typo-output.txt: same bug
+
+EOF
+                ;;
+            untraceable_rev)
+                cat > "$out" <<'EOF'
+### FINDING_1: merged title
+- **Reviewer(s)**: cursor-a-output.txt, cursor-b-output.txt, cursor-c-output.txt
+- **Concern**: normalized concern
+- **Suggested revisions**:
+  - From cursor-a-output.txt: totally_unique_garbage_marker_xyzzy12345
 
 EOF
                 ;;
@@ -478,6 +510,91 @@ AGGREGATE_STUB_MERGE_KIND=labelled_slot \
 grep -Fq 'AGGREGATED=true' "$TMP/out-label.env" || fail "labelled-slot AGGREGATED"
 grep -Fq 'REASON=ok' "$TMP/out-label.env" || fail "labelled-slot REASON"
 grep -Fq 'MERGED_COUNT=1' "$TMP/out-label.env" || fail "labelled-slot MERGED_COUNT"
+
+echo "=== revision traceability: wrapped From lines ==="
+RT="$TMP/rt-wrapped"
+mkdir -p "$RT"
+cat > "$RT/in-trace.md" <<'EOF'
+### FINDING_1: A
+- **Reviewer**: cursor-a-output.txt
+- **Concern**: first
+- **Suggested revision**: alpha one alpha two tail
+
+### FINDING_2: B
+- **Reviewer**: cursor-b-output.txt
+- **Concern**: second
+- **Suggested revision**: beta phrase here
+
+EOF
+cp "$RT/in-trace.md" "$RT/in-trace-work.md"
+write_stub_dispatch
+AGGREGATE_DISPATCH_SH="$TMP/stub-dispatch.sh" \
+AGGREGATE_STUB_MODE=ok \
+AGGREGATE_STUB_MERGE_KIND=trace_wrapped \
+"$AGG" \
+    --findings-file "$RT/in-trace-work.md" \
+    --review-tmpdir "$RT" \
+    --codex-present true \
+    --cursor-present true \
+    --mode diff >"$TMP/out-trace-wrapped.env"
+grep -Fq 'AGGREGATED=true' "$TMP/out-trace-wrapped.env" || fail "trace-wrapped AGGREGATED"
+grep -Fq 'REASON=ok' "$TMP/out-trace-wrapped.env" || fail "trace-wrapped REASON"
+grep -Fq 'not traceable' "$RT/aggregator-validate.stderr" && fail "unexpected untraceable warning"
+
+echo "=== unknown From slot label emits stderr warning ==="
+RTU="$TMP/rt-unknown-from"
+mkdir -p "$RTU"
+cp "$TMP/in3.md" "$RTU/in3.md"
+cp "$RTU/in3.md" "$RTU/in3-work.md"
+write_stub_dispatch
+AGGREGATE_DISPATCH_SH="$TMP/stub-dispatch.sh" \
+AGGREGATE_STUB_MODE=ok \
+AGGREGATE_STUB_MERGE_KIND=unknown_from_slot \
+"$AGG" \
+    --findings-file "$RTU/in3-work.md" \
+    --review-tmpdir "$RTU" \
+    --codex-present true \
+    --cursor-present true \
+    --mode diff >"$TMP/out-unknown-from.env"
+grep -Fq 'AGGREGATED=true' "$TMP/out-unknown-from.env" || fail "unknown-from AGGREGATED"
+grep -Fq 'unknown From slot label' "$RTU/aggregator-validate.stderr" || fail "missing unknown-slot stderr"
+
+echo "=== untraceable revision bullet emits stderr warning ==="
+RTX="$TMP/rt-untraceable"
+mkdir -p "$RTX"
+cp "$TMP/in3.md" "$RTX/in3.md"
+cp "$RTX/in3.md" "$RTX/in3-work.md"
+write_stub_dispatch
+AGGREGATE_DISPATCH_SH="$TMP/stub-dispatch.sh" \
+AGGREGATE_STUB_MODE=ok \
+AGGREGATE_STUB_MERGE_KIND=untraceable_rev \
+"$AGG" \
+    --findings-file "$RTX/in3-work.md" \
+    --review-tmpdir "$RTX" \
+    --codex-present true \
+    --cursor-present true \
+    --mode diff >"$TMP/out-untr.env"
+grep -Fq 'AGGREGATED=true' "$TMP/out-untr.env" || fail "untraceable AGGREGATED"
+grep -Fq 'not traceable to scoped input' "$RTX/aggregator-validate.stderr" || fail "missing untraceable stderr"
+
+echo "=== LARCH_AGGREGATE_REVISION_TRACE_STRICT fails validation on untraceable ==="
+RTS="$TMP/rt-strict"
+mkdir -p "$RTS"
+cp "$TMP/in3.md" "$RTS/in3.md"
+cp "$RTS/in3.md" "$RTS/in3-work.md"
+write_stub_dispatch
+LARCH_AGGREGATE_REVISION_TRACE_STRICT=1 \
+AGGREGATE_DISPATCH_SH="$TMP/stub-dispatch.sh" \
+AGGREGATE_STUB_MODE=ok \
+AGGREGATE_STUB_MERGE_KIND=untraceable_rev \
+"$AGG" \
+    --findings-file "$RTS/in3-work.md" \
+    --review-tmpdir "$RTS" \
+    --codex-present true \
+    --cursor-present true \
+    --mode diff >"$TMP/out-strict.env"
+grep -Fq 'AGGREGATED=false' "$TMP/out-strict.env" || fail "strict untraceable AGGREGATED"
+grep -Fq 'REASON=validation-failed' "$TMP/out-strict.env" || fail "strict untraceable REASON"
 
 issues_parent="$TMP/agg-exec-issues"
 mkdir -p "$issues_parent"

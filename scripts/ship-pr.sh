@@ -1778,7 +1778,7 @@ run_postmerge_phase() {
 if [ -n "$RESUME_PHASE" ]; then
     case "$RESUME_PHASE" in
         force-push-gate|bump) advance_phase bump ;;
-        pr-create) state_set OOS_PENDING false; advance_phase pr-create ;;
+        pr-create) advance_phase pr-create ;;
         ci-initial) advance_phase ci-initial ;;
         ci-merge) state_set CI_PASSED false; advance_phase ci-merge ;;
         evaluate-failure) advance_phase evaluate-failure ;;
