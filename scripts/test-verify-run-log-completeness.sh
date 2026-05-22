@@ -278,6 +278,46 @@ out="$("$VERIFY" "$run_v2_final" 2>&1 || true)"
 assert_contains "v2 final-summary requires step9a1" "$out" "MISSING="
 assert_contains "v2 final-summary requires run-statistics" "$out" "run-statistics.md"
 
+# Test 17: empty steps_ran + bailed final-summary heading → step9a1 batches not required
+run_bail_sig="$TMP/run-bail-signal-step9a1"
+mkdir -p "$run_bail_sig"
+cat > "$run_bail_sig/manifest.json" <<'EOF'
+{"schema_version":2,"steps_ran":{}}
+EOF
+printf '%s\n' '## /implement run test-run — bailed' > "$run_bail_sig/final-summary.md"
+for f in plan-goals-test.md plan-review-tally.json code-review-tally.json review-findings-full.jsonl token-report.json timing-report.json execution-issues.ndjson session-transcript.jsonl version-bump-reasoning.md; do
+    printf 'placeholder\n' > "$run_bail_sig/$f"
+done
+out="$("$VERIFY" "$run_bail_sig" 2>&1 || true)"
+assert_contains "bail-signal empty steps_ran emits OK" "$out" "OK"
+
+# Test 18: empty steps_ran + completed-like heading → still require run-statistics
+run_completed_sig="$TMP/run-completed-signal-step9a1"
+mkdir -p "$run_completed_sig"
+cat > "$run_completed_sig/manifest.json" <<'EOF'
+{"schema_version":2,"steps_ran":{}}
+EOF
+printf '%s\n' '## /implement run test-run — completed' > "$run_completed_sig/final-summary.md"
+for f in plan-goals-test.md plan-review-tally.json code-review-tally.json review-findings-full.jsonl token-report.json timing-report.json execution-issues.ndjson session-transcript.jsonl version-bump-reasoning.md; do
+    printf 'placeholder\n' > "$run_completed_sig/$f"
+done
+out="$("$VERIFY" "$run_completed_sig" 2>&1 || true)"
+assert_contains "completed-signal still MISSING" "$out" "MISSING="
+assert_contains "completed-signal requires run-statistics" "$out" "run-statistics.md"
+
+# Test 19: explicit step9a1=false + non-bail summary still OK (manifest-side fix)
+run_explicit_bail="$TMP/run-explicit-step9a1-false"
+mkdir -p "$run_explicit_bail"
+cat > "$run_explicit_bail/manifest.json" <<'EOF'
+{"schema_version":2,"steps_ran":{"step9a1":false}}
+EOF
+printf '%s\n' '## /implement run test-run — completed' > "$run_explicit_bail/final-summary.md"
+for f in plan-goals-test.md plan-review-tally.json code-review-tally.json review-findings-full.jsonl token-report.json timing-report.json execution-issues.ndjson session-transcript.jsonl version-bump-reasoning.md; do
+    printf 'placeholder\n' > "$run_explicit_bail/$f"
+done
+out="$("$VERIFY" "$run_explicit_bail" 2>&1 || true)"
+assert_contains "explicit step9a1 false with completed heading emits OK" "$out" "OK"
+
 echo
 echo "Passed: $PASS"
 echo "Failed: $FAIL"

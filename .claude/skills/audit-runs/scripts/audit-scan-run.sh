@@ -138,6 +138,24 @@ scan_required_file_presence() {
         jq -ne --arg c "$1" --argjson sr "$steps_ran_obj" '($sr[$c] == false)' >/dev/null 2>&1
     }
 
+    # True when manifest has no steps_ran entries (empty object or absent steps_ran).
+    _rf_steps_ran_empty() {
+        jq -ne --argjson sr "$steps_ran_obj" '($sr | type == "object") and (($sr | keys | length) == 0)' >/dev/null 2>&1
+    }
+
+    # First non-empty line of final-summary.md ends with bailed / bailed-needs-user-input.
+    _rf_final_summary_bail_signal() {
+        local fs="$RUN_DIR/final-summary.md" line
+        [ -f "$fs" ] || return 1
+        line=$(awk 'NF { print; exit }' "$fs" 2>/dev/null || true)
+        [ -n "$line" ] || return 1
+        printf '%s\n' "$line" | grep -Eq 'bailed(-needs-user-input)?$'
+    }
+
+    _rf_bail_empty_steps_ran_skip() {
+        _rf_steps_ran_empty && _rf_final_summary_bail_signal
+    }
+
     _rf_condition_met() {
         local c="$1"
         case "$c" in
@@ -150,14 +168,29 @@ scan_required_file_presence() {
                 ;;
             step7a)
                 _rf_steps_ran_false step7a && return 1
+                if _rf_bail_empty_steps_ran_skip &&
+                    ! {
+                        _rf_has_file token-report.json || _rf_has_file timing-report.json ||
+                            _rf_has_file execution-issues.ndjson || _rf_has_file session-transcript.jsonl
+                    }; then
+                    return 1
+                fi
                 _rf_has_file token-report.json || _rf_has_file timing-report.json || _rf_has_file execution-issues.ndjson || _rf_has_file session-transcript.jsonl || _rf_condition_met step8
                 ;;
             step8)
                 _rf_steps_ran_false step8 && return 1
+                if _rf_bail_empty_steps_ran_skip &&
+                    ! { _rf_has_file version-bump-reasoning.md || _rf_has_file final-summary.md; }; then
+                    return 1
+                fi
                 _rf_has_file version-bump-reasoning.md || _rf_has_file final-summary.md || _RF_STEP9A1_MODE=chain _rf_condition_met step9a1
                 ;;
             step9a1)
                 _rf_steps_ran_false step9a1 && return 1
+                if _rf_bail_empty_steps_ran_skip &&
+                    ! { _rf_has_file run-statistics.md || _rf_has_file oos-issues.ndjson; }; then
+                    return 1
+                fi
                 # Direct required-file rows: default to "step ran" unless manifest says false.
                 # When invoked from step8's chain (_RF_STEP9A1_MODE=chain), keep the file
                 # heuristics so step8 does not widen solely from an empty run directory.

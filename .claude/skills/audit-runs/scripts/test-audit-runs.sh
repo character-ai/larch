@@ -1748,6 +1748,78 @@ else
     echo "  SKIP: audit-scan-run.sh not executable (not found at $SCAN_SCRIPT)"
 fi
 
+# Test 52: audit-scan-run — empty steps_ran + bailed final-summary heading → step9a1 files not required
+echo "Test 52: audit-scan-run bail-signal + empty steps_ran skips step9a1 requirements"
+SCAN_SCRIPT="${SCAN_SCRIPT:-$SCRIPT_DIR/audit-scan-run.sh}"
+if [ -x "$SCAN_SCRIPT" ]; then
+    P52=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-steps52-XXXXXX")
+    printf '%s\n' 'name	type	pattern	expected_outcome	severity' > "$P52/scans.tsv"
+    printf '%s\n' 'required-file-presence	file-glob	x	x	low' >> "$P52/scans.tsv"
+    printf '%s\n' 'relative_path	condition	batch_slug	extension' > "$P52/req.tsv"
+    printf '%s\n' 'oos-issues.ndjson	step9a1	x	x' >> "$P52/req.tsv"
+    printf '%s\n' 'run-statistics.md	step9a1	x	x' >> "$P52/req.tsv"
+    mkdir -p "$P52/run"
+    printf '%s\n' '{"schema_version":2,"steps_ran":{}}' > "$P52/run/manifest.json"
+    printf '%s\n' '## /implement run test-run — bailed' > "$P52/run/final-summary.md"
+    p52_out=$(bash "$SCAN_SCRIPT" --run-dir "$P52/run" --pr 2003 \
+        --scans-tsv "$P52/scans.tsv" \
+        --required-files-tsv "$P52/req.tsv" \
+        --current-version "1.0.0")
+    res52=$(printf '%s' "$p52_out" | jq -r 'select(.scan=="required-file-presence") | .result // empty' | head -1)
+    assert_equal "$res52" "pass" "[52] empty steps_ran + bailed summary → pass (step9a1 not inferred)"
+    rm -rf "$P52"
+else
+    echo "  SKIP: audit-scan-run.sh not executable (not found at $SCAN_SCRIPT)"
+fi
+
+# Test 53: audit-scan-run — empty steps_ran + completed-like heading → still fail (real incomplete)
+echo "Test 53: audit-scan-run empty steps_ran + non-bail summary still enforces step9a1"
+SCAN_SCRIPT="${SCAN_SCRIPT:-$SCRIPT_DIR/audit-scan-run.sh}"
+if [ -x "$SCAN_SCRIPT" ]; then
+    P53=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-steps53-XXXXXX")
+    printf '%s\n' 'name	type	pattern	expected_outcome	severity' > "$P53/scans.tsv"
+    printf '%s\n' 'required-file-presence	file-glob	x	x	low' >> "$P53/scans.tsv"
+    printf '%s\n' 'relative_path	condition	batch_slug	extension' > "$P53/req.tsv"
+    printf '%s\n' 'oos-issues.ndjson	step9a1	x	x' >> "$P53/req.tsv"
+    printf '%s\n' 'run-statistics.md	step9a1	x	x' >> "$P53/req.tsv"
+    mkdir -p "$P53/run"
+    printf '%s\n' '{"schema_version":2,"steps_ran":{}}' > "$P53/run/manifest.json"
+    printf '%s\n' '## /implement run test-run — completed' > "$P53/run/final-summary.md"
+    p53_out=$(bash "$SCAN_SCRIPT" --run-dir "$P53/run" --pr 2004 \
+        --scans-tsv "$P53/scans.tsv" \
+        --required-files-tsv "$P53/req.tsv" \
+        --current-version "1.0.0")
+    res53=$(printf '%s' "$p53_out" | jq -r 'select(.scan=="required-file-presence") | .result // empty' | head -1)
+    assert_equal "$res53" "fail" "[53] empty steps_ran + completed summary → fail"
+    rm -rf "$P53"
+else
+    echo "  SKIP: audit-scan-run.sh not executable (not found at $SCAN_SCRIPT)"
+fi
+
+# Test 54: audit-scan-run — explicit steps_ran.step9a1=false (implement-side fix) → pass
+echo "Test 54: audit-scan-run explicit step9a1=false still skips step9a1 files"
+SCAN_SCRIPT="${SCAN_SCRIPT:-$SCRIPT_DIR/audit-scan-run.sh}"
+if [ -x "$SCAN_SCRIPT" ]; then
+    P54=$(mktemp -d "${TMPDIR:-/tmp}/test-audit-steps54-XXXXXX")
+    printf '%s\n' 'name	type	pattern	expected_outcome	severity' > "$P54/scans.tsv"
+    printf '%s\n' 'required-file-presence	file-glob	x	x	low' >> "$P54/scans.tsv"
+    printf '%s\n' 'relative_path	condition	batch_slug	extension' > "$P54/req.tsv"
+    printf '%s\n' 'oos-issues.ndjson	step9a1	x	x' >> "$P54/req.tsv"
+    printf '%s\n' 'run-statistics.md	step9a1	x	x' >> "$P54/req.tsv"
+    mkdir -p "$P54/run"
+    printf '%s\n' '{"schema_version":2,"steps_ran":{"step9a1":false}}' > "$P54/run/manifest.json"
+    printf '%s\n' '## /implement run test-run — completed' > "$P54/run/final-summary.md"
+    p54_out=$(bash "$SCAN_SCRIPT" --run-dir "$P54/run" --pr 2005 \
+        --scans-tsv "$P54/scans.tsv" \
+        --required-files-tsv "$P54/req.tsv" \
+        --current-version "1.0.0")
+    res54=$(printf '%s' "$p54_out" | jq -r 'select(.scan=="required-file-presence") | .result // empty' | head -1)
+    assert_equal "$res54" "pass" "[54] explicit step9a1=false + non-bail summary → pass"
+    rm -rf "$P54"
+else
+    echo "  SKIP: audit-scan-run.sh not executable (not found at $SCAN_SCRIPT)"
+fi
+
 # Test 56: audit-scan-run.sh — cache-freshness informational when run lags current
 echo "Test 56: audit-scan-run cache-freshness informational (version gap)"
 SCAN_SCRIPT="${SCAN_SCRIPT:-$SCRIPT_DIR/audit-scan-run.sh}"

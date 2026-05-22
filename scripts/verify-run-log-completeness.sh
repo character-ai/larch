@@ -96,6 +96,45 @@ sys.exit(1)
 PY
 }
 
+# True when steps_ran is absent or an empty object (matches audit-scan-run bail fallback).
+manifest_steps_ran_empty() {
+    python3 - "$RUN_DIR/manifest.json" <<'PY'
+import json
+import sys
+
+path = sys.argv[1]
+try:
+    with open(path, "r", encoding="utf-8") as fh:
+        data = json.load(fh)
+    sr = data.get("steps_ran")
+    if not isinstance(sr, dict):
+        sys.exit(1)
+    sys.exit(0 if len(sr) == 0 else 1)
+except Exception:
+    sys.exit(1)
+PY
+}
+
+# First non-empty line of final-summary.md ends with bailed / bailed-needs-user-input.
+final_summary_heading_bail_signal() {
+    python3 - "$RUN_DIR/final-summary.md" <<'PY'
+import re
+import sys
+
+path = sys.argv[1]
+try:
+    with open(path, "r", encoding="utf-8", errors="replace") as fh:
+        for line in fh:
+            if line.strip():
+                if re.search(r"bailed(-needs-user-input)?$", line.rstrip("\r\n")):
+                    sys.exit(0)
+                break
+except Exception:
+    pass
+sys.exit(1)
+PY
+}
+
 has_file() {
     [ -f "$RUN_DIR/$1" ]
 }
@@ -112,6 +151,13 @@ condition_reached() {
                 condition_reached step7a
             ;;
         step7a)
+            if manifest_steps_ran_empty && final_summary_heading_bail_signal &&
+                ! {
+                    has_file token-report.json || has_file timing-report.json ||
+                        has_file execution-issues.ndjson || has_file session-transcript.jsonl
+                }; then
+                return 1
+            fi
             has_file token-report.json ||
                 has_file timing-report.json ||
                 has_file execution-issues.ndjson ||
@@ -119,6 +165,10 @@ condition_reached() {
                 condition_reached step8
             ;;
         step8)
+            if manifest_steps_ran_empty && final_summary_heading_bail_signal &&
+                ! { has_file version-bump-reasoning.md || has_file final-summary.md; }; then
+                return 1
+            fi
             has_file version-bump-reasoning.md ||
                 has_file final-summary.md ||
                 [ -n "$MANIFEST_PR_NUMBER" ] ||
@@ -126,6 +176,10 @@ condition_reached() {
             ;;
         step9a1)
             if manifest_step9a1_explicitly_skipped; then
+                return 1
+            fi
+            if manifest_steps_ran_empty && final_summary_heading_bail_signal &&
+                ! { has_file run-statistics.md || has_file oos-issues.ndjson; }; then
                 return 1
             fi
             has_file run-statistics.md ||

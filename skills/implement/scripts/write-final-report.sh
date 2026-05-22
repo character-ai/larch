@@ -341,6 +341,39 @@ cp "$body_tmp" "$summary" || {
 }
 if [ "$COMMENT_ONLY" != "true" ]; then
     cp "$body_tmp" "$run_dir/final-summary.md" 2>/dev/null || true
+    # Terminal non-merge outcomes: persist explicit steps_ran.*=false for steps that
+    # clearly did not run so audit required-file tooling is not fooled by `{}`.
+    mf_impl="$run_dir/manifest.json"
+    bail_steps_ran=false
+    case "$OUTCOME" in
+        bailed|bailed-needs-user-input|stalled|design-only|forked-dry-run|pr-created|pr-created-draft)
+            bail_steps_ran=true
+            ;;
+    esac
+    if [ "$bail_steps_ran" = true ] && [ -f "$mf_impl" ]; then
+        mf_fields=()
+        if [ ! -f "$run_dir/run-statistics.md" ] && [ ! -f "$run_dir/oos-issues.ndjson" ]; then
+            mf_fields+=(--field "steps_ran.step9a1=false")
+        fi
+        if [ ! -f "$run_dir/version-bump-reasoning.md" ]; then
+            mf_fields+=(--field "steps_ran.step8=false")
+        fi
+        if ! {
+            [ -f "$run_dir/token-report.json" ] ||
+                [ -f "$run_dir/timing-report.json" ] ||
+                [ -f "$run_dir/execution-issues.ndjson" ] ||
+                [ -f "$run_dir/session-transcript.jsonl" ]
+        }; then
+            mf_fields+=(--field "steps_ran.step7a=false")
+        fi
+        if [ "${#mf_fields[@]}" -gt 0 ]; then
+            "$PLUGIN_ROOT/scripts/larch-log.sh" manifest \
+                --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
+                --skill implement \
+                --run-id "$RUN_ID" \
+                "${mf_fields[@]}" 2>/dev/null || true
+        fi
+    fi
 fi
 
 if [ "$PRINT_STDOUT" = true ]; then
