@@ -35,8 +35,8 @@
 #      the title reflects active work immediately, instead of the
 #      multi-minute delay incurred when only /implement Step 0.5 Branch 2
 #      did the rename. /implement still re-attempts the rename idempotently
-#      so /implement remains standalone-correct when invoked with --issue
-#      against a non-pre-marked issue.
+#      so standalone /implement remains correct when invoked with positional
+#      <issue-N> against a non-pre-marked issue.
 #
 # Usage:
 #   find-lock-issue.sh <number-or-url>

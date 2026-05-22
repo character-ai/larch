@@ -76,7 +76,7 @@ while [ $# -gt 0 ]; do
         --action) ACTION="${2:?}"; shift 2 ;;
         --repo) REPO_ARG="${2:?}"; shift 2 ;;
         --create-if-missing) CREATE_IF_MISSING=true; shift ;;
-        *) larch_err "clarify-label.sh: unknown option: $1"; usage; exit 1 ;;
+        *) larch_err "clarify-label.sh: unknown option: $1"; usage; exit 2 ;;
     esac
 done
 

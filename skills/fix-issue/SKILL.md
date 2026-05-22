@@ -1,7 +1,7 @@
 ---
 name: fix-issue
 description: "Use when fixing open GitHub issues. Processes the named issue: skips if open blockers exist, triages, classifies intent, then either delegates to /implement or follows the issue's instructions inline for research/review tasks."
-argument-hint: "[--no-admin-fallback] [--no-logs-commit] [--coder=<value>] <number-or-url>"
+argument-hint: "[--merge] [--no-admin-fallback] [--no-logs-commit] [--no-dedup] [--coder=<value>] [--run-id <ID>] <number-or-url>"
 allowed-tools: Bash, Read, Grep, Glob, Skill
 ---
 

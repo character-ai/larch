@@ -19,6 +19,18 @@ Forks of `agent-sh/agnix` cannot access org-level secrets. The `add` check (run 
 
 For issues touching only `knowledge-base/`, `crates/agnix-rules/`, or `website/docs/rules/generated/` (rule-metadata or generated-docs corrections), prefix the PR title with `[skip changelog]`. For issues materially changing behavior or user-facing surfaces, do NOT add the prefix and author a `CHANGELOG.md` entry as part of the implementation.
 
+### `/implement` exit routing (delegated runs)
+
+This skill forwards to `/implement` (`skills/implement/SKILL.md`). Parse exit codes like the implement orchestrator:
+
+| Code | Meaning |
+|------|---------|
+| **0** | Normal completion of the scripted path for that attempt. |
+| **2** | Operator-visible hard errors (argv, missing/malformed `larch:plan`, `gh` / plan helpers, `persist-post-plan-keys` / related validation, etc.). |
+| **3** | **Preflight audit refused** — terminal for this attempt until upstream work resolves the plan/clarify state. On the normal clarify path, the operator must run `/design <N>` before retrying `/implement`. When `STATE=ambiguous` from `clarify-state.sh`, Preflight exits **3** **before** posting or labeling; the thread must be repaired manually — exit **3** does **not** imply a new clarify request was posted. |
+
+Do not treat every non-zero exit as a blind retry; route **3** back through `/design` / manual clarify repair, not generic re-invocation of `/implement` with the same inputs.
+
 <!-- step:1 — Parse Arguments -->
 
 Parse `$ARGUMENTS` as: first whitespace-separated token is the upstream issue number; any remaining tokens are passed through verbatim as extra flags to `/implement`.

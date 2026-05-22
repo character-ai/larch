@@ -32,7 +32,6 @@ Flags:
 
 - `--implement-tmpdir DIR`
 - `--mode diff`
-- `--panel simple|hard`
 - `--round-num N`
 - `--session-env-path FILE`
 - `--diff-file FILE`
@@ -49,7 +48,7 @@ Flags:
   `REVIEW_AND_FIX_STATUS=converged-small-changes`. Degraded rounds are excluded from the
   consecutive-rounds check.
 
-Orchestrator mode invokes `skills/review/scripts/review-core.sh` once with `--output-dir "$IMPLEMENT_TMPDIR/round-N"` and `--dynamic-archetypes "$DYNAMIC_ARCHETYPES"`. `DYNAMIC_ARCHETYPES` is resolved in priority order: `--dynamic-archetypes` / `--no-dynamic-archetypes` CLI args > **non-empty** `LARCH_DYNAMIC_ARCHETYPES_MAX` in the process environment (an empty export is ignored so session-env can supply the cap) > `LARCH_DYNAMIC_ARCHETYPES_MAX` in session-env > `6` (default when `--implement-tmpdir` is set) > `0` (standalone default). On round 1 it captures `$IMPLEMENT_TMPDIR/pre-review-untracked.txt` via `scripts/snapshot-untracked.sh` so Step 6 can detect review-created untracked files, and writes `$IMPLEMENT_TMPDIR/pre-review-head.txt` (current HEAD SHA) so `check-review-changes.sh --head-baseline` can detect the per-round commits this script makes during Step 5. When `--run-id` is set, both pre-review snapshot files are also flushed to the `pre-review-untracked` and `pre-review-head` run-log batches under `$IMPLEMENT_TMPDIR/larch-logs`.
+Orchestrator mode invokes `skills/review/scripts/review-core.sh` once with `--output-dir "$IMPLEMENT_TMPDIR/round-N"`, `--panel hard` (fixed internally — not a public `review-and-fix.sh` argv token), and `--dynamic-archetypes "$DYNAMIC_ARCHETYPES"`. `DYNAMIC_ARCHETYPES` is resolved in priority order: `--dynamic-archetypes` / `--no-dynamic-archetypes` CLI args > **non-empty** `LARCH_DYNAMIC_ARCHETYPES_MAX` in the process environment (an empty export is ignored so session-env can supply the cap) > `LARCH_DYNAMIC_ARCHETYPES_MAX` in session-env > `6` (default when `--implement-tmpdir` is set) > `0` (standalone default). On round 1 it captures `$IMPLEMENT_TMPDIR/pre-review-untracked.txt` via `scripts/snapshot-untracked.sh` so Step 6 can detect review-created untracked files, and writes `$IMPLEMENT_TMPDIR/pre-review-head.txt` (current HEAD SHA) so `check-review-changes.sh --head-baseline` can detect the per-round commits this script makes during Step 5. When `--run-id` is set, both pre-review snapshot files are also flushed to the `pre-review-untracked` and `pre-review-head` run-log batches under `$IMPLEMENT_TMPDIR/larch-logs`.
 
 After each round's `apply_findings_with_coder` dispatch finishes successfully and any submodule violations have been reverted, the script checks `git status --porcelain`. If the working tree is dirty, it stages all non-submodule changes via `git add -A` (submodule paths were already reverted, so `-A` cannot resurrect them) and calls `scripts/git-commit.sh -m "Address code review feedback (round N)"`. The commit SHA is emitted as `CODER_COMMIT_SHA`. If the working tree is clean, the script emits `CODER_STATUS=no-changes` with no commit. The coder prompt invariant ("Do NOT commit; the parent handles commits") is preserved: the bash script — not the coder — owns the commit.
 
