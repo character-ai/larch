@@ -12,10 +12,13 @@
   },
   "effort": "max",
   "started_at": "2026-05-23T00:43:58Z",
-  "updated_at": "2026-05-23T01:07:52Z",
+  "updated_at": "2026-05-23T01:08:43Z",
   "attempt": 1,
   "superseded_by": null,
   "stalled_at_step": null,
-  "steps_ran": {},
+  "steps_ran": {
+    "step9a1": false,
+    "step8": false
+  },
   "flags": {}
 }
