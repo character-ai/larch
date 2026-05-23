@@ -1,7 +1,7 @@
 ---
 name: implement
 description: "Use when implementing from a GitHub issue with a vetted in-body plan (run /design first). Materialize, implement, validate, review, version bump, PR, CI. See /research, /design, /im, /implement --merge."
-argument-hint: "[--merge] [--forked] [--draft] [--no-admin-fallback] [--no-logs-commit] [--coder <claude|codex|cursor>] [--no-dynamic-archetypes] [--dynamic-archetypes <N>] [--run-id <ID>] <issue-N>"
+argument-hint: "[--merge] [--forked] [--draft] [--no-admin-fallback] [--no-logs-commit] [--coder <claude|codex|cursor>] [--run-id <ID>] <issue-N>"
 allowed-tools: AskUserQuestion, Bash, Read, Edit, Write, Grep, Glob, Agent, Task, WebFetch, WebSearch, Skill
 ---
 
@@ -169,8 +169,6 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/rebase-push.sh --no-push --skip-if-pushed --keep-o
 | `--forked` | `false` | Fork-CI dry-run against `origin` / `upstream/main`; disables tracking-issue lifecycle, bump, merge |
 | `--draft` | `false` | Create PR as draft; implies no merge loop |
 | `--coder` | unset | Pin external implementer to claude, codex, or cursor when set; otherwise availability waterfall |
-| `--no-dynamic-archetypes` | `false` | Scout off; equivalent to `--dynamic-archetypes 0` |
-| `--dynamic-archetypes <N>` | `6` when unset | Cap 0–8 forwarded to Step 5 review |
 | `--run-id <ID>` | empty | Optional stable run id |
 
 **Mutual exclusion**: `--forked` and `--merge` together → print `**⚠ --forked and --merge are mutually exclusive. Aborting.**` and exit before Preflight. `--draft` and `--merge` together → print `**⚠ --draft and --merge are mutually exclusive. Aborting.**` and exit before Preflight.
@@ -184,7 +182,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/rebase-push.sh --no-push --skip-if-pushed --keep-o
 
 and exit **2** (orchestrator stop — do not start Preflight or Step 0).
 
-3. Removed argv surfaces (must not be accepted as flags here): `--auto`, `--quick`, `--inline`, `--design-only`, `--no-issues`, `--hard`, `--issue`, `--session-env`, `--subagent`, `--design-classification`, `--branch-info`, `--step-prefix`, `--full`.
+3. Removed argv surfaces (must not be accepted as flags here): `--auto`, `--quick`, `--inline`, `--design-only`, `--no-issues`, `--hard`, `--issue`, `--session-env`, `--subagent`, `--design-classification`, `--branch-info`, `--step-prefix`, `--full`, `--dynamic-archetypes`, `--no-dynamic-archetypes`.
 
 **`--forked`**: compatible with `--draft`, `--no-logs-commit`, `--coder`, `--merge`/`--draft` exclusions above. Tracking-issue lifecycle is disabled; when `TARGET_ISSUE_NUMBER` is set, use it only as **`UPSTREAM_DESIGN_ISSUE`** context (see Step 0 fork branch under tracking-issue resolution) — not as a local tracking issue.
 
@@ -1183,9 +1181,9 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 
 Nested review token-context propagation through `review-and-fix.sh` is pinned by `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-implement-review-token-propagation.sh` and `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-implement-review-token-propagation.md`.
 
-Derive a local `dynamic_archetypes_cap` with the same precedence `review-and-fix.sh` uses at runtime: `dynamic_archetypes_value` when Step 0 parsed or inherited a validated explicit/session-env cap; otherwise non-empty process `LARCH_DYNAMIC_ARCHETYPES_MAX`; otherwise `LARCH_DYNAMIC_ARCHETYPES_MAX` from `$IMPLEMENT_TMPDIR/session-env.sh`; otherwise `6` (implement mode default, valid up to 8). Before any prompt-side Step 5 gate compares `round_num` against a cap, set `round_cap` to the fixed base **5** (same as `run-step5-review.sh`; do **not** derive it from `POST_PLAN_WORKFLOW_PATH` or SIMPLE/HARD mapping), compute `prior_degraded_rounds` the same way the launcher counts prior degraded rounds under `$IMPLEMENT_TMPDIR/round-*/review-and-fix.env`, assign `dynamic_archetypes_cap` as above, then compute `effective_round_cap=$((round_cap + prior_degraded_rounds))`. After each child run, if the most recent output reports `DEGRADED_ROUND=true`, increment `effective_round_cap` once more for the current round before any `round_num` vs cap decision. The prompt-side gate and banner must stay in lockstep with the runtime review cap.
+Derive a local `dynamic_archetypes_cap` with the same precedence `review-and-fix.sh` uses at runtime: `dynamic_archetypes_value` when Step 0 inherited a validated session-env cap; otherwise non-empty process `LARCH_DYNAMIC_ARCHETYPES_MAX`; otherwise `LARCH_DYNAMIC_ARCHETYPES_MAX` from `$IMPLEMENT_TMPDIR/session-env.sh`; otherwise `6` (implement mode default, valid up to 8). Before any prompt-side Step 5 gate compares `round_num` against a cap, set `round_cap` to the fixed base **5** (same as `run-step5-review.sh`; do **not** derive it from `POST_PLAN_WORKFLOW_PATH` or SIMPLE/HARD mapping), compute `prior_degraded_rounds` the same way the launcher counts prior degraded rounds under `$IMPLEMENT_TMPDIR/round-*/review-and-fix.env`, assign `dynamic_archetypes_cap` as above, then compute `effective_round_cap=$((round_cap + prior_degraded_rounds))`. After each child run, if the most recent output reports `DEGRADED_ROUND=true`, increment `effective_round_cap` once more for the current round before any `round_num` vs cap decision. The prompt-side gate and banner must stay in lockstep with the runtime review cap.
 
-Print once before the first `run-step5-review.sh` invocation: `> **🔶 /implement 5: code review — review-and-fix.sh, up to $effective_round_cap rounds [base 5 + degraded-round retries]; 3-judge panel on round 1 (Claude+Codex+Cursor), 2-judge on rounds 2+ (Claude+Cursor); review panel: 6 Cursor specialists; dynamic-archetypes cap=$dynamic_archetypes_cap**`
+Print once before the first `run-step5-review.sh` invocation: `> **🔶 /implement 5: code review — review-and-fix.sh, up to $effective_round_cap rounds; 3-judge panel on round 1 (Claude+Codex+Cursor), 2-judge on rounds 2+ (Claude+Cursor); review panel: 6 Cursor specialists; dynamic-archetypes cap=$dynamic_archetypes_cap**`
 
 Track `round_num` from 1. For each round, run one foreground Bash call:
 

@@ -32,7 +32,7 @@ Pure forwarders are **not** orchestrators — they validate input (when applicab
 ```mermaid
 graph LR
     IM["/im"] -->|"--merge $ARGS"| IMPLEMENT["/implement"]
-    ALIAS["/alias"] -->|"--auto $ARGS"| IMPLEMENT
+    ALIAS["/alias"] -->|"$ARGS"| IMPLEMENT
 
     style IM fill:#6b4c2a,color:#fff
     style ALIAS fill:#6b4c2a,color:#fff
@@ -40,7 +40,7 @@ graph LR
 ```
 
 - **`/im`** — prepends `--merge` to `$ARGUMENTS` and forwards to `/implement`. Equivalent to `/implement --merge <tail>` where `<tail>` is the forwarded argv (positional `<issue-N>` for PR-shaped flows).
-- **`/alias`** — hybrid: validates alias name, delegates to `/implement` with `--auto` (and any other preset flags) to scaffold a new alias skill, then performs a sentinel-file verification (Step 4) that the expected `SKILL.md` was actually written. Auto-resolves the target directory: inside a Claude plugin source repo (two-file predicate `.claude-plugin/plugin.json` + `skills/implement/SKILL.md` at the git repo root) the alias goes under `skills/<n>/`; anywhere else, under `.claude/skills/<n>/`. Accepts optional `--merge` to merge the alias-creation PR and `--private` to force `.claude/skills/<n>/` even in a plugin repo (no-op in non-plugin repos).
+- **`/alias`** — hybrid: validates alias name, delegates to `/implement` (and any preset flags) to scaffold a new alias skill, then performs a sentinel-file verification (Step 4) that the expected `SKILL.md` was actually written. Auto-resolves the target directory: inside a Claude plugin source repo (two-file predicate `.claude-plugin/plugin.json` + `skills/implement/SKILL.md` at the git repo root) the alias goes under `skills/<n>/`; anywhere else, under `.claude/skills/<n>/`. Accepts optional `--merge` to merge the alias-creation PR and `--private` to force `.claude/skills/<n>/` even in a plugin repo (no-op in non-plugin repos).
 - **`/block-issue`** — pure delegator. Accepts two issue numbers (`ISSUE_A ISSUE_B`), resolves their GitHub GraphQL node IDs, calls the native `addBlockedBy` mutation, and verifies the dependency was recorded. Thin wrapper around `skills/block-issue/scripts/add-blocked-by.sh`. No sub-skill delegation.
 
 Pure forwarders (`/im`, `/block-issue`) are exempt from the post-invocation-verification and anti-halt-continuation rules defined in `skills/shared/subskill-invocation.md`. `/alias` is NOT exempt — it carries both the post-invocation sentinel check and the anti-halt banner/micro-reminder. See that document for the full classification rules.
@@ -108,7 +108,6 @@ Flags modify behavior across the skill hierarchy:
 |---|---|---|
 | `--quick` | `/design` | Caps sketch fan-out at the quick topology and uses quick plan review. |
 | `--full` | `/design` | Forces full sketch fan-out. When combined with `/design`, sketches use the full topology while plan review remains quick. |
-| `--auto` | `/design`, `/alias` (preset forwarding per `skills/alias/SKILL.md`) | Suppresses interactive checkpoints on supported child surfaces; `/implement`'s public argv is issue-anchored — follow `skills/implement/SKILL.md` for the exact forwarded flag set. |
 | `--no-issue` | `/research` | Skips the Step 3.5 auto-archive that files the full report as a GitHub issue. Default off (issue is filed). |
 
 ## Conditional Steps

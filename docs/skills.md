@@ -21,7 +21,7 @@ Reference for every slash command shipped by the larch plugin. Each section belo
 
 **Source**: [`skills/alias/SKILL.md`](../skills/alias/SKILL.md)
 
-Create an alias for a larch skill with preset flags. Delegates to `/implement` with `--auto` (and other preset flags) for the full pipeline per `skills/alias/SKILL.md` (code review, version bump, PR). `--merge` also merges the PR.
+Create an alias for a larch skill with preset flags. Delegates to `/implement` for the full pipeline per `skills/alias/SKILL.md` (code review, version bump, PR). `--merge` also merges the PR.
 
 **Target directory** is auto-resolved: inside a Claude plugin source repo (detected by the two-file predicate `.claude-plugin/plugin.json` AND `skills/implement/SKILL.md` at the git repo root), the alias is generated under `skills/<alias-name>/SKILL.md` (exported plugin skill, ships with the plugin); anywhere else, it's generated under `.claude/skills/<alias-name>/SKILL.md` (dev-only repo-private). `--private` forces `.claude/skills/<alias-name>/` even inside a plugin repo (escape hatch); in non-plugin repos it's a no-op.
 
@@ -55,7 +55,7 @@ Design an implementation plan with collaborative multi-reviewer review. The [ske
 
 ## `/implement`
 
-**Arguments**: `[--merge] [--forked] [--draft] [--no-admin-fallback] [--no-logs-commit] [--coder <claude|codex|cursor>] [--no-dynamic-archetypes] [--dynamic-archetypes <N>] [--run-id <ID>] <issue-N>`
+**Arguments**: `[--merge] [--forked] [--draft] [--no-admin-fallback] [--no-logs-commit] [--coder <claude|codex|cursor>] [--run-id <ID>] <issue-N>`
 
 **Source**: [`skills/implement/SKILL.md`](../skills/implement/SKILL.md) · [Diagram](../skills/implement/diagram.svg)
 
