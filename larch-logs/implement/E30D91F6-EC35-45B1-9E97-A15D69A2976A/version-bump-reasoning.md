@@ -1,12 +1,12 @@
 # Version Bump Reasoning
 
-- **Base commit**: `7a70e7be` (chore(larch-logs): flush design run CAC6AD56-616C-45CA-8ACA-F01551E5F5C6 [skip ci] (#2608))
-- **Current version**: `41.0.1`
+- **Base commit**: `1da22742` (Fixes #2590: feat(tracking): switch title-prefix state machine to DESIGNING/DESIGNED/IMPLEMENTING (#2611))
+- **Current version**: `42.0.0`
 - **Classification scope**: `skills/**` and `agents/**` only (public plugin surface).
 
 ## Result: PATCH
 
-- **New version**: `41.0.2`
+- **New version**: `42.0.1`
 
 ### PATCH rationale
 
