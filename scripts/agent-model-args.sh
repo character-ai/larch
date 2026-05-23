@@ -25,7 +25,7 @@
 #
 # Cursor effort: Cursor CLI has no dedicated reasoning-effort flag. No effort
 # tokens are emitted for Cursor. Substantive high-risk Cursor review launches
-# use cursor-wrap-prompt.sh for max-mode, and launch-cursor-review.sh owns its
+# use cursor-wrap-prompt.sh for max-mode, and launch-review.sh --tool cursor owns its
 # additional high-risk prompt suffix.
 #
 # Cursor max-mode: Cursor supports ~/.cursor/cli-config.json for max-mode, but

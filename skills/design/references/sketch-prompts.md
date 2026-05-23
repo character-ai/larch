@@ -8,7 +8,7 @@
 
 **Binding convention**: launch shell blocks in SKILL.md use the placeholder tokens `<ARCH_PROMPT>`, `<EDGE_PROMPT>`, `<INNOVATION_PROMPT>`, `<PRAGMATIC_PROMPT>`, `<GENERIC_PROMPT>` as literal substitution markers. Substitute the byte-identical prompt body from this file at launch time.
 
-**Effort convention**: reasoning effort is applied by the launcher wrappers for external launches (`launch-cursor-review.sh` uses Cursor max-mode and its high-risk prompt suffix when `--risk high`; `launch-codex-review.sh` passes Codex effort args when `--risk high`). Claude fallback Agent-tool invocations use session-default effort.
+**Effort convention**: reasoning effort is applied by the launcher wrappers for external launches (`scripts/launch-review.sh --tool cursor` uses Cursor max-mode and its high-risk prompt suffix when `--risk high`; `scripts/launch-review.sh --tool codex` passes Codex effort args when `--risk high`). Claude fallback Agent-tool invocations use session-default effort.
 
 ---
 

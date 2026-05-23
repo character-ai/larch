@@ -75,7 +75,7 @@ Seconds between `kill -0` polls in the wrapper's wait loop (and the cadence for 
 
 ## Call sites
 
-Production entry points include `scripts/launch-review.sh` (per-tool review lanes), `scripts/launch-cursor-implement.sh`, `scripts/launch-codex-implement.sh`, `scripts/launch-gemini-implement.sh`, `scripts/launch-cursor-ci.sh`, `scripts/launch-codex-ci.sh`, `scripts/dispatch-plan-voters.sh`, and `skills/review-and-fix/scripts/review-and-fix.sh` (indirectly via those launchers). Prefer the sibling launcher `.md` files for argv and timeout specifics.
+Production entry points include `scripts/launch-review.sh` (per-tool review lanes), `scripts/launch-cursor-implement.sh`, `scripts/launch-codex-implement.sh`, `scripts/launch-cursor-ci.sh`, `scripts/launch-codex-ci.sh`, `scripts/dispatch-plan-voters.sh`, and `skills/review-and-fix/scripts/review-and-fix.sh` (indirectly via those launchers). Prefer the sibling launcher `.md` files for argv and timeout specifics.
 
 ## Test harness
 

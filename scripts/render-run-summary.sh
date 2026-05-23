@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# render-run-summary.sh — shared markdown run-summary block (implement + fix-issue).
+# render-run-summary.sh — shared markdown run-summary block (implement).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
@@ -23,7 +23,7 @@ emit_body_line() {
 }
 
 usage() {
-    emit_diag "Usage: render-run-summary.sh --skill implement|fix-issue ... (see render-run-summary.md)"
+    emit_diag "Usage: render-run-summary.sh --skill implement ... (see render-run-summary.md)"
 }
 
 SKILL=""
@@ -84,7 +84,7 @@ done
 [ -n "$OUTCOME" ] || { usage; exit 2; }
 [ -n "$RUN_ID" ] || { usage; exit 2; }
 
-case "$SKILL" in implement|fix-issue) ;; *) usage; exit 2 ;; esac
+case "$SKILL" in implement) ;; *) usage; exit 2 ;; esac
 
 na() { [ -z "$1" ] && printf 'N/A\n' || printf '%s\n' "$1"; }
 

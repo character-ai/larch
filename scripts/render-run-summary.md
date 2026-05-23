@@ -1,7 +1,7 @@
 # render-run-summary.sh
 
 Shared renderer for the terminal / tracking-issue **run summary** markdown block
-used by `/implement` and `/fix-issue`. Callers normalize inputs from their own
+used by `/implement`. Callers normalize inputs from their own
 state surfaces, then invoke this script so the block stays byte-aligned across
 surfaces.
 
@@ -9,7 +9,7 @@ surfaces.
 
 ```bash
 bash scripts/render-run-summary.sh \
-  --skill implement|fix-issue \
+  --skill implement \
   --outcome <value> \
   --run-id <id> \
   --mode '<flags-or-N/A>' \
