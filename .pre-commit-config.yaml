@@ -1,6 +1,8 @@
 # Larch pre-commit configuration
 # Single source of truth for linter definitions.
-# CI uses: make lint (repo-wide via pre-commit run --all-files)
+# CI lint job uses: make lint-only (repo-wide via pre-commit run --all-files); harness
+# matrix runs make test-harnesses-N separately. Local make lint runs test-harnesses
+# then lint-only.
 # scripts/relevant-checks.sh uses: pre-commit run --files <changed-files> (scoped)
 # Developers use: pre-commit install (opt-in git hook)
 

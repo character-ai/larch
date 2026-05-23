@@ -299,7 +299,7 @@ scan_markdown_file() {
     while IFS= read -r line || [[ -n "$line" ]]; do
         ((ln++)) || true
         if [[ "$in_fence" -eq 0 ]]; then
-            if [[ "$line" =~ ^[[:space:]]*\`\`\`[[:space:]]*(bash|sh|shell)[[:space:]]*$ ]]; then
+            if [[ "$line" =~ ^[[:space:]]*\`\`\`[[:space:]]*(bash|sh|shell)([[:space:]]+.*)?$ ]]; then
                 in_fence=1
                 open_fence_line="$ln"
                 : >"$fence_tmp"
