@@ -1,0 +1,21 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/ship-pr.sh:1776-1882	Generic transient retry is exit-code driven but two planned retry sites report transient failures through stdout envelopes with rc=0	ci-wait.sh ACTION=bail and merge-pr.sh MERGE_RESULT=error/admin_failed will make with_transient_retry return immediately, so existing exit_transient_net still fires with no bounded retry	Add site-specific retry predicates or a callback mode that parses ACTION/BAIL_REASON and MERGE_RESULT/ERROR after each attempt before deciding success
+1	in_scope	important	correctness	scripts/ship-pr.sh:142-185	Source-safe plan only gates the bottom dispatch, leaving argv validation and initial state setup at top level	source scripts/ship-pr.sh with no args still exits via --state-file required; with caller args it can consume args or write state, so source_safety_no_side_effects_when_sourced cannot pass	Move argv parsing, required-arg validation, exports, write_initial_state, RESUME_PHASE handling, and the phase loop inside the BASH_SOURCE main guard; keep only definitions source-visible
+1	in_scope	important	risk-integration	plan.txt:64-73	Claude recovery role names are inconsistent between waterfall input and launcher argv	run_recovery_waterfall preserves checks-recover/pr-prep-recover/pr-create-recover for Claude, but launch-claude-ci.sh is specified to accept recover-checks/recover-pr-prep/recover-pr-create, causing the Claude tier to fail validation	Map waterfall roles to the launcher enum or use one canonical enum everywhere; add a test for the actual tier-3 argv
+1	in_scope	latent	security	scripts/launch-claude-ci.sh	New --failure-log prompt input lacks a validation/redaction test contract	A shipped write-capable Claude launcher that cats an arbitrary provided log path could disclose local files if invoked directly or through a bad caller	Require provided failure logs to be canonical regular non-symlink files under IMPLEMENT_TMPDIR/session roots, cap size, redact before prompt insertion, and add unsafe path/symlink tests
+
+1. [correctness] `scripts/ship-pr.sh:1776-1882`  
+Concern: the planned `with_transient_retry <out_var> <fail_file> <cmd...>` returns immediately on exit code 0, but `ci-wait.sh` uses `ACTION=bail` with exit 0 and `merge-pr.sh` documents exit 0 for all envelope outcomes.  
+Suggested revision: make retry decisions site-aware after parsing stdout, or make the helper accept a classifier callback.
+
+2. [correctness] `scripts/ship-pr.sh:142-185`  
+Concern: source-safety requires moving more than the final loop. Current top-level argument parsing and validation would still run when sourced.  
+Suggested revision: wrap the whole executable entry path in the `BASH_SOURCE` guard.
+
+3. [risk-integration] `plan.txt:64-73`  
+Concern: role names disagree between waterfall and the new Claude launcher.  
+Suggested revision: canonicalize the enum and test the actual `launch-claude-ci.sh --role ...` call.
+
+4. [security] `scripts/launch-claude-ci.sh`  
+Concern: `--failure-log PATH` is introduced without a validation/redaction contract.  
+Suggested revision: validate/canonicalize it like trusted context, restrict roots, cap size, redact, and test unsafe inputs.

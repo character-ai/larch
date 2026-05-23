@@ -1,0 +1,34 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: NO -- Autonomous repair is the stated plan intent; the needed change is doc/contract alignment, not preserving the old handoff.
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: NO -- The suggested fix is for source-safety, not the token-ledger/run-log success-path concern.
+FINDING_18: YES
+FINDING_19: YES
+FINDING_20: YES
+FINDING_21: YES
+FINDING_22: YES
+FINDING_23: YES
+FINDING_24: EXONERATE -- The enforcement gap is real, but a machine-readable proof envelope is larger than this recovery-plan change warrants.
+FINDING_25: EXONERATE -- Drift risk is real, but extracting a shared dispatch library adds scope beyond what this plan needs.
+FINDING_26: YES
+FINDING_27: YES
+FINDING_28: YES
+FINDING_29: YES
+FINDING_30: YES
+FINDING_31: YES
+FINDING_32: YES
+OOS_1: NO -- This belongs in the current plan because the plan adds the new harness.
+OOS_2: YES

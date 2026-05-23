@@ -1,0 +1,29 @@
+Reading the plan and referenced code paths for edge-case and failure-mode review.
+
+Validating plan line references and integration contracts in the codebase.
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/ship-pr.sh:1776-1882	ci-wait transient bail returns rc 0	Wrapping only the ci-wait.sh subprocess retries non-zero exits; ACTION=bail with a transient BAIL_REASON still exits 0 so with_transient_retry never runs and exit_transient_net at 1881-1882 stays uncovered	Retry or gate on parsed ACTION/BAIL_REASON (or a small wrapper function around the parse branch), not the raw ci-wait invocation alone
+2	in_scope	important	risk-integration	scripts/ship-pr.sh:1227-1235 vs plan tier gates	Waterfall tier availability from session-env vs today run_ci_fix_vendor uses command -v only	Session can mark CURSOR_PRESENT=false while cursor exists; waterfall would skip tier A but existing CI-fix path would still launch Cursor, changing recovery behavior and tests	Match one policy: either teach run_ci_fix_vendor to honor session-env booleans or document that waterfall uses command -v only like today
+3	in_scope	latent	architecture	scripts/ship-pr.sh:1988-2034	Partial main guard moves only the while loop per plan	RESUME_PHASE handler and all earlier entry logic still run when sourced; resume can advance phases or call run_rebase_rebump while tests expect pure library load	Extend the BASH_SOURCE guard to every side-effectful tail (including RESUME_PHASE) or document required pre-source env to neutralize resume
+4	in_scope	important	correctness	plan.txt Detail _run_step8_same_version_mechanical	Second same-version/version-regression occurrence lacks persisted counter semantics	Implementer may use ephemeral shell state and never reach exit_stall 8 on true repeat, or stall too early	Specify a RESUME_PHASE or CALLER_KIND keyed counter in state-file with clear increment and reset rules
+5	in_scope	important	correctness	plan.txt Edge cases Secret leakage bullet for with_transient_retry	Classifier inputs today mix stderr file plus appended stdout (e.g. create-pr) while bullet says stderr-only	If helper only inspects stderr, transient strings that land only on stdout never retry and silently change stall vs bail behavior	Define one classification input per site (mirror existing cat fail_file patterns) and drop the stderr-only claim unless enforced everywhere
+6	in_scope	important	correctness	scripts/ship-pr.sh:712-715	Waterfall only planned before exit_stall 6 at 750-751	resolve_checks_log_path failure still exit_stalls 6 with no vendor attempt though logs may be recoverable once tmp paths settle	Including that branch in checks-recover waterfall or explicitly documenting intentional no-waterfall fast-fail
+7	in_scope	latent	risk-integration	plan.txt run_recovery_waterfall rollback vs scripts/lint-fix-loop.sh:99-135	Delta revert uses git checkout plus rm on path sets only	forbidden-path logic also walks submodule paths from .gitmodules; tier rollback may leave submodule dirt that next tier treats as success	Reuse or factor post_dispatch_forbidden_revert inputs or explicitly extend rollback for submodule paths
+8	out_of_scope	nit	risk-integration	Makefile:43-73,412-434	New scripts/test-launch-claude-ci.sh harness wiring not in plan	Merged code can pass local bash but miss CI make lint harness registration	Add Makefile target and attach to an existing test-harnesses-* shard like test-launch-cursor-ci
+
+1. **correctness** — `scripts/ship-pr.sh:1776-1882`: ci-wait transient `exit_transient_net` sits on `ACTION=bail` with exit code 0; wrapping only the `ci-wait.sh` call cannot retry that path. Suggested revision: bind retries to the bail branch (or a wrapper that surfaces bail+transient as a retryable failure), not the subprocess line alone.
+
+2. **risk-integration** — `scripts/ship-pr.sh:1227-1235` vs plan tier gates: `run_ci_fix_vendor` picks Cursor vs Codex with `command -v` only while the plan gates tiers from `session-env.sh` booleans. Suggested revision: unify policy so session “absent” cannot diverge from binary-present reality.
+
+3. **architecture** — `scripts/ship-pr.sh:1988-2034`: source-safety that moves only the `while :` loop still leaves `RESUME_PHASE` handling and upstream entry side effects when sourced. Suggested revision: guard all mutating top-level blocks or document strict preconditions for harnesses.
+
+4. **correctness** — `plan.txt` (_run_step8_same_version_mechanical): “second occurrence” stall lacks a specified durable counter. Suggested revision: add explicit state-file fields and transitions in the plan before coding.
+
+5. **correctness** — `plan.txt` (Edge cases, `with_transient_retry` + secret bullet): several sites classify transience from combined stderr+stdout in `fail_file`; a stderr-only helper contradicts that and risks missed retries or wrong stall classification. Suggested revision: align the helper contract with each call site’s capture shape.
+
+6. **correctness** — `scripts/ship-pr.sh:712-715`: `resolve_checks_log_path` failure exits stall 6 without the new checks waterfall. Suggested revision: call waterfall there too or justify the omission in `scripts/ship-pr.md`.
+
+7. **risk-integration** — `plan.txt` rollback vs `scripts/lint-fix-loop.sh:99-135`: tier rollback by path deltas may miss submodule/forbidden-path cases the lint-fix loop handles. Suggested revision: share the forbidden-list revert machinery or extend deltas.
+
+[OUT_OF_SCOPE] Register `scripts/test-launch-claude-ci.sh` in [Makefile](Makefile) harness shards (see approximate lines 43–73 and 412–434) so CI picks up the new file; plan acceptance references `make lint` but omits explicit Makefile edits.

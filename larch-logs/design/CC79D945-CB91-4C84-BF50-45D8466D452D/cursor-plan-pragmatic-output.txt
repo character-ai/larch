@@ -1,0 +1,28 @@
+Reading the plan file and referenced paths.
+
+Validating cited line numbers and integration contracts in the codebase.
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan.txt:138-140 vs scripts/ship-pr.sh:1996-2008	Constraint H groups ship-pr-rrr-phase14 with no-op resume branches but current handler runs run_rebase_rebump and clears RESUME_PHASE	Older in-flight RESUME_PHASE=ship-pr-rrr-phase14 resumes could stop mid-rebase if handler is reduced to a no-op	Spell out retention of current ship-pr-rrr-phase14 behavior or an equivalent explicit re-entry path; reserve no-op wording for tokens that never needed run_rebase_rebump
+2	in_scope	important	architecture	plan.txt:142-144 vs scripts/ship-pr.sh:141-174,323-357,1988-2034	Source-safe guard only names the RESUME_PHASE block and while loop	Tests that source ship-pr.sh still hit argv parsing state bootstrap and validation before any new guard	Extend the guard spec to cover all top-level entry after function definitions or relocate argv and state bootstrap inside the same main guard
+3	in_scope	important	risk-integration	plan.txt:128-133 vs scripts/ship-pr.sh:1776-1882	ci-wait transient bail uses kv BAIL_REASON from stdout not stderr capture in fail_file	Retry helper keyed only on fail_file misses transient signal and retries wrong failure or not at all	Classify using the same string source as today for example stdout envelope or combined stdout plus stderr
+4	in_scope	nit	correctness	plan.txt:138-140 vs scripts/ship-pr.sh:901-908,1988-1990	Plan names RESUME_PHASE step8_apply_bump_same_version but code sets RESUME_PHASE bump with CALLER_KIND step8_apply_bump_same_version	Wrong resume case keys or duplicate branches added under a mistaken token	Align doc with actual state keys or add explicit mapping table for legacy tokens
+5	in_scope	nit	risk-integration	plan.txt:122 vs scripts/ship-pr.sh:712-715,749-751	Waterfall called only before the final exit_stall 6 path	First checks stall at resolve_checks_log_path failure never gets vendor recovery	Confirm intentional or add a narrow waterfall or shared failure helper for that path
+6	in_scope	important	security	plan.txt:81-86	Planned git checkout and rm on path deltas without quoting discipline	Word splitting or empty arg list could corrupt checkout scope	Use line-wise or array staging with empty guard and git checkout -- pathargs and rm -f -- pathargs
+7	in_scope	nit	code-quality	plan.txt:92 vs scripts/ship-pr.sh:1216-1235	Tier availability cites session-env CURSOR_PRESENT pattern in ship-pr	run_ci_fix_vendor already uses command -v cursor xor codex so tier gates may disagree with lint-fix-loop	Pick one source of truth session_get read-session-env-key or command -v and document it next to waterfall gates
+
+1. **correctness** [scripts/ship-pr.sh:1996-2008](scripts/ship-pr.sh) vs [plan.txt:138-140](<TMPDIR>/plan.txt): Constraint H calls `ship-pr-rrr-phase14` a no-op resume branch, but the live handler still validates the handoff flag, advances phase, and runs `run_rebase_rebump`. Treating that branch as a no-op would strand legacy mid-rebase resumes unless an equivalent re-entry is spelled out.
+
+2. **architecture** [plan.txt:142-144](<TMPDIR>/plan.txt) vs [scripts/ship-pr.sh:141-174,323-357,1988-2034](scripts/ship-pr.sh): Source-safe testing needs the guard to cover argv parsing, state bootstrap, and validation, not only the `RESUME_PHASE` block and `while` loop; otherwise `source scripts/ship-pr.sh` in tests still executes the top-level entry currently at lines 141–174 and 323–357.
+
+3. **risk-integration** [plan.txt:128-133](<TMPDIR>/plan.txt) vs [scripts/ship-pr.sh:1776-1882](scripts/ship-pr.sh): The `ci-wait` transient bail path classifies `bail_reason` from the stdout envelope, not stderr in `$fail_file`. `with_transient_retry` must retry and classify using the same evidence the live code uses, not stderr alone.
+
+4. **correctness** [plan.txt:138-140](<TMPDIR>/plan.txt) vs [scripts/ship-pr.sh:901-908,1988-1990](scripts/ship-pr.sh): The plan lists `step8_apply_bump_same_version` under `RESUME_PHASE` cases, but today that value is carried on `CALLER_KIND` while `RESUME_PHASE` is `bump`. Tighten the plan so implementers add the right resume keys.
+
+5. **risk-integration** [plan.txt:122](<TMPDIR>/plan.txt) vs [scripts/ship-pr.sh:712-715,749-751](scripts/ship-pr.sh): `run_checks_phase` has two `exit_stall 6` sites; the plan wires the waterfall only before the final pair. Confirm the early `resolve_checks_log_path` failure path should stay vendor-free or extend coverage.
+
+6. **security** [plan.txt:81-86](<TMPDIR>/plan.txt): Tier rollback uses `git checkout` and `rm` over computed deltas; require empty-delta guards and safe argument passing (`--`, line-wise reads, or arrays) so word-splitting cannot widen the revert blast radius.
+
+7. **code-quality** [plan.txt:92](<TMPDIR>/plan.txt) vs [scripts/ship-pr.sh:1216-1235](scripts/ship-pr.sh): Tier gates reference `CURSOR_PRESENT` / `CODEX_PRESENT` from session-env as an “existing pattern” in `ship-pr.sh`, but `run_ci_fix_vendor` already gates on `command -v cursor`. Document a single tier-availability rule so waterfall ordering matches `run_ci_fix_vendor` and `lint-fix-loop.sh`.
+
+[OUT_OF_SCOPE] [plan.txt:182-186](<TMPDIR>/plan.txt): Deferred waterfall ledger TSV and machine-readable proof KV remain useful cross-run observability; note for downstream issues if concurrent `/implement` forensics need richer artifacts without touching this issue’s scope.
