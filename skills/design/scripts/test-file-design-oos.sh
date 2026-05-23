@@ -151,6 +151,144 @@ rc=$?
 set -e
 assert_rc "annotate partial failure" 1 "$rc"
 
+# --- X1: cross-session cache recovers sentinel + annotates accepted md ---
+H1="$TMP/home-x1"
+mkdir -p "$H1/.cache/larch/design-oos-filed"
+printf 'https://github.com/example/larch/issues/7001\n' >"$H1/.cache/larch/design-oos-filed/501.md"
+mkdir -p "$TMP/x1"
+: >"$TMP/x1/execution-issues.md"
+cat >"$TMP/x1/oos-accepted-design.md" <<'EOF'
+### OOS_1: Widget
+- **Description**: something wrong
+- **Reviewer**: r1
+- **Vote tally**: YES=2 NO=0 EXONERATE=0
+- **Phase**: design
+EOF
+set +e
+out_x1=$(HOME="$H1" bash "$SUBJECT" prepare --design-tmpdir "$TMP/x1" --issue-number 501 2>/dev/null)
+rc=$?
+set -e
+assert_rc "X1 cross-session cache recovery" 0 "$rc"
+grep -q '^FILE_DESIGN_OOS_STATUS=skip-sentinel$' <<<"$out_x1" || fail "X1 not skip-sentinel"
+grep -q 'Filed URL.*issues/7001' "$TMP/x1/oos-accepted-design.md" || fail "X1 missing recovered Filed URL"
+test -f "$TMP/x1/oos-issues-created.md" || fail "X1 sentinel missing"
+grep -q 'issues/7001' "$TMP/x1/oos-issues-created.md" || fail "X1 sentinel url missing"
+
+# --- X2: in-session sentinel wins over cross-session cache ---
+H2="$TMP/home-x2"
+mkdir -p "$H2/.cache/larch/design-oos-filed"
+printf 'https://github.com/example/larch/issues/9999\n' >"$H2/.cache/larch/design-oos-filed/502.md"
+mkdir -p "$TMP/x2"
+printf 'https://github.com/example/larch/issues/9\n' >"$TMP/x2/oos-issues-created.md"
+printf 'unchanged-body\n' >"$TMP/x2/oos-accepted-design.md"
+set +e
+out_x2=$(HOME="$H2" bash "$SUBJECT" prepare --design-tmpdir "$TMP/x2" --issue-number 502 2>/dev/null)
+rc=$?
+set -e
+assert_rc "X2 in-session sentinel precedence" 0 "$rc"
+grep -q '^FILE_DESIGN_OOS_STATUS=skip-sentinel$' <<<"$out_x2" || fail "X2 not skip-sentinel"
+grep -q '^unchanged-body$' "$TMP/x2/oos-accepted-design.md" || fail "X2 accepted md should not be rewritten via cache"
+
+# --- X3: --clear-cross-session-cache deletes cache then annotate recreates it ---
+H3="$TMP/home-x3"
+mkdir -p "$H3/.cache/larch/design-oos-filed"
+printf 'https://github.com/example/larch/issues/stale\n' >"$H3/.cache/larch/design-oos-filed/303.md"
+mkdir -p "$TMP/x3"
+: >"$TMP/x3/execution-issues.md"
+cat >"$TMP/x3/oos-accepted-design.md" <<'EOF'
+### OOS_1: Widget
+- **Description**: something wrong
+- **Reviewer**: r1
+- **Vote tally**: YES=2 NO=0 EXONERATE=0
+- **Phase**: design
+EOF
+set +e
+out_x3a=$(HOME="$H3" bash "$SUBJECT" prepare --design-tmpdir "$TMP/x3" --issue-number 303 --clear-cross-session-cache 2>/dev/null)
+rc=$?
+set -e
+assert_rc "X3 prepare after cache clear" 0 "$rc"
+grep -q '^FILE_DESIGN_OOS_STATUS=ready$' <<<"$out_x3a" || fail "X3 not ready after clear"
+test ! -f "$H3/.cache/larch/design-oos-filed/303.md" || fail "X3 cache file should be deleted"
+
+cat >"$TMP/x3/issue.stdout" <<'EOF'
+ISSUES_CREATED=1
+ISSUES_FAILED=0
+ISSUES_DEDUPLICATED=0
+ISSUE_1_URL=https://github.com/example/larch/issues/30342
+EOF
+set +e
+HOME="$H3" bash "$SUBJECT" annotate --design-tmpdir "$TMP/x3" --issue-stdout-file "$TMP/x3/issue.stdout" --issue-number 303
+rc=$?
+set -e
+assert_rc "X3 annotate after clear" 0 "$rc"
+test -f "$H3/.cache/larch/design-oos-filed/303.md" || fail "X3 cache not recreated"
+grep -q 'issues/30342' "$H3/.cache/larch/design-oos-filed/303.md" || fail "X3 cache content wrong"
+
+# --- X4: first cross-session write creates cache directory ---
+H4="$TMP/home-x4"
+mkdir -p "$TMP/x4"
+: >"$TMP/x4/execution-issues.md"
+cat >"$TMP/x4/oos-accepted-design.md" <<'EOF'
+### OOS_1: Widget
+- **Description**: something wrong
+- **Reviewer**: r1
+- **Vote tally**: YES=2 NO=0 EXONERATE=0
+- **Phase**: design
+EOF
+set +e
+out_x4=$(HOME="$H4" bash "$SUBJECT" prepare --design-tmpdir "$TMP/x4" --issue-number 404 2>/dev/null)
+rc=$?
+set -e
+assert_rc "X4 prepare" 0 "$rc"
+grep -q '^FILE_DESIGN_OOS_STATUS=ready$' <<<"$out_x4" || fail "X4 not ready"
+cat >"$TMP/x4/issue.stdout" <<'EOF'
+ISSUES_CREATED=1
+ISSUES_FAILED=0
+ISSUES_DEDUPLICATED=0
+ISSUE_1_URL=https://github.com/example/larch/issues/40442
+EOF
+set +e
+HOME="$H4" bash "$SUBJECT" annotate --design-tmpdir "$TMP/x4" --issue-stdout-file "$TMP/x4/issue.stdout" --issue-number 404
+rc=$?
+set -e
+assert_rc "X4 annotate" 0 "$rc"
+test -d "$H4/.cache/larch/design-oos-filed" || fail "X4 cache dir missing"
+test -f "$H4/.cache/larch/design-oos-filed/404.md" || fail "X4 cache file missing"
+
+# --- X5: unwritable cache directory logs warning; sentinel still written ---
+H5="$TMP/home-x5"
+mkdir -p "$H5/.cache/larch/design-oos-filed"
+chmod a-w "$H5/.cache/larch/design-oos-filed"
+mkdir -p "$TMP/x5"
+: >"$TMP/x5/execution-issues.md"
+cat >"$TMP/x5/oos-accepted-design.md" <<'EOF'
+### OOS_1: Widget
+- **Description**: something wrong
+- **Reviewer**: r1
+- **Vote tally**: YES=2 NO=0 EXONERATE=0
+- **Phase**: design
+EOF
+set +e
+out_x5=$(HOME="$H5" bash "$SUBJECT" prepare --design-tmpdir "$TMP/x5" --issue-number 505 2>/dev/null)
+rc=$?
+set -e
+assert_rc "X5 prepare" 0 "$rc"
+grep -q '^FILE_DESIGN_OOS_STATUS=ready$' <<<"$out_x5" || fail "X5 not ready"
+cat >"$TMP/x5/issue.stdout" <<'EOF'
+ISSUES_CREATED=1
+ISSUES_FAILED=0
+ISSUES_DEDUPLICATED=0
+ISSUE_1_URL=https://github.com/example/larch/issues/50542
+EOF
+set +e
+HOME="$H5" bash "$SUBJECT" annotate --design-tmpdir "$TMP/x5" --issue-stdout-file "$TMP/x5/issue.stdout" --issue-number 505
+rc=$?
+set -e
+assert_rc "X5 annotate" 0 "$rc"
+grep -q 'issues/50542' "$TMP/x5/oos-issues-created.md" || fail "X5 sentinel missing url"
+grep -q 'file-design-oos' "$TMP/x5/execution-issues.md" || fail "X5 expected cache warning in execution-issues"
+chmod u+w "$H5/.cache/larch/design-oos-filed" 2>/dev/null || true
+
 if [[ "$FAIL" -ne 0 ]]; then
   echo "$FAIL case(s) failed, $PASS passed" >&2
   exit 1

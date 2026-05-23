@@ -6,12 +6,13 @@ Mechanical gate invoked from `/implement` Step 8+ after the Step 9a.1 `/issue` p
 
 ```text
 oos-disposition-gate.sh [--fork-mode] [--repo-unavailable] \
-  --accepted-files CSV (--filed-urls-file PATH)+ \
+  --accepted-files CSV (--filed-urls-file PATH)* (--filed-urls-strict-file PATH)* \
   [--oos-issues-ndjson PATH] --commit-range RANGE
 ```
 
 - `--accepted-files` — Comma-separated list of markdown paths (typically `$IMPLEMENT_TMPDIR/oos-accepted-main-agent.md`, `oos-accepted-design.md`, `oos-accepted-review.md`). Missing paths are ignored; empty aggregate is a pass.
-- `--filed-urls-file` — Repeatable. Each path is a Step 9a.1 sentinel, `/design` `oos-issues-created.md`, or any sidecar listing created issues (e.g. `oos-accepted-design.md` with `- **Filed URL**:` lines). De-duplicated `https://…/issues/<n>` tokens are counted across the **union** of all `--filed-urls-file` arguments and **unioned** with URL tokens from `--oos-issues-ndjson` when that path is supplied.
+- `--filed-urls-file` — Repeatable **loose** counter. Each path is a Step 9a.1 sentinel, `/design` `oos-issues-created.md`, or any sidecar where issue URLs appear as plain tokens (grep scans the whole file). De-duplicated `https://…/issues/<n>` tokens are counted across the **union** of all `--filed-urls-file` arguments and **unioned** with URL tokens from `--oos-issues-ndjson` when that path is supplied.
+- `--filed-urls-strict-file` — Repeatable **strict** counter. Counts only lines matching a dedicated `- **Filed URL**:` markdown list item whose value is a GitHub issue URL (same host rules as the loose counter). Incidental issue URLs elsewhere in the file (for example inside a reviewer `**Description**`) are ignored. Unique strict URLs are de-duplicated across all strict-file arguments. The gate’s `filed_urls` total is **`count_filed_urls_union_files(loose…, ndjson)` + `count_filed_url_field_lines(strict…)`** (double-counting a URL that appears in both a loose and a strict input is allowed — the pass criterion is `filed_urls >= non_security_oos`, so over-count is safe).
 - `--oos-issues-ndjson` — Optional path to the staged `oos-issues.ndjson` batch for the run. When present, unique issue URLs from this file participate in the filed-URL count, and rejected-sub-block bodies contribute `rejected_oos_markers` (see below).
 - `--commit-range` — Git revision range passed to `git log` (e.g. `$(git merge-base HEAD origin/main)..HEAD`, or `origin/main..HEAD` when merge-base is empty but `origin/main` resolves). Used only when the gate is not skipped.
 - `--fork-mode` / `--repo-unavailable` — When either is set, the gate **exits 0 immediately** (no file reads, no `git log`).
@@ -27,7 +28,7 @@ oos-disposition-gate.sh [--fork-mode] [--repo-unavailable] \
 ## Counting rules
 
 - **non_security_oos** — Parsed by `oos-non-security-block-count.awk` across all accepted files: count of `### OOS_` blocks whose body does **not** contain a dedicated `- **focus-area**:` field line whose value begins with `security` (security-routed entries are excluded). Prose such as `focus-area = security` inside a `**Description**` line does **not** mark a block as security-routed.
-- **filed_urls** — Count of unique `https://…/issues/<digits>` substrings in the union of `--filed-urls-file` and `--oos-issues-ndjson` (when provided).
+- **filed_urls** — Sum of (a) unique `https://…/issues/<digits>` substrings from the loose union of every `--filed-urls-file` path plus `--oos-issues-ndjson` (when provided), and (b) unique URLs read only from `- **Filed URL**:` field lines in every `--filed-urls-strict-file` path (`scripts/oos-disposition-shared.inc.bash`).
 - **inline** — Count of lines in `git log --format=%B RANGE` containing the literal substring `Inline-triage rule` (heuristic aggregate — any such line counts toward the total; there is no strict per-OOS index linkage).
 - **rejected_oos_markers** — For each JSON line in `--oos-issues-ndjson` whose `body` contains a Rejected heading (`## Rejected` / `Rejected / Out-of-Scope`), count `### OOS_` and `- **OOS_<digit>` lines only under the rejected section (after the first `## Rejected` heading, until the next `##` heading that is not itself a Rejected heading). Summed across all matching records.
 

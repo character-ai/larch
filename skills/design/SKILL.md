@@ -743,6 +743,8 @@ LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark 
 
 Mechanical staging + cap + file-conflict pre-pass run in Bash; the `/larch:issue` Skill call is prompt-side (same split as `/implement` Step 9a.1). Contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/file-design-oos.sh` (sibling `file-design-oos.md`); offline harness `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-file-design-oos.sh` (sibling `test-file-design-oos.md`; Makefile target `test-file-design-oos`).
 
+Cross-session idempotency: after a successful `annotate`, the helper best-effort copies `$DESIGN_TMPDIR/oos-issues-created.md` to `~/.cache/larch/design-oos-filed/<ISSUE_NUMBER>.md` (atomic `mktemp` + `mv` in that directory). A later `/design` on the same issue with a fresh `$DESIGN_TMPDIR` recovers that sentinel **before** the in-session check: if the cache file exists, is non-empty, and `$DESIGN_TMPDIR/oos-issues-created.md` is absent or empty, the URLs are restored and `oos-accepted-design.md` is annotated from them without calling `/larch:issue` again (in-session sentinel still wins when present). Operators can pass `--clear-cross-session-cache` on `prepare` to delete the cache entry for that issue and force a normal re-file when prior GitHub issues were closed or deleted. `ISSUE_NUMBER` is taken from the environment after the usual session prelude, or from `--issue-number` when tests or tooling invoke the helper directly.
+
 1. Run prepare and capture stdout to `$DESIGN_TMPDIR/oos-filing-prepare.env` (KV lines only on stdout; deps-grace warnings may appear on stderr):
    ```bash
    [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh

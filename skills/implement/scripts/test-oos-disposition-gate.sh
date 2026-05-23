@@ -361,6 +361,87 @@ rc=$?
 set -e
 assert_rc "two --filed-urls-file union passes for two OOS blocks" 0 "$rc"
 
+# --- S1: strict counter ignores incidental GitHub URL in Description; loose still counts it ---
+cat >"$TMP/s1-design.md" <<'EOF'
+### OOS_1: Ref
+- **Description**: see also https://github.com/owner/repo/issues/1234 for context
+- **Phase**: implement
+EOF
+set +e
+(
+  cd "$ORPHAN_TMP"
+  bash "$GATE" \
+    --accepted-files "$TMP/s1-design.md" \
+    --filed-urls-strict-file "$TMP/s1-design.md" \
+    --commit-range HEAD >/dev/null 2>&1
+)
+rc=$?
+set -e
+assert_rc "S1 strict-file mode ignores incidental issue URL (disposition gap exit 1)" 1 "$rc"
+
+set +e
+(
+  cd "$ORPHAN_TMP"
+  bash "$GATE" \
+    --accepted-files "$TMP/s1-design.md" \
+    --filed-urls-file "$TMP/s1-design.md" \
+    --commit-range HEAD >/dev/null 2>&1
+)
+rc=$?
+set -e
+assert_rc "S1 loose-file mode still counts incidental issue URL (pass)" 0 "$rc"
+
+# --- S2: two dedicated Filed URL field lines counted via --filed-urls-strict-file ---
+cat >"$TMP/s2-design.md" <<'EOF'
+### OOS_1: A
+- **Description**: a
+- **Phase**: implement
+- **Filed URL**: https://github.com/example/larch/issues/2700
+
+### OOS_2: B
+- **Description**: b
+- **Phase**: implement
+- **Filed URL**: https://github.com/example/larch/issues/2701
+EOF
+set +e
+(
+  cd "$ORPHAN_TMP"
+  bash "$GATE" \
+    --accepted-files "$TMP/s2-design.md" \
+    --filed-urls-strict-file "$TMP/s2-design.md" \
+    --commit-range HEAD >/dev/null 2>&1
+)
+rc=$?
+set -e
+assert_rc "S2 two Filed URL field lines via strict-file pass" 0 "$rc"
+
+# --- S3: strict + loose union covers two non-security blocks ---
+cat >"$TMP/s3-acc.md" <<'EOF'
+### OOS_1: A
+- **Phase**: implement
+### OOS_2: B
+- **Phase**: implement
+EOF
+cat >"$TMP/s3-strict.md" <<'EOF'
+### OOS_9: X
+- **Filed URL**: https://github.com/example/larch/issues/2702
+EOF
+cat >"$TMP/s3-loose.md" <<'EOF'
+https://github.com/example/larch/issues/2703
+EOF
+set +e
+(
+  cd "$ORPHAN_TMP"
+  bash "$GATE" \
+    --accepted-files "$TMP/s3-acc.md" \
+    --filed-urls-strict-file "$TMP/s3-strict.md" \
+    --filed-urls-file "$TMP/s3-loose.md" \
+    --commit-range HEAD >/dev/null 2>&1
+)
+rc=$?
+set -e
+assert_rc "S3 strict plus loose union passes for two OOS blocks" 0 "$rc"
+
 if [ "$FAIL" -ne 0 ]; then
   echo "$FAIL case(s) failed, $PASS passed" >&2
   exit 1

@@ -12,11 +12,12 @@ PLUGIN_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd -P)"
 CAP_SH="$PLUGIN_ROOT/skills/implement/scripts/oos-issue-cap.sh"
 DEPS_SH="$PLUGIN_ROOT/skills/implement/scripts/oos-file-conflict-deps.sh"
 COUNT_AWK="$PLUGIN_ROOT/skills/implement/scripts/oos-non-security-block-count.awk"
+APPEND_FAIL_SH="$PLUGIN_ROOT/scripts/append-tool-failure.sh"
 
 usage() {
   while IFS= read -r line; do larch_err "$line"; done <<'USAGE'
-usage: file-design-oos.sh prepare --design-tmpdir DIR
-       file-design-oos.sh annotate --design-tmpdir DIR --issue-stdout-file FILE
+usage: file-design-oos.sh prepare --design-tmpdir DIR [--issue-number N] [--clear-cross-session-cache]
+       file-design-oos.sh annotate --design-tmpdir DIR --issue-stdout-file FILE [--issue-number N]
 USAGE
 }
 
@@ -40,6 +41,96 @@ for i, start in enumerate(indices):
 PY
 }
 
+fdesign_issue_number() {
+  printf '%s' "${FDESIGN_ISSUE_NUMBER:-${ISSUE_NUMBER:-}}"
+}
+
+fdesign_cross_session_cache_path() {
+  local n
+  n=$(fdesign_issue_number)
+  if [[ -z "$n" ]]; then
+    return 0
+  fi
+  printf '%s' "${HOME}/.cache/larch/design-oos-filed/${n}.md"
+}
+
+fdesign_warn_append() {
+  local logf="$1" site="$2" tool="$3" msgf="$4"
+  [[ -f "$msgf" ]] || printf 'file-design-oos: (no detail)\n' >"$msgf"
+  touch "$logf" 2>/dev/null || true
+  set +e
+  bash "$APPEND_FAIL_SH" \
+    --log "$logf" \
+    --site "$site" \
+    --tool "$tool" \
+    --exit-code 1 \
+    --category "Warnings" \
+    --output-file "$msgf" \
+    --redact || true
+  set -e
+  rm -f "$msgf" 2>/dev/null || true
+}
+
+recover_oos_accepted_from_sentinel_urls() {
+  local acc="$1" sent="$2"
+  python3 - "$acc" "$sent" >"${acc}.crosssess.tmp" <<'PY'
+import re
+import sys
+
+acc_path, urls_path = sys.argv[1:3]
+with open(urls_path, encoding="utf-8") as fh:
+    urls = [ln.strip() for ln in fh if ln.strip()]
+with open(acc_path, encoding="utf-8") as fh:
+    text = fh.read()
+blk_re = re.compile(
+    r"(^###\s+OOS_(\d+):[^\n]*\n)([\s\S]*?)(?=^###\s+OOS_|\Z)",
+    re.M,
+)
+ui = 0
+while ui < len(urls):
+    m = None
+    for cand in blk_re.finditer(text):
+        block = cand.group(0)
+        if re.search(r"(?m)^\s*-\s*\*\*Filed URL\*\*\s*:", block):
+            continue
+        m = cand
+        break
+    if m is None:
+        break
+    block = m.group(0)
+    new_block = block.rstrip("\n") + f"\n- **Filed URL**: {urls[ui]}\n"
+    text = text[: m.start()] + new_block + text[m.end() :]
+    ui += 1
+sys.stdout.write(text)
+PY
+}
+
+sync_cross_session_oos_cache() {
+  local d="$1" sent="$2"
+  local warnf="$d/oos-cache-sync.stderr.log"
+  local issue_n cache_dir tmpc
+  issue_n=$(fdesign_issue_number)
+  if [[ -z "$issue_n" ]]; then
+    return 0
+  fi
+  cache_dir="${HOME}/.cache/larch/design-oos-filed"
+  : >"$warnf"
+  if ! mkdir -p "$cache_dir" 2>>"$warnf"; then
+    fdesign_warn_append "$d/execution-issues.md" "design file-design-oos cache" "file-design-oos.sh mkdir" "$warnf"
+    return 0
+  fi
+  if ! tmpc=$(mktemp "${cache_dir}/.oos-cache.XXXXXX" 2>>"$warnf"); then
+    fdesign_warn_append "$d/execution-issues.md" "design file-design-oos cache" "file-design-oos.sh mktemp" "$warnf"
+    return 0
+  fi
+  if cp "$sent" "$tmpc" 2>>"$warnf" && mv "$tmpc" "${cache_dir}/${issue_n}.md" 2>>"$warnf"; then
+    rm -f "$warnf"
+    return 0
+  fi
+  rm -f "$tmpc" 2>/dev/null || true
+  fdesign_warn_append "$d/execution-issues.md" "design file-design-oos cache" "file-design-oos.sh cache mv" "$warnf"
+}
+
 cmd_prepare() {
   local d="$DESIGN_TMPDIR"
   local acc="$d/oos-accepted-design.md"
@@ -47,10 +138,35 @@ cmd_prepare() {
   local comb="$d/oos-combined.md"
   local deps_out="$d/oos-intra-batch-deps.tsv"
   local order="$d/oos-design-filing-order.txt"
+  local cache_p warn_copy
+
+  cache_p=$(fdesign_cross_session_cache_path || true)
+
+  if [[ "${FILEDESIGN_CLEAR_CROSS_SESSION_CACHE:-false}" == true ]] && [[ -n "$cache_p" ]]; then
+    rm -f "$cache_p" 2>/dev/null || true
+  fi
 
   if [[ -f "$sent" && -s "$sent" ]]; then
     emit_kv FILE_DESIGN_OOS_STATUS skip-sentinel
     exit 0
+  fi
+
+  if [[ -n "$cache_p" && -f "$cache_p" && -s "$cache_p" ]]; then
+    warn_copy="$d/oos-cross-session-cache-copy.stderr.log"
+    : >"$warn_copy"
+    if cp "$cache_p" "${sent}.crosssess.tmp" 2>>"$warn_copy" && mv "${sent}.crosssess.tmp" "$sent" 2>>"$warn_copy"; then
+      if recover_oos_accepted_from_sentinel_urls "$acc" "$sent"; then
+        mv "${acc}.crosssess.tmp" "$acc"
+      else
+        rm -f "${acc}.crosssess.tmp"
+        printf '%s\n' 'recover_oos_accepted_from_sentinel_urls failed' >"$d/oos-recover-fail.log"
+        fdesign_warn_append "$d/execution-issues.md" "design file-design-oos cross-session" "file-design-oos.sh recover" "$d/oos-recover-fail.log"
+      fi
+      [[ ! -s "$warn_copy" ]] && rm -f "$warn_copy"
+      emit_kv FILE_DESIGN_OOS_STATUS skip-sentinel
+      exit 0
+    fi
+    fdesign_warn_append "$d/execution-issues.md" "design file-design-oos cross-session" "file-design-oos.sh cache->sentinel" "$warn_copy"
   fi
 
   if [[ ! -f "$acc" ]] || [[ ! -s "$acc" ]]; then
@@ -223,6 +339,8 @@ PY
 
   mv "${acc}.annotated.tmp" "$acc"
 
+  sync_cross_session_oos_cache "$d" "$sent"
+
   if [[ "${issues_failed:-0}" -gt 0 ]]; then
     exit 1
   fi
@@ -232,6 +350,8 @@ PY
 PHASE=""
 DESIGN_TMPDIR=""
 ISSUE_STDOUT_FILE=""
+FDESIGN_ISSUE_NUMBER=""
+FILEDESIGN_CLEAR_CROSS_SESSION_CACHE=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -243,6 +363,14 @@ while [[ $# -gt 0 ]]; do
     --issue-stdout-file)
       ISSUE_STDOUT_FILE="${2:?}"
       shift 2
+      ;;
+    --issue-number)
+      FDESIGN_ISSUE_NUMBER="${2:?}"
+      shift 2
+      ;;
+    --clear-cross-session-cache)
+      FILEDESIGN_CLEAR_CROSS_SESSION_CACHE=true
+      shift
       ;;
     -h | --help)
       usage

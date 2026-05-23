@@ -18,8 +18,9 @@ _REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 
 usage() {
   printf 'usage: oos-disposition-gate.sh [--fork-mode] [--repo-unavailable] \\\n' >&2
-  printf '  --accepted-files CSV (--filed-urls-file PATH)+ \\\n' >&2
+  printf '  --accepted-files CSV (--filed-urls-file PATH)* (--filed-urls-strict-file PATH)* \\\n' >&2
   printf '  [--oos-issues-ndjson PATH] --commit-range RANGE\n' >&2
+  printf '  (at least one of --filed-urls-file or --filed-urls-strict-file is required)\n' >&2
 }
 
 count_non_security_oos() {
@@ -61,6 +62,7 @@ count_inline_triage() {
 
 ACCEPTED_FILES=""
 FILED_URLS_FILES=()
+FILED_URLS_STRICT_FILES=()
 OOS_ISSUES_NDJSON=""
 COMMIT_RANGE=""
 FORK_MODE=false
@@ -82,6 +84,14 @@ while [ $# -gt 0 ]; do
         exit 2
       }
       FILED_URLS_FILES+=("$2")
+      shift 2
+      ;;
+    --filed-urls-strict-file)
+      [ $# -ge 2 ] || {
+        usage
+        exit 2
+      }
+      FILED_URLS_STRICT_FILES+=("$2")
       shift 2
       ;;
     --oos-issues-ndjson)
@@ -118,7 +128,11 @@ if [ "$FORK_MODE" = true ] || [ "$REPO_UNAVAILABLE" = true ]; then
   exit 0
 fi
 
-if [ -z "$ACCEPTED_FILES" ] || [ "${#FILED_URLS_FILES[@]}" -eq 0 ] || [ -z "$COMMIT_RANGE" ]; then
+if [ -z "$ACCEPTED_FILES" ] || [ -z "$COMMIT_RANGE" ]; then
+  usage
+  exit 2
+fi
+if [ "${#FILED_URLS_FILES[@]}" -eq 0 ] && [ "${#FILED_URLS_STRICT_FILES[@]}" -eq 0 ]; then
   usage
   exit 2
 fi
@@ -157,11 +171,17 @@ EOF
 oos_validate_accepted_inputs || exit 2
 
 non_sec=$(count_non_security_oos "$ACCEPTED_FILES")
+loose_part=0
 if [ -n "$OOS_ISSUES_NDJSON" ] && [ -f "$OOS_ISSUES_NDJSON" ]; then
-  filed=$(count_filed_urls_union_files "${FILED_URLS_FILES[@]}" "$OOS_ISSUES_NDJSON")
+  loose_part=$(count_filed_urls_union_files "${FILED_URLS_FILES[@]+"${FILED_URLS_FILES[@]}"}" "$OOS_ISSUES_NDJSON")
 else
-  filed=$(count_filed_urls_union_files "${FILED_URLS_FILES[@]}")
+  loose_part=$(count_filed_urls_union_files "${FILED_URLS_FILES[@]+"${FILED_URLS_FILES[@]}"}")
 fi
+strict_part=0
+if [ "${#FILED_URLS_STRICT_FILES[@]}" -gt 0 ]; then
+  strict_part=$(count_filed_url_field_lines "${FILED_URLS_STRICT_FILES[@]+"${FILED_URLS_STRICT_FILES[@]}"}")
+fi
+filed=$((loose_part + strict_part))
 rejected=0
 if [ -n "$OOS_ISSUES_NDJSON" ] && [ -f "$OOS_ISSUES_NDJSON" ]; then
   if ! rejected=$(count_rejected_oos_markers_from_ndjson "$OOS_ISSUES_NDJSON"); then
