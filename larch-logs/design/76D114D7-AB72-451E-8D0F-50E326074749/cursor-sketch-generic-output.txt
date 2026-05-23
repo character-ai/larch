@@ -1,0 +1,7 @@
+Exploring the aggregator, waterfall dispatch, validation, and Step 5 wrapper to produce an accurate read-only architectural summary.
+
+Checking how `review-core` ends the script when exiting early (e.g. `zero-findings`) to determine required KVs for an aggregator-exhausted path:
+
+Having mapped the flow: `review-core.sh` invokes aggregation then always runs voters/tally without reading `AGGREGATED`/`REASON`; an exhausted-aggregator path must short-circuit with a dedicated `REVIEW_CORE_STATUS` and `review-and-fix.sh` must assign `exit_code=2` (like `panel-failed`). Creating the plan.
+
+

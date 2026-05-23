@@ -1,0 +1,90 @@
+Reading the plan and referenced code paths for a read-only review.
+
+Validating the plan against the codebase: reading referenced files and integration points.
+
+Creating the plan review: verifying `review-core.sh` exit codes after aggregation.
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/dispatch-with-waterfall.sh:125-134	Per-phase slot output paths use output_for_phase (phase1 is the base .txt path; phase2+ use basename-phaseN.txt), not aggregator-output.txt.phaseN suffixes.	Tests and aggregate-findings.md edits that assert .phase1/.phase2/.phase3 files will fail or document nonexistent paths; merge with actual aggregator-output.txt, aggregator-output-phase2.txt, aggregator-output-phase3.txt (and PHASE*_SLOTS KVs if needed).
+1	in_scope	important	correctness	skills/review/scripts/review-core.sh:416-429	Panel-failed short-circuit exits 2; plan snippet exits 0 for validation-exhausted while claiming to mirror panel-failed.	Harnesses or future logic that treat review-core rc as failure signal diverge; inconsistent with established terminal failure for voting abort paths.	Use exit 2 (or same rc as panel-failed) and match emit_kv set; drop exit 0 from the plan snippet unless a repo-wide contract explicitly requires 0.
+1	in_scope	important	correctness	skills/review/scripts/aggregate-findings.sh:168-707	Plan test zero_findings_preamble_contradiction expects final REASON=validation-failed after introducing a three-phase loop that ends when all phases fail validation.	Full script run should surface REASON=validation-exhausted (and PHASES_ATTEMPTED), not validation-failed, unless the test is scoped to a single-phase harness only.	Clarify test as isolated aggregate-validate invocation, or assert validation-exhausted plus exhaustion artifacts; align expected REASON with emit_result contract.
+1	in_scope	important	architecture	SECURITY.md:64-65	AGENTS.md requires SECURITY.md updates for security-relevant aggregation behavior; plan file list omits SECURITY.md.	Pre-vote aggregation narrative becomes false or incomplete (multi-tool retries, exhaustion stall).	Add SECURITY.md bullet refresh alongside aggregate-findings.md.
+1	in_scope	nit	architecture	skills/review/scripts/review-core.md:57-63	Normative review-core pipeline doc omits new REVIEW_CORE_STATUS and aggregator exhaustion handoff.	Operators and subagent docs disagree with runtime KVs.	Extend review-core.md in the same change set as review-core.sh.
+1	in_scope	nit	code-quality	skills/review/scripts/aggregate-findings.sh:104-112	emit_result centralizes stdout KVs; plan discusses PHASES_ATTEMPTED but does not say to extend emit_result.	Risk of duplicate or mis-ordered emit_kv lines vs lib-quiet conventions.	Explicitly extend emit_result (or single helper) for PHASES_ATTEMPTED and REASON=validation-exhausted.
+1	out_of_scope	latent	security	skills/review/scripts/aggregate-findings.sh:168-178	Outer per-phase loop can stack with dispatch-with-waterfall internal Claude fallback (plan edge case).	Triple external dispatch increases prompt exposure surface and token spend versus today.	Document in SECURITY.md; consider optional env to suppress inner fallback when outer loop owns tool rotation (follow-up issue).
+1	out_of_scope	nit	risk-integration	larch-logs/implement/06D2F52E-5E2D-4FDD-894D-CAD7B67AB5E5/round-1/dyn-mav-resume-cap-semantics-prompt.md:132-136	Committed implement prompts enumerate STALL_REASON=panel-failed but not aggregator-validation-exhausted.	Stale operator guidance in archived prompts only.	Update if those prompts remain authoritative for training; otherwise ignore.
+
+1. **[correctness]** [scripts/dispatch-with-waterfall.sh:125-134](scripts/dispatch-with-waterfall.sh) — The plan’s `aggregator-output.txt.phase{1,2,3}` naming does not match `output_for_phase`: phase1 writes the configured base path unchanged; phase2/3 use `*-phase2.txt` / `*-phase3.txt`. **Revision:** Align tests, implementation comments, and [skills/review/scripts/aggregate-findings.md](skills/review/scripts/aggregate-findings.md) with real dispatcher paths (and `PHASE1_SLOTS` / `PHASE2_SLOTS` / `PHASE3_SLOTS` if tests need stable anchors).
+
+2. **[correctness]** [skills/review/scripts/review-core.sh:416-429](skills/review/scripts/review-core.sh) — `panel-failed` uses `exit 2`; the plan’s pseudo-code uses `exit 0` for `validation-exhausted` while calling that a mirror of panel-failed. **Revision:** Use the same exit code as `panel-failed` unless the repo documents a deliberate `0`-vs-`2` split; update the plan snippet accordingly.
+
+3. **[correctness]** [skills/review/scripts/aggregate-findings.sh](skills/review/scripts/aggregate-findings.sh) (planned waterfall + §8 of the design plan) — `zero_findings_preamble_contradiction` is described as asserting `REASON=validation-failed` on an end-to-end run that should exhaust three outer phases, which normally yields `REASON=validation-exhausted`. **Revision:** Split into a validator-only test, or change the expected aggregate stdout to `validation-exhausted` / `PHASES_ATTEMPTED=...`.
+
+4. **[architecture]** [SECURITY.md:64-65](SECURITY.md) — Multi-phase aggregation and stall semantics are security-relevant (untrusted ballot republished to external tools, failure surface). The plan’s “Files to modify” list skips `SECURITY.md` despite workspace rules. **Revision:** Add `SECURITY.md` to the change set.
+
+5. **[architecture]** [skills/review/scripts/review-core.md:57-63](skills/review/scripts/review-core.md) — No plan entry for the normative `review-core` contract when adding `REVIEW_CORE_STATUS=aggregator-validation-exhausted`. **Revision:** Update in lockstep with `review-core.sh`.
+
+6. **[code-quality]** [skills/review/scripts/aggregate-findings.sh:104-112](skills/review/scripts/aggregate-findings.sh) — `emit_result` is the single choke point for aggregator stdout shape; the plan should require extending it for `PHASES_ATTEMPTED` rather than scattering `emit_kv`. **Revision:** Call this out in the plan’s aggregate-findings section.
+
+7. **[risk-integration]** [skills/review/scripts/aggregate-findings.sh:168-178](skills/review/scripts/aggregate-findings.sh) — Acknowledged double-Claude scenario when outer phase1 forces Cursor-only presence flags while the inner dispatcher still falls back to Claude. **Revision:** Treat as documented operational risk; optional follow-up to narrow inner fallback when the outer loop owns sequencing.
+
+**[OUT_OF_SCOPE]** [larch-logs/implement/06D2F52E-5E2D-4FDD-894D-CAD7B67AB5E5/round-1/dyn-mav-resume-cap-semantics-prompt.md:132-136](larch-logs/implement/06D2F52E-5E2D-4FDD-894D-CAD7B67AB5E5/round-1/dyn-mav-resume-cap-semantics-prompt.md) — Archived Step 5 prompt text lists stall reasons without `aggregator-validation-exhausted`; low priority unless those logs are still used as live templates.
+
+Wait - I need to fix the TSV: user said "For each finding, add one record" with schema_version 1 in first column - the example shows `1` as first column for each row. Good.
+
+But my header row says "schema_version" and first data row starts with `1` - the example had:
+```
+schema_version	scope	severity	...
+1	in_scope	important	correctness	...
+```
+So first column is literal `1` for schema version in data rows. Good.
+
+I had a mistake: I used `1` in column 1 for all rows in my draft but wrote "1	in_scope" - need to ensure 8 tab-separated fields per row.
+
+Let me count fields in header: schema_version, scope, severity, focus_area, location, what, scenario_or_breakage, suggested_fix = 8 fields. Good.
+
+Double-check row "1	in_scope	important	correctness	scripts/dispatch-with-waterfall.sh:125-134	Per-phase slot output paths..."
+
+I'll remove duplicate "1" schema confusion - each row starts with 1 meaning schema version per user example.
+
+Actually re-read user message: "For each finding, add one record:" and example first column is `1` - that's schema version field value.
+
+I'll output the message now. Use markdown links in numbered section - user asked for full paths in markdown links - use relative paths like (skills/review/...)
+
+User said: "When citing paths or URLs (https://, s3://, file paths, etc.), give the full string" - for repo use full path <OPERATOR_REPO_PATH>/... or relative? "repo-relative file:line" for findings. Links can be `[text](skills/review/...)`.
+
+I'll use workspace-relative paths in links: `skills/review/scripts/...`
+
+Final output must START with schema_version tab line - no markdown before it.
+
+So the very first character is `s` from schema_version.
+
+I'll not wrap TSV in code fence per user "no markdown fences around the TSV".
+
+Let me output raw TSV with tabs.
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/dispatch-with-waterfall.sh:125-134	Plan uses aggregator-output.txt.phaseN filenames but output_for_phase uses the base path for phase1 and basename-phase2.txt basename-phase3.txt for later phases.	Tests and aggregate-findings.md would assert nonexistent artifacts and miss real dispatch outputs.	Align docs tests and any copy logic with aggregator-output.txt plus aggregator-output-phase2.txt and aggregator-output-phase3.txt emitted by dispatch-with-waterfall.sh.
+1	in_scope	important	correctness	skills/review/scripts/review-core.sh:416-429	Plan mirrors panel-failed but its snippet exits 0 while panel-failed exits 2.	Callers that key off review-core exit codes diverge from the established voting-abort contract.	Use exit 2 matching panel-failed unless the repo documents a deliberate rc split update the plan snippet accordingly.
+1	in_scope	important	correctness	skills/review/scripts/aggregate-findings.sh:168-707	Plan test zero_findings_preamble_contradiction expects REASON=validation-failed under a three-phase exhaustion design that should end in REASON=validation-exhausted.	Integration test would fail or mask the new exhaustion contract.	Assert validation-exhausted and PHASES_ATTEMPTED or scope the test to aggregate-validate only clarify intent in the plan.
+1	in_scope	important	architecture	SECURITY.md:64-65	Plan omits SECURITY.md while AGENTS.md asks for updates when aggregation behavior changes materially.	Security narrative for pre-vote aggregation becomes incomplete versus runtime multi-tool retries.	Add SECURITY.md to the file list and refresh the pre-vote aggregation bullet.
+1	in_scope	nit	architecture	skills/review/scripts/review-core.md:57-63	Normative review-core doc not listed for new REVIEW_CORE_STATUS aggregator-validation-exhausted.	Operator and subagent docs drift from runtime KVs.	Update review-core.md alongside review-core.sh.
+1	in_scope	nit	code-quality	skills/review/scripts/aggregate-findings.sh:104-112	PHASES_ATTEMPTED is specified but emit_result is not called out as the extension point.	Risk of ad-hoc emit_kv after emit_result breaking ordering conventions.	Plan should require extending emit_result for optional PHASES_ATTEMPTED.
+1	out_of_scope	latent	security	skills/review/scripts/aggregate-findings.sh:168-178	Outer phase loop stacks with inner dispatch-with-waterfall Claude fallback per plan edge case.	Extra external calls expand untrusted prompt handling and cost.	Document in SECURITY.md consider follow-up env to disable inner fallback when outer loop sequences tools.
+1	out_of_scope	nit	risk-integration	larch-logs/implement/06D2F52E-5E2D-4FDD-894D-CAD7B67AB5E5/round-1/dyn-mav-resume-cap-semantics-prompt.md:132-136	Archived Step 5 prompt prose lists STALL_REASON tokens without aggregator-validation-exhausted.	Stale training or operator copy only if these logs remain authoritative.	Update prompts if they are still templates otherwise ignore.
+
+1. **[correctness]** [`scripts/dispatch-with-waterfall.sh:125-134`](scripts/dispatch-with-waterfall.sh) — The plan’s `aggregator-output.txt.phase{1,2,3}` paths do not match `output_for_phase` (phase1 is the base `.txt` path; phase2/3 insert `-phaseN` before the extension). **Suggested revision:** Align assertions in [`skills/review/scripts/test-aggregate-findings.sh`](skills/review/scripts/test-aggregate-findings.sh) and prose in [`skills/review/scripts/aggregate-findings.md`](skills/review/scripts/aggregate-findings.md) with `aggregator-output.txt`, `aggregator-output-phase2.txt`, and `aggregator-output-phase3.txt`.
+
+2. **[correctness]** [`skills/review/scripts/review-core.sh:416-429`](skills/review/scripts/review-core.sh) — `panel-failed` exits `2`; the plan snippet exits `0` for `validation-exhausted` while claiming to mirror that branch. **Suggested revision:** Match `exit 2` (and the same KV surface as `panel-failed`) unless you document a deliberate exception.
+
+3. **[correctness]** [`skills/review/scripts/aggregate-findings.sh:168-707`](skills/review/scripts/aggregate-findings.sh) — The §8 test description expects `REASON=validation-failed` for `zero_findings_preamble_contradiction` on a full run that should exhaust three outer phases and emit `validation-exhausted`. **Suggested revision:** Assert `validation-exhausted` / `PHASES_ATTEMPTED`, or narrow the test to the Python validator in isolation.
+
+4. **[architecture]** [`SECURITY.md:64-65`](SECURITY.md) — Workspace rules call out `SECURITY.md` when aggregation behavior changes; the plan’s file list omits it. **Suggested revision:** Add and update the “Pre-vote findings aggregation” section for multi-phase tool use and the new stall path.
+
+5. **[architecture]** [`skills/review/scripts/review-core.md:57-63`](skills/review/scripts/review-core.md) — No plan item to document `REVIEW_CORE_STATUS=aggregator-validation-exhausted` in the normative pipeline doc. **Suggested revision:** Update in the same change set as [`skills/review/scripts/review-core.sh`](skills/review/scripts/review-core.sh).
+
+6. **[code-quality]** [`skills/review/scripts/aggregate-findings.sh:104-112`](skills/review/scripts/aggregate-findings.sh) — Stdout shape is centralized in `emit_result`; the plan should name that function as the place for `PHASES_ATTEMPTED`. **Suggested revision:** Extend `emit_result` explicitly in the plan to avoid stray `emit_kv` after the fact.
+
+7. **[risk-integration]** [`skills/review/scripts/aggregate-findings.sh:168-178`](skills/review/scripts/aggregate-findings.sh) — Outer per-phase forcing can stack with inner dispatcher Claude fallback (already noted in the plan’s edge cases). **Suggested revision:** Record as operational/security cost in `SECURITY.md`; optional follow-up to gate inner fallback when the outer loop owns tool rotation.
+
+**[OUT_OF_SCOPE]** [`larch-logs/implement/06D2F52E-5E2D-4FDD-894D-CAD7B67AB5E5/round-1/dyn-mav-resume-cap-semantics-prompt.md:132-136`](larch-logs/implement/06D2F52E-5E2D-4FDD-894D-CAD7B67AB5E5/round-1/dyn-mav-resume-cap-semantics-prompt.md) — Archived implement prompt still enumerates `panel-failed` stall text without `aggregator-validation-exhausted`; update only if these committed prompts remain live templates.
