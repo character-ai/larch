@@ -289,9 +289,6 @@ printf '%s\n' "$step0_section" | grep -Fq 'current-design-env-$PPID.sh' \
   || fail "(11) Step 0 must reference the PID-keyed current-design-env-$PPID.sh symlink"
 printf '%s\n' "$step0_section" | grep -Fq 'PREFLIGHT_ERROR' \
   || fail "(11) Step 0 failure guidance must mention PREFLIGHT_ERROR"
-# shellcheck disable=SC2016 # grep -F literal; backticks in markdown are not command substitution
-printf '%s\n' "$step0_section" | grep -Fq 'Only include `--caller-env "$SESSION_ENV_PATH"` in `_ss_args` when `SESSION_ENV_PATH` is non-empty (Anti-pattern #4).' \
-  || fail "(11) Step 0 must retain the Anti-pattern #4 caller-env predicate for _ss_args"
 
 printf '%s\n' "$step0_first_bash" | grep -Fq 'write-design-current-env.sh' \
   || fail "(11) Step 0a first bash block must invoke write-design-current-env.sh"
@@ -323,14 +320,30 @@ if (( setup_line >= wdce_line )); then
   fail "(11) Step 0 ordering must be session-setup.sh before write-design-current-env.sh"
 fi
 
+export_line=$(printf '%s\n' "$step0_first_bash" | grep -nF "export CLAUDE_PLUGIN_ROOT='\${CLAUDE_PLUGIN_ROOT}'" | head -1 | cut -d: -f1 || true)
+[[ -n "$export_line" && -n "$setup_line" ]] \
+  || fail "(11-A5) Step 0a first bash block must contain CLAUDE_PLUGIN_ROOT export before session-setup.sh"
+if (( export_line >= setup_line )); then
+  fail "(11-A5) export CLAUDE_PLUGIN_ROOT template must precede session-setup.sh in Step 0a first bash block"
+fi
+
+! grep -Eq 'SESSION_ENV_PATH' "$SKILL_MD" \
+  || fail "(11-A1) SESSION_ENV_PATH must not appear in design SKILL.md"
+! grep -Eq -- '--caller-env' "$SKILL_MD" \
+  || fail "(11-A2) --caller-env must not appear in design SKILL.md"
+! grep -rEq 'SESSION_ENV_PATH' "$REPO_ROOT/skills/design/" \
+  || fail "(11-A3) SESSION_ENV_PATH must not appear under skills/design/"
+! grep -rEq -- '--caller-env' "$REPO_ROOT/skills/design/" \
+  || fail "(11-A4) --caller-env must not appear under skills/design/"
+
 old_design_prose='Run the shared session setup script. This handles preflight, temp directory creation, reviewer presence check, and presence status in a single call'
 if grep -Fq "$old_design_prose" "$SKILL_MD"; then
   fail "(11) SKILL.md still contains legacy unconditional Step 0 session-setup prose"
 fi
 
-# Check 13: accepted-OOS security exclusion pins. plan-review.md owns both the
-# parent `/implement` accepted-OOS artifact write and the design visibility
-# export; both public-boundary paths must explicitly exclude accepted
+# Check 13: accepted-OOS security exclusion pins. plan-review.md owns the
+# `$DESIGN_TMPDIR/oos-accepted-design.md` write and the design `oos.md`
+# visibility export; both public-boundary paths must explicitly exclude accepted
 # security-tagged OOS blocks using the canonical token match.
 grep -F 'oos-accepted-design.md' "$PLAN_REVIEW_MD" \
   | grep -F 'excluding security-tagged findings' \

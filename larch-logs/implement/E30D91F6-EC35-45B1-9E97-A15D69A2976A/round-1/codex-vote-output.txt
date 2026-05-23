@@ -1,0 +1,20 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: EXONERATE -- Diff-size concern is real, but splitting or reworking the PR now would cost more than the review risk warrants.
+FINDING_4: EXONERATE -- Hypothetical future binary files under skills/design do not justify complicating these simple grep assertions now.
+FINDING_5: EXONERATE -- Historical changelog drift is legitimate grep noise but not worth a follow-up issue.
+FINDING_6: YES
+FINDING_7: EXONERATE -- Committed run-log volume is policy-intentional review noise, not worth a follow-up issue.
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: EXONERATE -- The stale anti-halt example is harmless and not worth raising as a required review fix.
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: EXONERATE -- Dedicated tracking-issue rename tests still cover the important gh issue view behavior, so restoring finalize harness prefetch coverage is disproportionate.
+FINDING_16: EXONERATE -- Historical changelog and run-log vocabulary is legitimate audit noise but not issue-worthy.
+FINDING_17: EXONERATE -- The naming confusion is pre-existing and too minor for a tracking issue.
+FINDING_18: NO -- The body-fetch removal is intentional marker-removal behavior and the stated security concern requires no action.
+FINDING_19: NO -- Duplicate of the in-scope voting-protocol doc drift covered by FINDING_6.
+FINDING_20: NO -- Duplicate/editorial variant of the in-scope CHANGELOG concern covered by FINDING_2.

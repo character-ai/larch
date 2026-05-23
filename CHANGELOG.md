@@ -20,6 +20,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Closed: #2590
 
+## [41.0.2] - 2026-05-22
+
+### Changed
+
+- Make /design standalone-only: remove SESSION_ENV_PATH and nested-mode branches across SKILL.md and references.
+- Establish CLAUDE_PLUGIN_ROOT in Step 0a via loader-expanded export before session-setup; simplify Bash preludes to the PID-keyed source line plus timing-ledger only.
+- Simplify tally-plan-review.sh to design-local artifacts only; drop parent tmpdir OOS handoff and implement tally-batch flush dead code.
+- Tighten CI with negative greps (A1-A4) and an ordering check (A5) for the Step 0a export vs session-setup.
+
 ## [41.0.1] - 2026-05-22
 
 ### Changed
@@ -33,6 +42,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Remove the round-trip body detector and its title marker to stop false positives from ordinary English in issue bodies.
 - Simplify tracking-issue lifecycle renames and finalize/ship-pr callers by dropping the detector pipeline and Makefile harness.
 - Update docs, agent-lint exceptions, and offline tests so the tree no longer references the removed surface outside CHANGELOG and larch-logs.
+- Align `/design` with standalone-only session wiring: drop nested-mode / `SESSION_ENV_PATH` handoffs, keep plan-review tally and accepted OOS under `$DESIGN_TMPDIR`, and refresh design/implement docs, `tally-plan-review` tests, and structure harness pins for the new contract.
 
 ## [40.0.0] - 2026-05-22
 

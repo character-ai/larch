@@ -77,7 +77,7 @@ When the concern text is ambiguous, prefer the lower bucket and surface the ambi
 
 Print a table under the header `## Plan Review Findings — Review` listing every accepted finding, in `FINDING_N` order, with columns: ID, Severity, Reviewer(s), Concern. The Concern column is a 1-10 line description drawn from the finding's `**Concern**:` field (truncate to 10 lines max; never paraphrase the concern text). After the table, also print the rejected and OOS sections for context (read from `rejected-findings.md` and `oos.md`).
 
-**Always show the table**, even when `SESSION_ENV_PATH` is non-empty (nested under `/implement`). The user must see what they are approving via the subsequent `AskUserQuestion`; the nested-mode token-reduction contract does NOT apply here because the choice is interactive and depends on visible content. In nested mode, omit the optional rejected/OOS context blocks (the artifact files remain available to the parent), but the accepted-findings table itself is mandatory.
+**Always show the table**. The user must see what they are approving via the subsequent `AskUserQuestion`. After the accepted-findings table, also print the rejected and OOS sections for context (read from `rejected-findings.md` and `oos.md`).
 
 ### Prompt
 
@@ -112,7 +112,7 @@ When `$DESIGN_TMPDIR/accepted-plan-findings.md` is empty (no accepted in-scope f
 
 ### Presentation
 
-Read `$DESIGN_TMPDIR/plan.txt` (latest revision — already includes any findings applied via Gate B). When `SESSION_ENV_PATH` is empty, print the plan under a `## Final Design Plan` header so the user can review it. When `SESSION_ENV_PATH` is non-empty, suppress the inline print; the parent reads the file.
+Read `$DESIGN_TMPDIR/plan.txt` (latest revision — already includes any findings applied via Gate B). Print the plan under a `## Final Design Plan` header so the user can review it.
 
 ### Prompt
 

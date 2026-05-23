@@ -1604,7 +1604,13 @@ if [ -z "$_oos_ndjson" ] || [ ! -f "$_oos_ndjson" ]; then
     exit 2
   fi
 fi
-_oos_accepted_csv="$IMPLEMENT_TMPDIR/oos-accepted-main-agent.md,$IMPLEMENT_TMPDIR/oos-accepted-design.md,$IMPLEMENT_TMPDIR/oos-accepted-review.md"
+_oos_design_path="$IMPLEMENT_TMPDIR/oos-accepted-design.md"
+if [ -n "${DESIGN_TMPDIR:-}" ]; then
+  _oos_design_path="$DESIGN_TMPDIR/oos-accepted-design.md"
+elif [ -f "$IMPLEMENT_TMPDIR/design-export/oos-accepted-design.md" ]; then
+  _oos_design_path="$IMPLEMENT_TMPDIR/design-export/oos-accepted-design.md"
+fi
+_oos_accepted_csv="$IMPLEMENT_TMPDIR/oos-accepted-main-agent.md,$_oos_design_path,$IMPLEMENT_TMPDIR/oos-accepted-review.md"
 _non_sec_oos=0
 _oos_blk_awk="${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/oos-non-security-block-count.awk"
 while IFS= read -r _acc; do
@@ -1633,7 +1639,7 @@ _oos_gate_log="$IMPLEMENT_TMPDIR/oos-disposition-gate.stderr.log"
 set +e
 "${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/oos-disposition-gate.sh" \
   "${_gate_extra[@]+"${_gate_extra[@]}"}" \
-  --accepted-files "$IMPLEMENT_TMPDIR/oos-accepted-main-agent.md,$IMPLEMENT_TMPDIR/oos-accepted-design.md,$IMPLEMENT_TMPDIR/oos-accepted-review.md" \
+  --accepted-files "$IMPLEMENT_TMPDIR/oos-accepted-main-agent.md,$_oos_design_path,$IMPLEMENT_TMPDIR/oos-accepted-review.md" \
   --filed-urls-file "$IMPLEMENT_TMPDIR/oos-issues-created.md" \
   --commit-range "$_oos_range" 2>"$_oos_gate_log"
 _oos_gate_rc=$?

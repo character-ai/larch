@@ -20,11 +20,9 @@ Accept when the concern is clear and unambiguous. Reject nits and speculative co
 
 **Do NOT revise `$DESIGN_TMPDIR/plan.txt`** in this step. Quick-mode review only collects findings into the output files below; plan revision is owned by Gate B (Step 3.5) per explicit user choice. Leave `plan.txt` and `diff-lines.txt` unchanged.
 
-## Output (verbosity depends on SESSION_ENV_PATH)
+## Output
 
-**When `SESSION_ENV_PATH` is non-empty** (nested under `/implement`): suppress inline prints. Token-reduction contract: nested runs MUST NOT push the full findings list into the parent context.
-
-**When `SESSION_ENV_PATH` is empty** (standalone): print accepted findings under `## Plan Review Findings (Voted In)` and the tally inline.
+Print accepted findings under `## Plan Review Findings (Voted In)` and the tally inline.
 
 ## Output files (required — same artifact set as normal mode)
 
@@ -35,7 +33,7 @@ Write to `$DESIGN_TMPDIR/` after completing the review and plan revision:
 - **`rejected-findings.md`**: one `[Plan Review]` block per rejected finding. Empty if none.
 - **`oos.md`**: one `OOS_N` block per non-security OOS observation. Empty if none. **Exclude security-tagged OOS** — same rule as `oos-accepted-design.md` below.
 
-**OOS artifact write** (when `SESSION_ENV_PATH` is non-empty): write accepted non-security OOS to `$(dirname "$SESSION_ENV_PATH")/oos-accepted-design.md`. Skip when `SESSION_ENV_PATH` is empty.
+**OOS artifact write**: write accepted non-security OOS to `$DESIGN_TMPDIR/oos-accepted-design.md` (same path as full-mode tally output).
 
 **Security detection** (apply identically to both `oos-accepted-design.md` and `oos.md`): scan each OOS block for `focus-area\s*=\s*security` (case-insensitive). Classify occurrences as **fenced** (inside a backtick code span or triple-backtick fence) or **unfenced**. Route as security only when at least one unfenced occurrence exists — if every occurrence is fenced, treat as meta-discussion and route through the normal public OOS path. When prose indicates a security concern without the literal token, apply the same "if uncertain, do not file publicly" guidance (prose-security judgment). Real security findings MUST include at least one unfenced occurrence (security counter-invariant).
 
