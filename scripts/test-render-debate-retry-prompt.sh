@@ -127,4 +127,17 @@ if run_render "no_output" vendor 2>/dev/null; then
 fi
 pass "invalid retry-tool rejected"
 
+# (l) unknown failure-reason token head rejected
+if run_render "totally_unknown_reason" cursor 2>/dev/null; then
+  fail "expected rejection on unknown failure-reason head"
+fi
+pass "unknown failure-reason head rejected"
+
+# (m) bounded prior-output excerpt embedded
+printf '%s\n' 'LINE_FROM_PREVIOUS_DEBATER_OUTPUT' >"$prev"
+run_render "no_output" codex
+grep -Fq 'Prior attempt (bounded excerpt' "$outp" || fail "prior excerpt header missing"
+grep -Fq 'LINE_FROM_PREVIOUS_DEBATER_OUTPUT' "$outp" || fail "prior excerpt body missing"
+pass "prior output excerpt embedded"
+
 printf 'PASS: test-render-debate-retry-prompt.sh — %s checks\n' "$PASS"

@@ -10,6 +10,8 @@
 
 **Substitution placeholders**: render with `{FEATURE_DESCRIPTION}`, `{SYNTHESIS_TEXT}`, `{DECISION_BLOCK}`, `{CHOSEN}`, `{ALTERNATIVE}`, `{TENSION}`, `{AFFECTED_FILES}` substituted before writing to file. The `<debater_synthesis>` and `<debater_decision>` tags stay literal — they delimit reference material for the external debater.
 
+**Structured deliverable vs. in-prompt meta**: The fenced bodies below are written verbatim to `debate-<n>-thesis-prompt.txt` / `debate-<n>-antithesis-prompt.txt` for external (or retry) consumption. `SELF-CHECK BEFORE STOPPING` and `## Content rules` are **pre-submit checklist text for the debater** — they are not additional output headings. The eligibility gate keys **only** the six ordered tag blocks and the terminal `RECOMMEND:` line.
+
 ---
 
 **Thesis agent prompt template**:
@@ -64,6 +66,8 @@ These tags are prompt-level delimiters, not a sanitization boundary — they red
 {DECISION_BLOCK}
 </debater_decision>
 ```
+
+The same **structured deliverable vs. in-prompt meta** boundary applies to the antithesis template below.
 
 **Antithesis agent prompt template**:
 ```

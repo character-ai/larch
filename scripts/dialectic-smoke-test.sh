@@ -20,7 +20,9 @@
 #     exactly one RECOMMEND: line, role-vs-RECOMMEND consistency, file:line
 #     citation in <evidence>.
 #   - Ballot anonymity: Cursor/Codex/Claude tokens MUST NOT appear in the
-#     ballot body (see "Attribution stripping" section).
+#     ballot body; common vendor/model substrings from protocol attribution
+#     stripping (Anthropic, Sonnet, Opus, Haiku) likewise (see "Attribution
+#     stripping" section).
 #   - Drift guard: protocol file contains the stable anchor sentence
 #     "Recognize exactly these four Disposition values" with the four
 #     canonical values backticked nearby.
@@ -156,11 +158,11 @@ validate_debater() {
 
 # validate_ballot_anonymity <ballot_file> <fixture_name>
 # Per skills/shared/dialectic-protocol.md "Attribution stripping" section, tool
-# names must not appear anywhere in the ballot body. Check case-insensitively
-# to catch mixed-case leaks (CURSOR, claude, Codex, etc.).
+# names and common vendor/model substrings must not appear anywhere in the
+# ballot body. Check case-insensitively to catch mixed-case leaks.
 validate_ballot_anonymity() {
     local file=$1 fixture=$2 leak=0 term
-    for term in 'Cursor' 'Codex' 'Claude'; do
+    for term in 'Cursor' 'Codex' 'Claude' 'Anthropic' 'Sonnet' 'Opus' 'Haiku'; do
         if grep -Fiq "$term" "$file"; then
             fail "$fixture: ballot $(basename "$file") contains attribution leak '$term' (case-insensitive — must not appear anywhere in ballot body)"
             leak=1
