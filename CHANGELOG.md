@@ -19,6 +19,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Migration posture**: legacy `[IN PROGRESS]` and `[PLANNED]` prefixes are stripped by `strip_lifecycle_prefix` for backward compatibility but are no longer accepted as `--state` values by `tracking-issue-write.sh` or as admission-pass prefixes.
 - **Audit scope**: workflow call sites and rename `--state` surfaces in the active runtime tree (`skills/`, `scripts/`, `agents/`, `.claude/`, `docs/`, tests) now use the new prefix set; deliberate legacy bracket literals remain only where migration, admission recovery, strip helpers, or hermetic fixtures require them. This Unreleased section documents the migration and may name the old prefixes. Historical shipped changelog bodies and `larch-logs/` were not bulk-retitled.
 
+## [42.0.9] - 2026-05-23
+
+### Changed
+
+- Move accepted non-security OOS filing upstream into /design Step 5b so URLs land before the larch:plan write, with a sentinel and annotate helper mirroring /implement patterns.
+- Split /design Step 5 into finalize (5a–5c) versus Step 6 cleanup-only so breadcrumbs and registry names match what operators actually run.
+- Let /implement skip design-pre-filed OOS blocks and union multiple disposition-gate URL files so design-side Filed URL lines satisfy the gate alongside implement tmp artifacts.
+- Document the workflow in README, skills, lifecycle, and CHANGELOG; wire Makefile test-file-design-oos into the harness shard used by lint.
+- Fix shellcheck/agent-lint issues in the new helper and structure tests (case patterns, grep quoting, SKILL harness pins).
+
 ## [42.0.7] - 2026-05-23
 
 ### Changed
