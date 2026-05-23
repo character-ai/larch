@@ -1,0 +1,28 @@
+Reading `diff-context.txt` sections for verification (allowed context file).
+
+FINDING_1: EXONERATE -- >4-digit bare-ID bypass is a narrow edge case and widening repeats the false-positive tension called out in FINDING_14/18.
+FINDING_2: EXONERATE -- single merged output path is the current contract; multi-file ambiguity is not evidenced in the provided context.
+FINDING_3: EXONERATE -- outer-phase jq label mismatch is maintainer-clarity noise only.
+FINDING_4: EXONERATE -- harness gap is the same theme as FINDING_22 with weaker specificity.
+FINDING_5: EXONERATE -- bundled voting change is visible in the diff; a separate GitHub issue would be meta-noise.
+FINDING_6: EXONERATE -- large run-log noise is normal for this repo’s implement merges, not issue-worthy.
+FINDING_7: EXONERATE -- duplicates the core concern in FINDING_1.
+FINDING_8: YES
+FINDING_9: EXONERATE -- same bundled voting-panel concern as FINDING_5; no durable tracking issue warranted.
+FINDING_10: EXONERATE -- mixed-branch blast radius is legitimate friction but not defect-level tracking.
+FINDING_11: YES
+FINDING_12: EXONERATE -- duplicate THRESHOLD_REASON telemetry point already captured by FINDING_8.
+FINDING_13: EXONERATE -- markdown breadcrumb drift is low impact versus the in-shell contract.
+FINDING_14: EXONERATE -- broad preamble signal and its tradeoff are explicit in the plan and SECURITY aggregation prose in context.
+FINDING_15: EXONERATE -- duplicate mixed-branch scope note as FINDING_10.
+FINDING_16: EXONERATE -- paths-file trust matches existing session/dispatcher trust assumptions; allowlist hardening overshoots the stated risk.
+FINDING_17: EXONERATE -- duplicate of FINDING_8.
+FINDING_18: EXONERATE -- same documented preamble false-positive tradeoff as FINDING_14.
+FINDING_19: EXONERATE -- empty first tool token implies a broken dispatcher/KV contract; hypothetical without evidence in context.
+FINDING_20: EXONERATE -- postmortem artifact retention is an ops nicety, not a functional defect.
+FINDING_21: EXONERATE -- duplicate harness-skip assertion theme of FINDING_4/22.
+FINDING_22: YES
+FINDING_23: EXONERATE -- THRESHOLD_REASON taxonomy concern is subsumed by FINDING_8.
+FINDING_24: EXONERATE -- literal-AC vs broader regex tension is acknowledged via the named empty-merge prose test in the plan context, not worth a separate acceptance fight here.
+FINDING_25: EXONERATE -- plan-to-diff traceability for unrelated concurrent edits is process commentary, not #2638 behavior correctness.
+FINDING_26: EXONERATE -- duplicate broad co-landed scope note of FINDING_10.
