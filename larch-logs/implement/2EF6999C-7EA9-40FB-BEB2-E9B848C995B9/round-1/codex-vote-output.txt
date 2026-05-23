@@ -1,0 +1,16 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: EXONERATE -- Legitimate maintenance risk, but refactoring duplicated mutation logic is more complexity than this change warrants.
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: NO -- Valid GH_HOST hostnames do not need escaping beyond dots for the stated metacharacter concern.
+FINDING_10: NO -- The committed run logs are intentional per repository policy, not a defect to track.
+FINDING_11: YES
+FINDING_12: NO -- The variable is an internal flag set by the documented CLI option, so accepting only literal true is not worth raising.
+FINDING_13: EXONERATE -- The prose gap is legitimate but too minor to file as a separate future issue.
+FINDING_14: YES
+FINDING_15: NO -- The item states there is no separate defect beyond FINDING_1.
+FINDING_16: YES

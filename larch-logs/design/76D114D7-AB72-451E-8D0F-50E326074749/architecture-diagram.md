@@ -33,7 +33,7 @@ flowchart TD
     subgraph downstream[Downstream chain]
         D1[review-and-fix.sh: aggregator-validation-exhausted case]
         D2[review-implement-step5-loop.sh: STALL_REASON=aggregator-validation-exhausted]
-        D3[/implement Step 5: stall in Tool Failures]
+        D3["/implement Step 5: stall in Tool Failures"]
     end
 
     RC1 --> AF1

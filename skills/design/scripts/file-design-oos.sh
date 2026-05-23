@@ -12,11 +12,12 @@ PLUGIN_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd -P)"
 CAP_SH="$PLUGIN_ROOT/skills/implement/scripts/oos-issue-cap.sh"
 DEPS_SH="$PLUGIN_ROOT/skills/implement/scripts/oos-file-conflict-deps.sh"
 COUNT_AWK="$PLUGIN_ROOT/skills/implement/scripts/oos-non-security-block-count.awk"
+APPEND_FAIL_SH="$PLUGIN_ROOT/scripts/append-tool-failure.sh"
 
 usage() {
   while IFS= read -r line; do larch_err "$line"; done <<'USAGE'
-usage: file-design-oos.sh prepare --design-tmpdir DIR
-       file-design-oos.sh annotate --design-tmpdir DIR --issue-stdout-file FILE
+usage: file-design-oos.sh prepare --design-tmpdir DIR [--issue-number N] [--clear-cross-session-cache]
+       file-design-oos.sh annotate --design-tmpdir DIR --issue-stdout-file FILE [--issue-number N]
 USAGE
 }
 
@@ -34,10 +35,165 @@ if not indices:
 for i, start in enumerate(indices):
     end = indices[i + 1] if i + 1 < len(indices) else len(text)
     block = text[start:end]
-    if re.search(r"(?m)^\s*-\s*\*\*Filed URL\*\*\s*:", block):
+    if re.search(r"(?m)^\s*-\s*\*\*Filed[ \t]*URL\*\*[ \t]*:", block):
         continue
     sys.stdout.write(block.rstrip("\n") + "\n\n")
 PY
+}
+
+fdesign_issue_number() {
+  printf '%s' "${FDESIGN_ISSUE_NUMBER:-${ISSUE_NUMBER:-}}"
+}
+
+fdesign_normalized_issue_number() {
+  local raw
+  raw=$(fdesign_issue_number)
+  if [[ -z "$raw" ]]; then
+    return 1
+  fi
+  if [[ ! "$raw" =~ ^[0-9]+$ ]]; then
+    return 1
+  fi
+  printf '%s' "$raw"
+}
+
+fdesign_cross_session_cache_path() {
+  local n
+  if ! n=$(fdesign_normalized_issue_number); then
+    return 0
+  fi
+  printf '%s' "${HOME}/.cache/larch/design-oos-filed/${n}.md"
+}
+
+fdesign_warn_append() {
+  local logf="$1" site="$2" tool="$3" msgf="$4"
+  [[ -f "$msgf" ]] || printf 'file-design-oos: (no detail)\n' >"$msgf"
+  touch "$logf" 2>/dev/null || true
+  set +e
+  bash "$APPEND_FAIL_SH" \
+    --log "$logf" \
+    --site "$site" \
+    --tool "$tool" \
+    --exit-code 1 \
+    --category "Warnings" \
+    --output-file "$msgf" \
+    --redact || true
+  set -e
+  rm -f "$msgf" 2>/dev/null || true
+}
+
+recover_oos_accepted_from_sentinel_urls() {
+  local acc="$1" sent="$2" rc
+  set +e
+  python3 - "$acc" "$sent" >"${acc}.crosssess.tmp" <<'PY'
+import re
+import sys
+
+acc_path, urls_path = sys.argv[1:3]
+with open(urls_path, encoding="utf-8") as fh:
+    lines = [ln.rstrip("\n") for ln in fh]
+
+maps = []
+plain_urls = []
+for ln in lines:
+    if ln.startswith("OOS_FILE_MAP\t"):
+        parts = ln.split("\t", 2)
+        if len(parts) >= 3 and parts[1].strip() and parts[2].strip():
+            maps.append((parts[1].strip(), parts[2].strip()))
+    else:
+        u = ln.strip()
+        if u.startswith("http"):
+            plain_urls.append(u)
+
+with open(acc_path, encoding="utf-8") as fh:
+    text = fh.read()
+
+blk_re = re.compile(
+    r"(^###\s+OOS_(\d+):[^\n]*\n)([\s\S]*?)(?=^###\s+OOS_|\Z)",
+    re.M,
+)
+filed_rx = re.compile(r"(?m)^\s*-\s*\*\*Filed[ \t]*URL\*\*[ \t]*:")
+
+
+def apply_url_to_oos_block(body, osnum, url):
+    blk = re.compile(
+        rf"(^###\s+OOS_{re.escape(osnum)}:[^\n]*\n)([\s\S]*?)(?=^###\s+OOS_|\Z)",
+        re.M,
+    )
+    m = blk.search(body)
+    if not m:
+        print(
+            "recover_oos_accepted_from_sentinel_urls: OOS_FILE_MAP references missing "
+            f"### OOS_{osnum}: block",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    block = m.group(0)
+    if filed_rx.search(block):
+        return body
+    new_block = block.rstrip("\n") + f"\n- **Filed URL**: {url}\n"
+    return body[: m.start()] + new_block + body[m.end() :]
+
+if maps:
+    for osnum, url in maps:
+        text = apply_url_to_oos_block(text, osnum, url)
+    sys.stdout.write(text)
+    sys.exit(0)
+
+urls = plain_urls
+ui = 0
+while ui < len(urls):
+    m = None
+    for cand in blk_re.finditer(text):
+        block = cand.group(0)
+        if filed_rx.search(block):
+            continue
+        m = cand
+        break
+    if m is None:
+        break
+    block = m.group(0)
+    new_block = block.rstrip("\n") + f"\n- **Filed URL**: {urls[ui]}\n"
+    text = text[: m.start()] + new_block + text[m.end() :]
+    ui += 1
+
+if ui != len(urls):
+    print(
+        "recover_oos_accepted_from_sentinel_urls: unconsumed sentinel URLs "
+        "after pairing with unfiled OOS blocks",
+        file=sys.stderr,
+    )
+    sys.exit(2)
+sys.stdout.write(text)
+PY
+  rc=$?
+  set -e
+  return "$rc"
+}
+
+sync_cross_session_oos_cache() {
+  local d="$1" sent="$2"
+  local warnf="$d/oos-cache-sync.stderr.log"
+  local issue_n cache_dir tmpc
+  if ! issue_n=$(fdesign_normalized_issue_number); then
+    return 0
+  fi
+  cache_dir="${HOME}/.cache/larch/design-oos-filed"
+  : >"$warnf"
+  if ! mkdir -p "$cache_dir" 2>>"$warnf"; then
+    fdesign_warn_append "$d/execution-issues.md" "design file-design-oos cache" "file-design-oos.sh mkdir" "$warnf"
+    return 0
+  fi
+  if ! tmpc=$(mktemp "${cache_dir}/.oos-cache.XXXXXX" 2>>"$warnf"); then
+    fdesign_warn_append "$d/execution-issues.md" "design file-design-oos cache" "file-design-oos.sh mktemp" "$warnf"
+    return 0
+  fi
+  if cp "$sent" "$tmpc" 2>>"$warnf" && mv "$tmpc" "${cache_dir}/${issue_n}.md" 2>>"$warnf"; then
+    rm -f "$warnf"
+    return 0
+  fi
+  rm -f "$tmpc" 2>/dev/null || true
+  fdesign_warn_append "$d/execution-issues.md" "design file-design-oos cache" "file-design-oos.sh cache mv" "$warnf"
 }
 
 cmd_prepare() {
@@ -47,10 +203,36 @@ cmd_prepare() {
   local comb="$d/oos-combined.md"
   local deps_out="$d/oos-intra-batch-deps.tsv"
   local order="$d/oos-design-filing-order.txt"
+  local cache_p warn_copy
+
+  cache_p=$(fdesign_cross_session_cache_path || true)
+
+  if [[ "${FILEDESIGN_CLEAR_CROSS_SESSION_CACHE:-false}" == true ]] && [[ -n "$cache_p" ]]; then
+    rm -f "$cache_p" 2>/dev/null || true
+  fi
 
   if [[ -f "$sent" && -s "$sent" ]]; then
     emit_kv FILE_DESIGN_OOS_STATUS skip-sentinel
     exit 0
+  fi
+
+  if [[ -n "$cache_p" && -f "$cache_p" && -s "$cache_p" ]]; then
+    warn_copy="$d/oos-cross-session-cache-copy.stderr.log"
+    : >"$warn_copy"
+    if cp "$cache_p" "${sent}.crosssess.tmp" 2>>"$warn_copy" && mv "${sent}.crosssess.tmp" "$sent" 2>>"$warn_copy"; then
+      if recover_oos_accepted_from_sentinel_urls "$acc" "$sent"; then
+        mv "${acc}.crosssess.tmp" "$acc"
+        [[ ! -s "$warn_copy" ]] && rm -f "$warn_copy"
+        emit_kv FILE_DESIGN_OOS_STATUS skip-sentinel
+        exit 0
+      fi
+      rm -f "${acc}.crosssess.tmp"
+      printf '%s\n' 'recover_oos_accepted_from_sentinel_urls failed' >"$d/oos-recover-fail.log"
+      fdesign_warn_append "$d/execution-issues.md" "design file-design-oos cross-session" "file-design-oos.sh recover" "$d/oos-recover-fail.log"
+      rm -f "$sent"
+    else
+      fdesign_warn_append "$d/execution-issues.md" "design file-design-oos cross-session" "file-design-oos.sh cache->sentinel" "$warn_copy"
+    fi
   fi
 
   if [[ ! -f "$acc" ]] || [[ ! -s "$acc" ]]; then
@@ -142,11 +324,11 @@ cmd_annotate() {
     issues_failed=0
   fi
 
-  python3 - "$acc" "$order" "$stdout_file" >"${acc}.annotated.tmp" <<'PY'
+  python3 - "$acc" "$order" "$stdout_file" "${acc}.annotated.tmp" "${sent}.tmp" <<'PY'
 import re
 import sys
 
-acc_path, order_path, stdout_path = sys.argv[1:4]
+acc_path, order_path, stdout_path, acc_out, sent_out = sys.argv[1:6]
 order = [ln.strip() for ln in open(order_path, encoding="utf-8") if ln.strip()]
 text = open(acc_path, encoding="utf-8").read()
 lines = [ln.strip() for ln in open(stdout_path, encoding="utf-8")]
@@ -168,6 +350,8 @@ for ln in lines:
     if m2:
         failed.add(m2.group(1))
 
+filed_in_block = re.compile(r"(?m)^\s*-\s*\*\*Filed[ \t]*URL\*\*[ \t]*:")
+
 for idx, osnum in enumerate(order, start=1):
     sk = str(idx)
     if sk in failed:
@@ -183,55 +367,50 @@ for idx, osnum in enumerate(order, start=1):
     if not m:
         continue
     block = m.group(0)
-    if re.search(r"(?m)^\s*-\s*\*\*Filed URL\*\*\s*:", block):
+    if filed_in_block.search(block):
         continue
     new_block = block.rstrip("\n") + f"\n- **Filed URL**: {url}\n"
     text = text[: m.start()] + new_block + text[m.end() :]
 
-sys.stdout.write(text)
+gh_url = re.compile(r"https://[^[:space:]]+/issues/[0-9]+")
+map_lines = []
+url_tokens = set()
+for idx, osnum in enumerate(order, start=1):
+    sk = str(idx)
+    if sk in failed:
+        continue
+    url = url_by_i.get(sk) or dup_by_i.get(sk)
+    if not url:
+        continue
+    map_lines.append(f"OOS_FILE_MAP\t{osnum}\t{url}\n")
+    m = gh_url.search(url)
+    if m:
+        url_tokens.add(m.group(0))
+
+with open(acc_out, "w", encoding="utf-8") as fh:
+    fh.write(text)
+with open(sent_out, "w", encoding="utf-8") as fh:
+    for ml in map_lines:
+        fh.write(ml)
+    for u in sorted(url_tokens):
+        fh.write(u + "\n")
 PY
 
-  local urls_tmp="${sent}.urls.tmp"
-  : >"$urls_tmp"
-  while IFS= read -r ln; do
-    case "$ln" in
-      ISSUE_*_DUPLICATE_OF_URL=*)
-        val="${ln#*=}"
-        val="${val//$'\r'/}"
-        if [[ -n "$val" ]]; then
-          printf '%s\n' "$val"
-        fi
-        ;;
-      ISSUE_*_URL=*)
-        val="${ln#*=}"
-        val="${val//$'\r'/}"
-        if [[ -n "$val" ]]; then
-          printf '%s\n' "$val"
-        fi
-        ;;
-    esac
-  done <"$stdout_file" | grep -Eho 'https://[^[:space:]]+/issues/[0-9]+' >>"$urls_tmp" || true
-  if [[ -s "$urls_tmp" ]]; then
-    sort -u "$urls_tmp" >"${sent}.tmp"
-    rm -f "$urls_tmp"
-    mv "${sent}.tmp" "$sent"
-  else
-    rm -f "$urls_tmp"
-    : >"${sent}.tmp"
-    mv "${sent}.tmp" "$sent"
-  fi
-
+  mv "${sent}.tmp" "$sent"
   mv "${acc}.annotated.tmp" "$acc"
 
   if [[ "${issues_failed:-0}" -gt 0 ]]; then
     exit 1
   fi
+  sync_cross_session_oos_cache "$d" "$sent"
   exit 0
 }
 
 PHASE=""
 DESIGN_TMPDIR=""
 ISSUE_STDOUT_FILE=""
+FDESIGN_ISSUE_NUMBER=""
+FILEDESIGN_CLEAR_CROSS_SESSION_CACHE=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -244,6 +423,14 @@ while [[ $# -gt 0 ]]; do
       ISSUE_STDOUT_FILE="${2:?}"
       shift 2
       ;;
+    --issue-number)
+      FDESIGN_ISSUE_NUMBER="${2:?}"
+      shift 2
+      ;;
+    --clear-cross-session-cache)
+      FILEDESIGN_CLEAR_CROSS_SESSION_CACHE=true
+      shift
+      ;;
     -h | --help)
       usage
       exit 0
@@ -255,6 +442,12 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+if [[ "$PHASE" == annotate ]] && [[ "${FILEDESIGN_CLEAR_CROSS_SESSION_CACHE:-false}" == true ]]; then
+  larch_err "file-design-oos: --clear-cross-session-cache is only valid for prepare"
+  usage
+  exit 2
+fi
 
 if [[ -z "$PHASE" || -z "$DESIGN_TMPDIR" ]]; then
   usage

@@ -1,0 +1,9 @@
+Gathering the diff and commit list for a structured review.
+
+Checking a few high-risk spots: `_oos_github_issue_url_ere` definition, `cmd_annotate` Python exit handling, and S2 markdown vs strict regex.
+
+We have enough to write the review: one Important (duplication / maintainability amplified by the branch), one Nit (SKILL paragraph density), optional Latent (URL token regex vs shared ere — weak). I'll include the Latent as concise nit-level latent.
+
+Calling CreatePlan is inappropriate for a deliverable code review; the user asked for the review structure directly.
+
+

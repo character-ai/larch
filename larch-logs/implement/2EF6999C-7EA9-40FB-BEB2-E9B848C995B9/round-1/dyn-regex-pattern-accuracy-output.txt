@@ -1,0 +1,21 @@
+Gathering the diff, commit list, and focused source regions for a correctness review.
+
+Reading `_oos_github_issue_url_ere`, the full `count_filed_url_field_lines` implementation, and the Python recovery logic for edge cases.
+
+Checking how `annotate` emits Filed URL lines and whether sentinel URL order is preserved.
+
+Checking for a mismatch between SKILL.md’s cross-session wording and `prepare` ordering, and confirming the recovery loop when URL count differs from unfiled-block count.
+
+### In-Scope Findings
+
+- **correctness** `skills/design/scripts/file-design-oos.sh:74-104` — Cross-session `recover_oos_accepted_from_sentinel_urls` walks URLs in `oos-issues-created.md` order and, on each step, injects `urls[ui]` into the first `### OOS_*` block that still lacks a `Filed URL` line. That list is produced in `cmd_annotate` by collecting URLs from stdout and then `sort -u` (`skills/design/scripts/file-design-oos.sh:329-331`), so order is lexicographic, not `oos-design-filing-order.txt` order and not aligned with `ISSUE_<i>_URL` indices. With multiple accepted OOS items, lexical order of GitHub URLs can disagree with OOS block order, so recovery can stamp the wrong issue URL onto the wrong OOS block while still emitting `FILE_DESIGN_OOS_STATUS=skip-sentinel`. **Suggested fix:** persist a deterministic mapping for recovery (for example extend the cached sentinel to `OOS_<n><TAB><url>` lines written alongside the sorted URL list, or drop `sort -u` for the cache copy only and preserve declaration order), and drive recovery with the same keyed logic as the annotate Python (`cmd_annotate` `skills/design/scripts/file-design-oos.sh:287-305`).
+
+- **correctness** `scripts/oos-disposition-shared.inc.bash:47` — The strict-line ERE requires `\*\*:` immediately before the colon, whereas other helpers use `\*\*Filed URL\*\*\s*:` (`skills/design/scripts/file-design-oos.sh:38`, `skills/design/scripts/file-design-oos.sh:94`). A manually edited or tooling-emitted line such as `- **Filed URL** : https://…` (space before colon) would be ignored by `count_filed_url_field_lines`, under-counting `filed_urls` versus blocks that the rest of the pipeline already treats as filed. **Suggested fix:** align the strict prefix with the looser “optional whitespace before colon” convention, e.g. `\*\*Filed[[:space:]]URL\*\*[[:space:]]*:` in the `grep -E` pattern, or normalize accepted markdown before counting.
+
+### Out-of-Scope Observations
+
+- The diff also adds `larch-logs/implement/2EF6999C-7EA9-40FB-BEB2-E9B848C995B9/*` run artifacts; unrelated to regex safety but increases repo noise versus functional code.
+
+- Embedding `_oos_github_issue_url_ere` into `pat` for `grep -E` is consistent with its existing definition (`scripts/oos-disposition-shared.inc.bash:9-17`): default output uses only escaped dots and bracket expressions; Enterprise mode adds a parenthesized alternation that remains valid ERE. Residual risk if `GH_HOST` ever contained other regex metacharacters is inherited from the shared helper, not newly introduced by concatenation.
+
+- `recover_oos_accepted_from_sentinel_urls`’s block regex with `(?=^###\s+OOS_|\Z)` behaves sensibly for a final block without a trailing newline because `\Z` anchors the end of the string; no separate defect found there beyond the URL-ordering issue above.

@@ -1,0 +1,14 @@
+Gathering the diff, commit list, and targeted test/gate code for a correctness-focused review.
+
+Verifying `ORPHAN_TMP` setup in the disposition gate test and confirming the gate's pass criterion for S3.
+
+### In-Scope Findings
+
+- **correctness** `skills/implement/scripts/test-oos-disposition-gate.sh:418-443` — Case S3 is titled as proving the strict-plus-loose union for two non-security blocks, but `oos-disposition-gate.sh` still passes on any `filed > 0` once `non_sec > 0` (see `skills/implement/scripts/oos-disposition-gate.sh:199-201`), so the same exit 0 would occur if only one of the two URL sources were wired into the total (for example `filed == 1` with `non_sec == 2`). The assertion therefore does not falsify a regression where the strict sum or the loose sum is dropped while the other path still yields a single counted URL. **Suggested fix:** Tighten the regression so it depends on both channels (for example assert the gate’s stderr summary line or add a companion shell check that runs the gate twice with fixtures where each input file alone must yield `filed == 0` under the same `non_sec`, while together they yield a pass—constructed so neither file’s URLs satisfy the other counter—or add an integration-style assertion if the script exposes counts); alternatively narrow the test name/comments to “mixed inputs still pass” without claiming union proof.
+
+### Out-of-Scope Observations
+
+- The issue plan only required Part B cases X1–X5; `skills/design/scripts/test-file-design-oos.sh` additionally adds X6 (`OOS_FILE_MAP`-ordered cross-session recovery) and X8 (rejecting `--clear-cross-session-cache` on `annotate`). That is extra coverage aligned with the new sentinel format and CLI guard, not a missing X7 functional requirement; the jump X6→X8 is a cosmetic numbering gap only.
+- `ORPHAN_TMP` is not an uninitialized git tree for the S-series cases: `skills/implement/scripts/test-oos-disposition-gate.sh:181-188` runs `git init` and creates a commit before later `cd "$ORPHAN_TMP"` gate invocations, so `count_inline_triage`’s `git rev-list -1 HEAD` path is valid and inline counts are deterministic (no reliance on a zero-commit repo).
+- The branch also adds committed implement run metadata under `larch-logs/implement/2EF6999C-7EA9-40FB-BEB2-E9B848C995B9/` (noise versus the OOS feature itself; worth a separate hygiene decision, not a logic bug in the gate or filing scripts).
+- `skills/implement/scripts/oos-disposition-gate.md` now documents that pass uses `filed_urls > 0`, which clarifies the earlier plan wording about `filed >= non_sec` and matches `oos-disposition-gate.sh:199-201`; no further issue there.

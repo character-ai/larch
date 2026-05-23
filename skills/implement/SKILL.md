@@ -1664,7 +1664,7 @@ set +e
   "${_gate_extra[@]+"${_gate_extra[@]}"}" \
   --accepted-files "$IMPLEMENT_TMPDIR/oos-accepted-main-agent.md,$_oos_design_path,$IMPLEMENT_TMPDIR/oos-accepted-review.md" \
   --filed-urls-file "$IMPLEMENT_TMPDIR/oos-issues-created.md" \
-  --filed-urls-file "$_oos_design_path" \
+  --filed-urls-strict-file "$_oos_design_path" \
   --commit-range "$_oos_range" 2>"$_oos_gate_log"
 _oos_gate_rc=$?
 set -e

@@ -37,6 +37,29 @@ count_filed_urls_union_files() {
   printf '%s' "$acc"
 }
 
+# Count unique GitHub issue URLs that appear only on dedicated markdown list lines
+# `- **Filed URL**: <url>` (ignores incidental URLs elsewhere in the file).
+count_filed_url_field_lines() {
+  local tmp acc ere pat
+  ere=$(_oos_github_issue_url_ere)
+  tmp=$(mktemp "${TMPDIR:-/tmp}/oos-disposition-field-urls.XXXXXX")
+  : >"$tmp"
+  pat="^[[:space:]]*-[[:space:]]+\*\*Filed[[:space:]]URL\*\*[[:space:]]*:[[:space:]]+${ere}$"
+  for f in "$@"; do
+    if [ -f "$f" ] && [ -s "$f" ]; then
+      grep -E "$pat" "$f" 2>/dev/null | grep -Eo "$ere" >>"$tmp" || true
+    fi
+  done
+  if [ ! -s "$tmp" ]; then
+    rm -f "$tmp"
+    printf '0'
+    return
+  fi
+  acc=$(sort -u "$tmp" | wc -l | tr -d '[:space:]')
+  rm -f "$tmp"
+  printf '%s' "$acc"
+}
+
 count_rejected_oos_markers_from_ndjson() {
   local ndjson="$1"
   local line b tail tmp uniq_n jq_failed=0
