@@ -451,6 +451,21 @@ EOF
 rc="$(run_lint "$stderr_file")"
 assert_case_clean "env-prefixed bash denylisted invoke" "$stderr_file" "$rc"
 
+# 21b — step2-implement.sh (denylist coverage)
+reset_tree
+write_md skills/step2-impl/SKILL.md <<'EOF'
+# Case 21b
+
+**⚠ Foreground required — do NOT set `run_in_background: true`.**
+
+```bash
+# Foreground required: see BASH_AUTHORING.md §4
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/step2-implement.sh" --help
+```
+EOF
+rc="$(run_lint "$stderr_file")"
+assert_case_clean "step2-implement denylisted invoke" "$stderr_file" "$rc"
+
 # 22 — commented-out denylisted path is not an anchor
 reset_tree
 write_md skills/commented-denylist/SKILL.md <<'EOF'

@@ -137,7 +137,6 @@ is_anchor_for_basename() {
     [[ "$line" =~ ^[[:space:]]*$ ]] && return 1
     [[ "$line" =~ ^[[:space:]]*[^#[:space:]] ]] || return 1
     [[ "$line" == *"$bn"* ]] || return 1
-    ((${#line} > 12000)) && return 1
 
     # Single grep -Eq avoids bash =~ catastrophic backtracking on long lines.
     p='(^[[:space:]]*(bash[[:space:]]+)?(["'"'"'"]?)([^/]*/)?'"$e"'([^A-Za-z0-9_.-]|$))'
@@ -245,12 +244,16 @@ scan_fence_buffer_for_anchors() {
         FG_FENCE_LINES+=("$fline")
     done <"$fence_buf"
 
-    local fline fidx bn
+    local fline mline bn
     local active_hd_delim=""
     local active_hd_strip=0
-    fidx=0
-    for fline in "${FG_FENCE_LINES[@]}"; do
-        ((fidx++)) || true
+    local i n phy_line merge_start_phy found_bn
+    n=${#FG_FENCE_LINES[@]}
+    i=0
+    while ((i < n)); do
+        fline="${FG_FENCE_LINES[i]}"
+        phy_line=$((i + 1))
+        ((i++)) || true
         if [[ -n "$active_hd_delim" ]]; then
             if heredoc_close_matches "$fline" "$active_hd_delim" "$active_hd_strip"; then
                 active_hd_delim=""
@@ -263,16 +266,38 @@ scan_fence_buffer_for_anchors() {
             active_hd_strip="$HEREDOC_OPEN_USE_TAB_STRIP"
             continue
         fi
-        [[ "$fline" == *'.sh'* ]] || continue
+        mline="$fline"
+        merge_start_phy=$phy_line
+        while [[ "$mline" == *\\ ]] && ((i < n)); do
+            mline="${mline%\\}${FG_FENCE_LINES[i]}"
+            ((i++)) || true
+        done
+        if ((${#mline} > 12000)); then
+            if [[ "$mline" == *'.sh'* ]] && [[ ! "$mline" =~ ^[[:space:]]*# ]]; then
+                found_bn=""
+                while IFS= read -r bn; do
+                    [[ -n "$bn" ]] || continue
+                    [[ "$mline" == *"$bn"* ]] || continue
+                    found_bn="$bn"
+                    break
+                done <<<"$DENYLIST"
+                if [[ -n "$found_bn" ]]; then
+                    printf '%s:%s: fence line exceeds 12000 chars while mentioning denylisted %s; shorten or split so Family B markers can be verified\n' "$rel" "$((open_fence_line + merge_start_phy))" "$found_bn" >&2
+                    VIOLATIONS=$((VIOLATIONS + 1))
+                fi
+            fi
+            continue
+        fi
+        [[ "$mline" == *'.sh'* ]] || continue
         while IFS= read -r bn; do
             [[ -n "$bn" ]] || continue
-            if is_anchor_for_basename "$fline" "$bn"; then
-                local abs_anchor=$((open_fence_line + fidx))
+            if is_anchor_for_basename "$mline" "$bn"; then
+                local abs_anchor=$((open_fence_line + merge_start_phy))
                 if ! banner_ok_in_window "${pre_fence_window[@]}"; then
                     printf '%s:%s: missing banner for %s\n' "$rel" "$abs_anchor" "$bn" >&2
                     VIOLATIONS=$((VIOLATIONS + 1))
                 fi
-                if ! comment_ok_before_anchor_idx "$fidx"; then
+                if ! comment_ok_before_anchor_idx "$merge_start_phy"; then
                     printf '%s:%s: missing comment for %s\n' "$rel" "$abs_anchor" "$bn" >&2
                     VIOLATIONS=$((VIOLATIONS + 1))
                 fi
@@ -284,7 +309,17 @@ scan_fence_buffer_for_anchors() {
 scan_markdown_file() {
     local rel="$1"
     local path="$ROOT/$rel"
-    [[ -f "$path" && ! -L "$path" ]] || return 0
+    [[ -e "$path" ]] || return 0
+    while [[ -L "$path" ]]; do
+        local target
+        target=$(readlink "$path") || return 0
+        if [[ "$target" == /* ]]; then
+            path="$target"
+        else
+            path="$(dirname "$path")/$target"
+        fi
+    done
+    [[ -f "$path" ]] || return 0
 
     local -a md_ring=()
     local in_fence=0
