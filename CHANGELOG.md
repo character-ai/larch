@@ -19,6 +19,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Migration posture**: legacy `[IN PROGRESS]` and `[PLANNED]` prefixes are stripped by `strip_lifecycle_prefix` for backward compatibility but are no longer accepted as `--state` values by `tracking-issue-write.sh` or as admission-pass prefixes.
 - **Audit scope**: workflow call sites and rename `--state` surfaces in the active runtime tree (`skills/`, `scripts/`, `agents/`, `.claude/`, `docs/`, tests) now use the new prefix set; deliberate legacy bracket literals remain only where migration, admission recovery, strip helpers, or hermetic fixtures require them. This Unreleased section documents the migration and may name the old prefixes. Historical shipped changelog bodies and `larch-logs/` were not bulk-retitled.
 
+## [42.0.6] - 2026-05-22
+
+### Changed
+
+- Absorb Step 5 multi-round control into Bash: new sourced loop module plus run-step5-review loop/single/mav-apply dispatch and shared degraded-round cap library.
+- Collapse implement SKILL.md Step 5 to a single run-step5-review --mode loop invocation with token-aware STEP5_REVIEW_STATUS branching; drop duplicate tally/findings-full composition prose.
+- Refactor review-and-fix.sh with _implement_round_body, optional KV suppression for the loop, per-round pre/post coder heads, gate counters on review-and-fix.env, classifier-failure return path, and main entry guard.
+
 ## [42.0.5] - 2026-05-22
 
 ### Changed

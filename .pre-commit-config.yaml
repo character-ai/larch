@@ -15,6 +15,12 @@ repos:
         language: python
         additional_dependencies: [shellcheck-py==0.10.0.1]
         types: [shell]
+        # larch-logs/ holds committed run artifacts (e.g. source-env.sh files
+        # whose absolute paths have been replaced with <TMPDIR> /
+        # <OPERATOR_REPO_PATH> placeholders by redact-tmpdir-paths.sh).
+        # Those redacted artifacts are not valid shell and must not be
+        # shellcheck-linted; they are reference logs, not executable scripts.
+        exclude: ^larch-logs/
         require_serial: true
         # Selection (types: [shell]) and -x follow-source semantics match
         # the upstream shellcheck-py hook this replaces. Engine is the

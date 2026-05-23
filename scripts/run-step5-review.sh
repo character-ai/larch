@@ -3,13 +3,22 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+# shellcheck source=scripts/lib-implement-round-cap.sh
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/lib-implement-round-cap.sh"
+
 fail() {
     printf 'run-step5-review.sh: %s\n' "$1" >&2
     exit 2
 }
 
 usage() {
-    printf 'Usage: run-step5-review.sh --implement-tmpdir PATH --round-num N\n' >&2
+    printf 'Usage: run-step5-review.sh --implement-tmpdir PATH [options]\n' >&2
+    printf '  --mode loop|single|mav-apply   Dispatch mode (default: loop if --round-num omitted; single if --round-num set without --mode)\n' >&2
+    printf '  --round-num N                  Required for --mode single and mav-apply; omitted for loop\n' >&2
+    printf '  --starting-round N             Loop resume starting round (default 1; passthrough to review-and-fix.sh)\n' >&2
+    printf '  --findings-file PATH           Required for --mode mav-apply (accepted findings path)\n' >&2
 }
 
 session_get() {
@@ -47,26 +56,11 @@ resolve_run_id() {
     printf '%s\n' "$run_id"
 }
 
-count_prior_degraded_rounds() {
-    local implement_tmpdir="$1" current_round="$2"
-    local round=0 count=0
-    local degraded_file="" degraded_value=""
-
-    for (( round = 1; round < current_round; round++ )); do
-        degraded_file="$implement_tmpdir/round-${round}/review-and-fix.env"
-        degraded_value=""
-        if [[ -r "$degraded_file" ]]; then
-            degraded_value="$(session_get "$degraded_file" DEGRADED_ROUND false)"
-        fi
-        if [[ "$degraded_value" == "true" ]]; then
-            count=$((count + 1))
-        fi
-    done
-    printf '%s\n' "$count"
-}
-
 IMPLEMENT_TMPDIR_ARG=""
 ROUND_NUM=""
+STEP5_MODE=""
+STARTING_ROUND="1"
+FINDINGS_FILE_MAV=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -78,6 +72,21 @@ while [[ $# -gt 0 ]]; do
         --round-num)
             [[ $# -ge 2 ]] || fail "--round-num requires a value"
             ROUND_NUM="$2"
+            shift 2
+            ;;
+        --mode)
+            [[ $# -ge 2 ]] || fail "--mode requires a value"
+            STEP5_MODE="$2"
+            shift 2
+            ;;
+        --starting-round)
+            [[ $# -ge 2 ]] || fail "--starting-round requires a value"
+            STARTING_ROUND="$2"
+            shift 2
+            ;;
+        --findings-file)
+            [[ $# -ge 2 ]] || fail "--findings-file requires a value"
+            FINDINGS_FILE_MAV="$2"
             shift 2
             ;;
         -h|--help)
@@ -92,11 +101,44 @@ while [[ $# -gt 0 ]]; do
 done
 
 [[ -n "$IMPLEMENT_TMPDIR_ARG" ]] || { usage; fail "--implement-tmpdir is required"; }
-[[ -n "$ROUND_NUM" ]] || { usage; fail "--round-num is required"; }
-case "$ROUND_NUM" in
-    ''|*[!0-9]*) fail "--round-num must be a positive integer" ;;
+
+if [[ -z "$STEP5_MODE" ]]; then
+    if [[ -n "$ROUND_NUM" ]]; then
+        STEP5_MODE="single"
+    else
+        STEP5_MODE="loop"
+    fi
+fi
+
+case "$STEP5_MODE" in
+    loop|single|mav-apply) ;;
+    *) fail "--mode must be loop, single, or mav-apply (got: $STEP5_MODE)" ;;
 esac
-(( 10#$ROUND_NUM > 0 )) || fail "--round-num must be a positive integer"
+
+case "$STEP5_MODE" in
+    single|mav-apply)
+        [[ -n "$ROUND_NUM" ]] || { usage; fail "--round-num is required for --mode $STEP5_MODE"; }
+        ;;
+    loop)
+        [[ -z "$ROUND_NUM" ]] || fail "--mode loop does not take --round-num (got: $ROUND_NUM)"
+        ;;
+esac
+
+case "$STARTING_ROUND" in
+    ''|*[!0-9]*) fail "--starting-round must be a positive integer" ;;
+esac
+(( 10#$STARTING_ROUND > 0 )) || fail "--starting-round must be a positive integer"
+
+if [[ "$STEP5_MODE" == "mav-apply" ]]; then
+    [[ -n "$FINDINGS_FILE_MAV" ]] || fail "--findings-file is required for --mode mav-apply"
+fi
+
+case "$ROUND_NUM" in
+    ''|*[!0-9]*) ;;
+    *)
+        (( 10#$ROUND_NUM > 0 )) || fail "--round-num must be a positive integer"
+        ;;
+esac
 
 [[ -d "$IMPLEMENT_TMPDIR_ARG" ]] || fail "--implement-tmpdir not a directory: $IMPLEMENT_TMPDIR_ARG"
 IMPLEMENT_TMPDIR="$(cd "$IMPLEMENT_TMPDIR_ARG" && pwd -P)"
@@ -112,7 +154,6 @@ RUN_ID="$(resolve_run_id "$SESSION_ENV_PATH" "$IMPLEMENT_TMPDIR" "$SESSION_ID_FI
 
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(session_get "$SESSION_ENV_PATH" LARCH_CLAUDE_PLUGIN_ROOT "")}"
 if [[ -z "$PLUGIN_ROOT" ]]; then
-    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
     PLUGIN_ROOT="$(cd "$SCRIPT_DIR/.." && pwd -P)"
 fi
 [[ -d "$PLUGIN_ROOT" ]] || fail "plugin root not a directory: $PLUGIN_ROOT"
@@ -132,36 +173,66 @@ REVIEW_AND_FIX_ARGS=()
 [[ -f "$PLAN_FILE" ]] || fail "plan file not found at conventional path: $PLAN_FILE"
 [[ -s "$PLAN_FILE" ]] || fail "plan file is empty at conventional path: $PLAN_FILE"
 
-# Fixed base Step 5 round cap (unified hard workflow contract); see scripts/run-step5-review.md.
-ROUND_CAP="5"
-
-DEGRADED_ROUNDS="$(count_prior_degraded_rounds "$IMPLEMENT_TMPDIR" "$ROUND_NUM")"
-case "$DEGRADED_ROUNDS" in
-    ''|*[!0-9]*) fail "degraded round count must be numeric, got: ${DEGRADED_ROUNDS:-<empty>}" ;;
-esac
-ROUND_CAP="$((ROUND_CAP + DEGRADED_ROUNDS))"
-
-if [[ "$ROUND_NUM" == "1" ]]; then
-    printf "run-step5-review.sh: base Step 5 review round cap is 5; degraded prior rounds extend the effective cap (this round: %s).\n" "$ROUND_CAP" >&2
-fi
-
 case "$CODEX_PRESENT" in true|false) ;; *) fail "CODEX_PRESENT must be true or false, got: $CODEX_PRESENT" ;; esac
 case "$CURSOR_PRESENT" in true|false) ;; *) fail "CURSOR_PRESENT must be true or false, got: $CURSOR_PRESENT" ;; esac
 
 REVIEW_AND_FIX_SH="${RUN_STEP5_REVIEW_SH:-$PLUGIN_ROOT/skills/review-and-fix/scripts/review-and-fix.sh}"
 [[ -x "$REVIEW_AND_FIX_SH" ]] || fail "review-and-fix.sh not executable: $REVIEW_AND_FIX_SH"
 
-REVIEW_AND_FIX_ARGS=(
-    --implement-tmpdir "$IMPLEMENT_TMPDIR"
-    --mode diff
-    --round-num "$ROUND_NUM"
-    --round-cap "$ROUND_CAP"
-    --session-env-path "$SESSION_ENV_PATH"
-    --codex-available "$CODEX_PRESENT"
-    --cursor-available "$CURSOR_PRESENT"
-    --plan-file "$PLAN_FILE"
-    --feature-file "$FEATURE_FILE"
-)
+# Fixed base Step 5 round cap (unified hard workflow contract); see scripts/run-step5-review.md.
+ROUND_CAP_BASE="5"
+
+case "$STEP5_MODE" in
+    loop)
+        REVIEW_AND_FIX_ARGS=(
+            --implement-tmpdir "$IMPLEMENT_TMPDIR"
+            --mode loop
+            --round-cap "$ROUND_CAP_BASE"
+            --starting-round "$STARTING_ROUND"
+            --session-env-path "$SESSION_ENV_PATH"
+            --codex-available "$CODEX_PRESENT"
+            --cursor-available "$CURSOR_PRESENT"
+            --plan-file "$PLAN_FILE"
+            --feature-file "$FEATURE_FILE"
+        )
+        ;;
+    single)
+        DEGRADED_ROUNDS="$(count_prior_degraded_rounds "$IMPLEMENT_TMPDIR" "$ROUND_NUM")"
+        case "$DEGRADED_ROUNDS" in
+            ''|*[!0-9]*) fail "degraded round count must be numeric, got: ${DEGRADED_ROUNDS:-<empty>}" ;;
+        esac
+        ROUND_CAP_INFLATED="$((ROUND_CAP_BASE + DEGRADED_ROUNDS))"
+        if [[ "$ROUND_NUM" == "1" ]]; then
+            printf "run-step5-review.sh: base Step 5 review round cap is %s; degraded prior rounds extend the effective cap (this round: %s).\n" \
+                "$ROUND_CAP_BASE" "$ROUND_CAP_INFLATED" >&2
+        fi
+        REVIEW_AND_FIX_ARGS=(
+            --implement-tmpdir "$IMPLEMENT_TMPDIR"
+            --mode diff
+            --round-num "$ROUND_NUM"
+            --round-cap "$ROUND_CAP_INFLATED"
+            --session-env-path "$SESSION_ENV_PATH"
+            --codex-available "$CODEX_PRESENT"
+            --cursor-available "$CURSOR_PRESENT"
+            --plan-file "$PLAN_FILE"
+            --feature-file "$FEATURE_FILE"
+        )
+        ;;
+    mav-apply)
+        REVIEW_AND_FIX_ARGS=(
+            --implement-tmpdir "$IMPLEMENT_TMPDIR"
+            --mode mav-apply
+            --round-num "$ROUND_NUM"
+            --findings-file "$FINDINGS_FILE_MAV"
+            --session-env-path "$SESSION_ENV_PATH"
+            --codex-available "$CODEX_PRESENT"
+            --cursor-available "$CURSOR_PRESENT"
+            --plan-file "$PLAN_FILE"
+            --feature-file "$FEATURE_FILE"
+        )
+        ;;
+esac
+
 [[ -n "$DYNAMIC_ARCHETYPES" ]] && REVIEW_AND_FIX_ARGS+=(--dynamic-archetypes "$DYNAMIC_ARCHETYPES")
 REVIEW_AND_FIX_ARGS+=(--run-id "$RUN_ID")
 
