@@ -138,6 +138,11 @@ run_implement_loop() {
                 flush_review_batches "$IMPLEMENT_TMPDIR" "$RUN_ID" "$rounds_completed" 0 0 0 0 2>/dev/null || true
                 exit 2
                 ;;
+            aggregator-validation-exhausted)
+                step5_emit_final_envelope stall true aggregator-validation-exhausted "$rounds_completed" "$round_num" "$post_round_status" "$post_coder" "$last_hint" "$effective_round_cap"
+                flush_review_batches "$IMPLEMENT_TMPDIR" "$RUN_ID" "$rounds_completed" 0 0 0 0 2>/dev/null || true
+                exit 2
+                ;;
             coder-failed)
                 stall_reason=coder-failed
                 if [[ "$post_coder" == "submodule-violation" ]]; then

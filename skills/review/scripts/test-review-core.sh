@@ -280,7 +280,7 @@ out=$(jq -r '.output' "$slots")
 mode="${AGGREGATE_STUB_MODE:-ok}"
 case "$mode" in
     fail_dispatch)
-        printf 'DISPATCH_OK=false\nALL_OUTPUT_FILES=\n'
+        printf 'DISPATCH_OK=false\nALL_OUTPUT_FILES=\nALL_OUTPUT_TOOLS=\n'
         ;;
     ok)
         cat > "$out" <<'EOF'
@@ -290,7 +290,7 @@ case "$mode" in
 - **Suggested revision**: fix it
 
 EOF
-        printf 'DISPATCH_OK=true\nALL_OUTPUT_FILES=%s\n' "$out"
+        printf 'DISPATCH_OK=true\nALL_OUTPUT_FILES=%s\nALL_OUTPUT_TOOLS=%s\n' "$out" "${AGGREGATE_STUB_OUTPUT_TOOL:-cursor}"
         ;;
     *)
         echo "stub: bad AGGREGATE_STUB_MODE" >&2
@@ -312,9 +312,14 @@ while [[ \$i -lt \${#args[@]} ]]; do
   fi
   i=\$((i + 1))
 done
-printf 'aggregate\n' >> "\${rtmp:?}/invoke-order.log"
+    printf 'aggregate\n' >> "\${rtmp:?}/invoke-order.log"
 exec "\$AGG" "\$@"
 EOF
+    cat > "$TMP/aggregate-exhausted-stub.sh" <<'STUB'
+#!/usr/bin/env bash
+printf 'AGGREGATED=false\nINPUT_COUNT=2\nMERGED_COUNT=0\nREASON=validation-exhausted\nPHASES_ATTEMPTED=cursor,codex,claude\n'
+exit 0
+STUB
     chmod +x "$TMP"/*.sh
 }
 
@@ -437,6 +442,20 @@ assert_contains "$out" 'SCOUT_STATUS=ok'
 assert_contains "$out" 'DYNAMIC_SLOTS=2'
 jq -e '.schema_version == 2 and .accepted_count == 0 and .rejected_count == 0 and .panel.scout_status == "ok" and .panel.dynamic_slot_count == 2 and .panel.total_slot_count == 2' \
     "$TMP/panel-failed/review-summary.json" >/dev/null || { echo "FAIL: panel-failed review-summary.json missing panel telemetry" >&2; exit 1; }
+
+mkdir -p "$TMP/agg-exhaust-core"
+: >"$TMP/agg-exhaust-core/.marker"
+set +e
+out=$(TEST_FINDINGS=1 TEST_ACCEPTED=1 REVIEW_CORE_AGGREGATE_FINDINGS_SH="$TMP/aggregate-exhausted-stub.sh" run_core "$TMP/agg-exhaust-core")
+rc=$?
+set -e
+if [[ "$rc" -ne 2 ]]; then
+    echo "FAIL: aggregator validation-exhausted should exit 2" >&2
+    exit 1
+fi
+assert_contains "$out" 'REVIEW_CORE_STATUS=aggregator-validation-exhausted'
+jq -e '.schema_version == 2 and .accepted_count == 0 and .rejected_count == 0' \
+    "$TMP/agg-exhaust-core/review-summary.json" >/dev/null || { echo "FAIL: agg-exhaust review-summary.json" >&2; exit 1; }
 
 out=$(TEST_FINDINGS=1 TEST_TALLY_STATUS=main-agent-vote-required run_core "$TMP/main-agent")
 assert_contains "$out" 'REVIEW_CORE_STATUS=main-agent-vote-required'

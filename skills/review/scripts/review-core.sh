@@ -511,6 +511,53 @@ if [[ "$aggregate_rc" -ne 0 ]]; then
     append_review_execution_issue "- **review-core / aggregate-findings**: subprocess exited with rc=$aggregate_rc (unexpected; see $aggregate_stderr)."
 fi
 
+aggregate_reason=$(kv_get "$aggregate_out" REASON)
+if [[ "$aggregate_reason" == "validation-exhausted" ]]; then
+    agg_exhaust_tally="$REVIEW_TMPDIR/review-core-aggregator-exhaust-tally.env"
+    agg_exhaust_emit_out="$REVIEW_TMPDIR/review-core-aggregator-exhaust-emit.env"
+    : > "$REVIEW_TMPDIR/accepted-findings.md"
+    : > "$REVIEW_TMPDIR/rejected-findings.md"
+    : > "$REVIEW_TMPDIR/oos-accepted-review.md"
+    cat > "$agg_exhaust_tally" <<EOF
+ACCEPTED_COUNT=0
+REJECTED_COUNT=0
+EXONERATED_COUNT=0
+NEUTRAL_COUNT=0
+EOF
+    agg_exhaust_emit_args=(
+        --tally-file "$agg_exhaust_tally"
+        --accepted-findings-file "$REVIEW_TMPDIR/accepted-findings.md"
+        --oos-file "$REVIEW_TMPDIR/oos.md"
+        --review-tmpdir "$REVIEW_TMPDIR"
+        --round "$ROUND_NUM"
+        --mode "$MODE"
+        --scout-status "$scout_status"
+        --dynamic-slots "$dynamic_slots"
+        --static-slot-count "$static_slot_count"
+    )
+    [[ -n "$SESSION_ENV_PATH" ]] && agg_exhaust_emit_args+=(--session-env-path "$SESSION_ENV_PATH")
+    [[ -n "${IMPLEMENT_TMPDIR:-}" ]] && agg_exhaust_emit_args+=(--implement-tmpdir "$IMPLEMENT_TMPDIR")
+    if emit_tally_with_failure_isolation "5" "aggregator-validation-exhausted" "$agg_exhaust_emit_out" "${agg_exhaust_emit_args[@]}"; then
+        copy_to_parent "$REVIEW_TMPDIR/rejected-findings.md" rejected-findings.md
+        copy_to_parent "$REVIEW_TMPDIR/oos-accepted-review.md" oos-accepted-review.md
+    fi
+    flush_round_log
+    emit_kv REVIEW_CORE_STATUS aggregator-validation-exhausted
+    emit_kv ROUND_NUM "$ROUND_NUM"
+    emit_kv ACCEPTED_COUNT 0
+    emit_kv REJECTED_COUNT 0
+    emit_kv EXONERATED_COUNT 0
+    emit_kv NEUTRAL_COUNT 0
+    emit_kv OUT_OF_SCOPE_DRIFT_COUNT 0
+    emit_kv FINDINGS_FILE "$REVIEW_TMPDIR/findings.md"
+    emit_kv ACCEPTED_FINDINGS_FILE "$REVIEW_TMPDIR/accepted-findings.md"
+    emit_kv REJECTED_FINDINGS_FILE "$REVIEW_TMPDIR/rejected-findings.md"
+    emit_kv PANEL_MODE "$panel_mode"
+    emit_kv PANEL_SHAPE "$panel_shape"
+    emit_kv THRESHOLD_REASON aggregation-validation-exhausted
+    exit 2
+fi
+
 tally_out="$REVIEW_TMPDIR/review-core-tally.env"
 
 # Dispatch the code-review voting panel and collect vote-output files.

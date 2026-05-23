@@ -206,6 +206,10 @@ EOF_ACCEPTED
 EOF_REJECTED
     printf 'REVIEW_CORE_STATUS=fix-required\nROUND_NUM=%s\nACCEPTED_COUNT=1\nREJECTED_COUNT=4\nACCEPTED_FINDINGS_FILE=%s/accepted-findings.md\nREJECTED_FINDINGS_FILE=%s/rejected-findings.md\nPANEL_MODE=normal\nPANEL_SHAPE=simple\n' "$round" "$out" "$out"
     ;;
+  aggregator-validation-exhausted)
+    printf 'REVIEW_CORE_STATUS=aggregator-validation-exhausted\nROUND_NUM=%s\nACCEPTED_COUNT=0\nREJECTED_COUNT=0\nEXONERATED_COUNT=0\nNEUTRAL_COUNT=0\nACCEPTED_FINDINGS_FILE=%s/accepted-findings.md\nREJECTED_FINDINGS_FILE=%s/rejected-findings.md\nPANEL_MODE=normal\nPANEL_SHAPE=simple\n' "$round" "$out" "$out"
+    exit 2
+    ;;
   *)
     printf 'REVIEW_CORE_STATUS=zero-findings\nROUND_NUM=%s\nACCEPTED_COUNT=0\nREJECTED_COUNT=0\nACCEPTED_FINDINGS_FILE=%s/accepted-findings.md\nREJECTED_FINDINGS_FILE=%s/rejected-findings.md\nPANEL_MODE=normal\nPANEL_SHAPE=simple\n' "$round" "$out" "$out"
     ;;
@@ -243,6 +247,20 @@ run_review_and_fix() {
 }
 
 if section_runs dispatch; then
+work_agg_exhaust="$TMP/agg-validation-exhausted-prop"
+make_work_repo "$work_agg_exhaust"
+impl_agg="$work_agg_exhaust/implement"
+mkdir -p "$impl_agg"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$impl_agg/session-env.sh"
+set +e
+out_agg=$(TEST_CORE_STATUS=aggregator-validation-exhausted run_review_and_fix "$work_agg_exhaust" \
+    --implement-tmpdir "$impl_agg" --mode diff --round-num 1 --session-env-path "$impl_agg/session-env.sh" --run-id agg-exhaust-prop-run)
+rc_agg=$?
+set -e
+[[ "$rc_agg" -eq 2 ]] || { echo "$out_agg" >&2; fail "aggregator-validation-exhausted expected exit 2 got $rc_agg"; }
+grep -Fq 'REVIEW_CORE_STATUS=aggregator-validation-exhausted' <<< "$out_agg" || fail "expected REVIEW_CORE_STATUS in stdout"
+grep -Fq 'REVIEW_AND_FIX_STATUS=aggregator-validation-exhausted' <<< "$out_agg" || fail "expected REVIEW_AND_FIX_STATUS propagation"
+
 work_findings="$TMP/findings-mode"
 make_work_repo "$work_findings"
 empty="$work_findings/empty.md"

@@ -1204,6 +1204,11 @@ _implement_round_body() {
             status="$core_status"
             exit_code=2
             ;;
+        aggregator-validation-exhausted)
+            emit_breadcrumb "⚠ review-and-fix: findings aggregator validation exhausted (all outer phases)"
+            status="$core_status"
+            exit_code=2
+            ;;
         main-agent-vote-required)
             status="main-agent-vote-required"
             exit_code=0

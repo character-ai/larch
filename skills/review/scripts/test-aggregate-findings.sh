@@ -26,23 +26,70 @@ write_stub_dispatch() {
 #!/usr/bin/env bash
 set -euo pipefail
 slots=""
+CURSOR_PRESENT=""
+CODEX_PRESENT=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --slots-file) slots="${2:?}"; shift 2 ;;
-        --codex-present|--cursor-present|--mode) shift 2 ;;
+        --codex-present) CODEX_PRESENT="${2:?}"; shift 2 ;;
+        --cursor-present) CURSOR_PRESENT="${2:?}"; shift 2 ;;
+        --mode) shift 2 ;;
         --diff-file|--plan-file|--feature-file|--scope-files|--description-text) shift 2 ;;
         *) shift 1 ;;
     esac
 done
 [[ -n "$slots" && -f "$slots" ]] || exit 2
 out=$(jq -r '.output' "$slots")
+tool=$(jq -r '.tool' "$slots")
+ot_tool="$tool"
+if [[ "$tool" == "cursor" && "$CURSOR_PRESENT" != "true" ]]; then
+    ot_tool=claude
+elif [[ "$tool" == "codex" && "$CODEX_PRESENT" != "true" ]]; then
+    ot_tool=claude
+fi
+emit_dispatch_ok() {
+    printf 'DISPATCH_OK=true\nALL_OUTPUT_FILES=%s\nALL_OUTPUT_TOOLS=%s\n' "$out" "$ot_tool"
+}
 mode="${AGGREGATE_STUB_MODE:-ok}"
 case "$mode" in
     fail_dispatch)
-        printf 'DISPATCH_OK=false\nALL_OUTPUT_FILES=\n'
+        printf 'DISPATCH_OK=false\nALL_OUTPUT_FILES=\nALL_OUTPUT_TOOLS=\n'
         ;;
     ok)
         case "${AGGREGATE_STUB_MERGE_KIND:-merge}" in
+            waterfall_ctr)
+                ctr_path="${LARCH_AGGREGATE_WATERFALL_CTR:?missing LARCH_AGGREGATE_WATERFALL_CTR}"
+                c=0
+                [[ -f "$ctr_path" ]] && c=$(cat "$ctr_path" || echo 0)
+                case "$c" in ''|*[!0-9]*) c=0 ;; esac
+                c=$((c + 1))
+                printf '%s\n' "$c" >"$ctr_path"
+                fail_until="${AGGREGATE_STUB_WATERFALL_FAIL_UNTIL:-3}"
+                if (( c <= fail_until )); then
+                    cat > "$out" <<'EOF'
+We have multiple `### FINDING_N:` blocks in the input.
+
+LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED
+
+EOF
+                else
+                    cat > "$out" <<'EOF'
+### FINDING_1: merged title
+- **Reviewer(s)**: cursor-a-output.txt, cursor-b-output.txt, cursor-c-output.txt
+- **Concern**: normalized concern
+- **Suggested revision**: fix
+
+EOF
+                fi
+                ;;
+            preamble_contradiction)
+                cat > "$out" <<'EOF'
+We have multiple `### FINDING_N:` blocks in the input.
+
+LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED
+
+EOF
+                ;;
             merge)
                 cat > "$out" <<'EOF'
 ### FINDING_1: merged title
@@ -241,7 +288,7 @@ EOF
                 exit 2
                 ;;
         esac
-        printf 'DISPATCH_OK=true\nALL_OUTPUT_FILES=%s\n' "$out"
+        emit_dispatch_ok
         ;;
     *)
         echo "stub: bad AGGREGATE_STUB_MODE" >&2
@@ -948,5 +995,106 @@ if [[ -f "$SENTINEL" && -s "$SENTINEL" ]]; then
     fail "sentinel execution-issues log leaked non-empty content ($(wc -c <"$SENTINEL" | tr -d "[:space:]") bytes)"
 fi
 rm -f "$SENTINEL"
+
+echo "=== zero_findings_preamble_contradiction: validator stderr token (single-phase cap) ==="
+cp "$TMP/in3.md" "$TMP/in3-pream.md"
+write_stub_dispatch
+LARCH_AGGREGATE_MAX_OUTER_PHASES=1 \
+AGGREGATE_DISPATCH_SH="$TMP/stub-dispatch.sh" \
+AGGREGATE_STUB_MODE=ok \
+AGGREGATE_STUB_MERGE_KIND=preamble_contradiction \
+"$AGG" \
+    --findings-file "$TMP/in3-pream.md" \
+    --review-tmpdir "$TMP" \
+    --codex-present true \
+    --cursor-present true \
+    --mode diff >"$TMP/out-pream.env"
+grep -Fq 'AGGREGATOR_VALIDATION_FAILED=preamble_finding_substring' "$TMP/aggregator-validate.stderr" || fail "expected preamble_finding_substring validator stderr"
+grep -Fq 'REASON=validation-failed' "$TMP/out-pream.env" || fail "single-phase cap should surface validation-failed"
+
+echo "=== waterfall_exhausted: validation-exhausted + three output files + one execution issue ==="
+WF="$TMP/waterfall-exhausted"
+mkdir -p "$WF"
+cp "$TMP/in3.md" "$WF/in.md"
+: >"$WF/execution-issues.md"
+CTR="$WF/waterfall.ctr"
+rm -f "$CTR"
+write_stub_dispatch
+LARCH_EXECUTION_ISSUES_LOG="$WF/execution-issues.md" \
+LARCH_AGGREGATE_WATERFALL_CTR="$CTR" \
+AGGREGATE_DISPATCH_SH="$TMP/stub-dispatch.sh" \
+AGGREGATE_STUB_MODE=ok \
+AGGREGATE_STUB_MERGE_KIND=waterfall_ctr \
+AGGREGATE_STUB_WATERFALL_FAIL_UNTIL=3 \
+"$AGG" \
+    --findings-file "$WF/in.md" \
+    --review-tmpdir "$WF" \
+    --codex-present true \
+    --cursor-present true \
+    --mode diff >"$TMP/out-wf-ex.env"
+grep -Fq 'REASON=validation-exhausted' "$TMP/out-wf-ex.env" || fail "waterfall exhausted REASON"
+grep -Fq 'PHASES_ATTEMPTED=cursor,codex,claude' "$TMP/out-wf-ex.env" || fail "expected PHASES_ATTEMPTED cursor,codex,claude"
+[[ -f "$WF/aggregator-output.txt" && -f "$WF/aggregator-output-codex.txt" && -f "$WF/aggregator-output-claude.txt" ]] || fail "expected three per-phase aggregator output files"
+cmp -s "$TMP/in3.md" "$WF/in.md" || fail "findings unchanged on exhaustion"
+grep -c '^- \*\*findings aggregator' "$WF/execution-issues.md" | grep -q '^1$' || fail "expected exactly one execution-issues entry"
+
+echo "=== waterfall_recover_on_phase2 ==="
+WR="$TMP/waterfall-recover"
+mkdir -p "$WR"
+cp "$TMP/in3.md" "$WR/in.md"
+rm -f "$WR/ctr"
+write_stub_dispatch
+LARCH_AGGREGATE_WATERFALL_CTR="$WR/ctr" \
+AGGREGATE_DISPATCH_SH="$TMP/stub-dispatch.sh" \
+AGGREGATE_STUB_MODE=ok \
+AGGREGATE_STUB_MERGE_KIND=waterfall_ctr \
+AGGREGATE_STUB_WATERFALL_FAIL_UNTIL=1 \
+"$AGG" \
+    --findings-file "$WR/in.md" \
+    --review-tmpdir "$WR" \
+    --codex-present true \
+    --cursor-present true \
+    --mode diff >"$TMP/out-wf-rec.env"
+grep -Fq 'REASON=ok' "$TMP/out-wf-rec.env" || fail "waterfall recover REASON"
+grep -Fq 'PHASES_ATTEMPTED=cursor,codex' "$TMP/out-wf-rec.env" || fail "expected PHASES_ATTEMPTED cursor,codex"
+[[ ! -f "$WR/execution-issues.md" ]] || ! grep -Fq 'findings aggregator' "$WR/execution-issues.md" || fail "recover path must not log aggregator execution issue"
+[[ "$(grep -c '^### FINDING_' "$WR/in.md" | tr -d '[:space:]')" == "1" ]] || fail "expected merged ballot after recover"
+
+echo "=== waterfall_skip_unavailable_external (codex absent) ==="
+WS="$TMP/waterfall-skip"
+mkdir -p "$WS"
+cp "$TMP/in3.md" "$WS/in.md"
+: >"$WS/execution-issues.md"
+rm -f "$WS/ctr"
+write_stub_dispatch
+LARCH_EXECUTION_ISSUES_LOG="$WS/execution-issues.md" \
+LARCH_AGGREGATE_WATERFALL_CTR="$WS/ctr" \
+AGGREGATE_DISPATCH_SH="$TMP/stub-dispatch.sh" \
+AGGREGATE_STUB_MODE=ok \
+AGGREGATE_STUB_MERGE_KIND=waterfall_ctr \
+AGGREGATE_STUB_WATERFALL_FAIL_UNTIL=3 \
+"$AGG" \
+    --findings-file "$WS/in.md" \
+    --review-tmpdir "$WS" \
+    --codex-present false \
+    --cursor-present true \
+    --mode diff >"$TMP/out-wf-skip.env"
+grep -Fq 'PHASES_ATTEMPTED=cursor,claude' "$TMP/out-wf-skip.env" || fail "expected PHASES_ATTEMPTED cursor,claude when codex absent"
+grep -Fq 'REASON=validation-exhausted' "$TMP/out-wf-skip.env" || fail "skip-codex exhaustion REASON"
+
+echo "=== empty_merge_negative_finding_prose: ### FINDING_ids must not trip preamble signal ==="
+cp "$TMP/in3.md" "$TMP/in3-negprose.md"
+write_stub_dispatch
+AGGREGATE_DISPATCH_SH="$TMP/stub-dispatch.sh" \
+AGGREGATE_STUB_MODE=ok \
+AGGREGATE_STUB_MERGE_KIND=zero_findings_prose_finding_ids \
+"$AGG" \
+    --findings-file "$TMP/in3-negprose.md" \
+    --review-tmpdir "$TMP" \
+    --codex-present true \
+    --cursor-present true \
+    --mode diff >"$TMP/out-negprose.env"
+grep -Fq 'REASON=ok' "$TMP/out-negprose.env" || fail "FINDING_ids prose empty-merge must still succeed"
+grep -Fq 'AGGREGATOR_VALIDATION_FAILED=preamble_finding_substring' "$TMP/aggregator-validate.stderr" 2>/dev/null && fail "FINDING_ids prose must not emit preamble_finding_substring"
 
 echo "All aggregate-findings harness assertions passed."
