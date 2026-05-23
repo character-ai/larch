@@ -1325,6 +1325,7 @@ _implement_round_body() {
     {
         printf 'REVIEW_AND_FIX_STATUS=%s\n' "$status"
         printf 'REVIEW_CORE_STATUS=%s\n' "$core_status"
+        printf 'IRF_LAST_ROUND_STATUS=%s\n' "$status"
         printf 'DEGRADED_ROUND=%s\n' "$degraded_this_round"
     } > "$round_dir/review-and-fix.env"
     local hsc

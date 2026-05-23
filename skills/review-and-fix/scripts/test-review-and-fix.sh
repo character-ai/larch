@@ -260,6 +260,8 @@ set -e
 [[ "$rc_agg" -eq 2 ]] || { echo "$out_agg" >&2; fail "aggregator-validation-exhausted expected exit 2 got $rc_agg"; }
 grep -Fq 'REVIEW_CORE_STATUS=aggregator-validation-exhausted' <<< "$out_agg" || fail "expected REVIEW_CORE_STATUS in stdout"
 grep -Fq 'REVIEW_AND_FIX_STATUS=aggregator-validation-exhausted' <<< "$out_agg" || fail "expected REVIEW_AND_FIX_STATUS propagation"
+grep -Fq 'IRF_LAST_ROUND_STATUS=aggregator-validation-exhausted' "$impl_agg/round-1/review-and-fix.env" \
+    || fail "expected IRF_LAST_ROUND_STATUS persisted to round review-and-fix.env"
 
 work_findings="$TMP/findings-mode"
 make_work_repo "$work_findings"
