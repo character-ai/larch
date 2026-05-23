@@ -1,0 +1,5 @@
+Exploring the Step 5 review flow and `review-and-fix.sh` to draft an architectural plan.
+
+Confirming: Step 5 uses a unified base round cap of 5 plus degraded-round inflation (not SIMPLE=5 / HARD=7). Creating the architectural plan.
+
+

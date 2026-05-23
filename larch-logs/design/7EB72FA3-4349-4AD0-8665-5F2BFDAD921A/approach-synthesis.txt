@@ -1,0 +1,175 @@
+# Approach Synthesis
+
+## Sketch participation
+
+Both Codex sketches (Innovation and Pragmatic) produced substantive content.
+Both Cursor sketches (Architecture and Edge) returned only preliminary
+exploration paragraphs — the Cursor agent halted after orientation without
+generating the requested 2-3 paragraph sketch. The Cursor output was captured
+under `cursor-sketch-*-truncated.log` for the audit trail. Synthesis below
+draws from the two Codex sketches; the structural recommendations they share
+are corroborated by direct codebase reading.
+
+## Where the sketches agree
+
+1. **Keep `run_implement_round` as the one-round primitive.** Do not redesign
+   review panel, voting, coder dispatch, OOS aggregation, skipped-finding
+   counting, or batch flushing. The round primitive already owns those.
+
+2. **Collapse the prose-owned loop in `skills/implement/SKILL.md` Step 5 into
+   one foreground Bash call.** The current expensive loop lives at lines
+   1208-1241. The main agent's role becomes: print the Step 5 banner, call
+   one script, parse a final summary KV envelope, route to Step 6 or Step 16.
+
+3. **Remove the duplicate `code-review-tally` / `review-findings-full`
+   composition prose at SKILL.md lines 1245-1281.** Verified during codebase
+   exploration: `flush_review_batches` in
+   `skills/review-and-fix/scripts/review-and-fix.sh` already writes both
+   batches per round, including per-round summaries, the rejected-findings
+   sub-header, and the voting-tally sub-header. The main-agent prose
+   duplicates this work.
+
+4. **Internalize the post-round helper calls.** The new loop dispatches
+   `scripts/run-relevant-checks-captured.sh` after `fix-applied` rounds and
+   then dispatches `scripts/lint-fix-loop.sh` until checks pass or the loop
+   stalls. Both helpers stay where they are; only the caller changes from the
+   main agent to the loop wrapper.
+
+5. **Preserve existing KV contract surface.** `REVIEW_AND_FIX_STATUS`,
+   `CODER_STATUS`, `ACCEPTED_COUNT`, `FIX_COUNT`, `SKIPPED_FINDING_COUNT`,
+   `DEGRADED_ROUND`, etc. remain emitted. The new wrapper adds a
+   loop-specific final summary KV envelope on top (e.g., `STEP5_REVIEW_STATUS`,
+   `FINAL_ROUND_NUM`, `STALL_TRACKING`, `STALL_REASON`, `ROUNDS_COMPLETED`).
+
+6. **Substantiality classification needs deterministic bash proxies.** The
+   ">=2 high-severity" and ">=8 accepted-fix" criteria are mechanical and
+   port cleanly. The ">=100 LOC structural" criterion is the only fuzzy
+   part. Codex-Innovation proposed `git diff --numstat` between the
+   round's pre-coder snapshot and post-coder commit, summed across changed
+   files, as a deterministic proxy. Codex-Pragmatic agreed on the principle
+   without proposing specifics.
+
+7. **Out of scope (per issue body and confirmed by sketches):**
+   - `/review` standalone (`--diff` mode) — keeps its own round loop
+   - `/review-and-fix` findings-mode (`--findings-file`) — untouched
+   - panel / voting / coder internals — untouched
+   - per-round larch-log batch *flushing* — already inside the script
+
+## Where the sketches diverge
+
+**Contested**: Where the loop controller lives. Codex-Innovation floated a
+**new separate** `scripts/run-step5-review-loop.sh` as the "cleaner" option;
+Codex-Pragmatic preferred **extending the existing** `run-step5-review.sh`
+launcher and adding the actual loop function (`run_implement_loop`) to
+`review-and-fix.sh` next to `run_implement_round`. Synthesis selects the
+extension path: it minimizes the surface area, co-locates the loop with the
+round primitive in the same script, and keeps the launcher's single role
+(resolve context + dispatch mode). Codex-Innovation's "new wrapper" remains
+the strongest alternative — see `contested-decisions.md`.
+
+## Synthesis architectural decisions
+
+1. **Loop controller hosting**: extend `scripts/run-step5-review.sh` to
+   default to multi-round dispatch; add a new `run_implement_loop` function
+   in `skills/review-and-fix/scripts/review-and-fix.sh`. Open this for
+   dialectic resolution in Step 2a.5 — see `contested-decisions.md`.
+
+2. **`run_implement_round` refactor**: extract the round body into an
+   internal function (e.g., `_implement_round_body`) that returns
+   structured status via in-process variables rather than `exit`. The
+   existing single-round entry point continues to call this function then
+   exits with its return code (preserving the per-round CLI contract for
+   tests and `/implement` per-round debugging). The new loop calls the
+   same function iteratively without exiting. **Why**: keeps a single
+   source of truth for round logic; avoids subprocessing each round (cost
+   regression). **How to apply**: see plan Step 2b.
+
+3. **Loop CLI surface**: add `--mode loop` (or `--all-rounds`) to
+   `review-and-fix.sh` to dispatch to `run_implement_loop`. The launcher
+   `run-step5-review.sh` defaults to `--mode loop` going forward; the
+   per-round `--mode diff` dispatch remains for tests/debugging.
+
+4. **`--starting-round N` parameter**: the loop accepts `--starting-round N`
+   defaulting to 1. Main agent re-enters with `--starting-round N+1` after
+   the `main-agent-vote-required` fallback resolves. The wrapper's internal
+   cap respects `effective_round_cap = base 5 + count_prior_degraded_rounds`
+   from disk artifacts (the existing helper). Restarts at round N+1 honor
+   the same disk-derived cap.
+
+5. **Live per-round breadcrumbs**: the loop calls the existing
+   `emit_breadcrumb` path inherited from `review-and-fix.sh` for each round
+   transition. No new visibility mechanism; operator sees breadcrumbs in
+   real time.
+
+6. **`flush_review_batches` per-round preservation**: each iteration of the
+   loop continues to call `flush_review_batches` at the end of its round
+   (current behavior). Crash-safety preserved.
+
+7. **Substantiality "100 LOC structural" proxy**: compute per-round changed
+   lines via `git diff --numstat <pre-round-HEAD> <post-coder-HEAD>` summed
+   across files; threshold 100. First cut keeps it simple — no comment-
+   filtering. Subjective "structural" judgment is replaced by a
+   deterministic threshold the loop can compute.
+
+8. **Final summary KV envelope**: emit on the LAST line of `review-and-fix.sh`
+   when running in `--mode loop`. Includes:
+   - `STEP5_REVIEW_STATUS=complete|stall|main-agent-vote-required|cap-hit`
+   - `STALL_TRACKING=true|false`
+   - `STALL_REASON=coder-failed|panel-failed|submodule-violation|lint-fix-failed|lint-fix-main-agent-required|bulk-skip-ratio|<empty when false>`
+   - `ROUNDS_COMPLETED=N` (number of full rounds executed in THIS invocation)
+   - `FINAL_ROUND_NUM=N` (the round at which the loop exited)
+   - `FINAL_REVIEW_AND_FIX_STATUS=...` (the last-round status)
+   - `FILES_CHANGED_HINT=...` (best-effort for downstream logging)
+
+9. **`main-agent-vote-required` path**: when a round emits
+   `REVIEW_AND_FIX_STATUS=main-agent-vote-required`, the loop wrapper exits
+   immediately with `STEP5_REVIEW_STATUS=main-agent-vote-required` and the
+   round artifacts intact. Main agent applies its synthetic ballot,
+   re-tallies, dispatches the findings-file mode of `review-and-fix.sh`
+   for the fixes, runs relevant-checks, and re-invokes
+   `run-step5-review.sh --starting-round N+1` to resume the loop. The
+   round counting helper reads `$IMPLEMENT_TMPDIR/round-*/review-and-fix.env`
+   so the cap math survives the bail.
+
+10. **SKILL.md prose reduction**: replace the Step 5 round-loop prose
+    (lines 1208-1241) with one Bash block invoking
+    `run-step5-review.sh --implement-tmpdir "$IMPLEMENT_TMPDIR"` and
+    structured KV parsing for the final envelope. Remove the duplicate
+    tally-composition prose at lines 1245-1281. Preserve the
+    `main-agent-vote-required` handling prose (small, rare exception path).
+
+## Test harness coverage
+
+- `skills/review-and-fix/scripts/test-review-and-fix.sh` — extend with
+  loop-mode coverage (mock per-round behavior, assert loop convergence,
+  cap-hit, stall propagation, bulk-skip-ratio gate). Existing single-round
+  cases stay green.
+- `skills/implement/scripts/test-implement-review-token-propagation.sh` —
+  pass-through assertions stay green; add explicit loop-mode propagation
+  case.
+- `scripts/test-run-step5-review.sh` — add `--mode loop` dispatch case.
+- `skills/implement/scripts/test-implement-step5-substantiality.sh`
+  (or equivalent) — add `git diff --numstat` proxy assertion.
+- `skills/implement/scripts/test-implement-step5-bulk-skip-ratio.sh`
+  (or equivalent) — extend with loop-cap stall case.
+- Structure tests asserting Step 5 mentions `lint-fix-loop.sh` in
+  `skills/implement/SKILL.md` will need the SKILL.md collapse reflected
+  (the mention moves from prompt prose to a comment in the new Bash block,
+  or migrates to the script doc sibling at `scripts/run-step5-review.md`).
+
+## Risk register (carried from Codex sketches)
+
+- **Contract drift** between the prose-stripped Step 5 and the absorbed
+  loop. Mitigation: pin the new KV envelope shape with a dedicated harness
+  before relying on it.
+- **Substantiality proxy false-positives/negatives** on large
+  comment-only refactors or large generated-file changes. Mitigation:
+  threshold 100 is conservative; subsequent tuning is cheap.
+- **Per-round helper failures** (relevant-checks redaction failure, lint
+  loop main-agent-required) — these already have explicit Step-16 routes
+  in the prose. Port them faithfully; do NOT relax stall granularity
+  (per Round 1 decision).
+- **Re-entry math** under `--starting-round N` must honor degraded-round
+  inflation from disk artifacts. Mitigation: the existing
+  `count_prior_degraded_rounds` helper reads from
+  `$IMPLEMENT_TMPDIR/round-*/review-and-fix.env`, which is durable.
