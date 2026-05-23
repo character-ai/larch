@@ -6,7 +6,7 @@ lifecycle operations that still write directly to GitHub issues:
 ```text
 tracking-issue-write.sh create-issue --title T --body-file F [--repo OWNER/REPO]
 tracking-issue-write.sh append-comment --issue N --body-file F [--lifecycle-marker ID] [--repo OWNER/REPO]
-tracking-issue-write.sh rename --issue N --state in-progress|done|stalled|planned [--round-trip BOOL] [--repo OWNER/REPO]
+tracking-issue-write.sh rename --issue N --state in-progress|done|stalled|planned [--repo OWNER/REPO]
 tracking-issue-write.sh mark-false-positive --issue N [--repo OWNER/REPO]
 ```
 
@@ -22,7 +22,7 @@ Success keys:
 |---|---|
 | `create-issue` | `ISSUE_NUMBER=<N>`, `ISSUE_URL=<url>` |
 | `append-comment` | `COMMENT_ID=<id>`, `COMMENT_URL=<url>` |
-| `rename` | `RENAMED=true\|false`, `NEW_TITLE=<title>`, optional `ROUND_TRIP_APPLIED=true\|false` |
+| `rename` | `RENAMED=true\|false`, `NEW_TITLE=<title>` |
 | `mark-false-positive` | `MARKED=true\|false`, `NEW_TITLE=<title>` |
 
 Failure envelope:
@@ -61,8 +61,7 @@ the substring `--` before synthesizing the HTML marker comment.
 maps to a managed lifecycle bracket prefix in the GitHub title (`[IN PROGRESS]`,
 `[DONE]`, `[STALLED]`, `[PLANNED]`) followed by exactly one ASCII space before
 the user tail, matching `tracking-issue-write.sh`. Strip/recompose rules: strip
-at most one leading lifecycle prefix, preserve optional `[ROUND-TRIP]` marker,
-redact before outbound title.
+at most one leading lifecycle prefix, redact before outbound title.
 
 ## Tests
 

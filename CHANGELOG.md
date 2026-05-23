@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [41.0.0] - 2026-05-22
+
+### Changed
+
+- Remove the round-trip body detector and its title marker to stop false positives from ordinary English in issue bodies.
+- Simplify tracking-issue lifecycle renames and finalize/ship-pr callers by dropping the detector pipeline and Makefile harness.
+- Update docs, agent-lint exceptions, and offline tests so the tree no longer references the removed surface outside CHANGELOG and larch-logs.
+
 ## [40.0.0] - 2026-05-22
 
 ### Changed

@@ -1187,10 +1187,10 @@ rename_done_best_effort() {
     [ "$(read_state REPO_UNAVAILABLE)" = "false" ] || return 0
     fail_file=$(failure_capture_path postmerge)
     if [ -n "$repo" ]; then
-        "$SCRIPT_DIR/tracking-issue-write.sh" rename --issue "$issue" --state "done" --round-trip false --repo "$repo" > "$fail_file" 2>&1
+        "$SCRIPT_DIR/tracking-issue-write.sh" rename --issue "$issue" --state "done" --repo "$repo" > "$fail_file" 2>&1
         rc=$?
     else
-        "$SCRIPT_DIR/tracking-issue-write.sh" rename --issue "$issue" --state "done" --round-trip false > "$fail_file" 2>&1
+        "$SCRIPT_DIR/tracking-issue-write.sh" rename --issue "$issue" --state "done" > "$fail_file" 2>&1
         rc=$?
     fi
     [ "$rc" -eq 0 ] || record_failure postmerge "tracking-issue-write.sh rename" "$rc" "$fail_file"

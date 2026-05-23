@@ -69,7 +69,6 @@ assert_no_match "not a duplicate" "This is not a duplicate; it is still a real i
 assert_no_match "not duplicate" "This is not duplicate of the other report."
 assert_no_match "not a false positive" "This is not a false positive and should stay open."
 assert_no_match "deduplicated prose" "The deduplicated counter increased."
-assert_no_match "round-trip prose" "This mentions [ROUND-TRIP] marker behavior only."
 assert_no_match "bare duplicate" "This may be duplicate but needs investigation."
 assert_no_match "benign close" "Closing after the requested work completed."
 
