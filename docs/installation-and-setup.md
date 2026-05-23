@@ -39,6 +39,19 @@ After `/upgrade-larch` finishes, restart Claude Code only if it actually install
 
 When `/upgrade-larch` does verify a stable install successfully, it removes any cached larch versions newer than the verified stable release and then attempts to prune older cached versions toward a total of at most 8 cached versions, always preserving the verified stable release directory when it exists. If a cache-directory removal fails, extra directories can remain on disk and the script warns instead of claiming they were deleted. Before removing any version the script also preserves the currently executing cached plugin version, then scans current-user-owned larch session env files under `${XDG_CACHE_HOME:-${HOME:-/tmp}/.cache}/larch/sessions` plus current-user-owned `/tmp` and `/private/tmp` fallback `claude-*` session dirs and preserves versions still named by a running session's `LARCH_CLAUDE_PLUGIN_ROOT`. Stale session directories can therefore delay pruning until their cache entries are cleaned up.
 
+## Install ast-grep
+1. Install the CLI (shell)
+`brew install ast-grep`
+
+2. Add the marketplace (Claude Code)
+`/plugin marketplace add ast-grep/agent-skill`
+
+3. Install the plugin (Claude Code)
+`/plugin install ast-grep@ast-grep-marketplace`
+
+4. Reload plugins (Claude Code)
+`/reload-plugins`
+
 ## Install for local development (contributors)
 
 If you are hacking on larch itself and want Claude Code to load the plugin directly from your working checkout (so `${CLAUDE_PLUGIN_ROOT}` resolves to the repo you are editing), launch Claude Code with `--plugin-dir`:
