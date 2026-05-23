@@ -1,0 +1,25 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: EXONERATE -- the constant behavior is already documented; renaming adds churn without a concrete defect
+FINDING_5: EXONERATE -- broad branch scope is legitimate review friction but not worth blocking this change
+FINDING_6: EXONERATE -- historical logs are immutable archive material, not a future issue
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: EXONERATE -- historical run-log strings are expected archive drift
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: NO -- trivial comment mismatch, not worth a tracking issue
+FINDING_15: EXONERATE -- immutable run-log drift is expected and not issue-worthy
+FINDING_16: YES
+FINDING_17: YES
+FINDING_18: EXONERATE -- session-local paths-file trust is documented; prefix allowlisting is disproportionate here
+FINDING_19: EXONERATE -- this narrow buggy-caller leak path already matches sibling launcher behavior
+FINDING_20: NO -- explicitly unchanged and not actionable for this diff
+FINDING_21: NO -- committed run logs are expected product artifacts
+FINDING_22: NO -- the paths file is a target manifest, and empty-output handling belongs to the collector
+FINDING_23: YES
+FINDING_24: YES
+FINDING_25: EXONERATE -- broad branch-scope concern is legitimate but not worth a future issue
