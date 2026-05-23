@@ -713,6 +713,10 @@ exclude = [
   # (sibling contract).
   "scripts/test-render-run-summary.sh",
   "scripts/test-render-run-summary.md",
+  "scripts/test-token-cost.sh",
+  "scripts/test-token-cost.md",
+  "scripts/test-render-cost-line.sh",
+  "scripts/test-render-cost-line.md",
   "scripts/test-lint-skill-invocations.sh",
   "scripts/test-lint-literal-counts.sh",
   "scripts/lint-no-raw-stderr-after-quiet-init.md",

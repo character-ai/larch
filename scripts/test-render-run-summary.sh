@@ -6,11 +6,11 @@ export LARCH_QUIET_DISABLE=1
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 HELPER="$SCRIPT_DIR/render-run-summary.sh"
 TMP="$(mktemp "${TMPDIR:-/tmp}/trs.XXXXXX")"
-TMP_NA=""
+TMP_DEF=""
 TMP_PART=""
 TMP_ERR=""
 TMP_ERR_STDERR=""
-trap 'rm -f "$TMP" "$notes" "$TMP_NA" "$TMP_PART" "$TMP_ERR" "$TMP_ERR_STDERR"' EXIT
+trap 'rm -f "$TMP" "$notes" "$TMP_DEF" "$TMP_PART" "$TMP_ERR" "$TMP_ERR_STDERR"' EXIT
 PASS=0
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 pass() { printf 'PASS: %s\n' "$1"; PASS=$((PASS+1)); }
@@ -51,19 +51,19 @@ grep -Fq '**Note:** fixture note' "$TMP" || fail 'missing appended note'
 grep -Fq "TOTAL ~\$5.00" "$TMP" || fail 'missing expected total cost line (approx prefix)'
 pass 'render body shape + sentinel + notes + cost'
 
-# All vendor costs N/A (zero rates: totals stay N/A even with non-zero tokens).
-TMP_NA="$(mktemp "${TMPDIR:-/tmp}/trs-na.XXXXXX")"
-LARCH_CLAUDE_RATE_PER_M=0 LARCH_CODEX_RATE_PER_M=0 LARCH_CURSOR_RATE_PER_M=0 LARCH_TOKEN_RATE_PER_M=0 \
+# Shipped defaults: 1M tokens each lane → 6 + 10 + 10 = 26 USD total.
+TMP_DEF="$(mktemp "${TMPDIR:-/tmp}/trs-def.XXXXXX")"
+env -u LARCH_CLAUDE_RATE_PER_M -u LARCH_CODEX_RATE_PER_M -u LARCH_CURSOR_RATE_PER_M -u LARCH_TOKEN_RATE_PER_M \
     "$HELPER" \
     --skill implement \
     --outcome merged \
-    --run-id RUN-NA \
+    --run-id RUN-DEF \
     --mode '--quick' \
     --workflow-path SIMPLE \
     --duration '00:01:00' \
-    --claude-tokens 1000 \
-    --codex-tokens 1000 \
-    --cursor-tokens 1000 \
+    --claude-tokens 1000000 \
+    --codex-tokens 1000000 \
+    --cursor-tokens 1000000 \
     --issue-number 0 \
     --issue-url 'N/A' \
     --pr-number 0 \
@@ -75,15 +75,16 @@ LARCH_CLAUDE_RATE_PER_M=0 LARCH_CODEX_RATE_PER_M=0 LARCH_CURSOR_RATE_PER_M=0 LAR
     --exec-issues 0 \
     --warnings 0 \
     --run-logs-path 'N/A' \
-    --output-file "$TMP_NA" >/dev/null 2>/dev/null
-grep -Fq 'TOTAL N/A' "$TMP_NA" || fail 'all-N/A cost line'
-grep -Fq 'Claude N/A' "$TMP_NA" || fail 'all-N/A claude slot'
-if grep -Fq '**PR**:' "$TMP_NA"; then fail 'PR bullet omitted when display is N/A'; fi
-pass 'all-N/A cost semantics'
+    --output-file "$TMP_DEF" >/dev/null 2>/dev/null
+grep -Fq "TOTAL ~\$26.00" "$TMP_DEF" || fail 'all-defaulted total cost'
+grep -Fq "Claude \$6.00" "$TMP_DEF" || fail 'all-defaulted Claude slot'
+grep -Fq "Codex \$10.00" "$TMP_DEF" || fail 'all-defaulted Codex slot'
+grep -Fq "Cursor \$10.00" "$TMP_DEF" || fail 'all-defaulted Cursor slot'
+pass 'all-defaulted cost semantics (shipped defaults)'
 
-# Partial N/A: one priced lane + others N/A.
+# Explicit Claude rate only; zero-token lanes show $0.00 (defaults still apply for rates).
 TMP_PART="$(mktemp "${TMPDIR:-/tmp}/trs-part.XXXXXX")"
-LARCH_CLAUDE_RATE_PER_M=1 LARCH_CODEX_RATE_PER_M=0 LARCH_CURSOR_RATE_PER_M=0 LARCH_TOKEN_RATE_PER_M='' \
+LARCH_CLAUDE_RATE_PER_M=2 env -u LARCH_CODEX_RATE_PER_M -u LARCH_CURSOR_RATE_PER_M -u LARCH_TOKEN_RATE_PER_M \
     "$HELPER" \
     --skill implement \
     --outcome merged \
@@ -106,16 +107,15 @@ LARCH_CLAUDE_RATE_PER_M=1 LARCH_CODEX_RATE_PER_M=0 LARCH_CURSOR_RATE_PER_M=0 LAR
     --warnings 0 \
     --run-logs-path 'N/A' \
     --output-file "$TMP_PART" >/dev/null 2>/dev/null
-grep -Fq 'TOTAL ~' "$TMP_PART" || fail 'partial-N/A total missing tilde prefix'
-cost_needle="\$1.00"
-grep -Fq "$cost_needle" "$TMP_PART" || fail 'partial-N/A total missing amount'
-grep -Fq 'Codex N/A' "$TMP_PART" || fail 'partial-N/A codex slot'
-pass 'partial-N/A cost semantics'
+grep -Fq "TOTAL ~\$2.00" "$TMP_PART" || fail 'Claude-only priced total'
+grep -Fq "Codex \$0.00" "$TMP_PART" || fail 'zero-token codex slot'
+grep -Fq "Cursor \$0.00" "$TMP_PART" || fail 'zero-token cursor slot'
+pass "priced Claude + zero-token lanes at \$0.00"
 
 # stderr envelope pins (quiet diagnostics; not mixed into markdown file).
 TMP_ERR="$(mktemp "${TMPDIR:-/tmp}/trs-err.XXXXXX")"
 TMP_ERR_STDERR="$(mktemp "${TMPDIR:-/tmp}/trs-errstderr.XXXXXX")"
-LARCH_CLAUDE_RATE_PER_M=1 LARCH_CODEX_RATE_PER_M=0 LARCH_CURSOR_RATE_PER_M=0 LARCH_TOKEN_RATE_PER_M='' \
+env -u LARCH_CLAUDE_RATE_PER_M -u LARCH_CODEX_RATE_PER_M -u LARCH_CURSOR_RATE_PER_M -u LARCH_TOKEN_RATE_PER_M \
     "$HELPER" \
     --skill fix-issue \
     --outcome pr-open \

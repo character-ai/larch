@@ -16,11 +16,14 @@ Codex and Cursor support generic prompts plus specialist `--agent-file` modes;
 - Codex and Cursor append `OUTER_LAUNCHER=<repo>/scripts/launch-review.sh`
   metadata and store `${OUTPUT}.prompt` so `collect-agent-results.sh` can replay
   retries through the same launcher with `--tool <tool>`.
-  prompt hardening, model resolution, and snapshot-guard logic.
+- Shared launcher wiring covers prompt hardening, model resolution, and snapshot-guard logic.
 - Timing rows default to `<tool>-review`; CLI `--timing-task-kind` values must
   be non-empty and non-flag-like.
 - Token budget cap handling is shared across all three tool paths via
   `--token-budget-cap` or `LARCH_TOKEN_BUDGET_CAP_REVIEW`.
+- When `IMPLEMENT_TMPDIR/session-id` is absent, the launcher exports
+  `LARCH_TOKEN_SESSION_ID` from `$DESIGN_TMPDIR/session-id` when that file
+  exists (standalone `/design` parity across Codex and Cursor branches).
 - Codex receives a compact read-only hardening preamble through
   per-invocation `CODEX_HOME/config.toml`; Cursor receives the same compact
   prohibition in the wrapped prompt plus a `--mode plan` enforcement note.

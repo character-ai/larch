@@ -24,7 +24,7 @@ STATUS=under_cap TOTAL=<N> CAP=<N> STEP=<name>
 
 ## Session identity
 
-`LARCH_TOKEN_SESSION_ID` is read from the environment or from `$IMPLEMENT_TMPDIR/session-id` when the env var is absent.  The helper passes the resolved session ID to `token-ledger.sh dump`, which reads only the JSONL file for that session.
+`LARCH_TOKEN_SESSION_ID` is read from the environment, from `$IMPLEMENT_TMPDIR/session-id`, or from `$DESIGN_TMPDIR/session-id` when the prior sources are absent (matching `launch-review.sh` export parity). The helper passes the resolved session ID to `token-ledger.sh dump`, which reads only the JSONL file for that session.
 
 ## Ledger parsing
 

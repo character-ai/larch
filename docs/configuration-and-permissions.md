@@ -224,13 +224,21 @@ Per-million-token cost rate (USD) used by `/research`'s Step 4 token report (`##
 
 #### Per-vendor rates (`/implement` final summary)
 
-[`scripts/token-cost.sh`](../scripts/token-cost.sh) (used by [`scripts/render-run-summary.sh`](../scripts/render-run-summary.md)) computes optional USD estimates per lane when rates are set:
+[`scripts/token-cost.sh`](../scripts/token-cost.sh) (used by [`scripts/render-run-summary.sh`](../scripts/render-run-summary.md)) computes USD estimates per lane:
 
-- **`LARCH_CLAUDE_RATE_PER_M`** — Claude (per million total tokens). When unset or zero, falls back to **`LARCH_TOKEN_RATE_PER_M`** so existing research-style configuration continues to apply.
-- **`LARCH_CODEX_RATE_PER_M`** — Codex (per million total tokens). Omit or set to empty / `0` to show `N/A` for that lane.
-- **`LARCH_CURSOR_RATE_PER_M`** — Cursor (per million total tokens). Omit or set to empty / `0` to show `N/A` for that lane.
+- **`LARCH_CLAUDE_RATE_PER_M`** — Claude (per million total tokens). When unset, empty, zero, or malformed, falls back to **`LARCH_TOKEN_RATE_PER_M`** when that value is a positive decimal; otherwise a built-in Claude default (`6.00` USD per 1M total tokens) applies.
+- **`LARCH_CODEX_RATE_PER_M`** — Codex (per million total tokens). When unset, empty, zero, or malformed, a built-in default (`10.00` USD per 1M) applies.
+- **`LARCH_CURSOR_RATE_PER_M`** — Cursor (per million total tokens). When unset, empty, zero, or malformed, a built-in default (`10.00` USD per 1M) applies.
 
-When every applicable rate is unset or non-positive, cost lines in the rich summary show `N/A` and no combined total is shown.
+`TOTAL_COST` in the rich summary always sums all three vendor lanes once defaults make every lane numeric.
+
+#### Default rates
+
+Built-in defaults are **conservative blended estimates per million total tokens**, not invoice-grade billing data. Operators with real billing visibility should set explicit rates via the env vars above; the displayed dollar amounts are for cost-awareness only.
+
+> **Note**: Default rates are conservative blended estimates per million total tokens, not invoice-grade billing data. Operators with real billing visibility should set their own rates via the env vars above. The displayed dollar amounts are for cost-awareness only.
+
+Malformed env values (non-numeric strings, negatives, etc.) fall back to the defaults so a typo cannot silently produce `$0.00` for a lane.
 
 ### `LARCH_TIMING_OUTLIER_THRESHOLD_S`
 

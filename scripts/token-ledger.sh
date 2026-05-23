@@ -36,6 +36,10 @@ resolve_session_id() {
         tr -d '\r\n' < "$IMPLEMENT_TMPDIR/session-id"
         return 0
     fi
+    if [[ -n "${DESIGN_TMPDIR:-}" && -s "$DESIGN_TMPDIR/session-id" ]]; then
+        tr -d '\r\n' < "$DESIGN_TMPDIR/session-id"
+        return 0
+    fi
     pwd -P | sha256_hex
 }
 
@@ -99,6 +103,13 @@ resolve_ledger_path() {
             return
         fi
     fi
+    if [[ -n "${DESIGN_TMPDIR:-}" && -d "$DESIGN_TMPDIR" ]]; then
+        canon_root=$(cd "$DESIGN_TMPDIR" 2>/dev/null && pwd -P) || true
+        if [[ -n "$canon_root" ]]; then
+            printf '%s/larch-tokens-%s.jsonl' "$canon_root" "$slug"
+            return
+        fi
+    fi
     if [[ -n "${SESSION_ENV_PATH:-}" && -d "$(dirname "$SESSION_ENV_PATH")" ]]; then
         canon_root=$(cd "$(dirname "$SESSION_ENV_PATH")" 2>/dev/null && pwd -P) || true
         if [[ -n "$canon_root" ]]; then
@@ -106,7 +117,7 @@ resolve_ledger_path() {
             return
         fi
     fi
-    warn "no per-run ledger root set; expected one of --ledger, LARCH_TOKEN_LEDGER, IMPLEMENT_TMPDIR, or SESSION_ENV_PATH"
+    warn "no per-run ledger root set; expected one of --ledger, LARCH_TOKEN_LEDGER, IMPLEMENT_TMPDIR, DESIGN_TMPDIR, or SESSION_ENV_PATH"
     return 1
 }
 
