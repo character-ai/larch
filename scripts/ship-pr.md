@@ -40,8 +40,7 @@ The script also writes `$IMPLEMENT_TMPDIR/postbump-state.sh` before `implement-f
 
 - `0` means complete or a prompt-side checkpoint (`OOS_PENDING=true`). `CI_PASSED=true` is internal state recorded when green CI is observed; it is not an exit-0 checkpoint because `ci-initial` now continues into `ci-merge` in the same invocation.
 - `3` means the CI loop needs user input. `BAIL_REASON` and `BAIL_NEEDS_USER_INPUT=true` are written to state.
-- `4` means stalled cleanup. `STALL_TRACKING=true` and `STALL_STEP` are written to state. When `STALL_STEP=12d` (merge-pr policy/admin/error branch), the script appends a "DO NOT improvise recovery" orchestrator directive to the `$fail_file` so any reader of the failure detail log sees the correct recovery path. Exception: `MERGE_RESULT=error` whose text reports a local/PR-head OID mismatch is classified as recoverable divergence only when the reported PR head OID is still an ancestor of the current local `HEAD`; that case routes to `run_rebase_rebump` instead of stalling.
-- `5` means the prompt-side Rebase + Re-bump Sub-procedure must run. `RESUME_PHASE` and `CALLER_KIND` are written to state.
+- `4` means stalled cleanup. `STALL_TRACKING=true` and `STALL_STEP` are written to state. When `STALL_STEP=12d` (merge-pr policy/admin/error branch), the script appends a "DO NOT improvise recovery" orchestrator directive to the `$fail_file` so any reader of the failure detail log sees the correct recovery path. Exception: `MERGE_RESULT=error` whose text reports a local/PR-head OID mismatch is classified as recoverable divergence only when the reported PR head OID is still an ancestor of the current local `HEAD`; that case routes to `run_rebase_rebump` instead of stalling. **Legacy exit `5` (orchestrator-owned rebase + re-bump handoff) is no longer emitted from `ship-pr.sh`:** same-version / postbump mechanical recovery and non-bump rebase conflicts are handled in-script (mechanical retries and `run_recovery_waterfall`), and exhaustion surfaces here as `exit 4` with `RESUME_PHASE` / `CALLER_KIND` set where the state machine still needs an orchestrator resume (for example `RESUME_PHASE=ship-pr-rrr-phase14`).
 - `6` — transient network failure. Orchestrator retries the same `PHASE` after a short sleep. `BAIL_REASON` carries the underlying network-signature; `STALL_TRACKING=false` distinguishes it from `exit 4`.
 
 ## Helper Contracts
@@ -62,6 +61,14 @@ The script also writes `$IMPLEMENT_TMPDIR/postbump-state.sh` before `implement-f
   replay. Logging failures are best-effort and do not change phase outcomes.
 
 Transient network classification uses `is_transient_net_signature` from `scripts/lib-net.sh`, sourced fail-closed through the `LARCH_LIB_NET_LOADED` sentinel before any phase logic runs. Matching create-PR, rebase, merge, or CI-bail text exits `6` through `exit_transient_net`; non-matching failures continue through the normal stall or user-input paths.
+
+## Recovery waterfall (`run_recovery_waterfall`)
+
+Several failure classes attempt **three-tier** vendor recovery before the historical `exit_stall` handoff: `launch-cursor-ci.sh`, then `launch-codex-ci.sh`, then `launch-claude-ci.sh` (each tier runs only when the corresponding `cursor` / `codex` / `claude` binary exists on `PATH`). Call sites include: checks log resolution failures and post-lint exhaustion in `run_checks_phase`, the OOS disposition gate in `run_pr_prep_phase`, `write-final-report.sh` / `create-pr.sh` failures in `run_pr_create_phase`, and **non-bump-only** `rebase-push.sh --keep-on-conflict` conflicts in `run_rebase_rebump`.
+
+Each tier snapshots `HEAD` plus tracked/untracked dirty paths, runs the launcher (`--role fix` or `--role resolve-conflict`; the rebase path passes `--conflict-files` from `LARCH_WF_CONFLICT_CSV` when set) with optional `--failure-log` when the capture file already lives under `$IMPLEMENT_TMPDIR`, then runs a **phase-specific verifier** (relevant-checks capture, OOS gate re-invocation, `write-final-report.sh` / `create-pr.sh` probe, or `git rebase --continue` plus `_run_rebase_rebump_verify_plain_no_push`). Failed tiers roll back via `recovery_waterfall_paths_delta_revert` using `while IFS= read -r path` and quoted `git restore --staged -- "$path"` / `git checkout -- "$path"` / `rm -f -- "$path"` so paths with spaces or glob characters cannot word-split. When every tier fails, the caller `exit_stall`s with the same step tokens as before the waterfall.
+
+`RESUME_PHASE=ship-pr-rrr-phase14` is **not** a no-op: resuming advances the state machine and re-enters `run_rebase_rebump` so the tail of the rebase/rebump procedure can finish after operator intervention.
 
 ## Invariants
 

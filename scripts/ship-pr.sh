@@ -138,40 +138,6 @@ is_tmp_path() {
     esac
 }
 
-while [ $# -gt 0 ]; do
-    case "$1" in
-        --state-file) [ $# -ge 2 ] || die_usage "--state-file requires a value"; STATE_FILE=$2; shift 2 ;;
-        --implement-tmpdir) [ $# -ge 2 ] || die_usage "--implement-tmpdir requires a value"; IMPLEMENT_TMPDIR=$2; shift 2 ;;
-        --merge) [ $# -ge 2 ] || die_usage "--merge requires a value"; MERGE=$2; shift 2 ;;
-        --draft) [ $# -ge 2 ] || die_usage "--draft requires a value"; DRAFT=$2; shift 2 ;;
-        --forked) [ $# -ge 2 ] || die_usage "--forked requires a value"; FORKED_TARGET=$2; shift 2 ;;
-        --no-admin-fallback) [ $# -ge 2 ] || die_usage "--no-admin-fallback requires a value"; NO_ADMIN_FALLBACK=$2; shift 2 ;;
-        --no-logs-commit) [ $# -ge 2 ] || die_usage "--no-logs-commit requires a value"; NO_LOGS_COMMIT=$2; shift 2 ;;
-        --repo) [ $# -ge 2 ] || die_usage "--repo requires a value"; REPO_ARG=$2; shift 2 ;;
-        --resume-phase) [ $# -ge 2 ] || die_usage "--resume-phase requires a value"; RESUME_PHASE=$2; shift 2 ;;
-        --help) usage; exit 0 ;;
-        *) die_usage "unknown option: $1" ;;
-    esac
-done
-
-[ -n "$STATE_FILE" ] || die_usage "--state-file is required"
-[ -n "$IMPLEMENT_TMPDIR" ] || die_usage "--implement-tmpdir is required"
-is_tmp_path "$STATE_FILE" || die_usage "--state-file must be under /tmp/, /private/tmp/, /var/folders/, or the larch cache sessions root"
-is_tmp_path "$IMPLEMENT_TMPDIR" || die_usage "--implement-tmpdir must be under /tmp/, /private/tmp/, /var/folders/, or the larch cache sessions root"
-[ -d "$IMPLEMENT_TMPDIR" ] || die_usage "--implement-tmpdir must exist"
-case "$STATE_FILE" in "$IMPLEMENT_TMPDIR"/*) ;; *) die_usage "--state-file must live under --implement-tmpdir" ;; esac
-is_bool "$NO_ADMIN_FALLBACK" || die_usage "--no-admin-fallback must be true or false"
-is_bool "$NO_LOGS_COMMIT" || die_usage "--no-logs-commit must be true or false"
-[ -z "$MERGE" ] || is_bool "$MERGE" || die_usage "--merge must be true or false"
-[ -z "$DRAFT" ] || is_bool "$DRAFT" || die_usage "--draft must be true or false"
-[ -z "$FORKED_TARGET" ] || is_bool "$FORKED_TARGET" || die_usage "--forked must be true or false"
-# Export so child processes inherit the session tmpdir path regardless of
-# whether the caller shell already had it exported (e.g. after a session
-# restart where the orchestrator env was fresh). Log helpers resolve their run
-# context from this tmpdir.
-export IMPLEMENT_TMPDIR
-export LARCH_NO_LOGS_COMMIT="$NO_LOGS_COMMIT"
-
 validate_state_syntax() {
     local line line_no
     line_no=0
@@ -320,42 +286,9 @@ write_initial_state() {
     } > "$tmp" && mv "$tmp" "$STATE_FILE"
 }
 
-if [ ! -e "$STATE_FILE" ]; then
-    write_initial_state
-fi
-[ -r "$STATE_FILE" ] || die_usage "--state-file must be readable"
-validate_state_syntax
-
 require_key() {
     state_has_key "$1" || die_usage "state-file missing required key: $1"
 }
-
-for key in \
-    PHASE BRANCH_NAME ISSUE_NUMBER RUN_ID REPO REPO_UNAVAILABLE FORKED_TARGET \
-    HAS_BUMP BUMP_TYPE NEW_VERSION MERGE DRAFT DEFERRED PR_CLOSED \
-    DONE_RENAME_APPLIED STALL_TRACKING STALL_STEP BAIL_NEEDS_USER_INPUT \
-    CI_PASSED OOS_PENDING PR_NUMBER PR_URL PR_TITLE RESUME_PHASE CALLER_KIND \
-    REBASE_COUNT FIX_ATTEMPTS ITERATION TRANSIENT_RETRIES FAILED_RUN_ID \
-    MANIFEST_PATH TOOL_LABEL
-do
-    require_key "$key"
-done
-
-for key in REPO_UNAVAILABLE FORKED_TARGET HAS_BUMP MERGE DRAFT DEFERRED PR_CLOSED DONE_RENAME_APPLIED STALL_TRACKING BAIL_NEEDS_USER_INPUT CI_PASSED OOS_PENDING; do
-    is_bool "$(read_state "$key")" || die_usage "state-file key $key must be true or false"
-done
-
-# Fail fast at the entry boundary if MANIFEST_PATH points at a non-JSON file
-# (e.g. the /design Step 5 manifest.env shell KV file mistakenly routed here).
-# See issue #2233: without this guard, a bad MANIFEST_PATH surfaces four phases
-# downstream inside collect_changelog_bullets with no actionable diagnostic.
-manifest_path_check=$(read_state MANIFEST_PATH)
-if [ -n "$manifest_path_check" ]; then
-    if [ ! -r "$manifest_path_check" ] || ! jq empty "$manifest_path_check" >/dev/null 2>&1; then
-        die_usage "MANIFEST_PATH must be empty or a readable JSON file (got: $manifest_path_check)"
-    fi
-fi
-unset manifest_path_check
 
 kv_value() {
     local key=$1 input=$2
@@ -711,6 +644,16 @@ run_checks_phase() {
     redacted_log=$(printf '%s\n' "$out" | awk -F= '/^REDACTED_LOG_FILE=/ { print substr($0, index($0,"=")+1); exit }')
     redacted_log=$(resolve_checks_log_path "$redacted_log") || {
         record_failure checks "run-relevant-checks-captured.sh" "$rc" "$fail_file"
+        if run_recovery_waterfall checks fix "$fail_file" checks-step6; then
+            if ! git diff --quiet HEAD 2>/dev/null || ! git diff --cached --quiet 2>/dev/null; then
+                fail_file=$(failure_capture_path checks)
+                git add -A >>"$fail_file" 2>&1 || true
+                "$SCRIPT_DIR/git-commit.sh" -m "Fix checks (recovery waterfall)" >>"$fail_file" 2>&1 || true
+                "$SCRIPT_DIR/git-push.sh" >>"$fail_file" 2>&1 || true
+            fi
+            advance_phase bump
+            return 0
+        fi
         exit_stall 6
     }
     for lint_attempt in 1 2 3; do
@@ -748,6 +691,16 @@ run_checks_phase() {
         esac
     done
     record_failure checks "run-relevant-checks-captured.sh" "$rc" "$fail_file"
+    if run_recovery_waterfall checks fix "$fail_file" checks-step6; then
+        if ! git diff --quiet HEAD 2>/dev/null || ! git diff --cached --quiet 2>/dev/null; then
+            fail_file=$(failure_capture_path checks)
+            git add -A >>"$fail_file" 2>&1 || true
+            "$SCRIPT_DIR/git-commit.sh" -m "Fix checks (recovery waterfall)" >>"$fail_file" 2>&1 || true
+            "$SCRIPT_DIR/git-push.sh" >>"$fail_file" 2>&1 || true
+        fi
+        advance_phase bump
+        return 0
+    fi
     exit_stall 6
 }
 
@@ -899,13 +852,9 @@ run_bump_phase() {
                 record_failure bump "apply-bump.sh" "$rc" "$fail_file"
                 error_text=$(kv_value ERROR "$apply_out")
                 case "$error_text" in
-                    origin/main\ has\ already\ bumped\ to*)
+                    origin/main\ has\ already\ bumped\ to*|version\ regression:*)
                         state_set_many RESUME_PHASE bump CALLER_KIND step8_apply_bump_same_version
-                        exit 5
-                        ;;
-                    version\ regression:*)
-                        state_set_many RESUME_PHASE bump CALLER_KIND step8_apply_bump_same_version
-                        exit 5
+                        _run_step8_same_version_mechanically || exit_stall 8
                         ;;
                     *) exit_stall 8 ;;
                 esac
@@ -959,9 +908,40 @@ run_bump_phase() {
             resume_phase=$(kv_value RESUME_PHASE "$finalize_out")
             if [ "$resume_phase" = "force-push-gate" ]; then
                 state_set_many RESUME_PHASE force-push-gate CALLER_KIND step8b_rebase
-                exit 5
+                if _run_force_push_gate_mechanically; then
+                    fail_file=$(failure_capture_path bump)
+                    finalize_out=$("$SCRIPT_DIR/implement-finalize.sh" postbump --state-file "$IMPLEMENT_TMPDIR/postbump-state.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR" 2>"$fail_file")
+                    rc=$?
+                    printf '%s\n' "$finalize_out" >> "$fail_file"
+                    status=$(kv_value STATUS "$finalize_out")
+                    case "$status" in
+                        ok|skipped)
+                            local _cur _new _btype
+                            _cur=$(kv_value CURRENT_VERSION "$classify_out")
+                            _new=$(read_state NEW_VERSION)
+                            _btype=$(read_state BUMP_TYPE)
+                            case "$_btype" in
+                                PATCH|MINOR|MAJOR)
+                                    emit "$(printf '✅ 8: version bump — %s → %s (%s)' "$_cur" "$_new" "$_btype")"
+                                    ;;
+                                *)
+                                    if [ "$forked" = "true" ]; then
+                                        emit '⏩ 8: version bump status=skip reason=forked'
+                                    else
+                                        emit "$(printf '⏩ 8: version bump status=skip reason=%s' "${_btype:-NONE}")"
+                                    fi
+                                    ;;
+                            esac
+                            advance_phase pr-prep
+                            ;;
+                        *) exit_stall 8b ;;
+                    esac
+                else
+                    exit_stall 8b
+                fi
+            else
+                exit_stall 8b
             fi
-            exit_stall 8b
             ;;
         changelog-failed|rebase-failed|push-failed|remote-check-failed|branch-mismatch|postbump-state-corrupt)
             exit_stall 8b
@@ -1061,6 +1041,17 @@ run_pr_prep_phase() {
             cp "$IMPLEMENT_TMPDIR/oos-disposition-gate.stderr.log" "$fail_file" 2>/dev/null || true
         fi
         record_failure pr-prep "oos-disposition-gate.sh" "$gate_rc" "$fail_file" Warnings
+        if run_recovery_waterfall pr-prep fix "$fail_file" pr-prep-oos; then
+            set +e
+            run_oos_disposition_gate_if_required_before_oos_pending_false
+            gate_rc=$?
+            set -e
+            if [ "$gate_rc" -eq 0 ]; then
+                state_set OOS_PENDING false
+                advance_phase pr-create
+                return 0
+            fi
+        fi
         exit_stall 9a1
     fi
     state_set OOS_PENDING false
@@ -1091,13 +1082,18 @@ run_pr_create_phase() {
     # helper failure here stalls Step 9b with no PR yet. PR_URL defaults to
     # "N/A".
     fail_file=$(failure_capture_path pr-create)
-    final_report_output=$("$SCRIPT_DIR/../skills/implement/scripts/write-final-report.sh" \
-        --implement-tmpdir "$IMPLEMENT_TMPDIR" 2>"$fail_file")
-    rc=$?
-    printf '%s\n' "$final_report_output" >> "$fail_file"
-    if [ "$rc" -ne 0 ] && is_transient_net_signature "$(cat "$fail_file" 2>/dev/null)"; then
+    with_transient_retry transient_envelope_predicate_none "$fail_file" \
+        "$SCRIPT_DIR/../skills/implement/scripts/write-final-report.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR"
+    rc=$_WTR_RC
+    final_report_output=$_WTR_OUT
+    if [ "$rc" -ne 0 ]; then
         record_failure pr-create "write-final-report.sh" "$rc" "$fail_file" Warnings
-        exit_transient_net "write-final-report: $final_report_output"
+        if run_recovery_waterfall pr-create fix "$fail_file" write-final-pre; then
+            with_transient_retry transient_envelope_predicate_none "$fail_file" \
+                "$SCRIPT_DIR/../skills/implement/scripts/write-final-report.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR"
+            rc=$_WTR_RC
+            final_report_output=$_WTR_OUT
+        fi
     fi
     if [ "$rc" -ne 0 ]; then
         record_failure pr-create "write-final-report.sh" "$rc" "$fail_file" Warnings
@@ -1122,19 +1118,21 @@ run_pr_create_phase() {
         fi
     fi
     fail_file=$(failure_capture_path pr-create)
-    out=$("$SCRIPT_DIR/create-pr.sh" --title "$title" --body-file "$IMPLEMENT_TMPDIR/pr-body.md" "${draft_args[@]+"${draft_args[@]}"}" "${repo_args[@]+"${repo_args[@]}"}" 2>"$fail_file")
-    rc=$?
-    printf '%s\n' "$out" >> "$fail_file"
-    # Classify against combined stderr + stdout (fail_file) — real helpers
-    # emit common network failures on stderr; checking only $out (stdout)
-    # would stall transient failures as non-transient. Streamed via cat to
-    # avoid argv-sized payloads on huge logs.
-    if [ "$rc" -ne 0 ] && is_transient_net_signature "$(cat "$fail_file" 2>/dev/null)"; then
-        record_failure pr-create "create-pr.sh" "$rc" "$fail_file"
-        exit_transient_net "create-pr: $out"
+    with_transient_retry transient_envelope_predicate_none "$fail_file" \
+        "$SCRIPT_DIR/create-pr.sh" --title "$title" --body-file "$IMPLEMENT_TMPDIR/pr-body.md" "${draft_args[@]+"${draft_args[@]}"}" "${repo_args[@]+"${repo_args[@]}"}"
+    rc=$_WTR_RC
+    out=$_WTR_OUT
+    if [ "$rc" -ne 0 ]; then
+        record_failure pr-create "create-pr.sh" "$rc" "$fail_file" Warnings
+        if run_recovery_waterfall pr-create fix "$fail_file" create-pr "$title" "$IMPLEMENT_TMPDIR/pr-body.md"; then
+            with_transient_retry transient_envelope_predicate_none "$fail_file" \
+                "$SCRIPT_DIR/create-pr.sh" --title "$title" --body-file "$IMPLEMENT_TMPDIR/pr-body.md" "${draft_args[@]+"${draft_args[@]}"}" "${repo_args[@]+"${repo_args[@]}"}"
+            rc=$_WTR_RC
+            out=$_WTR_OUT
+        fi
     fi
     if [ "$rc" -ne 0 ]; then
-        record_failure pr-create "create-pr.sh" "$rc" "$fail_file"
+        record_failure pr-create "create-pr.sh" "$rc" "$fail_file" Warnings
         exit_stall 9b
     fi
     pr_number=$(kv_value PR_NUMBER "$out")
@@ -1381,6 +1379,272 @@ is_head_divergence_recoverable() {
     git merge-base --is-ancestor "$pr_head_oid" "$current_head" 2>/dev/null
 }
 
+transient_envelope_predicate_none() {
+    return 1
+}
+
+transient_envelope_predicate_merge_pr() {
+    local out=$1
+    local mr err
+    mr=$(printf '%s\n' "$out" | awk -F= '/^MERGE_RESULT=/ { print $2; exit }')
+    err=$(printf '%s\n' "$out" | awk -F= '/^ERROR=/ { print substr($0, index($0, "=") + 1); exit }')
+    case "$mr" in
+        error|admin_failed)
+            is_transient_net_signature "$err" && return 0
+            ;;
+    esac
+    return 1
+}
+
+transient_envelope_predicate_ci_wait() {
+    local out=$1
+    local action br
+    action=$(printf '%s\n' "$out" | awk -F= '/^ACTION=/ { print $2; exit }')
+    br=$(printf '%s\n' "$out" | awk -F= '/^BAIL_REASON=/ { print substr($0, index($0, "=") + 1); exit }')
+    [ "$action" = "bail" ] && is_transient_net_signature "$br" && return 0
+    return 1
+}
+
+# Retry helper: up to 3 attempts; transient if (non-zero rc AND net signature on fail_file)
+# OR predicate(stdout, fail_file) returns true. $1=predicate name, $2=fail_file path,
+# $3..$n command+args. Sets global _WTR_OUT and _WTR_RC.
+with_transient_retry() {
+    local pred=$1 ff=$2 attempt=1 transient=0
+    shift 2
+    _WTR_OUT=""
+    _WTR_RC=0
+    while [ "$attempt" -le 3 ]; do
+        : > "$ff"
+        if _WTR_OUT=$("$@" 2>>"$ff"); then
+            _WTR_RC=0
+        else
+            _WTR_RC=$?
+        fi
+        printf '%s\n' "$_WTR_OUT" >> "$ff"
+        if [ "$_WTR_RC" -eq 0 ]; then
+            return 0
+        fi
+        transient=0
+        if [ "$_WTR_RC" -ne 0 ] && is_transient_net_signature "$(cat "$ff" 2>/dev/null)"; then
+            transient=1
+        fi
+        if [ "$transient" -eq 0 ] && "$pred" "$_WTR_OUT" "$ff"; then
+            transient=1
+        fi
+        if [ "$transient" -eq 0 ]; then
+            return "$_WTR_RC"
+        fi
+        if [ "$attempt" -eq 3 ]; then
+            exit_transient_net "Transient retries exhausted"
+        fi
+        attempt=$((attempt + 1))
+    done
+    return "$_WTR_RC"
+}
+
+recovery_waterfall_paths_delta_revert() {
+    local baseline_tracked=$1 baseline_untracked=$2 wf_log=$3
+    local cur_tracked cur_untracked path
+    cur_tracked=$(mktemp "${IMPLEMENT_TMPDIR}/wf-cur-tr.XXXXXX")
+    cur_untracked=$(mktemp "${IMPLEMENT_TMPDIR}/wf-cur-un.XXXXXX")
+    capture_tracked_dirty_paths > "$cur_tracked"
+    capture_untracked_dirty_paths > "$cur_untracked"
+    while IFS= read -r path || [ -n "$path" ]; do
+        [ -n "$path" ] || continue
+        grep -Fxq "$path" "$baseline_tracked" 2>/dev/null && continue
+        if grep -Fxq "$path" "$cur_untracked" 2>/dev/null; then
+            rm -f -- "$path" 2>>"$wf_log" || true
+        else
+            git restore --staged -- "$path" 2>>"$wf_log" || true
+            git checkout -- "$path" 2>>"$wf_log" || true
+        fi
+    done < "$cur_tracked"
+    while IFS= read -r path || [ -n "$path" ]; do
+        [ -n "$path" ] || continue
+        grep -Fxq "$path" "$baseline_untracked" 2>/dev/null && continue
+        rm -f -- "$path" 2>>"$wf_log" || true
+    done < "$cur_untracked"
+    rm -f "$cur_tracked" "$cur_untracked"
+}
+
+run_recovery_waterfall() {
+    local wf_phase=$1 wf_role=$2 fail_log_path=$3 verify_kind=$4
+    local pr_title=${5:-} pr_body=${6:-}
+    local baseline_dir baseline_head cur_head wf_log tier_rc verify_rc
+    local out output plan_file plan_args=() fl_arg=() run_id repo_r
+    baseline_dir=$(mktemp -d "${IMPLEMENT_TMPDIR}/recovery-wf.XXXXXX")
+    wf_log="$baseline_dir/wf.log"
+    git rev-parse HEAD > "$baseline_dir/head" 2>/dev/null || printf '\n' > "$baseline_dir/head"
+    capture_tracked_dirty_paths > "$baseline_dir/tracked"
+    capture_untracked_dirty_paths > "$baseline_dir/untracked"
+    baseline_head=$(cat "$baseline_dir/head" 2>/dev/null || true)
+    plan_file=$(resolve_plan_file)
+    [ -n "$plan_file" ] && plan_args=(--plan-file "$plan_file")
+    if [ -n "$fail_log_path" ] && [ -f "$fail_log_path" ]; then
+        case "$fail_log_path" in
+            "$IMPLEMENT_TMPDIR"/*) fl_arg=(--failure-log "$fail_log_path") ;;
+            *) fl_arg=() ;;
+        esac
+    else
+        fl_arg=()
+    fi
+    run_id=$(read_state RUN_ID)
+    repo_r=$(read_state REPO)
+    _wf_conflict_csv="${LARCH_WF_CONFLICT_CSV:-}"
+    _wf_extra=()
+    [ -n "$_wf_conflict_csv" ] && [ "$wf_role" = "resolve-conflict" ] && _wf_extra=(--conflict-files "$_wf_conflict_csv")
+    for tier in cursor codex claude; do
+        cur_head=$(git rev-parse HEAD 2>/dev/null || true)
+        if [ "$cur_head" != "$baseline_head" ]; then
+            emit_breadcrumb "ship-pr recovery-waterfall: head changed after dispatch (abort rollback tier=$tier)"
+            rm -rf "$baseline_dir"
+            return 1
+        fi
+        tier_rc=1
+        output="$IMPLEMENT_TMPDIR/recovery-${wf_phase}-${tier}-$(date +%s).out"
+        case "$tier" in
+            cursor)
+                if command -v cursor >/dev/null 2>&1; then
+                    "$SCRIPT_DIR/launch-cursor-ci.sh" --role "$wf_role" --output "$output" --run-id "$run_id" \
+                        --repo "$repo_r" ${plan_args[@]+"${plan_args[@]}"} ${_wf_extra[@]+"${_wf_extra[@]}"} ${fl_arg[@]+"${fl_arg[@]}"} --timeout 1800 >/dev/null 2>"$wf_log" && tier_rc=0 || tier_rc=$?
+                fi
+                ;;
+            codex)
+                if command -v codex >/dev/null 2>&1; then
+                    "$SCRIPT_DIR/launch-codex-ci.sh" --role "$wf_role" --output "$output" --run-id "$run_id" \
+                        --repo "$repo_r" ${plan_args[@]+"${plan_args[@]}"} ${_wf_extra[@]+"${_wf_extra[@]}"} ${fl_arg[@]+"${fl_arg[@]}"} --timeout 1800 >/dev/null 2>>"$wf_log" && tier_rc=0 || tier_rc=$?
+                fi
+                ;;
+            claude)
+                if command -v claude >/dev/null 2>&1; then
+                    "$SCRIPT_DIR/launch-claude-ci.sh" --role "$wf_role" --output "$output" --run-id "$run_id" \
+                        --repo "$repo_r" ${plan_args[@]+"${plan_args[@]}"} ${_wf_extra[@]+"${_wf_extra[@]}"} ${fl_arg[@]+"${fl_arg[@]}"} --timeout 1800 >/dev/null 2>>"$wf_log" && tier_rc=0 || tier_rc=$?
+                fi
+                ;;
+        esac
+        if [ "$tier_rc" -ne 0 ]; then
+            recovery_waterfall_paths_delta_revert "$baseline_dir/tracked" "$baseline_dir/untracked" "$wf_log"
+            continue
+        fi
+        if ! git symbolic-ref --quiet HEAD >/dev/null 2>&1; then
+            recovery_waterfall_paths_delta_revert "$baseline_dir/tracked" "$baseline_dir/untracked" "$wf_log"
+            continue
+        fi
+        verify_rc=1
+        case "$verify_kind" in
+            checks-step6)
+                capture_command_output out "$wf_log" "$SCRIPT_DIR/run-relevant-checks-captured.sh" --site step6 --tmpdir "$IMPLEMENT_TMPDIR"
+                verify_rc=$?
+                printf '%s\n' "$out" >> "$wf_log"
+                if [ "$verify_rc" -eq 0 ] && is_relevant_checks_clean "$out"; then
+                    verify_rc=0
+                else
+                    verify_rc=1
+                fi
+                ;;
+            checks-step10)
+                capture_command_output out "$wf_log" "$SCRIPT_DIR/run-relevant-checks-captured.sh" --site step10 --tmpdir "$IMPLEMENT_TMPDIR"
+                verify_rc=$?
+                printf '%s\n' "$out" >> "$wf_log"
+                if [ "$verify_rc" -eq 0 ] && is_relevant_checks_clean "$out"; then
+                    verify_rc=0
+                else
+                    verify_rc=1
+                fi
+                ;;
+            pr-prep-oos)
+                run_oos_disposition_gate_if_required_before_oos_pending_false
+                verify_rc=$?
+                ;;
+            write-final-pre)
+                capture_command_output out "$wf_log" "$SCRIPT_DIR/../skills/implement/scripts/write-final-report.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR"
+                verify_rc=$?
+                printf '%s\n' "$out" >> "$wf_log"
+                [ "$verify_rc" -eq 0 ] && printf '%s\n' "$out" | grep -q '^STATUS=ok$' && verify_rc=0 || verify_rc=1
+                ;;
+            create-pr)
+                local repo_args=() draft_args=()
+                [ -n "$(read_state REPO)" ] && repo_args=(--repo "$(read_state REPO)")
+                [ "$(read_state DRAFT)" = "true" ] && draft_args=(--draft)
+                capture_command_output out "$wf_log" "$SCRIPT_DIR/create-pr.sh" --title "$pr_title" --body-file "$pr_body" \
+                    ${draft_args[@]+"${draft_args[@]}"} ${repo_args[@]+"${repo_args[@]}"}
+                verify_rc=$?
+                printf '%s\n' "$out" >> "$wf_log"
+                ;;
+            rebase-nonbump)
+                local rphase=${LARCH_WF_REBASE_PHASE:-ci-initial}
+                if GIT_EDITOR=true git rebase --continue >>"$wf_log" 2>&1; then
+                    _run_rebase_rebump_verify_plain_no_push "$rphase"
+                    verify_rc=0
+                else
+                    verify_rc=1
+                fi
+                ;;
+            *) verify_rc=1 ;;
+        esac
+        if [ "$verify_rc" -ne 0 ]; then
+            recovery_waterfall_paths_delta_revert "$baseline_dir/tracked" "$baseline_dir/untracked" "$wf_log"
+            continue
+        fi
+        rm -rf "$baseline_dir"
+        return 0
+    done
+    rm -rf "$baseline_dir"
+    return 1
+}
+
+_run_step8_same_version_mechanically() {
+    local cnt fail_file classify_out apply_out rc error_text commits_before
+    cnt=$(read_state STEP8_SAME_VERSION_RETRY_COUNT "0")
+    case "$cnt" in ''|*[!0-9]*) cnt=0 ;; esac
+    if [ "$cnt" -ge 1 ]; then
+        return 1
+    fi
+    state_set STEP8_SAME_VERSION_RETRY_COUNT 1
+    fail_file=$(failure_capture_path bump)
+    "$SCRIPT_DIR/git-sync-local-main.sh" > "$fail_file" 2>&1 || true
+    classify_out=$("$PLUGIN_ROOT/.claude/skills/bump-version/scripts/classify-bump.sh" 2>"$fail_file")
+    rc=$?
+    printf '%s\n' "$classify_out" >> "$fail_file"
+    [ "$rc" -eq 0 ] || return 1
+    state_set_many \
+        HAS_BUMP true \
+        BUMP_TYPE "$(kv_value BUMP_TYPE "$classify_out")" \
+        NEW_VERSION "$(kv_value NEW_VERSION "$classify_out")" \
+        BUMP_REASONING_FILE "$(kv_value REASONING_FILE "$classify_out")"
+    commits_before=$(git rev-list --count HEAD 2>/dev/null || echo 0)
+    fail_file=$(failure_capture_path bump)
+    apply_out=$("$PLUGIN_ROOT/.claude/skills/bump-version/scripts/apply-bump.sh" --new-version "$(read_state NEW_VERSION)" 2>"$fail_file")
+    rc=$?
+    printf '%s\n' "$apply_out" >> "$fail_file"
+    if [ "$rc" -ne 0 ] || [ "$(kv_value APPLIED "$apply_out")" != "true" ]; then
+        return 1
+    fi
+    fail_file=$(failure_capture_path bump)
+    "$SCRIPT_DIR/check-bump-version.sh" --mode post --before-count "$commits_before" > "$fail_file" 2>&1
+    rc=$?
+    [ "$rc" -eq 0 ] || return 1
+    state_set STEP8_SAME_VERSION_RETRY_COUNT 0
+    return 0
+}
+
+_run_force_push_gate_mechanically() {
+    local checkpoint tmp finalize_out rc status fail_file
+    checkpoint="$IMPLEMENT_TMPDIR/.postbump-phase"
+    tmp="${checkpoint}.tmp.$$"
+    printf 'force-push-gate\n' > "$tmp" && mv "$tmp" "$checkpoint"
+    fail_file=$(failure_capture_path bump)
+    finalize_out=$("$SCRIPT_DIR/implement-finalize.sh" postbump --state-file "$IMPLEMENT_TMPDIR/postbump-state.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR" 2>"$fail_file")
+    rc=$?
+    printf '%s\n' "$finalize_out" >> "$fail_file"
+    status=$(kv_value STATUS "$finalize_out")
+    case "$status" in
+        ok|skipped) return 0 ;;
+        conflict) return 1 ;;
+        *) return 1 ;;
+    esac
+}
+
 # True when every path in the comma-separated vendor conflict list is a
 # non-bump file (exclude CHANGELOG.md, CHANGELOG.rst, bare CHANGELOG,
 # .claude-plugin/plugin.json, bump-adjacent basenames handled by the deterministic
@@ -1610,9 +1874,10 @@ run_rebase_rebump() {
 
     # 2. Rebase without pushing; keep in-progress on conflict for vendor resolution
     fail_file=$(failure_capture_path rebase)
-    rebase_out=$("$SCRIPT_DIR/rebase-push.sh" --no-push --keep-on-conflict 2>"$fail_file")
-    rebase_rc=$?
-    printf '%s\n' "$rebase_out" >> "$fail_file"
+    with_transient_retry transient_envelope_predicate_none "$fail_file" \
+        "$SCRIPT_DIR/rebase-push.sh" --no-push --keep-on-conflict
+    rebase_rc=$_WTR_RC
+    rebase_out=$_WTR_OUT
     if [ "$rebase_rc" -eq 1 ]; then
         # Conflict — deterministic pre-pass, then Phase 1–4 (non-bump) or vendor resolve-conflict
         emit_breadcrumb "⚠ ship-pr: rebase-push keep-on-conflict pause (exit 1); deterministic pre-pass / vendor / Phase 1–4 handoff follows"
@@ -1694,17 +1959,28 @@ run_rebase_rebump() {
 
         if [ "$skip_vendor" = false ] && [ "$needs_vendor" = true ] && [ -n "$vendor_conflict_csv" ] \
             && ship_pr_vendor_conflict_csv_is_non_bump_only "$vendor_conflict_csv"; then
-            local _rrr_phase14_flag
+            local _rrr_phase14_flag wf_fail
             _rrr_phase14_flag="${IMPLEMENT_TMPDIR}/ship-pr-rrr-after-phase14.flag"
-            if ! : >"$_rrr_phase14_flag"; then
-                printf 'ERROR: ship-pr: cannot write %s\n' "$_rrr_phase14_flag" >> "$fail_file"
-                record_failure rebase "ship-pr-rrr-after-phase14.flag" 1 "$fail_file" "CI Issues"
+            wf_fail=$(failure_capture_path rebase)
+            printf 'ship-pr: non-bump-only rebase conflicts; attempting recovery waterfall\n' >>"$wf_fail"
+            export LARCH_WF_CONFLICT_CSV="$vendor_conflict_csv"
+            export LARCH_WF_REBASE_PHASE="$phase"
+            if run_recovery_waterfall rebase-nonbump resolve-conflict "$wf_fail" rebase-nonbump; then
+                unset LARCH_WF_CONFLICT_CSV LARCH_WF_REBASE_PHASE
+                skip_vendor=true
+            else
+                unset LARCH_WF_CONFLICT_CSV LARCH_WF_REBASE_PHASE
+                if ! : >"$_rrr_phase14_flag"; then
+                    printf 'ERROR: ship-pr: cannot write %s\n' "$_rrr_phase14_flag" >> "$fail_file"
+                    record_failure rebase "ship-pr-rrr-after-phase14.flag" 1 "$fail_file" "CI Issues"
+                    exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12)"
+                fi
+                state_set_many RESUME_PHASE ship-pr-rrr-phase14 CALLER_KIND ship_pr_pre_push
+                emit_breadcrumb "⚠ ship-pr: recovery waterfall exhausted; legacy Phase 1–4 handoff (stall)"
+                emit_breadcrumb "⚠ ship-pr: dispatching Phase 1–4 conflict-resolution (caller_kind=ship_pr_pre_push; aggregator-dispatch=conflict-resolution.md)"
+                emit_kv CONFLICT_FILES "$vendor_conflict_csv"
                 exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12)"
             fi
-            state_set_many RESUME_PHASE ship-pr-rrr-phase14 CALLER_KIND ship_pr_pre_push
-            emit_breadcrumb "⚠ ship-pr: dispatching Phase 1–4 conflict-resolution (caller_kind=ship_pr_pre_push; aggregator-dispatch=conflict-resolution.md)"
-            emit_kv CONFLICT_FILES "$vendor_conflict_csv"
-            exit 5
         fi
 
         if [ "$skip_vendor" = false ]; then
@@ -1773,9 +2049,9 @@ run_ci_phase() {
 $(ci_common_args)
 EOF
     fail_file=$(failure_capture_path "$phase")
-    out=$("$SCRIPT_DIR/ci-wait.sh" "${ci_args[@]}" 2>"$fail_file")
-    rc=$?
-    printf '%s\n' "$out" >> "$fail_file"
+    with_transient_retry transient_envelope_predicate_ci_wait "$fail_file" "$SCRIPT_DIR/ci-wait.sh" "${ci_args[@]}"
+    rc=$_WTR_RC
+    out=$_WTR_OUT
     if [ "$rc" -ne 0 ]; then
         record_failure "$phase" "ci-wait.sh" "$rc" "$fail_file" "CI Issues"
         exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12)"
@@ -1793,9 +2069,10 @@ EOF
             merge_args=(--pr "$(read_state PR_NUMBER)" --repo "$(read_state REPO)")
             [ "$NO_ADMIN_FALLBACK" = "true" ] && merge_args+=(--no-admin-fallback)
             fail_file=$(failure_capture_path ci-merge)
-            merge_out=$("$SCRIPT_DIR/merge-pr.sh" "${merge_args[@]}" 2>"$fail_file")
-            rc=$?
-            printf '%s\n' "$merge_out" >> "$fail_file"
+            with_transient_retry transient_envelope_predicate_merge_pr "$fail_file" \
+                "$SCRIPT_DIR/merge-pr.sh" "${merge_args[@]}"
+            rc=$_WTR_RC
+            merge_out=$_WTR_OUT
             merge_result=$(kv_value MERGE_RESULT "$merge_out")
             error_text=$(kv_value ERROR "$merge_out")
             if [ "$rc" -ne 0 ]; then
@@ -1831,9 +2108,6 @@ EOF
                     return 0
                     ;;
                 policy_denied|admin_failed|error)
-                    if [[ "$merge_result" == "error" || "$merge_result" == "admin_failed" ]] && is_transient_net_signature "$error_text"; then
-                        exit_transient_net "merge-pr: $error_text"
-                    fi
                     if [[ "$merge_result" == "error" ]] && is_head_divergence_recoverable "$error_text"; then
                         run_rebase_rebump "$phase"
                         return 0
@@ -1967,14 +2241,10 @@ run_postmerge_phase() {
                 # in state, so tmpdir final-summary.md / report output aligns with merged OUTCOME
                 # (pre-merge pass wrote bailed). NEVER #19: no post-merge git commit publishes this.
                 fail_file=$(failure_capture_path postmerge)
-                final_report_output=$("$SCRIPT_DIR/../skills/implement/scripts/write-final-report.sh" \
-                    --implement-tmpdir "$IMPLEMENT_TMPDIR" 2>"$fail_file")
-                final_report_rc=$?
-                printf '%s\n' "$final_report_output" >> "$fail_file"
-                if [ "$final_report_rc" -ne 0 ] && is_transient_net_signature "$(cat "$fail_file" 2>/dev/null)"; then
-                    record_failure postmerge "write-final-report.sh (postmerge)" "$final_report_rc" "$fail_file" Warnings
-                    exit_transient_net "write-final-report (postmerge): $final_report_output"
-                fi
+                with_transient_retry transient_envelope_predicate_none "$fail_file" \
+                    "$SCRIPT_DIR/../skills/implement/scripts/write-final-report.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR"
+                final_report_rc=$_WTR_RC
+                final_report_output=$_WTR_OUT
                 if [ "$final_report_rc" -ne 0 ]; then
                     record_failure postmerge "write-final-report.sh (postmerge)" "$final_report_rc" "$fail_file" Warnings
                 fi
@@ -1985,50 +2255,111 @@ run_postmerge_phase() {
     exit 0
 }
 
-if [ -n "$RESUME_PHASE" ]; then
-    case "$RESUME_PHASE" in
-        force-push-gate|bump) advance_phase bump ;;
-        pr-create) advance_phase pr-create ;;
-        ci-initial) advance_phase ci-initial ;;
-        ci-merge) state_set CI_PASSED false; advance_phase ci-merge ;;
-        evaluate-failure) advance_phase evaluate-failure ;;
-        postmerge) advance_phase postmerge ;;
-        ship-pr-rrr-phase14)
-            _rrr_ph=$(read_state PHASE)
-            case "$_rrr_ph" in
-                ci-initial|ci-merge) ;;
-                *) die_usage "ship-pr-rrr-phase14 resume requires PHASE ci-initial or ci-merge, got: ${_rrr_ph:-empty}" ;;
-            esac
-            if [ ! -f "${IMPLEMENT_TMPDIR}/ship-pr-rrr-after-phase14.flag" ]; then
-                die_usage "ship-pr-rrr-phase14 resume requires ship-pr-rrr-after-phase14.flag under IMPLEMENT_TMPDIR (missing handoff token)"
-            fi
-            advance_phase "$_rrr_ph"
-            run_rebase_rebump "$_rrr_ph"
-            state_set_many RESUME_PHASE "" CALLER_KIND ""
-            ;;
-        *) die_usage "unknown --resume-phase: $RESUME_PHASE" ;;
-    esac
-fi
+main() {
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --state-file) [ $# -ge 2 ] || die_usage "--state-file requires a value"; STATE_FILE=$2; shift 2 ;;
+            --implement-tmpdir) [ $# -ge 2 ] || die_usage "--implement-tmpdir requires a value"; IMPLEMENT_TMPDIR=$2; shift 2 ;;
+            --merge) [ $# -ge 2 ] || die_usage "--merge requires a value"; MERGE=$2; shift 2 ;;
+            --draft) [ $# -ge 2 ] || die_usage "--draft requires a value"; DRAFT=$2; shift 2 ;;
+            --forked) [ $# -ge 2 ] || die_usage "--forked requires a value"; FORKED_TARGET=$2; shift 2 ;;
+            --no-admin-fallback) [ $# -ge 2 ] || die_usage "--no-admin-fallback requires a value"; NO_ADMIN_FALLBACK=$2; shift 2 ;;
+            --no-logs-commit) [ $# -ge 2 ] || die_usage "--no-logs-commit requires a value"; NO_LOGS_COMMIT=$2; shift 2 ;;
+            --repo) [ $# -ge 2 ] || die_usage "--repo requires a value"; REPO_ARG=$2; shift 2 ;;
+            --resume-phase) [ $# -ge 2 ] || die_usage "--resume-phase requires a value"; RESUME_PHASE=$2; shift 2 ;;
+            --help) usage; exit 0 ;;
+            *) die_usage "unknown option: $1" ;;
+        esac
+    done
 
-while :; do
-    case "$(read_state PHASE)" in
-        checks) run_checks_phase ;;
-        bump) run_bump_phase ;;
-        pr-prep) run_pr_prep_phase ;;
-        pr-create) run_pr_create_phase ;;
-        ci-initial) run_ci_phase ci-initial ;;
-        ci-merge) run_ci_phase ci-merge ;;
-        evaluate-failure)
-            # Use CALLER_KIND to pass the originating CI phase so stall-step
-            # numbers are correct (step 10 vs 12c).
-            case "$(read_state CALLER_KIND)" in
-                step10_rebase_then_evaluate) run_evaluate_failure ci-initial ;;
-                *)                          run_evaluate_failure ci-merge ;;
-            esac
-            advance_phase ci-merge
-            ;;
-        postmerge) run_postmerge_phase ;;
-        done) exit 0 ;;
-        *) die_usage "unknown PHASE in state-file: $(read_state PHASE)" ;;
-    esac
-done
+    [ -n "$STATE_FILE" ] || die_usage "--state-file is required"
+    [ -n "$IMPLEMENT_TMPDIR" ] || die_usage "--implement-tmpdir is required"
+    is_tmp_path "$STATE_FILE" || die_usage "--state-file must be under /tmp/, /private/tmp/, /var/folders/, or the larch cache sessions root"
+    is_tmp_path "$IMPLEMENT_TMPDIR" || die_usage "--implement-tmpdir must be under /tmp/, /private/tmp/, /var/folders/, or the larch cache sessions root"
+    [ -d "$IMPLEMENT_TMPDIR" ] || die_usage "--implement-tmpdir must exist"
+    case "$STATE_FILE" in "$IMPLEMENT_TMPDIR"/*) ;; *) die_usage "--state-file must live under --implement-tmpdir" ;; esac
+    is_bool "$NO_ADMIN_FALLBACK" || die_usage "--no-admin-fallback must be true or false"
+    is_bool "$NO_LOGS_COMMIT" || die_usage "--no-logs-commit must be true or false"
+    [ -z "$MERGE" ] || is_bool "$MERGE" || die_usage "--merge must be true or false"
+    [ -z "$DRAFT" ] || is_bool "$DRAFT" || die_usage "--draft must be true or false"
+    [ -z "$FORKED_TARGET" ] || is_bool "$FORKED_TARGET" || die_usage "--forked must be true or false"
+    export IMPLEMENT_TMPDIR
+    export LARCH_NO_LOGS_COMMIT="$NO_LOGS_COMMIT"
+
+    if [ ! -e "$STATE_FILE" ]; then
+        write_initial_state
+    fi
+    [ -r "$STATE_FILE" ] || die_usage "--state-file must be readable"
+    validate_state_syntax
+
+    for key in \
+        PHASE BRANCH_NAME ISSUE_NUMBER RUN_ID REPO REPO_UNAVAILABLE FORKED_TARGET \
+        HAS_BUMP BUMP_TYPE NEW_VERSION MERGE DRAFT DEFERRED PR_CLOSED \
+        DONE_RENAME_APPLIED STALL_TRACKING STALL_STEP BAIL_NEEDS_USER_INPUT \
+        CI_PASSED OOS_PENDING PR_NUMBER PR_URL PR_TITLE RESUME_PHASE CALLER_KIND \
+        REBASE_COUNT FIX_ATTEMPTS ITERATION TRANSIENT_RETRIES FAILED_RUN_ID \
+        MANIFEST_PATH TOOL_LABEL
+    do
+        require_key "$key"
+    done
+
+    for key in REPO_UNAVAILABLE FORKED_TARGET HAS_BUMP MERGE DRAFT DEFERRED PR_CLOSED DONE_RENAME_APPLIED STALL_TRACKING BAIL_NEEDS_USER_INPUT CI_PASSED OOS_PENDING; do
+        is_bool "$(read_state "$key")" || die_usage "state-file key $key must be true or false"
+    done
+
+    manifest_path_check=$(read_state MANIFEST_PATH)
+    if [ -n "$manifest_path_check" ]; then
+        if [ ! -r "$manifest_path_check" ] || ! jq empty "$manifest_path_check" >/dev/null 2>&1; then
+            die_usage "MANIFEST_PATH must be empty or a readable JSON file (got: $manifest_path_check)"
+        fi
+    fi
+    unset manifest_path_check
+
+    if [ -n "$RESUME_PHASE" ]; then
+        case "$RESUME_PHASE" in
+            force-push-gate|bump) advance_phase bump ;;
+            pr-create) advance_phase pr-create ;;
+            ci-initial) advance_phase ci-initial ;;
+            ci-merge) state_set CI_PASSED false; advance_phase ci-merge ;;
+            evaluate-failure) advance_phase evaluate-failure ;;
+            postmerge) advance_phase postmerge ;;
+            ship-pr-rrr-phase14)
+                _rrr_ph=$(read_state PHASE)
+                case "$_rrr_ph" in
+                    ci-initial|ci-merge) ;;
+                    *) die_usage "ship-pr-rrr-phase14 resume requires PHASE ci-initial or ci-merge, got: ${_rrr_ph:-empty}" ;;
+                esac
+                if [ ! -f "${IMPLEMENT_TMPDIR}/ship-pr-rrr-after-phase14.flag" ]; then
+                    die_usage "ship-pr-rrr-phase14 resume requires ship-pr-rrr-after-phase14.flag under IMPLEMENT_TMPDIR (missing handoff token)"
+                fi
+                advance_phase "$_rrr_ph"
+                run_rebase_rebump "$_rrr_ph"
+                state_set_many RESUME_PHASE "" CALLER_KIND ""
+                ;;
+            *) die_usage "unknown --resume-phase: $RESUME_PHASE" ;;
+        esac
+    fi
+
+    while :; do
+        case "$(read_state PHASE)" in
+            checks) run_checks_phase ;;
+            bump) run_bump_phase ;;
+            pr-prep) run_pr_prep_phase ;;
+            pr-create) run_pr_create_phase ;;
+            ci-initial) run_ci_phase ci-initial ;;
+            ci-merge) run_ci_phase ci-merge ;;
+            evaluate-failure)
+                case "$(read_state CALLER_KIND)" in
+                    step10_rebase_then_evaluate) run_evaluate_failure ci-initial ;;
+                    *)                          run_evaluate_failure ci-merge ;;
+                esac
+                advance_phase ci-merge
+                ;;
+            postmerge) run_postmerge_phase ;;
+            done) exit 0 ;;
+            *) die_usage "unknown PHASE in state-file: $(read_state PHASE)" ;;
+        esac
+    done
+}
+
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then main "$@"; fi

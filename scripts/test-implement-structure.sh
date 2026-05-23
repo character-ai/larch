@@ -268,6 +268,17 @@ awk '
 [[ "$stall12d_directive_status" == "0" ]] \
   || fail "ship-pr.sh must emit the ORCHESTRATOR DIRECTIVE (STALL_STEP=12d) DO NOT improvise diagnostic on the STALL_STEP=12d exit 4 path"
 
+# shellcheck disable=SC2016
+grep -Fq 'if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then main' "$SHIP_PR_SH" \
+  || fail "ship-pr.sh must gate main behind BASH_SOURCE vs argv0 (source-safe entry)"
+grep -Fq 'recovery_waterfall_paths_delta_revert' "$SHIP_PR_SH" \
+  || fail "ship-pr.sh must define recovery_waterfall_paths_delta_revert (rollback helper)"
+# shellcheck disable=SC2016
+grep -Fq 'git restore --staged -- "$path"' "$SHIP_PR_SH" \
+  || fail "ship-pr recovery rollback must use git restore --staged with a quoted path operand (FINDING_14/F23)"
+grep -Fq 'while IFS= read -r path' "$SHIP_PR_SH" \
+  || fail "ship-pr recovery rollback must iterate paths with IFS= read -r (safe for spaces/globs)"
+
 grep -Fq '**Terminal disposition invariant:**' "$SKILL_MD" \
   || fail "SKILL.md must retain OOS Terminal disposition invariant paragraph"
 
