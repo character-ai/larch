@@ -7,7 +7,7 @@ allowed-tools: AskUserQuestion, Bash, Read, Edit, Write, Grep, Glob, Agent, Task
 
 # Design Skill
 
-Design an implementation plan for a feature and review it with a **full** panel when using `--simple` or `--hard` (10 reviewers on the full diagonal: 5 personalities × Cursor + Codex, plus adjudication and voting as documented in this file). The **`--trivial`** tier intentionally uses a **smaller** plan-review budget (`review_budget=quick` per `skills/design/references/flags.md`) and **`sketch_budget` 0** — do not extrapolate the full 10-reviewer cost model to trivial runs. The sketch phase (Step 2a) reads `run-params.json`: **`sketch_budget` is 0, 2, or 4** from the selected **tier** (`trivial` / `simple` / `hard`). Plan + acceptance are written back to the issue body via `plan-block-write.sh` (no design manifest export).
+Design an implementation plan for a feature and review it with a **full** panel when using `--simple` or `--hard` (10 reviewers on the full diagonal: 5 personalities × Cursor + Codex, plus adjudication and voting as documented in this file). The **`--trivial`** tier intentionally uses a **smaller** plan-review budget (`review_budget=quick` per `skills/design/references/flags.md`) and **`sketch_budget` 0** — do not extrapolate the full 10-reviewer cost model to trivial runs. The sketch phase (Step 2a) reads `run-params.json`: **`sketch_budget` is 0, 2, or 4** from the selected **tier** (`trivial` / `simple` / `hard`). Plan + acceptance are written back to the issue body via `plan-block-write.sh` (no design manifest export). Accepted non-security OOS items are filed via `/larch:issue` in **Step 5b** before the `larch:plan` write (**Step 5c**).
 
 **Flags**: Parse flags from the start of `$ARGUMENTS` before consuming the positional tail. **Public argv** allows only `--trivial`, `--simple`, `--hard`, `--no-dedup`, and `--run-id` (see table). **All boolean flags default to `false`.** At most one tier flag may appear on argv (mutual exclusion). If no tier flag is set after the clarify / already-planned routers in Step 0, the orchestrator MUST run the tier `AskUserQuestion` gate there before sketches.
 
@@ -25,7 +25,7 @@ Design an implementation plan for a feature and review it with a **full** panel 
 
 **Positional tail**: after flags, the first non-flag token is either **`issue-N`** (all digits, `^[0-9]+$`) or a **verbal feature description** (any other text). Verbal text triggers `/larch:issue` first (forward `--no-dedup` when set), then binds `ISSUE_NUMBER` to the created issue and continues as the issue path.
 
-**Anti-halt continuation reminder.** After every `Bash` tool call that completes a numbered step or sub-step, and after every visible output (plans, diagrams, voting tallies, skip breadcrumbs), IMMEDIATELY continue with this skill's NEXT numbered step — do NOT end the turn on a Bash result, a status message, or a deliverable-looking output, and do NOT write a summary, handoff, status recap, or "returning to parent" message — those are halts in disguise. This applies to ALL step boundaries from Step 0 through Step 5, and to ALL sub-step transitions (1c→1d→1e→2a→2a.5→2b→3→3.5→3b→4→4b→5). The approval gates (Step 1e Gate A, Step 3.5 Gate B, Step 4b Gate C) may also re-enter earlier steps per the user's `AskUserQuestion` choice (Gate B(c) → Step 1e; Gate C(b) → Step 1e; Gate C(c) → Step 3); those re-entry transitions are explicit non-sequential control-flow directives and are NOT halts. **Critical: the implementation plan (Step 2b) and architecture diagram (Step 3b) are intermediate deliverables, NOT the end of the design — plan review (Step 3), Gate B (Step 3.5), Gate C (Step 4b), and cleanup (Step 5) must still execute.** The rule is strictly subordinate to any explicit non-sequential control-flow directive in THIS file (e.g., `skip to Step N`, `bail to cleanup`, `jump back`, `proceed to Step N`). A normal sequential `proceed to Step N+1` instruction is the default continuation this rule reinforces, NOT an exception.
+**Anti-halt continuation reminder.** After every `Bash` tool call that completes a numbered step or sub-step, and after every visible output (plans, diagrams, voting tallies, skip breadcrumbs), IMMEDIATELY continue with this skill's NEXT numbered step — do NOT end the turn on a Bash result, a status message, or a deliverable-looking output, and do NOT write a summary, handoff, status recap, or "returning to parent" message — those are halts in disguise. This applies to ALL step boundaries from Step 0 through Step 6, and to ALL sub-step transitions (1c→1d→1e→2a→2a.5→2b→3→3.5→3b→4→4b→5→6). The approval gates (Step 1e Gate A, Step 3.5 Gate B, Step 4b Gate C) may also re-enter earlier steps per the user's `AskUserQuestion` choice (Gate B(c) → Step 1e; Gate C(b) → Step 1e; Gate C(c) → Step 3); those re-entry transitions are explicit non-sequential control-flow directives and are NOT halts. **Critical: the implementation plan (Step 2b) and architecture diagram (Step 3b) are intermediate deliverables, NOT the end of the design — plan review (Step 3), Gate B (Step 3.5), Gate C (Step 4b), finalize (Step 5), and cleanup (Step 6) must still execute.** The rule is strictly subordinate to any explicit non-sequential control-flow directive in THIS file (e.g., `skip to Step N`, `bail to cleanup`, `jump back`, `proceed to Step N`). A normal sequential `proceed to Step N+1` instruction is the default continuation this rule reinforces, NOT an exception.
 
 ## Progress Reporting
 
@@ -178,8 +178,8 @@ This writes `$DESIGN_TMPDIR/source-env.sh` and refreshes the stable symlink `~/.
    2. Resolve `REPO` for explicit `gh --repo` threading: prefer `"${CLAUDE_PLUGIN_ROOT}/scripts/resolve-repo.sh"` from the consumer repo working tree; on failure fall back to `gh repo view --json nameWithOwner --jq '.nameWithOwner'`; leave `REPO` empty when both fail so downstream helpers use the hub default.
    3. When `SESSION_ID` is non-empty, run `"${CLAUDE_PLUGIN_ROOT}/scripts/design-log-publish.sh" --design-tmpdir "$DESIGN_TMPDIR" --run-id "$SESSION_ID" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}` and parse `PUBLISH_OK` from stdout. When `SESSION_ID` is empty, print `printf '\n**⚠ /design: SESSION_ID missing; skipping design log publish**\n'` (use `printf`, not `print`). On `PUBLISH_OK=false`, capture stderr to `$DESIGN_TMPDIR/design-log-publish.failure.log` and append under `Warnings` via `"${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh" --log "$DESIGN_TMPDIR/execution-issues.md"`, then continue (do not roll back the successful plan write from sub-step 3.1).
    4. Run `clarify-comment-post.sh --kind response`, then `clarify-label.sh --action remove`.
-   5. **Only when** `SESSION_ID` is non-empty **and** `PUBLISH_OK=true` after sub-step 3.3, run `"${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh" rename --issue "$ISSUE_NUMBER" --state designing ${REPO:+--repo "$REPO"}` (best-effort; treat `RENAMED=false` as idempotent success). Sub-step 3.4 removes `needs-design-clarification` before this rename; **do not** run `--state designed` here — that token is reserved for Step 5b after Gate C, composed `larch:plan`, and the same publish guard — so `/implement` admission cannot treat a clarify-only `larch:plan` update as terminal design completion. When `SESSION_ID` is empty or `PUBLISH_OK=false`, **skip** this rename in this sub-step.
-   6. Step 5 hygiene and exit **0** on success — **before** that hygiene, run the **Terminal cost line** fenced bash block in `### Terminal cost line` below (same block as Step 5 happy path / plan-block-write failure). The issue title remains `[DESIGNING]` until a later `/design` run reaches Step 5b (Gate C + composed plan + publish) — `/implement` still requires `[DESIGNED]`.
+   5. **Only when** `SESSION_ID` is non-empty **and** `PUBLISH_OK=true` after sub-step 3.3, run `"${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh" rename --issue "$ISSUE_NUMBER" --state designing ${REPO:+--repo "$REPO"}` (best-effort; treat `RENAMED=false` as idempotent success). Sub-step 3.4 removes `needs-design-clarification` before this rename; **do not** run `--state designed` here — that token is reserved for Step 5c after Gate C, composed `larch:plan`, and the same publish guard — so `/implement` admission cannot treat a clarify-only `larch:plan` update as terminal design completion. When `SESSION_ID` is empty or `PUBLISH_OK=false`, **skip** this rename in this sub-step.
+   6. Step 0b clarify hygiene and exit **0** on success — **before** that hygiene, run the **Terminal cost line** fenced bash block in `### Terminal cost line` below (same block as Step 5 finalize happy path / plan-block-write failure). The issue title remains `[DESIGNING]` until a later `/design` run reaches Step 5c (Gate C + OOS filing + composed plan + publish) — `/implement` still requires `[DESIGNED]`.
 4. **Already-planned branch** when a `larch:plan` block exists and clarification is clean: `AskUserQuestion` **(a)** replace via full flow, **(b)** ad-hoc Q&A only, **(c)** cancel — on **(c) cancel**, first run the **Terminal cost line** fenced bash block in `### Terminal cost line` below, then print `**ℹ /design cancelled by operator.**` and exit **0**.
 5. **Tier gate**: if no tier flag on argv, `AskUserQuestion` with **three options** `trivial` / `simple` / `hard` (descriptions per issue #2485). Non-tier `Other` answers → first run the **Terminal cost line** fenced bash block in `### Terminal cost line` below, then print `**ℹ /design cancelled by operator.**` and exit **0**.
 5.5. **Rename issue to `[DESIGNING]`** (best-effort, idempotent) now that all cancel paths have been cleared. Resolve `REPO` via `"${CLAUDE_PLUGIN_ROOT}/scripts/resolve-repo.sh"` or `gh repo view` fallback if not already bound. Run `"${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh" rename --issue "$ISSUE_NUMBER" --state designing ${REPO:+--repo "$REPO"}` (treat `RENAMED=false` as idempotent success). On non-zero exit, log `Step 0 — [DESIGNING] rename failed` to `Warnings` in `$DESIGN_TMPDIR/execution-issues.md` and continue.
@@ -205,7 +205,7 @@ If the helper exits non-zero, print `**⚠ 0: router — run-params write failed
 
 ### Terminal cost line
 
-**When**: after `DESIGN_TMPDIR` exists (post–Step 0a session-setup success) and **before** any terminal machine footer, `**⚠ 5: plan-block-write failed**`, or `**ℹ /design cancelled by operator.**` line on the paths enumerated in Step 0b / Step 5. **Do not** run this block on Step 0a `session-setup.sh` failure or tier-flag mutual-exclusion abort (no `DESIGN_TMPDIR` yet). Runs **before** `cleanup-tmpdir.sh` so `$DESIGN_TMPDIR/token-report.json` is still readable.
+**When**: after `DESIGN_TMPDIR` exists (post–Step 0a session-setup success) and **before** any terminal machine footer, `**⚠ 5: plan-block-write failed**`, or `**ℹ /design cancelled by operator.**` line on the paths enumerated in Step 0b / Steps 5–6. **Do not** run this block on Step 0a `session-setup.sh` failure or tier-flag mutual-exclusion abort (no `DESIGN_TMPDIR` yet). Runs **before** `cleanup-tmpdir.sh` so `$DESIGN_TMPDIR/token-report.json` is still readable.
 
 ```bash
 # design-cost-line-anchor (scripts/test-design-structure.sh)
@@ -647,7 +647,7 @@ Print: `> **🔶 /design 3b: arch diagram**`
 
 Before generating the diagram, classify the plan type by reading `$DESIGN_TMPDIR/plan.txt`. The plan is **non-architectural** when ALL files to be modified are exclusively: documentation files (`.md`, `CHANGELOG`, `docs/**`), configuration files (`.json`, `.yaml`, `.yml`, `.tsv`), or plain text (`.txt`) — with no new behavioral components, public APIs, or cross-skill contracts introduced. Apply a **conservative classifier** — SKILL.md files, `.sh` scripts, and `.py` scripts count as potentially architectural regardless of change size; when uncertain, generate the diagram rather than skip.
 
-If the plan is non-architectural: do NOT write `$DESIGN_TMPDIR/architecture-diagram.md`. Print `⏩ 3b: arch diagram status=skip reason=no-architectural-change elapsed=<elapsed>`. Then IMMEDIATELY continue to Step 4. Leaving `architecture-diagram.md` absent is valid; Step 5's composed plan omits diagram prose when no diagram file exists.
+If the plan is non-architectural: do NOT write `$DESIGN_TMPDIR/architecture-diagram.md`. Print `⏩ 3b: arch diagram status=skip reason=no-architectural-change elapsed=<elapsed>`. Then IMMEDIATELY continue to Step 4. Leaving `architecture-diagram.md` absent is valid; Step 5c's composed plan omits diagram prose when no diagram file exists.
 
 **Otherwise** (plan is architectural): generate a mermaid Architecture Diagram that represents the high-level system/component structure of the feature based on the finalized implementation plan (revised or original). The diagram should focus on **modules, boundaries, and their relationships** — not runtime behavior or code flow.
 
@@ -722,30 +722,65 @@ Print: `> **🔶 /design 4b: gate C**`
 
 Execute the Gate C body in `approval-gates.md`. Present the latest `$DESIGN_TMPDIR/plan.txt` and prompt the user for **Approve final design** / **Discuss further** / **Re-run review panel**. On **Approve**, proceed to Step 5. On **Discuss further**, re-enter Step 1e Gate A (the discussion sub-round writes to `discussion-round2.md`). On **Re-run review panel**, re-enter Step 3 with the current `plan.txt` (skip Step 2a sketches and Step 2a.5 dialectic — reviewers see the latest plan with all approved-by-user prior feedback applied). The loop continues until the user picks **Approve**. Step 5 below no longer fires its own approval prompt; Gate C is the only final-approval gate.
 
-> **Continue to Step 5 IMMEDIATELY** once Gate C returns Approve. Gate C is not terminal — issue plan write + cleanup still must run.
+> **Continue to Step 5 IMMEDIATELY** once Gate C returns Approve. Gate C is not terminal — finalize (OOS filing + plan write) and cleanup still must run.
 
-<!-- step:5 — Cleanup and Final Warnings -->
+<!-- step:5 — Finalize design (write plan + file OOS) -->
 
-Print: `> **🔶 /design 5: cleanup**`
+Print: `> **🔶 /design 5: finalize**`
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 5 — cleanup" || true
+LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 5 — finalize" || true
 ```
+
+**Invariant (anti-pattern):** do **not** reorder finalize sub-steps to run the `[DESIGNED]` rename (old Step 5c tail) before OOS filing (Step 5b) completes successfully — that would publish a terminal title while accepted OOS items are not yet filed. Step **5b** MUST run before Step **5c** (`larch:plan` write + publish + rename).
 
 ### 5a — Update Reviewer Presence Status
 
-### 5b — Write `larch:plan` to GitHub + publish
+### 5b — File accepted OOS issues
+
+**Privacy guardrail.** OOS Descriptions are filed as **public** GitHub issues by `/larch:issue`, so reviewer-supplied `path:line` hints in those Descriptions become public on filing. Reviewers should follow `SECURITY.md` and avoid naming high-risk paths or pasting secret-adjacent material in OOS Descriptions; `redact-secrets.sh` inside `create-one.sh` is the mechanical backstop, but the prose anchor catches reviewer-prompt regressions.
+
+Mechanical staging + cap + file-conflict pre-pass run in Bash; the `/larch:issue` Skill call is prompt-side (same split as `/implement` Step 9a.1). Contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/file-design-oos.sh` (sibling `file-design-oos.md`); offline harness `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-file-design-oos.sh` (sibling `test-file-design-oos.md`; Makefile target `test-file-design-oos`).
+
+1. Run prepare and capture stdout to `$DESIGN_TMPDIR/oos-filing-prepare.env` (KV lines only on stdout; deps-grace warnings may appear on stderr):
+   ```bash
+   [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
+   set +e
+   "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/file-design-oos.sh" prepare --design-tmpdir "$DESIGN_TMPDIR" >"$DESIGN_TMPDIR/oos-filing-prepare.env" 2>"$DESIGN_TMPDIR/oos-filing-prepare.stderr.log"
+   _oos_prep_rc=$?
+   set -e
+   ```
+   - On **non-zero** `_oos_prep_rc` (typically `oos-issue-cap.sh` failure — fatal for this sub-step): append the captured stderr via `"${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh"` to `$DESIGN_TMPDIR/execution-issues.md` under `Tool Failures` with site `design Step 5b`, print a user-visible warning that OOS filing was skipped due to helper failure, and **continue to Step 5c** without invoking `/larch:issue`.
+   - On **zero** exit: parse `FILE_DESIGN_OOS_STATUS=` from `$DESIGN_TMPDIR/oos-filing-prepare.env` (ignore unrelated lines).
+2. **Idempotent sentinel** — when `FILE_DESIGN_OOS_STATUS=skip-sentinel`, print `⏩ 5b: oos filing — sentinel recovery (skip pipeline)` and continue to Step 5c without calling `/larch:issue`.
+3. When `FILE_DESIGN_OOS_STATUS=skip-no-items`, print `⏩ 5b: oos filing — no accepted-OOS items` and continue to Step 5c.
+4. When `FILE_DESIGN_OOS_STATUS=skip-all-security`, print `⏩ 5b: oos filing — no non-security OOS items` and continue to Step 5c.
+5. When `FILE_DESIGN_OOS_STATUS=ready`:
+   - Parse `FILE_DESIGN_OOS_COMBINED=`, `FILE_DESIGN_OOS_DEPS_TSV=`, and `FILE_DESIGN_OOS_DEPS_AVAILABLE=` from `oos-filing-prepare.env`.
+   - If `FILE_DESIGN_OOS_DEPS_AVAILABLE=true` **and** `FILE_DESIGN_OOS_DEPS_TSV` points at a non-empty readable file, invoke **`/larch:issue`** in batch mode with `--input-file` set to `FILE_DESIGN_OOS_COMBINED`, `--title-prefix "[OOS]"`, `--blocked-by-issue "$ISSUE_NUMBER"`, `--sentinel-file "$DESIGN_TMPDIR/oos-issue-sentinel"`, **`--intra-batch-deps-file`** set to `FILE_DESIGN_OOS_DEPS_TSV`, and **`--no-dep-llm`** (caller-supplied serialization edges are authoritative). Otherwise invoke the same Skill call **without** `--intra-batch-deps-file` / `--no-dep-llm` (graceful-degrade path — log a `Warnings` entry that the file-conflict pre-pass failed or produced an empty TSV; mirror the `/implement` Step 9a.1 degraded-mode warning).
+   - Capture **stdout only** from the Skill tool to `$DESIGN_TMPDIR/oos-issue.stdout.txt` (machine `ISSUE_*` / `ISSUES_*` lines — see `skills/issue/SKILL.md` Step 7).
+   - Run annotate:
+     ```bash
+     set +e
+     "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/file-design-oos.sh" annotate --design-tmpdir "$DESIGN_TMPDIR" --issue-stdout-file "$DESIGN_TMPDIR/oos-issue.stdout.txt" 2>"$DESIGN_TMPDIR/oos-filing-annotate.stderr.log"
+     _oos_ann_rc=$?
+     set -e
+     ```
+     - On **non-zero** `_oos_ann_rc` when `ISSUES_FAILED>0` in the captured stdout (partial `/issue` failure): append under `Tool Failures` via `append-tool-failure.sh` (site `design Step 5b`, include stderr), print `**⚠ /design: OOS filing completed with ISSUES_FAILED>0 — see execution-issues and oos-issue.stdout.txt**`, and **continue to Step 5c** (per-block `Filed URL` lines are written only for successful items).
+     - On **non-zero** `_oos_ann_rc` without a partial-failure contract: treat as annotate/parse failure — append `Tool Failures` and continue to Step 5c.
+
+### 5c — Write `larch:plan` to GitHub + publish
 
 Step 4b Gate C already returned **Approve**. Proceed without an additional prompt:
 
 1. Compose `$DESIGN_TMPDIR/composed-plan.md` containing `## Plan`, `## Acceptance`, and a trailing `diff_lines: <N>` line (integer from `$DESIGN_TMPDIR/diff-lines.txt` or best-effort estimate).
 2. Run `cat "$DESIGN_TMPDIR/composed-plan.md" | "${CLAUDE_PLUGIN_ROOT}/scripts/redact-secrets.sh" > "$DESIGN_TMPDIR/composed-plan.redacted.md"`.
 3. Run `"${CLAUDE_PLUGIN_ROOT}/scripts/plan-block-write.sh" --issue "$ISSUE_NUMBER" --content-file "$DESIGN_TMPDIR/composed-plan.redacted.md"`.
-4. If step 3 fails, first run the **Terminal cost line** fenced bash block from Step 0b (`### Terminal cost line`), then print `**⚠ 5: plan-block-write failed — preserving $DESIGN_TMPDIR**`, set `PLAN_WRITE_OK=false`, and skip steps **5–7** (do not resolve `REPO`, run `tracking-issue-write.sh` rename, or `design-log-publish.sh`) **and skip Step 5c cleanup** so `$DESIGN_TMPDIR` is preserved.
+4. If step 3 fails, first run the **Terminal cost line** fenced bash block from Step 0b (`### Terminal cost line`), then print `**⚠ 5: plan-block-write failed — preserving $DESIGN_TMPDIR**`, set `PLAN_WRITE_OK=false`, and skip Step **5c** items **5–7** (do not resolve `REPO`, run `tracking-issue-write.sh` rename, or `design-log-publish.sh`) **and skip Step 6 cleanup** so `$DESIGN_TMPDIR` is preserved.
 5. If step 3 succeeds, set `PLAN_WRITE_OK=true`, then resolve `REPO` for explicit `gh --repo` threading when the hub default might not match the consumer checkout (for example nested `/implement` shells without a fresh `session-setup.sh` repo probe): prefer `"${CLAUDE_PLUGIN_ROOT}/scripts/resolve-repo.sh"` from the consumer repo working tree; on failure fall back to `gh repo view --json nameWithOwner --jq '.nameWithOwner'`; leave `REPO` empty when both fail so helpers use the hub default.
 6. If step 3 succeeds, when `SESSION_ID` is non-empty, run `"${CLAUDE_PLUGIN_ROOT}/scripts/design-log-publish.sh" --design-tmpdir "$DESIGN_TMPDIR" --run-id "$SESSION_ID" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}` and parse `PUBLISH_OK` from stdout. When `SESSION_ID` is empty, print `printf '\n**⚠ /design: SESSION_ID missing; skipping design log publish**\n'` (use `printf`, not `print`). On `PUBLISH_OK=false`, capture stderr to `$DESIGN_TMPDIR/design-log-publish.failure.log` and append under `Warnings` via `"${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh"` with `--log "$DESIGN_TMPDIR/execution-issues.md"`; continue (do not roll back the GitHub plan write).
-7. If step 3 succeeds **and** `SESSION_ID` is non-empty **and** `PUBLISH_OK=true` after the Step 6 publish attempt, run `"${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh" rename --issue "$ISSUE_NUMBER" --state designed ${REPO:+--repo "$REPO"}` (treat `RENAMED=false` as idempotent success). When `SESSION_ID` is empty, **skip** this rename so `[DESIGNED]` does not imply `larch-logs/design/<RUN_ID>/` materialization without a run id. When `SESSION_ID` was non-empty and `PUBLISH_OK=false`, **skip** this rename so the issue title does not read `[DESIGNED]` while the default branch lacks `larch-logs/design/<RUN_ID>/`; operator retries publish from the preserved `$DESIGN_TMPDIR` or reconciles manually.
+7. If step 3 succeeds **and** `SESSION_ID` is non-empty **and** `PUBLISH_OK=true` after the Step 5c item 6 publish attempt, run `"${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh" rename --issue "$ISSUE_NUMBER" --state designed ${REPO:+--repo "$REPO"}` (treat `RENAMED=false` as idempotent success). When `SESSION_ID` is empty, **skip** this rename so `[DESIGNED]` does not imply `larch-logs/design/<RUN_ID>/` materialization without a run id. When `SESSION_ID` was non-empty and `PUBLISH_OK=false`, **skip** this rename so the issue title does not read `[DESIGNED]` while the default branch lacks `larch-logs/design/<RUN_ID>/`; operator retries publish from the preserved `$DESIGN_TMPDIR` or reconciles manually.
 
 **Repeat any external reviewer warnings** from earlier steps (Step 0 reviewer-availability checks via `session-setup.sh`, Step 2a sketch-phase failures/timeouts, Step 3 runtime failures, or Step 3b diagram generation failure) so they are visible at the end of the workflow. For example:
 - `**⚠ Codex not available: <reason>**`
@@ -756,15 +791,24 @@ Step 4b Gate C already returned **Approve**. Proceed without an additional promp
 
 Do NOT write any farewell message such as "Design complete", "Returning to the /implement orchestrator", "Handing back control", or any other prose that signals the skill is done — those are halts in disguise.
 
-When `PLAN_WRITE_OK=true`, run the **Terminal cost line** fenced bash block from Step 0b (`### Terminal cost line`) **after** repeating the external-reviewer warnings above and **before** emitting the machine footer. When `PLAN_WRITE_OK=false` (plan-block-write failure), still run that **Terminal cost line** block before the `**⚠ 5: plan-block-write failed**` line (see Step 5b item 4).
+When `PLAN_WRITE_OK=true`, run the **Terminal cost line** fenced bash block from Step 0b (`### Terminal cost line`) **after** repeating the external-reviewer warnings above and **before** emitting the machine footer. When `PLAN_WRITE_OK=false` (plan-block-write failure), still run that **Terminal cost line** block before the `**⚠ 5: plan-block-write failed**` line (see Step 5c item 4).
 
-When `PLAN_WRITE_OK=true`, emit exactly one terminal machine footer as the **last human-visible output line** of this skill (after the cost line). Do not emit anything after it:
+When `PLAN_WRITE_OK=true`, emit exactly one terminal machine footer as the **last human-visible output line** of Step 5 (after the cost line). Do not emit anything after it:
 
-`➡️ 5: cleanup — plan written to issue #<N>; NEXT REQUIRED: continue`
+`➡️ 5: finalize — plan written to issue #<N>; NEXT REQUIRED: continue`
 
-### 5c — Remove temp directory
+> **Continue to Step 6 IMMEDIATELY** after the Step 5 footer when `PLAN_WRITE_OK=true` — tmpdir removal is not optional on the happy path.
 
-Remove the session temp directory and all files within it. Run `cleanup-tmpdir.sh` **only after** the machine footer when `PLAN_WRITE_OK=true`, and only when `STANDALONE_HEAVY_FAILED` is unset or `false` **and** either `SESSION_ID` is empty (no design log publish was attempted in Step 5b), or `PUBLISH_OK=true` after a Step 5b publish when `SESSION_ID` was non-empty; otherwise skip cleanup so `$DESIGN_TMPDIR` is preserved for inspection, manual `design-log-publish.sh` retry, or redaction diagnostics. When `PLAN_WRITE_OK=false` (plan-block-write failure), **skip** this cleanup (Step 5b item 4). When publish failed after a successful plan write, point operators at `$DESIGN_TMPDIR/design-log-publish.failure.log` (and `$DESIGN_TMPDIR/execution-issues.md` when populated) plus the recovery branch notes from `design-log-publish.sh` stderr/stdout.
+<!-- step:6 — Cleanup -->
+
+Print: `> **🔶 /design 6: cleanup**`
+
+```bash
+[ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
+LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 6 — cleanup" || true
+```
+
+Remove the session temp directory and all files within it. Run `cleanup-tmpdir.sh` **only after** the Step 5 machine footer when `PLAN_WRITE_OK=true`, and only when `STANDALONE_HEAVY_FAILED` is unset or `false` **and** either `SESSION_ID` is empty (no design log publish was attempted in Step 5c), or `PUBLISH_OK=true` after a Step 5c publish when `SESSION_ID` was non-empty; otherwise skip cleanup so `$DESIGN_TMPDIR` is preserved for inspection, manual `design-log-publish.sh` retry, or redaction diagnostics. When `PLAN_WRITE_OK=false` (plan-block-write failure), **skip** this cleanup (Step 5c item 4). When publish failed after a successful plan write, point operators at `$DESIGN_TMPDIR/design-log-publish.failure.log` (and `$DESIGN_TMPDIR/execution-issues.md` when populated) plus the recovery branch notes from `design-log-publish.sh` stderr/stdout.
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
 ${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-tmpdir.sh --dir "$DESIGN_TMPDIR"
@@ -775,6 +819,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-tmpdir.sh --dir "$DESIGN_TMPDIR"
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/emit-plan.sh` — `ACTION=EMIT_PLAN`. Sibling: `emit-plan.md`.
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/tally-plan-review.sh` — `ACTION=TALLY`. Sibling: `tally-plan-review.md`.
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/finalize-plan.sh` — `ACTION=FINALIZE`. Sibling: `finalize-plan.md`.
+- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/file-design-oos.sh` — design-phase OOS staging + `/issue` stdout annotation. Sibling: `file-design-oos.md`.
 - `${CLAUDE_PLUGIN_ROOT}/scripts/plan-block-write.sh` — writes the `larch:plan` block into the issue body. Sibling: `plan-block-write.md` (under `scripts/`).
 - `${CLAUDE_PLUGIN_ROOT}/scripts/design-log-publish.sh` — publishes `$DESIGN_TMPDIR` to `larch-logs/design/<RUN_ID>/` via disposable worktree + PR. Sibling: `design-log-publish.md`.
 - `${CLAUDE_PLUGIN_ROOT}/scripts/write-run-params.sh` — persists tier-derived `run-params.json` (Step 0). Sibling: `write-run-params.md`.

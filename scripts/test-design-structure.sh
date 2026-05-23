@@ -388,8 +388,8 @@ for marker in \
     fail "(15) marker not paired with render-cost-line.sh / ### Terminal cost line within 45 lines: $marker (line $line)"
   fi
 done
-footer_line=$(grep -nF '➡️ 5: cleanup — plan written to issue' "$SKILL_MD" | head -1 | cut -d: -f1 || true)
-[[ -n "$footer_line" ]] || fail "(15) missing machine footer line"
+footer_line=$(grep -nF '➡️ 5: finalize — plan written to issue' "$SKILL_MD" | head -1 | cut -d: -f1 || true)
+[[ -n "$footer_line" ]] || fail "(15) missing machine footer line (finalize)"
 fstart=$(( footer_line > 55 ? footer_line - 55 : 1 ))
 fwindow=$(sed -n "${fstart},${footer_line}p" "$SKILL_MD")
 if printf '%s\n' "$fwindow" | grep -Fq 'render-cost-line.sh'; then
@@ -448,6 +448,23 @@ do
   grep -Fq "$kind" "$TIMING_KINDS_SH" \
     || fail "(16) scripts/lib-timing-kinds.sh missing timing kind: $kind"
 done
+
+grep -Fq $'5\tfinalize' "$REPO_ROOT/skills/design/scripts/step-name-registry.tsv" \
+  || fail "(15b) step-name-registry.tsv missing 5\\tfinalize row"
+grep -Fq $'6\tcleanup' "$REPO_ROOT/skills/design/scripts/step-name-registry.tsv" \
+  || fail "(15b) step-name-registry.tsv missing 6\\tcleanup row"
+grep -Fq '> **🔶 /design 5: finalize**' "$SKILL_MD" \
+  || fail "(15b) SKILL.md missing /design 5 finalize breadcrumb"
+grep -Fq '> **🔶 /design 6: cleanup**' "$SKILL_MD" \
+  || fail "(15b) SKILL.md missing /design 6 cleanup breadcrumb"
+step5b_line=$(grep -nF '### 5b — File accepted OOS issues' "$SKILL_MD" | head -1 | cut -d: -f1 || true)
+step5c_line=$(grep -nF "### 5c — Write \`larch:plan\` to GitHub + publish" "$SKILL_MD" | head -1 | cut -d: -f1 || true)
+[[ -n "$step5b_line" && -n "$step5c_line" ]] || fail "(15b) missing Step 5b or 5c sub-step headers"
+if (( step5b_line >= step5c_line )); then
+  fail "(15b) Step 5b must appear before Step 5c in SKILL.md"
+fi
+grep -Fq '5→6' "$SKILL_MD" \
+  || fail "(15b) anti-halt reminder must mention 5→6 step boundary"
 
 echo "PASS: test-design-structure.sh — structural invariants hold (including security OOS exclusions)"
 exit 0
