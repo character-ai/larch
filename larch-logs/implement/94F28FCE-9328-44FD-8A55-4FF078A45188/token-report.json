@@ -141,27 +141,49 @@
       {
         "step": "Step 7a — code flow diagram",
         "totals": {
-          "input": 4,
-          "cache_read": 564316,
-          "cache_create": 1693,
-          "output": 999,
-          "total": 567012
+          "input": 5,
+          "cache_read": 706092,
+          "cache_create": 1950,
+          "output": 1979,
+          "total": 710026
         },
         "skills": [
           {
             "skill": "larch:implement",
             "totals": {
-              "input": 4,
-              "cache_read": 564316,
-              "cache_create": 1693,
-              "output": 999,
-              "total": 567012
+              "input": 5,
+              "cache_read": 706092,
+              "cache_create": 1950,
+              "output": 1979,
+              "total": 710026
             }
           }
         ]
       },
       {
         "step": "Step 8 — version bump",
+        "totals": {
+          "input": 8,
+          "cache_read": 1148884,
+          "cache_create": 7268,
+          "output": 4797,
+          "total": 1160957
+        },
+        "skills": [
+          {
+            "skill": "larch:implement",
+            "totals": {
+              "input": 8,
+              "cache_read": 1148884,
+              "cache_create": 7268,
+              "output": 4797,
+              "total": 1160957
+            }
+          }
+        ]
+      },
+      {
+        "step": "Step 6 — checks second pass",
         "totals": {
           "input": 0,
           "cache_read": 0,
@@ -173,11 +195,11 @@
       }
     ],
     "totals": {
-      "input": 95,
-      "cache_read": 11513267,
-      "cache_create": 432816,
-      "output": 51419,
-      "total": 11997597
+      "input": 104,
+      "cache_read": 12803927,
+      "cache_create": 440341,
+      "output": 57196,
+      "total": 13301568
     }
   },
   "codex": {
@@ -240,6 +262,14 @@
       },
       {
         "step": "Step 8 — version bump",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 6 — checks second pass",
         "totals": {
           "input": 0,
           "output": 0,
@@ -313,6 +343,14 @@
       },
       {
         "step": "Step 8 — version bump",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 6 — checks second pass",
         "totals": {
           "input": 0,
           "output": 0,
