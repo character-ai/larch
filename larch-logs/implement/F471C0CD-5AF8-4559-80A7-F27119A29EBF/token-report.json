@@ -174,32 +174,43 @@
       {
         "step": "Step 7a — code flow diagram",
         "totals": {
-          "input": 7,
-          "cache_read": 2321100,
-          "cache_create": 2489,
-          "output": 3808,
-          "total": 2327404
+          "input": 11,
+          "cache_read": 3655197,
+          "cache_create": 7487,
+          "output": 5213,
+          "total": 3667908
         },
         "skills": [
           {
             "skill": "larch:implement",
             "totals": {
-              "input": 7,
-              "cache_read": 2321100,
-              "cache_create": 2489,
-              "output": 3808,
-              "total": 2327404
+              "input": 11,
+              "cache_read": 3655197,
+              "cache_create": 7487,
+              "output": 5213,
+              "total": 3667908
             }
           }
         ]
+      },
+      {
+        "step": "Step 6 — checks second pass",
+        "totals": {
+          "input": 0,
+          "cache_read": 0,
+          "cache_create": 0,
+          "output": 0,
+          "total": 0
+        },
+        "skills": []
       }
     ],
     "totals": {
-      "input": 357,
-      "cache_read": 75685403,
-      "cache_create": 1250452,
-      "output": 166007,
-      "total": 77102219
+      "input": 361,
+      "cache_read": 77019500,
+      "cache_create": 1255450,
+      "output": 167412,
+      "total": 78442723
     }
   },
   "codex": {
@@ -270,6 +281,14 @@
       },
       {
         "step": "Step 7a — code flow diagram",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 6 — checks second pass",
         "totals": {
           "input": 0,
           "output": 0,
@@ -351,6 +370,14 @@
       },
       {
         "step": "Step 7a — code flow diagram",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 6 — checks second pass",
         "totals": {
           "input": 0,
           "output": 0,
