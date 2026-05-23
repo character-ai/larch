@@ -1,0 +1,12 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: EXONERATE -- Unreleased edits contradict “CHANGELOG … unchanged” wording; fix phrasing inline, no issue.
+FINDING_4: YES
+FINDING_5: EXONERATE -- Diff noise and historical logs are policy/awareness, not worth a tracking issue.
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: NO -- Confirms intentional resume trade-off already framed; no actionable defect.
+FINDING_11: EXONERATE -- Single-PR scope is explicit in the plan; traceability nit only.
+FINDING_12: NO -- Historical changelog prefixes are explicitly out of scope for this change.

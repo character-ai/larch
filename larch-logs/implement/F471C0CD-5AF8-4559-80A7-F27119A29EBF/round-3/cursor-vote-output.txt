@@ -1,0 +1,9 @@
+FINDING_1: YES
+FINDING_2: EXONERATE -- plan explicitly chose a single cross-cutting PR, so reviewer friction is an accepted trade-off.
+FINDING_3: YES
+FINDING_4: EXONERATE -- resume carve-out is already spelled out in implement-admission.md; no useful GitHub issue to file.
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: EXONERATE -- run-log artifact noise is optional housekeeping, not worth a tracking issue.
+FINDING_8: EXONERATE -- header is slightly terse but exit-code banner and implement-admission.md carry the full contract.
+FINDING_9: NO -- accurate scope note with no defect; opening an issue would be busywork.
