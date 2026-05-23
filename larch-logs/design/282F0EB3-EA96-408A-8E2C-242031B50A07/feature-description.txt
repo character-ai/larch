@@ -1,0 +1,11 @@
+Title: /design and /implement PR title labels overhaul
+
+Body:
+/design, immediately when it starts, should add [DESIGNING]
+prefix to issue title (replacing with [DESIGNED] on completion.  Likewise,
+/implement should immediately replace [DESIGNED] with [IMPLEMENTING] when it
+starts, and replace with [DONE] on completion.  Eliminate [PLANNED], as it's
+now replaced by [DESIGNED].  This requires auditing all occurrences of [IN
+PROGRESS] in skills, scripts, and tests.
+
+/implement should verification the title starts with [DESIGNED] to validation at the start.
