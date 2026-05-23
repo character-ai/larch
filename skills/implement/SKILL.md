@@ -580,7 +580,7 @@ Threshold convention: rules 2 and 3 use `< ~30` and `>= ~30` respectively, with 
 
 **Actionable consequence:** every accepted-OOS artifact entry that survives triage as a filed-OOS candidate MUST either ship as GitHub issue(s) from Step 9a.1 (including combine-to-one URLs), fold into the current PR with explicit `Inline-triage rule N:` commit-body breadcrumbs, or be explicitly rejected into the `oos-issues` log batch — it MUST NOT vanish with no durable disposition. Rules 1-2 do NOT enter accepted-OOS artifacts; fix them inline in the current PR instead. Noteworthy inline fixes that operators may want to audit later (e.g. a non-trivial pre-existing-code touch that was not part of the user's prompt) should be logged under the `Warnings` category in `$IMPLEMENT_TMPDIR/execution-issues.md` so Step 7a can append them to the run's `execution-issues` log batch without filing. Rules 3-4 may enter accepted-OOS artifacts; Step 9a.1's combine pass MUST collapse each class to one filed issue when at least two entries in that class are present. **Rules A and B and criteria 5/6** at Step 9a.1 step 3.4 take precedence over the carve-out. Rule A collapses LLM-judged thematic groups; Rule B collapses leaked SIMPLE entries; criteria 5/6 collapse medium-bug and moderate-doc classes. **Security findings are NEVER folded inline and NEVER filed via this OOS path regardless of size** — route through SECURITY.md's private disclosure flow instead. If a finding cannot safely land in the current branch (for example, it would require reverting the core feature, exceed the Step 12d fix budget, or otherwise conflict with the accepted plan), file it as a single OOS item even when the small-bug rule would otherwise apply.
 
-**Terminal disposition invariant:** before `OOS_PENDING` clears at the Step 8+ OOS checkpoint, each non-security-routed `### OOS_` block aggregated from the accepted-OOS markdown files MUST have a verifiable terminal disposition: at least one filed GitHub issue URL recorded for the run (including combined batches, counted from both `oos-issues-created.md` and the staged `oos-issues.ndjson` passed to the gate), or enough `Inline-triage rule N:` lines in the current branch's commit messages on the gate's `--commit-range` to cover every such block (substring count only — not strictly per-block linked; see `oos-disposition-gate.md`), or explicit rejection into the `oos-issues` log batch Rejected sub-block (structured `### OOS_` / `- **OOS_<n>` lines under a `## Rejected` heading in the NDJSON body). Silent drop (accepted blocks present, zero URLs, insufficient inline breadcrumbs, and insufficient rejected markers) is forbidden — see NEVER #17–18 and `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/oos-disposition-gate.sh`.
+**Terminal disposition invariant:** before `OOS_PENDING` clears at the Step 8+ OOS checkpoint, each non-security-routed `### OOS_` block aggregated from the accepted-OOS markdown files MUST have a verifiable terminal disposition: at least one filed GitHub issue URL recorded for the run (including combined batches, counted from both `oos-issues-created.md` and the staged `oos-issues.ndjson` passed to the gate), or enough `Inline-triage rule N:` lines in the current branch's commit messages on the gate's `--commit-range` to cover every such block (substring count only — not strictly per-block linked; see `oos-disposition-gate.md`), or explicit rejection into the `oos-issues` log batch Rejected sub-block (structured `### OOS_` / `- **OOS_<n>` lines under a `## Rejected` heading in the NDJSON body). Silent drop (accepted blocks present, zero URLs, insufficient inline breadcrumbs, and insufficient rejected markers) is forbidden — see NEVER #17–18 and `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/oos-disposition-gate.sh`. **Strict URL gate (Step 8+):** `oos-disposition-gate.sh` counts only disposition evidence the gate script unions from its declared inputs (structured `- **Filed URL**:` lines in accepted-OOS bodies where applicable, URL tables in `oos-issues-created.md`, `--filed-urls-file` paths, and the NDJSON batch) — not incidental GitHub links pasted only inside a filed issue’s Description or other prose outside those mechanical surfaces; pasting a URL in GitHub UI prose does **not** satisfy the gate if it never landed as a structured Filed URL / batch row the gate reads.
 
 ### Mechanical enforcement: `Pre-existing Code Issues` dual-write
 
@@ -1015,11 +1015,14 @@ Regression harnesses for this dispatcher surface are `skills/implement/scripts/t
 
 **2.1 — First dispatch invocation**:
 
+**⚠ Foreground required — do NOT set `run_in_background: true`.**
+
 ```bash
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
   CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
 fi
 export CLAUDE_PLUGIN_ROOT
+# Foreground required: see BASH_AUTHORING.md §4
 ${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/run-step2-dispatch.sh \
     --implement-tmpdir "$IMPLEMENT_TMPDIR" \
     --coder "$coder"
@@ -1209,11 +1212,14 @@ Print once before the `run-step5-review.sh` invocation:
 
 `> **🔶 /implement 5: code review — run-step5-review.sh --mode loop, up to $effective_round_cap rounds; 3-judge panel on every round (Claude+Codex+Cursor); review panel: 6 Cursor specialists; dynamic-archetypes cap=$dynamic_archetypes_cap**`
 
+**⚠ Foreground required — do NOT set `run_in_background: true`.**
+
 ```bash
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
   CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
 fi
 export CLAUDE_PLUGIN_ROOT
+# Foreground required: see BASH_AUTHORING.md §4
 "${CLAUDE_PLUGIN_ROOT}/scripts/run-step5-review.sh" \
   --implement-tmpdir "$IMPLEMENT_TMPDIR" \
   --mode loop \
@@ -1244,11 +1250,14 @@ export CLAUDE_PLUGIN_ROOT
 
 Then re-invoke the loop wrapper:
 
+**⚠ Foreground required — do NOT set `run_in_background: true`.**
+
 ```bash
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
   CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
 fi
 export CLAUDE_PLUGIN_ROOT
+# Foreground required: see BASH_AUTHORING.md §4
 "${CLAUDE_PLUGIN_ROOT}/scripts/run-step5-review.sh" \
   --implement-tmpdir "$IMPLEMENT_TMPDIR" \
   --mode loop \
@@ -1551,9 +1560,12 @@ Before invoking the script, write `$IMPLEMENT_TMPDIR/ship-pr-state.sh` with uppe
 
 > **`MANIFEST_PATH` MUST be empty unless `/implement` Step 2 returned `STATUS=complete` with a JSON manifest path.** On manifest-reuse fast paths (Step 0 materialization complete but Step 2 does not dispatch), claude-fallback paths (Step 2.4), bailed-Step-2 paths, and any other path where Step 2 did not produce a JSON manifest at `$MANIFEST`, leave `MANIFEST_PATH` empty. **The `/design` Step 5 manifest (`design-export/manifest.env`, a shell KV file) is NEVER a valid value for `MANIFEST_PATH` — these are two different artifacts despite the shared noun.** `ship-pr.sh` hard-fails at entry if `MANIFEST_PATH` is non-empty and not readable JSON; see issue #2233.
 
+> **⚠ Foreground required — do NOT set `run_in_background: true`.**
 > ⚠ **`ship-pr.sh` MUST be a foreground blocking Bash call — do NOT set `run_in_background: true`.** The call may take a long time (CI and merge can exceed default tool caps); configure a sufficiently large foreground Bash timeout when the host allows it (see NEVER #16 and `skills/implement/references/rebase-rebump-subprocedure.md` for long-wait policy). Submitting as background breaks the turn-boundary contract: the task-completion notification fires asynchronously, and by the time it arrives the orchestrator may have already ended the turn (see NEVER #16). **Recovery after unexpected turn end or timeout**: read `$IMPLEMENT_TMPDIR/ship-pr-state.sh` with key-based extraction for persisted `PHASE` / resume semantics, then re-invoke `ship-pr.sh` in the foreground with the same arguments as the `Invoke:` block below **without** `--resume-phase` so the persisted state machine continues — noting that flags not recorded as durable keys in `ship-pr-state.sh` (at minimum `--no-admin-fallback`) must match the original orchestrator invocation, while `ship-pr-state.sh` remains authoritative for persisted `PHASE`. Use `--resume-phase <token>` only for tokens `ship-pr.sh` accepts (same list as NEVER #16) or paths already spelled out in the exit-code matrix (including `RESUME_PHASE` on Exit 5), not `--resume-phase $PHASE` for main-loop `PHASE` values like `checks` or `pr-prep`.
 
 Invoke:
+
+**⚠ Foreground required — do NOT set `run_in_background: true`.**
 
 ```bash
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
@@ -1561,6 +1573,7 @@ if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$
 fi
 export CLAUDE_PLUGIN_ROOT
 export LARCH_QUIET_BREADCRUMBS=1
+# Foreground required: see BASH_AUTHORING.md §4
 "${CLAUDE_PLUGIN_ROOT}/scripts/ship-pr.sh" \
   --state-file "$IMPLEMENT_TMPDIR/ship-pr-state.sh" \
   --implement-tmpdir "$IMPLEMENT_TMPDIR" \

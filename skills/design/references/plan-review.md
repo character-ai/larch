@@ -74,9 +74,12 @@ For Codex, Cursor, and their Claude replacement voters, instruct each: `"You are
 
 All 10 reviewer slots are dispatched via `dispatch-with-waterfall.sh` in SKILL.md. The dispatcher writes a deterministic line-oriented paths-file at `<slots-file>.output-files` (same convention as Step 3 in SKILL.md once `_manifest` is set to the NDJSON path in the snippet below); pass it to `collect-agent-results.sh` via `--paths-file` so output paths are not reassembled from a space-separated shell variable across Bash-tool subshells.
 
+**⚠ Foreground required — do NOT set `run_in_background: true`.**
+
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
 _manifest="$DESIGN_TMPDIR/plan-review-slots.ndjson"
+# Foreground required: see BASH_AUTHORING.md §4
 "${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh" --timeout 1860 --substantive-validation --validation-mode --structured-reviewer-validation --paths-file "$_manifest.output-files"
 ```
 
@@ -102,7 +105,10 @@ Submit both in-scope findings and out-of-scope observations to a 3-agent voting 
 
 Launch Voter 2 (Codex) and Voter 3 (Cursor) through the dispatcher, then launch any Claude replacement voters reported by dispatcher fallback statuses and Voter 1 (Claude Code Reviewer subagent). The dispatcher launches available external voters in parallel, waits for their sentinels using `wait-for-reviewers.sh`, and emits the external output paths for downstream validation:
 
+**⚠ Foreground required — do NOT set `run_in_background: true`.**
+
 ```bash
+# Foreground required: see BASH_AUTHORING.md §4
 _plan_voter_dispatch=$("${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-plan-voters.sh" \
   --ballot-file "$DESIGN_TMPDIR/ballot.txt" \
   --design-tmpdir "$DESIGN_TMPDIR" \

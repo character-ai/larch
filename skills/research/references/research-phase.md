@@ -185,7 +185,10 @@ COLLECT_ARGS=()
 
 Otherwise invoke the collector with substantive validation:
 
+**⚠ Foreground required — do NOT set `run_in_background: true`.**
+
 ```bash
+# Foreground required: see BASH_AUTHORING.md §4
 ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1860 --substantive-validation "${COLLECT_ARGS[@]}"
 ```
 

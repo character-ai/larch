@@ -347,8 +347,11 @@ If `sketch_budget=0`, skip this section entirely. Do NOT call `collect-agent-res
 
 **Regular mode** (4 external output files when both tools available):
 
+**⚠ Foreground required — do NOT set `run_in_background: true`.**
+
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
+# Foreground required: see BASH_AUTHORING.md §4
 ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1260 \
   "$DESIGN_TMPDIR/cursor-sketch-arch-output.txt" \
   "$DESIGN_TMPDIR/cursor-sketch-edge-output.txt" \
@@ -358,8 +361,11 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1260 \
 
 **Quick mode** (2 external output files when both tools available; `sketch_budget=2`):
 
+**⚠ Foreground required — do NOT set `run_in_background: true`.**
+
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
+# Foreground required: see BASH_AUTHORING.md §4
 ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1260 \
   "$DESIGN_TMPDIR/cursor-sketch-generic-output.txt" \
   "$DESIGN_TMPDIR/codex-sketch-generic-output.txt"
@@ -556,6 +562,8 @@ done
 
 **Step 2 — Build manifest and dispatch through waterfall** (blocking Bash call):
 
+**⚠ Foreground required — do NOT set `run_in_background: true`.**
+
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
 _manifest="$DESIGN_TMPDIR/plan-review-slots.ndjson"
@@ -570,6 +578,7 @@ for _archetype in arch edge innovation pragmatic requirements; do
     "$DESIGN_TMPDIR/codex-primary-plan-${_archetype}-output.txt" \
     "$DESIGN_TMPDIR/render-plan-codex-${_archetype}.prompt" >> "$_manifest"
 done
+# Foreground required: see BASH_AUTHORING.md §4
 _plan_review_dispatch=$("${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-with-waterfall.sh" \
   --slots-file "$_manifest" \
   --codex-present "$CODEX_PRESENT" \

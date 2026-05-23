@@ -415,6 +415,25 @@ rc=$?
 set -e
 assert_rc "S2 two Filed URL field lines via strict-file pass" 0 "$rc"
 
+# --- S2b: strict Filed URL line with trailing commentary after URL still counts ---
+cat >"$TMP/s2b-design.md" <<'EOF'
+### OOS_1: A
+- **Description**: a
+- **Phase**: implement
+- **Filed URL**: https://github.com/example/larch/issues/2800 (see tracking issue)
+EOF
+set +e
+(
+  cd "$ORPHAN_TMP"
+  bash "$GATE" \
+    --accepted-files "$TMP/s2b-design.md" \
+    --filed-urls-strict-file "$TMP/s2b-design.md" \
+    --commit-range HEAD >/dev/null 2>&1
+)
+rc=$?
+set -e
+assert_rc "S2b strict Filed URL with trailing note passes" 0 "$rc"
+
 # --- S3: strict + loose union covers two non-security blocks ---
 cat >"$TMP/s3-acc.md" <<'EOF'
 ### OOS_1: A

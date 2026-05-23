@@ -8,7 +8,7 @@ flowchart TD
 
     Markers[skill .md files<br/>banner + inline comment<br/>at each fenced Family B invocation]
     Linter[scripts/lint-foreground-markers.sh<br/>denylist + fence parser]
-    Harness[scripts/test-lint-foreground-markers.sh<br/>16 fixtures + Family A spot-check]
+    Harness[scripts/test-lint-foreground-markers.sh<br/>enumerated cases + Family A floor checks]
 
     MakeTarget[Makefile lint-foreground<br/>+ test-harnesses-N shard]
     PreCommit[.pre-commit-config.yaml<br/>local hook always_run]

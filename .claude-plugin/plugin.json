@@ -1,6 +1,6 @@
 {
   "name": "larch",
-  "version": "42.0.14",
+  "version": "42.0.15",
   "description": "Multi-agent workflow automation for Claude Code: issue-anchored `/design` (tier flags `--trivial` / `--simple` / `--hard`) and `/implement` (positional `<issue-N>`, optional `--merge`, `--forked`, `--draft`, `--no-admin-fallback`, `--no-logs-commit`, `--coder`, `--run-id`). `/implement` Preflight reads the `larch:plan` block from the issue body; `/implement` Step 5 code review always uses the unified hard panel internally (public `--panel` argv removed). Post-plan steps use the conventional hard workflow path and `$IMPLEMENT_TMPDIR/plan.txt` for plan materialization — there is no `/implement --hard` flag.",
   "author": {
     "name": "Sergey Zhupanov",

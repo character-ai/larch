@@ -179,7 +179,10 @@ COLLECT_ARGS=()
 
 Otherwise, after processing Claude findings, invoke the script with only the launched paths. Pass `--substantive-validation --validation-mode`:
 
+**⚠ Foreground required — do NOT set `run_in_background: true`.**
+
 ```bash
+# Foreground required: see BASH_AUTHORING.md §4
 ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1860 --substantive-validation --validation-mode "${COLLECT_ARGS[@]}"
 ```
 

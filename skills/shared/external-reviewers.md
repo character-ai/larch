@@ -41,7 +41,10 @@ Do not write runtime failure status back to session env. `CODEX_PRESENT` and `CU
 
 After all other tasks are done, collect and validate external reviewer outputs using the shared collection script:
 
+**⚠ Foreground required — do NOT set `run_in_background: true`.**
+
 ```bash
+# Foreground required: see BASH_AUTHORING.md §4
 ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout <seconds> <output-file> [<output-file> ...]
 ```
 

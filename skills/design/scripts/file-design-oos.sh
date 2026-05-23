@@ -140,6 +140,23 @@ if maps:
     sys.stdout.write(text)
     sys.exit(0)
 
+# Without OOS_FILE_MAP lines, pairing plain http(s) URLs to unfiled blocks is only
+# safe when there is exactly one URL and exactly one unfiled block (document order).
+if plain_urls:
+    unfiled_blocks = [
+        c.group(0)
+        for c in blk_re.finditer(text)
+        if not filed_rx.search(c.group(0))
+    ]
+    if len(plain_urls) > 1 or len(unfiled_blocks) > 1:
+        print(
+            "recover_oos_accepted_from_sentinel_urls: OOS_FILE_MAP lines are required "
+            "when the sentinel lists multiple GitHub URLs or the accepted md has "
+            "multiple unfiled OOS blocks (annotate emits OOS_FILE_MAP for each filing).",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+
 urls = plain_urls
 ui = 0
 while ui < len(urls):

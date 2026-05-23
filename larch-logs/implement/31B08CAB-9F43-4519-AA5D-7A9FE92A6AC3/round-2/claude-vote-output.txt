@@ -1,0 +1,21 @@
+FINDING_1: YES
+FINDING_2: EXONERATE -- multi-feature PATCH grouping is standard CHANGELOG practice; splitting would require separate version releases
+FINDING_3: YES
+FINDING_4: EXONERATE -- 20-line window is the plan's own spec; "immediately above" in authoring prose is informal; tightening would cause false negatives on multi-paragraph banners
+FINDING_5: NO -- trivial draft-vs-final title difference; AGENTS.md cross-references §4 by section number not by name; discoverability unaffected
+FINDING_6: EXONERATE -- one-liner omission of alias; Makefile is the canonical source for make targets; not worth a tracking issue
+FINDING_7: EXONERATE -- plan explicitly said to prepend canonical banner while preserving the existing bespoke blockquote; intentional coexistence; linter passes on canonical form
+FINDING_8: NO -- no fenced denylisted invocation exists in heavy-worker; plan allowed skipping when fences are absent; nothing to add
+FINDING_9: YES
+FINDING_10: EXONERATE -- single-segment relative path and CLAUDE_PLUGIN_ROOT prefix patterns cover all current skill doc invocation shapes; no multi-segment relative paths in use
+FINDING_11: YES
+FINDING_12: NO -- committed run logs are policy-compliant per docs/run-logs.md; not a review defect
+FINDING_13: NO -- editorial grouping of co-released items is normal; no release policy violation
+FINDING_14: EXONERATE -- git ls-files skipping untracked files is standard git-based lint behavior; CI enforces via pre-commit --all-files on tracked trees
+FINDING_15: NO -- OOS; branch composition is editorial and not a linter deliverable concern
+FINDING_16: EXONERATE -- GH_HOST values are hostnames (letters, digits, hyphen, dot only); dot is the only ERE metacharacter present in standards-compliant hostnames and IS escaped
+FINDING_17: EXONERATE -- Python reads lines one at a time; re.match with `(.*)$` cannot span newlines; stripped val removes trailing whitespace; injection risk is theoretical
+FINDING_18: YES
+FINDING_19: NO -- larch-logs are immutable committed history per project policy; no actionable fix for archived plan text; live documentation is the authoritative surface
+FINDING_20: EXONERATE -- empty scan on a repo with no matching skill files is expected behavior; a zero-path diagnostic would cause false failures in the harness's empty test trees
+FINDING_21: EXONERATE -- the OOS semantic changes are from the round-1 (#2636) implementation scope already reviewed; round-2 plan covers foreground markers only; combined diff is expected

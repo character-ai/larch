@@ -1,0 +1,20 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: EXONERATE -- implementation consistently uses `lint-foreground-markers` across all updated docs (BASH_AUTHORING.md, docs/linting.md, Makefile); only the historical plan acceptance text used `lint-foreground`; no code fix needed
+FINDING_7: EXONERATE -- standard multi-commit branch evolution; no actionable tracking issue
+FINDING_8: EXONERATE -- the if-negation form without CLAUDE_PLUGIN_ROOT is a hypothetical not found in real skill docs; fixing would add regex complexity for negligible gain
+FINDING_9: YES
+FINDING_10: NO -- "any additional anchor after more than five non-anchor lines without a fresh comment" is behaviorally equivalent to "check 5 source lines before each anchor"; prose and linter are consistent
+FINDING_11: NO -- already fixed in the prior run's coder phase; `count_filed_url_field_lines` at line 47 now uses `[[:space:]]*` before the colon
+FINDING_12: YES
+FINDING_13: EXONERATE -- same pre-existing inherited concern as OOS_CR1_4 in the prior run; not newly introduced
+FINDING_14: EXONERATE -- single-reviewer documentation nit; gate semantics are correctly documented in the contract docs
+FINDING_15: EXONERATE -- 12000-char guard is a deliberate anti-backtracking safety valve; lines that long do not exist in skill markdown
+FINDING_16: NO -- single-quoted `${CLAUDE_PLUGIN_ROOT}` path forms are caught by line 147's unquoted `\$\{CLAUDE_PLUGIN_ROOT\}/` pattern which does not require a double-quote context
+FINDING_17: YES
+FINDING_18: EXONERATE -- pre-existing documented disjunctive gate semantics; no new behavior introduced by this diff
+FINDING_19: EXONERATE -- separate "missing banner" / "missing comment" messages are clearer than the plan's alternation-syntax example; the plan was illustrative not prescriptive
+FINDING_20: EXONERATE -- files with no fenced denylist invocations need no markers; acceptable by the fence-only acceptance criterion

@@ -1,6 +1,8 @@
 # Larch pre-commit configuration
 # Single source of truth for linter definitions.
-# CI uses: make lint (repo-wide via pre-commit run --all-files)
+# CI lint job uses: make lint-only (repo-wide via pre-commit run --all-files); harness
+# matrix runs make test-harnesses-N separately. Local make lint runs test-harnesses
+# then lint-only.
 # scripts/relevant-checks.sh uses: pre-commit run --files <changed-files> (scoped)
 # Developers use: pre-commit install (opt-in git hook)
 
@@ -120,6 +122,15 @@ repos:
         additional_dependencies: ['pyyaml==6.0.2']
         pass_filenames: false
         files: ^(skills/shared/topology\.tsv|\.claude/rules/topology-generation\.md|scripts/check-topology-rule-paths\.py)$
+
+  - repo: local
+    hooks:
+      - id: lint-foreground-markers
+        name: Lint foreground markers for blocking Family B script fences
+        entry: bash scripts/lint-foreground-markers.sh
+        language: system
+        pass_filenames: false
+        always_run: true
 
   - repo: local
     hooks:

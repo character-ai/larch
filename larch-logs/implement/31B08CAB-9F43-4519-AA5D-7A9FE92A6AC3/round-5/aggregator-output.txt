@@ -1,0 +1,321 @@
+Here is the normalized aggregator output. Multiple inputs described the same risk; those are merged with combined attribution. Verbatim suggested revisions are split per slot when wording differs; identical “Address the concern above.” lines are merged into one bullet with combined slots where applicable.
+
+---
+
+### FINDING_1: Unrelated workflow, OOS, versioning, and run-log changes bundled with foreground-marker work
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-correctness-output.txt
+- **Concern**: The branch mixes semantic workflow, disposition, changelog/plugin version, and `larch-logs/**` changes with Family B foreground-marker documentation and lint work, so reviewers cannot isolate marker-only behavior and unrelated regressions can block the marker merge train; splitting PRs or explicitly widening the feature contract is the normalized concern.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt, cursor-specialist-correctness-output.txt: Address the concern above.
+
+### FINDING_2: Exit-code table wording for `filed` vs `filed_urls` may confuse operators
+- **Reviewer(s)**: cursor-specialist-structure-output.txt
+- **Concern**: In `skills/implement/scripts/oos-disposition-gate.md` around lines 24–25, the exit-code table mixes `filed_urls` wording with `filed == 0` for the same aggregate, so debugging exit 1 may suggest divergent semantics when the failure predicate is unified.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: Address the concern above.
+
+### FINDING_3: Redundant canonical foreground banners before a single ship-pr fence in implement skill
+- **Reviewer(s)**: cursor-specialist-structure-output.txt
+- **Concern**: In `skills/implement/SKILL.md` around 1563–1568, repeated canonical foreground banners and long bespoke text before one ship-pr fence risk future edits dropping a duplicate and failing lint, or desynchronizing NEVER #16 prose from the canonical marker.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: Address the concern above.
+
+### FINDING_4: AGENTS does not consistently steer operators to `make lint-foreground` vs `make lint-foreground-markers` / harness naming
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-correctness-output.txt, cursor-specialist-edge-cases-output.txt
+- **Concern**: AGENTS references `make lint-foreground-markers` without the shorter acceptance alias, and naming proximity to the harness invites mistyping; operators may run the wrong target or miss cross-links.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: Mention both Makefile aliases in the same bullet.
+  - From cursor-specialist-correctness-output.txt: Point AGENTS at make lint-foreground
+  - From cursor-specialist-edge-cases-output.txt: Prefer make lint-foreground in AGENTS and separate harness naming
+
+### FINDING_5: BASH_AUTHORING section 4 heading does not match plan acceptance title “Foreground Default for Blocking Script Calls”
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-correctness-output.txt, cursor-specialist-plan-fidelity-output.txt
+- **Concern**: The shipped §4 heading in `BASH_AUTHORING.md` (e.g. ~232, 232–250, and §4) diverges from the plan’s literal acceptance title, so grep-based audits and “quote acceptance title” workflows miss the right anchor and §4 references can become ambiguous across doc generations.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: Align the heading text with the plan phrase or add it as an alternate title in parentheses.
+  - From cursor-specialist-correctness-output.txt: Align heading string with plan or update plan wording
+  - From cursor-specialist-plan-fidelity-output.txt: Rename §4 to the acceptance title or update acceptance and all cross-references to the shipped title consistently.
+
+### FINDING_6: Family A harness uses fragile minimum grep counts for `run_in_background` across large markdown
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-testing-output.txt
+- **Concern**: Tests around `scripts/test-lint-foreground-markers.sh` 498–515 use count floors; harmless doc reflow that removes duplicate YAML examples or otherwise shrinks mentions can fail CI without changing parallel semantics.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: Replace raw counts with structural anchors inside the known Family A fences
+  - From cursor-specialist-testing-output.txt: Add rationale comments or stabilize on non-count assertions
+
+### FINDING_7: Harness case index skips 16 between 15 and 17
+- **Reviewer(s)**: cursor-specialist-structure-output.txt
+- **Concern**: In `scripts/test-lint-foreground-markers.sh` ~357–400, non-sequential case numbering weakens traceability when mapping failures to documented case lists.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: Address the concern above.
+
+### FINDING_8: Backslash-continued basenames can evade denylist token detection; Case 24 may false-pass
+- **Reviewer(s)**: cursor-specialist-correctness-output.txt
+- **Concern**: Backslash-split `basename` yields no single line containing the full denylisted token; `*.sh` fast-path can skip lines so there is no anchor; Case 24’s pass A fenced example can split `ship-pr.sh` / `collect-agent-results.sh` across lines so CI passes without banner/comment despite a human-readable blocking invocation.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-correctness-output.txt: Join continuations before matching; or change Case 24 to assert failure/remove; or forbid split basenames in authoring + add a true positive continuation fixture
+
+### FINDING_9: Banner check is substring-anywhere in a 20-line window, not a leading standalone warning line
+- **Reviewer(s)**: cursor-specialist-correctness-output.txt
+- **Concern**: In `scripts/lint-foreground-markers.sh` ~97–106, a prose line containing the banner sentence mid-paragraph could satisfy the window without the intended standalone warning line.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-correctness-output.txt: Tighten match to leading paragraph line or relax the plan and sibling MD contract to substring matching
+
+### FINDING_10: Strict “Filed URL” grep treats URL as end-of-line only; trailing text drops strict matches
+- **Reviewer(s)**: cursor-specialist-correctness-output.txt, cursor-specialist-edge-cases-output.txt
+- **Concern**: In `scripts/oos-disposition-shared.inc.bash` ~47–50, lines like `- **Filed URL**: https://github.com/o/i/1 note` count as zero strict URLs and can fail disposition incorrectly; same latent concern restated for “extra text on the same line.”
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-correctness-output.txt: Allow trailing commentary after URL or document EOL-only URL as required
+  - From cursor-specialist-edge-cases-output.txt: Allow trailing prose after URL or document URL-only line contract
+
+### FINDING_11: Tracked-only `git ls-files` enumeration skips untracked skill markdown until `git add`
+- **Reviewer(s)**: cursor-specialist-testing-output.txt, cursor-specialist-edge-cases-output.txt
+- **Concern**: In `scripts/lint-foreground-markers.sh` ~62–69 (and doc at `scripts/lint-foreground-markers.md` ~3), untracked `skills/*/SKILL.md` can pass pre-commit / `make lint` while violating marker rules once added later; surprises first-time authors.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-testing-output.txt: Match lint-bash32 enumeration flags or document the intentional gap in lint-foreground-markers.md
+  - From cursor-specialist-edge-cases-output.txt: Document tracked-only expectation in docs/linting.md or add optional unstaged scan mode
+
+### FINDING_12: Thin harness coverage for some denylist shapes (e.g. no case for `step2-implement.sh`)
+- **Reviewer(s)**: cursor-specialist-testing-output.txt
+- **Concern**: `scripts/test-lint-foreground-markers.sh` vs `scripts/lint-foreground-markers.sh` ~18–28: regex regression for rare basename spellings could slip past CI without minimal positive fixtures per denylist basename used in real skills.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-testing-output.txt: Add minimal positive fixtures per denylist basename used in real skills
+
+### FINDING_13: Multi-anchor failure tested without a dual-anchor clean success fixture
+- **Reviewer(s)**: cursor-specialist-testing-output.txt
+- **Concern**: Around `scripts/test-lint-foreground-markers.sh` 400–420, low regression signal for per-anchor comment requirements without a two-anchor clean fixture in one fence.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-testing-output.txt: Add a two-anchor clean fixture in one fence
+
+### FINDING_14: URLs from parsed issue stdout / `OOS_FILE_MAP` written into markdown without strict validation
+- **Reviewer(s)**: cursor-specialist-security-output.txt
+- **Concern**: In `skills/design/scripts/file-design-oos.sh` ~118–135, 372–390, tampered or malformed stdout could inject extra markdown lines or break OOS blocks while still looking like a URL field.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-security-output.txt: Validate each URL against a strict https GitHub issues pattern (or parse+allowlist) before appending to the accepted md
+
+### FINDING_15: `GH_HOST` only dot-escaped before ERE alternation; synthetic hosts with metacharacters can distort URL counting
+- **Reviewer(s)**: cursor-specialist-security-output.txt
+- **Concern**: In `scripts/oos-disposition-shared.inc.bash` ~9–17, `GH_HOST` embedded in `grep -E` host alternation is not fully ERE-safe.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-security-output.txt: Validate hostname charset or fully escape ERE metacharacters in GH_HOST
+
+### FINDING_16: [OUT_OF_SCOPE] `COMMIT_RANGE` passed to `git` without extra hardening
+- **Reviewer(s)**: cursor-specialist-security-output.txt
+- **Concern**: In `skills/implement/scripts/oos-disposition-gate.sh` ~55–64, rev parsing trust model unchanged on this branch; no change required here if input remains trusted; harden separately if ever untrusted.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-security-output.txt: Address the concern above.
+
+### FINDING_17: Very long lines bail out anchor detection while fenced one-line Family B examples can still document blocking calls
+- **Reviewer(s)**: cursor-specialist-edge-cases-output.txt
+- **Concern**: In `scripts/lint-foreground-markers.sh` ~139–140, lines over ~12000 chars skip anchor detection so linter can exit 0 while documentation still shows blocking script calls without enforced markers.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-edge-cases-output.txt: Treat overlong anchor lines as errors or warn+fail; or document explicit false-negative
+
+### FINDING_18: Comment-prefixed heredoc openers ignored; heredoc state can desync from real shell
+- **Reviewer(s)**: cursor-specialist-edge-cases-output.txt
+- **Concern**: In `scripts/lint-foreground-markers.sh` ~174–179, 254–264, faux-heredoc regions can false-require markers or miss real heredoc skipping.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-edge-cases-output.txt: Document edge case or parse commented << openers
+
+### FINDING_19: Symlinked `SKILL.md` paths skipped entirely
+- **Reviewer(s)**: cursor-specialist-edge-cases-output.txt
+- **Concern**: In `scripts/lint-foreground-markers.sh` ~287, forks using symlinked skill files bypass Family B marker enforcement.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-edge-cases-output.txt: Resolve symlink to regular file and lint or document unsupported layout
+
+### FINDING_20: [OUT_OF_SCOPE] Massive committed `larch-logs/**` diffs inflate review surface
+- **Reviewer(s)**: cursor-specialist-structure-output.txt
+- **Concern**: Large run-log diffs increase review latency when searching for functional changes; optional process guidance to split log flush from code commits.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: Address the concern above.
+
+### FINDING_21: [OUT_OF_SCOPE] Family A floor checks are count-only (optional structural anchors)
+- **Reviewer(s)**: cursor-specialist-correctness-output.txt
+- **Concern**: Count-only checks cannot detect token swaps that preserve counts; structural anchors noted as optional follow-up, not required for this review.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-correctness-output.txt: Address the concern above.
+
+### FINDING_22: [OUT_OF_SCOPE] Multiple independent features under one PATCH version / release narrative bundling
+- **Reviewer(s)**: cursor-specialist-edge-cases-output.txt
+- **Concern**: `CHANGELOG.md` and `larch-logs/**` narrative bundles unrelated behavioral changes for bisect/release storytelling; described as pre-existing practice.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-edge-cases-output.txt: Address the concern above.
+
+### FINDING_23: [OUT_OF_SCOPE] BASH_AUTHORING.md §4 heading vs plan (edge-case track duplicate)
+- **Reviewer(s)**: cursor-specialist-edge-cases-output.txt
+- **Concern**: Same plan-fidelity heading mismatch as FINDING_5, raised again from the edge-cases slot with file/line emphasis (~50 in one input vs ~232 in others); subsumed into FINDING_5 for in-scope work; this line preserves the edge-case slot’s explicit `BASH_AUTHORING.md:50` pointer as out-of-scope duplicate reporting.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-edge-cases-output.txt: (none distinct beyond FINDING_5; source used same class of fix as other slots—see FINDING_5 bullets)
+
+Wait - the user said "When a reviewer provided no fix direction, omit that slot's bullet; do not fabricate a revision." For FINDING_23 I'm inventing a meta-bullet. Better: merge FINDING_30's content into FINDING_5 only; edge-cases FINDING_30 duplicate in input was actually "BASH_AUTHORING.md:50" from plan-fidelity - let me re-read input.
+
+FINDING_30 says: `BASH_AUTHORING.md:50` - plan-fidelity. There's no separate edge finding for BASH 50 - FINDING_25 in edge list is symlink. I incorrectly invented FINDING_23.
+
+Remove FINDING_23. FINDING_30 already merged into FINDING_5. Edge cases did not add a separate BASH finding beyond what's in 5 - wait, grep input again...
+
+Edge cases FINDING_30 in user message: "### FINDING_30: correctness: BASH_AUTHORING.md:50" - that's plan-fidelity-output.txt not edge. So all BASH heading issues are structure 5, correctness 13, plan-fidelity 30 - merged into FINDING_5. No duplicate FINDING from edge for BASH.
+
+Remove erroneous FINDING_23. Renumber final list 1-21.
+
+Actually count final findings after removal:
+1 bundle, 2 table, 3 banners, 4 AGENTS, 5 BASH heading, 6 count floors, 7 case skip, 8 case24, 9 banner window, 10 URL EOL, 11 untracked, 12 harness denylist, 13 dual anchor, 14 URL inject, 15 GH_HOST, 16 OOS COMMIT_RANGE OOS, 17 long line, 18 heredoc, 19 symlink, 20 larch-logs OOS, 21 family A count-only OOS, 22 CHANGELOG OOS
+
+= 22 findings. Good (no fake 23).
+
+Fix FINDING_16 title - I wrote "OOS" twice by mistake: "### FINDING_16: [OUT_OF_SCOPE] `COMMIT_RANGE` passed to `git` without extra hardening"
+
+FINDING_21 duplicate concern with FINDING_6 partially - 21 is OUT_OF_SCOPE optional "cannot detect token swaps". Keep separate per user merge rules (different fixes: optional vs stabilize counts).
+
+Final assistant message should be clean without my scratchpad. I'll omit FINDING_23 entirely and fix FINDING_16 typo.
+
+For FINDING_21 suggested revision - input says "Address the concern above." - include that.
+
+I'll produce the final user-facing output only.
+
+Structured merge of the supplied reviewer blocks follows. Same behavioral risks are merged; `[OUT_OF_SCOPE]` stays on headings that include an out-of-scope-tagged source. There is at least one `### FINDING_N:` block, so **`LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED` must not appear** anywhere in this output.
+
+---
+
+### FINDING_1: Unrelated workflow, OOS, versioning, and run-log changes bundled with foreground-marker work
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-correctness-output.txt
+- **Concern**: The branch mixes semantic workflow, disposition, changelog, plugin version, and `larch-logs/**` with Family B foreground-marker docs and lint, so reviewers cannot treat the change as markers-only and unrelated regressions can block the marker merge train unless PRs are split or the contract explicitly widens scope.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt, cursor-specialist-correctness-output.txt: Address the concern above.
+
+### FINDING_2: Exit-code table mixes `filed_urls` wording with `filed == 0` for the same aggregate
+- **Reviewer(s)**: cursor-specialist-structure-output.txt
+- **Concern**: In `skills/implement/scripts/oos-disposition-gate.md` (24–25), operators debugging exit 1 may believe `filed_urls` semantics diverge from the failure predicate unless naming is unified.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: Address the concern above.
+
+### FINDING_3: Redundant canonical foreground banners and long bespoke text before a single ship-pr fence
+- **Reviewer(s)**: cursor-specialist-structure-output.txt
+- **Concern**: In `skills/implement/SKILL.md` (1563–1568), duplicate canonical banners plus stacked prose risk future edits that drop one duplicate (lint failure) or desynchronize NEVER #16 from the canonical marker.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: Address the concern above.
+
+### FINDING_4: AGENTS steers to `make lint-foreground-markers` without the shorter alias / clear harness vs lint naming
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-correctness-output.txt, cursor-specialist-edge-cases-output.txt
+- **Concern**: Operators may miss the documented `make lint-foreground` alias, point the wrong line in AGENTS, or confuse lint vs harness names, slowing feedback or skipping violations.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: Mention both Makefile aliases in the same bullet.
+  - From cursor-specialist-correctness-output.txt: Point AGENTS at make lint-foreground
+  - From cursor-specialist-edge-cases-output.txt: Prefer make lint-foreground in AGENTS and separate harness naming
+
+### FINDING_5: BASH_AUTHORING §4 heading does not match plan acceptance title “Foreground Default for Blocking Script Calls”
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-correctness-output.txt, cursor-specialist-plan-fidelity-output.txt
+- **Concern**: Heading text (e.g. `BASH_AUTHORING.md` ~232 / §4 / ~50 per plan-fidelity citation) diverges from the plan’s literal acceptance title, so grep-based plan-to-doc audits and human “quote the acceptance title” flows miss the shipped anchor and §4 references can drift across generations.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: Align the heading text with the plan phrase or add it as an alternate title in parentheses.
+  - From cursor-specialist-correctness-output.txt: Align heading string with plan or update plan wording
+  - From cursor-specialist-plan-fidelity-output.txt: Rename §4 to the acceptance title or update acceptance and all cross-references to the shipped title consistently.
+
+### FINDING_6: Family A harness uses fragile minimum grep counts for `run_in_background` across large markdown
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-testing-output.txt
+- **Concern**: Around `scripts/test-lint-foreground-markers.sh` (498–515), count floors can fail on harmless doc reflow (e.g. removing duplicate YAML examples) without changing real parallel semantics.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: Replace raw counts with structural anchors inside the known Family A fences
+  - From cursor-specialist-testing-output.txt: Add rationale comments or stabilize on non-count assertions
+
+### FINDING_7: Harness case numbering skips index 16 between 15 and 17
+- **Reviewer(s)**: cursor-specialist-structure-output.txt
+- **Concern**: In `scripts/test-lint-foreground-markers.sh` (357–400), non-sequential indices weaken traceability from failures to documented case lists.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: Address the concern above.
+
+### FINDING_8: Backslash-continued basenames can evade denylist detection; Case 24 may false-pass
+- **Reviewer(s)**: cursor-specialist-correctness-output.txt
+- **Concern**: `scripts/lint-foreground-markers.sh` (248–281) and harness Case 24 (`scripts/test-lint-foreground-markers.sh` 482–496): split basenames mean no line contains the full denylisted token, `*.sh` fast-path can skip lines, and a fenced example can split `ship-pr.sh` / `collect-agent-results.sh` across lines so CI passes without banner/comment despite a readable blocking invocation.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-correctness-output.txt: Join continuations before matching; or change Case 24 to assert failure/remove; or forbid split basenames in authoring + add a true positive continuation fixture
+
+### FINDING_9: Banner check is substring-anywhere in a 20-line window, not a leading standalone warning line
+- **Reviewer(s)**: cursor-specialist-correctness-output.txt
+- **Concern**: `scripts/lint-foreground-markers.sh` (97–106): mid-paragraph prose containing the banner sentence could satisfy the window without the intended standalone warning line.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-correctness-output.txt: Tighten match to leading paragraph line or relax the plan and sibling MD contract to substring matching
+
+### FINDING_10: Strict “Filed URL” matching requires URL at end of line; trailing text drops strict URL detection
+- **Reviewer(s)**: cursor-specialist-correctness-output.txt, cursor-specialist-edge-cases-output.txt
+- **Concern**: `scripts/oos-disposition-shared.inc.bash` (47–50): lines with extra text after the URL count as zero strict URLs and can fail disposition incorrectly (including “extra text on the same Filed URL list line”).
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-correctness-output.txt: Allow trailing commentary after URL or document EOL-only URL as required
+  - From cursor-specialist-edge-cases-output.txt: Allow trailing prose after URL or document URL-only line contract
+
+### FINDING_11: Tracked-only `git ls-files` skips untracked skill markdown until `git add`
+- **Reviewer(s)**: cursor-specialist-testing-output.txt, cursor-specialist-edge-cases-output.txt
+- **Concern**: `scripts/lint-foreground-markers.sh` (62–69) with docs (`scripts/lint-foreground-markers.md` ~3): untracked `skills/*/SKILL.md` can pass pre-commit / `make lint` while still violating marker rules once tracked—surprising for first-time authors.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-testing-output.txt: Match lint-bash32 enumeration flags or document the intentional gap in lint-foreground-markers.md
+  - From cursor-specialist-edge-cases-output.txt: Document tracked-only expectation in docs/linting.md or add optional unstaged scan mode
+
+### FINDING_12: Thin harness coverage for some denylist shapes (e.g. missing `step2-implement.sh` case)
+- **Reviewer(s)**: cursor-specialist-testing-output.txt
+- **Concern**: `scripts/test-lint-foreground-markers.sh` vs `scripts/lint-foreground-markers.sh` (18–28): rare basename spellings could regress without minimal positive fixtures per real denylist basename.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-testing-output.txt: Add minimal positive fixtures per denylist basename used in real skills
+
+### FINDING_13: Multi-anchor failure covered without a dual-anchor clean success fixture
+- **Reviewer(s)**: cursor-specialist-testing-output.txt
+- **Concern**: `scripts/test-lint-foreground-markers.sh` (400–420): low regression signal for per-anchor comment requirements without a two-anchor clean fixture in one fence.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-testing-output.txt: Add a two-anchor clean fixture in one fence
+
+### FINDING_14: URLs from parsed issue stdout / `OOS_FILE_MAP` written to markdown without strict URL validation
+- **Reviewer(s)**: cursor-specialist-security-output.txt
+- **Concern**: `skills/design/scripts/file-design-oos.sh` (118–135, 372–390): tampered or malformed stdout could inject lines or break OOS blocks while still resembling URL fields.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-security-output.txt: Validate each URL against a strict https GitHub issues pattern (or parse+allowlist) before appending to the accepted md
+
+### FINDING_15: `GH_HOST` only dot-escaped before ERE host alternation
+- **Reviewer(s)**: cursor-specialist-security-output.txt
+- **Concern**: `scripts/oos-disposition-shared.inc.bash` (9–17): synthetic `GH_HOST` with ERE metacharacters could distort URL counting in `grep -E` alternation.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-security-output.txt: Validate hostname charset or fully escape ERE metacharacters in GH_HOST
+
+### FINDING_16: [OUT_OF_SCOPE] `COMMIT_RANGE` passed to `git` without extra hardening
+- **Reviewer(s)**: cursor-specialist-security-output.txt
+- **Concern**: `skills/implement/scripts/oos-disposition-gate.sh` (55–64): trust model for git rev parsing unchanged on this branch; no change required here unless untrusted input is wired later.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-security-output.txt: Address the concern above.
+
+### FINDING_17: Long-line bail-out skips anchor detection for denylisted invocations
+- **Reviewer(s)**: cursor-specialist-edge-cases-output.txt
+- **Concern**: `scripts/lint-foreground-markers.sh` (139–140): lines over ~12000 chars skip anchor detection so the linter can exit 0 while a one-line fenced Family B example still documents a blocking script call without enforced markers.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-edge-cases-output.txt: Treat overlong anchor lines as errors or warn+fail; or document explicit false-negative
+
+### FINDING_18: Comment-prefixed heredoc openers ignored; heredoc state can desync from real shell
+- **Reviewer(s)**: cursor-specialist-edge-cases-output.txt
+- **Concern**: `scripts/lint-foreground-markers.sh` (174–179, 254–264): heredoc bodies or faux-heredoc doc regions can false-require markers or miss real heredoc skipping.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-edge-cases-output.txt: Document edge case or parse commented << openers
+
+### FINDING_19: Symlink `SKILL.md` paths skipped entirely
+- **Reviewer(s)**: cursor-specialist-edge-cases-output.txt
+- **Concern**: `scripts/lint-foreground-markers.sh` (287): symlinked skill files bypass Family B marker enforcement.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-edge-cases-output.txt: Resolve symlink to regular file and lint or document unsupported layout
+
+### FINDING_20: [OUT_OF_SCOPE] Massive committed `larch-logs/**` diffs inflate review surface
+- **Reviewer(s)**: cursor-specialist-structure-output.txt
+- **Concern**: Large run-log diffs increase review latency when searching for functional changes; optional process guidance only (split log flush from code commits).
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: Address the concern above.
+
+### FINDING_21: [OUT_OF_SCOPE] Family A floor checks are count-only (optional structural anchors)
+- **Reviewer(s)**: cursor-specialist-correctness-output.txt
+- **Concern**: Around `scripts/test-lint-foreground-markers.sh` (498–515): count floors cannot detect token swaps that preserve counts; structural anchors described as optional follow-up, not required for this review.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-correctness-output.txt: Address the concern above.
+
+### FINDING_22: [OUT_OF_SCOPE] Multiple independent features under one PATCH / release narrative bundling
+- **Reviewer(s)**: cursor-specialist-edge-cases-output.txt
+- **Concern**: `CHANGELOG.md` (22–30) and `larch-logs/**`: release bisect narratives bundle unrelated behavioral changes; described as pre-existing practice.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-edge-cases-output.txt: Address the concern above.
+
+---
+
+**Merge map (for traceability, not a vote):**  
+1+10 → FINDING_1; 2 → 2; 3 → 3; 4+14+28 → 4; 5+13+30 → 5; 6+17 → 6; 7 → 7; 9 → 8; 11 → 9; 12+27 → 10; 16+26 → 11; 18 → 12; 19 → 13; 20 → 14; 21 → 15; 22 → 16; 23 → 17; 24 → 18; 25 → 19; 8 → 20; 15 → 21; 29 → 22.

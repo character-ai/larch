@@ -14,10 +14,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **`/design` finalize split + upstream OOS filing** — Step 5 is now **finalize** (5a reviewer status, **5b** `/larch:issue` batch for accepted non-security OOS with `[OOS]` prefix + `file-design-oos.sh`, **5c** `larch:plan` write / publish / `[DESIGNED]` rename); Step **6** is tmpdir **cleanup** only (`cleanup-tmpdir.sh`). `/implement` Step 9a.1 skips design OOS blocks that already carry `- **Filed URL**:`; `oos-disposition-gate.sh` accepts repeated `--filed-urls-file` (union URL counting) so design-filed URLs satisfy the disposition gate alongside `oos-issues-created.md`.
+- **`/design` finalize split + upstream OOS filing** — Step 5 is now **finalize** (5a reviewer status, **5b** `/larch:issue` batch for accepted non-security OOS with `[OOS]` prefix + `file-design-oos.sh`, **5c** `larch:plan` write / publish / `[DESIGNED]` rename); Step **6** is tmpdir **cleanup** only (`cleanup-tmpdir.sh`). `/implement` Step 9a.1 skips design OOS blocks that already carry `- **Filed URL**:`; disposition counting for design-side GitHub URLs follows the structured Filed URL list lines from `[42.0.10]` (not incidental prose), while `oos-disposition-gate.sh` still accepts repeated `--filed-urls-file` arguments to **union** those extracted lists with implement tmp artifacts such as `oos-issues-created.md` (not a Description-URL bypass).
 - **`/implement` admission precondition**: issues without a `[DESIGNED]` prefix are rejected with `ADMISSION_RESULT=missing-designed-prefix` at exit 5, requiring a completed `/design` run before `/implement` may proceed.
 - **Migration posture**: legacy `[IN PROGRESS]` and `[PLANNED]` prefixes are stripped by `strip_lifecycle_prefix` for backward compatibility but are no longer accepted as `--state` values by `tracking-issue-write.sh` or as admission-pass prefixes.
 - **Audit scope**: workflow call sites and rename `--state` surfaces in the active runtime tree (`skills/`, `scripts/`, `agents/`, `.claude/`, `docs/`, tests) now use the new prefix set; deliberate legacy bracket literals remain only where migration, admission recovery, strip helpers, or hermetic fixtures require them. This Unreleased section documents the migration and may name the old prefixes. Historical shipped changelog bodies and `larch-logs/` were not bulk-retitled.
+
+## [42.0.15] - 2026-05-23
+
+### Changed
+
+- Closed: #2641
 
 ## [42.0.14] - 2026-05-23
 
@@ -49,6 +55,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Foreground-marker lint for Family B denylisted script examples in skill/rules Markdown (`scripts/lint-foreground-markers.sh`, `make lint-foreground` / `make lint-foreground-markers`, pre-commit hook) with regression harness `test-lint-foreground-markers`; authoring rules in `BASH_AUTHORING.md` §4.
 - Disposition gate now counts design-side GitHub URLs only from structured Filed URL list lines, closing the incidental-Description-URL loophole.
 - /design persists and restores OOS filing sentinels across sessions via ~/.cache/larch/design-oos-filed/<issue>.md with an operator clear-cache flag.
 - Offline harnesses cover strict loose union semantics and cross-session cache edge cases.
