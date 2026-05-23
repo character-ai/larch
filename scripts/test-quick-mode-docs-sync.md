@@ -25,7 +25,7 @@ Each target file MUST contain all markers in `POS_MARKERS` inside `test-quick-mo
 | Marker | Casing | Rationale |
 |--------|--------|-----------|
 | `5 rounds` | case-sensitive `grep -F` | Pins the base round-cap language shared with public docs. |
-| `3-judge panel on round 1` | **case-insensitive** `grep -iF` | Pins the round-1 Codex-inclusive judge panel; rounds 2+ omit Codex. |
+| `3-judge panel on every round` | **case-insensitive** `grep -iF` | Pins the Codex-inclusive judge panel on every code-review round. |
 | `--panel hard` | case-sensitive `grep -F` | Pins the delegated `review-and-fix.sh` posture. |
 | `6 Cursor specialists` | case-sensitive `grep -F` | Pins the static Cursor specialist count in the panel. |
 

@@ -6,7 +6,7 @@ export LARCH_QUIET_DISABLE=1
 
 # --section CLI selector: splits the 12 scenarios + 3 regression blocks into
 # 8 groups so the CI matrix can pack them as independent harness rows. Sections:
-#   happy:                          scenarios 1-4 (happy path, absent tools, empty voter, round-2 panel)
+#   happy:                          scenarios 1-4 (happy path, absent tools, empty voter, round-2 3-judge parity)
 #   edge-and-r3-claude:             scenarios 4-5 (symlink diff, 2 MB diff) + Regression 3 claude case
 #   retry-claude:                   retry_success_claude, retry_fail_claude
 #   retry-codex-success:            retry_success_codex
@@ -225,31 +225,34 @@ grep -Fq 'stub voter output for diag test' "$issues_log_nonempty"
 
 require_voter_paths_file_nonempty "happy-nonempty-voter1" "$out"
 
-out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" --ballot-file "$BALLOT" --review-tmpdir "$TMP/round2" --codex-available true --cursor-available false --round-num 2)
+out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" --ballot-file "$BALLOT" --review-tmpdir "$TMP/round2" --codex-available true --cursor-available true --round-num 2)
 grep -Fq 'VOTER_1_TOOL=claude' <<< "$out"
 grep -Fq 'VOTER_2_TOOL=codex' <<< "$out"
-grep -Fq 'VOTER_2_STATUS=skipped' <<< "$out"
-grep -Fq 'VOTER_2_PARSE_RATE_STATUS=SKIPPED' <<< "$out"
-grep -Fq 'VOTER_3_TOOL=claude' <<< "$out"
-grep -Fq 'VOTER_3_STATUS=fallback' <<< "$out"
+grep -Fq 'VOTER_3_TOOL=cursor' <<< "$out"
+case "$out" in
+    *VOTER_2_STATUS=skipped*) echo "FAIL: round2 must not skip voter 2 (Codex stays on rounds 2+)" >&2; exit 1 ;;
+esac
+grep -Fq 'VOTER_2_STATUS=launched' <<< "$out" || grep -Fq 'VOTER_2_STATUS=fallback' <<< "$out" \
+    || { echo "FAIL: round2 voter 2 must be launched or fallback, not skipped" >&2; exit 1; }
+grep -Fq 'VOTER_2_PARSE_RATE_STATUS=OK' <<< "$out" || { echo "FAIL: round2 voter2 parse-rate status missing/incorrect" >&2; exit 1; }
+grep -Fq 'VOTER_3_STATUS=launched' <<< "$out" || grep -Fq 'VOTER_3_STATUS=fallback' <<< "$out" \
+    || { echo "FAIL: round2 voter 3 must be launched or fallback" >&2; exit 1; }
 grep -Fq 'DISPATCH_OK=true' <<< "$out"
 if grep -Fq 'DEGRADED_PANEL_WARNING=' <<< "$out"; then
-    echo "FAIL: round2 should not emit a degraded panel warning when both effective judges produce output" >&2
+    echo "FAIL: round2 should not emit a degraded panel warning when all three effective judges produce output" >&2
     exit 1
 fi
-[[ "$(wc -l < "$TMP/round2/code-voter-slots.ndjson")" -eq 1 ]] \
-    || { echo "FAIL: round2 manifest must contain only the Cursor slot" >&2; exit 1; }
+[[ "$(wc -l < "$TMP/round2/code-voter-slots.ndjson")" -eq 2 ]] \
+    || { echo "FAIL: round2 manifest must contain voter-2 and voter-3 slots" >&2; exit 1; }
+grep -Fq '"slot":"voter-2"' "$TMP/round2/code-voter-slots.ndjson" \
+    || { echo "FAIL: round2 manifest missing voter-2 slot" >&2; exit 1; }
 grep -Fq '"slot":"voter-3"' "$TMP/round2/code-voter-slots.ndjson" \
     || { echo "FAIL: round2 manifest missing voter-3 slot" >&2; exit 1; }
-if grep -Fq '"slot":"voter-2"' "$TMP/round2/code-voter-slots.ndjson"; then
-    echo "FAIL: round2 manifest must omit voter-2" >&2
-    exit 1
-fi
-grep -Fq '2-judge voting panel' "$TMP/round2/claude-vote-prompt.txt" \
-    || { echo "FAIL: round2 claude voter prompt must describe a 2-judge panel" >&2; exit 1; }
+grep -Fq '3-judge voting panel' "$TMP/round2/claude-vote-prompt.txt" \
+    || { echo "FAIL: round2 claude voter prompt must describe a 3-judge voting panel" >&2; exit 1; }
 require_voter_paths_file_nonempty "happy-round2" "$out"
 r2pf=$(printf '%s\n' "$out" | awk -F= '$1=="VOTER_PATHS_FILE"{print substr($0,index($0,"=")+1);exit}')
-[[ $(wc -l < "$r2pf" | tr -d ' ') -eq 2 ]] || { echo "FAIL: round2 code-voter paths file expects 2 lines" >&2; exit 1; }
+[[ $(wc -l < "$r2pf" | tr -d ' ') -eq 3 ]] || { echo "FAIL: round2 code-voter paths file expects 3 lines" >&2; exit 1; }
 fi  # end section: happy
 
 if section_runs edge-and-r3-claude; then
