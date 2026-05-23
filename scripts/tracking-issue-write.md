@@ -6,7 +6,7 @@ lifecycle operations that still write directly to GitHub issues:
 ```text
 tracking-issue-write.sh create-issue --title T --body-file F [--repo OWNER/REPO]
 tracking-issue-write.sh append-comment --issue N --body-file F [--lifecycle-marker ID] [--repo OWNER/REPO]
-tracking-issue-write.sh rename --issue N --state in-progress|done|stalled|planned [--repo OWNER/REPO]
+tracking-issue-write.sh rename --issue N --state designing|designed|implementing|done|stalled [--repo OWNER/REPO]
 tracking-issue-write.sh mark-false-positive --issue N [--repo OWNER/REPO]
 ```
 
@@ -22,7 +22,7 @@ Success keys:
 |---|---|
 | `create-issue` | `ISSUE_NUMBER=<N>`, `ISSUE_URL=<url>` |
 | `append-comment` | `COMMENT_ID=<id>`, `COMMENT_URL=<url>` |
-| `rename` | `RENAMED=true\|false`, `NEW_TITLE=<title>` |
+| `rename` | `RENAMED=true\|false`, `NEW_TITLE=<title>` (no `ROUND_TRIP_APPLIED` — round-trip marker removed) |
 | `mark-false-positive` | `MARKED=true\|false`, `NEW_TITLE=<title>` |
 
 Failure envelope:
@@ -57,11 +57,13 @@ the substring `--` before synthesizing the HTML marker comment.
 
 ## Rename semantics
 
-`rename --state` accepts `in-progress`, `done`, `stalled`, and `planned`. Each
-maps to a managed lifecycle bracket prefix in the GitHub title (`[IN PROGRESS]`,
-`[DONE]`, `[STALLED]`, `[PLANNED]`) followed by exactly one ASCII space before
-the user tail, matching `tracking-issue-write.sh`. Strip/recompose rules: strip
-at most one leading lifecycle prefix, redact before outbound title.
+`rename --state` accepts `designing`, `designed`, `implementing`, `done`, and `stalled`. Each
+maps to a managed lifecycle bracket prefix in the GitHub title (`[DESIGNING]`,
+`[DESIGNED]`, `[IMPLEMENTING]`, `[DONE]`, `[STALLED]`) followed by exactly one ASCII space before
+the user tail. Legacy prefixes `[IN PROGRESS]` and `[PLANNED]` are stripped by
+`strip_lifecycle_prefix` for migration but are no longer accepted as `--state` values.
+Strip/recompose rules: strip at most one leading lifecycle prefix (new or legacy),
+redact before outbound title.
 
 ## Tests
 

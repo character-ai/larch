@@ -1,11 +1,16 @@
 #!/usr/bin/env bash
 # Fetch open GitHub issues eligible for combination.
-# Excludes issues with managed title prefixes ([IN PROGRESS], [STALLED], [DONE]).
+# Excludes issues with managed title prefixes ([DESIGNING], [IMPLEMENTING], [STALLED], [DONE])
+# plus legacy busy titles ([PLANNED], [IN PROGRESS]).
+# [DESIGNED] is intentionally NOT excluded — designed-but-unimplemented issues are valid combine candidates.
 #
 # Output on stdout: ISSUES_FILE=<path> and COUNT=<n>.
 # On failure: ERROR=<message> on stderr, exit 1.
 
 set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+TITLE_FILTER_JQ="$SCRIPT_DIR/combinable-issues-title-filter.jq"
 
 REPO=""
 
@@ -41,13 +46,7 @@ if [[ -z "$RAW" || "$RAW" == "[]" ]]; then
   exit 0
 fi
 
-FILTERED=$(echo "$RAW" | jq '[
-  .[] |
-  select(
-    (.title | test("^\\[(IN PROGRESS|STALLED|DONE)\\] ") | not) and
-    (.title | test("^\\[LOCKED\\]") | not)
-  )
-]')
+FILTERED=$(echo "$RAW" | jq -f "$TITLE_FILTER_JQ")
 
 TMPFILE=$(mktemp /tmp/combine-issues-XXXXXX)
 echo "$FILTERED" > "$TMPFILE"

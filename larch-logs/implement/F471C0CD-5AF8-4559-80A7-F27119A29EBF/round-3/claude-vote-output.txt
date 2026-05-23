@@ -1,0 +1,9 @@
+FINDING_1: YES
+FINDING_2: EXONERATE -- run-log flush and prior-PR CHANGELOG entries are expected workflow artifacts, not a structural defect worth tracking
+FINDING_3: YES
+FINDING_4: EXONERATE -- intentional documented crash-resume trade-off already captured in SECURITY.md; no new tracking needed
+FINDING_5: EXONERATE -- legacy-prefix exclusion and space-after-bracket requirement are both intentional per SKILL.md; edge case is minor
+FINDING_6: EXONERATE -- ordering (blockers before designed-prefix) is explicit in the plan; documented intentional sequencing
+FINDING_7: EXONERATE -- larch-logs/ are historical committed artifacts; run-log curation is optional and not issue-worthy
+FINDING_8: EXONERATE -- exit-codes section at lines 21-23 already documents the [DESIGNED] precondition; summary line omission is minor
+FINDING_9: EXONERATE -- plan over-specification with no diff impact; pre-existing layout, not introduced by this branch

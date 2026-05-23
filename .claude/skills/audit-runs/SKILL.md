@@ -104,8 +104,8 @@ Read `scan-results-*.ndjson` files as NDJSON (one JSON object per scan per line)
 
 At scan time, **only** record findings as proposals. **Never** auto-file a bug issue and **never** auto-post augmentation comments during the scan.
 
-- **`proposed_new_issues`**: findings that warrant a new bug issue after classification: no matching **open** issue, and when the only matches are **closed**, the version-window check (below) does not suppress the proposal. When searching, exclude only audit-report noise: titles matching `^\[Run Logs Audit .* Report\]` (same shape as `find-lock-issue.sh` `has_report_prefix` for run-logs audit titles). **Do not** exclude `[IN PROGRESS]` — those issues are open and match the search; route those hits to **`proposed_augmentations`** instead. Always present in the audit-report frontmatter (possibly empty).
-- **`proposed_augmentations`**: findings that match at least one **open** issue (same keyword search). This includes titles beginning with `[IN PROGRESS]` (still open on GitHub). Always present in the audit-report frontmatter (possibly empty).
+- **`proposed_new_issues`**: findings that warrant a new bug issue after classification: no matching **open** issue, and when the only matches are **closed**, the version-window check (below) does not suppress the proposal. When searching, exclude only audit-report noise: titles matching `^\[Run Logs Audit .* Report\]` (same shape as `find-lock-issue.sh` `has_report_prefix` for run-logs audit titles). **Do not** exclude `[IMPLEMENTING]` — those issues are open and match the search; route those hits to **`proposed_augmentations`** instead. Always present in the audit-report frontmatter (possibly empty).
+- **`proposed_augmentations`**: findings that match at least one **open** issue (same keyword search). This includes titles beginning with `[IMPLEMENTING]` (still open on GitHub). Always present in the audit-report frontmatter (possibly empty).
 
 For each finding, classify it into one of these two lists using GitHub + repo history; do not file or comment until after the post-report user prompt below.
 
@@ -113,7 +113,7 @@ For each finding, classify it into one of these two lists using GitHub + repo hi
    ```bash
    gh issue list --state all --repo <repo> --search "<finding keywords>" --json number,title,state,closedAt
    ```
-2. **Open matches** (including `[IN PROGRESS] …` titles): **`proposed_augmentations`**. In **`## Open issues snapshot`**, when an augmented issue’s title starts with `[IN PROGRESS]`, note that the finding **recurred in this batch (pre-fix)** for that issue number.
+2. **Open matches** (including `[IMPLEMENTING] …` titles): **`proposed_augmentations`**. In **`## Open issues snapshot`**, when an augmented issue’s title starts with `[IMPLEMENTING]`, note that the finding **recurred in this batch (pre-fix)** for that issue number.
 3. **Closed matches only** (no open match for this finding): apply the **version-window** check before proposing `proposed_new_issues`:
    - Resolve fix merge time: prefer `gh pr list --state merged --search "closes #<N>" --repo <repo> --json number,mergedAt,title,body` and pick **one** merged PR you attribute to the fix (see **PR disambiguation** below). If that query returns **no** candidates, fall back to `gh issue view <N> --json closedAt,createdAt` for timing only and set `matched_pr` / merge metadata to unknown in your notes / `version_window_checks` rationale.
    - **PR disambiguation (normative):** When multiple merged PRs match the search, prefer the PR whose `body`/`title` contains an explicit closing reference for `#<N>` (`closes`, `fixes`, `resolved`, case-insensitive). If still tied, prefer the PR with `mergedAt` closest **after** the issue `createdAt` (smallest positive delta). **If no candidate has `mergedAt` strictly after `createdAt`**, use the candidate with the latest `mergedAt` (ISO-8601 timestamps sort lexicographically). If still ambiguous, **do not** silently suppress: treat as **in-scope** (`decision: propose`, `in_scope: true`) and record both PR numbers plus a one-line operator rationale in the audit-report prose (or in the `finding` slug row’s implied narrative). When the search returns **zero** PRs, use issue `closedAt` only; keep `fix_shipped_in: unknown` unless you can attribute a merge elsewhere.
@@ -296,7 +296,7 @@ cumulative_counters:
 - `## Summary` (when any audited run’s `cache-freshness` line shows `run_version` strictly less than `--current-version`, prepend a bold one-line banner immediately under the heading: **Self-deploying lens:** runs in this batch were on `<run_version(s)>`; current `main` is `<current-version>`. Use the scan NDJSON values; do not invent versions.)
 - `## Delta from prior audit` (omit when `prior_report_issue` is null)
 - `## Per-PR findings` (one `####` subsection per PR)
-- `## Open issues snapshot` (list every open audit-eligible issue: number, title, last-seen-symptom-count; when an issue title begins with `[IN PROGRESS]` and received an augmentation for this batch, annotate that it **recurred this batch (pre-fix)**)
+- `## Open issues snapshot` (list every open audit-eligible issue: number, title, last-seen-symptom-count; when an issue title begins with `[IMPLEMENTING]` and received an augmentation for this batch, annotate that it **recurred this batch (pre-fix)**)
 - `## Scan results` (table: scan-name → pass/fail/finding count, plus issue cross-references)
 
 ## Close Prior Reports

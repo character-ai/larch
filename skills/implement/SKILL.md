@@ -190,7 +190,7 @@ and exit **2** (orchestrator stop — do not start Preflight or Step 0).
 
 Run **before Step 0** once `TARGET_ISSUE_NUMBER` is known and flag mutual-exclusion checks have passed. Uses a shell `mktemp -d` preflight tmpdir (not `$IMPLEMENT_TMPDIR`, which does not exist until Step 0). Keep `PLAN_TMP="$PREFLIGHT_TMPDIR/plan-from-issue.txt"` through Step 0 plan materialization. When `forked_target=true`, `UPSTREAM_REPO` MUST already be set from the Protocol `implement-fork-env.sh` bootstrap — append `--repo "$UPSTREAM_REPO"` to every `gh issue view` in this section, to `implement-admission.sh`, and to every `plan-block-read.sh` / `clarify-*.sh` invocation below.
 
-1. **Admission gate** — `${CLAUDE_PLUGIN_ROOT}/scripts/implement-admission.sh --issue <N>`; when `forked_target=true`, also pass `--repo "$UPSTREAM_REPO"`. When `$IMPLEMENT_TMPDIR` is already allocated (rare pre-Step-0 resume paths), export it first so the script can read `parent-issue.md` for the crash-resume sentinel; when that file contains `RUN_ID=`, also export the same `RUN_ID` in the environment so admission can match the session nonce (see `scripts/implement-admission.md`); otherwise omit. `gh issue view` inside admission must succeed (with its internal retry) before `RESUME=true` can apply — a `gh` flake yields exit **2** even when `parent-issue.md` matches. Parse stdout for `ADMISSION_RESULT=` / `ADMISSION_ERROR=` / optional `RESUME=`. On exit **4** (`has-blockers`, parse `BLOCKERS=`), **5** (`managed-prefix`, parse `TITLE=`), **6** (`audit-report-label`), **7** (`report-title`, parse `TITLE=`), or **2** (`ADMISSION_ERROR=`): print `**❌ /implement preflight: admission blocked — …**` with the parsed fields and exit **2**. Exit **0** with `ADMISSION_RESULT=pass` continues.
+1. **Admission gate** — `${CLAUDE_PLUGIN_ROOT}/scripts/implement-admission.sh --issue <N>`; when `forked_target=true`, also pass `--repo "$UPSTREAM_REPO"`. When `$IMPLEMENT_TMPDIR` is already allocated (rare pre-Step-0 resume paths), export it first so the script can read `parent-issue.md` for the crash-resume sentinel; when that file contains `RUN_ID=`, also export the same `RUN_ID` in the environment so admission can match the session nonce (see `scripts/implement-admission.md`); otherwise omit. `gh issue view` inside admission must succeed (with its internal retry) before `RESUME=true` can apply — a `gh` flake yields exit **2** even when `parent-issue.md` matches. Parse stdout for `ADMISSION_RESULT=` / `ADMISSION_ERROR=` / optional `RESUME=` / optional `TITLE=` (see `scripts/implement-admission.md` exit table). On exit **4** (`has-blockers`, parse `BLOCKERS=`), **5** (parse `ADMISSION_RESULT=` — either `managed-prefix` or `missing-designed-prefix`; both use exit **5** and emit `TITLE=` on stdout), **6** (`audit-report-label`), **7** (`report-title`, parse `TITLE=`), or **2** (`ADMISSION_ERROR=`): print `**❌ /implement preflight: admission blocked — …**` with the parsed fields and exit **2**. Exit **0** with `ADMISSION_RESULT=pass` continues.
 
 2. **`gh issue view`** (Bash tool): `gh issue view <N> --json body,labels,number,title,state` — when `forked_target=true`, include `--repo "$UPSTREAM_REPO"` — on transient `gh` failure, retry once (two attempts total). On hard failure after retries, print a clear error and exit **2**.
 3. **Extract `larch:plan` block** — invoke `plan-block-read.sh` with `--issue <N>` and `--output "$PREFLIGHT_TMPDIR/plan-from-issue.txt"`; when `forked_target=true`, also pass `--repo "$UPSTREAM_REPO"`.
@@ -661,13 +661,13 @@ Parse stdout for `ISSUE_NUMBER`, `RUN_ID`, `ADOPTED`.
   ${CLAUDE_PLUGIN_ROOT}/scripts/larch-log.sh init --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --issue "$ISSUE_NUMBER"
   ```
 
-- **Resume rename safety net**: if `ISSUE_NUMBER` is set, run a best-effort idempotent rename to `[IN PROGRESS]`. This recovers from the case where a prior session wrote the sentinel but its Branch 2 rename failed (best-effort, logged but non-blocking) — without this, a resumed run could complete with merge/Step 18 renames while the GitHub title never received `[IN PROGRESS]`:
+- **Resume rename safety net**: if `ISSUE_NUMBER` is set, run a best-effort idempotent rename to `[IMPLEMENTING]`. This recovers from the case where a prior session wrote the sentinel but its Branch 2 rename failed (best-effort, logged but non-blocking) — without this, a resumed run could complete with merge/Step 18 renames while the GitHub title never received `[IMPLEMENTING]`:
 
   ```bash
-  ${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh rename --issue $ISSUE_NUMBER --state in-progress
+  ${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh rename --issue $ISSUE_NUMBER --state implementing
   ```
 
-  Best-effort: on `FAILED=true` or non-zero exit, log `Step 0 tracking adoption — Branch 1 resume rename to in-progress failed: $ERROR` to `Tool Failures` and continue. The rename is idempotent (`RENAMED=false` when the title already starts with the target lifecycle prefix; see `scripts/tracking-issue-write.md`), so the common resume case is a single cheap `gh issue view` with no edit.
+  Best-effort: on `FAILED=true` or non-zero exit, log `Step 0 tracking adoption — Branch 1 resume rename to implementing failed: $ERROR` to `Tool Failures` and continue. The rename is idempotent (`RENAMED=false` when the title already starts with the target lifecycle prefix; see `scripts/tracking-issue-write.md`), so the common resume case is a single cheap `gh issue view` with no edit.
 
 Continue Step 0 (follow through in the subsections below—still part of Step 0).
 
@@ -702,17 +702,17 @@ On `LOG_WRITTEN=false` with `ERROR=` from `larch-log.sh`, or `POSTED=false` / no
 
 `post-tracking-issue.sh` writes `$IMPLEMENT_TMPDIR/parent-issue.md` (with `ISSUE_NUMBER=$TARGET_ISSUE_NUMBER`, `RUN_ID=$RUN_ID`, `ADOPTED=true`) after the metadata post succeeds. Set `ISSUE_NUMBER=$TARGET_ISSUE_NUMBER`.
 
-On either sub-branch, **rename the adopted issue to `[IN PROGRESS]`** so the title reflects the active run (see `scripts/tracking-issue-write.md` "Title-prefix lifecycle"):
+On either sub-branch, **rename the adopted issue to `[IMPLEMENTING]`** so the title reflects the active run (see `scripts/tracking-issue-write.md` "Title-prefix lifecycle"):
 
 ```bash
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
   CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
 fi
 export CLAUDE_PLUGIN_ROOT
-${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh rename --issue $TARGET_ISSUE_NUMBER --state in-progress
+${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh rename --issue $TARGET_ISSUE_NUMBER --state implementing
 ```
 
-Best-effort: on `FAILED=true` or non-zero exit, log `Step 0 tracking adoption — Branch 2 rename to in-progress failed: $ERROR` to `Tool Failures` and continue. The rename is idempotent (`RENAMED=false` when the title already starts with the target lifecycle prefix; see `scripts/tracking-issue-write.md`); failure does not affect adoption correctness — it only means the visible GitHub title may lag until a later successful rename. Step 12a/12b's terminal rename to `[DONE]` and Step 18's stalled-rename apply to adopted issues uniformly (no `ADOPTED=` guard).
+Best-effort: on `FAILED=true` or non-zero exit, log `Step 0 tracking adoption — Branch 2 rename to implementing failed: $ERROR` to `Tool Failures` and continue. The rename is idempotent (`RENAMED=false` when the title already starts with the target lifecycle prefix; see `scripts/tracking-issue-write.md`); failure does not affect adoption correctness — it only loses the visual-indicator benefit. Step 12a/12b's terminal rename to `[DONE]` and Step 18's stalled-rename apply to adopted issues uniformly (no `ADOPTED=` guard).
 
 Continue Step 0 (follow through in the subsections below—still part of Step 0).
 

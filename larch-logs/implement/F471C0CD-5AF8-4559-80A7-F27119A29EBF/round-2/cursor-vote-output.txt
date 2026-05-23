@@ -1,0 +1,15 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: EXONERATE -- doc-only sequencing nit with weak impact on runtime behavior
+FINDING_5: YES
+FINDING_6: EXONERATE -- intentional documented resume trust boundary; no new defect class
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: EXONERATE -- hypothetical future misuse; current exit-5 matrix appears intentional
+FINDING_12: EXONERATE -- redundant tests are cleanup-only, not a behavioral gap
+FINDING_13: YES
+FINDING_14: EXONERATE -- editorial packaging noise, not worth a standalone tracking issue
+FINDING_15: EXONERATE -- large run-log diffs are expected workflow noise, not a defect

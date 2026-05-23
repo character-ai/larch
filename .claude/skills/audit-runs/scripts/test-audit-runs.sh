@@ -376,7 +376,7 @@ result=$(title_matches_audit_report_exclusion "[Run Logs Audit 2026-05-20T12:30-
 assert_equal "$result" "excluded" "[14b] non-contiguous audit report title also excluded"
 result=$(title_matches_audit_report_exclusion "Fix EXON regression in voting tally")
 assert_equal "$result" "pickable" "[14c] normal bug issue title is NOT excluded"
-result=$(title_matches_audit_report_exclusion "[IN PROGRESS] Create /larch:audit-runs skill")
+result=$(title_matches_audit_report_exclusion "[IMPLEMENTING] Create /larch:audit-runs skill")
 assert_equal "$result" "pickable" "[14d] non-audit-report title not excluded"
 result=$(title_matches_audit_report_exclusion "[Run Logs Audit Report 2026-05-20T19:30Z] PRs #2430-#2440")
 assert_equal "$result" "pickable" "[14g] pre-migration audit bracket title not matched by self-exclusion regex (label guard is primary)"
@@ -2115,11 +2115,11 @@ classify_c1_bucket_from_gh_issues_json() {
         end
     '
 }
-result=$(classify_c1_bucket_from_gh_issues_json '[{"number":1,"title":"[IN PROGRESS] widget bug","state":"OPEN"}]')
-assert_equal "$result" "proposed_augmentations" "[58] open [IN PROGRESS] title counts as augmentation match (not search-excluded)"
+result=$(classify_c1_bucket_from_gh_issues_json '[{"number":1,"title":"[IMPLEMENTING] widget bug","state":"OPEN"}]')
+assert_equal "$result" "proposed_augmentations" "[58] open [IMPLEMENTING] title counts as augmentation match (not search-excluded)"
 result=$(classify_c1_bucket_from_gh_issues_json '[{"number":1,"title":"[Run Logs Audit 2026-01 Report] tail","state":"OPEN"}]')
 assert_equal "$result" "proposed_new_issues" "[58b] audit-report noise title alone → no eligible open match → proposed_new_issues"
-result=$(classify_c1_bucket_from_gh_issues_json '[{"number":1,"title":"[Run Logs Audit noise Report] more","state":"OPEN"},{"number":2,"title":"[IN PROGRESS] same bug","state":"OPEN"}]')
+result=$(classify_c1_bucket_from_gh_issues_json '[{"number":1,"title":"[Run Logs Audit noise Report] more","state":"OPEN"},{"number":2,"title":"[IMPLEMENTING] same bug","state":"OPEN"}]')
 assert_equal "$result" "proposed_augmentations" "[58c] noise open + real open → precedence to augmentations"
 result=$(classify_c1_bucket_from_gh_issues_json '[{"number":1,"title":"widget bug","state":"CLOSED"},{"number":2,"title":"widget bug","state":"OPEN"}]')
 assert_equal "$result" "proposed_augmentations" "[58d] mixed closed+open (--state all style payload) → open wins → augmentations"

@@ -1,0 +1,12 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: EXONERATE -- Minor changelog wording drift is legitimate but not worth filing as a future issue.
+FINDING_4: YES
+FINDING_5: EXONERATE -- Run-log noise and legacy strings are real trade-offs, but they match the current committed-artifact policy and are not issue-worthy.
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: EXONERATE -- The resume bypass is an intentional documented crash-resume trade-off, not worth a future issue absent a policy change.
+FINDING_11: EXONERATE -- The bundling/traceability concern is legitimate but release-splitting would add more process than the issue warrants.
+FINDING_12: NO -- Historical changelog entries should retain the legacy prefixes they documented at the time.
