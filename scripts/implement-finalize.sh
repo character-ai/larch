@@ -1151,83 +1151,15 @@ compute_run_outcome() {
 }
 
 rename_issue() {
-    local issue=$1 state=$2 label=$3 repo=$4 out rc failed round_trip body_tmp title
-    round_trip=false
-    body_tmp=""
-    title=""
-    if [ -n "$IMPLEMENT_TMPDIR" ] && is_tmp_path "$IMPLEMENT_TMPDIR" && [ -d "$IMPLEMENT_TMPDIR" ]; then
-        body_tmp="$IMPLEMENT_TMPDIR/round-trip-input-issue-body-step18-${issue}.txt"
-    else
-        # set -uo pipefail (no -e) here, so an mktemp failure (full disk,
-        # bad TMPDIR) would otherwise leave body_tmp empty and let the
-        # later printf > "$body_tmp" write to "" silently. Guard explicitly
-        # and skip detection on failure (post-review).
-        body_tmp=$(mktemp 2>/dev/null) || body_tmp=""
-        if [ -z "$body_tmp" ] || [ ! -f "$body_tmp" ]; then
-            warn_line "Step 18: round-trip detection skipped: mktemp failed"
-            out=$("$SCRIPT_DIR/tracking-issue-write.sh" rename --issue "$issue" --state "$state" --round-trip "$round_trip" ${repo:+--repo "$repo"})
-            rc=$?
-            failed=$(kv_value FAILED "$out")
-            if [ "$rc" -ne 0 ] || [ "$failed" = "true" ]; then
-                warn_line "$(printf '**⚠ 18: tracking-issue rename to %s failed. Continuing.**' "$label")"
-                return 1
-            fi
-            return 0
-        fi
-    fi
-    # Build gh args; pass --repo when available so the body+title fetch
-    # targets the same issue scope as the rename call below (FINDING_F2).
+    local issue=$1 state=$2 label=$3 repo=$4 out rc failed
     if [ -z "$repo" ]; then
         repo=$("$SCRIPT_DIR/resolve-repo.sh" 2>/dev/null) || repo=""
     fi
     set +e
     if [ -n "$repo" ]; then
-        out=$(gh issue view "$issue" --repo "$repo" --json title,body --jq '"TITLE=\(.title // "")\n" + (.body // "")')
+        out=$("$SCRIPT_DIR/tracking-issue-write.sh" rename --issue "$issue" --state "$state" --repo "$repo")
     else
-        out=$(gh issue view "$issue" --json title,body --jq '"TITLE=\(.title // "")\n" + (.body // "")')
-        warn_line "Step 18: round-trip detection: gh issue view executed without --repo (resolve-repo.sh returned empty)"
-    fi
-    rc=$?
-    set +e
-    if [ "$rc" -ne 0 ]; then
-        # Preserve any stderr the gh call printed by relying on caller's
-        # default stderr passthrough; emit our own warn here too (FINDING_F3).
-        warn_line "Step 18: round-trip detection skipped: gh issue title/body fetch failed"
-        round_trip=false
-    elif [ ! -x "$SCRIPT_DIR/round-trip-detect.sh" ]; then
-        warn_line "Step 18: round-trip detection skipped: detector unavailable"
-        round_trip=false
-    else
-        # Extract first-line TITLE marker; remainder is body. Empty-title is
-        # tolerated (--text-string "" is a no-op for the detector).
-        title=$(printf '%s' "$out" | awk 'NR==1 && /^TITLE=/ { sub(/^TITLE=/, ""); print; exit }')
-        printf '%s' "$out" | awk 'NR>1 || !/^TITLE=/ { print }' > "$body_tmp"
-        set +e
-        # Do NOT redirect detector stderr — preserve warn_false signals so
-        # operators can see degraded-path diagnostics (FINDING_F3).
-        out=$("$SCRIPT_DIR/round-trip-detect.sh" --text-string "$title" --text-file "$body_tmp")
-        rc=$?
-        set +e
-        if [ "$rc" -ne 0 ]; then
-            warn_line "Step 18: round-trip detection skipped: detector failed"
-            round_trip=false
-        else
-            round_trip=$(kv_value ROUND_TRIP "$out")
-            case "$round_trip" in
-                true|false) ;;
-                *)
-                    warn_line "Step 18: round-trip detection skipped: detector output missing"
-                    round_trip=false
-                    ;;
-            esac
-        fi
-    fi
-    rm -f "$body_tmp" 2>/dev/null || true
-    set +e
-    if [ -n "$repo" ]; then
-        out=$("$SCRIPT_DIR/tracking-issue-write.sh" rename --issue "$issue" --state "$state" --round-trip "$round_trip" --repo "$repo")
-    else
-        out=$("$SCRIPT_DIR/tracking-issue-write.sh" rename --issue "$issue" --state "$state" --round-trip "$round_trip")
+        out=$("$SCRIPT_DIR/tracking-issue-write.sh" rename --issue "$issue" --state "$state")
     fi
     rc=$?
     set +e

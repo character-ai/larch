@@ -1,8 +1,0 @@
-# Vendored false-positive vocabulary from issue #1239. Do not fetch live issue text.
-round trip through the reviewer panel
-tracking issue round-trip telemetry
-round trip title marker proposal
-standalone alias discussion without replacement
-closed in favor of architecture cleanup
-revert often means review, not a marker
-prefix [round-trip] is lowercase user content

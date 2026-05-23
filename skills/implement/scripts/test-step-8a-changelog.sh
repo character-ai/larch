@@ -108,14 +108,12 @@ SH
         chmod +x "$s/$stub"
     done
 
-    # Stub tracking-issue-write.sh and round-trip-detect.sh used in postbump_tail
+    # Stub tracking-issue-write.sh used in postbump_tail
     cat > "$s/tracking-issue-write.sh" <<'SH'
 #!/usr/bin/env bash
 printf 'RENAMED=false\nNEW_TITLE=stub\n'
 SH
     chmod +x "$s/tracking-issue-write.sh"
-    printf '#!/usr/bin/env bash\nprintf '"'"'ROUND_TRIP=false\n'"'"'\n' > "$s/round-trip-detect.sh"
-    chmod +x "$s/round-trip-detect.sh"
 
     # execution-issues log
     touch "$t/execution-issues.md"

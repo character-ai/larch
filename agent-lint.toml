@@ -879,12 +879,6 @@ exclude = [
   "scripts/test-lib-title-markers.sh",
   "scripts/false-positive-keywords.sh",
   "scripts/test-false-positive-keywords.sh",
-  # scripts/test-round-trip-detect.sh is the regression harness for
-  # scripts/round-trip-detect.sh. Invoked only from Makefile
-  # (test-round-trip-detect target) and its sibling contract; same
-  # Makefile-only test harness pattern as test-tracking-issue-write.sh.
-  "scripts/test-round-trip-detect.sh",
-  "scripts/test-round-trip-detect-negative-fixtures.txt",
   # Regression harness for tracking-issue-read.sh's --sentinel branch
   # (added by #359 — ADOPTED= contract pin). Invoked only from Makefile's
   # test-harnesses target; no SKILL.md reference. Phase 3 first consumes
@@ -1030,7 +1024,6 @@ exclude = [
   "skills/set-up-forked-open-source-repo/scripts/lib-remotes.md",
   "skills/set-up-forked-open-source-repo/scripts/setup-forked-open-source-repo.md",
   "skills/set-up-forked-open-source-repo/scripts/test-setup-forked-open-source-repo.md",
-  "scripts/test-round-trip-detect.md",
   "scripts/test-token-ledger.md",
   "scripts/test-token-report.md",
   "scripts/test-token-vendor-scrapers.md",
