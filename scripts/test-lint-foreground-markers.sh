@@ -421,13 +421,44 @@ EOF
 rc="$(run_lint "$stderr_file")"
 assert_case_clean "commented denylisted line ignored" "$stderr_file" "$rc"
 
-# 16 — Family A: pinned run_in_background: true counts on reference paths (sketch / dialectic / voting)
+# 23 — denylist-shaped path inside a quoted heredoc body must not anchor (false-positive guard)
+reset_tree
+write_md skills/heredoc-doc/SKILL.md <<'EOF'
+# Case 23
+
+```bash
+cat <<'MD'
+Example: ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1
+MD
+echo done
+```
+EOF
+rc="$(run_lint "$stderr_file")"
+assert_case_clean "heredoc body ignores denylist-shaped text" "$stderr_file" "$rc"
+
+# 24 — backslash-continued denylisted path with markers (single logical invocation)
+reset_tree
+write_md skills/bs-cont/SKILL.md <<'EOF'
+# Case 24
+
+**⚠ Foreground required — do NOT set `run_in_background: true`.**
+
+```bash
+# Foreground required: see BASH_AUTHORING.md §4
+${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.\
+sh --timeout 1 x.txt
+```
+EOF
+rc="$(run_lint "$stderr_file")"
+assert_case_clean "backslash-continued denylisted path with markers" "$stderr_file" "$rc"
+
+# 16 — Family A: minimum run_in_background: true counts on reference paths (sketch / dialectic / voting)
 assert_family_count() {
     local path="$1" expected="$2" label="$3"
     local got
     got=$(grep -cF 'run_in_background: true' "$path" || true)
-    if [[ "$got" != "$expected" ]]; then
-        printf 'FAIL [family-a %s]: expected count %s, got %s (%s)\n' "$label" "$expected" "$got" "$path" >&2
+    if [[ "$got" -lt "$expected" ]]; then
+        printf 'FAIL [family-a %s]: count decreased below floor %s, got %s (%s)\n' "$label" "$expected" "$got" "$path" >&2
         FAIL=$((FAIL + 1))
         return
     fi

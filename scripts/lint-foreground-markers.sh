@@ -155,6 +155,79 @@ is_anchor_for_basename() {
     return 1
 }
 
+# Strip leading ASCII TAB characters (Bash 3.2; used for <<- heredoc close lines).
+strip_leading_tabs() {
+    local s="$1"
+    while [[ "$s" == $'\t'* ]]; do
+        s="${s#"$'\t'"}"
+    done
+    printf '%s' "$s"
+}
+
+# Sets HEREDOC_OPEN_DELIM and HEREDOC_OPEN_USE_TAB_STRIP (0|1); returns 0 if $1 opens a heredoc.
+try_begin_heredoc() {
+    local line="$1"
+    HEREDOC_OPEN_DELIM=
+    HEREDOC_OPEN_USE_TAB_STRIP=0
+    [[ "$line" =~ ^[[:space:]]*# ]] && return 1
+
+    local d
+    d=$(printf '%s\n' "$line" | LC_ALL=C sed -n "s/.*<<-[[:space:]]*'\\([^']*\\)'.*/\\1/p")
+    if [[ -n "$d" ]]; then
+        HEREDOC_OPEN_DELIM="$d"
+        HEREDOC_OPEN_USE_TAB_STRIP=1
+        return 0
+    fi
+    d=$(printf '%s\n' "$line" | LC_ALL=C sed -n "s/.*<<[[:space:]]*'\\([^']*\\)'.*/\\1/p")
+    if [[ -n "$d" ]]; then
+        HEREDOC_OPEN_DELIM="$d"
+        return 0
+    fi
+    d=$(printf '%s\n' "$line" | LC_ALL=C sed -n 's/.*<<-[[:space:]]*"\([^"]*\)".*/\1/p')
+    if [[ -n "$d" ]]; then
+        HEREDOC_OPEN_DELIM="$d"
+        HEREDOC_OPEN_USE_TAB_STRIP=1
+        return 0
+    fi
+    d=$(printf '%s\n' "$line" | LC_ALL=C sed -n 's/.*<<[[:space:]]*"\([^"]*\)".*/\1/p')
+    if [[ -n "$d" ]]; then
+        HEREDOC_OPEN_DELIM="$d"
+        return 0
+    fi
+    d=$(printf '%s\n' "$line" | LC_ALL=C sed -n 's/.*<<-[[:space:]]\{1,\}\([[:alpha:]][[:alnum:]_]*\)$/\1/p')
+    if [[ -n "$d" ]]; then
+        HEREDOC_OPEN_DELIM="$d"
+        HEREDOC_OPEN_USE_TAB_STRIP=1
+        return 0
+    fi
+    d=$(printf '%s\n' "$line" | LC_ALL=C sed -n 's/.*<<[[:space:]]\{1,\}\([[:alpha:]][[:alnum:]_]*\)$/\1/p')
+    if [[ -n "$d" ]]; then
+        HEREDOC_OPEN_DELIM="$d"
+        return 0
+    fi
+    d=$(printf '%s\n' "$line" | LC_ALL=C sed -n 's/.*<<-\([[:alpha:]][[:alnum:]_]*\)$/\1/p')
+    if [[ -n "$d" ]]; then
+        HEREDOC_OPEN_DELIM="$d"
+        HEREDOC_OPEN_USE_TAB_STRIP=1
+        return 0
+    fi
+    d=$(printf '%s\n' "$line" | LC_ALL=C sed -n 's/.*<<\([[:alpha:]][[:alnum:]_]*\)$/\1/p')
+    if [[ -n "$d" ]]; then
+        HEREDOC_OPEN_DELIM="$d"
+        return 0
+    fi
+    return 1
+}
+
+heredoc_close_matches() {
+    local line="$1" delim="$2" strip_tabs="$3"
+    local cmp="$line"
+    if [[ "$strip_tabs" == 1 ]]; then
+        cmp="$(strip_leading_tabs "$line")"
+    fi
+    [[ "$cmp" == "$delim" ]]
+}
+
 scan_fence_buffer_for_anchors() {
     local rel="$1" open_fence_line="$2" fence_buf="$3"
     shift 3
@@ -166,9 +239,23 @@ scan_fence_buffer_for_anchors() {
     done <"$fence_buf"
 
     local fline fidx bn
+    local active_hd_delim=""
+    local active_hd_strip=0
     fidx=0
     for fline in "${FG_FENCE_LINES[@]}"; do
         ((fidx++)) || true
+        if [[ -n "$active_hd_delim" ]]; then
+            if heredoc_close_matches "$fline" "$active_hd_delim" "$active_hd_strip"; then
+                active_hd_delim=""
+                active_hd_strip=0
+            fi
+            continue
+        fi
+        if try_begin_heredoc "$fline"; then
+            active_hd_delim="$HEREDOC_OPEN_DELIM"
+            active_hd_strip="$HEREDOC_OPEN_USE_TAB_STRIP"
+            continue
+        fi
         [[ "$fline" == *'.sh'* ]] || continue
         while IFS= read -r bn; do
             [[ -n "$bn" ]] || continue
