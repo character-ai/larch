@@ -5,6 +5,7 @@ set -euo pipefail
 
 # Avoid inheriting disabled flag from outer /implement or operator shells.
 unset LARCH_AGGREGATOR_DISABLED || true
+unset LARCH_EXECUTION_ISSUES_LOG SESSION_ENV_PATH IMPLEMENT_TMPDIR || true
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)"
 AGG="$REPO_ROOT/skills/review/scripts/aggregate-findings.sh"
@@ -891,5 +892,35 @@ AGGREGATE_STUB_MERGE_KIND=malformed \
     --mode diff \
     --session-env-path "$issues_parent/session-env.sh" >"$TMP/out-session.env"
 grep -Fq 'findings aggregator' "$issues_parent/execution-issues.md" || fail "execution-issues missing aggregator warning"
+
+echo "=== inherited LARCH_EXECUTION_ISSUES_LOG cannot leak past harness-style prelude (#2617) ==="
+# Shape A: production aggregate-findings still prefers LARCH_EXECUTION_ISSUES_LOG over
+# --review-tmpdir when both are set; this harness clears inherited vars at entry. Re-run
+# aggregate-findings in a child process with a contaminated env, then apply the same unset
+# prelude as this script before invoking the script-under-test.
+SENTINEL="/tmp/larch-test-env-leak-$$.md"
+rm -f "$SENTINEL"
+LP="$TMP/leak-probe"
+mkdir -p "$LP"
+cp "$TMP/in3.md" "$LP/in3-disp.md"
+write_stub_dispatch
+env LARCH_EXECUTION_ISSUES_LOG="$SENTINEL" SESSION_ENV_PATH="/nonexistent/session-env.sh" IMPLEMENT_TMPDIR="/nonexistent/implement-tmp" \
+    AGGREGATE_DISPATCH_SH="$TMP/stub-dispatch.sh" \
+    AGGREGATE_STUB_MODE=fail_dispatch \
+    bash -c 'set -euo pipefail
+        unset LARCH_AGGREGATOR_DISABLED || true
+        unset LARCH_EXECUTION_ISSUES_LOG SESSION_ENV_PATH IMPLEMENT_TMPDIR || true
+        exec "$@"' bash "$AGG" \
+        --findings-file "$LP/in3-disp.md" \
+        --review-tmpdir "$LP" \
+        --codex-present true \
+        --cursor-present true \
+        --mode diff >"$TMP/out-leak-probe.env"
+grep -Fq 'AGGREGATED=false' "$TMP/out-leak-probe.env" || fail "leak-probe dispatch-fail AGGREGATED"
+grep -Fq 'REASON=dispatch-failed' "$TMP/out-leak-probe.env" || fail "leak-probe dispatch-fail REASON"
+if [[ -f "$SENTINEL" && -s "$SENTINEL" ]]; then
+    fail "sentinel execution-issues log leaked non-empty content ($(wc -c <"$SENTINEL" | tr -d "[:space:]") bytes)"
+fi
+rm -f "$SENTINEL"
 
 echo "All aggregate-findings harness assertions passed."

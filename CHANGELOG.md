@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- test-aggregate-findings, test-launch-review, test-append-tool-failure: unset `LARCH_EXECUTION_ISSUES_LOG` and related vars at harness entry so synthetic aggregator warnings do not append to a parent `/implement` execution-issues log.
 - /implement — Create the feature branch at the start of Step 0 plan materialization (regression from #2588 / #2598; pre-existing dispatcher main-branch-prohibited guard exposed the gap).
 
 ### Changed

@@ -2,6 +2,7 @@
 # test-append-tool-failure.sh — Regression tests for append-tool-failure.sh.
 
 set -euo pipefail
+unset LARCH_EXECUTION_ISSUES_LOG SESSION_ENV_PATH IMPLEMENT_TMPDIR || true
 
 export LARCH_QUIET_DISABLE=1
 
