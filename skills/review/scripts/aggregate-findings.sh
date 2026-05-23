@@ -239,12 +239,16 @@ EMPTY_MERGE_ATTESTATION = "LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED"
 
 _STRICT_FINDING_HEADING = re.compile(r"^### FINDING_[0-9]+:")
 
-# Prose that mentions "### FINDING_ids" must NOT trip this (no digit/N after FINDING_).
-_PREAMBLE_FINDING_SIGNAL = re.compile(r"###\s*FINDING_[0-9N]")
+# Two forms of preamble contradiction:
+#   1. Heading-format: "### FINDING_24:" or "### FINDING_N:" in narrative prose.
+#   2. Numbered prose: "(FINDING_24–28)" or similar bare numeric FINDING_N references.
+# "### FINDING_ids" (non-numeric suffix) and generic "FINDING_" without a number do NOT trip
+# this signal — they may appear in legitimate empty-merge commentary.
+_PREAMBLE_FINDING_SIGNAL = re.compile(r"###\s*FINDING_[0-9N]|\bFINDING_[0-9]{1,4}\b")
 
 
 def has_preamble_finding_signal(text):
-    """True when narrative references structured FINDING headings without valid blocks."""
+    """True when narrative references structured FINDING headings or numbered IDs without valid blocks."""
     return bool(_PREAMBLE_FINDING_SIGNAL.search(text))
 
 

@@ -90,6 +90,14 @@ LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED
 
 EOF
                 ;;
+            numbered_prose_contradiction)
+                cat > "$out" <<'EOF'
+Research complete: inputs are the supplied reviewer blocks only (no repo reads). Merging duplicate concerns, preserving `[OUT_OF_SCOPE]` on merged headings where any source carried it, and omitting suggested-revision bullets where the source gave none (FINDING_24-28).
+
+LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED
+
+EOF
+                ;;
             merge)
                 cat > "$out" <<'EOF'
 ### FINDING_1: merged title
@@ -1011,6 +1019,22 @@ AGGREGATE_STUB_MERGE_KIND=preamble_contradiction \
     --mode diff >"$TMP/out-pream.env"
 grep -Fq 'AGGREGATOR_VALIDATION_FAILED=preamble_finding_substring' "$TMP/aggregator-validate.stderr" || fail "expected preamble_finding_substring validator stderr"
 grep -Fq 'REASON=validation-failed' "$TMP/out-pream.env" || fail "single-phase cap should surface validation-failed"
+
+echo "=== zero_findings_numbered_prose_contradiction: prose FINDING_N refs trip preamble signal ==="
+cp "$TMP/in3.md" "$TMP/in3-numpr.md"
+write_stub_dispatch
+LARCH_AGGREGATE_MAX_OUTER_PHASES=1 \
+AGGREGATE_DISPATCH_SH="$TMP/stub-dispatch.sh" \
+AGGREGATE_STUB_MODE=ok \
+AGGREGATE_STUB_MERGE_KIND=numbered_prose_contradiction \
+"$AGG" \
+    --findings-file "$TMP/in3-numpr.md" \
+    --review-tmpdir "$TMP" \
+    --codex-present true \
+    --cursor-present true \
+    --mode diff >"$TMP/out-numpr.env"
+grep -Fq 'AGGREGATOR_VALIDATION_FAILED=preamble_finding_substring' "$TMP/aggregator-validate.stderr" || fail "expected preamble_finding_substring for prose FINDING_24 reference"
+grep -Fq 'REASON=validation-failed' "$TMP/out-numpr.env" || fail "single-phase cap should surface validation-failed for numbered prose"
 
 echo "=== waterfall_exhausted: validation-exhausted + three output files + one execution issue ==="
 WF="$TMP/waterfall-exhausted"
