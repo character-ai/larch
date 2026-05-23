@@ -464,6 +464,9 @@ test-ci-wait:
 test-launch-cursor-ci:
 	bash scripts/harness-timer.sh $@ bash scripts/test-launch-cursor-ci.sh
 
+test-launch-claude-ci:
+	bash scripts/harness-timer.sh $@ bash scripts/test-launch-claude-ci.sh
+
 test-launch-codex-ci:
 	bash scripts/harness-timer.sh $@ bash scripts/test-launch-codex-ci.sh
 
