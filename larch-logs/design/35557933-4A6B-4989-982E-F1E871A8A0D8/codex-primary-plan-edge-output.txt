@@ -1,0 +1,16 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan.txt:16-18	Leading-command scanner misses command substitutions and quoted paths	Existing in-scope calls include _plan_review_dispatch=$("${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-with-waterfall.sh" at skills/design/SKILL.md:573 and _plan_voter_dispatch=$("${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-plan-voters.sh" at skills/design/references/plan-review.md:106, so a line-start command matcher can silently pass unmarked foreground-required invocations.	Match basename invocations after optional assignments, command substitutions, and quotes, or use a small shell-line state machine; add fixtures for quoted paths, command-substitution assignment, and multiline continuation.
+1	in_scope	important	risk-integration	plan.txt:24-57	Foreground lint is not wired into CI-executed paths	CI runs make lint-only and matrix test-harnesses, while Makefile:12-18 documents lint as local convenience; adding lint-foreground only to lint means PR CI can stay green while marker drift ships.	Add the foreground lint as a pre-commit local hook, a dedicated CI step, or a CI-executed Makefile prerequisite, and update the plan/docs to name that path.
+1	in_scope	important	correctness	plan.txt:24,54	New test target is not assigned to a Makefile shard	The shard guard inventories every test-* target and compares it against shard prereqs at scripts/test-harness-shards-coverage.sh:196-219; adding test-lint-foreground-markers without placing it on exactly one test-harnesses-N line like Makefile:50-80 makes make test-harnesses fail before the new harness provides coverage.	Add test-lint-foreground-markers to .PHONY and exactly one test-harnesses-N shard, unless it is intentionally added to CARVE_OUTS, which would weaken this regression guard.
+
+1. **[correctness] plan.txt:16-18**  
+Concern: the proposed “leading-command” fence detector is too narrow for current call shapes. `dispatch-with-waterfall.sh` and `dispatch-plan-voters.sh` are invoked inside command-substitution assignments, not as the first shell word.  
+Suggested revision: make the detector recognize optional assignment prefixes, `$(` wrappers, and quoted path command words; pin those forms in the harness.
+
+2. **[risk-integration] plan.txt:24-57**  
+Concern: `lint-foreground` is only described as part of local `make lint`, but CI splits linting into `make lint-only` and `test-harnesses`. That leaves the new policy unverified in PR CI.  
+Suggested revision: wire the linter into a CI-executed path, preferably pre-commit or a dedicated workflow step.
+
+3. **[correctness] plan.txt:24,54**  
+Concern: the new `test-lint-foreground-markers` Makefile target needs shard membership. The repository’s shard coverage guard treats unsharded `test-*` targets as failures.  
+Suggested revision: add the target to `.PHONY` and exactly one `test-harnesses-N` prerequisite line.
