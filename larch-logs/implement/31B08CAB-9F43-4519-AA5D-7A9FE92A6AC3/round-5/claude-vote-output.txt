@@ -1,0 +1,30 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: EXONERATE -- structural anchor replacement to fix floor fragility adds complexity disproportionate to the latent risk
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: EXONERATE -- substring-anywhere vs leading-paragraph distinction is unlikely to cause false passes in practice; tightening would break blockquote banner variants
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: EXONERATE -- both lint-foreground and lint-foreground-markers exist and work; alias preference is not a defect
+FINDING_15: EXONERATE -- reviewer explicitly marks not required; concern already covered by FINDING_6
+FINDING_16: YES
+FINDING_17: EXONERATE -- same concern as FINDING_6; count floors are the deliberate design choice
+FINDING_18: YES
+FINDING_19: YES
+FINDING_20: EXONERATE -- URL content is from controlled gh issue create stdout; injection risk bounded and very low
+FINDING_21: YES
+FINDING_22: NO -- reviewer explicitly says no change needed; this is inherited/unchanged behavior
+FINDING_23: YES
+FINDING_24: NO -- commented heredoc openers correctly skipped match real shell semantics; no actual desync occurs
+FINDING_25: YES
+FINDING_26: EXONERATE -- FINDING_16 already captures the untracked-file gap more actionably
+FINDING_27: YES
+FINDING_28: EXONERATE -- duplicate of FINDING_4; both aliases are valid references
+FINDING_29: NO -- pre-existing bundling practice explicitly noted by reviewer as such
+FINDING_30: YES

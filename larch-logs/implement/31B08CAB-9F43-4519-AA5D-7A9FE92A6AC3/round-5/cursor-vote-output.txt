@@ -1,0 +1,34 @@
+Reading the ballot and nearby context files to verify findings.
+
+Verifying key code regions referenced in the ballot against the workspace.
+
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: EXONERATE -- ship-pr block benefits from repeated warning context without lint risk from duplicate prose alone
+FINDING_4: YES
+FINDING_5: EXONERATE -- duplicate of FINDING_30 at lower severity
+FINDING_6: YES
+FINDING_7: EXONERATE -- renumbering churn for cosmetic ordering while Case 16 exists later as Family A
+FINDING_8: EXONERATE -- repo policy note, no durable tracking issue needed
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: EXONERATE -- duplicate heading nit covered by FINDING_30
+FINDING_14: EXONERATE -- duplicate of FINDING_4 with an incorrect line reference in the ballot
+FINDING_15: EXONERATE -- optional harness enhancement, not worth a standalone issue
+FINDING_16: NO -- scripts/lint-foreground-markers.md already documents git-tracked enumeration for this lint
+FINDING_17: YES
+FINDING_18: YES
+FINDING_19: EXONERATE -- optional positive fixture, low regression value versus churn
+FINDING_20: EXONERATE -- trusted pipeline inputs; strict URL allowlisting here is disproportionate scope
+FINDING_21: EXONERATE -- exotic GH_HOST shapes; dot-escape matches typical GHE hostnames
+FINDING_22: EXONERATE -- pre-existing trust model, no tracking issue warranted
+FINDING_23: YES
+FINDING_24: EXONERATE -- rare commented heredoc opener versus parser complexity and doc-only mitigation
+FINDING_25: YES
+FINDING_26: EXONERATE -- tracked-only contract is already in scripts/lint-foreground-markers.md and docs/linting.md lists targets
+FINDING_27: EXONERATE -- duplicate of FINDING_12
+FINDING_28: EXONERATE -- naming preference only; docs already expose both Makefile targets
+FINDING_29: EXONERATE -- established release bundling practice, not issue-worthy
+FINDING_30: YES

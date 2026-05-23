@@ -1,0 +1,11 @@
+```
+SKIPPED: FINDING_1 - addresses PR/issue scope (split branches or re-scope), not an in-repo code edit
+APPLIED: FINDING_2
+APPLIED: FINDING_4
+APPLIED: FINDING_9
+SKIPPED: FINDING_10 - same as FINDING_1 (bundle/PR scope), not an in-repo code edit
+APPLIED: FINDING_12
+APPLIED: FINDING_18
+APPLIED: FINDING_23
+APPLIED: FINDING_25
+```

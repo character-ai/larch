@@ -1,0 +1,20 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: EXONERATE -- process noise does not warrant a tracking issue
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: EXONERATE -- strict-field grep is intentional; Python mismatch not shown in-tree
+FINDING_12: YES
+FINDING_13: EXONERATE -- exotic GH_HOST metacharacters are edge-case noise
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: YES
+FINDING_18: EXONERATE -- known disjunctive semantics; no new defect
+FINDING_19: YES
+FINDING_20: EXONERATE -- fence-only acceptance makes extra-file lint absence expected

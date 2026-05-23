@@ -52,7 +52,7 @@ For each `.md` file in scope:
 **Created**:
 - `scripts/lint-foreground-markers.sh` — denylist (basenames at top of script as newline-delimited heredoc) + fence parser implementing the detection algorithm. Bash 3.2-portable. Scans `skills/**/SKILL.md`, `skills/**/references/*.md`, `skills/shared/*.md`, `.claude/skills/*/SKILL.md`, `.claude/rules/*.md`. Exit codes: 0 = pass, 1 = violations, 2 = usage/internal error. Mirrors `scripts/lint-bash32.sh` invocation shape.
 - `scripts/lint-foreground-markers.md` — sibling contract per `.claude/rules/script-md-siblings.md`.
-- `scripts/test-lint-foreground-markers.sh` — black-box regression cases enumerated in `scripts/test-lint-foreground-markers.md` (including Family A baseline floor checks).
+- `scripts/test-lint-foreground-markers.sh` — 16 fixtures covering positive baseline, missing banner, missing comment, multi-Family-B fence, Family A pass-through, prose-only mention, indented fence, heredoc, commented-out invocation, bespoke ⚠ paragraph, command-substitution assignment, env-prefixed invocation, if-test form, blockquoted banner, multi-line `\`-continued invocation, parse-only safety.
 - `scripts/test-lint-foreground-markers.md` — sibling stub.
 
 **Modified**:
@@ -92,7 +92,7 @@ For each `.md` file in scope:
 
 ### Testing strategy
 
-- **Unit/harness**: `scripts/test-lint-foreground-markers.sh` (via `make test-lint-foreground-markers` and `make test-harnesses-${SHARD}`); authoritative case list in `scripts/test-lint-foreground-markers.md`.
+- **Unit/harness**: `scripts/test-lint-foreground-markers.sh` (via `make test-lint-foreground-markers` and `make test-harnesses-${SHARD}`) covers 16 fixtures.
 - **Family A regression spot-check**: harness includes a `family_a_unchanged` test that grep-counts `run_in_background: true` across a fixed Family A file set (`skills/design/references/sketch-launch.md`, `skills/design/references/dialectic-execution.md`, `skills/shared/voting-protocol.md`, `skills/shared/dialectic-protocol.md`); baseline established at landing; fails if any count decreases.
 - **Regression**: `make lint`, `agent-lint`, `markdownlint`, existing structure tests all green.
 - **CI enforcement**: pre-commit `local` hook (`always_run: true, pass_filenames: false`) gates PRs through the CI `lint` job (`make lint-only`); `test-harnesses-N` shard gates PRs through the harness matrix job. Both paths catch drift.

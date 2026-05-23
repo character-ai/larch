@@ -1,0 +1,20 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: EXONERATE -- Legitimate process concern, but not worth filing as a future issue from this review.
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: NO -- Valid hostnames do not introduce additional ERE metacharacters beyond dots in this context.
+FINDING_14: YES
+FINDING_15: EXONERATE -- The edge case is real, but guarding extreme line length is proportionate and not worth extra linter complexity.
+FINDING_16: NO -- The CLAUDE_PLUGIN_ROOT path branch still matches single-quoted `${CLAUDE_PLUGIN_ROOT}/...` occurrences.
+FINDING_17: YES
+FINDING_18: EXONERATE -- The semantic tension is legitimate but already documented and not issue-worthy here.
+FINDING_19: EXONERATE -- Minor phrasing drift is real but not worth raising as a required fix.
+FINDING_20: NO -- Files with no fenced denylisted invocation have no marker obligation under the accepted lint scope.

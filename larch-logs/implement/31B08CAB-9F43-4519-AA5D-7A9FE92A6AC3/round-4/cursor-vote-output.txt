@@ -1,0 +1,22 @@
+Verifying ballot claims against the repository by reading the cited files.
+
+FINDING_1: EXONERATE -- §4 title and body already center “Foreground markers” and the literal banner; “Default” wording drift is minor and easy to find via §4 links.
+FINDING_2: EXONERATE -- Mixed-scope branches add review cost but are ordinary workflow hygiene, not worth opening a dedicated tracking issue.
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: EXONERATE -- Prose-only `collect-agent-results` mention is low impact; no durable tracking issue is justified.
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: NO -- CPython `re` treats `[[:space:]]` as POSIX whitespace here, so normal `https://…/issues/N` strings still match and `url_tokens` can populate.
+FINDING_13: EXONERATE -- strict `Filed URL` line shape is an intentional parsing contract; loosening would weaken the gate more than it helps.
+FINDING_14: EXONERATE -- nested `> >` banners are an exotic edge case versus the documented single-`>` allowance.
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: YES
+FINDING_18: EXONERATE -- stderr needles are stable for harnesses; full acceptance-shaped templates are optional polish.
+FINDING_19: EXONERATE -- Family B is still cited on the conventions line; splitting bullets would add noise for small discoverability gain.
+FINDING_20: EXONERATE -- release-note hygiene for mixed PRs is valid process advice, not a concrete defect in the bump itself.
