@@ -1,0 +1,37 @@
+Reading the aggregator input that lists findings (findings.md has no FINDING headings) and verifying claims against diff-context.
+
+FINDING_1: YES
+FINDING_2: EXONERATE -- no `skills/fix-issue/` tree in this repo
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: EXONERATE -- markdown usage ellipsis is low-impact doc polish
+FINDING_6: EXONERATE -- dead `R_*` assignments on aggregate path are harmless noise
+FINDING_7: YES
+FINDING_8: EXONERATE -- integer-only `num()` matches token-count domain; coercion hid bugs
+FINDING_9: NO -- `scripts/token-report.md` has no stale `$6/M`-style coefficients per spot-check
+FINDING_10: EXONERATE -- process/rollback concern, not a defect in shipped code
+FINDING_11: EXONERATE -- committed `larch-logs/` noise is policy-driven, not issue-worthy
+FINDING_12: YES
+FINDING_13: EXONERATE -- same ladder concern as FINDING_1
+FINDING_14: EXONERATE -- extra fixture coverage is optional hardening
+FINDING_15: EXONERATE -- jq groups null ids with usage fingerprint, so cross-file collapse is unlikely
+FINDING_16: EXONERATE -- same dead-assignment nit as FINDING_6
+FINDING_17: EXONERATE -- diff-size noise only
+FINDING_18: EXONERATE -- no local `skills/fix-issue/` surface to change
+FINDING_19: EXONERATE -- duplicate blended-precedence concern
+FINDING_20: EXONERATE -- fail-fast `render-cost-line.sh` contract is reasonable
+FINDING_21: YES
+FINDING_22: YES
+FINDING_23: YES
+FINDING_24: EXONERATE -- branch-splitting is future hygiene, not a code bug
+FINDING_25: YES
+FINDING_26: EXONERATE -- optional env hygiene, low impact
+FINDING_27: YES
+FINDING_28: EXONERATE -- duplicate blended-precedence concern
+FINDING_29: YES
+FINDING_30: EXONERATE -- warning volume is operational polish, not correctness
+FINDING_31: EXONERATE -- `:${default:-0}` flag parsing is conventional CLI behavior
+FINDING_32: EXONERATE -- same missing `skills/fix-issue/` note as FINDING_18
+FINDING_33: EXONERATE -- history noise, not a functional defect
+FINDING_34: EXONERATE -- duplicate realism-harness vs acceptance #3 gap
+FINDING_35: EXONERATE -- same branch-composition noise as FINDING_33

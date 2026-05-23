@@ -1,0 +1,19 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: EXONERATE -- bundling concern is legitimate but both changes are correctly implemented and splitting now adds process overhead without fixing code
+FINDING_4: EXONERATE -- render-run-summary.sh failure path correctly returns N/A via read_cost's empty-match branch; $0.00 masking scenario not confirmed by code
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: NO -- finding's own text says no change required; intentional per repo policy
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: EXONERATE -- brittleness is real but bounded by the format test; fixing adds abstraction overhead without removing a current defect
+FINDING_13: NO -- finding's own text marks it acceptable as gated plan state, not a defect
+FINDING_14: YES
+FINDING_15: EXONERATE -- minor test-coverage gap for one aggregate-path fixture; legitimate but not worth raising separately
+FINDING_16: YES
+FINDING_17: EXONERATE -- silent zero coercion is the correct conservative behavior for a cost estimator; documenting it is sufficient
+FINDING_18: NO -- finding's own text labels it a process/scope note, not a code defect
+FINDING_19: EXONERATE -- substring checks cover the critical invariants; golden comparison would be tighter but more fragile to intentional format updates
