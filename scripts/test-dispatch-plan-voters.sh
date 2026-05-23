@@ -163,11 +163,28 @@ grep -Fq 'FINDING_1: NO -- cursor' "$voter2_path" || { echo "FAIL: retry waterfa
 test -f "$TMP/retry-waterfall/codex-vote-output-first-pass.txt" || { echo "FAIL: retry waterfall first-pass sidecar missing" >&2; exit 1; }
 test ! -f "$TMP/retry-waterfall/codex-vote-output-parse-retry-phase2.txt" || { echo "FAIL: retry waterfall phase2 artifact should have been moved into canonical path" >&2; exit 1; }
 grep -Fq $'voter-2-retry\tcodex' "$stub_log_retry" || { echo "FAIL: retry stub log missing retry slot wiring" >&2; exit 1; }
+pv_rw=$(printf '%s\n' "$out" | awk -F= '$1=="VOTER_PATHS_FILE"{print substr($0,index($0,"=")+1);exit}')
+[[ -f "$pv_rw" ]] || { echo "FAIL: retry waterfall VOTER_PATHS_FILE missing" >&2; exit 1; }
+[[ $(wc -l < "$pv_rw" | tr -d ' ') -eq 2 ]] || { echo "FAIL: retry waterfall plan-voter paths line count" >&2; exit 1; }
+v2p=$(printf '%s\n' "$out" | awk -F= '$1=="VOTER_2_PATH"{print $2;exit}')
+v3p=$(printf '%s\n' "$out" | awk -F= '$1=="VOTER_3_PATH"{print $2;exit}')
+grep -Fxq "$v2p" "$pv_rw" || { echo "FAIL: retry waterfall paths file missing voter 2 path" >&2; exit 1; }
+grep -Fxq "$v3p" "$pv_rw" || { echo "FAIL: retry waterfall paths file missing voter 3 path" >&2; exit 1; }
 
 stub_log_not_substantive="$TMP/dispatch-with-waterfall-not-substantive.log"
 out=$(PATH="$STUB_BIN:$PATH" CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT_STUB" PLAN_VOTER_STUB_MODE=retry-fails-substantive PLAN_VOTER_STUB_LOG="$stub_log_not_substantive" \
     "$SCRIPT" --ballot-file "$BALLOT" --design-tmpdir "$TMP/retry-fails-substantive" --codex-available true --cursor-available true)
 grep -Fq 'VOTER_2_STATUS=failed' <<< "$out" || { echo "FAIL: narrative-only retry output should mark voter 2 failed" >&2; exit 1; }
 grep -Fq 'DEGRADED_PANEL_WARNING=' <<< "$out" || { echo "FAIL: narrative-only retry output should emit degraded warning" >&2; exit 1; }
+pv_ns=$(printf '%s\n' "$out" | awk -F= '$1=="VOTER_PATHS_FILE"{print substr($0,index($0,"=")+1);exit}')
+[[ -f "$pv_ns" ]] || { echo "FAIL: substantive-fail VOTER_PATHS_FILE missing" >&2; exit 1; }
+[[ $(wc -l < "$pv_ns" | tr -d ' ') -eq 1 ]] || { echo "FAIL: substantive-fail plan-voter paths should be one line" >&2; exit 1; }
+v2_failed=$(printf '%s\n' "$out" | awk -F= '$1=="VOTER_2_PATH"{print $2;exit}')
+v3_ok=$(printf '%s\n' "$out" | awk -F= '$1=="VOTER_3_PATH"{print $2;exit}')
+grep -Fxq "$v3_ok" "$pv_ns" || { echo "FAIL: substantive-fail paths file must list surviving voter 3" >&2; exit 1; }
+if grep -Fxq "$v2_failed" "$pv_ns"; then
+    echo "FAIL: substantive-fail paths file must omit failed voter 2" >&2
+    exit 1
+fi
 
 echo "PASS: test-dispatch-plan-voters.sh"

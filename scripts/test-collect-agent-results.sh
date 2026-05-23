@@ -563,6 +563,22 @@ else
     printf '%s\n' "$MISS_ERR" >&2
 fi
 
+echo "# Case: --paths-file unreadable existing file"
+unreadable_pf="$TMPROOT/unreadable-paths.txt"
+printf '%s\n' "$OUT_PFA" > "$unreadable_pf"
+chmod a-r "$unreadable_pf"
+set +e
+UNREAD_ERR=$(bash "$COLLECTOR" --timeout 5 --paths-file "$unreadable_pf" 2>&1)
+UNREAD_RC=$?
+set -e
+chmod u+r "$unreadable_pf" || true
+if [[ "$UNREAD_RC" -eq 1 ]] && grep -Fq 'paths-file not readable' <<< "$UNREAD_ERR"; then
+    ok "paths-file unreadable rejects"
+else
+    fail "paths-file unreadable expected exit 1 + not readable (rc=$UNREAD_RC)"
+    printf '%s\n' "$UNREAD_ERR" >&2
+fi
+
 echo "# Case: zero outputs without --paths-file"
 set +e
 ZERO_ERR=$(bash "$COLLECTOR" --timeout 5 2>&1)

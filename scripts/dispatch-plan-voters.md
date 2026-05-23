@@ -19,7 +19,7 @@ Inputs are `--ballot-file`, `--design-tmpdir`, `--codex-available`, `--cursor-av
 Stdout is `KEY=value` only:
 
 - `VOTER_2_PATH`, `VOTER_3_PATH`
-- `VOTER_PATHS_FILE` — path to `plan-voter-paths.txt` under `--design-tmpdir`, one non-failed voter path per line (atomic write)
+- `VOTER_PATHS_FILE` — when at least one non-failed voter path was written, path to `plan-voter-paths.txt` under `--design-tmpdir`, one path per line (atomic write). When both external slots fail substantive validation, the paths file may be zero bytes and this KV is **omitted** so downstream callers do not feed an empty manifest to `collect-agent-results --paths-file` without checking `VOTER_*_STATUS` first.
 - `VOTER_2_TOOL`, `VOTER_3_TOOL`
 - `VOTER_2_STATUS`, `VOTER_3_STATUS`
 - optional `DEGRADED_PANEL_WARNING`

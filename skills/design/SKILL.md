@@ -93,7 +93,7 @@ Consolidated NEVER rules collected from the procedural steps below. Each rule st
 
 3. **NEVER mutate orchestrator-wide `codex_available` / `cursor_available` inside Step 2a.5.** **Why:** Step 3 plan-review panel integrity depends on the Option B snapshot pattern — a debate-phase timeout must not lock a tool out of later plan review. **How to apply:** use the `dialectic_*_available` shadow flags inside Step 2a.5 and the `judge_*_available` shadow flags inside the judge re-probe; never touch the top-level flags.
 
-4. **NEVER call `collect-agent-results.sh` with zero entries: it must receive at least one output path either via positional arguments OR via a `--paths-file` flag that names a readable file yielding at least one non-blank path-line.** **Why:** it exits 1 with "at least one output file is required" / paths-file empty errors. This is the zero-externals failure mode when every external slot has fallen back to a Claude subagent. **How to apply:** guard each collector call so at least one path is supplied (positionally or via `--paths-file`); the dialectic zero-externals guardrail (Step 2a.5 step 5) and the Step 3 collector both require this.
+4. **NEVER call `collect-agent-results.sh` with zero entries: it must receive at least one output path either via positional arguments OR via a `--paths-file` flag that names a readable file yielding at least one non-blank path-line.** **Why:** exit **1** reasons differ: missing/empty positional argv yields `at least one output file is required`; `--paths-file` missing or not readable yields `paths-file not readable: …`; a readable paths-file that is not a regular file (for example a directory) yields `paths-file is not a regular file: …`; readable but whitespace-only / empty usable lines yields `paths-file contains no entries (preserves anti-pattern #4)`; lines containing embedded newline or carriage return are rejected with a dedicated diagnostic. This is the zero-externals failure mode when every external slot has fallen back to a Claude subagent. **How to apply:** guard each collector call so at least one path is supplied (positionally or via `--paths-file`); the dialectic zero-externals guardrail (Step 2a.5 step 5) and the Step 3 collector both require this.
 
 5. **NEVER conflate the two timeout families.** **Why:** sketch-phase timeouts (sketches are shorter) differ from plan-review + dialectic timeouts (longer, deeper reasoning). **How to apply:** use `timeout: 1260000` (Bash tool) / `--timeout 1260` (collector) / `--timeout 1200` (reviewer script) for sketch-phase launches and sketch collection; use `timeout: 1860000` / `--timeout 1860` / `--timeout 1800` for plan-review launches, dialectic debaters, and dialectic judges.
 
@@ -589,9 +589,7 @@ while IFS= read -r _line || [[ -n "$_line" ]]; do
 done <<< "$_plan_review_dispatch"
 ```
 
-The dispatcher writes the final output-file list to `$_manifest.output-files` (one path per line). Use that file via `--paths-file` in the next Bash block. The `ALL_OUTPUT_FILES_PATH=<path>` stdout KV gives the explicit location for callers that need it. The `DISPATCH_OK` and `WARN` KVs continue to be parsed here.
-
-Parse `DISPATCH_OK` from the waterfall output. If `DISPATCH_OK=false`, at least one Phase 3 Claude slot failed — proceed but note degradation. If `WARN=cost-fallback-exceeded-threshold`, emit a warning breadcrumb.
+The preceding loop already parses `DISPATCH_OK` and prints `WARN=` lines for breadcrumbs. If `DISPATCH_OK=false`, at least one Phase 3 Claude slot failed — proceed but note degradation. If `WARN=cost-fallback-exceeded-threshold`, emit a warning breadcrumb. The dispatcher writes the line-oriented manifest beside the `--slots-file` argument (default `<slots-file>.output-files`; see `ALL_OUTPUT_FILES_PATH` on stdout for the resolved path). Pass that file to `collect-agent-results.sh` via `--paths-file` in the next Bash block.
 
 ### Collecting, Voting, Finalize, Track Rejected
 

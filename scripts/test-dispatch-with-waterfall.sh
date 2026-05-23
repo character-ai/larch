@@ -84,6 +84,12 @@ out=$(PATH="$STUB_BIN:$PATH" "$REPO_ROOT/scripts/dispatch-with-waterfall.sh" \
 assert_line "FALLBACK_COUNT=0" "$out"
 assert_line "DISPATCH_OK=true" "$out"
 assert_line "ALL_OUTPUT_TOOLS=codex cursor" "$out"
+twoslot_list="${manifest}.output-files"
+[[ -f "$twoslot_list" ]] || { echo "FAIL: two-slot default paths-file missing" >&2; exit 1; }
+[[ $(wc -l < "$twoslot_list" | tr -d ' ') -eq 2 ]] || { echo "FAIL: two-slot paths-file line count" >&2; exit 1; }
+grep -Fxq "$TMPROOT/phase1-codex.txt" <<< "$(sed -n '1p' "$twoslot_list")" || { echo "FAIL: two-slot paths-file slot1 order" >&2; exit 1; }
+grep -Fxq "$TMPROOT/phase1-cursor.txt" <<< "$(sed -n '2p' "$twoslot_list")" || { echo "FAIL: two-slot paths-file slot2 order" >&2; exit 1; }
+assert_line "ALL_OUTPUT_FILES_PATH=$twoslot_list" "$out"
 
 manifest="$TMPROOT/slots-optional-metadata.ndjson"
 printf '{"slot":"dyn-extra","tool":"cursor","output":"%s","prompt_file":"%s","weight":4,"focus_area":"architecture"}\n' "$TMPROOT/optional-metadata.txt" "$prompt" > "$manifest"
@@ -269,5 +275,20 @@ rc_nl=$?
 set -e
 [[ "$rc_nl" -eq 2 ]] || { echo "FAIL: newline in output path exit=$rc_nl" >&2; exit 1; }
 grep -Fq 'newline or carriage return' "$TMPROOT/newline.stderr" || { echo "FAIL: newline stderr" >&2; exit 1; }
+
+manifest_cr="$TMPROOT/slots-cr.ndjson"
+jq -cn --arg out "$(printf 'x\ry')" --arg pf "$prompt" \
+    '{slot:"s-cr", tool:"codex", output:$out, prompt_file:$pf}' > "$manifest_cr"
+set +e
+PATH="$STUB_BIN:$PATH" "$REPO_ROOT/scripts/dispatch-with-waterfall.sh" \
+    --slots-file "$manifest_cr" \
+    --codex-present true \
+    --cursor-present true \
+    --mode description \
+    --timeout 5 >/dev/null 2>"$TMPROOT/cr.stderr"
+rc_cr=$?
+set -e
+[[ "$rc_cr" -eq 2 ]] || { echo "FAIL: CR in output path exit=$rc_cr" >&2; exit 1; }
+grep -Fq 'newline or carriage return' "$TMPROOT/cr.stderr" || { echo "FAIL: CR-in-path stderr" >&2; exit 1; }
 
 echo "PASS: test-dispatch-with-waterfall.sh"

@@ -9,7 +9,7 @@ source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
 
 usage() {
-    larch_err "Usage: dispatch-with-waterfall.sh --slots-file FILE --codex-present true|false --cursor-present true|false --mode diff|description [context flags]"
+    larch_err "Usage: dispatch-with-waterfall.sh --slots-file FILE --codex-present true|false --cursor-present true|false --mode diff|description [--paths-file FILE] [context flags]. Default paths-file is SLOTS_FILE.output-files; its parent directory must already exist. Stdout KVs include ALL_OUTPUT_FILES_PATH, ALL_OUTPUT_FILES, ALL_OUTPUT_TOOLS, DISPATCH_OK, WARN, …"
 }
 
 SLOTS_FILE=""
@@ -350,7 +350,10 @@ fi
 
 resolved_paths_file="${WATERFALL_PATHS_FILE:-${SLOTS_FILE}.output-files}"
 paths_dir=$(dirname "$resolved_paths_file")
-mkdir -p "$paths_dir"
+[[ -d "$paths_dir" ]] || {
+    larch_err "dispatch-with-waterfall.sh: paths-file parent directory does not exist: $paths_dir"
+    exit 2
+}
 for ((i=0; i<slot_count; i++)); do
     p="${final_outputs[$i]}"
     case "$p" in
@@ -360,11 +363,6 @@ for ((i=0; i<slot_count; i++)); do
             ;;
     esac
 done
-paths_tmp=$(mktemp "${paths_dir}/.dispatch-waterfall-paths.XXXXXX")
-for ((i=0; i<slot_count; i++)); do
-    printf '%s\n' "${final_outputs[$i]}" >> "$paths_tmp"
-done
-mv -f "$paths_tmp" "$resolved_paths_file"
 
 emit_kv PHASE1_SLOTS "${phase1_outputs[*]-}"
 emit_kv PHASE2_SLOTS "${phase2_outputs[*]-}"
@@ -377,3 +375,9 @@ emit_kv FALLBACK_COUNT "$fallback_count"
 emit_kv DISPATCH_OK "$dispatch_ok"
 emit_kv STATIC_DISPATCH_OK "$static_dispatch_ok"
 emit_kv DYNAMIC_DISPATCH_OK "$dynamic_dispatch_ok"
+
+paths_tmp=$(mktemp "${paths_dir}/.dispatch-waterfall-paths.XXXXXX")
+for ((i=0; i<slot_count; i++)); do
+    printf '%s\n' "${final_outputs[$i]}" >> "$paths_tmp"
+done
+mv -f "$paths_tmp" "$resolved_paths_file"

@@ -230,8 +230,18 @@ if [[ -n "$COLLECT_PATHS_FILE" ]]; then
         larch_err "collect-agent-results.sh: paths-file not readable: $COLLECT_PATHS_FILE"
         exit 1
     fi
+    if [[ ! -f "$COLLECT_PATHS_FILE" ]]; then
+        larch_err "collect-agent-results.sh: paths-file is not a regular file: $COLLECT_PATHS_FILE"
+        exit 1
+    fi
     while IFS= read -r path || [[ -n "$path" ]]; do
         if [[ "$path" == *[![:space:]]* ]]; then
+            case "$path" in
+                *$'\n'*|*$'\r'*)
+                    larch_err "collect-agent-results.sh: paths-file line contains a newline or carriage return (line-oriented paths-file contract): $COLLECT_PATHS_FILE"
+                    exit 1
+                    ;;
+            esac
             OUTPUT_FILES+=("$path")
         fi
     done < "$COLLECT_PATHS_FILE"

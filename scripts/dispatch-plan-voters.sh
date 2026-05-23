@@ -244,7 +244,7 @@ mv -f "$pv_tmp" "$plan_voter_paths_file"
 
 emit_kv VOTER_2_PATH "$VOTER_2_PATH"
 emit_kv VOTER_3_PATH "$VOTER_3_PATH"
-emit_kv VOTER_PATHS_FILE "$plan_voter_paths_file"
+[[ -s "$plan_voter_paths_file" ]] && emit_kv VOTER_PATHS_FILE "$plan_voter_paths_file"
 emit_kv VOTER_2_TOOL "$VOTER_2_TOOL"
 emit_kv VOTER_3_TOOL "$VOTER_3_TOOL"
 emit_kv VOTER_2_STATUS "$VOTER_2_STATUS"

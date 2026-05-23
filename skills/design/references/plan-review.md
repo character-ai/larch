@@ -72,7 +72,7 @@ For Codex, Cursor, and their Claude replacement voters, instruct each: `"You are
 
 ## Collecting External Reviewer Results
 
-All 10 reviewer slots are dispatched via `dispatch-with-waterfall.sh` in SKILL.md. The dispatcher writes a deterministic line-oriented paths-file at `$_manifest.output-files` (see Step 2 in SKILL.md); pass it to `collect-agent-results.sh` via `--paths-file` so output paths are not reassembled from a space-separated shell variable across Bash-tool subshells.
+All 10 reviewer slots are dispatched via `dispatch-with-waterfall.sh` in SKILL.md. The dispatcher writes a deterministic line-oriented paths-file at `<slots-file>.output-files` (same convention as Step 3 in SKILL.md once `_manifest` is set to the NDJSON path in the snippet below); pass it to `collect-agent-results.sh` via `--paths-file` so output paths are not reassembled from a space-separated shell variable across Bash-tool subshells.
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh

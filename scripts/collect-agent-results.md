@@ -4,7 +4,7 @@ The `.meta` parser is intentionally line-oriented: each record is split on the f
 
 ## `--paths-file` (orchestrator handoff)
 
-Instead of positional output paths, callers may pass `--paths-file <file>` with one reviewer output path per line (blank lines skipped). The file must be readable and yield at least one non-blank line; otherwise the collector exits **1** (`paths-file contains no entries (preserves anti-pattern #4)` or `paths-file not readable: …`). `--paths-file` is mutually exclusive with positional output-file arguments.
+Instead of positional output paths, callers may pass `--paths-file <file>` with one reviewer output path per line (blank lines skipped). The file must be a readable regular file (not a directory or other non-file) and yield at least one non-blank line; otherwise the collector exits **1** (`paths-file is not a regular file: …`, `paths-file not readable: …`, `paths-file line contains a newline or carriage return …`, or `paths-file contains no entries (preserves anti-pattern #4)`). `--paths-file` is mutually exclusive with positional output-file arguments.
 
 Paths-files are expected to be dispatcher-written, session-local artifacts under `/design` or `/review` orchestration. They drive `wait-for-reviewers.sh` polling and downstream reads; treat them as trusted only within that model. Optional future hardening: caller-side prefix allowlisting against `$DESIGN_TMPDIR` / `$REVIEW_TMPDIR` if a surface ever accepts paths-files from less-trusted writers.
 
@@ -38,6 +38,6 @@ When `--structured-reviewer-validation` is passed, the collector adds a Section 
 3. On exit 0: emit `STRUCTURED_SIDECAR=<sidecar-path>` as a new field appended before `FAILURE_REASON`. The output grammar is `REVIEWER_FILE|TOOL|STATUS|EXIT_CODE|STRUCTURED_SIDECAR|FAILURE_REASON`. Consumers should parse by KEY=value.
 4. On exit 5 or non-zero: rewrite the entry to `STATUS=NOT_SUBSTANTIVE` with a diagnostic in `FAILURE_REASON`.
 
-**Callers wired**: `skills/design/references/plan-review.md` Step 3 collect call for all archetype slots (Cursor and Codex: `cursor-plan-arch-output.txt`, `cursor-plan-edge-output.txt`, `codex-primary-plan-innovation-output.txt`, `codex-primary-plan-pragmatic-output.txt`, and their cross-tool fallback variants). Generic reviewer slots in `skills/review/SKILL.md` and `skills/research/references/validation-phase.md` are NOT wired and continue with `--substantive-validation --validation-mode` only.
+**Callers wired**: `skills/design/references/plan-review.md` Step 3 collect call for all archetype slots (Cursor and Codex: `cursor-plan-arch-output.txt`, `cursor-plan-edge-output.txt`, `codex-primary-plan-innovation-output.txt`, `codex-primary-plan-pragmatic-output.txt`, and their cross-tool fallback variants) passes the dispatcher-written `<slots-file>.output-files` manifest via `--paths-file` (see that doc’s “Collecting External Reviewer Results” fenced call) instead of positional output paths. Generic reviewer slots in `skills/review/SKILL.md` and `skills/research/references/validation-phase.md` are NOT wired and continue with `--substantive-validation --validation-mode` only.
 
 On non-zero exit, `FAILURE_LOG=<path>` may appear on stdout.
