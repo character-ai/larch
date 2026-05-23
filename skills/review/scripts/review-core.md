@@ -28,7 +28,7 @@ The script emits only `KEY=value` records on the lib-quiet FD3 contract stream. 
 
 Emitted keys:
 
-- `REVIEW_CORE_STATUS=ok|fix-required|zero-findings|cap-reached|panel-failed|main-agent-vote-required`
+- `REVIEW_CORE_STATUS=ok|fix-required|zero-findings|cap-reached|panel-failed|aggregator-validation-exhausted|main-agent-vote-required`
 - `ROUND_NUM`
 - `ACCEPTED_COUNT`
 - `REJECTED_COUNT` — in-scope findings that did not meet the acceptance threshold (operator-facing rejected total; includes split-panel and exonerated patterns).
@@ -46,7 +46,7 @@ Emitted keys:
 - `YIELD_TSV_FILE=PATH` — present when `tally-code-votes.sh --manifest-file` writes per-archetype yield metrics.
 - `VOTING_TALLY_FILE=PATH` — present when `tally-code-votes.sh` emitted `voting-tally.md`, including zero-findings rounds that still need degraded-slot visibility.
 - `VOTING_SKIPPED_WARNING=<text>` — emitted only on the 0-judge main-agent-required path; callers should parse and display it as a user-visible warning
-- `OUT_OF_SCOPE_DRIFT_COUNT=N` — number of in-scope findings reclassified to OOS by the scope-fit gate in `tally-code-votes.sh`; copied from tally stdout when voting runs; `0` on early exits that skip tally (description zero-scope, `panel-failed`, or before the tally stage).
+- `OUT_OF_SCOPE_DRIFT_COUNT=N` — number of in-scope findings reclassified to OOS by the scope-fit gate in `tally-code-votes.sh`; copied from tally stdout when voting runs; `0` on early exits that skip tally (description zero-scope, `panel-failed`, `aggregator-validation-exhausted`, or before the tally stage).
 
 Diff-mode convergence note: `REVIEW_CORE_STATUS=ok` is also the expected outcome when voting leaves `ACCEPTED_COUNT=0` and one or more findings were rejected. Callers that need to distinguish "nothing left to fix after voting" from a benign no-follow-up outcome should monitor `ACCEPTED_COUNT` together with `REJECTED_COUNT`, `EXONERATED_COUNT`, and `NEUTRAL_COUNT` (internal split-panel accounting), not the status string alone.
 
@@ -54,13 +54,13 @@ Round stages:
 
 1. Gather context with `gather-context.sh --mode <mode> --output-dir "$REVIEW_TMPDIR"`.
 2. Dispatch the reviewer panel with `dispatch-panel.sh --mode "$MODE" --review-tmpdir "$REVIEW_TMPDIR" --panel "$PANEL" --dynamic-archetypes "$DYNAMIC_ARCHETYPES"`.
-3. Collect findings with `collect-findings.sh`, run dirty-tree recovery (`recover_dirty_tree` immediately after collection on the reviewer output paths), run `aggregate-findings.sh` (non-fatal LLM merge of cross-reviewer `FINDING_N` blocks when enabled), dispatch voters, run `tally-code-votes.sh`, and emit tally artifacts. Zero-findings rounds still invoke `tally-code-votes.sh` with the collector results + manifest inputs so degraded `NOT_SUBSTANTIVE` slots show up in `voting-tally.md` even when no findings were proposed. If the tally emits `TALLY_STATUS=main-agent-vote-required`, skip `emit-tally.sh`, emit `REVIEW_CORE_STATUS=main-agent-vote-required`, and hand the findings ballot back to the caller for main-agent adjudication.
+3. Collect findings with `collect-findings.sh`, run dirty-tree recovery (`recover_dirty_tree` immediately after collection on the reviewer output paths), run `aggregate-findings.sh` (non-fatal LLM merge of cross-reviewer `FINDING_N` blocks when enabled), dispatch voters, run `tally-code-votes.sh`, and emit tally artifacts. When `aggregate-findings.sh` reports `REASON=validation-exhausted`, `review-core.sh` mirrors the `panel-failed` tally isolation path, emits `REVIEW_CORE_STATUS=aggregator-validation-exhausted`, and exits `2` **without** voter dispatch or tally. Zero-findings rounds still invoke `tally-code-votes.sh` with the collector results + manifest inputs so degraded `NOT_SUBSTANTIVE` slots show up in `voting-tally.md` even when no findings were proposed. If the tally emits `TALLY_STATUS=main-agent-vote-required`, skip `emit-tally.sh`, emit `REVIEW_CORE_STATUS=main-agent-vote-required`, and hand the findings ballot back to the caller for main-agent adjudication.
 4. Copy parent tmpdir artifacts when `SESSION_ENV_PATH` is set.
 
 Artifact paths under `$REVIEW_TMPDIR`:
 
 - `findings.md` (optionally rewritten by `aggregate-findings.sh` when aggregation succeeds)
-- `aggregator-output.txt`, `review-core-aggregate.env` — aggregator slot output path (dispatch capture under `aggregator-output.txt` until a successful merge; after empty-merge attestation recovery it holds the validated post-repair staged bytes, which may differ from the model’s first write; see `skills/review/scripts/aggregate-findings.md` and `SECURITY.md` “Pre-vote findings aggregation”)
+- `aggregator-output.txt`, `aggregator-output-codex.txt`, `aggregator-output-claude.txt`, `review-core-aggregate.env` — per–outer-phase aggregator dispatch captures (see `aggregate-findings.md`); `aggregator-output.txt` is the canonical first-phase path
 - `accepted-findings.md`
 - `rejected-findings.md`
 - `oos-accepted-review.md`
