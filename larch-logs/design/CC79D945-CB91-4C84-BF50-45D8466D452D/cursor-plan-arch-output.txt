@@ -1,0 +1,7 @@
+Reading the plan and referenced code paths for a read-only review.
+
+Validating plan line references and integration contracts in the codebase.
+
+Providing the mandated TSV-first review: findings are substantive, so we omit the no-issues JSON sentinel.
+
+

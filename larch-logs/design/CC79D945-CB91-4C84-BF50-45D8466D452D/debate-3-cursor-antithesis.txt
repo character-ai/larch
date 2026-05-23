@@ -1,0 +1,22 @@
+Reading the debate prompt file and producing the requested structured output.
+
+Gathering concrete `file:line` evidence from the codebase for the antithesis argument.
+
+**Steelman (thesis):** Prompt-only edits to the CI-fix launchers can spell out reproduce–fix–verify locally without touching the `for vendor_attempt in 1 2 3` control flow, and `run_ci_fix_vendor` already chains into `run_checks_with_lint_fix_loop`, so constraint A can be honored in spirit without restructuring constraint C’s three-attempt cycle.
+
+<claim>
+Proportionality favors the strict reading: satisfy constraint A only on the new waterfall paths and leave `run_ci_fix_vendor`’s vendor loop and launcher prompts unchanged, because the existing post-vendor checks gate already enforces local verification on the hot path.</claim>
+
+<evidence>
+[`scripts/ship-pr.sh:1225-1256`](scripts/ship-pr.sh) shows the three vendor attempts, then on success calls `run_checks_with_lint_fix_loop` before staging or pushing; [`scripts/launch-cursor-ci.sh:111-120`](scripts/launch-cursor-ci.sh) shows the current `PROMPT` instructs inspection of repo and CI logs and minimal fixes but does not encode an explicit ordered local-reproduction contract, so adding invariant prose there changes behavior spec without changing argv shape.</evidence>
+
+<strongest_concession>
+The thesis is right that prompt-level wording plus the unchanged loop is formally “additive” and avoids restructuring the `1 2 3` vendor cycle shell structure.</strongest_concession>
+
+<counter_to_opposition>
+That addition is still a behavioral contract change on the most exercised CI-fix path, while `run_checks_with_lint_fix_loop` already re-runs the captured relevant-checks harness after the vendor returns, so duplicating constraint A in prompts buys mostly narrative alignment and regression risk for agents that already must pass the mechanical gate.</counter_to_opposition>
+
+<risk_if_wrong>
+If strict wins incorrectly, maintainers lose a cheap normative nudge on the legacy path even though checks still pass, and future audits might argue constraint A was under-specified in launcher text despite passing verification.</risk_if_wrong>
+
+RECOMMEND: ANTI_THESIS
