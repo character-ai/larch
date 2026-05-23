@@ -66,7 +66,10 @@
    Reasoning effort is handled by the launcher wrappers (`--risk high` by default).
 
 4. **Collect** dialectic debate outputs (Option B enforcement):
+   **⚠ Foreground required — do NOT set `run_in_background: true`.**
+
    ```bash
+   # Foreground required: see BASH_AUTHORING.md §4
    ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1860 \
      <each launched output path>
    ```
@@ -182,7 +185,10 @@ External judge outputs are collected via `collect-agent-results.sh` using its se
 
 When at least one external judge was launched, after all external judges return:
 
+**⚠ Foreground required — do NOT set `run_in_background: true`.**
+
 ```bash
+# Foreground required: see BASH_AUTHORING.md §4
 ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1860 \
    \
   <each launched external-judge output path>

@@ -46,3 +46,17 @@ Do not use Bash 4+ constructs in committed shell scripts:
 Use Bash 3.2-compatible alternatives: newline-delimited temp files, `while IFS= read -r ...`, `case` or `tr` for case conversion, and `>>file 2>&1` instead of `&>>file`.
 
 Run `make lint-bash32` after shell-script edits. If a regression harness intentionally contains a forbidden token as fixture text or static grep pattern, suppress only that line with an inline `# lint-bash32: ok <reason>` comment.
+
+## 4. Foreground markers for blocking Family B script calls
+
+Orchestrator-facing Markdown (`skills/*/SKILL.md`, `skills/*/references/*.md`, `skills/shared/*.md`, `.claude/skills/*/SKILL.md`, `.claude/rules/*.md`) often embeds fenced `bash` / `sh` / `shell` examples that invoke **blocking** plugin scripts (sentinel polling, PR dispatch, collector joins, etc.). Those Bash tool calls must run in the **foreground** (`run_in_background` unset or `false`); backgrounding them loses completion coupling and breaks session semantics.
+
+When a fenced shell block contains an **invocation-shaped** line for one of the scripts enforced by `scripts/lint-foreground-markers.sh` (Family B denylist — ship/collect/dispatch/review-family entrypoints), the Markdown **immediately above** the opening fenced `bash` / `sh` / `shell` block must include this exact banner (you may prefix the banner line once with Markdown blockquote syntax: a `>` as the first non-whitespace character on that line):
+
+`**⚠ Foreground required — do NOT set \`run_in_background: true\`.**`
+
+The **first** denylisted invocation line in that fence (and any additional anchor after more than five non-anchor lines without a fresh comment) must be preceded within the previous **five** in-fence lines by this exact comment on its own logical line (leading shell whitespace allowed):
+
+`# Foreground required: see BASH_AUTHORING.md §4`
+
+Do not paraphrase the banner or comment — CI's `make lint-foreground-markers` / pre-commit hook matches them literally (see `scripts/lint-foreground-markers.md`). Mentioning `run_in_background: true` only inside the fence body is **not** sufficient; the banner belongs in the prose window above the fence so operators see the contract before copying the block.

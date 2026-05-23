@@ -257,7 +257,10 @@ Timing note: v1 timing rows are emitted by the launch-wrapper scripts, not by di
 
    When at least one external judge was launched, after all launches return, collect the external judge outputs:
 
+   **⚠ Foreground required — do NOT set `run_in_background: true`.**
+
    ```bash
+   # Foreground required: see BASH_AUTHORING.md §4
    ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1860 \
      <each launched external-judge output path>
    ```

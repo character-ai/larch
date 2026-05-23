@@ -121,6 +121,11 @@ suppress = [
 # black-box regression harness. Both are Makefile-only from agent-lint's
 # reachability perspective, so both are excluded with their sibling contracts.
 #
+# scripts/lint-foreground-markers.sh is the fenced-invoke foreground-marker linter
+# (`make lint-foreground-markers`, pre-commit hook `lint-foreground-markers`, local
+# `make lint` between bash32 and lint-only). scripts/test-lint-foreground-markers.sh
+# is its black-box harness. Same Makefile-only reachability pattern as lint-bash32.
+#
 # scripts/test-parse-prose-blockers.sh is the regression harness for
 # scripts/parse-prose-blockers.sh (Makefile `test-parse-prose-blockers`).
 # scripts/parse-prose-blockers.sh is invoked only from scripts/blocker-helpers.sh
@@ -726,6 +731,10 @@ exclude = [
   "scripts/lint-bash32.md",
   "scripts/test-lint-bash32.sh",
   "scripts/test-lint-bash32.md",
+  "scripts/lint-foreground-markers.sh",
+  "scripts/lint-foreground-markers.md",
+  "scripts/test-lint-foreground-markers.sh",
+  "scripts/test-lint-foreground-markers.md",
   "scripts/test-parse-prose-blockers.sh",
   "scripts/parse-prose-blockers.sh",
   "scripts/blocker-helpers.sh",

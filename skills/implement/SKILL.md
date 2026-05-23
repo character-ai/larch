@@ -1015,11 +1015,14 @@ Regression harnesses for this dispatcher surface are `skills/implement/scripts/t
 
 **2.1 — First dispatch invocation**:
 
+**⚠ Foreground required — do NOT set `run_in_background: true`.**
+
 ```bash
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
   CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
 fi
 export CLAUDE_PLUGIN_ROOT
+# Foreground required: see BASH_AUTHORING.md §4
 ${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/run-step2-dispatch.sh \
     --implement-tmpdir "$IMPLEMENT_TMPDIR" \
     --coder "$coder"
@@ -1209,11 +1212,14 @@ Print once before the `run-step5-review.sh` invocation:
 
 `> **🔶 /implement 5: code review — run-step5-review.sh --mode loop, up to $effective_round_cap rounds; 3-judge panel on every round (Claude+Codex+Cursor); review panel: 6 Cursor specialists; dynamic-archetypes cap=$dynamic_archetypes_cap**`
 
+**⚠ Foreground required — do NOT set `run_in_background: true`.**
+
 ```bash
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
   CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
 fi
 export CLAUDE_PLUGIN_ROOT
+# Foreground required: see BASH_AUTHORING.md §4
 "${CLAUDE_PLUGIN_ROOT}/scripts/run-step5-review.sh" \
   --implement-tmpdir "$IMPLEMENT_TMPDIR" \
   --mode loop \
@@ -1244,11 +1250,14 @@ export CLAUDE_PLUGIN_ROOT
 
 Then re-invoke the loop wrapper:
 
+**⚠ Foreground required — do NOT set `run_in_background: true`.**
+
 ```bash
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
   CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
 fi
 export CLAUDE_PLUGIN_ROOT
+# Foreground required: see BASH_AUTHORING.md §4
 "${CLAUDE_PLUGIN_ROOT}/scripts/run-step5-review.sh" \
   --implement-tmpdir "$IMPLEMENT_TMPDIR" \
   --mode loop \
@@ -1551,9 +1560,12 @@ Before invoking the script, write `$IMPLEMENT_TMPDIR/ship-pr-state.sh` with uppe
 
 > **`MANIFEST_PATH` MUST be empty unless `/implement` Step 2 returned `STATUS=complete` with a JSON manifest path.** On manifest-reuse fast paths (Step 0 materialization complete but Step 2 does not dispatch), claude-fallback paths (Step 2.4), bailed-Step-2 paths, and any other path where Step 2 did not produce a JSON manifest at `$MANIFEST`, leave `MANIFEST_PATH` empty. **The `/design` Step 5 manifest (`design-export/manifest.env`, a shell KV file) is NEVER a valid value for `MANIFEST_PATH` — these are two different artifacts despite the shared noun.** `ship-pr.sh` hard-fails at entry if `MANIFEST_PATH` is non-empty and not readable JSON; see issue #2233.
 
+> **⚠ Foreground required — do NOT set `run_in_background: true`.**
 > ⚠ **`ship-pr.sh` MUST be a foreground blocking Bash call — do NOT set `run_in_background: true`.** The call may take a long time (CI and merge can exceed default tool caps); configure a sufficiently large foreground Bash timeout when the host allows it (see NEVER #16 and `skills/implement/references/rebase-rebump-subprocedure.md` for long-wait policy). Submitting as background breaks the turn-boundary contract: the task-completion notification fires asynchronously, and by the time it arrives the orchestrator may have already ended the turn (see NEVER #16). **Recovery after unexpected turn end or timeout**: read `$IMPLEMENT_TMPDIR/ship-pr-state.sh` with key-based extraction for persisted `PHASE` / resume semantics, then re-invoke `ship-pr.sh` in the foreground with the same arguments as the `Invoke:` block below **without** `--resume-phase` so the persisted state machine continues — noting that flags not recorded as durable keys in `ship-pr-state.sh` (at minimum `--no-admin-fallback`) must match the original orchestrator invocation, while `ship-pr-state.sh` remains authoritative for persisted `PHASE`. Use `--resume-phase <token>` only for tokens `ship-pr.sh` accepts (same list as NEVER #16) or paths already spelled out in the exit-code matrix (including `RESUME_PHASE` on Exit 5), not `--resume-phase $PHASE` for main-loop `PHASE` values like `checks` or `pr-prep`.
 
 Invoke:
+
+**⚠ Foreground required — do NOT set `run_in_background: true`.**
 
 ```bash
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
@@ -1561,6 +1573,7 @@ if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$
 fi
 export CLAUDE_PLUGIN_ROOT
 export LARCH_QUIET_BREADCRUMBS=1
+# Foreground required: see BASH_AUTHORING.md §4
 "${CLAUDE_PLUGIN_ROOT}/scripts/ship-pr.sh" \
   --state-file "$IMPLEMENT_TMPDIR/ship-pr-state.sh" \
   --implement-tmpdir "$IMPLEMENT_TMPDIR" \
