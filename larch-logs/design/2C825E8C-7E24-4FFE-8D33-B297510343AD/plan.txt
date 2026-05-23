@@ -1,0 +1,119 @@
+# Implementation Plan — Issue #2626
+
+Fold operator-facing finding-outcome vocabulary from 4 buckets (`accepted` / `neutral` / `exonerated` / `rejected`) to 3 buckets (`accepted` / `rejected` / `exonerated`), where `exonerated` is reported as an informational sub-classification of `rejected`. Internal classifier and scoring math are preserved.
+
+Two decisions from Step 1c (recorded in `discussion-round1.md`):
+- **D1: JSON compat** — Remove `neutral_count` from JSON outputs and bump `schema_version` (review-and-fix-summary.json: 2→3; plan-review-tally / code-review-tally batch records: 1→2).
+- **D2: KV shape** — Replace `_OUTCOME=neutral` with `_OUTCOME=rejected` + `_REJECTED_SUBTYPE=neutral|exonerated|true_rejected`. Applies to all non-accepted findings (so `_OUTCOME=exonerated` also collapses into `_OUTCOME=rejected` + `_REJECTED_SUBTYPE=exonerated`).
+
+## Approach
+
+Three orthogonal change surfaces:
+
+### A. Internal classifier (no change)
+`scripts/lib-vote-tally.sh::classify_result` continues returning one of 4 labels (`accepted` / `rejected` / `neutral` / `exonerated`). The vote-pattern logic is the source of truth and is reused unchanged. The 4-label internal label is translated at the emission boundary to the new 2-label `_OUTCOME` + subtype shape.
+
+### B. KV emission boundary (translate 4 labels → 2 + subtype)
+In `record_tally_outcome` and the OOS-finding emission paths in `skills/review/scripts/tally-code-votes.sh`:
+- `accepted` → `FINDING_N_OUTCOME=accepted` (no subtype key).
+- `rejected` → `FINDING_N_OUTCOME=rejected` + `FINDING_N_REJECTED_SUBTYPE=true_rejected`.
+- `neutral` → `FINDING_N_OUTCOME=rejected` + `FINDING_N_REJECTED_SUBTYPE=neutral`.
+- `exonerated` → `FINDING_N_OUTCOME=rejected` + `FINDING_N_REJECTED_SUBTYPE=exonerated`.
+
+`record_tally_outcome` takes the 4-label `outcome` arg and the helper internally maps to the new pair. The `score_rows` TSV used by the in-file awk scoreboard keeps the 4-label `result` column unchanged — it is internal to the script and consumed only by the local awk block.
+
+### C. Operator-facing surfaces (3-bucket vocabulary)
+- Round summary in `emit-tally.sh`: drop the `Neutral findings: N` bullet; render `K accepted, N rejected, P exonerated` where `P <= N`.
+- Final summary in `skills/implement/scripts/write-final-report.sh`: replace any `… exonerated, N neutral` wording with `K accepted, N rejected (P exonerated)`.
+- Round summary in `skills/review-and-fix/scripts/review-and-fix.sh`: same 3-bucket wording for the per-round summary KV and any prose it composes.
+- Voting tally markdown in `tally-code-votes.sh` and `skills/design/scripts/tally-plan-review.sh`: collapse the scoreboard column from `Neutral (1 YES)` / `Exonerated (0 YES, 1+ EXON.)` into a single `Exonerated (subset of rejected, scored 0)` column. The underlying score math reads the 4-label `result` from `score_rows`; the column heading and labeling change but the totals are equivalent (neutral and exonerated rows both score 0 today and continue to).
+- `skills/shared/voting-protocol.md`: rewrite the outcome-classification section to enumerate 3 buckets with `exonerated` as a sub-classification of `rejected`; rewrite the Reviewer Competition Scoreboard table; rewrite the OOS Scoring table; drop all operator-facing mentions of `neutral` as a finding outcome. The internal scoring rules (+1 / 0 / -1) and threshold rules are preserved verbatim.
+
+### D. JSON schema bump
+- `skills/review/scripts/emit-tally.sh` → `review-summary.json`: bump `schema_version` from 2 to 3; remove `neutral_count` from top level and `total_neutral` from `finding_counts`. Add an assertion that `exonerated_count <= rejected_count` before the jq write; on violation, write nothing and exit 1.
+- `skills/review-and-fix/scripts/review-and-fix.sh` → `review-and-fix-summary.json`: bump `schema_version` from 2 to 3; remove `neutral_count` from top level. Same `exonerated_count <= rejected_count` assertion.
+- `scripts/compose-tally-record.sh` → `plan-review-tally.json` / `code-review-tally.json`: bump `schema_version` from 1 to 2; remove `neutral_count` from the JSON shape; remove `--neutral` from required-arg validation; deprecate the `--neutral` argv as a no-op (accept and ignore for backward-compat at the CLI boundary so existing callers do not break before they are updated in the same PR).
+- `scripts/write-tally.sh` (if it forwards `--neutral` to `compose-tally-record.sh`): update to no longer pass `--neutral` (and stop accepting `--neutral N` from upstream callers).
+
+In each case where the field is dropped, the `exonerated_count` (kept) provides the only informational sub-count surfaced — the operator-facing "P" of `K accepted, N rejected, P exonerated`.
+
+### E. Documentation
+- `docs/run-logs.md`: drop the `neutral_count` paragraph and the "Note: `neutral_count` covers finding-level tied votes…" paragraph; mention only `accepted_count`, `rejected_count`, `exonerated_count`; update prose around rejected-count definition; reference `schema_version: 2` for tally batch records (was 1).
+- `scripts/larch-log-batches.md`: drop `neutral_count` from the JSON example and surrounding prose; update `schema_version` from 1 to 2 in the example.
+- `scripts/compose-tally-record.md`: drop `neutral_count` from the documented schema; note `--neutral` accepted but ignored.
+- `skills/review/references/heavy-worker.md`: drop `neutral_count` and `total_neutral` from the JSON example; bump `schema_version` reference from 2 to 3.
+- `skills/implement/SKILL.md`: update the "Validate `$IMPLEMENT_TMPDIR/review-and-fix-summary.json` … `.schema_version == 2`" wording to `.schema_version == 3`, drop `neutral_count` from the listed top-level fields used to compose the tally header line, and drop `--neutral <N>` from the documented `write-tally.sh` invocation (the `code-review-tally` write step around line 1253).
+- `skills/review/scripts/review-core.md`, `tally-code-votes.md`, `skills/review-and-fix/scripts/review-and-fix.md`: clarify that `NEUTRAL_COUNT` KV remains an internal-only accounting counter (still emitted to KV files for scoreboard fidelity) but is not surfaced in JSON outputs or operator-facing round summaries.
+
+## Files to modify
+
+| Path | Change |
+|---|---|
+| `skills/shared/voting-protocol.md` | Rewrite outcome-classification section to 3 buckets (accepted / rejected / exonerated as sub-class); rewrite Reviewer Competition Scoreboard table header; rewrite OOS Scoring table; drop operator-facing "neutral" wording (lines around 61, 189, 200, 207, 247, 252, 261); preserve threshold-rules and scoring-points tables verbatim. |
+| `skills/review/scripts/tally-code-votes.sh` | Update `record_tally_outcome` to emit `_OUTCOME` + `_REJECTED_SUBTYPE` pair; update voting-tally markdown scoreboard column header from `Neutral/Exon` to `Exonerated`; keep `NEUTRAL_COUNT` KV emission as internal-only accounting; keep `score_rows` TSV 4-label `result` column unchanged. |
+| `skills/review/scripts/tally-code-votes.md` | Doc update for `_OUTCOME` + `_REJECTED_SUBTYPE` shape; note `NEUTRAL_COUNT` is internal-only; document scoreboard column header rename. |
+| `skills/review/scripts/emit-tally.sh` | Drop `Neutral findings: N` bullet from round summary; replace with `K accepted, N rejected (P exonerated)` format; bump `review-summary.json` `schema_version` from 2 to 3; drop `neutral_count` (top-level) and `total_neutral` (`finding_counts`); add `exonerated_count <= rejected_count` assertion; update grep patterns to read `_REJECTED_SUBTYPE=exonerated$` and `_REJECTED_SUBTYPE=neutral$` instead of `_OUTCOME=exonerated$` / `_OUTCOME=neutral$`. |
+| `skills/review/scripts/emit-tally.md` | Doc update for new JSON schema shape and round-summary wording. |
+| `skills/review/scripts/review-core.sh` | Keep `NEUTRAL_COUNT` KV emission unchanged (internal-only); no functional change. |
+| `skills/review/scripts/review-core.md` | Clarify `NEUTRAL_COUNT` is internal-only accounting; clarify operator-facing surfaces use 3-bucket vocabulary. |
+| `skills/review-and-fix/scripts/review-and-fix.sh` | Update round summary printing to 3-bucket wording; drop `neutral_count` from `review-and-fix-summary.json`; bump `schema_version` from 2 to 3; keep `TOTAL_NEUTRAL_COUNT` KV emission as internal-only. Add `exonerated_count <= rejected_count` assertion before JSON write. |
+| `skills/review-and-fix/scripts/review-and-fix.md` | Doc update for new JSON schema and round summary wording; clarify `TOTAL_NEUTRAL_COUNT` is internal-only. |
+| `skills/design/scripts/tally-plan-review.sh` | Update voting-tally markdown scoreboard column header from `Neutral/Exon` to `Exonerated`; preserve internal awk scoreboard math (which already collapses neutral+exonerated into the same display column). Add `_OUTCOME` + `_REJECTED_SUBTYPE` KV emission parity with `tally-code-votes.sh` for any downstream consumer that reads design-side `review-tally.env`. |
+| `skills/design/scripts/tally-plan-review.md` | Doc update mirroring `tally-code-votes.md`. |
+| `skills/design/scripts/test-tally-plan-review.sh` | Update scoreboard header assertion from `Neutral/Exon` to `Exonerated`; preserve the JUDGE_ERROR quorum-result test row assertion. |
+| `skills/implement/scripts/write-final-report.sh` | Update final summary line from `… N exonerated, M neutral` format to `K accepted, N rejected (P exonerated)`; no behavioral change beyond wording. |
+| `skills/implement/scripts/write-final-report.md` | Doc update for new summary line format. |
+| `skills/implement/SKILL.md` | Update `code-review-tally` source-priority block (around line 1249): change `.schema_version == 2` to `.schema_version == 3`; remove `neutral_count` from the documented top-level fields list used to compose the tally header line. **Also drop `--neutral <N>` from the documented `write-tally.sh` invocation at line ~1253** (the `code-review-tally` write step) so the orchestrator prose no longer prescribes a deprecated argv. Grep `skills/implement/SKILL.md` for any remaining `--neutral` literal before commit. |
+| `scripts/compose-tally-record.sh` | Drop `neutral_count` from emitted JSON; bump `schema_version` from 1 to 2; keep `--neutral N` argv accepted but ignored (deprecated path, no field emitted); update `require_non_negative_integer` validation to drop `--neutral` requirement. |
+| `scripts/compose-tally-record.md` | Doc update: schema bump, `--neutral` deprecated, `neutral_count` removed. |
+| `scripts/write-tally.sh` | If it forwards `--neutral` to `compose-tally-record.sh`, update to no longer require/pass it; accept `--neutral N` as no-op for back-compat with callers in this same PR. |
+| `docs/run-logs.md` | Drop the `neutral_count` paragraph and the "Note:" paragraph; update tally schema mention (`schema_version: 2`); drop "Exonerated and neutral findings are counted in the envelope but not listed separately" reference to neutral. |
+| `scripts/larch-log-batches.md` | Drop `neutral_count` from the JSON example; bump `schema_version` from 1 to 2 in the example; update accompanying prose ("rejected_count is strict (it excludes exonerated and neutral outcomes)" → "rejected_count is the total of all non-accepted findings; exonerated_count is a sub-count of rejected_count"). |
+| `skills/review/references/heavy-worker.md` | Drop `neutral_count` and `total_neutral` from the JSON example; bump `schema_version` reference. |
+| `scripts/test-write-tally.sh` | Drop `neutral_count` field assertions; update `schema_version` assertion to 2; verify the field is absent from emitted JSON. |
+| `skills/review/scripts/test-tally-code-votes.sh` | Update assertions to check `_OUTCOME=rejected` + `_REJECTED_SUBTYPE=neutral` for the 1Y/1N case (currently asserts `_OUTCOME=neutral`); add assertion that `_OUTCOME=exonerated` is no longer emitted (it becomes `_OUTCOME=rejected` + `_REJECTED_SUBTYPE=exonerated`); preserve all vote-tally math assertions; preserve `NEUTRAL_COUNT` counter assertion (internal accounting unchanged). |
+| `skills/review/scripts/test-emit-tally.sh` | Update fixture KV file to use new `_OUTCOME=rejected` + `_REJECTED_SUBTYPE=neutral` shape; drop `neutral_count` assertion from JSON shape check; update `schema_version` from 2 to 3; assert `exonerated_count <= rejected_count`. |
+| `skills/review-and-fix/scripts/test-review-and-fix.sh` | If it asserts `neutral_count` in the JSON, update to use 3-bucket format; preserve any `NEUTRAL_COUNT` KV-level assertions (those stay). |
+
+## Edge cases
+
+1. **Backward-compat consumers of `neutral_count`** — `/implement` SKILL.md line 1249 reads `neutral_count` from `review-and-fix-summary.json`. With `schema_version` bump from 2 to 3, the SKILL.md reference is updated to read `schema_version == 3` and to omit `neutral_count`. The old `schema_version == 2` JSON shape is no longer produced. Any downstream consumer that hard-references the old shape (e.g. audit tooling) is identified in the implementation by grepping for `\.neutral_count` and `schema_version == 2` and updated in the same PR.
+2. **CI test fixtures with `_OUTCOME=neutral`** — `skills/review/scripts/test-emit-tally.sh` uses `FINDING_2_OUTCOME=neutral` as fixture data (line 21). The fixture is updated to `FINDING_2_OUTCOME=rejected` + `FINDING_2_REJECTED_SUBTYPE=neutral`. The test's downstream assertion (line 49 checks `FINDING_2_OUTCOME=neutral` is NOT in `rejected-findings.md`) is updated to check that the new shape correctly excludes the neutral finding from the rejected-findings markdown body (it should still be excluded since neutral findings are not written to `rejected-findings.md`).
+3. **Historical run-log batches keep their schema_version=1 / `neutral_count` field** — explicitly out of scope per issue body. No re-rendering of historical logs. Consumers reading historical logs must handle both `schema_version: 1` and `schema_version: 2` for tally records, and both `schema_version: 2` and `schema_version: 3` for `review-and-fix-summary.json`.
+4. **`P <= N` invariant violations** — if a future change accidentally counts exonerated findings outside the rejected total, the new assertions in `emit-tally.sh` and `review-and-fix.sh` fail loudly before writing the JSON. Tests verify the assertion fires on bad input.
+5. **`oos-accepted-design.md` / OOS pipeline** — OOS findings use the same outcome vocabulary. The OOS scoreboard column in `voting-protocol.md` collapses `OOS-Neutral/Exon` into `OOS-Exonerated`. Filing semantics are unchanged: 2+ YES OOS → file issue; rejected OOS → not filed; exonerated OOS → not filed.
+6. **`classify_result` callers in tests** — `scripts/test-lib-vote-tally.sh` continues to assert the 4-label internal API (`accepted` / `rejected` / `neutral` / `exonerated`). No change to those assertions. Only the OUTCOME emission boundary translates labels.
+
+## Failure modes
+
+1. **Stale references to `neutral_count` in untouched JSON consumers cause silent misreads** — earliest warning signal: JSON parsing in a consumer that hard-references the field returns null/zero. Mitigation: grep for `\.neutral_count` and `neutral_count:` across the repo before merging; update every hit in the same PR.
+2. **`schema_version` mismatch on cross-version run-log replays** — earliest warning signal: any tool that reads larch-logs and casts `schema_version` to int may behave differently for value 2 vs 1 (or 3 vs 2). Mitigation: the bump-version PR description must call out the schema bump; downstream consumers (`/larch:report-tokens`, audit-runs harnesses) are surveyed in the implementation step and updated.
+3. **`_REJECTED_SUBTYPE` not threaded into the scoreboard awk** — earliest warning signal: scoreboard shows `0` in the new `Exonerated` column even when exonerated findings exist. Mitigation: the `score_rows` TSV keeps its 4-label `result` column, so the existing awk (which already buckets `neutral` and `exonerated` into the same "Neutral/Exon" column) works unchanged after the column header rename — no logic change needed in the awk. Tests verify the column count is non-zero on a fixture with 1 exonerated and 1 neutral input.
+
+## Testing strategy
+
+1. **`scripts/test-lib-vote-tally.sh`** — unchanged. Asserts the 4-label internal API of `classify_result()`. No regression expected.
+2. **`scripts/test-write-tally.sh`** — update fixture and assertions to the new schema (`schema_version=2`, no `neutral_count` field).
+3. **`skills/review/scripts/test-tally-code-votes.sh`** — update fixture and assertions:
+   - 1Y/1N (was `_OUTCOME=neutral`) → assert `_OUTCOME=rejected` + `_REJECTED_SUBTYPE=neutral`; preserve `NEUTRAL_COUNT=1` summary counter assertion.
+   - 1Y/0N/1E (was `_OUTCOME=exonerated`) → assert `_OUTCOME=rejected` + `_REJECTED_SUBTYPE=exonerated`.
+   - 0Y/3N (was `_OUTCOME=rejected`) → assert `_OUTCOME=rejected` + `_REJECTED_SUBTYPE=true_rejected`.
+   - 2Y/1N (was `_OUTCOME=accepted`) → assert `_OUTCOME=accepted` (no subtype key).
+4. **`skills/review/scripts/test-emit-tally.sh`** — update fixture and assertions:
+   - Drop `neutral_count` from the JSON jq -e check.
+   - Update `schema_version` assertion from 2 to 3.
+   - Add `exonerated_count <= rejected_count` assertion fixture test.
+5. **`skills/design/scripts/test-tally-plan-review.sh`** — update scoreboard header assertion: `Neutral/Exon` → `Exonerated`. Preserve JUDGE_ERROR quorum-result row assertion.
+6. **`skills/review-and-fix/scripts/test-review-and-fix.sh`** — if it asserts `neutral_count` in JSON, update to drop; preserve `NEUTRAL_COUNT` KV-level assertions.
+7. **New invariant test**: add a unit test (extending `scripts/test-write-tally.sh` or `test-emit-tally.sh`) that fabricates an input where `exonerated_count > rejected_count` and verifies the new assertion fires (exit non-zero, no JSON written).
+8. **`make lint` and `bash scripts/relevant-checks.sh`** — both must pass.
+
+## Out of scope (mirroring issue body)
+
+- Changing voter ballot choices (YES / NO / EXONERATE stays).
+- Changing scoring point values (+1 / 0 / -1 stays).
+- Adding new outcomes or vote choices.
+- Changing the acceptance threshold (2+ YES in 3-voter panel, unanimous in 2-voter, single-judge binding).
+- Re-rendering historical run-log batches in place.
+
+diff_lines: 380
