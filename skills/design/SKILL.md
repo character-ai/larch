@@ -45,8 +45,6 @@ Design an implementation plan for a feature and review it with a **full** panel 
 
 **Suppressed output:** explanatory prose, script paths, rationale for decisions between tool calls, per-reviewer individual completion messages.
 
-When `SESSION_ENV_PATH` is non-empty (nested under another skill), follow `${CLAUDE_PLUGIN_ROOT}/skills/shared/subskill-invocation.md` section Artifact-only return contract (nested mode): suppress step breadcrumbs and bulky inline artifact bodies for the implementation plan, voting tally, architecture diagram, rejected findings, and discussion syntheses; rely on the files under `$DESIGN_TMPDIR/`. When `SESSION_ENV_PATH` is empty (standalone `/design`), preserve verbose inline output.
-
 **Compact reviewer status table**: After launching sketch agents (Step 2a) or plan reviewers (Step 3), maintain a mental tracker of each agent's status. Print a compact table after EACH status change:
 
 ```
@@ -65,7 +63,7 @@ Icons: ✅ done (with elapsed time since launch), ⏳ pending/in-progress, ❌ f
 
 ### Bash block prelude
 
-The Claude Code Bash tool does NOT preserve shell state between calls. Step 0 writes a sourceable session-env file via `scripts/write-design-current-env.sh` and refreshes a stable symlink at `~/.cache/larch/sessions/current-design-env-$PPID.sh` (keyed on `$PPID` from the **root** Bash-tool subshell for that call — in normal `/design` orchestration this matches the Claude Code process for the session; do not nest the Step 0 writer or prelude inside an extra `bash` / `bash -c` layer without an explicit `--claude-pid` re-handoff, because `$PPID` would then name an intermediate shell instead). **Every Bash block from Step 1c onward MUST prepend the canonical conditional prelude line** so `$DESIGN_TMPDIR`, `$SESSION_TMPDIR`, `$SESSION_ID`, `$CLAUDE_PLUGIN_ROOT`, and the reviewer presence/availability booleans survive into the new subshell:
+The Claude Code Bash tool does NOT preserve shell state between calls. Step 0a writes `$DESIGN_TMPDIR/source-env.sh` containing `DESIGN_TMPDIR`, `SESSION_TMPDIR`, `SESSION_ID`, `CLAUDE_PLUGIN_ROOT`, and reviewer presence/availability booleans, and refreshes a stable symlink at `~/.cache/larch/sessions/current-design-env-$PPID.sh` (keyed on `$PPID` from the **root** Bash-tool subshell for that call — in normal `/design` orchestration this matches the Claude Code process for the session; do not nest the Step 0 writer or prelude inside an extra `bash` / `bash -c` layer without an explicit `--claude-pid` re-handoff, because `$PPID` would then name an intermediate shell instead). **Every Bash block from Step 1c onward MUST prepend the canonical prelude line** so those values survive into the new subshell:
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
@@ -83,7 +81,7 @@ Before invoking `/design`, the orchestrator should internalize these questions. 
 - **Where is anchoring risk highest?** The first plausible approach locks architectural direction unless the sketch phase forces alternatives. Do NOT skip Step 2a (anti-pattern rule #1).
 - **What hidden constraints must this preserve?** Canonical sources, CI invariants, downstream parsers, contract tokens, byte-preserved reference files. Identify them before edits, not during plan review.
 - **Which tradeoffs should surface to the user versus be quietly chosen?** Scope and hard-constraint decisions surface via Round 1 discussion; architectural preferences belong to the sketch phase — not to the user.
-- **Which anti-patterns in the NEVER list below apply to this specific feature?** Re-read the Anti-patterns section for every non-trivial feature; muscle memory for the six rules is the expert delta this skill aims to transfer.
+- **Which anti-patterns in the NEVER list below apply to this specific feature?** Re-read the Anti-patterns section for every non-trivial feature; muscle memory for the five rules is the expert delta this skill aims to transfer.
 
 ## Anti-patterns
 
@@ -95,13 +93,9 @@ Consolidated NEVER rules collected from the procedural steps below. Each rule st
 
 3. **NEVER mutate orchestrator-wide `codex_available` / `cursor_available` inside Step 2a.5.** **Why:** Step 3 plan-review panel integrity depends on the Option B snapshot pattern — a debate-phase timeout must not lock a tool out of later plan review. **How to apply:** use the `dialectic_*_available` shadow flags inside Step 2a.5 and the `judge_*_available` shadow flags inside the judge re-probe; never touch the top-level flags.
 
-4. **NEVER pass `--caller-env` to `session-setup.sh` when `SESSION_ENV_PATH` is empty.** **Why:** standalone `/design` invocations have no parent `/implement` session-env to consume. **How to apply:** branch on `SESSION_ENV_PATH` non-empty in Step 0; omit the flag when standalone.
+4. **NEVER call `collect-agent-results.sh` with zero positional arguments.** **Why:** it exits 1 with "at least one output file is required". This is the zero-externals failure mode when every external slot has fallen back to a Claude subagent. **How to apply:** guard each collector call with an explicit check that at least one external slot was launched; the dialectic zero-externals guardrail (Step 2a.5 step 5) and the Step 3 collector both require this.
 
-5. **NEVER call `collect-agent-results.sh` with zero positional arguments.** **Why:** it exits 1 with "at least one output file is required". This is the zero-externals failure mode when every external slot has fallen back to a Claude subagent. **How to apply:** guard each collector call with an explicit check that at least one external slot was launched; the dialectic zero-externals guardrail (Step 2a.5 step 5) and the Step 3 collector both require this.
-
-6. **NEVER conflate the two timeout families.** **Why:** sketch-phase timeouts (sketches are shorter) differ from plan-review + dialectic timeouts (longer, deeper reasoning). **How to apply:** use `timeout: 1260000` (Bash tool) / `--timeout 1260` (collector) / `--timeout 1200` (reviewer script) for sketch-phase launches and sketch collection; use `timeout: 1860000` / `--timeout 1860` / `--timeout 1800` for plan-review launches, dialectic debaters, and dialectic judges.
-
-7. **NEVER emit step breadcrumbs when `SESSION_ENV_PATH` is non-empty.** **Why:** nested `/design` runs under `/implement`, whose parent-visible transcript must obey the artifact-only return contract. **How to apply:** write human-readable content to `$DESIGN_TMPDIR` artifacts and emit only file-backed artifact paths plus a single terminal machine line after `plan-block-write.sh` succeeds (see Step 5). **Exception:** that one-line machine footer is explicitly permitted as a continuation signal — it is not a decorative breadcrumb. It must be the last output line and nothing may follow it.
+5. **NEVER conflate the two timeout families.** **Why:** sketch-phase timeouts (sketches are shorter) differ from plan-review + dialectic timeouts (longer, deeper reasoning). **How to apply:** use `timeout: 1260000` (Bash tool) / `--timeout 1260` (collector) / `--timeout 1200` (reviewer script) for sketch-phase launches and sketch collection; use `timeout: 1860000` / `--timeout 1860` / `--timeout 1800` for plan-review launches, dialectic debaters, and dialectic judges.
 
 <!-- step:0 — Session Setup -->
 ## Step 0 — Session Setup
@@ -110,20 +104,14 @@ Print: `> **🔶 /design 0: setup**`
 
 ### 0a — Reviewer session (`DESIGN_TMPDIR`)
 
-`/design` no longer creates or checks a feature branch — `/implement` owns the feature-branch lifecycle. Run `session-setup.sh` with `--skip-branch-check` unconditionally (include `--caller-env "$SESSION_ENV_PATH"` only when that variable is non-empty — Anti-pattern #4). **Use a single Bash block below** so `session-setup.sh` stdout is parsed and `write-design-current-env.sh` runs in the same subshell as the emitted `SESSION_TMPDIR=` / `SESSION_ID=` / reviewer KV lines — do not split setup and writer across separate Bash invocations with bare `$DESIGN_TMPDIR` expansion (Anti-pattern: subshells lose unexported state; a paste can collapse paths to `/source-env.sh`). Parse printed output for `SESSION_TMPDIR`, `SESSION_ID`, `CODEX_AVAILABLE`, `CURSOR_AVAILABLE`, `CODEX_PRESENT`, `CURSOR_PRESENT`. Set `DESIGN_TMPDIR` = `SESSION_TMPDIR` and mental flags `codex_available` / `cursor_available` from that same output (same two-tier pattern as the historical Step 0). Preserve nested `execution-issues.md` logging unchanged.
+`/design` no longer creates or checks a feature branch — `/implement` owns the feature-branch lifecycle. Run `session-setup.sh` with `--skip-branch-check` unconditionally. **Use a single Bash block below** so `session-setup.sh` stdout is parsed and `write-design-current-env.sh` runs in the same subshell as the emitted `SESSION_TMPDIR=` / `SESSION_ID=` / reviewer KV lines — do not split setup and writer across separate Bash invocations with bare `$DESIGN_TMPDIR` expansion (Anti-pattern: subshells lose unexported state; a paste can collapse paths to `/source-env.sh`). Parse printed output for `SESSION_TMPDIR`, `SESSION_ID`, `CODEX_AVAILABLE`, `CURSOR_AVAILABLE`, `CODEX_PRESENT`, `CURSOR_PRESENT`. Set `DESIGN_TMPDIR` = `SESSION_TMPDIR` and mental flags `codex_available` / `cursor_available` from that same output (same two-tier pattern as the historical Step 0). Execution-issues logging always targets `$DESIGN_TMPDIR/execution-issues.md`.
 
 ```bash
-if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
-  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$SESSION_ENV_PATH" 2>/dev/null || true)
-fi
-export CLAUDE_PLUGIN_ROOT
-SESSION_ENV_PATH="${SESSION_ENV_PATH:-}" LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 0 — session setup" || true
+export CLAUDE_PLUGIN_ROOT='${CLAUDE_PLUGIN_ROOT}'
+LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 0 — session setup" || true
 
 # Contract pin for CI (scripts/test-design-structure.sh): session-setup.sh --prefix claude-design --skip-branch-check --skip-repo-check --check-reviewers
 _ss_args=(--prefix claude-design --skip-branch-check --skip-repo-check --check-reviewers)
-if [ -n "${SESSION_ENV_PATH:-}" ]; then
-  _ss_args+=(--caller-env "$SESSION_ENV_PATH")
-fi
 _ss_rc=0
 _ss_out=$("${CLAUDE_PLUGIN_ROOT}/scripts/session-setup.sh" "${_ss_args[@]}" 2>&1) || _ss_rc=$?
 printf '%s\n' "$_ss_out"
@@ -167,17 +155,13 @@ _wdce_args=(
 "${_wdce_args[@]}"
 ```
 
-Only include `--caller-env "$SESSION_ENV_PATH"` in `_ss_args` when `SESSION_ENV_PATH` is non-empty (Anti-pattern #4). If `SESSION_ENV_PATH` provides `CODEX_PRESENT=false` or `CURSOR_PRESENT=false`, `session-setup.sh` auto-sets the corresponding `--skip-codex-probe` / `--skip-cursor-probe` while reading caller-env; explicit `--skip-*` flags are unnecessary when passing `--caller-env`.
-
 If `session-setup.sh` exits non-zero, the block prints its captured stdout/stderr first (including any raw `PREFLIGHT_ERROR=...` line). Then print the normalized skill-level message and abort:
 
 **⚠ /design: session-setup.sh failed. Investigate `PREFLIGHT_ERROR` and re-run.**
 
 This writes `$DESIGN_TMPDIR/source-env.sh` and refreshes the stable symlink `~/.cache/larch/sessions/current-design-env-$PPID.sh` so the prelude line resolves on every later Bash block. `--issue-number "$ISSUE_NUMBER"` may be appended on a follow-up writer invocation once the issue number is bound in Step 0b; the writer accepts a re-invocation to refresh keys (each invocation must still pass `--claude-pid "$PPID"`).
 
-**Execution-issues logging for nested runs**: When `SESSION_ENV_PATH` is non-empty, the parent log is `$(dirname "$SESSION_ENV_PATH")/execution-issues.md`. Any failing Bash tool, external reviewer launch, external reviewer collector status not equal to `OK`, or Agent-tool fallback failure must append the full captured stdout/stderr or returned text verbatim through `${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh` under `External Reviewer Issues` (or `Warnings` for diagram generation/sanitizer failures). Capture into a `$DESIGN_TMPDIR/*-failure.log` file first; include `${OUTPUT}.diag` sidecar content for reviewer collector failures. Do not summarize or truncate these captures.
-
-**Execution-issues logging for standalone `/design`**: When `SESSION_ENV_PATH` is empty, use `$DESIGN_TMPDIR/execution-issues.md` as the `--log` target for the same `append-tool-failure.sh` contract (create the file on first append) so publish and other durable failures are not dropped when no nested parent log exists.
+**Execution-issues logging**: Any failing Bash tool, external reviewer launch, external reviewer collector status not equal to `OK`, or Agent-tool fallback failure must append the full captured stdout/stderr or returned text verbatim through `${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh` to `$DESIGN_TMPDIR/execution-issues.md` under `External Reviewer Issues` (or `Warnings` for diagram generation/sanitizer failures). Capture into a `$DESIGN_TMPDIR/*-failure.log` file first; include `${OUTPUT}.diag` sidecar content for reviewer collector failures. Do not summarize or truncate these captures.
 
 ### 0b — Parse argv, issue binding, clarify / already-planned routers, tier → `run-params.json`
 
@@ -188,7 +172,7 @@ This writes `$DESIGN_TMPDIR/source-env.sh` and refreshes the stable symlink `~/.
 3. **Clarify loop** when `needs-design-clarification` label is present — follow `skills/implement/SKILL.md` Preflight clarify semantics:
    1. `clarify-state.sh`, fetch the request comment body, `AskUserQuestion`, compose plan sections, `redact-secrets.sh`, and `plan-block-write.sh --content-file`. **Only when `plan-block-write.sh` exits 0**, continue to sub-steps 3.2–3.6; otherwise follow implement Preflight failure handling for a failed plan write (do not run publish, clarify response post, label removal, or rename in this branch).
    2. Resolve `REPO` for explicit `gh --repo` threading: prefer `"${CLAUDE_PLUGIN_ROOT}/scripts/resolve-repo.sh"` from the consumer repo working tree; on failure fall back to `gh repo view --json nameWithOwner --jq '.nameWithOwner'`; leave `REPO` empty when both fail so downstream helpers use the hub default.
-   3. When `SESSION_ID` is non-empty, run `"${CLAUDE_PLUGIN_ROOT}/scripts/design-log-publish.sh" --design-tmpdir "$DESIGN_TMPDIR" --run-id "$SESSION_ID" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}` and parse `PUBLISH_OK` from stdout. When `SESSION_ID` is empty, print `printf '\n**⚠ /design: SESSION_ID missing; skipping design log publish**\n'` (use `printf`, not `print`). On `PUBLISH_OK=false`, capture stderr to `$DESIGN_TMPDIR/design-log-publish.failure.log` and append under `Warnings` via `"${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh" --log "$(dirname "$SESSION_ENV_PATH")/execution-issues.md"` when `SESSION_ENV_PATH` is non-empty, or `--log "$DESIGN_TMPDIR/execution-issues.md"` when `SESSION_ENV_PATH` is empty, then continue (do not roll back the successful plan write from sub-step 3.1).
+   3. When `SESSION_ID` is non-empty, run `"${CLAUDE_PLUGIN_ROOT}/scripts/design-log-publish.sh" --design-tmpdir "$DESIGN_TMPDIR" --run-id "$SESSION_ID" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}` and parse `PUBLISH_OK` from stdout. When `SESSION_ID` is empty, print `printf '\n**⚠ /design: SESSION_ID missing; skipping design log publish**\n'` (use `printf`, not `print`). On `PUBLISH_OK=false`, capture stderr to `$DESIGN_TMPDIR/design-log-publish.failure.log` and append under `Warnings` via `"${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh" --log "$DESIGN_TMPDIR/execution-issues.md"`, then continue (do not roll back the successful plan write from sub-step 3.1).
    4. Run `clarify-comment-post.sh --kind response`, then `clarify-label.sh --action remove`.
    5. **Only when** `SESSION_ID` is non-empty **and** `PUBLISH_OK=true` after sub-step 3.3, run `"${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh" rename --issue "$ISSUE_NUMBER" --state designing ${REPO:+--repo "$REPO"}` (best-effort; treat `RENAMED=false` as idempotent success). Sub-step 3.4 removes `needs-design-clarification` before this rename; **do not** run `--state designed` here — that token is reserved for Step 5b after Gate C, composed `larch:plan`, and the same publish guard — so `/implement` admission cannot treat a clarify-only `larch:plan` update as terminal design completion. When `SESSION_ID` is empty or `PUBLISH_OK=false`, **skip** this rename in this sub-step.
    6. Step 5 hygiene and exit **0** on success — **before** that hygiene, run the **Terminal cost line** fenced bash block in `### Terminal cost line` below (same block as Step 5 happy path / plan-block-write failure). The issue title remains `[DESIGNING]` until a later `/design` run reaches Step 5b (Gate C + composed plan + publish) — `/implement` still requires `[DESIGNED]`.
@@ -203,10 +187,6 @@ This writes `$DESIGN_TMPDIR/source-env.sh` and refreshes the stable symlink `~/.
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
-  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$SESSION_ENV_PATH" 2>/dev/null || true)
-fi
-export CLAUDE_PLUGIN_ROOT
 ${CLAUDE_PLUGIN_ROOT}/scripts/write-run-params.sh \
   --classification "$design_classification" \
   --reason "$design_classification_reason" \
@@ -255,11 +235,7 @@ Before sketches, run one codebase `Grep` pass for salient symbols from the issue
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
-  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$SESSION_ENV_PATH" 2>/dev/null || true)
-fi
-export CLAUDE_PLUGIN_ROOT
-SESSION_ENV_PATH="$SESSION_ENV_PATH" LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 1c — questions" || true
+LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 1c — questions" || true
 ```
 
 Print: `> **🔶 /design 1c: questions**`
@@ -270,11 +246,7 @@ Print: `> **🔶 /design 1c: questions**`
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
-  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$SESSION_ENV_PATH" 2>/dev/null || true)
-fi
-export CLAUDE_PLUGIN_ROOT
-SESSION_ENV_PATH="$SESSION_ENV_PATH" LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 1d — discussion r1" || true
+LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 1d — discussion r1" || true
 ```
 
 Print: `> **🔶 /design 1d: discussion r1**`
@@ -285,11 +257,7 @@ Execute the Step 1d body in `${CLAUDE_PLUGIN_ROOT}/skills/design/references/disc
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
-  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$SESSION_ENV_PATH" 2>/dev/null || true)
-fi
-export CLAUDE_PLUGIN_ROOT
-SESSION_ENV_PATH="$SESSION_ENV_PATH" LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 1e — gate A" || true
+LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 1e — gate A" || true
 ```
 
 Print: `> **🔶 /design 1e: gate A**`
@@ -303,11 +271,7 @@ Execute the Gate A body in `approval-gates.md`. When the user picks **Ready for 
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
-  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$SESSION_ENV_PATH" 2>/dev/null || true)
-fi
-export CLAUDE_PLUGIN_ROOT
-SESSION_ENV_PATH="$SESSION_ENV_PATH" LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 2a — sketches" || true
+LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 2a — sketches" || true
 ```
 
 Before branching, read `$DESIGN_TMPDIR/run-params.json` and parse `sketch_budget`. Valid values are `0`, `2`, and `4`. If the file is absent or schema-invalid, default to `sketch_budget=4`. `review_budget` is consumed later by Step 3. Do not re-classify here; Step 0 owns router judgment.
@@ -375,10 +339,6 @@ If `sketch_budget=0`, skip this section entirely. Do NOT call `collect-agent-res
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
-  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$SESSION_ENV_PATH" 2>/dev/null || true)
-fi
-export CLAUDE_PLUGIN_ROOT
 ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1260 \
   "$DESIGN_TMPDIR/cursor-sketch-arch-output.txt" \
   "$DESIGN_TMPDIR/cursor-sketch-edge-output.txt" \
@@ -390,10 +350,6 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1260 \
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
-  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$SESSION_ENV_PATH" 2>/dev/null || true)
-fi
-export CLAUDE_PLUGIN_ROOT
 ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1260 \
   "$DESIGN_TMPDIR/cursor-sketch-generic-output.txt" \
   "$DESIGN_TMPDIR/codex-sketch-generic-output.txt"
@@ -405,7 +361,7 @@ Note: This is a separate `collect-agent-results.sh` call from the one in Step 3.
 
 Parse the structured output for each reviewer's `STATUS` and `REVIEWER_FILE`. For sketches, a valid output is non-empty and contains substantive architectural content (at least a paragraph). If a reviewer's `STATUS` is not `OK`, follow the **Runtime Waterfall Fallback** procedure in `${CLAUDE_PLUGIN_ROOT}/skills/shared/external-reviewers.md` for that slot.
 
-For every non-`OK` sketch collector result, compose `$DESIGN_TMPDIR/sketch-collector-<reviewer>.failure.log` with the structured collector block, the full `REVIEWER_FILE` content if present, and the full `${REVIEWER_FILE}.diag` content if present. When `SESSION_ENV_PATH` is non-empty, append that file with `${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh --log "$(dirname "$SESSION_ENV_PATH")/execution-issues.md" --site "design Step 2a.3" --tool "collect-agent-results.sh <tool> <status>" --exit-code <EXIT_CODE-or-1> --category "External Reviewer Issues" --output-file "$failure_log" --redact || true`.
+For every non-`OK` sketch collector result, compose `$DESIGN_TMPDIR/sketch-collector-<reviewer>.failure.log` with the structured collector block, the full `REVIEWER_FILE` content if present, and the full `${REVIEWER_FILE}.diag` content if present. Append that file with `${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh --log "$DESIGN_TMPDIR/execution-issues.md" --site "design Step 2a.3" --tool "collect-agent-results.sh <tool> <status>" --exit-code <EXIT_CODE-or-1> --category "External Reviewer Issues" --output-file "$failure_log" --redact || true`.
 
 After this collection boundary, consult any `${OUTPUT}.dirty-tree` launcher sidecars for launched Cursor/Codex outputs, then run `${CLAUDE_PLUGIN_ROOT}/scripts/check-mid-run-dirty-tree.sh --mode checkpoint`. If a sidecar or checkpoint reports `STATUS=dirty` or `STATUS=unknown`, write `$DESIGN_TMPDIR/dirty-tree-detected.env` with `STATUS`, `STAGE=sketch-collection`, and `RECOVERY_REQUIRED=true`, then fire the dirty-tree recovery `AskUserQuestion`. Use a `$DESIGN_TMPDIR/.dirty-tree-prompted-sketch-collection` flag so one logical boundary prompts once.
 
@@ -439,17 +395,13 @@ Read all sketches (or their Claude fallbacks if an external tool was unavailable
 
    List decisions in priority order: High impact first, then by degree of sketch disagreement (more agents on different sides = higher priority), then by order of appearance in the synthesis. If no sketches diverged (all agents agreed on all points), write exactly `NO_CONTESTED_DECISIONS` as the entire file content.
 
-Write the synthesis to `$DESIGN_TMPDIR/approach-synthesis.txt` so it can be referenced by Step 2b. If `SESSION_ENV_PATH` is empty, also print it under an `## Approach Synthesis` header. If `SESSION_ENV_PATH` is non-empty, print nothing for this save and continue; the parent-visible handoff is the issue-body `larch:plan` block written in Step 5.
+Write the synthesis to `$DESIGN_TMPDIR/approach-synthesis.txt` so it can be referenced by Step 2b. Also print it under an `## Approach Synthesis` header.
 
 ### 2a.5 — Dialectic Resolution of Contested Decisions
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
-  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$SESSION_ENV_PATH" 2>/dev/null || true)
-fi
-export CLAUDE_PLUGIN_ROOT
-SESSION_ENV_PATH="$SESSION_ENV_PATH" LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 2a.5 — dialectic" || true
+LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 2a.5 — dialectic" || true
 ```
 
 Print: `> **🔶 /design 2a.5: dialectic**`
@@ -498,11 +450,7 @@ Print: `> **🔶 /design 2b: full plan**`
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
-  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$SESSION_ENV_PATH" 2>/dev/null || true)
-fi
-export CLAUDE_PLUGIN_ROOT
-SESSION_ENV_PATH="$SESSION_ENV_PATH" LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 2b — plan" || true
+LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 2b — plan" || true
 ```
 
 Before writing any code, create a concrete implementation plan. Research the codebase (read relevant files, grep for patterns, understand existing architecture). See CLAUDE.md for project-specific development references and conventions.
@@ -529,7 +477,7 @@ Produce a plan that includes:
 - **Testing strategy**: What tests will be added or modified.
 - **Diff size estimate**: Estimate the total diff size in changed lines for the planned implementation. Append a final line `diff_lines: <N>` to `$DESIGN_TMPDIR/plan.txt`, where `<N>` is a non-negative integer. This estimate is informational for `/implement` operators and logs (it is not a Step 1 coder-routing trigger); use best judgment, but do not omit the line.
 
-Write the plan to `$DESIGN_TMPDIR/plan.txt` with basename exactly `plan.txt`. If `SESSION_ENV_PATH` is empty, print the plan to the user under a `## Implementation Plan` header so reviewers can see it. If `SESSION_ENV_PATH` is non-empty, print nothing for this save; `/implement` materializes the plan from the GitHub issue body after `/design` completes. The plan is an intermediate deliverable — IMMEDIATELY continue to Step 3 (Plan Review) after saving/printing. Do NOT halt, summarize, or treat the plan as the end of the design.
+Write the plan to `$DESIGN_TMPDIR/plan.txt` with basename exactly `plan.txt`. Print the plan to the user under a `## Implementation Plan` header so reviewers can see it. The plan is an intermediate deliverable — IMMEDIATELY continue to Step 3 (Plan Review) after saving/printing. Do NOT halt, summarize, or treat the plan as the end of the design.
 
 Immediately after saving `plan.txt`, emit the mechanical plan-validation ACTION. This writes `$DESIGN_TMPDIR/diff-lines.txt` atomically and fails closed if the final `diff_lines: <N>` line is missing or malformed:
 
@@ -549,15 +497,7 @@ Print: `> **🔶 /design 3: plan review**`
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
-  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$SESSION_ENV_PATH" 2>/dev/null || true)
-fi
-export CLAUDE_PLUGIN_ROOT
-SESSION_ENV_PATH="$SESSION_ENV_PATH" LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 3 — plan review" || true
-LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$SESSION_ENV_PATH" --key LARCH_TOKEN_SESSION_ID --default "")
-LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$SESSION_ENV_PATH" --key LARCH_CLAUDE_SOURCE_FILE --default "")
-export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
-"${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 1 — design Step 3 plan review" || true
+LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 3 — plan review" || true
 ```
 
 Read `review_budget` from `$DESIGN_TMPDIR/run-params.json`. Valid values are `quick` and `full`; if absent or invalid, derive the fallback from `quick_mode` (`quick` when true, otherwise `full`).
@@ -586,10 +526,6 @@ Pre-render all 10 archetype prompt files (5 Cursor: arch, edge, innovation, prag
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
-  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$SESSION_ENV_PATH" 2>/dev/null || true)
-fi
-export CLAUDE_PLUGIN_ROOT
 for _archetype in arch edge innovation pragmatic requirements; do
   # Focus area enum anchor for CI: code-quality / risk-integration / correctness / architecture / security
   bash "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/render-plan-review-prompt.sh" \
@@ -651,19 +587,17 @@ Parse `ALL_OUTPUT_FILES` and `ALL_OUTPUT_TOOLS` from the waterfall output. Use `
 
 ### Collecting, Voting, Finalize, Track Rejected
 
-Follow `plan-review.md` (loaded via the MANDATORY at the top of Step 3) for: Collecting External Reviewer Results (`collect-agent-results.sh` for all launched external reviewers (up to 10 archetype slots), dedup in-scope and OOS separately), Voting Panel launch-order through `dispatch-plan-voters.sh` + threshold + Competition scoring, writing the ballot file and explicit voter output files, Finalize Plan Review (collect accepted findings into `accepted-plan-findings.md` only — Step 3 does NOT revise `plan.txt`; revision is owned by Step 3.5 Gate B per explicit user choice; write accepted OOS to `$(dirname "$SESSION_ENV_PATH")/oos-accepted-design.md` when `SESSION_ENV_PATH` is non-empty; print non-accepted OOS under `## Out-of-Scope Observations` only when `SESSION_ENV_PATH` is empty), and Track Rejected Plan Review Findings (in-scope only). Accepted OOS Descriptions should include affected repo-relative file paths and line ranges when applicable; `/implement` Step 9a.1 serializes same-file OOS issues unless the exposed ranges are parseable and non-overlapping.
+Follow `plan-review.md` (loaded via the MANDATORY at the top of Step 3) for: Collecting External Reviewer Results (`collect-agent-results.sh` for all launched external reviewers (up to 10 archetype slots), dedup in-scope and OOS separately), Voting Panel launch-order through `dispatch-plan-voters.sh` + threshold + Competition scoring, writing the ballot file and explicit voter output files, Finalize Plan Review (collect accepted findings into `accepted-plan-findings.md` only — Step 3 does NOT revise `plan.txt`; revision is owned by Step 3.5 Gate B per explicit user choice; write accepted OOS to `$DESIGN_TMPDIR/oos-accepted-design.md`; print non-accepted OOS under `## Out-of-Scope Observations`), and Track Rejected Plan Review Findings (in-scope only). Accepted OOS Descriptions should include affected repo-relative file paths and line ranges when applicable; `/implement` Step 9a.1 serializes same-file OOS issues unless the exposed ranges are parseable and non-overlapping.
 
-After `dispatch-plan-voters.sh` returns Voter 2/3 output paths and the local Voter 1 ballot path is available, emit the tally ACTION with explicit files. Use the canonical ballot path `$DESIGN_TMPDIR/ballot.txt` and the voter output paths emitted by `dispatch-plan-voters.sh` (`VOTER_1_PATH` for the Claude Voter 1 output, `VOTER_2_PATH`, `VOTER_3_PATH`). This script writes `$DESIGN_TMPDIR/voting-tally.md`, `$DESIGN_TMPDIR/accepted-plan-findings.md`, `$DESIGN_TMPDIR/rejected-findings.md`, `$DESIGN_TMPDIR/oos.md`, and `$DESIGN_TMPDIR/oos-accepted-design.md` using the design-local parser for `### FINDING_N:` and `### OOS_N:` blocks. When `SESSION_ENV_PATH` is non-empty, accepted non-security OOS is also written to `$(dirname "$SESSION_ENV_PATH")/oos-accepted-design.md`:
+After `dispatch-plan-voters.sh` returns Voter 2/3 output paths and the local Voter 1 ballot path is available, emit the tally ACTION with explicit files. Use the canonical ballot path `$DESIGN_TMPDIR/ballot.txt` and the voter output paths emitted by `dispatch-plan-voters.sh` (`VOTER_1_PATH` for the Claude Voter 1 output, `VOTER_2_PATH`, `VOTER_3_PATH`). This script writes `$DESIGN_TMPDIR/voting-tally.md`, `$DESIGN_TMPDIR/accepted-plan-findings.md`, `$DESIGN_TMPDIR/rejected-findings.md`, `$DESIGN_TMPDIR/oos.md`, and `$DESIGN_TMPDIR/oos-accepted-design.md` using the design-local parser for `### FINDING_N:` and `### OOS_N:` blocks.
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-SESSION_ENV_PATH="$SESSION_ENV_PATH" \
-printf 'ACTION=TALLY ARGS=--ballot-file %s --voter-files %s %s %s --session-env-path %s\n' \
+printf 'ACTION=TALLY ARGS=--ballot-file %s --voter-files %s %s %s\n' \
   "$DESIGN_TMPDIR/ballot.txt" \
   "$VOTER_1_PATH" \
   "$VOTER_2_PATH" \
   "$VOTER_3_PATH" \
-  "$SESSION_ENV_PATH" \
   | "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-driver.sh" --design-tmpdir "$DESIGN_TMPDIR"
 ```
 
@@ -681,15 +615,7 @@ If **all reviewers** report no in-scope issues and no out-of-scope observations,
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
-  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$SESSION_ENV_PATH" 2>/dev/null || true)
-fi
-export CLAUDE_PLUGIN_ROOT
-SESSION_ENV_PATH="$SESSION_ENV_PATH" LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 3.5 — gate B" || true
-LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$SESSION_ENV_PATH" --key LARCH_TOKEN_SESSION_ID --default "")
-LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$SESSION_ENV_PATH" --key LARCH_CLAUDE_SOURCE_FILE --default "")
-export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
-"${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 1 — design Step 3.5 gate B" || true
+LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 3.5 — gate B" || true
 ```
 
 Print: `> **🔶 /design 3.5: gate B**`
@@ -704,15 +630,7 @@ If Round 2-style follow-up questions need to be asked (decisions emerging from t
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
-  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$SESSION_ENV_PATH" 2>/dev/null || true)
-fi
-export CLAUDE_PLUGIN_ROOT
-SESSION_ENV_PATH="$SESSION_ENV_PATH" LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 3b — arch diagram" || true
-LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$SESSION_ENV_PATH" --key LARCH_TOKEN_SESSION_ID --default "")
-LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$SESSION_ENV_PATH" --key LARCH_CLAUDE_SOURCE_FILE --default "")
-export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE
-"${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 1 — design Step 3b arch diagram" || true
+LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 3b — arch diagram" || true
 ```
 
 Print: `> **🔶 /design 3b: arch diagram**`
@@ -721,7 +639,7 @@ Print: `> **🔶 /design 3b: arch diagram**`
 
 Before generating the diagram, classify the plan type by reading `$DESIGN_TMPDIR/plan.txt`. The plan is **non-architectural** when ALL files to be modified are exclusively: documentation files (`.md`, `CHANGELOG`, `docs/**`), configuration files (`.json`, `.yaml`, `.yml`, `.tsv`), or plain text (`.txt`) — with no new behavioral components, public APIs, or cross-skill contracts introduced. Apply a **conservative classifier** — SKILL.md files, `.sh` scripts, and `.py` scripts count as potentially architectural regardless of change size; when uncertain, generate the diagram rather than skip.
 
-If the plan is non-architectural: do NOT write `$DESIGN_TMPDIR/architecture-diagram.md`. When `SESSION_ENV_PATH` is empty, print `⏩ 3b: arch diagram status=skip reason=no-architectural-change elapsed=<elapsed>`. When `SESSION_ENV_PATH` is non-empty, print nothing. Then IMMEDIATELY continue to Step 4. Leaving `architecture-diagram.md` absent is valid; Step 5's composed plan omits diagram prose when no diagram file exists.
+If the plan is non-architectural: do NOT write `$DESIGN_TMPDIR/architecture-diagram.md`. Print `⏩ 3b: arch diagram status=skip reason=no-architectural-change elapsed=<elapsed>`. Then IMMEDIATELY continue to Step 4. Leaving `architecture-diagram.md` absent is valid; Step 5's composed plan omits diagram prose when no diagram file exists.
 
 **Otherwise** (plan is architectural): generate a mermaid Architecture Diagram that represents the high-level system/component structure of the feature based on the finalized implementation plan (revised or original). The diagram should focus on **modules, boundaries, and their relationships** — not runtime behavior or code flow.
 
@@ -733,17 +651,13 @@ Write the diagram to `$DESIGN_TMPDIR/architecture-diagram.candidate.md` first. T
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
-  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$SESSION_ENV_PATH" 2>/dev/null || true)
-fi
-export CLAUDE_PLUGIN_ROOT
 "${CLAUDE_PLUGIN_ROOT}/scripts/sanitize-mermaid-fragment.sh" \
   --input "$DESIGN_TMPDIR/architecture-diagram.candidate.md" \
   --from-md \
   --warnings-step "3b"
 ```
 
-On `STATUS=ok`, rename the candidate to `$DESIGN_TMPDIR/architecture-diagram.md`. If `SESSION_ENV_PATH` is empty, also print the promoted diagram under a `## Architecture Diagram` header with a mermaid code fence:
+On `STATUS=ok`, rename the candidate to `$DESIGN_TMPDIR/architecture-diagram.md`. Also print the promoted diagram under a `## Architecture Diagram` header with a mermaid code fence:
 
 ```
 ## Architecture Diagram
@@ -753,11 +667,11 @@ On `STATUS=ok`, rename the candidate to `$DESIGN_TMPDIR/architecture-diagram.md`
 ```
 ```
 
-**If diagram generation and sanitizer validation succeed**, continue to Step 4; when `SESSION_ENV_PATH` is non-empty, print nothing (nested verbosity contract).
+**If diagram generation and sanitizer validation succeed**, continue to Step 4.
 
-**If the sanitizer returns `STATUS=rejected` or exits 2**, do NOT promote the candidate. Delete `$DESIGN_TMPDIR/architecture-diagram.candidate.md`. When `SESSION_ENV_PATH` is empty, print `**⚠ 3b: architecture diagram — rejected by mermaid sanitizer (REASON_TOKEN=<token>); proceeding without diagram.**`. When `SESSION_ENV_PATH` is non-empty, emit no inline warning; capture the sanitizer's full stdout/stderr to `$DESIGN_TMPDIR/architecture-diagram-sanitizer.failure.log` and append it under `### Warnings` in `$(dirname "$SESSION_ENV_PATH")/execution-issues.md` via `${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh --site "design Step 3b" --tool "sanitize-mermaid-fragment.sh architecture" --exit-code <exit-code-or-2> --category Warnings --output-file "$DESIGN_TMPDIR/architecture-diagram-sanitizer.failure.log" --redact || true`. Then continue to Step 4.
+**If the sanitizer returns `STATUS=rejected` or exits 2**, do NOT promote the candidate. Delete `$DESIGN_TMPDIR/architecture-diagram.candidate.md`. Print `**⚠ 3b: architecture diagram — rejected by mermaid sanitizer (REASON_TOKEN=<token>); proceeding without diagram.**`. Capture the sanitizer's full stdout/stderr to `$DESIGN_TMPDIR/architecture-diagram-sanitizer.failure.log` and append it under `### Warnings` in `$DESIGN_TMPDIR/execution-issues.md` via `${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh --site "design Step 3b" --tool "sanitize-mermaid-fragment.sh architecture" --exit-code <exit-code-or-2> --category Warnings --output-file "$DESIGN_TMPDIR/architecture-diagram-sanitizer.failure.log" --redact || true`. Then continue to Step 4.
 
-**If diagram generation fails** (e.g., the feature is too abstract to diagram meaningfully), print `**⚠ 3b: arch diagram — generation failed, proceeding without diagram (<elapsed>)**` only when `SESSION_ENV_PATH` is empty. When `SESSION_ENV_PATH` is non-empty, emit no inline warning and append the full generation failure capture to `$(dirname "$SESSION_ENV_PATH")/execution-issues.md` with `append-tool-failure.sh` under `Warnings`. Then IMMEDIATELY continue to Step 4.
+**If diagram generation fails** (e.g., the feature is too abstract to diagram meaningfully), print `**⚠ 3b: arch diagram — generation failed, proceeding without diagram (<elapsed>)**` and append the full generation failure capture to `$DESIGN_TMPDIR/execution-issues.md` with `append-tool-failure.sh` under `Warnings`. Then IMMEDIATELY continue to Step 4.
 
 > **Continue to Step 4 IMMEDIATELY.** The architecture diagram branch is not terminal — rejected-findings reporting and cleanup still must run.
 
@@ -767,11 +681,7 @@ Print: `> **🔶 /design 4: rejected findings**`
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
-  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$SESSION_ENV_PATH" 2>/dev/null || true)
-fi
-export CLAUDE_PLUGIN_ROOT
-SESSION_ENV_PATH="$SESSION_ENV_PATH" LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 4 — rejected findings" || true
+LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 4 — rejected findings" || true
 ```
 
 Print any rejected plan review findings:
@@ -784,9 +694,8 @@ Print any rejected plan review findings:
    ```
    If this exits non-zero, repair the missing artifact before Step 5.
 2. Check if `$DESIGN_TMPDIR/rejected-findings.md` exists and is non-empty.
-3. If it has content and `SESSION_ENV_PATH` is empty, print it under a `## Unimplemented Plan Review Suggestions` header, formatted clearly with the reviewer name, the suggestion, and the reason for each.
-4. If it has content and `SESSION_ENV_PATH` is non-empty, print nothing (nested verbosity contract).
-5. If `$DESIGN_TMPDIR/rejected-findings.md` is empty (it always exists after item 1), continue.
+3. If it has content, print it under a `## Unimplemented Plan Review Suggestions` header, formatted clearly with the reviewer name, the suggestion, and the reason for each.
+4. If `$DESIGN_TMPDIR/rejected-findings.md` is empty (it always exists after item 1), continue.
 
 After printing rejected findings (or the "all implemented" message), IMMEDIATELY continue to Step 4b — do NOT halt or treat this as the end of the design.
 
@@ -796,11 +705,7 @@ After printing rejected findings (or the "all implemented" message), IMMEDIATELY
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
-  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$SESSION_ENV_PATH" 2>/dev/null || true)
-fi
-export CLAUDE_PLUGIN_ROOT
-SESSION_ENV_PATH="$SESSION_ENV_PATH" LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 4b — gate C" || true
+LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 4b — gate C" || true
 ```
 
 Print: `> **🔶 /design 4b: gate C**`
@@ -817,11 +722,7 @@ Print: `> **🔶 /design 5: cleanup**`
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
-  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$SESSION_ENV_PATH" 2>/dev/null || true)
-fi
-export CLAUDE_PLUGIN_ROOT
-SESSION_ENV_PATH="$SESSION_ENV_PATH" LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 5 — cleanup" || true
+LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 5 — cleanup" || true
 ```
 
 ### 5a — Update Reviewer Presence Status
@@ -835,7 +736,7 @@ Step 4b Gate C already returned **Approve**. Proceed without an additional promp
 3. Run `"${CLAUDE_PLUGIN_ROOT}/scripts/plan-block-write.sh" --issue "$ISSUE_NUMBER" --content-file "$DESIGN_TMPDIR/composed-plan.redacted.md"`.
 4. If step 3 fails, first run the **Terminal cost line** fenced bash block from Step 0b (`### Terminal cost line`), then print `**⚠ 5: plan-block-write failed — preserving $DESIGN_TMPDIR**`, set `PLAN_WRITE_OK=false`, and skip steps **5–7** (do not resolve `REPO`, run `tracking-issue-write.sh` rename, or `design-log-publish.sh`) **and skip Step 5c cleanup** so `$DESIGN_TMPDIR` is preserved.
 5. If step 3 succeeds, set `PLAN_WRITE_OK=true`, then resolve `REPO` for explicit `gh --repo` threading when the hub default might not match the consumer checkout (for example nested `/implement` shells without a fresh `session-setup.sh` repo probe): prefer `"${CLAUDE_PLUGIN_ROOT}/scripts/resolve-repo.sh"` from the consumer repo working tree; on failure fall back to `gh repo view --json nameWithOwner --jq '.nameWithOwner'`; leave `REPO` empty when both fail so helpers use the hub default.
-6. If step 3 succeeds, when `SESSION_ID` is non-empty, run `"${CLAUDE_PLUGIN_ROOT}/scripts/design-log-publish.sh" --design-tmpdir "$DESIGN_TMPDIR" --run-id "$SESSION_ID" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}` and parse `PUBLISH_OK` from stdout. When `SESSION_ID` is empty, print `printf '\n**⚠ /design: SESSION_ID missing; skipping design log publish**\n'` (use `printf`, not `print`). On `PUBLISH_OK=false`, capture stderr to `$DESIGN_TMPDIR/design-log-publish.failure.log` and append under `Warnings` via `"${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh"` with `--log "$(dirname "$SESSION_ENV_PATH")/execution-issues.md"` when `SESSION_ENV_PATH` is non-empty, or `--log "$DESIGN_TMPDIR/execution-issues.md"` when `SESSION_ENV_PATH` is empty; continue (do not roll back the GitHub plan write).
+6. If step 3 succeeds, when `SESSION_ID` is non-empty, run `"${CLAUDE_PLUGIN_ROOT}/scripts/design-log-publish.sh" --design-tmpdir "$DESIGN_TMPDIR" --run-id "$SESSION_ID" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}` and parse `PUBLISH_OK` from stdout. When `SESSION_ID` is empty, print `printf '\n**⚠ /design: SESSION_ID missing; skipping design log publish**\n'` (use `printf`, not `print`). On `PUBLISH_OK=false`, capture stderr to `$DESIGN_TMPDIR/design-log-publish.failure.log` and append under `Warnings` via `"${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh"` with `--log "$DESIGN_TMPDIR/execution-issues.md"`; continue (do not roll back the GitHub plan write).
 7. If step 3 succeeds **and** `SESSION_ID` is non-empty **and** `PUBLISH_OK=true` after the Step 6 publish attempt, run `"${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh" rename --issue "$ISSUE_NUMBER" --state designed ${REPO:+--repo "$REPO"}` (treat `RENAMED=false` as idempotent success). When `SESSION_ID` is empty, **skip** this rename so `[DESIGNED]` does not imply `larch-logs/design/<RUN_ID>/` materialization without a run id. When `SESSION_ID` was non-empty and `PUBLISH_OK=false`, **skip** this rename so the issue title does not read `[DESIGNED]` while the default branch lacks `larch-logs/design/<RUN_ID>/`; operator retries publish from the preserved `$DESIGN_TMPDIR` or reconciles manually.
 
 **Repeat any external reviewer warnings** from earlier steps (Step 0 reviewer-availability checks via `session-setup.sh`, Step 2a sketch-phase failures/timeouts, Step 3 runtime failures, or Step 3b diagram generation failure) so they are visible at the end of the workflow. For example:
@@ -858,10 +759,6 @@ When `PLAN_WRITE_OK=true`, emit exactly one terminal machine footer as the **las
 Remove the session temp directory and all files within it. Run `cleanup-tmpdir.sh` **only after** the machine footer when `PLAN_WRITE_OK=true`, and only when `STANDALONE_HEAVY_FAILED` is unset or `false` **and** either `SESSION_ID` is empty (no design log publish was attempted in Step 5b), or `PUBLISH_OK=true` after a Step 5b publish when `SESSION_ID` was non-empty; otherwise skip cleanup so `$DESIGN_TMPDIR` is preserved for inspection, manual `design-log-publish.sh` retry, or redaction diagnostics. When `PLAN_WRITE_OK=false` (plan-block-write failure), **skip** this cleanup (Step 5b item 4). When publish failed after a successful plan write, point operators at `$DESIGN_TMPDIR/design-log-publish.failure.log` (and `$DESIGN_TMPDIR/execution-issues.md` when populated) plus the recovery branch notes from `design-log-publish.sh` stderr/stdout.
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
-  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$SESSION_ENV_PATH" 2>/dev/null || true)
-fi
-export CLAUDE_PLUGIN_ROOT
 ${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-tmpdir.sh --dir "$DESIGN_TMPDIR"
 ```
 

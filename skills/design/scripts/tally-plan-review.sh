@@ -14,11 +14,10 @@ source "$PLUGIN_ROOT/scripts/lib-vote-tally.sh"
 DESIGN_TMPDIR=""
 BALLOT_FILE=""
 VOTER_FILES=()
-SESSION_ENV_PATH="${SESSION_ENV_PATH:-}"
 
 usage() {
     while IFS= read -r line; do larch_err "$line"; done <<'USAGE'
-usage: tally-plan-review.sh --ballot-file FILE [--voter-files FILE...] --design-tmpdir DIR [--session-env-path FILE]
+usage: tally-plan-review.sh --ballot-file FILE [--voter-files FILE...] --design-tmpdir DIR
 USAGE
 }
 
@@ -38,10 +37,6 @@ while [[ $# -gt 0 ]]; do
                 VOTER_FILES+=("$1")
                 shift
             done
-            ;;
-        --session-env-path)
-            SESSION_ENV_PATH="${2:?--session-env-path requires a value}"
-            shift 2
             ;;
         -h|--help)
             usage
@@ -92,13 +87,6 @@ accepted_plan="$DESIGN_TMPDIR/accepted-plan-findings.md"
 rejected_plan="$DESIGN_TMPDIR/rejected-findings.md"
 oos_file="$DESIGN_TMPDIR/oos.md"
 oos_accepted_local="$DESIGN_TMPDIR/oos-accepted-design.md"
-# When nested under /implement, write accepted non-security OOS to the parent
-# tmpdir so ship-pr.sh / Step 9a.1 finds it at $IMPLEMENT_TMPDIR/oos-accepted-design.md.
-if [[ -n "$SESSION_ENV_PATH" ]]; then
-    oos_accepted_out="$(dirname "$SESSION_ENV_PATH")/oos-accepted-design.md"
-else
-    oos_accepted_out="$oos_accepted_local"
-fi
 tally_file="$DESIGN_TMPDIR/voting-tally.md"
 accepted_count=0
 rejected_count=0
@@ -106,8 +94,6 @@ rejected_count=0
 : > "$rejected_plan"
 : > "$oos_file"
 : > "$oos_accepted_local"
-# Initialize the parent-dir output (may differ from local).
-[[ "$oos_accepted_out" != "$oos_accepted_local" ]] && : > "$oos_accepted_out"
 
 score_rows="$WORKDIR/score-rows.tsv"
 : > "$score_rows"
@@ -116,78 +102,9 @@ score_rows="$WORKDIR/score-rows.tsv"
 # per-finding non-neutral response count.
 eligible_count="${#VOTER_FILES[@]}"
 
-# vote_for_id, reviewer_for_block, is_security_block, classify_result are
-# sourced from $PLUGIN_ROOT/scripts/lib-vote-tally.sh above.
-
-flush_plan_review_batch() {
-    [[ -n "$SESSION_ENV_PATH" ]] || return 0
-    [[ -r "$SESSION_ENV_PATH" ]] || return 0
-
-    local write_tally="$PLUGIN_ROOT/scripts/write-tally.sh"
-    local read_session_env="$PLUGIN_ROOT/scripts/read-session-env-key.sh"
-    local append_issue="$PLUGIN_ROOT/scripts/append-execution-issue.sh"
-    [[ -x "$write_tally" ]] || return 0
-    [[ -x "$read_session_env" ]] || return 0
-
-    local impl_tmpdir=""
-    local workflow_path=""
-    local tally_mode=""
-    impl_tmpdir=$("$read_session_env" --file "$SESSION_ENV_PATH" --key PREV_IMPLEMENT_TMPDIR --default "" 2>/dev/null) || impl_tmpdir=""
-    [[ -n "$impl_tmpdir" && -d "$impl_tmpdir" && ! -L "$impl_tmpdir" ]] || return 0
-    workflow_path=$("$read_session_env" --file "$SESSION_ENV_PATH" --key POST_PLAN_WORKFLOW_PATH --default "" 2>/dev/null) || workflow_path=""
-
-    local run_id=""
-    if [[ -r "$impl_tmpdir/session-id" && ! -L "$impl_tmpdir/session-id" ]]; then
-        run_id=$(tr -d '\r\n' < "$impl_tmpdir/session-id")
-    fi
-    [[ -n "$run_id" ]] || return 0
-
-    case "$workflow_path" in
-        SIMPLE) tally_mode="simple" ;;
-        HARD) tally_mode="hard" ;;
-        *) return 0 ;;
-    esac
-
-    local body_file="$DESIGN_TMPDIR/plan-review-tally-body.md"
-    {
-        cat "$tally_file"
-        if [[ -s "$rejected_plan" ]]; then
-            printf '\n## Rejected Plan Review Findings\n\n'
-            cat "$rejected_plan"
-            printf '\n'
-        fi
-    } > "$body_file" || return 0
-
-    local tally_out="" tally_rc=0
-    set +e
-    tally_out=$("$write_tally" \
-        --log-root "$impl_tmpdir/larch-logs" \
-        --skill implement \
-        --run-id "$run_id" \
-        --phase plan-review \
-        --mode "$tally_mode" \
-        --rounds 1 \
-        --accepted "$accepted_count" \
-        --rejected "$rejected_count" \
-        --body-file "$body_file" 2>&1)
-    tally_rc=$?
-    set -e
-    if [[ "$tally_rc" -ne 0 ]]; then
-        emit_breadcrumb "⚠ tally-plan-review: failed to flush plan-review-tally batch"
-        [[ -n "$tally_out" ]] && larch_err "$tally_out"
-        if [[ -x "$append_issue" ]]; then
-            "$append_issue" \
-                --log "$impl_tmpdir/execution-issues.md" \
-                --category Warnings \
-                --entry "Step 1 — plan-review-tally batch flush failed (exit $tally_rc). ${tally_out:-No diagnostic output.}" >/dev/null 2>&1 || true
-        fi
-    fi
-}
-
 if (( eligible_count == 0 )); then
     printf '# Plan Review Voting Tally\n\n' > "$tally_file"
     printf '**⚠ Degraded plan-review panel: 0 judges available. Panel tier: main-agent-required.**\n\n' >> "$tally_file"
-    flush_plan_review_batch
     emit_kv TALLY_PLAN_REVIEW_STATUS main-agent-vote-required
     emit_kv VOTING_TALLY_FILE "$tally_file"
     exit 0
@@ -255,10 +172,6 @@ fi
                 if [[ "$result" == "accepted" ]]; then
                     cat "$block" >> "$oos_accepted_local"
                     printf '\n' >> "$oos_accepted_local"
-                    if [[ "$oos_accepted_out" != "$oos_accepted_local" ]]; then
-                        cat "$block" >> "$oos_accepted_out"
-                        printf '\n' >> "$oos_accepted_out"
-                    fi
                 fi
             fi
         fi
@@ -297,8 +210,6 @@ fi
       }
     ' "$score_rows" | sort
 } > "$tally_file"
-
-flush_plan_review_batch
 
 emit_kv TALLY_PLAN_REVIEW_STATUS ok
 emit_kv VOTING_TALLY_FILE "$tally_file"

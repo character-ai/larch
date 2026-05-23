@@ -154,7 +154,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1860 \
   <each launched external-judge output path>
 ```
 
-`` ensures the judge phase NEVER updates `${SESSION_ENV_PATH}session-env`. Block on this call (do NOT use `run_in_background`).
+Blocking `collect-agent-results.sh` ensures the judge phase never mutates unrelated session-env files. Block on this call (do NOT use `run_in_background`).
 
 For each external judge, parse its `STATUS` and `REVIEWER_FILE`. An external judge with `STATUS != OK` is ineligible for every decision on the ballot. For inline Agent-tool judges (primary Claude subagent + any Claude replacements), parse votes directly from the Agent return text; inline judges are always eligible.
 

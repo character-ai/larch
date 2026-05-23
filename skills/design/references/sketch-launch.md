@@ -14,11 +14,11 @@
 
 **Critical sequencing**: For `sketch_budget=2` or `sketch_budget=4`, you MUST launch all external sketch Bash tool calls (with `run_in_background: true`) AND any Claude subagent fallback sketches in a single message. Issue Cursor slots first (slowest), then Codex slots, then any Claude subagent fallbacks. For `sketch_budget=0`, launch nothing and do not call `collect-agent-results.sh`.
 
-**Launch failure logging**: For every `launch-review.sh` Bash block below, capture launcher stdout/stderr to `$DESIGN_TMPDIR/<slot>-launch.failure.log`. If the Bash tool reports a non-zero exit, append that capture verbatim to `$(dirname "$SESSION_ENV_PATH")/execution-issues.md` when `SESSION_ENV_PATH` is non-empty:
+**Launch failure logging**: For every `launch-review.sh` Bash block below, capture launcher stdout/stderr to `$DESIGN_TMPDIR/<slot>-launch.failure.log`. If the Bash tool reports a non-zero exit, append that capture verbatim to `$DESIGN_TMPDIR/execution-issues.md`:
 
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh \
-  --log "$(dirname "$SESSION_ENV_PATH")/execution-issues.md" \
+  --log "$DESIGN_TMPDIR/execution-issues.md" \
   --site "design Step 2a.2" \
   --tool "launch-review.sh <tool> <slot>" \
   --exit-code "<exit-code>" \
