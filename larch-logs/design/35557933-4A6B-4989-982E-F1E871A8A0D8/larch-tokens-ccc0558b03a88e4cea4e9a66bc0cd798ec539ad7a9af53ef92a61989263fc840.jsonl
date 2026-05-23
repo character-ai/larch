@@ -1,0 +1,16 @@
+{"type":"mark","step":"design Step 0 — session setup","ts":"2026-05-23T17:40:35Z"}
+{"type":"vendor","vendor":"cursor","input":31026,"output":3483,"cache_read":85760,"cache_create":0,"total":120269,"raw":"cursor_review","ts":"2026-05-23T17:55:33Z"}
+{"type":"vendor","vendor":"codex","input":0,"output":0,"cache_read":0,"cache_create":0,"total":72672,"raw":"codex_review","ts":"2026-05-23T17:55:56Z"}
+{"type":"vendor","vendor":"cursor","input":46150,"output":7725,"cache_read":672512,"cache_create":0,"total":726387,"raw":"cursor_review","ts":"2026-05-23T18:02:57Z"}
+{"type":"vendor","vendor":"cursor","input":41554,"output":7112,"cache_read":685824,"cache_create":0,"total":734490,"raw":"cursor_review","ts":"2026-05-23T18:02:58Z"}
+{"type":"vendor","vendor":"cursor","input":42859,"output":8718,"cache_read":389632,"cache_create":0,"total":441209,"raw":"cursor_review","ts":"2026-05-23T18:02:59Z"}
+{"type":"vendor","vendor":"cursor","input":44337,"output":8716,"cache_read":880640,"cache_create":0,"total":933693,"raw":"cursor_review","ts":"2026-05-23T18:03:00Z"}
+{"type":"vendor","vendor":"cursor","input":50649,"output":9306,"cache_read":1093632,"cache_create":0,"total":1153587,"raw":"cursor_review","ts":"2026-05-23T18:03:08Z"}
+{"type":"vendor","vendor":"codex","input":0,"output":0,"cache_read":0,"cache_create":0,"total":88815,"raw":"codex_review","ts":"2026-05-23T18:03:19Z"}
+{"type":"vendor","vendor":"codex","input":0,"output":0,"cache_read":0,"cache_create":0,"total":113760,"raw":"codex_review","ts":"2026-05-23T18:03:28Z"}
+{"type":"vendor","vendor":"codex","input":0,"output":0,"cache_read":0,"cache_create":0,"total":94251,"raw":"codex_review","ts":"2026-05-23T18:03:28Z"}
+{"type":"vendor","vendor":"codex","input":0,"output":0,"cache_read":0,"cache_create":0,"total":131293,"raw":"codex_review","ts":"2026-05-23T18:03:30Z"}
+{"type":"vendor","vendor":"codex","input":0,"output":0,"cache_read":0,"cache_create":0,"total":140610,"raw":"codex_review","ts":"2026-05-23T18:04:27Z"}
+{"type":"vendor","vendor":"cursor","input":38389,"output":8923,"cache_read":529152,"cache_create":0,"total":576464,"raw":"cursor_review","ts":"2026-05-23T18:06:33Z"}
+{"type":"vendor","vendor":"cursor","input":13374,"output":3275,"cache_read":101120,"cache_create":0,"total":117769,"raw":"cursor_review","ts":"2026-05-23T18:13:18Z"}
+{"type":"vendor","vendor":"codex","input":0,"output":0,"cache_read":0,"cache_create":0,"total":81397,"raw":"codex_review","ts":"2026-05-23T18:14:08Z"}

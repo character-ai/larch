@@ -1,0 +1,112 @@
+# Plan — Fixes #2641: Foreground-by-default for blocking script calls
+
+## Approach
+
+Treat this as a **documentation + lint** change, not an orchestration refactor. The skill prose already contains scattered "Do NOT set `run_in_background: true`" warnings at specific sites; this work establishes the single normative rule, makes the per-site markers uniform, adds a CI-enforced lint, and revises a small set of canonical operator-facing docs so future drift fails fast.
+
+Execution sequence:
+1. Establish the rule (BASH_AUTHORING.md §4 + AGENTS.md cross-reference + `docs/linting.md` row + `.pre-commit-config.yaml` header reconciliation).
+2. Build the linter (`scripts/lint-foreground-markers.sh` + sibling `.md` + harness + harness sibling `.md` + Makefile target + `test-harnesses-N` shard wiring + `agent-lint.toml` exclusion + pre-commit local hook entry).
+3. Run the linter against the current tree, capture the full list of failing sites (the lint output IS the authoritative checklist), and apply canonical markers at each. Existing bespoke ⚠ banners are preserved; the canonical leader is added as the first paragraph line (Decision 1, leading-line match).
+4. Verify `make lint`, `make test-harnesses-${shard}` for the chosen shard, `make lint-only` (pre-commit hooks), and Family A regression spot-check all pass.
+
+## Canonical marker literals (pinned byte-for-byte; FINDING_14)
+
+**Banner** (must appear as the leading prose line of a paragraph within the 20 markdown lines IMMEDIATELY BEFORE the opening fence; strip `> ` blockquote prefix before match):
+
+```
+**⚠ Foreground required — do NOT set `run_in_background: true`.**
+```
+
+**Inline comment** (must appear on at least one of the 5 source lines IMMEDIATELY BEFORE the line containing the denylisted basename token, INSIDE the same fence):
+
+```
+# Foreground required: see BASH_AUTHORING.md §4
+```
+
+Linter regex matches the banner phrase verbatim after stripping a leading `> ` (one-level blockquote prefix); no other normalization. Matches the comment via a Bash 3.2-compatible substring scan that requires the literal `# Foreground required: see BASH_AUTHORING.md §4` on a comment line (`^#` after leading whitespace) preceding the basename anchor.
+
+## Detection algorithm (FINDING_3, FINDING_5, FINDING_15)
+
+For each `.md` file in scope:
+
+1. Walk markdown line-by-line. Track fenced shell blocks: enter on a line matching `^```\s*(bash|sh|shell)\s*$`; exit on a closing `^```\s*$`. Track nesting depth = 0 (no nested fences in markdown; the closing fence at depth 0 ends the block).
+2. Within each fenced block, identify **invocation anchor lines** — non-comment lines (`^\s*[^#\s]`) whose textual content contains any denylisted basename token via the following match positions (matched as **whole-path tokens**: the basename appears either as the leading shell word, after a path prefix `${CLAUDE_PLUGIN_ROOT}/scripts/`, `${CLAUDE_PLUGIN_ROOT}/skills/*/scripts/`, a quoted variant, or inside a `$(...)` / `\`...\`` command substitution):
+   - Leading shell word: `^\s*(bash\s+)?(["']?)(\S*\/)?BASENAME\b`
+   - Assignment-wrapped command substitution: `=\$\(["']?(\S*\/)?BASENAME\b`
+   - Env-prefixed invocation: `^\s*(\w+=\S+\s+)+(bash\s+)?(["']?)(\S*\/)?BASENAME\b`
+   - `if`/`while` test: `\b(if|while|until|elif)\s+(["']?)(\S*\/)?BASENAME\b`
+   - Quoted path expansion: `"\$\{?CLAUDE_PLUGIN_ROOT\}?/\S*\/BASENAME\b`
+   The match operates on the full **line text** (not byte position), so a wrapped invocation with `\` continuations matches on the line that physically contains the basename token; continuation lines without the token are not anchors.
+3. For each invocation anchor line, assert BOTH:
+   - **Banner**: the canonical banner phrase appears on at least one of the 20 markdown lines IMMEDIATELY BEFORE the opening fence (one-sided, before-only; `> ` blockquote prefix stripped before match).
+   - **Comment**: the canonical inline comment appears on at least one of the 5 source lines IMMEDIATELY BEFORE the anchor line (one-sided, before-only; inside the same fence; comment lines `^\s*#` only).
+4. On any failure, emit `FILE:ANCHOR_LINE: missing <banner|comment> for <BASENAME>` to stdout and increment a violation counter. Exit non-zero (1) when violations > 0; exit 0 when no violations.
+
+**Parse-only safety (FINDING_16)**: extraction is string-based (`awk` / `while IFS= read -r`); the linter NEVER `eval`s, `source`s, `bash -c`s, or otherwise executes fence content. The script has an explicit code comment near the fence-parse loop stating this invariant. A harness fixture contains a fence with a deliberate side-effecting command (e.g., `: > /tmp/foreground-marker-poison.$$`) and asserts the file does not exist after the lint run.
+
+## Files to modify / create
+
+### Created
+- `scripts/lint-foreground-markers.sh` — the linter. Walks `skills/**/SKILL.md`, `skills/**/references/*.md`, `skills/shared/*.md`, `.claude/skills/*/SKILL.md`, `.claude/rules/*.md` (the `skills/shared/*.md` glob is the FINDING_6 fix). Implements the detection algorithm above. Bash 3.2-portable (newline-delimited temp files, `while IFS= read -r ...`, no associative arrays / namerefs / `mapfile`). Denylist of basenames lives at the top of the script as a newline-delimited heredoc literal (single source of truth). Exit codes: 0 = pass, 1 = violations, 2 = usage / internal error. Follows `scripts/lint-bash32.sh` invocation shape (`--root PATH` optional).
+- `scripts/lint-foreground-markers.md` — sibling contract per `.claude/rules/script-md-siblings.md`. Documents: purpose, primary callers (Makefile `lint-foreground` target + pre-commit local hook + `test-harnesses-N` shard), denylist as source-of-truth, fence-detection algorithm (mirroring the section above byte-for-byte), banner window (20 lines immediately BEFORE fence), comment window (5 source lines immediately BEFORE invocation INSIDE fence), parse-only safety invariant, multi-line `\`-continued invocation anchor rule (FINDING_15: anchor on basename line, not whole block), exit codes, regression harness sibling.
+- `scripts/test-lint-foreground-markers.sh` — harness. Fixtures cover: (1) positive baseline (banner + comment + valid invocation); (2) missing banner; (3) missing comment; (4) multi-Family-B fence (one banner + per-anchor comment); (5) Family A basename in fence — no markers required, passes; (6) prose-only mention outside fence — not flagged; (7) indented fence; (8) heredoc inside fence; (9) commented-out invocation; (10) bespoke ⚠ paragraph with canonical leading line + trailing context; (11) command-substitution assignment `_var=$("…/dispatch-with-waterfall.sh" ...)` — REQUIRES markers; (12) env-prefixed invocation `LARCH_X=1 ship-pr.sh ...` — REQUIRES markers; (13) `if foo.sh; then` form — REQUIRES markers; (14) blockquoted banner (`> **⚠ Foreground required — do NOT set ...**`) above a fence — passes after `> ` strip; (15) multi-line `\`-continued invocation — comment must be immediately above basename line, not above first continuation; (16) parse-only safety — fixture fence with side-effecting command, asserts no execution.
+- `scripts/test-lint-foreground-markers.md` — sibling stub pointing at the harness.
+
+### Modified
+- `BASH_AUTHORING.md` — append §4 "Foreground Default for Blocking Script Calls". Body: the rule, the WHY (real-time visibility of `lib-quiet.sh` FD-3 breadcrumbs and FD 1/2 output during blocking calls; turn-boundary safety per `skills/implement/SKILL.md` NEVER #16 / issue #2454), the exception list (Family A parallel agent launches awaited by a single foreground collector; scripts explicitly designed for `Monitor`-based tailing). Includes worked examples for both the canonical banner shape and the inline comment shape, with one bespoke-banner example showing how the canonical leader sits atop existing prose.
+- `AGENTS.md` — add a one-line "Conventions" entry near the existing `ScheduleWakeup` / "Don't spawn a Monitor or Bash `run_in_background` polling loop" rules, pointing at BASH_AUTHORING.md §4.
+- `docs/linting.md` — add a row for `lint-foreground` / `test-lint-foreground-markers` mirroring the `lint-bash32` row, clarifying CI enforcement (pre-commit local hook + `test-harnesses-N` shard) vs local `make lint` coverage. **FINDING_7 fix.**
+- `Makefile` — add a `lint-foreground:` target invoking `scripts/lint-foreground-markers.sh`, compose it into `lint:` (currently `test-harnesses lint-bash32 lint-only`). Add a `test-lint-foreground-markers:` target invoking the harness. Append `test-lint-foreground-markers` to `.PHONY` and to exactly one existing `test-harnesses-N:` prerequisite line (e.g., `test-harnesses-16`, alongside `test-lint-bash32`). **FINDING_2 fix.**
+- `.pre-commit-config.yaml` — add a `local` hook entry for `scripts/lint-foreground-markers.sh` with `always_run: true, pass_filenames: false` (so it runs repo-wide on every PR via `make lint-only`). Also reconcile the header comment "CI uses: make lint" with reality — CI runs `make lint-only` for the lint job. **FINDING_1 fix + OOS_4 fix.**
+- `agent-lint.toml` — add `scripts/lint-foreground-markers.{sh,md}` and `scripts/test-lint-foreground-markers.{sh,md}` to the Makefile-only exclusion block (mirror the `lint-bash32` exclusion pattern). **FINDING_8 fix.**
+- `.claude/rules/timing-task-kind-allowlist.md` — fix the stale `(28g)` reference: either replace with the harness's actual current contract string or reword the rule to describe enforcement at the abstract level. **OOS_2 fix.** (This rule edit is in scope because OOS_2 was voted accepted; the corresponding plan failure-mode change is part of FINDING_4 below.)
+- `skills/implement/SKILL.md` — at every Family B Bash block site surfaced by the linter (initial known sites: the `ship-pr.sh` Invoke block; the `run-step5-review.sh` Step 5 Invoke block; the `run-step2-dispatch.sh` Step 2 Invoke block — see FINDING_3 note about command-sub detection at additional sites), add the canonical banner as the leading paragraph line above the fence (preserving the existing long state-machine context paragraph below the leader) and the inline comment immediately above each denylisted basename anchor line. The existing bespoke ⚠ blockquote at the `ship-pr.sh` Invoke block gets the canonical phrase prepended.
+- `skills/implement/references/rebase-rebump-subprocedure.md` — markers at the `ci-wait.sh` re-invocation site.
+- `skills/design/SKILL.md` — markers at the sketch-phase `collect-agent-results.sh` Step 2a.3 site; at the `dispatch-with-waterfall.sh` plan-review dispatch site (command-substitution form `_plan_review_dispatch=$(...)` — FINDING_3 requires the linter to flag this; markers go around the anchor line); at any other Family B site the linter surfaces.
+- `skills/design/references/plan-review.md` — markers at the `dispatch-plan-voters.sh` dispatch site (command-substitution form `_plan_voter_dispatch=$(...)`). **FINDING_11 fix** — this file was missing from the inventory; FINDING_3 detection extension is required to catch the assignment-wrapped invocation.
+- `skills/design/references/dialectic-execution.md` — markers at the debate and judge `collect-agent-results.sh` boundaries.
+- `skills/shared/external-reviewers.md`, `skills/shared/voting-protocol.md`, `skills/shared/dialectic-protocol.md` — markers at every `collect-agent-results.sh` site. The linter MUST scan `skills/shared/*.md` per FINDING_6 — these files contain Family B sites and were not in the original glob list.
+- `skills/research/references/research-phase.md`, `skills/research/references/validation-phase.md` — markers at the `collect-agent-results.sh` sites. **FINDING_13 fix** — these were missing from the explicit inventory; the linter's failing-site output is authoritative for completeness.
+- `skills/review/references/heavy-worker.md` — markers if a fenced invocation exists; otherwise leave the foreground-collector prose paragraph alone (lint scans fences only). The linter will report the file's site set during step 3.
+- `skills/review-and-fix/SKILL.md` — markers per the FENCED criterion (FINDING_12: acceptance scope clarified below). If the `review-and-fix.sh` instruction is currently prose-only (no fenced bash block), the lint does NOT require markers there — the acceptance criterion is "every FENCED Family B invocation", consistent with `discussion-round1.md` Decisions 5/6 (prose mentions are intentionally excluded). The plan prose under "Acceptance" makes this explicit.
+- Any `.claude/skills/*/SKILL.md` and `.claude/rules/*.md` surfaced by the linter (initial grep showed zero hits; in scope per Decision 3 for future-drift coverage).
+
+## Edge cases
+
+- **Bespoke long banners (e.g., `ship-pr.sh`, Step 5)**: leading-line match per Decision 1. The canonical phrase is prepended as the first paragraph line of the existing ⚠ blockquote; the bespoke state-machine context / `--resume-phase` recovery prose stays intact below. The linter strips `> ` blockquote prefixes during banner match; the lint regex matches the canonical phrase byte-for-byte after that strip.
+- **Multi-Family-B fence**: one banner above the fence covers the entire fence; one inline comment per Family B anchor line inside the fence. The harness pins this (fixture 4).
+- **Prose-only basename mentions**: not flagged. Lint scans ```bash / ```sh / ```shell fences only.
+- **Commented-out invocations** (`# foo.sh ...` inside a fence): not flagged — the anchor-line scanner requires `^\s*[^#\s]`.
+- **Family A allowlist**: not enforced by this lint (per "Out of scope"). Family A basenames simply aren't on the denylist, so they pass implicitly.
+- **`heavy-worker.md`** foreground-collector paragraph that mentions `run_in_background: true` in prose (no fence): not flagged.
+- **`review-and-fix.sh` prose-only invocation**: not flagged (FINDING_12 resolution: acceptance is "every FENCED Family B invocation").
+- **Bash 3.2 portability**: linter uses newline-delimited temp files, `while IFS= read -r ...`, avoids associative arrays / namerefs / `mapfile`. `make lint-bash32` covers this.
+
+## Failure modes
+
+1. **Lint surface drift from a renamed or split blocking script**: if a future PR renames `ship-pr.sh` or splits `review-and-fix.sh` into two scripts, the denylist in `scripts/lint-foreground-markers.sh` falls behind. Earliest signal: a future incident where backgrounding the renamed/split script suppresses breadcrumbs and `make lint-foreground` stays green. Mitigation: the linter's denylist is the single source of truth and is referenced from `scripts/lint-foreground-markers.md`; any blocking-script rename PR must update both. Add a one-time grep at landing time: walk `scripts/*.sh` and `skills/*/scripts/*.sh`, flag any blocking-pattern script (CI/merge state machine, collector, dispatcher, wait loop) not on the denylist.
+
+2. **Linter false-positives on an unusual fence shape**: a Family B invocation inside a `bash` heredoc inside a `bash` fence, or a fence labelled `console` / language-tag-less, may misclassify. Earliest signal: a `make lint-foreground` failure pointing at a site that looks unfixable by adding markers. Mitigation: the harness covers heredoc / indented / unusual-language-tag fences (fixtures 7, 8). If the audit surfaces a site the linter can't reason about cleanly, prefer false negatives (relax the detector) over forcing contorted marker placement; document the carve-out in `scripts/lint-foreground-markers.md`.
+
+3. **Marker insertion accidentally drifts existing semantic prose, breaking other lints**: even though banner + comment are inert, editing many SKILL.md files raises the risk of accidentally re-flowing surrounding paragraphs and breaking `agent-lint` / `markdownlint` / existing structure tests. Earliest signal: `make lint` fails on an existing structure test after a marker-insertion batch. Mitigation: insert markers via `Edit` (precise old/new strings) rather than `Write` (full-file replacement); run `make lint` after each batch of marker insertions; never touch the same line as a load-bearing structure-test anchor (FINDING_4 fix: don't rely on the stale `(28g)` example — use the harness's real `grep -Fq` contract strings as the actual structure-test anchors when validating).
+
+## Testing strategy
+
+- **Unit / harness**: `scripts/test-lint-foreground-markers.sh` (run via `make test-lint-foreground-markers`, and via `make test-harnesses-${SHARD}` for the chosen shard) covers all 16 fixture cases enumerated under "Files to modify / create" above. Fixtures live as inline heredoc text inside the harness (matches `scripts/lint-bash32.sh` pattern). All fixtures use Bash 3.2-portable shapes.
+- **Family A regression spot-check (FINDING_9)**: the harness includes a `family_a_unchanged` test that scans known Family A launch fences in `skills/design/references/sketch-launch.md`, `skills/design/references/dialectic-execution.md`, `skills/shared/voting-protocol.md`, and `skills/shared/dialectic-protocol.md` and asserts each still carries `run_in_background: true` and the launcher basename (`launch-review.sh`, `launch-codex-implement.sh`, `launch-cursor-implement.sh`). Implemented as a `grep -c` count of `run_in_background: true` across a fixed file set; baseline count established at landing time. Fails the harness if any file's count decreases.
+- **Regression**: `make lint` must remain green. `lint-bash32` covers shell portability of the new lint script. `agent-lint` / `markdownlint` / existing `test-design-structure.sh` / `test-implement-structure.sh` must remain green after marker insertion.
+- **CI enforcement (FINDING_1)**: the new `.pre-commit-config.yaml` `local` hook for `lint-foreground-markers.sh` (with `always_run: true, pass_filenames: false`) is what gates PRs through the existing CI `lint` job (which runs `make lint-only`). The `test-harnesses-N` shard wiring is what gates PRs through the existing CI harness matrix job. Both paths catch drift; pre-commit catches the lint contract immediately, harness catches lint-script regressions on every PR.
+- **End-to-end**: after marker insertion, run `make lint-foreground` against the modified tree and confirm exit 0. Then introduce a deliberate violation (delete a banner) in a throwaway fixture-style commit, confirm exit 1 with a clear `FILE:LINE: missing banner for BASENAME` message, then revert.
+
+## Acceptance (clarified per FINDING_12)
+
+- `BASH_AUTHORING.md` gains §4 with the rule, WHY, and exception list.
+- `AGENTS.md` "Conventions" cross-references §4.
+- Every **FENCED** Family B invocation in `skills/**/SKILL.md`, `skills/**/references/*.md`, `skills/shared/*.md`, `.claude/skills/*/SKILL.md`, and `.claude/rules/*.md` has BOTH the canonical ⚠ banner (within 20 markdown lines immediately before the fence) AND the `# Foreground required: see BASH_AUTHORING.md §4` comment (within 5 source lines immediately before each anchor line). Prose-only basename mentions are explicitly out of scope.
+- Lint target `lint-foreground` and harness `test-lint-foreground-markers` exist, are wired into Makefile + `.PHONY` + one `test-harnesses-N` shard + pre-commit `local` hook + `agent-lint.toml` Makefile-only exclusion block + `docs/linting.md` catalog.
+- `make lint`, `make lint-only`, `make test-harnesses-${shard}` (for the chosen shard), and the Family A regression spot-check all regression-clean against the updated tree.
+- Stale `(28g)` reference in `.claude/rules/timing-task-kind-allowlist.md` resolved (OOS_2).
+- `.pre-commit-config.yaml` header comment reconciled with actual CI behavior (OOS_4).
+
+diff_lines: 600
