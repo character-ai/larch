@@ -1,0 +1,33 @@
+Reading the plan and referenced code paths.
+
+Reading referenced scripts and skill files to validate contracts and edge cases.
+
+Gathering line numbers for `dispatch-plan-voters` fixed path and `collect-agent-results` ordering.
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+
+1. **[correctness]** [scripts/collect-agent-results.sh:183-213](scripts/collect-agent-results.sh) — The script rejects an empty `OUTPUT_FILES` array **before** any `--paths-file` population could run. Naively adding `PATHS_FILE` parsing after this block makes `--paths-file` alone always exit with `at least one output file is required`, so the planned handoff never works until control flow is reordered.
+
+2. **[risk-integration]** [skills/design/SKILL.md:96](skills/design/SKILL.md) — The normative bullet forbids calling `collect-agent-results.sh` with **zero positional arguments**. The new `--paths-file` mode intentionally uses zero positionals; if this bullet is not rewritten with an explicit `--paths-file` exception, orchestrators may refuse the valid invocation or reintroduce unsafe `ALL_OUTPUT_FILES` parsing.
+
+3. **[correctness]** [scripts/dispatch-with-waterfall.sh:338-341](scripts/dispatch-with-waterfall.sh) plus planned [scripts/test-dispatch-with-waterfall.sh](scripts/test-dispatch-with-waterfall.sh) — `emit_kv ALL_OUTPUT_FILES` uses `"${final_outputs[*]-}"` (IFS-joined words). The plan’s test idea to prove paths-file lines match `ALL_OUTPUT_FILES` **after splitting on whitespace** is not a reliable equivalence if any path contains spaces; the test would be flaky or a false security blanket.
+
+4. **[correctness]** Planned `collect-agent-results.sh` paths-file read loop — The sketched `[[ -n "$path" ]]` gate treats lines of **only spaces/tabs** as non-empty paths. That can append bogus entries, confuse `wait-for-reviewers`, or miss the intended `paths-file contains no entries` failure when the file is visually empty.
+
+5. **[architecture]** [skills/design/SKILL.md:581-594](skills/design/SKILL.md) and [skills/design/references/plan-review.md:73-86](skills/design/references/plan-review.md) — Dropping capture of `ALL_OUTPUT_TOOLS` in SKILL while `plan-review.md` still explains Phase-3 `TOOL=claude` correlation via `ALL_OUTPUT_TOOLS` risks **partial doc drift** if every sentence is not retargeted to collector-derived `TOOL` from `.meta` (behavior is already collector-owned, but prose must stay consistent).
+
+6. **[code-quality]** Implementation plan `plan.txt` §Testing items 13–14 — The plan says to create `scripts/test-dispatch-code-voters.sh` and `scripts/test-collect-agent-results.sh` if absent, but both files already exist in the repo; implementers may duplicate work or skip extending the real harnesses.
+
+7. **[correctness]** Implementation plan §dispatch-code-voters item 5 — It suggests `${REVIEW_TMPDIR:-$DESIGN_TMPDIR}` for the paths file, while [scripts/dispatch-code-voters.sh:18-43](scripts/dispatch-code-voters.sh) **requires** `--review-tmpdir` and never references `DESIGN_TMPDIR` for that contract. Copying the plan literally could write to an empty or wrong directory when `REVIEW_TMPDIR` is unset.
+
+**[OUT_OF_SCOPE]** [scripts/dispatch-plan-voters.sh:105-123](scripts/dispatch-plan-voters.sh) — This script still parses `ALL_OUTPUT_FILES` with `read -r -a outputs_arr <<< "$all_outputs"` (same whitespace-join class as the original hazard). The plan explicitly scopes this out; if paths-with-spaces ever appear in manifests, voter slot wiring could still corrupt without adopting the paths-file internally.
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/collect-agent-results.sh:183-213	Paths-file mode vs early empty OUTPUT_FILES guard	--paths-file-only invocation always fails at existing empty-array check before population	Reorder: parse PATHS_FILE into OUTPUT_FILES before the empty check or branch the guard on PATHS_FILE
+1	in_scope	important	risk-integration	skills/design/SKILL.md:96	Zero-positional NEVER rule conflicts with new collector mode	Orchestrators treat valid --paths-file call as forbidden	Amend bullet to allow zero positionals when --paths-file names a readable non-empty file
+1	in_scope	important	correctness	scripts/dispatch-with-waterfall.sh:338-341 plus planned test harness	ALL_OUTPUT_FILES KV is IFS-joined lossy vs per-line paths-file	Equality test against split KV can fail or pass incorrectly if a path contains spaces	Assert order and count vs paths-file only or compare against final_outputs array before join not after split
+1	in_scope	latent	correctness	scripts/collect-agent-results.sh (planned paths-file reader)	Whitespace-only lines treated as paths	Bogus wait targets or wrong fail-closed branch vs documented empty-file error	Trim lines or require grep for non-blank non-whitespace before append
+1	in_scope	nit	architecture	skills/design/SKILL.md:581-594 skills/design/references/plan-review.md:73-86	ALL_OUTPUT_TOOLS narrative after dropping shell capture	Stale guidance implies KV correlation still required in shell	Retarget prose to collector TOOL field from .meta only
+1	in_scope	nit	code-quality	(implementation plan cache plan.txt Testing §13-14)	Stale create-if-absent notes for harness files	Confusing implementation steps	Edit plan to say extend existing scripts/test-dispatch-code-voters.sh and scripts/test-collect-agent-results.sh
+1	in_scope	nit	correctness	(implementation plan cache plan.txt dispatch-code-voters bullet)	REVIEW_TMPDIR fallback wording vs script contract	Paths file written outside review tmpdir or to empty path	Align plan with required --review-tmpdir only no DESIGN_TMPDIR fallback
+1	out_of_scope	latent	risk-integration	scripts/dispatch-plan-voters.sh:105-123	Internal ALL_OUTPUT_FILES whitespace split unchanged	Space-containing waterfall outputs could mis-bind voter paths	Adopt ALL_OUTPUT_FILES_PATH or paths-file read internally if that hazard becomes real
