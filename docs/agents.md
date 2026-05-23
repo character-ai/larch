@@ -58,7 +58,7 @@ Used by `/design` Step 2a.5 to resolve contested design decisions surfaced by th
 
 **No Claude substitution (debate only)**: when the assigned tool is unavailable, that decision's bucket is **skipped entirely** and a `Disposition: bucket-skipped` resolution is written (synthesis decision stands for that point). Claude Code Reviewer subagents are **never** substituted into the debate path. This is an intentional divergence from the repo-wide replacement-first pattern used by review/voting/sketch fallbacks — debaters produce adversarial arguments where model-specific writing style could encode tool identity and bias the downstream judge panel. See `skills/shared/dialectic-protocol.md` for the full protocol.
 
-Debaters produce tagged structured output (`<claim>`, `<evidence>`, `<strongest_concession>`, `<counter_to_opposition>`, `<risk_if_wrong>`, terminal `RECOMMEND:` line). An eligibility gate filters outputs that miss any required tag, carry the wrong RECOMMEND token, or fail role-vs-RECOMMEND consistency — failed decisions fall back to synthesis with a reason code rather than poison the judge panel. These agents are ephemeral.
+Debaters produce tagged structured output (`<steelman>`, `<claim>`, `<evidence>`, `<strongest_concession>`, `<counter_to_opposition>`, `<risk_if_wrong>`, terminal `RECOMMEND:` line). An eligibility gate filters outputs that miss any required tag, carry the wrong RECOMMEND token, or fail role-vs-RECOMMEND consistency — failed decisions fall back to synthesis with a reason code rather than poison the judge panel. These agents are ephemeral.
 
 ### Dialectic Judges
 

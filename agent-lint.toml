@@ -871,6 +871,13 @@ exclude = [
   # (test-render-specialist-prompt target) and scripts/test-render-specialist-prompt.md
   # (sibling contract), matching the same Makefile-only pattern.
   "scripts/test-render-specialist-prompt.sh",
+  # scripts/test-render-debate-retry-prompt.sh is the regression harness for
+  # scripts/render-debate-retry-prompt.sh (dialectic waterfall corrective prompts).
+  # The renderer is referenced from skills/design/references/dialectic-execution.md
+  # and skills/shared/dialectic-protocol.md; the harness is Makefile-only
+  # (test-render-debate-retry-prompt target) plus sibling .md.
+  "scripts/test-render-debate-retry-prompt.sh",
+  "scripts/test-render-debate-retry-prompt.md",
   # scripts/test-design-log-publish.sh exercises design-log-publish.sh
   # (Makefile test-design-log-publish target + sibling .md). Same
   # Makefile-only harness pattern as test-tracking-issue-write.sh.

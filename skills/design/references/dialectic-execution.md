@@ -1,12 +1,12 @@
 # Dialectic Execution Choreography
 
-**Consumer**: `/design` Step 2a.5 — loaded after the short-circuit + zero-externals guardrail check when contested decisions exist. This file owns the dialectic-execution mechanics: per-decision prompt rendering, parallel debater launch, collection, eligibility gate, judge presence check, ballot construction, judge launch, tally, and resolution writing.
+**Consumer**: `/design` Step 2a.5 — loaded after the short-circuit + zero-externals guardrail check when contested decisions exist. This file owns the dialectic-execution mechanics: per-decision prompt rendering, parallel debater launch, collection, **per-side waterfall retries**, eligibility gate, judge presence check, ballot construction, judge launch, tally, and resolution writing.
 
-**Contract**: single normative source for dialectic-execution mechanics, including the nested MANDATORY pointer to `references/dialectic-debate.md`, the externals-only debate-path carve-out (GitHub issue #98), the Option B snapshot pattern via `dialectic_*_available` shadow flags, and the `dialectic-resolutions.md` schema for voted / fallback-to-synthesis / bucket-skipped / over-cap dispositions.
+**Contract**: single normative source for dialectic-execution mechanics, including the nested MANDATORY pointer to `references/dialectic-debate.md`, the externals-primary debate-path carve-out with a **Claude-only 2nd-retry waterfall exception** (GitHub issue #98), the Option B snapshot pattern via `dialectic_*_available` shadow flags, and the `dialectic-resolutions.md` schema for voted / fallback-to-synthesis / bucket-skipped / over-cap dispositions.
 
-**When to load**: once Step 2a.5 has passed the short-circuit (`NO_CONTESTED_DECISIONS`) check. Do NOT load when `contested-decisions.md` contains only `NO_CONTESTED_DECISIONS`. On the zero-externals guardrail path (step 5 of Step 2a.5 in SKILL.md): debate-execution mechanics in this file MUST NOT fire (no debaters, no judges, no ballot) — skip loading entirely if the orchestrator already has the `dialectic-resolutions.md` schema in context from a prior run; otherwise a one-time load of this file is acceptable solely to consult the schema, but the per-decision prompt rendering, parallel debater launch, collection, eligibility gate, judge presence check, ballot construction, judge launch, and tally steps remain suppressed. This mirrors the conditional permission granted by the SKILL.md caller contract at Step 2a.5.
+**When to load**: once Step 2a.5 has passed the short-circuit (`NO_CONTESTED_DECISIONS`) check. Do NOT load when `contested-decisions.md` contains only `NO_CONTESTED_DECISIONS`. On the zero-externals guardrail path (step 5 of Step 2a.5 in SKILL.md): debate-execution mechanics in this file MUST NOT fire (no debaters, no judges, no ballot) — skip loading entirely if the orchestrator already has the `dialectic-resolutions.md` schema in context from a prior run; otherwise a one-time load of this file is acceptable solely to consult the schema, but the per-decision prompt rendering, parallel debater launch, collection, waterfall retries, eligibility gate, judge presence check, ballot construction, judge launch, and tally steps remain suppressed. This mirrors the conditional permission granted by the SKILL.md caller contract at Step 2a.5.
 
-**Binding convention**: This file is the single normative source for dialectic-execution mechanics. SKILL.md Step 2a.5 retains only the short-circuit, GH#98 carve-out banner, bucket-assignment rule, and zero-externals guardrail summary; the full execution procedure lives here. Variable references (`$DESIGN_TMPDIR`, `${CLAUDE_PLUGIN_ROOT}`, `{SYNTHESIS_TEXT}`, `{FEATURE_DESCRIPTION}`, `{DECISION_BLOCK}`, etc.) and warning-string literals are byte-identical to the pre-extraction SKILL.md source.
+**Binding convention**: This file is the single normative source for dialectic-execution mechanics. SKILL.md Step 2a.5 retains only the short-circuit, GH#98 carve-out banner, per-side assignment summary, and zero-externals guardrail summary; the full execution procedure lives here. Variable references (`$DESIGN_TMPDIR`, `${CLAUDE_PLUGIN_ROOT}`, `{SYNTHESIS_TEXT}`, `{FEATURE_DESCRIPTION}`, `{DECISION_BLOCK}`, etc.) and warning-string literals are byte-identical to the pre-extraction SKILL.md source.
 
 **Caller binding for shared dialectic protocol**: This file is the `/design` caller of `${CLAUDE_PLUGIN_ROOT}/skills/shared/dialectic-protocol.md`. The shared protocol writes its path placeholders in terms of `$DIALECTIC_TMPDIR`; the caller binding for `/design` is **`DIALECTIC_TMPDIR=$DESIGN_TMPDIR`**. This is a *semantic correspondence between two markdown files*, not a shell-level alias — the body of this file uses `$DESIGN_TMPDIR` directly in its bash and prompts, and nothing in those snippets depends on `DIALECTIC_TMPDIR` being set in any shell environment at runtime. The binding describes the *substitution rule* the orchestrator applies when copying text from the shared protocol: any literal `$DIALECTIC_TMPDIR` token in such copied text becomes `$DESIGN_TMPDIR` at prompt-construction time (matching the orchestrator's pre-existing `$DESIGN_TMPDIR`-to-actual-path substitution convention; external CLIs do not expand shell variables in prompt arguments, so substitution must happen at construction time, not in the receiving CLI). The protocol's filename defaults (`dialectic-ballot.txt`, `dialectic-resolutions.md`, `cursor-judge-output.txt`, `codex-judge-output.txt`) are kept verbatim in the body's bash blocks because `/design` is the protocol's design-context caller.
 
@@ -20,48 +20,44 @@
 
 ---
 
+3. **Per-side external tool assignment** (normative detail for Step 2a.5 item 3 in `skills/design/SKILL.md`). For each capped decision index `N` (1-based among the Step 2a.5 selected decisions), assign **two** tools — one for thesis, one for antithesis — so both sides are normally debated by **different** externals:
+
+   - **Odd N** (first, third, … selected decision among the cap): thesis → **Cursor** (requires `dialectic_cursor_available`); antithesis → **Codex** (requires `dialectic_codex_available`).
+   - **Even N**: thesis → **Codex**; antithesis → **Cursor**.
+
+   **Degraded mode** (exactly one external is `dialectic_*_available=true` at original launch time): assign **both** thesis and antithesis launches to that **sole available** external. The per-side waterfall (step 8b) then targets the **missing** external as the 1st-retry tool when a presence re-check shows it back online; otherwise skip directly to the Claude 2nd-retry tier.
+
+   **Zero-externals guardrail**: unchanged — see SKILL.md Step 2a.5 item 5 (no debate launches).
+
+   **Original-launch output paths**: `$DESIGN_TMPDIR/debate-<n>-<cursor|codex>-<thesis|antithesis>.txt` must match the tool that actually runs each side (`<n>` is the decision index printed in `contested-decisions.md`, not the rank-within-cap ordinal — stay consistent with existing run artifacts).
+
 6. **Per-decision prompt-file rendering**. For each queued decision, render the thesis and antithesis prompts (loaded from `references/dialectic-debate.md` loaded via this file's header MANDATORY directive) with `{FEATURE_DESCRIPTION}`, `{SYNTHESIS_TEXT}`, `{DECISION_BLOCK}`, `{CHOSEN}`, `{ALTERNATIVE}`, `{TENSION}`, `{AFFECTED_FILES}` substituted, and use the **Write tool** (not heredoc/cat) to write each rendered prompt to its own file:
    - `$DESIGN_TMPDIR/debate-<n>-thesis-prompt.txt`
    - `$DESIGN_TMPDIR/debate-<n>-antithesis-prompt.txt`
    File-based prompt delivery eliminates shell-quoting hazards from synthesis/decision content that may contain `"`, `$()`, backticks, or newlines.
 
-7. **Parallel launch** — issue all queued launches in a **single Bash message** (up to 10 background calls: 5 decisions × 2 sides). Per-decision output filenames embed the assigned tool name so the collector's basename heuristic correctly attributes results:
-   - Cursor buckets write to `$DESIGN_TMPDIR/debate-<n>-cursor-thesis.txt` and `…-cursor-antithesis.txt`.
-   - Codex buckets write to `$DESIGN_TMPDIR/debate-<n>-codex-thesis.txt` and `…-codex-antithesis.txt`.
+7. **Parallel launch** — issue all queued launches in a **single Bash message** (up to 10 background calls: 5 decisions × 2 sides). Each launch uses `launch-review.sh` with `run_in_background: true` and `timeout: 1860000`. Substitute the `--timing-task-kind` literal directly per launch (do NOT use the `VAR=value cmd ... "$VAR"` env-prefix anti-pattern documented below).
 
-   Each Cursor launch (use `run_in_background: true` and `timeout: 1860000`). Substitute the timing-task-kind literal directly per side: `--timing-task-kind cursor-debate-thesis` for the thesis launch, `--timing-task-kind cursor-debate-antithesis` for the antithesis launch. Pass a short bootstrap prompt that references the per-decision prompt file by path; the tool reads the file via its own filesystem access. This mirrors the voting pattern below ("Read the ballot from $DESIGN_TMPDIR/ballot.txt") and avoids `$(cat ...)` in the launch shell — which would trigger Claude Code permission prompts that break autonomous execution. Thesis launch:
+   Per decision `N`, use the tools assigned in **step 3** above. Thesis always reads `$DESIGN_TMPDIR/debate-<n>-thesis-prompt.txt` in its bootstrap `--prompt`; antithesis reads `…-antithesis-prompt.txt`. Each launch's `--output` basename must be `debate-<n>-<cursor|codex>-<thesis|antithesis>.txt` matching the tool running that side.
+
+   **Worked example — odd N** (thesis=Cursor, antithesis=Codex):
+
    ```bash
    ${CLAUDE_PLUGIN_ROOT}/scripts/launch-review.sh --tool cursor \
      --output "$DESIGN_TMPDIR/debate-<n>-cursor-thesis.txt" \
      --timeout 1800 \
      --timing-task-kind cursor-debate-thesis \
      --prompt "Read the dialectic-debate task description from $DESIGN_TMPDIR/debate-<n>-thesis-prompt.txt and follow it exactly to produce the structured tagged output it requests."
-   ```
-   Antithesis launch is identical except for the side suffix in `--output` and `--prompt` paths and the `--timing-task-kind` value:
-   ```bash
-   ${CLAUDE_PLUGIN_ROOT}/scripts/launch-review.sh --tool cursor \
-     --output "$DESIGN_TMPDIR/debate-<n>-cursor-antithesis.txt" \
-     --timeout 1800 \
-     --timing-task-kind cursor-debate-antithesis \
-     --prompt "Read the dialectic-debate task description from $DESIGN_TMPDIR/debate-<n>-antithesis-prompt.txt and follow it exactly to produce the structured tagged output it requests."
-   ```
-
-   Each Codex launch (use `run_in_background: true` and `timeout: 1860000`). Same literal-substitution rule per side: `--timing-task-kind codex-debate-thesis` for the thesis launch, `--timing-task-kind codex-debate-antithesis` for the antithesis launch. Thesis launch:
-   ```bash
-   ${CLAUDE_PLUGIN_ROOT}/scripts/launch-review.sh --tool codex \
-     --output "$DESIGN_TMPDIR/debate-<n>-codex-thesis.txt" \
-     --timeout 1800 \
-     --timing-task-kind codex-debate-thesis \
-     --prompt "Read the dialectic-debate task description from $DESIGN_TMPDIR/debate-<n>-thesis-prompt.txt and follow it exactly to produce the structured tagged output it requests."
-   ```
-   Antithesis launch is identical except for the side suffix in `--output` and `--prompt` paths and the `--timing-task-kind` value:
-   ```bash
    ${CLAUDE_PLUGIN_ROOT}/scripts/launch-review.sh --tool codex \
      --output "$DESIGN_TMPDIR/debate-<n>-codex-antithesis.txt" \
      --timeout 1800 \
      --timing-task-kind codex-debate-antithesis \
      --prompt "Read the dialectic-debate task description from $DESIGN_TMPDIR/debate-<n>-antithesis-prompt.txt and follow it exactly to produce the structured tagged output it requests."
    ```
+
+   **Worked example — even N** (thesis=Codex, antithesis=Cursor): swap `--tool`, `--output` basenames (`debate-<n>-codex-thesis.txt` / `debate-<n>-cursor-antithesis.txt`), and `--timing-task-kind` values (`codex-debate-thesis` / `cursor-debate-antithesis`) relative to the odd-N block.
+
+   **Degraded mode (single external)**: launch **both** sides with that tool — two launches, both `--tool` the same, outputs `debate-<n>-<cursor|codex>-thesis.txt` and `debate-<n>-<cursor|codex>-antithesis.txt` (still distinct files).
 
    **Anti-pattern — do NOT use `VAR=value cmd ... "$VAR"` env-var-prefix idiom for these launches.** Bash expands `"$VAR"` in the parent shell BEFORE the env-var-prefix scope takes effect, so `"$VAR"` evaluates to empty in the parent (the assignment is only visible to `cmd`'s own environment). The launcher then receives `--timing-task-kind` followed immediately by the next flag (the empty value disappears under shell tokenization), which collapses argv into `--timing-task-kind --prompt "..."` and either passes `--prompt` as the timing-task-kind value or hits the unknown-flag branch — neither is the intended behavior. Always substitute the timing-task-kind literal directly per launch as shown above; do not factor it into a variable.
 
@@ -76,7 +72,41 @@
 
    Immediately after this collection returns, run the Mid-Run Dirty-Tree Probe Contract from `${CLAUDE_PLUGIN_ROOT}/skills/review/references/heavy-worker.md` for `STAGE=dialectic-debate-collection`.
 
-9. **Per-bucket runtime failure handling**. For any reviewer with `STATUS != OK`, print `**⚠ <Tool> dialectic debate (decision <n>, <thesis|antithesis>) failed: <FAILURE_REASON>. Bucket truncated; synthesis decision stands.**` Do NOT flip any flag. The mandatory STATUS pre-check at the top of the "debate quorum rule" below catches the partial-launch case (thesis or antithesis non-OK → decision immediately fails quorum → synthesis decision stands).
+8b. **Per-side waterfall retry** (quorum recovery). After step 8's initial collection + dirty-tree probe, **do not** immediately finalize `Disposition: fallback-to-synthesis` for debater-quorum failures. Instead, evaluate each **side** (thesis vs antithesis) independently against the debate quorum gate in the **Eligibility gate** section below. Any side that fails **any** quorum check (including `no_output` when that side's collector `STATUS != OK`) enters the waterfall queue for that side.
+
+   **Retry trigger**: a side enters the waterfall whenever the quorum gate would have classified that side as failing (reason tokens: `no_output`, `missing_tag`, `bad_recommend`, `missing_citation`, `role_mismatch`, `substantive_empty`).
+
+   **Per-side retry order** (max 2 retries / 3 launches per side including the original):
+
+   - **1st retry** targets the **other** external tool relative to that side's **original** launch tool (Cursor ↔ Codex). If that target is unavailable at retry time (per the pre-wave presence re-check below), **skip** straight to the 2nd retry.
+   - **2nd retry** targets **Claude** (Agent-tool inline debater — final slot only). If the Agent tool is unavailable, the side cannot be recovered.
+
+   Concretely by original assignment:
+
+   - Thesis originally Cursor → 1st retry Codex → 2nd retry Claude.
+   - Thesis originally Codex → 1st retry Cursor → 2nd retry Claude.
+   - Antithesis originally Codex → 1st retry Cursor → 2nd retry Claude.
+   - Antithesis originally Cursor → 1st retry Codex → 2nd retry Claude.
+
+   **Parallelism across sides**: when both thesis and antithesis need a 1st retry, issue **both** relaunches in the **same** Bash message. Same for coordinated 2nd-retry waves.
+
+   **Sequentialism within a side**: do **not** launch a side's 2nd retry until that side's 1st retry has been collected and re-checked against the quorum gate.
+
+   **Pre-launch presence re-check** (before **each** retry wave): run `${CLAUDE_PLUGIN_ROOT}/scripts/check-reviewers.sh` and refresh **only** `dialectic_codex_available` / `dialectic_cursor_available` from its output. Do **not** mutate orchestrator-wide `codex_available` / `cursor_available`.
+
+   **Operator breadcrumb**: before each retry wave, print `⏩ 2a.5: waterfall retry <1|2> — <K> sides retrying` so long-running `/design` sessions show liveness.
+
+   **Corrective prompt files** via `${CLAUDE_PLUGIN_ROOT}/scripts/render-debate-retry-prompt.sh` (stdout is KV `RENDERED=true` / `OUTPUT_FILE=…`; write prompts to a deterministic path, e.g. `$DESIGN_TMPDIR/debate-<n>-<cursor|codex|claude>-<thesis|antithesis>-retry<1|2>-prompt.txt`). Pass `--original-prompt-file` pointing at the **same** thesis or antithesis prompt file the failed launch used, `--previous-output-file` pointing at that side's most recent output attempt, `--failure-reason` as a comma-separated token list, `--retry-tool` matching the relaunch tool, and `--output` the new prompt path. External relaunches use the same bootstrap pattern as step 7 but read the **retry** prompt path. **Claude 2nd retry**: run the Agent tool with the rendered retry prompt (inlined or via Read), then **Write** the model's structured output to `$DESIGN_TMPDIR/debate-<n>-claude-<thesis|antithesis>-retry2.txt` so downstream steps have a filesystem path consistent with externals.
+
+   **Timing-task-kind literals** for retries (substitute literally per launch): `cursor-debate-thesis-retry1`, `cursor-debate-antithesis-retry1`, `codex-debate-thesis-retry1`, `codex-debate-antithesis-retry1`, `claude-debate-thesis-retry2`, `claude-debate-antithesis-retry2`.
+
+   **Collector discipline**: after each retry wave's launches, invoke `collect-agent-results.sh` synchronously on the new output paths in the **same** Bash message as those launches (see `${CLAUDE_PLUGIN_ROOT}/skills/review/references/heavy-worker.md` "Wait Discipline").
+
+   **Deterministic retry artifact basenames** (collector basename heuristic): 1st external retry → `$DESIGN_TMPDIR/debate-<n>-<retry-tool>-<side>-retry1.txt` where `<retry-tool>` is `cursor` or `codex`; 2nd Claude retry output → `$DESIGN_TMPDIR/debate-<n>-claude-<side>-retry2.txt`.
+
+   **Waterfall trace string** (for resolutions): for each side, record compact `tool=result` segments joined by ` → ` for original + retry1 + retry2 (e.g., `cursor=missing_tag → codex=ok-but-still-missing_tag → claude=ok`). Use this when emitting `fallback-to-synthesis` after exhaustion (see **Write `dialectic-resolutions.md`**).
+
+9. **Per-side failure queuing (runtime `STATUS != OK`)**. For any debate launch line with `STATUS != OK`, treat that side as a quorum failure (`no_output` for that side) and route it through the waterfall in **step 8b** — do **not** immediately print the legacy `Bucket truncated; synthesis decision stands` finalization for the whole decision. The waterfall is the sole recovery path for in-band debater failures.
 
    **Recovery discipline.** If you discover any debate launched with broken arguments and decide to re-launch it, re-launch AND immediately call `collect-agent-results.sh` synchronously on the retry outputs in the same Bash message — do NOT yield control back to the parent between the relaunch and the collect. When the parent reclaims control between yield and notification arrival, the bash task-completion notifications cannot reach the suspended subagent and the retry orphans. See `${CLAUDE_PLUGIN_ROOT}/skills/review/references/heavy-worker.md` "Wait Discipline" for the full rationale.
 
@@ -87,23 +117,23 @@
 Classify every decision originally present in `contested-decisions.md`:
 
 - **`over-cap`**: decisions ranked outside the top-`min(5, |contested-decisions|)` cap from step 1 above. No debate occurred. Write a resolution entry with `Disposition: over-cap`.
-- **`bucket-skipped`**: decisions skipped in step 4 (dialectic bucket tool unavailable) OR the zero-externals guardrail in step 5 (every selected decision's bucket was skipped). No debate occurred. Write a resolution entry with `Disposition: bucket-skipped`.
-- **`fallback-to-synthesis` from quorum failure**: decisions whose bucket was launched but whose debater output failed the **debate quorum gate** (same checks as before, retained as the eligibility gate for the judge ballot — see below). No judge ballot entry. Write a resolution entry with `Disposition: fallback-to-synthesis` and a specific `Why fallback` reason.
-- **`voted` candidates**: decisions whose bucket was launched AND both sides passed the debate quorum gate. Go to the judge ballot.
+- **`bucket-skipped`**: decisions skipped in step 4 (dialectic tool unavailable for a required side at original launch) OR the zero-externals guardrail in step 5 (every selected decision's launches were skipped). No debate occurred. Write a resolution entry with `Disposition: bucket-skipped`.
+- **`fallback-to-synthesis` from debater quorum failure**: after **step 8b's** per-side waterfall exhausts, the decision still lacks two passing debater sides. No judge ballot entry. Write `Disposition: fallback-to-synthesis` with `**Why fallback**` carrying the **first** failure reason for the chronologically first failing side, plus a bracketed waterfall trace suffix per the **Write `dialectic-resolutions.md`** field rules.
+- **`voted` candidates**: both sides passed the debate quorum gate (on the **original outputs or any retry wave**). Go to the judge ballot.
 
-The **debate quorum gate** (retained byte-compatible with prior behavior) is applied to each launched decision:
+The **debate quorum gate** is applied **per side** to the file path returned in that side's collector `REVIEWER_FILE` field after the waterfall settles (do NOT read directly from stale launch paths when retries exist). A side **passes** only when **all** checks below succeed:
 
-1. **Per-decision STATUS pre-check** (mandatory): if the collector did not report `STATUS=OK` for BOTH the thesis and the antithesis output files, the decision's `Disposition` is `fallback-to-synthesis` with reason `no_output` — do NOT apply the per-side checks below. This guards the partial-launch case where one side completed but its sibling failed (e.g., thesis OK + antithesis TIMED_OUT): judges must see both defenses, not a one-sided ballot.
+1. **Collector transport**: that side's final collected `STATUS=OK` and the `REVIEWER_FILE` path is non-empty readable text.
+2. **Substantive output**: non-empty output with at least one full sentence of substantive content per required tag body.
+3. **All 6 tags present**: `<steelman>`, `<claim>`, `<evidence>`, `<strongest_concession>`, `<counter_to_opposition>`, `<risk_if_wrong>`.
+4. **Exactly one `RECOMMEND:` line**. For each line in the output: trim surrounding whitespace, strip any paired `**...**` or `__...__` wrappers that surround the entire line, then check (case-insensitively) whether the result begins with `RECOMMEND:`. Zero or duplicate matching lines fail the rule.
+5. **RECOMMEND enum**: the token after `RECOMMEND:` (with whitespace trimmed) must match exactly one of `THESIS` or `ANTI_THESIS` case-insensitively. Do NOT strip the underscore in `ANTI_THESIS`.
+6. **Role-vs-RECOMMEND consistency**: the thesis slot MUST emit `RECOMMEND: THESIS`; the antithesis slot MUST emit `RECOMMEND: ANTI_THESIS`. Any mismatch fails.
+7. **Evidence citation**: `<evidence>` contains at least one `file:line` citation.
 
-2. **Per-side quality checks**: for each decision surviving the pre-check, read each side's file via the file path from the collector's `REVIEWER_FILE` field (may point at a `*-retry.txt` if a retry recovered an empty output) — do NOT read directly from the launch path. A side passes the quorum gate only when every check below is satisfied:
-   - **Substantive output**: non-empty output with at least one full sentence of substantive content per required tag body.
-   - **All 5 tags present**: `<claim>`, `<evidence>`, `<strongest_concession>`, `<counter_to_opposition>`, `<risk_if_wrong>`.
-   - **Exactly one `RECOMMEND:` line**. For each line in the output: trim surrounding whitespace, strip any paired `**...**` or `__...__` wrappers that surround the entire line, then check (case-insensitively) whether the result begins with `RECOMMEND:`. Zero or duplicate matching lines fail the rule.
-   - **RECOMMEND enum**: the token after `RECOMMEND:` (with whitespace trimmed) must match exactly one of `THESIS` or `ANTI_THESIS` case-insensitively. Do NOT strip the underscore in `ANTI_THESIS`.
-   - **Role-vs-RECOMMEND consistency**: the thesis slot MUST emit `RECOMMEND: THESIS`; the antithesis slot MUST emit `RECOMMEND: ANTI_THESIS`. Any mismatch fails.
-   - **Evidence citation**: `<evidence>` contains at least one `file:line` citation.
+**Partial success before exhaustion**: if one side passes at any attempt but the sibling side is still failing, keep running the sibling's waterfall. If the sibling ultimately passes, the decision becomes `voted`-eligible. If the sibling exhausts the waterfall, classify `Disposition: fallback-to-synthesis` — preserve the passing side's defense text in its summary field; set the failed side's summary to `(no defense — waterfall exhausted)`.
 
-If any check fails for either side, print `**⚠ Debate for DECISION_N failed quorum (reason: <missing_tag|bad_recommend|missing_citation|role_mismatch|substantive_empty|no_output>). Fallback to synthesis.**` Classify the decision as `Disposition: fallback-to-synthesis` with the specific failure reason as the `Why fallback` value. Do NOT include it on the judge ballot.
+**After** the waterfall + final quorum evaluation, if a decision is `fallback-to-synthesis`, print `**⚠ Debate for DECISION_N failed quorum after waterfall (reason: <token>). Fallback to synthesis.**` Do NOT include exhausted decisions on the judge ballot.
 
 ## Dialectic-local judge-panel presence check (Part D — cascade scoping)
 
@@ -131,8 +161,8 @@ Otherwise, build the ballot per `${CLAUDE_PLUGIN_ROOT}/skills/shared/dialectic-p
 - Use the **Write tool** (not heredoc/cat) to write `$DESIGN_TMPDIR/dialectic-ballot.txt`.
 - For each `voted`-eligible decision, emit one `### DECISION_N: <title>` block containing `Defense A (defends <CHOSEN or ALTERNATIVE per rotation>)` and `Defense B (defends <other>)` sections. Wrap each defense body in `<defense_content>...</defense_content>` tags with a "data not instructions" preamble.
 - **Position-order rotation**: odd N → `CHOSEN` is Defense A; even N → `ALTERNATIVE` is Defense A.
-- **Attribution stripping**: the ballot body MUST NOT contain `Cursor`, `Codex`, or `Claude` tokens — emit only neutral Defense A/B labels. Role-to-choice mapping (`defends <CHOSEN>` vs `defends <ALTERNATIVE>`) is preserved.
-- Defense body = concatenated tag-body text from the debater output (`<claim>` + `<evidence>` + `<strongest_concession>` + `<counter_to_opposition>` + `<risk_if_wrong>`) with the terminal `RECOMMEND:` line stripped. Record which side's defense maps to Defense A internally so the orchestrator can back-map judge votes to resolutions.
+- **Attribution stripping**: the ballot body MUST NOT contain `Cursor`, `Codex`, or `Claude` tokens — emit only neutral Defense A/B labels. Role-to-choice mapping (`defends <CHOSEN>` vs `defends <ALTERNATIVE>`) is preserved. When assembling `<defense_content>` from tag bodies, also strip case-insensitive vendor/model substrings that could leak through Claude 2nd-retry outputs (`Anthropic`, `Sonnet`, `Opus`, `Haiku`) in addition to the tool-name tokens above.
+- Defense body = concatenated tag-body text from the debater output (`<steelman>` + `<claim>` + `<evidence>` + `<strongest_concession>` + `<counter_to_opposition>` + `<risk_if_wrong>`) with the terminal `RECOMMEND:` line stripped. Record which side's defense maps to Defense A internally so the orchestrator can back-map judge votes to resolutions.
 
 Launch 3 judges **in parallel** (single message). Spawn order: Cursor first, then Codex, then the Claude subagent. Follow the protocol's Launching Judges section for exact command templates:
 
@@ -178,12 +208,13 @@ Write one resolution entry per decision originally present in `contested-decisio
 **Thesis summary**: <1-2 sentence summary from THESIS-role defense text, or (no debate — bucket skipped) / (no debate — ranked outside cap) placeholder>
 **Antithesis summary**: <1-2 sentence summary from ANTI_THESIS-role defense text, or placeholder>
 **Why thesis prevails** or **Why antithesis prevails** or **Why fallback** or **Why skipped** or **Why over-cap**: <justification per disposition, following the field-rules in dialectic-protocol.md>
+**Waterfall trace** (optional): <single-line compact per-side tool/result trace — **only** for `Disposition: fallback-to-synthesis` entries whose failure followed a debater waterfall; omit for `voted`>
 ```
 
 Field rules per disposition:
 
-- **`voted`**: Include `Vote tally`. Use `**Why thesis prevails**` or `**Why antithesis prevails**` (which side won); distill from the winning judges' rationale lines and engage the losing side's strongest concession from the tag-body text.
-- **`fallback-to-synthesis`**: Omit `Vote tally`. Use `**Why fallback**: <reason>`.
+- **`voted`**: Include `Vote tally`. Use `**Why thesis prevails**` or `**Why antithesis prevails**` (which side won); distill from the winning judges' rationale lines and engage the losing side's strongest concession from the tag-body text. Omit `**Waterfall trace**` — successful retries do not annotate the resolutions row with trace prose.
+- **`fallback-to-synthesis`**: Omit `Vote tally`. Use `**Why fallback**: <primary quorum or judge reason> [waterfall exhausted: <retry1=tool/result, retry2=tool/result>]` when debater waterfall ran; otherwise a plain `**Why fallback**` line per protocol. When one side passed but the other exhausted the waterfall, fill the passing side's summary normally and use `(no defense — waterfall exhausted)` for the failed side. When present, add `**Waterfall trace**:` on its own line with the compact `tool=result → …` chronology from step 8b.
 - **`bucket-skipped`**: Omit `Vote tally`. Use `**Why skipped**: <Tool> unavailable — bucket <N> decisions skipped at Step 2a.5 step 4`. Summary placeholders: `(no debate — bucket skipped)`.
 - **`over-cap`**: Omit `Vote tally`. Use `**Why over-cap**: decision ranked <N>, outside top-5 dialectic selection cap`. Summary placeholders: `(no debate — ranked outside cap)`.
 

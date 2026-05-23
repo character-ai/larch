@@ -15,8 +15,8 @@
 #   - Threshold rules ("Threshold Rules" section): 3 voters → 2+ same-side
 #     wins; 2 voters → unanimous wins or 1-1 tie → fallback-to-synthesis;
 #     <2 voters → fallback-to-synthesis.
-#   - Debater structural invariants: 5 required tags per side (claim,
-#     evidence, strongest_concession, counter_to_opposition, risk_if_wrong),
+#   - Debater structural invariants: 6 required tags per side (steelman,
+#     claim, evidence, strongest_concession, counter_to_opposition, risk_if_wrong),
 #     exactly one RECOMMEND: line, role-vs-RECOMMEND consistency, file:line
 #     citation in <evidence>.
 #   - Ballot anonymity: Cursor/Codex/Claude tokens MUST NOT appear in the
@@ -101,7 +101,7 @@ validate_debater() {
     fi
 
     local tag
-    for tag in '<claim>' '<evidence>' '<strongest_concession>' '<counter_to_opposition>' '<risk_if_wrong>'; do
+    for tag in '<steelman>' '<claim>' '<evidence>' '<strongest_concession>' '<counter_to_opposition>' '<risk_if_wrong>'; do
         if ! grep -Fq "$tag" "$file"; then
             fail "$fixture: debater $(basename "$file") missing tag $tag"
             return 1
