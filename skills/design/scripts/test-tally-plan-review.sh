@@ -78,7 +78,7 @@ grep -q 'OOS_1' "$DESIGN/oos-accepted-design.md" || fail "accepted OOS missing f
 if grep -q 'OOS_2' "$DESIGN/oos.md" || grep -q 'OOS_2' "$DESIGN/oos-accepted-design.md"; then
     fail "security-tagged accepted OOS was not excluded"
 fi
-grep -q '| Reviewer | Proposed | Accepted | Neutral/Exon | Rejected | OOS-Proposed | OOS-Accepted | OOS-Neutral/Exon | OOS-Rejected | Score |' "$DESIGN/voting-tally.md" || fail "scoreboard header missing"
+grep -q '| Reviewer | Proposed | Accepted | Exonerated | Rejected | OOS-Proposed | OOS-Accepted | OOS-Exonerated | OOS-Rejected | Score |' "$DESIGN/voting-tally.md" || fail "scoreboard header missing"
 # Cursor-Arch: 1 accepted finding (+1), 1 accepted OOS (+1) = score 2.
 grep -q '| Cursor-Arch | 1 | 1 | 0 | 0 | 1 | 1 | 0 | 0 | 2 |' "$DESIGN/voting-tally.md" || fail "scoreboard counts wrong for Cursor-Arch"
 

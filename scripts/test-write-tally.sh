@@ -66,7 +66,7 @@ out="$("$WRITE_TALLY" --log-root "$log_root" --skill implement --run-id run-plan
 assert_contains "$out" "LOG_WRITTEN=true" "plan write emits LOG_WRITTEN"
 plan_json="$log_root/implement/run-plan/plan-review-tally.json"
 if jq -e . "$plan_json" >/dev/null; then pass "plan JSON valid"; else fail "plan JSON invalid"; fi
-assert_json_field "$plan_json" '.schema_version' "1" "plan schema version"
+assert_json_field "$plan_json" '.schema_version' "2" "plan schema version"
 assert_json_field "$plan_json" '.phase' "plan-review" "plan phase"
 assert_json_field "$plan_json" '.batch' "plan-review-tally" "plan batch"
 assert_json_field "$plan_json" '.mode' "hard" "plan mode"
@@ -74,19 +74,21 @@ assert_json_field "$plan_json" '.rounds' "3" "plan rounds"
 assert_json_field "$plan_json" '.accepted_count' "2" "plan accepted count"
 assert_json_field "$plan_json" '.rejected_count' "1" "plan rejected count"
 assert_json_field "$plan_json" '.exonerated_count' "0" "plan exonerated count"
-assert_json_field "$plan_json" '.neutral_count' "0" "plan neutral count"
+if jq -e 'has("neutral_count")' "$plan_json" >/dev/null; then fail "plan JSON must not include neutral_count"; else pass "plan JSON omits neutral_count"; fi
 assert_json_field "$plan_json" '.body' "$(cat "$body")" "plan body"
 
 echo "=== happy path: code-review simple ==="
 log_root="$TMP/logs-code"
 out="$("$WRITE_TALLY" --log-root "$log_root" --skill implement --run-id run-code \
-    --phase code-review --mode simple --rounds 1 --accepted 0 --rejected 0 --exonerated 2 --neutral 1 --body-file "$body")"
+    --phase code-review --mode simple --rounds 1 --accepted 0 --rejected 3 --exonerated 2 --body-file "$body")"
 assert_contains "$out" "LOG_WRITTEN=true" "code write emits LOG_WRITTEN"
 code_json="$log_root/implement/run-code/code-review-tally.json"
+assert_json_field "$code_json" '.schema_version' "2" "code schema version"
 assert_json_field "$code_json" '.batch' "code-review-tally" "code batch slug"
 assert_json_field "$code_json" '.mode' "simple" "code mode"
+assert_json_field "$code_json" '.rejected_count' "3" "code rejected count"
 assert_json_field "$code_json" '.exonerated_count' "2" "code exonerated count"
-assert_json_field "$code_json" '.neutral_count' "1" "code neutral count"
+if jq -e 'has("neutral_count")' "$code_json" >/dev/null; then fail "code JSON must not include neutral_count"; else pass "code JSON omits neutral_count"; fi
 
 echo "=== code-review heading allowlist ==="
 code_body_valid="$TMP/code-body-valid.md"
@@ -171,7 +173,7 @@ assert_json_field "$defaults_json" '.rounds' "0" "default rounds"
 assert_json_field "$defaults_json" '.accepted_count' "0" "default accepted"
 assert_json_field "$defaults_json" '.rejected_count' "0" "default rejected"
 assert_json_field "$defaults_json" '.exonerated_count' "0" "default exonerated"
-assert_json_field "$defaults_json" '.neutral_count' "0" "default neutral"
+if jq -e 'has("neutral_count")' "$defaults_json" >/dev/null; then fail "defaults JSON must not include neutral_count"; else pass "defaults JSON omits neutral_count"; fi
 
 echo "=== missing required flag ==="
 set +e

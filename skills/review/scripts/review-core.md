@@ -31,9 +31,9 @@ Emitted keys:
 - `REVIEW_CORE_STATUS=ok|fix-required|zero-findings|cap-reached|panel-failed|main-agent-vote-required`
 - `ROUND_NUM`
 - `ACCEPTED_COUNT`
-- `REJECTED_COUNT` — strictly `rejected` outcomes only; does not include exonerated or neutral.
-- `EXONERATED_COUNT` — findings with outcome `exonerated`.
-- `NEUTRAL_COUNT` — findings with outcome `neutral`.
+- `REJECTED_COUNT` — in-scope findings that did not meet the acceptance threshold (operator-facing rejected total; includes split-panel and exonerated patterns).
+- `EXONERATED_COUNT` — informational sub-count of exonerated-pattern rejections (`exonerated_count ≤ rejected_count`).
+- `NEUTRAL_COUNT` — internal scoreboard accounting for split-panel vote patterns (`YES>0` and `YES==NO`).
 - `FINDINGS_FILE`
 - `ACCEPTED_FINDINGS_FILE`
 - `REJECTED_FINDINGS_FILE`
@@ -48,7 +48,7 @@ Emitted keys:
 - `VOTING_SKIPPED_WARNING=<text>` — emitted only on the 0-judge main-agent-required path; callers should parse and display it as a user-visible warning
 - `OUT_OF_SCOPE_DRIFT_COUNT=N` — number of in-scope findings reclassified to OOS by the scope-fit gate in `tally-code-votes.sh`; copied from tally stdout when voting runs; `0` on early exits that skip tally (description zero-scope, `panel-failed`, or before the tally stage).
 
-Diff-mode convergence note: `REVIEW_CORE_STATUS=ok` is also the expected outcome when voting leaves `ACCEPTED_COUNT=0` and one or more findings were rejected. Callers that need to distinguish "nothing left to fix after voting" from a benign no-follow-up outcome should monitor `ACCEPTED_COUNT` together with `REJECTED_COUNT`, `EXONERATED_COUNT`, and `NEUTRAL_COUNT`, not the status string alone.
+Diff-mode convergence note: `REVIEW_CORE_STATUS=ok` is also the expected outcome when voting leaves `ACCEPTED_COUNT=0` and one or more findings were rejected. Callers that need to distinguish "nothing left to fix after voting" from a benign no-follow-up outcome should monitor `ACCEPTED_COUNT` together with `REJECTED_COUNT`, `EXONERATED_COUNT`, and `NEUTRAL_COUNT` (internal split-panel accounting), not the status string alone.
 
 Round stages:
 

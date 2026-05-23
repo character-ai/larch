@@ -215,8 +215,22 @@ scope_drift_check() {
 
 record_tally_outcome() {
     local id="$1" accepted="$2" outcome="$3"
-    printf 'FINDING_%s_ACCEPTED=%s\n' "${id#FINDING_}" "$accepted" >> "$TALLY_ENV_FILE"
-    printf 'FINDING_%s_OUTCOME=%s\n' "${id#FINDING_}" "$outcome" >> "$TALLY_ENV_FILE"
+    local n="${id#FINDING_}"
+    printf 'FINDING_%s_ACCEPTED=%s\n' "$n" "$accepted" >> "$TALLY_ENV_FILE"
+    if [[ "$outcome" == "accepted" ]]; then
+        printf 'FINDING_%s_OUTCOME=accepted\n' "$n" >> "$TALLY_ENV_FILE"
+    else
+        printf 'FINDING_%s_OUTCOME=rejected\n' "$n" >> "$TALLY_ENV_FILE"
+        case "$outcome" in
+            rejected) printf 'FINDING_%s_REJECTED_SUBTYPE=true_rejected\n' "$n" >> "$TALLY_ENV_FILE" ;;
+            neutral) printf 'FINDING_%s_REJECTED_SUBTYPE=neutral\n' "$n" >> "$TALLY_ENV_FILE" ;;
+            exonerated) printf 'FINDING_%s_REJECTED_SUBTYPE=exonerated\n' "$n" >> "$TALLY_ENV_FILE" ;;
+            *)
+                larch_err "tally-code-votes.sh: record_tally_outcome: unexpected outcome for $id: $outcome"
+                exit 2
+                ;;
+        esac
+    fi
 }
 
 # Voter eligibility is the panel-level count of available voter files. The
@@ -358,20 +372,33 @@ write_archetype_map "$MANIFEST_FILE" "$archetype_map"
                 ACCEPTED_COUNT=$((ACCEPTED_COUNT + 1))
                 record_tally_outcome "$id" true accepted
             else
+                REJECTED_COUNT=$((REJECTED_COUNT + 1))
                 case "$result" in
                     rejected)
                         {
-                            printf '### [%s] %s\n\n' "$result" "$id"
+                            printf '### [rejected] %s\n\n' "$id"
+                            printf '%s\n\n' "**Rejected subtype:** dismissed (no acceptance threshold met)"
                             cat "$block"
                             printf '\nVote tally: YES=%s NO=%s EXON=%s JUDGE_ERROR=%s\n\n' "$yes" "$no" "$exonerate" "$judge_error"
                         } >> "$REJECTED_FINDINGS_FILE"
-                        REJECTED_COUNT=$((REJECTED_COUNT + 1))
                         ;;
                     exonerated)
                         EXONERATED_COUNT=$((EXONERATED_COUNT + 1))
+                        {
+                            printf '### [rejected] %s\n\n' "$id"
+                            printf '%s\n\n' "**Rejected subtype:** exonerated (concern noted, not implemented in this PR)"
+                            cat "$block"
+                            printf '\nVote tally: YES=%s NO=%s EXON=%s JUDGE_ERROR=%s\n\n' "$yes" "$no" "$exonerate" "$judge_error"
+                        } >> "$REJECTED_FINDINGS_FILE"
                         ;;
                     neutral)
                         NEUTRAL_COUNT=$((NEUTRAL_COUNT + 1))
+                        {
+                            printf '### [rejected] %s\n\n' "$id"
+                            printf '%s\n\n' "**Rejected subtype:** split panel (YES votes did not clear NO votes; not accepted)"
+                            cat "$block"
+                            printf '\nVote tally: YES=%s NO=%s EXON=%s JUDGE_ERROR=%s\n\n' "$yes" "$no" "$exonerate" "$judge_error"
+                        } >> "$REJECTED_FINDINGS_FILE"
                         ;;
                 esac
                 record_tally_outcome "$id" false "$result"
@@ -402,7 +429,7 @@ write_archetype_map "$MANIFEST_FILE" "$archetype_map"
     done
 
     printf '\n## Reviewer Competition Scoreboard\n\n'
-    printf '| Reviewer | Proposed | Accepted | Neutral/Exon | Rejected | OOS-Proposed | OOS-Accepted | OOS-Neutral/Exon | OOS-Rejected | Score | Status |\n'
+    printf '| Reviewer | Proposed | Accepted | Exonerated | Rejected | OOS-Proposed | OOS-Accepted | OOS-Exonerated | OOS-Rejected | Score | Status |\n'
     printf '|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|\n'
     awk -F '\t' '
       {
@@ -437,7 +464,7 @@ write_archetype_map "$MANIFEST_FILE" "$archetype_map"
 
 # Append zero-count rows for manifest entries that produced no score_rows, including
 # narrative-only NOT_SUBSTANTIVE slots and dynamic/other manifest slots that had no
-# accepted, neutral, rejected, or OOS findings. Missing collector metadata falls
+# accepted, scoreboard-neutral/exonerated, rejected, or OOS findings. Missing collector metadata falls
 # back to STATUS=OK.
 # Uses awk (not bash arrays) for bash 3.2 portability.
 if [[ -n "$MANIFEST_FILE" && -f "$MANIFEST_FILE" ]]; then

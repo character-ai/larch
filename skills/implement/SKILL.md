@@ -755,6 +755,8 @@ Steps 0 (plan batches), 2, 5, 7a, 8, 9a.1, 11, and 18 write durable run payloads
 | Step 11 (post-execution checkpoint) | no post-CI `execution-issues` append; Step 7a pre-bump writes the batch and Step 18 teardown remains the safety net |
 | Step 18 (terminal summary) | manifest `status=done` |
 
+**Tally envelopes**: `plan-review-tally.json` / `code-review-tally.json` use `schema_version: 2` with `accepted_count`, `rejected_count`, and `exonerated_count` (informational sub-count; must be `≤ rejected_count`). `review-and-fix-summary.json` uses `schema_version: 3` with the same three public counters at the top level.
+
 **Summary comments** are slim projections only. Use `tracking-issue-summary.sh upsert-summary --issue "$ISSUE_NUMBER" --marker "<!-- larch:<name> v1 runid=$RUN_ID -->" --content-file <file>` for the four markers defined in `summary-comment-template.md`. Do not assemble a monolithic comment, do not fetch summary comments back into local state, and do not publish bulky reviewer or token payloads to GitHub comments.
 
 **Compose-time sanitization**: every larch-log input file and every summary comment content file composed from session-derived content MUST apply prompt-level sanitization (secrets → `<REDACTED-TOKEN>`, internal URLs → `<INTERNAL-URL>`, PII → `<REDACTED-PII>`). `larch-log.sh` and `tracking-issue-summary.sh` provide shell-layer secrets redaction, but prompt-level sanitization is still the first-line defense for internal URLs and PII.

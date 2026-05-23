@@ -178,7 +178,7 @@ fi
     done
 
     printf '\n## Reviewer Competition Scoreboard\n\n'
-    printf '| Reviewer | Proposed | Accepted | Neutral/Exon | Rejected | OOS-Proposed | OOS-Accepted | OOS-Neutral/Exon | OOS-Rejected | Score |\n'
+    printf '| Reviewer | Proposed | Accepted | Exonerated | Rejected | OOS-Proposed | OOS-Accepted | OOS-Exonerated | OOS-Rejected | Score |\n'
     printf '|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|\n'
     awk -F '\t' '
       {

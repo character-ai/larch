@@ -41,7 +41,7 @@ Stop after Step 3 (do NOT run Steps 4 or 5 — those belong to the parent).
 
 Write these files under `$REVIEW_TMPDIR/` before returning:
 
-- **`review-round-summary.md`** — human-readable summary the parent uses for Step 4: total rounds, per-round findings (reviewer breakdown, vote counts), voting summary (rounds 1-3: accepted/neutral/exonerated/rejected counts), Reviewer Competition Scoreboard, OOS items accepted, and convergence reason. The parent `/review` Step 4 prints this file verbatim only for standalone invocations; when `SESSION_ENV_PATH` is non-empty, Step 4 suppresses inline prose, copies the summary to `$(dirname "$SESSION_ENV_PATH")/review-round-summary.md`, and `/implement` reads that stable parent-tmpdir copy for the `code-review-tally` log batch.
+- **`review-round-summary.md`** — human-readable summary the parent uses for Step 4: total rounds, per-round findings (reviewer breakdown, vote counts), voting summary (per round: `K` accepted, `N` rejected (`P` exonerated) with `P ≤ N`), Reviewer Competition Scoreboard, OOS items accepted, and convergence reason. The parent `/review` Step 4 prints this file verbatim only for standalone invocations; when `SESSION_ENV_PATH` is non-empty, Step 4 suppresses inline prose, copies the summary to `$(dirname "$SESSION_ENV_PATH")/review-round-summary.md`, and `/implement` reads that stable parent-tmpdir copy for the `code-review-tally` log batch.
 - **`review-summary.json`** — structured summary the parent copies to `$(dirname "$SESSION_ENV_PATH")/review-summary.json` when `SESSION_ENV_PATH` is non-empty. Keep it ≤2 KB.
 - **`rejected-findings.md`** — rejected in-scope findings (same format as the inline path). Write to `$(dirname "$SESSION_ENV_PATH")/rejected-findings.md` when `SESSION_ENV_PATH` is non-empty (so the parent `/implement` Step 5 finds it under `$IMPLEMENT_TMPDIR/rejected-findings.md`); write to `$REVIEW_TMPDIR/rejected-findings.md` for standalone invocations.
 - **`review-dirty-tree-summary.env`** — dirty-tree aggregate (normally written by inline Step 5a): `ANY_DIRTY=true|false|unknown`, `LAUNCHERS_DIRTY=<comma-list>`, `RECOVERY_TAKEN=true|false`, and per-launcher path-stream keys. Write to `$(dirname "$SESSION_ENV_PATH")/review-dirty-tree-summary.env` when `SESSION_ENV_PATH` is non-empty (so the parent `/implement` Step 5 normal-mode dirty-tree check finds it); write to `$REVIEW_TMPDIR/review-dirty-tree-summary.env` for standalone invocations. Write this BEFORE returning so the parent's Step 5a finds it already present and skips re-aggregation.
@@ -66,23 +66,21 @@ Before returning success, write `$REVIEW_TMPDIR/review-summary.json` with the Wr
 
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 3,
   "rounds_completed": 1,
   "reviewer_output_paths": ["<abs-path>", "..."],
   "finding_counts": {
     "total_accepted": 0,
     "total_rejected": 0,
-    "total_exonerated": 0,
-    "total_neutral": 0
+    "total_exonerated": 0
   },
   "accepted_count": 0,
   "rejected_count": 0,
-  "exonerated_count": 0,
-  "neutral_count": 0
+  "exonerated_count": 0
 }
 ```
 
-`accepted_count`, `rejected_count`, `exonerated_count`, and `neutral_count` are the canonical top-level counts. Mirror them under `finding_counts.total_accepted`, `finding_counts.total_rejected`, `finding_counts.total_exonerated`, and `finding_counts.total_neutral` for forward compatibility. `rejected_count` is strict: it excludes exonerated and neutral outcomes.
+`accepted_count`, `rejected_count`, and `exonerated_count` are the canonical top-level counts. Mirror them under `finding_counts.total_accepted`, `finding_counts.total_rejected`, and `finding_counts.total_exonerated` for forward compatibility. `exonerated_count` is an informational sub-count of `rejected_count` (must satisfy `exonerated_count ≤ rejected_count`).
 
 On success, return a terse KV block. The **first line** MUST be exactly `REVIEW_HEAVY=complete`. Optional additional `KEY=value` lines may follow; include `SCOUT_FAIL_REASON=<token>` when `SCOUT_STATUS=parse-failed`, for example:
 

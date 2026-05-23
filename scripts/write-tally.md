@@ -22,9 +22,10 @@ Inputs:
 [--accepted N]
 [--rejected N]
 [--exonerated N]
-[--neutral N]
 --body-file PATH
 ```
+
+Optional deprecated argv (two ASCII hyphens + literal neutral + N): accepted for CLI compatibility but ignored (not forwarded to the composer).
 
 The phase determines the target batch: `plan-review` maps to
 `plan-review-tally`, and `code-review` maps to `code-review-tally`. Count flags
@@ -40,8 +41,6 @@ followed by a space) must be one of these allowed forms:
 - `## Per-finding vote breakdown`
 - `## Reviewer Competition Scoreboard`
 - `### [rejected] FINDING_N`
-- `### [neutral] FINDING_N`
-- `### [exonerated] FINDING_N`
 - `### FINDING_N: ...`
 - `### [Code Review] ...` reviewer sub-headings
 - `# Review Round N` (where N is an integer, from the round summary header)

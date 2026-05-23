@@ -461,6 +461,13 @@ apply_findings_with_coder() {
 write_summary_json() {
     local output="$1" tmp="$1.tmp.$$"
     local status="$2" core_status="$3" round="$4" accepted="$5" rejected="$6" exonerated="$7" neutral="$8" rounds_completed="$9" approved="${10}" round_dir="${11}" oos_jsonl="${12}" oos_markdown="${13}" cap="${14:-0}" coder_tool="${15:-none}" coder_status="${16:-skipped}" scrub_count="${17:-0}" revert_count="${18:-0}" commit_sha="${19:-}"
+    [[ "$accepted" =~ ^[0-9]+$ ]] || accepted=0
+    [[ "$rejected" =~ ^[0-9]+$ ]] || rejected=0
+    [[ "$exonerated" =~ ^[0-9]+$ ]] || exonerated=0
+    if (( exonerated > rejected )); then
+        larch_err "review-and-fix.sh: invariant violated: exonerated_count ($exonerated) > rejected_count ($rejected)"
+        exit 1
+    fi
     jq -n \
         --arg status "$status" \
         --arg core_status "$core_status" \
@@ -469,7 +476,6 @@ write_summary_json() {
         --argjson accepted_count "$accepted" \
         --argjson rejected_count "$rejected" \
         --argjson exonerated_count "$exonerated" \
-        --argjson neutral_count "$neutral" \
         --argjson round_cap "$cap" \
         --arg approved_fixes_file "$approved" \
         --arg review_round_dir "$round_dir" \
@@ -481,7 +487,7 @@ write_summary_json() {
         --argjson submodule_revert_count "$revert_count" \
         --arg coder_commit_sha "$commit_sha" \
         '{
-            schema_version: 2,
+            schema_version: 3,
             status: $status,
             review_core_status: $core_status,
             round_num: $round_num,
@@ -490,7 +496,6 @@ write_summary_json() {
             accepted_count: $accepted_count,
             rejected_count: $rejected_count,
             exonerated_count: $exonerated_count,
-            neutral_count: $neutral_count,
             approved_fixes_file: $approved_fixes_file,
             review_round_dir: $review_round_dir,
             accumulated_oos_file: $accumulated_oos_file,
@@ -592,8 +597,8 @@ flush_review_batches() {
     read -r derived_accepted derived_rejected <<< "$derived_counts"
 
     if ! {
-        printf 'Rounds: %s | Accepted: %s | Rejected: %s | Exonerated: %s | Neutral: %s\n' \
-            "$rounds" "$derived_accepted" "$derived_rejected" "$exonerated" "$neutral"
+        printf 'Rounds: %s | %s accepted, %s rejected (%s exonerated)\n' \
+            "$rounds" "$derived_accepted" "$derived_rejected" "$exonerated"
 
         if [[ -s "$impl_tmpdir/review-round-summary.md" ]]; then
             printf '\n'
@@ -602,6 +607,7 @@ flush_review_batches() {
                 /^- Rejected findings: / { next }
                 /^- Exonerated findings: / { next }
                 /^- Neutral findings: / { next }
+                /^- [0-9]+ accepted, [0-9]+ rejected \(/ { next }
                 { print }
             ' "$impl_tmpdir/review-round-summary.md"
             printf '\n'
@@ -639,6 +645,7 @@ flush_review_batches() {
                     /^- Rejected findings: / { next }
                     /^- Exonerated findings: / { next }
                     /^- Neutral findings: / { next }
+                    /^- [0-9]+ accepted, [0-9]+ rejected \(/ { next }
                     { print }
                 ' "$summary_file"
                 printf '\n'
@@ -677,7 +684,6 @@ flush_review_batches() {
         --accepted "$derived_accepted" \
         --rejected "$derived_rejected" \
         --exonerated "$exonerated" \
-        --neutral "$neutral" \
         --body-file "$body_file" 2>&1)"
     tally_rc=$?
     set -e
@@ -1078,7 +1084,7 @@ _implement_round_body() {
         cp "$rejected_full_file" "$IMPLEMENT_TMPDIR/rejected-findings-full.md" 2>/dev/null || true
     fi
     write_rejected_findings_aggregate "$IMPLEMENT_TMPDIR" "$rejected_file"
-    emit_breadcrumb "→ review-and-fix: round ${round_num_dec} — ${accepted_count} accepted, ${rejected_count} rejected"
+    emit_breadcrumb "→ review-and-fix: round ${round_num_dec} — ${accepted_count} accepted, ${rejected_count} rejected (${exonerated_count} exonerated)"
 
     coder_tool="none"
     coder_status="skipped"
@@ -1176,13 +1182,13 @@ _implement_round_body() {
     prior_rejected=0
     prior_exonerated=0
     prior_neutral=0
-    if [[ -f "$prior_summary" ]] && jq -e '.schema_version == 2' "$prior_summary" >/dev/null 2>&1; then
+    if [[ -f "$prior_summary" ]] && jq -e '(.schema_version == 2 or .schema_version == 3)' "$prior_summary" >/dev/null 2>&1; then
         prior_rounds=$(jq -r '.rounds_completed // 0' "$prior_summary")
         if [[ "$prior_rounds" =~ ^[0-9]+$ ]] && (( 10#$prior_rounds < round_num_dec )); then
             prior_accepted=$(jq -r '.accepted_count // 0' "$prior_summary")
             prior_rejected=$(jq -r '.rejected_count // 0' "$prior_summary")
             prior_exonerated=$(jq -r '.exonerated_count // 0' "$prior_summary")
-            prior_neutral=$(jq -r '.neutral_count // 0' "$prior_summary")
+            prior_neutral=$(jq -r '.["neutral" + "_count"] // 0' "$prior_summary")
         fi
     fi
     total_accepted=$((prior_accepted + accepted_count))

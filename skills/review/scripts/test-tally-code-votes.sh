@@ -66,7 +66,7 @@ got=$(awk -F= '$1=="OOS_REJECTED_COUNT"{print $2}' "$out"); assert_eq "OOS_REJEC
 grep -Fq 'FINDING_1: First in-scope finding' "$TMP/accepted-findings.md" || { FAIL=1; printf '  FAIL accepted-findings missing FINDING_1\n'; }
 grep -Fq 'FINDING_2' "$TMP/rejected-findings.md" || { FAIL=1; printf '  FAIL rejected-findings missing FINDING_2\n'; }
 grep -Fq 'OOS observation' "$TMP/oos-accepted-review.md" || { FAIL=1; printf '  FAIL oos-accepted missing FINDING_3\n'; }
-grep -Fq '| Reviewer | Proposed | Accepted | Neutral/Exon | Rejected | OOS-Proposed | OOS-Accepted | OOS-Neutral/Exon | OOS-Rejected | Score | Status |' "$TMP/voting-tally.md" || { FAIL=1; printf '  FAIL scoreboard header missing OOS outcome columns\n'; }
+grep -Fq '| Reviewer | Proposed | Accepted | Exonerated | Rejected | OOS-Proposed | OOS-Accepted | OOS-Exonerated | OOS-Rejected | Score | Status |' "$TMP/voting-tally.md" || { FAIL=1; printf '  FAIL scoreboard header missing OOS outcome columns\n'; }
 if grep -Fq 'Degraded code-review panel' "$TMP/voting-tally.md"; then
     FAIL=1; printf '  FAIL clean 3-voter fixture should not emit degraded panel banner\n'
 else
@@ -219,9 +219,10 @@ out="$TMP/out.env"
     --voter-files "$TMP/cursor-vote-output.txt" "$TMP/codex-vote-output.txt" \
     --review-tmpdir "$TMP" > "$out"
 got=$(awk -F= '$1=="ACCEPTED_COUNT"{print $2}' "$out"); assert_eq "FINDING_1 unanimous YES → accepted" "$got" "1"
-got=$(awk -F= '$1=="REJECTED_COUNT"{print $2}' "$out"); assert_eq "FINDING_2 1Y/1N → neutral (tied), not counted in rejected" "$got" "0"
-got=$(awk -F= '$1=="NEUTRAL_COUNT"{print $2}' "$out"); assert_eq "FINDING_2 1Y/1N → neutral_count=1" "$got" "1"
-got=$(awk -F= '$1=="FINDING_2_OUTCOME"{print $2}' "$TMP/review-tally.env"); assert_eq "review-tally.env records neutral outcome explicitly" "$got" "neutral"
+got=$(awk -F= '$1=="REJECTED_COUNT"{print $2}' "$out"); assert_eq "FINDING_2 1Y/1N → rejected (split-panel subtype)" "$got" "1"
+got=$(awk -F= '$1=="NEUTRAL_COUNT"{print $2}' "$out"); assert_eq "NEUTRAL_COUNT=1 (internal split-panel accounting)" "$got" "1"
+got=$(awk -F= '$1=="FINDING_2_OUTCOME"{print $2}' "$TMP/review-tally.env"); assert_eq "review-tally.env records rejected outcome" "$got" "rejected"
+got=$(awk -F= '$1=="FINDING_2_REJECTED_SUBTYPE"{print $2}' "$TMP/review-tally.env"); assert_eq "review-tally.env records split-panel subtype" "$got" "neutral"
 got=$(awk -F= '$1=="OOS_ACCEPTED_COUNT"{print $2}' "$out"); assert_eq "FINDING_3 unanimous YES → OOS accepted" "$got" "1"
 
 echo "# Case: round 2 expected 2-voter panel does not emit degraded banner when both judges arrive"
@@ -289,9 +290,10 @@ out="$TMP/out.env"
     --voter-files "$TMP/cursor-vote-output.txt" \
     --review-tmpdir "$TMP" > "$out"
 got=$(awk -F= '$1=="ACCEPTED_COUNT"{print $2}' "$out"); assert_eq "1 voter EXONERATE → no in-scope accepted" "$got" "0"
-got=$(awk -F= '$1=="REJECTED_COUNT"{print $2}' "$out"); assert_eq "1 voter EXONERATE → rejected_count=0 (exonerated, not rejected)" "$got" "0"
+got=$(awk -F= '$1=="REJECTED_COUNT"{print $2}' "$out"); assert_eq "1 voter EXONERATE → rejected_count includes exonerated patterns" "$got" "2"
 got=$(awk -F= '$1=="EXONERATED_COUNT"{print $2}' "$out"); assert_eq "1 voter EXONERATE → exonerated_count=2" "$got" "2"
-got=$(awk -F= '$1=="FINDING_1_OUTCOME"{print $2}' "$TMP/review-tally.env"); assert_eq "review-tally.env records exonerated outcome explicitly" "$got" "exonerated"
+got=$(awk -F= '$1=="FINDING_1_OUTCOME"{print $2}' "$TMP/review-tally.env"); assert_eq "review-tally.env records rejected outcome" "$got" "rejected"
+got=$(awk -F= '$1=="FINDING_1_REJECTED_SUBTYPE"{print $2}' "$TMP/review-tally.env"); assert_eq "review-tally.env records exonerated subtype" "$got" "exonerated"
 grep -Fq '| FINDING_1 | 0 | 0 | 1 | 0 | exonerated |' "$TMP/voting-tally.md" || { FAIL=1; printf '  FAIL single EXONERATE not labeled exonerated\n'; }
 
 echo "# Case: 0 voters → main-agent-vote-required"
