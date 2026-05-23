@@ -11,7 +11,6 @@ export LC_ALL
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib-quiet.sh
 source "$SCRIPT_DIR/lib-quiet.sh"
-larch_quiet_init
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd -P)}"
 # shellcheck source=scripts/lib-net.sh
 source "$SCRIPT_DIR/lib-net.sh" || { larch_err "ship-pr.sh: failed to source lib-net.sh"; exit 1; }
@@ -637,8 +636,9 @@ write_finalize_state() {
 # with trailing `|| true` so a hook rejection or non-fast-forward push no longer
 # silently advances `PHASE` to `bump` on a dirty or unpushed tree.
 commit_post_waterfall_checks_fix_or_stall() {
-    local fail_file rc_post
-    if git diff --quiet HEAD 2>/dev/null && git diff --cached --quiet 2>/dev/null; then
+    local fail_file rc_post porcelain
+    porcelain=$(git status --porcelain 2>/dev/null || true)
+    if [[ -z "$porcelain" ]]; then
         return 0
     fi
     fail_file=$(failure_capture_path checks)
@@ -1430,16 +1430,16 @@ transient_envelope_predicate_ci_wait() {
     return 1
 }
 
-# Retry helper: up to 3 attempts; transient if predicate(content, fail_file) returns
-# true, OR (non-zero rc AND net signature on fail_file content). The predicate is
-# consulted BEFORE the rc=0 short-circuit because helpers like merge-pr.sh and
-# ci-wait.sh signal failure via stdout KV envelopes (MERGE_RESULT=error|admin_failed,
+# Retry helper: up to 3 attempts; transient if predicate(content) returns true,
+# OR (non-zero rc AND net signature on fail_file content). The predicate is consulted
+# BEFORE the rc=0 short-circuit because helpers like merge-pr.sh and ci-wait.sh
+# signal failure via stdout KV envelopes (MERGE_RESULT=error|admin_failed,
 # ACTION=bail) while still exiting 0; a pre-rc=0-return predicate consultation lets
 # those envelopes drive transient retries instead of being silently accepted as
-# success. Predicate first argument is the combined stderr+stdout content of the
-# fail_file (acceptance criterion #3: classification uses combined streams).
-# $1=predicate name, $2=fail_file path, $3..$n command+args. Sets global _WTR_OUT
-# and _WTR_RC.
+# success. Predicate argument is the combined stderr+stdout content read from the
+# capture file (acceptance criterion #3: classification uses combined streams).
+# $1=predicate name, $2=fail_file path (capture path for the helper), $3..$n command+args.
+# Sets global _WTR_OUT and _WTR_RC.
 with_transient_retry() {
     local pred=$1 ff=$2 attempt=1 transient=0 ff_content
     shift 2
@@ -1458,7 +1458,7 @@ with_transient_retry() {
         # Run predicate BEFORE the rc=0 short-circuit so rc=0 envelope-error cases
         # (e.g. merge-pr.sh exit 0 with MERGE_RESULT=error+transient ERROR=) retry
         # instead of being treated as success.
-        if "$pred" "$ff_content" "$ff"; then
+        if "$pred" "$ff_content"; then
             transient=1
         fi
         if [ "$transient" -eq 0 ] && [ "$_WTR_RC" -ne 0 ] && is_transient_net_signature "$ff_content"; then
@@ -1539,7 +1539,7 @@ run_recovery_waterfall() {
             cursor)
                 if command -v cursor >/dev/null 2>&1; then
                     "$SCRIPT_DIR/launch-cursor-ci.sh" --role "$wf_role" --output "$output" --run-id "$run_id" \
-                        --repo "$repo_r" ${plan_args[@]+"${plan_args[@]}"} ${_wf_extra[@]+"${_wf_extra[@]}"} ${fl_arg[@]+"${fl_arg[@]}"} --timeout 1800 >/dev/null 2>"$wf_log" && tier_rc=0 || tier_rc=$?
+                        --repo "$repo_r" ${plan_args[@]+"${plan_args[@]}"} ${_wf_extra[@]+"${_wf_extra[@]}"} ${fl_arg[@]+"${fl_arg[@]}"} --timeout 1800 >/dev/null 2>>"$wf_log" && tier_rc=0 || tier_rc=$?
                 fi
                 ;;
             codex)
@@ -1572,16 +1572,6 @@ run_recovery_waterfall() {
         case "$verify_kind" in
             checks-step6)
                 capture_command_output out "$wf_log" "$SCRIPT_DIR/run-relevant-checks-captured.sh" --site step6 --tmpdir "$IMPLEMENT_TMPDIR"
-                verify_rc=$?
-                printf '%s\n' "$out" >> "$wf_log"
-                if [ "$verify_rc" -eq 0 ] && is_relevant_checks_clean "$out"; then
-                    verify_rc=0
-                else
-                    verify_rc=1
-                fi
-                ;;
-            checks-step10)
-                capture_command_output out "$wf_log" "$SCRIPT_DIR/run-relevant-checks-captured.sh" --site step10 --tmpdir "$IMPLEMENT_TMPDIR"
                 verify_rc=$?
                 printf '%s\n' "$out" >> "$wf_log"
                 if [ "$verify_rc" -eq 0 ] && is_relevant_checks_clean "$out"; then
@@ -2294,6 +2284,7 @@ run_postmerge_phase() {
 }
 
 main() {
+    larch_quiet_init
     while [ $# -gt 0 ]; do
         case "$1" in
             --state-file) [ $# -ge 2 ] || die_usage "--state-file requires a value"; STATE_FILE=$2; shift 2 ;;

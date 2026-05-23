@@ -824,6 +824,7 @@ tmp_src_guard=$(make_tmpdir)
 set +e
 (
   cd "$REPO_ROOT" || exit 1
+  # shellcheck disable=SC2030,SC2031
   export CLAUDE_PLUGIN_ROOT="$REPO_ROOT"
   bash -c 'set -euo pipefail; __ship_pr_source_witness=42; source "scripts/ship-pr.sh"; printf "WITNESS=%s\n" "${__ship_pr_source_witness:-missing}"'
 ) >"$tmp_src_guard/out" 2>"$tmp_src_guard/err"
@@ -1083,6 +1084,74 @@ else
     fail "breadcrumb transient: stdout missing '⚠ ship-pr: transient network failure'"
     sed 's/^/    stdout: /' "$tmp/stdout"
 fi
+
+# AC#12: recovery_waterfall_paths_delta_revert uses quoted paths (spaces / glob chars).
+root=$(mktemp -d "$TMP_BASE/wf-rollback-sp-XXXXXX")
+impl=$(mktemp -d "$TMP_BASE/wf-rollback-sp-impl-XXXXXX")
+write_subject "$root"
+git -C "$root" init -q
+git -C "$root" config user.email test@example.invalid
+git -C "$root" config user.name Test
+printf 'orig\n' >"$root/my file.txt"
+printf 'g\n' >"$root/x*y.txt"
+git -C "$root" add "my file.txt" "x*y.txt"
+git -C "$root" commit -q -m base
+btr=$(mktemp "$impl/baseline-tr.XXXXXX")
+bun=$(mktemp "$impl/baseline-un.XXXXXX")
+: >"$btr"
+: >"$bun"
+printf 'dirty\n' >"$root/my file.txt"
+printf 'dirty2\n' >"$root/x*y.txt"
+wf_log="$impl/wf.log"
+(
+    cd "$root" || exit 1
+    # shellcheck disable=SC2030,SC2031
+    export CLAUDE_PLUGIN_ROOT="$root"
+    # shellcheck disable=SC1091
+    source "$root/scripts/ship-pr.sh"
+    # shellcheck disable=SC2030,SC2031
+    export IMPLEMENT_TMPDIR="$impl"
+    recovery_waterfall_paths_delta_revert "$btr" "$bun" "$wf_log"
+)
+if grep -qxF 'orig' "$root/my file.txt" && grep -qxF 'g' "$root/x*y.txt"; then
+    ok "recovery_waterfall_rollback_handles_paths_with_spaces_and_globs"
+else
+    fail "recovery_waterfall_rollback_handles_paths_with_spaces_and_globs"
+fi
+
+# AC#12: staged-index rollback ordering (git restore --staged before checkout).
+root=$(mktemp -d "$TMP_BASE/wf-rollback-st-XXXXXX")
+impl=$(mktemp -d "$TMP_BASE/wf-rollback-st-impl-XXXXXX")
+write_subject "$root"
+git -C "$root" init -q
+git -C "$root" config user.email test@example.invalid
+git -C "$root" config user.name Test
+printf 'A\n' >"$root/staged.txt"
+git -C "$root" add staged.txt
+git -C "$root" commit -q -m base
+btr=$(mktemp "$impl/b2-tr.XXXXXX")
+bun=$(mktemp "$impl/b2-un.XXXXXX")
+: >"$btr"
+: >"$bun"
+printf 'B\n' >"$root/staged.txt"
+git -C "$root" add staged.txt
+wf_log="$impl/wf2.log"
+(
+    cd "$root" || exit 1
+    # shellcheck disable=SC2030,SC2031
+    export CLAUDE_PLUGIN_ROOT="$root"
+    # shellcheck disable=SC1091
+    source "$root/scripts/ship-pr.sh"
+    # shellcheck disable=SC2030,SC2031
+    export IMPLEMENT_TMPDIR="$impl"
+    recovery_waterfall_paths_delta_revert "$btr" "$bun" "$wf_log"
+)
+if grep -qxF 'A' "$root/staged.txt"; then
+    ok "recovery_waterfall_rollback_restores_staged_changes_via_git_restore_staged"
+else
+    fail "recovery_waterfall_rollback_restores_staged_changes_via_git_restore_staged"
+fi
+
 fi  # end section: state
 
 if section_runs postmerge; then

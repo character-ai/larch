@@ -113,7 +113,9 @@ fi
 
 FAILURE_CONTEXT=""
 if [[ -n "$FAILURE_LOG" && -f "$FAILURE_LOG" ]]; then
-    _fl_snippet=$(head -c 4096 "$FAILURE_LOG" | "$SCRIPT_DIR/redact-secrets.sh" 2>/dev/null || head -c 4096 "$FAILURE_LOG")
+    if ! _fl_snippet=$(head -c 4096 "$FAILURE_LOG" | "$SCRIPT_DIR/redact-secrets.sh" 2>/dev/null); then
+        _fl_snippet="[failure log excerpt omitted: redaction unavailable]"
+    fi
     FAILURE_CONTEXT="
 <<<FAILURE_LOG_EXCERPT>>>
 ${_fl_snippet}

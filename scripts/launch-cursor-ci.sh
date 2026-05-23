@@ -27,7 +27,7 @@ TIMEOUT="1800"
 TIMING_TASK_KIND="cursor-ci-fix"
 
 usage() {
-    larch_err "Usage: launch-cursor-ci.sh --role fix|resolve-conflict|bump-classify|changelog-draft --output PATH --run-id ID --repo OWNER/REPO [--plan-file PATH] [--conflict-files CSV] [--timeout SECONDS]"
+    larch_err "Usage: launch-cursor-ci.sh --role fix|resolve-conflict|bump-classify|changelog-draft --output PATH --run-id ID --repo OWNER/REPO [--plan-file PATH] [--conflict-files CSV] [--failure-log PATH] [--timeout SECONDS]"
 }
 
 die() {
@@ -122,7 +122,9 @@ fi
 
 FAILURE_CONTEXT=""
 if [[ -n "$FAILURE_LOG" && -f "$FAILURE_LOG" ]]; then
-    _fl_snippet=$(head -c 4096 "$FAILURE_LOG" | "$SCRIPT_DIR/redact-secrets.sh" 2>/dev/null || head -c 4096 "$FAILURE_LOG")
+    if ! _fl_snippet=$(head -c 4096 "$FAILURE_LOG" | "$SCRIPT_DIR/redact-secrets.sh" 2>/dev/null); then
+        _fl_snippet="[failure log excerpt omitted: redaction unavailable]"
+    fi
     FAILURE_CONTEXT="
 <<<FAILURE_LOG_EXCERPT>>>
 ${_fl_snippet}
