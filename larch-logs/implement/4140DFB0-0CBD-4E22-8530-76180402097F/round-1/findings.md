@@ -1,0 +1,4 @@
+Merging duplicate reviewer themes, preserving `[OUT_OF_SCOPE]` on headings when any merged source carried it, and assembling verbatim suggested-revision bullets. Delivering the structured list and storing it in the plan for confirmation.
+
+
+

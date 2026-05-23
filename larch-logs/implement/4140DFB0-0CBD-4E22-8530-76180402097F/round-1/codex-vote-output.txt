@@ -1,0 +1,3 @@
+FINDING_12: YES
+FINDING_19: EXONERATE -- legitimate pre-existing divergence but not worth a separate tracking issue.
+FINDING_20: EXONERATE -- minor readability concern but too trivial for future issue tracking.
