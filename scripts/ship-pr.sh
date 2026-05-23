@@ -184,6 +184,22 @@ read_session_plan_file() {
     awk 'BEGIN{k="PLAN_FILE"; kl=length(k)} substr($0,1,kl)==k && substr($0,kl+1,1)=="=" {print substr($0,kl+2); exit}' "$session_env"
 }
 
+# True when path resolves under IMPLEMENT_TMPDIR (physical dirs; handles /tmp
+# vs /private/tmp symlink split on macOS).
+_plan_resolved_under_implement_tmpdir() {
+    local path=$1 impl_abs path_abs
+    case "$path" in
+        /*) ;;
+        *) return 1 ;;
+    esac
+    impl_abs=$(cd "$IMPLEMENT_TMPDIR" && pwd -P) || return 1
+    path_abs=$(cd "$(dirname "$path")" && pwd -P)/$(basename "$path") || return 1
+    case "$path_abs" in
+        "$impl_abs"/* | "$impl_abs") return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 # Returns a validated plan file path (under IMPLEMENT_TMPDIR, file exists) or empty.
 # Logs a Warnings entry and returns empty on security/availability violations.
 resolve_plan_file() {
@@ -193,22 +209,18 @@ resolve_plan_file() {
         path="$IMPLEMENT_TMPDIR/plan.txt"
     fi
     [ -n "$path" ] || return 0
-    case "$path" in
-        "$IMPLEMENT_TMPDIR"/*)
-            ;;
-        *)
-            "$SCRIPT_DIR/append-execution-issue.sh" \
-                --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
-                --category Warnings \
-                --entry "PLAN_FILE ($path) is outside IMPLEMENT_TMPDIR; skipping plan context." \
-                >/dev/null 2>&1 || true
-            if [ -f "$IMPLEMENT_TMPDIR/plan.txt" ]; then
-                path="$IMPLEMENT_TMPDIR/plan.txt"
-            else
-                return 0
-            fi
-            ;;
-    esac
+    if ! _plan_resolved_under_implement_tmpdir "$path"; then
+        "$SCRIPT_DIR/append-execution-issue.sh" \
+            --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
+            --category Warnings \
+            --entry "PLAN_FILE ($path) is outside IMPLEMENT_TMPDIR; skipping plan context." \
+            >/dev/null 2>&1 || true
+        if [ -f "$IMPLEMENT_TMPDIR/plan.txt" ]; then
+            path="$IMPLEMENT_TMPDIR/plan.txt"
+        else
+            return 0
+        fi
+    fi
     if [ ! -f "$path" ]; then
         "$SCRIPT_DIR/append-execution-issue.sh" \
             --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
@@ -1218,6 +1230,56 @@ needs_user_bail_reason() {
     esac
 }
 
+# Revert tier-introduced working-tree deltas against a single snapshot captured at
+# run_ci_fix_vendor entry (not per-tier). Preserves paths dirty/untracked/staged
+# at baseline; skips submodule gitlinks (inner state out of scope) with Warnings.
+_ci_fix_rollback() {
+    local phase=$1 baseline_tracked=$2 baseline_untracked=$3 baseline_staged=$4
+    local tracked_now untracked_now staged_now p rb_warn
+
+    tracked_now=$(capture_tracked_dirty_paths)
+    untracked_now=$(capture_untracked_dirty_paths)
+    staged_now=$(git diff --name-only --cached 2>/dev/null || true)
+
+    rb_warn="$IMPLEMENT_TMPDIR/_ci_fix_rollback_warn_${phase}_$$.log"
+    : > "$rb_warn"
+
+    while IFS= read -r p || [[ -n "$p" ]]; do
+        [[ -z "$p" ]] && continue
+        if git ls-files --stage -- "$p" 2>/dev/null | grep -q '^160000 '; then
+            printf 'submodule gitlink path %s skipped by _ci_fix_rollback\n' "$p" >> "$rb_warn"
+            continue
+        fi
+        if grep -qFx -- "$p" "$baseline_tracked" 2>/dev/null; then
+            continue
+        fi
+        git checkout -- "$p" 2>/dev/null || true
+    done < <(printf '%s\n' "$tracked_now")
+
+    while IFS= read -r p || [[ -n "$p" ]]; do
+        [[ -z "$p" ]] && continue
+        if grep -qFx -- "$p" "$baseline_untracked" 2>/dev/null; then
+            continue
+        fi
+        rm -f -- "$p" 2>/dev/null || true
+    done < <(printf '%s\n' "$untracked_now")
+
+    while IFS= read -r p || [[ -n "$p" ]]; do
+        [[ -z "$p" ]] && continue
+        if grep -qFx -- "$p" "$baseline_staged" 2>/dev/null; then
+            continue
+        fi
+        git restore --staged -- "$p" 2>/dev/null || true
+        if ! { grep -qFx -- "$p" "$baseline_tracked" 2>/dev/null || grep -qFx -- "$p" "$baseline_untracked" 2>/dev/null; }; then
+            rm -f -- "$p" 2>/dev/null || true
+        fi
+    done < <(printf '%s\n' "$staged_now")
+
+    if [[ -s "$rb_warn" ]]; then
+        record_failure "$phase" "_ci_fix_rollback: submodule path(s) skipped" 0 "$rb_warn" Warnings
+    fi
+}
+
 rename_done_best_effort() {
     local issue repo rc fail_file
     issue=$(read_state ISSUE_NUMBER)
@@ -1237,36 +1299,87 @@ rename_done_best_effort() {
 }
 
 run_ci_fix_vendor() {
-    local phase=$1 run_id=$2 output rc fail_file tool_label plan_file checks_site delta_paths_file
+    local phase=$1 run_id=$2 gh_logs_capture=${3:-} gh_logs_rc=${4:-1}
+    local rc fail_file tool_label plan_file checks_site delta_paths_file
     local plan_args=() vendor_tracked_dirty_paths_file vendor_untracked_dirty_paths_file tracked_dirty_paths_file untracked_dirty_paths_file
+    local gh_logs_capture_redacted _failure_log_args=()
+    local ci_fix_out_base tier_out wrapper_rc launcher_exit winning_tier launcher
+    local baseline_tracked_file baseline_untracked_file baseline_staged_file
+
     emit_breadcrumb "⚠ ship-pr: CI failed; dispatching fix"
-    output="$IMPLEMENT_TMPDIR/ci-fix-${phase}-$(date +%s).out"
+
+    baseline_tracked_file="$IMPLEMENT_TMPDIR/ci-fix-baseline-${phase}-$$-tracked.txt"
+    baseline_untracked_file="$IMPLEMENT_TMPDIR/ci-fix-baseline-${phase}-$$-untracked.txt"
+    baseline_staged_file="$IMPLEMENT_TMPDIR/ci-fix-baseline-${phase}-$$-staged.txt"
+    capture_tracked_dirty_paths > "$baseline_tracked_file"
+    capture_untracked_dirty_paths > "$baseline_untracked_file"
+    { git diff --name-only --cached 2>/dev/null || true; } > "$baseline_staged_file"
+
+    gh_logs_capture_redacted=""
+    if [ "$gh_logs_rc" -eq 0 ] && [ -n "$gh_logs_capture" ] && [ -s "$gh_logs_capture" ]; then
+        gh_logs_capture_redacted="${gh_logs_capture}.redacted"
+        if ! "$SCRIPT_DIR/redact-secrets.sh" < "$gh_logs_capture" > "$gh_logs_capture_redacted" 2>/dev/null; then
+            gh_logs_capture_redacted=""
+        fi
+    fi
+
     plan_file=$(resolve_plan_file)
     if [ -n "$plan_file" ]; then
         plan_args=(--plan-file "$plan_file")
     fi
-    for vendor_attempt in 1 2 3; do
-        fail_file=$(failure_capture_path "$phase")
-        if command -v cursor >/dev/null 2>&1; then
-            tool_label="launch-cursor-ci.sh fix"
-            "$SCRIPT_DIR/launch-cursor-ci.sh" --role fix --output "$output" --run-id "$run_id" --repo "$(read_state REPO)" ${plan_args[@]+"${plan_args[@]}"} --timeout 1800 > "$fail_file" 2>&1
-            rc=$?
-        else
-            tool_label="launch-codex-ci.sh fix"
-            "$SCRIPT_DIR/launch-codex-ci.sh" --role fix --output "$output" --run-id "$run_id" --repo "$(read_state REPO)" ${plan_args[@]+"${plan_args[@]}"} --timeout 1800 > "$fail_file" 2>&1
-            rc=$?
+
+    ci_fix_out_base="$IMPLEMENT_TMPDIR/ci-fix-${phase}-$(date +%s)"
+    winning_tier=""
+    wrapper_rc=1
+    launcher_exit=1
+
+    for tier in cursor codex claude; do
+        if [ "$tier" = "claude" ] && [ ! -x "$SCRIPT_DIR/launch-claude-ci.sh" ]; then
+            fail_file=$(failure_capture_path "$phase")
+            printf 'launch-claude-ci.sh unavailable (missing or not executable)\n' > "$fail_file"
+            record_failure "$phase" "launch-claude-ci.sh unavailable" 1 "$fail_file" Warnings
+            continue
         fi
-        if [ "$rc" -eq 0 ]; then
+        case "$tier" in
+            cursor) launcher="$SCRIPT_DIR/launch-cursor-ci.sh" ;;
+            codex) launcher="$SCRIPT_DIR/launch-codex-ci.sh" ;;
+            claude) launcher="$SCRIPT_DIR/launch-claude-ci.sh" ;;
+        esac
+
+        tier_out="${ci_fix_out_base}.${tier}"
+        fail_file=$(failure_capture_path "$phase")
+        _failure_log_args=()
+        if [ "$gh_logs_rc" -eq 0 ] && [ -n "$gh_logs_capture_redacted" ] && [ -s "$gh_logs_capture_redacted" ]; then
+            _failure_log_args=(--failure-log "$gh_logs_capture_redacted")
+        fi
+
+        "$launcher" --role fix --output "$tier_out" --run-id "$run_id" \
+            --repo "$(read_state REPO)" ${plan_args[@]+"${plan_args[@]}"} \
+            ${_failure_log_args[@]+"${_failure_log_args[@]}"} --timeout 1800 > "$fail_file" 2>&1
+        wrapper_rc=$?
+        launcher_exit=$(awk -F= '/^LAUNCHER_EXIT=/ {print $2; exit}' "$fail_file")
+        launcher_exit="${launcher_exit:-0}"
+
+        if [ "$wrapper_rc" -eq 2 ]; then
+            record_failure "$phase" "$(basename "$launcher") fix (validation)" "$wrapper_rc" "$fail_file" "CI Issues"
+            _ci_fix_rollback "$phase" "$baseline_tracked_file" "$baseline_untracked_file" "$baseline_staged_file"
+            continue
+        fi
+        if [ "$wrapper_rc" -eq 0 ] && [ "${launcher_exit:-0}" -eq 0 ]; then
+            tool_label="$(basename "$launcher") fix"
+            winning_tier=$tier
             break
         fi
-        record_failure "$phase" "$tool_label" "$rc" "$fail_file" "CI Issues"
-        if [ "$vendor_attempt" -lt 3 ]; then
-            printf 'ship-pr %s: vendor launch failed (attempt %d/3), retrying.\n' "$phase" "$vendor_attempt"
-        fi
+        record_failure "$phase" "$(basename "$launcher") fix (wrapper_rc=$wrapper_rc, launcher_exit=${launcher_exit:-0})" "${launcher_exit:-$wrapper_rc}" "$fail_file" "CI Issues"
+        _ci_fix_rollback "$phase" "$baseline_tracked_file" "$baseline_untracked_file" "$baseline_staged_file"
     done
-    [ "$rc" -eq 0 ] || return 1
+
+    if [ -z "$winning_tier" ] || [ "$wrapper_rc" -ne 0 ] || [ "${launcher_exit:-0}" -ne 0 ]; then
+        return 1
+    fi
+
     fail_file=$(failure_capture_path "$phase")
-    "$SCRIPT_DIR/append-token-record.sh" --input "${output}.token-record" --tmpdir "$IMPLEMENT_TMPDIR" > "$fail_file" 2>&1
+    "$SCRIPT_DIR/append-token-record.sh" --input "${ci_fix_out_base}.${winning_tier}.token-record" --tmpdir "$IMPLEMENT_TMPDIR" > "$fail_file" 2>&1
     rc=$?
     [ "$rc" -eq 0 ] || record_failure "$phase" "append-token-record.sh" "$rc" "$fail_file" Warnings
     vendor_tracked_dirty_paths_file="$IMPLEMENT_TMPDIR/${phase}-vendor-tracked-dirty-paths.txt"
@@ -1349,15 +1462,12 @@ run_evaluate_failure() {
         fi
         record_failure "$phase" "ci-rerun-failed.sh" "$rc" "$fail_file" "CI Issues"
     fi
-    fail_file=$(failure_capture_path "$phase")
-    "$SCRIPT_DIR/gh-run-logs.sh" --run-id "$failed_run" --repo "$(read_state REPO)" > "$fail_file" 2>&1
-    rc=$?
-    [ "$rc" -eq 0 ] || [ "$rc" -eq 3 ] || record_failure "$phase" "gh-run-logs.sh" "$rc" "$fail_file" "CI Issues"
     # Retry loop with cap, detached-HEAD check, and jittered backoff. This caps
-    # each run_evaluate_failure invocation at 5 vendor+push attempts; the
-    # persisted FIX_ATTEMPTS counter still tracks successful fix pushes across
-    # the wider phase for reporting/state purposes.
-    local _max_fix=5 _fix_attempt
+    # each run_evaluate_failure invocation at 3 outer attempts (each attempt runs
+    # a 3-tier inner waterfall: Cursor → Codex → Claude = up to 9 launcher calls
+    # per phase, down from 15 today); the persisted FIX_ATTEMPTS counter still
+    # tracks successful fix pushes across the wider phase for reporting/state purposes.
+    local _max_fix=3 _fix_attempt gh_logs_capture gh_logs_rc
     _fix_attempt=0
     while [ "$_fix_attempt" -lt "$_max_fix" ]; do
         # Detached-HEAD guard before each vendor+push attempt.
@@ -1367,13 +1477,21 @@ run_evaluate_failure() {
             record_failure "$phase" "evaluate-failure detached-head" 1 "$fail_file" "CI Issues"
             exit_stall "$([ "$phase" = "ci-initial" ] && echo 10-detached-head || echo 12-detached-head)"
         fi
-        if run_ci_fix_vendor "$phase" "$failed_run"; then
+        fail_file=$(failure_capture_path "$phase")
+        "$SCRIPT_DIR/gh-run-logs.sh" --run-id "$failed_run" --repo "$(read_state REPO)" > "$fail_file" 2>&1
+        gh_logs_rc=$?
+        [ "$gh_logs_rc" -eq 0 ] || [ "$gh_logs_rc" -eq 3 ] || record_failure "$phase" "gh-run-logs.sh" "$gh_logs_rc" "$fail_file" "CI Issues"
+        gh_logs_capture="$fail_file"
+        fail_file=""
+        if [ "$gh_logs_rc" -eq 3 ]; then
+            printf 'ship-pr %s: CI still in progress (gh-run-logs rc=3); deferring vendor dispatch this attempt.\n' "$phase"
+        elif run_ci_fix_vendor "$phase" "$failed_run" "$gh_logs_capture" "$gh_logs_rc"; then
             state_set_many TRANSIENT_RETRIES 0 FIX_ATTEMPTS "$(( $(read_state FIX_ATTEMPTS) + 1 ))"
             return 0
         fi
         _fix_attempt=$(( _fix_attempt + 1 ))
         if [ "$_fix_attempt" -lt "$_max_fix" ]; then
-            # Jittered backoff: 2s/4s/8s/16s ±25 %
+            # Jittered backoff: 2s/4s ±25% (8s/16s ladder entries reserved for higher _max_fix values; unused at _max_fix=3)
             local _base _jitter _sleep
             _base=$(( 2 * 2 ** (_fix_attempt - 1) ))
             _jitter=$(( RANDOM % (_base / 2 + 1) ))
@@ -2020,13 +2138,13 @@ run_rebase_rebump() {
                 tool_label="launch-cursor-ci.sh resolve-conflict"
                 "$SCRIPT_DIR/launch-cursor-ci.sh" --role resolve-conflict --output "$conflict_out" \
                     --run-id "$run_id" --repo "$(read_state REPO)" ${plan_args[@]+"${plan_args[@]}"} \
-                    "${_launch_extra[@]}" --timeout 600 > "$fail_file" 2>&1
+                    ${_launch_extra[@]+"${_launch_extra[@]}"} --timeout 600 > "$fail_file" 2>&1
                 rc=$?
             else
                 tool_label="launch-codex-ci.sh resolve-conflict"
                 "$SCRIPT_DIR/launch-codex-ci.sh" --role resolve-conflict --output "$conflict_out" \
                     --run-id "$run_id" --repo "$(read_state REPO)" ${plan_args[@]+"${plan_args[@]}"} \
-                    "${_launch_extra[@]}" --timeout 600 > "$fail_file" 2>&1
+                    ${_launch_extra[@]+"${_launch_extra[@]}"} --timeout 600 > "$fail_file" 2>&1
                 rc=$?
             fi
             [ "$rc" -eq 0 ] || record_failure conflict-resolution "$tool_label" "$rc" "$fail_file" "External Reviewer Issues"
