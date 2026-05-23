@@ -1406,7 +1406,15 @@ if [ "$initial_branch" = "main" ]; then
     git -C "$root" update-ref refs/remotes/origin/main HEAD
     git -C "$root" checkout -q -b pr-title-branch
 else
-    git -C "$root" checkout -q -b main
+    # `make_repo` runs `git init` (which creates `main`), then commits, then
+    # checks out feature/test-issue-7. On modern git, `main` already exists,
+    # so `git checkout -b main` fails — use `checkout main` (existing) or
+    # `checkout -b main` (absent) defensively.
+    if git -C "$root" rev-parse --verify --quiet main >/dev/null 2>&1; then
+        git -C "$root" checkout -q main
+    else
+        git -C "$root" checkout -q -b main
+    fi
     git -C "$root" commit --allow-empty -q -m "base"
     git -C "$root" update-ref refs/remotes/origin/main HEAD
     git -C "$root" checkout -q "$initial_branch"
@@ -1447,7 +1455,11 @@ if [ "$initial_branch" = "main" ]; then
     git -C "$root" update-ref refs/remotes/origin/main HEAD
     git -C "$root" checkout -q -b existing-pr-branch
 else
-    git -C "$root" checkout -q -b main
+    if git -C "$root" rev-parse --verify --quiet main >/dev/null 2>&1; then
+        git -C "$root" checkout -q main
+    else
+        git -C "$root" checkout -q -b main
+    fi
     git -C "$root" commit --allow-empty -q -m "base"
     git -C "$root" update-ref refs/remotes/origin/main HEAD
     git -C "$root" checkout -q "$initial_branch"
@@ -1901,11 +1913,17 @@ if [[ -n "${SHIP_PR_LAUNCH_SENTINEL_DIR:-}" ]]; then
     mkdir -p "$SHIP_PR_LAUNCH_SENTINEL_DIR"
     printf '%s %s\n' "$(basename "$0")" "$*" >> "$SHIP_PR_LAUNCH_SENTINEL_DIR/launcher-calls.txt"
 fi
+# Stage the resolved conflict but DO NOT run `git rebase --continue` — the
+# `rebase-nonbump` verifier inside run_recovery_waterfall continues the rebase
+# itself (see scripts/ship-pr.sh case verify_kind=rebase-nonbump). A launcher
+# that continues the rebase here would leave the verifier with no in-progress
+# rebase, causing `git rebase --continue` to fail and the tier to roll back.
+# Use `--theirs` (feature-branch content) so the resolved commit is non-empty
+# and `git rebase --continue` proceeds without `--allow-empty` prompts.
 if git rev-parse --git-dir >/dev/null 2>&1; then
     if [ -d "$(git rev-parse --git-dir)/rebase-merge" ] || [ -d "$(git rev-parse --git-dir)/rebase-apply" ]; then
-        git checkout --ours -- other.txt
+        git checkout --theirs -- other.txt
         git add other.txt
-        GIT_EDITOR=true git rebase --continue
     fi
 fi
 exit 0
@@ -1917,16 +1935,16 @@ _make_rebase_stubs "$root" "$count_dir"
 write_state "$tmp/ship-pr-state.sh" ci-initial
 PATH="$root/scripts:$PATH" SHIP_PR_LAUNCH_SENTINEL_DIR="$count_dir" run_subject "$root" "$tmp" "$tmp/rc"
 assert_rc "$tmp/rc" 0 "mixed CHANGELOG conflict auto-resolve + recovery waterfall completes rebase"
+# The rc=0 path means run_recovery_waterfall succeeded — Phase 1–4 was NOT invoked
+# and the legacy stall path (which writes CALLER_KIND=ship_pr_pre_push and emits
+# CONFLICT_FILES via emit_kv) was NOT taken. Those keys are stall-only signals; the
+# success path proves itself via rc=0 + launcher dispatch (assertion below). Pin the
+# negative invariant so a future regression that mistakenly writes the stall keys on
+# the success path is caught (FINDING_23 from issue #2395 review).
 if grep -qF 'CALLER_KIND=ship_pr_pre_push' "$tmp/ship-pr-state.sh" 2>/dev/null; then
-    ok "mixed conflict dispatches Phase 1–4 (CALLER_KIND=ship_pr_pre_push)"
+    fail "mixed conflict success path must NOT write CALLER_KIND=ship_pr_pre_push (stall-only key)"
 else
-    fail "mixed conflict should set CALLER_KIND=ship_pr_pre_push in state"
-fi
-if grep -qF 'CONFLICT_FILES=other.txt' "$tmp/stdout" 2>/dev/null; then
-    ok "mixed conflict emits CONFLICT_FILES=other.txt on stdout"
-else
-    fail "mixed conflict CONFLICT_FILES=other.txt missing from stdout"
-    sed 's/^/    stdout: /' "$tmp/stdout" 2>/dev/null | head -10 || true
+    ok "mixed conflict success path leaves CALLER_KIND clear (waterfall recovered without legacy stall)"
 fi
 if [ -f "$count_dir/launcher-calls.txt" ] && grep -q -- "--role resolve-conflict" "$count_dir/launcher-calls.txt" 2>/dev/null; then
     ok "mixed conflict invokes recovery waterfall resolve-conflict launcher"
@@ -2562,6 +2580,24 @@ write_state "$tmp/ship-pr-state.sh" ci-merge
 run_subject "$root" "$tmp" "$tmp/rc"
 assert_rc "$tmp/rc" 6 "transient merge-pr: exits 6 on network/auth signature"
 assert_state_line "$tmp/ship-pr-state.sh" "STALL_TRACKING=false" "transient merge-pr: STALL_TRACKING=false"
+
+# Positive case 2b: merge-pr transient admin_failed envelope — stub emits MERGE_RESULT=admin_failed
+# with network signature. Pins the envelope-aware retry path for admin_failed alongside the
+# existing MERGE_RESULT=error case so a future regression in the predicate's case statement is
+# caught immediately (FINDING_12 from issue #2395 review).
+root=$(make_repo transient_merge_pr_admin_failed)
+tmp=$(make_tmpdir)
+cat > "$root/scripts/merge-pr.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+echo "MERGE_RESULT=admin_failed"
+echo "ERROR=remote rejected admin merge: connection reset by peer"
+STUB
+chmod +x "$root/scripts/merge-pr.sh"
+write_state "$tmp/ship-pr-state.sh" ci-merge
+run_subject "$root" "$tmp" "$tmp/rc"
+assert_rc "$tmp/rc" 6 "transient merge-pr admin_failed: exits 6 on network/auth signature"
+assert_state_line "$tmp/ship-pr-state.sh" "STALL_TRACKING=false" "transient merge-pr admin_failed: STALL_TRACKING=false"
 
 # Positive case 3: ci-wait bail with transient network signature — expect exit 6.
 root=$(make_repo transient_ci_wait_bail)

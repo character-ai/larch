@@ -629,6 +629,38 @@ write_finalize_state() {
     printf '%s' "$(read_state BAIL_REASON)" > "$IMPLEMENT_TMPDIR/final-bail-reason.txt"
 }
 
+# Stage, commit, and push the working-tree edits the checks recovery waterfall
+# just produced. Returns 0 on success (or when there is nothing to publish) and
+# non-zero on stage/commit/push failure. Each failure is recorded under the
+# default "Tool Failures" category and the caller is responsible for the stall.
+# Existing pattern (#2395 review): replaced `git add -A | git-commit | git-push`
+# with trailing `|| true` so a hook rejection or non-fast-forward push no longer
+# silently advances `PHASE` to `bump` on a dirty or unpushed tree.
+commit_post_waterfall_checks_fix_or_stall() {
+    local fail_file rc_post
+    if git diff --quiet HEAD 2>/dev/null && git diff --cached --quiet 2>/dev/null; then
+        return 0
+    fi
+    fail_file=$(failure_capture_path checks)
+    rc_post=0
+    git add -A >>"$fail_file" 2>&1 || rc_post=$?
+    if [ "$rc_post" -ne 0 ]; then
+        record_failure checks "git add -A (post-checks-waterfall)" "$rc_post" "$fail_file"
+        return 1
+    fi
+    "$SCRIPT_DIR/git-commit.sh" -m "Fix checks (recovery waterfall)" >>"$fail_file" 2>&1 || rc_post=$?
+    if [ "$rc_post" -ne 0 ]; then
+        record_failure checks "git-commit.sh (post-checks-waterfall)" "$rc_post" "$fail_file"
+        return 1
+    fi
+    "$SCRIPT_DIR/git-push.sh" >>"$fail_file" 2>&1 || rc_post=$?
+    if [ "$rc_post" -ne 0 ]; then
+        record_failure checks "git-push.sh (post-checks-waterfall)" "$rc_post" "$fail_file"
+        return 1
+    fi
+    return 0
+}
+
 run_checks_phase() {
     local out rc fail_file redacted_log fix_out fix_status fix_rc
     local lint_attempt
@@ -645,12 +677,7 @@ run_checks_phase() {
     redacted_log=$(resolve_checks_log_path "$redacted_log") || {
         record_failure checks "run-relevant-checks-captured.sh" "$rc" "$fail_file"
         if run_recovery_waterfall checks fix "$fail_file" checks-step6; then
-            if ! git diff --quiet HEAD 2>/dev/null || ! git diff --cached --quiet 2>/dev/null; then
-                fail_file=$(failure_capture_path checks)
-                git add -A >>"$fail_file" 2>&1 || true
-                "$SCRIPT_DIR/git-commit.sh" -m "Fix checks (recovery waterfall)" >>"$fail_file" 2>&1 || true
-                "$SCRIPT_DIR/git-push.sh" >>"$fail_file" 2>&1 || true
-            fi
+            commit_post_waterfall_checks_fix_or_stall || exit_stall 6
             advance_phase bump
             return 0
         fi
@@ -692,12 +719,7 @@ run_checks_phase() {
     done
     record_failure checks "run-relevant-checks-captured.sh" "$rc" "$fail_file"
     if run_recovery_waterfall checks fix "$fail_file" checks-step6; then
-        if ! git diff --quiet HEAD 2>/dev/null || ! git diff --cached --quiet 2>/dev/null; then
-            fail_file=$(failure_capture_path checks)
-            git add -A >>"$fail_file" 2>&1 || true
-            "$SCRIPT_DIR/git-commit.sh" -m "Fix checks (recovery waterfall)" >>"$fail_file" 2>&1 || true
-            "$SCRIPT_DIR/git-push.sh" >>"$fail_file" 2>&1 || true
-        fi
+        commit_post_waterfall_checks_fix_or_stall || exit_stall 6
         advance_phase bump
         return 0
     fi
@@ -1132,7 +1154,10 @@ run_pr_create_phase() {
         fi
     fi
     if [ "$rc" -ne 0 ]; then
-        record_failure pr-create "create-pr.sh" "$rc" "$fail_file" Warnings
+        # Terminal create-pr failure (recovery waterfall did not recover) — log under
+        # the default "Tool Failures" category so test-ship-pr.sh and downstream
+        # operators keying off the "### Tool Failures" heading see the hard failure.
+        record_failure pr-create "create-pr.sh" "$rc" "$fail_file"
         exit_stall 9b
     fi
     pr_number=$(kv_value PR_NUMBER "$out")
@@ -1405,11 +1430,18 @@ transient_envelope_predicate_ci_wait() {
     return 1
 }
 
-# Retry helper: up to 3 attempts; transient if (non-zero rc AND net signature on fail_file)
-# OR predicate(stdout, fail_file) returns true. $1=predicate name, $2=fail_file path,
-# $3..$n command+args. Sets global _WTR_OUT and _WTR_RC.
+# Retry helper: up to 3 attempts; transient if predicate(content, fail_file) returns
+# true, OR (non-zero rc AND net signature on fail_file content). The predicate is
+# consulted BEFORE the rc=0 short-circuit because helpers like merge-pr.sh and
+# ci-wait.sh signal failure via stdout KV envelopes (MERGE_RESULT=error|admin_failed,
+# ACTION=bail) while still exiting 0; a pre-rc=0-return predicate consultation lets
+# those envelopes drive transient retries instead of being silently accepted as
+# success. Predicate first argument is the combined stderr+stdout content of the
+# fail_file (acceptance criterion #3: classification uses combined streams).
+# $1=predicate name, $2=fail_file path, $3..$n command+args. Sets global _WTR_OUT
+# and _WTR_RC.
 with_transient_retry() {
-    local pred=$1 ff=$2 attempt=1 transient=0
+    local pred=$1 ff=$2 attempt=1 transient=0 ff_content
     shift 2
     _WTR_OUT=""
     _WTR_RC=0
@@ -1421,14 +1453,15 @@ with_transient_retry() {
             _WTR_RC=$?
         fi
         printf '%s\n' "$_WTR_OUT" >> "$ff"
-        if [ "$_WTR_RC" -eq 0 ]; then
-            return 0
-        fi
+        ff_content=$(cat "$ff" 2>/dev/null || true)
         transient=0
-        if [ "$_WTR_RC" -ne 0 ] && is_transient_net_signature "$(cat "$ff" 2>/dev/null)"; then
+        # Run predicate BEFORE the rc=0 short-circuit so rc=0 envelope-error cases
+        # (e.g. merge-pr.sh exit 0 with MERGE_RESULT=error+transient ERROR=) retry
+        # instead of being treated as success.
+        if "$pred" "$ff_content" "$ff"; then
             transient=1
         fi
-        if [ "$transient" -eq 0 ] && "$pred" "$_WTR_OUT" "$ff"; then
+        if [ "$transient" -eq 0 ] && [ "$_WTR_RC" -ne 0 ] && is_transient_net_signature "$ff_content"; then
             transient=1
         fi
         if [ "$transient" -eq 0 ]; then
@@ -1526,7 +1559,12 @@ run_recovery_waterfall() {
             recovery_waterfall_paths_delta_revert "$baseline_dir/tracked" "$baseline_dir/untracked" "$wf_log"
             continue
         fi
-        if ! git symbolic-ref --quiet HEAD >/dev/null 2>&1; then
+        # Detached HEAD usually means the launcher abandoned the branch, but during
+        # an in-progress rebase HEAD is legitimately detached and the rebase-nonbump
+        # verifier (`git rebase --continue` below) is the operation that restores
+        # the symbolic ref. Skip the detached-HEAD bail for that verifier so the
+        # rebase recovery path can actually run.
+        if [ "$verify_kind" != "rebase-nonbump" ] && ! git symbolic-ref --quiet HEAD >/dev/null 2>&1; then
             recovery_waterfall_paths_delta_revert "$baseline_dir/tracked" "$baseline_dir/untracked" "$wf_log"
             continue
         fi
