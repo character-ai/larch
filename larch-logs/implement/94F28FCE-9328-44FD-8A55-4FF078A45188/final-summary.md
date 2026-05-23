@@ -7,6 +7,7 @@
 - **Tokens**: 18514k total — Claude 13302k, Codex 86k, Cursor 5126k
 - **Cost**: TOTAL N/A — Claude N/A, Codex N/A, Cursor N/A
 - **Issue**: #2595 — https://github.com/character-ai/larch/issues/2595
+- **PR**: #2606 — https://github.com/character-ai/larch/pull/2606
 - **Plan review**: N/A
 - **Code review**: N/A
 - **OOS filed**: 0
