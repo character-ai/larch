@@ -10,6 +10,7 @@ cd "$REPO_ROOT"
 
 ALLOW=(
   .claude/skills/combine-issues/SKILL.md
+  .claude/skills/combine-issues/scripts/combinable-issues-title-filter.jq
   .claude/skills/combine-issues/scripts/fetch-combinable-issues.sh
   SECURITY.md
   docs/linting.md
@@ -18,6 +19,7 @@ ALLOW=(
   scripts/lib-title-markers.sh
   scripts/test-fetch-combinable-issues-filter.sh
   scripts/test-implement-admission.sh
+  scripts/test-legacy-title-prefix-literals-scope.sh
   scripts/test-tracking-issue-write.sh
   scripts/tracking-issue-write.md
   scripts/tracking-issue-write.sh
