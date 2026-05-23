@@ -20,6 +20,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Closed: #2590
 
+## [41.0.2] - 2026-05-22
+
+### Changed
+
+- Make /design standalone-only: remove SESSION_ENV_PATH and nested-mode branches across SKILL.md and references.
+- Establish CLAUDE_PLUGIN_ROOT in Step 0a via loader-expanded export before session-setup; simplify Bash preludes to the PID-keyed source line plus timing-ledger only.
+- Simplify tally-plan-review.sh to design-local artifacts only; drop parent tmpdir OOS handoff and implement tally-batch flush dead code.
+- Tighten CI with negative greps (A1-A4) and an ordering check (A5) for the Step 0a export vs session-setup.
+
 ## [41.0.1] - 2026-05-22
 
 ### Changed
