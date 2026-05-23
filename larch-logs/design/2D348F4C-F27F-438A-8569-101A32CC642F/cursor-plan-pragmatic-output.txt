@@ -1,0 +1,24 @@
+Reading the plan and referenced code paths.
+
+Reading referenced sections in `scripts/ship-pr.sh`, `scripts/test-ship-pr.sh`, and `scripts/ship-pr.md`.
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	risk_integration	plan.txt:28-37	Plan references mirroring run_recovery_waterfall but that symbol does not exist anywhere under *.sh in this repo today.	Implementer cannot locate the cited pattern; rollback guidance is underspecified unless #2395 lands with a concrete helper name/path.	Replace the reference with an explicit repo path after #2395 merges (or paste the rollback snippet into the plan) and keep the blocked-by note as the single source of truth.
+1	in_scope	important	correctness	plan.txt:36-47	Rollback snapshot wording conflicts: lines 36-38 imply per-tier pre-snapshots before each failed tier; lines 46-47 require a single snapshot at function entry and deltas from that baseline.	Wrong snapshot timing could over- or under-revert dirty paths between tiers.	Edit the plan so rollback steps match one model only (the conservative single baseline snapshot described at lines 46-47).
+1	in_scope	important	risk_integration	scripts/test-ship-pr.sh:2440-2481	Existing exhaustion regression asserts five outer vendor cycles and check_count==20; the plan lists new tier/budget cases but does not require updating this block.	CI will fail after ship-pr.sh changes until expectations are manually rediscovered.	Add an explicit plan bullet to revise messages, stall rationale, and numeric expectations (launcher-call and checks-count) for ci_fix_exhausted and any other fix-loop tests that hardcode 5 or 20.
+1	in_scope	important	architecture	plan.txt:71-71	Optional new harness section fix-loop-3tier is proposed without a matching Makefile test-ship-pr-* target or shard registration.	Tests gated only on section_runs fix-loop-3tier never run under current test-ship-pr-fix-loop (Makefile:449-450).	Either fold new cases into the existing fix-loop section or add Makefile target(s), document --section in the script header block (scripts/test-ship-pr.sh:411-416), and wire the harness shard row.
+1	out_of_scope	nit	correctness	scripts/ship-pr.md:82-84	Invariant prose still says run_ci_fix_vendor uses git add -u before git-commit.sh; ship-pr.sh uses collect_ci_stage_paths plus git add -- on explicit paths.	Doc/implementation mismatch confuses reviewers touching plan item 3 (lines 82-83).	When editing ship-pr.md for this issue, realign the staging sentence with scripts/ship-pr.sh:1263-1277 or file a separate docs-only follow-up.
+
+1. **[risk_integration]** [plan.txt:28-37](plan.txt) — `run_recovery_waterfall` is named as the behavioral template but does not exist in the tree today; tie rollback instructions to a concrete post-#2395 file/function or inline the exact algorithm so implementers are not blocked on a dead grep target.
+
+2. **[correctness]** [plan.txt:36-47](plan.txt) — Reconcile the rollback snapshot story (per-tier vs single entry snapshot); pick the single-baseline approach already argued at lines 46-47 and delete the contradictory bullet.
+
+3. **[risk_integration]** [scripts/test-ship-pr.sh:2440-2481](scripts/test-ship-pr.sh) — Call out mandatory updates to the existing exhaustion harness (five attempts, `check_count -eq 20`, assertion strings) alongside the new tier-order tests so the change set is not treated as tests-only additive work.
+
+4. **[architecture]** [plan.txt:71](plan.txt) / [Makefile:449-450](Makefile:449-450) — A separate `fix-loop-3tier` section name is unsafe without a new `test-ship-pr-*` Makefile entry; otherwise those cases never execute in CI.
+
+5. **[correctness]** [scripts/ship-pr.md:82-84](scripts/ship-pr.md) vs [scripts/ship-pr.sh:1263-1277](scripts/ship-pr.sh) — Staging documentation is already stale relative to code; worth fixing when the same paragraphs are edited for `--plan-file` / Claude tier prose.
+
+**[OUT_OF_SCOPE]** [larch-logs/design/CC79D945-CB91-4C84-BF50-45D8466D452D/](larch-logs/design/CC79D945-CB91-4C84-BF50-45D8466D452D/) (multiple files) — Older design artifacts still debate leaving `run_ci_fix_vendor` structurally unchanged (constraint C); this issue explicitly restructures it. Track only so downstream issue filing does not resurrect superseded scope conflicts against the new plan.
+
+**[OUT_OF_SCOPE]** [skills/shared/topology.tsv](skills/shared/topology.tsv) — If `scripts/ship-pr.md` row counts or anchors shift materially, topology regeneration may be required per repo norms; verify during `/implement` if the doc diff is more than a sentence tweak.

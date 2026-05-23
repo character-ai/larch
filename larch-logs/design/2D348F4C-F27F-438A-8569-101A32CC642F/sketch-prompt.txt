@@ -1,0 +1,38 @@
+Propose a high-level implementation approach for this feature: Extend `run_ci_fix_vendor` in `scripts/ship-pr.sh:1216-1307` to add a Claude tier so the CI-fix recovery loop matches `run_recovery_waterfall`'s depth.
+
+BASELINE (assume #2395 has merged):
+- `scripts/launch-claude-ci.sh` exists with argv mirroring cursor/codex CI launchers, including `--failure-log` argv, writer-persona prompt, local-reproduction invariant text, and only `fix` / `resolve-conflict` roles.
+- `scripts/launch-cursor-ci.sh` and `scripts/launch-codex-ci.sh` each have an optional `--failure-log` argv (path validated under `$IMPLEMENT_TMPDIR`, content redacted and capped at 4KB).
+- `run_recovery_waterfall` is wired at 5 sites in `scripts/ship-pr.sh` with the shape: Cursor (1 attempt) → Codex (1 attempt) → Claude (1 attempt), per-tier rollback using `git restore --staged` + `git checkout` + `rm` (quoted `--` sentinel for path safety).
+
+CURRENT STATE (pre-#2395 main, this is what you're modifying):
+- `run_ci_fix_vendor` at `scripts/ship-pr.sh:1225-1244` does **3 attempts × single vendor** (cursor if `command -v cursor` else codex — never both even if both present). It uses `launch-cursor-ci.sh --role fix` or `launch-codex-ci.sh --role fix` with `--plan-file`, `--run-id`, `--repo`, `--timeout 1800`.
+- The outer loop in `run_evaluate_failure` at `scripts/ship-pr.sh:1336-1361` retries `run_ci_fix_vendor` up to **5 times** with jittered backoff (2/4/8/16s ±25%). Detached-HEAD guard before each attempt. On exhaustion, `exit_stall 10-max-retries` / `12-max-retries`.
+
+REQUIRED CHANGE (decided by /design discussion):
+1. Restructure the recovery loop body in `run_ci_fix_vendor` (only lines 1225-1244 — the `for vendor_attempt in 1 2 3; do … done` block) so it tries **1 attempt × 3 tiers**: Cursor → Codex → Claude. On any tier success, break and proceed to the existing post-success flow. On all-tier failure, return 1 (same as today).
+2. Reduce the outer retry budget in `run_evaluate_failure` from 5 to **3** (line 1337: `_max_fix=5` → `_max_fix=3`). Backoff schedule and detached-HEAD guard unchanged.
+3. Worst-case total: 3 outer × 3 inner = 9 attempts per phase (3 cursor + 3 codex + 3 claude), down from 15 today.
+
+HARD CONSTRAINTS (must not break):
+- Post-vendor-success path (lines 1244-1307: `append-token-record.sh`, `capture_tracked_dirty_paths`, `run_checks_with_lint_fix_loop`, `git add`, `git-commit.sh "Fix CI failure"`, `refresh-run-logs.sh`, `git-push.sh`) MUST remain byte-identical.
+- Existing helper signatures must continue to work: `failure_capture_path`, `record_failure`, `LAST_LINT_FIX_DELTA_PATHS_FILE`, `collect_ci_stage_paths`, `kv_value`.
+- `exit_stall 10-max-retries` and `exit_stall 12-max-retries` continue to fire when the (now smaller) outer budget exhausts.
+- `git symbolic-ref --quiet HEAD` detached-HEAD guard at outer loop top must stay.
+- `state_set_many TRANSIENT_RETRIES 0 FIX_ATTEMPTS "$(( …+1 ))"` on success path stays.
+
+OPEN DECISIONS YOU SHOULD PROPOSE ANSWERS FOR:
+- Reuse `run_recovery_waterfall` directly (extract a shared helper? call it with a fix-role verifier?) vs. duplicate its tier-stepping logic inline. The verifiers used by `run_recovery_waterfall` (run-relevant-checks-captured.sh, etc.) differ from what `run_ci_fix_vendor` needs (the existing path: `run_checks_with_lint_fix_loop` after vendor success).
+- Whether to adopt `run_recovery_waterfall`'s inter-tier rollback (git restore --staged + checkout + rm) between tiers in `run_ci_fix_vendor`. Note: `run_ci_fix_vendor` itself does NOT commit between vendor attempts today — commit/push happens only after the entire recovery + lint-fix sequence completes. So mid-recovery rollback semantics differ.
+- Whether to pass `--failure-log` to each tier (with what content — the prior tier's `fail_file`? the `gh-run-logs.sh` output from `run_evaluate_failure`?). This is enabled by #2395 but optional.
+- How (if at all) to gate Claude tier availability — `launch-claude-ci.sh` is local, but `claude-cli`/`claude --print` may not be installed.
+- Test coverage: what `scripts/test-ship-pr.sh` cases need adding for the new loop shape and reduced outer budget; how to stub Claude tier calls in tests.
+- Documentation updates to `scripts/ship-pr.md` (and possibly `docs/` cross-refs).
+
+OUT-OF-SCOPE:
+- Modifying `run_recovery_waterfall` itself (only consume from it).
+- Modifying `launch-claude-ci.sh`, `launch-cursor-ci.sh`, `launch-codex-ci.sh`.
+- Modifying `run_evaluate_failure` beyond the `_max_fix` value change.
+- Any change outside `scripts/ship-pr.sh`, `scripts/ship-pr.md`, and `scripts/test-ship-pr.sh`.
+
+Explore the codebase. Write 2-3 paragraphs covering: (1) Key architectural decisions and approach, (2) Which files/modules to modify and why, (3) Main tradeoffs and risks. Do NOT modify files.

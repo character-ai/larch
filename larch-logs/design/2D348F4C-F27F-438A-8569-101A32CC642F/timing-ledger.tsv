@@ -1,0 +1,15 @@
+v1	vendor	1779556081	implement	-	codex	codex-sketch-generic	1779556010	1779556081	71	codex-sketch-generic-output.txt	0	complete
+v1	vendor	1779556129	implement	-	cursor	cursor-sketch-generic	1779556008	1779556129	121	cursor-sketch-generic-output.txt	0	complete
+v1	vendor	1779556514	implement	-	cursor	cursor-phase1-cursor-plan-innovation	1779556391	1779556514	123	cursor-plan-innovation-output.txt	0	complete
+v1	vendor	1779556524	implement	-	codex	codex-phase1-codex-plan-pragmatic	1779556391	1779556524	133	codex-primary-plan-pragmatic-output.txt	0	complete
+v1	vendor	1779556533	implement	-	cursor	cursor-phase1-cursor-plan-pragmatic	1779556391	1779556533	142	cursor-plan-pragmatic-output.txt	0	complete
+v1	vendor	1779556533	implement	-	codex	codex-phase1-codex-plan-arch	1779556391	1779556533	142	codex-primary-plan-arch-output.txt	0	complete
+v1	vendor	1779556542	implement	-	codex	codex-phase1-codex-plan-innovation	1779556391	1779556542	151	codex-primary-plan-innovation-output.txt	0	complete
+v1	vendor	1779556543	implement	-	cursor	cursor-phase1-cursor-plan-arch	1779556391	1779556543	152	cursor-plan-arch-output.txt	0	complete
+v1	vendor	1779556552	implement	-	cursor	cursor-phase1-cursor-plan-edge	1779556391	1779556552	161	cursor-plan-edge-output.txt	0	complete
+v1	vendor	1779556552	implement	-	codex	codex-phase1-codex-plan-edge	1779556391	1779556552	161	codex-primary-plan-edge-output.txt	0	complete
+v1	vendor	1779556554	implement	-	codex	codex-phase1-codex-plan-requirements	1779556391	1779556554	163	codex-primary-plan-requirements-output.txt	0	complete
+v1	vendor	1779556555	implement	-	cursor	cursor-phase1-cursor-plan-requirements	1779556391	1779556555	164	cursor-plan-requirements-output.txt	0	complete
+v1	vendor	1779556899	implement	-	cursor	cursor-review	1779556758	1779556899	141	cursor-plan-arch-output-ns-retry.txt	0	complete
+v1	vendor	1779557174	implement	-	cursor	cursor-phase1-voter-3	1779557123	1779557174	51	cursor-vote-output.txt	0	complete
+v1	vendor	1779557224	implement	-	codex	codex-phase1-voter-2	1779557123	1779557224	101	codex-vote-output.txt	0	complete

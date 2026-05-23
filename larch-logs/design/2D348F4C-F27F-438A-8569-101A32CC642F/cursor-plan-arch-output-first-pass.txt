@@ -1,0 +1,9 @@
+Reading the plan and exploring referenced code paths.
+
+Verifying plan line references and integration points in the codebase.
+
+Checking `launch-cursor-ci.sh` for `--failure-log` and whether the plan’s skip behavior matches.
+
+Delivering the review: TSV first (literal tabs), then numbered findings.
+
+
