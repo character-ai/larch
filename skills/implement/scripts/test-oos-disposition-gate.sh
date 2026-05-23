@@ -333,6 +333,34 @@ rc=$?
 set -e
 assert_rc "off-host issues URL is not counted as filed (exit 1 disposition gap)" 1 "$rc"
 
+# --- Case: two --filed-urls-file union satisfies two OOS blocks ---
+cat >"$TMP/two-union.md" <<'EOF'
+### OOS_1: A
+- **Description**: x
+- **Phase**: implement
+### OOS_2: B
+- **Description**: y
+- **Phase**: implement
+EOF
+cat >"$TMP/url-a.md" <<'EOF'
+https://github.com/example/larch/issues/1
+EOF
+cat >"$TMP/url-b.md" <<'EOF'
+https://github.com/example/larch/issues/2
+EOF
+set +e
+(
+  cd "$GIT_TMP"
+  bash "$GATE" \
+    --accepted-files "$TMP/two-union.md" \
+    --filed-urls-file "$TMP/url-a.md" \
+    --filed-urls-file "$TMP/url-b.md" \
+    --commit-range HEAD >/dev/null 2>&1
+)
+rc=$?
+set -e
+assert_rc "two --filed-urls-file union passes for two OOS blocks" 0 "$rc"
+
 if [ "$FAIL" -ne 0 ]; then
   echo "$FAIL case(s) failed, $PASS passed" >&2
   exit 1

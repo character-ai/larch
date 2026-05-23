@@ -6,12 +6,12 @@ Mechanical gate invoked from `/implement` Step 8+ after the Step 9a.1 `/issue` p
 
 ```text
 oos-disposition-gate.sh [--fork-mode] [--repo-unavailable] \
-  --accepted-files CSV --filed-urls-file PATH \
+  --accepted-files CSV (--filed-urls-file PATH)+ \
   [--oos-issues-ndjson PATH] --commit-range RANGE
 ```
 
 - `--accepted-files` — Comma-separated list of markdown paths (typically `$IMPLEMENT_TMPDIR/oos-accepted-main-agent.md`, `oos-accepted-design.md`, `oos-accepted-review.md`). Missing paths are ignored; empty aggregate is a pass.
-- `--filed-urls-file` — Path to the Step 9a.1 sentinel or sidecar listing created issues (e.g. `$IMPLEMENT_TMPDIR/oos-issues-created.md`). De-duplicated `https://…/issues/<n>` tokens are counted and **unioned** with URL tokens from `--oos-issues-ndjson` when that path is supplied.
+- `--filed-urls-file` — Repeatable. Each path is a Step 9a.1 sentinel, `/design` `oos-issues-created.md`, or any sidecar listing created issues (e.g. `oos-accepted-design.md` with `- **Filed URL**:` lines). De-duplicated `https://…/issues/<n>` tokens are counted across the **union** of all `--filed-urls-file` arguments and **unioned** with URL tokens from `--oos-issues-ndjson` when that path is supplied.
 - `--oos-issues-ndjson` — Optional path to the staged `oos-issues.ndjson` batch for the run. When present, unique issue URLs from this file participate in the filed-URL count, and rejected-sub-block bodies contribute `rejected_oos_markers` (see below).
 - `--commit-range` — Git revision range passed to `git log` (e.g. `$(git merge-base HEAD origin/main)..HEAD`, or `origin/main..HEAD` when merge-base is empty but `origin/main` resolves). Used only when the gate is not skipped.
 - `--fork-mode` / `--repo-unavailable` — When either is set, the gate **exits 0 immediately** (no file reads, no `git log`).

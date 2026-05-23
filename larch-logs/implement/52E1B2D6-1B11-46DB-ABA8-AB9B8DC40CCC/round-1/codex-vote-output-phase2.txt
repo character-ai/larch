@@ -1,0 +1,44 @@
+Reading the ballot and any referenced context files to verify findings.
+
+Reading the full ballot in `aggregator-prompt.md` (findings.md lacks FINDING headings) and verifying against diff/plan and repo sources.
+
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: EXONERATE -- maintenance-style nit; shared-extractor refactor outweighs benefit here
+FINDING_5: EXONERATE -- plan checklist vs generator-input mismatch without a shipped doc defect
+FINDING_6: EXONERATE -- pre-existing coarse `filed>0` gate; not issue-worthy under deferral
+FINDING_7: NO -- historical changelog prose is intentional migration context
+FINDING_8: YES
+FINDING_9: NO -- `file-design-oos.md` has no line 82 and already documents atomic temp plus mv
+FINDING_10: EXONERATE -- known prompt-side combine hazard; mechanical helper is explicitly future scope
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: EXONERATE -- forcing deps non-zero adds harness complexity for marginal signal
+FINDING_14: YES
+FINDING_15: EXONERATE -- test naming vs coarse `filed>0` semantics is nit-level
+FINDING_16: EXONERATE -- optional stronger assertions on partial-failure paths
+FINDING_17: EXONERATE -- OOS_1 deferral already in plan; separate tracking issue redundant
+FINDING_18: EXONERATE -- trusted `/larch:issue` stdout; strict URL validation is disproportionate here
+FINDING_19: YES
+FINDING_20: EXONERATE -- unifying grep vs Python URL extraction is refactor beyond this PR’s scope
+FINDING_21: EXONERATE -- same substring-count class as FINDING_19 and largely pre-existing
+FINDING_22: EXONERATE -- duplicate of FINDING_1 on the same `|| true` masking pattern
+FINDING_23: YES
+FINDING_24: YES
+FINDING_25: EXONERATE -- overlaps skip-sentinel / recovery gap already captured in FINDING_3 and FINDING_14
+FINDING_26: EXONERATE -- duplicate deps-degrade harness concern as FINDING_13
+FINDING_27: EXONERATE -- same coarse-gate note as FINDING_6; not issue-worthy
+FINDING_28: EXONERATE -- optional checkpoint polish; carve-out is stated elsewhere in SKILL
+FINDING_29: EXONERATE -- duplicate of FINDING_12 cap-through-prepare integration gap
+FINDING_30: EXONERATE -- plan wording vs `topology.tsv` inputs; no erroneous shipped `topology.md` change required
+FINDING_31: EXONERATE -- duplicate ship-pr vs SKILL argv drift already covered by FINDING_11
+FINDING_32: YES
+FINDING_33: YES
+FINDING_34: EXONERATE -- broad cross-session fixtures add large harness cost for niche ordering cases
+FINDING_35: NO -- branch commit inventory is not an actionable code-review finding
+FINDING_36: EXONERATE -- pre-existing `filed>0` contract; plan already defers per-block tightening
+FINDING_37: YES
+FINDING_38: EXONERATE -- negative test is optional until FINDING_37-style counting/product change lands
+FINDING_39: EXONERATE -- sibling exit table documents `filed>0`; intro “each” wording is minor tension only
+FINDING_40: EXONERATE -- stricter counting explicitly deferred; documents accepted risk rather than a new defect

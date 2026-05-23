@@ -18,7 +18,7 @@ _REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 
 usage() {
   printf 'usage: oos-disposition-gate.sh [--fork-mode] [--repo-unavailable] \\\n' >&2
-  printf '  --accepted-files CSV --filed-urls-file PATH \\\n' >&2
+  printf '  --accepted-files CSV (--filed-urls-file PATH)+ \\\n' >&2
   printf '  [--oos-issues-ndjson PATH] --commit-range RANGE\n' >&2
 }
 
@@ -60,7 +60,7 @@ count_inline_triage() {
 }
 
 ACCEPTED_FILES=""
-FILED_URLS_FILE=""
+FILED_URLS_FILES=()
 OOS_ISSUES_NDJSON=""
 COMMIT_RANGE=""
 FORK_MODE=false
@@ -81,7 +81,7 @@ while [ $# -gt 0 ]; do
         usage
         exit 2
       }
-      FILED_URLS_FILE="$2"
+      FILED_URLS_FILES+=("$2")
       shift 2
       ;;
     --oos-issues-ndjson)
@@ -118,7 +118,7 @@ if [ "$FORK_MODE" = true ] || [ "$REPO_UNAVAILABLE" = true ]; then
   exit 0
 fi
 
-if [ -z "$ACCEPTED_FILES" ] || [ -z "$FILED_URLS_FILE" ] || [ -z "$COMMIT_RANGE" ]; then
+if [ -z "$ACCEPTED_FILES" ] || [ "${#FILED_URLS_FILES[@]}" -eq 0 ] || [ -z "$COMMIT_RANGE" ]; then
   usage
   exit 2
 fi
@@ -158,9 +158,9 @@ oos_validate_accepted_inputs || exit 2
 
 non_sec=$(count_non_security_oos "$ACCEPTED_FILES")
 if [ -n "$OOS_ISSUES_NDJSON" ] && [ -f "$OOS_ISSUES_NDJSON" ]; then
-  filed=$(count_filed_urls_union_files "$FILED_URLS_FILE" "$OOS_ISSUES_NDJSON")
+  filed=$(count_filed_urls_union_files "${FILED_URLS_FILES[@]}" "$OOS_ISSUES_NDJSON")
 else
-  filed=$(count_filed_urls_union_files "$FILED_URLS_FILE")
+  filed=$(count_filed_urls_union_files "${FILED_URLS_FILES[@]}")
 fi
 rejected=0
 if [ -n "$OOS_ISSUES_NDJSON" ] && [ -f "$OOS_ISSUES_NDJSON" ]; then

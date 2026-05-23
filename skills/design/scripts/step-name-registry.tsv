@@ -11,4 +11,5 @@ step	name
 3b	arch diagram
 4	rejected findings
 4b	gate C
-5	cleanup
+5	finalize
+6	cleanup

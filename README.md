@@ -58,7 +58,7 @@ Larch is a Claude Code workflow automation framework that orchestrates multi-age
       <td><a href="docs/skills.md#design"><code>/design</code></a></td>
       <td><code>[--trivial|--simple|--hard] [--no-dedup] [--run-id &lt;ID&gt;] &lt;issue-N | feature description&gt;</code></td>
     </tr>
-    <tr><td colspan="2">Author or refresh an issue-anchored implementation plan in GitHub (plan markers in the issue body). Tier flags select sketch and plan-review depth (<code>--trivial</code> is the quick-budget tier; <code>--simple</code> / <code>--hard</code> use larger sketch fan-outs per <a href="docs/topology.md#design.sketch.regular_slots">topology</a>).</td></tr>
+    <tr><td colspan="2">Author or refresh an issue-anchored implementation plan in GitHub (plan markers in the issue body). Tier flags select sketch and plan-review depth (<code>--trivial</code> is the quick-budget tier; <code>--simple</code> / <code>--hard</code> use larger sketch fan-outs per <a href="docs/topology.md#design.sketch.regular_slots">topology</a>). Finalize runs upstream <code>/larch:issue</code> batch filing for accepted non-security OOS (Step <strong>5b</strong>) before writing and publishing the <code>larch:plan</code> block (<strong>5c</strong>); tmpdir cleanup is Step <strong>6</strong>.</td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
       <td><a href="docs/skills.md#implement"><code>/implement</code></a></td>
