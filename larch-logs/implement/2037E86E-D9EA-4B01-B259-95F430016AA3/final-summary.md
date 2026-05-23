@@ -7,10 +7,11 @@
 - **Tokens**: 66441k total — Claude 30808k, Codex 134k, Cursor 35499k
 - **Cost**: TOTAL ~$541.18 — Claude $184.85, Codex $1.34, Cursor $354.99
 - **Issue**: #2622 — https://github.com/character-ai/larch/issues/2622
+- **PR**: #2629 — https://github.com/character-ai/larch/pull/2629
 - **Plan review**: N/A
 - **Code review**: 12/12 accepted
 - **OOS filed**: 0
-- **Exec issues**: 0
+- **Exec issues**: 1
 - **Warnings**: 2
 - **Run logs**: `larch-logs/implement/2037E86E-D9EA-4B01-B259-95F430016AA3/`
 
