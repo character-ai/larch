@@ -341,9 +341,9 @@ if grep -Fq "$old_design_prose" "$SKILL_MD"; then
   fail "(11) SKILL.md still contains legacy unconditional Step 0 session-setup prose"
 fi
 
-# Check 13: accepted-OOS security exclusion pins. plan-review.md owns both the
-# parent `/implement` accepted-OOS artifact write and the design visibility
-# export; both public-boundary paths must explicitly exclude accepted
+# Check 13: accepted-OOS security exclusion pins. plan-review.md owns the
+# `$DESIGN_TMPDIR/oos-accepted-design.md` write and the design `oos.md`
+# visibility export; both public-boundary paths must explicitly exclude accepted
 # security-tagged OOS blocks using the canonical token match.
 grep -F 'oos-accepted-design.md' "$PLAN_REVIEW_MD" \
   | grep -F 'excluding security-tagged findings' \

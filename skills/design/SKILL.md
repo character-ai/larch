@@ -33,7 +33,7 @@ Design an implementation plan for a feature and review it with a **full** panel 
 
 - Print a **start line** when entering a step: e.g., `> **🔶 /design 1c: questions**` (the first numbered step after Step 0 setup).
 - Do not print step completion lines; start breadcrumbs are the visible step markers.
-- When `STEP_NUM_PREFIX` is non-empty, prepend it to step numbers: `{STEP_NUM_PREFIX}{local_step}`. When `STEP_PATH_PREFIX` is non-empty, prepend it to breadcrumb paths: `{STEP_PATH_PREFIX} | {step_short_name}`. When `PARENT_SKILL_PATH` is non-empty, print the skill path as `{PARENT_SKILL_PATH}:/design`; otherwise print `/design`. **This rule overrides the literal skill paths, step numbers, and names in `Print:` directives and examples throughout this file.** Examples shown below assume standalone mode; when nested, prepend the parent context and parent skill path.
+- When `STEP_NUM_PREFIX` is non-empty, prepend it to step numbers: `{STEP_NUM_PREFIX}{local_step}`. When `STEP_PATH_PREFIX` is non-empty, prepend it to breadcrumb paths: `{STEP_PATH_PREFIX} | {step_short_name}`. When `PARENT_SKILL_PATH` is non-empty, print the skill path as `{PARENT_SKILL_PATH}:/design`; otherwise print `/design`. **This rule overrides the literal skill paths, step numbers, and names in `Print:` directives and examples throughout this file.** `/design` is always invoked as a standalone skill; `STEP_NUM_PREFIX`, `STEP_PATH_PREFIX`, and `PARENT_SKILL_PATH` are optional env-driven label prefixes from the outer orchestrator only — they are not a nested `/design` transport or a second skill instance.
 
 **MANDATORY at session start**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/step-name-registry.tsv` to get the Step Name Registry (step number → short name mapping for progress breadcrumbs).
 
@@ -108,6 +108,10 @@ Print: `> **🔶 /design 0: setup**`
 
 ```bash
 export CLAUDE_PLUGIN_ROOT='${CLAUDE_PLUGIN_ROOT}'
+if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ]; then
+  printf '%s\n' '/design Step 0: CLAUDE_PLUGIN_ROOT is empty after export — skill loader must expand ${CLAUDE_PLUGIN_ROOT} in the template line before Bash runs; abort' >&2
+  exit 1
+fi
 LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 0 — session setup" || true
 
 # Contract pin for CI (scripts/test-design-structure.sh): session-setup.sh --prefix claude-design --skip-branch-check --skip-repo-check --check-reviewers

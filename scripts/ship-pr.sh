@@ -538,11 +538,25 @@ record_failure() {
         --output-file "$output_file"
 }
 
+# Canonical path for plan-review accepted OOS (mirrors skills/implement/SKILL.md disposition gate).
+resolve_oos_accepted_design_path() {
+    local impl="$1"
+    if [[ -n "${DESIGN_TMPDIR:-}" ]]; then
+        printf '%s\n' "${DESIGN_TMPDIR%/}/oos-accepted-design.md"
+        return
+    fi
+    if [[ -f "$impl/design-export/oos-accepted-design.md" ]]; then
+        printf '%s\n' "$impl/design-export/oos-accepted-design.md"
+        return
+    fi
+    printf '%s\n' "$impl/oos-accepted-design.md"
+}
+
 # Mechanical OOS disposition check before any ship-pr path clears OOS_PENDING to
 # false (mirrors skills/implement/SKILL.md Step 8+ gate argv shape).
 run_oos_disposition_gate_if_required_before_oos_pending_false() {
     local gate_script="$PLUGIN_ROOT/skills/implement/scripts/oos-disposition-gate.sh"
-    local forked repo_un repo_root oos_mb oos_range run_id oos_ndjson oos_list oos_n gate_log gate_rc
+    local forked repo_un repo_root oos_mb oos_range run_id oos_ndjson oos_list oos_n gate_log gate_rc oos_design_path
     forked=$(read_state FORKED_TARGET)
     repo_un=$(read_state REPO_UNAVAILABLE)
     if [ "$forked" = "true" ] || [ "$repo_un" = "true" ]; then
@@ -582,10 +596,11 @@ run_oos_disposition_gate_if_required_before_oos_pending_false() {
         gate_extra+=(--oos-issues-ndjson "$oos_ndjson")
     fi
     gate_log="$IMPLEMENT_TMPDIR/oos-disposition-gate.stderr.log"
+    oos_design_path=$(resolve_oos_accepted_design_path "$IMPLEMENT_TMPDIR")
     set +e
     bash "$gate_script" \
         "${gate_extra[@]+"${gate_extra[@]}"}" \
-        --accepted-files "$IMPLEMENT_TMPDIR/oos-accepted-main-agent.md,$IMPLEMENT_TMPDIR/oos-accepted-design.md,$IMPLEMENT_TMPDIR/oos-accepted-review.md" \
+        --accepted-files "$IMPLEMENT_TMPDIR/oos-accepted-main-agent.md,$oos_design_path,$IMPLEMENT_TMPDIR/oos-accepted-review.md" \
         --filed-urls-file "$IMPLEMENT_TMPDIR/oos-issues-created.md" \
         --commit-range "$oos_range" 2>"$gate_log"
     gate_rc=$?
@@ -993,7 +1008,7 @@ sanitize_diagram_or_placeholder() {
 }
 
 run_pr_prep_phase() {
-    local summary tests closes architecture_file code_flow_file composed_summary plan_goals_file run_id fail_file gate_rc
+    local summary tests closes architecture_file code_flow_file composed_summary plan_goals_file run_id fail_file gate_rc oos_design_path
     emit_breadcrumb "→ ship-pr: PR prep"
     summary=$(manifest_summary)
     if [ -z "$summary" ]; then
@@ -1030,7 +1045,8 @@ run_pr_prep_phase() {
         printf '%s\n\nGenerated with [Claude Code](https://claude.com/claude-code)\n' "$closes"
     } > "$IMPLEMENT_TMPDIR/pr-body.md"
 
-    if [ -s "$IMPLEMENT_TMPDIR/oos-accepted-main-agent.md" ] || [ -s "$IMPLEMENT_TMPDIR/oos-accepted-design.md" ] || [ -s "$IMPLEMENT_TMPDIR/oos-accepted-review.md" ]; then
+    oos_design_path=$(resolve_oos_accepted_design_path "$IMPLEMENT_TMPDIR")
+    if [ -s "$IMPLEMENT_TMPDIR/oos-accepted-main-agent.md" ] || [ -s "$oos_design_path" ] || [ -s "$IMPLEMENT_TMPDIR/oos-accepted-review.md" ]; then
         state_set OOS_PENDING true
         advance_phase pr-create
         exit 0
