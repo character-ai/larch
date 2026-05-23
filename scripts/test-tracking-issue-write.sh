@@ -198,6 +198,63 @@ set -e
 [[ "$bad_state" == *"FAILED=true"* ]] || fail "in-progress FAILED=true missing: $bad_state"
 [[ "$bad_state" == *"invalid --state"* ]] || fail "in-progress error message missing: $bad_state"
 
+echo "=== legacy planned state rejected ==="
+set +e
+bad_planned="$("$WRITE" rename --issue 42 --state "planned" --repo owner/repo 2>&1)"
+rc_planned=$?
+set -e
+[ "$rc_planned" = "1" ] || fail "planned exit $rc_planned (expected 1)"
+[[ "$bad_planned" == *"FAILED=true"* ]] || fail "planned FAILED=true missing: $bad_planned"
+[[ "$bad_planned" == *"invalid --state"* ]] || fail "planned error message missing: $bad_planned"
+
+echo "=== rename implementing from designed title ==="
+cat > "$stub/gh" <<'GHSTUB_IMPL'
+#!/usr/bin/env bash
+if [ "$1" = "repo" ]; then echo "owner/repo"; exit 0; fi
+if [ "$1" = "issue" ] && [ "$2" = "view" ]; then
+    echo "[DESIGNED] Feature title"
+    exit 0
+fi
+if [ "$1" = "issue" ] && [ "$2" = "edit" ]; then
+    for ((i=1; i<=$#; i++)); do
+        if [ "${!i}" = "--title" ]; then
+            next=$((i + 1))
+            printf '%s' "${!next}" > "$TITLE_CAPTURE"
+        fi
+    done
+    exit 0
+fi
+exit 1
+GHSTUB_IMPL
+chmod +x "$stub/gh"
+out="$("$WRITE" rename --issue 42 --state "implementing" --repo owner/repo)"
+[[ "$out" == *"RENAMED=true"* ]] || fail "implementing rename RENAMED: $out"
+[ "$(cat "$TITLE_CAPTURE")" = "[IMPLEMENTING] Feature title" ] || fail "implementing title was $(cat "$TITLE_CAPTURE")"
+
+echo "=== rename implementing from in-progress legacy title ==="
+cat > "$stub/gh" <<'GHSTUB_IMPL2'
+#!/usr/bin/env bash
+if [ "$1" = "repo" ]; then echo "owner/repo"; exit 0; fi
+if [ "$1" = "issue" ] && [ "$2" = "view" ]; then
+    echo "[IN PROGRESS] Feature title"
+    exit 0
+fi
+if [ "$1" = "issue" ] && [ "$2" = "edit" ]; then
+    for ((i=1; i<=$#; i++)); do
+        if [ "${!i}" = "--title" ]; then
+            next=$((i + 1))
+            printf '%s' "${!next}" > "$TITLE_CAPTURE"
+        fi
+    done
+    exit 0
+fi
+exit 1
+GHSTUB_IMPL2
+chmod +x "$stub/gh"
+out="$("$WRITE" rename --issue 42 --state "implementing" --repo owner/repo)"
+[[ "$out" == *"RENAMED=true"* ]] || fail "implementing from legacy RENAMED: $out"
+[ "$(cat "$TITLE_CAPTURE")" = "[IMPLEMENTING] Feature title" ] || fail "implementing from legacy title was $(cat "$TITLE_CAPTURE")"
+
 echo "=== removed anchor subcommands are rejected ==="
 set +e
 removed="$("$WRITE" find-anchor --issue 42 --repo owner/repo 2>&1)"

@@ -25,6 +25,8 @@ Do NOT combine issues that are genuinely independent and benefit from separate r
 $PWD/.claude/skills/combine-issues/scripts/fetch-combinable-issues.sh
 ```
 
+Title-prefix filtering logic lives in `$PWD/.claude/skills/combine-issues/scripts/combinable-issues-title-filter.jq` beside the fetch script; keep it in sync with `scripts/test-fetch-combinable-issues-filter.sh`.
+
 Parse `ISSUES_FILE` and `COUNT` from stdout. If `COUNT=0`, print `No open issues eligible for combination.` and stop.
 
 Read the JSON file at `$ISSUES_FILE` to get the full issue list (number, title, body, labels).
@@ -59,5 +61,5 @@ After all groups are applied, print a final tally: `Done — <N> issues combined
 ## Anti-patterns
 
 - **NEVER combine issues without user confirmation.** The analysis is advisory; the user decides which groups to merge. Combining the wrong issues loses important context that is hard to recover.
-- **NEVER combine an issue that has a `[DESIGNING]`, `[IMPLEMENTING]`, `[STALLED]`, or `[DONE]` title prefix.** The fetch script filters these out, but if one slips through (e.g., prefix applied after fetch), skip it and warn. Note: `[DESIGNED]` issues are intentionally NOT excluded — they are valid combine candidates (design complete, implementation not yet started).
+- **NEVER combine an issue that has a `[DESIGNING]`, `[IMPLEMENTING]`, `[STALLED]`, or `[DONE]` title prefix, nor legacy `[PLANNED]` / `[IN PROGRESS]` busy titles.** The fetch script filters these out, but if one slips through (e.g., prefix applied after fetch), skip it and warn. Note: `[DESIGNED]` issues are intentionally NOT excluded — they are valid combine candidates (design complete, implementation not yet started).
 - **NEVER discard actionable content from source issues.** The combined body must preserve every concrete task, file reference, and reproduction step from the originals. Summarizing away specifics defeats the purpose.

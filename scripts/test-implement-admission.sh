@@ -401,6 +401,8 @@ export STUB_VIEW_JSON='{"title":"[IMPLEMENTING] stale","state":"OPEN","labels":[
   rc=${rc:-0}
   if [[ "$rc" != 5 ]]; then
     fail "sentinel-stale-runid: expected exit 5 (managed prefix) got $rc out=$out"
+  elif ! printf '%s' "$out" | grep -Fq 'ADMISSION_RESULT=managed-prefix'; then
+    fail "sentinel-stale-runid: missing ADMISSION_RESULT=managed-prefix in $out"
   elif ! printf '%s' "$out" | grep -Fq 'TITLE='; then
     fail "sentinel-stale-runid: missing TITLE= in $out"
   else
