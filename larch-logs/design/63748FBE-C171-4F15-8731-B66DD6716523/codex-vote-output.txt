@@ -1,0 +1,20 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: EXONERATE -- Display formatting duplication is minor; sharing another library would add more surface than this issue warrants.
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: EXONERATE -- The plan already documents conservative estimate semantics; requiring stronger wording is reasonable but not plan-blocking.
+FINDING_17: YES
+OOS_1: YES
+OOS_2: YES
+OOS_3: EXONERATE -- Legitimate stale nested-design residue, but user explicitly directed that this is covered by a separate in-flight cleanup.

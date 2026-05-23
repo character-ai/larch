@@ -1,0 +1,165 @@
+# Implementation Plan: Issue #2594 — dollar-cost summary for /implement and /design
+
+## Goal
+
+Make both `/implement` and `/design` display a per-vendor dollar-cost summary at the end of each run. `/implement` currently emits a `**Cost**: TOTAL N/A — Claude N/A, Codex N/A, Cursor N/A` bullet because no default rates ship and `LARCH_*_RATE_PER_M` env vars are unset; `/design` emits no cost or token summary at all. Two workstreams: (1) ship sensible per-vendor default rates so the existing /implement bullet shows real dollars by default; (2) add a single-line cost+tokens summary at the end of /design (and on every /design exit path) — this also requires extending the existing token-tracking plumbing to recognize standalone `/design` sessions.
+
+**Standalone-only scope**: per explicit user direction, "/design can NEVER be called from /implement; a separate design session is in flight to clean up nested-/design remnants in /implement — do not file OOS for it." The plan therefore treats the standalone /design path as the only supported invocation. The Anti-pattern #7 nested-artifact-only contract (`skills/design/SKILL.md:103-104`) does not constrain this change. Nested-/design code-path cleanup is OUT OF SCOPE.
+
+## Files to modify
+
+### Cost infrastructure (shared)
+
+1. **`scripts/token-cost.sh`** — add per-vendor default rates with strict numeric validation. Preserve current precedence: explicit `LARCH_CLAUDE_RATE_PER_M` / `LARCH_CODEX_RATE_PER_M` / `LARCH_CURSOR_RATE_PER_M` continue to override the new defaults; Claude's existing fallback `LARCH_TOKEN_RATE_PER_M` continues to win against the Claude default. New behavior: when the effective raw rate is empty / zero / **malformed** / unset, use the per-vendor default constant. Defaults declared at the top of the script: `DEFAULT_CLAUDE_RATE_PER_M=6.00`, `DEFAULT_CODEX_RATE_PER_M=10.00`, `DEFAULT_CURSOR_RATE_PER_M=10.00`. Replace `rate_or_na` with `rate_or_default` that validates `^[0-9]+(\.[0-9]+)?$` and falls through to the default on invalid/empty/zero input. Stdout `KEY=value` shape unchanged. **TOTAL_COST aggregation semantics change**: with defaults active, all three per-vendor costs are numeric so TOTAL_COST always sums all three (previously it skipped N/A vendors). Document explicitly.
+
+2. **`scripts/token-cost.md`** — document the new default-rate behavior, list numeric default values, the malformed-input → default policy, and the TOTAL_COST always-sums-three change. Update the comparison-with-token-tally.sh table row "N/A behavior" since token-cost.sh no longer yields N/A by default. Include a `> **Note**: Default rates are conservative blended estimates, not invoice-grade billing data. Operators with real billing visibility should set their own rates via the env vars above.` disclaimer.
+
+3. **`scripts/test-token-cost.sh`** (new sibling under `scripts/`, with `scripts/test-token-cost.md` stub per `.claude/rules/script-md-siblings.md`) — assertions: (a) defaults applied when no env var set; (b) env var overrides default; (c) explicit `0` env var falls through to default; (d) explicit empty string falls through to default; (e) **malformed string** (e.g., `abc`) falls through to default; (f) `LARCH_TOKEN_RATE_PER_M` still wins over the Claude default when set explicitly; (g) TOTAL_COST sums all three vendor costs with defaults active. Bash 3.2-compatible; uses tempfiles and `set -eu`.
+
+### Design cost-line emission
+
+4. **`scripts/render-cost-line.sh`** (new) — small helper that ingests vendor token counts and emits the exact format `💰 Cost: TOTAL ~$X — Claude $A, Codex $B, Cursor $C  |  Tokens: <T>k` on stdout (single line, terminated by newline). Internally shells to `scripts/token-cost.sh` for cost values; consumes only its KEY=value stdout (no duplication of `fmt_usd` logic — does its own minimal `$%.2f` formatting). CLI: `--claude-tokens N --codex-tokens N --cursor-tokens N [--quiet-on-empty]`. `--quiet-on-empty` prints nothing if all three token counts are zero AND exits 0.
+
+5. **`scripts/render-cost-line.md`** (new) — sibling doc: purpose, CLI, exact output grammar (emoji + em-dash + double-space + pipe positions pinned), callers (`/design` Step 5 happy path; /design exit-path emitters), and the rationale for not reusing `render-run-summary.sh` (different surface: terminal one-liner vs. markdown bullet block + sentinel).
+
+6. **`scripts/test-render-cost-line.sh`** (new, with `scripts/test-render-cost-line.md` stub) — assert exact byte format with: (a) all rates defaulted; (b) explicit rates; (c) zero token counts for one vendor (line still emitted, that vendor shows `$0.00`); (d) `--quiet-on-empty` with all zero counts emits nothing and exits 0; (e) emoji + em-dash + double-space + pipe characters appear in the correct positions (byte-pin via `xxd` or fixed-string compare).
+
+### Token-ledger extension for standalone /design
+
+7. **`scripts/token-ledger.sh`** — extend BOTH `resolve_session_id` AND `resolve_ledger_path` to recognize `DESIGN_TMPDIR` as a fallback. Full precedence after this change:
+   - `resolve_session_id`: `LARCH_TOKEN_SESSION_ID` → `IMPLEMENT_TMPDIR/session-id` → `DESIGN_TMPDIR/session-id` → existing `pwd -P | sha256` fallback (preserved untouched).
+   - `resolve_ledger_path`: existing override path → `IMPLEMENT_TMPDIR` root → `DESIGN_TMPDIR` root → existing default. Mirror the `scripts/timing-ledger.sh:77-78` precedence (timing-ledger already recognizes DESIGN_TMPDIR; bring token-ledger to parity).
+
+8. **`scripts/token-ledger.md`** — document the full four-tier precedence for `resolve_session_id` (including the preserved pwd-hash terminal fallback) and the new DESIGN_TMPDIR root branch in `resolve_ledger_path`. Note that standalone /design runs now get a per-session token ledger keyed on `$DESIGN_TMPDIR/session-id`.
+
+9. **`scripts/launch-review.sh`** — extend the `LARCH_TOKEN_SESSION_ID` derivation block (currently only checks `IMPLEMENT_TMPDIR/session-id`) to also check `DESIGN_TMPDIR/session-id` as a fallback. Same pattern in both Codex (lines ~157-160) and Cursor (lines ~648-651) branches (parity per `.claude/rules/external-tool-launcher-parity.md`).
+
+10. **`scripts/launch-review.md`** — note the new DESIGN_TMPDIR fallback in the env-input section.
+
+11. **`scripts/test-launch-review.sh`** — add assertions: with `DESIGN_TMPDIR` set and `IMPLEMENT_TMPDIR` unset, `LARCH_TOKEN_SESSION_ID` is exported from `$DESIGN_TMPDIR/session-id`. With both unset, the export is skipped.
+
+12. **`scripts/test-token-ledger.sh`** — add assertions: precedence (LARCH_TOKEN_SESSION_ID > IMPLEMENT_TMPDIR > DESIGN_TMPDIR > pwd-hash), `resolve_ledger_path` precedence including DESIGN_TMPDIR root branch, back-compat (existing implement-only callers unchanged). Update the fail-closed `env -u` list to also unset `DESIGN_TMPDIR` where appropriate.
+
+13. **`scripts/check-step-token-budget.sh`** — no code change needed (it reads through `token-ledger.sh resolve_session_id`, which now picks up DESIGN_TMPDIR after FINDING_1). Update its `.md` sibling (`scripts/check-step-token-budget.md`) to document the DESIGN_TMPDIR fallback inheritance.
+
+### /design SKILL.md emission
+
+14. **`skills/design/SKILL.md`** — add cost-line emission. **Step 0 ledger mark**: add a `token-ledger.sh mark "design Step 0 — session setup"` invocation immediately after `session-setup.sh` succeeds (after the `LARCH_TIMING_SKILL=design ... timing-ledger.sh mark` call) and BEFORE the writer / source-env path. This seeds the ledger so `token-report.sh` has at least one mark on any subsequent exit path. **Emission helper**: each emission point first invokes `token-report.sh --full --format json --output $DESIGN_TMPDIR/token-report.json` to render the JSON (best-effort, capture failures to `$DESIGN_TMPDIR/token-report.failure.log` and emit a `**⚠ /design: token report unavailable; cost line suppressed**` warning), then parses Claude/Codex/Cursor token totals from that JSON and pipes them into `scripts/render-cost-line.sh`. Emission points:
+    - **Step 5 happy path**: immediately before the terminal machine footer `➡️ 5: cleanup — plan written to issue #<N>; NEXT REQUIRED: continue`, AFTER warning-repeat lines but BEFORE the footer. Render-cost-line invocation precedes `cleanup-tmpdir.sh` (which would otherwise delete the tmpdir before the JSON could be read).
+    - **Step 5b plan-block-write failure path**: before the `**⚠ 5: plan-block-write failed**` warning line.
+    - **Step 0b clarify branch exit** (after `plan-block-write.sh` success, `clarify-comment-post.sh`, `clarify-label.sh`, and tracking-issue rename if applicable): emit cost line before `exit 0`.
+    - **Step 0b already-planned cancel**: before `**ℹ /design cancelled by operator.**` and `exit 0`.
+    - **Step 0b tier-gate cancel**: before `**ℹ /design cancelled by operator.**` and `exit 0`.
+    - **Pre-DESIGN_TMPDIR exits (skip emission entirely)**: Step 0a session-setup.sh failure AND the tier-flag mutual-exclusion abort BEFORE Step 0. Neither has `$DESIGN_TMPDIR` yet; the helper would have nothing to read. Skip explicitly — do NOT call `render-cost-line.sh --quiet-on-empty` for these (the helper still needs `--*-tokens` arguments and would error or no-op confusingly).
+    - Gates A / B / C do not have "cancel" options that skip Step 5 — they loop until the user picks an exit choice that flows into Step 5 (Approve → Step 5b) or back into Gate A. The only way out before Step 5 is `Other` on the AskUserQuestion → which lands on the Step 0b cancel handler (already covered above).
+    - Step 3.5 / Step 4b / etc. abort branches that print `**⚠ ...**` and continue do NOT exit — they flow into Step 5 which owns the canonical emission. No emission needed mid-flow.
+
+15. **`skills/design/SKILL.md` cleanup ordering**: the cost line emits BEFORE `cleanup-tmpdir.sh` runs (since the cost line reads `$DESIGN_TMPDIR/token-report.json` and cleanup deletes the tmpdir). When cleanup is skipped (PLAN_WRITE_OK=false or PUBLISH_OK=false), the line still emits.
+
+### Documentation
+
+16. **`docs/configuration-and-permissions.md`** — under the existing `LARCH_*_RATE_PER_M` section, add a new subsection "Default rates" listing the numeric default values, the malformed-input policy, and the disclaimer text: `> **Note**: Default rates are conservative blended estimates per million total tokens, not invoice-grade billing data. Operators with real billing visibility should set their own rates via the env vars above. The displayed dollar amounts are for cost-awareness only.` Update the prose to say omission now yields the default value instead of `N/A`.
+
+17. **`scripts/render-run-summary.md`** — add a one-line note that costs are no longer `N/A` by default once token-cost.sh ships defaults.
+
+18. **`scripts/token-tally.md`** — update the comparison table row "N/A behavior" to reflect that `token-cost.sh` no longer defaults to N/A. (`token-tally.sh` itself is out of scope; only its comparison row needs the doc update for drift prevention.)
+
+### Test harness wiring
+
+19. **`Makefile`** — register new harnesses in the appropriate test shard (mirror `scripts/test-render-run-summary.sh` registration): `scripts/test-token-cost.sh` and `scripts/test-render-cost-line.sh`. Add them to the same shard list / `lint-shard*` target where comparable test scripts live.
+
+20. **`agent-lint.toml`** — add the new test script paths to the `allowed-prefixes` / path allowlist (around the existing `test-render-run-summary.sh` entry, around line 1005).
+
+21. **`docs/linting.md`** — add inventory rows for the new harnesses in the same table where `test-render-run-summary.sh` is listed.
+
+22. **`scripts/test-design-structure.sh`** (extend existing harness at root scripts dir — NOT skill-local) — add assertions that anchor on stable markers rather than brittle `exit 0\b` / `exit 1\b` literals. Check that every `**ℹ /design cancelled` marker, the Step 5b happy path, and Step 0b clarify-branch exits are preceded (within N lines of context) by a `render-cost-line.sh` invocation OR appear in a whitelist of pre-DESIGN_TMPDIR exits (session-setup-failure, mutual-exclusion abort). Use SKILL.md grep with line context, not raw `exit` literal matching.
+
+23. **`scripts/test-render-run-summary.sh`** — REPLACE the existing "all-N/A" test case with an "all-defaulted" assertion verifying the new dollar-shape output (Claude $X.XX, Codex $X.XX, Cursor $X.XX, TOTAL ~$X.XX). The all-N/A case is dropped — N/A semantics no longer apply when rates are defaulted. Document the rationale in the test header comment.
+
+## Approach
+
+**Centralize the rate-default knowledge in `token-cost.sh`** (Codex sketch's recommendation). Every cost consumer downstream — `render-run-summary.sh` for /implement, the new `render-cost-line.sh` for /design — calls `token-cost.sh` and gets numeric values without needing its own default knowledge. This keeps the schema flat: KEY=value lines stay the same; only the values change from `N/A` to dollars.
+
+**For /design's token tracking**, extend BOTH `token-ledger.sh resolve_session_id` AND `resolve_ledger_path` to recognize `DESIGN_TMPDIR` as a fallback after the existing `IMPLEMENT_TMPDIR` check. This brings token-ledger to parity with `timing-ledger.sh` (which already recognizes DESIGN_TMPDIR). The pwd-hash fourth-tier fallback in `resolve_session_id` is preserved unchanged. Also extend `launch-review.sh` to derive `LARCH_TOKEN_SESSION_ID` from `$DESIGN_TMPDIR/session-id` when `IMPLEMENT_TMPDIR` is unset. With these extensions, external reviewer launches (Cursor/Codex sketches and plan-review reviewers) record their token counts to the design-session-keyed ledger; Claude orchestrator tokens come from `token-claude-source.sh` resolving the transcript independent of session-id (already works).
+
+**Early token-ledger mark in /design Step 0**: `token-report.sh` requires at least one ledger mark to render totals. Step 0 (after session-setup.sh succeeds) is the earliest point at which `DESIGN_TMPDIR` is available. Add a `token-ledger.sh mark "design Step 0 — session setup"` call there so any subsequent exit path (Step 0b cancels, Step 5 happy path) has a populated ledger to read from.
+
+**For /design's cost line**, a new tiny helper `scripts/render-cost-line.sh` produces the exact terminal-friendly format. It is NOT a substitute for `render-run-summary.sh` — that produces a full markdown bullet block with a `<!-- larch:run-summary v=1 -->` sentinel for tracking-issue comments and committed run logs; this new helper produces ONE terminal line with no sentinel and no markdown bullets, designed for end-of-run terminal output.
+
+**Default rate values** (per 1M total tokens, blended across input/output/cache):
+- Claude: `$6.00` — mid-blend matching typical Sonnet-class mix.
+- Codex: `$10.00` — rough OpenAI o-series mid-blend.
+- Cursor: `$10.00` — rough Cursor billing approximation.
+
+These are deliberately documented as estimates with a "not invoice-grade" disclaimer. Users with billing visibility set their own rates via env vars.
+
+**Malformed-rate handling**: `token-cost.sh` now strictly validates rate env vars with `^[0-9]+(\.[0-9]+)?$`. Empty, zero, or non-numeric → fall through to the default. This prevents silently producing $0 when a user typoed their env var.
+
+**No back-compat shim**: changing N/A to defaulted dollars is a user-visible improvement, not a regression. Existing tests asserting N/A output (only `scripts/test-render-run-summary.sh`'s all-N/A case) are explicitly updated as part of FINDING_6 / test harness wiring.
+
+## Edge cases
+
+- **Zero token counts for a vendor**: `cost_for "$tokens" "$rate"` with `tokens=0` and a numeric default rate yields `$0.00` (consistent with "vendor didn't run"). The line still emits showing real $0 for that vendor.
+
+- **All three vendors zero tokens** (very early /design exit before any ledger mark beyond Step 0 was recorded): `--quiet-on-empty` flag on `render-cost-line.sh` suppresses the line when ALL three counts are zero.
+
+- **Token-report.sh transcript not resolvable** (no Claude Code session or transcripts gated): `token-report.sh` exits 0 with `Token report unavailable: …`. The emission falls back to zero token counts; `--quiet-on-empty` suppresses output. Print `**⚠ /design: token report unavailable; cost line suppressed**` before the machine footer in this case.
+
+- **Malformed rate env var (e.g., `LARCH_CLAUDE_RATE_PER_M=abc`)**: strict regex validation in `token-cost.sh rate_or_default` catches this and falls through to default. Tests cover this path explicitly.
+
+- **`LARCH_TOKEN_RATE_PER_M` set, others unset**: Claude rate falls back to `LARCH_TOKEN_RATE_PER_M` (existing behavior). Codex and Cursor use new per-vendor defaults. TOTAL_COST sums all three numerically.
+
+- **Env var explicitly set to `0`**: existing `rate_or_na` treated `0` as N/A. With new defaults, `0` is also treated as "use default" — consistent. To force `$0` cost display for a vendor, the user would need to use a tiny rate like `0.01` (out of scope to add an explicit opt-out env var).
+
+- **/design clarify branch fast-exit**: clarify-loop exits early after `plan-block-write.sh` success but before any external reviewers run. Token counts are mostly Claude orchestrator tokens. With the Step 0 token-ledger mark in place, `token-report.sh` returns a populated ledger and the cost line emits with real values.
+
+- **Step 0a session-setup-failure and tier-flag mutual-exclusion abort** (pre-DESIGN_TMPDIR exits): no `DESIGN_TMPDIR` exists, no ledger, no transcript reachable through the rendering path. Skip emission entirely. Document this single-policy contract in plan item 14 (no `--quiet-on-empty` alternative).
+
+## Failure modes
+
+1. **`token-cost.sh` default-rate change breaks downstream consumers asserting N/A output**: `scripts/test-render-run-summary.sh`'s all-N/A case is the known affected harness. **Earliest signal**: `make lint` fails. **Mitigation**: FINDING_6 + plan item 23 explicitly replace that test case with an all-defaulted assertion in the same PR.
+
+2. **Token-ledger session-id resolution change collides with an unintended caller**: extending `resolve_session_id` and `resolve_ledger_path` to check `DESIGN_TMPDIR` could surprise callers that set DESIGN_TMPDIR unexpectedly. **Earliest signal**: a /design ledger entry appears where none was expected. **Mitigation**: the fallback fires only when neither `LARCH_TOKEN_SESSION_ID` nor `IMPLEMENT_TMPDIR/session-id` is available — so explicit overrides win. Plan item 12 adds tests for the full precedence.
+
+3. **/design SKILL.md exit-path emission misses a branch**: hard to detect statically. **Earliest signal**: user reports "cost line on the happy path but not when I bailed". **Mitigation**: FINDING_5 / plan item 22 anchors the structure test on `**ℹ /design cancelled` and `render-cost-line.sh` literals (not on brittle `exit N\b` greps), pairing every exit marker with an emission within N lines OR a whitelist entry for pre-DESIGN_TMPDIR exits.
+
+## Testing strategy
+
+- **`scripts/test-token-cost.sh`** (new): defaults applied, env override, empty/zero/malformed handling, TOTAL_COST aggregation with all three defaulted, Claude `LARCH_TOKEN_RATE_PER_M` fallback precedence.
+- **`scripts/test-render-cost-line.sh`** (new): exact-byte line format, emoji preservation, `--quiet-on-empty` behavior, all-zero / mixed-token-count behavior.
+- **`scripts/test-token-ledger.sh`** (extended): full precedence (LARCH_TOKEN_SESSION_ID > IMPLEMENT_TMPDIR > DESIGN_TMPDIR > pwd-hash) for both resolve_session_id and resolve_ledger_path.
+- **`scripts/test-launch-review.sh`** (extended): with DESIGN_TMPDIR set and IMPLEMENT_TMPDIR unset, LARCH_TOKEN_SESSION_ID is exported.
+- **`scripts/test-render-run-summary.sh`** (modified): all-N/A case replaced with all-defaulted assertion.
+- **`scripts/test-design-structure.sh`** (extended, at root scripts dir): SKILL.md exit-path emission paired with `render-cost-line.sh` (anchored on stable markers, not `exit N\b`).
+- **Manual smoke**: run `/design --simple <some-issue>` standalone and verify the cost line appears before the machine footer with real dollar values. Run `/implement` (or rely on the next merged-run final-summary.md content) and confirm the Cost bullet shows non-N/A values.
+
+## Diff size estimate
+
+- `scripts/token-cost.sh`: ~35 lines (default constants, rate_or_default with regex validation, TOTAL_COST always-sum-three).
+- `scripts/token-cost.md`: ~25 lines (defaults, malformed policy, TOTAL_COST semantic note, disclaimer).
+- `scripts/test-token-cost.sh`: ~90 lines (new file, 7 test cases).
+- `scripts/test-token-cost.md`: ~5 lines (stub).
+- `scripts/render-cost-line.sh`: ~90 lines (new).
+- `scripts/render-cost-line.md`: ~30 lines (new).
+- `scripts/test-render-cost-line.sh`: ~100 lines (new).
+- `scripts/test-render-cost-line.md`: ~5 lines (stub).
+- `scripts/token-ledger.sh`: ~20 lines (resolve_session_id + resolve_ledger_path both extended for DESIGN_TMPDIR).
+- `scripts/token-ledger.md`: ~15 lines.
+- `scripts/launch-review.sh`: ~8 lines (2 vendor branches × ~4 lines each for DESIGN_TMPDIR fallback).
+- `scripts/launch-review.md`: ~5 lines.
+- `scripts/test-launch-review.sh`: ~30 lines.
+- `scripts/test-token-ledger.sh`: ~30 lines (precedence assertions for both functions).
+- `scripts/check-step-token-budget.md`: ~5 lines.
+- `scripts/token-tally.md`: ~5 lines (comparison row N/A update).
+- `skills/design/SKILL.md`: ~70 lines (Step 0 token-ledger mark + emission calls in 4-5 exit-path locations + ordering notes + standalone-only scope clarification).
+- `scripts/test-design-structure.sh`: ~40 lines (stable-marker assertions).
+- `docs/configuration-and-permissions.md`: ~35 lines (defaults subsection + disclaimer).
+- `scripts/render-run-summary.md`: ~5 lines.
+- `Makefile`: ~5 lines (new shard registrations).
+- `agent-lint.toml`: ~3 lines (allowlist entries).
+- `docs/linting.md`: ~5 lines (inventory rows).
+- `scripts/test-render-run-summary.sh`: ~20 lines (all-N/A case replacement).
+
+Total estimate: ~680 changed lines.
+
+diff_lines: 680
