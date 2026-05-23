@@ -299,6 +299,37 @@ EOF
 rc="$(run_lint "$stderr_file")"
 assert_case_clean "assignment-shaped denylisted invoke" "$stderr_file" "$rc"
 
+# 13b — command-substitution assignment with denylisted path (dispatch-with-waterfall)
+reset_tree
+write_md skills/cmdsubst-assign/SKILL.md <<'EOF'
+# Case 13b
+
+**⚠ Foreground required — do NOT set `run_in_background: true`.**
+
+```bash
+# Foreground required: see BASH_AUTHORING.md §4
+VAR=$(${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-with-waterfall.sh --timeout 1)
+printf '%s\n' "$VAR"
+```
+EOF
+rc="$(run_lint "$stderr_file")"
+assert_case_clean "cmdsubst assignment-shaped denylisted invoke" "$stderr_file" "$rc"
+
+# 13c — unbraced CLAUDE_PLUGIN_ROOT path to denylisted script
+reset_tree
+write_md skills/unbraced-root/SKILL.md <<'EOF'
+# Case 13c
+
+**⚠ Foreground required — do NOT set `run_in_background: true`.**
+
+```bash
+# Foreground required: see BASH_AUTHORING.md §4
+$CLAUDE_PLUGIN_ROOT/scripts/collect-agent-results.sh --timeout 1 x.txt
+```
+EOF
+rc="$(run_lint "$stderr_file")"
+assert_case_clean "unbraced CLAUDE_PLUGIN_ROOT denylisted invoke" "$stderr_file" "$rc"
+
 # 14 — substring file name must not anchor collect-agent-results.sh
 reset_tree
 write_md skills/substring-guard/SKILL.md <<'EOF'
@@ -310,6 +341,18 @@ echo "fixture path test-collect-agent-results.sh"
 EOF
 rc="$(run_lint "$stderr_file")"
 assert_case_clean "substring test-collect-agent-results false negative" "$stderr_file" "$rc"
+
+# 14b — plugin-root path ending in test-review-and-fix.sh must not match review-and-fix.sh
+reset_tree
+write_md skills/plugin-root-suffix-guard/SKILL.md <<'EOF'
+# Case 14b
+
+```bash
+echo "${CLAUDE_PLUGIN_ROOT}/scripts/test-review-and-fix.sh"
+```
+EOF
+rc="$(run_lint "$stderr_file")"
+assert_case_clean "plugin-root path suffix must not false-anchor review-and-fix" "$stderr_file" "$rc"
 
 # 15 — dispatch-plan-voters.sh
 reset_tree

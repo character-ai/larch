@@ -144,12 +144,19 @@ is_anchor_for_basename() {
     p+='|(=\$\((["'"'"'"]?)([^/]*/)?'"$e"'([^A-Za-z0-9_.-]|$)))'
     p+='|(^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]+[[:space:]]+)+(bash[[:space:]]+)?(["'"'"'"]?)([^/]*/)?'"$e"'([^A-Za-z0-9_.-]|$))'
     p+='|((^|[[:space:]])(if|while|until|elif)[[:space:]]+(![[:space:]]+)?(["'"'"'"]?)([^/]*/)?'"$e"'([^A-Za-z0-9_.-]|$))'
-    p+='|(\$\{CLAUDE_PLUGIN_ROOT\}/[^[:space:]]*'"$e"'([^A-Za-z0-9_.-]|$))'
+    # Require denylisted basename as a full final path segment (not a longer
+    # filename suffix like .../test-review-and-fix.sh for review-and-fix.sh).
+    p+='|(\$\{CLAUDE_PLUGIN_ROOT\}/([^[:space:]/]+/)*'"$e"'([^A-Za-z0-9_.-]|$))'
+    p+=$'|(\\$CLAUDE_PLUGIN_ROOT/([^[:space:]/]+/)*)'"$e"'([^A-Za-z0-9_.-]|$))'
     if printf '%s\n' "$line" | LC_ALL=C grep -Eq "$p"; then
         return 0
     fi
-    pq='"\$\{CLAUDE_PLUGIN_ROOT\}/[^"]*'"$e"'([^A-Za-z0-9_.-]|$)'
+    pq='"\$\{CLAUDE_PLUGIN_ROOT\}/([^"/]+/)*'"$e"'([^A-Za-z0-9_.-]|$)'
     if printf '%s\n' "$line" | LC_ALL=C grep -Eq "$pq"; then
+        return 0
+    fi
+    pq2=$'"\\$CLAUDE_PLUGIN_ROOT/([^"/]+/)'"$e"$'([^A-Za-z0-9_.-]|$)'
+    if printf '%s\n' "$line" | LC_ALL=C grep -Eq "$pq2"; then
         return 0
     fi
     return 1
