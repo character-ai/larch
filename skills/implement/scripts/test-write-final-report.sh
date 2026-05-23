@@ -21,6 +21,7 @@ cp "$REPO_ROOT/scripts/lib-quiet.sh" "$plugin/scripts/lib-quiet.sh"
 cp "$REPO_ROOT/scripts/run-log-terminal-outcomes.inc.bash" "$plugin/scripts/run-log-terminal-outcomes.inc.bash"
 cp "$REPO_ROOT/scripts/render-run-summary.sh" "$plugin/scripts/render-run-summary.sh"
 cp "$REPO_ROOT/scripts/token-cost.sh" "$plugin/scripts/token-cost.sh"
+cp "$REPO_ROOT/scripts/lib-cost-line-format.sh" "$plugin/scripts/lib-cost-line-format.sh"
 chmod +x "$plugin/scripts/render-run-summary.sh" "$plugin/scripts/token-cost.sh"
 cat > "$plugin/scripts/larch-log.sh" <<'STUB'
 #!/usr/bin/env bash

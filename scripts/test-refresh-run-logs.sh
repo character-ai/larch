@@ -28,6 +28,7 @@ setup_plugin_stub() {
     cp "$SCRIPT_DIR/../skills/implement/scripts/write-final-report.sh" "$root/scripts/write-final-report.sh"
     cp "$SCRIPT_DIR/render-run-summary.sh" "$root/scripts/render-run-summary.sh"
     cp "$SCRIPT_DIR/token-cost.sh" "$root/scripts/token-cost.sh"
+    cp "$SCRIPT_DIR/lib-cost-line-format.sh" "$root/scripts/lib-cost-line-format.sh"
     cp "$SCRIPT_DIR/lib-quiet.sh" "$root/scripts/lib-quiet.sh"
     cp "$SCRIPT_DIR/lib-execution-issues.sh" "$root/scripts/lib-execution-issues.sh"
     cat > "$root/scripts/tracking-issue-summary.sh" <<'STUB'

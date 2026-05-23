@@ -8,7 +8,7 @@ pass() { printf 'PASS: %s\n' "$1"; }
 check_snippet() {
     local label="$1" file="$2" needle="$3"
     local line
-    line=$(grep -nF "$needle" "$file" | head -1 | cut -d: -f1) || fail "$label: missing $needle in $file"
+    line=$(grep -m 1 -nF "$needle" "$file" | cut -d: -f1) || fail "$label: missing $needle in $file"
     if ! sed -n "${line},$((line + 45))p" "$file" | grep -qF -- '--claude-input-tokens'; then
         fail "$label: render-cost-line block missing --claude-input-tokens (near line $line in $file)"
     fi
