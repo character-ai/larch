@@ -4,17 +4,22 @@
 
 ## Relationship to scripts/token-tally.md
 
-`scripts/token-tally.sh` remains the `/research` lane-token helper. It writes explicit sidecars and can optionally render a cost column. `scripts/token-report.sh` is a separate `/implement` PoC that reads Claude transcript usage and the `token-ledger.sh` JSONL ledger. It reports tokens only, with no dollar conversion and no cache-discount weighting.
+`scripts/token-tally.sh` remains the `/research` lane-token helper. It writes explicit sidecars and can optionally render a cost column. `scripts/token-report.sh` is a separate `/implement` PoC that reads Claude transcript usage and the `token-ledger.sh` JSONL ledger. Dollar summaries (`--summary`, markdown cost surfaces) delegate to `scripts/token-cost.sh` via the same per-bucket counts as JSON `BUCKETS_*` when available.
+
+## Claude usage deduplication
+
+Claude API responses may appear on multiple JSONL rows with identical `requestId`, `message.id`, and usage fields. Before aggregation, usage rows are grouped by `(requestId, message.id)` (empty keys normalized) and **one representative row per group** is kept (`map(.[0])` — not summed). When both ids are empty, the group key includes a usage fingerprint so distinct bootstrap rows with different token counts do not collapse together.
 
 ## Subcommands
 
 - `--since-last-mark --terse` prints one line for the most recent ledger mark:
   `Step N — <name>: claude=<total> tokens (input=A cache_read=B cache_create=C output=D); vendor=<sum> (codex=X, cursor=Y)`.
-- `--summary` prints one grand-total line spanning all marks from the first to the present:
-  `Total: claude=<total> tokens (input=A cache_read=B cache_create=C output=D); vendor=<sum>`.
-  Used as the default brief output in Step 17 when `LARCH_VERBOSE_TOKENS` is unset.
+- `--summary` prints one dollar-primary grand-total line (same format as `render-cost-line.sh`):  
+  `💰 Cost: TOTAL ~$X.XX — Claude $A.AA, Codex $B.BB, Cursor $C.CC  |  Tokens: <T>k`  
+  Used as the default brief output in `/implement` Step 17 when `LARCH_VERBOSE_TOKENS` is unset. **Print this line verbatim in chat — do not paraphrase.**
 - `--full --markdown [--output FILE]` renders a markdown table grouped by step with indented skill rows and vendor rows.
-- `--full --format json [--output FILE]` renders a JSON object with `vendors`, `claude.per_step`, `claude.totals`, and one sibling object per non-Claude vendor.
+- `--full --format json [--output FILE]` renders a JSON object with `vendors`, `claude.per_step`, `claude.totals`, one sibling object per non-Claude vendor, and `BUCKETS_claude` / `BUCKETS_codex` / `BUCKETS_cursor` (per-bucket totals aligned with `token-cost.sh` flags).
+- `--buckets --vendor claude|codex|cursor` (with `--ledger` / `--transcript` / session hooks as for other modes) prints one line of `KEY=value` bucket counts for stdout (test/CI helper).
 - `--append-token-report FILE` renders the full table and idempotently replaces or appends a sentinel-bracketed block in `FILE`. Legacy callers may still use this mode; production `/implement` now appends structured records through `scripts/larch-log.sh`:
 
 ```
@@ -68,4 +73,4 @@ The four numeric Claude columns are kept separate (rather than collapsed into a 
 
 ## Test Harness
 
-`scripts/test-token-report.sh` owns fixture ledger + transcript cases, markdown and JSON full-report output, missing-source graceful output, sentinel replacement idempotency, hydrated prior-report replacement, and an oversized-report smoke case.
+`scripts/test-token-report.sh` owns fixture ledger + transcript cases, markdown and JSON full-report output, missing-source graceful output, sentinel replacement idempotency, hydrated prior-report replacement, and an oversized-report smoke case. `scripts/test-token-report-dedup.sh` pins dedup invariants.

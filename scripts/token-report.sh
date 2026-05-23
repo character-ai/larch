@@ -157,11 +157,25 @@ render_jq() {
           | gsub("\n"; " ")
           | gsub("\r"; " ")
           | gsub("\\|"; "\\|"));
-      def claude_total($r):
-        n($r.message.usage.input_tokens)
-        + n($r.message.usage.cache_read_input_tokens)
-        + n($r.message.usage.cache_creation_input_tokens)
-        + n($r.message.usage.output_tokens);
+      def usage_obj($r): ($r.message.usage // {});
+      def cache_cw5($u):
+        if ($u | type) != "object" then 0
+        elif ($u.cache_creation | type) == "object" then
+          (n($u.cache_creation.ephemeral_5m_input_tokens)
+            + n($u.cache_creation["5m"]))
+        else n($u.cache_creation_input_tokens)
+        end;
+      def cache_cw1($u):
+        if ($u | type) != "object" then 0
+        elif ($u.cache_creation | type) == "object" then n($u.cache_creation.ephemeral_1h_input_tokens)
+        else 0
+        end;
+      def claude_total_u($u):
+        n($u.input_tokens)
+        + n($u.cache_read_input_tokens)
+        + (cache_cw5($u) + cache_cw1($u))
+        + n($u.output_tokens);
+      def claude_total($r): claude_total_u(usage_obj($r));
       # Returns the step name whose window [mark.ts, next_mark.ts) contains $ts,
       # or null when $ts falls outside all windows (e.g. before the first mark).
       def enclosing_step_label($marks; $ts):
@@ -174,8 +188,13 @@ render_jq() {
           $marks[$i].step
         ) // null;
       def usage_row($r; $marks):
-        ($r.timestamp | epoch) as $ts |
+        (if ($r.timestamp? != null) and ($r.timestamp != null) then ($r.timestamp | epoch)
+         else $marks[0].ts end) as $ts |
+        (usage_obj($r)) as $u |
+        (cache_cw5($u) + cache_cw1($u)) as $ccsum |
         {
+          rid: $r.requestId,
+          mid: ($r.message.id // null),
           ts: $ts,
           skill: (if $r.attributionSkill != null then $r.attributionSkill
                   else
@@ -184,11 +203,13 @@ render_jq() {
                     else "unattributed"
                     end
                   end),
-          input: n($r.message.usage.input_tokens),
-          cache_read: n($r.message.usage.cache_read_input_tokens),
-          cache_create: n($r.message.usage.cache_creation_input_tokens),
-          output: n($r.message.usage.output_tokens),
-          total: claude_total($r)
+          input: n($u.input_tokens),
+          cache_read: n($u.cache_read_input_tokens),
+          cache_create_5m: cache_cw5($u),
+          cache_create_1h: cache_cw1($u),
+          cache_create: $ccsum,
+          output: n($u.output_tokens),
+          total: (n($u.input_tokens) + n($u.cache_read_input_tokens) + $ccsum + n($u.output_tokens))
         };
       def vendor_row($r):
         {
@@ -208,6 +229,8 @@ render_jq() {
         input: sumfield($rows; "input"),
         cache_read: sumfield($rows; "cache_read"),
         cache_create: sumfield($rows; "cache_create"),
+        cache_create_5m: sumfield($rows; "cache_create_5m"),
+        cache_create_1h: sumfield($rows; "cache_create_1h"),
         output: sumfield($rows; "output"),
         total: sumfield($rows; "total")
       };
@@ -365,7 +388,39 @@ render_jq() {
       def report_json($marks; $claude; $vendor):
         (vendor_names($marks; $vendor)) as $names
         | ({vendors: (["claude"] + $names), claude: claude_json($marks; $claude)}
-           + reduce $names[] as $v ({}; . + {($v): vendor_json($v; $marks; $vendor)}));
+           + reduce $names[] as $v ({}; . + {($v): vendor_json($v; $marks; $vendor)}))
+        | . as $base
+        | ($base.claude.totals) as $ct
+        | ($marks[0].ts) as $first
+        | ($vendor | map(select(.ts != null and .ts >= $first))) as $vin
+        | $base + {
+            BUCKETS_claude: {
+              input: $ct.input,
+              cache_read: $ct.cache_read,
+              cache_create_5m: $ct.cache_create_5m,
+              cache_create_1h: $ct.cache_create_1h,
+              output: $ct.output,
+              total: $ct.total
+            },
+            BUCKETS_codex: (
+              ($vin | map(select(.vendor == "codex"))) as $rows
+              | {
+                  input: sumfield($rows; "input"),
+                  cached_input: sumfield($rows; "cache_read"),
+                  output: sumfield($rows; "output"),
+                  total: sumfield($rows; "total")
+                }
+            ),
+            BUCKETS_cursor: (
+              ($vin | map(select(.vendor == "cursor"))) as $rows
+              | {
+                  input: sumfield($rows; "input"),
+                  cache_read: sumfield($rows; "cache_read"),
+                  output: sumfield($rows; "output"),
+                  total: sumfield($rows; "total")
+                }
+            )
+          };
 
       def markdown($marks; $claude; $vendor):
         ([claude_table($marks; $claude)]
@@ -376,18 +431,48 @@ render_jq() {
       ($ledger // []) as $l
       | ($l | map(select(.type == "mark") | {step, ts: (.ts | epoch)}) | map(select(.ts != null))) as $marks
       | ($l | map(select(.type == "vendor") | vendor_row(.)) | map(select(.ts != null))) as $vendor
-      | (map(select(.type == "assistant" and .message.usage? and .timestamp?) | usage_row(.; $marks)) | map(select(.ts != null))) as $claude
+      | (map(select(.type == "assistant" and .message.usage?) | usage_row(.; $marks))
+         | map(select(.ts != null))
+         | group_by(
+             ((.rid // "") | tostring) + "|" + ((.mid // "") | tostring) + "|"
+             + (if (((.rid // "") | length) > 0) or (((.mid // "") | tostring) != "")
+                then ""
+                else (.input|tostring) + "/" + (.cache_read|tostring) + "/" + (.cache_create|tostring)
+                     + "/" + (.cache_create_5m|tostring) + "/" + (.cache_create_1h|tostring) + "/" + (.output|tostring)
+                end)
+           )
+         | map(.[0])) as $claude
       | if ($marks | length) == 0 then error("no step marks in ledger")
         elif $mode == "terse" then terse_line($claude; $vendor; $marks[-1])
         elif $mode == "summary" then
           (step_slice($claude; $vendor; $marks[0].ts; null)) as $s
           | (totals($s.claude)) as $ct
           | (sumfield($s.vendor; "total")) as $vt
-          | (vendor_breakdown($s.vendor)) as $vb
-          | ("Total: claude=" + fmt($ct.total) + " tokens (input=" + fmt($ct.input)
-            + " cache_read=" + fmt($ct.cache_read) + " cache_create=" + fmt($ct.cache_create)
-            + " output=" + fmt($ct.output) + "); vendor=" + fmt($vt)
-            + (if $vt > 0 then " (" + ($vb | map(.vendor + "=" + (.total|tostring)) | join(", ")) + ")" else "" end))
+          | (($s.vendor | map(select(.vendor == "codex"))) as $dx | {
+              input: sumfield($dx; "input"),
+              cached_input: sumfield($dx; "cache_read"),
+              output: sumfield($dx; "output")
+            }) as $db
+          | (($s.vendor | map(select(.vendor == "cursor"))) as $ux | {
+              input: sumfield($ux; "input"),
+              cache_read: sumfield($ux; "cache_read"),
+              output: sumfield($ux; "output")
+            }) as $ub
+          | {
+              claude: {
+                input: $ct.input,
+                cache_read: $ct.cache_read,
+                cache_write_5m: $ct.cache_create_5m,
+                cache_write_1h: $ct.cache_create_1h,
+                output: $ct.output
+              },
+              codex: $db,
+              cursor: $ub,
+              codex_ledger_total: (($s.vendor | map(select(.vendor == "codex"))) | sumfield(.; "total")),
+              cursor_ledger_total: (($s.vendor | map(select(.vendor == "cursor"))) | sumfield(.; "total")),
+              token_total: ($ct.total + $vt)
+            }
+          | tojson
         elif $mode == "full" and $format == "json" then report_json($marks; $claude; $vendor)
         else markdown($marks; $claude; $vendor)
         end
@@ -502,6 +587,8 @@ LEDGER_OVERRIDE=""
 TRANSCRIPT_OVERRIDE=""
 SESSION_DIR_OVERRIDE=""
 TOKEN_REPORT_TARGET=""
+BUCKETS_MODE=false
+BUCKETS_VENDOR=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -516,15 +603,27 @@ while [[ $# -gt 0 ]]; do
         --transcript) TRANSCRIPT_OVERRIDE="${2:?--transcript requires a value}"; shift 2 ;;
         --session-dir) SESSION_DIR_OVERRIDE="${2:?--session-dir requires a value}"; shift 2 ;;
         --append-token-report) TOKEN_REPORT_TARGET="${2:?--append-token-report requires a value}"; MODE="append"; shift 2 ;;
+        --buckets) BUCKETS_MODE=true; shift ;;
+        --vendor) BUCKETS_VENDOR="${2:?--vendor requires a value}"; shift 2 ;;
         *) unavailable "unknown flag: $1" ;;
     esac
 done
 
-[[ -n "$MODE" ]] || unavailable "missing report mode"
-case "$FORMAT" in
-    markdown|json) ;;
-    *) unavailable "unknown format: $FORMAT" ;;
-esac
+if [[ "$BUCKETS_MODE" == true ]]; then
+    [[ -n "$BUCKETS_VENDOR" ]] || unavailable "missing --vendor for --buckets"
+    case "$BUCKETS_VENDOR" in
+        claude|codex|cursor) ;;
+        *) unavailable "unknown vendor: $BUCKETS_VENDOR" ;;
+    esac
+else
+    [[ -n "$MODE" ]] || unavailable "missing report mode"
+fi
+if [[ "$BUCKETS_MODE" != true ]]; then
+    case "$FORMAT" in
+        markdown|json) ;;
+        *) unavailable "unknown format: $FORMAT" ;;
+    esac
+fi
 
 if [[ -n "$LEDGER_OVERRIDE" ]]; then
     LEDGER=$(validate_tmp_path "$LEDGER_OVERRIDE") || unavailable "invalid ledger path"
@@ -534,6 +633,27 @@ fi
 [[ -n "$LEDGER" ]] || unavailable "ledger path unavailable"
 
 resolve_sources "$TRANSCRIPT_OVERRIDE" "$SESSION_DIR_OVERRIDE"
+
+if [[ "$BUCKETS_MODE" == true ]]; then
+    tmpj="$(mktemp "${TMPDIR:-/tmp}/token-report-buckets.XXXXXX")"
+    if ! render_jq full "$LEDGER" json > "$tmpj"; then
+        rm -f "$tmpj"
+        unavailable "${RENDER_FAIL_REASON:-failed to render token report}"
+    fi
+    case "$BUCKETS_VENDOR" in
+        claude)
+            jq -r '.BUCKETS_claude | "INPUT=\(.input) CACHE_READ=\(.cache_read) CACHE_WRITE_5M=\(.cache_create_5m) CACHE_WRITE_1H=\(.cache_create_1h) OUTPUT=\(.output)"' "$tmpj"
+            ;;
+        codex)
+            jq -r '.BUCKETS_codex | "INPUT=\(.input) CACHED_INPUT=\(.cached_input) OUTPUT=\(.output)"' "$tmpj"
+            ;;
+        cursor)
+            jq -r '.BUCKETS_cursor | "INPUT=\(.input) CACHE_READ=\(.cache_read) OUTPUT=\(.output)"' "$tmpj"
+            ;;
+    esac
+    rm -f "$tmpj"
+    exit 0
+fi
 
 if [[ "$MODE" == "append" ]]; then
     rendered_file=$(mktemp "${TMPDIR:-/tmp}/token-report-rendered.XXXXXX")
@@ -565,5 +685,66 @@ else
     fi
     report=$(<"$rendered_file")
     rm -f "$rendered_file"
-    emit "$report"
+    if [[ "$MODE" == "summary" ]]; then
+        # shellcheck source=scripts/lib-cost-line-format.sh
+        # shellcheck disable=SC1091
+        source "$SCRIPT_DIR/lib-cost-line-format.sh"
+        cost_errf="$(mktemp "${TMPDIR:-/tmp}/token-report-cost-err.XXXXXX")"
+        ci=$(jq -r '.codex.input // 0' <<<"$report")
+        ccx=$(jq -r '.codex.cached_input // 0' <<<"$report")
+        co=$(jq -r '.codex.output // 0' <<<"$report")
+        cx_led=$(jq -r '.codex_ledger_total // 0' <<<"$report")
+        ui=$(jq -r '.cursor.input // 0' <<<"$report")
+        ucr=$(jq -r '.cursor.cache_read // 0' <<<"$report")
+        uo=$(jq -r '.cursor.output // 0' <<<"$report")
+        ux_led=$(jq -r '.cursor_ledger_total // 0' <<<"$report")
+        codex_args=(--codex-input-tokens "$ci" --codex-cached-input-tokens "$ccx" --codex-output-tokens "$co")
+        if awk -v l="$cx_led" -v s=$((ci + ccx + co)) 'BEGIN { exit !(l > 0 && s == 0) }'; then
+            codex_args=(--codex-tokens "$cx_led")
+        fi
+        cursor_args=(--cursor-input-tokens "$ui" --cursor-cache-read-tokens "$ucr" --cursor-output-tokens "$uo")
+        if awk -v l="$ux_led" -v s=$((ui + ucr + uo)) 'BEGIN { exit !(l > 0 && s == 0) }'; then
+            cursor_args=(--cursor-tokens "$ux_led")
+        fi
+        cost_out=$("$SCRIPT_DIR/token-cost.sh" \
+            --claude-input-tokens "$(jq -r '.claude.input // 0' <<<"$report")" \
+            --claude-cache-read-tokens "$(jq -r '.claude.cache_read // 0' <<<"$report")" \
+            --claude-cache-write-5m-tokens "$(jq -r '.claude.cache_write_5m // 0' <<<"$report")" \
+            --claude-cache-write-1h-tokens "$(jq -r '.claude.cache_write_1h // 0' <<<"$report")" \
+            --claude-output-tokens "$(jq -r '.claude.output // 0' <<<"$report")" \
+            "${codex_args[@]}" \
+            "${cursor_args[@]}" \
+            2>"$cost_errf") || cost_out=""
+        if [[ -s "$cost_errf" ]]; then
+            while IFS= read -r __cost_err_line || [[ -n "${__cost_err_line:-}" ]]; do
+                larch_errf '%s\n' "$__cost_err_line"
+            done <"$cost_errf"
+        fi
+        rm -f "$cost_errf"
+        if [[ -z "$cost_out" ]] || ! printf '%s\n' "$cost_out" | grep -q '^TOTAL_COST='; then
+            larch_errf 'token-report.sh: token-cost.sh failed; emitting N/A cost line (not a fabricated zero-dollar total)\n'
+            tt_only=$(jq -r '.token_total // 0' <<<"$report")
+            tok_k=$(awk -v n="$tt_only" 'BEGIN {
+              if (n == "") n = 0
+              printf "%d\n", int((n+500)/1000)
+            }')
+            emit "$(printf '💰 Cost: N/A — token-cost unavailable  |  Tokens: %sk\n' "$tok_k")"
+        else
+        read_kv_sum() {
+            local key=$1 v
+            v=$(printf '%s\n' "$cost_out" | awk -F= -v k="$key" '$1==k{print $2; exit}')
+            [ -n "$v" ] && printf '%s\n' "$v" || printf '0.00\n'
+        }
+        tc=$(read_kv_sum TOTAL_COST)
+        cc=$(read_kv_sum CLAUDE_COST)
+        dc=$(read_kv_sum CODEX_COST)
+        uc=$(read_kv_sum CURSOR_COST)
+        tt=$(read_kv_sum TOTAL_TOKENS)
+        _cost_ln=$(larch_emit_cost_line "$tc" "$cc" "$dc" "$uc" "$tt")
+        _cost_ln=${_cost_ln%$'\n'}
+        emit "$_cost_ln"
+        fi
+    else
+        emit "$report"
+    fi
 fi

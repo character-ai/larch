@@ -8,7 +8,7 @@ PASS=0
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 pass() { PASS=$((PASS + 1)); }
 
-want_line="💰 Cost: TOTAL ~\$56.00 — Claude \$6.00, Codex \$20.00, Cursor \$30.00  |  Tokens: 6000k"
+want_line="💰 Cost: TOTAL ~\$9.30 — Claude \$0.80, Codex \$4.00, Cursor \$4.50  |  Tokens: 6000k"
 
 # (a) all rates defaulted (unset vendor rate env)
 out=$(env -u LARCH_CLAUDE_RATE_PER_M -u LARCH_CODEX_RATE_PER_M -u LARCH_CURSOR_RATE_PER_M -u LARCH_TOKEN_RATE_PER_M \
@@ -25,7 +25,7 @@ pass "explicit rates line"
 # (c) one vendor zero tokens still emits $0.00
 out=$(env -u LARCH_CLAUDE_RATE_PER_M -u LARCH_CODEX_RATE_PER_M -u LARCH_CURSOR_RATE_PER_M -u LARCH_TOKEN_RATE_PER_M \
     "$RCL" --claude-tokens 0 --codex-tokens 1000000 --cursor-tokens 0)
-test "$out" = "💰 Cost: TOTAL ~\$10.00 — Claude \$0.00, Codex \$10.00, Cursor \$0.00  |  Tokens: 1000k" || fail "zero vendor: $out"
+test "$out" = "💰 Cost: TOTAL ~\$2.00 — Claude \$0.00, Codex \$2.00, Cursor \$0.00  |  Tokens: 1000k" || fail "zero vendor: $out"
 pass "zero-token vendor shows 0.00"
 
 # (d) --quiet-on-empty all zero

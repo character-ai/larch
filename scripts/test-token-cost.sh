@@ -16,15 +16,15 @@ read_kv() {
 
 clr='env -u LARCH_CLAUDE_RATE_PER_M -u LARCH_CODEX_RATE_PER_M -u LARCH_CURSOR_RATE_PER_M -u LARCH_TOKEN_RATE_PER_M'
 
-# (a) defaults when no rate env set
+# (a) defaults when no rate env set (blended aggregate path)
 out=$($clr "$HELPER" --claude-tokens 1000000 --codex-tokens 1000000 --cursor-tokens 1000000)
-test "$(read_kv CLAUDE_COST "$out")" = "6.00" || fail "default Claude cost"
-test "$(read_kv CODEX_COST "$out")" = "10.00" || fail "default Codex cost"
-test "$(read_kv CURSOR_COST "$out")" = "10.00" || fail "default Cursor cost"
-test "$(read_kv TOTAL_COST "$out")" = "26.00" || fail "default TOTAL_COST sum"
+test "$(read_kv CLAUDE_COST "$out")" = "0.80" || fail "default Claude blended cost"
+test "$(read_kv CODEX_COST "$out")" = "2.00" || fail "default Codex blended cost"
+test "$(read_kv CURSOR_COST "$out")" = "1.50" || fail "default Cursor blended cost"
+test "$(read_kv TOTAL_COST "$out")" = "4.30" || fail "default TOTAL_COST sum"
 pass "defaults when unset"
 
-# (b) env override
+# (b) env override (blended)
 out=$(LARCH_CLAUDE_RATE_PER_M=2 env -u LARCH_CODEX_RATE_PER_M -u LARCH_CURSOR_RATE_PER_M -u LARCH_TOKEN_RATE_PER_M \
     "$HELPER" --claude-tokens 1000000 --codex-tokens 0 --cursor-tokens 0)
 test "$(read_kv CLAUDE_COST "$out")" = "2.00" || fail "Claude override"
@@ -33,21 +33,19 @@ pass "explicit override"
 # (c) zero → default
 out=$(LARCH_CLAUDE_RATE_PER_M=0 env -u LARCH_CODEX_RATE_PER_M -u LARCH_CURSOR_RATE_PER_M -u LARCH_TOKEN_RATE_PER_M \
     "$HELPER" --claude-tokens 1000000 --codex-tokens 0 --cursor-tokens 0)
-test "$(read_kv CLAUDE_COST "$out")" = "6.00" || fail "Claude zero falls back to default"
+test "$(read_kv CLAUDE_COST "$out")" = "0.80" || fail "Claude zero falls back to default blended"
 pass "zero env uses default"
 
 # (d) empty string → default
-# GNU env: every -u must precede any VAR=value assignments, or the first NAME=value
-# starts the command line and env tries to exec "-u" (CI: "env: '-u': No such file").
 out=$(env -u LARCH_CLAUDE_RATE_PER_M -u LARCH_CURSOR_RATE_PER_M -u LARCH_TOKEN_RATE_PER_M \
     LARCH_CODEX_RATE_PER_M='' "$HELPER" --claude-tokens 0 --codex-tokens 1000000 --cursor-tokens 0)
-test "$(read_kv CODEX_COST "$out")" = "10.00" || fail "empty Codex rate uses default"
+test "$(read_kv CODEX_COST "$out")" = "2.00" || fail "empty Codex rate uses default"
 pass "empty string uses default"
 
 # (e) malformed → default
 out=$(LARCH_CODEX_RATE_PER_M=abc env -u LARCH_CLAUDE_RATE_PER_M -u LARCH_CURSOR_RATE_PER_M -u LARCH_TOKEN_RATE_PER_M \
     "$HELPER" --claude-tokens 0 --codex-tokens 1000000 --cursor-tokens 0)
-test "$(read_kv CODEX_COST "$out")" = "10.00" || fail "malformed Codex rate uses default"
+test "$(read_kv CODEX_COST "$out")" = "2.00" || fail "malformed Codex rate uses default"
 pass "malformed uses default"
 
 # (f) LARCH_TOKEN_RATE_PER_M wins over Claude default
@@ -59,7 +57,13 @@ pass "LARCH_TOKEN_RATE_PER_M precedence over Claude default"
 # (g) TOTAL sums all three with mixed TOKEN_RATE and defaults
 out=$(LARCH_TOKEN_RATE_PER_M=5 env -u LARCH_CLAUDE_RATE_PER_M -u LARCH_CODEX_RATE_PER_M -u LARCH_CURSOR_RATE_PER_M \
     "$HELPER" --claude-tokens 1000000 --codex-tokens 1000000 --cursor-tokens 1000000)
-test "$(read_kv TOTAL_COST "$out")" = "25.00" || fail "TOTAL 5+10+10"
+test "$(read_kv TOTAL_COST "$out")" = "8.50" || fail "TOTAL sums three numeric lanes"
 pass "TOTAL sums three numeric lanes"
+
+# (h) malformed token count exits 2 (does not silently coerce to zero)
+if $clr "$HELPER" --claude-tokens not-a-number --codex-tokens 0 --cursor-tokens 0 >/dev/null 2>&1; then
+    fail "expected non-zero exit for invalid token count"
+fi
+pass "invalid token count rejected"
 
 printf 'PASS: test-token-cost.sh — %s checks\n' "$PASS"

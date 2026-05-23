@@ -16,17 +16,12 @@ bash scripts/render-run-summary.sh \
   --workflow-path SIMPLE|HARD|N/A \
   --duration '<elapsed-or-N/A>' \
   --claude-tokens <n> --codex-tokens <n> --cursor-tokens <n> \
+  --claude-input-tokens <n> ... --cursor-output-tokens <n> \
   --issue-number <n> --issue-url <url> \
-  --pr-number <n> --pr-url <url> \
-  --plan-review-line '<text>' \
-  --code-review-line '<text>' \
-  --oos-count <n> --oos-urls '<comma-list-or-empty>' \
-  --exec-issues <n> --warnings <n> \
-  --run-logs-path '<path-or-empty>' \
-  [--note-lines-file <file>] \
-  [--print-stdout] \
-  [--output-file <path>]
+  ...
 ```
+
+Pass **per-bucket** counts (from `token-report.json` `BUCKETS_*`) when available so the cost line matches `token-cost.sh` per-bucket pricing; aggregate `--*-tokens` remains as backward-compatible fallbacks.
 
 ## Output
 
@@ -49,8 +44,6 @@ renderer’s body inside that upsert payload.
 
 ## Cost line
 
-This script shells to `scripts/token-cost.sh` for per-vendor costs. See
-`scripts/token-cost.md` for env vars (`LARCH_CLAUDE_RATE_PER_M`, etc.). When
-those rates are unset, `token-cost.sh` applies conservative per-vendor defaults
-so the `**Cost**` bullet shows dollar estimates instead of `N/A` unless callers
-override behavior via explicit valid rates.
+This script shells to `scripts/token-cost.sh` for per-vendor costs (per-bucket flags when callers supply them). The markdown body includes a **single** `- **Cost**:` bullet with the dollar-primary line (`💰 TOTAL ~$… — Claude $…, Codex $…, Cursor $…  |  Tokens: …k`). There is **no** separate `- **Tokens**:` bullet. On computation failure, emit `- **Cost**: N/A` only.
+
+See `scripts/token-cost.md` for env vars and blended-fallback warning semantics.

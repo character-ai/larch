@@ -1023,6 +1023,14 @@ exclude = [
   "scripts/test-token-report.sh",
   "scripts/test-token-vendor-scrapers.sh",
   "scripts/test-token-claude-source.sh",
+  "scripts/test-token-report-dedup.sh",
+  "scripts/test-token-cost-per-bucket.sh",
+  "scripts/test-render-cost-line-realism.sh",
+  "scripts/test-render-cost-line-callsites.sh",
+  "scripts/test-render-run-summary-callsites.sh",
+  "scripts/test-render-run-summary-format.sh",
+  "scripts/test-token-report-summary-format.sh",
+  "skills/report-tokens/scripts/test-report-tokens-recompute.sh",
   # scripts/test-timing-ledger.sh and scripts/test-timing-report.sh are
   # offline regression harnesses for the /implement timing-reporting PoC
   # (parallel to the token-reporting harnesses above). They are referenced

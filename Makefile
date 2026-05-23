@@ -7,6 +7,7 @@
 .PHONY: test-larch-log-write-round test-lib-title-markers
 .PHONY: test-upgrade-larch
 .PHONY: test-scout-dynamic-archetypes
+.PHONY: test-token-report-dedup test-token-cost-per-bucket test-render-cost-line-realism test-render-cost-line-callsites test-render-run-summary-callsites test-render-run-summary-format test-token-report-summary-format test-report-tokens-recompute
 .PHONY: lint-bash32 test-lint-bash32
 # CI splits `lint` into `lint-only` (pre-commit) and `test-harnesses`
 # (regression harnesses). `lint` remains the local-dev convenience target
@@ -60,7 +61,7 @@ test-harnesses-10: test-alias-target-resolution test-capture-session-transcript 
 
 test-harnesses-11: test-allocate-candidates test-check-bump-version test-deny-edit-write test-effort-prose test-get-issue-context test-implement-relevant-checks-anti-halt test-lib-cursor-auth test-oos-file-conflict-deps test-prompt-template-invariants test-render-reviewer-prompt test-render-debate-retry-prompt test-relevant-checks test-sessionstart test-timing-ledger test-upgrade-larch
 
-test-harnesses-12: test-analyze test-check-clean-tree test-cleanup-tmpdir test-design-driver test-emit-plan test-gh-pr-body-update test-implement-review-token-propagation test-lib-external-launcher-common test-oos-issue-cap test-quick-mode-docs-sync test-render-run-summary test-token-cost test-render-cost-line test-run-external-agent test-set-up-forked-open-source-repo test-timing-report test-upgrade-larch-prune
+test-harnesses-12: test-analyze test-check-clean-tree test-cleanup-tmpdir test-design-driver test-emit-plan test-gh-pr-body-update test-implement-review-token-propagation test-lib-external-launcher-common test-oos-issue-cap test-quick-mode-docs-sync test-render-run-summary test-token-cost test-render-cost-line test-token-report-dedup test-token-cost-per-bucket test-render-cost-line-callsites test-render-run-summary-callsites test-render-run-summary-format test-token-report-summary-format test-render-cost-line-realism test-run-external-agent test-set-up-forked-open-source-repo test-timing-report test-upgrade-larch-prune
 
 test-harnesses-13: test-anti-halt test-check-generators test-codex-implementer test-emit-tally test-gh-run-logs test-implement-step2-routing test-lib-quiet test-oos-serialize test-rate-assertions test-run-external-agent-args test-ship-pr test-token-claude-source test-validate-citations
 
@@ -76,7 +77,7 @@ test-harnesses-18: test-audit-runs test-check-reviewer-failure-threshold test-co
 
 test-harnesses-19: test-auto-resolve-changelog test-check-stale-plugin test-commit-review-fixes test-dispatch-code-voters-retry-codex-success test-implement-anti-halt test-larch-log test-lint-no-raw-stderr-after-quiet-init test-pipe-sigpipe-safety test-references-headers test-resolve-repo test-scoreboard test-slack-issue-announce test-tracking-issue-summary test-wait-for-reviewers
 
-test-harnesses-20: test-ballot-parse test-check-topology-rule-paths test-compose-architecture-sketch test-design-log-publish test-dispatch-code-voters-retry-cursor test-implement-anti-polling-rule test-larch-log-write-round test-lib-title-markers test-lint-skill-invocations test-plan-block test-refresh-execution-issues test-restore-finalize-state test-scout-dynamic-archetypes test-step-8a-changelog test-tracking-issue-write test-write-final-report
+test-harnesses-20: test-ballot-parse test-check-topology-rule-paths test-compose-architecture-sketch test-design-log-publish test-dispatch-code-voters-retry-cursor test-implement-anti-polling-rule test-larch-log-write-round test-lib-title-markers test-lint-skill-invocations test-plan-block test-refresh-execution-issues test-restore-finalize-state test-scout-dynamic-archetypes test-step-8a-changelog test-tracking-issue-write test-write-final-report test-report-tokens-recompute
 
 test-pipe-sigpipe-safety:
 	bash scripts/harness-timer.sh $@ bash scripts/test-pipe-sigpipe-safety.sh
@@ -229,6 +230,30 @@ test-token-ledger:
 
 test-token-report:
 	bash scripts/harness-timer.sh $@ bash scripts/test-token-report.sh
+
+test-token-report-dedup:
+	bash scripts/harness-timer.sh $@ bash scripts/test-token-report-dedup.sh
+
+test-token-cost-per-bucket:
+	bash scripts/harness-timer.sh $@ bash scripts/test-token-cost-per-bucket.sh
+
+test-render-cost-line-realism:
+	bash scripts/harness-timer.sh $@ bash scripts/test-render-cost-line-realism.sh
+
+test-render-cost-line-callsites:
+	bash scripts/harness-timer.sh $@ bash scripts/test-render-cost-line-callsites.sh
+
+test-render-run-summary-callsites:
+	bash scripts/harness-timer.sh $@ bash scripts/test-render-run-summary-callsites.sh
+
+test-render-run-summary-format:
+	bash scripts/harness-timer.sh $@ bash scripts/test-render-run-summary-format.sh
+
+test-token-report-summary-format:
+	bash scripts/harness-timer.sh $@ bash scripts/test-token-report-summary-format.sh
+
+test-report-tokens-recompute:
+	bash scripts/harness-timer.sh $@ bash skills/report-tokens/scripts/test-report-tokens-recompute.sh
 
 test-timing-ledger:
 	bash scripts/harness-timer.sh $@ bash scripts/test-timing-ledger.sh

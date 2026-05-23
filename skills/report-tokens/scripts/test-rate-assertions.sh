@@ -10,13 +10,13 @@ check() {
     local label="$1" pattern="$2"
     grep -qE "$pattern" "$SCRIPT" || { echo "FAIL: $label" >&2; fail=1; }
 }
-check "codex input 5.00"          'LARCH_RATE_CODEX_INPUT.*5\.00'
-check "codex output 30.00"        'LARCH_RATE_CODEX_OUTPUT.*30\.00'
-check "codex aggregate 5.00"      'LARCH_RATE_CODEX_AGGREGATE.*5\.00'
-check "codex cache_read 0.50"     'LARCH_RATE_CODEX_CACHE_READ.*0\.50'
-check "cursor input 0.50"         'LARCH_RATE_CURSOR_INPUT.*0\.50'
-check "cursor output 2.50"        'LARCH_RATE_CURSOR_OUTPUT.*2\.50'
-check "cursor aggregate 0.20"     'LARCH_RATE_CURSOR_AGGREGATE.*0\.20'
+check "codex input 0.44"          'LARCH_RATE_CODEX_INPUT.*0\.44'
+check "codex output 3.50"        'LARCH_RATE_CODEX_OUTPUT.*3\.50'
+check "codex aggregate 2.00"      'LARCH_RATE_CODEX_AGGREGATE.*2\.00'
+check "codex cache_read 0.04"     'LARCH_RATE_CODEX_CACHE_READ.*0\.04'
+check "cursor input 1.25"         'LARCH_RATE_CURSOR_INPUT.*1\.25'
+check "cursor output 6.00"        'LARCH_RATE_CURSOR_OUTPUT.*6\.00'
+check "cursor aggregate 1.50"     'LARCH_RATE_CURSOR_AGGREGATE.*1\.50'
 
 TMPFILE=$(mktemp /tmp/test-rate-assertions.XXXXXX.py)
 trap 'rm -f "$TMPFILE"' EXIT
@@ -40,13 +40,13 @@ def _check(label, actual, expected):
         failures.append(f"{label}: got {actual}, expected {expected}")
 
 expected_rates = [
-    ("codex", "input",       5.00),
-    ("codex", "output",     30.00),
-    ("codex", "aggregate",   5.00),
-    ("codex", "cache_read",  0.50),
-    ("cursor", "input",      0.50),
-    ("cursor", "output",     2.50),
-    ("cursor", "aggregate",  0.20),
+    ("codex", "input",       0.44),
+    ("codex", "output",     3.50),
+    ("codex", "aggregate",   2.00),
+    ("codex", "cache_read",  0.04),
+    ("cursor", "input",      1.25),
+    ("cursor", "output",     6.00),
+    ("cursor", "aggregate",  1.50),
 ]
 for vendor, field, expected in expected_rates:
     if vendor not in RATES:
@@ -56,8 +56,8 @@ for vendor, field, expected in expected_rates:
     else:
         _check(f"RATES[{vendor!r}][{field!r}]", RATES[vendor][field], expected)
 
-_check("codex agg 1M",      cost_vendor("codex",  {"input": 0, "output": 0, "total": 1_000_000}), 5.00)
-_check("cursor input 1M",   cost_vendor("cursor", {"input": 1_000_000, "output": 0, "total": 1_000_000}), 0.50)
+_check("codex agg 1M",      cost_vendor("codex",  {"input": 0, "output": 0, "total": 1_000_000}), 2.00)
+_check("cursor input 1M",   cost_vendor("cursor", {"input": 1_000_000, "output": 0, "total": 1_000_000}), 1.25)
 
 if failures:
     for f in failures:

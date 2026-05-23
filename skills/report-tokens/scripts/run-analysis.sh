@@ -67,7 +67,9 @@ need_cmd() {
     }
 }
 
-need_cmd gh
+if [[ -z "${LARCH_REPORT_TOKENS_REPO:-}" ]]; then
+    need_cmd gh
+fi
 need_cmd jq
 need_cmd python3
 
@@ -86,8 +88,8 @@ if [[ -z "$REPO" || "$REPO" != */* ]]; then
 fi
 
 export LARCH_REPORT_TOKENS_REPO_FULL="$REPO"
-export LARCH_REPORT_TOKENS_NO_ISSUE="${NO_ISSUE:-}"
-export LARCH_REPORT_TOKENS_NO_PLOT="${NO_PLOT:-}"
+export LARCH_REPORT_TOKENS_NO_ISSUE="${NO_ISSUE:-${LARCH_REPORT_TOKENS_NO_ISSUE:-}}"
+export LARCH_REPORT_TOKENS_NO_PLOT="${NO_PLOT:-${LARCH_REPORT_TOKENS_NO_PLOT:-}}"
 
 LIMIT="${LARCH_REPORT_TOKENS_LIMIT:-}"
 if [[ -n "$LIMIT" && ! "$LIMIT" =~ ^[0-9]+$ ]]; then
@@ -183,47 +185,70 @@ import tempfile
 from collections import Counter, defaultdict
 
 
-def env_rate(name, default):
-    raw = os.environ.get(name)
-    if raw is None or raw == "":
-        return default
-    try:
-        return float(raw)
-    except ValueError:
-        print(f"WARNING: ignoring invalid {name}={raw!r}; using {default}", file=sys.stderr)
-        return default
+def env_rate(names, default):
+    if isinstance(names, str):
+        names = (names,)
+    for name in names:
+        raw = os.environ.get(name)
+        if raw is None or raw == "":
+            continue
+        try:
+            return float(raw)
+        except ValueError:
+            print(f"WARNING: ignoring invalid {name}={raw!r}; using next/default", file=sys.stderr)
+    return default
 
 
-# Rates in USD per million tokens. Sources verified May 2026:
-#   Claude Sonnet/Opus: https://anthropic.com/pricing
-#   Codex (GPT-5.5 via OpenAI): https://developers.openai.com/api/docs/models/gpt-5.5
-#   Cursor Composer 2: https://cursor.com/docs/models-and-pricing
+def safe_int(value, default=0):
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        if value != value or value in (float("inf"), float("-inf")):
+            return default
+        return int(value)
+    if isinstance(value, str):
+        s = value.replace(",", "").strip()
+        if not s:
+            return default
+        try:
+            return int(float(s))
+        except ValueError:
+            return default
+    return default
+
+
+# Frozen defaults used before DE-2622 for the "Reported cost" column (historical estimator).
+LEGACY_REPORTED_RATES = {
+    "claude": {"input": 3.00, "cache_read": 0.30, "cache_create": 3.75, "output": 15.00},
+    "codex": {"input": 5.00, "output": 30.00, "aggregate": 5.00, "cache_read": 0.50},
+    "cursor": {"input": 0.50, "output": 2.50, "aggregate": 0.20},
+}
+
+# Rates in USD per million tokens — aligned with scripts/token-cost.sh defaults for
+# in-Python phase/vendor breakdown (see token-cost.md). Claude cache_create in JSON
+# is merged 5m+1h; use the 5m default as a single blended bucket for this estimator.
 RATES = {
     "claude": {
-        "input": env_rate("LARCH_RATE_CLAUDE_INPUT", 3.00),
-        "cache_read": env_rate("LARCH_RATE_CLAUDE_CACHE_READ", 0.30),
-        "cache_create": env_rate("LARCH_RATE_CLAUDE_CACHE_CREATE", 3.75),
-        "output": env_rate("LARCH_RATE_CLAUDE_OUTPUT", 15.00),
+        "input": env_rate(("LARCH_RATE_CLAUDE_INPUT", "LARCH_CLAUDE_INPUT_RATE_PER_M"), 5.00),
+        "cache_read": env_rate(("LARCH_RATE_CLAUDE_CACHE_READ", "LARCH_CLAUDE_CACHE_READ_RATE_PER_M"), 0.50),
+        "cache_create": env_rate(("LARCH_RATE_CLAUDE_CACHE_CREATE", "LARCH_CLAUDE_CACHE_WRITE_5M_RATE_PER_M"), 6.25),
+        "output": env_rate(("LARCH_RATE_CLAUDE_OUTPUT", "LARCH_CLAUDE_OUTPUT_RATE_PER_M"), 25.00),
     },
-    # GPT-5.5 via Codex CLI. Input/Output columns are always 0 in token reports
-    # (Codex CLI only reports an aggregate "tokens used" on stderr); the aggregate
-    # rate is a working approximation of the true input-heavy mix at ~$5/M.
-    # cache_read and output are documented here for future use when Codex CLI
-    # exposes per-bucket token counts. Known limitation: the 2x/1.5x long-context
-    # surcharge for prompts >272K tokens is not modeled.
     "codex": {
-        "input": env_rate("LARCH_RATE_CODEX_INPUT", 5.00),
-        "output": env_rate("LARCH_RATE_CODEX_OUTPUT", 30.00),
-        "aggregate": env_rate("LARCH_RATE_CODEX_AGGREGATE", 5.00),
-        "cache_read": env_rate("LARCH_RATE_CODEX_CACHE_READ", 0.50),
+        "input": env_rate(("LARCH_RATE_CODEX_INPUT", "LARCH_CODEX_INPUT_RATE_PER_M"), 0.44),
+        "output": env_rate(("LARCH_RATE_CODEX_OUTPUT", "LARCH_CODEX_OUTPUT_RATE_PER_M"), 3.50),
+        "aggregate": env_rate(("LARCH_RATE_CODEX_AGGREGATE", "LARCH_CODEX_RATE_PER_M"), 2.00),
+        "cache_read": env_rate(("LARCH_RATE_CODEX_CACHE_READ", "LARCH_CODEX_CACHED_INPUT_RATE_PER_M"), 0.04),
     },
-    # Cursor Composer 2 Standard tier. Known limitation: cached vs uncached
-    # input distinction is not tracked — cache hits are 10x cheaper ($0.50/M)
-    # but not reported separately.
     "cursor": {
-        "input": env_rate("LARCH_RATE_CURSOR_INPUT", 0.50),
-        "output": env_rate("LARCH_RATE_CURSOR_OUTPUT", 2.50),
-        "aggregate": env_rate("LARCH_RATE_CURSOR_AGGREGATE", 0.20),
+        "input": env_rate(("LARCH_RATE_CURSOR_INPUT", "LARCH_CURSOR_INPUT_RATE_PER_M"), 1.25),
+        "output": env_rate(("LARCH_RATE_CURSOR_OUTPUT", "LARCH_CURSOR_OUTPUT_RATE_PER_M"), 6.00),
+        "aggregate": env_rate(("LARCH_RATE_CURSOR_AGGREGATE", "LARCH_CURSOR_RATE_PER_M"), 1.50),
+        "cache_read": env_rate(("LARCH_RATE_CURSOR_CACHE_READ", "LARCH_CURSOR_CACHE_READ_RATE_PER_M"), 0.25),
     },
 }
 
@@ -390,10 +415,10 @@ def parse_json_report(report):
     claude = report.get("claude") if isinstance(report.get("claude"), dict) else {}
     claude_totals = claude.get("totals") if isinstance(claude.get("totals"), dict) else {}
     totals["claude"] = {
-        "input": int(claude_totals.get("input") or 0),
-        "cache_read": int(claude_totals.get("cache_read") or 0),
-        "cache_create": int(claude_totals.get("cache_create") or 0),
-        "output": int(claude_totals.get("output") or 0),
+        "input": safe_int(claude_totals.get("input")),
+        "cache_read": safe_int(claude_totals.get("cache_read")),
+        "cache_create": safe_int(claude_totals.get("cache_create")),
+        "output": safe_int(claude_totals.get("output")),
     }
     for row in claude.get("per_step") or []:
         if not isinstance(row, dict):
@@ -402,10 +427,10 @@ def parse_json_report(report):
         phase_rows.append({
             "vendor": "claude",
             "step": str(row.get("step") or ""),
-            "input": int(row_totals.get("input") or 0),
-            "cache_read": int(row_totals.get("cache_read") or 0),
-            "cache_create": int(row_totals.get("cache_create") or 0),
-            "output": int(row_totals.get("output") or 0),
+            "input": safe_int(row_totals.get("input")),
+            "cache_read": safe_int(row_totals.get("cache_read")),
+            "cache_create": safe_int(row_totals.get("cache_create")),
+            "output": safe_int(row_totals.get("output")),
         })
 
     vendor_names = report.get("vendors") if isinstance(report.get("vendors"), list) else []
@@ -415,9 +440,9 @@ def parse_json_report(report):
         section = report.get(vendor) if isinstance(report.get(vendor), dict) else {}
         section_totals = section.get("totals") if isinstance(section.get("totals"), dict) else {}
         totals[vendor] = {
-            "input": int(section_totals.get("input") or 0),
-            "output": int(section_totals.get("output") or 0),
-            "total": int(section_totals.get("total") or 0),
+            "input": safe_int(section_totals.get("input")),
+            "output": safe_int(section_totals.get("output")),
+            "total": safe_int(section_totals.get("total")),
         }
         for row in section.get("per_step") or []:
             if not isinstance(row, dict):
@@ -426,9 +451,9 @@ def parse_json_report(report):
             phase_rows.append({
                 "vendor": vendor,
                 "step": str(row.get("step") or ""),
-                "input": int(row_totals.get("input") or 0),
-                "output": int(row_totals.get("output") or 0),
-                "total": int(row_totals.get("total") or 0),
+                "input": safe_int(row_totals.get("input")),
+                "output": safe_int(row_totals.get("output")),
+                "total": safe_int(row_totals.get("total")),
             })
     return totals, phase_rows
 
@@ -463,6 +488,103 @@ def cost_vendor(vendor, totals):
 
 def total_cost(totals):
     return sum(cost_vendor(vendor, data) for vendor, data in totals.items())
+
+
+def total_cost_legacy_vendor(vendor, totals):
+    if vendor == "claude":
+        rate = LEGACY_REPORTED_RATES["claude"]
+        return (
+            totals.get("input", 0) * rate["input"]
+            + totals.get("cache_read", 0) * rate["cache_read"]
+            + totals.get("cache_create", 0) * rate["cache_create"]
+            + totals.get("output", 0) * rate["output"]
+        ) / 1_000_000
+    if vendor not in LEGACY_REPORTED_RATES:
+        return 0.0
+    rate = LEGACY_REPORTED_RATES[vendor]
+    input_tokens = totals.get("input", 0)
+    output_tokens = totals.get("output", 0)
+    total_tokens = totals.get("total", 0)
+    known = input_tokens + output_tokens
+    hidden_or_aggregate = max(total_tokens - known, 0)
+    if known == 0 and total_tokens > 0:
+        return total_tokens * rate.get("aggregate", rate.get("input", 0)) / 1_000_000
+    return (
+        input_tokens * rate.get("input", 0)
+        + output_tokens * rate.get("output", 0)
+        + hidden_or_aggregate * rate.get("aggregate", 0)
+    ) / 1_000_000
+
+
+def total_cost_legacy(totals):
+    return sum(total_cost_legacy_vendor(vendor, data) for vendor, data in totals.items())
+
+
+def read_total_cost_from_kv(stdout: str) -> float:
+    for line in stdout.splitlines():
+        if line.startswith("TOTAL_COST="):
+            try:
+                return float(line.split("=", 1)[1])
+            except ValueError:
+                return 0.0
+    return 0.0
+
+
+def estimated_cost_token_cost_sh(plugin_root: str, token_report, totals) -> float:
+    exe = os.path.join(plugin_root, "scripts", "token-cost.sh")
+    if not plugin_root or not os.path.isfile(exe):
+        return total_cost(totals)
+    tr = token_report if isinstance(token_report, dict) else {}
+    bc = tr.get("BUCKETS_claude")
+    bd = tr.get("BUCKETS_codex")
+    bu = tr.get("BUCKETS_cursor")
+    if isinstance(bc, dict) and isinstance(bd, dict) and isinstance(bu, dict):
+        args = [
+            exe,
+            "--claude-input-tokens", str(safe_int(bc.get("input"))),
+            "--claude-cache-read-tokens", str(safe_int(bc.get("cache_read"))),
+            "--claude-cache-write-5m-tokens", str(safe_int(bc.get("cache_create_5m"))),
+            "--claude-cache-write-1h-tokens", str(safe_int(bc.get("cache_create_1h"))),
+            "--claude-output-tokens", str(safe_int(bc.get("output"))),
+            "--codex-input-tokens", str(safe_int(bd.get("input"))),
+            "--codex-cached-input-tokens", str(safe_int(bd.get("cached_input"))),
+            "--codex-output-tokens", str(safe_int(bd.get("output"))),
+            "--cursor-input-tokens", str(safe_int(bu.get("input"))),
+            "--cursor-cache-read-tokens", str(safe_int(bu.get("cache_read"))),
+            "--cursor-output-tokens", str(safe_int(bu.get("output"))),
+        ]
+    else:
+        ct = totals.get("claude") or {}
+        cod = totals.get("codex") or {}
+        cur = totals.get("cursor") or {}
+        ctot = int(
+            safe_int(ct.get("input"))
+            + safe_int(ct.get("cache_read"))
+            + safe_int(ct.get("cache_create"))
+            + safe_int(ct.get("output"))
+        )
+        args = [
+            exe,
+            "--claude-tokens", str(ctot),
+            "--codex-tokens", str(safe_int(cod.get("total"))),
+            "--cursor-tokens", str(safe_int(cur.get("total"))),
+        ]
+    try:
+        proc = subprocess.run(
+            args,
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+    except OSError:
+        return total_cost(totals)
+    if proc.stderr and proc.stderr.strip():
+        for line in proc.stderr.strip().splitlines():
+            print(f"token-cost.sh: {line}", file=sys.stderr)
+    if proc.returncode != 0:
+        return total_cost(totals)
+    return read_total_cost_from_kv(proc.stdout)
 
 
 def normalize_step(step):
@@ -507,7 +629,14 @@ def analyze(cache_path):
                 skipped += 1
                 continue
             totals, phase_rows = parse_report(block)
-        cost = total_cost(totals)
+        plugin_root = os.environ.get("CLAUDE_PLUGIN_ROOT", "")
+        cost_reported = total_cost_legacy(totals)
+        cost_estimated = estimated_cost_token_cost_sh(
+            plugin_root,
+            token_report if isinstance(token_report, dict) else None,
+            totals,
+        )
+        cost = cost_estimated
         workflow = issue.get("workflow_path") or parse_workflow_path(combined)
         if workflow not in ("SIMPLE", "HARD", "unknown"):
             workflow = "unknown"
@@ -524,6 +653,8 @@ def analyze(cache_path):
                 "totals": totals,
                 "phase_rows": phase_rows,
                 "cost": cost,
+                "cost_reported": cost_reported,
+                "cost_estimated": cost_estimated,
             }
         )
 
@@ -723,12 +854,12 @@ def print_analysis(cache_path, records, skipped, plot_paths):
         )
     )
     print(
-        "- Codex (GPT-5.5) input={input:g}, output={output:g}, aggregate={aggregate:g}, cache_read={cache_read:g}".format(
+        "- Codex input={input:g}, output={output:g}, aggregate={aggregate:g}, cached_input={cache_read:g}".format(
             **RATES["codex"]
         )
     )
     print(
-        "- Cursor (Composer 2) input={input:g}, output={output:g}, aggregate/cache={aggregate:g}".format(
+        "- Cursor input={input:g}, output={output:g}, aggregate={aggregate:g}, cache_read={cache_read:g}".format(
             **RATES["cursor"]
         )
     )
@@ -743,11 +874,20 @@ def print_analysis(cache_path, records, skipped, plot_paths):
     costs = [r["cost"] for r in records]
     print(
         f"Parsed {len(records)} run(s); skipped {skipped}. "
-        f"Total estimated cost: {dollars(sum(costs))}; "
+        f"Total estimated cost (token-cost.sh / BUCKETS): {dollars(sum(costs))}; "
         f"median run cost: {dollars(statistics.median(costs))}."
     )
     if dates:
         print(f"Closed date range: {min(dates).date()} to {max(dates).date()}.")
+    print("")
+    print("### Reported vs estimated (per issue)")
+    print("")
+    print("| Issue | Reported (legacy estimator) | Estimated (token-cost.sh) |")
+    print("| --- | ---: | ---: |")
+    for r in sorted(records, key=lambda x: (x.get("number") or 0)):
+        cr = r.get("cost_reported", r["cost"])
+        ce = r.get("cost_estimated", r["cost"])
+        print(f"| #{r.get('number')} | {dollars(cr)} | {dollars(ce)} |")
     print("")
 
     by_workflow = defaultdict(list)
@@ -856,6 +996,8 @@ def load_raw_records(body_file):
             "started_at_date": parse_date(item.get("started_at")),
             "closed_at": parse_date(item.get("closed_at")),
             "cost": float(item.get("cost") or 0),
+            "cost_reported": float(item.get("cost_reported") or item.get("cost") or 0),
+            "cost_estimated": float(item.get("cost_estimated") or item.get("cost") or 0),
             "title": "",
             "url": "",
             "totals": {},
@@ -872,6 +1014,8 @@ def create_report_issue(records, analysis_text):
             "started_at": r["started_at_date"].isoformat() if r["started_at_date"] else None,
             "closed_at": r["closed_at"].isoformat() if r["closed_at"] else None,
             "cost": r["cost"],
+            "cost_reported": r.get("cost_reported", r["cost"]),
+            "cost_estimated": r.get("cost_estimated", r["cost"]),
         }
         for r in records
     ]
@@ -935,6 +1079,7 @@ if __name__ == "__main__":
 PY
 
 chmod +x "$ANALYZER"
+export CLAUDE_PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$PLUGIN_ROOT}"
 
 # Restore original stdout so the Python analyzer's report reaches the caller.
 [ "${LARCH_QUIET_PID:-}" = "$$" ] && exec 1>&3

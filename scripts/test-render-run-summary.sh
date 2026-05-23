@@ -29,6 +29,17 @@ LARCH_CLAUDE_RATE_PER_M=1 LARCH_CODEX_RATE_PER_M=2 LARCH_CURSOR_RATE_PER_M=3 \
     --claude-tokens 1000000 \
     --codex-tokens 2000000 \
     --cursor-tokens 0 \
+    --claude-input-tokens 0 \
+    --claude-cache-read-tokens 0 \
+    --claude-cache-write-5m-tokens 0 \
+    --claude-cache-write-1h-tokens 0 \
+    --claude-output-tokens 0 \
+    --codex-input-tokens 0 \
+    --codex-cached-input-tokens 0 \
+    --codex-output-tokens 0 \
+    --cursor-input-tokens 0 \
+    --cursor-cache-read-tokens 0 \
+    --cursor-output-tokens 0 \
     --issue-number 9 \
     --issue-url 'https://github.com/o/r/issues/9' \
     --pr-number 10 \
@@ -51,7 +62,7 @@ grep -Fq '**Note:** fixture note' "$TMP" || fail 'missing appended note'
 grep -Fq "TOTAL ~\$5.00" "$TMP" || fail 'missing expected total cost line (approx prefix)'
 pass 'render body shape + sentinel + notes + cost'
 
-# Shipped defaults: 1M tokens each lane → 6 + 10 + 10 = 26 USD total.
+# Shipped defaults: 1M tokens each lane (aggregate-only) → blended 0.80 + 2.00 + 1.50 = 4.30 USD total.
 TMP_DEF="$(mktemp "${TMPDIR:-/tmp}/trs-def.XXXXXX")"
 env -u LARCH_CLAUDE_RATE_PER_M -u LARCH_CODEX_RATE_PER_M -u LARCH_CURSOR_RATE_PER_M -u LARCH_TOKEN_RATE_PER_M \
     "$HELPER" \
@@ -64,6 +75,17 @@ env -u LARCH_CLAUDE_RATE_PER_M -u LARCH_CODEX_RATE_PER_M -u LARCH_CURSOR_RATE_PE
     --claude-tokens 1000000 \
     --codex-tokens 1000000 \
     --cursor-tokens 1000000 \
+    --claude-input-tokens 0 \
+    --claude-cache-read-tokens 0 \
+    --claude-cache-write-5m-tokens 0 \
+    --claude-cache-write-1h-tokens 0 \
+    --claude-output-tokens 0 \
+    --codex-input-tokens 0 \
+    --codex-cached-input-tokens 0 \
+    --codex-output-tokens 0 \
+    --cursor-input-tokens 0 \
+    --cursor-cache-read-tokens 0 \
+    --cursor-output-tokens 0 \
     --issue-number 0 \
     --issue-url 'N/A' \
     --pr-number 0 \
@@ -76,11 +98,12 @@ env -u LARCH_CLAUDE_RATE_PER_M -u LARCH_CODEX_RATE_PER_M -u LARCH_CURSOR_RATE_PE
     --warnings 0 \
     --run-logs-path 'N/A' \
     --output-file "$TMP_DEF" >/dev/null 2>/dev/null
-grep -Fq "TOTAL ~\$26.00" "$TMP_DEF" || fail 'all-defaulted total cost'
-grep -Fq "Claude \$6.00" "$TMP_DEF" || fail 'all-defaulted Claude slot'
-grep -Fq "Codex \$10.00" "$TMP_DEF" || fail 'all-defaulted Codex slot'
-grep -Fq "Cursor \$10.00" "$TMP_DEF" || fail 'all-defaulted Cursor slot'
-pass 'all-defaulted cost semantics (shipped defaults)'
+grep -Fq "TOTAL ~\$4.30" "$TMP_DEF" || fail 'all-defaulted total cost'
+grep -Fq "Claude \$0.80" "$TMP_DEF" || fail 'all-defaulted Claude slot'
+grep -Fq "Codex \$2.00" "$TMP_DEF" || fail 'all-defaulted Codex slot'
+grep -Fq "Cursor \$1.50" "$TMP_DEF" || fail 'all-defaulted Cursor slot'
+if grep -Fq '**Tokens**:' "$TMP_DEF"; then fail 'legacy Tokens bullet must not appear'; fi
+pass 'all-defaulted cost semantics (shipped blended defaults)'
 
 # Explicit Claude rate only; zero-token lanes show $0.00 (defaults still apply for rates).
 TMP_PART="$(mktemp "${TMPDIR:-/tmp}/trs-part.XXXXXX")"
@@ -95,6 +118,17 @@ LARCH_CLAUDE_RATE_PER_M=2 env -u LARCH_CODEX_RATE_PER_M -u LARCH_CURSOR_RATE_PER
     --claude-tokens 1000000 \
     --codex-tokens 0 \
     --cursor-tokens 0 \
+    --claude-input-tokens 0 \
+    --claude-cache-read-tokens 0 \
+    --claude-cache-write-5m-tokens 0 \
+    --claude-cache-write-1h-tokens 0 \
+    --claude-output-tokens 0 \
+    --codex-input-tokens 0 \
+    --codex-cached-input-tokens 0 \
+    --codex-output-tokens 0 \
+    --cursor-input-tokens 0 \
+    --cursor-cache-read-tokens 0 \
+    --cursor-output-tokens 0 \
     --issue-number 0 \
     --issue-url 'N/A' \
     --pr-number 0 \
@@ -126,6 +160,17 @@ env -u LARCH_CLAUDE_RATE_PER_M -u LARCH_CODEX_RATE_PER_M -u LARCH_CURSOR_RATE_PE
     --claude-tokens 0 \
     --codex-tokens 0 \
     --cursor-tokens 0 \
+    --claude-input-tokens 0 \
+    --claude-cache-read-tokens 0 \
+    --claude-cache-write-5m-tokens 0 \
+    --claude-cache-write-1h-tokens 0 \
+    --claude-output-tokens 0 \
+    --codex-input-tokens 0 \
+    --codex-cached-input-tokens 0 \
+    --codex-output-tokens 0 \
+    --cursor-input-tokens 0 \
+    --cursor-cache-read-tokens 0 \
+    --cursor-output-tokens 0 \
     --issue-number 0 \
     --issue-url 'N/A' \
     --pr-number 0 \

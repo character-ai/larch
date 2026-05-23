@@ -6,14 +6,15 @@
 
 ```bash
 scripts/render-cost-line.sh \
-  --claude-tokens <N> \
-  --codex-tokens <N> \
-  --cursor-tokens <N> \
+  [--claude-input-tokens N ... --claude-output-tokens N] \
+  [--codex-input-tokens N --codex-cached-input-tokens N --codex-output-tokens N] \
+  [--cursor-input-tokens N --cursor-cache-read-tokens N --cursor-output-tokens N] \
+  [--claude-tokens <N> --codex-tokens <N> --cursor-tokens <N>] \
   [--quiet-on-empty]
 ```
 
-- Token counts are integers (total tokens per vendor for the run window you pass in).
-- `--quiet-on-empty`: when all three counts are zero, print nothing and exit `0`.
+- When **per-bucket** counts are non-zero for a vendor, that vendor is priced via `token-cost.sh` per-bucket mode; otherwise aggregate `--*-tokens` triggers the blended fallback (with stderr warning from `token-cost.sh`).
+- `--quiet-on-empty`: when all bucket and aggregate counts are zero, print nothing and exit `0`.
 
 ## Output grammar (exact)
 

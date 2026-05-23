@@ -161,6 +161,9 @@ fi
 
 # --- Tokens ---
 CLAUDE_T=0 CODEX_T=0 CURSOR_T=0
+C_IN=0 C_CR=0 C_CW5=0 C_CW1=0 C_OUT=0
+D_IN=0 D_CACHED=0 D_OUT=0
+U_IN=0 U_CR=0 U_OUT=0
 TOKEN_JSON=""
 for cand in "$run_dir/token-report.json" "$IMPLEMENT_TMPDIR/token-report-rendered.json"; do
     [ -f "$cand" ] && TOKEN_JSON="$cand" && break
@@ -174,6 +177,11 @@ if [ -z "$TOKEN_JSON" ] || [ ! -f "$TOKEN_JSON" ]; then
 fi
 if [ -n "$TOKEN_JSON" ] && [ -f "$TOKEN_JSON" ]; then
     read -r CLAUDE_T CODEX_T CURSOR_T < <(jq -r '[.claude.totals.total // 0, (.codex.totals.total // 0), (.cursor.totals.total // 0)] | @tsv' "$TOKEN_JSON" 2>/dev/null || printf '0\t0\t0\n')
+    if jq -e '.BUCKETS_claude' "$TOKEN_JSON" >/dev/null 2>&1; then
+        read -r C_IN C_CR C_CW5 C_CW1 C_OUT < <(jq -r '[.BUCKETS_claude.input, .BUCKETS_claude.cache_read, .BUCKETS_claude.cache_create_5m, .BUCKETS_claude.cache_create_1h, .BUCKETS_claude.output] | @tsv' "$TOKEN_JSON" 2>/dev/null || printf '0\t0\t0\t0\t0\n')
+        read -r D_IN D_CACHED D_OUT < <(jq -r '[.BUCKETS_codex.input, .BUCKETS_codex.cached_input, .BUCKETS_codex.output] | @tsv' "$TOKEN_JSON" 2>/dev/null || printf '0\t0\t0\n')
+        read -r U_IN U_CR U_OUT < <(jq -r '[.BUCKETS_cursor.input, .BUCKETS_cursor.cache_read, .BUCKETS_cursor.output] | @tsv' "$TOKEN_JSON" 2>/dev/null || printf '0\t0\t0\n')
+    fi
 fi
 
 # --- Duration ---
@@ -284,6 +292,17 @@ run_body_render() {
             --claude-tokens "$CLAUDE_T" \
             --codex-tokens "$CODEX_T" \
             --cursor-tokens "$CURSOR_T" \
+            --claude-input-tokens "$C_IN" \
+            --claude-cache-read-tokens "$C_CR" \
+            --claude-cache-write-5m-tokens "$C_CW5" \
+            --claude-cache-write-1h-tokens "$C_CW1" \
+            --claude-output-tokens "$C_OUT" \
+            --codex-input-tokens "$D_IN" \
+            --codex-cached-input-tokens "$D_CACHED" \
+            --codex-output-tokens "$D_OUT" \
+            --cursor-input-tokens "$U_IN" \
+            --cursor-cache-read-tokens "$U_CR" \
+            --cursor-output-tokens "$U_OUT" \
             --issue-number "$ISSUE" \
             --issue-url "${ISSUE_URL:-N/A}" \
             --pr-number "${PR_NUMBER:-0}" \
@@ -308,6 +327,17 @@ run_body_render() {
             --claude-tokens "$CLAUDE_T" \
             --codex-tokens "$CODEX_T" \
             --cursor-tokens "$CURSOR_T" \
+            --claude-input-tokens "$C_IN" \
+            --claude-cache-read-tokens "$C_CR" \
+            --claude-cache-write-5m-tokens "$C_CW5" \
+            --claude-cache-write-1h-tokens "$C_CW1" \
+            --claude-output-tokens "$C_OUT" \
+            --codex-input-tokens "$D_IN" \
+            --codex-cached-input-tokens "$D_CACHED" \
+            --codex-output-tokens "$D_OUT" \
+            --cursor-input-tokens "$U_IN" \
+            --cursor-cache-read-tokens "$U_CR" \
+            --cursor-output-tokens "$U_OUT" \
             --issue-number "$ISSUE" \
             --issue-url "${ISSUE_URL:-N/A}" \
             --pr-number "${PR_NUMBER:-0}" \
