@@ -1,0 +1,3 @@
+Reading the ballot and nearby context files to verify findings.
+
+
