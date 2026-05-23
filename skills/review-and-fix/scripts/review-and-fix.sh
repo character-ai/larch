@@ -30,6 +30,9 @@ source "$PLUGIN_ROOT/scripts/lib-cursor-launcher-common.sh"
 # shellcheck source=scripts/lib-submodule-prohibition.sh
 # shellcheck disable=SC1091
 source "$PLUGIN_ROOT/scripts/lib-submodule-prohibition.sh"
+# shellcheck source=scripts/lib-implement-round-cap.sh
+# shellcheck disable=SC1091
+source "$PLUGIN_ROOT/scripts/lib-implement-round-cap.sh"
 
 usage() {
     larch_err "Usage:"
@@ -54,6 +57,7 @@ PLAN_FILE=""
 FEATURE_FILE=""
 RUN_ID=""
 ROUND_NUM="1"
+STARTING_ROUND="1"
 ROUND_CAP=""
 CODEX_AVAILABLE="${CODEX_AVAILABLE:-}"
 CURSOR_AVAILABLE="${CURSOR_AVAILABLE:-}"
@@ -73,6 +77,7 @@ while [[ $# -gt 0 ]]; do
         --feature-file) FEATURE_FILE="${2:?--feature-file requires a value}"; shift 2 ;;
         --run-id) RUN_ID="${2:?--run-id requires a value}"; shift 2 ;;
         --round-num) ROUND_NUM="${2:?--round-num requires a value}"; shift 2 ;;
+        --starting-round) STARTING_ROUND="${2:?--starting-round requires a value}"; shift 2 ;;
         --round-cap) ROUND_CAP="${2:?--round-cap requires a value}"; shift 2 ;;
         --convergence-threshold) CONVERGENCE_THRESHOLD="${2:?--convergence-threshold requires a value}"; shift 2 ;;
         --codex-available) CODEX_AVAILABLE="${2:?--codex-available requires a value}"; shift 2 ;;
@@ -117,6 +122,15 @@ important_findings_present() {
         fi
     done
     return 1
+}
+
+count_high_severity_accepted() {
+    local file="$1"
+    [[ -s "$file" ]] || { printf '0\n'; return 0; }
+    local n
+    n=$(grep -cE '(^### FINDING_[0-9]+:.*(\*\*Important\*\*|\*\*Critical\*\*|\*\*High\*\*)|\*\*[Ii]mportant\*\*)' "$file" 2>/dev/null || true)
+    [[ "$n" =~ ^[0-9]+$ ]] || n=0
+    printf '%s\n' "$n"
 }
 
 append_round_oos_artifact() {
@@ -320,7 +334,7 @@ apply_findings_with_coder() {
         return 0
     fi
 
-    [[ -x "$SCRUB_SUBMODULE_PATHS_SH" ]] || { larch_err "review-and-fix.sh: scrub-submodule-paths.sh not executable: $SCRUB_SUBMODULE_PATHS_SH"; exit 2; }
+    [[ -x "$SCRUB_SUBMODULE_PATHS_SH" ]] || { larch_err "review-and-fix.sh: scrub-submodule-paths.sh not executable: $SCRUB_SUBMODULE_PATHS_SH"; return 2; }
     scrubbed_file="$round_dir/accepted-findings.scrubbed.md"
     scrub_rc=0
     scrub_out=$("$SCRUB_SUBMODULE_PATHS_SH" --input "$input_file" --output "$scrubbed_file" --log "$round_dir/submodule-scrub.log" 2>/dev/null) || scrub_rc=$?
@@ -893,7 +907,7 @@ run_findings_mode() {
     exit "$exit_code"
 }
 
-run_implement_round() {
+_implement_round_body() {
     [[ "$MODE" == "diff" ]] || { larch_err "review-and-fix.sh: orchestrator mode currently requires --mode diff"; exit 2; }
     case "$ROUND_NUM" in ''|*[!0-9]*) larch_err "review-and-fix.sh: --round-num must be a positive integer"; exit 2 ;; esac
     (( 10#$ROUND_NUM > 0 )) || { larch_err "review-and-fix.sh: --round-num must be a positive integer"; exit 2; }
@@ -981,7 +995,7 @@ run_implement_round() {
     # one retry this invocation is allowed to take.
     rm -f "$degraded_retry_flag" "$degraded_retry_done"
     core_args=(
-        --mode "$MODE"
+        --mode diff
         --output-dir "$round_dir"
         --session-env-path "$SESSION_ENV_PATH"
         --codex-available "$CODEX_AVAILABLE"
@@ -1082,6 +1096,7 @@ run_implement_round() {
         in_scope_count=$(count_findings "$in_scope_file")
         if (( in_scope_count > 0 )); then
             coder_env="$round_dir/coder.env"
+            git rev-parse HEAD > "$round_dir/pre-coder-head.txt" 2>/dev/null || rm -f "$round_dir/pre-coder-head.txt"
             set +e
             apply_findings_with_coder "$in_scope_file" "$round_dir" "$coder_env" "$round_num_dec"
             coder_rc=$?
@@ -1101,6 +1116,7 @@ run_implement_round() {
         fi
     fi
 
+    classifier_loop_abort=0
     skipped_finding_count=0
     if [[ "$coder_status" == "applied" && -n "$coder_log" && -s "$coder_log" && -s "${in_scope_file:-}" ]]; then
         skipped_file="$round_dir/skipped-findings.md"
@@ -1122,13 +1138,19 @@ run_implement_round() {
                 cat "$block_file" >> "$skipped_security_file"
                 printf '\n' >> "$skipped_security_file"
             else
-                probe_rc=$?
-                if [[ "$probe_rc" -eq 1 ]]; then
+                local sec_rc=0
+                is_security_block "$block_file" || sec_rc=$?
+                if [[ "$sec_rc" -eq 1 ]]; then
                     cat "$block_file" >> "$skipped_file"
                     printf '\n' >> "$skipped_file"
+                elif [[ "$sec_rc" -eq 2 ]]; then
+                    larch_err "review-and-fix.sh: security classifier failed for $skip_id"
+                    classifier_loop_abort=1
+                    break
                 else
                     larch_err "review-and-fix.sh: security classifier failed for $skip_id"
-                    exit 2
+                    classifier_loop_abort=1
+                    break
                 fi
             fi
             skipped_finding_count=$((skipped_finding_count + 1))
@@ -1212,6 +1234,7 @@ run_implement_round() {
     # Part A: Convergence heuristic — early-termination on two consecutive low-accept rounds.
     # Count only non-degraded rounds and only terminal clean statuses.
     local small_threshold="${CONVERGENCE_THRESHOLD:-3}"
+    important_scan_abort=0
     if convergence_candidate_status "$status" && [[ "$degraded_this_round" == false && "$round_num_dec" -ge 2 ]]; then
         local prev_round_a=0
         local prev_core_out_a=""
@@ -1235,10 +1258,11 @@ run_implement_round() {
                 else
                     local important_rc=$?
                     if [[ "$important_rc" -eq 2 ]]; then
-                        exit 2
+                        important_scan_abort=1
+                    else
+                        emit_breadcrumb "⏳ /implement Step 5: converged after round ${round_num_dec} (round ${round_num_dec}=${accepted_count}, round ${prev_round_a}=${prev_accepted_a} both <= ${small_threshold}; degraded rounds excluded)."
+                        status="converged-small-changes"
                     fi
-                    emit_breadcrumb "⏳ /implement Step 5: converged after round ${round_num_dec} (round ${round_num_dec}=${accepted_count}, round ${prev_round_a}=${prev_accepted_a} both <= ${small_threshold}; degraded rounds excluded)."
-                    status="converged-small-changes"
                 fi
             fi
         fi
@@ -1259,6 +1283,15 @@ run_implement_round() {
                 larch_err "**⚠ /implement Step 5: round ${round_num_dec} accepted ${accepted_count} findings (>${prev_accepted_c} in round ${prev_round_c}). Reviewers may be polishing prior fixes rather than converging on a clean state. Consider stopping after this round.**"
             fi
         fi
+    fi
+
+    if [[ "${classifier_loop_abort:-0}" -eq 1 || "${important_scan_abort:-0}" -eq 1 ]]; then
+        status="classifier-failed"
+        exit_code=2
+    fi
+
+    if [[ "$status" == "fix-applied" ]]; then
+        git rev-parse HEAD > "$round_dir/post-coder-head.txt" 2>/dev/null || rm -f "$round_dir/post-coder-head.txt"
     fi
 
     local round_cap_val="${ROUND_CAP:-0}"
@@ -1283,6 +1316,14 @@ run_implement_round() {
         printf 'REVIEW_CORE_STATUS=%s\n' "$core_status"
         printf 'DEGRADED_ROUND=%s\n' "$degraded_this_round"
     } > "$round_dir/review-and-fix.env"
+    local hsc
+    hsc="$(count_high_severity_accepted "${accepted_file:-}")"
+    [[ "$hsc" =~ ^[0-9]+$ ]] || hsc=0
+    {
+        printf 'HIGH_SEVERITY_COUNT=%s\n' "$hsc"
+        printf 'FIX_COUNT=%s\n' "${coder_input_count:-0}"
+        printf 'SKIPPED_FINDING_COUNT=%s\n' "${skipped_finding_count:-0}"
+    } >> "$round_dir/review-and-fix.env"
     flush_round_log_after_coder "$IMPLEMENT_TMPDIR" "$RUN_ID" "$round_num_dec" "$round_dir"
 
     if [[ -n "$RUN_ID" && -x "$LARCH_LOG_SH" && -n "$IMPLEMENT_TMPDIR" && -d "$IMPLEMENT_TMPDIR" ]]; then
@@ -1333,32 +1374,42 @@ run_implement_round() {
         fi
     fi
 
-    emit_kv REVIEW_AND_FIX_STATUS "$status"
-    emit_kv REVIEW_CORE_STATUS "$core_status"
-    emit_kv ROUND_NUM "$round_num_dec"
-    emit_kv ACCEPTED_COUNT "$accepted_count"
-    emit_kv REJECTED_COUNT "$rejected_count"
-    emit_kv TOTAL_ACCEPTED_COUNT "$total_accepted"
-    emit_kv TOTAL_REJECTED_COUNT "$total_rejected"
-    emit_kv EXONERATED_COUNT "$exonerated_count"
-    emit_kv NEUTRAL_COUNT "$neutral_count"
-    emit_kv FIX_COUNT "$coder_input_count"
-    emit_kv APPROVED_FIXES_FILE "$accepted_file"
-    emit_kv REJECTED_FINDINGS_FILE "$rejected_file"
-    emit_kv FINDINGS_FILE "$round_dir/findings.md"
-    emit_kv REVIEW_ROUND_DIR "$round_dir"
-    emit_kv REVIEW_AND_FIX_SUMMARY_FILE "$prior_summary"
-    emit_kv ACCUMULATED_OOS_FILE "$oos_jsonl"
-    emit_kv TOTAL_EXONERATED_COUNT "$total_exonerated"
-    emit_kv TOTAL_NEUTRAL_COUNT "$total_neutral"
-    emit_kv CODER_TOOL "$coder_tool"
-    emit_kv CODER_STATUS "$coder_status"
-    [[ -n "$coder_log" ]] && emit_kv CODER_LOG_FILE "$coder_log"
-    [[ -n "$coder_commit_sha" ]] && emit_kv CODER_COMMIT_SHA "$coder_commit_sha"
-    emit_kv SUBMODULE_SCRUB_COUNT "$scrub_count"
-    emit_kv SUBMODULE_REVERT_COUNT "$revert_count"
-    emit_kv SKIPPED_FINDING_COUNT "${skipped_finding_count:-0}"
-    emit_kv DEGRADED_ROUND "$degraded_this_round"
+    IRF_LAST_ROUND_STATUS="$status"
+    IRF_LAST_CODER_STATUS="$coder_status"
+    IRF_LAST_SKIPPED="${skipped_finding_count:-0}"
+    IRF_LAST_FIX_COUNT="${coder_input_count:-0}"
+    IRF_LAST_ROUND_DIR="$round_dir"
+    IRF_LAST_ACCEPTED_FILE="$accepted_file"
+    IRF_LAST_FILES_HINT="${coder_commit_sha:-}"
+
+    if [[ -z "${IRF_SUPPRESS_EMIT_KV:-}" ]]; then
+        emit_kv REVIEW_AND_FIX_STATUS "$status"
+        emit_kv REVIEW_CORE_STATUS "$core_status"
+        emit_kv ROUND_NUM "$round_num_dec"
+        emit_kv ACCEPTED_COUNT "$accepted_count"
+        emit_kv REJECTED_COUNT "$rejected_count"
+        emit_kv TOTAL_ACCEPTED_COUNT "$total_accepted"
+        emit_kv TOTAL_REJECTED_COUNT "$total_rejected"
+        emit_kv EXONERATED_COUNT "$exonerated_count"
+        emit_kv NEUTRAL_COUNT "$neutral_count"
+        emit_kv FIX_COUNT "$coder_input_count"
+        emit_kv APPROVED_FIXES_FILE "$accepted_file"
+        emit_kv REJECTED_FINDINGS_FILE "$rejected_file"
+        emit_kv FINDINGS_FILE "$round_dir/findings.md"
+        emit_kv REVIEW_ROUND_DIR "$round_dir"
+        emit_kv REVIEW_AND_FIX_SUMMARY_FILE "$prior_summary"
+        emit_kv ACCUMULATED_OOS_FILE "$oos_jsonl"
+        emit_kv TOTAL_EXONERATED_COUNT "$total_exonerated"
+        emit_kv TOTAL_NEUTRAL_COUNT "$total_neutral"
+        emit_kv CODER_TOOL "$coder_tool"
+        emit_kv CODER_STATUS "$coder_status"
+        [[ -n "$coder_log" ]] && emit_kv CODER_LOG_FILE "$coder_log"
+        [[ -n "$coder_commit_sha" ]] && emit_kv CODER_COMMIT_SHA "$coder_commit_sha"
+        emit_kv SUBMODULE_SCRUB_COUNT "$scrub_count"
+        emit_kv SUBMODULE_REVERT_COUNT "$revert_count"
+        emit_kv SKIPPED_FINDING_COUNT "${skipped_finding_count:-0}"
+        emit_kv DEGRADED_ROUND "$degraded_this_round"
+    fi
     if [[ "$exit_code" -eq 0 ]]; then
         if [[ "$composed_findings_ok" == true ]]; then
             if ! flush_review_batches "$IMPLEMENT_TMPDIR" "$RUN_ID" "$round_num_dec" "$total_accepted" "$total_rejected" "$total_exonerated" "$total_neutral" "$composed_findings_file"; then
@@ -1369,12 +1420,41 @@ run_implement_round() {
                 emit_breadcrumb "⚠ review-and-fix: code-review tally flush skipped after local batch write failure"
             fi
         fi
+    elif [[ -n "${IRF_SUPPRESS_EMIT_KV:-}" ]]; then
+        flush_review_batches "$IMPLEMENT_TMPDIR" "$RUN_ID" "$round_num_dec" "$total_accepted" "$total_rejected" "$total_exonerated" "$total_neutral" 2>/dev/null || true
+    fi
+    if [[ -n "${IRF_SUPPRESS_EMIT_KV:-}" ]]; then
+        return "$exit_code"
     fi
     exit "$exit_code"
 }
 
-if [[ -n "$IMPLEMENT_TMPDIR" ]]; then
-    run_implement_round
-fi
+# shellcheck source=skills/review-and-fix/scripts/review-implement-step5-loop.sh
+# shellcheck disable=SC1091
+source "$PLUGIN_ROOT/skills/review-and-fix/scripts/review-implement-step5-loop.sh"
 
-run_findings_mode
+run_implement_round() {
+    IRF_SUPPRESS_EMIT_KV=""
+    _implement_round_body
+}
+
+main() {
+    case "${MODE:-}" in
+        loop)
+            run_implement_loop
+            ;;
+        mav-apply)
+            run_implement_mav_apply
+            ;;
+        *)
+            if [[ -n "$IMPLEMENT_TMPDIR" ]]; then
+                run_implement_round
+            fi
+            ;;
+    esac
+    [[ -n "$FINDINGS_FILE" && -z "$IMPLEMENT_TMPDIR" ]] && run_findings_mode
+}
+
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    main "$@"
+fi

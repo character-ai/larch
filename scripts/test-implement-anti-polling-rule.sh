@@ -49,7 +49,7 @@ check "$AGENTS_MD" \
 
 check "$IMPL_MD" \
     "SKILL.md Step 5 uses foreground review-and-fix call" \
-    'For each round, run one foreground Bash call'
+    'Step 5 invokes **one** foreground'
 check "$IMPL_MD" \
     "SKILL.md Step 5 delegates reviewer waiting to scripts" \
     'Step 5 invokes `${CLAUDE_PLUGIN_ROOT}/scripts/run-step5-review.sh`'
