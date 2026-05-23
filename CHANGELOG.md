@@ -19,6 +19,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Migration posture**: legacy `[IN PROGRESS]` and `[PLANNED]` prefixes are stripped by `strip_lifecycle_prefix` for backward compatibility but are no longer accepted as `--state` values by `tracking-issue-write.sh` or as admission-pass prefixes.
 - **Audit scope**: workflow call sites and rename `--state` surfaces in the active runtime tree (`skills/`, `scripts/`, `agents/`, `.claude/`, `docs/`, tests) now use the new prefix set; deliberate legacy bracket literals remain only where migration, admission recovery, strip helpers, or hermetic fixtures require them. This Unreleased section documents the migration and may name the old prefixes. Historical shipped changelog bodies and `larch-logs/` were not bulk-retitled.
 
+## [42.0.5] - 2026-05-22
+
+### Changed
+
+- Lead dialectic debate prompts with OUTPUT FORMAT plus steelman as a sixth required tag to stop truncation after steelman-only preludes.
+- Document per-side Cursor/Codex assignment and a Cursor/Codex-to-Claude per-side waterfall with corrective prompts via render-debate-retry-prompt.sh.
+- Register retry timing-task kinds, extend design structural tests, and refresh dialectic fixtures for the six-tag quorum gate.
+
 ## [42.0.4] - 2026-05-22
 
 ### Changed
