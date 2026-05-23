@@ -43,6 +43,9 @@
 #   - Test 19d: `main` spawn with neither session-env nor parent-issue (unanchored
 #     harness tmpdir) → must not emit `main-branch-prohibited`; stub launcher runs.
 #   - Test 19e: detached HEAD + issue-anchored session-env → `detached-head-prohibited`.
+#   - Test 20: scratch repo after create-branch.sh --branch (simulates SKILL.md creation path);
+#     dispatcher must NOT emit `main-branch-prohibited` (may bail cursor-runtime-failure from stub).
+#   - Test 21: scratch repo already on user-prefix branch without create-branch; same dispatcher assertion.
 #
 # External-implementer spawning paths (manifest validation, dispatcher-side commit,
 # sanitization, launcher-retry) are covered by separate launcher / end-to-end tests;
@@ -1194,6 +1197,106 @@ if [[ "$OUT_19E" == *"STATUS=bailed"* ]] \
     pass
 else
     fail 19e "expected detached-head-prohibited before stub cursor on detached HEAD; got: $OUT_19E"
+fi
+
+# ---------------------------------------------------------------------------
+# Test 20: main → create-branch.sh --branch, then dispatch — must not
+# main-branch-prohibited (simulates new Step 0 branch creation before Step 2).
+# ---------------------------------------------------------------------------
+TMP20="$SCRATCH/test20"
+mkdir -p "$TMP20"
+printf 'fresh-step2-20\n' > "$TMP20/session-id"
+SCRATCH_REPO20="$SCRATCH/scratch-repo-20"
+BARE20="$SCRATCH/scratch-origin-20.git"
+rm -rf "$SCRATCH_REPO20" "$BARE20"
+mkdir -p "$SCRATCH_REPO20"
+git init --bare -q "$BARE20"
+git -C "$SCRATCH_REPO20" init -q -b main
+git -C "$SCRATCH_REPO20" config user.email "test@example.com"
+git -C "$SCRATCH_REPO20" config user.name "Test"
+echo "initial" > "$SCRATCH_REPO20/README.md"
+git -C "$SCRATCH_REPO20" add README.md
+git -C "$SCRATCH_REPO20" commit -q -m "init"
+git -C "$SCRATCH_REPO20" remote add origin "$BARE20"
+git -C "$SCRATCH_REPO20" push -u -q origin main
+cat > "$TMP20/session-env.sh" <<'ENV'
+ISSUE_NUMBER=42
+FORKED_TARGET=false
+ENV
+printf 'ISSUE_NUMBER=42\nRUN_ID=r-test\nADOPTED=true\n' > "$TMP20/parent-issue.md"
+
+if ! (cd "$SCRATCH_REPO20" && "$REPO_ROOT/scripts/create-branch.sh" --branch "test/test-feature-42") >/dev/null 2>&1; then
+    fail 20 "create-branch.sh --branch failed in scratch repo (origin/main setup required for harness)"
+fi
+if [[ "$(git -C "$SCRATCH_REPO20" symbolic-ref --short HEAD 2>/dev/null || true)" != "test/test-feature-42" ]]; then
+    fail 20 "expected checkout onto test/test-feature-42 after create-branch; got: $(git -C "$SCRATCH_REPO20" symbolic-ref --short HEAD 2>/dev/null || echo '?')"
+fi
+printf '%s\n' "test/test-feature-42" > "$TMP20/step2-spawn-branch.txt"
+
+OUT_20=$(cd "$SCRATCH_REPO20" && \
+    PATH="$STUB_BIN_19:$PATH" \
+    RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
+    LARCH_QUIET_DISABLE=1 \
+    LARCH_CURSOR_MODEL="stub-model" \
+    CURSOR_API_KEY="" \
+    LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 \
+    LIB_CURSOR_AUTH_TEST_UNAME="Linux" \
+    "$DISPATCHER" --tmpdir "$TMP20" --plan-file "$PLAN" --feature-file "$FEATURE" \
+        --coder cursor --cursor-present true 2>&1)
+
+if [[ "$OUT_20" == *"REASON=main-branch-prohibited"* ]]; then
+    fail 20 "post-create-branch dispatch must not emit main-branch-prohibited; got: $OUT_20"
+elif [[ "$OUT_20" != *"REASON=cursor-runtime-failure"* ]] || [[ "$OUT_20" != *"TOOL=cursor"* ]]; then
+    fail 20 "expected stub cursor attempt (cursor-runtime-failure + TOOL=cursor); got: $OUT_20"
+else
+    pass
+fi
+
+# ---------------------------------------------------------------------------
+# Test 21: existing user-prefix branch without create-branch — must not
+# main-branch-prohibited (simulates IS_USER_BRANCH skip path).
+# ---------------------------------------------------------------------------
+TMP21="$SCRATCH/test21"
+mkdir -p "$TMP21"
+printf 'fresh-step2-21\n' > "$TMP21/session-id"
+SCRATCH_REPO21="$SCRATCH/scratch-repo-21"
+rm -rf "$SCRATCH_REPO21"
+mkdir -p "$SCRATCH_REPO21"
+git -C "$SCRATCH_REPO21" init -q -b main
+git -C "$SCRATCH_REPO21" config user.email "test@example.com"
+git -C "$SCRATCH_REPO21" config user.name "Test"
+echo "initial" > "$SCRATCH_REPO21/README.md"
+git -C "$SCRATCH_REPO21" add README.md
+git -C "$SCRATCH_REPO21" commit -q -m "init"
+git -C "$SCRATCH_REPO21" checkout -q -b "test/existing-feature-42"
+cat > "$TMP21/session-env.sh" <<'ENV'
+ISSUE_NUMBER=42
+FORKED_TARGET=false
+ENV
+printf 'ISSUE_NUMBER=42\nRUN_ID=r-test\nADOPTED=true\n' > "$TMP21/parent-issue.md"
+printf '%s\n' "test/existing-feature-42" > "$TMP21/step2-spawn-branch.txt"
+
+if [[ "$(git -C "$SCRATCH_REPO21" symbolic-ref --short HEAD 2>/dev/null || true)" != "test/existing-feature-42" ]]; then
+    fail 21 "scratch repo must be on test/existing-feature-42"
+fi
+
+OUT_21=$(cd "$SCRATCH_REPO21" && \
+    PATH="$STUB_BIN_19:$PATH" \
+    RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
+    LARCH_QUIET_DISABLE=1 \
+    LARCH_CURSOR_MODEL="stub-model" \
+    CURSOR_API_KEY="" \
+    LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 \
+    LIB_CURSOR_AUTH_TEST_UNAME="Linux" \
+    "$DISPATCHER" --tmpdir "$TMP21" --plan-file "$PLAN" --feature-file "$FEATURE" \
+        --coder cursor --cursor-present true 2>&1)
+
+if [[ "$OUT_21" == *"REASON=main-branch-prohibited"* ]]; then
+    fail 21 "user-prefix branch dispatch must not emit main-branch-prohibited; got: $OUT_21"
+elif [[ "$OUT_21" != *"REASON=cursor-runtime-failure"* ]] || [[ "$OUT_21" != *"TOOL=cursor"* ]]; then
+    fail 21 "expected stub cursor attempt (cursor-runtime-failure + TOOL=cursor); got: $OUT_21"
+else
+    pass
 fi
 
 # ---------------------------------------------------------------------------

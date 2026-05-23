@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- /implement — Create the feature branch at the start of Step 0 plan materialization (regression from #2588 / #2598; pre-existing dispatcher main-branch-prohibited guard exposed the gap).
+
 ### Changed
 
 - **Title-prefix state machine overhaul**: tracking-issue title prefixes switch from `[IN PROGRESS]`/`[PLANNED]` to `[DESIGNING]`/`[DESIGNED]`/`[IMPLEMENTING]`. `/design` now renames issues to `[DESIGNING]` on start and `[DESIGNED]` on completion; `/implement` renames to `[IMPLEMENTING]` on start. `[DONE]` and `[STALLED]` are unchanged.
