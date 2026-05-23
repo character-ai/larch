@@ -169,7 +169,7 @@ SH
 set -euo pipefail
 echo "RENAMED=true"
 SH
-    for helper in create-pr.sh gh-pr-body-update.sh rebase-push.sh ci-rerun-failed.sh gh-run-logs.sh launch-cursor-ci.sh launch-codex-ci.sh append-token-record.sh git-commit.sh git-push.sh sanitize-mermaid-fragment.sh append-execution-issue.sh append-tool-failure.sh resolve-repo.sh; do
+    for helper in create-pr.sh gh-pr-body-update.sh rebase-push.sh ci-rerun-failed.sh gh-run-logs.sh launch-cursor-ci.sh launch-codex-ci.sh launch-claude-ci.sh append-token-record.sh git-commit.sh git-push.sh sanitize-mermaid-fragment.sh append-execution-issue.sh append-tool-failure.sh resolve-repo.sh; do
         cat > "$root/scripts/$helper" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -207,7 +207,7 @@ case "$(basename "$0")" in
     ;;
   resolve-repo.sh)
     echo "REPO=owner/repo" ;;
-  launch-cursor-ci.sh|launch-codex-ci.sh)
+  launch-cursor-ci.sh|launch-codex-ci.sh|launch-claude-ci.sh)
     if [[ -n "${SHIP_PR_LAUNCH_SENTINEL_DIR:-}" ]]; then
       mkdir -p "$SHIP_PR_LAUNCH_SENTINEL_DIR"
       printf '%s %s\n' "$(basename "$0")" "$*" >> "$SHIP_PR_LAUNCH_SENTINEL_DIR/launcher-calls.txt"
@@ -820,6 +820,24 @@ STUB
 }
 
 if section_runs state; then
+tmp_src_guard=$(make_tmpdir)
+set +e
+(
+  cd "$REPO_ROOT" || exit 1
+  # shellcheck disable=SC2030,SC2031
+  export CLAUDE_PLUGIN_ROOT="$REPO_ROOT"
+  bash -c 'set -euo pipefail; __ship_pr_source_witness=42; source "scripts/ship-pr.sh"; printf "WITNESS=%s\n" "${__ship_pr_source_witness:-missing}"'
+) >"$tmp_src_guard/out" 2>"$tmp_src_guard/err"
+src_guard_rc=$?
+set -e
+if [[ "$src_guard_rc" -eq 0 ]] && grep -qxF 'WITNESS=42' "$tmp_src_guard/out"; then
+    ok "ship-pr.sh sources without executing main (witness preserved)"
+else
+    fail "ship-pr.sh must be source-safe (no main side effects on import)"
+    sed 's/^/    err: /' "$tmp_src_guard/err" | head -n 20 || true
+fi
+rm -rf "$tmp_src_guard"
+
 root=$(make_repo checks_fail)
 tmp=$(make_tmpdir)
 write_state "$tmp/ship-pr-state.sh" checks
@@ -869,7 +887,7 @@ root=$(make_repo postbump_conflict)
 tmp=$(make_tmpdir)
 write_state "$tmp/ship-pr-state.sh" bump
 STUB_POSTBUMP_STATUS=conflict run_subject "$root" "$tmp" "$tmp/rc"
-assert_rc "$tmp/rc" 5 "postbump conflict exits 5"
+assert_rc "$tmp/rc" 4 "postbump conflict stalls after mechanical finalize retry (exit_stall 8b)"
 assert_state_line "$tmp/ship-pr-state.sh" "CALLER_KIND=step8b_rebase" "postbump conflict preserves caller kind"
 if grep -qxF "PR_TITLE=Title" "$tmp/postbump-state.sh"; then
     ok "postbump conflict writes PR_TITLE into postbump state"
@@ -882,14 +900,14 @@ root=$(make_repo same_version)
 tmp=$(make_tmpdir)
 write_state "$tmp/ship-pr-state.sh" bump
 STUB_APPLY_SAME_VERSION=true run_subject "$root" "$tmp" "$tmp/rc"
-assert_rc "$tmp/rc" 5 "same-version bump exits 5"
+assert_rc "$tmp/rc" 4 "same-version bump stalls after mechanical retry exhausts (exit_stall 8)"
 assert_state_line "$tmp/ship-pr-state.sh" "CALLER_KIND=step8_apply_bump_same_version" "same-version writes caller kind"
 
 root=$(make_repo version_regression)
 tmp=$(make_tmpdir)
 write_state "$tmp/ship-pr-state.sh" bump
 STUB_APPLY_VERSION_REGRESSION=true run_subject "$root" "$tmp" "$tmp/rc"
-assert_rc "$tmp/rc" 5 "version-regression bump exits 5"
+assert_rc "$tmp/rc" 4 "version-regression bump stalls after mechanical retry exhausts (exit_stall 8)"
 assert_state_line "$tmp/ship-pr-state.sh" "CALLER_KIND=step8_apply_bump_same_version" "version-regression writes caller kind"
 
 root=$(make_repo bump_branch_guard_main)
@@ -1066,6 +1084,74 @@ else
     fail "breadcrumb transient: stdout missing '⚠ ship-pr: transient network failure'"
     sed 's/^/    stdout: /' "$tmp/stdout"
 fi
+
+# AC#12: recovery_waterfall_paths_delta_revert uses quoted paths (spaces / glob chars).
+root=$(mktemp -d "$TMP_BASE/wf-rollback-sp-XXXXXX")
+impl=$(mktemp -d "$TMP_BASE/wf-rollback-sp-impl-XXXXXX")
+write_subject "$root"
+git -C "$root" init -q
+git -C "$root" config user.email test@example.invalid
+git -C "$root" config user.name Test
+printf 'orig\n' >"$root/my file.txt"
+printf 'g\n' >"$root/x*y.txt"
+git -C "$root" add "my file.txt" "x*y.txt"
+git -C "$root" commit -q -m base
+btr=$(mktemp "$impl/baseline-tr.XXXXXX")
+bun=$(mktemp "$impl/baseline-un.XXXXXX")
+: >"$btr"
+: >"$bun"
+printf 'dirty\n' >"$root/my file.txt"
+printf 'dirty2\n' >"$root/x*y.txt"
+wf_log="$impl/wf.log"
+(
+    cd "$root" || exit 1
+    # shellcheck disable=SC2030,SC2031
+    export CLAUDE_PLUGIN_ROOT="$root"
+    # shellcheck disable=SC1091
+    source "$root/scripts/ship-pr.sh"
+    # shellcheck disable=SC2030,SC2031
+    export IMPLEMENT_TMPDIR="$impl"
+    recovery_waterfall_paths_delta_revert "$btr" "$bun" "$wf_log"
+)
+if grep -qxF 'orig' "$root/my file.txt" && grep -qxF 'g' "$root/x*y.txt"; then
+    ok "recovery_waterfall_rollback_handles_paths_with_spaces_and_globs"
+else
+    fail "recovery_waterfall_rollback_handles_paths_with_spaces_and_globs"
+fi
+
+# AC#12: staged-index rollback ordering (git restore --staged before checkout).
+root=$(mktemp -d "$TMP_BASE/wf-rollback-st-XXXXXX")
+impl=$(mktemp -d "$TMP_BASE/wf-rollback-st-impl-XXXXXX")
+write_subject "$root"
+git -C "$root" init -q
+git -C "$root" config user.email test@example.invalid
+git -C "$root" config user.name Test
+printf 'A\n' >"$root/staged.txt"
+git -C "$root" add staged.txt
+git -C "$root" commit -q -m base
+btr=$(mktemp "$impl/b2-tr.XXXXXX")
+bun=$(mktemp "$impl/b2-un.XXXXXX")
+: >"$btr"
+: >"$bun"
+printf 'B\n' >"$root/staged.txt"
+git -C "$root" add staged.txt
+wf_log="$impl/wf2.log"
+(
+    cd "$root" || exit 1
+    # shellcheck disable=SC2030,SC2031
+    export CLAUDE_PLUGIN_ROOT="$root"
+    # shellcheck disable=SC1091
+    source "$root/scripts/ship-pr.sh"
+    # shellcheck disable=SC2030,SC2031
+    export IMPLEMENT_TMPDIR="$impl"
+    recovery_waterfall_paths_delta_revert "$btr" "$bun" "$wf_log"
+)
+if grep -qxF 'A' "$root/staged.txt"; then
+    ok "recovery_waterfall_rollback_restores_staged_changes_via_git_restore_staged"
+else
+    fail "recovery_waterfall_rollback_restores_staged_changes_via_git_restore_staged"
+fi
+
 fi  # end section: state
 
 if section_runs postmerge; then
@@ -1389,7 +1475,15 @@ if [ "$initial_branch" = "main" ]; then
     git -C "$root" update-ref refs/remotes/origin/main HEAD
     git -C "$root" checkout -q -b pr-title-branch
 else
-    git -C "$root" checkout -q -b main
+    # `make_repo` runs `git init` (which creates `main`), then commits, then
+    # checks out feature/test-issue-7. On modern git, `main` already exists,
+    # so `git checkout -b main` fails — use `checkout main` (existing) or
+    # `checkout -b main` (absent) defensively.
+    if git -C "$root" rev-parse --verify --quiet main >/dev/null 2>&1; then
+        git -C "$root" checkout -q main
+    else
+        git -C "$root" checkout -q -b main
+    fi
     git -C "$root" commit --allow-empty -q -m "base"
     git -C "$root" update-ref refs/remotes/origin/main HEAD
     git -C "$root" checkout -q "$initial_branch"
@@ -1430,7 +1524,11 @@ if [ "$initial_branch" = "main" ]; then
     git -C "$root" update-ref refs/remotes/origin/main HEAD
     git -C "$root" checkout -q -b existing-pr-branch
 else
-    git -C "$root" checkout -q -b main
+    if git -C "$root" rev-parse --verify --quiet main >/dev/null 2>&1; then
+        git -C "$root" checkout -q main
+    else
+        git -C "$root" checkout -q -b main
+    fi
     git -C "$root" commit --allow-empty -q -m "base"
     git -C "$root" update-ref refs/remotes/origin/main HEAD
     git -C "$root" checkout -q "$initial_branch"
@@ -1884,35 +1982,44 @@ if [[ -n "${SHIP_PR_LAUNCH_SENTINEL_DIR:-}" ]]; then
     mkdir -p "$SHIP_PR_LAUNCH_SENTINEL_DIR"
     printf '%s %s\n' "$(basename "$0")" "$*" >> "$SHIP_PR_LAUNCH_SENTINEL_DIR/launcher-calls.txt"
 fi
+# Stage the resolved conflict but DO NOT run `git rebase --continue` — the
+# `rebase-nonbump` verifier inside run_recovery_waterfall continues the rebase
+# itself (see scripts/ship-pr.sh case verify_kind=rebase-nonbump). A launcher
+# that continues the rebase here would leave the verifier with no in-progress
+# rebase, causing `git rebase --continue` to fail and the tier to roll back.
+# Use `--theirs` (feature-branch content) so the resolved commit is non-empty
+# and `git rebase --continue` proceeds without `--allow-empty` prompts.
 if git rev-parse --git-dir >/dev/null 2>&1; then
     if [ -d "$(git rev-parse --git-dir)/rebase-merge" ] || [ -d "$(git rev-parse --git-dir)/rebase-apply" ]; then
-        git checkout --ours -- other.txt
+        git checkout --theirs -- other.txt
         git add other.txt
-        GIT_EDITOR=true git rebase --continue
     fi
 fi
 exit 0
 STUB
 chmod +x "$root/scripts/launch-cursor-ci.sh"
+cp "$root/scripts/launch-cursor-ci.sh" "$root/scripts/launch-claude-ci.sh"
+chmod +x "$root/scripts/launch-claude-ci.sh"
 _make_rebase_stubs "$root" "$count_dir"
 write_state "$tmp/ship-pr-state.sh" ci-initial
 PATH="$root/scripts:$PATH" SHIP_PR_LAUNCH_SENTINEL_DIR="$count_dir" run_subject "$root" "$tmp" "$tmp/rc"
-assert_rc "$tmp/rc" 5 "mixed CHANGELOG conflict auto-resolve + Phase 1–4 dispatch exits 5"
+assert_rc "$tmp/rc" 0 "mixed CHANGELOG conflict auto-resolve + recovery waterfall completes rebase"
+# The rc=0 path means run_recovery_waterfall succeeded — Phase 1–4 was NOT invoked
+# and the legacy stall path (which writes CALLER_KIND=ship_pr_pre_push and emits
+# CONFLICT_FILES via emit_kv) was NOT taken. Those keys are stall-only signals; the
+# success path proves itself via rc=0 + launcher dispatch (assertion below). Pin the
+# negative invariant so a future regression that mistakenly writes the stall keys on
+# the success path is caught (FINDING_23 from issue #2395 review).
 if grep -qF 'CALLER_KIND=ship_pr_pre_push' "$tmp/ship-pr-state.sh" 2>/dev/null; then
-    ok "mixed conflict dispatches Phase 1–4 (CALLER_KIND=ship_pr_pre_push)"
+    fail "mixed conflict success path must NOT write CALLER_KIND=ship_pr_pre_push (stall-only key)"
 else
-    fail "mixed conflict should set CALLER_KIND=ship_pr_pre_push in state"
-fi
-if grep -qF 'CONFLICT_FILES=other.txt' "$tmp/stdout" 2>/dev/null; then
-    ok "mixed conflict emits CONFLICT_FILES=other.txt on stdout"
-else
-    fail "mixed conflict CONFLICT_FILES=other.txt missing from stdout"
-    sed 's/^/    stdout: /' "$tmp/stdout" 2>/dev/null | head -10 || true
+    ok "mixed conflict success path leaves CALLER_KIND clear (waterfall recovered without legacy stall)"
 fi
 if [ -f "$count_dir/launcher-calls.txt" ] && grep -q -- "--role resolve-conflict" "$count_dir/launcher-calls.txt" 2>/dev/null; then
-    fail "mixed conflict should NOT invoke vendor (Phase 1–4 owns resolution)"
+    ok "mixed conflict invokes recovery waterfall resolve-conflict launcher"
 else
-    ok "mixed conflict does not invoke vendor launcher"
+    fail "mixed conflict should record resolve-conflict in launcher-calls.txt"
+    sed 's/^/    launcher: /' "$count_dir/launcher-calls.txt" 2>/dev/null | head -20 || true
 fi
 rm -rf "$count_dir"
 
@@ -1957,16 +2064,18 @@ done
 chmod +x "$root/scripts/drop-bump-commit.sh" "$root/scripts/git-sync-local-main.sh" "$root/scripts/git-force-push.sh"
 write_state "$tmp/ship-pr-state.sh" ci-initial
 PATH="$root/scripts:$PATH" SHIP_PR_LAUNCH_SENTINEL_DIR="$call_dir" run_subject "$root" "$tmp" "$tmp/rc"
-assert_rc "$tmp/rc" 5 "non-changelog-only conflict Phase 1–4 dispatch exits 5"
+assert_rc "$tmp/rc" 4 "non-changelog-only conflict stalls after recovery waterfall exhausts (exit_stall)"
 if grep -qF 'CALLER_KIND=ship_pr_pre_push' "$tmp/ship-pr-state.sh" 2>/dev/null; then
     ok "non-changelog conflict dispatches Phase 1–4 (CALLER_KIND=ship_pr_pre_push)"
 else
     fail "non-changelog conflict should set CALLER_KIND=ship_pr_pre_push in state"
 fi
-if [ -f "$call_dir/launcher-calls.txt" ] && grep -q -- "--role resolve-conflict" "$call_dir/launcher-calls.txt" 2>/dev/null; then
-    fail "non-changelog conflict should NOT invoke vendor (Phase 1–4 owns resolution)"
+if [ -f "$call_dir/launcher-calls.txt" ] && grep -q -- "launch-cursor-ci.sh" "$call_dir/launcher-calls.txt" 2>/dev/null \
+    && grep -q -- "--role resolve-conflict" "$call_dir/launcher-calls.txt" 2>/dev/null; then
+    ok "non-changelog conflict recovery waterfall invokes launch-cursor-ci resolve-conflict"
 else
-    ok "non-changelog conflict does not invoke vendor launcher"
+    fail "non-changelog conflict should record cursor resolve-conflict tier attempt"
+    sed 's/^/    launcher: /' "$call_dir/launcher-calls.txt" 2>/dev/null | head -20 || true
 fi
 rm -rf "$call_dir"
 
@@ -2002,7 +2111,7 @@ chmod +x "$root/scripts/cursor" \
          "$root/scripts/git-force-push.sh"
 write_state "$tmp/ship-pr-state.sh" ci-initial
 LARCH_QUIET_BREADCRUMBS=1 PATH="$root/scripts:$PATH" SHIP_PR_LAUNCH_SENTINEL_DIR="$call_dir" run_subject "$root" "$tmp" "$tmp/rc"
-assert_rc "$tmp/rc" 5 "second rebase conflict Phase 1–4 dispatch exits 5"
+assert_rc "$tmp/rc" 4 "second rebase conflict stalls after recovery waterfall exhausts (exit_stall)"
 if grep -qF 'CALLER_KIND=ship_pr_pre_push' "$tmp/ship-pr-state.sh" 2>/dev/null; then
     ok "second rebase conflict sets CALLER_KIND=ship_pr_pre_push"
 else
@@ -2404,6 +2513,8 @@ chmod +x "$root/scripts/launch-cursor-ci.sh"
 # for the vendor fix path — mirror the cursor stub so dirty-tree staging is deterministic.
 cp "$root/scripts/launch-cursor-ci.sh" "$root/scripts/launch-codex-ci.sh"
 chmod +x "$root/scripts/launch-codex-ci.sh"
+cp "$root/scripts/launch-cursor-ci.sh" "$root/scripts/launch-claude-ci.sh"
+chmod +x "$root/scripts/launch-claude-ci.sh"
 cat > "$root/scripts/git-commit.sh" <<STUB
 #!/usr/bin/env bash
 set -euo pipefail
@@ -2538,6 +2649,24 @@ write_state "$tmp/ship-pr-state.sh" ci-merge
 run_subject "$root" "$tmp" "$tmp/rc"
 assert_rc "$tmp/rc" 6 "transient merge-pr: exits 6 on network/auth signature"
 assert_state_line "$tmp/ship-pr-state.sh" "STALL_TRACKING=false" "transient merge-pr: STALL_TRACKING=false"
+
+# Positive case 2b: merge-pr transient admin_failed envelope — stub emits MERGE_RESULT=admin_failed
+# with network signature. Pins the envelope-aware retry path for admin_failed alongside the
+# existing MERGE_RESULT=error case so a future regression in the predicate's case statement is
+# caught immediately (FINDING_12 from issue #2395 review).
+root=$(make_repo transient_merge_pr_admin_failed)
+tmp=$(make_tmpdir)
+cat > "$root/scripts/merge-pr.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+echo "MERGE_RESULT=admin_failed"
+echo "ERROR=remote rejected admin merge: connection reset by peer"
+STUB
+chmod +x "$root/scripts/merge-pr.sh"
+write_state "$tmp/ship-pr-state.sh" ci-merge
+run_subject "$root" "$tmp" "$tmp/rc"
+assert_rc "$tmp/rc" 6 "transient merge-pr admin_failed: exits 6 on network/auth signature"
+assert_state_line "$tmp/ship-pr-state.sh" "STALL_TRACKING=false" "transient merge-pr admin_failed: STALL_TRACKING=false"
 
 # Positive case 3: ci-wait bail with transient network signature — expect exit 6.
 root=$(make_repo transient_ci_wait_bail)
@@ -2861,7 +2990,7 @@ assert_file_absent_or_empty "$tmp/final-bail-reason.txt" "stale stall state: ski
 fi  # end section: transient
 
 if section_runs phase14; then
-# run_rebase_rebump: non-bump-only conflict → exit 5 Phase 1–4 handoff (no keep-on-conflict CI Issues line).
+# run_rebase_rebump: non-bump-only conflict → exit_stall (rc 4) after recovery waterfall exhausts.
 root=$(make_repo ship_pr_phase14_dispatch)
 tmp=$(make_tmpdir)
 cat > "$root/scripts/rebase-push.sh" <<'STUB'
@@ -2889,17 +3018,17 @@ write_state "$tmp/ship-pr-state.sh" ci-initial
 : >"$tmp/execution-issues.md"
 PATH="$root/scripts:$PATH" CLAUDE_PLUGIN_ROOT="$root" IMPLEMENT_TMPDIR="$tmp" \
     run_subject "$root" "$tmp" "$tmp/rc"
-assert_rc "$tmp/rc" 5 "Makefile-only rebase conflict: ship-pr exits 5 for Phase 1–4 handoff"
+assert_rc "$tmp/rc" 4 "Makefile-only rebase conflict: ship-pr stalls after waterfall (exit_stall, rc 4)"
 if grep -qFx 'CONFLICT_FILES=Makefile' "$tmp/stdout"; then
-    ok "phase14 dispatch exit-5 stream includes CONFLICT_FILES=Makefile"
+    ok "phase14 dispatch stall stream includes CONFLICT_FILES=Makefile"
 else
-    fail "phase14 dispatch exit-5 stream missing CONFLICT_FILES=Makefile"
+    fail "phase14 dispatch stall stream missing CONFLICT_FILES=Makefile"
     sed 's/^/    stdout: /' "$tmp/stdout" | head -n 40
 fi
 if [[ -f "$tmp/ship-pr-rrr-after-phase14.flag" ]]; then
     ok "phase14 dispatch creates resume flag under IMPLEMENT_TMPDIR"
 else
-    fail "expected ship-pr-rrr-after-phase14.flag after exit 5"
+    fail "expected ship-pr-rrr-after-phase14.flag after stall (rc 4)"
 fi
 assert_state_line "$tmp/ship-pr-state.sh" "RESUME_PHASE=ship-pr-rrr-phase14" "phase14 dispatch persists RESUME_PHASE"
 assert_state_line "$tmp/ship-pr-state.sh" "CALLER_KIND=ship_pr_pre_push" "phase14 dispatch persists CALLER_KIND"
@@ -2915,7 +3044,7 @@ else
     ok "phase14 handoff skips premature keep-on-conflict execution-issues line"
 fi
 
-# Deep non-bump CONFLICT_FILES CSV (nested path) still reaches exit 5 with the same state keys.
+# Deep non-bump CONFLICT_FILES CSV (nested path) still reaches exit_stall with the same state keys.
 root=$(make_repo ship_pr_phase14_dispatch_deep_csv)
 tmp=$(make_tmpdir)
 cat > "$root/scripts/rebase-push.sh" <<'STUB'
@@ -2943,7 +3072,7 @@ write_state "$tmp/ship-pr-state.sh" ci-initial
 : >"$tmp/execution-issues.md"
 PATH="$root/scripts:$PATH" CLAUDE_PLUGIN_ROOT="$root" IMPLEMENT_TMPDIR="$tmp" \
     run_subject "$root" "$tmp" "$tmp/rc"
-assert_rc "$tmp/rc" 5 "phase14 deep CSV: ship-pr exits 5 for Phase 1–4 handoff"
+assert_rc "$tmp/rc" 4 "phase14 deep CSV: ship-pr stalls after waterfall (rc 4)"
 if grep -qFx 'CONFLICT_FILES=.claude/skills/audit-runs/scripts/test-audit-runs.md,docs/README.md' "$tmp/stdout"; then
     ok "phase14 deep CSV exit-5 stream includes post–pre-pass CONFLICT_FILES CSV"
 else
@@ -2953,7 +3082,7 @@ fi
 if [[ -f "$tmp/ship-pr-rrr-after-phase14.flag" ]]; then
     ok "phase14 deep CSV creates resume flag under IMPLEMENT_TMPDIR"
 else
-    fail "expected ship-pr-rrr-after-phase14.flag after exit 5 (deep CSV)"
+    fail "expected ship-pr-rrr-after-phase14.flag after stall (deep CSV)"
 fi
 assert_state_line "$tmp/ship-pr-state.sh" "RESUME_PHASE=ship-pr-rrr-phase14" "phase14 deep CSV persists RESUME_PHASE"
 assert_state_line "$tmp/ship-pr-state.sh" "CALLER_KIND=ship_pr_pre_push" "phase14 deep CSV persists CALLER_KIND"
@@ -2969,7 +3098,7 @@ else
     ok "phase14 deep CSV skips premature keep-on-conflict execution-issues line"
 fi
 
-# Punctuation-heavy CSV remainder survives into exit-5 contract line.
+# Punctuation-heavy CSV remainder survives into exit_stall CONFLICT_FILES contract line.
 root=$(make_repo ship_pr_phase14_dispatch_edge_csv)
 tmp=$(make_tmpdir)
 cat > "$root/scripts/rebase-push.sh" <<'STUB'
@@ -2997,15 +3126,15 @@ write_state "$tmp/ship-pr-state.sh" ci-initial
 : >"$tmp/execution-issues.md"
 PATH="$root/scripts:$PATH" CLAUDE_PLUGIN_ROOT="$root" IMPLEMENT_TMPDIR="$tmp" \
     run_subject "$root" "$tmp" "$tmp/rc-edge"
-assert_rc "$tmp/rc-edge" 5 "phase14 edge CSV: ship-pr exits 5 for Phase 1–4 handoff"
+assert_rc "$tmp/rc-edge" 4 "phase14 edge CSV: ship-pr stalls after waterfall (rc 4)"
 if grep -qFx 'CONFLICT_FILES=Makefile,  README.md' "$tmp/stdout"; then
-    ok "phase14 edge CSV exit-5 stream preserves comma-spacing in CONFLICT_FILES"
+    ok "phase14 edge CSV stall stream preserves comma-spacing in CONFLICT_FILES"
 else
-    fail "phase14 edge CSV exit-5 stream missing expected CONFLICT_FILES= line"
+    fail "phase14 edge CSV stall stream missing expected CONFLICT_FILES= line"
     sed 's/^/    stdout: /' "$tmp/stdout" | head -n 40
 fi
 
-# LARCH_BUMP_FILES membership: bump-tagged path must not take the Phase14 exit-5 gate.
+# LARCH_BUMP_FILES membership: bump-tagged path must not take the Phase14 exit_stall gate.
 root=$(make_repo ship_pr_phase14_larch_bump_files_gate)
 tmp=$(make_tmpdir)
 mkdir -p "$root/vendor"
@@ -3040,7 +3169,7 @@ PATH="$root/scripts:$PATH" CLAUDE_PLUGIN_ROOT="$root" IMPLEMENT_TMPDIR="$tmp" \
     run_subject "$root" "$tmp" "$tmp/rc-bumpgate"
 actual_bumpgate=$(cat "$tmp/rc-bumpgate")
 if [[ "$actual_bumpgate" != 5 ]]; then
-    ok "LARCH_BUMP_FILES gate: ship-pr does not exit 5 when bump-owned path remains (rc=$actual_bumpgate)"
+    ok "LARCH_BUMP_FILES gate: ship-pr does not use legacy exit 5 when bump-owned path remains (rc=$actual_bumpgate)"
 else
     fail "LARCH_BUMP_FILES gate: expected non-5 rc when LARCH_BUMP_FILES marks the conflict path"
 fi
@@ -3086,7 +3215,7 @@ write_state "$tmp/ship-pr-state.sh" ci-merge
 rm -f "$tmp/ci-wait-phase14-ci-merge.seq"
 PATH="$root/scripts:$PATH" CLAUDE_PLUGIN_ROOT="$root" IMPLEMENT_TMPDIR="$tmp" \
     run_subject "$root" "$tmp" "$tmp/rc-cm-first"
-assert_rc "$tmp/rc-cm-first" 5 "phase14 ci-merge first leg exits 5 for Phase 1–4 handoff"
+assert_rc "$tmp/rc-cm-first" 4 "phase14 ci-merge first leg stalls after waterfall (rc 4)"
 if grep -qFx 'CONFLICT_FILES=Makefile' "$tmp/stdout"; then
     ok "phase14 ci-merge handoff emits CONFLICT_FILES contract line"
 else
@@ -3132,7 +3261,7 @@ write_state "$tmp/ship-pr-state.sh" ci-initial
 rm -f "$tmp/ci-wait-phase14.seq"
 PATH="$root/scripts:$PATH" CLAUDE_PLUGIN_ROOT="$root" IMPLEMENT_TMPDIR="$tmp" \
     run_subject "$root" "$tmp" "$tmp/rc-first"
-assert_rc "$tmp/rc-first" 5 "phase14 resume prep: first ship-pr exits 5"
+assert_rc "$tmp/rc-first" 4 "phase14 resume prep: first ship-pr stalls after waterfall (rc 4)"
 if grep -qFx 'CONFLICT_FILES=Makefile' "$tmp/stdout"; then
     ok "phase14 resume first leg emits CONFLICT_FILES contract line"
 else

@@ -11,6 +11,7 @@ TIMING_TASK_KINDS_ALLOWED=(
     cursor-implement
     codex-ci-fix
     cursor-ci-fix
+    claude-ci-fix
     codex-sketch-arch
     codex-sketch-edge
     codex-sketch-innovation

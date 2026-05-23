@@ -9,6 +9,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TMPDIR_BASE="$(mktemp -d -t launch-codex-ci-test.XXXXXX)"
 unset LARCH_EXECUTION_ISSUES_LOG SESSION_ENV_PATH IMPLEMENT_TMPDIR REVIEW_TMPDIR || true
 export LARCH_EXECUTION_ISSUES_LOG="$TMPDIR_BASE/execution-issues.md"
+export IMPLEMENT_TMPDIR="$TMPDIR_BASE"
 trap 'rm -rf "$TMPDIR_BASE"' EXIT
 
 PASS=0
@@ -33,10 +34,17 @@ assert_fails "rejects relative --plan-file" --role fix --output "$TMPDIR_BASE/ou
 assert_fails "rejects conflict-files with .." --role resolve-conflict --output "$TMPDIR_BASE/out" --run-id 1 --repo owner/repo --conflict-files '../etc/passwd'
 assert_fails "rejects conflict-files with invalid characters" --role resolve-conflict --output "$TMPDIR_BASE/out" --run-id 1 --repo owner/repo --conflict-files 'foo bar'
 
+: >"$TMPDIR_BASE/failure-log-fixture.log"
+assert_fails "rejects_failure_log_outside_implement_tmpdir" --role fix --output "$TMPDIR_BASE/out" --run-id 1 --repo owner/repo --failure-log /etc/passwd
+assert_fails "rejects_relative_failure_log" --role fix --output "$TMPDIR_BASE/out" --run-id 1 --repo owner/repo --failure-log relative-only.log
+assert_fails "rejects_missing_failure_log_file" --role fix --output "$TMPDIR_BASE/out" --run-id 1 --repo owner/repo --failure-log "$TMPDIR_BASE/no-such-failure.log"
+
 if grep -q -- '--conflict-files' "$REPO_ROOT/scripts/launch-codex-ci.sh"; then ok "script supports --conflict-files"; else fail "script supports --conflict-files"; fi
 if grep -q '<<<CONFLICT_PATHS>>>' "$REPO_ROOT/scripts/launch-codex-ci.sh"; then ok "resolve-conflict prompt fences conflict paths"; else fail "resolve-conflict prompt fences conflict paths"; fi
 if grep -q -- "--task-kind \"\$TIMING_TASK_KIND\"" "$REPO_ROOT/scripts/launch-codex-ci.sh"; then ok "uses timing task kind"; else fail "uses timing task kind"; fi
 if grep -q 'plan-file' "$REPO_ROOT/scripts/launch-codex-ci.sh"; then ok "script supports --plan-file"; else fail "script supports --plan-file"; fi
+if grep -q -- '--failure-log' "$REPO_ROOT/scripts/launch-codex-ci.sh"; then ok "script supports --failure-log"; else fail "script supports --failure-log"; fi
+if grep -q 'Local reproduction invariant' "$REPO_ROOT/scripts/launch-codex-ci.sh"; then ok "fix role prompt carries local reproduction invariant"; else fail "fix role prompt carries local reproduction invariant"; fi
 if grep -q 'codex-ci-fix' "$REPO_ROOT/scripts/lib-timing-kinds.sh"; then ok "timing allow-list includes codex-ci-fix"; else fail "timing allow-list includes codex-ci-fix"; fi
 
 cat > "$TMPDIR_BASE/token-record" <<'EOF'

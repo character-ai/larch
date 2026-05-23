@@ -5,12 +5,13 @@ Launches Codex for `/implement` CI-related subwork from `scripts/ship-pr.sh`.
 ## Interface
 
 ```text
-launch-codex-ci.sh --role fix|resolve-conflict|bump-classify|changelog-draft --output PATH --run-id ID --repo OWNER/REPO [--plan-file PATH] [--conflict-files CSV] [--timeout SECONDS]
+launch-codex-ci.sh --role fix|resolve-conflict|bump-classify|changelog-draft --output PATH --run-id ID --repo OWNER/REPO [--plan-file PATH] [--conflict-files CSV] [--failure-log PATH] [--timeout SECONDS]
 ```
 
 `--output` must be an absolute path using the same narrowed safe alphabet as `run-external-agent.sh`.
 `--plan-file`, when present, must be an absolute path; if the file exists, its content is inserted into the vendor prompt as design-plan context.
 `--conflict-files`, when present with `--role resolve-conflict`, must be a comma-separated list of repo-relative paths (no `..` segments, no absolute paths, each segment must match `^[A-Za-z0-9._/-]+$`); the launcher validates the CSV then injects it into the vendor prompt inside `<<<CONFLICT_PATHS>>>` / `<<<END_CONFLICT_PATHS>>>` delimiters.
+`--failure-log`, when present, must be an absolute path to an **existing** regular file under `$IMPLEMENT_TMPDIR` (the environment variable must be set). A capped, `redact-secrets.sh`-filtered excerpt is injected into the prompt inside `<<<FAILURE_LOG_EXCERPT>>>` / `<<<END_FAILURE_LOG>>>` delimiters. The `fix` role prompt also carries the **local reproduction invariant** (re-run the same failing commands or harness after fixing).
 
 ## Behavior
 
@@ -24,4 +25,4 @@ When the auth-retry loop finishes with a non-zero `LAUNCHER_EXIT` and `IMPLEMENT
 
 ## Edit In Sync
 
-Keep this file aligned with `scripts/launch-cursor-ci.sh`, `scripts/append-token-record.sh`, `scripts/lib-timing-kinds.sh`, and launcher argv tests.
+Keep this file aligned with `scripts/launch-cursor-ci.sh`, `scripts/launch-claude-ci.sh`, `scripts/append-token-record.sh`, `scripts/lib-timing-kinds.sh`, and launcher argv tests.

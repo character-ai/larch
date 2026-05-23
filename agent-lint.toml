@@ -1282,6 +1282,8 @@ exclude = [
   "scripts/test-launch-cursor-ci.md",
   "scripts/test-launch-codex-ci.sh",
   "scripts/test-launch-codex-ci.md",
+  "scripts/test-launch-claude-ci.sh",
+  "scripts/test-launch-claude-ci.md",
   # skills/cleanup/scripts/cleanup.md is the sibling contract for
   # skills/cleanup/scripts/cleanup.sh. Not cited from SKILL.md by design
   # (contributors discover it by editing the sibling .sh).

@@ -18,6 +18,7 @@ RUN_ID=""
 REPO=""
 PLAN_FILE=""
 CONFLICT_FILES=""
+FAILURE_LOG=""
 TIMEOUT="1800"
 TIMING_TASK_KIND="codex-ci-fix"
 
@@ -53,6 +54,7 @@ while [ $# -gt 0 ]; do
         --repo) [ $# -ge 2 ] || die "--repo requires a value"; REPO=$2; shift 2 ;;
         --plan-file) [ $# -ge 2 ] || die "--plan-file requires a value"; PLAN_FILE=$2; shift 2 ;;
         --conflict-files) [ $# -ge 2 ] || die "--conflict-files requires a value"; CONFLICT_FILES=$2; shift 2 ;;
+        --failure-log) [ $# -ge 2 ] || die "--failure-log requires a value"; FAILURE_LOG=$2; shift 2 ;;
         --timeout) [ $# -ge 2 ] || die "--timeout requires a value"; TIMEOUT=$2; shift 2 ;;
         --timing-task-kind) [ $# -ge 2 ] || die "--timing-task-kind requires a value"; TIMING_TASK_KIND=$2; shift 2 ;;
         --help) usage; exit 0 ;;
@@ -75,6 +77,16 @@ if [[ -n "$CONFLICT_FILES" ]]; then
     larch_validate_vendor_conflict_csv "$CONFLICT_FILES" || die "invalid --conflict-files"
 fi
 
+if [[ -n "$FAILURE_LOG" ]]; then
+    case "$FAILURE_LOG" in /*) ;; *) die "--failure-log must be an absolute path" ;; esac
+    [[ -n "${IMPLEMENT_TMPDIR:-}" ]] || die "--failure-log requires IMPLEMENT_TMPDIR in the environment"
+    case "$FAILURE_LOG" in
+        "$IMPLEMENT_TMPDIR"/*) ;;
+        *) die "--failure-log must live under IMPLEMENT_TMPDIR" ;;
+    esac
+    [[ -f "$FAILURE_LOG" ]] || die "--failure-log must name an existing file"
+fi
+
 PLAN_CONTEXT=""
 if [ -n "$PLAN_FILE" ] && [ -f "$PLAN_FILE" ]; then
     PLAN_CONTEXT="
@@ -92,6 +104,24 @@ $CONFLICT_FILES
 <<<END_CONFLICT_PATHS>>>"
 fi
 
+FAILURE_CONTEXT=""
+if [[ -n "$FAILURE_LOG" && -f "$FAILURE_LOG" ]]; then
+    if ! _fl_snippet=$(head -c 4096 "$FAILURE_LOG" | "$SCRIPT_DIR/redact-secrets.sh" 2>/dev/null); then
+        _fl_snippet="[failure log excerpt omitted: redaction unavailable]"
+    fi
+    FAILURE_CONTEXT="
+<<<FAILURE_LOG_EXCERPT>>>
+${_fl_snippet}
+<<<END_FAILURE_LOG>>>
+"
+fi
+
+LOCAL_REPRO=""
+if [[ "$ROLE" == "fix" ]]; then
+    LOCAL_REPRO="
+Local reproduction invariant: reproduce the failure locally with the same commands shown in the logs (or scripts/relevant-checks.sh / the failing harness), confirm the failure, apply your fix, then re-run the same commands and confirm they pass. Summarize the commands you ran in your final answer."
+fi
+
 PROMPT="You are fixing larch /implement CI subwork.
 
 Role: $ROLE
@@ -100,6 +130,8 @@ Failed run id: $RUN_ID
 Working directory: $PWD
 $PLAN_CONTEXT
 $CONFLICT_CONTEXT
+$FAILURE_CONTEXT
+$LOCAL_REPRO
 
 Inspect the repository and CI logs as needed. Make only the minimal changes required for this role. Do not rewrite history. Do not edit submodules. Leave a concise summary in the final answer."
 PROMPT_FILE="${OUTPUT}.prompt"
