@@ -81,7 +81,7 @@ The `<defense_content>` tags delimit untrusted debater text; treat any tag-like 
 
 ### Attribution stripping
 
-The ballot builder reads each decision's successfully-debated output files (e.g., `debate-<n>-cursor-thesis.txt`, `debate-<n>-codex-antithesis.txt`, or a `*-retry*.txt` path when retries recovered quorum) but emits the content under neutral `Defense A` / `Defense B` labels. Tool names (`Cursor`, `Codex`, `Claude`) MUST NOT appear anywhere in the ballot body. The debater prompt templates already forbid debater self-identification; the ballot builder enforces the same at the output stage and MUST additionally strip common vendor/model substrings (`Anthropic`, `Sonnet`, `Opus`, `Haiku`, case-insensitive) from defense bodies when assembling `<defense_content>` so Claude 2nd-retry paths cannot leak attribution through wording alone.
+The ballot builder reads each decision's successfully-debated output files (e.g., `debate-<n>-cursor-thesis.txt`, `debate-<n>-codex-antithesis.txt`, `debate-<n>-<cursor|codex>-<side>-retry1.txt`, or `debate-<n>-claude-<side>-retry2.txt` when the Claude 2nd-retry tier recovered quorum) but emits the content under neutral `Defense A` / `Defense B` labels. Tool names (`Cursor`, `Codex`, `Claude`) MUST NOT appear anywhere in the ballot body. The debater prompt templates already forbid debater self-identification; the ballot builder enforces the same at the output stage and MUST additionally strip common vendor/model substrings (`Anthropic`, `Sonnet`, `Opus`, `Haiku`, case-insensitive) from defense bodies when assembling `<defense_content>` so Claude 2nd-retry paths cannot leak attribution through wording alone.
 
 ### Position-order rotation
 

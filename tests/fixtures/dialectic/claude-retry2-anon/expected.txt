@@ -1,0 +1,4 @@
+# Claude 2nd-retry debater filename + ballot anonymity pin (dialectic-smoke-test.sh).
+# Antithesis body deliberately carries vendor-like tokens; ballot must stay clean.
+
+DECISION_1 expected_disposition=voted expected_tally=THESIS=2,ANTI_THESIS=1

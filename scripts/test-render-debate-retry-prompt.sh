@@ -109,8 +109,14 @@ orig2="$tmpdir/orig2.txt"
   --failure-reason no_output \
   --retry-tool codex \
   --output "$outp"
-line_no=$(grep -nF 'OUTPUT FORMAT' "$outp" | head -1 | cut -d: -f1 || true)
-[[ -n "$line_no" && "$line_no" -lt 30 ]] || fail "OUTPUT FORMAT not near top of rendered prompt (line=$line_no)"
+whole=$(cat "$outp")
+case "$whole" in
+  *'OUTPUT FORMAT'*) ;;
+  *) fail "OUTPUT FORMAT missing from rendered prompt" ;;
+esac
+prefix="${whole%%OUTPUT FORMAT*}"
+pos=$((${#prefix} + 1))
+[[ "$pos" -le 4500 ]] || fail "OUTPUT FORMAT not within early character window (byte_offset=$pos)"
 pass "OUTPUT FORMAT early-window pin"
 
 # (j) dialectic-execution documents retry output basename pattern (contract pin)
@@ -132,6 +138,12 @@ if run_render "totally_unknown_reason" cursor 2>/dev/null; then
   fail "expected rejection on unknown failure-reason head"
 fi
 pass "unknown failure-reason head rejected"
+
+# (n) semicolon-separated multi-token failure-reason (newline split path in renderer)
+run_render "no_output;bad_recommend:dup" cursor
+grep -Fq 'no_output: previous launch produced no output' "$outp" || fail "semicolon split: missing no_output line"
+grep -Fq 'bad_recommend: dup' "$outp" || fail "semicolon split: missing bad_recommend line"
+pass "semicolon-separated failure-reason"
 
 # (m) bounded prior-output excerpt embedded
 printf '%s\n' 'LINE_FROM_PREVIOUS_DEBATER_OUTPUT' >"$prev"

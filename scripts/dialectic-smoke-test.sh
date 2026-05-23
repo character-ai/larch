@@ -22,7 +22,9 @@
 #   - Ballot anonymity: Cursor/Codex/Claude tokens MUST NOT appear in the
 #     ballot body; common vendor/model substrings from protocol attribution
 #     stripping (Anthropic, Sonnet, Opus, Haiku) likewise (see "Attribution
-#     stripping" section).
+#     stripping" section). Fixtures may include `debate-*-claude-*-retry2.txt`
+#     paths so CI exercises the Claude 2nd-retry filename shape alongside the
+#     same debater structural checks as primary outputs.
 #   - Drift guard: protocol file contains the stable anchor sentence
 #     "Recognize exactly these four Disposition values" with the four
 #     canonical values backticked nearby.
@@ -337,6 +339,17 @@ run_fixture() {
         for af in "$fixture_dir"/debate-*-antithesis.txt; do
             [[ -e "$af" ]] || continue
             validate_debater "$af" antithesis "$fixture" || true
+        done
+        local rf bn side_retry
+        for rf in "$fixture_dir"/debate-*-claude-*-retry2.txt; do
+            [[ -f "$rf" ]] || continue
+            bn=$(basename "$rf" .txt)
+            if [[ "$bn" =~ -claude-(thesis|antithesis)-retry2$ ]]; then
+                side_retry="${BASH_REMATCH[1]}"
+                validate_debater "$rf" "$side_retry" "$fixture" || true
+            else
+                fail "$fixture: unexpected Claude retry2 debater basename $(basename "$rf")"
+            fi
         done
     fi
 

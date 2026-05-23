@@ -1,0 +1,13 @@
+## Dialectic Ballot
+
+### DECISION_1: Second-retry antithesis path — defense bodies must be attribution-stripped
+
+Defense A (defends CHOSEN=option-a):
+<defense_content>
+Chosen arguments (fixture simulates post-strip ballot; no tool or vendor tokens).
+</defense_content>
+
+Defense B (defends ALTERNATIVE=option-b):
+<defense_content>
+Alternative arguments (fixture simulates post-strip ballot; no tool or vendor tokens).
+</defense_content>
