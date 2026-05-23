@@ -17,6 +17,8 @@ fail() {
     exit 1
 }
 
+[[ -z "${LARCH_EXECUTION_ISSUES_LOG:-}" ]] || fail "harness entry must clear LARCH_EXECUTION_ISSUES_LOG (restore unset prelude or unset outer env)"
+
 [[ -x "$AGG" ]] || fail "$AGG not executable"
 
 write_stub_dispatch() {
@@ -900,6 +902,29 @@ echo "=== inherited LARCH_EXECUTION_ISSUES_LOG cannot leak past harness-style pr
 # prelude as this script before invoking the script-under-test.
 SENTINEL="/tmp/larch-test-env-leak-$$.md"
 rm -f "$SENTINEL"
+LP_VISIBLE="$TMP/leak-probe-visible"
+mkdir -p "$LP_VISIBLE"
+cp "$TMP/in3.md" "$LP_VISIBLE/in3-disp.md"
+write_stub_dispatch
+# No inner unset: proves append_warning reaches LARCH_EXECUTION_ISSUES_LOG when exported
+# (regression if append_warning becomes a no-op while KV output still shows dispatch-failed).
+(
+    export LARCH_EXECUTION_ISSUES_LOG="$SENTINEL"
+    export AGGREGATE_DISPATCH_SH="$TMP/stub-dispatch.sh"
+    export AGGREGATE_STUB_MODE=fail_dispatch
+    bash -c 'set -euo pipefail
+        unset LARCH_AGGREGATOR_DISABLED || true
+        exec "$@"' bash "$AGG" \
+        --findings-file "$LP_VISIBLE/in3-disp.md" \
+        --review-tmpdir "$LP_VISIBLE" \
+        --codex-present true \
+        --cursor-present true \
+        --mode diff >"$TMP/out-leak-visible.env"
+)
+grep -Fq 'AGGREGATED=false' "$TMP/out-leak-visible.env" || fail "leak-visible dispatch-fail AGGREGATED"
+grep -Fq 'REASON=dispatch-failed' "$TMP/out-leak-visible.env" || fail "leak-visible dispatch-fail REASON"
+grep -Fq 'findings aggregator' "$SENTINEL" || fail "leak-visible: expected aggregator warning in LARCH_EXECUTION_ISSUES_LOG"
+rm -f "$SENTINEL"
 LP="$TMP/leak-probe"
 mkdir -p "$LP"
 cp "$TMP/in3.md" "$LP/in3-disp.md"
@@ -918,6 +943,7 @@ env LARCH_EXECUTION_ISSUES_LOG="$SENTINEL" SESSION_ENV_PATH="/nonexistent/sessio
         --mode diff >"$TMP/out-leak-probe.env"
 grep -Fq 'AGGREGATED=false' "$TMP/out-leak-probe.env" || fail "leak-probe dispatch-fail AGGREGATED"
 grep -Fq 'REASON=dispatch-failed' "$TMP/out-leak-probe.env" || fail "leak-probe dispatch-fail REASON"
+grep -Fq 'findings aggregator' "$LP/execution-issues.md" || fail "leak-probe: expected aggregator warning in review-tmpdir execution-issues"
 if [[ -f "$SENTINEL" && -s "$SENTINEL" ]]; then
     fail "sentinel execution-issues log leaked non-empty content ($(wc -c <"$SENTINEL" | tr -d "[:space:]") bytes)"
 fi
