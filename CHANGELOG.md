@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [40.0.0] - 2026-05-22
+
+### Changed
+
+- Drop /implement user argv for dynamic archetypes so the cap is only env and caller session-env, matching the real orchestrator contract.
+- Trim the Step 5 code-review breadcrumb by removing the redundant degraded-round parenthetical; runtime caps are unchanged.
+- Remove stale /implement --auto delegator language and fix /alias to forward argv without the removed flag.
+- Sync subskill-invocation Pattern B and test pins; quote redacted TMPDIR placeholders in two flushed design logs so shellcheck passes CI.
+
 ## [39.0.2] - 2026-05-22
 
 ### Changed

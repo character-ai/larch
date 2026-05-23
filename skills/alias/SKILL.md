@@ -9,7 +9,7 @@ allowed-tools: Bash, Skill
 
 This skill follows the Process pattern: numbered steps, checkpointed delegation, fail-closed verification.
 
-Create an alias skill that forwards to an existing larch skill with preset flags. Delegates to `/implement --auto` for the full pipeline (implementation, code review, version bump, PR), then verifies the artifact landed on disk.
+Create an alias skill that forwards to an existing larch skill with preset flags. Delegates to `/implement` for the full pipeline (implementation, code review, version bump, PR), then verifies the artifact landed on disk.
 
 **Target directory** is resolved automatically:
 
@@ -160,11 +160,11 @@ When constructing the feature description string, substitute the actual `$TARGET
 
 Omit the `<preset-flags>` segment from the leading sentence when empty (pure rename shortcut).
 
-Print: `**Alias /<alias-name> -> /<target-skill> <preset-flags> — target: $TARGET_DIR — delegating to /implement --auto [--merge]**` (interpolate the resolved `$TARGET_DIR` so the operator sees at a glance which target was selected; omit `<preset-flags>` if empty; omit `--merge` if `alias_merge=false`).
+Print: `**Alias /<alias-name> -> /<target-skill> <preset-flags> — target: $TARGET_DIR — delegating to /implement [--merge]**` (interpolate the resolved `$TARGET_DIR` so the operator sees at a glance which target was selected; omit `<preset-flags>` if empty; omit `--merge` if `alias_merge=false`).
 
 Invoke the Skill tool:
 - Try skill: `"implement"` first (bare name). If no skill matches, try skill: `"larch:implement"` (fully-qualified plugin name).
-- args: `"--auto [--merge] <feature-description>"`
+- args: `"[--merge] <feature-description>"`
 
 Only include `--merge` in the args if `alias_merge=true`.
 

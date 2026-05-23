@@ -25,7 +25,7 @@ Used when the parent runs setup, exports `SESSION_ENV_PATH` for the child sessio
 ```
 Invoke `/implement` via the Skill tool:
 
-- `/implement [--merge] [--no-admin-fallback] [--no-logs-commit] [--coder=<value>] [--forked] [--draft] [--no-dynamic-archetypes|--dynamic-archetypes N] [--run-id <ID>] <issue-N>`
+- `/implement [--merge] [--no-admin-fallback] [--no-logs-commit] [--coder=<value>] [--forked] [--draft] [--run-id <ID>] <issue-N>`
 ```
 
 Export `SESSION_ENV_PATH="$PARENT_TMPDIR/session-env.sh"` in the environment before the Skill tool call when the parent owns a caller session-env file — `/implement` Step 0 merges from `SESSION_ENV_PATH` via `session-setup.sh --caller-env` when set; do **not** pass removed `--session-env` argv.
@@ -158,7 +158,7 @@ This is deliberately separate from the `Continue after child returns` micro-remi
 Canonical producers and consumers in the live tree:
 
 - `skills/implement/SKILL.md § Step 0 — Session Setup` allocates `$IMPLEMENT_TMPDIR/session-env.sh` and merges caller keys when `SESSION_ENV_PATH` is set. On the issue-anchored path `/implement` does **not** Skill-invoke `/design` — Preflight reads `larch:plan` from the GitHub issue and Step 0 materializes plan files. Child surfaces that still nest under `/implement` (e.g. review/relevant-checks Bash contracts keyed off `$IMPLEMENT_TMPDIR/session-env.sh`) continue to read the same session-env file per that skill's Bash blocks. It also writes `PREV_IMPLEMENT_TMPDIR=$IMPLEMENT_TMPDIR` so a future `/implement` session can copy the previous session's `larch-logs` subtree into its fresh tmpdir, and `LARCH_CLAUDE_PLUGIN_ROOT` so later Bash blocks can recover `${CLAUDE_PLUGIN_ROOT}` without sourcing the file.
-- The same `/implement` handoff may also carry `LARCH_DYNAMIC_ARCHETYPES_MAX=<0..8>` when the parent operator selected `--dynamic-archetypes <N>` or `--no-dynamic-archetypes`; nested review launchers should preserve that validated key through `session-setup.sh --caller-env` / `--write-session-env` so Step 5 can replay the chosen cap.
+- The same `/implement` handoff may also carry `LARCH_DYNAMIC_ARCHETYPES_MAX=<0..8>` when a parent skill forwarded that cap via caller session-env (for example `LARCH_DYNAMIC_ARCHETYPES_MAX` set in the environment merged through `session-setup.sh --caller-env`); nested review launchers should preserve that validated key through `session-setup.sh --caller-env` / `--write-session-env` so Step 5 can replay the chosen cap.
 - `skills/design/SKILL.md § Step 0 — Session Setup` and `skills/review/SKILL.md § Step 0 — Session Setup` both accept `--session-env` as an `--caller-env` forward; their Bash blocks also read `LARCH_CLAUDE_PLUGIN_ROOT` directly from that file when `${CLAUDE_PLUGIN_ROOT}` needs rehydration before helper invocation.
 
 <a id="artifact-only-return"></a>
