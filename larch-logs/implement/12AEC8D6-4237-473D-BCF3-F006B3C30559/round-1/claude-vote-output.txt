@@ -1,0 +1,1 @@
+The ballot contains no `### FINDING_N:` items — the findings file is effectively empty (only an aggregator preamble line, no ballot entries). There are no items to vote on.

@@ -24,6 +24,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Closed: #2622
+- Fold operator-facing review tally vocabulary to accepted / rejected / exonerated (subset of rejected) while preserving internal classifier and scoreboard math.
+- Emit KV and JSON with updated schema versions, enforce exonerated ≤ rejected before JSON writes, and keep internal NEUTRAL_COUNT accounting without surfacing neutral as a public finding outcome.
+- Refresh voting-protocol, run-log docs, implement/review skill references, and offline harnesses to match the new tally envelopes and summaries.
 
 ## [42.0.6] - 2026-05-22
 

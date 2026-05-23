@@ -16,12 +16,12 @@
 - Acceptance threshold comes from `scripts/lib-vote-tally.sh::classify_result`: 3+ eligible voters require 2+ YES; 2 eligible voters require unanimous YES; 1 eligible voter is a binding single-judge decision; 0 eligible voters emit `TALLY_PLAN_REVIEW_STATUS=main-agent-vote-required` for main-agent adjudication.
 - The quorum basis is the panel-level available voter count, not the per-finding non-`JUDGE_ERROR` response count. Per-judge `JUDGE_ERROR` fallbacks do not reduce the tier.
 - Accepted in-scope findings are written to `accepted-plan-findings.md`.
-- Rejected or neutral in-scope findings are written to `rejected-findings.md`.
+- Non-accepted in-scope findings are written to `rejected-findings.md`.
 - OOS visibility output is written to `oos.md`.
 - Accepted OOS output is written to `oos-accepted-design.md` under `$DESIGN_TMPDIR`.
 - Accepted OOS blocks with an unfenced `focus-area = security` token are excluded from all public OOS outputs. Fenced occurrences (inside backtick or triple-backtick regions) are not load-bearing (Match discrimination false-positive guard).
 - Scoreboard score formula: `accepted + oos_accepted - rejected - oos_rejected` (+1 per accepted item, -1 per rejected item).
-- The rendered scoreboard columns are `Reviewer`, `Proposed`, `Accepted`, `Neutral/Exon`, `Rejected`, `OOS-Proposed`, `OOS-Accepted`, `OOS-Neutral/Exon`, `OOS-Rejected`, and `Score`.
+- The rendered scoreboard columns are `Reviewer`, `Proposed`, `Accepted`, `Exonerated`, `Rejected`, `OOS-Proposed`, `OOS-Accepted`, `OOS-Exonerated`, `OOS-Rejected`, and `Score`.
 
 ## Makefile Wiring
 
@@ -29,7 +29,7 @@ The regression harness is `make test-tally-plan-review`, wired into `test-harnes
 
 ## Harness
 
-`test-tally-plan-review.sh` covers all-yes, mixed votes, tie/neutral, single-judge YES/NO/EXONERATE, 0-judge main-agent-required, no quorum reduction for per-judge `JUDGE_ERROR` fallbacks, OOS accepted/rejected, security-tagged OOS exclusion, and scoreboard rendering.
+`test-tally-plan-review.sh` covers all-yes, mixed votes, split-panel ties, single-judge YES/NO/EXONERATE, 0-judge main-agent-required, no quorum reduction for per-judge `JUDGE_ERROR` fallbacks, OOS accepted/rejected, security-tagged OOS exclusion, and scoreboard rendering.
 
 ## Edit In Sync
 

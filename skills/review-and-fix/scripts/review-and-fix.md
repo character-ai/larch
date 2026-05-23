@@ -66,13 +66,13 @@ Additional output keys:
 - `REVIEW_CORE_STATUS`
 - `ROUND_NUM`
 - `ACCEPTED_COUNT` — accepted findings for the current round only.
-- `REJECTED_COUNT` — rejected findings for the current round only; strictly `rejected` outcomes only and does not include exonerated or neutral.
+- `REJECTED_COUNT` — rejected findings for the current round only (operator-facing total: every finding that did not meet the acceptance threshold, including split-panel and exonerated patterns).
 - `TOTAL_ACCEPTED_COUNT` — cumulative accepted findings across completed rounds after composing the aggregate review artifact.
 - `TOTAL_REJECTED_COUNT` — cumulative rejected findings across completed rounds after composing the aggregate review artifact.
-- `EXONERATED_COUNT` — findings with outcome `exonerated` (this round only).
-- `NEUTRAL_COUNT` — findings with outcome `neutral` (this round only).
-- `TOTAL_EXONERATED_COUNT` — cumulative exonerated findings across completed rounds.
-- `TOTAL_NEUTRAL_COUNT` — cumulative neutral findings across completed rounds.
+- `EXONERATED_COUNT` — informational sub-count for this round (`exonerated_count ≤ rejected_count`).
+- `NEUTRAL_COUNT` — internal split-panel tally for this round (`NEUTRAL_COUNT` KV; not mirrored into `review-and-fix-summary.json`).
+- `TOTAL_EXONERATED_COUNT` — cumulative exonerated sub-counts across completed rounds.
+- `TOTAL_NEUTRAL_COUNT` — cumulative internal split-panel tally across completed rounds.
 - `FIX_COUNT`
 - `APPROVED_FIXES_FILE`
 - `REJECTED_FINDINGS_FILE`
@@ -100,7 +100,7 @@ Additional output keys:
 pre-scrub accepted in-scope count. This keeps the `/implement` bulk-skip-ratio denominator
 aligned with the findings file the coder actually saw.
 
-The script writes `$IMPLEMENT_TMPDIR/review-and-fix-summary.json` atomically with `schema_version=2`, aggregate accepted/rejected/exonerated/neutral counts, `rounds_completed`, latest approved-fixes path, latest round directory, accumulated OOS artifact paths, coder/submodule status fields, and `coder_commit_sha` (latest round's per-round commit, empty string when the round produced no commit). Accepted OOS markdown is accumulated at `$IMPLEMENT_TMPDIR/accumulated-oos.md` and mirrored to `$IMPLEMENT_TMPDIR/oos-accepted-review.md` for existing Step 9a.1 consumers; a JSONL audit copy is appended at `$IMPLEMENT_TMPDIR/accumulated-oos.jsonl`. That mirror copy is load-bearing: if the copy fails, the round fails instead of silently leaving the legacy mirror stale.
+The script writes `$IMPLEMENT_TMPDIR/review-and-fix-summary.json` atomically with `schema_version=3`, aggregate accepted/rejected/exonerated counts, `rounds_completed`, latest approved-fixes path, latest round directory, accumulated OOS artifact paths, coder/submodule status fields, and `coder_commit_sha` (latest round's per-round commit, empty string when the round produced no commit). Accepted OOS markdown is accumulated at `$IMPLEMENT_TMPDIR/accumulated-oos.md` and mirrored to `$IMPLEMENT_TMPDIR/oos-accepted-review.md` for existing Step 9a.1 consumers; a JSONL audit copy is appended at `$IMPLEMENT_TMPDIR/accumulated-oos.jsonl`. That mirror copy is load-bearing: if the copy fails, the round fails instead of silently leaving the legacy mirror stale.
 
 Rejected code-review markdown is accumulated at `$IMPLEMENT_TMPDIR/rejected-findings.md`. When any round has a non-empty `round-N/rejected-findings-full.md`, the run-root file is rewritten as a full-detail aggregate with a top-level `# Rejected Findings` heading and `## Round N` sections in numeric round order. If no full-detail round files exist, the script falls back to the latest round's compact `rejected-findings.md` ledger for backward compatibility. `$IMPLEMENT_TMPDIR/rejected-findings-full.md` remains the latest round's full-prose artifact for existing tally consumers.
 

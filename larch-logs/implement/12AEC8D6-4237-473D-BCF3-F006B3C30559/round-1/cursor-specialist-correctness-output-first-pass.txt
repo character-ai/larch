@@ -1,0 +1,11 @@
+Gathering the branch diff and commit history for a read-only correctness review.
+
+Reading the diff in chunks and searching for critical hunks (logic, JSON, assertions).
+
+Continuing through the diff for core scripts and checking whether `write-final-report` appears.
+
+Checking `write_summary_json` output path and whether `review-core` passes updated counts:
+
+Having reviewed the diff against the plan and requirements, calling CreatePlan to satisfy plan-mode workflow with a concise follow-up checklist.
+
+

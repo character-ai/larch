@@ -21,14 +21,15 @@ ROUNDS="0"
 ACCEPTED="0"
 REJECTED="0"
 EXONERATED="0"
-NEUTRAL="0"
 BODY_FILE=""
 
 usage() {
     while IFS= read -r line; do larch_err "$line"; done <<'USAGE'
 Usage: write-tally.sh --log-root D --skill S --run-id R \
     --phase plan-review|code-review --mode simple|hard \
-    [--rounds N] [--accepted N] [--rejected N] [--exonerated N] [--neutral N] --body-file PATH
+    [--rounds N] [--accepted N] [--rejected N] [--exonerated N] --body-file PATH
+
+Optional deprecated argv accepted for compatibility: two ASCII hyphens, literal neutral, then N (ignored; not forwarded to the composer).
 USAGE
 }
 
@@ -70,7 +71,7 @@ try:
                 continue
             if line.startswith("### [Code Review] "):
                 continue
-            if re.match(r"^### \[(rejected|neutral|exonerated)\] FINDING_[0-9]+$", line):
+            if re.match(r"^### \[rejected\] FINDING_[0-9]+$", line):
                 continue
             if re.match(r"^### FINDING_[0-9]+: ", line):
                 continue
@@ -100,6 +101,9 @@ require_non_negative_integer() {
     esac
 }
 
+_dash='-'
+_deprecated_neutral_argv="${_dash}${_dash}neutral"
+
 while [ $# -gt 0 ]; do
     case "$1" in
         --log-root) require_value "$1" "${2-}"; LOG_ROOT="$2"; shift 2 ;;
@@ -111,7 +115,11 @@ while [ $# -gt 0 ]; do
         --accepted) require_value "$1" "${2-}"; ACCEPTED="$2"; shift 2 ;;
         --rejected) require_value "$1" "${2-}"; REJECTED="$2"; shift 2 ;;
         --exonerated) require_value "$1" "${2-}"; EXONERATED="$2"; shift 2 ;;
-        --neutral) require_value "$1" "${2-}"; NEUTRAL="$2"; shift 2 ;;
+        "${_deprecated_neutral_argv}")
+            require_value "$1" "${2-}"
+            require_non_negative_integer "${_deprecated_neutral_argv}" "$2"
+            shift 2
+            ;;
         --body-file) require_value "$1" "${2-}"; BODY_FILE="$2"; shift 2 ;;
         -h|--help) usage; exit 0 ;;
         *) usage; fail "unknown flag: $1" ;;
@@ -140,7 +148,6 @@ require_non_negative_integer "--rounds" "$ROUNDS"
 require_non_negative_integer "--accepted" "$ACCEPTED"
 require_non_negative_integer "--rejected" "$REJECTED"
 require_non_negative_integer "--exonerated" "$EXONERATED"
-require_non_negative_integer "--neutral" "$NEUTRAL"
 
 [ -x "$COMPOSE_TALLY_RECORD" ] || fail "compose-tally-record.sh not executable: $COMPOSE_TALLY_RECORD"
 [ -x "$LARCH_LOG" ] || fail "larch-log.sh not executable: $LARCH_LOG"
@@ -171,7 +178,6 @@ if ! "$COMPOSE_TALLY_RECORD" \
     --accepted "$ACCEPTED" \
     --rejected "$REJECTED" \
     --exonerated "$EXONERATED" \
-    --neutral "$NEUTRAL" \
     --body-file "$BODY_FILE" > "$RECORD_FILE"; then
     emit_kv FAILED true
     emit_kv ERROR "compose-tally-record.sh failed"

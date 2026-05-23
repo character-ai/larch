@@ -574,7 +574,7 @@ assert_emit_tally_panel() {
         --argjson dynamic_slots "$dynamic_slots" \
         --argjson static_slot_count "$static_slot_count" \
         --argjson total_slot_count "$total_slot_count" \
-        '.schema_version == 2
+        '.schema_version == 3
             and .panel.scout_status == $scout_status
             and .panel.dynamic_slot_count == $dynamic_slots
             and .panel.static_slot_count == $static_slot_count

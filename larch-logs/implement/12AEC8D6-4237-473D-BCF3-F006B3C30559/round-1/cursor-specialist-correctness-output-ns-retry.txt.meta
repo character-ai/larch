@@ -1,0 +1,10 @@
+TOOL=cursor
+TIMEOUT=1800
+CAPTURE_STDOUT=false
+CAPTURE_STDOUT_ONLY=true
+OUTPUT_FILE=<TMPDIR>/round-1/cursor-specialist-correctness-output-ns-retry.txt
+OUTER_LAUNCHER=<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/42.0.5/scripts/launch-review.sh
+OUTER_LAUNCHER_PROMPT_FILE=<TMPDIR>/round-1/cursor-specialist-correctness-output-ns-retry.txt.prompt
+OUTER_LAUNCHER_WORKDIR=<OPERATOR_REPO_PATH>
+OUTER_LAUNCHER_RISK=high
+NS_RETRY_REASON=NO_ISSUES_FOUND_TOO_THIN

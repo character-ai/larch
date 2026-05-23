@@ -64,25 +64,30 @@ count_from_tally() {
 accepted=$(count_from_tally ACCEPTED_COUNT)
 rejected=$(count_from_tally REJECTED_COUNT)
 exonerated=$(count_from_tally EXONERATED_COUNT)
-neutral=$(count_from_tally NEUTRAL_COUNT)
 [[ -n "$accepted" ]] || accepted=$(grep -c 'ACCEPTED=true' "$TALLY_FILE" || true)
 if [[ -z "$rejected" ]]; then
-    if grep -q '_OUTCOME=' "$TALLY_FILE"; then
+    if grep -q 'REJECTED_SUBTYPE=' "$TALLY_FILE"; then
+        rejected=$(grep -cE '^FINDING_[0-9]+_OUTCOME=rejected$' "$TALLY_FILE" || true)
+    elif grep -q '_OUTCOME=' "$TALLY_FILE"; then
         rejected=$(grep -c '_OUTCOME=rejected$' "$TALLY_FILE" || true)
     else
         rejected=$(grep -c 'ACCEPTED=false' "$TALLY_FILE" || true)
     fi
 fi
-[[ -n "$exonerated" ]] || exonerated=$(grep -c '_OUTCOME=exonerated$' "$TALLY_FILE" || true)
-[[ -n "$neutral" ]] || neutral=$(grep -c '_OUTCOME=neutral$' "$TALLY_FILE" || true)
+[[ -n "$exonerated" ]] || exonerated=$(grep -cE '^FINDING_[0-9]+_REJECTED_SUBTYPE=exonerated$' "$TALLY_FILE" || true)
+
+case "$accepted" in ''|*[!0-9]*) accepted=0 ;; esac
+case "$rejected" in ''|*[!0-9]*) rejected=0 ;; esac
+case "$exonerated" in ''|*[!0-9]*) exonerated=0 ;; esac
+if (( exonerated > rejected )); then
+    larch_err "emit-tally.sh: invariant violated: exonerated_count ($exonerated) > rejected_count ($rejected)"
+    exit 1
+fi
 
 {
     printf '# Review Round %s\n\n' "$ROUND"
     printf '%s\n' "- Mode: \`$MODE\`"
-    printf '%s\n' "- Accepted findings: $accepted"
-    printf '%s\n' "- Rejected findings: $rejected"
-    printf '%s\n' "- Exonerated findings: $exonerated"
-    printf '%s\n\n' "- Neutral findings: $neutral"
+    printf '%s\n\n' "- ${accepted} accepted, ${rejected} rejected (${exonerated} exonerated)"
     if [[ -s "$ACCEPTED_FINDINGS_FILE" ]]; then
         printf '## Accepted Findings\n\n'
         cat "$ACCEPTED_FINDINGS_FILE"
@@ -114,21 +119,18 @@ done < <(find "$REVIEW_TMPDIR" -maxdepth 1 -name '*-output.txt' 2>/dev/null | so
 reviewer_paths_json=$(printf '%s\n' "${reviewer_paths[@]+"${reviewer_paths[@]}"}" | jq -R . | jq -s .)
 
 # Emit schema matching emit-tally.md and the current dispatch-panel harness:
-# schema_version, rounds_completed, reviewer_output_paths, panel metadata,
-# finding_counts totals, and canonical top-level
-# accepted/rejected/exonerated/neutral counts.
+# schema_version 3 — accepted/rejected/exonerated counts (exonerated ⊆ rejected).
 jq -n \
     --argjson round "$ROUND" \
     --argjson accepted "$accepted" \
     --argjson rejected "$rejected" \
     --argjson exonerated "$exonerated" \
-    --argjson neutral "$neutral" \
     --argjson paths "$reviewer_paths_json" \
     --arg scout_status "$SCOUT_STATUS" \
     --argjson dynamic_slots "$DYNAMIC_SLOTS" \
     --argjson static_slot_count "$STATIC_SLOT_COUNT" \
     '{
-        schema_version: 2,
+        schema_version: 3,
         rounds_completed: $round,
         reviewer_output_paths: $paths,
         panel: {
@@ -140,13 +142,11 @@ jq -n \
         finding_counts: {
             total_accepted: $accepted,
             total_rejected: $rejected,
-            total_exonerated: $exonerated,
-            total_neutral: $neutral
+            total_exonerated: $exonerated
         },
         accepted_count: $accepted,
         rejected_count: $rejected,
-        exonerated_count: $exonerated,
-        neutral_count: $neutral
+        exonerated_count: $exonerated
     }' \
     > "$REVIEW_SUMMARY_FILE"
 

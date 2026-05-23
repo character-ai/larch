@@ -175,10 +175,7 @@ EOF_FINDING
 # Review Round 1
 
 - Mode: `diff`
-- Accepted findings: 1
-- Rejected findings: 4
-- Exonerated findings: 0
-- Neutral findings: 0
+- 1 accepted, 4 rejected (0 exonerated)
 EOF_SUMMARY
     cat > "$out/accepted-findings.md" <<'EOF_ACCEPTED'
 ### FINDING_1: First accepted
@@ -296,7 +293,7 @@ run_orchestrator_case() {
     current_head=$(git -C "$work" rev-parse HEAD)
     [[ "$current_head" != "$initial_head" ]] || fail "$label HEAD did not advance"
     git -C "$work" log -1 --format='%s' | grep -Fq "Address code review feedback (round 1)" || fail "$label commit message"
-    jq -e '.schema_version == 2 and .status == "fix-applied" and .accepted_count == 1 and .coder_tool == "'"$expected_tool"'" and .coder_status == "applied" and .submodule_scrub_count == 0 and .submodule_revert_count == 0 and (.coder_commit_sha | length > 0)' "$implement_tmp/review-and-fix-summary.json" >/dev/null \
+    jq -e '.schema_version == 3 and .status == "fix-applied" and .accepted_count == 1 and .coder_tool == "'"$expected_tool"'" and .coder_status == "applied" and .submodule_scrub_count == 0 and .submodule_revert_count == 0 and (.coder_commit_sha | length > 0)' "$implement_tmp/review-and-fix-summary.json" >/dev/null \
         || fail "$label summary schema"
     jq -e '.batch == "code-review-tally" and .rounds == 1 and .accepted_count == 1 and .rejected_count == 0 and (.body | contains("# Review Round 1"))' \
         "$implement_tmp/larch-logs/implement/$label-run/code-review-tally.json" >/dev/null \
@@ -374,7 +371,7 @@ if grep -q '^CODER_COMMIT_SHA=' <<< "$out"; then
     fail "no-changes must not emit CODER_COMMIT_SHA"
 fi
 [[ "$(git -C "$work_no_changes" rev-parse HEAD)" == "$initial_head" ]] || fail "no-changes must not advance HEAD"
-jq -e '.schema_version == 2 and .status == "no-changes" and .coder_status == "no-changes" and .coder_commit_sha == ""' "$implement_tmp/review-and-fix-summary.json" >/dev/null \
+jq -e '.schema_version == 3 and .status == "no-changes" and .coder_status == "no-changes" and .coder_commit_sha == ""' "$implement_tmp/review-and-fix-summary.json" >/dev/null \
     || fail "no-changes summary schema"
 
 work_main_agent="$TMP/main-agent-required"
@@ -390,7 +387,7 @@ set -e
 [[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "main-agent required expected exit 0 got $rc"; }
 grep -Fq 'REVIEW_AND_FIX_STATUS=main-agent-vote-required' <<< "$out" || fail "main-agent required status"
 grep -Fq "FINDINGS_FILE=$implement_tmp/round-1/findings.md" <<< "$out" || fail "main-agent required findings file"
-jq -e '.schema_version == 2 and .status == "main-agent-vote-required" and .accepted_count == 0 and .rejected_count == 0' "$implement_tmp/review-and-fix-summary.json" >/dev/null \
+jq -e '.schema_version == 3 and .status == "main-agent-vote-required" and .accepted_count == 0 and .rejected_count == 0' "$implement_tmp/review-and-fix-summary.json" >/dev/null \
     || fail "main-agent required summary"
 
 work_rejected="$TMP/rejected-full"
@@ -542,7 +539,7 @@ grep -Fq 'TOTAL_ACCEPTED_COUNT=3' <<< "$out" || fail "tally-fidelity stdout tota
 grep -Fq 'TOTAL_REJECTED_COUNT=2' <<< "$out" || fail "tally-fidelity stdout total rejected kv matches composed tally"
 [[ "$(jq -c 'select(.phase == "code-review" and .outcome == "accepted")' "$implement_tmp/larch-logs/implement/tally-fidelity-run/review-findings-full.jsonl" | wc -l | tr -d ' ')" == "3" ]] \
     || fail "tally-fidelity accepted record count"
-grep -Fq -- '- Accepted findings:' "$implement_tmp/round-1/review-round-summary.md" || fail "tally-fidelity fixture summary keeps per-round count lines"
+grep -Fq -- '1 accepted, 4 rejected (0 exonerated)' "$implement_tmp/round-1/review-round-summary.md" || fail "tally-fidelity fixture summary keeps per-round outcome line"
 if grep -Fq -- '- Accepted findings:' "$implement_tmp/larch-logs/implement/tally-fidelity-run/code-review-tally.json"; then
     fail "tally-fidelity tally body must omit stale per-round count lines"
 fi
@@ -714,7 +711,7 @@ rc=$?
 set -e
 [[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "zero expected exit 0 got $rc"; }
 grep -Fq 'REVIEW_AND_FIX_STATUS=complete' <<< "$out" || fail "zero status"
-jq -e '.schema_version == 2 and .status == "complete" and .coder_status == "skipped"' "$implement_tmp/review-and-fix-summary.json" >/dev/null \
+jq -e '.schema_version == 3 and .status == "complete" and .coder_status == "skipped"' "$implement_tmp/review-and-fix-summary.json" >/dev/null \
     || fail "zero summary"
 jq -e '.batch == "code-review-tally" and .rounds == 1 and .accepted_count == 0 and .rejected_count == 0 and (.body | contains("# Review Round 1"))' \
     "$implement_tmp/larch-logs/implement/zero-run/code-review-tally.json" >/dev/null \

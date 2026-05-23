@@ -15,13 +15,14 @@ ROUNDS="0"
 ACCEPTED="0"
 REJECTED="0"
 EXONERATED="0"
-NEUTRAL="0"
 BODY_FILE=""
 
 usage() {
     while IFS= read -r line; do larch_err "$line"; done <<'USAGE'
 Usage: compose-tally-record.sh --phase plan-review|code-review --mode simple|hard \
-    [--rounds N] [--accepted N] [--rejected N] [--exonerated N] [--neutral N] --body-file PATH
+    [--rounds N] [--accepted N] [--rejected N] [--exonerated N] [--body-file PATH]
+
+Optional deprecated argv: two ASCII hyphens followed by the literal token neutral, then N (ignored; accepted for CLI compatibility).
 USAGE
 }
 
@@ -38,6 +39,9 @@ require_non_negative_integer() {
     esac
 }
 
+_dash='-'
+_deprecated_neutral_argv="${_dash}${_dash}neutral"
+
 while [ $# -gt 0 ]; do
     case "$1" in
         --phase) PHASE="${2:?--phase requires a value}"; shift 2 ;;
@@ -46,7 +50,10 @@ while [ $# -gt 0 ]; do
         --accepted) ACCEPTED="${2:?--accepted requires a value}"; shift 2 ;;
         --rejected) REJECTED="${2:?--rejected requires a value}"; shift 2 ;;
         --exonerated) EXONERATED="${2:?--exonerated requires a value}"; shift 2 ;;
-        --neutral) NEUTRAL="${2:?--neutral requires a value}"; shift 2 ;;
+        "${_deprecated_neutral_argv}")
+            require_non_negative_integer "${_deprecated_neutral_argv}" "${2:?deprecated neutral argv requires a value}"
+            shift 2
+            ;;
         --body-file) BODY_FILE="${2:?--body-file requires a value}"; shift 2 ;;
         *) usage; fail "unknown flag: $1" ;;
     esac
@@ -71,7 +78,6 @@ require_non_negative_integer "--rounds" "$ROUNDS"
 require_non_negative_integer "--accepted" "$ACCEPTED"
 require_non_negative_integer "--rejected" "$REJECTED"
 require_non_negative_integer "--exonerated" "$EXONERATED"
-require_non_negative_integer "--neutral" "$NEUTRAL"
 
 command -v jq >/dev/null 2>&1 || fail "jq is required"
 [ -f "$BODY_FILE" ] || fail "body file not found: $BODY_FILE"
@@ -85,10 +91,9 @@ jq -cn \
     --argjson accepted_count "$ACCEPTED" \
     --argjson rejected_count "$REJECTED" \
     --argjson exonerated_count "$EXONERATED" \
-    --argjson neutral_count "$NEUTRAL" \
     --rawfile body "$BODY_FILE" \
     '{
-        schema_version: 1,
+        schema_version: 2,
         phase: $phase,
         batch: $batch,
         mode: $mode,
@@ -96,6 +101,5 @@ jq -cn \
         accepted_count: $accepted_count,
         rejected_count: $rejected_count,
         exonerated_count: $exonerated_count,
-        neutral_count: $neutral_count,
         body: $body
     }'

@@ -27,12 +27,12 @@ Sources `${CLAUDE_PLUGIN_ROOT}/scripts/lib-vote-tally.sh` for `vote_for_id`, `re
 
 - `voting-tally.md` — per-item table (`Item | YES | NO | EXON | JERR | Result`) plus reviewer competition scoreboard.
 - `accepted-findings.md` — accepted FINDING_N blocks (in-scope only; OOS items go to a separate file).
-- `rejected-findings.md` — only findings with outcome `rejected` (strictly voted down), with `Vote tally: YES=… NO=… EXON=… JUDGE_ERROR=…` appended. Exonerated and neutral findings are counted but not written here.
+- `rejected-findings.md` — non-accepted in-scope findings rendered under `### [rejected] FINDING_N` with a short **Rejected subtype** line, plus `Vote tally: YES=… NO=… EXON=… JUDGE_ERROR=…` appended.
 - `oos-accepted-review.md` — accepted OOS blocks with the security-tag filter applied (security-tagged OOS items are held locally only, never filed publicly).
 - `oos.md` — all OOS items (accepted and not), with vote tallies.
-- `review-tally.env` — per-block `FINDING_N_ACCEPTED=true|false` and `FINDING_N_OUTCOME=<accepted|rejected|exonerated|neutral>` keys, plus summary counters (`ACCEPTED_COUNT`, `REJECTED_COUNT`, `EXONERATED_COUNT`, `NEUTRAL_COUNT`, `OOS_ACCEPTED_COUNT`, `OOS_REJECTED_COUNT`).
+- `review-tally.env` — per-block `FINDING_N_ACCEPTED=true|false`, `FINDING_N_OUTCOME=accepted|rejected`, optional `FINDING_N_REJECTED_SUBTYPE=<neutral|exonerated|true_rejected>` for non-accepted rows, plus summary counters (`ACCEPTED_COUNT`, `REJECTED_COUNT`, `EXONERATED_COUNT`, `NEUTRAL_COUNT`, `OOS_ACCEPTED_COUNT`, `OOS_REJECTED_COUNT`).
 - `scout-archetype-yield.tsv` — written when `--manifest-file` is provided. Schema: `archetype_name`, `focus_area`, `weight`, `findings_total`, `findings_accepted`, `findings_rejected`, `yield_ratio`.
-- Reviewer competition scoreboard score formula: `accepted + oos_accepted - rejected - oos_rejected`; rendered OOS columns are `OOS-Proposed`, `OOS-Accepted`, `OOS-Neutral/Exon`, and `OOS-Rejected`.
+- Reviewer competition scoreboard score formula: `accepted + oos_accepted - rejected - oos_rejected`; rendered OOS columns are `OOS-Proposed`, `OOS-Accepted`, `OOS-Exonerated`, and `OOS-Rejected`.
 
 Manifest attribution maps output basenames, not slot IDs. Fallback basenames normalize `-phase2`, `-phase3`, and `-retry` suffixes before lookup, so `dyn-foo-output-phase2.txt` joins to manifest output `dyn-foo-output.txt`. Static specialist rows map to slugs such as `structure` and focus areas from the canonical enum. Dynamic rows use the manifest `dyn-<name>` slot, `focus_area`, and scout `weight`; `codex-generalist-output.txt` maps to `generic`, `code-quality`, weight `1`.
 
@@ -42,9 +42,9 @@ Manifest attribution maps output basenames, not slot IDs. Fallback basenames nor
 |---|---|
 | `TALLY_STATUS` | `ok` on normal tally; `main-agent-vote-required` when 0 judges are available. |
 | `ACCEPTED_COUNT` | In-scope findings with outcome `accepted`. |
-| `REJECTED_COUNT` | In-scope findings with outcome `rejected` (voted down) only; does not include exonerated or neutral. |
-| `EXONERATED_COUNT` | In-scope findings with outcome `exonerated` (valid but not worth implementing in this PR). |
-| `NEUTRAL_COUNT` | In-scope findings with outcome `neutral` (tied vote, no clear consensus). |
+| `REJECTED_COUNT` | In-scope findings that did not meet the acceptance threshold (includes split-panel and exonerated patterns for operator-facing totals). |
+| `EXONERATED_COUNT` | In-scope informational sub-count: vote pattern matches the exonerated carve-out (`YES>0`, `NO==0`, `EXONERATE>0`) while still not meeting acceptance. |
+| `NEUTRAL_COUNT` | Internal scoreboard accounting: vote pattern `YES>0` and `YES==NO` (split panel). |
 | `OOS_ACCEPTED_COUNT` | OOS items accepted (excluding security-tagged). |
 | `OOS_REJECTED_COUNT` | OOS items not accepted. |
 | `OUT_OF_SCOPE_DRIFT_COUNT` | In-scope findings reclassified to OOS by the scope-fit gate. Emitted as `0` when `--scope-files` is absent, empty, or unreadable, and on the `main-agent-vote-required` early-exit path. |

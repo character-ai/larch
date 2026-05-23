@@ -56,11 +56,13 @@ Valid vote tokens are `YES`, `NO`, and `EXONERATE`. If a voter's output contains
 
 Dispatchers emit degraded-panel warnings when effective voters drop below the expected panel size. `effective` means status is not `failed` and the voter output is substantive enough to contribute valid vote lines after any retry path settles.
 
-After the acceptance threshold, per-finding result classification uses these tie-breaks in order:
+After the acceptance threshold, each finding is classified into **operator-facing outcomes** `accepted`, `rejected`, or informational **`exonerated` as a subset of `rejected`** (every exonerated finding is also counted in the rejected total). The underlying vote-pattern classifier in `scripts/lib-vote-tally.sh::classify_result` still uses internal labels for scoreboard math; tally scripts map those labels to KV and JSON at the emission boundary.
 
-- `YES > 0` and `YES == NO` yields `neutral`.
-- Otherwise `EXONERATE > 0` yields `exonerated` only when `YES > 0` and `NO == 0` (for example `1Y/0N/1E`).
-- All remaining cases yield `rejected`, including all-exonerate panels and mixed `NO`/`EXONERATE` panels such as `0Y/1N/1E`.
+Non-accepted tie-breaks (after the acceptance-threshold check fails), in order:
+
+- `YES > 0` and `YES == NO` → **rejected** for reporting; scoreboard treats this as a **split-panel** pattern (0 points to the proposing reviewer — at least one YES, but the panel did not clear NO).
+- Otherwise, when `EXONERATE > 0` **and** `YES > 0` **and** `NO == 0` → **rejected** with informational **exonerated** sub-count (0 points — legitimate concern, not actionable in this PR).
+- All remaining cases → **rejected** (including all-exonerate panels with `YES == 0` and mixed `NO`/`EXONERATE` panels such as `0Y/1N/1E`; scoreboard may assign −1 when `YES == 0` per the points table below).
 
 ## Voter Panel Composition
 
@@ -183,12 +185,12 @@ Use `timeout: 1260000` on the Bash tool call. **Do NOT** set `run_in_background:
 
 After tallying votes, compute a score for each **original reviewer** (not voters):
 
-| Vote Result | Points | Description |
+| Vote pattern (non-accepted) | Points | Description |
 |---|---|---|
 | Finding accepted (2+ YES) | +1 | Reviewer's finding was validated by the panel |
-| Finding got exactly 1 YES | 0 | Neutral — not enough support but not rejected |
-| Finding got 0 YES but 1+ EXONERATE | 0 | Exonerated — legitimate concern, not actionable now |
-| Finding got 0 YES and 0 EXONERATE | -1 | Rejected — finding was unanimously dismissed |
+| Rejected with split-panel pattern (exactly 1 YES and YES == NO) | 0 | Panel disagreement — not enough support to accept, but not a unanimous dismissal |
+| Rejected with exonerated pattern (YES > 0, NO == 0, 1+ EXONERATE) | 0 | Legitimate concern, not actionable now |
+| Rejected with dismissed pattern (0 YES and 0 EXONERATE among counted votes) | −1 | Finding was unanimously dismissed by the panel |
 
 If a deduplicated finding was proposed by multiple reviewers (merged during deduplication), **all** contributing reviewers receive the same points for that finding.
 
@@ -197,21 +199,23 @@ If a deduplicated finding was proposed by multiple reviewers (merged during dedu
 After voting, print the scoreboard. Branch on `SESSION_ENV_PATH`:
 
 - **When `SESSION_ENV_PATH` is empty (standalone run)**: print the full scoreboard table to the session.
-- **When `SESSION_ENV_PATH` is non-empty (nested run under `/implement`)**: print only a one-line count summary of the form `Round <N>: <A> accepted, <R> rejected, <E> exonerated` (in-scope findings only; neutral findings omitted). The full scoreboard is suppressed at all levels in nested mode — per-round printing here and the Step 4a final summary (both inline and via `review-round-summary.md` in subagent runs).
+- **When `SESSION_ENV_PATH` is non-empty (nested run under `/implement`)**: print only a one-line count summary of the form `Round <N>: <A> accepted, <R> rejected (<E> exonerated)` (in-scope findings only; `E` counts the exonerated subset and is always `≤ R`). The full scoreboard is suppressed at all levels in nested mode — per-round printing here and the Step 4a final summary (both inline and via `review-round-summary.md` in subagent runs).
 
 Full scoreboard format (used in standalone mode):
 
 ```
 ## Reviewer Competition Scoreboard
 
-| Reviewer | Findings | Accepted | Neutral (1 YES) | Exonerated (0 YES, 1+ EXON.) | Rejected (0 YES, 0 EXON.) | OOS Proposed | OOS Accepted | OOS-Neutral/Exon | OOS-Rejected | Score |
-|----------|----------|----------|-----------------|-------------------------------|---------------------------|--------------|--------------|------------------|--------------|-------|
-| _label1_ | 3        | 2        | 1               | 0                             | 0                         | 1            | 0            | 1                | 0            | +2    |
-| _label2_ | 2        | 1        | 0               | 1                             | 0                         | 0            | 0            | 0                | 0            | +1    |
-| _label3_ | 2        | 1        | 1               | 0                             | 0                         | 1            | 0            | 0                | 1            | 0     |
+| Reviewer | Findings | Accepted | Exonerated | Rejected | OOS Proposed | OOS Accepted | OOS-Exonerated | OOS-Rejected | Score |
+|----------|----------|----------|--------|----------|--------------|--------------|----------------|--------------|-------|
+| _label1_ | 3        | 2        | 1      | 0        | 1            | 0            | 1              | 0            | +2    |
+| _label2_ | 2        | 1        | 1      | 0        | 0            | 0            | 0              | 0            | +1    |
+| _label3_ | 2        | 1        | 1      | 1        | 1            | 0            | 0              | 1            | 0     |
+```
+
+The **Exonerated** column counts all non-accepted findings that award **0** points to the proposer (split-panel and exonerated vote patterns). The **Rejected** column counts non-accepted findings that cost **−1** point (dismissed vote pattern). A single finding is counted in **at most one** of these two columns.
 
 Attribution labels are skill-specific (e.g., `/design` uses `Code`/`Codex`/`Cursor`; `/review` hard panel uses `Structure`/`Correctness`/`Testing`/`Security`/`Edge-cases`/`Plan-fidelity`/`Codex-Structure`/`Codex-Correctness`/`Codex-Testing`/`Codex-Security`/`Codex-Edge-cases`/`Codex-Plan-fidelity`). One row per independent reviewer. In future iterations, token allocation will be weighted proportionally to reviewer scores.
-```
 
 ## Out-of-Scope Observations
 
@@ -244,21 +248,21 @@ If an OOS item receives 2+ YES votes, it is **accepted** and will be filed as a 
 
 ### OOS Scoring
 
-Out-of-scope items use the same score shape as in-scope findings: accepted OOS earns +1, neutral or exonerated OOS scores 0, and rejected OOS costs -1:
+Out-of-scope items use the same score shape as in-scope findings: accepted OOS earns +1, non-accepted OOS with a split-panel or exonerated vote pattern scores 0, and dismissed OOS costs −1:
 
-| OOS Vote Result | Points | Description |
+| OOS vote pattern | Points | Description |
 |---|---|---|
 | OOS accepted (2+ YES) | +1 | Reviewer surfaced an issue worth tracking |
-| OOS neutral (exactly 1 YES) | 0 | Insufficient support, but not dismissed |
-| OOS exonerated (0 YES, 1+ EXONERATE) | 0 | Legitimate observation, but not worth an issue |
-| OOS rejected (0 YES, 0 EXONERATE) | -1 | Observation was unanimously dismissed by the panel |
+| OOS rejected — split panel (exactly 1 YES and YES == NO) | 0 | Insufficient support, but not dismissed |
+| OOS rejected — exonerated pattern (0 YES, 1+ EXONERATE) | 0 | Legitimate observation, but not worth an issue |
+| OOS rejected — dismissed (0 YES, 0 EXONERATE) | −1 | Observation was unanimously dismissed by the panel |
 
 ### OOS Scoreboard
 
 The scoreboard includes additional columns for OOS items:
 
 ```
-| Reviewer | ... | OOS Proposed | OOS Accepted | OOS-Neutral/Exon | OOS-Rejected | ...
+| Reviewer | ... | OOS Proposed | OOS Accepted | OOS-Exonerated | OOS-Rejected | ...
 ```
 
 ### OOS Security Tag

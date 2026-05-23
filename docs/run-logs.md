@@ -118,8 +118,8 @@ bailout paths may not produce them.
 **Mode**: replace (JSON object). **Written**: **Step 0** materialization tail, after the plan-review voting tally is exported.
 
 One JSON object per `/implement` session. The tally envelope shape is shared with
-`code-review-tally.json`: `schema_version`, `phase`, `batch`, `mode`, `rounds`,
-`accepted_count`, `rejected_count`, `exonerated_count`, `neutral_count`, and
+`code-review-tally.json`: `schema_version` (`2`), `phase`, `batch`, `mode`, `rounds`,
+`accepted_count`, `rejected_count`, `exonerated_count`, and
 `body`. For plan review the extra counters are normally `0`. Plan review voting itself runs during `/design`; this batch is often a stub or summary that references that outcome. The `body` contains
 the plan-review voting outcome (accepted count, rejected count, round summaries)
 plus any rejected plan-review findings under a `## Rejected Plan Review Findings`
@@ -130,18 +130,12 @@ sub-header. When no voting artifact is attached for this run, the body may note 
 **Mode**: replace (JSON object). **Written**: Step 5, after the Step 5 review loop completes (via `review-and-fix.sh` / `review-core.sh`; standalone `/review` is a separate skill).
 
 One JSON object per `/implement` session with the same tally envelope fields as
-`plan-review-tally.json`. `exonerated_count` covers findings voted `exonerated`
-(valid but not worth implementing in this PR), `neutral_count` covers tie votes
-with no clear consensus (finding-level result from `classify_result()`), and
-`rejected_count` counts only findings where the panel voted strictly `rejected`
-(voted down). The body contains the code-review voting outcome and a round-by-round
+`plan-review-tally.json`. `exonerated_count` is an informational sub-count of
+`rejected_count` (operator-facing summaries use “`K` accepted, `N` rejected (`P` exonerated)” where `P ≤ N`). `rejected_count` counts every finding that did not meet the acceptance threshold (including split-panel and exonerated vote patterns). The body contains the code-review voting outcome and a round-by-round
 summary. It also includes rejected code-review findings under a
-`## Rejected Code Review Findings` sub-header — only findings with outcome
-`rejected` appear here. Exonerated and neutral findings are counted in the envelope
-but not listed separately.
+`## Rejected Code Review Findings` sub-header — findings that are not accepted appear here under a unified `### [rejected] FINDING_N` heading with a short **Rejected subtype** line when useful for operators.
 
-**Note**: `neutral_count` covers finding-level tied votes and is distinct from
-`JUDGE_ERROR`, which is a per-judge-per-finding state (the parser fallback when a
+**Note**: Internal tally KV may still emit `NEUTRAL_COUNT` for scoreboard accounting; that key is **not** the same thing as `JUDGE_ERROR`, which is a per-judge-per-finding state (the parser fallback when a
 voter's ballot did not contain a parseable vote line for that finding). `JUDGE_ERROR`
 appears in the per-finding vote breakdown table under the `JERR` column header but
 is not separately enumerated in the tally envelope counters.

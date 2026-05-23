@@ -40,12 +40,12 @@ Edit in sync with `scripts/larch-log.sh`, `scripts/larch-log.md`, and
 object composed by `scripts/compose-tally-record.sh`:
 
 ```json
-{"schema_version":1,"phase":"plan-review","batch":"plan-review-tally","mode":"simple","rounds":0,"accepted_count":0,"rejected_count":0,"exonerated_count":0,"neutral_count":0,"body":"..."}
+{"schema_version":2,"phase":"plan-review","batch":"plan-review-tally","mode":"simple","rounds":0,"accepted_count":0,"rejected_count":0,"exonerated_count":0,"body":"..."}
 ```
 
 The `phase` value is `plan-review` or `code-review`; `batch` is the matching
 batch slug; `mode` is `simple` or `hard`; counts are non-negative integers;
-`rejected_count` is strict (it excludes exonerated and neutral outcomes); and
+`exonerated_count` must be `≤ rejected_count`; `rejected_count` counts every finding that did not meet the acceptance threshold (including split-panel and exonerated vote patterns); and
 `body` holds the verbatim markdown tally prose with newlines JSON-escaped.
 
 The `json-object` sanitizer validates these tally batches before replace writes.
