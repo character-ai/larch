@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "design_classification": "TRIVIAL_DOC_ONLY",
+  "design_classification_reason": "--trivial flag forwarded by operator",
+  "design_classification_source": "caller-forwarded",
+  "sketch_budget": 0,
+  "review_budget": "quick",
+  "workflow_path": "SIMPLE"
+}
