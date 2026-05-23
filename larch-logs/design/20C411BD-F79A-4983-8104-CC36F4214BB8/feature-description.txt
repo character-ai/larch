@@ -1,0 +1,17 @@
+Title: Misc /implement cleanup
+
+A. Remove dynamic-archetypes command line arguments from /implement
+  1. [--no-dynamic-archetypes]
+  2. [--dynamic-archetypes <N>]
+
+B. Further, remove "[base 5 + degraded-round retries]" from "/implement 5: code review" bread crumb
+
+C. In:
+```
+⏺ Bash(gh pr merge 2598 --squash --delete-branch 2>&1 | tail -5
+      git checkout main 2>&1 | tail -3…)
+  ⎿  X Pull request character-ai/larch#2598 is not mergeable: the base branch policy prohibits the merge.
+     To have the pull request merged after all the requirements have been met, add the `--auto` flag.
+     To use administrator privileges to immediately merge the pull request, add the `--admin` flag.
+```
+the mention of `--auto` flag is misleading, as we don't have that flag anymore.  Audit for mentions of --auto anywhere and clean them up.
