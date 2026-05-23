@@ -1,0 +1,16 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: EXONERATE -- small co-located snippets; extracting shared Python is optional churn
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: EXONERATE -- latent GH_HOST ERE edge case; not worth a standalone tracking issue
+FINDING_10: NO -- committed implement run logs are intentional repo policy, not a defect
+FINDING_11: YES
+FINDING_12: EXONERATE -- literal `true` matches common env contract; `=1` expectation is weak
+FINDING_13: NO -- explicitly out-of-scope nit with no concrete incorrect line cited
+FINDING_14: YES
+FINDING_15: NO -- ballot itself asserts no separate defect beyond FINDING_1
+FINDING_16: YES

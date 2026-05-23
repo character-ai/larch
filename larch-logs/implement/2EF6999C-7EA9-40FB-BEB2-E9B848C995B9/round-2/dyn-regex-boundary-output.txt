@@ -1,0 +1,15 @@
+Gathering the diff, commit list, and full-file context for the scout_notes focus areas.
+
+Reading `_oos_github_issue_url_ere` and the annotate Python section to verify regex behavior.
+
+Verifying Python's parsing of that regex (read-only).
+
+### In-Scope Findings
+
+- **correctness** `skills/design/scripts/file-design-oos.sh:375-388` — The annotate-phase helper `gh_url = re.compile(r"https://[^[:space:]]+/issues/[0-9]+")` does not behave like “non-whitespace” in Python: `[^[:space:]]` is not a POSIX negated space class here, so `gh_url.search()` returns no match for normal GitHub issue URLs (verified: the pattern matches neither `https://github.com/example/larch/issues/42` nor `https://github.com/foo/bar/issues/1`). As a result, `url_tokens` stays empty and the intended extra “sorted unique GitHub issue URL lines” documented in `file-design-oos.md` are never emitted from `ISSUE_*_URL` values; behavior mostly still works because `OOS_FILE_MAP` lines contain the same URLs and loose `grep -Eo` counting can still see them, but the Python logic is wrong and brittle if anything relied on those standalone URL lines alone. **Suggested fix:** Replace that pattern with something Python actually understands and aligned with the bash ERE intent, for example `re.compile(r"https://[^\s]+/issues/[0-9]+")` (tighten further if you need to mirror `[^[:space:]/]+` segments), or avoid duplicating grammar by shelling out to the same `grep -Eo` ERE used elsewhere.
+
+### Out-of-Scope Observations
+
+- **correctness** `scripts/oos-disposition-shared.inc.bash:9-60` — `_oos_github_issue_url_ere` ends at `/issues/[0-9]+` with no optional query fragment; interpolating it into `count_filed_url_field_lines`’s `...${ere}$` anchor is consistent with the existing loose counter and does not introduce a new end-anchor hazard beyond that shared URL grammar (URLs with `?…` or trailing junk would already be excluded everywhere this ERE is used).
+
+- **code-quality** `larch-logs/implement/2EF6999C-7EA9-40FB-BEB2-E9B848C995B9/*` — The branch adds a full implement run log tree under `larch-logs/implement/...`; that is unrelated to the OOS hardening behavior and is easy to mis-merge or churn in future PRs unless your logging policy explicitly wants these artifacts versioned alongside the code change.
