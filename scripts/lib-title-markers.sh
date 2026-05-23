@@ -41,14 +41,23 @@ insert_signal_marker() {
     fi
 
     case "$title" in
-        '[IN PROGRESS] '*)
-            printf '[IN PROGRESS] [%s] %s' "$marker" "${title#\[IN PROGRESS\] }"
+        '[DESIGNING] '*)
+            printf '[DESIGNING] [%s] %s' "$marker" "${title#\[DESIGNING\] }"
+            ;;
+        '[DESIGNED] '*)
+            printf '[DESIGNED] [%s] %s' "$marker" "${title#\[DESIGNED\] }"
+            ;;
+        '[IMPLEMENTING] '*)
+            printf '[IMPLEMENTING] [%s] %s' "$marker" "${title#\[IMPLEMENTING\] }"
             ;;
         '[DONE] '*)
             printf '[DONE] [%s] %s' "$marker" "${title#\[DONE\] }"
             ;;
         '[STALLED] '*)
             printf '[STALLED] [%s] %s' "$marker" "${title#\[STALLED\] }"
+            ;;
+        '[IN PROGRESS] '*)
+            printf '[IN PROGRESS] [%s] %s' "$marker" "${title#\[IN PROGRESS\] }"
             ;;
         '[PLANNED] '*)
             printf '[PLANNED] [%s] %s' "$marker" "${title#\[PLANNED\] }"

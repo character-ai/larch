@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **Title-prefix state machine overhaul**: tracking-issue title prefixes switch from `[IN PROGRESS]`/`[PLANNED]` to `[DESIGNING]`/`[DESIGNED]`/`[IMPLEMENTING]`. `/design` now renames issues to `[DESIGNING]` on start and `[DESIGNED]` on completion; `/implement` renames to `[IMPLEMENTING]` on start. `[DONE]` and `[STALLED]` are unchanged.
+- **`/implement` admission precondition**: issues without a `[DESIGNED]` prefix are rejected with `ADMISSION_RESULT=missing-designed-prefix` at exit 5, requiring a completed `/design` run before `/implement` may proceed.
+- **Migration posture**: legacy `[IN PROGRESS]` and `[PLANNED]` prefixes are stripped by `strip_lifecycle_prefix` for backward compatibility but are no longer accepted as `--state` values by `tracking-issue-write.sh` or as admission-pass prefixes.
+- **Audit scope**: all `[IN PROGRESS]`/`[PLANNED]` references in the active runtime surface (`skills/`, `scripts/`, `agents/`, `.claude/`, `SECURITY.md`, `docs/`, tests) updated; historical artifacts (`CHANGELOG.md`, `larch-logs/`) left unchanged.
+
 ## [41.0.1] - 2026-05-22
 
 ### Changed

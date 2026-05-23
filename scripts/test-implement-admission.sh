@@ -213,8 +213,8 @@ run_case "closed-exit-2" 2 "$sd" --issue 3 --repo o/r
 # --- managed prefix ---
 sd="$TMPROOT/s3"
 make_gh_stub "$sd"
-export STUB_VIEW_JSON='{"title":"[IN PROGRESS] my work","state":"OPEN","labels":[]}'
-run_case "managed-prefix-exit-5" 5 "$sd" --issue 3 --repo o/r
+export STUB_VIEW_JSON='{"title":"[IMPLEMENTING] my work","state":"OPEN","labels":[]}'
+run_case "managed-prefix-implementing-exit-5" 5 "$sd" --issue 3 --repo o/r
 
 sd="$TMPROOT/s3-done"
 make_gh_stub "$sd"
@@ -225,6 +225,49 @@ sd="$TMPROOT/s3-stalled"
 make_gh_stub "$sd"
 export STUB_VIEW_JSON='{"title":"[STALLED] blocked","state":"OPEN","labels":[]}'
 run_case "managed-prefix-stalled-exit-5" 5 "$sd" --issue 3 --repo o/r
+
+sd="$TMPROOT/s3-designing"
+make_gh_stub "$sd"
+export STUB_VIEW_JSON='{"title":"[DESIGNING] active design","state":"OPEN","labels":[]}'
+run_case "managed-prefix-designing-exit-5" 5 "$sd" --issue 3 --repo o/r
+
+sd="$TMPROOT/s3-legacy-in-progress"
+make_gh_stub "$sd"
+export STUB_VIEW_JSON='{"title":"[IN PROGRESS] legacy run","state":"OPEN","labels":[]}'
+run_case "managed-prefix-legacy-in-progress-exit-5" 5 "$sd" --issue 3 --repo o/r
+
+sd="$TMPROOT/s3-legacy-planned"
+make_gh_stub "$sd"
+export STUB_VIEW_JSON='{"title":"[PLANNED] legacy design","state":"OPEN","labels":[]}'
+run_case "managed-prefix-legacy-planned-exit-5" 5 "$sd" --issue 3 --repo o/r
+
+# --- designed prefix passes both gates ---
+sd="$TMPROOT/s3-designed"
+make_gh_stub "$sd"
+export STUB_VIEW_JSON='{"title":"[DESIGNED] ready to implement","state":"OPEN","labels":[]}'
+export STUB_API_BLOCKED_BY_JSON='[]'
+run_case "designed-prefix-pass" 0 "$sd" --issue 3 --repo o/r
+
+# --- no-prefix fails missing-designed-prefix gate ---
+sd="$TMPROOT/s3-no-prefix"
+make_gh_stub "$sd"
+export STUB_VIEW_JSON='{"title":"Plain feature without design","state":"OPEN","labels":[]}'
+export STUB_API_BLOCKED_BY_JSON='[]'
+(
+  export PATH="$sd:$PATH"
+  out=$(env -u IMPLEMENT_TMPDIR -u RUN_ID "$SCRIPT" --issue 3 --repo o/r 2>&1) || rc=$?
+  rc=${rc:-0}
+  if [[ "$rc" != 5 ]]; then
+    fail "no-prefix-missing-designed: expected exit 5 got $rc out=$out"
+  elif ! printf '%s' "$out" | grep -Fq 'ADMISSION_RESULT=missing-designed-prefix'; then
+    fail "no-prefix-missing-designed: missing ADMISSION_RESULT=missing-designed-prefix in $out"
+  elif ! printf '%s' "$out" | grep -Fq 'TITLE='; then
+    fail "no-prefix-missing-designed: missing TITLE= in $out"
+  else
+    PASS=$((PASS + 1))
+    echo "PASS: no-prefix-missing-designed-prefix-exit-5"
+  fi
+)
 
 # --- report title ---
 sd="$TMPROOT/s4"
@@ -270,7 +313,7 @@ make_gh_stub "$sd"
 sent="$TMPROOT/s7/tmp"
 mkdir -p "$sent"
 printf 'ISSUE_NUMBER=5\nRUN_ID=rid\nADOPTED=true\n' > "$sent/parent-issue.md"
-export STUB_VIEW_JSON='{"title":"[IN PROGRESS] sentinel","state":"OPEN","labels":[]}'
+export STUB_VIEW_JSON='{"title":"[IMPLEMENTING] sentinel","state":"OPEN","labels":[]}'
 # Sentinel short-circuits managed-title / audit-label gates but still runs
 # all_open_blockers before emitting RESUME=true.
 (
@@ -297,7 +340,7 @@ make_gh_stub "$sd"
 sent_nr="$TMPROOT/s7a/tmp"
 mkdir -p "$sent_nr"
 printf 'ISSUE_NUMBER=5\nADOPTED=true\n' > "$sent_nr/parent-issue.md"
-export STUB_VIEW_JSON='{"title":"[IN PROGRESS] no-runid-sentinel","state":"OPEN","labels":[]}'
+export STUB_VIEW_JSON='{"title":"[IMPLEMENTING] no-runid-sentinel","state":"OPEN","labels":[]}'
 export STUB_API_BLOCKED_BY_JSON='[]'
 (
   export IMPLEMENT_TMPDIR="$sent_nr"
@@ -323,7 +366,7 @@ make_gh_stub "$sd"
 sent_bl="$TMPROOT/s7block/tmp"
 mkdir -p "$sent_bl"
 printf 'ISSUE_NUMBER=5\nRUN_ID=rid2\nADOPTED=true\n' > "$sent_bl/parent-issue.md"
-export STUB_VIEW_JSON='{"title":"[IN PROGRESS] resume-blocked","state":"OPEN","labels":[]}'
+export STUB_VIEW_JSON='{"title":"[IMPLEMENTING] resume-blocked","state":"OPEN","labels":[]}'
 export STUB_API_BLOCKED_BY_JSON='[{"number":99,"state":"open"}]'
 (
   export IMPLEMENT_TMPDIR="$sent_bl"
@@ -349,7 +392,7 @@ make_gh_stub "$sd"
 sentb="$TMPROOT/s7b/tmp"
 mkdir -p "$sentb"
 printf 'ISSUE_NUMBER=5\nRUN_ID=session-a\nADOPTED=true\n' > "$sentb/parent-issue.md"
-export STUB_VIEW_JSON='{"title":"[IN PROGRESS] stale","state":"OPEN","labels":[]}'
+export STUB_VIEW_JSON='{"title":"[IMPLEMENTING] stale","state":"OPEN","labels":[]}'
 (
   export IMPLEMENT_TMPDIR="$sentb"
   export RUN_ID=session-b

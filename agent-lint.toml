@@ -878,7 +878,7 @@ exclude = [
   # libraries; test-false-positive-keywords.sh is Makefile-only.
   "scripts/lib-title-markers.sh",
   # scripts/test-lib-title-markers.sh — regression for insert_signal_marker
-  # ([PLANNED] titles); lib-title-markers.sh is sourced from
+  # ([DESIGNED]/[DESIGNING] titles); lib-title-markers.sh is sourced from
   # scripts/tracking-issue-write.sh. Makefile test-lib-title-markers target only.
   "scripts/test-lib-title-markers.sh",
   "scripts/false-positive-keywords.sh",

@@ -174,7 +174,7 @@ operator-visible “finish the existing clarify thread first” outcome instead
   prose — sanctioned writers only (`skills/implement/SKILL.md` NEVER #13–#14).
 - Plan body updates belong to `/design` (`plan-block-write.sh`) except for
   mechanical merges documented elsewhere; avoid concurrent manual edits to the
-  same `larch:plan` markers while a run holds `IN PROGRESS` on the tracking issue.
+  same `larch:plan` markers while a run holds `IMPLEMENTING` on the tracking issue.
 
 | `STATE` value | Meaning |
 |---|---|

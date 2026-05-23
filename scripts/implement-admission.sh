@@ -19,7 +19,8 @@
 #   0 — ADMISSION_RESULT=pass (optional RESUME=true)
 #   2 — gh/json failure (ADMISSION_ERROR=...) or closed issue
 #   4 — open blockers (ADMISSION_RESULT=has-blockers BLOCKERS=...)
-#   5 — managed lifecycle title prefix
+#   5 — managed lifecycle title prefix (ADMISSION_RESULT=managed-prefix)
+#       OR missing [DESIGNED] prefix (ADMISSION_RESULT=missing-designed-prefix)
 #   6 — audit-report label
 #   7 — [... Report] title pattern
 #
@@ -132,10 +133,20 @@ fi
 has_managed_prefix() {
     local t="$1"
     case "$t" in
-        '[IN PROGRESS] '*) return 0 ;;
+        '[DESIGNING] '*) return 0 ;;
+        '[IMPLEMENTING] '*) return 0 ;;
         '[DONE] '*)        return 0 ;;
         '[STALLED] '*)     return 0 ;;
+        '[IN PROGRESS] '*) return 0 ;;
+        '[PLANNED] '*)     return 0 ;;
         *)                 return 1 ;;
+    esac
+}
+
+has_designed_prefix() {
+    case "$1" in
+        '[DESIGNED] '*) return 0 ;;
+        *)              return 1 ;;
     esac
 }
 
@@ -223,6 +234,12 @@ if [[ -n "$BLOCKERS" ]]; then
     emit_kv ADMISSION_RESULT has-blockers
     emit_kv BLOCKERS "$BLOCKERS"
     exit 4
+fi
+
+if ! has_designed_prefix "$TITLE"; then
+    emit_kv ADMISSION_RESULT missing-designed-prefix
+    emit_kv TITLE "$(admission_kv_value "$TITLE")"
+    exit 5
 fi
 
 emit_kv ADMISSION_RESULT pass

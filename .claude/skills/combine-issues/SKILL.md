@@ -59,5 +59,5 @@ After all groups are applied, print a final tally: `Done — <N> issues combined
 ## Anti-patterns
 
 - **NEVER combine issues without user confirmation.** The analysis is advisory; the user decides which groups to merge. Combining the wrong issues loses important context that is hard to recover.
-- **NEVER combine an issue that has an `[IN PROGRESS]`, `[STALLED]`, or `[DONE]` title prefix.** The fetch script filters these out, but if one slips through (e.g., prefix applied after fetch), skip it and warn.
+- **NEVER combine an issue that has a `[DESIGNING]`, `[IMPLEMENTING]`, `[STALLED]`, or `[DONE]` title prefix.** The fetch script filters these out, but if one slips through (e.g., prefix applied after fetch), skip it and warn. Note: `[DESIGNED]` issues are intentionally NOT excluded — they are valid combine candidates (design complete, implementation not yet started).
 - **NEVER discard actionable content from source issues.** The combined body must preserve every concrete task, file reference, and reproduction step from the originals. Summarizing away specifics defeats the purpose.

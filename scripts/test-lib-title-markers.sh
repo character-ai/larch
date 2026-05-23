@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Minimal regression for insert_signal_marker ([PLANNED] titles).
+# Minimal regression for insert_signal_marker ([DESIGNED]/[DESIGNING] titles).
 
 set -euo pipefail
 
@@ -13,8 +13,14 @@ fail() {
     exit 1
 }
 
-got=$(insert_signal_marker '[PLANNED] My feature' 'FALSE-POSITIVE')
-[[ "$got" == '[PLANNED] [FALSE-POSITIVE] My feature' ]] \
-    || fail "expected [PLANNED] [FALSE-POSITIVE] My feature, got: $got"
+got=$(insert_signal_marker '[DESIGNED] My feature' 'FALSE-POSITIVE')
+[[ "$got" == '[DESIGNED] [FALSE-POSITIVE] My feature' ]] \
+    || fail "expected [DESIGNED] [FALSE-POSITIVE] My feature, got: $got"
 
-echo "ok: insert_signal_marker [PLANNED] prefix"
+echo "ok: insert_signal_marker [DESIGNED] prefix"
+
+got=$(insert_signal_marker '[DESIGNING] My feature' 'FALSE-POSITIVE')
+[[ "$got" == '[DESIGNING] [FALSE-POSITIVE] My feature' ]] \
+    || fail "expected [DESIGNING] [FALSE-POSITIVE] My feature, got: $got"
+
+echo "ok: insert_signal_marker [DESIGNING] prefix"

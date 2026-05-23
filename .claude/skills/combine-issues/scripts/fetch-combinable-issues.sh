@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Fetch open GitHub issues eligible for combination.
-# Excludes issues with managed title prefixes ([IN PROGRESS], [STALLED], [DONE]).
+# Excludes issues with managed title prefixes ([DESIGNING], [IMPLEMENTING], [STALLED], [DONE]).
+# [DESIGNED] is intentionally NOT excluded — designed-but-unimplemented issues are valid combine candidates.
 #
 # Output on stdout: ISSUES_FILE=<path> and COUNT=<n>.
 # On failure: ERROR=<message> on stderr, exit 1.
@@ -44,7 +45,7 @@ fi
 FILTERED=$(echo "$RAW" | jq '[
   .[] |
   select(
-    (.title | test("^\\[(IN PROGRESS|STALLED|DONE)\\] ") | not) and
+    (.title | test("^\\[(DESIGNING|IMPLEMENTING|STALLED|DONE)\\] ") | not) and
     (.title | test("^\\[LOCKED\\]") | not)
   )
 ]')

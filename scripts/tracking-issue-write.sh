@@ -9,7 +9,7 @@
 # Subcommands:
 #   create-issue   --title T --body-file F [--repo OWNER/REPO]
 #   append-comment --issue N --body-file F [--lifecycle-marker ID] [--repo OWNER/REPO]
-#   rename         --issue N --state in-progress|done|stalled|planned [--repo OWNER/REPO]
+#   rename         --issue N --state designing|designed|implementing|done|stalled [--repo OWNER/REPO]
 #   mark-false-positive --issue N [--repo OWNER/REPO]
 #
 # Output contract (KEY=value on stdout; warnings on stderr). NAMESPACE note:
@@ -29,11 +29,10 @@
 #
 # Rename semantics (tracking-issue title-prefix lifecycle):
 #   Strips exactly ONE leading lifecycle prefix (anchored regex
-#   ^\[(IN PROGRESS|DONE|STALLED|PLANNED)\] ) from the current title, then
-#   prepends the target-state prefix. Remaining leading bracket text (for
-#   example legacy markers) stays in the user tail unchanged. No-op when the
-#   composed title matches the current canonical title (RENAMED=false). The
-#   new title is piped through
+#   ^\[(DESIGNING|DESIGNED|IMPLEMENTING|DONE|STALLED|IN PROGRESS|PLANNED)\] ) from the current title, then
+#   prepends the target-state prefix. Legacy prefixes [IN PROGRESS] and [PLANNED]
+#   are stripped for migration. No-op when the composed title matches the current
+#   canonical title (RENAMED=false). The new title is piped through
 #   scripts/redact-secrets.sh before the gh call, matching the security
 #   posture of create-issue. Stacked-prefix corruption (e.g., "[IN PROGRESS]
 #   [DONE] Foo") is NOT healed — only one lifecycle prefix is stripped.
@@ -98,7 +97,7 @@ usage() {
 Usage:
   tracking-issue-write.sh create-issue   --title T --body-file F [--repo OWNER/REPO]
   tracking-issue-write.sh append-comment --issue N --body-file F [--lifecycle-marker ID] [--repo OWNER/REPO]
-  tracking-issue-write.sh rename         --issue N --state in-progress|done|stalled|planned [--repo OWNER/REPO]
+  tracking-issue-write.sh rename         --issue N --state designing|designed|implementing|done|stalled [--repo OWNER/REPO]
   tracking-issue-write.sh mark-false-positive --issue N [--repo OWNER/REPO]
 USAGE
 }
@@ -108,10 +107,11 @@ USAGE
 # conventions).
 state_to_prefix() {
     case "$1" in
-        in-progress) printf '[IN PROGRESS] ' ;;
+        designing)   printf '[DESIGNING] ' ;;
+        designed)    printf '[DESIGNED] ' ;;
+        implementing) printf '[IMPLEMENTING] ' ;;
         done)        printf '[DONE] ' ;;
         stalled)     printf '[STALLED] ' ;;
-        planned)     printf '[PLANNED] ' ;;
         *)           return 1 ;;
     esac
 }
@@ -123,11 +123,14 @@ state_to_prefix() {
 strip_lifecycle_prefix() {
     local t="$1"
     case "$t" in
-        '[IN PROGRESS] '*) printf '%s' "${t#\[IN PROGRESS\] }" ;;
-        '[DONE] '*)        printf '%s' "${t#\[DONE\] }" ;;
-        '[STALLED] '*)     printf '%s' "${t#\[STALLED\] }" ;;
-        '[PLANNED] '*)     printf '%s' "${t#\[PLANNED\] }" ;;
-        *)                 printf '%s' "$t" ;;
+        '[DESIGNING] '*)    printf '%s' "${t#\[DESIGNING\] }" ;;
+        '[DESIGNED] '*)     printf '%s' "${t#\[DESIGNED\] }" ;;
+        '[IMPLEMENTING] '*) printf '%s' "${t#\[IMPLEMENTING\] }" ;;
+        '[DONE] '*)         printf '%s' "${t#\[DONE\] }" ;;
+        '[STALLED] '*)      printf '%s' "${t#\[STALLED\] }" ;;
+        '[IN PROGRESS] '*)  printf '%s' "${t#\[IN PROGRESS\] }" ;;
+        '[PLANNED] '*)      printf '%s' "${t#\[PLANNED\] }" ;;
+        *)                  printf '%s' "$t" ;;
     esac
 }
 
@@ -419,7 +422,7 @@ case "$cmd" in
         fi
         TARGET_PREFIX=$(state_to_prefix "$STATE") || {
             emit_kv FAILED "true"
-            emit_kv ERROR "invalid --state: $STATE (expected in-progress|done|stalled|planned)"
+            emit_kv ERROR "invalid --state: $STATE (expected designing|designed|implementing|done|stalled)"
             exit 1
         }
         if [[ -z "$REPO" ]]; then
@@ -460,11 +463,14 @@ case "$cmd" in
         CUR_CANON_USER_TAIL="$CUR_CANON_LIFECYCLE_STRIPPED"
         CUR_CANON_PREFIXES=""
         case "$CUR_TITLE_CANONICAL" in
-            '[IN PROGRESS] '*) CUR_CANON_PREFIXES='[IN PROGRESS] ' ;;
-            '[DONE] '*)        CUR_CANON_PREFIXES='[DONE] ' ;;
-            '[STALLED] '*)     CUR_CANON_PREFIXES='[STALLED] ' ;;
-            '[PLANNED] '*)     CUR_CANON_PREFIXES='[PLANNED] ' ;;
-            *)                 CUR_CANON_PREFIXES="" ;;
+            '[DESIGNING] '*)    CUR_CANON_PREFIXES='[DESIGNING] ' ;;
+            '[DESIGNED] '*)     CUR_CANON_PREFIXES='[DESIGNED] ' ;;
+            '[IMPLEMENTING] '*) CUR_CANON_PREFIXES='[IMPLEMENTING] ' ;;
+            '[DONE] '*)         CUR_CANON_PREFIXES='[DONE] ' ;;
+            '[STALLED] '*)      CUR_CANON_PREFIXES='[STALLED] ' ;;
+            '[IN PROGRESS] '*)  CUR_CANON_PREFIXES='[IN PROGRESS] ' ;;
+            '[PLANNED] '*)      CUR_CANON_PREFIXES='[PLANNED] ' ;;
+            *)                  CUR_CANON_PREFIXES="" ;;
         esac
         CUR_TITLE_CANONICAL=$(truncate_title_with_prefixes_to_256 "$CUR_CANON_PREFIXES" "$CUR_CANON_USER_TAIL")
         if [[ "$NEW_TITLE" == "$CUR_TITLE_CANONICAL" ]]; then
