@@ -1,0 +1,7 @@
+FINDING_1: YES
+FINDING_2: EXONERATE -- larch-logs/ exemption is already embedded in the acceptance criteria (`:!larch-logs/` exclusion), making this not issue-worthy
+FINDING_3: NO -- wording deviation is cosmetically different but semantically identical; not worth raising for a comment-only change
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: NO -- CHANGELOG history entries are intentionally preserved verbatim; filing an issue to retroactively edit them is incorrect practice

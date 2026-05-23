@@ -1,0 +1,17 @@
+Gathering the diff, commit list, and repo-wide greps for removed names and stale `.PHONY` tokens.
+
+Searching for remaining stale references outside the diff-touched paths and for shard/Makefile references to the removed `.PHONY` targets.
+
+### In-Scope Findings
+
+- **correctness** `larch-logs/implement/21CB0747-7B31-4780-91F1-3DC128E850F8/plan-goals-test.md:27-37` — The branch adds this run-log file (second commit) while Class C edits remove the same deleted names from live docs; the embedded plan text still contains literals such as ``find-lock-issue.sh``, ``launch-cursor-review.sh``, ``launch-codex-review.sh``, ``launch-gemini-implement.sh``, and ``parse-skill-judge-grade.sh``, so repo-wide drift cleanup is only partial and any broad grep for those tokens will keep hitting `larch-logs/` even after the source edits land. **Suggested fix:** If the log must stay verbatim for audit traceability, document that `larch-logs/` is intentionally exempt from the Class C grep contract; otherwise regenerate or hand-edit `plan-goals-test.md` so the flushed snapshot matches post-migration wording (or drop the verbose plan paste and keep only the goal line).
+
+### Out-of-Scope Observations
+
+- **correctness** `skills/issue/scripts/add-blocked-by.sh:13-15` — Header comments still describe parity with deleted `skills/fix-issue/scripts/find-lock-issue.sh` and name `find-lock-issue.sh`; this file is not part of the branch diff and the stale framing predates this change set. **Suggested fix:** In a follow-up PR, rewrite those lines to reference the live Issue Dependencies API usage (this script’s GET/POST pairing) without naming the removed script.
+
+- **correctness** `scripts/token-cost.md:5,55` — Prose still lists `/fix-issue` as a consumer of `token-cost.sh` alongside `/implement`; not touched by this diff and matches known drift called out in older review logs under `larch-logs/implement/7D56E25C-6D5C-45BA-BDAB-3FC89986BA82/`. **Suggested fix:** Update the intro and table row to `/implement` only (or “final-report path via `scripts/render-run-summary.sh`”) in a separate doc sweep.
+
+- **Makefile / harness wiring:** After the `.PHONY` cleanup, there are **no** remaining `Makefile` references to the ten removed `test-*` tokens (no shard or rule bodies still name them), so there is no Makefile-level orphan invocation risk from this diff.
+
+- **`CHANGELOG.md`:** Historical entries still mention removed launchers and `find-lock-issue.sh`; expected for changelog archaeology and unchanged by this branch.

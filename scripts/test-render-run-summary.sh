@@ -117,10 +117,10 @@ TMP_ERR="$(mktemp "${TMPDIR:-/tmp}/trs-err.XXXXXX")"
 TMP_ERR_STDERR="$(mktemp "${TMPDIR:-/tmp}/trs-errstderr.XXXXXX")"
 env -u LARCH_CLAUDE_RATE_PER_M -u LARCH_CODEX_RATE_PER_M -u LARCH_CURSOR_RATE_PER_M -u LARCH_TOKEN_RATE_PER_M \
     "$HELPER" \
-    --skill fix-issue \
+    --skill implement \
     --outcome pr-open \
     --run-id RUN-ERR \
-    --mode '/fix-issue' \
+    --mode '/implement' \
     --workflow-path 'N/A' \
     --duration 'N/A' \
     --claude-tokens 0 \

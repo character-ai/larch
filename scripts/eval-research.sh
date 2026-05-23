@@ -494,8 +494,7 @@ run_judge() {
   return $rc
 }
 
-# Fail-closed parser. Mirrors the discipline of
-# scripts/parse-skill-judge-grade.sh: any malformed input yields a single
+# Fail-closed parser: the discipline below means any malformed input yields a single
 # JUDGE_STATUS=parse_failed line with all numeric fields null. Required
 # fields: TOTAL plus all five per-dimension scores. Range checks use a
 # decimal regex so leading-zero values (e.g. `0100`) cannot smuggle past
