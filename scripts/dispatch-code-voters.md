@@ -34,6 +34,7 @@ A `voter1_rc=1` exit with non-zero `output_bytes` and empty launcher-stderr indi
 ## Output
 
 - `VOTER_1_PATH`, `VOTER_2_PATH`, `VOTER_3_PATH`: final output path per slot.
+- `VOTER_PATHS_FILE`: path to `code-voter-paths.txt` under `--review-tmpdir`, listing non-empty voter paths in slot order (Voter 2 omitted when `VOTER_2_STATUS=skipped` in round 2+); atomic write.
 - `VOTER_1_TOOL`, `VOTER_2_TOOL`, `VOTER_3_TOOL`: final tool that produced each slot (`claude`, `codex`, or `cursor`).
 - `VOTER_1_STATUS`, `VOTER_2_STATUS`, `VOTER_3_STATUS`: `launched`, `fallback`, `failed`, or `skipped` (Codex voter when round > 1).
 - `VOTER_1_PARSE_RATE_STATUS`, `VOTER_2_PARSE_RATE_STATUS`, `VOTER_3_PARSE_RATE_STATUS`: `OK`, `NOT_SUBSTANTIVE`, or `SKIPPED` when the slot failed or was skipped before parse-rate evaluation.

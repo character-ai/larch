@@ -9,3 +9,5 @@ The harness unsets inherited session tempdir variables and points
 inside the harness sandbox.
 
 Run with `bash scripts/test-dispatch-plan-voters.sh` or `make test-dispatch-plan-voters`.
+
+Also asserts `VOTER_PATHS_FILE` KV and `plan-voter-paths.txt` contents on absent-tools and healthy stub paths.

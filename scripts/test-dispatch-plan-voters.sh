@@ -64,6 +64,9 @@ grep -Fq 'OOS_N:' "$TMP/absent/codex-plan-voter-prompt.txt" || { echo "FAIL: pla
 grep -Fq 'FINDING_N: or OOS_N:' "$TMP/absent/claude-plan-voter-prompt-retry.txt" || { echo "FAIL: retry prompt missing FINDING/OOS directive" >&2; exit 1; }
 grep -Fq 'OOS_1: NO -- claude retry ok' "$voter2_path" || { echo "FAIL: claude fallback retry path missing final vote output" >&2; exit 1; }
 test -f "${voter2_path%.txt}-first-pass.txt" || { echo "FAIL: claude fallback first-pass sidecar missing" >&2; exit 1; }
+grep -Fq 'VOTER_PATHS_FILE=' <<< "$out" || { echo "FAIL: absent-tools dispatch missing VOTER_PATHS_FILE" >&2; exit 1; }
+pv_abs=$(printf '%s\n' "$out" | awk -F= '$1=="VOTER_PATHS_FILE"{print substr($0,index($0,"=")+1);exit}')
+[[ -f "$pv_abs" ]] || { echo "FAIL: plan voter paths file missing" >&2; exit 1; }
 
 PLUGIN_ROOT_STUB="$TMP/plugin-root"
 mkdir -p "$PLUGIN_ROOT_STUB/scripts"
@@ -147,6 +150,9 @@ grep -Fq 'OOS_N:' "$TMP/healthy/codex-plan-voter-prompt.txt" || { echo "FAIL: he
 grep -Fq 'OOS_N:' "$TMP/healthy/cursor-plan-voter-prompt.txt" || { echo "FAIL: healthy cursor prompt missing OOS rows" >&2; exit 1; }
 grep -Fq $'voter-2\tcodex' "$stub_log" || { echo "FAIL: healthy stub log missing codex slot wiring" >&2; exit 1; }
 grep -Fq $'voter-3\tcursor' "$stub_log" || { echo "FAIL: healthy stub log missing cursor slot wiring" >&2; exit 1; }
+grep -Fq 'VOTER_PATHS_FILE=' <<< "$out" || { echo "FAIL: healthy stub missing VOTER_PATHS_FILE" >&2; exit 1; }
+pv_h=$(printf '%s\n' "$out" | awk -F= '$1=="VOTER_PATHS_FILE"{print substr($0,index($0,"=")+1);exit}')
+[[ -f "$pv_h" && $(wc -l < "$pv_h" | tr -d ' ') -eq 2 ]] || { echo "FAIL: healthy plan-voter paths file" >&2; exit 1; }
 
 stub_log_retry="$TMP/dispatch-with-waterfall-retry.log"
 out=$(PATH="$STUB_BIN:$PATH" CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT_STUB" PLAN_VOTER_STUB_MODE=retry-waterfall PLAN_VOTER_STUB_LOG="$stub_log_retry" \

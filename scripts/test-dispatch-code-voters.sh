@@ -36,6 +36,14 @@ section_runs() {
     [[ -z "$SECTION" || "$SECTION" == "$1" ]]
 }
 
+require_voter_paths_file_nonempty() {
+    local ctx="$1" out="$2"
+    grep -Fq 'VOTER_PATHS_FILE=' <<< "$out" || { echo "FAIL: $ctx missing VOTER_PATHS_FILE KV" >&2; exit 1; }
+    local f
+    f=$(printf '%s\n' "$out" | awk -F= '$1=="VOTER_PATHS_FILE"{print substr($0,index($0,"=")+1);exit}')
+    [[ -f "$f" && -s "$f" ]] || { echo "FAIL: $ctx VOTER_PATHS_FILE not a non-empty file: $f" >&2; exit 1; }
+}
+
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 SCRIPT="$REPO_ROOT/scripts/dispatch-code-voters.sh"
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/test-dispatch-code-voters.XXXXXX")"
@@ -178,6 +186,9 @@ grep -Fq 'VOTER_2_PARSE_RATE_STATUS=OK' <<< "$out" || { echo "FAIL: voter2 parse
 grep -Fq 'VOTER_3_PARSE_RATE_STATUS=OK' <<< "$out" || { echo "FAIL: voter3 parse-rate status missing/incorrect" >&2; exit 1; }
 [[ ! -e "$TMP/happy/claude-vote-output-first-pass.txt" && ! -e "$TMP/happy/codex-vote-output-first-pass.txt" && ! -e "$TMP/happy/cursor-vote-output-first-pass.txt" ]] \
     || { echo "FAIL: happy path must not write parse-retry first-pass sidecars" >&2; exit 1; }
+require_voter_paths_file_nonempty "happy-r1" "$out"
+r1pf=$(printf '%s\n' "$out" | awk -F= '$1=="VOTER_PATHS_FILE"{print substr($0,index($0,"=")+1);exit}')
+[[ $(wc -l < "$r1pf" | tr -d ' ') -eq 3 ]] || { echo "FAIL: round1 code-voter paths file expects 3 lines" >&2; exit 1; }
 
 for prompt in "$TMP/happy/claude-vote-prompt.txt" "$TMP/happy/codex-vote-prompt.txt" "$TMP/happy/cursor-vote-prompt.txt"; do
 grep -Fq 'Verify silently' "$prompt" || { echo "FAIL: $(basename "$prompt") missing Verify silently directive" >&2; exit 1; }
@@ -194,6 +205,8 @@ grep -Fq 'VOTER_2_STATUS=fallback' <<< "$out"
 grep -Fq 'VOTER_3_STATUS=fallback' <<< "$out"
 grep -Fq 'DISPATCH_OK=true' <<< "$out"
 
+require_voter_paths_file_nonempty "happy-absent" "$out"
+
 issues_log="$TMP/execution-issues.md"
 out=$(PATH="$STUB_BIN:$PATH" CLAUDE_STUB_MODE=empty LARCH_EXECUTION_ISSUES_LOG="$issues_log" "$SCRIPT" --ballot-file "$BALLOT" --review-tmpdir "$TMP/empty-voter1" --codex-available true --cursor-available true)
 grep -Fq 'VOTER_1_STATUS=failed' <<< "$out"
@@ -202,11 +215,15 @@ grep -Fq 'dispatch-code-voters.sh voter1' "$issues_log"
 grep -Fq 'launch-claude-review.sh (claude voter) failed (exit 99)' "$issues_log"
 grep -Fq 'voter1_rc=99' "$issues_log"
 
+require_voter_paths_file_nonempty "happy-empty-voter1" "$out"
+
 issues_log_nonempty="$TMP/execution-issues-nonempty.md"
 out=$(PATH="$STUB_BIN:$PATH" CLAUDE_STUB_MODE=fail_nonempty LARCH_EXECUTION_ISSUES_LOG="$issues_log_nonempty" "$SCRIPT" --ballot-file "$BALLOT" --review-tmpdir "$TMP/nonempty-voter1" --codex-available true --cursor-available true)
 grep -Fq 'VOTER_1_STATUS=failed' <<< "$out"
 grep -Fq -- '--- first 200 bytes of voter output ---' "$issues_log_nonempty"
 grep -Fq 'stub voter output for diag test' "$issues_log_nonempty"
+
+require_voter_paths_file_nonempty "happy-nonempty-voter1" "$out"
 
 out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" --ballot-file "$BALLOT" --review-tmpdir "$TMP/round2" --codex-available true --cursor-available false --round-num 2)
 grep -Fq 'VOTER_1_TOOL=claude' <<< "$out"
@@ -230,6 +247,9 @@ if grep -Fq '"slot":"voter-2"' "$TMP/round2/code-voter-slots.ndjson"; then
 fi
 grep -Fq '2-judge voting panel' "$TMP/round2/claude-vote-prompt.txt" \
     || { echo "FAIL: round2 claude voter prompt must describe a 2-judge panel" >&2; exit 1; }
+require_voter_paths_file_nonempty "happy-round2" "$out"
+r2pf=$(printf '%s\n' "$out" | awk -F= '$1=="VOTER_PATHS_FILE"{print substr($0,index($0,"=")+1);exit}')
+[[ $(wc -l < "$r2pf" | tr -d ' ') -eq 2 ]] || { echo "FAIL: round2 code-voter paths file expects 2 lines" >&2; exit 1; }
 fi  # end section: happy
 
 if section_runs edge-and-r3-claude; then
@@ -253,6 +273,7 @@ grep -Fq 'DISPATCH_OK=true' <<< "$out" \
     || { echo "FAIL: symlink-diff scenario expected DISPATCH_OK=true" >&2; exit 1; }
 [[ -f "$sym_review_tmpdir/diff-context.txt" ]] \
     || { echo "FAIL: symlink-diff scenario expected bounded diff copy" >&2; exit 1; }
+require_voter_paths_file_nonempty "edge-symlink-diff" "$out"
 
 # A 2 MB diff file must not cause the voter to fail; dispatch sends a bounded copy.
 big_diff="$TMP/big-diff.txt"
@@ -276,6 +297,7 @@ grep -Fq 'VOTER_1_STATUS=launched' <<< "$out" \
     || { echo "FAIL: 2MB-diff scenario expected 200000-byte bounded diff copy" >&2; exit 1; }
 grep -Fq 'FINDING_1: YES' "$big_review_tmpdir/claude-vote-output.txt" \
     || { echo "FAIL: 2MB-diff scenario expected FINDING_1: YES in voter output" >&2; exit 1; }
+require_voter_paths_file_nonempty "edge-big-diff" "$out"
 
 # Regression 3 (claude case): production-shape — review tmpdir outside any harness ancestry,
 # so local diag files and the explicit issues-log must be written with tool-specific labels.
@@ -300,6 +322,7 @@ grep -Fq 'FINDING_1: YES' "$big_review_tmpdir/claude-vote-output.txt" \
         || { echo "FAIL: regression3 prod-shape — claude issues-log entry missing" >&2; exit 1; }
     grep -Fq 'launch-claude-review.sh (voter parse-rate check)' "$prod_issues" \
         || { echo "FAIL: regression3 prod-shape — claude tool label missing from issues-log" >&2; exit 1; }
+    require_voter_paths_file_nonempty "edge-prod-claude" "$out"
 )
 fi  # end section: edge-and-r3-claude
 
@@ -336,6 +359,7 @@ if [[ -f "$retry_success_tmp/execution-issues.md" ]] && grep -Fq 'dispatch-code-
     echo "FAIL: parse-rate retry success should not leave a stale execution issue warning" >&2
     exit 1
 fi
+require_voter_paths_file_nonempty "retry-claude-ok" "$out"
 
 retry_fail_tmp="$TMP/retry-fail"
 retry_fail_count_file="$TMP/retry-fail-count.txt"
@@ -362,6 +386,7 @@ grep -Fq "voter_file=$retry_fail_tmp/claude-vote-output.txt" "$retry_fail_tmp/cl
     || { echo "FAIL: parse-rate retry failure should clean retry temp files" >&2; exit 1; }
 [[ ! -e "$retry_fail_tmp/claude-vote-output-first-pass.txt" ]] \
     || { echo "FAIL: parse-rate retry failure must not write first-pass sidecar" >&2; exit 1; }
+require_voter_paths_file_nonempty "retry-claude-fail" "$out"
 fi  # end section: retry-claude
 
 if section_runs retry-codex-success; then
@@ -392,6 +417,7 @@ if [[ -e "$retry_success_codex_tmp/codex-vote-output-parse-rate-diag.txt" || -e 
 fi
 [[ "$(cat "$retry_success_codex_count_file")" -eq 2 ]] \
     || { echo "FAIL: codex parse-rate retry success expected exactly two codex attempts" >&2; exit 1; }
+require_voter_paths_file_nonempty "retry-codex-ok" "$out"
 fi  # end section: retry-codex-success
 
 if section_runs retry-cursor; then
@@ -422,6 +448,7 @@ if [[ -e "$retry_success_cursor_tmp/cursor-vote-output-parse-rate-diag.txt" || -
 fi
 [[ "$(cat "$retry_success_cursor_count_file")" -eq 2 ]] \
     || { echo "FAIL: cursor parse-rate retry success expected exactly two cursor attempts" >&2; exit 1; }
+require_voter_paths_file_nonempty "retry-cursor-ok" "$out"
 fi  # end section: retry-cursor
 
 if section_runs retry-codex-fail-and-fallback; then
@@ -447,6 +474,8 @@ grep -Fq 'DEGRADED_PANEL_WARNING=**⚠ Degraded code-review panel: 2/3 effective
 [[ ! -e "$retry_fail_codex_tmp/codex-vote-output-first-pass.txt" ]] \
     || { echo "FAIL: codex parse-rate retry failure must not write first-pass sidecar" >&2; exit 1; }
 
+require_voter_paths_file_nonempty "retry-codex-fail" "$out"
+
 retry_fail_fallback_tmp="$TMP/retry-fail-fallback-claude"
 retry_fail_fallback_count_file="$TMP/retry-fail-fallback-claude-count.txt"
 out=$(PATH="$STUB_BIN:$PATH" CLAUDE_STUB_MODE=parse_retry_fail CLAUDE_STUB_COUNT_FILE="$retry_fail_fallback_count_file" "$SCRIPT" \
@@ -464,6 +493,7 @@ grep -Fq "VOTER_2_PATH=$retry_fail_fallback_tmp/codex-vote-output-phase3.txt" <<
     || { echo "FAIL: fallback-claude fixture should write an output-specific codex voter diag" >&2; exit 1; }
 grep -Fq "voter_file=$retry_fail_fallback_tmp/codex-vote-output-phase3.txt" "$retry_fail_fallback_tmp/codex-vote-output-phase3-parse-rate-diag.txt" \
     || { echo "FAIL: fallback-claude fixture diag should bind to the phase3 codex slot output path" >&2; exit 1; }
+require_voter_paths_file_nonempty "retry-fallback-claude" "$out"
 fi  # end section: retry-codex-fail-and-fallback
 
 if section_runs regressions-r1-r2; then
@@ -487,6 +517,7 @@ if [[ -s "$env_isolation_parent" ]]; then
     echo "FAIL: regression1 env-isolation — parent LARCH_EXECUTION_ISSUES_LOG was written despite test-tmpdir voter_path" >&2
     exit 1
 fi
+require_voter_paths_file_nonempty "regression1-env-isolation" "$out"
 
 # Regression 2: harness-ancestor path guard — diag file written locally but the explicit
 # parent issues-log remains untouched for review tmpdirs nested under the harness tmp root.
@@ -507,6 +538,7 @@ if [[ -s "$path_guard_issues" ]]; then
     echo "FAIL: regression2 path-guard — append-tool-failure.sh was called despite test-tmpdir voter_path" >&2
     exit 1
 fi
+require_voter_paths_file_nonempty "regression2-path-guard" "$out"
 fi  # end section: regressions-r1-r2
 
 if section_runs regressions-r3-codex; then
@@ -533,6 +565,7 @@ if section_runs regressions-r3-codex; then
         || { echo "FAIL: regression3 prod-shape codex — issues-log entry missing" >&2; exit 1; }
     grep -Fq 'launch-review.sh --tool codex (voter parse-rate check)' "$prod_codex_issues" \
         || { echo "FAIL: regression3 prod-shape codex — codex tool label missing from issues-log" >&2; exit 1; }
+    require_voter_paths_file_nonempty "regression3-prod-codex" "$out"
 )
 fi  # end section: regressions-r3-codex
 

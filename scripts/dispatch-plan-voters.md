@@ -19,6 +19,7 @@ Inputs are `--ballot-file`, `--design-tmpdir`, `--codex-available`, `--cursor-av
 Stdout is `KEY=value` only:
 
 - `VOTER_2_PATH`, `VOTER_3_PATH`
+- `VOTER_PATHS_FILE` — path to `plan-voter-paths.txt` under `--design-tmpdir`, one non-failed voter path per line (atomic write)
 - `VOTER_2_TOOL`, `VOTER_3_TOOL`
 - `VOTER_2_STATUS`, `VOTER_3_STATUS`
 - optional `DEGRADED_PANEL_WARNING`
