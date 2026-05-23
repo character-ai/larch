@@ -75,6 +75,7 @@ set -e
 assert_rc "annotate success" 0 "$rc"
 grep -q 'Filed URL.*issues/42' "$TMP/c2/oos-accepted-design.md" || fail "case2 missing Filed URL in accepted"
 grep -q 'issues/42' "$TMP/c2/oos-issues-created.md" || fail "case2 sentinel missing url"
+grep -q $'OOS_FILE_MAP\t1\t' "$TMP/c2/oos-issues-created.md" || fail "case2 sentinel missing OOS_FILE_MAP"
 
 # --- 3: all security -> skip-all-security ---
 mkdir -p "$TMP/c3"
@@ -288,6 +289,44 @@ assert_rc "X5 annotate" 0 "$rc"
 grep -q 'issues/50542' "$TMP/x5/oos-issues-created.md" || fail "X5 sentinel missing url"
 grep -q 'file-design-oos' "$TMP/x5/execution-issues.md" || fail "X5 expected cache warning in execution-issues"
 chmod u+w "$H5/.cache/larch/design-oos-filed" 2>/dev/null || true
+
+# --- X6: cross-session recovery pairs via OOS_FILE_MAP (not plain URL order) ---
+H6="$TMP/home-x6"
+mkdir -p "$H6/.cache/larch/design-oos-filed"
+cat >"$H6/.cache/larch/design-oos-filed/606.md" <<'EOF'
+OOS_FILE_MAP	2	https://github.com/example/larch/issues/6002
+OOS_FILE_MAP	1	https://github.com/example/larch/issues/6001
+https://github.com/example/larch/issues/6001
+https://github.com/example/larch/issues/6002
+EOF
+mkdir -p "$TMP/x6"
+: >"$TMP/x6/execution-issues.md"
+cat >"$TMP/x6/oos-accepted-design.md" <<'EOF'
+### OOS_1: A
+- **Description**: a
+- **Phase**: design
+
+### OOS_2: B
+- **Description**: b
+- **Phase**: design
+EOF
+set +e
+out_x6=$(HOME="$H6" bash "$SUBJECT" prepare --design-tmpdir "$TMP/x6" --issue-number 606 2>/dev/null)
+rc=$?
+set -e
+assert_rc "X6 cross-session map recovery" 0 "$rc"
+grep -q '^FILE_DESIGN_OOS_STATUS=skip-sentinel$' <<<"$out_x6" || fail "X6 not skip-sentinel"
+grep -A12 '^### OOS_1:' "$TMP/x6/oos-accepted-design.md" | grep -q 'issues/6001' || fail "X6 OOS_1 wrong URL"
+grep -A12 '^### OOS_2:' "$TMP/x6/oos-accepted-design.md" | grep -q 'issues/6002' || fail "X6 OOS_2 wrong URL"
+
+# --- X8: annotate rejects --clear-cross-session-cache ---
+mkdir -p "$TMP/x8"
+: >"$TMP/x8/issue.stdout"
+set +e
+bash "$SUBJECT" annotate --design-tmpdir "$TMP/x8" --issue-stdout-file "$TMP/x8/issue.stdout" --clear-cross-session-cache 2>/dev/null
+rc=$?
+set -e
+assert_rc "X8 annotate rejects clear-cache" 2 "$rc"
 
 if [[ "$FAIL" -ne 0 ]]; then
   echo "$FAIL case(s) failed, $PASS passed" >&2

@@ -44,7 +44,7 @@ count_filed_url_field_lines() {
   ere=$(_oos_github_issue_url_ere)
   tmp=$(mktemp "${TMPDIR:-/tmp}/oos-disposition-field-urls.XXXXXX")
   : >"$tmp"
-  pat="^[[:space:]]*-[[:space:]]+\*\*Filed[[:space:]]URL\*\*:[[:space:]]+${ere}$"
+  pat="^[[:space:]]*-[[:space:]]+\*\*Filed[[:space:]]URL\*\*[[:space:]]*:[[:space:]]+${ere}$"
   for f in "$@"; do
     if [ -f "$f" ] && [ -s "$f" ]; then
       grep -E "$pat" "$f" 2>/dev/null | grep -Eo "$ere" >>"$tmp" || true
