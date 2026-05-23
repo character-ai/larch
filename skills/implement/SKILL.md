@@ -868,8 +868,6 @@ After `feature-description.txt` is composed and the dirty-tree checkpoint passes
 **Otherwise** (`IS_MAIN=true`, or `IS_USER_BRANCH=false` and not on a user-prefix branch), derive a kebab-case slug from the issue title (≤40 chars), assemble `BRANCH_NAME_DERIVED=<USER_PREFIX>/<slug>-<ISSUE_NUMBER>`, and call `create-branch.sh --branch`:
 
 ```bash
-IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR"
-export IMPLEMENT_TMPDIR
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
   CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
 fi
