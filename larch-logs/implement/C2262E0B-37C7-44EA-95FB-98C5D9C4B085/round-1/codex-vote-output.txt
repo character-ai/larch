@@ -1,0 +1,15 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: NO -- protocol already has explicit per-side waterfall sections, so the remaining singular shorthand is not materially misleading.
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: EXONERATE -- ambiguity is plausible, but the current prompt already pins exact output format and more meta-boundary prose risks adding clutter.
+FINDING_11: YES
+FINDING_12: EXONERATE -- rare wording distortion is legitimate, but boundary-aware scrubbing is more complexity than this residual risk warrants.
+FINDING_13: EXONERATE -- large run-log diffs are real review noise but not worth a future tracking issue against this repo contract.
+FINDING_14: EXONERATE -- archived run-log prose can legitimately remain as historical snapshot text.
+FINDING_15: NO -- historical changelog entries should preserve what was true for the release they describe.

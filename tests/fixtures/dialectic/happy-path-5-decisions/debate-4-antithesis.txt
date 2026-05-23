@@ -1,3 +1,7 @@
+<steelman>
+Fixture steelman paragraph for dialectic smoke structural validation.
+</steelman>
+
 <claim>Antithesis claim for decision 4: the alternative option achieves the same goal with less complexity.</claim>
 
 <evidence>Supporting reference: see skills/shared/dialectic-protocol.md:97 for the threshold matrix that defines how binary votes tally.</evidence>

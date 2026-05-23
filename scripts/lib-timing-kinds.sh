@@ -51,6 +51,12 @@ TIMING_TASK_KINDS_ALLOWED=(
     codex-debate-antithesis
     cursor-debate-thesis
     cursor-debate-antithesis
+    cursor-debate-thesis-retry1
+    cursor-debate-antithesis-retry1
+    codex-debate-thesis-retry1
+    codex-debate-antithesis-retry1
+    claude-debate-thesis-retry2
+    claude-debate-antithesis-retry2
     codex-judge
     cursor-judge
     vendor-misc

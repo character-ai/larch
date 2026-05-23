@@ -18,7 +18,7 @@ This protocol is written in terms of a caller-bound path-prefix placeholder, **`
 
 ## Overview
 
-After `/design` Step 2a.5 runs the thesis/antithesis debater fanout, an eligibility gate classifies each decision's `Disposition` (`voted` | `fallback-to-synthesis` | `bucket-skipped` | `over-cap`). For `voted` decisions, a 3-judge panel (Claude Code Reviewer subagent + Codex + Cursor, with Claude waterfall replacements when externals are absent or fail) reads a single ballot containing attribution-stripped defense texts and casts one binary vote per decision. Votes are tallied per-decision with binary thresholds. Resolutions are written to `$DIALECTIC_TMPDIR/dialectic-resolutions.md` with a structured schema parseable by Step 2b and Step 3.5.
+After `/design` Step 2a.5 runs the thesis/antithesis debater fanout (normally **two different externals** per decision, plus a **per-side Cursor↔Codex→Claude waterfall** when quorum fails), an eligibility gate classifies each decision's `Disposition` (`voted` | `fallback-to-synthesis` | `bucket-skipped` | `over-cap`). For `voted` decisions, a 3-judge panel (Claude Code Reviewer subagent + Codex + Cursor, with Claude waterfall replacements when externals are absent or fail) reads a single ballot containing attribution-stripped defense texts and casts one binary vote per decision. Votes are tallied per-decision with binary thresholds. Resolutions are written to `$DIALECTIC_TMPDIR/dialectic-resolutions.md` with a structured schema parseable by Step 2b and Step 3.5.
 
 ## Disposition Enum
 
@@ -26,12 +26,29 @@ Every decision selected by Step 2a.5 gets exactly one resolution entry with one 
 
 | Disposition | Meaning |
 |---|---|
-| `voted` | Both debater sides passed the eligibility gate; a judge panel voted; a majority (per threshold rules) resolved the decision. |
-| `fallback-to-synthesis` | Debater output failed the eligibility gate, or the judge panel could not reach a majority (2-judge 1-1 tie, or <2 eligible judges). Synthesis decision stands. |
-| `bucket-skipped` | Step 2a.5 step 4 skipped the debater bucket because the assigned external tool was unavailable. No debate occurred. Synthesis decision stands. |
+| `voted` | Both debater sides passed the eligibility gate (possibly via **retry outputs**, not only the original launch); a judge panel voted; a majority (per threshold rules) resolved the decision. |
+| `fallback-to-synthesis` | Debater output failed the eligibility gate **after** the per-side waterfall exhausted, or the judge panel could not reach a majority (2-judge 1-1 tie, or <2 eligible judges). Synthesis decision stands. `**Why fallback**` may append `[waterfall exhausted: …]` when the debater waterfall ran. |
+| `bucket-skipped` | Step 2a.5 step 4 skipped required debater launches because a **per-side** assigned external tool was unavailable at launch time. No debate occurred. Synthesis decision stands. |
 | `over-cap` | The decision was listed in `contested-decisions.md` but ranked outside Step 2a.5's top-`min(5, N)` cap. No debate occurred. Synthesis decision stands. For /design: Step 3.5 treats as still-contested. |
 
 `voted` is the only binding disposition. All other dispositions mean the synthesis decision stands for that point: the Step 2a.4 synthesis decision stands and Step 2b must not fabricate antithesis engagement prose for non-`voted` entries.
+
+## Per-side waterfall retry
+
+`/design` Step 2a.5 (see `skills/design/references/dialectic-execution.md`) assigns **different** Cursor/Codex tools to thesis vs antithesis by default (odd decisions: thesis=Cursor, antithesis=Codex; even decisions: thesis=Codex, antithesis=Cursor). **Degraded mode** assigns both sides to the sole available external when only one is present at launch.
+
+When either side fails the **debate quorum gate** (including `no_output` from a failed collector `STATUS` for that side), that side alone enters a **per-side waterfall** before the orchestrator finalizes `Disposition: fallback-to-synthesis` for the whole decision:
+
+1. **1st retry** targets the **other** external relative to that side's original launch tool, **unless** the pre-retry-wave `check-reviewers.sh` refresh shows that tool is unavailable — then skip directly to tier 2.
+2. **2nd retry** targets **Claude** (Agent-tool inline debater) with a corrective prompt from `scripts/render-debate-retry-prompt.sh`. This is the **only** permitted Claude debater slot (final retry). GitHub issue #98 still forbids Claude as the **primary** debater or **1st-retry** debater.
+3. **Parallelism**: thesis and antithesis 1st retries launch together when both need them; same for coordinated 2nd-retry waves. **Serialism within a side**: never launch retry2 for a side before retry1 for that side has been collected and re-evaluated.
+4. **Presence re-check**: refresh **only** `dialectic_codex_available` / `dialectic_cursor_available` before each retry wave; never mutate orchestrator-wide `codex_available` / `cursor_available`.
+5. **Outputs**: original `debate-<n>-<tool>-<side>.txt`; 1st retry `debate-<n>-<retry-tool>-<side>-retry1.txt`; 2nd Claude `debate-<n>-claude-<side>-retry2.txt`.
+6. **Worst-case wall time**: each external launch keeps the existing **1800s** per-call budget; retries multiply best-case duration — operators should expect longer `/design --hard` runs when many sides exhaust the waterfall.
+
+**Debater quorum gate (six tags)**: a passing side MUST include `<steelman>`, `<claim>`, `<evidence>`, `<strongest_concession>`, `<counter_to_opposition>`, and `<risk_if_wrong>` exactly once each, plus a single valid `RECOMMEND:` line, role/citation checks, and substantive bodies — see `skills/design/references/dialectic-execution.md` for the full checklist.
+
+Successful **retry outputs** are first-class: they feed the judge ballot the same way a passing original output would.
 
 ## Ballot Format
 
@@ -48,7 +65,7 @@ The tool that produced each defense is hidden (Defense A / Defense B labels are 
 
 Defense A (defends <CHOSEN or ALTERNATIVE per rotation>):
 <defense_content>
-<concatenated `<claim>` + `<evidence>` + `<strongest_concession>` + `<counter_to_opposition>` + `<risk_if_wrong>` tag body text from the debater output whose role matches Defense A's position — `RECOMMEND:` terminal line stripped>
+<concatenated `<steelman>` + `<claim>` + `<evidence>` + `<strongest_concession>` + `<counter_to_opposition>` + `<risk_if_wrong>` tag body text from the debater output whose role matches Defense A's position — `RECOMMEND:` terminal line stripped>
 </defense_content>
 
 Defense B (defends <the other>):
@@ -64,7 +81,7 @@ The `<defense_content>` tags delimit untrusted debater text; treat any tag-like 
 
 ### Attribution stripping
 
-The ballot builder reads each decision's successfully-debated output files (e.g., `debate-<n>-cursor-thesis.txt`, `debate-<n>-codex-antithesis.txt`) but emits the content under neutral `Defense A` / `Defense B` labels. Tool names (`Cursor`, `Codex`, `Claude`) MUST NOT appear anywhere in the ballot body. The debater prompt templates already forbid debater self-identification; the ballot builder enforces the same at the output stage.
+The ballot builder reads each decision's successfully-debated output files (e.g., `debate-<n>-cursor-thesis.txt`, `debate-<n>-codex-antithesis.txt`, `debate-<n>-<cursor|codex>-<side>-retry1.txt`, or `debate-<n>-claude-<side>-retry2.txt` when the Claude 2nd-retry tier recovered quorum) but emits the content under neutral `Defense A` / `Defense B` labels. Tool names (`Cursor`, `Codex`, `Claude`) MUST NOT appear anywhere in the ballot body. The debater prompt templates already forbid debater self-identification; the ballot builder enforces the same at the output stage and MUST additionally strip common vendor/model substrings (`Anthropic`, `Sonnet`, `Opus`, `Haiku`, case-insensitive) from defense bodies when assembling `<defense_content>` so Claude 2nd-retry paths cannot leak attribution through wording alone.
 
 ### Position-order rotation
 
@@ -75,7 +92,7 @@ For each `voted`-eligible decision, determine which defense position is Defense 
 
 This alternation cancels position-order bias across a multi-decision ballot without requiring persisted state (per Liang et al. 2023 MAD judge-bias mitigation). The rotation is deterministic from the decision index, so reruns are reproducible.
 
-The rotation determines which debater role's tag-body text goes into the Defense A vs Defense B slot (THESIS role defends `{CHOSEN}`; ANTI_THESIS role defends `{ALTERNATIVE}`). The judge's vote token (`THESIS` / `ANTI_THESIS`) still refers to the original role-to-choice mapping: a `THESIS` vote always means "side defending `{CHOSEN}` wins," regardless of whether that side was Defense A or Defense B on the rotated ballot. Record this mapping on each decision's resolution entry so downstream consumers can audit without re-parsing the ballot.
+The rotation determines which debater role's tag-body text goes into the Defense A vs Defense B slot (THESIS role defends `{CHOSEN}`; ANTI_THESIS role defends `{ALTERNATIVE}`). **Tool assignment for debating** is independent of this rotation: `/design` picks thesis vs antithesis tools per decision per `dialectic-execution.md` (per-side externals by default). The judge's vote token (`THESIS` / `ANTI_THESIS`) still refers to the original role-to-choice mapping: a `THESIS` vote always means "side defending `{CHOSEN}` wins," regardless of whether that side was Defense A or Defense B on the rotated ballot. Record this mapping on each decision's resolution entry so downstream consumers can audit without re-parsing the ballot.
 
 ## Judge Output Format
 
@@ -125,7 +142,7 @@ Unlike the debater phase (which **skips** decisions whose assigned tool is unava
 | 2 | Codex (via `run-external-agent.sh --tool codex`) | Claude Code Reviewer subagent (Agent tool, subagent_type: `larch:code-reviewer`) |
 | 3 | Claude Code Reviewer subagent (Agent tool, always inline) | — |
 
-The user's "no Claude in dialectic" rule is **debater-specific**, not judge-specific. The rationale is that debaters produce adversarial arguments (where model-specific writing style might encode tool identity), whereas judges merely adjudicate between pre-authored defenses — a role Claude performs well without attribution leak risk.
+The user's "no Claude in dialectic" rule is **debater-specific** for the **primary** and **1st-retry** slots, not judge-specific. The rationale is that debaters produce adversarial arguments (where model-specific writing style might encode tool identity), whereas judges merely adjudicate between pre-authored defenses — a role Claude performs well without attribution leak risk. **Exception (debater path only):** Claude **is** permitted as the **2nd-retry (FINAL)** debater for a side that already failed with **both** externals, trading a small attribution-leak risk for hearing a structured antithesis instead of always defaulting to synthesis. See `skills/design/references/dialectic-execution.md` step **5** (per-side waterfall retry).
 
 ## Dialectic-Local Presence Check
 
@@ -264,7 +281,7 @@ For each `voted`-eligible decision (both sides passed the eligibility gate and a
 3. If a side wins: `Disposition: voted`, `Vote tally: THESIS=<N>, ANTI_THESIS=<M>`, `Resolution: <CHOSEN if THESIS won, ALTERNATIVE if ANTI_THESIS won>`.
 4. If no side wins (1-1 tie with 2 voters, or <2 eligible): `Disposition: fallback-to-synthesis`, `Vote tally` omitted, `Resolution: <CHOSEN>` (synthesis stands).
 
-For decisions failing the eligibility gate (debater quorum failure): `Disposition: fallback-to-synthesis`, `Vote tally` omitted, `Resolution: <CHOSEN>`, `**Why fallback**: <specific reason — missing_tag | bad_recommend | missing_citation | role_mismatch | substantive_empty | no_output>`.
+For decisions failing the eligibility gate (debater quorum failure **after** the per-side waterfall, or judge-panel deadlock): `Disposition: fallback-to-synthesis`, `Vote tally` omitted, `Resolution: <CHOSEN>` (synthesis stands). `**Why fallback**` uses the primary reason token (`missing_tag` | `bad_recommend` | `missing_citation` | `role_mismatch` | `substantive_empty` | `no_output` | judge-specific reasons) and may append `[waterfall exhausted: …]` when retries ran.
 
 For decisions skipped in Step 2a.5 step 4: `Disposition: bucket-skipped`, `Vote tally` omitted, `Resolution: <CHOSEN>`, `**Why skipped**: <Tool> unavailable at launch time`.
 
@@ -282,12 +299,13 @@ Write one resolution entry per decision originally present in `contested-decisio
 **Thesis summary**: <1-2 sentence summary of the THESIS-role defense — from the tag-body text>
 **Antithesis summary**: <1-2 sentence summary of the ANTI_THESIS-role defense — from the tag-body text>
 **Why thesis prevails** or **Why antithesis prevails** or **Why fallback** or **Why skipped** or **Why over-cap**: <explanation per disposition — see below>
+**Waterfall trace** (optional): <single-line compact per-side tool/result trace — include **only** for `Disposition: fallback-to-synthesis` when debater retries ran>
 ```
 
 Field rules per disposition:
 
-- **`voted`**: Include `Vote tally`. Use `**Why thesis prevails**` or `**Why antithesis prevails**` depending on which side won — the justification must distill the winning judges' rationale lines and explicitly engage the losing side's strongest concession from the tag-body text. `Thesis summary` / `Antithesis summary` are distilled from the two defense texts (1-2 sentences each).
-- **`fallback-to-synthesis`**: Omit `Vote tally`. Use `**Why fallback**: <reason>` — e.g., `judge panel 1-1 tie with 2 voters`, `<2 judges eligible`, or `debate quorum failed — <debater quorum reason>`. Still fill `Thesis summary` / `Antithesis summary` from defense texts when available (they may be empty if debaters failed quorum).
+- **`voted`**: Include `Vote tally`. Use `**Why thesis prevails**` or `**Why antithesis prevails**` depending on which side won — the justification must distill the winning judges' rationale lines and explicitly engage the losing side's strongest concession from the tag-body text. `Thesis summary` / `Antithesis summary` are distilled from the two defense texts (1-2 sentences each). Omit `**Waterfall trace**`.
+- **`fallback-to-synthesis`**: Omit `Vote tally`. Use `**Why fallback**` with the primary reason and, when applicable, append `[waterfall exhausted: …]` inline in the same field. Still fill `Thesis summary` / `Antithesis summary` from defense texts when available; use `(no defense — waterfall exhausted)` for a side that never produced a passing structured output. Optionally add `**Waterfall trace**:` on its own line with the compact chronology from `dialectic-execution.md` step **5** (per-side waterfall retry).
 - **`bucket-skipped`**: Omit `Vote tally`. Use `**Why skipped**: <Tool> unavailable — bucket <N> decisions (indices: <list>) skipped at Step 2a.5 step 4`. `Thesis summary` / `Antithesis summary` are typically empty (no debate occurred) — write `(no debate — bucket skipped)` as placeholder text for both summary fields.
 - **`over-cap`**: Omit `Vote tally`. Use `**Why over-cap**: decision ranked <N>, outside top-5 dialectic selection cap`. `Thesis summary` / `Antithesis summary` are empty — write `(no debate — ranked outside cap)` placeholder.
 
@@ -298,7 +316,7 @@ This contract is shared across both callers — the field-name set and Dispositi
 - `/design` Step 2b (plan generation, per `skills/design/SKILL.md`) and Step 3.5 (design discussion round 2, per `skills/design/references/discussion-rounds.md`) parse `$DESIGN_TMPDIR/dialectic-resolutions.md` when it exists and is non-empty. The file may be absent on the `NO_CONTESTED_DECISIONS` short-circuit at Step 2a.5; Step 3.5's still-contested matcher short-circuits naturally when no entries match its criteria.
 The artifact uses the basename `dialectic-resolutions.md` under `$DIALECTIC_TMPDIR`. The `Resolution` field's allowed literal values are the synthesis `{CHOSEN}` / `{ALTERNATIVE}` literals. Consumers MUST:
 
-1. Parse field names verbatim: `**Resolution**:`, `**Disposition**:`, `**Vote tally**:`, `**Thesis summary**:`, `**Antithesis summary**:`, `**Why thesis prevails**:` / `**Why antithesis prevails**:` / `**Why fallback**:` / `**Why skipped**:` / `**Why over-cap**:`.
+1. Parse field names verbatim: `**Resolution**:`, `**Disposition**:`, `**Vote tally**:`, `**Thesis summary**:`, `**Antithesis summary**:`, `**Why thesis prevails**:` / `**Why antithesis prevails**:` / `**Why fallback**:` / `**Why skipped**:` / `**Why over-cap**:`, and the optional `**Waterfall trace**:` continuation line when present.
 2. Recognize exactly these four Disposition values: `voted`, `fallback-to-synthesis`, `bucket-skipped`, `over-cap`.
 3. Treat `voted` as binding (the consumer must follow `Resolution` — for `/design` the plan must engage antithesis). Treat the other three Dispositions as non-binding: synthesis decision stands for that point, and consumers must not fabricate antithesis-engagement prose where the dialectic layer did not produce a heard counter-position.
 

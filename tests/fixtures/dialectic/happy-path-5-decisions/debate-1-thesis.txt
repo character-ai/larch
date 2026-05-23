@@ -1,3 +1,7 @@
+<steelman>
+Fixture steelman paragraph for dialectic smoke structural validation.
+</steelman>
+
 <claim>Thesis claim for decision 1: the chosen synthesis option is correct.</claim>
 
 <evidence>Supporting reference: see skills/shared/dialectic-protocol.md:83 for parser rules that govern how this decision's resolution will be applied downstream.</evidence>

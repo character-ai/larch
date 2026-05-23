@@ -49,15 +49,15 @@ grep -q 'Do NOT load .*zero-externals guardrail' "$SKILL_MD" \
 # Check 3: references/dialectic-execution.md exists and has header MANDATORY for dialectic-debate.md.
 [[ -f "$DIALEXEC_MD" ]] || fail "references/dialectic-execution.md missing: $DIALEXEC_MD"
 
-# The MANDATORY directive must appear in the header region (before step 6 body).
-step6_line=$(grep -n '^6\. \*\*Per-decision prompt-file rendering' "$DIALEXEC_MD" | head -1 | cut -d: -f1 || true)
-[[ -n "$step6_line" ]] || fail "references/dialectic-execution.md missing '6. Per-decision prompt-file rendering' body"
+# The MANDATORY directive must appear in the header region (before step 2 body).
+step2_line=$(grep -n '^2\. \*\*Per-decision prompt-file rendering' "$DIALEXEC_MD" | head -1 | cut -d: -f1 || true)
+[[ -n "$step2_line" ]] || fail "references/dialectic-execution.md missing '2. Per-decision prompt-file rendering' body"
 
 mandatory_line=$(grep -n 'MANDATORY — READ ENTIRE FILE before rendering debate prompts' "$DIALEXEC_MD" | head -1 | cut -d: -f1 || true)
 [[ -n "$mandatory_line" ]] || fail "references/dialectic-execution.md lacks header MANDATORY naming dialectic-debate.md"
 
-if (( mandatory_line >= step6_line )); then
-  fail "references/dialectic-execution.md header MANDATORY (line $mandatory_line) must appear BEFORE step 6 (line $step6_line)"
+if (( mandatory_line >= step2_line )); then
+  fail "references/dialectic-execution.md header MANDATORY (line $mandatory_line) must appear BEFORE step 2 (line $step2_line)"
 fi
 
 grep -q 'dialectic-debate\.md' "$DIALEXEC_MD" \
@@ -414,6 +414,40 @@ grep -Fq 'ACTION=FINALIZE' "$SKILL_MD" \
   || fail "(14b3) SKILL.md missing ACTION=FINALIZE emission"
 grep -Fq 'design-driver.sh' "$SKILL_MD" \
   || fail "(14b4) SKILL.md missing design-driver.sh dispatcher invocation"
+
+# Check 16: dialectic waterfall + per-side assignment contract pins (#2620).
+DIALPROTO_MD="$REPO_ROOT/skills/shared/dialectic-protocol.md"
+DEBATE_MD="$REPO_ROOT/skills/design/references/dialectic-debate.md"
+TIMING_KINDS_SH="$REPO_ROOT/scripts/lib-timing-kinds.sh"
+grep -Fq '## Per-side waterfall retry' "$DIALPROTO_MD" \
+  || fail "(16) dialectic-protocol.md missing '## Per-side waterfall retry' section header"
+grep -Fq 'Debater quorum gate (six tags)' "$DIALPROTO_MD" \
+  || fail "(16) dialectic-protocol.md missing six-tag eligibility gate anchor"
+grep -Fq '<steelman>' "$DIALPROTO_MD" \
+  || fail "(16) dialectic-protocol.md missing <steelman> in six-tag gate text"
+grep -Fq '5. **Per-side waterfall retry**' "$DIALEXEC_MD" \
+  || fail "(16) dialectic-execution.md missing step 5 Per-side waterfall retry header"
+grep -Fq 'waterfall' "$DIALEXEC_MD" \
+  || fail "(16) dialectic-execution.md missing waterfall token (step 5 contract)"
+grep -Fq '1. **Per-side external tool assignment**' "$DIALEXEC_MD" \
+  || fail "(16) dialectic-execution.md missing step 1 per-side external tool assignment header"
+grep -Fq 'OUTPUT FORMAT' "$DEBATE_MD" \
+  || fail "(16) dialectic-debate.md missing OUTPUT FORMAT header"
+grep -Fq 'SELF-CHECK BEFORE STOPPING' "$DEBATE_MD" \
+  || fail "(16) dialectic-debate.md missing SELF-CHECK BEFORE STOPPING directive"
+grep -Fq '2nd-retry' "$SKILL_MD" \
+  || fail "(16) design SKILL.md NEVER #2 missing 2nd-retry Claude exception token"
+for kind in \
+  cursor-debate-thesis-retry1 \
+  cursor-debate-antithesis-retry1 \
+  codex-debate-thesis-retry1 \
+  codex-debate-antithesis-retry1 \
+  claude-debate-thesis-retry2 \
+  claude-debate-antithesis-retry2
+do
+  grep -Fq "$kind" "$TIMING_KINDS_SH" \
+    || fail "(16) scripts/lib-timing-kinds.sh missing timing kind: $kind"
+done
 
 echo "PASS: test-design-structure.sh — structural invariants hold (including security OOS exclusions)"
 exit 0

@@ -15,12 +15,16 @@
 #   - Threshold rules ("Threshold Rules" section): 3 voters → 2+ same-side
 #     wins; 2 voters → unanimous wins or 1-1 tie → fallback-to-synthesis;
 #     <2 voters → fallback-to-synthesis.
-#   - Debater structural invariants: 5 required tags per side (claim,
-#     evidence, strongest_concession, counter_to_opposition, risk_if_wrong),
+#   - Debater structural invariants: 6 required tags per side (steelman,
+#     claim, evidence, strongest_concession, counter_to_opposition, risk_if_wrong),
 #     exactly one RECOMMEND: line, role-vs-RECOMMEND consistency, file:line
 #     citation in <evidence>.
 #   - Ballot anonymity: Cursor/Codex/Claude tokens MUST NOT appear in the
-#     ballot body (see "Attribution stripping" section).
+#     ballot body; common vendor/model substrings from protocol attribution
+#     stripping (Anthropic, Sonnet, Opus, Haiku) likewise (see "Attribution
+#     stripping" section). Fixtures may include `debate-*-claude-*-retry2.txt`
+#     paths so CI exercises the Claude 2nd-retry filename shape alongside the
+#     same debater structural checks as primary outputs.
 #   - Drift guard: protocol file contains the stable anchor sentence
 #     "Recognize exactly these four Disposition values" with the four
 #     canonical values backticked nearby.
@@ -101,7 +105,7 @@ validate_debater() {
     fi
 
     local tag
-    for tag in '<claim>' '<evidence>' '<strongest_concession>' '<counter_to_opposition>' '<risk_if_wrong>'; do
+    for tag in '<steelman>' '<claim>' '<evidence>' '<strongest_concession>' '<counter_to_opposition>' '<risk_if_wrong>'; do
         if ! grep -Fq "$tag" "$file"; then
             fail "$fixture: debater $(basename "$file") missing tag $tag"
             return 1
@@ -156,11 +160,11 @@ validate_debater() {
 
 # validate_ballot_anonymity <ballot_file> <fixture_name>
 # Per skills/shared/dialectic-protocol.md "Attribution stripping" section, tool
-# names must not appear anywhere in the ballot body. Check case-insensitively
-# to catch mixed-case leaks (CURSOR, claude, Codex, etc.).
+# names and common vendor/model substrings must not appear anywhere in the
+# ballot body. Check case-insensitively to catch mixed-case leaks.
 validate_ballot_anonymity() {
     local file=$1 fixture=$2 leak=0 term
-    for term in 'Cursor' 'Codex' 'Claude'; do
+    for term in 'Cursor' 'Codex' 'Claude' 'Anthropic' 'Sonnet' 'Opus' 'Haiku'; do
         if grep -Fiq "$term" "$file"; then
             fail "$fixture: ballot $(basename "$file") contains attribution leak '$term' (case-insensitive — must not appear anywhere in ballot body)"
             leak=1
@@ -335,6 +339,17 @@ run_fixture() {
         for af in "$fixture_dir"/debate-*-antithesis.txt; do
             [[ -e "$af" ]] || continue
             validate_debater "$af" antithesis "$fixture" || true
+        done
+        local rf bn side_retry
+        for rf in "$fixture_dir"/debate-*-claude-*-retry2.txt; do
+            [[ -f "$rf" ]] || continue
+            bn=$(basename "$rf" .txt)
+            if [[ "$bn" =~ -claude-(thesis|antithesis)-retry2$ ]]; then
+                side_retry="${BASH_REMATCH[1]}"
+                validate_debater "$rf" "$side_retry" "$fixture" || true
+            else
+                fail "$fixture: unexpected Claude retry2 debater basename $(basename "$rf")"
+            fi
         done
     fi
 
