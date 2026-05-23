@@ -562,6 +562,9 @@ rm -f "$SANDBOX/repo/.git/larch-stalled-run.txt" "$SANDBOX/stash-argv.txt"
 OUT=$(run_subject teardown --state-file "$STATE" --implement-tmpdir "$SANDBOX/tmp")
 RENAME_ARGV=$(cat "$SANDBOX/rename-argv.txt")
 assert_contains "done" "$RENAME_ARGV" "teardown: branch B renames done"
+# Split literal so repo-wide acceptance greps do not match this test harness.
+rt_flag=$(printf '%s%s' -- "round-trip")
+assert_not_contains "$rt_flag" "$RENAME_ARGV" "teardown: rename argv omits round-trip flag"
 assert_contains "--repo" "$RENAME_ARGV" "teardown: branch B passes repo to rename"
 assert_contains "RENAME_BRANCH=B" "$OUT" "teardown: branch B tail"
 assert_contains "STASH_REF=" "$OUT" "teardown: success path emits empty stash ref"
@@ -580,13 +583,6 @@ OUT=$(run_subject teardown --state-file "$STATE" --implement-tmpdir "$SANDBOX/tm
 RENAME_ARGV=$(cat "$SANDBOX/rename-argv.txt")
 assert_contains "done" "$RENAME_ARGV" "teardown: branch B design-only renames done"
 assert_contains "RENAME_BRANCH=B" "$OUT" "teardown: branch B design-only tail"
-
-write_state "$STATE" STALL_TRACKING=false DONE_RENAME_APPLIED=false PR_NUMBER=789
-: > "$SANDBOX/rename-argv.txt"
-OUT=$(run_subject teardown --state-file "$STATE" --implement-tmpdir "$SANDBOX/tmp")
-RENAME_ARGV=$(cat "$SANDBOX/rename-argv.txt")
-rt_flag=$(printf '%s%s' -- "round-trip")
-assert_not_contains "$rt_flag" "$RENAME_ARGV" "teardown: rename argv omits round-trip flag"
 
 write_state "$STATE" DONE_RENAME_APPLIED=true
 OUT=$(run_subject teardown --state-file "$STATE" --implement-tmpdir "$SANDBOX/tmp")

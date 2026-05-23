@@ -134,8 +134,8 @@ strip_lifecycle_prefix() {
 # truncate_title_with_prefixes_to_256 <prefixes> <user-tail> —
 # character-oriented truncation to 256 chars using bash string semantics
 # (`${#var}` + slice). GitHub's title limit is 256 characters, matching
-# bash's native string semantics under UTF-8 locales. Preserves both managed
-# prefixes at the head and slices only the user tail.
+# bash's native string semantics under UTF-8 locales. Preserves the composed
+# prefixes string at the head and slices only the user tail.
 truncate_title_with_prefixes_to_256() {
     local prefixes="$1"
     local tail="$2"
