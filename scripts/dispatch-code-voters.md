@@ -1,8 +1,8 @@
 # dispatch-code-voters.sh
 
-Launches the `/review` judge voting panel through the current waterfall stack. Round 1 uses a 3-judge panel (Claude + Codex + Cursor); rounds 2+ use a 2-judge panel (Claude + Cursor) because the Codex voter is omitted after the first round and Codex is also removed from waterfall fallback for those rounds.
+Launches the `/review` judge voting panel through the current waterfall stack. Every review round uses a 3-judge panel (Claude + Codex + Cursor). The Codex-first and Cursor-first slots are always present in the manifest; session-wide Codex absence or per-slot failures waterfall through `dispatch-with-waterfall.sh` (Codex → Cursor → Claude per slot) so unhealthy externals are replaced without shrinking the intended panel shape.
 
-Voter 1 is always Claude and is launched directly through `scripts/launch-claude-review.sh`. On round 1, Voter 2 and Voter 3 are dispatched as Codex-first and Cursor-first slots through `scripts/dispatch-with-waterfall.sh`, so each external slot can fall through to the alternate external tool and then to Claude when necessary. In round 2+, Voter 2 (Codex) is intentionally skipped and the manifest contains only Voter 3 (Cursor), whose fallback path is Cursor then Claude.
+Voter 1 is always Claude and is launched directly through `scripts/launch-claude-review.sh`. Voter 2 and Voter 3 are dispatched as Codex-first and Cursor-first slots through `scripts/dispatch-with-waterfall.sh`, so each external slot can fall through to the alternate external tool and then to Claude when necessary.
 
 ## Inputs
 
@@ -13,7 +13,7 @@ Voter 1 is always Claude and is launched directly through `scripts/launch-claude
 - `--session-env-path FILE`: optional nested-session context.
 - `--diff-file FILE`: accepted for backward compatibility but not forwarded to voter launches; voters receive ballot only and Read cited files on demand.
 - `--plan-file FILE`: accepted for backward compatibility but not forwarded to voter launches; voters receive ballot only and Read cited files on demand.
-- `--round-num N`: positive integer review round number (default `1`). When `N > 1` the Codex voter slot is omitted; the panel falls back to Claude + Cursor (2-judge panel).
+- `--round-num N`: positive integer review round number (default `1`). Used for breadcrumbs, retry logging, and per-round artifact paths; it does **not** change which voters are launched.
 
 ## Voter-role context shape
 
@@ -21,24 +21,24 @@ All launched voter dispatches use `mode=description` with no inline diff or plan
 
 ## Behavior
 
-Voter 1 runs synchronously via `launch-claude-review.sh` with `--role voter`. On round 1, Voter 2 (Codex-first) and Voter 3 (Cursor-first) are dispatched together through `dispatch-with-waterfall.sh`:
+Voter 1 runs synchronously via `launch-claude-review.sh` with `--role voter`. Voter 2 (Codex-first) and Voter 3 (Cursor-first) are dispatched together through `dispatch-with-waterfall.sh`:
 
 - Phase 1: primary external tool (Codex for Voter 2, Cursor for Voter 3) when present.
 - Phase 2: alternate external tool when Phase 1 is absent or fails.
 - Phase 3: Claude replacement when both external phases are absent or fail.
 
-On round 2+, the script writes only the Cursor slot into the NDJSON manifest and calls the waterfall with `--codex-present false`, so no Codex fallback can be selected after round 1. `DISPATCH_OK` is set to `false` when Voter 1 fails or any launched waterfall slot hard-fails in Phase 3.
+The script always writes both waterfall slots into the NDJSON manifest and calls the waterfall with `--codex-present` mirroring `--codex-available`. `DISPATCH_OK` is set to `false` when Voter 1 fails or any launched waterfall slot hard-fails in Phase 3.
 
-A `voter1_rc=1` exit with non-zero `output_bytes` and empty launcher-stderr indicates the claude CLI received an API-level error response (rate limit, server overload, or transient auth failure) rather than a wrapper validation failure; the CLI exits 1 with JSON error body on stdout while the `launch-claude-review.sh` shell wrapper passes all its own checks and emits nothing to stderr. This shape is distinct from `voter1_rc=2`, which indicates a wrapper validation failure caught inside `launch-claude-review.sh` before the CLI return. When only Voter 1 is affected, the 2-judge fallback (Voters 2 and 3) is the accepted recovery; no manual intervention is required. See #2433 for the investigation that identified and characterized this pattern.
+A `voter1_rc=1` exit with non-zero `output_bytes` and empty launcher-stderr indicates the claude CLI received an API-level error response (rate limit, server overload, or transient auth failure) rather than a wrapper validation failure; the CLI exits 1 with JSON error body on stdout while the `launch-claude-review.sh` shell wrapper passes all its own checks and emits nothing to stderr. This shape is distinct from `voter1_rc=2`, which indicates a wrapper validation failure caught inside `launch-claude-review.sh` before the CLI return. When only Voter 1 is affected, the remaining waterfall voters still run under the three-slot contract. See #2433 for the investigation that identified and characterized this pattern.
 
 ## Output
 
 - `VOTER_1_PATH`, `VOTER_2_PATH`, `VOTER_3_PATH`: final output path per slot.
 - `VOTER_PATHS_FILE`: path to `code-voter-paths.txt` under `--review-tmpdir`, listing non-empty voter paths in slot order (Voter 2 omitted when `VOTER_2_STATUS=skipped` in round 2+); atomic write.
 - `VOTER_1_TOOL`, `VOTER_2_TOOL`, `VOTER_3_TOOL`: final tool that produced each slot (`claude`, `codex`, or `cursor`).
-- `VOTER_1_STATUS`, `VOTER_2_STATUS`, `VOTER_3_STATUS`: `launched`, `fallback`, `failed`, or `skipped` (Codex voter when round > 1).
-- `VOTER_1_PARSE_RATE_STATUS`, `VOTER_2_PARSE_RATE_STATUS`, `VOTER_3_PARSE_RATE_STATUS`: `OK`, `NOT_SUBSTANTIVE`, or `SKIPPED` when the slot failed or was skipped before parse-rate evaluation.
-- `DEGRADED_PANEL_WARNING`: emitted when effective judges fall below the expected count for the round (3 in round 1, 2 in round 2+).
+- `VOTER_1_STATUS`, `VOTER_2_STATUS`, `VOTER_3_STATUS`: `launched`, `fallback`, or `failed`.
+- `VOTER_1_PARSE_RATE_STATUS`, `VOTER_2_PARSE_RATE_STATUS`, `VOTER_3_PARSE_RATE_STATUS`: `OK`, `NOT_SUBSTANTIVE`, or `SKIPPED` when the slot failed before parse-rate evaluation.
+- `DEGRADED_PANEL_WARNING`: emitted when effective judges fall below the expected count of **3** for the round.
 - `DISPATCH_OK`: `false` when the direct Claude voter fails or any waterfall slot hard-fails in Phase 3.
 
 When `VOTER_1_STATUS=failed` (non-zero exit or empty output from the Claude voter), a Warnings entry is appended to `execution-issues.md` via `append-tool-failure.sh`, capturing `voter1_rc`, the output byte count, the first 200 bytes of `$VOTER_1_PATH` when `voter1_rc != 0` and the file is non-empty (under a `--- first 200 bytes of voter output ---` header), the first 200 bytes of `${VOTER_1_PATH}.diag` when present, and the first 500 bytes of `${VOTER_1_PATH}.launcher-stderr` when present. The launcher-stderr sidecar (captured from the `launch-claude-review.sh` invocation via `2> "${VOTER_1_PATH}.launcher-stderr"`) carries the specific validation message that `launch-claude-subprocess.sh`'s `fail()` emits, so the Warning identifies which check tripped instead of only the exit code. The log path resolves via `LARCH_EXECUTION_ISSUES_LOG`, `$(dirname "$SESSION_ENV_PATH")/execution-issues.md`, `$IMPLEMENT_TMPDIR/execution-issues.md`, or `$REVIEW_TMPDIR/execution-issues.md` in that order (#2254, #2292).

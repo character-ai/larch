@@ -513,9 +513,9 @@ fi
 
 tally_out="$REVIEW_TMPDIR/review-core-tally.env"
 
-# Dispatch the round-aware code-review voting panel and collect vote-output files.
-# Round 1 uses Claude + Codex + Cursor; later rounds omit Codex and use
-# Claude + Cursor only. Failed voters are treated as abstentions.
+# Dispatch the code-review voting panel and collect vote-output files.
+# Every round uses Claude + Codex + Cursor; Claude replacements cover unhealthy
+# external voters via the waterfall. Failed voters are treated as abstentions.
 voter_files=()
 voter_1_tool=""
 voter_2_tool=""

@@ -124,12 +124,8 @@ normalize_reviewer_basename() {
 }
 
 expected_voters_for_round() {
-    local round_num="$1"
-    if (( round_num > 1 )); then
-        printf '2\n'
-    else
-        printf '3\n'
-    fi
+    # Code review always targets a 3-judge panel; per-round `--round-num` does not shrink quorum.
+    printf '3\n'
 }
 
 static_focus_area() {

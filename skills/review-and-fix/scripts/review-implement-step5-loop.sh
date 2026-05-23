@@ -147,7 +147,7 @@ run_implement_loop() {
                 flush_review_batches "$IMPLEMENT_TMPDIR" "$RUN_ID" "$rounds_completed" 0 0 0 0 2>/dev/null || true
                 exit 2
                 ;;
-            converged-small-changes|no-changes|no-findings|in-scope-filtered-out)
+            converged-small-changes|no-changes|no-findings|in-scope-filtered-out|complete)
                 step5_emit_final_envelope complete false "" "$rounds_completed" "$round_num" "$post_round_status" "$post_coder" "$last_hint" "$effective_round_cap"
                 exit 0
                 ;;

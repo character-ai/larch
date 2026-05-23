@@ -20,7 +20,7 @@
 #   1. POSITIVE ANCHORS (required markers) — each target file MUST contain
 #      all of the following strings:
 #        - "5 rounds"                    (case-sensitive, grep -F)
-#        - "3-judge panel on round 1"  (case-INSENSITIVE, grep -iF)
+#        - "3-judge panel on every round" (case-INSENSITIVE, grep -iF)
 #        - "--panel hard"               (case-sensitive, grep -F)
 #        - "6 Cursor specialists"       (case-sensitive, grep -F)
 #
@@ -83,7 +83,7 @@ REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # Format: "marker|casing" where casing is "sensitive" or "insensitive".
 # To add a marker, append a new entry — `check_file` iterates this array.
 readonly POS_MARKERS=(
-  "3-judge panel on round 1|insensitive"
+  "3-judge panel on every round|insensitive"
   "6 Cursor specialists|sensitive"
 )
 
@@ -303,7 +303,7 @@ run_self_test() {
 This is a fixture describing /implement Step 5.
 Step 5 delegates to review-and-fix.sh --panel hard.
 The review loop runs up to 5 rounds.
-The loop runs a 3-judge panel on round 1 (Claude opus + Codex + Cursor) and a 2-judge panel on rounds 2+ (Claude + Cursor).
+The loop runs a 3-judge panel on every round (Claude opus + Codex + Cursor).
 The review loop uses 6 Cursor specialists in the Step 5 posture.
 EOF
 
@@ -317,7 +317,7 @@ EOF
 Stale-phrase fixture: contains every positive marker so only the stale phrase can drive failure.
 Step 5 delegates to review-and-fix.sh --panel hard.
 The review loop runs up to 5 rounds.
-The loop runs a 3-judge panel on round 1 (Claude opus + Codex + Cursor) and a 2-judge panel on rounds 2+ (Claude + Cursor).
+The loop runs a 3-judge panel on every round (Claude opus + Codex + Cursor).
 The review loop uses 6 Cursor specialists in the Step 5 posture.
 Stale phrase intentionally embedded: simplified code review (1 Claude Code Reviewer subagent, 1 round).
 EOF

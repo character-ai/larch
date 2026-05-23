@@ -192,7 +192,7 @@ cat >"$TMP" <<'HEADER'
 
 This document is a consumer-doc projection of runtime authorities. The runtime authority listed for each row remains the source of truth; the projection exists so consumer docs can link to stable row anchors instead of repeating drift-prone counts.
 
-`/implement` Step 5 phrases pinned by `scripts/test-quick-mode-docs-sync.sh` (for example `5 rounds`, `--panel hard`, `3-judge panel on round 1`, and `6 Cursor specialists`) are intentionally excluded from this projection. They remain owned by that harness's edit-in-sync rule.
+`/implement` Step 5 phrases pinned by `scripts/test-quick-mode-docs-sync.sh` (for example `5 rounds`, `--panel hard`, `3-judge panel on every round`, and `6 Cursor specialists`) are intentionally excluded from this projection. They remain owned by that harness's edit-in-sync rule.
 
 | Key | Value | Composition | Runtime Authority |
 |---|---:|---|---|
