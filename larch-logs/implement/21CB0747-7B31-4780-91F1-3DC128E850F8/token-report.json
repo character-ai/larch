@@ -185,32 +185,43 @@
       {
         "step": "Step 8 — version bump",
         "totals": {
-          "input": 1,
-          "cache_read": 139464,
-          "cache_create": 331,
-          "output": 914,
-          "total": 140710
+          "input": 6,
+          "cache_read": 849399,
+          "cache_create": 6516,
+          "output": 5270,
+          "total": 861191
         },
         "skills": [
           {
             "skill": "larch:implement",
             "totals": {
-              "input": 1,
-              "cache_read": 139464,
-              "cache_create": 331,
-              "output": 914,
-              "total": 140710
+              "input": 6,
+              "cache_read": 849399,
+              "cache_create": 6516,
+              "output": 5270,
+              "total": 861191
             }
           }
         ]
+      },
+      {
+        "step": "Step 6 — checks second pass",
+        "totals": {
+          "input": 0,
+          "cache_read": 0,
+          "cache_create": 0,
+          "output": 0,
+          "total": 0
+        },
+        "skills": []
       }
     ],
     "totals": {
-      "input": 87,
-      "cache_read": 10523189,
-      "cache_create": 422535,
-      "output": 46019,
-      "total": 10991830
+      "input": 92,
+      "cache_read": 11233124,
+      "cache_create": 428720,
+      "output": 50375,
+      "total": 11712311
     }
   },
   "codex": {
@@ -281,6 +292,14 @@
       },
       {
         "step": "Step 8 — version bump",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 6 — checks second pass",
         "totals": {
           "input": 0,
           "output": 0,
@@ -362,6 +381,14 @@
       },
       {
         "step": "Step 8 — version bump",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 6 — checks second pass",
         "totals": {
           "input": 0,
           "output": 0,
