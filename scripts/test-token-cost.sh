@@ -37,8 +37,10 @@ test "$(read_kv CLAUDE_COST "$out")" = "6.00" || fail "Claude zero falls back to
 pass "zero env uses default"
 
 # (d) empty string → default
-out=$(env LARCH_CODEX_RATE_PER_M='' -u LARCH_CLAUDE_RATE_PER_M -u LARCH_CURSOR_RATE_PER_M -u LARCH_TOKEN_RATE_PER_M \
-    "$HELPER" --claude-tokens 0 --codex-tokens 1000000 --cursor-tokens 0)
+# GNU env: every -u must precede any VAR=value assignments, or the first NAME=value
+# starts the command line and env tries to exec "-u" (CI: "env: '-u': No such file").
+out=$(env -u LARCH_CLAUDE_RATE_PER_M -u LARCH_CURSOR_RATE_PER_M -u LARCH_TOKEN_RATE_PER_M \
+    LARCH_CODEX_RATE_PER_M='' "$HELPER" --claude-tokens 0 --codex-tokens 1000000 --cursor-tokens 0)
 test "$(read_kv CODEX_COST "$out")" = "10.00" || fail "empty Codex rate uses default"
 pass "empty string uses default"
 
