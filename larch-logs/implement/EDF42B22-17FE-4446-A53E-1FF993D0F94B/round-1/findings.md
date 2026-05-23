@@ -1,0 +1,4 @@
+Merging duplicate reviewer concerns, preserving `[OUT_OF_SCOPE]` where any merged source carried it, and producing the normalized structured list. We have in-scope findings, so we do not include `LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED`.
+
+
+
