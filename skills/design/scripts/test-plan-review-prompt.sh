@@ -53,6 +53,7 @@ for archetype in "${archetypes[@]}"; do
         assert_contains "$vendor/$archetype focus enum" "code-quality / risk-integration / correctness / architecture / security" "$out"
         assert_contains "$vendor/$archetype sentinel instruction" '{"no_issues_found": true}' "$out"
         assert_contains "$vendor/$archetype plan path" "$PLAN_FILE" "$out"
+        assert_contains "$vendor/$archetype plan-vs-current-state guidance" "The plan describes the codebase AFTER this PR lands" "$out"
         assert_contains "$vendor/$archetype read-only" "Do NOT modify files" "$out"
 
         last_line="$(tail -n 1 "$out")"

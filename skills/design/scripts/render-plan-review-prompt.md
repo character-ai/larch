@@ -10,6 +10,10 @@
 - Both Cursor and Codex prompts include the full `full_role` personality prose and a TSV structured-record block contract so all archetype outputs can pass through `collect-agent-results.sh --structured-reviewer-validation`.
 - Invalid arguments exit 2 with diagnostics on stderr.
 
+### Plan-vs-current-state invariant
+
+The rendered prompt body MUST contain the paragraph "The plan describes the codebase AFTER this PR lands. …" between the "Review the implementation plan file at" sentence and the "Walk five focus areas" sentence. This paragraph instructs plan reviewers that the plan describes post-implementation state — preventing the systematic false-positive class where reviewers flag current-code behaviors as bugs even when the plan itself addresses them. The invariant is enforced by `skills/design/scripts/test-plan-review-prompt.sh` (substring assertion).
+
 ## Primary Callers
 
 - `skills/design/SKILL.md` Step 3 primary external plan-review launch blocks.

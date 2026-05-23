@@ -1,0 +1,1 @@
+FINDING_1: NO -- ballot file contains only a header comment with no actual findings to vote on
