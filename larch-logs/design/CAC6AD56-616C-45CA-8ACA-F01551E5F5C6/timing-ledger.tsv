@@ -1,0 +1,15 @@
+v1	vendor	1779495175	implement	-	cursor	cursor-sketch-generic	1779495064	1779495175	111	cursor-sketch-generic-output.txt	0	complete
+v1	vendor	1779495194	implement	-	codex	codex-sketch-generic	1779495073	1779495194	121	codex-sketch-generic-output.txt	0	complete
+v1	vendor	1779495493	implement	-	cursor	cursor-phase1-cursor-plan-innovation	1779495430	1779495493	63	cursor-plan-innovation-output.txt	0	complete
+v1	vendor	1779495502	implement	-	cursor	cursor-phase1-cursor-plan-requirements	1779495430	1779495502	72	cursor-plan-requirements-output.txt	0	complete
+v1	vendor	1779495521	implement	-	cursor	cursor-phase1-cursor-plan-arch	1779495430	1779495521	91	cursor-plan-arch-output.txt	0	complete
+v1	vendor	1779495522	implement	-	cursor	cursor-phase1-cursor-plan-edge	1779495430	1779495522	92	cursor-plan-edge-output.txt	0	complete
+v1	vendor	1779495543	implement	-	cursor	cursor-phase1-cursor-plan-pragmatic	1779495430	1779495543	113	cursor-plan-pragmatic-output.txt	0	complete
+v1	vendor	1779495562	implement	-	codex	codex-phase1-codex-plan-requirements	1779495430	1779495562	132	codex-primary-plan-requirements-output.txt	0	complete
+v1	vendor	1779495572	implement	-	codex	codex-phase1-codex-plan-pragmatic	1779495430	1779495571	141	codex-primary-plan-pragmatic-output.txt	0	complete
+v1	vendor	1779495581	implement	-	codex	codex-phase1-codex-plan-arch	1779495430	1779495581	151	codex-primary-plan-arch-output.txt	0	complete
+v1	vendor	1779495593	implement	-	codex	codex-phase1-codex-plan-edge	1779495430	1779495593	163	codex-primary-plan-edge-output.txt	0	complete
+v1	vendor	1779495633	implement	-	codex	codex-phase1-codex-plan-innovation	1779495430	1779495633	203	codex-primary-plan-innovation-output.txt	0	complete
+v1	vendor	1779495707	implement	-	cursor	cursor-review	1779495656	1779495707	51	cursor-plan-arch-output-ns-retry.txt	0	complete
+v1	vendor	1779495968	implement	-	cursor	cursor-phase1-voter-3	1779495937	1779495968	31	cursor-vote-output.txt	0	complete
+v1	vendor	1779496008	implement	-	codex	codex-phase1-voter-2	1779495937	1779496008	71	codex-vote-output.txt	0	complete

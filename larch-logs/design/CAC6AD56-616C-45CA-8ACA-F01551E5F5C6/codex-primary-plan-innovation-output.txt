@@ -1,0 +1,22 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/test-design-structure.sh:267-293 skills/design/SKILL.md:115-120	Planned CLAUDE_PLUGIN_ROOT regression test is only static source inspection	The test can pass on export CLAUDE_PLUGIN_ROOT='${CLAUDE_PLUGIN_ROOT}' even if Claude Code does not expand it, leaving Step 0a to execute a literal ${CLAUDE_PLUGIN_ROOT}/scripts path	Add a runtime or rendered-skill smoke assertion that source-env.sh contains a concrete path with no ${ token and that $CLAUDE_PLUGIN_ROOT/scripts/session-setup.sh is executable; do not claim static CI catches expansion failure
+1	in_scope	important	code-quality	skills/design/scripts/tally-plan-review.md:14-23	Script behavior changes omit the required sibling contract update	tally-plan-review.sh would drop --session-env-path, parent OOS handoff, and plan-review-tally flushing while the sibling docs still advertise those contracts	Update tally-plan-review.md and the test harness doc alongside tally-plan-review.sh/test-tally-plan-review.sh per the script-md sibling rule
+1	out_of_scope	latent	architecture	skills/shared/subskill-invocation.md:160-176 skills/shared/subskill-invocation.md:191-199 skills/implement/SKILL.md:521-524 skills/implement/SKILL.md:1623-1652	[OUT_OF_SCOPE] Cross-skill docs still describe nested /design and consumed design OOS artifacts	After removing design nested mode, shipped shared and implement contracts still tell operators that /design runs nested or that accepted /design OOS flows into /implement Step 9a.1	File a follow-up to reconcile these contracts, or keep a deliberate compatibility bridge for oos-accepted-design.md if design OOS is still meant to be filed later
+
+1. **correctness** — `scripts/test-design-structure.sh:267-293`, `skills/design/SKILL.md:115-120`
+
+The plan’s strongest assumption is that CI can catch a bad `CLAUDE_PLUGIN_ROOT` template expansion. The proposed structure assertion reads repository source, not the Claude-expanded runtime skill text, so it cannot distinguish a healthy expanded path from the literal source token inside `export CLAUDE_PLUGIN_ROOT='${CLAUDE_PLUGIN_ROOT}'`.
+
+Suggested revision: make the smoke check validate the generated `$DESIGN_TMPDIR/source-env.sh` value, including “does not contain `${`” and “`$CLAUDE_PLUGIN_ROOT/scripts/session-setup.sh` is executable.” Keep the static assertion, but treat it as shape coverage only.
+
+2. **code-quality** — `skills/design/scripts/tally-plan-review.md:14-23`
+
+The plan changes `tally-plan-review.sh` public behavior but does not update its sibling `.md` contract. That file still documents `--session-env-path`, parent OOS handoff, and `/implement` plan-review-tally flushing.
+
+Suggested revision: add `skills/design/scripts/tally-plan-review.md` to the plan, and update `skills/design/scripts/test-tally-plan-review.md` if the harness scope changes.
+
+3. **[OUT_OF_SCOPE] architecture** — `skills/shared/subskill-invocation.md:160-176`, `skills/shared/subskill-invocation.md:191-199`, `skills/implement/SKILL.md:521-524`, `skills/implement/SKILL.md:1623-1652`
+
+The narrow design-subtree cleanup leaves shipped cross-skill contracts describing nested `/design` behavior and accepted `/design` OOS consumption by `/implement`. That is stale once the cleanup lands.
+
+Suggested revision: file a follow-up to align those docs and the `$IMPLEMENT_TMPDIR/oos-accepted-design.md` references, or preserve an explicit compatibility bridge if design OOS is still intended to reach `/implement`.

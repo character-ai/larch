@@ -1,0 +1,7 @@
+Exploring the `/design` subtree and related scripts read-only to map SESSION_ENV_PATH/--caller-env usage and how CLAUDE_PLUGIN_ROOT flows.
+
+Checking Step 0's opening bash block and how `read-session-env-key` appears in later steps.
+
+Creating the plan from the codebase review.
+
+
