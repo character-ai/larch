@@ -223,8 +223,17 @@ else
   _ct=$(jq -r '(.claude.totals.total // 0)' "$DESIGN_TMPDIR/token-report.json")
   _dx=$(jq -r '(.codex.totals.total // 0)' "$DESIGN_TMPDIR/token-report.json")
   _ux=$(jq -r '(.cursor.totals.total // 0)' "$DESIGN_TMPDIR/token-report.json")
+  read -r _ci _ccr _ccw5 _ccw1 _co < <(jq -r '[.BUCKETS_claude.input, .BUCKETS_claude.cache_read, .BUCKETS_claude.cache_create_5m, .BUCKETS_claude.cache_create_1h, .BUCKETS_claude.output] | @tsv' "$DESIGN_TMPDIR/token-report.json" 2>/dev/null || printf '0\t0\t0\t0\t0\n')
+  read -r _di _dcached _dout < <(jq -r '[.BUCKETS_codex.input, .BUCKETS_codex.cached_input, .BUCKETS_codex.output] | @tsv' "$DESIGN_TMPDIR/token-report.json" 2>/dev/null || printf '0\t0\t0\n')
+  read -r _ui _ucr _uo < <(jq -r '[.BUCKETS_cursor.input, .BUCKETS_cursor.cache_read, .BUCKETS_cursor.output] | @tsv' "$DESIGN_TMPDIR/token-report.json" 2>/dev/null || printf '0\t0\t0\n')
   DESIGN_TMPDIR="$DESIGN_TMPDIR" IMPLEMENT_TMPDIR="${IMPLEMENT_TMPDIR:-}" \
-    "${CLAUDE_PLUGIN_ROOT}/scripts/render-cost-line.sh" --claude-tokens "$_ct" --codex-tokens "$_dx" --cursor-tokens "$_ux" --quiet-on-empty || true
+    "${CLAUDE_PLUGIN_ROOT}/scripts/render-cost-line.sh" \
+    --claude-tokens "$_ct" --codex-tokens "$_dx" --cursor-tokens "$_ux" \
+    --claude-input-tokens "$_ci" --claude-cache-read-tokens "$_ccr" \
+    --claude-cache-write-5m-tokens "$_ccw5" --claude-cache-write-1h-tokens "$_ccw1" --claude-output-tokens "$_co" \
+    --codex-input-tokens "$_di" --codex-cached-input-tokens "$_dcached" --codex-output-tokens "$_dout" \
+    --cursor-input-tokens "$_ui" --cursor-cache-read-tokens "$_ucr" --cursor-output-tokens "$_uo" \
+    --quiet-on-empty || true
 fi
 ```
 

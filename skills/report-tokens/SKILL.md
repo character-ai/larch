@@ -6,7 +6,7 @@ allowed-tools: Bash, Read
 
 # Report Tokens
 
-Analyze token costs from committed larch run logs in the current git repository. The script scans `larch-logs/implement/*/` directories, parses `token-report.json` per run, reads workflow path from `timing-report.json` or the plan-review tally fallback, estimates per-run dollar costs, generates SIMPLE and HARD cost-over-time plots, prints the analysis, and optionally posts a GitHub `[Analysis Report]` issue. Tracking-issue bodies fetched via `--plot-from` may still contain the legacy markdown token-report rendering; the parser handles that shape too.
+Analyze token costs from committed larch run logs in the current git repository. The script scans `larch-logs/implement/*/` directories, parses `token-report.json` per run, reads workflow path from `timing-report.json` or the plan-review tally fallback, estimates per-run dollar costs (see **Reported vs estimated** in `run-analysis.sh` output: legacy in-Python totals vs `scripts/token-cost.sh` driven by `BUCKETS_*` when present), generates SIMPLE and HARD cost-over-time plots, prints the analysis, and optionally posts a GitHub `[Analysis Report]` issue. Tracking-issue bodies fetched via `--plot-from` may still contain the legacy markdown token-report rendering; the parser handles that shape too.
 
 ## Flags
 

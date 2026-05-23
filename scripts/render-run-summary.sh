@@ -5,6 +5,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd -P)}"
 TOKEN_COST_SH="$SCRIPT_DIR/token-cost.sh"
+# shellcheck source=scripts/lib-cost-line-format.sh
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/lib-cost-line-format.sh"
 
 emit_diag() {
     if [ "${LARCH_QUIET_PID:-}" = "$$" ]; then
@@ -35,6 +38,9 @@ DURATION=""
 CLAUDE_TOKENS=0
 CODEX_TOKENS=0
 CURSOR_TOKENS=0
+C_IN=0 C_CR=0 C_CW5=0 C_CW1=0 C_OUT=0
+D_IN=0 D_CACHED=0 D_OUT=0
+U_IN=0 U_CR=0 U_OUT=0
 ISSUE_NUMBER=""
 ISSUE_URL=""
 PR_NUMBER=""
@@ -61,6 +67,17 @@ while [ $# -gt 0 ]; do
         --claude-tokens) [ $# -ge 2 ] || { usage; exit 2; }; CLAUDE_TOKENS=$2; shift 2 ;;
         --codex-tokens) [ $# -ge 2 ] || { usage; exit 2; }; CODEX_TOKENS=$2; shift 2 ;;
         --cursor-tokens) [ $# -ge 2 ] || { usage; exit 2; }; CURSOR_TOKENS=$2; shift 2 ;;
+        --claude-input-tokens) [ $# -ge 2 ] || { usage; exit 2; }; C_IN=$2; shift 2 ;;
+        --claude-cache-read-tokens) [ $# -ge 2 ] || { usage; exit 2; }; C_CR=$2; shift 2 ;;
+        --claude-cache-write-5m-tokens) [ $# -ge 2 ] || { usage; exit 2; }; C_CW5=$2; shift 2 ;;
+        --claude-cache-write-1h-tokens) [ $# -ge 2 ] || { usage; exit 2; }; C_CW1=$2; shift 2 ;;
+        --claude-output-tokens) [ $# -ge 2 ] || { usage; exit 2; }; C_OUT=$2; shift 2 ;;
+        --codex-input-tokens) [ $# -ge 2 ] || { usage; exit 2; }; D_IN=$2; shift 2 ;;
+        --codex-cached-input-tokens) [ $# -ge 2 ] || { usage; exit 2; }; D_CACHED=$2; shift 2 ;;
+        --codex-output-tokens) [ $# -ge 2 ] || { usage; exit 2; }; D_OUT=$2; shift 2 ;;
+        --cursor-input-tokens) [ $# -ge 2 ] || { usage; exit 2; }; U_IN=$2; shift 2 ;;
+        --cursor-cache-read-tokens) [ $# -ge 2 ] || { usage; exit 2; }; U_CR=$2; shift 2 ;;
+        --cursor-output-tokens) [ $# -ge 2 ] || { usage; exit 2; }; U_OUT=$2; shift 2 ;;
         --issue-number) [ $# -ge 2 ] || { usage; exit 2; }; ISSUE_NUMBER=$2; shift 2 ;;
         --issue-url) [ $# -ge 2 ] || { usage; exit 2; }; ISSUE_URL=$2; shift 2 ;;
         --pr-number) [ $# -ge 2 ] || { usage; exit 2; }; PR_NUMBER=$2; shift 2 ;;
@@ -88,29 +105,42 @@ case "$SKILL" in implement) ;; *) usage; exit 2 ;; esac
 
 na() { [ -z "$1" ] && printf 'N/A\n' || printf '%s\n' "$1"; }
 
-tok_k() {
-    awk -v n="${1:-0}" 'BEGIN {
-      if (n == "") n = 0
-      printf "%d\n", int((n+500)/1000)
-    }'
-}
+cost_errf="$(mktemp "${TMPDIR:-/tmp}/rrs-cost.XXXXXX")"
 
-ct=$(tok_k "$((CLAUDE_TOKENS + CODEX_TOKENS + CURSOR_TOKENS))")
-ck=$(tok_k "$CLAUDE_TOKENS")
-dk=$(tok_k "$CODEX_TOKENS")
-uk=$(tok_k "$CURSOR_TOKENS")
+codex_args=(--codex-input-tokens "$D_IN" --codex-cached-input-tokens "$D_CACHED" --codex-output-tokens "$D_OUT")
+if [ "$((D_IN + D_CACHED + D_OUT))" -eq 0 ] && [ "$CODEX_TOKENS" -gt 0 ]; then
+    codex_args=(--codex-tokens "$CODEX_TOKENS")
+fi
+cursor_args=(--cursor-input-tokens "$U_IN" --cursor-cache-read-tokens "$U_CR" --cursor-output-tokens "$U_OUT")
+if [ "$((U_IN + U_CR + U_OUT))" -eq 0 ] && [ "$CURSOR_TOKENS" -gt 0 ]; then
+    cursor_args=(--cursor-tokens "$CURSOR_TOKENS")
+fi
+if [ "$((C_IN + C_CR + C_CW5 + C_CW1 + C_OUT))" -gt 0 ]; then
+    claude_args=(
+        --claude-input-tokens "$C_IN"
+        --claude-cache-read-tokens "$C_CR"
+        --claude-cache-write-5m-tokens "$C_CW5"
+        --claude-cache-write-1h-tokens "$C_CW1"
+        --claude-output-tokens "$C_OUT"
+    )
+else
+    claude_args=(--claude-tokens "$CLAUDE_TOKENS")
+fi
 
 cost_lines=""
 if [ -x "$TOKEN_COST_SH" ]; then
     cost_lines=$("$TOKEN_COST_SH" \
-        --claude-tokens "$CLAUDE_TOKENS" \
-        --codex-tokens "$CODEX_TOKENS" \
-        --cursor-tokens "$CURSOR_TOKENS" 2>/dev/null || true)
+        "${claude_args[@]}" \
+        "${codex_args[@]}" \
+        "${cursor_args[@]}" 2>"$cost_errf") || cost_lines=""
 else
     cost_lines=$("$PLUGIN_ROOT/scripts/token-cost.sh" \
-        --claude-tokens "$CLAUDE_TOKENS" \
-        --codex-tokens "$CODEX_TOKENS" \
-        --cursor-tokens "$CURSOR_TOKENS" 2>/dev/null || true)
+        "${claude_args[@]}" \
+        "${codex_args[@]}" \
+        "${cursor_args[@]}" 2>"$cost_errf") || cost_lines=""
+fi
+if [ -s "$cost_errf" ]; then
+    cat "$cost_errf" >&2
 fi
 
 read_cost() {
@@ -123,16 +153,14 @@ tc=$(read_cost TOTAL_COST)
 cc=$(read_cost CLAUDE_COST)
 dc=$(read_cost CODEX_COST)
 uc=$(read_cost CURSOR_COST)
-
-fmt_usd() {
-    case "$1" in N/A|"") printf 'N/A' ;; *) printf '$%s' "$1" ;; esac
-}
+tt=$(read_cost TOTAL_TOKENS)
 
 cost_bullet() {
-    local tc_disp
-    case "$tc" in N/A|"") tc_disp="N/A" ;; *) tc_disp="~$(fmt_usd "$tc")" ;; esac
-    printf 'TOTAL %s — Claude %s, Codex %s, Cursor %s' \
-        "$tc_disp" "$(fmt_usd "$cc")" "$(fmt_usd "$dc")" "$(fmt_usd "$uc")"
+    case "$tc" in N/A|"") printf 'N/A'; return ;; esac
+    local _ln _rest
+    _ln=$(larch_emit_cost_line "$tc" "$cc" "$dc" "$uc" "$tt")
+    _rest=${_ln#💰 Cost: }
+    printf '💰 %s' "$_rest"
 }
 
 mode_disp=$(na "$MODE_STR")
@@ -180,7 +208,7 @@ fi
 
 tmp_out="$(mktemp "${TMPDIR:-/tmp}/render-run-summary.XXXXXX")"
 # shellcheck disable=SC2317 # EXIT trap invokes cleanup on early exit paths
-cleanup() { rm -f "$tmp_out"; }
+cleanup() { rm -f "$tmp_out" "$cost_errf"; }
 trap cleanup EXIT
 
 {
@@ -189,8 +217,9 @@ trap cleanup EXIT
     printf -- '- **Mode**: %s\n' "$mode_disp"
     printf -- '- **Path**: %s\n' "$path_disp"
     printf -- '- **Duration**: %s\n' "$dur_disp"
-    printf -- '- **Tokens**: %sk total — Claude %sk, Codex %sk, Cursor %sk\n' "$ct" "$ck" "$dk" "$uk"
-    printf -- '- **Cost**: %s\n' "$(cost_bullet)"
+    case "$tc" in N/A|"") printf -- '- **Cost**: N/A\n' ;;
+        *) printf -- '- **Cost**: %s\n' "$(cost_bullet)" ;;
+    esac
     printf -- '- **Issue**: %s\n' "$iss_disp"
     if [ "$pr_disp" != "N/A" ]; then
         printf -- '- **PR**: %s\n' "$pr_disp"

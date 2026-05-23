@@ -4,6 +4,8 @@
 
 ## Purpose
 
+Scan committed `larch-logs/implement/*/token-report.json` files, estimate per-run spend, and print markdown tables. Totals used for plots and headline aggregates prefer **`scripts/token-cost.sh`** when `CLAUDE_PLUGIN_ROOT` is set: JSON reports with `BUCKETS_*` invoke per-bucket pricing; otherwise blended aggregate counts are used. A **### Reported vs estimated (per issue)** table compares the frozen legacy in-Python estimator (pre-DE-2622 defaults) with the `token-cost.sh` estimate for the same run so operators can see drift after pricing/dedup fixes. Raw GitHub issue data (when `--no-issue` is off) now includes `cost_reported` and `cost_estimated` alongside `cost` for downstream tooling.
+
 ## Primary caller
 
 - `skills/report-tokens/SKILL.md` Step 1.
