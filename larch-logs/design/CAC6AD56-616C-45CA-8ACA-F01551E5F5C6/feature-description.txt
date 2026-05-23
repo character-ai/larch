@@ -1,0 +1,22 @@
+Issue #2597: [OOS] Remove dormant nested-mode logic from /design SKILL.md
+
+## Description
+
+`skills/design/SKILL.md` carries branches gated on `${SESSION_ENV_PATH:-}` non-empty (Anti-pattern #4, nested execution-issues logging, `--caller-env "$SESSION_ENV_PATH"` argv plumbing, Step 0 `branch_info_supplied` propagation, the `awk LARCH_CLAUDE_PLUGIN_ROOT=` recovery snippet at the top of every Bash block, and Step 3.5 / Step 3b / Step 5 `read-session-env-key.sh --key LARCH_TOKEN_SESSION_ID` rehydration). Per the plan in #2588, `/design` is now standalone-only and these branches are unreachable in production; the dormant logic was explicitly left in place during #2588 to keep the diff trivial, with the cleanup deferred to a follow-up.
+
+## Scope
+
+- Remove the conditional branches and the recovery snippet across `skills/design/SKILL.md`
+- Simplify Step 0a / 0b to drop the `--caller-env` argv plumbing
+- Remove the nested-mode execution-issues fallback (`"$(dirname "$SESSION_ENV_PATH")/execution-issues.md"`)
+- Drop Anti-pattern #4 once its trigger is no longer reachable
+- Collapse the per-Bash-block awk recovery snippet now that the env-var fix (#2588 item #3) makes it redundant
+
+## Acceptance
+
+- Zero references to `SESSION_ENV_PATH` or `--caller-env` remain in `skills/design/SKILL.md`
+- The Bash block prelude shrinks to the single source-line
+- `/larch:relevant-checks` passes
+- `/design --trivial <issue>` runs end-to-end on a smoke test
+
+Links back to #2588 for context.

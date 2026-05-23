@@ -1,0 +1,20 @@
+FINDING_1: YES
+Justification: Plan as written would commit <OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/39.0.2 to SKILL.md and assert that literal in CI, directly violating .claude/rules/drift-prone-prose-in-docs.md ("Don't paste machine-local absolute paths") and breaking portability for other developers/CI. The proposed fix (template-token form on disk + grep for the template form, not the expanded form) is the correct and minimal repair, and the plan already gestures at template expansion in §1 but is internally inconsistent.
+
+FINDING_2: YES
+Justification: grep -Eqc 'PATTERN' FILE exits 1 when there are zero matches; the acceptance criterion's "must return 0" wording is inverted as written. The ! grep -Eq ... form is the standard idiom for "assert absent" and avoids the implementer-trap of writing grep -Eqc ... || fail, which would fail precisely when SKILL.md is clean.
+
+FINDING_3: YES
+Justification: SKILL.md currently holds 82 SESSION_ENV_PATH occurrences (verified via grep). Enumerated bullets are fragile under that volume; one missed site fails the grep==0 acceptance criterion silently. Promoting the sweep to the binding rule (with bullets as examples) is the durable fix and aligns with the plan's own acceptance criteria #1/#2.
+
+FINDING_4: YES
+Justification: skills/design/scripts/tally-plan-review.md exists and explicitly documents --session-env-path, the parent-tmpdir OOS handoff, and HARD-path tally-batch flushing (verified in file). .claude/rules/script-md-siblings.md requires the sibling .md to be updated in-sync with the .sh script in the same PR. Omitting it from "Files to modify" is a defect.
+
+FINDING_5: YES
+Justification: skills/design/references/plan-review.md line 105-112 hard-codes --session-env-path "$SESSION_ENV_PATH" in the dispatcher call, and scripts/dispatch-plan-voters.sh line 28 rejects empty values via ${2:?--session-env-path requires a value}. After cleanup, the standalone-only path would pass an empty $SESSION_ENV_PATH and the dispatcher would error out. SKILL.md Step 3's invocation (lines 624-635) has the same issue. The fix to drop the flag from both the example block and the SKILL.md call is required.
+
+FINDING_6: YES
+Justification: 109 SESSION_ENV_PATH occurrences span 9 files under skills/design/ but the planned assertion only covers SKILL.md. Stale conditionals in references files and design scripts would pass acceptance while leaving dormant nested-mode logic in the very subtree the issue says to clean. The plan's own Failure-modes §2 (line 117) acknowledges the gap; extending the structure test to grep -r ... skills/design/ is the proportionate fix.
+
+FINDING_7: EXONERATE
+Justification: The concern (static source check can't detect template-expansion failure) is legitimate but largely subsumed by FINDING_1's fix (assert template-token presence, not literal-path presence). A new runtime smoke harness (option a) is disproportionate complexity for a hypothetical Claude Code regression; the lightweight prose-honesty fix (option b) overlaps with FINDING_1's correction of Failure-modes §1 prose. Net additional work beyond FINDING_1 is not worth a separate revision.

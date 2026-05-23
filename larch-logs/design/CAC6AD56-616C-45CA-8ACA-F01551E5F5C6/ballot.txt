@@ -1,0 +1,41 @@
+# Plan Review Ballot for Issue #2597
+
+You are voting on proposed modifications to the implementation plan in `$DESIGN_TMPDIR/plan.txt`. For each finding, vote YES (apply the suggested fix), NO (reject the finding), or EXONERATE (concern is legitimate but the proposed change introduces more complexity than the issue warrants). Apply proportionality.
+
+## Plan context
+
+The plan removes dormant nested-mode logic (SESSION_ENV_PATH conditionals, --caller-env plumbing, awk recovery snippets, Anti-patterns #4/#7, token-rehydration blocks) from `skills/design/SKILL.md`, 5 references files, `skills/design/scripts/tally-plan-review.sh`, its test, and `scripts/test-design-structure.sh`. It also adds an `export CLAUDE_PLUGIN_ROOT='${CLAUDE_PLUGIN_ROOT}'` line at the top of Step 0a's first Bash block (relying on Claude Code template expansion to inject the install-time path) and three CI assertions.
+
+---
+
+### FINDING_1: Literal machine path leaks into committed SKILL.md / plan
+- **Concern**: Plan §1 (line 9-10) and Failure-modes §1 reference a literal `<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/39.0.2` path as if it would be committed to SKILL.md or asserted by CI. Committed `skills/design/SKILL.md` cannot contain a user-specific home path — that would break portability for other developers and CI runners. The on-disk SKILL.md uses the template token `${CLAUDE_PLUGIN_ROOT}` which Claude Code expands at runtime; the literal expanded path only appears in the orchestrator-visible view, never in the source file.
+- **Proposed resolution**: Make the plan single-source: only the template-token form `export CLAUDE_PLUGIN_ROOT='${CLAUDE_PLUGIN_ROOT}'` lives on disk. Delete the literal-path sentence from Failure-modes §1. Rewrite the CI assertion to grep for the template form on disk (e.g., regex matching `export CLAUDE_PLUGIN_ROOT='\$\{CLAUDE_PLUGIN_ROOT\}'`), not the expanded form. Reviewers: Cursor-Innovation, Cursor-Pragmatic, Cursor-Requirements, Codex-Arch, Codex-Edge, Codex-Innovation.
+
+### FINDING_2: CI assertion shell semantics are inverted
+- **Concern**: The acceptance criterion in §9 writes `grep -Eqc 'SESSION_ENV_PATH' skills/design/SKILL.md` must return 0. `grep -q` exits 1 on zero matches (success-on-match semantics), not 0. A naive harness implementation like `grep -Eqc PATTERN FILE || fail` would fail exactly when SKILL.md is clean.
+- **Proposed resolution**: Specify the exact shell as `! grep -Eq 'SESSION_ENV_PATH' skills/design/SKILL.md` and `! grep -Eq -- '--caller-env' skills/design/SKILL.md`. Alternatively, capture the count with `grep -Ec ... || true` and assert the count equals 0. Reviewers: Codex-Arch, Codex-Pragmatic.
+
+### FINDING_3: SKILL.md sweep is incomplete — enumerated bullets miss several sites
+- **Concern**: The plan enumerates specific Bash-block sites (Step 0a, 19 awk preludes, Step 3/3.5/3b token-ledger, Step 3 tally printf, etc.) but does not explicitly cover several remaining SESSION_ENV_PATH sites: the `SESSION_ENV_PATH="$SESSION_ENV_PATH"` prefix on `timing-ledger.sh mark` and `token-ledger.sh mark` calls (~7 occurrences), Step 3 tally `printf` heredoc, Step 3b prose, Step 4 prose, Step 5 prose at lines 692-818, and verbosity-control sentences in `## Progress Reporting` and `## Verbosity Control`. An implementer following only enumerated bullets can pass intermediate edits then fail the grep==0 acceptance.
+- **Proposed resolution**: Replace the per-Bash-block enumeration with a single sweep directive: "After other edits, `grep -n SESSION_ENV_PATH skills/design/SKILL.md` and `grep -n -- '--caller-env' skills/design/SKILL.md` must each return zero lines; edit any remaining occurrence to remove the conditional or rewrite the standalone path." Keep the specific bullets as informational examples but make the sweep the binding rule. Reviewers: Cursor-Edge, Cursor-Requirements, Codex-Pragmatic.
+
+### FINDING_4: `tally-plan-review.md` sibling doc missing from edit scope
+- **Concern**: `.claude/rules/script-md-siblings.md` requires every script under `scripts/` and `skills/*/scripts/` to keep its `.md` sibling synchronized. The plan edits `skills/design/scripts/tally-plan-review.sh` (drops `--session-env-path`, parent OOS handoff, /implement tally-batch flushing) but omits `skills/design/scripts/tally-plan-review.md` from Files to modify. The sibling would still document the deleted CLI and nested behavior, misleading future callers and failing stale-contract checks.
+- **Proposed resolution**: Add `skills/design/scripts/tally-plan-review.md` to Files to modify. Remove all references to `--session-env-path`, parent OOS handoff, and HARD-path tally-batch flushing from the sibling doc. Reviewers: Codex-Edge, Codex-Innovation, Codex-Requirements.
+
+### FINDING_5: `plan-review.md` line 105-112 still passes `--session-env-path` to `dispatch-plan-voters.sh`
+- **Concern**: The normative `dispatch-plan-voters.sh` snippet in `skills/design/references/plan-review.md` always passes `--session-env-path "$SESSION_ENV_PATH"`. The dispatcher rejects empty values (per `scripts/dispatch-plan-voters.sh` `${2:?--session-env-path requires a value}`). Plan §6 (references files) does not explicitly mention this code-block rewrite.
+- **Proposed resolution**: Explicitly add to the plan-review.md edit list: drop `--session-env-path "$SESSION_ENV_PATH"` from the example code block, and update SKILL.md Step 3's invocation of `dispatch-plan-voters.sh` to omit the flag. Verify the dispatcher's argv handling: if the flag must remain accepted for other callers (e.g., test scripts), keep the parser but ensure no `/design` call passes it. Reviewer: Cursor-Pragmatic.
+
+### FINDING_6: Subtree grep coverage missing — assertions check only SKILL.md
+- **Concern**: The structure assertion only covers `skills/design/SKILL.md`. The user-confirmed scope covers `skills/design/references/*.md`, `skills/design/scripts/tally-plan-review.sh` (and its `.md` sibling per FINDING_4), and `skills/design/scripts/test-tally-plan-review.sh`. Stale nested-mode references in references files or design scripts would pass the planned acceptance check.
+- **Proposed resolution**: Extend the new CI assertions to check the full subtree: `grep -rE 'SESSION_ENV_PATH' skills/design/` should return zero matches, and likewise for `--caller-env`. Add this as a structure-test assertion. Reviewer: Codex-Requirements.
+
+### FINDING_7: Static source inspection can't catch template-expansion failure
+- **Concern**: The proposed CI assertion is source-shape only: it greps committed SKILL.md text. If Claude Code stops expanding `${CLAUDE_PLUGIN_ROOT}` for some reason, the orchestrator would see the literal token at runtime, `${CLAUDE_PLUGIN_ROOT}/scripts/...` paths would fail, and the static assertion would still pass. The plan's Failure-mode §1 mitigation claim ("the assertion catches it on the next CI run") is incorrect for this failure mode.
+- **Proposed resolution**: Either (a) add a separate runtime smoke harness (e.g., `scripts/test-design-step0-runtime-smoke.sh`) that invokes Step 0a in a child shell with a fixture `CLAUDE_PLUGIN_ROOT` and asserts the resulting `source-env.sh` contains the concrete path without a literal `${` token; or (b) accept the limitation and rewrite Failure-mode §1 mitigation prose honestly ("manual smoke recommended; no automated CI coverage for template expansion failure"). The committed test in `scripts/test-design-structure.sh` covers only the source-shape contract. Reviewers: Codex-Arch, Codex-Edge, Codex-Innovation.
+
+---
+
+Cast YES/NO/EXONERATE on each finding. Apply proportionality: vote EXONERATE when the concern is legitimate but the fix would introduce more complexity than the issue warrants.
