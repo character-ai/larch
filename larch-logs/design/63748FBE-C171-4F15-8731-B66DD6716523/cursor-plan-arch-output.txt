@@ -1,0 +1,29 @@
+Reading the plan and referenced files.
+
+Validating plan against the codebase: reading referenced scripts and skills.
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	architecture	scripts/token-ledger.sh:78-110	Only resolve_session_id gets DESIGN_TMPDIR; resolve_ledger_path still ignores DESIGN_TMPDIR unlike timing-ledger.sh	Standalone /design with IMPLEMENT_TMPDIR unset: launch-review token-ledger record-vendor can still warn no ledger root; session-id fallback alone does not place JSONL under DESIGN_TMPDIR	Add DESIGN_TMPDIR directory branch to resolve_ledger_path mirroring scripts/timing-ledger.sh:77-78 precedence; extend scripts/test-token-ledger.sh fail-closed env to unset DESIGN_TMPDIR
+1	in_scope	important	correctness	plan.txt:100-101 vs skills/design/SKILL.md:131-193	Structure test greps shell exit tokens	Proposed grep for exit 0 word-boundary misses Markdown prose exit **0** and misses real shell exit 1 at SKILL.md:150 only; test gives false confidence	Anchor on stable markers e.g. render-cost-line.sh string or machine-footer proximity; or parse fenced bash blocks only
+1	in_scope	important	risk-integration	scripts/test-render-run-summary.sh:54-82	All-N/A harness relies on empty rates mapping to N/A	After defaults treat 0 or empty as vendor default dollars the all-N/A golden case stops meaning N/A and the harness intent breaks	Replace with explicit high sentinel rates unset test matrix or env that forces unknown rates if N/A semantics must remain covered
+1	in_scope	nit	code-quality	scripts/render-run-summary.sh:127-136 plan render-cost-line	New helper duplicates fmt_usd and cost display rules	Formatting drift between terminal cost line and markdown run summary over time	Share a sourced fragment under scripts/ or have render-cost-line consume only token-cost.sh KEY lines with one fmt function
+1	in_scope	latent	security	docs/configuration-and-permissions.md plan defaults	Shipped USD defaults can be mistaken for invoice truth	Operators mis-read terminal dollars as actual spend	Add prominent not-invoice-grade disclaimer near rate env docs; evaluate SECURITY.md only if you treat misleading cost display as policy-relevant
+1	in_scope	nit	risk-integration	Makefile:63-67 docs/linting.md:266 agent-lint.toml:710-715	New harness files not wired	New token-cost and render-cost-line tests never run under make lint unless added	Add make targets shard hooks and docs/linting.md rows mirroring test-render-run-summary registration
+1	in_scope	nit	correctness	plan.txt:47-50	Conflicting guidance for Step 0a session-setup failure emission	Implementers may emit or skip inconsistently	Pick one contract skip entirely or always call render-cost-line.sh --quiet-on-empty and document why
+1	out_of_scope	nit	risk-integration	scripts/launch-review.sh:220-222	LARCH_RENDER_CACHE_DIR only when IMPLEMENT_TMPDIR set	Standalone design may miss shared render cache with external reviewers	Consider DESIGN_TMPDIR-based cache export parity in a follow-up issue
+
+1. **[architecture]** [scripts/token-ledger.sh:78-110](scripts/token-ledger.sh) — `resolve_ledger_path` never uses `DESIGN_TMPDIR` while `resolve_session_id` would; `timing-ledger.sh` already recognizes `DESIGN_TMPDIR`. Session-id alignment without a ledger root still yields “no per-run ledger root” for vendor records on standalone `/design`. **Suggested revision:** add a `DESIGN_TMPDIR` branch to `resolve_ledger_path` (and extend `scripts/test-token-ledger.sh:149-153` `env -u` list to include `DESIGN_TMPDIR` once the root exists).
+
+2. **[correctness]** [plan.txt:100-101](file:///Users/zhupanov/.cache/larch/sessions/claude-design-larch2-I56cZK/plan.txt) vs [skills/design/SKILL.md:131-193](skills/design/SKILL.md) — Proposed greps for `exit 0\b` / `exit 1\b` do not match Markdown “exit **0**” prose and barely match real shell exits. **Suggested revision:** key off `render-cost-line.sh` literals, step anchors, or fenced bash only.
+
+3. **[risk-integration]** [scripts/test-render-run-summary.sh:54-82](scripts/test-render-run-summary.sh) — The “all-N/A” case is built on unset rates producing N/A; default-rate semantics remove that signal. **Suggested revision:** redesign that case (explicit non-default unset matrix or a dedicated “force N/A” test hook if still required).
+
+4. **[code-quality]** [scripts/render-run-summary.sh:127-136](scripts/render-run-summary.sh) and planned `render-cost-line.sh` — Duplicated USD formatting paths. **Suggested revision:** one shared formatting helper or strict “token-cost.sh only” boundary with a single formatter.
+
+5. **[security]** [docs/configuration-and-permissions.md](docs/configuration-and-permissions.md) (planned edits) — Default dollar numbers can be read as billing truth. **Suggested revision:** explicit non-invoice / estimate disclaimer in the same section as env overrides.
+
+6. **[risk-integration]** [Makefile:63-67](Makefile), [docs/linting.md:266](docs/linting.md), [agent-lint.toml:710-715](agent-lint.toml) — New harness scripts need the same registration pattern as `test-render-run-summary`. **Suggested revision:** add targets, shard membership, doc inventory, and agent-lint paths.
+
+7. **[correctness]** [plan.txt:47-50](file:///Users/zhupanov/.cache/larch/sessions/claude-design-larch2-I56cZK/plan.txt) — Item 13 says skip cost emission on Step 0a failure; item 49 suggests `--quiet-on-empty` for uniformity. **Suggested revision:** choose one behavior and delete the contradiction.
+
+[OUT_OF_SCOPE] [scripts/launch-review.sh:220-222](scripts/launch-review.sh) — `LARCH_RENDER_CACHE_DIR` is propagated only from `IMPLEMENT_TMPDIR`; standalone `/design` may omit cross-launcher render cache sharing until addressed in a separate change.

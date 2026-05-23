@@ -1,0 +1,16 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/SKILL.md:186-193; skills/design/SKILL.md:525-528; scripts/token-report.sh:379-382	Plan emits cost lines on Step 0b fast exits but does not add an early token-ledger mark	token-report.sh requires at least one ledger mark, while current /design marks begin at Step 3, so clarify/cancel exits can suppress the cost line or report zero despite Claude tokens	Add a Step 0 token-ledger mark immediately after DESIGN_TMPDIR/session-id exists, and add a structure or harness test proving Step 0b cancel/clarify can render a non-empty cost line when transcript tokens exist
+1	in_scope	important	code-quality	Makefile:34-39; Makefile:215-222; .claude/rules/script-md-siblings.md:5-18; agent-lint.toml:1005-1013	New test harnesses are planned but not wired into repo validation	New scripts/test-token-cost.sh and scripts/test-render-cost-line.sh would not run under make lint/test-harnesses and may trip sibling-doc or dead-script checks	Add Makefile targets, .PHONY entries, shard membership, sibling .md stubs, and any agent-lint/docs/linting references needed for the new harnesses
+1	in_scope	important	risk-integration	skills/design/SKILL.md:811-840	Plan has contradictory cost-line ordering around cleanup and the terminal footer	It says emit before cleanup so token-report.json still exists, but also immediately before the final machine footer; current /design runs cleanup before warning repetition and the footer, so the cost line may appear before end-of-run output or be impossible to render after cleanup	Revise Step 5 to render/cache the cost line before cleanup, then print it after cleanup and repeated warnings but before the required final machine footer; add an ordering assertion in the design-structure test
+
+1. [correctness] `skills/design/SKILL.md:186-193`, `skills/design/SKILL.md:525-528`, `scripts/token-report.sh:379-382`  
+Concern: the plan covers Step 0b clarify/cancel cost emission, but not the ledger prerequisite needed for those early exits.  
+Suggested revision: add an early `/design` token-ledger mark after session setup and test that early exits can render nonzero Claude cost.
+
+2. [code-quality] `Makefile:34-39`, `Makefile:215-222`, `.claude/rules/script-md-siblings.md:5-18`, `agent-lint.toml:1005-1013`  
+Concern: planned new harnesses are not integrated into the repository’s validation wiring.  
+Suggested revision: add Makefile/shard/.PHONY wiring, sibling docs, and agent-lint references for the new test scripts.
+
+3. [risk-integration] `skills/design/SKILL.md:811-840`  
+Concern: the plan conflicts on whether the cost line is before cleanup or immediately before the footer.  
+Suggested revision: compute/cache the line before cleanup, then emit it near the actual end, before the required machine footer.

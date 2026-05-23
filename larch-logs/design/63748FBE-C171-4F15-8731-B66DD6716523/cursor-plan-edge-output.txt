@@ -1,0 +1,114 @@
+Reading the plan and referenced code paths for edge-case and failure-mode review.
+
+Reading referenced implementation files to validate contracts, edge cases, and integration risks.
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/token-ledger.sh:78-110	`resolve_ledger_path` has no `DESIGN_TMPDIR` root branch while `timing-ledger.sh` does	Standalone `/design` exports `DESIGN_TMPDIR` but not `IMPLEMENT_TMPDIR` or `SESSION_ENV_PATH`; `token-ledger.sh` still hits the warning at 109-110 and returns 1, and `main` swallows failures (`|| true`), so vendor marks never persist despite extending `resolve_session_id` alone	Mirror `timing-ledger.sh:77-80`: after `SESSION_ENV_PATH`, add `DESIGN_TMPDIR` (and validate containment consistently with other roots) before failing; extend `scripts/test-token-ledger.sh` for a standalone-style env
+1	in_scope	important	architecture	skills/design/SKILL.md:103-104 vs plan Step 5 / item 14	Nested artifact-only rule says the machine footer must be the last output line; the plan adds a cost line immediately before that footer	Parent-visible transcript may violate the documented contract or leave implementers unsure which rule wins	Amend `skills/design/SKILL.md` anti-pattern #7 text in the same change: define an explicit two-line terminal tail (cost line then footer) as permitted in nested mode, or fold cost into the single machine line
+1	in_scope	important	correctness	plan.txt:47-49 (internal)	Step 0a session-setup failure: item 13 says skip emission; edge-case bullet 49 says add `--quiet-on-empty` emission	Conflicting instructions risk wrong orchestrator behavior (noise vs skip) or skipped QA on that path	Pick one contract (prefer explicit no-op when `DESIGN_TMPDIR` is absent) and delete the contradictory bullet
+1	in_scope	nit	code-quality	plan.txt:13 vs scripts/token-tally.md:67-75	Plan names `comparison-with-token-tally.sh`; the comparison table lives in `token-tally.md`	Doc update misses the real file; drift between `token-cost` and `/research` telemetry narratives	Fix the plan reference to `scripts/token-tally.md` and update that table when `token-cost.sh` semantics change
+1	in_scope	nit	code-quality	plan.txt:100-101 vs scripts/test-design-structure.sh:1-23	New structure assertions are slated under `skills/design/scripts/test-design-structure.sh` but the harness is `scripts/test-design-structure.sh`	Wrong path invites a duplicate harness or a test that never runs	Extend `scripts/test-design-structure.sh` and register new cases there; drop the non-existent `skills/design/scripts/` path from the plan
+1	in_scope	latent	risk-integration	scripts/token-ledger.sh:249-252	`main "$@" || true` then `exit 0` masks `resolve_ledger_path` / `ensure_ledger` failures	Operators see successful `|| true` marks while no JSONL ledger exists; cost and audit trails skew silently	Consider emitting a single stderr warning on non-zero subcommand status in debug mode, or tightening design SKILL to check ledger path before reviewers (larger change; at minimum document the swallow in `token-ledger.md`)
+1	in_scope	important	risk-integration	plan.txt:41-45 vs skills/design/SKILL.md (no token-report)	SKILL never renders `token-report.json` today; plan assumes `$DESIGN_TMPDIR/token-report.json` or a fallback shell-out	Orchestrator may print a cost line from stale/missing JSON or skip the stderr-only unavailable path without the planned warning	Spell out in `skills/design/SKILL.md` an explicit ordering: run `token-report.sh --full --format json --output "$DESIGN_TMPDIR/token-report.json"` (or equivalent) before `render-cost-line.sh`, and gate the new warning on non-zero stderr or a defined sentinel from `token-report.sh`
+1	in_scope	nit	correctness	scripts/token-ledger.sh:30-39	Existing third fallback `pwd -P | sha256_hex` is omitted from the plan’s three-step precedence narrative	Tests or implementers may assume `DESIGN_TMPDIR/session-id` is always consulted before hashing cwd; stale `DESIGN_TMPDIR` in the environment could hijack the session id ahead of the hash fallback	Document the full order in `token-ledger.md` and add a test for “`DESIGN_TMPDIR` set but `session-id` missing → next fallback”
+1	in_scope	nit	correctness	scripts/launch-review.sh:157-160 and 648-651	`LARCH_TOKEN_SESSION_ID` is assigned from `IMPLEMENT_TMPDIR` only; no `elif` for `DESIGN_TMPDIR` yet	Standalone design launches skip exporting a design-scoped id until this lands; nested parity depends on two copies staying in sync	Implement `if … elif …` so `DESIGN_TMPDIR/session-id` is used only when the implement path is absent; mirror in both Codex and Cursor blocks per plan
+1	in_scope	latent	security	docs/configuration-and-permissions.md (per plan item 16)	Default dollar rates will replace `N/A` in operator-visible output	Users may treat printed dollars as invoice-accurate amounts rather than conservative estimates	Keep the doc update explicit: “non-authoritative estimates; set `LARCH_*_RATE_PER_M` from your billing data” and mention in `scripts/token-cost.md` near the constants
+1	out_of_scope	latent	risk-integration	scripts/token-tally.md:71-75	Row still documents `rate_or_na` / Codex-Cursor `N/A` semantics for `token-cost.sh`	After defaults land, `/research` vs `/implement` comparison becomes wrong without a follow-up issue	Update `token-tally.md` in a follow-up PR or expand this PR’s doc scope; lines 71-75
+
+Numbered list for user (they asked for numbered findings with focus-area tag, file:line, concern, suggested revision):
+
+I'll merge duplicate themes and trim to ~8 numbered items for readability while TSV has full records.
+
+Actually I have 11 TSV rows - good.
+
+Wait - row "1" schema - each line should start with `1` in first column for schema_version - the user said "For each finding, add one record: 1	<scope>..." - so first column is literal `1` meaning schema version 1. Good.
+
+Verify tab characters - I'll use real tabs in the message.
+
+Also fix: I used "1" twice in schema - header says schema_version as column name, data rows use 1 as version. Good.
+
+**OUT_OF_SCOPE** prefix for numbered list items - user said "Prefix out-of-scope but worth-tracking items with [OUT_OF_SCOPE]"
+
+I'll output:
+1. TSV block (tabs)
+2. Numbered findings
+3. [OUT_OF_SCOPE] line for token-tally
+
+Let me also verify: does `test-token-ledger.sh` exist - yes from Makefile.
+
+One more finding: **render-run-summary.sh** grep TOTAL N/A - partial-N/A tests need rethink when defaults apply - plan mentions - good.
+
+**awk** in total line when all three are "0.00" - n=3, s=0 - prints 0.00 - good.
+
+I'll remove redundant finding 9 about token-report if I already have risk-integration row - keep both TSV and numbered.
+
+Final response structure:
+- TSV (no markdown fence per user)
+- blank line
+- Numbered list (1-11)
+- [OUT_OF_SCOPE] only if not in TSV - I included out_of_scope in TSV row 11; user asked prefix for out-of-scope items in numbered list - I'll add one numbered item [OUT_OF_SCOPE] for token-tally doc drift pointing to TSV row or duplicate.
+
+User: "Prefix out-of-scope but worth-tracking items with [OUT_OF_SCOPE]; include affected repo-relative file paths and line ranges"
+
+I'll add after numbered in-scope items:
+[OUT_OF_SCOPE] scripts/token-tally.md:71-75 — sync comparison table after token-cost defaults (also captured in TSV).
+
+Actually numbered findings should include the OUT_OF_SCOPE as one entry.
+
+Let me count in_scope TSV rows: 10 in_scope + 1 out_of_scope = 11 rows after header.
+
+Row 1 important correctness token-ledger
+Row 2 important architecture SKILL
+Row 3 important correctness plan internal
+Row 4 nit code-quality plan typo
+Row 5 nit code-quality wrong test path
+Row 6 latent risk-integration token-ledger swallow
+Row 7 important risk-integration token-report json
+Row 8 nit correctness resolve_session_id doc
+Row 9 nit correctness launch-review
+Row 10 latent security docs
+Row 11 out_of_scope latent risk-integration token-tally.md
+
+Good.
+
+Numbered findings - I'll map 1-11 to the TSV rows briefly.
+
+User asked: "Return numbered findings with focus-area tag, repo-relative file:line when applicable, concern, and suggested revision."
+
+I'll produce ~10 concise numbered items aligning to major themes (merge small nits).
+
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/token-ledger.sh:78-110	`resolve_ledger_path` never uses `DESIGN_TMPDIR` as a ledger root (unlike `timing-ledger.sh`)	Standalone `/design` has `DESIGN_TMPDIR` set but no `IMPLEMENT_TMPDIR`/`SESSION_ENV_PATH`; resolution still fails at 109-110 and `main` ends with `|| true`, so `mark`/`record-vendor` can silently do nothing	Add a `DESIGN_TMPDIR` branch (with the same containment rules you use for other auto roots) before the hard fail; cover standalone-style env in `scripts/test-token-ledger.sh`
+1	in_scope	important	architecture	skills/design/SKILL.md:103-104	Artifact-only contract: machine footer must be the last output line	Plan puts a new cost line immediately before that footer in nested runs, conflicting with the normative “nothing may follow” / last-line rule	Edit the same SKILL section to explicitly allow a two-line terminal tail (cost line, then footer) in nested mode, or require a single combined line
+1	in_scope	important	correctness	plan.txt:47-49	Internal contradiction on Step 0a session-setup failure (skip cost emission vs run `render-cost-line.sh --quiet-on-empty`)	Implementers pick the wrong branch; tests cannot encode a single expected behavior	Resolve to one behavior and remove the duplicate instruction
+1	in_scope	nit	code_quality	plan.txt:13	References `comparison-with-token-tally.sh` for the doc table	The comparison lives in `scripts/token-tally.md` (~67-75); the named file is wrong	Drop the `.sh` filename and point edits at `scripts/token-tally.md`
+1	in_scope	nit	code_quality	plan.txt:100-101	Proposes `skills/design/scripts/test-design-structure.sh`	Actual harness is `scripts/test-design-structure.sh` (see file header ~1-23); a new nested path is easy to wire incorrectly	Extend `scripts/test-design-structure.sh` only; fix the plan path
+1	in_scope	latent	risk_integration	scripts/token-ledger.sh:249-252	`main "$@" || true` then `exit 0` hides ledger resolution/write failures	External reviewer tokens never land in JSONL but the orchestrator continues; summaries skew with no hard signal	At minimum document the swallow; optionally add an opt-in warning or a preflight in the SKILL before relying on ledger totals
+1	in_scope	important	risk_integration	skills/design/SKILL.md (no `token-report` today); plan.txt:41-45	Plan assumes `$DESIGN_TMPDIR/token-report.json` without defining who renders it first	Orchestrator reads a missing file, falls back to zeros, and `--quiet-on-empty` can hide both cost and the “unavailable” warning	Add explicit Step 5 / exit-path text: invoke `token-report.sh … --output "$DESIGN_TMPDIR/token-report.json"` before `render-cost-line.sh`, and define how to detect “unavailable” vs “all zeros”
+1	in_scope	nit	correctness	scripts/token-ledger.sh:30-39	Plan lists `LARCH_TOKEN_SESSION_ID` → `IMPLEMENT_TMPDIR/session-id` → `DESIGN_TMPDIR/session-id` but code still falls back to `pwd|sha256`	Reviewers/tests mis-model precedence; a stale exported `DESIGN_TMPDIR` could shadow the cwd-hash behavior unexpectedly	Document the full four-step order in `token-ledger.md` and add a regression test for missing `session-id` files
+1	in_scope	nit	correctness	scripts/launch-review.sh:157-160,648-651	Only `IMPLEMENT_TMPDIR/session-id` seeds `LARCH_TOKEN_SESSION_ID`	Standalone design reviewers still miss a session-scoped token id until both blocks gain the `DESIGN_TMPDIR` fallback	Use `if`/`elif` so implement wins when present; otherwise design; keep Codex/Cursor copies identical
+1	in_scope	latent	security	docs/configuration-and-permissions.md (planned edits)	Default USD replaces `N/A` in transcripts and logs	Operators treat printed totals as billing truth	Stress “non-authoritative estimates; override with `LARCH_*_RATE_PER_M` from real billing” in docs and `scripts/token-cost.md`
+1	out_of_scope	latent	risk_integration	scripts/token-tally.md:71-75	Comparison row still describes `rate_or_na` / per-vendor `N/A` for `token-cost.sh`	`/research` vs `/implement` doc diverges after defaults ship, misleading readers	Track a follow-up doc edit in `token-tally.md` when `token-cost.sh` changes land
+
+1. **[correctness]** [`scripts/token-ledger.sh:78-110`](scripts/token-ledger.sh) — `resolve_ledger_path` never places ledgers under `DESIGN_TMPDIR`, so extending `resolve_session_id` alone does not give standalone `/design` a working JSONL path; failures are still swallowed at `249-252`. **Suggested revision:** add a `DESIGN_TMPDIR` root branch (aligned with `timing-ledger.sh`) and extend `scripts/test-token-ledger.sh`.
+
+2. **[architecture]** [`skills/design/SKILL.md:103-104`](skills/design/SKILL.md) — Nested mode requires the machine footer as the sole permitted trailing terminal line. **Suggested revision:** update that rule to explicitly allow the planned cost line as the penultimate line (or merge cost into the footer line).
+
+3. **[correctness]** [`plan.txt:47-49`](<TMPDIR>/plan.txt) — Contradictory guidance for session-setup failure (skip vs `--quiet-on-empty`). **Suggested revision:** choose one behavior and delete the other bullet.
+
+4. **[code_quality]** [`plan.txt:13`](<TMPDIR>/plan.txt) vs [`scripts/token-tally.md:67-75`](scripts/token-tally.md) — Wrong filename for the comparison table. **Suggested revision:** cite and edit `scripts/token-tally.md`.
+
+5. **[code_quality]** [`plan.txt:100-101`](<TMPDIR>/plan.txt) vs [`scripts/test-design-structure.sh:1-23`](scripts/test-design-structure.sh) — Proposed test path does not match the repo’s existing harness location. **Suggested revision:** extend `scripts/test-design-structure.sh` only.
+
+6. **[risk_integration]** [`scripts/token-ledger.sh:249-252`](scripts/token-ledger.sh) — Non-zero subcommand status is forced to success. **Suggested revision:** document the contract and/or add a discoverable warning path when ledger creation fails.
+
+7. **[risk_integration]** [`skills/design/SKILL.md`](skills/design/SKILL.md) (no `token-report` references today) and [`plan.txt:41-45`](<TMPDIR>/plan.txt) — `token-report.json` is assumed without a normative writer step in the SKILL. **Suggested revision:** specify `token-report.sh` invocation and output path before `render-cost-line.sh`, and how to surface the “token report unavailable” warning without being masked by `--quiet-on-empty`.
+
+8. **[correctness]** [`scripts/token-ledger.sh:30-39`](scripts/token-ledger.sh) — Precedence narrative in the plan omits the existing `pwd|sha256` fallback. **Suggested revision:** document all four stages and add tests for missing `session-id` edge cases.
+
+9. **[correctness]** [`scripts/launch-review.sh:157-160`](scripts/launch-review.sh) and [`648-651`](scripts/launch-review.sh) — `LARCH_TOKEN_SESSION_ID` is only derived from `IMPLEMENT_TMPDIR`. **Suggested revision:** add the `DESIGN_TMPDIR/session-id` fallback with `if`/`elif` ordering as in the plan.
+
+10. **[security]** [`docs/configuration-and-permissions.md`](docs/configuration-and-permissions.md) (planned) — Default dollar strings can be mistaken for authoritative billing. **Suggested revision:** state clearly that defaults are rough estimates and env overrides carry billing truth.
+
+[OUT_OF_SCOPE] [`scripts/token-tally.md:71-75`](scripts/token-tally.md) — After `token-cost.sh` defaults land, the `/research` vs `token-cost` comparison table will be stale; sync in a follow-up or widen this PR’s doc scope to avoid misleading operators.

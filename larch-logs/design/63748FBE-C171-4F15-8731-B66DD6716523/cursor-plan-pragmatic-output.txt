@@ -1,0 +1,31 @@
+Reading the plan and referenced code paths.
+
+Validating the plan against the codebase: reading referenced scripts and adjacent contracts.
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/token-ledger.sh:78-110	Plan extends resolve_session_id for DESIGN_TMPDIR but not resolve_ledger_path ledger root	Standalone /design with empty SESSION_ENV_PATH still hits no per-run ledger root; token-ledger mark stays no-op under || true despite correct session id slug	Add a DESIGN_TMPDIR branch mirroring IMPLEMENT_TMPDIR when choosing larch-tokens-<slug>.jsonl parent (and extend test-token-ledger.sh for this path)
+2	in_scope	important	correctness	<TMPDIR>/plan.txt:41-42	Artifact name token-report.json is not established in repo; /implement uses token-report-rendered.json	Orchestrator writes or reads wrong path; cost line never sees JSON counts	Align SKILL instructions with a single canonical filename under DESIGN_TMPDIR (match token-report.sh --output usage elsewhere)
+3	in_scope	important	correctness	<TMPDIR>/plan.txt:47-49	Contradictory guidance for Step 0a session-setup failure skip vs emit render-cost-line	Implementer may skip needed no-op call or add noise against plan intent	Pick one rule: either omit render-cost-line entirely on that path or always invoke --quiet-on-empty once DESIGN_TMPDIR may exist; delete the conflicting bullet
+4	in_scope	nit	risk-integration	<TMPDIR>/plan.txt:101-107	Wrong harness path for design structure test (skills/design/scripts/...)	PR wires checks into a non-existent path; CI or lint misses the new grep assertions	Extend existing scripts/test-design-structure.sh (Makefile test-design-structure) instead of skills/design/scripts/
+5	in_scope	nit	correctness	<TMPDIR>/plan.txt:13	Doc update cites comparison-with-token-tally.sh row name; repo table lives in scripts/token-cost.md	Doc edit targets missing file; table row never updated	Fix reference to scripts/token-cost.md comparison table (token-tally section)
+6	in_scope	nit	risk-integration	Makefile:63-67 / agent-lint.toml:710-715	New scripts/test-token-cost.sh and test-render-cost-line.sh not listed in implementation checklist	Harnesses exist but never run under make lint unless manually wired	Add Makefile targets and agent-lint.toml entries consistent with other scripts/test-*.sh siblings
+7	in_scope	latent	architecture	<TMPDIR>/plan.txt:19-20	Terminal cost one-liner hard-codes emoji and UTF-8 punctuation	Narrow TTY log pipelines or byte-oriented tests may mangle or reject the line	Document UTF-8 expectation in render-cost-line.md; keep bytes stable in test-render-cost-line.sh
+8	in_scope	important	risk-integration	scripts/test-render-run-summary.sh:54-82	Golden harness asserts TOTAL N/A and Claude N/A when rates unset	CI fails until expectations updated alongside token-cost defaults	Grep and rewrite all-N/A and partial-N/A cases to match new default-dollar semantics (plan already notes this; pin file in task)
+
+1. **[correctness]** [`scripts/token-ledger.sh`](scripts/token-ledger.sh):78-110 — Session id fallback alone does not give `token-ledger.sh` a writable ledger directory when `IMPLEMENT_TMPDIR` and `SESSION_ENV_PATH` are unset (standalone `/design`); marks can remain silent failures. Extend `resolve_ledger_path` (and tests) to use `DESIGN_TMPDIR` as a ledger root parallel to `IMPLEMENT_TMPDIR`.
+
+2. **[correctness]** Plan §13 ([`plan.txt`](file:///Users/zhupanov/.cache/larch/sessions/claude-design-larch2-I56cZK/plan.txt):41-42) — Standardize on one JSON artifact name; the tree today uses `token-report-rendered.json` under implement tmpdirs ([`skills/implement/SKILL.md`](skills/implement/SKILL.md):1485 pattern). Avoid inventing `token-report.json` without wiring it everywhere.
+
+3. **[correctness]** Plan §13 exit matrix ([`plan.txt`](file:///Users/zhupanov/.cache/larch/sessions/claude-design-larch2-I56cZK/plan.txt):47-49) — Reconcile the Step 0a “skip emission” bullet with the later “invoke `--quiet-on-empty` for uniformity” bullet so implementers have a single rule.
+
+4. **[risk-integration]** Plan testing § ([`plan.txt`](file:///Users/zhupanov/.cache/larch/sessions/claude-design-larch2-I56cZK/plan.txt):101-107) — Structural coverage belongs in existing [`scripts/test-design-structure.sh`](scripts/test-design-structure.sh) (already registered in [`Makefile`](Makefile):311-312), not under `skills/design/scripts/`.
+
+5. **[code-quality]** Plan doc item 2 ([`plan.txt`](file:///Users/zhupanov/.cache/larch/sessions/claude-design-larch2-I56cZK/plan.txt):13) — Replace the nonexistent `comparison-with-token-tally.sh` reference with the real comparison table in [`scripts/token-cost.md`](scripts/token-cost.md):39-43.
+
+6. **[risk-integration]** New harness scripts — Add [`Makefile`](Makefile) shard targets and [`agent-lint.toml`](agent-lint.toml) entries for `scripts/test-token-cost.sh` and `scripts/test-render-cost-line.sh` so they run under `make lint` like other `scripts/test-*.sh` tools.
+
+7. **[architecture]** [`plan.txt`](file:///Users/zhupanov/.cache/larch/sessions/claude-design-larch2-I56cZK/plan.txt):19-20 — The proposed one-liner embeds emoji and UTF-8 punctuation; acceptable if documented and byte-locked in tests, but worth calling out for log hosts that are not UTF-8 clean.
+
+8. **[risk-integration]** [`scripts/test-render-run-summary.sh`](scripts/test-render-run-summary.sh):54-82 — Explicit regressions pin `TOTAL N/A` / `Claude N/A`; they must change in the same PR as default rates (plan Failure modes §96 mentions this; keep the harness in sync).
+
+[OUT_OF_SCOPE] Per-vendor cost opt-out via env (plan edge case §90) — no code path yet; if added later, touch [`scripts/token-cost.sh`](scripts/token-cost.sh):16-33 and [`docs/configuration-and-permissions.md`](docs/configuration-and-permissions.md):227-233 to avoid contradicting “0 means default” semantics.

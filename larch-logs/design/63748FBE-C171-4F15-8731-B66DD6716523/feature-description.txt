@@ -1,0 +1,3 @@
+# Issue #2594: /implement and /design should display the total dollars of token spend at the end in the run summary
+
+It should be, as now, broken up by agent (Claude, Codex, Cursor), but measured in dollars instead of tokens.
