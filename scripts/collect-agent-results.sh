@@ -17,7 +17,12 @@
 #   collect-agent-results.sh --timeout <seconds> \
 #     [--substantive-validation] [--structured-reviewer-validation] \
 #     [--summary-only] \
+#     [--paths-file <file>] \
 #     <output-file> [<output-file> ...]
+#
+#   When --paths-file is set, it is mutually exclusive with positional output-file
+#   arguments: paths are read one per line from the file (blank lines skipped) and
+#   the collector must still resolve to at least one non-blank path line.
 #
 # Options:
 #   --timeout <seconds>            Timeout for wait-for-reviewers.sh (e.g., 1860)
@@ -58,9 +63,14 @@
 #                                  and EXIT_CODE for each reviewer.
 #                                  Wait/retry/validation behavior is unchanged;
 #                                  FAILURE_REASON and STRUCTURED_SIDECAR are suppressed.
+#   --paths-file <file>             Read output paths from a line-oriented file instead
+#                                  of positional arguments. Mutually exclusive with
+#                                  positional output paths. Missing/unreadable files,
+#                                  empty files, and whitespace-only files exit 1.
 #
 # Arguments:
-#   One or more output file paths (from run-external-agent.sh invocations).
+#   One or more output file paths (from run-external-agent.sh invocations), unless
+#   --paths-file supplies the path list.
 #   Sentinel paths are derived by appending .done to each output file.
 #   Metadata paths are derived by appending .meta to each output file.
 #
@@ -178,6 +188,7 @@ SUBSTANTIVE_VALIDATION="false"
 VALIDATION_MODE="false"
 STRUCTURED_REVIEWER_VALIDATION="false"
 SUMMARY_ONLY="false"
+COLLECT_PATHS_FILE=""
 OUTPUT_FILES=()
 
 while [[ $# -gt 0 ]]; do
@@ -192,8 +203,10 @@ while [[ $# -gt 0 ]]; do
             STRUCTURED_REVIEWER_VALIDATION="true"; shift ;;
         --summary-only)
             SUMMARY_ONLY="true"; shift ;;
+        --paths-file)
+            COLLECT_PATHS_FILE="${2:?--paths-file requires a value}"; shift 2 ;;
         --help)
-            larch_err "Usage: collect-agent-results.sh --timeout <seconds> [--substantive-validation [--validation-mode]] [--structured-reviewer-validation] [--summary-only] <output-file>..."
+            larch_err "Usage: collect-agent-results.sh --timeout <seconds> [--substantive-validation [--validation-mode]] [--structured-reviewer-validation] [--summary-only] [--paths-file <file>] <output-file>...  (--paths-file is mutually exclusive with positional output-file arguments)"
             exit 0 ;;
         -*)
             larch_err "collect-agent-results.sh: unknown option: $1"; exit 1 ;;
@@ -205,6 +218,37 @@ done
 if [[ -z "$TIMEOUT" ]]; then
     larch_err "collect-agent-results.sh: --timeout is required"
     exit 1
+fi
+
+if [[ -n "$COLLECT_PATHS_FILE" && ${#OUTPUT_FILES[@]} -gt 0 ]]; then
+    larch_err "collect-agent-results.sh: --paths-file is mutually exclusive with positional output-file arguments"
+    exit 1
+fi
+
+if [[ -n "$COLLECT_PATHS_FILE" ]]; then
+    if [[ ! -r "$COLLECT_PATHS_FILE" ]]; then
+        larch_err "collect-agent-results.sh: paths-file not readable: $COLLECT_PATHS_FILE"
+        exit 1
+    fi
+    if [[ ! -f "$COLLECT_PATHS_FILE" ]]; then
+        larch_err "collect-agent-results.sh: paths-file is not a regular file: $COLLECT_PATHS_FILE"
+        exit 1
+    fi
+    while IFS= read -r path || [[ -n "$path" ]]; do
+        if [[ "$path" == *[![:space:]]* ]]; then
+            case "$path" in
+                *$'\n'*|*$'\r'*)
+                    larch_err "collect-agent-results.sh: paths-file line contains a newline or carriage return (line-oriented paths-file contract): $COLLECT_PATHS_FILE"
+                    exit 1
+                    ;;
+            esac
+            OUTPUT_FILES+=("$path")
+        fi
+    done < "$COLLECT_PATHS_FILE"
+    if [[ ${#OUTPUT_FILES[@]} -eq 0 ]]; then
+        larch_err "collect-agent-results.sh: paths-file contains no entries (preserves anti-pattern #4)"
+        exit 1
+    fi
 fi
 
 if [[ ${#OUTPUT_FILES[@]} -eq 0 ]]; then

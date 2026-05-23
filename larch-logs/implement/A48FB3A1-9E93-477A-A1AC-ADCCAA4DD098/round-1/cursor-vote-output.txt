@@ -1,0 +1,21 @@
+Verifying cited locations in the repository.
+
+FINDING_1: EXONERATE -- editorial overlap only; loop plus lines 592–595 already convey WARN vs DISPATCH_OK without reader harm.
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: EXONERATE -- second parse is tiny duplication; refactor buys little versus grep/read cost.
+FINDING_6: YES
+FINDING_7: EXONERATE -- legitimate review ergonomics; not a product defect warranting a tracking issue.
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: EXONERATE -- doc gap is real but a standalone GitHub issue is heavier than an in-PR SECURITY note.
+FINDING_16: YES
+FINDING_17: YES
+FINDING_18: NO -- VOTER_PATHS_FILE extraction uses substr after the first '=', so embedded '=' in paths is not truncated.
+FINDING_19: YES

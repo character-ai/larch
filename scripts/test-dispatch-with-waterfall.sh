@@ -84,6 +84,12 @@ out=$(PATH="$STUB_BIN:$PATH" "$REPO_ROOT/scripts/dispatch-with-waterfall.sh" \
 assert_line "FALLBACK_COUNT=0" "$out"
 assert_line "DISPATCH_OK=true" "$out"
 assert_line "ALL_OUTPUT_TOOLS=codex cursor" "$out"
+twoslot_list="${manifest}.output-files"
+[[ -f "$twoslot_list" ]] || { echo "FAIL: two-slot default paths-file missing" >&2; exit 1; }
+[[ $(wc -l < "$twoslot_list" | tr -d ' ') -eq 2 ]] || { echo "FAIL: two-slot paths-file line count" >&2; exit 1; }
+grep -Fxq "$TMPROOT/phase1-codex.txt" <<< "$(sed -n '1p' "$twoslot_list")" || { echo "FAIL: two-slot paths-file slot1 order" >&2; exit 1; }
+grep -Fxq "$TMPROOT/phase1-cursor.txt" <<< "$(sed -n '2p' "$twoslot_list")" || { echo "FAIL: two-slot paths-file slot2 order" >&2; exit 1; }
+assert_line "ALL_OUTPUT_FILES_PATH=$twoslot_list" "$out"
 
 manifest="$TMPROOT/slots-optional-metadata.ndjson"
 printf '{"slot":"dyn-extra","tool":"cursor","output":"%s","prompt_file":"%s","weight":4,"focus_area":"architecture"}\n' "$TMPROOT/optional-metadata.txt" "$prompt" > "$manifest"
@@ -183,5 +189,106 @@ out=$(PATH="$STUB_BIN:$PATH" CODEX_STUB_LOG="$codex_log" "$REPO_ROOT/scripts/dis
 assert_line "DISPATCH_OK=true" "$out"
 grep -Fq 'Competition notice' "$codex_log" || { echo "FAIL: missing competition notice block" >&2; exit 1; }
 grep -Fq 'Custom notice text' "$codex_log" || { echo "FAIL: missing competition notice file contents" >&2; exit 1; }
+
+manifest="$TMPROOT/slots-pathsfile.ndjson"
+printf '{"slot":"s1","tool":"codex","output":"%s","prompt_file":"%s"}\n' "$TMPROOT/pf-codex.txt" "$prompt" > "$manifest"
+override="$TMPROOT/override-output-files.list"
+out=$(PATH="$STUB_BIN:$PATH" "$REPO_ROOT/scripts/dispatch-with-waterfall.sh" \
+    --slots-file "$manifest" \
+    --paths-file "$override" \
+    --codex-present true \
+    --cursor-present true \
+    --mode description \
+    --timeout 5)
+assert_line "ALL_OUTPUT_FILES_PATH=$override" "$out"
+[[ -f "$override" ]] || { echo "FAIL: override paths-file missing" >&2; exit 1; }
+grep -Fxq "$TMPROOT/pf-codex.txt" "$override" || { echo "FAIL: override paths-file content" >&2; exit 1; }
+
+manifest="$TMPROOT/slots-default-paths.ndjson"
+printf '{"slot":"s1","tool":"codex","output":"%s","prompt_file":"%s"}\n' "$TMPROOT/dp-codex.txt" "$prompt" > "$manifest"
+out=$(PATH="$STUB_BIN:$PATH" "$REPO_ROOT/scripts/dispatch-with-waterfall.sh" \
+    --slots-file "$manifest" \
+    --codex-present true \
+    --cursor-present true \
+    --mode description \
+    --timeout 5)
+default_list="${manifest}.output-files"
+[[ -f "$default_list" ]] || { echo "FAIL: default paths-file missing at $default_list" >&2; exit 1; }
+assert_line "ALL_OUTPUT_FILES_PATH=$default_list" "$out"
+grep -Fxq "$TMPROOT/dp-codex.txt" "$default_list" || { echo "FAIL: default paths-file line" >&2; exit 1; }
+
+manifest_space="$TMPROOT/slots space.ndjson"
+space_out="$TMPROOT/with space out.txt"
+command -v jq >/dev/null 2>&1 || { echo "FAIL: jq required for paths-file shape tests" >&2; exit 1; }
+jq -cn --arg slot "s-space" --arg out "$space_out" --arg pf "$prompt" \
+    '{slot:$slot, tool:"cursor", output:$out, prompt_file:$pf}' > "$manifest_space"
+out=$(PATH="$STUB_BIN:$PATH" "$REPO_ROOT/scripts/dispatch-with-waterfall.sh" \
+    --slots-file "$manifest_space" \
+    --codex-present true \
+    --cursor-present true \
+    --mode description \
+    --timeout 5)
+paths_line=$(printf '%s\n' "$out" | grep '^ALL_OUTPUT_FILES=' || true)
+paths_kv=$(printf '%s\n' "$out" | grep '^ALL_OUTPUT_FILES_PATH=' || true)
+[[ -n "$paths_kv" ]] || { echo "FAIL: missing ALL_OUTPUT_FILES_PATH" >&2; exit 1; }
+list_path="${paths_kv#ALL_OUTPUT_FILES_PATH=}"
+[[ -f "$list_path" ]] || { echo "FAIL: paths list file" >&2; exit 1; }
+expected_final=$(printf '%s\n' "$out" | awk -F= '$1=="ALL_OUTPUT_FILES"{print substr($0,index($0,"=")+1);exit}')
+grep -Fxq "$expected_final" "$list_path" || { echo "FAIL: paths-file line must match ALL_OUTPUT_FILES final path" >&2; exit 1; }
+[[ $(wc -l < "$list_path" | tr -d ' ') -eq 1 ]] || { echo "FAIL: paths-file must be exactly one line" >&2; exit 1; }
+case "$paths_line" in
+    *"$expected_final"*) ;;
+    *)
+        echo "FAIL: ALL_OUTPUT_FILES KV should preserve embedded-space final path" >&2
+        printf '%s\n' "$paths_line" >&2
+        exit 1
+        ;;
+esac
+
+manifest_empty="$TMPROOT/empty-slots.ndjson"
+: > "$manifest_empty"
+set +e
+PATH="$STUB_BIN:$PATH" "$REPO_ROOT/scripts/dispatch-with-waterfall.sh" \
+    --slots-file "$manifest_empty" \
+    --codex-present true \
+    --cursor-present true \
+    --mode description \
+    --timeout 5 >/dev/null 2>"$TMPROOT/empty-slots.stderr"
+rc_empty=$?
+set -e
+[[ "$rc_empty" -eq 2 ]] || { echo "FAIL: empty slots exit=$rc_empty" >&2; exit 1; }
+grep -Fq 'no slot rows' "$TMPROOT/empty-slots.stderr" || { echo "FAIL: empty slots stderr" >&2; exit 1; }
+[[ ! -f "${manifest_empty}.output-files" ]] || { echo "FAIL: empty slots must not write paths-file" >&2; exit 1; }
+
+bad_nl_out="$TMPROOT/bad-newline-out.txt"
+manifest_nl="$TMPROOT/slots-newline.ndjson"
+jq -cn --arg out "$bad_nl_out" --arg pf "$prompt" \
+    '{slot:"s-bad", tool:"codex", output: ($out + "\nBAD"), prompt_file:$pf}' > "$manifest_nl"
+set +e
+PATH="$STUB_BIN:$PATH" "$REPO_ROOT/scripts/dispatch-with-waterfall.sh" \
+    --slots-file "$manifest_nl" \
+    --codex-present true \
+    --cursor-present true \
+    --mode description \
+    --timeout 5 >/dev/null 2>"$TMPROOT/newline.stderr"
+rc_nl=$?
+set -e
+[[ "$rc_nl" -eq 2 ]] || { echo "FAIL: newline in output path exit=$rc_nl" >&2; exit 1; }
+grep -Fq 'newline or carriage return' "$TMPROOT/newline.stderr" || { echo "FAIL: newline stderr" >&2; exit 1; }
+
+manifest_cr="$TMPROOT/slots-cr.ndjson"
+jq -cn --arg out "$(printf 'x\ry')" --arg pf "$prompt" \
+    '{slot:"s-cr", tool:"codex", output:$out, prompt_file:$pf}' > "$manifest_cr"
+set +e
+PATH="$STUB_BIN:$PATH" "$REPO_ROOT/scripts/dispatch-with-waterfall.sh" \
+    --slots-file "$manifest_cr" \
+    --codex-present true \
+    --cursor-present true \
+    --mode description \
+    --timeout 5 >/dev/null 2>"$TMPROOT/cr.stderr"
+rc_cr=$?
+set -e
+[[ "$rc_cr" -eq 2 ]] || { echo "FAIL: CR in output path exit=$rc_cr" >&2; exit 1; }
+grep -Fq 'newline or carriage return' "$TMPROOT/cr.stderr" || { echo "FAIL: CR-in-path stderr" >&2; exit 1; }
 
 echo "PASS: test-dispatch-with-waterfall.sh"

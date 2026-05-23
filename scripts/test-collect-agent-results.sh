@@ -491,6 +491,106 @@ else
     ok "C_NO_RETRY_FP no sidecar when no retry needed"
 fi
 
+# --- --paths-file mode (cross-subshell handoff; issue #2637) ---
+echo "# Case: --paths-file produces same stdout as positional args"
+OUT_PFA="$TMPROOT/paths-file-a.txt"
+OUT_PFB="$TMPROOT/paths-file-b.txt"
+printf 'NO_ISSUES_FOUND\n' > "$OUT_PFA"
+printf 'NO_ISSUES_FOUND\n' > "$OUT_PFB"
+printf '0\n' > "${OUT_PFA}.done"
+printf '0\n' > "${OUT_PFB}.done"
+paths_two="$TMPROOT/two-paths.txt"
+printf '%s\n%s\n' "$OUT_PFA" "$OUT_PFB" > "$paths_two"
+RES_POS=$(RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 bash "$COLLECTOR" --timeout 5 "$OUT_PFA" "$OUT_PFB" 2>/dev/null)
+RES_PF=$(RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 bash "$COLLECTOR" --timeout 5 --paths-file "$paths_two" 2>/dev/null)
+if [[ "$RES_POS" == "$RES_PF" ]]; then
+    ok "paths-file happy matches positional stdout"
+else
+    fail "paths-file happy stdout mismatch"
+    printf '%s\n' "--- positional ---" >&2
+    printf '%s\n' "$RES_POS" >&2
+    printf '%s\n' "--- paths-file ---" >&2
+    printf '%s\n' "$RES_PF" >&2
+fi
+
+echo "# Case: --paths-file mutually exclusive with positionals"
+set +e
+MUTEX_ERR=$(RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 bash "$COLLECTOR" --timeout 5 --paths-file "$paths_two" "$OUT_PFA" 2>&1)
+MUTEX_RC=$?
+set -e
+if [[ "$MUTEX_RC" -eq 1 ]] && grep -Fq 'mutually exclusive' <<< "$MUTEX_ERR"; then
+    ok "paths-file mutex with positionals"
+else
+    fail "paths-file mutex expected exit 1 + mutually exclusive message (rc=$MUTEX_RC)"
+    printf '%s\n' "$MUTEX_ERR" >&2
+fi
+
+echo "# Case: --paths-file empty file"
+: > "$TMPROOT/empty-paths.txt"
+set +e
+EMPTY_ERR=$(bash "$COLLECTOR" --timeout 5 --paths-file "$TMPROOT/empty-paths.txt" 2>&1)
+EMPTY_RC=$?
+set -e
+if [[ "$EMPTY_RC" -eq 1 ]] && grep -Fq 'paths-file contains no entries' <<< "$EMPTY_ERR"; then
+    ok "paths-file empty rejects"
+else
+    fail "paths-file empty expected no-entries error (rc=$EMPTY_RC)"
+    printf '%s\n' "$EMPTY_ERR" >&2
+fi
+
+echo "# Case: --paths-file whitespace-only"
+printf '  \n\t\n  \n' > "$TMPROOT/ws-paths.txt"
+set +e
+WS_ERR=$(bash "$COLLECTOR" --timeout 5 --paths-file "$TMPROOT/ws-paths.txt" 2>&1)
+WS_RC=$?
+set -e
+if [[ "$WS_RC" -eq 1 ]] && grep -Fq 'paths-file contains no entries' <<< "$WS_ERR"; then
+    ok "paths-file whitespace-only rejects"
+else
+    fail "paths-file whitespace-only expected no-entries (rc=$WS_RC)"
+    printf '%s\n' "$WS_ERR" >&2
+fi
+
+echo "# Case: --paths-file missing / not readable"
+set +e
+MISS_ERR=$(bash "$COLLECTOR" --timeout 5 --paths-file "$TMPROOT/does-not-exist-paths.txt" 2>&1)
+MISS_RC=$?
+set -e
+if [[ "$MISS_RC" -eq 1 ]] && grep -Fq 'paths-file not readable' <<< "$MISS_ERR"; then
+    ok "paths-file missing rejects"
+else
+    fail "paths-file missing expected not readable (rc=$MISS_RC)"
+    printf '%s\n' "$MISS_ERR" >&2
+fi
+
+echo "# Case: --paths-file unreadable existing file"
+unreadable_pf="$TMPROOT/unreadable-paths.txt"
+printf '%s\n' "$OUT_PFA" > "$unreadable_pf"
+chmod a-r "$unreadable_pf"
+set +e
+UNREAD_ERR=$(bash "$COLLECTOR" --timeout 5 --paths-file "$unreadable_pf" 2>&1)
+UNREAD_RC=$?
+set -e
+chmod u+r "$unreadable_pf" || true
+if [[ "$UNREAD_RC" -eq 1 ]] && grep -Fq 'paths-file not readable' <<< "$UNREAD_ERR"; then
+    ok "paths-file unreadable rejects"
+else
+    fail "paths-file unreadable expected exit 1 + not readable (rc=$UNREAD_RC)"
+    printf '%s\n' "$UNREAD_ERR" >&2
+fi
+
+echo "# Case: zero outputs without --paths-file"
+set +e
+ZERO_ERR=$(bash "$COLLECTOR" --timeout 5 2>&1)
+ZERO_RC=$?
+set -e
+if [[ "$ZERO_RC" -eq 1 ]] && grep -Fq 'at least one output file is required' <<< "$ZERO_ERR"; then
+    ok "zero outputs without paths-file"
+else
+    fail "zero outputs expected at least one output file (rc=$ZERO_RC)"
+    printf '%s\n' "$ZERO_ERR" >&2
+fi
+
 if [[ "$FAIL" -ne 0 ]]; then
     printf '\nFAIL: test-collect-agent-results.sh (%d failure(s))\n' "$FAIL" >&2
     printf ' - %s\n' "${FAILED[@]}" >&2

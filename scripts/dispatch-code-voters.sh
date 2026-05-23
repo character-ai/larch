@@ -468,5 +468,20 @@ emit_kv VOTER_3_PATH "$VOTER_3_PATH"
 emit_kv VOTER_3_TOOL "$VOTER_3_TOOL"
 emit_kv VOTER_3_STATUS "$VOTER_3_STATUS"
 emit_kv VOTER_3_PARSE_RATE_STATUS "$VOTER_3_PARSE_RATE_STATUS"
+
+code_voter_paths_file="$REVIEW_TMPDIR/code-voter-paths.txt"
+cv_tmp=$(mktemp "${REVIEW_TMPDIR}/.code-voter-paths.XXXXXX")
+if [[ -n "$VOTER_1_PATH" ]]; then
+    printf '%s\n' "$VOTER_1_PATH" >> "$cv_tmp"
+fi
+if [[ "$VOTER_2_STATUS" != "skipped" && -n "$VOTER_2_PATH" ]]; then
+    printf '%s\n' "$VOTER_2_PATH" >> "$cv_tmp"
+fi
+if [[ -n "$VOTER_3_PATH" ]]; then
+    printf '%s\n' "$VOTER_3_PATH" >> "$cv_tmp"
+fi
+mv -f "$cv_tmp" "$code_voter_paths_file"
+emit_kv VOTER_PATHS_FILE "$code_voter_paths_file"
+
 [[ "$VOTER_1_STATUS" == "failed" ]] && dispatch_ok="false"
 emit_kv DISPATCH_OK "$dispatch_ok"

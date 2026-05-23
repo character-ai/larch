@@ -9,7 +9,7 @@ source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
 
 usage() {
-    larch_err "Usage: dispatch-with-waterfall.sh --slots-file FILE --codex-present true|false --cursor-present true|false --mode diff|description [context flags]"
+    larch_err "Usage: dispatch-with-waterfall.sh --slots-file FILE --codex-present true|false --cursor-present true|false --mode diff|description [--paths-file FILE] [context flags]. Default paths-file is SLOTS_FILE.output-files; its parent directory must already exist. Stdout KVs include ALL_OUTPUT_FILES_PATH, ALL_OUTPUT_FILES, ALL_OUTPUT_TOOLS, DISPATCH_OK, WARN, …"
 }
 
 SLOTS_FILE=""
@@ -26,6 +26,7 @@ TIMEOUT="1800"
 FALLBACK_COUNTER_FILE=""
 COMPETITION_NOTICE=false
 COMPETITION_NOTICE_FILE=""
+WATERFALL_PATHS_FILE=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -43,6 +44,7 @@ while [[ $# -gt 0 ]]; do
         --fallback-counter-file) FALLBACK_COUNTER_FILE="${2:?--fallback-counter-file requires a value}"; shift 2 ;;
         --competition-notice) COMPETITION_NOTICE=true; shift ;;
         --competition-notice-file) COMPETITION_NOTICE_FILE="${2:?--competition-notice-file requires a value}"; shift 2 ;;
+        --paths-file) WATERFALL_PATHS_FILE="${2:?--paths-file requires a value}"; shift 2 ;;
         --help) usage; exit 0 ;;
         *) larch_err "dispatch-with-waterfall.sh: unknown option: $1"; usage; exit 2 ;;
     esac
@@ -81,6 +83,12 @@ while IFS= read -r row || [[ -n "$row" ]]; do
     slot_name=$(printf '%s' "$row" | jq -r '.slot')
     slot_tool=$(printf '%s' "$row" | jq -r '.tool')
     slot_output=$(printf '%s' "$row" | jq -r '.output')
+    case "$slot_output" in
+        *$'\n'*|*$'\r'*)
+            larch_err "dispatch-with-waterfall.sh: slot '${slot_name}' output path contains a newline or carriage return (line-oriented paths-file contract)"
+            exit 2
+            ;;
+    esac
     slot_agent=$(printf '%s' "$row" | jq -r '.agent // empty')
     slot_prompt=$(printf '%s' "$row" | jq -r '.prompt_file // empty')
     if [[ -n "$slot_agent" && -n "$slot_prompt" ]]; then
@@ -99,6 +107,11 @@ while IFS= read -r row || [[ -n "$row" ]]; do
 done < "$SLOTS_FILE"
 
 slot_count=${#slot_names[@]}
+if (( slot_count == 0 )); then
+    larch_err "dispatch-with-waterfall.sh: slots file contains no slot rows"
+    exit 2
+fi
+
 final_outputs=()
 final_tools=()
 for ((i=0; i<slot_count; i++)); do
@@ -335,13 +348,36 @@ if (( fallback_count > threshold )); then
     warn="cost-fallback-exceeded-threshold"
 fi
 
+resolved_paths_file="${WATERFALL_PATHS_FILE:-${SLOTS_FILE}.output-files}"
+paths_dir=$(dirname "$resolved_paths_file")
+[[ -d "$paths_dir" ]] || {
+    larch_err "dispatch-with-waterfall.sh: paths-file parent directory does not exist: $paths_dir"
+    exit 2
+}
+for ((i=0; i<slot_count; i++)); do
+    p="${final_outputs[$i]}"
+    case "$p" in
+        *$'\n'*|*$'\r'*)
+            larch_err "dispatch-with-waterfall.sh: output path for slot '${slot_names[$i]}' contains a newline or carriage return (line-oriented paths-file contract)"
+            exit 2
+            ;;
+    esac
+done
+
 emit_kv PHASE1_SLOTS "${phase1_outputs[*]-}"
 emit_kv PHASE2_SLOTS "${phase2_outputs[*]-}"
 emit_kv PHASE3_SLOTS "${phase3_outputs[*]-}"
 emit_kv ALL_OUTPUT_FILES "${final_outputs[*]-}"
+emit_kv ALL_OUTPUT_FILES_PATH "$resolved_paths_file"
 emit_kv ALL_OUTPUT_TOOLS "${final_tools[*]-}"
 emit_kv FALLBACK_COUNT "$fallback_count"
 [[ -n "$warn" ]] && emit_kv WARN "$warn"
 emit_kv DISPATCH_OK "$dispatch_ok"
 emit_kv STATIC_DISPATCH_OK "$static_dispatch_ok"
 emit_kv DYNAMIC_DISPATCH_OK "$dynamic_dispatch_ok"
+
+paths_tmp=$(mktemp "${paths_dir}/.dispatch-waterfall-paths.XXXXXX")
+for ((i=0; i<slot_count; i++)); do
+    printf '%s\n' "${final_outputs[$i]}" >> "$paths_tmp"
+done
+mv -f "$paths_tmp" "$resolved_paths_file"

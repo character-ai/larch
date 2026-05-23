@@ -32,6 +32,8 @@ harness is wired through the `test-collect-agent-results` Makefile target and a
 `is_transient_net_signature`, the statuses eligible for transient retry, or the
 collector's retry-row result semantics.
 
+Additional cases exercise `--paths-file`: stdout parity with positional args, mutual exclusion with positionals, empty / whitespace-only file rejection, missing file rejection, and the legacy zero-argument guard.
+
 The harness unsets inherited session tempdir variables and points
 `LARCH_EXECUTION_ISSUES_LOG` at its tempdir so failures cannot append to a
 parent `/implement` run's log.

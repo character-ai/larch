@@ -232,8 +232,19 @@ if (( external_judges < 2 )); then
     emit_kv DEGRADED_PANEL_WARNING "$_warn_msg"
 fi
 
+plan_voter_paths_file="$DESIGN_TMPDIR/plan-voter-paths.txt"
+pv_tmp=$(mktemp "${DESIGN_TMPDIR}/.plan-voter-paths.XXXXXX")
+if [[ "$VOTER_2_STATUS" != "failed" && -n "$VOTER_2_PATH" ]]; then
+    printf '%s\n' "$VOTER_2_PATH" >> "$pv_tmp"
+fi
+if [[ "$VOTER_3_STATUS" != "failed" && -n "$VOTER_3_PATH" ]]; then
+    printf '%s\n' "$VOTER_3_PATH" >> "$pv_tmp"
+fi
+mv -f "$pv_tmp" "$plan_voter_paths_file"
+
 emit_kv VOTER_2_PATH "$VOTER_2_PATH"
 emit_kv VOTER_3_PATH "$VOTER_3_PATH"
+[[ -s "$plan_voter_paths_file" ]] && emit_kv VOTER_PATHS_FILE "$plan_voter_paths_file"
 emit_kv VOTER_2_TOOL "$VOTER_2_TOOL"
 emit_kv VOTER_3_TOOL "$VOTER_3_TOOL"
 emit_kv VOTER_2_STATUS "$VOTER_2_STATUS"

@@ -72,17 +72,17 @@ For Codex, Cursor, and their Claude replacement voters, instruct each: `"You are
 
 ## Collecting External Reviewer Results
 
-All 10 reviewer slots are dispatched via `dispatch-with-waterfall.sh` in SKILL.md. Use the `ALL_OUTPUT_FILES` value emitted by the waterfall as the full list of output paths to pass to `collect-agent-results.sh` — these already include waterfall-promoted Phase 2 and Phase 3 Claude subprocess outputs.
+All 10 reviewer slots are dispatched via `dispatch-with-waterfall.sh` in SKILL.md. The dispatcher writes a deterministic line-oriented paths-file at `<slots-file>.output-files` (same convention as Step 3 in SKILL.md once `_manifest` is set to the NDJSON path in the snippet below); pass it to `collect-agent-results.sh` via `--paths-file` so output paths are not reassembled from a space-separated shell variable across Bash-tool subshells.
 
 ```bash
-# Split ALL_OUTPUT_FILES into array for collect-agent-results.sh
-read -r -a _all_output_files <<< "$ALL_OUTPUT_FILES"
-${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1860 --substantive-validation --validation-mode --structured-reviewer-validation "${_all_output_files[@]}"
+[ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
+_manifest="$DESIGN_TMPDIR/plan-review-slots.ndjson"
+"${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh" --timeout 1860 --substantive-validation --validation-mode --structured-reviewer-validation --paths-file "$_manifest.output-files"
 ```
 
 Immediately after this collection returns, run the Mid-Run Dirty-Tree Probe Contract from `${CLAUDE_PLUGIN_ROOT}/skills/review/references/heavy-worker.md` for `STAGE=plan-review-collection`.
 
-Parse the structured output for each reviewer's `STATUS` and `REVIEWER_FILE`. Phase 3 Claude subprocess outputs will appear in `ALL_OUTPUT_FILES` with `TOOL=claude` in the corresponding `ALL_OUTPUT_TOOLS` position. For any reviewer with `STATUS` not `OK`, log the failure via the failure logging contract above but do not re-launch; the waterfall already exhausted all three phases for that slot. Read valid output files.
+Parse the structured output for each reviewer's `STATUS` and `REVIEWER_FILE`. Phase 3 Claude subprocess outputs appear in the paths-file alongside Phase 1/2 outputs; tool attribution per output comes from `collect-agent-results.sh`'s emitted `TOOL=` field for each result block (or each output's `.meta` file's `TOOL=` row), not from `ALL_OUTPUT_TOOLS` positional alignment. For any reviewer with `STATUS` not `OK`, log the failure via the failure logging contract above but do not re-launch; the waterfall already exhausted all three phases for that slot. Read valid output files.
 
 For every non-`OK` result, append the collector failure capture described in the Failure logging contract before applying the runtime fallback. Use `--site "design Step 3" --tool "collect-agent-results.sh <tool> <status>" --exit-code <EXIT_CODE-or-1> --category "External Reviewer Issues" --redact`.
 
