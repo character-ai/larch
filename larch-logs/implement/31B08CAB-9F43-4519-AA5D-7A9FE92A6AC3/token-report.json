@@ -229,25 +229,25 @@
       {
         "step": "Step 7a — code flow diagram",
         "totals": {
-          "input": 6,
-          "cache_read": 1179591,
-          "cache_create": 1135,
-          "cache_create_5m": 1135,
+          "input": 7,
+          "cache_read": 1475262,
+          "cache_create": 1403,
+          "cache_create_5m": 1403,
           "cache_create_1h": 0,
-          "output": 1060,
-          "total": 1181792
+          "output": 2563,
+          "total": 1479235
         },
         "skills": [
           {
             "skill": "inferred:Step 7a — code flow diagram",
             "totals": {
-              "input": 6,
-              "cache_read": 1179591,
-              "cache_create": 1135,
-              "cache_create_5m": 1135,
+              "input": 7,
+              "cache_read": 1475262,
+              "cache_create": 1403,
+              "cache_create_5m": 1403,
               "cache_create_1h": 0,
-              "output": 1060,
-              "total": 1181792
+              "output": 2563,
+              "total": 1479235
             }
           }
         ]
@@ -255,25 +255,64 @@
       {
         "step": "Step 8 — version bump",
         "totals": {
-          "input": 0,
-          "cache_read": 0,
-          "cache_create": 0,
-          "cache_create_5m": 0,
+          "input": 7,
+          "cache_read": 2095945,
+          "cache_create": 7367,
+          "cache_create_5m": 7367,
           "cache_create_1h": 0,
-          "output": 0,
-          "total": 0
+          "output": 3833,
+          "total": 2107152
         },
-        "skills": []
+        "skills": [
+          {
+            "skill": "inferred:Step 8 — version bump",
+            "totals": {
+              "input": 7,
+              "cache_read": 2095945,
+              "cache_create": 7367,
+              "cache_create_5m": 7367,
+              "cache_create_1h": 0,
+              "output": 3833,
+              "total": 2107152
+            }
+          }
+        ]
+      },
+      {
+        "step": "Step 6 — checks second pass",
+        "totals": {
+          "input": 1,
+          "cache_read": 303306,
+          "cache_create": 287,
+          "cache_create_5m": 287,
+          "cache_create_1h": 0,
+          "output": 416,
+          "total": 304010
+        },
+        "skills": [
+          {
+            "skill": "inferred:Step 6 — checks second pass",
+            "totals": {
+              "input": 1,
+              "cache_read": 303306,
+              "cache_create": 287,
+              "cache_create_5m": 287,
+              "cache_create_1h": 0,
+              "output": 416,
+              "total": 304010
+            }
+          }
+        ]
       }
     ],
     "totals": {
-      "input": 140,
-      "cache_read": 21678301,
-      "cache_create": 979996,
-      "cache_create_5m": 979996,
+      "input": 149,
+      "cache_read": 24373223,
+      "cache_create": 987918,
+      "cache_create_5m": 987918,
       "cache_create_1h": 0,
-      "output": 102731,
-      "total": 22761168
+      "output": 108483,
+      "total": 25469773
     }
   },
   "codex": {
@@ -352,6 +391,14 @@
       },
       {
         "step": "Step 8 — version bump",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 6 — checks second pass",
         "totals": {
           "input": 0,
           "output": 0,
@@ -446,6 +493,14 @@
           "output": 0,
           "total": 0
         }
+      },
+      {
+        "step": "Step 6 — checks second pass",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
       }
     ],
     "totals": {
@@ -455,12 +510,12 @@
     }
   },
   "BUCKETS_claude": {
-    "input": 140,
-    "cache_read": 21678301,
-    "cache_create_5m": 979996,
+    "input": 149,
+    "cache_read": 24373223,
+    "cache_create_5m": 987918,
     "cache_create_1h": 0,
-    "output": 102731,
-    "total": 22761168
+    "output": 108483,
+    "total": 25469773
   },
   "BUCKETS_codex": {
     "input": 0,
