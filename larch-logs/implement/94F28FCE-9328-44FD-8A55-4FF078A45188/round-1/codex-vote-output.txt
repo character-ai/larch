@@ -1,0 +1,14 @@
+FINDING_3: EXONERATE -- legitimate branch-noise observation, but committed run logs are repo policy and not issue-worthy
+FINDING_4: YES
+FINDING_5: EXONERATE -- legitimate one-run acceptance-text mismatch, but not worth a follow-up issue
+FINDING_10: EXONERATE -- legitimate branch-noise observation, but larch-log commits are expected repo workflow
+FINDING_11: EXONERATE -- cosmetic generated-footer drift is real but too minor to track separately
+FINDING_12: YES
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: EXONERATE -- duplicates the acceptance-grep concern and is not worth a separate issue
+FINDING_19: EXONERATE -- legitimate branch-noise observation, but committed design logs are expected repo workflow
+FINDING_22: NO -- descriptive commit summary only, not a review finding
+FINDING_23: EXONERATE -- legitimate but duplicates the /alias issue-anchoring concern in FINDING_4
+FINDING_24: NO -- /review still exposing --dynamic-archetypes is intentional and distinct from /implement public argv
+FINDING_25: NO -- historical CHANGELOG and larch-log mentions are intentionally retained by design
