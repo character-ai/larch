@@ -1,0 +1,46 @@
+Reading the full aggregator prompt (canonical ballot content) and verifying against the workspace and context files. `findings.md` contains no `FINDING_` headings.
+
+Verifying key claims in the workspace: `findings.md` has no `FINDING_` headings; using the round-1 `aggregator-prompt.md` slot list (FINDING_1–40) as the effective ballot and checking the repo.
+
+Note: [`findings.md`](<TMPDIR>/round-1/findings.md) contains no `FINDING_` headings (aggregator empty merge). Votes below follow the same `FINDING_1`–`FINDING_40` headings from [`aggregator-prompt.md`](<TMPDIR>/round-1/aggregator-prompt.md) in that session directory, verified against the repo and [`diff-context.txt`](<TMPDIR>/round-1/diff-context.txt).
+
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: EXONERATE -- maintenance-style nit with heavy shared-extractor refactor
+FINDING_5: EXONERATE -- checklist/process mismatch without a shipped doc defect
+FINDING_6: EXONERATE -- pre-existing coarse gate already deferred in plan; not issue-worthy
+FINDING_7: NO -- historical changelog prose is intentional migration context
+FINDING_8: YES
+FINDING_9: NO -- `file-design-oos.md` has no line 82 and already states atomic temp plus mv
+FINDING_10: EXONERATE -- known prompt-side combine hazard; mechanical helper is future scope
+FINDING_11: YES
+FINDING_12: EXONERATE -- stricter integration test is optional; cap wiring is already exercised nearby
+FINDING_13: EXONERATE -- forcing deps non-zero adds harness complexity for marginal signal
+FINDING_14: YES
+FINDING_15: EXONERATE -- test naming nit; coarse `filed>0` semantics predate this branch
+FINDING_16: EXONERATE -- stronger assertions are optional harness hardening
+FINDING_17: EXONERATE -- plan already documents OOS_1 deferral; separate issue redundant
+FINDING_18: EXONERATE -- trusted `/larch:issue` stdout; extra URL validation is disproportionate here
+FINDING_19: YES
+FINDING_20: EXONERATE -- unifying sentinel and Python parse is a refactor beyond this PR’s risk
+FINDING_21: EXONERATE -- same substring-count class as FINDING_19 without new scope
+FINDING_22: EXONERATE -- duplicate of FINDING_1 on the same `|| true` pattern
+FINDING_23: YES
+FINDING_24: YES
+FINDING_25: YES
+FINDING_26: EXONERATE -- duplicate deps-degrade harness concern as FINDING_13
+FINDING_27: EXONERATE -- same coarse-gate note as FINDING_6; not issue-worthy
+FINDING_28: EXONERATE -- one-line checkpoint reminder is optional polish
+FINDING_29: EXONERATE -- duplicate of FINDING_12 cap-through-prepare harness gap
+FINDING_30: EXONERATE -- plan/topology input mismatch, not a shipped bug
+FINDING_31: EXONERATE -- duplicate argv-drift concern already covered by FINDING_11
+FINDING_32: YES
+FINDING_33: YES
+FINDING_34: EXONERATE -- extra cross-session fixtures add large harness surface for niche ordering
+FINDING_35: NO -- branch inventory is not an actionable code-review finding
+FINDING_36: EXONERATE -- same pre-existing `filed>0` contract as FINDING_6
+FINDING_37: YES
+FINDING_38: EXONERATE -- depends on tightening in FINDING_37; comment-only lock-in is weak value
+FINDING_39: EXONERATE -- doc vs table tension is real but low urgency vs deferred OOS_1 work
+FINDING_40: NO -- deferral is explicitly documented; no new defect
