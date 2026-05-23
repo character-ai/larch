@@ -63,9 +63,13 @@ Lines of the form `KEY=value`:
 | Dimension | `token-cost.sh` (this file) | `token-tally.sh` |
 |-----------|----------------------------|------------------|
 | Primary skills / workflows | `/implement`, `/fix-issue` (via `scripts/render-run-summary.sh`; see intro); `/design` terminal line (via `scripts/render-cost-line.sh`) | `/research` only |
-| Rate env vars | Per-bucket `LARCH_*_RATE_PER_M` names (see Usage); legacy blended `LARCH_CLAUDE_RATE_PER_M`, `LARCH_CODEX_RATE_PER_M`, `LARCH_CURSOR_RATE_PER_M`; **Claude-only** `LARCH_TOKEN_RATE_PER_M` when Claude blended is unset. | Single `LARCH_TOKEN_RATE_PER_M` across all lanes |
+| Rate env vars | Per-bucket `LARCH_*_RATE_PER_M` names (see Usage); legacy blended `LARCH_CLAUDE_RATE_PER_M`, `LARCH_CODEX_RATE_PER_M`, `LARCH_CURSOR_RATE_PER_M` apply to **aggregate** pricing only (not as fallbacks for individual per-bucket lanes when per-bucket token flags are supplied); **Claude-only** `LARCH_TOKEN_RATE_PER_M` when Claude blended is unset. | Single `LARCH_TOKEN_RATE_PER_M` across all lanes |
 | N/A behavior | With defaults, every lane yields a numeric cost; zero tokens with a positive rate yield `0.00`. | `$` column omitted when `LARCH_TOKEN_RATE_PER_M` is unset, malformed, or non-positive |
 | Cost display | Dollar amounts from awk, two decimal places, no dollar prefix in KV values. | Markdown cost suffix from awk, dollar-prefixed four decimal places beside totals. |
 | Output shape | Flat KV lines (`CLAUDE_COST=`, etc.) | Markdown `## Token Spend` section with phase rows |
 
-Do not assume parity between the two surfaces; changes to one do not imply the other needs matching updates.
+## Orchestration note
+
+Token-cost work may occasionally share a branch with `/implement` Step 5 (review loop) refactors. Treat those as separate risk surfaces unless the PR explicitly documents intentional coupling; the scripts in this directory are validated by the `test-token-cost*` and `test-render-cost-line*` harnesses without exercising Step 5.
+
+Do not assume parity between **`token-cost.sh`** and **`token-tally.sh`**; changes to one do not imply the other needs matching updates.

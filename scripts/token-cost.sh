@@ -40,7 +40,14 @@ usage() {
 }
 
 num() {
-    case "${1:-}" in ''|*[!0-9]*) printf '0\n' ;; *) printf '%s\n' "$1" ;; esac
+    case "${1:-}" in
+        '') printf '0\n' ;;
+        *[!0-9]*)
+            printf '%s\n' "token-cost.sh: invalid non-integer token count: ${1:-}" >&2
+            exit 2
+            ;;
+        *) printf '%s\n' "$1" ;;
+    esac
 }
 
 # Valid positive decimal: optional fraction; empty / zero / malformed → use default.
@@ -107,7 +114,10 @@ done
 
 BLENDED_WARN=false
 
-# --- Resolve rates (per-bucket env > legacy blended env > per-bucket default) ---
+# --- Resolve rates ---
+# Aggregate/blended path: per-bucket env > legacy blended env > per-bucket default.
+# Per-bucket invocation path: per-bucket env > per-bucket default (legacy blended env applies
+# only to aggregate lanes — see branch above).
 claude_blended_raw="${LARCH_CLAUDE_RATE_PER_M:-}"
 if [ -z "$claude_blended_raw" ] || [ "$claude_blended_raw" = "0" ]; then
     claude_blended_raw="${LARCH_TOKEN_RATE_PER_M:-}"
@@ -115,20 +125,40 @@ fi
 codex_blended_raw="${LARCH_CODEX_RATE_PER_M:-}"
 cursor_blended_raw="${LARCH_CURSOR_RATE_PER_M:-}"
 
-# Nested rate_or_default: malformed/empty per-bucket env falls through to (blended → bucket default).
-R_C_IN=$(rate_or_default "${LARCH_CLAUDE_INPUT_RATE_PER_M:-}" "$(rate_or_default "$claude_blended_raw" "$DEFAULT_CLAUDE_INPUT_RATE_PER_M")")
-R_C_CR=$(rate_or_default "${LARCH_CLAUDE_CACHE_READ_RATE_PER_M:-}" "$(rate_or_default "$claude_blended_raw" "$DEFAULT_CLAUDE_CACHE_READ_RATE_PER_M")")
-R_C_CW5=$(rate_or_default "${LARCH_CLAUDE_CACHE_WRITE_5M_RATE_PER_M:-}" "$(rate_or_default "$claude_blended_raw" "$DEFAULT_CLAUDE_CACHE_WRITE_5M_RATE_PER_M")")
-R_C_CW1=$(rate_or_default "${LARCH_CLAUDE_CACHE_WRITE_1H_RATE_PER_M:-}" "$(rate_or_default "$claude_blended_raw" "$DEFAULT_CLAUDE_CACHE_WRITE_1H_RATE_PER_M")")
-R_C_OUT=$(rate_or_default "${LARCH_CLAUDE_OUTPUT_RATE_PER_M:-}" "$(rate_or_default "$claude_blended_raw" "$DEFAULT_CLAUDE_OUTPUT_RATE_PER_M")")
-
-R_D_IN=$(rate_or_default "${LARCH_CODEX_INPUT_RATE_PER_M:-}" "$(rate_or_default "$codex_blended_raw" "$DEFAULT_CODEX_INPUT_RATE_PER_M")")
-R_D_CACHED=$(rate_or_default "${LARCH_CODEX_CACHED_INPUT_RATE_PER_M:-}" "$(rate_or_default "$codex_blended_raw" "$DEFAULT_CODEX_CACHED_INPUT_RATE_PER_M")")
-R_D_OUT=$(rate_or_default "${LARCH_CODEX_OUTPUT_RATE_PER_M:-}" "$(rate_or_default "$codex_blended_raw" "$DEFAULT_CODEX_OUTPUT_RATE_PER_M")")
-
-R_U_IN=$(rate_or_default "${LARCH_CURSOR_INPUT_RATE_PER_M:-}" "$(rate_or_default "$cursor_blended_raw" "$DEFAULT_CURSOR_INPUT_RATE_PER_M")")
-R_U_CR=$(rate_or_default "${LARCH_CURSOR_CACHE_READ_RATE_PER_M:-}" "$(rate_or_default "$cursor_blended_raw" "$DEFAULT_CURSOR_CACHE_READ_RATE_PER_M")")
-R_U_OUT=$(rate_or_default "${LARCH_CURSOR_OUTPUT_RATE_PER_M:-}" "$(rate_or_default "$cursor_blended_raw" "$DEFAULT_CURSOR_OUTPUT_RATE_PER_M")")
+# Per-bucket rate resolution: per-bucket env > per-bucket default only (legacy blended env vars
+# apply to aggregate/blended paths only — avoids mis-pricing individual buckets when an
+# operator keeps LARCH_*_RATE_PER_M overrides from the pre-bucket era).
+if [ "$CLAUDE_BUCKET" = true ]; then
+    R_C_IN=$(rate_or_default "${LARCH_CLAUDE_INPUT_RATE_PER_M:-}" "$DEFAULT_CLAUDE_INPUT_RATE_PER_M")
+    R_C_CR=$(rate_or_default "${LARCH_CLAUDE_CACHE_READ_RATE_PER_M:-}" "$DEFAULT_CLAUDE_CACHE_READ_RATE_PER_M")
+    R_C_CW5=$(rate_or_default "${LARCH_CLAUDE_CACHE_WRITE_5M_RATE_PER_M:-}" "$DEFAULT_CLAUDE_CACHE_WRITE_5M_RATE_PER_M")
+    R_C_CW1=$(rate_or_default "${LARCH_CLAUDE_CACHE_WRITE_1H_RATE_PER_M:-}" "$DEFAULT_CLAUDE_CACHE_WRITE_1H_RATE_PER_M")
+    R_C_OUT=$(rate_or_default "${LARCH_CLAUDE_OUTPUT_RATE_PER_M:-}" "$DEFAULT_CLAUDE_OUTPUT_RATE_PER_M")
+else
+    R_C_IN=$(rate_or_default "${LARCH_CLAUDE_INPUT_RATE_PER_M:-}" "$(rate_or_default "$claude_blended_raw" "$DEFAULT_CLAUDE_INPUT_RATE_PER_M")")
+    R_C_CR=$(rate_or_default "${LARCH_CLAUDE_CACHE_READ_RATE_PER_M:-}" "$(rate_or_default "$claude_blended_raw" "$DEFAULT_CLAUDE_CACHE_READ_RATE_PER_M")")
+    R_C_CW5=$(rate_or_default "${LARCH_CLAUDE_CACHE_WRITE_5M_RATE_PER_M:-}" "$(rate_or_default "$claude_blended_raw" "$DEFAULT_CLAUDE_CACHE_WRITE_5M_RATE_PER_M")")
+    R_C_CW1=$(rate_or_default "${LARCH_CLAUDE_CACHE_WRITE_1H_RATE_PER_M:-}" "$(rate_or_default "$claude_blended_raw" "$DEFAULT_CLAUDE_CACHE_WRITE_1H_RATE_PER_M")")
+    R_C_OUT=$(rate_or_default "${LARCH_CLAUDE_OUTPUT_RATE_PER_M:-}" "$(rate_or_default "$claude_blended_raw" "$DEFAULT_CLAUDE_OUTPUT_RATE_PER_M")")
+fi
+if [ "$CODEX_BUCKET" = true ]; then
+    R_D_IN=$(rate_or_default "${LARCH_CODEX_INPUT_RATE_PER_M:-}" "$DEFAULT_CODEX_INPUT_RATE_PER_M")
+    R_D_CACHED=$(rate_or_default "${LARCH_CODEX_CACHED_INPUT_RATE_PER_M:-}" "$DEFAULT_CODEX_CACHED_INPUT_RATE_PER_M")
+    R_D_OUT=$(rate_or_default "${LARCH_CODEX_OUTPUT_RATE_PER_M:-}" "$DEFAULT_CODEX_OUTPUT_RATE_PER_M")
+else
+    R_D_IN=$(rate_or_default "${LARCH_CODEX_INPUT_RATE_PER_M:-}" "$(rate_or_default "$codex_blended_raw" "$DEFAULT_CODEX_INPUT_RATE_PER_M")")
+    R_D_CACHED=$(rate_or_default "${LARCH_CODEX_CACHED_INPUT_RATE_PER_M:-}" "$(rate_or_default "$codex_blended_raw" "$DEFAULT_CODEX_CACHED_INPUT_RATE_PER_M")")
+    R_D_OUT=$(rate_or_default "${LARCH_CODEX_OUTPUT_RATE_PER_M:-}" "$(rate_or_default "$codex_blended_raw" "$DEFAULT_CODEX_OUTPUT_RATE_PER_M")")
+fi
+if [ "$CURSOR_BUCKET" = true ]; then
+    R_U_IN=$(rate_or_default "${LARCH_CURSOR_INPUT_RATE_PER_M:-}" "$DEFAULT_CURSOR_INPUT_RATE_PER_M")
+    R_U_CR=$(rate_or_default "${LARCH_CURSOR_CACHE_READ_RATE_PER_M:-}" "$DEFAULT_CURSOR_CACHE_READ_RATE_PER_M")
+    R_U_OUT=$(rate_or_default "${LARCH_CURSOR_OUTPUT_RATE_PER_M:-}" "$DEFAULT_CURSOR_OUTPUT_RATE_PER_M")
+else
+    R_U_IN=$(rate_or_default "${LARCH_CURSOR_INPUT_RATE_PER_M:-}" "$(rate_or_default "$cursor_blended_raw" "$DEFAULT_CURSOR_INPUT_RATE_PER_M")")
+    R_U_CR=$(rate_or_default "${LARCH_CURSOR_CACHE_READ_RATE_PER_M:-}" "$(rate_or_default "$cursor_blended_raw" "$DEFAULT_CURSOR_CACHE_READ_RATE_PER_M")")
+    R_U_OUT=$(rate_or_default "${LARCH_CURSOR_OUTPUT_RATE_PER_M:-}" "$(rate_or_default "$cursor_blended_raw" "$DEFAULT_CURSOR_OUTPUT_RATE_PER_M")")
+fi
 
 # Blended-only rates (aggregate path)
 R_C_BLEND=$(rate_or_default "$claude_blended_raw" "$DEFAULT_CLAUDE_BLENDED_PER_M")

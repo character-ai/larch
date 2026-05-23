@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # lib-cost-line-format.sh — shared dollar-primary cost line (stdout, single line + newline).
-# Sourced by token-report / render-cost-line / render-run-summary; no side effects when sourced.
-set -euo pipefail
+# Sourced by token-report / render-cost-line / render-run-summary; does not alter caller shell
+# options (strict mode stays owned by the sourcing script).
 
 # Args: total_usd claude_usd codex_usd cursor_usd total_tokens_int
 # Emits: 💰 Cost: TOTAL ~$X.XX — Claude $A.AA, Codex $B.BB, Cursor $C.CC  |  Tokens: <T>k

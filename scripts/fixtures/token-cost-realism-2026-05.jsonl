@@ -1,0 +1,1 @@
+{"kind":"cost_probe","ref_usd":5.75,"claude":{"input":100,"cache_read":10000000,"cache_write_5m":100000,"cache_write_1h":0,"output":5000},"codex":{"aggregate_tokens":0},"cursor":{"aggregate_tokens":0}}

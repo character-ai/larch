@@ -82,11 +82,24 @@ if [ "$((C_IN + C_CR + C_CW5 + C_CW1 + C_OUT))" -gt 0 ]; then
 else
     claude_args=(--claude-tokens "$CLAUDE_T")
 fi
-cost_lines=$("$TOKEN_COST_SH" \
+if ! cost_lines=$("$TOKEN_COST_SH" \
     "${claude_args[@]}" \
     "${codex_args[@]}" \
     "${cursor_args[@]}" \
-    2>"$cost_errf") || cost_lines=""
+    2>"$cost_errf"); then
+    if [ -s "$cost_errf" ]; then
+        cat "$cost_errf" >&2
+    fi
+    printf '%s\n' "render-cost-line.sh: token-cost.sh failed" >&2
+    exit 1
+fi
+if [ -z "$cost_lines" ] || ! printf '%s\n' "$cost_lines" | grep -q '^TOTAL_COST='; then
+    if [ -s "$cost_errf" ]; then
+        cat "$cost_errf" >&2
+    fi
+    printf '%s\n' "render-cost-line.sh: token-cost.sh produced no TOTAL_COST= output" >&2
+    exit 1
+fi
 if [ -s "$cost_errf" ]; then
     cat "$cost_errf" >&2
 fi

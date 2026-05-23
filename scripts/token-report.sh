@@ -188,7 +188,8 @@ render_jq() {
           $marks[$i].step
         ) // null;
       def usage_row($r; $marks):
-        ($r.timestamp | epoch) as $ts |
+        (if ($r.timestamp? != null) and ($r.timestamp != null) then ($r.timestamp | epoch)
+         else $marks[0].ts end) as $ts |
         (usage_obj($r)) as $u |
         (cache_cw5($u) + cache_cw1($u)) as $ccsum |
         {
@@ -430,7 +431,7 @@ render_jq() {
       ($ledger // []) as $l
       | ($l | map(select(.type == "mark") | {step, ts: (.ts | epoch)}) | map(select(.ts != null))) as $marks
       | ($l | map(select(.type == "vendor") | vendor_row(.)) | map(select(.ts != null))) as $vendor
-      | (map(select(.type == "assistant" and .message.usage? and .timestamp?) | usage_row(.; $marks))
+      | (map(select(.type == "assistant" and .message.usage?) | usage_row(.; $marks))
          | map(select(.ts != null))
          | group_by(
              ((.rid // "") | tostring) + "|" + ((.mid // "") | tostring) + "|"
@@ -720,6 +721,15 @@ else
             done <"$cost_errf"
         fi
         rm -f "$cost_errf"
+        if [[ -z "$cost_out" ]] || ! printf '%s\n' "$cost_out" | grep -q '^TOTAL_COST='; then
+            larch_errf 'token-report.sh: token-cost.sh failed; emitting N/A cost line (not a fabricated zero-dollar total)\n'
+            tt_only=$(jq -r '.token_total // 0' <<<"$report")
+            tok_k=$(awk -v n="$tt_only" 'BEGIN {
+              if (n == "") n = 0
+              printf "%d\n", int((n+500)/1000)
+            }')
+            emit "$(printf '💰 Cost: N/A — token-cost unavailable  |  Tokens: %sk\n' "$tok_k")"
+        else
         read_kv_sum() {
             local key=$1 v
             v=$(printf '%s\n' "$cost_out" | awk -F= -v k="$key" '$1==k{print $2; exit}')
@@ -733,6 +743,7 @@ else
         _cost_ln=$(larch_emit_cost_line "$tc" "$cc" "$dc" "$uc" "$tt")
         _cost_ln=${_cost_ln%$'\n'}
         emit "$_cost_ln"
+        fi
     else
         emit "$report"
     fi

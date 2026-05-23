@@ -7,15 +7,11 @@ RUN_DIR="$REPO/larch-logs/implement/AAAA-report-tokens-recompute-fixture"
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 pass() { printf 'PASS: %s\n' "$1"; }
 
-if ! command -v gh >/dev/null 2>&1; then
-    printf 'SKIP: test-report-tokens-recompute.sh (gh not installed)\n'
-    exit 0
-fi
+# Avoid inheriting a parent Claude quiet-session FD contract (this harness runs under CI / tools).
+unset LARCH_QUIET_ACTIVE LARCH_QUIET_PID LARCH_QUIET_LOG_FILE LARCH_QUIET_LOG \
+    LARCH_QUIET_BREADCRUMBS LARCH_QUIET_BREADCRUMB_FD LARCH_QUIET_DISABLE 2>/dev/null || true
 
-if ! gh repo view >/dev/null 2>&1; then
-    printf 'SKIP: test-report-tokens-recompute.sh (gh not authenticated)\n'
-    exit 0
-fi
+export LARCH_REPORT_TOKENS_REPO="${LARCH_REPORT_TOKENS_REPO:-fixture/local}"
 
 cleanup() { rm -rf "$RUN_DIR"; }
 trap cleanup EXIT

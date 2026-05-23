@@ -67,7 +67,9 @@ need_cmd() {
     }
 }
 
-need_cmd gh
+if [[ -z "${LARCH_REPORT_TOKENS_REPO:-}" ]]; then
+    need_cmd gh
+fi
 need_cmd jq
 need_cmd python3
 
@@ -86,8 +88,8 @@ if [[ -z "$REPO" || "$REPO" != */* ]]; then
 fi
 
 export LARCH_REPORT_TOKENS_REPO_FULL="$REPO"
-export LARCH_REPORT_TOKENS_NO_ISSUE="${NO_ISSUE:-}"
-export LARCH_REPORT_TOKENS_NO_PLOT="${NO_PLOT:-}"
+export LARCH_REPORT_TOKENS_NO_ISSUE="${NO_ISSUE:-${LARCH_REPORT_TOKENS_NO_ISSUE:-}}"
+export LARCH_REPORT_TOKENS_NO_PLOT="${NO_PLOT:-${LARCH_REPORT_TOKENS_NO_PLOT:-}}"
 
 LIMIT="${LARCH_REPORT_TOKENS_LIMIT:-}"
 if [[ -n "$LIMIT" && ! "$LIMIT" =~ ^[0-9]+$ ]]; then
@@ -183,15 +185,40 @@ import tempfile
 from collections import Counter, defaultdict
 
 
-def env_rate(name, default):
-    raw = os.environ.get(name)
-    if raw is None or raw == "":
+def env_rate(names, default):
+    if isinstance(names, str):
+        names = (names,)
+    for name in names:
+        raw = os.environ.get(name)
+        if raw is None or raw == "":
+            continue
+        try:
+            return float(raw)
+        except ValueError:
+            print(f"WARNING: ignoring invalid {name}={raw!r}; using next/default", file=sys.stderr)
+    return default
+
+
+def safe_int(value, default=0):
+    if value is None:
         return default
-    try:
-        return float(raw)
-    except ValueError:
-        print(f"WARNING: ignoring invalid {name}={raw!r}; using {default}", file=sys.stderr)
-        return default
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        if value != value or value in (float("inf"), float("-inf")):
+            return default
+        return int(value)
+    if isinstance(value, str):
+        s = value.replace(",", "").strip()
+        if not s:
+            return default
+        try:
+            return int(float(s))
+        except ValueError:
+            return default
+    return default
 
 
 # Frozen defaults used before DE-2622 for the "Reported cost" column (historical estimator).
@@ -206,22 +233,22 @@ LEGACY_REPORTED_RATES = {
 # is merged 5m+1h; use the 5m default as a single blended bucket for this estimator.
 RATES = {
     "claude": {
-        "input": env_rate("LARCH_RATE_CLAUDE_INPUT", 5.00),
-        "cache_read": env_rate("LARCH_RATE_CLAUDE_CACHE_READ", 0.50),
-        "cache_create": env_rate("LARCH_RATE_CLAUDE_CACHE_CREATE", 6.25),
-        "output": env_rate("LARCH_RATE_CLAUDE_OUTPUT", 25.00),
+        "input": env_rate(("LARCH_RATE_CLAUDE_INPUT", "LARCH_CLAUDE_INPUT_RATE_PER_M"), 5.00),
+        "cache_read": env_rate(("LARCH_RATE_CLAUDE_CACHE_READ", "LARCH_CLAUDE_CACHE_READ_RATE_PER_M"), 0.50),
+        "cache_create": env_rate(("LARCH_RATE_CLAUDE_CACHE_CREATE", "LARCH_CLAUDE_CACHE_WRITE_5M_RATE_PER_M"), 6.25),
+        "output": env_rate(("LARCH_RATE_CLAUDE_OUTPUT", "LARCH_CLAUDE_OUTPUT_RATE_PER_M"), 25.00),
     },
     "codex": {
-        "input": env_rate("LARCH_RATE_CODEX_INPUT", 0.44),
-        "output": env_rate("LARCH_RATE_CODEX_OUTPUT", 3.50),
-        "aggregate": env_rate("LARCH_RATE_CODEX_AGGREGATE", 2.00),
-        "cache_read": env_rate("LARCH_RATE_CODEX_CACHE_READ", 0.04),
+        "input": env_rate(("LARCH_RATE_CODEX_INPUT", "LARCH_CODEX_INPUT_RATE_PER_M"), 0.44),
+        "output": env_rate(("LARCH_RATE_CODEX_OUTPUT", "LARCH_CODEX_OUTPUT_RATE_PER_M"), 3.50),
+        "aggregate": env_rate(("LARCH_RATE_CODEX_AGGREGATE", "LARCH_CODEX_RATE_PER_M"), 2.00),
+        "cache_read": env_rate(("LARCH_RATE_CODEX_CACHE_READ", "LARCH_CODEX_CACHED_INPUT_RATE_PER_M"), 0.04),
     },
     "cursor": {
-        "input": env_rate("LARCH_RATE_CURSOR_INPUT", 1.25),
-        "output": env_rate("LARCH_RATE_CURSOR_OUTPUT", 6.00),
-        "aggregate": env_rate("LARCH_RATE_CURSOR_AGGREGATE", 1.50),
-        "cache_read": env_rate("LARCH_RATE_CURSOR_CACHE_READ", 0.25),
+        "input": env_rate(("LARCH_RATE_CURSOR_INPUT", "LARCH_CURSOR_INPUT_RATE_PER_M"), 1.25),
+        "output": env_rate(("LARCH_RATE_CURSOR_OUTPUT", "LARCH_CURSOR_OUTPUT_RATE_PER_M"), 6.00),
+        "aggregate": env_rate(("LARCH_RATE_CURSOR_AGGREGATE", "LARCH_CURSOR_RATE_PER_M"), 1.50),
+        "cache_read": env_rate(("LARCH_RATE_CURSOR_CACHE_READ", "LARCH_CURSOR_CACHE_READ_RATE_PER_M"), 0.25),
     },
 }
 
@@ -388,10 +415,10 @@ def parse_json_report(report):
     claude = report.get("claude") if isinstance(report.get("claude"), dict) else {}
     claude_totals = claude.get("totals") if isinstance(claude.get("totals"), dict) else {}
     totals["claude"] = {
-        "input": int(claude_totals.get("input") or 0),
-        "cache_read": int(claude_totals.get("cache_read") or 0),
-        "cache_create": int(claude_totals.get("cache_create") or 0),
-        "output": int(claude_totals.get("output") or 0),
+        "input": safe_int(claude_totals.get("input")),
+        "cache_read": safe_int(claude_totals.get("cache_read")),
+        "cache_create": safe_int(claude_totals.get("cache_create")),
+        "output": safe_int(claude_totals.get("output")),
     }
     for row in claude.get("per_step") or []:
         if not isinstance(row, dict):
@@ -400,10 +427,10 @@ def parse_json_report(report):
         phase_rows.append({
             "vendor": "claude",
             "step": str(row.get("step") or ""),
-            "input": int(row_totals.get("input") or 0),
-            "cache_read": int(row_totals.get("cache_read") or 0),
-            "cache_create": int(row_totals.get("cache_create") or 0),
-            "output": int(row_totals.get("output") or 0),
+            "input": safe_int(row_totals.get("input")),
+            "cache_read": safe_int(row_totals.get("cache_read")),
+            "cache_create": safe_int(row_totals.get("cache_create")),
+            "output": safe_int(row_totals.get("output")),
         })
 
     vendor_names = report.get("vendors") if isinstance(report.get("vendors"), list) else []
@@ -413,9 +440,9 @@ def parse_json_report(report):
         section = report.get(vendor) if isinstance(report.get(vendor), dict) else {}
         section_totals = section.get("totals") if isinstance(section.get("totals"), dict) else {}
         totals[vendor] = {
-            "input": int(section_totals.get("input") or 0),
-            "output": int(section_totals.get("output") or 0),
-            "total": int(section_totals.get("total") or 0),
+            "input": safe_int(section_totals.get("input")),
+            "output": safe_int(section_totals.get("output")),
+            "total": safe_int(section_totals.get("total")),
         }
         for row in section.get("per_step") or []:
             if not isinstance(row, dict):
@@ -424,9 +451,9 @@ def parse_json_report(report):
             phase_rows.append({
                 "vendor": vendor,
                 "step": str(row.get("step") or ""),
-                "input": int(row_totals.get("input") or 0),
-                "output": int(row_totals.get("output") or 0),
-                "total": int(row_totals.get("total") or 0),
+                "input": safe_int(row_totals.get("input")),
+                "output": safe_int(row_totals.get("output")),
+                "total": safe_int(row_totals.get("total")),
             })
     return totals, phase_rows
 
@@ -514,44 +541,47 @@ def estimated_cost_token_cost_sh(plugin_root: str, token_report, totals) -> floa
     if isinstance(bc, dict) and isinstance(bd, dict) and isinstance(bu, dict):
         args = [
             exe,
-            "--claude-input-tokens", str(int(bc.get("input") or 0)),
-            "--claude-cache-read-tokens", str(int(bc.get("cache_read") or 0)),
-            "--claude-cache-write-5m-tokens", str(int(bc.get("cache_create_5m") or 0)),
-            "--claude-cache-write-1h-tokens", str(int(bc.get("cache_create_1h") or 0)),
-            "--claude-output-tokens", str(int(bc.get("output") or 0)),
-            "--codex-input-tokens", str(int(bd.get("input") or 0)),
-            "--codex-cached-input-tokens", str(int(bd.get("cached_input") or 0)),
-            "--codex-output-tokens", str(int(bd.get("output") or 0)),
-            "--cursor-input-tokens", str(int(bu.get("input") or 0)),
-            "--cursor-cache-read-tokens", str(int(bu.get("cache_read") or 0)),
-            "--cursor-output-tokens", str(int(bu.get("output") or 0)),
+            "--claude-input-tokens", str(safe_int(bc.get("input"))),
+            "--claude-cache-read-tokens", str(safe_int(bc.get("cache_read"))),
+            "--claude-cache-write-5m-tokens", str(safe_int(bc.get("cache_create_5m"))),
+            "--claude-cache-write-1h-tokens", str(safe_int(bc.get("cache_create_1h"))),
+            "--claude-output-tokens", str(safe_int(bc.get("output"))),
+            "--codex-input-tokens", str(safe_int(bd.get("input"))),
+            "--codex-cached-input-tokens", str(safe_int(bd.get("cached_input"))),
+            "--codex-output-tokens", str(safe_int(bd.get("output"))),
+            "--cursor-input-tokens", str(safe_int(bu.get("input"))),
+            "--cursor-cache-read-tokens", str(safe_int(bu.get("cache_read"))),
+            "--cursor-output-tokens", str(safe_int(bu.get("output"))),
         ]
     else:
         ct = totals.get("claude") or {}
         cod = totals.get("codex") or {}
         cur = totals.get("cursor") or {}
         ctot = int(
-            int(ct.get("input", 0) or 0)
-            + int(ct.get("cache_read", 0) or 0)
-            + int(ct.get("cache_create", 0) or 0)
-            + int(ct.get("output", 0) or 0)
+            safe_int(ct.get("input"))
+            + safe_int(ct.get("cache_read"))
+            + safe_int(ct.get("cache_create"))
+            + safe_int(ct.get("output"))
         )
         args = [
             exe,
             "--claude-tokens", str(ctot),
-            "--codex-tokens", str(int(cod.get("total") or 0)),
-            "--cursor-tokens", str(int(cur.get("total") or 0)),
+            "--codex-tokens", str(safe_int(cod.get("total"))),
+            "--cursor-tokens", str(safe_int(cur.get("total"))),
         ]
     try:
         proc = subprocess.run(
             args,
             check=False,
             stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
             text=True,
         )
     except OSError:
         return total_cost(totals)
+    if proc.stderr and proc.stderr.strip():
+        for line in proc.stderr.strip().splitlines():
+            print(f"token-cost.sh: {line}", file=sys.stderr)
     if proc.returncode != 0:
         return total_cost(totals)
     return read_total_cost_from_kv(proc.stdout)

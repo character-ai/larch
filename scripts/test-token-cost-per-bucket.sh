@@ -70,7 +70,17 @@ out=$(env -u LARCH_CLAUDE_RATE_PER_M -u LARCH_TOKEN_RATE_PER_M -u LARCH_CODEX_RA
     "$HELPER" --claude-input-tokens 0 --claude-cache-read-tokens 0 --claude-cache-write-5m-tokens 0 \
         --claude-cache-write-1h-tokens 0 --claude-output-tokens 1000000 \
         --codex-tokens 0 --cursor-tokens 0)
-test "$(read_kv CLAUDE_COST "$out")" = "25.00" || fail "malformed output rate falls back to default 25/M"
-pass "malformed per-bucket env uses default"
+# (e) Legacy blended env does not override per-bucket lanes when per-bucket flags are used.
+out=$(env -u LARCH_CLAUDE_RATE_PER_M -u LARCH_TOKEN_RATE_PER_M -u LARCH_CURSOR_RATE_PER_M \
+    -u LARCH_CLAUDE_INPUT_RATE_PER_M -u LARCH_CLAUDE_CACHE_READ_RATE_PER_M -u LARCH_CLAUDE_CACHE_WRITE_5M_RATE_PER_M \
+    -u LARCH_CLAUDE_CACHE_WRITE_1H_RATE_PER_M -u LARCH_CLAUDE_OUTPUT_RATE_PER_M \
+    -u LARCH_CODEX_INPUT_RATE_PER_M -u LARCH_CODEX_CACHED_INPUT_RATE_PER_M -u LARCH_CODEX_OUTPUT_RATE_PER_M \
+    -u LARCH_CURSOR_INPUT_RATE_PER_M -u LARCH_CURSOR_CACHE_READ_RATE_PER_M -u LARCH_CURSOR_OUTPUT_RATE_PER_M \
+    LARCH_CODEX_RATE_PER_M=9 \
+    "$HELPER" --claude-tokens 0 \
+        --codex-input-tokens 1000000 --codex-cached-input-tokens 0 --codex-output-tokens 0 \
+        --cursor-tokens 0)
+test "$(read_kv CODEX_COST "$out")" = "0.44" || fail "per-bucket Codex ignores legacy LARCH_CODEX_RATE_PER_M blended override"
+pass "per-bucket path ignores legacy blended env for bucket rates"
 
 printf 'PASS: test-token-cost-per-bucket.sh — %s checks\n' "$PASS"

@@ -57,7 +57,13 @@ pass "LARCH_TOKEN_RATE_PER_M precedence over Claude default"
 # (g) TOTAL sums all three with mixed TOKEN_RATE and defaults
 out=$(LARCH_TOKEN_RATE_PER_M=5 env -u LARCH_CLAUDE_RATE_PER_M -u LARCH_CODEX_RATE_PER_M -u LARCH_CURSOR_RATE_PER_M \
     "$HELPER" --claude-tokens 1000000 --codex-tokens 1000000 --cursor-tokens 1000000)
-test "$(read_kv TOTAL_COST "$out")" = "8.50" || fail "TOTAL 5+2+1.5"
+test "$(read_kv TOTAL_COST "$out")" = "8.50" || fail "TOTAL sums three numeric lanes"
 pass "TOTAL sums three numeric lanes"
+
+# (h) malformed token count exits 2 (does not silently coerce to zero)
+if $clr "$HELPER" --claude-tokens not-a-number --codex-tokens 0 --cursor-tokens 0 >/dev/null 2>&1; then
+    fail "expected non-zero exit for invalid token count"
+fi
+pass "invalid token count rejected"
 
 printf 'PASS: test-token-cost.sh — %s checks\n' "$PASS"
