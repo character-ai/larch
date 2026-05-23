@@ -1,0 +1,13 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/ship-pr.sh:1227-1239; scripts/launch-cursor-ci.sh:193-196; scripts/launch-codex-ci.sh:175-178	Waterfall branches on wrapper rc but CI launchers report agent failure via LAUNCHER_EXIT while exiting 0	A failed Cursor/Codex/Claude agent is treated as tier success, so the cascade does not fall through and post-success commit/push logic can run after a failed vendor attempt	Parse LAUNCHER_EXIT from the launcher stdout capture and treat non-zero LAUNCHER_EXIT as tier failure; add tests where wrapper rc is 0 but LAUNCHER_EXIT is non-zero
+1	in_scope	important	safety	scripts/ship-pr.sh:50-55	Planned rollback uses path snapshots that cannot restore already-dirty tracked files to the pre-tier content	A failed tier that edits a pre-existing dirty tracked file either contaminates the next tier if excluded from the delta, or destroys operator work if git checkout is applied to it	Require a clean tracked baseline before the tier waterfall, or snapshot and restore exact pre-tier content; add a test where a failed tier edits a pre-existing dirty tracked file
+
+1. **[correctness] `scripts/ship-pr.sh:1227-1239`**
+The plan’s tier success/failure decision is based on `$?` from `launch-*-ci.sh`, but the existing Cursor and Codex CI launchers emit `LAUNCHER_EXIT=<n>` and then `exit 0` for tool runtime failures. That means a failed Cursor tier will look successful to `run_ci_fix_vendor`, preventing Codex/Claude fallback and allowing post-success handling to run.
+
+Suggested revision: capture launcher stdout into the existing failure log, parse `LAUNCHER_EXIT`, and make tier status depend on that value when wrapper rc is 0. Keep wrapper rc 2 as validation failure. Add a regression where the launcher exits wrapper 0 with `LAUNCHER_EXIT=124` or `1`, and assert the next tier runs.
+
+2. **[safety] `scripts/ship-pr.sh:50-55`**
+The rollback plan relies on path-only dirty/untracked snapshots. That is safe for newly-created untracked files, but not for tracked files that were already dirty at function entry. If a failed tier edits one of those paths, a path-delta rollback cannot restore the original dirty content; excluding it leaks failed-tier changes into the next tier, while `git checkout --` would discard the operator’s pre-existing work.
+
+Suggested revision: either fail/stall before the waterfall when tracked dirty baseline is non-empty, or snapshot exact pre-tier tracked content and restore to that baseline after a failed tier. Add a regression for “pre-existing tracked dirty file modified by failed tier is preserved exactly before the next tier starts.”

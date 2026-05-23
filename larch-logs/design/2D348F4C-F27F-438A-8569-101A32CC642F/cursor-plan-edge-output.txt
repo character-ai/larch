@@ -1,0 +1,31 @@
+Reading the plan and referenced code paths.
+
+Verifying plan claims against the codebase: reading `scripts/ship-pr.sh` and key sections of `scripts/test-ship-pr.sh`.
+
+Checking the sleep/backoff indexing and whether `make_repo` copies `launch-claude-ci.sh`.
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	architecture	<TMPDIR>/plan.txt:35-47	Inter-tier rollback bullets disagree on snapshot cadence	One paragraph requires snapshots before each failed tier while another mandates a single entry baseline for all deltas; implementers may snapshot wrong trees or double-snapshot inconsistently	Resolve to one contract (single baseline file pair for entire function vs fresh snapshot before each tier) and delete the contradictory bullet
+1	in_scope	important	risk-integration	scripts/ship-pr.sh:1216-1243	Plan references mirroring run_recovery_waterfall rollback semantics but ship-pr.sh has no such helper on current main	Hand-rolled rollback can drift from the tested #2395 pattern and miss edge cases the helper already covers	Make the plan explicitly require calling the landed #2395 rollback primitive by name (or paste its exact contract) before merge; forbid paraphrase-only reinvention
+1	in_scope	latent	correctness	scripts/ship-pr.sh:1329-1361	Failed-run log capture happens once before the outer while loop	Each outer vendor retry can feed vendors a stale or misleading --failure-log while local tree and remote CI state diverged	Re-run gh-run-logs.sh at the start of each outer attempt or document intentional staleness and add a test if refresh is omitted
+1	in_scope	important	correctness	<TMPDIR>/plan.txt:56-57	rc=3 described like benign empty capture	rc=3 from scripts/gh-run-logs.sh:17-19 means run still in progress; file may be non-empty yet unhelpful	Align plan language with gh-run-logs.sh exit semantics and decide whether rc=3 should short-circuit vendor dispatch or only gate --failure-log
+1	in_scope	latent	risk-integration	scripts/ship-pr.sh:50-56	Rollback inputs use capture_tracked_dirty_paths and capture_untracked_dirty_paths only	Submodule or gitlink dirt not reflected like normal files can survive rollback leaving hidden corruption for the next tier	Extend rollback inputs to match whatever submodule-aware revert #2395 ships or explicitly document submodule exclusion
+1	in_scope	important	correctness	scripts/test-ship-pr.sh:172-216	make_repo generic stubs only match launch-cursor-ci.sh|launch-codex-ci.sh for sentinel logging	Default launch-claude-ci.sh from the loop body is a no-op stub without SHIP_PR_LAUNCH_SENTINEL_DIR lines so tier-order tests can pass while asserting nothing about Claude	Extend the case arm (or add a dedicated stub block) so launch-claude-ci.sh records argv like the other launchers
+1	in_scope	nit	code-quality	scripts/ship-pr.sh:1329-1347	Third argv reuses the live fail_file name for the gh log artifact	Path is correct today but any future reassignment inside run_evaluate_failure before the call risks passing a non-log capture to --failure-log	Assign a dedicated readonly variable immediately after gh-run-logs.sh and pass only that into run_ci_fix_vendor
+1	out_of_scope	nit	correctness	scripts/ship-pr.md:83-84	Doc still claims run_ci_fix_vendor runs git add -u before commit	Operators mis-debug staging scope versus collect_ci_stage_paths-based git add in scripts/ship-pr.sh:1267-1276	Update ship-pr.md when touching docs for this issue so staging narrative matches code
+
+1. **[architecture]** [plan.txt:35-47](<TMPDIR>/plan.txt) — Inter-tier rollback section contradicts itself on whether snapshots are per-tier or a single function-entry baseline. **Suggested revision:** Pick one model and edit the conflicting bullets so implementers cannot mis-read the delta definition.
+
+2. **[risk-integration]** [scripts/ship-pr.sh](scripts/ship-pr.sh) (no `run_recovery_waterfall`) — The plan tells readers to mirror `run_recovery_waterfall` rollback, but that symbol is not present in the current tree (only appears in design logs). **Suggested revision:** Tie rollback steps explicitly to the concrete helper or file region delivered by #2395, not to an absent name on main.
+
+3. **[correctness]** [scripts/ship-pr.sh:1329-1361](scripts/ship-pr.sh) — `gh-run-logs.sh` output is captured once before the outer retry loop; every outer attempt reuses the same path. **Suggested revision:** Refresh logs each outer attempt or document and test the intentional stale-log contract.
+
+4. **[correctness]** [plan.txt:56-57](<TMPDIR>/plan.txt) — Edge-case text frames `rc=3` like “empty capture,” while [scripts/gh-run-logs.sh:17-19](scripts/gh-run-logs.sh) defines `3` as “run still in progress.” **Suggested revision:** Align plan wording and behavior (omit flag vs delay vendors vs retry download).
+
+5. **[risk-integration]** [scripts/ship-pr.sh:50-56](scripts/ship-pr.sh) — `capture_tracked_dirty_paths` is `git diff --name-only HEAD` only; submodule inner state may not roll back with file-path restore/delete. **Suggested revision:** Match #2395 submodule-aware revert or explicitly exclude submodule cases with rationale.
+
+6. **[correctness]** [scripts/test-ship-pr.sh:172-216](scripts/test-ship-pr.sh) — Default `make_repo` launcher stub `case` omits `launch-claude-ci.sh`, so new tier tests can silently miss Claude argv unless the harness is extended as the plan already hints. **Suggested revision:** Extend the `case` arm when adding the stub file.
+
+7. **[code-quality]** [scripts/ship-pr.sh:1329-1347](scripts/ship-pr.sh) — Reusing `fail_file` as the long-lived gh-log path for a new third parameter works today but is fragile if the loop body gains new `fail_file=` assignments. **Suggested revision:** Bind `gh_logs_fail_file` (or similar) immediately after the successful capture block.
+
+**[OUT_OF_SCOPE]** [scripts/ship-pr.md:83-84](scripts/ship-pr.md) — Doc claims `git add -u` while implementation uses `collect_ci_stage_paths` plus `git add -- "${stage_paths[@]}"` at [scripts/ship-pr.sh:1267-1276](scripts/ship-pr.sh); worth fixing when editing `ship-pr.md` for this feature so operators are not misled about staging scope.

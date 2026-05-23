@@ -1,0 +1,28 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: EXONERATE -- Round 1 explicitly put the _max_fix reduction in scope.
+FINDING_13: NO -- Bash locals isolate the caller/callee fail_file names; this is cosmetic.
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: EXONERATE -- The redundancy is harmless and not worth plan churn.
+FINDING_17: NO -- The same failed run log is intentionally reused until a successful fix push creates new CI.
+FINDING_18: YES
+FINDING_19: YES
+FINDING_20: YES
+FINDING_21: EXONERATE -- Historical constraint prose would add more doc weight than the issue warrants.
+FINDING_22: YES
+OOS_1: YES
+OOS_2: EXONERATE -- The alternative contradicts the explicit Round 1 budget decision and should wait for production evidence.
+OOS_3: EXONERATE -- Historical design-log drift is real but not worth a separate issue.
+OOS_4: NO -- This is a routine implementation check, not a standalone issue.
+OOS_5: NO -- Conditional README drift is unverified and should be checked during implementation.
+OOS_6: NO -- SECURITY.md coverage is already addressed by FINDING_11.
