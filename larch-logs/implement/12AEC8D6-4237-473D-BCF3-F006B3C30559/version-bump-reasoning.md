@@ -1,12 +1,12 @@
 # Version Bump Reasoning
 
-- **Base commit**: `6662cee8` (chore(larch-logs): flush design run 2C825E8C-7E24-4FFE-8D33-B297510343AD [skip ci] (#2628))
-- **Current version**: `42.0.6`
+- **Base commit**: `d7e319f7` (Fixes #2622: Fix token cost pipeline (dedup, per-bucket rates, unified cost lines) (#2629))
+- **Current version**: `42.0.7`
 - **Classification scope**: `skills/**` and `agents/**` only (public plugin surface).
 
 ## Result: PATCH
 
-- **New version**: `42.0.7`
+- **New version**: `42.0.8`
 
 ### PATCH rationale
 
