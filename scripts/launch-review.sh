@@ -157,6 +157,9 @@ fi
 if [[ -n "${IMPLEMENT_TMPDIR:-}" && -s "${IMPLEMENT_TMPDIR}/session-id" ]]; then
     file_id=$(tr -d '\r\n' < "${IMPLEMENT_TMPDIR}/session-id" 2>/dev/null || true)
     if [[ -n "$file_id" ]]; then export LARCH_TOKEN_SESSION_ID="$file_id"; fi
+elif [[ -n "${DESIGN_TMPDIR:-}" && -s "${DESIGN_TMPDIR}/session-id" ]]; then
+    file_id=$(tr -d '\r\n' < "${DESIGN_TMPDIR}/session-id" 2>/dev/null || true)
+    if [[ -n "$file_id" ]]; then export LARCH_TOKEN_SESSION_ID="$file_id"; fi
 fi
 if [[ -n "${IMPLEMENT_TMPDIR:-}" && -s "${IMPLEMENT_TMPDIR}/claude-source.env" ]]; then
     export LARCH_CLAUDE_SOURCE_FILE="${IMPLEMENT_TMPDIR}/claude-source.env"
@@ -647,6 +650,9 @@ fi
 
 if [[ -n "${IMPLEMENT_TMPDIR:-}" && -s "${IMPLEMENT_TMPDIR}/session-id" ]]; then
     file_id=$(tr -d '\r\n' < "${IMPLEMENT_TMPDIR}/session-id" 2>/dev/null || true)
+    if [[ -n "$file_id" ]]; then export LARCH_TOKEN_SESSION_ID="$file_id"; fi
+elif [[ -n "${DESIGN_TMPDIR:-}" && -s "${DESIGN_TMPDIR}/session-id" ]]; then
+    file_id=$(tr -d '\r\n' < "${DESIGN_TMPDIR}/session-id" 2>/dev/null || true)
     if [[ -n "$file_id" ]]; then export LARCH_TOKEN_SESSION_ID="$file_id"; fi
 fi
 if [[ -n "${IMPLEMENT_TMPDIR:-}" && -s "${IMPLEMENT_TMPDIR}/claude-source.env" ]]; then

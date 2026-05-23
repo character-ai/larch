@@ -32,7 +32,7 @@ sha256() {
 }
 
 # Hermetic: clear session/ledger env so resolver exercises only explicit inputs.
-unset LARCH_TOKEN_LEDGER LARCH_TOKEN_SESSION_ID IMPLEMENT_TMPDIR SESSION_ENV_PATH || true
+unset LARCH_TOKEN_LEDGER LARCH_TOKEN_SESSION_ID IMPLEMENT_TMPDIR SESSION_ENV_PATH DESIGN_TMPDIR || true
 
 ROOT="${TMPDIR:-/tmp}"
 TMP=$(mktemp -d "$ROOT/test-token-ledger.XXXXXX")
@@ -68,6 +68,21 @@ env_slug=$(sha256 "env-id")
 file_slug=$(sha256 "session-file-id")
 assert_contains "env precedence" "$env_slug" "$env_path"
 assert_contains "session-file fallback" "$file_slug" "$file_path"
+
+DESIGN_ROOT="$TMP/design-ledger"
+mkdir -p "$DESIGN_ROOT"
+printf 'design-session-id\n' > "$DESIGN_ROOT/session-id"
+design_only_path=$(env -u LARCH_TOKEN_SESSION_ID -u IMPLEMENT_TMPDIR -u SESSION_ENV_PATH DESIGN_TMPDIR="$DESIGN_ROOT" "$SCRIPT" dump | sed -n '1p')
+design_slug=$(sha256 "design-session-id")
+assert_contains "DESIGN_TMPDIR session-id fallback" "$design_slug" "$design_only_path"
+
+IMPL_PRE="$TMP/impl-precedence"
+DES_PRE="$TMP/des-precedence"
+mkdir -p "$IMPL_PRE" "$DES_PRE"
+printf 'impl-wins\n' > "$IMPL_PRE/session-id"
+printf 'des-loses\n' > "$DES_PRE/session-id"
+mix_path=$(env -u LARCH_TOKEN_SESSION_ID IMPLEMENT_TMPDIR="$IMPL_PRE" DESIGN_TMPDIR="$DES_PRE" SESSION_ENV_PATH="" "$SCRIPT" dump | sed -n '1p')
+assert_contains "IMPLEMENT_TMPDIR beats DESIGN_TMPDIR for ledger root" "$(sha256 impl-wins)" "$mix_path"
 
 SESSION_ENV_A="$TMP/session-env-A.sh"
 SESSION_ENV_B="$TMP/session-env-B.sh"
@@ -148,7 +163,7 @@ assert_contains "LARCH_TOKEN_LEDGER fallthrough to IMPLEMENT_TMPDIR" "$FB_SLUG" 
 
 # Fail-closed: no root set → warn, no file created
 FAIL_CLOSED_WARN="$TMP/fail-closed-warn.txt"
-env -u IMPLEMENT_TMPDIR -u LARCH_TOKEN_LEDGER -u SESSION_ENV_PATH -u LARCH_TOKEN_SESSION_ID \
+env -u IMPLEMENT_TMPDIR -u LARCH_TOKEN_LEDGER -u SESSION_ENV_PATH -u LARCH_TOKEN_SESSION_ID -u DESIGN_TMPDIR \
     "$SCRIPT" mark "fail-closed-probe" 2>"$FAIL_CLOSED_WARN" || true
 if grep -Fq 'no per-run ledger root set' "$FAIL_CLOSED_WARN"; then pass; else fail "fail-closed: expected warn when no root set: $(cat "$FAIL_CLOSED_WARN")"; fi
 

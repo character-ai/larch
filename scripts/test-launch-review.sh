@@ -202,6 +202,34 @@ PATH="$STUB_BIN:$PATH" \
 
 assert_eq "stub invoked once" "1" "$(cat "$COUNT")"
 assert_eq "token session id rehydrated" "mock-codex-review-session" "$(cat "$TOKEN_SESSION_FILE")"
+
+# DESIGN_TMPDIR/session-id fallback when IMPLEMENT_TMPDIR is unset (parity with Cursor branch).
+DESIGN_TOKEN_ONLY="$TMPDIR/design-token-only"
+mkdir -p "$DESIGN_TOKEN_ONLY"
+printf 'design-led-session\n' > "$DESIGN_TOKEN_ONLY/session-id"
+TOKEN_SESSION_DESIGN="$TMPDIR/token-session-design.txt"
+PATH="$STUB_BIN:$PATH" \
+    env -u IMPLEMENT_TMPDIR \
+    CODEX_STUB_ARGV_LOG="$TMPDIR/argv-design-token.txt" \
+    CODEX_STUB_COUNT_FILE="$TMPDIR/count-design-token.txt" \
+    CODEX_STUB_TOKEN_SESSION_FILE="$TOKEN_SESSION_DESIGN" \
+    DESIGN_TMPDIR="$DESIGN_TOKEN_ONLY" \
+    LARCH_TOKEN_SESSION_ID="stale-should-be-replaced" \
+    LARCH_CODEX_MODEL="stub-model" \
+    "$LAUNCHER" --output "$TMPDIR/out-design-token.txt" --timeout 5 --prompt "design-token" >/dev/null
+assert_eq "design tmpdir session-id export" "design-led-session" "$(cat "$TOKEN_SESSION_DESIGN")"
+
+TOKEN_SESSION_NEITHER="$TMPDIR/token-session-neither.txt"
+PATH="$STUB_BIN:$PATH" \
+    env -u IMPLEMENT_TMPDIR -u DESIGN_TMPDIR \
+    CODEX_STUB_ARGV_LOG="$TMPDIR/argv-neither-tmpdir.txt" \
+    CODEX_STUB_COUNT_FILE="$TMPDIR/count-neither-tmpdir.txt" \
+    CODEX_STUB_TOKEN_SESSION_FILE="$TOKEN_SESSION_NEITHER" \
+    LARCH_TOKEN_SESSION_ID="explicit-session" \
+    LARCH_CODEX_MODEL="stub-model" \
+    "$LAUNCHER" --output "$TMPDIR/out-neither-tmpdir.txt" --timeout 5 --prompt "neither" >/dev/null
+assert_eq "no implement/design tmpdir preserves explicit LARCH_TOKEN_SESSION_ID" "explicit-session" "$(cat "$TOKEN_SESSION_NEITHER")"
+
 if [[ -s "$CODEX_HOME_FILE" ]] && [[ "$(cat "$CODEX_HOME_FILE")" == /tmp/larch-codex-review-home-* ]]; then
     pass
 else
@@ -1284,6 +1312,26 @@ PATH="$STUB_BIN:$PATH" \
     LARCH_TOKEN_SESSION_ID="stale-cursor-review-session" \
     "$LAUNCHER" --output "$OUT_TOKEN" --timeout 5 --prompt "token context" >/dev/null 2>"$TMPDIR/case-token.stderr"
 assert_equals "case token session id rehydrated" "mock-cursor-review-session" "$(cat "$TOKEN_SESSION_FILE")"
+
+DESIGN_CURSOR_TOKEN="$TMPDIR/design-cursor-token"
+mkdir -p "$DESIGN_CURSOR_TOKEN"
+printf 'cursor-design-session\n' > "$DESIGN_CURSOR_TOKEN/session-id"
+TOKEN_SESSION_DESIGN_CURSOR="$TMPDIR/cursor-token-design.txt"
+PATH="$STUB_BIN:$PATH" \
+    env -u IMPLEMENT_TMPDIR \
+    CURSOR_STUB_TOKEN_SESSION_FILE="$TOKEN_SESSION_DESIGN_CURSOR" \
+    DESIGN_TMPDIR="$DESIGN_CURSOR_TOKEN" \
+    LARCH_TOKEN_SESSION_ID="stale-cursor-design" \
+    "$LAUNCHER" --output "$TMPDIR/out-cursor-design-token.txt" --timeout 5 --prompt "cursor design token" >/dev/null 2>"$TMPDIR/case-cursor-design-token.stderr"
+assert_equals "cursor design tmpdir session-id export" "cursor-design-session" "$(cat "$TOKEN_SESSION_DESIGN_CURSOR")"
+
+TOKEN_SESSION_CURSOR_NEITHER="$TMPDIR/cursor-token-neither.txt"
+PATH="$STUB_BIN:$PATH" \
+    env -u IMPLEMENT_TMPDIR -u DESIGN_TMPDIR \
+    CURSOR_STUB_TOKEN_SESSION_FILE="$TOKEN_SESSION_CURSOR_NEITHER" \
+    LARCH_TOKEN_SESSION_ID="cursor-explicit-session" \
+    "$LAUNCHER" --output "$TMPDIR/out-cursor-neither.txt" --timeout 5 --prompt "cursor neither" >/dev/null 2>"$TMPDIR/case-cursor-neither.stderr"
+assert_equals "cursor no tmpdir preserves explicit LARCH_TOKEN_SESSION_ID" "cursor-explicit-session" "$(cat "$TOKEN_SESSION_CURSOR_NEITHER")"
 
 # Case D: deterministic post-wrapper trap path promotes an existing inner
 # sentinel and may leave raw JSON because normal post-processing was interrupted.

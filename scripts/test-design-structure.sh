@@ -357,6 +357,36 @@ grep -F 'oos.md' "$PLAN_REVIEW_QUICK_MD" \
 grep -Fq 'security counter-invariant' "$PLAN_REVIEW_QUICK_MD" \
   || fail "(13qc) plan-review-quick.md missing security counter-invariant clause"
 
+# Check 15: /design SKILL.md pairs terminal cost emission with operator-cancel /
+# plan-write-failure markers (or cites the shared ### Terminal cost line block).
+for marker in \
+  '**ℹ /design cancelled by operator.**' \
+  '**⚠ 5: plan-block-write failed' \
+  ; do
+  line=$(grep -nF "$marker" "$SKILL_MD" | head -1 | cut -d: -f1 || true)
+  [[ -n "$line" ]] || fail "(15) missing stable marker: $marker"
+  start=$(( line > 45 ? line - 45 : 1 ))
+  window=$(sed -n "${start},${line}p" "$SKILL_MD")
+  if printf '%s\n' "$window" | grep -Fq 'render-cost-line.sh'; then
+    :
+  elif printf '%s\n' "$window" | grep -Fq '### Terminal cost line'; then
+    :
+  else
+    fail "(15) marker not paired with render-cost-line.sh / ### Terminal cost line within 45 lines: $marker (line $line)"
+  fi
+done
+footer_line=$(grep -nF '➡️ 5: cleanup — plan written to issue' "$SKILL_MD" | head -1 | cut -d: -f1 || true)
+[[ -n "$footer_line" ]] || fail "(15) missing machine footer line"
+fstart=$(( footer_line > 55 ? footer_line - 55 : 1 ))
+fwindow=$(sed -n "${fstart},${footer_line}p" "$SKILL_MD")
+if printf '%s\n' "$fwindow" | grep -Fq 'render-cost-line.sh'; then
+  :
+elif printf '%s\n' "$fwindow" | grep -Fq '### Terminal cost line'; then
+  :
+else
+  fail "(15) machine footer not preceded by cost-line anchor within 55 lines"
+fi
+
 # Check 14: design ACTION dispatcher pins. The focus-area enum must remain in
 # SKILL.md because CI and prompt rendering scan the inline reviewer launch
 # blocks, while scriptable mechanics route through ACTION records.

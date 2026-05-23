@@ -50,4 +50,7 @@ renderer’s body inside that upsert payload.
 ## Cost line
 
 This script shells to `scripts/token-cost.sh` for per-vendor costs. See
-`scripts/token-cost.md` for env vars (`LARCH_CLAUDE_RATE_PER_M`, etc.).
+`scripts/token-cost.md` for env vars (`LARCH_CLAUDE_RATE_PER_M`, etc.). When
+those rates are unset, `token-cost.sh` applies conservative per-vendor defaults
+so the `**Cost**` bullet shows dollar estimates instead of `N/A` unless callers
+override behavior via explicit valid rates.
