@@ -1,0 +1,10 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: NO -- changelogs correctly separate Unreleased from versioned sections; the fix will be in the next release entry as expected
+FINDING_4: EXONERATE -- dual unsets serve different purposes (entry isolation vs. per-block tmpdir setup); collapsing requires careful ordering analysis for no functional gain
+FINDING_5: EXONERATE -- test harness sentinel in /tmp; symlink race risk is negligible for a local CI test script
+FINDING_6: NO -- the dyn-phony-shard-integrity reviewer in the #2616 run already verified the ten removed tokens have no shard references; re-filing is redundant
+FINDING_7: NO -- meta-observation about review scope, not a trackable defect
+FINDING_8: YES
+FINDING_9: EXONERATE -- legitimate observation about mixed-diff review depth but not worth a standalone issue
+FINDING_10: EXONERATE -- implemented subprocess shape correctly achieves Shape A intent; prose imprecision in plan step 4 is not issue-worthy

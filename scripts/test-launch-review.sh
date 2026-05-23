@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Unified offline regression harness for scripts/launch-review.sh.
 set -euo pipefail
+unset LARCH_EXECUTION_ISSUES_LOG SESSION_ENV_PATH IMPLEMENT_TMPDIR || true
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 # launch-review.sh resolves PLUGIN_ROOT from CLAUDE_PLUGIN_ROOT when set; a

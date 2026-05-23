@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- test-aggregate-findings, test-launch-review, test-append-tool-failure: unset `LARCH_EXECUTION_ISSUES_LOG` and related vars at harness entry so synthetic aggregator warnings do not append to a parent `/implement` execution-issues log.
 - /implement — Create the feature branch at the start of Step 0 plan materialization (regression from #2588 / #2598; pre-existing dispatcher main-branch-prohibited guard exposed the gap).
 
 ### Changed
@@ -17,6 +18,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`/implement` admission precondition**: issues without a `[DESIGNED]` prefix are rejected with `ADMISSION_RESULT=missing-designed-prefix` at exit 5, requiring a completed `/design` run before `/implement` may proceed.
 - **Migration posture**: legacy `[IN PROGRESS]` and `[PLANNED]` prefixes are stripped by `strip_lifecycle_prefix` for backward compatibility but are no longer accepted as `--state` values by `tracking-issue-write.sh` or as admission-pass prefixes.
 - **Audit scope**: workflow call sites and rename `--state` surfaces in the active runtime tree (`skills/`, `scripts/`, `agents/`, `.claude/`, `docs/`, tests) now use the new prefix set; deliberate legacy bracket literals remain only where migration, admission recovery, strip helpers, or hermetic fixtures require them. This Unreleased section documents the migration and may name the old prefixes. Historical shipped changelog bodies and `larch-logs/` were not bulk-retitled.
+
+## [42.0.4] - 2026-05-22
+
+### Changed
+
+- Clear inherited LARCH_EXECUTION_ISSUES_LOG, SESSION_ENV_PATH, and IMPLEMENT_TMPDIR at the start of aggregate-findings, launch-review, and append-tool-failure harnesses so synthetic warnings never append to a parent /implement execution-issues log.
+- Add a Shape A regression that runs aggregate-findings behind the same unset prelude under a deliberately contaminated outer env and asserts the sentinel log stays absent or empty.
+- Document the fix under CHANGELOG Unreleased Fixed.
 
 ## [42.0.3] - 2026-05-22
 
