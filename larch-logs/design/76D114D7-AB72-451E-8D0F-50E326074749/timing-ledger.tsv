@@ -1,0 +1,14 @@
+v1	vendor	1779559470	implement	-	codex	codex-sketch-generic	1779559390	1779559470	80	codex-sketch-generic-output.txt	0	complete
+v1	vendor	1779559519	implement	-	cursor	cursor-sketch-generic	1779559388	1779559519	131	cursor-sketch-generic-output.txt	0	complete
+v1	vendor	1779559931	implement	-	cursor	cursor-phase1-cursor-plan-innovation	1779559810	1779559931	121	cursor-plan-innovation-output.txt	0	complete
+v1	vendor	1779559932	implement	-	codex	codex-phase1-codex-plan-edge	1779559810	1779559932	122	codex-primary-plan-edge-output.txt	0	complete
+v1	vendor	1779559942	implement	-	codex	codex-phase1-codex-plan-pragmatic	1779559810	1779559942	132	codex-primary-plan-pragmatic-output.txt	0	complete
+v1	vendor	1779559943	implement	-	cursor	cursor-phase1-cursor-plan-requirements	1779559810	1779559943	133	cursor-plan-requirements-output.txt	0	complete
+v1	vendor	1779559943	implement	-	cursor	cursor-phase1-cursor-plan-edge	1779559810	1779559943	133	cursor-plan-edge-output.txt	0	complete
+v1	vendor	1779559951	implement	-	cursor	cursor-phase1-cursor-plan-arch	1779559810	1779559951	141	cursor-plan-arch-output.txt	0	complete
+v1	vendor	1779559952	implement	-	codex	codex-phase1-codex-plan-innovation	1779559810	1779559951	141	codex-primary-plan-innovation-output.txt	0	complete
+v1	vendor	1779559962	implement	-	cursor	cursor-phase1-cursor-plan-pragmatic	1779559810	1779559962	152	cursor-plan-pragmatic-output.txt	0	complete
+v1	vendor	1779559971	implement	-	codex	codex-phase1-codex-plan-arch	1779559810	1779559971	161	codex-primary-plan-arch-output.txt	0	complete
+v1	vendor	1779559993	implement	-	codex	codex-phase1-codex-plan-requirements	1779559810	1779559993	183	codex-primary-plan-requirements-output.txt	0	complete
+v1	vendor	1779560335	implement	-	cursor	cursor-phase1-voter-3	1779560295	1779560335	40	cursor-vote-output.txt	0	complete
+v1	vendor	1779560385	implement	-	codex	codex-phase1-voter-2	1779560295	1779560385	90	codex-vote-output.txt	0	complete

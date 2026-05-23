@@ -1,0 +1,53 @@
+Reading the plan and referenced code paths for edge-case and failure-mode review.
+
+Inspecting referenced scripts and integration points to validate the plan against the codebase.
+
+Checking `emit_tally_with_failure_isolation` expectations and the plan’s test assertion about `validation-failed` vs multi-phase behavior.
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/dispatch-with-waterfall.sh:125-134	Per-phase output paths in plan do not match output_for_phase	Plan and tests require aggregator-output.txt.phase1/.phase2/.phase3 and claim they match the dispatcher; phase1 is the bare base path and later phases use aggregator-output-phase2.txt / aggregator-output-phase3.txt so assertions and docs would fail or drift from reality	Align plan, aggregate-findings.md, and tests with actual names (aggregator-output.txt for phase1 capture, aggregator-output-phase2.txt / aggregator-output-phase3.txt) or document deliberate copies with distinct names if the script renames outputs
+1	in_scope	important	correctness	<TMPDIR>/plan.txt:104-105	zero_findings_preamble_contradiction test expects REASON=validation-failed on first call	After a 3-phase outer loop the final stdout REASON for a repeating bad stub is validation-exhausted not validation-failed unless the test bypasses later phases	Clarify whether the assertion is per-phase internal signal vs final aggregate-findings stdout; if final, expect validation-exhausted or use a stub that succeeds after phase1 validation
+1	in_scope	important	risk-integration	skills/review/scripts/review-core.sh:386-429 vs plan.txt:54-63	Aggregator short-circuit sketched with exit 0 while panel-failed exits 2	panel-failed is contract-tested as exit 2 (skills/review/scripts/test-review-core.sh:432-435); callers that only inspect $? could treat aggregator-validation-exhausted as success if review-core exits 0	Use exit 2 to match panel-failed and test-review-core expectations or explicitly document status-only contract and grep for direct review-core callers
+1	in_scope	important	risk-integration	skills/review/scripts/review-core.sh:386-414 vs plan.txt:51-63	Plan omits emit_tally_with_failure_isolation and copy_to_parent tally side effects from panel-failed path	panel-failed runs emit_tally_with_failure_isolation before KVs; skipping it for aggregator-exhausted may leave missing voting-tally.md or review-summary telemetry that other tooling assumes after review-core	Mirror panel-failed emit_tally_with_failure_isolation arguments with a distinct failure label or add a contract note in review-core.md if tally artifacts are intentionally absent
+1	in_scope	latent	correctness	skills/review/scripts/aggregate-findings.sh:220-707 vs plan.txt:37-41	New validator rejects zero blocks when raw text contains ### FINDING_	Legitimate empty-merge outputs that quote that substring inside fenced code or narrative before attestation could fail validation though attestation path would otherwise pass	Document the accepted false-positive class or tighten the guard for example require zero blocks plus no valid EMPTY_MERGE_ATTESTATION line plus substring
+1	in_scope	nit	architecture	skills/review/scripts/review-core.md:31	REVIEW_CORE_STATUS enumeration omits planned aggregator-validation-exhausted	Consumers reading review-core.md may miss the new terminal status until code lands	Update review-core.md status list alongside implement SKILL and review-and-fix wiring
+1	in_scope	nit	code-quality	skills/review/scripts/review-core.sh:1045-1077	Degraded panel retry re-runs full review-core including aggregate waterfall	Second pass may leave extra aggregator-output-phase*.txt or mixed phase artifacts under REVIEW_TMPDIR if cleanup is not specified	Define cleanup or reuse rules for per-phase artifacts across the degraded retry path
+
+[OUT_OF_SCOPE] skills/review/scripts/review-core.sh:1045-1077 — degraded retry interaction with new phase files; SECURITY.md pre-vote aggregation section if behavior changes materially.
+
+Now output for user - they asked no preamble. First line must be schema_version header.
+
+Actually re-read: "When you have findings" - include TSV with header AND records. The example shows header then one record. I'll include all records.
+
+Also "Return numbered findings" - I'll add after TSV a numbered list mapping to rows.
+
+User said "Do not write any preamble" - so straight to TSV.
+
+For the numbered list format: "Prefix out-of-scope but worth-tracking items with [OUT_OF_SCOPE]"
+
+I'll put numbered findings after TSV without extra intro.
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/dispatch-with-waterfall.sh:125-134	Plan phase filenames claim to match output_for_phase but they do not	Tests/docs calling aggregator-output.txt.phase1/.phase2/.phase3 will not match dispatcher output (phase1 uses the base path; phase2/3 use aggregator-output-phase2.txt and aggregator-output-phase3.txt)	Align filenames in plan, aggregate-findings.md, and tests with output_for_phase or stop claiming they match and define explicit copy/rename steps
+1	in_scope	important	correctness	<TMPDIR>/plan.txt:104-105	zero_findings_preamble_contradiction expects final REASON=validation-failed	With a three-phase outer loop and the same bad stub each time the script-level REASON becomes validation-exhausted not validation-failed	Clarify per-phase vs final REASON expectations or assert validation-exhausted for the full script run unless phases are capped in that test
+1	in_scope	important	risk-integration	skills/review/scripts/review-core.sh:386-429 vs <TMPDIR>/plan.txt:54-63	Aggregator short-circuit uses exit 0 while panel-failed uses exit 2	test-review-core.sh expects panel-failed rc=2; any wrapper that only checks $? from review-core can mis-handle a zero exit	Match panel-failed with exit 2 or document and audit all review-core callers for status-only handling
+1	in_scope	important	risk-integration	skills/review/scripts/review-core.sh:386-414 vs <TMPDIR>/plan.txt:51-63	Plan snippet omits emit_tally_with_failure_isolation from the panel-failed mirror	Missing voting-tally emit path may break scouts summaries or downstream artifacts that assume panel-style failure tally files	Include emit_tally_with_failure_isolation (or an explicitly justified omission) consistent with panel-failed
+1	in_scope	latent	correctness	skills/review/scripts/aggregate-findings.sh:674-707 vs plan substring guard	Substring ### FINDING_ anywhere with zero parsed blocks always fails	Edge prose or fenced examples containing that literal triple-hash prefix could block an otherwise valid empty-merge attestation repair	Narrow the predicate or document accepted false positives
+1	in_scope	nit	architecture	skills/review/scripts/review-core.md:31	New REVIEW_CORE_STATUS not listed in contract doc	External readers miss aggregator-validation-exhausted in the allowed set	Extend the REVIEW_CORE_STATUS line when implementing
+1	in_scope	nit	correctness	skills/review/scripts/review-core.sh:1045-1077	Degraded retry reruns aggregate without stated artifact hygiene	Stale aggregator-output-phase*.txt from the first attempt could confuse debugging or tests	Specify rm -f or reuse rules for phase outputs before the retry run
+
+1. **[correctness]** [scripts/dispatch-with-waterfall.sh](scripts/dispatch-with-waterfall.sh) (see `output_for_phase` at lines 125–134): The plan’s `aggregator-output.txt.phaseN` naming and “matches dispatch-with-waterfall” claim are inconsistent with the real phase paths; fix the plan and tests or change the implementation contract explicitly.
+
+2. **[correctness]** [plan.txt](file:///Users/zhupanov/.cache/larch/sessions/claude-design-larch7-xLdFJn/plan.txt) §8 (`zero_findings_preamble_contradiction`): Final `REASON=validation-failed` conflicts with a three-phase outer loop that ends in `validation-exhausted` when every phase produces the same invalid stub; tighten the test story (per-phase signal vs final stdout).
+
+3. **[risk-integration]** [review-core.sh](skills/review/scripts/review-core.sh) vs [plan.txt](file:///Users/zhupanov/.cache/larch/sessions/claude-design-larch7-xLdFJn/plan.txt): `exit 0` for `aggregator-validation-exhausted` diverges from `panel-failed`’s `exit 2` (see lines 415–429), which is asserted in [test-review-core.sh](skills/review/scripts/test-review-core.sh) around lines 432–435; align exit semantics or document and audit all `review-core.sh` callers.
+
+4. **[risk-integration]** [review-core.sh](skills/review/scripts/review-core.sh) lines 386–414: The plan’s pseudo-code omits `emit_tally_with_failure_isolation` and `copy_to_parent` tally copies that `panel-failed` performs before emitting status; omission risks missing failure tally artifacts.
+
+5. **[correctness]** [aggregate-findings.sh](skills/review/scripts/aggregate-findings.sh) embedded validator (plan §3): A global `### FINDING_` substring rule with zero `output_blocks` can reject rare legitimate empty-merge narratives; call out false-positive tolerance or refine the guard.
+
+6. **[architecture]** [review-core.md](skills/review/scripts/review-core.md) line 31: The allowed `REVIEW_CORE_STATUS` list needs `aggregator-validation-exhausted` alongside code changes.
+
+7. **[code-quality]** [review-core.sh](skills/review/scripts/review-core.sh) lines 1045–1077: Degraded-round retry can rerun aggregation without a stated cleanup policy for per-phase output files; define hygiene to avoid confusing multi-attempt leftovers.
+
+[OUT_OF_SCOPE] [SECURITY.md](SECURITY.md) “Pre-vote findings aggregation” may need a sentence if stall semantics or artifact paths change materially (same concern as aggregate-findings contract).
