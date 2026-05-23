@@ -1,0 +1,164 @@
+### FINDING_1: Wrong line citation for `count_prior_degraded_rounds` + duplicated cap-math risk
+- **Reviewers**: Cursor-Arch, Cursor-Innovation, Cursor-Pragmatic, Cursor-Requirements, Cursor-Edge
+- **Concern**: Plan text in `Files to modify` item 1 cites `count_prior_degraded_rounds` "already present at line 133" of `review-and-fix.sh`, but line 132-138 defines `round_degraded()`. The actual helper lives in `scripts/run-step5-review.sh:50-66`. Duplicating it inside review-and-fix.sh without a shared source invites long-term drift between the two copies.
+- **Proposed resolution**: Fix the citation. Either (a) extract a new shared helper `scripts/lib-implement-round-cap.sh` sourced by both `run-step5-review.sh` and `review-and-fix.sh`, OR (b) duplicate with an explicit canonical-comment cross-reference and add a parity test that feeds identical tmpdir fixtures to both entry points.
+
+
+### FINDING_10: Cap-math ownership ambiguous between launcher and loop
+- **Reviewers**: Cursor-Edge (item 2), Codex-Arch, Codex-Edge (item 3)
+- **Concern**: `scripts/run-step5-review.sh:135-142` currently inflates `ROUND_CAP` with `count_prior_degraded_rounds` before invoking `review-and-fix.sh`. The planned loop ALSO computes `effective_round_cap` via its own helper. In `--mode loop`, the same inflation can be applied twice (silently doubling on degraded-resume), or computed from the wrong seed when `--starting-round` is used instead of `--round-num`.
+- **Proposed resolution**: For `--mode loop`: launcher passes only the BASE cap (`--round-cap 5`). Loop wrapper internally computes `effective_round_cap = ROUND_CAP + count_prior_degraded_rounds(IMPLEMENT_TMPDIR, $STARTING_ROUND)`. For `--mode single` (backward compat path): existing pre-inflation in launcher stays. Document in `run-step5-review.md`.
+
+
+### FINDING_11: Lint-fix-loop needs attempt budget
+- **Reviewers**: Codex-Arch, Codex-Edge
+- **Concern**: Plan dispatches `lint-fix-loop.sh` on `STATUS=fail` and re-invokes checks "until pass or stall." `lint-fix-loop.sh:314-320` can keep returning `applied` even when checks still fail. With Bash dispatching this loop, the wrapper can keep invoking external coders indefinitely within a single Step 5 call.
+- **Proposed resolution**: Add `LARCH_STEP5_LINT_FIX_MAX_ATTEMPTS` env (default 3) to cap the lint-fix retry sub-loop. On exhaustion: exit with `STEP5_REVIEW_STATUS=stall STALL_REASON=lint-fix-attempt-cap`. Add a regression test where lint-fix returns `applied` repeatedly with checks still failing.
+
+
+### FINDING_12: Submodule-violation status mapping in loop
+- **Reviewers**: Cursor-Innovation, Codex-Edge, Codex-Innovation
+- **Concern**: Current `review-and-fix.sh:1183-1190,1354-1358` encodes submodule-violation as `CODER_STATUS=submodule-violation` under `REVIEW_AND_FIX_STATUS=coder-failed`. Plan promises a distinct `STALL_REASON=submodule-violation` token. Without explicit mapping in the loop, the distinct token is lost and the stall surfaces as the generic `coder-failed`, weakening downstream issue-routing accuracy.
+- **Proposed resolution**: In `run_implement_loop`'s stall-routing branch, check `CODER_STATUS=submodule-violation` BEFORE the generic `coder-failed` branch. Map to `STALL_REASON=submodule-violation`. Include `CODER_STATUS` in the final KV envelope so downstream parsers can disambiguate. Add a stall-routing test.
+
+
+### FINDING_13: `compose_review_findings_output` always passes `--issue 0`
+- **Reviewers**: Cursor-Arch (item 6), Cursor-Pragmatic
+- **Concern**: In-process `compose_review_findings_output` calls `compose-review-findings.sh` with `--issue 0` (review-and-fix.sh:502-508). Removed SKILL.md prose previously passed `"${ISSUE_NUMBER:-0}"` (SKILL.md:1277). The `review-findings-full` JSONL records lose real issue linkage that the prose path preserved.
+- **Proposed resolution**: Either (a) thread `ISSUE_NUMBER` from `session-env.sh` (or `parent-issue.md`) into `compose_review_findings_output` so the `--issue` argument carries the real issue number, OR (b) explicitly accept `--issue 0` as the new contract and document it in `larch-log-batches.md` for `review-findings-full` so log consumers know how to join records back to issues by RUN_ID.
+
+
+### FINDING_14: Test-section count mismatch (6 vs 8)
+- **Reviewers**: Cursor-Arch, Cursor-Edge, Cursor-Innovation, Cursor-Pragmatic, Cursor-Requirements
+- **Concern**: Plan section "Modified — tests" item 6 heading says "add 6 new test cases" but enumerates 8 bullets. Section "Testing strategy" elsewhere says "8 new cases". Reconciliation needed.
+- **Proposed resolution**: Update the heading to "add 8 new test cases" (the enumerated list is correct). Also reconcile the `diff_lines:` total with the actual 8 cases.
+
+
+### FINDING_15: Loop wrapper exit-code contract is unspecified
+- **Reviewers**: Cursor-Edge (item 1)
+- **Concern**: Plan does not specify whether the wrapper exits 0 vs non-zero for `STEP5_REVIEW_STATUS=stall`. If the wrapper exits 0 and the only stall signal is in the KV envelope, any orchestrator path that keys off `$?` before parsing the envelope (or any `set -e` wrapper) can mistakenly continue past Step 5.
+- **Proposed resolution**: Specify in `review-and-fix.md`: wrapper exits 0 for `complete` and `cap-hit`; exits 2 for `stall` (any STALL_REASON); exits 0 for `main-agent-vote-required` (treated as a "graceful bail" the main agent must explicitly handle, NOT a stall). Pin the contract in `test-review-and-fix.sh` for each exit path.
+
+
+### FINDING_16: Body-reachable `exit` calls block envelope emission
+- **Reviewers**: Codex-Edge (item 4 security), Codex-Innovation (item 1)
+- **Concern**: `_implement_round_body` extraction is risky because the current `run_implement_round` body calls `exit 2` directly from several deep helpers (`review-and-fix.sh:195-200`, `:1129-1132`, `:1237-1238`). If extraction does not audit and rewrite these to in-process status returns, security/classifier/OOS failures still call `exit 2` from inside the body, leaving the wrapper with no `STEP5_REVIEW_STATUS` envelope on those paths.
+- **Proposed resolution**: Plan must include an explicit "exit audit" subsection: identify every `exit` call inside the `run_implement_round` body and every helper it calls; convert each into a status-returning code path so `_implement_round_body` always returns to its caller. The loop wrapper then normalizes nonzero returns into `STEP5_REVIEW_STATUS=stall STALL_REASON=...` before the process exits. Add at least one "classifier-failure" test that verifies the envelope is emitted on a deep-body failure path.
+
+
+### FINDING_17: Test plan requires source-safe entry point OR CLI-only testing
+- **Reviewers**: Codex-Arch (item 6), Codex-Innovation (item 4)
+- **Concern**: The script executes top-level code when `IMPLEMENT_TMPDIR` is set (review-and-fix.sh:1376-1377). Test cases that stub `_implement_round_body` to drive each loop-exit path can't simply `source` the script — the top-level dispatch fires immediately. The plan's test strategy (8 cases stubbing the private function) assumes a source-safe entry point that doesn't exist today.
+- **Proposed resolution**: Either (a) refactor the script to a `main "$@"` guard (`if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then main "$@"; fi`) so tests can source it without running, AND document a test-hook seam, OR (b) restructure tests to use external command stubs and CLI-only black-box testing. Pick one approach in the plan; the current text is ambiguous.
+
+
+### FINDING_18: Catch-all branch for unknown round-failure statuses
+- **Reviewers**: Codex-Requirements
+- **Concern**: `run_implement_round` can exit nonzero with statuses outside the panel-failed/coder-failed/submodule-violation enum (e.g., review-core internal errors, validation failures, unexpected status emitted by `*)` branch at review-and-fix.sh:1204-1206). The loop's status-routing has no catch-all; unknown statuses can fall into the success path or leave no envelope.
+- **Proposed resolution**: Add an explicit catch-all branch: any nonzero `_implement_round_body` return code with an unknown/unmapped `REVIEW_AND_FIX_STATUS` exits with `STEP5_REVIEW_STATUS=stall STALL_REASON=round-failed-${REVIEW_AND_FIX_STATUS:-unknown}`. Add a defensive test feeding an unexpected status.
+
+
+### FINDING_2: Per-round `pre-coder-head.txt` artifact required for substantiality numstat
+- **Reviewers**: Cursor-Edge, Cursor-Pragmatic, Cursor-Requirements, Codex-Arch, Codex-Edge, Codex-Innovation, Codex-Pragmatic, Codex-Requirements (all 5 Codex + 3 Cursor)
+- **Concern**: Plan mandates writing `round-${N}/post-coder-head.txt` but reuses run-root `pre-review-head.txt` for the pre-coder side. `pre-review-head.txt` is only written at round 1 entry (`review-and-fix.sh:948-950`). For round 2+, the numstat baseline is wrong (compares against pre-round-1 HEAD), so `structural_loc` is inflated by all prior rounds' commits and substantiality gate decisions become wrong.
+- **Proposed resolution**: Require `_implement_round_body` to write `$IMPLEMENT_TMPDIR/round-${round_num}/pre-coder-head.txt` immediately before `apply_findings_with_coder` for every round (not just round 1). Compute substantiality numstat as `git diff --numstat $(cat round-N/pre-coder-head.txt) $(cat round-N/post-coder-head.txt)` summed across files. Add a round-2 regression test where round 1 is large and round 2 is small.
+
+
+### FINDING_20: Post-wrapper unchanged chain not explicitly restated
+- **Reviewers**: Cursor-Requirements (item 8)
+- **Concern**: After the wrapper returns successfully (`complete` or `cap-hit`), the orchestrator still owns Cross-Skill Presence Propagation, Track Rejected Findings, and the Step 6 breadcrumb (SKILL.md line 1243). Plan focuses on parser/KV; doesn't explicitly say these post-wrapper steps stay in place.
+- **Proposed resolution**: Add one bullet to the SKILL.md update list: "After successful wrapper return (`STEP5_REVIEW_STATUS=complete|cap-hit`), preserve the existing post-Step-5 chain: Cross-Skill Presence Propagation → continue to `code-review-tally` (now no-op per new flush_review_batches contract) → Track Rejected Code Review Findings (still relevant) → Step 6 breadcrumb. Step 5 SKILL.md prose includes a sentence pointing to those existing sections."
+
+
+### FINDING_21: `usage()` and help text updates
+- **Reviewers**: Cursor-Arch (item 9), Cursor-Requirements (item 10)
+- **Concern**: New flags (`--mode loop`, `--starting-round`, possibly `--single-round`) need `usage()` updates in `review-and-fix.sh:34-38` and `run-step5-review.sh:11-13`. Files-to-Modify list does not call these out.
+- **Proposed resolution**: Add `usage()` updates to the Files-to-Modify list for both scripts. Update help text to enumerate new flags with brief descriptions. No additional test cost (existing usage tests probably already check for known flags).
+
+
+### FINDING_22: `run-relevant-checks-captured.sh` emits multi-KV-per-line
+- **Reviewers**: Codex-Edge (item 1)
+- **Concern**: `run-relevant-checks-captured.sh:15-20,140-142,201-212` emits success/skip/failure as multiple `KEY=value` pairs on one line (e.g., `STATUS=fail FAILURE_REASON=tmpdir-validation` is a single line). A typical key-value-per-line parser will misread `STATUS` as `fail FAILURE_REASON=tmpdir-validation` and miss the structural-fail state.
+- **Proposed resolution**: Either (a) normalize `run-relevant-checks-captured.sh` to emit one KV per line via `emit_kv` for ALL statuses (preferred — cheap, consistent with other helpers), OR (b) require the loop's parser to be token-aware (whitespace-split each line before extracting keys). Pin the contract in structure tests.
+
+
+### FINDING_23: `STALL_REASON` value sanitization
+- **Reviewers**: Cursor-Arch (item 8 security)
+- **Concern**: `STALL_REASON` feeds `execution-issues.md` categories via the main agent's parser. If any token includes shell metacharacters or newlines (low likelihood today; higher risk if reasons become interpolated stderr), markdown could be polluted.
+- **Proposed resolution**: Restrict `STALL_REASON` to a fixed enum at emit time (no interpolation of raw subprocess output). Document the enum in `review-and-fix.md`. Log full subprocess details to round logs only, not into the KV token.
+
+
+### FINDING_24: `flush_review_batches` only runs on exit 0
+- **Reviewers**: Cursor-Innovation (item 15)
+- **Concern**: Current `flush_review_batches` is invoked only when round `exit_code` is 0 (review-and-fix.sh:1362-1371). On stall paths (panel-failed, coder-failed, etc.), the batch flush is skipped. With the prose-owned tally composition removed, stall paths could lose `code-review-tally` and `review-findings-full` batches that the prose previously wrote unconditionally.
+- **Proposed resolution**: Move the `flush_review_batches` invocation outside the `exit_code == 0` guard, OR explicitly call it once on loop-exit (stall paths included) with a best-effort flag. Audit the run logs to confirm parity.
+
+
+### FINDING_25: `FIX_COUNT` / `SKIPPED_FINDING_COUNT` as in-process variables
+- **Reviewers**: Cursor-Edge (item 5)
+- **Concern**: `FIX_COUNT` and `SKIPPED_FINDING_COUNT` are emitted only via the `emit_kv` stdout stream (review-and-fix.sh:1336-1361), not written to `round-${N}/review-and-fix.env`. The loop's bulk-skip-ratio gate needs these values; capturing them from stdout while running interleaved with other emit_kv lines is fragile (quiet-FD rewiring, ordering).
+- **Proposed resolution**: Either (a) persist `FIX_COUNT` and `SKIPPED_FINDING_COUNT` into `round-${N}/review-and-fix.env` immediately after each round body completes, OR (b) require `_implement_round_body` to return them as in-process variables (not via stdout) so the loop reads them directly. Pin both gate-input keys in `review-and-fix.md`.
+
+
+### FINDING_27: MAV-at-cap behavior needs explicit status or operator log
+- **Reviewers**: Cursor-Arch (item 7), Cursor-Edge (item 9), Cursor-Innovation (item 9 latent), Cursor-Pragmatic
+- **Concern**: Plan documents MAV at cap (e.g., round 5 = cap; main agent resolves, re-invokes with --starting-round 6) as "loop enters, sees past-cap, exits complete immediately." Silent success can be misread by operators as "another review pass ran when cap allowed."
+- **Proposed resolution**: When the loop enters with `round_num > effective_round_cap` after a MAV resume, emit a distinct status: `STEP5_REVIEW_STATUS=mav-resume-past-cap` (or include an explicit Warnings log line: `Step 5 — MAV resume past cap; no additional review round executed.`). Main agent prints the warning. Add a regression test.
+
+
+### FINDING_28: Update non-Step-5 SKILL.md sections describing per-round dispatch
+- **Reviewers**: Cursor-Arch (item 7 latent + OOS dup)
+- **Concern**: SKILL.md line 42 and lines 1200-1206 still describe per-round `run-step5-review.sh` argv derivation and "Track round_num from 1." After the Step 5 collapse, those bullets contradict the new single-call shape.
+- **Proposed resolution**: Grep SKILL.md for `run-step5-review` and `round_num` outside the Step 5 block. Update bullets at line 42 and 1200-1206 to reflect the new shape (single call, no main-agent round tracking). Add to Files-to-Modify list.
+
+
+### FINDING_29: `--findings-file` mode dispatch when `IMPLEMENT_TMPDIR` is also set
+- **Reviewers**: Cursor-Arch (related to footer dispatch)
+- **Concern**: Current footer: `if [[ -n "$IMPLEMENT_TMPDIR" ]]; then run_implement_round; fi; run_findings_mode`. If both `IMPLEMENT_TMPDIR` AND `--findings-file` are passed (the MAV main-agent fix-apply path), `run_findings_mode` runs after `run_implement_round`. Plan needs to confirm this path stays — i.e., MAV apply uses BOTH the implement tmpdir context (for committing) AND the findings file.
+- **Proposed resolution**: Confirm the MAV apply contract in the plan: `review-and-fix.sh --implement-tmpdir <tmp> --mode findings --findings-file <accepted>` (or a new explicit `--mode mav-apply`). Document the routing in the footer dispatch matrix from FINDING_3.
+
+---
+
+
+### FINDING_3: Footer dispatch + MODE guard widening not addressed
+- **Reviewers**: Cursor-Arch, Cursor-Pragmatic, Cursor-Requirements
+- **Concern**: `run_implement_round` rejects any `MODE` other than `diff` (`review-and-fix.sh:896-898`). Script footer at `review-and-fix.sh:1376-1378` unconditionally calls `run_implement_round` when `IMPLEMENT_TMPDIR` is set, then falls through to `run_findings_mode`. Adding `--mode loop` argv without widening the MODE guard and rewriting the footer dispatch leaves loop mode unreachable (rejected at the guard) or double-invoked (run_implement_round always runs first).
+- **Proposed resolution**: Add an explicit "Footer dispatch matrix" subsection to the plan: when `IMPLEMENT_TMPDIR` is set, branch on `MODE`: `loop` → `run_implement_loop`; `diff` → `run_implement_round`; missing/unknown → existing error. The `run_findings_mode` fall-through stays only for `--findings-file` mode (when `IMPLEMENT_TMPDIR` is empty AND `--findings-file` is given). Widen the MODE guard in `run_implement_round` only to accept the legacy explicit `--mode diff` set.
+
+
+### FINDING_4: Post-round checks/lint-fix/gates should only fire for statuses that imply coder edits
+- **Reviewers**: Cursor-Innovation, Cursor-Requirements, Codex-Pragmatic, Codex-Innovation
+- **Concern**: Plan groups `fix-applied`, `converged-small-changes`, `no-changes`, `no-findings` together in the post-round helper-dispatch branch. SKILL.md prose (line 1224) explicitly says `converged-small-changes` "stops the re-review loop and continues to code-review-tally" without a checks pass. Running checks for no-change statuses can stall on pre-existing failures or pin lint-fix work to unrelated files. Also: `in-scope-filtered-out` (review-and-fix.sh:1187-1198) is missing from the plan's status matrix entirely.
+- **Proposed resolution**: Define an explicit per-status matrix in the plan and in `review-and-fix.md`: only `fix-applied` (and any MAV-applied path) runs `run-relevant-checks-captured.sh` + lint-fix-loop. For `converged-small-changes`, `no-changes`, `no-findings`, `in-scope-filtered-out`: exit the loop with `STEP5_REVIEW_STATUS=complete` directly (no checks, no gates). Document the matrix as a table.
+
+
+### FINDING_5: Structural `FAILURE_REASON` allowlist is incomplete
+- **Reviewers**: Cursor-Requirements, Codex-Arch, Codex-Edge
+- **Concern**: Plan's structural `FAILURE_REASON` enum lists tmpdir-validation, site-validation, repo-root-unresolved, check-script-not-executable, check-script-symlink-broken, redaction-failed. `run-relevant-checks-captured.sh` emits additional fail() reasons WITHOUT `REDACTED_LOG_FILE`: `log-dir-create-failed`, `log-dir-symlink-rejected`, `log-dir-chmod-failed`, `log-file-chmod-failed`, `log-allocation`, `log-allocation-attempt-cap`. Treating any `STATUS=fail` not in the short list as "has REDACTED_LOG_FILE" mis-routes these to the lint-fix branch, which then fails on missing log file.
+- **Proposed resolution**: Use a robust rule: any `STATUS=fail` AND empty/absent `REDACTED_LOG_FILE` → stall with `STALL_REASON=relevant-checks-${FAILURE_REASON:-unknown}`. The explicit allowlist becomes a documentation hint, not the routing logic. Add a test covering at least one no-REDACTED_LOG_FILE failure path.
+
+
+### FINDING_6: `high_severity_count` source unspecified
+- **Reviewers**: Cursor-Arch, Cursor-Edge, Cursor-Innovation, Cursor-Requirements
+- **Concern**: Plan's substantiality gate references `high_severity_count`, but no existing KV in `review-and-fix.env` or stdout carries this. `review-and-fix.sh:1281-1285` persists only `REVIEW_AND_FIX_STATUS`, `REVIEW_CORE_STATUS`, `DEGRADED_ROUND`. Implementers cannot derive `high_severity_count` without picking a scanner (regex on accepted-findings markdown, or jq on composed JSONL).
+- **Proposed resolution**: Specify the authoritative source: scan `$IMPLEMENT_TMPDIR/round-${N}/accepted-findings.md` with the existing `important_findings_present` regex family (review-and-fix.sh:101-119), count distinct findings tagged Important/Critical/High. Document the regex and emit `HIGH_SEVERITY_COUNT=N` into `round-${N}/review-and-fix.env` so the loop's gate has a stable disk-derived input. Add an assertion test.
+
+
+### FINDING_7: Test `loop_complete_after_substantial_round` contradicts the substantiality gate
+- **Reviewers**: Codex-Pragmatic, Codex-Requirements
+- **Concern**: Plan defines substantial as "≥2 high-severity OR ≥100 LOC structural OR ≥8 accepted-fix" AND says "substantial AND `round_num < effective_round_cap` → continue iteration." The test case `loop_complete_after_substantial_round` (plan line 95) asserts complete after a substantial first round, which inverts the contract.
+- **Proposed resolution**: Either rename to `loop_continues_after_substantial_round_below_cap` and assert ROUNDS_COMPLETED=2+ (one round, then iterates), OR drop the case and rely on `loop_complete_after_non_substantial` + `loop_iterates_to_cap` to cover convergence behavior.
+
+
+### FINDING_8: MAV resume must re-feed through gates, not blindly resume at round N+1
+- **Reviewers**: Codex-Pragmatic
+- **Concern**: Plan's MAV path: wrapper exits at round N → main agent applies fixes via findings-mode → re-invokes with `--starting-round N+1`. But the wrapper at `--starting-round N+1` starts a NEW round; it doesn't run substantiality/bulk-skip/checks for the MAV-applied fixes. If MAV-adjudicated fixes are non-substantial OR the cap was already hit, the next-round-or-complete decision is bypassed.
+- **Proposed resolution**: After MAV findings-mode application, before re-invoking the wrapper, the main agent runs `run-relevant-checks-captured.sh` (already in current prose). The wrapper at `--starting-round N+1` should detect that round N's `review-and-fix.env` is present and apply substantiality/bulk-skip retroactively on round N's artifacts before deciding whether to enter round N+1 or short-circuit to complete/cap-hit.
+
+
+### FINDING_9: MAV apply path needs implement-mode commit semantics
+- **Reviewers**: Codex-Arch
+- **Concern**: After MAV adjudication, the main agent invokes `review-and-fix.sh --findings-file <accepted>`. Findings mode (`review-and-fix.sh:405-408` in the codex-arch finding) operates without committing in the implement context; accepted fixes can stay uncommitted before the wrapper resumes, breaking per-round assumptions about HEAD pointing at the latest coder commit.
+- **Proposed resolution**: Add an implement-mode MAV apply path: accept `--mode mav-apply --round-num N --findings-file <path>` (or extend findings mode with an `--implement-tmpdir` flag) that performs the same commit/artifact contract as an ordinary review round (writes `round-N/post-coder-head.txt`, commits via coder, flushes batches). Document the new dispatch in `review-and-fix.md`.
+
+

@@ -1,0 +1,35 @@
+FINDING_1: YES — Citation is wrong (line 132-138 is `round_degraded()`, helper actually in `run-step5-review.sh:50-66`); duplication risk is real.
+FINDING_2: YES — `pre-review-head.txt` is only written at round 1 (line 950); substantiality numstat needs per-round pre-coder snapshot.
+FINDING_3: YES — Footer (`:1376-1378`) unconditionally calls `run_implement_round` and MODE guard (`:897`) rejects non-`diff`; loop mode unreachable without explicit dispatch matrix.
+FINDING_4: YES — `in-scope-filtered-out` (`:1197`) is omitted from plan matrix; `converged-small-changes` shouldn't run checks per SKILL.md.
+FINDING_5: YES — `run-relevant-checks-captured.sh` has additional fail() reasons (log-dir-create-failed, log-allocation, etc.) without REDACTED_LOG_FILE; rule-based routing is more robust than allowlist.
+FINDING_6: YES — No `high_severity_count` KV exists today; plan's gate references an undefined variable. Specifying authoritative source is required.
+FINDING_7: YES — Test name contradicts the substantiality gate's "continue iteration" semantics; either rename or drop.
+FINDING_8: YES — MAV resume at `--starting-round N+1` bypasses substantiality/bulk-skip retrospective decision for round N.
+FINDING_9: YES — Findings mode without `--round-num` skips per-round commit (line 408 guards on `round_num > 0`); MAV apply needs implement-mode commit semantics.
+FINDING_10: YES — Cap math is currently inflated in launcher (`run-step5-review.sh:138-142`); duplicated in loop wrapper risks double-inflation; ownership split needs explicit doc.
+FINDING_11: YES — Bounded retry budget is essential; unbounded coder dispatch within Step 5 is a real risk.
+FINDING_12: YES — Submodule-violation token preservation is real and trivial to specify.
+FINDING_13: EXONERATE — Legitimate concern but ISSUE_NUMBER is not currently threaded through to the script context; either approach works, and OOS_5 already covers the documentation path.
+FINDING_14: YES — Plan text says "6" but lists 8; trivially fixable inconsistency.
+FINDING_15: YES — Exit-code contract is load-bearing for orchestrator routing; must be pinned.
+FINDING_16: YES — Verified `exit 2` calls in deep helpers (`:199`, `:1131`, `:1238`); without exit audit, envelope guarantee breaks.
+FINDING_17: YES — Top-level dispatch fires on source (line 1376-1377); stubbing `_implement_round_body` requires source-safe entry point or CLI-only tests; ambiguity must be resolved.
+FINDING_18: YES — Defensive catch-all is cheap; the `*)` branch at line 1204-1206 confirms unknown statuses can fall through.
+FINDING_19: EXONERATE — Legitimate fragility concern but dedicated-file envelope adds new contract surface; pinning shape in tests + last-line discipline is proportionate to the risk.
+FINDING_20: YES — Trivial doc bullet preserves the post-Step-5 chain; cheap clarity.
+FINDING_21: YES — Argv test coverage rule (`.claude/rules/launcher-argv-test-coverage.md`) requires same-PR coverage; usage() updates are non-optional.
+FINDING_22: YES — Verified `emit "STATUS=fail FAILURE_REASON=..."` is multi-KV per line; parser correctness is at stake.
+FINDING_23: YES — Token sanitization is a small, valuable security/correctness invariant.
+FINDING_24: EXONERATE — Legitimate parity concern, but moving flush outside exit_code==0 guard risks duplicate writes / partial-state batches; current per-round flush after each successful round is the documented crash-safety contract. Auditing is wise but the proposed change requires careful design beyond this PR.
+FINDING_25: YES — Verified `FIX_COUNT`/`SKIPPED_FINDING_COUNT` only emitted via stdout (lines 1345, 1360); not persisted to round-N env file. Gates need stable disk-derived input.
+FINDING_26: EXONERATE — Antithesis already lost at Step 2a.5 dialectic; relitigation is high-cost. The exit-audit concern is captured by FINDING_16 (which addresses it directly within the chosen architecture).
+FINDING_27: YES — Silent past-cap exit confuses operators; distinct status or log line is cheap clarity.
+FINDING_28: YES — Verified SKILL.md line 42 still references per-round dispatch; line 1208 has "Track round_num from 1." Plan must update those.
+FINDING_29: YES — Footer dispatch matrix must cover MAV apply path (IMPLEMENT_TMPDIR + findings-file); related to FINDING_3.
+
+OOS_1: YES — Real existing bug (`probe_rc=$?` in `else` branch when `is_security_block` returned 2); worth tracking.
+OOS_2: NO — Defensive observation with no actionable bug; plan does not claim ownership change, no breakage path.
+OOS_3: YES — Documented as deferred substantiality refinement; worth tracking for follow-up.
+OOS_4: EXONERATE — No concrete trust-boundary change in this PR; speculative future risk.
+OOS_5: YES — If FINDING_13 is EXONERATE-ed (--issue 0 stays), documenting the contract is appropriate follow-up.

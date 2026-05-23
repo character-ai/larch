@@ -1,0 +1,78 @@
+You are an Innovation/Exploration architect. Propose a high-level implementation approach for this feature: [DESIGNING] Absorb /implement Step 5 review round-loop into review-and-fix.sh
+
+## Problem: review is a script, yet it dominates main-agent Claude $
+
+`/implement` Step 5 ultimately dispatches `scripts/run-step5-review.sh`, which calls `skills/review-and-fix/scripts/review-and-fix.sh`. Codex/Cursor handle fix application (`apply_findings_with_coder`), and `flush_review_batches` writes `code-review-tally` + `review-findings-full` larch-log batches internally. So at first glance, the main agent should pay almost nothing during Step 5.
+
+In practice, Step 5 is consistently the #1 Claude cost driver across `/implement` runs. Recent committed run-log analysis (`/larch:report-tokens`):
+
+| Issue | Workflow | Step 5 Claude $ | cache_read | cache_create | output |
+| --- | --- | ---: | ---: | ---: | ---: |
+| #2231 | SIMPLE | $37.52 | 55.1M | 5.1M | 129k |
+| #2253 | SIMPLE | $13.41 | 13.9M | 2.4M | 16k |
+| #2263 | SIMPLE | $6.24 | 9.3M | 0.9M | 17k |
+| #2274 | HARD | $17.93 | 18.5M | 3.1M | 39k |
+
+Output is small ($0.23–$1.94). The Claude $ is almost entirely cache_read + cache_create on the main agent's session transcript.
+
+## Why this happens
+
+`run-step5-review.sh` and `review-and-fix.sh:run_implement_round` are designed to process **exactly one round per invocation** and return. The round loop lives in the main agent's SKILL.md prose (`skills/implement/SKILL.md` "Step 5 — Code Review"):
+
+> Track `round_num` from 1. For each round, run one foreground Bash call: `${CLAUDE_PLUGIN_ROOT}/scripts/run-step5-review.sh --implement-tmpdir "$IMPLEMENT_TMPDIR" --round-num "$round_num"`
+
+For N rounds, the main agent issues N bash calls and N+ API turns happen between them. While each bash call runs, the main agent is idle and pays nothing — but at every gap between bash calls, an API turn fires and re-reads the entire accumulated transcript as cache_read. By Step 5 the transcript already carries design plan, implementation output, Step 3 checks loop, and SKILL.md prose.
+
+Per-round main-agent work between bash calls (each is a separate API turn or a few):
+
+1. Parse `REVIEW_AND_FIX_STATUS` / `ACCEPTED_COUNT` / `CODER_STATUS` from `run-step5-review.sh` stdout, branch on status
+2. Run `run-relevant-checks-captured.sh --site step5-review-fixes`; parse `STATUS` and `REDACTED_LOG_FILE`
+3. If checks failed: dispatch `lint-fix-loop.sh --site step5`; parse `LINT_FIX_STATUS`; possibly re-run checks
+4. Substantiality classification (mechanical criteria: ≥2 high-severity, OR ≥100 LOC structural, OR ≥8 accepted)
+5. Bulk-skip-ratio gate (`SKIPPED_FINDING_COUNT / FIX_COUNT >= LARCH_SKIP_RATIO_THRESHOLD`)
+6. Loop or exit decision
+
+That is ~6 API turns per round minimum. With round caps of 5 (SIMPLE) / 7 (HARD) plus an occasional Step 5 restart, you get 20–40 turns each replaying a ~100K-token transcript = tens of millions of cache_read tokens at $0.30/M = double-digit dollars per Step 5.
+
+For #2231 specifically: ~4 rounds plus a full Step 5 restart (Step 5 → Step 6 → Step 5 again) doubled the cache_read for the second phase, producing the $37.52 outlier.
+
+## Proposal: absorb the Step 5 round loop into review-and-fix.sh
+
+Rearchitect so that one main-agent Bash call covers all rounds of Step 5, instead of N bash calls with N main-agent decision gaps between them.
+
+Concretely, the script (`review-and-fix.sh` or a new wrapper) would internalize:
+
+- The round-loop iteration up to `round_cap` (5 / 7 by panel)
+- Calling the relevant-checks helper between rounds (or equivalent inline lint enforcement)
+- Dispatching `lint-fix-loop.sh` on failed checks
+- The substantiality classification gate
+- The bulk-skip-ratio gate
+- The "stall to Step 16" early-exit conditions (`coder-failed`, `submodule-violation`, `panel-failed`, `bulk-skip-ratio cap`)
+- The main-agent-vote-required fallback only when *all 3* judges fail (rare; can stay as an exception path that still returns to the main agent)
+
+The main agent then sees Step 5 as **one bash call**, parses the final summary KVs, and proceeds to Step 6.
+
+Out of scope for the initial cut: changes to `/review` standalone diff mode, to `/review-and-fix` findings-mode dispatch, to the panel/voting internals, or to per-round `larch-log` batch flushing (these are already inside the script and unaffected).
+
+## Why this will notably reduce costs
+
+The cost mechanism is: `Step 5 Claude $ ≈ (# of API turns in Step 5) × (transcript size × cache_read_rate) + small output term`.
+
+By collapsing N rounds × M gaps into 1 bash call, the number of API turns inside Step 5 drops from roughly 20–40 to roughly 2–4 (one to dispatch, one to parse the final result, plus any post-loop tally-batch composition still in the main agent — itself a candidate for cleanup since `flush_review_batches` already writes the canonical batches).
+
+Order-of-magnitude estimate on observed runs:
+
+- #2231 ($37.52 today): expected drop to roughly $3–$6 (≈85% reduction). The restart, if it happened at all under the new architecture, would also be much cheaper because the second phase would again be a single bash call rather than another N-round loop.
+- #2253 ($13.41 today): expected drop to ~$1–$2.
+- #2263 ($6.24 today): expected drop to ~$1.
+- #2274 HARD ($17.93 Claude part today): expected drop to ~$2–$3. Codex part ($37.67) is unchanged — those are external reviewer dispatch costs the architecture doesn't touch.
+
+Across the recent 9-day window with 184 SIMPLE runs at median $11.31 ($2,685 total) and 9 HARD runs at median $42.02 ($451 total), Step 5 is the modal contributor and cache_read is 50–67% of Claude cost. If 80% of Step 5 Claude $ is removed, total spend drops by an estimated 25–35% just from this one change, with no impact on review thoroughness (same panel, same voting, same coder dispatch — only the loop controller moves from prose to bash).
+
+## Notes for the implementing session
+
+- The substantiality and bulk-skip-ratio gates are already mechanical; their criteria are documented in `skills/implement/SKILL.md` Step 5 prose ("Re-review gate" and "Bulk-skip-ratio gate" subsections). Port the rules into bash with `LARCH_SKIP_RATIO_THRESHOLD` honored.
+- The script must emit a final summary KV block that lets the main agent move directly to Step 6 — including `STALL_TRACKING=true` for early-exit conditions so Step 16 routing still works.
+- Post-loop tally batch composition: `flush_review_batches` already writes both `code-review-tally` and `review-findings-full`. The SKILL.md's instructions for the main agent to compose those batches appear to duplicate this work; verify and remove the duplicate path in the same cleanup.
+- Preserve existing harness coverage: `skills/review-and-fix/scripts/test-review-and-fix.sh`, `skills/implement/scripts/test-implement-review-token-propagation.sh`, and Step 5 lint-fix-loop tests should keep passing; add new assertions for the absorbed loop.
+- This change is `/implement`-only. `/review` standalone (`--diff` mode) keeps its own round loop in `skills/review/SKILL.md` Step 3.. Your role is to question assumptions, suggest creative alternatives, and propose unconventional solutions that others might not consider. Explore the codebase. Write 2-3 paragraphs covering: (1) Key architectural decisions — emphasize any novel approaches or alternatives to the obvious path, (2) Which files/modules to modify and why, (3) Main tradeoffs including any 'crazy but might work' ideas worth considering. Do NOT modify files.

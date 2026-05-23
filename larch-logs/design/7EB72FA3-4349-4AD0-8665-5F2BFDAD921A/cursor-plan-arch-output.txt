@@ -1,0 +1,64 @@
+Reading the plan and referenced code paths.
+
+Validating the plan against the codebase: reading referenced files and integration points.
+
+Checking `run_findings_mode` interaction and whether `ROUND_CAP` is passed only from the launcher:
+
+Tracing control flow: `run_implement_round` exits the process, so `run_findings_mode` is never reached for the implement path.
+
+`run_implement_round` always ends with `exit` (line 1373), so execution never reaches `run_findings_mode` when `IMPLEMENT_TMPDIR` is set. `run_implement_loop` must also terminate with `exit` after emitting the envelope; otherwise the script falls through to `run_findings_mode` and fails on an empty `FINDINGS_FILE` (`[[ -f "$FINDINGS_FILE" ]]` is false for empty string).
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+
+I'll write 8-10 TSV rows covering the strongest issues.
+
+Also: plan line 17 "existing helper (already present at line 133)" - wrong.
+
+For OUT_OF_SCOPE: is_security_block block lines 1121-1134 - the logic with probe_rc in else is actually capturing $? from failed if test which is is_security_block's exit code - OK.
+
+Actually wait - in bash:
+```
+if is_security_block "$block_file"; then
+    ...
+else
+    probe_rc=$?
+```
+After `if cmd; then` fails, in the else branch, `$?` is the exit status of `cmd` (is_security_block). Good.
+
+I'll skip that as out of scope.
+
+Include: compose --issue 0 vs ISSUE_NUMBER as latent parity.
+
+Output now.
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/review-and-fix/scripts/review-and-fix.sh:1373-1380	Script tail always runs run_findings_mode after the IMPLEMENT_TMPDIR gate; run_implement_round never returns because it exits.	run_implement_loop implemented as a function that returns (or emits envelope then falls through) would hit run_findings_mode with empty FINDINGS_FILE and fail [[ -f "$FINDINGS_FILE" ]] (review-and-fix.sh:850).	Require run_implement_loop to exit the process (same as run_implement_round) after the final KV envelope, or branch main so implement+loop never falls through to run_findings_mode; add an explicit test for this control flow.
+1	in_scope	important	architecture	plan.txt:16-18 vs skills/review-and-fix/scripts/review-and-fix.sh:132-151	Plan cites count_prior_degraded_rounds at review-and-fix.sh line 133; that line is round_degraded(), and count_prior_degraded_rounds only exists in scripts/run-step5-review.sh:50-66.	Implementers paste wrong line or assume helper exists in review-and-fix.sh; duplicated cap math diverges from the launcher.	Correct the plan reference; either copy the helper into review-and-fix.sh with a single canonical comment pointing to run-step5-review.sh, or extract scripts/lib-step5-round-cap.sh (or similar) sourced by both.
+1	in_scope	important	architecture	skills/review-and-fix/scripts/review-and-fix.sh:896-898 and :1376-1377	Entry point always calls run_implement_round when IMPLEMENT_TMPDIR is set; MODE is enforced as diff-only inside run_implement_round.	Adding --mode loop argv without replacing this dispatcher leaves loop mode unreachable or rejected at the MODE guard.	Plan should explicitly require a top-level branch: e.g. MODE loop → run_implement_loop, MODE diff → run_implement_round, and extend the MODE guard accordingly.
+1	in_scope	important	correctness	plan.txt:32-33 vs skills/implement/SKILL.md:1239-1240	Substantiality moves to bash using high_severity_count, structural_loc from git numstat, ACCEPTED_COUNT>=8.	SKILL today ties high severity and “non-comment structural” to main-agent judgment; bash has important_findings_present (review-and-fix.sh:101-119) but no documented mapping to high_severity_count, and numstat is not “non-comment code”.	Spell the deterministic inputs (e.g. scan accepted-in-scope markdown with the same Important regex family, or reuse important_findings_present with a defined threshold of 2) and document that numstat is a deliberate proxy, not a drop-in for the prose rule.
+1	in_scope	latent	correctness	plan.txt:160	Legacy path claimed “byte-compatible stdout/env per pragmatic sketch constraint” for --mode diff --round-num.	Loop absorbs checks and lint-fix into one process; even per-round diff mode may gain extra writes (pre/post-coder-head) changing artifacts compared to today’s single invocation.	Narrow the claim to per-invocation review-and-fix contract keys that must stay stable for harnesses, or drop “byte-compatible” wording.
+1	in_scope	nit	code-quality	plan.txt:94-103	Heading says “add 6 new test cases” but the bullet list enumerates eight scenarios including loop_starting_round_validates_artifacts and loop_bulk_skip_ratio_stalls_at_cap.	Planning/CI scope mismatch and reviewers may ship an incomplete harness.	Align the stated count with the enumerated cases (8) or trim the list.
+1	in_scope	important	risk-integration	skills/implement/SKILL.md:1245-1281 vs skills/review-and-fix/scripts/review-and-fix.sh:542-681	Plan removes main-agent compose-review-findings.sh / write-tally prose and relies on flush_review_batches per round.	compose_review_findings_output always passes --issue 0 to compose-review-findings.sh (review-and-fix.sh:502-508) while SKILL passes "${ISSUE_NUMBER:-0}" (SKILL.md:1277); run logs may lose issue-scoped metadata the prose path preserved.	Decide parity: teach compose_review_findings_output to pass RUN_ID or ISSUE_NUMBER from session-env when present, or document intentional --issue 0 and accept downstream log semantics change.
+1	in_scope	latent	architecture	skills/implement/SKILL.md:42,1200-1206	Early Step 5 bullets still describe per-round run-step5-review.sh argv derivation and round_num tracking.	After collapse, those sections contradict the new single-call Step 5 unless updated in the same change.	Extend the plan to sweep grep hits for run-step5-review / round_num in SKILL.md outside the Step 5 block for consistency.
+1	in_scope	latent	risk-integration	plan.txt:154-157	MAV at last cap round: resume with --starting-round past cap yields immediate STEP5_REVIEW_STATUS=complete with no further review round.	Behavior change vs today’s orchestrator-driven loop may skip a post-adjudication review pass some operators expect.	Document as accepted product behavior or add one bounded “verification” round in the MAV branch before completing.
+1	in_scope	nit	architecture	scripts/run-step5-review.sh:11-12 and skills/review-and-fix/scripts/review-and-fix.sh:34-38	usage() strings still describe only legacy argv shapes.	Operators and support read --help output that omits --mode loop and --starting-round.	Update usage() in the same PR as behavior (script-md-siblings already covers .md siblings).
+
+**1 [architecture]** [skills/review-and-fix/scripts/review-and-fix.sh:1376-1380](skills/review-and-fix/scripts/review-and-fix.sh) — The plan adds `run_implement_loop` but never states the main-script dispatch: today only `run_implement_round` runs when `IMPLEMENT_TMPDIR` is set, and `run_implement_round` **must** `exit` so `run_findings_mode` is not reached with an empty `--findings-file`. **Concern:** If the loop function returns to top-level, the next line `run_findings_mode` fails fast (`[[ -f "$FINDINGS_FILE" ]]` at line 850). **Suggested revision:** Require `run_implement_loop` to terminate the process with `exit` (mirroring line 1373) or restructure the tail `if` so loop mode never falls through.
+
+**2 [correctness]** [plan.txt:16-18](file:///Users/zhupanov/.cache/larch/sessions/claude-design-larch8-20koLx/plan.txt) — The plan says `count_prior_degraded_rounds` is “already present at line 133” in `review-and-fix.sh`; line 133 is `round_degraded()`, and `count_prior_degraded_rounds` is defined only in [scripts/run-step5-review.sh:50-66](scripts/run-step5-review.sh). **Concern:** Wrong anchor and silent duplication risk. **Suggested revision:** Fix the citation; share one implementation (small `lib` source) or document duplicated logic with cross-file parity tests.
+
+**3 [risk-integration]** [skills/review-and-fix/scripts/review-and-fix.sh:896-898](skills/review-and-fix/scripts/review-and-fix.sh) — `run_implement_round` rejects any `MODE` other than `diff`. **Concern:** `--mode loop` is infeasible without widening this guard and the `if [[ -n "$IMPLEMENT_TMPDIR" ]]` entry (lines 1376–1377). **Suggested revision:** Call this out explicitly in the plan’s “Files to modify” for `review-and-fix.sh` (MODE parsing + main dispatch).
+
+**4 [correctness]** [plan.txt:32-34](file:///Users/zhupanov/.cache/larch/sessions/claude-design-larch8-20koLx/plan.txt) vs [skills/implement/SKILL.md:1239](skills/implement/SKILL.md) — Substantiality uses `high_severity_count` and raw `git diff --numstat` summed LOC; SKILL’s rule references “non-comment code” and qualitative high severity. **Concern:** Underspecified mapping from findings text to `high_severity_count`; numstat inflates on comments/generated files (plan admits later, but the gate is still behavior-changing). **Suggested revision:** Bind `high_severity_count` to a concrete scanner (e.g. extend or reuse `important_findings_present` / regex family at [review-and-fix.sh:101-119](skills/review-and-fix/scripts/review-and-fix.sh)) and document the numstat proxy limits in the sibling `.md`.
+
+**5 [code-quality]** [plan.txt:94 vs 94-103](file:///Users/zhupanov/.cache/larch/sessions/claude-design-larch8-20koLx/plan.txt) — “Add 6 new test cases” vs eight listed scenarios. **Concern:** Scope slip in implementation or review. **Suggested revision:** Reconcile the number with the bullet list.
+
+**6 [architecture]** [skills/review-and-fix/scripts/review-and-fix.sh:502-508](skills/review-and-fix/scripts/review-and-fix.sh) vs [skills/implement/SKILL.md:1274-1278](skills/implement/SKILL.md) — In-process compose uses `--issue 0`; SKILL’s removed block used `"${ISSUE_NUMBER:-0}"`. **Concern:** Run-log / JSONL issue field parity if the prose compose path goes away. **Suggested revision:** Thread issue number from `session-env.sh` into `compose_review_findings_output` or explicitly accept `--issue 0` as the new contract and document it.
+
+**7 [risk-integration]** [plan.txt:154-157](file:///Users/zhupanov/.cache/larch/sessions/claude-design-larch8-20koLx/plan.txt) — MAV when `round_num` equals cap: resume past cap yields immediate `complete`. **Concern:** Possible behavioral change vs a human-driven extra review round after adjudication. **Suggested revision:** Mark as explicitly accepted or add a capped follow-up round in the MAV branch.
+
+**8 [security]** [plan.txt:42-50](file:///Users/zhupanov/.cache/larch/sessions/claude-design-larch8-20koLx/plan.txt) and [skills/implement/SKILL.md:1226-1227](skills/implement/SKILL.md) — `STALL_REASON` feeds `execution-issues.md` categories. **Concern:** If any token ever includes shell metacharacters or newlines from subprocess output, markdown could be polluted or misleading (low likelihood today, higher if reasons become interpolated stderr). **Suggested revision:** Restrict `STALL_REASON` to a fixed enum at emit time and log raw details only in round logs, not in the KV token.
+
+**[OUT_OF_SCOPE]** [skills/review-and-fix/scripts/review-and-fix.sh:1104-1136](skills/review-and-fix/scripts/review-and-fix.sh) — Skipped-finding security split uses `is_security_block` plus a counter increment even when blocks are skipped; worth a separate correctness pass if you touch this area for unrelated reasons.
+
+**[OUT_OF_SCOPE]** [skills/implement/SKILL.md:42,1200-1206](skills/implement/SKILL.md) — Non–Step-5 bullets still describe per-round `run-step5-review.sh`; updating only lines ~1198–1290 may leave contradictory guidance elsewhere in the same SKILL.
