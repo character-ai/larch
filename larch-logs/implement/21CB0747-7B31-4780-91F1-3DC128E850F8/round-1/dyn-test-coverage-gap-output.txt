@@ -1,0 +1,13 @@
+Gathering the diff, commit list, and grep/read results for the test-coverage review.
+
+Checking `scripts/test-render-run-summary.sh` for other `fix-issue` references and whether invalid `--skill` values are tested.
+
+### In-Scope Findings
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+- The branch diff includes a second commit adding [`larch-logs/implement/21CB0747-7B31-4780-91F1-3DC128E850F8/`](larch-logs/implement/21CB0747-7B31-4780-91F1-3DC128E850F8/) (`manifest.json`, `parent-issue.md`, `plan-goals-test.md`, `plan-review-tally.json`), which sits outside the feature plan’s “exactly nine touched files” inventory; that is unrelated to whether `scripts/test-render-run-summary.sh` still pins stderr correctly.
+- Repo-wide search shows no other harness invoked `scripts/render-run-summary.sh` with `--skill fix-issue`; remaining `fix-issue` substrings in tests (for example [`scripts/test-redact-tmpdir-paths.sh`](scripts/test-redact-tmpdir-paths.sh) path fixtures, [`scripts/test-implement-structure.sh`](scripts/test-implement-structure.sh) negative pins) are not tied to this renderer.
+- In [`scripts/render-run-summary.sh`](scripts/render-run-summary.sh), `SKILL` only gates the `case`, sets the default run-logs path when `--run-logs-path` is `N/A`, and formats the `## /%s run` heading; `STATUS=ok` / `OUTPUT_FILE=` diagnostics are emitted unconditionally after a successful render (see `emit_diag` calls around lines 226–227), so the stderr envelope test does not depend on `fix-issue` vs `implement` for the asserted lines.
+
+**Commits (`$(git merge-base HEAD main)..HEAD`):** `ab99f525 chore: remove residue from deleted skills and retired harnesses`, `f039a374 chore(larch-logs): flush implement run 21CB0747-7B31-4780-91F1-3DC128E850F8`.
