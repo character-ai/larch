@@ -326,7 +326,102 @@ EOF
 rc="$(run_lint "$stderr_file")"
 assert_case_clean "dispatch-plan-voters with markers" "$stderr_file" "$rc"
 
-# 16 — Family A: pinned run_in_background: true counts on orchestrator SKILL.md files
+# 17 — parse-only safety: fence body would exit 99 if executed as a script; linter must not
+reset_tree
+write_md skills/parse-only-exec/SKILL.md <<'EOF'
+# Case 17
+
+**⚠ Foreground required — do NOT set `run_in_background: true`.**
+
+```bash
+# Foreground required: see BASH_AUTHORING.md §4
+exit 99
+${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1 x.txt
+```
+EOF
+rc="$(run_lint "$stderr_file")"
+assert_case_clean "parse-only fence body not executed" "$stderr_file" "$rc"
+
+# 18 — EOF: unterminated fence still scanned (missing banner)
+reset_tree
+write_md skills/eof-open-fence/SKILL.md <<'EOF'
+# Case 18
+
+```bash
+# Foreground required: see BASH_AUTHORING.md §4
+${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1 x.txt
+EOF
+rc="$(run_lint "$stderr_file")"
+assert_case "EOF unterminated fence still linted" 1 "$stderr_file" "$rc" 'missing banner for collect-agent-results.sh'
+
+# 19 — second Family-B anchor after >5 in-fence lines needs its own comment
+reset_tree
+write_md skills/multi-anchor-gap/SKILL.md <<'EOF'
+# Case 19
+
+**⚠ Foreground required — do NOT set `run_in_background: true`.**
+
+```bash
+# Foreground required: see BASH_AUTHORING.md §4
+${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1 x.txt
+
+
+
+
+
+
+${CLAUDE_PLUGIN_ROOT}/scripts/ci-wait.sh --dry-run
+```
+EOF
+rc="$(run_lint "$stderr_file")"
+assert_case "second anchor after long gap needs comment" 1 "$stderr_file" "$rc" 'missing comment for ci-wait.sh'
+
+# 20 — if ! with repo-relative path (no CLAUDE_PLUGIN_ROOT prefix)
+reset_tree
+write_md skills/if-not-claude-path/SKILL.md <<'EOF'
+# Case 20
+
+**⚠ Foreground required — do NOT set `run_in_background: true`.**
+
+```bash
+# Foreground required: see BASH_AUTHORING.md §4
+if ! scripts/run-step5-review.sh --mode loop; then
+  exit 1
+fi
+```
+EOF
+rc="$(run_lint "$stderr_file")"
+assert_case_clean "if ! relative denylisted path" "$stderr_file" "$rc"
+
+# 21 — env-prefixed bash invocation
+reset_tree
+write_md skills/env-bash-prefix/SKILL.md <<'EOF'
+# Case 21
+
+**⚠ Foreground required — do NOT set `run_in_background: true`.**
+
+```bash
+# Foreground required: see BASH_AUTHORING.md §4
+FOO=1 bash "${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh" --timeout 1 x.txt
+```
+EOF
+rc="$(run_lint "$stderr_file")"
+assert_case_clean "env-prefixed bash denylisted invoke" "$stderr_file" "$rc"
+
+# 22 — commented-out denylisted path is not an anchor
+reset_tree
+write_md skills/commented-denylist/SKILL.md <<'EOF'
+# Case 22
+
+```bash
+# ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1 x.txt
+echo ok
+```
+EOF
+rc="$(run_lint "$stderr_file")"
+assert_case_clean "commented denylisted line ignored" "$stderr_file" "$rc"
+
+# 16 — Family A: pinned run_in_background: true counts on reference paths (sketch / dialectic / voting)
 assert_family_count() {
     local path="$1" expected="$2" label="$3"
     local got
@@ -340,10 +435,10 @@ assert_family_count() {
     PASS=$((PASS + 1))
 }
 
-assert_family_count "$REPO_ROOT/skills/design/SKILL.md" 5 'design SKILL.md'
-assert_family_count "$REPO_ROOT/skills/implement/SKILL.md" 8 'implement SKILL.md'
-assert_family_count "$REPO_ROOT/skills/research/SKILL.md" 0 'research SKILL.md'
-assert_family_count "$REPO_ROOT/skills/review/SKILL.md" 0 'review SKILL.md'
+assert_family_count "$REPO_ROOT/skills/design/references/sketch-launch.md" 9 'sketch-launch.md'
+assert_family_count "$REPO_ROOT/skills/design/references/dialectic-execution.md" 5 'dialectic-execution.md'
+assert_family_count "$REPO_ROOT/skills/shared/voting-protocol.md" 3 'voting-protocol.md'
+assert_family_count "$REPO_ROOT/skills/shared/dialectic-protocol.md" 3 'dialectic-protocol.md'
 
 rm -f "$stderr_file"
 

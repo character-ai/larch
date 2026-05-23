@@ -143,7 +143,7 @@ is_anchor_for_basename() {
     p='(^[[:space:]]*(bash[[:space:]]+)?(["'"'"'"]?)([^/]*/)?'"$e"'([^A-Za-z0-9_.-]|$))'
     p+='|(=\$\((["'"'"'"]?)([^/]*/)?'"$e"'([^A-Za-z0-9_.-]|$)))'
     p+='|(^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]+[[:space:]]+)+(bash[[:space:]]+)?(["'"'"'"]?)([^/]*/)?'"$e"'([^A-Za-z0-9_.-]|$))'
-    p+='|((^|[[:space:]])(if|while|until|elif)[[:space:]]+(["'"'"'"]?)([^/]*/)?'"$e"'([^A-Za-z0-9_.-]|$))'
+    p+='|((^|[[:space:]])(if|while|until|elif)[[:space:]]+(![[:space:]]+)?(["'"'"'"]?)([^/]*/)?'"$e"'([^A-Za-z0-9_.-]|$))'
     p+='|(\$\{CLAUDE_PLUGIN_ROOT\}/[^[:space:]]*'"$e"'([^A-Za-z0-9_.-]|$))'
     if printf '%s\n' "$line" | LC_ALL=C grep -Eq "$p"; then
         return 0
@@ -153,6 +153,38 @@ is_anchor_for_basename() {
         return 0
     fi
     return 1
+}
+
+scan_fence_buffer_for_anchors() {
+    local rel="$1" open_fence_line="$2" fence_buf="$3"
+    shift 3
+    local -a pre_fence_window=("$@")
+
+    FG_FENCE_LINES=()
+    while IFS= read -r fline || [[ -n "$fline" ]]; do
+        FG_FENCE_LINES+=("$fline")
+    done <"$fence_buf"
+
+    local fline fidx bn
+    fidx=0
+    for fline in "${FG_FENCE_LINES[@]}"; do
+        ((fidx++)) || true
+        [[ "$fline" == *'.sh'* ]] || continue
+        while IFS= read -r bn; do
+            [[ -n "$bn" ]] || continue
+            if is_anchor_for_basename "$fline" "$bn"; then
+                local abs_anchor=$((open_fence_line + fidx))
+                if ! banner_ok_in_window "${pre_fence_window[@]}"; then
+                    printf '%s:%s: missing banner for %s\n' "$rel" "$abs_anchor" "$bn" >&2
+                    VIOLATIONS=$((VIOLATIONS + 1))
+                fi
+                if ! comment_ok_before_anchor_idx "$fidx"; then
+                    printf '%s:%s: missing comment for %s\n' "$rel" "$abs_anchor" "$bn" >&2
+                    VIOLATIONS=$((VIOLATIONS + 1))
+                fi
+            fi
+        done <<<"$DENYLIST"
+    done
 }
 
 scan_markdown_file() {
@@ -187,36 +219,16 @@ scan_markdown_file() {
         else
             if [[ "$line" =~ ^[[:space:]]*\`\`\`[[:space:]]*$ ]]; then
                 in_fence=0
-                FG_FENCE_LINES=()
-                while IFS= read -r fline || [[ -n "$fline" ]]; do
-                    FG_FENCE_LINES+=("$fline")
-                done <"$fence_tmp"
-
-                local fline fidx bn
-                fidx=0
-                for fline in "${FG_FENCE_LINES[@]}"; do
-                    ((fidx++)) || true
-                    [[ "$fline" == *'.sh'* ]] || continue
-                    while IFS= read -r bn; do
-                        [[ -n "$bn" ]] || continue
-                        if is_anchor_for_basename "$fline" "$bn"; then
-                            local abs_anchor=$((open_fence_line + fidx))
-                            if ! banner_ok_in_window "${pre_fence_window[@]}"; then
-                                printf '%s:%s: missing banner for %s\n' "$rel" "$abs_anchor" "$bn" >&2
-                                VIOLATIONS=$((VIOLATIONS + 1))
-                            fi
-                            if ! comment_ok_before_anchor_idx "$fidx"; then
-                                printf '%s:%s: missing comment for %s\n' "$rel" "$abs_anchor" "$bn" >&2
-                                VIOLATIONS=$((VIOLATIONS + 1))
-                            fi
-                        fi
-                    done <<<"$DENYLIST"
-                done
+                scan_fence_buffer_for_anchors "$rel" "$open_fence_line" "$fence_tmp" "${pre_fence_window[@]}"
                 continue
             fi
             printf '%s\n' "$line" >>"$fence_tmp"
         fi
     done <"$path"
+
+    if [[ "$in_fence" -eq 1 ]]; then
+        scan_fence_buffer_for_anchors "$rel" "$open_fence_line" "$fence_tmp" "${pre_fence_window[@]}"
+    fi
 
     rm -f "$fence_tmp"
     trap - RETURN

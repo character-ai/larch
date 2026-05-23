@@ -17,6 +17,12 @@ Black-box regression harness for `scripts/lint-foreground-markers.sh`. It builds
 13. **Assignment-shaped invocation** — `CMD=${CLAUDE_PLUGIN_ROOT}/scripts/review-and-fix.sh` with markers → passes.
 14. **Substring guard** — `test-collect-agent-results.sh` token in a fence without Family-B markers → must **not** trip the collector anchor (no violation).
 15. **`dispatch-plan-voters.sh`** — markers satisfied → passes.
-16. **Family A baseline** — pinned `grep -cF 'run_in_background: true'` counts on the four orchestrator `skills/{design,implement,research,review}/SKILL.md` files (guards accidental proliferation of background Bash tool calls in the primary skill entrypoints).
+16. **Parse-only safety** — fenced body contains `exit 99` before a denylisted call with valid markers → passes (linter must not execute fence bodies).
+17. **EOF / unterminated fence** — file ends inside an open shell fence → buffered lines still scanned → `missing banner` when prose lacks the banner.
+18. **Multi-anchor gap** — two denylisted invocations separated by more than five in-fence lines but only one qualifying comment → second anchor fails `missing comment`.
+19. **`if !` + repo-relative path** — `if ! scripts/run-step5-review.sh` with markers → passes.
+20. **Env-prefixed `bash` invoke** — `FOO=1 bash "${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh"` pattern with markers → passes.
+21. **Commented-out mention** — denylisted path only inside a `#` shell comment line → ignored.
+22. **Family A baseline** — pinned `grep -cF 'run_in_background: true'` counts on `skills/design/references/sketch-launch.md`, `skills/design/references/dialectic-execution.md`, `skills/shared/voting-protocol.md`, and `skills/shared/dialectic-protocol.md`.
 
-Wiring: Makefile targets `test-lint-foreground-markers` and `lint-foreground-markers`, one `test-harnesses-16` shard entry, pre-commit hook `lint-foreground-markers`, and `agent-lint.toml` exclusions mirroring the `lint-bash32` Makefile-only pattern. Primary normative contract: `scripts/lint-foreground-markers.md`.
+Wiring: Makefile targets `test-lint-foreground-markers`, `lint-foreground-markers`, and `lint-foreground` (alias), one `test-harnesses-16` shard entry, pre-commit hook `lint-foreground-markers`, and `agent-lint.toml` exclusions mirroring the `lint-bash32` Makefile-only pattern. Primary normative contract: `scripts/lint-foreground-markers.md`.

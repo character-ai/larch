@@ -8,7 +8,7 @@
 .PHONY: test-upgrade-larch
 .PHONY: test-scout-dynamic-archetypes
 .PHONY: test-token-report-dedup test-token-cost-per-bucket test-render-cost-line-realism test-render-cost-line-callsites test-render-run-summary-callsites test-render-run-summary-format test-token-report-summary-format test-report-tokens-recompute
-.PHONY: lint-bash32 test-lint-bash32 lint-foreground-markers test-lint-foreground-markers
+.PHONY: lint-bash32 test-lint-bash32 lint-foreground lint-foreground-markers test-lint-foreground-markers
 # CI splits `lint` into `lint-only` (pre-commit) and `test-harnesses`
 # (regression harnesses). `lint` remains the local-dev convenience target
 # that runs both, defined in terms of the two split targets to prevent drift.
@@ -872,6 +872,8 @@ shellcheck:
 
 lint-bash32:
 	bash scripts/lint-bash32.sh
+
+lint-foreground: lint-foreground-markers
 
 lint-foreground-markers:
 	bash scripts/lint-foreground-markers.sh

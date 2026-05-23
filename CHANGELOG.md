@@ -49,6 +49,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Foreground-marker lint for Family B denylisted script examples in skill/rules Markdown (`scripts/lint-foreground-markers.sh`, `make lint-foreground` / `make lint-foreground-markers`, pre-commit hook) with regression harness `test-lint-foreground-markers`; authoring rules in `BASH_AUTHORING.md` §4.
 - Disposition gate now counts design-side GitHub URLs only from structured Filed URL list lines, closing the incidental-Description-URL loophole.
 - /design persists and restores OOS filing sentinels across sessions via ~/.cache/larch/design-oos-filed/<issue>.md with an operator clear-cache flag.
 - Offline harnesses cover strict loose union semantics and cross-session cache edge cases.

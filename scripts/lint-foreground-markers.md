@@ -6,7 +6,7 @@ Inside **fenced** `bash` / `sh` / `shell` blocks (opening fence may be indented)
 
 `**⚠ Foreground required — do NOT set \`run_in_background: true\`.**`
 
-and the first invocation line for each anchor must have a matching comment in the **previous five non-closing fence lines** of that fence body:
+and **each** invocation-shaped anchor must have a matching comment in the **previous five non-closing fence lines** of that fence body (look-back is per anchor line; one comment can cover multiple anchors only when each anchor lies within five lines below that comment):
 
 `# Foreground required: see BASH_AUTHORING.md §4`
 
@@ -14,6 +14,6 @@ The script never evaluates fence bodies. Exit codes: `0` clean, `1` violations (
 
 Non–git-worktree enumeration uses a `find` subshell piped through `sort`; each `find` is suffixed with `|| true` so missing `skills/`, `.claude/skills/`, or `.claude/rules/` trees do not trip `set -o pipefail` (regression harnesses use bare `mktemp` roots).
 
-Primary callers: `make lint-foreground-markers`, local `make lint` (between `lint-bash32` and `lint-only`), the `lint-foreground-markers` pre-commit hook (`pass_filenames: false`, `always_run: true`), and `scripts/test-lint-foreground-markers.sh`.
+Primary callers: `make lint-foreground` (alias of `lint-foreground-markers`), `make lint-foreground-markers`, local `make lint` (between `lint-bash32` and `lint-only`), the `lint-foreground-markers` pre-commit hook (`pass_filenames: false`, `always_run: true`), and `scripts/test-lint-foreground-markers.sh`.
 
 Normative authoring rules live in `BASH_AUTHORING.md` section **Foreground markers for blocking Family B script calls**. Edit this linter in sync with that section, `docs/linting.md`, `Makefile`, `.pre-commit-config.yaml`, `agent-lint.toml` (Makefile-only exclusions for this script + harness + sibling `*.md` contracts), and `scripts/test-lint-foreground-markers.md`.

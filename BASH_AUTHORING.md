@@ -51,12 +51,18 @@ Run `make lint-bash32` after shell-script edits. If a regression harness intenti
 
 Orchestrator-facing Markdown (`skills/*/SKILL.md`, `skills/*/references/*.md`, `skills/shared/*.md`, `.claude/skills/*/SKILL.md`, `.claude/rules/*.md`) often embeds fenced `bash` / `sh` / `shell` examples that invoke **blocking** plugin scripts (sentinel polling, PR dispatch, collector joins, etc.). Those Bash tool calls must run in the **foreground** (`run_in_background` unset or `false`); backgrounding them loses completion coupling and breaks session semantics.
 
+**Why this is normative (not cosmetic).** Foreground blocking calls preserve **turn-boundary** semantics for long-running ship/review/dispatch steps: the Bash tool completes before the orchestrator continues, so `lib-quiet.sh` FD-3 breadcrumbs and stdout/stderr remain ordered and visible for the same Claude turn. Background launches defer completion to a task notification that may arrive **after** the model has already ended the turn — the failure mode behind `skills/implement/SKILL.md` NEVER **#16** and issue **#2454** (`ship-pr.sh` submitted with `run_in_background: true`). CI enforces the markers below via `make lint-foreground-markers` (alias `make lint-foreground`) and the `lint-foreground-markers` pre-commit hook.
+
+**Out of scope for this fence rule (Family A + Monitor).** Parallel subagent / multi-tool launches that the orchestrator **awaits** through a single foreground collector (the “Family A” pattern) are not on the Family B denylist — only the named blocking entrypoints are linted. Likewise, examples whose sole purpose is **Monitor**-style tailing of external logs or polling **non-Bash** state are not required to carry these markers when they do not invoke denylisted scripts in an invocation-shaped line.
+
 When a fenced shell block contains an **invocation-shaped** line for one of the scripts enforced by `scripts/lint-foreground-markers.sh` (Family B denylist — ship/collect/dispatch/review-family entrypoints), the Markdown **immediately above** the opening fenced `bash` / `sh` / `shell` block must include this exact banner (you may prefix the banner line once with Markdown blockquote syntax: a `>` as the first non-whitespace character on that line):
 
 `**⚠ Foreground required — do NOT set \`run_in_background: true\`.**`
 
-The **first** denylisted invocation line in that fence (and any additional anchor after more than five non-anchor lines without a fresh comment) must be preceded within the previous **five** in-fence lines by this exact comment on its own logical line (leading shell whitespace allowed):
+**Per-anchor comment rule (matches the linter).** For **every** fence line the linter classifies as a denylisted-script anchor, there must be a line **strictly above** that anchor within the previous **five** in-fence lines that is exactly (leading shell whitespace allowed):
 
 `# Foreground required: see BASH_AUTHORING.md §4`
+
+One physical comment line may satisfy **multiple** anchors only when each of those anchors still lies within five lines below that comment. After more than five non-anchor in-fence lines since the last qualifying comment, the next anchor needs a **new** comment in its own five-line look-back window.
 
 Do not paraphrase the banner or comment — CI's `make lint-foreground-markers` / pre-commit hook matches them literally (see `scripts/lint-foreground-markers.md`). Mentioning `run_in_background: true` only inside the fence body is **not** sufficient; the banner belongs in the prose window above the fence so operators see the contract before copying the block.
