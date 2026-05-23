@@ -7,6 +7,9 @@
 #   (2) skills/implement/SKILL.md: Step 5 uses one foreground
 #       review-and-fix.sh call per round. Contributors must not reintroduce
 #       background reviewer launch + polling prose in the orchestrator prompt.
+#       Canonical "Foreground required" banners (BASH_AUTHORING.md §4) quote
+#       `run_in_background: true` as the forbidden literal — those lines are
+#       excluded from the Step-5 substring scan.
 #
 # Wired into `make lint` via the `test-implement-anti-polling-rule` target.
 # Runtime enforcement is the model-level reading of the prose; this harness
@@ -59,8 +62,18 @@ STEP5_BLOCK=$(awk '
     /^<!-- step:6 / { in_block=0 }
     in_block { print }
 ' "$IMPL_MD")
-if grep -Fq 'run_in_background: true' <<<"$STEP5_BLOCK"; then
-    fail "SKILL.md must not reintroduce background Step 5 reviewer launches" 'run_in_background: true'
+# Flag `run_in_background: true` only outside canonical foreground banners
+# (those lines intentionally contain the substring inside backticks).
+BAD_STEP5_LINES=$(
+    printf '%s\n' "$STEP5_BLOCK" |
+        grep -F 'run_in_background: true' |
+        grep -Fv 'Foreground required' || true
+)
+if [[ -n "$BAD_STEP5_LINES" ]]; then
+    echo "  FAIL: SKILL.md must not reintroduce background Step 5 reviewer launches" >&2
+    echo "    disallowed run_in_background: true outside Foreground-required banners:" >&2
+    printf '%s\n' "$BAD_STEP5_LINES" | sed 's/^/      /' >&2
+    exit 1
 fi
 
 echo ""
