@@ -1,0 +1,25 @@
+FINDING_1: YES
+FINDING_2: EXONERATE -- stricter stub assertions are somewhat brittle but provide useful progression coverage
+FINDING_3: NO -- non-main non-user branches should not normally reach this block because strict entry/preflight gates run earlier
+FINDING_4: NO -- `true` is the documented literal contract for fork mode
+FINDING_5: EXONERATE -- redundant boilerplate is harmless and repeated elsewhere
+FINDING_6: EXONERATE -- hypothetical hardening is legitimate but not worth a standalone tracking issue
+FINDING_7: NO -- committed `larch-logs` artifacts are intentional per repo run-log policy
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: EXONERATE -- the positive cursor-runtime assertion is stricter than the core regression but defensible
+FINDING_12: EXONERATE -- default-branch detection is a valid limitation but not issue-worthy here
+FINDING_13: YES
+FINDING_14: EXONERATE -- relaxing these assertions would reduce useful evidence that Step 2 progressed
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: EXONERATE -- stricter dispatcher outcome checks are brittle but acceptable for this harness
+FINDING_18: NO -- `larch-logs/` commits are documented runtime audit artifacts
+FINDING_19: EXONERATE -- main-only default branch support is pre-existing and not worth tracking from this review
+FINDING_20: YES
+FINDING_21: YES
+FINDING_22: NO -- the concern itself says there is no new regression
+FINDING_23: NO -- committed run logs are expected by repository policy
+FINDING_24: EXONERATE -- an end-to-end prompt-side Step 0 harness would add more complexity than this change warrants
+FINDING_25: EXONERATE -- redundant pre-seeding is optional test cleanup, not a review-blocking issue

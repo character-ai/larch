@@ -310,7 +310,7 @@ export CLAUDE_PLUGIN_ROOT
 ${CLAUDE_PLUGIN_ROOT}/scripts/create-branch.sh --check
 ```
 
-Parse `CURRENT_BRANCH`, `IS_MAIN`, `IS_USER_BRANCH`, and `USER_PREFIX` from stdout. If `CURRENT_BRANCH` is empty, treat it as detached HEAD; do not special-case it here. The default preflight below will fail closed. Do not print a separate `create-branch.sh --check failed` branch from Step 0; `IMPLEMENT_TMPDIR` does not exist yet for Tool Failures logging.
+Parse `CURRENT_BRANCH`, `IS_MAIN`, `IS_USER_BRANCH`, and `USER_PREFIX` from stdout. On the clean-main entry path, `/implement` creates the feature branch later in Step 0 (after `feature-description.txt` is composed); see § Create feature branch. If `CURRENT_BRANCH` is empty, treat it as detached HEAD; do not special-case it here. The default preflight below will fail closed. Do not print a separate `create-branch.sh --check failed` branch from Step 0; `IMPLEMENT_TMPDIR` does not exist yet for Tool Failures logging.
 
 Run the shared entry gate helper using the parsed branch facts. Its contract lives at `${CLAUDE_PLUGIN_ROOT}/scripts/session-entry-gate.md`.
 
@@ -855,6 +855,40 @@ After Preflight passed (`AUDIT=pass`) and Step 0 tracking adoption resolved the 
 ### Dirty-tree checkpoint (post-persist)
 
 Run `${CLAUDE_PLUGIN_ROOT}/scripts/check-mid-run-dirty-tree.sh --mode checkpoint`. Treat `STATUS=dirty` / `STATUS=unknown` as recovery-required per the shared dirty-tree recovery rules used elsewhere in this skill.
+
+### Create feature branch
+
+After `feature-description.txt` is composed and the dirty-tree checkpoint passes, create the feature branch unless one of the skip conditions below applies. This is the canonical creation site for the issue-anchored, non-fork path; the dispatcher in `scripts/step2-implement.sh` refuses to launch Cursor / Codex on `main` / `master` for non-fork issue-anchored runs (`step2-implement.sh:331-335`, `main-branch-prohibited`).
+
+**Skip creation when any of these is true**:
+
+- `forked_target=true` — fork mode targets the upstream default branch; the dispatcher carves out this case explicitly (`step2-implement.sh:331` checks `_forked_target != "true"`).
+- `IS_USER_BRANCH=true` — operator is resuming on an existing `<USER_PREFIX>/*` branch; do not clobber.
+
+**Otherwise** (`IS_MAIN=true`, or `IS_USER_BRANCH=false` and not on a user-prefix branch), derive a kebab-case slug from the issue title (≤40 chars), assemble `BRANCH_NAME_DERIVED=<USER_PREFIX>/<slug>-<ISSUE_NUMBER>`, and call `create-branch.sh --branch`:
+
+```bash
+if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
+  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
+fi
+export CLAUDE_PLUGIN_ROOT
+
+if [ "${forked_target:-false}" != "true" ] && [ "${IS_USER_BRANCH:-false}" != "true" ]; then
+  ISSUE_TITLE=$(head -1 "$IMPLEMENT_TMPDIR/feature-description.txt")
+  SLUG=$(printf '%s' "$ISSUE_TITLE" \
+    | tr '[:upper:]' '[:lower:]' \
+    | tr -c 'a-z0-9' '-' \
+    | sed 's/--*/-/g; s/^-//; s/-$//' \
+    | cut -c1-40 \
+    | sed 's/-*$//')
+  BRANCH_NAME_DERIVED="${USER_PREFIX}/${SLUG}-${ISSUE_NUMBER}"
+  ${CLAUDE_PLUGIN_ROOT}/scripts/create-branch.sh --branch "$BRANCH_NAME_DERIVED"
+fi
+```
+
+Parse `BRANCH_NAME=<name>` and `ACTION=created` from `create-branch.sh` stdout on success. On exit 1 (branch already exists — should not happen given the `IS_USER_BRANCH` guard, but defense-in-depth covers a stale-tmpdir resume from a different operator), print an operator-visible warning naming the existing branch, set `STALL_TRACKING=true`, skip to Step 18. On exit 2 (git failure), surface the underlying stderr from the captured output, set `STALL_TRACKING=true`, skip to Step 18.
+
+The downstream "Capture branch name (`BRANCH_NAME`)" section (next sub-section) then captures the canonical `BRANCH_NAME` via `git-current-branch.sh` regardless of which path above ran — the orchestrator does not need to track whether creation just happened; the capture is uniform.
 
 ### Capture branch name (`BRANCH_NAME`)
 

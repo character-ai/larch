@@ -1,0 +1,21 @@
+Gathering the diff and key source files to review branch-creation logic, guards, and `create-branch.sh` contracts.
+
+Verifying `create-branch.sh` exit codes and stdout, and how `--check` sets `IS_USER_BRANCH`.
+
+Checking whether strict entry allows only `main` or also other branches.
+
+### In-Scope Findings
+
+- **correctness** `skills/implement/SKILL.md:859-919` — The prose under “**Otherwise** (`IS_MAIN=true`, or …)” does not match the actual guard, which only tests `forked_target` and `IS_USER_BRANCH` before calling `create-branch.sh --branch`. Whether creation is safe is therefore coupled indirectly to earlier gates (notably strict `preflight.sh` requiring `CURRENT_BRANCH == main` when branch checks are on, per `scripts/preflight.sh` around its branch test), not to `IS_MAIN` from `create-branch.sh --check`. A future edit that widens `--skip-branch-check` usage without updating this block could reintroduce surprising branch creation from non-main, non-user-prefix checkouts. **Suggested fix:** Rewrite that sentence to state the real predicates (`forked_target` / `IS_USER_BRANCH`) and explicitly cite the strict preflight / entry-gate ordering as the reason other branch shapes never reach this block, instead of naming `IS_MAIN`.
+
+- **correctness** `skills/implement/SKILL.md:917-919` — The new text tells the orchestrator to “surface the underlying stderr from the captured output” on `create-branch.sh` exit **2**, but the accompanying Bash snippet does not show stdout/stderr capture; `create-branch.sh` documents exit **2** for git failures and routes errors through `larch_err` (stderr), while success KV lines use `emit_kv` on stdout (`scripts/create-branch.sh:23-26`, `107-116`). Without a prescribed capture pattern, prompt-side runs are likely to mishandle or omit the diagnostics the section promises. **Suggested fix:** Either add an explicit capture-and-print recipe (e.g., run with grouped stdout+stderr and parse KV lines from the combined transcript) or soften the wording to “print stderr if the orchestrator captured it / re-run the script with logging,” consistent with what the skill actually specifies.
+
+- **risk-integration** `skills/implement/scripts/test-step2-dispatch.sh:1250-1257` and `skills/implement/scripts/test-step2-dispatch.sh:1298-1305` — Tests 20 and 21 treat `REASON=cursor-runtime-failure` plus `TOOL=cursor` as mandatory success signals after asserting the absence of `main-branch-prohibited`. If the dispatcher ever short-circuits to `STATUS=claude_fallback` (or another non-bailed outcome) while still satisfying the “not main-branch-prohibited” contract, these tests would fail even though the regression under test is unchanged. **Suggested fix:** Assert only the negative (`REASON=main-branch-prohibited` absent) plus a minimal positive that Step 2 actually progressed (for example, presence of `ORCHESTRATOR_EDIT_AUTHORITY=` or absence of an early `STATUS=bailed` with a dispatcher-only reason), matching the stated goal of the harness.
+
+### Out-of-Scope Observations
+
+- The diff adds committed run artifacts under `larch-logs/implement/BD0BBA9A-45C2-4B85-AA8C-0DCA5774DCBC/` (e.g. `manifest.json`, `parent-issue.md`, `plan-goals-test.md`, `plan-review-tally.json`). That is unrelated to the branch-creation logic under review and is easy to misinterpret as an accidental implement-run flush into the plugin tree; worth confirming against repo policy for `larch-logs/` commits.
+
+- `scripts/create-branch.sh:77-84` still treats only `main` as `IS_MAIN=true`, not `master`; `preflight.sh` likewise requires the literal branch name `main`. This predates the branch-creation SKILL change but remains the dominant constraint for “clean main entry” in practice.
+
+- `AGENTS.md` still references `scripts/persist-post-plan-keys.sh` as a sanctioned `session-env.sh` writer while `scripts/test-implement-structure.sh` asserts that string must not appear in `skills/implement/SKILL.md` (retired #2487); that documentation drift is not introduced by this branch diff’s SKILL hunk but is worth reconciling separately.
