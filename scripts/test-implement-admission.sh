@@ -194,13 +194,13 @@ run_case() {
 # --- pass (no blockers) ---
 sd="$TMPROOT/s1"
 make_gh_stub "$sd"
-export STUB_VIEW_JSON='{"title":"Plain feature","state":"OPEN","labels":[]}'
+export STUB_VIEW_JSON='{"title":"[DESIGNED] Plain feature","state":"OPEN","labels":[]}'
 export STUB_API_BLOCKED_BY_JSON='[]'
 run_case "pass-open-no-blockers" 0 "$sd" --issue 42 --repo o/r
 
 sd="$TMPROOT/s1z"
 make_gh_stub "$sd"
-export STUB_VIEW_JSON='{"title":"Plain feature","state":"OPEN","labels":[]}'
+export STUB_VIEW_JSON='{"title":"[DESIGNED] Plain feature","state":"OPEN","labels":[]}'
 export STUB_API_BLOCKED_BY_JSON='[]'
 run_case "pass-leading-zeros-normalized" 0 "$sd" --issue 042 --repo o/r
 
@@ -412,7 +412,7 @@ export STUB_VIEW_JSON='{"title":"[IMPLEMENTING] stale","state":"OPEN","labels":[
 # --- fail-open: native deps API errors -> still pass ---
 sd="$TMPROOT/s8"
 make_gh_stub "$sd"
-export STUB_VIEW_JSON='{"title":"ok","state":"OPEN","labels":[]}'
+export STUB_VIEW_JSON='{"title":"[DESIGNED] ok","state":"OPEN","labels":[]}'
 export STUB_API_BLOCKED_BY_EXIT=1
 run_case "fail-open-api-blocked-by" 0 "$sd" --issue 1 --repo o/r
 
@@ -420,7 +420,7 @@ run_case "fail-open-api-blocked-by" 0 "$sd" --issue 1 --repo o/r
 sd="$TMPROOT/s9"
 make_gh_stub "$sd"
 export STUB_LOG="$TMPROOT/s9/gh.log"
-export STUB_VIEW_JSON='{"title":"fork ctx","state":"OPEN","labels":[]}'
+export STUB_VIEW_JSON='{"title":"[DESIGNED] fork ctx","state":"OPEN","labels":[]}'
 : > "$STUB_LOG"
 export STUB_REPO_VIEW_EXIT=99
 (
@@ -450,7 +450,7 @@ make_gh_stub "$sd"
 export STUB_LOG="$TMPROOT/s-repo-default/gh.log"
 : > "$STUB_LOG"
 export STUB_REPO_VIEW_OUT='owner/name'
-export STUB_VIEW_JSON='{"title":"Default REPO path","state":"OPEN","labels":[]}'
+export STUB_VIEW_JSON='{"title":"[DESIGNED] Default REPO path","state":"OPEN","labels":[]}'
 export STUB_API_BLOCKED_BY_JSON='[]'
 (
   export PATH="$sd:$PATH"
@@ -491,7 +491,7 @@ make_gh_stub "$sd"
 export STUB_VIEW_FAIL_COUNT_FILE="$TMPROOT/s10/cnt"
 echo 0 > "$STUB_VIEW_FAIL_COUNT_FILE"
 export STUB_VIEW_FAIL_MAX=1
-export STUB_VIEW_JSON='{"title":"late","state":"OPEN","labels":[]}'
+export STUB_VIEW_JSON='{"title":"[DESIGNED] late","state":"OPEN","labels":[]}'
 run_case "retry-then-success" 0 "$sd" --issue 9 --repo o/r
 
 # --- argv validation emits ADMISSION_ERROR= (exit 2) ---

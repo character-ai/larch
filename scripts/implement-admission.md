@@ -8,7 +8,7 @@
 
 **Ordering / crash-resume vs `gh`**: The script always runs `gh issue view` (with one retry) and validates JSON before evaluating the crash-resume sentinel. A failed view yields exit **2** with `ADMISSION_ERROR=` even when `parent-issue.md` matches `--issue` and optional `RUN_ID` — operators cannot re-enter on resume alone while GitHub is unavailable; recovery requires a successful live issue read first.
 
-**Resume vs managed-title / audit gates**: The crash-resume path still skips managed-title and audit-label checks (intentional for in-flight runs), still applies the live-title `[... Report]` pattern gate (`has_report_prefix` / exit **7**) using the successful `gh issue view` JSON, and re-runs `all_open_blockers` before emitting `RESUME=true`, so newly opened native or prose blockers are observed on resume the same as on a full pass.
+**Resume vs managed-title / audit gates**: The crash-resume path still skips managed-title, the `[DESIGNED]` / `missing-designed-prefix` precondition, and audit-label checks (intentional for in-flight runs), still applies the live-title `[... Report]` pattern gate (`has_report_prefix` / exit **7**) using the successful `gh issue view` JSON, and re-runs `all_open_blockers` before emitting `RESUME=true`, so newly opened native or prose blockers are observed on resume the same as on a full pass.
 
 **Stdout**: `KEY=value` lines (`ADMISSION_RESULT=`, `ADMISSION_ERROR=`, `BLOCKERS=`, `TITLE=`, `RESUME=`). Operators and the orchestrator parse these; keep values single-line. GitHub-controlled titles emitted in `TITLE=` are normalized to a single line (CR/LF flattened to spaces) before `emit_kv`.
 

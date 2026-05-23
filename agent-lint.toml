@@ -730,6 +730,10 @@ exclude = [
   "scripts/parse-prose-blockers.sh",
   "scripts/blocker-helpers.sh",
   "scripts/test-implement-admission.sh",
+  # scripts/test-fetch-combinable-issues-filter.sh — jq filter parity for
+  # .claude/skills/combine-issues/scripts/fetch-combinable-issues.sh (Makefile
+  # test-fetch-combinable-issues-filter).
+  "scripts/test-fetch-combinable-issues-filter.sh",
   "skills/set-up-forked-open-source-repo/scripts/lib-remotes.sh",
   "skills/set-up-forked-open-source-repo/scripts/test-setup-forked-open-source-repo.sh",
   # skills/implement/scripts/test-check-review-changes.sh is the offline
