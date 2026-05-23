@@ -142,7 +142,7 @@ if [ -z "$DESIGN_TMPDIR" ] || [ -z "$SESSION_ID" ]; then
   exit 1
 fi
 
-DESIGN_TMPDIR="$DESIGN_TMPDIR" IMPLEMENT_TMPDIR="${IMPLEMENT_TMPDIR:-}" SESSION_ENV_PATH="${SESSION_ENV_PATH:-}" \
+DESIGN_TMPDIR="$DESIGN_TMPDIR" IMPLEMENT_TMPDIR="${IMPLEMENT_TMPDIR:-}" \
   "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "design Step 0 — session setup" || true
 
 _wdce_args=(
@@ -210,12 +210,9 @@ If the helper exits non-zero, print `**⚠ 0: router — run-params write failed
 ```bash
 # design-cost-line-anchor (scripts/test-design-structure.sh)
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${SESSION_ENV_PATH:-}" ] && [ -f "$SESSION_ENV_PATH" ]; then
-  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$SESSION_ENV_PATH" 2>/dev/null || true)
-fi
 export CLAUDE_PLUGIN_ROOT
 rm -f "$DESIGN_TMPDIR/token-report.json" "$DESIGN_TMPDIR/token-report.stderr.log" 2>/dev/null || true
-if ! SESSION_ENV_PATH="${SESSION_ENV_PATH:-}" DESIGN_TMPDIR="$DESIGN_TMPDIR" IMPLEMENT_TMPDIR="${IMPLEMENT_TMPDIR:-}" \
+if ! DESIGN_TMPDIR="$DESIGN_TMPDIR" IMPLEMENT_TMPDIR="${IMPLEMENT_TMPDIR:-}" \
   "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --full --format json --output "$DESIGN_TMPDIR/token-report.json" 2>"$DESIGN_TMPDIR/token-report.stderr.log"; then
   cat "$DESIGN_TMPDIR/token-report.stderr.log" >>"$DESIGN_TMPDIR/token-report.failure.log" 2>/dev/null || true
   printf '%s\n' "**⚠ /design: token report unavailable; cost line suppressed**"
@@ -226,7 +223,7 @@ else
   _ct=$(jq -r '(.claude.totals.total // 0)' "$DESIGN_TMPDIR/token-report.json")
   _dx=$(jq -r '(.codex.totals.total // 0)' "$DESIGN_TMPDIR/token-report.json")
   _ux=$(jq -r '(.cursor.totals.total // 0)' "$DESIGN_TMPDIR/token-report.json")
-  DESIGN_TMPDIR="$DESIGN_TMPDIR" IMPLEMENT_TMPDIR="${IMPLEMENT_TMPDIR:-}" SESSION_ENV_PATH="${SESSION_ENV_PATH:-}" \
+  DESIGN_TMPDIR="$DESIGN_TMPDIR" IMPLEMENT_TMPDIR="${IMPLEMENT_TMPDIR:-}" \
     "${CLAUDE_PLUGIN_ROOT}/scripts/render-cost-line.sh" --claude-tokens "$_ct" --codex-tokens "$_dx" --cursor-tokens "$_ux" --quiet-on-empty || true
 fi
 ```
