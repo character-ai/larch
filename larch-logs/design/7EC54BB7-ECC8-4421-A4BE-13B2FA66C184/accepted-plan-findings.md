@@ -1,0 +1,129 @@
+### FINDING_1: Paths-file population must precede the at-least-one-output guard
+- **Concern**: `scripts/collect-agent-results.sh:183-213` — The new `--paths-file` mode must populate `OUTPUT_FILES` *before* the existing `${#OUTPUT_FILES[@]} -eq 0` guard at line 210-213. If the plan implementer appends paths-file parsing after that block, `--paths-file`-only invocations always exit 1 with "at least one output file is required". The plan needs an explicit ordering note.
+- **Reviewers**: Cursor-edge, Codex-innovation, Cursor-pragmatic
+- **Severity**: important
+- **Focus area**: correctness
+- **Suggested resolution**: Add an ordering bullet to plan item 7 stating: "parse `--paths-file` into `OUTPUT_FILES` before the `${#OUTPUT_FILES[@]} -eq 0` guard."
+
+
+### FINDING_10: Reject CR/LF in output paths before writing paths-file
+- **Concern**: `scripts/dispatch-with-waterfall.sh:65-85` + planned paths-file write — The line-oriented format cannot encode literal newlines (CR/LF) in output paths. The current NDJSON manifest validator only checks `output` is a non-empty string; a JSON `output` value containing `\n` would serialize as multiple paths and collected as unrelated files. Plan must either reject CR/LF before writing, or use NUL-delimited transport, or explicitly forbid newline-in-path in docs.
+- **Reviewers**: Codex-edge, Cursor-innovation
+- **Severity**: important
+- **Focus area**: security / architecture
+- **Suggested resolution**: Reject CR/LF in every path before writing the paths-file (fail-closed in the dispatcher). Add a test for newline-bearing NDJSON `output` values. Optionally consider NUL-delimited as a follow-up.
+
+
+### FINDING_12: Trust boundary documentation for --paths-file
+- **Concern**: `scripts/collect-agent-results.sh:247-251` + paths-file consumer — The new flag accepts an arbitrary list of filesystem paths that drive sentinel waits and file reads. Trust model is unstated; a tampered or attacker-controlled paths-file could aim waits/reads at unintended paths.
+- **Reviewers**: Cursor-arch, Cursor-edge, Codex-edge, Cursor-innovation, Codex-innovation, Cursor-requirements
+- **Severity**: latent
+- **Focus area**: security
+- **Suggested resolution**: Document the trust model in `scripts/collect-agent-results.md` (and/or `SECURITY.md`): paths-files are dispatcher-written session-local artifacts trusted in the `/design` orchestration model, but listed paths drive `wait`/`read` semantics. Optional defense in depth: reject paths outside known tmp roots when a future caller surface widens.
+
+
+### FINDING_14: Missing test-*.md sibling updates violate script-md-siblings rule
+- **Concern**: Plan changes test-harness behavior (extending `test-dispatch-*.sh` + `test-collect-agent-results.sh`) but omits updates to the sibling `scripts/test-*.md` documentation files. `.claude/rules/script-md-siblings.md` requires edit-in-sync. The PR would land with stale sibling docs.
+- **Reviewers**: Codex-innovation
+- **Severity**: important
+- **Focus area**: code-quality
+- **Suggested resolution**: Add to Files-to-modify: `scripts/test-dispatch-with-waterfall.md`, `scripts/test-dispatch-plan-voters.md`, `scripts/test-dispatch-code-voters.md`, `scripts/test-collect-agent-results.md`. Note new paths-file assertions in each.
+
+
+### FINDING_15: Replacement collect snippet in plan-review.md must include the canonical prelude
+- **Concern**: `skills/design/references/plan-review.md:75-80` — Plan's replacement collect snippet starts directly with `_manifest="$DESIGN_TMPDIR/plan-review-slots.ndjson"` but omits the canonical `[ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh` prelude that every Bash block from Step 1c onward requires per SKILL.md "Bash block prelude" section. Without the prelude, `DESIGN_TMPDIR` and `CLAUDE_PLUGIN_ROOT` may be empty.
+- **Reviewers**: Codex-requirements
+- **Severity**: important
+- **Focus area**: correctness
+- **Suggested resolution**: Add the canonical prelude line to the plan-review.md replacement snippet and require the collect block to use it before deriving the manifest path.
+
+
+### FINDING_16: Clear or own the deterministic paths-file before dispatch
+- **Concern**: Plan hardcodes `$_manifest.output-files` without clearing or verifying it before dispatch. A failed or interrupted re-dispatch within the same `$DESIGN_TMPDIR` could leave a stale paths-file that the next collect block consumes silently.
+- **Reviewers**: Codex-requirements
+- **Severity**: important
+- **Focus area**: architecture / correctness
+- **Suggested resolution**: Add `rm -f "$_manifest.output-files"` before dispatch, OR have the dispatcher unconditionally truncate the paths-file at the start of its execution (preferred — dispatcher owns the file). Add an assertion that orchestrator aborts collection if dispatcher exits nonzero or the emitted `ALL_OUTPUT_FILES_PATH` doesn't match the expected file.
+
+
+### FINDING_17: test-design-structure.sh Check 7 requires single-line collector invocation
+- **Concern**: `scripts/test-design-structure.sh:216-229` Check 7 grep-pipeline requires `collect-agent-results.sh --timeout 1860 --substantive-validation --validation-mode` on a single physical line. Plan's replacement snippet would split flags across lines, breaking the grep. CI Check 7 would fail.
+- **Reviewers**: Cursor-requirements
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Suggested resolution**: Keep all required flags + `--paths-file "$_manifest.output-files"` on one physical line in the plan-review.md snippet, OR update Check 7 to a multi-line-safe assertion that still pins issue #661 flags.
+
+
+### FINDING_18: test-dispatch-code-voters.sh section-gated; name relevant Makefile sections
+- **Concern**: `scripts/test-dispatch-code-voters.sh:7-37` is section-gated via `--section` CLI flag, with Makefile shards mapping sections to CI rows (Makefile:594-617). New `VOTER_PATHS_FILE` assertions might land only in the default no-section path and miss individual CI harness rows.
+- **Reviewers**: Cursor-pragmatic
+- **Severity**: nit
+- **Focus area**: risk-integration
+- **Suggested resolution**: Plan must name which `--section` values or Makefile targets must include the new `VOTER_PATHS_FILE` assertions, so every CI shard exercises them.
+
+
+
+### FINDING_2: Anti-pattern NEVER #4 in SKILL.md forbids zero positional args
+- **Concern**: `skills/design/SKILL.md:96-98` anti-pattern NEVER #4 forbids calling `collect-agent-results.sh` with zero positional arguments. The new `--paths-file` mode intentionally uses zero positionals; the unchanged invariant contradicts the new contract.
+- **Reviewers**: Cursor-edge, Codex-innovation, Cursor-pragmatic, Cursor-requirements
+- **Severity**: important
+- **Focus area**: correctness / risk-integration
+- **Suggested resolution**: Amend the plan to also edit `skills/design/SKILL.md` anti-pattern #4 to read "never call with zero entries" and explicitly allow zero positionals when `--paths-file` names a readable non-empty file.
+
+
+### FINDING_3: dispatch-with-waterfall.sh lacks slot_count > 0 guard
+- **Concern**: `scripts/dispatch-with-waterfall.sh:101-107` — The plan's edge-cases section assumes the dispatcher already rejects empty slot manifests, but the script never validates `slot_count > 0`. An empty manifest would emit `DISPATCH_OK=true` + empty `ALL_OUTPUT_FILES` + empty paths-file, leaving the failure to the downstream collector.
+- **Reviewers**: Codex-arch, Codex-edge, Codex-innovation, Cursor-pragmatic, Codex-pragmatic, Codex-requirements
+- **Severity**: important
+- **Focus area**: correctness
+- **Suggested resolution**: Add an explicit `slot_count > 0` validation to `scripts/dispatch-with-waterfall.sh` immediately after `slot_count=${#slot_names[@]}` (line 101) — exit non-zero with a clear error on empty. Add an empty-manifest regression to `scripts/test-dispatch-with-waterfall.sh`.
+
+
+### FINDING_4: Whitespace-only paths-file lines bypass empty-file guard
+- **Concern**: The plan's paths-file reader sketch `while IFS= read -r path; do [[ -n "$path" ]] && OUTPUT_FILES+=("$path"); done` treats whitespace-only lines as valid paths. The empty-file fail-closed rule was phrased as "no non-blank lines" — semantics mismatch. A paths-file containing only spaces could become a bogus collector wait target.
+- **Reviewers**: Cursor-arch, Codex-arch, Cursor-edge, Codex-edge, Cursor-innovation, Cursor-pragmatic, Codex-pragmatic
+- **Severity**: important
+- **Focus area**: correctness
+- **Suggested resolution**: Update plan item 7 to specify Bash 3.2-compatible whitespace-only line rejection, e.g., `[[ "$path" =~ [^[:space:]] ]]` or trim before append. Add a whitespace-only fixture to `scripts/test-collect-agent-results.sh`.
+
+
+### FINDING_5: ALL_OUTPUT_TOOLS doc drift between SKILL.md and plan-review.md
+- **Concern**: `skills/design/SKILL.md:581-594` + `skills/design/references/plan-review.md:73-86` — Plan drops the `ALL_OUTPUT_FILES|ALL_OUTPUT_TOOLS` case branch in the parse loop but leaves the `ALL_OUTPUT_FILES=""` / `ALL_OUTPUT_TOOLS=""` initializers and "parse both from waterfall" prose. `plan-review.md` also still anchors Phase-3 `TOOL=claude` correlation on `ALL_OUTPUT_TOOLS` index positions. Doc drift: SKILL.md ↔ plan-review.md inconsistent after the snippet swap.
+- **Reviewers**: Cursor-arch, Cursor-edge, Codex-edge, Cursor-innovation, Codex-requirements
+- **Severity**: important
+- **Focus area**: architecture / code-quality
+- **Suggested resolution**: Plan must explicitly update the surrounding prose in both files: remove the dead `ALL_OUTPUT_FILES`/`ALL_OUTPUT_TOOLS` initializers, narrow the parse-loop description to `DISPATCH_OK` + `WARN`, and retarget Phase-3 tool attribution in `plan-review.md` to the per-output `TOOL=` field emitted by `collect-agent-results.sh` (from each result block / `.meta` file), not via `ALL_OUTPUT_TOOLS` position alignment.
+
+
+### FINDING_6: Stale "create if absent" wording for existing harness files
+- **Concern**: Plan items 13-14 say "create if absent" for `scripts/test-dispatch-code-voters.sh` and `scripts/test-collect-agent-results.sh`, but both files already exist in-tree (with Makefile entries and existing assertions). Implementer might duplicate work or skip extending the real harnesses.
+- **Reviewers**: Cursor-arch, Codex-arch, Cursor-edge, Cursor-innovation, Cursor-pragmatic, Codex-pragmatic, Cursor-requirements, Codex-requirements
+- **Severity**: nit
+- **Focus area**: code-quality
+- **Suggested resolution**: Reword plan items 13-14 to "extend existing harness" and drop the "create if absent" language.
+
+
+### FINDING_7: dispatch-code-voters.sh requires --review-tmpdir, not --design-tmpdir
+- **Concern**: `scripts/dispatch-code-voters.sh` requires `--review-tmpdir` (no `--design-tmpdir` flag); plan's `${REVIEW_TMPDIR:-$DESIGN_TMPDIR}` fallback wording is incorrect for this script. Copying literally could write the voter paths-file outside `$REVIEW_TMPDIR` or to an empty path.
+- **Reviewers**: Cursor-edge, Cursor-innovation
+- **Severity**: important
+- **Focus area**: correctness
+- **Suggested resolution**: Pin the code-voter paths-file to `$REVIEW_TMPDIR/code-voter-paths.txt` only. Drop the `$DESIGN_TMPDIR` fallback from plan item 5.
+
+
+### FINDING_8: collect-agent-results.sh header Usage block and --help not updated
+- **Concern**: `scripts/collect-agent-results.sh:16-64` — The plan covers argparse and `.md` documentation but does not call out updating the file-header Usage block and `--help` output. The new `--paths-file` flag would ship without inline-help discoverability.
+- **Reviewers**: Cursor-arch, Codex-arch, Cursor-edge, Cursor-requirements
+- **Severity**: nit
+- **Focus area**: code-quality
+- **Suggested resolution**: Add a sub-bullet under plan item 7: update the script's top-of-file Usage comment block and the `--help` emit string to describe `--paths-file` and its mutually-exclusive contract.
+
+
+### FINDING_9: Test assertion idea is unreliable for paths containing spaces
+- **Concern**: Plan's test-harness assertion idea — "file contents are one path per line and match `ALL_OUTPUT_FILES` (space-separated) after splitting" — is unreliable for paths containing spaces. `emit_kv ALL_OUTPUT_FILES "${final_outputs[*]-}"` produces an IFS-joined lossy string; comparing post-split would be flaky or a false-security blanket.
+- **Reviewers**: Cursor-edge
+- **Severity**: important
+- **Focus area**: correctness
+- **Suggested resolution**: Assert paths-file order + count against `final_outputs` directly (or pin against the `--paths-file` flag's explicit override), not against the post-split `ALL_OUTPUT_FILES` KV.
+
+

@@ -1,0 +1,24 @@
+Reading the plan and tracing referenced paths for a requirements/completeness review.
+
+Tracing plan references in the repo to validate contracts, line anchors, and gaps.
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	risk_integration	scripts/test-design-structure.sh:216-229	plan-review.md snippet splits collect-agent-results across lines	CI Check 7 requires one line containing collect-agent-results.sh --timeout 1860 --substantive-validation --validation-mode together; proposed multi-line block fails grep pipeline	Keep one physical line for the collector (all flags plus --paths-file on the same line) or update Check 7 to a multi-line-safe assertion that still pins #661 flags
+1	in_scope	important	correctness	skills/design/SKILL.md:96-98	Anti-pattern NEVER #4 forbids zero positional args to collect-agent-results	New Step 3 uses --paths-file with no positionals; normative NEVER text contradicts the implemented contract	Amend NEVER #4 and nearby Step 3 prose to allow zero positionals when --paths-file supplies a validated non-empty list (and keep zero-arg prohibition for the no-paths-file case)
+1	in_scope	nit	code_quality	scripts/collect-agent-results.sh:16-20	Usage header omits planned --paths-file flag	New behavior ships without updating file-header Usage block	Extend the Usage comment and top-of-script documentation alongside argparse and collect-agent-results.md
+1	in_scope	nit	correctness	scripts/test-dispatch-code-voters.sh:1	Plan claims harness may be absent	Implementers may add duplicate harness or skip extending existing tests	Drop create-if-absent wording for test-dispatch-code-voters.sh; same for test-collect-agent-results.sh item 14 (file already exists)
+1	in_scope	latent	security	scripts/collect-agent-results.sh:247-252	Paths-file lines become OUTPUT_FILES without trust-boundary notes	Arbitrary path lines could point wait/retry logic at unintended files if a paths-file were ever attacker-controlled	Document trusted-writer assumption in collect-agent-results.md or SECURITY.md; optional guardrails (e.g. reject non-existent paths before wait) if scope expands beyond assistant-written dispatchers
+
+1. **risk-integration** `scripts/test-design-structure.sh:216-229` — The proposed multi-line `collect-agent-results.sh` invocation in the plan conflicts with Check 7’s single-line `grep` pipeline that pins issue #661 substantive-validation flags. Suggested revision: keep all required flags on one physical line (including `--paths-file "$_manifest.output-files"`), or redesign Check 7 to assert the four strings co-occur in one `collect-agent-results.sh` code span without requiring a single line.
+
+2. **correctness** `skills/design/SKILL.md:96-98` — Anti-pattern NEVER #4 still forbids calling `collect-agent-results.sh` with zero positional arguments, while the new Step 3 handoff explicitly uses `--paths-file` with no positionals. Suggested revision: narrow NEVER #4 so zero positionals is allowed only when `--paths-file` is present and passes the planned fail-closed reads, and align any Step 3 bullets that restate the old rule.
+
+3. **code-quality** `scripts/collect-agent-results.sh:16-20` and `scripts/collect-agent-results.sh:196-197` — The plan covers argparse and `collect-agent-results.md` but does not call out updating the script’s Usage comment block and `--help` usage string for `--paths-file`. Suggested revision: extend header Usage, `--help` output, and the “Callers wired” narrative in `scripts/collect-agent-results.md` in the same change set.
+
+4. **correctness** `scripts/test-dispatch-code-voters.sh:1` and `scripts/test-collect-agent-results.sh:1` — Items 13–14 of the session plan say “create if absent” for harnesses that already exist in-tree. Suggested revision: treat both as extend-existing-harness work only and remove the absent-file assumption from the written plan.
+
+5. **security** `scripts/collect-agent-results.sh:247-252` — Consuming arbitrary lines from a paths-file into `OUTPUT_FILES` drives sentinel paths and waits without a stated trust model. Suggested revision: document that paths-files are dispatcher-written session artifacts (trusted in the `/design` orchestration model) and note symlink or out-of-tmpdir paths as explicitly unsupported or out-of-scope; add hardening only if callers beyond dispatchers gain paths-file access.
+
+**Architecture** — No gap found: additive KV contract plus optional `--paths-file` override and atomic write pattern are consistent with existing dispatcher/collector separation; dual emission (`ALL_OUTPUT_FILES` plus paths-file) is explicitly tested for parity in the plan.
+
+[OUT_OF_SCOPE] `discussion-round1.md` (cited in the session plan as audit provenance) is not a repo-relative path in this workspace; if issue #2637 lists extra acceptance tests beyond the plan, verify them manually on GitHub before implementation.

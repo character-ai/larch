@@ -1,0 +1,21 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: EXONERATE -- newline-in-output-path is theoretical; NDJSON jq validation already constrains output strings and no real reviewer path contains CR/LF
+FINDING_11: EXONERATE -- shared helper for three call sites is proportionality-failing scope creep for a simple additive fix
+FINDING_12: EXONERATE -- trust-model doc is legitimate but the paths-file is session-local dispatcher-written; defer to a follow-up doc pass
+FINDING_13: EXONERATE -- explicit user round-1 choice was "all three dispatchers" for uniform symmetry
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: YES
+FINDING_18: YES
+OOS_1: YES
+OOS_2: YES
+OOS_3: YES

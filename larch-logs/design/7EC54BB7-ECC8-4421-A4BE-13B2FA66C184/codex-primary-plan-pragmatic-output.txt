@@ -1,0 +1,16 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	nit	architecture	scripts/dispatch-plan-voters.sh:235-241; scripts/dispatch-code-voters.sh:459-472	Plan adds VOTER_PATHS_FILE to both voter dispatchers even though it explicitly says these paths-files are symmetric documentation and not a hazard fix	This broadens runtime API, docs, and harness surface without a consumer, increasing maintenance and compatibility obligations beyond the cross-subshell bug being fixed	Limit the change to dispatch-with-waterfall.sh, collect-agent-results.sh, and the design Step 3 prompt path unless a concrete voter-dispatcher consumer is added in the same plan
+1	in_scope	latent	correctness	scripts/dispatch-with-waterfall.sh:101-107	Plan assumes an empty slot manifest is already rejected, but the dispatcher currently allows slot_count=0 and emits DISPATCH_OK=true with empty ALL_OUTPUT_FILES	A bad or accidentally empty manifest would publish an empty paths-file and report dispatcher success, leaving the fail-closed behavior to a later collector call or preserving a misleading success for legacy callers	Add an explicit slot_count > 0 validation in dispatch-with-waterfall.sh before initializing final_outputs, exit 2 with a clear error, and add a harness assertion for empty manifests
+1	in_scope	important	correctness	scripts/collect-agent-results.sh:183-213	The proposed --paths-file reader says to reject files with no non-blank entries, but the provided loop only skips zero-length lines	A paths-file containing whitespace-only lines can be treated as one output path, causing the collector to wait on a bogus sentinel like "   .done" instead of failing fast	Before populating OUTPUT_FILES, detect at least one line containing a non-whitespace character; skip or reject whitespace-only lines while still preserving embedded spaces in legitimate paths
+
+1. [architecture] `scripts/dispatch-plan-voters.sh:235-241`; `scripts/dispatch-code-voters.sh:459-472`  
+Concern: adding `VOTER_PATHS_FILE` is scope creep for this fix.  
+Suggested revision: keep the additive paths-file contract only where it is consumed: waterfall dispatch plus collector plus design Step 3.
+
+2. [correctness] `scripts/dispatch-with-waterfall.sh:101-107`  
+Concern: empty manifests are not currently rejected, despite the plan saying they are.  
+Suggested revision: add explicit `slot_count > 0` validation and a regression test.
+
+3. [correctness] `scripts/collect-agent-results.sh:183-213`  
+Concern: the proposed paths-file loop does not actually enforce “non-blank” entries.  
+Suggested revision: fail fast on paths-files with no non-whitespace entries and ignore/reject whitespace-only lines.

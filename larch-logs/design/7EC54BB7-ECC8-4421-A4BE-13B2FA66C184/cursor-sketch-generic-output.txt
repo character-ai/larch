@@ -1,0 +1,7 @@
+Exploring the codebase to map current dispatch/collect flows and draft an implementation plan aligned with your scope decisions.
+
+Checking how `emit_kv` works on stdout vs FD 3 (tests may parse stdout) and reviewing `dispatch-code-voters` waterfall integration.
+
+Noting `dispatch-with-waterfall.sh` has no `$DESIGN_TMPDIR`; we'll pass an explicit manifest path from callers. `dispatch-plan-voters.sh` and `dispatch-code-voters.sh` wrap the waterfall but don't re-emit `ALL_OUTPUT_FILES`; we'll add deterministic manifest writes there for symmetry.
+
+

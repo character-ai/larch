@@ -1,0 +1,2 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/SKILL.md:96-97	NEVER rule 4 forbids calling collect-agent-results.sh with zero positional arguments	New --paths-file mode intentionally uses zero positionals once paths are materialized from the file	Amend the NEVER rule with an explicit exception for --paths-file plus a readable non-empty paths-file and update the HOW clause to match the new guardrail
