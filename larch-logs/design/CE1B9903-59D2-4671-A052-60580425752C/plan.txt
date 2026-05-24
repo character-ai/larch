@@ -1,0 +1,95 @@
+## Goal
+
+Fix three stale documentation surfaces that drifted from the current code contract after PR #2714 (run-summary consolidation), PR #2629 (token-cost pipeline), and #2579 (`/fix-issue` skill removal):
+
+1. Cost-line contract: docs implying `token-report.sh --summary` is a "dollar summary" and that `scripts/token-cost.sh` has `/fix-issue` callers.
+2. Outcome enumeration: prose claiming `render-run-summary.sh` emits the `Outcome` bullet only for `stalled` / `bailed*`, when it also emits for `cancelled-*` / `failed-*`.
+3. `/implement`-only sentinel semantics in `docs/run-logs.md` for `final-summary.md`, when `/design` now produces the same artifact and upserts the same `larch:final-summary` tracking comment.
+
+The implementation is a documentation-only patch. No code or behavior changes.
+
+## Files to modify/create
+
+### UPDATED: `scripts/token-report.md`
+
+Stale claim near the top of the file (in the "Relationship to scripts/token-tally.md" paragraph): "Dollar summaries (`--summary`, markdown cost surfaces) delegate to `scripts/token-cost.sh` via the same per-bucket counts as JSON `BUCKETS_*` when available."
+
+Current contract:
+- `token-report.sh --summary` emits a **non-dollar** `Tokens:` rollup line (pinned by `scripts/test-token-report-summary-format.sh`, which fails on `💰 Cost:`).
+- The dollar `- **Cost**:` bullet lives in `scripts/render-run-summary.sh` only; the markdown JSON output (`--full --format json`) carries `BUCKETS_*` counts that `token-cost.sh` consumes.
+
+Replacement wording must:
+- Remove the implication that `--summary` is a dollar surface.
+- Keep the genuine relationship: the markdown / JSON `--full` outputs expose per-bucket counts that `token-cost.sh` consumes when rendering the dollar `- **Cost**:` bullet via `render-run-summary.sh`.
+- Stay consistent with the existing `--summary` description further down in the "Subcommands" section ("non-dollar token rollup line for chat breadcrumbs ... dollar-primary cost line ... lives exclusively in `scripts/render-run-summary.sh`").
+
+### UPDATED: `scripts/token-cost.md`
+
+Two stale `/fix-issue` references after PR #2579 removed that skill:
+- Header paragraph: "...and by the `/fix-issue` helpers."
+- "Note on `/research`" table, "Primary skills / workflows" row: lists `/fix-issue` alongside `/implement` and `/design`.
+
+Replacement scope:
+- Remove the `/fix-issue` mention from the header paragraph and from the table cell.
+- Preserve the genuine consumers: `/implement` and `/design` (via `scripts/render-run-summary.sh`), plus the deprecation note that `render-cost-line` has no in-flow skill callers after PR #2714.
+
+### UPDATED: `skills/implement/scripts/write-final-report.md`
+
+Stale prose in the opening paragraph: "The renderer emits `- **Outcome**:` only for `stalled` or outcomes beginning with `bailed`..."
+
+Current contract (verified against `scripts/render-run-summary.sh` outcome case statement): the renderer emits the bullet for `bailed*`, `stalled`, `cancelled-*`, and `failed-*`. The expanded set lands when `/design` runs render the shared summary; `/implement` itself still only emits the nine outcomes already enumerated in the "Implement outcome enum" section below the paragraph, so the enum list is unchanged.
+
+Replacement scope:
+- Update the renderer-behavior sentence to enumerate all four outcome patterns.
+- Leave the nine-value `/implement` outcome enum and the per-outcome computation rules untouched (those remain `/implement`-specific and current).
+
+### UPDATED: `docs/run-logs.md`
+
+Two drifts in the `### final-summary.md` block:
+
+- "Step 8+ before PR creation and refreshed later by terminal summary paths" is `/implement`-only framing. After PR #2714, `/design` also writes `larch-logs/design/<RUN_ID>/final-summary.md` (via `skills/design/scripts/render-final-summary.sh`) and upserts the same `larch:final-summary` tracking-issue comment. The section needs to acknowledge both skills.
+- Renderer-behavior sentence mirrors the stale claim in `write-final-report.md`: "`- **Outcome**:` only for `stalled` / `bailed*` outcomes". Update to enumerate `stalled`, `bailed*`, `cancelled-*`, `failed-*`.
+
+Replacement scope:
+- Generalize the **Written** mode line so both skills are covered (point at `scripts/render-run-summary.sh` for the rendered body and at the per-skill writers — `write-final-report.sh` for `/implement`, `render-final-summary.sh` for `/design` — for the write/upsert lifecycle, rather than naming a single `/implement` step number).
+- Update the renderer-behavior sentence to list all four outcome patterns.
+- Keep the rest of the section (bullet contract, PR-bullet omission rules, sentinel marker, tracking-comment projection) intact.
+
+### UPDATED: `docs/linting.md`
+
+Issue body lists this file under sub-task 1 (cost-line contract). Direct inspection of the file shows the relevant rows already match the current contract:
+
+- The `test-render-run-summary-format` row already says "single `- **Cost**:` bullet with dollar-primary line".
+- The `test-token-report-summary-format` row already says "non-dollar `Tokens:` + per-vendor line (no `💰 Cost:`)".
+
+No stale prose remains in this file. The file is listed in the plan for completeness (so the implementer touches the issue's full claimed surface) but no diff is expected; if the implementer finds residual drift the verification did not catch, they apply the same non-dollar-`--summary` / dollar-`render-run-summary.sh` distinction used in the other two files above.
+
+## Approach
+
+- Documentation-only patch. No behavior, schema, or CI changes.
+- Each file is edited in isolation; the changes do not interact.
+- Wording must match terminology already used elsewhere in the same files (the existing "Subcommands" section of `token-report.md` and the renderer's own case statement are the canonical templates).
+- Per `.claude/rules/drift-prone-prose-in-docs.md`: do not pin line numbers in the new prose, do not paste machine-local paths, and do not write hard-coded counts that will rot. Refer to outcome patterns by their literal shell-glob shape (`bailed*`, `cancelled-*`, `failed-*`) and to functions / sections by name.
+
+## Edge cases
+
+- **`docs/linting.md` no-op**: if the verification confirms no remaining drift, the file produces zero diff. The implementer should not invent changes to "match" the issue body; report the no-op in the PR description.
+- **Future drift after this PR**: the renderer's outcome filter is the source of truth (`scripts/render-run-summary.sh` case statement). If a later PR extends or narrows the filter, every doc enumeration must be re-synced.
+- **`/research`-only divergence**: the existing `Note on /research` block in `token-cost.md` correctly contrasts `token-cost.sh` and `token-tally.sh`. Only the row cell that lists primary skills changes; the rest of the table stays.
+
+## Testing strategy
+
+No test changes. The relevant pins already exist:
+- `scripts/test-token-report-summary-format.sh` (asserts no `💰 Cost:` in `--summary`).
+- `scripts/test-render-run-summary.sh` and `scripts/test-render-run-summary-format.sh` (assert dollar `- **Cost**:` bullet in the rendered summary).
+- The outcome case statement in `scripts/render-run-summary.sh` is exercised by `scripts/test-render-run-summary.sh`.
+
+Manual verification after edits:
+- `make lint` (catches markdown lint issues, MD038 on inner-whitespace code spans, and any structural docs sync probes).
+- Spot-grep each edited file for the previously stale phrases to confirm removal: `Dollar summaries`, `/fix-issue`, `only for \`stalled\``, `only for stalled / \`bailed\*\``.
+
+## Diff size estimate
+
+Three files definitely change (`scripts/token-report.md`, `scripts/token-cost.md`, `skills/implement/scripts/write-final-report.md`, `docs/run-logs.md`). One file is a no-op (`docs/linting.md`). Each editable change is a sentence or short paragraph reword; total expected delta is roughly 8-20 lines across four files.
+
+diff_lines: 18
