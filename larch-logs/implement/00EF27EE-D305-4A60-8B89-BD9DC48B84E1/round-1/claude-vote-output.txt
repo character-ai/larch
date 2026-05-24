@@ -1,0 +1,20 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: EXONERATE -- Step 2b and Step 5c have distinct cancel semantics (Gate A vs preserve-tmpdir), so the duplication is load-bearing, not accidental drift
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: EXONERATE -- the plan explicitly defines non-zero exit as one of the three "no-help" triggers; this is a documented design tradeoff, not an implementation defect
+FINDING_18: YES
+OOS_1: YES
+OOS_2: YES

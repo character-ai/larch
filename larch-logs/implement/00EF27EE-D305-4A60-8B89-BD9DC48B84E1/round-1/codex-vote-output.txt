@@ -1,0 +1,20 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: EXONERATE -- The duplication is minor and step-local prompt blocks are likely clearer than adding shared indirection.
+FINDING_4: YES
+FINDING_5: NO -- The concrete balanced-bracket example is rejected by the existing `]` check, so the stated Tier 3 pass-through is not demonstrated.
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: YES
+FINDING_18: YES
+OOS_1: YES
+OOS_2: NO -- The issue is only hypothetical under the current ACTION contract, which explicitly assumes temp paths without spaces.

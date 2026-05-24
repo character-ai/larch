@@ -1,0 +1,24 @@
+Gathering the diff and commit list (read-only).
+
+Scanning the diff for changed files and reading critical sections.
+
+Reading implementation files in the workspace for accurate line numbers and failure-path analysis.
+
+### In-Scope Findings
+
+- **correctness** `skills/design/scripts/validate-plan-commands.sh:268-269` — Flag presence uses `grep -q -- "--$fl"` against the whole help blob, so any `--<prefix>` in help satisfies a shorter `--<prefix>` flag from the plan (for example a bogus `--file` passes if help documents `--files` or `--filename`). That yields false negatives on `unknown-flag` and can let bad commands reach Tier 3 or `/implement`. **Suggested fix:** Match flags as tokens (for example `grep -E` with `--$fl(=|[[:space:]]|$)` or equivalent anchored-word-boundary logic, and the same for negated “unknown” detection), and extend the demonstration harness with a substring collision case.
+
+- **correctness** `skills/design/scripts/parse-plan-commands.awk:168-177` and `skills/design/scripts/parse-plan-commands.awk:349-364` — The `note` field used in the validator aggregation key is only `sprintf("c%d", cmd_idx)` with `cmd_idx` equal to the segment index inside a single physical line, not the physical-line index inside the fence. Two separate commands on consecutive lines in the same fenced block that invoke the same script therefore share the same `(source_line, note, script_path)` key in `validate-plan-commands.sh:183-207`, so flags from distinct commands are merged into one synthetic invocation; Tier 3 then runs a single argv union that never appeared in the plan. **Suggested fix:** Encode physical line number (outer `i` in `process_fence_buffer`) into `note` / key material (for example `L<i>c<j>`) and add a fixture with two same-script lines in one fence plus a Tier-3 registry probe that would diverge if merged.
+
+- **correctness** `skills/design/scripts/parse-plan-commands.awk:201-206` — For a heredoc operator whose delimiter token begins with `"`, the scanner runs `while (i <= n) i++` and discards the remainder of the physical-line array without copying those lines into `out[]`, so later commands in the same fence can vanish from TSV output instead of being parsed or surfaced as `parse_note`. **Suggested fix:** Implement proper quoted-delimiter heredoc scanning (or emit an explicit `parse_note` and preserve following lines), and cover `<<"DELIM"` / quoted forms in `test-parse-plan-commands.sh`.
+
+### Out-of-Scope Observations
+
+No out-of-scope observations.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/scripts/validate-plan-commands.sh:268-269	Grep checks flag substrings against full help text	A plan flag that is a strict prefix of a real documented flag (e.g. --file vs --files) is treated as valid, so Tier 2 misses impossible commands	Use anchored token patterns (e.g. require --name followed by =, whitespace, or end) and add harness regression for prefix collision
+1	in_scope	important	correctness	skills/design/scripts/parse-plan-commands.awk:168-177 skills/design/scripts/parse-plan-commands.awk:349-364 skills/design/scripts/validate-plan-commands.sh:183-207	Command aggregation key omits physical line index inside a fence	Multiple lines in one ```bash block calling the same script collapse into one merged argv for Tier 2/Tier 3, so dry-run can execute a command that does not exist in the plan	Include physical line index in note/key (e.g. L#c#) and add a multi-line fixture plus assertion that Tier 3 argv matches a single intended line
+1	in_scope	important	correctness	skills/design/scripts/parse-plan-commands.awk:201-206	Double-quote heredoc branch fast-forwards without emitting lines	A plan uses a quoted heredoc form; subsequent fenced commands are silently dropped from validation output	TSV silently omits later commands; validator false sense of safety	Implement quoted-delimiter handling or explicit parse_note plus line preservation; add heredoc fixture
+```

@@ -1,0 +1,16 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: EXONERATE -- awk `[A-Za-z0-9_]` character-class boundary logic is standard POSIX and works correctly across all relevant awk implementations for ASCII help text
+FINDING_8: NO -- `SKIPPED_FLAG_CHECK` is emitted via `emit_skip` (line 284 of validate-plan-commands.sh) which increments `SKIPPED_COUNT`; the claim is factually wrong
+FINDING_9: EXONERATE -- positional-arg omission is a deliberate design constraint of the TSV schema (no positional row type); Tier 3 is opt-in via registry so maintainers control dry-run contracts
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: YES
+OOS_1: NO -- intentional per docs/run-logs.md policy; all reviewers explicitly say "no code change required" / "per repo policy"; not worth a tracking issue
+FINDING_15: YES

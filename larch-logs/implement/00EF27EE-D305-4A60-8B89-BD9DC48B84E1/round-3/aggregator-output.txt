@@ -1,0 +1,165 @@
+Here is the normalized aggregator output. Merged groups: **SECURITY Tier 2 stderr vs `probe_help` merged capture** (inputs 1, 10, 16); **ARGS / `read -a` word-splitting** (3, 13); **`cmd_uid` / seven-column TSV schema and consumers** (4, 23); **large `larch-logs` PR diff** (5, 14, 25) into one `[OUT_OF_SCOPE]` block. **FINDING_20** stays a separate `[OUT_OF_SCOPE]` topic (shell `&`), so it is **`### OOS_2:`** after **`### OOS_1:`**. In-scope findings are listed first, then OOS, per “keep out-of-scope separate.”
+
+---
+
+### FINDING_1: SECURITY Tier 2 help text vs merged stdout/stderr capture
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-testing-output.txt, cursor-specialist-edge-cases-output.txt
+- **Severity**: important
+- **Concern**: Tier 2 documentation in SECURITY.md describes stdout-only help and no stderr merge into help detection, but `probe_help` (and related flow) merges stderr into the same capture used for help/flag matching. Trust-model and operator assumptions can diverge from implementation; behavior should match docs or docs should match code.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-testing-output.txt: Update SECURITY paragraph to match validate-plan-commands.md merged-capture contract
+  - From cursor-specialist-edge-cases-output.txt: Align SECURITY text with merged capture or split streams and apply the documented rule in code.
+
+### FINDING_2: Step 2b prose mis-names EMIT_PLAN vs plan validation
+- **Reviewer(s)**: cursor-specialist-structure-output.txt
+- **Severity**: important
+- **Concern**: Step 2b calls the pre-validation driver line “plan-validation” and claims it writes `diff-lines.txt`, but the block is `ACTION=EMIT_PLAN`. Executors may conflate EMIT_PLAN with validation or mis-route failures.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: Address the concern above.
+
+### FINDING_3: ARGS parsing and word-splitting in driver / validator wrapper
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-security-output.txt
+- **Severity**: nit
+- **Concern**: Extra wrapper indirection and `read -a` / word-split parsing of `VALIDATE_PLAN_COMMANDS` ARGS: low risk with space-free paths today, but harder to trace and unsafe if paths ever contain spaces.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: Document the space-free ARGS contract or quote ARGS; keep wrapper if DRY outweighs indirection.
+  - From cursor-specialist-security-output.txt: Keep space-free path invariant explicit in callers or use safer argv framing
+
+### FINDING_4: `cmd_uid` and seven-column TSV schema vs docs and consumers
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-plan-fidelity-output.txt
+- **Severity**: latent
+- **Concern**: TSV adds `cmd_uid` and logic spans awk+sh beyond a single-helper sketch, raising maintenance cost; external or archived readers of a six-column “wire” may mis-implement column offsets when seven columns are emitted.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: Document cmd_uid as normative internal column or absorb into fewer artifacts if complexity grows.
+  - From cursor-specialist-plan-fidelity-output.txt: Amend archived plan text to seven columns or remove cmd_uid if strict six-column wire is required
+
+### FINDING_5: No harness for Tier 2 SKIPPED_FLAG_CHECK no-help path
+- **Reviewer(s)**: cursor-specialist-testing-output.txt
+- **Severity**: important
+- **Concern**: No test coverage for the Tier 2 path where flag checks are skipped due to missing help; regressions in `probe_help` or help gating could change which plans pass Tier 2 without CI failing.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-testing-output.txt: Add fixture script plus plan snippet asserting SKIPPED_FLAG_CHECK and summary SKIPPED_COUNT
+
+### FINDING_6: Parser golden tests omit continuation and env-prefixed commands
+- **Reviewer(s)**: cursor-specialist-testing-output.txt
+- **Severity**: important
+- **Concern**: Parser golden tests omit backslash line continuation and `VAR=value` command prefixes promised for plan acceptance; those real plan syntaxes could break silently in production `/design`.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-testing-output.txt: Extend golden fixtures for line continuation and VAR=value command prefix
+
+### FINDING_7: `review_budget` gating lacks direct unit coverage
+- **Reviewer(s)**: cursor-specialist-testing-output.txt
+- **Severity**: latent
+- **Concern**: New `review_budget` gating has no focused tests; fallback bugs could run the validator on quick tier or skip on full tier.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-testing-output.txt: Add small temp-json harness covering python jq and grep-only paths
+
+### FINDING_8: Tier 3 `--validate-only` registry path not exercised
+- **Reviewer(s)**: cursor-specialist-testing-output.txt
+- **Severity**: latent
+- **Concern**: Tier 3 `--validate-only` registry hook is never exercised; an argv branch for `hook=--validate-only` could break unnoticed.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-testing-output.txt: Add one registry row and fixture script using --validate-only only
+
+### FINDING_9: Wrapper KV tests omit skipped/unsafe count assertions
+- **Reviewer(s)**: cursor-specialist-testing-output.txt
+- **Severity**: nit
+- **Concern**: Wrapper KV tests omit `VALIDATE_SKIPPED_COUNT` and `VALIDATE_UNSAFE_TOKEN_COUNT`; mis-emitting those KVs could still pass CI.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-testing-output.txt: Add grep assertions where counts are non-zero
+
+### FINDING_10: Tier 3 dry-run logs and Override may persist secrets
+- **Reviewer(s)**: cursor-specialist-security-output.txt
+- **Severity**: important
+- **Concern**: Tier 3 dry-run appends full child stdout/stderr to `validate-plan-commands.log`; Override can append that log via `append-tool-failure` without `--redact`. Plan lines may pass long secrets as flag values; registered dry-run scripts may echo argv or errors, persisting secrets in DESIGN_TMPDIR logs and possibly execution-issues / published design logs.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-security-output.txt: Redact or truncate Tier 3 subprocess capture; use append-tool-failure --redact (or a redacted excerpt) on Override; tighten SECURITY.md trust model text to cover plan-derived argv echoing
+
+### FINDING_11: `VALIDATE_LOG_FILE` vs EXIT trap and missing log path
+- **Reviewer(s)**: cursor-specialist-edge-cases-output.txt
+- **Severity**: important
+- **Concern**: `VALIDATE_LOG_FILE` can name a temp log that an EXIT trap deletes when the DESIGN_TMPDIR copy branch does not run; operators or tooling following the path from stdout after local/harness runs may see ENOENT or flaky reads.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-edge-cases-output.txt: Persist logs on that path before trap cleanup or document that VALIDATE_LOG_FILE is unstable unless copied under DESIGN_TMPDIR; adjust harness if a stable log is required.
+
+### FINDING_12: Tier 3 dry-run argv omits positional plan arguments
+- **Reviewer(s)**: cursor-specialist-edge-cases-output.txt
+- **Severity**: latent
+- **Concern**: Tier 3 argv replay omits positional plan arguments (only long flags replayed). Registry dry-run may need positional args to exercise path-containment checks; Tier 3 may pass while real plan commands would fail.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-edge-cases-output.txt: Document limitation in validate-plan-commands.md and/or extend TSV with argv tail behind existing metacharacter rules.
+
+### FINDING_13: NEW-script skip path string match vs allow-list normalization
+- **Reviewer(s)**: cursor-specialist-edge-cases-output.txt
+- **Severity**: latent
+- **Concern**: NEW-script skip uses exact string match on `script_path` without shared normalization with allow-list paths; slight spelling drift can drop the skip and surface missing-script or unknown-flag until Override.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-edge-cases-output.txt: Normalize paths consistently for allow-list and invocations or document strict spelling parity.
+
+### FINDING_14: `no_sentinel` naming vs completion sentinel file
+- **Reviewer(s)**: cursor-specialist-edge-cases-output.txt
+- **Severity**: nit
+- **Concern**: `no_sentinel` prevents skip-on-replay but success still writes a completion sentinel; naming may mislead future changes to resume logic.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-edge-cases-output.txt: Clarify inline that sentinel is written for bookkeeping only and must not gate skipping
+
+### FINDING_15: Tier 2 help gate rejects non-zero `--help` exits
+- **Reviewer(s)**: cursor-specialist-plan-fidelity-output.txt
+- **Severity**: important
+- **Concern**: Tier 2 help gate effectively treats only exit 0 as success, missing planned recognition of non-zero “usage” exits; scripts whose `--help` prints usage then exits non-zero can skip long-flag checks while still exposing readable help, so bad flags in plans are not caught.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-plan-fidelity-output.txt: Extend probe_help to honor a small allowlist of non-zero RCs with non-empty merged capture (and document), or make --help exit 0 across probed scripts; add harness coverage for non-zero-help RC
+
+### FINDING_16: Gate B / discussion docs show raw validator pipe without `review_budget` guard
+- **Reviewer(s)**: cursor-specialist-plan-fidelity-output.txt
+- **Severity**: latent
+- **Concern**: Gate B / discussion docs show raw `ACTION=VALIDATE_PLAN_COMMANDS` pipe instead of `invoke-plan-validator-if-not-quick.sh`; copy-paste can run validation without the review_budget guard on trivial tiers, violating the tier skip contract.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-plan-fidelity-output.txt: Point Gate B and discussion-round2 prose at invoke-plan-validator-if-not-quick.sh "$DESIGN_TMPDIR/plan.txt" like SKILL Step 2b
+
+### FINDING_17: SKILL plan-helper contract footer omits new helpers
+- **Reviewer(s)**: cursor-specialist-plan-fidelity-output.txt
+- **Severity**: nit
+- **Concern**: Plan helper contracts omit `invoke-plan-validator-if-not-quick.sh` and `read-design-review-budget.sh` relative to the fuller #2674 helper set and agent-lint literal-path reachability.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-plan-fidelity-output.txt: Add bullets with full ${CLAUDE_PLUGIN_ROOT}/… paths and sibling docs
+
+### OOS_1: [OUT_OF_SCOPE] Large `larch-logs` / branch diff volume
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-security-output.txt, cursor-specialist-plan-fidelity-output.txt
+- **Severity**: nit
+- **Concern**: Large committed design or run-log trees inflate PR diffs and obscure functional changes in raw views; broader logging policy is out of scope for Lesson 5 correctness; reviewers can use path filters.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-security-output.txt: None required for this PR beyond normal run-log hygiene practices
+  - From cursor-specialist-plan-fidelity-output.txt: None for Lesson 5 fidelity; use path-filtered diffs for reviews
+
+### OOS_2: [OUT_OF_SCOPE] `split_segments` and standalone shell `&`
+- **Reviewer(s)**: cursor-specialist-edge-cases-output.txt
+- **Severity**: nit
+- **Concern**: `split_segments` ignores standalone shell `&` / background operator; hypothetical `cmd & cmd` on one fenced line could parse oddly unless real plan style adopts lone `&`.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-edge-cases-output.txt: Ignore unless real plan style adopts lone &.
+
+---
+
+**Slots omitted from “Suggested revisions”** where the only text was the non-directional placeholder “Address the concern above.”: cursor-specialist-structure-output.txt on **FINDING_2** — included because it was the only source; per your rule, that is still not a substantive fix. Removing it.
+
+Correction: For **FINDING_2** only structure contributed; revision was only “Address the concern above.” — **omit entire Suggested revisions section** for that block.
+
+Updated **FINDING_2** block:
+
+### FINDING_2: Step 2b prose mis-names EMIT_PLAN vs plan validation
+- **Reviewer(s)**: cursor-specialist-structure-output.txt
+- **Severity**: important
+- **Concern**: Step 2b calls the pre-validation driver line “plan-validation” and claims it writes `diff-lines.txt`, but the block is `ACTION=EMIT_PLAN`. Executors may conflate EMIT_PLAN with validation or mis-route failures.
+
+(No suggested revisions — the only proposed text was the placeholder.)
+
+---
+
+**OOS_1**: structure and plan-fidelity slots only had “Address the concern above.” — omitted; kept security and plan-fidelity substantive lines as already listed.
+
+If machine consumers require every finding to have a “Suggested revisions” section even when empty, say so; your spec allows omitting the section when no slot gives fix direction.
+
+---
+
+I am not calling `CreatePlan` or writing files: your session is read-only plan mode and the orchestrator spec is chat-only output.
