@@ -1,0 +1,25 @@
+Ballot file `findings.md` lacks `FINDING_N` headings (only stub text). Reading `aggregator-prompt.md` (structured findings), `plan-context.txt`, and `diff-context.txt` to verify the 23 findings.
+
+FINDING_1: YES
+FINDING_2: EXONERATE -- low-impact ordering nit versus moving a large harness block or extra prose
+FINDING_3: NO -- trivial pre-existing unused local with no behavioral effect
+FINDING_4: YES
+FINDING_5: NO -- duplicate of FINDING_3
+FINDING_6: EXONERATE -- same malformed-checks plus non-empty REDACTED_LOG_FILE lint-routing risk as FINDING_4
+FINDING_7: EXONERATE -- duplicate eight-versus-seven plan or harness wording concern already covered by FINDING_1
+FINDING_8: EXONERATE -- optional stall-envelope integration is heavier than this parsers slice warrants
+FINDING_9: NO -- duplicate unused-local nit
+FINDING_10: EXONERATE -- full capture paths in parse-time stderr are normal operator diagnostics versus weak leak risk
+FINDING_11: NO -- pre-existing tokenization pattern not introduced by this branch
+FINDING_12: EXONERATE -- same doc count mismatch as FINDING_1
+FINDING_13: EXONERATE -- same plan versus harness count mismatch as FINDING_1
+FINDING_14: EXONERATE -- bogus non-true OK without STATUS is pathological versus real producer envelopes
+FINDING_15: NO -- commit-title echo is not an actionable code defect
+FINDING_16: NO -- statement affirms plan fidelity rather than reporting a defect
+FINDING_17: EXONERATE -- optional harness-doc hygiene not worth opening a standalone tracking issue
+FINDING_18: YES
+FINDING_19: EXONERATE -- committed run-log noise is real but belongs in PR or cleanup follow-up not a new issue
+FINDING_20: NO -- observation mostly excuses residual harness state and needs no action
+FINDING_21: NO -- confirms stderr wiring matches intent so there is no defect to accept
+FINDING_22: EXONERATE -- stdout-only regression is unlikely versus added per-case stdout capture boilerplate
+FINDING_23: EXONERATE -- same run-log pollution note as FINDING_19 without needing another issue

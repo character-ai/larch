@@ -1,0 +1,14 @@
+Gathering the diff and parsers-section code to assess global-variable leakage and test isolation.
+
+Reading the harness structure to determine section order and whether parsers can affect later tests.
+
+Checking whether `review-implement-step5-loop.sh` defines globals beyond the reset list when sourced:
+
+### In-Scope Findings
+
+- **risk-integration** `skills/review-and-fix/scripts/test-review-and-fix.sh:2050-2082` — The `checks-malformed` and `lint-malformed` cases wrap `step5_parse_*_capture_file` in `( subshell )` blocks while the surrounding harness runs with `set -euo pipefail` in the **parent** shell; subshell assignments to non-local `STEP5_*` globals do not update the parent, so after `checks-malformed` the parent still holds `STEP5_CHK_*` from the earlier `checks-skipped` case (`STEP5_CHK_RELEVANT_CHECKS_SKIPPED=true`, others cleared by that parse), and after `lint-malformed` the parent still holds `STEP5_LINT_STATUS=applied` from `lint-pass` because the malformed parse never ran in the parent—yet the suite never asserts those parent-level facts, so it does not reproduce `run_implement_loop`’s same-shell “next parse overwrites prior globals” behavior and can give false confidence or break if later assertions assume a clean parent between cases. **Suggested fix:** Run the malformed capture tests in the parent shell like the other capture-file tests (relying on `step5_parse_kv_tokens`/`return 0` for `set -e` safety), or add explicit per-case `STEP5_*` resets plus parent-level assertions after each `step5_parse_*` call; reserve subshells only for cases that do not mutate globals you intend to observe in the harness shell.
+
+### Out-of-Scope Observations
+
+- The branch diff also adds `larch-logs/implement/ADFFB544-3067-4228-9241-1EE423325DF3/*` run-log artifacts; that is unrelated to parser test isolation but adds repo noise and may be worth dropping in a follow-up if those files were not meant to ship.
+- The closing `STEP5_CHK_*` / `STEP5_LINT_STATUS=""` block at `skills/review-and-fix/scripts/test-review-and-fix.sh:2084-2089` is enough for **separate** `make test-review-and-fix-dispatch` / `convergence` shards (parsers not run) and for clearing variables before process exit when only `parsers` runs; it does not remove the subshell-defined functions sourced from `review-implement-step5-loop.sh`, which is likely harmless because later tests invoke `review-and-fix.sh` as a child process rather than calling those functions from the harness shell.

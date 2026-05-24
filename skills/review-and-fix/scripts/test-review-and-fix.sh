@@ -32,7 +32,7 @@ while [[ $# -gt 0 ]]; do
 done
 if [[ -n "$SECTION" ]]; then
     case "$SECTION" in
-        dispatch|convergence) ;;
+        dispatch|convergence|parsers) ;;
         *)
             printf 'ERROR: unknown --section: %s\n' "$SECTION" >&2
             exit 1
@@ -1996,6 +1996,98 @@ if grep -Fq 'REVIEW_AND_FIX_STATUS=converged-small-changes' <<< "$out"; then
     fail "round1-small-no-converge: must NOT converge on round 1 (no prior round to compare)"
 fi
 fi  # end section: convergence
+
+if section_runs parsers; then
+    parsers_tmp="$TMP/parsers-harness"
+    mkdir -p "$parsers_tmp"
+    # shellcheck source=skills/review-and-fix/scripts/review-implement-step5-loop.sh
+    # shellcheck disable=SC1091
+    . "$REPO_ROOT/skills/review-and-fix/scripts/review-implement-step5-loop.sh"
+
+    # step5_parse_kv_tokens under set -e (positive / miss / empty line).
+    (
+        set -euo pipefail
+        v=$(step5_parse_kv_tokens 'KEY=value' KEY)
+        [[ "$v" == "value" ]]
+        v=$(step5_parse_kv_tokens 'OTHER=foo' KEY)
+        [[ -z "$v" ]]
+        v=$(step5_parse_kv_tokens '' KEY)
+        [[ -z "$v" ]]
+    ) || fail "parsers kv-tokens-matrix: set -e subshell"
+    pass "parsers kv-tokens-matrix"
+
+    cap="$parsers_tmp/checks-pass.txt"
+    err="$parsers_tmp/checks-pass.stderr"
+    printf '%s\n' 'RELEVANT_CHECKS_OK=true SITE=foo COVERAGE=full' >"$cap"
+    : >"$err"
+    step5_parse_checks_capture_file "$cap" 2>>"$err"
+    [[ "${STEP5_CHK_RELEVANT_CHECKS_OK:-}" == "true" ]] || fail "parsers checks-pass: RELEVANT_CHECKS_OK"
+    grep -Fq 'required field missing' "$err" && fail "parsers checks-pass: unexpected stderr"
+    pass "parsers checks-pass-single-line"
+
+    cap="$parsers_tmp/checks-fail.txt"
+    err="$parsers_tmp/checks-fail.stderr"
+    {
+        printf '%s\n' 'STATUS=fail'
+        printf '%s\n' 'FAILURE_REASON=bad-thing'
+    } >"$cap"
+    : >"$err"
+    step5_parse_checks_capture_file "$cap" 2>>"$err"
+    [[ "${STEP5_CHK_STATUS:-}" == "fail" ]] || fail "parsers checks-fail: STATUS"
+    [[ "${STEP5_CHK_FAILURE_REASON:-}" == "bad-thing" ]] || fail "parsers checks-fail: FAILURE_REASON"
+    grep -Fq 'required field missing' "$err" && fail "parsers checks-fail: unexpected stderr"
+    pass "parsers checks-fail-multiline"
+
+    cap="$parsers_tmp/checks-skipped.txt"
+    err="$parsers_tmp/checks-skipped.stderr"
+    printf '%s\n' 'RELEVANT_CHECKS_SKIPPED=true' >"$cap"
+    : >"$err"
+    step5_parse_checks_capture_file "$cap" 2>>"$err"
+    [[ "${STEP5_CHK_RELEVANT_CHECKS_SKIPPED:-}" == "true" ]] || fail "parsers checks-skipped"
+    grep -Fq 'required field missing' "$err" && fail "parsers checks-skipped: unexpected stderr"
+    pass "parsers checks-skipped"
+
+    cap="$parsers_tmp/checks-malformed.txt"
+    err="$parsers_tmp/checks-malformed.stderr"
+    printf '%s\n' 'IRRELEVANT=true' >"$cap"
+    : >"$err"
+    (
+        set -euo pipefail
+        step5_parse_checks_capture_file "$cap" 2>>"$err"
+        [[ "${STEP5_CHK_STATUS:-}" == "fail" ]]
+        [[ "${STEP5_CHK_FAILURE_REASON:-}" == "malformed-capture" ]]
+    ) || fail "parsers checks-malformed: set -e or globals"
+    grep -Fq 'required field missing' "$err" || fail "parsers checks-malformed: missing stderr"
+    pass "parsers checks-malformed-fail-closed"
+
+    cap="$parsers_tmp/lint-pass.txt"
+    err="$parsers_tmp/lint-pass.stderr"
+    printf '%s\n' 'LINT_FIX_STATUS=applied' >"$cap"
+    : >"$err"
+    step5_parse_lint_capture_file "$cap" 2>>"$err"
+    [[ "${STEP5_LINT_STATUS:-}" == "applied" ]] || fail "parsers lint-pass: LINT_FIX_STATUS"
+    grep -Fq 'required field missing' "$err" && fail "parsers lint-pass: unexpected stderr"
+    pass "parsers lint-pass-applied"
+
+    cap="$parsers_tmp/lint-malformed.txt"
+    err="$parsers_tmp/lint-malformed.stderr"
+    printf '%s\n' 'OTHER=stuff' >"$cap"
+    : >"$err"
+    (
+        set -euo pipefail
+        step5_parse_lint_capture_file "$cap" 2>>"$err"
+        [[ -z "${STEP5_LINT_STATUS:-}" ]]
+    ) || fail "parsers lint-malformed: set -e or LINT_STATUS should stay empty"
+    grep -Fq 'required field missing' "$err" || fail "parsers lint-malformed: missing stderr"
+    pass "parsers lint-malformed-stderr-only"
+
+    STEP5_CHK_STATUS=""
+    STEP5_CHK_FAILURE_REASON=""
+    STEP5_CHK_REDACTED_LOG_FILE=""
+    STEP5_CHK_RELEVANT_CHECKS_OK=""
+    STEP5_CHK_RELEVANT_CHECKS_SKIPPED=""
+    STEP5_LINT_STATUS=""
+fi  # end section: parsers
 
 # Breadcrumb pin: round entry and coder dispatch breadcrumbs appear when LARCH_QUIET_BREADCRUMBS=1.
 if section_runs dispatch; then

@@ -19,6 +19,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Migration posture**: legacy `[IN PROGRESS]` and `[PLANNED]` prefixes are stripped by `strip_lifecycle_prefix` for backward compatibility but are no longer accepted as `--state` values by `tracking-issue-write.sh` or as admission-pass prefixes.
 - **Audit scope**: workflow call sites and rename `--state` surfaces in the active runtime tree (`skills/`, `scripts/`, `agents/`, `.claude/`, `docs/`, tests) now use the new prefix set; deliberate legacy bracket literals remain only where migration, admission recovery, strip helpers, or hermetic fixtures require them. This Unreleased section documents the migration and may name the old prefixes. Historical shipped changelog bodies and `larch-logs/` were not bulk-retitled.
 
+## [42.0.18] - 2026-05-23
+
+### Changed
+
+- Make Step 5 capture-file KV parsing safe under set -e so the review loop no longer exits when a key is missing from the current line.
+- Detect malformed checks and lint captures with stderr plus fail-closed checks semantics where the loop already expects them.
+- Add a parsers-only harness slice, docs, and a Makefile shard target so CI can run the regression cheaply.
+
 ## [42.0.17] - 2026-05-23
 
 ### Changed

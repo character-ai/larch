@@ -1,0 +1,13 @@
+Reading the pre-computed diff and the parsers section of the test harness for stderr-capture correctness.
+
+Reading the parsers block in the workspace for exact line numbers and the start of the file for `set -e` state.
+
+### In-Scope Findings
+
+- **correctness** `skills/review-and-fix/scripts/test-review-and-fix.sh:2019-2070` — For every “no `required field missing` on stderr” case, the harness truncates a dedicated `$err` with `: >"$err"` and applies `2>>"$err"` only to the `step5_parse_*` call, so later `[[ … ]]` / `grep` failures cannot append unrelated diagnostics into the same capture file; in the malformed subshell cases (`2054-2059`, `2076-2080`) the redirect is still scoped to that single parse invocation, so stderr from the helper under test is what lands in `$err`, not from the surrounding `set -e` checks. **Suggested fix:** None for the append/subshell wiring itself; the pattern matches the intended contract.
+
+- **correctness** `skills/review-and-fix/scripts/test-review-and-fix.sh:2019-2070` — Those “stderr silence” checks only inspect `$err`; if a regression moved the required-field line to stdout (or mixed streams) while leaving stderr quiet, `grep -Fq 'required field missing' "$err" && fail` would still pass because the substring would never be written to the captured file. **Suggested fix:** For each case that asserts “no required-field line,” also capture or assert empty stdout from the parse call (for example `out=$(step5_parse_checks_capture_file "$cap" 2>>"$err")` plus `[[ -z "$out" ]]`), since these helpers are not supposed to emit on stdout for valid parses.
+
+### Out-of-Scope Observations
+
+- The branch diff also adds committed `larch-logs/implement/ADFFB544-3067-4228-9241-1EE423325DF3/*` run-log scaffolding, which is unrelated to stderr-capture correctness in the parsers harness and looks like accidental implement-run pollution rather than something this review should treat as a parsers-test defect.
