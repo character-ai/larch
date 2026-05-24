@@ -62,6 +62,7 @@ grep -Fq 'DISPATCH_OK=true' <<< "$out"
 voter2_path=$(printf '%s\n' "$out" | awk -F= '$1=="VOTER_2_PATH"{print $2; exit}')
 grep -Fq 'OOS_N:' "$TMP/absent/codex-plan-voter-prompt.txt" || { echo "FAIL: plan-voter prompt missing OOS rows" >&2; exit 1; }
 grep -Fq 'FINDING_N: or OOS_N:' "$TMP/absent/claude-plan-voter-prompt-retry.txt" || { echo "FAIL: retry prompt missing FINDING/OOS directive" >&2; exit 1; }
+grep -Fq 'When in doubt between YES and EXONERATE, prefer EXONERATE' "$TMP/absent/claude-plan-voter-prompt-retry.txt" || { echo "FAIL: absent claude retry prompt missing YES/EXONERATE anchor" >&2; exit 1; }
 grep -Fq 'OOS_1: NO -- claude retry ok' "$voter2_path" || { echo "FAIL: claude fallback retry path missing final vote output" >&2; exit 1; }
 test -f "${voter2_path%.txt}-first-pass.txt" || { echo "FAIL: claude fallback first-pass sidecar missing" >&2; exit 1; }
 grep -Fq 'VOTER_PATHS_FILE=' <<< "$out" || { echo "FAIL: absent-tools dispatch missing VOTER_PATHS_FILE" >&2; exit 1; }
@@ -172,6 +173,7 @@ v2p=$(printf '%s\n' "$out" | awk -F= '$1=="VOTER_2_PATH"{print $2;exit}')
 v3p=$(printf '%s\n' "$out" | awk -F= '$1=="VOTER_3_PATH"{print $2;exit}')
 grep -Fxq "$v2p" "$pv_rw" || { echo "FAIL: retry waterfall paths file missing voter 2 path" >&2; exit 1; }
 grep -Fxq "$v3p" "$pv_rw" || { echo "FAIL: retry waterfall paths file missing voter 3 path" >&2; exit 1; }
+grep -Fq 'When in doubt between YES and EXONERATE, prefer EXONERATE' "$TMP/retry-waterfall/codex-plan-voter-prompt-retry.txt" || { echo "FAIL: retry-waterfall codex retry prompt missing YES/EXONERATE anchor" >&2; exit 1; }
 
 stub_log_not_substantive="$TMP/dispatch-with-waterfall-not-substantive.log"
 out=$(PATH="$STUB_BIN:$PATH" CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT_STUB" PLAN_VOTER_STUB_MODE=retry-fails-substantive PLAN_VOTER_STUB_LOG="$stub_log_not_substantive" \
