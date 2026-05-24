@@ -57,6 +57,12 @@ Between-review-round velocity (>20% plan growth **and** >10 accepted findings) i
 - **Machine output**: `emit_kv` on FD 3 (`lib-quiet.sh`) — `PLAN_LINES`, `DIFF_LINES`, `FILES_COUNT`, `SOFT_TRIGGER_FIRED`, `HARD_TRIGGER_FIRED`, `TRIGGER_REASONS` (see **Helper output** above). On validation failure only: `PLAN_SIZE_STATUS` is `missing-plan` or `missing-diff-lines`.
 - **Exit codes**: **0** when the plan parses; **2** only when emitting `PLAN_SIZE_STATUS` (`missing-plan` / `missing-diff-lines`); **3** on argv / usage errors (missing `--design-tmpdir`, unknown flags) — no `PLAN_SIZE_STATUS` lines.
 
+## Plan-command validator (`review_budget` gating)
+
+- **`review_budget=quick`** (`--trivial`): the plan-command validator (`ACTION=VALIDATE_PLAN_COMMANDS` via `validate-plan.sh`) does **not** run — it is skipped alongside the full 10-reviewer plan-review panel.
+- **`review_budget=full`** (`--simple` / `--hard`): the validator runs after each successful `ACTION=EMIT_PLAN` on `plan.txt` (Step 2b, Gate B post-apply, discussion-round2 plan revisions) and once on `composed-plan.md` before `redact-secrets.sh` in Step 5c (Tier 3 dry-run is disabled on the composed artifact).
+- **Defect handling**: when machine output reports `VALIDATE_STATUS=defects-found`, use the shared **Fix-and-retry / Override / Cancel** AskUserQuestion body in `SKILL.md` (**### Plan command validator failure (shared)**).
+
 ## Internal — sketch dispatch (not public argv)
 
 - **`/design` sketch phase is inline-only** (issue #2487): sketches, external collectors, synthesis, dialectic, and plan review run in the orchestrator session per `SKILL.md`. There is no Agent-tool offload path for the sketch phase.

@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# Offline harness: parse-plan-commands.sh golden fixtures.
+
+set -euo pipefail
+
+export LARCH_QUIET_DISABLE=1
+
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd -P)
+SUBJECT="$SCRIPT_DIR/parse-plan-commands.sh"
+FIX="$SCRIPT_DIR/fixtures/parse-plan-commands"
+REPO_ROOT=$(git -C "$SCRIPT_DIR/../../.." rev-parse --show-toplevel)
+
+fail() {
+    echo "FAIL: $1" >&2
+    exit 1
+}
+
+run_case() {
+    local name="$1" plan="$2" want="$3"
+    local out
+    out=$(mktemp)
+    "$SUBJECT" --plan-file "$plan" --output "$out" --repo-root "$REPO_ROOT"
+    if ! cmp -s "$out" "$want"; then
+        echo "---- got ----" >&2
+        cat "$out" >&2
+        echo "---- want ----" >&2
+        cat "$want" >&2
+        fail "case $name: TSV mismatch"
+    fi
+    rm -f "$out"
+}
+
+[[ -d "$FIX" ]] || fail "fixtures dir missing: $FIX"
+
+run_case basic "$FIX/basic-plan.md" "$FIX/basic.tsv"
+run_case prefixes "$FIX/prefix-plan.md" "$FIX/prefix.tsv"
+run_case newskip "$FIX/newskip-plan.md" "$FIX/newskip.tsv"
+run_case heredoc "$FIX/heredoc-plan.md" "$FIX/heredoc.tsv"
+run_case arith "$FIX/arith-plan.md" "$FIX/arith.tsv"
+run_case subshell "$FIX/subshell-plan.md" "$FIX/subshell.tsv"
+run_case updated_flag "$FIX/updated-flag-plan.md" "$FIX/updated-flag.tsv"
+run_case dot_slash "$FIX/dot-slash-plan.md" "$FIX/dot-slash.tsv"
+run_case continuation "$FIX/continuation-plan.md" "$FIX/continuation.tsv"
+run_case env_prefix "$FIX/env-prefix-plan.md" "$FIX/env-prefix.tsv"
+run_case dot_newskip "$FIX/dot-newskip-plan.md" "$FIX/dot-newskip.tsv"
+run_case quoted_argv "$FIX/quoted-argv-plan.md" "$FIX/quoted-argv.tsv"
+run_case bracket_new_heading "$FIX/bracket-new-heading-plan.md" "$FIX/bracket-new-heading.tsv"
+
+echo "PASS: test-parse-plan-commands.sh"

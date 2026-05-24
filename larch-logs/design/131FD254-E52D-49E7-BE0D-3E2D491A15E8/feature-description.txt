@@ -1,3 +1,0 @@
-Issue #2683: In /design, main agent should present plan right before saying it's ready for voting and also right before asking for final approval
-
-Description: so the user can actually see the plan candidate in order to make the decision

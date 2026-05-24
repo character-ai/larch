@@ -421,6 +421,44 @@ grep -Fq 'dispatch-plan-review-panel.sh' "$SKILL_MD" \
 grep -Fq 'PANEL_PATHS_FILE' "$SKILL_MD" \
   || fail "(14c3) SKILL.md missing PANEL_PATHS_FILE parse contract for plan-review collection"
 
+DESIGN_DRIVER_SH="$REPO_ROOT/skills/design/scripts/design-driver.sh"
+grep -Fq 'VALIDATE_PLAN_COMMANDS' "$DESIGN_DRIVER_SH" \
+  || fail "(14b5) design-driver.sh missing VALIDATE_PLAN_COMMANDS"
+grep -Fq 'validate-plan.sh' "$DESIGN_DRIVER_SH" \
+  || fail "(14b6) design-driver.sh missing validate-plan.sh dispatch arm"
+grep -Fq 'ACTION=VALIDATE_PLAN_COMMANDS' "$SKILL_MD" \
+  || fail "(14b7) SKILL.md missing ACTION=VALIDATE_PLAN_COMMANDS"
+grep -Fq 'Fix-and-retry' "$SKILL_MD" \
+  || fail "(14b8) SKILL.md missing Fix-and-retry validator option label"
+grep -Fq 'Override' "$SKILL_MD" \
+  || fail "(14b9a) SKILL.md missing Override validator option label"
+grep -Fq 'Cancel' "$SKILL_MD" \
+  || fail "(14b9b) SKILL.md missing Cancel validator option label"
+step2b_mark=$(grep -nF 'mark "design Step 2b — plan"' "$SKILL_MD" | head -1 | cut -d: -f1 || true)
+emit_line=$(awk -v s="$step2b_mark" 'NR>s && /ACTION=EMIT_PLAN/ {print NR; exit}' "$SKILL_MD" || true)
+val_line=$(awk -v s="$step2b_mark" 'NR>s && /invoke-plan-validator-if-not-quick\.sh/ && /plan\.txt/ {print NR; exit}' "$SKILL_MD" || true)
+[[ -n "$step2b_mark" && -n "$emit_line" && -n "$val_line" && "$val_line" -gt "$emit_line" ]] \
+  || fail "(14b10) VALIDATE_PLAN_COMMANDS must follow EMIT_PLAN in Step 2b block"
+
+AG_MD="$REPO_ROOT/skills/design/references/approval-gates.md"
+DR_MD="$REPO_ROOT/skills/design/references/discussion-rounds.md"
+[[ -f "$AG_MD" ]] || fail "(14c14a) approval-gates.md missing: $AG_MD"
+[[ -f "$DR_MD" ]] || fail "(14c14b) discussion-rounds.md missing: $DR_MD"
+grep -Fq 'ACTION=EMIT_PLAN' "$AG_MD" \
+  || fail "(14c14c) approval-gates.md missing ACTION=EMIT_PLAN pin"
+grep -Fq 'invoke-plan-validator-if-not-quick.sh' "$AG_MD" \
+  || fail "(14c14d) approval-gates.md missing invoke-plan-validator-if-not-quick.sh pin"
+emit_before_val_ag=$(awk '/ACTION=EMIT_PLAN/ && !done { e=NR; done=1 } /invoke-plan-validator-if-not-quick\.sh/ && !vset { v=NR; vset=1 } END { if (e && v) print (e <= v) ? 1 : 0; else print 0 }' "$AG_MD")
+[[ "$emit_before_val_ag" == "1" ]] \
+  || fail "(14c14e) approval-gates.md must mention EMIT_PLAN at or before invoke-plan-validator-if-not-quick.sh"
+grep -Fq 'ACTION=EMIT_PLAN' "$DR_MD" \
+  || fail "(14c14f) discussion-rounds.md missing ACTION=EMIT_PLAN pin"
+grep -Fq 'invoke-plan-validator-if-not-quick.sh' "$DR_MD" \
+  || fail "(14c14g) discussion-rounds.md missing invoke-plan-validator-if-not-quick.sh pin"
+emit_before_val_dr=$(awk '/ACTION=EMIT_PLAN/ && !done { e=NR; done=1 } /invoke-plan-validator-if-not-quick\.sh/ && !vset { v=NR; vset=1 } END { if (e && v) print (e <= v) ? 1 : 0; else print 0 }' "$DR_MD")
+[[ "$emit_before_val_dr" == "1" ]] \
+  || fail "(14c14h) discussion-rounds.md must mention EMIT_PLAN at or before invoke-plan-validator-if-not-quick.sh"
+
 # Check 16: dialectic waterfall + per-side assignment contract pins (#2620).
 DIALPROTO_MD="$REPO_ROOT/skills/shared/dialectic-protocol.md"
 DEBATE_MD="$REPO_ROOT/skills/design/references/dialectic-debate.md"
@@ -473,13 +511,21 @@ step5c_line=$(grep -nF "### 5c — Write \`larch:plan\` to GitHub + publish" "$S
 if (( step5b_line >= step5c_line )); then
   fail "(15b) Step 5b must appear before Step 5c in SKILL.md"
 fi
-grep -Fq '5c.7→6' "$SKILL_MD" \
-  || fail "(15b) anti-halt reminder must mention 5c.7→6 step boundary (intra-Step-5 through rename)"
+red_line=$(awk -v s="$step5c_line" 'NR>s && /redact-secrets\.sh/ && /composed-plan\.md/ {print NR; exit}' "$SKILL_MD" || true)
+val5=$(awk -v s="$step5c_line" 'NR>s && /invoke-plan-validator-if-not-quick\.sh/ && /composed-plan\.md/ {print NR; exit}' "$SKILL_MD" || true)
+[[ -n "$red_line" && -n "$val5" && "$val5" -lt "$red_line" ]] \
+  || fail "(14b11) Step 5c validator must appear before redact-secrets on composed-plan.md"
+# shellcheck disable=SC2016  # literal backticks + $DESIGN_TMPDIR token must match SKILL.md prose
+needle='preserve `$DESIGN_TMPDIR`, skip Step 6 cleanup'
+grep -Fq "$needle" "$SKILL_MD" \
+  || fail "(14b12) Step 5c validator cancel must preserve tmpdir and skip cleanup"
+grep -Fq '5c.8→6' "$SKILL_MD" \
+  || fail "(15b) anti-halt reminder must mention 5c.8→6 step boundary (intra-Step-5 through rename)"
 
 # Check 17: Step 5b /larch:issue summary-halt guardrails (#2681).
 ORCHESTRATOR_NEVER_MD="$REPO_ROOT/skills/shared/orchestrator-never.md"
 [[ -f "$ORCHESTRATOR_NEVER_MD" ]] || fail "(17) orchestrator-never.md missing: $ORCHESTRATOR_NEVER_MD"
-grep -Fq '5→5a→5b→5c.1→5c.6→5c.7→6' "$SKILL_MD" \
+grep -Fq '5→5a→5b→5c.1→5c.7→5c.8→6' "$SKILL_MD" \
   || fail "(17) anti-halt reminder missing intra-Step-5 sub-step enumeration"
 grep -Fq "NEVER treat a sub-skill's terminal output as the parent skill's terminal output" "$ORCHESTRATOR_NEVER_MD" \
   || fail "(17) orchestrator-never.md missing sub-skill vs parent-skill terminal-output NEVER literal"

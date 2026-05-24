@@ -1,0 +1,3 @@
+row_type	source_line	script_path	flag	flag_value	note	cmd_uid
+new_script	3	skills/design/scripts/fixtures/tmp-new2.sh				
+invocation	6	skills/design/scripts/fixtures/tmp-new2.sh	flag			1

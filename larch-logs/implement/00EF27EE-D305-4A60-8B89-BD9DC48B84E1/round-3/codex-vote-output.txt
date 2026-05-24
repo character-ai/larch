@@ -1,0 +1,25 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: EXONERATE -- Space-free ARGS is already documented and current callers use generated temp paths.
+FINDING_4: NO -- cmd_uid is already documented in the parser contract; the rest is speculative maintenance risk.
+FINDING_5: NO -- Expected committed log bulk is not a concrete OOS issue worth filing.
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: EXONERATE -- The spaced-path concern is legitimate but already covered by the explicit space-free ACTION path invariant.
+FINDING_14: NO -- Broad log-policy noise is not a concrete issue for this change.
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: EXONERATE -- The positional-argv limitation is documented and extending TSV replay now adds complexity before any registry users need it.
+FINDING_18: YES
+FINDING_19: NO -- The naming concern is speculative and current comments already explain the replay behavior.
+FINDING_20: NO -- The standalone background-operator case is hypothetical and explicitly outside current plan style.
+FINDING_21: YES
+FINDING_22: NO -- The referenced docs already guard the raw ACTION behind review_budget=full.
+FINDING_23: NO -- The live parser documentation already defines the seven-column TSV including cmd_uid.
+FINDING_24: YES
+FINDING_25: NO -- Expected larch-logs diff volume is not a concrete OOS issue worth filing.

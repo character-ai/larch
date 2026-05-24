@@ -1,0 +1,23 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: EXONERATE -- references already gate VALIDATE on `review_budget=full`, matching the quick skip contract without naming the wrapper.
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: EXONERATE -- optional hardening absent a concrete quoting regression signal from Tier 2 or production plans.
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: EXONERATE -- `--help` probes need a workable environment; full `env -i` risks false skips or false defects with unclear security gain.
+FINDING_18: YES
+FINDING_19: YES
+FINDING_20: EXONERATE -- only `quick|full` exist today; `full` gating matches `not quick` with no demonstrated desync.
+FINDING_21: YES
+FINDING_22: EXONERATE -- speculative future format change; contract already implies simple KV lines.
+FINDING_23: YES

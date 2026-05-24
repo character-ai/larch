@@ -85,6 +85,18 @@ out=$("$SUBJECT" --design-tmpdir "$DESIGN" --action-file "$unknown")
 printf '%s\n' "$out" | grep -q '^ACTION_PASSTHROUGH=hello$' || fail "non-action passthrough missing"
 printf '%s\n' "$out" | grep -q '^ACTION_PASSTHROUGH=ACTION=UNKNOWN ARGS=--flag value$' || fail "unknown action passthrough missing"
 
+DESIGNV="$TMPROOT/designv"
+mkdir -p "$DESIGNV"
+printf '# Plan\n\ndiff_lines: 1\n' > "$DESIGNV/plan.txt"
+val_actions="$TMPROOT/validate-actions.txt"
+abs_plan="$DESIGNV/plan.txt"
+printf 'ACTION=VALIDATE_PLAN_COMMANDS ARGS=%s %s\n' "$(printf '%q' --plan-file)" "$(printf '%q' "$abs_plan")" >"$val_actions"
+out=$("$SUBJECT" --design-tmpdir "$DESIGNV" --action-file "$val_actions")
+printf '%s\n' "$out" | grep -q '^STEP_STARTED=VALIDATE_PLAN_COMMANDS$' || fail "VALIDATE_PLAN_COMMANDS did not start"
+printf '%s\n' "$out" | grep -q '^STEP_COMPLETED=VALIDATE_PLAN_COMMANDS$' || fail "VALIDATE_PLAN_COMMANDS did not complete"
+out2=$("$SUBJECT" --design-tmpdir "$DESIGNV" --action-file "$val_actions")
+printf '%s\n' "$out2" | grep -q '^STEP_STARTED=VALIDATE_PLAN_COMMANDS$' || fail "VALIDATE_PLAN_COMMANDS re-run was skipped (should be re-runnable)"
+
 [[ -f "$DESIGN_SKILL" ]] || fail "missing skills/design/SKILL.md"
 
 trivial_row=$'| `--trivial` |'

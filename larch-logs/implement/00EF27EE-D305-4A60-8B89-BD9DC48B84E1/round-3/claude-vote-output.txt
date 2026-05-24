@@ -1,0 +1,25 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: EXONERATE -- space-free path constraint is documented in adjacent comment; fix complexity exceeds risk
+FINDING_4: EXONERATE -- cmd_uid is an internal aggregation column already documented in parse-plan-commands.md; maintenance concern is minor
+FINDING_5: NO -- large design-log flush is expected by repo convention; no issue warranted
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: EXONERATE -- same as FINDING_3; space-free invariant is a documented caller constraint
+FINDING_14: NO -- run-log trees ship by repo convention; no issue warranted
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: EXONERATE -- validate-plan-commands.md line 25 already documents the positional-arg limitation and the extend path
+FINDING_18: EXONERATE -- normalization mismatch requires writing ${CLAUDE_PLUGIN_ROOT}/ in a NEW: heading, an uncommon pattern; fix complexity exceeds practical risk
+FINDING_19: EXONERATE -- comment at lines 122-124 already explains the re-runnable semantics; naming nit only
+FINDING_20: NO -- finding itself says ignore unless real plan style adopts lone &; not worth filing
+FINDING_21: YES
+FINDING_22: YES
+FINDING_23: EXONERATE -- parse-plan-commands.md is the normative schema source and documents 7 columns; design-log archive is historical
+FINDING_24: YES
+FINDING_25: NO -- large larch-logs diff is expected by convention; not worth filing

@@ -1,0 +1,23 @@
+FINDING_1: EXONERATE -- design-log commits bundled with implement branches are intentional workflow artifacts produced by design-log-publish.sh; PR-noise is a real concern but not a code defect
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: EXONERATE -- duplicated 10-line KV-parse loops in SKILL.md prompt blocks are accepted practice; extracting a new wrapper script for two occurrences adds more complexity than it removes
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: NO -- `### NEW [path]:` bracket form is not part of the documented normative grammar; the supported forms are `### NEW: <path>` headings and `- **NEW**: <path>` bullets only
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: EXONERATE -- uppercase EVAL as a shell command token is not a real-world occurrence; lowercase-only detection is adequate for the real threat surface
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: EXONERATE -- SECURITY.md explicitly documents Tier 2 inheriting parent env; --help probes are read-only informational calls and the exposure is low
+FINDING_18: YES
+FINDING_19: YES
+FINDING_20: YES
+FINDING_21: EXONERATE -- conservative subshell skip that treats any $(...) as a skipped segment is intentional and documented; false negatives are the safe failure mode
+FINDING_22: EXONERATE -- validate-plan.sh wrapper guarantees one-KV-per-line output format; concern is about future drift rather than a current bug
+FINDING_23: YES

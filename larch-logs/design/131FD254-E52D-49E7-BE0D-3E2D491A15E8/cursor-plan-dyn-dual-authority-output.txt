@@ -1,5 +1,0 @@
-Reading the plan and cited repository files to compare Gate C dual-authority and version-classification claims.
-
-Review complete: the proposed Step 4b text omits the `Other` → full plan → re-fire loop documented only under Gate C in the plan, and the CHANGELOG rationale mislabels the change as “docs/scripts-only.”
-
-

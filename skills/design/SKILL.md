@@ -26,7 +26,7 @@ Design an implementation plan for a feature and review it with a **full** panel 
 
 **Positional tail**: after flags, the first non-flag token is either **`issue-N`** (all digits, `^[0-9]+$`) or a **verbal feature description** (any other text). Verbal text triggers `/larch:issue` first (forward `--no-dedup` when set), then binds `ISSUE_NUMBER` to the created issue and continues as the issue path.
 
-**Anti-halt continuation reminder.** After every `Bash` tool call that completes a numbered step or sub-step, and after every visible output (plans, diagrams, voting tallies, skip breadcrumbs), IMMEDIATELY continue with this skill's NEXT numbered step — do NOT end the turn on a Bash result, a status message, or a deliverable-looking output, and do NOT write a summary, handoff, status recap, or "returning to parent" message — those are halts in disguise. This applies to ALL step boundaries from Step 0 through Step 6, and to ALL sub-step transitions (1c→1d→1e→2a→2a.5→2b→2b.5→3→3.5→3b→4→4b→5→5a→5b→5c.1→5c.6→5c.7→6). The approval gates (Step 1e Gate A, Step 3.5 Gate B, Step 4b Gate C) may also re-enter earlier steps per the user's `AskUserQuestion` choice (Gate B(c) → Step 1e; Gate C(b) → Step 1e; Gate C(c) → Step 3); those re-entry transitions are explicit non-sequential control-flow directives and are NOT halts. **Critical: the implementation plan (Step 2b) and architecture diagram (Step 3b) are intermediate deliverables, NOT the end of the design — plan review (Step 3), Gate B (Step 3.5), Gate C (Step 4b), finalize (Step 5), and cleanup (Step 6) must still execute.** **Step 3 MUST NOT start until Step 2b.5 completes** (including any `AskUserQuestion` branches there). The rule is strictly subordinate to any explicit non-sequential control-flow directive in THIS file (e.g., `skip to Step N`, `bail to cleanup`, `jump back`, `proceed to Step N`). A normal sequential `proceed to Step N+1` instruction is the default continuation this rule reinforces, NOT an exception.
+**Anti-halt continuation reminder.** After every `Bash` tool call that completes a numbered step or sub-step, and after every visible output (plans, diagrams, voting tallies, skip breadcrumbs), IMMEDIATELY continue with this skill's NEXT numbered step — do NOT end the turn on a Bash result, a status message, or a deliverable-looking output, and do NOT write a summary, handoff, status recap, or "returning to parent" message — those are halts in disguise. This applies to ALL step boundaries from Step 0 through Step 6, and to ALL sub-step transitions (1c→1d→1e→2a→2a.5→2b→2b.5→3→3.5→3b→4→4b→5→5a→5b→5c.1→5c.7→5c.8→6). The approval gates (Step 1e Gate A, Step 3.5 Gate B, Step 4b Gate C) may also re-enter earlier steps per the user's `AskUserQuestion` choice (Gate B(c) → Step 1e; Gate C(b) → Step 1e; Gate C(c) → Step 3); those re-entry transitions are explicit non-sequential control-flow directives and are NOT halts. **Critical: the implementation plan (Step 2b) and architecture diagram (Step 3b) are intermediate deliverables, NOT the end of the design — plan review (Step 3), Gate B (Step 3.5), Gate C (Step 4b), finalize (Step 5), and cleanup (Step 6) must still execute.** **Step 3 MUST NOT start until Step 2b.5 completes** (including any `AskUserQuestion` branches there). The rule is strictly subordinate to any explicit non-sequential control-flow directive in THIS file (e.g., `skip to Step N`, `bail to cleanup`, `jump back`, `proceed to Step N`). A normal sequential `proceed to Step N+1` instruction is the default continuation this rule reinforces, NOT an exception.
 
 ## Progress Reporting
 
@@ -321,7 +321,7 @@ Execute the Gate A body in `approval-gates.md`. When the user picks **Ready for 
 LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 2a — sketches" || true
 ```
 
-Before branching, read `$DESIGN_TMPDIR/run-params.json` and parse `sketch_budget`. Valid values are `0`, `2`, and `4`. If the file is absent or schema-invalid, default to `sketch_budget=4`. `review_budget` is consumed later by Step 3. Do not re-classify here; Step 0 owns router judgment.
+Before branching, read `$DESIGN_TMPDIR/run-params.json` and parse `sketch_budget`. Valid values are `0`, `2`, and `4`. If the file is absent or schema-invalid, default to `sketch_budget=4`. Also read `review_budget` (`quick` vs `full`): it gates the Step 2b plan-command validator (skipped on `quick` alongside the full plan-review panel) and is consumed again explicitly in Step 3. Do not re-classify here; Step 0 owns router judgment.
 
 **IMPORTANT: The collaborative sketch phase MUST run with the configured `sketch_budget` — 4 in full mode, 2 in quick/simple mode, or 0 only for codebase-scan-confirmed `TRIVIAL_DOC_ONLY` (using Claude replacements when external tools are unavailable on non-zero budgets). Never abbreviate a non-zero sketch budget regardless of how simple or obvious the feature appears. The sketch synthesis is required architectural input for the implementation plan — skipping it outside the explicit zero-sketch carve-out causes anchoring bias where a single perspective locks in the direction before alternatives are considered.**
 
@@ -530,7 +530,7 @@ Produce a plan that includes:
 
 Write the plan to `$DESIGN_TMPDIR/plan.txt` with basename exactly `plan.txt`. Print the plan to the user under a `## Implementation Plan` header so reviewers can see it. The plan is an intermediate deliverable — after Step **2b.5** below completes, continue to Step 3 (Plan Review). Do NOT halt, summarize, or treat the plan as the end of the design.
 
-Immediately after saving `plan.txt`, emit the mechanical plan-validation ACTION. This writes `$DESIGN_TMPDIR/diff-lines.txt` atomically and fails closed if the final `diff_lines: <N>` line is missing or malformed:
+Immediately after saving `plan.txt`, emit `ACTION=EMIT_PLAN` so `design-driver.sh` writes `$DESIGN_TMPDIR/diff-lines.txt` atomically and fails closed if the final `diff_lines: <N>` line is missing or malformed:
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
@@ -539,6 +539,37 @@ printf '%s\n' 'ACTION=EMIT_PLAN' \
 ```
 
 If the driver exits non-zero or emits `EMIT_PLAN_STATUS=missing-diff-lines`, treat it as a hard Step 2b failure and repair `$DESIGN_TMPDIR/plan.txt` before proceeding to Step 2b.5 / Step 3.
+
+**Plan-command validator (Tier 2 + opt-in Tier 3)** — skip entirely when `review_budget` from `$DESIGN_TMPDIR/run-params.json` is `quick` (same read/validation rules as Step 3). Otherwise, immediately after a successful `ACTION=EMIT_PLAN`, run:
+
+```bash
+[ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
+_validate_out=$("${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/invoke-plan-validator-if-not-quick.sh" "$DESIGN_TMPDIR/plan.txt")
+VALIDATE_STATUS=ok
+VALIDATE_DEFECT_COUNT=0
+VALIDATE_SKIPPED_COUNT=0
+VALIDATE_UNSAFE_TOKEN_COUNT=0
+VALIDATE_LOG_FILE=""
+while IFS= read -r _vl || [[ -n "$_vl" ]]; do
+  _vk="${_vl%%=*}"
+  _vv="${_vl#*=}"
+  case "$_vk" in
+    VALIDATE_STATUS) VALIDATE_STATUS="$_vv" ;;
+    VALIDATE_DEFECT_COUNT) VALIDATE_DEFECT_COUNT="$_vv" ;;
+    VALIDATE_SKIPPED_COUNT) VALIDATE_SKIPPED_COUNT="$_vv" ;;
+    VALIDATE_UNSAFE_TOKEN_COUNT) VALIDATE_UNSAFE_TOKEN_COUNT="$_vv" ;;
+    VALIDATE_LOG_FILE) VALIDATE_LOG_FILE="$_vv" ;;
+  esac
+done <<< "$_validate_out"
+```
+
+Mechanical dispatch: `ACTION=VALIDATE_PLAN_COMMANDS` is issued from `invoke-plan-validator-if-not-quick.sh` into `design-driver.sh` when `review_budget` is not `quick` (see `read-design-review-budget.sh` for JSON fallbacks when `python3` is unavailable).
+
+When `VALIDATE_STATUS=defects-found` after this block, execute **### Plan command validator failure (shared)** with `--site` context `design Step 2b` and **Cancel** semantics returning to Gate A (preserve `$DESIGN_TMPDIR`).
+
+Parse `VALIDATE_STATUS`, `VALIDATE_DEFECT_COUNT`, `VALIDATE_SKIPPED_COUNT`, `VALIDATE_UNSAFE_TOKEN_COUNT`, and `VALIDATE_LOG_FILE` from the same stdout block as needed for operator breadcrumbs. Infrastructure failure is `STEP_FAILED=VALIDATE_PLAN_COMMANDS` (non-zero driver exit); **`defects-found` is not a driver failure** — handle it only via `VALIDATE_STATUS` and the shared AskUserQuestion body.
+
+> **Continue to Step 3 IMMEDIATELY.** The implementation plan is an intermediate design artifact — plan review, optional discussion, diagram generation, rejected-findings reporting, and cleanup still must run. → shared/subskill-invocation.md#step-boundary
 
 ### Step 2b.5 — Plan-size threshold check (named procedure)
 
@@ -665,11 +696,13 @@ After `dispatch-plan-voters.sh` returns Voter 2/3 output paths and the local Vot
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-printf 'ACTION=TALLY ARGS=--ballot-file %s --voter-files %s %s %s\n' \
-  "$DESIGN_TMPDIR/ballot.txt" \
-  "$VOTER_1_PATH" \
-  "$VOTER_2_PATH" \
-  "$VOTER_3_PATH" \
+printf 'ACTION=TALLY ARGS=%s %s %s %s %s %s %s\n' \
+  "$(printf '%q' --ballot-file)" \
+  "$(printf '%q' "$DESIGN_TMPDIR/ballot.txt")" \
+  "$(printf '%q' --voter-files)" \
+  "$(printf '%q' "$VOTER_1_PATH")" \
+  "$(printf '%q' "$VOTER_2_PATH")" \
+  "$(printf '%q' "$VOTER_3_PATH")" \
   | "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-driver.sh" --design-tmpdir "$DESIGN_TMPDIR"
 ```
 
@@ -854,12 +887,37 @@ Cross-session idempotency: after a successful `annotate` with `ISSUES_FAILED=0`,
 Step 4b Gate C already returned **Approve**. Proceed without an additional prompt:
 
 1. Compose `$DESIGN_TMPDIR/composed-plan.md` containing `## Plan`, `## Acceptance`, and a trailing `diff_lines: <N>` line (integer from `$DESIGN_TMPDIR/diff-lines.txt` or best-effort estimate).
-2. Run `cat "$DESIGN_TMPDIR/composed-plan.md" | "${CLAUDE_PLUGIN_ROOT}/scripts/redact-secrets.sh" > "$DESIGN_TMPDIR/composed-plan.redacted.md"`.
-3. Run `"${CLAUDE_PLUGIN_ROOT}/scripts/plan-block-write.sh" --issue "$ISSUE_NUMBER" --content-file "$DESIGN_TMPDIR/composed-plan.redacted.md"`.
-4. If step 3 fails, first run the **Terminal cost line** fenced bash block from Step 0b (`### Terminal cost line`), then print `**⚠ 5: plan-block-write failed — preserving $DESIGN_TMPDIR**`, set `PLAN_WRITE_OK=false`, and skip Step **5c** items **5–7** (do not resolve `REPO`, run `tracking-issue-write.sh` rename, or `design-log-publish.sh`) **and skip Step 6 cleanup** so `$DESIGN_TMPDIR` is preserved.
-5. If step 3 succeeds, set `PLAN_WRITE_OK=true`, then resolve `REPO` for explicit `gh --repo` threading when the hub default might not match the consumer checkout (for example nested `/implement` shells without a fresh `session-setup.sh` repo probe): prefer `"${CLAUDE_PLUGIN_ROOT}/scripts/resolve-repo.sh"` from the consumer repo working tree; on failure fall back to `gh repo view --json nameWithOwner --jq '.nameWithOwner'`; leave `REPO` empty when both fail so helpers use the hub default.
-6. If step 3 succeeds, when `SESSION_ID` is non-empty, run `"${CLAUDE_PLUGIN_ROOT}/scripts/design-log-publish.sh" --design-tmpdir "$DESIGN_TMPDIR" --run-id "$SESSION_ID" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}` and parse `PUBLISH_OK` from stdout. When `SESSION_ID` is empty, print `printf '\n**⚠ /design: SESSION_ID missing; skipping design log publish**\n'` (use `printf`, not `print`). On `PUBLISH_OK=false`, capture stderr to `$DESIGN_TMPDIR/design-log-publish.failure.log` and append under `Warnings` via `"${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh"` with `--log "$DESIGN_TMPDIR/execution-issues.md"`; continue (do not roll back the GitHub plan write).
-7. If step 3 succeeds **and** `SESSION_ID` is non-empty **and** `PUBLISH_OK=true` after the Step 5c item 6 publish attempt, run `"${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh" rename --issue "$ISSUE_NUMBER" --state designed ${REPO:+--repo "$REPO"}` (treat `RENAMED=false` as idempotent success). When `SESSION_ID` is empty, **skip** this rename so `[DESIGNED]` does not imply `larch-logs/design/<RUN_ID>/` materialization without a run id. When `SESSION_ID` was non-empty and `PUBLISH_OK=false`, **skip** this rename so the issue title does not read `[DESIGNED]` while the default branch lacks `larch-logs/design/<RUN_ID>/`; operator retries publish from the preserved `$DESIGN_TMPDIR` or reconciles manually.
+2. When `review_budget` from `$DESIGN_TMPDIR/run-params.json` is not `quick`, run plan-command validation on the composed plan **before** redaction (Tier 3 dry-run is disabled for `composed-plan.md`; Tier 2 still runs). Same dispatch as Step 2b (`invoke-plan-validator-if-not-quick.sh` → `ACTION=VALIDATE_PLAN_COMMANDS` → `design-driver.sh`), but pass `composed-plan.md`:
+
+```bash
+[ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
+_validate_out=$("${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/invoke-plan-validator-if-not-quick.sh" "$DESIGN_TMPDIR/composed-plan.md")
+VALIDATE_STATUS=ok
+VALIDATE_DEFECT_COUNT=0
+VALIDATE_SKIPPED_COUNT=0
+VALIDATE_UNSAFE_TOKEN_COUNT=0
+VALIDATE_LOG_FILE=""
+while IFS= read -r _vl || [[ -n "$_vl" ]]; do
+  _vk="${_vl%%=*}"
+  _vv="${_vl#*=}"
+  case "$_vk" in
+    VALIDATE_STATUS) VALIDATE_STATUS="$_vv" ;;
+    VALIDATE_DEFECT_COUNT) VALIDATE_DEFECT_COUNT="$_vv" ;;
+    VALIDATE_SKIPPED_COUNT) VALIDATE_SKIPPED_COUNT="$_vv" ;;
+    VALIDATE_UNSAFE_TOKEN_COUNT) VALIDATE_UNSAFE_TOKEN_COUNT="$_vv" ;;
+    VALIDATE_LOG_FILE) VALIDATE_LOG_FILE="$_vv" ;;
+  esac
+done <<< "$_validate_out"
+```
+
+When `VALIDATE_STATUS=defects-found` after this block, execute **### Plan command validator failure (shared)** with `--site` context `design Step 5c` and **Cancel** semantics: preserve `$DESIGN_TMPDIR`, skip Step 6 cleanup, and **do not** run the remaining Step 5c items (redaction, `plan-block-write.sh`, publish, rename) on this exit branch.
+
+3. Run `cat "$DESIGN_TMPDIR/composed-plan.md" | "${CLAUDE_PLUGIN_ROOT}/scripts/redact-secrets.sh" > "$DESIGN_TMPDIR/composed-plan.redacted.md"`.
+4. Run `"${CLAUDE_PLUGIN_ROOT}/scripts/plan-block-write.sh" --issue "$ISSUE_NUMBER" --content-file "$DESIGN_TMPDIR/composed-plan.redacted.md"`.
+5. If step 4 fails, first run the **Terminal cost line** fenced bash block from Step 0b (`### Terminal cost line`), then print `**⚠ 5: plan-block-write failed — preserving $DESIGN_TMPDIR**`, set `PLAN_WRITE_OK=false`, and skip Step **5c** items **6–8** (do not resolve `REPO`, run `tracking-issue-write.sh` rename, or `design-log-publish.sh`) **and skip Step 6 cleanup** so `$DESIGN_TMPDIR` is preserved.
+6. If step 4 succeeds, set `PLAN_WRITE_OK=true`, then resolve `REPO` for explicit `gh --repo` threading when the hub default might not match the consumer checkout (for example nested `/implement` shells without a fresh `session-setup.sh` repo probe): prefer `"${CLAUDE_PLUGIN_ROOT}/scripts/resolve-repo.sh"` from the consumer repo working tree; on failure fall back to `gh repo view --json nameWithOwner --jq '.nameWithOwner'`; leave `REPO` empty when both fail so helpers use the hub default.
+7. If step 4 succeeds, when `SESSION_ID` is non-empty, run `"${CLAUDE_PLUGIN_ROOT}/scripts/design-log-publish.sh" --design-tmpdir "$DESIGN_TMPDIR" --run-id "$SESSION_ID" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}` and parse `PUBLISH_OK` from stdout. When `SESSION_ID` is empty, print `printf '\n**⚠ /design: SESSION_ID missing; skipping design log publish**\n'` (use `printf`, not `print`). On `PUBLISH_OK=false`, capture stderr to `$DESIGN_TMPDIR/design-log-publish.failure.log` and append under `Warnings` via `"${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh"` with `--log "$DESIGN_TMPDIR/execution-issues.md"`; continue (do not roll back the GitHub plan write).
+8. If step 4 succeeds **and** `SESSION_ID` is non-empty **and** `PUBLISH_OK=true` after the Step 5c item 7 publish attempt, run `"${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh" rename --issue "$ISSUE_NUMBER" --state designed ${REPO:+--repo "$REPO"}` (treat `RENAMED=false` as idempotent success). When `SESSION_ID` is empty, **skip** this rename so `[DESIGNED]` does not imply `larch-logs/design/<RUN_ID>/` materialization without a run id. When `SESSION_ID` was non-empty and `PUBLISH_OK=false`, **skip** this rename so the issue title does not read `[DESIGNED]` while the default branch lacks `larch-logs/design/<RUN_ID>/`; operator retries publish from the preserved `$DESIGN_TMPDIR` or reconciles manually.
 
 ### 5d — Gated L3 velocity deferral comment (best-effort)
 
@@ -897,7 +955,7 @@ On successful `gh issue comment` (exit 0), the `touch` above creates the sentine
 
 Do NOT write any farewell message such as "Design complete", "Returning to the /implement orchestrator", "Handing back control", or any other prose that signals the skill is done — those are halts in disguise.
 
-When `PLAN_WRITE_OK=true`, run the **Terminal cost line** fenced bash block from Step 0b (`### Terminal cost line`) **after** repeating the external-reviewer warnings above and **before** emitting the machine footer. When `PLAN_WRITE_OK=false` (plan-block-write failure), still run that **Terminal cost line** block before the `**⚠ 5: plan-block-write failed**` line (see Step 5c item 4).
+When `PLAN_WRITE_OK=true`, run the **Terminal cost line** fenced bash block from Step 0b (`### Terminal cost line`) **after** repeating the external-reviewer warnings above and **before** emitting the machine footer. When `PLAN_WRITE_OK=false` (plan-block-write failure), still run that **Terminal cost line** block before the `**⚠ 5: plan-block-write failed**` line (see Step 5c item 5).
 
 When `PLAN_WRITE_OK=true`, emit exactly one terminal machine footer as the **last human-visible output line** of Step 5 (after the cost line). Do not emit anything after it:
 
@@ -914,14 +972,29 @@ Print: `> **🔶 /design 6: cleanup**`
 LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 6 — cleanup" || true
 ```
 
-Remove the session temp directory and all files within it. Run `cleanup-tmpdir.sh` **only after** the Step 5 machine footer when `PLAN_WRITE_OK=true`, and only when `STANDALONE_HEAVY_FAILED` is unset or `false` **and** either `SESSION_ID` is empty (no design log publish was attempted in Step 5c), or `PUBLISH_OK=true` after a Step 5c publish when `SESSION_ID` was non-empty; otherwise skip cleanup so `$DESIGN_TMPDIR` is preserved for inspection, manual `design-log-publish.sh` retry, or redaction diagnostics. When `PLAN_WRITE_OK=false` (plan-block-write failure), **skip** this cleanup (Step 5c item 4). When publish failed after a successful plan write, point operators at `$DESIGN_TMPDIR/design-log-publish.failure.log` (and `$DESIGN_TMPDIR/execution-issues.md` when populated) plus the recovery branch notes from `design-log-publish.sh` stderr/stdout.
+Remove the session temp directory and all files within it. Run `cleanup-tmpdir.sh` **only after** the Step 5 machine footer when `PLAN_WRITE_OK=true`, and only when `STANDALONE_HEAVY_FAILED` is unset or `false` **and** either `SESSION_ID` is empty (no design log publish was attempted in Step 5c), or `PUBLISH_OK=true` after a Step 5c publish when `SESSION_ID` was non-empty; otherwise skip cleanup so `$DESIGN_TMPDIR` is preserved for inspection, manual `design-log-publish.sh` retry, or redaction diagnostics. When `PLAN_WRITE_OK=false` (plan-block-write failure), **skip** this cleanup (Step 5c item 5). When publish failed after a successful plan write, point operators at `$DESIGN_TMPDIR/design-log-publish.failure.log` (and `$DESIGN_TMPDIR/execution-issues.md` when populated) plus the recovery branch notes from `design-log-publish.sh` stderr/stdout.
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
 ${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-tmpdir.sh --dir "$DESIGN_TMPDIR"
 ```
 
+### Plan command validator failure (shared)
+
+When `VALIDATE_STATUS=defects-found` after `ACTION=VALIDATE_PLAN_COMMANDS`, use **AskUserQuestion** with exactly these three option labels (verbatim): **Fix-and-retry**, **Override**, **Cancel**.
+
+- **Fix-and-retry** — The operator edits `plan.txt` or `composed-plan.md` (whichever file the failing validator pass targeted) to resolve the defect. Re-run `ACTION=EMIT_PLAN` first when the edited artifact is `plan.txt` (refreshes `diff-lines.txt`). When the edited artifact is `composed-plan.md`, either re-run `ACTION=EMIT_PLAN` after syncing `plan.txt` so `diff-lines.txt` matches, or update the trailing `diff_lines: <N>` line in `composed-plan.md` to match the integer in `diff-lines.txt` before re-validation. Then re-run `ACTION=VALIDATE_PLAN_COMMANDS ARGS=--plan-file <that same path>`. Loop until `VALIDATE_STATUS=ok` or the operator picks another option.
+- **Override** — The operator accepts proceeding despite defects. Append a `Warnings` entry to `$DESIGN_TMPDIR/execution-issues.md` using `"${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh" --log "$DESIGN_TMPDIR/execution-issues.md" --site "<SITE>" --tool "validate-plan-commands" --exit-code 0 --category Warnings --output-file "$DESIGN_TMPDIR/validate-plan-commands.log" --redact` (substitute `<SITE>` with `design Step 2b`, `design Step 3.5 / Gate B`, `design discussion-round2`, or `design Step 5c` as appropriate). Then continue the surrounding success path; `defects-found` is **not** a driver `STEP_FAILED`.
+- **Cancel** — Abort the surrounding path while preserving `$DESIGN_TMPDIR` for inspection. **Step 2b / Gate B / discussion-round2**: return to Gate A. **Step 5c**: skip `redact-secrets.sh`, `plan-block-write.sh`, publish/rename tail items, and Step 6 cleanup on this branch.
+
 **Plan helper contracts** (per `${CLAUDE_PLUGIN_ROOT}/.claude/rules/script-md-siblings.md`):
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-driver.sh` — ACTION dispatcher. Sibling: `design-driver.md`.
+- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/parse-plan-commands.sh` — fenced bash/sh extractor for plan-command validation. Sibling: `parse-plan-commands.md`.
+- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/parse-plan-commands.awk` — awk implementation loaded by `parse-plan-commands.sh`.
+- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/validate-plan-commands.sh` — Tier 2 + Tier 3 validator (TSV in). Sibling: `validate-plan-commands.md`.
+- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/validate-plan.sh` — `ACTION=VALIDATE_PLAN_COMMANDS` driver (parser → validator; log copy). Sibling: `validate-plan.md`.
+- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/invoke-plan-validator-if-not-quick.sh` — gates `ACTION=VALIDATE_PLAN_COMMANDS` on `review_budget` (quick skips validator dispatch). When `$DESIGN_TMPDIR/run-params.json` is readable, invokes `read-design-review-budget.sh`; when it is missing or unreadable, skips validator dispatch (same as quick tier).
+- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/read-design-review-budget.sh` — resolves `review_budget` (`quick`|`full`) from `run-params.json` with `python3` → `jq` → grep literal fallbacks.
+- `${CLAUDE_PLUGIN_ROOT}/scripts/dry-runnable-scripts.tsv` — Tier 3 opt-in registry (+ `dry-runnable-scripts.md`).
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/emit-plan.sh` — `ACTION=EMIT_PLAN`. Sibling: `emit-plan.md`.
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/check-plan-size.sh` — Step 2b.5 plan-size thresholds. Sibling: `check-plan-size.md`. Offline harness: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-check-plan-size.sh`, `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-check-plan-size.md`.
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/tally-plan-review.sh` — `ACTION=TALLY`. Sibling: `tally-plan-review.md`.

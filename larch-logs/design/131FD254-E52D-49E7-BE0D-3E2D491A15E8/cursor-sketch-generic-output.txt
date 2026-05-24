@@ -1,5 +1,0 @@
-Exploring the design skill and approval-gates docs to map the step flow and locate where to add plan presentation at Step 3 entry and Step 4b Gate C.
-
-Confirming Gate C already specifies reading `plan.txt` and printing under `## Final Design Plan` before the prompt; Step 2b prints `## Implementation Plan` then jumps into Step 3 machinery without a second in-chat anchor. Creating the implementation plan.
-
-

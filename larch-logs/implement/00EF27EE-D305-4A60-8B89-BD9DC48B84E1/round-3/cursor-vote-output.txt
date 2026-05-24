@@ -1,0 +1,25 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: EXONERATE -- design-driver already documents the space-free ARGS contract; thin wrapper is reasonable DRY.
+FINDING_4: EXONERATE -- cmd_uid is already specified in parse-plan-commands.md as a normative column.
+FINDING_5: NO -- expected larch-logs volume is policy noise, not a standalone issue worth filing.
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: EXONERATE -- small budget reader with straightforward fallbacks; dedicated harness is optional/low ROI versus maintenance cost.
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: EXONERATE -- wrapper already asserts primary KVs; extra count greps add little signal for typical fixtures.
+FINDING_12: YES
+FINDING_13: EXONERATE -- space-free path invariant is already called out in design-driver.sh.
+FINDING_14: NO -- broad logging-policy nit, not a concrete defect worth a standalone issue (OOS).
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: NO -- Tier 3 argv positional gap is already documented in validate-plan-commands.md.
+FINDING_18: YES
+FINDING_19: EXONERATE -- adjacent comments already explain EMIT_PLAN/VALIDATE_PLAN_COMMANDS sentinel behavior.
+FINDING_20: NO -- purely hypothetical `&` style with no evidence of real plans adopting it (OOS).
+FINDING_21: YES
+FINDING_22: EXONERATE -- reference text already gates validation on review_budget=full, matching the intended skip contract.
+FINDING_23: NO -- seven-column TSV contract is already documented in parse-plan-commands.md.
+FINDING_24: YES
+FINDING_25: NO -- review-noise only; not worth filing as its own GitHub issue (OOS).
