@@ -19,6 +19,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Migration posture**: legacy `[IN PROGRESS]` and `[PLANNED]` prefixes are stripped by `strip_lifecycle_prefix` for backward compatibility but are no longer accepted as `--state` values by `tracking-issue-write.sh` or as admission-pass prefixes.
 - **Audit scope**: workflow call sites and rename `--state` surfaces in the active runtime tree (`skills/`, `scripts/`, `agents/`, `.claude/`, `docs/`, tests) now use the new prefix set; deliberate legacy bracket literals remain only where migration, admission recovery, strip helpers, or hermetic fixtures require them. This Unreleased section documents the migration and may name the old prefixes. Historical shipped changelog bodies and `larch-logs/` were not bulk-retitled.
 
+## [42.0.22] - 2026-05-24
+
+### Changed
+
+- Flush implement run 4C3541E6-C95E-4489-B974-A1A173232D1B log artifacts for issue #2673.
+- fix(ship-pr): `admin_failed` + "Base branch was modified" now routes to `run_rebase_rebump` instead of stalling at 12d.
+- Raise `run_rebase_rebump` retry cap from 5 to 20.
+- Voter prompt YES↔EXONERATE boundary: replace single-line proportionality note with multi-paragraph framing across `plan-review.md` voter prompts and `dispatch-plan-voters.sh`.
+
+
 ## [42.0.21] - 2026-05-24
 
 ### Changed

@@ -1,0 +1,15 @@
+Gathering the diff and full-file excerpts to compare the YES↔EXONERATE framing across locations.
+
+Searching the precomputed diff for Lesson 4 files; the diff preview looked dominated by unrelated `larch-logs` changes.
+
+Verifying the Voter 1 vs Voter 2/3 framing blocks are identical and checking for subtle character differences:
+
+### In-Scope Findings
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+- **Framing parity (scout check):** The substring from `The YES ↔ EXONERATE boundary requires careful judgment` through the closing parenthetical about `YES ↔ NO` is **line-identical** between the two ```text``` voter blocks in [`skills/design/references/plan-review.md`](skills/design/references/plan-review.md) (Voter 1 vs Codex/Cursor shared block). That same logical text matches what [`scripts/dispatch-plan-voters.sh`](scripts/dispatch-plan-voters.sh) assigns to `plan_voter_yes_exonerate_framing` at the token level (Bash source uses `'\''` escapes only for apostrophes; emitted prompts resolve to the same words as the markdown). The markdown lines keep a uniform two-space indent inside the fence; the dispatcher emits the framing without that indent—expected doc vs runtime formatting, not a wording drift.
+- **Voter 1 vs Voter 2/3 whole prompts:** Voter 1 still opens with the senior reviewer / scrupulous / one-line EXONERATE lead-in before the shared framing; Voter 2/3 and `make_prompt_file()` open with the senior engineer one-liner only. That asymmetry matches the stated plan (“preserve leading instruction prose”) rather than an accidental skew in the shared block itself.
+- **Quick mode:** [`skills/design/references/plan-review-quick.md`](skills/design/references/plan-review-quick.md) adds a condensed paragraph that includes the canonical anchor sentence and aligns with the full criteria (material improvement + proportionality; disproportionate / implied / follow-up / speculative → do not accept; doubt → prefer EXONERATE). It deliberately maps ballot language onto inline accept/reject/OOS—by design for quick mode, not a contradiction of the long-form bullets.
+- **Harness:** [`scripts/test-dispatch-plan-voters.sh`](scripts/test-dispatch-plan-voters.sh) pins the anchor phrase on the rendered Codex/Cursor prompt files only; markdown is not grep-pinned (already noted as deferred mitigation in the plan text).
+- **Branch shape:** `git log $(git merge-base HEAD main)..HEAD --oneline` shows Lesson 4 work (`666e60fe`, `8c167678`) alongside several `chore(larch-logs): flush …` commits; the precomputed [`diff.txt`](file:///Users/zhupanov/.cache/larch/sessions/claude-implement-larch1-deQ1rj/round-1/diff.txt) is dominated by `larch-logs/` noise unrelated to voter prose—worth confirming merge policy for those paths separately from this prose review.
