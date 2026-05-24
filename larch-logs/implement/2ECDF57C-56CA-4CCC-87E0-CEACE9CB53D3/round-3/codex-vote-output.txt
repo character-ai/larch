@@ -1,0 +1,9 @@
+FINDING_1: EXONERATE -- Scope concern is real, but round-2 review-fix/log-policy churn does not warrant further plan rewrite or split here.
+FINDING_2: YES
+FINDING_3: EXONERATE -- Legitimate readability nit in archived log text, but not worth another log-redaction change by itself.
+FINDING_4: EXONERATE -- Tmp-only probe evidence is imperfect, but Branch B is conservative and the plan only promised ephemeral transcripts.
+FINDING_5: EXONERATE -- Empty manifest fields are ambiguous but no concrete consumer breakage is shown.
+FINDING_6: EXONERATE -- Non-secret clone-path hardening is legitimate but not worth a standalone tracking issue.
+FINDING_7: EXONERATE -- The rule text and canonical pointers remain; restoring incident prose would undo the size-reduction goal without clear current breakage.
+FINDING_8: YES
+FINDING_9: EXONERATE -- Log diff noise is real but expected under the repository’s committed run-log policy.

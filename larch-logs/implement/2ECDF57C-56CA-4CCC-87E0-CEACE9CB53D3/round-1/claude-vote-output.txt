@@ -1,0 +1,12 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: EXONERATE -- the current trim already achieves the ≤11000 char budget; further shortening is optimization beyond the plan requirement
+FINDING_4: EXONERATE -- the reference is accurate; fixing it would require expanding AGENTS.md, counterproductive to the trim goal
+FINDING_5: EXONERATE -- stripping inline rationale to pointer-only was the explicit Branch B design; the detail is available via cited SKILL.md NEVER bullets
+FINDING_6: EXONERATE -- same reasoning as FINDING_5; pointer-based trimming was the stated plan; adding outcome clauses back expands AGENTS.md
+FINDING_7: YES
+FINDING_8: EXONERATE -- uneven gloss is an intended consequence of dropping descriptions for self-descriptive filenames per Branch B plan
+FINDING_9: EXONERATE -- the cited NEVER #14 is the canonical triage anchor; retaining symptom strings inline would widen AGENTS.md
+FINDING_10: YES
+FINDING_11: EXONERATE -- the finding characterizes this as intentional run-log policy with no AGENTS semantic change; not issue-worthy
+FINDING_12: NO -- meta-observation about review process limitations rather than a trackable implementation gap

@@ -1,0 +1,9 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: EXONERATE -- plan already treats Phase 1 as ephemeral and accepts point-in-time validation; baking transcripts into the repo would overshoot this refactor.
+FINDING_5: EXONERATE -- empty `steps_ran`/`flags` objects are plausible schema defaults and do not justify a standalone tracking issue.
+FINDING_6: EXONERATE -- residual non-secret workspace paths in vote prose are low risk next to URL redaction; wholesale prose scrubbing would be disproportionate.
+FINDING_7: EXONERATE -- character-budget refactor deliberately moves incident narrative to linked authorities while keeping explicit pointers in AGENTS.md.
+FINDING_8: EXONERATE -- surrounding guidance already constrains log-only PRs and explicit PR disclosure without needing a formal “bulk” definition.
+FINDING_9: EXONERATE -- large committed `larch-logs/**` diffs are an accepted review-noise tradeoff already mitigated by policy, not a new defect to track.

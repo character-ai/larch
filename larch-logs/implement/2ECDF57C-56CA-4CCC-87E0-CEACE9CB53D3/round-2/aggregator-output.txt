@@ -1,0 +1,81 @@
+Here is the normalized merge. Eight distinct concern clusters remain after merging duplicate or same-risk items; `[OUT_OF_SCOPE]` is kept on merged headings where any source used that tag (FINDING_3 and FINDING_6).
+
+### FINDING_1: AGENTS.md Monitor/ScheduleWakeup guidance missing explicit /implement NEVER #9 orchestrator scope
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-correctness-output.txt
+- **Concern**: The Tier-1 bullet on Monitor/ScheduleWakeup does not state inline that `/implement` forbids orchestrator `ScheduleWakeup` broadly under NEVER #9; only polling-context wording plus a cite remains, so contributors skimming `AGENTS.md` may believe `ScheduleWakeup` is disallowed only as a watcher around `run_in_background` and use it elsewhere on `/implement`, contrary to NEVER #9.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt, cursor-specialist-correctness-output.txt: Address the concern above.
+
+### FINDING_2: Canonical sources entries lost short inline descriptions
+- **Reviewer(s)**: cursor-specialist-correctness-output.txt, cursor-specialist-testing-output.txt
+- **Concern**: Some canonical-source paths no longer carry brief trailing gloss (including installation and voting docs); scanning `AGENTS.md` alone yields weaker routing context and new contributors may miss useful entry points when filenames are not self-explanatory.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-correctness-output.txt, cursor-specialist-testing-output.txt: Address the concern above.
+
+### FINDING_3: [OUT_OF_SCOPE] Large `larch-logs` churn alongside AGENTS refactor obscures intent and plan traceability
+- **Reviewer(s)**: cursor-specialist-correctness-output.txt, cursor-specialist-plan-fidelity-output.txt
+- **Concern**: Large committed diffs under `larch-logs/design/**` and `larch-logs/implement/**` (e.g. URI normalization) dominate the branch versus an “AGENTS-only” narrative, adding reviewer noise and weakening plan-to-diff traceability when those edits sit outside the AGENTS refactor plan file list; reviewers cannot cleanly separate required from incidental changes and incidental log churn can hide regressions.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-correctness-output.txt, cursor-specialist-plan-fidelity-output.txt: Address the concern above.
+
+### FINDING_4: Tier-1 `AGENTS.md` omits incident/mechanism “why” for NEVER, pollers, ScheduleWakeup, and session-env recovery
+- **Reviewer(s)**: cursor-specialist-testing-output.txt, cursor-specialist-edge-cases-output.txt
+- **Concern**: NEVER/poller bullets were shortened to pointers and inline incident narratives were removed; rationale for ScheduleWakeup vs polling vs wakeup and session-env recovery now lives mainly in non-root-imported docs (`orchestrator-never.md`, implement SKILL). Models or humans relying on the `CLAUDE.md` `@` bundle may under-internalize why the rules exist even if prescriptive text remains, increasing mistaken orchestration and support load.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-testing-output.txt, cursor-specialist-edge-cases-output.txt: Address the concern above.
+
+### FINDING_5: Phase 1 empirical include-probe artifacts not verifiable from committed repo state
+- **Reviewer(s)**: cursor-specialist-testing-output.txt, cursor-specialist-plan-fidelity-output.txt
+- **Concern**: Phase 1 empirical transcripts and `BRANCH=` context are described as living only under ephemeral `$IMPLEMENT_TMPDIR` (e.g. `include-test/results.md`), while acceptance text expects evidence auditors can check; without a committed redacted summary under the implement run id (or equivalent), post-merge reviewers cannot verify the include probe or branch decision from git alone.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-testing-output.txt: Address the concern above.
+  - From cursor-specialist-plan-fidelity-output.txt: Add committed redacted probe transcript file or equivalent under the implement run id
+  - From cursor-specialist-plan-fidelity-output.txt: Add a committed redacted results file or attach equivalent evidence to the tracking issue
+
+Note: F11 and F16 are the same reviewer slot with two non-identical suggested-revision strings; both bullets are kept verbatim per instructions.
+
+### FINDING_6: [OUT_OF_SCOPE] Plan ambiguity: Gemini (and fourth runtime) vs three-agent Phase 1 matrix
+- **Reviewer(s)**: cursor-specialist-testing-output.txt, cursor-specialist-plan-fidelity-output.txt
+- **Concern**: Gemini is named as a consumer in the issue/plan context but omitted from the three-agent Phase 1 matrix; four runtimes are named while only three are probed, creating pre-existing ambiguity about whether Gemini must participate in the gate and whether Branch A extraction has empirical Gemini coverage.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-testing-output.txt: Extend Phase 1 or document explicit Gemini acceptance if extraction is retried
+  - From cursor-specialist-plan-fidelity-output.txt: None required for this branch; fix upstream plan if four-way parity matters
+  - From cursor-specialist-plan-fidelity-output.txt: Clarify in a future plan revision if Gemini must participate in the gate
+
+### FINDING_7: Phase 3 CI / local verification not evidenced by the patch alone
+- **Reviewer(s)**: cursor-specialist-plan-fidelity-output.txt
+- **Concern**: Phase 3 lint and structure-test expectations from the plan are not provable from the diff alone; a green-looking patch could still violate acceptance if `relevant-checks` / named structure targets were skipped locally or in CI.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-plan-fidelity-output.txt: Ensure CI runs relevant-checks and structure targets; attach logs in PR if needed
+  - From cursor-specialist-plan-fidelity-output.txt: Ensure CI exercises relevant-checks and named structure targets
+
+Wait — I need to verify F12 and F17 suggested revision fields from the user message.
+
+User FINDING_12:
+`- **Suggested revision**: Address the concern above.`
+
+User FINDING_17:
+`- **Suggested revision**: Address the concern above.`
+
+The actionable text was in **Concern** for F12/F17 ("Ensure CI runs..."), not in Suggested revision. Per instructions: quote **Suggested revision** verbatim; when no fix direction, omit slot bullet. "Address the concern above" is the verbatim suggested revision for both — literally identical, so one merged bullet.
+
+Corrected FINDING_7:
+
+### FINDING_7: Phase 3 CI / local verification not evidenced by the patch alone
+- **Reviewer(s)**: cursor-specialist-plan-fidelity-output.txt
+- **Concern**: Phase 3 lint and structure-test passes required by the plan are not provable from the patch alone; merging without green checks could violate acceptance blindly.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-plan-fidelity-output.txt: Address the concern above.
+
+### FINDING_8: First NEVER bullet still looser than the plan’s minimal one-line-pointer template
+- **Reviewer(s)**: cursor-specialist-plan-fidelity-output.txt
+- **Concern**: The first trimmed NEVER bullet remains slightly more verbose than the plan’s prescribed one-line-pointer silhouette / minimal trim shape (minor Phase 2B template mismatch).
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-plan-fidelity-output.txt: Address the concern above.
+
+---
+
+**Merge map (for traceability only):**  
+FINDING_1 ← 1, 2 · FINDING_2 ← 3, 5 · FINDING_3 ← 4, 10, 15 · FINDING_4 ← 6, 9 · FINDING_5 ← 7, 11, 16 · FINDING_6 ← 8, 14, 19 · FINDING_7 ← 12, 17 · FINDING_8 ← 13, 18  
+
+Because this output contains `### FINDING_N:` blocks, **`LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED` must not appear** anywhere in the file.

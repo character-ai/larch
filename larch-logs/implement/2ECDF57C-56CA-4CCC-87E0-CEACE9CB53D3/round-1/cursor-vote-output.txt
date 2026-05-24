@@ -1,0 +1,12 @@
+FINDING_1: YES
+FINDING_2: EXONERATE -- plan-context explicitly treats Phase 1 fixtures as ephemeral point-in-time validation, so post-merge git-only audit gap is an accepted tradeoff.
+FINDING_3: EXONERATE -- further shortening is optional polish once the ≤11000 target is met.
+FINDING_4: YES
+FINDING_5: EXONERATE -- restoring full inline nuance conflicts with the Branch-B character budget; NEVER/BASH pointers still carry the detailed failure modes.
+FINDING_6: EXONERATE -- moving incident color behind SKILL/BASH pointers is the intended Branch-B cost tradeoff.
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: EXONERATE -- key writer scripts remain named and NEVER #14 still anchors deeper triage detail.
+FINDING_10: NO -- supplied diff/plan context do not establish `persist-post-plan-keys.sh` as retired or document NEVER #14’s alternate writer name.
+FINDING_11: EXONERATE -- review-noise-only co-location of committed design logs is already characterized as intentional policy.
+FINDING_12: EXONERATE -- true limitation of patch-only review, but not worth a standalone tracking issue.
