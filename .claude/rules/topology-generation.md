@@ -13,6 +13,7 @@ paths:
   - "skills/research/references/research-phase.md"
   - "skills/research/references/validation-phase.md"
   - "skills/review/scripts/dispatch-panel.sh"
+  - "skills/design/scripts/emit-design-plan-preview.sh"
 ---
 
 # Topology Generation

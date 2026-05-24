@@ -11,12 +11,14 @@ usage() {
 }
 
 design_tmpdir=""
+design_tmpdir_set=0
 variant=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --design-tmpdir)
-            design_tmpdir="${2:?--design-tmpdir requires a value}"
+            design_tmpdir="${2-}"
+            design_tmpdir_set=1
             shift 2
             ;;
         --variant)
@@ -35,7 +37,7 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-if [[ -z "$design_tmpdir" || -z "$variant" ]]; then
+if [[ "$design_tmpdir_set" -eq 0 || -z "$variant" ]]; then
     printf '%s\n' 'emit-design-plan-preview.sh: --design-tmpdir and --variant are required' >&2
     usage
     exit 2
@@ -49,7 +51,7 @@ normalize_summary_threshold() {
         0[0-9]*) _t=120 ;;
         *) _t="$_raw" ;;
     esac
-    printf '%s' "$((10#_t))"
+    printf '%s' "$((10#${_t}))"
 }
 
 emit_plan_body() {
@@ -63,7 +65,7 @@ emit_plan_body() {
     if ((_plan_lines > _summary_threshold)); then
         head -n 1 "$plan_file"
         printf '\n**Section outline:**\n\n'
-        _outline=$(grep -E '^#{2,3} ' "$plan_file" | head -n 40)
+        _outline=$(grep -E '^#{2,3} ' "$plan_file" | head -n 40 || true)
         if [[ -n "$_outline" ]]; then
             printf '%s\n' "$_outline"
         else
