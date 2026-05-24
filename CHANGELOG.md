@@ -28,7 +28,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Raise `run_rebase_rebump` retry cap from 5 to 20.
 - Voter prompt YES↔EXONERATE boundary: replace single-line proportionality note with multi-paragraph framing across `plan-review.md` voter prompts and `dispatch-plan-voters.sh`.
 
-
 ## [42.0.21] - 2026-05-24
 
 ### Changed
