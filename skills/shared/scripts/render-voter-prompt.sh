@@ -44,6 +44,7 @@ esac
 
 printf 'You are a %s.\n' "$PANEL_ROLE"
 printf '%s\n' 'Vote EXONERATE rather than YES when the concern is legitimate but the proposed change introduces more complexity than it warrants.'
+printf '%s\n' 'When in doubt between YES and EXONERATE, prefer EXONERATE.'
 printf '%s\n' 'Do NOT vote NO solely because you dislike or distrust the proposed fix — fix proposals are informational; the coder decides the exact change. Vote NO only when the stated problem is not real or not worth raising.'
 
 case "$ID_GRAMMAR" in
