@@ -16,7 +16,9 @@ usage() {
 
 step_prefix="${1:-}"
 short_name="${2:-}"
-[ -n "$step_prefix" ] && [ -n "$short_name" ] || usage
+if [ -z "$step_prefix" ] || [ -z "$short_name" ]; then
+    usage
+fi
 shift 2
 
 base_remote=""

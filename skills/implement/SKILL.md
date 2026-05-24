@@ -416,7 +416,7 @@ At selected `/implement` boundaries, detect non-ignored untracked files that app
 
 **Thin implementation** — shared logic lives in `${CLAUDE_PLUGIN_ROOT}/scripts/lib-phantom-probe.sh` (`phantom_probe_with_warn`; see `scripts/lib-phantom-probe.md`). Runtime entrypoints:
 
-- **Combined (4 sites)** — post-rebase probe is bundled into `${CLAUDE_PLUGIN_ROOT}/scripts/rebase-checkpoint-probe.sh` for Steps **1.r**, **4.r**, **7.r**, and **7a.r** (uniform `<step-prefix>-post-rebase` tokens such as `1.r-post-rebase`; see `scripts/rebase-checkpoint-probe.md`). **Do not** duplicate `check-phantom-dirty.sh` / `append-execution-issue.sh` call blocks after those checkpoints — that would double-invoke the probe.
+- **Combined (4 sites)** — post-rebase probe is bundled into `${CLAUDE_PLUGIN_ROOT}/scripts/rebase-checkpoint-probe.sh` for Steps **1.r**, **4.r**, **7.r**, and **7a.r** (uniform `<step-prefix>-post-rebase` tokens such as `1.r-post-rebase`; see `scripts/rebase-checkpoint-probe.md`). **Do not** duplicate `${CLAUDE_PLUGIN_ROOT}/scripts/check-phantom-dirty.sh` / `${CLAUDE_PLUGIN_ROOT}/scripts/append-execution-issue.sh` call blocks after those checkpoints — that would double-invoke the probe.
 - **Standalone (2 sites)** — `phantom-probe-with-warn.sh --step <token>` (path: `${CLAUDE_PLUGIN_ROOT}/scripts/phantom-probe-with-warn.sh`) for **Step 2 post-dispatch** (`2-post-dispatch`) and **Step 8 pre-bump** (`8-pre-bump`) only (`scripts/phantom-probe-with-warn.md`).
 
 **6 sites total** per run: four combined post-rebase probes (including the uniform `1.r-post-rebase` site) plus the two standalone invocations above.
