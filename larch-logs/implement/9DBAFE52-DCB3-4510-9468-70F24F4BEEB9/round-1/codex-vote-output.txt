@@ -1,0 +1,22 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: NO -- non-OK collector records are intentionally excluded; readable rejected prose is not a reliable ballot source.
+FINDING_7: NO -- the confusing `fi`/`oi` assignments are cosmetic and not worth raising as a review defect.
+FINDING_8: NO -- branch composition is release hygiene rather than a concrete defect in the changed runtime behavior.
+FINDING_9: YES
+FINDING_10: NO -- the driver generates the exact `. Scenario:` shape before dedup, so this fallback risk is not concrete.
+FINDING_11: EXONERATE -- the scope change is real, but the revised plan already documents it and no runtime fix is warranted.
+FINDING_12: EXONERATE -- the harness gap is already covered by FINDING_1, and the test doc itself is plainly smoke-only.
+FINDING_13: YES
+FINDING_14: NO -- plan mode intentionally relaxes merged-output severity validation per the approved revised plan.
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: YES
+FINDING_18: YES
+FINDING_19: YES
+FINDING_20: EXONERATE -- the missing compatibility rationale is real but too small to carry as a separate issue.
+OOS_1: NO -- committed run logs are explicit repo policy, so this is not a concrete follow-up defect.
+OOS_2: NO -- the #2715 harness work is already separate scope, so no new out-of-scope issue is needed.

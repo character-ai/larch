@@ -1183,4 +1183,20 @@ grep -Fq 'AGGREGATED=false' "$TMP/out-nosev.env" || fail "missing-severity AGGRE
 grep -Fq 'REASON=validation-failed' "$TMP/out-nosev.env" || fail "missing-severity REASON"
 grep -Fq 'missing - **Severity**' "$TMP/aggregator-validate.stderr" || fail "expected severity diagnostic on stderr"
 
+echo "=== input-mode plan accepts merge output without Severity lines ==="
+cp "$TMP/in3.md" "$TMP/in3-plan-mode.md"
+write_stub_dispatch
+AGGREGATE_DISPATCH_SH="$TMP/stub-dispatch.sh" \
+AGGREGATE_STUB_MODE=ok \
+AGGREGATE_STUB_MERGE_KIND=merge_missing_severity \
+"$AGG" \
+    --findings-file "$TMP/in3-plan-mode.md" \
+    --review-tmpdir "$TMP" \
+    --codex-present true \
+    --cursor-present true \
+    --mode diff \
+    --input-mode plan >"$TMP/out-plan-mode.env"
+grep -Fq 'AGGREGATED=true' "$TMP/out-plan-mode.env" || fail "plan mode missing-severity merge should aggregate"
+grep -Fq 'REASON=ok' "$TMP/out-plan-mode.env" || fail "plan mode REASON ok"
+
 echo "All aggregate-findings harness assertions passed."

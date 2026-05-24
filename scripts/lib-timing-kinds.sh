@@ -34,6 +34,7 @@ TIMING_TASK_KINDS_ALLOWED=(
     cursor-plan-requirements
     codex-plan-voter
     cursor-plan-voter
+    claude-plan-voter
     codex-review-voter
     cursor-review-voter
     cursor-specialist-structure

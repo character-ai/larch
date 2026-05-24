@@ -1,0 +1,5 @@
+Reading the ballot and referenced context files to verify findings and produce votes.
+
+Checking related files for ballot items — `findings.md` appears empty of FINDING entries.
+
+The ballot at `findings.md` has no `FINDING_N:` headings (only the merge preamble and blank lines; aggregator JSON shows the merged body is empty). Per your rules, only lines starting with `FINDING_N:` count—there are zero such items to vote on, so there are zero vote lines to emit.

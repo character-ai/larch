@@ -8,6 +8,8 @@ PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd -P)}"
 # shellcheck source=scripts/lib-quiet.sh
 source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
+# shellcheck source=scripts/lib-voter-parse-rate.sh
+source "$SCRIPT_DIR/lib-voter-parse-rate.sh"
 
 usage() {
     larch_err "Usage: dispatch-plan-voters.sh --ballot-file FILE --design-tmpdir DIR --codex-available true|false --cursor-available true|false [--session-env-path FILE]"
@@ -37,7 +39,14 @@ done
 [[ "$CURSOR_AVAILABLE" == "true" || "$CURSOR_AVAILABLE" == "false" ]] || { larch_err "dispatch-plan-voters.sh: --cursor-available must be true or false"; exit 2; }
 mkdir -p "$DESIGN_TMPDIR"
 
-PLAN_VOTER_PARSE_RATE_RETRY_PREFIX='IMPORTANT: Your previous attempt produced narrative output instead of structured votes. Each line MUST start with the same ballot ID from the ballot (FINDING_N: or OOS_N:) followed by exactly one of YES, NO, or EXONERATE. Do not output any prose, reasoning, or status updates before, between, or after the vote lines. If you need to verify claims, do so silently. Output ONLY vote lines.'
+LARCH_VPR_BALLOT_FILE="$BALLOT_FILE"
+LARCH_VPR_ID_GRAMMAR=finding-oos
+LARCH_VPR_REVIEW_TMPDIR="$DESIGN_TMPDIR"
+LARCH_VPR_RETRY_PREFIX_KIND=plan
+LARCH_VPR_LAUNCH_MODE=description
+LARCH_VPR_PLUGIN_ROOT="$PLUGIN_ROOT"
+LARCH_VPR_DISPATCH_LABEL="dispatch-plan-voters.sh"
+LARCH_VPR_CTX=()
 
 make_prompt_file() {
     local tool="$1"
@@ -50,32 +59,74 @@ make_prompt_file() {
     printf '%s' "$prompt_file"
 }
 
-make_plan_voter_retry_prompt_file() {
-    local tool="$1"
-    local src_prompt_file="$2"
-    local retry_prompt_file="$DESIGN_TMPDIR/${tool}-plan-voter-prompt-retry.txt"
-    {
-        printf '%s\n\n' "$PLAN_VOTER_PARSE_RATE_RETRY_PREFIX"
-        cat "$src_prompt_file"
-    } > "$retry_prompt_file"
-    printf '%s' "$retry_prompt_file"
-}
-
-check_plan_voter_substantive() {
-    local voter_path="$1"
-    [[ -s "$voter_path" ]] || { printf 'OK\n'; return 0; }
-    local vote_count
-    vote_count=$(grep -cE '^(FINDING|OOS)_[0-9]+:[[:space:]]*(YES|NO|EXONERATE)([[:space:]-]|$)' "$voter_path" 2>/dev/null || true)
-    if [[ "${vote_count:-0}" -gt 0 ]]; then
-        printf 'OK\n'
-    else
-        printf 'NOT_SUBSTANTIVE\n'
-    fi
-}
-
-manifest="$DESIGN_TMPDIR/plan-voter-slots.ndjson"
+claude_prompt=$(make_prompt_file claude)
 codex_prompt=$(make_prompt_file codex)
 cursor_prompt=$(make_prompt_file cursor)
+
+VOTER_1_PATH="$DESIGN_TMPDIR/claude-vote-output.txt"
+set +e
+"$SCRIPT_DIR/launch-claude-review.sh" \
+    --output "$VOTER_1_PATH" \
+    --prompt-file "$claude_prompt" \
+    --mode description \
+    --role voter \
+    --timeout 1200 \
+    --timing-task-kind claude-plan-voter \
+    >/dev/null 2> "${VOTER_1_PATH}.launcher-stderr"
+voter1_rc=$?
+set -e
+[[ -f "$VOTER_1_PATH.done" ]] || printf '%s\n' "$voter1_rc" > "$VOTER_1_PATH.done"
+
+if [[ "$voter1_rc" -ne 0 || ! -s "$VOTER_1_PATH" ]]; then
+    _voter1_diag="$DESIGN_TMPDIR/voter1-diag.txt"
+    {
+        printf 'voter1_rc=%s\n' "$voter1_rc"
+        printf 'output_bytes=%s\n' "$(wc -c < "$VOTER_1_PATH" 2>/dev/null || echo 0)"
+        if [[ "$voter1_rc" -ne 0 && -s "$VOTER_1_PATH" ]]; then
+            printf -- '--- first 200 bytes of voter output ---\n'
+            head -c 200 "$VOTER_1_PATH" || true
+            printf '\n'
+        fi
+        if [[ -s "${VOTER_1_PATH}.diag" ]]; then
+            printf -- '--- first 200 bytes of .diag ---\n'
+            head -c 200 "${VOTER_1_PATH}.diag"
+            printf '\n'
+        fi
+        if [[ -s "${VOTER_1_PATH}.launcher-stderr" ]]; then
+            printf -- '--- launcher stderr (first 500 bytes) ---\n'
+            head -c 500 "${VOTER_1_PATH}.launcher-stderr"
+            printf '\n'
+        fi
+    } > "$_voter1_diag" || true
+    _issues_log="${LARCH_EXECUTION_ISSUES_LOG:-}"
+    if [[ -z "$_issues_log" && -n "${SESSION_ENV_PATH:-}" ]]; then
+        _issues_log="$(dirname "$SESSION_ENV_PATH")/execution-issues.md"
+    fi
+    if [[ -z "$_issues_log" && -n "${IMPLEMENT_TMPDIR:-}" ]]; then
+        _issues_log="$IMPLEMENT_TMPDIR/execution-issues.md"
+    fi
+    [[ -z "$_issues_log" ]] && _issues_log="$DESIGN_TMPDIR/execution-issues.md"
+    if [[ -x "$PLUGIN_ROOT/scripts/append-tool-failure.sh" ]]; then
+        _status_label="failed"
+        [[ "$voter1_rc" -eq 0 ]] && _status_label="warning"
+        "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
+            --log "$_issues_log" \
+            --site "dispatch-plan-voters.sh voter1" \
+            --tool "launch-claude-review.sh (claude plan voter)" \
+            --exit-code "$voter1_rc" \
+            --status-label "$_status_label" \
+            --category Warnings \
+            --output-file "$_voter1_diag" \
+            --redact >/dev/null 2>&1 || true
+    fi
+    unset _voter1_diag _issues_log _status_label
+fi
+
+VOTER_1_TOOL="claude"
+VOTER_1_STATUS="launched"
+[[ "$voter1_rc" -eq 0 && -s "$VOTER_1_PATH" ]] || VOTER_1_STATUS="failed"
+
+manifest="$DESIGN_TMPDIR/plan-voter-slots.ndjson"
 VOTER_2_PATH="$DESIGN_TMPDIR/codex-vote-output.txt"
 VOTER_3_PATH="$DESIGN_TMPDIR/cursor-vote-output.txt"
 {
@@ -118,110 +169,46 @@ VOTER_3_STATUS="launched"
 [[ -s "$VOTER_2_PATH" ]] || VOTER_2_STATUS="failed"
 [[ -s "$VOTER_3_PATH" ]] || VOTER_3_STATUS="failed"
 
-# Parse-rate retry: if a voter produced output but no valid vote lines, retry once
-# with the preamble-prepended prompt via a single-slot waterfall re-dispatch.
-retry_voter() {
-    local slot_num="$1" voter_path_var="$2" voter_tool="$3" orig_prompt="$4"
-    local voter_path="${!voter_path_var}"
-    [[ -s "$voter_path" ]] || return 0
-    local rate_status
-    rate_status=$(check_plan_voter_substantive "$voter_path")
-    [[ "$rate_status" == "NOT_SUBSTANTIVE" ]] || return 0
+VOTER_1_PARSE_RATE_STATUS="SKIPPED"
+VOTER_2_PARSE_RATE_STATUS="SKIPPED"
+VOTER_3_PARSE_RATE_STATUS="SKIPPED"
+[[ "$VOTER_1_STATUS" != "failed" ]] && VOTER_1_PARSE_RATE_STATUS=$(check_and_retry_voter_parse_rate 1 "$VOTER_1_PATH" "$VOTER_1_TOOL" "$claude_prompt")
+[[ "$VOTER_2_STATUS" != "failed" ]] && VOTER_2_PARSE_RATE_STATUS=$(check_and_retry_voter_parse_rate 2 "$VOTER_2_PATH" "$VOTER_2_TOOL" "$codex_prompt")
+[[ "$VOTER_3_STATUS" != "failed" ]] && VOTER_3_PARSE_RATE_STATUS=$(check_and_retry_voter_parse_rate 3 "$VOTER_3_PATH" "$VOTER_3_TOOL" "$cursor_prompt")
 
-    local first_pass_sidecar retry_output retry_prompt retry_manifest
-    case "$voter_path" in
-        *.txt) first_pass_sidecar="${voter_path%.txt}-first-pass.txt"
-               retry_output="${voter_path%.txt}-parse-retry.txt" ;;
-        *)     first_pass_sidecar="${voter_path}-first-pass"
-               retry_output="${voter_path}-parse-retry" ;;
-    esac
-    retry_prompt=$(make_plan_voter_retry_prompt_file "$voter_tool" "$orig_prompt")
-    if [[ "$voter_tool" == "claude" ]]; then
-        if ! "$PLUGIN_ROOT/scripts/launch-claude-review.sh" \
-            --output "$retry_output" \
-            --prompt-file "$retry_prompt" \
-            --mode description \
-            --role voter \
-            --timeout 1200 >/dev/null 2>&1; then
-            emit_kv WARN "plan-voter retry failed for slot $slot_num via claude"
-            return 0
-        fi
-    else
-        local retry_waterfall_output retry_all_outputs retry_dispatch_ok
-        local retry_key retry_value retry_actual_output
-        retry_manifest="$DESIGN_TMPDIR/plan-voter-retry-slot${slot_num}.ndjson"
-        printf '{"slot":"voter-%s-retry","tool":"%s","output":"%s","prompt_file":"%s"}\n' \
-            "$slot_num" "$voter_tool" "$retry_output" "$retry_prompt" > "$retry_manifest"
-        if ! retry_waterfall_output=$("$PLUGIN_ROOT/scripts/dispatch-with-waterfall.sh" \
-            --slots-file "$retry_manifest" \
-            --codex-present "$CODEX_AVAILABLE" \
-            --cursor-present "$CURSOR_AVAILABLE" \
-            --mode description \
-            --timeout 1200 2>/dev/null); then
-            emit_kv WARN "plan-voter retry failed for slot $slot_num via $voter_tool"
-            return 0
-        fi
-        retry_all_outputs=""
-        retry_dispatch_ok="true"
-        while IFS= read -r line || [[ -n "$line" ]]; do
-            retry_key="${line%%=*}"
-            retry_value="${line#*=}"
-            case "$retry_key" in
-                ALL_OUTPUT_FILES) retry_all_outputs="$retry_value" ;;
-                DISPATCH_OK) retry_dispatch_ok="$retry_value" ;;
-                WARN) emit_kv WARN "$retry_value" ;;
-            esac
-        done <<< "$retry_waterfall_output"
-        read -r -a retry_outputs_arr <<< "$retry_all_outputs"
-        retry_actual_output="${retry_outputs_arr[0]:-$retry_output}"
-        retry_output="$retry_actual_output"
-        if [[ "$retry_dispatch_ok" != "true" && ! -s "$retry_output" ]]; then
-            emit_kv WARN "plan-voter retry produced no usable waterfall output for slot $slot_num"
-            return 0
-        fi
-    fi
-    if [[ ! -s "$retry_output" ]]; then
-        emit_kv WARN "plan-voter retry produced no output for slot $slot_num"
-        return 0
-    fi
-    if [[ -s "$retry_output" ]]; then
-        local retry_rate_status
-        retry_rate_status=$(check_plan_voter_substantive "$retry_output")
-        if [[ "$retry_rate_status" == "OK" ]]; then
-            cp "$voter_path" "$first_pass_sidecar" 2>/dev/null || true
-            mv "$retry_output" "$voter_path"
-        fi
-    fi
-}
-retry_voter 2 VOTER_2_PATH "$VOTER_2_TOOL" "$codex_prompt"
-retry_voter 3 VOTER_3_PATH "$VOTER_3_TOOL" "$cursor_prompt"
-
-if [[ "$VOTER_2_STATUS" != "failed" ]]; then
-    voter_2_rate_status=$(check_plan_voter_substantive "$VOTER_2_PATH")
-    if [[ "$voter_2_rate_status" == "NOT_SUBSTANTIVE" ]]; then
-        emit_kv WARN "plan-voter slot 2 remained narrative-only after retry; excluding from external judge count"
-        VOTER_2_STATUS="failed"
-    fi
+if [[ "$VOTER_2_STATUS" != "failed" && "$VOTER_2_PARSE_RATE_STATUS" == "NOT_SUBSTANTIVE" ]]; then
+    emit_kv WARN "plan-voter slot 2 remained narrative-only after retry; excluding from external judge count"
+    VOTER_2_STATUS="failed"
 fi
-if [[ "$VOTER_3_STATUS" != "failed" ]]; then
-    voter_3_rate_status=$(check_plan_voter_substantive "$VOTER_3_PATH")
-    if [[ "$voter_3_rate_status" == "NOT_SUBSTANTIVE" ]]; then
-        emit_kv WARN "plan-voter slot 3 remained narrative-only after retry; excluding from external judge count"
-        VOTER_3_STATUS="failed"
-    fi
+if [[ "$VOTER_3_STATUS" != "failed" && "$VOTER_3_PARSE_RATE_STATUS" == "NOT_SUBSTANTIVE" ]]; then
+    emit_kv WARN "plan-voter slot 3 remained narrative-only after retry; excluding from external judge count"
+    VOTER_3_STATUS="failed"
+fi
+if [[ "$VOTER_1_STATUS" != "failed" && "$VOTER_1_PARSE_RATE_STATUS" == "NOT_SUBSTANTIVE" ]]; then
+    emit_kv WARN "plan-voter slot 1 remained narrative-only after retry; excluding from judge count"
+    VOTER_1_STATUS="failed"
 fi
 
-external_judges=0
-[[ "$VOTER_2_STATUS" != "failed" && -s "$VOTER_2_PATH" ]] && external_judges=$((external_judges + 1))
-[[ "$VOTER_3_STATUS" != "failed" && -s "$VOTER_3_PATH" ]] && external_judges=$((external_judges + 1))
-if (( external_judges < 2 )); then
-    _warn_msg="**⚠ Plan-review external voter degradation: ${external_judges}/2 voter slots produced substantive vote output. Voter 1 (Claude) must compensate.**"
+expected_judges=3
+effective_judges=0
+for slot_record in \
+    "$VOTER_1_STATUS"$'\t'"$VOTER_1_PATH"$'\t'"$VOTER_1_PARSE_RATE_STATUS" \
+    "$VOTER_2_STATUS"$'\t'"$VOTER_2_PATH"$'\t'"$VOTER_2_PARSE_RATE_STATUS" \
+    "$VOTER_3_STATUS"$'\t'"$VOTER_3_PATH"$'\t'"$VOTER_3_PARSE_RATE_STATUS"; do
+    IFS=$'\t' read -r status path parse_rate_status <<< "$slot_record"
+    [[ "$status" != "failed" && "$parse_rate_status" != "NOT_SUBSTANTIVE" && -s "$path" ]] && effective_judges=$((effective_judges + 1))
+done
+if (( effective_judges < expected_judges )); then
+    _warn_msg="**⚠ Degraded plan-review panel: ${effective_judges}/${expected_judges} effective judges produced substantive vote output.**"
     larch_err "$_warn_msg"
     emit_kv DEGRADED_PANEL_WARNING "$_warn_msg"
 fi
 
 plan_voter_paths_file="$DESIGN_TMPDIR/plan-voter-paths.txt"
 pv_tmp=$(mktemp "${DESIGN_TMPDIR}/.plan-voter-paths.XXXXXX")
+if [[ "$VOTER_1_STATUS" != "failed" && -n "$VOTER_1_PATH" ]]; then
+    printf '%s\n' "$VOTER_1_PATH" >> "$pv_tmp"
+fi
 if [[ "$VOTER_2_STATUS" != "failed" && -n "$VOTER_2_PATH" ]]; then
     printf '%s\n' "$VOTER_2_PATH" >> "$pv_tmp"
 fi
@@ -230,6 +217,10 @@ if [[ "$VOTER_3_STATUS" != "failed" && -n "$VOTER_3_PATH" ]]; then
 fi
 mv -f "$pv_tmp" "$plan_voter_paths_file"
 
+emit_kv VOTER_1_PATH "$VOTER_1_PATH"
+emit_kv VOTER_1_TOOL "$VOTER_1_TOOL"
+emit_kv VOTER_1_STATUS "$VOTER_1_STATUS"
+emit_kv VOTER_1_PARSE_RATE_STATUS "$VOTER_1_PARSE_RATE_STATUS"
 emit_kv VOTER_2_PATH "$VOTER_2_PATH"
 emit_kv VOTER_3_PATH "$VOTER_3_PATH"
 [[ -s "$plan_voter_paths_file" ]] && emit_kv VOTER_PATHS_FILE "$plan_voter_paths_file"
@@ -237,4 +228,8 @@ emit_kv VOTER_2_TOOL "$VOTER_2_TOOL"
 emit_kv VOTER_3_TOOL "$VOTER_3_TOOL"
 emit_kv VOTER_2_STATUS "$VOTER_2_STATUS"
 emit_kv VOTER_3_STATUS "$VOTER_3_STATUS"
+emit_kv VOTER_2_PARSE_RATE_STATUS "$VOTER_2_PARSE_RATE_STATUS"
+emit_kv VOTER_3_PARSE_RATE_STATUS "$VOTER_3_PARSE_RATE_STATUS"
+
+[[ "$VOTER_1_STATUS" == "failed" ]] && dispatch_ok="false"
 emit_kv DISPATCH_OK "$dispatch_ok"

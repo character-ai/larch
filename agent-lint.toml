@@ -522,6 +522,10 @@ exclude = [
   # shebang, not invokable directly). It is referenced from the Codex launcher
   # via source directives only, which agent-lint does not follow.
   "scripts/lib-codex-launcher-common.sh",
+  # scripts/lib-voter-parse-rate.sh is a sourced-only shell library (no shebang,
+  # not invokable directly). dispatch-code-voters.sh and dispatch-plan-voters.sh
+  # source it; agent-lint does not follow source directives.
+  "scripts/lib-voter-parse-rate.sh",
   # scripts/lib-external-launcher-common.sh is a sourced-only shell library (no
   # shebang, not invokable directly) carrying the canonical bodies shared
   # between lib-codex-launcher-common.sh and lib-cursor-launcher-common.sh
@@ -807,6 +811,7 @@ exclude = [
   "skills/design/scripts/test-read-design-review-budget-invoke.sh",
   "skills/design/scripts/test-validate-plan-commands.sh",
   "skills/design/scripts/test-tally-plan-review.sh",
+  "skills/design/scripts/test-plan-review-loop.sh",
   "skills/design/scripts/test-finalize-plan.sh",
   "skills/design/scripts/test-scout-plan-archetypes-wrapper.sh",
   "skills/design/scripts/test-dispatch-plan-review-panel.sh",
@@ -1148,6 +1153,7 @@ exclude = [
   "skills/design/scripts/test-read-design-review-budget-invoke.md",
   "skills/design/scripts/test-validate-plan-commands.md",
   "skills/design/scripts/test-tally-plan-review.md",
+  "skills/design/scripts/test-plan-review-loop.md",
   "skills/design/scripts/test-finalize-plan.md",
   "skills/design/scripts/test-scout-plan-archetypes-wrapper.md",
   "skills/design/scripts/test-dispatch-plan-review-panel.md",

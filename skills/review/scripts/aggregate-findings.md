@@ -13,6 +13,7 @@
 --session-env-path PATH   (optional) parent session env (execution-issues path)
 --diff-file PATH          (optional) forwarded to dispatch-with-waterfall
 --plan-file PATH          (optional) forwarded to dispatch-with-waterfall
+--input-mode plan|code    (optional, default code) — `plan` relaxes merged-output severity validation for /design plan-review ballots (#2676); exports `LARCH_AGGREGATE_INPUT_MODE` for the embedded validator.
 ```
 
 ## Escape hatch
