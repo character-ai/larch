@@ -222,6 +222,10 @@ Per-million-token cost rate (USD) used by `/research`'s Step 4 token report (`##
 
 **Scope**: Token telemetry covers Claude subagent (Agent-tool) invocations only. Claude inline (orchestrator) and external lanes (Cursor/Codex) are unmeasurable and excluded from both the totals and the cost column. The report labels itself "Claude tokens only; external lanes excluded" so operators see the coverage honestly. See [`scripts/token-tally.md`](../scripts/token-tally.md) for the helper contract.
 
+### `LARCH_DESIGN_PLAN_SUMMARY_THRESHOLD`
+
+Default `120` (positive integer). When the `$DESIGN_TMPDIR/plan.txt` line count strictly exceeds this threshold, `/design` switches to the large-plan summary mode at both the Step 3 entry print (`## Plan Candidate for Review`) and the Gate C entry print (`## Final Design Plan`): only the plan title and a `##`/`###` section outline are emitted, plus a bold note offering the full plan on operator request. Empty, `0`, and non-numeric values silently fall back to the `120` default; the orchestrator does not abort on invalid env values. Affects only chat visibility; the underlying `plan.txt` content sent to reviewers and stored in the design log is unchanged.
+
 #### Per-vendor rates (`/implement` final summary)
 
 [`scripts/token-cost.sh`](../scripts/token-cost.sh) (used by [`scripts/render-run-summary.sh`](../scripts/render-run-summary.md)) computes USD estimates per lane:

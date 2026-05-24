@@ -581,6 +581,40 @@ Print: `> **🔶 /design 3: plan review**`
 LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 3 — plan review" || true
 ```
 
+**Pre-voting plan re-print (first-time Step 3 entry only)**: emit `$DESIGN_TMPDIR/plan.txt` under a `## Plan Candidate for Review` header so the user can see the plan that is about to enter the review/voting panel. Apply the shared large-plan summary mode documented in `${CLAUDE_PLUGIN_ROOT}/skills/design/references/approval-gates.md` (Gate C — large-plan summary mode). Gated by sentinel `$DESIGN_TMPDIR/.step3-entry-plan-printed`; subsequent re-entries (from Gate B(c) → Gate A → Step 3, Gate C(b) → Gate A → Step 3, or Gate C(c) → Step 3) skip the print because the sentinel exists. If summary mode fires, the user may interrupt the voting kickoff with a free-form "show full plan" request and the orchestrator emits the full plan before continuing.
+
+```bash
+[ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
+if [ -z "${DESIGN_TMPDIR:-}" ] || [ ! -d "$DESIGN_TMPDIR" ]; then
+  printf '%s\n' '**⚠ 3: DESIGN_TMPDIR missing or invalid; cannot present plan candidate for review**'
+elif [ ! -e "$DESIGN_TMPDIR/.step3-entry-plan-printed" ]; then
+  if [ -s "$DESIGN_TMPDIR/plan.txt" ]; then
+    _plan_lines=$(wc -l < "$DESIGN_TMPDIR/plan.txt" | tr -d ' ')
+    _plan_bytes=$(wc -c < "$DESIGN_TMPDIR/plan.txt" | tr -d ' ')
+    _summary_threshold="${LARCH_DESIGN_PLAN_SUMMARY_THRESHOLD:-120}"
+    case "$_summary_threshold" in (''|0|*[!0-9]*) _summary_threshold=120 ;; esac
+    printf '\n## Plan Candidate for Review\n\n'
+    if [ "$_plan_lines" -gt "$_summary_threshold" ]; then
+      head -n 1 "$DESIGN_TMPDIR/plan.txt"
+      printf '\n**Section outline:**\n\n'
+      _outline=$(grep -E '^#{2,3} ' "$DESIGN_TMPDIR/plan.txt" | head -n 40)
+      if [ -n "$_outline" ]; then
+        printf '%s\n' "$_outline"
+      else
+        head -n 30 "$DESIGN_TMPDIR/plan.txt"
+      fi
+      printf '\n**The plan is very large (%s lines, %s bytes). Only the title and section outline are shown above. The full plan is at $DESIGN_TMPDIR/plan.txt — say "show full plan" to see the body in chat before voting begins.**\n' "$_plan_lines" "$_plan_bytes"
+    else
+      cat "$DESIGN_TMPDIR/plan.txt"
+    fi
+    printf '\n'
+  else
+    printf '%s\n' '**⚠ 3: plan.txt missing or empty; cannot present plan candidate for review**'
+  fi
+  touch "$DESIGN_TMPDIR/.step3-entry-plan-printed"
+fi
+```
+
 Read `review_budget` from `$DESIGN_TMPDIR/run-params.json`. Valid values are `quick` and `full`; if absent or invalid, derive the fallback from `quick_mode` (`quick` when true, otherwise `full`).
 
 **If `review_budget=quick`**: **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/plan-review-quick.md` completely. It defines the quick-mode plan-review procedure (self-review checklist, output file requirements, acceptance policy). After executing the procedure, proceed to Step 3.5.
@@ -773,7 +807,40 @@ Print: `> **🔶 /design 4b: gate C**`
 
 **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/approval-gates.md` completely (if not already loaded at Step 1e or 3.5).
 
-Execute the Gate C body in `approval-gates.md`. Present the latest `$DESIGN_TMPDIR/plan.txt` and prompt the user for **Approve final design** / **Discuss further** / **Re-run review panel**. On **Approve**, proceed to Step 5. On **Discuss further**, re-enter Step 1e Gate A (the discussion sub-round writes to `discussion-round2.md`). On **Re-run review panel**, re-enter Step 3 with the current `plan.txt` (skip Step 2a sketches and Step 2a.5 dialectic — reviewers see the latest plan with all approved-by-user prior feedback applied). The loop continues until the user picks **Approve**. Step 5 below no longer fires its own approval prompt; Gate C is the only final-approval gate.
+Execute the Gate C body in `approval-gates.md` — `approval-gates.md` is the single normative source for Gate C behavior (Presentation, Prompt, Other-handling, large-plan summary mode).
+
+**Mechanical Gate C plan emit** (mirrors Step 3 entry; no sentinel):
+
+```bash
+[ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
+if [ -z "${DESIGN_TMPDIR:-}" ] || [ ! -d "$DESIGN_TMPDIR" ]; then
+  printf '%s\n' '**⚠ 4b: DESIGN_TMPDIR missing or invalid; cannot present final design plan**'
+elif [ -s "$DESIGN_TMPDIR/plan.txt" ]; then
+  _plan_lines=$(wc -l < "$DESIGN_TMPDIR/plan.txt" | tr -d ' ')
+  _plan_bytes=$(wc -c < "$DESIGN_TMPDIR/plan.txt" | tr -d ' ')
+  _summary_threshold="${LARCH_DESIGN_PLAN_SUMMARY_THRESHOLD:-120}"
+  case "$_summary_threshold" in (''|0|*[!0-9]*) _summary_threshold=120 ;; esac
+  printf '\n## Final Design Plan\n\n'
+  if [ "$_plan_lines" -gt "$_summary_threshold" ]; then
+    head -n 1 "$DESIGN_TMPDIR/plan.txt"
+    printf '\n**Section outline:**\n\n'
+    _outline=$(grep -E '^#{2,3} ' "$DESIGN_TMPDIR/plan.txt" | head -n 40)
+    if [ -n "$_outline" ]; then
+      printf '%s\n' "$_outline"
+    else
+      head -n 30 "$DESIGN_TMPDIR/plan.txt"
+    fi
+    printf '\n**The plan is very large (%s lines, %s bytes). Only the title and section outline are shown above. The full plan is at $DESIGN_TMPDIR/plan.txt — pick "Other" on the prompt below and ask for the full plan if you want it printed in chat before deciding.**\n' "$_plan_lines" "$_plan_bytes"
+  else
+    cat "$DESIGN_TMPDIR/plan.txt"
+  fi
+  printf '\n'
+else
+  printf '%s\n' '**⚠ 4b: plan.txt missing or empty; cannot present final design plan**'
+fi
+```
+
+Then fire the Gate C `AskUserQuestion` per `approval-gates.md`. The three primary options are unchanged (**Approve final design** / **Discuss further** / **Re-run review panel**). If the user picks `Other` and asks for the full plan, `cat` `$DESIGN_TMPDIR/plan.txt` into chat and re-fire the same Gate C `AskUserQuestion`. On **Approve**, proceed to Step 5. On **Discuss further**, re-enter Step 1e Gate A (the discussion sub-round writes to `discussion-round2.md`). On **Re-run review panel**, re-enter Step 3 with the current `plan.txt` (skip Step 2a sketches and Step 2a.5 dialectic — reviewers see the latest plan with all approved-by-user prior feedback applied). The loop continues until the user picks **Approve**. Step 5 below no longer fires its own approval prompt; Gate C is the only final-approval gate.
 
 > **Continue to Step 5 IMMEDIATELY** once Gate C returns Approve. Gate C is not terminal — finalize (OOS filing + plan write) and cleanup still must run.
 
