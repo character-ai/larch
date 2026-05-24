@@ -1,0 +1,44 @@
+Here is the normalized aggregator output. **FINDING_6** was not promoted: it is only a commit-line echo with no stated defect, so it does not add a behavioral risk beyond the other items. **FINDING_7** was split: the “no in-scope issues” attestation is not a finding; the distinct risk is that **running** `relevant-checks` / `make lint` is not evidenced by the diff.
+
+---
+
+### FINDING_1: Plan text overstates `test-quick-mode-docs-sync` coverage of `docs/linting.md`
+- **Reviewer(s)**: cursor-specialist-testing-output.txt
+- **Severity**: nit
+- **Concern**: The flushed plan testing strategy implies `test-quick-mode-docs-sync` guards `docs/linting.md` drift; an operator may rely on that and assume markdown/table regressions are covered when the script’s real targets may not include that file. Align plan copy with what `scripts/test-quick-mode-docs-sync.sh` actually checks, or remove the `docs/linting.md` reference.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-testing-output.txt: Address the concern above.
+
+### FINDING_2: [OUT_OF_SCOPE] Design review budget invoke harness has shallow full-tier / fixture coverage (pre-existing)
+- **Reviewer(s)**: cursor-specialist-testing-output.txt, cursor-specialist-edge-cases-output.txt
+- **Severity**: latent
+- **Concern**: The harness does not provide deep full-tier integration; coverage is largely limited to a fixture-driven path, so validator or driver regressions outside that path may not be caught by CI. This is pre-existing and not introduced by the branch; treat as a separate harness-hardening track if product owners want stronger E2E coverage.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-testing-output.txt, cursor-specialist-edge-cases-output.txt: Address the concern above.
+
+### FINDING_3: Plan acceptance vs changed-file list can disagree when run-log siblings are committed
+- **Reviewer(s)**: cursor-specialist-edge-cases-output.txt
+- **Severity**: latent
+- **Concern**: Acceptance bullets may claim a narrow scope (e.g. only `docs/`) while the branch also adds sibling files under `larch-logs/implement/...`. Audits or automation that compare acceptance text to the changed-file list can mark the run incomplete or mis-scoped even when the run-log flush is intentional; qualify acceptance for intentional run-log commits or regenerate plan-goals so acceptance matches the final commit set.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-edge-cases-output.txt: Address the concern above.
+
+### FINDING_4: Consecutive duplicate plan headings in `plan-goals-test` artifact
+- **Reviewer(s)**: cursor-specialist-edge-cases-output.txt
+- **Severity**: nit
+- **Concern**: Back-to-back `## Implementation Plan` and `## Plan` headings make the goal artifact structurally ambiguous and look like a merge error. Emit a single plan heading when materializing `plan-goals-test`.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-edge-cases-output.txt: Address the concern above.
+
+### FINDING_5: Completion of `relevant-checks` / `make lint` is not evidenced by the diff
+- **Reviewer(s)**: cursor-specialist-plan-fidelity-output.txt
+- **Severity**: latent
+- **Concern**: Acceptance or process expectations that depend on actually running `bash scripts/relevant-checks.sh` or `make lint` cannot be verified from the diff alone; reviewers or automation inferring “checks passed” from the patch risk a false sense of verification.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-plan-fidelity-output.txt: Address the concern above.
+
+---
+
+**Merge notes (for traceability, not machine fields):** **FINDING_2** and input **FINDING_5** were merged (same harness, same “limited full-tier / fixture path” risk; max severity latent + latent → latent). **FINDING_2**’s `[OUT_OF_SCOPE]` tag is preserved on the merged heading. Input **FINDING_6** was dropped as non-actionable echo. Input **FINDING_7**’s substantive kernel is **FINDING_5**; the rest was attestation, not a separate defect.
+
+Because one or more `### FINDING_N:` blocks are present, **`LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED` must not appear** in this output.

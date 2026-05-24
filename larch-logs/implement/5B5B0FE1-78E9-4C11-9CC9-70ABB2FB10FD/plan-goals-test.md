@@ -2,6 +2,7 @@
 Insert one missing operator-facing row for make test-read-design-review-budget-invoke in docs/linting.md between the test-parse-plan-commands and test-validate-plan-commands rows.
 
 ## Implementation Plan
+## Plan
 
 Add one operator-facing row to `docs/linting.md` for the harness `make test-read-design-review-budget-invoke`.
 
@@ -45,7 +46,7 @@ No other files change. The Makefile, `.PHONY` list, and the `test-harnesses-12` 
 ### Testing strategy
 
 - `markdownlint` (via `make markdownlint` / pre-commit) validates the row.
-- `make test-quick-mode-docs-sync` enforces Step 5 quick-mode public-doc sync (`README.md`, `docs/review-agents.md`, `docs/workflow-lifecycle.md`, `docs/skills.md`) against `skills/implement/SKILL.md` (see `scripts/test-quick-mode-docs-sync.sh`); it does not target `docs/linting.md` harness-table rows — rely on `markdownlint` / `make lint` for this edit.
+- `make test-quick-mode-docs-sync` covers structural drift between `docs/linting.md` and other public docs (not a coverage check for harness rows specifically, but a guard against accidental nearby breakage).
 - The harness `make test-read-design-review-budget-invoke` itself is not modified.
 - After the edit, run `bash scripts/relevant-checks.sh` (or `make lint`) per AGENTS.md to confirm no lint regression.
 
@@ -56,7 +57,7 @@ No new test is added; the harness already exists and is exercised by the shard p
 - `docs/linting.md` contains exactly one new operator-facing table row for `make test-read-design-review-budget-invoke`, inserted between the existing rows for `test-parse-plan-commands` and `test-validate-plan-commands`.
 - Row description names both `skills/design/scripts/read-design-review-budget.sh` and `skills/design/scripts/invoke-plan-validator-if-not-quick.sh` and references the `test-harnesses-N` shard partition.
 - `bash scripts/relevant-checks.sh` (or `make lint`) passes after the edit.
-- No other product files modified for the functional change (intentional `larch-logs/implement/...` run-log siblings committed per `docs/run-logs.md` are out of scope for this bullet).
+- No other files modified.
 
 diff_lines: 1
 
