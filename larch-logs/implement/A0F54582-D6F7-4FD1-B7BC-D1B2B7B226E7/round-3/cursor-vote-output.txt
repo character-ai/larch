@@ -1,0 +1,16 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: EXONERATE -- Step 2b.5 already prescribes writing `check-plan-size.validation.log` then passing it to `append-tool-failure.sh`
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: EXONERATE -- `touch` failure after a successful `gh` post is negligible; duplicate upstream comment is low-impact noise
+FINDING_13: YES
+FINDING_14: EXONERATE -- empty/whitespace-only input lacks a valid `diff_lines` trailer, so `missing-diff-lines` matches the shared `emit-plan.sh` grammar
+FINDING_15: EXONERATE -- key order in docs is illustrative unless something parses it as a strict wire format
+OOS_1: EXONERATE -- real review noise, but a dedicated GitHub issue would be an awkward, low-signal tracker

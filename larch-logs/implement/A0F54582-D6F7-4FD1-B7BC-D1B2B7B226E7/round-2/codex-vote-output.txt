@@ -1,0 +1,13 @@
+FINDING_1: EXONERATE -- Legitimate branch-hygiene concern, but not useful as a future tracking issue.
+FINDING_2: EXONERATE -- The duplication is real, but centralizing voter prose would add more machinery than this warrants.
+FINDING_3: NO -- Step 2b.5 explicitly exports LARCH_QUIET_DISABLE=1 before stdout capture, so the stated failure mode is not present in the documented path.
+FINDING_4: YES
+FINDING_5: EXONERATE -- The naming is mildly confusing but too small to insist on.
+FINDING_6: NO -- The current Split-path prose correctly says preservation comes from exiting before Step 5/Step 6 cleanup, not from PLAN_WRITE_OK itself.
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: NO -- The optional path override emits only counts/status metrics and is not a meaningful sensitive-file disclosure risk.
+FINDING_12: EXONERATE -- The repeat-prompt edge is plausible, but adding state just to suppress it is disproportionate here.
+FINDING_13: EXONERATE -- The stdout/stderr wording mismatch is real but minor and not worth blocking on.
