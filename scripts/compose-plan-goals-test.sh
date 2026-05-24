@@ -81,9 +81,25 @@ output=$(
     printf '%s\n\n' "$GOAL_TEXT"
     printf '## Implementation Plan\n'
     # Stop before any test plan section to avoid duplicating content under ## Test plan below.
-    awk '/^#{1,3}[[:space:]]+[Ii]mplementation[[:space:]][Pp]lan[[:space:]]*$/ && !seen++ { next }
-         /^#{1,3}[[:space:]]+([Tt]est[[:space:]][Pp]lan|[Tt]ests|[Tt]esting|[Vv]erification|[Tt]est[[:space:]][Ss]trategy|[Vv]erification[[:space:]][Ss]trategy)[[:space:]]*$/ { exit }
-         { print }' "$PLAN_FILE"
+    # Strip the first source "Implementation Plan" heading (wrapper supplies it), then drop a
+    # immediately-following alternate "## Plan" heading and any intervening blank lines so the
+    # payload does not show back-to-back plan section titles.
+    awk '
+        /^#{1,3}[[:space:]]+[Ii]mplementation[[:space:]][Pp]lan[[:space:]]*$/ && !seen_impl++ {
+            pending_alt = 1
+            next
+        }
+        pending_alt {
+            if (/^[[:space:]]*$/) next
+            if (/^#{1,3}[[:space:]]+[Pp]lan[[:space:]]*$/) {
+                pending_alt = 0
+                next
+            }
+            pending_alt = 0
+        }
+        /^#{1,3}[[:space:]]+([Tt]est[[:space:]][Pp]lan|[Tt]ests|[Tt]esting|[Vv]erification|[Tt]est[[:space:]][Ss]trategy|[Vv]erification[[:space:]][Ss]trategy)[[:space:]]*$/ { exit }
+        { print }
+    ' "$PLAN_FILE"
     printf '\n## Test plan\n'
     printf '%s\n' "$test_plan"
 )

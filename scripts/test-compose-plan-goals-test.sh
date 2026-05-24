@@ -98,6 +98,21 @@ EOF
 out="$("$COMPOSER" --plan-file "$plan")"
 assert_occurrences "$out" "## Implementation Plan" 1 "implementation heading emitted once"
 
+echo "=== implementation-plan plus immediate Plan heading does not duplicate titles ==="
+plan="$TMP/plan-with-implementation-and-plan-headings.md"
+cat > "$plan" <<'EOF'
+## Implementation Plan
+## Plan
+
+Add one row to the operator-facing harness table.
+
+## Test plan
+Run scripts/test-compose-plan-goals-test.sh.
+EOF
+out="$("$COMPOSER" --plan-file "$plan")"
+assert_occurrences "$out" "## Implementation Plan" 1 "single implementation heading in payload"
+assert_occurrences "$out" "## Plan" 0 "alternate Plan heading stripped after Implementation Plan"
+
 echo "=== verification heading extracts test plan and stops at next heading ==="
 plan="$TMP/plan-with-verification.md"
 cat > "$plan" <<'EOF'
