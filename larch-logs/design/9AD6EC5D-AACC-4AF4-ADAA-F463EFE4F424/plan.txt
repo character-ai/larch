@@ -1,0 +1,61 @@
+# Implementation Plan — Dedup sweep after Gate B plan revision
+
+## Summary
+
+After the orchestrator revises `$DESIGN_TMPDIR/plan.txt` in Gate B (Apply all or Go through each), instruct it to perform a semantic duplicate-content sweep on the revised plan using its own LLM judgment (not deterministic pattern matching), remove any duplicate lines, and print a one-line breadcrumb reporting the number of duplicate lines removed. The sweep runs strictly **inside Gate B** (Step 3.5), after revision and before `ACTION=EMIT_PLAN`; it does **not** apply to Step 2b initial plan writes, Step 1e Gate A "Discuss more" sub-round plan revisions, or any other plan-emit path.
+
+## Approach
+
+The change is a documentation-only instruction edit in `skills/design/references/approval-gates.md`. Both Gate B paths that call the Write tool to revise `plan.txt` (Apply all on line 86; Go through each on line 87 and the after-iteration revise on line 100) get an inline instruction inserted between "write the revised plan via the Write tool" and "then re-emit `ACTION=EMIT_PLAN`".
+
+The inserted instruction tells the orchestrator to: (1) re-read the freshly written `plan.txt`; (2) use its own reasoning to detect semantically duplicate content (lines, sentences, or short blocks that say the same thing — not byte-identical pattern matching); (3) rewrite `plan.txt` via the Write tool with duplicates removed; (4) print exactly one breadcrumb of the shape `dedup-sweep: removed <N> duplicate line(s) from plan.txt` (use `0` when no duplicates were found — the breadcrumb always fires so operators see the sweep ran). Only after this breadcrumb does the orchestrator re-emit `ACTION=EMIT_PLAN`.
+
+Because Gate B's revise + re-emit pattern repeats at three textual spots in `approval-gates.md`, the same instruction text is inserted at each spot rather than centralized in a shared helper section. This keeps the file's local-context-only structure intact and avoids a forward reference. The three spots are co-located in one section (Gate B), so duplication of the inline instruction is acceptable.
+
+The user explicitly chose **LLM reasoning over deterministic pattern matching** for the match rule — so no new script, regex, or sort/uniq pipeline is introduced. The agent uses its own judgment to identify what counts as a duplicate (e.g., the same constraint stated twice, a bullet repeated under two headings, a paragraph paraphrased identically).
+
+## Files to modify/create
+
+### UPDATED: `skills/design/references/approval-gates.md`
+
+Insert the dedup-sweep instruction in three spots inside the Gate B section:
+
+1. **Apply all branch** (around line 86): after "write the revised plan via the Write tool (full file replacement, preserving `diff_lines: <N>`)" and before "then re-emit `ACTION=EMIT_PLAN`".
+2. **Go through each branch — batch revise step** (around line 87): after "revise `plan.txt` to incorporate only the applied subset" and before "re-emit `ACTION=EMIT_PLAN`".
+3. **One-by-one iteration completion** (around line 100): after "the orchestrator revises `plan.txt` per the applied set only" and before "writes the per-finding outcomes back to `$DESIGN_TMPDIR/accepted-plan-findings.md` ...".
+
+Inserted instruction (single canonical wording applied to all three spots, parameterized only by surrounding tense):
+
+> Before re-emitting `ACTION=EMIT_PLAN`, perform a duplicate-content sweep on the freshly revised `plan.txt`: re-read the file, use your own reasoning to identify semantically duplicate lines or short blocks (the same constraint, requirement, or instruction stated more than once — not just byte-identical text). Preserve intentional repetition where the same content appears in distinct context sections (e.g., a constraint cited in both the Approach and Edge cases sections to reinforce it in each context); only remove duplicates that are truly redundant within or across the same section. Rewrite `plan.txt` via the Write tool with duplicates removed. Then print exactly one breadcrumb of the shape `dedup-sweep: removed <N> duplicate line(s) from plan.txt` (use `0` when none were found — the breadcrumb always fires so operators see the sweep ran). Only after the breadcrumb proceed to `ACTION=EMIT_PLAN`.
+
+For the "One-by-one iteration completion" spot (around line 100), the order is: revise plan.txt → dedup sweep → breadcrumb → write per-finding outcomes back to the artifact files. The dedup sweep precedes the artifact write-back so the breadcrumb appears next to the revision, not buried under the artifact bookkeeping.
+
+## Edge cases
+
+- **Zero duplicates** — the breadcrumb still fires with `<N>` = `0`. This is intentional so operators always see the sweep ran (silent success is indistinguishable from a skipped sweep).
+- **Trivial repetition is not a duplicate** — common scaffolding such as blank lines, code-fence delimiters (` ``` `), and lone bullet markers (`-`) are not duplicates even when they repeat. The agent's judgment handles this naturally; the instruction does not need to enumerate exceptions.
+- **Lines whose wording is similar but whose meaning differs** — the agent must NOT remove these. The instruction emphasizes "semantically duplicate" (same meaning), not "lexically similar".
+- **`diff_lines: <N>` trailer** — the dedup sweep must preserve the final `diff_lines:` line; the `ACTION=EMIT_PLAN` driver call after the sweep regenerates the trailer, so the orchestrator does not need to manually recompute it. If the orchestrator's Write tool call accidentally removes the trailer, the subsequent `ACTION=EMIT_PLAN` driver fails closed with `EMIT_PLAN_STATUS=missing-diff-lines` (existing behavior in `emit-plan.sh`), which is the expected failure mode.
+- **Per-finding apply with single-finding apply set** — a single applied finding rarely introduces duplicates, but the sweep still runs unconditionally; the breadcrumb fires with `0` in that case. Running the sweep unconditionally simplifies the rule (no "skip the sweep when only one finding was applied").
+- **Zero-findings short-circuit** (line 102-104): when `accepted-plan-findings.md` is empty, Gate B short-circuits without revising `plan.txt`. The dedup sweep does NOT run on this path — there was no revision, so no sweep is needed.
+- **Gate B(c) "Switch to discussion mode"**: no plan revision occurs (line 88, 98). The dedup sweep does NOT run.
+
+## Failure modes
+
+- **Agent over-removes legitimate repetition** — e.g., removing a hard-constraint that appears intentionally in two places (one as a section heading, one in body text). Mitigation: the instruction wording emphasizes "semantically duplicate" with "the same constraint stated more than once" as the canonical positive example, and warns to preserve lines whose meaning differs. The breadcrumb's `<N>` count makes over-removal visible in operator review of the run log.
+- **Agent under-removes** (misses true duplicates) — least harmful; the plan still works, just slightly verbose. No mitigation needed beyond LLM judgment quality.
+- **Sweep runs but breadcrumb is forgotten** — would be silent. The instruction emphasizes "the breadcrumb always fires" so operators see the sweep ran. CI / lint does not enforce this; it relies on prose discipline (consistent with the rest of `approval-gates.md`).
+
+## Testing strategy
+
+This is a documentation-only change. No new tests are added.
+
+- **Existing tests preserved**: `scripts/test-design-structure.sh` and any other harness that anchors on Gate B headings will continue to pass; the inserted prose lives inside existing bullet paragraphs, not as new headings.
+- **Manual verification**: on the next `/design --simple` or `/design --hard` run that exercises Gate B's Apply path, confirm the breadcrumb appears in the chat output and that the count is non-negative.
+- **No lint impact**: the inserted prose contains no fenced shell blocks, no foreground-required script calls, and no new flags — so `make lint`, `make lint-foreground-markers`, and `make lint-bash32` are unaffected.
+
+## Diff size estimate
+
+The change adds three short prose blocks (~5-7 lines each) into one file. No new files, no script changes, no test changes.
+
+diff_lines: 25
