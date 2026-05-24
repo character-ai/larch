@@ -93,7 +93,9 @@ LARCH_VPR_RETRY_PREFIX_KIND=code
 LARCH_VPR_LAUNCH_MODE="$mode"
 LARCH_VPR_PLUGIN_ROOT="$PLUGIN_ROOT"
 LARCH_VPR_DISPATCH_LABEL="dispatch-code-voters.sh"
-LARCH_VPR_CTX=( "${ctx_args[@]}" )
+LARCH_VPR_CTX=()
+[[ -n "$bounded_diff" ]] && LARCH_VPR_CTX+=(--diff-file "$bounded_diff")
+[[ -n "$bounded_plan" ]] && LARCH_VPR_CTX+=(--plan-file "$bounded_plan")
 
 VOTER_1_PATH="$REVIEW_TMPDIR/claude-vote-output.txt"
 claude_prompt=$(make_voter_prompt_file claude)

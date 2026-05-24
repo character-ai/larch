@@ -90,12 +90,27 @@ check_voter_parse_rate() {
     local diag_file
     diag_file="$(voter_parse_rate_diag_path "$voter_path")"
     [[ -s "$voter_path" ]] || { printf 'PARSE_RATE_STATUS=OK\n'; return 0; }
-    local ids_count judge_error_count
+    local ids_list ids_count judge_error_count
     if [[ "$id_grammar" == "finding-oos" ]]; then
-        ids_count=$(grep -cE '^### (FINDING_[0-9]+|OOS_[0-9]+):' "$ballot_file" 2>/dev/null || true)
+        ids_list=$(awk '
+            match($0, /^(###[[:space:]]+)?(FINDING|OOS)_[0-9]+:/) {
+                id=$0
+                sub(/^###[[:space:]]+/, "", id)
+                sub(/:.*/, "", id)
+                if (!seen[id]++) print id
+            }
+        ' "$ballot_file" 2>/dev/null || true)
     else
-        ids_count=$(grep -cE '^### (FINDING_[0-9]+):' "$ballot_file" 2>/dev/null || true)
+        ids_list=$(awk '
+            match($0, /^(###[[:space:]]+)?FINDING_[0-9]+:/) {
+                id=$0
+                sub(/^###[[:space:]]+/, "", id)
+                sub(/:.*/, "", id)
+                if (!seen[id]++) print id
+            }
+        ' "$ballot_file" 2>/dev/null || true)
     fi
+    ids_count=$(printf '%s\n' "$ids_list" | awk 'NF { n++ } END { print n + 0 }')
     ids_count="${ids_count:-0}"
     [[ "$ids_count" -gt 0 ]] || { printf 'PARSE_RATE_STATUS=OK\n'; return 0; }
     judge_error_count=0
@@ -119,13 +134,7 @@ check_voter_parse_rate() {
             ' "$voter_path"
         )
         [[ "$one" == "JUDGE_ERROR" ]] && judge_error_count=$((judge_error_count + 1))
-    done < <(
-        if [[ "$id_grammar" == "finding-oos" ]]; then
-            grep -oE '^### (FINDING|OOS)_[0-9]+:' "$ballot_file" 2>/dev/null || true
-        else
-            grep -oE '^### FINDING_[0-9]+:' "$ballot_file" 2>/dev/null || true
-        fi | awk '{ sub(/^### /, "", $0); sub(/:$/, "", $0); print }'
-    )
+    done <<< "$ids_list"
     # >=80% JUDGE_ERROR threshold
     if awk -v n="$judge_error_count" -v t="$ids_count" 'BEGIN { exit (n / t >= 0.8) ? 0 : 1 }'; then
         {
@@ -175,12 +184,16 @@ make_voter_retry_prompt_file() {
     local src_prompt_file="$2"
     local review_tmpdir="${LARCH_VPR_REVIEW_TMPDIR:?}"
     local kind="${LARCH_VPR_RETRY_PREFIX_KIND:-code}"
-    local prefix retry_prompt_file
+    local prefix retry_prompt_file prompt_base
     case "$kind" in
         plan) prefix="$VOTER_PARSE_RATE_RETRY_PREFIX_PLAN" ;;
         *) prefix="$VOTER_PARSE_RATE_RETRY_PREFIX_CODE" ;;
     esac
-    retry_prompt_file="$review_tmpdir/${label}-vote-prompt-retry.txt"
+    prompt_base="$(basename "$src_prompt_file")"
+    case "$prompt_base" in
+        *-prompt.txt) retry_prompt_file="$review_tmpdir/${prompt_base%.txt}-retry.txt" ;;
+        *) retry_prompt_file="$review_tmpdir/${label}-vote-prompt-retry.txt" ;;
+    esac
     {
         printf '%s\n\n' "$prefix"
         cat "$src_prompt_file"
