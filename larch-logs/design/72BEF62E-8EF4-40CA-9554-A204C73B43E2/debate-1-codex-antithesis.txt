@@ -1,0 +1,19 @@
+<steelman>
+Using `aggregate-findings.sh` as-is keeps this refactor narrow: one existing reviewer aggregation primitive is reused, and a duplicate-finding fixture can prove the only intended behavior change is dedup shape. Its fail-open design also reduces immediate blast radius if aggregation cannot validate a candidate merge.
+</steelman>
+<claim>
+Add a /design-specific adapter before aggregation, because the current aggregator enforces a code-review severity schema that /design plan-review ballot artifacts do not promise.
+</claim>
+<evidence>
+[aggregate-findings.sh](<OPERATOR_REPO_PATH>/skills/review/scripts/aggregate-findings.sh:240) defines a required `- **Severity**: important|latent|nit` pattern, and [aggregate-findings.sh](<OPERATOR_REPO_PATH>/skills/review/scripts/aggregate-findings.sh:628) rejects merged output missing that line. The /design accepted finding template in [plan-review.md](<OPERATOR_REPO_PATH>/skills/design/references/plan-review.md:152) contains only title, concern, and proposed resolution fields, and [tally-plan-review.sh](<OPERATOR_REPO_PATH>/skills/design/scripts/tally-plan-review.sh:152) copies accepted ballot blocks through without adding severity.
+</evidence>
+<strongest_concession>
+The opposing approach is attractive because `aggregate-findings.sh` already counts `### FINDING_N` blocks, validates reviewer attribution, and fails open by leaving findings unchanged, so it may appear cheaper than introducing a new adapter surface.
+</strongest_concession>
+<counter_to_opposition>
+Fail-open is not a substitute for a compatible contract: if ordinary /design ballots lack severity, the aggregator can silently degrade to “unchanged,” and a duplicate fixture only proves behavior for a hand-shaped sample rather than resolving the schema mismatch.
+</counter_to_opposition>
+<risk_if_wrong>
+If this position is wrong, the adapter becomes extra maintenance and may duplicate normalization logic already handled well by `aggregate-findings.sh`; that cost is still smaller than debugging a refactor whose aggregation path is nominally enabled but structurally unable to accept normal /design findings.
+</risk_if_wrong>
+RECOMMEND: ANTI_THESIS

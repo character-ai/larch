@@ -1,0 +1,91 @@
+Reading the plan and inspecting referenced code paths.
+
+Validating the plan against the codebase: checking cited scripts, contracts, and integration points.
+
+Reviewing `dispatch-code-voters.sh` for `DISPATCH_OK` when only Voter 1 fails and checking `scout-plan-archetypes-wrapper` call shape.
+
+Compiling findings: verifying whether `dispatch-plan-voters` ties `DISPATCH_OK` to voter outcomes.
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	risk_integration	plan.txt:145-146	Parenthetical claims parse-rate helpers live in scripts/lib-voter-parse-rate.sh and can be sourced there	check_and_retry_voter_parse_rate and check_voter_parse_rate are defined in scripts/dispatch-code-voters.sh (lines 125-279); lib-voter-parse-rate.sh only holds small shared helpers (lines 1-32)	Sourcing the library alone does not provide the planned discipline; either move the functions into lib-voter-parse-rate.sh (shared refactor) or explicitly port the dispatch-code-voters block into dispatch-plan-voters.sh
+1	in_scope	nit	correctness	plan.txt:139	UPDATED dispatch-plan-voters bullet names scripts/render-voter-prompt.sh	Actual contract path is skills/shared/scripts/render-voter-prompt.sh (used by dispatch-plan-voters.sh:45-48)	Correct the plan and plan-review.md cross-references to skills/shared/scripts/render-voter-prompt.sh
+1	in_scope	latent	correctness	plan.txt:245-246 plus skills/review/scripts/aggregate-findings.sh:611-652	Failure-modes text claims merged FINDING ids cannot drift because validator lines 614-619 bind output ids to input ids	Those lines enforce duplicate merged ids and reviewer-slot membership (645-647); they do not prove every output ### FINDING_N: originated unchanged from a specific input heading	Rephrase the mitigation to cite reviewer-slot and duplicate-id rules or add an explicit id-trace check if that invariant is truly required
+1	in_scope	important	risk_integration	skills/design/SKILL.md:715-716 vs plan.txt:228-231	Edge-case section says empty ballots still run dispatch-plan-voters and tally	SKILL still instructs skipping voting when all reviewers report no issues, which implies no voter launches on a clean review	Reconcile: add an explicit early-exit branch in plan-review-loop.sh when the constructed ballot has zero FINDING and OOS blocks, or update SKILL Step 3 prose to match the always-vote driver
+1	in_scope	important	code_quality	skills/design/SKILL.md:689-693	After moving panel/collect into plan-review-loop.sh, the paragraph that describes parsing PANEL_PATHS_FILE from the preceding bash loop likely remains	Operators read contradictory Step-3 instructions relative to the new single invocation block	Rewrite or delete the stale narrative so it points at plan-review-loop outputs and preserves the dirty-tree checkpoint ordering
+1	in_scope	important	risk_integration	plan.txt:158-161 plus scripts/dispatch-plan-voters.sh:93-240	New harness asserts DISPATCH_OK=false when Voter 1 fails but UPDATED dispatch-plan-voters bullets omit tightening DISPATCH_OK	dispatch-plan-voters.sh only forwards DISPATCH_OK from dispatch-with-waterfall.sh today; Voter 2/3 empty output does not flip DISPATCH_OK	Mirror scripts/dispatch-code-voters.sh:450-451 (set DISPATCH_OK false when VOTER_1_STATUS is failed) in the plan’s dispatch-plan-voters checklist so tests and behavior align
+1	in_scope	nit	architecture	plan.txt:216-217	Testing strategy references a Makefile umbrella named test-design	There is no test-design phony target in Makefile (only test-design-structure, test-design-driver, test-design-log-publish, harness shards)	Name the real shard or add an explicit new umbrella target so implementers wire CI consistently
+
+1. **risk-integration** [skills/design/SKILL.md](skills/design/SKILL.md):715-716 vs [plan](file:///Users/zhupanov/.cache/larch/sessions/claude-design-larch2-0T4UH7/plan.txt) empty-ballot edge — SKILL “skip voting” conflicts with the driver’s “still run voters” empty-ballot story; reconcile exit criteria vs SKILL prose before landing.
+
+2. **risk-integration** [plan.txt](file:///Users/zhupanov/.cache/larch/sessions/claude-design-larch2-0T4UH7/plan.txt):145-146 — `lib-voter-parse-rate.sh` does not contain `check_and_retry_voter_parse_rate`; do not treat “source lib” as sufficient without moving or copying the dispatch-code-voters functions.
+
+3. **correctness** [plan.txt](file:///Users/zhupanov/.cache/larch/sessions/claude-design-larch2-0T4UH7/plan.txt):139 — Wrong `render-voter-prompt.sh` path in the plan; canonical path is [skills/shared/scripts/render-voter-prompt.sh](skills/shared/scripts/render-voter-prompt.sh).
+
+4. **correctness** [plan.txt](file:///Users/zhupanov/.cache/larch/sessions/claude-design-larch2-0T4UH7/plan.txt):245-246 vs [skills/review/scripts/aggregate-findings.sh](skills/review/scripts/aggregate-findings.sh):611-652 — Overstated guarantee that merged FINDING ids cannot renumber; validator enforces different invariants (duplicate merged ids, reviewer slots in output).
+
+5. **code-quality** [skills/design/SKILL.md](skills/design/SKILL.md):689-693 — Post-refactor stale prose about the inline `PANEL_PATHS_FILE` parse loop vs the new `plan-review-loop.sh` entrypoint; update when collapsing Step 3.
+
+6. **risk-integration** [plan.txt](file:///Users/zhupanov/.cache/larch/sessions/claude-design-larch2-0T4UH7/plan.txt):158-161 vs [scripts/dispatch-plan-voters.sh](scripts/dispatch-plan-voters.sh):93-240 — `DISPATCH_OK=false` on Voter 1 failure is not described in the dispatch-plan-voters checklist yet is required for the new harness (pattern exists at [scripts/dispatch-code-voters.sh](scripts/dispatch-code-voters.sh):450-451).
+
+7. **architecture** [plan.txt](file:///Users/zhupanov/.cache/larch/sessions/claude-design-larch2-0T4UH7/plan.txt):216-217 vs [Makefile](Makefile) — `test-design` umbrella name does not exist; cite an actual harness shard or add the umbrella explicitly.
+
+[OUT_OF_SCOPE] [scripts/lib-timing-kinds.sh](scripts/lib-timing-kinds.sh):5-64 vs [scripts/dispatch-code-voters.sh](scripts/dispatch-code-voters.sh):297 — `claude-code-voter` is passed to `launch-claude-review.sh` but is absent from `TIMING_TASK_KINDS_ALLOWED`; worth aligning when touching timing kinds for `claude-plan-voter` per [.claude/rules/timing-task-kind-allowlist.md](.claude/rules/timing-task-kind-allowlist.md).
+
+**security** — No material security gaps identified in the proposed surface beyond existing subprocess and session-env handling already used by adjacent dispatch scripts; no separate severity item warranted.
+
+---
+
+The user asked for the first non-whitespace character to be `s` or `{` — the TSV header starts with `schema_version` which starts with `s`. Good.
+
+They also said "no markdown fences around the TSV" — I didn't use fences.
+
+Double-check: user wanted focus_area as code-quality / risk-integration / etc. I used risk_integration with underscore in TSV - the example used underscores? Example: `correctness` with no underscore in focus_area. Header says `focus_area` - example row: `correctness`. I used `risk_integration` - should use hyphenated as user said "code-quality / risk-integration" with hyphens. Example TSV: `correctness` - single word. For multi-word use hyphens: `risk-integration` per user instruction "Walk five focus areas: code-quality / risk-integration / correctness / architecture / security."
+
+Fix TSV focus_area values to use hyphens not underscores.
+
+Re-emit TSV rows with focus_area: risk-integration, code-quality, correctness, architecture as appropriate.
+
+Row 1: risk-integration
+Row 2: correctness  
+Row 3: correctness
+Row 4: risk-integration
+Row 5: code-quality
+Row 6: risk-integration
+Row 7: architecture
+
+Also schema_version column - the example had `1` as first column value meaning record schema - wait the header is `schema_version` and first column in example data row is `1`. So first data column is numeric schema version 1. Good my rows use 1 in first column.
+
+Tab-separated - I'll output the corrected TSV in the final message.
+
+Numbered list should use focus-area tags as user asked: "numbered findings with focus-area tag" - I used markdown links in numbered list - user said repo-relative file:line - I'll keep paths without full file:// for numbered list.
+
+Replace file:// links with relative paths in numbered findings.
+
+Final output - I'll fix TSV focus_area to hyphenated form.
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	risk-integration	plan.txt:145-146	Parenthetical claims parse-rate helpers live in scripts/lib-voter-parse-rate.sh and can be sourced there	check_and_retry_voter_parse_rate and check_voter_parse_rate are defined in scripts/dispatch-code-voters.sh (lines 125-279); lib-voter-parse-rate.sh only holds small shared helpers (lines 1-32)	Sourcing the library alone does not provide the planned discipline; either move the functions into lib-voter-parse-rate.sh (shared refactor) or explicitly port the dispatch-code-voters block into dispatch-plan-voters.sh
+1	in_scope	nit	correctness	plan.txt:139	UPDATED dispatch-plan-voters bullet names scripts/render-voter-prompt.sh	Actual contract path is skills/shared/scripts/render-voter-prompt.sh (used by dispatch-plan-voters.sh:45-48)	Correct the plan and plan-review.md cross-references to skills/shared/scripts/render-voter-prompt.sh
+1	in_scope	latent	correctness	plan.txt:245-246 plus skills/review/scripts/aggregate-findings.sh:611-652	Failure-modes text claims merged FINDING ids cannot drift because validator lines 614-619 bind output ids to input ids	Those lines enforce duplicate merged ids and reviewer-slot membership (645-647); they do not prove every output ### FINDING_N: originated unchanged from a specific input heading	Rephrase the mitigation to cite reviewer-slot and duplicate-id rules or add an explicit id-trace check if that invariant is truly required
+1	in_scope	important	risk-integration	skills/design/SKILL.md:715-716 vs plan.txt:228-231	Edge-case section says empty ballots still run dispatch-plan-voters and tally	SKILL still instructs skipping voting when all reviewers report no issues, which implies no voter launches on a clean review	Reconcile: add an explicit early-exit branch in plan-review-loop.sh when the constructed ballot has zero FINDING and OOS blocks, or update SKILL Step 3 prose to match the always-vote driver
+1	in_scope	important	code-quality	skills/design/SKILL.md:689-693	After moving panel/collect into plan-review-loop.sh, the paragraph that describes parsing PANEL_PATHS_FILE from the preceding bash loop likely remains	Operators read contradictory Step-3 instructions relative to the new single invocation block	Rewrite or delete the stale narrative so it points at plan-review-loop outputs and preserves the dirty-tree checkpoint ordering
+1	in_scope	important	risk-integration	plan.txt:158-161 plus scripts/dispatch-plan-voters.sh:93-240	New harness asserts DISPATCH_OK=false when Voter 1 fails but UPDATED dispatch-plan-voters bullets omit tightening DISPATCH_OK	dispatch-plan-voters.sh only forwards DISPATCH_OK from dispatch-with-waterfall.sh today; Voter 2/3 empty output does not flip DISPATCH_OK	Mirror scripts/dispatch-code-voters.sh:450-451 (set DISPATCH_OK false when VOTER_1_STATUS is failed) in the plan’s dispatch-plan-voters checklist so tests and behavior align
+1	in_scope	nit	architecture	plan.txt:216-217	Testing strategy references a Makefile umbrella named test-design	There is no test-design phony target in Makefile (only test-design-structure, test-design-driver, test-design-log-publish, harness shards)	Name the real shard or add an explicit new umbrella target so implementers wire CI consistently
+
+1. **risk-integration** `plan.txt:145-146` — Treating `scripts/lib-voter-parse-rate.sh` as the home of `check_and_retry_voter_parse_rate` / `check_voter_parse_rate` is inaccurate; those live in `scripts/dispatch-code-voters.sh:125-279` while the library is only diagnostic helpers (`scripts/lib-voter-parse-rate.sh:1-32`). Suggested revision: move the shared functions into the library or explicitly copy the dispatch-code-voters discipline into `dispatch-plan-voters.sh`.
+
+2. **correctness** `plan.txt:139` — Wrong renderer path (`scripts/render-voter-prompt.sh` vs `skills/shared/scripts/render-voter-prompt.sh` as used by `scripts/dispatch-plan-voters.sh:45-48`). Suggested revision: fix the plan and downstream doc bullets to the `skills/shared/` path.
+
+3. **correctness** `plan.txt:245-246` vs `skills/review/scripts/aggregate-findings.sh:611-652` — The dialectic “ids cannot renumber” mitigation overstates what `aggregate-validate.py` enforces (duplicate merged ids and reviewer-slot membership at `645-647`, not bidirectional FINDING id traceability). Suggested revision: rephrase the failure-mode mitigation or add a real id-trace rule if that property is required.
+
+4. **risk-integration** `skills/design/SKILL.md:715-716` vs `plan.txt:228-231` — SKILL still says to skip voting when there are no issues, while the plan’s empty-ballot edge case runs voters anyway. Suggested revision: align SKILL prose with an explicit early-exit in `plan-review-loop.sh` or document that “skip voting” is superseded for `review_budget=full`.
+
+5. **code-quality** `skills/design/SKILL.md:689-693` — Narrative still describes parsing `PANEL_PATHS_FILE` from an inline loop that the plan removes. Suggested revision: replace with a short pointer to `plan-review-loop.sh` responsibilities and keep dirty-tree checkpoint ordering explicit.
+
+6. **risk-integration** `plan.txt:158-161` vs `scripts/dispatch-plan-voters.sh:93-240` — New test expects `DISPATCH_OK=false` on Voter 1 failure, but the UPDATED `dispatch-plan-voters` checklist does not specify tightening `DISPATCH_OK` (today it only mirrors the waterfall `DISPATCH_OK`). Suggested revision: add the same `VOTER_1_STATUS` gate as `scripts/dispatch-code-voters.sh:450-451` to the plan’s implementation checklist.
+
+7. **architecture** `plan.txt:216-217` vs `Makefile` — References a `test-design` Makefile umbrella that does not exist (design coverage is split across `test-design-structure`, `test-design-driver`, harness shards, etc.). Suggested revision: name the exact shard (for example the harness group that already carries `test-tally-plan-review`) or introduce a real umbrella target.
+
+**security** — No distinct security regression identified in the proposed change set beyond existing patterns (subprocess launch, session env paths); no numbered item.
+
+[OUT_OF_SCOPE] `scripts/lib-timing-kinds.sh:5-64` vs `scripts/dispatch-code-voters.sh:297` — `claude-code-voter` is passed to `launch-claude-review.sh` but is not listed in `TIMING_TASK_KINDS_ALLOWED`; when registering `claude-plan-voter`, consider reconciling this pre-existing drift per `.claude/rules/timing-task-kind-allowlist.md`.

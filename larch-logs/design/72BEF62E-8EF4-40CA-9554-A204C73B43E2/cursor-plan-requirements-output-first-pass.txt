@@ -1,0 +1,7 @@
+Reading the plan and tracing cited paths in the codebase for a requirements/completeness review.
+
+Tracing cited files and contracts to compare the plan against implementation reality and implicit acceptance criteria.
+
+Having enough evidence: the plan misstates `aggregate-findings` severity validation (output merge, not input), misstates `lib-voter-parse-rate.sh`, and uses the wrong `render-voter-prompt` path; it also omits several doc/CI sync steps that follow from the stated behavior change.
+
+

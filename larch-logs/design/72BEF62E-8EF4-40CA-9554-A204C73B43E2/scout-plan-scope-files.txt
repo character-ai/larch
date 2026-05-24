@@ -1,0 +1,17 @@
+skills/design/scripts/plan-review-loop.sh
+skills/design/scripts/plan-review-loop.md
+skills/design/scripts/test-plan-review-loop.sh
+skills/design/scripts/test-plan-review-loop.md
+skills/design/SKILL.md
+scripts/dispatch-plan-voters.sh
+scripts/dispatch-plan-voters.md
+scripts/test-dispatch-plan-voters.sh
+skills/review/scripts/aggregate-findings.sh
+skills/review/scripts/aggregate-findings.md
+skills/review/scripts/test-aggregate-findings.sh
+skills/design/references/plan-review.md
+skills/design/scripts/design-driver.md
+scripts/test-design-structure.sh
+Makefile
+agent-lint.toml
+scripts/lib-timing-kinds.sh

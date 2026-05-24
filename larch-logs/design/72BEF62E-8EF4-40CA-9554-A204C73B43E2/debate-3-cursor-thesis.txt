@@ -1,0 +1,21 @@
+Reading the debate prompt file to follow its instructions and produce the requested structured output.
+
+Gathering concrete file:line evidence for `collect-agent-results.sh` vs `collect-findings.sh` in the design flow.
+
+Here is the structured output required by the prompt. Evidence is from repository reads/greps only; no `CreatePlan` artifact applies because the deliverable is the debate format itself.
+
+<steelman>
+Routing plan review through `skills/review/scripts/collect-findings.sh` keeps one orchestration entry point for “collect externals, wait on Claude, shape findings,” already pins the same `collect-agent-results.sh --timeout … --substantive-validation --validation-mode` trio internally, and avoids inventing a second ballot-shaping path in `plan-review-loop.sh` that could drift from the shared collector semantics.</steelman>
+<claim>
+`plan-review-loop.sh` should keep calling `scripts/collect-agent-results.sh` exactly as `/design` does today and fold raw panel outputs into `ballot.txt` with one small, test-covered helper beside that call, instead of taking a dependency on `collect-findings.sh` as the outer collector.</claim>
+<evidence>
+[`skills/design/SKILL.md`](skills/design/SKILL.md) lines 689–693 bind Step 3 collection to `collect-agent-results.sh --paths-file` and `plan-review.md`, and [`scripts/test-design-structure.sh`](scripts/test-design-structure.sh) lines 216–229 fail closed unless `plan-review.md` carries that collector on one line with `--timeout 1860`, `--substantive-validation`, and `--validation-mode`, so the shipped contract is “agent-results collector + pinned validation,” not the `collect-findings.sh` CLI (`--mode`, `--findings-file`, `--oos-file` at [`skills/review/scripts/collect-findings.sh`](skills/review/scripts/collect-findings.sh) lines 12–32).</evidence>
+<strongest_concession>
+`collect-findings.sh` already wraps `collect-agent-results.sh` for external slots with an explicit pin comment and the same validation flags ([`skills/review/scripts/collect-findings.sh`](skills/review/scripts/collect-findings.sh) lines 201–208), so reuse would not ignore substantive validation—it would reuse a path that is already coupled to the low-level collector.</strongest_concession>
+<counter_to_opposition>
+That inner call does not erase the outer contract mismatch: `collect-findings.sh` is still a `/review`-shaped façade (`--mode diff|description`, mandatory findings/OOS targets, separate Claude wait plumbing) while `/design` Step 3 is documented and lint-pinned around direct `collect-agent-results.sh` usage plus design-local ballot and tally artifacts, so adopting it as the primary entry widens the change surface into review-only branching without simplifying what `plan-review-loop.sh` must prove equivalent.</counter_to_opposition>
+<risk_if_wrong>
+If the thesis wins but the inline ballot helper is wrong, you get subtle corruption of `ballot.txt` or mis-classified in-scope vs OOS rows that still pass lint, undermining the “same session-root artifacts” acceptance bar until fixtures catch it.</risk_if_wrong>
+RECOMMEND: THESIS
+
+**Self-check:** (1) All six tags emitted once, in order. (2) Final line is `RECOMMEND: THESIS`. (3) All substantive prose sits inside the tags; word count is within the stated cap.

@@ -1,0 +1,19 @@
+<steelman>
+A synthetic Claude fallback could reduce operator interruption by making one more automated attempt to produce a valid judge before asking the main agent to adjudicate. It also gives plan-review-loop.sh a self-contained recovery path when all voters fail.
+</steelman>
+<claim>
+Signal-only is the correct choice because the repository already defines 0-judge plan review as a main-agent adjudication state, and plan-review-loop.sh should preserve that contract instead of adding a second implicit voter path.
+</claim>
+<evidence>
+`skills/design/scripts/tally-plan-review.sh:105-110` already treats `eligible_count == 0` as successful control flow that emits `TALLY_PLAN_REVIEW_STATUS=main-agent-vote-required` and exits 0. `skills/design/SKILL.md:709` already specifies the full main-agent path: read `ballot.txt` as untrusted data, write `voter-main-agent.txt`, re-run tally machinery, avoid hand-writing artifacts, and log the warning.
+</evidence>
+<strongest_concession>
+The opposing point is real: if all three voters fail because of transient launcher/tool problems, a synthetic Claude subprocess might produce artifacts faster than routing back through the main-agent prose.
+</strongest_concession>
+<counter_to_opposition>
+That speed gain is not worth duplicating adjudication semantics, because the existing path centralizes safety rules around untrusted ballot content, artifact generation, and warning logging; a fallback judge would need to replicate those guarantees while also changing the meaning of “0 judges available.”
+</counter_to_opposition>
+<risk_if_wrong>
+If Signal-only is wrong, some recoverable 0-judge runs will pause for main-agent adjudication instead of completing automatically, increasing latency and manual work for /design users.
+</risk_if_wrong>
+RECOMMEND: THESIS

@@ -1,0 +1,153 @@
+Reading the plan and verifying referenced scripts and contracts.
+
+Creating the plan review output: verifying `test-design-structure.sh` for checks beyond 14c1–14c3.
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/test-design-structure.sh:417-422	Proposed SKILL.md edits remove scout/panel/PANEL_PATHS tokens and add negative greps but the plan only lists removing Check 14b2 not 14c1-14c3	CI still requires those strings in SKILL.md or new negative pins fight existing positives	Rewrite or delete Checks 14c1-14c3 and add explicit grep -Fq -v style assertions aligned with plan lines 205-208
+1	in_scope	important	correctness	scripts/lib-voter-parse-rate.sh:1-32 vs scripts/dispatch-code-voters.sh:95-279	Plan UPDATED dispatch-plan-voters claims check_and_retry_voter_parse_rate can come from sourced lib-voter-parse-rate.sh	Those functions still live only in dispatch-code-voters.sh after sourcing the 3 small helpers	Extend lib with the full parse-rate + retry surface and refactor dispatch-code-voters.sh or revise the plan to extend plan-specific check_plan_voter_substantive retry_voter to Voter 1
+1	in_scope	important	risk-integration	plan.txt:66-76 (proposed test-plan-review-loop.sh)	Harness lists stubbed DISPATCH_OK=false panel failure only	No coverage for missing dispatch-plan-review-panel.sh or pure inline dispatch-with-waterfall fallback	Document no-compat branch and keep pins or add a dedicated fixture test if a fallback remains required
+1	in_scope	nit	code-quality	plan.txt:144 (UPDATED dispatch-plan-voters.sh)	Text says extract helpers into lib then immediately says the library already exists and only needs sourcing	Contradictory implementation scope	Choose one narrative extraction vs reuse vs plan-only helpers
+1	in_scope	latent	security	plan.txt:137-148 (UPDATED dispatch-plan-voters.sh)	Voter 1 failure logging copies code-voters append-tool-failure pattern without pinning DESIGN_TMPDIR-relative diag paths and redact parity in this PR	Execution-issues append might omit --redact or write diags outside the design session directory	Spell full paths flags and log resolution mirroring dispatch-code-voters.sh:303-345 adapted to DESIGN_TMPDIR
+
+1. **[architecture]** [`plan.txt`](file:///Users/zhupanov/.cache/larch/sessions/claude-design-larch2-0T4UH7/plan.txt) Steps 24-26 plus structural pins at proposed lines 203-208 — The plan assumes a single unconditional `dispatch-plan-review-panel.sh` entrypoint and pins its literal token inside `plan-review-loop.sh`, which forecloses an undocumented inline `dispatch-with-waterfall.sh` fallback. **Suggested revision:** State explicitly that `#2665` panel dispatch is mandatory for this plugin revision or specify the existence-gated fallback and relax incompatible pins.
+
+2. **[correctness]** [`scripts/test-design-structure.sh:417-422`](scripts/test-design-structure.sh) vs [`plan.txt`](file:///Users/zhupanov/.cache/larch/sessions/claude-design-larch2-0T4UH7/plan.txt) lines 205-208 — Positive CI pins still require `scout-plan-archetypes-wrapper.sh`, `dispatch-plan-review-panel.sh`, and `PANEL_PATHS_FILE` inside `SKILL.md`, while the plan moves those mechanics into `plan-review-loop.sh` and mandates grep-DOES-NOT for the same tokens in `SKILL.md`. The plan’s “Pin removals” subsection names only Check 14b2. **Suggested revision:** Add an explicit edit for 14c1–14c3 (delete, relocate to the new script, or flip to negative assertions) so `make lint` stays coherent.
+
+3. **[correctness]** [`scripts/lib-voter-parse-rate.sh:4-32`](scripts/lib-voter-parse-rate.sh) and [`scripts/dispatch-code-voters.sh:95-279`](scripts/dispatch-code-voters.sh) vs [`plan.txt`](file:///Users/zhupanov/.cache/larch/sessions/claude-design-larch2-0T4UH7/plan.txt) line 144 — The library exists at the stated path but only exports `voter_parse_rate_diag_path`, `voter_output_sha256`, and `voter_parse_rate_diag_matches_output`; `check_voter_parse_rate`, `parse_rate_status_from_output`, and `check_and_retry_voter_parse_rate` remain embedded in `dispatch-code-voters.sh`. [`scripts/dispatch-plan-voters.sh:64-211`](scripts/dispatch-plan-voters.sh) additionally uses the distinct `check_plan_voter_substantive` / `retry_voter` path for Codex/Cursor, so “mirror code-voters” is not a drop-in. **Suggested revision:** Either extend the shared library plus refactor both dispatchers, or document extending the existing plan-voter substantive helpers to Claude without importing the code-review JUDGE_ERROR machinery wholesale.
+
+4. **[risk-integration]** [`plan.txt`](file:///Users/zhupanov/.cache/larch/sessions/claude-design-larch2-0T4UH7/plan.txt) lines 66-76 (proposed `test-plan-review-loop.sh` case 6) — The harness exercises a stubbed primary `dispatch-plan-review-panel.sh` returning `DISPATCH_OK=false`, not an absent script or inline-waterfall-only execution path. **Suggested revision:** If no fallback is supported, say so in the harness spec; otherwise add a fixture that covers the alternate entrypoint.
+
+5. **[code-quality]** [`plan.txt`](file:///Users/zhupanov/.cache/larch/sessions/claude-design-larch2-0T4UH7/plan.txt) UPDATED `dispatch-plan-voters.sh` bullet (~line 144) — “Extract … into a new sourced library … that library exists; just source it” contradicts itself and mismatches the repository. **Suggested revision:** Replace with a single accurate instruction (new extraction work vs reuse of plan-specific helpers).
+
+6. **[security]** [`plan.txt`](file:///Users/zhupanov/.cache/larch/sessions/claude-design-larch2-0T4UH7/plan.txt) UPDATED `dispatch-plan-voters.sh` (~lines 137-148) — Voter 1 diagnostics and `append-tool-failure.sh` integration are described by reference to `dispatch-code-voters.sh:304-347` without calling out `DESIGN_TMPDIR`, `--redact`, or `_issues_log` resolution differences from `REVIEW_TMPDIR`-centric code review. **Suggested revision:** Spell the adapted paths and flags so ballot-bearing artifacts are not accidentally logged verbatim outside the design session.
+
+**Current-state verification (not deficiencies):** [`skills/design/scripts/dispatch-plan-review-panel.sh`](skills/design/scripts/dispatch-plan-review-panel.sh) is present in-tree (calls `dispatch-with-waterfall.sh` around lines 130-139), so today’s checkout does not force an inline-only panel path; the gap is plan clarity and tests for any optional fallback.
+
+[OUT_OF_SCOPE] **[architecture]** [`skills/design/scripts/tally-plan-review.md:9-10`](skills/design/scripts/tally-plan-review.md), [`skills/design/scripts/design-driver.md:9-12`](skills/design/scripts/design-driver.md), and [`skills/design/SKILL.md:999-1000`](skills/design/SKILL.md) — These still describe Step 3 plan-review tally via `design-driver.sh` `ACTION=TALLY` and “Voter 2/3” ordering; the plan’s file list updates `design-driver.md` with a backward-compat note but does not schedule `tally-plan-review.md` or the SKILL index pointer refresh. **Suggested revision:** Track a follow-up doc pass so Primary Callers and the SKILL mechanical index match the new `plan-review-loop.sh` + three-voter `dispatch-plan-voters.sh` reality.
+
+Wait - the user said first non-whitespace must be `s` or `{`. My response starts with "schema_version" - good, starts with s.
+
+But I included markdown links like `[plan.txt](file:///...)` - user asked repo-relative file:line. The plan path is outside repo - I should use the path they gave for plan citations or say "plan.txt (session cache)" without file://
+
+Actually user said "repo-relative file:line when applicable" - for plan deficiencies, location is plan.txt in cache - could use absolute as they provided: `<OPERATOR_REPO_PATH>/larch/.../plan.txt`
+
+Let me remove file:// links from findings - user prefers full paths as strings. I'll use the absolute path for plan since it's the reviewed artifact.
+
+Also I duplicated content - I have TSV block at top AND I need to ensure I didn't violate "first line is TSV header" - I put header + 5 rows together. Good.
+
+Issue: I used "**[architecture]**" with markdown - user said numbered findings - OK.
+
+Double-check: User said "When you have findings, include a TSV structured-record block with this exact header" - I have one header and 5 data rows. Good.
+
+Remove duplicate "architecture" in finding 1 - finding 1 overlaps TSV row 3. I'll streamline numbered list to align 1:1 with TSV rows plus verification note + OUT_OF_SCOPE.
+
+Actually I have 6 numbered items + OUT_OF_SCOPE but only 5 TSV rows. Align to 5 numbered + out of scope without number.
+
+Let me fix finding 1 vs TSV - TSV row 3 is risk-integration harness; my #4 matches. TSV row 1 is test-design-structure - my #2 matches.
+
+I'll reorder numbered findings to match TSV order exactly (5 findings) plus verification paragraph + OUT_OF_SCOPE.
+
+Also fix: first finding said architecture but test-design-structure is correctness - I'll match TSV focus_area for each numbered item.
+
+Revised numbered list:
+1 correctness - test-design-structure (matches TSV1)
+2 correctness - lib (matches TSV2)  
+3 risk-integration - harness (matches TSV3)
+4 code-quality - line 144 (matches TSV4)
+5 security - append (matches TSV5)
+
+Then verification note.
+Then OUT_OF_SCOPE.
+
+Remove my old "1. architecture plan steps" as duplicate of TSV row 3 - actually the architecture concern (mandatory panel vs fallback) is NOT in TSV - I dropped it from TSV in favor of security row. Let me add architecture back.
+
+Replace security row with architecture row for panel/fallback, keep security as numbered only?
+
+User wanted 5 focus areas in walk - I have 5 TSV rows: correctness, correctness, risk-integration, code-quality, security - missing architecture in TSV.
+
+Replace row 5 security with architecture panel mandatory, add security as [OUT_OF_SCOPE] or merge security into row 2 prose.
+
+I'll replace TSV row 5:
+1	in_scope	important	architecture	plan.txt:24-26 and plan.txt:203-206	Unconditional dispatch-plan-review-panel call plus grep pin with no compat story for absent script or inline waterfall	Implementers cannot tell whether forks must vendor the panel script or embed fallback	Declare mandatory surface and delete fallback talk or specify detection plus test and pin updates
+
+Then add security as finding 6 text only without TSV? User wanted TSV for each finding - 5 rows for 5 areas:
+
+Row1 correctness test-design-structure
+Row2 correctness lib mismatch  
+Row3 risk-integration harness
+Row4 code-quality contradiction
+Row5 architecture panel/fallback
+
+Security: fold into finding 6 [OUT_OF_SCOPE] or add 6th TSV row - user example had one row. I'll use 6 rows.
+
+1	in_scope	latent	security	plan.txt:137-148	Voter1 diag append-tool-failure adaptation underspecified	Leakage or wrong log path	Specify DESIGN_TMPDIR paths and --redact parity
+
+6 rows total.
+
+Actually user said "Walk five focus areas" - 6 rows is OK.
+
+Final TSV 6 lines of data.
+
+Wait - "For each finding, add one record" with schema_version column = 1 - all good.
+
+Let me output clean final message - remove markdown links to file://, use paths.
+
+Also I need to fix the opening - user said entire response when no issues is ONLY json. When issues, first non-whitespace is `s`. My TSV starts with schema_version - good.
+
+Remove the "**" overuse per user rules - they said avoid bolding - I'll use minimal bold.
+
+Let me produce the final clean output with 6 TSV data rows covering architecture, 2x correctness, risk-integration, code-quality, security.
+
+Data row 1: test-design-structure 14c
+Data row 2: lib-voter-parse-rate
+Data row 3: harness fallback  
+Data row 4: code-quality line 144
+Data row 5: architecture unconditional dispatch
+Data row 6: security append-tool-failure
+
+Numbered findings 1-6 matching.
+
+OUT_OF_SCOPE doc drift.
+
+Verification sentence without "Current-state" as bold header - plain.
+
+Let me also fix duplicate TSV header - user wanted ONE header line at very start, then I had header + rows - the "Acceptable example" showed header then one data row. So my output should be:
+
+Line1: header
+Lines 2-7: 6 data rows
+Then blank
+Then numbered 1-6
+Then verification
+Then OUT_OF_SCOPE
+
+No duplicate header in the middle.
+
+I'll remove markdown from findings - use backticks for paths only per user code citation preference - they said code citations use ```start:end:path``` for code - for plan which is outside workspace, use plain path in backticks.
+
+Actually plan is outside repo - use absolute path in backticks once.
+
+Final output below.
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/test-design-structure.sh:417-422	Proposed SKILL.md removes scout/panel/PANEL_PATHS tokens while the plan only removes Check 14b2 not the 14c1-14c3 positive greps	CI still mandates those SKILL substrings or conflicts with new negative greps	Rewrite or delete Checks 14c1-14c3 and add explicit negative SKILL assertions per plan lines 205-208
+1	in_scope	important	correctness	scripts/lib-voter-parse-rate.sh:1-32 vs scripts/dispatch-code-voters.sh:95-279	Plan claims check_and_retry_voter_parse_rate lives in lib-voter-parse-rate.sh after sourcing	Functions remain only in dispatch-code-voters.sh; sourcing the lib alone is insufficient	Extract the full parse-rate and retry helpers into the lib and refactor dispatchers or rewrite the plan to extend plan-specific helpers instead
+1	in_scope	important	risk-integration	plan.txt:66-76 (proposed test-plan-review-loop.sh)	Harness case 6 only stubs failing dispatch-plan-review-panel.sh	No test for missing panel script or inline-only dispatch-with-waterfall fallback	Declare no fallback and drop related dialectic text or add a fixture plus pins for the alternate entrypoint
+1	in_scope	nit	code-quality	plan.txt:144 (UPDATED dispatch-plan-voters.sh)	Contradictory extract-into-new-lib versus library-already-exists wording	Implementer scope confusion	Use one coherent story for what code moves versus what already exists
+1	in_scope	important	architecture	plan.txt:24-26 and plan.txt:203-206	Unconditional dispatch-plan-review-panel invocation plus mandatory grep token inside plan-review-loop.sh with no compat branch	Implementers cannot tell whether forks without the panel script must inline waterfall or fail closed	Document mandatory #2665 surface or specify existence detection fallback and matching tests or pins
+1	in_scope	latent	security	plan.txt:137-148 (UPDATED dispatch-plan-voters.sh)	Voter 1 append-tool-failure pattern referenced without pinning DESIGN_TMPDIR-relative paths and --redact parity vs code review	Ballot-bearing diagnostics could log to the wrong execution-issues path or omit redaction	Spell adapted paths flags and log resolution mirroring dispatch-code-voters.sh:303-345 for DESIGN_TMPDIR
+
+1. **[correctness]** `scripts/test-design-structure.sh:417-422` — Checks 14c1–14c3 still require `scout-plan-archetypes-wrapper.sh`, `dispatch-plan-review-panel.sh`, and `PANEL_PATHS_FILE` inside `SKILL.md`, but the plan moves those strings into `plan-review-loop.sh` and mandates grep-DOES-NOT for them in `SKILL.md` while only scheduling removal of Check 14b2. Suggested revision: extend the `test-design-structure.sh` edit list to rewrite or delete 14c1–14c3 and add negative assertions consistent with plan lines 205–208.
+
+2. **[correctness]** `scripts/lib-voter-parse-rate.sh:4-32` versus `scripts/dispatch-code-voters.sh:95-279` and `plan.txt` line 144 — The on-disk library only defines `voter_parse_rate_diag_path`, `voter_output_sha256`, and `voter_parse_rate_diag_matches_output`; `check_voter_parse_rate`, `parse_rate_status_from_output`, and `check_and_retry_voter_parse_rate` are not exported from that file. `scripts/dispatch-plan-voters.sh:64-211` already uses `check_plan_voter_substantive` and `retry_voter` for Codex/Cursor, so mirroring the code-review voter path is not a simple source-and-call. Suggested revision: either complete the extraction into `scripts/lib-voter-parse-rate.sh` (and refactor `dispatch-code-voters.sh`) or describe extending the existing plan-voter substantive flow to Claude without importing the JUDGE_ERROR ballot machinery verbatim.
+
+3. **[risk-integration]** `plan.txt` lines 66–76 (proposed `skills/design/scripts/test-plan-review-loop.sh`) — Test case 6 covers a stubbed primary `dispatch-plan-review-panel.sh` returning `DISPATCH_OK=false`, not a missing panel dispatcher or a pure inline `dispatch-with-waterfall.sh` path. Suggested revision: if no fallback exists, state that explicitly in the harness spec; if compatibility matters, add coverage and relax conflicting structural greps.
+
+4. **[code-quality]** `plan.txt` UPDATED `dispatch-plan-voters.sh` bullet (~line 144) — The text simultaneously says to extract helpers into a new sourced library and that the library already exists and only needs sourcing. Suggested revision: replace with one accurate instruction.
+
+5. **[architecture]** `plan.txt` Step 3 (lines 24–26) and proposed `scripts/test-design-structure.sh` pins (lines 203–206) — The driver always calls `dispatch-plan-review-panel.sh` and the structural pins require that literal inside `plan-review-loop.sh`, leaving no specified behavior for environments that expected the older “inline waterfall if Piece 1 not landed” story. Suggested revision: declare the panel script mandatory for supported releases or specify detection, fallback code, tests, and pin updates together.
+
+6. **[security]** `plan.txt` UPDATED `dispatch-plan-voters.sh` (~lines 137–148) — Failure diagnostics cite `dispatch-code-voters.sh:303-345` without calling out `DESIGN_TMPDIR` versus `REVIEW_TMPDIR`, `--redact`, or `_issues_log` resolution differences for `/design`. Suggested revision: spell the adapted paths and flags so ballot content is not appended to the wrong log without redaction.
+
+Verification: `skills/design/scripts/dispatch-plan-review-panel.sh` is already present in this repository (for example it sets `DISPATCH_WATERFALL_SH` and invokes the waterfall around lines 130–139), so the current tree does not force an inline-only panel implementation; remaining gaps are plan specificity, tests, and structural pins.
+
+[OUT_OF_SCOPE] **[architecture]** `skills/design/scripts/tally-plan-review.md:9-10`, `skills/design/scripts/design-driver.md:9-12`, and `skills/design/SKILL.md:999-1000` — Primary-caller and index prose still describe Step 3 tally via `design-driver.sh` `ACTION=TALLY` and Voter 2/3 only; the plan’s file list partially updates `design-driver.md` but does not schedule `tally-plan-review.md` or the SKILL mechanical index refresh. Suggested revision: follow-up doc pass when the loop and three-voter dispatcher land.

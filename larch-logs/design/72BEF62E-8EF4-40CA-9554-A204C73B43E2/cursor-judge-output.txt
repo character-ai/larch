@@ -1,0 +1,9 @@
+Votes after reading the full ballot:
+
+**DECISION_1: ANTI_THESIS** — Defense B ties a concrete schema gap (severity enforced in `aggregate-findings.sh`, absent from plan-review templates and tally output), shows why fail-open is not contract-safe, and frames adapter cost as smaller than a path that cannot accept normal `/design` ballots; Defense A’s “conform inputs” path admits semantic distortion and still risks production failure before an adapter is forced anyway.
+
+**DECISION_2: THESIS** — Defense B anchors on existing `tally-plan-review.sh` behavior and the canonical `SKILL.md` main-agent path for untrusted ballots and artifacts; Defense A’s relaunch pattern reintroduces launcher/CI flakiness and duplicates safety semantics A itself flags unless tightly guarded, for limited gain over the already-defined handoff.
+
+**DECISION_3: THESIS** — Defense A cites the documented and lint-pinned `/design` Step 3 contract (`collect-agent-results.sh` + flags) versus `collect-findings.sh`’s review-oriented CLI and branching, making scope and drift risk explicit; Defense B’s reuse argument is strong on DRY but understates touching shared `/review` collection during a design-only refactor when a small helper preserves the pinned contract.
+
+**DECISION_4: ANTI_THESIS** — Defense A’s two-line map gives design-specific discoverability and reduces the credible footgun of exporting `LARCH_AGGREGATOR_DISABLED` broadly and affecting nested `/review`; Defense B’s “second control plane” objection is real but thin compared to that operational coupling and naming hazard.

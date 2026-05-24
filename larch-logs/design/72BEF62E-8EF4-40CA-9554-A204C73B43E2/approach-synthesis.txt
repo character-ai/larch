@@ -1,0 +1,51 @@
+## Approach Synthesis (Step 2a.4)
+
+### Where the sketches agree
+
+1. **plan-review-loop.sh as narrow /design-specific coordinator, NOT a wrapper around review-core.sh.** review-core.sh carries code-review-specific artifacts (round summaries, diff/OOS semantics, implement-log promotion) irrelevant to /design. The new script wraps existing primitives: scout-plan-archetypes-wrapper.sh → dispatch-plan-review-panel.sh → collect (TBD) → aggregate (optionally) → ballot.txt → dispatch-plan-voters.sh → tally-plan-review.sh.
+
+2. **Extend `scripts/dispatch-plan-voters.sh` in-place to own Voter 1** (mirrors dispatch-code-voters.sh:285-301). Inlining voter dispatch into plan-review-loop.sh would bury parse-rate retry, fallback accounting, and VOTER_PATHS_FILE in an already-large orchestration script. A unified `dispatch-voters.sh --kind plan|code` is the right long-term abstraction but too much blast radius for this refactor.
+
+3. **Keep `--round-num <N>` (default 1)** as the forward-compat surface. Richer `--phase` interface is premature until convergence / per-round promotion are actually designed in the multi-round companion.
+
+4. **Preserve the 10 focus-area enum anchor comments as no-op bash comments** beside the new invocation in SKILL.md (test-design-structure.sh Check 14a counts that exact string).
+
+5. **`design-driver.sh ACTION=TALLY` case becomes orphaned but retained** for backward compat. ACTION=TALLY callers are ONLY in `skills/design/SKILL.md`; everything else is docs/tests/contracts. Update `design-driver.md` to mark it "retained for compatibility, no longer the normal Step 3 entrypoint."
+
+6. **SKILL.md Step 3 deletion targets** (Codex-Pragmatic verified): the inline scout/dispatch parsing block, the "Collecting, Voting, Finalize" orchestration prose, the `printf 'ACTION=TALLY ARGS=…'` pipe, and the `TALLY_PLAN_REVIEW_STATUS` main-agent retry prose. Keep: the timing mark, `emit-design-plan-preview.sh --variant step3`, the `review_budget=quick` branch.
+
+7. **`skills/design/references/plan-review.md` needs Voter 1 prose rewrite.** The Agent-tool subagent description for Voter 1 lives in plan-review.md (NOT SKILL.md as the issue suggests) — it must be updated to describe `launch-claude-review.sh` via `dispatch-plan-voters.sh`. Issue file list is correct on this; the impact is larger than "wording cross-reference."
+
+8. **0-judge fallback signal stays at `LOOP_STATUS=main-agent-vote-required`.** `tally-plan-review.sh` already handles `eligible_count==0` → emits `TALLY_PLAN_REVIEW_STATUS=main-agent-vote-required`. plan-review-loop.sh propagates this as `LOOP_STATUS=main-agent-vote-required` and the existing SKILL.md MAV-write-and-re-tally prose stays in place.
+
+9. **Bash 3.2 portability discipline.** Avoid associative arrays, namerefs, mapfile/readarray, `${var^^}/${var,,}`, `&>>`, coproc. Use newline temp files + `while IFS= read -r`, awk KV parsing, indexed arrays only.
+
+10. **Acceptance: same session-root artifacts, NOT bit-identical ballots.** Six session-root files (ballot.txt, accepted-plan-findings.md, rejected-findings.md, oos.md, oos-accepted-design.md, voting-tally.md). The aggregator-absorption decision makes bit-identical ballots impossible by construction. Use a fixture-based equivalence test with a pass-through aggregator stub and a duplicate-finding fixture to prove aggregation only changes dedup shape.
+
+11. **`test-dispatch-plan-voters.sh` updates** to stub the Claude voter (Voter 1) launch alongside codex/cursor.
+
+12. **Tests behaviorally unchanged** after this refactor: test-tally-plan-review.sh, test-dispatch-plan-review-panel.sh, test-scout-plan-archetypes-wrapper.sh, test-plan-review-prompt.sh, test-emit-design-plan-preview.sh, test-design-driver.sh (the TALLY case stays callable).
+
+### Architecture/Standards highlights (Cursor-Arch)
+
+- The /review primitives (`collect-findings.sh`, `aggregate-findings.sh`) accept `--review-tmpdir <dir>` which can be DESIGN_TMPDIR. There is a flag-parity gap between `collect-findings.sh` and the stricter `collect-agent-results.sh` already used by /design — resolving it is a prerequisite for reuse (DECISION_3 below).
+
+### Pragmatism/Safety highlights (Codex-Pragmatic)
+
+- The biggest behavior risk is aggregator absorption: `aggregate-findings.sh` may merge, renumber, or reshape ballot rows; its validation may expect code-review-style structure such as severity lines. Mitigation: fixture-based byte-equivalence test on the six session-root artifacts + a duplicate-finding fixture proving aggregation only changes dedup shape.
+- Voter 1 prompt/launch lives in `plan-review.md` (not SKILL.md); the issue's "no launcher change" wording reflects file scope, not behavior.
+
+### Edge-case/Failure-mode risks (Cursor-Edge)
+
+- Documentation/implementation mismatch will exist transiently: `plan-review.md` says Voter 1 is Agent-tool while the new binding makes it `launch-claude-review.sh`. Plan must rewrite plan-review.md in the SAME PR.
+- `tally-plan-review.sh` already supports `eligible_count==0` → emits `main-agent-vote-required`. plan-review-loop.sh must NOT attempt to "rescue" this case mid-script.
+
+### Innovation/Exploration alternatives (Codex-Innovation, not chosen but preserved)
+
+- "Unified `dispatch-voters.sh --kind plan|code`" — sensible long-term refactor; deferred to a future cleanup.
+- "Event-log architecture" (every phase writes plan-review-loop.env + artifacts; multi-round replays by round number) — interesting but premature; the `--round-num` flag is enough surface for now.
+- "Synthetic Claude subprocess fallback for 0-judge" instead of signaling main-agent-vote-required — see DECISION_2 below.
+
+### Plan size note
+
+Sketches estimate ~350 changed lines (issue claim). Realistic: 200 (plan-review-loop.sh) + 100 (test-plan-review-loop.sh) + 80 (dispatch-plan-voters.sh extensions) + 60 (test-dispatch-plan-voters.sh stub) + 80 (SKILL.md deletions+invocation) + 30 (plan-review.md edits) + 20 (design-driver.md note) + 40 (test-design-structure.sh pin updates) + 20 (Makefile/agent-lint.toml) ≈ 630 lines diff. Will mark `diff_lines: 600` in plan; below 800 hard, above 250 soft → soft trigger MAY fire.

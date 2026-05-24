@@ -1,0 +1,19 @@
+<steelman>
+Using only `collect-agent-results.sh` keeps the refactor close to the current /design Step 3 contract, where the prompt already says to collect via `collect-agent-results.sh --paths-file` and then build `$DESIGN_TMPDIR/ballot.txt`. A small inline ballot helper also avoids changing shared /review code during a refactor whose acceptance is “same session-root artifacts.”
+</steelman>
+<claim>
+The inline ballot helper is unjustified duplication because `collect-findings.sh` already performs the same wait/validate/parse/ballot emission pipeline, so the proportional path is to reuse it and close only the narrow interface gap.
+</claim>
+<evidence>
+`skills/review/scripts/collect-findings.sh:204` pins the exact substantive-validation collector path, and `skills/review/scripts/collect-findings.sh:208` invokes `scripts/collect-agent-results.sh` on the external outputs. It already converts reviewer prose/TSV into numbered `### FINDING_N:` blocks at `skills/review/scripts/collect-findings.sh:412`, writes reviewer and concern fields at `skills/review/scripts/collect-findings.sh:414-416`, handles OOS output at `skills/review/scripts/collect-findings.sh:420`, and emits collection KVs at `skills/review/scripts/collect-findings.sh:424-428`.
+</evidence>
+<strongest_concession>
+The opposing case is strongest on blast radius: `collect-findings.sh` is review-named, its usage currently exposes `--findings-file`/`--oos-file` rather than `--review-tmpdir` at `skills/review/scripts/collect-findings.sh:12`, and touching it risks perturbing /review tests during a /design refactor.
+</strongest_concession>
+<counter_to_opposition>
+That concession argues for a narrow compatibility patch, not a new parser: adding the missing input shape or calling the existing flags with `$DESIGN_TMPDIR/ballot.txt` is smaller than recreating validation failure logging, TSV/prose parsing, OOS splitting, duplicate preservation, and KVs inside a new `plan-review-loop.sh`.
+</counter_to_opposition>
+<risk_if_wrong>
+If reuse is wrong, /design may inherit /review-specific grammar or artifact assumptions and fail the “same session-root artifacts” acceptance, especially around OOS formatting and plan-review voter expectations.
+</risk_if_wrong>
+RECOMMEND: ANTI_THESIS
