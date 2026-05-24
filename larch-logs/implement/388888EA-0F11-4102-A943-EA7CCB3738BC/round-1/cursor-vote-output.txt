@@ -1,0 +1,31 @@
+Reading the ballot and any referenced context files.
+
+Ballot file appears incomplete. Searching the session directory for FINDING definitions.
+
+Reading the merged ballot in `aggregator-prompt.md` (findings.md is empty) and `diff-context.txt` for verification.
+
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: EXONERATE -- practical exit-3 behavior already matches the plan envelope; forcing everything through one bail) helper is high churn for speculative future coupling
+FINDING_5: EXONERATE -- duplicate auth verdict reads are a tiny cost versus threading cached state across failure branches
+FINDING_6: EXONERATE -- two small parse blocks are easy to keep aligned; a shared abstraction is more moving parts than the drift risk warrants
+FINDING_7: EXONERATE -- redundant stub prints are test-only noise with negligible maintenance impact
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: NO -- large run-log diffs are an intentional repo policy artifact, not a defect ticket for this feature
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: NO -- same run-log volume story as FINDING_12; no separate actionable defect beyond documented policy
+FINDING_18: YES
+FINDING_19: YES
+FINDING_20: YES
+FINDING_21: EXONERATE -- unbounded reads are hypothetical without evidence of multi-megabyte sidecars in this path; byte caps add new edge cases
+FINDING_22: EXONERATE -- materially the same grep-width false-positive class as FINDING_14; a second tightening campaign adds complexity without new scope
+FINDING_23: EXONERATE -- same none-vs-missing documentation mismatch already covered by FINDING_11
+FINDING_24: NO -- duplicate of FINDING_12 aggregate-diff noise; still not ticket-worthy under run-log policy
+FINDING_25: YES
