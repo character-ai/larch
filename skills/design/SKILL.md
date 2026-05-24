@@ -184,9 +184,9 @@ This writes `$DESIGN_TMPDIR/source-env.sh` and refreshes the stable symlink `~/.
    3. When `SESSION_ID` is non-empty, run `"${CLAUDE_PLUGIN_ROOT}/scripts/design-log-publish.sh" --design-tmpdir "$DESIGN_TMPDIR" --run-id "$SESSION_ID" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}` and parse `PUBLISH_OK` from stdout. When `SESSION_ID` is empty, print `printf '\n**⚠ /design: SESSION_ID missing; skipping design log publish**\n'` (use `printf`, not `print`). On `PUBLISH_OK=false`, capture stderr to `$DESIGN_TMPDIR/design-log-publish.failure.log` and append under `Warnings` via `"${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh" --log "$DESIGN_TMPDIR/execution-issues.md"`, then continue (do not roll back the successful plan write from sub-step 3.1).
    4. Run `clarify-comment-post.sh --kind response`, then `clarify-label.sh --action remove`.
    5. **Only when** `SESSION_ID` is non-empty **and** `PUBLISH_OK=true` after sub-step 3.3, run `"${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh" rename --issue "$ISSUE_NUMBER" --state designing ${REPO:+--repo "$REPO"}` (best-effort; treat `RENAMED=false` as idempotent success). Sub-step 3.4 removes `needs-design-clarification` before this rename; **do not** run `--state designed` here — that token is reserved for Step 5c after Gate C, composed `larch:plan`, and the same publish guard — so `/implement` admission cannot treat a clarify-only `larch:plan` update as terminal design completion. When `SESSION_ID` is empty or `PUBLISH_OK=false`, **skip** this rename in this sub-step.
-   6. Step 0b clarify hygiene and exit **0** on success — **before** that hygiene, run the **Terminal cost line** fenced bash block in `### Terminal cost line` below (same block as Step 5 finalize happy path / plan-block-write failure). The issue title remains `[DESIGNING]` until a later `/design` run reaches Step 5c (Gate C + OOS filing + composed plan + publish) — `/implement` still requires `[DESIGNED]`.
-4. **Already-planned branch** when a `larch:plan` block exists and clarification is clean: `AskUserQuestion` **(a)** replace via full flow, **(b)** ad-hoc Q&A only, **(c)** cancel — on **(c) cancel**, first run the **Terminal cost line** fenced bash block in `### Terminal cost line` below, then print `**ℹ /design cancelled by operator.**` and exit **0**.
-5. **Tier gate**: if no tier flag on argv, `AskUserQuestion` with **three options** `trivial` / `simple` / `hard` (descriptions per issue #2485). Non-tier `Other` answers → first run the **Terminal cost line** fenced bash block in `### Terminal cost line` below, then print `**ℹ /design cancelled by operator.**` and exit **0**.
+   6. Step 0b clarify hygiene and exit **0** on success — **before** that hygiene, export `SUMMARY_OUTCOME=cancelled-clarify` and run the **Final summary block** fenced bash block in `### Final summary block` below. The issue title remains `[DESIGNING]` until a later `/design` run reaches Step 5c (Gate C + OOS filing + composed plan + publish) — `/implement` still requires `[DESIGNED]`.
+4. **Already-planned branch** when a `larch:plan` block exists and clarification is clean: `AskUserQuestion` **(a)** replace via full flow, **(b)** ad-hoc Q&A only, **(c)** cancel — on **(c) cancel**, export `SUMMARY_OUTCOME=cancelled-already-planned` and run the **Final summary block** fenced bash block in `### Final summary block` below, then print `**ℹ /design cancelled by operator.**` and exit **0**.
+5. **Tier gate**: if no tier flag on argv, `AskUserQuestion` with **three options** `trivial` / `simple` / `hard` (descriptions per issue #2485). Non-tier `Other` answers → export `SUMMARY_OUTCOME=cancelled-tier-gate` and run the **Final summary block** fenced bash block in `### Final summary block` below, then print `**ℹ /design cancelled by operator.**` and exit **0**.
 5.5. **Rename issue to `[DESIGNING]`** (best-effort, idempotent) now that all cancel paths have been cleared. Resolve `REPO` via `"${CLAUDE_PLUGIN_ROOT}/scripts/resolve-repo.sh"` or `gh repo view` fallback if not already bound. Run `"${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh" rename --issue "$ISSUE_NUMBER" --state designing ${REPO:+--repo "$REPO"}` (treat `RENAMED=false` as idempotent success). On non-zero exit, log `Step 0 — [DESIGNING] rename failed` to `Warnings` in `$DESIGN_TMPDIR/execution-issues.md` and continue.
 6. **Write** `$DESIGN_TMPDIR/feature-description.txt` from issue title+body (or verbal prompt). **Tier mapping** to `write-run-params.sh` and **partition persistence**:
    - Set mental boolean `partition_requested` to `true` when `-p` or `--partition` was parsed on argv, else `false` (Pre-Step-0 already rejected `--trivial` + `--partition` collisions).
@@ -240,39 +240,32 @@ elif [[ "$partition_requested" == true ]]; then
 fi
 ```
 
-### Terminal cost line
+### Final summary block
 
-**When**: after `DESIGN_TMPDIR` exists (post–Step 0a session-setup success) and **before** any terminal machine footer, `**⚠ 5: plan-block-write failed**`, or `**ℹ /design cancelled by operator.**` line on the paths enumerated in Step 0b / Steps 5–6. **Do not** run this block on Step 0a `session-setup.sh` failure or tier-flag mutual-exclusion abort (no `DESIGN_TMPDIR` yet). Runs **before** `cleanup-tmpdir.sh` so `$DESIGN_TMPDIR/token-report.json` is still readable.
+**When**: after `DESIGN_TMPDIR` exists (post–Step 0a session-setup success) and **before** any terminal machine footer, `**⚠ 5: plan-block-write failed**`, or `**ℹ /design cancelled by operator.**` line on the paths enumerated in Step 0b / Steps 5–6. **Do not** run this block on Step 0a `session-setup.sh` failure or tier-flag mutual-exclusion abort (no `DESIGN_TMPDIR` yet). Runs **before** `cleanup-tmpdir.sh`. **Split-path** (Step 2b.5) deliberately **does not** invoke this block — it preserves `$DESIGN_TMPDIR` and exits without a terminal summary.
+
+**Orchestrator contract**: export `SUMMARY_OUTCOME` to one of `cancelled-clarify` | `cancelled-already-planned` | `cancelled-tier-gate` | `cancelled-sprawl` | `cancelled-plan-size-hard` | `approved` | `failed-plan-write` **immediately before** running this fenced block on single-phase exits. Step 5c happy path uses the **two-phase** callsites in Step 5c prose (`--pre-publish-only` before `design-log-publish.sh`, then `--post-publish-only` after publish) instead of this single-phase fence.
+
+**⚠ Foreground required — do NOT set `run_in_background: true`.**
 
 ```bash
-# design-cost-line-anchor (scripts/test-design-structure.sh)
+# design-final-summary-anchor (scripts/test-design-structure.sh)
+# Foreground required: see BASH_AUTHORING.md §4
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
 export CLAUDE_PLUGIN_ROOT
-rm -f "$DESIGN_TMPDIR/token-report.json" "$DESIGN_TMPDIR/token-report.stderr.log" 2>/dev/null || true
-if ! DESIGN_TMPDIR="$DESIGN_TMPDIR" IMPLEMENT_TMPDIR="${IMPLEMENT_TMPDIR:-}" \
-  "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --full --format json --output "$DESIGN_TMPDIR/token-report.json" 2>"$DESIGN_TMPDIR/token-report.stderr.log"; then
-  cat "$DESIGN_TMPDIR/token-report.stderr.log" >>"$DESIGN_TMPDIR/token-report.failure.log" 2>/dev/null || true
-  printf '%s\n' "**⚠ /design: token report unavailable; cost line suppressed**"
-elif ! command -v jq >/dev/null 2>&1 || [ ! -s "$DESIGN_TMPDIR/token-report.json" ] || ! jq -e '.claude.totals' "$DESIGN_TMPDIR/token-report.json" >/dev/null 2>&1; then
-  cat "$DESIGN_TMPDIR/token-report.stderr.log" >>"$DESIGN_TMPDIR/token-report.failure.log" 2>/dev/null || true
-  printf '%s\n' "**⚠ /design: token report unavailable; cost line suppressed**"
-else
-  _ct=$(jq -r '(.claude.totals.total // 0)' "$DESIGN_TMPDIR/token-report.json")
-  _dx=$(jq -r '(.codex.totals.total // 0)' "$DESIGN_TMPDIR/token-report.json")
-  _ux=$(jq -r '(.cursor.totals.total // 0)' "$DESIGN_TMPDIR/token-report.json")
-  read -r _ci _ccr _ccw5 _ccw1 _co < <(jq -r '[.BUCKETS_claude.input, .BUCKETS_claude.cache_read, .BUCKETS_claude.cache_create_5m, .BUCKETS_claude.cache_create_1h, .BUCKETS_claude.output] | @tsv' "$DESIGN_TMPDIR/token-report.json" 2>/dev/null || printf '0\t0\t0\t0\t0\n')
-  read -r _di _dcached _dout < <(jq -r '[.BUCKETS_codex.input, .BUCKETS_codex.cached_input, .BUCKETS_codex.output] | @tsv' "$DESIGN_TMPDIR/token-report.json" 2>/dev/null || printf '0\t0\t0\n')
-  read -r _ui _ucr _uo < <(jq -r '[.BUCKETS_cursor.input, .BUCKETS_cursor.cache_read, .BUCKETS_cursor.output] | @tsv' "$DESIGN_TMPDIR/token-report.json" 2>/dev/null || printf '0\t0\t0\n')
-  DESIGN_TMPDIR="$DESIGN_TMPDIR" IMPLEMENT_TMPDIR="${IMPLEMENT_TMPDIR:-}" \
-    "${CLAUDE_PLUGIN_ROOT}/scripts/render-cost-line.sh" \
-    --claude-tokens "$_ct" --codex-tokens "$_dx" --cursor-tokens "$_ux" \
-    --claude-input-tokens "$_ci" --claude-cache-read-tokens "$_ccr" \
-    --claude-cache-write-5m-tokens "$_ccw5" --claude-cache-write-1h-tokens "$_ccw1" --claude-output-tokens "$_co" \
-    --codex-input-tokens "$_di" --codex-cached-input-tokens "$_dcached" --codex-output-tokens "$_dout" \
-    --cursor-input-tokens "$_ui" --cursor-cache-read-tokens "$_ucr" --cursor-output-tokens "$_uo" \
-    --quiet-on-empty || true
+SUMMARY_MODE_STRING=""
+if [ -f "$DESIGN_TMPDIR/run-params.json" ] && command -v jq >/dev/null 2>&1; then
+  SUMMARY_MODE_STRING="$(jq -r '.classification // "N/A"' "$DESIGN_TMPDIR/run-params.json" 2>/dev/null || echo N/A)"
 fi
+DESIGN_TMPDIR="$DESIGN_TMPDIR" ISSUE_NUMBER="${ISSUE_NUMBER:-}" SESSION_ID="${SESSION_ID:-}" \
+  "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/render-final-summary.sh" \
+  --outcome "${SUMMARY_OUTCOME:?set SUMMARY_OUTCOME before Final summary block}" \
+  --mode "${SUMMARY_MODE_STRING}" \
+  ${REPO:+--repo "$REPO"} \
+  --post-publish-only
 ```
+
+See sibling contract `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/render-final-summary.md` (path: `skills/design/scripts/render-final-summary.md`).
 
 ### 0c — Plan-relevant symbol breadcrumb
 
@@ -589,14 +582,14 @@ Parse `VALIDATE_STATUS`, `VALIDATE_DEFECT_COUNT`, `VALIDATE_SKIPPED_COUNT`, `VAL
    - **`_plan_size_rc` is 0** — parse `_plan_size_out` for `SOFT_TRIGGER_FIRED=`, `HARD_TRIGGER_FIRED=`, `TRIGGER_REASONS=`, `PLAN_LINES=`, `DIFF_LINES=`, `FILES_COUNT=`. Then bind **`SEMANTIC_SOFT_ESTIMATE`** (orchestrator-only; the helper never emits this): when `HARD_TRIGGER_FIRED=false`, mechanical `SOFT_TRIGGER_FIRED=false`, and `PARTITION_REQUESTED=false`, set `true` only if the plan body still reads like **multiple substantial independent programs** (unrelated feature axes, parallel refactors across disjoint stacks, or several large QA/CI tracks) despite staying under mechanical thresholds; when uncertain, `false`. Branch steps 4–6 below.
    - **`_plan_size_rc` is 2** — parse `PLAN_SIZE_STATUS=` when present. Print `**⚠ 2b.5: check-plan-size — <status>; proceeding without threshold check**`. Append the full `_plan_size_out` capture to `$DESIGN_TMPDIR/execution-issues.md` under `### Warnings` via `"${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh" --log "$DESIGN_TMPDIR/execution-issues.md" --site "design Step 2b.5" --tool "check-plan-size.sh" --exit-code "$_plan_size_rc" --category Warnings --output-file "$DESIGN_TMPDIR/check-plan-size.validation.log"` after writing the capture to `$DESIGN_TMPDIR/check-plan-size.validation.log` (create/overwrite the log file with the capture first). Then **return** to the caller — no trigger branches fire.
    - **Any other rc** (including **3** for argv / usage errors from `check-plan-size.sh`, which emit no `PLAN_SIZE_STATUS`) — treat as internal error: append the combined capture to `execution-issues.md` `Warnings` the same way (same `--site` / `--tool` / `--exit-code`), ignore any partial KV lines, **return** to the caller.
-4. **Hard branch (`HARD_TRIGGER_FIRED=true`)** — fires **regardless** of `PARTITION_REQUESTED`. Print a `## Plan Size — Hard Trigger` section with `PLAN_LINES`, `DIFF_LINES`, and `FILES_COUNT` from the capture. `AskUserQuestion` with exactly two options: **"Let my panel of agents split this feature for you"** / **"Cancel"** (no **Continue** option — hard triggers are never downgradeable by `--partition`). On **Cancel**: run the **Terminal cost line** fenced bash block (`### Terminal cost line`), print `**ℹ /design cancelled by operator (plan-size hard trigger).**`, exit **0**, preserve `$DESIGN_TMPDIR`. On **Split**: run **Split-path** below.
+4. **Hard branch (`HARD_TRIGGER_FIRED=true`)** — fires **regardless** of `PARTITION_REQUESTED`. Print a `## Plan Size — Hard Trigger` section with `PLAN_LINES`, `DIFF_LINES`, and `FILES_COUNT` from the capture. `AskUserQuestion` with exactly two options: **"Let my panel of agents split this feature for you"** / **"Cancel"** (no **Continue** option — hard triggers are never downgradeable by `--partition`). On **Cancel**: export `SUMMARY_OUTCOME=cancelled-plan-size-hard` and run the **Final summary block** fenced bash block (`### Final summary block`), print `**ℹ /design cancelled by operator (plan-size hard trigger).**`, exit **0**, preserve `$DESIGN_TMPDIR`. On **Split**: run **Split-path** below.
 5. **Soft branch** — when `(SOFT_TRIGGER_FIRED=true AND HARD_TRIGGER_FIRED=false)` **OR** `(PARTITION_REQUESTED=true AND HARD_TRIGGER_FIRED=false)` **OR** `(SEMANTIC_SOFT_ESTIMATE=true AND HARD_TRIGGER_FIRED=false)` (including the case where mechanical soft is false but `--partition` alone would fire the soft UI, or mechanical soft is false without `--partition` but semantic estimate is true). Print `## Plan Size — Soft Trigger` with the same counts; when mechanical soft is false but `PARTITION_REQUESTED=true`, note `trigger=partition-flag` in the footer line of that section; when mechanical soft is false, `PARTITION_REQUESTED` is false, but `SEMANTIC_SOFT_ESTIMATE=true`, note `trigger=semantic-estimate` there. `AskUserQuestion`: **"Let my panel of agents split this feature for you"** / **"Continue with current scope"**. On **Split**: **Split-path**. On **Continue**: return to caller.
 6. **No-trigger branch** — when no soft/hard/partition-flag/semantic-estimate offer applies: print `⏩ 2b.5: plan-size — under thresholds (PLAN_LINES=<n> DIFF_LINES=<n> FILES_COUNT=<n>)` and return.
 
 #### Split-path (decomposition panel not yet available)
 
 1. Print `**⚠ /design: decomposition panel is in development and will be available soon (see #2672).**`
-2. Run the **Terminal cost line** fenced bash block from `### Terminal cost line`.
+2. **Do not** run `### Final summary block` on Split-path — no terminal summary is emitted (FINDING_19); `$DESIGN_TMPDIR` is preserved for operator re-run.
 3. Exit **1**. `$DESIGN_TMPDIR` is preserved (Split exits before Step 5 sets `PLAN_WRITE_OK` and before Step 6 cleanup, which is gated on successful finalize).
 
 > **After Step 2b.5 returns to caller on a non-exiting path, continue to Step 3 IMMEDIATELY.** The implementation plan is an intermediate design artifact — plan review, Gate B, diagram generation, rejected-findings reporting, and cleanup still must run. → shared/subskill-invocation.md#step-boundary
@@ -914,17 +907,19 @@ When `VALIDATE_STATUS=defects-found` after this block, execute **### Plan comman
 
 3. Run `cat "$DESIGN_TMPDIR/composed-plan.md" | "${CLAUDE_PLUGIN_ROOT}/scripts/redact-secrets.sh" > "$DESIGN_TMPDIR/composed-plan.redacted.md"`.
 4. Run `"${CLAUDE_PLUGIN_ROOT}/scripts/plan-block-write.sh" --issue "$ISSUE_NUMBER" --content-file "$DESIGN_TMPDIR/composed-plan.redacted.md"`.
-5. If step 4 fails, first run the **Terminal cost line** fenced bash block from Step 0b (`### Terminal cost line`), then print `**⚠ 5: plan-block-write failed — preserving $DESIGN_TMPDIR**`, set `PLAN_WRITE_OK=false`, and skip Step **5c** items **6–8** (do not resolve `REPO`, run `tracking-issue-write.sh` rename, or `design-log-publish.sh`) **and skip Step 6 cleanup** so `$DESIGN_TMPDIR` is preserved.
+5. If step 4 fails, export `SUMMARY_OUTCOME=failed-plan-write` and run the **Final summary block** from Step 0b (`### Final summary block`), then print `**⚠ 5: plan-block-write failed — preserving $DESIGN_TMPDIR**`, set `PLAN_WRITE_OK=false`, and skip Step **5c** items **6–9** (do not resolve `REPO`, run `design-log-publish.sh`, the two-phase summary refresh, `tracking-issue-write.sh` rename) **and skip Step 6 cleanup** so `$DESIGN_TMPDIR` is preserved.
 6. If step 4 succeeds, set `PLAN_WRITE_OK=true`, then resolve `REPO` for explicit `gh --repo` threading when the hub default might not match the consumer checkout (for example nested `/implement` shells without a fresh `session-setup.sh` repo probe): prefer `"${CLAUDE_PLUGIN_ROOT}/scripts/resolve-repo.sh"` from the consumer repo working tree; on failure fall back to `gh repo view --json nameWithOwner --jq '.nameWithOwner'`; leave `REPO` empty when both fail so helpers use the hub default.
-7. If step 4 succeeds, when `SESSION_ID` is non-empty, run `"${CLAUDE_PLUGIN_ROOT}/scripts/design-log-publish.sh" --design-tmpdir "$DESIGN_TMPDIR" --run-id "$SESSION_ID" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}` and parse `PUBLISH_OK` from stdout. When `SESSION_ID` is empty, print `printf '\n**⚠ /design: SESSION_ID missing; skipping design log publish**\n'` (use `printf`, not `print`). On `PUBLISH_OK=false`, capture stderr to `$DESIGN_TMPDIR/design-log-publish.failure.log` and append under `Warnings` via `"${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh"` with `--log "$DESIGN_TMPDIR/execution-issues.md"`; continue (do not roll back the GitHub plan write).
-8. If step 4 succeeds **and** `SESSION_ID` is non-empty **and** `PUBLISH_OK=true` after the Step 5c item 7 publish attempt, run `"${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh" rename --issue "$ISSUE_NUMBER" --state designed ${REPO:+--repo "$REPO"}` (treat `RENAMED=false` as idempotent success). When `SESSION_ID` is empty, **skip** this rename so `[DESIGNED]` does not imply `larch-logs/design/<RUN_ID>/` materialization without a run id. When `SESSION_ID` was non-empty and `PUBLISH_OK=false`, **skip** this rename so the issue title does not read `[DESIGNED]` while the default branch lacks `larch-logs/design/<RUN_ID>/`; operator retries publish from the preserved `$DESIGN_TMPDIR` or reconciles manually.
+7. If step 4 succeeds, when `SESSION_ID` is non-empty, export `SUMMARY_OUTCOME=approved` and run `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/render-final-summary.sh --outcome approved --mode "$(jq -r '.classification // "N/A"' "$DESIGN_TMPDIR/run-params.json" 2>/dev/null || echo N/A)" ${REPO:+--repo "$REPO"} --pre-publish-only` so `final-summary.md` exists before the log commit. When `SESSION_ID` is empty, skip this pre-publish render.
+8. If step 4 succeeds, when `SESSION_ID` is non-empty, run `"${CLAUDE_PLUGIN_ROOT}/scripts/design-log-publish.sh" --design-tmpdir "$DESIGN_TMPDIR" --run-id "$SESSION_ID" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}` and parse `PUBLISH_OK` from stdout. When `SESSION_ID` is empty, print `printf '\n**⚠ /design: SESSION_ID missing; skipping design log publish**\n'` (use `printf`, not `print`). On `PUBLISH_OK=false`, capture stderr to `$DESIGN_TMPDIR/design-log-publish.failure.log` and append under `Warnings` via `"${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh"` with `--log "$DESIGN_TMPDIR/execution-issues.md"`; continue (do not roll back the GitHub plan write).
+9. If step 4 succeeds, run `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/render-final-summary.sh --outcome approved --mode "$(jq -r '.classification // "N/A"' "$DESIGN_TMPDIR/run-params.json" 2>/dev/null || echo N/A)" ${REPO:+--repo "$REPO"} --post-publish-only` (chat print + `larch:final-summary` upsert when issue-bound — rerenders after publish so warnings/exec-issue counts match committed logs). When `SESSION_ID` was empty in item 7, this single post-publish call still runs (no Phase-1 file was written for the design log bundle).
+10. If step 4 succeeds **and** `SESSION_ID` is non-empty **and** `PUBLISH_OK=true` after the Step 5c item 8 publish attempt, run `"${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh" rename --issue "$ISSUE_NUMBER" --state designed ${REPO:+--repo "$REPO"}` (treat `RENAMED=false` as idempotent success). When `SESSION_ID` is empty, **skip** this rename so `[DESIGNED]` does not imply `larch-logs/design/<RUN_ID>/` materialization without a run id. When `SESSION_ID` was non-empty and `PUBLISH_OK=false`, **skip** this rename so the issue title does not read `[DESIGNED]` while the default branch lacks `larch-logs/design/<RUN_ID>/`; operator retries publish from the preserved `$DESIGN_TMPDIR` or reconciles manually.
 
 ### 5d — Gated L3 velocity deferral comment (best-effort)
 
 When **all** of the following guards succeed in order, post **one** tracking comment on issue **#2672** via `gh issue comment` naming the deferred per-round velocity scope (>20% plan growth **and** >10 accepted findings between rounds; skipped on `--trivial` per `references/flags.md`). Otherwise **skip silently** (no warning — multi-source paper trail also lives in `flags.md`).
 
 1. `[ "$ISSUE_NUMBER" = "2670" ]`
-2. **`REPO` identity (fork/clone safety)**: `[ "${REPO:-}" = "character-ai/larch" ]` using the `REPO` value resolved in Step **5c** item **5** (same `owner/repo` the session used for `gh` on the design issue — avoids posting upstream noise when a different repository reuses issue **#2670**).
+2. **`REPO` identity (fork/clone safety)**: `[ "${REPO:-}" = "character-ai/larch" ]` using the `REPO` value resolved in Step **5c** item **6** (same `owner/repo` the session used for `gh` on the design issue — avoids posting upstream noise when a different repository reuses issue **#2670**).
 3. Sentinel absent: `test ! -f "$HOME/.cache/larch/design-l3-velocity-notified-2670"`
 4. **Upstream argv pin (same shell snippet as `gh`)**: immediately before the `gh` invocation, assert `[ "$ISSUE_NUMBER" = "2670" ]` again and run **only** the `gh` line below so `--repo character-ai/larch` is always present (never rely on hub default / consumer `origin` for this cross-repo comment).
 
@@ -955,9 +950,11 @@ On successful `gh issue comment` (exit 0), the `touch` above creates the sentine
 
 Do NOT write any farewell message such as "Design complete", "Returning to the /implement orchestrator", "Handing back control", or any other prose that signals the skill is done — those are halts in disguise.
 
-When `PLAN_WRITE_OK=true`, run the **Terminal cost line** fenced bash block from Step 0b (`### Terminal cost line`) **after** repeating the external-reviewer warnings above and **before** emitting the machine footer. When `PLAN_WRITE_OK=false` (plan-block-write failure), still run that **Terminal cost line** block before the `**⚠ 5: plan-block-write failed**` line (see Step 5c item 5).
+The rigid `larch:final-summary` body is produced and printed to chat by `skills/design/scripts/render-final-summary.sh` during Step 5c (two-phase on the happy path; single `--post-publish-only` call on plan-block-write failure in Step 5c item 5). Do not add token/timing chat tails, extra recap prose, or farewell wording outside that rendered block and the machine footer below.
 
-When `PLAN_WRITE_OK=true`, emit exactly one terminal machine footer as the **last human-visible output line** of Step 5 (after the cost line). Do not emit anything after it:
+When `PLAN_WRITE_OK=true`, repeat the external-reviewer warnings above, then emit exactly **one** terminal machine footer as the **last human-visible output line** of Step 5. When `PLAN_WRITE_OK=false`, Step 5c item 5 already ran the summary before the `**⚠ 5: plan-block-write failed**` line — do not invoke `render-final-summary.sh` again here.
+
+When `PLAN_WRITE_OK=true`, the footer line is:
 
 `➡️ 5: finalize — plan written to issue #<N>; NEXT REQUIRED: continue`
 

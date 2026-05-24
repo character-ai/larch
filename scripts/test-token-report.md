@@ -14,6 +14,8 @@ Inferred-skill attribution fixtures (three cases):
 - **Case B** (`PRE_MARK_TRANSCRIPT`): a null-attribution row whose timestamp is before the first ledger mark asserts that the row is excluded from the rendered table entirely (grand-total columns are zero). `claude_table` renders only rows at or after the first mark; pre-mark rows are not rendered as "unattributed."
 - **Case C** (`BOUNDARY_TRANSCRIPT`): a null-attribution row whose timestamp equals a mark boundary exactly asserts that the half-open interval `[mark.ts, next_mark.ts)` places the row in the opening mark's window (Step 2, not Step 1).
 
+`--summary` mode asserts a non-dollar `Tokens: … — Claude: … | Codex: … | Cursor: …` line and rejects any `💰 Cost:` substring; `--full --markdown` output must not contain a rolled-up `💰 Cost:` line.
+
 Run via `make test-token-report` or the shard that includes it.
 
 Update this harness when report columns, sentinel comments, source-resolution test hooks, or failure-mode wording changes.

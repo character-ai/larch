@@ -370,8 +370,8 @@ grep -F 'oos.md' "$PLAN_REVIEW_QUICK_MD" \
 grep -Fq 'security counter-invariant' "$PLAN_REVIEW_QUICK_MD" \
   || fail "(13qc) plan-review-quick.md missing security counter-invariant clause"
 
-# Check 15: /design SKILL.md pairs terminal cost emission with operator-cancel /
-# plan-write-failure markers (or cites the shared ### Terminal cost line block).
+# Check 15: /design SKILL.md pairs Final summary emission with operator-cancel /
+# plan-write-failure markers (or cites the shared ### Final summary block).
 for marker in \
   '**ℹ /design cancelled by operator.**' \
   '**⚠ 5: plan-block-write failed' \
@@ -380,24 +380,49 @@ for marker in \
   [[ -n "$line" ]] || fail "(15) missing stable marker: $marker"
   start=$(( line > 45 ? line - 45 : 1 ))
   window=$(sed -n "${start},${line}p" "$SKILL_MD")
-  if printf '%s\n' "$window" | grep -Fq 'render-cost-line.sh'; then
+  if printf '%s\n' "$window" | grep -Fq 'render-final-summary.sh'; then
     :
-  elif printf '%s\n' "$window" | grep -Fq '### Terminal cost line'; then
+  elif printf '%s\n' "$window" | grep -Fq '### Final summary block'; then
     :
   else
-    fail "(15) marker not paired with render-cost-line.sh / ### Terminal cost line within 45 lines: $marker (line $line)"
+    fail "(15) marker not paired with render-final-summary.sh / ### Final summary block within 45 lines: $marker (line $line)"
   fi
 done
 footer_line=$(grep -nF '➡️ 5: finalize — plan written to issue' "$SKILL_MD" | head -1 | cut -d: -f1 || true)
 [[ -n "$footer_line" ]] || fail "(15) missing machine footer line (finalize)"
 fstart=$(( footer_line > 55 ? footer_line - 55 : 1 ))
 fwindow=$(sed -n "${fstart},${footer_line}p" "$SKILL_MD")
-if printf '%s\n' "$fwindow" | grep -Fq 'render-cost-line.sh'; then
+if printf '%s\n' "$fwindow" | grep -Fq 'render-final-summary.sh'; then
   :
-elif printf '%s\n' "$fwindow" | grep -Fq '### Terminal cost line'; then
+elif printf '%s\n' "$fwindow" | grep -Fq '### Final summary block'; then
   :
 else
-  fail "(15) machine footer not preceded by cost-line anchor within 55 lines"
+  fail "(15) machine footer not preceded by final-summary anchor within 55 lines"
+fi
+
+# Check 15b: Step 5 finalize references render-final-summary only (encapsulation — FINDING_14).
+step5_line=$(grep -nF '<!-- step:5' "$SKILL_MD" | head -1 | cut -d: -f1 || true)
+[[ -n "$step5_line" ]] || fail "(15b) missing <!-- step:5 marker"
+step6_line=$(grep -nF '<!-- step:6' "$SKILL_MD" | head -1 | cut -d: -f1 || true)
+[[ -n "$step6_line" ]] || fail "(15b) missing <!-- step:6 marker"
+step5_body=$(sed -n "${step5_line},${step6_line}p" "$SKILL_MD")
+printf '%s\n' "$step5_body" | grep -Fq 'render-final-summary.sh' \
+  || fail "(15b) Step 5 body must reference render-final-summary.sh"
+if printf '%s\n' "$step5_body" | grep -Fq 'tracking-issue-summary.sh'; then
+  fail "(15b) Step 5 must not reference tracking-issue-summary.sh (encapsulated in render-final-summary.sh)"
+fi
+
+# Check 15c: no render-cost-line in skills/design tree.
+if grep -RIn 'render-cost-line\.sh' "$REPO_ROOT/skills/design" >/dev/null 2>&1; then
+  fail "(15c) skills/design must not reference render-cost-line.sh"
+fi
+
+# Check 15d: design SKILL must not chat-print token/timing summaries.
+if grep -nF 'token-report.sh --summary' "$SKILL_MD" | grep -q .; then
+  fail "(15d) skills/design/SKILL.md must not invoke token-report.sh --summary"
+fi
+if grep -nF 'timing-report.sh --summary' "$SKILL_MD" | grep -q .; then
+  fail "(15d) skills/design/SKILL.md must not invoke timing-report.sh --summary"
 fi
 
 # Check 14: design ACTION dispatcher pins. The focus-area enum must remain in

@@ -12,4 +12,10 @@ b=$(grep -cF -- '--claude-input-tokens' "$f") || b=0
 test "$b" -ge "$c" || fail "each render-run-summary invocation should pass --claude-input-tokens (blocks=$c flags=$b)"
 pass 'write-final-report render-run-summary per-bucket wiring'
 
+g="$REPO/skills/design/scripts/render-final-summary.sh"
+grep -Fq 'render-run-summary.sh' "$g" || fail "expected render-run-summary.sh invocation in render-final-summary.sh"
+b2=$(grep -cF -- '--claude-input-tokens' "$g") || b2=0
+test "$b2" -ge 1 || fail 'render-final-summary.sh must pass --claude-input-tokens'
+pass 'render-final-summary render-run-summary per-bucket wiring'
+
 printf 'PASS: test-render-run-summary-callsites.sh\n'

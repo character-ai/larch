@@ -12,6 +12,9 @@ for prompt-side writes, Step 18's restore-before-teardown invocation order, the
 `lib-finalize-state-keys.sh` library plus source references from restore and
 ship-pr.
 
+It pins `write-final-report.sh --print-stdout` to Step **17** only; Step **18**
+must call `write-final-report.sh` **without** `--print-stdout` (silent refresh).
+
 Two assertions added for the orchestrator narrow-protocol-bounds rule (issue #2286):
 `SKILL.md Exit 4 prose must direct orchestrator to 'Continue to Step 16'` (pins that
 the documented recovery directive is present) and `ship-pr.sh must emit DO NOT improvise

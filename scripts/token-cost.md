@@ -1,9 +1,11 @@
 # token-cost.sh
 
 Per-vendor USD cost estimate from token counts and optional per-million-token
-rates. Used by `scripts/render-run-summary.sh` and the final-report helpers for
-`/implement` and `/fix-issue`, and by `scripts/render-cost-line.sh` for `/design`
-terminal summaries.
+rates. Used by `scripts/render-run-summary.sh` (the `- **Cost**:` bullet in the
+`larch:final-summary` block) for `/implement` and `/design`, and by the
+`/fix-issue` helpers. The legacy `render-cost-line` bash helper remains available
+for **deprecated** standalone operator cost queries with no in-flow skill callers
+after PR #2714.
 
 ## Usage
 
@@ -62,7 +64,7 @@ Lines of the form `KEY=value`:
 
 | Dimension | `token-cost.sh` (this file) | `token-tally.sh` |
 |-----------|----------------------------|------------------|
-| Primary skills / workflows | `/implement`, `/fix-issue` (via `scripts/render-run-summary.sh`; see intro); `/design` terminal line (via `scripts/render-cost-line.sh`) | `/research` only |
+| Primary skills / workflows | `/implement`, `/fix-issue`, `/design` (dollar line via `scripts/render-run-summary.sh` only) | `/research` only |
 | Rate env vars | Per-bucket `LARCH_*_RATE_PER_M` names (see Usage); legacy blended `LARCH_CLAUDE_RATE_PER_M`, `LARCH_CODEX_RATE_PER_M`, `LARCH_CURSOR_RATE_PER_M` apply to **aggregate** pricing only (not as fallbacks for individual per-bucket lanes when per-bucket token flags are supplied); **Claude-only** `LARCH_TOKEN_RATE_PER_M` when Claude blended is unset. | Single `LARCH_TOKEN_RATE_PER_M` across all lanes |
 | N/A behavior | With defaults, every lane yields a numeric cost; zero tokens with a positive rate yield `0.00`. | `$` column omitted when `LARCH_TOKEN_RATE_PER_M` is unset, malformed, or non-positive |
 | Cost display | Dollar amounts from awk, two decimal places, no dollar prefix in KV values. | Markdown cost suffix from awk, dollar-prefixed four decimal places beside totals. |

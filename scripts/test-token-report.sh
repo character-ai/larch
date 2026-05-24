@@ -16,6 +16,12 @@ contains() {
         *) fail "$1 missing '$2': $3" ;;
     esac
 }
+absent() {
+    case "$3" in
+        *"$2"*) fail "$1 must not contain '$2': $3" ;;
+        *) pass ;;
+    esac
+}
 eq() {
     if [[ "$2" == "$3" ]]; then pass; else fail "$1 expected '$2' got '$3'"; fi
 }
@@ -48,6 +54,7 @@ contains "cursor heading"  "### Cursor"  "$md"
 contains "claude header row" "| Step | Skill | Claude Input | Claude Cache Read | Claude Cache Create | Claude Output |" "$md"
 contains "vendor header row" "| Step | Skill | Input | Output | Total |" "$md"
 contains "claude skill row"  "larch:implement" "$md"
+absent "full markdown no rolled-up cost" "💰 Cost:" "$md"
 
 json_out=$("$SCRIPT" --ledger "$LEDGER" --transcript "$TRANSCRIPT" --full --format json)
 if printf '%s' "$json_out" | jq -e '
@@ -515,23 +522,23 @@ fi
 
 # --- --summary mode ---
 
-# Case 1: normal summary — dollar-primary cost line (matches render-cost-line format).
+# Case 1: normal summary — non-dollar Tokens line (FINDING_3).
 # Fixture: LEDGER (codex=100, cursor=10) + TRANSCRIPT (claude grand totals 110).
 summary=$("$SCRIPT" --ledger "$LEDGER" --transcript "$TRANSCRIPT" --summary)
-contains "summary cost prefix"          "💰 Cost: TOTAL"                    "$summary"
-contains "summary Claude dollars"       "Claude \$"                         "$summary"
-contains "summary Codex dollars"        "Codex \$"                          "$summary"
-contains "summary Cursor dollars"       "Cursor \$"                         "$summary"
-contains "summary Tokens suffix"        "Tokens:"                           "$summary"
+absent "summary no dollar cost" "💰 Cost:" "$summary"
+contains "summary Tokens prefix" "Tokens:" "$summary"
+contains "summary Claude k" "Claude:" "$summary"
+contains "summary Codex k" "Codex:" "$summary"
+contains "summary Cursor k" "Cursor:" "$summary"
 
-# Case 2: zero-vendor run — still emits dollar-primary line (vendors may be \$0.00).
+# Case 2: zero-vendor run — still emits Tokens summary (no dollar line).
 SUMMARY_NO_VENDOR_LEDGER="$TMP/summary-no-vendor-ledger.jsonl"
 cat > "$SUMMARY_NO_VENDOR_LEDGER" <<'JSONL'
 {"type":"mark","step":"Step 1 - design","ts":"2026-05-06T00:00:00Z"}
 JSONL
 summary_no_vendor=$("$SCRIPT" --ledger "$SUMMARY_NO_VENDOR_LEDGER" --transcript "$TRANSCRIPT" --summary)
-contains "summary zero-vendor cost prefix" "💰 Cost: TOTAL" "$summary_no_vendor"
-contains "summary zero-vendor Tokens"      "Tokens:"       "$summary_no_vendor"
+absent "summary zero-vendor no dollar cost" "💰 Cost:" "$summary_no_vendor"
+contains "summary zero-vendor Tokens" "Tokens:" "$summary_no_vendor"
 
 # Case 3: no-marks ledger — prints unavailable warning and exits 0.
 # Reuse LEDGER_NO_MARKS (vendor-only rows, no marks).

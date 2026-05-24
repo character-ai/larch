@@ -10,7 +10,9 @@ TMP_DEF=""
 TMP_PART=""
 TMP_ERR=""
 TMP_ERR_STDERR=""
-trap 'rm -f "$TMP" "$notes" "$TMP_DEF" "$TMP_PART" "$TMP_ERR" "$TMP_ERR_STDERR"' EXIT
+TMP_DES_OUT=""
+TMP_DES_STD=""
+trap 'rm -f "$TMP" "$notes" "$TMP_DEF" "$TMP_PART" "$TMP_ERR" "$TMP_ERR_STDERR" "$TMP_DES_OUT" "$TMP_DES_STD"' EXIT
 PASS=0
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 pass() { printf 'PASS: %s\n' "$1"; PASS=$((PASS+1)); }
@@ -149,6 +151,8 @@ pass "priced Claude + zero-token lanes at \$0.00"
 # stderr envelope pins (quiet diagnostics; not mixed into markdown file).
 TMP_ERR="$(mktemp "${TMPDIR:-/tmp}/trs-err.XXXXXX")"
 TMP_ERR_STDERR="$(mktemp "${TMPDIR:-/tmp}/trs-errstderr.XXXXXX")"
+TMP_DES_OUT="$(mktemp "${TMPDIR:-/tmp}/trs-des-out.XXXXXX")"
+TMP_DES_STD="$(mktemp "${TMPDIR:-/tmp}/trs-des-std.XXXXXX")"
 env -u LARCH_CLAUDE_RATE_PER_M -u LARCH_CODEX_RATE_PER_M -u LARCH_CURSOR_RATE_PER_M -u LARCH_TOKEN_RATE_PER_M \
     "$HELPER" \
     --skill implement \
@@ -187,5 +191,102 @@ env -u LARCH_CLAUDE_RATE_PER_M -u LARCH_CODEX_RATE_PER_M -u LARCH_CURSOR_RATE_PE
 grep -Fq 'STATUS=ok' "$TMP_ERR_STDERR" || fail 'stderr STATUS=ok'
 grep -Fq 'OUTPUT_FILE=' "$TMP_ERR_STDERR" || fail 'stderr OUTPUT_FILE pin'
 pass 'stderr STATUS and OUTPUT_FILE pins'
+
+# --- --skill design ---
+LARCH_CLAUDE_RATE_PER_M=1 LARCH_CODEX_RATE_PER_M=2 LARCH_CURSOR_RATE_PER_M=3 \
+    "$HELPER" \
+    --skill design \
+    --outcome approved \
+    --run-id RUN-D1 \
+    --mode SIMPLE \
+    --workflow-path SIMPLE \
+    --duration '00:01:00' \
+    --claude-tokens 1000000 \
+    --codex-tokens 2000000 \
+    --cursor-tokens 0 \
+    --claude-input-tokens 0 \
+    --claude-cache-read-tokens 0 \
+    --claude-cache-write-5m-tokens 0 \
+    --claude-cache-write-1h-tokens 0 \
+    --claude-output-tokens 0 \
+    --codex-input-tokens 0 \
+    --codex-cached-input-tokens 0 \
+    --codex-output-tokens 0 \
+    --cursor-input-tokens 0 \
+    --cursor-cache-read-tokens 0 \
+    --cursor-output-tokens 0 \
+    --issue-number 9 \
+    --issue-url 'https://github.com/o/r/issues/9' \
+    --pr-number 0 \
+    --pr-url 'N/A' \
+    --plan-review-line '2 accepted (0 critical / 1 high / 1 medium / 0 low)' \
+    --code-review-line 'N/A' \
+    --oos-count 0 \
+    --oos-urls '' \
+    --exec-issues 0 \
+    --warnings 0 \
+    --run-logs-path 'larch-logs/design/RUN-D1/' \
+    --output-file "$TMP_DES_OUT" \
+    --print-stdout >"$TMP_DES_STD" 2>/dev/null
+grep -Fq '## /design run RUN-D1 — approved' "$TMP_DES_OUT" || fail 'design title'
+grep -Fq -- '- **Cost**:' "$TMP_DES_OUT" || fail 'design cost bullet'
+grep -Fq -- '- **Plan review**:' "$TMP_DES_OUT" || fail 'design plan review'
+grep -Fq -- '- **OOS filed**:' "$TMP_DES_OUT" || fail 'design oos'
+grep -Fq '<!-- larch:run-summary v=1 -->' "$TMP_DES_OUT" || fail 'design sentinel'
+if grep -Fq -- '- **PR**:' "$TMP_DES_OUT"; then fail 'design must not emit PR'; fi
+if grep -Fq -- '- **Code review**:' "$TMP_DES_OUT"; then fail 'design must not emit code review'; fi
+if grep -Fq -- '- **Outcome**:' "$TMP_DES_OUT"; then fail 'approved design must not emit Outcome'; fi
+cmp -s "$TMP_DES_OUT" "$TMP_DES_STD" || fail 'design stdout must match --output-file byte-for-byte'
+pass 'design skill schema + cmp byte identity'
+
+"$HELPER" \
+    --skill design \
+    --outcome cancelled-clarify \
+    --run-id RUN-D2 \
+    --mode SIMPLE \
+    --workflow-path SIMPLE \
+    --duration 'N/A' \
+    --claude-tokens 0 \
+    --codex-tokens 0 \
+    --cursor-tokens 0 \
+    --claude-input-tokens 0 \
+    --claude-cache-read-tokens 0 \
+    --claude-cache-write-5m-tokens 0 \
+    --claude-cache-write-1h-tokens 0 \
+    --claude-output-tokens 0 \
+    --codex-input-tokens 0 \
+    --codex-cached-input-tokens 0 \
+    --codex-output-tokens 0 \
+    --cursor-input-tokens 0 \
+    --cursor-cache-read-tokens 0 \
+    --cursor-output-tokens 0 \
+    --issue-number 0 \
+    --issue-url 'N/A' \
+    --pr-number 0 \
+    --pr-url 'N/A' \
+    --plan-review-line 'skipped (trivial)' \
+    --code-review-line 'N/A' \
+    --oos-count 0 \
+    --oos-urls '' \
+    --exec-issues 0 \
+    --warnings 0 \
+    --run-logs-path 'N/A' \
+    --output-file "$TMP_DES_OUT" >/dev/null 2>/dev/null
+grep -Fq -- '- **Outcome**: cancelled-clarify' "$TMP_DES_OUT" || fail 'design cancelled outcome bullet'
+pass 'design intermediate outcome'
+
+set +e
+"$HELPER" --skill foo --outcome approved --run-id X --mode m --workflow-path w --duration d \
+    --claude-tokens 0 --codex-tokens 0 --cursor-tokens 0 \
+    --claude-input-tokens 0 --claude-cache-read-tokens 0 --claude-cache-write-5m-tokens 0 --claude-cache-write-1h-tokens 0 --claude-output-tokens 0 \
+    --codex-input-tokens 0 --codex-cached-input-tokens 0 --codex-output-tokens 0 \
+    --cursor-input-tokens 0 --cursor-cache-read-tokens 0 --cursor-output-tokens 0 \
+    --issue-number 0 --issue-url N/A --pr-number 0 --pr-url N/A \
+    --plan-review-line N/A --code-review-line N/A --oos-count 0 --oos-urls '' \
+    --exec-issues 0 --warnings 0 --run-logs-path N/A --output-file "$TMP_DES_OUT" >/dev/null 2>&1
+sk=$?
+set -e
+test "$sk" -eq 2 || fail '--skill foo must exit 2'
+pass 'reject unknown --skill'
 
 printf 'PASS=%s\n' "$PASS"

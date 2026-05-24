@@ -1,5 +1,7 @@
 # render-cost-line.sh
 
+> **Deprecated standalone helper.** No in-flow callers after PR #2714 — see `scripts/render-run-summary.sh` for the canonical dollar-line emission path. Operators may still invoke this script directly for ad-hoc cost queries; harness coverage retained.
+
 **Purpose**: Emit a single terminal line with USD cost estimates and total token thousands for standalone `/design` runs. This is **not** a substitute for `scripts/render-run-summary.sh`, which renders a markdown bullet block with a `<!-- larch:run-summary v=1 -->` sentinel for tracking-issue comments and committed run logs.
 
 ## Usage
