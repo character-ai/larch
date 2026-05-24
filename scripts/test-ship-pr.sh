@@ -90,6 +90,10 @@ SH
 set -euo pipefail
 case "$1" in
   postbump)
+    if [[ -n "${STUB_POSTBUMP_COUNT_FILE:-}" ]]; then
+      _count=$(cat "$STUB_POSTBUMP_COUNT_FILE" 2>/dev/null || echo 0)
+      printf '%s\n' "$((_count + 1))" > "$STUB_POSTBUMP_COUNT_FILE"
+    fi
     case "${STUB_POSTBUMP_STATUS:-ok}" in
       conflict)
         echo "RESUME_PHASE=force-push-gate"
@@ -899,9 +903,20 @@ fi
 root=$(make_repo postbump_conflict)
 tmp=$(make_tmpdir)
 write_state "$tmp/ship-pr-state.sh" bump
-STUB_POSTBUMP_STATUS=conflict run_subject "$root" "$tmp" "$tmp/rc"
-assert_rc "$tmp/rc" 4 "postbump conflict stalls after mechanical finalize retry (exit_stall 8b)"
+postbump_count_file="$tmp/postbump-count"
+: > "$postbump_count_file"
+STUB_POSTBUMP_STATUS=conflict STUB_POSTBUMP_COUNT_FILE="$postbump_count_file" \
+    run_subject "$root" "$tmp" "$tmp/rc"
+assert_rc "$tmp/rc" 5 "postbump conflict exits 5 for Rebase + Re-bump Sub-procedure handoff (#2707)"
 assert_state_line "$tmp/ship-pr-state.sh" "CALLER_KIND=step8b_rebase" "postbump conflict preserves caller kind"
+assert_state_line "$tmp/ship-pr-state.sh" "RESUME_PHASE=force-push-gate" "postbump conflict records resume phase for orchestrator Exit 5 handler"
+assert_state_line "$tmp/ship-pr-state.sh" "STALL_TRACKING=false" "postbump conflict exit 5 does not mark stall (#2707)"
+postbump_count=$(cat "$postbump_count_file" 2>/dev/null || echo 0)
+if [ "$postbump_count" = "1" ]; then
+    ok "postbump conflict invokes implement-finalize.sh postbump exactly once before exit 5 (#2707)"
+else
+    fail "postbump conflict should invoke postbump exactly once before exit 5 (got $postbump_count invocations)"
+fi
 if grep -qxF "PR_TITLE=Title" "$tmp/postbump-state.sh"; then
     ok "postbump conflict writes PR_TITLE into postbump state"
 else

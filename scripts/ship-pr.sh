@@ -942,37 +942,8 @@ run_bump_phase() {
             resume_phase=$(kv_value RESUME_PHASE "$finalize_out")
             if [ "$resume_phase" = "force-push-gate" ]; then
                 state_set_many RESUME_PHASE force-push-gate CALLER_KIND step8b_rebase
-                if _run_force_push_gate_mechanically; then
-                    fail_file=$(failure_capture_path bump)
-                    finalize_out=$("$SCRIPT_DIR/implement-finalize.sh" postbump --state-file "$IMPLEMENT_TMPDIR/postbump-state.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR" 2>"$fail_file")
-                    rc=$?
-                    printf '%s\n' "$finalize_out" >> "$fail_file"
-                    status=$(kv_value STATUS "$finalize_out")
-                    case "$status" in
-                        ok|skipped)
-                            local _cur _new _btype
-                            _cur=$(kv_value CURRENT_VERSION "$classify_out")
-                            _new=$(read_state NEW_VERSION)
-                            _btype=$(read_state BUMP_TYPE)
-                            case "$_btype" in
-                                PATCH|MINOR|MAJOR)
-                                    emit "$(printf '✅ 8: version bump — %s → %s (%s)' "$_cur" "$_new" "$_btype")"
-                                    ;;
-                                *)
-                                    if [ "$forked" = "true" ]; then
-                                        emit '⏩ 8: version bump status=skip reason=forked'
-                                    else
-                                        emit "$(printf '⏩ 8: version bump status=skip reason=%s' "${_btype:-NONE}")"
-                                    fi
-                                    ;;
-                            esac
-                            advance_phase pr-prep
-                            ;;
-                        *) exit_stall 8b ;;
-                    esac
-                else
-                    exit_stall 8b
-                fi
+                emit_breadcrumb "⚠ ship-pr: postbump rebase conflict — handing off to Rebase + Re-bump Sub-procedure (caller_kind=step8b_rebase)"
+                exit 5
             else
                 exit_stall 8b
             fi
@@ -1772,23 +1743,6 @@ _run_step8_same_version_mechanically() {
     [ "$rc" -eq 0 ] || return 1
     state_set STEP8_SAME_VERSION_RETRY_COUNT 0
     return 0
-}
-
-_run_force_push_gate_mechanically() {
-    local checkpoint tmp finalize_out rc status fail_file
-    checkpoint="$IMPLEMENT_TMPDIR/.postbump-phase"
-    tmp="${checkpoint}.tmp.$$"
-    printf 'force-push-gate\n' > "$tmp" && mv "$tmp" "$checkpoint"
-    fail_file=$(failure_capture_path bump)
-    finalize_out=$("$SCRIPT_DIR/implement-finalize.sh" postbump --state-file "$IMPLEMENT_TMPDIR/postbump-state.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR" 2>"$fail_file")
-    rc=$?
-    printf '%s\n' "$finalize_out" >> "$fail_file"
-    status=$(kv_value STATUS "$finalize_out")
-    case "$status" in
-        ok|skipped) return 0 ;;
-        conflict) return 1 ;;
-        *) return 1 ;;
-    esac
 }
 
 # True when every path in the comma-separated vendor conflict list is a
