@@ -90,7 +90,7 @@ mkdir -p "$DESIGNV"
 printf '# Plan\n\ndiff_lines: 1\n' > "$DESIGNV/plan.txt"
 val_actions="$TMPROOT/validate-actions.txt"
 abs_plan="$DESIGNV/plan.txt"
-printf 'ACTION=VALIDATE_PLAN_COMMANDS ARGS=--plan-file %s\n' "$abs_plan" >"$val_actions"
+printf 'ACTION=VALIDATE_PLAN_COMMANDS ARGS=%s %s\n' "$(printf '%q' --plan-file)" "$(printf '%q' "$abs_plan")" >"$val_actions"
 out=$("$SUBJECT" --design-tmpdir "$DESIGNV" --action-file "$val_actions")
 printf '%s\n' "$out" | grep -q '^STEP_STARTED=VALIDATE_PLAN_COMMANDS$' || fail "VALIDATE_PLAN_COMMANDS did not start"
 printf '%s\n' "$out" | grep -q '^STEP_COMPLETED=VALIDATE_PLAN_COMMANDS$' || fail "VALIDATE_PLAN_COMMANDS did not complete"

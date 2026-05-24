@@ -1,8 +1,0 @@
-ISSUES_CREATED=1
-ISSUES_FAILED=0
-ISSUES_DEDUPLICATED=0
-ISSUE_1_NUMBER=2702
-ISSUE_1_URL=https://github.com/character-ai/larch/issues/2702
-ISSUE_1_ID=4510901129
-ISSUE_1_TITLE=[OOS] scripts/test-design-structure.sh literal-anchor assertion for new headers
-ISSUE_1_BLOCKER_LINKS_APPLIED=1

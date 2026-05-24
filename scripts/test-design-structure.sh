@@ -440,6 +440,25 @@ val_line=$(awk -v s="$step2b_mark" 'NR>s && /invoke-plan-validator-if-not-quick\
 [[ -n "$step2b_mark" && -n "$emit_line" && -n "$val_line" && "$val_line" -gt "$emit_line" ]] \
   || fail "(14b10) VALIDATE_PLAN_COMMANDS must follow EMIT_PLAN in Step 2b block"
 
+AG_MD="$REPO_ROOT/skills/design/references/approval-gates.md"
+DR_MD="$REPO_ROOT/skills/design/references/discussion-rounds.md"
+[[ -f "$AG_MD" ]] || fail "(14c14a) approval-gates.md missing: $AG_MD"
+[[ -f "$DR_MD" ]] || fail "(14c14b) discussion-rounds.md missing: $DR_MD"
+grep -Fq 'ACTION=EMIT_PLAN' "$AG_MD" \
+  || fail "(14c14c) approval-gates.md missing ACTION=EMIT_PLAN pin"
+grep -Fq 'invoke-plan-validator-if-not-quick.sh' "$AG_MD" \
+  || fail "(14c14d) approval-gates.md missing invoke-plan-validator-if-not-quick.sh pin"
+emit_before_val_ag=$(awk '/ACTION=EMIT_PLAN/ && !done { e=NR; done=1 } /invoke-plan-validator-if-not-quick\.sh/ && !vset { v=NR; vset=1 } END { if (e && v) print (e <= v) ? 1 : 0; else print 0 }' "$AG_MD")
+[[ "$emit_before_val_ag" == "1" ]] \
+  || fail "(14c14e) approval-gates.md must mention EMIT_PLAN at or before invoke-plan-validator-if-not-quick.sh"
+grep -Fq 'ACTION=EMIT_PLAN' "$DR_MD" \
+  || fail "(14c14f) discussion-rounds.md missing ACTION=EMIT_PLAN pin"
+grep -Fq 'invoke-plan-validator-if-not-quick.sh' "$DR_MD" \
+  || fail "(14c14g) discussion-rounds.md missing invoke-plan-validator-if-not-quick.sh pin"
+emit_before_val_dr=$(awk '/ACTION=EMIT_PLAN/ && !done { e=NR; done=1 } /invoke-plan-validator-if-not-quick\.sh/ && !vset { v=NR; vset=1 } END { if (e && v) print (e <= v) ? 1 : 0; else print 0 }' "$DR_MD")
+[[ "$emit_before_val_dr" == "1" ]] \
+  || fail "(14c14h) discussion-rounds.md must mention EMIT_PLAN at or before invoke-plan-validator-if-not-quick.sh"
+
 # Check 16: dialectic waterfall + per-side assignment contract pins (#2620).
 DIALPROTO_MD="$REPO_ROOT/skills/shared/dialectic-protocol.md"
 DEBATE_MD="$REPO_ROOT/skills/design/references/dialectic-debate.md"

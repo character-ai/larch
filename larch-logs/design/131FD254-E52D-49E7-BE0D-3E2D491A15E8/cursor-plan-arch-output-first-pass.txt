@@ -1,7 +1,0 @@
-Reading the plan and inspecting referenced code paths.
-
-Checking `case` pattern syntax and whether `test-design-structure` enforces Gate C wording:
-
-Findings: asymmetric enforcement, DRY drift, Gate C “exactly three options” vs `Other`, Step 3 free-form vs immediate launch, and missing `docs/configuration-and-permissions.md` entry per AGENTS. Delivering the required TSV (tab-separated) first, then numbered findings.
-
-

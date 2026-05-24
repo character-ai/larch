@@ -22,4 +22,8 @@ validate-plan-commands.sh --tsv-file FILE --log-file FILE \
 
 Disabled when `--source-kind composed` (pre-redaction `composed-plan.md`). Otherwise requires a row in `scripts/dry-runnable-scripts.tsv`. Dry-run subprocesses run under `env -i` with a small explicit allowlist, with `cwd` pinned to the repo root.
 
-Tier 3 argv is assembled from **long flags only** (`--name` / `--name=value` tokens). Non-flag positionals from the plan are not replayed in the dry-run argv (they may still appear in Tier 2 help coverage when folded into `--help` output); extend the parser/validator if a dry-runnable script requires literal positional arguments under `LARCH_DRY_RUN=1`. Validator log lines record Tier 3 child output only as a **bounded, redacted excerpt** (first 64 KiB through `scripts/redact-secrets.sh` when executable), not unlimited verbatim capture.
+**Argv contract (narrow)**: Tier 3 builds the child **argv** as the resolved script path plus **only** long options from the plan (`--name` / `--name=value` tokens). **Short** single-dash flags and **non-flag positional** tokens from the fenced command are **not** replayed. Dry-runnable scripts must not rely on omitted tokens for safety-critical behavior under `LARCH_DRY_RUN=1`; use long-flag-only contracts, `--validate-only`, or extend the parser/TSV if a script truly needs literal positionals replayed.
+
+The registry **`hook`** column must be exactly `LARCH_DRY_RUN=1` or `--validate-only`; any other value is a **defect** (`kind=unknown-registry-hook`), not a silent alias.
+
+Validator log lines record Tier 3 child output only as a **bounded, redacted excerpt** (first 64 KiB through `scripts/redact-secrets.sh` when executable), not unlimited verbatim capture.

@@ -339,6 +339,13 @@ while IFS=$'\t' read -r typ a b c _d; do
             fi
             hook=$(registry_hook_for "$sp" || true)
             [[ -z "$hook" ]] && continue
+            case "$hook" in
+                --validate-only | LARCH_DRY_RUN=1) ;;
+                *)
+                    emit_defect "DEFECT script=$sp kind=unknown-registry-hook hook=$hook"
+                    continue
+                    ;;
+            esac
             if [[ "$tier2_defect" -ne 0 ]]; then
                 continue
             fi

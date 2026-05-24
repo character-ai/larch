@@ -7,7 +7,7 @@ Opt-in registry for `/design` plan-command **Tier 3** dry-run validation (`valid
 TSV with header row:
 
 - `script_path` — repo-relative path to the shell script.
-- `hook` — either `LARCH_DRY_RUN=1` (execute via `env LARCH_DRY_RUN=1 …`) or `--validate-only` (append that flag after the plan-derived argv).
+- `hook` — exactly `LARCH_DRY_RUN=1` (execute via `env LARCH_DRY_RUN=1 …`) or `--validate-only` (append that flag after the plan-derived argv). Any other value is rejected by `validate-plan-commands.sh` (`kind=unknown-registry-hook`).
 - `doc_anchor` — short pointer to the script’s sibling `.md` section that documents the hook.
 
 ## Conventions

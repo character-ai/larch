@@ -19,6 +19,7 @@
 - `--resume-from STEP` skips earlier actions and resumes at the named step. For `EMIT_PLAN` and `VALIDATE_PLAN_COMMANDS` (no sentinel), the before-resume skip still applies to maintain the resume contract for other steps while these two actions remain re-runnable on replay.
 - Unknown or non-`ACTION=` lines are passed through as `ACTION_PASSTHROUGH=...`.
 - The driver does not perform model-judgment work; sketch synthesis, plan authoring, discussion rounds, and AskUserQuestion gates stay in `SKILL.md`.
+- `ACTION=… ARGS=…` lines carry a shell word sequence produced by mechanical `printf '%q'` emitters; the driver parses `ARGS` with `eval "action_args=( $args_text )"` (not naive whitespace `read -a`).
 
 ## Makefile Wiring
 

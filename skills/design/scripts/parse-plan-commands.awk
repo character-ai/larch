@@ -69,6 +69,14 @@ function heading_path(kind, line,   rest, idx) {
     return strip_md_ticks(rest)
 }
 
+# `### NEW [path]:` / `### UPDATED [path]:` bracket path (path between [ and ])
+function bracket_heading_path(line,   s, e) {
+    s = index(line, "[")
+    e = index(line, "]")
+    if (s == 0 || e == 0 || e <= s) return ""
+    return strip_md_ticks(substr(line, s + 1, e - s - 1))
+}
+
 # --- Allow-list scan (runs for every input line) ---
 {
     raw = $0
@@ -85,16 +93,18 @@ function heading_path(kind, line,   rest, idx) {
     h3_misc = match(raw, /^###[[:space:]]+/) && !match(raw, /^####/) && !match(raw, /^###[[:space:]]+Files[[:space:]]+to[[:space:]]+(create|update)/)
     h2_misc = match(raw, /^##[[:space:]]+/) && !match(raw, /^###/) && !match(raw, /^##[[:space:]]+Files[[:space:]]+to[[:space:]]+(create|update)/)
     if (h3_misc || h2_misc) {
-        if (match(raw, /^###[[:space:]]+NEW:/) || match(raw, /^##[[:space:]]+NEW:/)) {
-            p = heading_path("NEW", raw)
+        br_new = (match(raw, /^###[[:space:]]+NEW[[:space:]]+\[/) || match(raw, /^##[[:space:]]+NEW[[:space:]]+\[/))
+        br_upd = (match(raw, /^###[[:space:]]+UPDATED[[:space:]]+\[/) || match(raw, /^##[[:space:]]+UPDATED[[:space:]]+\[/))
+        if (match(raw, /^###[[:space:]]+NEW:/) || match(raw, /^##[[:space:]]+NEW:/) || br_new) {
+            p = br_new ? bracket_heading_path(raw) : heading_path("NEW", raw)
             if (p != "") emit_new_script(p, FNR)
         }
-        if (match(raw, /^###[[:space:]]+UPDATED:/) || match(raw, /^##[[:space:]]+UPDATED:/)) {
-            pending_updated = heading_path("UPDATED", raw)
+        if (match(raw, /^###[[:space:]]+UPDATED:/) || match(raw, /^##[[:space:]]+UPDATED:/) || br_upd) {
+            pending_updated = br_upd ? bracket_heading_path(raw) : heading_path("UPDATED", raw)
         } else if (match(raw, /^###[[:space:]]+/) || (match(raw, /^##[[:space:]]+/) && !match(raw, /^###/))) {
             pending_updated = ""
         }
-        if ((match(raw, /^###[[:space:]]+/) && !match(raw, /^###[[:space:]]+(NEW:|UPDATED:)/)) || (match(raw, /^##[[:space:]]+/) && !match(raw, /^###/) && !match(raw, /^##[[:space:]]+(NEW:|UPDATED:)/))) {
+        if ((match(raw, /^###[[:space:]]+/) && !match(raw, /^###[[:space:]]+(NEW:|UPDATED:)/) && !match(raw, /^###[[:space:]]+NEW[[:space:]]+\[/) && !match(raw, /^###[[:space:]]+UPDATED[[:space:]]+\[/)) || (match(raw, /^##[[:space:]]+/) && !match(raw, /^###/) && !match(raw, /^##[[:space:]]+(NEW:|UPDATED:)/) && !match(raw, /^##[[:space:]]+NEW[[:space:]]+\[/) && !match(raw, /^##[[:space:]]+UPDATED[[:space:]]+\[/))) {
             files_section = ""
         }
         next

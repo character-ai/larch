@@ -41,7 +41,8 @@ _rdb_out=$(PATH="$fakebin:/usr/bin:/bin:/usr/sbin:/sbin" "$READ_BUDGET" "$tmp")
 [[ "$_rdb_out" == quick ]] || fail "grep fallback sketch_budget 0"
 
 dt=$(mktemp -d "${TMPDIR:-/tmp}/larch-invoke-test.XXXXXX")
-trap 'rm -rf "$fakebin" "$dt"; rm -f "$tmp"' EXIT
+full_dt=$(mktemp -d "${TMPDIR:-/tmp}/larch-invoke-full.XXXXXX")
+trap 'rm -rf "$fakebin" "$dt" "$full_dt"; rm -f "$tmp"' EXIT
 printf '%s\n' '{"review_budget":"quick"}' >"$dt/run-params.json"
 if out=$(
     DESIGN_TMPDIR="$dt" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" PATH="$fakebin:/usr/bin:/bin" \
@@ -51,5 +52,11 @@ if out=$(
 else
     fail "invoke quick should exit 0"
 fi
+
+printf '%s\n' '{"review_budget":"full"}' >"$full_dt/run-params.json"
+cp "$REPO_ROOT/skills/design/scripts/fixtures/parse-plan-commands/basic-plan.md" "$full_dt/plan.md"
+out=$(DESIGN_TMPDIR="$full_dt" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" "$INVOKE" "$full_dt/plan.md")
+printf '%s\n' "$out" | grep -q '^VALIDATE_STATUS=ok$' || fail "full tier must emit VALIDATE_STATUS=ok"
+printf '%s\n' "$out" | grep -q '^STEP_COMPLETED=VALIDATE_PLAN_COMMANDS$' || fail "full tier validate step must complete"
 
 echo "PASS: test-read-design-review-budget-invoke.sh"

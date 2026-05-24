@@ -130,8 +130,8 @@ tier3_fail_plan=$(mktemp "${TMPDIR:-/tmp}/larch-tier3-fail.XXXXXX")
 trap 'rm -f "$log" "$tsv" "$reg" "$tier3_ok_plan" "$tier3_fail_plan"' EXIT
 cat >"$reg" <<'EOF'
 script_path	hook	doc_anchor
-skills/design/scripts/fixtures/validate-plan-commands/demo-tier3-dry.sh	dry-run	
-skills/design/scripts/fixtures/validate-plan-commands/demo-tier3-fail.sh	dry-run	
+skills/design/scripts/fixtures/validate-plan-commands/demo-tier3-dry.sh	LARCH_DRY_RUN=1	
+skills/design/scripts/fixtures/validate-plan-commands/demo-tier3-fail.sh	LARCH_DRY_RUN=1	
 EOF
 cat >"$tier3_ok_plan" <<'EOF'
 ## Plan
@@ -188,6 +188,18 @@ if grep -Fq 'kind=dry-run-failed' "$log"; then
     fail "composed source-kind should not run tier3 dry-run"
 fi
 rm -rf "$comp_tier3"
+
+# Unknown registry hook value → defect (not silently treated as LARCH_DRY_RUN=1)
+reg_bad=$(mktemp "${TMPDIR:-/tmp}/larch-dry-reg-bad.XXXXXX")
+trap 'rm -f "$log" "$tsv" "$reg_bad"' EXIT
+cat >"$reg_bad" <<'EOF'
+script_path	hook	doc_anchor
+skills/design/scripts/fixtures/validate-plan-commands/demo-tier3-dry.sh	my-mode	
+EOF
+"$SCRIPT_DIR/parse-plan-commands.sh" --plan-file "$tier3_ok_plan" --output "$tsv" --repo-root "$REPO_ROOT"
+"$SCRIPT_DIR/validate-plan-commands.sh" --tsv-file "$tsv" --log-file "$log" --source-kind plan --dry-runnable-registry "$reg_bad" >/dev/null
+grep -Fq 'kind=unknown-registry-hook hook=my-mode' "$log" || fail "expected unknown-registry-hook defect"
+rm -f "$reg_bad"
 
 # Tier 3 registry hook --validate-only only
 reg_vo=$(mktemp "${TMPDIR:-/tmp}/larch-dry-reg-vo.XXXXXX")

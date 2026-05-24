@@ -696,11 +696,13 @@ After `dispatch-plan-voters.sh` returns Voter 2/3 output paths and the local Vot
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-printf 'ACTION=TALLY ARGS=--ballot-file %s --voter-files %s %s %s\n' \
-  "$DESIGN_TMPDIR/ballot.txt" \
-  "$VOTER_1_PATH" \
-  "$VOTER_2_PATH" \
-  "$VOTER_3_PATH" \
+printf 'ACTION=TALLY ARGS=%s %s %s %s %s %s %s\n' \
+  "$(printf '%q' --ballot-file)" \
+  "$(printf '%q' "$DESIGN_TMPDIR/ballot.txt")" \
+  "$(printf '%q' --voter-files)" \
+  "$(printf '%q' "$VOTER_1_PATH")" \
+  "$(printf '%q' "$VOTER_2_PATH")" \
+  "$(printf '%q' "$VOTER_3_PATH")" \
   | "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-driver.sh" --design-tmpdir "$DESIGN_TMPDIR"
 ```
 
@@ -980,7 +982,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-tmpdir.sh --dir "$DESIGN_TMPDIR"
 
 When `VALIDATE_STATUS=defects-found` after `ACTION=VALIDATE_PLAN_COMMANDS`, use **AskUserQuestion** with exactly these three option labels (verbatim): **Fix-and-retry**, **Override**, **Cancel**.
 
-- **Fix-and-retry** — The operator edits `plan.txt` or `composed-plan.md` (whichever file the failing validator pass targeted) to resolve the defect. Re-run `ACTION=EMIT_PLAN` first when the edited artifact is `plan.txt` (refreshes `diff-lines.txt`), then re-run `ACTION=VALIDATE_PLAN_COMMANDS ARGS=--plan-file <that same path>`. Loop until `VALIDATE_STATUS=ok` or the operator picks another option.
+- **Fix-and-retry** — The operator edits `plan.txt` or `composed-plan.md` (whichever file the failing validator pass targeted) to resolve the defect. Re-run `ACTION=EMIT_PLAN` first when the edited artifact is `plan.txt` (refreshes `diff-lines.txt`). When the edited artifact is `composed-plan.md`, either re-run `ACTION=EMIT_PLAN` after syncing `plan.txt` so `diff-lines.txt` matches, or update the trailing `diff_lines: <N>` line in `composed-plan.md` to match the integer in `diff-lines.txt` before re-validation. Then re-run `ACTION=VALIDATE_PLAN_COMMANDS ARGS=--plan-file <that same path>`. Loop until `VALIDATE_STATUS=ok` or the operator picks another option.
 - **Override** — The operator accepts proceeding despite defects. Append a `Warnings` entry to `$DESIGN_TMPDIR/execution-issues.md` using `"${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh" --log "$DESIGN_TMPDIR/execution-issues.md" --site "<SITE>" --tool "validate-plan-commands" --exit-code 0 --category Warnings --output-file "$DESIGN_TMPDIR/validate-plan-commands.log" --redact` (substitute `<SITE>` with `design Step 2b`, `design Step 3.5 / Gate B`, `design discussion-round2`, or `design Step 5c` as appropriate). Then continue the surrounding success path; `defects-found` is **not** a driver `STEP_FAILED`.
 - **Cancel** — Abort the surrounding path while preserving `$DESIGN_TMPDIR` for inspection. **Step 2b / Gate B / discussion-round2**: return to Gate A. **Step 5c**: skip `redact-secrets.sh`, `plan-block-write.sh`, publish/rename tail items, and Step 6 cleanup on this branch.
 
@@ -990,7 +992,7 @@ When `VALIDATE_STATUS=defects-found` after `ACTION=VALIDATE_PLAN_COMMANDS`, use 
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/parse-plan-commands.awk` — awk implementation loaded by `parse-plan-commands.sh`.
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/validate-plan-commands.sh` — Tier 2 + Tier 3 validator (TSV in). Sibling: `validate-plan-commands.md`.
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/validate-plan.sh` — `ACTION=VALIDATE_PLAN_COMMANDS` driver (parser → validator; log copy). Sibling: `validate-plan.md`.
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/invoke-plan-validator-if-not-quick.sh` — gates `ACTION=VALIDATE_PLAN_COMMANDS` on `review_budget` (quick skips validator dispatch). Invokes `read-design-review-budget.sh` when `run-params.json` exists.
+- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/invoke-plan-validator-if-not-quick.sh` — gates `ACTION=VALIDATE_PLAN_COMMANDS` on `review_budget` (quick skips validator dispatch). When `$DESIGN_TMPDIR/run-params.json` is readable, invokes `read-design-review-budget.sh`; when it is missing or unreadable, skips validator dispatch (same as quick tier).
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/read-design-review-budget.sh` — resolves `review_budget` (`quick`|`full`) from `run-params.json` with `python3` → `jq` → grep literal fallbacks.
 - `${CLAUDE_PLUGIN_ROOT}/scripts/dry-runnable-scripts.tsv` — Tier 3 opt-in registry (+ `dry-runnable-scripts.md`).
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/emit-plan.sh` — `ACTION=EMIT_PLAN`. Sibling: `emit-plan.md`.

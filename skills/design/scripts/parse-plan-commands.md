@@ -15,6 +15,8 @@ parse-plan-commands.sh --plan-file FILE --output FILE [--repo-root DIR]
 
 TSV columns: `row_type`, `source_line`, `script_path`, `flag`, `flag_value`, `note`, `cmd_uid`.
 
+**Field count**: seven tab-separated columns per data row (including `cmd_uid`); do not assume six columns when diffing parser output or issue-body plan tables.
+
 - **`source_line`**: physical markdown line number (1-based) of the shell line the command segment came from inside the opening fence (the fence’s own ` ```bash ` line is not counted as a command line).
 - **`note`**: human or downstream notes for non-invocation rows; **empty** for `invocation` and `invocation_no_flags` rows.
 - **`cmd_uid`**: monotonic per-run identifier grouping multiple `invocation` rows that belong to the same parsed command (same argv); empty for `new_script`, `updated_flag`, and `parse_note` rows.
@@ -31,7 +33,7 @@ Primary consumer: `validate-plan-commands.sh` via `validate-plan.sh`.
 
 ## Allow-list sections
 
-Parser recognizes `### Files to create` / `### Files to update` (and compatible `##` headings), `### NEW:` / `### UPDATED:` headings, bullet `**NEW**` / `**UPDATED**` paths, and `- Adds flag: --name` bullets under an UPDATED path.
+Parser recognizes `### Files to create` / `### Files to update` (and compatible `##` headings), `### NEW:` / `### UPDATED:` headings (and `##` forms), the bracket path variants `### NEW [path]:` / `### UPDATED [path]:` (and `##` forms), bullet `**NEW**` / `**UPDATED**` paths, and `- Adds flag: --name` bullets under an UPDATED path.
 
 ## Charset
 
