@@ -1,0 +1,12 @@
+ISSUE_1_NUMBER=2686
+ISSUE_1_URL=https://github.com/character-ai/larch/issues/2686
+ISSUE_1_TITLE=[OOS] Add new validator harnesses to docs/linting.md harness-table
+ISSUE_2_NUMBER=2687
+ISSUE_2_URL=https://github.com/character-ai/larch/issues/2687
+ISSUE_2_TITLE=[OOS] Hybrid validation alternative — `shellcheck` / `bash -n` on fenced bodies + generated flag manifest
+ISSUE_3_NUMBER=2688
+ISSUE_3_URL=https://github.com/character-ai/larch/issues/2688
+ISSUE_3_TITLE=[OOS] Optional refinement — validator in `/implement` Preflight
+ISSUES_CREATED=3
+ISSUES_FAILED=0
+ISSUES_DEDUPLICATED=0

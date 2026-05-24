@@ -1,0 +1,117 @@
+# Ballot — Plan Review for issue #2674
+
+The implementation plan for the Command-syntax validator (Tier 2 + opt-in Tier 3) is at `$DESIGN_TMPDIR/plan.txt`. 16 reviewers (10 static + 6 dynamic: Cursor-Arch/Edge/Innovation/Pragmatic/Requirements + Codex matching set + Cursor/Codex dyn-dispatch-contract/lint-registration/schema-interface-completeness) raised findings, deduplicated below.
+
+Vote YES / NO / EXONERATE per finding, applying the proportionality rule (vote EXONERATE if the concern is legitimate but the proposed revision is heavier than the issue warrants). Out-of-scope (`OOS_N`) items vote on whether the observation deserves a GitHub issue.
+
+---
+
+### FINDING_1: Tier 2 unknown-flag vs SKIPPED_FLAG_CHECK rule is contradictory
+- **Concern**: Plan §Approach says "flag absent from `--help` → `DEFECT kind=unknown-flag`" (load-bearing for the `--context-files` acceptance test), but plan §Edge cases overrides with "flag absent from non-empty help → `SKIPPED_FLAG_CHECK reason=flag-not-in-help`" — i.e., graceful skip. Implementing the skip rule causes the R4/FINDING_1 acceptance fixture to silently miss the regression this feature exists to catch. Raised by Cursor-Arch, Codex-Arch, Cursor-Edge, Codex-Edge, Cursor-Innovation, Cursor-Pragmatic, Codex-Pragmatic, Codex-Requirements, Codex-dyn-schema-interface-completeness (9 reviewers).
+- **Proposed resolution**: Make the rule deterministic in `validate-plan-commands.md` and align the plan §Approach/§Edge cases: `SKIPPED_FLAG_CHECK reason=no-help` ONLY when `--help` exits non-zero, prints empty stdout, or times out; for any non-empty `--help` output that omits a plan flag, emit `DEFECT kind=unknown-flag` unless the flag is `### UPDATED:`-allow-listed via the documented `- Adds flag:` bullet. Keep one bullet in the plan §Edge cases noting that terse helpers (e.g., a usage line that omits flag names) are handled by UPDATED allow-listing, NOT by a silent skip.
+
+### FINDING_2: Step 5c source-file selection (plan.txt vs composed-plan.md) has no wire contract
+- **Concern**: Plan says `validate-plan.sh` reads `plan.txt` from Step 2b and `composed-plan.md` from Step 5c, but there's no `ACTION=VALIDATE_PLAN_COMMANDS ARGS=…` shape, env var, or CLI flag specified to bind that selection. An implementation defaulting to `plan.txt` would silently re-validate stale content at Step 5c and let command defects introduced during Step 5c composition reach GitHub. Raised by Cursor-Arch, Cursor-Edge, Codex-Edge, Cursor-Innovation, Cursor-Pragmatic, Codex-Pragmatic, Cursor-dyn-dispatch-contract, Codex-dyn-dispatch-contract, Cursor-dyn-schema-interface-completeness, Codex-dyn-schema-interface-completeness (10 reviewers).
+- **Proposed resolution**: Add a required `--plan-file FILE` CLI flag to `validate-plan.sh`, thread it through `design-driver.sh` as `ACTION=VALIDATE_PLAN_COMMANDS ARGS=--plan-file "$DESIGN_TMPDIR/<file>"`, mirror the existing `ACTION=TALLY ARGS=…` pattern in `design-driver.md` and `validate-plan.md`, and add a `test-design-driver.sh` case asserting the arg passes through unchanged for both Step 2b (`plan.txt`) and Step 5c (`composed-plan.md`).
+
+### FINDING_3: Parser misses interpreter prefixes and `${CLAUDE_PLUGIN_ROOT}/`-prefixed paths
+- **Concern**: Plan's parser identifies the script path as "the first non-flag token after env-var prefixes", but real `/design` fenced bash routinely calls scripts as `${CLAUDE_PLUGIN_ROOT}/scripts/foo.sh --flag`, `"${CLAUDE_PLUGIN_ROOT}/scripts/foo.sh" --flag`, `bash scripts/foo.sh --flag`, `sh skills/x/scripts/foo.sh --flag`, or absolute paths. The proposed repo-relative filter (`scripts/`, `skills/*/scripts/`, `.claude/skills/*/scripts/`) drops all those invocation forms as system commands, so the validator silently has zero coverage on the dominant in-repo invocation style. Raised by Codex-Arch, Cursor-Edge, Codex-Edge, Cursor-Pragmatic, Codex-Pragmatic (5 reviewers).
+- **Proposed resolution**: Extend the parser contract to normalize tokens before filtering: strip simple quotes; peel `bash`/`sh`/`dash`/`env` (with optional `-c`) interpreter prefixes; map `${CLAUDE_PLUGIN_ROOT}/`, `$CLAUDE_PLUGIN_ROOT/`, and absolute checkout-root prefixes to repo-relative paths. Add parser fixtures using actual fenced-bash command shapes from `skills/design/SKILL.md` and `skills/implement/SKILL.md`.
+
+### FINDING_4: No validator after Gate B / Discussion-mode EMIT_PLAN re-runs
+- **Concern**: Plan invokes `VALIDATE_PLAN_COMMANDS` only after the initial Step 2b `EMIT_PLAN` and before Step 5c `redact-secrets.sh`. But Gate B `Apply all` / per-finding `Apply` and the discussion sub-round body both revise `plan.txt` and re-run `ACTION=EMIT_PLAN` (`approval-gates.md:86-87`, `discussion-rounds.md:121`). Defective fenced bash introduced by Gate B revisions only surfaces at Step 5c — hours later, after the user has approved final design. Raised by Cursor-Arch, Cursor-Edge, Codex-Edge, Cursor-Innovation, Codex-Innovation (5 reviewers).
+- **Proposed resolution**: Add the validator pass immediately after every `ACTION=EMIT_PLAN` that follows a `plan.txt` edit (Gate B Apply all, Gate B per-finding Apply, Gate A discussion-mode re-entry plan revision). Update `approval-gates.md` and `discussion-rounds.md` in the same change so the rule is co-located with the EMIT_PLAN sites. Gate by `review_budget != quick` so trivial tier remains untouched.
+
+### FINDING_5: NEW/UPDATED grammar does not match actual /design plan format
+- **Concern**: Plan specifies `### NEW: <path>` headings and `### UPDATED: <path>` headings with nested `- Adds flag:` bullets. But /design plans (including this one) use `- **NEW**: <path>` and `- **UPDATED**: <path>` bullets inside `### Files to create` / `### Files to update` sections, not `### NEW:` headings. The parser would build empty allow-lists for the dominant plan format and false-flag every newly-created script as `DEFECT kind=missing-script`. Raised by Codex-Arch, Cursor-Pragmatic, Codex-Pragmatic (3 reviewers).
+- **Proposed resolution**: Teach `parse-plan-commands.sh` to recognize the existing `- **NEW**: <path>` / `- **UPDATED**: <path>` bullet format (and its indented `- Adds flag:` sub-bullet), document both formats in `parse-plan-commands.md`, and cover them in `test-parse-plan-commands.sh` with the literal bullet-formatted plan fixtures used by /design today. The `### NEW:` heading form remains a documented alternative for hand-authored plans.
+
+### FINDING_6: NEW-script rows must skip Tier 2 + Tier 3 entirely and emit a skip log
+- **Concern**: Plan §Approach says NEW-allow-listed paths are skipped from the existence check, but doesn't state that Tier 2 `--help` probing and Tier 3 dry-run are ALSO skipped for those rows. The issue body explicitly requires `## Plan-command extraction parser` → "Skips commands referencing scripts proposed for creation by this PR" and `## NEW-script detection` → "A command referencing any NEW-script is logged as 'skipped: created by this PR' rather than validated." Without a structured skip log, operator loses forensics when commands disappear from the validator TSV. Raised by Cursor-Requirements (1 reviewer, important).
+- **Proposed resolution**: Define NEW rows as fully skipped from Tier 2 AND Tier 3 (no `--help` invocation, no dry-run); emit an explicit `SKIPPED script=<path> reason=new-script` log line per skipped command in `validate-plan-commands.log`. Cover both behaviors in `test-validate-plan-commands.sh`.
+
+### FINDING_7: Tier 3 must execute via argv array, not via shell eval; reject shell metacharacters; pin cwd
+- **Concern**: Plan §Approach says Tier 3 "composes the literal command from the TSV row, prefixes it with `LARCH_DRY_RUN=1` … and executes with a 10s timeout." Composing-then-executing literal command strings from plan-derived text invites shell-metacharacter injection (redirections, command substitution `$(…)`, backticks, globbing). Even with the registry opt-in, parser mis-tokenization can widen the blast radius beyond the intended script. Raised by Cursor-Pragmatic, Codex-Pragmatic, Codex-Edge (3 reviewers, latent security).
+- **Proposed resolution**: Tier 3 executes as `env LARCH_DRY_RUN=1 <argv>` where `<argv>` is the parsed-token array (no `bash -c`, no `eval`, no string interpolation). Reject rows whose tokens contain shell metacharacters (`$`, backtick, `;`, `|`, `&`, `>`, `<`, `(`, `)`) outside of allow-listed flag values; emit `DEFECT kind=unsafe-token script=<path>` instead of executing. Pin Tier 3 cwd to the repo root. Reject `..` in any token. Add `test-validate-plan-commands.sh` fixtures asserting that injected separators and redirections do NOT fire (probe by attempting to write a sentinel file in a forbidden path).
+
+### FINDING_8: Tier 3 must NOT execute on pre-redaction `composed-plan.md` (secret-leak risk)
+- **Concern**: Plan invokes the validator at Step 5c BEFORE `redact-secrets.sh`. `composed-plan.md` at that point can still hold tokens (`sk-*`, `ghp_`, JWTs, etc.) that operators expect `redact-secrets.sh` to strip before GitHub. If Tier 3 fires on that pre-redaction artifact, dry-run subprocess env or `validate-plan-commands.log` capture can persist those secrets in `$DESIGN_TMPDIR` and downstream forensics. Raised by Codex-Edge (1 reviewer, latent security).
+- **Proposed resolution**: Run only Tier 2 (existence + `--help` flag-check) on the pre-redaction `composed-plan.md`. Either (a) skip Tier 3 entirely on the Step 5c source (acceptable because the only delta vs Step 2b is the composition wrapper, not new fenced bash), or (b) split the Step 5c invocation: Tier 2 BEFORE `redact-secrets.sh`, Tier 3 AFTER, so the dry-run sees only redacted content. Pick one and document in `validate-plan.md` and `SECURITY.md`.
+
+### FINDING_9: Makefile changes must specify `test-harnesses-N` shard placement and `.PHONY` manifest
+- **Concern**: Plan says "wire both into `make lint` via the existing test-target aggregator" but never names which `test-harnesses-N:` shard line the new targets append to, nor whether `Makefile`'s long root `.PHONY` manifest needs updating. `make lint` runs `scripts/test-harness-shards-coverage.sh` which fails if a `test-*` recipe exists but is missing from a shard line. Raised by Cursor-Edge, Cursor-Innovation, Cursor-dyn-lint-registration, Codex-dyn-lint-registration (4 reviewers).
+- **Proposed resolution**: Pick one `test-harnesses-N:` shard line (typically the most-recently-extended; e.g., consult Makefile when implementing) and append both new targets there. Add both names to the long root `.PHONY` manifest line. Mirror the existing recipe shape used by sibling design harnesses (`scripts/harness-timer.sh` wrapper). Document the shard choice in the plan's Files-to-update section explicitly (no "if necessary" deferral).
+
+### FINDING_10: `scripts/test-design-structure.sh` Check 14b needs ACTION=VALIDATE_PLAN_COMMANDS pin
+- **Concern**: `test-design-structure.sh:403-416` pins the canonical ACTION enum in `SKILL.md` via `grep -Fq 'ACTION=EMIT_PLAN'`, `ACTION=TALLY`, `ACTION=FINALIZE`. Without an additional `grep -Fq 'ACTION=VALIDATE_PLAN_COMMANDS'` assertion, future drift can silently drop the new action from SKILL.md and CI still passes. Plan currently cites `test-design-driver.sh` but omits this structural pin file. Raised by Codex-Pragmatic, Cursor-dyn-lint-registration (2 reviewers).
+- **Proposed resolution**: Add `scripts/test-design-structure.sh` to the Files-to-update list. Extend Check 14b with `grep -Fq 'ACTION=VALIDATE_PLAN_COMMANDS' skills/design/SKILL.md` and an equivalent assertion for the new dispatcher arm in `design-driver.sh`.
+
+### FINDING_11: `agent-lint.toml` exclusion registration must be unconditional, not "if necessary"
+- **Concern**: Plan's Files-to-update list says "`agent-lint.toml` — add exclusions IF the new helper paths are mis-flagged by introspection patterns." `agent-lint`'s G004 reachability follows literal paths in SKILL.md/hooks, not `$SCRIPT_DIR/...` edges in design-driver.sh. The new test harnesses follow the established Makefile-only pattern already excluded for sibling design harnesses (e.g., `test-emit-plan.sh`); the new helper scripts may need SKILL.md literal-path bullets in the "Plan helper contracts" footer to be reachable. Conditional language defers a required decision. Raised by Cursor-Arch, Cursor-dyn-lint-registration, Codex-dyn-lint-registration (3 reviewers).
+- **Proposed resolution**: Replace the conditional with explicit registration. Add `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/parse-plan-commands.sh`, `validate-plan-commands.sh`, and `validate-plan.sh` (plus sibling `.md` paths) to the SKILL.md "Plan helper contracts" footer alongside existing `emit-plan.sh` / `tally-plan-review.sh` entries. Add the two new `test-*.sh` paths and their `.md` siblings to `agent-lint.toml`'s `exclude` list, mirroring the pattern around the existing `skills/design/scripts/test-*.sh` entries.
+
+### FINDING_12: TSV schema and allow-list sidecar format must be specified in the plan, not deferred to sibling .md
+- **Concern**: Plan describes parser output as TSV with `block_line_start<TAB>script_path<TAB>flag1<TAB>flag2<TAB>…` but doesn't pin: (a) per-row vs per-flag cardinality (one row per command vs one row per flag); (b) `--foo=bar` vs `--foo bar` encoding; (c) `PARSE_NOTE` row format (is `row_type` a leading column or a magic prefix?); (d) how multiple NEW/UPDATED allow-list "sidecars" (plural) reconcile with the validator's `--allowlist-file` (singular CLI). Producer and consumer can ship incompatible schemas with neither harness catching it. Raised by Cursor-dyn-schema-interface-completeness, Codex-dyn-schema-interface-completeness (2 reviewers, important).
+- **Proposed resolution**: Inline a normative TSV header line in the plan body (e.g., `row_type<TAB>block_line_start<TAB>script_path<TAB>flag<TAB>flag_value<TAB>note`) — one row per (command × flag) for invocation rows, one row per allow-list entry (`row_type=new_script` with empty flag, `row_type=updated_flag` with non-empty flag). Single allow-list file (merge sidecars). Pin the schema in `parse-plan-commands.md` and `validate-plan-commands.md` with byte-exact golden fixtures in both harnesses.
+
+### FINDING_13: SKILL.md "Plan helper contracts" footer needs new helper bullet entries
+- **Concern**: `skills/design/SKILL.md:805-814` lists canonical helper contracts (`emit-plan.sh`, `tally-plan-review.sh`, `finalize-plan.sh`, `file-design-oos.sh`, `plan-block-write.sh`, etc.). Plan's Files-to-update never adds the new parser, validator, wrapper, or registry to this list — breaking the repo's discoverability pattern that operators rely on as a single-pointer reference. Raised by Cursor-Arch, Cursor-Requirements (2 reviewers).
+- **Proposed resolution**: Extend the footer bullet list with `parse-plan-commands.sh`, `validate-plan-commands.sh`, `validate-plan.sh`, and `scripts/dry-runnable-scripts.tsv`, each with sibling `.md` path. Mirror the existing entry format.
+
+### FINDING_14: `SECURITY.md` update required for Tier 3 trust model (security-relevant behavior change)
+- **Concern**: Tier 3 introduces a new automated execution surface — composed argv from plan text executes under the operator account with bounded timeout. `AGENTS.md` "Update `SECURITY.md` when security-relevant behavior changes" applies. Plan's Files-to-update omits `SECURITY.md`. Failure mode 3 acknowledges the risk in narrative but doesn't schedule the policy doc update. Raised by Cursor-Arch, Cursor-Requirements, Cursor-Pragmatic, Codex-Pragmatic (4 reviewers).
+- **Proposed resolution**: Add `SECURITY.md` to Files-to-update. Insert a short section describing: the Tier 3 trust model (registry opt-in, sibling-doc declaration); argv-array execution invariant (no shell eval; see FINDING_7); cwd pinning; metacharacter rejection; the override-logging convention (decisions logged to `$DESIGN_TMPDIR/execution-issues.md` under `Warnings`); and the blast-radius bound (10s timeout, no network policy).
+
+### FINDING_15: `validate-plan.sh` exit-code contract must match `emit-plan.sh` dual failure detection
+- **Concern**: `design-driver.sh` integration for `EMIT_PLAN` checks both non-zero driver exit AND a specific `EMIT_PLAN_STATUS=…` line (`SKILL.md:496-504`). Plan's wrapper emits `VALIDATE_STATUS=ok|defects-found` on stdout but doesn't specify whether `VALIDATE_STATUS=defects-found` accompanies exit 0 (the SKILL.md AskUserQuestion logic parses the KV) or exit non-zero (driver halts). Different choice leads to different SKILL.md control flow; orchestrator can fall through to Step 3 on a defect-found-but-exit-0 result, missing the failure flow. Raised by Codex-Pragmatic, Cursor-dyn-dispatch-contract (2 reviewers).
+- **Proposed resolution**: Pin the contract in `validate-plan.md`: `validate-plan.sh` exits **0** when the validator ran successfully regardless of defects; `VALIDATE_STATUS=ok` means zero defects, `VALIDATE_STATUS=defects-found` means non-zero defect count. The driver's `STEP_FAILED` path triggers only on `validate-plan.sh` infrastructure failure (parser/validator crashed, script missing, etc.) — not on defects-found. SKILL.md's failure flow keys solely off `VALIDATE_STATUS=defects-found`. Add `test-design-driver.sh` cases asserting both branches.
+
+### FINDING_16: Fix-and-retry must re-run `ACTION=EMIT_PLAN` after `plan.txt` edit before re-validating
+- **Concern**: Plan's Fix-and-retry option edits `plan.txt`, then re-runs the validator. But `diff_lines.txt` (written by `ACTION=EMIT_PLAN`) reflects the PRE-fix plan; subsequent operations (Step 5c composed-plan diff_lines line) carry stale state. Mirroring `EMIT_PLAN`'s own failure protocol (which requires re-EMIT before continuing), the validator's Fix-and-retry must re-emit so all derived artifacts are fresh. Raised by Cursor-Arch (1 reviewer, important).
+- **Proposed resolution**: In SKILL.md Step 2b failure flow, after operator edits `plan.txt` on Fix-and-retry, run `ACTION=EMIT_PLAN` first (refreshes `diff_lines.txt`), THEN re-run `ACTION=VALIDATE_PLAN_COMMANDS`. Document this in `validate-plan.md`.
+
+### FINDING_17: Acceptance harness must cover the SKILL-side failure flow (Fix-and-retry / Override / Cancel)
+- **Concern**: Plan's testing strategy covers parser, validator, driver dispatch, and a manual E2E sanity run — but NOT the SKILL-side `AskUserQuestion` failure flow. SKILL.md text can drift (e.g., the validator block accidentally placed BEFORE `EMIT_PLAN`, or the AskUserQuestion options renamed, or Cancel still falling through to plan-block-write) and CI catches none of it. Raised by Codex-Requirements (1 reviewer, important).
+- **Proposed resolution**: Add structural assertions to `scripts/test-design-structure.sh` pinning: (a) `ACTION=VALIDATE_PLAN_COMMANDS` appears AFTER `ACTION=EMIT_PLAN` in Step 2b; (b) the `AskUserQuestion` failure block exists with the three labels `Fix-and-retry` / `Override` / `Cancel`; (c) the Step 5c invocation appears before `redact-secrets.sh`; (d) Cancel path in Step 5c skips Step 6 cleanup (preserves `$DESIGN_TMPDIR`). Add `test-validate-plan-commands.sh` fixtures for Override logging via `append-tool-failure.sh` with site `design Step 2b` / `design Step 5c`.
+
+### FINDING_18: Family B foreground-marker registration decision must be explicit
+- **Concern**: Plan adds a new blocking design action (`ACTION=VALIDATE_PLAN_COMMANDS`) but doesn't address `scripts/lint-foreground-markers.sh` Family B `DENYLIST`. The linter matches script basenames in fenced shell blocks; the SKILL.md path uses `design-driver.sh` (already an indirect invocation), not a direct `validate-plan.sh` fence. Plan should record this triage explicitly to prevent future operators from cargo-culting a denylist entry. Raised by Cursor-dyn-lint-registration, Codex-dyn-lint-registration (2 reviewers).
+- **Proposed resolution**: Add a sentence to the plan: because the SKILL fenced bash calls `design-driver.sh` (already covered by existing markers around the EMIT_PLAN block), no new `DENYLIST` basename is required for `validate-plan.sh`. If future SKILL.md drift introduces a direct `validate-plan.sh` fenced invocation, that change MUST add the denylist entry + per-anchor foreground comment per `BASH_AUTHORING.md` §4. Document this explicitly in `validate-plan.md`.
+
+---
+
+### OOS_1: Add new validator harnesses to docs/linting.md harness-table
+- **Description**: `docs/linting.md:206-280` documents the existing /design harness entries (`test-design-driver`, `test-emit-plan`, etc.) with operator-facing table rows and shard annotations. The new `make test-parse-plan-commands` / `test-validate-plan-commands` targets should get equivalent rows; plan only names `Makefile`. Discoverability gap only.
+- **Reviewer**: Cursor-Arch, Cursor-dyn-lint-registration (and broader docs-linting reviewers)
+- **Vote tally**: pending
+- **Phase**: design
+
+### OOS_2: Regenerate docs/topology.md after updating skills/shared/topology.tsv
+- **Description**: `docs/topology.md` is auto-generated from `skills/shared/topology.tsv` via `bash scripts/generate-topology-docs.sh`. Plan updates only the TSV but not the regenerated doc. `docs/topology.md` will drift until next regeneration cycle.
+- **Reviewer**: Cursor-Edge
+- **Vote tally**: pending
+- **Phase**: design
+
+### OOS_3: Optional refinement — run validator after every `revise-plan-with-waterfall.sh` invocation
+- **Description**: Issue body explicitly flags this as "open for /design refinement". FINDING_4 addresses the bulk case (post-Gate-B EMIT_PLAN) but plan does not address inner per-finding waterfall revisions inside Gate B's `Apply per-finding` loop. Worth considering as a follow-up once FINDING_4 lands.
+- **Reviewer**: Cursor-Requirements
+- **Vote tally**: pending
+- **Phase**: design
+
+### OOS_4: Hybrid validation alternative — `shellcheck` / `bash -n` on fenced bodies + generated flag manifest
+- **Description**: The custom parser + `--help` grep approach will drift as repo scripts evolve their CLI. A complementary path: lay `bash -n` (syntax check) and `shellcheck` over fenced bodies, AND maintain a generated flag manifest (e.g., emit `--help`-extractable manifest at lint time, cache for validator). Lower drift, higher coverage at cost of one more dependency (shellcheck) and a generated artifact. Worth considering as a v2 enhancement issue.
+- **Reviewer**: Cursor-Innovation
+- **Vote tally**: pending
+- **Phase**: design
+
+### OOS_5: Optional refinement — validator in `/implement` Preflight
+- **Description**: Step 1c Q3 declared this out of scope. Recorded here as a known follow-up: validate the `larch:plan` block when `/implement` reads it, catching hand-edited plans that bypassed /design. Issue-#2674 ships /design coverage only.
+- **Reviewer**: (synthesis carry-over from /design Step 1c)
+- **Vote tally**: pending
+- **Phase**: design
+
+### OOS_6: TSV escaping/charset contract for parse-plan-commands.sh
+- **Description**: Plan's TSV doesn't define escaping for tab/newline/quote in script paths or flag values. While script paths in this repo don't contain such characters today, the contract gap could break downstream consumers if a future plan introduces unusual paths. Documenting the constraint (e.g., "paths/flags MUST NOT contain tab or newline; parser rejects otherwise") satisfies the gap with minimal effort.
+- **Reviewer**: Cursor-Innovation
+- **Vote tally**: pending
+- **Phase**: design

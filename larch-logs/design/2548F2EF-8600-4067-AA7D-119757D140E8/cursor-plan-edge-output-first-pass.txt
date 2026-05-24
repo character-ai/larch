@@ -1,0 +1,9 @@
+Reading the plan and referenced code paths.
+
+Exploring referenced integration points in the codebase.
+
+Checking `normalize_step` output for long action names and whether `test-harnesses` wiring has a predictable slot:
+
+Identifying internal Tier 2 contradictions in the plan (Approach vs Edge cases), conflicts with current `SKILL.md` step-boundary prose, and gaps in failure-logging and Tier 3 execution contracts. Assembling the required TSV-first response.
+
+

@@ -1,0 +1,40 @@
+Reading the plan and tracing referenced code paths for a requirements/completeness review.
+
+Fetching issue #2674 for stated requirements and inspecting integration points referenced in the plan.
+
+Checking the issue's command-extraction wording against the plan's pipeline-splitting approach.
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan.txt:9-11	NEW-path handling only states skipping existence checks for allow-listed paths while Tier 2 still prescribes running script --help and flag checks	Non-existent NEW script rows can still hit --help / flag logic or Tier 3, causing false failures or contradicting issue Tier 2 skip semantics	Define NEW rows as fully skipped from Tier 2 and Tier 3 (no --help, no dry-run) and emit an explicit skipped row or log line
+1	in_scope	important	correctness	GH#2674 body Tier 2 / Plan-command	Issue requires NEW-script invocations to be logged as skipped created-by-PR rather than validated	Operators lose forensics when commands silently disappear from the validator TSV without a skip record	Emit a structured skip log or PARSE_NOTE row for each NEW-skipped command path matching issue wording
+1	in_scope	important	correctness	plan.txt:5-7	Issue text limits extraction to the first non-empty line per fenced block (joined continuations) while the plan walks the fence and splits pipelines without stating the same first-line-only rule	Second and later non-continued lines in one fence could be validated or ignored inconsistently with issue acceptance	Document an explicit supersession of that issue sentence or constrain the parser to the first logical command line per fence per issue
+1	in_scope	nit	correctness	GH#2674 body Plan-command	Issue documents ### NEW [path]: heading syntax alongside ### NEW:	The parser may miss legitimate NEW headings and mis-classify commands	Teach parse-plan-commands.md and the parser to accept bracketed NEW heading forms from the issue
+1	in_scope	nit	correctness	GH#2674 Acceptance	Acceptance names a concrete TSV column layout (block_line_start script_path flags)	Implementer may ship a different schema than the acceptance bullet unless the plan pins a mapping	Align parse-plan-commands output columns to the acceptance schema or record an explicit breaking rationale in the plan and issue
+1	in_scope	nit	architecture	skills/design/SKILL.md:805-813	Files-to-update lists Step 2b and 5c inserts but not refreshing the Plan helper contracts enumeration	Operators and CI readers lose a single canonical pointer to validate-plan.sh and parser siblings	Add validate-plan.sh parse-plan-commands.sh validate-plan-commands.sh to the Step 5 helper contract list when editing SKILL.md
+1	in_scope	important	risk-integration	skills/design/SKILL.md:168-169	Plan cites append-tool-failure in Approach but Files-to-update never binds validator or parser hard failures to execution-issues.md	Timeouts crashes or unexpected exits from validate-plan.sh may not be appended under Tool Failures per SKILL contract	Specify AskUserQuestion only for DEFECT outcomes and require append-tool-failure.sh captures for non-zero validator or parser exits with a stable site label
+1	in_scope	nit	code-quality	plan.txt:23	Plan names sourcing lib-quiet.sh without the repo-relative path pattern used by sibling design scripts	shellcheck or copy-paste may source the wrong file	Use source "$SCRIPT_DIR/../../../scripts/lib-quiet.sh" or PLUGIN_ROOT scripts path as in emit-plan.sh
+1	in_scope	latent	security	plan.txt:11-12	Tier 3 runs a composed shell command from plan text with only registry and timeout mitigations	A malicious or mistaken plan could invoke an unexpected argv shape or rely on cwd-sensitive behavior outside dry-run contracts	Document and enforce cwd at repo root argv-safe reconstruction deny non-registry Tier 3 and cap env inheritance in validate-plan-commands.md
+1	out_of_scope	latent	architecture	skills/design/SKILL.md:600-620	Optional issue refinement to run the validator after each revise-plan-with-waterfall.sh call is not mentioned	Extra defect windows during Gate B multi-round revision loops	Track as follow-up issue or defer explicitly in parse-plan-commands.md scope
+1	out_of_scope	nit	architecture	docs or plan Dependencies	Issue notes validator could share a post-plan-write checks phase with size-threshold work (#L1)	None for this PR	Note complementarity in plan Dependencies if you want traceability only
+
+1. **[correctness]** `plan.txt:9-11` — Tier 2 still implies `--help`/flag work for rows whose script path is only allow-listed as NEW; the issue requires those commands to be skipped entirely (not merely exempt from existence). **Revision:** Short-circuit NEW rows before `--help`, Tier 3, and emit an explicit “skipped: created-by-PR” record per issue Tier 2 / Plan-command text.
+
+2. **[correctness]** `GH#2674` — Same gap as (1) on logging: issue mandates “logged as skipped: created by this PR” rather than silent omission. **Revision:** Add a first-class skip row or log line in parser or validator output for every skipped NEW command.
+
+3. **[correctness]** `plan.txt:5-7` vs `GH#2674` — Issue limits extraction to the first non-empty line per fenced block (with `\` continuation); the plan describes walking fences and splitting `| && || ;` without anchoring that first-line rule, so multi-line blocks are ambiguous vs acceptance. **Revision:** Either align the parser with the issue sentence or explicitly supersede it in the plan and issue acceptance.
+
+4. **[correctness]** `GH#2674` — `### NEW [path]:` heading variant appears in the issue but not in the plan’s heading list (`### NEW: <path>` only). **Revision:** Parse and document both forms.
+
+5. **[correctness]** `GH#2674` Acceptance — Concrete TSV columns are part of acceptance; the plan defers schema to `parse-plan-commands.md` without mapping columns in the Approach. **Revision:** Pin column names/order to the acceptance tuple or document deliberate deviation.
+
+6. **[architecture]** `skills/design/SKILL.md:805-813` — “Plan helper contracts” list will omit the new validator pipeline unless explicitly updated; the plan’s Files-to-update does not call this out. **Revision:** Extend the helper bullets when touching `SKILL.md`.
+
+7. **[risk-integration]** `skills/design/SKILL.md:168-169` — Global execution-issues logging for failing Bash tools; the plan references `append-tool-failure.sh` narratively but does not require SKILL.md steps to log validator/parser crashes separately from AskUserQuestion DEFECT flows. **Revision:** Add explicit append-tool-failure.sh wiring for validate-plan failures (site `design Step 2b` / `design Step 5c`).
+
+8. **[code-quality]** `plan.txt:23` — `lib-quiet.sh` without the established `scripts/lib-quiet.sh` path pattern. **Revision:** Match `emit-plan.sh` / `design-driver.sh` sourcing style.
+
+9. **[security]** `plan.txt:11-12` — Tier 3 executes composed commands from the plan with timeout/registry only. **Revision:** Document cwd, quoting, registry-only allowlist, and inherited-env constraints in `validate-plan-commands.md`.
+
+**[OUT_OF_SCOPE]** `skills/design/SKILL.md` (Gate B revision loop) — Issue’s optional “run after each `revise-plan-with-waterfall.sh`” refinement is absent from the plan; track as a follow-up if mid-loop drift matters.
+
+**[OUT_OF_SCOPE]** `GH#2674` Dependencies — Optional note that this validator could share a “post-plan-write checks” phase with #L1 is not reflected; harmless documentation gap for a later issue.

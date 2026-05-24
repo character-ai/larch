@@ -1,0 +1,28 @@
+Reading the plan and referenced code paths for edge-case review.
+
+Inspecting integration points: `design-driver.sh`, `SKILL.md` (EMIT_PLAN / redact-secrets / review_budget), and related contracts.
+
+1. **correctness** — [`skills/design/scripts/parse-plan-commands.sh`](skills/design/scripts/parse-plan-commands.sh) (proposed contract in plan) — Token rule “first non-flag token after env-var prefixes” treats `bash scripts/foo.sh` / `sh -c` / `env VAR=1 bash …` as targeting `bash`/`sh`/`env`, so Tier 2 probes the wrong executable or drops real repo scripts. — Extend the contract to peel common interpreter prefixes (`bash`/`sh`/`dash`/`env` with optional `-c` handling) or emit `PARSE_NOTE` instead of mis-classifying.
+
+2. **risk-integration** — [`skills/design/references/approval-gates.md:86-87`](skills/design/references/approval-gates.md) (and the parallel “re-run `ACTION=EMIT_PLAN`” path in [`skills/design/references/discussion-rounds.md:121`](skills/design/references/discussion-rounds.md)) — Plan only adds `VALIDATE_PLAN_COMMANDS` after the initial Step 2b `EMIT_PLAN` and before Step 5c `redact-secrets.sh`; it never schedules validation after Gate B’s or discussion’s second `ACTION=EMIT_PLAN`, so revised `plan.txt` can carry new fenced commands that stay unchecked until Step 5c (late surprise, harder recovery). — Add the same driver invocation immediately after every `ACTION=EMIT_PLAN` that follows a `plan.txt` edit (Gate B, discussion re-entry) and update these reference docs in lockstep with [`skills/design/SKILL.md`](skills/design/SKILL.md).
+
+3. **architecture** — [`skills/design/scripts/validate-plan.sh`](skills/design/scripts/validate-plan.sh) / [`skills/design/scripts/design-driver.sh:70-86`](skills/design/scripts/design-driver.sh) — Plan names two inputs (`plan.txt` vs `composed-plan.md`) but does not specify how `design-driver.sh` or `ACTION=… ARGS=…` selects the file (env, extra action enum, or wrapper argv). — Spell the wire format in `design-driver.md` and `validate-plan.md` (e.g. `ACTION=VALIDATE_PLAN_COMMANDS ARGS=--plan-file "$DESIGN_TMPDIR/composed-plan.md"`).
+
+4. **security** — [`skills/design/SKILL.md:765-767`](skills/design/SKILL.md) (current Step 5c ordering) + plan “Step 5c … BEFORE `redact-secrets.sh`” — Tier 3 executes composed plan commands while `composed-plan.md` can still hold live secrets (same content stream `redact-secrets.sh` is meant to strip before GitHub). Dry-run or logging can exfiltrate tokens into `validate-plan-commands.log` or subprocess env. — Run a **non-executing** Tier 2 pass first, redact (or strip fenced blocks) before any Tier 3 replay, or forbid Tier 3 on the pre-redaction artifact.
+
+5. **risk-integration** — [`skills/design/scripts/validate-plan-commands.sh`](skills/design/scripts/validate-plan-commands.sh) (proposed Tier 2 loop) — “For each remaining row” plus a 10s `--help` timeout invites N duplicate probes for the same script in one plan, multiplying wall time and flaky `SKIPPED_FLAG_CHECK` / harness timeouts. — Dedupe by resolved script path (cache help text once per run).
+
+6. **architecture** — [`docs/topology.md:1-6`](docs/topology.md) + plan “Files to update … `skills/shared/topology.tsv`” — Consumer projection is auto-generated from the TSV; updating only the TSV without `bash scripts/generate-topology-docs.sh` leaves [`docs/topology.md`](docs/topology.md) stale relative to repo norms in the header. — Add `docs/topology.md` to the plan’s file list (or an explicit regen step).
+
+[OUT_OF_SCOPE] **code-quality** — [`Makefile:36-38`](Makefile) / [`scripts/test-harness-shards-coverage.sh`](scripts/test-harness-shards-coverage.sh) — New `make` targets must be assigned to a `test-harnesses-*` shard and usually the `.PHONY` mega-line; the plan only says “wire into `make lint`” and omits the shard-balance procedure the Makefile documents.
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/scripts/parse-plan-commands.sh	Interpreter-wrapped repo invocations mis-tokenized	Plans use bash env bash sh -c forms Tier 2 targets wrong binary or skips real script	Parse peel bash sh dash env or emit PARSE_NOTE when ambiguous
+1	in_scope	important	risk-integration	skills/design/references/approval-gates.md:86-87	No VALIDATE after post-review EMIT_PLAN	Gate B edits plan then EMIT_PLAN only bad commands surface at Step 5c	Invoke VALIDATE_PLAN_COMMANDS after each EMIT_PLAN tied to plan.txt edits update SKILL and discussion-rounds.md
+1	in_scope	important	architecture	skills/design/scripts/validate-plan.sh	Plan source file selection unspecified	Driver cannot know plan.txt vs composed-plan.md without ARGS contract	Document ACTION ARGS or env in design-driver.md and validate-plan.md
+1	in_scope	important	security	skills/design/SKILL.md:765-767	Tier3 on composed-plan before redact-secrets	Dry-run or logs can leak secrets from composed-plan.md	Reorder redact before Tier3 or disable Tier3 on pre-redaction input
+1	in_scope	latent	risk-integration	skills/design/scripts/validate-plan-commands.sh	Per-row help probes duplicate work	Large plans repeat help N times hit 10s timeouts flaky CI	Dedupe help fetch per script path per run
+1	in_scope	nit	architecture	docs/topology.md:1-6	TSV update without regen step	docs/topology.md drifts from skills/shared/topology.tsv	Add docs regen to plan or Makefile step
+1	out_of_scope	nit	code-quality	Makefile:36-38	New harness shard assignment omitted	CI drift or unbalanced shards when only Makefile line edited	Follow test-harness-shards-coverage procedure when adding targets
+
+

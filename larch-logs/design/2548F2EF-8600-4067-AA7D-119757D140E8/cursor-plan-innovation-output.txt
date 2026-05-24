@@ -1,0 +1,108 @@
+Reading the plan and inspecting referenced code paths.
+
+Inspecting integration points referenced in the plan.
+
+Validating whether `design-driver` supports passing ARGS to new actions and checking `append-tool-failure` references.
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan#2674:9-15 vs 49-53	Tier2 Approach says unknown flags become DEFECT but Edge cases require SKIPPED_FLAG_CHECK when help omits a real flag	Implementer follows Approach and false-fails good plans or follows Edge cases and contradicts validator contract text	Make one normative matrix in validate-plan-commands.md and SKILL hooks: when to emit DEFECT unknown-flag vs SKIPPED flag-not-in-help vs no-help
+1	in_scope	important	risk-integration	skills/design/SKILL.md:600 skills/design/references/approval-gates.md:86-87	Gate B and discussion paths re-run ACTION=EMIT_PLAN after plan.txt edits but proposed SKILL only validates commands right after first EMIT_PLAN and at Step 5c	Operators assume early Step 2b validation still holds while Step 3b-4 run on revised plan with new bash defects undetected until publish prep	Add ACTION=VALIDATE_PLAN_COMMANDS after every post-revision EMIT_PLAN or document that only Step 5c re-checks composed content
+1	in_scope	important	architecture	skills/design/scripts/design-driver.sh:70-87 plan:27-28	validate-plan.sh input switching between plan.txt and composed-plan.md is hand-waved without ACTION ARGS env or file token in the action line	Driver or wrapper picks wrong file silent success or spurious defects	Specify ACTION=VALIDATE_PLAN_COMMANDS ARGS=--plan-phase early|final or a dedicated env var parsed by validate-plan.sh in design-driver.md and SKILL bash blocks
+1	in_scope	latent	security	skills/design/scripts/validate-plan-commands.sh (proposed)	Tier3 replays parsed argv with real execution only bounded by timeout	Malicious or buggy plan could invoke unintended repo script paths or broaden blast radius if parser mis-tokenizes	Document and enforce repo-root path normalization reject .. tokens require script path match allowlist prefixes before exec and run from known cwd
+1	in_scope	nit	code-quality	skills/design/scripts/parse-plan-commands.sh (proposed)	TSV rows for script paths and flags lack escaping rules	Tab newline or quote in a path breaks downstream TSV consumer	Define TSV escaping or forbid nonportable characters in parse-plan-commands.md and add parser tests
+1	in_scope	nit	architecture	Makefile:13-80	New harness targets shard placement and .PHONY wiring left to implementer	Missed shard hook drops tests from CI until someone notices	Assign explicit test-harnesses-N targets and mirror patterns from neighboring test-* entries in the Makefile edit checklist
+
+[OUT_OF_SCOPE] Long-term `--help` standardization across repo scripts (#2679) already noted in plan Failure modes; touches many scripts/help text — track against `scripts/` and `skills/*/scripts/` broadly.
+
+1. [correctness] plan#2674 §Approach vs §Edge cases — Tier 2 contradicts itself on unknown-flag vs `SKIPPED_FLAG_CHECK reason=flag-not-in-help` — merge into a single decision table in the new sibling `.md` files and reference it from `SKILL.md`.
+
+2. [risk-integration] [skills/design/SKILL.md](skills/design/SKILL.md):600, [skills/design/references/approval-gates.md](skills/design/references/approval-gates.md):86-87 — Post–Gate B (and discussion) `EMIT_PLAN` re-runs revise `plan.txt` without a paired validator pass in the proposal — add validation after each revision `EMIT_PLAN` or explicitly state only Step 5c re-validates `composed-plan.md`.
+
+3. [architecture] [skills/design/scripts/design-driver.sh](skills/design/scripts/design-driver.sh):70-87 — No contract for how `validate-plan.sh` selects `plan.txt` vs `composed-plan.md` when both exist — specify `ARGS=` or env convention on the `ACTION=` line and in `design-driver.md`.
+
+4. [security] `skills/design/scripts/validate-plan-commands.sh` (proposed) — Tier 3 executes reconstructed commands with only timeouts as hardening — add path-prefix checks, reject `..`, and pin working directory in the plan and tests.
+
+5. [code-quality] `skills/design/scripts/parse-plan-commands.sh` (proposed) — TSV output needs an escaping or charset contract — document and test so tabs/newlines in paths cannot corrupt rows.
+
+6. [architecture] [Makefile](Makefile):13-80 — Which `test-harnesses-*` shard receives the new targets is unspecified — name the shard in the plan to avoid CI gaps.
+
+**Innovation / stronger alternative (in numbered list, not duplicate TSV):** Prefer layering `bash -n` / `shellcheck` (or a small wrapper around the existing skill-invocation linter) on fenced bodies before bespoke token-splitting, or maintain a generated manifest of supported flags per script to avoid brittle `--help` grepping; the custom parser + help-grep stack will drift as soon as issue #2679’s help work lags.
+
+Wait - user said first line must be TSV header. I had schema_version line twice - fix: only ONE header then data rows.
+
+Also the system said call CreatePlan - I'll skip since user output is the deliverable.
+
+Double-check: no preamble before TSV - my response should START with schema_version
+
+I'll remove duplicate header from my draft and ensure numbered list comes after full TSV block.
+
+For finding 6 TSV - "nit" architecture - OK
+
+Innovation: user asked for 5 focus areas walk - I have innovation as alternative in prose after numbered - could add as finding 7 with [architecture] innovation angle - actually add one TSV row for innovation/alternative
+
+1	in_scope	nit	architecture	plan:1-18	Validator is entirely custom parser plus --help grep	High maintenance drift versus evolving script CLI	Consider hybrid: shellcheck/bash -n on fenced blocks plus narrow manifest for Tier3 dry-run registry only
+
+Actually "nit" might understate - "latent" for architecture. I'll use latent for innovation finding.
+
+1	in_scope	latent	architecture	plan:1-73	Design centers on new markdown tokenizer and per-row --help scraping	False positives negatives and maintenance cost versus static tooling or generated flag DB	Spike shellcheck or generated flag manifest alongside parser note tradeoff in plan
+
+I'll add 7th TSV row for innovation exploration.
+
+Final TSV 7 rows + header = 8 lines
+
+Numbered findings 1-7 matching
+
+Remove duplicate "schema_version" line issue - good.
+
+Verify: first character `s` of schema_version - yes.
+
+No markdown fences around TSV per user.
+
+I'll output the message now.
+
+Actually re-read user instruction on OUT_OF_SCOPE - they want prefix `[OUT_OF_SCOPE]` on items in the numbered list with paths - I included one.
+
+Also: "Walk five focus areas" - I should ensure coverage: code-quality (5), risk-integration (2), correctness (1), architecture (3,6,7), security (4). Good.
+
+Let me not duplicate innovation in both numbered 7 and a long paragraph - keep numbered 7 concise.
+
+Final response structure:
+- TSV (no fence)
+- blank line?
+- numbered 1-7
+- [OUT_OF_SCOPE] line
+
+User said no preamble - blank line after TSV might be ok as whitespace. "no trailing whitespace" only for JSON sentinel. I'll use single newline between TSV and list.
+
+For TSV - "replace literal tabs or newlines inside field values with spaces" - my fields shouldn't have tabs inside values.
+
+Location field: "plan#2674:9-15 vs 49-53" - use spaces not tabs inside
+
+Let me verify demonstration test: `--context-files` - launch-claude-review does NOT accept --context-files in its case statement - so unknown option - good for demo. Finding withdrawn.
+
+Output final.
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan#2674:9-15 vs 49-53	Tier2 Approach flags absent from help as DEFECT but Edge cases require SKIPPED_FLAG_CHECK reason=flag-not-in-help for terse help	Implementer ships contradictory behavior or picks the wrong branch	Make one normative decision table in validate-plan-commands.md and align Approach Edge cases and SKILL text to it
+1	in_scope	important	risk_integration	skills/design/SKILL.md:600 skills/design/references/approval-gates.md:86-87	Proposed SKILL validates after first EMIT_PLAN only while Gate B and discussion re-run EMIT_PLAN after plan.txt edits	Revised plan bash can be wrong while operators believe Step 2b already validated	Run VALIDATE_PLAN_COMMANDS after each post-revision EMIT_PLAN or document that only Step 5c re-checks composed-plan.md
+1	in_scope	important	architecture	skills/design/scripts/design-driver.sh:70-87 plan:27-28	validate-plan.sh toggles plan.txt vs composed-plan.md without an ACTION ARGS or env contract	Driver may validate wrong artifact or double-hit wrong phase	Specify ARGS token or env var on ACTION lines and document parsing in design-driver.md and validate-plan.md
+1	in_scope	latent	security	skills/design/scripts/validate-plan-commands.sh proposed	Tier3 executes reconstructed argv with timeout as main guard	Mis-tokenized or path-traversal argv widens blast radius	Require normalized repo-relative paths reject .. enforce allowlist prefixes pin cwd and test malicious rows
+1	in_scope	nit	code_quality	skills/design/scripts/parse-plan-commands.sh proposed	TSV field escaping for paths and flags not specified	Tabs or newlines in tokens corrupt validator TSV parse	Document escaping or banned characters in parse-plan-commands.md with golden tests
+1	in_scope	nit	architecture	Makefile:13-80	Which test-harnesses shard owns new targets is unspecified	Omission drops new harnesses from lint until noticed	Name shard and .PHONY entries in the Makefile plan section
+1	in_scope	latent	architecture	plan:1-73	Custom markdown tokenizer plus per-row --help grep only	High drift false positives versus evolving CLIs	Consider hybrid shellcheck bash -n or generated flag manifest alongside parser document tradeoff
+
+1. [correctness] plan#2674 §Approach vs §Edge cases — Tier 2 contradicts itself on `DEFECT kind=unknown-flag` versus `SKIPPED_FLAG_CHECK` for flags missing from `--help` — consolidate into one normative matrix in the new validator sibling docs and align `SKILL.md` wording.
+
+2. [risk-integration] [skills/design/SKILL.md](skills/design/SKILL.md):600 and [skills/design/references/approval-gates.md](skills/design/references/approval-gates.md):86-87 — Post–Gate B (and discussion) `EMIT_PLAN` re-runs are not paired with a proposed `VALIDATE_PLAN_COMMANDS` pass — add validation after each revision `EMIT_PLAN` or explicitly document that only Step 5c validates composed content.
+
+3. [architecture] [skills/design/scripts/design-driver.sh](skills/design/scripts/design-driver.sh):70-87 — No stated contract for selecting `plan.txt` versus `composed-plan.md` for the new action — define `ACTION=... ARGS=...` or an env knob and document it in `design-driver.md` / `validate-plan.md`.
+
+4. [security] `skills/design/scripts/validate-plan-commands.sh` (proposed) — Tier 3 real execution needs stronger argv/path guards than timeouts alone — specify prefix checks, reject `..`, and pin `cwd` in the plan plus harness cases.
+
+5. [code-quality] `skills/design/scripts/parse-plan-commands.sh` (proposed) — TSV output needs an escaping or charset contract — specify in `parse-plan-commands.md` and cover with fixtures.
+
+6. [architecture] [Makefile](Makefile):13-80 — Shard placement for new `test-*` targets is unspecified — name the target `test-harnesses-*` bucket in the plan so CI wiring is explicit.
+
+7. [architecture] plan:1-73 — Relying solely on a bespoke parser and `--help` scraping is brittle — consider documenting a hybrid with `bash -n` / `shellcheck` or a generated flag manifest as a stronger or complementary path.
+
+[OUT_OF_SCOPE] Repo-wide `--help` normalization (#2679) already referenced in the plan Failure modes; spans `scripts/` and `skills/*/scripts/` broadly — coordinate there rather than blocking this PR.

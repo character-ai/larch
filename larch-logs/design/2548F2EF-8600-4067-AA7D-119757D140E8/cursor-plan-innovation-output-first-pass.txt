@@ -1,0 +1,7 @@
+Reading the plan and inspecting referenced code paths.
+
+Tracing integration points: `design-driver.sh`, `SKILL.md`, `Makefile`, `agent-lint.toml`, and quiet-lib naming.
+
+Creating the review: response must start with the TSV header (findings present).
+
+
