@@ -1,0 +1,20 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: NO -- plan already includes an end-to-end clean-run call-count validation, and automating transcript deltas is not required.
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: EXONERATE -- possible interleaving is a legitimate edge concern, but extra KV-surface documentation/testing is disproportionate if child output is captured for parsing.
+FINDING_15: EXONERATE -- timer-wrapper consistency is legitimate but too minor to require a plan revision.
+FINDING_16: YES
+FINDING_17: YES
+FINDING_18: EXONERATE -- ordering nit is real but not worth revising the plan.
+FINDING_19: EXONERATE -- nested-fence formatting is a legitimate plan-artifact risk, but it is minor and unlikely to affect implementation.
+OOS_1: NO -- topology.tsv is not a per-script inventory, so the follow-up need is speculative rather than a concrete issue.

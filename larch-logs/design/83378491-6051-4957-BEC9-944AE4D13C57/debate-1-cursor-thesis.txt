@@ -1,0 +1,27 @@
+Reading the debate prompt file and producing the requested structured output (read-only).
+
+Gathering codebase evidence for citations: locating relevant scripts and peer library patterns.
+
+Here is the deliverable in the requested shape. Evidence is from read-only inspection of the repo (`rebase-checkpoint-probe.sh` / `phantom-probe-with-warn.sh` / `lib-phantom-probe.sh` are not present yet; cited files are the current macro/probe and library patterns).
+
+<steelman>
+Delegating to `phantom-probe-with-warn.sh` as a subprocess keeps a single executable as the behavioral contract, so tests and reviewers need only one argv/stdout surface, and the rebase wrapper stays a thin orchestrator that merges KVs without owning append/warn edge cases. Duplicating the probe block inline in both wrappers is also straightforward for Bash contributors who prefer copy-paste clarity over designing a sourced function’s contract.
+</steelman>
+<claim>
+Shipping `scripts/lib-phantom-probe.sh` with a shared `phantom_probe_with_warn` function sourced by both wrappers is the right compromise because it preserves one implementation of probe+warn+append-failure logic while avoiding subprocess breadcrumb/KV plumbing and per-macro fork/exec cost.
+</claim>
+<evidence>
+The implement skill still embeds the full Rebase Checkpoint Macro as inline bash calling `rebase-push.sh` (for example the M1 fence at [skills/implement/SKILL.md](skills/implement/SKILL.md) lines 129–136), while [scripts/lib-quiet.sh](scripts/lib-quiet.sh) lines 97–112 show `emit_kv` writing machine-readable lines to FD 3 when `LARCH_QUIET_PID` matches the current shell—so a sourced library function in the same process can emit phantom KVs into the wrapper’s quiet session without spawning a second script entrypoint. Peer sourced libraries such as [scripts/lib-dirty-tree-sidecar.sh](scripts/lib-dirty-tree-sidecar.sh) lines 1–5 already use an idempotent `LARCH_LIB_*_LOADED` guard, matching the repo’s established pattern for non-executable `scripts/lib-*.sh` modules.
+</evidence>
+<strongest_concession>
+A subprocess call reuses the existing top-level script shape of [scripts/check-phantom-dirty.sh](scripts/check-phantom-dirty.sh) (lines 6–9: `source` `lib-quiet.sh` then `larch_quiet_init`), so behavior stays encapsulated behind a shebang entrypoint rather than a new internal API with implicit globals and ordering constraints between callers and the library.
+</strongest_concession>
+<counter_to_opposition>
+Subprocess reuse forces either a second `larch_quiet_init` boundary and an extra `emit_breadcrumb` at the child’s entry (colliding with the wrapper’s own single-breadcrumb design) or ad hoc flags to suppress that, plus stdout parsing and KV merge logic that can drift from the wrapper’s terminal block; a sourced function keeps exactly one quiet session and one breadcrumb while still deduplicating the phantom logic.
+</counter_to_opposition>
+<risk_if_wrong>
+If the plan instead ships duplicated probe+warn bodies, a fix to append-failure handling or STATUS/REASON edge cases will need to land twice and can diverge silently; if it ships subprocess delegation without rigorous merge rules, orchestrators may mis-parse combined output or see misleading double breadcrumbs when debugging `/implement` runs.
+</risk_if_wrong>
+RECOMMEND: THESIS
+
+SELF-CHECK: (1) All six tags emitted once in order. (2) Final line is `RECOMMEND: THESIS`. (3) No prose outside the tags (within the 250-word cap).

@@ -1,0 +1,357 @@
+# Implementation Plan — issue #2740
+
+Consolidate `/implement`'s **Rebase Checkpoint Macro** (4 mid-run sites: `1.r`, `4.r`, `7.r`, `7a.r`) and **Phantom Untracked Probe** (5 sites: `2-post-dispatch`, `4.r-post-rebase`, `7.r-post-rebase`, `7a.r-post-rebase`, `8-pre-bump`) into two new wrapper scripts plus a shared library helper. Per-run effect: ~6-12 mid-run Bash calls collapse to **6 total** (4 combined + 2 standalone) — ~6 calls saved per `/implement` run.
+
+This plan incorporates 12 accepted plan-review findings (FINDING_1..FINDING_10, FINDING_12, FINDING_16) on top of the dialectic-resolved DECISION_1 (library-based reuse via `scripts/lib-phantom-probe.sh`).
+
+## Files to modify/create
+
+### NEW: `scripts/lib-phantom-probe.sh`
+
+Sourced-only library exposing the `phantom_probe_with_warn` shell function. **Binding to dialectic resolution DECISION_1**: this library is the shared source for the phantom probe + warn + append-failure logic across both wrappers; both wrappers `source` it and call the function. The function emits its phantom KVs through the caller's already-initialized FD-3 quiet stream (`lib-quiet.sh`'s `emit_kv`) — no nested `larch_quiet_init`, no extra `emit_breadcrumb`. Idempotency guard: `LARCH_LIB_PHANTOM_PROBE_LOADED=1` (matches `scripts/lib-dirty-tree-sidecar.sh` lines 3-5 / `scripts/lib-codex-launcher-common.sh` pattern).
+
+Signature: `phantom_probe_with_warn <step-token> <baseline-path> <phantom-paths-dir> <execution-issues-log>`.
+
+Function body invokes `check-phantom-dirty.sh --baseline … --step … --phantom-paths-dir …`, parses `STATUS`/`REASON`/`PHANTOM_COUNT`/`PHANTOM_PATHS_FILE` without `eval`/`source`, branches:
+- `STATUS=clean` or `STATUS=tracked-only`: emit `PHANTOM_STATUS=<status>`, return 0 silently.
+- `STATUS=phantom`: emit `PHANTOM_STATUS=phantom`, `PHANTOM_COUNT=<n>`, `PHANTOM_PATHS_FILE=<path>`. Invoke `append-execution-issue.sh --log <log> --category Warnings --entry "- **Step <step-token> — phantom untracked files:** <n> file(s) appeared since session baseline (inspect <phantom-paths-file> locally)"`.
+
+  **FINDING_1 binding** — append-execution-issue.sh error parsing: capture both stdout AND stderr (`2>&1` merge or two temp files). Parse `ERROR=<message>` and `FAILED=true` from the combined capture as `emit_kv` lines (`append-execution-issue.sh` initializes lib-quiet at line 11-14 and emits FAILED/ERROR via `emit_kv` to the contract stream at lines 58-79). When the helper exits non-zero AND no `ERROR=` line was found, fall back to the stderr text (if any). Emit `PHANTOM_APPEND_WARN_FAILED=true` plus `PHANTOM_APPEND_WARN_ERROR=<sanitized-message>` (KV-only surface so the wrapper's terminal block carries the secondary warning without a second user-visible line).
+- `STATUS=unknown`: emit `PHANTOM_STATUS=unknown`, `PHANTOM_REASON=<reason>`. Invoke `append-execution-issue.sh` with the existing `Step <step-token> — phantom detection inconclusive: STATUS=unknown REASON=<reason>` warning string. Same combined-capture + `ERROR=`-first parsing rule and `PHANTOM_APPEND_WARN_*` surface on append failure.
+
+Function never calls `exit`; only `return` codes (0 = function completed; the wrapper decides the overall exit code from rebase + phantom KVs). The function does NOT call `set -e` or mutate caller traps.
+
+**FINDING_13-style hardening (already accepted as a defensive practice for FINDING_1, kept here even though FINDING_13 was exonerated):** the `<sanitized-message>` token folds newlines via `tr '\n' ' '` before the `emit_kv` call so multi-line stderr/stdout cannot break the contract stream's token parser. This matches `rebase-push.sh`'s existing `REBASE_OUTPUT="${REBASE_OUTPUT//$'\n'/ }"` pattern.
+
+### NEW: `scripts/lib-phantom-probe.md`
+
+Sibling documentation per `script-md-siblings`: invocation signature, function-emitted KV grammar (full enumerated list), the **stdout-first / stderr-fallback parsing contract** for `append-execution-issue.sh` ERROR/FAILED detection (FINDING_1), the newline-sanitization rule, `LARCH_LIB_PHANTOM_PROBE_LOADED` idempotency rule, caller responsibilities (FD-3 already initialized by `lib-quiet.sh`, caller owns `set -e`, no exit codes).
+
+### NEW: `scripts/rebase-checkpoint-probe.sh`
+
+Combined wrapper replacing the four-call-site Rebase Checkpoint Macro. Top-of-file: `set -euo pipefail`, **`SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"`** (FINDING_8 — helpers resolved via `$SCRIPT_DIR/...`, never bare command name), `source "$SCRIPT_DIR/lib-quiet.sh"` + `larch_quiet_init`, `source "$SCRIPT_DIR/lib-phantom-probe.sh"`. Argv:
+
+```
+rebase-checkpoint-probe.sh <step-prefix> <short-name> [--base-remote <name>] [--base-ref <branch>]
+```
+
+`<step-prefix>` must match `^[A-Za-z0-9_.-]+$` (mirrors `check-phantom-dirty.sh:55`). `<short-name>` is free-text and is single-quoted into the breadcrumb. `--base-remote` / `--base-ref` are optional; when present they pass through verbatim to `rebase-push.sh` (FINDING_4 — caller passes them conditionally on `forked_target=true` at **all 4** sites, not just 1.r). Wrapper does NOT detect forked state itself.
+
+Body in order:
+1. `emit_breadcrumb '→ rebase-probe: <step-prefix> <short-name>'` (exactly one).
+2. Invoke `"$SCRIPT_DIR/rebase-push.sh" --no-push --skip-if-pushed --keep-on-conflict [--base-remote …] [--base-ref …]`. Capture stdout to a temp file (this is the lib-quiet contract stream — same file used to scan for `SKIPPED_ALREADY_PUSHED`, `SKIPPED_ALREADY_FRESH`, `CONFLICT_FILES`, and per FINDING_1 also `REBASE_ERROR`); capture stderr to a separate temp file (kept only as a defensive fallback when the contract stream is empty); capture exit code to `rc`.
+3. Branch on `rc`:
+   - **`rc=0`**: parse captured stdout (contract stream) for `SKIPPED_ALREADY_PUSHED=true` BEFORE `SKIPPED_ALREADY_FRESH=true` (precedence preserved — `rebase-push.sh` exits early on already-pushed before fetch).
+     - If `SKIPPED_ALREADY_PUSHED=true`: emit `REBASE_OUTCOME=skipped`, `SKIPPED_ALREADY_PUSHED=true`.
+     - Else if `SKIPPED_ALREADY_FRESH=true`: emit `REBASE_OUTCOME=skipped`, `SKIPPED_ALREADY_FRESH=true`.
+     - Else: emit `REBASE_OUTCOME=ok`.
+     Then call `phantom_probe_with_warn "<step-prefix>-post-rebase" "$IMPLEMENT_TMPDIR/untracked-baseline.z" "$IMPLEMENT_TMPDIR" "$IMPLEMENT_TMPDIR/execution-issues.md"` to emit the phantom KV block (including the new `1.r-post-rebase` token uniformly per discussion-round1 Decision 1). Exit 0.
+   - **`rc=1`** (rebase conflict): parse captured stdout (contract stream) for `CONFLICT_FILES=<comma-list>` (FINDING_1 — `rebase-push.sh` emits CONFLICT_FILES via `emit_kv` to the contract stream when `--keep-on-conflict` leaves the rebase in progress). Defensive fallback: if no `CONFLICT_FILES` line and there are unmerged paths, set `CONFLICT_FILES=$(git diff --name-only --diff-filter=U | paste -sd ',' -)`. Emit `REBASE_OUTCOME=conflict`, `CONFLICT_FILES=<list>`. Do NOT invoke phantom probe. Exit 1 (orchestrator's existing M2 parse routes to Conflict Resolution Procedure with `caller_kind=early_rebase` unchanged).
+   - **`rc=3`** (non-conflict rebase failure): **FINDING_1 binding** — parse REBASE_ERROR from the captured stdout/contract stream first (since `rebase-push.sh` lines 103-228 emit `REBASE_ERROR` via `emit_kv` to the contract stream after `larch_quiet_init`). If no `REBASE_ERROR=` line is in the contract stream, fall back to stderr text (defensive). Emit `REBASE_OUTCOME=failed`, `REBASE_ERROR=<sanitized-message-or-unknown>` (newline-folded). Do NOT invoke phantom probe. Exit 3.
+   - **Other rc**: emit `REBASE_OUTCOME=failed`, `REBASE_ERROR=unexpected-rc-<rc>`. Do NOT invoke phantom probe. Exit `$rc`. **FINDING_9 binding**: the orchestrator-side M2 routing branches on whether `REBASE_ERROR` starts with the literal `unexpected-rc-` prefix to select between the two distinct user-visible bail strings (see Region 1 below).
+
+Wrapper does NOT set `STALL_TRACKING` — orchestrator parses `REBASE_OUTCOME` from wrapper stdout and sets `STALL_TRACKING=true` itself on `REBASE_OUTCOME=failed` (preserves Step-18 bail wiring exactly).
+
+KV grammar at terminal block (canonical order; all are `emit_kv` calls — emitted via `lib-quiet.sh` FD-3):
+
+```
+REBASE_OUTCOME=ok|skipped|conflict|failed
+SKIPPED_ALREADY_PUSHED=true        (only on rc=0 already-pushed)
+SKIPPED_ALREADY_FRESH=true         (only on rc=0 already-fresh, after PUSHED check)
+REBASE_ERROR=<msg>                 (only on rc=3 / other-rc; `unexpected-rc-<n>` prefix on other-rc)
+CONFLICT_FILES=<comma-list>        (only on rc=1)
+PHANTOM_STATUS=<status>            (only on rc=0; emitted by lib-phantom-probe)
+PHANTOM_COUNT=<n>                  (only on PHANTOM_STATUS=phantom)
+PHANTOM_PATHS_FILE=<path>          (only on PHANTOM_STATUS=phantom)
+PHANTOM_REASON=<reason>            (only on PHANTOM_STATUS=unknown)
+PHANTOM_APPEND_WARN_FAILED=true    (only on append-execution-issue.sh failure)
+PHANTOM_APPEND_WARN_ERROR=<msg>    (only on append-execution-issue.sh failure; newline-folded)
+```
+
+Cleanup: temp files removed via `EXIT` trap. **chmod +x** required (FINDING_10).
+
+### NEW: `scripts/rebase-checkpoint-probe.md`
+
+Sibling per `script-md-siblings`: argv (positional + optional `--base-remote`/`--base-ref`), exit-code table (0 ok, 1 conflict, 3 non-conflict failure, other = unexpected; FINDING_9 `unexpected-rc-<n>` prefix rule), full KV grammar enumeration with branch conditions, the **stdout-first / stderr-fallback contract** for parsing `REBASE_ERROR` from `rebase-push.sh`'s lib-quiet emit (FINDING_1), the `SKIPPED_ALREADY_PUSHED` BEFORE `SKIPPED_ALREADY_FRESH` precedence rule, the `1.r-post-rebase` uniform token note, the SCRIPT_DIR-relative helper resolution (FINDING_8), and the "wrapper does NOT set STALL_TRACKING" note pointing at SKILL.md's Step-18 routing.
+
+### NEW: `scripts/phantom-probe-with-warn.sh`
+
+Standalone wrapper for the two phantom-probe-only sites (`2-post-dispatch`, `8-pre-bump`). Top: `set -euo pipefail`, `SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"` (FINDING_8), `source "$SCRIPT_DIR/lib-quiet.sh"` + `larch_quiet_init`, `source "$SCRIPT_DIR/lib-phantom-probe.sh"`. Argv:
+
+```
+phantom-probe-with-warn.sh --step <step-token>
+```
+
+Body in order:
+1. `emit_breadcrumb '→ phantom-probe: <step-token>'` (exactly one).
+2. Call `phantom_probe_with_warn "<step-token>" "$IMPLEMENT_TMPDIR/untracked-baseline.z" "$IMPLEMENT_TMPDIR" "$IMPLEMENT_TMPDIR/execution-issues.md"`.
+3. Exit 0 (phantom probe is advisory; never fails the wrapper).
+
+KV grammar at terminal block (subset of combined wrapper — only the phantom subset):
+
+```
+PHANTOM_STATUS=<status>
+PHANTOM_COUNT=<n>                  (only on STATUS=phantom)
+PHANTOM_PATHS_FILE=<path>          (only on STATUS=phantom)
+PHANTOM_REASON=<reason>            (only on STATUS=unknown)
+PHANTOM_APPEND_WARN_FAILED=true    (only on append failure)
+PHANTOM_APPEND_WARN_ERROR=<msg>    (only on append failure; newline-folded)
+```
+
+**chmod +x** required (FINDING_10).
+
+### NEW: `scripts/phantom-probe-with-warn.md`
+
+Sibling per `script-md-siblings`: argv, exit-code (always 0), KV grammar, the "phantom is advisory" note, SCRIPT_DIR-relative helper resolution (FINDING_8).
+
+### NEW: `scripts/test-rebase-checkpoint-probe.sh`
+
+Offline harness (per discussion-round1 Decision 2 — separate from `test-phantom-probe-with-warn.sh`). Style mirrors `scripts/test-implement-rebase-macro.sh` and the existing `scripts/test-*.sh` family.
+
+**FINDING_8 binding** — stubbing strategy: copy the production `rebase-checkpoint-probe.sh` + `lib-phantom-probe.sh` + `lib-quiet.sh` into a per-test-case temp directory (`$WORK/scripts/`) and write **stub sibling helpers** (`rebase-push.sh`, `check-phantom-dirty.sh`, `append-execution-issue.sh`) into the same temp directory. The wrapper's `SCRIPT_DIR` resolution then picks up the stubs naturally without PATH manipulation. No `PATH` injection. Each stub records its argv to a sentinel file (`$WORK/stub-records/<helper>.argv.log`) so assertions can verify invocation form. The harness sets `LARCH_QUIET_BREADCRUMBS=1` in its own environment so breadcrumb-count assertions work without depending on SKILL.md's call-site exports.
+
+Test cases (each asserts both exit code AND emitted KV lines, including KV ordering):
+
+1. **green path** — stub `rebase-push.sh` returns exit 0 with no skip marker (and emits via `emit_kv` to the contract stream, not stderr); `check-phantom-dirty.sh` returns `STATUS=clean`. Assert `REBASE_OUTCOME=ok`, `PHANTOM_STATUS=clean`, exit 0, breadcrumb emitted exactly once, no `append-execution-issue.sh` call.
+2. **SKIPPED_ALREADY_PUSHED precedence** — stub emits both `SKIPPED_ALREADY_PUSHED=true` AND `SKIPPED_ALREADY_FRESH=true` to the contract stream. Assert `REBASE_OUTCOME=skipped` + `SKIPPED_ALREADY_PUSHED=true` only; `SKIPPED_ALREADY_FRESH` line NOT emitted by the wrapper.
+3. **SKIPPED_ALREADY_FRESH** — stub emits only `SKIPPED_ALREADY_FRESH=true`. Assert `REBASE_OUTCOME=skipped` + `SKIPPED_ALREADY_FRESH=true`.
+4. **rebase conflict** — stub returns exit 1 with `CONFLICT_FILES=a.txt,b.txt` on the contract stream. Assert `REBASE_OUTCOME=conflict` + `CONFLICT_FILES=a.txt,b.txt`, exit 1, no `PHANTOM_*` keys, no `phantom_probe_with_warn` invocation.
+5. **rebase conflict + missing CONFLICT_FILES (defensive fallback)** — stub returns exit 1 WITHOUT `CONFLICT_FILES`; harness pre-stages a fake git work-tree with unmerged paths (or stubs `git` via a `$WORK/scripts/git` shim). Assert wrapper emits `CONFLICT_FILES=<derived list>` and exit 1.
+6. **rebase failure (rc=3) — FINDING_1 contract** — stub returns exit 3 with `REBASE_ERROR=fetch-failed` emitted on the **contract stream / stdout** (matching `rebase-push.sh`'s actual emit channel). Assert `REBASE_OUTCOME=failed` + `REBASE_ERROR=fetch-failed`, exit 3, no `PHANTOM_*` keys.
+6b. **rebase failure (rc=3) — stderr fallback** — stub returns exit 3 with NO contract-stream `REBASE_ERROR=` line and `REBASE_ERROR=fetch-failed` on stderr only. Assert wrapper falls back and emits `REBASE_ERROR=fetch-failed`, exit 3.
+7. **unexpected rc — FINDING_9** — stub returns exit 5. Assert `REBASE_OUTCOME=failed` + `REBASE_ERROR=unexpected-rc-5`, exit 5, no `PHANTOM_*` keys.
+8. **phantom STATUS=phantom + warn appended — FINDING_1 contract** — green rebase; stub `check-phantom-dirty.sh` returns `STATUS=phantom`, `PHANTOM_COUNT=3`, `PHANTOM_PATHS_FILE=<path>`. Stub `append-execution-issue.sh` returns 0. Assert KV keys emitted in order, plus `append-execution-issue.sh` was invoked with `--category Warnings` and entry text containing the step token.
+9. **phantom STATUS=unknown + warn appended** — green rebase; stub returns `STATUS=unknown REASON=check-mid-run-dirty-tree-failed`. Assert `PHANTOM_STATUS=unknown` + `PHANTOM_REASON=…` + `append-execution-issue.sh` invoked with the unknown-reason entry text.
+10. **phantom STATUS=clean (no warn)** — green rebase; stub returns `STATUS=clean`. Assert `PHANTOM_STATUS=clean`, no `append-execution-issue.sh` call.
+10b. **phantom STATUS=tracked-only — FINDING_17 deferred coverage** — included for completeness since the combined wrapper hits this branch in production: stub returns `STATUS=tracked-only`. Assert `PHANTOM_STATUS=tracked-only`, no append call.
+11. **append-execution-issue.sh failure — FINDING_1 contract** — green rebase + `STATUS=phantom`; stub `append-execution-issue.sh` returns 1 with **`ERROR=failed-write` emitted on its contract stream / stdout** (matching `append-execution-issue.sh`'s actual emit channel at lines 58-79). Assert `PHANTOM_APPEND_WARN_FAILED=true` + `PHANTOM_APPEND_WARN_ERROR=failed-write` (newline-folded), wrapper still exits 0.
+11b. **append failure — stderr fallback** — same as 11 but `ERROR=` line missing from stdout, only on stderr. Assert wrapper falls back and emits `PHANTOM_APPEND_WARN_ERROR=failed-write`.
+12. **--base-remote / --base-ref pass-through** — invoke wrapper with `--base-remote upstream --base-ref main`; assert stubbed `rebase-push.sh` received them verbatim (recorded into a sentinel file via the stub).
+13. **invalid `<step-prefix>` (regex reject)** — invoke with `<step-prefix>=bad space`; assert wrapper exits non-zero with a parseable error message.
+14. **`emit_breadcrumb` count** — green rebase + clean phantom; assert breadcrumb stream contains exactly one `→ rebase-probe: …` line (no duplicate from lib-phantom-probe). Harness exports `LARCH_QUIET_BREADCRUMBS=1`.
+15. **`lib-phantom-probe.sh` idempotency** — sourced twice in the harness; assert `LARCH_LIB_PHANTOM_PROBE_LOADED` guard prevents re-definition errors.
+16. **chmod +x assertion — FINDING_10** — at harness entry, assert `[[ -x scripts/rebase-checkpoint-probe.sh ]]` and `[[ -x scripts/phantom-probe-with-warn.sh ]]`.
+
+### NEW: `scripts/test-rebase-checkpoint-probe.md`
+
+Sibling per `script-md-siblings`: test-case enumeration, the **SCRIPT_DIR-relative stubbing via temp-dir copy** strategy (not PATH injection — FINDING_8), how to invoke (`make test-rebase-checkpoint-probe`), the breadcrumb-export note.
+
+### NEW: `scripts/test-phantom-probe-with-warn.sh`
+
+Offline harness for the standalone wrapper. Uses the same **SCRIPT_DIR-relative temp-dir stubbing** strategy as the combined harness (FINDING_8). Stubs `check-phantom-dirty.sh` + `append-execution-issue.sh` only. Test cases (subset of above, applicable to standalone wrapper):
+
+1. `STATUS=clean` — assert `PHANTOM_STATUS=clean`, exit 0, no append call.
+2. `STATUS=tracked-only` — assert `PHANTOM_STATUS=tracked-only`, exit 0, no append call.
+3. `STATUS=phantom` + append OK — assert KV block, append invocation, exit 0.
+4. `STATUS=phantom` + append failure (contract-stream `ERROR=`) — assert `PHANTOM_APPEND_WARN_FAILED=true` + sanitized error, exit 0.
+4b. `STATUS=phantom` + append failure (stderr fallback) — assert same outcome via fallback path.
+5. `STATUS=unknown` + append OK — assert KV block, append invocation, exit 0.
+6. `STATUS=unknown` + append failure — assert `PHANTOM_APPEND_WARN_FAILED=true`, exit 0.
+7. **`emit_breadcrumb` count** — exactly one `→ phantom-probe: …` line. Harness exports `LARCH_QUIET_BREADCRUMBS=1`.
+8. **invalid `<step-token>`** — stub returns `STATUS=unknown REASON=bad-step`; assert wrapper surfaces it as `PHANTOM_STATUS=unknown` + `PHANTOM_REASON=bad-step`, exit 0.
+9. **chmod +x assertion — FINDING_10** — at harness entry, assert `[[ -x scripts/phantom-probe-with-warn.sh ]]`.
+
+### NEW: `scripts/test-phantom-probe-with-warn.md`
+
+Sibling per `script-md-siblings`: test-case enumeration, the SCRIPT_DIR-relative temp-dir stubbing strategy, invocation, breadcrumb export note.
+
+### UPDATED: `skills/implement/SKILL.md`
+
+Three surgical edit regions (FINDING_3 expands the original two-region scope):
+
+**Region 1 — Rebase Checkpoint Macro section (current L119-156):** delete the entire M1/M2/M3 procedure body. Replace with a thin pointer section retaining the section header and Call-site registry table:
+
+> `## Rebase Checkpoint Macro`
+>
+> Standardizes the four post-step rebase checkpoints (Steps 1.r, 4.r, 7.r, 7a.r). Call sites invoke `scripts/rebase-checkpoint-probe.sh` directly (one foreground-marked Bash fence per site). Step 7.r's `FILES_CHANGED=true` guard stays at the call site.
+>
+> The wrapper owns: M1 (run `rebase-push.sh`), M2 (branch on exit code), M3 (emit normalized KV tail), and the post-rebase phantom probe at all four sites (including a new `1.r-post-rebase` probe — uniform invocation). It does NOT set `STALL_TRACKING`; the orchestrator parses `REBASE_OUTCOME` and sets that flag itself.
+>
+> See `scripts/rebase-checkpoint-probe.md` for argv, exit codes, and KV grammar.
+>
+> **Orchestrator-side M2 routing** (kept here, NOT in the wrapper):
+>
+> - `REBASE_OUTCOME=conflict` (wrapper exits 1) + `CONFLICT_FILES=<list>`: print `🔃 <step-prefix>: <short-name> | rebase — conflict detected, invoking Conflict Resolution Procedure (caller_kind=early_rebase)`. MANDATORY — READ ENTIRE FILE before executing: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/conflict-resolution.md`. Invoke with `caller_kind=early_rebase` and the parsed `CONFLICT_FILES`. On hard failure, the procedure runs `${CLAUDE_PLUGIN_ROOT}/scripts/git-rebase-abort.sh`, sets `STALL_TRACKING=true`, and skips to Step 18.
+> - `REBASE_OUTCOME=failed` (wrapper exits 3): `REBASE_ERROR=<msg>` does NOT start with `unexpected-rc-` → print `**⚠ Rebase onto main failed (non-conflict): $REBASE_ERROR. Bailing to cleanup.**`, set `STALL_TRACKING=true`, skip to Step 18. (FINDING_9 branch 1 — non-conflict bail.)
+> - `REBASE_OUTCOME=failed` (wrapper exits other-rc): `REBASE_ERROR=<msg>` starts with `unexpected-rc-` → print `**⚠ Rebase onto main failed unexpectedly (exit $rc). Bailing to cleanup.**`, set `STALL_TRACKING=true`, skip to Step 18. (FINDING_9 branch 2 — unexpected exit.)
+>
+> **M3 / phantom warn surfacing**: parse `PHANTOM_STATUS` and (when present) `PHANTOM_APPEND_WARN_FAILED` from the wrapper's stdout to detect probe outcomes and append-failure surfaces. The wrapper has already invoked `append-execution-issue.sh` itself on phantom/unknown — no additional orchestrator-side append is required.
+>
+> Call-site registry (the four authorized instantiations; `scripts/test-implement-rebase-macro.sh` pins these rows):
+>
+> | Step | `<step-prefix>` | `<short-name>`        |
+> |------|-----------------|-----------------------|
+> | 1.r  | `1.r`           | `plan materialization`|
+> | 4.r  | `4.r`           | `commit (impl)`       |
+> | 7.r  | `7.r`           | `commit (review)`     |
+> | 7a.r | `7a.r`          | `diagrams`            |
+
+Then replace each of the four `Apply the Rebase Checkpoint Macro with <step-prefix>=X and <short-name>=Y.` invocation lines (currently in the Step 1.r, 4.r, 7.r, 7a.r body sections) with a foreground-marked Bash fence using real conditional shell (FINDING_5 — no bracket placeholder) and the breadcrumb export (FINDING_12) and forked-target argv at ALL 4 sites (FINDING_4):
+
+```
+**⚠ Foreground required — do NOT set `run_in_background: true`.**
+
+```bash
+if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
+  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
+fi
+export CLAUDE_PLUGIN_ROOT
+export LARCH_QUIET_BREADCRUMBS=1
+BASE_ARGS=()
+if [ "${forked_target:-false}" = "true" ]; then
+  BASE_ARGS=(--base-remote upstream --base-ref main)
+fi
+# Foreground required: see BASH_AUTHORING.md §4
+"${CLAUDE_PLUGIN_ROOT}/scripts/rebase-checkpoint-probe.sh" 1.r 'plan materialization' "${BASE_ARGS[@]+"${BASE_ARGS[@]}"}"
+```
+
+(One fence per call site — `<step-prefix>` / `<short-name>` per the call-site registry. The forked-target `BASE_ARGS` block is included at **all 4 sites** per FINDING_4, not just 1.r. The Step 7.r fence stays inside the existing `if [ "$FILES_CHANGED" = "true" ]` guard.)
+
+**Region 2 — Phantom Untracked Probe section (current L448-513):** delete the full call-form / parse / warning-block body. Replace with a thin pointer:
+
+> `## Phantom Untracked Probe`
+>
+> At selected `/implement` boundaries, detect non-ignored untracked files that appeared after the Step 0 tracking adoption session baseline. This is advisory only: phantoms are logged to Execution Issues, never cleaned automatically.
+>
+> The probe runs at **6 sites total** (FINDING_16 — 4 combined absorbed sites + 2 standalone, including the new 1.r-post-rebase uniform site):
+>
+> - **Combined sites** (probe absorbed into `rebase-checkpoint-probe.sh`): `1.r-post-rebase` (new uniform site), `4.r-post-rebase`, `7.r-post-rebase` (only when `FILES_CHANGED=true`), `7a.r-post-rebase`. No separate call needed at these sites — the rebase wrapper emits `PHANTOM_*` KVs on its successful (non-conflict) path.
+> - **Standalone sites**: `2-post-dispatch` (external-implementer `STATUS=complete` path only) and `8-pre-bump`. Each calls `scripts/phantom-probe-with-warn.sh --step <step-token>` in a foreground-marked Bash fence with `export LARCH_QUIET_BREADCRUMBS=1`.
+>
+> See `scripts/phantom-probe-with-warn.md` for argv, exit code, and KV grammar.
+>
+> There is intentionally no post-Step-6 probe.
+
+Then at the two standalone-probe call sites:
+
+- **Step 2 post-dispatch site (around L1059)**: the existing `STATUS=complete` branch already inline-runs the phantom probe block. Replace that inline block with a foreground-marked Bash fence invoking `scripts/phantom-probe-with-warn.sh --step 2-post-dispatch` (with `export LARCH_QUIET_BREADCRUMBS=1`), then continue with the post-dispatch branch assertion (unchanged).
+- **Step 8 pre-bump site**: replace its inline phantom probe block with the same fence using `--step 8-pre-bump`.
+
+Both fences carry the banner + `# Foreground required: see BASH_AUTHORING.md §4` comment.
+
+**Region 3 — FINDING_3: remove post-macro phantom probe paragraphs at Steps 4.r, 7.r, 7a.r**
+
+The existing SKILL.md has "After the macro returns, run the Phantom Untracked Probe" paragraphs at these locations (approximate line refs from the plan-review citations):
+
+- skills/implement/SKILL.md:1178-1179 (Step 4.r post-macro probe paragraph)
+- skills/implement/SKILL.md:1370-1373 (Step 7.r post-macro probe paragraph)
+- skills/implement/SKILL.md:1464-1465 (Step 7a.r post-macro probe paragraph)
+
+Delete all three paragraphs (and any inline fenced phantom probe blocks tied to them). The combined wrapper now owns the post-rebase phantom probe at these sites; leaving the prose would double-invoke `check-phantom-dirty.sh` and produce duplicate Warnings entries.
+
+**Net SKILL.md change**: macro body ~38 lines deleted, phantom probe body ~60 lines deleted, three post-macro probe paragraphs ~12 lines deleted; thin pointers + 4 + 2 = 6 new fenced invocation blocks (each ~12 lines with banner + comment + breadcrumb export + conditional BASE_ARGS + invocation). Aggregate Region 1 + Region 2 + Region 3 ≈ -90 net lines but ~190 change-lines (touched).
+
+### UPDATED: `scripts/lint-foreground-markers.sh`
+
+Append two entries to the `DENYLIST` heredoc (currently L18-28). FINDING_18 was exonerated so alphabetical-ish ordering is not pinned; place either order:
+
+```
+rebase-checkpoint-probe.sh
+phantom-probe-with-warn.sh
+```
+
+After this lands, CI lint enforces foreground markers at every SKILL.md fence invoking either wrapper.
+
+### UPDATED: `scripts/test-implement-rebase-macro.sh`
+
+Pivot the literal-string assertions from the macro-section body to the new wrapper-invocation form. Specifically:
+
+- **(C) invocation count**: assert `^\s*"\${CLAUDE_PLUGIN_ROOT}/scripts/rebase-checkpoint-probe.sh" ` appears **exactly 4 times** in SKILL.md, with one canonical invocation per `<step-prefix>` / `<short-name>` pair. Drop the legacy `Apply the Rebase Checkpoint Macro with ...` assertion entirely. New canonical invocation tokens:
+  - `"${CLAUDE_PLUGIN_ROOT}/scripts/rebase-checkpoint-probe.sh" 1.r 'plan materialization'`
+  - `"${CLAUDE_PLUGIN_ROOT}/scripts/rebase-checkpoint-probe.sh" 4.r 'commit (impl)'`
+  - `"${CLAUDE_PLUGIN_ROOT}/scripts/rebase-checkpoint-probe.sh" 7.r 'commit (review)'`
+  - `"${CLAUDE_PLUGIN_ROOT}/scripts/rebase-checkpoint-probe.sh" 7a.r 'diagrams'`
+- **(C') FINDING_4 sub-assertion**: assert that the `if [ "${forked_target:-false}" = "true" ]` conditional or equivalent `BASE_ARGS=(--base-remote upstream --base-ref main)` line appears in proximity (within 10 lines above) to ALL 4 wrapper invocation lines — confirming forked-target argv pass-through at all four sites, not just 1.r.
+- **(E) retargeted** (FINDING_2): change anchor from `Apply the Rebase Checkpoint Macro with <step-prefix>=7.r` to the new `rebase-checkpoint-probe.sh 7.r 'commit (review)'` invocation line. Assert it appears inside the `if [ "$FILES_CHANGED" = "true" ]` block (existing guard) — the FILES_CHANGED=true prose ordering is preserved; only the anchor line changes. Update the (E) assertion's pinned literal accordingly. The plan UPDATED bullet for this file now reads "(E) is **retargeted**, not unchanged."
+- **(G) macro section body content**: replace the assertion that the macro body contains `rebase-push.sh --no-push --skip-if-pushed --keep-on-conflict` and the early_rebase conflict-resolution dispatch + non-conflict bail line. After consolidation the macro section is a thin pointer. New (G): assert the thin pointer section contains the words `scripts/rebase-checkpoint-probe.sh` (link to wrapper), `caller_kind=early_rebase` (preserve orchestrator-side M2 routing prose), **both** non-conflict bail strings (the two FINDING_9 branches — `Bailing to cleanup` non-conflict version + `failed unexpectedly` other-rc version), and the FINDING_3 confirmation that no orphan "After the macro returns" prose remains at the 4.r/7.r/7a.r site bodies.
+- **(H) literal count**: `rebase-push.sh --no-push --skip-if-pushed --keep-on-conflict` no longer appears in SKILL.md. Pivot (H) to assert the literal appears **exactly 1 time in `scripts/rebase-checkpoint-probe.sh`** (the wrapper's M1 invocation), and zero times in SKILL.md.
+- **(B)** unchanged — Call-site registry table remains in the thin pointer.
+- **(A)** unchanged — exactly one `## Rebase Checkpoint Macro` header.
+- **(F)** unchanged — macro header placement between `### Verbosity Control` and Step 0 anchor.
+- **(I)** unchanged — `rebase-rebump-subprocedure.md` + `conflict-resolution.md` pins remain authoritative.
+- **New invariant (J) — FINDING_3 anchor**: assert exactly 2 invocation lines of `"${CLAUDE_PLUGIN_ROOT}/scripts/phantom-probe-with-warn.sh" --step ` appear in SKILL.md (`--step 2-post-dispatch` and `--step 8-pre-bump`), each inside a foreground-marked fence. Also assert SKILL.md contains zero occurrences of the phrase `After the macro returns, run the Phantom Untracked Probe` (the deleted prose from 4.r/7.r/7a.r post-macro sites) — this pins FINDING_3.
+
+### UPDATED: `Makefile`
+
+**FINDING_6 binding**: do NOT add a top-level `make test` aggregate; the repo has none. Instead:
+
+1. Append `test-rebase-checkpoint-probe` and `test-phantom-probe-with-warn` to the giant `.PHONY` list (currently in `Makefile:4`).
+2. Add the two new recipes near `test-implement-rebase-macro`:
+
+   ```
+   test-rebase-checkpoint-probe:
+   	bash scripts/test-rebase-checkpoint-probe.sh
+
+   test-phantom-probe-with-warn:
+   	bash scripts/test-phantom-probe-with-warn.sh
+   ```
+
+   (FINDING_15 exonerated — do not use `harness-timer.sh` wrapper unless a follow-up issue requests it.)
+3. Append each as a prerequisite to one of the `test-harnesses-N` shard targets (pick the shard with the lowest current member count; verify selection via `bash scripts/test-harness-shards-coverage.sh` after editing). The two new targets distribute across two shards (one per shard) to keep shard balance.
+4. Run `bash scripts/test-harness-shards-coverage.sh` locally to confirm both new targets are wired into exactly one shard AND listed in `.PHONY`.
+
+### UPDATED: `agent-lint.toml`
+
+**FINDING_7 binding** — add allowlist entries with explanatory comments for the new files following the existing `lib-dirty-tree-sidecar` / `test-implement-rebase-macro` pattern. Each entry comments WHY it's allowlisted (sourced-only library, Makefile-only harness, sibling docstring file):
+
+- `scripts/lib-phantom-probe.sh` — sourced-only library; not invoked as standalone script.
+- `scripts/lib-phantom-probe.md` — sibling docstring per `script-md-siblings`.
+- `scripts/test-rebase-checkpoint-probe.sh` — Makefile-only harness; invoked via `make test-rebase-checkpoint-probe` and the `test-harnesses-N` shard.
+- `scripts/test-rebase-checkpoint-probe.md` — sibling docstring.
+- `scripts/test-phantom-probe-with-warn.sh` — Makefile-only harness; invoked via `make test-phantom-probe-with-warn`.
+- `scripts/test-phantom-probe-with-warn.md` — sibling docstring.
+
+Locate the existing `exclude` (or equivalent) sections in `agent-lint.toml` and add these rows in the appropriate place (matching the file structure used by the existing peer entries). Verify after editing by running `make lint` and confirming no agent-lint G004/S030 warnings on the new files.
+
+### UPDATED: `docs/linting.md`
+
+Add two bullet points documenting `make test-rebase-checkpoint-probe` and `make test-phantom-probe-with-warn` alongside the existing `make test-implement-rebase-macro` entry. One sentence each describing what they cover (mirror the existing style). Also note that both harnesses run as part of `test-harnesses` shards via `make lint`.
+
+## Approach
+
+The shared library at `scripts/lib-phantom-probe.sh` is the binding consequence of dialectic DECISION_1 (THESIS won 2-1). Both wrappers `source` the library and call the single `phantom_probe_with_warn` function — single source of phantom-probe + append-warn + append-failure logic, no subprocess overhead, no nested `larch_quiet_init`, no extra `emit_breadcrumb`. Idempotency uses the established `LARCH_LIB_PHANTOM_PROBE_LOADED=1` guard.
+
+The combined wrapper preserves orchestrator-side M2 routing by:
+1. Exiting with the same exit codes as the original macro (0 success, 1 conflict, 3 non-conflict failure, other = unexpected).
+2. Emitting `CONFLICT_FILES=<list>` on `rc=1` from the lib-quiet contract stream (FINDING_1; defensive `git diff` fallback).
+3. Emitting `REBASE_ERROR=<msg>` from the lib-quiet contract stream on rc=3, falling back to stderr (FINDING_1).
+4. Using `unexpected-rc-<n>` prefix on other-rc so orchestrator can branch the two distinct user-visible bail strings (FINDING_9).
+5. Not mutating `STALL_TRACKING` — the orchestrator parses `REBASE_OUTCOME` and sets it.
+
+The `1.r-post-rebase` phantom probe is added per discussion-round1 Decision 1 (uniform invocation; sub-second cost). The standalone wrapper at `phantom-probe-with-warn.sh` is genuinely thin (~40 LOC) but exists for symmetry: the two standalone sites become single foreground-marked invocations. Per-run mid-run Bash call savings: ~6 calls.
+
+Both wrappers and the library use `SCRIPT_DIR`-relative helper resolution (FINDING_8); production code never depends on PATH lookup. Test harnesses use per-test-case temp-dir copies with stub sibling helpers, not PATH injection.
+
+The 6 SKILL.md call-site fences all set `export LARCH_QUIET_BREADCRUMBS=1` (FINDING_12) and use real conditional `BASE_ARGS` shell (FINDING_5) with forked-target argv at all 4 rebase sites (FINDING_4).
+
+## Edge cases
+
+- **`SKIPPED_ALREADY_PUSHED` vs `SKIPPED_ALREADY_FRESH` precedence**: wrapper checks `SKIPPED_ALREADY_PUSHED` first. Test case 2 pins this.
+- **`CONFLICT_FILES` missing on `rc=1`**: defensive fallback to `git diff --name-only --diff-filter=U`. Test case 5.
+- **`REBASE_ERROR` channel** (FINDING_1): wrapper reads from lib-quiet contract stream first, stderr fallback. Test cases 6 + 6b.
+- **`append-execution-issue.sh` ERROR channel** (FINDING_1): library reads from combined capture (stdout + stderr), `ERROR=` line first, stderr fallback. Test cases 11 + 11b.
+- **`<step-prefix>` regex**: wrapper accepts `^[A-Za-z0-9_.-]+$`. Free-text `<short-name>` is single-quoted into breadcrumb only.
+- **`--base-remote` / `--base-ref` argv pass-through** (FINDING_4): caller (SKILL.md) passes them conditionally on `forked_target=true` at ALL 4 rebase sites via `BASE_ARGS=()` shell idiom (FINDING_5). When absent, do NOT pass empty strings.
+- **`append-execution-issue.sh` failure**: surfaces as KVs `PHANTOM_APPEND_WARN_FAILED=true` + sanitized `PHANTOM_APPEND_WARN_ERROR=<msg>`. Wrapper still exits 0.
+- **Sourcing `lib-phantom-probe.sh` twice**: `LARCH_LIB_PHANTOM_PROBE_LOADED` guard. Test case 15.
+- **`IMPLEMENT_TMPDIR` unset or baseline missing**: `check-phantom-dirty.sh` already returns `STATUS=unknown REASON=baseline-missing-or-empty`. Wrapper surfaces it normally.
+- **6 standalone vs combined sites total** (FINDING_16): SKILL.md pointer explicitly states "6 sites total" — 4 combined + 2 standalone.
+- **chmod +x** (FINDING_10): new runtime wrappers (`rebase-checkpoint-probe.sh`, `phantom-probe-with-warn.sh`) MUST be 0755. Lib/test files stay 0644.
+- **Newline sanitization**: `PHANTOM_APPEND_WARN_ERROR` and `REBASE_ERROR` are folded with `tr '\n' ' '` before `emit_kv` (matches `rebase-push.sh`'s pattern).
+
+## Failure modes
+
+1. **KV-ordering regression** — wrong precedence on `SKIPPED_ALREADY_PUSHED` / `SKIPPED_ALREADY_FRESH` would misreport `REBASE_OUTCOME=skipped`. **Signal**: test case 2 fails. **Mitigation**: case 2 required for `make lint` to pass.
+2. **Conflict-path regression** — wrapper accidentally invoking `phantom_probe_with_warn` on `rc=1` would corrupt orchestrator's conflict view during a half-finished rebase. **Signal**: test case 4 fails (asserts no `PHANTOM_*` keys on rc=1).
+3. **Wrong-channel parsing regression (FINDING_1)** — wrapper reverts to stderr-only parsing for REBASE_ERROR / ERROR; real failures degrade to `REBASE_ERROR=unknown` / empty `PHANTOM_APPEND_WARN_ERROR`. **Signal**: test cases 6 + 11 fail (stubs emit on the contract stream, not stderr).
+
+## Testing strategy
+
+1. **`scripts/test-rebase-checkpoint-probe.sh`** (17 cases enumerated above incl. 6b/10b/11b + chmod): green path, KV ordering precedence, conflict + defensive fallback, non-conflict failure (contract stream + stderr fallback), unexpected rc, phantom STATUS variants (clean/tracked-only/phantom/unknown), append-failure secondary warning (contract stream + stderr fallback), argv pass-through, regex rejection, breadcrumb count, library idempotency, executable-mode assertion.
+2. **`scripts/test-phantom-probe-with-warn.sh`** (10 cases enumerated above incl. 4b + chmod): STATUS variants, append OK/failure (contract stream + stderr fallback), breadcrumb count, bad-step surfacing, executable-mode assertion.
+3. **`scripts/test-implement-rebase-macro.sh`** (pivoted): preserves invariants A/B/F/I; retargets E (FINDING_2); pivots C/G/H at the new wrapper invocation form; adds new sub-assertion C' (FINDING_4 — forked-target argv at all 4 sites); adds new invariant J (FINDING_3 anchor + standalone-probe call-site count).
+4. **`make lint`** (existing): exercises `lint-foreground-markers` (new DENYLIST entries), `lint-bash32` (new shell files), agent-lint G004 / script-md-siblings (new `.sh`/`.md` pairs — now allowlisted per FINDING_7), and the new test-harness shards (FINDING_6).
+5. **`make test-harness-shards-coverage`** (existing): verifies both new targets are wired into exactly one shard each AND listed in `.PHONY` (FINDING_6).
+6. **End-to-end `/implement <issue>` clean-run** (operator-driven validation per FINDING_11 exonerate-with-rationale): one manual `/implement` run against a small fixture issue, with a recorded baseline measurement of mid-run Bash call counts pre-consolidation. Capture the count delta in the PR description as acceptance evidence (~6 fewer calls expected). No automated transcript harness is added (FINDING_11 was exonerated as disproportionate to ship).
+
+diff_lines: 950

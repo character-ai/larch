@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "design_classification": "SIMPLE",
+  "design_classification_reason": "tier flag --simple supplied on argv",
+  "design_classification_source": "caller-forwarded",
+  "sketch_budget": 2,
+  "review_budget": "full",
+  "workflow_path": "SIMPLE",
+  "partition_requested": false
+}

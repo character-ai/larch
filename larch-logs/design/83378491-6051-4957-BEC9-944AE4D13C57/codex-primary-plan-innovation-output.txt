@@ -1,0 +1,13 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/lib-quiet.sh:97-113; scripts/rebase-push.sh:102-127; scripts/append-execution-issue.sh:13-16	Plan parses quiet-script error KVs from stderr	`rebase-push.sh` and `append-execution-issue.sh` emit machine-readable failures through `emit_kv` on quiet contract stdout, so rc=3 becomes REBASE_ERROR=unknown and append failures lose ERROR details	Update wrapper/library plans and harness stubs to capture and parse stdout for REBASE_ERROR/ERROR first, falling back to stderr only for non-contract crashes
+1	in_scope	important	correctness	skills/implement/SKILL.md:26; skills/implement/SKILL.md:119-135	Fork-mode base args are scoped to only 1.r in the proposed call-site rewrite	Forked runs after implementation/review/diagrams would rebase against origin/main instead of upstream/main, violating the fork-mode freshness contract and delaying upstream conflicts until later gates	Pass `--base-remote upstream --base-ref main` conditionally at all four rebase checkpoint fences and pin that in `test-implement-rebase-macro.sh`
+1	in_scope	latent	risk-integration	agent-lint.toml:814-836; agent-lint.toml:1155-1158	New Makefile-only harnesses are not added to agent-lint exclusions	The PR can pass the new Makefile targets but fail `make lint` under agent-lint G004/dead-script because existing Makefile-only harnesses require explicit `.sh` and `.md` excludes	Add exclusions and comments for `scripts/test-rebase-checkpoint-probe.{sh,md}` and `scripts/test-phantom-probe-with-warn.{sh,md}`; also exclude or explicitly reference `scripts/lib-phantom-probe.md`
+
+1. [correctness] `scripts/lib-quiet.sh:97-113`, `scripts/rebase-push.sh:102-127`, `scripts/append-execution-issue.sh:13-16`  
+The plan assumes failure diagnostics live on stderr, but these scripts use the quiet KV stream. Parse captured stdout for `REBASE_ERROR=` and append helper `ERROR=`; reserve stderr for process-level crashes. Update tests so stubs emit contract KVs on stdout.
+
+2. [correctness] `skills/implement/SKILL.md:26`, `skills/implement/SKILL.md:119-135`  
+The plan says only `1.r` needs forked-target argv, but the current fork-mode contract says freshness compares against `upstream/main`. Apply the conditional base args at every checkpoint wrapper invocation, not just the first.
+
+3. [risk-integration] `agent-lint.toml:814-836`, `agent-lint.toml:1155-1158`  
+The plan adds Makefile-only harnesses without the matching agent-lint exclusions used by adjacent harnesses. Add the new `.sh` and sibling `.md` entries, and either reference or exclude the new library sibling doc.

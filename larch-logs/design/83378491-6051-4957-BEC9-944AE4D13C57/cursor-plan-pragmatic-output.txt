@@ -1,0 +1,89 @@
+Reading the plan and inspecting referenced code paths.
+
+Validating the plan against the codebase: reading referenced scripts and SKILL.md sections.
+
+Checking how the macro captures `rebase-push` output in SKILL (orchestrator instructions):
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/rebase-push.sh:102-237 vs plan rebase-checkpoint-probe body	Plan and test case 6 say capture or stub REBASE_ERROR on stderr after rc=3, but rebase-push emits REBASE_ERROR via emit_kv (quiet FD3), which follows the same redirected stream as other skip/conflict markers, not stderr.	Wrapper parses empty stderr, mis-emits REBASE_OUTCOME=failed with wrong or empty REBASE_ERROR; offline test proves the wrong channel.	Parse the same temp file used for SKIPPED/CONFLICT KVs (post-quiet contract stream); stub harness emits REBASE_ERROR there; align .md with lib-quiet contract.
+1	in_scope	important	risk-integration	scripts/append-execution-issue.sh:53-173 vs plan lib-phantom-probe.sh	Plan binds PHANTOM_APPEND_WARN_ERROR to captured stderr from append-execution-issue.sh, but failures use emit_kv FAILED/ERROR (quiet), not ordinary stderr.	Append-failure KV often empty or misleading despite real ERROR= lines; secondary warning contract not met in production.	Capture child quiet contract (e.g. command substitution or explicit contract-file read) or invoke append with a documented quiet-disable escape; document in lib-phantom-probe.md.
+1	in_scope	important	correctness	scripts/test-implement-rebase-macro.sh:114-128 vs plan test pivot (E)	Plan marks invariant (E) unchanged, but (E) anchors the 7.r macro line via grep -nF on Apply the Rebase Checkpoint Macro, which disappears after the SKILL edit.	CI fails on (E) after otherwise-correct refactor, or implementer loosens (E) without documenting intent.	Update (E) to anchor on the new rebase-checkpoint-probe.sh 7.r invocation line and adjust the plan bullet to say (E) retargeted, not unchanged.
+1	in_scope	important	risk-integration	skills/implement/SKILL.md:1178-1179,1370-1373,1464-1465 vs plan Region 2	Plan absorbs post-rebase phantom into rebase-checkpoint-probe.sh but never explicitly deletes existing After the macro run the Phantom Untracked Probe paragraphs after 4.r, 7.r, and 7a.r.	Double phantom probes and duplicate execution-issues warnings on those steps.	Add explicit SKILL edit bullets to remove those three post-macro probe paragraphs (and any fenced probe blocks tied to them).
+1	in_scope	nit	code-quality	plan Region 1 sample fence (issue #2740 plan artifact)	The Region 1 SKILL example nests a bash fenced block inside an outer fenced block; pasted literally it breaks markdown structure.	Copy-paste implementer corrupts SKILL.md fences.	Replace the example with a single clean fence (banner + comment + one ```bash close) in the implementation notes.
+
+1. **[correctness]** `scripts/rebase-push.sh:102-237` — Plan and harness describe `REBASE_ERROR` on stderr; production `rebase-push.sh` emits it via `emit_kv` on the quiet contract stream. Suggested revision: parse the stdout/capture file that already holds skip and conflict markers; align `rebase-checkpoint-probe.md` and `test-rebase-checkpoint-probe.sh` case 6 stubs with that stream.
+
+2. **[risk-integration]** `scripts/append-execution-issue.sh:53-173` — `PHANTOM_APPEND_WARN_ERROR` cannot rely on stderr alone because failures surface as `emit_kv FAILED` / `emit_kv ERROR`. Suggested revision: define capture of the append subprocess contract output (or a supported env flag) in `lib-phantom-probe.sh` / `.md`, not stderr-only.
+
+3. **[correctness]** `scripts/test-implement-rebase-macro.sh:114-128` — Plan says (E) unchanged while the grep anchor becomes invalid once Apply-the-macro lines are removed. Suggested revision: retarget (E) to the new `rebase-checkpoint-probe.sh` line for 7.r and update the plan’s “(E) unchanged” claim.
+
+4. **[risk-integration]** `skills/implement/SKILL.md:1178-1179`, `1370-1373`, `1464-1465` — Missing explicit removal of post-macro phantom instructions for 4.r / 7.r / 7a.r risks double probes after the wrapper absorbs phantom. Suggested revision: add an explicit checklist item in the plan to delete those paragraphs when wiring combined probes.
+
+5. **[code-quality]** Plan Region 1 sample (issue #2740 design artifact) — Nested ``` fences in the proposed SKILL snippet invite malformed markdown. Suggested revision: show one outer ```bash block only in the authoritative edit spec.
+
+[OUT_OF_SCOPE] `skills/implement/SKILL.md:141-142` — Macro prose says `REBASE_ERROR` is printed on stderr while `rebase-push.sh` uses `emit_kv`; correcting that doc drift is adjacent but not required for #2740 if the new wrapper docs are right.
+
+[OUT_OF_SCOPE] `skills/implement/SKILL.md:141-142` — Plan’s merged bail branch for `REBASE_OUTCOME=failed` drops the separate “failed unexpectedly (exit $rc)” user string for non-3 exits; if parity matters, call it out as an explicit UX decision or preserve a branch on wrapper exit code in SKILL.
+
+Note: I duplicated "1" in TSV schema - the user said "For each finding, add one record: 1	<scope>..." meaning the first column is literal `1` for schema - all rows start with 1. Good.
+
+Wait I used "1" for every row in my draft - that's correct per example.
+
+Let me fix the duplicate "1	in_scope" block - I had multiple rows all starting with 1 - good.
+
+Actually I need to fix finding 5 OUT_OF_SCOPE - I listed two OUT_OF_SCOPE in one bracket - user asked prefix [OUT_OF_SCOPE] per item. Split:
+
+[OUT_OF_SCOPE] skills/implement/SKILL.md:141-142 — Pre-existing stderr wording vs emit_kv for REBASE_ERROR.
+
+[OUT_OF_SCOPE] skills/implement/SKILL.md:141-142 — Non-3 exit bail message wording vs plan merged branch.
+
+Use different line refs for second - both 141-142 - use same range for merged message issue - actually "other non-zero" is line 142. I'll use `skills/implement/SKILL.md:141-142` for first OOS and `skills/implement/SKILL.md:142` for second or combine one OOS bullet with two clauses.
+
+User: "Prefix out-of-scope but worth-tracking items with [OUT_OF_SCOPE]; include affected repo-relative file paths and line ranges"
+
+I'll use one [OUT_OF_SCOPE] line covering both doc issues: `skills/implement/SKILL.md:141-142`
+
+Final output: raw TSV with tabs (I'll generate carefully). The duplicate "1" at start of each line in my table - the user example shows schema_version column value is "1" for each record - yes.
+
+Let me output without code fences around TSV as user requested.
+
+Actually re-read user message: "When you have findings, include a TSV structured-record block with this exact header (literal tab characters between fields; no markdown fences around the TSV):"
+
+So the response starts with schema_version line - no preamble.
+
+I'll also fix: I had "1	in_scope" repeated 5 times as separate rows - good.
+
+Row for finding 5 (nested fences) - severity nit, focus code-quality.
+
+Consolidate rows - I have 5 findings in TSV. Good.
+
+Remove duplicate "1" line error - in my first paste I wrote "1	in_scope" twice at the start - the header is only once.
+
+Let me also add row for bail message - I put in OUT_OF_SCOPE only. OK.
+
+Final polish TSV - ensure no tabs inside field values - use spaces in "plan rebase-checkpoint-probe body" etc.
+
+For location "skills/implement/SKILL.md:1178-1179,1370-1373,1464-1465" - commas OK with spaces.
+
+Output the message now.
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/rebase-push.sh:102-237 plan rebase-checkpoint-probe body	Plan and test case 6 describe parsing REBASE_ERROR from captured stderr after rc=3, but rebase-push emits REBASE_ERROR via emit_kv on the quiet contract stream (FD3), same channel as SKIPPED and CONFLICT markers.	Wrapper reads empty stderr and emits wrong or empty REBASE_ERROR; stubbed test encodes the wrong contract.	Parse the captured contract stream file used for stdout markers; stub rebase-push there; document stream in rebase-checkpoint-probe.md.
+1	in_scope	important	risk-integration	scripts/append-execution-issue.sh:53-173 plan lib-phantom-probe.sh	Plan binds PHANTOM_APPEND_WARN_ERROR to captured stderr from append-execution-issue.sh, but failures use emit_kv FAILED or emit_kv ERROR on the quiet contract, not ordinary stderr.	PHANTOM_APPEND_WARN_ERROR often empty in real runs despite failures; KV contract misleading.	Capture append child contract output or document a supported capture path; update lib-phantom-probe.md accordingly.
+1	in_scope	important	correctness	scripts/test-implement-rebase-macro.sh:114-128 plan UPDATED test pivot	Plan states invariant (E) unchanged while (E) locates the 7.r macro via grep -nF on Apply the Rebase Checkpoint Macro, which the refactor removes.	CI fails on (E) after SKILL update or (E) is weakened without intent.	Retarget (E) to the new rebase-checkpoint-probe.sh 7.r line and revise the plan bullet to say (E) is updated.
+1	in_scope	important	risk-integration	skills/implement/SKILL.md:1178-1179 skills/implement/SKILL.md:1370-1373 skills/implement/SKILL.md:1464-1465 plan Region 2	Plan folds post-rebase phantom into rebase-checkpoint-probe.sh but does not explicitly delete existing After the macro run the Phantom Untracked Probe paragraphs after 4.r 7.r and 7a.r.	Double phantom probes and duplicate Warnings entries on those steps.	Add explicit removal steps for those three post-macro paragraphs in the plan or implementation checklist.
+1	in_scope	nit	code-quality	plan Region 1 sample fence issue 2740 design artifact	The Region 1 SKILL sample nests a bash fence inside another fence.	SKILL markdown breaks if copied literally.	Use a single clean bash fence in the authoritative edit spec.
+
+1. **[correctness]** `scripts/rebase-push.sh:102-237` — The plan and offline case 6 steer implementers at **stderr** for `REBASE_ERROR`, but `rebase-push.sh` reports `REBASE_ERROR` with `emit_kv` on the quiet contract stream (the same capture path as skip/conflict markers). Revision: parse that stream in `rebase-checkpoint-probe.sh`, align `rebase-checkpoint-probe.md`, and stub it in `test-rebase-checkpoint-probe.sh`.
+
+2. **[risk-integration]** `scripts/append-execution-issue.sh:53-173` — Binding `PHANTOM_APPEND_WARN_ERROR` to **stderr** will usually miss real failures because this script signals with `emit_kv` on the quiet contract. Revision: specify how the library captures `FAILED` / `ERROR` lines (or another supported channel) and match tests to production.
+
+3. **[correctness]** `scripts/test-implement-rebase-macro.sh:114-128` — The plan’s “**(E) unchanged**” conflicts with the current `(E)` implementation, which keys off `Apply the Rebase Checkpoint Macro…` text that the refactor removes. Revision: update `(E)` to anchor on the new `rebase-checkpoint-probe.sh` invocation and fix the plan wording.
+
+4. **[risk-integration]** `skills/implement/SKILL.md:1178-1179`, `1370-1373`, `1464-1465` — After the wrapper absorbs post-rebase phantom probes, these **separate** “run the Phantom Untracked Probe” instructions must be removed; the plan never calls that out explicitly. Revision: add an explicit deletion step so 4.r / 7.r / 7a.r are not probed twice.
+
+5. **[code-quality]** Plan Region 1 sample — The nested fenced example is easy to mis-copy into `skills/implement/SKILL.md`. Revision: replace it with one valid ` ```bash ` … ` ``` ` block in the design artifact.
+
+[OUT_OF_SCOPE] `skills/implement/SKILL.md:141-142` — Macro text already claims `REBASE_ERROR` is on stderr while `rebase-push.sh` uses `emit_kv`; worth a follow-up doc fix separate from #2740 if the new wrapper docs do not subsume it.
+
+[OUT_OF_SCOPE] `skills/implement/SKILL.md:141-142` — Merging all non-zero rebase failures into one `REBASE_OUTCOME=failed` bail string may drop the distinct “failed unexpectedly (exit $rc)” operator message for non-3 exits; track as an explicit UX decision if you care about parity.
