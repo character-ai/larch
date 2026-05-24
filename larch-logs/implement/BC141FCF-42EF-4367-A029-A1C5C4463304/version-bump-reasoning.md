@@ -1,13 +1,11 @@
 # Version Bump Reasoning
 
 - **Base commit**: `5cca649e` (Bump version to 42.4.11 (#2750))
-- **Current version**: `42.4.11`
+- **Current version**: `42.4.12`
 - **Classification scope**: `skills/**` and `agents/**` only (public plugin surface).
 
-## Result: PATCH
+## Result: NONE (already bumped)
 
-- **New version**: `42.4.12`
+HEAD is a version bump commit: `a645f3f6` — "Bump version to 42.4.12"
 
-### PATCH rationale
-
-No MAJOR or MINOR evidence found in the public plugin surface. Defaulting to PATCH per policy ("every PR must bump at least PATCH").
+No additional bump will be applied.
