@@ -1,12 +1,12 @@
 # Version Bump Reasoning
 
-- **Base commit**: `2b27b3f3` (Fixes #2730: Document Gate B plan dedup sweep (#2747))
-- **Current version**: `42.4.7`
+- **Base commit**: `21abb668` (Bump version to 42.4.8 (#2746))
+- **Current version**: `42.4.8`
 - **Classification scope**: `skills/**` and `agents/**` only (public plugin surface).
 
 ## Result: PATCH
 
-- **New version**: `42.4.8`
+- **New version**: `42.4.9`
 
 ### PATCH rationale
 
