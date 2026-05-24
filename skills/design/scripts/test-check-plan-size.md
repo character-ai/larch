@@ -13,12 +13,14 @@ Offline regression harness for [`check-plan-size.sh`](check-plan-size.sh). Captu
 7. Diff-lines hard — `diff_lines` past 1500.
 8. Hard + multiple soft crossings — hard precedence (`SOFT_TRIGGER_FIRED=false`) with full `TRIGGER_REASONS` list.
 9. Missing plan file — exit 2, `PLAN_SIZE_STATUS=missing-plan`.
-10. Malformed trailer — exit 2, `PLAN_SIZE_STATUS=missing-diff-lines`.
-11. Boundary equalities — 250 / 600 / 8 / 800 / 1500 do not trip (five sub-cases).
-12. Zero headings — `FILES_COUNT=0`, no `set -e` abort from `grep -c`.
-13. Multiple `diff_lines:` lines — rejects when final non-empty line is not the trailer; accepts when trailer is last non-empty line.
-14. Whitespace-tolerant headings — `###  NEW:` and `### UPDATED :` count.
-15. Hard at 801 lines — same as helper-level hard detection (orchestrator `--partition` + hard interaction is pinned in `scripts/test-design-structure.sh`).
+10. Unknown argv / missing `--design-tmpdir` — exit **3**, no `PLAN_SIZE_STATUS` lines.
+11. Malformed trailer — exit 2, `PLAN_SIZE_STATUS=missing-diff-lines`.
+12. Boundary equalities — 250 / 600 / 8 / 800 / 1500 do not trip (five sub-cases); plus **`diff_lines: 0`** as a valid trailer with no soft diff from zero alone.
+13. Zero headings — `FILES_COUNT=0`, no `set -e` abort from `grep -c`.
+14. Multiple `diff_lines:` lines — rejects when final non-empty line is not the trailer; accepts when trailer is last non-empty line.
+15. Whitespace-tolerant headings — `###  NEW:` and `### UPDATED :` count.
+16. Concatenated `###NEW:` (no whitespace after `###`) — does **not** count toward `FILES_COUNT` (matches scout / plan heading contract).
+17. Hard at 801 lines — same as helper-level hard detection (orchestrator `--partition` + hard interaction is pinned in `scripts/test-design-structure.sh`).
 
 ## Run
 

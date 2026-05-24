@@ -210,6 +210,19 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/write-run-params.sh \
 
 If the helper exits non-zero, print `**⚠ 0: router — run-params write failed; defaulting to HARD sketch budget.**`, set in-memory defaults `design_classification=HARD`, `sketch_budget=4`, `review_budget=full`, `workflow_path=HARD`, and continue.
 
+**Partition persistence on write failure**: when argv-derived `partition_requested` is `true` and `$DESIGN_TMPDIR/run-params.json` already exists and `command -v jq` succeeds, best-effort merge so Step 2b.5 still sees the flag:
+
+```bash
+if [[ "$partition_requested" == true ]] && [[ -f "$DESIGN_TMPDIR/run-params.json" ]] && command -v jq >/dev/null 2>&1; then
+  _rp_merge=$(mktemp "${TMPDIR:-/tmp}/larch-partition-merge.XXXXXX")
+  if jq -c '.partition_requested = true' "$DESIGN_TMPDIR/run-params.json" >"$_rp_merge" 2>/dev/null; then
+    mv -f "$_rp_merge" "$DESIGN_TMPDIR/run-params.json"
+  else
+    rm -f "$_rp_merge"
+  fi
+fi
+```
+
 ### Terminal cost line
 
 **When**: after `DESIGN_TMPDIR` exists (post–Step 0a session-setup success) and **before** any terminal machine footer, `**⚠ 5: plan-block-write failed**`, or `**ℹ /design cancelled by operator.**` line on the paths enumerated in Step 0b / Steps 5–6. **Do not** run this block on Step 0a `session-setup.sh` failure or tier-flag mutual-exclusion abort (no `DESIGN_TMPDIR` yet). Runs **before** `cleanup-tmpdir.sh` so `$DESIGN_TMPDIR/token-report.json` is still readable.
@@ -491,7 +504,7 @@ Also read `$DESIGN_TMPDIR/dialectic-resolutions.md` if it exists and is non-empt
 
 Produce a plan that includes:
 
-- **Files to modify/create**: Under a single **Files to modify/create** (or equivalent) section, use **per-file subsections** with headings exactly one path each: `### NEW:` for new files, `### UPDATED:` for modified files, and `### REWRITTEN:` for files rewritten in place. Each heading names **exactly one** file path (backticked path token); the description follows on subsequent lines. Heading parsing tolerates extra whitespace between `###`, the keyword, and `:` (per the scout regex in `scout-plan-archetypes-wrapper.sh` and `check-plan-size.sh`).
+- **Files to modify/create**: Under a single **Files to modify/create** (or equivalent) section, use **per-file subsections** with headings exactly one path each: `### NEW:` for new files, `### UPDATED:` for modified files, and `### REWRITTEN:` for files rewritten in place. Each heading names **exactly one** file path (backticked path token); the description follows on subsequent lines. Heading parsing requires **at least one ASCII whitespace after `###`** before the keyword, and tolerates extra whitespace before `:` (per the scout regex in `scout-plan-archetypes-wrapper.sh` and `check-plan-size.sh`). Concatenated forms such as `###NEW:` are **not** headings for scout / plan-size counts.
 - **Approach**: Describe the implementation strategy, key decisions, and any trade-offs.
 - **Edge cases**: Note important input/boundary conditions and how they'll be handled.
 - **Failure modes** (for non-trivial changes): The 3 most likely architectural/systemic failure paths, earliest warning signals, and simplest mitigations. May be omitted for purely cosmetic or documentation-only changes.
@@ -525,12 +538,12 @@ If the driver exits non-zero or emits `EMIT_PLAN_STATUS=missing-diff-lines`, tre
    set -e
    ```
 3. **Return-code handling**:
-   - **`_plan_size_rc` is 0** — parse `_plan_size_out` for `SOFT_TRIGGER_FIRED=`, `HARD_TRIGGER_FIRED=`, `TRIGGER_REASONS=`, `PLAN_LINES=`, `DIFF_LINES=`, `FILES_COUNT=` and branch steps 4–7 below.
+   - **`_plan_size_rc` is 0** — parse `_plan_size_out` for `SOFT_TRIGGER_FIRED=`, `HARD_TRIGGER_FIRED=`, `TRIGGER_REASONS=`, `PLAN_LINES=`, `DIFF_LINES=`, `FILES_COUNT=`. Then bind **`SEMANTIC_SOFT_ESTIMATE`** (orchestrator-only; the helper never emits this): when `HARD_TRIGGER_FIRED=false`, mechanical `SOFT_TRIGGER_FIRED=false`, and `PARTITION_REQUESTED=false`, set `true` only if the plan body still reads like **multiple substantial independent programs** (unrelated feature axes, parallel refactors across disjoint stacks, or several large QA/CI tracks) despite staying under mechanical thresholds; when uncertain, `false`. Branch steps 4–6 below.
    - **`_plan_size_rc` is 2** — parse `PLAN_SIZE_STATUS=` when present. Print `**⚠ 2b.5: check-plan-size — <status>; proceeding without threshold check**`. Append the full `_plan_size_out` capture to `$DESIGN_TMPDIR/execution-issues.md` under `### Warnings` via `"${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh" --log "$DESIGN_TMPDIR/execution-issues.md" --site "design Step 2b.5" --tool "check-plan-size.sh" --exit-code "$_plan_size_rc" --category Warnings --output-file "$DESIGN_TMPDIR/check-plan-size.validation.log"` after writing the capture to `$DESIGN_TMPDIR/check-plan-size.validation.log` (create/overwrite the log file with the capture first). Then **return** to the caller — no trigger branches fire.
-   - **Any other rc** — treat as internal error: append the combined capture to `execution-issues.md` `Warnings` the same way (same `--site` / `--tool` / `--exit-code`), ignore any partial KV lines, **return** to the caller.
+   - **Any other rc** (including **3** for argv / usage errors from `check-plan-size.sh`, which emit no `PLAN_SIZE_STATUS`) — treat as internal error: append the combined capture to `execution-issues.md` `Warnings` the same way (same `--site` / `--tool` / `--exit-code`), ignore any partial KV lines, **return** to the caller.
 4. **Hard branch (`HARD_TRIGGER_FIRED=true`)** — fires **regardless** of `PARTITION_REQUESTED`. Print a `## Plan Size — Hard Trigger` section with `PLAN_LINES`, `DIFF_LINES`, and `FILES_COUNT` from the capture. `AskUserQuestion` with exactly two options: **"Let my panel of agents split this feature for you"** / **"Cancel"** (no **Continue** option — hard triggers are never downgradeable by `--partition`). On **Cancel**: run the **Terminal cost line** fenced bash block (`### Terminal cost line`), print `**ℹ /design cancelled by operator (plan-size hard trigger).**`, exit **0**, preserve `$DESIGN_TMPDIR`. On **Split**: run **Split-path** below.
-5. **Soft branch** — when `(SOFT_TRIGGER_FIRED=true AND HARD_TRIGGER_FIRED=false)` **OR** `(PARTITION_REQUESTED=true AND HARD_TRIGGER_FIRED=false)` (including the case where mechanical soft is false but `--partition` alone would fire the soft UI). Print `## Plan Size — Soft Trigger` with the same counts; when mechanical soft is false but `PARTITION_REQUESTED=true`, note `trigger=partition-flag` in the footer line of that section. `AskUserQuestion`: **"Let my panel of agents split this feature for you"** / **"Continue with current scope"**. On **Split**: **Split-path**. On **Continue**: return to caller.
-6. **No-trigger branch** — when no soft/hard/partition soft-offer applies: print `⏩ 2b.5: plan-size — under thresholds (PLAN_LINES=<n> DIFF_LINES=<n> FILES_COUNT=<n>)` and return.
+5. **Soft branch** — when `(SOFT_TRIGGER_FIRED=true AND HARD_TRIGGER_FIRED=false)` **OR** `(PARTITION_REQUESTED=true AND HARD_TRIGGER_FIRED=false)` **OR** `(SEMANTIC_SOFT_ESTIMATE=true AND HARD_TRIGGER_FIRED=false)` (including the case where mechanical soft is false but `--partition` alone would fire the soft UI, or mechanical soft is false without `--partition` but semantic estimate is true). Print `## Plan Size — Soft Trigger` with the same counts; when mechanical soft is false but `PARTITION_REQUESTED=true`, note `trigger=partition-flag` in the footer line of that section; when mechanical soft is false, `PARTITION_REQUESTED` is false, but `SEMANTIC_SOFT_ESTIMATE=true`, note `trigger=semantic-estimate` there. `AskUserQuestion`: **"Let my panel of agents split this feature for you"** / **"Continue with current scope"**. On **Split**: **Split-path**. On **Continue**: return to caller.
+6. **No-trigger branch** — when no soft/hard/partition-flag/semantic-estimate offer applies: print `⏩ 2b.5: plan-size — under thresholds (PLAN_LINES=<n> DIFF_LINES=<n> FILES_COUNT=<n>)` and return.
 
 #### Split-path (decomposition panel not yet available)
 
@@ -814,8 +827,13 @@ Step 4b Gate C already returned **Approve**. Proceed without an additional promp
 When **all** of the following guards succeed in order, post **one** tracking comment on issue **#2672** via `gh issue comment` naming the deferred per-round velocity scope (>20% plan growth **and** >10 accepted findings between rounds; skipped on `--trivial` per `references/flags.md`). Otherwise **skip silently** (no warning — multi-source paper trail also lives in `flags.md`).
 
 1. `[ "$ISSUE_NUMBER" = "2670" ]`
-2. Explicit repo flag on argv: the `/design` invocation recorded `--repo character-ai/larch` (no hub-default threading for this comment).
-3. Sentinel absent: `test ! -f "$HOME/.cache/larch/design-l3-velocity-notified-2670"`
+2. Sentinel absent: `test ! -f "$HOME/.cache/larch/design-l3-velocity-notified-2670"`
+
+Post with an **explicit upstream repo** (consumer checkout may not match the tracker default):
+
+```bash
+gh issue comment 2672 --repo character-ai/larch --body "<one short deferral note citing L3 per-round velocity; scope per flags.md>"
+```
 
 On successful `gh issue comment` (exit 0), `touch "$HOME/.cache/larch/design-l3-velocity-notified-2670"`. On non-zero exit, append stderr/stdout capture to `$DESIGN_TMPDIR/execution-issues.md` under `### Warnings` via `append-tool-failure.sh` (non-fatal) and **do not** create the sentinel.
 

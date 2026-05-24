@@ -122,7 +122,7 @@ path = sys.argv[1]
 lines = open(path, encoding="utf-8", errors="replace").read().splitlines()
 seen = []
 for line in lines:
-    m = re.match(r"^###\s*(NEW|UPDATED|REWRITTEN)\s*:\s*(.+)$", line)
+    m = re.match(r"^###\s+(NEW|UPDATED|REWRITTEN)\s*:\s*(.+)$", line)
     if not m:
         continue
     tail = m.group(2)

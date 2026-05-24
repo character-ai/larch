@@ -27,11 +27,12 @@
 
 Mechanical evaluation lives in `skills/design/scripts/check-plan-size.sh` (sibling `check-plan-size.md`). Thresholds use **strict `>`** (250 lines does **not** trip the soft plan-body trigger; 251 does).
 
-**Soft trigger** — any one suffices (plus orchestrator-only signals such as the main-agent semantic guesstimate documented in `SKILL.md`; not evaluated by the helper):
+**Soft trigger** — any one suffices:
 
 - Plan body line count **>** 250 (body = all lines except the final non-empty `diff_lines: <N>` trailer per `emit-plan.sh` grammar).
 - `diff_lines` trailer **>** 600.
-- Files-to-modify heading count **>** 8, counting lines matching `^###[[:space:]]*(NEW|UPDATED|REWRITTEN)[[:space:]]*:` (whitespace-tolerant between `###`, the keyword, and `:` — aligned with the scout pattern in `scout-plan-archetypes-wrapper.sh`).
+- Files-to-modify heading count **>** 8, counting lines matching `^###[[:space:]]+(NEW|UPDATED|REWRITTEN)[[:space:]]*:` (at least one ASCII whitespace after `###` before the keyword; aligned with the scout pattern in `scout-plan-archetypes-wrapper.sh`).
+- **Semantic soft (orchestrator-only)** — after `check-plan-size.sh` returns **0** with all mechanical triggers false and without `--partition`, the main agent may still fire the same soft UI when the plan clearly packs multiple substantial independent workstreams under the numeric thresholds; procedure and precedence live in `SKILL.md` **Step 2b.5** (the helper does not evaluate this).
 
 The historical **ownership-domains** sprawl heuristic from early design notes is **not** part of L1; it is intentionally omitted (Round 1 decision on issue #2670).
 
@@ -44,7 +45,7 @@ There is **no** mechanical hard threshold on files-count alone.
 
 ## Helper output — `TRIGGER_REASONS`
 
-The helper emits comma-separated reason tokens in **fixed priority order** `plan-body-lines`, `diff-lines`, `files-count` (the order thresholds are evaluated — **not** lexicographic). When the **only** cause of a soft offer is `--partition` (no mechanical soft crossings), the orchestrator may annotate user-visible copy with `trigger=partition-flag`; the helper does **not** emit that token.
+The helper emits comma-separated reason tokens in **fixed priority order** `plan-body-lines`, `diff-lines`, `files-count` (the order thresholds are evaluated — **not** lexicographic). When the **only** cause of a soft offer is `--partition` (no mechanical soft crossings), the orchestrator may annotate user-visible copy with `trigger=partition-flag`; the helper does **not** emit that token. When the **only** cause is the Step **2b.5** semantic estimate, the orchestrator may use `trigger=semantic-estimate`; the helper does **not** emit that token either.
 
 ## Per-round velocity (deferred)
 
@@ -52,9 +53,9 @@ Between-review-round velocity (>20% plan growth **and** >10 accepted findings) i
 
 ## `check-plan-size.sh` contract (summary)
 
-- **Input**: `$DESIGN_TMPDIR/plan.txt` (or `--plan-file`) with per-file `### NEW:` / `### UPDATED:` / `### REWRITTEN:` headings (whitespace-tolerant per the regex above) and a **final non-empty** `diff_lines: <N>` trailer matching `emit-plan.sh` grammar.
+- **Input**: `$DESIGN_TMPDIR/plan.txt` (or `--plan-file`) with per-file `### NEW:` / `### UPDATED:` / `### REWRITTEN:` headings (at least one whitespace after `###` before the keyword; see regex above) and a **final non-empty** `diff_lines: <N>` trailer matching `emit-plan.sh` grammar.
 - **Machine output**: `emit_kv` on FD 3 (`lib-quiet.sh`) — `PLAN_LINES`, `DIFF_LINES`, `FILES_COUNT`, `SOFT_TRIGGER_FIRED`, `HARD_TRIGGER_FIRED`, `TRIGGER_REASONS` (see **Helper output** above). On validation failure only: `PLAN_SIZE_STATUS` is `missing-plan` or `missing-diff-lines`.
-- **Exit codes**: **0** when the plan parses; **2** on missing plan or missing/malformed trailer.
+- **Exit codes**: **0** when the plan parses; **2** only when emitting `PLAN_SIZE_STATUS` (`missing-plan` / `missing-diff-lines`); **3** on argv / usage errors (missing `--design-tmpdir`, unknown flags) — no `PLAN_SIZE_STATUS` lines.
 
 ## Internal — sketch dispatch (not public argv)
 

@@ -12,9 +12,9 @@ Mechanical plan-size detector for `/design` **Step 2b.5** (issue #2670). Thresho
 - Plan file MUST exist (otherwise exit **2**, `PLAN_SIZE_STATUS=missing-plan` on the contract stream — see **Exit codes**).
 - The **final non-empty line** MUST match `emit-plan.sh` grammar: `diff_lines:` + whitespace + digits only — same rule as `skills/design/scripts/emit-plan.sh` (awk `NF` trailer selection). This keeps the helper aligned with `ACTION=EMIT_PLAN` validation so the two never disagree on trailer presence.
 - **Plan body line count (`PLAN_LINES`)** is the number of physical lines **before** that final non-empty trailer line (blank lines count; the trailer line itself is excluded).
-- **Files count (`FILES_COUNT`)** counts lines matching the scout-tolerant heading regex (at least one whitespace after `###`):
+- **Files count (`FILES_COUNT`)** counts lines matching the scout-tolerant heading regex (at least one whitespace after `###` before the keyword):
 
-  `^###[[:space:]]*(NEW|UPDATED|REWRITTEN)[[:space:]]*:`
+  `^###[[:space:]]+(NEW|UPDATED|REWRITTEN)[[:space:]]*:`
 
 ## Output contract (`emit_kv` on FD 3)
 
@@ -41,6 +41,7 @@ Emitted keys (exit **0** only):
 |----|---------|
 | 0 | Valid plan; KV lines emitted as above |
 | 2 | Missing plan file → `PLAN_SIZE_STATUS=missing-plan`; or missing/malformed trailer → `PLAN_SIZE_STATUS=missing-diff-lines` |
+| 3 | Invocation / argv error (e.g. missing `--design-tmpdir`, unknown flag) — stderr only; **no** `PLAN_SIZE_STATUS` on the contract stream |
 
 ## Edit in sync
 

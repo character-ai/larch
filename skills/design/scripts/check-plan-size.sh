@@ -34,7 +34,7 @@ while [[ $# -gt 0 ]]; do
         *)
             larch_err "check-plan-size.sh: unknown argument: $1"
             usage
-            exit 2
+            exit 3
             ;;
     esac
 done
@@ -42,7 +42,7 @@ done
 if [[ -z "$DESIGN_TMPDIR" ]]; then
     larch_err "check-plan-size.sh: --design-tmpdir is required"
     usage
-    exit 2
+    exit 3
 fi
 
 if [[ -z "$PLAN_FILE" ]]; then
@@ -84,7 +84,7 @@ if [[ "$plan_lines" -lt 0 ]]; then
     plan_lines=0
 fi
 
-FILES_COUNT=$(grep -cE '^###[[:space:]]*(NEW|UPDATED|REWRITTEN)[[:space:]]*:' "$PLAN_FILE" || true)
+FILES_COUNT=$(grep -cE '^###[[:space:]]+(NEW|UPDATED|REWRITTEN)[[:space:]]*:' "$PLAN_FILE" || true)
 
 soft_plan=0
 hard_plan=0

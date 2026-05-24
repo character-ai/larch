@@ -43,6 +43,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Prevent /design summary-halts after /larch:issue returns so Step 5c plan write, publish, and [DESIGNED] rename still run.
 - Make intra-Step-5 sub-step boundaries explicit in the anti-halt reminder and add a Step 5b continuation banner aligned with other steps.
 - Record the Skill-tool sub-skill vs parent terminal-output rule in orchestrator-never.md and lock it in with structural tests.
+- `/design` — mechanical plan-size thresholds (`check-plan-size.sh`), Step **2b.5** after each `ACTION=EMIT_PLAN`, and `-p` / `--partition` persistence via `run-params.json` (#2670).
 
 ## [42.0.20] - 2026-05-23
 

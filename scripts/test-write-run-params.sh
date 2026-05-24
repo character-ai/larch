@@ -114,6 +114,17 @@ if "$WRITER" \
     fail "invalid partition-requested was accepted"
 fi
 
+if "$WRITER" \
+    --classification SIMPLE \
+    --reason bad \
+    --source router-pre-design \
+    --sketch-budget 2 \
+    --review-budget quick \
+    --workflow-path SIMPLE \
+    --output "$TMPROOT/bad-source.json" >/dev/null 2>&1; then
+    fail "obsolete --source router-pre-design was accepted"
+fi
+
 "$WRITER" \
     --classification SIMPLE \
     --reason "partition flag on" \

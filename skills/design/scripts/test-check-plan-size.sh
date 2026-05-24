@@ -152,6 +152,21 @@ set -e
 [[ "$rc" -eq 2 ]] || fail "case9 expected rc 2 got $rc"
 assert_kv_eq PLAN_SIZE_STATUS missing-plan "$out"
 
+# --- Case 8b: argv / usage errors use rc 3 (no PLAN_SIZE_STATUS) ---
+set +e
+out=$("$SUBJECT" --bogus-flag 2>&1)
+rc=$?
+set -e
+[[ "$rc" -eq 3 ]] || fail "case8b unknown flag expected rc 3 got $rc"
+if printf '%s\n' "$out" | grep -q '^PLAN_SIZE_STATUS='; then
+    fail "case8b did not expect PLAN_SIZE_STATUS in output: $out"
+fi
+set +e
+out=$("$SUBJECT" 2>&1)
+rc=$?
+set -e
+[[ "$rc" -eq 3 ]] || fail "case8b missing --design-tmpdir expected rc 3 got $rc"
+
 # --- Case 10: bad trailer ---
 d="$TMPROOT/c10"
 mkdir -p "$d"
@@ -176,6 +191,13 @@ d="$TMPROOT/c11b"
 mkdir -p "$d"
 { for _ in 1 2 3 4 5; do printf "### NEW: \`a%s\`\n" "$_"; done; fill_lines 195 'b'; printf 'diff_lines: 600\n'; } >"$d/plan.txt"
 out=$(run_ok "$d") || fail "c11b"
+assert_kv_eq SOFT_TRIGGER_FIRED false "$out"
+# 11b2 diff_lines trailer is zero — valid trailer, no soft diff on zero alone
+d="$TMPROOT/c11b2"
+mkdir -p "$d"
+{ for _ in 1 2 3 4 5; do printf "### NEW: \`a%s\`\n" "$_"; done; fill_lines 195 'b'; printf 'diff_lines: 0\n'; } >"$d/plan.txt"
+out=$(run_ok "$d") || fail "c11b2"
+assert_kv_eq DIFF_LINES 0 "$out"
 assert_kv_eq SOFT_TRIGGER_FIRED false "$out"
 # 11c 8 headings — no soft files
 d="$TMPROOT/c11c"
@@ -244,5 +266,19 @@ mkdir -p "$d"
 } >"$d/plan.txt"
 out=$(run_ok "$d") || fail "c15"
 assert_kv_eq HARD_TRIGGER_FIRED true "$out"
+
+# --- Case 16: ###NEW: without whitespace after ### does not count ---
+d="$TMPROOT/c16"
+mkdir -p "$d"
+{
+    cat <<'EOF'
+###NEW: `bad-heading.md`
+EOF
+    for _ in 1 2 3 4 5; do printf "### NEW: \`ok%s\`\n" "$_"; done
+    fill_lines 189 'b'
+    printf 'diff_lines: 400\n'
+} >"$d/plan.txt"
+out=$(run_ok "$d") || fail "c16"
+assert_kv_eq FILES_COUNT 5 "$out"
 
 echo "PASS: test-check-plan-size.sh"
