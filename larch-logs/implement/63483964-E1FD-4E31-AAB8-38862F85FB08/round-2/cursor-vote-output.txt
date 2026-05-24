@@ -1,0 +1,7 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: NO -- cosmetic wording variance alone is not worth a tracked issue
+FINDING_6: NO -- intentional single-line pin is already documented in the plan edge cases
+FINDING_7: EXONERATE -- naming mismatch is real but clarifying the issue body is optional churn versus the merged plan

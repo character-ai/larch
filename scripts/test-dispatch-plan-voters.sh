@@ -150,11 +150,14 @@ grep -Fq 'VOTER_2_TOOL=codex' <<< "$out" || { echo "FAIL: healthy path did not k
 grep -Fq 'VOTER_3_TOOL=cursor' <<< "$out" || { echo "FAIL: healthy path did not keep cursor primary" >&2; exit 1; }
 grep -Fq 'OOS_N:' "$TMP/healthy/codex-plan-voter-prompt.txt" || { echo "FAIL: healthy codex prompt missing OOS rows" >&2; exit 1; }
 grep -Fq 'OOS_N:' "$TMP/healthy/cursor-plan-voter-prompt.txt" || { echo "FAIL: healthy cursor prompt missing OOS rows" >&2; exit 1; }
+CANONICAL_YES_EXON_PHRASE='When in doubt between YES and EXONERATE, prefer EXONERATE'
 for _pv_prompt in "$TMP/healthy/codex-plan-voter-prompt.txt" "$TMP/healthy/cursor-plan-voter-prompt.txt"; do
     grep -Fq "For \`OOS_N:\` items in plan review (or items prefixed with \`[OUT_OF_SCOPE]\` in code review):" "$_pv_prompt" \
         || { echo "FAIL: $(basename "$_pv_prompt") missing canonical finding-oos OOS clause" >&2; exit 1; }
     grep -Fq 'fix proposals are informational; the coder decides the exact change' "$_pv_prompt" \
         || { echo "FAIL: $(basename "$_pv_prompt") missing informational-fix voter guardrail" >&2; exit 1; }
+    grep -Fq "$CANONICAL_YES_EXON_PHRASE" "$_pv_prompt" \
+        || { echo "FAIL: $(basename "$_pv_prompt") missing YES↔EXONERATE anchor phrase (rendered voter prompt)" >&2; exit 1; }
     if ! grep -Fq '  FINDING_N: YES' "$_pv_prompt"; then
         echo "FAIL: $(basename "$_pv_prompt") missing FINDING_N example line" >&2
         exit 1

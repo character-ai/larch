@@ -577,5 +577,38 @@ grep -Fq 'design-l3-velocity-notified-2670' "$SKILL_MD" \
 grep -Fq "[ \"\${REPO:-}\" = \"character-ai/larch\" ]" "$SKILL_MD" \
   || fail "(FINDING_21) Step 5d must guard on REPO character-ai/larch identity"
 
+# Check FINDING_2678 (#2678): YES↔EXONERATE canonical anchor phrase pinned across 4 prose locations.
+CANONICAL_PHRASE='When in doubt between YES and EXONERATE, prefer EXONERATE'
+PLAN_REVIEW_MD="$REPO_ROOT/skills/design/references/plan-review.md"
+PLAN_REVIEW_QUICK_MD="$REPO_ROOT/skills/design/references/plan-review-quick.md"
+RENDER_VOTER_SH="$REPO_ROOT/skills/shared/scripts/render-voter-prompt.sh"
+
+# Location 1: Voter 1 prompt string in plan-review.md (single-line block).
+voter1_line=$(grep -n '^- \*\*Voter 1\*\*' "$PLAN_REVIEW_MD" | head -1 | cut -d: -f1 || true)
+[[ -n "$voter1_line" ]] || fail "(FINDING_2678) plan-review.md missing '- **Voter 1**' prompt anchor"
+voter1_text=$(sed -n "${voter1_line}p" "$PLAN_REVIEW_MD")
+grep -Fq "$CANONICAL_PHRASE" <<< "$voter1_text" \
+  || fail "(FINDING_2678) plan-review.md Voter 1 prompt missing canonical phrase: $CANONICAL_PHRASE"
+
+# Location 2: shared Voter 2/3 prompt string in plan-review.md (single-line block).
+shared_line=$(grep -n '^For Codex, Cursor, and their Claude replacement voters' "$PLAN_REVIEW_MD" | head -1 | cut -d: -f1 || true)
+[[ -n "$shared_line" ]] || fail "(FINDING_2678) plan-review.md missing 'For Codex, Cursor, and their Claude replacement voters' shared-voter-prompt anchor"
+shared_text=$(sed -n "${shared_line}p" "$PLAN_REVIEW_MD")
+grep -Fq "$CANONICAL_PHRASE" <<< "$shared_text" \
+  || fail "(FINDING_2678) plan-review.md shared Voter 2/3 prompt missing canonical phrase: $CANONICAL_PHRASE"
+
+# Location 3: render-voter-prompt.sh — the renderer called by dispatch-plan-voters.sh make_prompt_file().
+grep -Fq "$CANONICAL_PHRASE" "$RENDER_VOTER_SH" \
+  || fail "(FINDING_2678) render-voter-prompt.sh missing canonical phrase (renderer behind dispatch-plan-voters.sh make_prompt_file): $CANONICAL_PHRASE"
+
+# Location 4: plan-review-quick.md — canonical phrase on the inline accept/reject guidance line only.
+quick_inline_line=$(grep -n '^For inline accept/reject (there is no separate voter panel)' "$PLAN_REVIEW_QUICK_MD" | head -1 | cut -d: -f1 || true)
+[[ -n "$quick_inline_line" ]] \
+  || fail "(FINDING_2678) plan-review-quick.md missing 'For inline accept/reject … voter panel' acceptance anchor"
+quick_inline_text=$(sed -n "${quick_inline_line}p" "$PLAN_REVIEW_QUICK_MD")
+grep -Fq "$CANONICAL_PHRASE" <<< "$quick_inline_text" \
+  || fail "(FINDING_2678) plan-review-quick.md inline accept/reject line missing canonical phrase: $CANONICAL_PHRASE"
+
+echo "PASS: FINDING_2678 — YES↔EXONERATE canonical anchor phrase OK (4 locations)"
 echo "PASS: test-design-structure.sh — structural invariants hold (including security OOS exclusions)"
 exit 0

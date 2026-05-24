@@ -1,0 +1,13 @@
+Gathering the pre-computed diff, commit list, and relevant file snippets to verify phrase consistency and line ranges.
+
+Verifying `plan-review-quick.md` wording and line numbers for the review.
+
+### In-Scope Findings
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+- **Rendered vs source coverage:** The new `FINDING_2678` block in [`scripts/test-design-structure.sh`](scripts/test-design-structure.sh) asserts the sentence stem in [`skills/shared/scripts/render-voter-prompt.sh`](skills/shared/scripts/render-voter-prompt.sh) source, not that [`scripts/dispatch-plan-voters.sh`](scripts/dispatch-plan-voters.sh) `make_prompt_file()` actually writes that text into the generated `*-plan-voter-prompt.txt` files. That integration gap is already called out as follow-up work in the design OOS notes (e.g. [`larch-logs/design/A018ACF7-7D6F-4F23-83AB-FB18FEBBAAC5/oos.md`](larch-logs/design/A018ACF7-7D6F-4F23-83AB-FB18FEBBAAC5/oos.md)), not introduced as a regression by this diff’s stated scope.
+- **Trailing punctuation / `grep -Fq`:** [`scripts/test-design-structure.sh`](scripts/test-design-structure.sh) sets `CANONICAL_PHRASE='When in doubt between YES and EXONERATE, prefer EXONERATE'` (no terminal period) while [`skills/shared/scripts/render-voter-prompt.sh`](skills/shared/scripts/render-voter-prompt.sh) line 47 emits the same words with a trailing `.` in the `printf` literal, and [`skills/design/references/plan-review.md`](skills/design/references/plan-review.md) embeds `...prefer EXONERATE."` before the closing nested quote. `grep -Fq` treats the variable as a fixed substring, so a haystack that continues with `.`, `."`, or (as in [`skills/design/references/plan-review-quick.md`](skills/design/references/plan-review-quick.md) line 21) `...prefer EXONERATE — treat...` still matches; there is no period-induced false negative for these edits, and no silent false pass specific to the period difference—the concern in the scout notes is resolved by substring semantics.
+- **Branch contents beyond phrase work:** The diff also adds [`larch-logs/implement/63483964-E1FD-4E31-AAB8-38862F85FB08/`](larch-logs/implement/63483964-E1FD-4E31-AAB8-38862F85FB08/) run artifacts (`manifest.json` uses placeholders like `<REPO_ROOT>` / `<OPERATOR_CWD>` and `model_roster.main: "unknown"`). That is orthogonal to phrase consistency; worth a separate policy check if those placeholders are unintended in committed logs.
+
+**Commits** (`git merge-base HEAD main`..HEAD): `31956cc9 Pin YES↔EXONERATE anchor phrase across voter prose and structural harness`; `9f0915f0 chore(larch-logs): flush implement run 63483964-E1FD-4E31-AAB8-38862F85FB08`.
