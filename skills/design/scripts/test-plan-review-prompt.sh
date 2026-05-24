@@ -54,6 +54,7 @@ for archetype in "${archetypes[@]}"; do
         assert_contains "$vendor/$archetype sentinel instruction" '{"no_issues_found": true}' "$out"
         assert_contains "$vendor/$archetype plan path" "$PLAN_FILE" "$out"
         assert_contains "$vendor/$archetype plan-vs-current-state guidance" "The plan describes the codebase AFTER this PR lands" "$out"
+        # shellcheck disable=SC2016
         assert_contains "$vendor/$archetype heading-format guidance" '`### NEW:` / `### UPDATED:` / `### REWRITTEN:` subsections' "$out"
         assert_contains "$vendor/$archetype read-only" "Do NOT modify files" "$out"
 

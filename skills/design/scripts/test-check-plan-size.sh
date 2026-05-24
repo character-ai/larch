@@ -43,7 +43,7 @@ trap 'rm -rf "$TMPROOT"' EXIT
 d="$TMPROOT/c1"
 mkdir -p "$d"
 {
-    for _ in 1 2 3 4 5; do printf '### UPDATED: `f%s.md`\n' "$_"; done
+    for _ in 1 2 3 4 5; do printf "### UPDATED: \`f%s.md\`\n" "$_"; done
     fill_lines 195 'body line'
     printf 'diff_lines: 400\n'
 } >"$d/plan.txt"
@@ -57,7 +57,7 @@ assert_kv_eq FILES_COUNT 5 "$out"
 d="$TMPROOT/c2"
 mkdir -p "$d"
 {
-    for _ in 1 2 3 4 5; do printf '### NEW: `x%s`\n' "$_"; done
+    for _ in 1 2 3 4 5; do printf "### NEW: \`x%s\`\n" "$_"; done
     fill_lines 246 'b'
     printf 'diff_lines: 400\n'
 } >"$d/plan.txt"
@@ -71,7 +71,7 @@ assert_kv_eq TRIGGER_REASONS "plan-body-lines" "$out"
 d="$TMPROOT/c3"
 mkdir -p "$d"
 {
-    for _ in 1 2 3 4 5; do printf '### NEW: `p%s`\n' "$_"; done
+    for _ in 1 2 3 4 5; do printf "### NEW: \`p%s\`\n" "$_"; done
     fill_lines 195 'b'
     printf 'diff_lines: 601\n'
 } >"$d/plan.txt"
@@ -83,7 +83,7 @@ assert_kv_eq TRIGGER_REASONS "diff-lines" "$out"
 d="$TMPROOT/c4"
 mkdir -p "$d"
 {
-    for _ in 1 2 3 4 5 6 7 8 9; do printf '### REWRITTEN: `h%s`\n' "$_"; done
+    for _ in 1 2 3 4 5 6 7 8 9; do printf "### REWRITTEN: \`h%s\`\n" "$_"; done
     fill_lines 191 'b'
     printf 'diff_lines: 400\n'
 } >"$d/plan.txt"
@@ -96,7 +96,7 @@ assert_kv_eq TRIGGER_REASONS "files-count" "$out"
 d="$TMPROOT/c5"
 mkdir -p "$d"
 {
-    for _ in 1 2 3 4 5 6 7 8 9; do printf '### NEW: `m%s`\n' "$_"; done
+    for _ in 1 2 3 4 5 6 7 8 9; do printf "### NEW: \`m%s\`\n" "$_"; done
     fill_lines 242 'b'
     printf 'diff_lines: 601\n'
 } >"$d/plan.txt"
@@ -107,7 +107,7 @@ assert_kv_eq TRIGGER_REASONS "plan-body-lines,diff-lines,files-count" "$out"
 d="$TMPROOT/c6"
 mkdir -p "$d"
 {
-    for _ in 1 2 3 4 5; do printf '### NEW: `z%s`\n' "$_"; done
+    for _ in 1 2 3 4 5; do printf "### NEW: \`z%s\`\n" "$_"; done
     fill_lines 796 'b'
     printf 'diff_lines: 400\n'
 } >"$d/plan.txt"
@@ -121,7 +121,7 @@ assert_kv_eq TRIGGER_REASONS "plan-body-lines" "$out"
 d="$TMPROOT/c7"
 mkdir -p "$d"
 {
-    for _ in 1 2 3 4 5; do printf '### NEW: `q%s`\n' "$_"; done
+    for _ in 1 2 3 4 5; do printf "### NEW: \`q%s\`\n" "$_"; done
     fill_lines 195 'b'
     printf 'diff_lines: 1501\n'
 } >"$d/plan.txt"
@@ -133,7 +133,7 @@ assert_kv_eq TRIGGER_REASONS "diff-lines" "$out"
 d="$TMPROOT/c8"
 mkdir -p "$d"
 {
-    for _ in 1 2 3 4 5 6 7 8 9; do printf '### UPDATED: `t%s`\n' "$_"; done
+    for _ in 1 2 3 4 5 6 7 8 9; do printf "### UPDATED: \`t%s\`\n" "$_"; done
     fill_lines 792 'b'
     printf 'diff_lines: 700\n'
 } >"$d/plan.txt"
@@ -167,34 +167,34 @@ assert_kv_eq PLAN_SIZE_STATUS missing-diff-lines "$out"
 # 11a 250 lines — no soft plan
 d="$TMPROOT/c11a"
 mkdir -p "$d"
-{ for _ in 1 2 3 4 5; do printf '### NEW: `a%s`\n' "$_"; done; fill_lines 245 'b'; printf 'diff_lines: 400\n'; } >"$d/plan.txt"
+{ for _ in 1 2 3 4 5; do printf "### NEW: \`a%s\`\n" "$_"; done; fill_lines 245 'b'; printf 'diff_lines: 400\n'; } >"$d/plan.txt"
 out=$(run_ok "$d") || fail "c11a"
 assert_kv_eq PLAN_LINES 250 "$out"
 assert_kv_eq SOFT_TRIGGER_FIRED false "$out"
 # 11b diff 600 — no soft diff
 d="$TMPROOT/c11b"
 mkdir -p "$d"
-{ for _ in 1 2 3 4 5; do printf '### NEW: `a%s`\n' "$_"; done; fill_lines 195 'b'; printf 'diff_lines: 600\n'; } >"$d/plan.txt"
+{ for _ in 1 2 3 4 5; do printf "### NEW: \`a%s\`\n" "$_"; done; fill_lines 195 'b'; printf 'diff_lines: 600\n'; } >"$d/plan.txt"
 out=$(run_ok "$d") || fail "c11b"
 assert_kv_eq SOFT_TRIGGER_FIRED false "$out"
 # 11c 8 headings — no soft files
 d="$TMPROOT/c11c"
 mkdir -p "$d"
-{ for _ in 1 2 3 4 5 6 7 8; do printf '### NEW: `a%s`\n' "$_"; done; fill_lines 192 'b'; printf 'diff_lines: 400\n'; } >"$d/plan.txt"
+{ for _ in 1 2 3 4 5 6 7 8; do printf "### NEW: \`a%s\`\n" "$_"; done; fill_lines 192 'b'; printf 'diff_lines: 400\n'; } >"$d/plan.txt"
 out=$(run_ok "$d") || fail "c11c"
 assert_kv_eq FILES_COUNT 8 "$out"
 assert_kv_eq SOFT_TRIGGER_FIRED false "$out"
 # 11d 800 body lines — no hard plan
 d="$TMPROOT/c11d"
 mkdir -p "$d"
-{ for _ in 1 2 3 4 5; do printf '### NEW: `a%s`\n' "$_"; done; fill_lines 795 'b'; printf 'diff_lines: 400\n'; } >"$d/plan.txt"
+{ for _ in 1 2 3 4 5; do printf "### NEW: \`a%s\`\n" "$_"; done; fill_lines 795 'b'; printf 'diff_lines: 400\n'; } >"$d/plan.txt"
 out=$(run_ok "$d") || fail "c11d"
 assert_kv_eq PLAN_LINES 800 "$out"
 assert_kv_eq HARD_TRIGGER_FIRED false "$out"
 # 11e diff 1500 — no hard diff
 d="$TMPROOT/c11e"
 mkdir -p "$d"
-{ for _ in 1 2 3 4 5; do printf '### NEW: `a%s`\n' "$_"; done; fill_lines 195 'b'; printf 'diff_lines: 1500\n'; } >"$d/plan.txt"
+{ for _ in 1 2 3 4 5; do printf "### NEW: \`a%s\`\n" "$_"; done; fill_lines 195 'b'; printf 'diff_lines: 1500\n'; } >"$d/plan.txt"
 out=$(run_ok "$d") || fail "c11e"
 assert_kv_eq HARD_TRIGGER_FIRED false "$out"
 
@@ -226,8 +226,8 @@ assert_kv_eq PLAN_LINES 200 "$out"
 d="$TMPROOT/c14"
 mkdir -p "$d"
 {
-    printf '###  NEW: `wide1`\n'
-    printf '### UPDATED : `wide2`\n'
+    printf "###  NEW: \`wide1\`\n"
+    printf "### UPDATED : \`wide2\`\n"
     fill_lines 198 'b'
     printf 'diff_lines: 1\n'
 } >"$d/plan.txt"
@@ -238,7 +238,7 @@ assert_kv_eq FILES_COUNT 2 "$out"
 d="$TMPROOT/c15"
 mkdir -p "$d"
 {
-    for _ in 1 2 3 4 5; do printf '### NEW: `s%s`\n' "$_"; done
+    for _ in 1 2 3 4 5; do printf "### NEW: \`s%s\`\n" "$_"; done
     fill_lines 796 'b'
     printf 'diff_lines: 400\n'
 } >"$d/plan.txt"

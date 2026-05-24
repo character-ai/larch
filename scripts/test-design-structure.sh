@@ -489,13 +489,13 @@ grep -Fq $'> **Continue to Step 5c IMMEDIATELY.** The `/larch:issue` Skill tool'
   || fail "(17) Step 5b→5c continuation banner missing or /larch:issue not on the same line as the banner"
 
 # Check FINDING_21 (#2670): plan-size thresholds + --partition documentation pins.
-grep -Fq '| `-p` / `--partition` |' "$SKILL_MD" \
+grep -Fq "| \`-p\` / \`--partition\` |" "$SKILL_MD" \
   || fail "(FINDING_21) SKILL.md compact flag table missing -p/--partition row"
 grep -Fq '[-p|--partition]' "$SKILL_MD" \
   || fail "(FINDING_21) SKILL.md argument-hint missing [-p|--partition]"
-grep -Fq '`-p`, `--partition`' "$SKILL_MD" \
+grep -Fq "\`-p\`, \`--partition\`" "$SKILL_MD" \
   || fail "(FINDING_21) SKILL.md public argv allowlist missing -p/--partition"
-grep -Fq '`--trivial` and `-p` / `--partition` are mutually exclusive' "$SKILL_MD" \
+grep -Fq "\`--trivial\` and \`-p\` / \`--partition\` are mutually exclusive" "$SKILL_MD" \
   || fail "(FINDING_21) SKILL.md missing trivial vs partition mutual-exclusion prose"
 grep -Fq '### Step 2b.5 — Plan-size threshold check' "$SKILL_MD" \
   || fail "(FINDING_21) SKILL.md missing Step 2b.5 header"
@@ -524,7 +524,7 @@ grep -Fq '### 5d — Gated L3 velocity deferral comment' "$SKILL_MD" \
   || fail "(FINDING_21) SKILL.md missing Step 5d header"
 grep -Fq -- '--repo character-ai/larch' "$SKILL_MD" \
   || fail "(FINDING_21) Step 5d must reference explicit --repo character-ai/larch guard"
-grep -Fq '[ "$ISSUE_NUMBER" = "2670" ]' "$SKILL_MD" \
+grep -Fq "[ \"\$ISSUE_NUMBER\" = \"2670\" ]" "$SKILL_MD" \
   || fail "(FINDING_21) Step 5d must guard on ISSUE_NUMBER 2670"
 grep -Fq 'design-l3-velocity-notified-2670' "$SKILL_MD" \
   || fail "(FINDING_21) Step 5d must reference design-l3-velocity-notified-2670 sentinel"
