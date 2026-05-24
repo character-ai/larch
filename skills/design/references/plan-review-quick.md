@@ -18,6 +18,8 @@ Claude reviews the plan inline — no external reviewers, no voting panel. Check
 
 Accept when the concern is clear and unambiguous. Reject nits and speculative concerns. Mark valid but out-of-scope items as OOS.
 
+For inline accept/reject (there is no separate voter panel), apply the same YES↔EXONERATE judgment you would use on a ballot: accept only when the finding is correct **and** a plan revision would materially improve clarity, completeness, or correctness with complexity proportionate to severity. Prefer marking a concern as rejected or OOS when the fix would be disproportionate, already implied by the plan, better deferred to a follow-up, or forward-looking/speculative rather than required for this PR's correctness. When in doubt between YES and EXONERATE, prefer EXONERATE — treat accept like "the plan will be worse without this change" and reject/OOS like "real concern, but not something you would insist on in a senior review."
+
 **Do NOT revise `$DESIGN_TMPDIR/plan.txt`** in this step. Quick-mode review only collects findings into the output files below; plan revision is owned by Gate B (Step 3.5) per explicit user choice. Leave `plan.txt` and `diff-lines.txt` unchanged.
 
 ## Output

@@ -148,6 +148,8 @@ grep -Fq 'VOTER_2_TOOL=codex' <<< "$out" || { echo "FAIL: healthy path did not k
 grep -Fq 'VOTER_3_TOOL=cursor' <<< "$out" || { echo "FAIL: healthy path did not keep cursor primary" >&2; exit 1; }
 grep -Fq 'OOS_N:' "$TMP/healthy/codex-plan-voter-prompt.txt" || { echo "FAIL: healthy codex prompt missing OOS rows" >&2; exit 1; }
 grep -Fq 'OOS_N:' "$TMP/healthy/cursor-plan-voter-prompt.txt" || { echo "FAIL: healthy cursor prompt missing OOS rows" >&2; exit 1; }
+grep -Fq 'When in doubt between YES and EXONERATE, prefer EXONERATE' "$TMP/healthy/codex-plan-voter-prompt.txt" || { echo "FAIL: healthy codex prompt missing YES/EXONERATE anchor" >&2; exit 1; }
+grep -Fq 'When in doubt between YES and EXONERATE, prefer EXONERATE' "$TMP/healthy/cursor-plan-voter-prompt.txt" || { echo "FAIL: healthy cursor prompt missing YES/EXONERATE anchor" >&2; exit 1; }
 grep -Fq $'voter-2\tcodex' "$stub_log" || { echo "FAIL: healthy stub log missing codex slot wiring" >&2; exit 1; }
 grep -Fq $'voter-3\tcursor' "$stub_log" || { echo "FAIL: healthy stub log missing cursor slot wiring" >&2; exit 1; }
 grep -Fq 'VOTER_PATHS_FILE=' <<< "$out" || { echo "FAIL: healthy stub missing VOTER_PATHS_FILE" >&2; exit 1; }
