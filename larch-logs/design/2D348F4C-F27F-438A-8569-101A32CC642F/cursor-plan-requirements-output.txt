@@ -16,13 +16,13 @@ schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	sugg
 9	in_scope	nit	code-quality	<TMPDIR>/plan.txt:5-5,24-26	Plan never explicitly says to delete the existing for vendor_attempt in 1 2 3 inner loop when inserting tiers	Implementer might nest loops doubling attempts	State explicitly that the inner 1..3 vendor_attempt loop is removed not stacked
 10	out_of_scope	latent	security	SECURITY.md:1-1,scripts/ship-pr.sh:1329-1332	New --failure-log forwarding ships captured GitHub run logs into a third external launcher surface	Logs may include sensitive CI output; policy may need an explicit note	After implementation have a human decide whether SECURITY.md should mention CI log forwarding to Claude tier
 
-1. **[correctness]** [`plan.txt:30-32`](file:///Users/zhupanov/.cache/larch/sessions/claude-design-larch7-GsiW3b/plan.txt) vs [`scripts/ship-pr.sh:1244`](scripts/ship-pr.sh) — Line 1244 is `[ "$rc" -eq 0 ] || return 1`, not the start of append-token / lint-fix / push. **Suggested revision:** cite `1245:1307:scripts/ship-pr.sh` for the post-success pipeline.
+1. **[correctness]** `plan.txt:30-32` vs [`scripts/ship-pr.sh:1244`](scripts/ship-pr.sh) — Line 1244 is `[ "$rc" -eq 0 ] || return 1`, not the start of append-token / lint-fix / push. **Suggested revision:** cite `1245:1307:scripts/ship-pr.sh` for the post-success pipeline.
 
-2. **[correctness]** [`plan.txt:36-47`](file:///Users/zhupanov/.cache/larch/sessions/claude-design-larch7-GsiW3b/plan.txt) — “Before the failed tier runs, snapshot …” conflicts with “pre-Cursor snapshot is taken once at function entry.” **Suggested revision:** pick one rollback baseline story and delete the other.
+2. **[correctness]** `plan.txt:36-47` — “Before the failed tier runs, snapshot …” conflicts with “pre-Cursor snapshot is taken once at function entry.” **Suggested revision:** pick one rollback baseline story and delete the other.
 
-3. **[architecture]** [`plan.txt:28-28`](file:///Users/zhupanov/.cache/larch/sessions/claude-design-larch7-GsiW3b/plan.txt) — `run_recovery_waterfall` is not defined in [`scripts/ship-pr.sh`](scripts/ship-pr.sh) on main (only appears under `larch-logs/design/...`). **Suggested revision:** point to the concrete #2395 artifact (function name + file) or inline the rollback algorithm you require.
+3. **[architecture]** `plan.txt:28-28` — `run_recovery_waterfall` is not defined in [`scripts/ship-pr.sh`](scripts/ship-pr.sh) on main (only appears under `larch-logs/design/...`). **Suggested revision:** point to the concrete #2395 artifact (function name + file) or inline the rollback algorithm you require.
 
-4. **[risk-integration]** [`plan.txt:71`](file:///Users/zhupanov/.cache/larch/sessions/claude-design-larch7-GsiW3b/plan.txt) vs [`Makefile:449-450`](Makefile) — A separate `fix-loop-3tier` section would not run under `test-ship-pr-fix-loop` (`--section fix-loop` only). **Suggested revision:** keep new assertions under `section_runs fix-loop` or extend Makefile / harness splits.
+4. **[risk-integration]** `plan.txt:71` vs [`Makefile:449-450`](Makefile) — A separate `fix-loop-3tier` section would not run under `test-ship-pr-fix-loop` (`--section fix-loop` only). **Suggested revision:** keep new assertions under `section_runs fix-loop` or extend Makefile / harness splits.
 
 5. **[correctness]** [`scripts/test-ship-pr.sh:2232-2287`](scripts/test-ship-pr.sh) — `ci_fix_vendor_retry` asserts exactly three launcher lines, matching today’s inner `for vendor_attempt in 1 2 3`; the plan’s new cases do not replace this contract. **Suggested revision:** redesign that scenario for tiered / outer-loop semantics and document the new expected counts.
 
@@ -30,11 +30,11 @@ schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	sugg
 
 7. **[code-quality]** [`scripts/ship-pr.md:82-84`](scripts/ship-pr.md) vs [`scripts/ship-pr.sh:1267-1274`](scripts/ship-pr.sh) — Doc still says `git add -u` though implementation stages explicit paths. **Suggested revision:** fix the invariant when editing nearby Claude / `--plan-file` prose.
 
-8. **[correctness]** [`plan.txt:52-53`](file:///Users/zhupanov/.cache/larch/sessions/claude-design-larch7-GsiW3b/plan.txt) — Reusing `$fail_file` for the gh-run-logs capture path overloads the name used inside `run_ci_fix_vendor` for launcher stderr files. **Suggested revision:** use a distinct caller variable in the written plan snippet.
+8. **[correctness]** `plan.txt:52-53` — Reusing `$fail_file` for the gh-run-logs capture path overloads the name used inside `run_ci_fix_vendor` for launcher stderr files. **Suggested revision:** use a distinct caller variable in the written plan snippet.
 
-9. **[code-quality]** [`plan.txt:76-78`](file:///Users/zhupanov/.cache/larch/sessions/claude-design-larch7-GsiW3b/plan.txt) — Cases 4 and 5 largely duplicate the all-fail nine-launcher assertion. **Suggested revision:** merge or specialize case 5.
+9. **[code-quality]** `plan.txt:76-78` — Cases 4 and 5 largely duplicate the all-fail nine-launcher assertion. **Suggested revision:** merge or specialize case 5.
 
-10. **[code-quality]** [`plan.txt:15-26`](file:///Users/zhupanov/.cache/larch/sessions/claude-design-larch7-GsiW3b/plan.txt) — Does not explicitly remove the existing inner `vendor_attempt` loop; risk of accidental nesting. **Suggested revision:** state “delete inner `for vendor_attempt in 1 2 3`” explicitly.
+10. **[code-quality]** `plan.txt:15-26` — Does not explicitly remove the existing inner `vendor_attempt` loop; risk of accidental nesting. **Suggested revision:** state “delete inner `for vendor_attempt in 1 2 3`” explicitly.
 
 [OUT_OF_SCOPE] **security** — [`SECURITY.md`](SECURITY.md) (repo root): no plan step to reassess disclosure surface when `--failure-log` begins routing `gh-run-logs.sh` captures into `launch-claude-ci.sh` (lines TBD post-#2395). Worth a maintainer pass after merge.
 

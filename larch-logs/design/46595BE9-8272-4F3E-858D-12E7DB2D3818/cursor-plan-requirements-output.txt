@@ -49,7 +49,7 @@ schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	sugg
 
 7. **code-quality** — [`scripts/tracking-issue-write.md`](scripts/tracking-issue-write.md):9; [`scripts/tracking-issue-write.sh`](scripts/tracking-issue-write.sh):12-40, :97-104 — Contract files still document only `in-progress|done|stalled`. **Suggested revision:** Update the `.md` usage line and the shell header rename semantics block when adding `planned`.
 
-8. **correctness** — Plan snippet at [`plan.txt`](file:///Users/zhupanov/.cache/larch/sessions/claude-design-larch5-QhAbWK/plan.txt):76-87 — Invokes `scripts/design-log-publish.sh` without `${CLAUDE_PLUGIN_ROOT}`. **Suggested revision:** Match [`skills/design/SKILL.md`](skills/design/SKILL.md):810-811 style for all new script invocations.
+8. **correctness** — Plan snippet at `plan.txt`:76-87 — Invokes `scripts/design-log-publish.sh` without `${CLAUDE_PLUGIN_ROOT}`. **Suggested revision:** Match [`skills/design/SKILL.md`](skills/design/SKILL.md):810-811 style for all new script invocations.
 
 9. **architecture** — [`Makefile`](Makefile):72-80, :663-664 — The plan says wire the new harness into `make lint` but does not name which `test-harnesses-*` shard should depend on it. **Suggested revision:** Add `test-design-log-publish` with `harness-timer.sh` and register it on a specific shard line.
 

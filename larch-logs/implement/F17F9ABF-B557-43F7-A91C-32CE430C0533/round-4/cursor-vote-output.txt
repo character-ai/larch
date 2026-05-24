@@ -2,7 +2,7 @@ Reading the ballot and session context to verify each finding before voting.
 
 Verifying ballot claims against the repository code and session diff context.
 
-Verification against [`review-and-fix.sh`](file:///Users/zhupanov/larch2/skills/review-and-fix/scripts/review-and-fix.sh) and [`test-review-and-fix.sh`](file:///Users/zhupanov/larch2/skills/review-and-fix/scripts/test-review-and-fix.sh): degraded retry runs a second `review-core` into the same `core_out`/`round_dir` before a single `append_round_oos_artifact` at line 1029; `convergence_candidate_status` includes `fix-applied` (line 142) so Part A can set `converged-small-changes` after a successful apply; `write_prior_round` leaves empty `findings.md` for test 5b while round 1 and round 2 both have `ACCEPTED_COUNT` ≤ 3, so the convergence branch would overwrite `fix-applied`; tests reference `CONVERGENCE_THRESHOLD` nowhere.
+Verification against `review-and-fix.sh` and `test-review-and-fix.sh`: degraded retry runs a second `review-core` into the same `core_out`/`round_dir` before a single `append_round_oos_artifact` at line 1029; `convergence_candidate_status` includes `fix-applied` (line 142) so Part A can set `converged-small-changes` after a successful apply; `write_prior_round` leaves empty `findings.md` for test 5b while round 1 and round 2 both have `ACCEPTED_COUNT` ≤ 3, so the convergence branch would overwrite `fix-applied`; tests reference `CONVERGENCE_THRESHOLD` nowhere.
 
 FINDING_1: YES  
 FINDING_2: YES  

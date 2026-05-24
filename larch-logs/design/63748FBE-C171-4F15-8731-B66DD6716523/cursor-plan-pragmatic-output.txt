@@ -14,17 +14,17 @@ schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	sugg
 
 1. **[correctness]** [`scripts/token-ledger.sh`](scripts/token-ledger.sh):78-110 — Session id fallback alone does not give `token-ledger.sh` a writable ledger directory when `IMPLEMENT_TMPDIR` and `SESSION_ENV_PATH` are unset (standalone `/design`); marks can remain silent failures. Extend `resolve_ledger_path` (and tests) to use `DESIGN_TMPDIR` as a ledger root parallel to `IMPLEMENT_TMPDIR`.
 
-2. **[correctness]** Plan §13 ([`plan.txt`](file:///Users/zhupanov/.cache/larch/sessions/claude-design-larch2-I56cZK/plan.txt):41-42) — Standardize on one JSON artifact name; the tree today uses `token-report-rendered.json` under implement tmpdirs ([`skills/implement/SKILL.md`](skills/implement/SKILL.md):1485 pattern). Avoid inventing `token-report.json` without wiring it everywhere.
+2. **[correctness]** Plan §13 (`plan.txt`:41-42) — Standardize on one JSON artifact name; the tree today uses `token-report-rendered.json` under implement tmpdirs ([`skills/implement/SKILL.md`](skills/implement/SKILL.md):1485 pattern). Avoid inventing `token-report.json` without wiring it everywhere.
 
-3. **[correctness]** Plan §13 exit matrix ([`plan.txt`](file:///Users/zhupanov/.cache/larch/sessions/claude-design-larch2-I56cZK/plan.txt):47-49) — Reconcile the Step 0a “skip emission” bullet with the later “invoke `--quiet-on-empty` for uniformity” bullet so implementers have a single rule.
+3. **[correctness]** Plan §13 exit matrix (`plan.txt`:47-49) — Reconcile the Step 0a “skip emission” bullet with the later “invoke `--quiet-on-empty` for uniformity” bullet so implementers have a single rule.
 
-4. **[risk-integration]** Plan testing § ([`plan.txt`](file:///Users/zhupanov/.cache/larch/sessions/claude-design-larch2-I56cZK/plan.txt):101-107) — Structural coverage belongs in existing [`scripts/test-design-structure.sh`](scripts/test-design-structure.sh) (already registered in [`Makefile`](Makefile):311-312), not under `skills/design/scripts/`.
+4. **[risk-integration]** Plan testing § (`plan.txt`:101-107) — Structural coverage belongs in existing [`scripts/test-design-structure.sh`](scripts/test-design-structure.sh) (already registered in [`Makefile`](Makefile):311-312), not under `skills/design/scripts/`.
 
-5. **[code-quality]** Plan doc item 2 ([`plan.txt`](file:///Users/zhupanov/.cache/larch/sessions/claude-design-larch2-I56cZK/plan.txt):13) — Replace the nonexistent `comparison-with-token-tally.sh` reference with the real comparison table in [`scripts/token-cost.md`](scripts/token-cost.md):39-43.
+5. **[code-quality]** Plan doc item 2 (`plan.txt`:13) — Replace the nonexistent `comparison-with-token-tally.sh` reference with the real comparison table in [`scripts/token-cost.md`](scripts/token-cost.md):39-43.
 
 6. **[risk-integration]** New harness scripts — Add [`Makefile`](Makefile) shard targets and [`agent-lint.toml`](agent-lint.toml) entries for `scripts/test-token-cost.sh` and `scripts/test-render-cost-line.sh` so they run under `make lint` like other `scripts/test-*.sh` tools.
 
-7. **[architecture]** [`plan.txt`](file:///Users/zhupanov/.cache/larch/sessions/claude-design-larch2-I56cZK/plan.txt):19-20 — The proposed one-liner embeds emoji and UTF-8 punctuation; acceptable if documented and byte-locked in tests, but worth calling out for log hosts that are not UTF-8 clean.
+7. **[architecture]** `plan.txt`:19-20 — The proposed one-liner embeds emoji and UTF-8 punctuation; acceptable if documented and byte-locked in tests, but worth calling out for log hosts that are not UTF-8 clean.
 
 8. **[risk-integration]** [`scripts/test-render-run-summary.sh`](scripts/test-render-run-summary.sh):54-82 — Explicit regressions pin `TOTAL N/A` / `Claude N/A`; they must change in the same PR as default rates (plan Failure modes §96 mentions this; keep the harness in sync).
 

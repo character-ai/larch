@@ -38,9 +38,9 @@ schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	sugg
 
 1. **[correctness]** [scripts/dispatch-with-waterfall.sh](scripts/dispatch-with-waterfall.sh) (see `output_for_phase` at lines 125–134): The plan’s `aggregator-output.txt.phaseN` naming and “matches dispatch-with-waterfall” claim are inconsistent with the real phase paths; fix the plan and tests or change the implementation contract explicitly.
 
-2. **[correctness]** [plan.txt](file:///Users/zhupanov/.cache/larch/sessions/claude-design-larch7-xLdFJn/plan.txt) §8 (`zero_findings_preamble_contradiction`): Final `REASON=validation-failed` conflicts with a three-phase outer loop that ends in `validation-exhausted` when every phase produces the same invalid stub; tighten the test story (per-phase signal vs final stdout).
+2. **[correctness]** plan.txt §8 (`zero_findings_preamble_contradiction`): Final `REASON=validation-failed` conflicts with a three-phase outer loop that ends in `validation-exhausted` when every phase produces the same invalid stub; tighten the test story (per-phase signal vs final stdout).
 
-3. **[risk-integration]** [review-core.sh](skills/review/scripts/review-core.sh) vs [plan.txt](file:///Users/zhupanov/.cache/larch/sessions/claude-design-larch7-xLdFJn/plan.txt): `exit 0` for `aggregator-validation-exhausted` diverges from `panel-failed`’s `exit 2` (see lines 415–429), which is asserted in [test-review-core.sh](skills/review/scripts/test-review-core.sh) around lines 432–435; align exit semantics or document and audit all `review-core.sh` callers.
+3. **[risk-integration]** [review-core.sh](skills/review/scripts/review-core.sh) vs plan.txt: `exit 0` for `aggregator-validation-exhausted` diverges from `panel-failed`’s `exit 2` (see lines 415–429), which is asserted in [test-review-core.sh](skills/review/scripts/test-review-core.sh) around lines 432–435; align exit semantics or document and audit all `review-core.sh` callers.
 
 4. **[risk-integration]** [review-core.sh](skills/review/scripts/review-core.sh) lines 386–414: The plan’s pseudo-code omits `emit_tally_with_failure_isolation` and `copy_to_parent` tally copies that `panel-failed` performs before emitting status; omission risks missing failure tally artifacts.
 

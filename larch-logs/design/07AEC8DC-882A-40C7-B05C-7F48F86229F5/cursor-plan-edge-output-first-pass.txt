@@ -1,7 +1,0 @@
-Reading the plan and inspecting referenced code paths.
-
-Tracing control flow after parsing and inspecting the test harness and producers.
-
-Creating the plan: TSV first (tab-separated), then numbered findings.
-
-
