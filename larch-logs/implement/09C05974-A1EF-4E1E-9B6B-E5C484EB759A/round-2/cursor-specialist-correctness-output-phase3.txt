@@ -1,0 +1,17 @@
+Now I have the key information I need. The `invoke-plan-validator-if-not-quick.sh` script confirms that env-var guards (`DESIGN_TMPDIR`, `CLAUDE_PLUGIN_ROOT`) are checked at lines 9–10, **before** the `run-params.json` existence check at line 15. This resolves the potential ordering concern for the `ec_noroot` test.
+
+### In-Scope Findings
+
+No in-scope issues found.
+
+**Verification notes (correctness-positive):**
+
+- `approval-gates.md` — All three Gate B insertion spots are present and correctly placed: Apply-all bullet (~line 86), Go-through-each batch bullet (~line 87), One-by-one iteration section (~line 100). Each insertion sits textually between the revise step and the `ACTION=EMIT_PLAN` re-emit step, satisfying the plan's position contract.
+- Canonical wording — All four required contract points are present at each spot: re-read freshly revised `plan.txt`, semantic LLM judgment, distinct-context carve-out, breadcrumb of shape `dedup-sweep: removed <N> duplicate line(s) from plan.txt` with unconditional firing.
+- Scope gate — The instruction is absent from Step 2b initial writes, Gate A discussion sub-round revisions, and Gate C; strictly Gate B only.
+- `ec_noroot` test (`test-read-design-review-budget-invoke.sh`) — The concern that `dt_norp` (no `run-params.json`) might cause the script to exit-0 before checking `CLAUDE_PLUGIN_ROOT` is not a bug: `invoke-plan-validator-if-not-quick.sh` lines 9–10 check `DESIGN_TMPDIR` and `CLAUDE_PLUGIN_ROOT` via `: "${VAR:?}"` before the `[[ -r "$rp" ]]` check at line 15.
+- New test assertions (unreadable path, sketch\_budget heuristic, jq path, grep-full, all-fallbacks-exhausted, argv/env guards, no-run-params quick skip, defects-found fixture run) — all correctly exercise the intended branches.
+
+### Out-of-Scope Observations
+
+None.

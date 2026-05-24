@@ -1,0 +1,7 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: EXONERATE -- plan explicitly chose documentation-only with no new tests; adding CI prose checks exceeds the warranted complexity for this change
+FINDING_6: EXONERATE -- RANDOM collision probability is vanishingly small and a collision would produce a visible test failure, not a silent false pass
+FINDING_7: YES

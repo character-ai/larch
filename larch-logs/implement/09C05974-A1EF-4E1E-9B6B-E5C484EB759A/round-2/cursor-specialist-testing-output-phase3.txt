@@ -1,0 +1,15 @@
+### In-Scope Findings
+
+- **correctness** `skills/design/scripts/test-read-design-review-budget-invoke.sh:38-41` — Three `mktemp -d` calls (`fakebin`, `fakebin_pyonly`, `fakebin_jqonly`) are created sequentially before the EXIT trap covering them is installed at line 41; under `set -euo pipefail`, a `mktemp -d` failure at line 39 or 40 leaves the already-created dirs unregistered for cleanup and leaking on disk. **Suggested fix:** Re-install the trap immediately after each `mktemp -d` call (e.g., `fakebin=$(mktemp ...); trap '... rm -rf "$fakebin"' EXIT`), or create a single parent dir and use subdirectories beneath it so one `rm -rf` in the trap covers all.
+
+- **correctness** `skills/design/scripts/test-read-design-review-budget-invoke.sh:73-77` — The same sequential-mktemp-before-trap pattern repeats for `dt`, `full_dt`, `dt_norp`, and `defects_dt` (lines 73–76), with the trap updated only after all four succeed (line 77). The gap for `dt`/`full_dt` was pre-existing, but adding `dt_norp` and `defects_dt` to the unguarded window amplifies it — if either new `mktemp -d` fails, `dt` and `full_dt` leak even though they succeeded. **Suggested fix:** Same as above — update the trap after each creation, or collect all four under one parent tmpdir.
+
+### Out-of-Scope Observations
+
+No pre-existing issues worth surfacing.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	latent	correctness	skills/design/scripts/test-read-design-review-budget-invoke.sh:38-41	fakebin_pyonly and fakebin_jqonly created before EXIT trap covers them	Under set -euo pipefail a mktemp -d failure at line 39 or 40 leaves fakebin (and any already-created dirs) unregistered for cleanup	Re-install EXIT trap immediately after each mktemp -d or collect all fakebins under one parent dir
+1	in_scope	latent	correctness	skills/design/scripts/test-read-design-review-budget-invoke.sh:73-77	dt_norp and defects_dt added to the sequential-mktemp-before-trap window that already existed for dt and full_dt	mktemp failure at dt_norp or defects_dt leaves dt and full_dt leaked even though they succeeded; amplifies pre-existing gap	Same fix as above — update trap after each mktemp -d or use a single parent tmpdir
+```

@@ -1,0 +1,26 @@
+Now I have everything I need. The script uses `set -euo pipefail` (line 3), which confirms both potential issues. Let me write up the findings.
+
+---
+
+### In-Scope Findings
+
+1. - **correctness** `skills/design/scripts/test-read-design-review-budget-invoke.sh:63-70` — The jq-branch test builds `PATH="$_jq_dir:$fakebin_pyonly:/usr/bin:/bin:/usr/sbin:/sbin"`, placing the real `$_jq_dir` before `$fakebin_pyonly`. On macOS with Homebrew, both `jq` and `python3` commonly reside in `/usr/local/bin`; with `_jq_dir=/usr/local/bin`, the real python3 is resolved before the stub, so `read-design-review-budget.sh` takes the python3 branch (line 14 of that script) and never reaches the jq branch — the test passes but exercises the wrong code path, providing false coverage confidence for lines 32–35 of `read-design-review-budget.sh`. **Suggested fix**: After resolving `$_jq_dir`, verify `PATH="$_jq_dir:$fakebin_pyonly:..." which python3` resolves into `$fakebin_pyonly`; if it doesn't (co-located python3 and jq), print `SKIP: python3 and jq co-located; jq-branch PATH isolation unavailable` and skip the block rather than silently exercising the wrong fallback.
+
+2. - **correctness** `skills/design/scripts/test-read-design-review-budget-invoke.sh:72-76` — The script runs with `set -euo pipefail` (line 3). `dt` (line 72) and `full_dt` (line 73) are created before the trap update at line 76; the active trap between lines 40–75 covers only `$fakebin` and `$fakebin_pyonly`. If `dt_norp` or `defects_dt` mktemp calls fail mid-sequence (rare but possible in a resource-constrained CI runner), `dt` and `full_dt` would leak because `set -e` would abort before line 76 fires. **Suggested fix**: Update the EXIT trap immediately after each `mktemp -d` call, or create one parent tmpdir with subdirectories so a single cleanup path covers all four directories.
+
+3. - **risk-integration** `skills/design/references/approval-gates.md` — The dedup-sweep instruction and its canonical breadcrumb phrase (`dedup-sweep: removed <N> duplicate line(s) from plan.txt`) are prose-only, and the plan explicitly chose no automated tests ("Documentation-only change. No new tests added"). The existing `scripts/test-design-structure.sh` checks heading structure but not instruction presence; a future edit that accidentally removes or rewrites any of the three Gate B insertions would not fail CI. **Suggested fix**: Add a one-line grep assertion to `test-design-structure.sh` (or a companion check) that verifies `dedup-sweep: removed` appears at least three times in `skills/design/references/approval-gates.md`, making accidental removal of any Gate B insertion fail CI early without introducing new test infrastructure.
+
+---
+
+### Out-of-Scope Observations
+
+No pre-existing issues identified that are not introduced or amplified by this diff.
+
+---
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	latent	correctness	skills/design/scripts/test-read-design-review-budget-invoke.sh:63-70	jq-branch PATH override silently falls through to python3 when jq and python3 share the same directory	On macOS/Homebrew _jq_dir=/usr/local/bin; PATH prepends /usr/local/bin before $fakebin_pyonly so real python3 is found first; read-design-review-budget.sh takes the python3 branch (line 14) and the jq branch (line 32) is never reached; test passes with false jq coverage	After resolving _jq_dir check that 'PATH=... which python3' resolves into $fakebin_pyonly; if not print SKIP: python3 and jq co-located and skip the block instead of silently testing the wrong path
+1	in_scope	nit	correctness	skills/design/scripts/test-read-design-review-budget-invoke.sh:72-76	mktemp dirs dt and full_dt created before final trap update that registers them; set -euo pipefail means abort between lines 72-75 would leave them unregistered	If dt_norp or defects_dt mktemp fails in a resource-constrained CI runner set -e aborts before line 76 trap update and dt/full_dt leak since the active trap at line 40 covers only fakebin/fakebin_pyonly	Update EXIT trap immediately after each mktemp -d or use one parent tmpdir with subdirectories so a single rm -rf covers all
+1	in_scope	latent	risk-integration	skills/design/references/approval-gates.md	Dedup-sweep instruction and breadcrumb contract have no automated CI check; test-design-structure.sh checks heading structure only	A future edit accidentally removing or rewriting any of the three Gate B insertions would not fail CI; the only validation is manual design run observation	Add grep assertion to test-design-structure.sh verifying 'dedup-sweep: removed' appears at least 3 times in approval-gates.md so accidental removal fails CI
+```

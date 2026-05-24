@@ -1,0 +1,11 @@
+### In-Scope Findings
+
+No in-scope security issues found.
+
+The two modified functional files have clean security profiles:
+
+- **`skills/design/references/approval-gates.md`**: Pure documentation-only instruction change to the LLM orchestrator. The dedup-sweep step reads a local file (`plan.txt`) in `$DESIGN_TMPDIR` and uses LLM reasoning — no user-controlled data flows into shell commands, SQL, or templates; no new external communication paths; no auth/secret/crypto surfaces touched. The `plan.txt` content is user-generated and could theoretically contain adversarial prompt-injection content, but this attack surface is pre-existing and identical to all other Gate B plan-processing steps — the dedup sweep does not meaningfully expand it.
+
+- **`skills/design/scripts/test-read-design-review-budget-invoke.sh`**: Test-harness-only code. PATH manipulation for fakebins is intentional and bounded. The `ln -sf "$(command -v jq)"` symlink is safe. No hard-coded credentials, no untrusted input flowing into shell metacharacter-sensitive contexts, no SSRF, no path traversal with user-supplied paths. The `$RANDOM`-based `missing_rp` name collision risk is negligible in a temp directory.
+
+The `larch-logs/implement/3D982BC8...` directory is an intentional `/implement` run-log flush per `docs/run-logs.md` and carries no security-relevant code.

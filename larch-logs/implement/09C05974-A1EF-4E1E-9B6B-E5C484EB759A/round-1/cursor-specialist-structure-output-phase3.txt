@@ -1,0 +1,14 @@
+All three `approval-gates.md` insertion spots are confirmed present and correctly ordered. The test harness is fully visible. I can now write the review.
+
+### In-Scope Findings
+
+- **code-quality** `skills/design/scripts/test-read-design-review-budget-invoke.sh:38-40` — The diff removes the original immediate-trap-after-fakebin pattern (old code installed the trap on the line directly after `fakebin=$(mktemp -d ...)`), replacing it with one deferred past the new `fakebin_pyonly=$(mktemp -d ...)` call. This creates a new leak window for `fakebin`: if line 39 fails or the script receives a fatal signal between lines 38 and 40, `fakebin` is orphaned with no registered cleanup. A second window at lines 72–76 creates four directories (`dt`, `full_dt`, `dt_norp`, `defects_dt`) before the trap is updated to cover them, amplifying the pre-existing two-directory window to four. In practice `mktemp -d` failures are extremely rare, but the diff regresses harness cleanup hygiene on both windows. **Suggested fix:** Register (or extend) the EXIT trap immediately after each `mktemp -d` call — either update the trap in four incremental lines, or collapse the four invoke-test directories into a single parent temp directory so one registered `rm -rf "$parent"` covers all of them.
+
+### Out-of-Scope Observations
+
+No out-of-scope observations.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	nit	code-quality	skills/design/scripts/test-read-design-review-budget-invoke.sh:38-40,72-76	Trap registration deferred past multiple mktemp -d calls, creating new and amplified leak windows	If fakebin_pyonly mktemp fails (line 39), fakebin leaks with no registered trap; four invoke-test dirs (lines 72-75) created before trap update amplifies pre-existing 2-dir window to 4	Register/extend EXIT trap immediately after each mktemp -d call, or use a single parent temp directory so one rm -rf covers all four invoke-test dirs
+```

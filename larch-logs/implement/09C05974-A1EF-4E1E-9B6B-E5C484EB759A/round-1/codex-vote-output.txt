@@ -1,0 +1,7 @@
+FINDING_1: EXONERATE -- Legitimate tiny temp-leak window in an offline harness, but not worth raising given the low impact.
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: EXONERATE -- Prose-only drift risk is real, but adding a regression check for this narrow instruction is more process than the change warrants.
+FINDING_6: EXONERATE -- The stale-file collision is theoretically real but extremely unlikely and not worth raising for this harness.
+FINDING_7: EXONERATE -- The pre-existing two-directory cleanup gap is real but too low-impact to justify a separate GitHub issue.

@@ -1,0 +1,15 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: NO -- positive confirmation that spots are correctly placed; no problem described
+FINDING_4: NO -- positive confirmation that canonical wording is present; no problem described
+FINDING_5: NO -- positive confirmation that scope gate is correct; no problem described
+FINDING_6: NO -- positive confirmation about ec_noroot guard order; no problem described
+FINDING_7: NO -- positive confirmation that new assertions exercise intended branches; no problem described
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: NO -- security assessment confirms no new attack surface; no problem described
+FINDING_11: NO -- security assessment confirms harness is safe; no problem described
+FINDING_12: EXONERATE -- same trap-window concern as FINDING_8 and FINDING_9 combined; legitimate but redundant
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: NO -- OOS finding describes no actual problem; confirms breadcrumb infrastructure is intentionally fine with nothing to file
