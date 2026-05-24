@@ -1,0 +1,25 @@
+# Review Round 1
+
+- Mode: `diff`
+- 2 accepted, 2 rejected (2 exonerated)
+
+## Accepted Findings
+
+### FINDING_1: STATUS prose still describes 12/7 static baseline vs flat 6-slot contract (`check-reviewer-failure-threshold.md:35`)
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-correctness-output.txt, cursor-specialist-testing-output.txt, cursor-specialist-security-output.txt, cursor-specialist-edge-cases-output.txt, cursor-specialist-plan-fidelity-output.txt, dyn-doc-completeness-output.txt, dyn-test-slot-mismatch-output.txt
+- **Severity**: important
+- **Concern**: The STATUS classification paragraph still frames the threshold as whether a legacy **12-slot or 7-slot** static panel failed, while Args/Output/Threshold (and the branch’s intended contract) describe a unified **6-slot** static specialist baseline for both `hard` and `simple`. That makes the doc internally contradictory and can mislead operators or maintainers about what is measured, how to read `COUNTED_SLOTS` vs `INTENDED_SLOTS`, and how to triage panel-failed behavior; dynamic-scout wording should remain clearly outside that static denominator.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt, cursor-specialist-correctness-output.txt, cursor-specialist-testing-output.txt, cursor-specialist-security-output.txt, cursor-specialist-edge-cases-output.txt, cursor-specialist-plan-fidelity-output.txt: Address the concern above.
+  - From dyn-doc-completeness-output.txt: **correctness** `skills/review/scripts/check-reviewer-failure-threshold.md:35` — The **STATUS classification** paragraph still says the threshold answers whether the **baseline 12-slot or 7-slot** panel failed, while the same file’s Args/Output/Threshold sections were updated to a **flat 6-slot** model. That leaves the sibling doc internally contradictory and misstates what the script measures after the branch change. **Suggested fix:** Rewrite the closing clause to describe the **6-slot static specialist baseline for both `hard` and `simple`** (or neutral wording like “the static specialist panel”), and keep the contrast with optional dynamic scouts.
+  - From dyn-test-slot-mismatch-output.txt: **correctness** `skills/review/scripts/check-reviewer-failure-threshold.md:35` — After the branch updates Args, Output, and Threshold to a flat **6**-slot panel, the STATUS classification paragraph still says the script answers whether the baseline **12-slot or 7-slot** panel failed, which contradicts the new contract and can mislead anyone tuning collectors or interpreting `COUNTED_SLOTS` vs `INTENDED_SLOTS`. **Suggested fix:** Rewrite that clause so it refers to the same **6**-slot static specialist baseline for both panels (keeping the point that dynamic scouts are out of scope for that question).
+
+
+### FINDING_3: SIMPLE harness still uses seven-record fixtures and `--launched-slots 7` against a six-slot intended model (`test-check-reviewer-failure-threshold.sh`)
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-correctness-output.txt, cursor-specialist-edge-cases-output.txt
+- **Severity**: latent
+- **Concern**: Harness paths still use **seven** collector records and/or **`--launched-slots 7`** with labels like “2 of 7” / “4 of 7” while `INTENDED_SLOTS` is **6**, so expectations can depend on **never-launched** clamping rather than mirroring production dispatch; maintainers may assume seven static SIMPLE slots or that launched-slots must exceed intended. Clarifying labels vs aligning launched-slots/record counts to six addresses the drift risk.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt, cursor-specialist-correctness-output.txt, cursor-specialist-edge-cases-output.txt: Address the concern above.
+
+

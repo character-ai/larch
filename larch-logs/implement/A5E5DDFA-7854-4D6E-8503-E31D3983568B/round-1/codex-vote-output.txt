@@ -1,0 +1,9 @@
+FINDING_1: YES
+FINDING_2: EXONERATE -- The wording is loose but still describes covered boundary categories, so this is too minor to require another change.
+FINDING_3: YES
+FINDING_4: EXONERATE -- Existing cases already cover the denominator regression and NOT_SUBSTANTIVE counting separately; a combined case adds little value.
+OOS_1: EXONERATE -- Dead `--round-num` parsing was intentionally preserved for caller compatibility and is not worth a follow-up issue.
+OOS_2: EXONERATE -- The run-log files appear to be intentional workflow artifacts documented by repo policy, not a concrete bug.
+OOS_3: YES
+OOS_4: EXONERATE -- The echo text is slightly stale but too minor to warrant a separate issue.
+OOS_5: NO -- This is an explanatory note confirming intended denominator behavior, not a bug or follow-up-worthy problem.

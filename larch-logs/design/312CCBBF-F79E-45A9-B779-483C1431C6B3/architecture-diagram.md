@@ -2,7 +2,7 @@
 
 ```mermaid
 graph TD
-  subgraph design_orch[/design SKILL.md]
+  subgraph design_orch["/design SKILL.md"]
     A0[Step 0a session-setup]
     A1[Step 0b clarify exit]
     A2[Step 0b already-planned cancel]
@@ -14,7 +14,7 @@ graph TD
     A8[Step 2b.5 Split-path exclusion]
   end
 
-  subgraph implement_orch[/implement SKILL.md]
+  subgraph implement_orch["/implement SKILL.md"]
     B1[Step 17 write-final-report --print-stdout]
     B2[Step 18 write-final-report silent refresh]
     B3[Step 18 chat-tail DELETED]

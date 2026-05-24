@@ -34,17 +34,9 @@ case "$ROUND_NUM" in ''|*[!0-9]*) larch_err "check-reviewer-failure-threshold.sh
 ROUND_NUM=$((10#$ROUND_NUM))
 (( ROUND_NUM > 0 )) || { larch_err "check-reviewer-failure-threshold.sh: --round-num must be a positive integer"; exit 2; }
 
-# Intended static panel size is round-aware because Codex reviewer slots are
-# intentionally omitted after round 1. Dynamic scout reviewers are excluded
-# from the threshold denominator and should not affect the static panel result.
-if (( ROUND_NUM == 1 )); then
-    case "$PANEL" in
-        hard)   STATIC_INTENDED_SLOTS=12 ;;
-        simple) STATIC_INTENDED_SLOTS=7  ;;
-    esac
-else
-    STATIC_INTENDED_SLOTS=6
-fi
+# Both panels use 6 Cursor specialist slots only (Codex removed in #2449).
+# Dynamic scout reviewers are excluded from the threshold denominator and should not affect the static panel result.
+STATIC_INTENDED_SLOTS=6
 INTENDED_SLOTS=$STATIC_INTENDED_SLOTS
 
 is_dynamic_reviewer_basename() {
@@ -117,7 +109,7 @@ if [[ -n "$LAUNCHED_SLOTS" ]]; then
     FAILED_SLOTS=$(( FAILED_SLOTS + NEVER_LAUNCHED ))
 fi
 
-# Threshold: >50% of intended panel size. HARD=12 → fail if >6. SIMPLE=7 → fail if >3.
+# Threshold: >50% of intended panel size. 6 slots → fail if >3 (HALF_PLUS_ONE_MIN=4).
 HALF_PLUS_ONE_MIN=$(( INTENDED_SLOTS / 2 + 1 ))
 THRESHOLD_OK=true
 THRESHOLD_REASON=""
