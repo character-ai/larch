@@ -118,33 +118,22 @@ Verbosity suppression is prompt-enforced and best-effort; may degrade in very lo
 
 ## Rebase Checkpoint Macro
 
-Standardizes the four post-step rebase checkpoints (Steps 1.r, 4.r, 7.r, 7a.r). Call sites invoke with `<step-prefix>` and `<short-name>`. Step 7.r's `FILES_CHANGED=true` guard stays at the call site — the macro owns HOW to rebase and report; call sites own WHETHER.
+Standardizes the four post-step rebase checkpoints (Steps 1.r, 4.r, 7.r, 7a.r). Step 7.r's `FILES_CHANGED=true` guard stays at the call site — `scripts/rebase-checkpoint-probe.sh` owns **how** to rebase, emit machine-readable outcomes, and run the bundled post-rebase phantom probe; call sites own **whether** to invoke the wrapper at all.
 
-**Invocation form** (exact, one line per call site): `Apply the Rebase Checkpoint Macro with <step-prefix>=<X> and <short-name>=<Y>.`
+**Thin implementation** — `${CLAUDE_PLUGIN_ROOT}/scripts/rebase-checkpoint-probe.sh` (full argv, exit codes, and KV grammar: `scripts/rebase-checkpoint-probe.md`). Each checkpoint is **one foreground Bash invocation** per Call-site registry row (foreground markers + denylist: `scripts/lint-foreground-markers.sh`).
 
 **Registry identifiers:** `1.r` / `1.m` remain stable macro `<step-prefix>` tokens listed in `skills/implement/scripts/step-name-registry.tsv`; they label internal rebase checkpoints, not standalone orchestrator steps after plan materialization folded into Step 0.
 
-**Procedure** (M1-M3 labels avoid collision with outer Step 0-18 numbering):
+**Orchestrator contract — parse the wrapper stdout** (token-aware KV scan; multiple `KEY=value` tokens per line allowed — mirror Step 5-style parsing):
 
-- **M1 — Run rebase**:
-```bash
-if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
-  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
-fi
-export CLAUDE_PLUGIN_ROOT
-${CLAUDE_PLUGIN_ROOT}/scripts/rebase-push.sh --no-push --skip-if-pushed --keep-on-conflict [--base-remote upstream --base-ref main when forked_target=true]
-```
-  Capture stdout and exit code as `rc`.
+1. Run the foreground `rebase-checkpoint-probe.sh` invocation and capture its stdout as the contract stream (stderr is normally empty; FINDING_1 combined-stream rules live in `scripts/rebase-checkpoint-probe.md`).
+2. Branch on the process exit code **and** `REBASE_OUTCOME=` / `REBASE_ERROR=` / `CONFLICT_FILES=` keys emitted on stdout:
+   - **Exit 1 (`REBASE_OUTCOME=conflict`)** — print `🔃 <step-prefix>: <short-name> | rebase — conflict detected, invoking Conflict Resolution Procedure (caller_kind=early_rebase)`. Parse `CONFLICT_FILES=<comma-separated list>` from the captured stdout; `--keep-on-conflict` leaves the rebase in progress so this list is authoritative for Phase 1. (If the line is missing — defensive only — fall back to `git diff --name-only --diff-filter=U` to enumerate the in-progress rebase's unmerged paths.) **MANDATORY — READ ENTIRE FILE** before executing the Conflict Resolution Procedure: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/conflict-resolution.md`. Invoke the Conflict Resolution Procedure with `caller_kind=early_rebase` and the parsed `CONFLICT_FILES`. On success, continue. On hard failure, the procedure runs `${CLAUDE_PLUGIN_ROOT}/scripts/git-rebase-abort.sh`, sets `STALL_TRACKING=true` (signals Step 18 to rename the tracking issue to `[STALLED]` — see "Title-prefix lifecycle" below), and skips to Step 18.
+   - **Exit 3 (`REBASE_OUTCOME=failed`)** — read `REBASE_ERROR=...` from the same stdout capture. If the value begins with `unexpected-rc-` (FINDING_9 prefix — non-1/3 non-zero exits rewritten by the wrapper), print `**⚠ Rebase onto main failed unexpectedly (exit $rc). Bailing to cleanup.**` (derive the numeric exit token from the suffix after `unexpected-rc-` when present; otherwise use the process exit code), set `STALL_TRACKING=true`, and skip to Step 18. **Otherwise** (non-conflict rebase failure — fetch error, detached HEAD, etc.): print `**⚠ Rebase onto main failed (non-conflict): $REBASE_ERROR. Bailing to cleanup.**`, set `STALL_TRACKING=true`, and skip to Step 18.
+   - **Other non-zero exit** — the wrapper emits `REBASE_OUTCOME=failed` + `REBASE_ERROR=unexpected-rc-<n>` then re-exits with the original code: print `**⚠ Rebase onto main failed unexpectedly (exit $rc). Bailing to cleanup.**`, set `STALL_TRACKING=true`, and skip to Step 18 (same bail copy as the `unexpected-rc-` branch — parse the suffix after `unexpected-rc-` from `REBASE_ERROR` when present).
+   - **Exit 0 (`REBASE_OUTCOME=ok` or `skipped`)** — on the captured stdout, check `SKIPPED_ALREADY_PUSHED=true` **before** `SKIPPED_ALREADY_FRESH=true` (wrapper preserves `rebase-push.sh` precedence). If either skip marker is present, silently continue; otherwise continue. Phantom tail KVs (`PHANTOM_*`) may trail on the same stream — treat them as advisory per the **Phantom Untracked Probe** pointer (`PHANTOM_APPEND_WARN_ERROR` is already surfaced by the wrapper when warn-append fails).
 
-- **M2 — On non-zero exit**, branch on `rc`:
-  - **Exit 1** (rebase conflict): print `🔃 <step-prefix>: <short-name> | rebase — conflict detected, invoking Conflict Resolution Procedure (caller_kind=early_rebase)`. Parse `CONFLICT_FILES=<comma-separated list>` from M1's captured stdout; `--keep-on-conflict` leaves the rebase in progress so this list is authoritative for Phase 1. (If the line is missing — defensive only — fall back to `git diff --name-only --diff-filter=U` to enumerate the in-progress rebase's unmerged paths.) **MANDATORY — READ ENTIRE FILE** before executing the Conflict Resolution Procedure: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/conflict-resolution.md`. Invoke the Conflict Resolution Procedure with `caller_kind=early_rebase` and the parsed `CONFLICT_FILES`. On success, continue to M3. On hard failure, the procedure runs `${CLAUDE_PLUGIN_ROOT}/scripts/git-rebase-abort.sh`, sets `STALL_TRACKING=true` (signals Step 18 to rename the tracking issue to `[STALLED]` — see "Title-prefix lifecycle" below), and skips to Step 18.
-  - **Exit 3** (non-conflict rebase failure — fetch error, detached HEAD, etc.; `REBASE_ERROR=...` printed on stderr): print `**⚠ Rebase onto main failed (non-conflict): $REBASE_ERROR. Bailing to cleanup.**`, set `STALL_TRACKING=true`, and skip to Step 18.
-  - **Other non-zero exit**: print `**⚠ Rebase onto main failed unexpectedly (exit $rc). Bailing to cleanup.**`, set `STALL_TRACKING=true`, and skip to Step 18.
-
-- **M3 — On success**, branch on stdout (check `SKIPPED_ALREADY_PUSHED` BEFORE `SKIPPED_ALREADY_FRESH` — `rebase-push.sh` exits early on already-pushed before fetch):
-  - If stdout contains `SKIPPED_ALREADY_PUSHED=true`: silently continue.
-  - If stdout contains `SKIPPED_ALREADY_FRESH=true`: silently continue.
-  - Otherwise, continue.
+**STALL_TRACKING**: the wrapper does **not** set `STALL_TRACKING`; the orchestrator sets it only on the bail branches above.
 
 **Call-site registry** (the four authorized instantiations; `scripts/test-implement-rebase-macro.sh` pins these rows):
 
@@ -423,65 +412,21 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 
 ## Phantom Untracked Probe
 
-At selected `/implement` boundaries, detect non-ignored untracked files that
-appeared after the Step 0 tracking adoption session baseline. This is advisory only: phantoms
-are logged to Execution Issues, never cleaned automatically.
+At selected `/implement` boundaries, detect non-ignored untracked files that appeared after the Step 0 tracking adoption session baseline. This is advisory only: phantoms are logged to Execution Issues, never cleaned automatically.
 
-Call form:
+**Thin implementation** — shared logic lives in `${CLAUDE_PLUGIN_ROOT}/scripts/lib-phantom-probe.sh` (`phantom_probe_with_warn`; see `scripts/lib-phantom-probe.md`). Runtime entrypoints:
 
-```bash
-if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
-  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
-fi
-export CLAUDE_PLUGIN_ROOT
-PHANTOM_OUT=$("${CLAUDE_PLUGIN_ROOT}/scripts/check-phantom-dirty.sh" \
-  --baseline "$IMPLEMENT_TMPDIR/untracked-baseline.z" \
-  --step <step-id> \
-  --phantom-paths-dir "$IMPLEMENT_TMPDIR")
-```
+- **Combined (4 sites)** — post-rebase probe is bundled into `${CLAUDE_PLUGIN_ROOT}/scripts/rebase-checkpoint-probe.sh` for Steps **1.r**, **4.r**, **7.r**, and **7a.r** (uniform `<step-prefix>-post-rebase` tokens such as `1.r-post-rebase`; see `scripts/rebase-checkpoint-probe.md`). **Do not** duplicate `${CLAUDE_PLUGIN_ROOT}/scripts/check-phantom-dirty.sh` / `${CLAUDE_PLUGIN_ROOT}/scripts/append-execution-issue.sh` call blocks after those checkpoints — that would double-invoke the probe.
+- **Standalone (2 sites)** — `phantom-probe-with-warn.sh --step <token>` (path: `${CLAUDE_PLUGIN_ROOT}/scripts/phantom-probe-with-warn.sh`) for **Step 2 post-dispatch** (`2-post-dispatch`) and **Step 8 pre-bump** (`8-pre-bump`) only (`scripts/phantom-probe-with-warn.md`).
 
-Parse `STATUS`, `REASON`, `PHANTOM_COUNT`, and `PHANTOM_PATHS_FILE` without
-`eval`/`source`. On `STATUS=phantom`, append this Warnings entry and continue:
+**6 sites total** per run: four combined post-rebase probes (including the uniform `1.r-post-rebase` site) plus the two standalone invocations above.
 
-```bash
-if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
-  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
-fi
-export CLAUDE_PLUGIN_ROOT
-"${CLAUDE_PLUGIN_ROOT}/scripts/append-execution-issue.sh" \
-  --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
-  --category Warnings \
-  --entry "- **Step <step-id> — phantom untracked files:** $PHANTOM_COUNT file(s) appeared since session baseline (inspect $IMPLEMENT_TMPDIR/phantom-paths-<step-id>.z locally)"
-```
+**Orchestrator parsing** — token-scan the probe tail for `PHANTOM_STATUS`, optional `PHANTOM_REASON`, `PHANTOM_COUNT`, `PHANTOM_PATHS_FILE`, and optional `PHANTOM_APPEND_WARN_ERROR` (warn-append failure already logged by the wrapper — treat as advisory telemetry). Do **not** `eval`/`source` captured lines.
 
-On `STATUS=unknown`, append this Warnings entry and continue:
-
-```bash
-if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
-  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
-fi
-export CLAUDE_PLUGIN_ROOT
-"${CLAUDE_PLUGIN_ROOT}/scripts/append-execution-issue.sh" \
-  --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
-  --category Warnings \
-  --entry "- **Step <step-id> — phantom detection inconclusive:** STATUS=unknown REASON=${REASON:-unknown}"
-```
-
-If `append-execution-issue.sh` fails at a probe site, log a secondary Warnings
-entry if possible (`Step <step-id> — phantom warning append failed: <ERROR>`)
-and continue. On `STATUS=clean` or `STATUS=tracked-only`, continue silently.
-
-Probe locations:
-- After Step 2 dispatch returns on the external-implementer `STATUS=complete`
-  path only: `--step 2-post-dispatch`. Do not probe when
-  `STATUS=claude_fallback`; Claude-fallback implementation files are
-  uncommitted until Step 4. On the same `STATUS=complete` path, after this
-  probe, the orchestrator runs the Section 2.2 post-dispatch branch assertion
-  (`git-current-branch.sh` vs Step 1 `BRANCH_NAME`) before Step 3.
-- After Step 4.r: `--step 4.r-post-rebase`.
-- After Step 7.r, only when `FILES_CHANGED=true`: `--step 7.r-post-rebase`.
-- After Step 7a.r: `--step 7a.r-post-rebase`.
-- Immediately before `ship-pr.sh` first invocation (Step 8+ entry): `--step 8-pre-bump`.
+**Probe locations (registry)**:
+- After Step 2 dispatch returns on the external-implementer `STATUS=complete` path only: `--step 2-post-dispatch` via `phantom-probe-with-warn.sh`. Do not probe when `STATUS=claude_fallback`; Claude-fallback implementation files are uncommitted until Step 4. On the same `STATUS=complete` path, after this probe, the orchestrator runs the Section 2.2 post-dispatch branch assertion (`git-current-branch.sh` vs Step 1 `BRANCH_NAME`) before Step 3.
+- After Step 1.r / 4.r / 7.r / 7a.r `rebase-checkpoint-probe.sh` returns on the success path: phantom handling is **inside** the wrapper (`1.r-post-rebase`, `4.r-post-rebase`, `7.r-post-rebase`, `7a.r-post-rebase`).
+- Immediately before `ship-pr.sh` first invocation (Step 8+ entry): `--step 8-pre-bump` via `phantom-probe-with-warn.sh`.
 
 There is intentionally no post-Step-6 probe. When `FILES_CHANGED=true`,
 review-created files are legitimately untracked until Step 7 commits them; a
@@ -928,7 +873,23 @@ Routing consequence: the Step 2 dispatcher receives the resolved `--coder` value
 
 Every path that reaches Step 2 leads here first.
 
-Apply the Rebase Checkpoint Macro with `<step-prefix>=1.r` and `<short-name>=plan materialization`.
+**⚠ Foreground required — do NOT set `run_in_background: true`.**
+
+```bash
+if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
+  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
+fi
+export CLAUDE_PLUGIN_ROOT
+export LARCH_QUIET_BREADCRUMBS=1
+# Foreground required: see BASH_AUTHORING.md §4
+BASE_ARGS=()
+if [ "${forked_target:-false}" = "true" ]; then
+  BASE_ARGS=(--base-remote upstream --base-ref main)
+fi
+"${CLAUDE_PLUGIN_ROOT}/scripts/rebase-checkpoint-probe.sh" 1.r 'plan materialization' "${BASE_ARGS[@]+"${BASE_ARGS[@]}"}"
+```
+
+Then apply the **Rebase Checkpoint Macro** orchestrator routing from the `## Rebase Checkpoint Macro` section using `<step-prefix>=1.r` and `<short-name>=plan materialization` (parse `REBASE_OUTCOME` / phantom tail KVs from the captured stdout; set `STALL_TRACKING` only on bail branches).
 
 <!-- step:2 — Implement the Feature -->
 
@@ -1032,7 +993,21 @@ If any check fails, synthesize an orchestrator-local bail: set `STATUS=bailed`, 
 
 **2.2 — Branch on `STATUS`**:
 
-- `STATUS=complete` → set `$MANIFEST_PATH=$MANIFEST`, run the Phantom Untracked Probe with `--step 2-post-dispatch`, then run **post-dispatch branch assertion** (external-implementer path only): `${CLAUDE_PLUGIN_ROOT}/scripts/git-current-branch.sh` — parse `BRANCH=<name>` into `CURRENT_BRANCH_POST_DISPATCH`. Compare to the `BRANCH_NAME` value from Step 1's issue-anchored capture (§ "Capture branch name (`BRANCH_NAME`)"). If the script exits non-zero (detached HEAD / not in a git work tree) or `CURRENT_BRANCH_POST_DISPATCH` is not byte-identical to `BRANCH_NAME`, print `**⚠ /implement Step 2: post-dispatch branch mismatch (expected $BRANCH_NAME).**`, append a `Warnings` bullet to `$IMPLEMENT_TMPDIR/execution-issues.md` via `${CLAUDE_PLUGIN_ROOT}/scripts/append-execution-issue.sh` describing `main-branch-post-dispatch` (expected vs observed; sanitize session-derived strings), set `FINAL_BAIL_REASON=main-branch-post-dispatch` and `STALL_TRACKING=true`, and bail to Step 12d without consuming Step 3 onward. Otherwise proceed to Step 3. Steps 4 / 8a / 9a / 9a.1 read this manifest; the orchestrator does not run `git diff` to figure out what changed. The Phantom Untracked Probe runs only on the external-implementer complete path, after the dispatcher has committed; do not run it on `STATUS=claude_fallback`.
+- `STATUS=complete` → set `$MANIFEST_PATH=$MANIFEST`, then run the Phantom Untracked Probe (`2-post-dispatch`) as one foreground Bash invocation:
+
+**⚠ Foreground required — do NOT set `run_in_background: true`.**
+
+```bash
+if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
+  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
+fi
+export CLAUDE_PLUGIN_ROOT
+export LARCH_QUIET_BREADCRUMBS=1
+# Foreground required: see BASH_AUTHORING.md §4
+"${CLAUDE_PLUGIN_ROOT}/scripts/phantom-probe-with-warn.sh" --step 2-post-dispatch
+```
+
+Parse `PHANTOM_*` KVs from stdout per **Phantom Untracked Probe** (advisory), then run **post-dispatch branch assertion** (external-implementer path only): `${CLAUDE_PLUGIN_ROOT}/scripts/git-current-branch.sh` — parse `BRANCH=<name>` into `CURRENT_BRANCH_POST_DISPATCH`. Compare to the `BRANCH_NAME` value from Step 1's issue-anchored capture (§ "Capture branch name (`BRANCH_NAME`)"). If the script exits non-zero (detached HEAD / not in a git work tree) or `CURRENT_BRANCH_POST_DISPATCH` is not byte-identical to `BRANCH_NAME`, print `**⚠ /implement Step 2: post-dispatch branch mismatch (expected $BRANCH_NAME).**`, append a `Warnings` bullet to `$IMPLEMENT_TMPDIR/execution-issues.md` via `${CLAUDE_PLUGIN_ROOT}/scripts/append-execution-issue.sh` describing `main-branch-post-dispatch` (expected vs observed; sanitize session-derived strings), set `FINAL_BAIL_REASON=main-branch-post-dispatch` and `STALL_TRACKING=true`, and bail to Step 12d without consuming Step 3 onward. Otherwise proceed to Step 3. Steps 4 / 8a / 9a / 9a.1 read this manifest; the orchestrator does not run `git diff` to figure out what changed. The probe runs only on the external-implementer complete path, after the dispatcher has committed; do not run it on `STATUS=claude_fallback`.
 - `STATUS=needs_qa` → run the Q/A loop in 2.3. Note: the dispatcher may have repaired a non-standard `qa-pending.json` (e.g., `items[]` → `questions[]`) before emitting this status; the Q/A loop always reads canonical `questions[]` format from `$QA_PENDING`.
 - `STATUS=claude_fallback` (with `ORCHESTRATOR_EDIT_AUTHORITY=allowed`, validated mechanically in 2.1.5) → run the Claude-fallback branch in 2.4. If `ORCHESTRATOR_EDIT_AUTHORITY != allowed`, treat as envelope failure per 2.1.5 (do NOT enter 2.4).
 
@@ -1149,10 +1124,23 @@ Commit message describes WHAT was implemented and WHY, not HOW.
 
 ### Rebase onto latest main (after implementation commit)
 
-Apply the Rebase Checkpoint Macro with `<step-prefix>=4.r` and `<short-name>=commit (impl)`.
+**⚠ Foreground required — do NOT set `run_in_background: true`.**
 
-After the macro returns successfully or silently skips, run the Phantom
-Untracked Probe with `--step 4.r-post-rebase`.
+```bash
+if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
+  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
+fi
+export CLAUDE_PLUGIN_ROOT
+export LARCH_QUIET_BREADCRUMBS=1
+# Foreground required: see BASH_AUTHORING.md §4
+BASE_ARGS=()
+if [ "${forked_target:-false}" = "true" ]; then
+  BASE_ARGS=(--base-remote upstream --base-ref main)
+fi
+"${CLAUDE_PLUGIN_ROOT}/scripts/rebase-checkpoint-probe.sh" 4.r 'commit (impl)' "${BASE_ARGS[@]+"${BASE_ARGS[@]}"}"
+```
+
+Then apply the **Rebase Checkpoint Macro** orchestrator routing from the `## Rebase Checkpoint Macro` section using `<step-prefix>=4.r` and `<short-name>=commit (impl)` (phantom probe for `4.r-post-rebase` is already inside the wrapper — parse `PHANTOM_*` from the same stdout capture).
 
 > **Continue to Step 5 IMMEDIATELY.** The implementation commit is not the end of the run — code review, checks (2), commit, code flow diagram, bump, and PR still must run.
 
@@ -1341,12 +1329,23 @@ If no files changed, skip. Note: `review-and-fix.sh` commits each round's accept
 
 Only if `FILES_CHANGED=true` from Step 6 (Step 7 created a commit). If Steps 6–7 were skipped, skip this rebase — the pre-Step-8 rebase provides the safety net.
 
-Apply the Rebase Checkpoint Macro with `<step-prefix>=7.r` and `<short-name>=commit (review)`.
+**⚠ Foreground required — do NOT set `run_in_background: true`.**
 
-After the macro returns successfully or silently skips, run the Phantom
-Untracked Probe with `--step 7.r-post-rebase`. This probe is inside the
-`FILES_CHANGED=true` guard with the Step 7.r rebase; if Steps 6-7 were skipped,
-do not run it.
+```bash
+if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
+  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
+fi
+export CLAUDE_PLUGIN_ROOT
+export LARCH_QUIET_BREADCRUMBS=1
+# Foreground required: see BASH_AUTHORING.md §4
+BASE_ARGS=()
+if [ "${forked_target:-false}" = "true" ]; then
+  BASE_ARGS=(--base-remote upstream --base-ref main)
+fi
+"${CLAUDE_PLUGIN_ROOT}/scripts/rebase-checkpoint-probe.sh" 7.r 'commit (review)' "${BASE_ARGS[@]+"${BASE_ARGS[@]}"}"
+```
+
+Then apply the **Rebase Checkpoint Macro** orchestrator routing from the `## Rebase Checkpoint Macro` section using `<step-prefix>=7.r` and `<short-name>=commit (review)` (phantom probe for `7.r-post-rebase` is already inside the wrapper on this `FILES_CHANGED=true` path; if Steps 6–7 were skipped, skip this entire subsection — including the Bash fence above).
 
 <!-- step:7a — Code Flow Diagram -->
 
@@ -1435,10 +1434,23 @@ On non-zero exit, log `Step 7a — larch:diagrams upsert failed` to `Tool Failur
 
 Safety net before version bump. `--skip-if-pushed` short-circuits this when the branch is already on origin; Step 8b (a separate inline rebase that does NOT use `--skip-if-pushed`) ensures already-pushed branches still rebase onto fresh main right before PR creation, with Step 12 remaining the last-chance enforcement at merge time.
 
-Apply the Rebase Checkpoint Macro with `<step-prefix>=7a.r` and `<short-name>=diagrams`.
+**⚠ Foreground required — do NOT set `run_in_background: true`.**
 
-After the macro returns successfully or silently skips, run the Phantom
-Untracked Probe with `--step 7a.r-post-rebase`.
+```bash
+if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
+  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
+fi
+export CLAUDE_PLUGIN_ROOT
+export LARCH_QUIET_BREADCRUMBS=1
+# Foreground required: see BASH_AUTHORING.md §4
+BASE_ARGS=()
+if [ "${forked_target:-false}" = "true" ]; then
+  BASE_ARGS=(--base-remote upstream --base-ref main)
+fi
+"${CLAUDE_PLUGIN_ROOT}/scripts/rebase-checkpoint-probe.sh" 7a.r 'diagrams' "${BASE_ARGS[@]+"${BASE_ARGS[@]}"}"
+```
+
+Then apply the **Rebase Checkpoint Macro** orchestrator routing from the `## Rebase Checkpoint Macro` section using `<step-prefix>=7a.r` and `<short-name>=diagrams` (phantom probe for `7a.r-post-rebase` is already inside the wrapper).
 
 > **Continue to Step 8 IMMEDIATELY.** Step 7a diagrams are not the end of the run — version bump, PR creation, CI monitoring, and merge still must run.
 
@@ -1523,7 +1535,25 @@ In `scripts/refresh-run-logs.sh`, on each retry (CI failure, merge conflict, reb
 
 Steps 8, 8a, 8b, 9, 10, 11, 12, 13.5, and 14 are mechanically delegated to `${CLAUDE_PLUGIN_ROOT}/scripts/ship-pr.sh`. Step 6 relevant checks remain documented above for prompt-side review-change handling, but the delegated state machine reruns the Step 6 helper as its first phase so resumed post-review runs have one deterministic entrypoint. Step 16, Step 17, and Step 18 remain prompt-side because they replay rejected findings, final notes, and the terminal token/timing cap.
 
-`ship-pr.sh`'s argv-init mode populates these on-disk state keys on cold start (consult `scripts/ship-pr.md` § State-File Argv Init for the authoritative argv contract). Informational echo of the key set:
+Immediately before the first `ship-pr.sh` foreground invocation below, run the **8-pre-bump** Phantom Untracked Probe (one foreground Bash call):
+
+**⚠ Foreground required — do NOT set `run_in_background: true`.**
+
+```bash
+if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
+  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
+fi
+export CLAUDE_PLUGIN_ROOT
+export LARCH_QUIET_BREADCRUMBS=1
+# Foreground required: see BASH_AUTHORING.md §4
+"${CLAUDE_PLUGIN_ROOT}/scripts/phantom-probe-with-warn.sh" --step 8-pre-bump
+```
+
+Parse `PHANTOM_*` KVs from stdout per **Phantom Untracked Probe** (advisory).
+
+`ship-pr.sh`'s argv-init mode populates these on-disk state keys on cold start (consult `scripts/ship-pr.md` § State-File Argv Init for the authoritative argv contract).
+
+Before invoking the script, write `$IMPLEMENT_TMPDIR/ship-pr-state.sh` with uppercase `KEY=value` records only. Required keys:
 
 - `PHASE=checks`, `BRANCH_NAME`, `ISSUE_NUMBER`, `RUN_ID`, `REPO`, `REPO_UNAVAILABLE`, `FORKED_TARGET`
 - `HAS_BUMP=true`, `BUMP_TYPE=NONE`, `NEW_VERSION=`, `MERGE`, `DRAFT`, `DEFERRED`
