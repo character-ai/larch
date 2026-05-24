@@ -1,7 +1,7 @@
 ## Plan
 
 ```bash
-scripts/launch-claude-review.sh --context-files ballot.md
+skills/design/scripts/fixtures/validate-plan-commands/demo-stdout-help.sh --unknown-flag value
 ```
 
 diff_lines: 1

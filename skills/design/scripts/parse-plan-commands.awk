@@ -1,8 +1,9 @@
 # parse-plan-commands.awk — invoked by parse-plan-commands.sh (-v REPO_ROOT -v PLUGIN_ROOT)
 BEGIN {
     FS = ""
-    header = "row_type\tsource_line\tscript_path\tflag\tflag_value\tnote"
+    header = "row_type\tsource_line\tscript_path\tflag\tflag_value\tnote\tcmd_uid"
     print header
+    CMD_UID = 0
     in_fence = 0
     fence_lang = ""
     fence_start = 0
@@ -26,11 +27,11 @@ function bad_field(s) {
 function emit_parse_note(line, reason,   r) {
     r = tsv_escape(reason)
     if (bad_field(r)) {
-        print "parse_note\t" line "\t\t\t\tcharset-violation" > "/dev/stderr"
-        print "parse_note\t" line "\t\t\t\tcharset-violation"
+        print "parse_note\t" line "\t\t\tcharset-violation\t" > "/dev/stderr"
+        print "parse_note\t" line "\t\t\tcharset-violation\t"
         return
     }
-    print "parse_note\t" line "\t\t\t\t" r
+    print "parse_note\t" line "\t\t\t" r "\t"
 }
 
 function emit_new_script(path, line,   p) {
@@ -39,7 +40,7 @@ function emit_new_script(path, line,   p) {
         emit_parse_note(line, "allowlist-path-charset")
         return
     }
-    print "new_script\t" line "\t" p "\t\t\t"
+    print "new_script\t" line "\t" p "\t\t\t\t"
 }
 
 function emit_updated_flag(path, flag, line,   p, f) {
@@ -49,7 +50,7 @@ function emit_updated_flag(path, flag, line,   p, f) {
         emit_parse_note(line, "allowlist-charset")
         return
     }
-    print "updated_flag\t" line "\t" p "\t" f "\t\t"
+    print "updated_flag\t" line "\t" p "\t" f "\t\t\t"
 }
 
 function strip_md_ticks(s,   t) {
@@ -164,22 +165,23 @@ function process_fence_buffer(start_line, text,   phys, nphys, i, piece, ns, j, 
     if (text == "") return
     text = join_continuations(text)
     nphys = split(text, phys, /\n/)
-    nphys = strip_heredoc_multiline(phys, nphys, PHYSOUT)
+    nphys = strip_heredoc_multiline(phys, nphys, PHYSOUT, start_line)
     for (i = 1; i <= nphys; i++) {
         piece = PHYSOUT[i]
         if (piece == "") continue
+        phys_fnr = start_line + i
         ns = split_segments(piece, SEGS)
         for (j = 1; j <= ns; j++) {
             seg = SEGS[j]
             gsub(/^[[:space:]]+|[[:space:]]+$/, "", seg)
             if (seg == "") continue
-            parse_command_segment(start_line, j - 1, seg)
+            parse_command_segment(phys_fnr, j - 1, seg)
         }
     }
 }
 
 # Remove heredoc bodies from physical lines; fill out[1..return]
-function strip_heredoc_multiline(phys, n, out,   i, line, pos, delim, c, rest, j, pre) {
+function strip_heredoc_multiline(phys, n, out, fence_start,   i, line, pos, delim, c, rest, j, pre, qend) {
     j = 0
     for (i = 1; i <= n; i++) {
         line = phys[i]
@@ -202,8 +204,14 @@ function strip_heredoc_multiline(phys, n, out,   i, line, pos, delim, c, rest, j
             c = index(substr(rest, 2), "'")
             if (c > 0) delim = substr(rest, 2, c - 1)
         } else if (substr(rest, 1, 1) == "\"") {
-            while (i <= n) i++
-            continue
+            qend = index(substr(rest, 2), "\"")
+            if (qend == 0) {
+                emit_parse_note(fence_start + i, "heredoc-unterminated-quote")
+                j++
+                out[j] = line
+                continue
+            }
+            delim = substr(rest, 2, qend - 1)
         } else {
             if (match(rest, /^[A-Za-z0-9_]+/)) {
                 delim = substr(rest, RSTART, RLENGTH)
@@ -346,7 +354,7 @@ function shift_tok(TOK, nt,   j) {
     return nt - 1
 }
 
-function parse_command_segment(start_line, cmd_idx, seg, TOK, nt, t, script, note, k, fl, fv, eq, nf, nxt) {
+function parse_command_segment(start_line, cmd_idx, seg, TOK, nt, t, script, uid, k, fl, fv, eq, nf, nxt) {
     if (index(seg, "$(") > 0) {
         emit_parse_note(start_line, "subshell")
         return
@@ -360,7 +368,6 @@ function parse_command_segment(start_line, cmd_idx, seg, TOK, nt, t, script, not
         return
     }
     nt = tokenize(seg, TOK)
-    note = sprintf("c%d", cmd_idx)
     for (;;) {
         if (nt <= 0) return
         t = normalize_token(TOK[1])
@@ -385,10 +392,15 @@ function parse_command_segment(start_line, cmd_idx, seg, TOK, nt, t, script, not
     if (nt <= 0) return
     script = normalize_token(TOK[1])
     if (script == "" || substr(script, 1, 1) == "-") return
+    if (index(script, "..") > 0 || substr(script, 1, 1) == "/") {
+        emit_parse_note(start_line, "non-canonical-script-path")
+        return
+    }
     if (bad_field(script)) {
         emit_parse_note(start_line, "charset-violation")
         return
     }
+    uid = ++CMD_UID
     nf = 0
     k = 2
     while (k <= nt) {
@@ -419,12 +431,12 @@ function parse_command_segment(start_line, cmd_idx, seg, TOK, nt, t, script, not
             emit_parse_note(start_line, "charset-violation")
             return
         }
-        print "invocation\t" start_line "\t" script "\t" fl "\t" fv "\t" note
+        print "invocation\t" start_line "\t" script "\t" fl "\t" fv "\t\t" uid
         nf++
         k++
     }
     if (nf == 0) {
-        print "invocation_no_flags\t" start_line "\t" script "\t\t\t" note
+        print "invocation_no_flags\t" start_line "\t" script "\t\t\t\t" uid
     }
 }
 

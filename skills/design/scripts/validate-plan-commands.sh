@@ -77,7 +77,9 @@ with_timeout() {
 
 is_repo_script() {
     local p="$1"
-    [[ "$p" == scripts/* ]] || [[ "$p" == skills/*/scripts/* ]] || [[ "$p" == .claude/skills/*/scripts/* ]]
+    [[ "$p" == scripts/* ]] || [[ "$p" == skills/*/scripts/* ]] || [[ "$p" == .claude/skills/*/scripts/* ]] || return 1
+    [[ "$p" != *..* ]] || return 1
+    return 0
 }
 
 help_cache_key() {
@@ -86,12 +88,16 @@ help_cache_key() {
 
 probe_help() {
     local script_rel="$1"
-    local script_abs="$REPO_ROOT/$script_rel"
+    local script_abs
     local key cfile cout cerr
     HELP_TIMED_OUT=0
     HELP_STDOUT_EMPTY=1
     HELP_RC=1
-    [[ -f "$script_abs" ]] || { HELP_RC=127; return; }
+    script_abs=$(cd "$REPO_ROOT" && realpath "$script_rel" 2>/dev/null) || { HELP_RC=127; return; }
+    case "$script_abs" in
+        "$REPO_ROOT"/*) ;;
+        *) HELP_RC=127; return ;;
+    esac
     key=$(help_cache_key "$script_rel")
     cfile="$help_cache_dir/$key"
     if [[ -f "$cfile.rc" ]]; then
@@ -112,13 +118,13 @@ probe_help() {
         printf '%s\n' 124 >"$cfile.rc"
         printf '1\n' >"$cfile.empty"
         printf '1\n' >"$cfile.to"
-        : >"$cfile.txt"
+        : >"$cfile.stdout"
         rm -f "$cout" "$cerr"
         return
     fi
-    cat "$cout" "$cerr" >"$cfile.txt" 2>/dev/null || : >"$cfile.txt"
+    cp "$cout" "$cfile.stdout" 2>/dev/null || : >"$cfile.stdout"
     rm -f "$cout" "$cerr"
-    if [[ -n "$(tr -d '[:space:]' <"$cfile.txt")" ]]; then
+    if [[ -s "$cfile.stdout" ]]; then
         HELP_STDOUT_EMPTY=0
         printf '0\n' >"$cfile.empty"
     else
@@ -133,7 +139,34 @@ help_text_for() {
     local script_rel="$1" key cfile
     key=$(help_cache_key "$script_rel")
     cfile="$help_cache_dir/$key"
-    cat "$cfile.txt" 2>/dev/null || true
+    cat "$cfile.stdout" 2>/dev/null || true
+}
+
+# True when --help stdout documents flag --$1 as a distinct long option (not a strict-prefix false positive).
+help_documents_flag() {
+    local fl="$1" ht="$2"
+    awk -v FL="$fl" '
+    BEGIN {
+      tgt = "--" FL
+      lt = length(tgt)
+    }
+    {
+      buf = buf $0 "\n"
+    }
+    END {
+      h = buf
+      n = length(h)
+      for (i = 1; i <= n; i++) {
+        if (substr(h, i, lt) != tgt) continue
+        bef = (i == 1) ? " " : substr(h, i - 1, 1)
+        if (i > 1 && bef ~ /[A-Za-z0-9_]/) continue
+        aft = substr(h, i + lt, 1)
+        if (aft == "" || aft == "=" || aft ~ /[[:space:])),;:\]|]/) exit 0
+        if (aft ~ /[A-Za-z0-9_-]/) continue
+        exit 0
+      }
+      exit 1
+    }' <<<"$ht"
 }
 
 registry_hook_for() {
@@ -181,7 +214,7 @@ BEGIN { n = 0 }
 NR == 1 { next }
 $1 == "new_script" || $1 == "updated_flag" || $1 == "parse_note" { next }
 $1 == "invocation" {
-  k = $2 SUBSEP $6 SUBSEP $3
+  k = $2 SUBSEP $7 SUBSEP $3
   if (!(k in seen)) { seen[k] = 1; order[++n] = k }
   hasf[k] = 1
   if ($4 != "") {
@@ -190,7 +223,7 @@ $1 == "invocation" {
   next
 }
 $1 == "invocation_no_flags" {
-  k = $2 SUBSEP $6 SUBSEP $3
+  k = $2 SUBSEP $7 SUBSEP $3
   if (!(k in seen)) { seen[k] = 1; order[++n] = k }
   zf[k] = 1
   next
@@ -200,7 +233,7 @@ END {
     k = order[i]
     split(k, a, SUBSEP)
     nof = (zf[k] && !hasf[k]) ? "1" : "0"
-    print "CMD\t" a[1] "\t" a[2] "\t" a[3] "\t" nof
+    print "CMD\t" a[1] "\t" a[3] "\t" nof
     if (fl[k] != "") printf "%s", fl[k]
     print "ENDCMD"
   }
@@ -218,11 +251,11 @@ allow_flag() {
 sp=""
 noflags_only="0"
 flags_buf=""
-while IFS=$'\t' read -r typ a b c d; do
+while IFS=$'\t' read -r typ a b c _d; do
     case "$typ" in
         CMD)
-            sp="$c"
-            noflags_only="${d:-0}"
+            sp="$b"
+            noflags_only="${c:-0}"
             flags_buf=""
             ;;
         FLAG)
@@ -236,14 +269,18 @@ while IFS=$'\t' read -r typ a b c d; do
                 emit_skip "SKIPPED script=$sp reason=new-script"
                 continue
             fi
-            abs="$REPO_ROOT/$sp"
-            if [[ ! -f "$abs" ]]; then
+            abs=$(cd "$REPO_ROOT" && realpath "$sp" 2>/dev/null) || abs=""
+            if [[ -z "$abs" || ! -f "$abs" ]]; then
                 emit_defect "DEFECT script=$sp kind=missing-script"
                 continue
             fi
+            case "$abs" in
+                "$REPO_ROOT"/*) ;;
+                *) emit_defect "DEFECT script=$sp kind=non-canonical-path"; continue ;;
+            esac
             probe_help "$sp"
             help_ok=0
-            if [[ "$HELP_TIMED_OUT" -eq 1 || "$HELP_RC" -ne 0 || "$HELP_STDOUT_EMPTY" -eq 1 ]]; then
+            if [[ "$HELP_TIMED_OUT" -eq 1 || "$HELP_STDOUT_EMPTY" -eq 1 ]]; then
                 emit_skip "SKIPPED_FLAG_CHECK script=$sp reason=no-help"
             else
                 help_ok=1
@@ -265,7 +302,7 @@ while IFS=$'\t' read -r typ a b c d; do
                         if allow_flag "$sp" "$fl"; then
                             continue
                         fi
-                        if ! grep -q -- "--$fl" <<<"$ht"; then
+                        if ! help_documents_flag "$fl" "$ht"; then
                             emit_defect "DEFECT script=$sp kind=unknown-flag flag=$fl"
                             tier2_defect=1
                         fi
@@ -301,10 +338,12 @@ while IFS=$'\t' read -r typ a b c d; do
             done
             [[ "$skip_tier3" -eq 1 ]] && continue
             set +e
+            tier3_env=(env -i "PATH=$PATH" "HOME=${HOME:-}" "TMPDIR=${TMPDIR:-/tmp}" "USER=${USER:-}" "LOGNAME=${LOGNAME:-${USER:-}}")
+            [[ -n "${LANG:-}" ]] && tier3_env+=("LANG=$LANG")
             if [[ "$hook" == "--validate-only" ]]; then
-                with_timeout "$DRY_TIMEOUT" env PATH="$PATH" HOME="${HOME:-}" "${argv[@]}" --validate-only >>"$tmp_log" 2>&1
+                ( cd "$REPO_ROOT" && with_timeout "$DRY_TIMEOUT" "${tier3_env[@]}" "${argv[@]}" --validate-only ) >>"$tmp_log" 2>&1
             else
-                with_timeout "$DRY_TIMEOUT" env PATH="$PATH" HOME="${HOME:-}" LARCH_DRY_RUN=1 "${argv[@]}" >>"$tmp_log" 2>&1
+                ( cd "$REPO_ROOT" && with_timeout "$DRY_TIMEOUT" "${tier3_env[@]}" "LARCH_DRY_RUN=1" "${argv[@]}" ) >>"$tmp_log" 2>&1
             fi
             dry_rc=$?
             set -e

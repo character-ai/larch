@@ -35,5 +35,6 @@ run_case() {
 run_case basic "$FIX/basic-plan.md" "$FIX/basic.tsv"
 run_case prefixes "$FIX/prefix-plan.md" "$FIX/prefix.tsv"
 run_case newskip "$FIX/newskip-plan.md" "$FIX/newskip.tsv"
+run_case heredoc "$FIX/heredoc-plan.md" "$FIX/heredoc.tsv"
 
 echo "PASS: test-parse-plan-commands.sh"

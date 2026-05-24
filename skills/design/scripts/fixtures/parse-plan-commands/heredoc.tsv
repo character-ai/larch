@@ -1,2 +1,4 @@
 row_type	source_line	script_path	flag	flag_value	note	cmd_uid
 invocation_no_flags	4	scripts/redact-secrets.sh				1
+invocation_no_flags	5	cat				2
+invocation	6	scripts/redact-secrets.sh	help			3
