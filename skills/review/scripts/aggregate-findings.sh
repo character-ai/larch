@@ -10,7 +10,7 @@ source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
 
 usage() {
-    larch_err "Usage: aggregate-findings.sh --findings-file PATH --review-tmpdir DIR --codex-present true|false --cursor-present true|false --mode diff|description [--session-env-path PATH] [--diff-file PATH] [--plan-file PATH]"
+    larch_err "Usage: aggregate-findings.sh --findings-file PATH --review-tmpdir DIR --codex-present true|false --cursor-present true|false --mode diff|description [--session-env-path PATH] [--diff-file PATH] [--plan-file PATH] [--input-mode plan|code]"
 }
 
 FINDINGS_FILE=""
@@ -21,6 +21,7 @@ MODE=""
 SESSION_ENV_PATH=""
 DIFF_FILE=""
 PLAN_FILE=""
+INPUT_MODE="code"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -32,6 +33,7 @@ while [[ $# -gt 0 ]]; do
         --session-env-path) SESSION_ENV_PATH="${2:?}"; shift 2 ;;
         --diff-file) DIFF_FILE="${2:?}"; shift 2 ;;
         --plan-file) PLAN_FILE="${2:?}"; shift 2 ;;
+        --input-mode) INPUT_MODE="${2:?}"; shift 2 ;;
         --help) usage; exit 0 ;;
         *) larch_err "aggregate-findings.sh: unknown option: $1"; usage; exit 2 ;;
     esac
@@ -62,6 +64,8 @@ source "$PLUGIN_ROOT/skills/review/scripts/aggregate-findings-phrases.inc.bash"
 [[ "$CODEX_PRESENT" == "true" || "$CODEX_PRESENT" == "false" ]] || { larch_err "aggregate-findings.sh: --codex-present must be true or false"; exit 2; }
 [[ "$CURSOR_PRESENT" == "true" || "$CURSOR_PRESENT" == "false" ]] || { larch_err "aggregate-findings.sh: --cursor-present must be true or false"; exit 2; }
 [[ "$MODE" == "diff" || "$MODE" == "description" ]] || { larch_err "aggregate-findings.sh: --mode must be diff or description"; exit 2; }
+[[ "$INPUT_MODE" == "plan" || "$INPUT_MODE" == "code" ]] || { larch_err "aggregate-findings.sh: --input-mode must be plan or code"; exit 2; }
+export LARCH_AGGREGATE_INPUT_MODE="$INPUT_MODE"
 
 kv_get() {
     local file="$1" key="$2"
@@ -171,6 +175,8 @@ cat > "$validate_py" <<'PY'
 import os
 import re
 import sys
+
+INPUT_MODE = os.environ.get("LARCH_AGGREGATE_INPUT_MODE", "code")
 
 
 def input_blocks(text):
@@ -625,7 +631,7 @@ def main():
         if not slots:
             print("block missing reviewer attribution line", file=sys.stderr)
             return 1
-        if not block_has_severity(b):
+        if INPUT_MODE == "code" and not block_has_severity(b):
             print(
                 "output block missing - **Severity**: important|latent|nit line",
                 file=sys.stderr,

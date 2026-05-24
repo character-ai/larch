@@ -213,20 +213,28 @@ case "${check6_order:-0}" in
   *) fail "unexpected Check 6 step-order awk exit: ${check6_order:-?}" ;;
 esac
 
-# Check 7 (#661): plan-review.md collect-agent-results.sh invocation must carry
-# both --substantive-validation AND --validation-mode on the SAME line as --timeout
-# 1860 so banner-only reviewer output is rejected as STATUS=NOT_SUBSTANTIVE rather
-# than passing as STATUS=OK. Pipeline matches the test-review-structure.sh (13)
-# pattern: each filter stage threads one literal while preserving line granularity.
-# A future edit that drops either flag, or splits the invocation across multiple
-# lines, fails closed under `set -o pipefail`.
+# Check 7 (#661): collect-agent-results substantive-validation contract must remain
+# documented in plan-review.md on one line AND implemented in plan-review-loop.sh
+# (Step 3 driver). Either location satisfies the pin; both are required to stay in sync.
 PLAN_REVIEW_MD="$REPO_ROOT/skills/design/references/plan-review.md"
+PLAN_REVIEW_LOOP_SH="$REPO_ROOT/skills/design/scripts/plan-review-loop.sh"
 [[ -f "$PLAN_REVIEW_MD" ]] || fail "plan-review.md missing: $PLAN_REVIEW_MD"
-grep 'collect-agent-results.sh' "$PLAN_REVIEW_MD" \
-  | grep -F -- '--timeout 1860' \
-  | grep -F -- '--substantive-validation' \
-  | grep -Fq -- '--validation-mode' \
-  || fail "(7) no single plan-review.md line carries 'collect-agent-results.sh', '--timeout 1860', '--substantive-validation', and '--validation-mode' together — issue #661 substantive-validation contract pin is broken"
+[[ -f "$PLAN_REVIEW_LOOP_SH" ]] || fail "plan-review-loop.sh missing: $PLAN_REVIEW_LOOP_SH"
+check7_doc_line() {
+  grep 'collect-agent-results.sh' "$PLAN_REVIEW_MD" \
+    | grep -F -- '--timeout 1860' \
+    | grep -F -- '--substantive-validation' \
+    | grep -Fq -- '--validation-mode'
+}
+check7_loop_tokens() {
+  grep -Fq 'collect-agent-results.sh' "$PLAN_REVIEW_LOOP_SH" \
+    && grep -Fqe '--timeout 1860' "$PLAN_REVIEW_LOOP_SH" \
+    && grep -Fqe '--substantive-validation' "$PLAN_REVIEW_LOOP_SH" \
+    && grep -Fqe '--validation-mode' "$PLAN_REVIEW_LOOP_SH" \
+    && grep -Fqe '--structured-reviewer-validation' "$PLAN_REVIEW_LOOP_SH"
+}
+check7_doc_line || check7_loop_tokens \
+  || fail "(7) collect-agent-results substantive-validation contract missing from plan-review.md single-line pin AND from plan-review-loop.sh token bundle — issue #661 regression"
 
 # Check 7b: plan-review-quick.md must exist (structural pin alongside plan-review.md).
 PLAN_REVIEW_QUICK_MD="$REPO_ROOT/skills/design/references/plan-review-quick.md"
@@ -433,18 +441,44 @@ focus_anchor_count=$(grep -Fc 'Focus area enum anchor for CI: code-quality / ris
   || fail "(14a) SKILL.md must keep 10 focus-area enum anchor comments; found $focus_anchor_count"
 grep -Fq 'ACTION=EMIT_PLAN' "$SKILL_MD" \
   || fail "(14b1) SKILL.md missing ACTION=EMIT_PLAN emission"
-grep -Fq 'ACTION=TALLY' "$SKILL_MD" \
-  || fail "(14b2) SKILL.md missing ACTION=TALLY emission"
 grep -Fq 'ACTION=FINALIZE' "$SKILL_MD" \
   || fail "(14b3) SKILL.md missing ACTION=FINALIZE emission"
 grep -Fq 'design-driver.sh' "$SKILL_MD" \
   || fail "(14b4) SKILL.md missing design-driver.sh dispatcher invocation"
-grep -Fq 'scout-plan-archetypes-wrapper.sh' "$SKILL_MD" \
-  || fail "(14c1) SKILL.md missing scout-plan-archetypes-wrapper.sh (plan-review dynamic scout)"
-grep -Fq 'dispatch-plan-review-panel.sh' "$SKILL_MD" \
-  || fail "(14c2) SKILL.md missing dispatch-plan-review-panel.sh (plan-review panel manifest)"
-grep -Fq 'PANEL_PATHS_FILE' "$SKILL_MD" \
-  || fail "(14c3) SKILL.md missing PANEL_PATHS_FILE parse contract for plan-review collection"
+grep -Fq 'plan-review-loop.sh' "$SKILL_MD" \
+  || fail "(14c0) SKILL.md missing plan-review-loop.sh Step 3 driver invocation"
+grep -Fq 'set +e' "$SKILL_MD" \
+  || fail "(14c0b) SKILL.md missing set +e guard adjacent to plan-review-loop.sh"
+grep -Fq '_plan_review_rc=$?' "$SKILL_MD" \
+  || fail "(14c0c) SKILL.md missing _plan_review_rc capture for plan-review-loop.sh"
+grep -Fq 'scout-plan-archetypes-wrapper.sh' "$PLAN_REVIEW_LOOP_SH" \
+  || fail "(14c1) plan-review-loop.sh missing scout-plan-archetypes-wrapper.sh"
+grep -Fq 'dispatch-plan-review-panel.sh' "$PLAN_REVIEW_LOOP_SH" \
+  || fail "(14c2) plan-review-loop.sh missing dispatch-plan-review-panel.sh"
+grep -Fq 'PANEL_PATHS_FILE' "$PLAN_REVIEW_LOOP_SH" \
+  || fail "(14c3) plan-review-loop.sh missing PANEL_PATHS_FILE handling"
+[[ -x "$PLAN_REVIEW_LOOP_SH" ]] \
+  || fail "(14c4) plan-review-loop.sh must be executable"
+PR_LOOP_MD="$REPO_ROOT/skills/design/scripts/plan-review-loop.md"
+[[ -f "$PR_LOOP_MD" ]] || fail "(14c5) plan-review-loop.md missing: $PR_LOOP_MD"
+grep -Fqe '--input-mode plan' "$PLAN_REVIEW_LOOP_SH" \
+  || fail "(14c6) plan-review-loop.sh missing --input-mode plan aggregate invocation"
+grep -Fq 'tally-plan-review.sh' "$PLAN_REVIEW_LOOP_SH" \
+  || fail "(14c7) plan-review-loop.sh missing tally-plan-review.sh"
+grep -Fq 'dispatch-plan-voters.sh' "$PLAN_REVIEW_LOOP_SH" \
+  || fail "(14c8) plan-review-loop.sh missing dispatch-plan-voters.sh"
+grep -Fq 'aggregate-findings.sh' "$PLAN_REVIEW_LOOP_SH" \
+  || fail "(14c9) plan-review-loop.sh missing aggregate-findings.sh"
+grep -Fq 'check-mid-run-dirty-tree.sh' "$PLAN_REVIEW_LOOP_SH" \
+  || fail "(14c10) plan-review-loop.sh missing check-mid-run-dirty-tree.sh"
+grep -Fq 'compose-collector-failure-log.sh' "$PLAN_REVIEW_LOOP_SH" \
+  || fail "(14c11) plan-review-loop.sh missing compose-collector-failure-log.sh"
+grep -Fq 'launch-claude-review.sh' "$REPO_ROOT/scripts/dispatch-plan-voters.sh" \
+  || fail "(14c12) dispatch-plan-voters.sh missing launch-claude-review.sh (Voter 1)"
+TR_LOOP_SH="$REPO_ROOT/skills/design/scripts/test-plan-review-loop.sh"
+TR_LOOP_MD="$REPO_ROOT/skills/design/scripts/test-plan-review-loop.md"
+[[ -x "$TR_LOOP_SH" ]] || fail "(14c13) test-plan-review-loop.sh missing or not executable"
+[[ -f "$TR_LOOP_MD" ]] || fail "(14c14) test-plan-review-loop.md missing"
 
 DESIGN_DRIVER_SH="$REPO_ROOT/skills/design/scripts/design-driver.sh"
 grep -Fq 'VALIDATE_PLAN_COMMANDS' "$DESIGN_DRIVER_SH" \
