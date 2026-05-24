@@ -26,6 +26,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Add Gate B semantic duplicate-content sweep instructions after plan revisions
 - Specify the unconditional dedup-sweep breadcrumb and distinct-context repetition carve-out
+- Move /design Step 3 orchestration into plan-review-loop.sh so scout through tally stay script-owned and testable.
+- Launch plan Voter 1 via launch-claude-review.sh inside dispatch-plan-voters.sh and share parse-rate helpers through lib-voter-parse-rate.sh.
+- Add aggregate-findings --input-mode plan for relaxed merged-output severity checks on plan ballots.
+- Refresh design/review docs, SECURITY subprocess note, Makefile harness shard, and regression harnesses (BSD-grep-safe design-structure pins).
 
 ## [42.4.6] - 2026-05-24
 
