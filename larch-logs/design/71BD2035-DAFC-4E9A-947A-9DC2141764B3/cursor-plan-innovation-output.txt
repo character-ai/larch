@@ -1,0 +1,64 @@
+Reading the plan and exploring cited code paths for a structured review.
+
+Validating the plan against the codebase: reading cited files and key integration points.
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/ship-pr.sh:626-641,2298-2307,scripts/refresh-run-logs.sh:74-80	Persisting final-bail-reason via refresh-run-logs does not cover exit-3 cap bail	write_finalize_state (which writes final-bail-reason.txt at :640) is only called from run_postmerge_phase (:2317); the bail branch sets state then exit 3 (:2304-2306) with no write_finalize_state and no refresh-run-logs call, so the new larch-log write almost never runs for the FIX_ATTEMPTS cap scenario the issue foregrounds	Extend the plan with a ship-pr change: write final-bail-reason.txt (or call write_finalize_state) before exit 3 and invoke refresh-run-logs with || true before exit, or document an orchestrator-side publish step that must run on exit 3
+1	in_scope	nit	correctness	plan.txt:51-53 (session cache)	Edge-case prose inverts write_finalize_state semantics	Plan claims write_finalize_state only runs on bail paths and merged runs skip it; code runs it in postmerge after merge success, so reviewers mis-prioritize guards	Fix the Edge cases bullet to match scripts/ship-pr.sh:2314-2319 (postmerge calls write_finalize_state; bail exits do not)
+1	in_scope	nit	code-quality	scripts/launch-cursor-ci.sh:123-152	Fragment injection placement is easy to mis-implement across roles	PROMPT is shared across roles; if LARCH_PATTERNS is populated unconditionally bump-classify/changelog-draft prompts gain CI-fix topology prose	Spell out in plan: set LARCH_PATTERNS only when ROLE=fix (empty otherwise) and add a parity test assertion for non-fix roles if regressions matter
+1	in_scope	nit	architecture	scripts/launch-cursor-ci.sh,scripts/launch-codex-ci.sh,scripts/launch-claude-ci.sh	Three near-identical file-read and PROMPT splice blocks	Divergence risk despite sentinel tests; edits touch three shells plus three tests	Prefer factoring a tiny sourced helper (e.g. scripts/lib-ci-fix-patterns.sh) that returns the block, called from each launcher
+1	out_of_scope	latent	risk-integration	scripts/refresh-run-logs.sh:106-125	larch-log.sh commit success detection uses loose stdout heuristics	Pre-existing pattern; adding another best-effort write increases surface for silent non-commit while emitting REFRESH_COMMITTED	Track separately; tighten commit outcome parsing when touching refresh-run-logs
+1	out_of_scope	nit	risk-integration	docs/run-logs.md:38-41,196-210	Canonical run-log layout prose omits new batch slug	Operators reading docs/run-logs.md will not see final-bail-reason alongside token-report and execution-issues	Add a subsection or bullet when the batch lands
+
+Wait - I used multiple "1" for schema_version - each row should be schema_version 1 for each finding. Good.
+
+Actually the example shows schema_version as first column with value "1" for each record. All rows start with `1`.
+
+Let me fix duplicate "1	in_scope" - each line needs unique content. The header is one line, then N data lines each starting with 1.
+
+I'll output 5 data rows.
+
+Also fix: first data row I accidentally duplicated "1	in_scope" twice in my draft - I'll have 5 clean rows.
+
+Row1: exit 3 persistence gap
+Row2: plan edge case wrong  
+Row3: ROLE=fix gating nit
+Row4: architecture shared helper
+Row5: out_of_scope docs
+Row6: out_of_scope refresh commit
+
+That's 6 rows - good.
+
+For "location" in row2 - plan is outside repo. User said "repo-relative file:line when applicable". I'll use `n/a` or omit - I'll put `design-session-plan:51-53` as location since no repo path.
+
+Actually use: `sessions/claude-design-larch6-3pibd8/plan.txt:51-53` relative to cache - not repo. I'll use literal path from user query shortened: `~/.cache/larch/sessions/.../plan.txt:51-53` - spaces replaced per rules.
+
+I'll use: `plan.txt:51-53` with what field explaining it's the design session plan.
+
+Security row: optional latent - BAIL_REASON in committed log - if orchestrator adds write before exit 3, prose bails could land - run-logs already says redaction best-effort. Skip separate row to avoid noise, or one latent row.
+
+I'll add security latent: committing bail text with sanitizer none may duplicate sensitive fragments if BAIL_REASON ever contains paths - mitigated by token for cap case only.
+
+Actually keep 5 in-scope + 2 out_of_scope rows = 7 TSV lines after header. User asked not to be too verbose. 4-5 findings in prose + matching TSV rows.
+
+Final numbered list (6 items):
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/ship-pr.sh:626-641,2298-2307,scripts/refresh-run-logs.sh:74-80	Committed final-bail-reason batch cannot fire on exit-3 cap bail as planned	write_finalize_state writes final-bail-reason.txt only from run_postmerge_phase (:2317); bail sets BAIL_REASON then exit 3 (:2304-2306) with no file write and no refresh-run-logs call	Add a ship-pr step before exit 3 (write final-bail-reason.txt and best-effort refresh-run-logs) or explicitly drop acceptance item 3 for the cap path and document orchestrator-side publishing
+1	in_scope	nit	correctness	plan.txt:51-53	Edge cases invert write_finalize_state lifecycle	Merged postmerge runs call write_finalize_state; bail exits do not, so the written plan misleads implementers about when the file exists	Rewrite the bullet to match scripts/ship-pr.sh:2314-2319 versus :2298-2306
+1	in_scope	nit	code-quality	scripts/launch-cursor-ci.sh:123-152	PROMPT template is shared across roles	Unconditional LARCH_PATTERNS injection would leak CI-fix topology guidance into bump-classify or changelog-draft runs	Require LARCH_PATTERNS only when ROLE=fix and document that invariant beside the PROMPT splice
+1	in_scope	nit	architecture	scripts/launch-cursor-ci.sh,scripts/launch-codex-ci.sh,scripts/launch-claude-ci.sh	Three copies of fragment load and PROMPT assembly	Parity tests help but triple maintenance remains compared to one sourced helper	Introduce scripts/lib-ci-fix-patterns.sh (or similar) returning the markdown block for fix-role callers only
+1	out_of_scope	latent	risk-integration	scripts/refresh-run-logs.sh:106-125	REFRESH_COMMITTED detection around larch-log.sh commit is stdout-heuristic	Pre-existing; another best-effort write increases odds of silent non-commit while still looking successful	Track as follow-up when editing refresh-run-logs commit path
+1	out_of_scope	nit	risk-integration	docs/run-logs.md:38-41,196-210	Narrative batch inventory omits final-bail-reason	Downstream doc readers miss the new artifact beside token-report and execution-issues	Add final-bail-reason when the slug exists
+
+1. **[correctness]** `scripts/ship-pr.sh:626-641,2298-2307` — The plan gates persistence on `refresh-run-logs.sh` (`:74-80`) while explicitly avoiding `ship-pr.sh` edits, but `final-bail-reason.txt` is only written inside `write_finalize_state`, which runs from `run_postmerge_phase` (`:2317`), not on the `bail` branch before `exit 3` (`:2304-2306`), and no `refresh-run-logs.sh` call precedes that exit. **Suggested revision:** Add a minimal `ship-pr.sh` change (write `final-bail-reason.txt` and best-effort `refresh-run-logs.sh` before `exit 3`, or narrow acceptance to paths where refresh already runs).
+
+2. **[correctness]** `plan.txt:51-53` (design session plan) — Edge cases claim `write_finalize_state` runs only on bail and merged runs skip it; the codebase does the opposite (`scripts/ship-pr.sh:2314-2319` vs `:2298-2306`). **Suggested revision:** Fix the bullet so implementers do not strip postmerge writes or add bogus guards.
+
+3. **[code-quality]** `scripts/launch-cursor-ci.sh:123-152` — `PROMPT` is built for every role; the plan must require `LARCH_PATTERNS` only when `ROLE=fix` or non-fix roles inherit CI-fix prose. **Suggested revision:** State the `ROLE=fix` guard explicitly in Approach item 2 and mirror it in codex/claude siblings.
+
+4. **[architecture]** `scripts/launch-cursor-ci.sh`, `scripts/launch-codex-ci.sh`, `scripts/launch-claude-ci.sh` — Three parallel edits plus three sentinel tests are heavier than a single sourced helper that emits the fragment block. **Suggested revision:** Factor a tiny `scripts/lib-*.sh` reader used by all launchers to cut drift cost.
+
+5. **[risk-integration]** [OUT_OF_SCOPE] `scripts/refresh-run-logs.sh:106-125` — `larch-log.sh commit` success is inferred from stdout heuristics with `|| true`; adding another write grows silent non-commit risk without changing that structure.
+
+6. **[risk-integration]** [OUT_OF_SCOPE] `docs/run-logs.md:38-41,196-210` — Canonical run-log prose lists implement batches but the plan does not schedule a `docs/run-logs.md` update for `final-bail-reason`; operator-facing inventory will lag `larch-log-batches.md`.
