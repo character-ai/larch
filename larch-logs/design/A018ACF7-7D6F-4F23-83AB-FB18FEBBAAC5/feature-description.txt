@@ -1,0 +1,9 @@
+Issue #2678 — [OOS] Add structural test pinning the canonical YES↔EXONERATE anchor phrase across all prose locations
+
+The canonical phrase `When in doubt between YES and EXONERATE, prefer EXONERATE` currently appears in four prose locations:
+1. Voter 1 prompt in `skills/design/references/plan-review.md`
+2. Shared Voter 2/3 prompt in `skills/design/references/plan-review.md`
+3. `make_prompt_file()` body in `scripts/dispatch-plan-voters.sh`
+4. Acceptance-guidance line in `skills/design/references/plan-review-quick.md`
+
+A structural test (in `scripts/test-design-structure.sh` or a small new harness) should grep for the canonical phrase across all four locations to catch prose drift early.
