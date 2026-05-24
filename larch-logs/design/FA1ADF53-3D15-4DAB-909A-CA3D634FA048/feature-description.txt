@@ -1,0 +1,85 @@
+# [DESIGNING] Phase 1/4: implement-bootstrap.sh skeleton + phase_infra (umbrella #2732)
+
+## Context
+
+Phase 1 of 4 in the consolidation of `/implement` Step 0 into `scripts/implement-bootstrap.sh`. See umbrella issue #2732 for the full plan, rationale, naming choice (`implement-bootstrap.sh` pairing with `implement-finalize.sh`), and acceptance criteria.
+
+This phase establishes the script skeleton and absorbs Step 0 calls #1–#5 only (infrastructure setup). Phases 2–4 add tracking adoption, plan materialization, and the implementer waterfall in turn.
+
+## Goal
+
+1. Create `scripts/implement-bootstrap.sh` with a working `phase_infra` function. Other phase function bodies stub out as `not_yet_implemented` placeholders that emit `IMPLEMENT_BAIL_REASON=not-yet-implemented-phase-N` so the orchestrator can route to Step 18 cleanly while later phases are in flight.
+2. Create sibling `scripts/implement-bootstrap.md` documenting the full envisioned contract (argv, all output KV keys, breadcrumb list, exit codes, bail-reason enum) — even though only `phase_infra` is implemented in this PR.
+3. Create offline harness `skills/implement/scripts/test-implement-bootstrap.sh` covering `phase_infra` paths.
+4. Register `test-implement-bootstrap` in `Makefile` + `docs/linting.md`.
+5. Add `implement-bootstrap.sh` to `scripts/lint-foreground-markers.sh` DENYLIST.
+6. Edit `skills/implement/SKILL.md` to call `implement-bootstrap.sh` for Step 0 calls #1–#5 only. The remaining Step 0 prose (#6–#16 + waterfall) stays as today; the script returns early with the `phase_infra` outputs and the orchestrator continues with the existing fenced blocks.
+
+After this phase: `/implement` Step 0 transcript shows 1 Bash call for calls #1–#5 (down from 5 separate calls), and the orchestrator still uses the legacy fences for the remaining 12+ calls. End-state convergence happens in phases 2–4.
+
+## phase_infra contents
+
+Absorbs:
+
+1. `create-branch.sh --check` → `CURRENT_BRANCH`, `IS_MAIN`, `IS_USER_BRANCH`, `USER_PREFIX`
+2. `session-entry-gate.sh` → `ENTRY_GATE`, `SKIP_BRANCH_CHECK`
+3. `session-setup.sh --prefix claude-implement [--skip-branch-check] --check-reviewers` → `SESSION_TMPDIR`, `SESSION_ID`, reviewer-availability KV, `REPO`, `REPO_UNAVAILABLE`
+4. Inline composite: `write-session-id.sh` + `token-claude-source.sh` + `write-session-env.sh` + `token-ledger.sh mark` + `timing-ledger.sh mark` → `CLAUDE_SOURCE_OK`, `LARCH_TOKEN_SESSION_ID`
+5. Rehydrate block (read-session-env-key × 3) — moved entirely inside script
+
+Reads `--caller-env` when `forked_target=true`. Emits `**⚠ Codex/Cursor not available/healthy …**` warnings via `emit` (operator-visible via lib-quiet FD-3). Emits one breadcrumb: `→ step0: infra ready (tmpdir=$IMPLEMENT_TMPDIR session=$SESSION_ID)`.
+
+## Files to modify/create
+
+#### NEW: `scripts/implement-bootstrap.sh`
+
+Full skeleton with: argv parser, `lib-quiet.sh` init, four phase function shells (only `phase_infra` body filled in), final `emit_kv` tail with all envisioned keys (later-phase keys emitted as empty when their phase stubs out). Bash 3.2 portable; no `eval`/`source` of KV files; sanctioned-writer-only mutation of `session-env.sh`.
+
+#### NEW: `scripts/implement-bootstrap.md`
+
+Full contract: argv table, input file expectations, output KV grammar with phase-by-phase population, breadcrumb list, exit codes (0 / 2), bail-reason enum (including transitional `not-yet-implemented-phase-{2,3,4}` values that this phase emits when stubbed phases run), behavior mapping, primary callers, test harness pointer, edit-in-sync list.
+
+#### NEW: `skills/implement/scripts/test-implement-bootstrap.sh`
+
+Offline harness, same shape as `scripts/test-implement-finalize.sh`. Cases covering `phase_infra`:
+
+- GP1-infra: clean main → all infra KV keys emit, `IMPLEMENT_BAIL_REASON=` empty after infra.
+- GP4: `repo_unavailable=true` propagates through phase_infra and emits the right warning.
+- B-preflight: session-setup.sh exits non-zero → emit `PREFLIGHT_ERROR=`, exit 2.
+- B-gate: session-entry-gate.sh internal contract violation → emit `GATE_ERROR=`, exit 2.
+- Edge-NEVER14: grep script source — no direct `printf >> session-env.sh` or `cat > … <<EOF` writes.
+- Edge-breadcrumb-count: with `LARCH_QUIET_BREADCRUMBS=1`, exactly 1 `→ step0: infra ready` line surfaces.
+
+#### NEW: `skills/implement/scripts/test-implement-bootstrap.md`
+
+Sibling harness contract.
+
+#### UPDATED: `skills/implement/SKILL.md`
+
+Replace Step 0 calls #1–#5 fenced blocks with a single foreground-banner `implement-bootstrap.sh` invocation. Parse its KV stdout. Continue to the existing Step 0 tracking adoption prose for calls #6+ (left untouched in this phase).
+
+#### UPDATED: `scripts/lint-foreground-markers.sh`
+
+Add `implement-bootstrap.sh` to the `DENYLIST` heredoc (one line).
+
+#### UPDATED: `Makefile`
+
+Register `test-implement-bootstrap` target in an existing `test-harnesses-N` shard.
+
+#### UPDATED: `docs/linting.md`
+
+Add `test-implement-bootstrap` row.
+
+## Acceptance
+
+- `scripts/implement-bootstrap.sh` exists, source passes `make lint-bash32`.
+- `scripts/implement-bootstrap.md` documents the full envisioned contract.
+- `skills/implement/scripts/test-implement-bootstrap.sh` covers the listed phase_infra cases; `make test-implement-bootstrap` passes.
+- `/implement <issue>` transcript on a clean main branch shows 1 Bash call replacing the prior 5 (calls #1–#5).
+- All existing `/implement` smoke paths still work (calls #6–#16 + waterfall left as today).
+- `make lint` passes including the new DENYLIST entry.
+
+## Out of scope (in subsequent phases)
+
+- `phase_tracking` body (next phase). Stub returns `IMPLEMENT_BAIL_REASON=not-yet-implemented-phase-2` so an `/implement` run reaching that stub bails cleanly to Step 18 — actual SKILL.md call-site replacement does not happen this phase, so this bail path is dead code on a normal run.
+- `phase_plan_materialize`, `phase_coder_select`, structural pin in `test-implement-structure.sh`, aggressive SKILL.md collapse.
