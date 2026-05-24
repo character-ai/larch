@@ -601,9 +601,14 @@ grep -Fq "$CANONICAL_PHRASE" <<< "$shared_text" \
 grep -Fq "$CANONICAL_PHRASE" "$RENDER_VOTER_SH" \
   || fail "(FINDING_2678) render-voter-prompt.sh missing canonical phrase (renderer behind dispatch-plan-voters.sh make_prompt_file): $CANONICAL_PHRASE"
 
-# Location 4: plan-review-quick.md acceptance-guidance line.
-grep -Fq "$CANONICAL_PHRASE" "$PLAN_REVIEW_QUICK_MD" \
-  || fail "(FINDING_2678) plan-review-quick.md missing canonical phrase: $CANONICAL_PHRASE"
+# Location 4: plan-review-quick.md — canonical phrase on the inline accept/reject guidance line only.
+quick_inline_line=$(grep -n '^For inline accept/reject (there is no separate voter panel)' "$PLAN_REVIEW_QUICK_MD" | head -1 | cut -d: -f1 || true)
+[[ -n "$quick_inline_line" ]] \
+  || fail "(FINDING_2678) plan-review-quick.md missing 'For inline accept/reject … voter panel' acceptance anchor"
+quick_inline_text=$(sed -n "${quick_inline_line}p" "$PLAN_REVIEW_QUICK_MD")
+grep -Fq "$CANONICAL_PHRASE" <<< "$quick_inline_text" \
+  || fail "(FINDING_2678) plan-review-quick.md inline accept/reject line missing canonical phrase: $CANONICAL_PHRASE"
 
+echo "PASS: FINDING_2678 — YES↔EXONERATE canonical anchor phrase OK (4 locations)"
 echo "PASS: test-design-structure.sh — structural invariants hold (including security OOS exclusions)"
 exit 0
