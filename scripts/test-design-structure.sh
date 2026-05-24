@@ -528,6 +528,8 @@ grep -Fq "[ \"\$ISSUE_NUMBER\" = \"2670\" ]" "$SKILL_MD" \
   || fail "(FINDING_21) Step 5d must guard on ISSUE_NUMBER 2670"
 grep -Fq 'design-l3-velocity-notified-2670' "$SKILL_MD" \
   || fail "(FINDING_21) Step 5d must reference design-l3-velocity-notified-2670 sentinel"
+grep -Fq "[ \"\${REPO:-}\" = \"character-ai/larch\" ]" "$SKILL_MD" \
+  || fail "(FINDING_21) Step 5d must guard on REPO character-ai/larch identity"
 
 echo "PASS: test-design-structure.sh — structural invariants hold (including security OOS exclusions)"
 exit 0

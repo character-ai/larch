@@ -98,7 +98,8 @@ jq -e '
   .design_classification == "TRIVIAL_DOC_ONLY" and
   .design_classification_source == "caller-forwarded" and
   .workflow_path == "SIMPLE" and
-  .sketch_budget == 0
+  .sketch_budget == 0 and
+  .partition_requested == false
 ' "$TMPROOT/trivial.json" >/dev/null \
     || fail "trivial preset JSON did not match expected classification fields"
 

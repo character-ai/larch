@@ -29,7 +29,11 @@ assert_kv_eq() {
 run_ok() {
     local d="$1"
     set +e
-    out=$("$SUBJECT" --design-tmpdir "$d" 2>&1)
+    if [[ $# -ge 2 ]]; then
+        out=$("$SUBJECT" --design-tmpdir "$d" --plan-file "$2")
+    else
+        out=$("$SUBJECT" --design-tmpdir "$d")
+    fi
     rc=$?
     set -e
     [[ "$rc" -eq 0 ]] || fail "expected rc 0 from check-plan-size, got $rc (output: $out)"
@@ -300,5 +304,17 @@ rc=$?
 set -e
 [[ "$rc" -eq 2 ]] || fail "case17b double space expected rc 2 got $rc"
 assert_kv_eq PLAN_SIZE_STATUS missing-diff-lines "$out"
+
+# --- Case 18: --plan-file override (non-default path) ---
+d="$TMPROOT/c18"
+mkdir -p "$d"
+{
+    for _ in 1 2 3 4 5; do printf "### NEW: \`alt%s\`\n" "$_"; done
+    fill_lines 246 'b'
+    printf 'diff_lines: 400\n'
+} >"$d/alternate-plan.txt"
+out=$(run_ok "$d" "$d/alternate-plan.txt")
+assert_kv_eq PLAN_LINES 251 "$out"
+assert_kv_eq SOFT_TRIGGER_FIRED true "$out"
 
 echo "PASS: test-check-plan-size.sh"
