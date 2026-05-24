@@ -1,0 +1,22 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: EXONERATE -- empty `what` pairs are an unlikely edge case and treating them as identical is defensible
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: EXONERATE -- harmless redundant locals, not a real control-flow hazard
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: NO -- `test-plan-review-loop.md` already labels smoke-only coverage and points to stub follow-up
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: EXONERATE -- intentional status shorthand; disambiguating further is low value versus added KV surface
+FINDING_17: YES
+FINDING_18: YES
+FINDING_19: YES
+FINDING_20: EXONERATE -- driver doc already states tally runs via `plan-review-loop.sh` instead of `ACTION=TALLY`
+OOS_1: EXONERATE -- large shipped run logs are policy noise, not a correctness defect worth a new issue
+OOS_2: YES
