@@ -480,10 +480,9 @@ grep -Fq '5→5a→5b→5c.1→5c.6→5c.7→6' "$SKILL_MD" \
 grep -Fq "NEVER treat a sub-skill's terminal output as the parent skill's terminal output" "$ORCHESTRATOR_NEVER_MD" \
   || fail "(17) orchestrator-never.md missing sub-skill vs parent-skill terminal-output NEVER literal"
 step5_between=$(sed -n "$((step5b_line + 1)),$((step5c_line - 1))p" "$SKILL_MD")
-grep -Fq 'Continue to Step 5c IMMEDIATELY' <<<"$step5_between" \
-  || fail "(17) Step 5b→5c window missing Continue to Step 5c IMMEDIATELY banner"
-grep -Fq '/larch:issue' <<<"$step5_between" \
-  || fail "(17) Step 5b→5c banner window must name /larch:issue"
+# Pin `/larch:issue` to the continuation-banner line (not merely anywhere in the 5b→5c window).
+grep -Fq $'> **Continue to Step 5c IMMEDIATELY.** The `/larch:issue` Skill tool' <<<"$step5_between" \
+  || fail "(17) Step 5b→5c continuation banner missing or /larch:issue not on the same line as the banner"
 
 echo "PASS: test-design-structure.sh — structural invariants hold (including security OOS exclusions)"
 exit 0
