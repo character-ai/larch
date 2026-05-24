@@ -1,0 +1,42 @@
+Propose a high-level implementation approach for the feature in GitHub issue #2661 of the larch plugin: "OOS judge prompts: unify and instruct judges to evaluate PROBLEM, not SOLUTION".
+
+Feature description file (read it first for full text):
+<TMPDIR>/feature-description.txt
+
+Resolved design decisions from Round 1 (read for the full record):
+<TMPDIR>/discussion-round1.md
+
+Summary of the problem:
+1. Two voter-prompt builders are hand-written and have drifted:
+   - scripts/dispatch-plan-voters.sh::make_prompt_file() (line 42) — used by /design plan voting
+   - scripts/dispatch-code-voters.sh::make_voter_prompt_file() (line 51) — used by /review code voting
+   Drift includes panel-role intro, EXONERATE phrasing, context-verify language, problem-vs-solution rule (only in /review), and OOS clause wording.
+2. The OOS judging clause lacks an explicit "evaluate problem, not remedy" instruction. Today a judge can vote NO on a real problem because the proposed fix is bad ("sore throat — cut off head to cure"). /review has a general rule of this shape but not OOS-specific; /design has no such rule at all.
+
+Resolved scope decisions (from discussion-round1.md):
+1. The shared helper emits the FULL voter-prompt body, not just the OOS clause. Skill-specific deltas (ballot ID grammar: FINDING_N only vs FINDING_N + OOS_N; context-file references like diff/plan; panel-role tagline) flow in as flags.
+2. The unified prompt keeps the existing /review general "fix proposals are informational" rule applied to ALL findings, AND adds an explicit emphatic OOS-specific problem-vs-solution clause as reinforcement. /design plan voters gain the general rule (they currently lack it).
+3. New dedicated test harness for the helper PLUS updates to scripts/test-dispatch-plan-voters.sh and scripts/test-dispatch-code-voters.sh.
+4. skills/shared/voting-protocol.md embeds the canonical OOS clause verbatim with a comment pointing at the helper as the runtime authority.
+5. Both /design SKILL.md Step 3 main-agent-vote-required paragraph (~line 598) and /implement SKILL.md Step 5 main-agent-vote-required paragraph (~line 1238) get the canonical OOS clause text inline so all three filing surfaces emit identical text.
+
+Repo conventions to obey:
+- Every .sh under scripts/ needs a sibling .md per .claude/rules/script-md-siblings.md
+- Bash 3.2 compatibility per BASH_AUTHORING.md §3
+- Shell strict-mode (set -euo pipefail) per .claude/rules/shell-strict-mode.md
+- New helper should follow the existing lib-quiet.sh / emit_kv contract conventions used by sibling scripts
+
+Explore the codebase to ground your proposal in the actual file layout. Pay particular attention to:
+- scripts/dispatch-plan-voters.sh and scripts/dispatch-code-voters.sh (the two duplicated prompt builders)
+- skills/shared/voting-protocol.md (the canonical doc — see line ~93 for the existing OOS section)
+- skills/shared/scripts/ (where shared helper scripts live; check naming conventions)
+- skills/design/SKILL.md (Step 3 main-agent-vote-required prose around line 598)
+- skills/implement/SKILL.md (Step 5 main-agent-vote-required prose around line 1238)
+- scripts/test-dispatch-plan-voters.sh and scripts/test-dispatch-code-voters.sh (existing harness shape)
+
+Write 2-3 paragraphs covering:
+(1) Key architectural decisions and approach — exact shape of the helper (sh script with stdout vs sh script with --output FILE vs sourced lib function), how the dispatchers compose their final prompts, how SKILL.md prose stays in sync with the helper output, and the proposed exact wording of the new OOS-specific problem-vs-solution clause.
+(2) Which files/modules to modify and why — the new helper script + its sibling .md, the two dispatcher refactors, the two existing test harnesses, the new dedicated helper harness, the voting-protocol.md update, the two SKILL.md updates.
+(3) Main tradeoffs and risks — drift prevention vs coupling; risk of changing voter behavior by altering the panel-role intro / EXONERATE phrasing; backward compatibility of existing harness fixtures; whether to keep prompt-text changes byte-preserved where possible vs accept some normalization.
+
+Do NOT modify files.
