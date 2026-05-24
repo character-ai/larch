@@ -1,0 +1,21 @@
+Reading full finding descriptions from the aggregator prompt and verifying key claims against the diff.
+
+Verifying implementation details in the workspace (findings.md contained no aggregated items; raw ballot is in aggregator-prompt.md).
+
+FINDING_1: EXONERATE -- duplicates FINDING_6/10/15 on the same `larch_quiet_init` omission; stdout fallback already surfaces KVs.
+FINDING_2: EXONERATE -- legitimate DRY nit but two small branches are clear and not worth refactor churn now.
+FINDING_3: NO -- broad SKILL boilerplate gripe, not a concrete scoped issue worth filing on its own.
+FINDING_4: EXONERATE -- same quiet-init gap as FINDING_6; no extra signal beyond the stronger duplicate.
+FINDING_5: NO -- flushed-log link nit with no runtime impact; not worth a dedicated tracking issue.
+FINDING_6: YES -- wrappers really skip `larch_quiet_init` after sourcing `lib-quiet.sh`, a real contract drift from other emit entrypoints.
+FINDING_7: YES -- case 5 in `test-rebase-checkpoint-probe.sh` never asserts `CONFLICT_FILES=`, so missing-emission regressions slip through.
+FINDING_8: EXONERATE -- theoretical re-expansion of captured append output; trusted helper boundary makes `--entry-file` churn disproportionate.
+FINDING_9: EXONERATE -- `ph_reason` comes from the same trusted `check-phantom-dirty` stream; hardening cost outweighs marginal threat.
+FINDING_10: EXONERATE -- duplicate quiet-init concern already accepted under FINDING_6.
+FINDING_11: EXONERATE -- `cat` on a fresh mktemp failing under `set -e` is not a realistic failure mode worth guarding.
+FINDING_12: EXONERATE -- optional stderr surfacing polish; probe already maps failures to `STATUS=unknown`.
+FINDING_13: EXONERATE -- multiple `CONFLICT_FILES=` lines are outside the documented contract stream shape.
+FINDING_14: EXONERATE -- breadcrumb/KV ordering is a minor doc-clarity nit, not a functional defect.
+FINDING_15: EXONERATE -- restates FINDING_6 plus FD3 caveat; one follow-up should cover init vs capture semantics together.
+FINDING_16: EXONERATE -- `lint-foreground-markers` already backs fences; extra prose-distance assertions add brittle coupling.
+FINDING_17: EXONERATE -- case-10 prose mismatch is small onboarding noise versus fixing harness comments alone.
