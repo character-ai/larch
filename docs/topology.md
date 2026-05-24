@@ -16,6 +16,7 @@ This document is a consumer-doc projection of runtime authorities. The runtime a
 | <a id="design.plan_review.dynamic_archetypes"></a>`design.plan_review.dynamic_archetypes` | up to 6 | scout proposes specialists fanned into Cursor+Codex dyn slots | `skills/design/references/plan-review.md` |
 | <a id="design.plan_review.panel_slots"></a>`design.plan_review.panel_slots` | 10 static + up to 12 dynamic | NDJSON manifest from dispatch-plan-review-panel.sh via paths-file sidecar | `skills/design/references/plan-review.md` |
 | <a id="design.plan_review.quick_mode"></a>`design.plan_review.quick_mode` | Claude-only | 1 Claude | `skills/design/references/plan-review-quick.md` |
+| <a id="design.plan.preview_emit"></a>`design.plan.preview_emit` | Step 3 plan-candidate preview | Gate C final-plan preview | `skills/design/scripts/emit-design-plan-preview.sh` |
 | <a id="design.dialectic.judge_panel"></a>`design.dialectic.judge_panel` | 3-judge | Claude Code Reviewer subagent + Codex + Cursor | `skills/shared/dialectic-protocol.md` |
 | <a id="design.dialectic.max_decisions"></a>`design.dialectic.max_decisions` | top-5 | selected contested decisions | `skills/shared/dialectic-protocol.md` |
 | <a id="implement.conflict_review.panel"></a>`implement.conflict_review.panel` | 3-reviewer | Claude Code Reviewer subagent + Codex + Cursor | `skills/implement/references/conflict-resolution.md` |

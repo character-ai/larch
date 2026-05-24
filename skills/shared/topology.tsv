@@ -6,6 +6,7 @@ design.plan_review.codex_archetypes	5 Codex	Architecture/Standards Edge-cases/Fa
 design.plan_review.dynamic_archetypes	up to 6	scout proposes specialists fanned into Cursor+Codex dyn slots	skills/design/references/plan-review.md
 design.plan_review.panel_slots	10 static + up to 12 dynamic	NDJSON manifest from dispatch-plan-review-panel.sh via paths-file sidecar	skills/design/references/plan-review.md
 design.plan_review.quick_mode	Claude-only	1 Claude	skills/design/references/plan-review-quick.md
+design.plan.preview_emit	Step 3 plan-candidate preview	Gate C final-plan preview	skills/design/scripts/emit-design-plan-preview.sh
 design.dialectic.judge_panel	3-judge	Claude Code Reviewer subagent + Codex + Cursor	skills/shared/dialectic-protocol.md
 design.dialectic.max_decisions	top-5	selected contested decisions	skills/shared/dialectic-protocol.md
 implement.conflict_review.panel	3-reviewer	Claude Code Reviewer subagent + Codex + Cursor	skills/implement/references/conflict-resolution.md

@@ -1,0 +1,9 @@
+TOOL=cursor
+TIMEOUT=1800
+CAPTURE_STDOUT=false
+CAPTURE_STDOUT_ONLY=true
+OUTPUT_FILE=<TMPDIR>/round-2/dyn-bash-script-output.txt
+OUTER_LAUNCHER=<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/42.0.23/scripts/launch-review.sh
+OUTER_LAUNCHER_PROMPT_FILE=<TMPDIR>/round-2/dyn-bash-script-output.txt.prompt
+OUTER_LAUNCHER_WORKDIR=<OPERATOR_REPO_PATH>
+OUTER_LAUNCHER_RISK=high

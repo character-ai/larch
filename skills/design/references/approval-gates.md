@@ -116,17 +116,21 @@ Gate B's plan revision may cause Step 2b.5 to prompt the operator (soft: Split /
 
 ### Presentation
 
-Read `$DESIGN_TMPDIR/plan.txt` (latest revision — already includes any findings applied via Gate B). Print the plan under a `## Final Design Plan` header so the user can review it.
+**Mandatory — immediately before the Prompt section below.** The executor MUST run the Step 4b `SKILL.md` fenced Bash block that invokes `emit-design-plan-preview.sh --variant gatec` (the shared large-plan summary path). When `$DESIGN_TMPDIR` is set to a directory and `$DESIGN_TMPDIR/plan.txt` is present and non-empty, that block emits the plan under a `## Final Design Plan` header (summary or full body per the threshold rules in the Large-plan summary mode subsection). **Defined exception — warning-only path:** when `$DESIGN_TMPDIR` is unset or not a directory, the block prints `**⚠ 4b: DESIGN_TMPDIR missing or invalid; cannot present final design plan**` and execution continues to the Prompt without a plan header/body. When `plan.txt` is missing or empty (should not happen on this path), the block prints `**⚠ 4b: plan.txt missing or empty; cannot present final design plan**` and execution continues to the Prompt the same way.
+
+**Large-plan summary mode**: the shared Bash (`skills/design/scripts/emit-design-plan-preview.sh`) uses `LARCH_DESIGN_PLAN_SUMMARY_THRESHOLD` (default `120`, positive integers only; `0`, empty, non-numeric values, or values with a leading zero fall back to `120`; comparisons use base-10 integer coercion). The same threshold, strict `line_count > threshold` rule, outline cap (40 matching `##`/`###` lines via `grep -E '^#{2,3} '`), empty-outline fallback (first 30 lines of `plan.txt`), and bold-note behavior apply at Step 3's `## Plan Candidate for Review` emit and at Gate C's `## Final Design Plan` emit. When the plan's line count strictly exceeds the threshold, the block emits only the plan title (first line) plus a section outline plus a bold note pointing at the full plan; if the outline is empty, the block falls back to the first 30 lines of `plan.txt`. The outline is best-effort and may include `##`/`###` lines from inside fenced code blocks. When the user picks `Other` on the Prompt below and asks for the full plan, the executor MUST `cat` the full `$DESIGN_TMPDIR/plan.txt` into chat and re-fire the same Gate C `AskUserQuestion` — including when the plan was already printed in full (non-summary path); the three primary options are unchanged after the re-prompt.
 
 ### Prompt
 
-`AskUserQuestion` with exactly three options:
+`AskUserQuestion` with three primary options plus the host's standard `Other` free-form channel:
 
 - **Approve final design** — exit Gate C; proceed to Step 5b publish (compose `composed-plan.md`, write `larch:plan` block to issue, run `design-log-publish.sh`, rename tracking issue).
 - **Discuss further** — re-enter Gate A (Step 1e) with the current plan; the discussion sub-round writes to `discussion-round2.md`.
 - **Re-run review panel** — re-enter Step 3 with the current `plan.txt` (which already reflects all user-approved prior feedback). Do NOT re-run sketches or dialectic. Step 3.5 (Gate B) will fire again on the fresh findings. Findings from prior review runs are NOT preserved — each review is a fresh look at the latest plan.
 
 Question text: `"Final design plan is ready. Approve, discuss further, or re-run the review panel against this plan?"` Header: `"Final design"`.
+
+**Opt-in to see the full plan via `Other`**: the user may pick `Other` on this prompt and request the full plan (whether or not large-plan summary mode applied on the prior emit). The executor MUST `cat` `$DESIGN_TMPDIR/plan.txt` into chat and re-fire the same Gate C `AskUserQuestion`; the three primary options (Approve / Discuss further / Re-run review panel) are unchanged. This Gate C `Other` behavior is distinct from the Step 0 tier-gate `Other` (which is a terminal cancel) — Gate C `Other` never cancels `/design`; it only displays the full plan and re-prompts.
 
 ### Loop exit
 

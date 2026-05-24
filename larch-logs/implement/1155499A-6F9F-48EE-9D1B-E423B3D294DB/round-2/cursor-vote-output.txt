@@ -1,0 +1,20 @@
+Reading the ballot and nearby context files.
+
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: EXONERATE -- redundant sourcing is harmless SKILL noise; optional dedup only.
+FINDING_5: EXONERATE -- Changelog section choice is cosmetic; either heading is acceptable.
+FINDING_6: YES
+FINDING_7: EXONERATE -- real paste hazard but doc-only nit not worth mandated churn.
+FINDING_8: EXONERATE -- large full-plan emission is inherent to the Other/show-full contract.
+FINDING_9: EXONERATE -- astronomically long digit-only env values are not a practical failure mode.
+FINDING_10: YES
+FINDING_11: EXONERATE -- richer shipped docs vs older issue text is intentional, not harmful drift.
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: YES
+OOS_1: YES
+OOS_2: NO -- corrupted/incomplete ballot body; scout non-issue confirmations are not a filing-worthy problem.

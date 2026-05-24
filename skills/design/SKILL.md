@@ -581,7 +581,18 @@ Print: `> **🔶 /design 3: plan review**`
 LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 3 — plan review" || true
 ```
 
-Read `review_budget` from `$DESIGN_TMPDIR/run-params.json`. Valid values are `quick` and `full`; if absent or invalid, derive the fallback from `quick_mode` (`quick` when true, otherwise `full`).
+**Pre-voting plan re-print (first-time Step 3 entry only)**: emit `$DESIGN_TMPDIR/plan.txt` under a `## Plan Candidate for Review` header so the user can see the plan that is about to enter the review/voting panel. Apply the shared large-plan summary mode documented in `${CLAUDE_PLUGIN_ROOT}/skills/design/references/approval-gates.md` (Gate C — large-plan summary mode). Gated by sentinel `$DESIGN_TMPDIR/.step3-entry-plan-printed`; subsequent re-entries (from Gate B(c) → Gate A → Step 3, Gate C(b) → Gate A → Step 3, or Gate C(c) → Step 3) skip the print because the sentinel exists. If summary mode fires, the user may interrupt the voting kickoff with a free-form "show full plan" request and the orchestrator emits the full plan before continuing. **Step 3 ordering (timing vs plan header)**: the `timing-ledger.sh mark` fence above runs before this block; the `## Plan Candidate for Review` header and plan body appear only in the Bash output below (not between the `> **🔶 /design 3**` breadcrumb and the timing ledger). Manual QA should expect the ledger line before the plan preview.
+
+```bash
+[ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
+"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/emit-design-plan-preview.sh" \
+  --design-tmpdir "$DESIGN_TMPDIR" \
+  --variant step3
+```
+
+Hermetic regression coverage for `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/emit-design-plan-preview.sh` lives in `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-emit-design-plan-preview.sh`.
+
+**Read `review_budget` from `$DESIGN_TMPDIR/run-params.json` before the quick/full branches below** (parse JSON from disk; do not infer from tier prose alone). Valid values are `quick` and `full`; if absent or invalid, derive the fallback from `quick_mode` (`quick` when true, otherwise `full`).
 
 **If `review_budget=quick`**: **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/plan-review-quick.md` completely. It defines the quick-mode plan-review procedure (self-review checklist, output file requirements, acceptance policy). After executing the procedure, proceed to Step 3.5.
 
@@ -773,7 +784,18 @@ Print: `> **🔶 /design 4b: gate C**`
 
 **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/approval-gates.md` completely (if not already loaded at Step 1e or 3.5).
 
-Execute the Gate C body in `approval-gates.md`. Present the latest `$DESIGN_TMPDIR/plan.txt` and prompt the user for **Approve final design** / **Discuss further** / **Re-run review panel**. On **Approve**, proceed to Step 5. On **Discuss further**, re-enter Step 1e Gate A (the discussion sub-round writes to `discussion-round2.md`). On **Re-run review panel**, re-enter Step 3 with the current `plan.txt` (skip Step 2a sketches and Step 2a.5 dialectic — reviewers see the latest plan with all approved-by-user prior feedback applied). The loop continues until the user picks **Approve**. Step 5 below no longer fires its own approval prompt; Gate C is the only final-approval gate.
+Execute the Gate C body in `approval-gates.md` — `approval-gates.md` is the single normative source for Gate C behavior (Presentation, Prompt, Other-handling, large-plan summary mode).
+
+**Mechanical Gate C plan emit** (mirrors Step 3 entry; no sentinel): implemented by `emit-design-plan-preview.sh --variant gatec` (same threshold/outline/bold-note rules as Step 3).
+
+```bash
+[ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
+"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/emit-design-plan-preview.sh" \
+  --design-tmpdir "$DESIGN_TMPDIR" \
+  --variant gatec
+```
+
+Then fire the Gate C `AskUserQuestion` per `approval-gates.md`. The three primary options are unchanged (**Approve final design** / **Discuss further** / **Re-run review panel**). If the user picks `Other` and asks for the full plan, `cat` `$DESIGN_TMPDIR/plan.txt` into chat and re-fire the same Gate C `AskUserQuestion`. On **Approve**, proceed to Step 5. On **Discuss further**, re-enter Step 1e Gate A (the discussion sub-round writes to `discussion-round2.md`). On **Re-run review panel**, re-enter Step 3 with the current `plan.txt` (skip Step 2a sketches and Step 2a.5 dialectic — reviewers see the latest plan with all approved-by-user prior feedback applied). The loop continues until the user picks **Approve**. Step 5 below no longer fires its own approval prompt; Gate C is the only final-approval gate.
 
 > **Continue to Step 5 IMMEDIATELY** once Gate C returns Approve. Gate C is not terminal — finalize (OOS filing + plan write) and cleanup still must run.
 

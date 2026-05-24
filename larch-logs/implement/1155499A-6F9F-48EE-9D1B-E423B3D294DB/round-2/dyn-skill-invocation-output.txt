@@ -1,0 +1,21 @@
+Gathering the branch diff and commit list to review architecture and verify scout_notes claims against the actual changes.
+
+Verifying whether `CLAUDE_PLUGIN_ROOT` is guaranteed during `/design` and scanning for gaps between docs and `emit-design-plan-preview.sh`.
+
+### In-Scope Findings
+
+- **risk-integration** `larch-logs/implement/1155499A-6F9F-48EE-9D1B-E423B3D294DB/:1-621` — The branch adds a full `/implement` run tree (`manifest.json` with placeholder fields, `parent-issue.md`, `plan-review-tally.json`, and a ~489-line `plan-goals-test.md` that mostly duplicates the issue plan). That ties the feature to one-off session telemetry, bloats history, and is easy to confuse with intentionally curated run logs; it is unrelated to the runtime behavior of `/design` plan previews. **Suggested fix:** Remove these paths from the PR (or relocate only what `docs/run-logs.md` explicitly requires) so the change set is limited to `skills/design/*`, `docs/configuration-and-permissions.md`, and `CHANGELOG.md`.
+
+- **correctness** `skills/design/references/approval-gates.md:761-765` — `### Presentation` says the executor **MUST** emit `plan.txt` under a `## Final Design Plan` header, but the same section documents the missing/empty `plan.txt` path where the mechanical block prints only the `**⚠ 4b: plan.txt missing or empty...**` line and continues, which contradicts a literal reading of the MUST. **Suggested fix:** Reword so the obligation is on running the preview block and emitting the header **when** `plan.txt` is present and non-empty, with the warning-only path explicitly labeled as the defined exception.
+
+### Out-of-Scope Observations
+
+- **Scout_notes vs diff:** The branch implements `emit-design-plan-preview.sh` invoked from fenced Bash in `skills/design/SKILL.md` (not only prose); the script is added as `100755` in the diff, so the executable-bit concern is satisfied.
+
+- **`CLAUDE_PLUGIN_ROOT`:** The same skill already hard-requires `CLAUDE_PLUGIN_ROOT` in Step 0 (export into `source-env.sh` / abort if empty) and mandates the canonical prelude before later Bash blocks; the new script calls follow that existing contract, same as `timing-ledger.sh` and `design-driver.sh`.
+
+- **Gate C guard vs header:** In `emit-design-plan-preview.sh` `gatec` branch (`skills/design/scripts/emit-design-plan-preview.sh:105-115`), `## Final Design Plan` is printed only after `DESIGN_TMPDIR` is a directory and `plan.txt` is non-empty, matching the documented warning-only behavior for empty/missing plans (no stray header).
+
+- **Threshold / leading zeros:** `normalize_summary_threshold` and the docs (`docs/configuration-and-permissions.md:68-70`) agree on rejecting leading-zero forms and using base-10 coercion via `$((10#_t))`.
+
+- **`plan-goals-test.md` content:** The scout’s comparison to “inline blocks” largely reflects this committed artifact echoing the original issue plan’s fenced bash, not a second runtime implementation path in `SKILL.md`.
