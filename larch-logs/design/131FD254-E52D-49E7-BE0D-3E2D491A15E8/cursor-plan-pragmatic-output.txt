@@ -1,0 +1,102 @@
+Reading the plan and cited codebase paths.
+
+Checking whether the proposed bash snippet includes the numeric guard and re-reading the Gate C prompt lines.
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	(plan fenced block skills/design/SKILL.md proposed insert ~L64-66 mirroring ~/.cache/.../plan.txt:64-66)	Proposed Step 3 bash sets `_summary_threshold` then uses `-gt` without the numeric-only `case` guard promised in Edge cases	Non-numeric `LARCH_DESIGN_PLAN_SUMMARY_THRESHOLD` aborts the whole Bash message with an arithmetic error before `touch`, leaving `.step3-entry-plan-printed` absent so every Step 3 re-entry retries and may spam errors	Include the `case "$_summary_threshold" in (''|*[!0-9]*) _summary_threshold=120 ;; esac` lines inside the shipped fenced block (not only in Edge cases prose)
+2	in_scope	important	risk_integration	skills/design/references/approval-gates.md:119-123 vs plan Gate C Prompt edits	Normative Gate C text requires `AskUserQuestion` with exactly three enumerated options while the plan adds an `Other` full-plan opt-in loop	Implementers treat `Other` as violating the gate contract or skip the opt-in path to stay byte-consistent with existing docs	Reword line 119 to three primary labeled choices plus explicit allowance for the host tool's `Other`/free-form follow-up (keep the three outcomes authoritative)
+3	in_scope	important	correctness	(plan fenced block ~/.cache/.../plan.txt:70)	Step 3 summary bold note tells users they can pick `Other` on the `next` prompt before voting	There is no Gate C `AskUserQuestion` until after the whole Step 3 review/voting/Gate B/3b/4 pipeline; users wait for a prompt that does not come next	Match the Large-plan contract: at Step 3 cite free-form interrupt/`show full plan` only; reserve `Other` wording for Gate C copy only
+4	in_scope	important	risk_integration	skills/design/SKILL.md:705-709 vs plan Step 3 mechanical bash	Step 3 plan presentation becomes a mandatory fenced Bash block while Gate C remains orchestrator-interpreted prose plus `Execute the Gate C body`	Gate C summary/threshold rules drift from Step 3 or get skipped while Step 3 stays correct	Mirror the same Bash emit pattern under Step 4b (header `## Final Design Plan`, no sentinel) or factor one tiny `scripts/*.sh` helper both steps call
+5	in_scope	nit	architecture	~/.cache/.../plan.txt:21-46 vs ~288-290	`Files to modify` omits `CHANGELOG.md` while Documentation impact mandates a PATCH entry	Implementer ships skill edits without changelog line the plan already promised	Add `CHANGELOG.md` to the numbered Files-to-modify list (or fold doc impact into that section)
+6	in_scope	latent	security	(plan bold note paths ~/.cache/.../plan.txt:70-71,148-149)	Bold notes print absolute `$DESIGN_TMPDIR/plan.txt` into chat and logs	Host username/cache layout leaks into transcripts, screenshots, or published design logs	Keep path for operator use but mention redaction in published logs or prefer a stable label plus path only when `LARCH_QUIET`/debug allows (align with existing redaction norms if any)
+
+[OUT_OF_SCOPE] Document `LARCH_DESIGN_PLAN_SUMMARY_THRESHOLD` in [docs/configuration-and-permissions.md](docs/configuration-and-permissions.md) (no line range yet; file exists as the repo env-var catalog). Plan explicitly defers all `docs/` edits (~/.cache/.../plan.txt:283-285), so operators may rely only on CHANGELOG unless filed separately.
+
+1. **[correctness]** `~/.cache/larch/sessions/.../plan.txt` (proposed Step 3 bash): Fenced snippet omits the `case … *[!0-9]*` threshold sanitization that Edge cases (plan L214–220) says belongs in final code — non-numeric env can abort before sentinel `touch`. **Suggested revision:** Ship the guard inside the same fenced block before `[ "$_plan_lines" -gt "$_summary_threshold" ]`.
+
+2. **[risk_integration]** [skills/design/references/approval-gates.md](skills/design/references/approval-gates.md):119–123: Normative “exactly three options” conflicts with the plan’s Gate C `Other` + re-prompt loop. **Suggested revision:** Redefine the prompt contract as three primary outcomes with an explicit platform `Other`/free-form carve-out so implementers do not treat `Other` as out-of-spec.
+
+3. **[correctness]** Plan’s Step 3 bold note (`plan.txt` L70): “pick `Other` on the next prompt” is misleading — Gate C is not the next prompt before voting. **Suggested revision:** Step 3 note should only mention free-form “show full plan”; defer `Other` language to Gate C text only.
+
+4. **[risk_integration]** [skills/design/SKILL.md](skills/design/SKILL.md):705–709 vs proposed Step 3 Bash: Gate C remains prose-driven while Step 3 gains mechanical printing — asymmetric compliance risk. **Suggested revision:** Add a parallel Bash emit for Gate C or a single shared helper invoked from both boundaries.
+
+5. **[architecture]** `plan.txt` L21–46 vs L288–290: `CHANGELOG.md` required but absent from “Files to modify.” **Suggested revision:** List `CHANGELOG.md` in the Files-to-modify section.
+
+6. **[security]** Plan bold-note paths (`plan.txt` L70–71, L146–149): Absolute `$DESIGN_TMPDIR` in user-visible output. **Suggested revision:** Acknowledge transcript/log exposure; align with existing redaction guidance where design logs publish.
+
+The user asked first non-whitespace to be `s` or `{` — my response starts with `schema_version` which starts with `s` — good.
+
+Wait: "schema_version" starts with 's' — yes.
+
+Double-check: numbered findings need "focus-area tag" — I used **[correctness]** format — user said "Prefix out-of-scope" with [OUT_OF_SCOPE] — for in-scope they said "Return numbered findings with focus-area tag" — I'll use format like `correctness:` or `(correctness)` — I used **[correctness]** which is fine.
+
+Actually re-read: "Return numbered findings with focus-area tag, repo-relative file:line when applicable, concern, and suggested revision."
+
+I did that.
+
+One issue: TSV location field - user asked "repo-relative file:line when applicable". For plan-only items I used paths like (plan fenced block...) - might use `skills/design/SKILL.md:proposed` or reference plan cache path. The example uses `scripts/foo.sh:42-45`. I'll use `skills/design/SKILL.md:proposed-Step3-bash` or line numbers after implementation - for pre-PR review, referencing plan.txt line numbers in cache is odd for "repo-relative". Better:
+
+Finding 1 location: `skills/design/SKILL.md` (insert region after L515) — post-PR approximate L516+
+
+I'll use `skills/design/SKILL.md:516+` as proposed insertion point (after timing ledger block line 514-515).
+
+Finding 3: the erroneous text is in the plan's bash snippet which will land in SKILL — `skills/design/SKILL.md:proposed-printf-line`
+
+I'll refine TSV location column to be repo-relative where possible:
+1. `skills/design/SKILL.md:~516` (new block)
+2. `skills/design/references/approval-gates.md:119-123`
+3. `skills/design/SKILL.md:~526` (bold line in new block)
+4. `skills/design/SKILL.md:705-709`
+5. `plan.txt:21-46` is NOT repo relative - the finding is about the plan document itself. Location could be `issue-2683-plan:Files-to-modify` — user said repo-relative. The inconsistency is in the cached plan file — I'll put `skills/design/SKILL.md` / `CHANGELOG.md` as the affected artifact: `CHANGELOG.md:1` or `skills/design/SKILL.md:N/A`
+
+Use `CHANGELOG.md` for finding 5 — "missing from plan Files-to-modify"
+
+Regenerate TSV with cleaner locations.
+
+Actually the instructions say "repo-relative file:line when applicable" — for meta-plan gap, `CHANGELOG.md` with no line is ok.
+
+I'll output the final message with strict tab-separated TSV. In markdown response, tabs might render oddly but user asked no markdown fences around TSV.
+
+Let me verify tab characters work in the response - I'll use real tabs between fields.
+
+Row 3 location: `skills/design/SKILL.md` (new printf line) - line unknown post-edit, use descriptive
+
+I'll use:
+- skills/design/SKILL.md:new-Step3-bash-block
+Actually the example uses file:line-line. I'll use `skills/design/SKILL.md:516-579` for the new block region (approx)
+
+Line 515 is closing ``` of timing block. New content starts ~516.
+
+I'll simplify locations for TSV:
+1 skills/design/SKILL.md:proposed-step3-bash
+2 skills/design/references/approval-gates.md:119-123
+3 skills/design/SKILL.md:proposed-summary-note
+4 skills/design/SKILL.md:705-709
+5 CHANGELOG.md:1 (top of file for new entry - arbitrary)
+6 skills/design/SKILL.md:proposed + approval-gates.md:proposed
+
+For TSV, spaces in location are ok? "what" field - use spaces not tabs inside.
+
+I'll produce final output.
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/SKILL.md:~516-579 (proposed Step 3 bash)	Fenced Step 3 snippet sets `_summary_threshold` then uses `-gt` without the promised numeric `case` guard	Non-numeric `LARCH_DESIGN_PLAN_SUMMARY_THRESHOLD` can abort the Bash tool turn before `touch`, leaving `.step3-entry-plan-printed` missing and retrying noisy failures on every Step 3 re-entry	Embed `case "$_summary_threshold" in (''|*[!0-9]*) _summary_threshold=120 ;; esac` inside the shipped fenced block before the `-gt` test
+2	in_scope	important	risk_integration	skills/design/references/approval-gates.md:119-123	Normative Gate C line says `AskUserQuestion` with exactly three options while the plan adds an `Other` full-plan loop	Authors may drop the `Other` path to stay consistent with the three-option contract	Reword to three primary labeled choices plus explicit allowance for host `Other`/free-form follow-up before re-firing the same three outcomes
+3	in_scope	important	correctness	skills/design/SKILL.md:proposed-summary-printf	Step 3 large-plan bold line tells users to pick `Other` on the `next` prompt before voting	Gate C is not the next prompt; users wait for an `AskUserQuestion` that is many sub-steps away	Step 3 note should only mention free-form `show full plan`/interrupt; reserve `Other` wording for Gate C copy
+4	in_scope	important	risk_integration	skills/design/SKILL.md:705-709	Gate C presentation stays orchestrator-only prose while Step 3 gains a mandatory Bash print	Gate C summary rules can drift or be skipped while Step 3 stays mechanically correct	Add a parallel Bash emit immediately before the Gate C question or call one shared helper from Step 3 and Step 4b
+5	in_scope	nit	architecture	CHANGELOG.md (missing from plan Files-to-modify)	Documentation impact requires a CHANGELOG PATCH line but Files-to-modify omits the file	CHANGELOG entry may be forgotten	Add `CHANGELOG.md` to the numbered Files-to-modify list
+6	in_scope	latent	security	skills/design/SKILL.md:proposed + skills/design/references/approval-gates.md:proposed	Bold notes print absolute `$DESIGN_TMPDIR/plan.txt` into chat	Cache path and username leak into transcripts or published design logs	Note redaction for published logs or gate verbose path behind existing operator/debug toggles if the repo has them
+
+[OUT_OF_SCOPE] Add `LARCH_DESIGN_PLAN_SUMMARY_THRESHOLD` to [docs/configuration-and-permissions.md](docs/configuration-and-permissions.md) (full file; no new line numbers until edited). Plan explicitly keeps all `docs/` unchanged, so discovery is CHANGELOG-only unless a follow-up issue is filed.
+
+1. **(correctness)** Proposed Step 3 bash (to land after [skills/design/SKILL.md](skills/design/SKILL.md) timing-ledger block ~512–515): the fenced snippet matches Edge Cases prose about arithmetic failure but omits the promised `case` sanitization before `-gt` — fix by including that guard in the committed block.
+
+2. **(risk_integration)** [skills/design/references/approval-gates.md](skills/design/references/approval-gates.md) Gate C Prompt at lines 119–123: “exactly three options” fights the new `Other` workflow — reconcile normative wording with the three primary outcomes plus `Other`.
+
+3. **(correctness)** Proposed Step 3 summary `printf` (plan `plan.txt` line 70 as authored in cache): “Other on the next prompt” is inaccurate for the Step 3 boundary — restrict `Other` language to Gate C.
+
+4. **(risk_integration)** [skills/design/SKILL.md](skills/design/SKILL.md) Step 4b (705–709): only Step 3 gets mechanical enforcement in the plan — consider mirroring Bash at Gate C or a tiny shared script so both sites stay aligned.
+
+5. **(architecture)** Plan “Files to modify” vs “Documentation impact”: add [CHANGELOG.md](CHANGELOG.md) to the file list so the promised PATCH line is not dropped.
+
+6. **(security)** Large-plan bold notes: absolute tmp paths in chat — latent exposure in logs/transcripts; align with any existing redaction policy for published design logs.

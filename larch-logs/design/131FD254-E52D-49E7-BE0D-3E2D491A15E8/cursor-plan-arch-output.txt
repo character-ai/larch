@@ -1,0 +1,21 @@
+Reading the plan and referenced code paths to produce the required review output.
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	architecture	skills/design/SKILL.md:512-520 vs skills/design/references/approval-gates.md:113-125	Gate C large-plan behavior is only tightened in markdown while Step 3 uses a fenced Bash emitter	Threshold/outline/bold-note text can diverge or Gate C path can still be skipped by an inattentive executor despite MUST prose	Have Gate C reuse the same mechanical path as Step 3 (e.g. small shared script sourced from both Step 3 and Step 4b Bash fences) or add an equivalent fenced Bash block immediately before the Gate C AskUserQuestion in SKILL.md
+1	in_scope	important	correctness	skills/design/SKILL.md:58-79 (PR plan excerpt targets ~516 insertion)	The Approach listing shows threshold logic without the numeric-sanitization guard promised in Edge cases	Invalid LARCH_DESIGN_PLAN_SUMMARY_THRESHOLD can make [ "$_plan_lines" -gt "$_summary_threshold" ] abort the whole Step 3 fence	Merge the Edge-case case ''|*[!0-9]*) fallback into the canonical fenced block in the PR so the snippet and mitigation cannot diverge
+1	in_scope	nit	correctness	CHANGELOG.md (omitted from plan Files-to-modify)	Documentation impact requires a CHANGELOG PATCH line but Files to modify lists only SKILL.md and approval-gates.md	CHANGELOG entry may be forgotten on implement	Add CHANGELOG.md to Files to modify with the same one-line PATCH note already drafted
+1	in_scope	important	architecture	docs/configuration-and-permissions.md:164-271	Introduces LARCH_DESIGN_PLAN_SUMMARY_THRESHOLD while claiming no docs/ updates	Operators using configuration-and-permissions.md will not discover the knob	Extend the plan to document the env var there or drop the no-docs claim and add the subsection
+1	in_scope	important	risk-integration	skills/design/SKILL.md:512-540	Free-form show full plan at Step 3 entry relies on user interrupting before reviewer launches with no explicit SKILL handler step	Gate C has a defined Other path Step 3 does not mirror structurally	User message before launches may be ignored or cause ambiguous halts	Add an explicit normative sub-step after the new Bash block describing detect-print-reemit ordering before any scout/dispatch Bash
+1	out_of_scope	latent	code-quality	scripts/test-design-structure.sh (referenced skills/design/SKILL.md:525)	Plan defers literal-anchor assertions for new headers	CI may not catch accidental removal of Plan Candidate or Final Design headings	File a follow-up to extend test-design-structure checks when convenient
+
+1. **architecture** — `skills/design/SKILL.md:512-520` vs `skills/design/references/approval-gates.md:113-125` — Gate C stays prose-driven while Step 3 becomes Bash-driven for the same summary contract — **Suggested revision:** add a shared mechanical emitter (script or duplicated fenced Bash) for Gate C so behavior cannot drift or be skipped.
+
+2. **correctness** — `skills/design/SKILL.md` (proposed Bash near `:516`) — Canonical Approach snippet omits the threshold sanitization the plan’s own Edge cases require — **Suggested revision:** ship the `case` fallback in the same fenced block as the `-gt` test.
+
+3. **correctness** — `CHANGELOG.md` (plan Files-to-modify gap) — CHANGELOG work is specified under Documentation impact but not listed under Files to modify — **Suggested revision:** add `CHANGELOG.md` to Files to modify.
+
+4. **architecture** — `docs/configuration-and-permissions.md` — New `LARCH_DESIGN_PLAN_SUMMARY_THRESHOLD` conflicts with “no docs/ updates” and AGENTS.md’s pointer to this file for env vars — **Suggested revision:** document the variable in configuration-and-permissions or revise the documentation-impact claim.
+
+5. **risk-integration** — `skills/design/SKILL.md:512-540` — Step 3 “show full plan” opt-in has no mirrored structured step (unlike Gate C `Other`) — **Suggested revision:** add an explicit SKILL instruction for honoring free-form full-plan requests before reviewer dispatch.
+
+6. **[OUT_OF_SCOPE]** — `scripts/test-design-structure.sh` (see `skills/design/SKILL.md:525`) — No new header anchors in CI per plan lines 301-303 — worth a downstream issue for harness hardening; line range not applicable until tests are added.
