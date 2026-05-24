@@ -13,7 +13,7 @@ The table intentionally covers the legacy tracking sections as durable files:
 `review-findings`, `review-panel-manifest`, `review-round-summary`,
 `review-scout-manifest`, `review-tally`), `version-bump-reasoning`,
 `oos-issues`, `run-statistics`, `token-report`, `timing-report`,
-`execution-issues`, and `session-transcript`
+`execution-issues`, `final-bail-reason` (replace-mode text snapshot of the terminal `BAIL_REASON` written during `/implement` Step 18 finalize-state restore), and `session-transcript`
 (the redacted Claude Code session transcript captured at Step 7a tail
 pre-bump flush for full post-hoc auditability; refreshed on each CI-retry
 push via `scripts/refresh-run-logs.sh`).

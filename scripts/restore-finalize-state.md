@@ -43,7 +43,7 @@ EXPECTED_TMPDIR_BASENAME_PREFIX
 NO_LOGS_COMMIT
 ```
 
-Only `DESIGN_ONLY_DONE` has a non-empty default, `false`, for compatibility with older or partial `ship-pr-state.sh` files. Other missing keys are written as empty values. `BAIL_REASON` is not part of `finalize-state.sh`; it is copied to `$IMPLEMENT_TMPDIR/final-bail-reason.txt`, matching `ship-pr.sh`.
+Only `DESIGN_ONLY_DONE` has a non-empty default, `false`, for compatibility with older or partial `ship-pr-state.sh` files. Other missing keys are written as empty values. `BAIL_REASON` is not part of `finalize-state.sh`; it is copied to `$IMPLEMENT_TMPDIR/final-bail-reason.txt`, matching `ship-pr.sh`. When that file is non-empty **and** `RUN_ID` from `ship-pr-state.sh` is non-empty, the helper best-effort publishes the same payload to the committed run-log tree via `scripts/larch-log.sh write --batch final-bail-reason` under `$IMPLEMENT_TMPDIR/larch-logs/` (silent `2>/dev/null || true` on failure, mirroring other finalize-sidecar writes). Empty `BAIL_REASON` skips the publish so post-merge clears do not allocate a batch row.
 
 ## Invariants
 
@@ -59,7 +59,7 @@ Only `DESIGN_ONLY_DONE` has a non-empty default, `false`, for compatibility with
 
 ## Harness
 
-`scripts/test-restore-finalize-state.sh` covers missing `ship-pr-state.sh`, partial and complete state files, idempotent rewrites, the `DESIGN_ONLY_DONE=false` default, `BAIL_REASON` copying, and the final `finalize-state.sh` presence after the atomic rename.
+`scripts/test-restore-finalize-state.sh` covers missing `ship-pr-state.sh`, partial and complete state files, idempotent rewrites, the `DESIGN_ONLY_DONE=false` default, `BAIL_REASON` copying, `final-bail-reason` larch-log batch publish when `BAIL_REASON` is non-empty (and absence when it is empty), and the final `finalize-state.sh` presence after the atomic rename.
 
 ## Edit In Sync
 

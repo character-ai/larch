@@ -2183,6 +2183,34 @@ else
 fi
 rm -rf "$call_dir"
 
+# Vendor CI-fix outer loop exhaustion (TRANSIENT_RETRIES>=1): 3× tier failures → exit 4, STALL_STEP=10-max-retries.
+root=$(make_repo vendor_loop_ci_fix_exhausted)
+tmp=$(make_tmpdir)
+cat > "$root/scripts/ci-wait.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'ACTION=evaluate_failure\nCI_STATUS=fail\nBEHIND_COUNT=0\nFAILED_RUN_ID=run123\nBAIL_REASON=\nITERATION=0\nELAPSED=1\n'
+STUB
+for launcher in launch-cursor-ci.sh launch-codex-ci.sh launch-claude-ci.sh; do
+    cat > "$root/scripts/$launcher" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'LAUNCHER_EXIT=1\n'
+exit 0
+STUB
+    chmod +x "$root/scripts/$launcher"
+done
+chmod +x "$root/scripts/ci-wait.sh"
+write_state "$tmp/ship-pr-state.sh" ci-initial
+awk '/^TRANSIENT_RETRIES=/ {print "TRANSIENT_RETRIES=1"; next}
+     /^FAILED_RUN_ID=/ {print "FAILED_RUN_ID=run123"; next}
+     /^FIX_ATTEMPTS=/ {print "FIX_ATTEMPTS=0"; next}
+     {print}' "$tmp/ship-pr-state.sh" > "$tmp/ship-pr-state.sh.new" \
+    && mv "$tmp/ship-pr-state.sh.new" "$tmp/ship-pr-state.sh"
+run_subject "$root" "$tmp" "$tmp/rc"
+assert_rc "$tmp/rc" 4 "vendor CI-fix loop exhaustion exits 4 (exit_stall)"
+assert_state_line "$tmp/ship-pr-state.sh" "STALL_STEP=10-max-retries" "vendor loop exhaustion records STALL_STEP=10-max-retries"
+
 # ──────────────────────────────────────────────────────────────────────────────
 # --no-logs-commit: exported to lifecycle helper subprocess tree
 # ──────────────────────────────────────────────────────────────────────────────
