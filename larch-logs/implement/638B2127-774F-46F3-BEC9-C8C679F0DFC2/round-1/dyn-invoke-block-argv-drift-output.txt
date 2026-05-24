@@ -1,0 +1,13 @@
+Gathering the diff, commit list, and relevant sections of `skills/implement/SKILL.md` and `scripts/ship-pr.sh` for the invoke-block / argv-drift review.
+
+Verifying Step 8+ variable availability and comparing CLONE_TAG derivation with `write_initial_state()` in the working tree.
+
+### In-Scope Findings
+
+- **architecture** `skills/implement/SKILL.md:1576-1584` and `scripts/ship-pr.sh:273-280` — The Step 8+ `Invoke:` block now embeds a second copy of the `CLONE_TAG` / basename / `tr` / 32-char cap / default `_` normalization that already lives in `write_initial_state()`. The two copies match today, but any future tweak to clone-tag rules in only one place would make `--expected-tmpdir-basename-prefix` disagree with what `ship-pr.sh` would have derived when that flag is omitted (alternate callers) or invite subtle tmpdir-guard skew. **Suggested fix:** Add a short normative note beside the SKILL preamble (and/or in `scripts/ship-pr.md` next to argv-init) stating that this snippet must stay byte-identical to `write_initial_state()`’s `clone_tag_full` branch, and treat edits to either as a paired change; optionally add a regression test that compares prefix derivation to `ship-pr.sh` output when both are run from the same fixture cwd and env.
+
+### Out-of-Scope Observations
+
+- The branch diff also adds `larch-logs/implement/638B2127-774F-46F3-BEC9-C8C679F0DFC2/*` (manifest, plan text, tally) alongside the functional changes; that is unrelated to invoke-block argv wiring and may be worth keeping off the merge branch if policy expects implement logs only from recorded runs you intend to ship.
+- Using `--tool-label "${coder:-claude}"` is consistent with lowercase `TOOL_LABEL` values used elsewhere (e.g. harnesses) and avoids conflating the Step 2.1 display `TOOL_LABEL` (`Codex` / `Cursor` / `external implementer` in `skills/implement/SKILL.md:1036-1040`) with the state-machine field; no issue flagged for that.
+- `--manifest-path "${MANIFEST_PATH:-}"` is empty-safe and aligns with `ship-pr.sh`’s `MANIFEST_PATH` JSON check, which only runs when the value is non-empty (`scripts/ship-pr.sh:2528-2532`).
