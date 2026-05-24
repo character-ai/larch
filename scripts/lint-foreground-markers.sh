@@ -26,6 +26,8 @@ collect-agent-results.sh
 dispatch-with-waterfall.sh
 dispatch-plan-voters.sh
 implement-bootstrap.sh
+rebase-checkpoint-probe.sh
+phantom-probe-with-warn.sh
 DENYLIST_EOF
 
 usage() {
