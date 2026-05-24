@@ -1,0 +1,15 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: EXONERATE -- parity tests and launcher-parity rule already bound drift; a new shared library is disproportionate for three small splice blocks
+FINDING_11: YES
+FINDING_12: YES
+OOS_1: NO -- handle in the same change if the harness mis-resolves an unknown slug; no separate issue needed
+OOS_2: NO -- archival doc wording is not worth a standalone tracking issue
+OOS_3: NO -- stdout-heuristic hardening is unrelated scope beyond this plan

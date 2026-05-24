@@ -1,0 +1,56 @@
+# Approach Synthesis (quick mode, 2 generic sketches)
+
+## Agreement (both Cursor-Generic and Codex-Generic)
+
+1. **CI-fix knowledge fragment**: place larch-specific repair knowledge in a single shared reference file `skills/shared/ci-fix-failure-patterns.md` and load it into the prompt of each of the three CI launchers (`launch-cursor-ci.sh`, `launch-codex-ci.sh`, `launch-claude-ci.sh`). Avoids inline duplication and preserves the launcher-parity contract.
+
+2. **ci-decide.sh emit change**: at the FIX_ATTEMPTS >= 10 branch (lines 124-128), replace the free-form `BAIL_REASON=Too many fix attempts (10) without CI passing` with the exact-match `BAIL_REASON=fix-attempts-exhausted`. Human-readable detail (if needed) becomes an adjacent comment, not in the KV envelope.
+
+3. **Regression test for vendor-loop exhaustion**: add a new block to `scripts/test-ship-pr.sh` that:
+   - Sets ship-pr state `TRANSIENT_RETRIES=1`, `FAILED_RUN_ID=run123`, `FIX_ATTEMPTS=0` (so the FIX_ATTEMPTS cap doesn't fire first).
+   - Stubs `ci-wait.sh` to return `ACTION=evaluate_failure` on first call.
+   - Stubs `gh-run-logs.sh` to exit 0 (so vendor dispatch is attempted).
+   - Stubs `launch-cursor-ci.sh`, `launch-codex-ci.sh`, and `launch-claude-ci.sh` to all return non-zero.
+   - Asserts ship-pr exits **4** via `exit_stall "10-max-retries"` at line 1503.
+
+4. **final-bail-reason.txt larch-log batch**: register a new slug `final-bail-reason .txt replace none` in `LARCH_LOG_BATCHES` in `scripts/larch-log-batches.sh`. Publish via `refresh-run-logs.sh` (guarded by `[ -f "$IMPL_TMPDIR/final-bail-reason.txt" ]`), so older flows that don't write the file remain no-ops. Update `scripts/test-larch-logs-batches.sh` to cover the new slug.
+
+## Divergence resolution
+
+- Cursor flagged that emitting exact-match `BAIL_REASON=fix-attempts-exhausted` from `ci-decide.sh` will flip the FIX_ATTEMPTS >= 10 cap path from exit 4 → exit 3. **Resolution**: this flip is intentional per Round 1 Decision 4. The two paths remain distinct:
+  - `ci-decide.sh` FIX_ATTEMPTS >= 10 cap → `bail` envelope with magic token → ship-pr `needs_user_bail_reason` returns true → **exit 3** (user-input bail, `/implement` Step 16 contract).
+  - `run_evaluate_failure` outer `_max_fix=3` attempts all fail → `exit_stall "10-max-retries"` → **exit 4** (stall).
+  The existing exit-3 stub test at `test-ship-pr.sh:1042-1047` continues to pass via direct stub injection; the new test in (3) above covers the orthogonal exit-4 path.
+
+## Risks and mitigations
+
+- **Prompt-fragment drift**: a launcher omits the include. Mitigation: add a small assertion in `scripts/test-launch-cursor-ci.sh` / `test-launch-codex-ci.sh` / `test-launch-claude-ci.sh` (or whichever harness covers each launcher) that the rendered `$PROMPT_FILE` contains a sentinel substring from the fragment file.
+
+- **Collapsing the two ship-pr exit paths**: the FIX_ATTEMPTS cap (exit 3 user-input) and the vendor-loop exhaustion (exit 4 stall) MUST remain distinct. Mitigation: keep the existing exit-3 stub test passing AND add the new exit-4 stub test; the test pair pins the contract.
+
+- **Post-merge `larch-log.sh write` policy**: `refresh-run-logs.sh` already short-circuits after merge outcomes (`merged|admin_merged|already_merged`), so adding the `final-bail-reason` publish there is safe — it cannot fire post-merge. No new commit mechanism needed.
+
+- **Bash 3.2 portability**: all touched scripts are already 3.2-compatible; no new constructs introduced.
+
+- **Foreground markers**: no new fenced bash blocks in SKILL.md surface — the CI-fix knowledge is a runtime concern, not an orchestrator directive.
+
+## Affected files (preliminary)
+
+- `scripts/ci-decide.sh` — replace prose BAIL_REASON with exact-match token at lines ~124-128
+- `scripts/ci-decide.md` — update sibling
+- `scripts/larch-log-batches.sh` — add `final-bail-reason .txt replace none` row
+- `scripts/larch-log-batches.md` — update sibling enumerating batch
+- `scripts/refresh-run-logs.sh` — add `final-bail-reason` publish call guarded by `[ -f ]`
+- `scripts/refresh-run-logs.md` — update sibling
+- `scripts/test-ship-pr.sh` — add vendor-loop-exhaustion exit-4 regression block
+- `scripts/test-larch-logs-batches.sh` — extend to cover new slug
+- `skills/shared/ci-fix-failure-patterns.md` — new shared knowledge fragment (topology.tsv format rule + regen)
+- `scripts/launch-cursor-ci.sh` — load/include the shared fragment into the `fix` PROMPT
+- `scripts/launch-cursor-ci.md` — update sibling
+- `scripts/launch-codex-ci.sh` — load/include the same fragment
+- `scripts/launch-codex-ci.md` — update sibling
+- `scripts/launch-claude-ci.sh` — load/include the same fragment
+- `scripts/launch-claude-ci.md` — update sibling
+- Possibly extend `scripts/test-launch-*-ci.sh` assertions to confirm fragment is in the rendered prompt.
+
+(Step 2b will finalize file list, line ranges, and acceptance.)

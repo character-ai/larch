@@ -1,0 +1,7 @@
+Reading the plan and referenced code paths for edge-case and failure-mode review.
+
+Exploring referenced files to validate contracts, integration points, and failure modes against the proposed plan.
+
+Gathered evidence: `approval-gates.md` mandates EMIT_PLAN then Step 3b with no threshold step; `SKILL.md` has an unconditional Step 2b→3 handoff and a public-argv sentence that omits the new flag; `emit-plan.sh` uses last non-empty line for `diff_lines`, which can diverge from a “last matching line” helper.
+
+

@@ -1,0 +1,66 @@
+# [DESIGNING] OOS judge prompts: unify and instruct judges to evaluate PROBLEM, not SOLUTION
+
+## Problem
+
+In larch, multiple skills (`/design`, `/review`, and `/implement` via `/review-and-fix`) surface out-of-scope (OOS) candidate items that are voted on by a 3-judge panel; items receiving 2+ YES votes become filed `[OOS]` GitHub issues.
+
+Two defects, both about the OOS-judging machinery:
+
+1. **Partial code duplication.** The voter prompt text is hand-written twice — once for plan-review voters, once for code-review voters — and the two have drifted.
+2. **Missing problem-vs-solution guardrail in the OOS prompt.** A candidate OOS item description often contains both a problem statement and a suggested remedy (e.g. "sore throat — cut off head to cure"). The judge should vote YES if the *problem* is real and worth filing, regardless of whether the proposed *remedy* is sensible. Today this is only weakly true in `/review` and not true at all in `/design`.
+
+## Research findings (from a read-through of the current code)
+
+### Reuse status: PARTIAL
+
+**Shared OOS machinery (used by both `/design` and `/review`):**
+- `skills/shared/voting-protocol.md` — canonical contract doc (descriptive only; not sourced as literal prompt text)
+- `skills/shared/scripts/oos-serialize.sh` — extracts accepted OOS, holds security-tagged locally
+- `skills/shared/scripts/ballot-parse.sh` — ballot block parsing
+- `scripts/lib-vote-tally.sh` — tally + `classify_result` + `is_security_block`
+- `scripts/dispatch-with-waterfall.sh` — codex↔cursor↔claude waterfall
+
+**Duplicated (this is where the OOS judging instruction lives):**
+- `/design` plan voting: `scripts/dispatch-plan-voters.sh` builds its own prompt in `make_prompt_file()`
+- `/review` code voting: `scripts/dispatch-code-voters.sh` builds its own prompt in `make_voter_prompt_file()`
+
+**`/implement` has no OOS voting panel of its own:**
+- Step 5 calls `skills/review-and-fix/scripts/review-and-fix.sh`, which calls `/review`'s `dispatch-code-voters.sh`.
+- A separate "main-agent dual-write" path for `Pre-existing Code Issues` bypasses voting entirely — the main agent's classification is the policy gate (no judge prompt at all). See `skills/shared/voting-protocol.md` "Accepted OOS items — main-agent dual-write path".
+
+So the two voter prompts are duplicated by hand.
+
+### Problem-vs-Solution instruction: INCONSISTENT
+
+- **`/review`** (`scripts/dispatch-code-voters.sh`, `make_voter_prompt_file()`) — has the guardrail, but as a *general* voter rule (applies to all FINDING items, not specifically scoped to OOS):
+  > Do NOT vote NO solely because you dislike or distrust the proposed fix — fix proposals are informational; the coder decides the exact change. Vote NO only when the stated problem is not real or not worth raising.
+- **`/design`** (`scripts/dispatch-plan-voters.sh`, `make_prompt_file()`) — has only:
+  > For OOS_N items: YES means file a GitHub issue; NO or EXONERATE means skip.
+
+  No problem-vs-solution language at all. A plan-voter who sees "cut off head to cure sore throat" can silently vote NO because the remedy is bad.
+- **`skills/shared/voting-protocol.md`** "For items prefixed with `[OUT_OF_SCOPE]`" paragraph — does not contain the problem-vs-solution distinction either; it says "Vote YES if the observation deserves a GitHub issue."
+- **Main-agent fallback** (0-judge tier) inherits whichever skill it's running under. `skills/design/SKILL.md` just says "same proportionality rubric as the voting panel" — so `/design`'s gap propagates to the 0-judge tier.
+
+The sore-throat/cut-off-head example is well-guarded only in `/review`, and even there only via a general rule, not an OOS-specific one. `/design` OOS judging is unguarded.
+
+## Proposed solution (brief — detailed design in a follow-up session)
+
+Emphasis on **de-duplication**:
+
+1. **Unify the voter prompt construction.** Introduce a shared helper (e.g. `skills/shared/scripts/render-voter-prompt.sh` or a sourced library function) that emits the common voter-prompt body. The two dispatchers (`dispatch-plan-voters.sh`, `dispatch-code-voters.sh`) call it with only the skill-specific deltas as flags (ballot ID grammar `FINDING_N` / `OOS_N`, context file paths, panel-role string). This removes the hand-written duplication that already caused the two prompts to drift.
+2. **Add explicit problem-vs-solution clause to the OOS section of the shared prompt.** Something like:
+   > For `[OUT_OF_SCOPE]` items: vote based on whether the **problem described** is real and worth filing as a GitHub issue. Treat any suggested remedy in the item body as *informational only* — do not vote NO because you disagree with the proposed fix. The implementer of the future OOS issue chooses the actual remedy.
+3. **Backport the canonical text to `skills/shared/voting-protocol.md`** so the doc, the live prompts, and the main-agent fallback all reference the same wording.
+4. **Main-agent fallback (0-judge tier)** should also receive the same OOS clause — currently `skills/design/SKILL.md` and the review main-agent fallback in `skills/review/scripts/review-core.sh` just gesture at "same rubric as the voting panel"; the shared helper output should be reusable here too.
+
+## Acceptance criteria
+
+- Only one place in the repo writes OOS voter-prompt text.
+- All three filing surfaces (`/design` plan voting, `/review` code voting, main-agent fallback) emit the same OOS judging instruction.
+- The OOS instruction explicitly tells judges to evaluate the problem, not the remedy.
+- Existing harnesses (`scripts/test-dispatch-plan-voters.sh`, `scripts/test-dispatch-code-voters.sh`) updated to assert the unified prompt content.
+
+## Out of scope for this issue
+
+- Detailed implementation plan (will be authored via `/design` in a separate session after the in-flight `/design` bug-fix work lands).
+- Any change to scoring math, tier table, or main-agent fallback flow beyond importing the unified OOS clause.

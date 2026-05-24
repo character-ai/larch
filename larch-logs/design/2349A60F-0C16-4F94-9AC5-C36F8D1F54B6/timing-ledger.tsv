@@ -1,0 +1,33 @@
+v1	mark	1779602555	design	design Step 1c — questions	-	-	-	-	-	-	-	-
+v1	mark	1779602930	design	design Step 1d — discussion r1	-	-	-	-	-	-	-	-
+v1	mark	1779603276	design	design Step 1e — gate A	-	-	-	-	-	-	-	-
+v1	mark	1779603448	design	design Step 2a — sketches	-	-	-	-	-	-	-	-
+v1	vendor	1779603546	implement	-	cursor	cursor-sketch-generic	1779603494	1779603546	52	cursor-sketch-generic-output.txt	0	complete
+v1	vendor	1779603567	implement	-	codex	codex-sketch-generic	1779603497	1779603567	70	codex-sketch-generic-output.txt	0	complete
+v1	mark	1779603646	design	design Step 2a.5 — dialectic	-	-	-	-	-	-	-	-
+v1	mark	1779603650	design	design Step 2b — plan	-	-	-	-	-	-	-	-
+v1	mark	1779603848	design	design Step 3 — plan review	-	-	-	-	-	-	-	-
+v1	vendor	1779604074	implement	-	cursor	cursor-phase1-cursor-plan-arch	1779603963	1779604074	111	cursor-plan-arch-output.txt	0	complete
+v1	vendor	1779604085	implement	-	cursor	cursor-phase1-cursor-plan-pragmatic	1779603963	1779604085	122	cursor-plan-pragmatic-output.txt	0	complete
+v1	vendor	1779604087	implement	-	cursor	cursor-phase1-dyn-cursor-plan-flag-lifecycle	1779603963	1779604087	124	cursor-plan-dyn-flag-lifecycle-output.txt	0	complete
+v1	vendor	1779604088	implement	-	cursor	cursor-phase1-cursor-plan-edge	1779603963	1779604088	125	cursor-plan-edge-output.txt	0	complete
+v1	vendor	1779604094	implement	-	codex	codex-phase1-dyn-codex-plan-test-fixture-gap	1779603963	1779604094	131	codex-primary-plan-dyn-test-fixture-gap-output.txt	0	complete
+v1	vendor	1779604096	implement	-	codex	codex-phase1-codex-plan-arch	1779603963	1779604096	133	codex-primary-plan-arch-output.txt	0	complete
+v1	vendor	1779604097	implement	-	codex	codex-phase1-dyn-codex-plan-script-contract	1779603963	1779604097	134	codex-primary-plan-dyn-script-contract-output.txt	0	complete
+v1	vendor	1779604097	implement	-	cursor	cursor-phase1-cursor-plan-innovation	1779603963	1779604097	134	cursor-plan-innovation-output.txt	0	complete
+v1	vendor	1779604105	implement	-	cursor	cursor-phase1-cursor-plan-requirements	1779603963	1779604105	142	cursor-plan-requirements-output.txt	0	complete
+v1	vendor	1779604106	implement	-	cursor	cursor-phase1-dyn-cursor-plan-test-fixture-gap	1779603963	1779604106	143	cursor-plan-dyn-test-fixture-gap-output.txt	0	complete
+v1	vendor	1779604117	implement	-	cursor	cursor-phase1-dyn-cursor-plan-script-contract	1779603963	1779604117	154	cursor-plan-dyn-script-contract-output.txt	0	complete
+v1	vendor	1779604124	implement	-	codex	codex-phase1-codex-plan-edge	1779603963	1779604124	161	codex-primary-plan-edge-output.txt	0	complete
+v1	vendor	1779604125	implement	-	codex	codex-phase1-codex-plan-pragmatic	1779603963	1779604125	162	codex-primary-plan-pragmatic-output.txt	0	complete
+v1	vendor	1779604127	implement	-	codex	codex-phase1-codex-plan-requirements	1779603963	1779604127	164	codex-primary-plan-requirements-output.txt	0	complete
+v1	vendor	1779604128	implement	-	codex	codex-phase1-codex-plan-innovation	1779603963	1779604128	165	codex-primary-plan-innovation-output.txt	0	complete
+v1	vendor	1779604146	implement	-	codex	codex-phase1-dyn-codex-plan-flag-lifecycle	1779603963	1779604146	183	codex-primary-plan-dyn-flag-lifecycle-output.txt	0	complete
+v1	vendor	1779604333	implement	-	cursor	cursor-review	1779604172	1779604333	161	cursor-plan-edge-output-ns-retry.txt	0	complete
+v1	vendor	1779604345	implement	-	cursor	cursor-review	1779604172	1779604345	173	cursor-plan-arch-output-ns-retry.txt	0	complete
+v1	vendor	1779604685	implement	-	cursor	cursor-phase1-voter-3	1779604634	1779604685	51	cursor-vote-output.txt	0	complete
+v1	vendor	1779604738	implement	-	codex	codex-phase1-voter-2	1779604634	1779604738	104	codex-vote-output.txt	0	complete
+v1	mark	1779605619	design	design Step 3b — arch diagram	-	-	-	-	-	-	-	-
+v1	mark	1779605676	design	design Step 4 — rejected findings	-	-	-	-	-	-	-	-
+v1	mark	1779605687	design	design Step 4b — gate C	-	-	-	-	-	-	-	-
+v1	mark	1779606236	design	design Step 5 — finalize	-	-	-	-	-	-	-	-

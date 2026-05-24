@@ -69,7 +69,9 @@ pv_abs=$(printf '%s\n' "$out" | awk -F= '$1=="VOTER_PATHS_FILE"{print substr($0,
 [[ -f "$pv_abs" ]] || { echo "FAIL: plan voter paths file missing" >&2; exit 1; }
 
 PLUGIN_ROOT_STUB="$TMP/plugin-root"
-mkdir -p "$PLUGIN_ROOT_STUB/scripts"
+mkdir -p "$PLUGIN_ROOT_STUB/scripts" "$PLUGIN_ROOT_STUB/skills/shared/scripts"
+cp "$REPO_ROOT/skills/shared/scripts/render-voter-prompt.sh" "$PLUGIN_ROOT_STUB/skills/shared/scripts/render-voter-prompt.sh"
+chmod +x "$PLUGIN_ROOT_STUB/skills/shared/scripts/render-voter-prompt.sh"
 cat > "$PLUGIN_ROOT_STUB/scripts/dispatch-with-waterfall.sh" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -148,6 +150,20 @@ grep -Fq 'VOTER_2_TOOL=codex' <<< "$out" || { echo "FAIL: healthy path did not k
 grep -Fq 'VOTER_3_TOOL=cursor' <<< "$out" || { echo "FAIL: healthy path did not keep cursor primary" >&2; exit 1; }
 grep -Fq 'OOS_N:' "$TMP/healthy/codex-plan-voter-prompt.txt" || { echo "FAIL: healthy codex prompt missing OOS rows" >&2; exit 1; }
 grep -Fq 'OOS_N:' "$TMP/healthy/cursor-plan-voter-prompt.txt" || { echo "FAIL: healthy cursor prompt missing OOS rows" >&2; exit 1; }
+for _pv_prompt in "$TMP/healthy/codex-plan-voter-prompt.txt" "$TMP/healthy/cursor-plan-voter-prompt.txt"; do
+    grep -Fq "For \`OOS_N:\` items in plan review (or items prefixed with \`[OUT_OF_SCOPE]\` in code review):" "$_pv_prompt" \
+        || { echo "FAIL: $(basename "$_pv_prompt") missing canonical finding-oos OOS clause" >&2; exit 1; }
+    grep -Fq 'fix proposals are informational; the coder decides the exact change' "$_pv_prompt" \
+        || { echo "FAIL: $(basename "$_pv_prompt") missing informational-fix voter guardrail" >&2; exit 1; }
+    if ! grep -Fq '  FINDING_N: YES' "$_pv_prompt"; then
+        echo "FAIL: $(basename "$_pv_prompt") missing FINDING_N example line" >&2
+        exit 1
+    fi
+    if ! grep -Fq '  OOS_N: YES' "$_pv_prompt"; then
+        echo "FAIL: $(basename "$_pv_prompt") missing OOS_N example line" >&2
+        exit 1
+    fi
+done
 grep -Fq $'voter-2\tcodex' "$stub_log" || { echo "FAIL: healthy stub log missing codex slot wiring" >&2; exit 1; }
 grep -Fq $'voter-3\tcursor' "$stub_log" || { echo "FAIL: healthy stub log missing cursor slot wiring" >&2; exit 1; }
 grep -Fq 'VOTER_PATHS_FILE=' <<< "$out" || { echo "FAIL: healthy stub missing VOTER_PATHS_FILE" >&2; exit 1; }

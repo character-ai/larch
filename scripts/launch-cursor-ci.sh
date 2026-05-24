@@ -132,6 +132,17 @@ ${_fl_snippet}
 "
 fi
 
+LARCH_PATTERNS=""
+if [[ "$ROLE" == "fix" ]]; then
+    _ci_fix_patterns="${PLUGIN_ROOT}/skills/shared/ci-fix-failure-patterns.md"
+    if [[ -f "$_ci_fix_patterns" ]]; then
+        LARCH_PATTERNS="
+Larch-specific failure patterns (apply when relevant to the failure log):
+$(cat "$_ci_fix_patterns")
+"
+    fi
+fi
+
 LOCAL_REPRO=""
 if [[ "$ROLE" == "fix" ]]; then
     LOCAL_REPRO="
@@ -147,6 +158,7 @@ Working directory: $PWD
 $PLAN_CONTEXT
 $CONFLICT_CONTEXT
 $FAILURE_CONTEXT
+$LARCH_PATTERNS
 $LOCAL_REPRO
 
 Inspect the repository and CI logs as needed. Make only the minimal changes required for this role. Do not rewrite history. Do not edit submodules. Leave a concise summary in the final answer."

@@ -82,6 +82,10 @@ All voters vote on **all** findings — no self-voting exclusion. Voters are ins
 
 Customize the `{VOTER_ROLE}` and `{REVIEW_CONTEXT}` per skill:
 
+<!-- OOS voter rubric: canonical text is emitted at runtime by skills/shared/scripts/render-voter-prompt.sh. Keep the following paragraph in sync with skills/design/SKILL.md (Step 3 MAV), skills/implement/SKILL.md (Step 5 MAV), and skills/design/references/plan-review.md (Voter 1); scripts/test-render-voter-prompt.sh greps the shared substring across all four. -->
+
+For items prefixed with `[OUT_OF_SCOPE]`: vote based on whether the **problem described** is real, concrete, and worth filing as a GitHub issue. Treat any suggested remedy in the item body as *informational only* — do not vote NO because you disagree with the proposed fix. The future implementer of the OOS issue chooses the actual remedy.
+
 ```
 You are a {VOTER_ROLE} participating in a voting panel. You will be presented with a list of proposed changes to {REVIEW_CONTEXT}. For each finding, vote YES, NO, or EXONERATE:
 - **YES**: The finding is correct, important, and worth implementing.
@@ -90,7 +94,7 @@ You are a {VOTER_ROLE} participating in a voting panel. You will be presented wi
 
 Be scrupulous — only vote YES for findings that genuinely improve the {REVIEW_CONTEXT}. Use EXONERATE when a concern is valid but not actionable now.
 
-**For items prefixed with `[OUT_OF_SCOPE]`:** These are pre-existing issues beyond this PR's scope. Vote YES if the observation deserves a GitHub issue for future tracking. Vote NO if it is not worth tracking. Vote EXONERATE if the concern is legitimate but not worth filing a GitHub issue. OOS items are never implemented in this PR — YES means "file an issue," not "implement now." Vote YES only when the observation is concrete and important enough to justify a durable GitHub issue (typical signals: specific file:line or a reproducible failure mode); use EXONERATE for legitimate concerns that are not issue-worthy, and NO for trivial or incorrect observations.
+**OOS / `[OUT_OF_SCOPE]` / plan `OOS_N:` rows:** Runtime prompts use `skills/shared/scripts/render-voter-prompt.sh` for grammar-specific OOS wording (see the prose paragraph immediately above this fenced template for the canonical lowest-common-denominator clause). In this template's structural shape: YES files a GitHub issue for future tracking; NO means trivial/incorrect; EXONERATE means legitimate but not issue-worthy. OOS items are never implemented in this PR — YES means "file an issue," not "implement now." Vote YES only when the observation is concrete and important enough to justify a durable GitHub issue (typical signals: specific file:line or a reproducible failure mode); use EXONERATE for legitimate concerns that are not issue-worthy, and NO for trivial or incorrect observations.
 
 {BALLOT}
 

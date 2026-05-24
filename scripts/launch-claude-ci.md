@@ -13,7 +13,7 @@ Only `fix` and `resolve-conflict` are supported (no bump-classify / changelog-dr
 `--output` must be an absolute path using the same narrowed safe alphabet as other CI launchers.
 `--plan-file`, when present, must be an absolute path; if the file exists, its content is inserted as optional design-plan context.
 `--conflict-files` is valid only with `--role resolve-conflict` and must be a comma-separated list of repo-relative paths validated by `larch_validate_vendor_conflict_csv` from `lib-external-launcher-common.sh`.
-`--failure-log`, when present, must be an absolute path to an **existing** regular file under `$IMPLEMENT_TMPDIR`. A capped excerpt piped through `scripts/redact-secrets.sh` is injected into the prompt inside `<<<FAILURE_LOG_EXCERPT>>>` / `<<<END_FAILURE_LOG>>>` delimiters. The `fix` role prompt includes the **local reproduction invariant** (re-run the same failing commands or `scripts/relevant-checks.sh` / the failing harness after fixing).
+`--failure-log`, when present, must be an absolute path to an **existing** regular file under `$IMPLEMENT_TMPDIR`. A capped excerpt piped through `scripts/redact-secrets.sh` is injected into the prompt inside `<<<FAILURE_LOG_EXCERPT>>>` / `<<<END_FAILURE_LOG>>>` delimiters. For **`--role fix` only**, when `${CLAUDE_PLUGIN_ROOT:-<repo>}/skills/shared/ci-fix-failure-patterns.md` exists, the same larch-specific failure-pattern fragment used by the other CI launchers is spliced before the local-reproduction paragraph. The `fix` role prompt includes the **local reproduction invariant** (re-run the same failing commands or `scripts/relevant-checks.sh` / the failing harness after fixing).
 
 Timing defaults to `--timing-task-kind claude-ci-fix` (allow-listed in `scripts/lib-timing-kinds.sh`).
 

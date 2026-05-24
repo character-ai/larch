@@ -125,7 +125,7 @@ grep -Fq 'Do not include a commits-since-merge-base section' "$panel_out" \
 # ── dispatch-plan-voters.sh runtime render smoke ─────────────────────────────
 
 plan_voter_tmp="$TMP/plan-voters"
-PATH="$stub_bin:$PATH" LARCH_QUIET_DISABLE=1 "$REPO_ROOT/scripts/dispatch-plan-voters.sh" \
+PATH="$stub_bin:$PATH" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" LARCH_QUIET_DISABLE=1 "$REPO_ROOT/scripts/dispatch-plan-voters.sh" \
     --ballot-file "$ballot_file" \
     --design-tmpdir "$plan_voter_tmp" \
     --codex-available false \

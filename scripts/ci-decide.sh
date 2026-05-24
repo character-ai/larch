@@ -123,7 +123,8 @@ fi
 
 if [[ "$FIX_ATTEMPTS" -ge 10 ]]; then
     emit_kv ACTION "bail"
-    emit_kv BAIL_REASON "Too many fix attempts (10) without CI passing"
+    # Human context: too many autonomous CI-fix pushes without CI passing.
+    emit_kv BAIL_REASON "fix-attempts-exhausted"
     exit 0
 fi
 

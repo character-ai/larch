@@ -1,0 +1,2 @@
+warning: unknown From slot label 'cursor-specialist-structure-output.txt, cursor-specialist-testing-output.txt' in FINDING_2 (not present on any input finding)
+warning: fix text for slot 'cursor-specialist-plan-fidelity-output.txt' in FINDING_6 not traceable to scoped input (first 80 chars: 'Address the concern above.  *(The source text also said to await or inspect CI, ')

@@ -1,0 +1,39 @@
+Reading the plan and inspecting referenced code paths (read-only).
+
+Exploring referenced files and integration points to validate the plan against the codebase.
+
+Checking `write-run-params` and Gate re-entry for argv persistence:
+
+ schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/SKILL.md:28	skills/design/SKILL.md:494-506	Anti-halt reminder lists 2b→3 and Step 2b tells the orchestrator to continue to Step 3 immediately after EMIT_PLAN	Step 2b.5 can be skipped or treated as a halt relative to written step-boundary law	Update the sub-step chain in the anti-halt paragraph insert 2b.5 and change the Step 2b footer so continuation runs 2b.5 before Step 3
+1	in_scope	important	correctness	skills/design/scripts/test-plan-review-prompt.sh:53-66	Plan says update the plan-vs-current-state assert_contains needle	Wording change lives on the Files-to-modify sentence in render-plan-review-prompt.sh line 94 not the AFTER this PR line	Add a new assert_contains for the heading convention string or update the needle that actually wraps the changed renderer line
+1	in_scope	important	architecture	skills/design/scripts/step-name-registry.tsv:1-15	New mechanical sub-step 2b.5 is not in the MANDATORY Step Name Registry	Breadcrumb prefix mapping omits plan-size sub-step contrary to session-start MANDATORY	Add a 2b.5 row with a short name consistent with other dotted steps
+1	in_scope	latent	risk-integration	skills/design/scripts/scout-plan-archetypes-wrapper.sh:125-125	proposed FILES_COUNT uses grep '^### (NEW|UPDATED|REWRITTEN):'	Counts diverge from scout-plan heading grammar which allows flexible whitespace after hashes	Align the helper grep with the scout regex or document that only canonical single-space headings count
+1	in_scope	latent	risk-integration	skills/design/SKILL.md:12-172	Partition override is argv-only while write-run-params.sh has no partition field	Gate B Gate C and discussion re-entries may not replay original argv so soft override can silently drop	Extend run-params.json or source-env.sh with a persisted partition flag written in Step 0b and read in Step 2b.5
+1	in_scope	important	architecture	skills/design/SKILL.md:719-775	Step 5d hardcodes gh issue comment 2672	Future velocity work or fork consumers keep wrong issue linkage	Use ISSUE_NUMBER from the design session or a dedicated deferral issue env key with a safe default
+1	in_scope	nit	code-quality	Makefile:4	New test-check-plan-size target not added to the long aggregate .PHONY list	Local make -j diagnostics and some tooling expect declared phonies	Add test-check-plan-size to the first-line .PHONY list when the target lands
+1	in_scope	nit	correctness	skills/design/scripts/test-check-plan-size.sh:64-65	Case 9 text says PLAN_SIZE_STATUS on stderr or stdout	Harness writers may assert the wrong fd versus flags.md stdout KV contract	Pick one channel in flags.md and the harness and match emit patterns used by lib-quiet.sh
+
+[OUT_OF_SCOPE] Optional catalog bump for new design scripts: [skills/shared/topology.tsv](skills/shared/topology.tsv) (no line range; file is TSV catalog) if maintainers expect projection rows for every new skills script surface.
+
+1. **correctness** — [skills/design/SKILL.md](skills/design/SKILL.md):28 and :494-506 — Anti-halt step chain and “continue to Step 3 immediately” after `EMIT_PLAN` omit Step 2b.5; revise both so 2b.5 is mandatory before Step 3.
+
+2. **correctness** — [skills/design/scripts/test-plan-review-prompt.sh](skills/design/scripts/test-plan-review-prompt.sh):53-66 vs [skills/design/scripts/render-plan-review-prompt.sh](skills/design/scripts/render-plan-review-prompt.sh):94 — The plan mis-targets the `plan-vs-current-state` assertion (it pins “AFTER this PR lands”); add or retarget an assertion for the `### NEW:` / `### UPDATED:` / `### REWRITTEN:` wording.
+
+3. **architecture** — [skills/design/scripts/step-name-registry.tsv](skills/design/scripts/step-name-registry.tsv):1-15 — Add `2b.5` so the MANDATORY registry matches new breadcrumbs.
+
+4. **risk-integration** — [skills/design/scripts/scout-plan-archetypes-wrapper.sh](skills/design/scripts/scout-plan-archetypes-wrapper.sh):125 vs proposed `check-plan-size.sh` — Tighten or document alignment between file-heading `grep` and scout’s flexible `###\s*(NEW|...)` regex.
+
+5. **risk-integration** — [skills/design/SKILL.md](skills/design/SKILL.md):12-172 and [scripts/write-run-params.sh](scripts/write-run-params.sh) — `--partition` persistence across Gate-driven re-entries is not guaranteed by argv alone; persist in `run-params.json` or env written in Step 0b.
+
+6. **architecture** — Proposed Step 5d (finalize section of [skills/design/SKILL.md](skills/design/SKILL.md) ~719+) — Hardcoding `gh issue comment 2672` couples the skill to one issue; bind to session issue or configuration.
+
+7. **code-quality** — [Makefile](Makefile):4 — Register `test-check-plan-size` on the long `.PHONY` line when adding the target.
+
+8. **correctness** — Proposed [skills/design/scripts/test-check-plan-size.sh](skills/design/scripts/test-check-plan-size.sh) case 9 vs [skills/design/references/flags.md](skills/design/references/flags.md) — Clarify whether `PLAN_SIZE_STATUS` is stdout-only (consistent with KV helpers) or also stderr.
+
+The instructions said to call CreatePlan in plan mode — the user overrode with a specific deliverable format (TSV-first review). I did not call CreatePlan because the user asked for the review artifact, not a separate implementation plan file.
+
+
+
+

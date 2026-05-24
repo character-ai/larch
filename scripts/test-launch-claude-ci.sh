@@ -54,6 +54,30 @@ if grep -q 'claude-ci-fix' "$REPO_ROOT/scripts/lib-timing-kinds.sh"; then ok "ti
 printf 'sk-ant-api03-secretkey\n' >"$TMPDIR_BASE/fl.log"
 if grep -q 'redact-secrets' "$REPO_ROOT/scripts/launch-claude-ci.sh"; then ok "failure_log_content_redacted_via_redact_secrets_sh_in_prompt"; else fail "redact pipeline referenced"; fi
 
+stub_bin="$TMPDIR_BASE/ci-fix-stub-bin"
+mkdir -p "$stub_bin"
+cat > "$stub_bin/claude" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+chmod +x "$stub_bin/claude"
+OUT_FIX="$TMPDIR_BASE/ci-fix-prompt-fix"
+(cd "$REPO_ROOT" && PATH="$stub_bin:$PATH" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" IMPLEMENT_TMPDIR="$TMPDIR_BASE" \
+    bash "$REPO_ROOT/scripts/launch-claude-ci.sh" --role fix --output "$OUT_FIX" --run-id r1 --repo owner/repo --timeout 60) >/dev/null 2>&1 || true
+if grep -qF 'topology.tsv' "${OUT_FIX}.prompt" 2>/dev/null; then
+    ok "fix role prompt includes topology.tsv sentinel"
+else
+    fail "fix role prompt includes topology.tsv sentinel"
+fi
+OUT_RC="$TMPDIR_BASE/ci-fix-prompt-resolve"
+(cd "$REPO_ROOT" && PATH="$stub_bin:$PATH" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" IMPLEMENT_TMPDIR="$TMPDIR_BASE" \
+    bash "$REPO_ROOT/scripts/launch-claude-ci.sh" --role resolve-conflict --output "$OUT_RC" --run-id r1 --repo owner/repo --conflict-files README.md --timeout 60) >/dev/null 2>&1 || true
+if grep -qF 'topology.tsv' "${OUT_RC}.prompt" 2>/dev/null; then
+    fail "resolve-conflict role must not include topology.tsv"
+else
+    ok "resolve-conflict role omits topology.tsv"
+fi
+
 if [[ "$FAIL" -ne 0 ]]; then
     echo "test-launch-claude-ci: $FAIL failure(s), $PASS pass(es)" >&2
     exit 1

@@ -1,0 +1,68 @@
+# [DESIGNING] ship-pr: vendor CI-fix agents fail to fix topology-validation errors; exit code 3 instead of 4 on fix-loop exhaustion
+
+## Summary
+
+During PR #2668 (`/implement` run `57797559-9368-4E52-9CDB-55B58AC1CE44`, issue #2665), `ship-pr.sh` received CI failures from two jobs and bailed with **exit code 3** (operator-input bail) instead of either fixing them autonomously or stalling with exit code 4. The orchestrator had to manually diagnose and commit fixes, then re-invoke `ship-pr.sh`.
+
+## CI Failures (root cause)
+
+Two CI jobs failed on the first push:
+
+1. **`test-harnesses (10)` (`test-generate-topology-docs`)**: topology.tsv rows 6–7 added by Cursor had invalid characters in their `composition` fields.
+   - Row 6: `scout proposes specialists; dispatcher fans each into Cursor+Codex dyn-* slots (cap 12 total)` — `;`, `*`, `(`, `)` are outside `[A-Za-z0-9 ./+-]`
+   - Row 7: `NDJSON manifest from dispatch-plan-review-panel.sh; collect via paths-file (PANEL_PATHS_FILE or slots.output-files)` — `;`, `(`, `)`, `_` outside the allowed set
+   - Additionally, the `value` `up to 6` for row 6 was absent from the runtime authority file (`skills/design/references/plan-review.md`), so `generate-topology-docs.sh --check` failed with `value 'up to 6' not found in runtime_authority`.
+
+2. **`agent-sync` (`check-generators.sh`)**: `docs/topology.md` was not regenerated after adding the new rows.
+
+The fix required: (a) editing topology.tsv to sanitize composition text, (b) adding the value anchor to plan-review.md, (c) running `bash scripts/generate-topology-docs.sh`.
+
+## ship-pr.sh Bail Behavior (the bug)
+
+`ship-pr.sh` exited **3** instead of **4** after CI failed. Based on source inspection:
+
+- Exit 3 is produced by the `bail)` handler in `run_ci_phase` when `needs_user_bail_reason "$bail_reason"` returns true — i.e., `BAIL_REASON` matches one of `fix-attempts-exhausted|design-flaw|escalate|all-vendors-failed`.
+- These BAIL_REASON values do **not** appear in `ci-decide.sh`, `ci-wait.sh`, or any non-test script. They exist only in `needs_user_bail_reason()` (ship-pr.sh:1228) and `test-ship-pr.sh` stubs.
+- Exit 4 (`exit_stall`) is the expected code when the vendor fix loop in `run_evaluate_failure` exhausts all 3 tiers × 3 attempts without success.
+
+The fact that exit 3 was produced (not exit 4) is anomalous: either:
+1. A vendor CI fix agent (Cursor/Codex/Claude) produced an output that was somehow parsed as containing `BAIL_REASON=all-vendors-failed` (or similar), OR
+2. There is a code path where the vendor fix loop exhausts but `exit 3` is reached instead of `exit_stall "10-max-retries"`.
+
+The session tmpdir was cleaned up before full diagnosis of the exact exit-3 path could be completed. The `final-bail-reason.txt` artifact (written by `write_finalize_state()`) was gone.
+
+## Vendor CI Fix Agent Failure
+
+Even setting aside the exit-code anomaly, the vendor CI fix agents (Cursor → Codex → Claude waterfall) failed to fix the topology validation errors. The failure log from `gh-run-logs.sh` included a clear, actionable error message:
+
+```
+generate-topology-docs: row 6: composition contains characters outside [A-Za-z0-9 ./+-]:
+  scout proposes specialists; dispatcher fans each into Cursor+Codex dyn-* slots (cap 12 total)
+```
+
+A correct fix requires:
+1. Understanding the topology.tsv `composition` character constraint
+2. Editing topology.tsv to remove invalid chars
+3. Running `bash scripts/generate-topology-docs.sh` to regenerate docs/topology.md
+
+This is larch-specific knowledge. The CI fix agents apparently lack sufficient grounding in `scripts/generate-topology-docs.sh` and `skills/shared/topology.tsv` format rules.
+
+## Affected State / Artifacts
+
+- PR #2668 (merged after manual fix)
+- `TRANSIENT_RETRIES=1` in state (one rerun was submitted before vendor fix was dispatched)
+- `FIX_ATTEMPTS=0` in state (no successful vendor fix push)
+- No `⚠ ship-pr: CI failed; dispatching fix` breadcrumb appeared in the session transcript before exit 3 — suggesting either (a) the vendor loop's stderr was not captured in the breadcrumb stream with `LARCH_QUIET_BREADCRUMBS=1`, or (b) the exit-3 path was taken before the vendor loop ran
+
+## Proposed Fix
+
+Two independent sub-issues:
+
+1. **CI fix agent prompt**: add `scripts/generate-topology-docs.sh` and `skills/shared/topology.tsv` format rules (character constraint `[A-Za-z0-9 ./+-]`, value-must-appear-in-runtime-authority) to the CI fix agent's context / failure-pattern library so it can repair topology drift.
+
+2. **Exit-code anomaly**: add a regression test that verifies the vendor-fix-loop-exhausted path (`all 3 tiers × 3 attempts failed`, second `run_evaluate_failure` call with `TRANSIENT_RETRIES>=1`) exits with code 4 (not 3). Instrument `final-bail-reason.txt` path to survive cleanup long enough to aid diagnosis in future incidents (or write it to the committed run log).
+
+## Run Log Reference
+
+Committed at: `larch-logs/implement/57797559-9368-4E52-9CDB-55B58AC1CE44/`
+PR: character-ai/larch#2668

@@ -1,0 +1,610 @@
+{
+  "in_scope": [
+    {
+      "focus_area": "correctness",
+      "location": "scripts/dispatch-plan-voters.sh:58",
+      "what": "The proposed plan-context renderer drops the existing instruction that plan voters may inspect the plan or referenced repo files",
+      "scenario_or_breakage": "/design plan voters would be told only to read the ballot, making it harder to verify reviewer claims and increasing bad votes on plan-review findings",
+      "suggested_fix": "Preserve a plan-specific verification sentence in render-voter-prompt.sh for --verification-context plan and update the new harness to assert it",
+      "severity": "important",
+      "reviewers": [
+        "Codex-Pragmatic",
+        "Cursor-Pragmatic"
+      ],
+      "count": 2,
+      "id": "FINDING_1"
+    },
+    {
+      "focus_area": "architecture",
+      "location": "scripts/test-render-voter-prompt.sh (new)",
+      "what": "The drift guard only checks voting-protocol.md despite declaring four canonical copies",
+      "scenario_or_breakage": "skills/design/SKILL.md or skills/implement/SKILL.md can drift from the runtime helper while the new CI guard remains green, undermining the stated lock-step contract",
+      "suggested_fix": "Have case_canonical_text_drift_guard grep the exact canonical clause in skills/shared/voting-protocol.md, skills/design/SKILL.md, and skills/implement/SKILL.md, ideally with exact-count assertions",
+      "severity": "important",
+      "reviewers": [
+        "Cursor-Innovation"
+      ],
+      "count": 1,
+      "id": "FINDING_2"
+    },
+    {
+      "focus_area": "architecture",
+      "location": "scripts/test-render-voter-prompt.sh (new); skills/design/SKILL.md:598; skills/implement/SKILL.md:1238",
+      "what": "The plan says four canonical OOS-clause copies stay in sync, but the proposed drift guard checks only helper output and skills/shared/voting-protocol.md, leaving both MAV copies unverified.",
+      "scenario_or_breakage": "A later edit can silently diverge skills/design/SKILL.md or skills/implement/SKILL.md from the runtime prompt while CI still passes, defeating the maintainability goal of a canonical clause.",
+      "suggested_fix": "Extend case_canonical_text_drift_guard to grep the exact canonical string in voting-protocol.md, skills/design/SKILL.md, and skills/implement/SKILL.md, and document all three checked paths in the harness sibling doc.",
+      "severity": "important",
+      "reviewers": [
+        "Codex-Arch"
+      ],
+      "count": 1,
+      "id": "FINDING_3"
+    },
+    {
+      "focus_area": "architecture",
+      "location": "scripts/test-render-voter-prompt.sh:1",
+      "what": "Drift guard ignores two of the four canonical OOS copies",
+      "scenario_or_breakage": "The helper and voting-protocol copy can stay updated while the design/implement MAV prose keeps stale OOS decision rules for 0-judge fallback",
+      "suggested_fix": "Have the drift guard grep the exact canonical clause in skills/shared/voting-protocol.md, skills/design/SKILL.md, and skills/implement/SKILL.md, or generate/import one snippet instead of maintaining four literals",
+      "severity": "important",
+      "reviewers": [
+        "Codex-Innovation"
+      ],
+      "count": 1,
+      "id": "FINDING_4"
+    },
+    {
+      "focus_area": "architecture",
+      "location": "skills/design/references/plan-review.md:69-75",
+      "what": "Plan updates only dispatch-plan-voters.sh for /design voter prompt text, but /design Voter 1 is a separate Claude subagent prompt defined in plan-review.md and would not receive the new general fix-informational or OOS problem-vs-solution clause.",
+      "scenario_or_breakage": "The post-PR /design voting panel has inconsistent judging instructions: Voter 2/3 apply the new OOS rule while Voter 1 can still reject based on remedy disagreement, changing close votes and undermining the stated shared prompt contract.",
+      "suggested_fix": "Add skills/design/references/plan-review.md to Files-to-modify and either update the Voter 1 prompt with the same canonical clauses or route Voter 1 prompt generation through the shared renderer/contract.",
+      "severity": "important",
+      "reviewers": [
+        "Codex-Arch"
+      ],
+      "count": 1,
+      "id": "FINDING_5"
+    },
+    {
+      "focus_area": "correctness",
+      "location": "<TMPDIR>/plan.txt:20-36; <TMPDIR>/plan.txt:70-91",
+      "what": "The proposed finding-only /review prompt still emits the unified OOS clause with the parenthetical \"(or OOS_N: items in plan review)\" even though --id-grammar finding-only only suppresses the OOS_N example block, not the clause text. Current /review contracts say OOS rows remain FINDING_N with [OUT_OF_SCOPE] and OOS_N lines are ignored: skills/shared/voting-protocol.md:31-32, skills/shared/voting-protocol.md:236-236, scripts/dispatch-code-voters.sh:64-69.",
+      "scenario_or_breakage": "/review voters receive an irrelevant OOS_N syntax hint while their ballot has no OOS_N headings and the parser/tally expects FINDING_N votes. A voter can infer that [OUT_OF_SCOPE] items should be voted as OOS_N, producing ignored lines or JUDGE_ERRORs for those ballot items despite the later FINDING_N-only grammar.",
+      "suggested_fix": "Make the OOS clause grammar-parameterized: for finding-only emit only \"For items prefixed with [OUT_OF_SCOPE]...\" and for finding-oos emit \"For OOS_N: items in plan review...\" or two fully separate clause strings. Add a test assertion in case_finding_only and scripts/test-dispatch-code-voters.sh that the rendered prompt contains no \"OOS_N\" text at all outside intentionally absent examples.",
+      "severity": "important",
+      "reviewers": [
+        "Cursor-dyn-grammar-clause-scope"
+      ],
+      "count": 1,
+      "id": "FINDING_6"
+    },
+    {
+      "focus_area": "correctness",
+      "location": "<TMPDIR>/plan.txt:43-47,119-135; skills/design/SKILL.md:598; skills/implement/SKILL.md:1238; scripts/test-references-headers.sh:48-63; scripts/lint-foreground-markers.sh:62-69",
+      "what": "The proposed drift guard only grep-pins helper output and skills/shared/voting-protocol.md, leaving the two SKILL.md MAV literal copies unguarded by CI",
+      "scenario_or_breakage": "An edit that changes only the canonical OOS clause embedded in skills/design/SKILL.md Step 3 or skills/implement/SKILL.md Step 5 remains valid Markdown and does not affect render-voter-prompt.sh output or voting-protocol.md, so the planned CI still passes while one of the four canonical copies silently drifts",
+      "suggested_fix": "Add explicit grep -Fq assertions in scripts/test-render-voter-prompt.sh for skills/design/SKILL.md and skills/implement/SKILL.md using the same hard-coded canonical string, and update render-voter-prompt.md plus the voting-protocol.md comment to state all three downstream literal copies are mechanically checked",
+      "severity": "important",
+      "reviewers": [
+        "Codex-dyn-sync-invariant"
+      ],
+      "count": 1,
+      "id": "FINDING_7"
+    },
+    {
+      "focus_area": "correctness",
+      "location": "<TMPDIR>/plan.txt:43-47,119-135; skills/design/SKILL.md:598; skills/implement/SKILL.md:1238; scripts/test-references-headers.sh:48-71,111-114; scripts/lint-foreground-markers.md:3-13",
+      "what": "The proposed drift guard only hard-codes grep assertions for the helper output and skills/shared/voting-protocol.md, while the two SKILL.md MAV copies are protected only by edit-in-sync prose and unrelated Markdown/foreground/reference linters.",
+      "scenario_or_breakage": "A future edit that changes the canonical OOS clause in only skills/design/SKILL.md Step 3 MAV or only skills/implement/SKILL.md Step 5 MAV would still pass the planned case_canonical_text_drift_guard, dispatcher prompt tests, test-references-headers, and lint-foreground-markers because none of those checks grep the SKILL.md copies byte-for-byte. CI would not catch silent drift across two of the four canonical copies before merge.",
+      "suggested_fix": "Revise scripts/test-render-voter-prompt.sh case_canonical_text_drift_guard to grep the same hard-coded canonical string against all four consumers: rendered helper output, skills/shared/voting-protocol.md, skills/design/SKILL.md, and skills/implement/SKILL.md. Update render-voter-prompt.md and the HTML comment to say CI explicitly guards all downstream literal copies, not just voting-protocol.md.",
+      "severity": "important",
+      "reviewers": [
+        "Cursor-dyn-sync-invariant"
+      ],
+      "count": 1,
+      "id": "FINDING_8"
+    },
+    {
+      "focus_area": "correctness",
+      "location": "<TMPDIR>/plan.txt:46; <TMPDIR>/plan.txt:119-135",
+      "what": "Drift guard covers only two of the four canonical OOS copies",
+      "scenario_or_breakage": "The plan says the helper, voting-protocol.md, design MAV prose, and implement MAV prose stay byte-synced, but the proposed test only greps rendered output and voting-protocol.md; SKILL.md copies can drift silently while CI stays green",
+      "suggested_fix": "Add exact grep assertions for skills/design/SKILL.md and skills/implement/SKILL.md in case_canonical_text_drift_guard, using the same hard-coded canonical string",
+      "severity": "important",
+      "reviewers": [
+        "Cursor-Edge"
+      ],
+      "count": 1,
+      "id": "FINDING_9"
+    },
+    {
+      "focus_area": "correctness",
+      "location": "plan.txt:119-135",
+      "what": "Drift guard omits the two main-agent fallback copies of the canonical OOS clause",
+      "scenario_or_breakage": "The feature requires all filing surfaces, including main-agent fallback, to emit the same OOS judging instruction, but the planned drift guard only checks helper output and skills/shared/voting-protocol.md; skills/design/SKILL.md and skills/implement/SKILL.md can diverge while the new harness still passes",
+      "suggested_fix": "Extend scripts/test-render-voter-prompt.sh case_canonical_text_drift_guard to assert the exact canonical clause appears byte-for-byte in skills/design/SKILL.md and skills/implement/SKILL.md as well as voting-protocol.md",
+      "severity": "important",
+      "reviewers": [
+        "Cursor-Requirements"
+      ],
+      "count": 1,
+      "id": "FINDING_10"
+    },
+    {
+      "focus_area": "correctness",
+      "location": "scripts/dispatch-plan-voters.sh:58",
+      "what": "Plan-context renderer removes plan/repo verification permission",
+      "scenario_or_breakage": "Design voters may only be told to read the ballot, so they can accept or reject plan-modification claims without checking the plan or referenced repo files",
+      "suggested_fix": "Preserve the current plan-context wording for --verification-context plan, or add an explicit --plan-file and test that plan voters may inspect plan/repo evidence silently",
+      "severity": "important",
+      "reviewers": [
+        "Codex-Innovation"
+      ],
+      "count": 1,
+      "id": "FINDING_11"
+    },
+    {
+      "focus_area": "correctness",
+      "location": "scripts/dispatch-plan-voters.sh:58; <TMPDIR>/plan.txt:23-25",
+      "what": "/design voter prompt loses repo/plan verification permission",
+      "scenario_or_breakage": "The proposed plan-context branch tells voters they may read only the ballot file, replacing the current permission to silently inspect the plan or referenced repo files; voters can then accept or reject plan-review claims based only on reviewer prose",
+      "suggested_fix": "For verification-context=plan, preserve the current wording allowing silent inspection of the plan and referenced repo files, or pass explicit --plan-file context through dispatch-plan-voters.sh and document/test that voters may read it",
+      "severity": "important",
+      "reviewers": [
+        "Cursor-Edge"
+      ],
+      "count": 1,
+      "id": "FINDING_12"
+    },
+    {
+      "focus_area": "correctness",
+      "location": "scripts/dispatch-plan-voters.sh:58; scripts/test-prompt-template-invariants.sh:134-137",
+      "what": "The proposed plan verification-context output removes the existing /design allowance to silently inspect the plan or referenced repo files, and the current invariant test explicitly expects that allowance.",
+      "scenario_or_breakage": "/design plan voters would be told they may read only the ballot file, making them less able to verify plan-review claims against the actual plan/repo; make lint also fails unless the invariant is changed, and changing it would codify the regression.",
+      "suggested_fix": "Keep a plan-specific verification branch in render-voter-prompt.sh that preserves \"silently inspect the plan or referenced repo files for verification\", and add this assertion to scripts/test-render-voter-prompt.sh.",
+      "severity": "important",
+      "reviewers": [
+        "Codex-Arch"
+      ],
+      "count": 1,
+      "id": "FINDING_13"
+    },
+    {
+      "focus_area": "correctness",
+      "location": "scripts/dispatch-plan-voters.sh:58; scripts/test-prompt-template-invariants.sh:134-137",
+      "what": "Finding 2: plan voter verification permission is narrowed",
+      "scenario_or_breakage": "The proposed plan-context branch says voters may read only the ballot file, removing the current permission to inspect the plan or referenced repo files; existing invariant tests also still require that allowance",
+      "suggested_fix": "Preserve a plan-context Verify silently sentence allowing silent inspection of the plan and referenced repo files, and cover that exact branch in test-render-voter-prompt plus update or retain test-prompt-template-invariants",
+      "severity": "important",
+      "reviewers": [
+        "Codex-Edge"
+      ],
+      "count": 1,
+      "id": "FINDING_14"
+    },
+    {
+      "focus_area": "correctness",
+      "location": "scripts/test-dispatch-plan-voters.sh:71-146",
+      "what": "Stubbed CLAUDE_PLUGIN_ROOT will not contain the new shared renderer",
+      "scenario_or_breakage": "The proposed dispatcher wrapper resolves $PLUGIN_ROOT/skills/shared/scripts/render-voter-prompt.sh, but the harness stub root only creates scripts/dispatch-with-waterfall.sh, so the healthy and retry sections will fail before exercising waterfall behavior",
+      "suggested_fix": "Create skills/shared/scripts under PLUGIN_ROOT_STUB and copy or symlink the real renderer there, or stub only dispatch-with-waterfall without replacing the plugin root used to find shared helpers",
+      "severity": "important",
+      "reviewers": [
+        "Cursor-Innovation"
+      ],
+      "count": 1,
+      "id": "FINDING_15"
+    },
+    {
+      "focus_area": "correctness",
+      "location": "scripts/test-dispatch-plan-voters.sh:71-76; scripts/test-dispatch-plan-voters.sh:145-176",
+      "what": "The existing plan-voter harness swaps CLAUDE_PLUGIN_ROOT to a minimal stub that will not contain the new helper",
+      "scenario_or_breakage": "After dispatch-plan-voters.sh starts executing $PLUGIN_ROOT/skills/shared/scripts/render-voter-prompt.sh, the healthy and retry harness sections will fail with a missing helper under the stub root",
+      "suggested_fix": "Update the harness to copy or symlink skills/shared/scripts/render-voter-prompt.sh and its required support files into PLUGIN_ROOT_STUB, or use a narrower override for dispatch-with-waterfall so CLAUDE_PLUGIN_ROOT can remain the real repo",
+      "severity": "important",
+      "reviewers": [
+        "Codex-Pragmatic"
+      ],
+      "count": 1,
+      "id": "FINDING_16"
+    },
+    {
+      "focus_area": "correctness",
+      "location": "skills/design/references/plan-review.md:71-75",
+      "what": "1. /design Voter 1 prompt is outside the proposed shared OOS instruction path",
+      "scenario_or_breakage": "The plan updates dispatch-plan-voters.sh for external Voter 2/3 only, but /design also launches a Claude Code Reviewer Voter 1 from plan-review.md with a separate hand-written prompt and no canonical OOS problem-vs-solution clause; one judge in the /design panel can still vote OOS_N based on a disliked remedy, violating the acceptance criterion that /design plan voting emits the same OOS judging instruction.",
+      "suggested_fix": "Route Voter 1 through the shared renderer or update the plan-review.md Voter 1 instruction to include the byte-identical canonical clause, then add harness coverage that the Voter 1 prompt/prose contains it.",
+      "severity": "important",
+      "reviewers": [
+        "Codex-Requirements"
+      ],
+      "count": 1,
+      "id": "FINDING_17"
+    },
+    {
+      "focus_area": "correctness",
+      "location": "skills/review/SKILL.md:44-46; skills/review/scripts/review-core.sh:650-683",
+      "what": "2. Standalone /review main-agent fallback is not covered",
+      "scenario_or_breakage": "The feature requires main-agent fallback to receive the same OOS clause, but the plan only updates skills/design/SKILL.md and skills/implement/SKILL.md; standalone /review can receive REVIEW_CORE_STATUS=main-agent-vote-required from review-core.sh, while review/SKILL.md has no canonical OOS adjudication prose for that path.",
+      "suggested_fix": "Add the canonical clause to the actual standalone /review main-agent adjudication contract, likely review/SKILL.md and/or review-core.md around the main-agent-vote-required status, without changing scoring or tier behavior beyond importing the clause.",
+      "severity": "important",
+      "reviewers": [
+        "Codex-Requirements"
+      ],
+      "count": 1,
+      "id": "FINDING_18"
+    },
+    {
+      "focus_area": "correctness",
+      "location": "skills/shared/scripts/render-voter-prompt.sh (new --verification-context plan branch), scripts/dispatch-plan-voters.sh:58, scripts/test-prompt-template-invariants.sh:134-137",
+      "what": "Finding 1: the proposed plan-context prompt drops the existing permission for /design voters to silently inspect the plan or referenced repo files",
+      "scenario_or_breakage": "Plan voters would be told they may read only the ballot, weakening ballot verification and likely breaking the existing prompt-template invariant harness",
+      "suggested_fix": "Preserve an equivalent plan-context sentence in the renderer, e.g. allow reading the ballot plus silently inspecting the plan or referenced repo files; keep/update the invariant test accordingly",
+      "severity": "important",
+      "reviewers": [
+        "Cursor-Arch"
+      ],
+      "count": 1,
+      "id": "FINDING_19"
+    },
+    {
+      "focus_area": "correctness",
+      "location": "skills/shared/scripts/render-voter-prompt.sh (planned output in plan.txt:15-36); scripts/test-render-voter-prompt.sh (planned assertions in plan.txt:43-46); scripts/dispatch-code-voters.sh:51-69; skills/review/scripts/collect-findings.sh:412-420; scripts/lib-vote-tally.sh:8-29",
+      "what": "The proposed unified OOS clause is not grammar-parameterized: finding-only /review voters would still receive \"or OOS_N: items in plan review\" even though /review ballots serialize OOS as FINDING_N headings with [OUT_OF_SCOPE], and vote parsing matches only the exact ballot id.",
+      "scenario_or_breakage": "The plan's --id-grammar finding-only suppresses only OOS_N example lines, not the OOS_N parenthetical in the canonical clause; a /review voter handling a FINDING_7 [OUT_OF_SCOPE] ballot item can be nudged toward emitting OOS_7, which vote_for_id will not match for FINDING_7 and will count as JUDGE_ERROR. The planned finding-only test asserts the OOS clause is present and OOS_N examples are absent, but it does not assert grammar-irrelevant OOS_N prose is absent.",
+      "suggested_fix": "Make the OOS clause text conditional on --id-grammar: finding-only should say only \"For items prefixed with [OUT_OF_SCOPE]\"; finding-oos should mention OOS_N plan-review items. Add a finding-only harness assertion that the rendered prompt contains no \"OOS_N\" substring except where intentionally impossible, and keep the shared doc/SKILL copies aligned with the grammar-specific runtime wording.",
+      "severity": "important",
+      "reviewers": [
+        "Codex-dyn-grammar-clause-scope"
+      ],
+      "count": 1,
+      "id": "FINDING_20"
+    },
+    {
+      "focus_area": "correctness",
+      "location": "skills/shared/scripts/render-voter-prompt.sh:1",
+      "what": "Stdout contract is underspecified under lib-quiet",
+      "scenario_or_breakage": "If the new helper follows the common source-plus-larch_quiet_init pattern while called from quieted dispatchers, the prompt body can be redirected to the quiet log and the > prompt_file target becomes empty",
+      "suggested_fix": "Explicitly disable quiet for this renderer or restore stdout with exec 1>&3/use emit, and add a harness case with inherited LARCH_QUIET_ACTIVE/LARCH_QUIET_PID",
+      "severity": "important",
+      "reviewers": [
+        "Codex-Innovation"
+      ],
+      "count": 1,
+      "id": "FINDING_21"
+    },
+    {
+      "focus_area": "correctness",
+      "location": "skills/shared/scripts/render-voter-prompt.sh:new; scripts/lib-quiet.sh:37-75",
+      "what": "Finding 1: stdout payload conflicts with quiet-init conventions",
+      "scenario_or_breakage": "If the new renderer follows the normal lib-quiet pattern and calls larch_quiet_init, raw printf prompt output is redirected to the quiet log, so dispatchers capture empty prompt files and voters run without instructions",
+      "suggested_fix": "Document and implement the renderer either as a pure stdout filter that does not call larch_quiet_init, or emit prompt lines through emit after init; add a quiet-enabled dispatcher harness assertion that rendered prompts are non-empty",
+      "severity": "important",
+      "reviewers": [
+        "Codex-Edge"
+      ],
+      "count": 1,
+      "id": "FINDING_22"
+    },
+    {
+      "focus_area": "risk-integration",
+      "location": "agent-lint.toml:668-673",
+      "what": "The new Makefile-only root harness is not added to agent-lint exclusions",
+      "scenario_or_breakage": "agent-lint does not follow Makefile-only test harness references consistently; scripts/test-render-voter-prompt.sh can be reported as an orphan even though the Makefile target exists",
+      "suggested_fix": "Add scripts/test-render-voter-prompt.sh, and its .md if agent-lint requires it, to agent-lint.toml with the same Makefile-only harness rationale used for test-dispatch-plan-voters.sh",
+      "severity": "important",
+      "reviewers": [
+        "Cursor-Innovation"
+      ],
+      "count": 1,
+      "id": "FINDING_23"
+    },
+    {
+      "focus_area": "risk-integration",
+      "location": "scripts/dispatch-plan-voters.sh:42-63; scripts/dispatch-code-voters.sh:51-72; skills/shared/scripts/render-voter-prompt.sh (new)",
+      "what": "The dispatchers invoke the new helper as an executable path, but the plan does not include preserving/setting the executable bit for the new .sh file.",
+      "scenario_or_breakage": "If the file is added through a patch without mode 100755, both voter dispatchers fail at runtime with permission denied even though the script content is correct.",
+      "suggested_fix": "Add an explicit plan step to make render-voter-prompt.sh executable and have the harness assert -x, or invoke it as bash \"$PLUGIN_ROOT/skills/shared/scripts/render-voter-prompt.sh\" consistently.",
+      "severity": "important",
+      "reviewers": [
+        "Codex-Arch"
+      ],
+      "count": 1,
+      "id": "FINDING_24"
+    },
+    {
+      "focus_area": "risk-integration",
+      "location": "scripts/test-dispatch-plan-voters.sh:71-145",
+      "what": "Finding 2: the harness stubs CLAUDE_PLUGIN_ROOT with only scripts/dispatch-with-waterfall.sh, but the proposed dispatcher resolves the new helper through the same stub root",
+      "scenario_or_breakage": "The healthy and retry-waterfall harness invocations with CLAUDE_PLUGIN_ROOT=$PLUGIN_ROOT_STUB will fail before reaching the waterfall because skills/shared/scripts/render-voter-prompt.sh is absent",
+      "suggested_fix": "Add the helper and any required support files such as scripts/lib-quiet.sh to the stub plugin root, or restructure the harness/dispatcher so only dispatch-with-waterfall is stubbed while the renderer resolves from the real repo",
+      "severity": "important",
+      "reviewers": [
+        "Cursor-Arch"
+      ],
+      "count": 1,
+      "id": "FINDING_25"
+    },
+    {
+      "focus_area": "risk-integration",
+      "location": "scripts/test-dispatch-plan-voters.sh:71-146",
+      "what": "The existing harness stubs CLAUDE_PLUGIN_ROOT with only scripts/dispatch-with-waterfall.sh, but the proposed dispatcher calls the renderer through $PLUGIN_ROOT/skills/shared/scripts/render-voter-prompt.sh",
+      "scenario_or_breakage": "The healthy and retry sections that set CLAUDE_PLUGIN_ROOT=$PLUGIN_ROOT_STUB will fail before reaching the waterfall stub because the helper and any sourced quiet library are absent",
+      "suggested_fix": "Add the renderer and required support files to the stub plugin root, or stub only dispatch-with-waterfall without replacing the whole plugin root",
+      "severity": "important",
+      "reviewers": [
+        "Cursor-Pragmatic"
+      ],
+      "count": 1,
+      "id": "FINDING_26"
+    },
+    {
+      "focus_area": "risk-integration",
+      "location": "scripts/test-dispatch-plan-voters.sh:71-146; <TMPDIR>/plan.txt:54-64",
+      "what": "The CLAUDE_PLUGIN_ROOT stub will not contain the new helper",
+      "scenario_or_breakage": "The plan changes dispatch-plan-voters.sh to execute $PLUGIN_ROOT/skills/shared/scripts/render-voter-prompt.sh, but the harness later sets CLAUDE_PLUGIN_ROOT to a temp tree containing only scripts/dispatch-with-waterfall.sh; those scenarios fail before the waterfall stub runs",
+      "suggested_fix": "Create skills/shared/scripts in the stub plugin root and copy or shim render-voter-prompt.sh there, or restructure the harness so only dispatch-with-waterfall is overridden while helper resolution still uses the real repo root",
+      "severity": "important",
+      "reviewers": [
+        "Cursor-Edge"
+      ],
+      "count": 1,
+      "id": "FINDING_27"
+    },
+    {
+      "focus_area": "risk-integration",
+      "location": "scripts/test-dispatch-plan-voters.sh:71-73",
+      "what": "The existing harness swaps CLAUDE_PLUGIN_ROOT to a minimal stub containing only scripts/dispatch-with-waterfall.sh, but the proposed dispatcher wrapper will resolve the new helper under that stub root.",
+      "scenario_or_breakage": "The healthy/retry sections invoke $PLUGIN_ROOT/skills/shared/scripts/render-voter-prompt.sh and fail with missing file before reaching the waterfall assertions.",
+      "suggested_fix": "Update the harness fixture to copy or symlink skills/shared/scripts/render-voter-prompt.sh plus its lib-quiet.sh dependency into PLUGIN_ROOT_STUB, or add a narrow dispatcher override for dispatch-with-waterfall instead of replacing the whole plugin root.",
+      "severity": "important",
+      "reviewers": [
+        "Codex-Arch"
+      ],
+      "count": 1,
+      "id": "FINDING_28"
+    },
+    {
+      "focus_area": "risk-integration",
+      "location": "scripts/test-dispatch-plan-voters.sh:71-76,145-176",
+      "what": "Finding 3: stub CLAUDE_PLUGIN_ROOT lacks the new helper",
+      "scenario_or_breakage": "The dispatch-plan harness points CLAUDE_PLUGIN_ROOT at a minimal stub containing only scripts/dispatch-with-waterfall.sh; after make_prompt_file calls $PLUGIN_ROOT/skills/shared/scripts/render-voter-prompt.sh, healthy and retry scenarios fail before launching voters",
+      "suggested_fix": "Update the harness stub to include the shared renderer and lib-quiet dependency, or refactor the test to stub only dispatch-with-waterfall via an override while keeping CLAUDE_PLUGIN_ROOT at the real repo root",
+      "severity": "important",
+      "reviewers": [
+        "Codex-Edge"
+      ],
+      "count": 1,
+      "id": "FINDING_29"
+    },
+    {
+      "focus_area": "risk-integration",
+      "location": "scripts/test-render-voter-prompt.sh:new",
+      "what": "3. Drift guard omits two required canonical copies",
+      "scenario_or_breakage": "The plan says the canonical clause lives in four places, but the proposed drift guard only greps rendered output and skills/shared/voting-protocol.md; stale skills/design/SKILL.md or skills/implement/SKILL.md MAV text would still pass CI even though main-agent fallback would no longer emit the same OOS instruction.",
+      "suggested_fix": "Extend case_canonical_text_drift_guard to grep the exact canonical string in skills/design/SKILL.md and skills/implement/SKILL.md as well, and include any added /review or Voter 1 prose if those surfaces receive literal copies.",
+      "severity": "important",
+      "reviewers": [
+        "Codex-Requirements"
+      ],
+      "count": 1,
+      "id": "FINDING_30"
+    },
+    {
+      "focus_area": "risk-integration",
+      "location": "skills/design/references/plan-review.md:71",
+      "what": "The /design Claude Voter 1 prompt is not included in the OOS clause update",
+      "scenario_or_breakage": "Only external plan voters get the new problem-vs-solution rule, so close plan-review votes can still be skewed by Voter 1 rejecting a real OOS problem because it dislikes the proposed remedy",
+      "suggested_fix": "Add the same canonical OOS clause and general fix-informational guard to the Voter 1 instruction, or route Voter 1 prompt generation through the shared renderer",
+      "severity": "important",
+      "reviewers": [
+        "Codex-Pragmatic"
+      ],
+      "count": 1,
+      "id": "FINDING_31"
+    },
+    {
+      "focus_area": "code-quality",
+      "location": ".claude/rules/script-md-siblings.md:7-12",
+      "what": "Finding 5: modified dispatch script contracts omit sibling doc updates",
+      "scenario_or_breakage": "The plan changes prompt ownership and voter instructions in dispatch-plan-voters.sh and dispatch-code-voters.sh but does not update their sibling .md contracts, leaving future contributors with stale integration guidance",
+      "suggested_fix": "Add updates for scripts/dispatch-plan-voters.md and scripts/dispatch-code-voters.md, and update the relevant test sibling docs if their asserted prompt invariants change",
+      "severity": "nit",
+      "reviewers": [
+        "Codex-Edge"
+      ],
+      "count": 1,
+      "id": "FINDING_32"
+    },
+    {
+      "focus_area": "code-quality",
+      "location": ".claude/rules/script-md-siblings.md:7-12, scripts/dispatch-plan-voters.md:13-15, scripts/dispatch-code-voters.md:18-20, scripts/test-dispatch-plan-voters.md:3-13, scripts/test-dispatch-code-voters.md:7-22",
+      "what": "Finding 4: the plan changes dispatcher and harness behavior but does not update their existing sibling contract docs",
+      "scenario_or_breakage": "The repo’s script-doc standard is left partially stale; future maintainers will not see that prompt rendering is delegated to the shared helper or that the harnesses assert the canonical OOS text",
+      "suggested_fix": "Add the existing dispatcher and harness .md siblings to Files-to-modify and document the renderer dependency, prompt ownership, and added assertions",
+      "severity": "nit",
+      "reviewers": [
+        "Cursor-Arch"
+      ],
+      "count": 1,
+      "id": "FINDING_33"
+    },
+    {
+      "focus_area": "code-quality",
+      "location": "docs/linting.md:40-44",
+      "what": "The plan adds a Makefile harness target but omits the public linting target table",
+      "scenario_or_breakage": "Operators consulting docs/linting.md will not see test-render-voter-prompt even though the Makefile and shard inventory include it",
+      "suggested_fix": "Add a docs/linting.md row for make test-render-voter-prompt alongside the existing test-dispatch-plan-voters entry",
+      "severity": "nit",
+      "reviewers": [
+        "Cursor-Innovation"
+      ],
+      "count": 1,
+      "id": "FINDING_34"
+    },
+    {
+      "focus_area": "code-quality",
+      "location": "scripts/dispatch-plan-voters.md:11-16; scripts/dispatch-code-voters.md:18-22; scripts/test-dispatch-plan-voters.md:3-13; scripts/test-dispatch-code-voters.md:7-22",
+      "what": "The plan modifies dispatcher behavior and dispatcher harness coverage but omits updates to the existing sibling .md contracts for those changed scripts.",
+      "scenario_or_breakage": "The repository rule requires sibling docs to stay in sync with script behavior; future maintainers will not see that prompt rendering is delegated to the shared helper or that harnesses pin the canonical OOS/general fix text.",
+      "suggested_fix": "Add the relevant sibling .md files to the plan and document the new helper dependency, prompt-output invariants, and added harness assertions.",
+      "severity": "nit",
+      "reviewers": [
+        "Codex-Arch"
+      ],
+      "count": 1,
+      "id": "FINDING_35"
+    },
+    {
+      "focus_area": "code-quality",
+      "location": "skills/shared/voting-protocol.md:85-113",
+      "what": "HTML drift marker would sit inside the fenced prompt template",
+      "scenario_or_breakage": "The marker renders as literal prompt text in the documented template and may be copied into voter prompts",
+      "suggested_fix": "Move the marker outside the fenced template or make it surrounding prose, keeping the prompt block free of non-prompt comments",
+      "severity": "nit",
+      "reviewers": [
+        "Codex-Innovation"
+      ],
+      "count": 1,
+      "id": "FINDING_36"
+    },
+    {
+      "focus_area": "architecture",
+      "location": "scripts/test-render-voter-prompt.sh (new case_canonical_text_drift_guard), skills/shared/voting-protocol.md:93, skills/design/SKILL.md:598, skills/implement/SKILL.md:1238",
+      "what": "Finding 3: the drift guard only checks voting-protocol.md even though the plan intentionally creates four canonical OOS clause copies",
+      "scenario_or_breakage": "The design and implement MAV copies can diverge from runtime text while CI still passes, leaving main-agent voting semantics inconsistent with external voter semantics",
+      "suggested_fix": "Make case_canonical_text_drift_guard grep the exact canonical string in voting-protocol.md, skills/design/SKILL.md, and skills/implement/SKILL.md, or reduce the number of literal copies",
+      "severity": "latent",
+      "reviewers": [
+        "Cursor-Arch"
+      ],
+      "count": 1,
+      "id": "FINDING_37"
+    },
+    {
+      "focus_area": "architecture",
+      "location": "scripts/test-render-voter-prompt.sh:new",
+      "what": "The drift guard only checks the helper output and voting-protocol.md even though the plan creates four canonical-clause copies",
+      "scenario_or_breakage": "Canonical OOS text can drift in skills/design/SKILL.md or skills/implement/SKILL.md while the new drift test remains green",
+      "suggested_fix": "Extend case_canonical_text_drift_guard to grep the exact canonical clause in skills/design/SKILL.md and skills/implement/SKILL.md, or avoid literal copies there by referencing a single source",
+      "severity": "latent",
+      "reviewers": [
+        "Cursor-Pragmatic"
+      ],
+      "count": 1,
+      "id": "FINDING_38"
+    },
+    {
+      "focus_area": "architecture",
+      "location": "skills/design/SKILL.md:598; skills/implement/SKILL.md:1238",
+      "what": "Finding 4: canonical OOS drift guard does not cover two required copies",
+      "scenario_or_breakage": "The plan says four copies are kept in sync, but the proposed drift test only greps helper output and skills/shared/voting-protocol.md; the design and implement MAV clauses can drift while CI stays green",
+      "suggested_fix": "Extend case_canonical_text_drift_guard to grep the exact canonical clause in skills/design/SKILL.md and skills/implement/SKILL.md as well as voting-protocol.md",
+      "severity": "latent",
+      "reviewers": [
+        "Codex-Edge"
+      ],
+      "count": 1,
+      "id": "FINDING_39"
+    },
+    {
+      "focus_area": "code-quality",
+      "location": "agent-lint.toml:668-673",
+      "what": "The plan adds a new Makefile-only harness but does not add it to agent-lint's dead-script exclusions",
+      "scenario_or_breakage": "agent-lint does not follow Makefile-only references, so make lint-only can flag scripts/test-render-voter-prompt.sh as dead despite the target wiring",
+      "suggested_fix": "Add scripts/test-render-voter-prompt.sh to agent-lint.toml's exclude list with the same Makefile-only harness rationale used for scripts/test-dispatch-plan-voters.sh",
+      "severity": "latent",
+      "reviewers": [
+        "Cursor-Pragmatic"
+      ],
+      "count": 1,
+      "id": "FINDING_40"
+    },
+    {
+      "focus_area": "code-quality",
+      "location": "skills/shared/voting-protocol.md:81-113; <TMPDIR>/plan.txt:93-97",
+      "what": "HTML comment is targeted inside a fenced prompt template",
+      "scenario_or_breakage": "Line 93 is currently inside the Voter Prompt Template code fence, so the proposed HTML comment would render as literal template text rather than a hidden maintenance marker, making copy/paste of the canonical template noisy and misleading",
+      "suggested_fix": "Move the maintenance comment outside the fenced prompt block, or convert the template section so the comment sits in normal Markdown adjacent to a prompt-only fenced block",
+      "severity": "latent",
+      "reviewers": [
+        "Cursor-Edge"
+      ],
+      "count": 1,
+      "id": "FINDING_41"
+    },
+    {
+      "focus_area": "code-quality",
+      "location": "skills/shared/voting-protocol.md:93; skills/design/SKILL.md:598; skills/implement/SKILL.md:1238",
+      "what": "The drift guard described in the plan only checks voting-protocol.md, not the two SKILL.md MAV copies",
+      "scenario_or_breakage": "The helper and MAV prose can diverge while CI remains green, leaving main-agent adjudication on a stale OOS rubric",
+      "suggested_fix": "Extend case_canonical_text_drift_guard to grep the canonical clause in voting-protocol.md, skills/design/SKILL.md, and skills/implement/SKILL.md, and include any added Voter 1 copy if plan-review.md is updated",
+      "severity": "latent",
+      "reviewers": [
+        "Codex-Pragmatic"
+      ],
+      "count": 1,
+      "id": "FINDING_42"
+    },
+    {
+      "focus_area": "correctness",
+      "location": "<TMPDIR>/plan.txt:43-47; <TMPDIR>/plan.txt:141-144",
+      "what": "The planned finding-only harness checks that the canonical OOS clause is present and the OOS_N example block is absent, but it does not assert that grammar-irrelevant OOS_N parentheticals are suppressed.",
+      "scenario_or_breakage": "The exact regression under review can pass the new dedicated harness and dispatcher harnesses: the helper emits the confusing parenthetical, the OOS_N example rows are absent, and all planned greps still succeed.",
+      "suggested_fix": "Extend case_finding_only to fail on \"OOS_N\" anywhere in the rendered finding-only prompt, or at minimum fail on the specific \"(or OOS_N: items in plan review)\" parenthetical. Mirror that negative assertion in scripts/test-dispatch-code-voters.sh for the composed /review voter prompt.",
+      "severity": "latent",
+      "reviewers": [
+        "Cursor-dyn-grammar-clause-scope"
+      ],
+      "count": 1,
+      "id": "FINDING_43"
+    },
+    {
+      "focus_area": "risk-integration",
+      "location": "plan.txt:15-25",
+      "what": "Plan-context rendering drops the current design voter verification permission",
+      "scenario_or_breakage": "scripts/dispatch-plan-voters.sh currently tells voters they may silently inspect the plan or referenced repo files, but the proposed plan-mode helper output only says the ballot file may be read; that weakens plan-review validation despite the plan's byte-preservation goal",
+      "suggested_fix": "Add a plan-context branch that preserves the existing design wording allowing silent inspection of the plan or referenced repo files, and assert that wording in the helper and dispatch-plan-voters harnesses",
+      "severity": "latent",
+      "reviewers": [
+        "Cursor-Requirements"
+      ],
+      "count": 1,
+      "id": "FINDING_44"
+    },
+    {
+      "focus_area": "risk-integration",
+      "location": "scripts/dispatch-plan-voters.sh:42-63; scripts/dispatch-code-voters.sh:51-72",
+      "what": "4. New helper executable mode is unspecified while callers execute it directly",
+      "scenario_or_breakage": "The proposed wrappers invoke skills/shared/scripts/render-voter-prompt.sh as a command; if the new file lands with normal non-executable patch mode, voter dispatch fails with permission denied before launching judges.",
+      "suggested_fix": "Specify that render-voter-prompt.sh and its harness get executable git mode, or invoke the renderer with bash \"$PLUGIN_ROOT/skills/shared/scripts/render-voter-prompt.sh\" from both dispatchers.",
+      "severity": "latent",
+      "reviewers": [
+        "Codex-Requirements"
+      ],
+      "count": 1,
+      "id": "FINDING_45"
+    },
+    {
+      "focus_area": "security",
+      "location": "skills/shared/scripts/render-voter-prompt.sh (new)",
+      "what": "Free-form --panel-role leaves an unnecessary prompt-injection surface",
+      "scenario_or_breakage": "A future caller could pass role text with newlines or contradictory instructions and still get a syntactically valid voter prompt, bypassing the intended canonical prompt shapes",
+      "suggested_fix": "Prefer a small enum such as --prompt-kind design-plan|code-review, or at minimum reject control characters and newlines and keep role strings allowlisted inside the helper",
+      "severity": "latent",
+      "reviewers": [
+        "Cursor-Innovation"
+      ],
+      "count": 1,
+      "id": "FINDING_46"
+    }
+  ],
+  "oos": [],
+  "stats": {
+    "in_scope_raw": 47,
+    "oos_raw": 0,
+    "in_scope_deduped": 46,
+    "oos_deduped": 0
+  }
+}

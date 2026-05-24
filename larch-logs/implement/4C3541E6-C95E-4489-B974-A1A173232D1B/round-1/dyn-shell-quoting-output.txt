@@ -1,0 +1,9 @@
+Gathering the diff, commit list, and the `dispatch-plan-voters.sh` section that defines and emits `plan_voter_yes_exonerate_framing`.
+
+Verified `plan_voter_yes_exonerate_framing`: possessives use the correct `'\''` pattern (`plan's`, `revision's`, `issue's` twice, `PR's`); inner double quotes on line 52 do not terminate the single-quoted literal; `printf '%s\n' "$plan_voter_yes_exonerate_framing"` uses `%s` so `%` in the string would not be interpreted as a format directive (and the prose contains no `%`). The `{ ... } > "$prompt_file"` group is not a subshell, so the variable is in scope. No shell-quoting defect found in the branch’s `dispatch-plan-voters.sh` change.
+
+### In-Scope Findings
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+NO_ISSUES_FOUND
