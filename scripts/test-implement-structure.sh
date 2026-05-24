@@ -243,10 +243,10 @@ step18_status=0
 awk '
   /<!-- step:18/ { in_step = 1; next }
   in_step && /<!-- step:/ { in_step = 0 }
-  in_step && /write-final-report\.sh.*--print-stdout/ { good = 1 }
-  END { if (!good) exit 1 }
+  in_step && /write-final-report\.sh.*--print-stdout/ { bad = 1 }
+  END { if (bad) exit 2; exit 0 }
 ' "$SKILL_MD" || step18_status=$?
-[[ "$step18_status" == "0" ]] || fail "SKILL.md Step 18 must retain write-final-report.sh --print-stdout (mirror Step 17 contract)"
+[[ "$step18_status" == "0" ]] || fail "SKILL.md Step 18 write-final-report.sh must NOT use --print-stdout (silent refresh only; FINDING_1)"
 
 COMMIT_IMPL_SH="$REPO_ROOT/skills/implement/scripts/commit-implementation.sh"
 COMMIT_REVIEW_SH="$REPO_ROOT/skills/implement/scripts/commit-review-fixes.sh"

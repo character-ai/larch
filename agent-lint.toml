@@ -810,6 +810,7 @@ exclude = [
   "skills/design/scripts/test-finalize-plan.sh",
   "skills/design/scripts/test-scout-plan-archetypes-wrapper.sh",
   "skills/design/scripts/test-dispatch-plan-review-panel.sh",
+  "skills/design/scripts/test-render-final-summary.sh",
   "scripts/test-implement-rebase-macro.sh",
   # scripts/test-rebase-push-keep-on-conflict.sh is the offline regression
   # harness for scripts/rebase-push.sh's --keep-on-conflict local-only rebase
@@ -1150,6 +1151,7 @@ exclude = [
   "skills/design/scripts/test-finalize-plan.md",
   "skills/design/scripts/test-scout-plan-archetypes-wrapper.md",
   "skills/design/scripts/test-dispatch-plan-review-panel.md",
+  "skills/design/scripts/test-render-final-summary.md",
   "scripts/test-rebase-push-keep-on-conflict.md",
   "scripts/test-auto-resolve-changelog.md",
   "scripts/test-rebase-push-force-lease.md",
@@ -1162,6 +1164,11 @@ exclude = [
   # scripts/promote-release.md is excluded for the same reason.
   "scripts/promote-release.sh",
   "scripts/promote-release.md",
+  # scripts/render-cost-line.sh is a deprecated standalone operator helper (PR
+  # #2714); dollar-primary summaries flow through render-run-summary.sh. G004
+  # would flag it without an explicit SKILL.md literal path.
+  "scripts/render-cost-line.sh",
+  "scripts/render-cost-line.md",
   # tmpdir-corruption hardening (#1339): redact-tmpdir-paths.sh is invoked
   # via shell variable indirection ($REDACT_TMPDIR_HELPER) — agent-lint's
   # G004/dead-script rule scans SKILL.md/hooks.json/settings.json for

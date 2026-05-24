@@ -26,7 +26,7 @@ emit_body_line() {
 }
 
 usage() {
-    emit_diag "Usage: render-run-summary.sh --skill implement ... (see render-run-summary.md)"
+    emit_diag "Usage: render-run-summary.sh --skill {implement|design} ... (see render-run-summary.md)"
 }
 
 SKILL=""
@@ -101,7 +101,7 @@ done
 [ -n "$OUTCOME" ] || { usage; exit 2; }
 [ -n "$RUN_ID" ] || { usage; exit 2; }
 
-case "$SKILL" in implement) ;; *) usage; exit 2 ;; esac
+case "$SKILL" in implement|design) ;; *) usage; exit 2 ;; esac
 
 na() { [ -z "$1" ] && printf 'N/A\n' || printf '%s\n' "$1"; }
 
@@ -213,7 +213,9 @@ trap cleanup EXIT
 
 {
     printf '## /%s run %s — %s\n\n' "$SKILL" "$RUN_ID" "$OUTCOME"
-    case "$OUTCOME" in bailed*|stalled) printf -- '- **Outcome**: %s\n' "$OUTCOME" ;; esac
+    # Outcome bullet: skipped printf for happy-path outcomes (not empty-string args) so
+    # --print-stdout and --output-file bodies stay byte-identical (FINDING_20).
+    case "$OUTCOME" in bailed*|stalled|cancelled-*|failed-*) printf -- '- **Outcome**: %s\n' "$OUTCOME" ;; esac
     printf -- '- **Mode**: %s\n' "$mode_disp"
     printf -- '- **Path**: %s\n' "$path_disp"
     printf -- '- **Duration**: %s\n' "$dur_disp"
@@ -221,11 +223,13 @@ trap cleanup EXIT
         *) printf -- '- **Cost**: %s\n' "$(cost_bullet)" ;;
     esac
     printf -- '- **Issue**: %s\n' "$iss_disp"
-    if [ "$pr_disp" != "N/A" ]; then
+    if [ "$SKILL" != design ] && [ "$pr_disp" != "N/A" ]; then
         printf -- '- **PR**: %s\n' "$pr_disp"
     fi
     printf -- '- **Plan review**: %s\n' "$plan_disp"
-    printf -- '- **Code review**: %s\n' "$code_disp"
+    if [ "$SKILL" != design ]; then
+        printf -- '- **Code review**: %s\n' "$code_disp"
+    fi
     printf -- '- **OOS filed**: %s\n' "$oos_disp"
     printf -- '- **Exec issues**: %s\n' "$ex_disp"
     printf -- '- **Warnings**: %s\n' "$warn_disp"

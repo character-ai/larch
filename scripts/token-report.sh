@@ -686,64 +686,21 @@ else
     report=$(<"$rendered_file")
     rm -f "$rendered_file"
     if [[ "$MODE" == "summary" ]]; then
-        # shellcheck source=scripts/lib-cost-line-format.sh
-        # shellcheck disable=SC1091
-        source "$SCRIPT_DIR/lib-cost-line-format.sh"
-        cost_errf="$(mktemp "${TMPDIR:-/tmp}/token-report-cost-err.XXXXXX")"
-        ci=$(jq -r '.codex.input // 0' <<<"$report")
-        ccx=$(jq -r '.codex.cached_input // 0' <<<"$report")
-        co=$(jq -r '.codex.output // 0' <<<"$report")
-        cx_led=$(jq -r '.codex_ledger_total // 0' <<<"$report")
-        ui=$(jq -r '.cursor.input // 0' <<<"$report")
-        ucr=$(jq -r '.cursor.cache_read // 0' <<<"$report")
-        uo=$(jq -r '.cursor.output // 0' <<<"$report")
-        ux_led=$(jq -r '.cursor_ledger_total // 0' <<<"$report")
-        codex_args=(--codex-input-tokens "$ci" --codex-cached-input-tokens "$ccx" --codex-output-tokens "$co")
-        if awk -v l="$cx_led" -v s=$((ci + ccx + co)) 'BEGIN { exit !(l > 0 && s == 0) }'; then
-            codex_args=(--codex-tokens "$cx_led")
-        fi
-        cursor_args=(--cursor-input-tokens "$ui" --cursor-cache-read-tokens "$ucr" --cursor-output-tokens "$uo")
-        if awk -v l="$ux_led" -v s=$((ui + ucr + uo)) 'BEGIN { exit !(l > 0 && s == 0) }'; then
-            cursor_args=(--cursor-tokens "$ux_led")
-        fi
-        cost_out=$("$SCRIPT_DIR/token-cost.sh" \
-            --claude-input-tokens "$(jq -r '.claude.input // 0' <<<"$report")" \
-            --claude-cache-read-tokens "$(jq -r '.claude.cache_read // 0' <<<"$report")" \
-            --claude-cache-write-5m-tokens "$(jq -r '.claude.cache_write_5m // 0' <<<"$report")" \
-            --claude-cache-write-1h-tokens "$(jq -r '.claude.cache_write_1h // 0' <<<"$report")" \
-            --claude-output-tokens "$(jq -r '.claude.output // 0' <<<"$report")" \
-            "${codex_args[@]}" \
-            "${cursor_args[@]}" \
-            2>"$cost_errf") || cost_out=""
-        if [[ -s "$cost_errf" ]]; then
-            while IFS= read -r __cost_err_line || [[ -n "${__cost_err_line:-}" ]]; do
-                larch_errf '%s\n' "$__cost_err_line"
-            done <"$cost_errf"
-        fi
-        rm -f "$cost_errf"
-        if [[ -z "$cost_out" ]] || ! printf '%s\n' "$cost_out" | grep -q '^TOTAL_COST='; then
-            larch_errf 'token-report.sh: token-cost.sh failed; emitting N/A cost line (not a fabricated zero-dollar total)\n'
-            tt_only=$(jq -r '.token_total // 0' <<<"$report")
-            tok_k=$(awk -v n="$tt_only" 'BEGIN {
+        tok_to_k() {
+            awk -v n="${1:-0}" 'BEGIN {
               if (n == "") n = 0
               printf "%d\n", int((n+500)/1000)
-            }')
-            emit "$(printf '💰 Cost: N/A — token-cost unavailable  |  Tokens: %sk\n' "$tok_k")"
-        else
-        read_kv_sum() {
-            local key=$1 v
-            v=$(printf '%s\n' "$cost_out" | awk -F= -v k="$key" '$1==k{print $2; exit}')
-            [ -n "$v" ] && printf '%s\n' "$v" || printf '0.00\n'
+            }'
         }
-        tc=$(read_kv_sum TOTAL_COST)
-        cc=$(read_kv_sum CLAUDE_COST)
-        dc=$(read_kv_sum CODEX_COST)
-        uc=$(read_kv_sum CURSOR_COST)
-        tt=$(read_kv_sum TOTAL_TOKENS)
-        _cost_ln=$(larch_emit_cost_line "$tc" "$cc" "$dc" "$uc" "$tt")
-        _cost_ln=${_cost_ln%$'\n'}
-        emit "$_cost_ln"
-        fi
+        tt_only=$(jq -r '.token_total // 0' <<<"$report")
+        tok_k=$(tok_to_k "$tt_only")
+        c_raw=$(jq -r '((.claude.input//0)+(.claude.cache_read//0)+(.claude.cache_write_5m//0)+(.claude.cache_write_1h//0)+(.claude.output//0))' <<<"$report")
+        d_raw=$(jq -r '((.codex.input//0)+(.codex.cached_input//0)+(.codex.output//0))' <<<"$report")
+        u_raw=$(jq -r '((.cursor.input//0)+(.cursor.cache_read//0)+(.cursor.output//0))' <<<"$report")
+        ck=$(tok_to_k "$c_raw")
+        dk=$(tok_to_k "$d_raw")
+        uk=$(tok_to_k "$u_raw")
+        emit "$(printf 'Tokens: %sk — Claude: %sk | Codex: %sk | Cursor: %sk' "$tok_k" "$ck" "$dk" "$uk")"
     else
         emit "$report"
     fi

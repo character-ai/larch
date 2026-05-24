@@ -1801,7 +1801,7 @@ export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 # timing-mark Step 17 — final report
 ```
 
-Write/post the terminal `larch:final-summary` projection before the token summary (single call — the script resolves outcome, mode, path, notes, and partial fields internally). Do not branch around this call on early bailouts that still have a tracking issue to update.
+Write/post the terminal `larch:final-summary` projection. Do not branch around this call on early bailouts that still have a tracking issue to update.
 
 ```bash
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
@@ -1813,29 +1813,9 @@ export CLAUDE_PLUGIN_ROOT
 
 The markdown body is produced by `${CLAUDE_PLUGIN_ROOT}/scripts/render-run-summary.sh` (optional per-lane USD via `${CLAUDE_PLUGIN_ROOT}/scripts/token-cost.sh`).
 
-On non-zero exit or `STATUS=failed` on the script envelope, capture stdout/stderr to `$IMPLEMENT_TMPDIR/step17-write-final-report.failure.log` (or split `.stdout.log` / `.stderr.log`) and append with `append-tool-failure.sh` under `Tool Failures` per the Step 18 pattern, then continue to the token summary. `STATUS=skipped` is reserved for the no-tracking-issue path (`ISSUE_NUMBER=0`) and `repo-unavailable`, not for GitHub upsert failures.
+On non-zero exit or `STATUS=failed` on the script envelope, capture stdout/stderr to `$IMPLEMENT_TMPDIR/step17-write-final-report.failure.log` (or split `.stdout.log` / `.stderr.log`) and append with `append-tool-failure.sh` under `Tool Failures` per the Step 18 pattern, then continue. `STATUS=skipped` is reserved for the no-tracking-issue path (`ISSUE_NUMBER=0`) and `repo-unavailable`, not for GitHub upsert failures.
 
-Print a token summary to chat. When `LARCH_VERBOSE_TOKENS=true`, print the full per-step table; otherwise print exactly the stdout from `token-report.sh --summary` and `timing-report.sh --summary` as a single line each — **do not paraphrase, reformat, or drop the dollar-primary cost line** (it matches `render-cost-line.sh` / `token-cost.sh` output). The full breakdown is appended to the `token-report` and `timing-report` log batches at the pre-bump log flush (Step 7a tail); on each retry `scripts/refresh-run-logs.sh` (Triggers A-C in `ship-pr.sh`) re-renders and commits the batches before each push so the merged PR carries the most recent data (unless `--no-logs-commit` is set, in which case log files stay in the session tmpdir only).
-
-```bash
-IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR"
-export IMPLEMENT_TMPDIR
-if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
-  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
-fi
-export CLAUDE_PLUGIN_ROOT
-LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
-LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
-LARCH_TIMING_LEDGER=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
-export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
-if [ "${LARCH_VERBOSE_TOKENS:-false}" = "true" ]; then
-  "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --full --markdown || true
-  "${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --full --markdown || true
-else
-  "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --summary || true
-  "${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --summary || true
-fi
-```
+The dollar-primary cost line is owned exclusively by the `larch:final-summary` block produced by `${CLAUDE_PLUGIN_ROOT}/scripts/render-run-summary.sh` (rendered by Step 17 via `skills/implement/scripts/write-final-report.sh --print-stdout`). Step 18 emits no token/timing summary to chat. The full per-step token and timing data is committed to `larch-logs/implement/<run-id>/token-report.md` and `timing-report.md` via `refresh-run-logs.sh`.
 
 > **Continue to Step 18.** Do NOT end the turn after the final report.
 
@@ -1879,7 +1859,7 @@ LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.s
 LARCH_TIMING_LEDGER=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
 export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 "${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --full --format json --output "$IMPLEMENT_TMPDIR/token-report-rendered.json" || true
-${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/write-final-report.sh --implement-tmpdir "$IMPLEMENT_TMPDIR" --print-stdout || true
+"${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/write-final-report.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR" || true
 ```
 
 For Step 18's `token-report.sh` and `write-final-report.sh`, preserve the best-effort behavior but capture any non-zero stdout/stderr to `$IMPLEMENT_TMPDIR/step18-<tool>.failure.log` and append with `append-tool-failure.sh` before continuing.

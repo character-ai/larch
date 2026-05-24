@@ -14,9 +14,9 @@ Claude API responses may appear on multiple JSONL rows with identical `requestId
 
 - `--since-last-mark --terse` prints one line for the most recent ledger mark:
   `Step N — <name>: claude=<total> tokens (input=A cache_read=B cache_create=C output=D); vendor=<sum> (codex=X, cursor=Y)`.
-- `--summary` prints one dollar-primary grand-total line (same format as `render-cost-line.sh`):  
-  `💰 Cost: TOTAL ~$X.XX — Claude $A.AA, Codex $B.BB, Cursor $C.CC  |  Tokens: <T>k`  
-  Used as the default brief output in `/implement` Step 17 when `LARCH_VERBOSE_TOKENS` is unset. **Print this line verbatim in chat — do not paraphrase.**
+- `--summary` prints one non-dollar token rollup line for chat breadcrumbs:  
+  `Tokens: <T>k — Claude: <Ck | Codex: <D>k | Cursor: <U>k`  
+  The dollar-primary cost line for `/implement` and `/design` lives exclusively in `scripts/render-run-summary.sh` (`- **Cost**:` inside the `larch:final-summary` body). **Print the `--summary` line verbatim when used — do not paraphrase.**
 - `--full --markdown [--output FILE]` renders a markdown table grouped by step with indented skill rows and vendor rows.
 - `--full --format json [--output FILE]` renders a JSON object with `vendors`, `claude.per_step`, `claude.totals`, one sibling object per non-Claude vendor, and `BUCKETS_claude` / `BUCKETS_codex` / `BUCKETS_cursor` (per-bucket totals aligned with `token-cost.sh` flags).
 - `--buckets --vendor claude|codex|cursor` (with `--ledger` / `--transcript` / session hooks as for other modes) prints one line of `KEY=value` bucket counts for stdout (test/CI helper).

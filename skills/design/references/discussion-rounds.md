@@ -22,7 +22,7 @@ Consider asking about:
 **Guidelines**:
 - If you have any doubt about scope, requirements, or what 'done' means, ask. This is the highest-value question point in the entire workflow — answers here reshape what the sketch agents explore. The cost of one extra clarifying question is small; anchoring sketches on the wrong interpretation is large. Suppress only when the feature description is fully unambiguous.
 - Batch questions into a single `AskUserQuestion` call with 1-4 questions rather than multiple sequential calls.
-- **Semantic sprawl heuristic (best-effort)**: when clarifying answers suggest several distinct sub-features or cross-cutting infrastructure changes, the orchestrator MAY fire an additional `AskUserQuestion` with exactly two options: **"Let my panel of agents split this feature for you"** / **"Cancel"** (no Continue — there is no plan yet to continue with). On **Cancel**: run the Terminal cost line block from `SKILL.md` (`### Terminal cost line`), print `**ℹ /design cancelled by operator (Step 1c sprawl heuristic).**`, exit **0**, preserve `$DESIGN_TMPDIR`. On **Split**: run the **Split-path** procedure in `SKILL.md` (decomposition panel stub until #2672). The heuristic is semantic — when uncertain, do not fire. At most **once** per Step 1c invocation.
+- **Semantic sprawl heuristic (best-effort)**: when clarifying answers suggest several distinct sub-features or cross-cutting infrastructure changes, the orchestrator MAY fire an additional `AskUserQuestion` with exactly two options: **"Let my panel of agents split this feature for you"** / **"Cancel"** (no Continue — there is no plan yet to continue with). On **Cancel**: export `SUMMARY_OUTCOME=cancelled-sprawl` and run the Final summary block from `SKILL.md` (`### Final summary block`), print `**ℹ /design cancelled by operator (Step 1c sprawl heuristic).**`, exit **0**, preserve `$DESIGN_TMPDIR`. On **Split**: run the **Split-path** procedure in `SKILL.md` (decomposition panel stub until #2672). The heuristic is semantic — when uncertain, do not fire. At most **once** per Step 1c invocation.
 - If the feature description is clear and unambiguous, proceed to Step 1d.
 
 After the user responds, incorporate their answers into your understanding of the feature for all subsequent steps.
@@ -43,7 +43,7 @@ The orchestrator identifies key **scope and requirements decisions** from the fe
 
 Then walk each branch one question at a time via sequential `AskUserQuestion` calls, providing a **recommended answer** for each question. If a question can be answered by exploring the codebase, do so and report the finding instead of asking the user.
 
-After each `AskUserQuestion` answer is recorded, apply the **same semantic sprawl heuristic** as Step 1c (Split / Cancel only, no Continue). **Cap**: at most **once** per Step 1d invocation for this heuristic — if it already fired during Step 1c or earlier in Step 1d, do not re-fire.
+After each `AskUserQuestion` answer is recorded, apply the **same semantic sprawl heuristic** as Step 1c (Split / Cancel only, no Continue; on Cancel export `SUMMARY_OUTCOME=cancelled-sprawl` and run `### Final summary block`). **Cap**: at most **once** per Step 1d invocation for this heuristic — if it already fired during Step 1c or earlier in Step 1d, do not re-fire.
 
 **Explicit prohibition**: Do NOT ask about implementation approach, architectural preferences, library choices, or file organization. Those decisions belong to the sketch phase (Step 2a). Round 1 is strictly requirements/scope clarification.
 

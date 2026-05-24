@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-token-report-summary-format.sh — bug-4: dollar-primary --summary line (DE-2622).
+# test-token-report-summary-format.sh — non-dollar --summary contract (FINDING_3).
 set -euo pipefail
 REPO="$(cd "$(dirname "$0")/.." && pwd -P)"
 SCRIPT="$REPO/scripts/token-report.sh"
@@ -21,25 +21,12 @@ JSONL
 
 line=$("$SCRIPT" --ledger "$LEDGER" --transcript "$TRANSCRIPT" --summary)
 case "$line" in
-    *'Cost: TOTAL'*) ;;
-    *) fail "summary missing Cost: TOTAL: $line" ;;
+    *'💰 Cost:'*) fail "summary must not contain dollar-primary cost line: $line" ;;
 esac
 case "$line" in
-    *'Claude $'*) ;;
-    *) fail "summary missing Claude dollars: $line" ;;
+    *'Tokens:'*'Claude:'*'Codex:'*'Cursor:'*) ;;
+    *) fail "summary missing Tokens vendor line: $line" ;;
 esac
-case "$line" in
-    *'Codex $'*) ;;
-    *) fail "summary missing Codex dollars: $line" ;;
-esac
-case "$line" in
-    *'Cursor $'*) ;;
-    *) fail "summary missing Cursor dollars: $line" ;;
-esac
-case "$line" in
-    *'Tokens:'*) ;;
-    *) fail "summary missing Tokens: $line" ;;
-esac
-pass 'token-report --summary dollar-primary shape'
+pass 'token-report --summary non-dollar shape'
 
 printf 'PASS: test-token-report-summary-format.sh\n'

@@ -16,8 +16,10 @@ The `larch:final-summary` body is rich markdown produced by
 then emits the `<!-- larch:run-summary v=1 -->` sentinel **before** any optional
 note lines from `--note-lines-file` (sentinel is the last line of the
 standardized block, not the first line of the file).
+`/implement` and `/design` share the same `larch:final-summary` marker family; the
+`runid=` segment disambiguates concurrent runs on one tracking issue.
 `/implement` uses this renderer for the committed
-`final-summary.md` projection and the GitHub upsert payload (`summary-final.md`).
+`final-summary.md` projection and the GitHub upsert payload (`summary-final.md` for implement; `skills/design/scripts/render-final-summary.sh` owns the `/design` gather + upsert path).
 
 Large runtime payloads are not embedded in these comments. They are written to
 `larch-logs/<skill>/<run-id>/` by `scripts/larch-log.sh` and committed at the
