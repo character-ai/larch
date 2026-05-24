@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Offline smoke tests for plan-review-loop.sh (extend with PATH stubs per #2676).
+# Offline integration tests for plan-review-loop.sh (PATH-style stubs via LARCH_PLAN_REVIEW_*_SH).
 
 set -euo pipefail
 
@@ -16,6 +16,197 @@ rc=$?
 set -e
 [[ "$rc" == 2 ]] || fail "expected exit 2 when --design-tmpdir missing, got $rc"
 
-# Do not invoke the full driver without PATH stubs — it runs scout/panel and can hang in CI.
+TMP="$(mktemp -d "${TMPDIR:-/tmp}/test-plan-review-loop.XXXXXX")"
+trap 'rm -rf "$TMP"' EXIT
+STUB="$TMP/stub-bin"
+mkdir -p "$STUB"
+
+write_scout() {
+    cat >"$STUB/scout-plan-archetypes-wrapper.sh" <<'EOS'
+#!/usr/bin/env bash
+set -euo pipefail
+out=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --output) out="${2:?}"; shift 2 ;;
+        --plan-file|--description-file|--max-archetypes|--session-env-path) shift 2 ;;
+        *) shift 1 ;;
+    esac
+done
+[[ -n "$out" ]] || exit 2
+printf '%s\n' '{"archetypes":[]}' >"$out"
+EOS
+    chmod +x "$STUB/scout-plan-archetypes-wrapper.sh"
+}
+
+write_dispatch_one_slot() {
+    cat >"$STUB/dispatch-plan-review-panel.sh" <<'EOS'
+#!/usr/bin/env bash
+set -euo pipefail
+DESIGN_TMPDIR=""
+PLAN_FILE=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --design-tmpdir) DESIGN_TMPDIR="${2:?}"; shift 2 ;;
+        --plan-file) PLAN_FILE="${2:?}"; shift 2 ;;
+        --feature-file|--codex-present|--cursor-present|--timeout) shift 2 ;;
+        *) shift 1 ;;
+    esac
+done
+[[ -n "$DESIGN_TMPDIR" && -n "$PLAN_FILE" ]] || exit 2
+OUT="$DESIGN_TMPDIR/cursor-plan-arch-output.txt"
+PROMPT="$DESIGN_TMPDIR/render-plan-cursor-arch.prompt"
+printf '%s\n' '{"slot":"cursor-plan-arch","tool":"cursor","output":"'"$OUT"'","prompt_file":"'"$PROMPT"'"}' >"$DESIGN_TMPDIR/plan-review-slots.ndjson"
+: >"$OUT"
+: >"$PROMPT"
+PATHS="$DESIGN_TMPDIR/panel-paths.txt"
+printf '%s\n' "$OUT" >"$PATHS"
+printf 'DISPATCH_OK=true\nFALLBACK_COUNT=0\nSTATIC_DISPATCH_OK=true\nPANEL_PATHS_FILE=%s\nALL_OUTPUT_FILES_PATH=%s\n' "$PATHS" "$PATHS"
+EOS
+    chmod +x "$STUB/dispatch-plan-review-panel.sh"
+}
+
+write_collect() {
+    local mode="${1:?}"
+    cat >"$STUB/collect-agent-results.sh" <<EOS
+#!/usr/bin/env bash
+set -euo pipefail
+paths=""
+while [[ \$# -gt 0 ]]; do
+    case "\$1" in
+        --paths-file) paths="\${2:?}"; shift 2 ;;
+        --timeout) shift 2 ;;
+        --substantive-validation|--validation-mode|--structured-reviewer-validation) shift 1 ;;
+        *) shift 1 ;;
+    esac
+done
+[[ -n "\$paths" && -f "\$paths" ]] || exit 1
+while IFS= read -r p || [[ -n "\$p" ]]; do
+    [[ -z "\$p" ]] && continue
+    tsv="\${p}.tsv"
+    {
+        printf '%s\n' "scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix"
+EOS
+    if [[ "$mode" == "empty" ]]; then
+        cat >>"$STUB/collect-agent-results.sh" <<'EOS'
+    } >"$tsv"
+EOS
+    else
+        cat >>"$STUB/collect-agent-results.sh" <<'EOS'
+        printf '%s\n' "in_scope	important	correctness	src/a	Alpha concern text goes here	scenario one	fix one"
+    } >"$tsv"
+EOS
+    fi
+    cat >>"$STUB/collect-agent-results.sh" <<'EOS'
+    printf 'REVIEWER_FILE=%s\nTOOL=cursor\nSTATUS=OK\nEXIT_CODE=0\n\n' "$p"
+done <"$paths"
+EOS
+    chmod +x "$STUB/collect-agent-results.sh"
+}
+
+write_voters_three() {
+    cat >"$STUB/dispatch-plan-voters.sh" <<'EOS'
+#!/usr/bin/env bash
+set -euo pipefail
+DESIGN_TMPDIR=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --design-tmpdir) DESIGN_TMPDIR="${2:?}"; shift 2 ;;
+        --ballot-file|--codex-available|--cursor-available|--session-env-path) shift 2 ;;
+        *) shift 1 ;;
+    esac
+done
+[[ -n "$DESIGN_TMPDIR" ]] || exit 2
+v1="$DESIGN_TMPDIR/vstub1.txt"
+v2="$DESIGN_TMPDIR/vstub2.txt"
+v3="$DESIGN_TMPDIR/vstub3.txt"
+vp="$DESIGN_TMPDIR/voter-paths.list"
+for f in "$v1" "$v2" "$v3"; do
+    cat >"$f" <<'INNER'
+FINDING_1: YES
+INNER
+done
+printf '%s\n' "$v1" "$v2" "$v3" >"$vp"
+printf 'DISPATCH_OK=true\nVOTER_PATHS_FILE=%s\nVOTER_1_PARSE_RATE_STATUS=ok\n' "$vp"
+EOS
+    chmod +x "$STUB/dispatch-plan-voters.sh"
+}
+
+write_tally_fail() {
+    cat >"$STUB/tally-plan-review.sh" <<'EOS'
+#!/usr/bin/env bash
+echo "tally stub failure" >&2
+exit 2
+EOS
+    chmod +x "$STUB/tally-plan-review.sh"
+}
+
+run_loop() {
+    local d="$1"
+    export CLAUDE_PLUGIN_ROOT="$ROOT"
+    export LARCH_PLAN_REVIEW_SCOUT_SH="$STUB/scout-plan-archetypes-wrapper.sh"
+    export LARCH_PLAN_REVIEW_DISPATCH_PANEL_SH="$STUB/dispatch-plan-review-panel.sh"
+    export LARCH_PLAN_REVIEW_COLLECT_SH="$STUB/collect-agent-results.sh"
+    export LARCH_PLAN_REVIEW_DISPATCH_VOTERS_SH="$STUB/dispatch-plan-voters.sh"
+    export LARCH_PLAN_REVIEW_TALLY_SH="${LARCH_PLAN_REVIEW_TALLY_SH:-$ROOT/skills/design/scripts/tally-plan-review.sh}"
+    export LARCH_AGGREGATOR_DISABLED=1
+    bash "$PLR" \
+        --design-tmpdir "$d" \
+        --plan-file "$d/plan.txt" \
+        --feature-file "$d/feature-description.txt" \
+        --codex-present true \
+        --cursor-present true
+}
+
+echo "=== stubbed driver: zero findings (empty TSV) ==="
+D0="$TMP/z0"
+mkdir -p "$D0"
+printf 'plan\n' >"$D0/plan.txt"
+printf 'feat\n' >"$D0/feature-description.txt"
+write_scout
+write_dispatch_one_slot
+write_collect empty
+write_voters_three
+out0=$(run_loop "$D0")
+printf '%s\n' "$out0" | grep -q '^TALLY_PLAN_REVIEW_STATUS=skipped-empty-findings$' || fail "expected skipped-empty-findings TALLY kv"
+printf '%s\n' "$out0" | grep -q '^WARN=plan-review-tsv:' || fail "expected WARN for empty TSV path"
+[[ -f "$D0/ballot.txt" ]] || fail "ballot.txt missing on zero-findings path"
+grep -q 'No findings were raised' "$D0/voting-tally.md" || fail "expected zero-findings tally prose"
+
+echo "=== stubbed driver: one finding + real tally ==="
+D1="$TMP/z1"
+mkdir -p "$D1"
+printf 'plan\n' >"$D1/plan.txt"
+printf 'feat\n' >"$D1/feature-description.txt"
+write_scout
+write_dispatch_one_slot
+write_collect one
+write_voters_three
+out1=$(run_loop "$D1")
+printf '%s\n' "$out1" | grep -q '^TALLY_PLAN_REVIEW_STATUS=ok$' || fail "expected ok tally status"
+printf '%s\n' "$out1" | grep -q '^LOOP_STATUS=complete$' || fail "expected complete loop"
+grep -q 'FINDING_1' "$D1/accepted-plan-findings.md" || fail "accepted finding missing"
+
+echo "=== stubbed tally failure still emits loop KVs ==="
+D2="$TMP/z2"
+mkdir -p "$D2"
+cp "$D1/plan.txt" "$D2/plan.txt"
+cp "$D1/feature-description.txt" "$D2/feature-description.txt"
+write_scout
+write_dispatch_one_slot
+write_collect one
+write_voters_three
+write_tally_fail
+_prev_tally="${LARCH_PLAN_REVIEW_TALLY_SH:-}"
+export LARCH_PLAN_REVIEW_TALLY_SH="$STUB/tally-plan-review.sh"
+out2=$(run_loop "$D2")
+if [[ -n "$_prev_tally" ]]; then
+    export LARCH_PLAN_REVIEW_TALLY_SH="$_prev_tally"
+else
+    unset LARCH_PLAN_REVIEW_TALLY_SH
+fi
+printf '%s\n' "$out2" | grep -q '^TALLY_PLAN_REVIEW_STATUS=tally-error$' || fail "expected tally-error after stub tally rc=2"
+printf '%s\n' "$out2" | grep -q '^LOOP_STATUS=complete$' || fail "expected complete loop after tally failure"
+printf '%s\n' "$out2" | grep -q '^WARN=plan-review-tally:' || fail "expected tally WARN"
 
 printf '%s\n' "test-plan-review-loop: ok"

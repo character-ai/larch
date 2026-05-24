@@ -685,7 +685,7 @@ Step 3 does NOT revise `$DESIGN_TMPDIR/plan.txt`. The driver and tally write onl
 
 The driver runs `check-mid-run-dirty-tree.sh --mode checkpoint` after reviewer collection and after voter dispatch. Consult launcher `${OUTPUT}.dirty-tree` sidecars when directing recovery on dirty/unknown, deduped by `$DESIGN_TMPDIR/.dirty-tree-prompted-plan-review`.
 
-If **all reviewers** report no in-scope issues and no out-of-scope observations, the driver skips voting (`AGGREGATOR_STATUS=skipped-empty-input` or equivalent) — proceed to Step 3.5.
+If **all reviewers** report no in-scope issues and no out-of-scope observations, the driver skips voting (`AGGREGATOR_STATUS=skipped-empty-input` and `TALLY_PLAN_REVIEW_STATUS=skipped-empty-findings`; tally is not executed) — proceed to Step 3.5.
 
 > **Continue to Step 3.5 IMMEDIATELY.** The plan-review result is not terminal — proceed to the post-review chooser.
 

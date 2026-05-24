@@ -5,9 +5,16 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
+# Optional harness overrides (see test-plan-review-loop.sh).
+PLAN_REVIEW_SCOUT_SH="${LARCH_PLAN_REVIEW_SCOUT_SH:-$PLUGIN_ROOT/skills/design/scripts/scout-plan-archetypes-wrapper.sh}"
+PLAN_REVIEW_DISPATCH_PANEL_SH="${LARCH_PLAN_REVIEW_DISPATCH_PANEL_SH:-$PLUGIN_ROOT/skills/design/scripts/dispatch-plan-review-panel.sh}"
+PLAN_REVIEW_COLLECT_SH="${LARCH_PLAN_REVIEW_COLLECT_SH:-$PLUGIN_ROOT/scripts/collect-agent-results.sh}"
+PLAN_REVIEW_DISPATCH_VOTERS_SH="${LARCH_PLAN_REVIEW_DISPATCH_VOTERS_SH:-$PLUGIN_ROOT/scripts/dispatch-plan-voters.sh}"
+PLAN_REVIEW_TALLY_SH="${LARCH_PLAN_REVIEW_TALLY_SH:-$PLUGIN_ROOT/skills/design/scripts/tally-plan-review.sh}"
 # shellcheck source=scripts/lib-quiet.sh
 source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
+_dedup_failed=0
 
 usage() {
     larch_err "Usage: plan-review-loop.sh --design-tmpdir DIR --plan-file PATH [--feature-file PATH] [--round-num N] --codex-present true|false --cursor-present true|false [--timeout SEC] [--help]"
@@ -99,8 +106,58 @@ print(s)
 PY
 }
 
+plan_review_slot_for_reviewer() {
+    python3 - "$1" "$2" <<'PY'
+import json, os, sys
+
+
+def norm(p: str) -> str:
+    try:
+        return os.path.realpath(p)
+    except OSError:
+        return os.path.normpath(p)
+
+
+def main() -> None:
+    mp, rf = sys.argv[1], sys.argv[2]
+    try:
+        rfn = norm(rf)
+    except OSError:
+        rfn = rf
+    try:
+        with open(mp, encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    o = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                out = (o.get("output") or "").strip()
+                slot = (o.get("slot") or "").strip()
+                if not out or not slot:
+                    continue
+                try:
+                    if rfn == norm(out) or rf == out or os.path.normpath(rf) == os.path.normpath(out):
+                        print(slot)
+                        return
+                except OSError:
+                    if rf == out:
+                        print(slot)
+                        return
+    except OSError:
+        pass
+    print("unknown-slot")
+
+
+if __name__ == "__main__":
+    main()
+PY
+}
+
 # --- Step 2: scout (fail-open) ---
-"$PLUGIN_ROOT/skills/design/scripts/scout-plan-archetypes-wrapper.sh" \
+"$PLAN_REVIEW_SCOUT_SH" \
     --plan-file "$PLAN_FILE" \
     --description-file "$FEATURE_FILE" \
     --output "$DESIGN_TMPDIR/scout-plan-manifest.json" \
@@ -108,7 +165,7 @@ PY
     --session-env-path "$DESIGN_TMPDIR/source-env.sh" || true
 
 # --- Step 3: panel dispatch ---
-_panel_raw=$("$PLUGIN_ROOT/skills/design/scripts/dispatch-plan-review-panel.sh" \
+_panel_raw=$("$PLAN_REVIEW_DISPATCH_PANEL_SH" \
     --design-tmpdir "$DESIGN_TMPDIR" \
     --codex-present "$CODEX_PRESENT" \
     --cursor-present "$CURSOR_PRESENT" \
@@ -148,12 +205,13 @@ fi
 
 if [[ "$_paths_readable" -eq 0 ]]; then
     write_empty_review_artifacts "**Plan-review panel dispatch failed; voting was not run.**"
+    : > "$DESIGN_TMPDIR/ballot.txt"
     emit_loop_kvs panel-failed 0 1 skipped panel-failed "" SKIPPED
     exit 1
 fi
 
 # --- Step 5: collect ---
-_collect_out=$("$PLUGIN_ROOT/scripts/collect-agent-results.sh" \
+_collect_out=$("$PLAN_REVIEW_COLLECT_SH" \
     --timeout "$COLLECT_TIMEOUT" \
     --substantive-validation \
     --validation-mode \
@@ -212,14 +270,14 @@ PY
 
 _findings_tmp="$DESIGN_TMPDIR/findings.md.tmp"
 : > "$_findings_tmp"
-_record_idx=0
 while IFS= read -r _rec || [[ -n "$_rec" ]]; do
     [[ -z "$_rec" ]] && continue
     IFS=$'\x1f' read -r _rf _tool _st _xc _fr <<< "$_rec" || true
-    _slot_name="${_slot_lines[$_record_idx]:-unknown-slot}"
+    _slot_name=$(plan_review_slot_for_reviewer "$_manifest" "$_rf")
     _human=$(plan_slot_human_label "$_slot_name")
     if [[ "$_st" != "OK" ]]; then
-        _fail_log="$DESIGN_TMPDIR/${_slot_name}-collector.failure.log"
+        _fail_slug=$(python3 -c 'import re,sys; s=sys.argv[1].strip(); s=re.sub(r"[^A-Za-z0-9._+-]+","_",s); print((s or "slot")[:200])' "$_slot_name")
+        _fail_log="$DESIGN_TMPDIR/${_fail_slug}-collector.failure.log"
         _srec="REVIEWER_FILE=${_rf}|TOOL=${_tool}|STATUS=${_st}|EXIT_CODE=${_xc}|FAILURE_REASON=${_fr}"
         "$PLUGIN_ROOT/scripts/compose-collector-failure-log.sh" \
             --reviewer-file "$_rf" \
@@ -301,13 +359,14 @@ PY
         if [[ -s "$_frag" ]] && grep -qE '^### (FINDING|OOS)_[0-9]+:' "$_frag" 2>/dev/null; then
             cat "$_frag" >> "$_findings_tmp"
         elif [[ ! -s "$_frag" ]]; then
-            :
+            if [[ "$_st" == "OK" ]]; then
+                emit_kv WARN "plan-review-tsv: empty or missing structured reviewer rows for ${_rf}"
+            fi
         else
             emit_kv WARN "plan-review-tsv-parse: ${_rf}"
         fi
         rm -f "$_frag"
     fi
-    _record_idx=$((_record_idx + 1))
 done < <(printf '%s' "$_collect_out" | python3 "$_parse_py")
 rm -f "$_parse_py"
 
@@ -325,7 +384,7 @@ def tokens(s):
 
 def jaccard(a, b):
     if not a and not b:
-        return 1.0
+        return 0.0
     if not a or not b:
         return 0.0
     inter = len(a & b)
@@ -344,12 +403,17 @@ def split_blocks(text, prefix):
 
 
 def what_text(block):
-    m = re.search(r"- \*\*Concern\*\*: (.+?)\. Scenario:", block, re.S)
-    if m:
-        return m.group(1).strip()
-    m = re.search(r"- \*\*Description\*\*: (.+?)\. Scenario:", block, re.S)
-    if m:
-        return m.group(1).strip()
+    for label in ("Concern", "Description"):
+        m = re.search(
+            r"- \*\*%s\*\*:\s*(.+?)(?:\.\s*Scenario:|\s*Scenario:|(?=\n- \*\*)|\Z)"
+            % label,
+            block,
+            re.S,
+        )
+        if m:
+            t = m.group(1).strip()
+            if t:
+                return t
     return block
 
 
@@ -409,13 +473,19 @@ if __name__ == "__main__":
     main()
 PY
 
-python3 "$_dedup_py" < "$_findings_tmp" > "$DESIGN_TMPDIR/findings.md" || cp "$_findings_tmp" "$DESIGN_TMPDIR/findings.md"
+if python3 "$_dedup_py" < "$_findings_tmp" > "$DESIGN_TMPDIR/findings.md"; then
+    :
+else
+    _dedup_failed=1
+    cp "$_findings_tmp" "$DESIGN_TMPDIR/findings.md"
+    emit_kv WARN "plan-review-dedup: python deduper failed; raw findings retained without dedup"
+fi
 rm -f "$_dedup_py"
 
 if ! grep -qE '^### (FINDING|OOS)_[0-9]+:' "$DESIGN_TMPDIR/findings.md" 2>/dev/null; then
     write_empty_review_artifacts "No findings were raised — voting was not needed."
     : > "$DESIGN_TMPDIR/ballot.txt"
-    emit_loop_kvs complete 0 0 skipped-empty-input ok "$DESIGN_TMPDIR/voting-tally.md" SKIPPED
+    emit_loop_kvs complete 0 0 skipped-empty-input skipped-empty-findings "$DESIGN_TMPDIR/voting-tally.md" SKIPPED
     exit 0
 fi
 
@@ -469,7 +539,7 @@ fi
 
 cat "$_agg_out" "$DESIGN_TMPDIR/findings-oos.md" > "$DESIGN_TMPDIR/ballot.txt"
 
-_voter_raw=$("$PLUGIN_ROOT/scripts/dispatch-plan-voters.sh" \
+_voter_raw=$("$PLAN_REVIEW_DISPATCH_VOTERS_SH" \
     --ballot-file "$DESIGN_TMPDIR/ballot.txt" \
     --design-tmpdir "$DESIGN_TMPDIR" \
     --codex-available "$CODEX_PRESENT" \
@@ -507,18 +577,20 @@ if [[ -n "$VOTER_PATHS_FILE" && -f "$VOTER_PATHS_FILE" ]]; then
 fi
 
 _tally_cmd=(
-    "$PLUGIN_ROOT/skills/design/scripts/tally-plan-review.sh"
+    "$PLAN_REVIEW_TALLY_SH"
     --ballot-file "$DESIGN_TMPDIR/ballot.txt"
     --design-tmpdir "$DESIGN_TMPDIR"
 )
+TALLY_PLAN_REVIEW_STATUS=""
+VOTING_TALLY_FILE=""
+set +e
 if ((${#_vt_args[@]} > 0)); then
     _tally_raw=$("${_tally_cmd[@]}" --voter-files "${_vt_args[@]}")
 else
     _tally_raw=$("${_tally_cmd[@]}")
 fi
-
-TALLY_PLAN_REVIEW_STATUS=""
-VOTING_TALLY_FILE=""
+_tally_rc=$?
+set -e
 while IFS= read -r _tln || [[ -n "$_tln" ]]; do
     _tk="${_tln%%=*}"
     _tv="${_tln#*=}"
@@ -528,6 +600,12 @@ while IFS= read -r _tln || [[ -n "$_tln" ]]; do
         WARN) emit_kv WARN "$_tv" ;;
     esac
 done <<< "$_tally_raw"
+
+if [[ "$_tally_rc" -ne 0 ]]; then
+    emit_kv WARN "plan-review-tally: tally-plan-review.sh exited with rc=$_tally_rc"
+    TALLY_PLAN_REVIEW_STATUS="tally-error"
+    [[ -z "$VOTING_TALLY_FILE" ]] && VOTING_TALLY_FILE="$DESIGN_TMPDIR/voting-tally.md"
+fi
 
 printf '%s\n' "$_tally_raw"
 
@@ -541,6 +619,7 @@ DEGRADED_PANEL=0
 [[ "${PANEL_DISPATCH_OK:-true}" == "false" ]] && DEGRADED_PANEL=1
 [[ "${VOTER_DISPATCH_OK:-true}" == "false" ]] && DEGRADED_PANEL=1
 [[ "${DEGRADED_ROUND:-false}" == "true" ]] && DEGRADED_PANEL=1
+[[ "$_dedup_failed" -eq 1 ]] && DEGRADED_PANEL=1
 : "${DYNAMIC_SLOT_COUNT:-0}"
 if (( 10#$FALLBACK_COUNT > floor_half )); then
     DEGRADED_PANEL=1
