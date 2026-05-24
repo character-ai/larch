@@ -25,6 +25,10 @@ Per-role output progress is monitored while `run-external-agent.sh` runs in the 
 
 When the auth-retry loop finishes with a non-zero `LAUNCHER_EXIT` and `IMPLEMENT_TMPDIR` is set, the launcher best-effort appends `${OUTPUT}.diag` to `$IMPLEMENT_TMPDIR/execution-issues.md` through `scripts/append-tool-failure.sh --redact` under `Tool Failures`, including an auth verdict and the final auth-loop attempt count.
 
+## Machine-readable failure classification
+
+After every run (including success), the launcher prints `emit_kv LAUNCHER_EXIT`, then runs `external_classify_launch_failure` from `lib-external-launcher-common.sh` (same source chain as the Cursor review launcher) and prints the resulting `LAUNCHER_FAILURE_CLASS` / `LAUNCHER_FAILURE_REASON` lines to stdout. `ship-pr.sh` captures stdout/stderr into its phase fail file and consults `LAUNCHER_FAILURE_CLASS` when deciding whether to short-circuit the Cursor→Codex→Claude waterfall on first-tier non-health failures. When `command -v cursor` fails before launch, the script emits `LAUNCHER_EXIT=127`, classification `health`/`binary-missing`, and the usual `emit_kv OUTPUT` / `TOKEN_RECORD` lines, then exits **1** (not **2** — argv validation failures still use `die`’s exit **2**).
+
 ## Harness
 
 `scripts/test-launch-cursor-ci.sh` covers argv validation, output path validation, role validation, token-record normalization shape, and stall-detection fixtures (PATH stub for `cursor`, short `LARCH_CURSOR_CI_STALL_THRESHOLD`, fast `RUN_EXTERNAL_AGENT_POLL_INTERVAL`). Stall JSON contract assertions run only when `jq(1)` is installed; **GitHub Actions / `CI=true` runners must install `jq`** so those branches are not silently skipped.

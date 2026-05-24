@@ -5,6 +5,8 @@
 # scripts/lib-cursor-launcher-common.sh (cursor_launcher_run_stall_monitor,
 # cursor_launcher_emit_cursor_ci_stall_json_sidecar); triage stall behavior there.
 
+# LAUNCHER_FAILURE_* canonical token pin (grep tests; classifier emits): none health other auth binary-missing health-probe timeout parse refusal unknown
+
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -175,6 +177,16 @@ trap 'cursor_launcher_cleanup_private_config_dir' EXIT
 MAX_AUTH_RETRIES=${LARCH_EXTERNAL_AUTH_RETRIES:-5}
 case "$MAX_AUTH_RETRIES" in ''|*[!0-9]*|0) MAX_AUTH_RETRIES=5 ;; esac
 HOLD=${LARCH_EXTERNAL_SERIAL_LOCK_DELAY:-0.5}
+if ! command -v cursor >/dev/null 2>&1; then
+    LAUNCHER_EXIT=127
+    : > "${OUTPUT}.token-record" 2>/dev/null || true
+    emit_kv LAUNCHER_EXIT "$LAUNCHER_EXIT"
+    external_classify_launch_failure "$LAUNCHER_EXIT" "/dev/null" "unclassified" 0 "cursor" ""
+    emit_kv OUTPUT "$OUTPUT"
+    emit_kv TOKEN_RECORD "${OUTPUT}.token-record"
+    larch_err "launch-cursor-ci.sh: cursor CLI not found in PATH"
+    exit 1
+fi
 AUTH_ATTEMPT=1
 while (( AUTH_ATTEMPT <= MAX_AUTH_RETRIES )); do
     _SERIAL_LOCK=""
@@ -235,6 +247,9 @@ if command -v jq >/dev/null 2>&1 && [ -f "$OUTPUT" ]; then
 fi
 
 emit_kv LAUNCHER_EXIT "$LAUNCHER_EXIT"
+_AUTH_VERDICT=$(external_auth_verdict "cursor" "${OUTPUT}.diag"; true)
+_AUTH_VERDICT=${_AUTH_VERDICT//$'\n'/}
+external_classify_launch_failure "$LAUNCHER_EXIT" "${OUTPUT}.diag" "$_AUTH_VERDICT" 1 "cursor" "$OUTPUT"
 emit_kv OUTPUT "$OUTPUT"
 emit_kv TOKEN_RECORD "${OUTPUT}.token-record"
 exit 0

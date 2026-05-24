@@ -163,6 +163,80 @@ external_auth_verdict() {
     fi
 }
 
+# Print LAUNCHER_FAILURE_CLASS / LAUNCHER_FAILURE_REASON lines to stdout (KV
+# grammar, one line each). Single source of truth for CI launcher contracts;
+# enums pinned in tests — see skills/implement plan / test-lib-external-launcher-common.sh.
+# Args: launcher_exit sidecar_path auth_verdict binary_present tool output_file
+#   auth_verdict: output of external_auth_verdict (auth|non-auth|unclassified)
+#   binary_present: 1/true if the underlying CLI was resolved before launch; 0/false for early binary-missing exits
+#   tool: cursor|codex|… for transient-infra classification
+#   output_file: primary tool output path (may be empty); used for health-probe + parse heuristics
+external_classify_launch_failure() {
+    local launcher_exit="${1:-0}"
+    local sidecar="${2:-}"
+    local auth_verdict="${3:-unclassified}"
+    local binary_present="${4:-1}"
+    local tool="${5:-cursor}"
+    local output_file="${6:-}"
+
+    if [[ "$launcher_exit" -eq 0 ]]; then
+        printf 'LAUNCHER_FAILURE_CLASS=%s\n' "none"
+        printf 'LAUNCHER_FAILURE_REASON=%s\n' ""
+        return 0
+    fi
+
+    case "$binary_present" in
+        1|true|yes) ;;
+        *)
+            printf 'LAUNCHER_FAILURE_CLASS=%s\n' "health"
+            printf 'LAUNCHER_FAILURE_REASON=%s\n' "binary-missing"
+            return 0
+            ;;
+    esac
+
+    if [[ "$auth_verdict" == "auth" ]]; then
+        printf 'LAUNCHER_FAILURE_CLASS=%s\n' "health"
+        printf 'LAUNCHER_FAILURE_REASON=%s\n' "auth"
+        return 0
+    fi
+
+    if [[ -n "$output_file" ]] && external_is_transient_infra_failure "$tool" "$launcher_exit" "0" "$output_file"; then
+        printf 'LAUNCHER_FAILURE_CLASS=%s\n' "health"
+        printf 'LAUNCHER_FAILURE_REASON=%s\n' "health-probe"
+        return 0
+    fi
+
+    if [[ "$launcher_exit" -eq 124 ]]; then
+        printf 'LAUNCHER_FAILURE_CLASS=%s\n' "other"
+        printf 'LAUNCHER_FAILURE_REASON=%s\n' "timeout"
+        return 0
+    fi
+
+    if [[ -n "$sidecar" && -f "$sidecar" ]]; then
+        if grep -Eiq 'invalid json|unexpected token|parse error|jq: error|syntaxerror|unmarshal|cannot unmarshal' "$sidecar" 2>/dev/null; then
+            printf 'LAUNCHER_FAILURE_CLASS=%s\n' "other"
+            printf 'LAUNCHER_FAILURE_REASON=%s\n' "parse"
+            return 0
+        fi
+        if grep -Eiq 'refused to|refusal|denied by policy|policy violation' "$sidecar" 2>/dev/null; then
+            printf 'LAUNCHER_FAILURE_CLASS=%s\n' "other"
+            printf 'LAUNCHER_FAILURE_REASON=%s\n' "refusal"
+            return 0
+        fi
+    fi
+    if [[ -n "$output_file" && -f "$output_file" ]]; then
+        if grep -Eiq 'invalid json|unexpected token|parse error|jq: error|syntaxerror|unmarshal|cannot unmarshal' "$output_file" 2>/dev/null; then
+            printf 'LAUNCHER_FAILURE_CLASS=%s\n' "other"
+            printf 'LAUNCHER_FAILURE_REASON=%s\n' "parse"
+            return 0
+        fi
+    fi
+
+    printf 'LAUNCHER_FAILURE_CLASS=%s\n' "other"
+    printf 'LAUNCHER_FAILURE_REASON=%s\n' "unknown"
+    return 0
+}
+
 # Validate repo-relative comma-separated paths passed into vendor prompts.
 # Rejects empty segments, absolute paths, traversal, spaces, and characters
 # that commonly break fenced prompt blocks.

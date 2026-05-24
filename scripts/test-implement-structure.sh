@@ -171,15 +171,39 @@ grep -q 'ship-pr-ci-merge' "$SHIP_PR_SH" \
 grep -q 'ship-pr-ci-merge' "$LINT_FIX_LOOP_SH" \
   || fail "lint-fix-loop.sh must accept --site ship-pr-ci-merge"
 
-# Ensure SKILL.md Step 10/12 prose does not suggest main-agent Edit/Write for ship-pr CI fixes.
-stall6_prose_status=0
+# Step 8+ Exit 3: first-fixer-non-health autonomous sub-procedure (ordered 1–12) must be documented.
+step8_exit3_status=0
 awk '
-  /STALL_STEP=6/ { window = 5 }
-  window > 0 && /Edit.*Write|Write.*Edit|main.agent.*Edit|repair via main-agent/ { found = 1 }
-  window > 0 { window-- }
-  END { if (found) exit 1 }
-' "$SKILL_MD" || stall6_prose_status=$?
-[[ "$stall6_prose_status" == "0" ]] || fail "SKILL.md STALL_STEP=6 prose must not suggest main-agent Edit/Write for CI fixes"
+  /## Step 8\+/ { in8 = 1; next }
+  in8 && /^## / { in8 = 0 }
+  in8 && /\*\*Exit 3\*\*/ { in_exit3 = 1 }
+  in_exit3 && /^- \*\*Exit [0-9]/ && !/\*\*Exit 3\*\*/ { in_exit3 = 0 }
+  in_exit3 {
+    if ($0 ~ /first-fixer-non-health/) f = 1
+    if ($0 ~ /^  1\./) s1 = 1
+    if ($0 ~ /^  12\./) s12 = 1
+  }
+  END { if (!(f && s1 && s12)) exit 1 }
+' "$SKILL_MD" || step8_exit3_status=$?
+[[ "$step8_exit3_status" == "0" ]] || fail "SKILL.md Step 8+ Exit 3 must document first-fixer-non-health and autonomous sub-steps 1 through 12"
+
+# Pin LAUNCHER_FAILURE_* canonical tokens across classifier, launchers, and ship-pr guard.
+for _pin in none health other auth binary-missing health-probe timeout parse refusal unknown; do
+  grep -Fq "$_pin" "$REPO_ROOT/scripts/lib-external-launcher-common.sh" \
+    || fail "lib-external-launcher-common.sh must contain canonical token: $_pin"
+done
+for _pin in none health other auth binary-missing health-probe timeout parse refusal unknown; do
+  grep -Fq "$_pin" "$REPO_ROOT/scripts/launch-cursor-ci.sh" \
+    || fail "launch-cursor-ci.sh must contain canonical token: $_pin"
+  grep -Fq "$_pin" "$REPO_ROOT/scripts/launch-codex-ci.sh" \
+    || fail "launch-codex-ci.sh must contain canonical token: $_pin"
+  grep -Fq "$_pin" "$REPO_ROOT/scripts/launch-claude-ci.sh" \
+    || fail "launch-claude-ci.sh must contain canonical token: $_pin"
+done
+grep -Fq 'first-fixer-non-health' "$REPO_ROOT/scripts/ship-pr.sh" \
+  || fail "ship-pr.sh must reference first-fixer-non-health"
+grep -Fq 'LAUNCHER_FAILURE_CLASS' "$REPO_ROOT/scripts/ship-pr.sh" \
+  || fail "ship-pr.sh must reference LAUNCHER_FAILURE_CLASS"
 
 [[ -f "$LIB_FINALIZE_KEYS_SH" ]] || fail "scripts/lib-finalize-state-keys.sh missing"
 [[ -f "$REPO_ROOT/scripts/lib-finalize-state-keys.md" ]] || fail "scripts/lib-finalize-state-keys.sh must have sibling lib-finalize-state-keys.md"

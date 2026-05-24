@@ -19,6 +19,10 @@ The launcher builds a fixed prompt containing only trusted path and identifier v
 
 When the auth-retry loop finishes with a non-zero `LAUNCHER_EXIT` and `IMPLEMENT_TMPDIR` is set, the launcher best-effort appends `${OUTPUT}.sidecar` to `$IMPLEMENT_TMPDIR/execution-issues.md` through `scripts/append-tool-failure.sh --redact` under `Tool Failures`, including an auth verdict and the final auth-loop attempt count.
 
+## Machine-readable failure classification
+
+After every run, the launcher prints `emit_kv LAUNCHER_EXIT`, then `external_classify_launch_failure` output (`LAUNCHER_FAILURE_CLASS` / `LAUNCHER_FAILURE_REASON`) to stdout for `ship-pr.sh`. Missing `codex` on `PATH` emits `health`/`binary-missing` with `LAUNCHER_EXIT=127` before exiting **1**.
+
 ## Harness
 
 `scripts/test-launch-codex-ci.sh` covers argv validation, output path validation, role validation, and token-record normalization shape.

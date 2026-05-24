@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # launch-codex-ci.sh — Launch Codex for /implement CI-fix subwork.
+#
+# LAUNCHER_FAILURE_* canonical token pin (grep tests; classifier emits): none health other auth binary-missing health-probe timeout parse refusal unknown
 
 set -euo pipefail
 
@@ -170,6 +172,16 @@ SIDECAR_LOG="${OUTPUT}.sidecar"
 MAX_AUTH_RETRIES=${LARCH_EXTERNAL_AUTH_RETRIES:-5}
 case "$MAX_AUTH_RETRIES" in ''|*[!0-9]*|0) MAX_AUTH_RETRIES=5 ;; esac
 HOLD=${LARCH_EXTERNAL_SERIAL_LOCK_DELAY:-0.5}
+if ! command -v codex >/dev/null 2>&1; then
+    LAUNCHER_EXIT=127
+    : > "${OUTPUT}.token-record" 2>/dev/null || true
+    emit_kv LAUNCHER_EXIT "$LAUNCHER_EXIT"
+    external_classify_launch_failure "$LAUNCHER_EXIT" "/dev/null" "unclassified" 0 "codex" ""
+    emit_kv OUTPUT "$OUTPUT"
+    emit_kv TOKEN_RECORD "${OUTPUT}.token-record"
+    larch_err "launch-codex-ci.sh: codex CLI not found in PATH"
+    exit 1
+fi
 AUTH_ATTEMPT=1
 while (( AUTH_ATTEMPT <= MAX_AUTH_RETRIES )); do
     _SERIAL_LOCK=""
@@ -217,6 +229,9 @@ if [[ "$TOKENS" =~ ^[0-9]+$ ]]; then
 fi
 
 emit_kv LAUNCHER_EXIT "$LAUNCHER_EXIT"
+_AUTH_VERDICT=$(external_auth_verdict "codex" "$SIDECAR_LOG"; true)
+_AUTH_VERDICT=${_AUTH_VERDICT//$'\n'/}
+external_classify_launch_failure "$LAUNCHER_EXIT" "$SIDECAR_LOG" "$_AUTH_VERDICT" 1 "codex" "$OUTPUT"
 emit_kv OUTPUT "$OUTPUT"
 emit_kv TOKEN_RECORD "${OUTPUT}.token-record"
 exit 0

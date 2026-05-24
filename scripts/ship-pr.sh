@@ -1196,10 +1196,32 @@ record_ci_counters() {
 
 needs_user_bail_reason() {
     case "$1" in
-        fix-attempts-exhausted|design-flaw|escalate|all-vendors-failed) return 0 ;;
+        fix-attempts-exhausted|design-flaw|escalate|all-vendors-failed|first-fixer-non-health) return 0 ;;
         *) return 1 ;;
     esac
 }
+
+# Exit-3 bails that skip AskUserQuestion / BAIL_NEEDS_USER_INPUT (orchestrator handles autonomously).
+is_autonomous_exit3_bail_reason() {
+    [[ "$1" == "first-fixer-non-health" ]]
+}
+
+# Last LAUNCHER_FAILURE_CLASS= line from launcher capture (stdout+stderr file); unknown/missing → health.
+ship_pr_read_launcher_failure_class() {
+    local log_file=$1 class=""
+    [[ -f "$log_file" ]] || {
+        printf 'health\n'
+        return 0
+    }
+    class=$(awk -F= '/^LAUNCHER_FAILURE_CLASS=/ { v=$2; gsub(/\r/, "", v); last=v } END { print last }' "$log_file" 2>/dev/null || true)
+    case "$class" in
+        none|health|other) printf '%s\n' "$class" ;;
+        *) printf 'health\n' ;;
+    esac
+}
+
+# Canonical LAUNCHER_FAILURE_* token pin (tests grep): none health other auth
+# binary-missing health-probe timeout parse refusal unknown
 
 # Revert tier-introduced working-tree deltas against a single snapshot captured at
 # run_ci_fix_vendor entry (not per-tier). Preserves paths dirty/untracked/staged
@@ -1343,6 +1365,15 @@ run_ci_fix_vendor() {
         fi
         record_failure "$phase" "$(basename "$launcher") fix (wrapper_rc=$wrapper_rc, launcher_exit=${launcher_exit:-0})" "${launcher_exit:-$wrapper_rc}" "$fail_file" "CI Issues"
         _ci_fix_rollback "$phase" "$baseline_tracked_file" "$baseline_untracked_file" "$baseline_staged_file"
+        if [ "$tier" = "cursor" ] && [ "$wrapper_rc" -eq 0 ]; then
+            local _lf_class
+            _lf_class=$(ship_pr_read_launcher_failure_class "$fail_file")
+            if [ "$_lf_class" = "other" ]; then
+                emit_breadcrumb "⚠ ship-pr: first fixer (cursor) failed non-health; skipping waterfall"
+                state_set_many BAIL_REASON first-fixer-non-health BAIL_FAILURE_DETAIL_LOG "$fail_file"
+                return 1
+            fi
+        fi
     done
 
     if [ -z "$winning_tier" ] || [ "$wrapper_rc" -ne 0 ] || [ "${launcher_exit:-0}" -ne 0 ]; then
@@ -1441,6 +1472,7 @@ run_evaluate_failure() {
     local _max_fix=3 _fix_attempt gh_logs_capture gh_logs_rc
     _fix_attempt=0
     while [ "$_fix_attempt" -lt "$_max_fix" ]; do
+        state_set_many BAIL_REASON "" BAIL_FAILURE_DETAIL_LOG ""
         # Detached-HEAD guard before each vendor+push attempt.
         if ! git symbolic-ref --quiet HEAD >/dev/null 2>&1; then
             fail_file=$(failure_capture_path "$phase")
@@ -1459,6 +1491,9 @@ run_evaluate_failure() {
         elif run_ci_fix_vendor "$phase" "$failed_run" "$gh_logs_capture" "$gh_logs_rc"; then
             state_set_many TRANSIENT_RETRIES 0 FIX_ATTEMPTS "$(( $(read_state FIX_ATTEMPTS) + 1 ))"
             return 0
+        fi
+        if [ "$(read_state BAIL_REASON)" = "first-fixer-non-health" ]; then
+            exit 3
         fi
         _fix_attempt=$(( _fix_attempt + 1 ))
         if [ "$_fix_attempt" -lt "$_max_fix" ]; then
@@ -2260,7 +2295,9 @@ EOF
                 exit_transient_net "ci-wait: $bail_reason"
             fi
             if needs_user_bail_reason "$bail_reason"; then
-                state_set BAIL_NEEDS_USER_INPUT true
+                if ! is_autonomous_exit3_bail_reason "$bail_reason"; then
+                    state_set BAIL_NEEDS_USER_INPUT true
+                fi
                 exit 3
             fi
             exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12d)"
