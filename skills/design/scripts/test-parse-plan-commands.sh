@@ -40,5 +40,8 @@ run_case arith "$FIX/arith-plan.md" "$FIX/arith.tsv"
 run_case subshell "$FIX/subshell-plan.md" "$FIX/subshell.tsv"
 run_case updated_flag "$FIX/updated-flag-plan.md" "$FIX/updated-flag.tsv"
 run_case dot_slash "$FIX/dot-slash-plan.md" "$FIX/dot-slash.tsv"
+run_case continuation "$FIX/continuation-plan.md" "$FIX/continuation.tsv"
+run_case env_prefix "$FIX/env-prefix-plan.md" "$FIX/env-prefix.tsv"
+run_case dot_newskip "$FIX/dot-newskip-plan.md" "$FIX/dot-newskip.tsv"
 
 echo "PASS: test-parse-plan-commands.sh"

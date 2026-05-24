@@ -130,9 +130,16 @@ probe_help() {
     fi
     cp "$cout" "$cfile.stdout" 2>/dev/null || : >"$cfile.stdout"
     rm -f "$cout" "$cerr"
-    if [[ -s "$cfile.stdout" && "$HELP_RC" -eq 0 ]]; then
-        HELP_STDOUT_EMPTY=0
-        printf '0\n' >"$cfile.empty"
+    # Merged stdout+stderr capture (2>&1). Treat non-empty capture with exit 0 or a small
+    # allowlist of non-zero usage-style RCs as "help available" for long-flag checks.
+    if [[ -s "$cfile.stdout" && "$HELP_RC" -ne 124 ]]; then
+        if [[ "$HELP_RC" -eq 0 || "$HELP_RC" -eq 1 || "$HELP_RC" -eq 2 ]]; then
+            HELP_STDOUT_EMPTY=0
+            printf '0\n' >"$cfile.empty"
+        else
+            HELP_STDOUT_EMPTY=1
+            printf '1\n' >"$cfile.empty"
+        fi
     else
         HELP_STDOUT_EMPTY=1
         printf '1\n' >"$cfile.empty"
@@ -247,7 +254,18 @@ END {
 ' "$TSV_FILE" >"$cmd_stream"
 
 is_new_script() {
-    awk -F '\t' -v p="$1" 'BEGIN{f=0} $1=="new_script" && $3==p{f=1} END{exit f?0:1}' "$TSV_FILE"
+    local p="$1"
+    while [[ "$p" == ./* ]]; do
+        p="${p#./}"
+    done
+    awk -F '\t' -v p="$p" '
+      BEGIN { f = 0 }
+      $1 == "new_script" {
+        sp = $3
+        while (sp ~ /^\.\//) sp = substr(sp, 3)
+        if (sp == p) f = 1
+      }
+      END { exit f ? 0 : 1 }' "$TSV_FILE"
 }
 
 allow_flag() {
@@ -344,15 +362,29 @@ while IFS=$'\t' read -r typ a b c _d; do
             done
             [[ "$skip_tier3" -eq 1 ]] && continue
             set +e
+            tier3_cap=$(mktemp "${TMPDIR:-/tmp}/larch-tier3-cap.XXXXXX")
             tier3_env=(env -i "PATH=$PATH" "HOME=${HOME:-}" "TMPDIR=${TMPDIR:-/tmp}" "USER=${USER:-}" "LOGNAME=${LOGNAME:-${USER:-}}")
             [[ -n "${LANG:-}" ]] && tier3_env+=("LANG=$LANG")
             if [[ "$hook" == "--validate-only" ]]; then
-                ( cd "$REPO_ROOT" && with_timeout "$DRY_TIMEOUT" "${tier3_env[@]}" "${argv[@]}" --validate-only ) >>"$tmp_log" 2>&1
+                ( cd "$REPO_ROOT" && with_timeout "$DRY_TIMEOUT" "${tier3_env[@]}" "${argv[@]}" --validate-only ) >"$tier3_cap" 2>&1
             else
-                ( cd "$REPO_ROOT" && with_timeout "$DRY_TIMEOUT" "${tier3_env[@]}" "LARCH_DRY_RUN=1" "${argv[@]}" ) >>"$tmp_log" 2>&1
+                ( cd "$REPO_ROOT" && with_timeout "$DRY_TIMEOUT" "${tier3_env[@]}" "LARCH_DRY_RUN=1" "${argv[@]}" ) >"$tier3_cap" 2>&1
             fi
             dry_rc=$?
             set -e
+            {
+                printf 'TIER3_CAPTURE script=%s exit=%s\n' "$sp" "$dry_rc"
+                if [[ -s "$tier3_cap" ]]; then
+                    if [[ -x "$REPO_ROOT/scripts/redact-secrets.sh" ]]; then
+                        head -c 65536 "$tier3_cap" | "$REPO_ROOT/scripts/redact-secrets.sh" 2>/dev/null || head -c 65536 "$tier3_cap"
+                    else
+                        head -c 65536 "$tier3_cap"
+                    fi
+                else
+                    printf '%s\n' "(empty capture)"
+                fi
+            } >>"$tmp_log"
+            rm -f "$tier3_cap"
             if [[ "$dry_rc" -ne 0 ]]; then
                 emit_defect "DEFECT script=$sp kind=dry-run-failed exit=$dry_rc"
             fi

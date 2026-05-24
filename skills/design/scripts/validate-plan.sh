@@ -63,7 +63,7 @@ fi
 
 tsv=$(mktemp "${TMPDIR:-/tmp}/larch-validate-plan.XXXXXX.tsv")
 logtmp=$(mktemp "${TMPDIR:-/tmp}/larch-validate-plan.XXXXXX.log")
-trap 'rm -f "$tsv" "$logtmp"' EXIT
+trap 'rm -f "$tsv" "${logtmp:+${logtmp}}"' EXIT
 
 "$SCRIPT_DIR/parse-plan-commands.sh" --plan-file "$PLAN_FILE" --output "$tsv" --repo-root "$REPO_ROOT"
 
@@ -89,8 +89,14 @@ done
 if [[ -n "${DESIGN_TMPDIR:-}" && -d "$DESIGN_TMPDIR" ]]; then
     cp "$logtmp" "$DESIGN_TMPDIR/validate-plan-commands.log"
     emit_kv VALIDATE_LOG_FILE "$DESIGN_TMPDIR/validate-plan-commands.log"
+    rm -f "$logtmp"
+    logtmp=""
 else
-    emit_kv VALIDATE_LOG_FILE "$logtmp"
+    # Emit a path that survives EXIT trap cleanup (logtmp is removed on exit).
+    stable_log=$(mktemp "${TMPDIR:-/tmp}/larch-validate-plan-commands.log.XXXXXX")
+    mv "$logtmp" "$stable_log"
+    logtmp=""
+    emit_kv VALIDATE_LOG_FILE "$stable_log"
 fi
 
 exit 0
