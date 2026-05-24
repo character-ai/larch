@@ -281,38 +281,90 @@
       {
         "step": "Step 8b — rebase",
         "totals": {
-          "input": 19,
-          "cache_read": 5003174,
-          "cache_create": 32547,
-          "cache_create_5m": 32547,
+          "input": 24,
+          "cache_read": 6401729,
+          "cache_create": 36688,
+          "cache_create_5m": 36688,
           "cache_create_1h": 0,
-          "output": 11005,
-          "total": 5046745
+          "output": 14926,
+          "total": 6453367
         },
         "skills": [
           {
             "skill": "inferred:Step 8b — rebase",
             "totals": {
-              "input": 19,
-              "cache_read": 5003174,
-              "cache_create": 32547,
-              "cache_create_5m": 32547,
+              "input": 24,
+              "cache_read": 6401729,
+              "cache_create": 36688,
+              "cache_create_5m": 36688,
               "cache_create_1h": 0,
-              "output": 11005,
-              "total": 5046745
+              "output": 14926,
+              "total": 6453367
+            }
+          }
+        ]
+      },
+      {
+        "step": "Step 16 — rejected findings",
+        "totals": {
+          "input": 2,
+          "cache_read": 567888,
+          "cache_create": 2818,
+          "cache_create_5m": 2818,
+          "cache_create_1h": 0,
+          "output": 875,
+          "total": 571583
+        },
+        "skills": [
+          {
+            "skill": "inferred:Step 16 — rejected findings",
+            "totals": {
+              "input": 2,
+              "cache_read": 567888,
+              "cache_create": 2818,
+              "cache_create_5m": 2818,
+              "cache_create_1h": 0,
+              "output": 875,
+              "total": 571583
+            }
+          }
+        ]
+      },
+      {
+        "step": "Step 17 — final report",
+        "totals": {
+          "input": 25,
+          "cache_read": 4651445,
+          "cache_create": 881850,
+          "cache_create_5m": 881850,
+          "cache_create_1h": 0,
+          "output": 4485,
+          "total": 5537805
+        },
+        "skills": [
+          {
+            "skill": "inferred:Step 17 — final report",
+            "totals": {
+              "input": 25,
+              "cache_read": 4651445,
+              "cache_create": 881850,
+              "cache_create_5m": 881850,
+              "cache_create_1h": 0,
+              "output": 4485,
+              "total": 5537805
             }
           }
         ]
       }
     ],
     "totals": {
-      "input": 81,
-      "cache_read": 16583960,
-      "cache_create": 667664,
-      "cache_create_5m": 667664,
+      "input": 113,
+      "cache_read": 23201848,
+      "cache_create": 1556473,
+      "cache_create_5m": 1556473,
       "cache_create_1h": 0,
-      "output": 40985,
-      "total": 17292690
+      "output": 50266,
+      "total": 24808700
     }
   },
   "codex": {
@@ -407,6 +459,22 @@
       },
       {
         "step": "Step 8b — rebase",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 16 — rejected findings",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 17 — final report",
         "totals": {
           "input": 0,
           "output": 0,
@@ -517,6 +585,22 @@
           "output": 0,
           "total": 0
         }
+      },
+      {
+        "step": "Step 16 — rejected findings",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 17 — final report",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
       }
     ],
     "totals": {
@@ -526,12 +610,12 @@
     }
   },
   "BUCKETS_claude": {
-    "input": 81,
-    "cache_read": 16583960,
-    "cache_create_5m": 667664,
+    "input": 113,
+    "cache_read": 23201848,
+    "cache_create_5m": 1556473,
     "cache_create_1h": 0,
-    "output": 40985,
-    "total": 17292690
+    "output": 50266,
+    "total": 24808700
   },
   "BUCKETS_codex": {
     "input": 0,
