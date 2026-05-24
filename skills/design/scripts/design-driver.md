@@ -6,7 +6,7 @@
 
 ## Primary Callers
 
-- `/design` Step 2b for `ACTION=EMIT_PLAN`
+- `/design` Step 2b for `ACTION=EMIT_PLAN` and `ACTION=VALIDATE_PLAN_COMMANDS` (after `EMIT_PLAN` when `review_budget` is `full`)
 - `/design` Step 3 for `ACTION=TALLY` and the second `ACTION=EMIT_PLAN`
 - `/design` Step 4 for `ACTION=FINALIZE`
 
@@ -14,7 +14,7 @@
 
 - Completion sentinels are written under `$DESIGN_TMPDIR/.completed/<step>` after successful known actions.
 - Known actions emit `STEP_STARTED=<name>` and `STEP_COMPLETED=<name>` or `STEP_FAILED=<name> REASON=<token>`.
-- Most completed steps are skipped on replay via sentinel. Exception: `EMIT_PLAN` is re-runnable and never skipped by the sentinel — `/design` Step 3 may call it a second time after accepted plan-review findings revise `plan.txt`, so it must always update `diff-lines.txt`.
+- Most completed steps are skipped on replay via sentinel. Exception: `EMIT_PLAN` and `VALIDATE_PLAN_COMMANDS` are re-runnable and never skipped by the sentinel — `/design` may re-run them after plan revisions or composed-plan updates, so they must always refresh their outputs (`diff-lines.txt` and `validate-plan-commands.log` respectively).
 - `--resume-from STEP` skips earlier actions and resumes at the named step. For `EMIT_PLAN` (no sentinel), the before-resume skip still applies to maintain the resume contract.
 - Unknown or non-`ACTION=` lines are passed through as `ACTION_PASSTHROUGH=...`.
 - The driver does not perform model-judgment work; sketch synthesis, plan authoring, discussion rounds, and AskUserQuestion gates stay in `SKILL.md`.
@@ -25,7 +25,7 @@ The regression harness is `make test-design-driver`, wired into `test-harnesses-
 
 ## Harness
 
-`test-design-driver.sh` covers happy-path dispatch, EMIT_PLAN re-runnability (re-runs after plan revision), FINALIZE sentinel-guard on replay, `--resume-from`, partial failure, and unknown-action passthrough.
+`test-design-driver.sh` covers happy-path dispatch, EMIT_PLAN re-runnability (re-runs after plan revision), `VALIDATE_PLAN_COMMANDS` re-runnability, FINALIZE sentinel-guard on replay, `--resume-from`, partial failure, and unknown-action passthrough.
 
 ## Edit In Sync
 

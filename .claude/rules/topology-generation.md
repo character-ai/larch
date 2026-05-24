@@ -8,6 +8,7 @@ paths:
   - "skills/design/references/flags.md"
   - "skills/design/references/plan-review.md"
   - "skills/design/references/plan-review-quick.md"
+  - "skills/design/scripts/validate-plan.sh"
   - "skills/shared/dialectic-protocol.md"
   - "skills/implement/references/conflict-resolution.md"
   - "skills/research/references/research-phase.md"

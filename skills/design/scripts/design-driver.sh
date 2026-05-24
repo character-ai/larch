@@ -80,6 +80,9 @@ run_action() {
         FINALIZE)
             "$SCRIPT_DIR/finalize-plan.sh" --design-tmpdir "$DESIGN_TMPDIR" "$@"
             ;;
+        VALIDATE_PLAN_COMMANDS)
+            "$SCRIPT_DIR/validate-plan.sh" "$@"
+            ;;
         *)
             return 64
             ;;
@@ -103,7 +106,7 @@ process_line() {
     action="${line#ACTION=}"
     action="${action%% *}"
     case "$action" in
-        EMIT_PLAN|TALLY|FINALIZE) ;;
+        EMIT_PLAN|TALLY|FINALIZE|VALIDATE_PLAN_COMMANDS) ;;
         CLASSIFY)
             emit "STEP_FAILED=CLASSIFY REASON=deprecated-action"
             return 2
@@ -120,7 +123,7 @@ process_line() {
     # by accepted plan-review findings and must re-emit diff-lines.txt).
     # Do not skip it on replay, even when the sentinel exists.
     local no_sentinel=false
-    [[ "$action" == "EMIT_PLAN" ]] && no_sentinel=true
+    [[ "$action" == "EMIT_PLAN" || "$action" == "VALIDATE_PLAN_COMMANDS" ]] && no_sentinel=true
 
     if [[ "$resume_seen" != "true" ]]; then
         if [[ "$action" == "$RESUME_FROM" || "$step_name" == "$(normalize_step "$RESUME_FROM")" ]]; then

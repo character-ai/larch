@@ -803,6 +803,8 @@ exclude = [
   # current-env target). Same Makefile-only pattern as other design test-*.
   "skills/design/scripts/test-write-design-current-env.sh",
   "skills/design/scripts/test-emit-plan.sh",
+  "skills/design/scripts/test-parse-plan-commands.sh",
+  "skills/design/scripts/test-validate-plan-commands.sh",
   "skills/design/scripts/test-tally-plan-review.sh",
   "skills/design/scripts/test-finalize-plan.sh",
   "skills/design/scripts/test-scout-plan-archetypes-wrapper.sh",
@@ -1134,6 +1136,8 @@ exclude = [
   "skills/design/scripts/test-design-driver.md",
   "skills/design/scripts/test-write-design-current-env.md",
   "skills/design/scripts/test-emit-plan.md",
+  "skills/design/scripts/test-parse-plan-commands.md",
+  "skills/design/scripts/test-validate-plan-commands.md",
   "skills/design/scripts/test-tally-plan-review.md",
   "skills/design/scripts/test-finalize-plan.md",
   "skills/design/scripts/test-scout-plan-archetypes-wrapper.md",
