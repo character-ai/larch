@@ -255,10 +255,10 @@ real_dir="$TMP_ROOT/real-registry"
 mkdir -p "$real_dir"
 assert_abs_success "real registry smoke" "$real_dir"
 authority_count="$(awk -F '\t' '$0 != "" && substr($0, 1, 1) != "#" { print $4 }' "$REPO_ROOT/skills/shared/topology.tsv" | sort -u | wc -l | tr -d ' ')"
-if [[ "$authority_count" == "9" ]]; then
+if [[ "$authority_count" == "10" ]]; then
   pass_case
 else
-  fail_case "real registry authority count: expected 9, got $authority_count"
+  fail_case "real registry authority count: expected 10, got $authority_count"
 fi
 
 # q. Empty TSV.
