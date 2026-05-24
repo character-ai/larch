@@ -238,6 +238,15 @@ def normalize_slot(sl):
 EMPTY_MERGE_ATTESTATION = "LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED"
 
 _STRICT_FINDING_HEADING = re.compile(r"^### FINDING_[0-9]+:")
+_SEVERITY_LINE = re.compile(
+    r"(?m)^-\s*\*\*Severity\*\*:\s*(important|latent|nit)\s*$", re.IGNORECASE
+)
+
+
+def block_has_severity(block):
+    """Merged output blocks must carry a severity line for downstream voting (Piece 2)."""
+    return bool(_SEVERITY_LINE.search(block))
+
 
 # Two forms of preamble contradiction:
 #   1. Heading-format: "### FINDING_24:" or "### FINDING_N:" in narrative prose.
@@ -615,6 +624,12 @@ def main():
         _line, slots = reviewer_line_slots(b)
         if not slots:
             print("block missing reviewer attribution line", file=sys.stderr)
+            return 1
+        if not block_has_severity(b):
+            print(
+                "output block missing - **Severity**: important|latent|nit line",
+                file=sys.stderr,
+            )
             return 1
         if not is_oos_out:
             for sl in slots:
