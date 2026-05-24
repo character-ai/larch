@@ -1181,6 +1181,81 @@ else
     fail "recovery_waterfall_rollback_restores_staged_changes_via_git_restore_staged"
 fi
 
+# Issue #2742: argv-init cold start (no pre-existing state file).
+root=$(make_repo argv_init_fresh)
+tmp=$(make_tmpdir)
+printf 'expected-sid\n' > "$tmp/session-id"
+printf '{}\n' > "$tmp/argv-manifest.json"
+run_subject "$root" "$tmp" "$tmp/rc" \
+  --branch-name 'feature/test-issue-7' \
+  --expected-session-id 'expected-sid' \
+  --expected-tmpdir-basename-prefix 'argv-prefix-' \
+  --force-init-state false \
+  --issue-number 'has=equal-sign' \
+  --manifest-path "$tmp/argv-manifest.json" \
+  --run-id 'argv-run-xyz' \
+  --tool-label 'codex' \
+  --no-logs-commit true
+assert_rc "$tmp/rc" 0 "argv-init fresh cold start completes happy path"
+_br=$(grep '^BRANCH_NAME=' "$tmp/ship-pr-state.sh" | cut -d= -f2-)
+if [ "$_br" = 'feature/test-issue-7' ]; then
+    ok "argv-init fresh BRANCH_NAME"
+else
+    fail "argv-init fresh BRANCH_NAME (got ${_br})"
+fi
+_in=$(grep '^ISSUE_NUMBER=' "$tmp/ship-pr-state.sh" | cut -d= -f2-)
+if [ "$_in" = 'has=equal-sign' ]; then ok "argv-init fresh ISSUE_NUMBER"; else fail "argv-init fresh ISSUE_NUMBER (got ${_in})"; fi
+_rid=$(grep '^RUN_ID=' "$tmp/ship-pr-state.sh" | cut -d= -f2-)
+if [ "$_rid" = 'argv-run-xyz' ]; then ok "argv-init fresh RUN_ID"; else fail "argv-init fresh RUN_ID (got ${_rid})"; fi
+_mp=$(grep '^MANIFEST_PATH=' "$tmp/ship-pr-state.sh" | cut -d= -f2-)
+if [ "$_mp" = "$tmp/argv-manifest.json" ]; then ok "argv-init fresh MANIFEST_PATH"; else fail "argv-init fresh MANIFEST_PATH"; fi
+_tl=$(grep '^TOOL_LABEL=' "$tmp/ship-pr-state.sh" | cut -d= -f2-)
+if [ "$_tl" = 'codex' ]; then ok "argv-init fresh TOOL_LABEL"; else fail "argv-init fresh TOOL_LABEL (got ${_tl})"; fi
+_es=$(grep '^EXPECTED_SESSION_ID=' "$tmp/ship-pr-state.sh" | cut -d= -f2-)
+if [ "$_es" = 'expected-sid' ]; then ok "argv-init fresh EXPECTED_SESSION_ID"; else fail "argv-init fresh EXPECTED_SESSION_ID (got ${_es})"; fi
+_et=$(grep '^EXPECTED_TMPDIR_BASENAME_PREFIX=' "$tmp/ship-pr-state.sh" | cut -d= -f2-)
+if [ "$_et" = 'argv-prefix-' ]; then ok "argv-init fresh EXPECTED_TMPDIR_BASENAME_PREFIX"; else fail "argv-init fresh EXPECTED_TMPDIR_BASENAME_PREFIX (got ${_et})"; fi
+if grep -qxF 'BAIL_FAILURE_DETAIL_LOG=' "$tmp/ship-pr-state.sh"; then ok "argv-init fresh BAIL_FAILURE_DETAIL_LOG empty"; else fail "argv-init fresh BAIL_FAILURE_DETAIL_LOG missing"; fi
+_nlc=$(grep '^NO_LOGS_COMMIT=' "$tmp/ship-pr-state.sh" | cut -d= -f2-)
+if [ "$_nlc" = 'true' ]; then ok "argv-init fresh NO_LOGS_COMMIT"; else fail "argv-init fresh NO_LOGS_COMMIT (got ${_nlc})"; fi
+_itd=$(grep '^IMPLEMENT_TMPDIR=' "$tmp/ship-pr-state.sh" | cut -d= -f2-)
+if [ "$_itd" = "$tmp" ]; then ok "argv-init fresh IMPLEMENT_TMPDIR"; else fail "argv-init fresh IMPLEMENT_TMPDIR (got ${_itd})"; fi
+
+# Issue #2742: resume ignores argv per-key flags when state already exists.
+root=$(make_repo argv_init_resume_precedence)
+tmp=$(make_tmpdir)
+write_state "$tmp/ship-pr-state.sh" checks
+sed -i.bak 's/^RUN_ID=.*/RUN_ID=preserved-on-disk-run-id/' "$tmp/ship-pr-state.sh"
+run_subject "$root" "$tmp" "$tmp/rc" --run-id 'conflicting-argv-run-id'
+assert_rc "$tmp/rc" 0 "argv-init resume precedence completes"
+_rid2=$(grep '^RUN_ID=' "$tmp/ship-pr-state.sh" | cut -d= -f2-)
+if [ "$_rid2" = 'preserved-on-disk-run-id' ]; then ok "argv-init resume ignores --run-id"; else fail "argv-init resume RUN_ID (got ${_rid2})"; fi
+
+# Issue #2742: --force-init-state true rewrites state from argv.
+root=$(make_repo argv_init_force_rewrite)
+tmp=$(make_tmpdir)
+write_state "$tmp/ship-pr-state.sh" checks
+sed -i.bak 's/^RUN_ID=.*/RUN_ID=preserved-on-disk-run-id/' "$tmp/ship-pr-state.sh"
+run_subject "$root" "$tmp" "$tmp/rc" --run-id 'overridden-by-force-run-id' --force-init-state true
+assert_rc "$tmp/rc" 0 "argv-init force-init completes"
+_rid3=$(grep '^RUN_ID=' "$tmp/ship-pr-state.sh" | cut -d= -f2-)
+if [ "$_rid3" = 'overridden-by-force-run-id' ]; then ok "argv-init force-init rewrites RUN_ID"; else fail "argv-init force-init RUN_ID (got ${_rid3})"; fi
+
+# Issue #2742: CR/LF rejected for each argv-init per-key flag.
+root=$(make_repo argv_init_crlf)
+for _flag in branch-name expected-session-id expected-tmpdir-basename-prefix issue-number manifest-path run-id tool-label; do
+    tmp=$(make_tmpdir)
+    _bad=$(printf 'x\ry')
+    run_subject "$root" "$tmp" "$tmp/rc" --"${_flag}" "$_bad"
+    assert_rc "$tmp/rc" 2 "argv-init CR/LF rejects --${_flag}"
+    if grep -Fq -e "--${_flag} must not contain CR or LF" "$tmp/stderr"; then
+        ok "argv-init stderr names --${_flag} for CR/LF rejection"
+    else
+        fail "argv-init stderr missing --${_flag} CR/LF message"
+        sed 's/^/    err: /' "$tmp/stderr" | head -n 5 || true
+    fi
+done
+
 fi  # end section: state
 
 if section_runs postmerge; then

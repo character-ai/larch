@@ -1,0 +1,1 @@
+The ballot file at the specified path contains only the aggregator's methodology header comment with no `FINDING_N:` ballot items. There are no items to vote on.

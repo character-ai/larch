@@ -5,12 +5,38 @@
 ## Interface
 
 ```text
-ship-pr.sh --state-file PATH --implement-tmpdir PATH --merge true|false --draft true|false --forked true|false --repo OWNER/REPO [--no-admin-fallback true|false] [--no-logs-commit true|false] [--resume-phase PHASE]
+ship-pr.sh --state-file PATH --implement-tmpdir PATH --merge true|false --draft true|false --forked true|false --repo OWNER/REPO [--branch-name VALUE] [--expected-session-id VALUE] [--expected-tmpdir-basename-prefix VALUE] [--force-init-state true|false] [--issue-number VALUE] [--manifest-path VALUE] [--run-id VALUE] [--tool-label VALUE] [--no-admin-fallback true|false] [--no-logs-commit true|false] [--resume-phase PHASE]
 ```
 
 `--no-logs-commit true` is exported as `LARCH_NO_LOGS_COMMIT=true` so child lifecycle helpers suppress explicit larch-log commit calls. Log files are still written to `$IMPLEMENT_TMPDIR/larch-logs/` for local inspection; they are simply not committed to the branch by `ship-pr.sh` lifecycle flush points. Default: `false`.
 
-`--state-file` must live under `--implement-tmpdir`. If the state file does not exist, the script writes an initial uppercase-key state file atomically.
+`--state-file` must live under `--implement-tmpdir`. If the state file does not exist (or `--force-init-state true`), the script writes an initial uppercase-key state file atomically.
+
+## State-File Argv Init
+
+On cold start (no state file yet, or `--force-init-state true`), `ship-pr.sh` writes the state file itself via `write_initial_state()` before entering the main loop. Optional argv supplies caller-varying keys:
+
+| Argv flag | State key |
+| --- | --- |
+| `--branch-name` | `BRANCH_NAME` |
+| `--issue-number` | `ISSUE_NUMBER` |
+| `--run-id` | `RUN_ID` |
+| `--manifest-path` | `MANIFEST_PATH` |
+| `--tool-label` | `TOOL_LABEL` |
+| `--expected-session-id` | `EXPECTED_SESSION_ID` |
+| `--expected-tmpdir-basename-prefix` | `EXPECTED_TMPDIR_BASENAME_PREFIX` |
+
+`--force-init-state` accepts `true` or `false` (default `false`). When `true` and a state file already exists, `write_initial_state()` runs again and replaces the file (stalled-run cleanup); routine Step 8+ invocations omit this flag.
+
+**Set vs omitted**: internally each per-key flag uses paired `INIT_*` / `INIT_*_SET` variables. If the flag appears in argv (including with an explicit empty value), that exact value is written to state. If the flag is omitted, the historical auto-derivation in `write_initial_state()` applies (`git` for `BRANCH_NAME`, env and tmpdir-derived defaults for the others).
+
+**Resume precedence**: when the state file already exists, argv per-key values are ignored and on-disk state wins, unless `--force-init-state true`.
+
+**`NO_LOGS_COMMIT` in state**: `write_initial_state()` also emits `NO_LOGS_COMMIT`, `IMPLEMENT_TMPDIR`, and `BAIL_FAILURE_DETAIL_LOG=` lines for heredoc parity. `ship-pr.sh` still treats `--no-logs-commit` and `--implement-tmpdir` argv as authoritative on every invocation (including resume); the state-file copies are informational.
+
+**Backward compatibility**: callers that pre-compose `ship-pr-state.sh` and invoke `ship-pr.sh` without the new flags are unchanged — the writer is skipped when the file exists and `--force-init-state` is not `true`.
+
+**Schema note**: `skills/implement/SKILL.md` echoes the full key list; `write_initial_state()` is the runtime source of truth. The `require_key` loop validates a subset so legacy state files missing newer informational keys are not rejected (asymmetry tracked in issue #2752). Drift-detection automation between the writer and docs is out of scope for issue #2742 (issue #2753).
 
 ## State
 

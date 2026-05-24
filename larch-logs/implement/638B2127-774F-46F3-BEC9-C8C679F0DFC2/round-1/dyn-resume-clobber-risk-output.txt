@@ -1,0 +1,17 @@
+Gathering evidence from the precomputed diff and the cited files for the resume-clobber / `--force-init-state` review.
+
+Verifying `run_subject` defaults, full `ship-pr.md` wording for force-init hazards, and the Step 8+ `Invoke` block for any `--force-init-state` inclusion.
+
+### In-Scope Findings
+
+- **risk-integration** `scripts/ship-pr.md:29-33` — The new `--force-init-state` paragraph states that `write_initial_state()` “runs again and replaces the file” for “stalled-run cleanup,” but it never spells out the destructive scope: that path always emits the full cold-start template from `write_initial_state()` (for example `PHASE=checks`, cleared `PR_NUMBER` / `PR_URL` / `PR_TITLE`, zeroed counters such as `REBASE_COUNT` / `FIX_ATTEMPTS` / `ITERATION` / `TRANSIENT_RETRIES`, and reset `FAILED_RUN_ID`), so a mid-run footgun is easy to underestimate relative to the scout’s requested explicit PHASE/counter warning. **Suggested fix:** Add one explicit warning sentence next to that paragraph naming at least `PHASE`, PR identity fields, and the counter family as examples of what gets reset, and state that `--force-init-state true` must not be used for ordinary Step 8+ resumes—only for deliberate, operator-understood state repair.
+
+- **risk-integration** `skills/implement/SKILL.md:66` and `skills/implement/SKILL.md:1564` — NEVER #16 and the Step 8+ recovery callout both say the seven argv-init keys are ignored on resume “unless `--force-init-state true`,” without an adjacent guard that this exception is destructive and must never be folded into the normal “re-invoke with the same `Invoke:` arguments” recovery path; paired with the incomplete `ship-pr.md` clobber detail, the conditional can read like a benign “make argv apply again” switch rather than a full state-file reset. **Suggested fix:** Add a short prohibition in both places (or in NEVER #16 plus a single cross-reference from the inline block): do not pass `--force-init-state true` for typical timeout/exit-driven resumes; reserve it only for intentional stalled/corrupt `ship-pr-state.sh` repair after reading the expanded `scripts/ship-pr.md` warning.
+
+### Out-of-Scope Observations
+
+- The branch diff also adds `larch-logs/implement/638B2127-774F-46F3-BEC9-C8C679F0DFC2/*` (manifest, plan copy, tally) via a separate `chore(larch-logs): flush implement run …` commit; that is unrelated to `--force-init-state` resume semantics but increases review surface area.
+
+- `run_subject` in `scripts/test-ship-pr.sh:350-361` forwards only caller-supplied `"${@:4}"` after fixed argv and never injects `--force-init-state`; only the dedicated force-init block passes `--force-init-state true`, so the new harness cases do not accidentally clobber the resume-precedence assertion.
+
+- The Step 8+ `Invoke:` block (`skills/implement/SKILL.md:1586-1601`) omits `--force-init-state` entirely (so it cannot be re-passed verbatim from the canonical template); default in `scripts/ship-pr.sh` remains `FORCE_INIT_STATE=false` for callers that omit the flag.

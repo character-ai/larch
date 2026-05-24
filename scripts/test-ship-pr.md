@@ -22,5 +22,8 @@ It copies the state-machine script into disposable git repositories with stubbed
 - inner local fix loop: exit `0` when first 2 vendor attempts fail but the 3rd succeeds; exit `4` (stall) when all 5 vendor attempts fail
 - transient-network routing through `scripts/lib-net.sh`: matching create-PR, merge, CI-bail, and rebase signatures exit `6`, while non-network errors stall normally
 - OID-mismatch `MERGE_RESULT=error` ("local HEAD does not match PR head OID") routes to `run_rebase_rebump` and exits `0` with `PHASE=done`, rather than stalling at `STALL_STEP=12d`
+- argv-init cold start writes the seven per-key state fields plus `BAIL_FAILURE_DETAIL_LOG`, `NO_LOGS_COMMIT`, and `IMPLEMENT_TMPDIR` when no state file exists (`BRANCH_NAME` matches the disposable-repo checkout so bump-branch-guard stays green; `ISSUE_NUMBER` carries an `=` to exercise `cut -d= -f2-` extraction)
+- argv-init resume leaves `RUN_ID` unchanged when `--run-id` disagrees with on-disk state (avoids bump-branch-guard mismatch while still proving argv is ignored)
+- argv-init `--force-init-state true` rewrites state from argv (`RUN_ID`); CR/LF in any per-key argv value is rejected with exit `2` and a flag-specific stderr message
 
 Wired as `make test-ship-pr`.

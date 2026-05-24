@@ -28,11 +28,26 @@ NO_ADMIN_FALLBACK="false"
 NO_LOGS_COMMIT="false"
 REPO_ARG=""
 RESUME_PHASE=""
+INIT_BRANCH_NAME=""
+INIT_BRANCH_NAME_SET=false
+INIT_ISSUE_NUMBER=""
+INIT_ISSUE_NUMBER_SET=false
+INIT_RUN_ID=""
+INIT_RUN_ID_SET=false
+INIT_MANIFEST_PATH=""
+INIT_MANIFEST_PATH_SET=false
+INIT_TOOL_LABEL=""
+INIT_TOOL_LABEL_SET=false
+INIT_EXPECTED_SESSION_ID=""
+INIT_EXPECTED_SESSION_ID_SET=false
+INIT_EXPECTED_TMPDIR_BASENAME_PREFIX=""
+INIT_EXPECTED_TMPDIR_BASENAME_PREFIX_SET=false
+FORCE_INIT_STATE=false
 
 usage() {
     while IFS= read -r line; do larch_err "$line"; done <<'USAGE'
 Usage:
-  ship-pr.sh --state-file PATH --implement-tmpdir PATH --merge true|false --draft true|false --forked true|false --repo OWNER/REPO [--no-admin-fallback true|false] [--no-logs-commit true|false] [--resume-phase PHASE]
+  ship-pr.sh --state-file PATH --implement-tmpdir PATH --merge true|false --draft true|false --forked true|false --repo OWNER/REPO [--branch-name VALUE] [--expected-session-id VALUE] [--expected-tmpdir-basename-prefix VALUE] [--force-init-state true|false] [--issue-number VALUE] [--manifest-path VALUE] [--run-id VALUE] [--tool-label VALUE] [--no-admin-fallback true|false] [--no-logs-commit true|false] [--resume-phase PHASE]
 USAGE
 }
 
@@ -244,8 +259,16 @@ write_initial_state() {
     if [ -z "$repo" ]; then
         repo=$("$SCRIPT_DIR/resolve-repo.sh" 2>/dev/null | awk -F= '$1=="REPO"{print substr($0,index($0,"=")+1); exit}' || true)
     fi
-    issue=""
-    run_id="${LARCH_RUN_ID:-${RUN_ID:-$(basename "$IMPLEMENT_TMPDIR")}}"
+    if [ "$INIT_ISSUE_NUMBER_SET" = "true" ]; then
+        issue=$INIT_ISSUE_NUMBER
+    else
+        issue=""
+    fi
+    if [ "$INIT_RUN_ID_SET" = "true" ]; then
+        run_id=$INIT_RUN_ID
+    else
+        run_id="${LARCH_RUN_ID:-${RUN_ID:-$(basename "$IMPLEMENT_TMPDIR")}}"
+    fi
     session_id=$(cat "$IMPLEMENT_TMPDIR/session-id" 2>/dev/null || echo "")
     if [ -n "${CLONE_TAG:-}" ]; then
         clone_tag_full=$CLONE_TAG
@@ -259,7 +282,11 @@ write_initial_state() {
     tmp="$STATE_FILE.tmp.$$"
     {
         printf 'PHASE=checks\n'
-        printf 'BRANCH_NAME=%s\n' "$branch"
+        if [ "$INIT_BRANCH_NAME_SET" = "true" ]; then
+            printf 'BRANCH_NAME=%s\n' "$INIT_BRANCH_NAME"
+        else
+            printf 'BRANCH_NAME=%s\n' "$branch"
+        fi
         printf 'ISSUE_NUMBER=%s\n' "$issue"
         printf 'RUN_ID=%s\n' "$run_id"
         printf 'REPO=%s\n' "$repo"
@@ -277,6 +304,7 @@ write_initial_state() {
         printf 'STALL_STEP=\n'
         printf 'BAIL_NEEDS_USER_INPUT=false\n'
         printf 'BAIL_REASON=\n'
+        printf 'BAIL_FAILURE_DETAIL_LOG=\n'
         printf 'CI_PASSED=false\n'
         printf 'OOS_PENDING=false\n'
         printf 'PR_NUMBER=\n'
@@ -289,11 +317,29 @@ write_initial_state() {
         printf 'ITERATION=0\n'
         printf 'TRANSIENT_RETRIES=0\n'
         printf 'FAILED_RUN_ID=\n'
-        printf 'MANIFEST_PATH=%s\n' "${MANIFEST_PATH:-}"
-        printf 'TOOL_LABEL=%s\n' "${TOOL_LABEL:-claude}"
+        if [ "$INIT_MANIFEST_PATH_SET" = "true" ]; then
+            printf 'MANIFEST_PATH=%s\n' "$INIT_MANIFEST_PATH"
+        else
+            printf 'MANIFEST_PATH=%s\n' "${MANIFEST_PATH:-}"
+        fi
+        if [ "$INIT_TOOL_LABEL_SET" = "true" ]; then
+            printf 'TOOL_LABEL=%s\n' "$INIT_TOOL_LABEL"
+        else
+            printf 'TOOL_LABEL=%s\n' "${TOOL_LABEL:-claude}"
+        fi
         printf 'DESIGN_ONLY_DONE=false\n'
-        printf 'EXPECTED_SESSION_ID=%s\n' "$session_id"
-        printf 'EXPECTED_TMPDIR_BASENAME_PREFIX=claude-implement-%s-\n' "$clone_tag_full"
+        if [ "$INIT_EXPECTED_SESSION_ID_SET" = "true" ]; then
+            printf 'EXPECTED_SESSION_ID=%s\n' "$INIT_EXPECTED_SESSION_ID"
+        else
+            printf 'EXPECTED_SESSION_ID=%s\n' "$session_id"
+        fi
+        if [ "$INIT_EXPECTED_TMPDIR_BASENAME_PREFIX_SET" = "true" ]; then
+            printf 'EXPECTED_TMPDIR_BASENAME_PREFIX=%s\n' "$INIT_EXPECTED_TMPDIR_BASENAME_PREFIX"
+        else
+            printf 'EXPECTED_TMPDIR_BASENAME_PREFIX=claude-implement-%s-\n' "$clone_tag_full"
+        fi
+        printf 'NO_LOGS_COMMIT=%s\n' "${NO_LOGS_COMMIT:-false}"
+        printf 'IMPLEMENT_TMPDIR=%s\n' "$IMPLEMENT_TMPDIR"
     } > "$tmp" && mv "$tmp" "$STATE_FILE"
 }
 
@@ -2405,6 +2451,14 @@ main() {
             --merge) [ $# -ge 2 ] || die_usage "--merge requires a value"; MERGE=$2; shift 2 ;;
             --draft) [ $# -ge 2 ] || die_usage "--draft requires a value"; DRAFT=$2; shift 2 ;;
             --forked) [ $# -ge 2 ] || die_usage "--forked requires a value"; FORKED_TARGET=$2; shift 2 ;;
+            --branch-name) [ $# -ge 2 ] || die_usage "--branch-name requires a value"; INIT_BRANCH_NAME=$2; INIT_BRANCH_NAME_SET=true; shift 2 ;;
+            --expected-session-id) [ $# -ge 2 ] || die_usage "--expected-session-id requires a value"; INIT_EXPECTED_SESSION_ID=$2; INIT_EXPECTED_SESSION_ID_SET=true; shift 2 ;;
+            --expected-tmpdir-basename-prefix) [ $# -ge 2 ] || die_usage "--expected-tmpdir-basename-prefix requires a value"; INIT_EXPECTED_TMPDIR_BASENAME_PREFIX=$2; INIT_EXPECTED_TMPDIR_BASENAME_PREFIX_SET=true; shift 2 ;;
+            --force-init-state) [ $# -ge 2 ] || die_usage "--force-init-state requires a value"; FORCE_INIT_STATE=$2; shift 2 ;;
+            --issue-number) [ $# -ge 2 ] || die_usage "--issue-number requires a value"; INIT_ISSUE_NUMBER=$2; INIT_ISSUE_NUMBER_SET=true; shift 2 ;;
+            --manifest-path) [ $# -ge 2 ] || die_usage "--manifest-path requires a value"; INIT_MANIFEST_PATH=$2; INIT_MANIFEST_PATH_SET=true; shift 2 ;;
+            --run-id) [ $# -ge 2 ] || die_usage "--run-id requires a value"; INIT_RUN_ID=$2; INIT_RUN_ID_SET=true; shift 2 ;;
+            --tool-label) [ $# -ge 2 ] || die_usage "--tool-label requires a value"; INIT_TOOL_LABEL=$2; INIT_TOOL_LABEL_SET=true; shift 2 ;;
             --no-admin-fallback) [ $# -ge 2 ] || die_usage "--no-admin-fallback requires a value"; NO_ADMIN_FALLBACK=$2; shift 2 ;;
             --no-logs-commit) [ $# -ge 2 ] || die_usage "--no-logs-commit requires a value"; NO_LOGS_COMMIT=$2; shift 2 ;;
             --repo) [ $# -ge 2 ] || die_usage "--repo requires a value"; REPO_ARG=$2; shift 2 ;;
@@ -2425,10 +2479,32 @@ main() {
     [ -z "$MERGE" ] || is_bool "$MERGE" || die_usage "--merge must be true or false"
     [ -z "$DRAFT" ] || is_bool "$DRAFT" || die_usage "--draft must be true or false"
     [ -z "$FORKED_TARGET" ] || is_bool "$FORKED_TARGET" || die_usage "--forked must be true or false"
+    is_bool "$FORCE_INIT_STATE" || die_usage "--force-init-state must be true or false"
+    if [ "$INIT_BRANCH_NAME_SET" = "true" ]; then
+        case "$INIT_BRANCH_NAME" in *$'\r'*|*$'\n'*) die_usage "--branch-name must not contain CR or LF" ;; esac
+    fi
+    if [ "$INIT_EXPECTED_SESSION_ID_SET" = "true" ]; then
+        case "$INIT_EXPECTED_SESSION_ID" in *$'\r'*|*$'\n'*) die_usage "--expected-session-id must not contain CR or LF" ;; esac
+    fi
+    if [ "$INIT_EXPECTED_TMPDIR_BASENAME_PREFIX_SET" = "true" ]; then
+        case "$INIT_EXPECTED_TMPDIR_BASENAME_PREFIX" in *$'\r'*|*$'\n'*) die_usage "--expected-tmpdir-basename-prefix must not contain CR or LF" ;; esac
+    fi
+    if [ "$INIT_ISSUE_NUMBER_SET" = "true" ]; then
+        case "$INIT_ISSUE_NUMBER" in *$'\r'*|*$'\n'*) die_usage "--issue-number must not contain CR or LF" ;; esac
+    fi
+    if [ "$INIT_MANIFEST_PATH_SET" = "true" ]; then
+        case "$INIT_MANIFEST_PATH" in *$'\r'*|*$'\n'*) die_usage "--manifest-path must not contain CR or LF" ;; esac
+    fi
+    if [ "$INIT_RUN_ID_SET" = "true" ]; then
+        case "$INIT_RUN_ID" in *$'\r'*|*$'\n'*) die_usage "--run-id must not contain CR or LF" ;; esac
+    fi
+    if [ "$INIT_TOOL_LABEL_SET" = "true" ]; then
+        case "$INIT_TOOL_LABEL" in *$'\r'*|*$'\n'*) die_usage "--tool-label must not contain CR or LF" ;; esac
+    fi
     export IMPLEMENT_TMPDIR
     export LARCH_NO_LOGS_COMMIT="$NO_LOGS_COMMIT"
 
-    if [ ! -e "$STATE_FILE" ]; then
+    if [ ! -e "$STATE_FILE" ] || [ "$FORCE_INIT_STATE" = "true" ]; then
         write_initial_state
     fi
     [ -r "$STATE_FILE" ] || die_usage "--state-file must be readable"
