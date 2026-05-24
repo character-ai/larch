@@ -21,6 +21,10 @@ Timing defaults to `--timing-task-kind claude-ci-fix` (allow-listed in `scripts/
 
 The launcher builds a fixed, delimiter-fenced prompt, then invokes `claude --print` (model defaults to `claude-sonnet-4-6`, overridable via `--model`). Failures best-effort append through `append-tool-failure.sh` when `IMPLEMENT_TMPDIR` is set, consistent with other CI launchers.
 
+## Machine-readable failure classification
+
+After every run, the launcher prints `emit_kv LAUNCHER_EXIT`, then `external_classify_launch_failure` lines (`LAUNCHER_FAILURE_CLASS` / `LAUNCHER_FAILURE_REASON`) to stdout for `ship-pr.sh`, using `${OUTPUT}.stderr` as the sidecar input. Missing `claude` on `PATH` emits `health`/`binary-missing` with `LAUNCHER_EXIT=127` before exiting **1**.
+
 ## Harness
 
 `scripts/test-launch-claude-ci.sh` covers argv validation, `--failure-log` rules, redaction hook presence, and prompt persona pins (no read-only subprocess baseline marker). See `scripts/test-launch-claude-ci.md`.

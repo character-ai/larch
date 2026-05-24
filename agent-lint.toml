@@ -834,6 +834,12 @@ exclude = [
   # as other test-* harnesses.
   "scripts/test-rebase-push-fork-mode.sh",
   "scripts/test-implement-structure.sh",
+  # scripts/test-implement-step8-exit3-first-fixer.sh — structural pins for the
+  # first-fixer-non-health autonomous CI-fix path in skills/implement/SKILL.md.
+  # Makefile test-implement-step8-exit3-first-fixer target; sibling contract
+  # scripts/test-implement-step8-exit3-first-fixer.md.
+  "scripts/test-implement-step8-exit3-first-fixer.sh",
+  "scripts/test-implement-step8-exit3-first-fixer.md",
   # scripts/test-plan-adequacy-audit.sh — editorial pins for the preflight
   # plan-adequacy audit block in skills/implement/SKILL.md (issue #2485).
   "scripts/test-plan-adequacy-audit.sh",

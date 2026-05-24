@@ -2,6 +2,8 @@
 # launch-claude-ci.sh — Launch Claude Code CLI for /implement CI-fix subwork (write-capable).
 # Sibling to launch-cursor-ci.sh / launch-codex-ci.sh; unlike launch-claude-subprocess.sh,
 # this path does NOT inject the read-only reviewer preamble.
+#
+# LAUNCHER_FAILURE_* canonical token pin (grep tests; classifier emits): none health other auth binary-missing health-probe timeout parse refusal unknown
 
 set -euo pipefail
 
@@ -157,6 +159,17 @@ Inspect the repository and CI logs as needed. Make only the minimal changes requ
 PROMPT_FILE="${OUTPUT}.prompt"
 printf '%s' "$PROMPT" > "$PROMPT_FILE"
 
+if ! command -v claude >/dev/null 2>&1; then
+    LAUNCHER_EXIT=127
+    : > "${OUTPUT}.token-record" 2>/dev/null || true
+    emit_kv LAUNCHER_EXIT "$LAUNCHER_EXIT"
+    external_classify_launch_failure "$LAUNCHER_EXIT" "/dev/null" "unclassified" 0 "claude" ""
+    emit_kv OUTPUT "$OUTPUT"
+    emit_kv TOKEN_RECORD "${OUTPUT}.token-record"
+    larch_err "launch-claude-ci.sh: claude CLI not found in PATH"
+    exit 1
+fi
+
 START_S=$(date +%s)
 LAUNCHER_EXIT=0
 if command -v timeout >/dev/null 2>&1; then
@@ -195,6 +208,9 @@ if [[ -s "$OUTPUT" ]]; then
 fi
 
 emit_kv LAUNCHER_EXIT "$LAUNCHER_EXIT"
+_AUTH_VERDICT=$(external_auth_verdict "claude" "${OUTPUT}.stderr"; true)
+_AUTH_VERDICT=${_AUTH_VERDICT//$'\n'/}
+external_classify_launch_failure "$LAUNCHER_EXIT" "${OUTPUT}.stderr" "$_AUTH_VERDICT" 1 "claude" "$OUTPUT"
 emit_kv OUTPUT "$OUTPUT"
 emit_kv TOKEN_RECORD "${OUTPUT}.token-record"
 exit 0
