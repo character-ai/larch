@@ -8,4 +8,4 @@ It also verifies `/implement` orchestrator mode selected by `--implement-tmpdir`
 
 Run with `bash skills/review-and-fix/scripts/test-review-and-fix.sh` or `make test-review-and-fix`.
 
-Supports `--section dispatch|convergence` for CI shard packing. `dispatch` covers coder dispatch, scrubber, scout-manifest, and per-invocation tests up to the `convergence` section marker. `convergence` covers convergence and degraded-round loop tests. Without `--section`, all tests run sequentially (local-dev backward compat).
+Supports `--section dispatch|convergence|parsers` for CI shard packing. `dispatch` covers coder dispatch, scrubber, scout-manifest, and per-invocation tests up to the `convergence` section marker. `convergence` covers convergence and degraded-round loop tests. `parsers` exercises `review-implement-step5-loop.sh` capture-file KV parsing under `set -e` (including malformed-check fail-closed and lint stderr-only paths). Without `--section`, all tests run sequentially (local-dev backward compat).

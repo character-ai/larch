@@ -5,6 +5,7 @@
 # shellcheck disable=SC2034
 
 step5_parse_kv_tokens() {
+    # Always exits 0 under set -e; absent key yields empty stdout (callers use [[ -n "$v" ]]).
     local line="$1" key="$2" tok
     for tok in $line; do
         case "$tok" in
@@ -12,7 +13,7 @@ step5_parse_kv_tokens() {
         esac
     done
     printf '\n'
-    return 1
+    return 0
 }
 
 step5_parse_checks_capture_file() {
@@ -36,6 +37,11 @@ step5_parse_checks_capture_file() {
         v="$(step5_parse_kv_tokens "$line" RELEVANT_CHECKS_SKIPPED)"
         [[ -n "$v" ]] && STEP5_CHK_RELEVANT_CHECKS_SKIPPED="$v"
     done <"$file"
+    if [[ -z "${STEP5_CHK_STATUS:-}" && -z "${STEP5_CHK_RELEVANT_CHECKS_OK:-}" && -z "${STEP5_CHK_RELEVANT_CHECKS_SKIPPED:-}" ]]; then
+        printf '%s\n' "step5_parse_checks_capture_file: required field missing (none of STATUS, RELEVANT_CHECKS_OK, RELEVANT_CHECKS_SKIPPED) in capture file: $file" >&2
+        STEP5_CHK_STATUS=fail
+        STEP5_CHK_FAILURE_REASON=malformed-capture
+    fi
 }
 
 step5_parse_lint_capture_file() {
@@ -46,6 +52,9 @@ step5_parse_lint_capture_file() {
         v="$(step5_parse_kv_tokens "$line" LINT_FIX_STATUS)"
         [[ -n "$v" ]] && STEP5_LINT_STATUS="$v"
     done <"$file"
+    if [[ -z "${STEP5_LINT_STATUS:-}" ]]; then
+        printf '%s\n' "step5_parse_lint_capture_file: required field missing (LINT_FIX_STATUS) in capture file: $file" >&2
+    fi
 }
 
 step5_emit_final_envelope() {
