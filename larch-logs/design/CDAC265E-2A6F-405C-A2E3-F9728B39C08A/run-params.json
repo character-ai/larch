@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "design_classification": "TRIVIAL_DOC_ONLY",
+  "design_classification_reason": "--trivial flag forwarded; issue is OOS doc-table follow-up (docs/linting.md) confirmed by codebase scan",
+  "design_classification_source": "caller-forwarded",
+  "sketch_budget": 0,
+  "review_budget": "quick",
+  "workflow_path": "SIMPLE",
+  "partition_requested": false
+}

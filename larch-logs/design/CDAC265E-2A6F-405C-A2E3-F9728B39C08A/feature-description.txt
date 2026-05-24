@@ -1,0 +1,15 @@
+Title: [DESIGNING] [OOS] Add new validator harnesses to docs/linting.md harness-table
+
+Body:
+## Out-of-Scope Observation
+
+**Surfaced by**: Cursor-Arch, Cursor-dyn-lint-registration (and broader docs-linting reviewers)
+**Phase**: design
+**Vote tally**: pending
+
+## Description
+
+`docs/linting.md:206-280` documents the existing /design harness entries (`test-design-driver`, `test-emit-plan`, etc.) with operator-facing table rows and shard annotations. The new `make test-parse-plan-commands` / `test-validate-plan-commands` targets should get equivalent rows; plan only names `Makefile`. Discoverability gap only.
+
+---
+*This issue was automatically created by the larch `/implement` workflow from an out-of-scope observation surfaced during the workflow.*
