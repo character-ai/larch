@@ -1,0 +1,63 @@
+## Approach Synthesis
+
+The Codex-Generic sketch produced a substantive plan; the Cursor-Generic
+output was thin (preamble only, 409 bytes versus 2.2 KB) and did not return
+an architectural sketch. Synthesis therefore relies on Codex plus direct
+codebase verification.
+
+### Agreement (Codex sketch + codebase confirmation)
+
+1. **This is a prompt/instruction change** — no new scripts, no new state
+   schemas. The only runtime state needed is a per-session sentinel file
+   inside `$DESIGN_TMPDIR` that tracks whether the Step 3 entry print has
+   already fired in this `/design` run.
+2. **`$DESIGN_TMPDIR/plan.txt` is the canonical artifact** to read and
+   print at both presentation points. Step 2b writes it, Gate B(a)/(b)
+   may revise it, and the post-plan Gate A discussion sub-round body may
+   revise it; in all cases it is the latest authoritative plan.
+3. **Add a new Step 3 entry print** under a distinct header
+   (`## Plan Candidate for Review`) so the chat shows the plan body
+   immediately after the `> **🔶 /design 3: plan review**` breadcrumb and
+   before the `Read review_budget...` setup paragraph + 10-reviewer
+   panel launch.
+4. **Strengthen the Gate C print** — the existing
+   `approval-gates.md` `### Presentation` section already says to print
+   under `## Final Design Plan` but the wording is soft enough that
+   executors may skip it; tighten with explicit "must" language and a
+   pointer from SKILL.md Step 4b so the print is unmistakably mandatory.
+5. **Step 2b's `## Implementation Plan` print stays untouched.** The new
+   Step 3 entry print is intentional duplication — different header,
+   visually adjacent to the voting moment.
+
+### Sketch-phase tradeoffs (none contested)
+
+- **First-time-only gating mechanism**. A dedicated sentinel file
+  (e.g., `$DESIGN_TMPDIR/.step3-entry-plan-printed`) is clearer than
+  inferring first-time entry from artifact presence
+  (`voting-tally.md`). Codex did not propose a specific mechanism;
+  using a sentinel keeps the gating decoupled from tally-script side
+  effects and survives the documented re-entry paths
+  (Gate B(c) → Gate A → Step 3, Gate C(b) → Gate A → Step 3,
+  Gate C(c) → Step 3).
+- **Single-block placement**. Place the print + sentinel write inside
+  one new Bash block right after the existing
+  `timing-ledger.sh mark "design Step 3 — plan review"` block. The
+  block does `Read $DESIGN_TMPDIR/plan.txt` (via Read tool externally,
+  not inside the Bash block — only the sentinel touch is in Bash) so
+  there is no risk of mishandling encoded content via heredocs.
+
+### Risks and mitigations
+
+- **Duplicate chat noise**: Step 2b prints `## Implementation Plan` and
+  Step 3 entry prints `## Plan Candidate for Review` adjacent to each
+  other on the happy path. This is intentional per the user request.
+- **Executor still skips the new print**: human-in-the-loop UX issue.
+  Mitigate by making the directive imperative (MUST), placing it
+  before the `Read review_budget...` paragraph so it cannot be
+  bypassed by branching into the quick path, and by guarding the print
+  visibility with the `## Plan Candidate for Review` header check
+  during manual verification.
+- **Re-entry sentinel survives across review_budget=quick paths**: the
+  sentinel mechanism applies uniformly to both quick and full
+  review budgets, which is correct — quick mode also benefits from
+  having the plan body visible before the self-review.

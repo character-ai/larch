@@ -1,0 +1,92 @@
+Reading the plan file and inspecting referenced code paths for edge-case and failure-mode review.
+
+Inspecting cited files and integration points around Step 3, Step 4b, Gate C, and DESIGN_TMPDIR lifecycle.
+
+Checking AskUserQuestion conventions and whether bash blocks assume `set -e`:
+
+Checking how `DESIGN_TMPDIR` behaves when the env file is missing and whether `AskUserQuestion` documents primary vs Other options:
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	risk_integration	skills/design/SKILL.md:512-515	New Step 3 bash uses `$DESIGN_TMPDIR` after optional `source` only	If `current-design-env-$PPID.sh` is missing or stale, `DESIGN_TMPDIR` can be empty so `"$DESIGN_TMPDIR/.step3-entry-plan-printed"` resolves to `/.step3-entry-plan-printed` (root) or another wrong path; `touch` may fail or write outside the session dir	Wrap the block after sourcing in `if [ -n "${DESIGN_TMPDIR:-}" ] && [ -d "$DESIGN_TMPDIR" ]; then … else printf warning and skip sentinel fi`
+1	in_scope	important	correctness	skills/design/references/approval-gates.md:119-124	Gate C `### Prompt` still says `AskUserQuestion` with **exactly three options**	Plan adds `Other` as a supported path for full-plan retrieval; leaving the normative “exactly three” line contradicts the new Presentation/Prompt notes and invites implementers to drop `Other`	Reword to “three primary options” (Approve / Discuss / Re-run) and explicitly allow an `Other` / free-form branch whose handler is **not** cancel-unlike Step 0 tier gate
+1	in_scope	important	risk_integration	skills/design/SKILL.md:184-185 vs planned Gate C `Other` semantics	Elsewhere `Other` on tier `AskUserQuestion` means cancel (`Non-tier Other answers → … exit 0`)	Orchestrator muscle memory may treat any `Other` as terminal cancel at Gate C instead of print-then-re-prompt	Add one explicit sentence in Gate C Prompt/Presentation: Gate C `Other` **never** triggers the Step 0 terminal-cost cancel path; it only chains full-plan `cat` + re-fire Gate C
+1	in_scope	important	correctness	skills/design/SKILL.md (planned Step 3 bash after ~514)	Authoritative fenced snippet omits the numeric-threshold `case` guard while Edge cases promise it	Implementers copying the plan’s code fence ship without the guard; non-numeric `LARCH_DESIGN_PLAN_SUMMARY_THRESHOLD` still triggers bash arithmetic errors	Make the fenced snippet identical to the Edge-case contract (e.g. `case "$_summary_threshold" in (''|*[!0-9]*) _summary_threshold=120 ;; esac`) or state “snippet abbreviated — final SKILL must include guard”
+1	in_scope	important	architecture	skills/design/SKILL.md:707-709	Step 3 plan re-print is bash-mechanical; Gate C remains prose-only `MUST` after the plan’s Step 4b edit	Plan’s own Failure mode #1 admits the orchestrator can skip Gate C print; Step 3 does not share that hole	Add a second small fenced bash after the Step 4b `timing-ledger` block that always emits `## Final Design Plan` (summary branch included) before the `AskUserQuestion`, or add an `ACTION=…` hook in `design-driver.sh` so emission is script-enforced like Step 3
+1	in_scope	latent	risk_integration	skills/design/SKILL.md (planned Step 3 bash)	`touch` on the sentinel is unconditional on success	Transient FS errors leave no sentinel; every Step 3 re-entry reprints a huge plan and re-spams reviewers’ context	Check `touch` status; on failure print a visible warning and avoid claiming first-time-only semantics succeeded
+
+1. **[risk_integration]** `skills/design/SKILL.md:512-515` — Empty or unset `DESIGN_TMPDIR` after a skipped/failed `source` makes sentinel paths resolve under `/` or the wrong directory; guard with `DESIGN_TMPDIR` directory checks before `-e`/`touch` (see TSV row 1).
+
+2. **[correctness]** `skills/design/references/approval-gates.md:119-124` — Normative “exactly three options” conflicts with the proposed `Other` opt-in; reword to primary options plus explicit `Other` handling (see TSV row 2).
+
+3. **[risk_integration]** `skills/design/SKILL.md:184-185` vs Gate C — Global `Other` semantics on the tier gate cancel the run; Gate C `Other` must be explicitly documented as non-cancel (see TSV row 3).
+
+4. **[correctness]** Planned Step 3 bash (insert after `skills/design/SKILL.md:~514`) — The plan’s fenced snippet omits the numeric `case` guard promised in its own Edge cases section; align snippet and final SKILL (see TSV row 4).
+
+5. **[architecture]** `skills/design/SKILL.md:707-709` — Gate C presentation remains orchestrator-soft while Step 3 gains hard bash; mirror enforcement or accept documented reliability gap (see TSV row 5).
+
+6. **[risk_integration]** Planned sentinel `touch` — Failure modes repeat large prints; handle `touch` errors (see TSV row 6).
+
+7. **[documentation]** Implementation plan “Files to modify” vs “Documentation impact” — `CHANGELOG.md` is called out for a PATCH line but not listed in the Files-to-modify bullets; add it so implementers do not drop the entry (severity nit; omitted from TSV to limit duplicate schema rows — user asked TSV per finding; I'll add a 7th row).
+
+Adding 7th TSV row for CHANGELOG nit.
+
+Actually user said "For each finding, add one record" - I have 6 records. Add 7th for CHANGELOG.
+
+7. documentation nit - no repo line - use `CHANGELOG.md` and reference plan inconsistency - location could be `CHANGELOG.md` (missing from plan Files-to-modify)
+
+schema_version row for nit:
+1	in_scope	nit	documentation	CHANGELOG.md (plan Files-to-modify gap)	CHANGELOG PATCH entry promised but Files-to-modify list omits the file	Implementer ships SKILL + approval-gates changes without changelog env-var discoverability	Add `CHANGELOG.md` to the plan’s Files-to-modify / implementation checklist
+
+I'll add 8th for grep TOC false positives - latent correctness:
+
+1	in_scope	latent	correctness	skills/design/SKILL.md (planned grep pipeline)	`grep -E '^#{2,3} '` on `plan.txt` treats header-like lines inside fenced code as outline entries	Summary TOC can list bogus sections; user trusts wrong structure	Document “executor may ignore matches inside fenced regions” or switch to a small awk/md-aware extractor
+
+I'll include 8 TSV lines total - might be heavy. Keep 7 (drop grep to numbered only without TSV).
+
+Numbered list item for grep without TSV - user wanted TSV per finding. I'll add 8th row.
+
+Final TSV: 8 records. Actually merge doc nit into one - 7 rows.
+
+Output raw TSV - I'll generate 7 rows (6 critical + changelog).
+
+Remove grep from TSV, mention in numbered list only as nit.
+
+Final message starts with schema_version line - no blank line before it in user view.
+
+I'll use 7 TSV data rows after header = 8 lines total header+7.
+
+Wait - "For each finding, add one record" with schema_version 1 - so 7 findings = 7 data lines + 1 header = 8 lines.
+
+Rows: 1) DESIGN_TMPDIR 2) exactly three 3) Other cancel 4) snippet guard 5) Gate C asymmetry 6) touch 7) CHANGELOG
+
+7 rows.
+
+[OUT_OF_SCOPE] `scripts/test-design-structure.sh` / `skills/design/SKILL.md:525` — Plan explicitly defers literal-anchor assertions for `## Plan Candidate for Review` / `## Final Design Plan` (plan cache lines 301–303); worth a follow-up issue because SKILL already pins other Step 3 strings for CI (`skills/design/SKILL.md:525` references Check 14a); no change requested in this PR.
+
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	risk_integration	skills/design/SKILL.md:512-515	Planned Step 3 bash uses `$DESIGN_TMPDIR` after optional `source` only	If `current-design-env-$PPID.sh` is missing or stale, `DESIGN_TMPDIR` can be empty and `"$DESIGN_TMPDIR/.step3-entry-plan-printed"` resolves to `/.step3-entry-plan-printed` (root) or another unintended path; `touch` may fail or write outside the session dir	After sourcing, require `[ -n "${DESIGN_TMPDIR:-}" ] && [ -d "$DESIGN_TMPDIR" ]` before `-e`/read/`touch`; else emit a visible warning and skip sentinel mutation
+1	in_scope	important	correctness	skills/design/references/approval-gates.md:119-124	Gate C `### Prompt` still mandates `AskUserQuestion` with **exactly three options**	Contradicts the plan’s new `Other`/free-form branch for full-plan retrieval; implementers may strip `Other` to satisfy the old normative line	Reword to three **primary** options plus an explicit `Other`/free-form path whose handler prints the plan and re-fires the same primary prompt
+1	in_scope	important	risk_integration	skills/design/SKILL.md:184-185 vs planned Gate C `Other`	Step 0 tier gate documents `Non-tier Other answers` → terminal cancel	Agents may reuse that global `Other` contract at Gate C and cancel `/design` instead of `cat`+re-prompt	Add a Gate C-only sentence: `Other` here never runs the Step 0 terminal-cost cancel path; it only requests full-plan emission then re-asks Approve/Discuss/Re-run
+1	in_scope	important	correctness	skills/design/SKILL.md (planned Step 3 bash after ~514)	Fenced snippet omits the numeric `case` guard while the plan’s Edge cases promise it	Copy-paste from the plan ships without the guard; non-numeric `LARCH_DESIGN_PLAN_SUMMARY_THRESHOLD` still triggers bash arithmetic errors	Either include the `case "$_summary_threshold" in (''|*[!0-9]*) … esac` lines inside the authoritative fenced block or add an explicit “snippet abbreviated — final SKILL must include guard” instruction
+1	in_scope	important	architecture	skills/design/SKILL.md:707-709	Step 3 re-print becomes bash-mechanical; Gate C stays prose `MUST` only	The plan’s Failure mode #1 admits orchestrators can skip the Gate C print; Step 3 does not share that failure mode	Add a small fenced bash after the Step 4b `timing-ledger` fence that always emits `## Final Design Plan` (summary branch included) before `AskUserQuestion`, or route through `design-driver.sh` with a new `ACTION=` that prints the same contract
+1	in_scope	latent	risk_integration	skills/design/SKILL.md (planned Step 3 bash)	`touch` on `.step3-entry-plan-printed` is not checked for success	Transient FS/permission errors leave no sentinel; later Step 3 re-entries repeat huge chat output and confuse “first-time only” semantics	Check `touch` exit status; on failure print a warning and document that the print may repeat until the operator fixes permissions
+1	in_scope	nit	documentation	CHANGELOG.md vs plan “Files to modify”	Documentation impact requires a `CHANGELOG.md` PATCH line but the Files-to-modify bullets omit that file	Implementers may ship behavior + env-var docs only inside SKILL and skip changelog discoverability	Add `CHANGELOG.md` to the plan’s Files-to-modify / operator checklist
+
+1. **[risk_integration]** `skills/design/SKILL.md:512-515` — Guard `DESIGN_TMPDIR` after `source` before sentinel paths (see TSV row 1).
+
+2. **[correctness]** `skills/design/references/approval-gates.md:119-124` — Resolve “exactly three options” vs `Other` opt-in (see TSV row 2).
+
+3. **[risk_integration]** `skills/design/SKILL.md:184-185` vs Gate C — Disambiguate Gate C `Other` from Step 0 `Other`→cancel (see TSV row 3).
+
+4. **[correctness]** Planned Step 3 snippet — Include or explicitly require the numeric threshold guard promised in Edge cases (see TSV row 4).
+
+5. **[architecture]** `skills/design/SKILL.md:707-709` — Mechanically enforce Gate C print parity with Step 3 or accept a documented reliability gap (see TSV row 5).
+
+6. **[risk_integration]** Planned sentinel `touch` — Handle `touch` failure to avoid silent loss of first-time gating (see TSV row 6).
+
+7. **[documentation]** — Add `CHANGELOG.md` to the plan’s Files-to-modify list (see TSV row 7).
+
+8. **[correctness] (nit, not in TSV)** `skills/design/SKILL.md` (planned `grep '^#{2,3} '`) — Header lines inside fenced code blocks can pollute the outline; call out as acceptable noise or tighten extraction.
+
+[OUT_OF_SCOPE] Structural CI pin for the new headers in `scripts/test-design-structure.sh` — plan cache lines 301–303 explicitly defer this; nearby contract text references harness coverage at `skills/design/SKILL.md:525`; follow-up issue only.
