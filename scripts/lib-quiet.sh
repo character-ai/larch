@@ -117,7 +117,7 @@ emit_breadcrumb() {
         if [[ "$breadcrumb_fd" =~ ^[0-9]+$ ]]; then
             printf '%s\n' "$*" >&"$breadcrumb_fd"
         else
-            larch_err "$*"
+            emit "$*"
         fi
     else
         printf '%s\n' "$*"
