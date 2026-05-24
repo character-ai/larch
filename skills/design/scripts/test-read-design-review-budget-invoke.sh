@@ -37,8 +37,7 @@ printf '%s\n' '{"sketch_budget": 4}' >"$tmp"
 
 fakebin=$(mktemp -d "${TMPDIR:-/tmp}/larch-fakebin.XXXXXX")
 fakebin_pyonly=$(mktemp -d "${TMPDIR:-/tmp}/larch-fakebin-pyonly.XXXXXX")
-fakebin_jqonly=$(mktemp -d "${TMPDIR:-/tmp}/larch-fakebin-jqonly.XXXXXX")
-trap 'rm -rf "$fakebin" "$fakebin_pyonly" "$fakebin_jqonly"; rm -f "$tmp"' EXIT
+trap 'rm -rf "$fakebin" "$fakebin_pyonly"; rm -f "$tmp"' EXIT
 printf '%s\n' '#!/bin/sh' 'exit 1' >"$fakebin/python3"
 printf '%s\n' '#!/bin/sh' 'exit 1' >"$fakebin/jq"
 chmod +x "$fakebin/python3" "$fakebin/jq"
@@ -62,9 +61,9 @@ _rdb_out=$(PATH="$fakebin:/usr/bin:/bin:/usr/sbin:/sbin" "$READ_BUDGET" "$tmp")
 [[ "$_rdb_out" == full ]] || fail "all fallbacks exhausted default to full"
 
 if command -v jq >/dev/null 2>&1; then
-    ln -sf "$(command -v jq)" "$fakebin_jqonly/jq"
+    _jq_dir=$(dirname "$(command -v jq)")
     printf '%s\n' '{"review_budget":"quick"}' >"$tmp"
-    _rdb_out=$(PATH="$fakebin_pyonly:$fakebin_jqonly:/usr/bin:/bin:/usr/sbin:/sbin" "$READ_BUDGET" "$tmp")
+    _rdb_out=$(PATH="$_jq_dir:$fakebin_pyonly:/usr/bin:/bin:/usr/sbin:/sbin" "$READ_BUDGET" "$tmp")
     [[ "$_rdb_out" == quick ]] || fail "jq path when python3 fails"
 else
     echo "SKIP: jq not on PATH; skipping jq-path branch" >&2
@@ -74,7 +73,7 @@ dt=$(mktemp -d "${TMPDIR:-/tmp}/larch-invoke-test.XXXXXX")
 full_dt=$(mktemp -d "${TMPDIR:-/tmp}/larch-invoke-full.XXXXXX")
 dt_norp=$(mktemp -d "${TMPDIR:-/tmp}/larch-invoke-norp.XXXXXX")
 defects_dt=$(mktemp -d "${TMPDIR:-/tmp}/larch-invoke-defects.XXXXXX")
-trap 'rm -rf "$fakebin" "$fakebin_pyonly" "$fakebin_jqonly" "$dt" "$full_dt" "$dt_norp" "$defects_dt"; rm -f "$tmp"' EXIT
+trap 'rm -rf "$fakebin" "$fakebin_pyonly" "$dt" "$full_dt" "$dt_norp" "$defects_dt"; rm -f "$tmp"' EXIT
 printf '%s\n' '{"review_budget":"quick"}' >"$dt/run-params.json"
 if out=$(
     DESIGN_TMPDIR="$dt" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" PATH="$fakebin:/usr/bin:/bin" \
