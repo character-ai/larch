@@ -1,0 +1,7 @@
+Reading the plan and tracing referenced code paths for #2669, BAIL_REASON, and exit-3 handling.
+
+Verifying Edge case #2 vs testing strategy for `unrecognized` classification.
+
+Findings: internal contradiction (Edge #2 vs testing line 80); #2669 narrative tension; missing post-#2669 migration; `ship-pr.sh` exit-3 state parity; security note on `BAIL_FAILURE_DETAIL_LOG`. Calling CreatePlan to satisfy the plan-mode tool requirement while the user-facing answer uses the mandated TSV-first format.
+
+

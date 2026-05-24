@@ -1,0 +1,25 @@
+Propose a high-level implementation approach for this feature:
+
+Feature: In `/implement` ship-pr loop CI fix, when the FIRST fixer fails for non-health reasons (timeout, parse error, "no actionable change", refusal to act, etc.), skip the rest of the cursor→codex→claude waterfall and bail to /implement orchestrator ASAP. Apply the waterfall ONLY when the first fixer is unavailable / unhealthy (binary missing, login expired, API/health probe failed).
+
+Resolved scope (from Round 1 discussion):
+1. "Main agent" = exit ship-pr.sh fix-loop entirely with a bail; outer /implement Step 8+ handles by attempting a main-agent (Claude tool-call) fix and re-invoking ship-pr.sh. The fix-loop does NOT skip to the in-script Claude tier.
+2. Health discriminator: LAUNCHER_EXIT KV (or new dedicated KV) from launcher stdout. Each launch-{cursor,codex,claude}-ci.sh emits a stable taxonomy distinguishing "tool unavailable / login expired / health probe failed" from "tool ran but failed for another reason."
+3. Trigger scope: applies on every entry into run_ci_fix_vendor; the first tier (cursor) is "the first fixer." If cursor fails non-health, skip codex and claude tiers, bail with new BAIL_REASON. Symmetric across FIX_ATTEMPTS=0,1,2.
+4. Exit code: reuse exit 3 (needs_user_bail_reason) path with a NEW reason token (working name: first-fixer-non-health). No new top-level exit code introduced.
+5. Scope of policy: strictly run_ci_fix_vendor. Rebase conflict resolver (cursor→codex branch in run_rebase_rebump) and run_recovery_waterfall keep current behavior unchanged.
+6. Post-bail: /implement Step 8+ catches the new BAIL_REASON and dispatches a main-agent (Claude tool-call) fix at orchestrator level, then re-invokes ship-pr.sh.
+
+Affected code areas:
+- scripts/ship-pr.sh:1301-1379 (run_ci_fix_vendor) — main edit site for the waterfall short-circuit logic
+- scripts/ship-pr.sh:1228 (needs_user_bail_reason allowlist) — add new reason token
+- scripts/launch-cursor-ci.sh, scripts/launch-codex-ci.sh, scripts/launch-claude-ci.sh — extend taxonomy so health-vs-other can be distinguished by run_ci_fix_vendor
+- skills/implement/SKILL.md Step 8+ — catch new BAIL_REASON and dispatch main-agent fix
+- scripts/test-ship-pr.sh — extend coverage for the new short-circuit path
+
+Explore the codebase. Write 2-3 paragraphs covering:
+(1) Key architectural decisions and approach — specifically: the concrete mechanism for distinguishing health vs other launcher failures (LAUNCHER_EXIT enum vs new LAUNCHER_HEALTH KV vs pre-flight probe), the exact insertion point and shape of the new short-circuit in run_ci_fix_vendor's for-tier loop, the bail-reason token and how needs_user_bail_reason should be extended.
+(2) Which files/modules to modify and why — including the /implement Step 8 dispatcher shape (which Skill / prompt / how re-invocation is gated to avoid infinite loops between ship-pr.sh and /implement) and the test surface (test-ship-pr.sh extensions).
+(3) Main tradeoffs and risks — including risk of infinite ship-pr.sh ↔ /implement re-invocation loops, risk of misclassifying "other" failures as "health" or vice versa, interaction with issue #2669 (exit code semantics work, blocked-by relationship is already filed).
+
+Do NOT modify files.
