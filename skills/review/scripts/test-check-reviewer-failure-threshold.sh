@@ -89,15 +89,15 @@ out=$(run_case all_fail_hard hard timeout timeout timeout timeout timeout timeou
 got=$(printf '%s\n' "$out" | awk -F= '$1=="THRESHOLD_OK"{print $2}')
 assert_eq "12/12 fail HARD → THRESHOLD_OK=false" "$got" "false"
 
-echo "# SIMPLE panel — 3 of 7 fail (still under threshold)"
-out=$(run_case under_simple simple OK OK OK OK timeout timeout timeout 2>&1)
+echo "# SIMPLE panel — 3 of 6 fail (still under threshold)"
+out=$(run_case under_simple simple OK OK OK timeout timeout timeout 2>&1)
 got=$(printf '%s\n' "$out" | awk -F= '$1=="THRESHOLD_OK"{print $2}')
-assert_eq "3/7 fail SIMPLE → OK" "$got" "true"
+assert_eq "3/6 fail SIMPLE → OK" "$got" "true"
 
-echo "# SIMPLE panel — 4 of 7 fail → just over"
-out=$(run_case over_simple simple OK OK OK timeout timeout timeout timeout 2>&1)
+echo "# SIMPLE panel — 4 of 6 fail → just over"
+out=$(run_case over_simple simple OK OK timeout timeout timeout timeout 2>&1)
 got=$(printf '%s\n' "$out" | awk -F= '$1=="THRESHOLD_OK"{print $2}')
-assert_eq "4/7 fail SIMPLE → THRESHOLD_OK=false" "$got" "false"
+assert_eq "4/6 fail SIMPLE → THRESHOLD_OK=false" "$got" "false"
 
 echo "# cap_hit counts as success"
 out=$(run_case cap_hit hard OK OK OK OK OK OK OK OK OK OK OK cap_hit 2>&1)
@@ -168,26 +168,26 @@ got=$(printf '%s\n' "$out" | awk -F= '$1=="FAILED_SLOTS"{print $2}')
 assert_eq "only static failures contribute when dynamic fallback outputs fail" "$got" "3"
 
 echo "# NOT_SUBSTANTIVE slots are counted as failed AND tracked separately"
-out=$(run_case not_substantive simple --launched-slots 7 \
-    OK OK OK OK OK NOT_SUBSTANTIVE NOT_SUBSTANTIVE 2>&1)
+out=$(run_case not_substantive simple --launched-slots 6 \
+    OK OK OK OK NOT_SUBSTANTIVE NOT_SUBSTANTIVE 2>&1)
 got=$(printf '%s\n' "$out" | awk -F= '$1=="FAILED_SLOTS"{print $2}')
 assert_eq "NOT_SUBSTANTIVE counts as failed" "$got" "2"
 got=$(printf '%s\n' "$out" | awk -F= '$1=="NOT_SUBSTANTIVE_SLOTS"{print $2}')
 assert_eq "NOT_SUBSTANTIVE_SLOTS count emitted" "$got" "2"
 got=$(printf '%s\n' "$out" | awk -F= '$1=="THRESHOLD_OK"{print $2}')
-assert_eq "2 of 7 NOT_SUBSTANTIVE → threshold OK (not >50%)" "$got" "true"
+assert_eq "2 of 6 NOT_SUBSTANTIVE → threshold OK (not >50%)" "$got" "true"
 
-echo "# 4 NOT_SUBSTANTIVE of 7 → threshold fails"
-out=$(run_case not_substantive_majority simple --launched-slots 7 \
-    OK OK OK NOT_SUBSTANTIVE NOT_SUBSTANTIVE NOT_SUBSTANTIVE NOT_SUBSTANTIVE 2>&1)
+echo "# 4 NOT_SUBSTANTIVE of 6 → threshold fails"
+out=$(run_case not_substantive_majority simple --launched-slots 6 \
+    OK OK NOT_SUBSTANTIVE NOT_SUBSTANTIVE NOT_SUBSTANTIVE NOT_SUBSTANTIVE 2>&1)
 got=$(printf '%s\n' "$out" | awk -F= '$1=="THRESHOLD_OK"{print $2}')
-assert_eq "4 of 7 NOT_SUBSTANTIVE → threshold fails" "$got" "false"
+assert_eq "4 of 6 NOT_SUBSTANTIVE → threshold fails" "$got" "false"
 got=$(printf '%s\n' "$out" | awk -F= '$1=="NOT_SUBSTANTIVE_SLOTS"{print $2}')
 assert_eq "NOT_SUBSTANTIVE_SLOTS=4 emitted on majority-fail path" "$got" "4"
 
 echo "# mixed NOT_SUBSTANTIVE and other failures"
-out=$(run_case mixed_failures simple --launched-slots 7 \
-    OK OK OK NOT_SUBSTANTIVE FAILED NOT_SUBSTANTIVE timeout 2>&1)
+out=$(run_case mixed_failures simple --launched-slots 6 \
+    OK OK NOT_SUBSTANTIVE FAILED NOT_SUBSTANTIVE timeout 2>&1)
 got=$(printf '%s\n' "$out" | awk -F= '$1=="FAILED_SLOTS"{print $2}')
 assert_eq "mixed: all non-OK count as failed" "$got" "4"
 got=$(printf '%s\n' "$out" | awk -F= '$1=="NOT_SUBSTANTIVE_SLOTS"{print $2}')
