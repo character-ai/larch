@@ -4,7 +4,7 @@
 slugs, file extensions, write modes, and sanitizer hooks.
 
 The table intentionally covers the legacy tracking sections as durable files:
-`plan-goals-test`, per-run setup/implementation artifacts (`parent-issue`,
+`plan-goals-test`, optional `include-probe-evidence` (redacted Phase 1 probe transcripts when plans require them), per-run setup/implementation artifacts (`parent-issue`,
 `pre-review-head`, `pre-review-untracked`, `codex-impl-transcript`,
 `codex-impl-transcript-meta`,
 `codex-impl-transcript-prompt`, `codex-commit-message`,
