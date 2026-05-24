@@ -20,6 +20,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Migration posture**: legacy `[IN PROGRESS]` and `[PLANNED]` prefixes are stripped by `strip_lifecycle_prefix` for backward compatibility but are no longer accepted as `--state` values by `tracking-issue-write.sh` or as admission-pass prefixes.
 - **Audit scope**: workflow call sites and rename `--state` surfaces in the active runtime tree (`skills/`, `scripts/`, `agents/`, `.claude/`, `docs/`, tests) now use the new prefix set; deliberate legacy bracket literals remain only where migration, admission recovery, strip helpers, or hermetic fixtures require them. This Unreleased section documents the migration and may name the old prefixes. Historical shipped changelog bodies and `larch-logs/` were not bulk-retitled.
 
+## [42.4.8] - 2026-05-24
+
+### Changed
+
+- Align operator docs with the post-2714 token cost pipeline and shared run-summary renderer (non-dollar `--summary`, dollar line only via `render-run-summary.sh`, no removed `/fix-issue` callers on `token-cost.sh`).
+- Document full `Outcome` bullet coverage and dual `/implement` + `/design` final-summary write and tracking-comment paths in run logs and `write-final-report.md`.
+- Fix Bash 3.2 `set -u` empty-array expansion in `render-final-summary.sh` so `/design` finalization works on macOS system Bash.
+
 ## [42.4.7] - 2026-05-24
 
 ### Changed
