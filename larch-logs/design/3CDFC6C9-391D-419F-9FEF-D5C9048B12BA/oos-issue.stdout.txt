@@ -1,0 +1,8 @@
+ISSUES_CREATED=1
+ISSUES_FAILED=0
+ISSUES_DEDUPLICATED=0
+ISSUE_1_NUMBER=2689
+ISSUE_1_URL=https://github.com/character-ai/larch/issues/2689
+ISSUE_1_ID=4510767768
+ISSUE_1_TITLE=[OOS] Add scout-archetype-yield.tsv to round_artifact_included allowlist (pre-existing gap)
+ISSUE_1_BLOCKER_LINKS_APPLIED=1

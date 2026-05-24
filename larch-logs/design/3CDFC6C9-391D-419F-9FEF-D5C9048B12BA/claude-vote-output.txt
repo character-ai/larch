@@ -1,0 +1,24 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: EXONERATE -- the compacted voter_files handoff is the existing design and fixing slot-positional identity adds significant complexity; the simpler fix is to document that vN columns track effective-voter order not slot number, which harness B already encodes
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: EXONERATE -- limiting TSV cells to enum tokens only (the simpler option) is already implied by the lenient-policy design; full sanitization prose adds complexity beyond what the plan needs to specify
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: EXONERATE -- the concern is real but the plan already names classify_result enum values; pinning delimiter rules for reviewer_slots is implementation detail that can be specified in the sibling .md during implementation without a plan revision
+FINDING_13: YES
+FINDING_14: EXONERATE -- the risk is real but adding a harness assertion that both parsers agree on every fixture line (the lighter proposed fix) is an implementation detail; no plan revision required beyond ensuring parse-judge-vote-and-rating.sh is the single source for all four axes
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: YES
+FINDING_18: YES
+OOS_1: NO -- topology.tsv update for a new batch slug is routine doc maintenance, not worth a standalone issue
+OOS_2: EXONERATE -- the redaction posture question is legitimate but the TSV cells are enum tokens after Finding 8/9 policy is settled; worth a note but not a standalone GitHub issue
+OOS_3: NO -- the description itself says "not required if all publish paths already copy from REVIEW_TMPDIR" which is the existing design; speculative
+OOS_4: YES -- the scout-archetype-yield.tsv omission from round_artifact_included is a real pre-existing gap with a concrete failure mode (yield bytes not committed to round dirs)
+OOS_5: NO -- explicitly speculative future requirement with no current evidence of org policy change
+OOS_6: EXONERATE -- the plan already says "+ sibling .md" for item 3; this OOS is already covered and not worth a separate issue
