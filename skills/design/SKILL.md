@@ -544,23 +544,26 @@ If the driver exits non-zero or emits `EMIT_PLAN_STATUS=missing-diff-lines`, tre
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-_review_budget=full
-if [[ -r "$DESIGN_TMPDIR/run-params.json" ]]; then
-  _review_budget=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("review_budget","full"))' "$DESIGN_TMPDIR/run-params.json" 2>/dev/null || echo full)
-fi
-if [[ "$_review_budget" != "quick" ]]; then
-  _validate_out=$(printf 'ACTION=VALIDATE_PLAN_COMMANDS ARGS=--plan-file %s\n' "$DESIGN_TMPDIR/plan.txt" \
-    | "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-driver.sh" --design-tmpdir "$DESIGN_TMPDIR")
-  VALIDATE_STATUS=ok
-  while IFS= read -r _vl || [[ -n "$_vl" ]]; do
-    _vk="${_vl%%=*}"
-    _vv="${_vl#*=}"
-    case "$_vk" in
-      VALIDATE_STATUS) VALIDATE_STATUS="$_vv" ;;
-    esac
-  done <<< "$_validate_out"
-fi
+_validate_out=$("${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/invoke-plan-validator-if-not-quick.sh" "$DESIGN_TMPDIR/plan.txt")
+VALIDATE_STATUS=ok
+VALIDATE_DEFECT_COUNT=0
+VALIDATE_SKIPPED_COUNT=0
+VALIDATE_UNSAFE_TOKEN_COUNT=0
+VALIDATE_LOG_FILE=""
+while IFS= read -r _vl || [[ -n "$_vl" ]]; do
+  _vk="${_vl%%=*}"
+  _vv="${_vl#*=}"
+  case "$_vk" in
+    VALIDATE_STATUS) VALIDATE_STATUS="$_vv" ;;
+    VALIDATE_DEFECT_COUNT) VALIDATE_DEFECT_COUNT="$_vv" ;;
+    VALIDATE_SKIPPED_COUNT) VALIDATE_SKIPPED_COUNT="$_vv" ;;
+    VALIDATE_UNSAFE_TOKEN_COUNT) VALIDATE_UNSAFE_TOKEN_COUNT="$_vv" ;;
+    VALIDATE_LOG_FILE) VALIDATE_LOG_FILE="$_vv" ;;
+  esac
+done <<< "$_validate_out"
 ```
+
+Mechanical dispatch: `ACTION=VALIDATE_PLAN_COMMANDS` is issued from `invoke-plan-validator-if-not-quick.sh` into `design-driver.sh` when `review_budget` is not `quick` (see `read-design-review-budget.sh` for JSON fallbacks when `python3` is unavailable).
 
 When `VALIDATE_STATUS=defects-found` after this block, execute **### Plan command validator failure (shared)** with `--site` context `design Step 2b` and **Cancel** semantics returning to Gate A (preserve `$DESIGN_TMPDIR`).
 
@@ -882,26 +885,27 @@ Cross-session idempotency: after a successful `annotate` with `ISSUES_FAILED=0`,
 Step 4b Gate C already returned **Approve**. Proceed without an additional prompt:
 
 1. Compose `$DESIGN_TMPDIR/composed-plan.md` containing `## Plan`, `## Acceptance`, and a trailing `diff_lines: <N>` line (integer from `$DESIGN_TMPDIR/diff-lines.txt` or best-effort estimate).
-2. When `review_budget` from `$DESIGN_TMPDIR/run-params.json` is not `quick`, run plan-command validation on the composed plan **before** redaction (Tier 3 dry-run is disabled for `composed-plan.md`; Tier 2 still runs):
+2. When `review_budget` from `$DESIGN_TMPDIR/run-params.json` is not `quick`, run plan-command validation on the composed plan **before** redaction (Tier 3 dry-run is disabled for `composed-plan.md`; Tier 2 still runs). Same dispatch as Step 2b (`invoke-plan-validator-if-not-quick.sh` → `ACTION=VALIDATE_PLAN_COMMANDS` → `design-driver.sh`), but pass `composed-plan.md`:
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-_review_budget=full
-if [[ -r "$DESIGN_TMPDIR/run-params.json" ]]; then
-  _review_budget=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("review_budget","full"))' "$DESIGN_TMPDIR/run-params.json" 2>/dev/null || echo full)
-fi
-if [[ "$_review_budget" != "quick" ]]; then
-  _validate_out=$(printf 'ACTION=VALIDATE_PLAN_COMMANDS ARGS=--plan-file %s\n' "$DESIGN_TMPDIR/composed-plan.md" \
-    | "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-driver.sh" --design-tmpdir "$DESIGN_TMPDIR")
-  VALIDATE_STATUS=ok
-  while IFS= read -r _vl || [[ -n "$_vl" ]]; do
-    _vk="${_vl%%=*}"
-    _vv="${_vl#*=}"
-    case "$_vk" in
-      VALIDATE_STATUS) VALIDATE_STATUS="$_vv" ;;
-    esac
-  done <<< "$_validate_out"
-fi
+_validate_out=$("${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/invoke-plan-validator-if-not-quick.sh" "$DESIGN_TMPDIR/composed-plan.md")
+VALIDATE_STATUS=ok
+VALIDATE_DEFECT_COUNT=0
+VALIDATE_SKIPPED_COUNT=0
+VALIDATE_UNSAFE_TOKEN_COUNT=0
+VALIDATE_LOG_FILE=""
+while IFS= read -r _vl || [[ -n "$_vl" ]]; do
+  _vk="${_vl%%=*}"
+  _vv="${_vl#*=}"
+  case "$_vk" in
+    VALIDATE_STATUS) VALIDATE_STATUS="$_vv" ;;
+    VALIDATE_DEFECT_COUNT) VALIDATE_DEFECT_COUNT="$_vv" ;;
+    VALIDATE_SKIPPED_COUNT) VALIDATE_SKIPPED_COUNT="$_vv" ;;
+    VALIDATE_UNSAFE_TOKEN_COUNT) VALIDATE_UNSAFE_TOKEN_COUNT="$_vv" ;;
+    VALIDATE_LOG_FILE) VALIDATE_LOG_FILE="$_vv" ;;
+  esac
+done <<< "$_validate_out"
 ```
 
 When `VALIDATE_STATUS=defects-found` after this block, execute **### Plan command validator failure (shared)** with `--site` context `design Step 5c` and **Cancel** semantics: preserve `$DESIGN_TMPDIR`, skip Step 6 cleanup, and **do not** run the remaining Step 5c items (redaction, `plan-block-write.sh`, publish, rename) on this exit branch.

@@ -1,6 +1,6 @@
 # parse-plan-commands.sh
 
-Deterministic markdown parser for `/design` plan bodies: extracts fenced `bash` / `sh` commands and NEW/UPDATED allow-list rows into a single TSV (see normative schema in `skills/design/SKILL.md`).
+Deterministic markdown parser for `/design` plan bodies: extracts fenced `bash` / `sh` commands and NEW/UPDATED allow-list rows into a single TSV (normative column contract in this file and `validate-plan-commands.md`; consumed by `validate-plan.sh`).
 
 ## CLI
 
@@ -27,7 +27,7 @@ Primary consumer: `validate-plan-commands.sh` via `validate-plan.sh`.
 - **Heredocs**: bodies between `<<DELIM` / `<<'DELIM'` / `<<"DELIM"` and a closing line containing only `DELIM` are removed from the physical line stream so later commands in the same fence are still parsed. Unterminated `<<"…` openers emit a `parse_note` and leave the line intact (no silent fast-forward to EOF).
 - Command lines are split on `|`, `&&`, `||`, and `;` outside quotes and outside balanced `(...)`.
 - Interpreter prefixes (`bash`, `sh`, `env`, …), leading `VAR=value`, and `${CLAUDE_PLUGIN_ROOT}` / repo-root absolute prefixes are stripped when resolving `script_path`.
-- **Rejected / noted constructs**: subshells `$()`, process substitution `<(`, `eval`, inline `-c`, absolute script paths, and paths containing `..` after normalization → `parse_note` rows (validator ignores them as invocations).
+- **Rejected / noted constructs**: command substitution `$(` (but not arithmetic **`$((`…`))`**, which is left to the shell), process substitution `<(`, `eval`, inline `-c`, absolute script paths, and paths containing `..` after normalization → `parse_note` rows (validator ignores them as invocations).
 
 ## Allow-list sections
 

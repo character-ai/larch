@@ -436,7 +436,7 @@ grep -Fq 'Cancel' "$SKILL_MD" \
   || fail "(14b9b) SKILL.md missing Cancel validator option label"
 step2b_mark=$(grep -nF 'mark "design Step 2b — plan"' "$SKILL_MD" | head -1 | cut -d: -f1 || true)
 emit_line=$(awk -v s="$step2b_mark" 'NR>s && /ACTION=EMIT_PLAN/ {print NR; exit}' "$SKILL_MD" || true)
-val_line=$(awk -v s="$step2b_mark" 'NR>s && /VALIDATE_PLAN_COMMANDS/ && /plan\.txt/ {print NR; exit}' "$SKILL_MD" || true)
+val_line=$(awk -v s="$step2b_mark" 'NR>s && /invoke-plan-validator-if-not-quick\.sh/ && /plan\.txt/ {print NR; exit}' "$SKILL_MD" || true)
 [[ -n "$step2b_mark" && -n "$emit_line" && -n "$val_line" && "$val_line" -gt "$emit_line" ]] \
   || fail "(14b10) VALIDATE_PLAN_COMMANDS must follow EMIT_PLAN in Step 2b block"
 
@@ -493,7 +493,7 @@ if (( step5b_line >= step5c_line )); then
   fail "(15b) Step 5b must appear before Step 5c in SKILL.md"
 fi
 red_line=$(awk -v s="$step5c_line" 'NR>s && /redact-secrets\.sh/ && /composed-plan\.md/ {print NR; exit}' "$SKILL_MD" || true)
-val5=$(awk -v s="$step5c_line" 'NR>s && /VALIDATE_PLAN_COMMANDS/ && /composed-plan\.md/ {print NR; exit}' "$SKILL_MD" || true)
+val5=$(awk -v s="$step5c_line" 'NR>s && /invoke-plan-validator-if-not-quick\.sh/ && /composed-plan\.md/ {print NR; exit}' "$SKILL_MD" || true)
 [[ -n "$red_line" && -n "$val5" && "$val5" -lt "$red_line" ]] \
   || fail "(14b11) Step 5c validator must appear before redact-secrets on composed-plan.md"
 # shellcheck disable=SC2016  # literal backticks + $DESIGN_TMPDIR token must match SKILL.md prose

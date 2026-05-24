@@ -6,7 +6,8 @@
 
 ## Primary Callers
 
-- `/design` Step 2b for `ACTION=EMIT_PLAN` and `ACTION=VALIDATE_PLAN_COMMANDS` (after `EMIT_PLAN` when `review_budget` is `full`)
+- `/design` Step 2b for `ACTION=EMIT_PLAN` and `ACTION=VALIDATE_PLAN_COMMANDS` (after `EMIT_PLAN` when `review_budget` is `full`, via `invoke-plan-validator-if-not-quick.sh`)
+- `/design` Step 5c for `ACTION=VALIDATE_PLAN_COMMANDS` on `composed-plan.md` before `redact-secrets.sh` (Tier 3 dry-run disabled on composed artifacts; same helper as Step 2b)
 - `/design` Step 3 for `ACTION=TALLY` and the second `ACTION=EMIT_PLAN`
 - `/design` Step 4 for `ACTION=FINALIZE`
 

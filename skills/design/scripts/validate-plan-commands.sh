@@ -70,13 +70,19 @@ with_timeout() {
         timeout "$sec" "$@"
     elif command -v gtimeout >/dev/null 2>&1; then
         gtimeout "$sec" "$@"
+    elif command -v perl >/dev/null 2>&1; then
+        perl -e '$SIG{ALRM} = sub { exit 124 }; alarm shift; exec @ARGV' "$sec" "$@"
     else
-        "$@"
+        larch_err "validate-plan-commands.sh: need timeout, gtimeout, or perl for bounded --help/dry-run probes"
+        exit 2
     fi
 }
 
 is_repo_script() {
     local p="$1"
+    while [[ "$p" == ./* ]]; do
+        p="${p#./}"
+    done
     [[ "$p" == scripts/* ]] || [[ "$p" == skills/*/scripts/* ]] || [[ "$p" == .claude/skills/*/scripts/* ]] || return 1
     [[ "$p" != *..* ]] || return 1
     return 0
@@ -109,7 +115,7 @@ probe_help() {
     cout=$(mktemp)
     cerr=$(mktemp)
     set +e
-    with_timeout "$HELP_TIMEOUT" "$script_abs" --help >"$cout" 2>"$cerr"
+    with_timeout "$HELP_TIMEOUT" env LARCH_QUIET_DISABLE=1 "$script_abs" --help >"$cout" 2>&1
     HELP_RC=$?
     set -e
     if [[ "$HELP_RC" -eq 124 ]]; then
@@ -124,7 +130,7 @@ probe_help() {
     fi
     cp "$cout" "$cfile.stdout" 2>/dev/null || : >"$cfile.stdout"
     rm -f "$cout" "$cerr"
-    if [[ -s "$cfile.stdout" ]]; then
+    if [[ -s "$cfile.stdout" && "$HELP_RC" -eq 0 ]]; then
         HELP_STDOUT_EMPTY=0
         printf '0\n' >"$cfile.empty"
     else

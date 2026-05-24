@@ -320,6 +320,21 @@ function split_segments(s, arr,   n, i, c, len, seg, depth, in_s, in_d, esc, two
     return n
 }
 
+# True when seg contains command substitution "$(..." that is not arithmetic "$((...".
+function has_command_substitution(seg,   i, n) {
+    n = length(seg)
+    for (i = 1; i <= n; i++) {
+        if (substr(seg, i, 2) != "$(") {
+            continue
+        }
+        if (substr(seg, i, 3) == "$((") {
+            continue
+        }
+        return 1
+    }
+    return 0
+}
+
 function normalize_token(t,   u, pref) {
     u = t
     gsub(/^[[:space:]]+|[[:space:]]+$/, "", u)
@@ -355,7 +370,7 @@ function shift_tok(TOK, nt,   j) {
 }
 
 function parse_command_segment(start_line, cmd_idx, seg, TOK, nt, t, script, uid, k, fl, fv, eq, nf, nxt) {
-    if (index(seg, "$(") > 0) {
+    if (has_command_substitution(seg)) {
         emit_parse_note(start_line, "subshell")
         return
     }
