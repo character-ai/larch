@@ -382,6 +382,42 @@ else
     fi
 fi
 
+# CI-fix pattern fragment: fix role includes topology.tsv sentinel; non-fix roles omit it.
+stub_bin="$TMPDIR_BASE/ci-fix-stub-bin"
+mkdir -p "$stub_bin"
+cat > "$stub_bin/cursor" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+chmod +x "$stub_bin/cursor"
+OUT_FIX="$TMPDIR_BASE/ci-fix-prompt-fix"
+(cd "$REPO_ROOT" && PATH="$stub_bin:$PATH" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" IMPLEMENT_TMPDIR="$TMPDIR_BASE" \
+    bash "$REPO_ROOT/scripts/launch-cursor-ci.sh" --role fix --output "$OUT_FIX" --run-id r1 --repo owner/repo --timeout 60) >/dev/null 2>&1 || true
+if grep -qF 'topology.tsv' "${OUT_FIX}.prompt" 2>/dev/null; then
+    ok "fix role prompt includes topology.tsv sentinel"
+else
+    fail "fix role prompt includes topology.tsv sentinel"
+fi
+for role in resolve-conflict bump-classify changelog-draft; do
+    OUT_NF="$TMPDIR_BASE/ci-fix-prompt-$role"
+    case "$role" in
+        resolve-conflict)
+            (cd "$REPO_ROOT" && PATH="$stub_bin:$PATH" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" IMPLEMENT_TMPDIR="$TMPDIR_BASE" \
+                bash "$REPO_ROOT/scripts/launch-cursor-ci.sh" --role "$role" --output "$OUT_NF" --run-id r1 --repo owner/repo \
+                --conflict-files README.md --timeout 60) >/dev/null 2>&1 || true
+            ;;
+        *)
+            (cd "$REPO_ROOT" && PATH="$stub_bin:$PATH" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" IMPLEMENT_TMPDIR="$TMPDIR_BASE" \
+                bash "$REPO_ROOT/scripts/launch-cursor-ci.sh" --role "$role" --output "$OUT_NF" --run-id r1 --repo owner/repo --timeout 60) >/dev/null 2>&1 || true
+            ;;
+    esac
+    if grep -qF 'topology.tsv' "${OUT_NF}.prompt" 2>/dev/null; then
+        fail "non-fix role $role must not include topology.tsv"
+    else
+        ok "non-fix role $role omits topology.tsv"
+    fi
+done
+
 if [[ "$FAIL" -ne 0 ]]; then
     echo "test-launch-cursor-ci: $FAIL failure(s), $PASS pass(es)" >&2
     exit 1

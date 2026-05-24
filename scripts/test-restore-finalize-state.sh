@@ -210,6 +210,24 @@ if [ "$(cat "$tmp/final-bail-reason.txt")" = "complete reason" ]; then
 else
     fail "complete restore writes final-bail-reason"
 fi
+if [ -f "$tmp/larch-logs/implement/run-123/final-bail-reason.txt" ] && \
+   [ "$(cat "$tmp/larch-logs/implement/run-123/final-bail-reason.txt")" = "complete reason" ]; then
+    ok "complete restore publishes final-bail-reason larch-log batch"
+else
+    fail "complete restore publishes final-bail-reason larch-log batch"
+fi
+
+tmp=$(make_tmpdir)
+write_complete_state "$tmp/ship-pr-state.sh"
+awk '/^BAIL_REASON=/ { print "BAIL_REASON="; next } { print }' "$tmp/ship-pr-state.sh" > "$tmp/ship-pr-state.empty-bail" \
+    && mv "$tmp/ship-pr-state.empty-bail" "$tmp/ship-pr-state.sh"
+rc=$(run_subject "$tmp" "$tmp/stdout-empty-bail" "$tmp/stderr-empty-bail")
+assert_rc "$rc" 0 "empty BAIL_REASON restore succeeds"
+if [ ! -e "$tmp/larch-logs/implement/run-123/final-bail-reason.txt" ]; then
+    ok "empty BAIL_REASON skips final-bail-reason batch publish"
+else
+    fail "empty BAIL_REASON skips final-bail-reason batch publish"
+fi
 
 # Empty (zero-byte) ship-pr-state.sh: restore must succeed and write 20 lines,
 # each with an empty or default value.

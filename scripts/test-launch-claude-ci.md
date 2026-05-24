@@ -11,6 +11,7 @@ Coverage:
 - `--failure-log` containment under `$IMPLEMENT_TMPDIR` (absolute path, existing file)
 - `<<<FAILURE_LOG_EXCERPT>>>` delimiter presence and `redact-secrets.sh` pipeline reference
 - `claude-ci-fix` timing allow-list entry
+- fix-role prompt includes literal `topology.tsv` when the shared CI-fix patterns file exists; `resolve-conflict` omits it
 
 The harness sets `IMPLEMENT_TMPDIR` to an isolated tempdir so `--failure-log` validation cannot point at arbitrary host paths.
 

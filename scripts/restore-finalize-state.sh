@@ -69,6 +69,15 @@ write_finalize_state() {
         done
     } > "$tmp" && mv "$tmp" "$FINALIZE_FILE"
     printf '%s' "$(read_state BAIL_REASON)" > "$BAIL_REASON_FILE"
+    _rid=$(read_state RUN_ID)
+    if [ -s "$BAIL_REASON_FILE" ] && [ -n "$_rid" ]; then
+        "$SCRIPT_DIR/larch-log.sh" write \
+            --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
+            --skill implement \
+            --run-id "$_rid" \
+            --batch final-bail-reason \
+            --input-file "$BAIL_REASON_FILE" >/dev/null 2>&1 || true
+    fi
 }
 
 write_finalize_state

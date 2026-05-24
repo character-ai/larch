@@ -13,11 +13,11 @@ flowchart TD
     end
 
     subgraph voters[Voting Panels]
-        V1[/design Voter 1<br/>Claude subagent<br/>plan-review.md]
-        V23P[/design Voters 2/3<br/>Codex + Cursor]
-        V23C[/review Voters 2/3<br/>Codex + Cursor]
-        MAV1[/design SKILL.md<br/>Step 3 MAV adjudication]
-        MAV2[/implement SKILL.md<br/>Step 5 MAV adjudication]
+        V1["/design Voter 1<br/>Claude subagent<br/>plan-review.md"]
+        V23P["/design Voters 2/3<br/>Codex + Cursor"]
+        V23C["/review Voters 2/3<br/>Codex + Cursor"]
+        MAV1["/design SKILL.md<br/>Step 3 MAV adjudication"]
+        MAV2["/implement SKILL.md<br/>Step 5 MAV adjudication"]
     end
 
     subgraph canon[Canonical OOS Clause]

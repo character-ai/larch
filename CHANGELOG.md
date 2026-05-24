@@ -19,6 +19,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Migration posture**: legacy `[IN PROGRESS]` and `[PLANNED]` prefixes are stripped by `strip_lifecycle_prefix` for backward compatibility but are no longer accepted as `--state` values by `tracking-issue-write.sh` or as admission-pass prefixes.
 - **Audit scope**: workflow call sites and rename `--state` surfaces in the active runtime tree (`skills/`, `scripts/`, `agents/`, `.claude/`, `docs/`, tests) now use the new prefix set; deliberate legacy bracket literals remain only where migration, admission recovery, strip helpers, or hermetic fixtures require them. This Unreleased section documents the migration and may name the old prefixes. Historical shipped changelog bodies and `larch-logs/` were not bulk-retitled.
 
+## [42.0.23] - 2026-05-24
+
+### Changed
+
+- Emit exact-match BAIL_REASON fix-attempts-exhausted at the FIX_ATTEMPTS cap so ship-pr exit 3 matches the documented operator-input contract.
+- Ground CI-fix vendor prompts with a shared topology.tsv and generate-topology-docs fragment, and persist final bail reasons into the committed run log via restore-finalize-state.
+- Add regression coverage for vendor-loop exhaustion (exit 4), larch-log final-bail-reason batch wiring, and fix-only topology.tsv sentinel checks across CI launchers.
+
 ## [42.0.22] - 2026-05-24
 
 ### Changed
@@ -27,7 +35,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - fix(ship-pr): `admin_failed` + "Base branch was modified" now routes to `run_rebase_rebump` instead of stalling at 12d.
 - Raise `run_rebase_rebump` retry cap from 5 to 20.
 - Voter prompt YES↔EXONERATE boundary: replace single-line proportionality note with multi-paragraph framing across `plan-review.md` voter prompts and `dispatch-plan-voters.sh`.
-
 
 ## [42.0.21] - 2026-05-24
 

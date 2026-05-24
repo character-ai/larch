@@ -22,6 +22,8 @@ ITERATION=<N>
 ELAPSED=<seconds>
 ```
 
+When `ci-decide.sh` applies the `fix_attempts >= 10` cap, `BAIL_REASON` is the exact token `fix-attempts-exhausted` (terminal user-input bail via `ship-pr.sh` `needs_user_bail_reason`, not a stall).
+
 Default callers (`/implement` Step 10, Step 12a, and the four step-7 re-invocation branches in `skills/implement/references/rebase-rebump-subprocedure.md`) parse stdout. No `.done` sentinel is written in default mode.
 
 `--base-remote NAME`, `--base-ref BRANCH`, and `--empty-checks-grace SECONDS` are forwarded to `ci-status.sh` on every poll. When `ci-status.sh` returns `CI_STATUS=NO_CHECKS`, `ci-wait.sh` stops polling immediately and emits `ACTION=bail` with a no-checks bail reason; this is used by `/implement --forked` to avoid burning the full CI timeout on forks where Actions are disabled or every workflow is upstream-only.

@@ -36,6 +36,7 @@ run-statistics
 token-report
 timing-report
 execution-issues
+final-bail-reason
 include-probe-evidence
 session-transcript'
 
@@ -87,6 +88,9 @@ done
 [ "$(larch_log_batch_mode review-findings-full)" = "replace" ]
 [ "$(larch_log_batch_extension review-findings-full)" = ".jsonl" ]
 [ "$(larch_log_batch_sanitizer review-findings-full)" = "none" ]
+[ "$(larch_log_batch_extension final-bail-reason)" = ".txt" ]
+[ "$(larch_log_batch_mode final-bail-reason)" = "replace" ]
+[ "$(larch_log_batch_sanitizer final-bail-reason)" = "none" ]
 
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/test-larch-log-batches.XXXXXX")"
 tmpdir=""
