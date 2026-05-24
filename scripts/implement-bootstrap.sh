@@ -28,6 +28,8 @@ UP_TO_PHASE=""
 CALLER_ENV_OPT=""
 ISSUE_NUMBER_OPT=""
 IMPLEMENT_BAIL_REASON=""
+SKIP_CODEX_PROBE_FLAG=false
+SKIP_CURSOR_PROBE_FLAG=false
 
 # Parsed / derived in phase_infra (defaults for tail when phases skip)
 CURRENT_BRANCH=""
@@ -93,11 +95,10 @@ ingest_kv_line() {
 
 ingest_kv_block() {
     local data=$1 line
+    [ -z "$data" ] && return 0
     while IFS= read -r line || [ -n "$line" ]; do
         ingest_kv_line "$line"
-    done <<EOF
-$data
-EOF
+    done < <(printf '%s\n' "$data")
 }
 
 phase_infra() {
@@ -145,6 +146,12 @@ phase_infra() {
     if [ "$SKIP_BRANCH_CHECK" = "true" ]; then
         setup_cmd+=(--skip-branch-check)
     fi
+    if larch_quiet_truthy "$SKIP_CODEX_PROBE_FLAG"; then
+        setup_cmd+=(--skip-codex-probe)
+    fi
+    if larch_quiet_truthy "$SKIP_CURSOR_PROBE_FLAG"; then
+        setup_cmd+=(--skip-cursor-probe)
+    fi
     if [ -n "$CALLER_ENV_OPT" ]; then
         setup_cmd+=(--caller-env "$CALLER_ENV_OPT")
     fi
@@ -157,6 +164,12 @@ phase_infra() {
         emit_kv STEP_FAILED session-setup
         rm -f "$setup_err"
         exit 2
+    fi
+    if [ -s "$setup_err" ]; then
+        while IFS= read -r _seln || [ -n "$_seln" ]; do
+            [ -z "$_seln" ] && continue
+            larch_err "$_seln"
+        done <"$setup_err"
     fi
     rm -f "$setup_err"
     ingest_kv_block "$setup_out"
@@ -213,7 +226,12 @@ phase_infra() {
     )
     [ -n "${LARCH_CLAUDE_SOURCE_FILE:-}" ] && session_env_args+=(--claude-source-file "$LARCH_CLAUDE_SOURCE_FILE")
     [ -n "${dynamic_archetypes_value:-}" ] && session_env_args+=(--dynamic-archetypes "$dynamic_archetypes_value")
-    "$SCRIPT_DIR/write-session-env.sh" "${session_env_args[@]}"
+    _wse_rc=0
+    "$SCRIPT_DIR/write-session-env.sh" "${session_env_args[@]}" || _wse_rc=$?
+    if [ "$_wse_rc" -ne 0 ]; then
+        emit_kv STEP_FAILED write-session-env
+        exit 2
+    fi
     "$SCRIPT_DIR/token-ledger.sh" mark "Step 0 — preflight" || true
     "$SCRIPT_DIR/timing-ledger.sh" mark "Step 0 — preflight" || true
 
@@ -326,6 +344,14 @@ main() {
                 [ $# -ge 2 ] || die_usage "--issue-number requires a value"
                 ISSUE_NUMBER_OPT=$2
                 shift 2
+                ;;
+            --skip-codex-probe)
+                SKIP_CODEX_PROBE_FLAG=true
+                shift
+                ;;
+            --skip-cursor-probe)
+                SKIP_CURSOR_PROBE_FLAG=true
+                shift
                 ;;
             -h|--help)
                 usage

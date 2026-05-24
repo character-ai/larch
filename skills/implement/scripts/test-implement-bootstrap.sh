@@ -52,7 +52,7 @@ assert_rc() {
 
 build_sandbox() {
     SANDBOX=$(mktemp -d /tmp/larch-ib-test.XXXXXX)
-    mkdir -p "$SANDBOX/scripts" "$SANBOX_TMP"
+    mkdir -p "$SANDBOX/scripts" "$SANDBOX_TMP"
     cp "$REPO_ROOT/scripts/lib-quiet.sh" "$SANDBOX/scripts/"
     cp "$REPO_ROOT/scripts/lib-execution-issues.sh" "$SANDBOX/scripts/"
     cp "$REAL_SCRIPT" "$SANDBOX/scripts/implement-bootstrap.sh"
@@ -121,7 +121,7 @@ STUB
 write_gp1_session_setup() {
     cat >"$SANDBOX/scripts/session-setup.sh" <<STUB
 #!/usr/bin/env bash
-echo SESSION_TMPDIR=$SANBOX_TMP
+echo SESSION_TMPDIR=$SANDBOX_TMP
 echo SESSION_ID=sessstub
 echo REPO=owner/repo
 echo REPO_UNAVAILABLE=false
@@ -142,28 +142,28 @@ run_bootstrap() {
     )
 }
 
-SANBOX_TMP=""
+SANDBOX_TMP=""
 SANDBOX=""
 
 # --- GP1-infra ---
-SANBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
 build_sandbox
 write_gp1_session_setup
 out=$(run_bootstrap --up-to-phase infra 2>/dev/null) && rc=$? || rc=$?
 assert_rc "$rc" 0 "GP1-infra exit 0"
-assert_contains "IMPLEMENT_TMPDIR=$SANBOX_TMP" "$out" "GP1 IMPLEMENT_TMPDIR"
+assert_contains "IMPLEMENT_TMPDIR=$SANDBOX_TMP" "$out" "GP1 IMPLEMENT_TMPDIR"
 assert_contains "SESSION_ID=sessstub" "$out" "GP1 SESSION_ID"
 assert_contains "codex_available=true" "$out" "GP1 codex_available"
 assert_contains "IMPLEMENT_BAIL_REASON=" "$out" "GP1 IMPLEMENT_BAIL_REASON tail present"
 assert_not_contains "STEP_FAILED=" "$out" "GP1 no STEP_FAILED"
-rm -rf "$SANDBOX" "$SANBOX_TMP"
+rm -rf "$SANDBOX" "$SANDBOX_TMP"
 
 # --- GP4 repo_unavailable ---
-SANBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
 build_sandbox
 cat >"$SANDBOX/scripts/session-setup.sh" <<STUB
 #!/usr/bin/env bash
-echo SESSION_TMPDIR=$SANBOX_TMP
+echo SESSION_TMPDIR=$SANDBOX_TMP
 echo SESSION_ID=sessstub
 echo REPO=
 echo REPO_UNAVAILABLE=true
@@ -181,10 +181,10 @@ rm -f "$stderrf"
 assert_rc "$rc" 0 "GP4 exit 0"
 assert_contains "REPO_UNAVAILABLE=true" "$out" "GP4 REPO_UNAVAILABLE in stdout"
 assert_contains "**⚠ Could not determine repository name." "$err" "GP4 repo warning on stderr"
-rm -rf "$SANDBOX" "$SANBOX_TMP"
+rm -rf "$SANDBOX" "$SANDBOX_TMP"
 
 # --- B-preflight ---
-SANBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
 build_sandbox
 cat >"$SANDBOX/scripts/session-setup.sh" <<'STUB'
 #!/usr/bin/env bash
@@ -201,10 +201,10 @@ assert_contains "PREFLIGHT_ERROR=Not on main branch" "$out" "B-preflight PREFLIG
 assert_contains "STEP_FAILED=session-setup" "$out" "B-preflight STEP_FAILED"
 invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
 assert_not_contains "write-session-id" "$invoke" "B-preflight no write-session-id"
-rm -rf "$SANDBOX" "$SANBOX_TMP"
+rm -rf "$SANDBOX" "$SANDBOX_TMP"
 
 # --- B-gate ---
-SANBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
 build_sandbox
 write_gp1_session_setup
 cat >"$SANDBOX/scripts/session-entry-gate.sh" <<'STUB'
@@ -222,7 +222,7 @@ assert_contains "GATE_ERROR=internal contract violation" "$out" "B-gate GATE_ERR
 assert_contains "STEP_FAILED=session-entry-gate" "$out" "B-gate STEP_FAILED"
 invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
 assert_not_contains "write-session-id" "$invoke" "B-gate no write-session-id"
-rm -rf "$SANBOX_TMP" "$SANDBOX"
+rm -rf "$SANDBOX_TMP" "$SANDBOX"
 
 # --- Edge-NEVER14 ---
 # Patterns are literal (grep -F); $ in the pattern is not shell expansion.
@@ -242,7 +242,7 @@ else
 fi
 
 # --- Edge-breadcrumb-count ---
-SANBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
 build_sandbox
 write_gp1_session_setup
 bc=$(mktemp "${TMPDIR:-/tmp}/larch-ib-bc.XXXXXX")
@@ -262,7 +262,7 @@ else
     FAIL=$((FAIL + 1))
     echo "FAIL: Edge-breadcrumb-count expected 1 got $n"
 fi
-rm -rf "$SANBOX_TMP" "$SANDBOX"
+rm -rf "$SANDBOX_TMP" "$SANDBOX"
 
 echo "---"
 echo "PASS=$PASS FAIL=$FAIL"

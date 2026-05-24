@@ -8,6 +8,8 @@ Mechanical `/implement` Step 0 bootstrap: branch facts, entry gate, session setu
 |------|----------|--------|-------|
 | `--up-to-phase` | yes | `infra` \| `tracking` \| `plan` \| `coder` \| `all` | Phase 1 ships `--up-to-phase infra` from SKILL.md. Later phases extend dispatch without argv churn. |
 | `--caller-env` | no | path | Forwarded to `session-setup.sh --caller-env` when set. Also used to read `LARCH_DYNAMIC_ARCHETYPES_MAX` for `write-session-env.sh --dynamic-archetypes` (same contract as legacy prompt-side `SESSION_ENV_PATH` / `CALLER_ENV_PATH`). |
+| `--skip-codex-probe` | no | flag | Forwarded to `session-setup.sh` / `check-reviewers.sh` (skip Codex runtime probe). |
+| `--skip-cursor-probe` | no | flag | Forwarded to `session-setup.sh` / `check-reviewers.sh` (skip Cursor runtime probe). |
 | `--issue-number` | no | string | Echoed in final tail as `ISSUE_NUMBER=` for forward-compatible orchestrator wiring (empty when omitted). |
 
 ## Inputs (Phase 1)
@@ -41,6 +43,8 @@ All of the above use `larch_err` (never raw `printf`/`echo` to stderr after `lar
 When `LARCH_QUIET_BREADCRUMBS` is truthy, emits exactly one line via `emit_breadcrumb`:
 
 `→ step0: infra ready (tmpdir=$IMPLEMENT_TMPDIR session=$SESSION_ID)`
+
+Set `LARCH_QUIET_BREADCRUMB_FD` to a numeric descriptor when you need breadcrumbs on a dedicated stream. When breadcrumbs are enabled but `LARCH_QUIET_BREADCRUMB_FD` is unset or non-numeric, the line is emitted via `larch_err` (stderr / quiet FD4) so stdout remains KV-only under `LARCH_QUIET_DISABLE=1`.
 
 Future phases will add `→ step0: tracking adopted …`, `→ step0: branch + plan logged`, `→ step0: larch:plan posted`, `→ step0: coder=…` (documented here; not emitted in Phase 1).
 
