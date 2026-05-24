@@ -224,7 +224,7 @@ Per-million-token cost rate (USD) used by `/research`'s Step 4 token report (`##
 
 ### `LARCH_DESIGN_PLAN_SUMMARY_THRESHOLD`
 
-Default `120` (positive integer). When the `$DESIGN_TMPDIR/plan.txt` line count strictly exceeds this threshold, `/design` switches to the large-plan summary mode at both the Step 3 entry print (`## Plan Candidate for Review`) and the Gate C entry print (`## Final Design Plan`): only the plan title and a `##`/`###` section outline are emitted, plus a bold note offering the full plan on operator request. Empty, `0`, and non-numeric values silently fall back to the `120` default; the orchestrator does not abort on invalid env values. Affects only chat visibility; the underlying `plan.txt` content sent to reviewers and stored in the design log is unchanged.
+Default `120` (positive integer). When the `$DESIGN_TMPDIR/plan.txt` line count strictly exceeds this threshold, `/design` switches to the large-plan summary mode at both the Step 3 entry print (`## Plan Candidate for Review`) and the Gate C entry print (`## Final Design Plan`): only the plan title and a `##`/`###` section outline are emitted, plus a bold note offering the full plan on operator request. Empty, `0`, non-numeric values, and values with a leading zero (for example `00` or `0120`) silently fall back to the `120` default; numeric comparisons use base-10 coercion so octal interpretation cannot skew the threshold. The orchestrator does not abort on invalid env values. Affects only chat visibility; the underlying `plan.txt` content sent to reviewers and stored in the design log is unchanged.
 
 #### Per-vendor rates (`/implement` final summary)
 
