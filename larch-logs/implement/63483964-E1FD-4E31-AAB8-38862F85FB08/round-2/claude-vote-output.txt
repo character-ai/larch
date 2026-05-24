@@ -1,0 +1,7 @@
+FINDING_1: EXONERATE -- acceptance criterion wording is imprecise but test works correctly; adding a per-check echo just to match plan text is disproportionate overhead
+FINDING_2: EXONERATE -- source-level structural checks are the right approach; adding runtime rendered-output checks would add significant complexity disproportionate to the latent risk
+FINDING_3: EXONERATE -- brittleness to markdown reflow is intentional and documented in the edge-cases section; the test failing on reflow is the desired sentinel behavior
+FINDING_4: EXONERATE -- plan-review-quick.md is a short focused file; whole-file grep is appropriate and context-anchored grep would add complexity for minimal gain
+FINDING_5: NO -- editorial inconsistency is cosmetic and doesn't affect substring pin behavior; not worth filing a GitHub issue
+FINDING_6: NO -- behavior is intentional and already documented in the plan's edge cases; a separate OOS issue adds no value
+FINDING_7: NO -- the plan explains the renderer-vs-dispatch rationale; the issue closes with this PR making the naming mismatch inconsequential

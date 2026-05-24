@@ -1,0 +1,4 @@
+Gathering the diff and commit history for a security-focused review.
+
+### In-Scope Findings
+No in-scope issues found.

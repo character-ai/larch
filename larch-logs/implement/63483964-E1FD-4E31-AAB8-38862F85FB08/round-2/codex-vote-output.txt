@@ -1,0 +1,7 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: EXONERATE -- The single-line prompt pin is intentional and documented, so broader markdown parsing is not warranted here.
+FINDING_4: YES
+FINDING_5: EXONERATE -- Real editorial inconsistency, but too minor to justify a separate GitHub issue.
+FINDING_6: EXONERATE -- The fragility is intentional, documented behavior and not worth a separate issue.
+FINDING_7: EXONERATE -- The issue-body naming mismatch is real but already handled by the renderer plan and not worth filing separately.

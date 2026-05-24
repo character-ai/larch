@@ -1,0 +1,12 @@
+Gathering the diff, commit list, and the FINDING_2678 block with BASH_AUTHORING guidance for a correctness-focused review.
+
+Verifying phrase consistency (trailing period) and whether `plan-review-quick.md` matches the test substring.
+
+### In-Scope Findings
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+- **correctness** `scripts/test-design-structure.sh:580-606` vs `scripts/test-dispatch-plan-voters.sh` — The new `FINDING_2678` block only substring-greps source files (`plan-review.md` line-anchored for Voter 1 and shared Voter 2/3, whole-file for `render-voter-prompt.sh` and `plan-review-quick.md`). It still does not assert the phrase appears in the on-disk rendered prompts from `make_prompt_file()` (e.g. `$DESIGN_TMPDIR/*-plan-voter-prompt.txt`). That end-to-end gap is an explicit prior deferral / follow-up (also reflected in this branch’s design OOS notes), not a regression in the added Bash logic itself.
+- **risk-integration** `larch-logs/implement/63483964-E1FD-4E31-AAB8-38862F85FB08/*` — The branch adds a full implement run directory (manifest, plan snapshot, tally). That is unrelated to harness correctness but increases log churn and review surface versus a prose+test-only change.
+
+**Notes (scout checklist, no new defects):** `<<<` is not among the Bash 4+ constructs forbidden in [BASH_AUTHORING.md](BASH_AUTHORING.md) §3 and is supported on macOS Bash 3.2. `grep -Fq` on a herestring correctly treats `CANONICAL_PHRASE` as a fixed substring of the extracted line. Appending `|| true` to the `grep -n … | head -1 | cut …` probe matches §1’s “probe commands should not create false error rows” pattern used elsewhere in the same file (e.g. the `flag_mandatory_line` assignment at `scripts/test-design-structure.sh:33-34`). Omitting `|| true` on the assertion `grep -Fq` lines is intentional so a non-match reaches `|| fail` under `set -e`.
