@@ -1,0 +1,24 @@
+Reading the plan and referenced codebase paths to validate the proposed changes.
+
+Reading the implementation files the plan references to validate contracts and integration.
+
+Searching the test harness for section wiring and whether sourcing the loop file is safe.
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/run-relevant-checks-captured.sh:140-143	Post-parse sanity treats only STATUS and RELEVANT_CHECKS_OK as discriminators	Producer emits RELEVANT_CHECKS_SKIPPED=true without STATUS or RELEVANT_CHECKS_OK when scripts/relevant-checks.sh is absent; new stderr fires on every legitimate skip while run_implement_loop still coerces pass via lines 175-177	Extend the gate so populated STEP5_CHK_RELEVANT_CHECKS_SKIPPED satisfies malformed detection; revise plan Approach and Failure modes item 3 accordingly
+2	in_scope	nit	risk-integration	skills/review-and-fix/scripts/test-review-and-fix.sh:34-40	Planned parsers harness lacks SKIPPED-only fixture	Wrong discriminator set could regress without failing	Add a case sourcing only RELEVANT_CHECKS_SKIPPED=true SITE=stub asserting stderr lacks required field missing and globals match the skip handoff
+3	in_scope	nit	code-quality	skills/review-and-fix/scripts/test-review-and-fix.sh:138-155	Testing strategy lists lint malformed mirror not echoed in Files-to-modify bullets 1-6	Implementer may ship five parser cases and omit lint malformed stderr test	Duplicate lint malformed requirement into the Files-to-modify parsers subsection next to the checks malformed bullet
+4	out_of_scope	nit	risk-integration	skills/review-and-fix/scripts/test-review-and-fix.md:9-11	Contract still documents only dispatch and convergence for --section	Operators shard CI using stale synopsis	Update line 11 to dispatch|convergence|parsers once the harness lands
+5	out_of_scope	latent	architecture	skills/review-and-fix/scripts/review-implement-step5-loop.sh:167-249	Malformed capture only yields stderr while globals stay empty for downstream branches	Downstream logic may fall through ambiguous paths without a structured stall envelope	Consider pairing stderr with emit_breadcrumb or a dedicated emit_kv diagnostic when tmpdir context exists instead of stderr alone
+
+1. **[correctness / important]** [scripts/run-relevant-checks-captured.sh](scripts/run-relevant-checks-captured.sh) lines 140–143 emit `RELEVANT_CHECKS_SKIPPED=true` with no `STATUS` or `RELEVANT_CHECKS_OK`; [skills/review-and-fix/scripts/review-implement-step5-loop.sh](skills/review-and-fix/scripts/review-implement-step5-loop.sh) lines 175–177 already depend on that path. The plan’s “both STATUS and RELEVANT_CHECKS_OK empty” gate would mis-classify that capture as malformed—**suggested revision:** treat a non-empty `STEP5_CHK_RELEVANT_CHECKS_SKIPPED` (or an explicit third discriminator in the condition) as satisfying the sanity check and fix the prose in Approach and Failure modes item 3.
+
+2. **[risk-integration / nit]** The proposed [skills/review-and-fix/scripts/test-review-and-fix.sh](skills/review-and-fix/scripts/test-review-and-fix.sh) `parsers` section should include a SKIPPED-only fixture mirroring the producer so a bad gate cannot regress—**suggested revision:** assert no `required field missing` substring and assert skip globals after `step5_parse_checks_capture_file`.
+
+3. **[code-quality / nit]** The plan’s “Testing strategy” block lists a lint malformed mirror (test case 6) that is easy to miss because the earlier “Files to modify” bullets stop at malformed checks plus `ok:` lines—**suggested revision:** lift the lint malformed requirement into the same subsection as the other parser bullets.
+
+**[OUT_OF_SCOPE]**
+
+4. **[risk-integration / nit]** [skills/review-and-fix/scripts/test-review-and-fix.md](skills/review-and-fix/scripts/test-review-and-fix.md) lines 9–11: update `--section dispatch|convergence` prose when `parsers` exists so shard docs stay aligned.
+
+5. **[architecture / latent]** [skills/review-and-fix/scripts/review-implement-step5-loop.sh](skills/review-and-fix/scripts/review-implement-step5-loop.sh) lines 167–249: stderr-only signaling for malformed captures is weaker than structured breadcrumbs or envelope fields for telemetry; worth a follow-up design note, not required for the minimal `set -e` fix.

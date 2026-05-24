@@ -1,0 +1,11 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: NO -- empirical bash 3.2 evidence shows the existing && assignment pattern does not trigger set -e before post-loop code.
+OOS_1: EXONERATE -- optional validation-doc polish is too minor for a separate GitHub issue.
+OOS_2: EXONERATE -- tmpdir-path stderr is acceptable diagnostic output today and redaction policy work would be disproportionate.
+OOS_3: NO -- shard registration and placement are already covered by FINDING_2.
