@@ -12,7 +12,7 @@ The script owns only Voter 2 and Voter 3. Each slot is dispatched through the sa
 
 The script writes per-slot prompt files, builds a two-slot NDJSON manifest, and calls `dispatch-with-waterfall.sh` with `--mode description`. It reads `ALL_OUTPUT_FILES`, `ALL_OUTPUT_TOOLS`, and `DISPATCH_OK` from the waterfall's KV output to determine the final path and tool for each voter slot.
 
-Inputs are `--ballot-file`, `--design-tmpdir`, `--codex-available`, `--cursor-available`, and optional `--session-env-path`. The ballot is referenced by path in the generated voter prompts.
+Inputs are `--ballot-file`, `--design-tmpdir`, `--codex-available`, `--cursor-available`, and optional `--session-env-path`. The ballot is referenced by path in the generated voter prompts. Prompt bodies are rendered by `${CLAUDE_PLUGIN_ROOT}/skills/shared/scripts/render-voter-prompt.sh` (`--id-grammar finding-oos`, `--verification-context plan`); see `skills/shared/scripts/render-voter-prompt.md`.
 
 ## Stdout KV
 

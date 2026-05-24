@@ -42,37 +42,11 @@ PLAN_VOTER_PARSE_RATE_RETRY_PREFIX='IMPORTANT: Your previous attempt produced na
 make_prompt_file() {
     local tool="$1"
     local prompt_file="$DESIGN_TMPDIR/${tool}-plan-voter-prompt.txt"
-    local plan_voter_yes_exonerate_framing
-    plan_voter_yes_exonerate_framing='The YES ↔ EXONERATE boundary requires careful judgment. Both votes accept that the finding is correct and the concern is real. The difference is whether the proposed plan revision is worth shipping in THIS PR:
-
-- Vote YES when: the finding is correct AND the proposed plan revision (or any equivalent revision the implementer would write) materially improves the plan'\''s clarity, completeness, or correctness, AND the revision'\''s complexity is proportionate to the issue'\''s severity. A YES vote is a commitment to revise the plan.
-
-- Vote EXONERATE when: the finding is correct AND the concern is real, BUT one of:
-  - The proposed plan revision adds disproportionate complexity for the issue'\''s severity (e.g., a 5-line clarification fix for a 1-line nit; a new mechanism for a one-off edge case).
-  - The finding is correct but the plan would already address it implicitly (e.g., reviewer says "missing X" but X is covered by an obvious extension of an already-named contract).
-  - The finding is correct but better addressed in a follow-up PR (out-of-PR scope creep).
-  - The concern is forward-looking / speculative; valid but not pressing for this PR'\''s correctness.
-
-When in doubt between YES and EXONERATE, prefer EXONERATE. A YES vote should feel like "yes, the plan WILL be worse without this revision." An EXONERATE vote feels like "yes, this is a real concern, but I would not insist on it during a senior code review."
-
-(The YES ↔ NO and NO ↔ EXONERATE boundaries are unchanged: NO means the finding is wrong / a false positive / based on a misreading.)'
-    {
-        printf 'You are a senior engineer on a voting panel deciding which proposed plan modifications should be accepted.\n'
-        printf '%s\n' "$plan_voter_yes_exonerate_framing"
-        printf 'Do NOT modify files. Do NOT commit. Do NOT push.\n'
-        printf 'Read the ballot from this path: %s\n' "$BALLOT_FILE"
-        printf '\nFor each ballot item output exactly one line using the same ID from the ballot:\n'
-        printf '  FINDING_N: YES\n'
-        printf '  FINDING_N: NO -- one-line reason\n'
-        printf '  FINDING_N: EXONERATE -- one-line reason\n'
-        printf '  OOS_N: YES\n'
-        printf '  OOS_N: NO -- one-line reason\n'
-        printf '  OOS_N: EXONERATE -- one-line reason\n'
-        printf 'For OOS_N items: YES means file a GitHub issue; NO or EXONERATE means skip.\n'
-        printf '\n**Verify silently** — do not produce narrative output, reasoning explanations, or status updates before, between, or after the vote lines. You may read the ballot file and silently inspect the plan or referenced repo files for verification, but do not invoke planning/status tools.\n'
-        printf 'You must vote on every item. Do NOT skip any.\n'
-        printf '**Output ONLY vote lines.** Lines that do not start with the exact ballot ID from the ballot heading (FINDING_N: or OOS_N:) followed by YES, NO, or EXONERATE are silently ignored.\n'
-    } > "$prompt_file"
+    "$PLUGIN_ROOT/skills/shared/scripts/render-voter-prompt.sh" \
+        --ballot-file "$BALLOT_FILE" \
+        --panel-role "senior engineer on a voting panel deciding which proposed plan modifications should be accepted" \
+        --id-grammar finding-oos \
+        --verification-context plan > "$prompt_file"
     printf '%s' "$prompt_file"
 }
 

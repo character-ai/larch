@@ -37,4 +37,4 @@ Exit 0 → pass, exit 1 → at least one assertion failed.
 
 ## Stubbing pattern
 
-Mirrors `scripts/test-dispatch-plan-voters.sh`: a fresh PLUGIN_ROOT directory is populated with stub scripts that write deterministic outputs/sentinels. The script under test is copied into the stub root so its `CLAUDE_PLUGIN_ROOT` resolution finds the stubs.
+Mirrors `scripts/test-dispatch-plan-voters.sh`: a fresh PLUGIN_ROOT directory is populated with stub scripts that write deterministic outputs/sentinels when a test substitutes `CLAUDE_PLUGIN_ROOT`. The `dispatch-code-voters.sh` harness leaves `CLAUDE_PLUGIN_ROOT` unset so `${CLAUDE_PLUGIN_ROOT:-repo-root}` resolves to the real checkout — `skills/shared/scripts/render-voter-prompt.sh` is exercised from the live tree. The `happy` section asserts the composed prompts include the canonical finding-only OOS clause, the informational-fix guardrails, a `FINDING_N:` example line, and **no** `OOS_N` substring (grammar-conditional plan-vs-code split).
