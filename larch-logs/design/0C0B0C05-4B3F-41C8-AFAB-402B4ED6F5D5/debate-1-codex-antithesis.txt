@@ -1,0 +1,19 @@
+<steelman>
+Implicit mode minimizes callsite churn: once `ship-pr.sh` accepts per-key initialization flags, their presence unambiguously signals that the caller wants those values used when creating missing state. It also avoids adding a ceremonial flag to every orchestrator invocation.
+</steelman>
+<claim>
+Explicit `--init-state-from-argv` should ship because it makes a new state-creation contract visible at the interface boundary with less ambiguity than overloading ordinary option presence.
+</claim>
+<evidence>
+`scripts/ship-pr.sh:2401-2414` currently treats every accepted flag as ordinary configuration, then writes initial state only when the state file is absent at `scripts/ship-pr.sh:2431-2433`; adding implicit mode means some ordinary-looking flags silently become initial-state material. The documented interface in `scripts/ship-pr.md:7-13` already distinguishes argv from durable state, while `skills/implement/SKILL.md:1550-1560` currently requires the orchestrator to precompose a full `ship-pr-state.sh`, so replacing that heredoc with argv needs an explicit boundary marker.
+</evidence>
+<strongest_concession>
+The best case against explicit mode is that per-key flags like `--branch-name` or `--issue-number` would have no useful meaning unless initializing state, so requiring another flag can look redundant.
+</strongest_concession>
+<counter_to_opposition>
+That redundancy is cheap and local, while implicit mode forces parser-level inference forever: a future non-init use of any per-key flag would inherit initialization semantics unless special-cased. Explicit mode keeps validation simple: mode flag present means consume init keys; absent means existing operational flags retain their current meaning.
+</counter_to_opposition>
+<risk_if_wrong>
+If explicit mode loses, the main risk is accidental contract expansion: adding or passing one init-like flag can change how a missing state file is created without a callsite declaring that intent, making resume/debug behavior harder to audit.
+</risk_if_wrong>
+RECOMMEND: ANTI_THESIS

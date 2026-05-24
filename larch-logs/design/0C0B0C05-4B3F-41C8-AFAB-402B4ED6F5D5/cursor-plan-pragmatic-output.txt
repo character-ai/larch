@@ -1,0 +1,24 @@
+Reading the plan and referenced codebase paths.
+
+Validating plan claims against the codebase: reading referenced sections for line numbers, contradictions, and integration contracts.
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	architecture	<TMPDIR>/plan.txt:62-63 vs 115-116	Conflicting binding on require_key for BAIL_FAILURE_DETAIL_LOG NO_LOGS_COMMIT IMPLEMENT_TMPDIR	Implementer may widen require_key per Files section and break legacy hand-written state files missing new keys or omit validation per Failure modes while SKILL still claims parity	Choose one binding in the plan body: either extend require_key and update all fixtures or keep require_key unchanged and document emission-only keys; delete the contradictory paragraph
+1	in_scope	important	correctness	<TMPDIR>/plan.txt:65-66	usage() anchored at ship-pr.sh L80-100	Searcher lands in run_lint_fix_loop_capture not usage	Anchor usage banner edits to scripts/ship-pr.sh:32-37 where usage() is defined today
+1	in_scope	important	risk-integration	skills/implement/SKILL.md:1564,1594,1607,1610-1611	Resume matrix repeats same Invoke argv beyond NEVER #16	Operators follow Exit 0 Exit 5 Exit 6 or recovery prose and assume all argv-init flags must be replayed or match originals	Extend plan SKILL tasks to harmonize every Step 8+ bullet that says same Invoke foreground args with the new resume rule not only NEVER #16 line 66
+1	in_scope	important	risk-integration	<TMPDIR>/plan.txt:88-91	test_init_state_from_argv_fresh ties success to exit 0 without a pinned stub short-circuit	Fresh cold start runs the full state machine; harness may be slow brittle or exit non-zero depending on phase stubs	Spell the expected rc for the disposable-repo plus stubs or name env vars such as STUB_CHECKS_OK that force a deterministic early exit while still asserting written keys
+1	in_scope	nit	code-quality	<TMPDIR>/plan.txt:96-98	test_init_state_argv_rejects_cr_lf only exercises two of seven flags	Per-flag case arms can drift; two tests do not prove all seven reject newlines	If validation stays per-flag duplicate cases add one test per flag or refactor validation into one helper loop and a single table-driven test
+
+[OUT_OF_SCOPE] skills/implement/SKILL.md:70 NEVER #18 still instructs rewriting ship-pr-state.sh for OOS_PENDING=false; when argv-init removes most orchestrator writes consider a later doc pass so OOS guidance names key-based edits only (lines 70 and nearby OOS checkpoint block ~1613).
+
+1. **[architecture]** `plan.txt` vs itself (`plan.txt` ~62–63 vs ~115–116): The “Files to modify” path tells implementers to extend the `require_key` loop for the three new keys, while “Failure modes” immediately chooses the opposite (emit keys but **not** add them to `require_key`). Pick one binding and remove the other so implementers do not widen validation and break legacy state files (or accidentally skip the intended safer path).
+
+2. **[correctness]** `plan.txt` ~65–66: The plan points `usage()` at `scripts/ship-pr.sh` ~L80–100; in the current tree `usage()` is at ```32:37:scripts/ship-pr.sh```. Update the plan’s anchor so the implementer edits the real usage banner.
+
+3. **[risk-integration]** `skills/implement/SKILL.md` ~1564, ~1594, ~1607, ~1610–1611: Several Step 8+ bullets (recovery blurb, Exit 0, autonomous CI-fix step 12, Exit 5, Exit 6) tell the orchestrator to re-invoke with the **same** `Invoke:` argv. The plan only schedules an explicit update for NEVER #16 (~66) plus the Invoke fence. Without touching those bullets, resume guidance can still read as “must replay all argv-init flags,” conflicting with “ignored when state exists.” Extend the SKILL edit list so every “same Invoke argv” call site carries the same clarification as NEVER #16.
+
+4. **[risk-integration]** `plan.txt` ~88–91 (`test_init_state_from_argv_fresh`): Asserting `exit 0` on a **no pre-existing state file** run implies driving the entire stubbed state machine; the harness today always pre-seeds with `write_state` before `run_subject` (see ```304:361:scripts/test-ship-pr.sh```). The plan should name the expected exit code pattern and any `STUB_*` / phase shortcuts so the new test stays deterministic and fast.
+
+5. **[code-quality]** `plan.txt` ~96–98: The CR/LF test proposes two flags only; if validation is seven copy-pasted `case` arms, two tests do not prove all seven paths. Prefer one loop-backed validator plus one parameterized test, or one negative test per flag.
+
+**[OUT_OF_SCOPE]** `skills/implement/SKILL.md` ~70 (NEVER #18) and the OOS checkpoint prose (~1613+): They still say “rewriting `ship-pr-state.sh`” for `OOS_PENDING=false`; after argv-init, consider a follow-up doc pass to describe key-based rewrites only, so operators are not nudged toward wholesale file rewrites.

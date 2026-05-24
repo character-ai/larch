@@ -1,0 +1,2 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan.txt:62-64_vs_114-117	Conflicting require_key guidance for BAIL_FAILURE_DETAIL_LOG NO_LOGS_COMMIT IMPLEMENT_TMPDIR	One section tells implementers to extend the L2437-2445 require_key loop for those keys the Failure modes subsection chooses the safer path omitting them from require_key leaving ambiguous binding resolution	Pick one authoritative rule in the plan body align ship-pr.md appendix with that choice and delete the contradictory paragraph

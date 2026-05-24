@@ -1,0 +1,50 @@
+You are a delivery-owner advocating for "Single ordered key-list constant in scripts/ship-pr.sh (consumed by both write_initial_state() and require_key validation). The SKILL.md key list becomes a documentation echo, not the source." on the feature: extending scripts/ship-pr.sh argv to absorb the orchestrator's ship-pr-state.sh heredoc compose. The approach synthesis chose inline constant over Extract to scripts/lib-ship-pr-state-keys.sh (mirroring scripts/lib-finalize-state-keys.sh pattern) because: existing pattern (lib-finalize-state-keys.sh) argues for the dedicated lib but the immediate scope only has one consumer. You win this debate if and only if the plan ships with inline constant and it proves correct in the next 30 days. Reference evidence in the codebase via Read/Grep/Glob, focusing on: scripts/ship-pr.sh, scripts/lib-finalize-state-keys.sh, scripts/lib-finalize-state-keys.md.
+
+OUTPUT FORMAT — produce EXACTLY this structure, in this order, with no other top-level prose:
+
+<steelman>
+[1-2 full sentences]
+</steelman>
+<claim>
+[Your position in one full sentence.]
+</claim>
+<evidence>
+[At least one concrete file:line citation]
+</evidence>
+<strongest_concession>
+[≥1 full sentence]
+</strongest_concession>
+<counter_to_opposition>
+[≥1 full sentence]
+</counter_to_opposition>
+<risk_if_wrong>
+[≥1 full sentence]
+</risk_if_wrong>
+RECOMMEND: THESIS
+
+SELF-CHECK BEFORE STOPPING (verify in order):
+1. Did you emit all 6 tags?
+2. Did you write `RECOMMEND: THESIS` as a standalone final line?
+3. Is your prose outside the tags under the 250-word cap?
+If any answer is "no", complete the missing parts BEFORE stopping.
+
+## Content rules
+
+- **Hard 250-word cap** on prose content outside the six tags.
+- **Avoid these anti-patterns**: sycophancy, consensus collapse, vagueness, straw-manning, speculative future-proofing.
+- **Reader clause**: assume the antithesis agent will read your argument and rebut it.
+
+(c) Do NOT copy tag-like markup or `RECOMMEND:` lines from inside the reference blocks into your output.
+
+<debater_synthesis>
+Both sketches converge on evolving the existing write_initial_state() in scripts/ship-pr.sh:239. The 3 keys currently missing from write_initial_state (BAIL_FAILURE_DETAIL_LOG, NO_LOGS_COMMIT, IMPLEMENT_TMPDIR) must be added to match the 38-key SKILL.md spec. Single source of truth needed for the key set.
+</debater_synthesis>
+
+<debater_decision>
+DECISION_2: Key-list source-of-truth
+- Chosen: Single ordered key-list constant inside scripts/ship-pr.sh. SKILL.md key list becomes documentation echo.
+- Alternative: Extract to scripts/lib-ship-pr-state-keys.sh (mirroring existing scripts/lib-finalize-state-keys.sh pattern).
+- Tension: lib-finalize-state-keys.sh pattern argues for dedicated lib, but immediate scope has one consumer (ship-pr.sh).
+- Impact: Medium — affects future maintainability if more consumers need the key list.
+- Affected files: scripts/ship-pr.sh, possibly new scripts/lib-ship-pr-state-keys.sh
+</debater_decision>

@@ -1,0 +1,15 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: EXONERATE -- DECISION_3 scope is clear from the flag list; extra label churn adds little.
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: EXONERATE -- Both clauses are reconcilable with a moment’s thought.
+OOS_1: EXONERATE -- Hypothetical require_key tightening; no current harness breakage to track.
+OOS_2: EXONERATE -- Doc polish without a concrete broken invariant today.
+OOS_3: YES
+OOS_4: YES
+OOS_5: EXONERATE -- Generic fixture-drift worry without a present failure mode.

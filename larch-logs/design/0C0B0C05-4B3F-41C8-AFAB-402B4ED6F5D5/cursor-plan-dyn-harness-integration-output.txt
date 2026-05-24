@@ -1,0 +1,21 @@
+Gathering the plan and `scripts/test-ship-pr.sh` plus related stubs and Makefile targets.
+
+Verifying argument order: `--section` is consumed at script start before tests run.
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan.txt:60-63 vs plan.txt:113-117	Conflicting directions on extending the require_key loop after emitting BAIL_FAILURE_DETAIL_LOG, NO_LOGS_COMMIT, and IMPLEMENT_TMPDIR	UPDATED ship-pr section tells implementers to append those keys to the L2438-2445 enumeration while Failure modes later mandates omitting them to protect hand-written legacy state; an implementer cannot satisfy both without re-reading the whole plan	Edit the plan so one section defers to the other: either keep the require_key expansion and update every harness fixture strategy, or lock in the safer-path omission and delete the earlier require_key bullets (and align SKILL.md wording with the chosen strategy)
+1	in_scope	important	risk-integration	plan.txt:94-97 and scripts/test-ship-pr.sh:426-445,840-1184	Claims new cases run under make test-ship-pr-state without tying them to the state section guard	section_runs only runs the state block for make test-ship-pr-state (Makefile wires --section state); tests appended after fi at line 1184 run under full test-ship-pr or other section targets only, so the stated CI mapping can silently fail	Spell out that the four new functions must live inside the existing if section_runs state; then fi region (same file) so test-ship-pr-state picks them up
+
+1. **[correctness]** [plan.txt:60-63 vs plan.txt:113-117](file:///Users/zhupanov/.cache/larch/sessions/claude-design-larch6-pQen3A/plan.txt) — The plan first instructs adding the three new state keys to the `require_key` loop, then the Failure modes section chooses the opposite (leave the validation surface unchanged). **Suggested revision:** Resolve to a single strategy and propagate that choice into the `### UPDATED: scripts/ship-pr.sh` bullets and SKILL.md notes so implementers are not split across incompatible instructions.
+
+2. **[risk-integration]** [plan.txt:94-97](file:///Users/zhupanov/.cache/larch/sessions/claude-design-larch6-pQen3A/plan.txt) vs [scripts/test-ship-pr.sh:426-445,840-1184](scripts/test-ship-pr.sh) — `make test-ship-pr-state` runs `bash scripts/test-ship-pr.sh --section state`, and `section_runs state` only wraps the block ending at line 1184; the plan never says the new cases must be inside that guard. **Suggested revision:** Require explicit placement inside `if section_runs state; then` so the new tests actually execute under the claimed Makefile target.
+
+**[correctness]** `grep '^KEY=' … | cut -d= -f2-` matches the current `printf '%s\n' "$value"` lines in `write_initial_state()` ([scripts/ship-pr.sh:261-296](scripts/ship-pr.sh)); `cut -d= -f2-` preserves embedded `=` in the value portion.
+
+**[correctness]** Cold start does not stop after `write_initial_state()`; `main()` continues into the phase loop ([scripts/ship-pr.sh:2431-2503](scripts/ship-pr.sh)). The existing `write_stubs` `run-relevant-checks-captured.sh` success path ([scripts/test-ship-pr.sh:49-52](scripts/test-ship-pr.sh)) still matches `is_relevant_checks_clean` ([scripts/ship-pr.sh:70-72](scripts/ship-pr.sh)), so reaching a predictable RC (including 0 along stubbed paths) does not inherently need new stubs beyond what `make_repo` already installs; the plan’s “exit 0 (or expected…)” hedge at line 90 is appropriate.
+
+**[correctness]** Bash 3.2 ANSI-C patterns `*$'\r'*` / `*$'\n'*` in `case` (plan line 35) are valid; using `$(printf '\r')` in the test argument (plan line 98) is separate from the pattern and is also valid.
+
+**[architecture]** The claim that new cases run under `make test-ship-pr-state` is consistent with [Makefile:474-475](Makefile) and `section_runs` ([scripts/test-ship-pr.sh:443-445](scripts/test-ship-pr.sh)) **provided** the tests are placed inside the state section block.
+
+[OUT_OF_SCOPE] [scripts/test-ship-pr.sh:304-347](scripts/test-ship-pr.sh) — Harness `write_state()` omits a `NO_LOGS_COMMIT=` line while the orchestrator heredoc may include it; only becomes a conflict if the chosen strategy ever adds `NO_LOGS_COMMIT` to the `require_key` list without updating this shared fixture.

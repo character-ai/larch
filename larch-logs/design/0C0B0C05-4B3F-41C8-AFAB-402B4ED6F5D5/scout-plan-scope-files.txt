@@ -1,0 +1,5 @@
+scripts/ship-pr.sh
+scripts/ship-pr.md
+skills/implement/SKILL.md
+scripts/test-ship-pr.sh
+scripts/test-ship-pr.md

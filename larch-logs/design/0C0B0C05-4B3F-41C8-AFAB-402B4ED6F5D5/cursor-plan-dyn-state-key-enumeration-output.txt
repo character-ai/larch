@@ -1,0 +1,44 @@
+Gathering the plan and codebase sections for a read-only comparison.
+
+Searching for the orchestrator heredoc and verifying key counts.
+
+Checking `test-ship-pr.sh` state fixtures for required-key completeness and verifying the plan's `make test-ship-pr-state` target name.
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	<TMPDIR>/plan.txt:61-64 vs 115-116	Contradictory require_key guidance: add BAIL_FAILURE_DETAIL_LOG / NO_LOGS_COMMIT / IMPLEMENT_TMPDIR vs safer path omitting them	Implementer cannot tell which branch to ship; resume may break legacy state or violate DECISION_2	Resolve to one approach: either delete lines 61-64 and align DECISION_2 text with failure-mode 2 or delete the reversal in 115-116 and add harness migration for legacy state
+1	in_scope	important	architecture	<TMPDIR>/plan.txt:9-10 vs 115-116	DECISION_2 requires one shared ordered key list for write_initial_state and require_key; failure-mode 2 drops require_key updates	Shared constant cannot cover validation if require_key set stays short; doc claims diverge from binding decision	Edit failure-mode 2 or DECISION_2 so they agree; if omitting require_key keys document that the constant is writer-only or split into writer_keys vs validate_keys
+1	in_scope	nit	correctness	<TMPDIR>/plan.txt:13 and 75	38-key wording vs countable key lines	Operators grep for wrong count; SKILL bullets enumerate 39 key names after the three additions (36 current + 3)	Use 39-key or define whether PHASE token counts separately; align with scripts/ship-pr.md schema wording
+1	in_scope	latent	risk-integration	<TMPDIR>/plan.txt:96 and scripts/test-ship-pr.sh:304-347	New argv-init tests wired under make test-ship-pr-state; default make test-ship-pr omits --section state	CI or local runs that only exercise test-ship-pr miss the four new cases unless harness-16 shard runs	Note in Testing strategy that full ship-pr coverage needs test-ship-pr or the shard containing test-ship-pr-state or run both
+1	in_scope	nit	correctness	skills/implement/SKILL.md:1550-1559 vs scripts/ship-pr.sh:2437-2445	SKILL lists Required keys including BAIL_REASON DESIGN_ONLY_DONE EXPECTED_* not enforced by require_key loop	Plan narrows gap for three new keys only; existing doc-vs-validation skew remains after argv-init	When rewriting Step 8+ appendix distinguish orchestrator-written keys from keys validated at ship-pr entry
+
+**1 [correctness]** `<TMPDIR>/plan.txt:61-64` vs `115-116`: The plan first instructs appending `BAIL_FAILURE_DETAIL_LOG`, `NO_LOGS_COMMIT`, and `IMPLEMENT_TMPDIR` to the `require_key` loop, then the Failure modes section reverses course and says not to extend `require_key` in this PR. That is a hard internal contradiction; pick one path before implementation.
+
+**2 [architecture]** `<TMPDIR>/plan.txt:9-10` vs `115-116`: DECISION_2 binds an inline ordered key list shared by `write_initial_state()` and `require_key`. The safer-path paragraph abandons extending `require_key`, which undermines the “single shared constant” story unless the plan explicitly splits writer keys from validated keys.
+
+**3 [correctness]** `<TMPDIR>/plan.txt:12-13` and `75`: The claim that only three keys are missing from `write_initial_state()` relative to the Step 8+ key list in [skills/implement/SKILL.md](skills/implement/SKILL.md) is accurate: current [scripts/ship-pr.sh](scripts/ship-pr.sh) `write_initial_state()` (lines 261–296) emits 36 keys; SKILL.md lines 1552–1559 document those same 36 plus `BAIL_FAILURE_DETAIL_LOG`, `NO_LOGS_COMMIT`, and `IMPLEMENT_TMPDIR`. However, the plan’s repeated “38-key” label (lines 13, 75) does not match a simple key count after the three additions (36 + 3 = 39 key lines); line 7’s “~38-line heredoc” is a different unit. Tighten terminology (lines vs keys) so operators and tests do not chase the wrong number.
+
+**4 [risk-integration]** [Makefile](Makefile) lines 471–475: New cases are to be wired into [scripts/test-ship-pr.sh](scripts/test-ship-pr.sh) under `make test-ship-pr-state` (plan line 96). The default `make test-ship-pr` target does not pass `--section state`, so the new tests only run when that section or the `test-harnesses-16` shard runs. The Testing strategy (plan lines 119–124) should say explicitly whether `bash scripts/test-ship-pr.sh` (no section) is sufficient for local verification of the new cases.
+
+**5 [correctness]** [skills/implement/SKILL.md](skills/implement/SKILL.md) lines 1550–1559 vs [scripts/ship-pr.sh](scripts/ship-pr.sh) lines 2437–2445: The SKILL “Required keys” prose already includes keys that `require_key` does not validate today—`BAIL_REASON` (written at ship-pr line 279), `DESIGN_ONLY_DONE`, `EXPECTED_SESSION_ID`, and `EXPECTED_TMPDIR_BASENAME_PREFIX` (written lines 294–296) are absent from the `for key in` list at 2437–2445. The plan does not call out this pre-existing skew; the appendix rewrite (plan lines 79–81) should clarify “documented state keys” vs “keys enforced by require_key” so readers are not misled after the heredoc is removed.
+
+**Security / code-quality:** No additional security defects in the proposed argv surface beyond what the plan already covers (CR/LF rejection, tmp-path guards). No separate code-quality finding beyond the contradiction and terminology issues above.
+
+---
+
+### Three-column key diff (current repo)
+
+| Column A — `write_initial_state` keys ([scripts/ship-pr.sh](scripts/ship-pr.sh) 261–296) | Column B — `require_key` keys ([scripts/ship-pr.sh](scripts/ship-pr.sh) 2437–2444) | Column C — SKILL Step 8+ keys ([skills/implement/SKILL.md](skills/implement/SKILL.md) 1552–1559) |
+| --- | --- | --- |
+| PHASE, BRANCH_NAME, ISSUE_NUMBER, RUN_ID, REPO, REPO_UNAVAILABLE, FORKED_TARGET, HAS_BUMP, BUMP_TYPE, NEW_VERSION, MERGE, DRAFT, DEFERRED, PR_CLOSED, DONE_RENAME_APPLIED, STALL_TRACKING, STALL_STEP, BAIL_NEEDS_USER_INPUT, **BAIL_REASON**, CI_PASSED, OOS_PENDING, PR_NUMBER, PR_URL, PR_TITLE, RESUME_PHASE, CALLER_KIND, REBASE_COUNT, FIX_ATTEMPTS, ITERATION, TRANSIENT_RETRIES, FAILED_RUN_ID, MANIFEST_PATH, TOOL_LABEL, **DESIGN_ONLY_DONE**, **EXPECTED_SESSION_ID**, **EXPECTED_TMPDIR_BASENAME_PREFIX** | Same set **except** it omits **BAIL_REASON**, **DESIGN_ONLY_DONE**, **EXPECTED_SESSION_ID**, **EXPECTED_TMPDIR_BASENAME_PREFIX** | Same as column A plus **BAIL_FAILURE_DETAIL_LOG**, **NO_LOGS_COMMIT**, **IMPLEMENT_TMPDIR** |
+
+- In A not in B: `BAIL_REASON`, `DESIGN_ONLY_DONE`, `EXPECTED_SESSION_ID`, `EXPECTED_TMPDIR_BASENAME_PREFIX` — **not** discussed in the plan as a parity gap (pre-existing).
+- In C not in A (today): `BAIL_FAILURE_DETAIL_LOG`, `NO_LOGS_COMMIT`, `IMPLEMENT_TMPDIR` — plan lines 53–59 and 12–13 address these; the “only three missing” claim is **correct** for A vs C.
+- In B not in A: none.
+
+**`BAIL_REASON` vs `BAIL_FAILURE_DETAIL_LOG`:** [scripts/ship-pr.sh](scripts/ship-pr.sh) line 279 writes `BAIL_REASON=`; SKILL line 1555 lists both `BAIL_REASON=` and `BAIL_FAILURE_DETAIL_LOG=` as separate entries. The plan’s proposed `printf 'BAIL_FAILURE_DETAIL_LOG=\n'` (plan lines 55–56) does **not** conflate them with `BAIL_REASON`.
+
+**Harness note (plan precision):** [scripts/test-ship-pr.sh](scripts/test-ship-pr.sh) `write_state()` (lines 327–344) already includes `BAIL_FAILURE_DETAIL_LOG=` and `IMPLEMENT_TMPDIR=` but **not** `NO_LOGS_COMMIT`. If the implementation ever follows the “add all three to `require_key`” branch, the plan’s generic “add three keys to fixtures” should explicitly mention `NO_LOGS_COMMIT` for this helper.
+
+---
+
+**[OUT_OF_SCOPE]** [scripts/test-ship-pr.sh](scripts/test-ship-pr.sh) lines 304–347 — `write_state` fixture omits `NO_LOGS_COMMIT`; if `require_key` is extended to require that key, every caller of `write_state` would need updating. Track when resolving the in-scope `require_key` contradiction.

@@ -1,0 +1,123 @@
+Reading the plan and cross-checking referenced files.
+
+Reading referenced sections in the repo to verify counts, contradictions, and DECISION_2 alignment.
+
+Searching for the orchestrator heredoc and counting keys vs lines.
+
+Verifying distinct key count in `skills/implement/SKILL.md` (lines 1552–1559).
+
+Checking `scripts/ship-pr.md` for line references the plan cites:
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan.txt §UPDATED:scripts/ship-pr.sh vs plan.txt §Failure modes	Conflicting directives: add BAIL_FAILURE_DETAIL_LOG NO_LOGS_COMMIT IMPLEMENT_TMPDIR to require_key loop vs do NOT add them to require_key in this PR	Implementer cannot satisfy both branches; wrong branch breaks legacy fixtures or skips intended validation	Resolve to one policy in a single authoritative subsection and delete the other branch
+1	in_scope	important	architecture	plan.txt line 10 vs plan.txt §UPDATED:scripts/ship-pr.sh	DECISION_2 requires one ordered key-list constant shared by write_initial_state and require_key; file plan only adds scattered printf lines and a manual loop append with no shared constant	Drift guard from the vote is not mechanically enforceable; contradicts ship-pr.md proposal about a single in-script list	Introduce one shared ordered list (or generated source) consumed by both paths or revise DECISION_2 ship-pr.md and Failure modes text
+1	in_scope	important	correctness	plan.txt line 74 vs plan.txt lines 115-116	Proposed ship-pr.md claims an in-script ordered key list is consumed by both write_initial_state and require_key for the full key set; safer path omits three keys from require_key	Consumer doc overstates validation coverage; operators may trust require_key parity that will not exist	Align prose with actual require_key coverage or extend require_key to match the doc
+1	in_scope	nit	architecture	plan.txt line 11 vs plan.txt lines 5 and 30	DECISION_3 labeled 7 caller-varying flags only while Approach and argv list also introduce --force-init-state	Readers infer seven is the total new argv surface; eighth flag is behavioral not key-mapping	Rephrase DECISION_3 as seven key-populating flags plus optional --force-init-state or split into two explicit bullets
+1	in_scope	important	correctness	plan.txt lines 12 53 74 vs skills/implement/SKILL.md:1552-1559	Plan asserts 38-key heredoc parity and 38-key set; SKILL required-key bullets enumerate 39 distinct keys	Byte-for-byte and schema-drift claims target the wrong cardinality; tests or docs keyed off 38 will misfire	Recount orchestrator and on-disk keys against SKILL bullets and standardize on 39 everywhere or explain the excluded key
+1	in_scope	nit	code-quality	plan.txt lines 82-83	Order seven new flags alphabetically but insert them only between --repo and closing fence so block order is not globally alphabetical	Minor style or grep-assist inconsistency with strict alphabetical reading	Clarify alphabetical applies only to the new flag cluster or reorder the full Invoke block alphabetically
+1	in_scope	latent	risk-integration	scripts/test-ship-pr.sh:304-347	Plan Failure modes mention fixture updates if require_key expands; Files section does not call out write_state heredoc edits; write_state omits NO_LOGS_COMMIT= while listing IMPLEMENT_TMPDIR	If implementer follows add-to-require_key branch without updating write_state legacy fixtures may fail require_key	Explicitly list write_state and other fixture writers to add NO_LOGS_COMMIT when that branch wins
+
+1. **[correctness]** `plan.txt` (design session) lines 62–63 vs 115–116: The **UPDATED: `scripts/ship-pr.sh`** subsection says to append `BAIL_FAILURE_DETAIL_LOG` to `require_key` and add `NO_LOGS_COMMIT` and `IMPLEMENT_TMPDIR` to the same loop “for completeness.” **Failure modes** item 2 then chooses the “safer path”: “emit the 3 new keys from `write_initial_state` but **do NOT add them** to the … `require_key` enumeration.” Those are mutually exclusive for the same decision point.
+
+2. **[architecture]** `plan.txt` line 10 (**DECISION_2**) promises “**one ordered key-list constant** inside `ship-pr.sh` shared by `write_initial_state()` and `require_key` validation.” The **Files to modify** instructions for `scripts/ship-pr.sh` (lines 19–64) describe only per-key `printf` edits and a manual `require_key` loop update—**no** shared named constant, array, or single ordered list consumed by both code paths.
+
+3. **[correctness]** `plan.txt` line 74 (proposed **scripts/ship-pr.md** “Schema-drift guard”) states the in-script ordered key list is “consumed by both `write_initial_state` and `require_key`” as the “single source of truth for the **38-key set**.” That conflicts with **Failure modes** lines 115–116, which explicitly keep three emitted keys **out** of `require_key`, so `require_key` would not consume the full written set.
+
+4. **[architecture]** `plan.txt` line 11 (**DECISION_3**): “**7 caller-varying flags only**” and “new flags target only” the seven listed state keys. **`## Approach`** line 5 and the argv bullet list (lines 23–30) additionally introduce **`--force-init-state`**, an eighth new CLI flag (not one of the seven key-mapping flags). The headline “7 … only” is therefore misleading unless qualified.
+
+5. **[correctness]** `plan.txt` lines 12, 53, and 74 assert **“38-key”** heredoc / set parity. Counting distinct `KEY` names in the Step 8+ “Required keys” bullets yields **39** keys:
+
+```1552:1559:skills/implement/SKILL.md
+- `PHASE=checks`, `BRANCH_NAME`, `ISSUE_NUMBER`, `RUN_ID`, `REPO`, `REPO_UNAVAILABLE`, `FORKED_TARGET`
+- `HAS_BUMP=true`, `BUMP_TYPE=NONE`, `NEW_VERSION=`, `MERGE`, `DRAFT`, `DEFERRED`
+- `PR_CLOSED=false`, `DONE_RENAME_APPLIED=false`, `STALL_TRACKING=false`, `STALL_STEP=`
+- `BAIL_NEEDS_USER_INPUT=false`, `BAIL_REASON=`, `BAIL_FAILURE_DETAIL_LOG=`, `CI_PASSED=false`, `OOS_PENDING=false`
+- `PR_NUMBER=`, `PR_URL=`, `PR_TITLE=`, `RESUME_PHASE=`, `CALLER_KIND=`
+- `REBASE_COUNT=0`, `FIX_ATTEMPTS=0`, `ITERATION=0`, `TRANSIENT_RETRIES=0`, `FAILED_RUN_ID=`
+- `MANIFEST_PATH`, `TOOL_LABEL`, `DESIGN_ONLY_DONE=false`, `EXPECTED_SESSION_ID`, `EXPECTED_TMPDIR_BASENAME_PREFIX`
+- `NO_LOGS_COMMIT=$no_logs_commit`, `IMPLEMENT_TMPDIR=$IMPLEMENT_TMPDIR`
+```
+
+After the proposed three `printf` lines, `write_initial_state` would emit **39** `printf` key lines (current `scripts/ship-pr.sh` lines 261–296 are **36** lines; 36 + 3 = 39), which matches the SKILL bullet cardinality, not “38.”
+
+6. **[code-quality]** `plan.txt` lines 82–83: SKILL change #2 asks to order the seven new flags “**alphabetically by long-option name**” but place them “**between `--repo` … and the closing fence**.” Alphabetically within the whole invoke line, several existing flags (e.g. `--repo`, `--run-id` if spelled that way) would sit differently; the instruction is internally ambiguous unless scoped to “alphabetical among the seven new flags only.”
+
+7. **[risk-integration]** `scripts/test-ship-pr.sh` `write_state()` heredoc at lines 308–347 already includes `BAIL_FAILURE_DETAIL_LOG=` and `IMPLEMENT_TMPDIR=…` but **does not** include a `NO_LOGS_COMMIT=…` line. The plan’s **Failure modes** (lines 115–116) warn about harness updates if `require_key` grows, but the **Files** test subsection does not explicitly tie `write_state` (and similar fixtures) to the chosen `require_key` policy—high coupling if the “add to require_key” branch is followed by mistake.
+
+**[OUT_OF_SCOPE]** `scripts/ship-pr.sh:2437-2446` — Current `require_key` loop lists **32** keys and omits several keys that `write_initial_state` already emits (e.g. `BAIL_REASON`, `DESIGN_ONLY_DONE`, `EXPECTED_SESSION_ID`, `EXPECTED_TMPDIR_BASENAME_PREFIX` per `scripts/ship-pr.sh:278-296`). The plan does not resolve that older asymmetry; only flag if the PR goal explicitly required full parity between writer and `require_key`.
+
+**Security walk:** No separate security defect beyond the above documentation and validation-surface inconsistencies; CR/LF rejection and `printf`-based emission described in the plan are consistent with the stated threat model.
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan.txt §UPDATED:scripts/ship-pr.sh vs plan.txt §Failure modes	Conflicting directives: add BAIL_FAILURE_DETAIL_LOG NO_LOGS_COMMIT IMPLEMENT_TMPDIR to require_key loop vs do NOT add them to require_key in this PR	Implementer cannot satisfy both branches; wrong branch breaks legacy fixtures or skips intended validation	Resolve to one policy in a single authoritative subsection and delete the other branch
+1	in_scope	important	architecture	plan.txt line 10 vs plan.txt §UPDATED:scripts/ship-pr.sh	DECISION_2 requires one ordered key-list constant shared by write_initial_state and require_key; file plan only adds scattered printf lines and a manual loop append with no shared constant	Drift guard from the vote is not mechanically enforceable; contradicts ship-pr.md proposal about a single in-script list	Introduce one shared ordered list (or generated source) consumed by both paths or revise DECISION_2 ship-pr.md and Failure modes text
+1	in_scope	important	correctness	plan.txt line 74 vs plan.txt lines 115-116	Proposed ship-pr.md claims an in-script ordered key list is consumed by both write_initial_state and require_key for the full key set; safer path omits three keys from require_key	Consumer doc overstates validation coverage; operators may trust require_key parity that will not exist	Align prose with actual require_key coverage or extend require_key to match the doc
+1	in_scope	nit	architecture	plan.txt line 11 vs plan.txt lines 5 and 30	DECISION_3 labeled 7 caller-varying flags only while Approach and argv list also introduce --force-init-state	Readers infer seven is the total new argv surface; eighth flag is behavioral not key-mapping	Rephrase DECISION_3 as seven key-populating flags plus optional --force-init-state or split into two explicit bullets
+1	in_scope	important	correctness	plan.txt lines 12 53 74 vs skills/implement/SKILL.md:1552-1559	Plan asserts 38-key heredoc parity and 38-key set; SKILL required-key bullets enumerate 39 distinct keys	Byte-for-byte and schema-drift claims target the wrong cardinality; tests or docs keyed off 38 will misfire	Recount orchestrator and on-disk keys against SKILL bullets and standardize on 39 everywhere or explain the excluded key
+1	in_scope	nit	code-quality	plan.txt lines 82-83	Order seven new flags alphabetically but insert them only between --repo and closing fence so block order is not globally alphabetical	Minor style or grep-assist inconsistency with strict alphabetical reading	Clarify alphabetical applies only to the new flag cluster or reorder the full Invoke block alphabetically
+1	in_scope	latent	risk-integration	scripts/test-ship-pr.sh:304-347	Plan Failure modes mention fixture updates if require_key expands; Files section does not call out write_state heredoc edits; write_state omits NO_LOGS_COMMIT= while listing IMPLEMENT_TMPDIR	If implementer follows add-to-require_key branch without updating write_state legacy fixtures may fail require_key	Explicitly list write_state and other fixture writers to add NO_LOGS_COMMIT when that branch wins
+
+Wait - the user said first line MUST be TSV header OR JSON. I duplicated the TSV block at end - the instructions say "Include a TSV structured-record block" - one block is enough at the start. Let me remove duplicate at end and fix: I accidentally put TWO headers in my draft - first block had header + 7 rows, but I wrote "1." for numbered list right after first row - messed up.
+
+Let me re-output cleanly:
+
+1. TSV header
+2. Seven data rows (tabs)
+3. Blank line  
+4. Numbered findings 1-7
+5. OUT_OF_SCOPE paragraph
+6. Security sentence
+
+Remove duplicate TSV at bottom.
+
+Also fix first TSV block - I had schema_version row then wrongly continued with "1." - the first output in my draft mixed TSV with numbered list incorrectly.
+
+Let me re-read user instruction: "When you have findings, include a TSV structured-record block with this exact header"
+
+So the response should START with TSV header. So:
+
+Line 1: schema_version	scope	...
+Lines 2-8: seven records
+
+Then the rest of the content (numbered findings, etc.)
+
+Do NOT duplicate the header block twice.
+
+I'll also verify: first row after header in example uses `1` in column schema_version - yes that's the schema version for records.
+
+Actually re-read the example - "For each finding, add one record: 1	<scope>..." - the leading `1` is schema_version field value = 1 for all records. Good.
+
+I'll produce clean final answer without code block for TSV if user said no markdown fences around TSV - "no markdown fences around the TSV"
+
+So raw TSV at top.
+
+For the SKILL excerpt, user wanted code citations in ``` format - that's fine in the narrative part.
+
+Let me output.
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan.txt §UPDATED:scripts/ship-pr.sh:62-63 vs plan.txt §Failure modes:115-116	Conflicting directives: append BAIL_FAILURE_DETAIL_LOG NO_LOGS_COMMIT IMPLEMENT_TMPDIR to require_key vs safer path do NOT add them to require_key in this PR	Implementer cannot satisfy both; wrong choice either skips validation or breaks legacy hand-written state and harness fixtures	Choose one policy delete the contradictory paragraph and propagate to ship-pr.md and tests
+1	in_scope	important	architecture	plan.txt:10 vs plan.txt §UPDATED:scripts/ship-pr.sh:19-64	DECISION_2 promises one ordered key-list constant shared by write_initial_state and require_key; proposed edits only add printf lines and a manual require_key append with no shared constant	Voted drift guard is not implementable as written; conflicts with proposed ship-pr.md single-list story	Add one shared ordered list consumed by both paths or revise DECISION_2 and downstream prose
+1	in_scope	important	correctness	plan.txt proposed ship-pr.md:74 vs plan.txt §Failure modes:115-116	Schema-drift text says the ordered list is consumed by both write_initial_state and require_key for the full set; safer path keeps three emitted keys out of require_key	Docs claim require_key covers the full written schema when it will not	Align ship-pr.md wording with actual require_key membership or add the keys to require_key
+1	in_scope	nit	architecture	plan.txt:11 vs plan.txt:5 and :30	DECISION_3 headline seven caller-varying flags only while Approach and argv bullets add --force-init-state	Eighth new CLI flag is omitted from the seven-only headline	Rephrase as seven key-populating flags plus optional --force-init-state or enumerate eight explicitly
+1	in_scope	important	correctness	plan.txt:12 :53 :74 vs skills/implement/SKILL.md:1552-1559	Plan repeats 38-key heredoc and 38-key set; SKILL required-key bullets list 39 distinct keys; write_initial_state would be 36 plus 3 new printf lines equals 39	38-key parity and drift math are wrong versus authoritative SKILL key list	Recount keys and standardize on 39 or document one deliberate exclusion with the same count in ship-pr and SKILL
+1	in_scope	nit	code-quality	plan.txt:82-83	Alphabetical ordering of seven new flags but insertion only between --repo and closing fence	Global alphabetical order of the full argv block is not achieved	Scope the rule to alphabetical among the seven new flags only or reorder the entire Invoke block
+1	in_scope	latent	risk-integration	scripts/test-ship-pr.sh:304-347	Failure modes mention harness updates if require_key expands; Files test plan omits write_state heredoc; write_state includes IMPLEMENT_TMPDIR and BAIL_FAILURE_DETAIL_LOG but not NO_LOGS_COMMIT	If add-to-require_key branch is followed without fixture edits silent CI failures	Explicitly require write_state and sibling fixtures to gain NO_LOGS_COMMIT when that branch wins
+
+1. **[correctness]** In `plan.txt`, **UPDATED: `scripts/ship-pr.sh`** (“After the heredoc, append `BAIL_FAILURE_DETAIL_LOG` to the existing `require_key` enumeration… add [`NO_LOGS_COMMIT` and `IMPLEMENT_TMPDIR`] to the loop for completeness”) contradicts **Failure modes** §2 (“the safer path is: emit the 3 new keys from `write_initial_state` but **do NOT add them** to the … `require_key` enumeration”). Same decision, opposite outcomes.
+
+2. **[architecture]** `plan.txt` **DECISION_2** (“**one ordered key-list constant** inside `ship-pr.sh` shared by `write_initial_state()` and `require_key` validation”) is not reflected in the **`### UPDATED: scripts/ship-pr.sh`** steps, which only extend `printf` lines and the existing `for key in … require_key` loop without introducing any shared ordered constant consumed by both paths.
+
+3. **[correctness]** The proposed **scripts/ship-pr.md** “Schema-drift guard” (`plan.txt` line 74: list “consumed by both `write_initial_state` and `require_key`” as the “single source of truth for the **38-key set**”) conflicts with the same **Failure modes** “do NOT add” `require_key` choice: three on-disk keys would not be validated by `require_key` under the safer path, so the prose overstates `require_key` coverage.
+
+4. **[architecture]** **DECISION_3** (“**7 caller-varying flags only**”) conflicts with **`## Approach`** and the argv design (“seven … **plus a `--force-init-state` override**”; `--force-init-state` in the flag list at lines 29–30). That is an eighth new CLI surface unless the headline explicitly carves out behavioral-only flags.
+
+5. **[correctness]** The plan’s repeated **“38-key”** framing (`plan.txt` lines 12, 53, 74) does not match the **39** distinct key names listed in `skills/implement/SKILL.md` at lines 1552–1559 (seven + six + four + five + five + five + five + two = **39**). Current `write_initial_state` in `scripts/ship-pr.sh` uses **36** `printf` key lines (lines 261–296); adding the three proposed lines yields **39**, aligning with SKILL, not 38.
+
+6. **[code-quality]** `plan.txt` lines 82–83 require the seven new flags “**alphabetically by long-option name**” yet placed “**between `--repo` … and the closing fence**,” which is not strictly alphabetical for the whole `Invoke:` block unless clarified as “alphabetical only within the new-flag cluster.”
+
+7. **[risk-integration]** `scripts/test-ship-pr.sh` `write_state()` (lines 304–347) already emits `BAIL_FAILURE_DETAIL_LOG` and `IMPLEMENT_TMPDIR` but **not** `NO_LOGS_COMMIT`. The plan’s **Failure modes** warn about fixture updates when `require_key` expands, but the **Files** test subsection does not explicitly bind `write_state` / other fixture writers to the chosen `require_key` policy—risk if the “add to `require_key`” branch is implemented without parallel fixture edits.
+
+**[OUT_OF_SCOPE]** `scripts/ship-pr.sh:2437-2446` — Today’s `require_key` loop validates **32** keys while `write_initial_state` (`scripts/ship-pr.sh:261-296`) already emits keys **not** listed in that loop (e.g. `BAIL_REASON`, `DESIGN_ONLY_DONE`, `EXPECTED_SESSION_ID`, `EXPECTED_TMPDIR_BASENAME_PREFIX`). The plan does not claim to fix that older asymmetry; track only if full writer/`require_key` parity becomes an explicit goal.
+
+**Security:** No additional security-specific defect beyond validation and documentation consistency above; CR/LF rejection and `printf`-based line emission in the plan match the stated parsing model.

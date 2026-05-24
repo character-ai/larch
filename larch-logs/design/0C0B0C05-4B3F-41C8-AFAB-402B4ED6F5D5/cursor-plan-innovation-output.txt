@@ -1,0 +1,90 @@
+Reading the plan and exploring referenced paths in the codebase.
+
+Validating cited line ranges and integration points in the codebase.
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/ship-pr.sh:2437-2446	Plan contradicts itself on extending the require_key loop after new state keys	UPDATED section tells implementers to append BAIL_FAILURE_DETAIL_LOG (and optionally NO_LOGS_COMMIT IMPLEMENT_TMPDIR) to the L2437-2445 require_key list while Failure modes 2 resolves to the opposite (emit keys from write_initial_state but leave require_key unchanged)	Merge the two plan sections into one binding rule before implementation; if the safer path wins also update the UPDATED ship-pr.sh bullet so it no longer tells readers to extend require_key
+1	in_scope	important	risk-integration	scripts/test-ship-pr.sh:429-448	New argv-init tests must run under make test-ship-pr-state	Plan wires cases into the harness but never says they must live inside the existing if section_runs state guard	Explicitly require placing the four new cases in the state section (same as other ship-pr-state Makefile-driven cases) or document an alternative runner hook so make test-ship-pr-state cannot silently skip them
+1	in_scope	nit	code-quality	scripts/ship-pr.sh:32-37	usage() location in plan is wrong	Plan points implementers at usage banner around L80-100 where L80 is run_lint_fix_loop_capture not usage	Correct the plan citation to usage() at scripts/ship-pr.sh:32-37 (or read-and-confirm after edits) when describing usage banner updates
+1	in_scope	latent	correctness	scripts/ship-pr.sh:260-297	Byte-for-byte 38-key parity is asserted without an ordered checklist against the real orchestrator heredoc	Wrong insertion order for the three new printf lines would violate the stated parity goal even if all keys exist	Add an explicit implementation step diffing key order against the issue #2742 heredoc or the SKILL.md bullet order after edits not documentation-only
+1	in_scope	latent	architecture	scripts/refresh-run-logs.sh:28-43	NO_LOGS_COMMIT read from state file not argv	If write_initial_state omits the key (today) or legacy files lack it kv returns empty so line 43 does not skip refresh commits	Mention in ship-pr.md argv-init subsection that cold-written state should always include NO_LOGS_COMMIT for refresh-run-logs or treat missing key as false in refresh (separate follow-up if out of PR scope)
+
+[OUT_OF_SCOPE] Align NEVER #18 prose ("before rewriting ship-pr-state.sh") with key-based partial updates once the Step 8+ upfront heredoc is removed — [skills/implement/SKILL.md:70](skills/implement/SKILL.md) (single line; optional doc-only pass with NEVER #11 at [skills/implement/SKILL.md:56](skills/implement/SKILL.md)).
+
+1. **[correctness]** [scripts/ship-pr.sh:2437-2446](scripts/ship-pr.sh) — The plan’s “UPDATED” instructions conflict with “Failure modes” §2 on whether new keys join `require_key`. Pick one binding rule and delete the contradictory paragraph so implementers do not ship a half-and-half validation surface.
+
+2. **[risk-integration]** [scripts/test-ship-pr.sh:429-448](scripts/test-ship-pr.sh) — `make test-ship-pr-state` only runs the `state` section. Require the four new cases to be registered inside `section_runs state` (or document another explicit hook); otherwise CI can miss them while full `make test-ship-pr` still passes.
+
+3. **[code-quality]** [scripts/ship-pr.sh:32-37](scripts/ship-pr.sh) — The plan’s “usage() … around L80-100” anchor is stale; `usage()` lives at the top of the file. Fix the line reference in the plan so editors land on the real banner.
+
+4. **[correctness]** [scripts/ship-pr.sh:260-297](scripts/ship-pr.sh) — “Byte-for-byte” parity needs a concrete ordered diff against the orchestrator heredoc (issue body), not only a key name set; otherwise `printf` ordering drift is an easy latent miss.
+
+5. **[architecture]** [scripts/refresh-run-logs.sh:28-43](scripts/refresh-run-logs.sh) — `NO_LOGS_COMMIT` is read from the state file; if the plan keeps those keys non-required for legacy compat, document the hazard (missing key ⇒ refresh does not skip) or accept a tiny follow-up to default `kv` to false.
+
+**Creative / unconventional alternative (not blocking):** A dedicated `ship-pr.sh --dump-initial-state` or stdin KVs would avoid long argv lines and make “init vs resume” explicit without relying on “any INIT flag present” heuristics; the plan already voted against a separate toggle, so treat this as optional follow-up only.
+
+Wait - user said first line must be TSV header. I put schema_version first in my draft but I also had numbered list and OUT_OF_SCOPE BEFORE the user wanted TSV first?
+
+Re-read user message: "Your response MUST begin with either the TSV header line ... When you have findings, include a TSV structured-record block"
+
+So order:
+1. TSV header + rows (no markdown fences)
+2. Then I can add numbered findings - but would that violate "first non-whitespace must be s or {"?
+
+The numbered list starting with "1." would have first char "1" - **VIOLATION**
+
+So the ENTIRE response when there are findings must START with TSV header. Can I put numbered findings AFTER TSV without violating? The user said "first non-whitespace character of your response must be either `s` (start of `schema_version`) or `{`"
+
+So after TSV block, if I add "1. **correctness**" the first character is still `s` from schema_version - wait no, the **first** character of the **entire response** is what matters. So if I have:
+
+schema_version	...
+1	in_scope	...
+
+Then later:
+## Findings
+1. ...
+
+The first character is `s` - good.
+
+But if TSV is followed by newline and then "1." - first character of response is still `s`. OK!
+
+Actually "1." as start of line 20 - the first character of response is still `s` from line 1. **Good**.
+
+Let me not put numbered list before TSV.
+
+I'll output: TSV block (tab-separated, no fences), blank line, numbered findings, blank line, OUT_OF_SCOPE.
+
+Avoid markdown links in numbered part? User said "repo-relative file:line when applicable" - I used markdown links in draft - user rules say prefer markdown links for URLs; for paths maybe ok. I'll use plain `path:line` in numbered section to reduce noise.
+
+Double-check TSV: no tabs inside field values - I used spaces in "UPDATED section tells..."
+
+**schema_version in TSV**: User said "For each finding, add one record: 1	<scope>..." - so first column is literal `1` for each row? The example shows `1` in first column for schema - example:
+```
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/foo.sh:42-45	...
+```
+
+So column 1 after header is always `1` meaning record version? Or finding number? The example uses `1` for one finding. I'll use `1` for each row as in example (schema_version column value = 1 for each data row).
+
+Actually re-read: "For each finding, add one record: 1	<scope>..." - the leading `1` might mean record format version. I'll use `1` for each row like the example.
+
+I'll produce final output without CreatePlan.
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/ship-pr.sh:2437-2446	Conflicting instructions on extending the require_key loop after adding state keys	UPDATED section tells implementers to append BAIL_FAILURE_DETAIL_LOG and related keys to the L2437-2445 require_key list while Failure modes 2 chooses the opposite safer path	Merge the two plan sections into one binding rule before coding; if the safer path wins delete the UPDATED bullet that still orders require_key extensions
+1	in_scope	important	risk-integration	scripts/test-ship-pr.sh:429-448	New argv-init tests must run under make test-ship-pr-state	Plan wires cases into the harness but never requires placement inside the existing if section_runs state guard	Explicitly require the four new cases live in the state section or document another runner hook so make test-ship-pr-state cannot skip them while full test-ship-pr passes
+1	in_scope	nit	code-quality	scripts/ship-pr.sh:32-37	Stale usage() line reference in plan	Plan cites usage banner around L80-100 where L80 is run_lint_fix_loop_capture not usage	Correct the plan anchor to usage at scripts/ship-pr.sh:32-37 when describing usage banner edits
+1	in_scope	latent	correctness	scripts/ship-pr.sh:260-297	Byte-for-byte 38-key parity asserted without ordered checklist	Wrong printf order still satisfies key coverage but breaks the stated orchestrator byte parity goal	Add an explicit implementation check diffing key order against issue 2742 heredoc or the SKILL appendix order after edits
+1	in_scope	latent	architecture	scripts/refresh-run-logs.sh:28-43	NO_LOGS_COMMIT is read from state not argv	If state omits NO_LOGS_COMMIT kv returns empty so line 43 does not skip refresh commits	Mention in ship-pr.md argv-init subsection that cold state should always emit NO_LOGS_COMMIT for refresh or accept a follow-up default-missing-key behavior in refresh-run-logs
+
+1. **[correctness]** scripts/ship-pr.sh:2437-2446 — The plan’s UPDATED block and Failure modes §2 disagree on whether to extend `require_key` for the three new keys; resolve to one contract so validation cannot be implemented twice.
+
+2. **[risk-integration]** scripts/test-ship-pr.sh:429-448 — New cases must sit behind `section_runs state` (or an explicitly documented equivalent); otherwise `make test-ship-pr-state` may never exercise argv-init while `make test-ship-pr` still passes.
+
+3. **[code-quality]** scripts/ship-pr.sh:32-37 — Replace the plan’s “usage() around L80-100” pointer with the real `usage()` location at the top of `ship-pr.sh`.
+
+4. **[correctness]** scripts/ship-pr.sh:260-297 — Treat “byte-for-byte” parity as an ordered diff against the orchestrator heredoc, not a key-name checklist only.
+
+5. **[architecture]** scripts/refresh-run-logs.sh:28-43 — If `NO_LOGS_COMMIT` stays non-required in state for legacy files, document the refresh behavior when the key is absent or schedule a small follow-up to default missing keys to false.
+
+[OUT_OF_SCOPE] Optional doc pass: align NEVER #18 wording (“rewriting `ship-pr-state.sh`”) with key-based partial updates after the upfront heredoc is removed — skills/implement/SKILL.md:70 (single line; touches same Step 8+ surface as skills/implement/SKILL.md:56).

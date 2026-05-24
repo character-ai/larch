@@ -1,0 +1,104 @@
+## Plan-Review Ballot
+
+You are voting on proposed changes to the implementation plan for issue #2742 ("Absorb ship-pr-state.sh file write into scripts/ship-pr.sh argv"). For each FINDING_N below, vote YES (apply this finding to the plan), NO (the concern is invalid), or EXONERATE (legitimate concern but not worth changing the plan in this PR). For OOS_N items, vote based on whether the **problem described** is real, concrete, and worth filing as a GitHub issue.
+
+The current plan is at $DESIGN_TMPDIR/plan.txt. Read it before voting.
+
+---
+
+### FINDING_1: Plan contradicts itself on `require_key` enumeration
+- **Reviewer(s)**: 11 reviewers (cursor-arch, cursor-edge, cursor-pragmatic, cursor-requirements, cursor-dyn-plan-coherence ×3, cursor-dyn-harness-integration, cursor-dyn-state-key-enumeration, cursor-innovation ×2, codex-arch, codex-pragmatic, codex-edge, codex-innovation, codex-requirements, codex-dyn-plan-coherence)
+- **Severity**: important
+- **Focus area**: correctness
+- **Concern**: The UPDATED `scripts/ship-pr.sh` section instructs: "After the heredoc, append `BAIL_FAILURE_DETAIL_LOG` to the existing `require_key` enumeration in `main()` (the loop at L2438-2445) ... `NO_LOGS_COMMIT` and `IMPLEMENT_TMPDIR` ... add them to the loop for completeness alongside `BAIL_FAILURE_DETAIL_LOG`." Then Failure modes #2 reverses: "the safer path is: emit the 3 new keys from `write_initial_state` but do NOT add them to the L2438-2445 `require_key` enumeration in this PR — leaving the validation surface unchanged keeps backward-compat for hand-written legacy state files. I'll go with this safer approach." An implementer cannot tell which path is normative. The first directive would break legacy state files; the second would leave validation incomplete.
+- **Suggested revision**: Delete the contradictory half. Pick ONE normative direction in the UPDATED `scripts/ship-pr.sh` section (recommend the safer "do NOT extend require_key" path, since the issue body's Constraints section requires "existing callers ... continue to work unchanged"). Remove the "After the heredoc, append..." sentence. Reword Failure modes #2 to record the analysis but not flip the decision.
+
+### FINDING_2: DECISION_2 promises a shared ordered key-list constant; implementation steps don't create one
+- **Reviewer(s)**: 8 reviewers (cursor-dyn-plan-coherence ×3, cursor-dyn-state-key-enumeration, cursor-pragmatic, cursor-requirements ×2, codex-arch, codex-innovation, codex-pragmatic, codex-requirements, codex-dyn-plan-coherence)
+- **Severity**: important
+- **Focus area**: architecture
+- **Concern**: The Approach section asserts DECISION_2 voted: "one ordered key-list constant inside `ship-pr.sh` shared by `write_initial_state()` and `require_key` validation." The UPDATED `scripts/ship-pr.sh` section then describes only individual `printf` line edits and a manual `require_key` append — no single ordered constant is actually introduced. The ship-pr.md update text claims "the in-script ordered key list (consumed by both `write_initial_state` and `require_key`) is the single source of truth." That document text would be inaccurate.
+- **Suggested revision**: Either (a) explicitly add a `LARCH_SHIP_PR_STATE_KEYS=( ... )` Bash 3.2-compatible indexed array near the top of `scripts/ship-pr.sh`, used by both `write_initial_state()` (loop over the array) and the `require_key` enumeration (same loop), and update the ship-pr.md prose accordingly — OR (b) downgrade the DECISION_2 outcome description: keep the inline printf approach in `write_initial_state()` (because DECISION_3 declined the dedicated lib) and remove the "shared by both" claim from both Approach and ship-pr.md. Recommendation: (b), because the dialectic voted against the dedicated lib precisely on grounds that one consumer doesn't justify shared infrastructure.
+
+### FINDING_3: Plan asserts "38-key heredoc parity" but the actual count is 39
+- **Reviewer(s)**: 5 reviewers (cursor-dyn-plan-coherence ×3, cursor-dyn-state-key-enumeration, codex-dyn-plan-coherence, codex-dyn-state-key-enumeration)
+- **Severity**: important
+- **Focus area**: correctness
+- **Concern**: The plan repeatedly references a 38-key target. A precise count: current `write_initial_state()` emits 36 keys (per `scripts/ship-pr.sh:260-296`); the SKILL.md L1550-1559 bullet list enumerates 39 distinct keys (including DESIGN_ONLY_DONE, EXPECTED_SESSION_ID, EXPECTED_TMPDIR_BASENAME_PREFIX in addition to the three plan-mentioned BAIL_FAILURE_DETAIL_LOG / NO_LOGS_COMMIT / IMPLEMENT_TMPDIR); the orchestrator's observed heredoc (in run DDE4E370 transcript) writes 38 keys. After adding the 3 new keys to `write_initial_state()`, it emits 39 keys.
+- **Suggested revision**: Replace every "38-key" / "38 keys" occurrence in the plan with the verified count "39 keys" (post-update state). State explicitly that this matches the SKILL.md L1550-1559 spec, NOT the older orchestrator-runtime heredoc count.
+
+### FINDING_4: Empty argv values (`--branch-name ""`) are silently treated as omitted; conflicts with heredoc semantics
+- **Reviewer(s)**: 5 reviewers (codex-dyn-plan-coherence, codex-edge, codex-pragmatic, codex-requirements ×2)
+- **Severity**: important
+- **Focus area**: correctness
+- **Concern**: Approach says argv-init flags either pass values or are omitted. Edge cases says: "a caller passing `--branch-name ""` (explicit empty) is treated identically to omitting the flag — the auto-derivation fallback runs. This matches the orchestrator's heredoc behaviour where empty values produce empty state keys (e.g. `NEW_VERSION=`)." The latter claim is wrong: the orchestrator's heredoc writes `NEW_VERSION=` (literal empty value, NOT auto-derived); but the proposed `${INIT_BRANCH_NAME:-$branch}` pattern would substitute `$branch` (the git-derived value) when `INIT_BRANCH_NAME` is empty. The two paths diverge for empty values, breaking the documented byte-for-byte parity claim.
+- **Suggested revision**: Distinguish "flag omitted from argv" from "flag passed with empty value." Recommended pattern: a separate `INIT_BRANCH_NAME_SET=false` companion variable set to `true` when the flag is parsed (regardless of value); `write_initial_state` checks the `_SET` flag, not the value-emptiness. When `_SET=true`, emit the value (even if empty); when `_SET=false`, fall back to derivation. Document this pattern in the Edge cases section.
+
+### FINDING_5: New harness cases wired under "`make test-ship-pr-state`" but harness has no `test_*` dispatcher
+- **Reviewer(s)**: 4 reviewers (cursor-dyn-harness-integration, cursor-innovation ×2, cursor-requirements, codex-pragmatic)
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Concern**: The plan proposes new test cases as named functions (`test_init_state_from_argv_fresh`, etc.) and claims they "run under `make test-ship-pr-state`." But `scripts/test-ship-pr.sh` uses inline blocks under a `section=state` dispatch guard (around L840-1184), not a named `test_*` function dispatcher. The plan's wire-up step is unspecified.
+- **Suggested revision**: Either (a) reword the test cases as inline blocks inside the existing `section=state` guard, matching the existing pattern — OR (b) introduce a `test_*` function dispatcher in `test-ship-pr.sh` as part of this PR. Recommend (a). Update the testing strategy bullet to say "add new cases under the existing `section=state` guard at scripts/test-ship-pr.sh:840-1184" instead of naming them as functions.
+
+### FINDING_6: `usage()` location cited at L80-100 is wrong
+- **Reviewer(s)**: 3 reviewers (cursor-innovation ×2, cursor-pragmatic, cursor-requirements)
+- **Severity**: nit
+- **Focus area**: code-quality
+- **Concern**: The plan says "Update the usage banner (`usage()` function, around L80-100 — read to confirm location)." Actual `usage()` is around L32-37 in `scripts/ship-pr.sh` (per Cursor reviewers who read the file). The "— read to confirm location" hedge is fine for an implementer but the cited line range is misleading.
+- **Suggested revision**: Replace "around L80-100 — read to confirm location" with "(actual location around L32-37; verify via `grep -n '^usage()' scripts/ship-pr.sh`)."
+
+### FINDING_7: DECISION_3 labeled "7 flags" but plan introduces 8 new flags total
+- **Reviewer(s)**: 3 reviewers (cursor-dyn-plan-coherence ×3, codex-dyn-plan-coherence)
+- **Severity**: nit
+- **Focus area**: architecture
+- **Concern**: DECISION_3 vote was "Only flags for varying values" with 7 named per-key flags. The plan also adds `--force-init-state`, making 8 new flags. The DECISION_3 label undercount confuses the relationship between the dialectic vote and the implemented surface.
+- **Suggested revision**: Reword the DECISION_3 summary line to "7 caller-varying per-key flags plus 1 control flag (`--force-init-state`) — 8 new flags total." Note explicitly that `--force-init-state` is a control flag, not a state-key flag, so it doesn't count against the DECISION_3 minimum-flag-set vote.
+
+### FINDING_8: CR/LF test covers 2 of 7 flags while claiming "validation covers all 7"
+- **Reviewer(s)**: 3 reviewers (codex-arch, codex-innovation, cursor-requirements)
+- **Severity**: nit
+- **Focus area**: code-quality
+- **Concern**: `test_init_state_argv_rejects_cr_lf` is described as testing `--branch-name`, then "Repeat for one other flag (e.g., `--issue-number`) to confirm the validation covers all 7." Testing 2 of 7 inputs doesn't confirm validation covers the other 5.
+- **Suggested revision**: Either (a) parameterize the case to loop over all 7 flag names with a fixed CR-bearing sentinel value, asserting each rejection, OR (b) reword the comment to "spot-check that the validation pattern works for two representative flags; the other 5 use the same `case "$INIT_*" in *$'\r'*|*$'\n'*) ...` boilerplate." Recommend (a) since the loop is trivial in Bash 3.2.
+
+### FINDING_9: NO_LOGS_COMMIT in state is parity-only, not behavioural — clarify this
+- **Reviewer(s)**: 2 reviewers (codex-pragmatic, cursor-innovation ×2)
+- **Severity**: important
+- **Focus area**: correctness
+- **Concern**: Plan adds `NO_LOGS_COMMIT` to the state file but `ship-pr.sh` consumes it from argv (`--no-logs-commit`) via `NO_LOGS_COMMIT` variable, not by reading state. Adding it to state doesn't change resume behaviour. The Approach makes it sound like adding the key is functional; it's observational only (for log-rendering parity with the orchestrator's heredoc).
+- **Suggested revision**: Add a short note in the Approach or Failure modes section: "Adding `NO_LOGS_COMMIT` to the state file is for observability/heredoc-parity only — `ship-pr.sh` already consumes the value from `--no-logs-commit` on every invocation. Resume runs read from argv, not from state, so `NO_LOGS_COMMIT` in state is informational."
+
+### FINDING_10: Resume SKILL.md prose contradicts itself on whether argv flags must match
+- **Reviewer(s)**: 2 reviewers (codex-dyn-plan-coherence, codex-innovation)
+- **Severity**: nit
+- **Focus area**: risk-integration
+- **Concern**: SKILL.md update step 4 says: "the new per-key argv flags ARE recorded in state on cold start, so resume must NOT re-pass them" — and adds: "On resume (state file present), the seven argv-init flags ... are silently ignored by `ship-pr.sh`; they may be omitted to keep the resume invocation short, but passing them is harmless." The two clauses are reconcilable but the "must NOT re-pass" / "passing them is harmless" wording is mildly contradictory.
+- **Suggested revision**: Replace "must NOT re-pass them" with "do not need to re-pass them" so the clarification ("passing them is harmless") flows naturally. Or drop the clarification entirely and keep just "On resume, argv-init flags are silently ignored."
+
+---
+
+### OOS_1: `write_state` harness fixture omits NO_LOGS_COMMIT line
+- **Reviewer(s)**: 4 reviewers (cursor-dyn-harness-integration, cursor-dyn-state-key-enumeration, cursor-edge, cursor-dyn-plan-coherence)
+- **Focus area**: risk-integration
+- **Description**: `scripts/test-ship-pr.sh:304-347` `write_state()` helper currently omits a `NO_LOGS_COMMIT=` line. Track this as a follow-up: if `require_key` is ever extended to require that key (rejected in this PR per FINDING_1), every `write_state`-seeded scenario in the harness would need updating to add it.
+
+### OOS_2: NEVER #18 prose in skills/implement/SKILL.md describes heredoc-based state rewrites
+- **Reviewer(s)**: 2 reviewers (cursor-innovation, cursor-pragmatic)
+- **Focus area**: code-quality
+- **Description**: `skills/implement/SKILL.md:70` NEVER #18 instructs the orchestrator to use a key-based rewrite when clearing `OOS_PENDING=false`. After argv-init removes most orchestrator state-write paths, consider a documentation pass so OOS guidance names key-based edits only. Not blocking this PR.
+
+### OOS_3: Pre-existing asymmetry between `write_initial_state` and `require_key` in scripts/ship-pr.sh
+- **Reviewer(s)**: 1 reviewer (cursor-dyn-plan-coherence)
+- **Focus area**: architecture
+- **Description**: `scripts/ship-pr.sh:2437-2446` `require_key` lists 32 keys; `write_initial_state` already emits keys like BAIL_REASON, DESIGN_ONLY_DONE, EXPECTED_SESSION_ID, EXPECTED_TMPDIR_BASENAME_PREFIX that are not required. Pre-existing inconsistency the current PR doesn't address. Worth filing as a follow-up tightening issue.
+
+### OOS_4: Drift guard between SKILL.md key bullets and ship-pr.sh emitted keys
+- **Reviewer(s)**: 1 reviewer (cursor-arch)
+- **Focus area**: risk-integration
+- **Description**: `skills/implement/SKILL.md:1550-1559` key bullets and `scripts/ship-pr.sh:239-298` `write_initial_state` are now two parallel sources of truth. Consider extending `scripts/test-implement-structure.sh` to assert they match. Not blocking this PR.
+
+### OOS_5: Fixture drift risk in `skills/implement/scripts/test-write-final-report.sh`
+- **Reviewer(s)**: 1 reviewer (cursor-requirements)
+- **Focus area**: architecture
+- **Description**: `skills/implement/scripts/test-write-final-report.sh:52-200` contains ship-pr-state.sh fixtures that may need updating if `require_key` ever tightens. Track as follow-up.

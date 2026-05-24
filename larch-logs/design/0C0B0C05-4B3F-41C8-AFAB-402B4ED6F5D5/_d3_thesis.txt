@@ -1,0 +1,18 @@
+<steelman>
+A flag for all persisted keys would make every initial state value explicit to external callers and tests. That buys flexibility, but it also duplicates constants and expands the parser without a current caller needing those overrides.
+</steelman>
+<claim>
+`ship-pr.sh` should add only the seven missing caller-varying init flags: `BRANCH_NAME`, `ISSUE_NUMBER`, `RUN_ID`, `MANIFEST_PATH`, `TOOL_LABEL`, `EXPECTED_SESSION_ID`, and `EXPECTED_TMPDIR_BASENAME_PREFIX`.
+</claim>
+<evidence>
+`scripts/ship-pr.sh:239-297` shows `write_initial_state()` already centralizes constants such as `PHASE=checks`, `HAS_BUMP=true`, false defaults, empty strings, and zero counters; `scripts/ship-pr.sh:2399-2414` shows existing argv coverage for `--merge`, `--draft`, `--forked`, `--repo`, `--implement-tmpdir`, and `--no-logs-commit`; `skills/implement/SKILL.md:1550-1559` identifies the heredoc state keys being absorbed.
+</evidence>
+<strongest_concession>
+If a near-term caller genuinely needs to seed one of today’s constants differently, this narrower interface will need a targeted follow-up flag or state-init extension.
+</strongest_concession>
+<counter_to_opposition>
+Adding flags for all 38 keys treats speculative configurability as a requirement, while the actual migration need is replacing the orchestrator’s varying heredoc inputs with a stable argv surface.
+</counter_to_opposition>
+<risk_if_wrong>
+Within thirty days, an unstated integration could appear that depends on overriding a “constant” at creation time, proving the seven-key scope too tight.
+</risk_if_wrong>
