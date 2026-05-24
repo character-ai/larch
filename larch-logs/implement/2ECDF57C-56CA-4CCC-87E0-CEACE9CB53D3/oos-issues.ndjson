@@ -1,0 +1,1 @@
+{"phase":"implement","step":"9a.1","category":"OOS","body":"### OOS_1: bug: run-step5-review.sh loop exits 1 after coder applies fixes when LARCH_QUIET_BREADCRUMBS=1 is set\\n\\n- **Filed URL**: https://github.com/character-ai/larch/issues/2663\\n- **Verdict**: accepted\\n- **Description**: step5 loop exit-1 bug under LARCH_QUIET_BREADCRUMBS=1 context"}
