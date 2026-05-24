@@ -292,9 +292,9 @@ invoke_render() {
         --output-file "$out_file"
     )
     if [ "${#COST_ARGS[@]}" -eq 0 ]; then
-        "$PLUGIN_ROOT/scripts/render-run-summary.sh" "${_rr_args[@]}" "${print_arg[@]}"
+        "$PLUGIN_ROOT/scripts/render-run-summary.sh" "${_rr_args[@]}" "${print_arg[@]+"${print_arg[@]}"}"
     else
-        "$PLUGIN_ROOT/scripts/render-run-summary.sh" "${_rr_args[@]}" "${COST_ARGS[@]}" "${print_arg[@]}"
+        "$PLUGIN_ROOT/scripts/render-run-summary.sh" "${_rr_args[@]}" "${COST_ARGS[@]}" "${print_arg[@]+"${print_arg[@]}"}"
     fi
 }
 

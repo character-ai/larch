@@ -2,7 +2,7 @@
 
 Builds the **rich markdown** final run summary, writes the committed `final-summary.md` (unless `--comment-only`), upserts the tracking-issue `larch:final-summary` comment, and optionally mirrors the body to chat via `--print-stdout`.
 
-The markdown body is produced by [`scripts/render-run-summary.sh`](../../../scripts/render-run-summary.md): a `## /<skill> run <run-id> — <outcome>` heading, the normalized bullet list, then the `<!-- larch:run-summary v=1 -->` sentinel (see that script’s contract). The renderer emits `- **Outcome**:` only for `stalled` or outcomes beginning with `bailed`, and omits `- **PR**:` when the normalized display would be `N/A`. Optional per-lane USD lines use [`scripts/token-cost.sh`](../../../scripts/token-cost.sh) and the env vars documented under **Per-vendor rates** in [`docs/configuration-and-permissions.md`](../../../docs/configuration-and-permissions.md).
+The markdown body is produced by [`scripts/render-run-summary.sh`](../../../scripts/render-run-summary.md): a `## /<skill> run <run-id> — <outcome>` heading, the normalized bullet list, then the `<!-- larch:run-summary v=1 -->` sentinel (see that script’s contract). The renderer emits `- **Outcome**:` for outcomes matching `bailed*`, `stalled`, `cancelled-*`, or `failed-*`, and omits `- **PR**:` when the normalized display would be `N/A`. Optional per-lane USD lines use [`scripts/token-cost.sh`](../../../scripts/token-cost.sh) and the env vars documented under **Per-vendor rates** in [`docs/configuration-and-permissions.md`](../../../docs/configuration-and-permissions.md).
 
 ## Implement outcome enum (`**Outcome**:` / `--outcome` display)
 

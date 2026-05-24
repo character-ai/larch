@@ -177,9 +177,9 @@ Markdown explanation of the version bump classification: which bump type was cho
 
 ### final-summary.md
 
-**Mode**: replace. **Written**: Step 8+ before PR creation and refreshed later by terminal summary paths.
+**Mode**: replace. **Written**: the committed body is rendered by [`scripts/render-run-summary.sh`](../scripts/render-run-summary.sh); [`skills/implement/scripts/write-final-report.sh`](../skills/implement/scripts/write-final-report.md) writes `larch-logs/implement/<RUN_ID>/final-summary.md` and upserts the tracking-issue `larch:final-summary` comment for `/implement`, while [`skills/design/scripts/render-final-summary.sh`](../skills/design/scripts/render-final-summary.sh) does the same for `/design` under `larch-logs/design/<RUN_ID>/` across its pre/post publish finalization phases.
 
-Committed **rich markdown** projection of the run: outcome, mode flags, workflow path, token totals (Claude / Codex / Cursor), optional per-lane USD estimates when [`scripts/token-cost.sh`](../scripts/token-cost.sh) rates are configured, duration, plan/code review tallies, OOS and execution-issue counts, log directory pointer, and operator-facing notes (fork dry-run, draft, no-merge, upstream issue, fork OOS stubs). The body is produced by [`scripts/render-run-summary.sh`](../scripts/render-run-summary.sh): it begins with a `## /<skill> run <run-id> — <outcome>` heading and a normalized markdown bullet list (including `**PR**:` when a PR is known; `- **Outcome**:` only for `stalled` / `bailed*` outcomes; the other fields follow the renderer contract). A versioned HTML sentinel (`<!-- larch:run-summary v=1 -->`) appears on its own line after that bullet block (and before any optional trailing note lines) so consumers can detect the standardized block while the opening line stays human-readable. The `- **PR**:` bullet is omitted when no PR number is known; otherwise `#<number> — <url>` or `#<number>` when the URL is unknown. The tracking-issue `larch:final-summary` comment is the canonical live projection once upserted.
+Committed **rich markdown** projection of the run: outcome, mode flags, workflow path, token totals (Claude / Codex / Cursor), optional per-lane USD estimates when [`scripts/token-cost.sh`](../scripts/token-cost.sh) rates are configured, duration, plan/code review tallies, OOS and execution-issue counts, log directory pointer, and operator-facing notes (fork dry-run, draft, no-merge, upstream issue, fork OOS stubs). The body is produced by [`scripts/render-run-summary.sh`](../scripts/render-run-summary.sh): it begins with a `## /<skill> run <run-id> — <outcome>` heading and a normalized markdown bullet list (including `**PR**:` when a PR is known; `- **Outcome**:` for outcomes matching `bailed*`, `stalled`, `cancelled-*`, or `failed-*`; the other fields follow the renderer contract). A versioned HTML sentinel (`<!-- larch:run-summary v=1 -->`) appears on its own line after that bullet block (and before any optional trailing note lines) so consumers can detect the standardized block while the opening line stays human-readable. The `- **PR**:` bullet is omitted when no PR number is known; otherwise `#<number> — <url>` or `#<number>` when the URL is unknown. The tracking-issue `larch:final-summary` comment is the canonical live projection once upserted.
 
 ### oos-issues.ndjson
 
@@ -265,12 +265,14 @@ Content: the Architecture Diagram (from `/design`) and Code Flow Diagram (genera
 
 ### `larch:final-summary`
 
-Written in two phases for full implementation runs: first during Step 8+
+For `/implement`, written in two phases for full runs: first during Step 8+
 PR creation, where `ship-pr.sh` renders and commits `final-summary.md` with
 placeholder PR fields before `create-pr.sh` pushes the branch, and later
 refreshed during Step 18 terminal cleanup. The tracking-issue comment may also
 be refreshed immediately after PR creation with the live URL, without a second
 log commit. Runs that never reach PR creation still run terminal cleanup and may refresh the tracking summary with `PR: N/A` when no PR exists.
+
+For `/design`, `skills/design/scripts/render-final-summary.sh` writes `larch-logs/design/<RUN_ID>/final-summary.md` and upserts the same marker-keyed comment when an issue number is configured, during pre/post publish finalization.
 
 Content: final run status (`STALL_TRACKING` value), PR URL, and log directory path. The committed `final-summary.md` in the PR tree may carry placeholder `PR: N/A`; the tracking-issue comment is the canonical live source for the PR URL.
 
