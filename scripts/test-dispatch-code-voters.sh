@@ -196,6 +196,15 @@ grep -Fq 'You may read the ballot file and any provided diff/plan context files 
 grep -Fq 'Output ONLY vote lines' "$prompt" || { echo "FAIL: $(basename "$prompt") missing Output ONLY vote lines directive" >&2; exit 1; }
 grep -Fq 'fix proposals are informational; the coder decides the exact change' "$prompt" || { echo "FAIL: $(basename "$prompt") missing informational-fix voter guardrail" >&2; exit 1; }
 grep -Fq 'dislike or distrust the proposed fix' "$prompt" || { echo "FAIL: $(basename "$prompt") missing dislike/distrust NO-vote guardrail" >&2; exit 1; }
+grep -Fq "For items prefixed with \`[OUT_OF_SCOPE]\`:" "$prompt" \
+    || { echo "FAIL: $(basename "$prompt") missing canonical finding-only OOS clause" >&2; exit 1; }
+grep -Fq 'vote based on whether the **problem described** is real, concrete, and worth filing as a GitHub issue.' "$prompt" \
+    || { echo "FAIL: $(basename "$prompt") missing OOS problem-vs-solution body" >&2; exit 1; }
+grep -Fq 'FINDING_N: YES' "$prompt" || { echo "FAIL: $(basename "$prompt") missing FINDING_N example" >&2; exit 1; }
+if grep -Fq 'OOS_N' "$prompt"; then
+    echo "FAIL: $(basename "$prompt") must not contain OOS_N under finding-only grammar" >&2
+    exit 1
+fi
 done
 
 out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" --ballot-file "$BALLOT" --review-tmpdir "$TMP/absent" --codex-available false --cursor-available false)

@@ -68,48 +68,11 @@ For fallback reviewer slots: invoke via Agent tool with subagent_type: `larch:co
 
 ## Voter prompts
 
-- **Voter 1**: **Claude Code Reviewer subagent** — fresh Agent tool invocation (subagent_type: `larch:code-reviewer`, model: `"opus"`) with the voting prompt. Instruct:
-
-  ```text
-  You are a senior code reviewer on a voting panel. You will vote YES, NO, or EXONERATE on proposed modifications to an implementation plan. Be scrupulous — only vote YES for findings that are correct, important, and worth revising the plan for. Vote EXONERATE if the concern is legitimate but not worth implementing in this PR.
-
-  The YES ↔ EXONERATE boundary requires careful judgment. Both votes accept that the finding is correct and the concern is real. The difference is whether the proposed plan revision is worth shipping in THIS PR:
-
-  - Vote YES when: the finding is correct AND the proposed plan revision (or any equivalent revision the implementer would write) materially improves the plan's clarity, completeness, or correctness, AND the revision's complexity is proportionate to the issue's severity. A YES vote is a commitment to revise the plan.
-
-  - Vote EXONERATE when: the finding is correct AND the concern is real, BUT one of:
-    - The proposed plan revision adds disproportionate complexity for the issue's severity (e.g., a 5-line clarification fix for a 1-line nit; a new mechanism for a one-off edge case).
-    - The finding is correct but the plan would already address it implicitly (e.g., reviewer says "missing X" but X is covered by an obvious extension of an already-named contract).
-    - The finding is correct but better addressed in a follow-up PR (out-of-PR scope creep).
-    - The concern is forward-looking / speculative; valid but not pressing for this PR's correctness.
-
-  When in doubt between YES and EXONERATE, prefer EXONERATE. A YES vote should feel like "yes, the plan WILL be worse without this revision." An EXONERATE vote feels like "yes, this is a real concern, but I would not insist on it during a senior code review."
-
-  (The YES ↔ NO and NO ↔ EXONERATE boundaries are unchanged: NO means the finding is wrong / a false positive / based on a misreading.)
-  ```
-
+- **Voter 1**: **Claude Code Reviewer subagent** — fresh Agent tool invocation (subagent_type: `larch:code-reviewer`, model: `"opus"`) with the voting prompt. Instruct: `"You are a senior code reviewer on a voting panel. You will vote YES, NO, or EXONERATE on proposed modifications to an implementation plan. Be scrupulous — only vote YES for findings that are correct, important, and worth revising the plan for. Vote EXONERATE if the concern is legitimate but not worth implementing in this PR. When voting, also consider proportionality: vote EXONERATE (not YES) if the finding's concern is legitimate but the proposed change would introduce more complexity than the issue warrants. For OOS ballot rows, use the same rubric as Codex/Cursor voters: For OOS_N: items in plan review (or items prefixed with [OUT_OF_SCOPE] in code review): vote based on whether the **problem described** is real, concrete, and worth filing as a GitHub issue. Treat any suggested remedy in the item body as *informational only* — do not vote NO because you disagree with the proposed fix. The future implementer of the OOS issue chooses the actual remedy."`
 - **Voter 2**: Codex — launch through `${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-plan-voters.sh` using the ballot file. `VOTER_2_STATUS=fallback` means the waterfall already ran a Claude subprocess fallback for this slot; include `VOTER_2_PATH` in tallying. Do NOT launch a duplicate replacement.
 - **Voter 3**: Cursor — launch through `${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-plan-voters.sh` using the ballot file. `VOTER_3_STATUS=fallback` means the waterfall already ran a Claude subprocess fallback; include `VOTER_3_PATH` in tallying. Do NOT launch a duplicate replacement.
 
-For Codex, Cursor, and their Claude replacement voters, instruct each:
-
-  ```text
-  You are a senior engineer on a voting panel deciding which proposed plan modifications should be accepted.
-
-  The YES ↔ EXONERATE boundary requires careful judgment. Both votes accept that the finding is correct and the concern is real. The difference is whether the proposed plan revision is worth shipping in THIS PR:
-
-  - Vote YES when: the finding is correct AND the proposed plan revision (or any equivalent revision the implementer would write) materially improves the plan's clarity, completeness, or correctness, AND the revision's complexity is proportionate to the issue's severity. A YES vote is a commitment to revise the plan.
-
-  - Vote EXONERATE when: the finding is correct AND the concern is real, BUT one of:
-    - The proposed plan revision adds disproportionate complexity for the issue's severity (e.g., a 5-line clarification fix for a 1-line nit; a new mechanism for a one-off edge case).
-    - The finding is correct but the plan would already address it implicitly (e.g., reviewer says "missing X" but X is covered by an obvious extension of an already-named contract).
-    - The finding is correct but better addressed in a follow-up PR (out-of-PR scope creep).
-    - The concern is forward-looking / speculative; valid but not pressing for this PR's correctness.
-
-  When in doubt between YES and EXONERATE, prefer EXONERATE. A YES vote should feel like "yes, the plan WILL be worse without this revision." An EXONERATE vote feels like "yes, this is a real concern, but I would not insist on it during a senior code review."
-
-  (The YES ↔ NO and NO ↔ EXONERATE boundaries are unchanged: NO means the finding is wrong / a false positive / based on a misreading.)
-  ```
+For Codex, Cursor, and their Claude replacement voters, instruct each: `"You are a senior engineer on a voting panel deciding which proposed plan modifications should be accepted. When voting, also consider proportionality: vote EXONERATE (not YES) if the finding's concern is legitimate but the proposed change would introduce more complexity than the issue warrants."`
 
 ---
 
@@ -150,7 +113,7 @@ If **all reviewers** report no in-scope issues and no out-of-scope observations,
 
 Submit both in-scope findings and out-of-scope observations to a 3-agent voting panel per the **Voting Protocol** in `${CLAUDE_PLUGIN_ROOT}/skills/shared/voting-protocol.md`. Include OOS items on the ballot with `[OUT_OF_SCOPE]` prefix per the protocol's OOS section — voters decide whether each OOS item deserves a GitHub issue (YES = file issue, not implement).
 
-**Panel**: 3 voters — Claude Code Reviewer subagent (Voter 1) + Codex (Voter 2) + Cursor (Voter 3). Each votes YES/NO/EXONERATE using the YES↔EXONERATE boundary in the voter prompts above (when in doubt between YES and EXONERATE, prefer EXONERATE). Apply the four-tier Voting Protocol: 3 eligible voters require 2+ YES, 2 require unanimous YES, 1 is a binding single-judge decision, and 0 returns `TALLY_PLAN_REVIEW_STATUS=main-agent-vote-required` for the synthetic main-agent voter path in `skills/design/SKILL.md`.
+**Panel**: 3 voters — Claude Code Reviewer subagent (Voter 1) + Codex (Voter 2) + Cursor (Voter 3). Each votes YES/NO/EXONERATE with proportionality (vote EXONERATE if the concern is legitimate but the proposed change introduces more complexity than the issue warrants). Apply the four-tier Voting Protocol: 3 eligible voters require 2+ YES, 2 require unanimous YES, 1 is a binding single-judge decision, and 0 returns `TALLY_PLAN_REVIEW_STATUS=main-agent-vote-required` for the synthetic main-agent voter path in `skills/design/SKILL.md`.
 
 Launch Voter 2 (Codex) and Voter 3 (Cursor) through the dispatcher, then launch any Claude replacement voters reported by dispatcher fallback statuses and Voter 1 (Claude Code Reviewer subagent). The dispatcher launches available external voters in parallel, waits for their sentinels using `wait-for-reviewers.sh`, and emits the external output paths for downstream validation:
 

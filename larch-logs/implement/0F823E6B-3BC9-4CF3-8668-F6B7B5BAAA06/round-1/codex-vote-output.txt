@@ -1,0 +1,10 @@
+FINDING_6: EXONERATE -- scope concern is legitimate but not worth a tracking issue.
+FINDING_7: EXONERATE -- run-log diff noise is expected by repo policy and not issue-worthy.
+FINDING_13: EXONERATE -- branch-scope hygiene concern is legitimate but not worth filing separately.
+FINDING_19: EXONERATE -- run-log volume is intentional per policy and not issue-worthy.
+FINDING_20: EXONERATE -- duplicate branch-scope hygiene concern is not worth a separate issue.
+FINDING_21: NO -- trusted CLAUDE_PLUGIN_ROOT is an existing plugin trust boundary, not a new concrete problem.
+FINDING_26: NO -- review-core.md already hands MAV back to the caller and does not materially conflict with the new prose.
+FINDING_29: EXONERATE -- unrelated ship-pr scope concern is legitimate but not a durable OOS issue.
+FINDING_30: EXONERATE -- quick-mode prose scope concern is legitimate but not issue-worthy.
+FINDING_31: EXONERATE -- committed run logs are expected review noise, not an issue-worthy defect.
