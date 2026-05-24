@@ -1,0 +1,8 @@
+FINDING_1: EXONERATE -- nit-only punctuation variance (line 711 vs other Continue banners); no behavioral impact.
+FINDING_2: EXONERATE -- check (17) omits deeper prose pins but core literals are covered; stronger pinning is optional overhead.
+FINDING_3: EXONERATE -- parenthetical skips 5c.2–5c.5 but the new banner spells compose→redact→plan-block-write→publish→rename; full enumeration in the reminder would be long for marginal gain.
+FINDING_4: EXONERATE -- 15b’s `5c.7→6` overlaps the token also enforced by (17) yet 15b still guards registry/breadcrumbs; redundancy is minor.
+FINDING_5: YES
+FINDING_6: EXONERATE -- diff-only review cannot prove script runs; rely on CI/transcripts rather than a ballot defect.
+FINDING_7: YES
+FINDING_8: NO -- accurate observation of intended surgical scope, not a defect and not issue-worthy.

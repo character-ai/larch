@@ -1,0 +1,8 @@
+FINDING_1: NO -- punctuation-only banner mismatch is too trivial to raise.
+FINDING_2: EXONERATE -- extra prose pins would overfit the docs beyond the regression guard's needed signal.
+FINDING_3: YES
+FINDING_4: NO -- the overlap is harmless and preserves check 15b's existing boundary intent.
+FINDING_5: YES
+FINDING_6: NO -- session evidence shows the requested checks exited 0.
+FINDING_7: NO -- committed implement run logs are expected by docs/run-logs.md for default /implement runs.
+FINDING_8: EXONERATE -- the observation is accurate but not an issue-worthy follow-up.
