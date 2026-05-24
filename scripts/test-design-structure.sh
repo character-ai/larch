@@ -610,5 +610,13 @@ grep -Fq "$CANONICAL_PHRASE" <<< "$quick_inline_text" \
   || fail "(FINDING_2678) plan-review-quick.md inline accept/reject line missing canonical phrase: $CANONICAL_PHRASE"
 
 echo "PASS: FINDING_2678 — YES↔EXONERATE canonical anchor phrase OK (4 locations)"
+
+# Check 18 (#2702): literal plan-preview header anchors in Step 3 + Gate C prose.
+step3_block=$(awk '/^<!-- step:3 /,/^<!-- step:3.5 /' "$SKILL_MD")
+printf '%s\n' "$step3_block" | grep -Fq '## Plan Candidate for Review' \
+  || fail "(18) SKILL.md Step 3 block missing ## Plan Candidate for Review anchor"
+gate_c_block=$(awk '/^## Gate C/,/^## State invariants/' "$APPROVAL_MD")
+printf '%s\n' "$gate_c_block" | grep -Fq '## Final Design Plan' \
+  || fail "(18) approval-gates.md Gate C block missing ## Final Design Plan anchor"
 echo "PASS: test-design-structure.sh — structural invariants hold (including security OOS exclusions)"
 exit 0
