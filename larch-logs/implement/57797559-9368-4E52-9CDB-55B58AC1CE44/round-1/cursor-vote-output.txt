@@ -1,0 +1,32 @@
+FINDING_1: NO -- plan-review Consumer/Contract now documents scout, dispatch-owned dynamic tails, and static+dynamic slot counts versus the old all-inline-10 story.
+FINDING_2: EXONERATE -- tail -n +2 coupling is real but a dedicated renderer contract or caching is disproportionate for this change set.
+FINDING_3: YES
+FINDING_4: EXONERATE -- WARN-on-larch_err is a minor triage/telemetry nit, not worth blocking the feature.
+FINDING_5: EXONERATE -- committed run logs are policy noise, not a tracking issue.
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: EXONERATE -- KV vs stderr mismatch is small operator ergonomics versus documented prose.
+FINDING_9: EXONERATE -- run-log artifacts are intentional policy, not a defect to track.
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: EXONERATE -- strict regex risk is plausible but no evidence yet that benign formatting actually breaks merges here.
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: EXONERATE -- pre-existing /review parity hardening is optional consistency, not issue-worthy.
+FINDING_18: YES
+FINDING_19: YES
+FINDING_20: EXONERATE -- outside-PLUGIN_ROOT rejection already exercises the narrow allowlist; named session-root cases add little extra CI signal.
+FINDING_21: EXONERATE -- flush-only run-log commit is policy, not a tracking issue.
+FINDING_22: YES
+FINDING_23: YES
+FINDING_24: YES
+FINDING_25: YES
+FINDING_26: EXONERATE -- documented pre-existing escape-hatch telemetry, not worth a new issue.
+FINDING_27: YES
+FINDING_28: YES
+FINDING_29: EXONERATE -- plan contract standardizes ### NEW/UPDATED/REWRITTEN casing; widening is speculative scope creep.
+FINDING_30: YES
+FINDING_31: EXONERATE -- broader #### heading mismatch is real but filing an issue now is unnecessary noise versus the scoped regex work.
+FINDING_32: NO -- commit-split metadata is informational, not a defect warranting an issue.

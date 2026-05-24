@@ -1,0 +1,34 @@
+Reading the full merged ballot input and verifying cited locations in the workspace.
+
+FINDING_1: YES
+FINDING_2: EXONERATE -- renderer tail strip is conventional; dedicated contract output adds more surface than the coupling risk justifies here
+FINDING_3: EXONERATE -- same slug/path risk is already captured at higher severity in FINDING_15
+FINDING_4: EXONERATE -- WARN-prefixed larch_err is low impact and consistent with other warn patterns
+FINDING_5: NO -- committed run logs are policy noise, not a defect worth a tracking issue
+FINDING_6: YES -- orchestrator promises OOS severity but embedded validator only splits on FINDING headings
+FINDING_7: YES -- stub merge never proves important+latent collapses to important despite acceptance text
+FINDING_8: EXONERATE -- emit_kv WARN matches quiet/KV contract; stderr mirroring would duplicate channels
+FINDING_9: NO -- implement run logs are out-of-scope noise, not correctness
+FINDING_10: YES -- test-design-structure still lacks the extra file/prompt/dyn-prefix/aggregator pins the plan acceptance called for beyond 14c1–14c3
+FINDING_11: YES -- harness omits missing-override-file, absent-flag regression, and named session-root rejection cases the plan acceptance listed
+FINDING_12: YES -- fixtures never feed competing severities into merge output to assert max-severity behavior
+FINDING_13: YES -- doc requires OOS severity while output_blocks/validation only enumerate FINDING headings
+FINDING_14: EXONERATE -- strict severity line matches the shipped machine contract; widening is speculative without observed drift
+FINDING_15: YES -- scout name interpolated into paths without slug sanitization enables traversal-style writes outside DESIGN_TMPDIR
+FINDING_16: YES -- printf-built NDJSON is not JSON-escaped for arbitrary slug/body content
+FINDING_17: EXONERATE -- pre-existing /review dispatch pattern; optional consistency hardening, not issue-worthy alone
+FINDING_18: YES -- plan-listed structural pins (files, dyn-prefix in script, scope argv, severity validator strings) are not grepped in test-design-structure beyond SKILL references
+FINDING_19: YES -- same max-severity merge proof gap as FINDING_7 with no dual-severity assertion
+FINDING_20: YES -- acceptance named DESIGN_TMPDIR/IMPLEMENT_TMPDIR/SESSION_ROOT rejections are not explicit distinct harness cases
+FINDING_21: NO -- run-log directory noise only, not actionable
+FINDING_22: YES -- aggregate-findings.md omits the new merged-output Severity gate and stderr failure story
+FINDING_23: YES -- harness proves presence/missing severity, not max-severity merge from competing labeled inputs
+FINDING_24: YES -- Dynamic plan-review section omits aggregator severity and LARCH_AGGREGATOR_DISABLED guidance the plan asked for
+FINDING_25: YES -- orchestrator OOS severity text and validator FINDING-only scope are genuinely misaligned until Piece 2
+FINDING_26: EXONERATE -- pre-existing disabled-aggregator telemetry already documented; not new regression material
+FINDING_27: YES -- every backtick span is appended without slash-shape filtering so sibling `.md` spans pollute scope files
+FINDING_28: YES -- backtick path disables whitespace fallback and no-backtick branch only uses first token, dropping plausible extra paths
+FINDING_29: EXONERATE -- case-sensitive `### NEW|UPDATED|REWRITTEN` matches the normative plan heading contract in docs
+FINDING_30: YES -- harness lacks sibling-second-backtick and mixed-tail fixtures so FINDING_27/28 gaps would not fail CI
+FINDING_31: EXONERATE -- broader `####` heading mismatch is real but too open-ended for a focused tracking issue from this ballot
+FINDING_32: EXONERATE -- commit-split note is informational metadata, not issue-worthy tracking
