@@ -1,0 +1,49 @@
+### External Reviewer Issues
+
+- **Step design Step 3 — collect-agent-results.sh cursor NOT_SUBSTANTIVE failed (exit 1)**:
+  ```
+## Structured collector record
+
+REVIEWER_FILE=<TMPDIR>/cursor-plan-pragmatic-output.txt|TOOL=cursor|STATUS=NOT_SUBSTANTIVE|EXIT_CODE=0|FAILURE_REASON=structured records not found after repair (NS_RETRY_MODE=structured NS_RETRY_REASON=JSON_PARSE_FAIL)
+
+## Reviewer output (<TMPDIR>/cursor-plan-pragmatic-output.txt)
+
+Reading the plan and inspecting referenced code paths.
+
+Inspecting referenced files and integration points to validate the proposed plan.
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	risk_integration	skills/implement/SKILL.md:1881-1888	Step 18 still invokes write-final-report.sh with --print-stdout after refreshing token JSON, which replays the entire rendered body including the Cost bullet.	Chat shows the same dollar-primary summary twice in one run (Step 17 then Step 18), contradicting the stated single-chat-side emission invariant.	Extend the plan to drop --print-stdout on the Step 18 refresh call, add a write-final-report.sh knob for upsert-only refresh, or otherwise ensure only Step 17 prints the markdown body to chat.
+2	in_scope	important	correctness	plan.txt:104-112	Item 111 says the helper checks ISSUE_NUMBER and PLAN_WRITE_OK before upserting, while items 26-27 and the Approach section require GitHub upsert on clarify and other non-happy exits whenever ISSUE_NUMBER is set.	Implementers following item 111 literally could skip tracking-issue upsert on paths where PLAN_WRITE_OK is false or unset even though the run should still PATCH larch:final-summary.	Rewrite item 111 to gate design-log-publish and rename only on PLAN_WRITE_OK; keep upsert keyed on ISSUE_NUMBER plus non-empty body as in item 26-27.
+3	in_scope	important	risk_integration	scripts/test-design-structure.sh:373-401	Check 15 still requires render-cost-line.sh or the literal heading ### Terminal cost line within fixed windows around cancel and footer markers.	After SKILL.md renames the section and removes render-cost-line, make lint fails until this harness is updated.	Amend the plan to explicitly update Check 15 to accept render-final-summary.sh and ### Final summary block while preserving the pairing-distance intent.
+4	in_scope	important	architecture	plan.txt:20-28	The new render-final-summary.sh steps cover token-report JSON and jq token buckets but do not specify how --duration is derived from the design timing ledger.	Duration may stay N/A for /design summaries while /implement uses timing-report.json from the run log dir, hurting cross-skill parity in the summary block.	Add a best-effort step to emit DESIGN_TMPDIR/timing-report.json via timing-report.sh (or equivalent) using the same session env contract as other design timing calls, then parse total_hms like write-final-report.sh.
+5	in_scope	nit	code_quality	skills/implement/SKILL.md:1814-1817	Step 17 prose still tells the orchestrator to continue to the token summary after write-final-report.	Confusing leftover control-flow text once the Step 17 bash chat-tail block is deleted per the plan.	Update that sentence when editing SKILL.md so it points at Step 18 cleanup only and no longer references a removed token summary step.
+6	in_scope	nit	code_quality	scripts/render-run-summary.sh:28-29	usage() still documents only --skill implement after argv validation widens to implement|design.	Misleading operator and contributor help text.	Include updating usage and help text in the render-run-summary.sh change list.
+7	out_of_scope	latent	architecture	skills/implement/scripts/write-final-report.md:5-36	Sibling doc still states Outcome bullets only for bailed* and stalled and omits shared final-summary marker semantics with /design.	Doc drift after renderer outcome rules expand for cancelled and failed prefixes.	Schedule a follow-up doc pass on write-final-report.md once render-run-summary outcome handling is finalized.
+
+1. **risk-integration** — [skills/implement/SKILL.md](skills/implement/SKILL.md):1881-1888 — Step 18’s `write-final-report.sh --print-stdout` repeats the full rendered summary (including Cost) after Step 17 already printed it; the plan removes the token/timing bash tail but never removes this second stdout replay. **Revision:** plan an explicit change to Step 18 (or `write-final-report.sh`) so only one chat emission of the rich block occurs per run.
+
+2. **correctness** — plan item 104-112 (cache `plan.txt`) — Item 111’s `ISSUE_NUMBER` + `PLAN_WRITE_OK` upsert gate conflicts with the same plan’s requirement to upsert `larch:final-summary` on clarify/cancel/failure paths. **Revision:** separate publish/rename gating (`PLAN_WRITE_OK`, `PUBLISH_OK`) from `tracking-issue-summary.sh` upsert gating (`ISSUE_NUMBER` + rendered body).
+
+3. **risk-integration** — [scripts/test-design-structure.sh](scripts/test-design-structure.sh):373-401 — Check 15 hard-wires `### Terminal cost line` / `render-cost-line.sh` pairing near cancel and finalize markers. **Revision:** extend the plan’s `test-design-structure.sh` work item to rewrite Check 15 for the new heading and helper script.
+
+4. **architecture** — `render-final-summary.sh` spec in plan (~20-28) — No step materializes timing JSON or reads ledger duration before passing `--duration` into `render-run-summary.sh`, unlike `write-final-report.sh`’s `timing-report.json` path ([skills/implement/scripts/write-final-report.sh](skills/implement/scripts/write-final-report.sh):188-190). **Revision:** add a concrete timing capture/parsing step to the helper design.
+
+5. **code-quality** — [skills/implement/SKILL.md](skills/implement/SKILL.md):1814-1817 — Prose still says to continue to the “token summary” after `write-final-report.sh` even though the plan deletes that block. **Revision:** align Step 17 narrative with the new single-block contract when editing the file.
+
+6. **code-quality** — [scripts/render-run-summary.sh](scripts/render-run-summary.sh):28-29 — `usage()` remains implement-only while validation adds `design`. **Revision:** list `--skill design` in the planned `render-run-summary.sh` edits.
+
+**[OUT_OF_SCOPE]** — [skills/implement/scripts/write-final-report.md](skills/implement/scripts/write-final-report.md):5-36 — Outcome bullet and marker documentation will be stale once `render-run-summary.sh` emits `- **Outcome**:` for `cancelled-*` / `failed-*`; track a doc-only follow-up so implementers do not rely on outdated outcome rules.
+
+## Reviewer stderr (<TMPDIR>/cursor-plan-pragmatic-output.txt.diag)
+
+(empty: <TMPDIR>/cursor-plan-pragmatic-output.txt.diag)
+
+  ```
+
+### Warnings
+
+- **Step design Step 5b — oos-file-conflict-deps.sh (graceful-degrade) failed (exit 0)**:
+  ```
+file-design-oos: oos-file-conflict-deps.sh exit 0 — graceful-degrade (no caller TSV)
+  ```

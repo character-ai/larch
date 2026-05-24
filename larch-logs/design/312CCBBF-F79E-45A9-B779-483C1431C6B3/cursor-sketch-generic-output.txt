@@ -1,0 +1,5 @@
+Exploring the codebase read-only to map current summary/cost emission paths and inform an implementation plan.
+
+Summarizing findings: `timing-report.sh --summary` emits elapsed/vendor-task counts only (no dollar line); duplication is `token-report.sh --summary` vs `render-run-summary.sh` Cost bullet. `render-run-summary.sh` hard-rejects any `--skill` other than `implement` (line 104).
+
+

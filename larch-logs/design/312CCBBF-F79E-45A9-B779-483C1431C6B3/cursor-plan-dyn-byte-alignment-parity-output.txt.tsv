@@ -1,0 +1,3 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan.txt:88-89	Byte-alignment bullet qualifies equality as no trailing whitespace divergence only	Interior body drift or sentinel LF differences between stdout replay and file would not be caught if tests only strip or compare trailing whitespace	Require full byte identity e.g. cmp -s file stdout capture and drop the trailing-whitespace-only narrowing
+1	out_of_scope	nit	risk-integration	docs/linting.md:270	make test-render-run-summary documentation row still describes implement-only coverage	Operator docs omit design cohort and cmp semantics after merge	Update the linting table row when the harness lands

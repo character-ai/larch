@@ -1,0 +1,52 @@
+# Approach Synthesis (Step 2a)
+
+Both Cursor-Generic and Codex-Generic sketches converged. Agreement on direction; one minor variance (token-report.sh --summary internal cleanup) is implicitly settled by Round 1 "one cost line" stance.
+
+## Consensus
+
+1. Single renderer with `--skill design` mode. `scripts/render-run-summary.sh` line 104 currently hard-rejects non-implement skills (`case "$SKILL" in implement) ;; *) usage; exit 2 ;; esac`). Extend the case-statement and add a /design-specific schema branch. Keep cost computation shared through `token-cost.sh` / `lib-cost-line-format.sh`.
+
+2. Reuse `<!-- larch:final-summary v1 runid=<R> -->` marker (Round 1 Decision 1). `tracking-issue-summary.sh upsert-summary` matches by full marker (run-id embedded); /design and /implement comments coexist as separate run-id-keyed comments on the same tracking issue.
+
+3. Cursor reconnaissance: `timing-report.sh --summary` emits elapsed/vendor-task counts only with NO dollar line. So `timing-report.sh` is NOT a duplication site — narrowing the cost-line consolidation surface to `token-report.sh --summary` only. (This saves modifying `timing-report.sh` unnecessarily.)
+
+4. /design Step 5: write `$DESIGN_TMPDIR/token-report.json` (and `timing-report.json`), render `$DESIGN_TMPDIR/final-summary.md` via the renderer, print that block to chat, upsert via `tracking-issue-summary.sh upsert-summary --marker '<!-- larch:final-summary v1 runid=<R> -->'`, then run `design-log-publish.sh` so the committed `larch-logs/design/<RUN_ID>/final-summary.md` projection is byte-identical to the GitHub comment.
+
+5. /implement Step 17/18 cleanup: drop both the default `--summary` chat-tail print AND the `LARCH_VERBOSE_TOKENS=true --full --markdown` branch. Remove the obsolete anti-paraphrase invariant prose. Preserve `--since-last-mark --terse > /dev/null` calls (load-bearing ledger window cap) and the closing `Step 18 — done` mark.
+
+6. Strip dollar line from `token-report.sh --summary` itself (so direct/ad-hoc invocations also reflect the single-source invariant). Codex flagged this; Cursor identified it as the duplication site.
+
+7. Files to modify: scripts/render-run-summary.sh, scripts/render-run-summary.md, scripts/token-report.sh, skills/design/SKILL.md, skills/implement/SKILL.md, skills/implement/references/summary-comment-template.md. Test surfaces: extend or add scripts/test-render-run-summary.sh, revise scripts/test-render-cost-line-callsites.sh and scripts/test-token-report-summary-format.sh, strengthen scripts/test-design-structure.sh to pin Step 5 renderer/upsert.
+
+8. Risks (Codex): byte-alignment between committed final-summary.md and GitHub upsert payload (mirrors /implement invariant); ordering between render and design-log-publish.sh (render BEFORE publish).
+
+## Schema branch for --skill design
+
+(Codex proposal — adopted)
+
+- Title: `## /design run <RUN_ID> — <outcome>`
+- `- **Outcome**:` line only when outcome is cancelled/failed/stalled (mirrors /implement bailed*/stalled)
+- `- **Mode**:` (skill mode string)
+- `- **Path**:` (tier: trivial/simple/hard from run-params.json's workflow_path)
+- `- **Duration**:`
+- `- **Cost**:` single dollar-primary bullet (via larch_emit_cost_line)
+- `- **Issue**:`
+- (no `- **PR**:` for /design — already conditional in renderer)
+- `- **Plan review**:` line (voting tally + accepted finding count, or "skipped (trivial)" on --trivial)
+- (no `- **Code review**:` for /design — extend conditional pattern)
+- `- **OOS filed**:`
+- `- **Exec issues**:`
+- `- **Warnings**:`
+- `- **Run logs**:` `larch-logs/design/<RUN_ID>/`
+- Closing sentinel: `<!-- larch:run-summary v=1 -->`
+
+## Outcome strings for /design
+
+- `approved` — happy path (Gate C approved + plan written + tracking-issue rename to [DESIGNED])
+- `cancelled-clarify` — Step 0b clarify-loop exit (after clarify response posted)
+- `cancelled-plan-size-soft` — Step 2b.5 soft trigger, user picked Cancel
+- `cancelled-plan-size-hard` — Step 2b.5 hard trigger, user picked Cancel
+- `failed-plan-write` — Step 5c plan-block-write.sh failed
+- `cancelled-tier-gate` — Step 0b tier gate rejected (Other → exit 0)
+
+(Pre-Step-0a aborts: session-setup failure, tier-flag mutex — no renderer call since DESIGN_TMPDIR doesn't exist yet.)

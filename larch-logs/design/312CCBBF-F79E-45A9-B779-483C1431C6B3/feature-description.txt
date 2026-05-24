@@ -1,0 +1,78 @@
+Title: implement rigid summary template for /design similar to the one in /implement…
+
+## Goal
+
+Bring `/design` end-of-run output to parity with `/implement` by adopting the same rigid, script-rendered summary template. Make the dollar-primary cost summary line part of that template, and make that template the **single** place either skill emits the cost summary line.
+
+## Current state (as of writing)
+
+**`/design` end-of-run** (`skills/design/SKILL.md`):
+- No summary template. The skill explicitly forbids farewell prose (line 956: "Do NOT write any farewell message such as 'Design complete' ...").
+- Two terminal artifacts only: (a) the **Terminal cost line** Bash block that shells to `scripts/render-cost-line.sh`, emitting the dollar-primary `💰 Cost: TOTAL ~$… — Claude $…, Codex $…, Cursor $… | Tokens: …k` line; (b) the machine footer literal `➡️ 5: finalize — plan written to issue #<N>; NEXT REQUIRED: continue`.
+- The cost line is emitted **directly** by the SKILL.md Bash block (not via a shared summary renderer). It's the only place cost is reported.
+
+**`/implement` end-of-run** (`skills/implement/SKILL.md` Step 17–18):
+- Has a rigid, script-rendered template via `scripts/render-run-summary.sh` (sibling `scripts/render-run-summary.md`) — one renderer, two byte-aligned surfaces:
+  - Committed `larch-logs/implement/<run-id>/final-summary.md` projection.
+  - Tracking-issue upsert payload via `skills/implement/scripts/write-final-report.sh` under marker `<!-- larch:final-summary v1 runid=$RUN_ID -->`.
+- Schema includes `- **Cost**:` bullet carrying the dollar-primary line (per `render-run-summary.md` "Cost line" section): `💰 TOTAL ~$… — Claude $…, Codex $…, Cursor $… | Tokens: …k`. Body ends with `<!-- larch:run-summary v=1 -->` sentinel.
+- Step 18 also prints `token-report.sh --summary` and `timing-report.sh --summary` stdout to chat ("do not paraphrase, reformat, or drop the dollar-primary cost line"). So **`/implement` may currently emit the cost line in more than one place** (the rendered summary AND the printed token-report summary). Inspect and consolidate.
+
+## Required changes
+
+### 1. `/design`: adopt a rigid summary template
+
+- Add a `larch:final-summary` (or `larch:design-summary` — pick the marker namespace that best mirrors `/implement`) marker to the tracking issue. Apply the same rigid schema as `/implement`'s `render-run-summary.sh`: outcome, mode, workflow-path (`trivial`/`simple`/`hard`), duration, single `- **Cost**:` bullet, optional notes, ending with `<!-- larch:run-summary v=1 -->` sentinel.
+- Reuse `scripts/render-run-summary.sh` rather than duplicating the renderer. Add a `--skill design` mode (or extend the existing `--skill` parameter) so it knows which schema/fields apply.
+- Write the rendered body to:
+  - `$DESIGN_TMPDIR/final-summary.md` (and commit it to the design log via the existing `design-log-publish.sh` path).
+  - The tracking issue under the chosen marker via `scripts/tracking-issue-summary.sh upsert-summary` (parity with `/implement`).
+- Replace the current inline **Terminal cost line** Bash block with an invocation of the new renderer. The renderer's `- **Cost**:` bullet becomes the **single** place `/design` emits the cost summary line.
+- Delete the per-skill inline `render-cost-line.sh` call from `skills/design/SKILL.md` (Step 0b clarify exit, Step 2b.5 cancel paths, Step 5 finalize). All exit paths that previously printed the cost line should now go through the same renderer; if a path is too early for a full summary (e.g. session-setup failure), the cost line is simply not emitted there (rather than being printed via a separate code path).
+- Remove the "Do NOT write any farewell message" admonition from `skills/design/SKILL.md` line ~956. Replace it with the canonical "emit the rendered summary block and the machine footer; do not add additional prose" wording — i.e. the prose summary is now a structured, mechanically-rendered block, not free-form prose.
+
+### 2. `/implement`: dedupe cost-line emission
+
+- Audit every place `/implement` currently emits the cost summary line:
+  - The `render-run-summary.sh` block under `larch:final-summary` (rendered for both `final-summary.md` and the tracking-issue upsert).
+  - The Step 18 chat-tail print of `token-report.sh --summary` and `timing-report.sh --summary`. The spec currently mandates "do not paraphrase, reformat, or drop the dollar-primary cost line" in this print, meaning the cost line appears there as well.
+  - Any per-batch cost emission in `scripts/refresh-run-logs.sh` (token-report / timing-report log batches).
+- Consolidate so the dollar-primary cost line is emitted **only inside the rendered summary block** (the `larch:final-summary` body). Specifically:
+  - `token-report.sh --summary` and `timing-report.sh --summary` chat prints should drop the dollar-primary cost line. They may keep their other content (per-step tables, timings) but the cost bullet is owned exclusively by `render-run-summary.sh`.
+  - The committed `token-report.md` / `timing-report.md` log batches similarly should not duplicate the cost summary line — they contain the per-bucket detail, and the rendered summary is the single authoritative dollar line.
+- If `LARCH_VERBOSE_TOKENS=true`, the verbose per-step table is still allowed, but it must not include the dollar-primary cost line (verbose mode shows breakdowns, not the rolled-up cost). The cost line stays in the summary block only.
+
+### 3. Shared renderer changes
+
+- `scripts/render-run-summary.sh` needs:
+  - A `design` skill mode that emits the `/design`-specific schema (no Outcome unless cancelled/failed; no PR; workflow-path = tier name; etc.).
+  - Verify the per-bucket cost computation works identically for `/design` (Claude-only on `--trivial`, Claude+Codex+Cursor on `--simple`/`--hard`).
+- Update `scripts/render-run-summary.md` sibling contract: document the `/design` schema, and add an invariant note that this is the single source of the cost summary line for both skills.
+- Add or update regression tests (`scripts/test-render-run-summary.sh` if it exists, else add one) to assert the cost line schema across both skills and that no other emission path duplicates it.
+
+### 4. Update consumer prose
+
+- `skills/design/SKILL.md`: Step 5 finalize (and the early-exit cost-line paths in Step 0b / Step 2b.5) must point at the new renderer/upsert.
+- `skills/implement/SKILL.md` Step 18: update the "do not paraphrase, reformat, or drop the dollar-primary cost line" wording to instead say "the dollar-primary cost line is owned exclusively by the `larch:final-summary` body produced by `render-run-summary.sh`; do not duplicate it in the chat-tail token/timing summaries."
+- `skills/implement/references/summary-comment-template.md`: extend to list the marker for `/design` if a new marker is introduced.
+- `scripts/render-run-summary.md` (sibling): document the single-emission invariant.
+
+### 5. Tests / regression coverage
+
+- `scripts/test-design-structure.sh`: add a check that the new renderer invocation is present in Step 5 of `skills/design/SKILL.md` and that no inline `render-cost-line.sh` call remains in `skills/design/**`.
+- Existing `/implement` test harnesses should be reviewed for cost-line assertion drift after the consolidation (the chat-tail no longer carries the dollar line).
+- Add a cross-skill grep test: assert that `render-cost-line.sh` is **only** invoked from within `render-run-summary.sh` (and its test harness). No SKILL.md, skill-local script, or shared script should call it directly.
+
+## Acceptance
+
+- `/design` end-of-run output for a sample `--trivial` run shows a single `- **Cost**:` bullet inside a marker-bracketed summary block, with no separate cost-line print elsewhere in the run.
+- `/implement` end-of-run output for a sample full run shows the same single `- **Cost**:` bullet inside its `larch:final-summary` block. The chat-tail `token-report --summary` / `timing-report --summary` prints no longer carry the dollar-primary cost line.
+- `grep -rn 'render-cost-line.sh' skills/ scripts/` only matches inside `scripts/render-run-summary.sh` (the new sole caller) and its tests.
+- Both skills upsert their summary to the tracking issue under the appropriate marker, and the committed final-summary.md projections are byte-identical to the GitHub upsert payload (per the existing `render-run-summary.md` byte-aligned invariant).
+- `make lint` passes; `scripts/test-design-structure.sh` and any new renderer harness exit 0.
+
+## Notes / open questions
+
+- Marker namespace: should `/design` use `<!-- larch:final-summary v1 runid=<R> -->` (same marker, different skill — operators can disambiguate by run-id) or introduce `<!-- larch:design-summary v1 runid=<R> -->`? Recommend the former for marker reuse; the rendered body's title prefix (`## /design` vs `## /implement`) disambiguates visually.
+- `/design --trivial` runs are Claude-only; the rendered summary's per-bucket cost computation must still work when Codex/Cursor token totals are 0 (it already does; verify in tests).
+- The `Step 18` chat-tail line `do not paraphrase, reformat, or drop the dollar-primary cost line` is a load-bearing anti-paraphrase invariant — when removing the cost line from that print, ensure the invariant is reworded rather than deleted (it still protects the cost line in its new sole location).

@@ -1,0 +1,9 @@
+Reading the plan and referenced code paths.
+
+Validating the plan against the codebase: reading key files referenced in the plan.
+
+Confirming `test-token-report-summary-format` expectations and whether `timing-report.sh` can write to an arbitrary tmpdir:
+
+Gathering line numbers for `scripts/token-report.md` and `timing-report.sh` `--output` usage.
+
+
