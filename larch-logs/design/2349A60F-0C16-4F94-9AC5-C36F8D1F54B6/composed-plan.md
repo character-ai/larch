@@ -1,0 +1,197 @@
+## Plan
+
+# Implementation Plan — Issue #2670: plan-size thresholds + `-p`/`--partition` flag for `/design`
+
+## Approach
+
+Add a small mechanical detector (`check-plan-size.sh`) plus three integration points in `/design`:
+1. **Pre-Step-0 + Step 0b** — parse new `-p`/`--partition` public argv flag; enforce mutual exclusion with `--trivial` BEFORE `session-setup.sh` runs (no orphan `DESIGN_TMPDIR` on invalid invocations); persist the flag durably via `run-params.json` so Gate B / post-plan discussion re-fires can read it from a fresh Bash subshell.
+2. **Step 1c/1d** — semantic sprawl heuristic placed in `skills/design/references/discussion-rounds.md` (the normative reference for those step bodies); offers Split / Cancel only (no Continue — feature description explicitly says "no override at this stage"). Cancel path runs the Terminal cost line and exits 0; Split path hard-fails with "decomposition panel in development" until L3 (#2672) lands.
+3. **Step 2b.5 (post-EMIT_PLAN)** — new named sub-step calls `check-plan-size.sh` after every plan write (initial Step 2b, Gate B Apply, post-plan discussion revision). Hard precedence is evaluated BEFORE the `--partition` override: HARD_TRIGGER_FIRED always fires the no-override Split/Cancel `AskUserQuestion` regardless of `--partition`. Only when no hard threshold trips, `--partition` may force the soft-trigger Split/Continue offer.
+
+Gate B (`approval-gates.md`) and the post-plan discussion sub-round (`discussion-rounds.md`) are updated to call Step 2b.5 immediately after their `ACTION=EMIT_PLAN` re-emit. Without these updates the threshold check would silently bypass on every plan revision after the initial write.
+
+Per-round velocity is deferred to L3 (#2672) entirely; at end of Step 5 happy path, a best-effort gated comment is posted to #2672 noting the deferred scope. The comment is hard-gated on `$ISSUE_NUMBER == 2670`, explicit `--repo character-ai/larch`, and a once-only sentinel — so it cannot leak workflow metadata to consumer repos. The deferred-velocity scope is also documented statically in `references/flags.md` (multi-source paper trail).
+
+Step 2b prose migrates to require `### NEW:` / `### UPDATED:` / `### REWRITTEN:` per-file subsection headings; the helper's FILES_COUNT regex is aligned with the scout's whitespace-tolerant pattern (`scout-plan-archetypes-wrapper.sh:125`). The reviewer-prompt rendering script gets a one-line tweak naming the heading convention, with a dedicated test assertion to actually exercise the edit.
+
+Helper contract: machine-readable KV output uses `emit_kv` on FD 3 (matching `emit-plan.sh` pattern) so capture works under `lib-quiet.sh`. Trailer parsing mirrors `emit-plan.sh`: the trailer MUST be the final non-empty line; `DIFF_LINES` is parsed from that line; `PLAN_LINES` is `wc -l` after removing that single line. `TRIGGER_REASONS` uses a documented fixed priority order (`plan-body-lines`, `diff-lines`, `files-count`) — NOT "lexicographic", because the natural priority matches the threshold-check order.
+
+The synthesis (`$DESIGN_TMPDIR/approach-synthesis.txt`) plus Round 1 decisions (`$DESIGN_TMPDIR/discussion-round1.md`) are the binding inputs for this plan. The "ownership domains" trigger from the original feature description is eliminated per Round 1 Decision 6.
+
+## Files to modify/create
+
+### UPDATED: `skills/design/SKILL.md`
+- Add `-p` / `--partition` row to the compact flag table (Step 0b).
+- Update the `argument-hint:` frontmatter (line ~4) to include `[-p|--partition]`.
+- Update the "Public argv allows only" allowlist sentence (line ~12) to include `-p`/`--partition`.
+- Update the "Mutual exclusion" line: at most one tier flag; AND `--trivial` is mutually exclusive with `-p`/`--partition`. Reject with a clear error and abort.
+- Add a **Pre-Step-0 flag validation** paragraph (above Step 0): orchestrator parses tier flags + `--partition` from argv before `session-setup.sh` runs. On `--trivial` + `-p`/`--partition` collision, print `**⚠ /design: --trivial and --partition are mutually exclusive — re-classify or drop one.**` and exit 1. No `DESIGN_TMPDIR` is created on this path. (Full Step 0b parse still runs after Step 0a; the pre-Step-0 pass is validation-only.)
+- Update Step 2b "Files to modify/create" prose bullet (currently line ~487) to require the heading format: "Per-file subsections under a Files-to-modify section, using `### NEW:` for new files, `### UPDATED:` for modified files, and `### REWRITTEN:` for files rewritten in place. Each heading names exactly one file path (backticked path token); the description follows on subsequent lines. Heading parser tolerates extra whitespace between `###`, the keyword, and `:` (per the scout regex)."
+- Update the anti-halt continuation chain at line ~28 to insert `2b.5` between `2b` and `3` (`2b→2b.5→3`). Sweep other `2b→3`-only continuation prose throughout SKILL.md and update each occurrence. Add one explicit sentence: "Step 3 MUST NOT start until Step 2b.5 completes (including any `AskUserQuestion` branches)."
+- Add a sub-step **Step 2b.5 — Plan-size threshold check** as a named, reusable procedure immediately after the `ACTION=EMIT_PLAN` driver call in Step 2b. Document it as callable from initial Step 2b (continues to Step 3), Gate B Apply (continues to Step 3b), and post-plan discussion revision (continues to caller). The sub-step:
+  1. Read `run-params.json` to determine `PARTITION_REQUESTED` (boolean, see write-run-params.sh edit below). Read `$DESIGN_TMPDIR/plan.txt` for the threshold check.
+  2. Run `check-plan-size.sh --design-tmpdir "$DESIGN_TMPDIR"`. Capture the FD 3 contract stream (per `lib-quiet.sh` convention) into a local variable. Parse `SOFT_TRIGGER_FIRED`, `HARD_TRIGGER_FIRED`, `TRIGGER_REASONS`, `PLAN_LINES`, `DIFF_LINES`, `FILES_COUNT`.
+  3. **rc handling**: `rc 0` → parse KVs and branch (steps 4-7 below). `rc 2` → parse `PLAN_SIZE_STATUS` value, print `**⚠ 2b.5: check-plan-size — <status>; proceeding without threshold check**`, append captured stdout+stderr to `execution-issues.md` Warnings via `append-tool-failure.sh`, continue to caller (no trigger fired). Any other rc → treat as internal error: append combined stdout+stderr to `execution-issues.md` Warnings, ignore any partial KVs, continue to caller.
+  4. **Hard branch (HARD_TRIGGER_FIRED=true)**: regardless of `PARTITION_REQUESTED`. Print the diagnostic counts as a `## Plan Size — Hard Trigger` section, then `AskUserQuestion` with exactly two options: "Let my panel of agents split this feature for you" / "Cancel" (no Continue). On Split, run the **Split-path** procedure below. On Cancel, run the Terminal cost line block, print `**ℹ /design cancelled by operator (plan-size hard trigger).**`, exit 0, preserve `$DESIGN_TMPDIR`.
+  5. **Soft branch (SOFT_TRIGGER_FIRED=true AND HARD_TRIGGER_FIRED=false, OR PARTITION_REQUESTED=true AND no hard threshold tripped)**: print diagnostic counts as a `## Plan Size — Soft Trigger` section. When `PARTITION_REQUESTED=true` was the only reason, the table footer notes `trigger=partition-flag`. `AskUserQuestion` with exactly two options: "Let my panel of agents split this feature for you" / "Continue with current scope". On Split, run **Split-path**. On Continue, return to caller.
+  6. **No-trigger branch**: print `⏩ 2b.5: plan-size — under thresholds (PLAN_LINES=<n> DIFF_LINES=<n> FILES_COUNT=<n>)` and return to caller.
+- Add the **Split-path** procedure as a named subsection. Steps: (a) print `**⚠ /design: decomposition panel is in development and will be available soon (see #2672).**`, (b) run the Terminal cost line block, (c) exit 1. `$DESIGN_TMPDIR` is preserved because the Split branch exits before reaching Step 5 (`PLAN_WRITE_OK` is never set) and Step 6 cleanup (which is gated on Step 5's `PLAN_WRITE_OK=true` machine footer).
+- Add a Gate B post-Apply pointer in SKILL.md's Step 3.5 section: after the Write tool revises `plan.txt` and re-emits `ACTION=EMIT_PLAN`, call the Step 2b.5 procedure before proceeding to Step 3b. Likewise add a pointer near the post-plan discussion sub-round invocation. The actual normative procedure calls live in `approval-gates.md` and `discussion-rounds.md` (see those files below); SKILL.md only points to the canonical references.
+- Add a Step 5d sub-step (after Step 5c [DESIGNED] rename, before Step 5's cost line / footer): best-effort gated `gh issue comment` to #2672. **Guards** (all three required, evaluated in order; any failure → skip the comment): (a) `$ISSUE_NUMBER == 2670`, (b) explicit `--repo character-ai/larch` (no hub-default), (c) absence of the once-only sentinel `~/.cache/larch/design-l3-velocity-notified-2670`. Compose the body inline naming the deferred velocity scope (>20% plan growth AND >10 accepted findings between rounds; skipped on `--trivial`). On successful post, `touch` the sentinel. On non-zero exit, append to `execution-issues.md` Warnings and continue (non-fatal).
+
+### UPDATED: `skills/design/references/flags.md`
+- Add `-p`/`--partition`: mutually exclusive with `--trivial`; default `false`; semantics "force soft trigger fired on every plan write at Step 2b.5 when no hard threshold tripped (hard always overrides; --partition cannot downgrade hard to soft)". Document that the flag is persisted to `run-params.json` as `partition_requested` (boolean) for cross-turn durability.
+- Document the threshold values: soft (plan body >250 lines, `diff_lines` >600, files-count >8, main-agent semantic guesstimate); hard (plan body >800 lines, `diff_lines` >1500). State the "ownership domains" trigger is explicitly NOT included. Document strict-`>` semantics (250 does NOT trip; 251 does).
+- Document the helper contract: input `$DESIGN_TMPDIR/plan.txt` (per-file `### NEW:` / `### UPDATED:` / `### REWRITTEN:` headings tolerant of `[[:space:]]*` between `###`, keyword, and `:`; trailing `diff_lines: <N>` line which MUST be the final non-empty line per `emit-plan.sh` grammar); output `emit_kv` lines (FD 3) `SOFT_TRIGGER_FIRED`, `HARD_TRIGGER_FIRED`, `TRIGGER_REASONS`, `PLAN_LINES`, `DIFF_LINES`, `FILES_COUNT`; exit 0 on detection (any combination); exit 2 on missing/malformed input with `PLAN_SIZE_STATUS=missing-plan` or `PLAN_SIZE_STATUS=missing-diff-lines`.
+- Document `TRIGGER_REASONS` fixed-priority ordering: `plan-body-lines`, `diff-lines`, `files-count` (matches threshold-check order in the helper; NOT lexicographic). When only `--partition` is the cause, the orchestrator displays `trigger=partition-flag` (helper itself does not emit that token).
+- Document the cross-issue dependency note: per-round velocity check deferred to #2672 (L3); L1 ships nothing for it beyond the gated Step 5d comment.
+
+### UPDATED: `skills/design/references/discussion-rounds.md`
+- In the Step 1c body (around line 13-27): after the "Batch questions into a single `AskUserQuestion`" guideline, add a paragraph describing the **semantic sprawl heuristic**. When clarifying answers suggest several distinct sub-features or cross-cutting infrastructure changes, the orchestrator MAY fire an additional `AskUserQuestion` with exactly two options: "Let my panel of agents split this feature for you" / "Cancel". On Cancel: run the Terminal cost line block, print `**ℹ /design cancelled by operator (Step 1c sprawl heuristic).**`, exit 0, preserve `$DESIGN_TMPDIR`. On Split: run the SKILL.md Split-path procedure. The heuristic is semantic (no mechanical assertion); when uncertain, do not fire. Best-effort, runs once at most per Step 1c invocation.
+- In the Step 1d body (around line 31-67): after each `AskUserQuestion` answer is recorded, apply the same semantic sprawl heuristic (Split/Cancel options, no Continue). Once-per-Step-1d cap; if it has already fired once during Step 1c or earlier in Step 1d, do not re-fire.
+- In the post-plan discussion sub-round body (around line 121): the existing "re-run `ACTION=EMIT_PLAN` so `diff-lines.txt` reflects the new plan" instruction is followed by a NEW mandatory call: run the SKILL.md Step 2b.5 procedure. Document that this procedure may itself prompt the user (Split/Cancel/Continue) and may exit; if Step 2b.5 returns, control flows back to the caller (Gate A) per normal sub-round semantics.
+
+### UPDATED: `skills/design/references/approval-gates.md`
+- In the Gate B "Apply all" option (around line 86-87): after the existing "re-emit `ACTION=EMIT_PLAN` so `diff-lines.txt` reflects the final plan" sentence, add: "Then run the SKILL.md Step 2b.5 plan-size threshold check procedure. Only on Step 2b.5 returning to caller (no Split or Cancel selected) proceed to Step 3b."
+- In the Gate B "Go through each" option (around line 87): after the existing "revise `plan.txt` to incorporate only the applied subset, re-emit `ACTION=EMIT_PLAN`" sentence, add the same Step 2b.5 call. Document that the call fires only once per Gate B settled path (not per per-finding apply).
+- Document that Gate B's plan revision may trigger Step 2b.5 to prompt the user; if Step 2b.5 exits (Cancel) or hard-fails (Split), `$DESIGN_TMPDIR` is preserved and the user can re-run after addressing the sprawl.
+
+### UPDATED: `skills/design/scripts/step-name-registry.tsv`
+- Add a row `2b.5  plan size` between the `2b  full plan` and `3  plan review` rows so breadcrumb short names are normative for the new sub-step.
+
+### NEW: `skills/design/scripts/check-plan-size.sh`
+- Bash 3.2 compatible. `set -euo pipefail`. Source `"$SCRIPT_DIR/../../../scripts/lib-quiet.sh"` then `larch_quiet_init` (mirrors `emit-plan.sh`).
+- Argv: `--design-tmpdir <path>` (required) and `--plan-file <path>` (optional, defaults to `$DESIGN_TMPDIR/plan.txt`).
+- Validates that the plan file exists and the FINAL non-empty line matches `^diff_lines: [0-9]+$` (mirrors `emit-plan.sh:51-58` `awk 'NF { line=$0 } END { print line }'` semantics). Missing file → exit 2 with `emit_kv PLAN_SIZE_STATUS missing-plan`. Final non-empty line is not a valid trailer → exit 2 with `emit_kv PLAN_SIZE_STATUS missing-diff-lines`.
+- Body-line count: `PLAN_LINES = wc -l on plan body after removing the single trailer line (the final non-empty diff_lines line)`. Use `awk` to extract: `body=$(awk 'NF && lines[NR-1]; { lines[NR]=$0 } END { for (i=1; i<NR-something; i++) print lines[i] }')` — exact rule documented in `check-plan-size.md`.
+- Files-count: aligned with scout-archetypes regex — `FILES_COUNT=$(grep -cE '^###[[:space:]]*(NEW|UPDATED|REWRITTEN)[[:space:]]*:' "$PLAN_FILE" || true)` (the `|| true` guard prevents abort on zero matches under `set -e`, per BASH_AUTHORING §1).
+- Diff-lines: parsed from the same final non-empty line that trailer-validation used (single source of truth).
+- Emits via `emit_kv` (FD 3, contract stream): `PLAN_LINES <n>`, `DIFF_LINES <n>`, `FILES_COUNT <n>`, `SOFT_TRIGGER_FIRED <bool>`, `HARD_TRIGGER_FIRED <bool>`, `TRIGGER_REASONS <comma-list>`.
+- `TRIGGER_REASONS` fixed-priority order (NOT lexicographic): `plan-body-lines`, `diff-lines`, `files-count` (the order thresholds are checked). Tokens are joined with commas. (The orchestrator-side `partition-flag` reason is NOT emitted by this helper.)
+- Hard precedence: if any hard threshold trips (plan-body >800 OR diff_lines >1500), set `HARD_TRIGGER_FIRED=true` AND `SOFT_TRIGGER_FIRED=false`. The `TRIGGER_REASONS` list includes ALL crossings (both soft and hard) using the fixed-priority order.
+- Exit 0 in all detection cases (no triggers, soft only, hard).
+
+### NEW: `skills/design/scripts/check-plan-size.md`
+- Sibling documentation per `.claude/rules/script-md-siblings.md`. Documents: argv flags; `emit_kv` FD 3 output contract (with explicit reference to `lib-quiet.sh` and the orchestrator's capture pattern matching `emit-plan.sh` consumers); exit-code contract (0 / 2 with `PLAN_SIZE_STATUS` values); threshold values (cross-link to `references/flags.md`); the strict-`>` boundary semantics; the heading format requirement (whitespace-tolerant per the scout regex); the trailer rule (final non-empty line; matches `emit-plan.sh` grammar so the two validators never disagree on what is a valid plan); the `TRIGGER_REASONS` fixed-priority order (with rationale: matches threshold-check order, NOT lexicographic).
+
+### NEW: `skills/design/scripts/test-check-plan-size.sh`
+- Bash 3.2 compatible harness. Capture the FD 3 contract stream into a variable for assertion (matches `test-emit-plan.sh` pattern). Source `lib-test.sh` if present; otherwise inline minimal assert helpers.
+- Fixtures inlined via heredocs; one tmpdir per case.
+- Cases (independent + combinations + boundaries):
+  1. **No triggers**: 200-line plan, 5 file headings, `diff_lines: 400` → `SOFT=false HARD=false REASONS=`.
+  2. **Plan-body lines soft**: 251-line plan (just past threshold), 5 file headings, `diff_lines: 400` → `SOFT=true REASONS=plan-body-lines`.
+  3. **Diff-lines soft**: 200-line plan, 5 file headings, `diff_lines: 601` → `SOFT=true REASONS=diff-lines`.
+  4. **Files-count soft**: 200-line plan, 9 file headings, `diff_lines: 400` → `SOFT=true REASONS=files-count`.
+  5. **Multiple soft**: 251 lines + `diff_lines: 601` + 9 headings → `SOFT=true REASONS=plan-body-lines,diff-lines,files-count` (fixed-priority order documented).
+  6. **Plan-body lines hard**: 801-line plan → `HARD=true SOFT=false REASONS=plan-body-lines`.
+  7. **Diff-lines hard**: `diff_lines: 1501` → `HARD=true SOFT=false REASONS=diff-lines`.
+  8. **Hard takes precedence over soft**: 801-line plan + `diff_lines: 700` + 9 headings → `HARD=true SOFT=false REASONS=plan-body-lines,diff-lines,files-count` (all crossings reported in fixed-priority order).
+  9. **Missing plan**: exit 2, `PLAN_SIZE_STATUS=missing-plan` on FD 3.
+  10. **Missing/malformed trailer (final non-empty line is not `diff_lines: <N>`)**: exit 2, `PLAN_SIZE_STATUS=missing-diff-lines` on FD 3.
+  11. **Boundary equality (strict `>`)**: five sub-cases, one per threshold:
+      - 250-line plan → SOFT=false (plan-body-lines does NOT trip)
+      - 600 diff_lines → SOFT=false (diff-lines does NOT trip)
+      - 8 file headings → SOFT=false (files-count does NOT trip)
+      - 800-line plan → HARD=false (hard plan-body does NOT trip)
+      - 1500 diff_lines → HARD=false (hard diff-lines does NOT trip)
+  12. **Zero-heading legacy plan**: 0 file headings, normal trailer → `FILES_COUNT=0`, `SOFT=false`, no abort (validates `|| true` guard).
+  13. **Multi-`diff_lines:` body**: plan body contains `diff_lines: 100` in prose AND a separate trailing `diff_lines: 400` → helper rejects if final non-empty line is not the trailer (per `emit-plan.sh` grammar); accepts only when trailer IS the final non-empty line, parsing `DIFF_LINES=400` and `PLAN_LINES` = body minus that single trailer line.
+  14. **Whitespace-tolerant heading**: `###  NEW:` (double space) AND `### UPDATED :` (space before colon) both count → FILES_COUNT correctly increments.
+  15. **Hard precedence with `--partition` simulation**: harness sets up a 801-line plan; the helper itself doesn't read partition state, so HARD_TRIGGER_FIRED=true regardless. Orchestrator-level partition+hard interaction is covered by structural pin in `test-design-structure.sh` (see FINDING_21).
+
+### NEW: `skills/design/scripts/test-check-plan-size.md`
+- Sibling documentation: what the harness exercises (one bullet per case), how to run (`bash skills/design/scripts/test-check-plan-size.sh`), the Makefile target name (`make test-check-plan-size`), and the FD 3 capture pattern (mirrors `test-emit-plan.sh`).
+
+### UPDATED: `Makefile`
+- Add a `test-check-plan-size:` target invoking `bash skills/design/scripts/test-check-plan-size.sh`. Place it adjacent to `test-emit-plan` (currently around line 363, inside the design-script test block). Wire it into the same `test-harnesses-N` shard that `test-emit-plan` lives in so it runs in CI without manual shard rebalancing.
+
+### UPDATED: `scripts/write-run-params.sh`
+- Add `--partition-requested <true|false>` argv flag. When set, include `"partition_requested": <bool>` in the emitted JSON. Default value (when not passed) is `false` to maintain backward compatibility for callers that don't yet know about this field.
+- Bump JSON `schema_version` if downstream consumers depend on schema versioning (currently 1 → 2 if the schema check is strict; otherwise keep schema_version unchanged and document the additive nature in the `.md` sibling).
+
+### UPDATED: `scripts/write-run-params.md`
+- Document the new `--partition-requested` argv flag and the `partition_requested` JSON field. Cross-link to `skills/design/references/flags.md` for the public flag semantics.
+
+### UPDATED: `scripts/test-write-run-params.sh`
+- Add at least 2 test cases: (a) `--partition-requested true` produces `"partition_requested": true` in output JSON; (b) absence of the flag produces `"partition_requested": false`. Both cases assert the existing field set remains intact.
+
+### UPDATED: `skills/design/scripts/render-plan-review-prompt.sh`
+- Update the prompt body line that reads "Files cited in Files-to-modify subsections have NOT yet been changed when you read them" (line ~94) to: "Files cited in `### NEW:` / `### UPDATED:` / `### REWRITTEN:` subsections have NOT yet been changed when you read them". One-line edit; anchors reviewers on the canonical heading format.
+
+### UPDATED: `skills/design/scripts/test-plan-review-prompt.sh`
+- Add a dedicated `assert_contains "$vendor/$archetype heading-format guidance" "\`### NEW:\` / \`### UPDATED:\` / \`### REWRITTEN:\` subsections" "$out"` for each archetype/vendor combination. This ensures the renderer edit is actually exercised (the existing `"The plan describes the codebase AFTER this PR lands"` needle survives the edit unchanged, so the previous assertion does NOT cover the heading-naming change).
+
+### UPDATED: `scripts/test-design-structure.sh`
+- Add structural grep-style pins for:
+  1. `-p`/`--partition` row in the SKILL.md compact flag table.
+  2. `argument-hint:` frontmatter line includes `[-p|--partition]`.
+  3. "Public argv allows only" allowlist sentence includes `-p`/`--partition`.
+  4. Mutual-exclusion prose pairs `--trivial` and `-p`/`--partition`.
+  5. Step 2b.5 sub-step header is present in SKILL.md.
+  6. `check-plan-size.sh` invocation appears AFTER the `ACTION=EMIT_PLAN` driver call in SKILL.md (proximity check; first match of `check-plan-size` after the first `ACTION=EMIT_PLAN` in the same `# step:2b` block).
+  7. Hard-trigger AskUserQuestion options enumerate "Cancel" but NOT "Continue" (no-override invariant).
+  8. Step 1c/1d sprawl hook prose is present in `skills/design/references/discussion-rounds.md` (positive presence check).
+  9. Gate B Apply / per-finding paths in `skills/design/references/approval-gates.md` reference Step 2b.5 (positive presence check).
+  10. Step 5d gated comment block in SKILL.md references `--repo character-ai/larch` AND `$ISSUE_NUMBER == 2670` AND the sentinel filename.
+
+### UPDATED: `README.md`
+- Update the `/design` argv row (around line 58-61) to include `[-p|--partition]`. Document the mutual exclusion with `--trivial` in the same row (or in a footnote — match existing repo style).
+
+### UPDATED: `docs/skills.md`
+- Update the `/design` Arguments line (around line 50) to include `[-p|--partition]`. Add a brief description matching the README style.
+
+### UPDATED: `.claude-plugin/plugin.json`
+- Update the `/design` description field (around line 4 of the relevant section, if it enumerates argv) to include `-p`/`--partition`. If the JSON file does not enumerate per-command argv beyond a high-level description, this update is N/A — make a best-effort match for the file's existing convention. If no /design argv listing exists in this file, skip and remove this entry from Files-to-modify; do not invent a new schema.
+
+## Edge cases
+
+- **Plan with zero `### NEW:`/`### UPDATED:`/`### REWRITTEN:` headings**: helper reports `FILES_COUNT=0` (no abort under `set -e` because of the `|| true` guard). Files-count threshold doesn't trip; other thresholds still apply. Covered by case 12.
+- **Plan with `diff_lines: 0`**: helper accepts (non-negative integer), reports `DIFF_LINES=0`. No threshold trips.
+- **Multiple `diff_lines:` lines in plan body**: helper validates ONLY the final non-empty line as the trailer. A `diff_lines: 100` line in prose followed by other content (e.g., a closing paragraph) means the helper rejects the plan as missing the trailer (exit 2, `PLAN_SIZE_STATUS=missing-diff-lines`). This matches `emit-plan.sh` grammar — the two validators agree by construction. Covered by case 13.
+- **Whitespace tolerance in headings**: `###  NEW:` (double space), `### UPDATED :` (space before colon), `###NEW:` (no space — explicitly NOT supported, requires at least one whitespace after `###`). Covered by case 14.
+- **`--partition` set on Gate B / Gate C re-run**: orchestrator reads `partition_requested` from `run-params.json` at each Step 2b.5 invocation, so the flag persists across Bash subshells. Initial Step 0b argv parse is the source of truth; Step 2b.5 never re-parses argv.
+- **`--partition` + hard threshold**: hard precedence wins. Step 2b.5 evaluates `HARD_TRIGGER_FIRED` first; if true, the hard branch fires (Split/Cancel, no Continue) regardless of `PARTITION_REQUESTED`. The `--partition` flag never downgrades a hard trigger.
+- **Boundary values**: thresholds use strict `>`, not `>=`. `250` lines does NOT trigger; `251` does. Same for all five numeric thresholds. Covered by case 11.
+- **`--partition` + `--trivial`**: rejected at pre-Step-0 validation, before `session-setup.sh`. No `DESIGN_TMPDIR` is created. Both flags appear in the error message.
+- **Step 5d sentinel races**: the sentinel is in `~/.cache/larch/` (user-home, single-user); two `/design 2670` invocations from the same user race on `touch`, but the worst case is two successful comments (`gh issue comment` is idempotent enough — duplicate comments are visible noise but not data loss). The guard reduces to "at most one per `/design` run per shell" which is acceptable.
+- **`gh issue comment` failure modes**: auth, network, rate limit, or `--repo` access denied — all non-fatal; sentinel is NOT touched on failure (next `/design 2670` run retries).
+
+## Failure modes
+
+1. **Helper exit-2 (input validation)**: missing plan or missing/malformed trailer → Step 2b.5 prints `**⚠ 2b.5: check-plan-size — <status>; proceeding without threshold check**`, appends captured stdout+stderr to `execution-issues.md` Warnings, continues to caller. Warning signal: `rc=2` from the helper. Mitigation: `ACTION=EMIT_PLAN` (Step 2b's predecessor) already validates the trailer, so in normal flow the helper input is guaranteed valid by the time Step 2b.5 runs. The exit-2 path is the defensive fallback for orchestrator-skip-EMIT_PLAN scenarios.
+2. **Helper other-rc (internal error)**: shell parse error, missing dependency, or unexpected runtime failure → Step 2b.5 treats as internal error, appends combined stdout+stderr to `execution-issues.md`, ignores any partial trigger KVs, continues to caller. Warning signal: `rc` not in {0, 2}. Mitigation: the helper is small (~50 lines, Bash 3.2 compatible) and exercised by the test harness; runtime failures here would be a regression bug.
+3. **Operator picks Split with L3 not yet implemented**: by design, hard-fails with `**⚠ /design: decomposition panel is in development and will be available soon (see #2672).**`. Warning signal: non-zero exit + the user-visible message. Mitigation: the message names #2672 so the operator can subscribe; `$DESIGN_TMPDIR` is preserved because the Split branch exits before reaching Step 5/Step 6 (NOT because of `PLAN_WRITE_OK` — that variable is set only in Step 5c and is irrelevant here).
+4. **Step 5d cross-repo safety**: the three guards (issue==2670 + `--repo character-ai/larch` + sentinel) ensure the comment cannot leak to a consumer repo. If a guard fails, the comment is silently skipped (no error, no warning — the deferred-velocity scope is also documented statically in `references/flags.md`, so the paper trail is multi-source).
+5. **`gh issue comment` non-fatal failures**: auth, network, rate limit — captured to `execution-issues.md` Warnings, design completes normally. Warning signal: non-zero exit from `gh issue comment`. Mitigation: best-effort + multi-source paper trail (also documented in `references/flags.md`).
+
+## Testing strategy
+
+- **`skills/design/scripts/test-check-plan-size.sh`** covers every threshold dimension independently and combinations (15 cases listed above), plus boundary equality, zero-heading, multi-trailer, and whitespace-tolerant regex.
+- **`scripts/test-write-run-params.sh`** gets 2 new cases for the `partition_requested` field (true and absent).
+- **`scripts/test-design-structure.sh`** gets 10 new structural pins (FINDING_21) covering argv documentation surfaces, mutual-exclusion prose, Step 2b.5 wiring, no-Continue hard wording, Step 1c/1d sprawl hook presence in `discussion-rounds.md`, Gate B 2b.5 calls in `approval-gates.md`, and the Step 5d guard block.
+- **`skills/design/scripts/test-plan-review-prompt.sh`** gets dedicated `assert_contains` for the new heading-format guidance (so the renderer edit is actually covered, not coincidentally surviving an unrelated needle).
+- **Wired into Makefile**: `test-check-plan-size` adjacent to `test-emit-plan` in the same `test-harnesses-N` shard (CI coverage).
+- **No new integration test for `AskUserQuestion` branches** — these are harness-difficult (no headless invocation path). The Bash test harness covers the helper contract; the structural pins ensure SKILL.md prose stays in sync with the implementation.
+
+diff_lines: 560
+
+
+## Acceptance
+
+- `-p` / `--partition` argv flag recognized by `/design`; mutually exclusive with `--trivial`; rejection happens at pre-Step-0 validation before `session-setup.sh` runs.
+- `partition_requested` persisted to `run-params.json` via `write-run-params.sh` so the flag survives Gate B / post-plan discussion re-fires.
+- `check-plan-size.sh` helper exists, is invoked from a new Step 2b.5 sub-step after every `ACTION=EMIT_PLAN`, and emits `emit_kv` lines (FD 3) for `SOFT_TRIGGER_FIRED`, `HARD_TRIGGER_FIRED`, `TRIGGER_REASONS`, `PLAN_LINES`, `DIFF_LINES`, `FILES_COUNT`. Exit 0 on detection; exit 2 with `PLAN_SIZE_STATUS` on input-validation failure.
+- Soft trigger → AskUserQuestion offering Split / Continue. Hard trigger → AskUserQuestion offering Split / Cancel (no Continue, no override by `--partition`).
+- Split selection in any branch → hard-fail with `**⚠ /design: decomposition panel is in development and will be available soon (see #2672).**` and exit 1; `$DESIGN_TMPDIR` preserved.
+- Step 1c and Step 1d (in `references/discussion-rounds.md`) include the semantic sprawl heuristic with Split / Cancel options only.
+- Gate B (in `references/approval-gates.md`) and the post-plan discussion sub-round (in `references/discussion-rounds.md`) call Step 2b.5 after each `ACTION=EMIT_PLAN` re-emit.
+- Step 2b plans use `### NEW:` / `### UPDATED:` / `### REWRITTEN:` per-file subsection headings (whitespace-tolerant per the scout regex).
+- `test-check-plan-size.sh` covers 15 cases including all five boundary equalities, zero-heading legacy, multi-trailer rejection, and whitespace-tolerant heading parsing; wired into the Makefile shard adjacent to `test-emit-plan`.
+- `test-design-structure.sh` gets 10 new structural pins covering argv documentation surfaces, mutual-exclusion prose, Step 2b.5 wiring, no-Continue hard wording, sprawl-hook prose presence in `discussion-rounds.md`, Gate B 2b.5 calls in `approval-gates.md`, and the Step 5d guard block.
+- `test-plan-review-prompt.sh` gets a dedicated assertion exercising the heading-format guidance edit to `render-plan-review-prompt.sh`.
+- `test-write-run-params.sh` gets 2 new cases covering the `partition_requested` JSON field.
+- All consumer-facing argv surfaces (SKILL.md `argument-hint:`, "Public argv allows only" allowlist, README, docs/skills.md, plugin.json where applicable) list the new flag.
+- Step 5d runtime comment to #2672 is hard-gated on `$ISSUE_NUMBER == 2670` + explicit `--repo character-ai/larch` + once-only sentinel `~/.cache/larch/design-l3-velocity-notified-2670` — verified safe in consumer-repo runs.
+
+diff_lines: 560
