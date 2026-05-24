@@ -1,0 +1,15 @@
+Gathering the branch diff and commit list for a read-only review.
+
+Verifying the Step 3 paragraph regression and reading `emit-design-plan-preview.sh` for pipefail and arithmetic edge cases.
+
+### In-Scope Findings
+
+- **correctness** `skills/design/SKILL.md:526` — The sentence that used to start with **Read `review_budget` from `$DESIGN_TMPDIR/run-params.json`** was merged into the new “Hermetic regression coverage…” line, so the file no longer tells the executor where to read `review_budget` before the `**If review_budget=quick**` / `**If review_budget=full**` branches. That weakens the mechanical contract for choosing quick vs full and can cause wrong Step 3 dispatch if the model infers `review_budget` from context instead of `run-params.json`. **Suggested fix:** Restore the missing clause as its own sentence before the harness line, e.g. “Read `review_budget` from `$DESIGN_TMPDIR/run-params.json`. …” then the hermetic-coverage sentence, keeping “Valid values are `quick` and `full`…” tied to `review_budget`.
+
+- **risk-integration** `skills/design/SKILL.md:510-523` and `docs/configuration-and-permissions.md:222` — Issue acceptance text in the prompt still calls for the plan preview **immediately after the Step 3 breadcrumb**, while the branch documents **breadcrumb → `timing-ledger.sh mark` → preview script** (plan body after the timing fence). `docs/configuration-and-permissions.md` explains the chat-order, but the issue-level acceptance bullet can still fail a literal QA checklist unless those docs or the issue acceptance are aligned. **Suggested fix:** Either reorder fences to match the written acceptance (if that ordering is non-negotiable) or update the issue / anchored acceptance text to match the documented chat-order note so merge criteria stay consistent.
+
+### Out-of-Scope Observations
+
+- **`skills/design/scripts/emit-design-plan-preview.sh` vs `BASH_AUTHORING.md` / `scripts/lint-bash32.sh`:** `set -euo pipefail`, `[[ … ]]`, `(( _plan_lines > _summary_threshold ))`, `printf '%s' "$((10#${_t}))"`, and `grep … | head -n 40 || true` are all valid on macOS Bash 3.2; `lint-bash32` only flags associative arrays, `mapfile`/`readarray`, `${var^^}`-style case conversion, namerefs, `&>>`, and `coproc` — none appear here. Under `pipefail`, the `|| true` on the outline pipeline is a reasonable guard for rare non-zero pipeline statuses (for example `SIGPIPE` from `grep` after `head` closes the pipe); it does not mask failures inside `emit_plan_body` in a way that breaks the harness’s empty-outline case.
+
+- **Scout note vs actual diff:** The branch factors the shared logic into `emit-design-plan-preview.sh` plus `test-emit-design-plan-preview.sh` and Makefile wiring, rather than duplicating large fenced blocks in `SKILL.md`; that is an architectural deviation from the earlier inline-Bash plan text but is internally consistent with the new configuration doc “mechanical contract” paragraph.

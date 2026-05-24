@@ -414,14 +414,9 @@ section in the existing CHANGELOG structure):
   re-invoke Step 3; verify the warning fires and the orchestrator
   continues without writing to root paths.
 - Linters: `bash scripts/relevant-checks.sh` (or `make lint`) must
-  pass. The change touches `skills/design/SKILL.md`,
-  `skills/design/references/approval-gates.md`,
-  `docs/configuration-and-permissions.md`, `docs/linting.md`,
-  `docs/topology.md`, `skills/shared/topology.tsv`,
-  `.claude/rules/topology-generation.md`, `CHANGELOG.md`, the new
-  `skills/design/scripts/emit-design-plan-preview.sh` helper plus
-  `skills/design/scripts/test-emit-design-plan-preview.sh`, and
-  Makefile wiring for `make test-emit-design-plan-preview`.
+  pass. The change touches three markdown files plus CHANGELOG; no
+  script changes; `lint-bash32`, `lint-foreground-markers`, and
+  `agent-lint` are unaffected aside from passing on the new prose.
 
 ## Documentation impact
 
@@ -431,11 +426,8 @@ section in the existing CHANGELOG structure):
 - `CHANGELOG.md` gets a one-line PATCH entry covering the new
   visibility-critical re-prints + the new env var.
 - README.md and SECURITY.md are unaffected.
-- `skills/shared/topology.tsv` and generated `docs/topology.md` gain the
-  `design.plan.preview_emit` row pointing at
-  `skills/design/scripts/emit-design-plan-preview.sh` (runtime authority);
-  `.claude/rules/topology-generation.md` lists the script path for the
-  topology-rule coverage guard.
+- `topology.tsv` is unaffected (no new scripts, no new file count
+  changes to runtime authorities).
 - **Bump classification**: PATCH under `.claude/skills/bump-version/SKILL.md`'s
   "default for everything else" rule for existing-skills edits
   (no SKILL.md added/deleted/renamed; no `name:`/`description:`/
@@ -484,8 +476,8 @@ This change is accepted when the following hold on the merged PR:
 4. `docs/configuration-and-permissions.md` contains a new section for `LARCH_DESIGN_PLAN_SUMMARY_THRESHOLD` documenting default 120, positive-integer semantics (0/empty/non-numeric → 120), strict-greater-than line comparison, and scope (both Step 3 entry and Gate C presentation).
 5. `CHANGELOG.md` has a one-line PATCH entry covering the new visibility-critical re-prints and the new env var.
 6. Manual e2e on `/design <issue> --simple` confirms:
-   - After the Step 3 breadcrumb, the timing-ledger mark runs, then `## Plan Candidate for Review` appears from `emit-design-plan-preview.sh` (full plan if ≤120 lines, summary if >120).
-   - Gate C: the final-plan header/body from `emit-design-plan-preview.sh --variant gatec` appears in chat before the Gate C `AskUserQuestion` (same conditional body as Step 3).
+   - `## Plan Candidate for Review` appears immediately after the Step 3 breadcrumb (full plan if ≤120 lines, summary if >120).
+   - `## Final Design Plan` appears immediately before the Gate C `AskUserQuestion` (same conditional body).
    - On Gate C → "Re-run review panel", the Step 3 re-entry does NOT re-print `## Plan Candidate for Review` (sentinel exists).
    - With a deliberately large plan and Gate C `Other` → "show full plan", the full plan is emitted and the Gate C prompt re-fires.
 7. `bash scripts/relevant-checks.sh` (or `make lint`) passes.

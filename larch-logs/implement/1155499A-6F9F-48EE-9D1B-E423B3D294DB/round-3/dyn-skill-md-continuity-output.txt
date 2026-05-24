@@ -1,0 +1,9 @@
+Gathering the pre-computed diff and inspecting `skills/design/SKILL.md` around Step 3 and Step 4b for continuity and correctness.
+
+### In-Scope Findings
+
+- **correctness** `skills/design/SKILL.md:526-527` — The branch deletes the explicit Step 3 routing line `Read \`review_budget\` from \`$DESIGN_TMPDIR/run-params.json\`.` and leaves the fallback rules (`Valid values are \`quick\` and \`full\`; if absent or invalid, derive the fallback from \`quick_mode\` …`) grammatically bound to “Hermetic regression coverage for this script…”, which is the wrong subject and no longer tells the orchestrator to load `review_budget` before the `**If \`review_budget=quick\`**` / `**If \`review_budget=full\`**` dispatch. That weakens control-flow correctness relative to `main` and contradicts the still-true deferral at `skills/design/SKILL.md:287` (“`review_budget` is consumed later by Step 3”). **Suggested fix:** Restore the original `Read \`review_budget\` from \`$DESIGN_TMPDIR/run-params.json\`. …` sentence as its own instruction immediately after the `emit-design-plan-preview.sh` fence (and before the quick/full branches), and keep the test-harness sentence separate (e.g. end it after the path to `test-emit-design-plan-preview.sh` without attaching `review_budget` semantics).
+
+### Out-of-Scope Observations
+
+- **correctness** `skills/design/SKILL.md:714-729` — Step 4b replaces the old one-line “present plan + prompt” prose with delegation to `approval-gates.md`, the mechanical `emit-design-plan-preview.sh --variant gatec` fence, and the existing “Then fire the Gate C `AskUserQuestion`…” paragraph; the Approve / Discuss / Re-run behaviors from the removed sentence remain covered there and in `approval-gates.md`, so no comparable regression to Step 3 was found for Gate C.

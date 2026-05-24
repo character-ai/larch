@@ -1,0 +1,11 @@
+Gathering the precomputed diff and current file line numbers for the new Bash blocks to verify Bash 3.2 portability and quoting.
+
+Reading `skills/design/SKILL.md` for exact line numbers and checking `BASH_AUTHORING.md` for threshold-validation expectations.
+
+### In-Scope Findings
+
+- **correctness** `skills/design/SKILL.md:527-530,754-757` — The `case "$_summary_threshold" in (''|0|*[!0-9]*)` guard only rejects empty, a lone `0`, or any string containing a non-digit. Strings that are **all digits but not valid “plain” positive integers in the sense documented** slip through: e.g. `00` does not match `0` (full-string match), does not match `*[!0-9]*`, and is then passed to `[ "$_plan_lines" -gt "$_summary_threshold" ]`, where Bash treats it as **octal 0**, so almost every plan incorrectly enters summary mode. Similarly, values like `0120` are not normalized to decimal `120`; `[ -gt ]` treats them as **octal** (`0120` → 80), so the effective threshold can diverge silently from the documented “positive integer / default 120” contract. **Suggested fix:** Extend the `case` list (e.g. add a `0[0-9]*)` arm that resets to `120`, ordered so it catches multi-digit all-zero and other leading-zero forms) and/or compare using an explicit decimal coercion such as `$((10#_summary_threshold))` inside a guarded assignment so operands are always base-10 integers; keep the existing empty/`0`/non-numeric fallbacks and document that leading-zero env values are normalized to the default.
+
+### Out-of-Scope Observations
+
+The branch also adds `larch-logs/implement/1155499A-6F9F-48EE-9D1B-E423B3D294DB/` via commit `072dfa02 chore(larch-logs): flush implement run ...`; that is unrelated to Bash 3.2 review of the two new fenced blocks. Otherwise the snippets avoid the listed Bash 3.2 forbidden constructs; the `printf` format strings for the bold notes keep `$DESIGN_TMPDIR` literal as intended; `printf '%s\n' "$_outline"` is appropriate for multi-line `_outline`; `wc … | tr -d ' '` is the usual BSD `wc` whitespace workaround; and the Gate C block differs from Step 3 only in the expected ways (no sentinel / `touch`, different warning labels, `elif [ -s … ]` shape).

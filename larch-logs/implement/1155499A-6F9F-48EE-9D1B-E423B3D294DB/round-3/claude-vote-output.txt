@@ -1,0 +1,14 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: EXONERATE -- `echo` for PASS/FAIL strings in test harnesses is universally accepted; switching to `printf` is purely cosmetic with no functional difference.
+FINDING_4: EXONERATE -- The script-as-canonical choice is already recorded in `docs/configuration-and-permissions.md`, `docs/issue-anchored-plan.md`, and SKILL.md prose; adding more cross-references would exceed what the defect warrants.
+FINDING_5: YES
+FINDING_6: EXONERATE -- `DESIGN_TMPDIR` is a session-local path written exclusively by the tool's own Step 2b; a symlink attack requires write access already, at which point equal harm is reachable via other vectors. Adding `-f` checks adds complexity against a theoretical-only threat on a trusted-internal path.
+FINDING_7: EXONERATE -- A read-only `DESIGN_TMPDIR` implies cascading failures throughout the design session (plan.txt writes, sentinel writes, etc.); defending only `touch` in isolation does not meaningfully improve robustness. The plan explicitly exonerated this case and re-print on next entry is benign.
+FINDING_8: YES
+FINDING_9: NO -- Leading-zero and `10#` coercion are documented improvements over the plan's simpler case; the `docs/configuration-and-permissions.md` section explicitly describes this stricter behavior, making it intentional and already recorded. Not worth filing a separate issue.
+OOS_1: YES
+OOS_2: YES
+OOS_3: NO -- The finding confirms Bash 3.2 compatibility is intact; it identifies no defect worth filing.
+OOS_4: NO -- The finding observes absence of a routing regression, not a concrete defect worth filing.
+OOS_5: YES

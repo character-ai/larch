@@ -1,0 +1,7 @@
+Gathering the pre-computed diff and commit history for a read-only review against the plan.
+
+Verifying doc heading hierarchy and exact line ranges in the modified skill files for accurate citations.
+
+Confirming regression: on `main`, `#### Per-vendor rates` followed `LARCH_TOKEN_RATE_PER_M` directly; the branch inserts the new `###` between them. Calling CreatePlan to satisfy plan-mode workflow.
+
+

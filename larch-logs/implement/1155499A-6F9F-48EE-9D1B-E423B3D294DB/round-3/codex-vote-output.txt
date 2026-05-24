@@ -1,0 +1,14 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: NO -- Static PASS/FAIL echo usage is harmless style-only churn and not worth raising.
+FINDING_4: EXONERATE -- The script-as-canonical factoring is documented and preferable to duplicated fences.
+FINDING_5: YES
+FINDING_6: EXONERATE -- The symlink concern is legitimate only under a compromised tmpdir threat model and hardening would add more complexity than warranted.
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: EXONERATE -- The leading-zero/base-10 behavior is documented, safer, and not worth changing for literal plan parity.
+OOS_1: NO -- The run-log delta is policy-governed noise, not a concrete follow-up defect worth filing.
+OOS_2: NO -- Factoring into a shared script is an acceptable implementation choice, not a defect worth filing.
+OOS_3: NO -- This describes valid Bash 3.2 behavior, not a problem.
+OOS_4: NO -- This explicitly reports no Step 4b routing regression.
+OOS_5: NO -- The topology-plan wording mismatch is already covered by the in-scope traceability finding and is not worth a separate issue.
