@@ -1,0 +1,27 @@
+Gathering the full ballot: `findings.md` contained no `### FINDING_` headings. Reading the aggregator prompt and related inputs for the intended findings list.
+
+Verifying key claims in `diff-context.txt` against the aggregator input ballot (findings.md is empty; aggregator attested empty merge).
+
+Following the aggregator input ballot (`aggregator-prompt.md` lines 55–158): `findings.md` contained no `### FINDING_` headings (empty merge). Votes below use those IDs and were checked against `diff.txt` / `plan-context.txt`.
+
+FINDING_1: YES  
+FINDING_2: EXONERATE -- optional shared helper is more churn than this nit warrants while parity tests already constrain drift  
+FINDING_3: EXONERATE -- aggregate-diff noise is real but not worth a standalone tracking issue  
+FINDING_4: YES  
+FINDING_5: YES  
+FINDING_6: EXONERATE -- same changelog gap as FINDING_14 at lower severity  
+FINDING_7: EXONERATE -- duplicate aggregate-diff process note, not issue-worthy  
+FINDING_8: EXONERATE -- optional harness stub clarity, not issue-worthy  
+FINDING_9: YES  
+FINDING_10: EXONERATE -- role-matrix limitation is inherent; a one-line N/A note is optional polish, not a finding worth forcing  
+FINDING_11: EXONERATE -- duplicate aggregate-diff process note  
+FINDING_12: EXONERATE -- operator contract already documented in ship-pr.md; separate issue adds little  
+FINDING_13: EXONERATE -- concern is plausible but no concrete redaction gap shown versus existing larch-log handling  
+FINDING_14: YES  
+FINDING_15: YES  
+FINDING_16: EXONERATE -- token-only cap is intentional and expanded in sibling docs, not an actionable defect  
+FINDING_17: NO -- RUN_ID-empty skip is already implemented and spelled out in the plan/spec  
+FINDING_18: EXONERATE -- duplicate of FINDING_1’s `_rid` locality nit  
+FINDING_19: EXONERATE -- pre-existing stall-token reuse, not issue-worthy  
+FINDING_20: EXONERATE -- reliance on make_repo defaults is acceptable; explicit stub is optional  
+FINDING_21: EXONERATE -- legitimate triage note but better handled via release/PR hygiene than panel-mandated rework
