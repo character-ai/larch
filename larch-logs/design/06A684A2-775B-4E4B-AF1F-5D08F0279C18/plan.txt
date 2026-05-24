@@ -1,0 +1,124 @@
+# Implementation Plan — ship-pr loop: skip waterfall on first-fixer non-health failure (issue #2682)
+
+## Canonical KV tokens (single source of truth)
+
+The classification grammar is pinned by name in this plan and enforced by structural tests so future renames trigger CI failures rather than silent drift (per `.claude/rules/drift-prone-prose-in-docs.md` and `.claude/rules/timing-task-kind-allowlist.md` patterns).
+
+- `LAUNCHER_FAILURE_CLASS` enum: exactly one of `none` / `health` / `other`.
+- `LAUNCHER_FAILURE_REASON` enum: exactly one of `auth` / `binary-missing` / `health-probe` / `timeout` / `parse` / `refusal` / `unknown` (empty string on `LAUNCHER_FAILURE_CLASS=none`).
+
+The literal token `parse` is used everywhere; the testing strategy that previously wrote `parse-error` is corrected. The reason for auth failure after the in-launcher retry exhausts is `auth` (the existing `append_launch_failure` token `auth-retries-exhausted` is a separate diagnostics string emitted to `${OUTPUT}.diag`; it is NOT one of the canonical reason tokens). The token `binary-missing` is the canonical reason when the launcher cannot resolve the underlying CLI binary; mechanism for detection is documented under Edge case #10 below.
+
+`no-action` and `refusal` outcomes that occur on `LAUNCHER_EXIT=0` are EXPLICITLY OUT OF SCOPE for this issue — they require post-exit-0 detection (empty-diff baseline comparison or output pattern matching) that the launchers do not perform today. A follow-up issue will be filed separately to extend `LAUNCHER_FAILURE_REASON` with `no-action` / `refusal` tokens and add the detection mechanism. This issue's mechanics cover launcher-detectable failures only: timeout, parse, refusal-by-CLI-exit-code (when the CLI itself returns a refusal status), generic non-zero. Note that the enum still includes `refusal` because the underlying CLI may itself return a refusal exit code (e.g., codex's safety stop); detecting refusal CONTENT post-exit-0 is what is deferred.
+
+## Files to modify/create
+
+- `scripts/lib-external-launcher-common.sh` — add a launcher-shared helper (working name `external_classify_launch_failure`) that consumes inputs the launchers already have (`LAUNCHER_EXIT`, sidecar log path, and the existing `external_auth_verdict` output) and prints two KV lines on stdout: `LAUNCHER_FAILURE_CLASS=<token>` and `LAUNCHER_FAILURE_REASON=<token>` using the canonical enums above. Health-classed reasons are exactly: `binary-missing`, `auth` (after the in-launcher auth retry exhausts), and `health-probe`. Every other launcher-detectable failure (timeout, parse, generic non-zero CLI exit, `refusal` from CLI exit code) is `other`. On `LAUNCHER_EXIT=0` the helper emits `LAUNCHER_FAILURE_CLASS=none LAUNCHER_FAILURE_REASON=`. Binary-presence is sourced from the launcher's existing `command -v <binary>` precondition (see Edge case #10 below); a missing binary means the launcher fails to start the spawn — the helper recognizes this signal via an explicit caller-passed argument (e.g. `--binary-found false`) so the existing `command -v` early-exit path can still emit the KVs before exiting.
+
+- `scripts/launch-cursor-ci.sh` — in the existing emit-block that already prints `emit_kv LAUNCHER_EXIT`, call the new helper and emit its two KV lines unconditionally (including on success, where `CLASS=none`). Keep existing `append_launch_failure` and meta calls untouched. Add explicit emit-before-die: on the `command -v cursor` failure path (and any early `die()` that represents "tool unavailable to start"), emit `LAUNCHER_FAILURE_CLASS=health LAUNCHER_FAILURE_REASON=binary-missing` before the die. The pre-spawn `die()` argv-validation path (e.g., `launch-cursor-ci.sh:33-36`) is NOT part of this issue — argv mismatches are coding bugs in callers, not first-fixer failures, and the existing exit-2 behavior is preserved unchanged.
+
+- `scripts/launch-codex-ci.sh` — parity change to cursor: same helper invocation, same emit-block ordering, same emit-before-die on binary-missing. Per `.claude/rules/external-tool-launcher-parity.md`.
+
+- `scripts/launch-claude-ci.sh` — parity change: same helper invocation, same emit-block ordering. (Claude tier is NOT the policy's "first fixer," but the contract must be uniform so `run_ci_fix_vendor` consumes the same KV regardless of tier.)
+
+- `scripts/ship-pr.sh` —
+  - `needs_user_bail_reason()` allowlist: add `first-fixer-non-health` token alongside the existing four. This keeps the exit-3 path valid without introducing a new top-level exit code.
+  - `run_ci_fix_vendor()` for-tier loop: after the existing `record_failure` + `_ci_fix_rollback` in the general failure branch (`wrapper_rc != 0 || launcher_exit != 0`), add a new guard that fires only when the failing tier is the first tier (`cursor`) AND the failure is classified as non-health. The guard parses `LAUNCHER_FAILURE_CLASS` from `$fail_file` (the launcher already wrote it because the wrapper captures stdout via `> "$fail_file" 2>&1`). On `LAUNCHER_FAILURE_CLASS=other`: set state keys via `state_set_many` (`BAIL_REASON=first-fixer-non-health`, `BAIL_FAILURE_DETAIL_LOG=$fail_file`), emit a clear breadcrumb (`⚠ ship-pr: first fixer (cursor) failed non-health; skipping waterfall`), and **return non-zero** from `run_ci_fix_vendor` (NOT `exit 3` directly). The outer `run_evaluate_failure` / `run_ci_phase` then takes its existing `bail)` branch, which already pairs `needs_user_bail_reason` with the standard exit-3 sequence. This addresses FINDING_5 — the policy routes through the existing bail envelope, not around it. On `LAUNCHER_FAILURE_CLASS=health` (or `none` / missing — see Edge case #2), keep existing fall-through to the next tier. For `tier != cursor`, never short-circuit. **`wrapper_rc == 2` is excluded from the policy** (FINDING_1): that path represents pre-spawn argv validation in the launcher's `die()` (e.g., `launch-cursor-ci.sh:33-36`); the launcher never reaches its KV emit-block, so `LAUNCHER_FAILURE_CLASS` is absent. The existing rollback + continue behavior is preserved for wrapper_rc=2; the new guard does NOT fire.
+  - **`BAIL_NEEDS_USER_INPUT`**: do NOT set this on the new first-fixer-non-health bail (FINDING_4). The flag means "the orchestrator must ask the user before proceeding"; the new `/implement` path attempts autonomous fix first. `BAIL_NEEDS_USER_INPUT=true` is set ONLY on the existing user-bail fall-through path inside `/implement` (after sentinel/counter exhaustion).
+
+- `skills/implement/SKILL.md` — single bullet covering both the new Step 8+ Exit 3 procedure AND the documentation note (FINDING_15: merge the previously duplicated bullets). Extend the Step 8+ Exit 3 branch to special-case `BAIL_REASON=first-fixer-non-health`. New control flow runs BEFORE the existing `AskUserQuestion` user-input path:
+
+  1. Read `FAILED_RUN_ID` from `ship-pr-state.sh` (set by `run_evaluate_failure` via `state_set FAILED_RUN_ID`, non-empty invariant asserted at ship-pr.sh:1448 entry). Read `REPO` similarly.
+  2. Read `read_state FORKED_TARGET` and `read_state REPO_UNAVAILABLE` (FINDING_12). If either is `true`, skip the autonomous fix path entirely and fall through to the existing user-bail flow — the autonomous path commits + pushes, which is invalid on forks or unavailable-repo runs.
+  3. Determine sentinel + counter paths: `$IMPLEMENT_TMPDIR/main-agent-ci-fix-$FAILED_RUN_ID.attempted` (sentinel) and `$IMPLEMENT_TMPDIR/main-agent-ci-fix.count` (global counter). Counter file is initialized to `0` if missing on first read. The cap of `3` represents the maximum number of attempts: the policy fires on counter values `0`, `1`, `2` (attempts 1, 2, 3); a counter value of `3` on entry means the 3 attempts have been exhausted and the path falls through. **If the sentinel for this `FAILED_RUN_ID` already exists, OR the counter is `>= 3`, fall through to the existing user-bail flow without attempting another main-agent fix.** This is the infinite-loop guardrail (FINDING_7).
+  4. **Write the sentinel and increment the counter BEFORE any repository edits.** Fail-closed: if either write fails (e.g., `$IMPLEMENT_TMPDIR` not writable), abort the autonomous path and fall through to the existing user-bail flow. Log a `Tool Failures` entry to `execution-issues.md` via `append-tool-failure.sh` describing the sentinel-write failure.
+  5. **Capture and redact the actual CI failure log** (FINDING_3 + FINDING_9): run `${CLAUDE_PLUGIN_ROOT}/scripts/gh-run-logs.sh --run-id "$FAILED_RUN_ID" --repo "$REPO"`, pipe through `${CLAUDE_PLUGIN_ROOT}/scripts/redact-secrets.sh`, and write the redacted output to `$IMPLEMENT_TMPDIR/main-agent-ci-fix-$FAILED_RUN_ID.gh-run-logs.redacted.txt`. ALSO redact `BAIL_FAILURE_DETAIL_LOG` content through `redact-secrets.sh` before reading; validate that the path is under `$IMPLEMENT_TMPDIR` to prevent `..`/absolute-path traversal. Both files are the main-agent's diagnostic inputs.
+  6. Use Claude tool calls to make the minimal repository edit needed to fix the CI failure, informed by the redacted CI log and (supplementally) the redacted launcher diagnostic.
+  7. Run `${CLAUDE_PLUGIN_ROOT}/scripts/run-relevant-checks-captured.sh` (or the consumer's `scripts/relevant-checks.sh`). On failure, log to `execution-issues.md` and fall through to the user-bail flow.
+  8. **Stage the edited files explicitly** (FINDING_14): run `git add -- <edited paths>` for the files touched in step 6, mirroring `ship-pr.sh:1410`'s explicit staging pattern. Do NOT use `git add -A` (sensitive-file risk).
+  9. Commit via `${CLAUDE_PLUGIN_ROOT}/scripts/git-commit.sh -m "Fix CI failure (main-agent)"`.
+  10. **Refresh run-log token/timing artifacts** (FINDING_8): run `${CLAUDE_PLUGIN_ROOT}/scripts/refresh-run-logs.sh --state-file "$STATE_FILE" --implement-tmpdir "$IMPLEMENT_TMPDIR"` between commit and push, mirroring `ship-pr.sh:1430-1437`.
+  11. Push via `${CLAUDE_PLUGIN_ROOT}/scripts/git-push.sh`.
+  12. Re-invoke `ship-pr.sh` foreground with the same `Invoke:` argv as the Step 8+ block (no `--resume-phase`). The fresh ship-pr run picks up the new commit and re-enters CI normally. If CI still fails and ship-pr.sh re-exits 3 with the same `BAIL_REASON` for the same `FAILED_RUN_ID`, step 3 above sees the sentinel and falls through to user-bail.
+
+  Also add a short documentation note at the top of the Step 8+ Exit 3 prose enumerating the new BAIL_REASON token (`first-fixer-non-health`) and the sentinel/cap policy so the contract is discoverable from the orchestrator side. (This is the consolidated SKILL.md bullet — FINDING_15.)
+
+- `scripts/test-ship-pr.sh` — extend coverage matching `.claude/rules/launcher-argv-test-coverage.md`:
+  - Cursor returns `LAUNCHER_FAILURE_CLASS=health LAUNCHER_FAILURE_REASON=binary-missing` → existing fall-through to codex/claude; existing all-vendors-failed exit behavior preserved.
+  - Cursor returns `LAUNCHER_FAILURE_CLASS=other LAUNCHER_FAILURE_REASON=timeout` → only cursor invoked; codex/claude NOT invoked; `run_ci_fix_vendor` returns non-zero; outer flow exits `3`; state `BAIL_REASON=first-fixer-non-health`; `BAIL_FAILURE_DETAIL_LOG` set; `BAIL_NEEDS_USER_INPUT=false` (NOT set on this path).
+  - Cursor succeeds → no waterfall, no policy change.
+  - Codex (tier 2) failure non-health → existing waterfall behavior (continue to claude tier); policy does NOT fire for non-first tiers.
+  - Run-loop symmetry: the policy fires on every `run_ci_fix_vendor` entry (FIX_ATTEMPTS=0, 1, 2), not only on the first.
+  - **wrapper_rc=2 at cursor** → existing rollback + continue (the policy does NOT fire because the launcher never emitted KVs). This is the corrected behavior per FINDING_1.
+  - Canonical-token pinning: structural test asserting each literal token (`none`, `health`, `other`, `auth`, `binary-missing`, `health-probe`, `timeout`, `parse`, `refusal`, `unknown`) appears verbatim in the helper, the three launchers, and the ship-pr.sh guard (FINDING_6).
+
+- `scripts/test-launch-review.sh` (and any direct `scripts/test-launch-*-ci.sh` harness present — confirm via the sibling `.md`) — extend with assertions that the new KVs are emitted with correct values across health vs other scenarios. Focused harness `scripts/test-lib-external-launcher-common.sh` (existence/path confirmed via sibling `.md`) covers: binary-missing → health; auth-retries-exhausted → health/auth; health-probe failure → health/health-probe; timeout → other/timeout; parse → other/parse; generic non-zero → other/unknown; LAUNCHER_EXIT=0 → none/empty.
+
+- `scripts/test-implement-structure.sh` — extend the existing structure harness to (a) assert the new Step 8+ sub-steps 1-12 are present and ordered correctly, and (b) **drop or invert** the existing structural rule at `scripts/test-implement-structure.sh:174-182` that forbids "main-agent CI repair" prose (FINDING_11 + codex-requirements F5). The new sub-procedure intentionally adds that prose; the existing harness rule was the previous-state guardrail and must be updated in lockstep with this issue.
+
+- Focused mock-harness (working name `scripts/test-ship-pr-first-fixer-bail.sh` or extension of existing harness) covering: sentinel-exists short-circuit, counter cap exhaustion (3 attempts → 4th falls through to user-bail), sentinel write failure → fall through to user-bail with execution-issues.md entry, missing FAILED_RUN_ID → fall through, FORKED_TARGET=true / REPO_UNAVAILABLE=true → skip autonomous path (FINDING_11 + FINDING_12).
+
+- Sibling `.md` contracts (per `.claude/rules/script-md-siblings.md`):
+  - `scripts/lib-external-launcher-common.md` — document the new classifier helper, its inputs, the canonical KV grammar (cross-reference the "Canonical KV tokens" section above), the `health`-set enumeration, the binary-presence detection mechanism, and the relationship to `external_auth_verdict`.
+  - `scripts/launch-cursor-ci.md`, `scripts/launch-codex-ci.md`, `scripts/launch-claude-ci.md` — document the new KVs in their emit-block sections and the emit-before-die behavior on binary-missing.
+  - `scripts/ship-pr.md` — document the new BAIL_REASON token, the new state key `BAIL_FAILURE_DETAIL_LOG`, and explicitly document that `BAIL_NEEDS_USER_INPUT` is NOT set on the `first-fixer-non-health` bail.
+
+## Approach
+
+The core insight is that the waterfall fallback chain (`cursor → codex → claude`) is justified ONLY when the first fixer was actually unable to attempt the fix (binary missing, login expired, health probe failed). When the first fixer DID run but failed for an in-band reason (timeout, parse error, generic non-zero), all three vendor tiers share the same context and the same root cause is likely; retrying through codex and claude is expected-low-yield and burns wall time and tokens.
+
+Mechanics:
+
+1. **Classification belongs at the launcher boundary** because launchers already own auth/retry/sidecar interpretation via `external_auth_verdict` in `lib-external-launcher-common.sh`. Adding a `ship-pr.sh` pre-flight probe would duplicate that work.
+2. **Two new KVs (additive, not an overload of `LAUNCHER_EXIT`)** preserve the existing exit-code grammar that other consumers and `test-ship-pr.sh` already depend on.
+3. **Bail via the existing `run_ci_phase` `bail)` envelope** (return non-zero from `run_ci_fix_vendor`, let outer flow route through the standard exit-3 sequence) per FINDING_5 — direct `exit 3` from inside the helper was the original plan and skipped the envelope; the revised plan threads through the existing path.
+4. **A new BAIL_REASON via existing exit 3** keeps `needs_user_bail_reason` and `/implement` Step 8+ Exit 3 as the integration points. The new path is strictly additive.
+5. **Policy fires only at the first tier (cursor)** per Round 1 Decision 3. Non-first tiers keep current waterfall behavior.
+6. **Infinite-loop guardrail (sentinel + counter, fail-closed write-before-attempt order)** ensures `/implement` ↔ `ship-pr.sh` cannot ping-pong.
+7. **Fork / unavailable-repo gate** prevents the autonomous fix path from attempting commit + push on runs where those operations are invalid.
+8. **CI log capture with redaction** ensures the main-agent gets the actual CI failure (not just launcher diagnostics) AND that secrets stay out of Claude's context.
+9. **Refresh-run-logs parity** with the existing ship-pr.sh CI-fix push path ensures larch-log token/timing artifacts remain consistent.
+
+Interaction with **issue #2669** (already filed as `BLOCKED_BY` on issue #2682): #2669 tracks the exit-3-vs-exit-4 discrepancy when vendor CI fix agents exhaust. The current plan reuses exit 3 with a new BAIL_REASON token, structurally compatible with the existing exit-3 taxonomy. The blocker relationship is preserved so the new `first-fixer-non-health` token name can be aligned with whatever final taxonomy #2669 settles on; if #2669 lands first with a different exit-3 reason-token scheme, this plan's token will be renamed in a follow-up PR. No production rollback is required because the consumers are internal to ship-pr.sh + `/implement`. The previous wording's tension between "must land first" and "forward-compatible" (FINDING_13) is resolved by framing the dependency as "lands first to allow token alignment," not "lands first to avoid breakage."
+
+## Edge cases
+
+1. **Cursor success** — `LAUNCHER_EXIT=0`, classifier emits `LAUNCHER_FAILURE_CLASS=none`. No waterfall, no policy. Sanity-case in tests.
+
+2. **Missing or malformed `LAUNCHER_FAILURE_CLASS` in `$fail_file`** — the guard parses the file with `awk -F=` (mirroring the existing `LAUNCHER_EXIT` parser style). When the parsed value is empty or unrecognized, default to the safer fallback `health` so the existing waterfall behavior is preserved. The bail-to-main-agent path is taken ONLY when the KV explicitly says `other`. This protects against rollback risk and against scenarios where the launcher fails before reaching its emit-block.
+
+3. **wrapper_rc=2 (launcher argv validation `die()`)** — the launcher exits before reaching its KV emit-block; `LAUNCHER_FAILURE_CLASS` is absent in `$fail_file`. Per Edge case #2 the missing value defaults to `health`, and the existing `wrapper_rc=2` rollback + continue-to-next-tier behavior is preserved unchanged. The policy does NOT fire on argv validation errors — those are coding bugs in callers, not first-fixer failures. (FINDING_1)
+
+4. **Auth retry succeeded inside the launcher** — the launcher already retries auth once; if the retry succeeds, classification proceeds against the post-retry result. If the retry exhausts, the classifier emits `health/auth`. Keep waterfall.
+
+5. **`/implement` main-agent fix succeeds, ship-pr.sh re-run succeeds** — sentinel persists in `$IMPLEMENT_TMPDIR`; cleanup happens with the tmpdir at the end of the `/implement` run.
+
+6. **`/implement` main-agent fix succeeds locally but CI still fails** — second `ship-pr.sh` invocation either has the same first-fixer non-health failure (sentinel blocks a second main-agent attempt → falls back to user-bail), or the first fixer succeeds and the fix lands.
+
+7. **Counter cap semantics (resolved)**: counter is incremented BEFORE the attempt. The policy fires on read values `0`, `1`, `2` (corresponding to attempts 1, 2, 3). A 4th arrival sees counter `3` and falls through to the user-bail path. (FINDING_7)
+
+8. **Sentinel or counter write failure**: fail-closed — abort the autonomous path, log a `Tool Failures` entry, fall through to user-bail. The new path is opt-in; the existing user-bail path is the safe default.
+
+9. **FORKED_TARGET / REPO_UNAVAILABLE state at start of `/implement` Step 8+ Exit 3 procedure**: skip the autonomous path entirely (FINDING_12). The user-bail flow handles fork dry-runs and unavailable-repo runs as today.
+
+10. **Binary-missing detection** (FINDING_10): the launcher's existing `command -v <binary>` precondition is the source of truth. When `command -v` fails, the launcher emits `LAUNCHER_FAILURE_CLASS=health LAUNCHER_FAILURE_REASON=binary-missing` before exiting; the helper documents this contract. No new probe is added.
+
+## Failure modes
+
+1. **Classification drift toward `other`**: a future change misclassifies a transient health failure (e.g., a transient network outage during auth) as `other`. The waterfall would skip when it shouldn't, hitting the user-bail more often. *Earliest signal*: a sudden spike in `first-fixer-non-health` bails in `/implement` run logs after a launcher / `lib-external-launcher-common.sh` change. *Mitigation*: keep the `health` set narrowly enumerated; Edge case #2 defaults unrecognized class to `health`; structural tests pin the canonical tokens.
+
+2. **Infinite re-invocation between `/implement` Step 8+ and `ship-pr.sh`**: the sentinel + counter design closes this, but only with the fail-closed write-before-attempt ordering. *Earliest signal*: a run log with `>3` cycles of `ship-pr.sh exit 3 → main-agent attempt → ship-pr.sh exit 3`. *Mitigation*: the mock-harness asserts the 4th cycle falls through to user-bail; sentinel writes happen before any repo edit.
+
+3. **Main-agent fix uses wrong diagnostic input**: addressed in /implement Step 8+ sub-step 5 by capturing fresh gh-run-logs.sh output (with redaction). *Earliest signal*: main-agent fixes that don't address the actual CI error. *Mitigation*: gh-run-logs.sh is the primary diagnostic input; BAIL_FAILURE_DETAIL_LOG is supplemental.
+
+## Testing strategy
+
+Extend `scripts/test-ship-pr.sh` with the cases under "Files to modify/create" above. Extend `scripts/test-launch-review.sh` (and any direct `test-launch-*-ci.sh`) for new KV emission. Extend `scripts/test-implement-structure.sh` to assert the new Step 8+ sub-steps and drop/invert the prior anti-prose rule. Add a focused mock-harness for the /implement Step 8+ loop (sentinel exists, counter cap, sentinel write failure, missing FAILED_RUN_ID, FORKED_TARGET / REPO_UNAVAILABLE gates).
+
+Pin every canonical KV token (`none`, `health`, `other`, `auth`, `binary-missing`, `health-probe`, `timeout`, `parse`, `refusal`, `unknown`) literally so future renames trigger structural test failures.
+
+## Diff size estimate
+
+Single feature touching one mechanism in `lib-external-launcher-common.sh`, three CI launchers (parity), BAIL_REASON addition + for-tier guard + state-key writes in `ship-pr.sh`, the new 12-step Step 8+ Exit 3 sub-procedure in `skills/implement/SKILL.md`, plus three test harnesses and several sibling `.md` updates. Total ~350 changed lines across ~12 files (helper + 3 launchers + ship-pr.sh + implement/SKILL.md + 3-5 sibling .md files + 3 test files).
+
+diff_lines: 350

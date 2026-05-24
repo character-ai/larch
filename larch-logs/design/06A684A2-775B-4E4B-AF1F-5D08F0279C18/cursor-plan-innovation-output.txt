@@ -1,0 +1,34 @@
+Reading the plan and referenced files for a structured review.
+
+Reading referenced scripts and SKILL sections to validate contracts and integration points.
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/ship-pr.sh:1363-1375 scripts/launch-cursor-ci.sh:33-36:228	Plan treats wrapper_rc==2 as post-run validation failure with classifier KVs in fail_file	launch-cursor-ci.sh only uses exit 2 from die() before any agent run emit_kv runs so fail_file usually lacks LAUNCHER_FAILURE_CLASS Edge case #2 then defaults class to health so tests expecting exit 3 for wrapper_rc=2 contradict current semantics unless launchers gain a new distinct exit code for post-run validation	Align spec with code rename the ship-pr branch in prose to argv-validation-exit-2 or introduce a dedicated exit code for post-agent validation and emit classifier lines before that exit
+1	in_scope	important	correctness	skills/implement/SKILL.md:1596 plan Files-to-modify Step 8+ bullet 3	Failure mode mitigation requires gh-run-logs CI capture but the proposed Step 8+ path only names BAIL_FAILURE_DETAIL_LOG and execution-issues.md	Main-agent may fix the wrong thing because BAIL log is launcher wrapper diagnostics not failing CI job output	Add an explicit Step 8+ sub-step to run scripts/gh-run-logs.sh using FAILED_RUN_ID from ship-pr-state.sh or reuse the last redacted capture path recorded by ship-pr when present
+1	in_scope	important	architecture	plan.txt Approach lines 52-53 vs lines 46-52	Dependency narrative contradicts delivery Plan states issue 2669 must land first while this plan implements 2682	Merge order ambiguity blocks implementer or ships conflated exit-3 semantics	Make ordering explicit in the issue body or plan gate either land 2669 first or fold taxonomy work into this PR with a single coordinated BAIL_REASON matrix
+1	in_scope	nit	correctness	plan.txt Testing strategy line 29	FIX_ATTEMPTS wording mismatches ship-pr state semantics	FIX_ATTEMPTS increments only after a successful vendor fix push scripts/ship-pr.sh:1488-1489 not per outer evaluate loop so test naming misleads implementers	Describe the three attempts as run_evaluate_failure outer loop iterations or persist a dedicated counter instead of overloading FIX_ATTEMPTS in prose
+1	in_scope	latent	risk-integration	plan.txt ship-pr.sh run_ci_fix_vendor guard	Direct exit 3 inside run_ci_fix_vendor skips the normal advance_phase bail envelope path	PHASE stdout contract or resume semantics might diverge from other exit-3 paths if state is not flushed consistently before exit	Specify mirror the existing bail branch state_set_many sequence and any required emit_kv stdout lines ci-wait expects or route through a shared bail helper instead of raw exit
+1	in_scope	latent	security	plan.txt Step 8+ autonomous commit push	Autonomous fix path omits fork draft and repo-unavailable gates	Auto push from first-fixer-non-health could violate fork dry-run or offline expectations	Add explicit carve-outs when FORKED_TARGET REPO_UNAVAILABLE MERGE false or DRAFT true mirror existing ship-pr skip-merge semantics
+1	in_scope	nit	code-quality	plan.txt Files-to-modify line 5	LAUNCHER_FAILURE_REASON empty on success	Parsers or tests might treat empty reason as missing and trigger Edge case #2 health default	Document emit as LAUNCHER_FAILURE_REASON=none or require class none to ignore reason field in ship-pr parser
+
+[OUT_OF_SCOPE] Enumerate new BAIL_REASON in any consumer docs that list user-bail tokens for example discussion-round1.md and future docs/issue templates scripts/ship-pr.md:42-44 if you add a formal token list there lines 42-44
+
+Numbered findings (same content expanded):
+
+1. **[correctness]** `wrapper_rc==2` in [`scripts/ship-pr.sh`](scripts/ship-pr.sh) is paired with `launch-*-ci.sh` exit **2** from `die()` (see [`scripts/launch-cursor-ci.sh`](scripts/launch-cursor-ci.sh) lines 33–36), i.e. argument validation before the agent and before `emit_kv`. The plan’s story (lines 16–17, 26, 30, 58–60) assumes “tier launched, output unusable” and classifier KVs in `fail_file`; that does not match the current launcher. With Edge case #2 defaulting missing class to **health**, the proposed test “`wrapper_rc=2` → `other` → exit 3” will fail unless you add a **new** post-run validation exit distinct from `die()`’s 2 or redefine what `wrapper_rc==2` means in `ship-pr.sh`.
+
+2. **[correctness / integration]** Failure mode #3 in the plan correctly calls for **CI** logs via `gh-run-logs.sh`, but the Step 8+ bullet list only references `BAIL_FAILURE_DETAIL_LOG` and `execution-issues.md`. Without binding `FAILED_RUN_ID` to a fresh `gh-run-logs.sh` capture in [`skills/implement/SKILL.md`](skills/implement/SKILL.md) (near the Exit 3 contract at lines 1594–1597), the autonomous path risks editing to launcher noise instead of the failing check log.
+
+3. **[architecture]** The plan simultaneously frames **#2669** as must-land-first / `BLOCKED_BY` (lines 52–53) and describes this feature’s reuse of exit **3** (lines 46–49). For implementers merging **#2682** alone, reconcile ordering and the eventual BAIL_REASON taxonomy so exit-3 diagnostics stay unambiguous.
+
+4. **[correctness]** “Run-loop symmetry … `FIX_ATTEMPTS=0, 1, 2`” overloads [`scripts/ship-pr.sh`](scripts/ship-pr.sh)’s `FIX_ATTEMPTS`, which increments only after a **successful** vendor fix (`run_evaluate_failure` success path around lines 1488–1489). Use the inner `_fix_attempt` loop language or another explicit counter in tests and docs.
+
+5. **[risk-integration]** A raw `exit 3` from inside `run_ci_fix_vendor` must match whatever **state + stdout** contract [`scripts/ship-pr.sh`](scripts/ship-pr.sh) and upstream callers assume for the existing `bail` branch (around lines 2298–2307). The plan should name the exact `state_set_many` / ordering relative to `record_failure` and whether `ci-wait` needs the same `ACTION=bail` envelope as today.
+
+6. **[security]** The autonomous commit/push path should respect **fork / draft / no-merge / repo-unavailable** modes the same way the rest of the ship-pr state machine does (see [`scripts/ship-pr.md`](scripts/ship-pr.md) skip-merge discussion). Otherwise a “fix” could try to push when the workflow is intentionally non-pushing.
+
+7. **[code-quality]** `LAUNCHER_FAILURE_REASON=` with an empty value (line 5) can blur with “line missing” in naive parsers; pin either a literal `none` reason on success or document that **class `none`** ignores `REASON` so Edge case #2 does not accidentally treat success captures as health.
+
+---
+
+The system reminder asked for `CreatePlan` in plan mode; your task was a bounded **read-only review** with a fixed machine-readable header, so the deliverable above is the review record itself rather than a separate CreatePlan file.
