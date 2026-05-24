@@ -25,6 +25,7 @@ step2-implement.sh
 collect-agent-results.sh
 dispatch-with-waterfall.sh
 dispatch-plan-voters.sh
+implement-bootstrap.sh
 DENYLIST_EOF
 
 usage() {
