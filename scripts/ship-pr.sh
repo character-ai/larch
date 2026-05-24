@@ -1986,7 +1986,7 @@ run_rebase_rebump() {
 
     # Cap rebase retries to prevent indefinite storms (e.g. concurrent merges
     # to main that keep triggering ACTION=rebase from ci-wait.sh).
-    local _max_rebases=5
+    local _max_rebases=20
     if [ "$(read_state REBASE_COUNT)" -ge "$_max_rebases" ]; then
         fail_file=$(failure_capture_path rebase)
         printf 'run_rebase_rebump: REBASE_COUNT >= %d; bailing to prevent infinite retry storm\n' "$_max_rebases" > "$fail_file"
