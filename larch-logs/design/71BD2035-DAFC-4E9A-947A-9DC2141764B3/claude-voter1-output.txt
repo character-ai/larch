@@ -1,0 +1,44 @@
+VOTE FINDING_1: YES
+Reason: Verified that refresh-run-logs.sh exits early on terminal merge outcomes and is never called from bail/stall paths in ship-pr.sh, AND that final-bail-reason.txt is written by restore-finalize-state.sh at Step 18 (line 71); the plan's wiring to refresh-run-logs.sh would not fire on bail paths, so relocating to restore-finalize-state.sh is the correct fix.
+
+VOTE FINDING_2: YES
+Reason: The plan changes ci-decide.sh as the real producer of the exact-match token but doesn't add a direct test of ci-decide.sh's stdout envelope; a sibling regression test in test-ci-decide.sh is small, targeted, and prevents the token from silently regressing to prose.
+
+VOTE FINDING_3: YES
+Reason: docs/run-logs.md and verify-run-log-completeness.sh both exist and enumerate batch slugs; adding final-bail-reason without updating them risks downstream verifier inconsistency, and classifying it as optional is appropriate since bail/stall paths are the only producers.
+
+VOTE FINDING_4: YES
+Reason: The adjacent token-report/timing-report writes in refresh-run-logs.sh use `2>/dev/null || true` (silent), and the plan's prose about a Warnings row diverges from the prescribed `|| true` pattern; resolving the inconsistency (matching silent failure) keeps the contract aligned.
+
+VOTE FINDING_5: YES
+Reason: Verified all three launchers already define `PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd -P)}"`, so specifying `${PLUGIN_ROOT}/skills/...` as the single canonical path is trivial, prevents three-way drift, and the launcher-parity rule explicitly demands symmetry.
+
+VOTE FINDING_6: YES
+Reason: Picking one literal sentinel substring (e.g., `topology.tsv`) for all three test files is a tiny acceptance edit that pins cross-launcher parity mechanically, and the launcher-parity rule explicitly demands identical assertion shape.
+
+VOTE FINDING_7: YES
+Reason: Verified write_finalize_state is called from run_postmerge_phase (ship-pr.sh:2317), NOT from bail paths; the plan's edge-case prose is factually inverted and correcting it is a one-line text fix that prevents future contributor confusion.
+
+VOTE FINDING_8: YES
+Reason: Verified the production parser at ship-pr.sh:1360 parses `LAUNCHER_EXIT=` from stdout (file) and also checks `wrapper_rc`; stubs returning non-zero wrapper exit exercise only one of two parser branches, so specifying `LAUNCHER_EXIT=1` + exit 0 (or covering both) hardens the regression test against the real producer protocol.
+
+VOTE FINDING_9: EXONERATE
+Reason: Concern is legitimate (token-collision risk in unrelated cap paths) but adds no code change, just a prose note; this is too speculative for plan revision and better surfaced as an OOS audit observation if reuse is found.
+
+VOTE FINDING_10: EXONERATE
+Reason: The launcher-parity rule + sentinel-substring tests already guard drift; extracting a new `lib-ci-fix-fragment.sh` introduces a shared library across three launchers where none existed before and adds more complexity than the three-line load pattern warrants.
+
+VOTE FINDING_11: YES
+Reason: ci-decide.md is currently a thin one-paragraph contract and does not enumerate the magic terminal tokens; documenting `fix-attempts-exhausted` as an exact-match token tied to `needs_user_bail_reason` and `/implement` Step 16 is a small, integration-critical doc update that downstream Step 16 / Step 12d consumers depend on.
+
+VOTE FINDING_12: YES
+Reason: This is a direct consequence of FINDING_1's relocation — once the write moves to restore-finalize-state.sh, the harness target changes to test-restore-finalize-state.sh; without this correction the plan would leave a stale test-refresh-run-logs.sh assertion requirement that doesn't match the moved write site.
+
+VOTE OOS_1: YES
+Reason: Latent default-to-`.json` behavior in offline larch-log.sh stubs is a real cross-harness landmine for any new batch slug; surfacing it now (rather than discovering it post-merge) is the lower-cost path.
+
+VOTE OOS_2: EXONERATE
+Reason: Archived/superseded design text reference cleanup is legitimate but is pure documentation hygiene of historical content; not worth scope-expanding this PR.
+
+VOTE OOS_3: EXONERATE
+Reason: Stdout-heuristic detection for REFRESH_COMMITTED is a latent contract-hardening concern unrelated to the bail-reason persistence and CI-fix grounding goals of this PR; legitimate but disproportionate to address here.
