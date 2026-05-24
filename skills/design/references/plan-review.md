@@ -31,7 +31,7 @@ Launch failures (non-zero `launch-review.sh` exit before the collector runs) con
 
 ## Dynamic plan-review archetypes (optional)
 
-Step 3 **may** extend the fixed 10-slot static panel with up to **six** scout-proposed specialist archetypes, each expanded into a **Cursor + Codex** pair (`dyn-cursor-plan-<slug>` and `dyn-codex-plan-<slug>` entries in the NDJSON manifest, up to **12** extra external slots total).
+Step 3 **may** extend the fixed 10-slot static panel with up to 6 scout-proposed specialist archetypes, each expanded into a **Cursor + Codex** pair (`dyn-cursor-plan-<slug>` and `dyn-codex-plan-<slug>` entries in the NDJSON manifest, up to **12** extra external slots total). The combined panel is therefore 10 static + up to 12 dynamic slots.
 
 1. **Scout (fail-open)**: `skills/design/scripts/scout-plan-archetypes-wrapper.sh` derives scope files from `### NEW`, `### UPDATED`, or `### REWRITTEN` headings in the plan, invokes `scripts/scout-dynamic-archetypes.sh` in description mode with `--prompt-override-file` pointing at `skills/design/scripts/scout-plan-archetypes-prompt.txt` when that template is readable, filters reserved static slugs, and caps at six archetypes. Scout failures write an empty archetype manifest and the static panel still runs.
 
