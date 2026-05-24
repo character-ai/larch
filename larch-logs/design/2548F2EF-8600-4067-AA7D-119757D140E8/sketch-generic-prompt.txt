@@ -1,0 +1,141 @@
+Propose a high-level implementation approach for this feature:
+
+# [DESIGNING] Lesson 5: Command-syntax validator for /design plans (Tier 2 + opt-in Tier 3)
+
+## Lesson 5 — Command-syntax validator for `/design` plans
+
+**Origin**: post-mortem of #2644 (closed). Round 4 of that issue's review surfaced two "this literal command will fail at runtime" defects that the 10-reviewer panel couldn't reliably catch without reading every cited script's source:
+
+- **R4/FINDING_1** (ALL 10 reviewers eventually caught): the plan specified `launch-claude-review.sh --context-files <ballot>`, but `--context-files` is not a flag on that script.
+- **R4/FINDING_2** (8 reviewers): the two-pass aggregator invocation passed `--findings-file <path>` whose path was NOT under the `--review-tmpdir` directory, violating the script's path-containment contract — a runtime check that no static review can detect.
+
+A mechanical validator catches the first class cheaply and the second class with an opt-in dry-run mechanism.
+
+## Scope
+
+### Tier 2 validation (always-on)
+
+For every shell command appearing in the plan's fenced code blocks:
+
+1. **Extract** the command's script path and named flags via a regex-driven parser (`scripts/parse-plan-commands.sh`). Skip:
+   - Commands referencing scripts proposed for creation by this PR (parser reads the plan's `### NEW:` headings and excludes those paths).
+   - Commands inside narrative prose (only fenced ```bash / ```sh blocks are validated).
+
+2. **Existence check**: confirm the script file exists in the working tree. Failure → validator error.
+
+3. **Flag check**: run the script with `--help` (with a timeout, e.g., 10s) and parse the help output for the named flags. For each flag named in the plan command:
+   - Match against the help text via grep for `--<flag-name>`.
+   - If not found, validator error with the specific flag name.
+
+### Tier 3 validation (opt-in per script)
+
+For scripts that explicitly support a "validate-only" mode (documented hook, e.g., honoring `LARCH_DRY_RUN=1` or accepting `--validate-only`):
+
+1. Compose the literal command from the plan, prefixing `LARCH_DRY_RUN=1` (or appending `--validate-only`).
+2. Run the command with a timeout.
+3. Non-zero exit → validator error with the dry-run output captured.
+
+Scripts opt in by:
+- Documenting the dry-run hook in their sibling `.md`.
+- Being listed in `scripts/dry-runnable-scripts.tsv` (or equivalent registry).
+
+Tier 3 catches runtime-only defects like R4/FINDING_2 (path containment) without requiring every script to be dry-run-aware.
+
+### Validator invocation points
+
+The validator runs at **two** points in `/design`:
+
+1. **Step 2b** (after initial plan written, before Step 3 review): catches defects in the operator-written or main-agent-written first-draft plan before review budget is spent on them.
+2. **Step 5** (after Gate C approve, before plan-block-write to GitHub): catches defects introduced by mid-loop revisions or by Gate B Apply-all changes.
+
+(Optional refinement during /design: also run after each `revise-plan-with-waterfall.sh` invocation inside the multi-round loop — discuss during the lesson's /design pass.)
+
+### Failure handling
+
+When the validator finds a defect at either invocation point: present an `AskUserQuestion` with three options:
+
+- **Fix-and-retry**: operator edits the plan to address the validator error; validator re-runs; loop until pass or operator picks another option.
+- **Override**: operator certifies the validator error is a false positive (e.g., the script is being added by this PR but the validator misclassified it as existing; the flag is genuinely new and `--help` doesn't show it yet). Decision logged to `execution-issues.md` under `Warnings` for forensics.
+- **Cancel**: exit `/design` without writing the plan.
+
+### Plan-command extraction parser
+
+A new helper `scripts/parse-plan-commands.sh` (or `skills/design/scripts/parse-plan-commands.sh`):
+
+- Parses the plan body's fenced ```bash / ```sh blocks.
+- Extracts each command line (first non-empty line of each block; multi-line commands joined on `\`-continuation).
+- Identifies the script path (first non-flag token after env-var assignments).
+- Extracts named long flags (`--foo` / `--foo=bar` / `--foo bar`).
+- Emits TSV: `block_line_start  script_path  flag1  flag2  ...`.
+- Skips commands whose script path matches a "NEW in this PR" entry from the plan.
+
+### NEW-script detection
+
+The parser reads the plan's `### NEW:` / `### NEW [path]:` headings and builds an exclude-list. A command referencing any NEW-script is logged as "skipped: created by this PR" rather than validated. Edge case: when a plan section is updating an EXISTING script to ADD a flag (`### UPDATED: <script>` + the update text introduces a `--newflag`), the validator currently can't detect "this flag is new in this PR" — the operator must override or the plan must move that command into a NEW-marked block (open for /design refinement).
+
+## Files to modify (sketch — needs /design)
+
+- New helper: `scripts/parse-plan-commands.sh` (+ `.md`) — TSV extractor for fenced bash commands in the plan body.
+- New helper: `scripts/validate-plan-commands.sh` (+ `.md`) — Tier 2 + Tier 3 validator; takes plan-file as input; emits per-defect details and a summary KV `VALIDATE_STATUS=ok|defects-found`.
+- New registry: `scripts/dry-runnable-scripts.tsv` (sibling `.md`) — initially empty; populated incrementally as scripts adopt the opt-in dry-run hook.
+- `skills/design/SKILL.md` — Step 2b validator invocation (after plan write, before Step 3); Step 5 validator invocation (before plan-block-write).
+- `skills/design/references/flags.md` — document the validator and the AskUserQuestion flow.
+- New harnesses: `test-parse-plan-commands.sh`, `test-validate-plan-commands.sh`.
+- `Makefile`, `agent-lint.toml`, `topology.tsv`.
+
+## Dependencies
+
+- Independent of #L1, #L2, #L3, #L4, #L6.
+- Naturally complements #L1 (size thresholds): both run at Step 2b. Could share a single "post-plan-write checks" phase.
+
+## Acceptance (sketch)
+
+- Plan-command parser extracts TSV of (script_path, flags) for every fenced bash block; skips NEW-script references; harness covers single-line, multi-line continuation, env-var-prefixed, and quoted-arg cases.
+- Validator's Tier 2: existence + flag-check via `--help` parsing; runs at Step 2b and Step 5.
+- Validator's Tier 3: dry-run for scripts registered in `scripts/dry-runnable-scripts.tsv`; opt-in mechanism documented.
+- On validator failure: `AskUserQuestion` with Fix-and-retry / Override / Cancel; override path logs to `execution-issues.md`.
+- Demonstration test: a plan containing `launch-claude-review.sh --context-files <path>` (the R4/FINDING_1 case) produces a validator error naming `--context-files` as unrecognized.
+- The validator does NOT run for `--trivial` tier (no review; lightweight path stays lightweight). Open for /design refinement.
+
+
+
+Explore the codebase. Write 2-3 paragraphs covering: (1) Key architectural decisions and approach, (2) Which files/modules to modify and why, (3) Main tradeoffs and risks. Do NOT modify files.
+
+
+## Resolved design decisions (from /design discussion)
+
+## Decision 1: Trivial tier validator scope
+- **Question**: Should the validator run for the `--trivial` design tier?
+- **Resolution**: Skip on `--trivial`. Validator runs only for `--simple` and `--hard`. Trivial tier already opts out of the reviewer panel; keep the lightweight path lightweight.
+- **Source**: user (Step 1c Q1)
+
+## Decision 2: `### UPDATED:` heading + new-flag listing
+- **Question**: How should the validator handle plans that introduce a NEW flag on an EXISTING script?
+- **Resolution**: Parser recognizes `### UPDATED: <script>` headings AND requires a `- Adds flag: --newflag` bullet (or similar declarative line) under the heading. The validator then silently allows that flag on that script only. More precise than operator-override-only; lower false-negative risk than blanket UPDATED-skip.
+- **Source**: user (Step 1c Q2)
+
+## Decision 3: Out of scope for /implement Preflight
+- **Question**: Should the validator also gate `/implement`'s Preflight check?
+- **Resolution**: Out of scope for this issue. Keep #2674 focused on `/design`. /implement Preflight has its own plan-adequacy check. A separate validator-in-Preflight follow-up can be filed if reviewers raise it.
+- **Source**: user (Step 1c Q3)
+
+## Decision 4: Missing `--help` fallback (graceful-skip)
+- **Question**: What should Tier 2 do when a script has no `--help` arm? Codebase audit: 394 of 501 .sh scripts (79%) lack `--help`.
+- **Resolution**: Graceful skip with logged note. Existence is still verified, but the flag-check is skipped per command and a `SKIPPED_FLAG_CHECK: <script> reason=no-help` note is written to `validate-plan-commands.log` (or equivalent) for forensics. Won't catch invented flags on those 394 scripts.
+- **Companion action**: A separate issue (#2679) was filed via `/larch:issue --no-dedup` to overhaul all 394 `.sh` scripts to add `--help` arms. Independent of #2674; not a hard blocker.
+- **Source**: user (Step 1d Q1) + companion filed issue #2679
+
+## Decision 5: Validator scope (repo scripts only)
+- **Question**: Which command paths does the validator process?
+- **Resolution**: Repo scripts only — paths matching `scripts/`, `skills/*/scripts/`, or `.claude/skills/*/scripts/`. Skip system commands (gh, jq, awk, sed, grep, find, printf, sort, etc.) silently. System-command stability is out of /design's purview.
+- **Source**: user (Step 1d Q2)
+
+## Decision 6: Tier 2 → Tier 3 ordering (both run)
+- **Question**: When a script is opted into Tier 3 (`dry-runnable-scripts.tsv`), how should Tier 2 and Tier 3 relate?
+- **Resolution**: Tier 2 first, then Tier 3 (both must pass). Tier 2 is cheap and catches typos with a specific "flag-X unknown" error; Tier 3 catches semantic defects like path-containment. Defects from either layer surface to the AskUserQuestion fail handler.
+- **Source**: user (Step 1d Q3)
+
+## Decision 7: Parser scope (pipes + chains; skip heredoc bodies)
+- **Question**: What command-composition scope should the v1 parser handle?
+- **Resolution**: Split each fenced bash line on `|`, `&&`, `||`, `;` and validate each repo-script component independently (skipping system-command components per Decision 5). Treat heredoc bodies (`<<EOF ... EOF` and `<<'EOF' ... EOF`) as data — do not parse commands inside them. Subshells `$(...)` and process substitution `<(...)` are out of v1 scope.
+- **Source**: user (Step 1d Q4)

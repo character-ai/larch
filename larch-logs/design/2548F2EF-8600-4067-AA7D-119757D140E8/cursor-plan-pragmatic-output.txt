@@ -1,0 +1,23 @@
+Reading the plan and inspecting referenced code paths.
+
+Validating the plan against the codebase: reading driver, SKILL, Makefile, agent-lint, topology, and related contracts.
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	external-plan-artifact#L9-L53	Tier2 bullet says flag absent from help yields DEFECT unknown-flag while Edge cases say help OK but terse omits flag yields SKIPPED_FLAG_CHECK flag-not-in-help	Implementer cannot tell which branch is normative; tests may assert the wrong outcome	Make Approach Tier2 and Edge cases agree: either unknown-flag when help omits the flag or skip row; document the single rule in validate-plan-commands.md
+1	in_scope	important	risk-integration	skills/design/references/approval-gates.md:86-87 skills/design/references/discussion-rounds.md:121 skills/design/SKILL.md:600	Validator only after initial Step2 EMIT_PLAN and before redact at Step5c	GateB or discussion-driven plan.txt edits plus EMIT_PLAN can introduce new fenced commands after the early validator; defect surfaces only at Step5c or after wasted downstream work	After every EMIT_PLAN that follows a plan.txt revision (GateB apply paths discussion re-entry) invoke ACTION=VALIDATE_PLAN_COMMANDS when review_budget!=quick or document explicit deferral to Step5c only
+1	in_scope	important	architecture	skills/design/scripts/design-driver.sh:157-164	Plan does not bind exit status when validator finds DEFECT rows versus KV-only success	SKILL cannot know whether non-zero driver exit means STEP_FAILED needing repair versus parseable defects for AskUserQuestion; test-design-driver assertions ambiguous	Specify validate-plan.sh and driver contract: e.g. exit0 always with KV DEFECTS_FOUND or exit1 on defects mirroring emit-plan; align SKILL failure text and harness expectations
+1	in_scope	nit	risk-integration	scripts/test-design-structure.sh:409-414	Check14b pins only EMIT_PLAN TALLY FINALIZE	New ACTION emission in SKILL may drift without CI failing until manual review	Add grep pin for ACTION=VALIDATE_PLAN_COMMANDS or extend 14b family per new dispatcher surface
+1	in_scope	nit	architecture	skills/design/SKILL.md:28	New synchronous Bash boundary after EMIT_PLAN may be missing from the anti-halt step chain list	Orchestrator might treat validator completion as a halt boundary contrary to NEVER rules	Update the 1c to 6 chain in the anti-halt reminder once the validator block lands
+1	out_of_scope	latent	security	skills/design/scripts/validate-plan-commands.sh (proposed) skills/design/scripts/parse-plan-commands.sh (proposed)	Tier3 replays parsed argv through real script entrypoints under repo PWD	Registry opt-in still trusts script dry-run implementations; parser mistakes could widen invoked commands	Harden with documented trust model cwd constraints allowlist expansion review in SECURITY.md follow-up
+
+1. **correctness** — `external-plan-artifact#L9-L53`: Tier2 “unknown-flag” vs Edge cases “flag-not-in-help” skip contradict; pick one normative rule and align tests/docs.
+
+2. **risk-integration** — `skills/design/references/approval-gates.md:86-87`, `skills/design/references/discussion-rounds.md:121`, `skills/design/SKILL.md:600`: Validator only after first `EMIT_PLAN` and at Step 5c misses validation immediately after later `EMIT_PLAN` paths that revise `plan.txt`; add matching `ACTION=VALIDATE_PLAN_COMMANDS` (or justify deferral to Step 5c only).
+
+3. **architecture** — `skills/design/scripts/design-driver.sh:157-164`: Exit-code / `STEP_FAILED` contract for defect-heavy validation runs is unspecified; define it so SKILL, driver, and `test-design-driver.sh` stay consistent.
+
+4. **risk-integration** — `scripts/test-design-structure.sh:409-414`: Plan omits extending Check 14b ACTION pins for the new dispatcher emission; add when SKILL gains `ACTION=VALIDATE_PLAN_COMMANDS`.
+
+5. **architecture** — `skills/design/SKILL.md:28`: Anti-halt step chain may need an extra hop once a post-`EMIT_PLAN` validator Bash block exists.
+
+6. **[OUT_OF_SCOPE]** — `skills/design/scripts/validate-plan-commands.sh` (proposed), `skills/design/scripts/parse-plan-commands.sh` (proposed): Tier 3 executes parsed commands under opt-in registry; track trust-boundary / `SECURITY.md` hardening separately from this PR’s scope.
