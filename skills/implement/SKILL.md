@@ -1599,7 +1599,7 @@ For Step 10/12 rebase + re-bump retries, `ship-pr.sh` owns one extra freshness c
   4. Write the sentinel and increment the counter **before** any repo edits. Fail-closed: on any write failure, abort the autonomous path, append a `Tool Failures` entry to `execution-issues.md`, and fall through.
   5. Capture fresh CI logs: `${CLAUDE_PLUGIN_ROOT}/scripts/gh-run-logs.sh --run-id "$FAILED_RUN_ID" --repo "$REPO" | ${CLAUDE_PLUGIN_ROOT}/scripts/redact-secrets.sh > "$IMPLEMENT_TMPDIR/main-agent-ci-fix-$FAILED_RUN_ID.gh-run-logs.redacted.txt"`. Also redact `BAIL_FAILURE_DETAIL_LOG` through `redact-secrets.sh` before reading; validate that path is under `$IMPLEMENT_TMPDIR` (reject traversal outside the tmpdir).
   6. Use Claude tool calls to make the minimal repo edit, informed by the redacted CI log (primary) and the redacted launcher diagnostic capture (supplemental).
-  7. Run `${CLAUDE_PLUGIN_ROOT}/scripts/run-relevant-checks-captured.sh` (or `${CLAUDE_PLUGIN_ROOT}/scripts/relevant-checks.sh`). On failure, log to `execution-issues.md` and fall through to user-bail.
+  7. Run the captured relevant-checks helper (`run-relevant-checks-captured.sh --site step8-main-agent-fix --tmpdir "$IMPLEMENT_TMPDIR"`). On failure, log to `execution-issues.md` and fall through to user-bail.
   8. Stage edited files explicitly via `git add -- <paths>` (mirror the `ship-pr.sh` CI-fix staging contract; do **not** use `git add -A`).
   9. Commit via `${CLAUDE_PLUGIN_ROOT}/scripts/git-commit.sh -m "Fix CI failure (main-agent)"`.
   10. Refresh run-log token/timing artifacts: `${CLAUDE_PLUGIN_ROOT}/scripts/refresh-run-logs.sh --state-file "$IMPLEMENT_TMPDIR/ship-pr-state.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR"` (mirrors the existing CI-fix push sequence).
