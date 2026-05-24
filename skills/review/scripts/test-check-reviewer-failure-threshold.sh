@@ -72,10 +72,10 @@ assert_eq "all-OK HARD → THRESHOLD_OK=true" "$got" "true"
 got=$(printf '%s\n' "$out" | awk -F= '$1=="FAILED_SLOTS"{print $2}')
 assert_eq "all-OK HARD → FAILED_SLOTS=0" "$got" "0"
 
-echo "# HARD panel — exactly half fail (6 of 12) → still OK (>50% required)"
+echo "# HARD panel — 6 of 12 records fail → over threshold (6-slot intended)"
 out=$(run_case half_fail_hard hard OK OK OK OK OK OK timeout timeout timeout timeout timeout timeout 2>&1)
 got=$(printf '%s\n' "$out" | awk -F= '$1=="THRESHOLD_OK"{print $2}')
-assert_eq "6/12 fail HARD → OK (not >50%)" "$got" "true"
+assert_eq "6 fail (12 records) → over threshold" "$got" "false"
 got=$(printf '%s\n' "$out" | awk -F= '$1=="FAILED_SLOTS"{print $2}')
 assert_eq "6/12 → FAILED_SLOTS=6" "$got" "6"
 
@@ -109,9 +109,9 @@ assert_eq "cap_hit not counted as failure" "$got" "0"
 echo "# never-launched slots count as failures (via --launched-slots)"
 out=$(run_case never_launched hard --launched-slots 6 OK OK OK OK OK OK 2>&1)
 got=$(printf '%s\n' "$out" | awk -F= '$1=="FAILED_SLOTS"{print $2}')
-assert_eq "6 OK launched + 6 never-launched → FAILED_SLOTS=6" "$got" "6"
+assert_eq "6 OK launched + 0 never-launched → FAILED_SLOTS=0" "$got" "0"
 got=$(printf '%s\n' "$out" | awk -F= '$1=="THRESHOLD_OK"{print $2}')
-assert_eq "6 failed-via-not-launched → still OK (not >50%)" "$got" "true"
+assert_eq "6 OK launched, full panel → THRESHOLD_OK=true" "$got" "true"
 
 echo "# round 2+ hard panel uses a 6-slot intended denominator"
 out=$(run_case round2_hard hard --round-num 2 --launched-slots 6 OK OK OK OK OK timeout 2>&1)
@@ -134,7 +134,7 @@ assert_eq "round2 SIMPLE 1/6 fail → THRESHOLD_OK=true" "$got" "true"
 echo "# both-down: zero records, zero launched"
 out=$(run_case both_down hard --launched-slots 0 2>&1)
 got=$(printf '%s\n' "$out" | awk -F= '$1=="FAILED_SLOTS"{print $2}')
-assert_eq "0 launched of 12 → FAILED_SLOTS=12" "$got" "12"
+assert_eq "0 launched of 6 → FAILED_SLOTS=6" "$got" "6"
 got=$(printf '%s\n' "$out" | awk -F= '$1=="THRESHOLD_OK"{print $2}')
 assert_eq "0 launched → THRESHOLD_OK=false" "$got" "false"
 
@@ -152,7 +152,7 @@ out=$(run_case dynamic_hard hard --launched-slots 16 \
     OK OK OK OK OK OK OK OK OK timeout timeout timeout \
     dyn:timeout dyn:timeout dyn:timeout dyn:timeout 2>&1)
 got=$(printf '%s\n' "$out" | awk -F= '$1=="INTENDED_SLOTS"{print $2}')
-assert_eq "dynamic slots do not widen intended denominator" "$got" "12"
+assert_eq "dynamic slots do not widen intended denominator (static=6)" "$got" "6"
 got=$(printf '%s\n' "$out" | awk -F= '$1=="THRESHOLD_OK"{print $2}')
 assert_eq "3/12 static fail dynamic HARD reviewers ignored → still OK" "$got" "true"
 got=$(printf '%s\n' "$out" | awk -F= '$1=="COUNTED_SLOTS"{print $2}')
