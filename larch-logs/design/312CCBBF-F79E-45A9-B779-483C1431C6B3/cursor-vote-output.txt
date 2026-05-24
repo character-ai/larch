@@ -1,0 +1,27 @@
+Verifying key claims across the repo.
+
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: EXONERATE -- foreground prose plus helper encapsulation already mitigates; denylist churn is optional hardening
+FINDING_18: YES
+FINDING_19: YES
+FINDING_20: YES
+OOS_1: YES
+OOS_2: YES
+OOS_3: YES
+OOS_4: EXONERATE -- conditional on landing scripts and policy interpretation; not clearly actionable yet
+OOS_5: EXONERATE -- traceability nit with low payoff versus issue overhead
