@@ -14,9 +14,9 @@ schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	sugg
 1	in_scope	nit	correctness	<TMPDIR>/plan.txt:115-117 vs L133-134	Acceptance criteria grep only `skills/design/SKILL.md` for `SESSION_ENV_PATH` but failure-mode mitigation suggests wider `skills/design/` grep without adding it to acceptance	Residual references in comments or docs under `skills/design/` slip past CI until manual grep	Adopt the wider grep in `test-design-structure.sh` with a pinned expected count after cleanup
 1	out_of_scope	important	architecture	skills/shared/subskill-invocation.md:167-205	Nested artifact-only contract still describes `/design` under non-empty `SESSION_ENV_PATH`	Same-file doc conflicts with standalone-only `/design` after #2597	Update in a follow-up issue or same PR if scope widens
 
-1. **correctness** ([`plan.txt`](file:///Users/zhupanov/.cache/larch/sessions/claude-design-larch5-NJ3bCz/plan.txt) lines 9–10 vs 77): The plan both shows a hardcoded `<OPERATOR_REPO_PATH>/plugins/...` export and later prescribes `export CLAUDE_PLUGIN_ROOT='${CLAUDE_PLUGIN_ROOT}'`; reconcile to a single portable mechanism so nothing user-specific can land in git.
+1. **correctness** (`plan.txt` lines 9–10 vs 77): The plan both shows a hardcoded `<OPERATOR_REPO_PATH>/plugins/...` export and later prescribes `export CLAUDE_PLUGIN_ROOT='${CLAUDE_PLUGIN_ROOT}'`; reconcile to a single portable mechanism so nothing user-specific can land in git.
 
-2. **correctness** ([`plan.txt`](file:///Users/zhupanov/.cache/larch/sessions/claude-design-larch5-NJ3bCz/plan.txt) §9 vs Failure modes §1): CI cannot assert a fully expanded literal path inside committed `SKILL.md` while also shipping template expansion; align the regression test story with what the repository file actually contains.
+2. **correctness** (`plan.txt` §9 vs Failure modes §1): CI cannot assert a fully expanded literal path inside committed `SKILL.md` while also shipping template expansion; align the regression test story with what the repository file actually contains.
 
 3. **architecture** ([`scripts/write-design-current-env.sh`](scripts/write-design-current-env.sh) lines 116–128): Prefer always emitting `CLAUDE_PLUGIN_ROOT` from the writer’s `SCRIPT_DIR` when unset instead of depending on SKILL-level template expansion (mirrors [`skills/design/scripts/tally-plan-review.sh`](skills/design/scripts/tally-plan-review.sh) line 7); this is a stronger fix than the plan’s tradeoff #1 acknowledges.
 
@@ -26,6 +26,6 @@ schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	sugg
 
 6. **architecture** ([`skills/design/SKILL.md`](skills/design/SKILL.md) lines 525–528, 657–660, 680–683)): Removing `token-ledger.sh mark` is an observability regression unless intentionally accepted; the plan should state that explicitly.
 
-7. **correctness** ([`plan.txt`](file:///Users/zhupanov/.cache/larch/sessions/claude-design-larch5-NJ3bCz/plan.txt) Testing vs Acceptance): Failure mode #2 suggests `grep -r SESSION_ENV_PATH skills/design/` but acceptance criteria 1–2 only gate `SKILL.md`; widen CI or accept residual drift risk.
+7. **correctness** (`plan.txt` Testing vs Acceptance): Failure mode #2 suggests `grep -r SESSION_ENV_PATH skills/design/` but acceptance criteria 1–2 only gate `SKILL.md`; widen CI or accept residual drift risk.
 
 [OUT_OF_SCOPE] [`skills/shared/subskill-invocation.md`](skills/shared/subskill-invocation.md) lines 167–205 — nested `/design` contract text conflicts post-change with standalone-only `/design`; track for a doc-only follow-up if the issue stays scoped to `skills/design/**` only.

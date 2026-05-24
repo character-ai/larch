@@ -65,4 +65,4 @@ schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	sugg
 
 7. **[security]** [SECURITY.md:64](SECURITY.md) and [plan.txt:139-141](plan.txt) — Downstream “silent skip” is analyzed in Failure modes §3, but `SECURITY.md` is listed as a conditional doc touch. **Suggested revision:** Make the security doc update mandatory: document `RELEVANT_CHECKS_SKIPPED=true`, exit `0`, and what operators should infer about checks not having run.
 
-[OUT_OF_SCOPE] [/.cursor/skills-cursor/relevant-checks/SKILL.md](file:///Users/zhupanov/.cursor/skills-cursor/relevant-checks/SKILL.md) — Cursor-local skill mirror (if present) is outside this repository; migration guidance for that install surface is not covered by the plan and could conflict with operator habits if not tracked separately.
+[OUT_OF_SCOPE] /.cursor/skills-cursor/relevant-checks/SKILL.md — Cursor-local skill mirror (if present) is outside this repository; migration guidance for that install surface is not covered by the plan and could conflict with operator habits if not tracked separately.

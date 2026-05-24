@@ -1,0 +1,12 @@
+FINDING_1: YES
+FINDING_2: EXONERATE -- Tmpdir evidence exists and the plan did not require committing Phase 1 transcripts; committing more audit artifacts is disproportionate here.
+FINDING_3: EXONERATE -- Further trimming is possible but unnecessary with AGENTS.md already well under the budget and competing with retained guidance.
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: EXONERATE -- The broad pointer-only concern is legitimate but better handled by narrower accepted issues than by restoring generalized incident prose.
+FINDING_7: YES
+FINDING_8: EXONERATE -- Uneven gloss is a minor skimming issue and not worth expanding AGENTS.md after a size-reduction change.
+FINDING_9: EXONERATE -- AGENTS still names the sanctioned writer scripts, and restoring old symptom anchors risks reintroducing stale detail.
+FINDING_10: YES
+FINDING_11: EXONERATE -- Review noise from intentional run-log policy is real but not worth a separate future issue.
+FINDING_12: NO -- Test evidence is available in the run transcript/logs; patch-only unverifiability is a normal review limitation, not a future issue.

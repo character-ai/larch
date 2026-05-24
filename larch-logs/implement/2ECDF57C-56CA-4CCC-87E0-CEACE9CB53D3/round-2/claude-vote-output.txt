@@ -1,0 +1,19 @@
+FINDING_1: EXONERATE -- the separate NEVER improvise bullet covers the broader ScheduleWakeup prohibition; NEVER #9 pointer is still explicit in the trimmed text
+FINDING_2: EXONERATE -- the adjacent NEVER improvise ScheduleWakeup bullet independently covers the broader /implement prohibition; two bullets together give complete picture
+FINDING_3: EXONERATE -- plan explicitly targets self-descriptive filenames for description removal; trimmed entries fit that criterion
+FINDING_4: NO -- URI normalization in archived log artifacts is cosmetic cleanup, not worth a separate tracking issue
+FINDING_5: EXONERATE -- same as FINDING_3; plan's Phase 2B explicitly authorized this trim
+FINDING_6: EXONERATE -- removing inline incident narratives is the explicit Phase 2B trade-off; rationale is accessible via cited SKILL.md links
+FINDING_7: EXONERATE -- plan explicitly declares results.md ephemeral in IMPLEMENT_TMPDIR; no committed record was required
+FINDING_8: EXONERATE -- Gemini omission is a pre-existing gap in the plan itself, not an implementation deviation
+FINDING_9: EXONERATE -- moving "why" narrative to cited SKILL files is the explicit Phase 2B trade-off; root-imported AGENTS.md retains the prescriptive rules
+FINDING_10: YES -- larch-logs URI normalization churn across many files was not in the plan's file list; reviewers cannot separate intentional from incidental changes
+FINDING_11: EXONERATE -- plan explicitly makes Phase 1 evidence ephemeral in IMPLEMENT_TMPDIR; acceptance criterion describes what the tmpdir file should contain, not a commit requirement
+FINDING_12: EXONERATE -- CI coverage is a process gate, not a code defect; not worth a separate tracking issue
+FINDING_13: EXONERATE -- trimmed bullet is substantially shorter; minor shape deviation from the one-liner template does not impair function
+FINDING_14: NO -- trivial pre-existing plan gap; not issue-worthy
+FINDING_15: YES -- same as FINDING_10; undocumented larch-logs churn breaks plan-to-diff traceability
+FINDING_16: EXONERATE -- same as FINDING_11; plan acceptance criterion describes ephemeral tmpdir contents, not a commit requirement
+FINDING_17: EXONERATE -- same as FINDING_12; process concern, not a code defect
+FINDING_18: EXONERATE -- same as FINDING_13; minor shape mismatch, plan goals substantively met
+FINDING_19: NO -- trivial upstream plan ambiguity; not issue-worthy

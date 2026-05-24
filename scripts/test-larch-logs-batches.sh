@@ -36,6 +36,7 @@ run-statistics
 token-report
 timing-report
 execution-issues
+include-probe-evidence
 session-transcript'
 
 actual="$(larch_log_batch_list)"

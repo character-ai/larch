@@ -4,7 +4,7 @@ Reading diff/plan context and verifying cited code in the repository.
 
 Checking `implement-finalize.md` for the ERROR stub and whether `SKILL.md` still states HEAD-only for apply-bump.
 
-Votes below are based on the ballot, [plan-context.txt](file:///Users/zhupanov/.cache/larch/sessions/claude-implement-larch5-LGLlWg/round-3/plan-context.txt), [diff-context.txt](file:///Users/zhupanov/.cache/larch/sessions/claude-implement-larch5-LGLlWg/round-3/diff-context.txt), and the current tree in `/Users/zhupanov/larch5` (`ship-pr.sh` `write_postbump_state`, `implement-finalize.sh` `maybe_update_changelog` / `collect_changelog_bullets`, `apply-bump.sh`, `test-implement-finalize.sh` #2233 case, `rebase-rebump-subprocedure.md`, `test-drop-bump-commit.sh`, `create-pr.sh`, `CHANGELOG.md`).
+Votes below are based on the ballot, plan-context.txt, diff-context.txt, and the current tree in `/Users/zhupanov/larch5` (`ship-pr.sh` `write_postbump_state`, `implement-finalize.sh` `maybe_update_changelog` / `collect_changelog_bullets`, `apply-bump.sh`, `test-implement-finalize.sh` #2233 case, `rebase-rebump-subprocedure.md`, `test-drop-bump-commit.sh`, `create-pr.sh`, `CHANGELOG.md`).
 
 FINDING_1: YES
 FINDING_2: EXONERATE -- optional historic CHANGELOG wording; opening an issue would be heavier than the drift itself.

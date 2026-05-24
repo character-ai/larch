@@ -13,7 +13,7 @@ schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	sugg
 
 2. **correctness** — [scripts/collect-agent-results.sh](scripts/collect-agent-results.sh):183-213 — Today the `OUTPUT_FILES` empty check runs right after the `while` argv loop with no paths-file hook in between. Suggested revision: in the implementation plan, spell out that the “at least one output file” guard must run only after optional `--paths-file` population (or equivalent merged logic), so implementers do not insert the new branch below an early `exit 1`.
 
-3. **risk-integration** — Session plan items 13-14 (same bullets as [plan.txt](file:///Users/zhupanov/.cache/larch/sessions/claude-design-larch6-3NXEjU/plan.txt) lines 57-67) — The plan still says to create `scripts/test-dispatch-code-voters.sh` and `scripts/test-collect-agent-results.sh` if absent; both files already exist. Suggested revision: rephrase to “extend existing harness” to match the repo.
+3. **risk-integration** — Session plan items 13-14 (same bullets as plan.txt lines 57-67) — The plan still says to create `scripts/test-dispatch-code-voters.sh` and `scripts/test-collect-agent-results.sh` if absent; both files already exist. Suggested revision: rephrase to “extend existing harness” to match the repo.
 
 4. **risk-integration** — [scripts/test-dispatch-code-voters.sh](scripts/test-dispatch-code-voters.sh):7-37 and [Makefile](Makefile):594-617 — The code-voters harness is split into `--section` slices with dedicated Makefile targets. Suggested revision: the plan should name which section(s) or targets must carry the new assertions so every CI shard that matters still exercises `VOTER_PATHS_FILE`.
 

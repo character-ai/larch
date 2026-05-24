@@ -1,0 +1,21 @@
+Reading the ballot and any referenced context files.
+
+FINDING_1: EXONERATE -- line 59 already ties a broad orchestrator ScheduleWakeup ban to NEVER #9; an extra /implement-only clause on line 56 would be redundant and costly under the char budget.
+FINDING_2: NO -- line 59 explicitly forbids improvising ScheduleWakeup outside skill-script direction and cites NEVER #9, not merely polling-as-watcher wording.
+FINDING_3: EXONERATE -- canonical list lost some gloss but Phase 2B of the plan explicitly calls for dropping redundant trailing descriptions on self-explanatory paths.
+FINDING_4: EXONERATE -- log-noise triage is real but does not warrant a standalone tracking issue for this scope.
+FINDING_5: EXONERATE -- same planned canonical-list trim as FINDING_3; filenames plus README pointers remain adequate.
+FINDING_6: EXONERATE -- shorter Tier-1 bullets with SKILL/orchestrator pointers match the refactor goal; restoring full incident prose would fight the size target.
+FINDING_7: EXONERATE -- plan marks Phase 1 fixtures/results as ephemeral under `$IMPLEMENT_TMPDIR`; optional git archival is nice-to-have, not a stated acceptance gap.
+FINDING_8: EXONERATE -- Gemini is named alongside a three-agent Phase 1 matrix in the plan, but widening the probe matrix now is disproportionate for this Branch B trim outcome.
+FINDING_9: EXONERATE -- rationale moved to linked docs by design; re-expanding root-imported “why” text conflicts with the AGENTS size reduction objective.
+FINDING_10: EXONERATE -- plan lists AGENTS-only deliverables while implement runs routinely touch `larch-logs/`; calling for a split PR or extra deliverable is often heavier than the traceability win here.
+FINDING_11: NO -- acceptance requires results under `$IMPLEMENT_TMPDIR/include-test/results.md`, not a committed repo copy with BRANCH/transcripts.
+FINDING_12: EXONERATE -- CI outcomes are never provable from a static patch alone; this is normal merge/CI hygiene, not a branch-specific defect.
+FINDING_13: EXONERATE -- minor silhouette mismatch versus an internal trim template is cosmetic and optional to fix.
+FINDING_14: EXONERATE -- Gemini/matrix ambiguity is pre-existing plan noise; no GitHub issue is needed solely for this branch.
+FINDING_15: EXONERATE -- same `larch-logs` traceability note as FINDING_10; not worth an additional process mandate by default.
+FINDING_16: NO -- duplicates FINDING_11’s misread of acceptance: Phase 1 evidence is specified in `$IMPLEMENT_TMPDIR`, not as a committed artifact.
+FINDING_17: EXONERATE -- same latent CI-evidence point as FINDING_12; standard gating, not a unique flaw in these changes.
+FINDING_18: EXONERATE -- duplicates FINDING_13’s optional template nit without new substance.
+FINDING_19: EXONERATE -- same Gemini/four-runtime ambiguity as FINDING_8/14; no separate issue required.

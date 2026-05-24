@@ -1,0 +1,9 @@
+FINDING_1: EXONERATE -- plan file manifest legitimately covers only AGENTS.md; run-logs and larch-logs/* edits are log-maintenance scope called out in docs/run-logs.md, not a traceability gap warranting a fix or issue.
+FINDING_2: YES
+FINDING_3: NO -- bare `/.cursor/...` after redaction is cosmetic in archived historical logs; no runtime or security impact.
+FINDING_4: EXONERATE -- plan explicitly states Phase 1 artifacts are ephemeral by design; the manifest.json and plan-goals-test.md are the committed audit trail for the branch decision.
+FINDING_5: NO -- empty steps_ran/flags in manifest.json is existing behavior not introduced by this change; not relevant to this diff.
+FINDING_6: NO -- literal clone path in vote prose is non-secret workspace metadata; no security risk warrants a tracking issue.
+FINDING_7: EXONERATE -- the trim deliberately links to canonical SKILL.md NEVER entries; the rationale is accessible and the goal of this change was specifically to reduce inline verbosity.
+FINDING_8: EXONERATE -- "bulk" is adequately contextual (URL normalization, typo fixes, redaction-policy updates across many runs); adding a formal definition adds doc churn without preventing real ambiguity.
+FINDING_9: NO -- acknowledged as out of scope; no issue warranted.

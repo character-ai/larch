@@ -14,7 +14,7 @@ schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	sugg
 
 1. **[architecture]** [scripts/token-ledger.sh:78-110](scripts/token-ledger.sh) — `resolve_ledger_path` never uses `DESIGN_TMPDIR` while `resolve_session_id` would; `timing-ledger.sh` already recognizes `DESIGN_TMPDIR`. Session-id alignment without a ledger root still yields “no per-run ledger root” for vendor records on standalone `/design`. **Suggested revision:** add a `DESIGN_TMPDIR` branch to `resolve_ledger_path` (and extend `scripts/test-token-ledger.sh:149-153` `env -u` list to include `DESIGN_TMPDIR` once the root exists).
 
-2. **[correctness]** [plan.txt:100-101](file:///Users/zhupanov/.cache/larch/sessions/claude-design-larch2-I56cZK/plan.txt) vs [skills/design/SKILL.md:131-193](skills/design/SKILL.md) — Proposed greps for `exit 0\b` / `exit 1\b` do not match Markdown “exit **0**” prose and barely match real shell exits. **Suggested revision:** key off `render-cost-line.sh` literals, step anchors, or fenced bash only.
+2. **[correctness]** plan.txt:100-101 vs [skills/design/SKILL.md:131-193](skills/design/SKILL.md) — Proposed greps for `exit 0\b` / `exit 1\b` do not match Markdown “exit **0**” prose and barely match real shell exits. **Suggested revision:** key off `render-cost-line.sh` literals, step anchors, or fenced bash only.
 
 3. **[risk-integration]** [scripts/test-render-run-summary.sh:54-82](scripts/test-render-run-summary.sh) — The “all-N/A” case is built on unset rates producing N/A; default-rate semantics remove that signal. **Suggested revision:** redesign that case (explicit non-default unset matrix or a dedicated “force N/A” test hook if still required).
 
@@ -24,6 +24,6 @@ schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	sugg
 
 6. **[risk-integration]** [Makefile:63-67](Makefile), [docs/linting.md:266](docs/linting.md), [agent-lint.toml:710-715](agent-lint.toml) — New harness scripts need the same registration pattern as `test-render-run-summary`. **Suggested revision:** add targets, shard membership, doc inventory, and agent-lint paths.
 
-7. **[correctness]** [plan.txt:47-50](file:///Users/zhupanov/.cache/larch/sessions/claude-design-larch2-I56cZK/plan.txt) — Item 13 says skip cost emission on Step 0a failure; item 49 suggests `--quiet-on-empty` for uniformity. **Suggested revision:** choose one behavior and delete the contradiction.
+7. **[correctness]** plan.txt:47-50 — Item 13 says skip cost emission on Step 0a failure; item 49 suggests `--quiet-on-empty` for uniformity. **Suggested revision:** choose one behavior and delete the contradiction.
 
 [OUT_OF_SCOPE] [scripts/launch-review.sh:220-222](scripts/launch-review.sh) — `LARCH_RENDER_CACHE_DIR` is propagated only from `IMPLEMENT_TMPDIR`; standalone `/design` may omit cross-launcher render cache sharing until addressed in a separate change.

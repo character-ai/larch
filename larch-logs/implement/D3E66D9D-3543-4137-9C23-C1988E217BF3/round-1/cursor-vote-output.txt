@@ -4,7 +4,7 @@ Verifying ballot claims against the repo sources and session diff context.
 
 Checking how `voter_path` is passed to `check_voter_parse_rate` and whether `--section` gates the retry block.
 
-Verified against [`scripts/dispatch-code-voters.sh`](scripts/dispatch-code-voters.sh) (guard + `larch_err`), [`scripts/test-dispatch-code-voters.sh`](scripts/test-dispatch-code-voters.sh) (`section_runs` scope, `trap` at lines 26 and 385–386, retry/codex assertions), and [`round-1/diff-context.txt`](file:///Users/zhupanov/.cache/larch/sessions/claude-implement-larch4-OGqPUW/round-1/diff-context.txt) / [`.github/workflows/release-tag.yaml`](.github/workflows/release-tag.yaml) diff.
+Verified against [`scripts/dispatch-code-voters.sh`](scripts/dispatch-code-voters.sh) (guard + `larch_err`), [`scripts/test-dispatch-code-voters.sh`](scripts/test-dispatch-code-voters.sh) (`section_runs` scope, `trap` at lines 26 and 385–386, retry/codex assertions), and `round-1/diff-context.txt` / [`.github/workflows/release-tag.yaml`](.github/workflows/release-tag.yaml) diff.
 
 FINDING_1: EXONERATE -- `--section` only wraps happy/edge blocks; parse-rate scenarios after line 221 are intentionally ungated, so this is harness contract clarity, not a defect warranting a tracking issue.
 

@@ -4,6 +4,10 @@ On a default `/implement --merge` run, a directory of structured log files is co
 
 Exceptions: `repo_unavailable=true` produces no committed log at all (`$IMPLEMENT_TMPDIR/execution-issues.md` is the only audit trail and is removed at cleanup). Fork dry-run mode (`--forked`) does not create a tracking issue. In all cases, session-derived content in `larch-logs/` passes through secrets and tmpdir-path redaction, but redaction is best-effort — operators should avoid pasting sensitive content into `/implement` prompts.
 
+## Plan scope and committed logs
+
+Issue-anchored `larch:plan` blocks list the files that a `/implement` run is expected to touch. Retroactive maintenance across many runs under `larch-logs/design/` or `larch-logs/implement/` — for example URL normalization, typo fixes, or redaction-policy updates in historical committed logs — is not implied by plans that only target the **runtime plugin authority surface** defined in `AGENTS.md` (`skills/`, `agents/`, `hooks/`, `scripts/`, `.claude-plugin/`). Everything else in the repo (including `docs/`, `larch-logs/`, CI config, and `.claude/skills/`) is supplementary unless the tracking issue's `larch:plan` file list names it. Prefer a log-only PR for bulk `larch-logs/` edits so plan-to-diff review stays traceable; if bulk log edits ship on the same branch as changes under that runtime surface (or other paths not already listed in the plan), disclose the split in the PR title or body so reviewers can separate log churn from substantive work, and extend the issue `larch:plan` file list (or split the PR) when you add normative doc edits such as this file alongside unrelated implementation work.
+
 ## Directory structure
 
 ```
@@ -16,6 +20,7 @@ larch-logs/
     <RUN_ID>/
       manifest.json
       plan-goals-test.md
+      include-probe-evidence.md
       parent-issue.md
       pre-review-head.txt
       pre-review-untracked.txt
@@ -85,6 +90,10 @@ For current `/implement` runs, the committed manifest is normally an `"in-progre
 **Mode**: replace (one file per run). **Written**: **Step 0** materialization tail, after the design plan is finalized.
 
 Contains the implementation plan: goal statement, files to modify, approach, edge cases, and testing strategy. The content is materialized from the tracking issue body's `larch:plan` block (see `docs/issue-anchored-plan.md`) after `/design` has written or refreshed that anchor; `/implement` Step 1 copies it into this batch — it is not produced by a nested `/design` sub-invocation inside `/implement`. Verbatim plan prose (including historical must-not-touch bullets or path constraints copied from the issue) is a **point-in-time snapshot** for that run only; if it appears to conflict with current run-log policy, treat this document and `docs/issue-anchored-plan.md` as authoritative for what committed `larch-logs/` paths mean.
+
+### include-probe-evidence.md
+
+**Mode**: replace. **Written**: optional, when a plan's acceptance criteria require Phase 1 empirical subprocess output that otherwise lives only under `$IMPLEMENT_TMPDIR` (for example cross-agent include probes). Holds a redacted, tmpdir-free copy: a `BRANCH=A` / `BRANCH=B` header line plus per-agent transcript sections so post-merge reviewers can verify the probe and branch decision without the operator session tree.
 
 ### parent-issue.md
 

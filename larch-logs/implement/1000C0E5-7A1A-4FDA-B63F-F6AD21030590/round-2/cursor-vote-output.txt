@@ -2,7 +2,7 @@ Reading the ballot and session context files to verify each finding before votin
 
 Verifying cited code in the repo against the ballot: reading the referenced sections and diff/plan context.
 
-Verified the cited regions in [`scripts/collect-agent-results.sh`](file:///Users/zhupanov/larch1/scripts/collect-agent-results.sh), [`scripts/lib-quiet.sh`](file:///Users/zhupanov/larch1/scripts/lib-quiet.sh), [`scripts/dispatch-code-voters.sh`](file:///Users/zhupanov/larch1/scripts/dispatch-code-voters.sh), [`scripts/test-collect-agent-results.sh`](file:///Users/zhupanov/larch1/scripts/test-collect-agent-results.sh), [`scripts/larch-log.sh`](file:///Users/zhupanov/larch1/scripts/larch-log.sh), and [`scripts/lib-quiet.md`](file:///Users/zhupanov/larch1/scripts/lib-quiet.md); cross-checked [`round-2/diff-context.txt`](file:///Users/zhupanov/.cache/larch/sessions/claude-implement-larch1-jfeyPo/round-2/diff-context.txt).
+Verified the cited regions in `scripts/collect-agent-results.sh`, `scripts/lib-quiet.sh`, `scripts/dispatch-code-voters.sh`, `scripts/test-collect-agent-results.sh`, `scripts/larch-log.sh`, and `scripts/lib-quiet.md`; cross-checked `round-2/diff-context.txt`.
 
 FINDING_1: YES
 FINDING_2: EXONERATE -- `>&2` is redundant/misleading under quiet init but matches harmless existing patterns with no parse contract here

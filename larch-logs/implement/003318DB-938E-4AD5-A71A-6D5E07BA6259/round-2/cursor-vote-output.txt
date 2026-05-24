@@ -2,7 +2,7 @@ Reading the ballot and session context to verify each finding before voting.
 
 Verifying ballot claims against the repo: reading the session diff/plan context and the cited source regions.
 
-Verified against [`scripts/dispatch-code-voters.sh`](file:///Users/zhupanov/larch1/scripts/dispatch-code-voters.sh) (lines 236–280), [`scripts/dispatch-code-voters.md`](file:///Users/zhupanov/larch1/scripts/dispatch-code-voters.md), [`scripts/test-dispatch-code-voters.sh`](file:///Users/zhupanov/larch1/scripts/test-dispatch-code-voters.sh) (e.g. stale sidecar seed at 392–393 and `! -e` first-pass at 410–411), and session [`round-2/diff-context.txt`](file:///Users/zhupanov/.cache/larch/sessions/claude-implement-larch1-YklaDx/round-2/diff-context.txt) / [`plan-context.txt`](file:///Users/zhupanov/.cache/larch/sessions/claude-implement-larch1-YklaDx/round-2/plan-context.txt).
+Verified against `scripts/dispatch-code-voters.sh` (lines 236–280), `scripts/dispatch-code-voters.md`, `scripts/test-dispatch-code-voters.sh` (e.g. stale sidecar seed at 392–393 and `! -e` first-pass at 410–411), and session `round-2/diff-context.txt` / `plan-context.txt`.
 
 FINDING_1: YES
 FINDING_2: EXONERATE -- stderr-only warning on failed `cp` is optional; promotion still succeeds and failures are already silent by design.
