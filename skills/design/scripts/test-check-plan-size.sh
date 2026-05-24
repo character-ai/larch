@@ -281,4 +281,24 @@ EOF
 out=$(run_ok "$d") || fail "c16"
 assert_kv_eq FILES_COUNT 5 "$out"
 
+# --- Case 17: trailer whitespace must match emit-plan.sh (single space after colon) ---
+d="$TMPROOT/c17"
+mkdir -p "$d"
+{ for _ in 1 2 3 4 5; do printf "### NEW: \`a%s\`\n" "$_"; done; fill_lines 195 'b'; printf 'diff_lines:\t1\n'; } >"$d/plan.txt"
+set +e
+out=$("$SUBJECT" --design-tmpdir "$d" 2>&1)
+rc=$?
+set -e
+[[ "$rc" -eq 2 ]] || fail "case17 tab after colon expected rc 2 got $rc"
+assert_kv_eq PLAN_SIZE_STATUS missing-diff-lines "$out"
+d="$TMPROOT/c17b"
+mkdir -p "$d"
+{ for _ in 1 2 3 4 5; do printf "### NEW: \`a%s\`\n" "$_"; done; fill_lines 195 'b'; printf 'diff_lines:  1\n'; } >"$d/plan.txt"
+set +e
+out=$("$SUBJECT" --design-tmpdir "$d" 2>&1)
+rc=$?
+set -e
+[[ "$rc" -eq 2 ]] || fail "case17b double space expected rc 2 got $rc"
+assert_kv_eq PLAN_SIZE_STATUS missing-diff-lines "$out"
+
 echo "PASS: test-check-plan-size.sh"

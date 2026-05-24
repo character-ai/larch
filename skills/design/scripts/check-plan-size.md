@@ -10,7 +10,7 @@ Mechanical plan-size detector for `/design` **Step 2b.5** (issue #2670). Thresho
 ## Input contract
 
 - Plan file MUST exist (otherwise exit **2**, `PLAN_SIZE_STATUS=missing-plan` on the contract stream — see **Exit codes**).
-- The **final non-empty line** MUST match `emit-plan.sh` grammar: `diff_lines:` + whitespace + digits only — same rule as `skills/design/scripts/emit-plan.sh` (awk `NF` trailer selection). This keeps the helper aligned with `ACTION=EMIT_PLAN` validation so the two never disagree on trailer presence.
+- The **final non-empty line** MUST match `emit-plan.sh` grammar: the literal prefix `diff_lines:` followed by **exactly one ASCII space** and then ASCII digits only to end-of-line — same rule as `skills/design/scripts/emit-plan.sh` (`case "$last_line" in diff_lines:\ *)` + digit validation). Tabs, multiple spaces after the colon, or other whitespace variants are rejected so the helper never accepts a trailer `emit-plan.sh` would refuse.
 - **Plan body line count (`PLAN_LINES`)** is the number of physical lines **before** that final non-empty trailer line (blank lines count; the trailer line itself is excluded).
 - **Files count (`FILES_COUNT`)** counts lines matching the scout-tolerant heading regex (at least one whitespace after `###` before the keyword):
 

@@ -210,15 +210,30 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/write-run-params.sh \
 
 If the helper exits non-zero, print `**⚠ 0: router — run-params write failed; defaulting to HARD sketch budget.**`, set in-memory defaults `design_classification=HARD`, `sketch_budget=4`, `review_budget=full`, `workflow_path=HARD`, and continue.
 
-**Partition persistence on write failure**: when argv-derived `partition_requested` is `true` and `$DESIGN_TMPDIR/run-params.json` already exists and `command -v jq` succeeds, best-effort merge so Step 2b.5 still sees the flag:
+**Partition persistence on write failure**: when argv-derived `partition_requested` is `true` and `command -v jq` succeeds, ensure `partition_requested` is persisted so Step 2b.5 still sees the flag after a subshell re-read:
 
 ```bash
-if [[ "$partition_requested" == true ]] && [[ -f "$DESIGN_TMPDIR/run-params.json" ]] && command -v jq >/dev/null 2>&1; then
-  _rp_merge=$(mktemp "${TMPDIR:-/tmp}/larch-partition-merge.XXXXXX")
-  if jq -c '.partition_requested = true' "$DESIGN_TMPDIR/run-params.json" >"$_rp_merge" 2>/dev/null; then
-    mv -f "$_rp_merge" "$DESIGN_TMPDIR/run-params.json"
+if [[ "$partition_requested" == true ]] && command -v jq >/dev/null 2>&1; then
+  if [[ -f "$DESIGN_TMPDIR/run-params.json" ]]; then
+    _rp_merge=$(mktemp "${TMPDIR:-/tmp}/larch-partition-merge.XXXXXX")
+    _rp_err=$(mktemp "${TMPDIR:-/tmp}/larch-partition-merge-err.XXXXXX")
+    if jq -c '.partition_requested = true' "$DESIGN_TMPDIR/run-params.json" >"$_rp_merge" 2>"$_rp_err"; then
+      mv -f "$_rp_merge" "$DESIGN_TMPDIR/run-params.json"
+      rm -f "$_rp_err"
+    else
+      "${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh" --log "$DESIGN_TMPDIR/execution-issues.md" --site "design Step 0b" --tool "jq(partition-merge)" --exit-code 1 --category Warnings --output-file "$_rp_err" >/dev/null 2>&1 || true
+      rm -f "$_rp_merge" "$_rp_err"
+    fi
   else
-    rm -f "$_rp_merge"
+    "${CLAUDE_PLUGIN_ROOT}/scripts/write-run-params.sh" \
+      --classification "${design_classification:-HARD}" \
+      --reason "${design_classification_reason:-run-params write failed; partition recovery}" \
+      --source caller-forwarded \
+      --sketch-budget "${sketch_budget:-4}" \
+      --review-budget "${review_budget:-full}" \
+      --workflow-path "${workflow_path:-HARD}" \
+      --partition-requested true \
+      --output "$DESIGN_TMPDIR/run-params.json" >/dev/null 2>&1 || true
   fi
 fi
 ```
@@ -528,12 +543,12 @@ If the driver exits non-zero or emits `EMIT_PLAN_STATUS=missing-diff-lines`, tre
 **Callable from**: initial Step 2b (after the `ACTION=EMIT_PLAN` driver call above — then continue to Step 3 when this procedure returns); Gate B after each settled `ACTION=EMIT_PLAN` re-emit (see `references/approval-gates.md` — then continue to Step 3b); the post-plan discussion sub-round after its `ACTION=EMIT_PLAN` re-emit (see `references/discussion-rounds.md` — then return to the invoking Gate A). **Gate B** and **post-plan discussion** own the normative “call Step 2b.5 after re-emit” prose; this subsection defines the procedure.
 
 1. Read `partition_requested` from `$DESIGN_TMPDIR/run-params.json` (boolean; default `false` when absent). Bind mental `PARTITION_REQUESTED` from that field — Step 2b.5 does **not** re-parse argv.
-2. Run `check-plan-size.sh` in a Bash subshell with `export LARCH_QUIET_DISABLE=1`, capture **stdout** into a variable `_plan_size_out` (the `emit_kv` / `emit` contract stream matches `emit-plan.sh` consumers). Example:
+2. Run `check-plan-size.sh` in a Bash subshell with `export LARCH_QUIET_DISABLE=1`, capture **stdout only** into a variable `_plan_size_out` (the `emit_kv` / `emit` contract stream matches `emit-plan.sh` consumers; do not merge stderr into `_plan_size_out` or KV parsing may ingest `larch_err` lines). Example:
    ```bash
    [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
    export LARCH_QUIET_DISABLE=1
    set +e
-   _plan_size_out=$("${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/check-plan-size.sh" --design-tmpdir "$DESIGN_TMPDIR" 2>&1)
+   _plan_size_out=$("${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/check-plan-size.sh" --design-tmpdir "$DESIGN_TMPDIR")
    _plan_size_rc=$?
    set -e
    ```
@@ -828,14 +843,25 @@ When **all** of the following guards succeed in order, post **one** tracking com
 
 1. `[ "$ISSUE_NUMBER" = "2670" ]`
 2. Sentinel absent: `test ! -f "$HOME/.cache/larch/design-l3-velocity-notified-2670"`
+3. **Upstream argv pin (same shell snippet as `gh`)**: immediately before the `gh` invocation, assert `[ "$ISSUE_NUMBER" = "2670" ]` again and run **only** the `gh` line below so `--repo character-ai/larch` is always present (never rely on hub default / consumer `origin` for this cross-repo comment).
 
-Post with an **explicit upstream repo** (consumer checkout may not match the tracker default):
+Post with an **explicit upstream repo** (consumer checkout may not match the tracker default). The `--body` argument MUST be the fixed literal below (or a byte-identical single-quoted copy) — **never** assemble comment text from `plan.txt`, `composed-plan.md`, token reports, or other dynamic session material (secret exfiltration / instruction-injection risk on a public upstream issue).
 
 ```bash
-gh issue comment 2672 --repo character-ai/larch --body "<one short deferral note citing L3 per-round velocity; scope per flags.md>"
+if [ "$ISSUE_NUMBER" = "2670" ] && test ! -f "$HOME/.cache/larch/design-l3-velocity-notified-2670"; then
+  set +e
+  gh issue comment 2672 --repo character-ai/larch --body 'Deferred: L3 per-round velocity between review rounds (>20% plan growth and >10 accepted findings). Normative scope: character-ai/larch issue #2672; see skills/design/references/flags.md (Per-round velocity).' >"$DESIGN_TMPDIR/gh-l3-velocity-comment.log" 2>&1
+  _l3_rc=$?
+  set -e
+  if [ "$_l3_rc" -eq 0 ]; then
+    touch "$HOME/.cache/larch/design-l3-velocity-notified-2670"
+  else
+    "${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh" --log "$DESIGN_TMPDIR/execution-issues.md" --site "design Step 5d" --tool "gh issue comment" --exit-code "$_l3_rc" --category Warnings --output-file "$DESIGN_TMPDIR/gh-l3-velocity-comment.log" >/dev/null 2>&1 || true
+  fi
+fi
 ```
 
-On successful `gh issue comment` (exit 0), `touch "$HOME/.cache/larch/design-l3-velocity-notified-2670"`. On non-zero exit, append stderr/stdout capture to `$DESIGN_TMPDIR/execution-issues.md` under `### Warnings` via `append-tool-failure.sh` (non-fatal) and **do not** create the sentinel.
+On successful `gh issue comment` (exit 0), the `touch` above creates the sentinel. On non-zero exit, `append-tool-failure.sh` records the capture (non-fatal) and **do not** create the sentinel.
 
 **Repeat any external reviewer warnings** from earlier steps (Step 0 reviewer-availability checks via `session-setup.sh`, Step 2a sketch-phase failures/timeouts, Step 3 runtime failures, or Step 3b diagram generation failure) so they are visible at the end of the workflow. For example:
 - `**⚠ Codex not available: <reason>**`

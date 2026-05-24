@@ -60,12 +60,13 @@ if [[ -z "$last_nonempty" ]]; then
     exit 2
 fi
 
-if ! printf '%s\n' "$last_nonempty" | awk '/^diff_lines:[[:space:]]+[0-9]+$/ { exit 0 } { exit 1 }'; then
+# Trailer must match emit-plan.sh: exactly `diff_lines: ` (one ASCII space) then digits only.
+if ! printf '%s\n' "$last_nonempty" | awk '/^diff_lines: [0-9]+$/ { exit 0 } { exit 1 }'; then
     emit_kv PLAN_SIZE_STATUS missing-diff-lines
     exit 2
 fi
 
-diff_lines=$(printf '%s\n' "$last_nonempty" | awk -F':[[:space:]]*' '/^diff_lines:/ { print $2; exit }')
+diff_lines="${last_nonempty#diff_lines: }"
 case "$diff_lines" in
     ''|*[!0-9]*)
         emit_kv PLAN_SIZE_STATUS missing-diff-lines

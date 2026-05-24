@@ -29,7 +29,7 @@ Mechanical evaluation lives in `skills/design/scripts/check-plan-size.sh` (sibli
 
 **Soft trigger** — any one suffices:
 
-- Plan body line count **>** 250 (body = all lines except the final non-empty `diff_lines: <N>` trailer per `emit-plan.sh` grammar).
+- Plan body line count **>** 250 (body = all lines except the final non-empty `diff_lines: <N>` trailer; the trailer line matches `emit-plan.sh` / `check-plan-size.sh` exactly: `diff_lines:` then exactly one ASCII space, then digits only).
 - `diff_lines` trailer **>** 600.
 - Files-to-modify heading count **>** 8, counting lines matching `^###[[:space:]]+(NEW|UPDATED|REWRITTEN)[[:space:]]*:` (at least one ASCII whitespace after `###` before the keyword; aligned with the scout pattern in `scout-plan-archetypes-wrapper.sh`).
 - **Semantic soft (orchestrator-only)** — after `check-plan-size.sh` returns **0** with all mechanical triggers false and without `--partition`, the main agent may still fire the same soft UI when the plan clearly packs multiple substantial independent workstreams under the numeric thresholds; procedure and precedence live in `SKILL.md` **Step 2b.5** (the helper does not evaluate this).

@@ -20,7 +20,8 @@ Offline regression harness for [`check-plan-size.sh`](check-plan-size.sh). Captu
 14. Multiple `diff_lines:` lines — rejects when final non-empty line is not the trailer; accepts when trailer is last non-empty line.
 15. Whitespace-tolerant headings — `###  NEW:` and `### UPDATED :` count.
 16. Concatenated `###NEW:` (no whitespace after `###`) — does **not** count toward `FILES_COUNT` (matches scout / plan heading contract).
-17. Hard at 801 lines — same as helper-level hard detection (orchestrator `--partition` + hard interaction is pinned in `scripts/test-design-structure.sh`).
+17. Strict `diff_lines:` trailer — tab or extra ASCII spaces after the colon fail closed (`missing-diff-lines`), matching `emit-plan.sh`.
+18. Hard at 801 lines — same as helper-level hard detection (orchestrator `--partition` + hard interaction is pinned in `scripts/test-design-structure.sh`).
 
 ## Run
 
