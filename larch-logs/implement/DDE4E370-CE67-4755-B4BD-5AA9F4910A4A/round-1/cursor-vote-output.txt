@@ -1,0 +1,28 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: EXONERATE -- optional follow-on harness beyond current pins
+FINDING_5: NO -- branch-scope noise not worth filing as its own issue
+FINDING_6: EXONERATE -- same empty-mode failure mode as FINDING_1
+FINDING_7: YES
+FINDING_8: EXONERATE -- no demonstrated total/vendor mismatch in the diff
+FINDING_9: NO -- git/branch composition noise not OOS-issue material
+FINDING_10: EXONERATE -- broad extra fixtures exceed proportional CI lift
+FINDING_11: EXONERATE -- markdown parity can stay owned by test-token-report per plan
+FINDING_12: EXONERATE -- per-outcome greps are incremental hardening only
+FINDING_13: NO -- plan already documents Phase1 vs Phase2 drift as accepted
+FINDING_14: EXONERATE -- cancelled-* widening risk is speculative at low severity
+FINDING_15: EXONERATE -- minor doc completeness vs implemented harness
+FINDING_16: NO -- blast-radius note not worth a standalone OOS issue
+FINDING_17: EXONERATE -- subsumed by the clearer SESSION_ID/marker upsert concern
+FINDING_18: EXONERATE -- extra validation mirrors implement nicety not a shown bug
+FINDING_19: YES
+FINDING_20: EXONERATE -- overlaps FINDING_3 duplicate-prose concern
+FINDING_21: EXONERATE -- missing total_hms already degrades to N/A without shown harm
+FINDING_22: EXONERATE -- alternate JSON shapes not evidenced in this change
+FINDING_23: NO -- stderr+zero branch matches the documented FINDING_12 contract
+FINDING_24: NO -- changelog wording nit not OOS-issue worthy
+FINDING_25: EXONERATE -- overlaps FINDING_12 incremental outcome coverage
+FINDING_26: EXONERATE -- full planned suite is aspirational vs minimal first harness
+FINDING_27: EXONERATE -- small sibling-doc gap with low operator impact
+FINDING_28: NO -- commit narrative noise not OOS-issue worthy
