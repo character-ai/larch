@@ -1,0 +1,6 @@
+warning: unknown From slot label 'cursor-specialist-structure-output.txt, cursor-specialist-security-output.txt' in FINDING_1 (not present on any input finding)
+warning: unknown From slot label 'cursor-specialist-structure-output.txt, cursor-specialist-security-output.txt' in FINDING_2 (not present on any input finding)
+warning: unknown From slot label 'cursor-specialist-structure-output.txt, cursor-specialist-security-output.txt' in FINDING_3 (not present on any input finding)
+warning: unknown From slot label 'cursor-specialist-structure-output.txt, cursor-specialist-security-output.txt' in FINDING_4 (not present on any input finding)
+warning: unknown From slot label 'cursor-specialist-structure-output.txt, cursor-specialist-security-output.txt' in FINDING_5 (not present on any input finding)
+warning: fix text for slot 'dyn-test-coverage-gaps-output.txt' in FINDING_12 not traceable to scoped input (first 80 chars: '**Suggested fix:** Add a small structural `grep -Fq` (or count) in `scripts/test')
