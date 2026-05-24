@@ -4,7 +4,7 @@
 
 ## Relationship to scripts/token-tally.md
 
-`scripts/token-tally.sh` remains the `/research` lane-token helper. It writes explicit sidecars and can optionally render a cost column. `scripts/token-report.sh` is a separate `/implement` PoC that reads Claude transcript usage and the `token-ledger.sh` JSONL ledger. Dollar summaries (`--summary`, markdown cost surfaces) delegate to `scripts/token-cost.sh` via the same per-bucket counts as JSON `BUCKETS_*` when available.
+`scripts/token-tally.sh` remains the `/research` lane-token helper. It writes explicit sidecars and can optionally render a cost column. `scripts/token-report.sh` is a separate `/implement` PoC that reads Claude transcript usage and the `token-ledger.sh` JSONL ledger. The `--summary` mode is **not** a dollar surface — it prints the non-dollar `Tokens:` rollup line only. The markdown and JSON `--full` outputs expose per-bucket counts (including JSON `BUCKETS_*`) that `scripts/token-cost.sh` consumes when `scripts/render-run-summary.sh` renders the dollar `- **Cost**:` bullet in the `larch:final-summary` body.
 
 ## Claude usage deduplication
 
