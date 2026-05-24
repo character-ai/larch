@@ -26,6 +26,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Document the read-design-review-budget and invoke-plan-validator harness so operators can find it next to the plan-command parser and validator rows.
 - Order the harness table like the Makefile: parse-plan-commands, read-design-review-budget-invoke, then validate-plan-commands.
+- Align external voter documentation and rendered prompts with the same YES↔EXONERATE tie-break used in quick-mode acceptance guidance.
+- Add a structural harness check so prose drift in any of the four canonical locations fails CI early.
+- Document the new harness obligation in the test-design-structure contract for operators scanning scope.
 
 ## [42.4.0] - 2026-05-24
 
