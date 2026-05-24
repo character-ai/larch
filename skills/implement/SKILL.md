@@ -9,9 +9,9 @@ allowed-tools: AskUserQuestion, Bash, Read, Edit, Write, Grep, Glob, Agent, Task
 
 End-to-end: preflight-gated plan from the GitHub issue body (`larch:plan`), materialize artifacts, implement, validate, commit, code review, validate, commit, code flow diagram, version bump, PR, CI monitor, cleanup. With `--merge`: also CI+rebase+merge loop, local branch delete, main verification, and (inside `ship-pr.sh` before exit) a post-merge `larch-log.sh manifest` flush to `status=done` plus `write-final-report.sh` so tmpdir `final-summary.md` / tracking-issue `larch:final-summary` can match `MERGE_RESULT` — **without** any post-merge `git commit` (see NEVER #19). Step 18 still performs teardown, token/timing refresh, and the remaining terminal safety-net.
 
-**Protocol Execution Directive.** You are now the `/implement` orchestrator. After parsing flags and checking for mutually exclusive options, your FIRST external actions MUST be: (1) When `forked_target=true`, run `${CLAUDE_PLUGIN_ROOT}/scripts/implement-fork-env.sh` once and parse `UPSTREAM_REPO` (and sibling fork KV lines) from stdout — **before** Preflight `gh` / helper calls so every upstream issue read uses explicit `--repo "$UPSTREAM_REPO"` (fork clones default `gh` to `origin`, which is wrong for the positional upstream design issue). (2) **Preflight — issue-anchored plan** (admission gate + GitHub issue state + `larch:plan` block + plan-adequacy audit + semantic materiality) on the positional `<issue-N>`; when `forked_target=true`, pass `--repo "$UPSTREAM_REPO"` to `implement-admission.sh`, `gh issue view`, `plan-block-read.sh`, `clarify-state.sh`, `clarify-comment-post.sh`, and `clarify-label.sh` as each supports it. (3) **Step 0** — `${CLAUDE_PLUGIN_ROOT}/scripts/create-branch.sh --check`, `${CLAUDE_PLUGIN_ROOT}/scripts/session-entry-gate.sh`, `${CLAUDE_PLUGIN_ROOT}/scripts/session-setup.sh` with `--skip-branch-check` toggled by the entry gate. When `forked_target=true`, **do not** re-run `implement-fork-env.sh` if `UPSTREAM_REPO` is already set from (1) — reuse the same fork metadata (avoids a second bootstrap tmpdir).
+**Protocol Execution Directive.** You are now the `/implement` orchestrator. After parsing flags and checking for mutually exclusive options, your FIRST external actions MUST be: (1) When `forked_target=true`, run `${CLAUDE_PLUGIN_ROOT}/scripts/implement-fork-env.sh` once and parse `UPSTREAM_REPO` (and sibling fork KV lines) from stdout — **before** Preflight `gh` / helper calls so every upstream issue read uses explicit `--repo "$UPSTREAM_REPO"` (fork clones default `gh` to `origin`, which is wrong for the positional upstream design issue). (2) **Preflight — issue-anchored plan** (admission gate + GitHub issue state + `larch:plan` block + plan-adequacy audit + semantic materiality) on the positional `<issue-N>`; when `forked_target=true`, pass `--repo "$UPSTREAM_REPO"` to `implement-admission.sh`, `gh issue view`, `plan-block-read.sh`, `clarify-state.sh`, `clarify-comment-post.sh`, and `clarify-label.sh` as each supports it. (3) **Step 0 infrastructure** — run `${CLAUDE_PLUGIN_ROOT}/scripts/implement-bootstrap.sh --up-to-phase infra` (foreground) as the Step 0 entrypoint that performs `create-branch.sh --check`, `session-entry-gate.sh`, `session-setup.sh` (with `--skip-branch-check` toggled by the entry gate), session-env materialization, and the Step 0 ledger marks in one subprocess (see the numbered Step 0 section for KV parsing and continuation). When `forked_target=true`, **do not** re-run `implement-fork-env.sh` if `UPSTREAM_REPO` is already set from (1) — reuse the same fork metadata (avoids a second bootstrap tmpdir).
 
-**Anti-halt continuation reminder.** After every child `Skill` tool call (e.g., `/review`, `/bump-version`, `/issue`, `/implement`) returns AND after every `Bash` tool call that completes a numbered step or sub-step, including `run-relevant-checks-captured.sh`, IMMEDIATELY continue with this skill's NEXT numbered step — do NOT end the turn on the child's cleanup output, on a Bash result, or on a status message, and do NOT write a summary, handoff, status recap, or "returning to parent" message — those are halts in disguise. This applies to ALL step boundaries from Preflight through Step 18. The rule is strictly subordinate to any explicit non-sequential control-flow directive in THIS file (e.g., `skip to Step N`, `bail to cleanup`, `jump back`, `loop back`, `fall through`, `break out`). A normal sequential `proceed to Step N+1` instruction is the default continuation this rule reinforces, NOT an exception. Every relevant-checks helper call anywhere in this file is covered by this rule. **Critical boundary: after Step 9b (PR creation) completes, IMMEDIATELY proceed to Step 10 (CI monitor) — PR creation is NOT the end of the run.** **Critical boundary: after `ship-pr.sh` exits (any exit code), do NOT print `✅ 8: version bump`, `⏩ 8: version bump`, or any other Step 8 breadcrumb as orchestrator text output — `ship-pr.sh` emits these lines to its own stdout (issue #1944). Parse `ship-pr-state.sh` silently and re-invoke per the Step 8+ exit-code table. See NEVER #11.** **Critical boundary: after preflight audit passes (`AUDIT=pass` envelope written), IMMEDIATELY continue through Preflight items 6–7 (semantic materiality when applicable, then pass gate), then run Step 0 `session-setup.sh` and the Step 0 tracking + plan materialization blocks — do NOT end the turn on the audit-pass envelope.** → shared/subskill-invocation.md#anti-halt
+**Anti-halt continuation reminder.** After every child `Skill` tool call (e.g., `/review`, `/bump-version`, `/issue`, `/implement`) returns AND after every `Bash` tool call that completes a numbered step or sub-step, including `run-relevant-checks-captured.sh`, IMMEDIATELY continue with this skill's NEXT numbered step — do NOT end the turn on the child's cleanup output, on a Bash result, or on a status message, and do NOT write a summary, handoff, status recap, or "returning to parent" message — those are halts in disguise. This applies to ALL step boundaries from Preflight through Step 18. The rule is strictly subordinate to any explicit non-sequential control-flow directive in THIS file (e.g., `skip to Step N`, `bail to cleanup`, `jump back`, `loop back`, `fall through`, `break out`). A normal sequential `proceed to Step N+1` instruction is the default continuation this rule reinforces, NOT an exception. Every relevant-checks helper call anywhere in this file is covered by this rule. **Critical boundary: after Step 9b (PR creation) completes, IMMEDIATELY proceed to Step 10 (CI monitor) — PR creation is NOT the end of the run.** **Critical boundary: after `ship-pr.sh` exits (any exit code), do NOT print `✅ 8: version bump`, `⏩ 8: version bump`, or any other Step 8 breadcrumb as orchestrator text output — `ship-pr.sh` emits these lines to its own stdout (issue #1944). Parse `ship-pr-state.sh` silently and re-invoke per the Step 8+ exit-code table. See NEVER #11.** **Critical boundary: after preflight audit passes (`AUDIT=pass` envelope written), IMMEDIATELY continue through Preflight items 6–7 (semantic materiality when applicable, then pass gate), then run Step 0 `${CLAUDE_PLUGIN_ROOT}/scripts/implement-bootstrap.sh --up-to-phase infra` and the Step 0 tracking + plan materialization blocks per the numbered Step 0 section — do NOT end the turn on the audit-pass envelope.** → shared/subskill-invocation.md#anti-halt
 
 **Skill-name fallback reminder.** When invoking a child skill via the Skill tool from this file, ALWAYS try the bare name first (`"bump-version"`, `"design"`, `"review"`, `"issue"`, `"implement"`). Only fall back to the fully-qualified `larch:` form (`"larch:design"`, etc.) when the bare-name lookup returns `Unknown skill` — and conversely, in a consumer repo that installs the plugin under a non-`larch` namespace the bare name may miss and the fully-qualified form (with that repo's actual namespace) becomes the working fallback. `/implement` does not invoke the relevant-checks flow through the Skill tool on the green path; it uses the captured Bash helper so success returns one bounded machine line (or `RELEVANT_CHECKS_SKIPPED=true` when the consumer repo omits `scripts/relevant-checks.sh`). **`/bump-version` is intentionally project-local under `.claude/skills/` and is NOT shipped with the plugin** — `larch:bump-version` does not resolve, so a `larch:`-first attempt fails outright. Do NOT mirror this skill's own namespaced invocation (`larch:implement`) onto child Skill calls. → shared/subskill-invocation.md#bare-name-fallback
 
@@ -300,135 +300,111 @@ export CLAUDE_PLUGIN_ROOT
 ${CLAUDE_PLUGIN_ROOT}/scripts/implement-fork-env.sh
 ```
 
-Check the current branch before any setup side effects:
+Check the current branch before any setup side effects. Run `${CLAUDE_PLUGIN_ROOT}/scripts/implement-bootstrap.sh --up-to-phase infra` (foreground) to perform the former Step 0 calls #1–#5 (`create-branch.sh --check`, `session-entry-gate.sh`, `session-setup.sh`, the inline session-env composite, and the three-key `read-session-env-key.sh` rehydrate) in one subprocess. Regression harness: `skills/implement/scripts/test-implement-bootstrap.sh` (+ sibling `skills/implement/scripts/test-implement-bootstrap.md`). Parse `CURRENT_BRANCH`, `IS_MAIN`, `IS_USER_BRANCH`, `USER_PREFIX`, `ENTRY_GATE`, `SKIP_BRANCH_CHECK`, `IMPLEMENT_TMPDIR`, `SESSION_ID`, reviewer-availability keys, `REPO`, `REPO_UNAVAILABLE`, `CLAUDE_SOURCE_OK`, `LARCH_TOKEN_SESSION_ID`, `LARCH_CLAUDE_SOURCE_FILE`, `LARCH_TIMING_LEDGER`, `codex_available`, and `cursor_available` from the script's stdout (KV lines; token-aware scan — each output line may carry multiple `KEY=value` tokens separated by whitespace). On the clean-main entry path, `/implement` creates the feature branch later in Step 0 (after `feature-description.txt` is composed); see § Create feature branch. If `CURRENT_BRANCH` is empty, treat it as detached HEAD; do not special-case it here. The default preflight below will fail closed. Do not print a separate `create-branch.sh --check failed` branch from Step 0; `IMPLEMENT_TMPDIR` does not exist yet for Tool Failures logging before `implement-bootstrap.sh` succeeds.
 
-```bash
-if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
-  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
-fi
-export CLAUDE_PLUGIN_ROOT
-${CLAUDE_PLUGIN_ROOT}/scripts/create-branch.sh --check
-```
+The shared entry gate contract remains `${CLAUDE_PLUGIN_ROOT}/scripts/session-entry-gate.md` (now invoked from `implement-bootstrap.sh`).
 
-Parse `CURRENT_BRANCH`, `IS_MAIN`, `IS_USER_BRANCH`, and `USER_PREFIX` from stdout. On the clean-main entry path, `/implement` creates the feature branch later in Step 0 (after `feature-description.txt` is composed); see § Create feature branch. If `CURRENT_BRANCH` is empty, treat it as detached HEAD; do not special-case it here. The default preflight below will fail closed. Do not print a separate `create-branch.sh --check failed` branch from Step 0; `IMPLEMENT_TMPDIR` does not exist yet for Tool Failures logging.
+On `implement-bootstrap.sh` exit **2**, print the raw diagnostic lines from its stdout first (`GATE_ERROR=...` when `STEP_FAILED=session-entry-gate`, or `PREFLIGHT_ERROR=...` when `STEP_FAILED=session-setup`), then print the normalized operator message for that failure class and abort:
 
-Run the shared entry gate helper using the parsed branch facts. Its contract lives at `${CLAUDE_PLUGIN_ROOT}/scripts/session-entry-gate.md`.
-
-```bash
-if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
-  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
-fi
-export CLAUDE_PLUGIN_ROOT
-${CLAUDE_PLUGIN_ROOT}/scripts/session-entry-gate.sh \
-  --mode implement \
-  --current-branch "$CURRENT_BRANCH" \
-  --is-main "$IS_MAIN" \
-  --is-user-branch "$IS_USER_BRANCH" \
-  --user-prefix "$USER_PREFIX"
-```
-
-Parse `ENTRY_GATE` and `SKIP_BRANCH_CHECK` from this script's stdout in isolation. Do not concatenate it with `create-branch.sh --check` output for a single `eval`. On non-zero exit, print the raw `GATE_ERROR=...` line first, then print the normalized internal-contract message and abort:
-
-**⚠ /implement: internal Step 0 contract violation in session-entry-gate.sh. Aborting.**
-
-Do NOT print the clean-main banner for `GATE_ERROR`; that banner is reserved for `session-setup.sh` `PREFLIGHT_ERROR`.
-
-Set `continue_from_current=true` iff `SKIP_BRANCH_CHECK=true`. `SKIP_BRANCH_CHECK` is the authoritative key for assembling `session-setup.sh` argv.
-
-If `SKIP_BRANCH_CHECK=true`, run setup with `--skip-branch-check`:
-
-```bash
-if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
-  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
-fi
-export CLAUDE_PLUGIN_ROOT
-${CLAUDE_PLUGIN_ROOT}/scripts/session-setup.sh --prefix claude-implement --skip-branch-check --check-reviewers [--caller-env "$SESSION_ENV_PATH" OR "$CALLER_ENV_PATH" under forked_target=true] [--skip-codex-probe] [--skip-cursor-probe]
-```
-
-If `SKIP_BRANCH_CHECK=false`, run setup without `--skip-branch-check`:
-
-```bash
-if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
-  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
-fi
-export CLAUDE_PLUGIN_ROOT
-${CLAUDE_PLUGIN_ROOT}/scripts/session-setup.sh --prefix claude-implement --check-reviewers [--caller-env "$SESSION_ENV_PATH" OR "$CALLER_ENV_PATH" under forked_target=true] [--skip-codex-probe] [--skip-cursor-probe]
-```
-
-On non-zero exit, always print the raw `PREFLIGHT_ERROR=...` line first. Then print the normalized skill-level message and abort:
-
-**⚠ /implement requires clean main to start. To continue, choose one of: (a) `git checkout main && git status` clean → re-run; (b) check out or create a `<USER_PREFIX>/*` feature branch and re-run (the branch naming convention is the explicit opt-in to continue from current state); (c) commit or stash uncommitted changes on `main` first.**
+- When `STEP_FAILED=session-entry-gate`: **⚠ /implement: internal Step 0 contract violation in session-entry-gate.sh. Aborting.** Do NOT print the clean-main banner for `GATE_ERROR`; that banner is reserved for `session-setup.sh` `PREFLIGHT_ERROR`.
+- When `STEP_FAILED=session-setup`: **⚠ /implement requires clean main to start. To continue, choose one of: (a) `git checkout main && git status` clean → re-run; (b) check out or create a `<USER_PREFIX>/*` feature branch and re-run (the branch naming convention is the explicit opt-in to continue from current state); (c) commit or stash uncommitted changes on `main` first.**
 
 Key any future sub-message on the substring inside `PREFLIGHT_ERROR` (for example, `Not on main branch` or `Working tree is not clean`), not on the prior `IS_MAIN` value from `create-branch.sh --check`; detached HEAD can report `IS_MAIN=true` with an empty `CURRENT_BRANCH`.
 
+Set `continue_from_current=true` iff `SKIP_BRANCH_CHECK=true`. `SKIP_BRANCH_CHECK` remains the authoritative key the script uses when assembling `session-setup.sh` argv.
+
 Then:
-- Ensure a per-run session id exists for design-manifest freshness checks. `session-setup.sh` already wrote the value; this call is preserved as an idempotent no-op for older harnesses and fallback paths (see `scripts/write-session-id.md` for the contract):
-  ```bash
-  ${CLAUDE_PLUGIN_ROOT}/scripts/write-session-id.sh --output "$IMPLEMENT_TMPDIR/session-id"
-  export IMPLEMENT_TMPDIR
-  export LARCH_TOKEN_SESSION_ID="$(tr -d '\r\n' < "$IMPLEMENT_TMPDIR/session-id" 2>/dev/null || true)"
-  export LARCH_TIMING_LEDGER="$IMPLEMENT_TMPDIR/timing-ledger.tsv"
-  # Snapshot the live Claude transcript path BEFORE later concurrent
-  # /implement or /design Claude sessions can race the resolver. The
-  # exported LARCH_CLAUDE_SOURCE_FILE points downstream
-  # token-claude-source.sh / token-report.sh invocations at this fixed
-  # transcript instead of "newest .jsonl by mtime", which would otherwise
-  # attribute tokens to the wrong run when concurrent sessions write
-  # transcripts under the same project dir. Best-effort: a snapshot
-  # failure leaves the env unset, records a Warnings entry, and later
-  # transcript capture falls back to discovery.
-  if "${CLAUDE_PLUGIN_ROOT}/scripts/token-claude-source.sh" \
-          > "$IMPLEMENT_TMPDIR/claude-source.env" \
-          2>"$IMPLEMENT_TMPDIR/claude-source-error.log"; then
-      export LARCH_CLAUDE_SOURCE_FILE="$IMPLEMENT_TMPDIR/claude-source.env"
-  else
-      _source_exit=$?
-      "${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh" \
-          --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
-          --site "Step 0" \
-          --tool "token-claude-source.sh" \
-          --exit-code "$_source_exit" \
-          --category Warnings \
-          --output-file "$IMPLEMENT_TMPDIR/claude-source-error.log" \
-          --redact || true
+
+**⚠ Foreground required — do NOT set `run_in_background: true`.**
+
+```bash
+if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
+  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
+fi
+export CLAUDE_PLUGIN_ROOT
+_ib_caller_env=()
+if [ -n "${CALLER_ENV_PATH:-}" ]; then
+  _ib_caller_env+=(--caller-env "$CALLER_ENV_PATH")
+elif [ -n "${SESSION_ENV_PATH:-}" ]; then
+  _ib_caller_env+=(--caller-env "$SESSION_ENV_PATH")
+fi
+_ib_issue=()
+[ -n "${ISSUE_NUMBER:-}" ] && _ib_issue+=(--issue-number "$ISSUE_NUMBER")
+# Foreground required: see BASH_AUTHORING.md §4
+set +e
+_ib_out=$("${CLAUDE_PLUGIN_ROOT}/scripts/implement-bootstrap.sh" --up-to-phase infra "${_ib_caller_env[@]+"${_ib_caller_env[@]}"}" "${_ib_issue[@]+"${_ib_issue[@]}"}")
+_ib_rc=$?
+set -e
+if [ "$_ib_rc" -eq 2 ]; then
+  _ib_sf=$(printf '%s\n' "$_ib_out" | grep '^STEP_FAILED=' | tail -n 1 | cut -d= -f2- | tr -d '\r' || true)
+  if [ "$_ib_sf" = "session-entry-gate" ]; then
+    printf '%s\n' "$_ib_out" | grep '^GATE_ERROR=' || true
+    printf '%s\n' '**⚠ /implement: internal Step 0 contract violation in session-entry-gate.sh. Aborting.**'
+    exit 2
   fi
-  if [[ -z "${dynamic_archetypes_value:-}" && -n "${SESSION_ENV_PATH:-}" && -r "$SESSION_ENV_PATH" ]]; then
-    caller_dynamic_archetypes=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$SESSION_ENV_PATH" --key LARCH_DYNAMIC_ARCHETYPES_MAX --default "")
-    case "$caller_dynamic_archetypes" in
-      "") ;;
-      [0-8]) dynamic_archetypes_value="$caller_dynamic_archetypes" ;;
+  if [ "$_ib_sf" = "session-setup" ]; then
+    printf '%s\n' "$_ib_out" | grep '^PREFLIGHT_ERROR=' || true
+    printf '%s\n' '**⚠ /implement requires clean main to start. To continue, choose one of: (a) `git checkout main && git status` clean → re-run; (b) check out or create a `<USER_PREFIX>/*` feature branch and re-run (the branch naming convention is the explicit opt-in to continue from current state); (c) commit or stash uncommitted changes on `main` first.**'
+    exit 2
+  fi
+  exit 2
+fi
+_ib_kv_scan() {
+  _ib_line=$1
+  [ -z "$_ib_line" ] && return 0
+  _ib_rest="$_ib_line"
+  while [ -n "$_ib_rest" ]; do
+    case "$_ib_rest" in
+      *' '*=*)
+        _ib_tok="${_ib_rest%% *}"
+        _ib_rest="${_ib_rest#* }"
+        ;;
       *)
-        printf '**⚠ /implement: ignoring invalid LARCH_DYNAMIC_ARCHETYPES_MAX from caller session-env (must be 0..8).**\n'
+        _ib_tok="$_ib_rest"
+        _ib_rest=""
         ;;
     esac
-  fi
-  session_env_args=(
-    --output "$IMPLEMENT_TMPDIR/session-env.sh"
-    --repo <value>
-    --repo-unavailable <value>
-    --codex-present <value>
-    --cursor-present <value>
-    --codex-binary-found <value>
-    --cursor-binary-found <value>
-    --timing-ledger "$IMPLEMENT_TMPDIR/timing-ledger.tsv"
-    --token-session-id "$LARCH_TOKEN_SESSION_ID"
-    --prev-implement-tmpdir "$IMPLEMENT_TMPDIR"
-  )
-  [[ -n "${LARCH_CLAUDE_SOURCE_FILE:-}" ]] && session_env_args+=(--claude-source-file "$LARCH_CLAUDE_SOURCE_FILE")
-  [[ -n "${dynamic_archetypes_value:-}" ]] && session_env_args+=(--dynamic-archetypes "$dynamic_archetypes_value")
-  "${CLAUDE_PLUGIN_ROOT}/scripts/write-session-env.sh" "${session_env_args[@]}"
-  "${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 0 — preflight" || true
-  "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 0 — preflight" || true
-  # token-mark Step 0 — preflight
-  # timing-mark Step 0 — preflight
-  ```
-  The per-run session id correlates tmpdir artifacts across Step 0–18; issue-anchored runs do not reuse a `/design` manifest `SESSION_ID` gate.
-- If `REPO_UNAVAILABLE=true`: print `**⚠ Could not determine repository name. CI monitoring (Steps 10, 12) and merge (Step 12b) will be skipped.**` Set `repo_unavailable=true`.
-- If `CODEX_BINARY_FOUND=false` (read via `read-session-env-key.sh --key CODEX_BINARY_FOUND` from `$IMPLEMENT_TMPDIR/session-env.sh` after Step 0 writes it): print `**⚠ Codex not available (binary not found). Proceeding without Codex reviewer.**` Else if `CODEX_PRESENT=false`: print `**⚠ Codex not healthy for this session (runtime probe failed, skipped probe, auth error, or timeout). Using Claude replacement.**` Mirror the same two-tier pattern for Cursor using `CURSOR_BINARY_FOUND` / `CURSOR_PRESENT`. Derive mental flags `codex_available` / `cursor_available` as `true` only when **both** the corresponding `*_BINARY_FOUND` and `*_PRESENT` keys are `true`; otherwise treat the flag as `false` (covers stale `*_PRESENT=true` when the binary is later missing).
+    case "$_ib_tok" in
+      CURRENT_BRANCH=*) CURRENT_BRANCH=${_ib_tok#CURRENT_BRANCH=} ;;
+      IS_MAIN=*) IS_MAIN=${_ib_tok#IS_MAIN=} ;;
+      IS_USER_BRANCH=*) IS_USER_BRANCH=${_ib_tok#IS_USER_BRANCH=} ;;
+      USER_PREFIX=*) USER_PREFIX=${_ib_tok#USER_PREFIX=} ;;
+      ENTRY_GATE=*) ENTRY_GATE=${_ib_tok#ENTRY_GATE=} ;;
+      SKIP_BRANCH_CHECK=*) SKIP_BRANCH_CHECK=${_ib_tok#SKIP_BRANCH_CHECK=} ;;
+      IMPLEMENT_TMPDIR=*) IMPLEMENT_TMPDIR=${_ib_tok#IMPLEMENT_TMPDIR=} ;;
+      SESSION_ID=*) SESSION_ID=${_ib_tok#SESSION_ID=} ;;
+      CODEX_PRESENT=*) CODEX_PRESENT=${_ib_tok#CODEX_PRESENT=} ;;
+      CURSOR_PRESENT=*) CURSOR_PRESENT=${_ib_tok#CURSOR_PRESENT=} ;;
+      CODEX_BINARY_FOUND=*) CODEX_BINARY_FOUND=${_ib_tok#CODEX_BINARY_FOUND=} ;;
+      CURSOR_BINARY_FOUND=*) CURSOR_BINARY_FOUND=${_ib_tok#CURSOR_BINARY_FOUND=} ;;
+      REPO=*) REPO=${_ib_tok#REPO=} ;;
+      REPO_UNAVAILABLE=*) REPO_UNAVAILABLE=${_ib_tok#REPO_UNAVAILABLE=} ;;
+      CLAUDE_SOURCE_OK=*) CLAUDE_SOURCE_OK=${_ib_tok#CLAUDE_SOURCE_OK=} ;;
+      LARCH_TOKEN_SESSION_ID=*) LARCH_TOKEN_SESSION_ID=${_ib_tok#LARCH_TOKEN_SESSION_ID=} ;;
+      LARCH_CLAUDE_SOURCE_FILE=*) LARCH_CLAUDE_SOURCE_FILE=${_ib_tok#LARCH_CLAUDE_SOURCE_FILE=} ;;
+      LARCH_TIMING_LEDGER=*) LARCH_TIMING_LEDGER=${_ib_tok#LARCH_TIMING_LEDGER=} ;;
+      codex_available=*) codex_available=${_ib_tok#codex_available=} ;;
+      cursor_available=*) cursor_available=${_ib_tok#cursor_available=} ;;
+    esac
+  done
+}
+while IFS= read -r _ib_line || [ -n "$_ib_line" ]; do
+  _ib_kv_scan "$_ib_line"
+done <<EOF
+$(printf '%s\n' "$_ib_out")
+EOF
+export IMPLEMENT_TMPDIR CURRENT_BRANCH IS_MAIN IS_USER_BRANCH USER_PREFIX ENTRY_GATE SKIP_BRANCH_CHECK SESSION_ID
+export REPO REPO_UNAVAILABLE CODEX_PRESENT CURSOR_PRESENT CODEX_BINARY_FOUND CURSOR_BINARY_FOUND
+export CLAUDE_SOURCE_OK LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
+export codex_available cursor_available
+```
+
+- If `REPO_UNAVAILABLE=true`: the script prints `**⚠ Could not determine repository name. CI monitoring (Steps 10, 12) and merge (Step 12b) will be skipped.**` to stderr; set `repo_unavailable=true` from the parsed KV.
+- If `CODEX_BINARY_FOUND=false` (from parsed stdout / `session-env.sh` after the script writes it): the script prints `**⚠ Codex not available (binary not found). Proceeding without Codex reviewer.**` to stderr; else if `CODEX_PRESENT=false`, the script prints `**⚠ Codex not healthy for this session (runtime probe failed, skipped probe, auth error, or timeout). Using Claude replacement.**` Mirror the same two-tier pattern for Cursor. Derive mental flags `codex_available` / `cursor_available` from parsed `codex_available=` / `cursor_available=` stdout lines (`true` only when **both** the corresponding `*_BINARY_FOUND` and `*_PRESENT` keys are `true`).
 
 The session-env file is passed to `review-and-fix.sh` (Step 5) via `--session-env-path`. It also carries `LARCH_CLAUDE_PLUGIN_ROOT` so later Bash blocks can recover `${CLAUDE_PLUGIN_ROOT}` without sourcing the file.
 
-Every Bash block after Step 0 that touches `token-ledger.sh` / `token-report.sh` / `timing-ledger.sh` / `timing-report.sh` MUST rehydrate `LARCH_TOKEN_SESSION_ID`, `LARCH_CLAUDE_SOURCE_FILE`, and `LARCH_TIMING_LEDGER` from `$IMPLEMENT_TMPDIR/session-env.sh` via `read-session-env-key.sh` before invoking the script. It MUST also assign and export `IMPLEMENT_TMPDIR` so `timing-ledger.sh` accepts the per-run ledger path as an allowed session root:
+Every Bash block after Step 0 that touches `token-ledger.sh` / `token-report.sh` / `timing-ledger.sh` / `timing-report.sh` MUST rehydrate `LARCH_TOKEN_SESSION_ID`, `LARCH_CLAUDE_SOURCE_FILE`, and `LARCH_TIMING_LEDGER` from `$IMPLEMENT_TMPDIR/session-env.sh` via `read-session-env-key.sh` before invoking the script (the values above come from `implement-bootstrap.sh`'s final KV tail, which itself re-reads `session-env.sh` for parity). It MUST also assign and export `IMPLEMENT_TMPDIR` so `timing-ledger.sh` accepts the per-run ledger path as an allowed session root:
 
 ```bash
 IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR"

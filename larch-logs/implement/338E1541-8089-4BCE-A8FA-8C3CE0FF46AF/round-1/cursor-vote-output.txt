@@ -1,0 +1,18 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: EXONERATE -- harmless redundant branch with no behavioral impact
+FINDING_4: EXONERATE -- subjective prose preference, not a defect
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: EXONERATE -- minor documentation ambiguity, low operational risk
+FINDING_9: YES
+FINDING_10: EXONERATE -- narrow static grep matches intentional harness scope
+FINDING_11: EXONERATE -- raw exit 2 path covers other tokens; doc polish only
+FINDING_12: EXONERATE -- optional extra coverage, not required for correctness
+FINDING_13: EXONERATE -- cosmetic variable name only
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: YES
+OOS_1: EXONERATE -- process noise about PR shape, not a concrete product defect for an issue

@@ -1,0 +1,4 @@
+Merging duplicate reviewer themes, preserving `[OUT_OF_SCOPE]` where any merged source carried it, applying severity as max(important, latent, nit), and ordering output by the earliest contributing input finding number.
+
+
+

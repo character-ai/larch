@@ -27,6 +27,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Move ship-pr cold-start state composition into scripts/ship-pr.sh so Step 8+ no longer needs a separate heredoc Bash call.
 - Add seven argv per-key flags plus --force-init-state with resume vs rewrite semantics and CR/LF validation.
 - Document the contract in scripts/ship-pr.md, update skills/implement/SKILL.md Step 8+ invoke and NEVER #11/#16, and extend scripts/test-ship-pr.sh coverage.
+- Add implement-bootstrap.sh to consolidate /implement Step 0 infrastructure (branch check, entry gate, session setup, session-env, rehydrate) into one foreground script.
+- Collapse SKILL.md Step 0 calls #1–#5 into a single implement-bootstrap invocation with KV parsing and failure routing.
+- Register Family B foreground denylist entry, Makefile harness shard 7, docs/linting.md row, and offline harness for phase_infra + NEVER#14 + breadcrumb invariants.
 
 ## [42.4.8] - 2026-05-24
 

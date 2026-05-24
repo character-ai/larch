@@ -1,0 +1,18 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: EXONERATE -- subjective prose-length nit; condensing context could mislead operators
+FINDING_5: EXONERATE -- implement-bootstrap.md correctly documents stderr; only ephemeral issue text is stale
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: EXONERATE -- exit-code table explicitly separates the two cases via the "(other)" row
+FINDING_9: EXONERATE -- no evidence old SKILL.md blocks forwarded these flags; no current regression
+FINDING_10: EXONERATE -- two literal patterns cover the most likely violations; broadening is a nit improvement
+FINDING_11: EXONERATE -- "where applicable" qualifier in the table implicitly covers create-branch path
+FINDING_12: EXONERATE -- missing coverage for a best-effort path is a nit improvement, not a gap that hides bugs
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: YES
+OOS_1: YES
