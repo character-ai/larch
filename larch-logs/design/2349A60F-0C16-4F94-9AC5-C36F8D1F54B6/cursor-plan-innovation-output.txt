@@ -1,0 +1,27 @@
+Reading the plan and inspecting referenced code paths (read-only).
+
+Validating the plan against the codebase: locating integration points, `lib-quiet` paths, Makefile shards, and related scripts.
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/scripts/test-check-plan-size.sh (planned per harness §5-8)	TRIGGER_REASONS lexicographic expectation is internally inconsistent	Implementer following Cases 5 and 8 will assert `plan-body-lines,diff-lines,files-count` but lexicographic order of tokens is `diff-lines,files-count,plan-body-lines`, so the harness fails until expectations are flipped or the spec drops lexicographic ordering.	Fix the written test spec to expect `diff-lines,files-count,plan-body-lines` (or stop claiming lexicographic order and document a fixed priority order in the helper and tests).
+1	in_scope	important	risk-integration	skills/design/SKILL.md:28	Anti-halt step chain omits new sub-step between 2b and 3	Orchestrator muscle-memory and audits treat `2b→3` as immediate; Step 2b.5 user prompts and Bash calls risk being skipped as “halt-adjacent” despite being mandatory before Step 3.	Update the parenthetical to `…→2b→2b.5→3→…` and add one explicit sentence that Step 3 must not start until Step 2b.5 completes (including AskUserQuestion branches).
+1	in_scope	important	architecture	skills/design/SKILL.md:4,12,172	Frontmatter and argv contract omit `-p` / `--partition`	`argument-hint`, the “Public argv allows only” sentence, and Step 0b bullet 1 list only legacy flags; new flag is easy to forget at parse/validate time or to drift from `flags.md`.	Add `-p`/`--partition` to `argument-hint`, extend the allow-list sentence, and include the flag in the Step 0b parse list with the same mutual-exclusion rules as in `references/flags.md`.
+1	in_scope	nit	correctness	skills/design/scripts/check-plan-size.sh (planned)	`lib-quiet` integration left underspecified	Implementer might `source lib-quiet.sh` from the wrong directory or print KVs to stdout without `emit_kv`, breaking capture under quiet redirection.	Mirror `emit-plan.sh`: `source "$SCRIPT_DIR/../../../scripts/lib-quiet.sh"`, `larch_quiet_init`, and `emit_kv` for all machine-readable lines.
+1	in_scope	latent	architecture	skills/design/SKILL.md (planned Step 2b.5 / timing)	No timing-ledger hook for plan-size sub-step	Other substeps emit `timing-ledger.sh mark "design Step …"`; omitting 2b.5 hides latency and regresses uniform timing diagnostics.	Optional: add `mark "design Step 2b.5 — plan size"` after the helper call; add `2b.5` to `skills/design/scripts/step-name-registry.tsv` if downstream tooling expects a row per numbered substep.
+1	out_of_scope	nit	architecture	README.md (plugin UX / Aliases)	New public flag not reflected in consumer-facing entrypoints	Operators discover flags from README or marketplace copy, not only SKILL.md.	After implementation, extend README Aliases or flag matrix if this repo documents `/design` argv there (defer to follow-up issue if out of scope for #2670).
+
+[OUT_OF_SCOPE] `README.md` (flag / feature matrix for `/design` argv) — note for downstream issue if CLI help text should mention `-p`/`--partition`.
+
+1. **[correctness]** `skills/design/scripts/test-check-plan-size.sh` (planned) — Case 5 and Case 8 require `TRIGGER_REASONS=plan-body-lines,diff-lines,files-count` while also demanding lexicographic ordering; true lex order is `diff-lines,files-count,plan-body-lines`. **Suggested revision:** Fix the expected reason strings (or drop the lexicographic requirement and document a deterministic non-lex order in the helper).
+
+2. **[risk-integration]** `skills/design/SKILL.md:28` — The anti-halt continuation list still reads `…→2b→3→…` with no `2b.5`. **Suggested revision:** Insert `2b.5` and state explicitly that Step 3 must not begin until Step 2b.5 finishes (including interactive branches).
+
+3. **[architecture]** `skills/design/SKILL.md:4`, `:12`, `:172` — `argument-hint`, the “Public argv allows only” line, and Step 0b’s parse bullet omit `-p`/`--partition`. **Suggested revision:** Extend all three so the new flag is first-class alongside existing public argv.
+
+4. **[correctness]** Planned `check-plan-size.sh` — Plan text only says “via `lib-quiet.sh`” without the established `../../../scripts/lib-quiet.sh` + `emit_kv` pattern used by `emit-plan.sh`. **Suggested revision:** Specify the same sourcing and KV emission pattern as sibling design scripts.
+
+5. **[architecture]** (latent) Planned Step 2b.5 — No `timing-ledger.sh mark` for a new sub-step; `step-name-registry.tsv` has no `2b.5` row. **Suggested revision:** Add optional timing breadcrumb and registry row if tooling or reports should stay aligned with other substeps.
+
+6. **[architecture]** (creative alternative / nit) `--partition` forces a soft trigger on every plan rewrite (Gate B, discussion-driven edits). **Suggested revision:** Consider scoping the override to the first successful `EMIT_PLAN` after initial Step 2b, or documenting the intentional “noisy panel” UX so operators expect repeated soft prompts.
+
+7. **[security]** (latent) Failure mode: helper exit 2 → warn and continue to Step 3. **Suggested revision:** Acceptable fail-open; optionally tighten copy to stress that `/implement` may proceed without size guard until the plan is repaired.
