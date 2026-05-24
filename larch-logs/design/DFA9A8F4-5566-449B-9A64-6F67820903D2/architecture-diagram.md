@@ -13,11 +13,11 @@ flowchart TD
     end
 
     subgraph voters[Voting Panels]
-        V1["/design Voter 1<br/>Claude subagent<br/>plan-review.md"]
-        V23P["/design Voters 2/3<br/>Codex + Cursor"]
-        V23C["/review Voters 2/3<br/>Codex + Cursor"]
-        MAV1["/design SKILL.md<br/>Step 3 MAV adjudication"]
-        MAV2["/implement SKILL.md<br/>Step 5 MAV adjudication"]
+        V1[/design Voter 1<br/>Claude subagent<br/>plan-review.md/]
+        V23P[/design Voters 2 and 3<br/>Codex + Cursor/]
+        V23C[/review Voters 2 and 3<br/>Codex + Cursor/]
+        MAV1[/design SKILL.md<br/>Step 3 MAV adjudication/]
+        MAV2[/implement SKILL.md<br/>Step 5 MAV adjudication/]
     end
 
     subgraph canon[Canonical OOS Clause]
@@ -34,8 +34,8 @@ flowchart TD
         MK[Makefile<br/>target + shard]
     end
 
-    DPV -->|--id-grammar finding-oos<br/>--verification-context plan| H
-    DCV -->|--id-grammar finding-only<br/>--verification-context diff-plan| H
+    DPV -->|"--id-grammar finding-oos<br/>--verification-context plan"| H
+    DCV -->|"--id-grammar finding-only<br/>--verification-context diff-plan"| H
 
     DPV --> V23P
     DCV --> V23C

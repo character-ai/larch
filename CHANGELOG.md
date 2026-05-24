@@ -19,6 +19,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Migration posture**: legacy `[IN PROGRESS]` and `[PLANNED]` prefixes are stripped by `strip_lifecycle_prefix` for backward compatibility but are no longer accepted as `--state` values by `tracking-issue-write.sh` or as admission-pass prefixes.
 - **Audit scope**: workflow call sites and rename `--state` surfaces in the active runtime tree (`skills/`, `scripts/`, `agents/`, `.claude/`, `docs/`, tests) now use the new prefix set; deliberate legacy bracket literals remain only where migration, admission recovery, strip helpers, or hermetic fixtures require them. This Unreleased section documents the migration and may name the old prefixes. Historical shipped changelog bodies and `larch-logs/` were not bulk-retitled.
 
+## [42.1.0] - 2026-05-24
+
+### Changed
+
+- Add /design plan-size thresholds and Step 2b.5 so large plans route to split/cancel flows before review proceeds.
+- Introduce -p/--partition (persisted in run-params.json) with pre-Step-0 mutual exclusion against --trivial.
+- Wire Gate B and post-plan discussion to re-run the threshold check after every EMIT_PLAN revision.
+- Document semantic sprawl Split/Cancel hooks in discussion-rounds Step 1c/1d and extend plan-review prompt heading guidance.
+
 ## [42.0.23] - 2026-05-24
 
 ### Changed
@@ -43,6 +52,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Prevent /design summary-halts after /larch:issue returns so Step 5c plan write, publish, and [DESIGNED] rename still run.
 - Make intra-Step-5 sub-step boundaries explicit in the anti-halt reminder and add a Step 5b continuation banner aligned with other steps.
 - Record the Skill-tool sub-skill vs parent terminal-output rule in orchestrator-never.md and lock it in with structural tests.
+- `/design` — mechanical plan-size thresholds (`check-plan-size.sh`), Step **2b.5** after each `ACTION=EMIT_PLAN`, and `-p` / `--partition` persistence via `run-params.json` (#2670).
 
 ## [42.0.20] - 2026-05-23
 

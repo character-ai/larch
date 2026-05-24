@@ -1,0 +1,17 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: EXONERATE -- Legitimate branch-hygiene concern, but splitting the already-stacked branch is not worth the churn here.
+FINDING_6: EXONERATE -- Case 15 is redundant, but the extra harness case is harmless and not worth raising.
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: EXONERATE -- The string coupling is real, but avoiding it likely requires more machinery than this latent risk warrants.
+FINDING_12: YES
+FINDING_13: YES
+OOS_1: EXONERATE -- Intentional committed run logs are review noise, not worth a tracking issue.
+OOS_2: EXONERATE -- Editorial emphasis is legitimate but already covered by FINDING_2 enough to avoid a separate issue.
+OOS_3: EXONERATE -- Redaction discipline is a standing policy concern, not a new issue-worthy defect here.
+OOS_4: EXONERATE -- Prompt prose expansion is legitimate to notice but does not create an issue-worthy trust-boundary change.

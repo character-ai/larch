@@ -1,7 +1,7 @@
 ---
 name: design
 description: "Use when authoring or vetting an issue-anchored implementation plan in GitHub (plan markers in the issue body). Tiered sketches (0/2/4) plus a 10-reviewer panel and clarify loop; verbal prompts create an issue first."
-argument-hint: "[--trivial|--simple|--hard] [--no-dedup] <issue-N | feature description>"
+argument-hint: "[--trivial|--simple|--hard] [-p|--partition] [--no-dedup] [--run-id <ID>] <issue-N | feature description>"
 allowed-tools: AskUserQuestion, Bash, Read, Edit, Write, Grep, Glob, Agent, Task, WebFetch, WebSearch
 ---
 
@@ -9,23 +9,24 @@ allowed-tools: AskUserQuestion, Bash, Read, Edit, Write, Grep, Glob, Agent, Task
 
 Design an implementation plan for a feature and review it with a **full** panel when using `--simple` or `--hard` (10 reviewers on the full diagonal: 5 personalities × Cursor + Codex, plus adjudication and voting as documented in this file). The **`--trivial`** tier intentionally uses a **smaller** plan-review budget (`review_budget=quick` per `skills/design/references/flags.md`) and **`sketch_budget` 0** — do not extrapolate the full 10-reviewer cost model to trivial runs. The sketch phase (Step 2a) reads `run-params.json`: **`sketch_budget` is 0, 2, or 4** from the selected **tier** (`trivial` / `simple` / `hard`). Plan + acceptance are written back to the issue body via `plan-block-write.sh` (no design manifest export). Accepted non-security OOS items are filed via `/larch:issue` in **Step 5b** before the `larch:plan` write (**Step 5c**).
 
-**Flags**: Parse flags from the start of `$ARGUMENTS` before consuming the positional tail. **Public argv** allows only `--trivial`, `--simple`, `--hard`, `--no-dedup`, and `--run-id` (see table). **All boolean flags default to `false`.** At most one tier flag may appear on argv (mutual exclusion). If no tier flag is set after the clarify / already-planned routers in Step 0, the orchestrator MUST run the tier `AskUserQuestion` gate there before sketches.
+**Flags**: Parse flags from the start of `$ARGUMENTS` before consuming the positional tail. **Public argv** allows only `--trivial`, `--simple`, `--hard`, `-p`, `--partition`, `--no-dedup`, and `--run-id` (see table). **All boolean flags default to `false`.** At most one tier flag may appear on argv (mutual exclusion). **`--trivial` is mutually exclusive with `-p` / `--partition`** — see Pre-Step-0 below and `references/flags.md`. If no tier flag is set after the clarify / already-planned routers in Step 0, the orchestrator MUST run the tier `AskUserQuestion` gate there before sketches.
 
 | Flag | Default | Purpose |
 |------|---------|---------|
 | `--trivial` | `false` | Tier: `sketch_budget=0`, `quick_mode=true`, `review_budget=quick` (main-agent plan + quick self-review path) |
 | `--simple` | `false` | Tier: `sketch_budget=2`, `quick_mode=true`, `review_budget=full` (2 generic sketches + 10-reviewer panel + auto-applied findings) |
 | `--hard` | `false` | Tier: `sketch_budget=4`, `quick_mode=false`, `review_budget=full` (4 sketches + panel + per-finding approval on accepted findings) |
+| `-p` / `--partition` | `false` | Request partition / break-up flow on every plan write at Step 2b.5 when no hard threshold tripped (see `references/flags.md`; persisted as `partition_requested` in `run-params.json`) |
 | `--no-dedup` | `false` | Forward to `/larch:issue` when the verbal path creates a tracking issue |
 | `--run-id <ID>` | empty | Optional run identifier |
 
-**Mutual exclusion**: at most one of `--trivial` / `--simple` / `--hard` may be set; if two or more tier flags appear, print a clear error and abort before Step 0.
+**Mutual exclusion**: at most one of `--trivial` / `--simple` / `--hard` may be set; if two or more tier flags appear, print a clear error and abort before Step 0. **`--trivial` and `-p` / `--partition` are mutually exclusive** — Pre-Step-0 rejects that pair before `session-setup.sh` runs.
 
 **MANDATORY — READ ENTIRE FILE before parsing argument flags**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/flags.md` completely. This reference is the single normative source for tier mapping and validation rules. The table above is a non-normative index.
 
 **Positional tail**: after flags, the first non-flag token is either **`issue-N`** (all digits, `^[0-9]+$`) or a **verbal feature description** (any other text). Verbal text triggers `/larch:issue` first (forward `--no-dedup` when set), then binds `ISSUE_NUMBER` to the created issue and continues as the issue path.
 
-**Anti-halt continuation reminder.** After every `Bash` tool call that completes a numbered step or sub-step, and after every visible output (plans, diagrams, voting tallies, skip breadcrumbs), IMMEDIATELY continue with this skill's NEXT numbered step — do NOT end the turn on a Bash result, a status message, or a deliverable-looking output, and do NOT write a summary, handoff, status recap, or "returning to parent" message — those are halts in disguise. This applies to ALL step boundaries from Step 0 through Step 6, and to ALL sub-step transitions (1c→1d→1e→2a→2a.5→2b→3→3.5→3b→4→4b→5→5a→5b→5c.1→5c.6→5c.7→6). The approval gates (Step 1e Gate A, Step 3.5 Gate B, Step 4b Gate C) may also re-enter earlier steps per the user's `AskUserQuestion` choice (Gate B(c) → Step 1e; Gate C(b) → Step 1e; Gate C(c) → Step 3); those re-entry transitions are explicit non-sequential control-flow directives and are NOT halts. **Critical: the implementation plan (Step 2b) and architecture diagram (Step 3b) are intermediate deliverables, NOT the end of the design — plan review (Step 3), Gate B (Step 3.5), Gate C (Step 4b), finalize (Step 5), and cleanup (Step 6) must still execute.** The rule is strictly subordinate to any explicit non-sequential control-flow directive in THIS file (e.g., `skip to Step N`, `bail to cleanup`, `jump back`, `proceed to Step N`). A normal sequential `proceed to Step N+1` instruction is the default continuation this rule reinforces, NOT an exception.
+**Anti-halt continuation reminder.** After every `Bash` tool call that completes a numbered step or sub-step, and after every visible output (plans, diagrams, voting tallies, skip breadcrumbs), IMMEDIATELY continue with this skill's NEXT numbered step — do NOT end the turn on a Bash result, a status message, or a deliverable-looking output, and do NOT write a summary, handoff, status recap, or "returning to parent" message — those are halts in disguise. This applies to ALL step boundaries from Step 0 through Step 6, and to ALL sub-step transitions (1c→1d→1e→2a→2a.5→2b→2b.5→3→3.5→3b→4→4b→5→5a→5b→5c.1→5c.6→5c.7→6). The approval gates (Step 1e Gate A, Step 3.5 Gate B, Step 4b Gate C) may also re-enter earlier steps per the user's `AskUserQuestion` choice (Gate B(c) → Step 1e; Gate C(b) → Step 1e; Gate C(c) → Step 3); those re-entry transitions are explicit non-sequential control-flow directives and are NOT halts. **Critical: the implementation plan (Step 2b) and architecture diagram (Step 3b) are intermediate deliverables, NOT the end of the design — plan review (Step 3), Gate B (Step 3.5), Gate C (Step 4b), finalize (Step 5), and cleanup (Step 6) must still execute.** **Step 3 MUST NOT start until Step 2b.5 completes** (including any `AskUserQuestion` branches there). The rule is strictly subordinate to any explicit non-sequential control-flow directive in THIS file (e.g., `skip to Step N`, `bail to cleanup`, `jump back`, `proceed to Step N`). A normal sequential `proceed to Step N+1` instruction is the default continuation this rule reinforces, NOT an exception.
 
 ## Progress Reporting
 
@@ -96,6 +97,10 @@ Consolidated NEVER rules collected from the procedural steps below. Each rule st
 4. **NEVER call `collect-agent-results.sh` with zero entries: it must receive at least one output path either via positional arguments OR via a `--paths-file` flag that names a readable file yielding at least one non-blank path-line.** **Why:** exit **1** reasons differ: missing/empty positional argv yields `at least one output file is required`; `--paths-file` missing or not readable yields `paths-file not readable: …`; a readable paths-file that is not a regular file (for example a directory) yields `paths-file is not a regular file: …`; readable but whitespace-only / empty usable lines yields `paths-file contains no entries (preserves anti-pattern #4)`; lines containing embedded newline or carriage return are rejected with a dedicated diagnostic. This is the zero-externals failure mode when every external slot has fallen back to a Claude subagent. **How to apply:** guard each collector call so at least one path is supplied (positionally or via `--paths-file`); the dialectic zero-externals guardrail (Step 2a.5 step 5) and the Step 3 collector both require this.
 
 5. **NEVER conflate the two timeout families.** **Why:** sketch-phase timeouts (sketches are shorter) differ from plan-review + dialectic timeouts (longer, deeper reasoning). **How to apply:** use `timeout: 1260000` (Bash tool) / `--timeout 1260` (collector) / `--timeout 1200` (reviewer script) for sketch-phase launches and sketch collection; use `timeout: 1860000` / `--timeout 1860` / `--timeout 1800` for plan-review launches, dialectic debaters, and dialectic judges.
+
+## Pre-Step-0 — argv gate (before `session-setup.sh`)
+
+Before running the **Step 0a** `session-setup.sh` Bash block, scan the start of `$ARGUMENTS` for tier flags (`--trivial` / `--simple` / `--hard`) and partition flags (`-p` / `--partition`). If **both** `--trivial` **and** (`-p` or `--partition`) are present, print `**⚠ /design: --trivial and --partition are mutually exclusive — re-classify or drop one.**` and exit **1**. Do **not** run `session-setup.sh` on this path — no `DESIGN_TMPDIR` is created. Step **0b** still performs the full argv parse after Step 0a; this gate is validation-only for the `--trivial` + `--partition` collision.
 
 <!-- step:0 — Session Setup -->
 ## Step 0 — Session Setup
@@ -169,7 +174,7 @@ This writes `$DESIGN_TMPDIR/source-env.sh` and refreshes the stable symlink `~/.
 
 ### 0b — Parse argv, issue binding, clarify / already-planned routers, tier → `run-params.json`
 
-1. Parse public flags (`--trivial|--simple|--hard`, `--no-dedup`, `--run-id`) from the start of `$ARGUMENTS`. Remaining tokens after flags:
+1. Parse public flags (`--trivial|--simple|--hard`, `-p`/`--partition`, `--no-dedup`, `--run-id`) from the start of `$ARGUMENTS`. Remaining tokens after flags:
    - If the first token matches `^[0-9]+$`, set `ISSUE_NUMBER` to that value.
    - Else the remainder is **verbal feature text**: invoke **`/larch:issue`** via the Skill tool (forward `--no-dedup` when set). Parse the created issue number into `ISSUE_NUMBER`.
 2. **Fetch issue**: `gh issue view "$ISSUE_NUMBER" --json body,labels,number,title` with **2× retry** on transient failure.
@@ -183,7 +188,8 @@ This writes `$DESIGN_TMPDIR/source-env.sh` and refreshes the stable symlink `~/.
 4. **Already-planned branch** when a `larch:plan` block exists and clarification is clean: `AskUserQuestion` **(a)** replace via full flow, **(b)** ad-hoc Q&A only, **(c)** cancel — on **(c) cancel**, first run the **Terminal cost line** fenced bash block in `### Terminal cost line` below, then print `**ℹ /design cancelled by operator.**` and exit **0**.
 5. **Tier gate**: if no tier flag on argv, `AskUserQuestion` with **three options** `trivial` / `simple` / `hard` (descriptions per issue #2485). Non-tier `Other` answers → first run the **Terminal cost line** fenced bash block in `### Terminal cost line` below, then print `**ℹ /design cancelled by operator.**` and exit **0**.
 5.5. **Rename issue to `[DESIGNING]`** (best-effort, idempotent) now that all cancel paths have been cleared. Resolve `REPO` via `"${CLAUDE_PLUGIN_ROOT}/scripts/resolve-repo.sh"` or `gh repo view` fallback if not already bound. Run `"${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh" rename --issue "$ISSUE_NUMBER" --state designing ${REPO:+--repo "$REPO"}` (treat `RENAMED=false` as idempotent success). On non-zero exit, log `Step 0 — [DESIGNING] rename failed` to `Warnings` in `$DESIGN_TMPDIR/execution-issues.md` and continue.
-6. **Write** `$DESIGN_TMPDIR/feature-description.txt` from issue title+body (or verbal prompt). **Tier mapping** to `write-run-params.sh`:
+6. **Write** `$DESIGN_TMPDIR/feature-description.txt` from issue title+body (or verbal prompt). **Tier mapping** to `write-run-params.sh` and **partition persistence**:
+   - Set mental boolean `partition_requested` to `true` when `-p` or `--partition` was parsed on argv, else `false` (Pre-Step-0 already rejected `--trivial` + `--partition` collisions).
    - `trivial`: `sketch_budget=0`, `quick_mode=true`, `review_budget=quick`, `workflow_path=SIMPLE` (classification follows existing trivial doc-only carve-out when the router scan applies).
    - `simple`: `sketch_budget=2`, `quick_mode=true`, `review_budget=full`, `workflow_path=SIMPLE`.
    - `hard`: `sketch_budget=4`, `quick_mode=false`, `review_budget=full`, `workflow_path=HARD`.
@@ -198,10 +204,41 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/write-run-params.sh \
   --sketch-budget "$sketch_budget" \
   --review-budget "$review_budget" \
   --workflow-path "$workflow_path" \
+  --partition-requested "$partition_requested" \
   --output "$DESIGN_TMPDIR/run-params.json"
 ```
 
 If the helper exits non-zero, print `**⚠ 0: router — run-params write failed; defaulting to HARD sketch budget.**`, set in-memory defaults `design_classification=HARD`, `sketch_budget=4`, `review_budget=full`, `workflow_path=HARD`, and continue.
+
+**Partition persistence on write failure**: when argv-derived `partition_requested` is `true` and `command -v jq` succeeds, ensure `partition_requested` is persisted so Step 2b.5 still sees the flag after a subshell re-read:
+
+```bash
+if [[ "$partition_requested" == true ]] && command -v jq >/dev/null 2>&1; then
+  if [[ -f "$DESIGN_TMPDIR/run-params.json" ]]; then
+    _rp_merge=$(mktemp "${TMPDIR:-/tmp}/larch-partition-merge.XXXXXX")
+    _rp_err=$(mktemp "${TMPDIR:-/tmp}/larch-partition-merge-err.XXXXXX")
+    if jq -c '.partition_requested = true' "$DESIGN_TMPDIR/run-params.json" >"$_rp_merge" 2>"$_rp_err"; then
+      mv -f "$_rp_merge" "$DESIGN_TMPDIR/run-params.json"
+      rm -f "$_rp_err"
+    else
+      "${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh" --log "$DESIGN_TMPDIR/execution-issues.md" --site "design Step 0b" --tool "jq(partition-merge)" --exit-code 1 --category Warnings --output-file "$_rp_err" >/dev/null 2>&1 || true
+      rm -f "$_rp_merge" "$_rp_err"
+    fi
+  else
+    "${CLAUDE_PLUGIN_ROOT}/scripts/write-run-params.sh" \
+      --classification "${design_classification:-HARD}" \
+      --reason "${design_classification_reason:-run-params write failed; partition recovery}" \
+      --source caller-forwarded \
+      --sketch-budget "${sketch_budget:-4}" \
+      --review-budget "${review_budget:-full}" \
+      --workflow-path "${workflow_path:-HARD}" \
+      --partition-requested true \
+      --output "$DESIGN_TMPDIR/run-params.json" >/dev/null 2>&1 || true
+  fi
+elif [[ "$partition_requested" == true ]]; then
+  printf '%s\n' "**⚠ 0b: partition requested but jq is unavailable — partition_requested may not persist across Step 2b.5 re-entry; install jq or re-supply --partition after subshell boundaries.**"
+fi
+```
 
 ### Terminal cost line
 
@@ -484,14 +521,14 @@ Also read `$DESIGN_TMPDIR/dialectic-resolutions.md` if it exists and is non-empt
 
 Produce a plan that includes:
 
-- **Files to modify/create**: List each file with a brief description of what changes.
+- **Files to modify/create**: Under a single **Files to modify/create** (or equivalent) section, use **per-file subsections** with headings exactly one path each: `### NEW:` for new files, `### UPDATED:` for modified files, and `### REWRITTEN:` for files rewritten in place. Each heading names **exactly one** file path (backticked path token); the description follows on subsequent lines. Heading parsing requires **at least one ASCII whitespace after `###`** before the keyword, and tolerates extra whitespace before `:` (per the scout regex in `scout-plan-archetypes-wrapper.sh` and `check-plan-size.sh`). Concatenated forms such as `###NEW:` are **not** headings for scout / plan-size counts.
 - **Approach**: Describe the implementation strategy, key decisions, and any trade-offs.
 - **Edge cases**: Note important input/boundary conditions and how they'll be handled.
 - **Failure modes** (for non-trivial changes): The 3 most likely architectural/systemic failure paths, earliest warning signals, and simplest mitigations. May be omitted for purely cosmetic or documentation-only changes.
 - **Testing strategy**: What tests will be added or modified.
 - **Diff size estimate**: Estimate the total diff size in changed lines for the planned implementation. Append a final line `diff_lines: <N>` to `$DESIGN_TMPDIR/plan.txt`, where `<N>` is a non-negative integer. This estimate is informational for `/implement` operators and logs (it is not a Step 1 coder-routing trigger); use best judgment, but do not omit the line.
 
-Write the plan to `$DESIGN_TMPDIR/plan.txt` with basename exactly `plan.txt`. Print the plan to the user under a `## Implementation Plan` header so reviewers can see it. The plan is an intermediate deliverable — IMMEDIATELY continue to Step 3 (Plan Review) after saving/printing. Do NOT halt, summarize, or treat the plan as the end of the design.
+Write the plan to `$DESIGN_TMPDIR/plan.txt` with basename exactly `plan.txt`. Print the plan to the user under a `## Implementation Plan` header so reviewers can see it. The plan is an intermediate deliverable — after Step **2b.5** below completes, continue to Step 3 (Plan Review). Do NOT halt, summarize, or treat the plan as the end of the design.
 
 Immediately after saving `plan.txt`, emit the mechanical plan-validation ACTION. This writes `$DESIGN_TMPDIR/diff-lines.txt` atomically and fails closed if the final `diff_lines: <N>` line is missing or malformed:
 
@@ -501,9 +538,39 @@ printf '%s\n' 'ACTION=EMIT_PLAN' \
   | "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-driver.sh" --design-tmpdir "$DESIGN_TMPDIR"
 ```
 
-If the driver exits non-zero or emits `EMIT_PLAN_STATUS=missing-diff-lines`, treat it as a hard Step 2b failure and repair `$DESIGN_TMPDIR/plan.txt` before proceeding to Step 3.
+If the driver exits non-zero or emits `EMIT_PLAN_STATUS=missing-diff-lines`, treat it as a hard Step 2b failure and repair `$DESIGN_TMPDIR/plan.txt` before proceeding to Step 2b.5 / Step 3.
 
-> **Continue to Step 3 IMMEDIATELY.** The implementation plan is an intermediate design artifact — plan review, optional discussion, diagram generation, rejected-findings reporting, and cleanup still must run. → shared/subskill-invocation.md#step-boundary
+### Step 2b.5 — Plan-size threshold check (named procedure)
+
+**Callable from**: initial Step 2b (after the `ACTION=EMIT_PLAN` driver call above — then continue to Step 3 when this procedure returns); Gate B after each settled `ACTION=EMIT_PLAN` re-emit (see `references/approval-gates.md` — then continue to Step 3b); the post-plan discussion sub-round after its `ACTION=EMIT_PLAN` re-emit (see `references/discussion-rounds.md` — then return to the invoking Gate A). **Gate B** and **post-plan discussion** own the normative “call Step 2b.5 after re-emit” prose; this subsection defines the procedure.
+
+1. Read `partition_requested` from `$DESIGN_TMPDIR/run-params.json` (boolean; default `false` when absent). Bind mental `PARTITION_REQUESTED` from that field — Step 2b.5 does **not** re-parse argv.
+2. Run `check-plan-size.sh` in a Bash subshell with `export LARCH_QUIET_DISABLE=1`, capture **stdout only** into a variable `_plan_size_out` (the `emit_kv` / `emit` contract stream matches `emit-plan.sh` consumers; do not merge stderr into `_plan_size_out` or KV parsing may ingest `larch_err` lines). Example:
+   ```bash
+   [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
+   export LARCH_QUIET_DISABLE=1
+   set +e
+   _plan_size_out=$("${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/check-plan-size.sh" --design-tmpdir "$DESIGN_TMPDIR")
+   _plan_size_rc=$?
+   set -e
+   ```
+3. **Return-code handling**:
+   - **`_plan_size_rc` is 0** — parse `_plan_size_out` for `SOFT_TRIGGER_FIRED=`, `HARD_TRIGGER_FIRED=`, `TRIGGER_REASONS=`, `PLAN_LINES=`, `DIFF_LINES=`, `FILES_COUNT=`. Then bind **`SEMANTIC_SOFT_ESTIMATE`** (orchestrator-only; the helper never emits this): when `HARD_TRIGGER_FIRED=false`, mechanical `SOFT_TRIGGER_FIRED=false`, and `PARTITION_REQUESTED=false`, set `true` only if the plan body still reads like **multiple substantial independent programs** (unrelated feature axes, parallel refactors across disjoint stacks, or several large QA/CI tracks) despite staying under mechanical thresholds; when uncertain, `false`. Branch steps 4–6 below.
+   - **`_plan_size_rc` is 2** — parse `PLAN_SIZE_STATUS=` when present. Print `**⚠ 2b.5: check-plan-size — <status>; proceeding without threshold check**`. Append the full `_plan_size_out` capture to `$DESIGN_TMPDIR/execution-issues.md` under `### Warnings` via `"${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh" --log "$DESIGN_TMPDIR/execution-issues.md" --site "design Step 2b.5" --tool "check-plan-size.sh" --exit-code "$_plan_size_rc" --category Warnings --output-file "$DESIGN_TMPDIR/check-plan-size.validation.log"` after writing the capture to `$DESIGN_TMPDIR/check-plan-size.validation.log` (create/overwrite the log file with the capture first). Then **return** to the caller — no trigger branches fire.
+   - **Any other rc** (including **3** for argv / usage errors from `check-plan-size.sh`, which emit no `PLAN_SIZE_STATUS`) — treat as internal error: append the combined capture to `execution-issues.md` `Warnings` the same way (same `--site` / `--tool` / `--exit-code`), ignore any partial KV lines, **return** to the caller.
+4. **Hard branch (`HARD_TRIGGER_FIRED=true`)** — fires **regardless** of `PARTITION_REQUESTED`. Print a `## Plan Size — Hard Trigger` section with `PLAN_LINES`, `DIFF_LINES`, and `FILES_COUNT` from the capture. `AskUserQuestion` with exactly two options: **"Let my panel of agents split this feature for you"** / **"Cancel"** (no **Continue** option — hard triggers are never downgradeable by `--partition`). On **Cancel**: run the **Terminal cost line** fenced bash block (`### Terminal cost line`), print `**ℹ /design cancelled by operator (plan-size hard trigger).**`, exit **0**, preserve `$DESIGN_TMPDIR`. On **Split**: run **Split-path** below.
+5. **Soft branch** — when `(SOFT_TRIGGER_FIRED=true AND HARD_TRIGGER_FIRED=false)` **OR** `(PARTITION_REQUESTED=true AND HARD_TRIGGER_FIRED=false)` **OR** `(SEMANTIC_SOFT_ESTIMATE=true AND HARD_TRIGGER_FIRED=false)` (including the case where mechanical soft is false but `--partition` alone would fire the soft UI, or mechanical soft is false without `--partition` but semantic estimate is true). Print `## Plan Size — Soft Trigger` with the same counts; when mechanical soft is false but `PARTITION_REQUESTED=true`, note `trigger=partition-flag` in the footer line of that section; when mechanical soft is false, `PARTITION_REQUESTED` is false, but `SEMANTIC_SOFT_ESTIMATE=true`, note `trigger=semantic-estimate` there. `AskUserQuestion`: **"Let my panel of agents split this feature for you"** / **"Continue with current scope"**. On **Split**: **Split-path**. On **Continue**: return to caller.
+6. **No-trigger branch** — when no soft/hard/partition-flag/semantic-estimate offer applies: print `⏩ 2b.5: plan-size — under thresholds (PLAN_LINES=<n> DIFF_LINES=<n> FILES_COUNT=<n>)` and return.
+
+#### Split-path (decomposition panel not yet available)
+
+1. Print `**⚠ /design: decomposition panel is in development and will be available soon (see #2672).**`
+2. Run the **Terminal cost line** fenced bash block from `### Terminal cost line`.
+3. Exit **1**. `$DESIGN_TMPDIR` is preserved (Split exits before Step 5 sets `PLAN_WRITE_OK` and before Step 6 cleanup, which is gated on successful finalize).
+
+> **After Step 2b.5 returns to caller on a non-exiting path, continue to Step 3 IMMEDIATELY.** The implementation plan is an intermediate design artifact — plan review, Gate B, diagram generation, rejected-findings reporting, and cleanup still must run. → shared/subskill-invocation.md#step-boundary
+
+Run Step 2b.5 now (initial plan path) before entering Step 3.
 
 <!-- step:3 — Plan Review -->
 
@@ -616,7 +683,7 @@ Print: `> **🔶 /design 3.5: gate B**`
 
 **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/approval-gates.md` completely (if not already loaded at Step 1e).
 
-Execute the Gate B body in `approval-gates.md`. Gate B replaces the previous "Design Discussion Round 2" auto-flow: it presents all accepted findings with Critical/High/Medium/Low severity, the reviewer attribution, and the concern text (1-10 lines), then prompts the user for **Apply all** / **Go through each** / **Switch to discussion mode**. **The plan is never auto-revised**; revision only happens when the user explicitly chooses Apply all or per-finding Apply. On Switch-to-discussion-mode (or per-finding Switch), re-enter Step 1e Gate A. After Gate B settles (Apply all or full one-by-one without abort), proceed to Step 3b.
+Execute the Gate B body in `approval-gates.md` (which requires **Step 2b.5** immediately after each settled `ACTION=EMIT_PLAN` re-emit — see that reference for the exact Apply-all / Go-through-each wording). Gate B replaces the previous "Design Discussion Round 2" auto-flow: it presents all accepted findings with Critical/High/Medium/Low severity, the reviewer attribution, and the concern text (1-10 lines), then prompts the user for **Apply all** / **Go through each** / **Switch to discussion mode**. **The plan is never auto-revised**; revision only happens when the user explicitly chooses Apply all or per-finding Apply. On Switch-to-discussion-mode (or per-finding Switch), re-enter Step 1e Gate A. After Gate B settles (Apply all or full one-by-one without abort) **and Step 2b.5 returns**, proceed to Step 3b.
 
 If Round 2-style follow-up questions need to be asked (decisions emerging from the plan that were not covered in Round 1), the user reaches them via Gate B's **Switch to discussion mode** → Gate A loop. Round 2 is no longer a forced auto-step; users opt in through Gate B.
 
@@ -772,6 +839,33 @@ Step 4b Gate C already returned **Approve**. Proceed without an additional promp
 6. If step 3 succeeds, when `SESSION_ID` is non-empty, run `"${CLAUDE_PLUGIN_ROOT}/scripts/design-log-publish.sh" --design-tmpdir "$DESIGN_TMPDIR" --run-id "$SESSION_ID" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}` and parse `PUBLISH_OK` from stdout. When `SESSION_ID` is empty, print `printf '\n**⚠ /design: SESSION_ID missing; skipping design log publish**\n'` (use `printf`, not `print`). On `PUBLISH_OK=false`, capture stderr to `$DESIGN_TMPDIR/design-log-publish.failure.log` and append under `Warnings` via `"${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh"` with `--log "$DESIGN_TMPDIR/execution-issues.md"`; continue (do not roll back the GitHub plan write).
 7. If step 3 succeeds **and** `SESSION_ID` is non-empty **and** `PUBLISH_OK=true` after the Step 5c item 6 publish attempt, run `"${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh" rename --issue "$ISSUE_NUMBER" --state designed ${REPO:+--repo "$REPO"}` (treat `RENAMED=false` as idempotent success). When `SESSION_ID` is empty, **skip** this rename so `[DESIGNED]` does not imply `larch-logs/design/<RUN_ID>/` materialization without a run id. When `SESSION_ID` was non-empty and `PUBLISH_OK=false`, **skip** this rename so the issue title does not read `[DESIGNED]` while the default branch lacks `larch-logs/design/<RUN_ID>/`; operator retries publish from the preserved `$DESIGN_TMPDIR` or reconciles manually.
 
+### 5d — Gated L3 velocity deferral comment (best-effort)
+
+When **all** of the following guards succeed in order, post **one** tracking comment on issue **#2672** via `gh issue comment` naming the deferred per-round velocity scope (>20% plan growth **and** >10 accepted findings between rounds; skipped on `--trivial` per `references/flags.md`). Otherwise **skip silently** (no warning — multi-source paper trail also lives in `flags.md`).
+
+1. `[ "$ISSUE_NUMBER" = "2670" ]`
+2. **`REPO` identity (fork/clone safety)**: `[ "${REPO:-}" = "character-ai/larch" ]` using the `REPO` value resolved in Step **5c** item **5** (same `owner/repo` the session used for `gh` on the design issue — avoids posting upstream noise when a different repository reuses issue **#2670**).
+3. Sentinel absent: `test ! -f "$HOME/.cache/larch/design-l3-velocity-notified-2670"`
+4. **Upstream argv pin (same shell snippet as `gh`)**: immediately before the `gh` invocation, assert `[ "$ISSUE_NUMBER" = "2670" ]` again and run **only** the `gh` line below so `--repo character-ai/larch` is always present (never rely on hub default / consumer `origin` for this cross-repo comment).
+
+Post with an **explicit upstream repo** (consumer checkout may not match the tracker default). The `--body` argument MUST be the fixed literal below (or a byte-identical single-quoted copy) — **never** assemble comment text from `plan.txt`, `composed-plan.md`, token reports, or other dynamic session material (secret exfiltration / instruction-injection risk on a public upstream issue).
+
+```bash
+if [ "$ISSUE_NUMBER" = "2670" ] && [ "${REPO:-}" = "character-ai/larch" ] && test ! -f "$HOME/.cache/larch/design-l3-velocity-notified-2670"; then
+  set +e
+  gh issue comment 2672 --repo character-ai/larch --body 'Deferred: L3 per-round velocity between review rounds (>20% plan growth and >10 accepted findings). Normative scope: character-ai/larch issue #2672; see skills/design/references/flags.md (Per-round velocity).' >"$DESIGN_TMPDIR/gh-l3-velocity-comment.log" 2>&1
+  _l3_rc=$?
+  set -e
+  if [ "$_l3_rc" -eq 0 ]; then
+    touch "$HOME/.cache/larch/design-l3-velocity-notified-2670"
+  else
+    "${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh" --log "$DESIGN_TMPDIR/execution-issues.md" --site "design Step 5d" --tool "gh issue comment" --exit-code "$_l3_rc" --category Warnings --output-file "$DESIGN_TMPDIR/gh-l3-velocity-comment.log" --redact >/dev/null 2>&1 || true
+  fi
+fi
+```
+
+On successful `gh issue comment` (exit 0), the `touch` above creates the sentinel. On non-zero exit, `append-tool-failure.sh` records the capture (non-fatal) and **do not** create the sentinel.
+
 **Repeat any external reviewer warnings** from earlier steps (Step 0 reviewer-availability checks via `session-setup.sh`, Step 2a sketch-phase failures/timeouts, Step 3 runtime failures, or Step 3b diagram generation failure) so they are visible at the end of the workflow. For example:
 - `**⚠ Codex not available: <reason>**`
 - `**⚠ Cursor review failed: <reason>**`
@@ -807,6 +901,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-tmpdir.sh --dir "$DESIGN_TMPDIR"
 **Plan helper contracts** (per `${CLAUDE_PLUGIN_ROOT}/.claude/rules/script-md-siblings.md`):
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-driver.sh` — ACTION dispatcher. Sibling: `design-driver.md`.
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/emit-plan.sh` — `ACTION=EMIT_PLAN`. Sibling: `emit-plan.md`.
+- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/check-plan-size.sh` — Step 2b.5 plan-size thresholds. Sibling: `check-plan-size.md`. Offline harness: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-check-plan-size.sh`, `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-check-plan-size.md`.
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/tally-plan-review.sh` — `ACTION=TALLY`. Sibling: `tally-plan-review.md`.
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/finalize-plan.sh` — `ACTION=FINALIZE`. Sibling: `finalize-plan.md`.
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/file-design-oos.sh` — design-phase OOS staging + `/issue` stdout annotation. Sibling: `file-design-oos.md`.

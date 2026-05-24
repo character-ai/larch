@@ -83,8 +83,8 @@ Print a table under the header `## Plan Review Findings — Review` listing ever
 
 `AskUserQuestion` with exactly three options:
 
-- **Apply all** — Apply every accepted in-scope finding to `$DESIGN_TMPDIR/plan.txt`, write the revised plan via the Write tool (full file replacement, preserving `diff_lines: <N>`), then re-emit `ACTION=EMIT_PLAN` so `diff-lines.txt` reflects the final plan. Proceed to Step 3b (architecture diagram) — Step 4 (rejected-findings report) and Step 4b (Gate C) follow in normal sequence.
-- **Go through each** — Iterate findings in `FINDING_N` order. For each, fire `AskUserQuestion` (batch up to 4 findings per call) with three options: apply / skip / switch to discussion mode. After all findings resolved, revise `plan.txt` to incorporate only the applied subset, re-emit `ACTION=EMIT_PLAN`, then proceed to Step 3b. If at any per-finding prompt the user picks "switch to discussion mode", stop the iteration immediately, discard any unapplied per-finding intent, and exit to Gate A (no plan revision occurs on this exit path).
+- **Apply all** — Apply every accepted in-scope finding to `$DESIGN_TMPDIR/plan.txt`, write the revised plan via the Write tool (full file replacement, preserving `diff_lines: <N>`), then re-emit `ACTION=EMIT_PLAN` so `diff-lines.txt` reflects the final plan. **Then** run the **Step 2b.5 — Plan-size threshold check** procedure from `SKILL.md`. Only when Step 2b.5 returns to caller (no Split or Cancel selected) proceed to Step 3b (architecture diagram) — Step 4 (rejected-findings report) and Step 4b (Gate C) follow in normal sequence.
+- **Go through each** — Iterate findings in `FINDING_N` order. For each, fire `AskUserQuestion` (batch up to 4 findings per call) with three options: apply / skip / switch to discussion mode. After all findings resolved, revise `plan.txt` to incorporate only the applied subset, re-emit `ACTION=EMIT_PLAN`, **then run Step 2b.5** as above, then proceed to Step 3b when Step 2b.5 returns. If at any per-finding prompt the user picks "switch to discussion mode", stop the iteration immediately, discard any unapplied per-finding intent, and exit to Gate A (no plan revision occurs on this exit path). The Step 2b.5 call fires **once** per Gate B settled path (after the batch `EMIT_PLAN`), not once per per-finding apply.
 - **Switch to discussion mode** — Skip plan revision entirely. Exit to Gate A. `plan.txt` remains as it was before Step 3.
 
 Question text: `"Plan review returned N findings (C critical / H high / M medium / L low). How would you like to handle them?"` Header: `"Plan findings"`. Substitute the actual counts before asking.
@@ -103,6 +103,10 @@ After iteration completes (all findings answered without an early abort), the or
 ### Zero-findings short-circuit
 
 When `$DESIGN_TMPDIR/accepted-plan-findings.md` is empty (no accepted in-scope findings — either no reviewer raised any, or voting rejected all), Gate B prints `⏩ 3.5: Gate B — no accepted findings; nothing to apply` and proceeds directly to Step 3b. No prompt fires; Step 3b → Step 4 → Step 4b (Gate C) run in normal sequence.
+
+### Gate B plan revision and Step 2b.5
+
+Gate B's plan revision may cause Step 2b.5 to prompt the operator (soft: Split / Continue with current scope; hard: Split / Cancel only). If Step 2b.5 exits the skill on **Cancel** (cost line + exit 0) or **Split** (Split-path: decomposition panel stub + exit 1), `$DESIGN_TMPDIR` is preserved and the operator can re-run after addressing sprawl.
 
 ---
 

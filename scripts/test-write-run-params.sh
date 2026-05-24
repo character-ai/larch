@@ -38,7 +38,8 @@ jq -e '
   .design_classification_source == "caller-forwarded" and
   .sketch_budget == 2 and
   .review_budget == "quick" and
-  .workflow_path == "SIMPLE"
+  .workflow_path == "SIMPLE" and
+  .partition_requested == false
 ' --arg reason "$reason" "$OUT" >/dev/null || fail "valid JSON did not match expected schema"
 
 if "$WRITER" \
@@ -97,9 +98,22 @@ jq -e '
   .design_classification == "TRIVIAL_DOC_ONLY" and
   .design_classification_source == "caller-forwarded" and
   .workflow_path == "SIMPLE" and
-  .sketch_budget == 0
+  .sketch_budget == 0 and
+  .partition_requested == false
 ' "$TMPROOT/trivial.json" >/dev/null \
     || fail "trivial preset JSON did not match expected classification fields"
+
+if "$WRITER" \
+    --classification SIMPLE \
+    --reason bad \
+    --source caller-forwarded \
+    --sketch-budget 2 \
+    --review-budget quick \
+    --workflow-path SIMPLE \
+    --partition-requested maybe \
+    --output "$TMPROOT/bad-partition.json" >/dev/null 2>&1; then
+    fail "invalid partition-requested was accepted"
+fi
 
 if "$WRITER" \
     --classification SIMPLE \
@@ -108,8 +122,20 @@ if "$WRITER" \
     --sketch-budget 2 \
     --review-budget quick \
     --workflow-path SIMPLE \
-    --output "$TMPROOT/rejected-source.json" >/dev/null 2>&1; then
-    fail "obsolete router-pre-design source was accepted"
+    --output "$TMPROOT/bad-source.json" >/dev/null 2>&1; then
+    fail "obsolete --source router-pre-design was accepted"
 fi
+
+"$WRITER" \
+    --classification SIMPLE \
+    --reason "partition flag on" \
+    --source caller-forwarded \
+    --sketch-budget 2 \
+    --review-budget quick \
+    --workflow-path SIMPLE \
+    --partition-requested true \
+    --output "$TMPROOT/partition-true.json" >/dev/null
+jq -e '.partition_requested == true' "$TMPROOT/partition-true.json" >/dev/null \
+    || fail "--partition-requested true did not set JSON true"
 
 echo "PASS: test-write-run-params.sh"

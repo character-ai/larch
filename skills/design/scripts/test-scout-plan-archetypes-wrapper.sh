@@ -142,4 +142,26 @@ JSON
 grep -Fq 'WARN=scout-plan-archetypes-wrapper:' "$DR/out.env" || fail "reserved WARN KV"
 [[ "$(jq -r '.archetypes[0].name' "$DR/out.json")" == "api-z" ]] || fail "expected api-z only"
 
+echo "=== malformed ###NEW: (no whitespace after ###) ignored for scope paths ==="
+DM="$TMP/dm"
+setup_design_dir "$DM"
+cat >"$DM/plan.txt" <<'PLAN'
+###NEW: `ignored.md`
+### NEW: `skills/kept.sh`
+PLAN
+export SCOUT_STUB_MANIFEST="$TMP/mm.json"
+unset SCOUT_STUB_ARGV_LOG || true
+cat >"$TMP/mm.json" <<'JSON'
+{"archetypes":[{"name":"scope-check","focus_area":"correctness","weight":1,"rationale":"r","prompt_body":"p"}]}
+JSON
+"$WRAPPER" \
+    --plan-file "$DM/plan.txt" \
+    --description-file "$DM/feature-description.txt" \
+    --output "$DM/scout-plan-manifest.json" \
+    --max-archetypes 6 \
+    --session-env-path "$DM/source-env.sh" >/dev/null
+[[ "$(wc -l <"$DM/scout-plan-scope-files.txt" | tr -d ' ')" == "1" ]] || fail "expected one scope line"
+grep -Fxq 'skills/kept.sh' "$DM/scout-plan-scope-files.txt" || fail "malformed heading must not populate scope"
+! grep -Fq 'ignored.md' "$DM/scout-plan-scope-files.txt" || fail "concatenated ###NEW must not yield ignored.md"
+
 echo "All scout-plan-archetypes-wrapper harness assertions passed."

@@ -1,0 +1,19 @@
+Verifying key claims in the repo with targeted reads/greps.
+
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: EXONERATE -- accurate process note but not an actionable defect warranting a panel-forced follow-up
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: EXONERATE -- real fragility but refactors for message stability are disproportionate here
+FINDING_12: YES
+FINDING_13: YES
+OOS_1: EXONERATE -- intentional run-log policy noise, not a defect to track separately
+OOS_2: EXONERATE -- editorial balance only, no issue needed beyond FINDING_2
+OOS_3: EXONERATE -- routine redaction hygiene reminder, not a new security boundary
+OOS_4: NO -- no new trust surface; a GitHub issue would add tracking noise
