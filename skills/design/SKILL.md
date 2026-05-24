@@ -590,7 +590,9 @@ LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark 
   --variant step3
 ```
 
-Hermetic regression coverage for this script lives in `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-emit-design-plan-preview.sh`. Valid values are `quick` and `full`; if absent or invalid, derive the fallback from `quick_mode` (`quick` when true, otherwise `full`).
+Hermetic regression coverage for `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/emit-design-plan-preview.sh` lives in `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-emit-design-plan-preview.sh`.
+
+**Read `review_budget` from `$DESIGN_TMPDIR/run-params.json` before the quick/full branches below** (parse JSON from disk; do not infer from tier prose alone). Valid values are `quick` and `full`; if absent or invalid, derive the fallback from `quick_mode` (`quick` when true, otherwise `full`).
 
 **If `review_budget=quick`**: **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/plan-review-quick.md` completely. It defines the quick-mode plan-review procedure (self-review checklist, output file requirements, acceptance policy). After executing the procedure, proceed to Step 3.5.
 

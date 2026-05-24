@@ -157,8 +157,8 @@ wraps there as **data**, not instructions. For **`/design`** chat-only checks
 against Step 3 / Gate C plan previews, the mechanical behavior is the
 `skills/design/scripts/emit-design-plan-preview.sh` invocation wired in
 `skills/design/SKILL.md` (see `docs/configuration-and-permissions.md` —
-`LARCH_DESIGN_PLAN_SUMMARY_THRESHOLD`); do not assume duplicated inline fenced
-bodies remain the source of that logic.
+`LARCH_DESIGN_PLAN_SUMMARY_THRESHOLD` and the **Chat-order note** there); do not assume duplicated inline fenced
+bodies remain the source of that logic. Issue-level acceptance or transcript audits must not treat the plan preview as immediately after the Step 3 breadcrumb alone — the visible breadcrumb is followed by a `timing-ledger.sh mark` line before the preview script’s output.
 
 ## `NEXT_ID` and clarify posting
 

@@ -65,6 +65,48 @@ printf '# G\n\nLine\n' >"$d4/plan.txt"
 out4=$("$SUBJECT" --design-tmpdir "$d4" --variant gatec)
 printf '%s\n' "$out4" | grep -Fq '## Final Design Plan' || fail "gatec missing final header"
 
+# Gate C large plan: empty-outline fallback + Gate C bold note (mirrors step3 summary path)
+d6="$TMPROOT/d6"
+mkdir -p "$d6"
+{
+    printf '# GateLarge\n\n'
+    for _ in $(seq 1 130); do
+        printf 'gcline %s\n' "$_"
+    done
+} >"$d6/plan.txt"
+out6=$("$SUBJECT" --design-tmpdir "$d6" --variant gatec)
+printf '%s\n' "$out6" | grep -Fq '## Final Design Plan' || fail "gatec large missing header"
+printf '%s\n' "$out6" | grep -Fq 'gcline 28' || fail "gatec large empty-outline fallback"
+printf '%s\n' "$out6" | grep -Fq 'pick "Other"' || fail "gatec large missing Other-path note"
+
+# Invalid / zero threshold normalization (falls back to 120; 125-line plan still summarizes)
+d7="$TMPROOT/d7"
+mkdir -p "$d7"
+{
+    printf '# Tnorm\n\n'
+    for _ in $(seq 1 125); do printf 'x\n'; done
+} >"$d7/plan.txt"
+out7=$(env LARCH_DESIGN_PLAN_SUMMARY_THRESHOLD=abc "$SUBJECT" --design-tmpdir "$d7" --variant step3)
+printf '%s\n' "$out7" | grep -Fq 'very large' || fail "non-numeric threshold should fall back to 120"
+d7z="$TMPROOT/d7z"
+mkdir -p "$d7z"
+cp "$d7/plan.txt" "$d7z/plan.txt"
+out7z=$(env LARCH_DESIGN_PLAN_SUMMARY_THRESHOLD=0 "$SUBJECT" --design-tmpdir "$d7z" --variant step3)
+printf '%s\n' "$out7z" | grep -Fq 'very large' || fail "zero threshold should fall back to 120"
+
+# Gate C honors the same threshold override as step3
+d8="$TMPROOT/d8"
+mkdir -p "$d8"
+{
+    printf '# T8\n\n'
+    for _ in $(seq 1 15); do printf 'L%s\n' "$_"; done
+} >"$d8/plan.txt"
+out8=$(
+    env LARCH_DESIGN_PLAN_SUMMARY_THRESHOLD=5 "$SUBJECT" --design-tmpdir "$d8" --variant gatec
+)
+printf '%s\n' "$out8" | grep -Fq '## Final Design Plan' || fail "gatec threshold header"
+printf '%s\n' "$out8" | grep -Fq '**Section outline:**' || fail "gatec low threshold should trigger summary"
+
 # Custom threshold via env (numeric path used by emit_plan_body)
 d5="$TMPROOT/d5"
 mkdir -p "$d5"

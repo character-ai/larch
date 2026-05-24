@@ -97,12 +97,12 @@ case "$variant" in
         fi
         if [[ ! -s "$design_tmpdir/plan.txt" ]]; then
             printf '%s\n' '**⚠ 3: plan.txt missing or empty; cannot present plan candidate for review**'
-            touch "$design_tmpdir/.step3-entry-plan-printed"
+            touch "$design_tmpdir/.step3-entry-plan-printed" || true
             exit 0
         fi
         printf '\n## Plan Candidate for Review\n\n'
         emit_plan_body "$design_tmpdir/plan.txt" "$_large_note_step3"
-        touch "$design_tmpdir/.step3-entry-plan-printed"
+        touch "$design_tmpdir/.step3-entry-plan-printed" || true
         ;;
     gatec)
         if [[ -z "${design_tmpdir:-}" || ! -d "$design_tmpdir" ]]; then
