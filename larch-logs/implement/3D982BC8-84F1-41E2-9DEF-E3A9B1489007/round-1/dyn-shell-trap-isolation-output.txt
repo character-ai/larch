@@ -1,0 +1,17 @@
+Gathering the diff and harness source to audit trap cleanup, PATH construction, and set -e/+e blocks.
+
+Verifying `invoke-plan-validator-if-not-quick.sh` guard order and checking `read-design-review-budget.sh` for the unreadable-file branch.
+
+### In-Scope Findings
+
+- **risk-integration** `larch-logs/design/9AD6EC5D-AACC-4AF4-ADAA-F463EFE4F424/`, `larch-logs/implement/3D982BC8-84F1-41E2-9DEF-E3A9B1489007/` — The precomputed branch diff adds entire local design and implement run trees (manifests, token marks, `source-env.sh`, quiet driver logs, plan copies, voting tally, etc.), which are session/workflow artifacts rather than product or test source. Committing them bloats the repo, couples unrelated issue context (for example issue 2730 material appears under `larch-logs/design/...` while the harness work targets 2715), and increases the chance of stale or insufficiently redacted operator paths leaking through review. **Suggested fix:** Drop these paths from the branch before merge (remove from the index and ensure `larch-logs/**` run subtrees stay untracked or gitignored per `docs/run-logs.md`), and limit the PR to the intended `skills/design/scripts/test-read-design-review-budget-invoke.{sh,md}` changes.
+
+- **correctness** `skills/design/scripts/test-read-design-review-budget-invoke.sh:72-76` — `dt`, `full_dt`, `dt_norp`, and `defects_dt` are each created with `mktemp -d` in sequence, but the EXIT trap that removes them is only installed on line 76 after all four assignments; under `set -e`, a failure after any successful `mktemp -d` and before line 76 completes leaves earlier directories outside any trap, so they leak on disk. The branch expands an existing two-directory gap to four. **Suggested fix:** Register or extend the EXIT trap immediately after each directory is created, or create one parent temporary directory and use subdirectories under it so one `rm -rf` covers all invoke fixtures.
+
+### Out-of-Scope Observations
+
+- **`$missing_rp`**: `skills/design/scripts/test-read-design-review-budget-invoke.sh:29-30` only passes a non-existent path into `read-design-review-budget.sh`; nothing creates that path, so there is no cleanup gap for that variable.
+
+- **`fakebin_pyonly` PATH**: With `command -v jq` gating the block, `PATH="$_jq_dir:$fakebin_pyonly:/usr/bin:/bin:/usr/sbin:/sbin"` resolves real `jq` from `$_jq_dir` first and stubs `python3` via `$fakebin_pyonly`, matching the intent to hit the jq branch in `read-design-review-budget.sh:32-35` without shadowing `grep`/`command`.
+
+- **`set +e` / `fail` / EXIT trap**: The guard blocks capture `$?` then restore `set -e` before `fail`; `fail` exits the process and the active EXIT trap still runs for paths already registered at that point (noting the mktemp ordering issue above for dirs created after the last trap update).
