@@ -1,0 +1,25 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: YES
+FINDING_18: YES
+FINDING_19: YES
+OOS_1: EXONERATE -- Possible doc projection drift, but a separate issue is heavier than this non-runtime cleanup warrants.
+OOS_2: YES
+OOS_3: EXONERATE -- Existing implement publishing writes from per-round dirs, so extra KV forwarding is parity cleanup rather than issue-worthy.
+OOS_4: YES
+OOS_5: NO -- Hypothetical future completeness policy is not an actionable issue now.
+OOS_6: NO -- Covered by the plan's review-core sibling documentation update.

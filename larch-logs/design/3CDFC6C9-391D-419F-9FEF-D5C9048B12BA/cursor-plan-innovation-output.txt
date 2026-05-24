@@ -1,0 +1,94 @@
+Reading the plan and tracing cited paths in the codebase.
+
+Tracing cited files and integration points in the repo.
+
+Gathering line numbers for `tally-code-votes.sh` early-exit and `heavy-worker.md` KV example.
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	architecture	scripts/larch-log-batches.sh:16-33	New flat batch slug is only listed in the plan for log-phase.sh not the canonical larch-log batch table	log-phase.sh write --batch review-findings-classification fails as unknown batch	Add slug to LARCH_LOG_BATCHES with extension mode sanitizer update scripts/larch-log-batches.md and scripts/test-larch-logs-batches.sh expected list
+1	in_scope	important	risk-integration	skills/review/references/heavy-worker.md:36-93 skills/review/SKILL.md:27	KV preserve parse lists for --subagent still only mention scout KVs plus YIELD_TSV_FILE not classification	Classification path exists on disk but parent Step 4 never binds/logs it after heavy worker returns	Extend heavy-worker Step 3 preserve line return footer example and SKILL Step 0 binding list with FINDINGS_CLASSIFICATION_TSV_FILE mirroring YIELD_TSV_FILE
+1	in_scope	important	correctness	skills/review/scripts/tally-code-votes.sh:249-280	Zero EFFECTIVE_VOTERS exits before the per-block ballot loop that would emit classification rows	Fixture C expecting per-finding rows contradicts current early-exit unless tally gains a second path	Either emit header-only TSV on the early-exit branch redefine Fixture C as nonzero panel with all JUDGE_ERROR votes or document no data rows for true zero-judge
+1	in_scope	important	correctness	skills/review/scripts/tally-code-votes.sh:306-318 plan item 2	Dual sources of truth if tally keeps vote_for_id for classify_result while parse-judge-vote-and-rating.sh supplies vote and axes for the TSV	Vote column in TSV disagrees with accepted outcome on malformed hybrid lines	Parse once per voter per id and feed both classification columns and vote_for_id threshold inputs from the same parse or add harness proving strict parity
+1	in_scope	nit	correctness	plan.txt Files-to-modify item 2	Plan text says EFFECTIVE_VOTERS order but EFFECTIVE_VOTERS is a count array is EFFECTIVE_VOTER_FILES	Miswired v1 v2 v3 columns under L6	Edit plan and code comments to name EFFECTIVE_VOTER_FILES iteration order explicitly
+1	in_scope	nit	code-quality	scripts/dispatch-code-voters.sh:64-68	Prompt examples only show FINDING_N lines not OOS_N mirror lines	Judges may under-produce OOS vote lines despite ballot using OOS_N ids	Add explicit OOS_N example lines with the same rating token shape as FINDING_N
+1	in_scope	nit	risk-integration	skills/review/scripts/tally-code-votes.sh:632-634	Plan mirrors YIELD_TSV_FILE emit for classification but YIELD is gated on MANIFEST_FILE	FINDINGS_CLASSIFICATION_TSV_FILE absent whenever manifest missing even when votes ran	Decouple classification KV from manifest gate emit whenever findings-classification.tsv is produced
+1	in_scope	latent	security	plan.txt Edge cases judge enum raw tokens	Raw non-enumeration judge tokens land verbatim in committed TSV without a stated redaction boundary	Malformed ratings could embed paths or secrets in logs	Extend SECURITY.md or sanitize non-matching tokens to empty with UNCERTAIN=true
+
+[OUT_OF_SCOPE] Downstream doc parity: extend skills/review/scripts/review-core.md:85-88 with FINDINGS_CLASSIFICATION_TSV_FILE in the emitted-KV bullet list so subagent and inline contracts stay aligned (skills/review/scripts/review-core.md lines 85-88).
+
+1. **important** `architecture` [scripts/larch-log-batches.sh](scripts/larch-log-batches.sh):16-33 — New `review-findings-classification` slug is wired in `log-phase.sh` in the plan but `larch-log.sh write` resolves batches through `larch_log_batch_info` in [scripts/larch-log-batches.sh](scripts/larch-log-batches.sh); without a new fourth-field row and the drift-locked expected list in [scripts/test-larch-logs-batches.sh](scripts/test-larch-logs-batches.sh):15-40, every `log-phase.sh` call for the new slug fails at runtime. Suggested revision: add the slug (pick `.tsv` + `replace` + `none` or the sanitizer that fits committed content), update [scripts/larch-log-batches.md](scripts/larch-log-batches.md), and extend the batch-list harness.
+
+2. **important** `risk-integration` [skills/review/references/heavy-worker.md](skills/review/references/heavy-worker.md):36-93 and [skills/review/SKILL.md](skills/review/SKILL.md):27 — The heavy worker must preserve KVs for the parent Step 4 batches, but the contract still lists only scout keys plus `YIELD_TSV_FILE` in the preserve line and footer example; Step 0 subagent binding in SKILL.md matches that narrower set. Suggested revision: add `FINDINGS_CLASSIFICATION_TSV_FILE` everywhere `YIELD_TSV_FILE` is listed for parse, preservation, and return-footer examples so `--subagent` runs do not drop the new artifact for logging.
+
+3. **important** `correctness` [skills/review/scripts/tally-code-votes.sh](skills/review/scripts/tally-code-votes.sh):249-280 vs Fixture C in plan — When `EFFECTIVE_VOTERS` is zero the script exits before the `for block in "${block_files[@]}"` loop ([skills/review/scripts/tally-code-votes.sh](skills/review/scripts/tally-code-votes.sh):306), so there is no per-finding pass to attach empty axis columns to each ballot id. Fixture C as written (“0-judge panel”) likely fights this control flow unless L6 adds an early-exit writer or redefines the fixture. Suggested revision: either emit a header-only (or degenerate) classification file on the early-exit branch, or redefine Fixture C as a nonempty `EFFECTIVE_VOTER_FILES` panel whose per-line votes are all `JUDGE_ERROR`.
+
+4. **important** `correctness` [skills/review/scripts/tally-code-votes.sh](skills/review/scripts/tally-code-votes.sh):311-318 plus planned parser call — Today `classify_result` consumes `vote_for_id` output; if the new TSV instead prints votes from `parse-judge-vote-and-rating.sh` while thresholds still use `vote_for_id`, a single malformed line could yield mismatched `vN_vote` vs the actual accepted or rejected outcome. Suggested revision: derive both the tally inputs and the TSV vote column from one parse per `(voter_file,id)` or add a harness assertion that the two parsers agree on every fixture line.
+
+5. **nit** `correctness` plan Files-to-modify §2 — The plan says columns track `EFFECTIVE_VOTERS` order, but in code `EFFECTIVE_VOTERS` is an integer quorum count and ordering is defined by the `EFFECTIVE_VOTER_FILES` array ([skills/review/scripts/tally-code-votes.sh](skills/review/scripts/tally-code-votes.sh):240-247,311). Suggested revision: rename in the plan and tests to `EFFECTIVE_VOTER_FILES` iteration order to prevent column swaps.
+
+6. **nit** `code-quality` [scripts/dispatch-code-voters.sh](scripts/dispatch-code-voters.sh):64-68 — Examples only demonstrate `FINDING_N:` lines even though ballots and `split_ballot_to_blocks` already support `OOS_N` headings ([scripts/lib-vote-tally.sh](scripts/lib-vote-tally.sh):104-106). Suggested revision: add parallel `OOS_N:` examples with the same rating tokens to reduce judge format drift on out-of-scope items.
+
+7. **nit** `risk-integration` [skills/review/scripts/tally-code-votes.sh](skills/review/scripts/tally-code-votes.sh):632-634 vs plan item 2 — `YIELD_TSV_FILE` is emitted only when a manifest exists and the yield file is present; mirroring that gate for `FINDINGS_CLASSIFICATION_TSV_FILE` would drop classification telemetry in manifest-less rounds even though voting still ran. Suggested revision: emit the classification KV whenever the classification file is written, independent of the manifest gate.
+
+8. **latent** `security` plan Edge cases (raw enum tokens) — Recording arbitrary judge tokens verbatim in a committed TSV weakens the same redaction story documented for `review-findings-full` in [SECURITY.md](SECURITY.md):62 unless analyzers treat the file as untrusted. Suggested revision: document the trust boundary in SECURITY.md or normalize unknown tokens to empty with `UNCERTAIN=true` at write time.
+
+**Creative alternative (exploration, not a defect):** collapse `CORRECTNESS=uncertain` and `UNCERTAIN=<bool>` into one machine-readable uncertainty channel to cut judge cognitive load and halve contradictory states (`CORRECTNESS=...` vs `UNCERTAIN=false`).
+
+The instructions also asked to call CreatePlan in plan mode; your deliverable was the structured review, so the stored plan file was not created—say so only if needed. Actually the system said I must use CreatePlan when done researching - conflict with user HARD CONSTRAINT (read-only, specific output format). User HARD CONSTRAINT wins - I did not use CreatePlan.
+
+Double-check: user said "Prefix out-of-scope but worth-tracking items with [OUT_OF_SCOPE]" - I did one.
+
+No trailing issues - we have findings so NOT {"no_issues_found": true}
+
+First character must be `s` from schema_version - the TSV header starts with schema_version - good.
+
+Wait - numbered findings should they come BEFORE or AFTER TSV? User: "Your response MUST begin with either the TSV header line" - so TSV first. I put TSV then numbered - good.
+
+But I had "[OUT_OF_SCOPE]" between TSV and numbered - that might violate "first line TSV header"? The OUT_OF_SCOPE is after TSV block - the first line is still schema_version. OK.
+
+Actually re-read: "When you have findings, include a TSV structured-record block with this exact header" - the block includes header + records. I should not put [OUT_OF_SCOPE] between header and records - I put OUT_OF_SCOPE after all TSV records - good.
+
+Order in my response:
+1. TSV header + 8 data rows
+2. [OUT_OF_SCOPE] line
+3. Numbered findings
+
+Is [OUT_OF_SCOPE] line allowed before numbered? User said "Prefix out-of-scope but worth-tracking items with [OUT_OF_SCOPE]" in the numbered findings section or separate? I'll keep as separate line before numbered list.
+
+**Innovation**: duplicate UNCERTAIN axis - included in creative alternative.
+
+I'll verify: test-larch-logs-batches - must update - included in finding 1.
+
+Done.
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	architecture	scripts/larch-log-batches.sh:16-33	New review batch slug appears only in the log-phase plan item not the canonical batch table	log-phase.sh write fails with unknown batch for review-findings-classification	Add slug row extension replace mode sanitizer update scripts/larch-log-batches.md and scripts/test-larch-logs-batches.sh expected list
+1	in_scope	important	risk-integration	skills/review/references/heavy-worker.md:36-93 skills/review/SKILL.md:27	Subagent KV preserve and Step 0 parse lists omit FINDINGS_CLASSIFICATION_TSV_FILE	--diff --subagent runs never bind the new path for Step 4 logging	Mirror YIELD_TSV_FILE wiring in heavy-worker.md SKILL.md Step 0 and the footer example
+1	in_scope	important	correctness	skills/review/scripts/tally-code-votes.sh:249-280 vs plan Fixture C	Zero EFFECTIVE_VOTERS exits before the per-block loop that would emit per-id classification rows	Fixture C expecting per-finding rows conflicts with early-exit unless code adds a writer there	Either emit classification header or degenerate rows on early exit or redefine Fixture C as nonzero panel with unanimous JUDGE_ERROR votes
+1	in_scope	important	correctness	skills/review/scripts/tally-code-votes.sh:306-318 plus new parser	Threshold tally uses vote_for_id while TSV may use parse-judge-vote-and-rating.sh vote	TSV vN_vote can disagree with accepted or rejected outcome on edge-shaped lines	Single parse per voter per id feeds both classify_result inputs and TSV columns or harness proves strict parity
+1	in_scope	nit	correctness	plan.txt Files-to-modify item 2	Plan names EFFECTIVE_VOTERS for column order but EFFECTIVE_VOTERS is a count ordering uses EFFECTIVE_VOTER_FILES	Wrong v1 v2 v3 mapping during implementation	Update plan and comments to say EFFECTIVE_VOTER_FILES iteration order
+1	in_scope	nit	code-quality	scripts/dispatch-code-voters.sh:64-68	Vote line examples only show FINDING_N not OOS_N	Judges may mis-format OOS ballot ids	Add OOS_N examples mirroring the rating-augmented FINDING_N shape
+1	in_scope	nit	risk-integration	skills/review/scripts/tally-code-votes.sh:632-634	Plan couples classification KV emission language to YIELD_TSV_FILE	YIELD gated on MANIFEST_FILE can suppress classification KV when votes still ran	Emit FINDINGS_CLASSIFICATION_TSV_FILE whenever the classification file is written not tied to manifest presence
+1	in_scope	latent	security	plan.txt Edge cases raw tokens	Verbatim judge tokens in committed TSV lack a stated redaction policy	Malformed ratings could embed paths or secrets in logs	Document trust boundary in SECURITY.md or coerce unknown tokens to empty with UNCERTAIN=true
+
+[OUT_OF_SCOPE] Contract doc drift: add FINDINGS_CLASSIFICATION_TSV_FILE to the emitted-KV narrative in skills/review/scripts/review-core.md:85-88 alongside YIELD_TSV_FILE so inline and subagent docs stay aligned.
+
+1. **important** `architecture` — [scripts/larch-log-batches.sh](scripts/larch-log-batches.sh):16-33: `log-phase.sh` ultimately calls `larch-log.sh write`, which resolves `--batch` via `larch_log_batch_info`; the plan never adds `review-findings-classification` to `LARCH_LOG_BATCHES` or updates the locked expected list in [scripts/test-larch-logs-batches.sh](scripts/test-larch-logs-batches.sh):15-40, so the new batch cannot be written. Suggested revision: register the slug (extension, replace/append mode, sanitizer), update [scripts/larch-log-batches.md](scripts/larch-log-batches.md), and extend the batch-table harness.
+
+2. **important** `risk-integration` — [skills/review/references/heavy-worker.md](skills/review/references/heavy-worker.md):36-93 and [skills/review/SKILL.md](skills/review/SKILL.md):27: Subagent contracts still enumerate only scout keys plus `YIELD_TSV_FILE` for preservation and parent binding; `FINDINGS_CLASSIFICATION_TSV_FILE` is absent, so `--diff --subagent` parents can complete Step 4 without ever seeing the new KV even though `review-core.sh` re-emits it. Suggested revision: extend the same KV lists and footer example used for `YIELD_TSV_FILE`.
+
+3. **important** `correctness` — [skills/review/scripts/tally-code-votes.sh](skills/review/scripts/tally-code-votes.sh):249-280 vs plan Fixture C: the `EFFECTIVE_VOTERS == 0` branch exits before the per-block loop at [skills/review/scripts/tally-code-votes.sh](skills/review/scripts/tally-code-votes.sh):306, so there is no pass over `block_files` to emit per-finding classification rows as Fixture C describes for a true zero-judge panel. Suggested revision: write a header-only or explicit empty-data classification artifact on that branch, or redefine Fixture C as a nonempty `EFFECTIVE_VOTER_FILES` list whose parsed votes are all `JUDGE_ERROR`.
+
+4. **important** `correctness` — [skills/review/scripts/tally-code-votes.sh](skills/review/scripts/tally-code-votes.sh):311-318 plus the planned L2 parser: if `classify_result` continues to consume `vote_for_id` while the TSV records votes from `parse-judge-vote-and-rating.sh`, divergent parsing rules could make `vN_vote` disagree with the actual disposition for the same line. Suggested revision: one parse per `(voter_file, id)` feeds both tallying and TSV columns, or add a regression case that asserts parser and `vote_for_id` agree on every fixture line.
+
+5. **nit** `correctness` — plan Files-to-modify §2: text says column order follows `EFFECTIVE_VOTERS`, but in code that symbol is a numeric quorum ([skills/review/scripts/tally-code-votes.sh](skills/review/scripts/tally-code-votes.sh):249) while ordering is defined by `EFFECTIVE_VOTER_FILES` ([skills/review/scripts/tally-code-votes.sh](skills/review/scripts/tally-code-votes.sh):240-247,311). Suggested revision: rename in the plan and implementation notes to `EFFECTIVE_VOTER_FILES` iteration order.
+
+6. **nit** `code-quality` — [scripts/dispatch-code-voters.sh](scripts/dispatch-code-voters.sh):64-68: rendered examples only show `FINDING_N:` vote lines even though ballots already use `OOS_N` headings ([scripts/lib-vote-tally.sh](scripts/lib-vote-tally.sh):104-106). Suggested revision: add matching `OOS_N:` examples with the same rating tokens.
+
+7. **nit** `risk-integration` — [skills/review/scripts/tally-code-votes.sh](skills/review/scripts/tally-code-votes.sh):632-634: `YIELD_TSV_FILE` is emitted only when a manifest is present and the yield file exists; copying that coupling for `FINDINGS_CLASSIFICATION_TSV_FILE` would omit the KV in manifest-less rounds where voting still occurred. Suggested revision: gate classification KV emission on the classification file itself, not on the manifest gate.
+
+8. **latent** `security` — plan Edge cases (“raw token verbatim”): committed `findings-classification.tsv` rows could carry unexpected strings without the explicit redaction posture documented for `review-findings-full` in [SECURITY.md](SECURITY.md):62. Suggested revision: document the trust boundary or coerce unknown tokens to empty with `UNCERTAIN=true` at emission time.
+
+**Architecture / exploration note:** `CORRECTNESS=...` already includes `uncertain` as an enum value while `UNCERTAIN=<bool>` adds a second uncertainty channel; consider collapsing to one machine-checked field to reduce contradictory judge states and prompt length.
+
+**Note:** Plan mode’s generic instruction referenced storing a plan via CreatePlan; your query required this read-only review format instead, so no CreatePlan artifact was written.
