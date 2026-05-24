@@ -1,12 +1,12 @@
 # Version Bump Reasoning
 
-- **Base commit**: `d8f4f057` (chore(larch-logs): flush design run 83378491-6051-4957-BEC9-944AE4D13C57 [skip ci] (#2751))
-- **Current version**: `42.4.9`
+- **Base commit**: `849a93e4` (Fixes #2742: Absorb ship-pr-state init into ship-pr.sh argv (#2742) (#2759))
+- **Current version**: `42.4.10`
 - **Classification scope**: `skills/**` and `agents/**` only (public plugin surface).
 
 ## Result: PATCH
 
-- **New version**: `42.4.10`
+- **New version**: `42.4.11`
 
 ### PATCH rationale
 
