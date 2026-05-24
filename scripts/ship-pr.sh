@@ -2258,6 +2258,10 @@ EOF
                         run_rebase_rebump "$phase"
                         return 0
                     fi
+                    if [[ "$merge_result" == "admin_failed" ]] && [[ "$error_text" == *"Base branch was modified"* ]]; then
+                        run_rebase_rebump "$phase"
+                        return 0
+                    fi
                     [ "$rc" -ne 0 ] || record_failure ci-merge "merge-pr.sh envelope" 1 "$fail_file" "CI Issues"
                     state_set_many BAIL_REASON "$error_text" STALL_TRACKING true STALL_STEP 12d
                     printf '\n--- ORCHESTRATOR DIRECTIVE (STALL_STEP=12d) ---\nDO NOT improvise recovery. Do NOT patch state files, do NOT force-push, do NOT re-invoke ship-pr.sh manually.\nCorrect action: read STALL_TRACKING and STALL_STEP from state, then continue to Step 16 per skills/implement/SKILL.md.\n' >> "$fail_file"
