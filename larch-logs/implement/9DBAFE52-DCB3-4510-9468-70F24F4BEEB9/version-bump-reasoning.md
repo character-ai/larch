@@ -1,12 +1,12 @@
 # Version Bump Reasoning
 
-- **Base commit**: `8e7b6b75` (Fixes #2718: Fix stale static panel denominator in reviewer failure threshold (#2731))
-- **Current version**: `42.4.6`
+- **Base commit**: `2b27b3f3` (Fixes #2730: Document Gate B plan dedup sweep (#2747))
+- **Current version**: `42.4.7`
 - **Classification scope**: `skills/**` and `agents/**` only (public plugin surface).
 
 ## Result: PATCH
 
-- **New version**: `42.4.7`
+- **New version**: `42.4.8`
 
 ### PATCH rationale
 
