@@ -1,0 +1,41 @@
+Reading the plan and tracing cited code paths for the architecture review.
+
+Reading cited sections of `scripts/ship-pr.sh`, `skills/implement/SKILL.md`, and test harness files to validate the plan against the codebase.
+
+Assembling the review: verifying whether `require_key` omits keys that `write_state` already includes and checking for other `same Invoke` references.
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/ship-pr.sh:2437-2445	Plan both expands require_key for BAIL_FAILURE_DETAIL_LOG / NO_LOGS_COMMIT / IMPLEMENT_TMPDIR and later rejects that expansion for backward compatibility	Implementer may ship the wrong branch: legacy state files break after require_key growth, or the earlier bullet is ignored and reviewers expect keys that are never enforced	Delete the contradictory half: pick the Failure modes resolution as normative and remove the require_key-append bullets in the ship-pr.sh section (or vice versa) so the PR has one authoritative rule
+2	in_scope	important	risk-integration	skills/implement/SKILL.md:1564-1611	Several Step 8+ re-invoke instructions still say to reuse the full Step 8+ Invoke argv set	Conflicts with the planned NEVER #16 note that seven argv-init flags are ignored on resume and may be omitted; operators may over-copy argv and with wrong values risk confusion (even if ship-pr ignores them)	Update the recovery paragraph, Exit 0 continuation, Exit 3 step 12, Exit 5, and Exit 6 bullets in the same change as NEVER #16 so language distinguishes durable non-state flags from cold-start-only argv-init flags
+3	in_scope	important	architecture	skills/implement/references/conflict-resolution.md:112-112	Reference doc repeats the same foreground Invoke flags contract for ship-pr-rrr-phase14 return but the plan file list does not include this path	Post-merge SKILL and conflict-resolution guidance diverge on what must be repeated across ship-pr re-entry	Add this file to the PR checklist or apply the same wording harmonization as SKILL.md in the same PR
+4	in_scope	important	architecture	scripts/ship-pr.sh:239-298	DECISION_2 mandates one shared ordered key list driving write_initial_state and require_key yet the plan still describes ad hoc for-loop edits	Drift between emitted keys and validated keys remains likely despite the voted SSOT decision	Spell out the concrete refactor (single ordered list source feeding both writers and validators) in the plan so implementation matches DECISION_2
+5	in_scope	nit	code-quality	scripts/ship-pr.sh:32-36	Plan anchors usage() to ~L80-100 but usage() currently sits at the top of ship-pr.sh	Misleading navigation for reviewers and implementers	Retarget anchors to the usage() label or refresh line numbers when editing the plan
+6	out_of_scope	latent	architecture	scripts/test-implement-structure.sh:11-177	Failure modes mention a possible future drift test between SKILL key bullets and ship-pr output; not scheduled in this PR	Documentation and machine state may diverge silently until a later harness exists	File a follow-up issue or add scripts/test-implement-structure.sh coverage when drift recurs
+
+**Code quality**
+
+1. **[code-quality]** [scripts/ship-pr.sh:32-36](scripts/ship-pr.sh) — The plan’s stale `usage()` line anchors (vs current layout) make the “around L80-100” guidance misleading; revise the plan to reference the function by name or refreshed numbers (see TSV row 5).
+
+2. **[code-quality]** Plan “Files to modify” vs “Failure modes” — The `require_key` expansion for the three new keys is asserted then explicitly abandoned (see TSV row 1). That is a specification defect, not a style nit; resolve before coding.
+
+**Risk integration**
+
+3. **[risk-integration]** [skills/implement/SKILL.md:1564-1611](skills/implement/SKILL.md) — Multiple re-invoke paths still require repeating the full `Invoke:` argv while the proposed NEVER #16 clarification says seven argv-init flags may be omitted on resume; harmonize all Step 8+ re-entry prose in one pass (see TSV row 2).
+
+4. **[risk-integration]** [skills/implement/references/conflict-resolution.md:112-112](skills/implement/references/conflict-resolution.md) — The `ship_pr_pre_push` Phase 4 return still pins “same foreground `Invoke:` flags”; it is outside the plan’s file list and can drift after the SKILL edit (see TSV row 3).
+
+**Correctness**
+
+5. **[correctness]** [scripts/ship-pr.sh:2437-2445](scripts/ship-pr.sh) — Until the plan picks a single rule, it is ambiguous whether `require_key` should grow for `BAIL_FAILURE_DETAIL_LOG`, `NO_LOGS_COMMIT`, and `IMPLEMENT_TMPDIR`; that directly affects whether older partial state files remain valid (see TSV row 1).
+
+**Architecture**
+
+6. **[architecture]** [scripts/ship-pr.sh:239-298](scripts/ship-pr.sh) — DECISION_2 (shared ordered key list) is not reflected in the procedural “add flags / add printf / tweak loop” bullets; without a concrete SSOT shape, the voted design is at risk of partial application (see TSV row 4).
+
+7. **[architecture]** [skills/implement/SKILL.md:1550-1559](skills/implement/SKILL.md) vs [scripts/ship-pr.md:13-17](scripts/ship-pr.md) — The plan relies on argv-init plus `ship-pr.md` as the argv contract authority while still keeping a long key bullet appendix in SKILL; that is coherent if edited carefully, but the plan should call out that NEVER #11 still references “writing `ship-pr-state.sh`” until that bullet is updated (plan item 3), to avoid half-migrated operator mental models.
+
+**Security**
+
+8. **[security]** No additional security defects beyond what the plan already covers (CR/LF rejection, no sourcing of state, `printf` for values). Continuing to treat state as opaque lines for `awk`/grep consumers remains appropriate; no change suggested beyond executing the stated validation.
+
+[OUT_OF_SCOPE] Follow-up drift guard between [skills/implement/SKILL.md:1550-1559](skills/implement/SKILL.md) key bullets and machine-emitted keys in [scripts/ship-pr.sh:239-298](scripts/ship-pr.sh), plus any future extension to [scripts/test-implement-structure.sh:11-177](scripts/test-implement-structure.sh) as noted in the plan’s Failure modes (TSV row 6).

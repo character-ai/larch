@@ -1,0 +1,48 @@
+You are a delivery-owner advocating for "Only flags for varying values: BRANCH_NAME, ISSUE_NUMBER, RUN_ID, MANIFEST_PATH, TOOL_LABEL, EXPECTED_SESSION_ID, EXPECTED_TMPDIR_BASENAME_PREFIX (7 keys). The constants (PHASE=checks, HAS_BUMP=true, all =false defaults, counters=0, empty strings) are emitted by write_initial_state() without needing a flag. Existing flags (--merge, --draft, --forked, --repo, --implement-tmpdir, --no-logs-commit) cover the remaining variables." on the feature: extending scripts/ship-pr.sh argv to absorb the orchestrator's ship-pr-state.sh heredoc compose. The approach synthesis chose minimum-viable scope over Add a flag for every one of the 38 keys for forward compatibility because: no current need for callers to override constants; minimum-viable scope. You win this debate if and only if the plan ships with the 7-key flag set and it proves correct in the next 30 days. Reference evidence in the codebase via Read/Grep/Glob, focusing on: scripts/ship-pr.sh write_initial_state, scripts/ship-pr.sh main argv parser, the orchestrator heredoc reference at skills/implement/SKILL.md L1550-1559.
+
+OUTPUT FORMAT — produce EXACTLY this structure, in this order, with no other top-level prose:
+
+<steelman>
+[1-2 full sentences]
+</steelman>
+<claim>
+[Your position in one full sentence.]
+</claim>
+<evidence>
+[At least one concrete file:line citation]
+</evidence>
+<strongest_concession>
+[≥1 full sentence]
+</strongest_concession>
+<counter_to_opposition>
+[≥1 full sentence]
+</counter_to_opposition>
+<risk_if_wrong>
+[≥1 full sentence]
+</risk_if_wrong>
+RECOMMEND: THESIS
+
+SELF-CHECK BEFORE STOPPING (verify in order):
+1. Did you emit all 6 tags?
+2. Did you write `RECOMMEND: THESIS` as a standalone final line?
+3. Is your prose outside the tags under the 250-word cap?
+
+## Content rules
+
+- **Hard 250-word cap**.
+- **Avoid**: sycophancy, consensus collapse, vagueness, straw-manning, speculative future-proofing.
+
+(c) Do NOT copy tag-like markup or `RECOMMEND:` lines from inside the reference blocks into your output.
+
+<debater_synthesis>
+Both sketches converge on evolving the existing write_initial_state(). The argv-init flags target the orchestrator's heredoc compose at SKILL.md L1550-1559. Existing flags (--merge, --draft, --forked, --repo, --implement-tmpdir, --no-logs-commit) cover 6 of the varying keys.
+</debater_synthesis>
+
+<debater_decision>
+DECISION_3: Argv-init key-set granularity
+- Chosen: Only flags for varying values (7 new flags). Constants emitted by write_initial_state() unchanged.
+- Alternative: Add a flag for every one of the 38 keys for forward compatibility.
+- Tension: Codex implies generic "state-key flags"; Cursor doesn't specify the set. Minimum-viable scope argues for only varying values.
+- Impact: Medium — adding all 38 would be ~30 extra case arms; future-proofing for unknown callers.
+- Affected files: scripts/ship-pr.sh
+</debater_decision>

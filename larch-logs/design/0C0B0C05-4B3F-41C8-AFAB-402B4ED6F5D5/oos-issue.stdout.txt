@@ -1,0 +1,13 @@
+ISSUES_CREATED=2
+ISSUES_FAILED=0
+ISSUES_DEDUPLICATED=0
+ISSUE_1_NUMBER=2752
+ISSUE_1_URL=https://github.com/character-ai/larch/issues/2752
+ISSUE_1_ID=4513006019
+ISSUE_1_TITLE=[OOS] Pre-existing asymmetry between `write_initial_state` and `require_key` in scripts/ship-pr.sh
+ISSUE_1_BLOCKER_LINKS_APPLIED=1
+ISSUE_2_NUMBER=2753
+ISSUE_2_URL=https://github.com/character-ai/larch/issues/2753
+ISSUE_2_ID=4513007382
+ISSUE_2_TITLE=[OOS] Drift guard between SKILL.md key bullets and ship-pr.sh emitted keys
+ISSUE_2_BLOCKER_LINKS_APPLIED=1

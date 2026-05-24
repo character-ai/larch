@@ -1,0 +1,18 @@
+<steelman>
+Full-38 argv coverage makes the state contract explicit at the call boundary and would let future keys move from fixed defaults to caller-provided values without another parser change.
+</steelman>
+<claim>
+The full-38 flag set is disproportionate, and even the seven-flag compromise should be limited to values the script cannot derive or validate from existing arguments/session files.
+</claim>
+<evidence>
+`skills/implement/SKILL.md:1550` requires a 38-key state file, but the actual invocation at `skills/implement/SKILL.md:1577`-`1585` passes only operational flags; `scripts/ship-pr.sh:260`-`297` already initializes almost all fixed/default keys, while `scripts/ship-pr.sh:2403`-`2411` shows the current parser has just nine case arms.
+</evidence>
+<strongest_concession>
+The full-38 approach is attractive if the real goal is to abolish prompt-side state composition entirely and make `ship-pr.sh` the single constructor for every initial key, because that is mechanically clear and easy to audit.
+</strongest_concession>
+<counter_to_opposition>
+Forward compatibility is weak here: most keys are not caller variability but state-machine internals like `CI_PASSED=false`, `OOS_PENDING=false`, counters, PR fields, and bail fields, so exposing them as argv creates mutable surface area without eliminating any demonstrated present caller need.
+</counter_to_opposition>
+<risk_if_wrong>
+If more of those defaulted keys soon become legitimate caller inputs, the smaller interface will require repeated parser edits and could keep fragile heredoc composition alive longer than necessary.
+</risk_if_wrong>

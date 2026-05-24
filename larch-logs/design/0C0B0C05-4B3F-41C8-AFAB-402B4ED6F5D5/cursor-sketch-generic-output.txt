@@ -1,0 +1,5 @@
+Exploring the codebase to map `ship-pr.sh` state handling, the implement skill Step 8+ block, and test harnesses before drafting the plan.
+
+Noting: `ship-pr.sh` already creates a missing state file via `write_initial_state()` before validation, but `/implement` currently pre-writes a richer heredoc so that path rarely runs; the new argv-init must match the orchestrator’s key set and values, not only the slimmer `write_initial_state()` template.
+
+

@@ -1,0 +1,15 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+OOS_1: EXONERATE -- helper drift is real, but the current plan keeps validation loose so a separate issue is premature.
+OOS_2: NO -- NEVER #18 does not describe a heredoc rewrite; it only references clearing OOS_PENDING after the gate.
+OOS_3: YES
+OOS_4: YES
+OOS_5: NO -- these partial write-final-report fixtures are not consumed by ship-pr.sh require_key validation.
