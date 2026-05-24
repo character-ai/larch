@@ -1,0 +1,8 @@
+Gathering the diff, git log, and full markdown to verify doc completeness and stale denominator prose.
+
+### In-Scope Findings
+- **correctness** `skills/review/scripts/check-reviewer-failure-threshold.md:35` — The **STATUS classification** paragraph still says the threshold answers whether the **baseline 12-slot or 7-slot** panel failed, while the same file’s Args/Output/Threshold sections were updated to a **flat 6-slot** model. That leaves the sibling doc internally contradictory and misstates what the script measures after the branch change. **Suggested fix:** Rewrite the closing clause to describe the **6-slot static specialist baseline for both `hard` and `simple`** (or neutral wording like “the static specialist panel”), and keep the contrast with optional dynamic scouts.
+
+### Out-of-Scope Observations
+- The branch’s second commit (`chore(larch-logs): flush implement run …`) adds tracked run-log material under `larch-logs/implement/` alongside the threshold fix; that is orthogonal to doc correctness for `check-reviewer-failure-threshold` and may be worth handling as a separate concern if the intent was a minimal product fix PR.
+- Test harness **echo** comments that still say “round 2+ … uses a 6-slot intended denominator” are now slightly understated because round 1 uses the same denominator; that predates the branch in spirit and is minor compared to the stale prose in the primary `.md`.
