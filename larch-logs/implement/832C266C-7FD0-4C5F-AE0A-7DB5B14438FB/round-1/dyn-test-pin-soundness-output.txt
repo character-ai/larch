@@ -1,0 +1,9 @@
+Reading the diff and `scripts/test-design-structure.sh` to verify check (17) correctness, variable scope, and bash 3.2 behavior.
+
+### In-Scope Findings
+
+- **correctness** `scripts/test-design-structure.sh:482-486` — Check (17)’s `sed -n "$((step5b_line + 1)),$((step5c_line - 1))p"` window is the open interval between the `### 5b` and `### 5c` heading lines (correct for “strictly between” those headings), `step5b_line` / `step5c_line` are assigned and validated in the same top-level script flow immediately above check (17) (no intervening subshell), and `grep -Fq … <<<"$step5_between"` is valid on bash 3.2 (here-strings are supported; multi-line stdin is fine for `grep -Fq`). However, the `grep -Fq '/larch:issue' <<<"$step5_between"` assertion does not actually tie `/larch:issue` to the continuation banner: the Step 5b prose already mentions `/larch:issue` multiple times anywhere in that window, so the banner could drop the `/larch:issue` call-out while the check still passes, contradicting the failure message “banner window must name /larch:issue”. **Suggested fix:** Pin a single literal that appears only on the banner line (for example `grep -Fq 'Continue to Step 5c IMMEDIATELY.** The \`/larch:issue\` Skill tool' "$SKILL_MD"` after a line-number guard, or `grep -F` a full one-line substring joining the banner prefix and `` `/larch:issue` ``), or split the file at the banner line with `grep -n` and assert `/larch:issue` on that same line.
+
+### Out-of-Scope Observations
+
+- The precomputed `diff.txt` also adds under `larch-logs/implement/832C266C-7FD0-4C5F-AE0A-7DB5B14438FB/` run-local artifacts (`manifest.json`, `parent-issue.md`, `plan-goals-test.md`, `plan-review-tally.json`); that is unrelated to test-pin mechanics for check (17) but may be worth cleaning before merge if those paths are not intended to ship on `main`.
