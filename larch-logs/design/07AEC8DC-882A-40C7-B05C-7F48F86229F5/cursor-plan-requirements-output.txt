@@ -1,0 +1,28 @@
+Reading the plan and tracing cited paths in the codebase.
+
+Tracing cited scripts and tests to validate the plan against the codebase.
+
+Checking `CARVE_OUTS` for `test-review-and-fix` and whether a new section needs shard wiring.
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	risk_integration	Makefile:634-644;scripts/test-harness-shards-coverage.md:19-21	New parsers section only runs under full make test-review-and-fix which is a CI carve-out; lint uses test-review-and-fix-dispatch and test-review-and-fix-convergence so the added harness never runs in default CI unless wired like those targets.	Regression can reintroduce set -e footgun without CI signal.	Add Makefile recipe test-review-and-fix-parsers mirroring dispatch/convergence, register it on a test-harnesses-N shard and .PHONY per scripts/test-harness-shards-coverage.sh rules; optionally extend the Makefile carve-out comment block if prose changes.
+1	in_scope	important	correctness	plan.txt:40-60;plan.txt:136-155	Files-to-modify parsers subsection ends with print ok lines as item 6 and never lists the lint malformed stderr case or the direct step5_parse_kv_tokens matrix promised in Testing strategy.	Implementer may ship incomplete tests versus the plan’s own acceptance list (missing lint mirror and explicit kv helper cases).	Align the numbered harness bullets with Testing strategy: add explicit steps for lint malformed capture plus direct step5_parse_kv_tokens calls for match miss and empty line under set -e.
+1	in_scope	nit	code_quality	plan.txt:29-31	Ambiguous sentence No other changes to either function sitting between wrapper edits and call sites untouched.	Readers may think wrappers must not change at all.	Reword to no further edits inside the while-loop bodies besides the post-loop stderr guard; call sites in run_implement_loop stay unchanged.
+1	in_scope	nit	risk_integration	skills/review-and-fix/scripts/test-review-and-fix.md:11	Harness contract still documents only --section dispatch|convergence.	Operators and CI docs disagree with the new flag after the PR.	Extend the Supports line to dispatch|convergence|parsers and note what the parsers shard covers.
+1	in_scope	latent	correctness	skills/review-and-fix/scripts/review-implement-step5-loop.sh:7-16	Required-field guard treats empty STEP5_CHK_STATUS and empty STEP5_CHK_RELEVANT_CHECKS_OK as malformed; a line like STATUS= yields an empty captured value so both globals can stay empty while a key was present.	Spurious required field missing stderr versus a true empty capture depending on producer behavior.	Document in plan Edge cases or tighten the guard to distinguish absent keys from empty values if that distinction matters to operators.
+
+1. **[risk_integration]** [Makefile:634-644](Makefile:634-644); [scripts/test-harness-shards-coverage.md:19-21](scripts/test-harness-shards-coverage.md) — CI only runs `test-review-and-fix-dispatch` and `test-review-and-fix-convergence`; a new `--section parsers` block is never invoked by `make lint` unless you add a third Makefile recipe and shard wiring like the existing section targets. **Suggested revision:** add `test-review-and-fix-parsers`, place it on a `test-harnesses-*` prerequisite list, ensure `.PHONY` coverage per `scripts/test-harness-shards-coverage.sh`.
+
+2. **[correctness]** [plan.txt:40-60](file:///Users/zhupanov/.cache/larch/sessions/claude-design-larch7-nwQRor/plan.txt) vs [plan.txt:136-155](file:///Users/zhupanov/.cache/larch/sessions/claude-design-larch7-nwQRor/plan.txt) — the detailed harness bullets omit the lint malformed case and the explicit `step5_parse_kv_tokens` cases that the same plan’s Testing strategy lists. **Suggested revision:** reconcile the two subsections so implementation steps match every listed test case.
+
+3. **[code_quality]** Plan prose around “No other changes to either function” — ambiguous next to new wrapper stderr logic. **Suggested revision:** scope that sentence to unchanged while-loop interiors and unchanged `run_implement_loop` call sites.
+
+4. **[risk_integration]** [skills/review-and-fix/scripts/test-review-and-fix.md:11](skills/review-and-fix/scripts/test-review-and-fix.md) — contract doc will be stale for `--section`. **Suggested revision:** extend the documented section union when parsers lands.
+
+5. **[correctness]** [skills/review-and-fix/scripts/review-implement-step5-loop.sh:7-16](skills/review-and-fix/scripts/review-implement-step5-loop.sh) — `KEY=` empty-value lines can leave both discriminator globals empty; the new stderr path may fire even when a key token existed. **Suggested revision:** note or handle this edge in the plan’s Edge cases if empty values are considered distinct from “missing keys.”
+
+**Architecture:** No gap found—the central `step5_parse_kv_tokens` totality plus wrapper-level diagnostics matches the stated `set -e` root cause in [skills/review-and-fix/scripts/review-implement-step5-loop.sh:7-48](skills/review-and-fix/scripts/review-implement-step5-loop.sh) and the described `v="$(...)"` pattern.
+
+**Security:** No material new exposure beyond intentional diagnostic logging of capture paths; producers already write structured KVs in [scripts/run-relevant-checks-captured.sh](scripts/run-relevant-checks-captured.sh) / [scripts/lint-fix-loop.sh](scripts/lint-fix-loop.sh).
+
+[OUT_OF_SCOPE] [skills/review-and-fix/SKILL.md:26-28](skills/review-and-fix/SKILL.md:26-28) — optional follow-up to mention `--section parsers` or the new Makefile target in the validation bullet so contributor docs stay aligned with CI entrypoints.

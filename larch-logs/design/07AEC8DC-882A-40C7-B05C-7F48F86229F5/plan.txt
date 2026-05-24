@@ -1,0 +1,268 @@
+# Implementation Plan — Issue #2654
+
+## Summary
+
+Fix `set -e` violation in `step5_parse_checks_capture_file` and
+`step5_parse_lint_capture_file` (skills/review-and-fix/scripts/review-implement-step5-loop.sh)
+by making `step5_parse_kv_tokens` total (always exit 0). Add wrapper-level
+diagnostics that surface malformed capture files clearly: a stderr line for
+operator visibility, plus — for the checks wrapper specifically — a
+fail-closed global override (`STEP5_CHK_STATUS=fail` /
+`STEP5_CHK_FAILURE_REASON=malformed-capture`) so `run_implement_loop` emits a
+`stall` envelope instead of silently completing. Add a focused regression
+test that sources the loop file and exercises both wrappers under `set -e`,
+and wire the new test section into the sharded CI Makefile so the regression
+runs under `make lint` / `test-harnesses-*`.
+
+## Files to modify/create
+
+### skills/review-and-fix/scripts/review-implement-step5-loop.sh
+
+1. Drop `return 1` at the end of `step5_parse_kv_tokens`. The function
+   becomes total: prints either the matched value or `\n`, then returns 0.
+   Add one short comment marking that the "key not found" signal is
+   encoded via empty stdout, not exit code. No edits inside the
+   `step5_parse_checks_capture_file` / `step5_parse_lint_capture_file`
+   while-loop bodies; `run_implement_loop` call sites
+   (`step5_parse_checks_capture_file` at the post-round, lint-applied
+   rerun, and no-changes rerun call sites; `step5_parse_lint_capture_file`
+   at the lint capture site) are untouched.
+2. After the `done <"$file"` in `step5_parse_checks_capture_file`, add a
+   post-loop sanity check. Required-field discriminator: **at least one of
+   `STEP5_CHK_STATUS`, `STEP5_CHK_RELEVANT_CHECKS_OK`, or
+   `STEP5_CHK_RELEVANT_CHECKS_SKIPPED`** must be populated. If all three
+   are empty:
+   - Write a clear stderr line:
+     `step5_parse_checks_capture_file: required field missing (none of STATUS, RELEVANT_CHECKS_OK, RELEVANT_CHECKS_SKIPPED) in capture file: <path>`
+   - **Fail closed** by additionally setting
+     `STEP5_CHK_STATUS=fail` and `STEP5_CHK_FAILURE_REASON=malformed-capture`.
+     This flows into the existing `STATUS=fail` branch in
+     `run_implement_loop` (the empty-`REDACTED_LOG_FILE` arm at the
+     post-parse fail check), which emits a `stall` envelope with reason
+     `relevant-checks-malformed-capture` and exits 2.
+3. After the `done <"$file"` in `step5_parse_lint_capture_file`, add a
+   matching sanity check: if `STEP5_LINT_STATUS` is still empty, emit
+   `step5_parse_lint_capture_file: required field missing (LINT_FIX_STATUS) in capture file: <path>`
+   to stderr. Do NOT override the global — `run_implement_loop`'s `case`
+   on `STEP5_LINT_STATUS` already has a `*` default arm that emits a
+   `stall` envelope (`lint-fix-failed`) on any unrecognized value
+   including empty, so stderr-only is sufficient on the lint side.
+
+### skills/review-and-fix/scripts/review-implement-step5-loop.md
+
+Append one short paragraph documenting:
+- The new return semantics of `step5_parse_kv_tokens` ("always returns 0;
+  `key not found` is signaled by empty stdout").
+- The wrapper-level required-field check, including the three-way
+  checks-side discriminator (`STATUS` / `RELEVANT_CHECKS_OK` /
+  `RELEVANT_CHECKS_SKIPPED`) and the fail-closed override on the checks
+  side. Note that the lint side relies on `run_implement_loop`'s `*`
+  default for unrecognized status (stderr-only).
+- Keep prose terse to match the existing one-paragraph file. No drift-prone
+  line numbers (per `.claude/rules/drift-prone-prose-in-docs.md`).
+
+### skills/review-and-fix/scripts/test-review-and-fix.sh
+
+Add a new `parsers` section gated behind `--section parsers` and add it to
+the `case` whitelist alongside `dispatch|convergence`. Section contents:
+
+1. Source `review-implement-step5-loop.sh` directly (the test file
+   already runs under `set -euo pipefail` so this also exercises the
+   bug surface).
+2. **Direct `step5_parse_kv_tokens` matrix** under `set -e`:
+   - Positive: line with `KEY=value`, key=KEY → matched value printed,
+     exit 0.
+   - Negative: line with `OTHER=foo`, key=KEY → empty stdout, exit 0
+     (the regression — must NOT exit 1).
+   - Empty line: empty input string, key=KEY → empty stdout, exit 0.
+3. **`step5_parse_checks_capture_file` — passing single-line form**:
+   write `RELEVANT_CHECKS_OK=true SITE=foo COVERAGE=full`, call the
+   wrapper, assert `STEP5_CHK_RELEVANT_CHECKS_OK=true`,
+   `STEP5_CHK_STATUS=""`, function returned 0 without killing the shell,
+   and stderr does NOT contain `required field missing`.
+4. **`step5_parse_checks_capture_file` — multi-line failing form**:
+   write `STATUS=fail` then `FAILURE_REASON=bad-thing` on a second line,
+   assert `STEP5_CHK_STATUS=fail`,
+   `STEP5_CHK_FAILURE_REASON=bad-thing`, and no stderr emitted.
+5. **`step5_parse_checks_capture_file` — `RELEVANT_CHECKS_SKIPPED=true`
+   form** (FINDING_1): write `RELEVANT_CHECKS_SKIPPED=true SITE=foo`,
+   assert `STEP5_CHK_RELEVANT_CHECKS_SKIPPED=true`,
+   `STEP5_CHK_STATUS=""`, no stderr `required field missing`. This is
+   the legitimate clean envelope from consumer repos lacking
+   `scripts/relevant-checks.sh`.
+6. **`step5_parse_checks_capture_file` — malformed checks capture**
+   (FINDING_4 fail-closed): write `IRRELEVANT=true` (no STATUS, no
+   RELEVANT_CHECKS_OK, no RELEVANT_CHECKS_SKIPPED). Capture stderr,
+   assert it contains the literal substring `required field missing`,
+   assert `STEP5_CHK_STATUS=fail` and
+   `STEP5_CHK_FAILURE_REASON=malformed-capture`, and assert the
+   wrapper still returned 0 under `set -e` (no early exit).
+7. **`step5_parse_lint_capture_file` — passing form**: write
+   `LINT_FIX_STATUS=applied` (FINDING_5: real producer value, not the
+   synthetic `ok`). Assert `STEP5_LINT_STATUS=applied`, no stderr.
+8. **`step5_parse_lint_capture_file` — malformed lint capture**:
+   write `OTHER=stuff` (no LINT_FIX_STATUS). Capture stderr, assert it
+   contains `required field missing`, assert `STEP5_LINT_STATUS=""`
+   (not overridden; lint wrapper does not fail-close globals because
+   `run_implement_loop`'s `*` default already stalls), and assert the
+   wrapper still returned 0 under `set -e`.
+
+For test cases that assert "no `required field missing` substring",
+capture stderr to a temp file with `2>"$TMP/stderr.log"` and grep
+explicitly; do not rely on terminal output. Print `ok: parsers <case>`
+lines per test case to match existing style. Reuse the existing harness
+conventions: `TMP=$(mktemp -d ...)`, `fail`/`pass` helpers, the
+`section_runs parsers` guard. Do NOT touch the existing `dispatch` /
+`convergence` sections.
+
+Document next to the lint fixture: real `lint-fix-loop.sh` producer
+emits one of `applied`, `main-agent-required`, `failed`, or
+`no-changes`.
+
+### skills/review-and-fix/scripts/test-review-and-fix.md
+
+Update the documented `--section` union from `dispatch|convergence` to
+`dispatch|convergence|parsers` (FINDING_3). Add one short note describing
+what the parsers slice covers (`step5_parse_kv_tokens` totality,
+`step5_parse_checks_capture_file` / `step5_parse_lint_capture_file`
+discriminator paths). Avoid drift-prone line numbers per
+`.claude/rules/drift-prone-prose-in-docs.md`.
+
+### Makefile
+
+Add a `test-review-and-fix-parsers` target (FINDING_2) mirroring the
+existing `test-review-and-fix-dispatch` and `test-review-and-fix-convergence`
+recipes. Register it on an existing `test-harnesses-N` shard (place it on
+the lightest shard alongside the other two section targets, matching the
+current pattern of the section-target row that already has
+`test-review-and-fix-dispatch` / `test-review-and-fix-convergence`), add it
+to `.PHONY`, and update any adjacent comment that enumerates the section
+targets (e.g. "two section targets" → "three section targets"). Run
+`scripts/test-harness-shards-coverage.sh` after the edit to confirm the
+shard coverage check still passes.
+
+## Approach
+
+The bug has a single root cause (`step5_parse_kv_tokens` returns 1 + bash
+`var=$(cmd)` propagates exit codes + `set -e`). Fixing it centrally in the
+helper is one line, instead of `|| true` at six call sites. The function
+becomes total — there is no longer an "error" mode in the helper, only
+"matched" (non-empty stdout) and "not matched" (empty stdout). Callers
+already discriminate via `[[ -n "$v" ]]`, so semantics at every call site
+are byte-identical to before. The diff is the smallest that achieves the
+goal (KARPATHY §2 Simplicity First).
+
+Wrapper-level diagnostics surface malformed capture files in run logs.
+Stderr is the visibility channel; the fail-closed STATUS override on the
+checks side hardens the loop against silent fall-through past the
+`STATUS=fail` branch in `run_implement_loop`. The lint side does not
+need a fail-closed override because the existing `case` on
+`STEP5_LINT_STATUS` already maps unrecognized (including empty) values to
+the `*` default arm, which stalls. Treating the two wrappers symmetrically
+would either over-engineer the lint side or under-protect the checks side.
+
+Required-field definition per wrapper (single source of truth — see
+test-review-and-fix.sh parser bullets above):
+- `step5_parse_checks_capture_file`: at least one of `STATUS`,
+  `RELEVANT_CHECKS_OK`, or `RELEVANT_CHECKS_SKIPPED` must be populated.
+  All three are real producer discriminators emitted by
+  `scripts/run-relevant-checks-captured.sh`. `RELEVANT_CHECKS_SKIPPED=true`
+  is the clean envelope in consumer repos lacking `scripts/relevant-checks.sh`;
+  treating it as missing would emit spurious diagnostics on every
+  legitimate run.
+- `step5_parse_lint_capture_file`: `LINT_FIX_STATUS` must be populated.
+  Producer emits one of `applied`, `main-agent-required`, `failed`,
+  `no-changes`.
+
+CI safety: wiring the new `parsers` section into the sharded Makefile is
+load-bearing — `make lint` only runs the section targets, not the full
+`test-review-and-fix.sh`. Without `test-review-and-fix-parsers` on a
+shard, the regression test could silently stop running.
+
+## Edge cases
+
+- **Empty line in capture file**: already handled by the existing
+  `[[ -z "$line" ]] && continue` guards. No change needed.
+- **Multiple lines, key on one of them**: existing for-loop sets the
+  global on the matching line, leaves it set across subsequent
+  non-matching lines (because the inner `[[ -n "$v" ]] && STEP5_CHK_X="$v"`
+  only assigns when the helper produced a non-empty value). Unchanged.
+- **Multiple lines with same key on more than one**: last occurrence
+  wins — same as current behavior. Unchanged.
+- **`RELEVANT_CHECKS_SKIPPED=true` capture**: legitimate clean envelope
+  from consumer repos without `scripts/relevant-checks.sh`. Treated as
+  well-formed (satisfies the three-way discriminator). Wrapper emits
+  no stderr; `run_implement_loop` normalizes `STATUS=pass` via the
+  existing `if [[ "$STEP5_CHK_RELEVANT_CHECKS_SKIPPED" == "true" ]]`
+  branch.
+- **`KEY=` with empty value**: the helper now prints empty stdout and
+  returns 0 for any tokenization, including `KEY=` with no value. The
+  wrapper's `[[ -n "$v" ]] && X="$v"` skips the assignment, the global
+  stays empty, and the discriminator gate treats it as if the key was
+  absent. This matches the conservative interpretation (an empty value
+  is not a valid discriminator) without further code. Test coverage
+  for this exact edge is out of scope for this PR.
+- **Bash 3.2 portability**: no new constructs (no `mapfile`, no
+  associative arrays, no `${var,,}`). Plain `printf >&2`, `[[ -z ... ]]`,
+  and direct global assignments.
+- **`&&` list under `set -e`**: empirically verified that the existing
+  per-iteration `[[ -n "$v" ]] && STEP5_CHK_X="$v"` pattern is exempt
+  from `set -e` exit per the bash manual; the post-loop required-field
+  check is reached normally after the helper fix.
+- **Quiet-mode FD interactions**: the stderr writes do not go through
+  the `emit`/`emit_kv` quiet-mode helpers — they are direct
+  `printf >&2` so they show up in run logs whether or not quiet mode
+  is active.
+
+## Failure modes
+
+1. **Future caller adds a key not in the current set with a typo**. With
+   the helper always returning 0, a typo (e.g.
+   `step5_parse_kv_tokens "$line" RELEVENT_CHECKS_OK`) would never get a
+   non-zero exit. Mitigation: the wrapper-level required-field check
+   surfaces malformed reads at the wrapper boundary — a typo would
+   manifest as "required field missing" stderr at the wrapper that
+   owns it. The parsers regression test pins the contract for both
+   wrappers.
+
+2. **Wrapper stderr line gets line-wrapped or rate-limited by a future
+   logging layer**. The line is intentionally single-line and short.
+   Mitigation: regression test asserts on the literal substring
+   `required field missing`, which is the load-bearing diagnostic
+   token.
+
+3. **Producer evolution breaks the discriminator contract**.
+   `scripts/run-relevant-checks-captured.sh` currently emits one of
+   `STATUS`, `RELEVANT_CHECKS_OK`, or `RELEVANT_CHECKS_SKIPPED` on
+   every success path; `scripts/lint-fix-loop.sh` emits `LINT_FIX_STATUS`
+   from its four-value enum. If a future producer change introduces a
+   new discriminator field on the success path without updating the
+   wrapper, the wrapper would emit `required field missing` on
+   legitimate captures. Mitigation: the wrapper-level diagnostic is
+   stderr-only on the lint side (no behavior change) and fail-closed
+   on the checks side (stall envelope — but with a clear reason
+   `relevant-checks-malformed-capture` operators can root-cause).
+   Test coverage in `test-review-and-fix-parsers` would catch the
+   contract break in CI when the producer adds a new discriminator
+   without updating the wrapper.
+
+## Testing strategy
+
+- New `parsers` section in `skills/review-and-fix/scripts/test-review-and-fix.sh`
+  (full case enumeration in the Files-to-modify subsection above): 8 cases
+  covering `step5_parse_kv_tokens` totality, the three checks-side
+  discriminator paths (`STATUS=fail`, `RELEVANT_CHECKS_OK=true`,
+  `RELEVANT_CHECKS_SKIPPED=true`), the fail-closed malformed-checks path,
+  the lint happy path (with the real `applied` producer value), and the
+  malformed-lint stderr-only path. Single source of truth for cases is
+  the Files-to-modify subsection.
+- New `test-review-and-fix-parsers` Makefile target on a `test-harnesses-N`
+  shard so the regression runs under `make lint` and CI.
+- `bash scripts/relevant-checks.sh` after edits (the canonical post-edit
+  validation per CLAUDE.md).
+- `bash scripts/test-harness-shards-coverage.sh` to confirm shard
+  coverage still passes after the Makefile edit.
+- Existing `test-review-and-fix.sh dispatch` and `convergence` sections
+  must continue to pass — touching them is out of scope.
+
+diff_lines: 110

@@ -1,0 +1,32 @@
+Reading the plan and inspecting referenced code paths.
+
+Inspecting the implementation files the plan references.
+
+Checking capture-file producers and test harness patterns for `RELEVANT_CHECKS_SKIPPED` and section guards.
+
+Starting with the required TSV header (tab-separated). Findings follow the TSV block.
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/run-relevant-checks-captured.sh:140-143	Plan treats empty STATUS and empty RELEVANT_CHECKS_OK as malformed	Producer emits only RELEVANT_CHECKS_SKIPPED=true (no STATUS/OK); post-parse logic in review-implement-step5-loop.sh:175-177 maps that to pass; proposed stderr would fire on every legitimate skip-when-check-script-missing run	Define well-formed capture as at least one of STATUS RELEVANT_CHECKS_OK RELEVANT_CHECKS_SKIPPED non-empty; align stderr copy and Edge cases / Approach bullets; add parsers harness case RELEVANT_CHECKS_SKIPPED=true with assert stderr lacks required field missing
+1	in_scope	important	risk-integration	Makefile:634-644	New parsers section is never run under CI harness targets	Only test-review-and-fix-dispatch and test-review-and-fix-convergence invoke --section; parsers regressions run only on full make test-review-and-fix	Add test-review-and-fix-parsers target mirroring dispatch/convergence; register it in a test-harnesses-* shard and scripts/test-harness-shards-coverage.sh carve-outs if required
+1	in_scope	latent	architecture	skills/review-and-fix/scripts/review-implement-step5-loop.sh:172-306	Plan keeps wrapper exit 0 on malformed capture with stderr only	Malformed or empty discriminator still falls through to pass branch and can reach step5_emit_final_envelope complete at 305-306; operators see stderr but automation still records success	If fail-closed behavior is required emit stall envelope or non-zero exit after stderr; otherwise document explicitly as diagnostic-only fail-open in review-implement-step5-loop.md
+1	in_scope	nit	risk-integration	<TMPDIR>/plan.txt:40-64	Files-to-modify numbered list ends at malformed checks plus print ok; Testing strategy lists separate kv-token and lint-malformed cases	Implementer may ship incomplete harness omitting lint malformed or direct step5_parse_kv_tokens coverage	Mirror Testing strategy items 1 and 6 as explicit numbered bullets in Files-to-modify or merge duplicate specs into one checklist
+1	in_scope	nit	correctness	<TMPDIR>/plan.txt:128-134	Failure modes claim both producers always emit a discriminator KV on success	Skipped path emits only RELEVANT_CHECKS_SKIPPED per run-relevant-checks-captured.sh:141-143	Undermines edge-case reasoning for required-field missing	Rewrite bullet 3 to include skip path or qualify with when checks script exists
+
+1. **correctness** [`scripts/run-relevant-checks-captured.sh:140-143`](scripts/run-relevant-checks-captured.sh) — The plan’s “both STATUS and RELEVANT_CHECKS_OK empty ⇒ malformed” rule conflicts with the real skip envelope (`RELEVANT_CHECKS_SKIPPED=true` only). [`review-implement-step5-loop.sh:175-177`](skills/review-and-fix/scripts/review-implement-step5-loop.sh) already treats that as a valid pass path. **Suggested revision:** extend the sanity predicate (and stderr wording) to treat any of `STATUS`, `RELEVANT_CHECKS_OK`, or `RELEVANT_CHECKS_SKIPPED` as satisfying the discriminator; add a positive parsers test with only `RELEVANT_CHECKS_SKIPPED=true` and assert no `required field missing` line.
+
+2. **risk-integration** [`Makefile:634-644`](Makefile) — CI and harness shards call `test-review-and-fix.sh` only with `--section dispatch` or `--section convergence`, not full `test-review-and-fix`. A gated `parsers` section therefore does not run in those jobs unless wired explicitly. **Suggested revision:** add `test-review-and-fix-parsers` (and shard registration / coverage script updates per repo convention).
+
+3. **architecture** [`skills/review-and-fix/scripts/review-implement-step5-loop.sh:172-306`](skills/review-and-fix/scripts/review-implement-step5-loop.sh) — stderr without changing control flow still allows the loop to emit a **complete** envelope after a genuinely malformed capture (same as today minus `set -e` abort). **Suggested revision:** if the intent is observability only, state fail-open semantics in [`review-implement-step5-loop.md`](skills/review-and-fix/scripts/review-implement-step5-loop.md); if the intent is safety, couple the diagnostic to `step5_emit_final_envelope` stall or a non-zero exit.
+
+4. **risk-integration** (plan doc only) — The “Files to modify” numbered harness bullets do not list the lint malformed case or the direct `step5_parse_kv_tokens` cases that appear later under Testing strategy. **Suggested revision:** unify into one ordered checklist so implementation cannot drop cases.
+
+5. **correctness** (plan doc only) — Failure modes item 3 overstates producer contracts (“at least one discriminator KV on success”). **Suggested revision:** align prose with the skip producer path above.
+
+[OUT_OF_SCOPE] Quiet-mode / FD3 contract for `emit` vs capture is pre-existing and appears consistent with `lib-quiet.sh` (`exec 3>&1` before redirect); files [`scripts/lib-quiet.sh:97-111`](scripts/lib-quiet.sh), [`scripts/run-relevant-checks-captured.sh:236-242`](scripts/run-relevant-checks-captured.sh) — worth tracking only if capture-empty bugs resurface; not introduced by this PR’s stated diff.
+
+---
+
+The instructions required the response to **begin** with the TSV header when there are findings; the block above starts with `schema_version` as the first line. If your runner requires **only** TSV with no trailing prose, use everything from `schema_version` through the last TSV data row and move the numbered list into issue comments separately.
+
+

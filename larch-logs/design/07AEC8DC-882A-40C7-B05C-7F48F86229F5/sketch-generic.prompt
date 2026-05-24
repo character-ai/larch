@@ -1,0 +1,70 @@
+Propose a high-level implementation approach for this feature: [BUG] step5_parse_checks_capture_file exits 1 under set -e when key absent from kv token line
+
+
+## Problem
+
+`step5_parse_checks_capture_file` in `skills/review-and-fix/scripts/review-implement-step5-loop.sh` exits 1 under `set -e` because `v="$(step5_parse_kv_tokens "$line" KEY)"` propagates the non-zero exit when the key is absent from the current token line.
+
+## Root cause
+
+`step5_parse_kv_tokens` returns 1 when the requested key is not found on the line:
+
+```bash
+step5_parse_kv_tokens() {
+    local line="$1" key="$2" tok
+    for tok in $line; do
+        case "$tok" in
+            "${key}="*) printf '%s\n' "${tok#*=}"; return 0 ;;
+        esac
+    done
+    printf '\n'
+    return 1    # key not found
+}
+```
+
+In `step5_parse_checks_capture_file`, the assignments use `v="$(step5_parse_kv_tokens "$line" KEY)"` (separate lines, NOT part of an `&&` chain at that point):
+
+```bash
+v="$(step5_parse_kv_tokens "$line" STATUS)"
+[[ -n "$v" ]] && STEP5_CHK_STATUS="$v"
+v="$(step5_parse_kv_tokens "$line" FAILURE_REASON)"   # <-- exits 1 on first STATUS=fail line
+[[ -n "$v" ]] && STEP5_CHK_FAILURE_REASON="$v"
+```
+
+In bash with `set -e`, `var="$(cmd)"` propagates the exit code of `cmd`. When `step5_parse_kv_tokens` exits 1 (key not present on that line), `set -e` fires and kills the entire `review-and-fix.sh` process.
+
+`run_implement_loop` re-enables `set -e` at line 116 (`set -e`) after `_implement_round_body` returns, then calls `step5_parse_checks_capture_file` — so the exit fires on every round.
+
+## Observed symptom
+
+`run-step5-review.sh --mode loop` exits with code 1 (not 0 = complete, not 2 = stall) after every round body completes. No `STEP5_REVIEW_STATUS` KV is emitted. Confirmed on bash 3.2 (macOS system bash — the runtime `/usr/bin/env bash` resolves to).
+
+Triggering paths:
+- **Passing checks** (`RELEVANT_CHECKS_OK=true`): output is a single-line `RELEVANT_CHECKS_OK=true SITE=... COVERAGE=full`. Parsing it tries `step5_parse_kv_tokens "RELEVANT_CHECKS_OK=true..." STATUS` — key `STATUS` not found → exits 1 → script dies.
+- **Failing checks** (`STATUS=fail`): output has `STATUS=fail` on line 1, `FAILURE_REASON` on line 2. Parsing line 1 tries `step5_parse_kv_tokens "STATUS=fail" FAILURE_REASON` — key not on this line → exits 1 → script dies.
+
+Both paths kill the script via the same `set -e` violation.
+
+## Fix
+
+Add `|| true` after each `v="$(step5_parse_kv_tokens ...)"` assignment in `step5_parse_checks_capture_file`:
+
+```bash
+v="$(step5_parse_kv_tokens "$line" STATUS)" || true
+[[ -n "$v" ]] && STEP5_CHK_STATUS="$v"
+v="$(step5_parse_kv_tokens "$line" FAILURE_REASON)" || true
+[[ -n "$v" ]] && STEP5_CHK_FAILURE_REASON="$v"
+v="$(step5_parse_kv_tokens "$line" REDACTED_LOG_FILE)" || true
+[[ -n "$v" ]] && STEP5_CHK_REDACTED_LOG_FILE="$v"
+v="$(step5_parse_kv_tokens "$line" RELEVANT_CHECKS_OK)" || true
+[[ -n "$v" ]] && STEP5_CHK_RELEVANT_CHECKS_OK="$v"
+v="$(step5_parse_kv_tokens "$line" RELEVANT_CHECKS_SKIPPED)" || true
+[[ -n "$v" ]] && STEP5_CHK_RELEVANT_CHECKS_SKIPPED="$v"
+```
+
+The same fix applies to `step5_parse_lint_capture_file`.
+
+## Impact
+
+Loop mode review always exits unexpectedly. Workaround: run individual rounds using `--mode diff` and manually manage round advancement.
+. Explore the codebase. Write 2-3 paragraphs covering: (1) Key architectural decisions and approach, (2) Which files/modules to modify and why, (3) Main tradeoffs and risks. Do NOT modify files.
