@@ -7,7 +7,9 @@ REPO_ROOT=$(cd "$(dirname "$0")/.." && pwd -P)
 SCRIPT="$REPO_ROOT/scripts/scout-dynamic-archetypes.sh"
 export CLAUDE_PLUGIN_ROOT="$REPO_ROOT"
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/test-scout-dynamic-archetypes.XXXXXX")
-trap 'rm -rf "$TMP"' EXIT
+GOOD_PROMPT_OVERRIDE="$REPO_ROOT/.scout-prompt-override-harness.$$"
+trap 'rm -rf "$TMP"; rm -f "$GOOD_PROMPT_OVERRIDE"' EXIT
+printf 'Plan-review scout preamble override line for harness.\n' >"$GOOD_PROMPT_OVERRIDE"
 
 fail() {
     echo "FAIL: $1" >&2
@@ -392,5 +394,91 @@ rc=$?
 set -e
 [[ "$rc" -eq 2 ]] || fail "description too large should fail validation"
 grep -Fq 'exceeds 256 KB' "$TMP/description-too-large/stderr.env" || fail "description too large stderr"
+
+# --prompt-override-file: must be a regular file under CLAUDE_PLUGIN_ROOT (max 256KB).
+mkdir -p "$TMP/prompt-override-good"
+seed_case_inputs "$TMP/prompt-override-good"
+set +e
+PATH="$BIN:$PATH" "$SCRIPT" \
+    --mode description \
+    --scope-files "$TMP/prompt-override-good/scope-files.txt" \
+    --description-text "override acceptance" \
+    --plan-file "$TMP/prompt-override-good/plan.md" \
+    --max-archetypes 0 \
+    --output "$TMP/prompt-override-good/scout-manifest.json" \
+    --prompt-override-file "$GOOD_PROMPT_OVERRIDE" \
+    --timeout 5 \
+    >"$TMP/prompt-override-good/stdout.env" 2>"$TMP/prompt-override-good/stderr.env"
+ov_good_rc=$?
+set -e
+[[ "$ov_good_rc" -eq 0 ]] || fail "prompt override under plugin root with max 0 should succeed"
+grep -Fq 'SCOUT_STATUS=empty' "$TMP/prompt-override-good/stdout.env" || fail "prompt override good: expected empty scout"
+
+mkdir -p "$TMP/prompt-override-outside"
+seed_case_inputs "$TMP/prompt-override-outside"
+printf 'x\n' >"$TMP/prompt-override-outside/bad-override.txt"
+set +e
+PATH="$BIN:$PATH" "$SCRIPT" \
+    --mode description \
+    --scope-files "$TMP/prompt-override-outside/scope-files.txt" \
+    --description-text "x" \
+    --plan-file "$TMP/prompt-override-outside/plan.md" \
+    --max-archetypes 0 \
+    --output "$TMP/prompt-override-outside/scout-manifest.json" \
+    --prompt-override-file "$TMP/prompt-override-outside/bad-override.txt" \
+    --timeout 5 \
+    >"$TMP/prompt-override-outside/stdout.env" 2>"$TMP/prompt-override-outside/stderr.env"
+ov_out_rc=$?
+set -e
+[[ "$ov_out_rc" -eq 2 ]] || fail "prompt override outside CLAUDE_PLUGIN_ROOT must exit 2"
+grep -Fq 'FAILURE_REASON=prompt-override-invalid' "$TMP/prompt-override-outside/stdout.env" \
+    || fail "prompt override outside root: expected FAILURE_REASON on stdout"
+
+mkdir -p "$TMP/prompt-override-symlink"
+seed_case_inputs "$TMP/prompt-override-symlink"
+sym_ov="$REPO_ROOT/.scout-override-symlink.$$"
+ln -sf "$GOOD_PROMPT_OVERRIDE" "$sym_ov"
+set +e
+PATH="$BIN:$PATH" "$SCRIPT" \
+    --mode description \
+    --scope-files "$TMP/prompt-override-symlink/scope-files.txt" \
+    --description-text "x" \
+    --plan-file "$TMP/prompt-override-symlink/plan.md" \
+    --max-archetypes 0 \
+    --output "$TMP/prompt-override-symlink/scout-manifest.json" \
+    --prompt-override-file "$sym_ov" \
+    --timeout 5 \
+    >"$TMP/prompt-override-symlink/stdout.env" 2>"$TMP/prompt-override-symlink/stderr.env"
+ov_sym_rc=$?
+set -e
+rm -f "$sym_ov"
+[[ "$ov_sym_rc" -eq 2 ]] || fail "prompt override symlink must exit 2"
+grep -Fq 'FAILURE_REASON=prompt-override-invalid' "$TMP/prompt-override-symlink/stdout.env" \
+    || fail "prompt override symlink: expected FAILURE_REASON on stdout"
+
+mkdir -p "$TMP/prompt-override-oversize"
+seed_case_inputs "$TMP/prompt-override-oversize"
+huge_ov="$REPO_ROOT/.scout-prompt-override-oversize.$$"
+python3 - <<PY >"$huge_ov"
+import sys
+sys.stdout.write("z" * 262145)
+PY
+set +e
+PATH="$BIN:$PATH" "$SCRIPT" \
+    --mode description \
+    --scope-files "$TMP/prompt-override-oversize/scope-files.txt" \
+    --description-text "x" \
+    --plan-file "$TMP/prompt-override-oversize/plan.md" \
+    --max-archetypes 0 \
+    --output "$TMP/prompt-override-oversize/scout-manifest.json" \
+    --prompt-override-file "$huge_ov" \
+    --timeout 5 \
+    >"$TMP/prompt-override-oversize/stdout.env" 2>"$TMP/prompt-override-oversize/stderr.env"
+ov_big_rc=$?
+set -e
+rm -f "$huge_ov"
+[[ "$ov_big_rc" -eq 2 ]] || fail "prompt override over 256KB must exit 2"
+grep -Fq 'FAILURE_REASON=prompt-override-invalid' "$TMP/prompt-override-oversize/stdout.env" \
+    || fail "prompt override oversize: expected FAILURE_REASON on stdout"
 
 echo "All assertions passed."

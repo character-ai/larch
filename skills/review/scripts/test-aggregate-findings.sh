@@ -76,6 +76,7 @@ EOF
                     cat > "$out" <<'EOF'
 ### FINDING_1: merged title
 - **Reviewer(s)**: cursor-a-output.txt, cursor-b-output.txt, cursor-c-output.txt
+- **Severity**: nit
 - **Concern**: normalized concern
 - **Suggested revision**: fix
 
@@ -102,6 +103,7 @@ EOF
                 cat > "$out" <<'EOF'
 ### FINDING_1: merged title
 - **Reviewer(s)**: cursor-a-output.txt, cursor-b-output.txt, cursor-c-output.txt
+- **Severity**: nit
 - **Concern**: normalized concern
 - **Suggested revision**: fix
 
@@ -137,11 +139,13 @@ EOF
                 cat > "$out" <<'EOF'
 ### FINDING_1: in-scope A
 - **Reviewer(s)**: cursor-a-output.txt
+- **Severity**: important
 - **Concern**: x
 - **Suggested revision**: fix
 
 ### FINDING_2: [OUT_OF_SCOPE] **code-quality** [`x`]
 - **Reviewer(s)**: cursor-a-output.txt
+- **Severity**: latent
 - **Concern**: oos
 - **Suggested revision**: n/a
 
@@ -205,6 +209,7 @@ EOF
                 cat > "$out" <<'EOF'
 ### FINDING_1: merged title
 - **Reviewer(s)**: cursor-a-output.txt, cursor-b-output.txt, cursor-c-output.txt
+- **Severity**: nit
 - **Concern**: normalized concern
 - **Suggested revision**: fix
 
@@ -216,6 +221,7 @@ EOF
                 cat > "$out" <<'EOF'
 ### FINDING_1: merged title
 - **Reviewer(s)**: cursor-a-output.txt (via C.2 coverage gap), cursor-b-output.txt, cursor-c-output.txt
+- **Severity**: nit
 - **Concern**: normalized concern
 - **Suggested revision**: fix
 
@@ -225,6 +231,7 @@ EOF
                 cat > "$out" <<'EOF'
 ### FINDING_1: merged
 - **Reviewer(s)**: cursor-a-output.txt, cursor-b-output.txt
+- **Severity**: nit
 - **Concern**: merged
 - **Suggested revisions**:
   - From cursor-a-output.txt: alpha one
@@ -237,6 +244,7 @@ EOF
                 cat > "$out" <<'EOF'
 ### FINDING_1: merged
 - **Reviewer(s)**: cursor-a-output.txt, cursor-b-output.txt, cursor-c-output.txt
+- **Severity**: nit
 - **Concern**: merged
 - **Suggested revisions**:
   - From cursor-typo-output.txt: same bug
@@ -247,6 +255,7 @@ EOF
                 cat > "$out" <<'EOF'
 ### FINDING_1: merged title
 - **Reviewer(s)**: cursor-a-output.txt, cursor-b-output.txt, cursor-c-output.txt
+- **Severity**: nit
 - **Concern**: normalized concern
 - **Suggested revisions**:
   - From cursor-a-output.txt: totally_unique_garbage_marker_xyzzy12345
@@ -257,6 +266,7 @@ EOF
                 cat > "$out" <<'EOF'
 ### FINDING_1: merged title
 - **Reviewer(s)**: cursor-a-output.txt, cursor-b-output.txt, cursor-c-output.txt
+- **Severity**: nit
 - **Concern**: normalized concern
 - **Suggested revisions**:
   - From cursor-a-output.txt: alpha beta gamma delta epsilon zeta unique_tail_token_qwerty99
@@ -269,6 +279,7 @@ EOF
                 cat > "$out" <<'EOF'
 ### FINDING_1: merged
 - **Reviewer(s)**: cursor-a-output.txt, cursor-b-output.txt
+- **Severity**: nit
 - **Concern**: merged
 - **Suggested revisions**:
   - From cursor-a-output.txt: first line of fix
@@ -282,12 +293,32 @@ EOF
                 cat > "$out" <<'EOF'
 ### FINDING_1: merged title
 - **Reviewer(s)**: cursor-a-output.txt, cursor-b-output.txt, cursor-c-output.txt
+- **Severity**: nit
 - **Concern**: normalized concern
 - **Suggested revisions**:
   wedged preamble before first From line
   - From cursor-a-output.txt: fix
   - From cursor-b-output.txt: fix
   - From cursor-c-output.txt: fix
+
+EOF
+                ;;
+            merge_missing_severity)
+                cat > "$out" <<'EOF'
+### FINDING_1: merged title
+- **Reviewer(s)**: cursor-a-output.txt, cursor-b-output.txt, cursor-c-output.txt
+- **Concern**: normalized concern
+- **Suggested revision**: fix
+
+EOF
+                ;;
+            merge_severity_important)
+                cat > "$out" <<'EOF'
+### FINDING_1: merged title
+- **Reviewer(s)**: cursor-a-output.txt, cursor-b-output.txt, cursor-c-output.txt
+- **Severity**: important
+- **Concern**: normalized concern
+- **Suggested revision**: fix
 
 EOF
                 ;;
@@ -1120,5 +1151,36 @@ AGGREGATE_STUB_MERGE_KIND=zero_findings_prose_finding_ids \
     --mode diff >"$TMP/out-negprose.env"
 grep -Fq 'REASON=ok' "$TMP/out-negprose.env" || fail "FINDING_ids prose empty-merge must still succeed"
 grep -Fq 'AGGREGATOR_VALIDATION_FAILED=preamble_finding_substring' "$TMP/aggregator-validate.stderr" 2>/dev/null && fail "FINDING_ids prose must not emit preamble_finding_substring"
+
+echo "=== merged output must include - **Severity**: line ==="
+cp "$TMP/in3.md" "$TMP/in3-sev.md"
+write_stub_dispatch
+AGGREGATE_DISPATCH_SH="$TMP/stub-dispatch.sh" \
+AGGREGATE_STUB_MODE=ok \
+AGGREGATE_STUB_MERGE_KIND=merge_severity_important \
+"$AGG" \
+    --findings-file "$TMP/in3-sev.md" \
+    --review-tmpdir "$TMP" \
+    --codex-present true \
+    --cursor-present true \
+    --mode diff >"$TMP/out-sev.env"
+grep -Fq 'AGGREGATED=true' "$TMP/out-sev.env" || fail "severity-important AGGREGATED"
+grep -Fq '**Severity**: important' "$TMP/in3-sev.md" || fail "expected important severity in merged findings"
+
+echo "=== merged output missing Severity fails validation ==="
+cp "$TMP/in3.md" "$TMP/in3-nosev.md"
+write_stub_dispatch
+AGGREGATE_DISPATCH_SH="$TMP/stub-dispatch.sh" \
+AGGREGATE_STUB_MODE=ok \
+AGGREGATE_STUB_MERGE_KIND=merge_missing_severity \
+"$AGG" \
+    --findings-file "$TMP/in3-nosev.md" \
+    --review-tmpdir "$TMP" \
+    --codex-present true \
+    --cursor-present true \
+    --mode diff >"$TMP/out-nosev.env"
+grep -Fq 'AGGREGATED=false' "$TMP/out-nosev.env" || fail "missing-severity AGGREGATED"
+grep -Fq 'REASON=validation-failed' "$TMP/out-nosev.env" || fail "missing-severity REASON"
+grep -Fq 'missing - **Severity**' "$TMP/aggregator-validate.stderr" || fail "expected severity diagnostic on stderr"
 
 echo "All aggregate-findings harness assertions passed."

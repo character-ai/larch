@@ -19,6 +19,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Migration posture**: legacy `[IN PROGRESS]` and `[PLANNED]` prefixes are stripped by `strip_lifecycle_prefix` for backward compatibility but are no longer accepted as `--state` values by `tracking-issue-write.sh` or as admission-pass prefixes.
 - **Audit scope**: workflow call sites and rename `--state` surfaces in the active runtime tree (`skills/`, `scripts/`, `agents/`, `.claude/`, `docs/`, tests) now use the new prefix set; deliberate legacy bracket literals remain only where migration, admission recovery, strip helpers, or hermetic fixtures require them. This Unreleased section documents the migration and may name the old prefixes. Historical shipped changelog bodies and `larch-logs/` were not bulk-retitled.
 
+## [42.0.20] - 2026-05-23
+
+### Changed
+
+- Plan review gains a fail-open scout plus panel dispatcher so Step 3 can run 10 static slots plus up to twelve dynamic Cursor/Codex pairs grounded in the plan's Files-to-modify scope.
+- Scout-dynamic-archetypes now honors a PLUGIN_ROOT-only optional prompt override with explicit validation, regression coverage, and contract docs aligned to the plan-review wrapper.
+- Merged review findings must include a Severity line on every FINDING block so aggregation stays compatible with future multi-round plan-review convergence work.
+
 ## [42.0.19] - 2026-05-23
 
 ### Changed

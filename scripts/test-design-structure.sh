@@ -414,6 +414,12 @@ grep -Fq 'ACTION=FINALIZE' "$SKILL_MD" \
   || fail "(14b3) SKILL.md missing ACTION=FINALIZE emission"
 grep -Fq 'design-driver.sh' "$SKILL_MD" \
   || fail "(14b4) SKILL.md missing design-driver.sh dispatcher invocation"
+grep -Fq 'scout-plan-archetypes-wrapper.sh' "$SKILL_MD" \
+  || fail "(14c1) SKILL.md missing scout-plan-archetypes-wrapper.sh (plan-review dynamic scout)"
+grep -Fq 'dispatch-plan-review-panel.sh' "$SKILL_MD" \
+  || fail "(14c2) SKILL.md missing dispatch-plan-review-panel.sh (plan-review panel manifest)"
+grep -Fq 'PANEL_PATHS_FILE' "$SKILL_MD" \
+  || fail "(14c3) SKILL.md missing PANEL_PATHS_FILE parse contract for plan-review collection"
 
 # Check 16: dialectic waterfall + per-side assignment contract pins (#2620).
 DIALPROTO_MD="$REPO_ROOT/skills/shared/dialectic-protocol.md"

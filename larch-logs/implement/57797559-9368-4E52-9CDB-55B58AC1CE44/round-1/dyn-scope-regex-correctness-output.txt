@@ -1,0 +1,19 @@
+Gathering the diff, git log, and the wrapper + test sections for scope-regex review.
+
+Checking for plan examples using the sibling pattern and whether `### New:` appears in templates:
+
+### In-Scope Findings
+
+- **correctness** `skills/design/scripts/scout-plan-archetypes-wrapper.sh:124-139` — Every backtick span in the heading tail is appended with no path-shape check, unlike the no-backtick branch which requires `"/" in tok`; issue-style / run-log plans commonly use `### NEW: \`path/to/file\` (+ sibling \`.md\`)`, so a second span like `.md` is treated as its own scope entry and pollutes `scout-plan-scope-files.txt` (same shape as `larch-logs/implement/57797559-9368-4E52-9CDB-55B58AC1CE44/plan-goals-test.md:15`). **Suggested fix:** Filter backtick captures the same way as fallback tokens (e.g. require a `/` or a known repo-root prefix, and drop extension-only tokens such as `.md`), or only treat the first backtick span on the line as the primary path when the pattern matches the documented sibling prose.
+
+- **correctness** `skills/design/scripts/scout-plan-archetypes-wrapper.sh:133-139` — If the tail contains any backtick, the whitespace fallback is skipped, so any additional path-like tokens outside backticks on that line are ignored; when there are no backticks, only `parts[0]` is considered, so multiple space-separated paths on one line are dropped and prose-led lines like `### NEW: Add skills/foo.sh` yield `parts[0]` without `/` and contribute nothing. **Suggested fix:** Scan all whitespace-separated tokens (or a small path regex over the full tail) for slash-bearing repo paths regardless of backticks, dedupe against `seen`, and keep the parenthesis-stripping rule per token.
+
+- **correctness** `skills/design/scripts/scout-plan-archetypes-wrapper.sh:125` — The heading keyword match is case-sensitive (`NEW|UPDATED|REWRITTEN`); `### New:` / `### Updated:` lines in ad-hoc plans would not contribute paths even when paths are present. **Suggested fix:** If human-authored casing is expected, use `re.IGNORECASE` on that alternation (or normalize case) while still requiring the colon heading shape.
+
+- **correctness** `skills/design/scripts/test-scout-plan-archetypes-wrapper.sh:60-88` — The harness only covers three separate `### …` lines with a single backtick path each plus the empty-plan stub; it does not assert behavior for the documented `(+ sibling \`.md\`)` second-backtick pattern, mixed backtick/non-backtick tails, or multi-path no-backtick lines, so the `.md` pollution and fallback gaps above would not fail CI. **Suggested fix:** Add a fixture plan line matching the template in `docs/issue-anchored-plan.md` / real `plan-goals-test.md` and assert the scope file contains only intended repo paths (and optionally add a two-path unquoted line if product intent is to support it).
+
+### Out-of-Scope Observations
+
+- Plans that use four-hash subsection headings (e.g. `#### UPDATED:` in some `larch-logs/implement/*/plan-goals-test.md` files) never match `^###\s*(NEW|UPDATED|REWRITTEN)` and therefore never feed scope derivation; that is a broader plan-shape vs parser contract mismatch, not specific to the backtick regex alone.
+
+- Branch commits since merge-base with `main`: `627c7b6a` (feature), `18e8bd21` (larch-logs flush); scope-regex behavior lives in the first commit.

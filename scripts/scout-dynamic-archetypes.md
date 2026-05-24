@@ -4,7 +4,7 @@
 
 Primary caller: `skills/review/scripts/dispatch-panel.sh`. Other callers should treat it as an implementation detail of the review panel dispatcher.
 
-Accepted flags: `--mode diff|description`, `--diff-file` for diff mode, `--scope-files` for description mode, and exactly one of `--description-text` or `--description-file` (file path is validated like other context inputs; prefer `--description-file` for large descriptions because Linux caps per-`argv` string length below the 256 KB scout limit), optional `--plan-file`, required `--max-archetypes 0..8`, required `--output`, optional `--session-env-path` (exported for nested timing/session consumers), and optional `--timeout` (default `180` seconds).
+Accepted flags: `--mode diff|description`, `--diff-file` for diff mode, `--scope-files` for description mode, and exactly one of `--description-text` or `--description-file` (file path is validated like other context inputs; prefer `--description-file` for large descriptions because Linux caps per-`argv` string length below the 256 KB scout limit), optional `--plan-file`, required `--max-archetypes 0..8`, required `--output`, optional `--session-env-path` (exported for nested timing/session consumers), optional `--timeout` (default `180` seconds), and optional `--prompt-override-file PATH` (regular non-symlink file **under `CLAUDE_PLUGIN_ROOT` only**, max 256 KB; when set, its contents replace the built-in scout preamble before context blocks are appended — used by `/design` plan-review scouting via `skills/design/scripts/scout-plan-archetypes-wrapper.sh`; rejections exit **2** with `FAILURE_REASON=prompt-override-invalid` on stdout).
 
 Invariants:
 
@@ -25,4 +25,4 @@ Stdout is `KEY=value`: `SCOUT_STATUS`, `SCOUT_OUTPUT`, `SCOUT_ARCHETYPE_COUNT`, 
 
 Harness: `scripts/test-scout-dynamic-archetypes.sh`.
 
-Edit in sync: update this file, `scripts/test-scout-dynamic-archetypes.sh`, `skills/review/scripts/dispatch-panel.sh`, and `skills/review/scripts/dispatch-panel.md` when changing scout JSON schema, validation, scout statuses, dispatcher `validation-failed` handling, or invocation flags.
+Edit in sync: update this file, `scripts/test-scout-dynamic-archetypes.sh`, `skills/review/scripts/dispatch-panel.sh`, and `skills/review/scripts/dispatch-panel.md` when changing scout JSON schema, validation, scout statuses, dispatcher `validation-failed` handling, or invocation flags. When changing `--prompt-override-file` validation or semantics, also align `skills/design/scripts/scout-plan-archetypes-wrapper.sh` and its harness `skills/design/scripts/test-scout-plan-archetypes-wrapper.sh`.
