@@ -1,0 +1,14 @@
+The three Gate B spots in `approval-gates.md` are now visible at lines 86, 87, and 100. I have enough to write the review.
+
+### In-Scope Findings
+
+1. - **correctness** `skills/design/scripts/test-read-design-review-budget-invoke.sh`, `skills/design/scripts/test-read-design-review-budget-invoke.md` — The plan acceptance criteria for issue #2730 explicitly states "No script, validator, lint rule, harness, or .tsv registry is changed by this PR" and "Documentation-only change. No new tests added." However the diff contains substantial modifications to both harness files — new test groups for jq-path, grep fallback full, argv/env guards, `run-params.json` missing, and `VALIDATE_STATUS=defects-found`. These changes correspond to issue #2715 (design review-budget invoke harness shallow coverage), not the Gate B dedup feature. The PR therefore violates its own stated acceptance criteria on scope and test additions. **Suggested fix:** The harness additions should be delivered exclusively under the #2715 issue PR. If they were already merged to main separately, they should be rebased out of this branch so the diff contains only `skills/design/references/approval-gates.md`, `CHANGELOG.md`, and `.claude-plugin/plugin.json`.
+
+### Out-of-Scope Observations
+
+No pre-existing issues identified.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/scripts/test-read-design-review-budget-invoke.sh, skills/design/scripts/test-read-design-review-budget-invoke.md	Harness changes present in PR despite plan acceptance criteria "No script, validator, lint rule, harness, or .tsv registry is changed by this PR"	PR #2730 plan is documentation-only; the diff adds test groups for jq-path, grep fallback full, argv/env guards, run-params.json missing, and VALIDATE_STATUS=defects-found — all scoped to issue #2715, not #2730. Any reviewer checking the acceptance criteria against the diff will find the criteria violated.	Deliver harness additions under the #2715 PR only. If already merged to main, rebase those commits off this branch so the diff contains only approval-gates.md, CHANGELOG.md, and plugin.json.
+```

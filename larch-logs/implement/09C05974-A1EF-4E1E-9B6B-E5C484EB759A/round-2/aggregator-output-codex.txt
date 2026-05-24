@@ -1,0 +1,30 @@
+### FINDING_1: CHANGELOG release notes omit shipped Gate B change
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, dyn-breadcrumb-integration-output.txt
+- **Severity**: important
+- **Concern**: The Gate B dedup behavior for #2730 is documented only under `[Unreleased]`, while `plugin.json` is already versioned as `42.4.5` and `[42.4.5]` documents only the #2715 harness expansion. This would ship the behavioral change without listing it in the released section.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: Address the concern above.
+  - From dyn-breadcrumb-integration-output.txt: Address the concern above.
+
+### FINDING_2: Harness changes appear out of scope for #2730 plan
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-plan-fidelity-output.txt
+- **Severity**: important
+- **Concern**: The #2730 plan says no scripts, validators, lint rules, harnesses, registries, or tests should change, but the diff modifies `skills/design/scripts/test-read-design-review-budget-invoke.sh` and `.md` with substantial harness additions that appear tied to #2715 instead.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: Address the concern above.
+  - From cursor-specialist-plan-fidelity-output.txt: Address the concern above.
+
+### FINDING_3: Sequential mktemp calls can leak temp directories on failure
+- **Reviewer(s)**: cursor-specialist-testing-output.txt, cursor-specialist-edge-cases-output.txt
+- **Severity**: latent
+- **Concern**: `skills/design/scripts/test-read-design-review-budget-invoke.sh` creates batches of temp directories before updating the EXIT trap. Under `set -euo pipefail`, a later `mktemp -d` failure can leave earlier created directories outside trap cleanup coverage.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-testing-output.txt: Address the concern above.
+  - From cursor-specialist-edge-cases-output.txt: Address the concern above.
+
+### FINDING_4: [OUT_OF_SCOPE] Breadcrumb prefix does not need shell registry wiring
+- **Reviewer(s)**: dyn-breadcrumb-integration-output.txt
+- **Severity**: nit
+- **Concern**: The `dedup-sweep:` breadcrumb is LLM orchestrator chat output, not shell `emit_breadcrumb` output, so no shell breadcrumb registry or `lib-quiet` integration is required.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From dyn-breadcrumb-integration-output.txt: Address the concern above.

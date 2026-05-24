@@ -1,0 +1,7 @@
+FINDING_1: EXONERATE -- Legitimate temp-leak edge case, but failed mktemp cleanup in an offline harness is too low-impact to require churn.
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: EXONERATE -- Prose drift risk is real, but adding a structural regression check for this documentation-only instruction is more enforcement than warranted.
+FINDING_6: EXONERATE -- The stale RANDOM-path collision is concrete but too improbable and low-impact for this harness.
+FINDING_7: EXONERATE -- The pre-existing trap gap is real, but not worth filing as a separate GitHub issue.
