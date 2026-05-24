@@ -10,13 +10,13 @@ Primary callers are `/design` Step 0 and prompt-side tests. `/implement` forward
 
 - Runs with `set -euo pipefail`.
 - Requires an absolute `--output` path and an existing output directory.
-- Requires all schema fields up front: `--classification`, `--reason`, `--source`, `--sketch-budget`, `--review-budget`, `--workflow-path`, and `--output`.
+- Requires all schema fields up front: `--classification`, `--reason`, `--source`, `--sketch-budget`, `--review-budget`, `--workflow-path`, and `--output`. Optional `--partition-requested <true|false>` (default when omitted: JSON `partition_requested: false`) — see [`skills/design/references/flags.md`](../skills/design/references/flags.md) for the public `-p` / `--partition` flag semantics wired from `/design` Step 0b.
 - Validates `--classification` as `TRIVIAL_DOC_ONLY`, `SIMPLE`, or `HARD`.
 - Validates `--source` as `caller-forwarded` only (obsolete `router-pre-design` is rejected).
 - Validates `--sketch-budget` as `0`, `2`, or `4`.
 - Validates `--review-budget` as `quick` or `full`.
 - Validates `--workflow-path` as `SIMPLE` or `HARD`.
-- Emits JSON with `schema_version=1`, `design_classification`, `design_classification_reason`, `design_classification_source`, `sketch_budget`, `review_budget`, and `workflow_path`.
+- Emits JSON with `schema_version=1`, `design_classification`, `design_classification_reason`, `design_classification_source`, `sketch_budget`, `review_budget`, `workflow_path`, and always `partition_requested` (boolean; additive field — callers that predate issue #2670 may ignore it).
 - Uses `jq --arg` for prose fields so quotes, newlines, and shell-shaped text are JSON data, not syntax.
 - Prints `RUN_PARAMS_WRITTEN=<path>` on success and exits non-zero on validation or write failure.
 

@@ -15,10 +15,11 @@ SKETCH_BUDGET=""
 REVIEW_BUDGET=""
 WORKFLOW_PATH=""
 OUTPUT=""
+PARTITION_REQUESTED=""
 
 usage() {
     while IFS= read -r line; do larch_err "$line"; done <<'USAGE'
-usage: write-run-params.sh --classification <TRIVIAL_DOC_ONLY|SIMPLE|HARD> --reason <text> --source <caller-forwarded> --sketch-budget <0|2|4> --review-budget <quick|full> --workflow-path <SIMPLE|HARD> --output <path>
+usage: write-run-params.sh --classification <TRIVIAL_DOC_ONLY|SIMPLE|HARD> --reason <text> --source <caller-forwarded> --sketch-budget <0|2|4> --review-budget <quick|full> --workflow-path <SIMPLE|HARD> --output <path> [--partition-requested <true|false>]
 USAGE
 }
 
@@ -50,6 +51,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --output)
             OUTPUT="${2:?--output requires a value}"
+            shift 2
+            ;;
+        --partition-requested)
+            PARTITION_REQUESTED="${2:?--partition-requested requires a value}"
             shift 2
             ;;
         --help|-h)
@@ -100,6 +105,10 @@ require_enum "--sketch-budget" "$SKETCH_BUDGET" 0 2 4
 require_enum "--review-budget" "$REVIEW_BUDGET" quick full
 require_enum "--workflow-path" "$WORKFLOW_PATH" SIMPLE HARD
 
+if [[ -n "$PARTITION_REQUESTED" ]]; then
+    require_enum "--partition-requested" "$PARTITION_REQUESTED" true false
+fi
+
 case "$OUTPUT" in
     /*) ;;
     *)
@@ -127,6 +136,7 @@ jq -n \
     --argjson sketch_budget "$SKETCH_BUDGET" \
     --arg review_budget "$REVIEW_BUDGET" \
     --arg workflow_path "$WORKFLOW_PATH" \
+    --arg partition_requested "${PARTITION_REQUESTED:-false}" \
     '{
       schema_version: 1,
       design_classification: $classification,
@@ -134,7 +144,8 @@ jq -n \
       design_classification_source: $source,
       sketch_budget: $sketch_budget,
       review_budget: $review_budget,
-      workflow_path: $workflow_path
+      workflow_path: $workflow_path,
+      partition_requested: ($partition_requested == "true")
     }' > "$TMP"
 
 mv "$TMP" "$OUTPUT"

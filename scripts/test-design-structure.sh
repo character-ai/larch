@@ -455,6 +455,10 @@ do
     || fail "(16) scripts/lib-timing-kinds.sh missing timing kind: $kind"
 done
 
+grep -Fq $'2b\tfull plan' "$REPO_ROOT/skills/design/scripts/step-name-registry.tsv" \
+  || fail "(15b) step-name-registry.tsv missing 2b\\tfull plan row"
+grep -Fq $'2b.5\tplan size' "$REPO_ROOT/skills/design/scripts/step-name-registry.tsv" \
+  || fail "(15b) step-name-registry.tsv missing 2b.5\\tplan size row"
 grep -Fq $'5\tfinalize' "$REPO_ROOT/skills/design/scripts/step-name-registry.tsv" \
   || fail "(15b) step-name-registry.tsv missing 5\\tfinalize row"
 grep -Fq $'6\tcleanup' "$REPO_ROOT/skills/design/scripts/step-name-registry.tsv" \
@@ -483,6 +487,47 @@ step5_between=$(sed -n "$((step5b_line + 1)),$((step5c_line - 1))p" "$SKILL_MD")
 # Pin `/larch:issue` to the continuation-banner line (not merely anywhere in the 5b→5c window).
 grep -Fq $'> **Continue to Step 5c IMMEDIATELY.** The `/larch:issue` Skill tool' <<<"$step5_between" \
   || fail "(17) Step 5b→5c continuation banner missing or /larch:issue not on the same line as the banner"
+
+# Check FINDING_21 (#2670): plan-size thresholds + --partition documentation pins.
+grep -Fq '| `-p` / `--partition` |' "$SKILL_MD" \
+  || fail "(FINDING_21) SKILL.md compact flag table missing -p/--partition row"
+grep -Fq '[-p|--partition]' "$SKILL_MD" \
+  || fail "(FINDING_21) SKILL.md argument-hint missing [-p|--partition]"
+grep -Fq '`-p`, `--partition`' "$SKILL_MD" \
+  || fail "(FINDING_21) SKILL.md public argv allowlist missing -p/--partition"
+grep -Fq '`--trivial` and `-p` / `--partition` are mutually exclusive' "$SKILL_MD" \
+  || fail "(FINDING_21) SKILL.md missing trivial vs partition mutual-exclusion prose"
+grep -Fq '### Step 2b.5 — Plan-size threshold check' "$SKILL_MD" \
+  || fail "(FINDING_21) SKILL.md missing Step 2b.5 header"
+step2b_block=$(awk '/^<!-- step:2b /,/^<!-- step:3 /' "$SKILL_MD")
+emit_line=$(printf '%s\n' "$step2b_block" | grep -nF 'ACTION=EMIT_PLAN' | head -1 | cut -d: -f1 || true)
+chk_line=$(printf '%s\n' "$step2b_block" | grep -nF 'skills/design/scripts/check-plan-size.sh' | head -1 | cut -d: -f1 || true)
+[[ -n "$emit_line" && -n "$chk_line" ]] || fail "(FINDING_21) could not locate ACTION=EMIT_PLAN / check-plan-size.sh inside Step 2b block"
+if ! [[ "$chk_line" -gt "$emit_line" ]]; then
+  fail "(FINDING_21) check-plan-size.sh must appear after ACTION=EMIT_PLAN inside Step 2b block"
+fi
+grep -Fq '## Plan Size — Hard Trigger' "$SKILL_MD" \
+  || fail "(FINDING_21) SKILL.md missing hard-trigger plan-size header"
+grep -Fq '(no **Continue** option — hard triggers' "$SKILL_MD" \
+  || fail "(FINDING_21) SKILL.md hard branch must document no-Continue invariant"
+DISCUSSION_MD="$REPO_ROOT/skills/design/references/discussion-rounds.md"
+grep -Fq 'Step 1c sprawl heuristic' "$DISCUSSION_MD" \
+  || fail "(FINDING_21) discussion-rounds.md missing Step 1c sprawl hook"
+grep -Fq 'per Step 1d invocation' "$DISCUSSION_MD" \
+  || fail "(FINDING_21) discussion-rounds.md missing Step 1d sprawl-once cap"
+grep -Fq 'semantic sprawl heuristic' "$DISCUSSION_MD" \
+  || fail "(FINDING_21) discussion-rounds.md missing semantic sprawl heuristic prose"
+APPROVAL_MD="$REPO_ROOT/skills/design/references/approval-gates.md"
+grep -Fq 'Step 2b.5' "$APPROVAL_MD" \
+  || fail "(FINDING_21) approval-gates.md missing Step 2b.5 reference after Gate B EMIT_PLAN"
+grep -Fq '### 5d — Gated L3 velocity deferral comment' "$SKILL_MD" \
+  || fail "(FINDING_21) SKILL.md missing Step 5d header"
+grep -Fq -- '--repo character-ai/larch' "$SKILL_MD" \
+  || fail "(FINDING_21) Step 5d must reference explicit --repo character-ai/larch guard"
+grep -Fq '[ "$ISSUE_NUMBER" = "2670" ]' "$SKILL_MD" \
+  || fail "(FINDING_21) Step 5d must guard on ISSUE_NUMBER 2670"
+grep -Fq 'design-l3-velocity-notified-2670' "$SKILL_MD" \
+  || fail "(FINDING_21) Step 5d must reference design-l3-velocity-notified-2670 sentinel"
 
 echo "PASS: test-design-structure.sh — structural invariants hold (including security OOS exclusions)"
 exit 0
