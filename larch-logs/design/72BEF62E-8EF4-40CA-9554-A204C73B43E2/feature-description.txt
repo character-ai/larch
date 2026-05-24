@@ -1,0 +1,154 @@
+# [DESIGNING] Refactor /design Step 3 single-round flow into script-managed plan-review-loop.sh (Piece 2a from #2644; refactor half of #2666 split)
+
+## Context
+
+This issue is the **refactor half** of the original #2666 (split per a planning discussion — see closing comment on #2666). #2666 originally bundled two distinct concerns:
+
+- **(a) Refactor** (this issue): move `/design` Step 3's currently orchestrator-driven single-round flow into a script-managed shape, with NO behavior change. Establishes `plan-review-loop.sh` as a single-pass driver.
+- **(b) Multi-round on top** (separate issue): add the loop iteration, plan revision waterfall, convergence semantics, per-round artifact discipline, Voter 1 launcher fix, etc.
+
+Splitting them keeps each `/design` scope small enough that the current `/design` flow handles it cleanly, and lets **forensic finding classification (#2671 — Lesson 2)** integrate directly with the script-managed shape rather than re-porting from an orchestrator-side intermediate.
+
+This is the first piece. Land this and the orchestrator-driven Step 3 is gone; the same single-round behavior is now driven by a script. Then #2671 / #2672 build on this foundation; then the multi-round companion issue extends the single-pass driver into a loop.
+
+## Scope (refactor only — no behavior change)
+
+### Move Step 3 single-round orchestration into a script
+
+Current `/design` Step 3 has the orchestrator (main agent in `skills/design/SKILL.md`) inline-drive:
+
+1. Pre-render 10 reviewer prompts via `render-plan-review-prompt.sh`.
+2. Build NDJSON manifest; call `dispatch-with-waterfall.sh`.
+3. Call `collect-agent-results.sh` on the panel paths file.
+4. Run the orchestrator-aggregator subagent (when present) to dedup findings.
+5. Compose ballot from aggregated `findings.md`.
+6. Launch Voter 1 (Claude code-reviewer Agent-tool subagent).
+7. Call `dispatch-plan-voters.sh` for Voter 2 (Codex) and Voter 3 (Cursor).
+8. Call `tally-plan-review.sh` (currently via `design-driver.sh ACTION=TALLY`).
+9. Output: accepted-plan-findings.md, rejected-findings.md, oos.md, oos-accepted-design.md, voting-tally.md at session root.
+
+This issue moves steps 1-8 into a new script `skills/design/scripts/plan-review-loop.sh` that runs as a **single-pass driver** — one invocation = exactly one review pass = same behavior as today's inline Step 3.
+
+The single-pass driver MUST produce the same output artifacts at the same session-root paths so existing Step 3.5 (Gate B), Step 4 (rejected-findings report), and Step 5 (finalize) work unchanged.
+
+### Files to modify
+
+#### NEW: `skills/design/scripts/plan-review-loop.sh` (+ sibling `.md`)
+
+Single-pass driver. ~200 lines. Owns:
+
+- Reviewer panel dispatch (calls `dispatch-plan-review-panel.sh` from Piece 1 / #2665 if landed, else inline `dispatch-with-waterfall.sh` invocation).
+- Reviewer output collection via `collect-agent-results.sh` with `--timeout 1860`.
+- Pre-aggregation `findings.md` staging — parses TSV/JSONL reviewer sidecars into one `### FINDING_N:` block per raw reviewer finding (in-scope) and `### OOS_N:` block (OOS). **Single-pass version** uses ONE staged file (mixing in-scope and OOS); the two-pass design for OOS round-trip is deferred to the multi-round companion issue.
+- Reviewer attribution stamped from slot manifest (NOT reviewer-self-reported). This matches the contract from #2665 (Piece 1) if landed.
+- Aggregator invocation via `aggregate-findings.sh` with `--findings-file <ballot>` `--review-tmpdir <dir>` `--codex-present "$CODEX_PRESENT"` `--cursor-present "$CURSOR_PRESENT"` `--mode description` `--plan-file "$PLAN_FILE"` `--session-env-path $DESIGN_TMPDIR/source-env.sh`. Single pass (in-scope + OOS in one file; aggregator handles `[OUT_OF_SCOPE]` tag through its existing mechanism).
+- Voter 1 launch via the same Claude-subagent Agent-tool mechanism currently used inline in SKILL.md (NO launcher change; that's the multi-round companion's territory).
+- External voters via `dispatch-plan-voters.sh --ballot-file <ballot> --design-tmpdir $DESIGN_TMPDIR ...` (current session-root semantics; multi-round companion will add per-round routing).
+- Tally via `tally-plan-review.sh --ballot-file <ballot> --voter-files <voter-1> <voter-2> <voter-3> --design-tmpdir $DESIGN_TMPDIR` (called directly, NOT via the sentinel-guarded `design-driver.sh ACTION=TALLY`).
+- Outputs to `$DESIGN_TMPDIR/` at session root: `ballot.txt`, `accepted-plan-findings.md`, `rejected-findings.md`, `oos.md`, `oos-accepted-design.md`, `voting-tally.md` (same as today).
+- Emits stdout KVs: `LOOP_STATUS=complete|panel-failed`, `ACCEPTED_COUNT=<N>`, `DEGRADED_PANEL=<0|1>`, `ROUNDS_COMPLETED=1` (always 1 in this single-pass refactor).
+
+#### UPDATED: `skills/design/SKILL.md` Step 3
+
+Replace the entire current Step 3 inline Bash block section (pre-render + dispatch-with-waterfall + collect + aggregator + ballot + voters + tally) with a single invocation:
+
+```bash
+${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/plan-review-loop.sh \
+  --design-tmpdir "$DESIGN_TMPDIR" \
+  --plan-file "$DESIGN_TMPDIR/plan.txt" \
+  --feature-file "${IMPLEMENT_TMPDIR:-$DESIGN_TMPDIR}/feature-description.txt"
+```
+
+(blocking Bash call). Step 3.5, Step 4, and Step 5 read the same session-root artifacts as today.
+
+**Explicit deletions** in SKILL.md Step 3:
+- The current `ACTION=TALLY` design-driver invocation block (formerly :609-617 in #2644-era line numbers; verify current location at implementation time).
+- The `TALLY_PLAN_REVIEW_STATUS` parsing block (formerly :619).
+- The pre-rendering loop for 10 prompts (moves into `plan-review-loop.sh` — or into `dispatch-plan-review-panel.sh` if that already exists from #2665).
+- Any inline `dispatch-plan-voters.sh` invocation block (moves into the script).
+
+Preserve the 10 focus-area enum anchor comments as shim comment-only lines (CI Check 14a in `scripts/test-design-structure.sh`).
+
+#### UPDATED: `skills/design/references/plan-review.md`
+
+Update prose to refer to the script-driven flow:
+
+- Replace "Main agent deduplicates" wording at `:92-95` with "Invoke `aggregate-findings.sh` via `plan-review-loop.sh`" (this lesson was originally accepted as #2644 R1/FINDING_27; now landing as part of the script refactor).
+- Cross-reference the single-pass driver's KV output.
+- Note that multi-round behavior, plan revision waterfall, and per-round artifact discipline are deferred to the multi-round companion issue.
+
+#### UPDATED: `skills/design/scripts/design-driver.md`
+
+Document that `TALLY` is sentinel-guarded for backward compatibility but the new `plan-review-loop.sh` calls `tally-plan-review.sh` directly. No code change to `design-driver.sh`.
+
+#### UPDATED: `scripts/test-design-structure.sh`
+
+NEW pins:
+- `skills/design/scripts/plan-review-loop.sh` + sibling `.md` exist.
+- `plan-review-loop.sh` invokes `aggregate-findings.sh`.
+- `plan-review-loop.sh` invokes `tally-plan-review.sh` (NOT via `design-driver.sh`).
+- SKILL.md Step 3 invokes `plan-review-loop.sh` as a single Bash block.
+- The 10 focus-area enum anchor comments still exist in SKILL.md.
+
+#### NEW: `skills/design/scripts/test-plan-review-loop.sh`
+
+Single-pass regression harness:
+- Driver invocation produces the expected session-root artifacts.
+- Reviewer attribution stamped post-collection.
+- Aggregator non-fatal failure path falls back to pre-aggregation findings.
+- Tally KVs emitted on stdout.
+- Voter outputs collected and tally runs with all 3 voters.
+- 0-judge fallback (both externals fail) returns appropriate KV.
+
+Wire into `Makefile` lint and `agent-lint.toml`.
+
+### What's NOT in this issue
+
+The following are explicitly deferred to the multi-round companion issue (depending on this one):
+
+- **Multi-round loop iteration** — `plan-review-loop.sh` runs exactly once per invocation.
+- **Plan revision waterfall** (`revise-plan-with-waterfall.sh`) — not created here.
+- **Convergence semantics** — no convergence check; one pass and done.
+- **Per-round directory layout** (`plan-review/round-<N>/`) — single-pass writes to session root only.
+- **Cumulative artifact promotion** (`applied-plan-findings.md` vs final-round pending) — single-pass produces today's session-root files unchanged.
+- **Voter 1 launcher fix (R4/F1)** — Voter 1 stays on the current orchestrator-side Agent-tool subagent mechanism.
+- **Two-pass aggregator (R3/F9 / R4/F2)** — single aggregator pass; no scope-pure splitting.
+- **Shared voter coverage helper (R3/F2)** — voters use the existing `>0` check from `dispatch-plan-voters.sh`.
+- **`design-log-publish.sh` recursive plan-review staging** — single-pass produces no `plan-review/` subtree, so no publish change needed.
+- **Severity field invariant (R3/F1, R3/F20)** — added in the L2 forensics issue or the multi-round companion, not here.
+
+### Why this scope is `/design`-tractable
+
+The original #2666 monolith failed to converge across 4 rounds because it bundled refactor + multi-round + revision + new safety contracts. This refactor-only issue:
+
+- Touches ~3 files (`plan-review-loop.sh`, `SKILL.md`, `plan-review.md`).
+- Has zero new behavior; the test is "Step 3 produces the same artifacts as today, by calling a script instead of inlining."
+- Has no contract changes to `tally-plan-review.sh` or `dispatch-plan-voters.sh` (just call them differently).
+- No new safety surface (snapshots, validators, patch security).
+
+Estimated `/design` rounds: 1-2.
+
+## Dependencies
+
+- **Blocked by**:
+  - #2670 (L1 — size thresholds + `-p`/`--partition` flag)
+  - #2673 (L4 — voter prompt YES↔EXONERATE clarification)
+  - #2674 (L5 — command-syntax validator)
+- **Blocks**:
+  - #2671 (L2 — plan-review forensics, builds on the script foundation)
+  - #2672 (L3 — decomposition panel, also a script-managed flow)
+  - Multi-round companion issue (the other half of #2666's split)
+
+## Acceptance
+
+- `skills/design/scripts/plan-review-loop.sh` + sibling `.md` created.
+- `skills/design/SKILL.md` Step 3 replaced with single invocation of the new script; explicit deletions of the inline `ACTION=TALLY`, `TALLY_PLAN_REVIEW_STATUS`, pre-render loop, and inline voter dispatch.
+- `/design --hard` and `/design --simple` on any existing test issue produce identical session-root artifacts (`ballot.txt`, `accepted-plan-findings.md`, `rejected-findings.md`, `oos.md`, `oos-accepted-design.md`, `voting-tally.md`) compared to the pre-refactor flow.
+- `/design --trivial` is unchanged (does not invoke `plan-review-loop.sh`).
+- `plan-review-loop.sh` emits stdout KVs (`LOOP_STATUS`, `ACCEPTED_COUNT`, `DEGRADED_PANEL`, `ROUNDS_COMPLETED=1`) the parent SKILL.md can parse.
+- `test-plan-review-loop.sh` covers happy-path, aggregator-failure fallback, 0-judge fallback.
+- `scripts/test-design-structure.sh` pins added: script + sibling `.md` exist; `plan-review-loop.sh` invokes `aggregate-findings.sh` and `tally-plan-review.sh`; SKILL.md Step 3 invokes the script.
+- No regression in `make lint` after these changes.
+
+diff_lines: 350
+

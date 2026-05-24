@@ -1,0 +1,19 @@
+<steelman>
+A /design-specific wrapper would make rollback more discoverable for operators debugging Step 3 without requiring them to know the shared review aggregator’s environment contract. It could also isolate /design behavior if future code review and plan review aggregation diverge.
+</steelman>
+<claim>
+`plan-review-loop.sh` should rely directly on the existing `LARCH_AGGREGATOR_DISABLED=1` contract and should not introduce `LARCH_DESIGN_USE_AGGREGATOR` or any other /design-specific kill switch.
+</claim>
+<evidence>
+`skills/review/scripts/aggregate-findings.sh:121` already checks `LARCH_AGGREGATOR_DISABLED`, and `skills/review/scripts/aggregate-findings.sh:122-126` exits successfully with `REASON="disabled"` after emitting result KVs, so the rollback behavior exists at the exact boundary `plan-review-loop.sh` would invoke. In this checkout, `skills/design/scripts/plan-review-loop.sh` does not yet exist, and a targeted grep found no existing `LARCH_DESIGN_USE_AGGREGATOR` contract to preserve.
+</evidence>
+<strongest_concession>
+The best opposing point is operational clarity: a /design-named variable would be easier to discover from Step 3 docs and logs than a shared aggregator variable whose name does not mention plan review.
+</strongest_concession>
+<counter_to_opposition>
+That clarity is not worth adding a second control plane for the same behavior, because the wrapper would need documentation, tests, precedence rules, and future compatibility handling while merely translating to an already-supported aggregator disable path.
+</counter_to_opposition>
+<risk_if_wrong>
+If relying on `LARCH_AGGREGATOR_DISABLED=1` proves too obscure, operators may fail to disable aggregation during a /design incident, increasing recovery time or forcing emergency documentation changes.
+</risk_if_wrong>
+RECOMMEND: THESIS

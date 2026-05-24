@@ -1,0 +1,29 @@
+Reading the plan and referenced code paths.
+
+Validating the plan against current code: reading key scripts and SKILL.md sections.
+
+Checking how `collect-agent-results.sh` exits when some reviewers fail and whether the plan specifies handling.
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/references/plan-review.md:91-96	Collector argv contract not carried into plan-review-loop step 4	Plan only passes --paths-file and TIMEOUT default 1800s; normative plan-review uses --timeout 1860 plus --substantive-validation --validation-mode --structured-reviewer-validation so ballot inputs and NOT_SUBSTANTIVE handling can drift from today’s contract	Mirror the full collect invocation from plan-review.md (or update plan-review.md and harnesses together) and align default timeout with 1860s discipline
+2	in_scope	important	correctness	skills/design/references/plan-review.md:108	Zero-findings path conflicts with plan Edge cases empty ballot	Reference requires skipping voters and writing a specific voting-tally.md sentinel while plan Edge cases say voters still run on an empty ballot	Resolve dialectic: implement the documented short-circuit in plan-review-loop or revise plan-review.md plus any Gate B wording in the same change
+3	in_scope	important	risk-integration	skills/design/references/plan-review.md:98	Post-collect dirty-tree probe not assigned to the new script	Normative text requires check-mid-run-dirty-tree immediately after collect; plan only keeps end-of-step SKILL probe so mid-collect workspace races may be detected later or missed relative to the reference	Invoke check-mid-run-dirty-tree.sh after collect inside plan-review-loop (STAGE=plan-review-collection) or explicitly document deferral and its risk acceptance
+4	in_scope	latent	risk-integration	skills/design/references/plan-review.md:11-20	Collector failure logging pipeline omitted from plan	When orchestration leaves SKILL prose compose-collector-failure-log plus append-tool-failure steps may no longer run for non-OK STATUS rows	Script should call compose-collector-failure-log.sh and append-tool-failure.sh per slot or explicitly delegate with a tested contract in plan-review-loop.md
+5	in_scope	important	code-quality	scripts/lib-voter-parse-rate.sh:1-33 vs plan dispatch-plan-voters section	Plan claims sourcing lib-voter-parse-rate.sh supplies check_and_retry_voter_parse_rate discipline	lib only holds diag helpers; real logic still lives in dispatch-code-voters.sh lines 125-279 so plan-review voter1 work can compile-break or miss retries	Extract shared parse-rate functions into the lib (and refactor code-voters) or keep helpers inline in dispatch-plan-voters.sh and fix the plan text
+6	in_scope	latent	correctness	plan.txt Step 12 vs skills/design/scripts/dispatch-plan-review-panel.sh:141-180	panel-failed predicate underspecified	DISPATCH_OK false with partial or NOT_SUBSTANTIVE-only outputs may flip between LOOP_STATUS complete versus panel-failed depending on how empty reviewer set is measured	Define emptiness against collector STATUS or paths-file line count and encode it in plan-review-loop.md plus a harness case
+
+[OUT_OF_SCOPE] skills/design/SKILL.md:695-706 — tally block passes VOTER_1_PATH while scripts/dispatch-plan-voters.sh:233-239 currently emits only VOTER_2 and VOTER_3 KVs; pre-existing mismatch the PR intends to fix via Voter 1 launch.
+
+1. **[correctness]** ([skills/design/references/plan-review.md](skills/design/references/plan-review.md) collector block): Step 4 as written omits substantive and structured validation flags and uses a 1800s default instead of the documented 1860s — ballot quality can diverge from the normative contract.
+
+2. **[correctness]** ([skills/design/references/plan-review.md](skills/design/references/plan-review.md) zero-findings): Normative “skip voting” plus fixed `voting-tally.md` text conflicts with the plan’s “empty ballot still votes” edge case — Gate B and artifact semantics need an explicit resolution.
+
+3. **[risk-integration]** ([skills/design/references/plan-review.md](skills/design/references/plan-review.md) dirty-tree): Immediate post-collect dirty-tree probe is not assigned to `plan-review-loop.sh`; only the end-of-step SKILL check remains, which is a different timing contract.
+
+4. **[risk-integration]** ([skills/design/references/plan-review.md](skills/design/references/plan-review.md) failure logging): Moving collection off the orchestrator risks dropping the compose-collector-failure-log / append-tool-failure path for non-OK collector rows unless the script re-implements it.
+
+5. **[code-quality]** ([scripts/lib-voter-parse-rate.sh](scripts/lib-voter-parse-rate.sh), [scripts/dispatch-code-voters.sh](scripts/dispatch-code-voters.sh)): The plan’s “source lib-voter-parse-rate.sh” note is inaccurate — parse-rate retry logic is still embedded in `dispatch-code-voters.sh`, so implementers following the plan literally can ship a broken `dispatch-plan-voters.sh`.
+
+6. **[correctness]** (planned `plan-review-loop.sh` Step 12): “Empty reviewer outputs” for `panel-failed` is ambiguous relative to NOT_SUBSTANTIVE or partially populated paths files — worth a precise definition and a regression case.
+
+**[OUT_OF_SCOPE]** [skills/design/SKILL.md](skills/design/SKILL.md) lines 695–706 vs [scripts/dispatch-plan-voters.sh](scripts/dispatch-plan-voters.sh) lines 233–239: tally already references `VOTER_1_PATH` without the dispatcher emitting it today; track for conflict if any parallel work touches tally wiring before this PR lands.

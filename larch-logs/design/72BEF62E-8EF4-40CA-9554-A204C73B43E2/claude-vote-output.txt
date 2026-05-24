@@ -1,0 +1,104 @@
+FINDING_1: YES — Reviewer output format is TSV (confirmed from render-plan-review-prompt.sh:98-108) but loop parses markdown ### FINDING_N blocks; empty ballot results silently.
+FINDING_2: YES — collect-agent-results.sh invocation in plan omits --substantive-validation --validation-mode --structured-reviewer-validation and uses 1800s not 1860s; multiple CI pins and plan-review.md contract broken.
+FINDING_3: YES — aggregate-findings.sh splits only on FINDING_N patterns (lines 177-183), OOS_N blocks would be silently dropped.
+FINDING_4: YES — lib-voter-parse-rate.sh confirmed to only have 3 diagnostic helpers; check_and_retry_voter_parse_rate lives in dispatch-code-voters.sh:232-279.
+FINDING_5: YES — Plan SKILL.md block has no set+e/rc capture; under shell strict mode a panel-failed exit 1 aborts before KV parse.
+FINDING_6: YES — Same confirmed lib-voter-parse-rate.sh mismatch as FINDING_4.
+FINDING_7: EXONERATE — Degraded-panel test case gap is real but adding that specific harness case is proportionally minor for this PR.
+FINDING_8: YES — VOTING_TALLY_FILE emitted by tally (confirmed line 109) but not in SKILL.md parse block's case arm or pre-loop clears.
+FINDING_9: YES — Both panel and voter dispatchers emit DISPATCH_OK; voter's DISPATCH_OK overwrites panel's before panel-failed check in Step 12.
+FINDING_10: YES — collect-agent-results.sh:248-251 confirmed exits on empty paths-file before loop can emit LOOP_STATUS=panel-failed.
+FINDING_11: YES — Same as FINDING_5; command substitution without rc capture confirmed in plan's proposed SKILL.md block.
+FINDING_12: YES — Current SKILL.md:693 uses no aggregate-findings.sh; plan adds LLM aggregation hop, making this a behavioral change not a pure refactor.
+FINDING_13: YES — block_has_severity at line 628 checks merged output blocks in main(); plan describes bypassing input check which doesn't exist.
+FINDING_14: YES — Same as FINDING_1; TSV vs markdown block format mismatch confirmed.
+FINDING_15: YES — Same as FINDING_3; OOS_N blocks dropped by aggregator confirmed.
+FINDING_16: YES — Plan doesn't parse collector status records or route non-OK entries to append-tool-failure.sh as plan-review.md:9-21 requires.
+FINDING_17: YES — SKILL.md:713 dirty-tree check confirmed; plan removes it without moving to loop steps.
+FINDING_18: YES — Same as FINDING_5/11; rc not captured in plan's proposed invocation.
+FINDING_19: YES — Same lib-voter-parse-rate.sh mismatch; latent framing but real plan deficiency.
+FINDING_20: YES — OOS security token (focus-area=security) requirement in tally not addressed in plan's OOS ballot construction spec.
+FINDING_21: YES — Same as FINDING_1.
+FINDING_22: YES — Same as FINDING_2.
+FINDING_23: YES — Same as FINDING_3/15.
+FINDING_24: YES — Same as FINDING_5/11/18.
+FINDING_25: YES — Same as FINDING_17.
+FINDING_26: YES — Same as FINDING_4/6/19.
+FINDING_27: YES — Same as FINDING_10; latent framing but real collect-agent-results.sh early-exit issue.
+FINDING_28: YES — Same as FINDING_1/14/21.
+FINDING_29: YES — Same as FINDING_3/15/23.
+FINDING_30: YES — Same as FINDING_17/25.
+FINDING_31: YES — Same as FINDING_5/11/18/24.
+FINDING_32: EXONERATE — Same issue as FINDING_4 already captured; adding another YES on a latent duplicate adds no new plan requirement.
+FINDING_33: YES — Same as FINDING_1; TSV vs markdown mismatch with different reviewer.
+FINDING_34: YES — plan-review.md:108 requires zero-findings skip-voting; plan edge cases run voters on empty ballot; contradiction confirmed.
+FINDING_35: YES — Same as FINDING_10.
+FINDING_36: YES — plan-review.md:95 specifies --timeout 1860; plan uses default 1800; 60-second behavioral gap.
+FINDING_37: EXONERATE — --simple equivalence testing is a valid concern but overly prescriptive for this plan scope; --simple path is preserved and not modified.
+FINDING_38: YES — test-design-structure.sh:417-422 confirms 14c1-14c3 check for tokens the plan removes from SKILL.md; plan only removes 14b2.
+FINDING_39: YES — Same as FINDING_4/44; lib-voter-parse-rate.sh mismatch confirmed.
+FINDING_40: YES — Plan test (plan:161) expects VOTER_1_PARSE_RATE_STATUS=OK but UPDATED dispatch-plan-voters spec doesn't list emitting that KV.
+FINDING_41: YES — SKILL.md:715 says skip voting when no findings; plan's always-vote edge-cases contradict this.
+FINDING_42: YES — SKILL.md:632-634 says scout+dispatch inline; plan removes them; stale contradictory prose would remain.
+FINDING_43: YES — Same as FINDING_38; 14c1-14c3 CI pins conflict with plan's SKILL.md edits.
+FINDING_44: YES — Same as FINDING_4/6/26/39/51.
+FINDING_45: EXONERATE — dispatch-plan-review-panel.sh already exists (#2665); absent-script fallback is not a realistic scenario for this PR.
+FINDING_46: YES — plan.txt:144 contradicts itself: "extract helpers into lib" vs "library already exists; just source it."
+FINDING_47: EXONERATE — append-tool-failure path detail is an implementation concern not a plan-level spec gap; the pattern is established by dispatch-code-voters.sh.
+FINDING_48: EXONERATE — The plan explicitly requires dispatch-plan-review-panel.sh (it exists); no compat story needed.
+FINDING_49: EXONERATE — Same as FINDING_47.
+FINDING_50: YES — Same as FINDING_38/43; confirmed 14c1-14c3 CI pins.
+FINDING_51: YES — Same as FINDING_4/44.
+FINDING_52: EXONERATE — Same as FINDING_45.
+FINDING_53: YES — Same as FINDING_46; contradictory lib wording.
+FINDING_54: EXONERATE — Same as FINDING_48.
+FINDING_55: EXONERATE — Same as FINDING_47/49.
+FINDING_56: YES — Same as FINDING_8; VOTING_TALLY_FILE not in SKILL.md parse block.
+FINDING_57: YES — Same as FINDING_5/11/18/24/31; no rc capture in command substitution.
+FINDING_58: YES — plan:126 and plan:128 name different predicate variables for same MAV prose; both say main-agent-vote-required but assign different triggers creating implementer ambiguity.
+FINDING_59: YES — Same as FINDING_38/43/50; 14c1-14c3 CI pins vs plan SKILL.md deletions.
+FINDING_60: EXONERATE — KV emission order on error paths is an implementation detail; plan doesn't need to specify exact stderr/stdout ordering for error exits.
+FINDING_61: YES — Same as FINDING_12; plan's own testing section admits byte-identical equivalence is impossible while issue frames this as no-behavior-change.
+FINDING_62: YES — Same as FINDING_12/61; current Step 3 doesn't invoke aggregate-findings.sh.
+FINDING_63: EXONERATE — Prose imprecision about block_has_severity control flow is already captured more precisely in FINDING_13/70/77; this nit adds no new required plan change.
+FINDING_64: YES — AGENTS.md requires updating SECURITY.md for security-relevant changes; new Claude subprocess voter is such a change; plan doesn't list SECURITY.md in files to modify.
+FINDING_65: EXONERATE — Accidental default invocation risk is low with --input-mode plan pinned in plan-review-loop.sh; latent and proportionally minor.
+FINDING_66: YES — Same as FINDING_2/22/36/68/75/92; collector argv contract confirmed missing from plan Step 4.
+FINDING_67: YES — Same as FINDING_34/41.
+FINDING_68: YES — Same as FINDING_2/22/36/66.
+FINDING_69: YES — Same as FINDING_17/25/30.
+FINDING_70: YES — block_has_severity at aggregate-findings.sh:628 confirmed to check merged output blocks; plan's input-check bypass targets wrong code path.
+FINDING_71: YES — Same as FINDING_4/26/78; lib-voter-parse-rate.sh confirmed.
+FINDING_72: EXONERATE — OOS-only ballot parse-rate edge case is a follow-up concern; the existing check_plan_voter_substantive function in dispatch-plan-voters.sh already handles plan ballots differently.
+FINDING_73: YES — plan-review.md:104-107 specifies dedup rules not implemented in plan's Step 5.
+FINDING_74: YES — Same as FINDING_34/41/67.
+FINDING_75: YES — Same as FINDING_2/22/36/66/68.
+FINDING_76: YES — Same as FINDING_17/25/30/69.
+FINDING_77: YES — Same as FINDING_13/70; wrong validator branch targeted.
+FINDING_78: YES — Same as FINDING_4/71.
+FINDING_79: EXONERATE — Same as FINDING_72.
+FINDING_80: YES — Same as FINDING_73.
+FINDING_81: YES — render-voter-prompt.sh actual path confirmed as skills/shared/scripts/render-voter-prompt.sh (dispatch-plan-voters.sh:45); plan says scripts/render-voter-prompt.sh.
+FINDING_82: EXONERATE — Latent imprecision in failure-modes text about ID traceability; the validator's actual enforcement is sufficient for practical purposes.
+FINDING_83: YES — No test-design Makefile target confirmed; only test-design-structure, test-design-driver, test-design-log-publish exist.
+FINDING_84: YES — Same as FINDING_4/84; parse-rate helpers in dispatch-code-voters.sh not in lib.
+FINDING_85: YES — Same as FINDING_81; wrong render-voter-prompt.sh path.
+FINDING_86: EXONERATE — Same as FINDING_82.
+FINDING_87: YES — Same as FINDING_34/41/67/74/87; zero-findings must skip voting.
+FINDING_88: YES — Stale narrative paragraph at SKILL.md:689-693 about PANEL_PATHS_FILE parsing would remain after plan's deletions.
+FINDING_89: YES — dispatch-plan-voters.sh:240 emits DISPATCH_OK from waterfall; plan test expects DISPATCH_OK=false on Voter 1 failure but UPDATED spec doesn't specify flipping it.
+FINDING_90: YES — Same as FINDING_83; no test-design Makefile target.
+FINDING_91: YES — Same as FINDING_4/84.
+FINDING_92: YES — Same as FINDING_2/36/66.
+FINDING_93: YES — test-design-structure.sh:225-229 Check 7 requires plan-review.md collect line with 1860+flags; plan doesn't address whether plan-review.md keeps or loses that line.
+FINDING_94: YES — Same as FINDING_34/41.
+FINDING_95: YES — Same as FINDING_17/25/30/69/76.
+FINDING_96: YES — Same as FINDING_16; compose-collector-failure-log.sh + append-tool-failure.sh not in plan loop steps.
+FINDING_97: YES — plan.txt:241 promises --input-mode plan grep pin but pin additions list (plan:194-209) doesn't include it.
+FINDING_98: YES — Same as FINDING_81/85; wrong path confirmed.
+FINDING_99: YES — Same as FINDING_40; VOTER_1_PARSE_RATE_STATUS expected by test but not in emitted KV spec.
+FINDING_100: YES — Same as FINDING_42; SKILL.md:633-634 stale prose about inline scout+dispatch.
+OOS_1: YES — finalize-plan.sh:59-64 confirmed to require non-empty voting-tally.md; tally abort skipping the file write breaks Step 4; concrete real problem.
+OOS_2: NO — Topology drift is housekeeping naturally addressed by topology generation rules; not worth a separate GitHub issue.
+OOS_3: YES — New subprocess voter changes trust/logging boundary; SECURITY.md should document it; AGENTS.md policy applies.
+OOS_4: EXONERATE — Too speculative; plan states artifact paths remain identical; conditional concern without concrete breakage.
