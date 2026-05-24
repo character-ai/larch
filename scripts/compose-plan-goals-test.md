@@ -19,7 +19,10 @@ Output is written to stdout with this structure:
 The implementation plan section contains the plan-file body up to the first
 recognized test/verification heading. If the source body starts with a level-1/2/3 heading whose text is
 `Implementation Plan` (case-insensitive), the wrapper omits that first heading
-so the payload does not duplicate `## Implementation Plan`.
+so the payload does not duplicate `## Implementation Plan`. If the next
+non-blank line is a level-1/2/3 heading whose sole title text is `Plan`
+(case-insensitive), that line is omitted as well (covers `/design` exports that
+emit both `## Implementation Plan` and `## Plan` back-to-back).
 
 The test plan section contains the content after the first level-1/2/3 heading
 named `Test plan`, `Tests`, `Testing`, `Verification`, `Test strategy`, or

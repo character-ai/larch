@@ -1,0 +1,5 @@
+FINDING_1: YES
+FINDING_2: EXONERATE -- "shallow coverage" without specifying missing paths is too vague to produce a useful actionable GitHub issue
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: EXONERATE -- diff-based verification is inherently incomplete for any PR; CI is the verification mechanism and this concern applies universally, not specifically here

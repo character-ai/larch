@@ -1,0 +1,5 @@
+FINDING_1: YES
+FINDING_2: NO -- The concern is generic coverage-desire rather than a concrete, actionable defect worth filing as an OOS issue.
+FINDING_3: EXONERATE -- The mismatch is real, but intentional run-log commits are standard here and changing plan materialization for this wording is not warranted.
+FINDING_4: YES
+FINDING_5: NO -- The session contains a relevant-checks log showing the checks ran; lack of evidence in the diff is not itself a code defect.
