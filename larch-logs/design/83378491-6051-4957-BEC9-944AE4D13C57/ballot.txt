@@ -1,0 +1,133 @@
+## Plan Review Ballot — issue #2740
+
+You are a senior code reviewer on a 3-judge voting panel deciding which proposed plan-review findings should be accepted. For each FINDING_N below, cast exactly one vote: YES (accept), NO (reject), or EXONERATE (legitimate concern but not worth revising the plan for). Apply the proportionality rubric — vote EXONERATE if the concern is legitimate but the proposed change would introduce more complexity than the issue warrants.
+
+For OOS_N items: vote based on whether the **problem described** is real, concrete, and worth filing as a GitHub issue. Treat any suggested remedy as informational only — do not vote NO because you disagree with the proposed fix; the future implementer chooses the actual remedy.
+
+Output exactly one line per ballot item using the same ID:
+- `FINDING_N: YES — <one-line rationale>` (or NO / EXONERATE)
+- `OOS_N: YES — <one-line rationale>` (or NO / EXONERATE)
+
+Vote on every item. Do not modify files.
+
+---
+
+### FINDING_1: REBASE_ERROR and PHANTOM_APPEND_WARN_ERROR sourced from stderr instead of lib-quiet contract stream
+**Reviewers**: Cursor-Arch, Cursor-Edge, Cursor-Innovation, Cursor-Pragmatic, Cursor-Requirements, Codex-Arch, Codex-Edge, Codex-Innovation, Codex-Pragmatic, Codex-Requirements (all 10)
+**Severity**: important / correctness
+**Concern**: The plan says the wrapper parses `REBASE_ERROR` from captured stderr on rc=3, and lib-phantom-probe parses `PHANTOM_APPEND_WARN_ERROR` from captured stderr of `append-execution-issue.sh`. But both helpers initialize `lib-quiet.sh` (`larch_quiet_init`) and emit their error KVs via `emit_kv` on the contract stream (stdout/FD3), not on stderr. Under normal redirects, `REBASE_ERROR` lands on the same captured stream as `SKIPPED_ALREADY_PUSHED` / `CONFLICT_FILES`. The plan's stderr-based parsing will yield empty or wrong `REBASE_ERROR`; similarly `PHANTOM_APPEND_WARN_ERROR` will often be empty when append fails. Test case 6 stubs would also encode the wrong contract.
+**Proposed resolution**: Parse `REBASE_ERROR` from the rebase-push.sh captured stdout/contract stream (same file used for skip markers); parse append-execution-issue.sh `ERROR=` from its captured stdout/contract (or 2>&1 merge) with stderr fallback only when no `ERROR=` key is present. Update plan text and test stubs accordingly; document the parsing contract in `lib-phantom-probe.md` and `rebase-checkpoint-probe.md`.
+
+### FINDING_2: Test invariant (E) wrongly marked "unchanged" — 7.r anchor must retarget to wrapper invocation
+**Reviewers**: Cursor-Arch, Cursor-Innovation, Cursor-Pragmatic, Cursor-Requirements (4)
+**Severity**: important / correctness
+**Concern**: `scripts/test-implement-rebase-macro.sh` invariant (E) currently locates the Step 7.r macro line via `grep -nF` on `Apply the Rebase Checkpoint Macro with <step-prefix>=7.r`. After SKILL.md edits replace the Apply line with the new `rebase-checkpoint-probe.sh 7.r 'commit (review)'` fence, the grep returns nothing and (E) fails — even when `FILES_CHANGED=true` guard prose is correct. The plan's UPDATED section for `test-implement-rebase-macro.sh` marks (E) "unchanged" but it must retarget.
+**Proposed resolution**: Update (E) to anchor on the new `"${CLAUDE_PLUGIN_ROOT}/scripts/rebase-checkpoint-probe.sh" 7.r 'commit (review)'` invocation line; revise the plan bullet to state (E) is retargeted, not unchanged.
+
+### FINDING_3: Region 2 doesn't explicitly remove post-macro phantom prose at Steps 4.r/7.r/7a.r
+**Reviewers**: Cursor-Arch, Cursor-Pragmatic (2)
+**Severity**: important / architecture
+**Concern**: The plan's Region 2 edits to SKILL.md call out only Steps 2 (post-dispatch) and 8 (pre-bump) as standalone probe sites. But existing "After the macro returns, run the Phantom Untracked Probe" paragraphs follow the macro invocations at Steps 4.r, 7.r, and 7a.r (skills/implement/SKILL.md:1178-1179, 1370-1373, 1464-1465). Since `rebase-checkpoint-probe.sh` already runs the post-rebase phantom probe internally, leaving those paragraphs would double-invoke `check-phantom-dirty.sh` and duplicate Warnings entries.
+**Proposed resolution**: Add explicit SKILL.md edit bullets to delete the post-macro phantom probe paragraphs (and any inline fenced probe blocks) after Steps 4.r, 7.r, and 7a.r once `rebase-checkpoint-probe.sh` owns those probes.
+
+### FINDING_4: Forked-target argv should be conditional at ALL 4 rebase checkpoint fences, not just 1.r
+**Reviewers**: Codex-Innovation (1)
+**Severity**: important / correctness
+**Concern**: The plan example shows `[--base-remote upstream --base-ref main when forked_target=true]` only at the 1.r fence, but the existing macro M1 prose passed those args at all 4 sites conditionally on `forked_target=true`. Forked runs after implementation/review/diagrams must rebase against `upstream/main` too — restricting the argv to 1.r would silently change fork-mode behavior at 4.r/7.r/7a.r and delay upstream conflicts until later gates.
+**Proposed resolution**: Pass `--base-remote upstream --base-ref main` conditionally at all four rebase checkpoint fences (1.r, 4.r, 7.r, 7a.r) — same `forked_target=true` guard at each. Pin this in `test-implement-rebase-macro.sh` (new sub-assertion under invariant (C)) so future edits cannot drop the argv at any site.
+
+### FINDING_5: Literal `[--base-remote upstream --base-ref main when forked_target=true]` inside bash fence is invalid shell
+**Reviewers**: Codex-Edge, Codex-Pragmatic (2)
+**Severity**: important / correctness
+**Concern**: The plan's SKILL.md call-site fence example contains the literal token `[--base-remote upstream --base-ref main when forked_target=true]` inside a runnable bash invocation. If an implementer copies it verbatim, the wrapper receives `[--base-remote` as an unknown flag and the 1.r checkpoint fails on argv parsing. If they delete the bracket without replacing it, forked runs lose the upstream/main argv.
+**Proposed resolution**: Replace the bracket placeholder with real conditional shell — e.g., `if [ "${forked_target:-false}" = "true" ]; then BASE_ARGS=(--base-remote upstream --base-ref main); else BASE_ARGS=(); fi` then `"${CLAUDE_PLUGIN_ROOT}/scripts/rebase-checkpoint-probe.sh" 1.r 'plan materialization' "${BASE_ARGS[@]+"${BASE_ARGS[@]}"}"` — or show two concrete one-line examples (non-forked + forked) and mark the bracket as prose annotation only.
+
+### FINDING_6: Makefile targets need .PHONY + test-harnesses-N shard assignment, not "make test" aggregate
+**Reviewers**: Cursor-Arch, Cursor-Innovation, Cursor-Requirements, Codex-Edge, Codex-Requirements (5)
+**Severity**: important / risk-integration
+**Concern**: The plan says "wire both into the aggregate `test` (or equivalent meta-target) so `make lint` / `make test` exercises them" — but the repo has no top-level `make test`. The repo's lint gate uses `make lint` → `test-harnesses` aggregate → `test-harnesses-1` … `test-harnesses-20` shards (Makefile:12-40). `scripts/test-harness-shards-coverage.sh` verifies every test target is wired into exactly one shard AND listed in `.PHONY`. Without explicit shard assignment, `make lint` will either fail the shard-coverage guard or never run the new harnesses.
+**Proposed resolution**: Add explicit plan steps: (a) add both `test-rebase-checkpoint-probe` and `test-phantom-probe-with-warn` to the giant `.PHONY` list, (b) append each as a prerequisite of exactly one `test-harnesses-N` shard alongside peer test scripts, (c) run `make test-harness-shards-coverage` to verify, (d) drop the inaccurate "make test" wording from plan testing strategy.
+
+### FINDING_7: agent-lint.toml allowlist needed for new sourced and Makefile-only files
+**Reviewers**: Codex-Arch, Codex-Innovation, Codex-Requirements, Cursor-Requirements (4)
+**Severity**: important / risk-integration
+**Concern**: `make lint` runs agent-lint G004 / S030 / dead-script checks. These don't follow `source` directives or Makefile-only test harness invocations. The new `scripts/lib-phantom-probe.sh` (sourced-only) + `scripts/lib-phantom-probe.md` + the two test harness pairs (`test-rebase-checkpoint-probe.{sh,md}`, `test-phantom-probe-with-warn.{sh,md}`) will all be flagged as dead/orphaned unless added to the agent-lint allowlist following the existing peer pattern (lib-dirty-tree-sidecar, test-implement-rebase-macro).
+**Proposed resolution**: Extend the plan with an explicit UPDATED section for `agent-lint.toml`: add allowlist entries (with comments) for `scripts/lib-phantom-probe.sh`, `scripts/lib-phantom-probe.md`, `scripts/test-rebase-checkpoint-probe.sh`, `scripts/test-rebase-checkpoint-probe.md`, `scripts/test-phantom-probe-with-warn.sh`, and `scripts/test-phantom-probe-with-warn.md`. Mirror the comment style from the existing `lib-dirty-tree-sidecar` / `test-implement-rebase-macro` allowlist rows.
+
+### FINDING_8: PATH-injection stubbing strategy conflicts with SCRIPT_DIR helper resolution (security)
+**Reviewers**: Codex-Edge, Codex-Pragmatic, Codex-Requirements (3)
+**Severity**: important / security
+**Concern**: The test harness plan stubs `rebase-push.sh`, `check-phantom-dirty.sh`, and `append-execution-issue.sh` via PATH injection. But the repo pattern (used by `check-phantom-dirty.sh:6-9`, `rebase-push.sh:78-81`, peer launchers) resolves sibling scripts via `SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"`. Two failure modes: (a) if production wrappers use bare command names to make the PATH stubs work, a polluted PATH in consumer repos can hijack runtime helper calls; (b) if wrappers correctly use SCRIPT_DIR, the harness's PATH injection never intercepts the helpers and tests hit real git/rebase code instead of stubs.
+**Proposed resolution**: Production wrappers MUST call helpers via `"$SCRIPT_DIR/helper.sh"`. The harness either (a) copies the wrapper + library into a temp scripts directory with sibling stub helpers in the same directory, or (b) accepts an explicit test-only `--helper-dir <path>` override (validated to a temp directory) — not PATH injection. Document the chosen approach in both `.md` sibling docs.
+
+### FINDING_9: REBASE_OUTCOME=failed conflates exit 3 (non-conflict bail) with other-rc (unexpected exit)
+**Reviewers**: Cursor-Requirements (1)
+**Severity**: important / correctness
+**Concern**: The plan's orchestrator-side M2 routing prose (in the new SKILL.md thin pointer) lists one `REBASE_OUTCOME=failed` template. But today's macro M2 prose has two distinct user-visible messages: (a) exit 3 → `**⚠ Rebase onto main failed (non-conflict): $REBASE_ERROR. Bailing to cleanup.**`; (b) other non-zero → `**⚠ Rebase onto main failed unexpectedly (exit $rc). Bailing to cleanup.**`. The single failed template degrades the operator-visible contract.
+**Proposed resolution**: Distinguish the two branches via the `REBASE_ERROR` token. Wrapper emits `REBASE_ERROR=<actual-message>` on rc=3 and `REBASE_ERROR=unexpected-rc-<n>` on other-rc (as the plan already does). Orchestrator-side M2 routing branches on whether `REBASE_ERROR` starts with the literal `unexpected-rc-` prefix and selects the corresponding user-visible string. Keep both messages in the SKILL.md thin pointer.
+
+### FINDING_10: chmod +x not specified for new .sh files
+**Reviewers**: Codex-Requirements (1)
+**Severity**: important / risk-integration
+**Concern**: SKILL.md invokes wrappers directly via `"${CLAUDE_PLUGIN_ROOT}/scripts/rebase-checkpoint-probe.sh"` (not `bash scripts/...`). If the new files land as 0644, Makefile bash invocations in test harnesses still pass, but `/implement` direct invocations fail with permission denied. The plan has no chmod step.
+**Proposed resolution**: Add a plan step: chmod +x for all new executable `.sh` files (`rebase-checkpoint-probe.sh`, `phantom-probe-with-warn.sh` — the lib- and test- siblings stay 0644). Add a harness assertion in `test-implement-rebase-macro.sh` or one of the new harnesses that the two runtime wrappers are executable.
+
+### FINDING_11: Clean-run transcript call-count acceptance not wired into automated validation
+**Reviewers**: Codex-Requirements (1)
+**Severity**: important / risk-integration
+**Concern**: Acceptance bullet #8 requires an `/implement <issue>` clean-run transcript showing ~6 fewer mid-run Bash calls vs. baseline. The plan only wires unit/structural harnesses + `make lint`; the call-count reduction can land unproven. The structural test pivots check call-site counts but not transcript-level Bash invocations.
+**Proposed resolution**: Add an explicit validation step in the plan: either (a) a fixture-based transcript test that asserts the expected `Bash(` call-count delta, OR (b) document that the verification is operator-driven (manual `/implement` run against a small fixture issue, with a recorded baseline). If (b), explicitly capture the baseline measurement in the PR description.
+
+### FINDING_12: SKILL fences omit export LARCH_QUIET_BREADCRUMBS=1
+**Reviewers**: Cursor-Arch (1)
+**Severity**: important / architecture
+**Concern**: The wrapper's `emit_breadcrumb` call relies on `LARCH_QUIET_BREADCRUMBS` / `LARCH_QUIET_BREADCRUMB_FD` behavior (`lib-quiet.sh` lines 114-125). Step 8+ in `/implement` already exports `LARCH_QUIET_BREADCRUMBS=1` at its call sites (skills/implement/SKILL.md:1570-1576). The six new wrapper fences proposed by the plan don't include that export, so under quiet redirect the breadcrumb may go to the quiet log rather than the visible transcript — operators see no `→ rebase-probe: …` line.
+**Proposed resolution**: Mirror the ship-pr pattern: add `export LARCH_QUIET_BREADCRUMBS=1` to each of the 6 new wrapper fences in SKILL.md, OR document that the harness sets this env and adjust the breadcrumb-count test cases (14 in test-rebase-checkpoint-probe.sh, 7 in test-phantom-probe-with-warn.sh) to set it themselves.
+
+### FINDING_13: PHANTOM_APPEND_WARN_ERROR newline sanitization missing
+**Reviewers**: Cursor-Requirements (1)
+**Severity**: latent / security
+**Concern**: Plan binds `PHANTOM_APPEND_WARN_ERROR` to captured stderr (or stdout under FINDING_1's correction). Multi-line or crafted error output could embed literal newlines into the `emit_kv` line and break token-aware KV parsing or log consumers downstream. `rebase-push.sh` already newline-folds `REBASE_OUTPUT` before emit for the same reason.
+**Proposed resolution**: Single-line sanitize the captured `append-execution-issue.sh` error text (fold/strip newlines, e.g., `tr '\n' ' '`) before `emit_kv PHANTOM_APPEND_WARN_ERROR …` in `lib-phantom-probe.sh`. Document the sanitization in the sibling `.md`.
+
+### FINDING_14: Nested subprocess emit_kv lines may interleave with wrapper terminal KVs
+**Reviewers**: Cursor-Innovation (1)
+**Severity**: latent / architecture
+**Concern**: The wrapper invokes `check-phantom-dirty.sh` and `append-execution-issue.sh` as subprocesses (or library function calls that themselves spawn subprocesses). These children inherit FD3 (the quiet contract stream); their `emit_kv` lines (e.g., `APPENDED=true`, `LOG=…`, `FAILED=true`) can interleave before the wrapper's own terminal KV block. The orchestrator's token-aware scan already tolerates this for known keys, but new unknown keys would surface in `/implement`'s parsing.
+**Proposed resolution**: Either (a) extend the plan or SKILL pointer to require token-aware scan and ignore unknown keys (existing behavior), OR (b) document the allowed set of interleaved keys (`APPENDED`, `LOG`, `FAILED`, `ERROR`) so future helper additions don't silently expand the KV surface. Acceptance test: harness case asserting that wrapper's own terminal KVs survive a stub child that emits extra interleaved keys.
+
+### FINDING_15: New Makefile recipes don't use harness-timer.sh wrapper (consistency nit)
+**Reviewers**: Cursor-Arch (1)
+**Severity**: nit / code-quality
+**Concern**: Peer `test-implement-rebase-macro` target uses `bash scripts/harness-timer.sh $@ bash scripts/test-implement-rebase-macro.sh`. The plan's new recipes use bare `bash scripts/test-*.sh`. Inconsistent timing harness and slightly weaker local dev parity.
+**Proposed resolution**: Wrap the new test targets with `bash scripts/harness-timer.sh $@ bash scripts/...` like the existing peer targets do.
+
+### FINDING_16: SKILL.md phantom probe pointer says "5 sites total" but with 1.r-post-rebase added the actual count is 6
+**Reviewers**: Codex-Pragmatic (1)
+**Severity**: nit / correctness
+**Concern**: The plan's Region 2 thin pointer prose says "The probe runs at **5 sites total**". After the 1.r-post-rebase addition (discussion-round1 Decision 1), the count is 6 (4 combined + 2 standalone). The wrong count in the pointer prose contradicts the new 1.r-post-rebase behavior described elsewhere in the plan and can confuse future call-site count tests.
+**Proposed resolution**: Change the count to 6 (4 combined absorbed sites + 2 standalone) — or explicitly distinguish "5 pre-existing sites + 1 new 1.r-post-rebase site for uniformity" in the SKILL.md pointer prose.
+
+### FINDING_17: Combined harness should include explicit STATUS=tracked-only case
+**Reviewers**: Cursor-Requirements (1)
+**Severity**: nit / code-quality
+**Concern**: `test-rebase-checkpoint-probe.sh` enumerates phantom STATUS variants `clean`, `phantom`, `unknown`, but not `tracked-only`. The standalone harness has it explicitly. `check-phantom-dirty.sh` emits `STATUS=tracked-only` as a real production branch (when there are dirty files but none are new since the baseline). The combined wrapper also hits this branch in production.
+**Proposed resolution**: Add an explicit `STATUS=tracked-only` case to `test-rebase-checkpoint-probe.sh` (between cases 10 and 11), OR document the omission with a sentence explaining that the combined harness defers tracked-only coverage to the standalone harness.
+
+### FINDING_18: DENYLIST insertion order — "phantom" comes before "rebase" alphabetically
+**Reviewers**: Cursor-Innovation (1)
+**Severity**: nit / code-quality
+**Concern**: The plan describes the new DENYLIST entries as "in alphabetical-ish order following existing precedent" and lists `rebase-checkpoint-probe.sh` before `phantom-probe-with-warn.sh`. Alphabetically, `p` < `r` — `phantom-probe-with-warn.sh` should come first.
+**Proposed resolution**: Either insert `phantom-probe-with-warn.sh` before `rebase-checkpoint-probe.sh` in the DENYLIST heredoc, or drop the "alphabetical-ish" claim from the plan prose.
+
+### FINDING_19: Plan's Region 1 SKILL.md example has nested bash fence (markdown corruption risk)
+**Reviewers**: Cursor-Pragmatic (1)
+**Severity**: nit / code-quality
+**Concern**: The plan's Region 1 SKILL.md sample shows a fenced code block (markdown ```) inside another fenced markdown block. If an implementer copies the plan literally into SKILL.md, the nested fence terminator closes the outer fence prematurely and corrupts the markdown structure of `skills/implement/SKILL.md`. This is a plan-artifact concern, not runtime code, but it would surface as a bad PR diff.
+**Proposed resolution**: Reformat the Region 1 example to use a single clean fence (banner line + per-anchor comment line + one `\`\`\`bash` open + invocation + one `\`\`\`` close) without nesting. Provide each of the 4 call-site fences as separate non-nested examples in the plan.
+
+### OOS_1: skills/shared/topology.tsv may need regeneration when new script surfaces appear
+**Reviewer**: Cursor-Arch
+**Description**: Repository may have policy that `skills/shared/topology.tsv` (and possibly agent-lint reachability docs at `agent-lint.toml`) need regeneration when new script surfaces appear. This plan adds 5 new `.sh` files (`lib-phantom-probe.sh`, `rebase-checkpoint-probe.sh`, `phantom-probe-with-warn.sh`, `test-rebase-checkpoint-probe.sh`, `test-phantom-probe-with-warn.sh`) plus sibling `.md` files. If CI surfaces a new lint after merge tied to topology regeneration, that would need a follow-up issue to add the topology rows. The agent-lint.toml portion is covered by in-scope FINDING_7; the topology.tsv aspect is the genuine OOS observation.
+**Affected files**: skills/shared/topology.tsv
+**Phase**: design

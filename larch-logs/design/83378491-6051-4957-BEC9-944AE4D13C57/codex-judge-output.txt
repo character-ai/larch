@@ -1,0 +1,1 @@
+DECISION_1: THESIS — Defense A better substantiates that a sourced library fits existing `lib-*` patterns and avoids concrete quiet-session/KV/breadcrumb problems that the alternative only partially mitigates with tests.

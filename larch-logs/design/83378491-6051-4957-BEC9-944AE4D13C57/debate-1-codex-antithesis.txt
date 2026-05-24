@@ -1,0 +1,19 @@
+<steelman>
+A shared `scripts/lib-phantom-probe.sh` would centralize the probe, warning append, and KV emission contract so both wrappers cannot drift when phantom handling changes. It also avoids subprocess parsing and nested breadcrumb problems while keeping each wrapper’s entry breadcrumb independent.
+</steelman>
+<claim>
+Library reuse is disproportionate here because the existing durable boundary is already `check-phantom-dirty.sh`, and the remaining warn-and-forward glue is too small and wrapper-specific to justify a third new runtime file.
+</claim>
+<evidence>
+`scripts/check-phantom-dirty.sh:56` through `scripts/check-phantom-dirty.sh:98` already encapsulates the substantive phantom status detection and KV output, while `skills/implement/SKILL.md:467` through `skills/implement/SKILL.md:496` shows the remaining caller work is parse four fields, append one of two warning bullets, and continue. Existing peer libraries are materially broader or compatibility-driven: `scripts/lib-quiet.sh:37` through `scripts/lib-quiet.sh:125` defines a process-wide FD/logging contract, and `scripts/lib-codex-launcher-common.sh:7` through `scripts/lib-codex-launcher-common.sh:22` is an explicit wrapper shim preserving existing launcher call-site names. In this checkout, `scripts/rebase-checkpoint-probe.sh`, `scripts/phantom-probe-with-warn.sh`, and `scripts/lib-phantom-probe.sh` are absent, so the library choice creates an extra new shipped runtime artifact before there are even two established callers.
+</evidence>
+<strongest_concession>
+The best opposing point is that duplicate append-failure handling can drift, and phantom warnings are user-visible enough that a one-line mismatch between wrappers could confuse operators or tests.
+</strongest_concession>
+<counter_to_opposition>
+That risk is better controlled by focused harness assertions for both wrappers than by introducing a sourced helper whose contract must now include caller-owned `set -e` behavior, quiet FD state, return semantics, and KV naming. Because the core probe is already centralized, duplicating the thin append branch is a smaller maintenance burden than documenting, testing, and shipping a new shell library.
+</counter_to_opposition>
+<risk_if_wrong>
+If inline duplication loses, the feature ships with one more library boundary that future maintainers must understand before editing a simple two-wrapper flow, and bugs may migrate from obvious local branches into subtler source-time coupling around quiet output and caller state.
+</risk_if_wrong>
+RECOMMEND: ANTI_THESIS

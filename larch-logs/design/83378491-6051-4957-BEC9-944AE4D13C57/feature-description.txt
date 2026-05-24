@@ -1,0 +1,65 @@
+# [DESIGNING] Consolidate /implement Rebase Checkpoint Macro + Phantom Untracked Probe into scripts/rebase-checkpoint-probe.sh
+
+## Problem
+
+Two repeated patterns inflate the mid-run Bash-tool-call count across every `/implement` run:
+
+1. **Rebase Checkpoint Macro** (`skills/implement/SKILL.md` L119–156) is invoked at 4 sites with `<step-prefix>=1.r` (plan materialization), `4.r` (commit impl), `7.r` (commit review), `7a.r` (diagrams). Each site is one Bash call to `scripts/rebase-push.sh --no-push --skip-if-pushed --keep-on-conflict`, followed by orchestrator-side parsing of M2/M3 stdout branches.
+2. **Phantom Untracked Probe** (`skills/implement/SKILL.md` L448–513) runs at 5 sites: `2-post-dispatch`, `4.r-post-rebase`, `7.r-post-rebase`, `7a.r-post-rebase`, `8-pre-bump`. Each site is one Bash call to `scripts/check-phantom-dirty.sh`, plus 1-2 conditional `scripts/append-execution-issue.sh` calls on `STATUS=phantom|unknown`.
+
+Three of the four macro sites are **immediately followed** by a phantom probe at the same site (4.r, 7.r, 7a.r → post-rebase probes). So the macro + probe pair fires together at 3 sites; the remaining 2 probe sites (2-post-dispatch, 8-pre-bump) stand alone.
+
+Per-run mid-run cost: ~4 macro calls + ~5 probe sites × (1 + 0-2 warn calls) = roughly **6-12 Bash calls scattered across the run**, on every `/implement` invocation. Each call also carries ~10 lines of rehydration boilerplate (`if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && ... awk ... session-env.sh ...`).
+
+This issue is a follow-up to #2732 (Step 0 consolidation, decomposed into #2735–#2738). It targets mid-run patterns; Step 0 already has its own consolidation in progress.
+
+## Goal
+
+Introduce one new wrapper script `scripts/rebase-checkpoint-probe.sh` that absorbs:
+
+- Rebase Macro M1 + M2 branching + M3 outcome parsing for one `<step-prefix>` invocation.
+- The immediately-following Phantom Untracked Probe with its conditional Warnings appends.
+- Final `emit_kv` tail surfacing the same KV keys the orchestrator currently parses (`SKIPPED_ALREADY_FRESH`, `SKIPPED_ALREADY_PUSHED`, `REBASE_ERROR`, `CONFLICT_FILES`, `PHANTOM_STATUS`, `PHANTOM_COUNT`, `PHANTOM_REASON`).
+- Conflict-detected path returns a clear bail signal (e.g. `REBASE_OUTCOME=conflict`) so the SKILL.md still routes to the Conflict Resolution Procedure for caller_kind=early_rebase.
+
+After this lands, the 4 macro sites become 4 single Bash invocations of `rebase-checkpoint-probe.sh <step-prefix> <short-name>`. The 2 stand-alone phantom probe sites (`2-post-dispatch`, `8-pre-bump`) use a sibling thin wrapper `scripts/phantom-probe-with-warn.sh` (probe + conditional warn in one call) for symmetry.
+
+Per-run reduction: ~6-12 Bash calls → 4 (macro+probe) + 2 (standalone probe) = **6 calls saved per run**, distributed across the run.
+
+## Scope
+
+In scope:
+
+- New `scripts/rebase-checkpoint-probe.sh` + sibling `scripts/rebase-checkpoint-probe.md`.
+- New `scripts/phantom-probe-with-warn.sh` + sibling `scripts/phantom-probe-with-warn.md` (the standalone-probe wrapper).
+- New offline harness `scripts/test-rebase-checkpoint-probe.sh` + `.md` (and `scripts/test-phantom-probe-with-warn.sh` + `.md` if not folded into the same harness).
+- Extension of `scripts/test-implement-rebase-macro.sh` to pin the new wrapper invocation form at 4 SKILL.md call sites.
+- Edits to `skills/implement/SKILL.md`: replace the Rebase Checkpoint Macro section (L119–156) with a thin invocation pointer; replace 4 macro call-site fences with 4 invocations of `rebase-checkpoint-probe.sh`; replace 2 standalone phantom probe fences with `phantom-probe-with-warn.sh` invocations.
+- Register `test-rebase-checkpoint-probe` (and `test-phantom-probe-with-warn` if separate) in `Makefile` + `docs/linting.md`.
+- Add `rebase-checkpoint-probe.sh` to `scripts/lint-foreground-markers.sh` DENYLIST.
+
+Out of scope:
+
+- Step 0 calls / `implement-bootstrap.sh` — separate initiative (#2732 / #2735–#2738).
+- Step 7a body absorption — see follow-up companion issue (filed alongside).
+- ship-pr.sh argv changes — see follow-up companion issue.
+- Conflict Resolution Procedure changes — the wrapper returns the same `REBASE_OUTCOME=conflict` signal; orchestrator still routes the same way.
+
+## Constraints
+
+- **`lib-quiet.sh`** contract: source at top, `larch_quiet_init`, use `emit` / `emit_kv` for contract output, `emit_breadcrumb` for one progress line per invocation (`→ rebase-probe: <step-prefix> <short-name>`).
+- **Bash 3.2 portability** (`BASH_AUTHORING.md` §3).
+- **Foreground markers** (`BASH_AUTHORING.md` §4): denylist entry + banner + per-anchor comment in every SKILL.md fence invoking it.
+- **`script-md-siblings`** rule: sibling `.md` files required.
+- Don't change behavior on conflict path. The wrapper's `REBASE_OUTCOME=conflict` exit-state must carry `CONFLICT_FILES=` so the orchestrator can pass it to the Conflict Resolution Procedure unchanged.
+
+## Acceptance
+
+- New `scripts/rebase-checkpoint-probe.sh` exists; absorbs rebase-push.sh + post-rebase phantom probe + conditional warn appends.
+- New `scripts/phantom-probe-with-warn.sh` exists; absorbs standalone phantom probe + conditional warn appends.
+- Sibling `.md` files document invocation, output KV grammar, exit codes.
+- Test harness covers: green path (rebase ok + no phantom), `SKIPPED_ALREADY_FRESH`, `SKIPPED_ALREADY_PUSHED`, rebase-conflict (`REBASE_OUTCOME=conflict` + `CONFLICT_FILES=` populated), rebase-failure (`REBASE_OUTCOME=failed`), phantom STATUS=phantom + warn appended, phantom STATUS=unknown + warn appended, phantom STATUS=clean (no warn), append-execution-issue failure (warning surfaces).
+- `skills/implement/SKILL.md` Rebase Macro section is now a thin pointer; 4 macro call sites and 2 standalone phantom-probe sites use the new wrappers.
+- `make lint` passes including `lint-foreground-markers` (new denylist entry), `lint-bash32`, agent-lint G004 / script-md-siblings.
+- `scripts/test-implement-rebase-macro.sh` extended to pin the new wrapper invocation form at 4 SKILL.md call sites.
+- An `/implement <issue>` clean-run transcript shows reduced mid-run Bash call count (~6 fewer calls vs. baseline).

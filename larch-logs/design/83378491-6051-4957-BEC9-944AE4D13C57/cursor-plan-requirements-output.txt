@@ -1,0 +1,78 @@
+Reading the plan and tracing cited paths in the codebase.
+
+Tracing issue #2740 acceptance criteria and validating cited code paths against the plan.
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan.txt:237 vs scripts/test-implement-rebase-macro.sh:104-127	Claims test invariant (E) unchanged but (E) still keys on legacy Apply-the-Macro prose for 7.r	After SKILL swaps to rebase-checkpoint-probe fences (E) fails until grep/sed logic is updated	Pivot (E) to locate the 7.r fence line using the new rebase-checkpoint-probe.sh invocation token and drop the claim that (E) is unchanged
+1	in_scope	important	correctness	plan.txt:43-44 plan.txt:108 vs scripts/rebase-push.sh:102-228	Wrapper M2 says parse REBASE_ERROR from captured stderr for rc=3 test case 6 stubs stderr	rebase-push emits REBASE_ERROR via emit_kv to FD3 same contract stream as skip markers stderr file often empty so wrapper misses error and tests encode wrong channel	Parse REBASE_ERROR from the same captured stdout contract stream used for SKIPPED CONFLICT_FILES align test stubs and SKILL pointer prose with emit_kv contract
+1	in_scope	important	correctness	plan.txt:155-157 vs skills/implement/SKILL.md:139-142	Orchestrator routing lists one failed template keyed off REBASE_OUTCOME=failed plus REBASE_ERROR	Exit 3 today uses non-conflict bail line other non-zero uses different unexpected exit line conflating both breaks operator-visible contract	Preserve two branches exit 3 parse REBASE_ERROR use existing non-conflict string other-rc use unexpected exit template still set STALL_TRACKING from wrapper exit rc
+1	in_scope	important	risk-integration	plan.txt:297-298 vs agent-lint.toml:780-880	Claims make lint agent-lint G004 passes without citing agent-lint.toml edits	New Makefile-only harnesses and sourced-only lib-phantom-probe.sh typically need dead-script allowlist comments entries like peer test-implement-rebase-macro and lib-dirty-tree-sidecar	Extend plan with explicit agent-lint.toml allowlist rows and comments for lib-phantom-probe.sh both new test harnesses and sibling md files per repo pattern
+1	in_scope	important	risk-integration	plan.txt:243-256 vs Makefile:60-71 docs/linting.md:38-42	Adds Makefile targets but not which test-harnesses-N shard	prerequisite test-harness-shards-coverage fails or new tests never run in CI until assigned	Add step assign each new target to exactly one test-harnesses-M list and run test-harness-shards-coverage
+1	in_scope	nit	code-quality	plan.txt:99-117 vs plan.txt:125-134	Combined harness omits explicit STATUS=tracked-only green case	Standalone harness covers tracked-only combined path also hits that branch in production	Add optional tracked-only case to test-rebase-checkpoint-probe.sh or justify parity with standalone harness only
+1	in_scope	latent	security	plan.txt:14-16	PHANTOM_APPEND_WARN_ERROR embeds raw stderr into KV line without newline sanitization	Multi-line or crafted stderr could break token-aware KV parsing or log consumers	Single-line sanitize stderr same as rebase-push REBASE_OUTPUT newline folding before emit_kv
+[OUT_OF_SCOPE] Issue body vs plan Decision 1 adds 1.r-post-rebase probe while issue Problem lists five phantom sites without 1.r-post-rebase — track for acceptance wording drift — skills/implement/SKILL.md (phantom section post-change) issue #2740 body Problem paragraph
+
+1. **correctness** — [plan.txt:237](file:///Users/zhupanov/.cache/larch/sessions/claude-design-larch7-26syHh/plan.txt) vs [scripts/test-implement-rebase-macro.sh:104-127](scripts/test-implement-rebase-macro.sh): Plan marks **(E) unchanged**, but (E) still resolves the 7.r checkpoint via `grep -nF 'Apply the Rebase Checkpoint Macro with \`<step-prefix>=7.r\`'`. That prose disappears when macro fences land; the pivot list must update (E) and stop claiming it is unchanged.
+
+2. **correctness** — [plan.txt:43-44](file:///Users/zhupanov/.cache/larch/sessions/claude-design-larch7-26syHh/plan.txt) / case 6 vs [scripts/rebase-push.sh](scripts/rebase-push.sh) (`emit_kv REBASE_ERROR` at e.g. 102-228, 224-227): The plan and harness case 6 anchor `REBASE_ERROR` on **stderr**, but `rebase-push.sh` reports `REBASE_ERROR` through **`emit_kv` on the quiet contract stream (FD 3, i.e. the same captured “stdout” pipe as skip markers)**. Parsing stderr will drop real failures; stubs should feed the stdout capture.
+
+3. **correctness** — [plan.txt:155-157](file:///Users/zhupanov/.cache/larch/sessions/claude-design-larch7-26syHh/plan.txt) vs [skills/implement/SKILL.md:139-142](skills/implement/SKILL.md): Today **exit 3** and **other non-zero** use **two different operator-visible bail strings**. The plan collapses both into `REBASE_OUTCOME=failed` + `REBASE_ERROR` without telling the orchestrator to preserve the “unexpected (exit $rc)” branch for non-3 failures. **Suggested revision:** branch on wrapper exit code (or a dedicated KV) so the non-conflict template stays tied to exit 3 and the unexpected-exit template stays tied to other rc values.
+
+4. **risk-integration** — [plan.txt:297-298](file:///Users/zhupanov/.cache/larch/sessions/claude-design-larch7-26syHh/plan.txt) vs [agent-lint.toml](agent-lint.toml) (~780-880): The plan asserts `make lint` / agent-lint G004 / script-md-siblings success but never adds the usual **allowlist / reachability comments** for new Makefile-only harnesses and the **sourced-only** `lib-phantom-probe.sh` (peer pattern: `lib-dirty-tree-sidecar.sh`, `test-implement-rebase-macro.sh` entries).
+
+5. **risk-integration** — [plan.txt:243-256](file:///Users/zhupanov/.cache/larch/sessions/claude-design-larch7-26syHh/plan.txt) vs [Makefile](Makefile) / [docs/linting.md:38-42](docs/linting.md): New `make test-*` targets must be attached to **exactly one** `test-harnesses-N` prerequisite per shard-coverage rules; the plan stops at defining targets and does not assign shards or mention `test-harness-shards-coverage`.
+
+6. **code-quality** (nit) — [plan.txt:99-117](file:///Users/zhupanov/.cache/larch/sessions/claude-design-larch7-26syHh/plan.txt) vs [plan.txt:125-134](file:///Users/zhupanov/.cache/larch/sessions/claude-design-larch7-26syHh/plan.txt): The combined harness enumerates `STATUS=clean` but not **`STATUS=tracked-only`** on the green rebase path; the standalone harness does. Add a symmetric case or document intentional asymmetry.
+
+7. **security** (latent) — [plan.txt:14-16](file:///Users/zhupanov/.cache/larch/sessions/claude-design-larch7-26syHh/plan.txt): `PHANTOM_APPEND_WARN_ERROR=<captured-stderr>` can carry **newlines/control characters** into a KV line, complicating token-aware parsing. **Suggested revision:** fold/sanitize multi-line stderr before `emit_kv`, mirroring `rebase-push.sh`’s newline flattening for `REBASE_OUTPUT` ([scripts/rebase-push.sh:225-227](scripts/rebase-push.sh)).
+
+[OUT_OF_SCOPE] **requirements** — Issue #2740 Problem paragraph lists **five** phantom sites without `1.r-post-rebase`; the plan’s Decision 1 adds a **sixth** post-rebase probe. Worth a one-line acceptance cross-check in the issue or plan “behavior delta” section so scope stays explicit (`skills/implement/SKILL.md` phantom section after edit; issue body Problem list).
+
+---
+
+The first line of the assistant message must be the TSV header per user instruction. I put the TSV block at the top in the final response - but I also need to fix: user said numbered findings with focus-area tag - I used **correctness** in bold - use format like `correctness:` 
+
+Also user asked: "Prefix out-of-scope but worth-tracking items with [OUT_OF_SCOPE]"
+
+I'll reorder so the VERY first line is ONLY the header line. Then data rows. Then numbered findings.
+
+Let me produce final message starting with schema_version tab line ONLY as line 1 - the user example had header then one record. I'll put header line 1, then records lines 2-8, then blank, then numbered list.
+
+For the TSV - I need to ensure no markdown code fences around TSV per user.
+
+Double-check: user said "If no issues were identified, your entire response content MUST be exactly the single-line JSON" - we have issues, so use TSV.
+
+First character `s` from schema_version - good.
+
+I'll remove the duplicate "schema_version" in narrative - the TSV header is once at top.
+
+Fix finding 6 - "code-quality" in TSV used "code_quality"? User said focus_area - use hyphenated as in example: `code-quality` - I used code-quality in row 6 good.
+
+Row 7 security - good.
+
+Let me verify tab separation in my compose - I'll write the response cleanly.
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan.txt:237 vs scripts/test-implement-rebase-macro.sh:104-127	Claims test (E) unchanged but (E) still greps legacy Apply-the-Macro line for 7.r	7.r structural test fails after SKILL edits until logic is updated	Pivot (E) to anchor on the new rebase-checkpoint-probe.sh 7.r invocation line remove unchanged claim
+1	in_scope	important	correctness	plan.txt:43-44 plan.txt:108 vs scripts/rebase-push.sh:102-228	rc=3 path parses REBASE_ERROR from stderr test case 6 stubs stderr	rebase-push emits REBASE_ERROR via emit_kv to FD3 same contract stream as skip markers stderr often empty	Merge parse use the stdout tempfile used for skip markers update case 6 stubs and doc strings away from stderr
+1	in_scope	important	correctness	plan.txt:155-157 vs skills/implement/SKILL.md:139-142	Single failed bail template for REBASE_OUTCOME=failed	Exit 3 vs other non-zero currently use different operator-visible strings conflating them changes UX	Branch on wrapper exit code or add KV so exit 3 keeps non-conflict bail string other rc keeps unexpected exit string
+1	in_scope	important	risk-integration	plan.txt:297-298 vs agent-lint.toml:780-880	Asserts agent-lint G004 passes without agent-lint.toml allowlist edits	New sourced lib and Makefile-only harnesses are usually allowlisted with comments	Plan explicit agent-lint.toml entries for lib-phantom-probe.sh both new test scripts and sibling md files
+1	in_scope	important	risk-integration	plan.txt:243-256 vs Makefile:60-71 docs/linting.md:38-42	New make targets without test-harnesses-N shard assignment	CI shard coverage guard can fail or skip new harnesses	Add shard pick for each target run test-harness-shards-coverage
+1	in_scope	nit	code-quality	plan.txt:99-117 vs plan.txt:125-134	Combined harness lacks STATUS=tracked-only case	Standalone covers tracked-only combined green path can hit it too	Add tracked-only case to test-rebase-checkpoint-probe.sh or document intentional omission
+1	in_scope	latent	security	plan.txt:14-16	PHANTOM_APPEND_WARN_ERROR embeds raw stderr into KV	Multi-line stderr can break token-aware KV parsing	Sanitize newlines in captured stderr before emit_kv like rebase-push newline fold on REBASE_OUTPUT
+
+1. **correctness:** [plan.txt:237](file:///Users/zhupanov/.cache/larch/sessions/claude-design-larch7-26syHh/plan.txt) vs [scripts/test-implement-rebase-macro.sh:104-127](scripts/test-implement-rebase-macro.sh) — The plan lists **(E) unchanged**, but (E) still keys the 7.r slice on the literal `Apply the Rebase Checkpoint Macro with \`<step-prefix>=7.r\`…` line, which the refactor removes. **Suggested revision:** update (E) to locate the new `rebase-checkpoint-probe.sh` fence and delete the “unchanged” claim for (E).
+
+2. **correctness:** [plan.txt:43-44](file:///Users/zhupanov/.cache/larch/sessions/claude-design-larch7-26syHh/plan.txt) / case 6 vs [scripts/rebase-push.sh](scripts/rebase-push.sh) — The plan parses `REBASE_ERROR` from **stderr** for `rc=3`, and test case 6 stubs **stderr**; `rebase-push.sh` emits `REBASE_ERROR` with `emit_kv` on the **quiet contract stream (FD 3)**, i.e. the same redirected capture channel as skip markers, not the stderr tempfile. **Suggested revision:** parse `REBASE_ERROR` from the captured stdout/contract buffer and align the harness stub with that.
+
+3. **correctness:** [plan.txt:155-157](file:///Users/zhupanov/.cache/larch/sessions/claude-design-larch7-26syHh/plan.txt) vs [skills/implement/SKILL.md:139-142](skills/implement/SKILL.md) — Macro M2 distinguishes **exit 3** (non-conflict bail with `$REBASE_ERROR`) from **other non-zero** (unexpected exit with `$rc`). The plan’s orchestrator pointer only describes the non-conflict bail path for `REBASE_OUTCOME=failed`. **Suggested revision:** preserve two user-visible branches keyed off wrapper exit code (or an explicit KV), not only `REBASE_ERROR` text.
+
+4. **risk-integration:** [plan.txt:297-298](file:///Users/zhupanov/.cache/larch/sessions/claude-design-larch7-26syHh/plan.txt) vs [agent-lint.toml](agent-lint.toml) — `make lint` includes `agent-lint`; new **Makefile-only** harnesses and **sourced-only** `lib-phantom-probe.sh` typically need matching **allowlist / comment blocks** (same pattern as `scripts/test-implement-rebase-macro.sh` and `scripts/lib-dirty-tree-sidecar.sh`). The plan never lists those edits.
+
+5. **risk-integration:** [plan.txt:243-256](file:///Users/zhupanov/.cache/larch/sessions/claude-design-larch7-26syHh/plan.txt) vs [Makefile](Makefile) and [docs/linting.md:38-42](docs/linting.md) — Adding targets is insufficient: each harness must appear on **exactly one** `test-harnesses-N` prerequisite list for CI and `test-harness-shards-coverage`. The plan omits shard assignment.
+
+6. **code-quality (nit):** [plan.txt:99-117](file:///Users/zhupanov/.cache/larch/sessions/claude-design-larch7-26syHh/plan.txt) vs [plan.txt:125-134](file:///Users/zhupanov/.cache/larch/sessions/claude-design-larch7-26syHh/plan.txt) — The combined harness lists `STATUS=clean` but not **`STATUS=tracked-only`** on the post-rebase path; the standalone plan includes tracked-only. **Suggested revision:** add a combined-wrapper tracked-only case or state why it is intentionally omitted.
+
+7. **security (latent):** [plan.txt:14-16](file:///Users/zhupanov/.cache/larch/sessions/claude-design-larch7-26syHh/plan.txt) — `PHANTOM_APPEND_WARN_ERROR` copies stderr into a **single-line KV** without newline folding. **Suggested revision:** sanitize/fold embedded newlines before `emit_kv`, analogous to [scripts/rebase-push.sh:225-227](scripts/rebase-push.sh).
+
+[OUT_OF_SCOPE] **requirements drift:** Issue #2740’s Problem section enumerates **five** phantom sites and does not name `1.r-post-rebase`; the plan’s Decision 1 adds that probe anyway (acknowledged as a behavior delta). Track for acceptance text vs issue body alignment (`skills/implement/SKILL.md` phantom section post-change; GitHub issue #2740 Problem paragraph).
