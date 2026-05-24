@@ -4,6 +4,10 @@ On a default `/implement --merge` run, a directory of structured log files is co
 
 Exceptions: `repo_unavailable=true` produces no committed log at all (`$IMPLEMENT_TMPDIR/execution-issues.md` is the only audit trail and is removed at cleanup). Fork dry-run mode (`--forked`) does not create a tracking issue. In all cases, session-derived content in `larch-logs/` passes through secrets and tmpdir-path redaction, but redaction is best-effort — operators should avoid pasting sensitive content into `/implement` prompts.
 
+## Plan scope and committed logs
+
+Issue-anchored `larch:plan` blocks list files an `/implement` run is expected to touch. Retroactive maintenance across many runs under `larch-logs/design/` or `larch-logs/implement/` — for example URL normalization, typo fixes, or redaction-policy updates in historical committed logs — is not implied by plans that target plugin authority surfaces (`AGENTS.md`, skills, hooks, scripts, and similar). Prefer a log-only PR for bulk `larch-logs/` edits so plan-to-diff review stays traceable; if combined with unrelated work in one branch, call log maintenance out explicitly in the PR (and list affected paths in the plan when the tracking issue is itself about committed logs).
+
 ## Directory structure
 
 ```
