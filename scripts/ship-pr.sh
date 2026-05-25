@@ -1643,7 +1643,7 @@ _run_per_job_command_once() {
 }
 
 _sanitize_bail_list() {
-    tr -cd '[:alnum:]_-,'
+    tr -cd '[:alnum:]_,-'
 }
 
 run_per_job_local_fix_loop() {
