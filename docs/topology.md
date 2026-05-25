@@ -15,6 +15,13 @@ This document is a consumer-doc projection of runtime authorities. The runtime a
 | <a id="design.plan_review.codex_archetypes"></a>`design.plan_review.codex_archetypes` | 5 Codex | Architecture/Standards Edge-cases/Failure-modes Innovation/Exploration Pragmatism/Safety Requirements/Completeness | `skills/design/references/plan-review.md` |
 | <a id="design.plan_review.dynamic_archetypes"></a>`design.plan_review.dynamic_archetypes` | up to 6 | scout proposes specialists fanned into Cursor+Codex dyn slots | `skills/design/references/plan-review.md` |
 | <a id="design.plan_review.panel_slots"></a>`design.plan_review.panel_slots` | 10 static + up to 12 dynamic | NDJSON manifest from dispatch-plan-review-panel.sh via paths-file sidecar | `skills/design/references/plan-review.md` |
+| <a id="design.decompose.panel_slots"></a>`design.decompose.panel_slots` | 8 fixed | 4 archetypes x 2 vendors via decompose-panel-dispatch.sh | `skills/design/references/decompose-panel.md` |
+| <a id="design.decompose.dispatch"></a>`design.decompose.dispatch` | decompose-panel-dispatch.sh | renders prompts + dispatch-with-waterfall | `skills/design/scripts/decompose-panel-dispatch.sh` |
+| <a id="design.decompose.aggregator"></a>`design.decompose.aggregator` | decompose-aggregator.sh | single-slot merge of eight proposals | `skills/design/scripts/decompose-aggregator.sh` |
+| <a id="design.decompose.file_issues"></a>`design.decompose.file_issues` | decompose-file-issues.sh | prepare annotate close-original | `skills/design/scripts/decompose-file-issues.sh` |
+| <a id="design.decompose.harness_panel"></a>`design.decompose.harness_panel` | test-decompose-panel-dispatch.sh | offline panel regression harness | `skills/design/scripts/test-decompose-panel-dispatch.sh` |
+| <a id="design.decompose.harness_agg"></a>`design.decompose.harness_agg` | test-decompose-aggregator.sh | offline aggregator merge harness | `skills/design/scripts/test-decompose-aggregator.sh` |
+| <a id="design.decompose.harness_file"></a>`design.decompose.harness_file` | test-decompose-file-issues.sh | offline prepare annotate close-original harness | `skills/design/scripts/test-decompose-file-issues.sh` |
 | <a id="design.plan_review.quick_mode"></a>`design.plan_review.quick_mode` | Claude-only | 1 Claude | `skills/design/references/plan-review-quick.md` |
 | <a id="design.plan.preview_emit"></a>`design.plan.preview_emit` | Step 3 plan-candidate preview | Gate C final-plan preview | `skills/design/scripts/emit-design-plan-preview.sh` |
 | <a id="design.plan_commands.validate"></a>`design.plan_commands.validate` | Tier2+opt-in Tier3 | plan fenced bash/sh | `skills/design/scripts/validate-plan.sh` |

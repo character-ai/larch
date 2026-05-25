@@ -43,6 +43,8 @@ The historical **ownership-domains** sprawl heuristic from early design notes is
 
 There is **no** mechanical hard threshold on files-count alone.
 
+**`--partition` / `-p` (Step 2b.5)**: when `partition_requested=true` in `run-params.json`, Step 2b.5 routes through the **Split-path** even if no mechanical soft/hard threshold fired. That path now runs the **real decomposition panel** (8 external slots via `scripts/dispatch-with-waterfall.sh`) — not the historical stub. Full procedure, idempotent sentinels, and filing semantics live in `skills/design/references/decompose-panel.md`.
+
 ## Helper output — `TRIGGER_REASONS`
 
 The helper emits comma-separated reason tokens in **fixed priority order** `plan-body-lines`, `diff-lines`, `files-count` (the order thresholds are evaluated — **not** lexicographic). When the **only** cause of a soft offer is `--partition` (no mechanical soft crossings), the orchestrator may annotate user-visible copy with `trigger=partition-flag`; the helper does **not** emit that token. When the **only** cause is the Step **2b.5** semantic estimate, the orchestrator may use `trigger=semantic-estimate`; the helper does **not** emit that token either.

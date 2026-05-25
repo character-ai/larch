@@ -624,11 +624,19 @@ Parse `VALIDATE_STATUS`, `VALIDATE_DEFECT_COUNT`, `VALIDATE_SKIPPED_COUNT`, `VAL
 5. **Soft branch** — when `(SOFT_TRIGGER_FIRED=true AND HARD_TRIGGER_FIRED=false)` **OR** `(PARTITION_REQUESTED=true AND HARD_TRIGGER_FIRED=false)` **OR** `(SEMANTIC_SOFT_ESTIMATE=true AND HARD_TRIGGER_FIRED=false)` (including the case where mechanical soft is false but `--partition` alone would fire the soft UI, or mechanical soft is false without `--partition` but semantic estimate is true). Print `## Plan Size — Soft Trigger` with the same counts; when mechanical soft is false but `PARTITION_REQUESTED=true`, note `trigger=partition-flag` in the footer line of that section; when mechanical soft is false, `PARTITION_REQUESTED` is false, but `SEMANTIC_SOFT_ESTIMATE=true`, note `trigger=semantic-estimate` there. `AskUserQuestion`: **"Let my panel of agents split this feature for you"** / **"Continue with current scope"**. On **Split**: **Split-path**. On **Continue**: return to caller.
 6. **No-trigger branch** — when no soft/hard/partition-flag/semantic-estimate offer applies: print `⏩ 2b.5: plan-size — under thresholds (PLAN_LINES=<n> DIFF_LINES=<n> FILES_COUNT=<n>)` and return.
 
-#### Split-path (decomposition panel not yet available)
+#### Split-path (decomposition panel)
 
-1. Print `**⚠ /design: decomposition panel is in development and will be available soon (see #2672).**`
-2. **Do not** run `### Final summary block` on Split-path — no terminal summary is emitted (FINDING_19); `$DESIGN_TMPDIR` is preserved for operator re-run.
-3. Exit **1**. `$DESIGN_TMPDIR` is preserved (Split exits before Step 5 sets `PLAN_WRITE_OK` and before Step 6 cleanup, which is gated on successful finalize).
+**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/decompose-panel.md` completely. It is the single normative source for panel input-artifact selection, the 3-stage `AskUserQuestion` flow, aggregator path, cycle check, filing, and original-issue close.
+
+Execute the Split-path body in `decompose-panel.md`. The mechanical panel launch line lives in that reference under **§2) Dispatch the fixed 8-slot panel** — run `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/decompose-panel-dispatch.sh` exactly as documented there (never skip loading `decompose-panel.md` first).
+
+On user-approved split that successfully files N issues **and** closes the original: export `SUMMARY_OUTCOME=approved-partition`, run the **Final summary block** (`### Final summary block`), print `**ℹ /design exited: partition into N pieces filed (see #<original> close-comment).**`, and exit **0**.
+
+On user pick **"Refine plan myself (return to caller)"**: return to the calling step (Step 2b.5 from Gate B returns to Step 3 → Gate B → … as before; Step 1c sprawl returns to Step 1d; Step 1d sprawl returns to Step 1e Gate A).
+
+On user pick **"Cancel"**: export `SUMMARY_OUTCOME=cancelled-decompose`, run the Final summary block, print `**ℹ /design cancelled by operator (decomposition panel).**`, and exit **0**.
+
+On `PANEL_STATUS=panel-failed`: `AskUserQuestion` (**Retry panel** / **Cancel**); on **Retry**, re-run the dispatcher **once**; on a second `panel-failed`, exit **1** with a clear error and preserve `$DESIGN_TMPDIR`.
 
 > **After Step 2b.5 returns to caller on a non-exiting path, continue to Step 3 IMMEDIATELY.** The implementation plan is an intermediate design artifact — plan review, Gate B, diagram generation, rejected-findings reporting, and cleanup still must run. → shared/subskill-invocation.md#step-boundary
 

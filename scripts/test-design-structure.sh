@@ -673,6 +673,17 @@ grep -Fq "$CANONICAL_PHRASE" <<< "$quick_inline_text" \
 
 echo "PASS: FINDING_2678 — YES↔EXONERATE canonical anchor phrase OK (4 locations)"
 
+# Check 19 (#2672): decomposition panel replaces Split-path stub.
+DECOMP_REF="$REPO_ROOT/skills/design/references/decompose-panel.md"
+[[ -f "$DECOMP_REF" ]] || fail "(19) references/decompose-panel.md missing"
+grep -Fq 'decompose-panel-dispatch.sh' "$DECOMP_REF" \
+  || fail "(19) decompose-panel.md must retain decompose-panel-dispatch.sh anchor for structure tests"
+grep -Fq 'decompose-panel-dispatch.sh' "$SKILL_MD" \
+  || fail "(19) SKILL.md Split-path must reference decompose-panel-dispatch.sh"
+grep -vq 'decomposition panel is in development' "$SKILL_MD" \
+  || fail "(19) SKILL.md must not retain the pre-panel stub string"
+echo "PASS: (19) decomposition panel Split-path anchors OK"
+
 # Check 18 (#2702): literal plan-preview header anchors in Step 3 + Gate C prose.
 step3_block=$(awk '/^<!-- step:3 /,/^<!-- step:3.5 /' "$SKILL_MD")
 printf '%s\n' "$step3_block" | grep -Fq '## Plan Candidate for Review' \
