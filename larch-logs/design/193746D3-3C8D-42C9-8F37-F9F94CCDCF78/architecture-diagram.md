@@ -42,7 +42,7 @@ flowchart TD
         loop{"User message intent?"}
         loopRefine["Mutate brainstorm.md<br/>re-print synthesis<br/>END TURN (anti-halt override)"]
         loopAmbig["AskUserQuestion:<br/>Continue / Proceed"]
-        sentinel[".brainstorm-done<br/>(zero-byte sentinel)"]
+        sentinel[".brainstorm-done<br/>zero-byte sentinel"]
     end
 
     step1eGateA["Step 1e Gate A:<br/>Ready for review / Discuss more"]
