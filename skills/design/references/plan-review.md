@@ -76,6 +76,19 @@ For fallback reviewer slots: invoke via Agent tool with subagent_type: `larch:co
 
 For Codex, Cursor, and their Claude replacement voters, instruct each: `"You are a senior engineer on a voting panel deciding which proposed plan modifications should be accepted. When voting, also consider proportionality: vote EXONERATE (not YES) if the finding's concern is legitimate but the proposed change would introduce more complexity than the issue warrants. When in doubt between YES and EXONERATE, prefer EXONERATE."`
 
+Voters output one line per ballot item with the vote followed by four lowercase forensic rating axes. `CORRECTNESS` rates whether the finding claim is accurate, `SEVERITY` rates impact if left unfixed, `QUALITY` rates the suggested fix, and `UNCERTAIN` marks low confidence:
+
+```text
+FINDING_N: YES CORRECTNESS=<true|partially-true|false-positive|uncertain> SEVERITY=<blocker|major|minor|nit|uncertain> QUALITY=<excellent|good|adequate|weak|no-fix|uncertain> UNCERTAIN=<true|false>
+FINDING_N: NO CORRECTNESS=<true|partially-true|false-positive|uncertain> SEVERITY=<blocker|major|minor|nit|uncertain> QUALITY=<excellent|good|adequate|weak|no-fix|uncertain> UNCERTAIN=<true|false> -- one-line reason
+FINDING_N: EXONERATE CORRECTNESS=<true|partially-true|false-positive|uncertain> SEVERITY=<blocker|major|minor|nit|uncertain> QUALITY=<excellent|good|adequate|weak|no-fix|uncertain> UNCERTAIN=<true|false> -- one-line reason
+OOS_N: YES CORRECTNESS=<true|partially-true|false-positive|uncertain> SEVERITY=<blocker|major|minor|nit|uncertain> QUALITY=<excellent|good|adequate|weak|no-fix|uncertain> UNCERTAIN=<true|false>
+OOS_N: NO CORRECTNESS=<true|partially-true|false-positive|uncertain> SEVERITY=<blocker|major|minor|nit|uncertain> QUALITY=<excellent|good|adequate|weak|no-fix|uncertain> UNCERTAIN=<true|false> -- one-line reason
+OOS_N: EXONERATE CORRECTNESS=<true|partially-true|false-positive|uncertain> SEVERITY=<blocker|major|minor|nit|uncertain> QUALITY=<excellent|good|adequate|weak|no-fix|uncertain> UNCERTAIN=<true|false> -- one-line reason
+```
+
+`tally-plan-review.sh` consumes those ratings into `plan-review/round-<N>/findings-classification.tsv`. The fixed TSV voter-column mapping is `v1=Claude`, `v2=Codex`, `v3=Cursor`; missing slots leave empty cells and are not compacted.
+
 ---
 
 ## Ballot file handling
@@ -125,7 +138,7 @@ For every non-`OK` result, append the collector failure capture described in the
 2. Deduplicate in-scope findings semantically using main-agent judgment. Read each finding's `what`, `scenario_or_breakage`, and `suggested_fix` fields (from the structured sidecar TSV) and group findings whose underlying concern is the same — even when phrased differently, cited with different `file:line` locations, or tagged with different `focus_area` values. Do NOT mechanically cluster by string keys on `(focus_area, location, what-prefix)` — reviewers routinely phrase the same concern differently, and string-key clustering yields near-zero dedup. Assign each cluster a stable sequential ID (`FINDING_1`, `FINDING_2`, etc.) and note which reviewer(s) proposed each.
 3. Deduplicate out-of-scope observations semantically using main-agent judgment, applying the same approach as step 2 (read each observation's body fields and group by meaning; do NOT cluster by string keys). Assign each cluster an `OOS_` prefixed ID (`OOS_1`, `OOS_2`, etc.). If the same issue appears in both in-scope and OOS from different reviewers, merge under the in-scope finding (in-scope takes precedence).
 
-If **all reviewers** report no in-scope issues and no out-of-scope observations, write `$DESIGN_TMPDIR/voting-tally.md` with `No findings were raised — voting was not needed.`, write empty `$DESIGN_TMPDIR/accepted-plan-findings.md`, `$DESIGN_TMPDIR/rejected-findings.md`, and `$DESIGN_TMPDIR/oos.md`, skip voting, and proceed to Step 3.5 (Gate B — Post-Review Chooser; the zero-findings short-circuit in `approval-gates.md` will pass straight through to Step 3b).
+If **all reviewers** report no in-scope issues and no out-of-scope observations, write `$DESIGN_TMPDIR/voting-tally.md` with `No findings were raised — voting was not needed.`, write empty `$DESIGN_TMPDIR/accepted-plan-findings.md`, `$DESIGN_TMPDIR/rejected-findings.md`, and `$DESIGN_TMPDIR/oos.md`, write a header-only `$DESIGN_TMPDIR/plan-review/round-<N>/findings-classification.tsv`, skip voting, and proceed to Step 3.5 (Gate B — Post-Review Chooser; the zero-findings short-circuit in `approval-gates.md` will pass straight through to Step 3b).
 
 ---
 
@@ -169,6 +182,8 @@ eval "$_plan_voter_dispatch"
 `VOTER_2_STATUS=fallback` means the waterfall already ran a Claude fallback for that slot and `VOTER_2_PATH` contains the Claude output — do NOT launch a duplicate replacement. `VOTER_3_STATUS=fallback` is analogous for Voter 3. Include voter paths with `STATUS=launched` or `STATUS=fallback` in vote tallying; only exclude paths with `STATUS=failed`.
 
 **Tally votes**: Apply the threshold rules from the Voting Protocol based on the panel-level eligible voter count, not the per-finding non-neutral response count. Write the vote breakdown per finding to `$DESIGN_TMPDIR/voting-tally.md` and print the same tally inline. **Voter column labels in the per-finding vote breakdown table**: use `Claude` for Voter 1, `Codex` for Codex (Voter 2), and `Cursor` for Cursor (Voter 3). Do NOT use a model name (e.g., `Claude-Opus`, `Claude-Sonnet`) as a column header — the model backing the voter may change between deployments.
+
+The tally also writes `$DESIGN_TMPDIR/plan-review/round-<N>/findings-classification.tsv` with all `FINDING_*` rows first and all `OOS_*` rows second, each numerically sorted. `finding_reviewers` records the ballot-proposer attribution; vN columns record judge/voter ratings.
 
 **Competition scoring**: Compute the **Reviewer Competition Scoreboard** per the Voting Protocol's scoring rules (+1 for accepted, 0 for neutral/exonerated, -1 for rejected, including rejected OOS items. See `voting-protocol.md` for the full outcome matrix). Append the scoreboard table to `$DESIGN_TMPDIR/voting-tally.md` and print the scoreboard inline.
 

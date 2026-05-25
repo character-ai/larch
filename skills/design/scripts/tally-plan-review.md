@@ -11,7 +11,8 @@
 
 ## Invariants
 
-- Required arguments are `--ballot-file FILE` and `--design-tmpdir DIR`; `--voter-files FILE...` may be empty.
+- Required arguments are `--ballot-file FILE` and `--design-tmpdir DIR`; `--voter SLOT:FILE` may repeat with `SLOT` in `Claude`, `Codex`, `Cursor`, or `MainAgent`. `--voter-files FILE...` remains as a deprecated compatibility fallback and emits a stderr warning.
+- `--findings-classification-out FILE` optionally selects the forensic TSV path. Without it, the script writes `$DESIGN_TMPDIR/plan-review/round-1/findings-classification.tsv` and creates the parent directory internally.
 - The parser supports design-local `### FINDING_N:` and `### OOS_N:` blocks. Voter files use anchored `ID: VOTE` lines (e.g. `FINDING_1: YES`); substring matching is rejected to prevent `FINDING_10` matching inside `FINDING_100`.
 - Acceptance threshold comes from `scripts/lib-vote-tally.sh::classify_result`: 3+ eligible voters require 2+ YES; 2 eligible voters require unanimous YES; 1 eligible voter is a binding single-judge decision; 0 eligible voters emit `TALLY_PLAN_REVIEW_STATUS=main-agent-vote-required` for main-agent adjudication.
 - The quorum basis is the panel-level available voter count, not the per-finding non-`JUDGE_ERROR` response count. Per-judge `JUDGE_ERROR` fallbacks do not reduce the tier.
@@ -22,6 +23,10 @@
 - Accepted OOS blocks with an unfenced `focus-area = security` token are excluded from all public OOS outputs. Fenced occurrences (inside backtick or triple-backtick regions) are not load-bearing (Match discrimination false-positive guard).
 - Scoreboard score formula: `accepted + oos_accepted - rejected - oos_rejected` (+1 per accepted item, -1 per rejected item).
 - The rendered scoreboard columns are `Reviewer`, `Proposed`, `Accepted`, `Exonerated`, `Rejected`, `OOS-Proposed`, `OOS-Accepted`, `OOS-Exonerated`, `OOS-Rejected`, and `Score`.
+- `findings-classification.tsv` schema is `finding_id`, `finding_reviewers`, `voting_result`, then five columns for each fixed voter slot: `v1_*` = Claude, `v2_*` = Codex, `v3_*` = Cursor. `MainAgent` votes contribute to tally outcomes but do not populate vN forensic columns.
+- `finding_reviewers` is reviewer attribution from the ballot block; vN columns are voter/judge identity. Missing slots leave empty vN cells; slots are never compacted.
+- Zero-judge fallback writes one TSV row per ballot entry with `voting_result=classify_result(0,0,0,0)` (`rejected`) and all vN cells empty. Empty ballots write the header only.
+- TSV rows are sorted numerically by `FINDING_*` first, then `OOS_*`. Voter-sourced cells and `finding_reviewers` are normalized for TSV by replacing tabs with spaces and stripping newlines.
 - Whenever `--design-tmpdir` has been validated, `voting-tally.md` is materialized with at least the degraded header (`# Plan Review Voting Tally` plus a one-line abort note) before any non-zero exit. The missing-required-args and unknown-argument branches are exempt because `$DESIGN_TMPDIR` may be empty.
 - `mkdir -p "$DESIGN_TMPDIR"` runs as the first action after argv validation so all subsequent exit paths (including the ballot/voter-unreadable and split-failure branches) can safely write to it.
 
@@ -31,7 +36,9 @@ The regression harness is `make test-tally-plan-review`, wired into `test-harnes
 
 ## Harness
 
-`test-tally-plan-review.sh` covers all-yes, mixed votes, split-panel ties, single-judge YES/NO/EXONERATE, 0-judge main-agent-required, no quorum reduction for per-judge `JUDGE_ERROR` fallbacks, OOS accepted/rejected, security-tagged OOS exclusion, scoreboard rendering, malformed-ballot abort tally stub, and missing-ballot abort tally stub.
+`test-tally-plan-review.sh` covers all-yes, mixed votes, split-panel ties, single-judge YES/NO/EXONERATE, 0-judge main-agent-required, no quorum reduction for per-judge `JUDGE_ERROR` fallbacks, OOS accepted/rejected, security-tagged OOS exclusion, scoreboard rendering, malformed-ballot abort tally stub, missing-ballot abort tally stub, `--voter SLOT:PATH`, deprecated `--voter-files`, custom/default classification output paths, and the `finding_reviewers` TSV schema.
+
+`test-findings-classification.sh` covers the parser contract, fixed vN mapping, partial-axis uncertainty, 0-judge and 0-finding TSV behavior, OOS rows, deterministic row order, and sanitization.
 
 ## Edit In Sync
 

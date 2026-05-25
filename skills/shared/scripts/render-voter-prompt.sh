@@ -7,6 +7,11 @@
 
 set -euo pipefail
 
+CORRECTNESS_ENUM='true|partially-true|false-positive|uncertain'
+SEVERITY_ENUM='blocker|major|minor|nit|uncertain'
+QUALITY_ENUM='excellent|good|adequate|weak|no-fix|uncertain'
+UNCERTAIN_ENUM='true|false'
+
 usage() {
     echo "Usage: render-voter-prompt.sh --ballot-file PATH --panel-role STRING --id-grammar finding-oos|finding-only --verification-context plan|diff-plan" >&2
 }
@@ -72,17 +77,19 @@ esac
 
 if [[ "$ID_GRAMMAR" == "finding-oos" ]]; then
     printf '\n%s\n' 'For each ballot item output exactly one line using the same ID from the ballot:'
-    printf '%s\n' '  FINDING_N: YES'
-    printf '%s\n' '  FINDING_N: NO -- one-line reason'
-    printf '%s\n' '  FINDING_N: EXONERATE -- one-line reason'
-    printf '%s\n' '  OOS_N: YES'
-    printf '%s\n' '  OOS_N: NO -- one-line reason'
-    printf '%s\n' '  OOS_N: EXONERATE -- one-line reason'
+    printf '%s\n' 'Also rate each item: CORRECTNESS says whether the claim is accurate; SEVERITY is the impact if left unfixed; QUALITY rates the proposed fix; UNCERTAIN marks low confidence.'
+    printf '  FINDING_N: YES CORRECTNESS=<%s> SEVERITY=<%s> QUALITY=<%s> UNCERTAIN=<%s>\n' "$CORRECTNESS_ENUM" "$SEVERITY_ENUM" "$QUALITY_ENUM" "$UNCERTAIN_ENUM"
+    printf '  FINDING_N: NO CORRECTNESS=<%s> SEVERITY=<%s> QUALITY=<%s> UNCERTAIN=<%s> -- one-line reason\n' "$CORRECTNESS_ENUM" "$SEVERITY_ENUM" "$QUALITY_ENUM" "$UNCERTAIN_ENUM"
+    printf '  FINDING_N: EXONERATE CORRECTNESS=<%s> SEVERITY=<%s> QUALITY=<%s> UNCERTAIN=<%s> -- one-line reason\n' "$CORRECTNESS_ENUM" "$SEVERITY_ENUM" "$QUALITY_ENUM" "$UNCERTAIN_ENUM"
+    printf '  OOS_N: YES CORRECTNESS=<%s> SEVERITY=<%s> QUALITY=<%s> UNCERTAIN=<%s>\n' "$CORRECTNESS_ENUM" "$SEVERITY_ENUM" "$QUALITY_ENUM" "$UNCERTAIN_ENUM"
+    printf '  OOS_N: NO CORRECTNESS=<%s> SEVERITY=<%s> QUALITY=<%s> UNCERTAIN=<%s> -- one-line reason\n' "$CORRECTNESS_ENUM" "$SEVERITY_ENUM" "$QUALITY_ENUM" "$UNCERTAIN_ENUM"
+    printf '  OOS_N: EXONERATE CORRECTNESS=<%s> SEVERITY=<%s> QUALITY=<%s> UNCERTAIN=<%s> -- one-line reason\n' "$CORRECTNESS_ENUM" "$SEVERITY_ENUM" "$QUALITY_ENUM" "$UNCERTAIN_ENUM"
 else
     printf '\n%s\n' 'For every ballot item, output exactly one line using the same FINDING_N: id from the ballot heading:'
-    printf '%s\n' '  FINDING_N: YES'
-    printf '%s\n' '  FINDING_N: NO -- one-line reason'
-    printf '%s\n' '  FINDING_N: EXONERATE -- one-line reason'
+    printf '%s\n' 'Also rate each item: CORRECTNESS says whether the claim is accurate; SEVERITY is the impact if left unfixed; QUALITY rates the proposed fix; UNCERTAIN marks low confidence.'
+    printf '  FINDING_N: YES CORRECTNESS=<%s> SEVERITY=<%s> QUALITY=<%s> UNCERTAIN=<%s>\n' "$CORRECTNESS_ENUM" "$SEVERITY_ENUM" "$QUALITY_ENUM" "$UNCERTAIN_ENUM"
+    printf '  FINDING_N: NO CORRECTNESS=<%s> SEVERITY=<%s> QUALITY=<%s> UNCERTAIN=<%s> -- one-line reason\n' "$CORRECTNESS_ENUM" "$SEVERITY_ENUM" "$QUALITY_ENUM" "$UNCERTAIN_ENUM"
+    printf '  FINDING_N: EXONERATE CORRECTNESS=<%s> SEVERITY=<%s> QUALITY=<%s> UNCERTAIN=<%s> -- one-line reason\n' "$CORRECTNESS_ENUM" "$SEVERITY_ENUM" "$QUALITY_ENUM" "$UNCERTAIN_ENUM"
 fi
 
 printf '%s\n' 'You must vote on every item. Do NOT skip any.'

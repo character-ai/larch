@@ -191,7 +191,7 @@ FINDING_1: YES
 INNER
 done
 printf '%s\n' "$v1" "$v2" "$v3" >"$vp"
-printf 'DISPATCH_OK=true\nVOTER_PATHS_FILE=%s\nVOTER_1_PARSE_RATE_STATUS=ok\n' "$vp"
+printf 'DISPATCH_OK=true\nVOTER_PATHS_FILE=%s\nVOTER_1_PATH=%s\nVOTER_2_PATH=%s\nVOTER_3_PATH=%s\nVOTER_1_STATUS=launched\nVOTER_2_STATUS=launched\nVOTER_3_STATUS=launched\nVOTER_1_PARSE_RATE_STATUS=ok\n' "$vp" "$v1" "$v2" "$v3"
 EOS
     chmod +x "$STUB/dispatch-plan-voters.sh"
 }
@@ -219,7 +219,7 @@ for f in "$v1" "$v2" "$v3"; do
     printf '%s' "$_vote_body" >"$f"
 done
 printf '%s\n' "$v1" "$v2" "$v3" >"$vp"
-printf 'DISPATCH_OK=true\nVOTER_PATHS_FILE=%s\nVOTER_1_PARSE_RATE_STATUS=ok\n' "$vp"
+printf 'DISPATCH_OK=true\nVOTER_PATHS_FILE=%s\nVOTER_1_PATH=%s\nVOTER_2_PATH=%s\nVOTER_3_PATH=%s\nVOTER_1_STATUS=launched\nVOTER_2_STATUS=launched\nVOTER_3_STATUS=launched\nVOTER_1_PARSE_RATE_STATUS=ok\n' "$vp" "$v1" "$v2" "$v3"
 EOS
     chmod +x "$STUB/dispatch-plan-voters.sh"
 }
@@ -265,6 +265,7 @@ printf '%s\n' "$out0" | grep -q '^TALLY_PLAN_REVIEW_STATUS=skipped-empty-finding
 printf '%s\n' "$out0" | grep -q '^WARN=plan-review-tsv:' || fail "expected WARN for empty TSV path"
 [[ -f "$D0/ballot.txt" ]] || fail "ballot.txt missing on zero-findings path"
 grep -q 'No findings were raised' "$D0/voting-tally.md" || fail "expected zero-findings tally prose"
+[[ "$(wc -l < "$D0/plan-review/round-1/findings-classification.tsv" | tr -d ' ')" == "1" ]] || fail "zero-findings path should write header-only classification TSV"
 
 echo "=== stubbed driver: one finding + real tally ==="
 D1="$TMP/z1"

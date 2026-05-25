@@ -24,6 +24,9 @@ Exit `0` on success, `2` on usage / validation errors.
 
 - Writes the entire prompt to **stdout** only (no stderr payload on success).
 - Preserves markdown emphasis markers (`**`, `` ` ``, `*`) expected by downstream voters.
+- Always includes the four forensic rating tokens after the vote in example lines: `CORRECTNESS=<true|partially-true|false-positive|uncertain>`, `SEVERITY=<blocker|major|minor|nit|uncertain>`, `QUALITY=<excellent|good|adequate|weak|no-fix|uncertain>`, and `UNCERTAIN=<true|false>`.
+- Axis enum values are lowercase-only, matching `scripts/parse-judge-vote-and-rating.sh`.
+- The rating extension is unconditional across `--id-grammar` and `--verification-context`; existing tally parsers anchor on the vote token and ignore trailing rating tokens.
 
 ## lib-quiet divergence
 
@@ -35,7 +38,7 @@ This script **does not** call `larch_quiet_init` and **does not** source `script
 
 ## Harness
 
-`scripts/test-render-voter-prompt.sh` (see `scripts/test-render-voter-prompt.md`).
+`scripts/test-render-voter-prompt.sh` (see `scripts/test-render-voter-prompt.md`) verifies both grammar variants include the rating tokens, preserve `Output ONLY vote lines`, and keep rating prose out of sentinel directives.
 
 ## Edit-in-sync rules
 

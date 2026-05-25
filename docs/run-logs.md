@@ -15,7 +15,10 @@ larch-logs/
   design/
     <RUN_ID>/
       manifest.json
-      (design session artifacts: depth-1 files from `$DESIGN_TMPDIR` plus `render-cache/` subtree, trimmed and redacted per `scripts/design-log-publish.md`)
+      (design session artifacts: depth-1 files from `$DESIGN_TMPDIR` plus allowlisted `plan-review/round-<N>/findings-classification.tsv` files and the `render-cache/` subtree, trimmed and redacted per `scripts/design-log-publish.md`)
+      plan-review/
+        round-<N>/
+          findings-classification.tsv
   implement/
     <RUN_ID>/
       manifest.json
@@ -74,6 +77,8 @@ tmpdir and secrets redaction. This trimming is specific to the committed round
 artifacts; the session tmpdir may still hold raw sidecars for in-run retries.
 If JSON trimming fails, `write-round` fails closed instead of copying the raw
 sidecar into `larch-logs/`.
+
+Design logs may include `plan-review/round-<N>/findings-classification.tsv`, an 18-column per-ballot forensic classification artifact: `finding_id`, `finding_reviewers`, `voting_result`, then `v1_vote/v1_correctness/v1_severity/v1_quality/v1_uncertain`, `v2_*`, and `v3_*`. The fixed mapping is alphabetical by tool slot: `v1=Claude`, `v2=Codex`, `v3=Cursor`. Empty vN cells mean the slot was absent or did not parse; degraded 0-judge rows still carry `voting_result=rejected`; 0-finding rounds contain only the header.
 
 `/review` uses the same `larch-logs/<skill>/<RUN_ID>/` layout when a run ID is provided. Review phase names are encoded in flat batch slugs, not subdirectories: `review-context` for gathered context, `review-panel-manifest` for launched slots, `review-findings` for collected finding records, `review-tally` for vote results, `review-scout-manifest` for dynamic-reviewer scout status, and `review-round-summary` for the human-readable round summary.
 

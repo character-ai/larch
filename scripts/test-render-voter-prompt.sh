@@ -25,7 +25,11 @@ case_finding_only() {
         echo "FAIL: finding-only must not mention OOS_N" >&2
         exit 1
     fi
-    grep -Fq 'FINDING_N: YES' <<< "$out" || { echo "FAIL: finding-only missing FINDING_N example" >&2; exit 1; }
+    grep -Fq 'FINDING_N: YES CORRECTNESS=<true|partially-true|false-positive|uncertain> SEVERITY=<blocker|major|minor|nit|uncertain> QUALITY=<excellent|good|adequate|weak|no-fix|uncertain> UNCERTAIN=<true|false>' <<< "$out" \
+        || { echo "FAIL: finding-only missing rated FINDING_N example" >&2; exit 1; }
+    grep -Fq '**Output ONLY vote lines.**' <<< "$out" || { echo "FAIL: finding-only output-only directive missing" >&2; exit 1; }
+    grep -F 'Verify silently' <<< "$out" | grep -Fvq 'CORRECTNESS=' || { echo "FAIL: verify silently directive should not carry rating prose" >&2; exit 1; }
+    grep -F 'Do NOT modify files' <<< "$out" | grep -Fvq 'CORRECTNESS=' || { echo "FAIL: no-modify directive should not carry rating prose" >&2; exit 1; }
     grep -Fq 'Use the ballot path and any provided diff/plan context files to verify the ballot claims before voting.' <<< "$out" \
         || { echo "FAIL: finding-only missing diff-plan verification lead-in" >&2; exit 1; }
 }
@@ -41,7 +45,15 @@ case_finding_oos() {
         || { echo "FAIL: finding-oos OOS clause missing" >&2; exit 1; }
     grep -Fq "$CANONICAL_OOS_DRIFT_MARK" <<< "$out" \
         || { echo "FAIL: finding-oos missing canonical OOS body" >&2; exit 1; }
-    grep -Fq '  OOS_N: YES' <<< "$out" || { echo "FAIL: finding-oos missing OOS_N example" >&2; exit 1; }
+    grep -Fq '  OOS_N: YES CORRECTNESS=<true|partially-true|false-positive|uncertain> SEVERITY=<blocker|major|minor|nit|uncertain> QUALITY=<excellent|good|adequate|weak|no-fix|uncertain> UNCERTAIN=<true|false>' <<< "$out" \
+        || { echo "FAIL: finding-oos missing rated OOS_N example" >&2; exit 1; }
+    grep -Fq 'CORRECTNESS=<true|partially-true|false-positive|uncertain>' <<< "$out" || { echo "FAIL: correctness enum missing" >&2; exit 1; }
+    grep -Fq 'SEVERITY=<blocker|major|minor|nit|uncertain>' <<< "$out" || { echo "FAIL: severity enum missing" >&2; exit 1; }
+    grep -Fq 'QUALITY=<excellent|good|adequate|weak|no-fix|uncertain>' <<< "$out" || { echo "FAIL: quality enum missing" >&2; exit 1; }
+    grep -Fq 'UNCERTAIN=<true|false>' <<< "$out" || { echo "FAIL: uncertain enum missing" >&2; exit 1; }
+    grep -Fq '**Output ONLY vote lines.**' <<< "$out" || { echo "FAIL: finding-oos output-only directive missing" >&2; exit 1; }
+    grep -F 'Verify silently' <<< "$out" | grep -Fvq 'CORRECTNESS=' || { echo "FAIL: plan verify silently directive should not carry rating prose" >&2; exit 1; }
+    grep -F 'Do NOT modify files' <<< "$out" | grep -Fvq 'CORRECTNESS=' || { echo "FAIL: plan no-modify directive should not carry rating prose" >&2; exit 1; }
     grep -Fq 'silently inspect the plan or referenced repo files for verification' <<< "$out" \
         || { echo "FAIL: finding-oos plan verification allowance missing" >&2; exit 1; }
 }

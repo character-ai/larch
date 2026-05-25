@@ -20,9 +20,11 @@ branch by:
    `RUN_ID` slug on one clone, or they will collide on this branch/worktree slot.
 4. Running `larch-log.sh init` under `larch-logs/` in that worktree (schema v2
    `manifest.json` for skill `design`).
-5. Copying design artifacts: top-level regular files (maxdepth 1) plus all
-   regular files under `render-cache/` (recursive). Symlinks at the top level
-   are skipped; `render-cache/` itself must be a real directory (not a symlink).
+5. Copying design artifacts: top-level regular files (maxdepth 1), allowlisted
+   `plan-review/round-<N>/findings-classification.tsv` files, plus all regular
+   files under `render-cache/` (recursive). Symlinks at the top level are
+   skipped; `plan-review/` and `render-cache/` themselves must be real
+   directories (not symlinks).
    Files whose basename matches the suffix deny-list are skipped before any
    trim/redact work (`design_artifact_excluded`, narrows the
    `round_artifact_included` deny patterns in `scripts/larch-log.sh` for
@@ -75,6 +77,10 @@ commit may still exist on the pushed disposable branch — operators reconcile
 manually. When `git push` succeeds but PR create/merge fails, stderr notes the
 remote branch and stdout may include `RECOVERY_BRANCH=…` for automation. See
 `SECURITY.md` for the consolidated note.
+
+## plan-review allowlist
+
+`plan-review/` is a strict allowlist surface. Missing or empty `plan-review/` is success and stages nothing. A symlinked root or non-directory root fails publish. Files are enumerated under the physical root with symlink files excluded, then each relativized path must match `^round-[1-9][0-9]*/findings-classification\.tsv$`. Any other regular file under `plan-review/` emits `larch_err`, `PUBLISH_OK=false`, and exits 0. Allowed files pass through the same trim/redact pipeline as other staged artifacts.
 
 ## Tests
 

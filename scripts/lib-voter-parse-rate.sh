@@ -10,9 +10,9 @@ SCRIPT_DIR_VPR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 # CODE ballots are FINDING-only by design (no OOS ids); PLAN ballots accept
 # both FINDING_N and OOS_N. If CODE ballots ever grow OOS support, update
 # VOTER_PARSE_RATE_RETRY_PREFIX_CODE to mirror the PLAN preamble wording.
-VOTER_PARSE_RATE_RETRY_PREFIX_CODE='IMPORTANT: Your previous attempt produced narrative output instead of structured votes. Each line MUST start with FINDING_N: followed by exactly one of YES, NO, or EXONERATE. Do not output any prose, reasoning, or status updates before, between, or after the vote lines. If you need to verify claims, do so silently. Output ONLY vote lines.'
+VOTER_PARSE_RATE_RETRY_PREFIX_CODE='IMPORTANT: Your previous attempt produced narrative output instead of structured votes. Each line MUST start with FINDING_N: followed by exactly one of YES, NO, or EXONERATE and the rating tokens CORRECTNESS=<true|partially-true|false-positive|uncertain> SEVERITY=<blocker|major|minor|nit|uncertain> QUALITY=<excellent|good|adequate|weak|no-fix|uncertain> UNCERTAIN=<true|false>. Do not output any prose, reasoning, or status updates before, between, or after the vote lines. If you need to verify claims, do so silently. Output ONLY vote lines.'
 
-VOTER_PARSE_RATE_RETRY_PREFIX_PLAN='IMPORTANT: Your previous attempt produced narrative output instead of structured votes. Each line MUST start with the same ballot ID from the ballot (FINDING_N: or OOS_N:) followed by exactly one of YES, NO, or EXONERATE. Do not output any prose, reasoning, or status updates before, between, or after the vote lines. If you need to verify claims, do so silently. Output ONLY vote lines.'
+VOTER_PARSE_RATE_RETRY_PREFIX_PLAN='IMPORTANT: Your previous attempt produced narrative output instead of structured votes. Each line MUST start with the same ballot ID from the ballot (FINDING_N: or OOS_N:) followed by exactly one of YES, NO, or EXONERATE and the rating tokens CORRECTNESS=<true|partially-true|false-positive|uncertain> SEVERITY=<blocker|major|minor|nit|uncertain> QUALITY=<excellent|good|adequate|weak|no-fix|uncertain> UNCERTAIN=<true|false>. Do not output any prose, reasoning, or status updates before, between, or after the vote lines. If you need to verify claims, do so silently. Output ONLY vote lines.'
 
 voter_parse_rate_diag_path() {
     local voter_path="$1"

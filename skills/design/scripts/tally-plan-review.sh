@@ -14,11 +14,45 @@ source "$PLUGIN_ROOT/scripts/lib-vote-tally.sh"
 DESIGN_TMPDIR=""
 BALLOT_FILE=""
 VOTER_FILES=()
+VOTER_SLOTS=()
+FINDINGS_CLASSIFICATION_OUT=""
+LEGACY_VOTER_FILES=false
 
 usage() {
     while IFS= read -r line; do larch_err "$line"; done <<'USAGE'
-usage: tally-plan-review.sh --ballot-file FILE [--voter-files FILE...] --design-tmpdir DIR
+usage: tally-plan-review.sh --ballot-file FILE [--voter SLOT:FILE ...] [--voter-files FILE...] --design-tmpdir DIR [--findings-classification-out FILE]
 USAGE
+}
+
+add_voter_slot() {
+    local slot="$1" file="$2"
+    case "$slot" in
+        Claude|Codex|Cursor|MainAgent) ;;
+        *)
+            larch_err "tally-plan-review.sh: invalid --voter slot: $slot"
+            exit 2
+            ;;
+    esac
+    VOTER_SLOTS+=("$slot")
+    VOTER_FILES+=("$file")
+}
+
+infer_legacy_voter_slot() {
+    local file="$1" index="$2" base
+    base=$(basename "$file")
+    case "$base" in
+        *[Cc]laude*) printf 'Claude' ;;
+        *[Cc]odex*) printf 'Codex' ;;
+        *[Cc]ursor*) printf 'Cursor' ;;
+        *)
+            case "$index" in
+                0) printf 'Claude' ;;
+                1) printf 'Codex' ;;
+                2) printf 'Cursor' ;;
+                *) printf 'MainAgent' ;;
+            esac
+            ;;
+    esac
 }
 
 while [[ $# -gt 0 ]]; do
@@ -31,10 +65,31 @@ while [[ $# -gt 0 ]]; do
             BALLOT_FILE="${2:?--ballot-file requires a value}"
             shift 2
             ;;
+        --findings-classification-out)
+            FINDINGS_CLASSIFICATION_OUT="${2:?--findings-classification-out requires a value}"
+            shift 2
+            ;;
+        --voter)
+            _voter_spec="${2:?--voter requires SLOT:PATH}"
+            case "$_voter_spec" in
+                *:*)
+                    _slot="${_voter_spec%%:*}"
+                    _path="${_voter_spec#*:}"
+                    ;;
+                *)
+                    larch_err "tally-plan-review.sh: --voter requires SLOT:PATH"
+                    exit 2
+                    ;;
+            esac
+            add_voter_slot "$_slot" "$_path"
+            shift 2
+            ;;
         --voter-files)
+            LEGACY_VOTER_FILES=true
             shift
             while [[ $# -gt 0 && "$1" != --* ]]; do
-                VOTER_FILES+=("$1")
+                _legacy_slot=$(infer_legacy_voter_slot "$1" "${#VOTER_FILES[@]}")
+                add_voter_slot "$_legacy_slot" "$1"
                 shift
             done
             ;;
@@ -57,6 +112,12 @@ if [[ -z "$DESIGN_TMPDIR" || -z "$BALLOT_FILE" ]]; then
 fi
 mkdir -p "$DESIGN_TMPDIR"
 tally_file="$DESIGN_TMPDIR/voting-tally.md"
+if [[ -z "$FINDINGS_CLASSIFICATION_OUT" ]]; then
+    FINDINGS_CLASSIFICATION_OUT="$DESIGN_TMPDIR/plan-review/round-1/findings-classification.tsv"
+fi
+if [[ "$LEGACY_VOTER_FILES" == true ]]; then
+    larch_err "tally-plan-review.sh: --voter-files is deprecated; use repeated --voter SLOT:PATH"
+fi
 write_tally_stub() {
     {
         printf '# Plan Review Voting Tally\n\n'
@@ -93,6 +154,22 @@ shopt -s nullglob
 block_files=("$BLOCK_DIR"/*.md)
 shopt -u nullglob
 
+sorted_block_list="$WORKDIR/sorted-blocks.txt"
+: > "$sorted_block_list"
+for block in "${block_files[@]+"${block_files[@]}"}"; do
+    _id=$(basename "$block" .md)
+    case "$_id" in
+        FINDING_*) _kind=1; _num="${_id#FINDING_}" ;;
+        OOS_*) _kind=2; _num="${_id#OOS_}" ;;
+        *) _kind=9; _num=0 ;;
+    esac
+    printf '%s\t%s\t%s\n' "$_kind" "$_num" "$block"
+done | LC_ALL=C sort -t "$(printf '\t')" -k1,1n -k2,2n | cut -f3- > "$sorted_block_list"
+block_files=()
+while IFS= read -r block || [[ -n "$block" ]]; do
+    [[ -n "$block" ]] && block_files+=("$block")
+done < "$sorted_block_list"
+
 accepted_plan="$DESIGN_TMPDIR/accepted-plan-findings.md"
 rejected_plan="$DESIGN_TMPDIR/rejected-findings.md"
 oos_file="$DESIGN_TMPDIR/oos.md"
@@ -111,9 +188,90 @@ score_rows="$WORKDIR/score-rows.tsv"
 # per-finding non-neutral response count.
 eligible_count="${#VOTER_FILES[@]}"
 
+find_voter_file_for_slot() {
+    local wanted="$1" i found=""
+    for ((i = 0; i < ${#VOTER_FILES[@]}; i++)); do
+        if [[ "${VOTER_SLOTS[$i]}" == "$wanted" ]]; then
+            found="${VOTER_FILES[$i]}"
+        fi
+    done
+    printf '%s' "$found"
+}
+
+sanitize_tsv_cell() {
+    printf '%s' "${1:-}" | tr '\t' ' ' | tr -d '\n'
+}
+
+parse_rating_cell_values() {
+    local voter_file="$1" id="$2" parsed line key value
+    PARSED_VOTE=""
+    PARSED_CORRECTNESS=""
+    PARSED_SEVERITY=""
+    PARSED_QUALITY=""
+    PARSED_UNCERTAIN=""
+    [[ -n "$voter_file" ]] || return 0
+    parsed=$("$PLUGIN_ROOT/scripts/parse-judge-vote-and-rating.sh" "$voter_file" "$id" || true)
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        key="${line%%=*}"
+        value="${line#*=}"
+        case "$key" in
+            PARSED_VOTE) PARSED_VOTE="$value" ;;
+            PARSED_CORRECTNESS) PARSED_CORRECTNESS="$value" ;;
+            PARSED_SEVERITY) PARSED_SEVERITY="$value" ;;
+            PARSED_QUALITY) PARSED_QUALITY="$value" ;;
+            PARSED_UNCERTAIN) PARSED_UNCERTAIN="$value" ;;
+        esac
+    done <<< "$parsed"
+}
+
+write_findings_classification() {
+    local out="$1" out_tmp id block reviewer yes no exonerate judge_error voter_file vote result
+    local claude_file codex_file cursor_file slot
+    mkdir -p "$(dirname "$out")"
+    out_tmp="${out}.tmp.$$"
+    {
+        printf 'finding_id\tfinding_reviewers\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\tv1_quality\tv1_uncertain\tv2_vote\tv2_correctness\tv2_severity\tv2_quality\tv2_uncertain\tv3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain\n'
+        claude_file=$(find_voter_file_for_slot Claude)
+        codex_file=$(find_voter_file_for_slot Codex)
+        cursor_file=$(find_voter_file_for_slot Cursor)
+        for block in "${block_files[@]+"${block_files[@]}"}"; do
+            id=$(basename "$block" .md)
+            yes=0
+            no=0
+            exonerate=0
+            judge_error=0
+            for voter_file in "${VOTER_FILES[@]+"${VOTER_FILES[@]}"}"; do
+                vote=$(vote_for_id "$id" "$voter_file")
+                case "$vote" in
+                    YES) yes=$((yes + 1)) ;;
+                    NO) no=$((no + 1)) ;;
+                    EXONERATE) exonerate=$((exonerate + 1)) ;;
+                    *) judge_error=$((judge_error + 1)) ;;
+                esac
+            done
+            : "$judge_error"
+            result=$(classify_result "$yes" "$no" "$exonerate" "$eligible_count")
+            reviewer=$(sanitize_tsv_cell "$(reviewer_for_block "$block")")
+            printf '%s\t%s\t%s' "$id" "$reviewer" "$result"
+            for slot in "$claude_file" "$codex_file" "$cursor_file"; do
+                parse_rating_cell_values "$slot" "$id"
+                printf '\t%s\t%s\t%s\t%s\t%s' \
+                    "$(sanitize_tsv_cell "$PARSED_VOTE")" \
+                    "$(sanitize_tsv_cell "$PARSED_CORRECTNESS")" \
+                    "$(sanitize_tsv_cell "$PARSED_SEVERITY")" \
+                    "$(sanitize_tsv_cell "$PARSED_QUALITY")" \
+                    "$(sanitize_tsv_cell "$PARSED_UNCERTAIN")"
+            done
+            printf '\n'
+        done
+    } > "$out_tmp"
+    mv -f "$out_tmp" "$out"
+}
+
 if (( eligible_count == 0 )); then
     printf '# Plan Review Voting Tally\n\n' > "$tally_file"
     printf '**⚠ Degraded plan-review panel: 0 judges available. Panel tier: main-agent-required.**\n\n' >> "$tally_file"
+    write_findings_classification "$FINDINGS_CLASSIFICATION_OUT"
     emit_kv TALLY_PLAN_REVIEW_STATUS main-agent-vote-required
     emit_kv VOTING_TALLY_FILE "$tally_file"
     exit 0
@@ -219,6 +377,8 @@ fi
       }
     ' "$score_rows" | sort
 } > "$tally_file"
+
+write_findings_classification "$FINDINGS_CLASSIFICATION_OUT"
 
 emit_kv TALLY_PLAN_REVIEW_STATUS ok
 emit_kv VOTING_TALLY_FILE "$tally_file"

@@ -81,6 +81,21 @@ fi
 grep -q '| Reviewer | Proposed | Accepted | Exonerated | Rejected | OOS-Proposed | OOS-Accepted | OOS-Exonerated | OOS-Rejected | Score |' "$DESIGN/voting-tally.md" || fail "scoreboard header missing"
 # Cursor-Arch: 1 accepted finding (+1), 1 accepted OOS (+1) = score 2.
 grep -q '| Cursor-Arch | 1 | 1 | 0 | 0 | 1 | 1 | 0 | 0 | 2 |' "$DESIGN/voting-tally.md" || fail "scoreboard counts wrong for Cursor-Arch"
+[[ -s "$DESIGN/plan-review/round-1/findings-classification.tsv" ]] || fail "default findings-classification.tsv missing"
+head -n 1 "$DESIGN/plan-review/round-1/findings-classification.tsv" | grep -q $'finding_id\tfinding_reviewers\tvoting_result' || fail "findings-classification.tsv header missing finding_reviewers"
+grep -q $'FINDING_1\tCursor-Arch\taccepted' "$DESIGN/plan-review/round-1/findings-classification.tsv" || fail "classification row missing accepted FINDING_1"
+
+DESIGN_SLOTS="$TMPROOT/design-slots"
+mkdir -p "$DESIGN_SLOTS"
+CUSTOM_TSV="$TMPROOT/custom/findings-classification.tsv"
+"$SUBJECT" --ballot-file "$BALLOT" --voter "Claude:$V1" --voter "Codex:$V2" --voter "Cursor:$V3" --design-tmpdir "$DESIGN_SLOTS" --findings-classification-out "$CUSTOM_TSV" >/dev/null
+[[ -s "$CUSTOM_TSV" ]] || fail "custom findings-classification out missing"
+grep -q $'FINDING_1\tCursor-Arch\taccepted\tYES' "$CUSTOM_TSV" || fail "--voter slot metadata did not populate v1"
+
+DESIGN_LEGACY_WARN="$TMPROOT/design-legacy-warn"
+mkdir -p "$DESIGN_LEGACY_WARN"
+"$SUBJECT" --ballot-file "$BALLOT" --voter-files "$V1" "$V2" "$V3" --design-tmpdir "$DESIGN_LEGACY_WARN" >/dev/null 2>"$TMPROOT/legacy-warning.err"
+grep -q -- '--voter-files is deprecated' "$TMPROOT/legacy-warning.err" || fail "legacy --voter-files deprecation warning missing"
 
 # Rejected OOS subtracts one point.
 BALLOT_OOS_REJECTED="$TMPROOT/ballot-oos-rejected.md"
@@ -148,6 +163,7 @@ mkdir -p "$DESIGN_ZERO"
 out_zero=$("$SUBJECT" --ballot-file "$BALLOT" --design-tmpdir "$DESIGN_ZERO")
 printf '%s\n' "$out_zero" | grep -q '^TALLY_PLAN_REVIEW_STATUS=main-agent-vote-required$' || fail "zero voter status missing"
 [[ ! -s "$DESIGN_ZERO/accepted-plan-findings.md" ]] || fail "zero voter accepted file should be empty"
+grep -q $'FINDING_1\tCursor-Arch\trejected\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t' "$DESIGN_ZERO/plan-review/round-1/findings-classification.tsv" || fail "zero voter classification row should be rejected with empty voter cells"
 
 V_NEUTRAL="$TMPROOT/v-neutral.txt"
 : > "$V_NEUTRAL"

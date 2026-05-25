@@ -164,12 +164,13 @@ export TEST_CLONE_ROOT="$clone"
 export TEST_MERGE_BRANCH="larch-log-design-RUNPUB1"
 unset GH_STUB_CREATE_NO_URL GH_STUB_CREATE_RC GH_STUB_MERGE_RC
 
-mkdir -p "$TMP/design/render-cache/nested"
+mkdir -p "$TMP/design/render-cache/nested" "$TMP/design/plan-review/round-1"
 printf 'body\n' >"$TMP/design/plan.txt"
 printf 'CMD_JSON=["secret"]\nkeep\n' >"$TMP/design/out.txt.meta"
 printf '{"ok":1,"result":{"token":"x"}}\n' >"$TMP/design/voter-output-1.json"
 printf '{"x":1,"result":{"y":2}}\n' >"$TMP/design/plain.json"
 printf 'deep\n' >"$TMP/design/render-cache/nested/c.txt"
+printf 'finding_id\tfinding_reviewers\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\tv1_quality\tv1_uncertain\tv2_vote\tv2_correctness\tv2_severity\tv2_quality\tv2_uncertain\tv3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain\n' >"$TMP/design/plan-review/round-1/findings-classification.tsv"
 # Files that MUST be denied by the suffix deny-list (mirrors /implement's
 # round_artifact_included deny patterns):
 printf 'noisy raw transcript\n' >"$TMP/design/codex-plan-arch-output.txt.sidecar"
@@ -192,6 +193,7 @@ printf 'rc noisy\n' >"$TMP/design/render-cache/cached-output.txt.sidecar"
 git -C "$clone" pull -q origin main
 [[ -f "$clone/larch-logs/design/RUNPUB1/plan.txt" ]] || fail "plan.txt missing on main"
 [[ -f "$clone/larch-logs/design/RUNPUB1/render-cache/nested/c.txt" ]] || fail "render-cache nested missing"
+[[ -f "$clone/larch-logs/design/RUNPUB1/plan-review/round-1/findings-classification.tsv" ]] || fail "plan-review classification TSV missing"
 grep -q '^keep$' "$clone/larch-logs/design/RUNPUB1/out.txt.meta" || fail "meta trim failed"
 ! grep -q CMD_JSON "$clone/larch-logs/design/RUNPUB1/out.txt.meta" || fail "CMD_JSON should be stripped"
 ! grep -q '"result"' "$clone/larch-logs/design/RUNPUB1/voter-output-1.json" || fail ".result should be stripped from *-output*.json"
@@ -321,6 +323,36 @@ git -C "$clone_pf" show-ref --verify --quiet "refs/heads/larch-log-design-recove
 unset GIT_STUB_FAIL_PUSH
 rm -rf "$TMP_PUSH"
 export PATH="$_PRE_PUSH_PATH"
+
+echo "=== plan-review unexpected file fails publish ==="
+TMPPR=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-planreview.XXXXXX")
+clone_pr=$(setup_clone_with_origin_head "$TMPPR")
+stub_pr="$TMPPR/stub"
+make_gh_stub "$stub_pr"
+export PATH="$stub_pr:$PATH"
+unset TEST_CLONE_ROOT TEST_MERGE_BRANCH GH_STUB_LOG GH_STUB_CREATE_RC GH_STUB_CREATE_NO_URL GH_STUB_MERGE_RC
+mkdir -p "$TMPPR/design/plan-review/round-1"
+printf 'body\n' >"$TMPPR/design/plan.txt"
+printf 'bad\n' >"$TMPPR/design/plan-review/round-1/unexpected.txt"
+out_pr=$(
+    (cd "$clone_pr" && bash "$PUBLISH" --design-tmpdir "$TMPPR/design" --run-id "RUNPRBAD1" --issue 6 --repo owner/repo) 2>/dev/null || true
+)
+[[ "$out_pr" == *"PUBLISH_OK=false"* ]] || fail "unexpected plan-review file should fail publish: $out_pr"
+
+echo "=== plan-review symlink root fails publish ==="
+TMPPRL=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-planreview-link.XXXXXX")
+clone_prl=$(setup_clone_with_origin_head "$TMPPRL")
+stub_prl="$TMPPRL/stub"
+make_gh_stub "$stub_prl"
+export PATH="$stub_prl:$PATH"
+unset TEST_CLONE_ROOT TEST_MERGE_BRANCH GH_STUB_LOG GH_STUB_CREATE_RC GH_STUB_CREATE_NO_URL GH_STUB_MERGE_RC
+mkdir -p "$TMPPRL/design" "$TMPPRL/real-plan-review"
+printf 'body\n' >"$TMPPRL/design/plan.txt"
+ln -s "$TMPPRL/real-plan-review" "$TMPPRL/design/plan-review"
+out_prl=$(
+    (cd "$clone_prl" && bash "$PUBLISH" --design-tmpdir "$TMPPRL/design" --run-id "RUNPRLINK1" --issue 8 --repo owner/repo) 2>/dev/null || true
+)
+[[ "$out_prl" == *"PUBLISH_OK=false"* ]] || fail "symlink plan-review root should fail publish: $out_prl"
 
 echo "=== trim fail-closed on bad json sidecar ==="
 TMP2=$(mktemp -d "${TMPDIR:-/tmp}/tdlp2.XXXXXX")

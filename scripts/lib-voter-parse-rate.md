@@ -14,6 +14,8 @@ Callers set `LARCH_VPR_*` globals before invoking retry helpers (ballot path, tm
 
 `LARCH_VPR_RETRY_PREFIX_KIND=plan` selects the plan-ballot retry preamble (`FINDING_N:` / `OOS_N:` vote lines). `finding-oos` grammar counts both finding and OOS headings from the ballot when scoring judge errors.
 
+The retry literals at the top of `lib-voter-parse-rate.sh` are the authoritative wording for retry prompts. `LARCH_VPR_RETRY_PREFIX_KIND` only selects between those constants; it does not define the line format. Both code and plan retry preambles require vote lines to carry `CORRECTNESS=`, `SEVERITY=`, `QUALITY=`, and `UNCERTAIN=` rating tokens.
+
 ## Edit in sync
 
 Update this file when changing parse-rate behavior, `dispatch-code-voters.sh`, `dispatch-plan-voters.sh`, or `scripts/test-dispatch-plan-voters.sh` / `scripts/test-dispatch-code-voters.sh` expectations.
