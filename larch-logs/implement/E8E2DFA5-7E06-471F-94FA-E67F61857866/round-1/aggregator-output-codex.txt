@@ -1,0 +1,37 @@
+### FINDING_1: flags.md misstates hard vs partition Step 2b.5 routing
+- **Reviewer(s)**: cursor-specialist-structure-output.txt
+- **Severity**: important
+- **Concern**: `skills/design/references/flags.md` says hard triggers route to Split-path automatically, but hard plans still show Split/Cancel first; only `--partition` skips the prompt when no hard trigger fires.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: Address the concern above.
+
+### FINDING_2: approval-gates.md still documents removed soft Continue path
+- **Reviewer(s)**: cursor-specialist-correctness-output.txt, cursor-specialist-edge-cases-output.txt, cursor-specialist-plan-fidelity-output.txt
+- **Severity**: important
+- **Concern**: `skills/design/references/approval-gates.md` still describes the removed Step 2b.5 soft Split/Continue behavior and outdated Split-path semantics. After Gate B re-emit, an orchestrator following this doc may offer Continue or mishandle Split even though current behavior is hard Split/Cancel, partition direct Split-path, or under-threshold breadcrumb.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-correctness-output.txt: Address the concern above.
+  - From cursor-specialist-edge-cases-output.txt: Address the concern above.
+  - From cursor-specialist-plan-fidelity-output.txt: Address the concern above.
+
+### FINDING_3: README still describes --partition as a prompt path
+- **Reviewer(s)**: cursor-specialist-testing-output.txt, cursor-specialist-plan-fidelity-output.txt
+- **Severity**: important
+- **Concern**: `README.md` still says `--partition` forces a partition prompt path, but runtime now routes directly to Split-path when no hard trigger fires.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-testing-output.txt: Address the concern above.
+  - From cursor-specialist-plan-fidelity-output.txt: Address the concern above.
+
+### OOS_1: [OUT_OF_SCOPE] pre-existing arbitrary readable plan-file path
+- **Reviewer(s)**: cursor-specialist-security-output.txt
+- **Severity**: important
+- **Concern**: `skills/design/scripts/check-plan-size.sh` accepts any readable `--plan-file` path without canonicalization under a design root, allowing a caller with attacker-controlled paths to use the helper for limited arbitrary file reads. The source marks this as pre-existing and unchanged by the diff.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-security-output.txt: Address the concern above.
+
+### OOS_2: [OUT_OF_SCOPE] tmpdir tampering can force partition Split-path
+- **Reviewer(s)**: cursor-specialist-security-output.txt
+- **Severity**: important
+- **Concern**: `skills/design/SKILL.md` persists `partition_requested` via jq OR-merge in `DESIGN_TMPDIR/run-params.json`; writable tmpdir tampering could force Split-path on later Step 2b.5 re-entries. The source marks the persistence pattern as pre-existing, while noting the new branch auto-enters Split-path when the flag is true.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-security-output.txt: Address the concern above.
