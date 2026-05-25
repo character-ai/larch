@@ -1,0 +1,21 @@
+The `git log` output is the critical data point: commit `acf9b532` ("Fixes #2753: ... (#2783)") is on this branch above `main`, meaning the `test-implement-structure.sh` drift guard, HTML markers in `skills/implement/SKILL.md`, and `test-implement-structure.md` doc update all arrived via that commit — yet none appear in the #2764 plan's "Files to modify" section.
+
+---
+
+### In-Scope Findings
+
+1. **Important** `correctness` `CHANGELOG.md:23-29` — The [42.4.16] entry describes only the #2753 drift-guard changes ("Catch drift between documented ship-pr state keys and write_initial_state emits…", HTML markers, harness readme) but is completely silent about all five plan deliverables: dedup splitter fix (#2764), explicit `design_classification` tier tokens (#2780 Bug 1), `.classification`→`.design_classification` jq filter fix (#2780 Bug 2), `lib-voter-parse-rate.sh` CODE-vs-PLAN docstring (#2778 sub-task 1), and `tracking-issue-read.sh` `RUN_ID` docstring (#2778 sub-task 2). A reader consulting the CHANGELOG for 42.4.16 to understand what changed in this version will find no record of the plan's bug fixes. **Suggested fix:** Extend the [42.4.16] `### Changed` or add a `### Fixed` subsection listing the dedup splitter fix, the tier/jq field-name corrections, and the two docstring updates; remove or subordinate the drift-guard bullets since those come from a different issue that was co-landed.
+
+2. **Important** `architecture` `scripts/test-implement-structure.sh`, `scripts/test-implement-structure.md`, `skills/implement/SKILL.md:1558-1567` — These three files are modified by commit `acf9b532` (the bailed issue #2753 run co-landed onto this branch), yet none of them appear in the #2764 plan's "Files to modify" section. `scripts/test-implement-structure.sh` gains the full drift-guard assertion block, `scripts/test-implement-structure.md` gains the contract paragraph, and `skills/implement/SKILL.md` gains the `<!-- write-initial-state-keys:begin/end -->` HTML markers — all from the separate #2753 plan. Without acknowledgment, this diff is unauditable against the stated plan: reviewers cannot verify that all diff surface is authorized. **Suggested fix:** The PR body must explicitly note that commit `acf9b532` co-lands the #2753 drift-guard feature; alternatively, carry those three files in the plan amendment section of the #2764 issue or add a "verify-and-accept" prose block equivalent to the plan's sub-task 3 no-op handling.
+
+---
+
+### Out-of-Scope Observations
+
+No pre-existing issues worth surfacing.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	CHANGELOG.md:23-29	[42.4.16] entry describes only #2753 drift-guard changes; all five plan deliverables (#2764 dedup fix, #2780 tier tokens, #2780 jq fix, #2778 two docstrings) are absent	A user reading the CHANGELOG to understand 42.4.16 sees nothing about the dedup splitter bug fix or mode-string N/A regression, making the CHANGELOG misleading and tracing impossible	Extend [42.4.16] to list the dedup/tier/jq/docstring fixes; remove or subordinate the drift-guard bullets to reflect that they originate from co-landed issue #2753
+1	in_scope	important	architecture	scripts/test-implement-structure.sh, scripts/test-implement-structure.md, skills/implement/SKILL.md:1558-1567	Three files modified by co-landed commit acf9b532 (issue #2753 drift guard) are absent from the #2764 plan's "Files to modify" section	Reviewers cannot verify the diff surface against the stated plan; plan-fidelity checks fail silently since no plan requirement maps to these files	Add explicit authorization in the PR body noting that commit acf9b532 co-lands the #2753 drift-guard feature on this branch, or carry the three files in a plan amendment section
+```

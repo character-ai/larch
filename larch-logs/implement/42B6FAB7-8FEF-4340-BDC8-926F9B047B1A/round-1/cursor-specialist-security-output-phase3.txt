@@ -1,0 +1,20 @@
+### In-Scope Findings
+
+1. - **security** `skills/design/scripts/test-plan-review-loop.sh:98-100` — `write_dispatch_three_slots` interpolates `$OUT1`, `$OUT2`, `$OUT3` (derived from `$DESIGN_TMPDIR`) directly into JSON string values using shell concatenation (`'"$OUT1"'`) without JSON-escaping. A path containing `"` or `\` would produce malformed NDJSON, silently breaking the stub. In practice `mktemp -d` yields safe paths, but the pattern is fragile. **Suggested fix:** Use `jq -n --arg slot "cursor-plan-arch" --arg tool "cursor" --arg out "$OUT1" --arg pf "$PROMPT1" '$slot+"…"'` or `printf` with `%s` and `python3 -c "import json,sys; print(json.dumps(sys.argv[1]))"` to produce JSON-safe path strings.
+
+### Out-of-Scope Observations
+
+No pre-existing out-of-scope observations to surface.
+
+---
+
+The rest of the diff is free of security concerns:
+- The Python `split_all_blocks` heredoc operates on internally-generated reviewer output with fixed regex patterns, no `eval`, and no shell calls.
+- All three `jq -r '.design_classification // "N/A"'` filters use a literal field name; `run-params.json` is written by internal tooling to one of three fixed tokens (`TRIVIAL_DOC_ONLY`, `SIMPLE`, `HARD`), so the `--mode` argument expansion is safe.
+- The `test-implement-structure.sh` drift guard extracts only `[A-Z_][A-Z0-9_]*` tokens before comparing, producing safe output regardless of source file content.
+- No hardcoded secrets, auth changes, cryptographic primitives, SSRF surface, or path-traversal vectors introduced.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	nit	security	skills/design/scripts/test-plan-review-loop.sh:98-100	JSON string interpolation of unescaped shell paths into NDJSON stubs	If $DESIGN_TMPDIR ever contains a double-quote or backslash (non-mktemp path in CI override), write_dispatch_three_slots emits malformed NDJSON, silently breaking the test stub	Use jq --arg or printf with a JSON-encoding helper to escape the path before embedding in the JSON string literal
+```
