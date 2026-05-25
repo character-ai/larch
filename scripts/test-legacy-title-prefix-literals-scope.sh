@@ -20,6 +20,7 @@ ALLOW=(
   scripts/test-fetch-combinable-issues-filter.sh
   scripts/test-implement-admission.sh
   scripts/test-legacy-title-prefix-literals-scope.sh
+  scripts/test-lib-title-eligibility.sh
   scripts/test-tracking-issue-write.sh
   scripts/tracking-issue-write.md
   scripts/tracking-issue-write.sh
