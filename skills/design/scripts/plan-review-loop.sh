@@ -392,14 +392,18 @@ def jaccard(a, b):
     return inter / union if union else 0.0
 
 
-def split_blocks(text, prefix):
-    parts = re.split(r"(?m)^(?=### %s_[0-9]+:)" % prefix, text)
-    out = []
+def split_all_blocks(text):
+    parts = re.split(r"(?m)^(?=### (?:FINDING|OOS)_[0-9]+:)", text)
+    fins, oos = [], []
     for p in parts:
         p = p.strip()
-        if re.match(r"^### %s_[0-9]+:" % prefix, p, re.M):
-            out.append(p)
-    return out
+        if not p:
+            continue
+        m = re.match(r"^### (FINDING|OOS)_[0-9]+:", p)
+        if not m:
+            continue
+        (fins if m.group(1) == "FINDING" else oos).append(p)
+    return fins, oos
 
 
 def what_text(block):
@@ -450,8 +454,7 @@ def dedup(blocks, thresh=0.6):
 
 def main():
     raw = sys.stdin.read()
-    fins = split_blocks(raw, "FINDING")
-    oos = split_blocks(raw, "OOS")
+    fins, oos = split_all_blocks(raw)
     fins2 = dedup(fins)
     owt = {what_text(b) for b in fins2}
     oos2 = []

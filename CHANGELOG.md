@@ -21,6 +21,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Migration posture**: legacy `[IN PROGRESS]` and `[PLANNED]` prefixes are stripped by `strip_lifecycle_prefix` for backward compatibility but are no longer accepted as `--state` values by `tracking-issue-write.sh` or as admission-pass prefixes.
 - **Audit scope**: workflow call sites and rename `--state` surfaces in the active runtime tree (`skills/`, `scripts/`, `agents/`, `.claude/`, `docs/`, tests) now use the new prefix set; deliberate legacy bracket literals remain only where migration, admission recovery, strip helpers, or hermetic fixtures require them. This Unreleased section documents the migration and may name the old prefixes. Historical shipped changelog bodies and `larch-logs/` were not bulk-retitled.
 
+## [42.4.20] - 2026-05-25
+
+### Changed
+
+- Stop duplicate OOS/FINDING ballot headings when each reviewer restarts numbering by splitting markdown at any FINDING or OOS heading before dedup.
+- Make Step 0b and flags.md spell out design_classification tokens so write-run-params and tier copy stay aligned with the persisted JSON field.
+- Read design_classification (not .classification) when rendering final-summary mode so operators see TRIVIAL_DOC_ONLY / SIMPLE / HARD instead of N/A.
+- Document CODE-only FINDING vote lines in voter parse-rate helper and list RUN_ID in tracking-issue-read --sentinel stdout contract.
+
 ## [42.4.19] - 2026-05-25
 
 ### Changed

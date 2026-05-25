@@ -1,0 +1,18 @@
+The awk closing pattern `/\} > "\$tmp" && mv/` correctly targets line 343 which is the true end of `write_initial_state()` — the two other occurrences of that pattern (lines 669, 685) belong to later functions and are never reached by the range.
+
+Everything checks out. Here is the formal review:
+
+---
+
+### In-Scope Findings
+
+1. - **code-quality** `skills/design/scripts/test-plan-review-loop.sh:322-338` — The Python monotonicity assertion is applied only to `$D3/findings.md`; ballot.txt FINDING-heading monotonicity is not asserted directly. The for-loop above it (lines 316–321) verifies OOS heading uniqueness in both `findings.md` and `ballot.txt`, but the symmetric FINDING check in `ballot.txt` is left implicit — `TALLY_PLAN_REVIEW_STATUS=ok` provides an indirect proxy (tally exits rc=2 on duplicate headings), but a direct `grep -cF "### FINDING_1:"` check on `ballot.txt` would match the plan's stated acceptance criterion ("ballot.txt contains monotonically increasing FINDING ids") explicitly. **Suggested fix:** Add a parallel `grep -cF "### FINDING_N:"` count assertion on `$D3/ballot.txt` for each expected FINDING heading, or extend the Python snippet to also accept a second positional argument for `ballot.txt` and repeat the check.
+
+### Out-of-Scope Observations
+
+No pre-existing issues to flag.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	nit	code-quality	skills/design/scripts/test-plan-review-loop.sh:322-338	FINDING heading monotonicity in ballot.txt not directly asserted; only OOS uniqueness is explicitly checked there	If a future change accidentally re-introduces duplicate FINDING headings only in ballot.txt but not findings.md, the tally proxy would catch it but the test author has no clear signal from the assertion set	Add direct grep -cF assertions on ballot.txt for ### FINDING_1: through ### FINDING_3: matching the existing OOS loop pattern, or extend the Python check to cover ballot.txt as a second argv
+```

@@ -19,12 +19,13 @@
 #      → write prompt verbatim to TASK_FILE, never touches GitHub.
 #      Emits TASK_SOURCE=prompt.
 #   4. --sentinel PATH (alone; no --issue/--prompt/--out-dir/--repo)
-#      → parse local markdown file, emit ISSUE_NUMBER/ADOPTED. No network.
+#      → parse local markdown file, emit ISSUE_NUMBER/RUN_ID/ADOPTED. No network.
 #
 # Output contract (KEY=value on stdout):
 #   ISSUE_NUMBER=<N or empty>
 #   TASK_SOURCE=issue-plus-prompt|issue-only|prompt  (omitted for --sentinel)
 #   TASK_FILE=<path>                                  (omitted for --sentinel)
+#   RUN_ID=<id or empty>                              (only --sentinel)
 #   ADOPTED=<true|false|>                             (only --sentinel; strict
 #                                                      contract: 'true' or
 #                                                      'false' when the key is

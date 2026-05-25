@@ -12,9 +12,9 @@
 
 ## Public `/design` flags
 
-- `--trivial`: mutually exclusive tier. Maps to `sketch_budget=0`, `quick_mode=true`, `review_budget=quick`, `workflow_path=SIMPLE` when writing `run-params.json` (the trivial doc-only carve-out follows the Step 0 router scan in `SKILL.md`).
-- `--simple`: mutually exclusive tier. Maps to `sketch_budget=2`, `quick_mode=true`, `review_budget=full`, `workflow_path=SIMPLE` (2 sketch agents on the quick path per `sketch-launch.md`).
-- `--hard`: mutually exclusive tier. Maps to `sketch_budget=4`, `quick_mode=false`, `review_budget=full`, `workflow_path=HARD`.
+- `--trivial`: mutually exclusive tier. Maps to `design_classification=TRIVIAL_DOC_ONLY`, `sketch_budget=0`, `quick_mode=true`, `review_budget=quick`, `workflow_path=SIMPLE` when writing `run-params.json`.
+- `--simple`: mutually exclusive tier. Maps to `design_classification=SIMPLE`, `sketch_budget=2`, `quick_mode=true`, `review_budget=full`, `workflow_path=SIMPLE` (2 sketch agents on the quick path per `sketch-launch.md`).
+- `--hard`: mutually exclusive tier. Maps to `design_classification=HARD`, `sketch_budget=4`, `quick_mode=false`, `review_budget=full`, `workflow_path=HARD`.
 - `--no-dedup`: forward to `/larch:issue` on the verbal-create path. Default `false`.
 - `--run-id <ID>`: optional stable run id. Default empty.
 - `--partition` / `-p`: public boolean flag, default `false`. Mutually exclusive with `--trivial` (reject before `session-setup.sh` per `SKILL.md` Pre-Step-0 gate). Semantics: when no **hard** plan-size threshold fires at Step **2b.5**, treat a **soft** trigger as fired on every plan write so the orchestrator offers the break-up / continue flow — i.e. it **forces** the soft branch even when mechanical soft thresholds are all false. **Hard always wins**: if any hard threshold trips, Step 2b.5 uses the hard-only `AskUserQuestion` (Split / Cancel, no Continue) regardless of `--partition`. The flag is persisted to `$DESIGN_TMPDIR/run-params.json` as `partition_requested` (boolean) via `scripts/write-run-params.sh` so Gate B and post-plan discussion re-entries read it from a fresh Bash subshell without re-parsing argv.
