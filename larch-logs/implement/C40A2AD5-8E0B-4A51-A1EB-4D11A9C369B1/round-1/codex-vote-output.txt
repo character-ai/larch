@@ -1,0 +1,10 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: EXONERATE -- The label is vague, but this is too minor and overlaps the redaction-attribution finding.
+OOS_1: NO -- Run-log churn is branch noise, not a concrete repo behavior issue worth filing separately.
+OOS_2: YES
+OOS_3: NO -- The item describes a non-problem: the cross-reference is materially consistent.
