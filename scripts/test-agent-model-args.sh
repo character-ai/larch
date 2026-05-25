@@ -59,7 +59,7 @@ assert_success_no_empty_lines "codex default with effort" "$OUT"
 
 env -u LARCH_CURSOR_MODEL -u CLAUDE_PLUGIN_OPTION_CURSOR_MODEL \
     "$SUBJECT" --tool cursor --with-effort > "$OUT" 2> "$ERR"
-printf '%s\n%s\n' '--model' 'composer-2' > "$EXPECTED"
+printf '%s\n%s\n' '--model' 'composer-2.5' > "$EXPECTED"
 assert_file_equals "cursor default" "$EXPECTED" "$OUT"
 assert_success_no_empty_lines "cursor default" "$OUT"
 

@@ -263,12 +263,15 @@ run_coder_dispatch() {
         _SERIAL_LOCK=""
         external_serial_lock_acquire _SERIAL_LOCK "cursor"
         external_serial_lock_release_after "$_SERIAL_LOCK" "${LARCH_EXTERNAL_SERIAL_LOCK_DELAY:-0.5}"
+        local _wrapped_prompt
+        _wrapped_prompt=$({ "$SCRIPT_DIR/cursor-wrap-prompt.sh" "$prompt_body"; _wrap_status=$?; printf X; exit "$_wrap_status"; }) || return 1
+        _wrapped_prompt=${_wrapped_prompt%X}
         if "$RUN_EXTERNAL_AGENT_SH" --tool cursor --output "$round_dir/coder-cursor.log" --timeout 1800 --capture-stdout -- \
             cursor agent -p --trust \
             ${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"} \
             ${CURSOR_AUTH_ARGS[@]+"${CURSOR_AUTH_ARGS[@]}"} \
             --workspace "$PWD" \
-            "$prompt_body" > "$round_dir/coder-cursor.wrapper.log" 2>&1; then
+            "$_wrapped_prompt" > "$round_dir/coder-cursor.wrapper.log" 2>&1; then
             cp "$round_dir/coder-cursor.log" "$tool_log" 2>/dev/null || : > "$tool_log"
             printf 'cursor\n' > "$tool_stdout"
             return 0

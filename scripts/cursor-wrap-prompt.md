@@ -23,6 +23,9 @@ Cursor also has no way to configure a non-default model via config file that ove
 - `skills/shared/voting-protocol.md` — Cursor voter template.
 - `skills/shared/dialectic-protocol.md` — Cursor judge template.
 - `scripts/run-negotiation-round.sh` — Cursor negotiation-round branch.
+- `scripts/lint-fix-loop.sh` — Cursor lint-fix coder branch (`run_cursor`).
+- `scripts/check-reviewers.sh` — Cursor presence probe (`larch_run_one_cursor_probe`).
+- `skills/review-and-fix/scripts/review-and-fix.sh` — Cursor coder fallback inside the review-fix coder dispatch.
 
 **Migrated to `launch-review.sh --tool cursor`** (no longer direct callers):
 - `skills/design/SKILL.md` (was 1 — plan-review Cursor reviewer)
@@ -33,8 +36,9 @@ Cursor also has no way to configure a non-default model via config file that ove
 
 ## Non-callers (intentional exclusions)
 
-- `scripts/check-reviewers.sh` — health probe for Step 0 / session-setup. The probe uses a **single** `cursor agent …` invocation per auth-retry attempt (plus Darwin mutex / private config / auth argv wiring from `lib-cursor-launcher-common.sh`). There is **no** `cursor-wrap-prompt.sh` / `/max-mode on.` prefix — max-mode is intentionally excluded to keep the probe fast and cheap; production reviews and implementers still wrap prompts where required.
 - `scripts/run-external-agent.sh` header example — illustrative of the wrapper's own tool interface, not a real invocation.
+
+Note: `scripts/check-reviewers.sh` was previously listed as an intentional exclusion to keep the probe fast/cheap. As of the composer-2.5 + max-mode uniformity sweep it now wraps the probe prompt and passes `--model composer-2.5` so the probe matches what production Cursor invocations will see (auth/quota issues that are model-specific become visible at probe time).
 
 ## Edit-in-sync rules
 

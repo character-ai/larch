@@ -140,19 +140,7 @@ skipped.
 ### Cursor
 - Via web UI of your Cursor org, create your own API key
 - Add it to your env (e.g., in `.bashrc`: `export CURSOR_API_KEY="<your-key>"` (replace `<your-key>`, of course))
-- Edit `~/.cursor/cli-config.json` and change `model` section to read:
-```JSON
-  "model": {
-    modelId: "composer-2-5",
-    displayModelId: "composer-2-5",
-    displayName: "Composer 2.5",
-    displayNameShort: "Composer 2.5",
-    aliases: [ "composer" ],
-    maxMode: true
-  }
-```
-
-> **Note — larch overrides the cli-config.json model for its own Cursor invocations.**
+> **Do NOT edit `~/.cursor/cli-config.json` to set model or max-mode.** Cursor manages that file itself and overwrites it on each launch, so any model / `maxMode` change you make there is reverted and silently ignored by larch. For larch's own Cursor invocations, the model is **hard-coded to `composer-2.5`** (passed via `cursor agent --model composer-2.5` from `scripts/agent-model-args.sh`), and **max-mode is forced on** via the `/max-mode on. Prompt:` slash-command prefix prepended by `scripts/cursor-wrap-prompt.sh`. To override the default model, set `LARCH_CURSOR_MODEL` (or `CLAUDE_PLUGIN_OPTION_CURSOR_MODEL`) in your environment rather than touching the cli-config file.
 
 #### macOS keychain interaction
 

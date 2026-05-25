@@ -3,7 +3,7 @@
 # external agent tool.
 #
 # Returns the appropriate --model / -m flag for the given tool based on
-# environment variables. Cursor defaults to composer-2 when no model is
+# environment variables. Cursor defaults to composer-2.5 when no model is
 # configured. Codex defaults to gpt-5.5 when unconfigured.
 #
 # When --with-effort is passed, also emits tool-specific reasoning-effort flags.
@@ -46,7 +46,7 @@
 #     gpt-5.4-medium
 #         (cursor with LARCH_CURSOR_MODEL=gpt-5.4-medium)
 #     --model
-#     composer-2
+#     composer-2.5
 #         (cursor default, --with-effort is a no-op for Cursor)
 #     -m
 #     o3
@@ -148,7 +148,7 @@ resolve_model() {
 
 case "$TOOL" in
     cursor)
-        MODEL=$(resolve_model LARCH_CURSOR_MODEL CLAUDE_PLUGIN_OPTION_CURSOR_MODEL composer-2)
+        MODEL=$(resolve_model LARCH_CURSOR_MODEL CLAUDE_PLUGIN_OPTION_CURSOR_MODEL composer-2.5)
         emit_arg "--model"
         emit_arg "$MODEL"
         # Cursor has no effort flag; --with-effort is intentionally a no-op here.
