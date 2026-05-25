@@ -961,6 +961,7 @@ fi
 export CLAUDE_PLUGIN_ROOT
 
 mkdir -p "$IMPLEMENT_TMPDIR/breadcrumbs"
+# intentionally non-stable: the shell-PID expansion below varies per process; launch id is identifier-only and not literal-stable.
 _launch_id="run-step2-dispatch.$$"
 export LARCH_BREADCRUMB_STREAM="$IMPLEMENT_TMPDIR/breadcrumbs/run-step2-dispatch.${_launch_id}.ndjson"
 : > "$LARCH_BREADCRUMB_STREAM"
@@ -1203,6 +1204,7 @@ fi
 export CLAUDE_PLUGIN_ROOT
 
 mkdir -p "$IMPLEMENT_TMPDIR/breadcrumbs"
+# intentionally non-stable: the shell-PID expansion below varies per process; launch id is identifier-only and not literal-stable.
 _launch_id="run-step5-review.$$"
 export LARCH_BREADCRUMB_STREAM="$IMPLEMENT_TMPDIR/breadcrumbs/run-step5-review.${_launch_id}.ndjson"
 : > "$LARCH_BREADCRUMB_STREAM"
@@ -1259,6 +1261,7 @@ fi
 export CLAUDE_PLUGIN_ROOT
 
 mkdir -p "$IMPLEMENT_TMPDIR/breadcrumbs"
+# intentionally non-stable: the shell-PID expansion below varies per process; launch id is identifier-only and not literal-stable.
 _launch_id="run-step5-review.$$"
 export LARCH_BREADCRUMB_STREAM="$IMPLEMENT_TMPDIR/breadcrumbs/run-step5-review.${_launch_id}.ndjson"
 : > "$LARCH_BREADCRUMB_STREAM"
@@ -1646,6 +1649,7 @@ else
 fi
 
 mkdir -p "$IMPLEMENT_TMPDIR/breadcrumbs"
+# intentionally non-stable: the shell-PID expansion below varies per process; launch id is identifier-only and not literal-stable.
 _launch_id="ship-pr.$$"
 export LARCH_BREADCRUMB_STREAM="$IMPLEMENT_TMPDIR/breadcrumbs/ship-pr.${_launch_id}.ndjson"
 : > "$LARCH_BREADCRUMB_STREAM"
