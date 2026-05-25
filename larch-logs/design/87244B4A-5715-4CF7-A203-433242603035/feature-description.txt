@@ -1,0 +1,18 @@
+[DESIGNING] Add filter to /design to refuse work on issues whose title matches forbidden…
+
+Add filter to /design to refuse work on issues whose title matches forbidden prefixes (case-insensitive), and auto-enable brainstorm on "Brainstorm" title prefix.
+
+The filter must reject and terminate /design (with a clear, concise error message) when the fetched issue title starts with any of these prefixes, all checked case-insensitively:
+
+1) `[IMPLEMENTING]`
+2) `[DONE]`
+3) `[DESIGNING]`
+4) `[DESIGNED]`
+5) `[<any character sequence> Report]` — i.e. any title of the form `[X Report]` where X is any sequence of characters
+
+Additionally, when the title starts with `Brainstorm` (case-insensitive), /design must:
+- Print a clear info banner in bold indicating that brainstorm mode is being auto-enabled from the title prefix.
+- Treat `brainstorm_requested=true` for the run, even if `--brainstorm` was not passed on argv.
+- Continue execution normally (do not terminate).
+
+The check should happen in Step 0b after the issue title is fetched via `gh issue view`, so that the existing clarify-loop / already-planned-branch routers do not run when the title is rejected.
