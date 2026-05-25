@@ -49,7 +49,7 @@ assert_eq "1 voter, 1 NO → reject" "$got" "reject"
 accept_finding 0 0 1 1 && got=accept || got=reject
 assert_eq "1 voter, 1 EXONERATE → reject for implementation" "$got" "reject"
 accept_finding 0 0 0 0 && got=accept || got=reject
-assert_eq "0 voters → reject" "$got" "reject"
+assert_eq "0 voters → never accept; caller escalates" "$got" "reject"
 accept_finding 1 0 0 3 && got=accept || got=reject
 assert_eq "3 available, 1 YES 2 JUDGE_ERROR → reject" "$got" "reject"
 accept_finding 1 0 0 2 && got=accept || got=reject
@@ -221,6 +221,7 @@ got=$(classify_result 1 0 0 1); assert_eq "1Y/1 → accepted" "$got" "accepted"
 got=$(classify_result 0 1 0 1); assert_eq "1N/1 → rejected" "$got" "rejected"
 got=$(classify_result 0 0 1 1); assert_eq "1E/1 → exonerated" "$got" "exonerated"
 got=$(classify_result 0 0 0 1); assert_eq "1 neutral abstain → rejected" "$got" "rejected"
+got=$(classify_result 0 0 0 0); assert_eq "0 eligible → main-agent-vote-required" "$got" "main-agent-vote-required"
 got=$(classify_result 0 0 3 3); assert_eq "0Y/0N/3E (3 elig) → exonerated" "$got" "exonerated"
 got=$(classify_result 0 1 1 3); assert_eq "0Y/1N/1E (3 elig) → exonerated" "$got" "exonerated"
 got=$(classify_result 0 1 2 3); assert_eq "0Y/1N/2E (3 elig) → exonerated" "$got" "exonerated"

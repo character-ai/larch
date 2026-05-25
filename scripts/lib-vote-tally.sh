@@ -105,7 +105,7 @@ PYEOF
 #   eligible >= 3 → 2+ YES
 #   eligible == 2 → unanimous YES (2/2)
 #   eligible == 1 → single YES
-#   eligible == 0 → reject; caller escalates to main-agent adjudication
+#   eligible == 0 → never accept; caller escalates to main-agent adjudication
 accept_finding() {
     local yes="$1" no="$2" exonerate="$3" eligible="$4"
     : "$no" "$exonerate"
@@ -146,8 +146,9 @@ split_ballot_to_blocks() {
 }
 
 # classify_result: derives a per-finding result label (accepted | rejected |
-# neutral | exonerated) from the vote counts. Encapsulates the secondary tie
-# rules so callers do not reimplement them. Prints the result to stdout.
+# neutral | exonerated | main-agent-vote-required) from the vote counts.
+# Encapsulates the secondary tie rules so callers do not reimplement them.
+# Prints the result to stdout.
 classify_result() {
     local yes="$1" no="$2" exonerate="$3" eligible="$4"
     if (( eligible <= 0 )); then

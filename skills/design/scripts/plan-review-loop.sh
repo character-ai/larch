@@ -86,6 +86,12 @@ emit_loop_kvs() {
     emit_kv VOTER_1_PARSE_RATE_STATUS "$voter1_parse"
 }
 
+reset_findings_classification() {
+    local classification_out="$DESIGN_TMPDIR/plan-review/round-$ROUND_NUM/findings-classification.tsv"
+    mkdir -p "$(dirname "$classification_out")"
+    findings_classification_header > "$classification_out"
+}
+
 write_empty_review_artifacts() {
     local tally_note="$1"
     local classification_out="$DESIGN_TMPDIR/plan-review/round-$ROUND_NUM/findings-classification.tsv"
@@ -645,6 +651,7 @@ done <<< "$_tally_raw"
 if [[ "$_tally_rc" -ne 0 ]]; then
     emit_kv WARN "plan-review-tally: tally-plan-review.sh exited with rc=$_tally_rc"
     TALLY_PLAN_REVIEW_STATUS="tally-error"
+    reset_findings_classification
     [[ -z "$VOTING_TALLY_FILE" ]] && VOTING_TALLY_FILE="$DESIGN_TMPDIR/voting-tally.md"
     if [[ ! -s "$VOTING_TALLY_FILE" ]]; then
         {

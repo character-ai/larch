@@ -161,6 +161,23 @@ assert_cell "$W5/out.tsv" FINDING_1 v1_vote YES
 assert_cell "$W5/out.tsv" FINDING_1 v2_vote ""
 assert_cell "$W5/out.tsv" FINDING_1 v3_vote NO
 
+echo "=== MainAgent-only retally keeps fixed panel columns empty ==="
+W5B="$TMPROOT/main-agent"
+mkdir -p "$W5B"
+MAIN_AGENT_BALLOT="$W5B/ballot.md"
+cat > "$MAIN_AGENT_BALLOT" <<'EOF'
+### FINDING_1: Main-agent
+- **Reviewer**: Claude-Arch
+- focus-area = correctness
+EOF
+MAIN_AGENT_VOTE="$W5B/voter-main-agent.txt"
+printf 'FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false\n' > "$MAIN_AGENT_VOTE"
+run_tally --ballot-file "$MAIN_AGENT_BALLOT" --design-tmpdir "$W5B/design" --findings-classification-out "$W5B/out.tsv" --voter "MainAgent:$MAIN_AGENT_VOTE"
+assert_cell "$W5B/out.tsv" FINDING_1 voting_result accepted
+assert_cell "$W5B/out.tsv" FINDING_1 v1_vote ""
+assert_cell "$W5B/out.tsv" FINDING_1 v2_vote ""
+assert_cell "$W5B/out.tsv" FINDING_1 v3_vote ""
+
 echo "=== parser malformed vote, casing, duplicate ids ==="
 PARSER_FIX="$TMPROOT/parser.txt"
 cat > "$PARSER_FIX" <<'EOF'
@@ -174,6 +191,16 @@ assert_parser_cell "$PARSER_FIX" FINDING_5 PARSED_CORRECTNESS true
 assert_parser_cell "$PARSER_FIX" FINDING_3 PARSED_SEVERITY ""
 assert_parser_cell "$PARSER_FIX" FINDING_3 PARSED_UNCERTAIN true
 assert_parser_cell "$PARSER_FIX" FINDING_4 PARSED_VOTE YES
+
+echo "=== parser unreadable file and missing id ==="
+set +e
+"$PARSER" "$TMPROOT/does-not-exist.txt" FINDING_1 >/dev/null 2>&1
+parser_missing_rc=$?
+set -e
+[[ "$parser_missing_rc" -eq 2 ]] || fail "unreadable voter file should exit 2"
+assert_parser_cell "$PARSER_FIX" FINDING_999 PARSED_VOTE ""
+assert_parser_cell "$PARSER_FIX" FINDING_999 PARSED_CORRECTNESS ""
+assert_parser_cell "$PARSER_FIX" FINDING_999 PARSED_UNCERTAIN true
 
 echo "=== voter-sourced TSV cells are sanitized ==="
 W7="$TMPROOT/sanitize"

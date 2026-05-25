@@ -266,9 +266,6 @@ write_findings_classification() {
         claude_file=$(find_voter_file_for_slot Claude)
         codex_file=$(find_voter_file_for_slot Codex)
         cursor_file=$(find_voter_file_for_slot Cursor)
-        if [[ -z "$claude_file$codex_file$cursor_file" ]]; then
-            claude_file=$(find_voter_file_for_slot MainAgent)
-        fi
         for block in "${block_files[@]+"${block_files[@]}"}"; do
             id=$(basename "$block" .md)
             IFS=$'\t' read -r yes no exonerate judge_error <<< "$(count_parsed_votes_for_id "$id" "${VOTER_FILES[@]+"${VOTER_FILES[@]}"}")"
