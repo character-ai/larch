@@ -20,6 +20,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Migration posture**: legacy `[IN PROGRESS]` and `[PLANNED]` prefixes are stripped by `strip_lifecycle_prefix` for backward compatibility but are no longer accepted as `--state` values by `tracking-issue-write.sh` or as admission-pass prefixes.
 - **Audit scope**: workflow call sites and rename `--state` surfaces in the active runtime tree (`skills/`, `scripts/`, `agents/`, `.claude/`, `docs/`, tests) now use the new prefix set; deliberate legacy bracket literals remain only where migration, admission recovery, strip helpers, or hermetic fixtures require them. This Unreleased section documents the migration and may name the old prefixes. Historical shipped changelog bodies and `larch-logs/` were not bulk-retitled.
 
+## [42.4.13] - 2026-05-24
+
+### Changed
+
+- String-key clustering on plan-review TSV columns collapses almost nothing when reviewers rephrase the same underlying concern.
+- The /design plan-review path has no LLM aggregator; explicit prose steers orchestrators toward semantic grouping by meaning.
+- A sixth NEVER rule and mindset count update keep the anti-pattern list internally consistent for operators skimming SKILL.md.
+
 ## [42.4.11] - 2026-05-24
 
 ### Changed
