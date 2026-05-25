@@ -66,6 +66,45 @@ EOS
     chmod +x "$STUB/dispatch-plan-review-panel.sh"
 }
 
+write_dispatch_three_slots() {
+    cat >"$STUB/dispatch-plan-review-panel.sh" <<'EOS'
+#!/usr/bin/env bash
+set -euo pipefail
+DESIGN_TMPDIR=""
+PLAN_FILE=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --design-tmpdir) DESIGN_TMPDIR="${2:?}"; shift 2 ;;
+        --plan-file) PLAN_FILE="${2:?}"; shift 2 ;;
+        --feature-file|--codex-present|--cursor-present|--timeout) shift 2 ;;
+        *) shift 1 ;;
+    esac
+done
+[[ -n "$DESIGN_TMPDIR" && -n "$PLAN_FILE" ]] || exit 2
+OUT1="$DESIGN_TMPDIR/rv1.txt"
+OUT2="$DESIGN_TMPDIR/rv2.txt"
+OUT3="$DESIGN_TMPDIR/rv3.txt"
+PROMPT1="$DESIGN_TMPDIR/p1.prompt"
+PROMPT2="$DESIGN_TMPDIR/p2.prompt"
+PROMPT3="$DESIGN_TMPDIR/p3.prompt"
+: >"$OUT1"
+: >"$OUT2"
+: >"$OUT3"
+: >"$PROMPT1"
+: >"$PROMPT2"
+: >"$PROMPT3"
+PATHS="$DESIGN_TMPDIR/panel-paths.txt"
+{
+    printf '%s\n' '{"slot":"cursor-plan-arch","tool":"cursor","output":"'"$OUT1"'","prompt_file":"'"$PROMPT1"'"}'
+    printf '%s\n' '{"slot":"cursor-plan-edge","tool":"cursor","output":"'"$OUT2"'","prompt_file":"'"$PROMPT2"'"}'
+    printf '%s\n' '{"slot":"cursor-plan-innov","tool":"cursor","output":"'"$OUT3"'","prompt_file":"'"$PROMPT3"'"}'
+} >"$DESIGN_TMPDIR/plan-review-slots.ndjson"
+printf '%s\n' "$OUT1" "$OUT2" "$OUT3" >"$PATHS"
+printf 'DISPATCH_OK=true\nFALLBACK_COUNT=0\nSTATIC_DISPATCH_OK=true\nPANEL_PATHS_FILE=%s\nALL_OUTPUT_FILES_PATH=%s\n' "$PATHS" "$PATHS"
+EOS
+    chmod +x "$STUB/dispatch-plan-review-panel.sh"
+}
+
 write_collect() {
     local mode="${1:?}"
     cat >"$STUB/collect-agent-results.sh" <<EOS
@@ -81,6 +120,7 @@ while [[ \$# -gt 0 ]]; do
     esac
 done
 [[ -n "\$paths" && -f "\$paths" ]] || exit 1
+idx=0
 while IFS= read -r p || [[ -n "\$p" ]]; do
     [[ -z "\$p" ]] && continue
     tsv="\${p}.tsv"
@@ -89,6 +129,26 @@ while IFS= read -r p || [[ -n "\$p" ]]; do
 EOS
     if [[ "$mode" == "empty" ]]; then
         cat >>"$STUB/collect-agent-results.sh" <<'EOS'
+    } >"$tsv"
+EOS
+    elif [[ "$mode" == "three_distinct" ]]; then
+        cat >>"$STUB/collect-agent-results.sh" <<'EOS'
+    idx=$((idx + 1))
+        case "$idx" in
+            1)
+                printf '%s\n' "in_scope	important	correctness	src/a	Alpha zqf9m planreview distinct finding	scenario one	fix one"
+                printf '%s\n' "out_of_scope	important	correctness	src/oos1	Beta kjp2x planreview distinct oos	scenario oos	fix oos"
+                ;;
+            2)
+                printf '%s\n' "in_scope	important	correctness	src/b	Gamma nmr7w planreview distinct finding	scenario two	fix two"
+                printf '%s\n' "out_of_scope	important	correctness	src/oos2	Delta hxp4q planreview distinct oos	scenario oos2	fix oos2"
+                ;;
+            3)
+                printf '%s\n' "in_scope	important	correctness	src/c	Epsilon wvt8r planreview distinct finding	scenario three	fix three"
+                printf '%s\n' "out_of_scope	important	correctness	src/oos3	Zeta mlb3s planreview distinct oos	scenario oos3	fix oos3"
+                ;;
+            *) printf '%s\n' "in_scope	important	correctness	src/x	unexpected row	scen	fix" ;;
+        esac
     } >"$tsv"
 EOS
     else
@@ -125,6 +185,34 @@ for f in "$v1" "$v2" "$v3"; do
     cat >"$f" <<'INNER'
 FINDING_1: YES
 INNER
+done
+printf '%s\n' "$v1" "$v2" "$v3" >"$vp"
+printf 'DISPATCH_OK=true\nVOTER_PATHS_FILE=%s\nVOTER_1_PARSE_RATE_STATUS=ok\n' "$vp"
+EOS
+    chmod +x "$STUB/dispatch-plan-voters.sh"
+}
+
+# Plan ballot after dedup: three FINDING_* and three OOS_* blocks (tally needs one line per id per voter).
+write_voters_plan_six() {
+    cat >"$STUB/dispatch-plan-voters.sh" <<'EOS'
+#!/usr/bin/env bash
+set -euo pipefail
+DESIGN_TMPDIR=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --design-tmpdir) DESIGN_TMPDIR="${2:?}"; shift 2 ;;
+        --ballot-file|--codex-available|--cursor-available|--session-env-path) shift 2 ;;
+        *) shift 1 ;;
+    esac
+done
+[[ -n "$DESIGN_TMPDIR" ]] || exit 2
+v1="$DESIGN_TMPDIR/vstub1.txt"
+v2="$DESIGN_TMPDIR/vstub2.txt"
+v3="$DESIGN_TMPDIR/vstub3.txt"
+vp="$DESIGN_TMPDIR/voter-paths.list"
+_vote_body=$'FINDING_1: YES\nFINDING_2: YES\nFINDING_3: YES\nOOS_1: YES\nOOS_2: YES\nOOS_3: YES\n'
+for f in "$v1" "$v2" "$v3"; do
+    printf '%s' "$_vote_body" >"$f"
 done
 printf '%s\n' "$v1" "$v2" "$v3" >"$vp"
 printf 'DISPATCH_OK=true\nVOTER_PATHS_FILE=%s\nVOTER_1_PARSE_RATE_STATUS=ok\n' "$vp"
@@ -211,5 +299,42 @@ printf '%s\n' "$out2" | grep -q '^WARN=plan-review-tally:' || fail "expected tal
 [[ -f "$D2/voting-tally.md" ]] || fail "voting-tally.md missing after stub tally failure"
 [[ -s "$D2/voting-tally.md" ]] || fail "voting-tally.md empty after stub tally failure"
 grep -q 'Tally aborted' "$D2/voting-tally.md" || fail "stub tally banner missing in voting-tally.md"
+
+echo "=== stubbed driver: three reviewers each OOS_1 + FINDING_1 (dedup + tally) ==="
+D3="$TMP/z3"
+mkdir -p "$D3"
+printf 'plan\n' >"$D3/plan.txt"
+printf 'feat\n' >"$D3/feature-description.txt"
+write_scout
+write_dispatch_three_slots
+write_collect three_distinct
+write_voters_plan_six
+out3=$(run_loop "$D3")
+printf '%s\n' "$out3" | grep -q '^TALLY_PLAN_REVIEW_STATUS=ok$' || fail "expected ok tally status (three-reviewer case)"
+printf '%s\n' "$out3" | grep -q '^LOOP_STATUS=complete$' || fail "expected complete loop (three-reviewer case)"
+[[ -s "$D3/ballot.txt" ]] || fail "ballot.txt missing or empty (three-reviewer case)"
+for _h in "### OOS_1:" "### OOS_2:" "### OOS_3:"; do
+    _c=$(grep -cF "$_h" "$D3/findings.md" 2>/dev/null || true)
+    [[ "$_c" -eq 1 ]] || fail "expected exactly one $_h in findings.md, got $_c"
+    _b=$(grep -cF "$_h" "$D3/ballot.txt" 2>/dev/null || true)
+    [[ "$_b" -eq 1 ]] || fail "expected exactly one $_h in ballot.txt, got $_b"
+done
+python3 - "$D3/findings.md" <<'PY' || fail "FINDING heading ids not strictly increasing from 1 in findings.md"
+import re, sys
+
+path = sys.argv[1]
+text = open(path, encoding="utf-8", errors="replace").read()
+nums = [int(m.group(1)) for m in re.finditer(r"^### FINDING_(\d+):", text, re.M)]
+if not nums:
+    print("no FINDING headings", file=sys.stderr)
+    sys.exit(1)
+if nums[0] != 1:
+    print("FINDING ids must start at 1", file=sys.stderr)
+    sys.exit(1)
+for a, b in zip(nums, nums[1:]):
+    if b <= a:
+        print(f"not strictly increasing: {nums}", file=sys.stderr)
+        sys.exit(1)
+PY
 
 printf '%s\n' "test-plan-review-loop: ok"
