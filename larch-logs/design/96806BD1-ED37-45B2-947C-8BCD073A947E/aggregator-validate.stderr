@@ -1,0 +1,6 @@
+warning: fix text for slot 'Cursor-Requirements' in FINDING_4 not traceable to scoped input (first 80 chars: 'Document whether vN_vote emits literal JUDGE_ERROR or stays empty and align pars')
+warning: fix text for slot 'Codex-dyn-schema-wire-consistency' in FINDING_8 not traceable to scoped input (first 80 chars: 'Pass voter tool metadata or the plan-voter slot manifest into tally, or define v')
+warning: fix text for slot 'Codex-Pragmatic' in FINDING_9 not traceable to scoped input (first 80 chars: 'Omitting updates drifts authoritative contracts and can fail doc lint expectatio')
+warning: fix text for slot 'Codex-Requirements' in FINDING_9 not traceable to scoped input (first 80 chars: 'Add tally-plan-review.md and skills/design/SKILL.md to Files to modify with conc')
+warning: fix text for slot 'Cursor-Requirements' in FINDING_15 not traceable to scoped input (first 80 chars: 'Either mkdir and write the header-only TSV alongside write_empty_review_artifact')
+warning: fix text for slot 'Codex-Requirements' in FINDING_21 not traceable to scoped input (first 80 chars: 'Add a docs/linting.md row for make test-findings-classification near the existin')

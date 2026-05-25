@@ -1,0 +1,9 @@
+Gathering the plan and implementation files for the parser-contract review.
+
+Parser scripts aren't in the repo yet (plan proposes them). Reading `lib-vote-tally.sh`, `tally-plan-review.sh`, and related tally tests for contracts and `set -e` behavior.
+
+Checking the plan's tally section for the "three vs four" inconsistency and whether acceptance text omits case (d).
+
+`parse-judge-vote-and-rating.sh` / `.md` are not in the tree (plan lists them as NEW). Current tally uses `set -euo pipefail` and `vote_for_id` as in the citations below. Delivering the required TSV-first format.
+
+

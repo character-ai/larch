@@ -1,0 +1,95 @@
+[BUG] /design Step 3 dedup splitter emits duplicate `### OOS_N:` headings, causing `tally-plan-review.sh` rc=2
+
+## Summary
+
+`/design` Step 3's plan-review pipeline can produce a `$DESIGN_TMPDIR/ballot.txt` containing duplicate `### OOS_1:` headings (one per reviewer that contributed an OOS observation). `tally-plan-review.sh` then refuses the ballot with rc=2 (`duplicate or malformed FINDING/OOS headings in ballot`) and emits no accepted/rejected/oos artifacts, so Gate B has nothing to present.
+
+Repro: `/design --simple 2671` on character-ai/larch at e07e4e5d. Ballot.txt contained 3 `### OOS_1:` blocks (Cursor-Edge, Cursor-Pragmatic, Cursor-dyn-schema-wire-consistency) at offsets ~249/257/265. Tally exited rc=2; `LOOP_STATUS=complete TALLY_PLAN_REVIEW_STATUS=tally-error AGGREGATOR_STATUS=ok ACCEPTED_COUNT=0` was the final loop state.
+
+## Root cause
+
+Located in `skills/design/scripts/plan-review-loop.sh` around lines 377–477 (the embedded Python dedup helper that runs after per-reviewer TSV→markdown emission and before the LLM aggregator).
+
+1. **Per-reviewer TSV emit** (`plan-review-loop.sh:316-330`, the `emit_finding` / `emit_oos` Python helper) numbers each reviewer's own findings and OOS items starting from `1`. With N reviewers each contributing one OOS observation, `findings.md.tmp` contains N blocks all headed `### OOS_1:`.
+
+2. **`split_blocks(text, prefix)` in the dedup script** (`plan-review-loop.sh:395-403`) splits using a single-prefix lookahead:
+   ```python
+   parts = re.split(r"(?m)^(?=### %s_[0-9]+:)" % prefix, text)
+   ```
+   When called with `prefix="OOS"`, this only breaks at `### OOS_N:` headings, so every emitted "OOS block" captures **trailing FINDING content from the next reviewer until the next OOS heading**. Symmetric problem for the FINDING split: each "FINDING block" trails into the next reviewer's OOS heading. Verified offline: on this run's `findings.md.tmp` (53950 bytes), `split_blocks(raw, "OOS")` yields 3 blocks of 13797 / 13229 / 13888 bytes each — every "block" is ~13 KB because it carries an entire downstream reviewer's content as trailing tail.
+
+3. **Renumbering uses `count=1`** (`plan-review-loop.sh:467`):
+   ```python
+   for i, b in enumerate(oos2, 1):
+       out.append(re.sub(r"^### OOS_[0-9]+:", "### OOS_%d:" % i, b, count=1, flags=re.M))
+   ```
+   This rewrites only the leading heading of each block. The trailing `### OOS_1:` / `### FINDING_N:` headings embedded inside other blocks are never renumbered.
+
+4. **`"\n\n".join(out)` at `plan-review-loop.sh:471`** concatenates the renumbered FINDING blocks (with their trailing OOS content) PLUS the renumbered OOS blocks (with their trailing FINDING content). Duplicate `### OOS_1:` headings leak through both directions and land in `findings.md`.
+
+5. **`findings-oos.md` extraction** (`plan-review-loop.sh:501-504`) uses the correct regex that terminates at any `### ` heading:
+   ```python
+   for m in re.finditer(r"(?ms)^### OOS_[0-9]+:.*?(?=^### |\Z)", text):
+   ```
+   This faithfully captures clean OOS blocks, but the input `findings.md` already has duplicate OOS_1 headings, so `findings-oos.md` inherits all 3.
+
+6. **Ballot composition** (`plan-review-loop.sh:540`):
+   ```bash
+   cat "$_agg_out" "$DESIGN_TMPDIR/findings-oos.md" > "$DESIGN_TMPDIR/ballot.txt"
+   ```
+   The LLM aggregator runs only on `findings-in-scope.md` (no OOS), so its output is fine. But the concatenated `findings-oos.md` carries the duplicates straight into `ballot.txt`.
+
+7. **`tally-plan-review.sh`** (`skills/design/scripts/tally-plan-review.sh:76-78`) detects duplicate headings via `split_ballot_to_blocks` and exits rc=2.
+
+The fact that the existing FINDING side mostly works is coincidental — the LLM aggregator runs after the dedup and globally renumbers/dedups FINDING blocks regardless of trailing junk. The OOS side has no LLM pass, so the buggy dedup output reaches the ballot intact.
+
+A self-contradiction visible in the aggregator output also hints at the issue: `aggregator-output.txt:248` reads `No \`### OOS_N:\` blocks were present in the supplied input.` (because `findings-in-scope.md` correctly excludes OOS), yet `ballot.txt` ends up with 3 OOS_1 blocks appended after that line. Operators reading the ballot footer get told "no OOS" while the body actually contains them under the same id.
+
+## Suggested fix
+
+Two options; pick whichever is cleaner under the constraint that the dedup script is embedded in `plan-review-loop.sh` as a heredoc:
+
+**Option A — fix `split_blocks` to terminate at any `### (FINDING|OOS)_N:` heading.**
+Use a unified split + classify pattern, e.g.:
+```python
+def split_all_blocks(text):
+    parts = re.split(r"(?m)^(?=### (?:FINDING|OOS)_[0-9]+:)", text)
+    fins, oos = [], []
+    for p in parts:
+        p = p.strip()
+        if not p:
+            continue
+        m = re.match(r"^### (FINDING|OOS)_[0-9]+:", p)
+        if not m:
+            continue
+        # Trim trailing content that belongs to a later heading of either kind:
+        next_match = re.search(r"(?m)^### (?:FINDING|OOS)_[0-9]+:", p[len(m.group(0)):])
+        if next_match:
+            p = p[: len(m.group(0)) + next_match.start()].rstrip()
+        (fins if m.group(1) == "FINDING" else oos).append(p)
+    return fins, oos
+```
+Replace the two `split_blocks` calls in `main()` with one `split_all_blocks(raw)` and drop the prefix arg. This guarantees each emitted block is exactly one heading + its body, with no trailing other-kind content. Renumbering then works as the existing code intends.
+
+**Option B — keep the per-prefix splitter, but trim each block at the next heading of either kind.**
+Inside the existing `split_blocks(text, prefix)`, after the `p.strip()` line, run:
+```python
+m_next = re.search(r"(?m)^### (?:FINDING|OOS)_[0-9]+:", p[3:])  # skip the leading "###" of this block's own heading
+if m_next:
+    p = p[: m_next.start() + 3].rstrip()
+```
+Same outcome, smaller diff.
+
+Both options must be paired with extending `skills/design/scripts/test-plan-review-loop.sh` with a regression fixture: 3 reviewer fragments each carrying an `### OOS_1:` block + a couple of FINDING blocks, asserting that the resulting `findings.md` has exactly one `OOS_1` heading plus `OOS_2`, `OOS_3` (and no duplicate FINDING headings — confirm the symmetric case is also fixed).
+
+## Workaround applied in this run
+
+Orchestrator manually renumbered the three `### OOS_1:` headings in `ballot.txt` to `OOS_1` / `OOS_2` / `OOS_3` via `awk`, then re-ran `tally-plan-review.sh` directly with the 3 voter output files (`claude-vote-output.txt`, `codex-vote-output.txt`, `cursor-vote-output.txt`). Re-run produced `TALLY_PLAN_REVIEW_STATUS=ok` and the standard artifact set. The aggregator OOS-numbering failure is logged in `$DESIGN_TMPDIR/execution-issues.md` under `Warnings`. The orchestrator's manual fix is a one-off; the underlying dedup must be repaired in code so subsequent /design runs do not re-trip the same trap.
+
+## Acceptance
+
+- `skills/design/scripts/plan-review-loop.sh` dedup helper emits unique `### FINDING_N:` and `### OOS_N:` headings regardless of how the per-reviewer TSV emitter numbered each reviewer's items.
+- `findings.md`, `findings-oos.md`, and `ballot.txt` all contain monotonically increasing OOS and FINDING ids with no duplicates.
+- `tally-plan-review.sh` accepts the ballot (no rc=2 from `split_ballot_to_blocks`) on any input shape where the per-reviewer TSV emitter restarted numbering at 1.
+- Regression fixture in `test-plan-review-loop.sh` reproduces the 3-reviewer / each-emits-OOS_1 scenario and asserts the post-dedup heading set.
+- The misleading aggregator footer `No \`### OOS_N:\` blocks were present in the supplied input.` no longer contradicts the ballot body (the aggregator runs on a clean in-scope file, so the footer accuracy is preserved automatically once the dedup is fixed).

@@ -1,0 +1,25 @@
+Gathering the plan and parser implementation for comparison.
+
+Confirming parser files are absent (plan-only). Checking `lib-vote-tally.sh` and related tally behavior for contract alignment.
+
+Checking the tally section numbering and harness case 4 wording once more.
+
+Noting `parse-judge-vote-and-rating.sh` / `.md` are not in the repo (plan-only NEW). Comparing the plan’s parser contract to `vote_for_id` semantics and the harness/edge-case text.
+
+parse-judge-vote-and-rating.* are not in the tree (plan-only NEW). `vote_for_id` in [`scripts/lib-vote-tally.sh`](scripts/lib-vote-tally.sh) leaves `JUDGE_ERROR` when no anchored YES/NO/EXONERATE match (lines 14–29), matching empty `PARSED_VOTE` intent; the gap is plan explicitness and harness pinning, not current code.
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan.txt:15-21	Exit-code and PARSED_VOTE bullets list exit 0 for recognized vote or no ID line but never state the ID-matched unrecognized-vote-token case	An implementer may return non-zero on a line like FINDING_1: MAYBE ... aborting tally under set -euo pipefail before classification TSV completes	Add an explicit (a)-(d) matrix to the parser contract and planned scripts/parse-judge-vote-and-rating.md: (d) exit 0 with empty PARSED_VOTE aligned to vote_for_id JUDGE_ERROR; tighten the PARSED_VOTE sentence to mean no recognized vote token for that id not merely missing line
+1	in_scope	important	correctness	plan.txt:178-180	Acceptance line repeats exit 0 for recognized vote or missing line only	Same ambiguity as row above for reviewers signing off	Mention case (d) explicitly in Acceptance next to exit 0 wording
+1	in_scope	important	correctness	plan.txt:32-35 vs plan.txt:152-153	Harness case 4 asserts omitted axes and vN_uncertain true but never requires a line that includes UNCERTAIN false while another axis is omitted	A passing harness could still allow an implementation that sets PARSED_UNCERTAIN from the UNCERTAIN token alone contradicting Edge cases bullet	Extend case 4 with an explicit fixture line shape (e.g. FINDING_2: YES ... UNCERTAIN=false with QUALITY omitted) and assert vN_uncertain true and vN_quality empty
+1	in_scope	nit	code-quality	plan.txt:87-92	Section title says Three additive changes but lists four numbered items	Editorial inconsistency may confuse implementers tracking checklist	Rename to Four additive changes or regroup numbering
+
+1. **correctness** — `plan.txt:15-21` / `plan.txt:178-180`: The parser contract and acceptance criteria tie exit 0 to “recognized vote OR no `<ID>:` line” and do not explicitly add case (d) (ID-colon line present, vote token not YES/NO/EXONERATE). Under `set -e`, a mistaken non-zero exit would abort tally; empty `PARSED_VOTE` for (d) is only implied. **Suggested revision:** Add a small enumerated matrix (a–d) to the planned [`scripts/parse-judge-vote-and-rating.md`](scripts/parse-judge-vote-and-rating.md) and mirror it in the plan’s stdout/exit bullets and Acceptance, stating explicitly exit `0` and empty `PARSED_VOTE` for (d), matching `vote_for_id` → `JUDGE_ERROR` in [`scripts/lib-vote-tally.sh`](scripts/lib-vote-tally.sh) lines 14–29.
+
+2. **correctness** — `plan.txt:15-16`: The phrase “no recognizable `<ID>:` vote line for this ballot id” can be read as “no line with that id” (case (b) only) rather than “no parseable vote for that id” (covers (b) and (d)). **Suggested revision:** Reword to “no line matching the ballot id with a recognized vote token” and define empty `PARSED_VOTE` for both missing line and unrecognized vote token.
+
+3. **correctness** — `plan.txt:32-35` vs `plan.txt:152-153`: Edge cases require `PARSED_UNCERTAIN=true` when any axis is missing **regardless of explicit `UNCERTAIN=`**; harness case 4 only says “omitted axis values” and does not require a contradictory `UNCERTAIN=false` partial line, so the stronger rule is not fixture-locked. **Suggested revision:** Extend case 4 with a voter line that sets `UNCERTAIN=false` but omits another axis and assert `vN_uncertain=true` (and empty omitted axis columns).
+
+4. **code-quality** — `plan.txt:87-92`: “Three additive changes” introduces four numbered items. **Suggested revision:** Say “Four additive changes” or merge the list to match the title.
+
+**UNCERTAIN rule consistency (no additional finding):** The stdout schema at `plan.txt:17-19` (“`false` only when all 4 axes are present and … `UNCERTAIN=false`”) is consistent with `plan.txt:152-153` (partial axis forces `PARSED_UNCERTAIN=true` regardless of `UNCERTAIN=`).

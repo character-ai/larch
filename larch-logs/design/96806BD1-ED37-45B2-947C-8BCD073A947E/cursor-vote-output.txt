@@ -1,0 +1,24 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: EXONERATE -- narrow schema edge; resolve at implementation without expanding the plan
+FINDING_5: YES
+FINDING_6: EXONERATE -- rare intersection; deterministic shape can be settled in code/tests without more plan surface
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: YES
+FINDING_18: YES
+FINDING_19: EXONERATE -- key-scanned KV mapping is normal shell practice; avoid extra spec bulk
+FINDING_20: YES
+FINDING_21: EXONERATE -- Makefile-driven docs usually catch this; not worth a dedicated plan delta
+OOS_1: EXONERATE -- hypothetical future code-ballot OOS grammar; premature as a tracked issue
+OOS_1: YES
+OOS_1: YES

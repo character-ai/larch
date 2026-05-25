@@ -1,0 +1,30 @@
+Reading the plan and referenced code paths.
+
+Validating the plan against current code: reading key integration points.
+
+Checking `split_ballot` heading format vs block `id` and whether `check_voter_parse_rate` could reject new line shape:
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	risk-integration	skills/design/scripts/tally-plan-review.sh:68-110 vs plan.txt:89-92	Default TSV path needs parent dirs but tally only mkdir-p DESIGN_TMPDIR	Direct tally or test-tally-plan-review without plan-review-loop mkdir-p fails writing plan-review/round-1/findings-classification.tsv	Require mkdir -p dirname of final TSV inside tally-plan-review.sh (not only plan-review-loop.sh)
+1	in_scope	important	correctness	plan.txt:91-92 lib-vote-tally.sh:124-128	voting_result wording says main-agent-required while classify_result(eligible=0) emits rejected	Implementor may write literal main-agent-required into TSV or skip classify_result producing schema drift vs multi-judge rows	State explicitly use classify_result 0 0 0 0 yielding rejected as the voting_result cell for zero-judge rows
+1	in_scope	important	security	skills/design/scripts/tally-plan-review.sh (TSV emit) plan.txt:96-100	Axis fields copied into TSV are not sanitized beyond reviewer_slots	Judge emits tab or newline inside an axis token columns shift or rows split corrupting analytics	Strip or replace tabs and newlines in each parsed axis value before TSV write same as reviewer_slots rule
+1	in_scope	latent	code-quality	skills/design/scripts/tally-plan-review.sh:82-84	Block iteration uses shell glob order for ballot blocks	TSV row order varies by filesystem locale breaking stable diffs across CI hosts	Sort block ids (FINDING then OOS numeric) before emitting classification rows
+1	in_scope	latent	security	scripts/design-log-publish.sh:278-307 vs plan.txt:106-108	New plan-review staging omits symlink rejection present for render-cache	Attacker or tooling replaces plan-review with symlink could widen staging surface	Mirror render-cache checks reject symlinks for DESIGN_TMPDIR/plan-review before enumerating
+1	in_scope	latent	correctness	lib-vote-tally.sh:14-29 scripts/parse-judge-vote-and-rating.sh (planned)	Last matching duplicate ID line wins but parser contract silent	If judge emits two lines for same id vote and ratings can disagree on which line is authoritative	Document last-wins in parse-judge-vote-and-rating.md and assert in harness fixtures
+1	out_of_scope	nit	risk-integration	scripts/lib-voter-parse-rate.sh:10-12	Code retry prefix names only FINDING_N while code ballots stay finding-only today	Future code ballot grammar adding OOS ids would leave retry text misaligned with renderer	Track follow-up to widen CODE prefix when code ballots gain OOS ids dispatch-code-voters.sh:90
+
+1. **risk-integration** [skills/design/scripts/tally-plan-review.sh:68-110](skills/design/scripts/tally-plan-review.sh) — Default `plan-review/round-1/` output path has no `mkdir -p` in current tally; plan only adds `mkdir -p` in `plan-review-loop.sh`, so harnesses or manual tally can fail on write. **Suggested revision:** require `mkdir -p "$(dirname "$out")"` (or equivalent) inside `tally-plan-review.sh` whenever emitting the TSV.
+
+2. **correctness** [plan.txt:91-92](plan.txt) / [lib-vote-tally.sh:124-128](scripts/lib-vote-tally.sh) — Text says voting_result should reflect “main-agent-required disposition” but `classify_result` with `eligible=0` prints `rejected`, not the panel-tier string. **Suggested revision:** spell out that each row’s `voting_result` must be the `classify_result` label (here `rejected`) so it matches multi-judge TSV semantics.
+
+3. **security** [plan.txt:96-100](plan.txt) — Plan mandates tab-safety for `reviewer_slots` only; parsed axis strings are copied into TSV cells without the same guarantee. **Suggested revision:** normalize tabs/newlines in axis values (or reject lines with them) before writing the TSV.
+
+4. **code-quality** [skills/design/scripts/tally-plan-review.sh:82-84](skills/design/scripts/tally-plan-review.sh) — `block_files=("$BLOCK_DIR"/*.md)` yields filesystem-dependent order, so `findings-classification.tsv` row order may flap across machines. **Suggested revision:** sort block paths by id (e.g. FINDING numeric then OOS numeric) before the classification pass.
+
+5. **security** [scripts/design-log-publish.sh:278-282](scripts/design-log-publish.sh) vs [plan.txt:106-108](plan.txt) — `render-cache` rejects a symlink root; the proposed `plan-review/` block does not mirror that guard. **Suggested revision:** add the same symlink-and-type checks for `$DESIGN_TMPDIR/plan-review` before staging.
+
+6. **correctness** [lib-vote-tally.sh:14-29](scripts/lib-vote-tally.sh) — `vote_for_id` effectively last-wins on duplicate `<ID>:` lines; the plan’s parser contract does not pin the same rule. **Suggested revision:** document and test last-wins (or first-wins) explicitly so parser and tally never diverge.
+
+[OUT_OF_SCOPE] [scripts/lib-voter-parse-rate.sh:10-12](scripts/lib-voter-parse-rate.sh) — `VOTER_PARSE_RATE_RETRY_PREFIX_CODE` still describes only `FINDING_N:`; code dispatch hard-codes `LARCH_VPR_ID_GRAMMAR=finding-only` at [scripts/dispatch-code-voters.sh:90](scripts/dispatch-code-voters.sh). Worth tracking if code ballots ever add `OOS_N:` vote lines so retry text matches the renderer.
+
+
