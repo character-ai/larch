@@ -1,0 +1,16 @@
+Reading the ballot and nearby context files to verify findings.
+
+FINDING_1: YES
+FINDING_2: EXONERATE -- mid-doc paragraph still documents the contract; EOF-only is preference not a defect
+FINDING_3: EXONERATE -- strict backtick extraction is an explicit, documented harness contract
+FINDING_4: EXONERATE -- nested duplicate closing-line scenario is speculative for current ship-pr layout
+FINDING_5: EXONERATE -- both sides are sort -u fed to comm; unsorted-input failure mode is unlikely to justify churn
+FINDING_6: EXONERATE -- no evidence default awk mishandles the closing regex on supported platforms
+FINDING_7: EXONERATE -- wording differs from plan prose but behavior still fails closed on bad extraction
+FINDING_8: NO -- describes intentional project convention, not a defect warranting a GitHub issue
+FINDING_9: YES
+FINDING_10: EXONERATE -- log layout vs checklist wording is cosmetic with no test gap
+FINDING_11: EXONERATE -- real review noise but branch packaging/hygiene, not a product bug to track separately
+FINDING_12: YES
+FINDING_13: EXONERATE -- duplicate-marker edge case is rare; extra guards add ongoing complexity
+FINDING_14: EXONERATE -- committed run logs are policy-driven noise, not actionable drift-guard scope for an issue

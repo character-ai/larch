@@ -20,3 +20,10 @@ Two assertions added for the orchestrator narrow-protocol-bounds rule (issue #22
 the documented recovery directive is present) and `ship-pr.sh must emit DO NOT improvise
 diagnostic on STALL_STEP=12d exit 4 path` (guards against accidental removal of the
 diagnostic message).
+
+The harness also asserts set equality (both directions, order-insensitive) between the
+`printf 'KEY=…'` emit keys inside `scripts/ship-pr.sh` `write_initial_state()` and the
+backtick key identifiers in the `skills/implement/SKILL.md` “Required keys” bullet list
+strictly between the HTML comment anchors `<!-- write-initial-state-keys:begin -->` and
+`<!-- write-initial-state-keys:end -->`. Missing either marker or extracting fewer than
+20 keys on either side fails closed so accidental parser or doc drift is caught early.

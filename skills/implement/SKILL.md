@@ -1555,6 +1555,7 @@ Parse `PHANTOM_*` KVs from stdout per **Phantom Untracked Probe** (advisory).
 
 Before invoking the script, write `$IMPLEMENT_TMPDIR/ship-pr-state.sh` with uppercase `KEY=value` records only. Required keys:
 
+<!-- write-initial-state-keys:begin -->
 - `PHASE=checks`, `BRANCH_NAME`, `ISSUE_NUMBER`, `RUN_ID`, `REPO`, `REPO_UNAVAILABLE`, `FORKED_TARGET`
 - `HAS_BUMP=true`, `BUMP_TYPE=NONE`, `NEW_VERSION=`, `MERGE`, `DRAFT`, `DEFERRED`
 - `PR_CLOSED=false`, `DONE_RENAME_APPLIED=false`, `STALL_TRACKING=false`, `STALL_STEP=`
@@ -1563,6 +1564,7 @@ Before invoking the script, write `$IMPLEMENT_TMPDIR/ship-pr-state.sh` with uppe
 - `REBASE_COUNT=0`, `FIX_ATTEMPTS=0`, `ITERATION=0`, `TRANSIENT_RETRIES=0`, `FAILED_RUN_ID=`
 - `MANIFEST_PATH`, `TOOL_LABEL`, `DESIGN_ONLY_DONE=false`, `EXPECTED_SESSION_ID`, `EXPECTED_TMPDIR_BASENAME_PREFIX`
 - `NO_LOGS_COMMIT=$no_logs_commit`, `IMPLEMENT_TMPDIR=$IMPLEMENT_TMPDIR`
+<!-- write-initial-state-keys:end -->
 
 > **`MANIFEST_PATH` MUST be empty unless `/implement` Step 2 returned `STATUS=complete` with a JSON manifest path.** On manifest-reuse fast paths (Step 0 materialization complete but Step 2 does not dispatch), claude-fallback paths (Step 2.4), bailed-Step-2 paths, and any other path where Step 2 did not produce a JSON manifest at `$MANIFEST`, leave `MANIFEST_PATH` empty. **The `/design` Step 5 manifest (`design-export/manifest.env`, a shell KV file) is NEVER a valid value for `MANIFEST_PATH` — these are two different artifacts despite the shared noun.** `ship-pr.sh` hard-fails at entry if `MANIFEST_PATH` is non-empty and not readable JSON; see issue #2233.
 
