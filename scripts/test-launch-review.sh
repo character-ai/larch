@@ -691,8 +691,12 @@ done
 
 # --token-budget-cap accept path: flag recognized (not "unknown flag"), binary
 # absence or other required-flag errors cause non-0 exit from later checks.
+# PATH stub prevents the launcher from invoking the real codex CLI on dev Macs.
+# USER override gives this test a private serial-lock path so parallel clone
+# sessions running the same harness do not queue on /tmp/larch-codex-serial-${USER}.lock.
 set +e
-"$LAUNCHER" --output "$TMPDIR/budget-accept.txt" --timeout 5 --prompt "x" \
+PATH="$STUB_BIN:$PATH" USER="larch-test-budget-accept-codex-$$" \
+    "$LAUNCHER" --output "$TMPDIR/budget-accept.txt" --timeout 5 --prompt "x" \
     --token-budget-cap 9999999 >/dev/null 2>"$TMPDIR/budget-accept.stderr"
 set -e
 if grep -Fq "unknown flag: --token-budget-cap" "$TMPDIR/budget-accept.stderr" 2>/dev/null; then
@@ -734,8 +738,12 @@ else
 fi
 
 # --diff-file accept path: flag recognized (not "unknown flag").
+# PATH stub prevents the launcher from invoking the real codex CLI on dev Macs.
+# USER override gives this test a private serial-lock path so parallel clone
+# sessions running the same harness do not queue on /tmp/larch-codex-serial-${USER}.lock.
 set +e
-"$LAUNCHER" --output "$TMPDIR/diff-file-accept.txt" --timeout 5 --prompt "x" \
+PATH="$STUB_BIN:$PATH" USER="larch-test-diff-file-accept-codex-$$" \
+    "$LAUNCHER" --output "$TMPDIR/diff-file-accept.txt" --timeout 5 --prompt "x" \
     --diff-file "/nonexistent/branch.diff" >/dev/null 2>"$TMPDIR/diff-file-accept.stderr"
 set -e
 if grep -Fq "unknown flag: --diff-file" "$TMPDIR/diff-file-accept.stderr" 2>/dev/null; then
@@ -1886,8 +1894,12 @@ done
 
 # Accept path: flag recognized (not "unknown flag"), binary absence or other
 # required-flag errors cause non-0 exit from later checks.
+# PATH stub prevents the launcher from invoking the real cursor CLI on dev Macs.
+# USER override gives this test a private serial-lock path so parallel clone
+# sessions running the same harness do not queue on /tmp/larch-cursor-serial-${USER}.lock.
 set +e
-"$LAUNCHER" --output "$TMPDIR/budget-accept.txt" --timeout 5 --prompt "x" \
+PATH="$STUB_BIN:$PATH" USER="larch-test-budget-accept-cursor-$$" \
+    "$LAUNCHER" --output "$TMPDIR/budget-accept.txt" --timeout 5 --prompt "x" \
     --token-budget-cap 9999999 >/dev/null 2>"$TMPDIR/budget-accept.stderr"
 set -e
 if grep -Fq "unknown flag: --token-budget-cap" "$TMPDIR/budget-accept.stderr" 2>/dev/null; then
@@ -1897,8 +1909,12 @@ else
 fi
 
 # --diff-file accept path: flag recognized (not "unknown flag").
+# PATH stub prevents the launcher from invoking the real cursor CLI on dev Macs.
+# USER override gives this test a private serial-lock path so parallel clone
+# sessions running the same harness do not queue on /tmp/larch-cursor-serial-${USER}.lock.
 set +e
-"$LAUNCHER" --output "$TMPDIR/diff-file-accept.txt" --timeout 5 --prompt "x" \
+PATH="$STUB_BIN:$PATH" USER="larch-test-diff-file-accept-cursor-$$" \
+    "$LAUNCHER" --output "$TMPDIR/diff-file-accept.txt" --timeout 5 --prompt "x" \
     --diff-file "/nonexistent/branch.diff" >/dev/null 2>"$TMPDIR/diff-file-accept.stderr"
 set -e
 if grep -Fq "unknown flag: --diff-file" "$TMPDIR/diff-file-accept.stderr" 2>/dev/null; then
