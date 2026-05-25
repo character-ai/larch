@@ -1,0 +1,3 @@
+Aggregating reviewer findings: checking for source output files with verbatim revision text.
+Producing the normalized aggregator output: excluding security slots 8–12 (affirmations, not behavioral risks) and merging duplicate harness/predicate findings.
+

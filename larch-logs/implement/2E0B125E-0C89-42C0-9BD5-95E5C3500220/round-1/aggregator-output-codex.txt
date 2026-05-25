@@ -1,0 +1,52 @@
+### FINDING_1: [OUT_OF_SCOPE] Success-path impure attestation stripping is not tested
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-testing-output.txt, cursor-specialist-security-output.txt, cursor-specialist-edge-cases-output.txt
+- **Severity**: important
+- **Concern**: The existing `zero_findings_impure_attest` test fails validation before the strip step runs, so it does not cover the successful `AGGREGATED=true` path where valid findings plus an impure attestation suffix should persist cleanly. A regression in the strip predicate could leak `junk-suffix` into `findings.md` while current tests still pass.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: Address the concern above.
+  - From cursor-specialist-testing-output.txt: Address the concern above.
+  - From cursor-specialist-security-output.txt: Address the concern above.
+  - From cursor-specialist-edge-cases-output.txt: Address the concern above.
+
+### FINDING_2: Duplicate impure-attestation predicates can drift
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-edge-cases-output.txt
+- **Severity**: latent
+- **Concern**: The validator and strip heredoc implement similar impure-attestation logic separately. Future edits could update only one predicate, causing validator/strip disagreement such as validate-pass plus strip-leak, or over-stripping on success.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: Address the concern above.
+  - From cursor-specialist-edge-cases-output.txt: Address the concern above.
+
+### FINDING_3: Successful strip leaves raw aggregator-output capture impure
+- **Reviewer(s)**: cursor-specialist-structure-output.txt
+- **Severity**: latent
+- **Concern**: After repair removal, successful merges strip impure attestation lines before writing `findings.md`, but do not scrub the raw `aggregator-output.txt` capture. This can leave `junk-suffix` in the capture even when persisted findings are clean, which may confuse consumers unless raw capture semantics are documented or normalized.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: Address the concern above.
+
+### FINDING_4: [OUT_OF_SCOPE] Misleading padded-attestation test title
+- **Reviewer(s)**: cursor-specialist-structure-output.txt
+- **Severity**: nit
+- **Concern**: The stanza title for padded attestation rejection is misleading and may make operators read an expected rejection as expected acceptance.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: Address the concern above.
+
+### FINDING_5: [OUT_OF_SCOPE] Run-log plan text names wrong stderr token
+- **Reviewer(s)**: cursor-specialist-structure-output.txt
+- **Severity**: nit
+- **Concern**: The run-log plan text overstates the stderr token expected for the nonconforming-heading case, which can mislead readers about the validator branch order.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: Address the concern above.
+
+### FINDING_6: Missing stderr assertion for prose finding IDs
+- **Reviewer(s)**: cursor-specialist-testing-output.txt
+- **Severity**: latent
+- **Concern**: The `zero_findings_prose_finding_ids` test lacks a stderr contract assertion, so the validator could drift to the wrong diagnostic token without this stanza failing.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-testing-output.txt: Address the concern above.
+
+### FINDING_7: Empty-merge docs omit no-attestation zero-output path
+- **Reviewer(s)**: cursor-specialist-edge-cases-output.txt
+- **Severity**: latent
+- **Concern**: The empty-merge documentation omits the validator path for zero output with missing attestation and no preamble. Operators may incorrectly expect all empty merges to produce narrow-trigger retry tokens and advance the waterfall, while no-attestation and pseudo-heading cases remain single-shot validation failures.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-edge-cases-output.txt: Address the concern above.

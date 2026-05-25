@@ -1,0 +1,34 @@
+Reviewing the branch diff and commit history with an edge-case and failure-recovery lens.
+Digging into critical paths in the changed files for edge-case and failure-recovery gaps.
+Checking whether the missing-attestation path ever emitted a narrow-trigger token before this change:
+**Commits** (since `main`):
+
+- `266e265c` — Remove aggregate attestation repair synthesis  
+- `823a847c` — chore(larch-logs): flush implement run E5C4F830…
+
+The functional change is in `aggregate-findings.sh`, `aggregate-findings.md`, and `test-aggregate-findings.sh`, plus aligned `SECURITY.md` prose. The impure-attestation strip extension and removal of dead synthesis/repair paths match the plan. One failure-recovery regression is worth calling out explicitly.
+
+### In-Scope Findings
+
+- **architecture** `skills/review/scripts/aggregate-findings.sh:554-662,807-819` — Removing `--repair-attestation` / synthesis stops appending the attestation token before validation, so several empty-merge failures (no attestation, impure-only after `drop_impure`, `### FINDING_ids` prose) now hit the generic `if not has_attest_line` branch instead of emitting `AGGREGATOR_VALIDATION_FAILED=empty_merge_from_nonempty_input`. `_agg_pipeline_for_candidate` only maps the two narrow-trigger tokens to `MERGE_PIPELINE_RC=1`; everything else is `MERGE_PIPELINE_RC=2`, and the driver exits immediately with `REASON=validation-failed` instead of advancing Cursor → Codex → Claude. **Concrete scenario:** Cursor returns narrative-only empty merge without the token while Codex would return valid `### FINDING_` blocks (the existing `zero_findings_waterfall_ctr` harness pattern, but with `zero_findings_no_attest` / impure input). Pre-change synthesis caused the `empty_merge_from_nonempty_input` token and waterfall retry; post-change the run stops after the first phase. The plan documents this as intentional, but it is a real recovery-surface reduction, not a no-op cleanup. **Suggested fix:** If cross-vendor recovery for “empty merge, no token” should remain, emit a dedicated narrow-trigger stderr token (without reintroducing synthesis) or map the missing-attestation branch to `MERGE_PIPELINE_RC=1`; add a multi-phase harness stanza (`zero_findings_no_attest` + waterfall counter) so the contract is tested rather than only single-phase `LARCH_AGGREGATE_MAX_OUTER_PHASES=1` cases.
+
+- **correctness** `skills/review/scripts/test-aggregate-findings.sh:605-621` — The `zero_findings_impure_attest` stanza title implies the extended strip predicate is exercised, but validation fails before strip runs; `junk-suffix` not appearing in `findings.md` holds because `cmp -s` proves the ballot was never replaced, not because strip filtered the candidate file. The plan’s success-path invariant (valid FINDING blocks + impure attestation variant → strip cleans persisted ballot) has no harness coverage after deleting repair’s pre-strip write to `$cand_repaired_tmp`. **Suggested fix:** Add a stub merge kind with valid `### FINDING_` blocks plus an impure attestation line, assert `AGGREGATED=true` and that `junk-suffix` is absent from the post-merge `findings.md`.
+
+- **architecture** `skills/review/scripts/aggregate-findings.sh:693-694` — Dropping `mv -f "$cand_repaired_tmp" "$agg_dest"` is correct for BSD self-move avoidance, but on success only `merged_tmp` is moved into `findings.md`; per-phase `aggregator-output*.txt` (`$cand`) is left as the raw dispatch capture. If a future success path ever retains attestation lines in the vendor file while strip removes them from the ballot, operator/debug artifacts diverge from persisted findings. **Suggested fix:** Either document that capture files are intentionally un-stripped dispatch snapshots, or overwrite `$cand` with stripped bytes after successful validation (without a self-`mv` to the same path).
+
+### Out-of-Scope Observations
+
+- **architecture** `skills/review/scripts/aggregate-findings.sh:543-574` (pre-change on `main`) — Synthesis appended a token and then validation always failed with `empty_merge_from_nonempty_input` post-#2782, so synthesis never produced a successful merge; the OOS observation that motivated this issue remains accurate. Out of scope because the branch correctly removes that dead path.
+
+- **code-quality** `larch-logs/implement/.../plan-goals-test.md:46` — The plan text claims `zero_findings_nonconforming_heading` still rejects with `empty_merge_from_nonempty_input`, but the validator takes the `not has_attest_line` generic diagnostic when pseudo-headings suppress preamble detection. The implementation/tests match the code path, not that plan sentence. Out of scope (log artifact, not runtime code).
+
+---
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	architecture	skills/review/scripts/aggregate-findings.sh:554-662,807-819	Removing synthesis stops pre-validation attestation injection, so no-attestation / impure-only / FINDING_ids empty-merge failures no longer emit narrow-trigger stderr and get MERGE_PIPELINE_RC=2 single-shot exit.	Cursor returns zero_findings_no_attest while Codex would return merged FINDING blocks; pre-change synthesis led to empty_merge_from_nonempty_input and waterfall continue; post-change exits at Cursor with validation-failed.	Emit a narrow-trigger token for recoverable empty-merge misses without synthesis, or accept the regression and add a multi-phase harness stanza documenting it.
+1	in_scope	latent	correctness	skills/review/scripts/test-aggregate-findings.sh:605-621	zero_findings_impure_attest does not exercise the new strip impure-line predicate on the success path.	Valid blocks plus impure attestation could leak junk-suffix into findings.md if strip regresses; failure-path test would still pass via unchanged ballot.	Add AGGREGATED=true stub with valid FINDING blocks and impure attestation; assert junk-suffix absent from findings.md.
+1	in_scope	nit	architecture	skills/review/scripts/aggregate-findings.sh:693-694	Success path updates findings.md from merged_tmp but leaves aggregator-output capture files unstripped.	Debugging aggregator-output.txt after success may show attestation lines stripped from the ballot.	Document capture-as-raw-dispatch or write stripped bytes back to $cand after validation.
+1	out_of_scope	latent	architecture	skills/review/scripts/aggregate-findings.sh:502-358 (main)	Pre-change synthesis only produced failing empty_merge validations post-#2782.	N/A for this cleanup; confirms removal is safe for success paths.	N/A
+1	out_of_scope	nit	code-quality	larch-logs/implement/E5C4F830-9A83-4FA5-8615-4145489EBDA8/plan-goals-test.md:46	Plan misstates stderr token for nonconforming-heading case.	Operator confusion only; code uses missing-attestation diagnostic.	Fix plan prose in a follow-up doc pass.
+```

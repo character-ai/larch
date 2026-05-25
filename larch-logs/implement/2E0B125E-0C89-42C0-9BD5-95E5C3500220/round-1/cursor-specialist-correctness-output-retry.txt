@@ -1,0 +1,25 @@
+Reviewing branch changes against the plan: reading the precomputed diff and commit history.
+Digging into validator logic and pipeline wiring to verify correctness against the plan.
+Checking whether removing synthesis changes waterfall retry behavior for key test cases:
+## Commits (since `main`)
+
+```
+823a847c chore(larch-logs): flush implement run E5C4F830-9A83-4FA5-8615-4145489EBDA8
+266e265c Remove aggregate attestation repair synthesis
+```
+
+## Review summary
+
+The branch implements issue #2787 as specified: attestation synthesis/repair is removed, the pipeline validates and strips `$cand` directly, impure-token filtering is extended in the inline strip heredoc, the BSD `mv` self-move is dropped, `aggregate-repair-failed.stderr` handling is removed, docs/SECURITY.md align with the surviving validator contract, and tests are updated (including the corrected `empty_merge_negative_finding_prose` expectation for the missing-attestation path).
+
+Plan-vs-code checks: synthesis symbols are gone from `skills/`; narrow-trigger `grep` still matches both tokens; `#2801` doc fold-in is present; `#2782` waterfall coverage remains (`zero_findings_waterfall_ctr`).
+
+### In-Scope Findings
+
+No in-scope issues found.
+
+### Out-of-Scope Observations
+
+1. **correctness** `skills/review/scripts/test-aggregate-findings.sh` — The plan’s edge case for “valid FINDING blocks + impure near-token attestation” relies on the extended strip predicate, but no harness stanza runs a successful `AGGREGATED=true` path with that input shape; `zero_findings_impure_attest` only covers rejection (findings unchanged), so a strip regression on the success path would not be caught. **Suggested fix:** Optional follow-up stanza with a stub that emits merged blocks plus `LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED junk-suffix` and asserts `junk-suffix` is absent from persisted `findings.md` after success.
+
+2. **code-quality** `skills/review/scripts/aggregate-findings.md:32` — The empty-merge bullet lists only `empty_merge_from_nonempty_input` and `preamble_finding_substring`; omitting the third failure mode (missing attestation, non-token diagnostic, `MERGE_PIPELINE_RC=2` / no waterfall retry) is slightly incomplete relative to runtime behavior but matches the plan’s edge-case narrative. **Suggested fix:** Add a short clause that omission of the token yields a single-shot `validation-failed` without narrow-trigger retry.

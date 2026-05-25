@@ -1,0 +1,7 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: EXONERATE -- raw capture semantics as a debug artifact are acceptable; intentional per plan removal of self-move
+FINDING_4: EXONERATE -- real but nit-level; test title clarity doesn't rise to a separate GitHub issue
+FINDING_5: NO -- run-log plan-goals-test.md is a historical snapshot artifact, not maintained documentation operators consult for behavior guidance
+FINDING_6: EXONERATE -- stderr contract is covered by the sibling `empty_merge_negative_finding_prose` stanza which uses the same stub and asserts the specific diagnostic
+FINDING_7: YES

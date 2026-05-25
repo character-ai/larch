@@ -1,0 +1,7 @@
+FINDING_1: YES
+FINDING_2: EXONERATE -- The drift risk is real, but centralizing the predicate is more complexity than this narrow duplicated check warrants.
+FINDING_3: EXONERATE -- The persisted ballot is clean, and leaving the dispatch capture raw is acceptable without adding normalization complexity.
+FINDING_4: YES
+FINDING_5: NO -- The stale wording is in historical run-log plan text, not a normative contract, so it is not worth filing.
+FINDING_6: NO -- The same `zero_findings_prose_finding_ids` path already has stderr coverage in the later negative-prose stanza.
+FINDING_7: YES
