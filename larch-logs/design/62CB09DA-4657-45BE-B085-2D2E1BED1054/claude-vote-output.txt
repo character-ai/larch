@@ -1,0 +1,15 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: EXONERATE -- concern is real but substring presence tests catch obvious omissions; structural field-level drift detection adds complexity the Edit-in-sync note already gates manually
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: EXONERATE -- commit message composed from plan title and approach section carries negligible secret risk; redaction overhead is disproportionate to this specific synthesis path
+FINDING_13: YES
+FINDING_14: NO -- no defect stated; finding is supporting verification confirming anchors are correct, with the only actionable item already covered by FINDING_9
+OOS_1: YES

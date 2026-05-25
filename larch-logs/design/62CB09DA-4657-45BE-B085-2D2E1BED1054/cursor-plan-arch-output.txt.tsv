@@ -1,0 +1,2 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/implement/scripts/step2-implement.sh:75	Plan emits RECOVERY_PRIOR_TOOL from nonexistent TOOL_LABEL	Recovery envelope references undefined shell variable; strict mode or set -u can abort before exit 0, or emit empty RECOVERY_PRIOR_TOOL and break §2.4 commit-prefix wiring	Use existing TOOL_TAG (or emit_kv TOOL "$TOOL_TAG" and document orchestrator mapping); grep step2-implement.sh for TOOL_LABEL before landing

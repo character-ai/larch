@@ -1,0 +1,2 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/implement/scripts/step2-implement.sh:75	Plan emits RECOVERY_PRIOR_TOOL from undefined TOOL_LABEL	Recovery function copies $TOOL_LABEL; dispatcher only defines TOOL_TAG (e.g. lines 218/225/257). Shell expands empty RECOVERY_PRIOR_TOOL= and Step 2.4 commit prefix loses prior-tool attribution	Use emit_kv RECOVERY_PRIOR_TOOL "$TOOL_TAG" (or rename consistently in plan + implementation)
