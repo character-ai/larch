@@ -95,6 +95,29 @@ while IFS= read -r f; do
 done <<< "$MODIFIED_FILES"
 
 # ---------------------------------------------------------------------------
+# Mermaid fence lint uses repo-local mmdc (package.json). CI runs `npm ci`
+# before `lint-mermaid-fences`; mirror that here when Markdown is in scope so
+# pre-commit does not fail with a missing CLI on fresh checkouts.
+# ---------------------------------------------------------------------------
+ensure_mermaid_cli() {
+    if [ ! -f "$REPO_ROOT/package.json" ]; then
+        return 0
+    fi
+    if [ -x "$REPO_ROOT/node_modules/.bin/mmdc" ]; then
+        return 0
+    fi
+    if ! command -v npm >/dev/null 2>&1; then
+        echo "ERROR: npm not found; cannot install Mermaid CLI for lint-mermaid-fences. Install Node.js or run: npm ci"
+        exit 1
+    fi
+    echo "=== Installing Node devDependencies (Mermaid CLI; npm ci) ==="
+    (cd "$REPO_ROOT" && npm ci) || {
+        echo "ERROR: npm ci failed"
+        exit 1
+    }
+}
+
+# ---------------------------------------------------------------------------
 # If files[] is empty but MODIFIED_FILES is non-empty, every modified path was
 # rejected by the [ -f ] regular-file filter — typically deletions, but also
 # directories or other non-regular-file path categories. Pre-commit has
@@ -107,6 +130,16 @@ if [ ${#files[@]} -eq 0 ]; then
     echo "No existing regular files to pass to pre-commit."
     run_post_checks
     exit_with_phase_check "$?"
+fi
+
+markdown_in_scope=false
+for f in "${files[@]}"; do
+    case "$f" in
+        *.md) markdown_in_scope=true; break ;;
+    esac
+done
+if [ "$markdown_in_scope" = true ]; then
+    ensure_mermaid_cli
 fi
 
 # ---------------------------------------------------------------------------
