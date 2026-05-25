@@ -1,0 +1,27 @@
+v1	vendor	1779734084	implement	-	codex	codex-sketch-generic	1779734003	1779734084	81	codex-sketch-generic-output.txt	0	complete
+v1	vendor	1779734182	implement	-	cursor	cursor-sketch-generic	1779734001	1779734182	181	cursor-sketch-generic-output.txt	0	complete
+v1	mark	1779734782	design	design Step 3 — plan review	-	-	-	-	-	-	-	-
+v1	vendor	1779735090	implement	-	cursor	cursor-phase1-dyn-cursor-plan-batch-schema-extension	1779734930	1779735090	160	cursor-plan-dyn-batch-schema-extension-output.txt	0	complete
+v1	vendor	1779735099	implement	-	codex	codex-phase1-dyn-codex-plan-api-line-drift	1779734929	1779735099	170	codex-primary-plan-dyn-api-line-drift-output.txt	0	complete
+v1	vendor	1779735109	implement	-	cursor	cursor-phase1-cursor-plan-requirements	1779734928	1779735109	181	cursor-plan-requirements-output.txt	0	complete
+v1	vendor	1779735115	implement	-	cursor	cursor-phase1-cursor-plan-arch	1779734928	1779735115	187	cursor-plan-arch-output.txt	0	complete
+v1	vendor	1779735118	implement	-	codex	codex-phase1-dyn-codex-plan-deferred-ci-gap	1779734930	1779735118	188	codex-primary-plan-dyn-deferred-ci-gap-output.txt	0	complete
+v1	vendor	1779735119	implement	-	codex	codex-phase1-dyn-codex-plan-trap-sequencing	1779734929	1779735118	189	codex-primary-plan-dyn-trap-sequencing-output.txt	0	complete
+v1	vendor	1779735120	implement	-	cursor	cursor-phase1-dyn-cursor-plan-trap-sequencing	1779734929	1779735120	191	cursor-plan-dyn-trap-sequencing-output.txt	0	complete
+v1	vendor	1779735124	implement	-	cursor	cursor-phase1-cursor-plan-edge	1779734928	1779735124	196	cursor-plan-edge-output.txt	0	complete
+v1	vendor	1779735127	implement	-	cursor	cursor-phase1-cursor-plan-pragmatic	1779734928	1779735127	199	cursor-plan-pragmatic-output.txt	0	complete
+v1	vendor	1779735140	implement	-	cursor	cursor-phase1-cursor-plan-innovation	1779734928	1779735140	212	cursor-plan-innovation-output.txt	0	complete
+v1	vendor	1779735145	implement	-	cursor	cursor-phase1-dyn-cursor-plan-deferred-ci-gap	1779734930	1779735144	214	cursor-plan-dyn-deferred-ci-gap-output.txt	0	complete
+v1	vendor	1779735150	implement	-	cursor	cursor-phase1-dyn-cursor-plan-api-line-drift	1779734929	1779735149	220	cursor-plan-dyn-api-line-drift-output.txt	0	complete
+v1	vendor	1779735155	implement	-	codex	codex-phase1-codex-plan-edge	1779734928	1779735155	227	codex-primary-plan-edge-output.txt	0	complete
+v1	vendor	1779735166	implement	-	codex	codex-phase1-codex-plan-requirements	1779734928	1779735166	238	codex-primary-plan-requirements-output.txt	0	complete
+v1	vendor	1779735169	implement	-	codex	codex-phase1-dyn-codex-plan-batch-schema-extension	1779734930	1779735169	239	codex-primary-plan-dyn-batch-schema-extension-output.txt	0	complete
+v1	vendor	1779735174	implement	-	codex	codex-phase1-codex-plan-innovation	1779734928	1779735174	246	codex-primary-plan-innovation-output.txt	0	complete
+v1	vendor	1779735183	implement	-	codex	codex-phase1-codex-plan-arch	1779734928	1779735183	255	codex-primary-plan-arch-output.txt	0	complete
+v1	vendor	1779735237	implement	-	codex	codex-phase1-codex-plan-pragmatic	1779734928	1779735237	309	codex-primary-plan-pragmatic-output.txt	0	complete
+v1	vendor	1779735383	implement	-	cursor	cursor-phase1-aggregator	1779735282	1779735383	101	aggregator-output.txt	0	complete
+v1	vendor	1779735588	implement	-	codex	codex-phase1-aggregator	1779735384	1779735587	203	aggregator-output-codex.txt	0	complete
+v1	vendor	1779735875	implement	-	cursor	cursor-phase1-voter-3	1779735800	1779735875	75	cursor-vote-output.txt	0	complete
+v1	vendor	1779735963	implement	-	codex	codex-phase1-voter-2	1779735800	1779735963	163	codex-vote-output.txt	0	complete
+v1	mark	1779737077	design	design Step 4b — gate C	-	-	-	-	-	-	-	-
+v1	mark	1779737187	design	design Step 5 — finalize	-	-	-	-	-	-	-	-
