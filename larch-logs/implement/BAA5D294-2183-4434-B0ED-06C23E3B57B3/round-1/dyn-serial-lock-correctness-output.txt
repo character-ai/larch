@@ -1,0 +1,9 @@
+Gathering the diff and `run_coder_dispatch` / serial-lock helpers to verify lock acquire/release ordering.
+
+### In-Scope Findings
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+- **architecture** `scripts/lib-external-launcher-common.sh:87-95` — `external_serial_lock_release_after` starts a disowned background job that expands `lock_path` when the job is created; clearing `_SERIAL_LOCK` in `skills/review-and-fix/scripts/review-and-fix.sh:263` only affects the parent shell and does not interact with an already-scheduled codex release. This is longstanding behavior, not introduced by the reorder in `run_coder_dispatch()` (`skills/review-and-fix/scripts/review-and-fix.sh:248-279`).
+- **architecture** `scripts/lib-external-launcher-common.sh:33-85` — On non-Darwin, `external_serial_lock_acquire` leaves the lock path empty and returns immediately, so the acquire/`release_after` pair in `run_coder_dispatch()` is effectively a no-op there; unchanged by the branch.
+- **correctness** (branch context) — `git log $(git merge-base HEAD main)..HEAD --oneline`: `7378f8d4 chore(larch-logs): flush implement run BAA5D294-2183-4434-B0ED-06C23E3B57B3`; `2f96fb45 Restore Codex-first /implement Step 2 and fixer dispatch`. The diff hunk for `review-and-fix.sh` matches the working tree: codex acquire → `release_after` → codex run → optional cursor path with `_SERIAL_LOCK=""` then cursor acquire → `release_after` → cursor run.

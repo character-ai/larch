@@ -1,0 +1,15 @@
+The diff is complete in the provided context. I have all the information needed for a thorough correctness review.
+
+### In-Scope Findings
+
+1. - **code-quality** `skills/review-and-fix/scripts/review-and-fix.sh:251-252` — Redundant `_SERIAL_LOCK=""` assignment immediately follows `local _SERIAL_LOCK=""`. The `local` declaration already initializes the variable to empty; the second assignment on the next line is unreachable dead-write. This is harmless but adds a line that could mislead readers into thinking the `local` form does not initialize. **Suggested fix:** Remove the standalone `_SERIAL_LOCK=""` line that appears directly after `local _SERIAL_LOCK=""`; keep the identical reset before the cursor lock acquire (that one is load-bearing because it clears the codex lock handle before cursor acquisition).
+
+### Out-of-Scope Observations
+
+1. - **correctness** `SECURITY.md` (context-only line) — The **Review fix application** paragraph says "applies fixes through Codex, then Cursor" — this sentence was not modified by PR #2452 and has therefore been stale (saying "Codex, then Cursor" while the code did "Cursor, then Codex") since that PR landed. The current diff's script change makes the sentence accurate again, so it is self-healing with no further action needed. Out of scope because the sentence wasn't touched by this diff and the inconsistency predates this branch.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	nit	code-quality	skills/review-and-fix/scripts/review-and-fix.sh:251-252	Redundant _SERIAL_LOCK="" after local _SERIAL_LOCK=""	No runtime impact; dead write that can mislead readers about whether local initializes the variable	Remove the standalone _SERIAL_LOCK="" line immediately after local _SERIAL_LOCK=""; the reset before cursor lock acquire (further down) is the load-bearing one
+1	out_of_scope	nit	correctness	SECURITY.md	"Review fix application" paragraph said "Codex, then Cursor" while PR #2452 made the script do Cursor-first — stale doc pre-dating this branch	During #2452-to-this-PR window the prose was inconsistent with the script; this PR's script change self-heals it	No action needed — current diff already restores consistency
+```

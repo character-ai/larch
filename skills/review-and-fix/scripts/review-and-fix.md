@@ -24,7 +24,7 @@ Output is `KEY=value` only through `scripts/lib-quiet.sh`:
 
 `CODER_STATUS=applied` means the coder dispatch exited 0 AND `git status --porcelain` reports a non-empty working tree after submodule revert — i.e., real edits landed in the repo. `CODER_STATUS=no-changes` covers the case where the dispatcher exited 0 but the working tree is clean (sandbox blocked writes, coder declined every finding, etc.). The orchestrator must treat `no-changes` as terminal: a re-run of the same review would produce the same fixed point.
 
-The script applies edits by dispatching Cursor, then Codex. The main agent does not apply review fixes with Edit/Write. `run_coder_dispatch()` acquires the per-tool KeyChain serial lock (`external_serial_lock_acquire` from `lib-cursor-launcher-common.sh` → `lib-external-launcher-common.sh`) immediately before each coder spawn and releases it asynchronously via `external_serial_lock_release_after`.
+The script applies edits by dispatching Codex, then Cursor. The main agent does not apply review fixes with Edit/Write. `run_coder_dispatch()` acquires the per-tool KeyChain serial lock (`external_serial_lock_acquire` from `lib-cursor-launcher-common.sh` → `lib-external-launcher-common.sh`) immediately before each coder spawn and releases it asynchronously via `external_serial_lock_release_after`.
 
 ## `/implement` orchestrator mode
 

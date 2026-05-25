@@ -14,11 +14,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Restore Codex-first defaults for `/implement` Step 2 and fixer dispatch: omitted `--coder` defaults to Codex in `skills/implement/scripts/step2-implement.sh`, `### Implementer waterfall` in `skills/implement/SKILL.md` prefers Codex → Cursor → Claude, `review-and-fix.sh` and `lint-fix-loop.sh` try Codex before Cursor, with harness and cross-doc updates (`SECURITY.md`, `docs/linting.md`, sibling `.md` contracts). Closes #2756.
 - `/design`: re-print the plan candidate at Step 3 entry (first-time only) and Gate C entry, with a large-plan summary mode controlled by `LARCH_DESIGN_PLAN_SUMMARY_THRESHOLD` (default 120).
 - **`/design` finalize split + upstream OOS filing** — Step 5 is now **finalize** (5a reviewer status, **5b** `/larch:issue` batch for accepted non-security OOS with `[OOS]` prefix + `file-design-oos.sh`, **5c** `larch:plan` write / publish / `[DESIGNED]` rename); Step **6** is tmpdir **cleanup** only (`cleanup-tmpdir.sh`). `/implement` Step 9a.1 skips design OOS blocks that already carry `- **Filed URL**:`; disposition counting for design-side GitHub URLs follows the structured Filed URL list lines from `[42.0.10]` (not incidental prose), while `oos-disposition-gate.sh` still accepts repeated `--filed-urls-file` arguments to **union** those extracted lists with implement tmp artifacts such as `oos-issues-created.md` (not a Description-URL bypass).
 - **`/implement` admission precondition**: issues without a `[DESIGNED]` prefix are rejected with `ADMISSION_RESULT=missing-designed-prefix` at exit 5, requiring a completed `/design` run before `/implement` may proceed.
 - **Migration posture**: legacy `[IN PROGRESS]` and `[PLANNED]` prefixes are stripped by `strip_lifecycle_prefix` for backward compatibility but are no longer accepted as `--state` values by `tracking-issue-write.sh` or as admission-pass prefixes.
 - **Audit scope**: workflow call sites and rename `--state` surfaces in the active runtime tree (`skills/`, `scripts/`, `agents/`, `.claude/`, `docs/`, tests) now use the new prefix set; deliberate legacy bracket literals remain only where migration, admission recovery, strip helpers, or hermetic fixtures require them. This Unreleased section documents the migration and may name the old prefixes. Historical shipped changelog bodies and `larch-logs/` were not bulk-retitled.
+
+## [42.4.18] - 2026-05-24
+
+### Changed
+
+- Restore Codex as the default external implementer when `--coder` is omitted so Step 2 matches the stricter sandbox-first posture operators expect (#2756).
+- Run review-fix and lint-fix Codex dispatch before Cursor so behavior matches the SKILL.md implementer waterfall.
+- Re-pin the step2 dispatcher harness to assert the codex default via non-git cwd (exit 2) instead of a stubbed Cursor path.
 
 ## [42.4.17] - 2026-05-24
 

@@ -1,0 +1,7 @@
+Gathering the diff and commit history for the security review.
+
+Scanning the diff for changed files and security-sensitive hunks.
+
+Verifying `run_coder_dispatch` lock handling in the branch version:
+
+NO_ISSUES_FOUND

@@ -118,9 +118,9 @@ if [[ -n "$CODEX_AVAILABLE" ]]; then
     esac
 fi
 
-# Default coder is cursor (Cursor spawn path) when --coder is omitted.
+# Default coder is codex (Codex spawn path) when --coder is omitted.
 if [[ -z "$CODER" ]]; then
-    CODER="cursor"
+    CODER="codex"
 fi
 
 # shellcheck source=scripts/external-tool-registry.sh
