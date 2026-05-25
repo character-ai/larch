@@ -37,8 +37,6 @@ done
 [ -n "$IMPLEMENT_TMPDIR" ] || fail_usage "--implement-tmpdir is required"
 case "$IMPLEMENT_TMPDIR" in /*) ;; *) fail_usage "--implement-tmpdir must be absolute" ;; esac
 
-"$PLUGIN_ROOT/scripts/token-ledger.sh" mark "Step 7a — code flow diagram" || true
-"$PLUGIN_ROOT/scripts/timing-ledger.sh" mark "Step 7a — code flow diagram" || true
 mkdir -p "$IMPLEMENT_TMPDIR" || {
     emit_kv STATUS failed
     emit_kv DIAGRAM_FILE ""

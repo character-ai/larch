@@ -1404,7 +1404,7 @@ export CLAUDE_PLUGIN_ROOT
   --forked-target "${forked_target:-false}"
 ```
 
-Parse the KV tail for `DIAGRAM_STATUS`, `DIAGRAM_PATH`, `COMMENT_URL`, `LOG_FLUSH_STATUS`, and `STEP_7A_BAIL_REASON` if needed. Then apply the **Rebase Checkpoint Macro** orchestrator routing from the `## Rebase Checkpoint Macro` section using `<step-prefix>=7a.r` and `<short-name>=diagrams` after `step-7a.sh` returns (phantom probe for `7a.r-post-rebase` is already inside the wrapper).
+Parse the combined stdout for `REBASE_OUTCOME` first, then read the final KV tail for `DIAGRAM_STATUS`, `DIAGRAM_PATH`, `COMMENT_URL`, `LOG_FLUSH_STATUS`, and `STEP_7A_BAIL_REASON` if needed. Apply the **Rebase Checkpoint Macro** orchestrator routing from the `## Rebase Checkpoint Macro` section using `<step-prefix>=7a.r` and `<short-name>=diagrams` after `step-7a.sh` returns; `step-7a.sh` preserves the probe exit code and only runs the pre-bump flush after `REBASE_OUTCOME=ok|skipped` (phantom probe for `7a.r-post-rebase` is already inside the wrapper).
 
 > **Continue to Step 8 IMMEDIATELY.** Step 7a diagrams are not the end of the run — version bump, PR creation, CI monitoring, and merge still must run.
 

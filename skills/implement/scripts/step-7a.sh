@@ -219,7 +219,7 @@ run_log_flush() {
             LOG_FLUSH_STATUS=degraded
             append_best_effort_failure "step-7a" "larch-log.sh commit" "$rc" "$out_file"
         fi
-    else
+    elif [ "$LOG_FLUSH_STATUS" = "ok" ]; then
         LOG_FLUSH_STATUS=skipped-no-logs-commit
     fi
 }
@@ -325,9 +325,6 @@ if [ "$FORKED_TARGET_SET" != "true" ]; then
 fi
 export ISSUE_NUMBER RUN_ID
 
-"$PLUGIN_ROOT/scripts/token-ledger.sh" mark "Step 7a — code flow diagram" || true
-"$PLUGIN_ROOT/scripts/timing-ledger.sh" mark "Step 7a — code flow diagram" || true
-
 if is_small_non_runtime_change; then
     DIAGRAM_STATUS=skip
     DIAGRAM_PATH=""
@@ -352,6 +349,7 @@ else
             DIAGRAM_STATUS=skipped
             DIAGRAM_PATH=""
             CODE_FLOW_SKIP_REASON="Code flow diagram not available."
+            COMMENT_UPSERT_SKIP=true
             ;;
         failed)
             DIAGRAM_STATUS=failed
@@ -396,7 +394,16 @@ if [ "${forked_target:-false}" = "true" ]; then
     BASE_ARGS=(--base-remote upstream --base-ref main)
 fi
 export LARCH_QUIET_BREADCRUMBS=1
-"$PLUGIN_ROOT/scripts/rebase-checkpoint-probe.sh" 7a.r 'diagrams' "${BASE_ARGS[@]+"${BASE_ARGS[@]}"}" || true
+set +e
+rebase_out="$IMPLEMENT_TMPDIR/rebase-checkpoint-probe.stdout"
+"$PLUGIN_ROOT/scripts/rebase-checkpoint-probe.sh" 7a.r 'diagrams' "${BASE_ARGS[@]+"${BASE_ARGS[@]}"}" >"$rebase_out"
+rebase_rc=$?
+set -e
+cat "$rebase_out"
+if [ "$rebase_rc" -ne 0 ]; then
+    emit_tail
+    exit "$rebase_rc"
+fi
 
 run_log_flush
 emit_tail

@@ -47,6 +47,16 @@ assert_file_contains() {
     assert_contains "$needle" "$(cat "$path" 2>/dev/null || true)" "$label"
 }
 
+assert_file_equals() {
+    local expected=$1 path=$2 label=$3 actual
+    actual=$(cat "$path" 2>/dev/null || true)
+    if [ "$expected" = "$actual" ]; then
+        pass "$label"
+    else
+        fail "$label"
+    fi
+}
+
 assert_equals() {
     local expected=$1 actual=$2 label=$3
     if [ "$expected" = "$actual" ]; then
@@ -65,6 +75,19 @@ assert_call_order() {
     else
         fail "$label"
     fi
+}
+
+green_expected_summary() {
+    cat <<'EOF'
+Architecture diagram not available.
+
+## Code Flow Diagram
+
+```mermaid
+graph TD
+  A --> B
+```
+EOF
 }
 
 finish() {
@@ -98,7 +121,7 @@ case "${STEP7A_GEN_MODE:-ok}" in
         ;;
     rejected)
         printf 'generator sanitizer rejected\n' >&2
-        printf 'STATUS=failed\nDIAGRAM_FILE=\nSKIP_REASON=sanitizer-rejected\n'
+        printf 'STATUS=skipped\nDIAGRAM_FILE=\nSKIP_REASON=pipe-in-node-label\n'
         ;;
     failed)
         printf 'generator helper failed\n' >&2
@@ -135,7 +158,19 @@ STUB
 #!/usr/bin/env bash
 set -euo pipefail
 printf 'rebase-checkpoint-probe.sh %s\n' "$*" >> "$STEP7A_CALLS_LOG"
-printf 'REBASE_STATUS=ok\n'
+case "${STEP7A_REBASE_MODE:-ok}" in
+    ok)
+        printf 'REBASE_OUTCOME=ok\n'
+        ;;
+    conflict)
+        printf 'REBASE_OUTCOME=conflict\nCONFLICT_FILES=skills/implement/scripts/step-7a.sh\n'
+        exit 1
+        ;;
+    failed)
+        printf 'REBASE_OUTCOME=failed\nREBASE_ERROR=rebase-failed\n'
+        exit 3
+        ;;
+esac
 STUB
 
     cat > "$root/skills/implement/scripts/flush-execution-issues.sh" <<'STUB'
@@ -288,10 +323,12 @@ assert_contains "DIAGRAM_PATH=$CASE_DIR/tmp/code-flow-diagram.md" "$out" "green 
 assert_contains "COMMENT_URL=https://example.test/comment/1" "$out" "green emits comment URL"
 assert_contains "LOG_FLUSH_STATUS=ok" "$out" "green emits log flush ok"
 assert_contains "STEP_7A_BAIL_REASON=" "$out" "green emits empty bail reason"
+assert_contains "REBASE_OUTCOME=ok" "$out" "green emits rebase outcome"
 assert_call_order "$CASE_DIR/calls.log" "generate-code-flow-diagram.sh" "compose-summary-diagrams" "green generate before compose"
 assert_call_order "$CASE_DIR/calls.log" "compose-summary-diagrams" "tracking-issue-summary.sh" "green compose before upsert"
 assert_call_order "$CASE_DIR/calls.log" "tracking-issue-summary.sh" "rebase-checkpoint-probe.sh" "green upsert before rebase"
 assert_call_order "$CASE_DIR/calls.log" "rebase-checkpoint-probe.sh" "flush-execution-issues.sh" "green rebase before flush"
+assert_file_equals "$(green_expected_summary)" "$CASE_DIR/tmp/summary-diagrams.md" "green writes expected summary diagrams"
 
 new_case diagram-skip
 make_skip_repo "$CASE_DIR/repo"
@@ -312,11 +349,11 @@ out=$(STEP7A_GEN_MODE=rejected run_helper "$CASE_DIR" --implement-tmpdir "$CASE_
 rc=$?
 set -e
 assert_equals 0 "$rc" "diagram-rejected exits 0"
-assert_contains "DIAGRAM_STATUS=failed" "$out" "diagram-rejected emits failed"
+assert_contains "DIAGRAM_STATUS=skipped" "$out" "diagram-rejected emits skipped"
 assert_not_contains "tracking-issue-summary.sh" "$(cat "$CASE_DIR/calls.log")" "diagram-rejected skips upsert"
 assert_contains "COMMENT_URL=" "$out" "diagram-rejected emits empty comment URL"
 assert_contains "LOG_FLUSH_STATUS=ok" "$out" "diagram-rejected keeps flush ok"
-assert_file_contains "### Warnings" "$CASE_DIR/tmp/execution-issues.md" "diagram-rejected appends warning"
+assert_not_contains "### Warnings" "$(cat "$CASE_DIR/tmp/execution-issues.md")" "diagram-rejected does not append warning"
 
 new_case diagram-failure
 set +e
@@ -351,6 +388,15 @@ assert_file_contains "### Tool Failures" "$CASE_DIR/tmp/execution-issues.md" "fl
 assert_equals 2 "$(cat "$CASE_DIR/flush-count")" "flush-failure still runs post-transcript flush"
 assert_contains "larch-log.sh commit" "$(cat "$CASE_DIR/calls.log")" "flush-failure still runs commit"
 
+new_case flush-failure-no-logs-commit
+set +e
+out=$(STEP7A_FLUSH_FAIL_FIRST=1 run_helper "$CASE_DIR" --implement-tmpdir "$CASE_DIR/tmp" --issue-number 42 --run-id run-001 --no-logs-commit true --forked-target false 2>&1)
+rc=$?
+set -e
+assert_equals 0 "$rc" "flush-failure-no-logs-commit exits 0"
+assert_contains "LOG_FLUSH_STATUS=degraded" "$out" "flush-failure-no-logs-commit preserves degraded"
+assert_not_contains "larch-log.sh commit" "$(cat "$CASE_DIR/calls.log")" "flush-failure-no-logs-commit skips commit"
+
 new_case no-logs-commit
 set +e
 out=$(run_helper "$CASE_DIR" --implement-tmpdir "$CASE_DIR/tmp" --issue-number 42 --run-id run-001 --no-logs-commit true --forked-target false 2>&1)
@@ -377,6 +423,25 @@ assert_equals 0 "$rc" "ISSUE_NUMBER empty exits 0"
 assert_not_contains "tracking-issue-summary.sh" "$(cat "$CASE_DIR/calls.log")" "ISSUE_NUMBER empty skips upsert"
 assert_contains "COMMENT_URL=" "$out" "ISSUE_NUMBER empty emits empty URL"
 assert_contains "rebase-checkpoint-probe.sh" "$(cat "$CASE_DIR/calls.log")" "ISSUE_NUMBER empty still runs rebase"
+
+new_case generator-crash
+set +e
+out=$(STEP7A_GEN_MODE=crash run_helper "$CASE_DIR" --implement-tmpdir "$CASE_DIR/tmp" --issue-number 42 --run-id run-001 --no-logs-commit false --forked-target false 2>&1)
+rc=$?
+set -e
+assert_equals 0 "$rc" "generator-crash exits 0"
+assert_contains "DIAGRAM_STATUS=failed" "$out" "generator-crash emits failed"
+assert_contains "COMMENT_URL=https://example.test/comment/1" "$out" "generator-crash still posts comment"
+assert_file_contains "### Warnings" "$CASE_DIR/tmp/execution-issues.md" "generator-crash appends warning"
+
+new_case rebase-conflict
+set +e
+out=$(STEP7A_REBASE_MODE=conflict run_helper "$CASE_DIR" --implement-tmpdir "$CASE_DIR/tmp" --issue-number 42 --run-id run-001 --no-logs-commit false --forked-target false 2>&1)
+rc=$?
+set -e
+assert_equals 1 "$rc" "rebase-conflict exits 1"
+assert_contains "REBASE_OUTCOME=conflict" "$out" "rebase-conflict emits conflict outcome"
+assert_not_contains "flush-execution-issues.sh" "$(cat "$CASE_DIR/calls.log")" "rebase-conflict skips flush"
 
 new_case argv-error
 set +e
