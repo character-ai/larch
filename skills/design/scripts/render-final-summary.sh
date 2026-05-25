@@ -30,10 +30,14 @@ done
 [ -n "${DESIGN_TMPDIR:-}" ] || { printf '%s\n' "render-final-summary.sh: DESIGN_TMPDIR unset" >&2; exit 2; }
 [ -d "$DESIGN_TMPDIR" ] || { printf '%s\n' "render-final-summary.sh: DESIGN_TMPDIR not a directory" >&2; exit 2; }
 [ -n "$OUTCOME" ] || { usage; exit 2; }
+if [ "$OUTCOME" = "cancelled-title-filter" ]; then
+    MODE_STR="Refused (title-filter)"
+fi
+
 [ -n "$MODE_STR" ] || { usage; exit 2; }
 
 case "$OUTCOME" in
-    approved|approved-partition|cancelled-clarify|cancelled-already-planned|cancelled-tier-gate|cancelled-sprawl|cancelled-plan-size-hard|cancelled-decompose|failed-plan-write) ;;
+    approved|approved-partition|cancelled-clarify|cancelled-already-planned|cancelled-tier-gate|cancelled-title-filter|cancelled-sprawl|cancelled-plan-size-hard|cancelled-decompose|failed-plan-write) ;;
     *)
         printf '%s\n' "render-final-summary.sh: outcome not in enumeration: $OUTCOME" >&2
         exit 2

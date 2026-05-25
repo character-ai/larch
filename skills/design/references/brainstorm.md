@@ -1,6 +1,6 @@
 # Brainstorm panel (Step 1d.5)
 
-**Consumer**: `/design` Step **1d.5** — runs after Step **1d** (Round 1 discussion) and before Step **1e** (Gate A) when `brainstorm_requested` is true in `$DESIGN_TMPDIR/run-params.json` or set by argv / upgrade paths in Step 0.
+**Consumer**: `/design` Step **1d.5** — runs after Step **1d** (Round 1 discussion) and before Step **1e** (Gate A) when `brainstorm_requested` is true in `$DESIGN_TMPDIR/run-params.json` or set in Step 0 by argv, upgrade paths, or the Step 0b `Brainstorm:` title-prefix auto-enable.
 
 **Contract**: one-shot per invocation via `$DESIGN_TMPDIR/.brainstorm-done`. Produces additive `$DESIGN_TMPDIR/brainstorm.md` (never load-bearing for downstream automation). Downstream readers: **Step 2a** (sketch `<FEATURE_DESCRIPTION>` substitution), **Step 2a.5** (dialectic `{FEATURE_DESCRIPTION}` / synthesis context), **Step 2b** (plan drafting), **Step 3** (plan-review feature context merged by `plan-review-loop.sh` when `brainstorm.md` exists).
 

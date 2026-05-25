@@ -36,9 +36,15 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
-PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
+_PLUGIN_DEFAULT="$(cd "$SCRIPT_DIR/../../.." && pwd -P)"
+PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$_PLUGIN_DEFAULT}"
+if [[ ! -f "$PLUGIN_ROOT/scripts/lib-title-eligibility.sh" ]]; then
+    PLUGIN_ROOT="$_PLUGIN_DEFAULT"
+fi
 # shellcheck source=scripts/lib-quiet.sh
 source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
+# shellcheck source=scripts/lib-title-eligibility.sh
+source "$PLUGIN_ROOT/scripts/lib-title-eligibility.sh"
 larch_quiet_init
 
 CLOSED_WINDOW_DAYS=90
@@ -144,8 +150,7 @@ RAW=$(gh api --paginate "repos/${REPO}/issues?state=all&per_page=100" 2>/dev/nul
 # insensitive, leading whitespace trimmed) to reduce prompt noise. Prefixes are
 # trailing-space-sensitive so words like "Researches" and "Investigation" remain
 # visible to dedup.
-# shellcheck disable=SC2016  # jq filter ($t is jq binding, not shell)
-DEDUP_SKIP_PREFIX_FILTER='select((.title // "" | ascii_downcase | sub("^[[:space:]]+"; "")) as $t | (($t | startswith("research ")) or ($t | startswith("[research] ")) or ($t | startswith("investigate ")) or ($t | startswith("[investigate] ")) or ($t | test("^\\[.*report\\] "))) | not)'
+DEDUP_SKIP_PREFIX_FILTER="$LARCH_TITLE_ARCHIVAL_PREFIX_JQ_FILTER"
 if [[ "$CLOSED_WINDOW_DAYS" -eq 0 ]]; then
     JQ_FILTER='.[] | select(.pull_request == null) | select(.state == "open") | '"$DEDUP_SKIP_PREFIX_FILTER"' | [(.number|tostring), (.title | gsub("\t"; " ") | gsub("\n"; " ") | gsub("\r"; " ")), .state, .html_url] | @tsv'
     TSV=$(echo "$RAW" | jq -r "$JQ_FILTER" 2>/dev/null) || {

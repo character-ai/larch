@@ -1,0 +1,3 @@
+Aggregating the 25 raw reviewer findings: merging duplicates, preserving distinct fixes, and applying severity merge rules. Verifying a few source references for accurate normalization.
+Confirming merge groups against the cited code. Producing the normalized aggregator output.
+

@@ -379,7 +379,7 @@ assert_equal "$result" "pickable" "[14c] normal bug issue title is NOT excluded"
 result=$(title_matches_audit_report_exclusion "[IMPLEMENTING] Create /larch:audit-runs skill")
 assert_equal "$result" "pickable" "[14d] non-audit-report title not excluded"
 result=$(title_matches_audit_report_exclusion "[Run Logs Audit Report 2026-05-20T19:30Z] PRs #2430-#2440")
-assert_equal "$result" "pickable" "[14g] pre-migration audit bracket title not matched by self-exclusion regex (label guard is primary)"
+assert_equal "$result" "pickable" "[14g] legacy [Run Logs Audit Report ...] title remains pickable because self-exclusion requires Report immediately before ] (label guard is primary)"
 
 # Test 14e: implement-admission.sh has_report_prefix matches the audit report title
 # (space before "report]" inside the bracket); label-based exclusion is still primary.

@@ -9,10 +9,9 @@
 #   POST /repos/{owner}/{repo}/issues/{client_number}/dependencies/blocked_by
 #   body: {"issue_id": <blocker numeric id, NOT the display number>}
 #
-# The Issue Dependencies REST API was promoted to GA on github.com in 2024;
-# skills/fix-issue/scripts/find-lock-issue.sh already uses the GET counterpart
-# at the same path. This script owns the WRITE side under fail-closed semantics
-# distinct from find-lock-issue.sh's fail-open read posture.
+# The Issue Dependencies REST API was promoted to GA on github.com in 2024.
+# GET list/read at the same path uses fail-open semantics elsewhere; this script
+# owns the WRITE side under fail-closed semantics.
 #
 # Retry contract (per /issue's hard-fail-with-retries rule, issue #546):
 #   attempt 1 (immediate)

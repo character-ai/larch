@@ -960,6 +960,12 @@ exclude = [
   # ([DESIGNED]/[DESIGNING] titles); lib-title-markers.sh is sourced from
   # scripts/tracking-issue-write.sh. Makefile test-lib-title-markers target only.
   "scripts/test-lib-title-markers.sh",
+  # scripts/lib-title-eligibility.sh is a sourced-only grammar library for
+  # /design Step 0b and skills/issue/scripts/list-issues.sh. The harness
+  # scripts/test-lib-title-eligibility.sh is Makefile-only. Agent-lint does
+  # not follow sibling `source` directives or Makefile targets.
+  "scripts/lib-title-eligibility.sh",
+  "scripts/test-lib-title-eligibility.sh",
   "scripts/false-positive-keywords.sh",
   "scripts/test-false-positive-keywords.sh",
   # Regression harness for tracking-issue-read.sh's --sentinel branch

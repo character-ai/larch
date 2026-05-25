@@ -1,0 +1,13 @@
+FINDING_1: YES
+FINDING_2: EXONERATE -- The drift risk is real but adding derivation machinery for a test mirror is more complexity than this latent fixture-maintenance risk warrants.
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: NO -- The saved `shopt -p nocasematch || true` form still captures the restore command when `nocasematch` is off, so the cited leak is not demonstrated.
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: EXONERATE -- The title-triggered external brainstorm behavior is intentional and visibly bannered; requiring another confirmation adds friction disproportionate to the marginal risk.

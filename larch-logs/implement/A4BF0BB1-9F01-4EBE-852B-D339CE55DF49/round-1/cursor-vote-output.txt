@@ -1,0 +1,14 @@
+Reading the ballot and verification context.
+FINDING_1: YES
+FINDING_2: EXONERATE -- equivalence harness pins jq/bash parity; bash mirror is test-only helper
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: EXONERATE -- latent doc gap; argv/upgrade wording still covers run-params path
+FINDING_7: YES
+FINDING_8: EXONERATE -- harness already exercises repo-root fallback when plugin root is unset
+FINDING_9: EXONERATE -- standard shopt -p save/restore; low risk in short-lived predicate calls
+FINDING_10: EXONERATE -- structure test pins mandatory ordering prose in SKILL.md
+FINDING_11: EXONERATE -- standalone lowercase `brainstorm` exercises the same end-of-string regex path
+FINDING_12: EXONERATE -- predicate-name anchors already constrain SKILL.md wiring
+FINDING_13: EXONERATE -- title-prefix auto-enable is intentional; banner discloses behavior to the operator
