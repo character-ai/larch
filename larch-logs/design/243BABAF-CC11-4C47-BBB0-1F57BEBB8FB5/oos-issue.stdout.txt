@@ -1,0 +1,17 @@
+ISSUE_1_DUPLICATE=true
+ISSUE_1_DUPLICATE_OF_NUMBER=2736
+ISSUE_1_DUPLICATE_OF_URL=https://github.com/character-ai/larch/issues/2736
+ISSUE_1_TITLE=Phase 3/4 stubs in implement-bootstrap.sh overwrite IMPLEMENT_BAIL_REASON after phase_tracking
+ISSUE_2_NUMBER=2772
+ISSUE_2_URL=https://github.com/character-ai/larch/issues/2772
+ISSUE_2_ID=4514563929
+ISSUE_2_TITLE=[OOS] tracking-issue-read.sh --sentinel header omits RUN_ID even though implementation emits it
+ISSUE_2_BLOCKER_LINKS_APPLIED=1
+ISSUE_3_NUMBER=2773
+ISSUE_3_URL=https://github.com/character-ai/larch/issues/2773
+ISSUE_3_ID=4514565427
+ISSUE_3_TITLE=[OOS] Fork upstream get-issue-context failures suppressed by || true lose observability
+ISSUE_3_BLOCKER_LINKS_APPLIED=1
+ISSUES_CREATED=2
+ISSUES_FAILED=0
+ISSUES_DEDUPLICATED=1

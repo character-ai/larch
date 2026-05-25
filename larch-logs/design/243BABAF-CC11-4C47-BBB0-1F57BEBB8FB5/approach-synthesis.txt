@@ -1,0 +1,31 @@
+## Approach Synthesis
+
+**Sketch participation**: Codex-Generic delivered a substantive 3-paragraph sketch. Cursor-Generic returned only its preamble (3 lines: exploration intent + a spec-vs-SKILL divergence flag) and was logged to `execution-issues.md` Warnings; the synthesis below is therefore predominantly Codex's content with Cursor's divergence note incorporated.
+
+### Agreements
+
+- **Implement `phase_tracking` as a state machine** inside `scripts/implement-bootstrap.sh` between `phase_infra` and the existing emit_final_tail block.
+- **Argv plumbing**: add `--forked-target true|false` and `--upstream-repo OWNER/REPO`. Default `forked_target=false`. Validate both flags' values (boolean / OWNER/REPO regex) with `die_usage` on malformed input.
+- **Carve-outs run before adoption logic**:
+  - `repo_unavailable=true` (read from `REPO_UNAVAILABLE` global already set by `phase_infra`) → set `BRANCH_SELECTED=repo-unavailable-skip`, leave `ISSUE_NUMBER` unset, print the existing skip breadcrumb via `emit_breadcrumb`, return 0.
+  - `forked_target=true` → set `BRANCH_SELECTED=forked-target-skip`, `DEFERRED=true`, leave `ISSUE_NUMBER` unset, optionally call `get-issue-context.sh --issue "$ISSUE_NUMBER_OPT" --repo "$UPSTREAM_REPO" --tmpdir "$IMPLEMENT_TMPDIR"` to fetch upstream design context (best-effort), return 0.
+- **Branch 1 (sentinel resume)**: invoke `scripts/tracking-issue-read.sh --sentinel "$IMPLEMENT_TMPDIR/parent-issue.md"`, parse `ISSUE_NUMBER`/`RUN_ID`/`ADOPTED`. Mismatch guard: when sentinel `ISSUE_NUMBER` differs from argv `--issue-number`, atomically `rm "$IMPLEMENT_TMPDIR/parent-issue.md"`, preserve `larch-logs/`, log the mismatch warning, fall through to Branch 2. Match: ensure manifest exists via idempotent `larch-log.sh init`; run best-effort idempotent rename to `[IMPLEMENTING]`. Emit `BRANCH_SELECTED=branch-1-resume`.
+- **Branch 2 (fresh adopt)**: invoke `scripts/get-issue-state.sh --issue "$TARGET_ISSUE_NUMBER"`. Bails:
+  - `FAILED=true` → `IMPLEMENT_BAIL_REASON=tracking-init-failed` (treat gh failure here as infra-class non-fatal bail; alternative: leave existing skip-to-Step-18 contract).
+  - `IS_PR=true` → `IMPLEMENT_BAIL_REASON=adopted-issue-is-pr`.
+  - `STATE=CLOSED` → `IMPLEMENT_BAIL_REASON=adopted-issue-closed`.
+  On `STATE=OPEN`: derive `RUN_ID` from `$IMPLEMENT_TMPDIR/session-id` (the canonical RUN_ID source per `post-tracking-issue.sh` fallback chain); run `larch-log.sh init`; on init failure set `STALL_TRACKING=true` + `IMPLEMENT_BAIL_REASON=tracking-init-failed` and return 0 (so emit_final_tail still runs). Then call `skills/implement/scripts/post-tracking-issue.sh --implement-tmpdir "$IMPLEMENT_TMPDIR" --issue-number "$TARGET_ISSUE_NUMBER" --adopted true`. On `POSTED=false` set `DEFERRED=true` (per issue body decision overriding SKILL.md L622's "abort to Step 18"), skip sentinel write — but `post-tracking-issue.sh` writes the sentinel itself only after success, so simply skip subsequent rename. On success: best-effort rename to `[IMPLEMENTING]`. Emit `BRANCH_SELECTED=branch-2-adopt`.
+- **Breadcrumb**: emit `→ step0: tracking adopted #$ISSUE_NUMBER (run=$RUN_ID branch=$BRANCH_SELECTED)` via `emit_breadcrumb` (gated on `LARCH_QUIET_BREADCRUMBS`, same pattern as `phase_infra`). Skip carve-outs emit their own existing skip breadcrumbs.
+- **Final tail**: extend `emit_final_tail` so `ISSUE_NUMBER`, `RUN_ID`, `DEFERRED`, `STALL_TRACKING`, `BRANCH_SELECTED`, `BRANCH_NAME` (still empty at Phase 2), `IMPLEMENT_BAIL_REASON` are all emitted in every code path. Phase 1's empty-value defaults are preserved when phase_tracking did not run (`--up-to-phase infra`).
+- **Test harness**: extend `skills/implement/scripts/test-implement-bootstrap.sh` sandbox with stub `tracking-issue-read.sh`, `get-issue-state.sh`, `larch-log.sh`, `post-tracking-issue.sh`, `tracking-issue-write.sh`, `get-issue-context.sh` under the sandboxed `scripts/` and `skills/implement/scripts/`. Add cases: `GP-adopt` (Branch 2 happy path), `GP2` (Branch 1 sentinel resume happy), `GP3` (forked_target carve-out), `B1` (sentinel mismatch → fall-through to Branch 2 adopt), `B2` (`STATE=CLOSED` bail), `B3` (`IS_PR=true` bail), `B5` (`larch-log.sh init` failure → `STALL_TRACKING=true`).
+- **SKILL.md (moderate collapse)**: replace L526-650 fenced bash blocks (#6, #7, #8a/#8b, #9) and the surrounding Branch 1 / Branch 2 / `repo_unavailable=true` / `forked_target=true` subsections with one fenced `implement-bootstrap.sh --up-to-phase tracking [--forked-target true --upstream-repo "$UPSTREAM_REPO"] --issue-number "$TARGET_ISSUE_NUMBER"` invocation, a brief KV table (new keys + bail-routing table), and a concise carve-out summary. Phase 4 will further collapse Step 0 to its ~80-line target.
+
+### Contested decisions / divergence
+
+Cursor flagged exactly one divergence and the issue body settles it: **metadata-summary upsert failure (POSTED=false) → `DEFERRED=true`, continue** (sentinel not written because `post-tracking-issue.sh` writes it only on success). This **overrides** the literal `skills/implement/SKILL.md` L622 prose ("Aborting") which conflicts with both the SKILL.md L563-565 higher-level summary ("metadata summary upsert fails → deferred=true, proceed") and the issue body. The Phase 2 implementation follows the issue body. The SKILL.md L622-623 stanza is also rewritten in the moderate-collapse update so the contradiction is removed.
+
+### Risks raised by Codex (incorporated into the plan)
+
+- **stdout KV-only discipline**: helper script outputs must be parsed (via `ingest_kv_block` or similar) without leaking non-KV lines onto stdout. `larch_err` (stderr) for diagnostics.
+- **Partial-adoption states**: when `larch-log.sh init` succeeds but `post-tracking-issue.sh` fails, the manifest is present but no sentinel and no metadata comment. Emitting `DEFERRED=true` lets the orchestrator continue without double-writing on resume (no sentinel ⇒ Branch 1 doesn't fire next time).
+- **Sentinel/log ordering**: `post-tracking-issue.sh` already writes `parent-issue.md` only after the metadata post succeeds — bootstrap must NOT duplicate that write.

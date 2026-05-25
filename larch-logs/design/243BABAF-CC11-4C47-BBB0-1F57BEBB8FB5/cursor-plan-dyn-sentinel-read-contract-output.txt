@@ -1,0 +1,28 @@
+Reading the plan and referenced scripts to verify KV contracts and parse patterns.
+
+Checking `emit_kv` output format and reading `get-issue-state.sh` and `post-tracking-issue.sh`.
+
+Checking Branch 1 failure handling in the plan's pseudocode and whether `tracking-issue-read.sh` documents RUN_ID in the top output contract.
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan phase_tracking Branch1 block (~L72-L99) targets scripts/implement-bootstrap.sh	Resume else-branch runs without fail-closed gates on tracking-issue-read stdout	FAILED=true corrupt sentinel empty ISSUE_NUMBER or ADOPTED= unusable still matches non-mismatch else-path setting empty RUN_ID and calling larch-log init	reject resume unless stdout lacks FAILED=true ISSUE_NUMBER non-empty ADOPTED is true or explicitly handle false per policy else clear sentinel and fall through to Branch2 matching plan Edge cases ~L310
+1	in_scope	latent	correctness	plan phase_tracking Branch2 block (~L109-L121) targets scripts/implement-bootstrap.sh	ERROR parsed with awk -F= /^ERROR=/ print $2	gh stderr flattened into ERROR can contain literal equals losing tail after first extra equals in message	use substr from first equals or grep -m1 ^ERROR= then strip prefix
+1	out_of_scope	latent	risk-integration	scripts/tracking-issue-read.sh:21-22 vs scripts/tracking-issue-read.sh:268-278	Top header says --sentinel emits ISSUE_NUMBER ADOPTED only	Auditors or future docs may wrongly assume RUN_ID absent from stdout despite emit_kv RUN_ID and tests	Update header Output contract block to list RUN_ID for --sentinel parity with pinned block L225-278 and scripts/test-tracking-issue-read-sentinel.sh
+
+1. **[correctness]** `plan` phase_tracking Branch 1 pseudocode (~L72–L99), to land in [`scripts/implement-bootstrap.sh`](scripts/implement-bootstrap.sh): The `else` resume path does not treat `FAILED=true`, empty `ISSUE_NUMBER`, or contract-unusable `ADOPTED=` (see [`scripts/tracking-issue-read.sh`](scripts/tracking-issue-read.sh) L239–242, L268–278) as “fall through to Branch 2,” yet the plan’s own “Edge cases” (~L310) says malformed / `FAILED` output should fall through. **Suggested revision:** Before treating Branch 1 as success, require `! grep -q '^FAILED=true$'`, non-empty `_sent_issue`, and whatever ADOPTED rule you want (at minimum non-empty per unusable-empty contract); otherwise delete or ignore the sentinel and continue into Branch 2.
+
+2. **[correctness]** Same Branch 2 block (~L109–L121): `_err=$(… awk -F= '/^ERROR=/{print $2; exit}')` only preserves the first `=`‑delimited field of the value. **Suggested revision:** Strip the fixed `ERROR=` prefix from the matched line (or use `grep -m1 '^ERROR='` plus `${line#ERROR=}`) so embedded `=` in [`scripts/get-issue-state.sh`](scripts/get-issue-state.sh) error text (L60–65) is not truncated.
+
+3. **[risk-integration]** [`scripts/tracking-issue-read.sh`](scripts/tracking-issue-read.sh) L21–22 vs L268–278 (and harness [`scripts/test-tracking-issue-read-sentinel.sh`](scripts/test-tracking-issue-read-sentinel.sh) e.g. L119, L198): The terse header still says `--sentinel` emits only `ISSUE_NUMBER`/`ADOPTED`, but the implementation **does** emit `RUN_ID` on stdout via `emit_kv` in that mode, so the plan’s `_sent_runid` awk (~L76) matches real behavior and the regression harness. **Suggested revision:** In the plan or a follow-up doc patch, cite the pinned block (L225–278) / harness as the authoritative `--sentinel` contract so implementers do not drop `RUN_ID` after reading only L21–22.
+
+**[`scripts/get-issue-state.sh`](scripts/get-issue-state.sh) L12–19, L77–79:** `STATE=`, `IS_PR=`, and `grep '^FAILED=true$'` align with [`scripts/lib-quiet.sh`](scripts/lib-quiet.sh) L105–112 `KEY=value\n` output.
+
+**[`skills/implement/scripts/post-tracking-issue.sh`](skills/implement/scripts/post-tracking-issue.sh) L103–111 with `LARCH_QUIET_DISABLE=1`:** `emit_kv POSTED` still prints `POSTED=true` / `POSTED=false` lines to stdout; the plan’s `awk -F= '/^POSTED=/{print $2; exit}'` (~L165) remains valid.
+
+**Architecture:** Dispatch order (carve-outs → Branch 1 file check → Branch 2) matches the stated routing intent; no structural conflict found beyond the Branch 1 gating gap above.
+
+**Security:** No new secret-handling surface in the quoted parses; stderr suppression on the read call mirrors “machine contract on stdout” assumptions already used elsewhere.
+
+**Code-quality:** The Branch 1 `local` / capture pattern is readable; the main quality gap is missing explicit contract checks before acting on parsed KV.
+
+[OUT_OF_SCOPE] Align [`scripts/tracking-issue-read.sh`](scripts/tracking-issue-read.sh) header “Output contract” / flag-combination blurb (approx. L21–41) with emitted `RUN_ID` on `--sentinel` stdout (implementation L268–278) so static docs match CI-pinned behavior in [`scripts/test-tracking-issue-read-sentinel.sh`](scripts/test-tracking-issue-read-sentinel.sh) L119–L198.

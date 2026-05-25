@@ -1,0 +1,101 @@
+You are a judge on a 3-panel adjudicating contested design decisions. For each `DECISION_N` below, read both Defense A and Defense B, then cast exactly one binary vote: `THESIS` or `ANTI_THESIS`. THESIS means the side labeled as defending the synthesis's chosen option wins; ANTI_THESIS means the side defending the alternative option wins. Judge on argument quality — not on which defense "sounds more confident." Vote on every decision. Do not modify files.
+
+The tool that produced each defense is hidden (Defense A / Defense B labels are anonymous). Which side defends the chosen vs. alternative option is disclosed on each decision's header because that information is semantic, not tool-attributive.
+
+### DECISION_1: metadata-summary upsert failure handling
+
+Defense A (defends the chosen option: "DEFERRED=true, continue (no sentinel written)"):
+<defense_content>
+<steelman>
+Treating `POSTED=false` from `post-tracking-issue.sh` as a hard stop matches the adjacent Branch 2 instructions that tell the agent to print a metadata-publication failure banner and jump to Step 18, which keeps GitHub comments, the sentinel, and local `larch-log` state aligned and avoids a run that believes it adopted an issue while the canonical `larch:metadata` marker was never upserted.
+</steelman>
+<claim>
+When the metadata summary upsert fails, the implementation should set `DEFERRED=true`, emit the corresponding bootstrap KVs, and continue into plan materialization without writing the tracking sentinel, because the higher-level Step 0 routing already defers on that failure and the posting script only writes the sentinel after a confirmed successful upsert.
+</claim>
+<evidence>
+In `skills/implement/SKILL.md`, the Step 0 decision table at line 563 assigns metadata summary upsert failure to `deferred=true` with continuation into plan materialization, while `skills/implement/scripts/post-tracking-issue.sh` lines 95-101 wrap the `printf` that writes `$IMPLEMENT_TMPDIR/parent-issue.md` inside the success branch after `tracking-issue-summary.sh` returns true, so failure yields `POSTED=false` with no sentinel file for a later run to misread as adoption.
+</evidence>
+<strongest_concession>
+The same SKILL.md Branch 2 fenced sequence at lines 621-623 still says to abort and skip to Step 18 when `POSTED=false`, which sits immediately next to the `post-tracking-issue.sh` invocation and reads like the literal control flow an implementer would follow if they only read that block.
+</strongest_concession>
+<counter_to_opposition>
+That abort sentence is inconsistent with the explicit decision-order bullet at line 563 in the same document, and the executable contract in `post-tracking-issue.sh` already prevents "sentinel without metadata" by construction, so the correct fix is to collapse the fence to match the table rather than letting the stale line force Step 18 and strand a manifest-backed run that never got a chance to materialize the plan from the issue.
+</counter_to_opposition>
+<risk_if_wrong>
+If continuing past a failed metadata post is wrong, operators lose the GitHub-side `larch:metadata` anchor while the session still advances, which can make triage harder and let any consumer that assumes the marker exists behave as if adoption succeeded when only local tmpdir state moved forward.
+</risk_if_wrong>
+</defense_content>
+
+Defense B (defends the alternative option: "skip to Step 18 (abort per current SKILL.md L622 inline prose)"):
+<defense_content>
+<steelman>
+`DEFERRED=true, continue` preserves plan materialization when GitHub metadata upsert is flaky, and `post-tracking-issue.sh` avoids corrupt resume state by writing the sentinel only after a successful metadata post. It also aligns with the high-level Step 0 default that says metadata summary upsert failure should defer tracking rather than halt the run.
+</steelman>
+<claim>
+The implementation should skip to Step 18 on metadata-summary upsert failure because it matches the current executable prose with materially less state-machine surface than carrying a sentinel-less adopted issue forward.
+</claim>
+<evidence>
+`skills/implement/SKILL.md:622` explicitly says `POSTED=false` or non-zero `post-tracking-issue.sh` should print metadata publication failed and skip to Step 18, while `scripts/implement-bootstrap.sh:281`-`283` shows `phase_tracking` is still a stub, so Phase 2 can choose the simpler existing abort branch before adding deferred-state propagation. `skills/implement/scripts/post-tracking-issue.sh:95`-`102` confirms the sentinel is written only after the upsert succeeds, meaning the deferred path intentionally proceeds without the normal resume anchor.
+</evidence>
+<strongest_concession>
+The best opposing point is that `skills/implement/SKILL.md:563` already describes metadata summary upsert failure as `deferred=true, proceed`, so aborting preserves one local paragraph while contradicting another higher-level decision-order summary.
+</strongest_concession>
+<counter_to_opposition>
+That concession proves the spec is internally inconsistent, not that the larger behavior is justified; when one branch requires new `DEFERRED`, `STALL_TRACKING`, sentinel-missing, and later-step interpretation while the other follows the concrete failure prose at `skills/implement/SKILL.md:622`, proportionality favors abort until a real requirement demands continuing.
+</counter_to_opposition>
+<risk_if_wrong>
+If abort wins and the metadata upsert fails transiently, an otherwise valid implementation run stops early and forces the operator to retry after GitHub or summary-comment recovery.
+</risk_if_wrong>
+</defense_content>
+
+### DECISION_2: phase_tracking failure on get-issue-state FAILED=true (non-bail-listed)
+
+Defense A (defends the alternative option: "emit STEP_FAILED=get-issue-state, exit 2"):
+<defense_content>
+<steelman>
+Mapping `get-issue-state.sh` `FAILED=true` to `IMPLEMENT_BAIL_REASON=tracking-init-failed` with `STALL_TRACKING=true` and return 0 reuses an issue-enumerated bail token, keeps bootstrap's success-shaped exit for "operator-visible bail to Step 18," and avoids growing the `STEP_FAILED` taxonomy the orchestrator must branch on beyond the Phase 1 infra set.
+</steelman>
+<claim>
+`gh issue view` failures from `get-issue-state.sh` are pre-tracking infra probes and should surface as `emit_kv STEP_FAILED get-issue-state` plus `exit 2`, matching `phase_infra` rather than a semantic bail that implies stalled tracking initialization.
+</claim>
+<evidence>
+In `scripts/implement-bootstrap.sh` `phase_infra` already pairs `emit_kv STEP_FAILED session-setup` with `exit 2` after a non-zero `session-setup.sh` (lines 162-166), and `scripts/get-issue-state.sh` treats `gh` failure as `emit_kv FAILED true` plus `emit_kv ERROR ...` and `exit 1` (lines 60-65), so the alternative path reuses an established fatal bootstrap pattern instead of inventing a new bail meaning.
+</evidence>
+<strongest_concession>
+Reusing `tracking-init-failed` keeps operator-facing vocabulary aligned with the umbrella issue's three named bail tokens and guarantees the same Step 18-oriented flow already documented for tracking adoption when `FAILED=true` is parsed in `skills/implement/SKILL.md` (around lines 602-605: abort copy and skip to Step 18).
+</strongest_concession>
+<counter_to_opposition>
+That Step 18 path is appropriate when the issue's *state* is knowably wrong (closed/PR), but a transient `gh` error is the same class as "environment not ready yet" as handled for `implement-bootstrap.sh` exit 2 in `skills/implement/SKILL.md` lines 327-339, where unknown `STEP_FAILED` still aborts with exit 2 without mislabeling the failure as tracking-init semantics or triggering stall rename logic meant for different failure modes.
+</counter_to_opposition>
+<risk_if_wrong>
+If the anti-thesis loses, transient API failures get lumped under `tracking-init-failed` and `STALL_TRACKING`, which can rename or stall issues for recoverable outages and dilute grepability between true init defects and mere `gh` flakes.
+</risk_if_wrong>
+</defense_content>
+
+Defense B (defends the chosen option: "treat get-issue-state.sh FAILED=true as IMPLEMENT_BAIL_REASON=tracking-init-failed + STALL_TRACKING=true, return 0"):
+<defense_content>
+<steelman>
+The strongest opposing case is that `get-issue-state.sh` is an external preflight dependency like branch, gate, or setup, so `FAILED=true` should preserve precise failure identity through `STEP_FAILED=get-issue-state` and exit 2. That would avoid conflating GitHub lookup failure with log-tracking initialization failure.
+</steelman>
+<claim>
+`get-issue-state.sh FAILED=true` should be mapped to `IMPLEMENT_BAIL_REASON=tracking-init-failed` with `STALL_TRACKING=true` and return 0 so the existing final-tail and Step 18 stalled-rename path runs.
+</claim>
+<evidence>
+`get-issue-state.sh` defines failure as a structured envelope, not merely process failure: stdout emits `FAILED=true` and `ERROR=...` on failure, while exit 1 covers both invocation and `gh` failure (`scripts/get-issue-state.sh:17`, `scripts/get-issue-state.sh:21`). `implement-bootstrap.sh` already centralizes successful completion through `emit_final_tail`, including `IMPLEMENT_BAIL_REASON`, then exits 0 (`scripts/implement-bootstrap.sh:319`, `scripts/implement-bootstrap.sh:327`, `scripts/implement-bootstrap.sh:394`). Step 18 is explicitly the terminal transition point: teardown renames to `[STALLED]` only when `STALL_TRACKING=true` and the issue is open (`skills/implement/SKILL.md:1889`).
+</evidence>
+<strongest_concession>
+The concession is that Phase 1's closest pattern for dependency failure is `STEP_FAILED` plus exit 2: create-branch, session-entry-gate, and session-setup all do that (`scripts/implement-bootstrap.sh:113`, `scripts/implement-bootstrap.sh:137`, `scripts/implement-bootstrap.sh:164`).
+</strongest_concession>
+<counter_to_opposition>
+Those Phase 1 exits occur before tracking-state ownership exists, while this failure happens inside tracking adoption where the documented invariant says log init failure sets `STALL_TRACKING=true`, skips the sentinel, preserves `ISSUE_NUMBER`, and skips to Step 18 (`skills/implement/SKILL.md:30`). Reusing the enumerated tracking bail keeps cleanup behavior aligned with the issue contract instead of adding an unauthorized exit-2 class.
+</counter_to_opposition>
+<risk_if_wrong>
+If this is wrong, transient `gh issue view` failures will be classified as stalled tracking, causing a `[STALLED]` rename and cleanup path where operators might have preferred an immediate infra abort with a sharper `STEP_FAILED=get-issue-state` diagnostic.
+</risk_if_wrong>
+</defense_content>
+
+For each ballot item, output exactly one line:
+DECISION_1: THESIS — <one-line rationale> (or ANTI_THESIS)
+DECISION_2: THESIS — <one-line rationale> (or ANTI_THESIS)
+
+Vote on every DECISION_N. Do not modify files.
