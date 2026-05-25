@@ -1,0 +1,16 @@
+Continuing to read `diff-context.txt` for sections cited in the ballot.
+
+FINDING_1: YES
+FINDING_2: EXONERATE -- waterfall filename ambiguity predates this diff; extra prose unlikely to change operator failure mode enough to warrant a blocker here
+FINDING_3: EXONERATE -- duplicate step-start/banner timing is minor UX polish, not worth mandatory changes
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: EXONERATE -- plan-context acceptance #5 explicitly sequences run-params plus Step 1d.5 before the already-planned Q&A exit
+FINDING_8: YES
+FINDING_9: EXONERATE -- prose-only orchestration gaps are inherent; pinning every branch in harness would be disproportionate churn
+FINDING_10: YES
+FINDING_11: EXONERATE -- argv/json mismatch on jq loss is an edge case; fail-closed reconciliation would add ongoing complexity for rare environments
+FINDING_12: EXONERATE -- log visibility for one-shot sentinel is triage polish, not a functional defect
+FINDING_13: EXONERATE -- truncation/interrupt risk not evidenced in the provided diff excerpts for the merge implementation
+FINDING_14: YES

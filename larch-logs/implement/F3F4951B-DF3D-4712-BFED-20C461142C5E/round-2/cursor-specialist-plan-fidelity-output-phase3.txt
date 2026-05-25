@@ -1,0 +1,18 @@
+### In-Scope Findings
+
+No plan-fidelity issues found. All 16 acceptance criteria from the implementation plan are satisfied.
+
+---
+
+### Out-of-Scope Observations
+
+**OOS-1 — Bundled issue #2753 changes (drift-guard for `ship-pr.sh` Required keys)**
+
+The diff includes changes to `skills/implement/SKILL.md` (HTML comment markers `write-initial-state-keys:begin/end`) and `scripts/test-implement-structure.sh` (new drift-guard assertion block) that are not listed in the brainstorm plan's file list and address a separate issue (#2753). The CHANGELOG entry for version `42.4.16` explicitly acknowledges both issues. No plan-fidelity violation — the brainstorm plan is silent on these files — but reviewers should be aware the PR contains work from two issue threads.
+
+---
+
+```tsv
+id	severity	area	title	detail	file	line
+OOS-1	INFO	scope	Bundled #2753 drift-guard changes outside brainstorm plan scope	skills/implement/SKILL.md HTML markers and scripts/test-implement-structure.sh drift-guard assertions address issue #2753, not listed in brainstorm plan (#2754) file list. No plan requirement violated.	skills/implement/SKILL.md	N/A
+```
