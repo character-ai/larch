@@ -1,0 +1,90 @@
+{
+  "vendors": [
+    "claude"
+  ],
+  "claude": {
+    "per_step": [
+      {
+        "step": "Step 0 — preflight",
+        "totals": {
+          "input": 1,
+          "cache_read": 338106,
+          "cache_create": 955,
+          "cache_create_5m": 955,
+          "cache_create_1h": 0,
+          "output": 1194,
+          "total": 340256
+        },
+        "skills": [
+          {
+            "skill": "larch:implement",
+            "totals": {
+              "input": 1,
+              "cache_read": 338106,
+              "cache_create": 955,
+              "cache_create_5m": 955,
+              "cache_create_1h": 0,
+              "output": 1194,
+              "total": 340256
+            }
+          }
+        ]
+      },
+      {
+        "step": "Step 0 — tracking issue",
+        "totals": {
+          "input": 5,
+          "cache_read": 1709911,
+          "cache_create": 6779,
+          "cache_create_5m": 6779,
+          "cache_create_1h": 0,
+          "output": 4286,
+          "total": 1720981
+        },
+        "skills": [
+          {
+            "skill": "larch:implement",
+            "totals": {
+              "input": 5,
+              "cache_read": 1709911,
+              "cache_create": 6779,
+              "cache_create_5m": 6779,
+              "cache_create_1h": 0,
+              "output": 4286,
+              "total": 1720981
+            }
+          }
+        ]
+      }
+    ],
+    "totals": {
+      "input": 6,
+      "cache_read": 2048017,
+      "cache_create": 7734,
+      "cache_create_5m": 7734,
+      "cache_create_1h": 0,
+      "output": 5480,
+      "total": 2061237
+    }
+  },
+  "BUCKETS_claude": {
+    "input": 6,
+    "cache_read": 2048017,
+    "cache_create_5m": 7734,
+    "cache_create_1h": 0,
+    "output": 5480,
+    "total": 2061237
+  },
+  "BUCKETS_codex": {
+    "input": 0,
+    "cached_input": 0,
+    "output": 0,
+    "total": 0
+  },
+  "BUCKETS_cursor": {
+    "input": 0,
+    "cache_read": 0,
+    "output": 0,
+    "total": 0
+  }
+}
