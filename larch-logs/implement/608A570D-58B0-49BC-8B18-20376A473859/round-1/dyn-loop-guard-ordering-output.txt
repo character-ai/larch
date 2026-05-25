@@ -1,0 +1,19 @@
+Gathering the diff, commit list, and the `plan-review-loop.sh` tally-error block to verify bash semantics and reachability.
+
+Verifying bash semantics for `-s` on missing paths and the surrounding `set -e` / `DESIGN_TMPDIR` context.
+
+Checking whether `tally-plan-review.sh` emits `VOTING_TALLY_FILE` on abort paths after writing the stub; that affects whether the loop writes to the wrong path.
+
+Commits on the branch since merge-base with `main` (from `git log $(git merge-base HEAD main)..HEAD --oneline`):
+
+- `d75d07c7` — Fix plan-review tally abort handling for FINALIZE (#2720)
+- `ecda07a6` — chore(larch-logs): flush implement run 608A570D-58B0-49BC-8B18-20376A473859
+
+### In-Scope Findings
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+- The branch bundles a committed implement run under `larch-logs/implement/608A570D-58B0-49BC-8B18-20376A473859/` alongside the functional shell/test/doc edits; that is unrelated surface area for reviewers who only care about the tally/finalize behavior.
+- [`skills/design/scripts/finalize-plan.md`](skills/design/scripts/finalize-plan.md) still lists `skills/design/SKILL.md` and `skills/design/scripts/design-driver.sh` under **Edit In Sync** for finalize artifact contract changes; this diff updates `finalize-plan.md` / `finalize-plan.sh` but does not touch those siblings, so repo “edit-in-sync” discipline is slightly ahead of the referenced files (the Step 4 prose in `SKILL.md` already describes finalize in generic terms and does not insist `voting-tally.md` be non-empty).
+
+**Scout checklist (bash / `plan-review-loop.sh`):** In Bash, `-s` is false when the path does not exist, so `[[ ! -s "$VOTING_TALLY_FILE" ]]` is true for both a missing file and a zero-byte file. On `_tally_rc -ne 0`, `VOTING_TALLY_FILE` is initialized to `""` before the tally invocation (`skills/design/scripts/plan-review-loop.sh:584-585`), so when `tally-plan-review.sh` exits `2` on the new stub paths it still does not emit `VOTING_TALLY_FILE` on stdout (only success and the `eligible_count==0` path emit that KV in `skills/design/scripts/tally-plan-review.sh`), and the `[[ -z "$VOTING_TALLY_FILE" ]] && VOTING_TALLY_FILE="$DESIGN_TMPDIR/voting-tally.md"` line is always evaluated before the `-s` guard. With `set -e` restored before this block (`skills/design/scripts/plan-review-loop.sh:593-613`), a failed `{ ... } > "$VOTING_TALLY_FILE"` redirection or `printf` failure aborts the script rather than failing silently; at this point in the loop `DESIGN_TMPDIR` is already the active session tree, so the parent directory for the default `voting-tally.md` path is expected to exist.

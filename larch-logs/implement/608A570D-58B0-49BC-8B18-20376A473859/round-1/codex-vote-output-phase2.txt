@@ -1,0 +1,27 @@
+Reading the ballot and nearby context files for verification.
+
+Ballot file lacks FINDING headings. Checking aggregator output and related files for ballot items.
+
+Reading the full ballot from `aggregator-output.txt.prompt` (findings.md is empty) and verifying cited locations in the repo.
+
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: EXONERATE -- narrow doc nit while argv-exempt branches are already documented and mkdir failures are rare.
+FINDING_4: EXONERATE -- path trust is inherent to the existing tally/KV contract; pinning paths is disproportionate for this surface.
+FINDING_5: NO -- states a pre-existing trust boundary, not a new discrete defect worth an issue.
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: EXONERATE -- full-disk or permission I/O failures are edge cases where exiting non-2 is acceptable without extra redirect ceremony.
+FINDING_9: EXONERATE -- bogus VOTING_TALLY_FILE values are an extreme edge case versus added validation complexity.
+FINDING_10: EXONERATE -- illustrative plan sizing language is not a substantive integration or correctness defect.
+FINDING_11: EXONERATE -- same rare I/O failure class as FINDING_8; swallowing errors would add complexity for minimal contract gain.
+FINDING_12: YES
+FINDING_13: NO -- technical clarification, not a standalone filing-worthy problem.
+FINDING_14: NO -- intentional mkdir ordering tradeoff, not worth tracking as an issue.
+FINDING_15: NO -- run-log noise is normal process output, not a correctness defect to file.
+FINDING_16: NO -- documents intended layered backstops, not a gap worth an issue.
+FINDING_17: YES
+FINDING_18: NO -- confirms absence of mechanical coupling, so no issue to file.
+FINDING_19: NO -- accurate behavior description, not a defect warranting an issue.
+FINDING_20: NO -- confirms intended invalid-artifact behavior, not a problem to file.
+FINDING_21: YES
