@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# implement-bootstrap.sh — /implement Step 0 phase dispatcher (Phase 1: phase_infra).
+# implement-bootstrap.sh — /implement Step 0 phase dispatcher (infra + tracking phases).
 
 set -uo pipefail
 # Intentional: best-effort failure model. Errexit is OFF file-wide. Each leaf
@@ -122,6 +122,14 @@ valid_run_id() {
     esac
 }
 
+valid_issue_number() {
+    local value=$1
+    case "$value" in
+        ""|*[!0-9]*) return 1 ;;
+        *) return 0 ;;
+    esac
+}
+
 emit_skip_breadcrumb_if_enabled() {
     local reason=$1
     if larch_quiet_truthy "${LARCH_QUIET_BREADCRUMBS:-}"; then
@@ -133,6 +141,11 @@ emit_tracking_breadcrumb_if_enabled() {
     if larch_quiet_truthy "${LARCH_QUIET_BREADCRUMBS:-}"; then
         emit_breadcrumb "→ step0: tracking adopted #${ISSUE_NUMBER_RESOLVED:-} (run=${RUN_ID:-} branch=${BRANCH_SELECTED:-})"
     fi
+}
+
+mark_tracking_ledgers() {
+    "$SCRIPT_DIR/token-ledger.sh" mark "Step 0 — tracking issue" || true
+    "$SCRIPT_DIR/timing-ledger.sh" mark "Step 0 — tracking issue" || true
 }
 
 tracking_init_failed() {
@@ -400,7 +413,8 @@ phase_tracking() {
         sentinel_run_id=$(kv_value_from_block RUN_ID "$read_out")
         sentinel_adopted=$(kv_value_from_block ADOPTED "$read_out")
 
-        if [ "$read_rc" -eq 0 ] && [ "$read_failed" != "true" ] && [ "$sentinel_adopted" = "true" ] && [ -n "$sentinel_issue" ] && [ -n "$sentinel_run_id" ]; then
+        if [ "$read_rc" -eq 0 ] && [ "$read_failed" != "true" ] && [ "$sentinel_adopted" = "true" ] \
+            && valid_issue_number "$sentinel_issue" && valid_run_id "$sentinel_run_id"; then
             if [ -n "$ISSUE_NUMBER_OPT" ] && [ "$sentinel_issue" != "$ISSUE_NUMBER_OPT" ]; then
                 larch_err "**⚠ Step 0 tracking: sentinel mismatch (sentinel has #$sentinel_issue, argv requested #$ISSUE_NUMBER_OPT). Clearing sentinel and re-adopting.**"
                 rm -f "$sentinel"
@@ -410,6 +424,7 @@ phase_tracking() {
                 RUN_ID=$sentinel_run_id
                 run_larch_log_init "$ISSUE_NUMBER_RESOLVED" "$RUN_ID" "Branch 1 resume" || return 0
                 rename_to_implementing "$ISSUE_NUMBER_RESOLVED" "Branch 1 resume"
+                mark_tracking_ledgers
                 emit_tracking_breadcrumb_if_enabled
                 return 0
             fi
@@ -469,10 +484,12 @@ phase_tracking() {
     if [ "$post_rc" -ne 0 ] || [ "$posted" != "true" ]; then
         DEFERRED=true
         rm -f "$sentinel"
+        mark_tracking_ledgers
         return 0
     fi
 
     rename_to_implementing "$ISSUE_NUMBER_RESOLVED" "Branch 2 adopt"
+    mark_tracking_ledgers
     emit_tracking_breadcrumb_if_enabled
     return 0
 }
@@ -521,7 +538,10 @@ emit_final_tail() {
             issue_tail="${ISSUE_NUMBER_RESOLVED:-}"
             ;;
         *)
-            issue_tail="${ISSUE_NUMBER_RESOLVED:-${ISSUE_NUMBER_OPT:-}}"
+            case "${IMPLEMENT_BAIL_REASON:-}" in
+                adopted-issue-closed|adopted-issue-is-pr) issue_tail="" ;;
+                *) issue_tail="${ISSUE_NUMBER_RESOLVED:-${ISSUE_NUMBER_OPT:-}}" ;;
+            esac
             ;;
     esac
     emit_kv ISSUE_NUMBER "$issue_tail"

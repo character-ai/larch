@@ -14,8 +14,9 @@ CLI arguments to reduce non-determinism and context bloat:
 - `parent-issue.md` → `ISSUE_NUMBER`, `RUN_ID` (when `--issue-number` absent)
 - `session-env.sh` → `REPO`, `AGENT`, `CODER`
 - `session-id` → `RUN_ID` fallback when `--run-id` and `parent-issue.md` are absent
+- `session-env.sh` → `LARCH_TOKEN_SESSION_ID` fallback when `--run-id`, `parent-issue.md`, and `session-id` are absent
 
-`RUN_ID` precedence is: `--run-id` > `parent-issue.md` `RUN_ID` > `session-id`.
+`RUN_ID` precedence is: `--run-id` > `parent-issue.md` `RUN_ID` > `session-id` > `session-env.sh` `LARCH_TOKEN_SESSION_ID`.
 `--run-id`, when present, must match `^[A-Za-z0-9._-]+$`.
 
 When `--issue-number N` is provided, `N` is used directly for `ISSUE_NUMBER`

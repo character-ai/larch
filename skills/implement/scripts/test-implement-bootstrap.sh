@@ -128,12 +128,16 @@ STUB
 
     cat >"$SANDBOX/scripts/token-ledger.sh" <<'STUB'
 #!/usr/bin/env bash
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+printf 'token-ledger %s\n' "$*" >>"$script_dir/../invoke-log.txt"
 exit 0
 STUB
     chmod +x "$SANDBOX/scripts/token-ledger.sh"
 
     cat >"$SANDBOX/scripts/timing-ledger.sh" <<'STUB'
 #!/usr/bin/env bash
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+printf 'timing-ledger %s\n' "$*" >>"$script_dir/../invoke-log.txt"
 exit 0
 STUB
     chmod +x "$SANDBOX/scripts/timing-ledger.sh"
@@ -260,6 +264,7 @@ STUB
     cat >"$SANDBOX/scripts/get-issue-context.sh" <<'STUB'
 #!/usr/bin/env bash
 tmpdir=""
+raw_args="$*"
 while [ $# -gt 0 ]; do
   case "$1" in
     --tmpdir) tmpdir=$2; shift 2 ;;
@@ -270,6 +275,8 @@ done
 mkdir -p "$tmpdir"
 printf 'title\n' > "$tmpdir/upstream-issue-title.txt"
 printf 'body\n' > "$tmpdir/upstream-issue-body.txt"
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+printf 'get-issue-context %s\n' "$raw_args" >>"$script_dir/../invoke-log.txt"
 echo "TITLE_FILE=$tmpdir/upstream-issue-title.txt"
 echo "BODY_FILE=$tmpdir/upstream-issue-body.txt"
 exit 0
@@ -336,6 +343,9 @@ assert_contains "DEFERRED=false" "$out" "GP-adopt not deferred"
 assert_contains "STALL_TRACKING=false" "$out" "GP-adopt no stall"
 assert_contains "RUN_ID=runA" "$(cat "$SANDBOX_TMP/parent-issue.md")" "GP-adopt sentinel run id"
 assert_contains "FORKED_TARGET=false" "$(cat "$SANDBOX_TMP/session-env.sh")" "GP-adopt session-env fork default"
+invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
+assert_contains 'token-ledger mark Step 0 — tracking issue' "$invoke" "GP-adopt tracking token mark"
+assert_contains 'timing-ledger mark Step 0 — tracking issue' "$invoke" "GP-adopt tracking timing mark"
 rm -rf "$SANDBOX" "$SANDBOX_TMP"
 
 # --- GP2 sentinel resume ---
@@ -361,6 +371,9 @@ assert_contains "BRANCH_SELECTED=forked-target-skip" "$out" "GP3 branch"
 assert_line "ISSUE_NUMBER=" "$out" "GP3 empty issue"
 assert_contains "DEFERRED=true" "$out" "GP3 deferred"
 assert_contains "FORKED_TARGET=true" "$(cat "$SANDBOX_TMP/session-env.sh")" "GP3 session-env fork true"
+assert_contains "TITLE_FILE=$SANDBOX_TMP/upstream-issue-title.txt" "$(cat "$SANDBOX_TMP/upstream-context.out")" "GP3 upstream title artifact"
+invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
+assert_contains 'get-issue-context --issue 123 --repo upstream/repo' "$invoke" "GP3 upstream context invoked"
 rm -rf "$SANDBOX" "$SANDBOX_TMP"
 
 # --- GP-repo-unavail-tracking ---
@@ -431,6 +444,17 @@ out=$(LARCH_TEST_ISSUE_STATE=CLOSED run_bootstrap --up-to-phase tracking --issue
 assert_rc "$rc" 0 "B2 exit 0"
 assert_contains "IMPLEMENT_BAIL_REASON=adopted-issue-closed" "$out" "B2 bail reason"
 assert_line "BRANCH_SELECTED=" "$out" "B2 no branch"
+assert_line "ISSUE_NUMBER=" "$out" "B2 empty issue tail"
+rm -rf "$SANDBOX" "$SANDBOX_TMP"
+
+# --- B2-plan CLOSED bail guard ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+write_gp1_session_setup
+out=$(LARCH_TEST_ISSUE_STATE=CLOSED run_bootstrap --up-to-phase plan --issue-number 123 2>/dev/null) && rc=$? || rc=$?
+assert_rc "$rc" 0 "B2-plan exit 0"
+assert_contains "IMPLEMENT_BAIL_REASON=adopted-issue-closed" "$out" "B2-plan bail reason"
+assert_not_contains "IMPLEMENT_BAIL_REASON=not-yet-implemented-phase-3" "$out" "B2-plan no phase-3 overwrite"
 rm -rf "$SANDBOX" "$SANDBOX_TMP"
 
 # --- B3 IS_PR bail ---
@@ -441,6 +465,7 @@ out=$(LARCH_TEST_IS_PR=true run_bootstrap --up-to-phase tracking --issue-number 
 assert_rc "$rc" 0 "B3 exit 0"
 assert_contains "IMPLEMENT_BAIL_REASON=adopted-issue-is-pr" "$out" "B3 bail reason"
 assert_line "BRANCH_SELECTED=" "$out" "B3 no branch"
+assert_line "ISSUE_NUMBER=" "$out" "B3 empty issue tail"
 rm -rf "$SANDBOX" "$SANDBOX_TMP"
 
 # --- B4 POSTED=false deferred ---
@@ -469,6 +494,42 @@ assert_rc "$rc" 0 "B5 exit 0"
 assert_contains "IMPLEMENT_BAIL_REASON=tracking-init-failed" "$out" "B5 bail reason"
 assert_contains "STALL_TRACKING=true" "$out" "B5 stall"
 assert_contains "BRANCH_SELECTED=branch-2-adopt" "$out" "B5 branch"
+assert_contains "ISSUE_NUMBER=123" "$out" "B5 preserves issue"
+rm -rf "$SANDBOX" "$SANDBOX_TMP"
+
+# --- B5-all larch-log init fail guard ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+write_gp1_session_setup
+out=$(LARCH_TEST_LARCH_LOG_FAIL=true run_bootstrap --up-to-phase all --issue-number 123 --run-id runE 2>/dev/null) && rc=$? || rc=$?
+assert_rc "$rc" 0 "B5-all exit 0"
+assert_contains "IMPLEMENT_BAIL_REASON=tracking-init-failed" "$out" "B5-all bail reason"
+assert_not_contains "IMPLEMENT_BAIL_REASON=not-yet-implemented-phase-3" "$out" "B5-all no phase-3 overwrite"
+assert_not_contains "IMPLEMENT_BAIL_REASON=not-yet-implemented-phase-4" "$out" "B5-all no phase-4 overwrite"
+rm -rf "$SANDBOX" "$SANDBOX_TMP"
+
+# --- B5-plan larch-log init fail guard ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+write_gp1_session_setup
+out=$(LARCH_TEST_LARCH_LOG_FAIL=true run_bootstrap --up-to-phase plan --issue-number 123 --run-id runE 2>/dev/null) && rc=$? || rc=$?
+assert_rc "$rc" 0 "B5-plan exit 0"
+assert_contains "IMPLEMENT_BAIL_REASON=tracking-init-failed" "$out" "B5-plan bail reason"
+assert_not_contains "IMPLEMENT_BAIL_REASON=not-yet-implemented-phase-3" "$out" "B5-plan no phase-3 overwrite"
+rm -rf "$SANDBOX" "$SANDBOX_TMP"
+
+# --- B5-branch1 larch-log init fail ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+write_gp1_session_setup
+printf 'ISSUE_NUMBER=123\nRUN_ID=resume-fail\nADOPTED=true\n' > "$SANDBOX_TMP/parent-issue.md"
+out=$(LARCH_TEST_LARCH_LOG_FAIL=true run_bootstrap --up-to-phase tracking --issue-number 123 2>/dev/null) && rc=$? || rc=$?
+assert_rc "$rc" 0 "B5-branch1 exit 0"
+assert_contains "BRANCH_SELECTED=branch-1-resume" "$out" "B5-branch1 branch"
+assert_contains "IMPLEMENT_BAIL_REASON=tracking-init-failed" "$out" "B5-branch1 bail reason"
+assert_contains "STALL_TRACKING=true" "$out" "B5-branch1 stall"
+assert_contains "RUN_ID=resume-fail" "$out" "B5-branch1 preserves run id"
+assert_contains "ISSUE_NUMBER=123" "$out" "B5-branch1 preserves issue"
 rm -rf "$SANDBOX" "$SANDBOX_TMP"
 
 # --- B6 get-issue-state FAILED=true ---
@@ -493,6 +554,49 @@ assert_rc "$rc" 0 "B-sentinel-malformed exit 0"
 assert_contains "BRANCH_SELECTED=branch-2-adopt" "$out" "B-sentinel-malformed fall-through branch"
 assert_contains "RUN_ID=runF" "$out" "B-sentinel-malformed fresh run id"
 assert_contains "RUN_ID=runF" "$(cat "$SANDBOX_TMP/parent-issue.md")" "B-sentinel-malformed sentinel replaced"
+rm -rf "$SANDBOX" "$SANDBOX_TMP"
+
+# --- B-sentinel-invalid-run-id ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+write_gp1_session_setup
+printf 'ISSUE_NUMBER=123\nRUN_ID=bad run\nADOPTED=true\n' > "$SANDBOX_TMP/parent-issue.md"
+out=$(run_bootstrap --up-to-phase tracking --issue-number 123 --run-id runG 2>/dev/null) && rc=$? || rc=$?
+assert_rc "$rc" 0 "B-sentinel-invalid-run-id exit 0"
+assert_contains "BRANCH_SELECTED=branch-2-adopt" "$out" "B-sentinel-invalid-run-id fall-through branch"
+assert_contains "RUN_ID=runG" "$out" "B-sentinel-invalid-run-id fresh run id"
+assert_contains "RUN_ID=runG" "$(cat "$SANDBOX_TMP/parent-issue.md")" "B-sentinel-invalid-run-id sentinel replaced"
+rm -rf "$SANDBOX" "$SANDBOX_TMP"
+
+# --- B-empty-run-id-derivation ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+write_gp1_session_setup
+cat >"$SANDBOX/scripts/write-session-id.sh" <<'STUB'
+#!/usr/bin/env bash
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --output) mkdir -p "$(dirname "$2")"; : > "$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+exit 0
+STUB
+chmod +x "$SANDBOX/scripts/write-session-id.sh"
+out=$(run_bootstrap --up-to-phase tracking --issue-number 123 2>/dev/null) && rc=$? || rc=$?
+assert_rc "$rc" 0 "B-empty-run-id-derivation exit 0"
+assert_contains "IMPLEMENT_BAIL_REASON=tracking-init-failed" "$out" "B-empty-run-id-derivation bail reason"
+assert_contains "STALL_TRACKING=true" "$out" "B-empty-run-id-derivation stall"
+rm -rf "$SANDBOX" "$SANDBOX_TMP"
+
+# --- GP-adopt-rename-fail ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+write_gp1_session_setup
+out=$(LARCH_TEST_RENAME_FAILED=true run_bootstrap --up-to-phase tracking --issue-number 123 --run-id runRename 2>/dev/null) && rc=$? || rc=$?
+assert_rc "$rc" 0 "GP-adopt-rename-fail exit 0"
+assert_contains "BRANCH_SELECTED=branch-2-adopt" "$out" "GP-adopt-rename-fail branch"
+assert_contains "Step 0 tracking adoption — Branch 2 adopt rename to implementing" "$(cat "$SANDBOX_TMP/execution-issues.md")" "GP-adopt-rename-fail execution issues"
 rm -rf "$SANDBOX" "$SANDBOX_TMP"
 
 # --- B-preflight ---

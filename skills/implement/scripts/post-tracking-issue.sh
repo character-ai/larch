@@ -64,12 +64,13 @@ fi
 RUN_ID="$RUN_ID_ARG"
 [ -n "$RUN_ID" ] || RUN_ID="$(read_kv RUN_ID "$PARENT_ISSUE")"
 [ -n "$RUN_ID" ] || RUN_ID="$(tr -d '\r\n' < "$IMPLEMENT_TMPDIR/session-id" 2>/dev/null || true)"
+[ -n "$RUN_ID" ] || RUN_ID="$(read_kv LARCH_TOKEN_SESSION_ID "$SESSION_ENV")"
 REPO="$(read_kv REPO "$SESSION_ENV")"
 AGENT="$(read_kv AGENT "$SESSION_ENV")"; [ -n "$AGENT" ] || AGENT="claude"
 CODER="$(read_kv CODER "$SESSION_ENV")"; [ -n "$CODER" ] || CODER="claude"
 
 [ -n "$ISSUE" ] || { emit_kv POSTED false; emit_kv COMMENT_URL ""; emit_kv ERROR "ISSUE_NUMBER not found in parent-issue.md"; exit 1; }
-[ -n "$RUN_ID" ] || { emit_kv POSTED false; emit_kv COMMENT_URL ""; emit_kv ERROR "RUN_ID not found in parent-issue.md or session-id"; exit 1; }
+[ -n "$RUN_ID" ] || { emit_kv POSTED false; emit_kv COMMENT_URL ""; emit_kv ERROR "RUN_ID not found in parent-issue.md, session-id, or session-env LARCH_TOKEN_SESSION_ID"; exit 1; }
 case "$ISSUE" in *[!0-9]*|"") emit_kv POSTED false; emit_kv COMMENT_URL ""; emit_kv ERROR "ISSUE_NUMBER must be numeric"; exit 1 ;; esac
 
 summary="$IMPLEMENT_TMPDIR/summary-metadata.md"

@@ -409,6 +409,23 @@ export ISSUE_NUMBER RUN_ID BRANCH_SELECTED DEFERRED STALL_TRACKING IMPLEMENT_BAI
 export codex_available cursor_available
 ```
 
+Mandatory Step 0 routing guard:
+
+```bash
+case "${IMPLEMENT_BAIL_REASON:-}" in
+  adopted-issue-closed|adopted-issue-is-pr|tracking-init-failed)
+    STALL_TRACKING=${STALL_TRACKING:-false}
+    # Skip the remaining Step 0 materialization blocks and route to Step 18 cleanup.
+    ;;
+  "")
+    if [ "${STALL_TRACKING:-false}" = "true" ]; then
+      # Skip the remaining Step 0 materialization blocks and route to Step 18 cleanup.
+      :
+    fi
+    ;;
+esac
+```
+
 Bootstrap tracking bail routing:
 
 | `IMPLEMENT_BAIL_REASON` | Routing |
@@ -559,6 +576,23 @@ Tracking adoption is owned by the single foreground `implement-bootstrap.sh --up
 
 Resolve a stable `ISSUE_NUMBER` and `RUN_ID` from bootstrap stdout. Committed `larch-logs/implement/<RUN_ID>/` files are the single source of truth for Phase 3+ report content (voting tallies, version bump reasoning, OOS list, execution issues, run statistics, token reports, and timing reports); the tracking issue carries only four slim marker-keyed summary comments, and the PR body remains a slim projection.
 
+```bash
+IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR"
+export IMPLEMENT_TMPDIR
+if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
+  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
+fi
+export CLAUDE_PLUGIN_ROOT
+LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
+LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
+LARCH_TIMING_LEDGER=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
+export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
+"${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 0 — tracking issue" || true
+"${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 0 — tracking issue" || true
+# token-mark Step 0 — tracking issue
+# timing-mark Step 0 — tracking issue
+```
+
 **MANDATORY — READ ENTIRE FILE** before composing any tracking-issue summary comment at Step 0 (tracking + plan materialization), 9a.1, 11, 18, or the ship-pr post-merge `write-final-report.sh` pass (merged runs): `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/summary-comment-template.md`. It defines the four allowed marker literals (`larch:metadata`, `larch:diagrams`, `larch:plan`, `larch:final-summary`) and the rule that bulky payloads live in `larch-logs/`, not in GitHub comments.
 
 Bootstrap behavior map:
@@ -567,8 +601,8 @@ Bootstrap behavior map:
 |---|---|---|
 | `repo_unavailable=true` | `BRANCH_SELECTED=repo-unavailable-skip`, `DEFERRED=true`, empty `ISSUE_NUMBER`. | Continue local-only; downstream GitHub operations stay skipped. |
 | `forked_target=true` | `BRANCH_SELECTED=forked-target-skip`, `DEFERRED=true`, empty `ISSUE_NUMBER`, best-effort upstream context fetch with `--repo "$UPSTREAM_REPO"`. | Continue fork flow; no local tracking issue is adopted and Step 9a cannot inject `Closes #N`. |
-| Branch 1 resume | Usable `parent-issue.md` with matching `ISSUE_NUMBER`, non-empty `RUN_ID`, and `ADOPTED=true`; idempotent `larch-log.sh init`; best-effort implementing rename. | Continue with sentinel `ISSUE_NUMBER` / `RUN_ID`. |
-| Branch 1 mismatch or malformed sentinel | Remove only `parent-issue.md`, preserve `larch-logs/`, then fall through to Branch 2. | Continue according to Branch 2 result. |
+| Branch 1 resume | Usable `parent-issue.md` with matching `ISSUE_NUMBER`, numeric `ISSUE_NUMBER`, valid `RUN_ID` (`^[A-Za-z0-9._-]+$`), and `ADOPTED=true`; idempotent `larch-log.sh init`; best-effort implementing rename. | Continue with sentinel `ISSUE_NUMBER` / `RUN_ID`. |
+| Branch 1 mismatch or malformed sentinel | Remove only `parent-issue.md`, preserve `larch-logs/`, then fall through to Branch 2. Treat non-numeric `ISSUE_NUMBER` or invalid `RUN_ID` the same as any other malformed sentinel. | Continue according to Branch 2 result. |
 | Branch 2 open issue | `get-issue-state.sh`, derive `RUN_ID` (`--run-id` > `session-id` > `LARCH_TOKEN_SESSION_ID`), `larch-log.sh init`, `post-tracking-issue.sh --run-id "$RUN_ID"`, best-effort implementing rename. | Continue with `BRANCH_SELECTED=branch-2-adopt`. |
 | Branch 2 metadata post returns `POSTED=false` | No sentinel, no rename, `DEFERRED=true`, exit 0. | Continue to plan materialization; summary publication is deferred by construction. |
 | Branch 2 issue is closed | `IMPLEMENT_BAIL_REASON=adopted-issue-closed`. | Skip to Step 18 cleanup. |
@@ -623,6 +657,8 @@ would misclassify pre-existing untracked files as phantoms on later probes.
 
 ### Plan materialization from issue body
 
+Skip this section entirely when `REPO_UNAVAILABLE=true`, `STALL_TRACKING=true`, or `IMPLEMENT_BAIL_REASON` is one of `adopted-issue-closed`, `adopted-issue-is-pr`, or `tracking-init-failed`. `repo_unavailable=true` keeps the run local-only and leaves `ISSUE_NUMBER` empty by contract.
+
 ```bash
 IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR"
 export IMPLEMENT_TMPDIR
@@ -664,7 +700,9 @@ After Preflight passed (`AUDIT=pass`) and Step 0 tracking adoption resolved the 
 
 2. **Compose `feature-description.txt`** from the GitHub issue title + body (full issue body, not only the plan block):
    ```bash
-   gh issue view "$ISSUE_NUMBER" --json title,body --template "{{.title}}\n\n{{.body}}" > "$IMPLEMENT_TMPDIR/feature-description.txt"
+   if [ "${REPO_UNAVAILABLE:-false}" != "true" ] && [ -n "${ISSUE_NUMBER:-}" ]; then
+     gh issue view "$ISSUE_NUMBER" --json title,body --template "{{.title}}\n\n{{.body}}" > "$IMPLEMENT_TMPDIR/feature-description.txt"
+   fi
    ```
    (Under `forked_target=true`, substitute `"$TARGET_ISSUE_NUMBER"` for `"$ISSUE_NUMBER"` when fetching upstream design context if `ISSUE_NUMBER` is unset, and append `--repo "$UPSTREAM_REPO"` so `gh` targets the upstream canonical repo — the file still lands at the conventional path.)
 

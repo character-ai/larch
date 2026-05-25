@@ -1,6 +1,6 @@
 # implement-bootstrap.sh
 
-Mechanical `/implement` Step 0 bootstrap: branch facts, entry gate, session setup, session-env write, token/timing marks, rehydrate keys, reviewer warnings, and the umbrella KV tail. **Primary caller:** `skills/implement/SKILL.md` Step 0 (foreground). **Offline harness:** `skills/implement/scripts/test-implement-bootstrap.sh` (+ sibling `.md`).
+Mechanical `/implement` Step 0 bootstrap: branch facts, entry gate, session setup, session-env write, token/timing marks, rehydrate keys, tracking issue adoption, reviewer warnings, and the umbrella KV tail. **Primary caller:** `skills/implement/SKILL.md` Step 0 (foreground). **Offline harness:** `skills/implement/scripts/test-implement-bootstrap.sh` (+ sibling `.md`).
 
 ## argv
 
@@ -37,7 +37,7 @@ Phase 3–4 keys are present (empty values) for parser stability.
 
 | Value | Meaning |
 |-------|---------|
-| `branch-1-resume` | Usable `parent-issue.md` sentinel matched the requested issue and supplied `RUN_ID`. |
+| `branch-1-resume` | Usable `parent-issue.md` sentinel matched the requested issue and supplied a numeric `ISSUE_NUMBER` plus a valid `RUN_ID`. |
 | `branch-2-adopt` | Fresh open issue adoption path. |
 | `forked-target-skip` | Fork mode skipped local tracking adoption; upstream context fetch was best-effort. |
 | `repo-unavailable-skip` | Repo discovery failed; tracking adoption was skipped. |
@@ -64,7 +64,7 @@ Tracking phase may also emit:
 
 Set `LARCH_QUIET_BREADCRUMB_FD` to a numeric descriptor when you need breadcrumbs on a dedicated stream. When breadcrumbs are enabled but `LARCH_QUIET_BREADCRUMB_FD` is unset or non-numeric, the line is emitted via `larch_err` (stderr / quiet FD4) so stdout remains KV-only under `LARCH_QUIET_DISABLE=1`.
 
-Future phases will add `→ step0: tracking adopted …`, `→ step0: branch + plan logged`, `→ step0: larch:plan posted`, `→ step0: coder=…` (documented here; not emitted in Phase 1).
+Future phases will add the later Step 0 breadcrumbs only: `→ step0: branch + plan logged`, `→ step0: larch:plan posted`, `→ step0: coder=…`.
 
 ## Exit codes
 
@@ -81,7 +81,7 @@ Future phases will add `→ step0: tracking adopted …`, `→ step0: branch + p
 | *(empty)* | Normal success through requested boundary, infra-only run, skip, or deferred metadata publication. |
 | `adopted-issue-closed` | Branch 2 verified the target issue is closed. |
 | `adopted-issue-is-pr` | Branch 2 verified the target number is a pull request, not an issue. |
-| `tracking-init-failed` | `RUN_ID` derivation failed or `larch-log.sh init` failed; `STALL_TRACKING=true`. |
+| `tracking-init-failed` | `RUN_ID` derivation failed or `larch-log.sh init` failed; `STALL_TRACKING=true`. Closed / PR bails clear `ISSUE_NUMBER` in the final KV tail; stalled tracking preserves a resolved issue number when available. |
 | `not-yet-implemented-phase-3` | Stub `phase_plan_materialize`. |
 | `not-yet-implemented-phase-4` | Stub `phase_coder_select`. |
 
