@@ -216,7 +216,10 @@ def kv(pat, s):
 
 created = kv(r"(?m)^ISSUES_CREATED=([0-9]+)\s*$", text) or "0"
 failed = kv(r"(?m)^ISSUES_FAILED=([0-9]+)\s*$", text) or "0"
-failed_n = int(failed)
+try:
+    failed_n = int(failed)
+except ValueError:
+    failed_n = 0
 urls = {}
 for m in re.finditer(r"(?m)^ISSUE_([0-9]+)_URL=(.+)\s*$", text):
     urls[int(m.group(1))] = m.group(2).strip()
@@ -230,7 +233,11 @@ if sent_path.is_file():
             if f"PARTITION_FILE_MAP\t{i}\t{u}" not in prev:
                 ok = False
                 break
-        if ok and int(created) == len(urls):
+        try:
+            created_n = int(created)
+        except ValueError:
+            created_n = 0
+        if ok and created_n == len(urls):
             sys.exit(0)
 
 lines = ["# Partition filing record", ""]

@@ -680,7 +680,7 @@ grep -Fq 'decompose-panel-dispatch.sh' "$DECOMP_REF" \
   || fail "(19) decompose-panel.md must retain decompose-panel-dispatch.sh anchor for structure tests"
 grep -Fq 'decompose-panel-dispatch.sh' "$SKILL_MD" \
   || fail "(19) SKILL.md Split-path must reference decompose-panel-dispatch.sh"
-grep -vq 'decomposition panel is in development' "$SKILL_MD" \
+! grep -q 'decomposition panel is in development' "$SKILL_MD" \
   || fail "(19) SKILL.md must not retain the pre-panel stub string"
 echo "PASS: (19) decomposition panel Split-path anchors OK"
 

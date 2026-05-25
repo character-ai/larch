@@ -149,5 +149,7 @@ if [[ "$_agg_rc" == 0 && "${DISPATCH_OK:-false}" == "true" && -f "$final_out" ]]
 fi
 
 emit_kv AGGREGATOR_STATUS "$AGGREGATOR_STATUS"
-emit_kv AGGREGATOR_OUTPUT "$OUT_PATH"
+if [[ "$AGGREGATOR_STATUS" == "ok" ]]; then
+    emit_kv AGGREGATOR_OUTPUT "$OUT_PATH"
+fi
 exit 0
