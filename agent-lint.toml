@@ -433,6 +433,11 @@ exclude = [
   # variable indirection. render-specialist-prompt.sh itself IS structurally
   # referenced from launch-review.sh --tool cursor / skills/review/SKILL.md.
   "scripts/classify-diff-mode.sh",
+  # scripts/parse-judge-vote-and-rating.sh is invoked by
+  # skills/design/scripts/tally-plan-review.sh through a plugin-root-prefixed
+  # shell variable so G004 cannot discover the runtime edge. It is covered by
+  # test-findings-classification.
+  "scripts/parse-judge-vote-and-rating.sh",
   # scripts/launch-codex-implement.sh is invoked by skills/implement/scripts/
   # step2-implement.sh via a `"$LAUNCHER"` variable rather than a literal
   # `${CLAUDE_PLUGIN_ROOT}/scripts/...` path — agent-lint's G004/dead-script
@@ -858,6 +863,7 @@ exclude = [
   "skills/design/scripts/test-read-design-review-budget-invoke.sh",
   "skills/design/scripts/test-validate-plan-commands.sh",
   "skills/design/scripts/test-tally-plan-review.sh",
+  "skills/design/scripts/test-findings-classification.sh",
   "skills/design/scripts/test-plan-review-loop.sh",
   "skills/design/scripts/test-finalize-plan.sh",
   "skills/design/scripts/test-scout-plan-archetypes-wrapper.sh",
@@ -1225,6 +1231,7 @@ exclude = [
   "skills/design/scripts/test-read-design-review-budget-invoke.md",
   "skills/design/scripts/test-validate-plan-commands.md",
   "skills/design/scripts/test-tally-plan-review.md",
+  "skills/design/scripts/test-findings-classification.md",
   "skills/design/scripts/test-plan-review-loop.md",
   "skills/design/scripts/test-finalize-plan.md",
   "skills/design/scripts/test-scout-plan-archetypes-wrapper.md",

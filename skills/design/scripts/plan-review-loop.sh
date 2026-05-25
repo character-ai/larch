@@ -94,6 +94,19 @@ write_empty_review_artifacts() {
         printf '# Plan Review Voting Tally\n\n'
         printf '%s\n' "$tally_note"
     } > "$DESIGN_TMPDIR/voting-tally.md"
+    _fc_out="$DESIGN_TMPDIR/plan-review/round-$ROUND_NUM/findings-classification.tsv"
+    mkdir -p "$(dirname "$_fc_out")"
+    printf '%s\n' 'finding_id	finding_reviewers	voting_result	v1_vote	v1_correctness	v1_severity	v1_quality	v1_uncertain	v1_tool	v2_vote	v2_correctness	v2_severity	v2_quality	v2_uncertain	v2_tool	v3_vote	v3_correctness	v3_severity	v3_quality	v3_uncertain	v3_tool' > "$_fc_out"
+}
+
+plan_review_voter_tool_label() {
+    case "$1" in
+        claude|Claude) printf 'Claude' ;;
+        codex|Codex) printf 'Codex' ;;
+        cursor|Cursor) printf 'Cursor' ;;
+        mainagent|MainAgent) printf 'MainAgent' ;;
+        *) printf '%s' "$1" ;;
+    esac
 }
 
 plan_slot_human_label() {
@@ -563,14 +576,30 @@ _voter_raw=$("$PLAN_REVIEW_DISPATCH_VOTERS_SH" \
 
 VOTER_DISPATCH_OK="true"
 VOTER_1_PARSE_RATE_STATUS=""
-VOTER_PATHS_FILE=""
+VOTER_1_PATH=""
+VOTER_2_PATH=""
+VOTER_3_PATH=""
+VOTER_1_TOOL=""
+VOTER_2_TOOL=""
+VOTER_3_TOOL=""
+VOTER_1_STATUS=""
+VOTER_2_STATUS=""
+VOTER_3_STATUS=""
 while IFS= read -r _vln || [[ -n "$_vln" ]]; do
     _vk="${_vln%%=*}"
     _vv="${_vln#*=}"
     case "$_vk" in
         DISPATCH_OK) VOTER_DISPATCH_OK="$_vv" ;;
         VOTER_1_PARSE_RATE_STATUS) VOTER_1_PARSE_RATE_STATUS="$_vv" ;;
-        VOTER_PATHS_FILE) VOTER_PATHS_FILE="$_vv" ;;
+        VOTER_1_PATH) VOTER_1_PATH="$_vv" ;;
+        VOTER_2_PATH) VOTER_2_PATH="$_vv" ;;
+        VOTER_3_PATH) VOTER_3_PATH="$_vv" ;;
+        VOTER_1_TOOL) VOTER_1_TOOL="$_vv" ;;
+        VOTER_2_TOOL) VOTER_2_TOOL="$_vv" ;;
+        VOTER_3_TOOL) VOTER_3_TOOL="$_vv" ;;
+        VOTER_1_STATUS) VOTER_1_STATUS="$_vv" ;;
+        VOTER_2_STATUS) VOTER_2_STATUS="$_vv" ;;
+        VOTER_3_STATUS) VOTER_3_STATUS="$_vv" ;;
         WARN) emit_kv WARN "$_vv" ;;
     esac
 done <<< "$_voter_raw"
@@ -584,23 +613,31 @@ if grep -qE '^STATUS=(dirty|unknown)$' <<< "$_dirty2"; then
 fi
 
 _vt_args=()
-if [[ -n "$VOTER_PATHS_FILE" && -f "$VOTER_PATHS_FILE" ]]; then
-    while IFS= read -r _vp || [[ -n "$_vp" ]]; do
-        [[ -z "$_vp" ]] && continue
-        _vt_args+=( "$_vp" )
-    done < "$VOTER_PATHS_FILE"
-fi
+append_plan_review_voter_arg() {
+    local _vp="$1" _vt="$2" _vs="$3" _tool_label
+    [[ -n "$_vp" ]] || return 0
+    [[ "$_vs" != "failed" ]] || return 0
+    _tool_label=$(plan_review_voter_tool_label "$_vt")
+    _vt_args+=(--voter "$_tool_label:$_vp")
+}
+append_plan_review_voter_arg "$VOTER_1_PATH" "$VOTER_1_TOOL" "$VOTER_1_STATUS"
+append_plan_review_voter_arg "$VOTER_2_PATH" "$VOTER_2_TOOL" "$VOTER_2_STATUS"
+append_plan_review_voter_arg "$VOTER_3_PATH" "$VOTER_3_TOOL" "$VOTER_3_STATUS"
+
+_findings_classification_out="$DESIGN_TMPDIR/plan-review/round-$ROUND_NUM/findings-classification.tsv"
+mkdir -p "$(dirname "$_findings_classification_out")"
 
 _tally_cmd=(
     "$PLAN_REVIEW_TALLY_SH"
     --ballot-file "$DESIGN_TMPDIR/ballot.txt"
     --design-tmpdir "$DESIGN_TMPDIR"
+    --findings-classification-out "$_findings_classification_out"
 )
 TALLY_PLAN_REVIEW_STATUS=""
 VOTING_TALLY_FILE=""
 set +e
 if ((${#_vt_args[@]} > 0)); then
-    _tally_raw=$("${_tally_cmd[@]}" --voter-files "${_vt_args[@]}")
+    _tally_raw=$("${_tally_cmd[@]}" "${_vt_args[@]}")
 else
     _tally_raw=$("${_tally_cmd[@]}")
 fi
@@ -646,9 +683,9 @@ if (( 10#$FALLBACK_COUNT > floor_half )); then
     DEGRADED_PANEL=1
 fi
 _nonfailed_voters=0
-for _vp in "${_vt_args[@]+"${_vt_args[@]}"}"; do
-    [[ -s "$_vp" ]] && _nonfailed_voters=$((_nonfailed_voters + 1))
-done
+[[ "$VOTER_1_STATUS" != "failed" && -s "$VOTER_1_PATH" ]] && _nonfailed_voters=$((_nonfailed_voters + 1))
+[[ "$VOTER_2_STATUS" != "failed" && -s "$VOTER_2_PATH" ]] && _nonfailed_voters=$((_nonfailed_voters + 1))
+[[ "$VOTER_3_STATUS" != "failed" && -s "$VOTER_3_PATH" ]] && _nonfailed_voters=$((_nonfailed_voters + 1))
 if (( _nonfailed_voters < 2 )); then
     DEGRADED_PANEL=1
 fi

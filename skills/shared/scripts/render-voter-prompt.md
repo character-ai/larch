@@ -24,6 +24,18 @@ Exit `0` on success, `2` on usage / validation errors.
 
 - Writes the entire prompt to **stdout** only (no stderr payload on success).
 - Preserves markdown emphasis markers (`**`, `` ` ``, `*`) expected by downstream voters.
+- Unconditionally asks voters to append the forensic rating axes after the
+  anchored vote token for every supported grammar/context:
+  `CORRECTNESS=<true|partially-true|false-positive|uncertain>`,
+  `SEVERITY=<blocker|major|minor|nit|uncertain>`,
+  `QUALITY=<excellent|good|adequate|weak|no-fix|uncertain>`, and
+  `UNCERTAIN=<true|false>`.
+- Axis values are lowercase-only. Axis tokens must precede any optional
+  `-- reason` rationale; downstream parsing ignores axis-looking tokens after
+  the `--` delimiter followed by a space.
+- Example line shape is `FINDING_N: YES CORRECTNESS=<...> SEVERITY=<...>
+  QUALITY=<...> UNCERTAIN=<...>` and, for `finding-oos`, the same shape for
+  `OOS_N:`.
 
 ## lib-quiet divergence
 

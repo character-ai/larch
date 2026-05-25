@@ -168,7 +168,20 @@ eval "$_plan_voter_dispatch"
 
 `VOTER_2_STATUS=fallback` means the waterfall already ran a Claude fallback for that slot and `VOTER_2_PATH` contains the Claude output — do NOT launch a duplicate replacement. `VOTER_3_STATUS=fallback` is analogous for Voter 3. Include voter paths with `STATUS=launched` or `STATUS=fallback` in vote tallying; only exclude paths with `STATUS=failed`.
 
-**Tally votes**: Apply the threshold rules from the Voting Protocol based on the panel-level eligible voter count, not the per-finding non-neutral response count. Write the vote breakdown per finding to `$DESIGN_TMPDIR/voting-tally.md` and print the same tally inline. **Voter column labels in the per-finding vote breakdown table**: use `Claude` for Voter 1, `Codex` for Codex (Voter 2), and `Cursor` for Cursor (Voter 3). Do NOT use a model name (e.g., `Claude-Opus`, `Claude-Sonnet`) as a column header — the model backing the voter may change between deployments.
+**Voter line format**: Voters output one anchored line per ballot item. The vote token remains immediately after the ID, followed by lowercase forensic rating axes:
+
+```text
+FINDING_N: YES CORRECTNESS=<true|partially-true|false-positive|uncertain> SEVERITY=<blocker|major|minor|nit|uncertain> QUALITY=<excellent|good|adequate|weak|no-fix|uncertain> UNCERTAIN=<true|false>
+FINDING_N: NO CORRECTNESS=<...> SEVERITY=<...> QUALITY=<...> UNCERTAIN=<...> -- one-line reason
+FINDING_N: EXONERATE CORRECTNESS=<...> SEVERITY=<...> QUALITY=<...> UNCERTAIN=<...> -- one-line reason
+OOS_N: YES CORRECTNESS=<true|partially-true|false-positive|uncertain> SEVERITY=<blocker|major|minor|nit|uncertain> QUALITY=<excellent|good|adequate|weak|no-fix|uncertain> UNCERTAIN=<true|false>
+OOS_N: NO CORRECTNESS=<...> SEVERITY=<...> QUALITY=<...> UNCERTAIN=<...> -- one-line reason
+OOS_N: EXONERATE CORRECTNESS=<...> SEVERITY=<...> QUALITY=<...> UNCERTAIN=<...> -- one-line reason
+```
+
+Axis tokens must precede any optional `-- reason`; the parser ignores axis-looking tokens after the `--` delimiter followed by a space.
+
+**Tally votes**: Apply the threshold rules from the Voting Protocol based on the panel-level eligible voter count, not the per-finding non-neutral response count. Write the vote breakdown per finding to `$DESIGN_TMPDIR/voting-tally.md` and print the same tally inline. The forensic rating output is consumed by `tally-plan-review.sh` into `plan-review/round-<N>/findings-classification.tsv`; `skills/design/scripts/tally-plan-review.md` is the single authority for the canonical vN-position and `vN_tool` column scheme. **Voter column labels in the per-finding vote breakdown table**: use `Claude` for Voter 1, `Codex` for Codex (Voter 2), and `Cursor` for Cursor (Voter 3). Do NOT use a model name (e.g., `Claude-Opus`, `Claude-Sonnet`) as a column header — the model backing the voter may change between deployments.
 
 **Competition scoring**: Compute the **Reviewer Competition Scoreboard** per the Voting Protocol's scoring rules (+1 for accepted, 0 for neutral/exonerated, -1 for rejected, including rejected OOS items. See `voting-protocol.md` for the full outcome matrix). Append the scoreboard table to `$DESIGN_TMPDIR/voting-tally.md` and print the scoreboard inline.
 

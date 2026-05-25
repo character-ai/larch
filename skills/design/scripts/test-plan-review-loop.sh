@@ -192,6 +192,9 @@ INNER
 done
 printf '%s\n' "$v1" "$v2" "$v3" >"$vp"
 printf 'DISPATCH_OK=true\nVOTER_PATHS_FILE=%s\nVOTER_1_PARSE_RATE_STATUS=ok\n' "$vp"
+printf 'VOTER_1_PATH=%s\nVOTER_1_TOOL=claude\nVOTER_1_STATUS=launched\n' "$v1"
+printf 'VOTER_2_PATH=%s\nVOTER_2_TOOL=codex\nVOTER_2_STATUS=launched\n' "$v2"
+printf 'VOTER_3_PATH=%s\nVOTER_3_TOOL=cursor\nVOTER_3_STATUS=launched\n' "$v3"
 EOS
     chmod +x "$STUB/dispatch-plan-voters.sh"
 }
@@ -220,6 +223,9 @@ for f in "$v1" "$v2" "$v3"; do
 done
 printf '%s\n' "$v1" "$v2" "$v3" >"$vp"
 printf 'DISPATCH_OK=true\nVOTER_PATHS_FILE=%s\nVOTER_1_PARSE_RATE_STATUS=ok\n' "$vp"
+printf 'VOTER_1_PATH=%s\nVOTER_1_TOOL=claude\nVOTER_1_STATUS=launched\n' "$v1"
+printf 'VOTER_2_PATH=%s\nVOTER_2_TOOL=codex\nVOTER_2_STATUS=launched\n' "$v2"
+printf 'VOTER_3_PATH=%s\nVOTER_3_TOOL=cursor\nVOTER_3_STATUS=launched\n' "$v3"
 EOS
     chmod +x "$STUB/dispatch-plan-voters.sh"
 }
@@ -265,6 +271,8 @@ printf '%s\n' "$out0" | grep -q '^TALLY_PLAN_REVIEW_STATUS=skipped-empty-finding
 printf '%s\n' "$out0" | grep -q '^WARN=plan-review-tsv:' || fail "expected WARN for empty TSV path"
 [[ -f "$D0/ballot.txt" ]] || fail "ballot.txt missing on zero-findings path"
 grep -q 'No findings were raised' "$D0/voting-tally.md" || fail "expected zero-findings tally prose"
+[[ -f "$D0/plan-review/round-1/findings-classification.tsv" ]] || fail "zero-findings classification TSV missing"
+[[ "$(wc -l < "$D0/plan-review/round-1/findings-classification.tsv" | tr -d ' ')" == "1" ]] || fail "zero-findings classification TSV should contain header only"
 
 echo "=== stubbed driver: one finding + real tally ==="
 D1="$TMP/z1"
@@ -279,6 +287,7 @@ out1=$(run_loop "$D1")
 printf '%s\n' "$out1" | grep -q '^TALLY_PLAN_REVIEW_STATUS=ok$' || fail "expected ok tally status"
 printf '%s\n' "$out1" | grep -q '^LOOP_STATUS=complete$' || fail "expected complete loop"
 grep -q 'FINDING_1' "$D1/accepted-plan-findings.md" || fail "accepted finding missing"
+[[ -f "$D1/plan-review/round-1/findings-classification.tsv" ]] || fail "classification TSV missing for real tally"
 
 echo "=== brainstorm context merges into feature file before dispatch ==="
 DB="$TMP/zb"

@@ -164,12 +164,13 @@ export TEST_CLONE_ROOT="$clone"
 export TEST_MERGE_BRANCH="larch-log-design-RUNPUB1"
 unset GH_STUB_CREATE_NO_URL GH_STUB_CREATE_RC GH_STUB_MERGE_RC
 
-mkdir -p "$TMP/design/render-cache/nested"
+mkdir -p "$TMP/design/render-cache/nested" "$TMP/design/plan-review/round-1"
 printf 'body\n' >"$TMP/design/plan.txt"
 printf 'CMD_JSON=["secret"]\nkeep\n' >"$TMP/design/out.txt.meta"
 printf '{"ok":1,"result":{"token":"x"}}\n' >"$TMP/design/voter-output-1.json"
 printf '{"x":1,"result":{"y":2}}\n' >"$TMP/design/plain.json"
 printf 'deep\n' >"$TMP/design/render-cache/nested/c.txt"
+printf 'finding_id\tfinding_reviewers\tvoting_result\n' >"$TMP/design/plan-review/round-1/findings-classification.tsv"
 # Files that MUST be denied by the suffix deny-list (mirrors /implement's
 # round_artifact_included deny patterns):
 printf 'noisy raw transcript\n' >"$TMP/design/codex-plan-arch-output.txt.sidecar"
@@ -192,6 +193,7 @@ printf 'rc noisy\n' >"$TMP/design/render-cache/cached-output.txt.sidecar"
 git -C "$clone" pull -q origin main
 [[ -f "$clone/larch-logs/design/RUNPUB1/plan.txt" ]] || fail "plan.txt missing on main"
 [[ -f "$clone/larch-logs/design/RUNPUB1/render-cache/nested/c.txt" ]] || fail "render-cache nested missing"
+[[ -f "$clone/larch-logs/design/RUNPUB1/plan-review/round-1/findings-classification.tsv" ]] || fail "plan-review classification TSV missing"
 grep -q '^keep$' "$clone/larch-logs/design/RUNPUB1/out.txt.meta" || fail "meta trim failed"
 ! grep -q CMD_JSON "$clone/larch-logs/design/RUNPUB1/out.txt.meta" || fail "CMD_JSON should be stripped"
 ! grep -q '"result"' "$clone/larch-logs/design/RUNPUB1/voter-output-1.json" || fail ".result should be stripped from *-output*.json"
@@ -435,5 +437,34 @@ out_bcfail=$(
 cp "$saved_redact" "$orig_redact"
 [[ "$out_bcfail" == *"PUBLISH_OK=false"* ]] || fail "breadcrumb redactor failure should fail publish: $out_bcfail"
 [[ ! -e "$clone_bcfail/larch-logs/design/RUNBFAIL1/breadcrumbs" ]] || fail "breadcrumb redactor failure should leave no published breadcrumbs"
+
+echo "=== plan-review allowlist rejects unexpected paths and symlinks ==="
+TMPPR=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-pr.XXXXXX")
+clone_pr=$(setup_clone_with_origin_head "$TMPPR")
+stub_pr="$TMPPR/stub"
+make_gh_stub "$stub_pr"
+export PATH="$stub_pr:$PATH"
+unset TEST_CLONE_ROOT TEST_MERGE_BRANCH GH_STUB_LOG GH_STUB_CREATE_RC GH_STUB_CREATE_NO_URL GH_STUB_MERGE_RC
+mkdir -p "$TMPPR/design/plan-review/round-01"
+printf 'body\n' >"$TMPPR/design/plan.txt"
+printf 'bad\n' >"$TMPPR/design/plan-review/round-01/findings-classification.tsv"
+out_pr=$(
+    (cd "$clone_pr" && bash "$PUBLISH" --design-tmpdir "$TMPPR/design" --run-id "RUNPRBAD1" --issue 4 --repo owner/repo) 2>/dev/null || true
+)
+[[ "$out_pr" == *"PUBLISH_OK=false"* ]] || fail "bad plan-review path should fail publish: $out_pr"
+
+TMPPRS=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-pr-sym.XXXXXX")
+clone_prs=$(setup_clone_with_origin_head "$TMPPRS")
+stub_prs="$TMPPRS/stub"
+make_gh_stub "$stub_prs"
+export PATH="$stub_prs:$PATH"
+mkdir -p "$TMPPRS/design/plan-review/round-1"
+printf 'body\n' >"$TMPPRS/design/plan.txt"
+printf 'ok\n' >"$TMPPRS/design/plan-review/round-1/findings-classification.tsv"
+ln -s "$TMPPRS/design/plan.txt" "$TMPPRS/design/plan-review/round-1/linked-plan.txt"
+out_prs=$(
+    (cd "$clone_prs" && bash "$PUBLISH" --design-tmpdir "$TMPPRS/design" --run-id "RUNPRSYM1" --issue 4 --repo owner/repo) 2>/dev/null || true
+)
+[[ "$out_prs" == *"PUBLISH_OK=false"* ]] || fail "plan-review symlink should fail publish: $out_prs"
 
 echo "All design-log-publish harness assertions passed."

@@ -26,6 +26,10 @@ case_finding_only() {
         exit 1
     fi
     grep -Fq 'FINDING_N: YES' <<< "$out" || { echo "FAIL: finding-only missing FINDING_N example" >&2; exit 1; }
+    grep -Fq 'CORRECTNESS=<true|partially-true|false-positive|uncertain>' <<< "$out" \
+        || { echo "FAIL: finding-only missing correctness axis enum" >&2; exit 1; }
+    grep -Fq 'UNCERTAIN=<true|false>' <<< "$out" \
+        || { echo "FAIL: finding-only missing uncertain axis enum" >&2; exit 1; }
     grep -Fq 'Use the ballot path and any provided diff/plan context files to verify the ballot claims before voting.' <<< "$out" \
         || { echo "FAIL: finding-only missing diff-plan verification lead-in" >&2; exit 1; }
 }
@@ -42,6 +46,8 @@ case_finding_oos() {
     grep -Fq "$CANONICAL_OOS_DRIFT_MARK" <<< "$out" \
         || { echo "FAIL: finding-oos missing canonical OOS body" >&2; exit 1; }
     grep -Fq '  OOS_N: YES' <<< "$out" || { echo "FAIL: finding-oos missing OOS_N example" >&2; exit 1; }
+    grep -Fq "Axis tokens must precede any optional \`-- reason\` rationale" <<< "$out" \
+        || { echo "FAIL: finding-oos missing rationale delimiter instruction" >&2; exit 1; }
     grep -Fq 'silently inspect the plan or referenced repo files for verification' <<< "$out" \
         || { echo "FAIL: finding-oos plan verification allowance missing" >&2; exit 1; }
 }

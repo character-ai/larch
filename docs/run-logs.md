@@ -16,6 +16,9 @@ larch-logs/
     <RUN_ID>/
       manifest.json
       (design session artifacts: depth-1 files from `$DESIGN_TMPDIR` plus `render-cache/` subtree, trimmed and redacted per `scripts/design-log-publish.md`)
+      plan-review/
+        round-<N>/
+          findings-classification.tsv
   implement/
     <RUN_ID>/
       manifest.json
