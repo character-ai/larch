@@ -23,7 +23,7 @@ die() {
 }
 
 sanitize_list() {
-    tr -cd '[:alnum:]_-,=:'
+    tr -cd '[:alnum:]_,=:-'
 }
 
 job_class() {
