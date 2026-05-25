@@ -1,0 +1,2 @@
+Aggregating 31 reviewer findings into a normalized structured list: merging duplicates that share the same behavioral risk and keeping distinct code-path fixes separate.
+

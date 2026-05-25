@@ -1,0 +1,15 @@
+v1	vendor	1779749381	implement	-	codex	codex-sketch-generic	1779749301	1779749381	80	codex-sketch-generic-output.txt	0	complete
+v1	vendor	1779749449	implement	-	cursor	cursor-sketch-generic	1779749298	1779749449	151	cursor-sketch-generic-output.txt	0	complete
+v1	vendor	1779749945	implement	-	cursor	cursor-phase1-cursor-plan-arch	1779749813	1779749945	132	cursor-plan-arch-output.txt	0	complete
+v1	vendor	1779749956	implement	-	codex	codex-phase1-codex-plan-edge	1779749813	1779749956	143	codex-primary-plan-edge-output.txt	0	complete
+v1	vendor	1779749956	implement	-	codex	codex-phase1-codex-plan-arch	1779749813	1779749956	143	codex-primary-plan-arch-output.txt	0	complete
+v1	vendor	1779749957	implement	-	cursor	cursor-phase1-cursor-plan-pragmatic	1779749814	1779749957	143	cursor-plan-pragmatic-output.txt	0	complete
+v1	vendor	1779749985	implement	-	cursor	cursor-phase1-cursor-plan-requirements	1779749814	1779749985	171	cursor-plan-requirements-output.txt	0	complete
+v1	vendor	1779749988	implement	-	cursor	cursor-phase1-cursor-plan-edge	1779749813	1779749988	175	cursor-plan-edge-output.txt	0	complete
+v1	vendor	1779749997	implement	-	codex	codex-phase1-codex-plan-requirements	1779749814	1779749997	183	codex-primary-plan-requirements-output.txt	0	complete
+v1	vendor	1779750006	implement	-	cursor	cursor-phase1-cursor-plan-innovation	1779749813	1779750006	193	cursor-plan-innovation-output.txt	0	complete
+v1	vendor	1779750025	implement	-	codex	codex-phase1-codex-plan-innovation	1779749813	1779750025	212	codex-primary-plan-innovation-output.txt	0	complete
+v1	vendor	1779750065	implement	-	codex	codex-phase1-codex-plan-pragmatic	1779749814	1779750065	251	codex-primary-plan-pragmatic-output.txt	0	complete
+v1	vendor	1779750141	implement	-	cursor	cursor-phase1-aggregator	1779750070	1779750141	71	aggregator-output.txt	0	complete
+v1	vendor	1779750286	implement	-	codex	codex-phase1-voter-2	1779750215	1779750286	71	codex-vote-output.txt	0	complete
+v1	vendor	1779750286	implement	-	cursor	cursor-phase1-voter-3	1779750215	1779750286	71	cursor-vote-output.txt	0	complete

@@ -1,0 +1,4 @@
+Exploring the codebase to understand the breadcrumb infrastructure and remaining rollout work.
+Checking publisher wiring and whether `ship-pr` invokes `ci-wait` with breadcrumb env:
+Reconciling the issue manifest with main: several items partially landed (#2826); critical trap-ordering gaps remain. Creating the implementation plan.
+
