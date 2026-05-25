@@ -1,0 +1,7 @@
+Exploring the codebase to map Step 7a's current flow and dependencies, then drafting a high-level implementation plan.
+
+Checking upsert behavior and whether sanitizer rejection skips the comment.
+
+Having mapped Step 7a in SKILL.md (rehydrate, classifier, generator, compose+upsert, 7a.r rebase, extended pre-bump flush) and patterns from `step2-implement.sh` / `test-step2-dispatch.sh`, creating the implementation plan. Design Round 1 overrides the original "blocked-by rebase consolidation" note by folding `rebase-checkpoint-probe.sh 7a.r` into `step-7a.sh`.
+
+

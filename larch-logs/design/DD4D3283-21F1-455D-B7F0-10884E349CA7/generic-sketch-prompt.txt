@@ -1,0 +1,81 @@
+Propose a high-level implementation approach for this feature:
+
+[DESIGNING] Consolidate /implement Step 7a body into skills/implement/scripts/step-7a.sh
+
+## Problem
+
+`/implement` Step 7a (diagrams) currently runs ~10 Bash tool calls per run in the SKILL.md fenced blocks:
+
+1. Rehydrate env (read-session-env-key × N) + token-mark/timing-mark.
+2. `skills/implement/scripts/generate-code-flow-diagram.sh` — the main work.
+3. Larch-log batch write for the diagram artifact (`larch-log.sh append` or similar).
+4. Rebase Macro 7a.r invocation (`rebase-push.sh`).
+5. Phantom Untracked Probe at `7a.r-post-rebase`.
+6. Larch-log batch write for token-report / timing-report / execution-issues (pre-bump flush).
+7. Phantom Untracked Probe at `8-pre-bump` (technically a separate site, often binned with Step 7a in transcripts).
+8. `tracking-issue-summary.sh upsert-summary larch:diagrams`.
+9. ship-pr-state.sh file write (Step 8+ entry setup).
+10. ship-pr.sh invocation (Step 8+ proper).
+
+Items 4, 5, and 7 fall under the companion issue (Rebase+Phantom consolidation); item 9 falls under the ship-pr argv companion issue. After both companion issues land, Step 7a still has ~5 Bash calls of its own that could collapse: rehydrate + diagram + log batch + summary comment + log-flush batch.
+
+This issue addresses the Step 7a body itself, after the companion issues have removed the rebase/phantom/state-file calls.
+
+## Goal
+
+Introduce `skills/implement/scripts/step-7a.sh` that absorbs:
+
+- Token/timing ledger marks for Step 7a.
+- `generate-code-flow-diagram.sh` invocation.
+- Larch-log batch write for the diagram artifact.
+- `tracking-issue-summary.sh upsert-summary` for the `larch:diagrams` marker.
+- Pre-bump log flush (token-report, timing-report, execution-issues, session-transcript) via the existing `scripts/larch-log.sh` / `scripts/refresh-run-logs.sh` helpers.
+- Final `emit_kv` tail with `DIAGRAM_PATH`, `DIAGRAM_STATUS`, `COMMENT_URL`, `LOG_FLUSH_STATUS`, plus `STEP_7A_BAIL_REASON` on failure paths.
+
+After this lands, Step 7a in SKILL.md collapses to one foreground Bash call invoking `step-7a.sh`, plus the (now-extracted) rebase+phantom wrapper invocations at the call sites that follow.
+
+Per-run reduction: ~5 calls → 1 call from the Step 7a body. Combined with the rebase+phantom consolidation, total Step 7a transcript footprint goes from ~10 calls to ~3.
+
+## Scope
+
+In scope:
+
+- New `skills/implement/scripts/step-7a.sh` + sibling `.md`.
+- New offline harness `skills/implement/scripts/test-step-7a.sh` + `.md`.
+- Edits to `skills/implement/SKILL.md` Step 7a section: collapse the multi-fence body into a single fenced invocation of `step-7a.sh`.
+- Register `test-step-7a` in `Makefile` + `docs/linting.md`.
+- Add `step-7a.sh` to `scripts/lint-foreground-markers.sh` DENYLIST.
+- Test cases: green path (diagram generated + comment upserted + flush ok), diagram-skip (non-architectural plan classifier returns skip), diagram-rejected (sanitize-mermaid-fragment.sh STATUS=rejected → warning, no upsert), diagram-generation-failure (warning, continue), summary-upsert failure (warning, continue), flush failure (warning, continue).
+
+Out of scope:
+
+- Step 0 consolidation — #2732 family.
+- Rebase Macro 7a.r + post-rebase phantom probe — companion issue. **This issue is blocked-by the rebase+phantom consolidation** so `step-7a.sh` can call `rebase-checkpoint-probe.sh` cleanly rather than inlining the rebase+probe logic.
+- ship-pr argv changes — separate companion issue.
+
+## Constraints
+
+- `lib-quiet.sh` contract.
+- Bash 3.2 portability.
+- Foreground markers (denylist + banner + per-anchor comment).
+- `script-md-siblings` sibling `.md`.
+- Diagram sanitization remains via `scripts/sanitize-mermaid-fragment.sh` (existing helper, not re-implemented).
+
+## Acceptance
+
+- `skills/implement/scripts/step-7a.sh` exists; absorbs the Step 7a body phases.
+- Sibling `.md` documents argv, output KV grammar, exit codes, bail reasons.
+- Harness covers all listed cases; `make test-step-7a` passes.
+- `skills/implement/SKILL.md` Step 7a section collapses to one foreground Bash invocation block (plus surrounding pointers if needed).
+- `make lint` passes (denylist entry, lint-bash32, script-md-siblings).
+- An `/implement <issue>` run transcript shows ~1 Bash call for Step 7a body (down from ~5 — counting only the body absorption, not the rebase/phantom companion savings).
+- Diagram + larch:diagrams summary comment still produced byte-identically to the current SKILL.md output.
+
+
+Explore the codebase. Write 2-3 paragraphs covering: (1) Key architectural decisions and approach, (2) Which files/modules to modify and why, (3) Main tradeoffs and risks. Do NOT modify files.
+
+Additional context from /design Round 1 discussion (apply as hard constraints in your sketch):
+- step-7a.sh ABSORBS rebase-checkpoint-probe.sh 7a.r as part of its body (preserves todays diagram->comment->rebase->flush order).
+- larch:diagrams comment-upsert behavior is byte-identical to current SKILL.md (skip only on sanitizer rejection; preserve ISSUE_NUMBER-empty gate).
+- step-7a.sh handles ALL pre-bump flush batches currently flushed at this checkpoint (token-report, timing-report, parent-issue, pre-review-head, pre-review-untracked, codex-impl-transcript+meta+prompt, codex-commit-message, codex-impl-manifest-raw, session-transcript, execution-issues pre+post transcript).
+- Constraints: lib-quiet.sh emit_kv on FD 3; Bash 3.2 portability; sibling .md; lint-foreground-markers DENYLIST entry; make lint must pass.

@@ -1,0 +1,28 @@
+Reading the plan and referenced code paths (read-only).
+
+Validating the plan against the codebase: reading SKILL.md Step 7a, referenced scripts, and lint integration.
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	<TMPDIR>/plan.txt:27-28	capture-session-transcript stdout handling is self-contradictory	same bullet both suppresses stdout with >/dev/null and preserves SKILL visibility; implementers cannot satisfy both	Resolve to one contract (match skills/implement/SKILL.md:1501-1508 visible stdout) and delete the conflicting clause
+1	in_scope	important	correctness	<TMPDIR>/plan.txt:30-31	LOG_FLUSH_STATUS names capture-session-transcript failures but the helper always exits 0 per plan line 27 and skills/implement/SKILL.md:1529	degraded branch for capture-session-transcript is unreachable via exit code; transcript degradation is only via execution-issues / SESSION_TRANSCRIPT_STATUS	Drop capture from the non-zero-exit degraded list or define a deterministic non-exit-code signal that step-7a.sh actually implements and tests
+1	in_scope	important	correctness	<TMPDIR>/plan.txt:14-16 vs skills/implement/scripts/generate-code-flow-diagram.sh:90-105	Sanitizer rejection uses generator STATUS=skipped with SKIP_REASON from REASON_TOKEN not STATUS=failed	Plan phase 5 and test case 3 center on STATUS=failed; production sanitizer path is skipped so parsing/upsert-skip and DIAGRAM_STATUS mapping can diverge unless explicitly unified	Align contract with generate-code-flow-diagram.md STATUS=ok|skipped|failed; map skipped+sanitizer token to upsert-skip and adjust harness stub to the real envelope
+1	in_scope	important	architecture	<TMPDIR>/plan.txt:118-130 vs skills/implement/SKILL.md:1418-1428	Byte-identical preservation claim conflicts with sanitizer-driven COMMENT_UPSERT_SKIP	current SKILL always runs tracking-issue-summary.sh upsert with || true and has no COMMENT_UPSERT_SKIP gate	Remove or qualify byte-identical language; document whether upsert-skip is new issue-driven behavior and reconcile with summary-comment-template rules
+1	in_scope	important	risk-integration	agent-lint.toml:1394-1417 (pattern for Makefile-only harnesses)	Plan omits agent-lint S030 orphaned-skill-files allowlist entries for new test-step-7a.sh and test-step-7a.md	agent-lint fails on unreferenced skills/implement/scripts/test-* pairs per existing convention	Add four paths with Makefile/docs pointers mirroring test-generate-code-flow-diagram entries
+1	in_scope	latent	security	<TMPDIR>/plan.txt:135-136	Conservative substring heuristic reject|rejected|sanitiz for sanitizer classification	Future SKIP_REASON tokens could contain those substrings without being sanitizer rejection and would suppress GitHub upsert silently	Anchor skip-upsert on explicit REASON_TOKEN / known sanitizer slugs only; document allowlist in step-7a.md
+1	in_scope	nit	risk-integration	<TMPDIR>/plan.txt:102-104 vs Makefile:54-75	test-step-7a placed in test-harnesses-18 while test-flush-execution-issues lives in test-harnesses-7	harder discoverability and different CI shard latency	Prefer co-sharding with test-flush-execution-issues or cite rationale in Makefile comment
+
+[OUT_OF_SCOPE] skills/shared/topology.tsv — if new scripts are added as runtime authorities per repo convention, a topology row and topology-generation rule paths update may be required; plan does not mention.
+
+1. **code-quality** — [plan.txt:27-28](file:///Users/zhupanov/.cache/larch/sessions/claude-design-larch3-F7yXi1/plan.txt) — Contradictory instructions for `capture-session-transcript.sh` stdout; pick one behavior and align tests.
+
+2. **correctness** — [plan.txt:30-31](file:///Users/zhupanov/.cache/larch/sessions/claude-design-larch3-F7yXi1/plan.txt) vs [skills/implement/SKILL.md:1529](skills/implement/SKILL.md) — `LOG_FLUSH_STATUS=degraded` cannot be triggered by `capture-session-transcript.sh` non-zero exit if the script always exits 0; fix the aggregate rule or add a real failure signal.
+
+3. **correctness** — [plan.txt:59-60](file:///Users/zhupanov/.cache/larch/sessions/claude-design-larch3-F7yXi1/plan.txt) vs [skills/implement/scripts/generate-code-flow-diagram.sh:101-105](skills/implement/scripts/generate-code-flow-diagram.sh) — Sanitizer path emits `STATUS=skipped`, not `failed`; stubs and `DIAGRAM_STATUS` expectations must match production.
+
+4. **architecture** — [plan.txt:118-130](file:///Users/zhupanov/.cache/larch/sessions/claude-design-larch3-F7yXi1/plan.txt) vs [skills/implement/SKILL.md:1418-1428](skills/implement/SKILL.md) — “Byte-for-byte” preservation conflicts with sanitizer-driven upsert suppression absent from current SKILL; clarify intended behavior vs regression baseline.
+
+5. **risk-integration** — [agent-lint.toml:1394-1417](agent-lint.toml) — Add S030 exclusion entries for `test-step-7a.sh` / `test-step-7a.md` (and confirm whether `step-7a.sh` / `step-7a.md` need entries) so `make lint` stays green.
+
+6. **security** (latent) — [plan.txt:135-136](file:///Users/zhupanov/.cache/larch/sessions/claude-design-larch3-F7yXi1/plan.txt) — Broad substring heuristic risks false-positive upsert suppression; tie to explicit sanitizer tokens.
+
+7. **risk-integration** (nit) — [plan.txt:102-104](file:///Users/zhupanov/.cache/larch/sessions/claude-design-larch3-F7yXi1/plan.txt) vs [Makefile:54-75](Makefile) — Shard choice drifts from `test-flush-execution-issues` locality; optional co-location in `test-harnesses-7`.

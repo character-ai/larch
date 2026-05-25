@@ -1,0 +1,42 @@
+Gathering the plan file and the flush section of `skills/implement/SKILL.md`, then searching for `LOG_FLUSH_STATUS`, `append-tool-failure`, and `skipped-no-logs-commit`.
+
+Verifying `larch-log.sh commit` vs prose, whether `larch-log.sh write` uses `append-tool-failure`, and searching for `LOG_FLUSH_STATUS` and Rebase Checkpoint Macro consumption.
+
+Checking the end of `capture-session-transcript.sh` for any non-zero exit path:
+
+Checking plan bootstrap (line 8) for internal consistency with the flush aggregation bullet.
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan.txt:L29-L30	Claims pre-bump `larch-log.sh write` failures still reach Tool Failures via `append-tool-failure.sh` per current SKILL.md	Current Step 7a fence uses only `|| true` on every `larch-log.sh write` (no `append-tool-failure.sh`), so an implementer mirroring the fence literally keeps silent writes while believing parity with the plan text	Align bullet 10 with `skills/implement/SKILL.md:1491-1500`: either drop the append claim and match `|| true`, or explicitly propose adding `append-tool-failure.sh` as a deliberate enhancement (not current behavior)
+1	in_scope	important	correctness	plan.txt:L27-L31	`LOG_FLUSH_STATUS=degraded` lists `capture-session-transcript.sh` failure alongside bullet 7 stating it always exits 0	`scripts/capture-session-transcript.sh` routes all outcomes through `emit_status` then `exit 0` (e.g. `emit_status` at `scripts/capture-session-transcript.sh:103-109`), so non-zero exit is never a failure signal	Define degradation using `SESSION_TRANSCRIPT_STATUS` (or `execution-issues.md` scan) and reconcile bullet 7 wording with bullet 31
+1	in_scope	latent	correctness	skills/implement/SKILL.md:1524-1529 vs plan.txt:L147-L148	Prose requires `larch-log.sh commit` failures be captured with `append-tool-failure.sh`; fenced body only uses `|| true`	Failure modes text and operator prose promise Tool Failures capture that the inline fence does not perform	Ensure `step-7a.sh` implements the prose contract (append + log path) or update SKILL prose to match chosen behavior; plan should not assume fence already matches prose
+1	in_scope	nit	risk-integration	plan.txt:L51-L68	Offline harness cases omit `larch-log.sh write` / `commit` failure paths for `LOG_FLUSH_STATUS` and Tool Failures	Aggregation rules for writes vs commit vs transcript never get regression-locked	Add focused stub cases for write non-zero, commit non-zero, and non-OK `SESSION_TRANSCRIPT_STATUS` (stdout parse) vs expected `LOG_FLUSH_STATUS`
+1	in_scope	nit	architecture	plan.txt:L31-L32 plus plan.txt:L92	`LOG_FLUSH_STATUS=ok` can coexist with Tool Failures entries while orchestrator ignores the KV per updated SKILL text	Human or future automation may treat `ok` as all flush IO succeeded	Document in proposed `step-7a.md` that `ok` means aggregate helper contract only, not absence of Tool Failures lines
+
+1. **[correctness]** `plan.txt` (design plan) ~L29–30 vs [skills/implement/SKILL.md](skills/implement/SKILL.md) L1491–1500: The plan states batch `larch-log.sh write` failures still log through `append-tool-failure.sh` “per current SKILL.md,” but the live pre-bump fence only appends `|| true`. Suggested revision: correct the “current SKILL” attribution and lock whether `step-7a.sh` intentionally adds `append-tool-failure.sh` for writes (new behavior) or preserves silent `|| true`.
+
+2. **[correctness]** `plan.txt` ~L27–31 vs [scripts/capture-session-transcript.sh](scripts/capture-session-transcript.sh) L103–110, L155–158, L206–207: Degrading on “`capture-session-transcript.sh` failed” conflicts with “always exits 0” and the script’s universal `exit 0` after `emit_status`. Suggested revision: spell out degradation predicates (e.g. `SESSION_TRANSCRIPT_STATUS` not in an allowed set, or grep of Warnings) and drop exit-code wording for this helper.
+
+3. **[correctness]** [skills/implement/SKILL.md](skills/implement/SKILL.md) L1524–1529: Operator-visible prose promises `append-tool-failure.sh` for `larch-log.sh commit` failures, but L1525 uses only `|| true`. The plan’s Failure modes § (L147–148) assumes the prose-level contract. Suggested revision: make `step-7a.sh` / acceptance explicitly implement append for commit failures or explicitly narrow the contract.
+
+4. **[risk-integration]** `plan.txt` harness section ~L51–68: No test case exercises `LOG_FLUSH_STATUS` when optional `larch-log.sh write` or `commit` stubs fail, nor transcript non-OK status parsing. Suggested revision: add minimal stub-driven cases covering aggregation boundaries.
+
+5. **[architecture]** `plan.txt` ~L31–32 and ~L92: `LOG_FLUSH_STATUS=ok` is compatible with swallowed write failures (by design) while the orchestrator does not parse this KV; no Step 7a / Rebase Checkpoint Macro branch in [skills/implement/SKILL.md](skills/implement/SKILL.md) L119–134 references `LOG_FLUSH_STATUS`, so there is no automated routing misinterpretation of best-effort writes. Suggested revision: document the dual-channel semantics (`ok` plus possible Tool Failures) in `step-7a.md` to prevent human misreads.
+
+**`skipped-no-logs-commit` vs `no_logs_commit` guards:** [skills/implement/SKILL.md](skills/implement/SKILL.md) uses `[ "${no_logs_commit:-false}" != "true" ]` at L1524 and passes `--no-logs-commit` flags elsewhere (L1506, L1608); the proposed aggregate string is a new KV value, not a shell boolean token, so it does not collide with those guards. Related: [scripts/capture-session-transcript.sh](scripts/capture-session-transcript.sh) L209–210 emits `SESSION_TRANSCRIPT_STATUS=suppressed-no-logs-commit`, which is a different naming family from `LOG_FLUSH_STATUS=skipped-no-logs-commit`—worth a one-line clarification in docs to avoid operator confusion (nit).
+
+**Pre-bump flush (SKILL.md ~L1472–L1526) — how failures reach the orchestrator today**
+
+| Step | Mechanism |
+|------|-------------|
+| `token-ledger.sh` / `timing-ledger.sh` mark (L1472–1473) | `|| true` only — exit swallowed, no `append-tool-failure.sh`, no stdout status contract in fence |
+| First `flush-execution-issues.sh` (L1476–1488) | Non-zero → `append-tool-failure.sh` … `|| true` — Tool Failures log; exit not propagated |
+| `token-report.sh` / `timing-report.sh` (L1489–1490) | `|| true` |
+| Each `larch-log.sh write` (L1491–1500) | `|| true` only |
+| `capture-session-transcript.sh` (L1501–1508) | No `|| true` on the invocation line; script always `exit 0` after warnings / `SESSION_TRANSCRIPT_STATUS` on stdout ([scripts/capture-session-transcript.sh](scripts/capture-session-transcript.sh)) |
+| Second `flush-execution-issues.sh` (L1509–1523) | Same pattern as first — `append-tool-failure.sh` then `|| true` |
+| `larch-log.sh commit` when allowed (L1524–1525) | `|| true` only (despite L1529 prose) |
+
+**`LOG_FLUSH_STATUS` vs Rebase macro / downstream:** `LOG_FLUSH_STATUS` does not appear in the repository today; the proposed plan states the orchestrator does not parse it (`plan.txt` ~L92). The Rebase Checkpoint Macro ([skills/implement/SKILL.md](skills/implement/SKILL.md) L127–134) branches on the `rebase-checkpoint-probe.sh` process exit and `REBASE_OUTCOME` / related keys — not on any flush aggregate — so there is no proposed coupling that would reinterpret swallowed write failures via `LOG_FLUSH_STATUS`.
+
+[OUT_OF_SCOPE] When `step-7a.sh` inlines `rebase-checkpoint-probe.sh`, verify the existing macro contract still binds to the same contract stream the orchestrator already consumes for `7a.r` (compare [skills/implement/SKILL.md](skills/implement/SKILL.md) L127–128 with [scripts/rebase-checkpoint-probe.sh](scripts/rebase-checkpoint-probe.sh) `emit_kv` usage and [scripts/lib-quiet.sh](scripts/lib-quiet.sh) L105–111 FD3 behavior under `larch_quiet_init`). Worth a follow-up issue if bundling changes how the probe’s KVs reach the prompt-side parser.

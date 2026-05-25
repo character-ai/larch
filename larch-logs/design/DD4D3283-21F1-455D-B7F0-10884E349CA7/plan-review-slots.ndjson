@@ -1,0 +1,16 @@
+{"slot":"cursor-plan-arch","tool":"cursor","output":"<TMPDIR>/cursor-plan-arch-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-arch.prompt"}
+{"slot":"codex-plan-arch","tool":"codex","output":"<TMPDIR>/codex-primary-plan-arch-output.txt","prompt_file":"<TMPDIR>/render-plan-codex-arch.prompt"}
+{"slot":"cursor-plan-edge","tool":"cursor","output":"<TMPDIR>/cursor-plan-edge-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-edge.prompt"}
+{"slot":"codex-plan-edge","tool":"codex","output":"<TMPDIR>/codex-primary-plan-edge-output.txt","prompt_file":"<TMPDIR>/render-plan-codex-edge.prompt"}
+{"slot":"cursor-plan-innovation","tool":"cursor","output":"<TMPDIR>/cursor-plan-innovation-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-innovation.prompt"}
+{"slot":"codex-plan-innovation","tool":"codex","output":"<TMPDIR>/codex-primary-plan-innovation-output.txt","prompt_file":"<TMPDIR>/render-plan-codex-innovation.prompt"}
+{"slot":"cursor-plan-pragmatic","tool":"cursor","output":"<TMPDIR>/cursor-plan-pragmatic-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-pragmatic.prompt"}
+{"slot":"codex-plan-pragmatic","tool":"codex","output":"<TMPDIR>/codex-primary-plan-pragmatic-output.txt","prompt_file":"<TMPDIR>/render-plan-codex-pragmatic.prompt"}
+{"slot":"cursor-plan-requirements","tool":"cursor","output":"<TMPDIR>/cursor-plan-requirements-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-requirements.prompt"}
+{"slot":"codex-plan-requirements","tool":"codex","output":"<TMPDIR>/codex-primary-plan-requirements-output.txt","prompt_file":"<TMPDIR>/render-plan-codex-requirements.prompt"}
+{"slot":"dyn-cursor-plan-child-interface-drift","tool":"cursor","output":"<TMPDIR>/cursor-plan-dyn-child-interface-drift-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-dyn-child-interface-drift.prompt"}
+{"slot":"dyn-codex-plan-child-interface-drift","tool":"codex","output":"<TMPDIR>/codex-primary-plan-dyn-child-interface-drift-output.txt","prompt_file":"<TMPDIR>/render-plan-codex-dyn-child-interface-drift.prompt"}
+{"slot":"dyn-cursor-plan-sanitizer-token-contract","tool":"cursor","output":"<TMPDIR>/cursor-plan-dyn-sanitizer-token-contract-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-dyn-sanitizer-token-contract.prompt"}
+{"slot":"dyn-codex-plan-sanitizer-token-contract","tool":"codex","output":"<TMPDIR>/codex-primary-plan-dyn-sanitizer-token-contract-output.txt","prompt_file":"<TMPDIR>/render-plan-codex-dyn-sanitizer-token-contract.prompt"}
+{"slot":"dyn-cursor-plan-flush-degraded-semantics","tool":"cursor","output":"<TMPDIR>/cursor-plan-dyn-flush-degraded-semantics-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-dyn-flush-degraded-semantics.prompt"}
+{"slot":"dyn-codex-plan-flush-degraded-semantics","tool":"codex","output":"<TMPDIR>/codex-primary-plan-dyn-flush-degraded-semantics-output.txt","prompt_file":"<TMPDIR>/render-plan-codex-dyn-flush-degraded-semantics.prompt"}
