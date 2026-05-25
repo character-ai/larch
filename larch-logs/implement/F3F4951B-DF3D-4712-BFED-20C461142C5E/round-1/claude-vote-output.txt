@@ -1,0 +1,14 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: EXONERATE -- Step 1d.5 entry guard only reads brainstorm_requested from run-params.json; tier info is irrelevant for the brainstorm step itself
+FINDING_8: YES
+FINDING_9: EXONERATE -- structure tests in test-design-structure.sh Check 19 already pin critical literals; behavioral orchestration branching is inherently prose-contract in larch
+FINDING_10: EXONERATE -- larch reviewers always receive model-generated feature context; no new trust boundary introduced over existing Step 2a/2b sketch flows
+FINDING_11: EXONERATE -- jq-absent path already emits a visible warning; requiring jq is a reasonable system dependency in this codebase
+FINDING_12: YES
+FINDING_13: EXONERATE -- SIGKILL risk during a small synchronous cat of local files is negligible; atomicity not required here per established larch patterns
+FINDING_14: YES

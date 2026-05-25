@@ -1,7 +1,7 @@
 ---
 name: design
 description: "Use when authoring or vetting an issue-anchored implementation plan in GitHub (plan markers in the issue body). Tiered sketches (0/2/4) plus a 10-reviewer panel and clarify loop; verbal prompts create an issue first."
-argument-hint: "[--trivial|--simple|--hard] [-p|--partition] [--no-dedup] [--run-id <ID>] <issue-N | feature description>"
+argument-hint: "[--trivial|--simple|--hard] [-p|--partition] [--brainstorm] [--no-dedup] [--run-id <ID>] <issue-N | feature description>"
 allowed-tools: AskUserQuestion, Bash, Read, Edit, Write, Grep, Glob, Agent, Task, WebFetch, WebSearch
 ---
 
@@ -9,7 +9,7 @@ allowed-tools: AskUserQuestion, Bash, Read, Edit, Write, Grep, Glob, Agent, Task
 
 Design an implementation plan for a feature and review it with a **full** panel when using `--simple` or `--hard` (10 reviewers on the full diagonal: 5 personalities × Cursor + Codex, plus adjudication and voting as documented in this file). The **`--trivial`** tier intentionally uses a **smaller** plan-review budget (`review_budget=quick` per `skills/design/references/flags.md`) and **`sketch_budget` 0** — do not extrapolate the full 10-reviewer cost model to trivial runs. The sketch phase (Step 2a) reads `run-params.json`: **`sketch_budget` is 0, 2, or 4** from the selected **tier** (`trivial` / `simple` / `hard`). Plan + acceptance are written back to the issue body via `plan-block-write.sh` (no design manifest export). Accepted non-security OOS items are filed via `/larch:issue` in **Step 5b** before the `larch:plan` write (**Step 5c**).
 
-**Flags**: Parse flags from the start of `$ARGUMENTS` before consuming the positional tail. **Public argv** allows only `--trivial`, `--simple`, `--hard`, `-p`, `--partition`, `--no-dedup`, and `--run-id` (see table). **All boolean flags default to `false`.** At most one tier flag may appear on argv (mutual exclusion). **`--trivial` is mutually exclusive with `-p` / `--partition`** — see Pre-Step-0 below and `references/flags.md`. If no tier flag is set after the clarify / already-planned routers in Step 0, the orchestrator MUST run the tier `AskUserQuestion` gate there before sketches.
+**Flags**: Parse flags from the start of `$ARGUMENTS` before consuming the positional tail. **Public argv** allows only `--trivial`, `--simple`, `--hard`, `-p`, `--partition`, `--brainstorm`, `--no-dedup`, and `--run-id` (see table). **All boolean flags default to `false`.** At most one tier flag may appear on argv (mutual exclusion). **`--trivial` is mutually exclusive with `-p` / `--partition`** — see Pre-Step-0 below and `references/flags.md`. **`--trivial` combined with `--brainstorm`** is handled by the Pre-Step-0 / Step 0b **Upgrade to `--simple`** / **Cancel** prompts (not the same hard argv gate as `--partition`). If no tier flag is set after the clarify / already-planned routers in Step 0, the orchestrator MUST run the tier `AskUserQuestion` gate there before sketches.
 
 | Flag | Default | Purpose |
 |------|---------|---------|
@@ -17,16 +17,17 @@ Design an implementation plan for a feature and review it with a **full** panel 
 | `--simple` | `false` | Tier: `sketch_budget=2`, `quick_mode=true`, `review_budget=full` (2 generic sketches + 10-reviewer panel + auto-applied findings) |
 | `--hard` | `false` | Tier: `sketch_budget=4`, `quick_mode=false`, `review_budget=full` (4 sketches + panel + per-finding approval on accepted findings) |
 | `-p` / `--partition` | `false` | Request partition / break-up flow on every plan write at Step 2b.5 when no hard threshold tripped (see `references/flags.md`; persisted as `partition_requested` in `run-params.json`) |
+| `--brainstorm` | `false` | Request Step **1d.5** brainstorm ideation before Gate A (see `references/flags.md` and `references/brainstorm.md`; persisted as `brainstorm_requested` in `run-params.json`) |
 | `--no-dedup` | `false` | Forward to `/larch:issue` when the verbal path creates a tracking issue |
 | `--run-id <ID>` | empty | Optional run identifier |
 
-**Mutual exclusion**: at most one of `--trivial` / `--simple` / `--hard` may be set; if two or more tier flags appear, print a clear error and abort before Step 0. **`--trivial` and `-p` / `--partition` are mutually exclusive** — Pre-Step-0 rejects that pair before `session-setup.sh` runs.
+**Mutual exclusion**: at most one of `--trivial` / `--simple` / `--hard` may be set; if two or more tier flags appear, print a clear error and abort before Step 0. **`--trivial` and `-p` / `--partition` are mutually exclusive** — Pre-Step-0 rejects that pair before `session-setup.sh` runs. **`--trivial` + `--brainstorm`** uses the Pre-Step-0 / tier-gate `AskUserQuestion` upgrade flow (see Pre-Step-0 and Step 0b) — do not treat it as a silent downgrade.
 
 **MANDATORY — READ ENTIRE FILE before parsing argument flags**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/flags.md` completely. This reference is the single normative source for tier mapping and validation rules. The table above is a non-normative index.
 
 **Positional tail**: after flags, the first non-flag token is either **`issue-N`** (all digits, `^[0-9]+$`) or a **verbal feature description** (any other text). Verbal text triggers `/larch:issue` first (forward `--no-dedup` when set), then binds `ISSUE_NUMBER` to the created issue and continues as the issue path.
 
-**Anti-halt continuation reminder.** After every `Bash` tool call that completes a numbered step or sub-step, and after every visible output (plans, diagrams, voting tallies, skip breadcrumbs), IMMEDIATELY continue with this skill's NEXT numbered step — do NOT end the turn on a Bash result, a status message, or a deliverable-looking output, and do NOT write a summary, handoff, status recap, or "returning to parent" message — those are halts in disguise. This applies to ALL step boundaries from Step 0 through Step 6, and to ALL sub-step transitions (1c→1d→1e→2a→2a.5→2b→2b.5→3→3.5→3b→4→4b→5→5a→5b→5c.1→5c.7→5c.8→6). The approval gates (Step 1e Gate A, Step 3.5 Gate B, Step 4b Gate C) may also re-enter earlier steps per the user's `AskUserQuestion` choice (Gate B(c) → Step 1e; Gate C(b) → Step 1e; Gate C(c) → Step 3); those re-entry transitions are explicit non-sequential control-flow directives and are NOT halts. **Critical: the implementation plan (Step 2b) and architecture diagram (Step 3b) are intermediate deliverables, NOT the end of the design — plan review (Step 3), Gate B (Step 3.5), Gate C (Step 4b), finalize (Step 5), and cleanup (Step 6) must still execute.** **Step 3 MUST NOT start until Step 2b.5 completes** (including any `AskUserQuestion` branches there). The rule is strictly subordinate to any explicit non-sequential control-flow directive in THIS file (e.g., `skip to Step N`, `bail to cleanup`, `jump back`, `proceed to Step N`). A normal sequential `proceed to Step N+1` instruction is the default continuation this rule reinforces, NOT an exception.
+**Anti-halt continuation reminder.** After every `Bash` tool call that completes a numbered step or sub-step, and after every visible output (plans, diagrams, voting tallies, skip breadcrumbs), IMMEDIATELY continue with this skill's NEXT numbered step — do NOT end the turn on a Bash result, a status message, or a deliverable-looking output, and do NOT write a summary, handoff, status recap, or "returning to parent" message — those are halts in disguise. This applies to ALL step boundaries from Step 0 through Step 6, and to ALL sub-step transitions (1c→1d→1d.5→1e→2a→2a.5→2b→2b.5→3→3.5→3b→4→4b→5→5a→5b→5c.1→5c.7→5c.8→6). **Narrow exception — Step 1d.5 only**: after printing the brainstorm synthesis digest, the free-form discussion loop may yield the turn between operator messages per `references/brainstorm.md`; do **not** use `ScheduleWakeup`, scripted sleep polling loops, or Monitor-driven polling waits on this lane. The approval gates (Step 1e Gate A, Step 3.5 Gate B, Step 4b Gate C) may also re-enter earlier steps per the user's `AskUserQuestion` choice (Gate B(c) → Step 1e; Gate C(b) → Step 1e; Gate C(c) → Step 3); those re-entry transitions are explicit non-sequential control-flow directives and are NOT halts. **Critical: the implementation plan (Step 2b) and architecture diagram (Step 3b) are intermediate deliverables, NOT the end of the design — plan review (Step 3), Gate B (Step 3.5), Gate C (Step 4b), finalize (Step 5), and cleanup (Step 6) must still execute.** **Step 3 MUST NOT start until Step 2b.5 completes** (including any `AskUserQuestion` branches there). The rule is strictly subordinate to any explicit non-sequential control-flow directive in THIS file (e.g., `skip to Step N`, `bail to cleanup`, `jump back`, `proceed to Step N`). A normal sequential `proceed to Step N+1` instruction is the default continuation this rule reinforces, NOT an exception.
 
 ## Progress Reporting
 
@@ -102,7 +103,9 @@ Consolidated NEVER rules collected from the procedural steps below. Each rule st
 
 ## Pre-Step-0 — argv gate (before `session-setup.sh`)
 
-Before running the **Step 0a** `session-setup.sh` Bash block, scan the start of `$ARGUMENTS` for tier flags (`--trivial` / `--simple` / `--hard`) and partition flags (`-p` / `--partition`). If **both** `--trivial` **and** (`-p` or `--partition`) are present, print `**⚠ /design: --trivial and --partition are mutually exclusive — re-classify or drop one.**` and exit **1**. Do **not** run `session-setup.sh` on this path — no `DESIGN_TMPDIR` is created. Step **0b** still performs the full argv parse after Step 0a; this gate is validation-only for the `--trivial` + `--partition` collision.
+Before running the **Step 0a** `session-setup.sh` Bash block, scan the start of `$ARGUMENTS` for tier flags (`--trivial` / `--simple` / `--hard`), partition flags (`-p` / `--partition`), and brainstorm (`--brainstorm`). If **both** `--trivial` **and** (`-p` or `--partition`) are present, print `**⚠ /design: --trivial and --partition are mutually exclusive — re-classify or drop one.**` and exit **1**. Do **not** run `session-setup.sh` on this path — no `DESIGN_TMPDIR` is created. Step **0b** still performs the full argv parse after Step 0a; this gate is validation-only for the `--trivial` + `--partition` collision.
+
+If **both** `--trivial` **and** `--brainstorm` are present on argv **before** Step 0a, do **not** run `session-setup.sh` until resolved. Run `AskUserQuestion` with **Upgrade to `--simple` (keep brainstorm)** / **Cancel**. On **Cancel**: print `**ℹ /design cancelled by operator (trivial + brainstorm collision).**`, exit **0** (no `DESIGN_TMPDIR`). On **Upgrade**: bind mental `effective_tier=simple` and `brainstorm_requested=true` — Step 0b maps tier fields using **simple** while still passing `--brainstorm-requested true` into `write-run-params.sh`.
 
 <!-- step:0 — Session Setup -->
 ## Step 0 — Session Setup
@@ -176,7 +179,7 @@ This writes `$DESIGN_TMPDIR/source-env.sh` and refreshes the stable symlink `~/.
 
 ### 0b — Parse argv, issue binding, clarify / already-planned routers, tier → `run-params.json`
 
-1. Parse public flags (`--trivial|--simple|--hard`, `-p`/`--partition`, `--no-dedup`, `--run-id`) from the start of `$ARGUMENTS`. Remaining tokens after flags:
+1. Parse public flags (`--trivial|--simple|--hard`, `-p`/`--partition`, `--brainstorm`, `--no-dedup`, `--run-id`) from the start of `$ARGUMENTS`. Remaining tokens after flags:
    - If the first token matches `^[0-9]+$`, set `ISSUE_NUMBER` to that value.
    - Else the remainder is **verbal feature text**: invoke **`/larch:issue`** via the Skill tool (forward `--no-dedup` when set). Parse the created issue number into `ISSUE_NUMBER`.
 2. **Fetch issue**: `gh issue view "$ISSUE_NUMBER" --json body,labels,number,title` with **2× retry** on transient failure.
@@ -187,11 +190,13 @@ This writes `$DESIGN_TMPDIR/source-env.sh` and refreshes the stable symlink `~/.
    4. Run `clarify-comment-post.sh --kind response`, then `clarify-label.sh --action remove`.
    5. **Only when** `SESSION_ID` is non-empty **and** `PUBLISH_OK=true` after sub-step 3.3, run `"${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh" rename --issue "$ISSUE_NUMBER" --state designing ${REPO:+--repo "$REPO"}` (best-effort; treat `RENAMED=false` as idempotent success). Sub-step 3.4 removes `needs-design-clarification` before this rename; **do not** run `--state designed` here — that token is reserved for Step 5c after Gate C, composed `larch:plan`, and the same publish guard — so `/implement` admission cannot treat a clarify-only `larch:plan` update as terminal design completion. When `SESSION_ID` is empty or `PUBLISH_OK=false`, **skip** this rename in this sub-step.
    6. Step 0b clarify hygiene and exit **0** on success — **before** that hygiene, export `SUMMARY_OUTCOME=cancelled-clarify` and run the **Final summary block** fenced bash block in `### Final summary block` below. The issue title remains `[DESIGNING]` until a later `/design` run reaches Step 5c (Gate C + OOS filing + composed plan + publish) — `/implement` still requires `[DESIGNED]`.
-4. **Already-planned branch** when a `larch:plan` block exists and clarification is clean: `AskUserQuestion` **(a)** replace via full flow, **(b)** ad-hoc Q&A only, **(c)** cancel — on **(c) cancel**, export `SUMMARY_OUTCOME=cancelled-already-planned` and run the **Final summary block** fenced bash block in `### Final summary block` below, then print `**ℹ /design cancelled by operator.**` and exit **0**.
-5. **Tier gate**: if no tier flag on argv, `AskUserQuestion` with **three options** `trivial` / `simple` / `hard` (descriptions per issue #2485). Non-tier `Other` answers → export `SUMMARY_OUTCOME=cancelled-tier-gate` and run the **Final summary block** fenced bash block in `### Final summary block` below, then print `**ℹ /design cancelled by operator.**` and exit **0**.
+4. **Already-planned branch** when a `larch:plan` block exists and clarification is clean: `AskUserQuestion` **(a)** replace via full flow, **(b)** ad-hoc Q&A only, **(c)** cancel — on **(c) cancel**, export `SUMMARY_OUTCOME=cancelled-already-planned` and run the **Final summary block** fenced bash block in `### Final summary block` below, then print `**ℹ /design cancelled by operator.**` and exit **0**. On **(b) ad-hoc Q&A only** when `--brainstorm` was parsed on argv (mental `brainstorm_requested=true`): ensure `$DESIGN_TMPDIR/run-params.json` exists and contains `brainstorm_requested: true` (write via `write-run-params.sh` or `jq` merge without dropping unrelated keys), conduct the Q&A session, then **MANDATORY** execute Step **1d.5** per `${CLAUDE_PLUGIN_ROOT}/skills/design/references/brainstorm.md` before the terminal already-planned hygiene / **Final summary block** / exit **0**.
+5. **Tier gate**: if no tier flag on argv, `AskUserQuestion` with **three options** `trivial` / `simple` / `hard` (descriptions per issue #2485). When the operator answers **`trivial`** and `--brainstorm` was parsed on argv (or `brainstorm_requested` is already true), run the same **Upgrade to `--simple` (keep brainstorm)** / **Cancel** `AskUserQuestion` used in Pre-Step-0; **Cancel** follows the same `cancelled-tier-gate` / **Final summary block** path as other non-tier answers. Non-tier `Other` answers → export `SUMMARY_OUTCOME=cancelled-tier-gate` and run the **Final summary block** fenced bash block in `### Final summary block` below, then print `**ℹ /design cancelled by operator.**` and exit **0**.
 5.5. **Rename issue to `[DESIGNING]`** (best-effort, idempotent) now that all cancel paths have been cleared. Resolve `REPO` via `"${CLAUDE_PLUGIN_ROOT}/scripts/resolve-repo.sh"` or `gh repo view` fallback if not already bound. Run `"${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh" rename --issue "$ISSUE_NUMBER" --state designing ${REPO:+--repo "$REPO"}` (treat `RENAMED=false` as idempotent success). On non-zero exit, log `Step 0 — [DESIGNING] rename failed` to `Warnings` in `$DESIGN_TMPDIR/execution-issues.md` and continue.
-6. **Write** `$DESIGN_TMPDIR/feature-description.txt` from issue title+body (or verbal prompt). **Tier mapping** to `write-run-params.sh` and **partition persistence**:
+6. **Write** `$DESIGN_TMPDIR/feature-description.txt` from issue title+body (or verbal prompt). **Tier mapping** to `write-run-params.sh` and **partition + brainstorm persistence**:
    - Set mental boolean `partition_requested` to `true` when `-p` or `--partition` was parsed on argv, else `false` (Pre-Step-0 already rejected `--trivial` + `--partition` collisions).
+   - Set mental boolean `brainstorm_requested` to `true` when `--brainstorm` was parsed on argv **or** set by the Pre-Step-0 / tier-gate upgrade path, else `false`.
+   - When Pre-Step-0 **Upgrade** applies, map **simple** tier fields below even if argv contained `--trivial`.
    - `trivial`: `design_classification=TRIVIAL_DOC_ONLY`, `sketch_budget=0`, `quick_mode=true`, `review_budget=quick`, `workflow_path=SIMPLE`.
    - `simple`: `design_classification=SIMPLE`, `sketch_budget=2`, `quick_mode=true`, `review_budget=full`, `workflow_path=SIMPLE`.
    - `hard`: `design_classification=HARD`, `sketch_budget=4`, `quick_mode=false`, `review_budget=full`, `workflow_path=HARD`.
@@ -207,38 +212,44 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/write-run-params.sh \
   --review-budget "$review_budget" \
   --workflow-path "$workflow_path" \
   --partition-requested "$partition_requested" \
+  --brainstorm-requested "$brainstorm_requested" \
   --output "$DESIGN_TMPDIR/run-params.json"
 ```
 
 If the helper exits non-zero, print `**⚠ 0: router — run-params write failed; defaulting to HARD sketch budget.**`, set in-memory defaults `design_classification=HARD`, `sketch_budget=4`, `review_budget=full`, `workflow_path=HARD`, and continue.
 
-**Partition persistence on write failure**: when argv-derived `partition_requested` is `true` and `command -v jq` succeeds, ensure `partition_requested` is persisted so Step 2b.5 still sees the flag after a subshell re-read:
+**Router-flag persistence on write failure**: when argv-derived `partition_requested` **or** `brainstorm_requested` is `true` and `command -v jq` succeeds, ensure both flags persist so Step **1d.5** / Step **2b.5** still see them after a subshell re-read:
 
 ```bash
-if [[ "$partition_requested" == true ]] && command -v jq >/dev/null 2>&1; then
+if [[ "$partition_requested" == true || "$brainstorm_requested" == true ]] && command -v jq >/dev/null 2>&1; then
   if [[ -f "$DESIGN_TMPDIR/run-params.json" ]]; then
-    _rp_merge=$(mktemp "${TMPDIR:-/tmp}/larch-partition-merge.XXXXXX")
-    _rp_err=$(mktemp "${TMPDIR:-/tmp}/larch-partition-merge-err.XXXXXX")
-    if jq -c '.partition_requested = true' "$DESIGN_TMPDIR/run-params.json" >"$_rp_merge" 2>"$_rp_err"; then
+    _rp_merge=$(mktemp "${TMPDIR:-/tmp}/larch-router-flags-merge.XXXXXX")
+    _rp_err=$(mktemp "${TMPDIR:-/tmp}/larch-router-flags-merge-err.XXXXXX")
+    if jq -c \
+      --argjson merge_p "$([[ "$partition_requested" == true ]] && echo true || echo false)" \
+      --argjson merge_b "$([[ "$brainstorm_requested" == true ]] && echo true || echo false)" \
+      '.partition_requested = (.partition_requested == true or $merge_p) | .brainstorm_requested = (.brainstorm_requested == true or $merge_b)' \
+      "$DESIGN_TMPDIR/run-params.json" >"$_rp_merge" 2>"$_rp_err"; then
       mv -f "$_rp_merge" "$DESIGN_TMPDIR/run-params.json"
       rm -f "$_rp_err"
     else
-      "${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh" --log "$DESIGN_TMPDIR/execution-issues.md" --site "design Step 0b" --tool "jq(partition-merge)" --exit-code 1 --category Warnings --output-file "$_rp_err" >/dev/null 2>&1 || true
+      "${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh" --log "$DESIGN_TMPDIR/execution-issues.md" --site "design Step 0b" --tool "jq(router-flags-merge)" --exit-code 1 --category Warnings --output-file "$_rp_err" >/dev/null 2>&1 || true
       rm -f "$_rp_merge" "$_rp_err"
     fi
   else
     "${CLAUDE_PLUGIN_ROOT}/scripts/write-run-params.sh" \
       --classification "${design_classification:-HARD}" \
-      --reason "${design_classification_reason:-run-params write failed; partition recovery}" \
+      --reason "${design_classification_reason:-run-params write failed; router-flag recovery}" \
       --source caller-forwarded \
       --sketch-budget "${sketch_budget:-4}" \
       --review-budget "${review_budget:-full}" \
       --workflow-path "${workflow_path:-HARD}" \
-      --partition-requested true \
+      --partition-requested "${partition_requested:-false}" \
+      --brainstorm-requested "${brainstorm_requested:-false}" \
       --output "$DESIGN_TMPDIR/run-params.json" >/dev/null 2>&1 || true
   fi
-elif [[ "$partition_requested" == true ]]; then
-  printf '%s\n' "**⚠ 0b: partition requested but jq is unavailable — partition_requested may not persist across Step 2b.5 re-entry; install jq or re-supply --partition after subshell boundaries.**"
+elif [[ "$partition_requested" == true || "$brainstorm_requested" == true ]]; then
+  printf '%s\n' "**⚠ 0b: partition and/or brainstorm requested but jq is unavailable — flags may not persist across subshell boundaries; install jq or re-supply flags after subshell boundaries.**"
 fi
 ```
 
@@ -295,6 +306,15 @@ Print: `> **🔶 /design 1d: discussion r1**`
 
 Execute the Step 1d body in `${CLAUDE_PLUGIN_ROOT}/skills/design/references/discussion-rounds.md`. If already loaded at Step 1c, no need to re-load; otherwise **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/discussion-rounds.md` completely.
 
+<!-- step:1d.5 — Brainstorm Panel -->
+
+```bash
+[ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
+LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 1d.5 — brainstorm" || true
+```
+
+**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/brainstorm.md` completely. Execute the Step 1d.5 body in that file (entry guard prints skip breadcrumbs when brainstorm is off or already complete; the `> **🔶 /design 1d.5: brainstorm**` banner prints **only** from that file after guards pass — not on skip paths).
+
 <!-- step:1e — Discussion Mode Gate (Gate A) -->
 
 ```bash
@@ -306,7 +326,7 @@ Print: `> **🔶 /design 1e: gate A**`
 
 **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/approval-gates.md` completely. It is the single normative source for Gate A / B / C prompts, severity rubric, and loop semantics.
 
-Execute the Gate A body in `approval-gates.md`. When the user picks **Ready for review** on first-time entry from Step 1d, proceed to Step 2a. When entered from Gate B(c) or Gate C(b) (post-plan), Gate A presents three options (Show latest design proposal / Ready for review / Discuss more); selecting **Show latest design proposal** re-displays `$DESIGN_TMPDIR/plan.txt` under a `## Latest Design Plan` header and re-fires the same prompt, while **Ready for review** proceeds directly to Step 3 with the current `$DESIGN_TMPDIR/plan.txt` — do NOT re-run Step 2a (sketches) or Step 2a.5 (dialectic).
+Execute the Gate A body in `approval-gates.md`. When the user picks **Ready for review** on first-time entry from Step 1d / Step 1d.5, proceed to Step 2a. When entered from Gate B(c) or Gate C(b) (post-plan), Gate A presents three options (Show latest design proposal / Ready for review / Discuss more); selecting **Show latest design proposal** re-displays `$DESIGN_TMPDIR/plan.txt` under a `## Latest Design Plan` header and re-fires the same prompt, while **Ready for review** proceeds directly to Step 3 with the current `$DESIGN_TMPDIR/plan.txt` — do NOT re-run Step 2a (sketches) or Step 2a.5 (dialectic).
 
 <!-- step:2a — Collaborative Approach Sketches -->
 ## Step 2a — Collaborative Approach Sketches
@@ -368,6 +388,8 @@ If `sketch_budget=0`, perform the Zero-sketch mode sentinel writes above and pro
 **MANDATORY — READ ENTIRE FILE (load FIRST)**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/sketch-prompts.md` completely. It defines `ARCH_PROMPT`, `EDGE_PROMPT`, `INNOVATION_PROMPT`, `PRAGMATIC_PROMPT`, and `GENERIC_PROMPT` — the four personality-prompt bodies and the quick-mode generic prompt, substituted into the launch shell blocks via the corresponding `<…>` token names.
 
 **MANDATORY — READ ENTIRE FILE (load SECOND, after sketch-prompts.md)**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/sketch-launch.md` completely. It contains the byte-preserved launch shell blocks for the 4 regular-mode external slots (2 Cursor + 2 Codex) and the 2 quick-mode slots (1 Cursor-Generic + 1 Codex-Generic), the spawn-order rule, the per-slot `run_in_background: true` / `timeout: 1260000` requirements, and the per-slot Claude fallback notes.
+
+**`<FEATURE_DESCRIPTION>` substitution (brainstorm additive)**: Read `$DESIGN_TMPDIR/feature-description.txt` as the base feature text. If `$DESIGN_TMPDIR/brainstorm.md` exists and is non-empty, build the substitution string as: base text prefixed by a short `## Brainstorm context` section containing a tight digest of `brainstorm.md` (do not dump the entire file if large). Replace each `<FEATURE_DESCRIPTION>` token in the resolved sketch prompt bodies with this combined string before launch.
 
 Execute the launches per `sketch-launch.md` — all external and fallback launches issued in a single message, Cursor slots first, then Codex slots, then any Claude fallbacks.
 
@@ -498,7 +520,7 @@ Read `$DESIGN_TMPDIR/contested-decisions.md`. If the file contains only `NO_CONT
 
 This divergence applies **only to debate execution**, not to **judge adjudication**. The post-debate judge panel (see `${CLAUDE_PLUGIN_ROOT}/skills/shared/dialectic-protocol.md`) uses the repo-wide **replacement-first** pattern: when Cursor or Codex is unavailable for judging, a Claude Code Reviewer subagent replaces that slot so the panel always remains at 3 judges. Judges merely adjudicate between pre-authored defenses; the "no Claude substitution" rule is specific to adversarial debate where model-specific writing style could encode tool identity.
 
-Otherwise, read `$DESIGN_TMPDIR/approach-synthesis.txt` — this provides `{SYNTHESIS_TEXT}` for the prompt templates below. Then apply the following protocol:
+Otherwise, read `$DESIGN_TMPDIR/approach-synthesis.txt` — this provides `{SYNTHESIS_TEXT}` for the prompt templates below. If `$DESIGN_TMPDIR/brainstorm.md` exists and is non-empty, you MAY prepend a short `## Brainstorm context` digest to `{FEATURE_DESCRIPTION}` when rendering debate prompts so externals see brainstorm ideas as non-binding context. Then apply the following protocol:
 
 1. **Cap = `min(5, |contested-decisions|)`** — select that many decisions from the file (they are already in priority order from Step 2a.4).
 
@@ -540,6 +562,8 @@ Before writing any code, create a concrete implementation plan. Research the cod
 Read `$DESIGN_TMPDIR/approach-synthesis.txt` from Step 2a and incorporate the synthesis into the plan. The synthesis should inform architectural decisions, file selection, and tradeoff resolutions. If it contains exactly `NO_SKETCHES_CLASSIFIED_TRIVIAL`, treat that as a sentinel that no sketches ran because the router confirmed trivial doc-only scope; write the plan from direct codebase/doc inspection instead of fabricating sketch agreement.
 
 Also read `$DESIGN_TMPDIR/discussion-round1.md` if it exists and is non-empty. Incorporate the scope boundaries and hard constraints established during the design discussion into the plan — these define what is in-scope, what must not break, and what the user explicitly does not want.
+
+Also read `$DESIGN_TMPDIR/brainstorm.md` if it exists and is non-empty. Treat brainstorm output as **additive ideation** — fold ideas into the plan only when they do not conflict with binding dialectic resolutions or explicit user refusals from Round 1.
 
 Also read `$DESIGN_TMPDIR/dialectic-resolutions.md` if it exists and is non-empty. Parse the structured fields defined in `${CLAUDE_PLUGIN_ROOT}/skills/shared/dialectic-protocol.md` (Resolution, Disposition, Vote tally, Thesis summary, Antithesis summary, Why field). **Branch on `Disposition`**:
 
@@ -670,9 +694,9 @@ Hermetic regression coverage for `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/em
 
 **IMPORTANT: Plan review MUST ALWAYS run the full Step 3 panel: **10 static** external slots (5 Cursor + 5 Codex for Arch, Edge, Innovation, Pragmatic, Requirements) plus **up to 12 dynamic** slots (Cursor + Codex per scouted archetype, scout cap 6). Never skip or abbreviate this step regardless of how straightforward the plan appears — even when all sketch agents agreed, the plan is short, or the change seems trivial. Reviewers compare **proposed plan steps** to **current repository evidence** and flag **proposed-change defects** (missing steps, wrong targets, contract gaps) — **not** post-merge bugs the plan already addresses. When Cursor is unavailable, each Cursor-assigned slot falls back to Codex; when Codex is unavailable, each Codex-assigned slot falls back to Cursor; when both are unavailable, each slot falls back to a Claude subagent.**
 
-**MANDATORY — READ ENTIRE FILE before launching reviewers**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/plan-review.md` completely. The reference is the normative source for reviewer prompts, the Competition notice blockquote, ballot handling, voting thresholds, Finalize Plan Review, and artifact templates. **Scout, panel dispatch, collection, aggregation, voting, and tally run inside** `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/plan-review-loop.sh` (see `plan-review-loop.md`). Renderer and harness references are unchanged (`render-plan-review-prompt.md`, `scout-plan-archetypes-wrapper.md`, `dispatch-plan-review-panel.md`, etc.). **agent-lint S030 pins** (literal paths retained in SKILL.md): `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/render-plan-review-prompt.sh`, `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/scout-plan-archetypes-prompt.txt`, `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-plan-review-prompt.sh`, `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-plan-review-prompt.md`.
+**MANDATORY — READ ENTIRE FILE before launching reviewers**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/plan-review.md` completely. The reference is the normative source for reviewer prompts, the Competition notice blockquote, ballot handling, voting thresholds, Finalize Plan Review, and artifact templates. **Scout, panel dispatch, collection, aggregation, voting, and tally run inside** `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/plan-review-loop.sh` (see `plan-review-loop.md`). Renderer and harness references are unchanged (`render-plan-review-prompt.md`, `scout-plan-archetypes-wrapper.md`, `dispatch-plan-review-panel.md`, etc.). **agent-lint S030 pins** (literal paths retained in SKILL.md): `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/render-plan-review-prompt.sh`, `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/scout-plan-archetypes-prompt.txt`, `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-plan-review-prompt.sh`, `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-plan-review-prompt.md`, `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-brainstorm-prompts.sh`, `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-brainstorm-prompts.md`.
 
-Launch **all static + eligible dynamic reviewers in parallel** (in a single message). When Cursor is unavailable, each Cursor-assigned slot falls back to Codex; when Codex is unavailable, each Codex-assigned slot falls back to Cursor; when both are unavailable, each slot falls back to a Claude subagent. **Spawn order for static slots** remains slowest-first: 5 Cursor archetypes (Arch, Edge, Innovation, Pragmatic, Requirements), then 5 Codex archetypes — dynamic slots follow in the manifest built by `dispatch-plan-review-panel.sh` (called from `plan-review-loop.sh`). Each reviewer receives the plan text and the feature description. Each must **only report findings** — never edit files.
+Launch **all static + eligible dynamic reviewers in parallel** (in a single message). When Cursor is unavailable, each Cursor-assigned slot falls back to Codex; when Codex is unavailable, each Codex-assigned slot falls back to Cursor; when both are unavailable, each slot falls back to a Claude subagent. **Spawn order for static slots** remains slowest-first: 5 Cursor archetypes (Arch, Edge, Innovation, Pragmatic, Requirements), then 5 Codex archetypes — dynamic slots follow in the manifest built by `dispatch-plan-review-panel.sh` (called from `plan-review-loop.sh`). Each reviewer receives the plan text and the feature context passed to `plan-review-loop.sh` (`plan-review-loop.sh` **merges** non-empty `$DESIGN_TMPDIR/brainstorm.md` into `plan-review-feature-context.txt` before scout + panel dispatch). Each must **only report findings** — never edit files.
 
 ### External Reviewer Setup (if `codex_available` or `cursor_available`)
 

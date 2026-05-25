@@ -1,0 +1,13 @@
+FINDING_1: EXONERATE -- legitimate boundary concern, but hardening generated brainstorm context is disproportionate here
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: NO -- the blank line matches surrounding Makefile target spacing
+FINDING_6: EXONERATE -- redundant assertion is harmless and removal is not worth churn
+FINDING_7: EXONERATE -- coupling is real but a comment would be weak protection for a nit
+FINDING_8: NO -- the existing banner is within the linter's 20-line pre-fence window for the second example
+FINDING_9: YES
+FINDING_10: EXONERATE -- shared verbosity in this harness is low risk and per-case scoping is extra churn
+FINDING_11: EXONERATE -- SIGKILL partial-write edge is too theoretical for tmp-file complexity here
+FINDING_12: EXONERATE -- re-entry failure mode is underspecified and extra guards would complicate prompt flow
+FINDING_13: EXONERATE -- the both-flags test already covers partition and brainstorm interaction

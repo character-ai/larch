@@ -1,0 +1,14 @@
+⏳ cursor agent: still running (1m elapsed)
+⏳ cursor agent: still running (2m elapsed)
+⏳ cursor agent: still running (3m elapsed)
+⏳ cursor agent: still running (4m elapsed)
+⏳ cursor agent: still running (5m elapsed)
+⏳ cursor agent: still running (6m elapsed)
+❌ cursor agent: FAILED (exit code 1, 370s elapsed, output 222 bytes)
+--- cursor output (last 5 lines) ---
+Connection lost, reconnecting (attempt 2)...
+Retry attempt 2...
+Connection lost, reconnecting (attempt 3)...
+Retry attempt 3...
+T: [resource_exhausted] Error
+--- end ---

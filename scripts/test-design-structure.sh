@@ -601,8 +601,13 @@ grep -Fq "| \`-p\` / \`--partition\` |" "$SKILL_MD" \
   || fail "(FINDING_21) SKILL.md compact flag table missing -p/--partition row"
 grep -Fq '[-p|--partition]' "$SKILL_MD" \
   || fail "(FINDING_21) SKILL.md argument-hint missing [-p|--partition]"
+grep -Fq '[--brainstorm]' "$SKILL_MD" \
+  || fail "(FINDING_21) SKILL.md argument-hint missing [--brainstorm]"
 grep -Fq "\`-p\`, \`--partition\`" "$SKILL_MD" \
   || fail "(FINDING_21) SKILL.md public argv allowlist missing -p/--partition"
+# shellcheck disable=SC2016 # Markdown literal; backticks are SKILL.md prose, not command substitution
+grep -Fq '`--partition`, `--brainstorm`, `--no-dedup`, and `--run-id`' "$SKILL_MD" \
+  || fail "(FINDING_21) SKILL.md public argv allowlist missing --brainstorm sequence"
 grep -Fq "\`--trivial\` and \`-p\` / \`--partition\` are mutually exclusive" "$SKILL_MD" \
   || fail "(FINDING_21) SKILL.md missing trivial vs partition mutual-exclusion prose"
 grep -Fq '### Step 2b.5 — Plan-size threshold check' "$SKILL_MD" \
@@ -638,6 +643,65 @@ grep -Fq 'design-l3-velocity-notified-2670' "$SKILL_MD" \
   || fail "(FINDING_21) Step 5d must reference design-l3-velocity-notified-2670 sentinel"
 grep -Fq "[ \"\${REPO:-}\" = \"character-ai/larch\" ]" "$SKILL_MD" \
   || fail "(FINDING_21) Step 5d must guard on REPO character-ai/larch identity"
+
+# Check 19 (#2754): --brainstorm / Step 1d.5 / run-params / plan-review feature-context pins.
+BRAINSTORM_MD="$REPO_ROOT/skills/design/references/brainstorm.md"
+BRAINSTORM_PROMPTS="$REPO_ROOT/skills/design/references/brainstorm-prompts.md"
+[[ -f "$BRAINSTORM_MD" ]] || fail "(2754) brainstorm.md missing"
+[[ -f "$BRAINSTORM_PROMPTS" ]] || fail "(2754) brainstorm-prompts.md missing"
+# shellcheck disable=SC2016 # Markdown table cell literal
+grep -Fq '| `--brainstorm` |' "$SKILL_MD" \
+  || fail "(2754) SKILL.md compact flag table missing --brainstorm row"
+# shellcheck disable=SC2016 # Markdown emphasis + backticks in SKILL.md
+grep -Fq '**`--trivial` + `--brainstorm`** uses' "$SKILL_MD" \
+  || fail "(2754) SKILL.md missing trivial+brainstorm upgrade-flow prose"
+grep -Fq '<!-- step:1d.5 — Brainstorm Panel -->' "$SKILL_MD" \
+  || fail "(2754) SKILL.md missing Step 1d.5 anchor"
+grep -Fq '> **🔶 /design 1d.5: brainstorm**' "$BRAINSTORM_MD" \
+  || fail "(2754) brainstorm.md missing 1d.5 brainstorm breadcrumb"
+grep -Fq '⏩ 1d.5: brainstorm — skipped (already complete; .brainstorm-done present)' "$BRAINSTORM_MD" \
+  || fail "(2754) brainstorm.md missing sentinel-hit skip breadcrumb"
+grep -Fq $'1d.5\tbrainstorm' "$REPO_ROOT/skills/design/scripts/step-name-registry.tsv" \
+  || fail "(2754) step-name-registry.tsv missing 1d.5 brainstorm row"
+grep -Fq '<BRAINSTORM_FRAMING_PROMPT>' "$BRAINSTORM_PROMPTS" \
+  || fail "(2754) brainstorm-prompts.md missing <BRAINSTORM_FRAMING_PROMPT>"
+grep -Fq '<BRAINSTORM_SCOPE_PROMPT>' "$BRAINSTORM_PROMPTS" \
+  || fail "(2754) brainstorm-prompts.md missing <BRAINSTORM_SCOPE_PROMPT>"
+grep -Fq '<BRAINSTORM_PRAGMATIC_PROMPT>' "$BRAINSTORM_PROMPTS" \
+  || fail "(2754) brainstorm-prompts.md missing <BRAINSTORM_PRAGMATIC_PROMPT>"
+# shellcheck disable=SC2016 # flags.md list marker uses backticks
+grep -Fq '`--brainstorm`:' "$FLAGS_MD" \
+  || fail "(2754) flags.md missing --brainstorm bullet anchor"
+grep -Fq '1c→1d→1d.5→1e' "$SKILL_MD" \
+  || fail "(2754) SKILL.md anti-halt sequence missing 1d.5 transition"
+grep -Fq 'MANDATORY — READ ENTIRE FILE' "$BRAINSTORM_MD" \
+  || fail "(2754) brainstorm.md missing MANDATORY directive"
+grep -Fq 'skills/design/references/brainstorm-prompts.md' "$BRAINSTORM_MD" \
+  || fail "(2754) brainstorm.md missing brainstorm-prompts.md path literal"
+grep -Fq 'ScheduleWakeup' "$BRAINSTORM_MD" \
+  || fail "(2754) brainstorm.md missing ScheduleWakeup prohibition anchor"
+# shellcheck disable=SC2016 # Markdown fence literal in brainstorm.md
+grep -Fq '**⚠ Background required — must be paired with breadcrumb-monitor.sh.**' "$BRAINSTORM_MD" \
+  || fail "(2754) brainstorm.md missing background-pair banner in collector fence"
+grep -Fq '# Background pair required: see BASH_AUTHORING.md §4' "$BRAINSTORM_MD" \
+  || fail "(2754) brainstorm.md missing BASH_AUTHORING §4 in-fence comment"
+# shellcheck disable=SC2016 # SKILL.md bash excerpt; quotes are literal
+grep -Fq -- '--brainstorm-requested "$brainstorm_requested"' "$SKILL_MD" \
+  || fail "(2754) SKILL.md write-run-params invocation missing --brainstorm-requested"
+# shellcheck disable=SC2016 # SKILL.md bash excerpt
+grep -Fq -- '[[ "$partition_requested" == true || "$brainstorm_requested" == true ]]' "$SKILL_MD" \
+  || fail "(2754) SKILL.md recovery guard missing partition OR brainstorm"
+# shellcheck disable=SC2016 # jq filter literal
+grep -Fq -- '.brainstorm_requested = (.brainstorm_requested == true or $merge_b)' "$SKILL_MD" \
+  || fail "(2754) SKILL.md jq merge missing brainstorm_requested arm"
+grep -Fq '⏩ 1d.5: brainstorm — skipped' "$BRAINSTORM_MD" \
+  || fail "(2754) brainstorm.md missing skip breadcrumb literal"
+grep -Fq 'plan-review-feature-context.txt' "$REPO_ROOT/skills/design/scripts/plan-review-loop.sh" \
+  || fail "(2754) plan-review-loop.sh missing plan-review-feature-context merge path"
+for _bk in cursor-brainstorm codex-brainstorm; do
+  grep -Fq "$_bk" "$TIMING_KINDS_SH" \
+    || fail "(2754) scripts/lib-timing-kinds.sh missing timing kind: $_bk"
+done
 
 # Check FINDING_2678 (#2678): YES↔EXONERATE canonical anchor phrase pinned across 4 prose locations.
 CANONICAL_PHRASE='When in doubt between YES and EXONERATE, prefer EXONERATE'

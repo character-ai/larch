@@ -2,7 +2,7 @@
 
 **Consumer**: `/design` argument parsing (loaded before Step 0 via the MANDATORY directive adjacent to the compact flag table in `SKILL.md`).
 
-**Contract**: normative rules for **public** `/design` argv (`--trivial`, `--simple`, `--hard`, `--partition` / `-p`, `--no-dedup`, `--run-id`) plus **internal** orchestration tokens retained for nested hosts and CI harness pins.
+**Contract**: normative rules for **public** `/design` argv (`--trivial`, `--simple`, `--hard`, `--partition` / `-p`, `--brainstorm`, `--no-dedup`, `--run-id`) plus **internal** orchestration tokens retained for nested hosts and CI harness pins.
 
 **When to load**: once at the top of `/design` invocation, before Step 0 executes, via the MANDATORY directive adjacent to the compact flag table. Do NOT load mid-flow; flag parsing runs once and the decisions are sticky.
 
@@ -18,8 +18,9 @@
 - `--no-dedup`: forward to `/larch:issue` on the verbal-create path. Default `false`.
 - `--run-id <ID>`: optional stable run id. Default empty.
 - `--partition` / `-p`: public boolean flag, default `false`. Mutually exclusive with `--trivial` (reject before `session-setup.sh` per `SKILL.md` Pre-Step-0 gate). Semantics: when no **hard** plan-size threshold fires at Step **2b.5**, treat a **soft** trigger as fired on every plan write so the orchestrator offers the break-up / continue flow — i.e. it **forces** the soft branch even when mechanical soft thresholds are all false. **Hard always wins**: if any hard threshold trips, Step 2b.5 uses the hard-only `AskUserQuestion` (Split / Cancel, no Continue) regardless of `--partition`. The flag is persisted to `$DESIGN_TMPDIR/run-params.json` as `partition_requested` (boolean) via `scripts/write-run-params.sh` so Gate B and post-plan discussion re-entries read it from a fresh Bash subshell without re-parsing argv.
+- `--brainstorm`: public boolean flag, default `false`. When set, Step **1d.5** runs after Round 1 discussion and before Gate A (see `references/brainstorm.md`). Persisted as `brainstorm_requested` (boolean) in `run-params.json` via `scripts/write-run-params.sh`. **`--trivial` + `--brainstorm`** is **not** an argv hard-error: `SKILL.md` Pre-Step-0 and the Step 0b tier gate use the same **Upgrade to `--simple`** / **Cancel** `AskUserQuestion` flow so `effective_tier` can become **simple** while retaining brainstorm.
 
-**Mutual exclusion**: at most one of `--trivial` / `--simple` / `--hard` on argv; duplicate tier flags → hard error before Step 0. Additionally, `--trivial` and `-p`/`--partition` are mutually exclusive (same gate).
+**Mutual exclusion**: at most one of `--trivial` / `--simple` / `--hard` on argv; duplicate tier flags → hard error before Step 0. Additionally, `--trivial` and `-p`/`--partition` are mutually exclusive (same gate). **`--trivial` + `--brainstorm`** uses the interactive upgrade/cancel flow above (not the same hard gate as `--partition`).
 
 **Positional tail**: after flags, either `^[0-9]+$` (existing issue) or verbal feature text (create issue via `/larch:issue` first).
 
@@ -68,6 +69,8 @@ Between-review-round velocity (>20% plan growth **and** >10 accepted findings) i
 ## Internal — sketch dispatch (not public argv)
 
 - **`/design` sketch phase is inline-only** (issue #2487): sketches, external collectors, synthesis, dialectic, and plan review run in the orchestrator session per `SKILL.md`. There is no Agent-tool offload path for the sketch phase.
+
+- **`brainstorm_requested` in `run-params.json`**: boolean sibling to `partition_requested`; Step **1d.5** reads this field (default `false` when absent) instead of re-parsing argv after subshell boundaries.
 
 ## Legacy — `--branch-info` and `--step-prefix` (internal orchestration)
 

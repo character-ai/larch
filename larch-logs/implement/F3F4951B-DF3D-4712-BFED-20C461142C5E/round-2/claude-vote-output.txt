@@ -1,0 +1,1 @@
+The ballot file at `<TMPDIR>/round-2/findings.md` contains no `### FINDING_N:` items — only the aggregator preamble line. There are no ballot items to vote on.

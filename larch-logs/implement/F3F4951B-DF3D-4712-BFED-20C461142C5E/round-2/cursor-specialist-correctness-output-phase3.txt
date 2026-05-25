@@ -1,0 +1,21 @@
+I have all the information needed. Here is the complete review:
+
+---
+
+### In-Scope Findings
+
+- **Test Coverage** `skills/design/scripts/test-plan-review-loop.sh:4320–4329` — Test case `DB` asserts that `dispatch-plan-review-panel.sh` receives the merged brainstorm feature file (`feature-file-seen.txt`), but the scout stub silently discards `--description-file` (line 4189: `--description-file|--max-archetypes|--session-env-path) shift 2 ;;`) with no corresponding assertion. The runtime code is correct today (`plan-review-loop.sh:174` passes `--description-file "$FEATURE_FILE"` to the scout), and `plan-review-loop.md` explicitly documents that the merged path flows to both scout and dispatch. However, there is no regression guard: a future edit that passes the pre-merge `FEATURE_FILE` to scout would leave the test green while dynamic archetype scouting silently degraded to unmerged context. **Suggested fix:** In `write_scout()`, capture `--description-file` to `$DESIGN_TMPDIR/scout-description-file-seen.txt`. Add `grep -Fq '## Feature / issue context (base)' "$DB/scout-description-file-seen.txt" || fail "scout did not receive merged brainstorm context"` to test case `DB`.
+
+- **Test Reliability** `scripts/test-implement-structure.sh:2877–2878` — `diff_ship_not_skill=$(comm -23 <(...) <(...) || true)` and `diff_skill_not_ship=$(comm -13 <(...) <(...) || true)` suppress non-zero `comm` exits with `|| true`. When `comm` detects unsorted input it exits 1 and may emit partial output; the `|| true` assigns an empty or partial string to the diff variable, causing both `[[ -n "$diff_..." ]]` guards to skip and the drift check to silently pass. Under `set -euo pipefail`, removing `|| true` would abort with a clear signal instead of a quiet false negative. The practical risk is low because both extraction pipelines end with `sort -u` (lines 2862 and 2867), but `|| true` removes the last-resort safety net should `sort -u` be removed from either pipeline in the future. **Suggested fix:** Drop `|| true` from both `comm` assignments. If either pipeline produces unsorted input, `comm` exits 1, `set -euo pipefail` aborts the harness, and the failure is immediately visible.
+
+### Out-of-Scope Observations
+
+1. `skills/design/references/brainstorm.md:3926` — The "Downstream consumer contract" bullet for Step 3 mentions only `dispatch-plan-review-panel.sh` as the recipient of the merged feature context, while `skills/design/scripts/plan-review-loop.md` documents that both `scout-plan-archetypes-wrapper.sh` (via `--description-file`) and `dispatch-plan-review-panel.sh` (via `--feature-file`) receive the merged path. Minor cross-document inconsistency; the runtime and `plan-review-loop.md` are authoritative and correct.
+
+---
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	medium	test-coverage	skills/design/scripts/test-plan-review-loop.sh:4320-4329	Test DB verifies dispatch receives merged brainstorm feature file but scout stub discards --description-file without any assertion	Future edit passes pre-merge FEATURE_FILE to scout; test stays green; dynamic archetype scouting silently degrades to unmerged context	In write_scout(), capture --description-file to $DESIGN_TMPDIR/scout-description-file-seen.txt; add grep -Fq assertion on that file in test DB
+1	in_scope	low	test-reliability	scripts/test-implement-structure.sh:2877-2878	comm -23 ... || true and comm -13 ... || true suppress comm non-zero exits	If either extraction pipeline loses sort -u, comm exits 1; || true assigns empty/partial to diff vars; both [[ -n ]] guards skip; drift check silently passes	Remove || true; let set -euo pipefail abort on comm failure so unsorted-input bugs surface immediately
+```

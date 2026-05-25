@@ -16,10 +16,11 @@ REVIEW_BUDGET=""
 WORKFLOW_PATH=""
 OUTPUT=""
 PARTITION_REQUESTED=""
+BRAINSTORM_REQUESTED=""
 
 usage() {
     while IFS= read -r line; do larch_err "$line"; done <<'USAGE'
-usage: write-run-params.sh --classification <TRIVIAL_DOC_ONLY|SIMPLE|HARD> --reason <text> --source <caller-forwarded> --sketch-budget <0|2|4> --review-budget <quick|full> --workflow-path <SIMPLE|HARD> --output <path> [--partition-requested <true|false>]
+usage: write-run-params.sh --classification <TRIVIAL_DOC_ONLY|SIMPLE|HARD> --reason <text> --source <caller-forwarded> --sketch-budget <0|2|4> --review-budget <quick|full> --workflow-path <SIMPLE|HARD> --output <path> [--partition-requested <true|false>] [--brainstorm-requested <true|false>]
 USAGE
 }
 
@@ -55,6 +56,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --partition-requested)
             PARTITION_REQUESTED="${2:?--partition-requested requires a value}"
+            shift 2
+            ;;
+        --brainstorm-requested)
+            BRAINSTORM_REQUESTED="${2:?--brainstorm-requested requires a value}"
             shift 2
             ;;
         --help|-h)
@@ -109,6 +114,10 @@ if [[ -n "$PARTITION_REQUESTED" ]]; then
     require_enum "--partition-requested" "$PARTITION_REQUESTED" true false
 fi
 
+if [[ -n "$BRAINSTORM_REQUESTED" ]]; then
+    require_enum "--brainstorm-requested" "$BRAINSTORM_REQUESTED" true false
+fi
+
 case "$OUTPUT" in
     /*) ;;
     *)
@@ -137,6 +146,7 @@ jq -n \
     --arg review_budget "$REVIEW_BUDGET" \
     --arg workflow_path "$WORKFLOW_PATH" \
     --arg partition_requested "${PARTITION_REQUESTED:-false}" \
+    --arg brainstorm_requested "${BRAINSTORM_REQUESTED:-false}" \
     '{
       schema_version: 1,
       design_classification: $classification,
@@ -145,7 +155,8 @@ jq -n \
       sketch_budget: $sketch_budget,
       review_budget: $review_budget,
       workflow_path: $workflow_path,
-      partition_requested: ($partition_requested == "true")
+      partition_requested: ($partition_requested == "true"),
+      brainstorm_requested: ($brainstorm_requested == "true")
     }' > "$TMP"
 
 mv "$TMP" "$OUTPUT"

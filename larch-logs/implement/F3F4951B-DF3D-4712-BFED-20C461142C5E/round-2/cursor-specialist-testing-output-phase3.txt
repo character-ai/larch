@@ -1,0 +1,43 @@
+### In-Scope Findings
+
+1. **Important [risk-integration]** `skills/design/references/brainstorm.md` (second `collect-agent-results.sh` fence, ~line 91–99 of second example block):
+
+   `collect-agent-results.sh` appears on line 25 of the Family B denylist in `scripts/lint-foreground-markers.sh`. The lint rule requires the banner `**⚠ Foreground required — do NOT set \`run_in_background: true\`.**` to appear in the prose window **immediately above** the opening fence of every block that contains a denylisted script invocation. `brainstorm.md` has two such fences ("Example — one external" and "Example — two externals"). The banner appears only once, before the first fence. The second fence has only `**Example — two externals**:` immediately above it — no banner.
+
+   `test-design-structure.sh` Check 19 asserts the banner exists via `grep -Fq '**⚠ Foreground required...**' "$BRAINSTORM_MD"` — a file-wide substring check that passes as long as the string appears anywhere. The `lint-foreground-markers.sh` linter does a positional look-back (five in-fence lines) per anchor, so the structural test passes while `make lint-foreground-markers` (run as part of `make lint`) will fail in CI on the second fence.
+
+   **Fix:** Add the banner line immediately before the second fence's opening triple-backtick in `brainstorm.md`. Also tighten Check 19 to count banner occurrences (`grep -c`) and assert the count equals 2 (one per fence).
+
+2. **Latent [correctness]** `scripts/test-implement-structure.sh` (new drift guard block, `awk` range for `ship_keys`):
+
+   The range pattern `/^write_initial_state\(\) \{/,/\} > "\$tmp" && mv/` anchors its end on the literal string `} > "$tmp" && mv`. If `ship-pr.sh`'s output-redirect idiom is ever reformatted (e.g., split across lines, variable rename, or the `mv` step moved), the awk range never closes and silently slurps the rest of the file, producing a bloated key list. `comm -13` would then report every line past the closing brace as a key "missing from SKILL.md," turning the guard into noise rather than a signal. There is no assertion that the range actually closed (e.g., that `ship_keys` is non-empty or bounded in count).
+
+   **Fix:** Add a non-empty guard: after the `awk` pipe, assert `[[ -n "$ship_keys" ]]` with a clear error message. Optionally assert `(( $(wc -l <<<"$ship_keys") < 50 ))` to catch runaway extraction.
+
+3. **Nit [risk-integration]** `skills/design/scripts/test-brainstorm-prompts.sh` (entire new file):
+
+   Acceptance criterion #10 in the plan states the dirty-tree checkpoint must be present (the `check-mid-run-dirty-tree.sh --mode checkpoint` block with `STAGE=brainstorm-collection` and sentinel `.dirty-tree-prompted-brainstorm-collection`). The dirty-tree section IS present in `brainstorm.md` (confirmed at lines 105–114) but `test-brainstorm-prompts.sh` contains no assertion for either the sentinel literal or the `check-mid-run-dirty-tree.sh` invocation. This means a future edit that accidentally removes the checkpoint passes the prompt-pin harness without notice.
+
+   **Fix:** Add two `grep -Fq` assertions: one for `brainstorm-collection` (the STAGE value / sentinel basename) and one for `check-mid-run-dirty-tree.sh` in `brainstorm.md`.
+
+4. **Nit [risk-integration]** `skills/design/scripts/test-plan-review-loop.sh` (`write_dispatch_one_slot` stub, guard line):
+
+   The updated stub exits with `exit 2` when `FEATURE_FILE` is empty, but emits no error message before doing so. Future test authors adding cases that legitimately omit the feature file (e.g., to test pre-brainstorm paths) will see a bare non-zero exit with no diagnostic. Since `exit 2` is the stub's error sentinel and `run_loop()` captures exit status, silent failure makes new test debugging harder than necessary.
+
+   **Fix:** Prepend `echo "write_dispatch_one_slot: FEATURE_FILE is empty" >&2` before the `exit 2`.
+
+---
+
+### Out-of-Scope Observations
+
+None identified.
+
+---
+
+```tsv
+id	severity	focus_area	file	issue_summary	suggested_fix
+1	important	risk-integration	skills/design/references/brainstorm.md	Second collect-agent-results.sh fence lacks foreground banner; grep-Fq structural test misses positional gap; make lint-foreground-markers will fail in CI	Add banner immediately before second fence opening; tighten Check 19 to assert banner count == 2
+2	latent	correctness	scripts/test-implement-structure.sh	awk range anchored on } > "$tmp" && mv idiom; reformatting ship-pr.sh silently produces unbounded key extraction, turning drift guard into noise	Assert ship_keys is non-empty after awk; optionally assert line count is bounded
+3	nit	risk-integration	skills/design/scripts/test-brainstorm-prompts.sh	Acceptance criterion #10 (dirty-tree checkpoint) present in brainstorm.md but not asserted by any test; removal goes undetected	Add grep -Fq assertions for brainstorm-collection sentinel and check-mid-run-dirty-tree.sh invocation
+4	nit	risk-integration	skills/design/scripts/test-plan-review-loop.sh	write_dispatch_one_slot stub exits 2 on empty FEATURE_FILE with no error message; silent failure hampers future test debugging	Add echo to stderr before exit 2
+```

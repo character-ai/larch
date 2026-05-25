@@ -1,0 +1,85 @@
+I have all the data I need. Here is the full review output.
+
+---
+
+### In-Scope Findings
+
+**Finding 1 — Non-atomic write for `plan-review-feature-context.txt` in `plan-review-loop.sh`**
+**Severity**: Latent | **Focus area**: Failure recovery / boundary behavior
+
+`skills/design/scripts/plan-review-loop.sh` (diff line ~4076):
+
+```bash
+_merged_feature="$DESIGN_TMPDIR/plan-review-feature-context.txt"
+{
+    printf '%s\n' "## Feature / issue context (base)"
+    cat "$FEATURE_FILE"
+    ...
+    cat "$_brainstorm_file"
+} >"$_merged_feature"
+FEATURE_FILE="$_merged_feature"
+```
+
+The output redirect `>` truncates the destination file immediately. If the `cat` commands fail mid-write (e.g., disk-full, unexpected signal), `plan-review-feature-context.txt` is left with partial content. Compare `write-run-params.sh` (same script family), which uses `TMP=$(mktemp "${OUTPUT}.tmp.XXXXXX")` + `mv -f "$TMP" "$OUTPUT"` for exactly this reason.
+
+Mitigating factors: `set -euo pipefail` makes a mid-write I/O failure abort loudly, and a subsequent re-run unconditionally overwrites the file (no idempotency sentinel guards this block). So the real risk is narrow: a partial file could pass the `-f` and `-s` checks on the second run if the first failure left a non-empty stub. Since `brainstorm.md` is stable at this point in the workflow, the scenario is very unlikely in practice. Still, it is the only new persistent-artifact write in the diff that skips the atomic pattern the codebase uses elsewhere.
+
+*Suggested fix*: `_merged_feature=$(mktemp "${DESIGN_TMPDIR}/plan-review-feature-context.txt.XXXXXX")` → write → `mv -f "$_merged_feature" "$DESIGN_TMPDIR/plan-review-feature-context.txt"` → assign.
+
+---
+
+**Finding 2 — `LARCH_QUIET_DISABLE=1` in `run_loop()` changes behavior for all pre-existing test cases**
+**Severity**: Nit | **Focus area**: Test behavioral drift
+
+`skills/design/scripts/test-plan-review-loop.sh` (diff line ~4266):
+
+```bash
+run_loop() {
+    local d="$1"
+    export CLAUDE_PLUGIN_ROOT="$ROOT"
++   export LARCH_QUIET_DISABLE=1
+    ...
+```
+
+`run_loop()` is the shared driver for all four test cases (D0 zero-findings, D1 one-finding, D2 tally-fail, and the new DB brainstorm). Adding `LARCH_QUIET_DISABLE=1` here affects all of them. In quiet-disabled mode, `larch_quiet_init` returns early: no quiet log file is created, and `emit_kv` routes to raw stdout instead of through the `exec 3>&1` FD-3 channel. Pre-existing tests capture `$out` and grep for `^LOOP_STATUS=` / `^TALLY_PLAN_REVIEW_STATUS=` patterns that come from `emit_kv`; these assertions still pass. But with quiet disabled, `$out` now also includes stub subprocess stdout (`DISPATCH_OK=true`, `FALLBACK_COUNT=0`, `VOTER_PATHS_FILE=…`), which was previously absorbed by the log-file redirect. The DB test's own assertions (`grep -Fq '## Feature / issue context (base)' feature-file-seen.txt`) don't actually require quiet-disabled mode — they check an artifact file, not `$out`.
+
+The change is benign for the current assertion set, but it silently upgrades all four test cases from quiet-init mode to raw-stdout mode. If a future test adds an exact-match assertion on `$out`, it will pick up the newly-visible subprocess KVs and get false positives.
+
+*Suggested fix*: Set `LARCH_QUIET_DISABLE=1` only inside DB's test section (a local `export` before `run_loop "$DB"`), or document in a comment why quiet-disabled mode is the correct baseline for the shared helper.
+
+---
+
+**Finding 3 — `test-brainstorm-prompts.sh` asserts token presence but not invocation context or zero-externals guard**
+**Severity**: Nit | **Focus area**: Test coverage boundary
+
+`skills/design/scripts/test-brainstorm-prompts.sh`:
+
+```bash
+for needle in '<BRAINSTORM_FRAMING_PROMPT>' '<BRAINSTORM_SCOPE_PROMPT>' '<BRAINSTORM_PRAGMATIC_PROMPT>'; do
+    grep -Fq -- "$needle" "$BP" || fail "brainstorm-prompts.md missing token $needle"
+    grep -Fq -- "$needle" "$BM" || fail "brainstorm.md must reference token $needle"
+done
+```
+
+The harness confirms each token appears in both files, which is the right liveness check. But it does not verify:
+
+**(a) Tokens appear in invocation context**: a token that exists only as a comment or in a table header in `brainstorm.md` would pass. If a future rename in `brainstorm-prompts.md` moves, say, `<BRAINSTORM_FRAMING_PROMPT>` to `<BRAINSTORM_CURSOR_PROMPT>`, the test fails immediately — good. But if the token is present in `brainstorm.md` only as dead documentary text (e.g., in a "see also" section rather than the slot dispatch prose), the check passes even though the actual dispatch path never references it.
+
+**(b) Zero-externals guard behavior**: the spec (`brainstorm.md` line ~3869 and acceptance criterion #5) requires that when both Cursor and Codex fall back to Agent (no external launches), `collect-agent-results.sh` is NOT called. No test case currently exercises this path — `test-brainstorm-prompts.sh` checks prompt tokens only; the design-structure harness checks for the literal `collect-agent-results.sh` guard text; but no integration test verifies the guard actually fires. This is a gap in `test-brainstorm-prompts.sh`'s scope.
+
+*Suggested fix*: Low urgency — both gaps are document/prose token risks rather than code logic risks. If the concern is real, (a) could be addressed with a grep that requires the token to appear on a non-`#`-comment line adjacent to `<BRAINSTORM_*_ASSEMBLED_PROMPT>`, and (b) could be a separate harness or folded into the existing dispatch-panel test stubs.
+
+---
+
+### Out-of-Scope Observations
+
+None. The `larch-logs/design/9D599588/` entries lack a `brainstorm_requested` key in their `run-params.json` (it is the run that designed this feature before the schema existed), but this is pre-existing state and not introduced or amplified by this diff.
+
+---
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	Latent	failure-recovery	skills/design/scripts/plan-review-loop.sh:4076-4083	Non-atomic write of plan-review-feature-context.txt	Signal or disk-full mid-write leaves partial file; on re-run the partial file passes -f -s guard and gets overwritten — but the window exists if a re-run reads the file before the script re-writes it (extremely narrow)	Use mktemp temp-file + mv -f atomic replace, consistent with write-run-params.sh pattern
+1	in_scope	Nit	code-quality	skills/design/scripts/test-plan-review-loop.sh:4266	LARCH_QUIET_DISABLE=1 added to shared run_loop() affects D0/D1/D2 as well as DB	In quiet-disabled mode, stub subprocess KVs (DISPATCH_OK, VOTER_PATHS_FILE) now appear in captured $out alongside emit_kv output; future exact-match assertions could get false positives	Scope the export to the DB test section only, or add a comment explaining quiet-disabled is intentional baseline for all cases
+1	in_scope	Nit	code-quality	skills/design/scripts/test-brainstorm-prompts.sh	Token presence check does not verify invocation context or zero-externals guard path	Token could appear only in a comment/header; zero-externals guard (no collect-agent-results.sh call when both externals fall back) has no integration coverage	(a) Add grep that requires token on a non-comment line near assembled-prompt reference; (b) add a stub harness case where both externals are unavailable and assert collect-agent-results.sh is not called
+```

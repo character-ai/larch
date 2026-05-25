@@ -1,0 +1,86 @@
+<analysis>
+
+## Security Review — `--brainstorm` flag for `/design` (branch `sergey-zhupanov/implementing-add-brainstorm-flag-to-desi-2754`)
+
+**Reviewer role:** Specialist — Security and Trust Boundaries
+**Scope:** All changes introduced by this branch vs `main`
+
+---
+
+### 1. Shell Injection / Command Injection
+
+**`scripts/write-run-params.sh`**
+The new `--brainstorm-requested` flag uses the pre-existing `require_enum` validation pattern:
+```bash
+require_enum "--brainstorm-requested" "$BRAINSTORM_REQUESTED" true false
+```
+The value is then passed to `jq` via `--arg`, which treats it as an opaque string before coercion:
+```bash
+--arg brainstorm_requested "${BRAINSTORM_REQUESTED:-false}"
+...
+brainstorm_requested: ($brainstorm_requested == "true")
+```
+No shell metacharacters can reach jq's expression; the `== "true"` comparison produces a safe boolean. This is structurally identical to the pre-existing `partition_requested` handling. **No issue.**
+
+**`skills/design/SKILL.md` — recovery jq merge block**
+Uses `--argjson` with values derived from a shell test `[[ ... ]] && echo true || echo false` — the only possible outputs are the literals `true` and `false`. No user-controlled content enters the jq expression. **No issue.**
+
+**`skills/design/scripts/plan-review-loop.sh`**
+The brainstorm context merge:
+```bash
+{
+    printf '%s\n' "## Feature / issue context (base)"
+    cat "$FEATURE_FILE"
+    printf '\n\n%s\n' "## Brainstorm synthesis (additive; optional)"
+    cat "$_brainstorm_file"
+} >"$_merged_feature"
+```
+`cat` reads file content as bytes and writes to a temp file — no execution of content. `$DESIGN_TMPDIR` is canonicalized via `cd && pwd -P` upstream in the script chain; `$_brainstorm_file` and `$_merged_feature` are constructed by concatenation of that canonicalized base with literal suffixes. **No path traversal or injection risk.**
+
+**`skills/design/scripts/test-brainstorm-prompts.sh`**
+All grep calls use `grep -Fq --` (fixed-string, end-of-options), matching literal prompt tokens. The needle strings are hardcoded, not derived from input. **No issue.**
+
+**`scripts/test-implement-structure.sh` drift guard**
+AWK and grep operate on controlled source files within the repo tree; the `comm`-based set difference consumes sorted output of those greps. The HTML comment markers (`<!-- write-initial-state-keys:begin -->` / `<!-- write-initial-state-keys:end -->`) are parsed by `awk` using literal pattern matching, not eval. **No issue.**
+
+---
+
+### 2. Path Traversal
+
+The new `brainstorm.md` staging files (`cursor-brainstorm-output.txt`, `codex-brainstorm-output.txt`, `brainstorm.md`) are all written under `$DESIGN_TMPDIR`, which the existing infrastructure canonicalizes before use. The `plan-review-loop.sh` conditional checks `-f` and `-s` before opening the file; there is no user-controlled path component. **No issue.**
+
+---
+
+### 3. Prompt Injection (Agent Output → Downstream Automation)
+
+External brainstorm agents (Cursor, Codex) return text; the parent orchestrator writes their output to staging files and then runs a synthesis step through the main Claude instance before the result reaches `plan-review-loop.sh`. The synthesis output is never parsed as structured data or executed; it is appended to a feature-context blob read by plan reviewers as prose. The `SKILL.md` explicitly documents `brainstorm.md` as "never load-bearing for downstream automation." **No amplified risk introduced.**
+
+---
+
+### 4. Secrets / Sensitive Data in Committed Files
+
+The new `larch-logs/` directories use the standard redaction schema (`<OPERATOR_REPO_PATH>`, `<TMPDIR>`, `<OPERATOR_CWD>`, `<REPO_ROOT>`). All paths, environment variable values, and session identifiers present in the log files are either UUIDs, issue numbers, or redacted placeholders. No credentials, tokens, or personal data are present. **No issue.**
+
+---
+
+### 5. AuthN / AuthZ
+
+The `--brainstorm` flag is a local workflow-control parameter; it does not gate access to any authenticated endpoint, does not modify permissions, and does not change who can invoke `/design`. **Not applicable / no issue.**
+
+---
+
+### 6. Dependency / Supply-Chain
+
+No new dependencies introduced. The implementation uses only shell builtins and pre-existing binaries (`jq`, `grep`, `awk`, `comm`, `sort`). **No issue.**
+
+</analysis>
+
+<summary>
+**In-Scope Findings:** None.
+
+The `--brainstorm` flag implementation introduces no new security vulnerabilities. All shell inputs are validated via `require_enum` before reaching `jq`, jq parameterization uses `--arg`/`--argjson` throughout (no string interpolation into expressions), file paths are derived from a canonicalized `$DESIGN_TMPDIR` base with no user-controlled components, agent-returned text flows through a synthesis step before reaching downstream consumers (and is explicitly non-load-bearing for automation), and committed run-log files are fully redacted. The implementation is structurally isomorphic to the pre-existing `--partition` plumbing, which carries the same safety properties.
+
+**Out-of-Scope Observations:** None.
+
+**TSV block:** *(omitted — no findings)*
+</summary>
