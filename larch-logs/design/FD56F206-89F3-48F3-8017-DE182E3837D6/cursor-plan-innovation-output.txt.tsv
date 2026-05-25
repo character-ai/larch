@@ -1,0 +1,2 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/implement/scripts/test-step2-dispatch.sh:115	Test M9 expects REASON=submodule-modified	Canonical dispatcher token is submodule-dirty (step2-implement.sh:579; codex-manifest-schema.md:73); M9 would fail on a correct implementation or encode the wrong contract	Change M9 assertion and step2-implement.md recovery docs to REASON=submodule-dirty; align emit_manifest_invalid_or_recover comments with the same token

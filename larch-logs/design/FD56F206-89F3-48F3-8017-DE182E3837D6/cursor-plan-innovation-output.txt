@@ -1,0 +1,31 @@
+Reading the implementation plan and exploring referenced codebase paths.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/implement/scripts/test-step2-dispatch.sh:115	Test M9 expects REASON=submodule-modified	Canonical dispatcher token is submodule-dirty (step2-implement.sh:579; codex-manifest-schema.md:73); M9 would fail on a correct implementation or encode the wrong contract	Change M9 assertion and step2-implement.md recovery docs to REASON=submodule-dirty; align emit_manifest_invalid_or_recover comments with the same token
+2	in_scope	important	architecture	skills/implement/SKILL.md:937-943	Step 2 preconditions matrix still mandates full §2.4 implementation for every claude_fallback	Recovery adds a no-reimplement sub-branch but row 942 still requires main-agent Edit/Write per the plan; matrix wins over prose (line 935) so recovery could be treated as a matrix violation or trigger duplicate edits	Amend the matrix (and §2.2 branch bullet) with a RECOVERY_FROM carve-out: commit-only path, no plan re-implementation; add a NEVER under §2.4 recovery
+3	in_scope	important	correctness	skills/implement/SKILL.md:95	Plan-scope gate references Files to modify only	Canonical /design plans use ## Files to modify/create with ### NEW:/UPDATED:/REWRITTEN: headings (skills/design/SKILL.md:585; this plan line 17); naive section-title match skips all planned paths and false-triggers recovery-out-of-scope or false-passes	Reuse the scout/check-plan-size heading regex to build the allowed-path set; treat Files to modify/create (or equivalent) as the section anchor
+4	in_scope	important	risk-integration	skills/implement/SKILL.md:93-98	Post-launch delta is checked in §2.4 step 1 but Step 4 commit has no frozen path list	Step 3 lint-fix can change the tree between scope check and commit-implementation.sh; orchestrator may commit a stale subset, omit lint fixes, or widen scope without re-check	Have the dispatcher write $TMPDIR_ARG/step2-postlaunch-delta.txt (or RECOVERY_PATHS= KV) at recovery emit; Step 4 commits exactly that list after re-validating plan scope and redaction
+5	in_scope	important	security	skills/implement/scripts/step2-implement.sh:600-649	Recovery bypasses Step 7a manifest path normalization	Malformed complete manifests can leave working-tree paths with .., absolute paths, or symlink escapes; safety gates do not re-walk porcelain paths before narrow commit	Apply the same jq/read loop as Step 7a to post-launch delta paths inside run_post_implementer_safety_gates (or a dedicated porcelain-path gate) before emitting claude_fallback
+6	in_scope	latent	correctness	skills/implement/scripts/step2-implement.sh:371-400	Pre-launch porcelain snapshot policy is unspecified	First-invocation-only baseline mis-attributes resume-cycle edits; per-launch overwrite without documenting comm/diff logic yields flaky M7/M1 harnesses	Document and implement: snapshot immediately before each run_launcher (after Step 3 stale-artifact rm), overwrite step2-prelaunch-porcelain.txt; delta via comm against that file with porcelain status-prefix stripped
+7	in_scope	nit	architecture	skills/implement/scripts/step2-implement.sh:74-80	emit_manifest_invalid_or_recover recovery envelope omits TOOL=	Other claude_fallback paths also omit TOOL=, but recovery logging uses RECOVERY_PRIOR_TOOL while §2.1 still derives TOOL_LABEL from TOOL; inconsistent warnings/telemetry	Emit TOOL=$TOOL_TAG alongside RECOVERY_PRIOR_TOOL on the recovery branch; extend §2.1 parse list and step2-implement.md stdout table
+8	out_of_scope	latent	architecture	skills/implement/scripts/step2-implement.sh:693-720	Dispatcher-side manifest auto-repair is a stronger fix than claude_fallback	When schema drifts but the tree is valid, infer files_touched/commit_message from git diff + plan title, jq -e, then STATUS=complete avoids a second main-agent pass (~$5-6)	Future issue: optional repair-and-commit path before recovery; keep current recovery as fallback when repair cannot synthesize a valid manifest
+
+**1. Test M9 bail token (`submodule-modified` vs `submodule-dirty`)**  
+The plan’s recovery guard text and Test M9 use `submodule-modified`, but the live dispatcher and schema doc emit **`submodule-dirty`** at ```574:579:skills/implement/scripts/step2-implement.sh```. Tests and comments should follow the canonical token or the schema and harness diverge.
+
+**2. Matrix vs recovery sub-branch**  
+§2.4 recovery says the main agent must **not** re-implement when `RECOVERY_FROM` is set, yet the authoritative matrix still requires full Step 2.4 implementation for all `claude_fallback` rows (```937:943:skills/implement/SKILL.md```). Because the matrix explicitly overrides conflicting prose, the plan needs an explicit matrix carve-out, not only a recovery subsection.
+
+**3. Plan-scope section naming**  
+The scope gate names **"Files to modify"**, while `/design` and this plan use **`## Files to modify/create`** with `### NEW:` / `### UPDATED:` / `### REWRITTEN:` paths (```17:18:<TMPDIR>/plan.txt```, `skills/design/SKILL.md:585`). Without the scout heading regex, recovery will mis-classify in-scope work.
+
+**4. Frozen delta vs Step 3**  
+Recovery checks porcelain once in §2.4, then Step 3 may mutate the tree before Step 4’s narrow `commit-implementation.sh` call. The plan does not persist the dispatcher-approved path set, so commit scope can drift.
+
+**5. Path normalization gap**  
+Step 7a rejects bad manifest paths before external commit; recovery never runs that check on porcelain-derived paths, so forbidden path shapes could reach Step 4 if mechanical gates pass.
+
+**6. Pre-launch porcelain timing**  
+`step2-baseline.txt` is first-invocation-only (```286:288:skills/implement/scripts/step2-implement.sh```); the plan adds `step2-prelaunch-porcelain.txt` but does not say whether it is refreshed on each `--answers` launch. That choice changes what “post-launch delta” means on resume.
+
+**7. [OUT_OF_SCOPE] Dispatcher auto-repair**  
+A unconventional stronger path: synthesize a valid `status=complete` manifest from `git diff` + plan metadata inside `emit_manifest_invalid_or_recover`, stay on the existing dispatcher commit path, and reserve `claude_fallback` for cases repair cannot validate—lower cost than re-running the main agent.

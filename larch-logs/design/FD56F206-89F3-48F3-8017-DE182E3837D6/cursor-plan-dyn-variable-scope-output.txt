@@ -1,0 +1,41 @@
+Reviewing the plan against `step2-implement.sh` for variable scope and control-flow issues.
+Checking aliases, test harness expectations, and control-flow around the cited lines.
+Checking pre-launch baseline patterns and whether the plan's safety-gate token list matches the script.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/implement/scripts/step2-implement.sh:579	skills/implement/scripts/test-step2-dispatch.sh (Test M9)	Plan and Test M9 expect REASON=submodule-modified but dispatcher emits submodule-dirty	Implementer copies plan token; M9 fails while production uses submodule-dirty, or code emits wrong token and breaks SKILL.md / codex-manifest-schema.md routing	Align plan step 4 and Test M9 with existing token submodule-dirty (skills/implement/scripts/step2-implement.sh:579, step2-implement.md:28)
+2	in_scope	important	correctness	skills/implement/scripts/step2-implement.sh:486-871	skills/implement/scripts/step2-implement.sh:254-264	Recovery helper must terminate process on every path; plan only mandates exit 0 on success	If emit_manifest_invalid_or_recover returns after emitting claude_fallback, script continues with shell STATUS still complete/needs_qa/bailed and Step 9 emits forbidden at 842/851/868 — pair invariant break or double STATUS	Mirror emit_bailed: every branch ends with exit 0 (recovery KV emit or emit_bailed); never return to callers at 487/491/508/549
+3	in_scope	important	risk-integration	skills/implement/scripts/step2-implement.sh:288-302	skills/implement/scripts/step2-implement.sh:371-405	Plan adds step2-prelaunch-porcelain.txt but omits first-write-only semantics used by spawn baselines	Resume/--answers re-run overwrites pre-launch snapshot; post-launch delta vs stale porcelain yields false empty delta (M2 false pass) or false recovery	Write porcelain baseline once via if [[ ! -f ... ]] before first run_launcher (same pattern as BASELINE_FILE/SPAWN_BRANCH_FILE)
+4	in_scope	important	correctness	skills/implement/scripts/test-step2-dispatch.sh:103-156	plan Tests M1/M4/M7	Tests M1/M4/M7 require porcelain delta gate but plan does not specify harness seeding of step2-prelaunch-porcelain.txt	Stub run may leave no prelaunch file or compare against empty; recovery tests flake or never activate	Document per-test setup: dispatcher writes file on first launch, or tests pre-seed $TMP/step2-prelaunch-porcelain.txt before stub mutates tree
+5	in_scope	nit	correctness	plan.txt step 3 (porcelain gate)	skills/implement/scripts/step2-implement.sh:239-292	Plan says compare porcelain to pre-launch baseline using same step2-baseline.txt mechanism	step2-baseline.txt stores HEAD SHA not porcelain; implementer may diff against wrong artifact	Clarify delta is porcelain-to-porcelain via step2-prelaunch-porcelain.txt only; cite HEAD baseline only for cursor HEAD-unchanged
+6	in_scope	nit	architecture	skills/implement/scripts/step2-implement.sh:555-591	plan emit_manifest_invalid_or_recover step 4	run_post_implementer_safety_gates needs BASELINE_SHA PLUGIN_JSON_BASELINE REQUIRES_HEAD_UNCHANGED not listed with the six plan variables	Helper refactor may omit HEAD/plugin/submodule inputs while six named vars are wired	Document helper inputs explicitly or define gates after line 349 where those vars exist
+
+**Variable-scope verification (plan target call sites 486, 490, 507, 548):**
+
+| Variable | Declared/assigned | Available at 486–548? |
+|----------|-------------------|------------------------|
+| `$TOOL_TAG` | `step2-implement.sh:218-226` | Yes (external path only) |
+| `$REPO_ROOT` | `step2-implement.sh:211-215` | Yes |
+| `$MANIFEST_RAW_PATH` | `step2-implement.sh:245`, copied `480` | Yes |
+| `$STATUS` | `step2-implement.sh:483` (before all four sites) | Yes |
+| `$TMPDIR_ARG` | `step2-implement.sh:73-145` | Yes |
+| `$SPAWN_BRANCH` | `step2-implement.sh:302` | Yes |
+
+- No plan-named variable is missing or branch-local at those sites.
+- FINDING_1 fix is correct: plan uses `$TOOL_TAG` (`plan.txt:80`); `step2-implement.sh` has no `TOOL_LABEL` (only `ship-pr.sh` elsewhere).
+- Second wrong alias: `submodule-modified` (finding 1), not another `TOOL_*` name.
+- Line 357 carve-out: `$STATUS` is unset there; routing 357 into recovery would be unsafe — plan excludes it (Test M11).
+- `exit 0` fall-through: satisfied only if the helper always `exit`s (finding 2); success path must not reach `step2-implement.sh:835-870`.
+
+1. **[correctness]** `skills/implement/scripts/step2-implement.sh:579` — Plan step 4 and Test M9 use `submodule-modified`; live dispatcher and docs use `submodule-dirty`. Revise plan and M9 to match the canonical token.
+
+2. **[correctness]** `skills/implement/scripts/step2-implement.sh:486-871` — Recovery helper must always terminate the shell (like `emit_bailed` at 254-264), not return into Step 5–9, or stdout can reach forbidden emits at 842/851/868 with stale `$STATUS`.
+
+3. **[risk-integration]** `skills/implement/scripts/step2-implement.sh:288-302` — Add first-write-only semantics for `step2-prelaunch-porcelain.txt` before first `run_launcher`, mirroring spawn baseline files.
+
+4. **[correctness]** `skills/implement/scripts/test-step2-dispatch.sh` (M1/M4/M7) — Plan should specify how tests seed or rely on dispatcher-written prelaunch porcelain for the delta gate.
+
+5. **[correctness]** plan step 3 — Do not conflate `step2-baseline.txt` (HEAD) with porcelain baseline; use dedicated prelaunch porcelain file only.
+
+6. **[architecture]** `skills/implement/scripts/step2-implement.sh:555-591` — `run_post_implementer_safety_gates` also needs `$BASELINE_SHA`, `$PLUGIN_JSON_BASELINE`, and `$REQUIRE_HEAD_UNCHANGED` in addition to the six variables the plan lists.
+
+**[OUT_OF_SCOPE]** Deferred periodic schema echo in `$IMPLEMENT_TMPDIR` (plan Out-of-scope) — no conflict with variable scope at the four call sites.
