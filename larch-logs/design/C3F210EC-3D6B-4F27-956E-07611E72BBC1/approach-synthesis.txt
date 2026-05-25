@@ -1,0 +1,57 @@
+# Approach Synthesis — Step 2a (quick mode, 2 sketches)
+
+Sketches: Cursor-Generic (Claude Agent-tool fallback — Cursor unavailable) and Codex-Generic.
+
+## Strong agreement (baseline for plan)
+
+1. **Core primitive**: a file-based breadcrumb stream per long-running invocation, distinct from the existing quiet log. The skill (or a wrapper) pre-allocates the path and exports it.
+2. **Integration point**: extend `scripts/lib-quiet.sh` — add a new emission target inside `emit_breadcrumb` gated on the new env var. FD-3 / `emit` / `emit_kv` contract preserved unchanged.
+3. **Always-background + propagate** path is authoritative for the 9 denylisted scripts (binding from Round 1 Decision 5). Legacy foreground FD-3 path remains as a separate route.
+4. **Nested transparency via inherited env var**: inner scripts see the same stream path through the environment, so breadcrumbs at any depth bubble up to the same chat-bound stream.
+5. **Redaction at the chat boundary**: chat-bound output piped through `scripts/redact-secrets.sh` before the user sees it.
+6. **Model-actionable structured format**: each breadcrumb is a single-line record with a fixed prefix and `key=value` fields (e.g., `larch:bc script=X phase=Y category=Z text=…`). Small fixed vocabulary for `category` so Claude can pattern-match on `stall`, `retry`, `escalate`, etc. and react.
+7. **Failure UX**: on non-zero exit, surface exit code + tail of the quiet log (~20-40 lines) in chat. Same propagation channel.
+8. **Foreground-duplication guard**: new emission target activates only when the new env var is set; foreground-only legacy callers see no behavior change (no double output).
+9. **Lint retirement / repurpose**: `scripts/lint-foreground-markers.sh` is repurposed to enforce the new background+propagate pairing (instead of the inverse foreground requirement). `BASH_AUTHORING.md §4` and the banner / comment markers are rewritten.
+10. **Bash 3.2 portability** for any new shell scripts (existing repo invariant).
+11. **9 denylisted scripts affected**: `ship-pr.sh`, `ci-wait.sh`, `collect-agent-results.sh`, `dispatch-plan-voters.sh`, `dispatch-with-waterfall.sh`, `run-step5-review.sh`, `run-step2-dispatch.sh`, `skills/implement/scripts/step2-implement.sh`, `skills/review-and-fix/scripts/review-and-fix.sh`.
+
+## Divergence — surfaced for dialectic resolution (Step 2a.5)
+
+Both sketches agree on the **what** (file-backed stream, lib-quiet integration, always-bg, env var inheritance). They diverge on the **how** of the chat-bound display loop and the wrapper shape. Two contested decisions documented in `contested-decisions.md`:
+
+- **DECISION_1**: Display mechanism — Monitor (Codex) vs foreground polling loop (Cursor/Claude fallback).
+- **DECISION_2**: Wrapper shape — explicit skill-level pairing (background launch + paired foreground breadcrumb-tail consumption call) vs single `run-with-breadcrumbs.sh` wrapper that internally backgrounds.
+
+## Files to modify (synthesized — Plan input)
+
+- `scripts/lib-quiet.sh` (core: new emission target + sentinel install helper + depth tracking)
+- `scripts/lib-quiet.md` (contract documentation)
+- `scripts/test-lib-quiet.sh` (extend coverage for new emission target, nesting, redaction)
+- New: `scripts/breadcrumb-tail.sh` OR `scripts/run-with-breadcrumbs.sh` (TBD per DECISION_2) + sibling `.md`
+- New: `scripts/test-breadcrumb-tail.sh` (or equivalent) + sibling `.md`
+- `scripts/lint-foreground-markers.sh` (repurpose semantics; possibly rename) + sibling `.md`
+- `scripts/test-lint-foreground-markers.sh` (rewrite for new contract)
+- `scripts/redact-secrets.sh` (no change expected; used as outbound filter)
+- `BASH_AUTHORING.md` (rewrite §4)
+- `AGENTS.md` (update NEVER #9 / NEVER #16 references and the "Don't spawn a Monitor or polling loop" bullet)
+- 9 denylisted scripts (single-line addition to install DONE sentinel + emit_breadcrumb structured form)
+- `skills/implement/SKILL.md` (rewrite foreground-marked invocation sites — ~3-6 sites)
+- `skills/design/SKILL.md` (rewrite foreground-marked invocation sites — 2 sites visible in current file)
+- `skills/design/references/plan-review.md`, `skills/design/references/dialectic-execution.md` (review invocation patterns)
+- `skills/review-and-fix/SKILL.md`, `skills/review/references/heavy-worker.md`
+- `skills/shared/orchestrator-never.md` (update NEVER #9/#16 narrative; remove Monitor-watch prohibition where it now conflicts)
+- `docs/linting.md` (lint-foreground rename / repurpose mention)
+- `docs/run-logs.md` (note that breadcrumb stream files are committed alongside quiet logs)
+
+## Tradeoffs and risks (synthesized)
+
+- **Trade**: one harness-quirk (random backgrounding of foreground-required scripts) for a deterministic dependence on completion notification (Bash `<task-notification>` + optionally a `DONE_SENTINEL` file).
+- **Risk — dual-runner ordering**: skill author forgets to follow background launch with consumption call → completion lost. Mitigation: repurposed lint enforces pairing.
+- **Risk — breadcrumb-file unbounded growth**: bounded by soft 10 MB cap (warn + truncate-front in tail helper) and by the small number of emit_breadcrumb call sites (~20 across 9 scripts).
+- **Risk — PIPE_BUF atomicity** (~4 KiB on macOS): contract caps breadcrumb message length at 1 KiB.
+- **Risk — redaction failure mode**: redact-secrets.sh must fail-closed (drop the line) rather than fail-open.
+- **Risk — Monitor verification gap** (if DECISION_1 picks Monitor): need a smoke test that Monitor actually streams lines per-event in Claude Code, not just on completion.
+- **Risk — subagent visibility**: Agent-tool subagents may not receive parent-scope task notifications; the bg-script and consumption call must both live inside the subagent context.
+- **Risk — lint regression**: rewriting `lint-foreground-markers.sh` touches every banner/comment marker; mechanically uniform but large surface — mitigated by pre-commit hook + a one-shot rewrite.
+- **Risk — chat token cost**: every 30s batch (or per-line Monitor event) adds visible context. Bounded by `LARCH_QUIET_BREADCRUMBS=1` gating; users can interrupt early.

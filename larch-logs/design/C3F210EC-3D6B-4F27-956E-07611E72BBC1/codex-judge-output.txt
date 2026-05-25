@@ -1,0 +1,3 @@
+DECISION_1: THESIS — Defense A better grounds Monitor as log/event streaming rather than completion watching, while Defense B’s sentinel polling still blurs the prohibited runner-watching pattern.
+
+DECISION_2: ANTI_THESIS — Defense A gives stronger implementation evidence for a foreground wrapper preserving turn coupling with centralized, testable behavior and a simpler lint invariant.

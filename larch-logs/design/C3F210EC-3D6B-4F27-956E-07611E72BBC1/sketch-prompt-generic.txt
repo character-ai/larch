@@ -1,0 +1,42 @@
+Propose a high-level implementation approach for this feature:
+
+<FEATURE_DESCRIPTION>
+# Feature: Propagate breadcrumbs from long-running helper scripts back to the calling skill (periodically or, ideally, instantly)
+
+## Original issue (character-ai/larch #2749)
+
+Skills such as /implement and /design rely on helper scripts that take a long time. They are carefully designed to be mostly silent (to avoid voluminous stdout from bloating main agent context), but they emit periodic breadcrumb messages on stdout, so the caller can be updated with some reasonable frequency with where the script is at.
+
+Despite valiant efforts to prevent claude harness from backgrounding these scripts, due to a known existing bug in claude harness, it randomly backgrounds these. The difference between them running in foreground and background is that in foreground the breadcrumbs are shown in real time by the harness (grayed out and in a tiny window, but still), whereas in background they stay completely silent. Since it's impossible (until claude code issue is fixed) to prevent this backgrounding, we have to come up with a way to mitigate it, so the user sees breadcrumbs, if not immediately, at least with some periodic refresh. These helper scripts can run >> 10 minutes.
+
+Tools we have:
+1) The script is run from inside a skill launched by claude code harness, so the harness may have instruments that could be used to "pipe" the stdout of the process to the chat
+2) The script stdout is redirected to a file in a temp directory (for subsequent run logs flushing), so the breadcrumbs do get logged there in real time
+3) We instruct claude to always background these scripts (which it does provide mechanism for), instead of trying to (unsuccessfully) to direct it to NEVER do so, and set up a timer wherein periodically, say, once a minute or once/30 seconds, we check the log file of the script, and everything that we did not display last time that got added to the tail since then we grab and display for user in the chat. This wait loop should be terminated, of course, once the script exits, successfully or not. I like this approach the least, because I have bad experience with claude harness timers (they tend to hang around and not be very reliable), but I suspect this may be our only resort.
+
+## Binding scope constraints (user-resolved Round 1)
+
+1. Coverage: Broad — apply uniformly to all long-running larch scripts (209 source `scripts/lib-quiet.sh`, 19 emit `emit_breadcrumb`).
+2. Latency: Open — sketch may pick near-real-time per-line streaming or periodic batch (30-60s).
+3. Display: Inline in main chat transcript (visible in scrollback). NOT side-channel only.
+4. Foreground duplication: must NOT re-print lines the harness already streams when a script does run in foreground.
+5. **FG-marker contract FLIP**: the 9 currently lint-foreground scripts (ship-pr.sh, ci-wait.sh, collect-agent-results.sh, dispatch-plan-voters.sh, dispatch-with-waterfall.sh, run-step5-review.sh, run-step2-dispatch.sh, step2-implement.sh, review-and-fix.sh) are explicitly switched to always-background + propagate. BASH_AUTHORING.md §4 lint enforcement is in-scope for retirement/repurposing.
+6. Failure UX: on non-zero exit, propagate exit code + stderr/log tail (~20-40 lines) into chat.
+7. Refactor budget: maximum. SKILL.md, lib-quiet.sh, the 9 scripts, and new helpers are all in-scope.
+8. Model-actionable: breadcrumb format should let Claude recognize patterns and react (cancel/retry/escalate). Reactive policy surface in-scope.
+9. Nested-script propagation: transparent at any depth (inner scripts' breadcrumbs must bubble up).
+
+## Implicit hard constraints
+- lib-quiet.sh FD-3 machine-readable stdout contract (`KEY=VALUE`, `STATUS=`, `EXIT_CODE=`) must continue to work.
+- emit_breadcrumb / LARCH_QUIET_BREADCRUMBS / LARCH_QUIET_BREADCRUMB_FD remain functional (additive).
+- Harness primitives: Bash run_in_background:true, Monitor (endorsed for log streaming), ScheduleWakeup (user dislikes — flaky).
+- Bash 3.2 portability (BASH_AUTHORING.md §3).
+- Redaction (scripts/redact-secrets.sh) for chat-bound output that may contain secrets.
+
+## Out of scope
+- Fixing the upstream harness backgrounding bug.
+- Replacing the FD-3 / emit_kv contract.
+- Side-channel-only displays.
+</FEATURE_DESCRIPTION>
+
+Explore the codebase. Write 2-3 paragraphs covering: (1) Key architectural decisions and approach, (2) Which files/modules to modify and why, (3) Main tradeoffs and risks. Do NOT modify files.

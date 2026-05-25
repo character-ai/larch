@@ -1,0 +1,229 @@
+### FINDING_1: Monitor/task-id completion bridge is not a repo-visible contract
+- **Reviewer(s)**: unknown-slot, Codex-Innovation, Codex-dyn-monitor-shell-bridge
+- **Severity**: important
+- **Concern**: The plan relies on a Bash-visible task id or Monitor bridge that repository shell code cannot observe, so breadcrumb-monitor.sh may be unable to activate its primary path or know when the background task completes.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From unknown-slot: Replace --task-id as the completion authority with explicit --done-sentinel and --status-file paths set by the launch block and written by the child process trap
+  - From Codex-Innovation: Use a repo-local done/exit-code sentinel path created before launch, or introduce a single foreground wrapper that starts the child, tails the breadcrumb stream, waits, and returns the child exit code. This avoids depending on harness-private task IDs.
+  - From unknown-slot: Make the wc-offset reader the specified primary path unless a real shell-invocable Monitor contract is proven; document exact observable activation in scripts/breadcrumb-monitor.md and add tests that force primary/fallback selection
+  - From Codex-dyn-monitor-shell-bridge: Make the Bash wc-offset follower the primary implemented path unless a documented Claude Code shell bridge is added; if Monitor remains primary, specify the exact invocation protocol, detection probe, failure signal, and test fixture
+
+### FINDING_2: Completion/status launch contract is incomplete
+- **Reviewer(s)**: unknown-slot, Codex-Requirements, Codex-dyn-monitor-shell-bridge
+- **Severity**: important
+- **Concern**: Rewritten launch blocks only provide the breadcrumb stream while monitor behavior depends on explicit done, status, and quiet-log paths; without those, the monitor cannot reliably stop, recover exit status, or print failure tails.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From unknown-slot: Make every rewritten callsite allocate and export LARCH_DONE_SENTINEL next to LARCH_BREADCRUMB_STREAM, pass it to breadcrumb-monitor.sh, and test a launch+monitor block end to end
+  - From unknown-slot: Define the launch template to allocate/export LARCH_DONE_SENTINEL and LARCH_QUIET_LOG_FILE, pass --done-sentinel/--status-file/--quiet-log to breadcrumb-monitor.sh, and document how the Bash tool task id is captured.
+  - From Codex-Requirements: Add explicit per-launch LARCH_DONE_SENTINEL and LARCH_QUIET_LOG_FILE setup, pass them to breadcrumb-monitor.sh, and test the generated skill examples
+  - From Codex-dyn-monitor-shell-bridge: Add explicit per-launch done and status paths, export them before the background launch, pass them to breadcrumb-monitor.sh, and have the EXIT trap capture rc=$? before writing both files
+
+### FINDING_3: Done sentinel does not preserve exit status
+- **Reviewer(s)**: unknown-slot, Codex-Pragmatic
+- **Severity**: important
+- **Concern**: A touch-only completion sentinel loses the child exit code, so STATUS output and failure-tail behavior cannot be implemented reliably.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From unknown-slot: Have larch_quiet_install_done_sentinel capture $? and atomically write the numeric exit code to the sentinel, matching the existing ci-wait.sh output-file done-file contract
+  - From Codex-Pragmatic: Make larch_quiet_install_done_sentinel write an atomic status file containing EXIT_CODE=<rc> from the EXIT trap, and have breadcrumb-monitor wait on that status contract instead of an unresolved harness task-id wait assumption
+
+### FINDING_4: Early done-sentinel trap can be overwritten
+- **Reviewer(s)**: unknown-slot, Codex-Innovation, Codex-Arch, Codex-Edge
+- **Severity**: important
+- **Concern**: Installing larch_quiet_install_done_sentinel immediately after larch_quiet_init is unsafe because several target scripts install later EXIT traps that would clobber the sentinel trap.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From unknown-slot: Install the done-sentinel hook after each script's final EXIT trap or introduce a shared on-exit registry/wrapper that composes future cleanup and sentinel behavior
+  - From Codex-Arch: Either move completion into breadcrumb-monitor using the actual Bash task notification, or add a trap-append helper and update each existing trap site; add lib-quiet init/sentinel support to the wrapper scripts only if their stdout contracts remain intact
+  - From Codex-Edge: Install the sentinel after each script's final EXIT trap or provide a trap-chaining helper and update later trap sites to use it; add tests where a later trap is installed after the sentinel helper
+  - From unknown-slot: Install the done sentinel after each script's final EXIT trap, or implement a real trap-composition helper and update every later trap site to use it
+  - From unknown-slot: Require each denylisted script to integrate the sentinel write into its final EXIT trap after script-specific traps are known, or provide an explicit trap-stack API and update later trap callsites to use it
+  - From unknown-slot: Install the sentinel after each script's final EXIT trap, or implement a shared composable trap stack and migrate later trap assignments to it; add regression tests where a trap installed after the sentinel still preserves DONE
+  - From unknown-slot: Revise the plan to chain at each existing EXIT trap site or require larch_quiet_install_done_sentinel after the final trap installation; add regression cases for scripts with traps installed after quiet init
+
+### FINDING_5: Nested helpers can mark parent launch complete early
+- **Reviewer(s)**: unknown-slot, Codex-dyn-env-signal-coherence
+- **Severity**: important
+- **Concern**: Blindly inheriting LARCH_DONE_SENTINEL into nested denylisted scripts can let an inner helper touch the top-level sentinel before the outer background task has finished.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From unknown-slot: Make sentinel ownership top-level only, for example by recording an owner PID/task token and touching only when $$ matches it, or by unexporting/replacing LARCH_DONE_SENTINEL for nested helper calls; add regression coverage for each nested denylisted invocation
+  - From Codex-dyn-env-signal-coherence: Make the done sentinel per launched top-level task, not blindly inherited by nested helpers; pass an ownership token or clear/rebind LARCH_DONE_SENTINEL before invoking nested denylisted scripts, and add a regression where an inner denylisted script exits before the outer script continues emitting breadcrumbs
+
+### FINDING_6: Denylisted wrappers lack lib-quiet initialization
+- **Reviewer(s)**: Codex-Arch, Codex-Edge, Codex-Innovation, Codex-Requirements, unknown-slot, Codex-dyn-env-signal-coherence
+- **Severity**: important
+- **Concern**: run-step5-review.sh and run-step2-dispatch.sh are in the rollout list but do not source lib-quiet.sh or call larch_quiet_init, so the proposed one-line sentinel insertion has no valid insertion point.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Edge: Add lib-quiet.sh sourcing and larch_quiet_init to those wrappers, or remove them from the sentinel-owned denylist and monitor the child scripts instead; define which process owns the done sentinel and quiet log
+  - From Codex-Innovation: Decide explicitly whether these wrappers should gain quiet init/sentinel support or whether completion should be owned only by their child scripts, then update the lint/docs/tests to match that ownership.
+  - From Codex-Requirements: Revise the plan to add lib-quiet sourcing and larch_quiet_init to those wrappers with stdout/stderr regression tests, or document a different sentinel owner for them
+  - From unknown-slot: Explicitly add lib-quiet sourcing and larch_quiet_init to those scripts, with tests for preserved stdout/stderr contracts, or exempt them from the in-script sentinel and use a wrapper-owned DONE sentinel
+  - From Codex-dyn-env-signal-coherence: Explicitly add source scripts/lib-quiet.sh plus larch_quiet_init to these wrappers, then install the sentinel after init, or exclude them from sentinel ownership and monitor their child process through a separately specified mechanism
+
+### FINDING_7: Foreground duplication guard uses impossible child-to-sibling env signaling
+- **Reviewer(s)**: unknown-slot, Codex-Edge, Codex-Arch, Codex-Pragmatic, Codex-dyn-monitor-shell-bridge, Codex-dyn-env-signal-coherence
+- **Severity**: important
+- **Concern**: The guard depends on a background child unsetting an env var that the sibling monitor already inherited, so the monitor can suppress all normal background output or fail to suppress duplicates depending on launch ordering.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From unknown-slot: Scope the guard to the child command only or use a child-written marker file that the monitor reads; document the exact launch snippet
+  - From Codex-Arch: Use an explicit file/status record written by the child before first breadcrumb, or have the caller choose monitor mode from actual tool execution; do not model cross-process state with env unsets
+  - From unknown-slot: Replace the env-var handoff with an explicit sidecar/sentinel written by the child and read by the monitor, or invert the default so the monitor streams unless a child-written already-surfaced marker exists; add a test where the child unsets the variable and prove the monitor still streams
+  - From unknown-slot: Use a filesystem sentinel or stream header written by the child to communicate actual surfacing state, or remove the fallback path and only use the monitor for required-background launches
+  - From Codex-Pragmatic: Use a shared sentinel/status file written by the child when foreground surfacing is actually detected, or drop the guard for required background launches; do not base monitor suppression on child-side env mutation
+  - From Codex-dyn-monitor-shell-bridge: Replace the inherited-env guard with an observable child-written marker file or clear the variable before invoking breadcrumb-monitor.sh; add tests for foreground and background launch paths
+  - From unknown-slot: Replace the env mutation with a per-launch sentinel file such as LARCH_BREADCRUMBS_SURFACED_SENTINEL; have lib-quiet.sh create it only when FD 3 is actually harness-visible, and have breadcrumb-monitor.sh suppress output only when that file exists
+  - From Codex-dyn-env-signal-coherence: Replace the mutable env signal with a per-launch sentinel file side channel, e.g. export a sentinel path to both siblings and have lib-quiet.sh touch it only when FD-3 is actually surfaced; breadcrumb-monitor.sh should check that file before replaying stream content
+
+### FINDING_8: Foreground-duplication tests validate the broken path
+- **Reviewer(s)**: unknown-slot, Codex-dyn-env-signal-coherence
+- **Severity**: important
+- **Concern**: The planned test asserts that an inherited LARCH_QUIET_BREADCRUMBS_ALREADY_SURFACED=1 makes the helper print nothing, which would pass even if every real background launch is incorrectly silenced.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From unknown-slot: Add sibling-process tests: background launch with no surfaced sentinel must print stream lines; foreground/harness-visible case with the surfaced sentinel must print nothing; inherited env alone must not suppress
+  - From Codex-dyn-env-signal-coherence: Update the test to model the correct side channel: no sentinel means stream breadcrumbs are printed, sentinel present means the monitor exits cleanly, and a child-only unset must not be part of the contract
+
+### FINDING_9: Breadcrumb env-var reset and inheritance semantics are underspecified
+- **Reviewer(s)**: unknown-slot, Codex-dyn-env-signal-coherence
+- **Severity**: important
+- **Concern**: The plan introduces several env vars without fully defining launch reset, nested inheritance, same-PID idempotence, disabled-mode behavior, or which vars may leak across launch pairs.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From unknown-slot: Add an explicit env table to scripts/lib-quiet.md: who sets each var, whether it is exported to child trees or monitor siblings, how it is reset after a launch, how nested larch_quiet_init increments depth only for a new PID, and how LARCH_QUIET_DISABLE=1 bypasses all new side effects
+  - From Codex-dyn-env-signal-coherence: Document exact semantics in scripts/lib-quiet.md and implement tests: LARCH_BREADCRUMB_STREAM is inherited only for the active launch pair then unset/restored, LARCH_BC_DEPTH increments once per new PID and never on same-PID idempotent init, LARCH_DONE_SENTINEL is top-level-owned or token-guarded, and LARCH_QUIET_BREADCRUMBS_ALREADY_SURFACED is replaced or scoped as a sentinel-file path
+
+### FINDING_10: LARCH_QUIET_DISABLE is not tested against breadcrumb stream writes
+- **Reviewer(s)**: unknown-slot, Codex-dyn-env-signal-coherence
+- **Severity**: important
+- **Concern**: Existing disable coverage only checks legacy output, so a new emit_breadcrumb stream path could still append records while LARCH_QUIET_DISABLE=1.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From unknown-slot: Add a test with LARCH_QUIET_DISABLE=1 and LARCH_BREADCRUMB_STREAM set, call larch_quiet_init and emit_breadcrumb, and assert no stream file content is produced; implement the disable guard in emit_breadcrumb itself, not only in larch_quiet_init
+  - From Codex-dyn-env-signal-coherence: Add a test that sets LARCH_QUIET_DISABLE=1, LARCH_BREADCRUMB_STREAM to a writable file, and emits a breadcrumb, then asserts stdout/stderr remain legacy-compatible and the stream file is absent or empty
+
+### FINDING_11: Structured breadcrumb category and escaping contract is underspecified
+- **Reviewer(s)**: unknown-slot, Codex-Innovation, Codex-Requirements
+- **Severity**: important
+- **Concern**: emit_breadcrumb currently accepts free-form text, while the plan requires structured records with categories and parseable text; without an explicit API or encoding, category quality and record parsing depend on fragile inference.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From unknown-slot: Add an explicit category argument or option, migrate audited call sites, and make tests assert category fields for warn/stall/retry examples
+  - From Codex-Innovation: Use compact JSONL for the stream or add an explicit category argument plus escaping/back-compat shim, then migrate and test denylisted plus nested `emit_breadcrumb` callsites.
+  - From unknown-slot: Extend emit_breadcrumb with an explicit category option/argument or documented inference table, update representative callsites, and add tests asserting every stream record has a valid c= value.
+  - From Codex-Requirements: Add an explicit emit_breadcrumb category API or deterministic classifier, update/audit callsites where needed, and add tests for every allowed category plus unknown input
+
+### FINDING_12: Regular-file breadcrumb appends may interleave or expose partial records
+- **Reviewer(s)**: Codex-Edge, Codex-dyn-monitor-shell-bridge
+- **Severity**: important
+- **Concern**: The plan applies PIPE_BUF assumptions to regular files and does not define complete-record offset handling, so concurrent or mid-write reads can produce torn records, split lines, or lost data.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Edge: Use a portable lock around appends, or write per-PID streams and merge them; make the nesting test spawn concurrent processes and validate every record parses
+  - From Codex-dyn-monitor-shell-bridge: Define the fallback algorithm to advance the bookmark only through the last complete newline, retain incomplete tail bytes for the next poll, detect truncation/rotation when size shrinks, and test partial-line writes explicitly
+
+### FINDING_13: Fallback polling semantics are incomplete and internally inconsistent
+- **Reviewer(s)**: unknown-slot, Codex-dyn-monitor-shell-bridge
+- **Severity**: important
+- **Concern**: The wc -c fallback lacks precise offset, final-drain, truncation, and cadence semantics, and its 1-second DONE assertion conflicts with a 2-second polling interval.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From unknown-slot: Specify a Bash 3.2 loop precisely: parse wc -c safely, read bytes from old_offset+1 through new_offset, update bookmark only after successful redacted print, perform a final drain after observing DONE, handle missing/truncated files, and either use sub-second polling or relax the 1-second assertion
+  - From Codex-dyn-monitor-shell-bridge: Set sentinel polling cadence to <=1s when using the fallback or relax the test and user-facing claim to the configured polling interval plus scheduling slack
+
+### FINDING_14: Breadcrumb-monitor mode selection is not observable
+- **Reviewer(s)**: Codex-dyn-monitor-shell-bridge
+- **Severity**: latent
+- **Concern**: The sibling documentation does not require a state machine or diagnostics for primary-vs-fallback activation, making tests unable to prove which mode produced near-instant output.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-dyn-monitor-shell-bridge: Require breadcrumb-monitor.md to define a mode-selection state machine, observable diagnostics such as MODE=monitor or MODE=fallback in test mode, activation thresholds, and which latency assertions apply to each mode
+
+### FINDING_15: ci-wait progress path may remain silent after backgrounding
+- **Reviewer(s)**: unknown-slot
+- **Severity**: latent
+- **Concern**: ci-wait progress is emitted through larch_errf rather than emit_breadcrumb, so switching ci-wait.sh to background+monitor may still produce no breadcrumb records during long waits.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From unknown-slot: Convert ci-wait progress/status larch_errf calls to emit_breadcrumb-compatible records, or teach lib-quiet to mirror selected larch_err output to the breadcrumb stream
+
+### FINDING_16: Stream and quiet-log path authorization is too broad
+- **Reviewer(s)**: unknown-slot
+- **Severity**: latent
+- **Concern**: Streaming arbitrary --stream or --quiet-log paths to chat relies on partial redaction and can expose unrelated local content through bad paths or symlinks.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From unknown-slot: Constrain stream and quiet-log paths to the session tmpdir/breadcrumb directory, reject symlinks and non-regular files, create files with private modes, and document redaction as defense-in-depth rather than authorization
+
+### FINDING_17: Per-line redaction can leak multiline PEM contents
+- **Reviewer(s)**: unknown-slot
+- **Severity**: important
+- **Concern**: Running the redactor independently per breadcrumb or quiet-log line loses multiline PEM state, allowing key body lines or failure tails to print raw.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From unknown-slot: Redact the whole quiet log before tailing and keep a persistent redaction stream for monitored output, or extend the redactor with a safe line-local mode that cannot leak PEM bodies; add tests for full PEM blocks and tails that start mid-key
+
+### FINDING_18: Committed breadcrumb streams lack a redacted larch-log path
+- **Reviewer(s)**: Codex-Arch, Codex-Edge, Codex-Innovation, Codex-Pragmatic, Codex-Requirements, unknown-slot
+- **Severity**: important
+- **Concern**: The plan says breadcrumb streams are committed under larch-logs with redaction guarantees, but it does not add a batch, publisher, or sanitizer path; artifacts may be dropped or copied raw outside the redaction pipeline.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: Either drop the committed-log claim or add an explicit breadcrumb batch/round artifact allowlist and design-log-publish recursion for the breadcrumbs directory, with sanitizer and tests
+  - From unknown-slot: Define a registered breadcrumb batch or explicit redacted-copy step through larch-log.sh before files enter the committed run directory; do not rely on larch-log commit to sanitize arbitrary files
+  - From Codex-Edge: Add an explicit larch-log batch or round artifact path for breadcrumb streams, run it through lib-redact before commit, register it in larch-log-batches, and test secrets/tmpdir redaction on committed breadcrumb files
+  - From unknown-slot: Add source-side redaction before appending to LARCH_BREADCRUMB_STREAM, or keep raw streams tmpdir-only and commit only a redacted copy produced by the same scrubber
+  - From Codex-Innovation: An ad hoc later copy could bypass the established redaction pipeline, or the docs will promise an artifact that is never committed. Add a registered batch/round artifact path that uses `larch-log.sh` redaction, with verifier and batch-table tests, or drop the committed-stream claim.
+  - From unknown-slot: Add an explicit breadcrumb-stream batch or a write-round allow-list entry plus refresh-run-logs integration, or drop the committed-log claim from the plan
+  - From Codex-Pragmatic: Either remove the committed-stream promise from docs/run-logs.md, or add a registered batch/copy path in larch-log, sanitizer coverage, and tests proving breadcrumb streams are redacted before commit
+  - From unknown-slot: Add a breadcrumb larch-log batch or flush step that redacts secrets/tmpdir/internal data before commit, and test raw secret breadcrumbs never reach committed artifacts.
+  - From Codex-Requirements: Register a breadcrumb batch or round artifact pattern, route it through larch-log redaction/validation, and update run-log completeness tests
+  - From unknown-slot: Either do not commit breadcrumb streams, or define a redaction step before persistence; if streams are described as already-redacted, make the writer or log-publish path enforce that and fail closed on redaction failure
+
+### FINDING_19: SECURITY.md is omitted despite redaction and log-behavior changes
+- **Reviewer(s)**: Codex-Requirements
+- **Severity**: important
+- **Concern**: The plan changes secret-handling expectations for raw streams, chat redaction, failure tails, and committed logs but does not update SECURITY.md.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Requirements: Add SECURITY.md updates covering raw session breadcrumb streams, fail-closed monitor redaction, committed-log redaction, and residual sensitive-content risks
+
+### FINDING_20: Rewrite surface misses old foreground-marker files
+- **Reviewer(s)**: unknown-slot, Codex-dyn-lint-migration-scope
+- **Severity**: important
+- **Concern**: Several tracked Markdown skill/reference files still contain old foreground banners or collect-agent-results.sh examples, so the hard-fail lint can break CI or continue teaching the obsolete pattern.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From unknown-slot: Expand the file list to every path returned by the foreground-marker linter/rg scan, including research references and skills/shared/external-reviewers.md
+  - From unknown-slot: Add these three files explicitly to the plan rewrite target list and convert each collect-agent-results.sh block to the new background pair required banner/comment plus breadcrumb-monitor.sh consumer
+  - From Codex-dyn-lint-migration-scope: Add these three files to the plan's rewrite targets and convert each collect-agent-results.sh example to the new background plus breadcrumb-monitor pair
+
+### FINDING_21: Breadcrumb monitor harness is not wired into validation
+- **Reviewer(s)**: unknown-slot, Codex-Arch, Codex-Edge, Codex-Pragmatic, Codex-Requirements
+- **Severity**: important
+- **Concern**: The plan creates scripts/test-breadcrumb-monitor.sh and calls make test-breadcrumb-monitor, but omits Makefile targets, harness shard registration, docs/linting entries, and agent-lint reachability updates.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From unknown-slot: Add Makefile target, harness aggregate shard entry, docs/linting.md target row, and any agent-lint exclusions matching existing Makefile-only harness patterns
+  - From Codex-Arch: Add Makefile .PHONY, target recipe, test-harness shard membership, docs/linting row, and agent-lint excludes for the new harness and sibling contract
+  - From Codex-Edge: Add test-breadcrumb-monitor to .PHONY, a Makefile target, a test-harness shard, and agent-lint exclusions if the harness is Makefile-only
+  - From unknown-slot: Add test-breadcrumb-monitor to .PHONY, a Makefile target, one test-harnesses shard, docs/linting.md, and agent-lint exclusions beside test-lib-quiet/test-lint-foreground-markers
+  - From Codex-Pragmatic: Add test-breadcrumb-monitor to .PHONY, a Makefile target, one test-harnesses-N shard, docs/linting.md, and the relevant agent-lint.toml script/sibling-doc allow-list entries
+  - From unknown-slot: Add Makefile updates and a docs/linting target entry; include the new target in a test-harnesses shard and .PHONY.
+  - From Codex-Requirements: Add Makefile .PHONY and target entries, place test-breadcrumb-monitor in exactly one test-harnesses shard, and run the shard coverage guard
+
+### FINDING_22: Foreground-marker lint pairing semantics are inconsistent
+- **Reviewer(s)**: Codex-Arch, Codex-Edge, unknown-slot
+- **Severity**: important
+- **Concern**: The lint spec alternates between requiring both run_in_background and breadcrumb-monitor and accepting either token, which can let unpaired launches or orphan monitors pass.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: Define copyable marker comments that explicitly document tool metadata, or move the pair into a real helper/driver script that launches and monitors itself; update lint to validate that representation
+  - From Codex-Edge: Specify and implement per-anchor AND semantics: the launch fence must contain run_in_background true and the same or adjacent allowed window must contain a matching breadcrumb-monitor invocation; add negative tests for each missing half
+  - From unknown-slot: Change the lint spec to require both tokens for each denylisted anchor, require old foreground marker failure, and add negative tests for consumer-without-background and background-without-consumer.
+  - From unknown-slot: Revise scripts/lint-foreground-markers.sh spec and tests so each denylisted anchor requires both run_in_background true in the launch fence and breadcrumb-monitor.sh --task-id in the same or allowed adjacent fence
+
+### FINDING_23: Old foreground-marker negative tests are under-specified
+- **Reviewer(s)**: unknown-slot
+- **Severity**: important
+- **Concern**: The migration-negative test may pass for missing consumer rather than because stale foreground phrases are rejected, and it does not separately exercise the old per-anchor comment.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From unknown-slot: Add fixtures where the old banner and old comment appear with an otherwise valid run_in_background true plus breadcrumb-monitor.sh pair, expect non-zero, and assert stderr names the foreground-marker migration or stale old phrase
+
+### FINDING_24: Step 5 anti-polling harness still rejects the planned background pattern
+- **Reviewer(s)**: Codex-Innovation, unknown-slot
+- **Severity**: important
+- **Concern**: Existing tests forbid Step 5 run_in_background true outside foreground banners, so the planned Step 5 background+monitor rewrite will fail lint.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Innovation: The PR will fail its required checks after the SKILL rewrite. Replace this assertion with the new invariant: every Step 5 Family B launch must have a background marker, stream path, and paired `breadcrumb-monitor.sh` consumer.
+  - From unknown-slot: Update the harness in the plan: assert paired breadcrumb-monitor usage for Step 5 and continue rejecting unpaired polling loops, instead of requiring one foreground review-and-fix call and filtering by Foreground required
+
+### FINDING_25: Bash 3.2 fallback behavior is not dynamically tested
+- **Reviewer(s)**: unknown-slot, Codex-dyn-monitor-shell-bridge
+- **Severity**: latent
+- **Concern**: The plan cites lint-bash32, but the current target is only a static token scan and cannot validate the new fallback’s offset parsing, trap behavior, or macOS wc/tail semantics under Bash 3.2.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From unknown-slot: Add executable test-breadcrumb-monitor.sh cases for offset parsing, partial lines, truncation, absent stream creation, final drain after DONE, and future EXIT-trap composition under real Bash 3.2 when available; keep lint-bash32 as only the static compatibility gate
+  - From Codex-dyn-monitor-shell-bridge: Add a dynamic test-breadcrumb-monitor case that runs under /bin/bash 3.2 when available, skips loudly otherwise, and separately pins fallback offset bookkeeping plus larch_quiet_install_done_sentinel trap composition

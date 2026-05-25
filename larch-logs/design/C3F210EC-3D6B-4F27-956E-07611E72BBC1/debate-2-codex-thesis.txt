@@ -1,0 +1,19 @@
+<steelman>
+The single-wrapper approach gives skill authors one stable foreground command while centralizing sentinel files, exit-code propagation, redaction, and breadcrumb streaming in one tested script. That reduces repeated callsite ceremony and may make operational behavior more uniform.
+</steelman>
+<claim>
+Explicit background launch plus immediate foreground breadcrumb consumption should ship because the bg/fg contract is an orchestrator-level invariant, not merely a shell implementation detail.
+</claim>
+<evidence>
+The existing lint already proves this repository enforces orchestration shape in Markdown: `scripts/lint-foreground-markers.sh:62-69` enumerates skill/rule authoring files, `scripts/lint-foreground-markers.sh:294-302` flags denylisted script anchors missing required nearby structure, and `BASH_AUTHORING.md:52-54` ties that structure to turn-boundary correctness. `skills/implement/SKILL.md:1018-1031` shows the current contract is readable at the callsite, including the script invocation and the operational rule around backgrounding.
+</evidence>
+<strongest_concession>
+The wrapper’s strongest point is real: centralized code is easier to test for redaction, sentinel cleanup, nested exit propagation, and stderr-tail failure UX than repeating paired launch/consume blocks across several skill files.
+</strongest_concession>
+<counter_to_opposition>
+That centralization does not justify hiding topology from the only layer that can accidentally end the turn early: the orchestrator prompt. Since the existing linter already detects script anchors and nearby structural requirements, repurposing it to require “launch plus paired consumer” keeps violations visible in the same surface where authors create them.
+</counter_to_opposition>
+<risk_if_wrong>
+If explicit pairing loses to the wrapper, SKILL.md readers and structural lint mostly see a foreground wrapper call while the true background lifecycle moves into an implementation file, making it easier for future edits to bypass or misunderstand breadcrumb consumption and completion coupling.
+</risk_if_wrong>
+RECOMMEND: THESIS
