@@ -1,0 +1,19 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: EXONERATE -- doc drift is real but low-impact and easy to fix in passing
+FINDING_7: EXONERATE -- speculative shard budget concern without measured regression
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: EXONERATE -- legitimate spreadsheet risk but low impact for internal forensic TSV
+FINDING_11: EXONERATE -- ballot IDs are internally controlled; crafted CLI input is not a practical threat
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: EXONERATE -- strict single-token axis parsing matches the documented judge output contract
+FINDING_18: YES
+FINDING_19: EXONERATE -- real coverage gap but nit-level prompt regression risk only

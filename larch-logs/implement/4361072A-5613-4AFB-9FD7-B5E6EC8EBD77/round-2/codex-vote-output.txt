@@ -1,0 +1,19 @@
+FINDING_1: EXONERATE -- The double-parse drift risk is legitimate, but no concrete current divergence is shown and a parity test is enough.
+FINDING_2: YES
+FINDING_3: EXONERATE -- Strict parse-rate enforcement for missing rating axes appears intentional despite tally backward compatibility for legacy vote lines.
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: NO -- The shard-overload concern is speculative without timing evidence that shard 9 exceeds budget.
+FINDING_8: YES
+FINDING_9: NO -- An explicit output-path flag writing outside `--design-tmpdir` is intentional and already exercised by tests.
+FINDING_10: EXONERATE -- Spreadsheet formula hardening is a legitimate concern, but it is too broad for this narrow TSV enum-heavy artifact.
+FINDING_11: EXONERATE -- Crafted direct CLI ballot IDs are outside the normal fixed `FINDING_N`/`OOS_N` path and not worth complicating now.
+FINDING_12: YES
+FINDING_13: EXONERATE -- MainAgent being outside fixed v1-v3 forensic columns is documented behavior, though the resulting rows are less informative.
+FINDING_14: YES
+FINDING_15: EXONERATE -- The `rejected` zero-judge row is deliberate and documented; downstream consumers should key off the panel status.
+FINDING_16: YES
+FINDING_17: EXONERATE -- The parser is allowed to require exact rating tokens from the prompt; tolerating punctuation/split tokens adds little value.
+FINDING_18: NO -- The parser is executable and existing harnesses execute it directly, so chmod regressions are already likely to fail tests.
+FINDING_19: YES

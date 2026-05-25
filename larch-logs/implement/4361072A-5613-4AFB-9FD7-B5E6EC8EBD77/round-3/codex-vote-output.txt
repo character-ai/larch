@@ -1,0 +1,19 @@
+FINDING_1: EXONERATE -- Real inefficiency, but current ballot sizes do not justify adding caching complexity.
+FINDING_2: EXONERATE -- The duplication is real, but consolidating legacy and parser paths is broader than this change warrants.
+FINDING_3: YES
+FINDING_4: EXONERATE -- Enum duplication is real, but existing tests/docs pin the small surface well enough for now.
+FINDING_5: YES
+FINDING_6: NO -- The current code-review zero-eligible path exits before per-finding classify_result handling.
+FINDING_7: YES
+FINDING_8: NO -- This is explicitly specified and tested parser behavior, not a regression worth raising.
+FINDING_9: NO -- The stale plan text is not shipped behavior and current docs/code consistently use main-agent-vote-required.
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: NO -- Reading explicit caller-supplied voter files is expected behavior and only derived vote tokens are published.
+FINDING_13: YES
+FINDING_14: EXONERATE -- Missing votes are already distinguishable by empty vote cells, so another state is not worth the schema complexity.
+FINDING_15: YES
+FINDING_16: EXONERATE -- Hyphen-glued rating syntax is outside the prompt contract and not worth supporting.
+FINDING_17: YES
+FINDING_18: NO -- This is only traceability nit in the plan, while the actual prompt file was updated.
+FINDING_19: NO -- The described symlink behavior is functionally safe and not worth filing as an issue.

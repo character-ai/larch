@@ -1,0 +1,21 @@
+FINDING_1: EXONERATE -- duplicated loops are identical today; drift risk is maintenance-only, not a current correctness bug
+FINDING_2: YES
+FINDING_3: EXONERATE -- enum duplication is real but latent until an axis rename; no current mismatch
+FINDING_4: YES
+FINDING_5: EXONERATE -- per-cell parser forks are real overhead but negligible at current ballot sizes
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: EXONERATE -- spaced `KEY= value` tokens are outside the documented voter format
+FINDING_14: YES
+FINDING_15: EXONERATE -- regex metachar risk is theoretical while orchestrated callers pass safe IDs
+FINDING_16: EXONERATE -- finding_id/voting_result sources are constrained; sanitizing them is optional hardening
+FINDING_17: YES
+FINDING_18: YES
+FINDING_19: YES
+FINDING_20: EXONERATE -- loop harness exercises real tally end-to-end; missing argv assertion is low-risk
+FINDING_21: YES

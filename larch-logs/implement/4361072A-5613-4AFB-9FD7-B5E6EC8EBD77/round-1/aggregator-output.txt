@@ -1,0 +1,2 @@
+Merging the supplied reviewer findings into a normalized structured list per aggregator rules. Analyzing overlaps and severity across slots.
+

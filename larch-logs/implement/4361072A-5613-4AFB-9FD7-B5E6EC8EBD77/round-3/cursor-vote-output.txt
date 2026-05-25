@@ -1,0 +1,22 @@
+Reading the ballot and verification context.
+
+
+FINDING_1: EXONERATE -- subprocess cost is real but acceptable for current ballot sizes and harness runs
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: EXONERATE -- enum duplication is mitigated by renderer variables and classification harness fixtures
+FINDING_5: EXONERATE -- main-agent-vote-required is documented in lib-vote-tally.md prose and zero-judge harness cases
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: NO -- harness and parse-judge-vote-and-rating.md intentionally allow axis cells when the vote token is invalid
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: EXONERATE -- optional out path is caller-controlled in a trusted design-session context
+FINDING_12: EXONERATE -- arbitrary voter paths are expected for phase outputs with symlink rejection on inputs
+FINDING_13: YES
+FINDING_14: EXONERATE -- missing ID lines defaulting to PARSED_UNCERTAIN=true is documented parser behavior
+FINDING_15: YES
+FINDING_16: EXONERATE -- hyphen-glued tokens are outside the whitespace-separated contract judges are prompted to use
+FINDING_17: EXONERATE -- MainAgent populating v1 is the documented single-voter forensic convention
+FINDING_18: NO -- this run's plan artifact already targets render-voter-prompt.sh for prompt extension
+FINDING_19: EXONERATE -- symlink handling differs in wording only; publish still rejects bad paths functionally

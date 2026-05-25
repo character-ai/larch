@@ -1,0 +1,2 @@
+Normalizing 31 raw reviewer findings: merging duplicates, preserving `[OUT_OF_SCOPE]` tags, and producing the structured aggregator output.
+

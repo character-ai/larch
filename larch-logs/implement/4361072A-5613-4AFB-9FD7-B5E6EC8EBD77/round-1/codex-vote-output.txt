@@ -1,0 +1,21 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: EXONERATE -- enum drift is real, but centralizing Bash/awk/prompt literals adds more machinery than this warrants.
+FINDING_4: YES
+FINDING_5: EXONERATE -- the fork overhead is real but not worth complicating the parser/tally flow for expected ballot sizes.
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: NO -- vN cells are parser-emitted enum-or-empty values, so tabs/newlines from judge prose cannot break those TSV columns as stated.
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: EXONERATE -- the prompt requires tight KEY=value tokens, and accepting loose whitespace is low-value parser complexity.
+FINDING_14: NO -- render-cache is intentionally a broader staged cache subtree and still goes through existing type checks and redaction.
+FINDING_15: EXONERATE -- current ballot IDs are constrained, so hardening arbitrary regex input is defense-in-depth rather than issue-worthy.
+FINDING_16: NO -- finding_id and voting_result are constrained internal enums/IDs, so this is not a concrete TSV integrity problem.
+FINDING_17: NO -- an explicit output path is useful for direct CLI and harness calls, and orchestrated use already controls it.
+FINDING_18: NO -- this duplicates the broader publish-coverage gap and is not worth a separate issue.
+FINDING_19: NO -- this duplicates the panel-failed TSV coverage concern and is not worth a separate issue.
+FINDING_20: YES
+FINDING_21: NO -- the sibling harness doc says reviewer cell sanitization, not broad vN voter-cell sanitization.

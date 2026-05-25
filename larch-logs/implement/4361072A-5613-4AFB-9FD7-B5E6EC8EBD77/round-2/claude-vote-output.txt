@@ -1,0 +1,19 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: EXONERATE -- shard-coverage harness is self-correcting; plan explicitly said shard 9 is natural home and that harness has authority
+FINDING_8: EXONERATE -- voter files originate from session-controlled tmpdir; symlink-via-external-agent threat model is weak
+FINDING_9: EXONERATE -- flag is set by orchestration scripts, not direct user input; containment check adds complexity without proportionate benefit for an internal tool
+FINDING_10: EXONERATE -- nit-level spreadsheet formula injection concern on a machine-readable committed log artifact not intended for spreadsheet use
+FINDING_11: EXONERATE -- ballot IDs follow strict FINDING_N/OOS_N format in all production call paths; awk regex metacharacter injection via direct CLI misuse of an internal tool is theoretical
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: EXONERATE -- strict single-token lowercase-only parsing is a deliberate plan design choice documented as keeping downstream analytics simple
+FINDING_18: YES
+FINDING_19: YES
