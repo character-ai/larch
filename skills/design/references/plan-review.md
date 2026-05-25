@@ -88,13 +88,31 @@ For Codex, Cursor, and their Claude replacement voters, instruct each: `"You are
 
 All reviewer slots (**10 static** plus **up to 12 dynamic** `dyn-*` pairs when scouting proposes archetypes) are dispatched through `dispatch-plan-review-panel.sh`, which calls `dispatch-with-waterfall.sh` in SKILL.md. The dispatcher writes a deterministic line-oriented paths-file at `<slots-file>.output-files` (same convention as Step 3 in SKILL.md once `_manifest` is set to the NDJSON path in the snippet below); when `PANEL_PATHS_FILE` is emitted on the waterfall stdout block, use that path for `collect-agent-results.sh --paths-file` (else fall back to `$_manifest.output-files`). Pass that paths file so output paths are not reassembled from a space-separated shell variable across Bash-tool subshells.
 
-**⚠ Foreground required — do NOT set `run_in_background: true`.**
+**⚠ Background required — must be paired with breadcrumb-monitor.sh.**
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
 _manifest="$DESIGN_TMPDIR/plan-review-slots.ndjson"
-# Foreground required: see BASH_AUTHORING.md §4
+
+mkdir -p "$DESIGN_TMPDIR/breadcrumbs"
+_launch_id="collect-agent-results.$$"
+export LARCH_BREADCRUMB_STREAM="$DESIGN_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.ndjson"
+: > "$LARCH_BREADCRUMB_STREAM"
+export LARCH_DONE_SENTINEL="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.done.XXXXXX")"
+export LARCH_STATUS_FILE="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.status.XXXXXX")"
+export LARCH_QUIET_LOG_FILE="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.quiet.XXXXXX")"
+export LARCH_BREADCRUMBS_SURFACED_FILE="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.surfaced.XXXXXX")"
+touch "$LARCH_DONE_SENTINEL" "$LARCH_BREADCRUMBS_SURFACED_FILE"
+# Tool JSON: run_in_background: true
+# Background pair required: see BASH_AUTHORING.md §4
 "${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh" --timeout 1860 --substantive-validation --validation-mode --structured-reviewer-validation --paths-file "$_manifest.output-files"
+
+"${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh" \
+  --stream "$LARCH_BREADCRUMB_STREAM" \
+  --done-sentinel "$LARCH_DONE_SENTINEL" \
+  --status-file "$LARCH_STATUS_FILE" \
+  --quiet-log "$LARCH_QUIET_LOG_FILE" \
+  --surfaced-sentinel "$LARCH_BREADCRUMBS_SURFACED_FILE"
 ```
 
 Immediately after this collection returns, run the Mid-Run Dirty-Tree Probe Contract from `${CLAUDE_PLUGIN_ROOT}/skills/review/references/heavy-worker.md` for `STAGE=plan-review-collection`.
@@ -119,16 +137,33 @@ Submit both in-scope findings and out-of-scope observations to a 3-agent voting 
 
 `/design` Step 3 (`review_budget=full`) runs voting inside `skills/design/scripts/plan-review-loop.sh`, which calls `dispatch-plan-voters.sh` once for **all three** voters (Voter 1 first, then the Codex/Cursor waterfall). The dispatcher launches external voters in parallel where applicable, waits on wrapper sentinels, and emits stdout KVs (`VOTER_*_PATH`, `VOTER_*_STATUS`, `VOTER_*_PARSE_RATE_STATUS`, `VOTER_PATHS_FILE`, `DISPATCH_OK`, …) for downstream parsing. The inline Bash snippet below is retained as a **mechanical argv reference** for operators debugging `dispatch-plan-voters.sh` directly; the skill's primary path is the loop driver, not a second manual launch.
 
-**⚠ Foreground required — do NOT set `run_in_background: true`.**
+**⚠ Background required — must be paired with breadcrumb-monitor.sh.**
 
 ```bash
-# Foreground required: see BASH_AUTHORING.md §4
+mkdir -p "$DESIGN_TMPDIR/breadcrumbs"
+_launch_id="dispatch-plan-voters.$$"
+export LARCH_BREADCRUMB_STREAM="$DESIGN_TMPDIR/breadcrumbs/dispatch-plan-voters.${_launch_id}.ndjson"
+: > "$LARCH_BREADCRUMB_STREAM"
+export LARCH_DONE_SENTINEL="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/dispatch-plan-voters.${_launch_id}.done.XXXXXX")"
+export LARCH_STATUS_FILE="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/dispatch-plan-voters.${_launch_id}.status.XXXXXX")"
+export LARCH_QUIET_LOG_FILE="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/dispatch-plan-voters.${_launch_id}.quiet.XXXXXX")"
+export LARCH_BREADCRUMBS_SURFACED_FILE="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/dispatch-plan-voters.${_launch_id}.surfaced.XXXXXX")"
+touch "$LARCH_DONE_SENTINEL" "$LARCH_BREADCRUMBS_SURFACED_FILE"
+# Tool JSON: run_in_background: true
+# Background pair required: see BASH_AUTHORING.md §4
 _plan_voter_dispatch=$("${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-plan-voters.sh" \
   --ballot-file "$DESIGN_TMPDIR/ballot.txt" \
   --design-tmpdir "$DESIGN_TMPDIR" \
   --codex-available "$codex_available" \
   --cursor-available "$cursor_available")
 eval "$_plan_voter_dispatch"
+
+"${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh" \
+  --stream "$LARCH_BREADCRUMB_STREAM" \
+  --done-sentinel "$LARCH_DONE_SENTINEL" \
+  --status-file "$LARCH_STATUS_FILE" \
+  --quiet-log "$LARCH_QUIET_LOG_FILE" \
+  --surfaced-sentinel "$LARCH_BREADCRUMBS_SURFACED_FILE"
 ```
 
 `VOTER_2_STATUS=fallback` means the waterfall already ran a Claude fallback for that slot and `VOTER_2_PATH` contains the Claude output — do NOT launch a duplicate replacement. `VOTER_3_STATUS=fallback` is analogous for Voter 3. Include voter paths with `STATUS=launched` or `STATUS=fallback` in vote tallying; only exclude paths with `STATUS=failed`.

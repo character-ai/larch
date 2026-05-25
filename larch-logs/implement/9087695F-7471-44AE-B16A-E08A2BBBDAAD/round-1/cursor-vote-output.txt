@@ -1,0 +1,62 @@
+Reading the ballot and session context files to verify findings.
+
+Ballot file appears truncated. Checking aggregator output and full `findings.md`.
+
+Reading the aggregator prompt (input findings) and sampling the diff for verification. `findings.md` contains no `### FINDING_` headings.
+
+Verifying key claims in the workspace: `findings.md` has no ballot headings (aggregator empty merge). Voting on FINDING_1–FINDING_52 from the aggregator input list after spot-checking the codebase.
+
+`findings.md` has no `### FINDING_` headings (aggregator empty merge); votes use FINDING_1–FINDING_52 from the session’s aggregated reviewer input in `aggregator-prompt.md`, verified against the repo.
+
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: EXONERATE -- fixtures still embed legacy strings for negative and stale-phrase cases without evidence the harness currently fails
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: EXONERATE -- writers emit `larch:bc` records; rejecting every non-bc line is extra policy surface beyond proven failures
+FINDING_8: EXONERATE -- wording-only nit outside the denylist pairing lint surface
+FINDING_9: YES
+FINDING_10: NO -- diff noise from committed logs is policy-known, not a concrete defect worth a new issue
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: YES
+FINDING_18: EXONERATE -- bad `--poll-interval=0` is an unlikely operator footgun versus adding more argv validation
+FINDING_19: YES
+FINDING_20: YES
+FINDING_21: YES
+FINDING_22: YES
+FINDING_23: YES
+FINDING_24: YES
+FINDING_25: YES
+FINDING_26: YES
+FINDING_27: YES
+FINDING_28: YES
+FINDING_29: YES
+FINDING_30: YES
+FINDING_31: YES
+FINDING_32: EXONERATE -- `eval` for trap chaining is common Bash; safer rewrite is disproportionate without a demonstrated exploit
+FINDING_33: YES
+FINDING_34: NO -- pre-existing `printf` style hazard is real but too low impact to justify spinning a new issue from this rollout
+FINDING_35: NO -- committed third-party log text is longstanding repo norm, not an actionable defect issue
+FINDING_36: YES
+FINDING_37: YES
+FINDING_38: YES
+FINDING_39: YES
+FINDING_40: YES
+FINDING_41: EXONERATE -- foreground helper exiting 0 is an implicit contract; repurposing exit status needs a proven consumer before churn
+FINDING_42: EXONERATE -- speculative `trap -p` format matrix without observed breakage
+FINDING_43: YES
+FINDING_44: NO -- optional copyedit only; not worth a standalone GitHub issue
+FINDING_45: YES
+FINDING_46: YES
+FINDING_47: YES
+FINDING_48: NO -- the nine Family B denylist scripts remain covered; dropped probe scripts are outside that enumerated enforcement set
+FINDING_49: YES
+FINDING_50: YES
+FINDING_51: YES
+FINDING_52: NO -- aggregate-diff noise alone is reviewer hygiene, not a defect warranting a filed issue

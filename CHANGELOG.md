@@ -21,6 +21,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Migration posture**: legacy `[IN PROGRESS]` and `[PLANNED]` prefixes are stripped by `strip_lifecycle_prefix` for backward compatibility but are no longer accepted as `--state` values by `tracking-issue-write.sh` or as admission-pass prefixes.
 - **Audit scope**: workflow call sites and rename `--state` surfaces in the active runtime tree (`skills/`, `scripts/`, `agents/`, `.claude/`, `docs/`, tests) now use the new prefix set; deliberate legacy bracket literals remain only where migration, admission recovery, strip helpers, or hermetic fixtures require them. This Unreleased section documents the migration and may name the old prefixes. Historical shipped changelog bodies and `larch-logs/` were not bulk-retitled.
 
+## [42.4.19] - 2026-05-25
+
+### Changed
+
+- Add breadcrumb stream plumbing in lib-quiet (categories, done trap hook, surfaced sentinel) plus streaming redaction and a wc-offset breadcrumb-monitor consumer.
+- Repurpose lint-foreground-markers to require background plus paired breadcrumb-monitor in fenced examples and reject stale foreground phrasing when the new pair is present.
+- Refresh Family B skill and reference markdown to document the five-path env contract and paired Bash tool pattern so operators stop relying on brittle foreground-only harness behavior.
+
 ## [42.4.18] - 2026-05-24
 
 ### Changed

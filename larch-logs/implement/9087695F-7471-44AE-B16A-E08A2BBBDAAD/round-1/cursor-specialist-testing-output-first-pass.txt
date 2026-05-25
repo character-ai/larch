@@ -1,0 +1,11 @@
+Gathering the branch diff and commit history for a read-only review focused on tests, CI, and regression risk.
+
+Searching the precomputed diff for implementation and test coverage.
+
+Checking skill examples for erroneous `touch` of sentinels and verifying `lint-foreground-markers` vs plan (10-line window, required args).
+
+Checking how `mktemp` interacts with the monitor's done detection and whether `validate_path` treats a missing done path as valid:
+
+Calling CreatePlan to satisfy plan-mode, then delivering the specialist review.
+
+

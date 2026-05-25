@@ -45,6 +45,79 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# --streaming + --state-file=PATH: process stdin line-by-line with PEM state
+# persisted in PATH across invocations (Bash 3.2-safe). Does not source
+# lib-quiet — stdout must remain the data plane for filters.
+if [[ "${1:-}" == "--streaming" ]]; then
+    shift
+    state_file=""
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --state-file=*)
+                state_file="${1#--state-file=}"
+                shift
+                ;;
+            --state-file)
+                state_file="${2:?--state-file requires a value}"
+                shift 2
+                ;;
+            *)
+                printf 'redact-secrets.sh: unknown streaming option: %s\n' "$1" >&2
+                exit 2
+                ;;
+        esac
+    done
+    [[ -n "$state_file" ]] || {
+        printf 'redact-secrets.sh: --streaming requires --state-file\n' >&2
+        exit 2
+    }
+    if [[ ! -f "$state_file" ]]; then
+        printf 'in_pem=0\n' >"$state_file" || {
+            printf 'redact-secrets.sh: cannot create state file\n' >&2
+            exit 2
+        }
+    fi
+    # shellcheck disable=SC1090
+    source "$state_file" 2>/dev/null || {
+        printf 'in_pem=0\n' >"$state_file"
+        in_pem=0
+    }
+    larch_rs_stream_write_state() {
+        printf 'in_pem=%s\n' "$in_pem" >"${state_file}.new" && mv -f "${state_file}.new" "$state_file"
+    }
+    larch_rs_line_sed() {
+        # shellcheck disable=SC2016
+        printf '%s\n' "$1" | sed -E \
+            -e 's/sk-(ant-)?[A-Za-z0-9_-]{20,}/<REDACTED-TOKEN>/g' \
+            -e 's/(ghp|gho|ghu|ghs|ghr|github_pat)_[A-Za-z0-9_]{20,}/<REDACTED-TOKEN>/g' \
+            -e 's/AKIA[0-9A-Z]{16}/<REDACTED-TOKEN>/g' \
+            -e 's/eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/<REDACTED-TOKEN>/g'
+    }
+    while IFS= read -r rs_line || [[ -n "${rs_line:-}" ]]; do
+        if [[ "$in_pem" == 1 ]]; then
+            if printf '%s\n' "$rs_line" | grep -Eq '^[[:space:]>]*-----END [A-Z ]*PRIVATE KEY-----'; then
+                in_pem=0
+                larch_rs_stream_write_state
+            fi
+            continue
+        fi
+        if printf '%s\n' "$rs_line" | grep -Eq '^[[:space:]>]*-----BEGIN [A-Z ]*PRIVATE KEY-----'; then
+            printf '%s\n' '<REDACTED-PRIVATE-KEY>'
+            in_pem=1
+            larch_rs_stream_write_state
+            continue
+        fi
+        larch_rs_line_sed "$rs_line" || exit 1
+        larch_rs_stream_write_state
+    done
+    if [[ "$in_pem" == 1 ]]; then
+        printf '%s\n' '[content truncated — unterminated PEM block; tail of body dropped for safety]' >&2
+        printf '%s\n' 'WARN: redact-secrets.sh: unterminated PEM block (streaming)' >&2
+    fi
+    exit 0
+fi
+
 LARCH_QUIET_DISABLE=1
 export LARCH_QUIET_DISABLE
 # shellcheck source=scripts/lib-quiet.sh

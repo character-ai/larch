@@ -1,5 +1,11 @@
 #!/usr/bin/env bash
 # test-lint-foreground-markers.sh — regression harness for lint-foreground-markers.sh
+#
+# Issue #2749 (FINDING_22 / FINDING_23) rewrote the lint contract from the
+# foreground-required banner to the background+monitor pair banner. This
+# harness exercises the new contract: clean cases must carry BOTH halves
+# (run_in_background: true AND breadcrumb-monitor.sh --stream) within the
+# same fence, plus the canonical banner/comment phrases.
 
 set -euo pipefail
 
@@ -83,16 +89,18 @@ assert_case_clean() {
 
 stderr_file="$(mktemp)"
 
-# 1 — clean collect-agent-results.sh
+# 1 — clean collect-agent-results.sh (background+monitor pair)
 reset_tree
 write_md skills/clean/SKILL.md <<'EOF'
 # Case 1
 
-**⚠ Foreground required — do NOT set `run_in_background: true`.**
+**⚠ Background required — must be paired with breadcrumb-monitor.sh.**
 
 ```bash
-# Foreground required: see BASH_AUTHORING.md §4
+# Background pair required: see BASH_AUTHORING.md §4
+# Tool JSON: run_in_background: true
 ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1 x.txt
+${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u
 ```
 EOF
 rc="$(run_lint "$stderr_file")"
@@ -104,37 +112,43 @@ write_md skills/miss-banner/SKILL.md <<'EOF'
 # Case 2
 
 ```bash
-# Foreground required: see BASH_AUTHORING.md §4
+# Background pair required: see BASH_AUTHORING.md §4
+# Tool JSON: run_in_background: true
 ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1 x.txt
+${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u
 ```
 EOF
 rc="$(run_lint "$stderr_file")"
-assert_case "missing banner" 1 "$stderr_file" "$rc" 'missing banner for collect-agent-results.sh'
+assert_case "missing banner" 1 "$stderr_file" "$rc" 'missing background-pair banner for collect-agent-results.sh'
 
 # 3 — missing comment
 reset_tree
 write_md skills/miss-comment/SKILL.md <<'EOF'
 # Case 3
 
-**⚠ Foreground required — do NOT set `run_in_background: true`.**
+**⚠ Background required — must be paired with breadcrumb-monitor.sh.**
 
 ```bash
+# Tool JSON: run_in_background: true
 ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1 x.txt
+${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u
 ```
 EOF
 rc="$(run_lint "$stderr_file")"
-assert_case "missing comment" 1 "$stderr_file" "$rc" 'missing comment for collect-agent-results.sh'
+assert_case "missing comment" 1 "$stderr_file" "$rc" 'missing background-pair comment for collect-agent-results.sh'
 
-# 4 — blockquoted banner
+# 4 — blockquoted banner is accepted
 reset_tree
 write_md skills/bq-banner/SKILL.md <<'EOF'
 # Case 4
 
-> **⚠ Foreground required — do NOT set `run_in_background: true`.**
+> **⚠ Background required — must be paired with breadcrumb-monitor.sh.**
 
 ```bash
-# Foreground required: see BASH_AUTHORING.md §4
+# Background pair required: see BASH_AUTHORING.md §4
+# Tool JSON: run_in_background: true
 ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1 x.txt
+${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u
 ```
 EOF
 rc="$(run_lint "$stderr_file")"
@@ -145,8 +159,9 @@ reset_tree
 write_md skills/banner-window/SKILL.md <<'EOF'
 # Case 5
 
-**⚠ Foreground required — do NOT set `run_in_background: true`.**
+**⚠ Background required — must be paired with breadcrumb-monitor.sh.**
 
+x
 x
 x
 x
@@ -170,32 +185,35 @@ x
 x
 
 ```bash
-# Foreground required: see BASH_AUTHORING.md §4
+# Background pair required: see BASH_AUTHORING.md §4
+# Tool JSON: run_in_background: true
 ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1 x.txt
+${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u
 ```
 EOF
 rc="$(run_lint "$stderr_file")"
-assert_case "banner outside pre-fence window" 1 "$stderr_file" "$rc" 'missing banner for collect-agent-results.sh'
+assert_case "banner outside pre-fence window" 1 "$stderr_file" "$rc" 'missing background-pair banner for collect-agent-results.sh'
 
 # 6 — comment more than five in-fence lines above the anchor
 reset_tree
 write_md skills/comment-window/SKILL.md <<'EOF'
 # Case 6
 
-**⚠ Foreground required — do NOT set `run_in_background: true`.**
+**⚠ Background required — must be paired with breadcrumb-monitor.sh.**
 
 ```bash
-# Foreground required: see BASH_AUTHORING.md §4
-
+# Background pair required: see BASH_AUTHORING.md §4
+# Tool JSON: run_in_background: true
 
 
 
 
 ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1 x.txt
+${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u
 ```
 EOF
 rc="$(run_lint "$stderr_file")"
-assert_case "comment too far above anchor" 1 "$stderr_file" "$rc" 'missing comment for collect-agent-results.sh'
+assert_case "comment too far above anchor" 1 "$stderr_file" "$rc" 'missing background-pair comment for collect-agent-results.sh'
 
 # 7 — non-denylist script
 reset_tree
@@ -226,11 +244,13 @@ reset_tree
 write_md skills/ship-pr/SKILL.md <<'EOF'
 # Case 9
 
-**⚠ Foreground required — do NOT set `run_in_background: true`.**
+**⚠ Background required — must be paired with breadcrumb-monitor.sh.**
 
 ```bash
-# Foreground required: see BASH_AUTHORING.md §4
+# Background pair required: see BASH_AUTHORING.md §4
+# Tool JSON: run_in_background: true
 ${CLAUDE_PLUGIN_ROOT}/scripts/ship-pr.sh --dry-run
+${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u
 ```
 EOF
 rc="$(run_lint "$stderr_file")"
@@ -241,11 +261,13 @@ reset_tree
 write_md skills/indented-fence/SKILL.md <<'EOF'
 # Case 10
 
-**⚠ Foreground required — do NOT set `run_in_background: true`.**
+**⚠ Background required — must be paired with breadcrumb-monitor.sh.**
 
    ```bash
-   # Foreground required: see BASH_AUTHORING.md §4
+   # Background pair required: see BASH_AUTHORING.md §4
+   # Tool JSON: run_in_background: true
    ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1 x.txt
+   ${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u
    ```
 EOF
 rc="$(run_lint "$stderr_file")"
@@ -256,11 +278,13 @@ reset_tree
 write_md skills/shared/case11.md <<'EOF'
 # Case 11
 
-**⚠ Foreground required — do NOT set `run_in_background: true`.**
+**⚠ Background required — must be paired with breadcrumb-monitor.sh.**
 
 ```bash
-# Foreground required: see BASH_AUTHORING.md §4
+# Background pair required: see BASH_AUTHORING.md §4
+# Tool JSON: run_in_background: true
 ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1 x.txt
+${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u
 ```
 EOF
 rc="$(run_lint "$stderr_file")"
@@ -271,13 +295,15 @@ reset_tree
 write_md skills/if-shape/SKILL.md <<'EOF'
 # Case 12
 
-**⚠ Foreground required — do NOT set `run_in_background: true`.**
+**⚠ Background required — must be paired with breadcrumb-monitor.sh.**
 
 ```bash
-# Foreground required: see BASH_AUTHORING.md §4
+# Background pair required: see BASH_AUTHORING.md §4
+# Tool JSON: run_in_background: true
 if ! "${CLAUDE_PLUGIN_ROOT}/scripts/run-step5-review.sh" --flag; then
   exit 1
 fi
+${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u
 ```
 EOF
 rc="$(run_lint "$stderr_file")"
@@ -288,12 +314,14 @@ reset_tree
 write_md skills/assign-shape/SKILL.md <<'EOF'
 # Case 13
 
-**⚠ Foreground required — do NOT set `run_in_background: true`.**
+**⚠ Background required — must be paired with breadcrumb-monitor.sh.**
 
 ```bash
-# Foreground required: see BASH_AUTHORING.md §4
+# Background pair required: see BASH_AUTHORING.md §4
+# Tool JSON: run_in_background: true
 CMD=${CLAUDE_PLUGIN_ROOT}/scripts/review-and-fix.sh
 printf '%s\n' "$CMD"
+${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u
 ```
 EOF
 rc="$(run_lint "$stderr_file")"
@@ -304,12 +332,14 @@ reset_tree
 write_md skills/cmdsubst-assign/SKILL.md <<'EOF'
 # Case 13b
 
-**⚠ Foreground required — do NOT set `run_in_background: true`.**
+**⚠ Background required — must be paired with breadcrumb-monitor.sh.**
 
 ```bash
-# Foreground required: see BASH_AUTHORING.md §4
+# Background pair required: see BASH_AUTHORING.md §4
+# Tool JSON: run_in_background: true
 VAR=$(${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-with-waterfall.sh --timeout 1)
 printf '%s\n' "$VAR"
+${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u
 ```
 EOF
 rc="$(run_lint "$stderr_file")"
@@ -320,11 +350,13 @@ reset_tree
 write_md skills/unbraced-root/SKILL.md <<'EOF'
 # Case 13c
 
-**⚠ Foreground required — do NOT set `run_in_background: true`.**
+**⚠ Background required — must be paired with breadcrumb-monitor.sh.**
 
 ```bash
-# Foreground required: see BASH_AUTHORING.md §4
+# Background pair required: see BASH_AUTHORING.md §4
+# Tool JSON: run_in_background: true
 $CLAUDE_PLUGIN_ROOT/scripts/collect-agent-results.sh --timeout 1 x.txt
+${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u
 ```
 EOF
 rc="$(run_lint "$stderr_file")"
@@ -359,11 +391,13 @@ reset_tree
 write_md skills/plan-voters/SKILL.md <<'EOF'
 # Case 15
 
-**⚠ Foreground required — do NOT set `run_in_background: true`.**
+**⚠ Background required — must be paired with breadcrumb-monitor.sh.**
 
 ```bash
-# Foreground required: see BASH_AUTHORING.md §4
+# Background pair required: see BASH_AUTHORING.md §4
+# Tool JSON: run_in_background: true
 ${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-plan-voters.sh --tmpdir "$TMP"
+${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u
 ```
 EOF
 rc="$(run_lint "$stderr_file")"
@@ -374,12 +408,14 @@ reset_tree
 write_md skills/parse-only-exec/SKILL.md <<'EOF'
 # Case 17
 
-**⚠ Foreground required — do NOT set `run_in_background: true`.**
+**⚠ Background required — must be paired with breadcrumb-monitor.sh.**
 
 ```bash
-# Foreground required: see BASH_AUTHORING.md §4
+# Background pair required: see BASH_AUTHORING.md §4
+# Tool JSON: run_in_background: true
 exit 99
 ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1 x.txt
+${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u
 ```
 EOF
 rc="$(run_lint "$stderr_file")"
@@ -391,24 +427,26 @@ write_md skills/eof-open-fence/SKILL.md <<'EOF'
 # Case 18
 
 ```bash
-# Foreground required: see BASH_AUTHORING.md §4
+# Background pair required: see BASH_AUTHORING.md §4
+# Tool JSON: run_in_background: true
 ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1 x.txt
+${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u
 EOF
 rc="$(run_lint "$stderr_file")"
-assert_case "EOF unterminated fence still linted" 1 "$stderr_file" "$rc" 'missing banner for collect-agent-results.sh'
+assert_case "EOF unterminated fence still linted" 1 "$stderr_file" "$rc" 'missing background-pair banner for collect-agent-results.sh'
 
 # 19 — second Family-B anchor after >5 in-fence lines needs its own comment
 reset_tree
 write_md skills/multi-anchor-gap/SKILL.md <<'EOF'
 # Case 19
 
-**⚠ Foreground required — do NOT set `run_in_background: true`.**
+**⚠ Background required — must be paired with breadcrumb-monitor.sh.**
 
 ```bash
-# Foreground required: see BASH_AUTHORING.md §4
+# Background pair required: see BASH_AUTHORING.md §4
+# Tool JSON: run_in_background: true
 ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1 x.txt
-
-
+${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u
 
 
 
@@ -417,20 +455,22 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/ci-wait.sh --dry-run
 ```
 EOF
 rc="$(run_lint "$stderr_file")"
-assert_case "second anchor after long gap needs comment" 1 "$stderr_file" "$rc" 'missing comment for ci-wait.sh'
+assert_case "second anchor after long gap needs comment" 1 "$stderr_file" "$rc" 'missing background-pair comment for ci-wait.sh'
 
 # 20 — if ! with repo-relative path (no CLAUDE_PLUGIN_ROOT prefix)
 reset_tree
 write_md skills/if-not-claude-path/SKILL.md <<'EOF'
 # Case 20
 
-**⚠ Foreground required — do NOT set `run_in_background: true`.**
+**⚠ Background required — must be paired with breadcrumb-monitor.sh.**
 
 ```bash
-# Foreground required: see BASH_AUTHORING.md §4
+# Background pair required: see BASH_AUTHORING.md §4
+# Tool JSON: run_in_background: true
 if ! scripts/run-step5-review.sh --mode loop; then
   exit 1
 fi
+${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u
 ```
 EOF
 rc="$(run_lint "$stderr_file")"
@@ -441,11 +481,13 @@ reset_tree
 write_md skills/env-bash-prefix/SKILL.md <<'EOF'
 # Case 21
 
-**⚠ Foreground required — do NOT set `run_in_background: true`.**
+**⚠ Background required — must be paired with breadcrumb-monitor.sh.**
 
 ```bash
-# Foreground required: see BASH_AUTHORING.md §4
+# Background pair required: see BASH_AUTHORING.md §4
+# Tool JSON: run_in_background: true
 FOO=1 bash "${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh" --timeout 1 x.txt
+${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u
 ```
 EOF
 rc="$(run_lint "$stderr_file")"
@@ -456,11 +498,13 @@ reset_tree
 write_md skills/step2-impl/SKILL.md <<'EOF'
 # Case 21b
 
-**⚠ Foreground required — do NOT set `run_in_background: true`.**
+**⚠ Background required — must be paired with breadcrumb-monitor.sh.**
 
 ```bash
-# Foreground required: see BASH_AUTHORING.md §4
+# Background pair required: see BASH_AUTHORING.md §4
+# Tool JSON: run_in_background: true
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/step2-implement.sh" --help
+${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u
 ```
 EOF
 rc="$(run_lint "$stderr_file")"
@@ -499,12 +543,14 @@ reset_tree
 write_md skills/bs-cont/SKILL.md <<'EOF'
 # Case 24
 
-**⚠ Foreground required — do NOT set `run_in_background: true`.**
+**⚠ Background required — must be paired with breadcrumb-monitor.sh.**
 
 ```bash
-# Foreground required: see BASH_AUTHORING.md §4
+# Background pair required: see BASH_AUTHORING.md §4
+# Tool JSON: run_in_background: true
 ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.\
 sh --timeout 1 x.txt
+${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh --stream s --done-sentinel d --status-file f --quiet-log q --surfaced-sentinel u
 ```
 EOF
 rc="$(run_lint "$stderr_file")"
