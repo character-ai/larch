@@ -1,0 +1,29 @@
+v1	mark	1779683915	design	design Step 1d — write discussion-round1.md	-	-	-	-	-	-	-	-
+v1	vendor	1779684205	implement	-	codex	codex-sketch-generic	1779684115	1779684205	90	codex-sketch-generic-output.txt	0	complete
+v1	vendor	1779685067	implement	-	codex	codex-debate-thesis	1779685017	1779685067	50	debate-1-codex-thesis.txt	0	complete
+v1	vendor	1779685070	implement	-	codex	codex-debate-antithesis	1779685020	1779685070	50	debate-1-codex-antithesis.txt	0	complete
+v1	vendor	1779685271	implement	-	codex	codex-review	1779685241	1779685271	30	codex-judge-output.txt	0	complete
+v1	vendor	1779685280	implement	-	cursor	cursor-review	1779685239	1779685280	41	cursor-judge-output.txt	0	complete
+v1	mark	1779685326	design	design Step 2b — plan	-	-	-	-	-	-	-	-
+v1	mark	1779685559	design	design Step 2b.5 — plan size	-	-	-	-	-	-	-	-
+v1	mark	1779686429	design	design Step 3 — plan review	-	-	-	-	-	-	-	-
+v1	vendor	1779686656	implement	-	codex	codex-phase1-dyn-codex-plan-foreground-marker-audit	1779686564	1779686654	90	codex-primary-plan-dyn-foreground-marker-audit-output.txt	0	complete
+v1	vendor	1779686749	implement	-	codex	codex-phase1-dyn-codex-plan-never-rule-compliance	1779686564	1779686749	185	codex-primary-plan-dyn-never-rule-compliance-output.txt	0	complete
+v1	vendor	1779686768	implement	-	codex	codex-phase1-codex-plan-innovation	1779686564	1779686768	204	codex-primary-plan-innovation-output.txt	0	complete
+v1	vendor	1779686770	implement	-	codex	codex-phase1-codex-plan-arch	1779686564	1779686770	206	codex-primary-plan-arch-output.txt	0	complete
+v1	vendor	1779686781	implement	-	codex	codex-phase1-codex-plan-pragmatic	1779686564	1779686780	216	codex-primary-plan-pragmatic-output.txt	0	complete
+v1	vendor	1779686812	implement	-	codex	codex-phase1-dyn-codex-plan-run-params-consumers	1779686564	1779686812	248	codex-primary-plan-dyn-run-params-consumers-output.txt	0	complete
+v1	vendor	1779686842	implement	-	codex	codex-phase1-codex-plan-edge	1779686564	1779686842	278	codex-primary-plan-edge-output.txt	0	complete
+v1	vendor	1779686848	implement	-	codex	codex-phase1-codex-plan-requirements	1779686564	1779686848	284	codex-primary-plan-requirements-output.txt	0	complete
+v1	vendor	1779686921	implement	-	codex	codex-phase2-dyn-cursor-plan-foreground-marker-audit	1779686849	1779686921	72	cursor-plan-dyn-foreground-marker-audit-output-phase2.txt	0	complete
+v1	vendor	1779686970	implement	-	codex	codex-phase2-dyn-cursor-plan-never-rule-compliance	1779686849	1779686970	121	cursor-plan-dyn-never-rule-compliance-output-phase2.txt	0	complete
+v1	vendor	1779686982	implement	-	codex	codex-phase2-cursor-plan-innovation	1779686849	1779686982	133	cursor-plan-innovation-output-phase2.txt	0	complete
+v1	vendor	1779686992	implement	-	codex	codex-phase2-cursor-plan-requirements	1779686849	1779686992	143	cursor-plan-requirements-output-phase2.txt	0	complete
+v1	vendor	1779687000	implement	-	codex	codex-phase2-dyn-cursor-plan-run-params-consumers	1779686849	1779687000	151	cursor-plan-dyn-run-params-consumers-output-phase2.txt	0	complete
+v1	vendor	1779687013	implement	-	codex	codex-phase2-cursor-plan-arch	1779686849	1779687013	164	cursor-plan-arch-output-phase2.txt	0	complete
+v1	vendor	1779687013	implement	-	codex	codex-phase2-cursor-plan-pragmatic	1779686849	1779687013	164	cursor-plan-pragmatic-output-phase2.txt	0	complete
+v1	vendor	1779687074	implement	-	codex	codex-phase2-cursor-plan-edge	1779686849	1779687074	225	cursor-plan-edge-output-phase2.txt	0	complete
+v1	vendor	1779687201	implement	-	codex	codex-phase1-aggregator	1779687080	1779687201	121	aggregator-output-codex.txt	0	complete
+v1	vendor	1779687412	implement	-	codex	codex-phase1-voter-2	1779687351	1779687412	61	codex-vote-output.txt	0	complete
+v1	vendor	1779687483	implement	-	codex	codex-phase2-voter-3	1779687412	1779687483	71	cursor-vote-output-phase2.txt	0	complete
+v1	mark	1779688194	design	design Step 5 — finalize	-	-	-	-	-	-	-	-
