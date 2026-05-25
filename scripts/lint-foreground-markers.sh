@@ -14,6 +14,9 @@ VIOLATIONS=0
 
 BANNER='**⚠ Background required — must be paired with breadcrumb-monitor.sh.**'
 COMMENT='# Background pair required: see BASH_AUTHORING.md §4'
+# shellcheck disable=SC2016 # Literal marker text contains backticks.
+FOREGROUND_BANNER='**⚠ Foreground required — do NOT set `run_in_background: true`.**'
+FOREGROUND_COMMENT='# Foreground required: see BASH_AUTHORING.md §4'
 OLD_BANNER='**⚠ Foreground required'
 OLD_COMMENT='# Foreground required:'
 
@@ -24,6 +27,7 @@ run-step5-review.sh
 review-and-fix.sh
 run-step2-dispatch.sh
 step2-implement.sh
+step-7a.sh
 collect-agent-results.sh
 dispatch-with-waterfall.sh
 dispatch-plan-voters.sh
@@ -108,6 +112,18 @@ banner_ok_in_window() {
     return 1
 }
 
+foreground_banner_ok_in_window() {
+    local -a win=("$@")
+    local ln stripped
+    for ln in "${win[@]}"; do
+        stripped="$(strip_bq "$ln")"
+        if [[ "$stripped" == *"$FOREGROUND_BANNER"* ]]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
 FG_FENCE_LINES=()
 
 comment_ok_before_anchor_idx() {
@@ -120,6 +136,22 @@ comment_ok_before_anchor_idx() {
     for ((i = start; i < anchor_idx; i++)); do
         line="${FG_FENCE_LINES[i - 1]}"
         if [[ "$line" =~ ^[[:space:]]*# ]] && [[ "$line" == *"$COMMENT"* ]]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+foreground_comment_ok_before_anchor_idx() {
+    local anchor_idx="$1"
+    local i start line
+    start=$((anchor_idx - 5))
+    if ((start < 1)); then
+        start=1
+    fi
+    for ((i = start; i < anchor_idx; i++)); do
+        line="${FG_FENCE_LINES[i - 1]}"
+        if [[ "$line" =~ ^[[:space:]]*# ]] && [[ "$line" == *"$FOREGROUND_COMMENT"* ]]; then
             return 0
         fi
     done
@@ -313,6 +345,21 @@ scan_fence_buffer_for_anchors() {
                 [[ "$joined" == *"run_in_background: true"* ]] && has_rb=1
                 if [[ "$joined" == *"breadcrumb-monitor.sh"* ]] && [[ "$joined" == *"--stream"* ]]; then
                     has_c=1
+                fi
+                if [[ "$bn" == "step-7a.sh" ]]; then
+                    if ! foreground_banner_ok_in_window "${pre_fence_window[@]}"; then
+                        printf '%s:%s: missing foreground-required banner for %s\n' "$rel" "$abs_anchor" "$bn" >&2
+                        VIOLATIONS=$((VIOLATIONS + 1))
+                    fi
+                    if ! foreground_comment_ok_before_anchor_idx "$merge_start_phy"; then
+                        printf '%s:%s: missing foreground-required comment for %s\n' "$rel" "$abs_anchor" "$bn" >&2
+                        VIOLATIONS=$((VIOLATIONS + 1))
+                    fi
+                    if ((has_rb == 1)); then
+                        printf '%s:%s: foreground-only invocation must not set run_in_background: true for %s\n' "$rel" "$abs_anchor" "$bn" >&2
+                        VIOLATIONS=$((VIOLATIONS + 1))
+                    fi
+                    continue
                 fi
                 if ((has_rb == 1 && has_c == 1)); then
                     if fence_stale_foreground_markers "$joined" "$win_txt"; then

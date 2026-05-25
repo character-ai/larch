@@ -523,10 +523,25 @@ EOF
 rc="$(run_lint "$stderr_file")"
 assert_case_clean "commented denylisted line ignored" "$stderr_file" "$rc"
 
-# 23 — denylist-shaped path inside a quoted heredoc body must not anchor (false-positive guard)
+# 23 — step-7a is foreground-only and uses the foreground marker pair
+reset_tree
+write_md skills/step7a/SKILL.md <<'EOF'
+# Case 23
+
+**⚠ Foreground required — do NOT set `run_in_background: true`.**
+
+```bash
+# Foreground required: see BASH_AUTHORING.md §4
+"${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-7a.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR"
+```
+EOF
+rc="$(run_lint "$stderr_file")"
+assert_case_clean "step-7a foreground invocation" "$stderr_file" "$rc"
+
+# 24 — denylist-shaped path inside a quoted heredoc body must not anchor (false-positive guard)
 reset_tree
 write_md skills/heredoc-doc/SKILL.md <<'EOF'
-# Case 23
+# Case 24
 
 ```bash
 cat <<'MD'
@@ -538,10 +553,10 @@ EOF
 rc="$(run_lint "$stderr_file")"
 assert_case_clean "heredoc body ignores denylist-shaped text" "$stderr_file" "$rc"
 
-# 24 — backslash-continued denylisted path with markers (single logical invocation)
+# 25 — backslash-continued denylisted path with markers (single logical invocation)
 reset_tree
 write_md skills/bs-cont/SKILL.md <<'EOF'
-# Case 24
+# Case 25
 
 **⚠ Background required — must be paired with breadcrumb-monitor.sh.**
 
