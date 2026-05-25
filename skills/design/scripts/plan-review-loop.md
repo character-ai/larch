@@ -15,6 +15,8 @@
 
 `--design-tmpdir`, `--plan-file`, optional `--feature-file`, `--round-num` (default 1), `--codex-present`, `--cursor-present`, optional `--timeout` (panel + collect; default 1860), `--help`.
 
+When `$DESIGN_TMPDIR/brainstorm.md` exists and is non-empty, the driver materializes `$DESIGN_TMPDIR/plan-review-feature-context.txt` by concatenating the resolved feature file with a `## Brainstorm synthesis (additive; optional)` section, then uses that merged path for `scout-plan-archetypes-wrapper.sh` (`--description-file`) and `dispatch-plan-review-panel.sh` (`--feature-file`). When `brainstorm.md` is absent or empty, `--feature-file` (or the default `feature-description.txt`) is used unchanged.
+
 ## Outline
 
 Scout → panel dispatch → collect → dirty-tree checkpoint → TSV → findings → dedup → split in-scope/OOS → aggregate (`--input-mode plan`) → ballot → `dispatch-plan-voters.sh` → dirty-tree checkpoint → `tally-plan-review.sh` → final KVs.

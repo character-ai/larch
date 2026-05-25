@@ -7,8 +7,10 @@
 - Valid schema write with JSON escaping for quotes, newlines, and shell-shaped prose.
 - Rejection of invalid `design_classification` and `sketch_budget` values.
 - Rejection of relative `--output` paths.
+- Rejection of invalid `--partition-requested` / `--brainstorm-requested` enum tokens.
 - Representation of the `--full` + `--quick` budget combination (`sketch_budget=4`, `review_budget=quick`).
-- Representation of the `TRIVIAL_DOC_ONLY` zero-sketch path.
+- Representation of the `TRIVIAL_DOC_ONLY` zero-sketch path (asserts `partition_requested` and `brainstorm_requested` default false).
+- Dual-flag persistence: `--partition-requested true` plus `--brainstorm-requested true` (FINDING_15 recovery-path coverage).
 
 ## Callers
 

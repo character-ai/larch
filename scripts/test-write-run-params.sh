@@ -39,7 +39,8 @@ jq -e '
   .sketch_budget == 2 and
   .review_budget == "quick" and
   .workflow_path == "SIMPLE" and
-  .partition_requested == false
+  .partition_requested == false and
+  .brainstorm_requested == false
 ' --arg reason "$reason" "$OUT" >/dev/null || fail "valid JSON did not match expected schema"
 
 if "$WRITER" \
@@ -99,7 +100,8 @@ jq -e '
   .design_classification_source == "caller-forwarded" and
   .workflow_path == "SIMPLE" and
   .sketch_budget == 0 and
-  .partition_requested == false
+  .partition_requested == false and
+  .brainstorm_requested == false
 ' "$TMPROOT/trivial.json" >/dev/null \
     || fail "trivial preset JSON did not match expected classification fields"
 
@@ -113,6 +115,18 @@ if "$WRITER" \
     --partition-requested maybe \
     --output "$TMPROOT/bad-partition.json" >/dev/null 2>&1; then
     fail "invalid partition-requested was accepted"
+fi
+
+if "$WRITER" \
+    --classification SIMPLE \
+    --reason bad \
+    --source caller-forwarded \
+    --sketch-budget 2 \
+    --review-budget quick \
+    --workflow-path SIMPLE \
+    --brainstorm-requested maybe \
+    --output "$TMPROOT/bad-brainstorm.json" >/dev/null 2>&1; then
+    fail "invalid brainstorm-requested was accepted"
 fi
 
 if "$WRITER" \
@@ -137,5 +151,30 @@ fi
     --output "$TMPROOT/partition-true.json" >/dev/null
 jq -e '.partition_requested == true' "$TMPROOT/partition-true.json" >/dev/null \
     || fail "--partition-requested true did not set JSON true"
+
+"$WRITER" \
+    --classification SIMPLE \
+    --reason "brainstorm flag on" \
+    --source caller-forwarded \
+    --sketch-budget 2 \
+    --review-budget quick \
+    --workflow-path SIMPLE \
+    --brainstorm-requested true \
+    --output "$TMPROOT/brainstorm-true.json" >/dev/null
+jq -e '.brainstorm_requested == true' "$TMPROOT/brainstorm-true.json" >/dev/null \
+    || fail "--brainstorm-requested true did not set JSON true"
+
+"$WRITER" \
+    --classification SIMPLE \
+    --reason "FINDING_15 both flags" \
+    --source caller-forwarded \
+    --sketch-budget 2 \
+    --review-budget quick \
+    --workflow-path SIMPLE \
+    --partition-requested true \
+    --brainstorm-requested true \
+    --output "$TMPROOT/both-flags-true.json" >/dev/null
+jq -e '.partition_requested == true and .brainstorm_requested == true' "$TMPROOT/both-flags-true.json" >/dev/null \
+    || fail "partition + brainstorm both true was not persisted"
 
 echo "PASS: test-write-run-params.sh"

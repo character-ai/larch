@@ -60,6 +60,18 @@ if [[ -z "$FEATURE_FILE" ]]; then
 fi
 [[ -f "$FEATURE_FILE" ]] || { larch_err "plan-review-loop.sh: feature file not found: $FEATURE_FILE"; exit 2; }
 
+_brainstorm_file="$DESIGN_TMPDIR/brainstorm.md"
+if [[ -f "$_brainstorm_file" && -s "$_brainstorm_file" ]]; then
+    _merged_feature="$DESIGN_TMPDIR/plan-review-feature-context.txt"
+    {
+        printf '%s\n' "## Feature / issue context (base)"
+        cat "$FEATURE_FILE"
+        printf '\n\n%s\n' "## Brainstorm synthesis (additive; optional)"
+        cat "$_brainstorm_file"
+    } >"$_merged_feature"
+    FEATURE_FILE="$_merged_feature"
+fi
+
 emit_loop_kvs() {
     local loop_status="$1" accepted_count="$2" degraded_panel="$3" aggregator_status="$4" tally_status="$5" voting_tally_file="$6" voter1_parse="$7"
     emit_kv LOOP_STATUS "$loop_status"

@@ -22,6 +22,8 @@ TIMING_TASK_KINDS_ALLOWED=(
     cursor-sketch-pragmatic
     codex-sketch-generic
     cursor-sketch-generic
+    cursor-brainstorm
+    codex-brainstorm
     codex-plan-arch
     codex-plan-edge
     codex-plan-innovation
