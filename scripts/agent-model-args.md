@@ -8,7 +8,7 @@ This is a breaking stdout-shape change for any out-of-tree caller that expected 
 
 ## Fallback chain (Cursor)
 
-`LARCH_CURSOR_MODEL` → `CLAUDE_PLUGIN_OPTION_CURSOR_MODEL` → `composer-2` (hardcoded). The `--default-model` flag is accepted but ignored for Cursor (Cursor always has a model).
+`LARCH_CURSOR_MODEL` → `CLAUDE_PLUGIN_OPTION_CURSOR_MODEL` → `composer-2.5` (hardcoded). The `--default-model` flag is accepted but ignored for Cursor (Cursor always has a model).
 
 ## Tool registry
 

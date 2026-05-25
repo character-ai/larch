@@ -145,14 +145,26 @@ larch_poll_probe_pid() {
 }
 
 larch_run_one_cursor_probe() {
-    local probe_out probe_pid probe_rc _SERIAL_LOCK
+    local probe_out probe_pid probe_rc _SERIAL_LOCK _probe_model_args _probe_prompt _wrap_status
     probe_out=$(mktemp "${TMPDIR:-/tmp}/larch-cursor-probe.XXXXXX") || return 1
     PROBE_TMPFILES[${#PROBE_TMPFILES[@]}]="$probe_out"
+
+    _probe_model_args=()
+    if MODEL_ARGS_TMP=$(mktemp) && "$SCRIPT_DIR/agent-model-args.sh" --tool cursor > "$MODEL_ARGS_TMP" 2>/dev/null; then
+        while IFS= read -r _model_arg; do
+            _probe_model_args+=("$_model_arg")
+        done < "$MODEL_ARGS_TMP"
+    fi
+    [[ -n "${MODEL_ARGS_TMP:-}" ]] && rm -f "$MODEL_ARGS_TMP"
+
+    _probe_prompt=$({ "$SCRIPT_DIR/cursor-wrap-prompt.sh" "Respond with OK"; _wrap_status=$?; printf X; exit "$_wrap_status"; }) || { rm -f "$probe_out"; return 1; }
+    _probe_prompt=${_probe_prompt%X}
 
     _SERIAL_LOCK=""
     external_serial_lock_acquire _SERIAL_LOCK "cursor" || { rm -f "$probe_out"; return 1; }
     # shellcheck disable=SC2068
-    cursor agent -p "Respond with OK" --trust --workspace "$PWD" \
+    cursor agent -p "$_probe_prompt" --trust --workspace "$PWD" \
+        ${_probe_model_args[@]+"${_probe_model_args[@]}"} \
         ${CURSOR_AUTH_ARGS[@]+"${CURSOR_AUTH_ARGS[@]}"} >"$probe_out" 2>&1 &
     probe_pid=$!
     PROBE_PIDS[${#PROBE_PIDS[@]}]="$probe_pid"
