@@ -115,34 +115,7 @@ SCOPE_LIST="$DESIGN_TMPDIR/scout-plan-scope-files.txt"
 write_scope_files() {
     local plan="$1" target="$2"
     mkdir -p "$(dirname "$target")"
-    python3 - "$plan" <<'PY' >"${target}.tmp" || return 1
-import re, sys
-
-path = sys.argv[1]
-lines = open(path, encoding="utf-8", errors="replace").read().splitlines()
-seen = []
-for line in lines:
-    m = re.match(r"^###\s+(NEW|UPDATED|REWRITTEN)\s*:\s*(.+)$", line)
-    if not m:
-        continue
-    tail = m.group(2)
-    for pm in re.finditer(r"`([^`]+)`", tail):
-        p = pm.group(1).strip()
-        if p and p not in seen:
-            seen.append(p)
-    if "`" not in tail:
-        parts = tail.split()
-        if not parts:
-            continue
-        tok = re.sub(r"\(.*$", "", parts[0]).strip()
-        if tok and not tok.startswith("+") and "/" in tok and tok not in seen:
-            seen.append(tok)
-if not seen:
-    print("skills/design/SKILL.md")
-else:
-    for p in seen:
-        print(p)
-PY
+    "$PLUGIN_ROOT/scripts/extract-plan-scope-paths.sh" --plan-file "$plan" >"${target}.tmp" || return 1
     mv -f "${target}.tmp" "$target"
 }
 write_scope_files "$PLAN_CANON" "$SCOPE_LIST" || fail "scope-files derivation failed"

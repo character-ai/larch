@@ -32,6 +32,16 @@ assert_contains 'COMMITTED=true' "$out" 'happy path emits committed true'
 assert_contains 'SHA=' "$out" 'happy path emits SHA key'
 assert_contains '-m Implement thing file.txt' "$(cat "$TMP_ROOT/args.log")" 'passes message and files'
 
+printf 'file.txt\0' > "$TMP_ROOT/paths.nul"
+out_pathspec=$(cd "$repo" && CLAUDE_PLUGIN_ROOT="$plugin" GIT_COMMIT_ARGS_LOG="$TMP_ROOT/pathspec-args.log" "$HELPER" --message "Recover thing" --pathspec-from-file "$TMP_ROOT/paths.nul" --pathspec-file-nul ignored.txt)
+assert_contains 'COMMITTED=true' "$out_pathspec" 'pathspec mode emits committed true'
+assert_contains "-m Recover thing --only --pathspec-from-file $TMP_ROOT/paths.nul --pathspec-file-nul" "$(cat "$TMP_ROOT/pathspec-args.log")" 'pathspec mode forwards only and nul flags'
+if [[ "$(cat "$TMP_ROOT/pathspec-args.log")" != *"ignored.txt"* ]]; then
+    pass 'pathspec mode ignores positional files'
+else
+    fail 'pathspec mode ignores positional files'
+fi
+
 set +e
 failed=$(cd "$repo" && CLAUDE_PLUGIN_ROOT="$plugin" GIT_COMMIT_ARGS_LOG="$TMP_ROOT/args.log" GIT_COMMIT_RC=7 GIT_COMMIT_ERR='hook rejected commit' "$HELPER" --message "Implement thing" file.txt 2>/dev/null)
 rc=$?

@@ -56,6 +56,12 @@
 #                            # external-implementer outcome (complete /
 #                            # needs_qa / bailed). See SKILL.md NEVER #10
 #                            # and the Step 2 entry preconditions matrix.
+#   RECOVERY_FROM=manifest-schema-invalid
+#   RECOVERY_PRIOR_TOOL=<codex|cursor>
+#   RECOVERY_PATHS_FILE=<nul-delimited-pathspec-file>
+#                            # Optional all-or-none triplet on malformed-
+#                            # manifest recovery, emitted with
+#                            # STATUS=claude_fallback and AUTH=allowed.
 #
 # Exit code is always 0 unless caller / invocation validation fails (exit 2):
 # missing or invalid flag, missing required path, bad enum value,
@@ -237,6 +243,11 @@ case "$CODER" in
 esac
 
 BASELINE_FILE="$TMPDIR_ARG/step2-baseline.txt"
+PRELAUNCH_PORCELAIN_FILE="$TMPDIR_ARG/step2-prelaunch-porcelain.nul"
+POSTLAUNCH_PORCELAIN_FILE="$TMPDIR_ARG/step2-postlaunch-porcelain.nul"
+PRELAUNCH_CONTENT_DIGESTS_FILE="$TMPDIR_ARG/step2-prelaunch-content-digests.txt"
+PRELAUNCH_INDEX_FLAG_FILE="$TMPDIR_ARG/step2-prelaunch-index.env"
+RECOVERY_PATHS_FILE="$TMPDIR_ARG/step2-recovery-paths.nul"
 RESUME_COUNT_FILE="$TMPDIR_ARG/${TOOL_TAG}-resume-count.txt"
 SPAWN_BRANCH_FILE="$TMPDIR_ARG/step2-spawn-branch.txt"
 PLUGIN_JSON_BASELINE_FILE="$TMPDIR_ARG/step2-plugin-json-baseline.txt"
@@ -261,6 +272,298 @@ emit_bailed() {
     # External-implementer bail: orchestrator MUST NOT run main-agent Edit/Write.
     # See SKILL.md NEVER #10 and Step 2 entry preconditions matrix.
     emit_kv ORCHESTRATOR_EDIT_AUTHORITY forbidden
+    exit 0
+}
+
+submodule_roots() {
+    git -C "$REPO_ROOT" submodule status --recursive 2>/dev/null | awk '{print $2}' || true
+}
+
+path_is_under_any_submodule() {
+    local candidate="$1" sm
+    while IFS= read -r sm || [[ -n "$sm" ]]; do
+        [[ -n "$sm" ]] || continue
+        if [[ "$candidate" == "$sm" || "$candidate" == "$sm"/* ]]; then
+            return 0
+        fi
+    done < <(submodule_roots)
+    return 1
+}
+
+run_post_implementer_safety_gates() {
+    # Branch unchanged.
+    CURRENT_BRANCH=$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD)
+    if [[ "$CURRENT_BRANCH" != "$SPAWN_BRANCH" ]]; then
+        emit_bailed "branch-changed"
+    fi
+
+    # .claude-plugin/plugin.json unchanged.
+    if [[ -f "$REPO_ROOT/.claude-plugin/plugin.json" ]]; then
+        CURRENT_PLUGIN_JSON=$(git -C "$REPO_ROOT" hash-object "$REPO_ROOT/.claude-plugin/plugin.json")
+    else
+        CURRENT_PLUGIN_JSON=""
+    fi
+    if [[ "$CURRENT_PLUGIN_JSON" != "$PLUGIN_JSON_BASELINE" ]]; then
+        emit_bailed "protected-path-modified"
+    fi
+
+    # Submodules clean: leading-status check plus dirty files reported under
+    # submodule roots when ignore-submodules=none is used.
+    SUBMODULE_STATUS=$(git -C "$REPO_ROOT" submodule status --recursive 2>/dev/null || true)
+    if [[ -n "$SUBMODULE_STATUS" ]]; then
+        if printf '%s\n' "$SUBMODULE_STATUS" | grep -qE '^[+\-U]'; then
+            emit_bailed "submodule-dirty"
+        fi
+    fi
+    if [[ -n "$SUBMODULE_STATUS" ]]; then
+        python3 - "$REPO_ROOT" <<'PY' || emit_bailed "submodule-dirty"
+import subprocess
+import sys
+
+repo = sys.argv[1]
+roots = []
+try:
+    out = subprocess.check_output(["git", "-C", repo, "submodule", "status", "--recursive"], stderr=subprocess.DEVNULL, text=True)
+except subprocess.CalledProcessError:
+    out = ""
+for line in out.splitlines():
+    parts = line.split()
+    if len(parts) >= 2:
+        roots.append(parts[1].rstrip("/"))
+if not roots:
+    sys.exit(0)
+try:
+    raw = subprocess.check_output(["git", "-C", repo, "status", "--porcelain=v1", "-z", "--ignore-submodules=none"], stderr=subprocess.DEVNULL)
+except subprocess.CalledProcessError:
+    sys.exit(1)
+items = raw.split(b"\0")
+i = 0
+while i < len(items):
+    rec = items[i]
+    i += 1
+    if not rec:
+        continue
+    status = rec[:2].decode("ascii", "replace")
+    path = rec[3:].decode("utf-8", "surrogateescape")
+    if "R" in status or "C" in status:
+        if i < len(items):
+            i += 1
+    for root in roots:
+        if path == root or path.startswith(root + "/"):
+            sys.exit(1)
+sys.exit(0)
+PY
+    fi
+
+    # Unsandboxed-tool safety rail: Cursor can write to `.git/`.
+    if [[ "$REQUIRES_HEAD_UNCHANGED" == "true" ]]; then
+        CURRENT_HEAD=$(git -C "$REPO_ROOT" rev-parse HEAD)
+        if [[ "$CURRENT_HEAD" != "$BASELINE_SHA" ]]; then
+            emit_bailed "${TOOL_TAG}-modified-history"
+        fi
+    fi
+}
+
+write_prelaunch_recovery_baseline() {
+    git -C "$REPO_ROOT" status --porcelain=v1 -z --untracked-files=all > "$PRELAUNCH_PORCELAIN_FILE"
+    if git -C "$REPO_ROOT" diff --cached --quiet --no-ext-diff; then
+        printf 'PRELAUNCH_INDEX_NONEMPTY=false\n' > "$PRELAUNCH_INDEX_FLAG_FILE.tmp"
+    else
+        printf 'PRELAUNCH_INDEX_NONEMPTY=true\n' > "$PRELAUNCH_INDEX_FLAG_FILE.tmp"
+    fi
+    mv "$PRELAUNCH_INDEX_FLAG_FILE.tmp" "$PRELAUNCH_INDEX_FLAG_FILE"
+    python3 - "$REPO_ROOT" "$PRELAUNCH_PORCELAIN_FILE" > "$PRELAUNCH_CONTENT_DIGESTS_FILE.tmp" <<'PY'
+import hashlib
+import os
+import sys
+
+repo, porcelain = sys.argv[1], sys.argv[2]
+raw = open(porcelain, "rb").read()
+items = raw.split(b"\0")
+seen = []
+i = 0
+while i < len(items):
+    rec = items[i]
+    i += 1
+    if not rec:
+        continue
+    status = rec[:2].decode("ascii", "replace")
+    path = rec[3:].decode("utf-8", "surrogateescape")
+    if "R" in status or "C" in status:
+        if i < len(items):
+            i += 1
+    if path not in seen:
+        seen.append(path)
+for path in seen:
+    full = os.path.join(repo, path)
+    try:
+        with open(full, "rb") as fh:
+            digest = hashlib.sha256(fh.read()).hexdigest()
+        print(f"{digest}\t{path}")
+    except OSError:
+        print(f"missing\t{path}")
+PY
+    mv "$PRELAUNCH_CONTENT_DIGESTS_FILE.tmp" "$PRELAUNCH_CONTENT_DIGESTS_FILE"
+}
+
+compute_recovery_paths() {
+    git -C "$REPO_ROOT" status --porcelain=v1 -z --untracked-files=all > "$POSTLAUNCH_PORCELAIN_FILE"
+    python3 - "$REPO_ROOT" "$TMPDIR_ARG" "$PRELAUNCH_PORCELAIN_FILE" "$POSTLAUNCH_PORCELAIN_FILE" "$PRELAUNCH_CONTENT_DIGESTS_FILE" "$RECOVERY_PATHS_FILE" <<'PY'
+import hashlib
+import os
+import sys
+
+repo, tmpdir, pre_file, post_file, digest_file, out_file = sys.argv[1:7]
+
+def parse(path):
+    raw = open(path, "rb").read() if os.path.exists(path) else b""
+    items = raw.split(b"\0")
+    tuples = set()
+    paths = set()
+    i = 0
+    while i < len(items):
+        rec = items[i]
+        i += 1
+        if not rec:
+            continue
+        status = rec[:2].decode("ascii", "replace")
+        rel = rec[3:].decode("utf-8", "surrogateescape")
+        if "R" in status or "C" in status:
+            if i < len(items):
+                i += 1
+        tuples.add((status, rel))
+        paths.add(rel)
+    return tuples, paths
+
+pre_tuples, pre_paths = parse(pre_file)
+post_tuples, post_paths = parse(post_file)
+digests = {}
+if os.path.exists(digest_file):
+    with open(digest_file, encoding="utf-8", errors="surrogateescape") as fh:
+        for line in fh:
+            line = line.rstrip("\n")
+            if "\t" in line:
+                digest, rel = line.split("\t", 1)
+                digests[rel] = digest
+
+tmp_rel = None
+try:
+    repo_real = os.path.realpath(repo)
+    tmp_real = os.path.realpath(tmpdir)
+    if tmp_real == repo_real:
+        tmp_rel = "."
+    elif tmp_real.startswith(repo_real + os.sep):
+        tmp_rel = os.path.relpath(tmp_real, repo_real)
+except OSError:
+    tmp_rel = None
+
+def under_tmp(rel):
+    if tmp_rel is None:
+        return False
+    return rel == tmp_rel or rel.startswith(tmp_rel.rstrip("/") + "/")
+
+def current_digest(rel):
+    full = os.path.join(repo, rel)
+    try:
+        with open(full, "rb") as fh:
+            return hashlib.sha256(fh.read()).hexdigest()
+    except OSError:
+        return "missing"
+
+candidates = []
+for status, rel in sorted(post_tuples, key=lambda item: item[1]):
+    if under_tmp(rel):
+        continue
+    include = False
+    if (status, rel) not in pre_tuples:
+        include = True
+    elif rel in pre_paths:
+        include = current_digest(rel) != digests.get(rel, "")
+    if include and rel not in candidates:
+        candidates.append(rel)
+
+with open(out_file, "wb") as fh:
+    for rel in candidates:
+        fh.write(rel.encode("utf-8", "surrogateescape") + b"\0")
+
+sys.exit(0 if candidates else 1)
+PY
+}
+
+manifest_has_legacy_fingerprint() {
+    jq -e '
+      type == "object" and
+      ((has("schema_version") | not)) and
+      ((keys_unsorted - ["status", "summary", "checks"]) | length == 0)
+    ' "$MANIFEST_RAW_PATH" >/dev/null 2>&1
+}
+
+# Recovery preserves the pair invariant: STATUS=claude_fallback is the only
+# AUTH=allowed envelope, and RECOVERY_FROM/RECOVERY_PRIOR_TOOL/RECOVERY_PATHS_FILE
+# are an all-or-none triplet. It is commit-only recovery for a malformed
+# manifest that otherwise appears to represent completed implementer work; it
+# never authorizes re-implementation from the plan.
+emit_manifest_invalid_or_recover() {
+    local parse_ok=false prelaunch_index_nonempty=false
+    if jq -e 'type == "object"' "$MANIFEST_RAW_PATH" >/dev/null 2>&1; then
+        parse_ok=true
+    fi
+    if [[ "$parse_ok" != "true" ]]; then
+        emit_bailed "manifest-schema-invalid"
+    fi
+
+    case "$STATUS" in
+        complete) ;;
+        "")
+            if ! manifest_has_legacy_fingerprint; then
+                emit_bailed "manifest-schema-invalid"
+            fi
+            ;;
+        needs_qa|bailed|*) emit_bailed "manifest-schema-invalid" ;;
+    esac
+
+    if [[ -f "$PRELAUNCH_INDEX_FLAG_FILE" ]]; then
+        prelaunch_index_nonempty=$(awk -F= '$1=="PRELAUNCH_INDEX_NONEMPTY"{print $2; exit}' "$PRELAUNCH_INDEX_FLAG_FILE")
+    fi
+    if [[ "$prelaunch_index_nonempty" == "true" ]]; then
+        emit_bailed "manifest-schema-invalid"
+    fi
+
+    if ! compute_recovery_paths; then
+        emit_bailed "manifest-schema-invalid"
+    fi
+
+    while IFS= read -r -d '' recovery_path; do
+        [[ -n "$recovery_path" ]] || continue
+        if [[ "$recovery_path" == ".claude-plugin/plugin.json" ]]; then
+            emit_bailed "protected-path-modified"
+        fi
+        if path_is_under_any_submodule "$recovery_path"; then
+            emit_bailed "submodule-dirty"
+        fi
+    done < "$RECOVERY_PATHS_FILE"
+
+    run_post_implementer_safety_gates
+
+    if [[ -f "$MANIFEST_RAW_PATH" ]]; then
+        mv "$MANIFEST_RAW_PATH" "$TMPDIR_ARG/manifest-raw.invalid.json"
+    fi
+    jq -n \
+        --arg recovery_from "manifest-schema-invalid" \
+        --arg prior_tool "$TOOL_TAG" \
+        --arg recovery_paths_file "$(basename "$RECOVERY_PATHS_FILE")" \
+        '{schema_version: 1, recovery_from: $recovery_from, prior_tool: $prior_tool, recovery_paths_file: $recovery_paths_file}' \
+        > "$TMPDIR_ARG/recovery-metadata.json.tmp"
+    mv "$TMPDIR_ARG/recovery-metadata.json.tmp" "$TMPDIR_ARG/recovery-metadata.json"
+
+    emit_kv STATUS claude_fallback
+    emit_kv TOOL "$TOOL_TAG"
+    if [[ -s "$TRANSCRIPT_PATH" ]]; then emit_kv TRANSCRIPT "$TRANSCRIPT_PATH"; fi
+    if [[ -s "$SIDECAR_LOG" ]];     then emit_kv SIDECAR_LOG "$SIDECAR_LOG"; fi
+    emit_kv ORCHESTRATOR_EDIT_AUTHORITY allowed
+    emit_kv RECOVERY_FROM manifest-schema-invalid
+    emit_kv RECOVERY_PRIOR_TOOL "$TOOL_TAG"
+    emit_kv RECOVERY_PATHS_FILE "$RECOVERY_PATHS_FILE"
     exit 0
 }
 
@@ -355,6 +658,8 @@ if [[ -f "$RESUME_COUNT_FILE" ]]; then
     if [[ "$raw_count" =~ ^[0-9]+$ ]]; then
         RESUME_COUNT=$raw_count
     else
+        # This is a corrupt dispatcher state file, not manifest validation; do
+        # not route it through malformed-manifest recovery.
         emit_bailed "manifest-schema-invalid"
     fi
 fi
@@ -370,6 +675,12 @@ fi
 
 # Step 3: clean stale implementer outputs from prior invocations BEFORE launching.
 rm -f "$MANIFEST_PATH" "$MANIFEST_RAW_PATH" "$QA_PENDING_PATH" "$TRANSCRIPT_PATH" "$SIDECAR_LOG"
+
+# Recovery baseline: capture the pre-launch working tree once, before either
+# external implementer attempt. The malformed-manifest recovery path uses this
+# NUL-delimited porcelain snapshot and companion content digests to distinguish
+# implementer edits from pre-existing dirty files.
+write_prelaunch_recovery_baseline
 
 # Step 4: launch external implementer. Up to 1 retry on transient failure (timeout / non-zero
 # exit before manifest written) — but only when post-failure state is clean.
@@ -484,11 +795,11 @@ STATUS=$(jq -r 'if type=="object" then .status // "" else "" end' "$MANIFEST_RAW
 SCHEMA_VERSION=$(jq -r 'if type=="object" then .schema_version // "" else "" end' "$MANIFEST_RAW_PATH" 2>/dev/null || true)
 
 if [[ "$SCHEMA_VERSION" != "1" ]]; then
-    emit_bailed "manifest-schema-invalid"
+    emit_manifest_invalid_or_recover
 fi
 case "$STATUS" in
     complete|needs_qa|bailed) ;;
-    *) emit_bailed "manifest-schema-invalid" ;;
+    *) emit_manifest_invalid_or_recover ;;
 esac
 
 # Per-status structural validation.
@@ -505,7 +816,7 @@ case "$STATUS" in
             (.tests_added_or_modified | type == "array") and
             (.todos_left | type == "array") and
             (.oos_observations | type == "array")
-        ' "$MANIFEST_RAW_PATH" >/dev/null 2>&1 || emit_bailed "manifest-schema-invalid"
+        ' "$MANIFEST_RAW_PATH" >/dev/null 2>&1 || emit_manifest_invalid_or_recover
         ;;
     needs_qa)
         if ! jq -e '
@@ -546,49 +857,14 @@ case "$STATUS" in
         ;;
     bailed)
         jq -e '(.bail_reason | type == "string" and length > 0)' "$MANIFEST_RAW_PATH" >/dev/null 2>&1 \
-            || emit_bailed "manifest-schema-invalid"
+            || emit_manifest_invalid_or_recover
         ;;
 esac
 
 # Step 6: post-implementer mechanical validation (only meaningful for complete/needs_qa;
 # bailed is passed through verbatim).
 if [[ "$STATUS" != "bailed" ]]; then
-    # 6a: branch unchanged.
-    CURRENT_BRANCH=$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD)
-    if [[ "$CURRENT_BRANCH" != "$SPAWN_BRANCH" ]]; then
-        emit_bailed "branch-changed"
-    fi
-
-    # 6b: .claude-plugin/plugin.json unchanged. Both branches use "" as the
-    # canonical absent-sentinel, matching the empty baseline file written in
-    # Step 1's first-write block above — closes #1475.
-    if [[ -f "$REPO_ROOT/.claude-plugin/plugin.json" ]]; then
-        CURRENT_PLUGIN_JSON=$(git -C "$REPO_ROOT" hash-object "$REPO_ROOT/.claude-plugin/plugin.json")
-    else
-        CURRENT_PLUGIN_JSON=""
-    fi
-    if [[ "$CURRENT_PLUGIN_JSON" != "$PLUGIN_JSON_BASELINE" ]]; then
-        emit_bailed "protected-path-modified"
-    fi
-
-    # 6c: submodules clean.
-    SUBMODULE_STATUS=$(git -C "$REPO_ROOT" submodule status --recursive 2>/dev/null || true)
-    if [[ -n "$SUBMODULE_STATUS" ]]; then
-        # any leading char other than space indicates dirty/uninitialized/conflict
-        if printf '%s\n' "$SUBMODULE_STATUS" | grep -qE '^[+\-U]'; then
-            emit_bailed "submodule-dirty"
-        fi
-    fi
-
-    # Unsandboxed-tool safety rail: Cursor can write to `.git/`. Before
-    # the dispatcher commits on their behalf or allows a needs_qa resume cycle,
-    # assert HEAD has not moved.
-    if [[ "$REQUIRES_HEAD_UNCHANGED" == "true" ]]; then
-        CURRENT_HEAD=$(git -C "$REPO_ROOT" rev-parse HEAD)
-        if [[ "$CURRENT_HEAD" != "$BASELINE_SHA" ]]; then
-            emit_bailed "${TOOL_TAG}-modified-history"
-        fi
-    fi
+    run_post_implementer_safety_gates
 fi
 
 # Step 7: complete-only path-normalization check on manifest paths.

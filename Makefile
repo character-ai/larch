@@ -7,6 +7,7 @@
 .PHONY: test-larch-log-write-round test-lib-title-eligibility test-lib-title-markers
 .PHONY: test-upgrade-larch
 .PHONY: test-scout-dynamic-archetypes
+.PHONY: test-extract-plan-scope-paths test-git-commit-only
 .PHONY: test-token-report-dedup test-token-cost-per-bucket test-render-cost-line-realism test-render-cost-line-callsites test-render-run-summary-callsites test-render-run-summary-format test-token-report-summary-format test-report-tokens-recompute
 .PHONY: lint-bash32 test-lint-bash32 lint-foreground lint-foreground-markers test-lint-foreground-markers lint-mermaid agent-sync test-ci-failed-jobs
 # CI splits `lint` into `lint-only` (pre-commit) and `test-harnesses`
@@ -47,7 +48,7 @@ test-harnesses-3: test-dispatch-code-voters-happy
 
 test-harnesses-4: test-dispatch-code-voters-edge-and-r3-claude
 
-test-harnesses-5: test-harness-shards-coverage test-block-submodule test-lib-implement-round-cap test-ci-rerun-failed test-compose-collector-failure-log test-dispatch-panel-core test-fetch-combinable-issues-filter test-legacy-title-prefix-literals-scope test-implement-admission test-implement-cleanup-roundtrip test-larch-logs-batches test-list-issues test-plan-review-prompt test-brainstorm-prompts test-refresh-run-logs test-review-and-fix-convergence test-scout-plan-archetypes-wrapper test-dispatch-plan-review-panel test-scrub-submodule-paths test-step2-dispatch test-write-rejected-findings test-plan-adequacy-audit test-implement-positional-issue
+test-harnesses-5: test-harness-shards-coverage test-block-submodule test-lib-implement-round-cap test-ci-rerun-failed test-compose-collector-failure-log test-dispatch-panel-core test-fetch-combinable-issues-filter test-legacy-title-prefix-literals-scope test-implement-admission test-implement-cleanup-roundtrip test-larch-logs-batches test-list-issues test-plan-review-prompt test-brainstorm-prompts test-refresh-run-logs test-review-and-fix-convergence test-scout-plan-archetypes-wrapper test-dispatch-plan-review-panel test-scrub-submodule-paths test-step2-dispatch test-write-rejected-findings test-plan-adequacy-audit test-implement-positional-issue test-extract-plan-scope-paths
 
 test-harnesses-6: test-add-blocked-by test-blocked-by-issue test-ci-status test-compose-plan-goals-test test-dispatch-panel-limits test-implement-cleanup-script test-larch-logs-manifest test-local-cleanup test-relevant-checks-byte-budget test-review-and-fix-dispatch test-review-and-fix-parsers test-sentinel-write test-subskill-anchors test-write-run-params test-write-design-current-env
 
@@ -64,7 +65,7 @@ test-harnesses-11: test-allocate-candidates test-check-bump-version test-deny-ed
 test-harnesses-12: test-analyze test-check-clean-tree test-cleanup-tmpdir test-design-driver test-file-design-oos test-emit-plan test-emit-design-plan-preview test-render-final-summary test-check-plan-size test-parse-plan-commands test-read-design-review-budget-invoke test-validate-plan-commands test-gh-pr-body-update test-implement-review-token-propagation test-lib-external-launcher-common test-oos-issue-cap test-quick-mode-docs-sync test-render-run-summary test-token-cost test-render-cost-line test-token-report-dedup test-token-cost-per-bucket test-render-cost-line-callsites test-render-run-summary-callsites test-render-run-summary-format test-token-report-summary-format test-render-cost-line-realism test-run-external-agent test-set-up-forked-open-source-repo test-timing-report test-upgrade-larch-prune test-ci-failed-jobs
 test-harnesses-13: test-anti-halt test-check-generators test-codex-implementer test-emit-tally test-gh-run-logs test-implement-step2-routing test-lib-quiet test-oos-serialize test-rate-assertions test-render-voter-prompt test-run-external-agent-args test-ship-pr test-token-claude-source test-validate-citations
 
-test-harnesses-14: test-anti-improvised-wakeup test-check-main-sync test-collect-agent-bash32 test-design-structure test-decompose-panel-dispatch test-decompose-aggregator test-decompose-file-issues test-external-tool-registry test-git-push test-implement-structure test-implement-step8-exit3-first-fixer test-lib-submodule-prohibition test-orchestrator-scope-sync test-rebase-push-force-lease test-render-specialist-prompt test-run-negotiation-round test-ship-pr-fix-loop test-token-ledger test-validate-citations-budget
+test-harnesses-14: test-anti-improvised-wakeup test-check-main-sync test-collect-agent-bash32 test-design-structure test-decompose-panel-dispatch test-decompose-aggregator test-decompose-file-issues test-external-tool-registry test-git-push test-implement-structure test-implement-step8-exit3-first-fixer test-lib-submodule-prohibition test-orchestrator-scope-sync test-rebase-push-force-lease test-render-specialist-prompt test-run-negotiation-round test-ship-pr-fix-loop test-token-ledger test-validate-citations-budget test-git-commit-only
 
 test-harnesses-15: test-append-tool-failure test-check-mid-run-dirty-tree test-collect-agent-results test-dispatch-code-voters-regressions-r1-r2 test-false-positive-keywords test-github-remote-repo test-implement-timing-rehydration test-lib-vote-tally test-rebase-push-fork-mode test-run-research-planner test-ship-pr-postmerge test-token-report
 
@@ -489,6 +490,12 @@ test-cursor-implementer:
 
 test-codex-implementer:
 	bash scripts/harness-timer.sh $@ bash skills/implement/scripts/test-codex-implementer.sh
+
+test-extract-plan-scope-paths:
+	bash scripts/harness-timer.sh $@ bash scripts/test-extract-plan-scope-paths.sh
+
+test-git-commit-only:
+	bash scripts/harness-timer.sh $@ bash scripts/test-git-commit-only.sh
 
 test-refresh-run-logs:
 	bash scripts/harness-timer.sh $@ bash scripts/test-refresh-run-logs.sh

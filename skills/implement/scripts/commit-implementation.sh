@@ -10,7 +10,7 @@ PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
 source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
 
-usage() { larch_err "Usage: commit-implementation.sh --message MSG [files...]"; }
+usage() { larch_err "Usage: commit-implementation.sh --message MSG [--pathspec-from-file PATH [--pathspec-file-nul]] [files...]"; }
 
 fail_usage() {
     usage
@@ -21,10 +21,14 @@ fail_usage() {
 }
 
 MESSAGE=""
+PATHSPEC_FROM_FILE=""
+PATHSPEC_FILE_NUL=false
 FILES=()
 while [ $# -gt 0 ]; do
     case "$1" in
         --message|-m) [ $# -ge 2 ] || fail_usage "--message requires a value"; MESSAGE=$2; shift 2 ;;
+        --pathspec-from-file) [ $# -ge 2 ] || fail_usage "--pathspec-from-file requires a value"; PATHSPEC_FROM_FILE=$2; shift 2 ;;
+        --pathspec-file-nul) PATHSPEC_FILE_NUL=true; shift ;;
         --help) usage; exit 0 ;;
         --) shift; FILES+=("$@"); break ;;
         -*) fail_usage "unknown option: $1" ;;
@@ -41,7 +45,17 @@ trap 'rm -f "$out_file" "$err_file"' EXIT
 "$PLUGIN_ROOT/scripts/token-ledger.sh" mark "Step 4 — commit implementation" || true
 "$PLUGIN_ROOT/scripts/timing-ledger.sh" mark "Step 4 — commit implementation" || true
 
-if "$PLUGIN_ROOT/scripts/git-commit.sh" -m "$MESSAGE" "${FILES[@]}" >"$out_file" 2>"$err_file"; then
+commit_args=(-m "$MESSAGE")
+if [[ -n "$PATHSPEC_FROM_FILE" ]]; then
+    commit_args+=(--only --pathspec-from-file "$PATHSPEC_FROM_FILE")
+    if [[ "$PATHSPEC_FILE_NUL" == "true" ]]; then
+        commit_args+=(--pathspec-file-nul)
+    fi
+else
+    commit_args+=("${FILES[@]}")
+fi
+
+if "$PLUGIN_ROOT/scripts/git-commit.sh" "${commit_args[@]}" >"$out_file" 2>"$err_file"; then
     sha="$(git rev-parse HEAD 2>/dev/null || true)"
     emit_kv COMMITTED true
     emit_kv SHA "$sha"

@@ -68,6 +68,70 @@ When you have completed the plan and are ready to declare `status=complete`:
 3. Set `manifest.files_touched` to describe the work. The dispatcher does NOT cross-check this against the actual diff (that check was removed when the trust boundary collapsed); operators read it as documentation, so list the files you actually edited.
 4. Write the manifest atomically and exit. The dispatcher will `git add -A && git commit -F <commit-message-file>` after you exit.
 
+## Manifest JSON template
+
+Read this template once now and write the manifest in this exact shape. Do not invent fields; do not omit required fields. The schema reference at `skills/implement/references/codex-manifest-schema.md` is the contract — this template is duplicated here because long-context runs lose fidelity to the schema reference.
+
+```json
+{
+  "schema_version": "1",
+  "status": "complete",
+  "files_touched": [
+    {"path": "skills/example/SKILL.md", "lines_added": 12, "lines_removed": 3}
+  ],
+  "tests_added_or_modified": ["skills/example/scripts/test-example.sh"],
+  "summary_bullets": [
+    "Add the example helper flow",
+    "Cover the helper with an offline harness"
+  ],
+  "commit_message": "Implement example helper flow\n\nAdd the helper, wire it into the skill, and cover it with the offline harness.",
+  "todos_left": [],
+  "oos_observations": [],
+  "bail_reason": "",
+  "needs_qa": {
+    "questions": [
+      {"id": "q1", "text": "Which existing helper should this flow reuse?"}
+    ]
+  }
+}
+```
+
+| Status | Required fields |
+|---|---|
+| `complete` | `schema_version`, `status`, `files_touched` (non-empty array of objects with `path`, `lines_added`, `lines_removed`), `tests_added_or_modified`, `summary_bullets` (1–5), `commit_message` (non-empty), `todos_left`, `oos_observations` |
+| `needs_qa` | `schema_version`, `status`, `needs_qa.questions` (non-empty array of objects with `id`, `text`) |
+| `bailed` | `schema_version`, `status`, `bail_reason` (non-empty string) |
+
+## Self-validate before atomic rename
+
+Before you `mv <MANIFEST_PATH>.tmp <MANIFEST_PATH>`, run `jq -e` on the tmp file to verify the required structural invariants. If `jq -e` exits non-zero, rewrite the tmp file with the correct schema and re-validate before renaming. Do not rename a manifest that fails this check; the dispatcher's validation is the same predicate and will bail with `manifest-schema-invalid` if you do.
+
+```bash
+jq -e '
+  ((.schema_version | tostring) == "1") and
+  (.status == "complete" or .status == "needs_qa" or .status == "bailed") and
+  (if .status == "complete" then
+     (.commit_message | type == "string" and length > 0) and
+     (.files_touched | type == "array" and length > 0) and
+     (.files_touched | all(. | type == "object" and (.path | type == "string"))) and
+     (.summary_bullets | type == "array" and length >= 1 and length <= 5) and
+     (.tests_added_or_modified | type == "array") and
+     (.todos_left | type == "array") and
+     (.oos_observations | type == "array")
+   elif .status == "needs_qa" then
+     (.needs_qa.questions | type == "array" and length > 0)
+   else
+     (.bail_reason | type == "string" and length > 0)
+   end)
+' "<MANIFEST_PATH>.tmp" > /dev/null
+```
+
+If your manifest declares `needs_qa`, also self-validate `<QA_PENDING_PATH>.tmp` before any rename, requiring `.questions` array length > 0. The dispatcher's `qa-pending-missing` predicate at `step2-implement.sh:541-545` is the same — prevention must not be weaker than dispatcher validation.
+
+```bash
+jq -e '.questions | type == "array" and length > 0' "<QA_PENDING_PATH>.tmp" > /dev/null
+```
+
 If `git commit` fails (e.g., a pre-commit hook rejects the change, or the working tree turned out to be empty), the dispatcher emits `STATUS=bailed REASON=commit-failed`, captures the failed `git commit` stderr to `$IMPLEMENT_TMPDIR/cursor-commit-stderr.txt`, removes the un-sanitized `manifest.json` from `$IMPLEMENT_TMPDIR`, and bails — the index stays staged from the prior `git add -A`. Operator inspects `git status`, the captured stderr file, and the transcript to decide between `git reset` and `git commit --amend`.
 
 ## How to ask questions (`status=needs_qa`)
@@ -133,6 +197,8 @@ Before you write `<MANIFEST_PATH>`, verify:
 - [ ] `summary_bullets` describe the WHY, not the HOW (these flow into PR body and CHANGELOG verbatim — the operator reviews them as public-facing copy).
 - [ ] `oos_observations` lists only post-triage filed-OOS candidates you noticed but deliberately did not fix in this PR. It excludes inline-folded rules 1-2 items and security findings routed through SECURITY.md. Each entry has `title`, `description`, `phase: "implement"`. The orchestrator will file these as GitHub issues via `/issue` at Step 9a.1.
 - [ ] `todos_left` lists actionable follow-ups you would have addressed if scope allowed. Free-form strings.
+- [ ] Ran the jq -e self-validation block from the "Self-validate before atomic rename" section against <MANIFEST_PATH>.tmp; jq exited 0.
+- [ ] For `status=needs_qa` only: ran the qa-pending self-validation jq -e block against <QA_PENDING_PATH>.tmp; jq exited 0.
 
 Then atomic-write `<MANIFEST_PATH>` and exit with status 0. The dispatcher inspects the manifest, runs mechanical validation (manifest schema check, path normalization, branch unchanged check, `.claude-plugin/plugin.json` unchanged check, submodule clean check), runs `git add -A && git commit -F <commit-message-file>` on `status=complete` with `commit_message` piped through `scripts/redact-secrets.sh`, and emits the final KV envelope. There is no diff cross-check or commit-subject cross-check — the manifest's `commit_message` is what the dispatcher uses, modulo the secrets-family redaction.
 

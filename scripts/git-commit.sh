@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # git-commit.sh — Stage files and commit with Co-Authored-By trailer.
 #
-# Usage: git-commit.sh -m "message" [--no-trailer] [file1 file2 ...]
+# Usage: git-commit.sh -m "message" [--no-trailer] [--only]
+#                      [--pathspec-from-file PATH [--pathspec-file-nul]]
+#                      [file1 file2 ...]
 #
 # Stages the specified files (if any) via `git add`, then commits using
 # `git commit --file <tmpfile>` to avoid shell quoting issues with
@@ -11,6 +13,12 @@
 #   -m <message>     Commit message (required). Written verbatim to a temp
 #                    file, so newlines and special characters are safe.
 #   --no-trailer     Omit the Co-Authored-By trailer.
+#   --only           Pass --only to git commit, scoping the commit to the
+#                    provided file args or pathspec file.
+#   --pathspec-from-file PATH
+#                    Read pathspecs from PATH for git add and git commit.
+#   --pathspec-file-nul
+#                    Treat the pathspec file as NUL-delimited.
 #
 # Positional args:   Files to stage via `git add`. If none are provided,
 #                    commits whatever is already staged.
@@ -30,6 +38,9 @@ larch_quiet_init
 TRAILER="Co-Authored-By: Claude Code <noreply@anthropic.com>"
 MESSAGE=""
 NO_TRAILER=false
+ONLY=false
+PATHSPEC_FROM_FILE=""
+PATHSPEC_FILE_NUL=false
 FILES=()
 
 # --- Parse arguments ---
@@ -45,6 +56,22 @@ while [[ $# -gt 0 ]]; do
       ;;
     --no-trailer)
       NO_TRAILER=true
+      shift
+      ;;
+    --only)
+      ONLY=true
+      shift
+      ;;
+    --pathspec-from-file)
+      if [[ $# -lt 2 ]]; then
+        larch_err "git-commit.sh: --pathspec-from-file requires a path"
+        exit 1
+      fi
+      PATHSPEC_FROM_FILE="$2"
+      shift 2
+      ;;
+    --pathspec-file-nul)
+      PATHSPEC_FILE_NUL=true
       shift
       ;;
     --)
@@ -68,7 +95,13 @@ if [[ -z "$TRIMMED" ]]; then
 fi
 
 # --- Stage files ---
-if [[ ${#FILES[@]} -gt 0 ]]; then
+if [[ -n "$PATHSPEC_FROM_FILE" ]]; then
+  add_args=(--pathspec-from-file="$PATHSPEC_FROM_FILE")
+  if [[ "$PATHSPEC_FILE_NUL" == true ]]; then
+    add_args+=(--pathspec-file-nul)
+  fi
+  git add "${add_args[@]}"
+elif [[ ${#FILES[@]} -gt 0 ]]; then
   git add -- "${FILES[@]}"
 fi
 
@@ -88,4 +121,18 @@ if [[ "$NO_TRAILER" == false ]]; then
     --trailer "$TRAILER" "$TMPFILE"
 fi
 
-git commit --file "$TMPFILE"
+commit_args=(--file "$TMPFILE")
+if [[ "$ONLY" == true ]]; then
+  commit_args+=(--only)
+fi
+if [[ -n "$PATHSPEC_FROM_FILE" ]]; then
+  commit_args+=(--pathspec-from-file="$PATHSPEC_FROM_FILE")
+  if [[ "$PATHSPEC_FILE_NUL" == true ]]; then
+    commit_args+=(--pathspec-file-nul)
+  fi
+elif [[ ${#FILES[@]} -gt 0 ]]; then
+  commit_args+=(--)
+  commit_args+=("${FILES[@]}")
+fi
+
+git commit "${commit_args[@]}"

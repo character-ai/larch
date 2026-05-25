@@ -4,6 +4,7 @@
 
 **Coverage**:
 - Missing required flags exit 2.
+- The generated Codex prompt contains `## Manifest JSON template` and `## Self-validate before atomic rename`; the inline JSON template parses with `jq` and contains the canonical manifest field set.
 - Bad timeout exits 2.
 - Zero-valued timeouts (`0`, `00`, `000`) exit 2 and report the positive-integer timeout contract.
 - Positive leading-zero timeouts (e.g. `010`) are accepted: launcher exits 0 with the standard five-line stdout envelope. Pins acceptance of the leading-zero positive form so a future refactor tightening the digit-only `case` validation (e.g. to `^[1-9][0-9]*$`) breaks CI. Note: the stub exits immediately, so this does NOT prove that downstream treats `010` as decimal 10 vs. octal 8 — only contract stability at the launcher boundary.

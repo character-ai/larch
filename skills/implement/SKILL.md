@@ -939,6 +939,7 @@ This matrix is authoritative for Step 2. After parsing the dispatcher's stdout i
 | `complete` | `forbidden` (required) | Set `MANIFEST_PATH=$MANIFEST`; proceed to Step 3 | Edit, Write, repo-mutating Bash against the **git working tree**; `git diff`-based reconstruction; transcript inspection for diff replay |
 | `needs_qa` | `forbidden` (required) | Run Q/A loop in 2.3 (read `$QA_PENDING`, ask via `AskUserQuestion`, **write answers JSON to `$IMPLEMENT_TMPDIR/codex-answers-$RESUME_N.json` — permitted**, re-invoke dispatcher with `--answers`) | Edit, Write, repo-mutating Bash against the **git working tree** unrelated to redispatch |
 | `bailed` | `forbidden` (required) | Log `Step 2 — $TOOL_LABEL bailed: $REASON` to `Warnings`; bail per 2.2's REASON-set routing (Step 12d) | Edit, Write, repo-mutating Bash against the **git working tree**; do NOT attempt to "recover" by editing |
+| `claude_fallback` + `RECOVERY_FROM=manifest-schema-invalid` | `allowed` (required) | Run Step 2.4 recovery sub-branch only: plan-scope alignment, commit-message synthesis, no implementation edits | Opportunistic Q/A, main-agent re-implementation, Edit/Write against recovered files, `git add -A`, destructive git cleanup |
 | `claude_fallback` | `allowed` (required) | Run Step 2.4 (opportunistic questions; main-agent Edit/Write/Bash code edits per the plan) | None additional |
 | any envelope failure (validation in 2.1.5) | n/a | Synthesize orchestrator-local bail with `REASON=orchestrator-envelope-invalid` (see 2.1.5); route as Step 2 → Step 12d hard-bail | Setting `MANIFEST_PATH`; entering 2.3 / 2.4 / Step 3 |
 
@@ -986,7 +987,7 @@ ${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/run-step2-dispatch.sh \
 
 **Do NOT poll or print sidecar output while dispatching.** Invoke `run-step2-dispatch.sh` with `run_in_background: true` paired with foreground `breadcrumb-monitor.sh`. The launcher, in turn, invokes `step2-implement.sh` synchronously. While the external implementer runs, do NOT read the sidecar log and do NOT print intermediate output to the user — polling floods the terminal with non-actionable messages. The dispatcher blocks; parse its stdout as KV after it exits.
 
-The launcher `run-step2-dispatch.sh` always passes `--plan-file "$IMPLEMENT_TMPDIR/plan.txt"` and `--workflow HARD` (it does **not** assemble those from `PLAN_FILE` / `POST_PLAN_WORKFLOW_PATH` keys in `session-env.sh`). It still reads `CURSOR_PRESENT` from `$IMPLEMENT_TMPDIR/session-env.sh` and uses the conventional feature file `$IMPLEMENT_TMPDIR/feature-description.txt`. Parse the dispatcher's stdout into local KV variables: `STATUS`, `TOOL`, `MANIFEST`, `QA_PENDING`, `REASON`, `TRANSCRIPT`, `SIDECAR_LOG`, `ORCHESTRATOR_EDIT_AUTHORITY`. Then run the envelope-validation block in 2.1.5 BEFORE branching on `STATUS` in 2.2. Derive:
+The launcher `run-step2-dispatch.sh` always passes `--plan-file "$IMPLEMENT_TMPDIR/plan.txt"` and `--workflow HARD` (it does **not** assemble those from `PLAN_FILE` / `POST_PLAN_WORKFLOW_PATH` keys in `session-env.sh`). It still reads `CURSOR_PRESENT` from `$IMPLEMENT_TMPDIR/session-env.sh` and uses the conventional feature file `$IMPLEMENT_TMPDIR/feature-description.txt`. Parse the dispatcher's stdout into local KV variables: `STATUS`, `TOOL`, `MANIFEST`, `QA_PENDING`, `REASON`, `TRANSCRIPT`, `SIDECAR_LOG`, `ORCHESTRATOR_EDIT_AUTHORITY`, and optional recovery triplet `RECOVERY_FROM`, `RECOVERY_PRIOR_TOOL`, `RECOVERY_PATHS_FILE`. Then run the envelope-validation block in 2.1.5 BEFORE branching on `STATUS` in 2.2. Derive:
 
 ```bash
 case "$TOOL" in
@@ -1003,7 +1004,8 @@ After parsing 2.1's KV envelope and BEFORE the 2.2 `STATUS` switch, validate:
 1. `STATUS` is exactly one of `complete`, `needs_qa`, `bailed`, `claude_fallback`.
 2. `ORCHESTRATOR_EDIT_AUTHORITY` is exactly one of `allowed` or `forbidden`, and appears **exactly once** on stdout. Zero or duplicate `ORCHESTRATOR_EDIT_AUTHORITY=` lines are illegal and trigger `orchestrator-envelope-invalid` (mirrors the `grep -c '^ORCHESTRATOR_EDIT_AUTHORITY=' == 1` invariant pinned by `test-step2-dispatch.sh` Test 11a/11b).
 3. The pair is **legal**: `ORCHESTRATOR_EDIT_AUTHORITY=allowed` iff `STATUS=claude_fallback`. Any other combination is illegal.
-4. Status-keyed manifest readability (mirrors the dispatcher contract in `skills/implement/scripts/step2-implement.md` stdout grammar):
+4. Recovery triplet integrity: if any of `RECOVERY_FROM`, `RECOVERY_PRIOR_TOOL`, or `RECOVERY_PATHS_FILE` is present, all three must be present; `RECOVERY_FROM` must equal `manifest-schema-invalid`; `RECOVERY_PRIOR_TOOL` must be `codex` or `cursor`; `RECOVERY_PATHS_FILE` must point to a readable non-empty file; and `STATUS` must be `claude_fallback`.
+5. Status-keyed manifest readability (mirrors the dispatcher contract in `skills/implement/scripts/step2-implement.md` stdout grammar):
    - If `STATUS=complete`: `MANIFEST` is non-empty and points to a readable file. `QA_PENDING` MUST be absent.
    - If `STATUS=needs_qa`: `QA_PENDING` is non-empty and points to a readable file, AND `MANIFEST` is non-empty and points to a readable file.
    - If `STATUS=bailed` or `STATUS=claude_fallback`: this check does not apply (no required manifest path on these branches).
@@ -1028,7 +1030,8 @@ export LARCH_QUIET_BREADCRUMBS=1
 
 Parse `PHANTOM_*` KVs from stdout per **Phantom Untracked Probe** (advisory), then run **post-dispatch branch assertion** (external-implementer path only): `${CLAUDE_PLUGIN_ROOT}/scripts/git-current-branch.sh` — parse `BRANCH=<name>` into `CURRENT_BRANCH_POST_DISPATCH`. Compare to the `BRANCH_NAME` value from Step 1's issue-anchored capture (§ "Capture branch name (`BRANCH_NAME`)"). If the script exits non-zero (detached HEAD / not in a git work tree) or `CURRENT_BRANCH_POST_DISPATCH` is not byte-identical to `BRANCH_NAME`, print `**⚠ /implement Step 2: post-dispatch branch mismatch (expected $BRANCH_NAME).**`, append a `Warnings` bullet to `$IMPLEMENT_TMPDIR/execution-issues.md` via `${CLAUDE_PLUGIN_ROOT}/scripts/append-execution-issue.sh` describing `main-branch-post-dispatch` (expected vs observed; sanitize session-derived strings), set `FINAL_BAIL_REASON=main-branch-post-dispatch` and `STALL_TRACKING=true`, and bail to Step 12d without consuming Step 3 onward. Otherwise proceed to Step 3. Steps 4 / 8a / 9a / 9a.1 read this manifest; the orchestrator does not run `git diff` to figure out what changed. The probe runs only on the external-implementer complete path, after the dispatcher has committed; do not run it on `STATUS=claude_fallback`.
 - `STATUS=needs_qa` → run the Q/A loop in 2.3. Note: the dispatcher may have repaired a non-standard `qa-pending.json` (e.g., `items[]` → `questions[]`) before emitting this status; the Q/A loop always reads canonical `questions[]` format from `$QA_PENDING`.
-- `STATUS=claude_fallback` (with `ORCHESTRATOR_EDIT_AUTHORITY=allowed`, validated mechanically in 2.1.5) → run the Claude-fallback branch in 2.4. If `ORCHESTRATOR_EDIT_AUTHORITY != allowed`, treat as envelope failure per 2.1.5 (do NOT enter 2.4).
+- `STATUS=claude_fallback` with `RECOVERY_FROM=manifest-schema-invalid` (with `ORCHESTRATOR_EDIT_AUTHORITY=allowed`, validated mechanically in 2.1.5) → enter the Step 2.4 recovery sub-branch, not the ordinary Claude-fallback implementation branch.
+- `STATUS=claude_fallback` without `RECOVERY_FROM` (with `ORCHESTRATOR_EDIT_AUTHORITY=allowed`, validated mechanically in 2.1.5) → run the ordinary Claude-fallback branch in 2.4. If `ORCHESTRATOR_EDIT_AUTHORITY != allowed`, treat as envelope failure per 2.1.5 (do NOT enter 2.4).
 
 **Branch enforcement on `claude_fallback`**: the `git-current-branch.sh` vs `BRANCH_NAME` assertion in the `STATUS=complete` bullet above is scoped to `STATUS=complete` only (see NEVER #10 / envelope rules). On `claude_fallback`, the dispatcher returns before that post-dispatch gate; wrong-branch work is still blocked later by `scripts/ship-pr.sh` `run_bump_phase` `bump-branch-guard` (state `BRANCH_NAME` vs checked-out symbolic branch) before version bump classify/apply, which is the canonical ship-time backstop for branch alignment. That guard also refuses `BRANCH_NAME` of `main` or `master` unless `FORKED_TARGET=true` in `ship-pr-state.sh` **and** the checkout still matches — forked upstream-target flows may use the default branch name in state; every other run stalls there before classify/apply (see `scripts/ship-pr.md` bump-branch-guard bullet).
 
@@ -1040,6 +1043,8 @@ Parse `PHANTOM_*` KVs from stdout per **Phantom Untracked Probe** (advisory), th
 4. Re-invoke the dispatcher launcher with the same flags as §2.1 plus the additional flag `--answers "$IMPLEMENT_TMPDIR/codex-answers-$RESUME_N.json"`. Same wiring as §2.1 first dispatch: the launcher derives `$PLAN_FILE`, `$FEATURE_FILE`, cursor presence, and workflow from `$IMPLEMENT_TMPDIR/session-env.sh` and conventional tmpdir paths; `--answers` is the redispatch-only addition because this loop creates that file. **On every dispatcher return — including each `--answers` redispatch cycle — re-parse the KV envelope and run the §2.1.5 envelope-validation block in full BEFORE re-branching on `STATUS` per §2.2.** Q/A redispatch is not exempt from envelope validation: a malformed or AUTH-illegal envelope on a resume invocation must still fail-closed via `orchestrator-envelope-invalid` exactly as on the first dispatch. The dispatcher itself enforces the 5-cycle cap; on the 6th `--answers` invocation it returns `STATUS=bailed REASON=qa-loop-exceeded` automatically.
 
 > **Continue to Step 3 IMMEDIATELY after re-dispatch returns.** The Q/A loop re-dispatch is not a halting point — proceed to Step 3 checks as soon as the dispatcher exits. → shared/subskill-invocation.md#step-boundary
+
+**Recovery sub-branch**: when `RECOVERY_FROM=manifest-schema-invalid`, do not ask opportunistic questions and do not re-implement. Treat the working tree edits left by the external implementer as the implementation to preserve. Run `${CLAUDE_PLUGIN_ROOT}/scripts/extract-plan-scope-paths.sh --plan-file "$IMPLEMENT_TMPDIR/plan.txt" -z` to derive the canonical plan scope, compare it to the NUL-delimited `$RECOVERY_PATHS_FILE`, and fail closed with `FINAL_BAIL_REASON=recovery-out-of-scope` if any recovered path is not in scope. Synthesize a concise commit message from the plan title / issue context and pipe it through `${CLAUDE_PLUGIN_ROOT}/scripts/redact-secrets.sh`; store it for Step 4. After Step 3 checks and any checks-repair mutations, recompute the recovery delta against the dispatcher's prelaunch baseline if available, write `$IMPLEMENT_TMPDIR/step2-recovery-paths-final.nul`, re-run the same plan-scope alignment, and use that final file for Step 4. NEVER use `git reset --hard`, `git restore`, `git checkout -- <path>`, or `git add -A` against recovered edits during this branch.
 
 Print one of the following based on which path landed here, evaluated **in this exact order** (first match wins):
 - When `coder=cursor` was the resolved choice but the dispatcher fell back to claude because Cursor was unavailable or unavailable: `**⚠ Cursor unavailable — implementing with main agent.**` Also log `Step 2 — Cursor unavailable/unavailable: fell back to claude` to the `Warnings` section of `$IMPLEMENT_TMPDIR/execution-issues.md`.
@@ -1138,6 +1143,17 @@ fi
 export CLAUDE_PLUGIN_ROOT
 ${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/commit-implementation.sh --message "<descriptive commit message>" <specific-files>
 ```
+
+On the malformed-manifest recovery sub-branch, pass the synthesized redacted recovery message and the final NUL-delimited path list instead of positional files:
+
+```bash
+${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/commit-implementation.sh \
+  --message "$(cat "$IMPLEMENT_TMPDIR/recovery-commit-message.txt")" \
+  --pathspec-from-file "$IMPLEMENT_TMPDIR/step2-recovery-paths-final.nul" \
+  --pathspec-file-nul
+```
+
+The wrapper passes `git commit --only --pathspec-from-file ... --pathspec-file-nul`, so unrelated pre-existing staged content remains staged but uncommitted.
 
 Commit message describes WHAT was implemented and WHY, not HOW.
 
