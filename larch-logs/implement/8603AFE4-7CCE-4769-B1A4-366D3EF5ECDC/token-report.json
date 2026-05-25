@@ -33,15 +33,27 @@
       {
         "step": "Step 0 — tracking issue",
         "totals": {
-          "input": 5,
-          "cache_read": 1709911,
-          "cache_create": 6779,
-          "cache_create_5m": 6779,
+          "input": 11,
+          "cache_read": 3094501,
+          "cache_create": 7866,
+          "cache_create_5m": 7866,
           "cache_create_1h": 0,
-          "output": 4286,
-          "total": 1720981
+          "output": 4834,
+          "total": 3107212
         },
         "skills": [
+          {
+            "skill": "inferred:Step 0 — tracking issue",
+            "totals": {
+              "input": 6,
+              "cache_read": 1384590,
+              "cache_create": 1087,
+              "cache_create_5m": 1087,
+              "cache_create_1h": 0,
+              "output": 548,
+              "total": 1386231
+            }
+          },
           {
             "skill": "larch:implement",
             "totals": {
@@ -58,22 +70,22 @@
       }
     ],
     "totals": {
-      "input": 6,
-      "cache_read": 2048017,
-      "cache_create": 7734,
-      "cache_create_5m": 7734,
+      "input": 12,
+      "cache_read": 3432607,
+      "cache_create": 8821,
+      "cache_create_5m": 8821,
       "cache_create_1h": 0,
-      "output": 5480,
-      "total": 2061237
+      "output": 6028,
+      "total": 3447468
     }
   },
   "BUCKETS_claude": {
-    "input": 6,
-    "cache_read": 2048017,
-    "cache_create_5m": 7734,
+    "input": 12,
+    "cache_read": 3432607,
+    "cache_create_5m": 8821,
     "cache_create_1h": 0,
-    "output": 5480,
-    "total": 2061237
+    "output": 6028,
+    "total": 3447468
   },
   "BUCKETS_codex": {
     "input": 0,

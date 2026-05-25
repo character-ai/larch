@@ -1,6 +1,6 @@
 # Version Bump Reasoning
 
-- **Base commit**: `f36a8206` (Fixes #2805: Remove FILES_COUNT and soft-trigger machinery from /design plan-size check (#2818))
+- **Base commit**: `98c24c44` (chore(larch-logs): flush design run 5D645773-020F-4678-9179-A56F3E50DBD9 [skip ci] (#2821))
 - **Current version**: `42.5.2`
 - **Classification scope**: `skills/**` and `agents/**` only (public plugin surface).
 
