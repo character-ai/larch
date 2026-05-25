@@ -755,5 +755,34 @@ printf '%s\n' "$step3_block" | grep -Fq '## Plan Candidate for Review' \
 gate_c_block=$(awk '/^## Gate C/,/^## State invariants/' "$APPROVAL_MD")
 printf '%s\n' "$gate_c_block" | grep -Fq '## Final Design Plan' \
   || fail "(18) approval-gates.md Gate C block missing ## Final Design Plan anchor"
+# Check 20 (#2800): Step 0b title-eligibility filter anchors.
+grep -Fq '2.5. **Title-eligibility filter**' "$SKILL_MD" \
+  || fail "(20) SKILL.md missing Step 0b sub-step 2.5 Title-eligibility filter"
+fetch_line=$(grep -n '^2\. \*\*Fetch issue\*\*:' "$SKILL_MD" | head -1 | cut -d: -f1 || true)
+filter_line=$(grep -n '^2\.5\. \*\*Title-eligibility filter\*\*' "$SKILL_MD" | head -1 | cut -d: -f1 || true)
+clarify_line=$(grep -n '^3\. \*\*Clarify loop\*\*' "$SKILL_MD" | head -1 | cut -d: -f1 || true)
+[[ -n "$fetch_line" && -n "$filter_line" && -n "$clarify_line" ]] \
+  || fail "(20) Step 0b sub-step 2 / 2.5 / 3 anchors missing"
+if (( fetch_line >= filter_line || filter_line >= clarify_line )); then
+  fail "(20) Step 0b ordering must be 2 → 2.5 → 3 (lines $fetch_line $filter_line $clarify_line)"
+fi
+grep -Fq 'title_has_lifecycle_reject_prefix' "$SKILL_MD" \
+  || fail "(20) SKILL.md missing title_has_lifecycle_reject_prefix"
+grep -Fq 'title_has_archival_report_prefix' "$SKILL_MD" \
+  || fail "(20) SKILL.md missing title_has_archival_report_prefix"
+grep -Fq 'title_starts_with_brainstorm' "$SKILL_MD" \
+  || fail "(20) SKILL.md missing title_starts_with_brainstorm"
+grep -Fq 'Mandatory predicate order: (a) lifecycle-reject' "$SKILL_MD" \
+  || fail "(20) SKILL.md missing mandatory predicate ordering rule"
+grep -Fq 'cancelled-title-filter' "$SKILL_MD" \
+  || fail "(20) SKILL.md missing cancelled-title-filter enum"
+grep -Fq 'issue title starts with managed lifecycle marker' "$SKILL_MD" \
+  || fail "(20) SKILL.md missing lifecycle-reject banner text"
+grep -Fq 'issue title matches archival report-prefix' "$SKILL_MD" \
+  || fail "(20) SKILL.md missing archival-report-reject banner text"
+grep -Fq 'detected Brainstorm title prefix — auto-enabling brainstorm mode' "$SKILL_MD" \
+  || fail "(20) SKILL.md missing brainstorm info banner text"
+echo "PASS: (20) Step 0b title-eligibility filter anchors OK"
+
 echo "PASS: test-design-structure.sh — structural invariants hold (including security OOS exclusions)"
 exit 0
