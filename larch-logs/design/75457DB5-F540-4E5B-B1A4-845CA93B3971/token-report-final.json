@@ -1,0 +1,88 @@
+{
+  "vendors": [
+    "claude"
+  ],
+  "claude": {
+    "per_step": [
+      {
+        "step": "design Step 0 — session setup",
+        "totals": {
+          "input": 64,
+          "cache_read": 9431379,
+          "cache_create": 131242,
+          "cache_create_5m": 131242,
+          "cache_create_1h": 0,
+          "output": 46950,
+          "total": 9609635
+        },
+        "skills": [
+          {
+            "skill": "inferred:design Step 0 — session setup",
+            "totals": {
+              "input": 29,
+              "cache_read": 5060806,
+              "cache_create": 39937,
+              "cache_create_5m": 39937,
+              "cache_create_1h": 0,
+              "output": 29268,
+              "total": 5130040
+            }
+          },
+          {
+            "skill": "larch:design",
+            "totals": {
+              "input": 1,
+              "cache_read": 91810,
+              "cache_create": 2652,
+              "cache_create_5m": 2652,
+              "cache_create_1h": 0,
+              "output": 1606,
+              "total": 96069
+            }
+          },
+          {
+            "skill": "larch:issue",
+            "totals": {
+              "input": 34,
+              "cache_read": 4278763,
+              "cache_create": 88653,
+              "cache_create_5m": 88653,
+              "cache_create_1h": 0,
+              "output": 16076,
+              "total": 4383526
+            }
+          }
+        ]
+      }
+    ],
+    "totals": {
+      "input": 64,
+      "cache_read": 9431379,
+      "cache_create": 131242,
+      "cache_create_5m": 131242,
+      "cache_create_1h": 0,
+      "output": 46950,
+      "total": 9609635
+    }
+  },
+  "BUCKETS_claude": {
+    "input": 64,
+    "cache_read": 9431379,
+    "cache_create_5m": 131242,
+    "cache_create_1h": 0,
+    "output": 46950,
+    "total": 9609635
+  },
+  "BUCKETS_codex": {
+    "input": 0,
+    "cached_input": 0,
+    "output": 0,
+    "total": 0
+  },
+  "BUCKETS_cursor": {
+    "input": 0,
+    "cache_read": 0,
+    "output": 0,
+    "total": 0
+  }
+}
