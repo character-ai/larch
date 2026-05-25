@@ -20,6 +20,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Migration posture**: legacy `[IN PROGRESS]` and `[PLANNED]` prefixes are stripped by `strip_lifecycle_prefix` for backward compatibility but are no longer accepted as `--state` values by `tracking-issue-write.sh` or as admission-pass prefixes.
 - **Audit scope**: workflow call sites and rename `--state` surfaces in the active runtime tree (`skills/`, `scripts/`, `agents/`, `.claude/`, `docs/`, tests) now use the new prefix set; deliberate legacy bracket literals remain only where migration, admission recovery, strip helpers, or hermetic fixtures require them. This Unreleased section documents the migration and may name the old prefixes. Historical shipped changelog bodies and `larch-logs/` were not bulk-retitled.
 
+## [42.4.14] - 2026-05-24
+
+### Changed
+
+- Ensure tally abort paths always leave a readable `voting-tally.md` stub so design-local artifacts never strand FINALIZE.
+- Treat `voting-tally.md` like other may-be-empty finalize inputs while still rejecting symlinks and non-regular files.
+- Backstop the plan-review loop with a non-empty tally stub when the inner tally exits non-zero without emitting a file.
+
 ## [42.4.13] - 2026-05-24
 
 ### Changed

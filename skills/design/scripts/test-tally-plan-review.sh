@@ -208,4 +208,39 @@ if "$SUBJECT" --ballot-file "$BALLOT" --voter-files "$TMPROOT/missing.txt" --des
 fi
 grep -q 'voter file is missing' /tmp/larch-tally-plan-review-fail.out || fail "missing voter diagnostic absent"
 
+echo "=== malformed-ballot abort still writes voting-tally.md ==="
+MALFORMED_BALLOT="$TMPROOT/malformed-ballot.md"
+cat > "$MALFORMED_BALLOT" <<'EOF'
+### FINDING_1: First
+- **Reviewer**: Cursor-Arch
+- focus-area = correctness
+- Concern: first block.
+
+### FINDING_1: Duplicate heading
+- **Reviewer**: Codex-Pragmatic
+- focus-area = code-quality
+- Concern: duplicate breaks split.
+EOF
+DESIGN_MALFORMED="$TMPROOT/design-malformed"
+mkdir -p "$DESIGN_MALFORMED"
+set +e
+"$SUBJECT" --ballot-file "$MALFORMED_BALLOT" --voter-files "$V1" --design-tmpdir "$DESIGN_MALFORMED" >/tmp/larch-tally-plan-review-malformed.out 2>&1
+rc_malformed=$?
+set -e
+[[ "$rc_malformed" -eq 2 ]] || fail "malformed ballot should exit 2"
+[[ -s "$DESIGN_MALFORMED/voting-tally.md" ]] || fail "voting-tally.md missing or empty on malformed ballot"
+grep -q '# Plan Review Voting Tally' "$DESIGN_MALFORMED/voting-tally.md" || fail "degraded header missing"
+grep -q '\*\*⚠ Tally aborted:' "$DESIGN_MALFORMED/voting-tally.md" || fail "abort prefix missing"
+
+echo "=== ballot-file unreadable abort still writes voting-tally.md ==="
+NONEXIST="$TMPROOT/no-such-ballot-2720.md"
+DESIGN_NOBALLOT="$TMPROOT/design-noballot"
+mkdir -p "$DESIGN_NOBALLOT"
+set +e
+"$SUBJECT" --ballot-file "$NONEXIST" --voter-files "$V1" --design-tmpdir "$DESIGN_NOBALLOT" >/dev/null 2>&1
+rc_noballot=$?
+set -e
+[[ "$rc_noballot" -eq 2 ]] || fail "missing ballot should exit 2"
+[[ -s "$DESIGN_NOBALLOT/voting-tally.md" ]] || fail "voting-tally.md missing or empty on unreadable ballot"
+
 echo "PASS: test-tally-plan-review.sh"

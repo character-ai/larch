@@ -1,0 +1,5 @@
+Reading the ballot and any referenced context files to verify findings.
+
+findings.md appears empty of ballot items. Searching the session directory for FINDING_ headings.
+
+
