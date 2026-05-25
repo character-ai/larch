@@ -87,18 +87,93 @@ is_relevant_checks_clean() {
 }
 
 run_lint_fix_loop_capture() {
-    local fail_file=$1 site=$2 redacted_log=$3 out_var=$4 rc_var=$5
+    local fail_file=$1 site=$2 redacted_log=$3 out_var=$4 rc_var=$5 target_cmd_args_file=${6:-}
     local output rc had_errexit=0
+    local extra_args=()
+    if [[ -n "$target_cmd_args_file" ]]; then
+        extra_args=(--target-cmd-args-file "$target_cmd_args_file")
+    fi
     case $- in *e*) had_errexit=1 ;; esac
     set +e
     output=$("$SCRIPT_DIR/lint-fix-loop.sh" \
         --tmpdir "$IMPLEMENT_TMPDIR" \
         --site "$site" \
-        --checks-log "$redacted_log" 2>"$fail_file")
+        --checks-log "$redacted_log" \
+        ${extra_args[@]+"${extra_args[@]}"} 2>"$fail_file")
     rc=$?
     (( had_errexit )) && set -e
     printf -v "$out_var" '%s' "$output"
     printf -v "$rc_var" '%s' "$rc"
+}
+
+_RCC_STATUS=""
+_RCC_LAST_LOG_PATH=""
+_RCC_DELTA_PATHS_FILE=""
+_RCC_RERUN_FN=""
+_RCC_SITE=""
+_RCC_TARGET_CMD_ARGS_FILE=""
+_RCC_MAX_ITER=3
+_RCC_CMD_RC=1
+_RCC_RAW_LOG_PATH=""
+
+run_captured_cmd_then_fix_loop() {
+    local attempt max_iter fail_file redacted_log fix_out fix_rc fix_status fix_delta_paths_file failure_reason
+    local empty_failures=0
+
+    _RCC_STATUS=exhausted
+    _RCC_LAST_LOG_PATH=""
+    _RCC_DELTA_PATHS_FILE="$IMPLEMENT_TMPDIR/rcc-delta-paths-$$-$RANDOM.txt"
+    : > "$_RCC_DELTA_PATHS_FILE"
+    max_iter=${_RCC_MAX_ITER:-3}
+
+    for attempt in 1 2 3; do
+        [ "$attempt" -le "$max_iter" ] || break
+        "$_RCC_RERUN_FN"
+        _RCC_LAST_LOG_PATH="$_RCC_RAW_LOG_PATH"
+        if [ "${_RCC_CMD_RC:-1}" -eq 0 ]; then
+            _RCC_STATUS=ok
+            return 0
+        fi
+        if [ -z "${_RCC_RAW_LOG_PATH:-}" ] || [ ! -s "$_RCC_RAW_LOG_PATH" ]; then
+            empty_failures=$((empty_failures + 1))
+            [ "$empty_failures" -ge 2 ] && { _RCC_STATUS=exhausted; return 1; }
+            continue
+        fi
+        empty_failures=0
+        redacted_log="${_RCC_RAW_LOG_PATH}.redacted"
+        if ! "$SCRIPT_DIR/redact-secrets.sh" < "$_RCC_RAW_LOG_PATH" > "$redacted_log" 2>/dev/null; then
+            _RCC_STATUS=dispatch-failed
+            return 1
+        fi
+        fail_file=$(failure_capture_path "${_RCC_PHASE:-evaluate-failure}")
+        run_lint_fix_loop_capture "$fail_file" "$_RCC_SITE" "$redacted_log" fix_out fix_rc "$_RCC_TARGET_CMD_ARGS_FILE"
+        printf '%s\n' "$fix_out" >> "$fail_file"
+        fix_status=$(printf '%s\n' "$fix_out" | awk -F= '/^LINT_FIX_STATUS=/ { print $2; exit }')
+        fix_delta_paths_file=$(printf '%s\n' "$fix_out" | awk -F= '/^LINT_FIX_DELTA_PATHS_FILE=/ { print substr($0, index($0,"=")+1); exit }')
+        failure_reason=$(printf '%s\n' "$fix_out" | awk -F= '/^FAILURE_REASON=/ { print substr($0, index($0,"=")+1); exit }')
+        case "$fix_status" in
+            applied|no-changes)
+                if [[ "$fix_status" == "applied" && -n "$fix_delta_paths_file" && -f "$fix_delta_paths_file" ]]; then
+                    append_unique_paths_file "$_RCC_DELTA_PATHS_FILE" "$fix_delta_paths_file"
+                    append_unique_paths_file "$ALL_LINT_FIX_DELTA_PATHS_FILE" "$fix_delta_paths_file"
+                fi
+                ;;
+            failed)
+                if [[ "$failure_reason" == "head-changed-after-dispatch" ]]; then
+                    _RCC_STATUS=head-changed
+                else
+                    _RCC_STATUS=dispatch-failed
+                fi
+                return 1
+                ;;
+            *)
+                _RCC_STATUS=dispatch-failed
+                return 1
+                ;;
+        esac
+    done
+    _RCC_STATUS=exhausted
+    return 1
 }
 
 collect_ci_stage_paths() {
@@ -1337,6 +1412,77 @@ rename_done_best_effort() {
     state_set DONE_RENAME_APPLIED true
 }
 
+_stage_and_push_ci_fixes() {
+    local phase=$1 token_record_input=${2:-} checks_site=${3:-}
+    local rc fail_file vendor_tracked_dirty_paths_file vendor_untracked_dirty_paths_file
+    local tracked_dirty_paths_file untracked_dirty_paths_file delta_paths_file
+
+    fail_file=$(failure_capture_path "$phase")
+    "$SCRIPT_DIR/append-token-record.sh" --input "$token_record_input" --tmpdir "$IMPLEMENT_TMPDIR" > "$fail_file" 2>&1
+    rc=$?
+    [ "$rc" -eq 0 ] || record_failure "$phase" "append-token-record.sh" "$rc" "$fail_file" Warnings
+
+    vendor_tracked_dirty_paths_file="$IMPLEMENT_TMPDIR/${phase}-vendor-tracked-dirty-paths.txt"
+    vendor_untracked_dirty_paths_file="$IMPLEMENT_TMPDIR/${phase}-vendor-untracked-dirty-paths.txt"
+    capture_tracked_dirty_paths > "$vendor_tracked_dirty_paths_file"
+    capture_untracked_dirty_paths > "$vendor_untracked_dirty_paths_file"
+
+    if [[ -n "$checks_site" ]]; then
+        if ! run_checks_with_lint_fix_loop "$phase" "$checks_site"; then
+            return 1
+        fi
+    fi
+
+    tracked_dirty_paths_file="$IMPLEMENT_TMPDIR/${phase}-post-success-tracked-dirty-paths.txt"
+    untracked_dirty_paths_file="$IMPLEMENT_TMPDIR/${phase}-post-success-untracked-dirty-paths.txt"
+    capture_tracked_dirty_paths > "$tracked_dirty_paths_file"
+    capture_untracked_dirty_paths > "$untracked_dirty_paths_file"
+    if [[ -s "$tracked_dirty_paths_file" || -s "$untracked_dirty_paths_file" ]]; then
+        fail_file=$(failure_capture_path "$phase")
+        delta_paths_file="$LAST_LINT_FIX_DELTA_PATHS_FILE"
+        rc=0
+        if [[ -s "$vendor_tracked_dirty_paths_file" || -s "$vendor_untracked_dirty_paths_file" || -s "$tracked_dirty_paths_file" ]] || [[ -n "$delta_paths_file" && -f "$delta_paths_file" && -s "$delta_paths_file" ]]; then
+            local stage_paths=() stage_path
+            while IFS= read -r stage_path || [[ -n "$stage_path" ]]; do
+                [[ -n "$stage_path" ]] || continue
+                stage_paths+=("$stage_path")
+            done < <(collect_ci_stage_paths "$vendor_tracked_dirty_paths_file" "$vendor_untracked_dirty_paths_file" "$tracked_dirty_paths_file" "$untracked_dirty_paths_file" "$delta_paths_file")
+            if [[ "${#stage_paths[@]}" -gt 0 ]]; then
+                git add -- "${stage_paths[@]}" > "$fail_file" 2>&1
+            else
+                : > "$fail_file"
+            fi
+        fi
+        rc=$?
+        if [ "$rc" -ne 0 ]; then
+            record_failure "$phase" "git add -- <tracked+allowlisted-untracked>" "$rc" "$fail_file" "CI Issues"
+            return 1
+        fi
+        if ! git diff --cached --quiet 2>/dev/null; then
+            fail_file=$(failure_capture_path "$phase")
+            "$SCRIPT_DIR/git-commit.sh" -m "Fix CI failure" > "$fail_file" 2>&1
+            rc=$?
+            if [ "$rc" -ne 0 ]; then
+                record_failure "$phase" "git-commit.sh" "$rc" "$fail_file" "CI Issues"
+                return 1
+            fi
+        fi
+    fi
+
+    fail_file=$(failure_capture_path "$phase")
+    "$SCRIPT_DIR/refresh-run-logs.sh" \
+        --state-file "$STATE_FILE" \
+        --implement-tmpdir "$IMPLEMENT_TMPDIR" > "$fail_file" 2>&1 || true
+
+    fail_file=$(failure_capture_path "$phase")
+    "$SCRIPT_DIR/git-push.sh" > "$fail_file" 2>&1
+    rc=$?
+    if [ "$rc" -ne 0 ]; then
+        record_failure "$phase" "git-push.sh" "$rc" "$fail_file" "CI Issues"
+        return 1
+    fi
+}
+
 run_ci_fix_vendor() {
     local phase=$1 run_id=$2 gh_logs_capture=${3:-} gh_logs_rc=${4:-1}
     local rc fail_file tool_label plan_file checks_site delta_paths_file
@@ -1426,68 +1572,168 @@ run_ci_fix_vendor() {
         return 1
     fi
 
-    fail_file=$(failure_capture_path "$phase")
-    "$SCRIPT_DIR/append-token-record.sh" --input "${ci_fix_out_base}.${winning_tier}.token-record" --tmpdir "$IMPLEMENT_TMPDIR" > "$fail_file" 2>&1
-    rc=$?
-    [ "$rc" -eq 0 ] || record_failure "$phase" "append-token-record.sh" "$rc" "$fail_file" Warnings
-    vendor_tracked_dirty_paths_file="$IMPLEMENT_TMPDIR/${phase}-vendor-tracked-dirty-paths.txt"
-    vendor_untracked_dirty_paths_file="$IMPLEMENT_TMPDIR/${phase}-vendor-untracked-dirty-paths.txt"
-    capture_tracked_dirty_paths > "$vendor_tracked_dirty_paths_file"
-    capture_untracked_dirty_paths > "$vendor_untracked_dirty_paths_file"
     checks_site="$([ "$phase" = "ci-initial" ] && echo step10 || echo step12c)"
-    if ! run_checks_with_lint_fix_loop "$phase" "$checks_site"; then
-        return 1
-    fi
-    tracked_dirty_paths_file="$IMPLEMENT_TMPDIR/${phase}-post-success-tracked-dirty-paths.txt"
-    untracked_dirty_paths_file="$IMPLEMENT_TMPDIR/${phase}-post-success-untracked-dirty-paths.txt"
-    capture_tracked_dirty_paths > "$tracked_dirty_paths_file"
-    capture_untracked_dirty_paths > "$untracked_dirty_paths_file"
-    # Only commit when the vendor or lint-fix path left dirty tracked changes,
-    # or intended untracked files created by the vendor/lint-fix step.
-    if [[ -s "$tracked_dirty_paths_file" || -s "$untracked_dirty_paths_file" ]]; then
-        fail_file=$(failure_capture_path "$phase")
-        delta_paths_file="$LAST_LINT_FIX_DELTA_PATHS_FILE"
-        rc=0
-        if [[ -s "$vendor_tracked_dirty_paths_file" || -s "$vendor_untracked_dirty_paths_file" || -s "$tracked_dirty_paths_file" ]] || [[ -n "$delta_paths_file" && -f "$delta_paths_file" && -s "$delta_paths_file" ]]; then
-            local stage_paths=() stage_path
-            while IFS= read -r stage_path || [[ -n "$stage_path" ]]; do
-                [[ -n "$stage_path" ]] || continue
-                stage_paths+=("$stage_path")
-            done < <(collect_ci_stage_paths "$vendor_tracked_dirty_paths_file" "$vendor_untracked_dirty_paths_file" "$tracked_dirty_paths_file" "$untracked_dirty_paths_file" "$delta_paths_file")
-            if [[ "${#stage_paths[@]}" -gt 0 ]]; then
-                git add -- "${stage_paths[@]}" > "$fail_file" 2>&1
-            else
-                : > "$fail_file"
-            fi
-        fi
-        rc=$?
-        if [ "$rc" -ne 0 ]; then
-            record_failure "$phase" "git add -- <tracked+allowlisted-untracked>" "$rc" "$fail_file" "CI Issues"
-            return 1
-        fi
-        if ! git diff --cached --quiet 2>/dev/null; then
-            fail_file=$(failure_capture_path "$phase")
-            "$SCRIPT_DIR/git-commit.sh" -m "Fix CI failure" > "$fail_file" 2>&1
-            rc=$?
-            if [ "$rc" -ne 0 ]; then
-                record_failure "$phase" "git-commit.sh" "$rc" "$fail_file" "CI Issues"
-                return 1
-            fi
-        fi
-    fi
-    # Refresh larch-log token/timing artifacts before push (Trigger B).
-    fail_file=$(failure_capture_path "$phase")
-    "$SCRIPT_DIR/refresh-run-logs.sh" \
-        --state-file "$STATE_FILE" \
-        --implement-tmpdir "$IMPLEMENT_TMPDIR" > "$fail_file" 2>&1 || true
+    _stage_and_push_ci_fixes "$phase" "${ci_fix_out_base}.${winning_tier}.token-record" "$checks_site"
+}
 
-    fail_file=$(failure_capture_path "$phase")
-    "$SCRIPT_DIR/git-push.sh" > "$fail_file" 2>&1
-    rc=$?
-    if [ "$rc" -ne 0 ]; then
-        record_failure "$phase" "git-push.sh" "$rc" "$fail_file" "CI Issues"
-        return 1
+_PJA_ARGV=()
+_PJL_LOG_PATH=""
+_PJL_JOB_TOKEN=""
+
+_per_job_argv() {
+    local job_name=$1 shard=${2:-}
+    _PJA_ARGV=()
+    case "$job_name" in
+        lint)
+            _PJA_ARGV=(env "SKIP=agnix,lint-mermaid-fences,shellcheck" make lint-only)
+            ;;
+        lint-mermaid)
+            _PJA_ARGV=(make lint-mermaid)
+            ;;
+        shellcheck)
+            _PJA_ARGV=(make shellcheck)
+            ;;
+        test-harnesses)
+            if [[ "$shard" =~ ^[0-9]+$ ]]; then
+                _PJA_ARGV=(make "test-harnesses-${shard}")
+            else
+                _PJA_ARGV=(make test-harnesses)
+            fi
+            ;;
+        agent-lint)
+            _PJA_ARGV=(make agent-lint)
+            ;;
+        agnix)
+            _PJA_ARGV=(make agnix)
+            ;;
+        smoke-dialectic)
+            _PJA_ARGV=(make smoke-dialectic)
+            ;;
+        agent-sync)
+            _PJA_ARGV=(make agent-sync)
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+_write_per_job_args_file() {
+    local path=$1 token
+    : > "$path"
+    for token in "${_PJA_ARGV[@]}"; do
+        printf '%s\n' "$token" >> "$path"
+    done
+}
+
+_run_per_job_command_capture() {
+    emit_breadcrumb "⚠ ship-pr: running local CI job ${_PJL_JOB_TOKEN:-unknown}"
+    _RCC_RAW_LOG_PATH="$_PJL_LOG_PATH"
+    "${_PJA_ARGV[@]}" > "$_RCC_RAW_LOG_PATH" 2>&1
+    _RCC_CMD_RC=$?
+}
+
+_run_per_job_command_once() {
+    local log_path=$1
+    emit_breadcrumb "⚠ ship-pr: verifying local CI job ${_PJL_JOB_TOKEN:-unknown}"
+    "${_PJA_ARGV[@]}" > "$log_path" 2>&1
+}
+
+_sanitize_bail_list() {
+    tr -cd '[:alnum:]_-,'
+}
+
+run_per_job_local_fix_loop() {
+    local phase=$1 failed_jobs_tsv=$2
+    local job_name shard class job_token args_file verify_log detail_file tsv_line
+    local fixable_jobs=() fixable_shards=() unfixable=()
+    local i sanitized
+
+    ALL_LINT_FIX_DELTA_PATHS_FILE="$IMPLEMENT_TMPDIR/${phase}-per-job-lint-fix-delta-paths.txt"
+    LAST_LINT_FIX_DELTA_PATHS_FILE=""
+    : > "$ALL_LINT_FIX_DELTA_PATHS_FILE"
+
+    while IFS= read -r tsv_line || [[ -n "$tsv_line" ]]; do
+        job_name=$(printf '%s\n' "$tsv_line" | awk -F '\t' '{print $1}')
+        shard=$(printf '%s\n' "$tsv_line" | awk -F '\t' '{print $2}')
+        class=$(printf '%s\n' "$tsv_line" | awk -F '\t' '{print $3}')
+        [[ -n "$job_name" ]] || continue
+        job_token=$job_name
+        [[ -n "$shard" ]] && job_token="${job_token}-${shard}"
+        case "$class" in
+            fixable)
+                if _per_job_argv "$job_name" "$shard"; then
+                    fixable_jobs+=("$job_name")
+                    fixable_shards+=("$shard")
+                else
+                    unfixable+=("$job_token")
+                fi
+                ;;
+            *)
+                unfixable+=("$job_token")
+                ;;
+        esac
+    done < "$failed_jobs_tsv"
+
+    for i in "${!fixable_jobs[@]}"; do
+        job_name=${fixable_jobs[$i]}
+        shard=${fixable_shards[$i]}
+        job_token=$job_name
+        [[ -n "$shard" ]] && job_token="${job_token}-${shard}"
+        _per_job_argv "$job_name" "$shard" || { unfixable+=("$job_token"); continue; }
+        args_file="$IMPLEMENT_TMPDIR/per-job-${phase}-${job_token}-args.txt"
+        _write_per_job_args_file "$args_file"
+        _PJL_LOG_PATH="$IMPLEMENT_TMPDIR/per-job-${phase}-${job_token}.log"
+        _PJL_JOB_TOKEN="$job_token"
+        _RCC_PHASE="$phase"
+        _RCC_RERUN_FN=_run_per_job_command_capture
+        _RCC_SITE=ship-pr-ci-per-job
+        _RCC_TARGET_CMD_ARGS_FILE="$args_file"
+        _RCC_MAX_ITER=3
+        run_captured_cmd_then_fix_loop
+        case "$_RCC_STATUS" in
+            ok) ;;
+            *) unfixable+=("$job_token") ;;
+        esac
+    done
+
+    for i in "${!fixable_jobs[@]}"; do
+        job_name=${fixable_jobs[$i]}
+        shard=${fixable_shards[$i]}
+        job_token=$job_name
+        [[ -n "$shard" ]] && job_token="${job_token}-${shard}"
+        _per_job_argv "$job_name" "$shard" || { unfixable+=("$job_token"); continue; }
+        _PJL_JOB_TOKEN="$job_token"
+        verify_log="$IMPLEMENT_TMPDIR/per-job-${phase}-${job_token}-verify.log"
+        if ! _run_per_job_command_once "$verify_log"; then
+            args_file="$IMPLEMENT_TMPDIR/per-job-${phase}-${job_token}-verify-args.txt"
+            _write_per_job_args_file "$args_file"
+            _PJL_LOG_PATH="$IMPLEMENT_TMPDIR/per-job-${phase}-${job_token}-verify-fix.log"
+            _RCC_PHASE="$phase"
+            _RCC_RERUN_FN=_run_per_job_command_capture
+            _RCC_SITE=ship-pr-ci-per-job
+            _RCC_TARGET_CMD_ARGS_FILE="$args_file"
+            _RCC_MAX_ITER=3
+            run_captured_cmd_then_fix_loop
+            [[ "$_RCC_STATUS" == ok ]] || unfixable+=("$job_token")
+        fi
+    done
+
+    if [[ -s "$ALL_LINT_FIX_DELTA_PATHS_FILE" ]]; then
+        LAST_LINT_FIX_DELTA_PATHS_FILE="$ALL_LINT_FIX_DELTA_PATHS_FILE"
     fi
+
+    if [[ "${#unfixable[@]}" -gt 0 ]]; then
+        detail_file="$IMPLEMENT_TMPDIR/ci-local-unfixable-${phase}.txt"
+        : > "$detail_file"
+        for job_token in "${unfixable[@]}"; do
+            printf '%s\n' "$job_token" >> "$detail_file"
+        done
+        sanitized=$(printf '%s\n' "${unfixable[@]}" | paste -sd, - | _sanitize_bail_list)
+        state_set_many BAIL_REASON "ci-local-unfixable:${sanitized}" BAIL_FAILURE_DETAIL_LOG "$detail_file"
+        exit 3
+    fi
+    return 0
 }
 
 run_evaluate_failure() {
@@ -1515,7 +1761,7 @@ run_evaluate_failure() {
     # a 3-tier inner waterfall: Cursor → Codex → Claude = up to 9 launcher calls
     # per phase, down from 15 today); the persisted FIX_ATTEMPTS counter still
     # tracks successful fix pushes across the wider phase for reporting/state purposes.
-    local _max_fix=3 _fix_attempt gh_logs_capture gh_logs_rc
+    local _max_fix=3 _fix_attempt gh_logs_capture gh_logs_rc ci_failed_out ci_failed_rc ci_failed_count ci_failed_capture ci_failed_tsv
     _fix_attempt=0
     while [ "$_fix_attempt" -lt "$_max_fix" ]; do
         state_set_many BAIL_REASON "" BAIL_FAILURE_DETAIL_LOG ""
@@ -1534,6 +1780,29 @@ run_evaluate_failure() {
         fail_file=""
         if [ "$gh_logs_rc" -eq 3 ]; then
             printf 'ship-pr %s: CI still in progress (gh-run-logs rc=3); deferring vendor dispatch this attempt.\n' "$phase"
+        elif [ "$gh_logs_rc" -eq 0 ]; then
+            ci_failed_capture="$IMPLEMENT_TMPDIR/ci-failed-jobs-${phase}.out"
+            ci_failed_tsv="$IMPLEMENT_TMPDIR/ci-failed-jobs-${phase}.tsv"
+            ci_failed_out=$("$SCRIPT_DIR/ci-failed-jobs.sh" --run-id "$failed_run" --repo "$(read_state REPO)" --output-tsv "$ci_failed_tsv" 2>"$ci_failed_capture")
+            ci_failed_rc=$?
+            printf '%s\n' "$ci_failed_out" >> "$ci_failed_capture"
+            if [ "$ci_failed_rc" -eq 0 ]; then
+                ci_failed_count=$(kv_value FAILED_JOBS_COUNT "$ci_failed_out")
+                case "$ci_failed_count" in ''|*[!0-9]*) ci_failed_count=0 ;; esac
+                if [ "$ci_failed_count" -gt 0 ] && [ -s "$ci_failed_tsv" ]; then
+                    run_per_job_local_fix_loop "$phase" "$ci_failed_tsv"
+                    if _stage_and_push_ci_fixes "$phase" "" ""; then
+                        state_set_many TRANSIENT_RETRIES 0 FIX_ATTEMPTS "$(( $(read_state FIX_ATTEMPTS) + 1 ))"
+                        return 0
+                    fi
+                fi
+            else
+                record_failure "$phase" "ci-failed-jobs.sh" "$ci_failed_rc" "$ci_failed_capture" Warnings
+            fi
+            if run_ci_fix_vendor "$phase" "$failed_run" "$gh_logs_capture" "$gh_logs_rc"; then
+                state_set_many TRANSIENT_RETRIES 0 FIX_ATTEMPTS "$(( $(read_state FIX_ATTEMPTS) + 1 ))"
+                return 0
+            fi
         elif run_ci_fix_vendor "$phase" "$failed_run" "$gh_logs_capture" "$gh_logs_rc"; then
             state_set_many TRANSIENT_RETRIES 0 FIX_ATTEMPTS "$(( $(read_state FIX_ATTEMPTS) + 1 ))"
             return 0

@@ -7,6 +7,7 @@ export LARCH_QUIET_DISABLE=1
 # Hermetic harness: callers (e.g. Claude Code) may export LARCH_QUIET_BREADCRUMB_FD
 # so breadcrumbs route to a non-stdout FD; this test suite greps captured stdout.
 unset LARCH_QUIET_BREADCRUMB_FD
+unset LARCH_BREADCRUMB_STREAM LARCH_DONE_SENTINEL LARCH_STATUS_FILE LARCH_QUIET_LOG_FILE LARCH_BREADCRUMBS_SURFACED_FILE
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TMP_BASE="$(mktemp -d -t ship-pr-test.XXXXXX)"
@@ -31,7 +32,8 @@ write_subject() {
     cp "$REPO_ROOT/scripts/auto-resolve-changelog.sh" "$root/scripts/auto-resolve-changelog.sh"
     cp "$REPO_ROOT/scripts/oos-disposition-shared.inc.bash" "$root/scripts/oos-disposition-shared.inc.bash"
     cp "$REPO_ROOT/scripts/redact-secrets.sh" "$root/scripts/redact-secrets.sh"
-    chmod +x "$root/scripts/redact-secrets.sh"
+    cp "$REPO_ROOT/scripts/ci-failed-jobs.sh" "$root/scripts/ci-failed-jobs.sh"
+    chmod +x "$root/scripts/redact-secrets.sh" "$root/scripts/ci-failed-jobs.sh"
     cp "$REPO_ROOT/skills/implement/scripts/oos-disposition-gate.sh" "$root/skills/implement/scripts/oos-disposition-gate.sh"
     cp "$REPO_ROOT/skills/implement/scripts/oos-non-security-block-count.awk" "$root/skills/implement/scripts/oos-non-security-block-count.awk"
     chmod +x "$root/scripts/ship-pr.sh" "$root/scripts/auto-resolve-changelog.sh" "$root/skills/implement/scripts/oos-disposition-gate.sh"
@@ -2732,6 +2734,130 @@ fi
 rm -rf "$call_dir"
 
 # ── #2632: run_ci_fix_vendor 3-tier waterfall + gh-run-logs threading ───────
+
+# Per-job local CI recovery: failed jobs replay locally and push without the broad vendor waterfall.
+root=$(make_repo ci_per_job_happy)
+tmp=$(make_tmpdir)
+call_dir=$(mktemp -d "$tmp/per-job-happy.XXXXXX")
+cat > "$root/scripts/ci-wait.sh" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+count_file="$call_dir/ci-wait-count"
+count=\$(cat "\$count_file" 2>/dev/null || echo 0)
+printf '%s\n' "\$((count + 1))" > "\$count_file"
+if [ "\$count" -eq 0 ]; then
+  printf 'ACTION=evaluate_failure\nCI_STATUS=fail\nBEHIND_COUNT=0\nFAILED_RUN_ID=run123\nBAIL_REASON=\nITERATION=0\nELAPSED=1\n'
+else
+  printf 'ACTION=merge\nCI_STATUS=pass\nBEHIND_COUNT=0\nFAILED_RUN_ID=\nBAIL_REASON=\nITERATION=1\nELAPSED=1\n'
+fi
+STUB
+cat > "$root/scripts/gh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "${1:-}" == run && "${2:-}" == view ]]; then
+  printf '%s\n' 'lint' 'test-harnesses (3)'
+  exit 0
+fi
+exit 1
+STUB
+cat > "$root/scripts/make" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "make \$*" >> "$call_dir/make-calls.txt"
+exit 0
+STUB
+cat > "$root/scripts/env" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "env \$*" >> "$call_dir/make-calls.txt"
+shift
+exec "\$@"
+STUB
+cat > "$root/scripts/git-push.sh" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'push\n' >> "$call_dir/push-calls.txt"
+STUB
+for launcher in launch-cursor-ci.sh launch-codex-ci.sh launch-claude-ci.sh; do
+  cat > "$root/scripts/$launcher" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$launcher" >> "$call_dir/launcher-calls.txt"
+printf 'LAUNCHER_EXIT=0\n'
+STUB
+  chmod +x "$root/scripts/$launcher"
+done
+chmod +x "$root/scripts/ci-wait.sh" "$root/scripts/gh" "$root/scripts/make" "$root/scripts/env" "$root/scripts/git-push.sh"
+write_state "$tmp/ship-pr-state.sh" ci-initial
+awk '/^TRANSIENT_RETRIES=/ {print "TRANSIENT_RETRIES=1"; next}
+     /^FAILED_RUN_ID=/ {print "FAILED_RUN_ID=run123"; next}
+     {print}' "$tmp/ship-pr-state.sh" > "$tmp/ship-pr-state.sh.new" && mv "$tmp/ship-pr-state.sh.new" "$tmp/ship-pr-state.sh"
+set +e
+(cd "$root" && PATH="$root/scripts:$PATH" IMPLEMENT_TMPDIR="$tmp" CLAUDE_PLUGIN_ROOT="$root" \
+  "$root/scripts/ship-pr.sh" --state-file "$tmp/ship-pr-state.sh" --implement-tmpdir "$tmp" \
+  --merge true --draft false --forked false --repo owner/repo >"$tmp/out" 2>&1)
+printf '%s' "$?" >"$tmp/rc"
+set -e
+assert_rc "$tmp/rc" 0 "per-job local CI happy path exits 0"
+if grep -Fq 'env SKIP=agnix,lint-mermaid-fences,shellcheck make lint-only' "$call_dir/make-calls.txt" \
+    && grep -Fq 'make test-harnesses-3' "$call_dir/make-calls.txt"; then
+    ok "per-job local CI happy path runs lint and test-harnesses shard locally"
+else
+    fail "per-job local CI happy path should run mapped local commands"
+    sed 's/^/    make: /' "$call_dir/make-calls.txt" 2>/dev/null || true
+fi
+if [ -f "$call_dir/push-calls.txt" ] && [ ! -f "$call_dir/launcher-calls.txt" ]; then
+    ok "per-job local CI happy path pushes without broad vendor launcher"
+else
+    fail "per-job local CI happy path should push and skip broad vendor launcher"
+    sed 's/^/    launcher: /' "$call_dir/launcher-calls.txt" 2>/dev/null || true
+fi
+rm -rf "$call_dir"
+
+# Per-job unfixable jobs bail with sanitized ci-local-unfixable reason.
+root=$(make_repo ci_per_job_unfixable)
+tmp=$(make_tmpdir)
+call_dir=$(mktemp -d "$tmp/per-job-unfixable.XXXXXX")
+cat > "$root/scripts/ci-wait.sh" <<'STUB'
+#!/usr/bin/env bash
+printf 'ACTION=evaluate_failure\nCI_STATUS=fail\nBEHIND_COUNT=0\nFAILED_RUN_ID=run123\nBAIL_REASON=\nITERATION=0\nELAPSED=1\n'
+STUB
+cat > "$root/scripts/gh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "${1:-}" == run && "${2:-}" == view ]]; then
+  printf '%s\n' 'gitleaks' 'lint'
+  exit 0
+fi
+exit 1
+STUB
+cat > "$root/scripts/make" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "make \$*" >> "$call_dir/make-calls.txt"
+exit 0
+STUB
+cat > "$root/scripts/env" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "env \$*" >> "$call_dir/make-calls.txt"
+shift
+exec "\$@"
+STUB
+chmod +x "$root/scripts/ci-wait.sh" "$root/scripts/gh" "$root/scripts/make" "$root/scripts/env"
+write_state "$tmp/ship-pr-state.sh" ci-initial
+awk '/^TRANSIENT_RETRIES=/ {print "TRANSIENT_RETRIES=1"; next}
+     /^FAILED_RUN_ID=/ {print "FAILED_RUN_ID=run123"; next}
+     {print}' "$tmp/ship-pr-state.sh" > "$tmp/ship-pr-state.sh.new" && mv "$tmp/ship-pr-state.sh.new" "$tmp/ship-pr-state.sh"
+set +e
+(cd "$root" && PATH="$root/scripts:$PATH" IMPLEMENT_TMPDIR="$tmp" CLAUDE_PLUGIN_ROOT="$root" \
+  "$root/scripts/ship-pr.sh" --state-file "$tmp/ship-pr-state.sh" --implement-tmpdir "$tmp" \
+  --merge true --draft false --forked false --repo owner/repo >"$tmp/out" 2>&1)
+printf '%s' "$?" >"$tmp/rc"
+set -e
+assert_rc "$tmp/rc" 3 "per-job unfixable exits 3"
+assert_state_line "$tmp/ship-pr-state.sh" "BAIL_REASON=ci-local-unfixable:gitleaks" "per-job unfixable records sanitized bail reason"
+rm -rf "$call_dir"
 
 # 1) Cursor wins on first tier — Codex/Claude not invoked.
 root=$(make_repo ci_fix_vendor_tier_order_cursor_first)

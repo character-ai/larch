@@ -12,7 +12,11 @@ The input sidecar is line-oriented `KEY=VALUE` text. Recognized keys are `TOOL`,
 
 ## Behavior
 
-Missing or empty sidecars are non-fatal. When `execution-issues.md` is absent, the helper logs the missing sidecar to stderr so a silent loss is visible in standalone tests.
+Missing or empty sidecars are non-fatal. Passing `--input ""` is an explicit
+no-op for callers that did not run a token-reporting vendor tier. When a
+non-empty input path is missing and `execution-issues.md` is absent, the helper
+logs the missing sidecar to stderr so a silent loss is visible in standalone
+tests.
 
 ## Harness
 
