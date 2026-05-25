@@ -1,0 +1,22 @@
+Ballot file `findings.md` is empty of `### FINDING_*` headings. Using the round-2 aggregator prompt (pre-merge consolidated findings) as the de facto ballot and verifying against the repo.
+
+`findings.md` at the given path contains no `### FINDING_*` headings (aggregator wrote placeholder text only). Voting the round’s consolidated reviewer slate from [`aggregator-prompt.md`](<TMPDIR>/round-2/aggregator-prompt.md) (`FINDING_1`–`FINDING_18`), verified against the current tree under `<OPERATOR_REPO_PATH>
+
+FINDING_1: EXONERATE -- harness-documented env overrides mirror normal PATH trust for local operator-controlled runs
+FINDING_2: EXONERATE -- unbounded reads are generic hardening; typical design inputs are small enough that caps add churn
+FINDING_3: EXONERATE -- run-log secret hygiene is pre-existing policy, not a concrete regression from these scripts
+FINDING_4: NO -- headline claim is “intentional run-log commits, not a defect”; remainder is corrupted merge noise, not one actionable issue
+FINDING_5: NO -- text describes an already-landed test fix, not an open defect to accept as a finding
+FINDING_6: NO -- emitting `AGGREGATOR_OUTPUT` only on success is correct behavior, not a problem statement
+FINDING_7: NO -- defensive `int()` parsing is an improvement, not a remaining bug report
+FINDING_8: NO -- check 19 already uses `! grep -q` in `scripts/test-design-structure.sh` (stub string guard is live)
+FINDING_9: EXONERATE -- extra feature-only branch coverage is nice but not worth mandating versus harness size
+FINDING_10: EXONERATE -- smaller NDJSON fixture still exercises the concatenation path without large fixture churn
+FINDING_11: EXONERATE -- optional nit-level harness gap for an exit-2 guard path
+FINDING_12: NO -- jq-backed manifest generation is established stack behavior, not a discrete OOS filing target
+FINDING_13: YES -- `comment_sent` is removed after success while the gate still keys off that file, so reruns or partial runs can replay `gh issue comment`
+FINDING_14: YES -- `close-original` lacks a first-line skip when `.decompose-original-closed` already exists, so direct reruns are not idempotent
+FINDING_15: EXONERATE -- dual `sed` stripping is fragile only under hypothetical archetype names not in the fixed panel
+FINDING_16: NO -- duplicates the resolved grep assertion issue already covered by check 19’s `! grep -q`
+FINDING_17: EXONERATE -- missing happy-path feature-only discussion assertion is low yield versus added test complexity
+FINDING_18: NO -- ancillary `dispatch-plan-review-panel.sh` jq refactor is benign and not issue-worthy as described

@@ -1,0 +1,25 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: NO -- the plan explicitly chose intra-batch deps and the implemented schema has no external dependency edge surface.
+FINDING_5: NO -- the plan allowed a dedicated waterfall fallback when aggregate-findings was incompatible, and the reference documents that choice.
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: EXONERATE -- the placeholder is real but acceptable for optional/non-issue prepare paths.
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: EXONERATE -- the two-row fixture exercises the generic concatenation path, and full-width coverage is low-value here.
+FINDING_13: EXONERATE -- the missing assertion is a minor test-strengthening issue.
+FINDING_14: EXONERATE -- the untested fallback-count branch is low-risk relative to the existing degraded-panel test.
+FINDING_15: YES
+FINDING_16: EXONERATE -- the override is a local test hook and the production trust-boundary concern is not worth complicating this path.
+FINDING_17: YES
+FINDING_18: YES
+FINDING_19: YES
+FINDING_20: EXONERATE -- quote-bearing tmpdir paths are too unusual to warrant raising in this review.
+OOS_1: NO -- committed run logs are expected repository policy and this is not worth a separate issue.
+OOS_2: NO -- the implementation plan is authoritative over the older feature-description UX text.
+OOS_3: NO -- this is not a distinct issue beyond the in-scope generic batch-splitting concern.
+OOS_4: NO -- callers are expected to interpret DISPATCH_OK and usable counts rather than raw wrapper exit alone.
+OOS_5: NO -- the implementation plan already resolves the product-brief drift in favor of intra-batch deps.
