@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "design_classification": "TRIVIAL_DOC_ONLY",
+  "design_classification_reason": "user-selected trivial tier via Step 0b tier gate",
+  "design_classification_source": "caller-forwarded",
+  "sketch_budget": 0,
+  "review_budget": "quick",
+  "workflow_path": "SIMPLE",
+  "partition_requested": false
+}
