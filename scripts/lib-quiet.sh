@@ -86,7 +86,7 @@ larch_quiet_init() {
     exec >>"$log_file" 2>&1
 
     if [ -n "${LARCH_BREADCRUMBS_SURFACED_FILE:-}" ] && larch_quiet_fd3_is_visible; then
-        touch "$LARCH_BREADCRUMBS_SURFACED_FILE" 2>/dev/null || true
+        printf 'surfaced\n' >"$LARCH_BREADCRUMBS_SURFACED_FILE" 2>/dev/null || true
     fi
 }
 
@@ -143,7 +143,8 @@ larch_quiet__exit_write_done() {
     fi
     printf 'EXIT_CODE=%s\n' "$_rc" >"${LARCH_STATUS_FILE}.tmp.$$" 2>/dev/null || return 0
     mv -f "${LARCH_STATUS_FILE}.tmp.$$" "${LARCH_STATUS_FILE}" 2>/dev/null || return 0
-    touch "$LARCH_DONE_SENTINEL" 2>/dev/null || true
+    printf 'EXIT_CODE=%s\n' "$_rc" >"${LARCH_DONE_SENTINEL}.tmp.$$" 2>/dev/null || return 0
+    mv -f "${LARCH_DONE_SENTINEL}.tmp.$$" "${LARCH_DONE_SENTINEL}" 2>/dev/null || true
 }
 
 larch_quiet__exit_combo() {

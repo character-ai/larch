@@ -4,6 +4,13 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+# Source lib-quiet only for larch_quiet_append_done_trap; do NOT call
+# larch_quiet_init here because existing diagnostics use >&2 directly and
+# initializing quiet mode would redirect them to a log file.
+# shellcheck source=scripts/lib-quiet.sh
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_append_done_trap
 # shellcheck source=scripts/lib-implement-round-cap.sh
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/lib-implement-round-cap.sh"

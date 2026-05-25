@@ -87,7 +87,7 @@ larch_bm_validate_path --surfaced-sentinel "$SURFACED_SENT" || exit 2
 
 printf 'MODE=%s\n' "$MODE"
 
-if [[ -f "$SURFACED_SENT" ]]; then
+if [[ -s "$SURFACED_SENT" ]]; then
     exit 0
 fi
 
@@ -159,7 +159,7 @@ while true; do
         larch_err "breadcrumb-monitor: timeout waiting for done sentinel"
         exit 4
     fi
-    if [[ -f "$DONE_SENTINEL" ]]; then
+    if [[ -s "$DONE_SENTINEL" ]]; then
         break
     fi
     new_sz=0
