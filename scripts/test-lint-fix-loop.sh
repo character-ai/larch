@@ -116,7 +116,7 @@ run_case() {
         # shellcheck disable=SC2030,SC2031
         export IMPLEMENT_TMPDIR="$session"
         LINT_FIX_LOOP_RUN_EXTERNAL_AGENT_SH="$wrapper" \
-        bash "$fixture_scripts/lint-fix-loop.sh" --tmpdir "$session" --site "$site" --checks-log "$checks_log" ${extra_args[@]+"${extra_args[@]}"}
+        bash "$fixture_scripts/lint-fix-loop.sh" --tmpdir "$session" --site "$site" --checks-log "$checks_log" ${extra_args[@]+"${extra_args[@]}"} 2>&1
     ) || rc=$?
     printf '%s\n%s\n' "$rc" "$out"
 }
@@ -277,5 +277,24 @@ write_wrapper_modify_only "$WRAPPER7"
 case7_result=$(run_case "$SCRIPTS7" "$REPO7" "$SESSION7" "$CHECKS7" "$WRAPPER7" ship-pr-ci-initial "$ARGS7")
 case7_rc=$(printf '%s\n' "$case7_result" | sed -n '1p')
 [[ "$case7_rc" == "2" ]] || fail "case7 expected rc 2, got $case7_rc"
+
+# Case 8: per-job target argv files reject control characters.
+CASE8="$TMPROOT/case8"
+REPO8="$CASE8/repo"
+SCRIPTS8="$CASE8/scripts"
+SESSION8="$CASE8/session"
+CHECKS8="$CASE8/checks.log"
+WRAPPER8="$CASE8/wrapper.sh"
+ARGS8="$CASE8/target-args.txt"
+make_repo "$REPO8"
+make_fixture_scripts "$SCRIPTS8"
+make_session "$SESSION8"
+printf 'synthetic checks failure\n' > "$CHECKS8"
+printf 'make\ntest-harnesses-3\001\n' > "$ARGS8"
+write_wrapper_modify_only "$WRAPPER8"
+case8_result=$(run_case "$SCRIPTS8" "$REPO8" "$SESSION8" "$CHECKS8" "$WRAPPER8" ship-pr-ci-per-job "$ARGS8")
+case8_rc=$(printf '%s\n' "$case8_result" | sed -n '1p')
+[[ "$case8_rc" == "2" ]] || fail "case8 expected rc 2, got $case8_rc"
+assert_contains "$case8_result" '--target-cmd-args-file must not contain control characters' "case8 rejection message"
 
 echo "test-lint-fix-loop: ok"

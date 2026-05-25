@@ -253,6 +253,9 @@ if [[ -n "${SHIP_PR_LAUNCH_SENTINEL_DIR:-}" ]]; then
 fi
 echo "LINT_FIX_STATUS=${STUB_LINT_FIX_STATUS:-failed}"
 echo "LINT_FIX_SITE=${site:-unknown}"
+if [[ -n "${STUB_LINT_FIX_FAILURE_REASON:-}" ]]; then
+  echo "FAILURE_REASON=${STUB_LINT_FIX_FAILURE_REASON}"
+fi
 if [[ -n "${STUB_LINT_FIX_DELTA_PATHS_FILE:-}" ]]; then
   echo "LINT_FIX_DELTA_PATHS_FILE=${STUB_LINT_FIX_DELTA_PATHS_FILE}"
 fi
@@ -2735,6 +2738,39 @@ rm -rf "$call_dir"
 
 # ── #2632: run_ci_fix_vendor 3-tier waterfall + gh-run-logs threading ───────
 
+# Per-job argv dispatch stays aligned with ci-failed-jobs job classes.
+root=$(make_repo ci_per_job_argv_table)
+tmp=$(make_tmpdir)
+cat > "$tmp/per-job-argv-check.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+source "$1/scripts/ship-pr.sh"
+check_case() {
+  local job=$1 shard=${2:-} expected=$3 actual
+  _per_job_argv "$job" "$shard"
+  actual="${_PJA_ARGV[*]}"
+  if [[ "$actual" != "$expected" ]]; then
+    printf 'argv mismatch for %s[%s]: expected <%s> got <%s>\n' "$job" "$shard" "$expected" "$actual" >&2
+    exit 1
+  fi
+}
+check_case lint "" "env SKIP=agnix,lint-mermaid-fences,shellcheck make lint-only"
+check_case lint-mermaid "" "make lint-mermaid"
+check_case shellcheck "" "make shellcheck"
+check_case test-harnesses 7 "make test-harnesses-7"
+check_case test-harnesses shard "make test-harnesses"
+check_case agent-lint "" "make agent-lint"
+check_case agnix "" "make agnix"
+check_case smoke-dialectic "" "make smoke-dialectic"
+check_case agent-sync "" "make agent-sync"
+STUB
+chmod +x "$tmp/per-job-argv-check.sh"
+set +e
+(cd "$root" && CLAUDE_PLUGIN_ROOT="$root" bash "$tmp/per-job-argv-check.sh" "$root") >"$tmp/argv.out" 2>"$tmp/argv.err"
+printf '%s' "$?" >"$tmp/rc"
+set -e
+assert_rc "$tmp/rc" 0 "per-job argv dispatch table stays aligned with workflow jobs"
+
 # Per-job local CI recovery: failed jobs replay locally and push without the broad vendor waterfall.
 root=$(make_repo ci_per_job_happy)
 tmp=$(make_tmpdir)
@@ -2759,6 +2795,13 @@ if [[ "${1:-}" == run && "${2:-}" == view ]]; then
   exit 0
 fi
 exit 1
+STUB
+cat > "$root/scripts/run-relevant-checks-captured.sh" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "\$*" >> "$call_dir/relevant-checks-calls.txt"
+echo "RELEVANT_CHECKS_OK=true SITE=step10 COVERAGE=full"
+exit 0
 STUB
 cat > "$root/scripts/make" <<STUB
 #!/usr/bin/env bash
@@ -2812,6 +2855,20 @@ else
     fail "per-job local CI happy path should push and skip broad vendor launcher"
     sed 's/^/    launcher: /' "$call_dir/launcher-calls.txt" 2>/dev/null || true
 fi
+lint_runs=$(grep -c '^env SKIP=agnix,lint-mermaid-fences,shellcheck make lint-only$' "$call_dir/make-calls.txt" 2>/dev/null || echo 0)
+shard_runs=$(grep -c '^make test-harnesses-3$' "$call_dir/make-calls.txt" 2>/dev/null || echo 0)
+if [ "$lint_runs" = "2" ] && [ "$shard_runs" = "2" ]; then
+    ok "per-job local CI happy path reruns successful jobs in Phase B verification"
+else
+    fail "per-job local CI happy path should rerun successful jobs in Phase B verification"
+    sed 's/^/    make: /' "$call_dir/make-calls.txt" 2>/dev/null || true
+fi
+if grep -Fq -- '--site step10 --tmpdir' "$call_dir/relevant-checks-calls.txt"; then
+    ok "per-job local CI happy path reruns relevant-checks gate before push"
+else
+    fail "per-job local CI happy path should rerun relevant-checks gate before push"
+    sed 's/^/    checks: /' "$call_dir/relevant-checks-calls.txt" 2>/dev/null || true
+fi
 rm -rf "$call_dir"
 
 # Per-job unfixable jobs bail with sanitized ci-local-unfixable reason.
@@ -2857,6 +2914,245 @@ printf '%s' "$?" >"$tmp/rc"
 set -e
 assert_rc "$tmp/rc" 3 "per-job unfixable exits 3"
 assert_state_line "$tmp/ship-pr-state.sh" "BAIL_REASON=ci-local-unfixable:gitleaks" "per-job unfixable records sanitized bail reason"
+rm -rf "$call_dir"
+
+# Per-job local fixer escalation falls back to the broad vendor waterfall instead of bailing ci-local-unfixable.
+root=$(make_repo ci_per_job_main_agent_required)
+tmp=$(make_tmpdir)
+call_dir=$(mktemp -d "$tmp/per-job-main-agent.XXXXXX")
+cat > "$root/scripts/ci-wait.sh" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+count_file="$call_dir/ci-wait-count"
+count=\$(cat "\$count_file" 2>/dev/null || echo 0)
+printf '%s\n' "\$((count + 1))" > "\$count_file"
+if [ "\$count" -eq 0 ]; then
+  printf 'ACTION=evaluate_failure\nCI_STATUS=fail\nBEHIND_COUNT=0\nFAILED_RUN_ID=run123\nBAIL_REASON=\nITERATION=0\nELAPSED=1\n'
+else
+  printf 'ACTION=merge\nCI_STATUS=pass\nBEHIND_COUNT=0\nFAILED_RUN_ID=\nBAIL_REASON=\nITERATION=1\nELAPSED=1\n'
+fi
+STUB
+cat > "$root/scripts/gh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "${1:-}" == run && "${2:-}" == view ]]; then
+  printf '%s\n' 'lint'
+  exit 0
+fi
+exit 1
+STUB
+cat > "$root/scripts/env" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "env \$*" >> "$call_dir/make-calls.txt"
+exit 1
+STUB
+cat > "$root/scripts/launch-cursor-ci.sh" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' cursor >> "$call_dir/launcher-calls.txt"
+printf 'LAUNCHER_EXIT=0\n'
+STUB
+chmod +x "$root/scripts/ci-wait.sh" "$root/scripts/gh" "$root/scripts/env" "$root/scripts/launch-cursor-ci.sh"
+write_state "$tmp/ship-pr-state.sh" ci-initial
+awk '/^TRANSIENT_RETRIES=/ {print "TRANSIENT_RETRIES=1"; next}
+     /^FAILED_RUN_ID=/ {print "FAILED_RUN_ID=run123"; next}
+     {print}' "$tmp/ship-pr-state.sh" > "$tmp/ship-pr-state.sh.new" && mv "$tmp/ship-pr-state.sh.new" "$tmp/ship-pr-state.sh"
+set +e
+(cd "$root" && PATH="$root/scripts:$PATH" IMPLEMENT_TMPDIR="$tmp" CLAUDE_PLUGIN_ROOT="$root" \
+  STUB_LINT_FIX_STATUS=main-agent-required \
+  "$root/scripts/ship-pr.sh" --state-file "$tmp/ship-pr-state.sh" --implement-tmpdir "$tmp" \
+  --merge true --draft false --forked false --repo owner/repo >"$tmp/out" 2>&1)
+printf '%s' "$?" >"$tmp/rc"
+set -e
+assert_rc "$tmp/rc" 0 "per-job main-agent-required falls back to broad vendor recovery"
+if grep -qxF 'BAIL_REASON=' "$tmp/ship-pr-state.sh"; then
+    ok "per-job main-agent-required avoids ci-local-unfixable bail reason"
+else
+    fail "per-job main-agent-required should avoid ci-local-unfixable bail reason"
+    sed 's/^/    state: /' "$tmp/ship-pr-state.sh"
+fi
+if grep -Fxq 'cursor' "$call_dir/launcher-calls.txt" 2>/dev/null; then
+    ok "per-job main-agent-required triggers broad vendor launcher"
+else
+    fail "per-job main-agent-required should trigger broad vendor launcher"
+    sed 's/^/    launcher: /' "$call_dir/launcher-calls.txt" 2>/dev/null || true
+fi
+rm -rf "$call_dir"
+
+# Per-job local head drift stalls instead of collapsing into ci-local-unfixable.
+root=$(make_repo ci_per_job_head_changed)
+tmp=$(make_tmpdir)
+call_dir=$(mktemp -d "$tmp/per-job-head-changed.XXXXXX")
+cat > "$root/scripts/ci-wait.sh" <<'STUB'
+#!/usr/bin/env bash
+printf 'ACTION=evaluate_failure\nCI_STATUS=fail\nBEHIND_COUNT=0\nFAILED_RUN_ID=run123\nBAIL_REASON=\nITERATION=0\nELAPSED=1\n'
+STUB
+cat > "$root/scripts/gh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "${1:-}" == run && "${2:-}" == view ]]; then
+  printf '%s\n' 'lint'
+  exit 0
+fi
+exit 1
+STUB
+cat > "$root/scripts/env" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "env \$*" >> "$call_dir/make-calls.txt"
+exit 1
+STUB
+chmod +x "$root/scripts/ci-wait.sh" "$root/scripts/gh" "$root/scripts/env"
+write_state "$tmp/ship-pr-state.sh" ci-initial
+awk '/^TRANSIENT_RETRIES=/ {print "TRANSIENT_RETRIES=1"; next}
+     /^FAILED_RUN_ID=/ {print "FAILED_RUN_ID=run123"; next}
+     {print}' "$tmp/ship-pr-state.sh" > "$tmp/ship-pr-state.sh.new" && mv "$tmp/ship-pr-state.sh.new" "$tmp/ship-pr-state.sh"
+set +e
+(cd "$root" && PATH="$root/scripts:$PATH" IMPLEMENT_TMPDIR="$tmp" CLAUDE_PLUGIN_ROOT="$root" \
+  STUB_LINT_FIX_STATUS=failed STUB_LINT_FIX_FAILURE_REASON=head-changed-after-dispatch \
+  "$root/scripts/ship-pr.sh" --state-file "$tmp/ship-pr-state.sh" --implement-tmpdir "$tmp" \
+  --merge true --draft false --forked false --repo owner/repo >"$tmp/out" 2>&1)
+printf '%s' "$?" >"$tmp/rc"
+set -e
+assert_rc "$tmp/rc" 4 "per-job head-changed exits through stall recovery"
+assert_state_line "$tmp/ship-pr-state.sh" "STALL_TRACKING=true" "per-job head-changed marks stall"
+if grep -q '^BAIL_REASON=ci-local-unfixable:' "$tmp/ship-pr-state.sh"; then
+    fail "per-job head-changed should not set ci-local-unfixable bail reason"
+else
+    ok "per-job head-changed avoids ci-local-unfixable bail reason"
+fi
+rm -rf "$call_dir"
+
+# Verification regressions after a local replay consume the outer retry budget without dropping into vendor recovery.
+root=$(make_repo ci_per_job_verify_regression)
+tmp=$(make_tmpdir)
+call_dir=$(mktemp -d "$tmp/per-job-verify-regression.XXXXXX")
+cat > "$root/scripts/ci-wait.sh" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+count_file="$call_dir/ci-wait-count"
+count=\$(cat "\$count_file" 2>/dev/null || echo 0)
+printf '%s\n' "\$((count + 1))" > "\$count_file"
+if [ "\$count" -eq 0 ]; then
+  printf 'ACTION=evaluate_failure\nCI_STATUS=fail\nBEHIND_COUNT=0\nFAILED_RUN_ID=run123\nBAIL_REASON=\nITERATION=0\nELAPSED=1\n'
+else
+  printf 'ACTION=merge\nCI_STATUS=pass\nBEHIND_COUNT=0\nFAILED_RUN_ID=\nBAIL_REASON=\nITERATION=1\nELAPSED=1\n'
+fi
+STUB
+cat > "$root/scripts/gh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "${1:-}" == run && "${2:-}" == view ]]; then
+  printf '%s\n' 'lint'
+  exit 0
+fi
+exit 1
+STUB
+cat > "$root/scripts/env" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+count_file="$call_dir/lint-count"
+count=\$(cat "\$count_file" 2>/dev/null || echo 0)
+printf '%s\n' "\$((count + 1))" > "\$count_file"
+printf '%s\n' "env \$*" >> "$call_dir/make-calls.txt"
+if [ "\$count" -eq 0 ]; then
+  exit 0
+fi
+exit 1
+STUB
+cat > "$root/scripts/launch-cursor-ci.sh" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' cursor >> "$call_dir/launcher-calls.txt"
+printf 'LAUNCHER_EXIT=0\n'
+STUB
+chmod +x "$root/scripts/ci-wait.sh" "$root/scripts/gh" "$root/scripts/env" "$root/scripts/launch-cursor-ci.sh"
+write_state "$tmp/ship-pr-state.sh" ci-initial
+awk '/^TRANSIENT_RETRIES=/ {print "TRANSIENT_RETRIES=1"; next}
+     /^FAILED_RUN_ID=/ {print "FAILED_RUN_ID=run123"; next}
+     {print}' "$tmp/ship-pr-state.sh" > "$tmp/ship-pr-state.sh.new" && mv "$tmp/ship-pr-state.sh.new" "$tmp/ship-pr-state.sh"
+set +e
+(cd "$root" && PATH="$root/scripts:$PATH" IMPLEMENT_TMPDIR="$tmp" CLAUDE_PLUGIN_ROOT="$root" \
+  STUB_LINT_FIX_STATUS=applied \
+  "$root/scripts/ship-pr.sh" --state-file "$tmp/ship-pr-state.sh" --implement-tmpdir "$tmp" \
+  --merge true --draft false --forked false --repo owner/repo >"$tmp/out" 2>&1)
+printf '%s' "$?" >"$tmp/rc"
+set -e
+assert_rc "$tmp/rc" 4 "per-job verification regression exhausts the outer retry budget"
+lint_fix_calls=$(grep -c '^ship-pr-ci-per-job$' "$call_dir/lint-fix-sites.txt" 2>/dev/null || echo 0)
+if [ "$lint_fix_calls" = "3" ]; then
+    ok "per-job verification regression retries exactly once per outer attempt"
+else
+    fail "per-job verification regression should consume exactly 3 outer attempts"
+    sed 's/^/    lint-fix: /' "$call_dir/lint-fix-sites.txt" 2>/dev/null || true
+fi
+if [ ! -f "$call_dir/launcher-calls.txt" ]; then
+    ok "per-job verification regression skips vendor fallback"
+else
+    fail "per-job verification regression should skip vendor fallback"
+    sed 's/^/    launcher: /' "$call_dir/launcher-calls.txt" 2>/dev/null || true
+fi
+rm -rf "$call_dir"
+
+# Per-job push failures retry the outer attempt without falling through to a same-attempt vendor launcher.
+root=$(make_repo ci_per_job_push_failure)
+tmp=$(make_tmpdir)
+call_dir=$(mktemp -d "$tmp/per-job-push-failure.XXXXXX")
+cat > "$root/scripts/ci-wait.sh" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+count_file="$call_dir/ci-wait-count"
+count=\$(cat "\$count_file" 2>/dev/null || echo 0)
+printf '%s\n' "\$((count + 1))" > "\$count_file"
+printf 'ACTION=evaluate_failure\nCI_STATUS=fail\nBEHIND_COUNT=0\nFAILED_RUN_ID=run123\nBAIL_REASON=\nITERATION=%s\nELAPSED=1\n' "\$count"
+STUB
+cat > "$root/scripts/gh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "${1:-}" == run && "${2:-}" == view ]]; then
+  printf '%s\n' 'lint'
+  exit 0
+fi
+exit 1
+STUB
+cat > "$root/scripts/env" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "env \$*" >> "$call_dir/make-calls.txt"
+exit 0
+STUB
+cat > "$root/scripts/git-push.sh" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'push\n' >> "$call_dir/push-calls.txt"
+exit 1
+STUB
+cat > "$root/scripts/launch-cursor-ci.sh" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' cursor >> "$call_dir/launcher-calls.txt"
+printf 'LAUNCHER_EXIT=0\n'
+STUB
+chmod +x "$root/scripts/ci-wait.sh" "$root/scripts/gh" "$root/scripts/env" "$root/scripts/git-push.sh" "$root/scripts/launch-cursor-ci.sh"
+write_state "$tmp/ship-pr-state.sh" ci-initial
+awk '/^TRANSIENT_RETRIES=/ {print "TRANSIENT_RETRIES=1"; next}
+     /^FAILED_RUN_ID=/ {print "FAILED_RUN_ID=run123"; next}
+     {print}' "$tmp/ship-pr-state.sh" > "$tmp/ship-pr-state.sh.new" && mv "$tmp/ship-pr-state.sh.new" "$tmp/ship-pr-state.sh"
+set +e
+(cd "$root" && PATH="$root/scripts:$PATH" IMPLEMENT_TMPDIR="$tmp" CLAUDE_PLUGIN_ROOT="$root" \
+  "$root/scripts/ship-pr.sh" --state-file "$tmp/ship-pr-state.sh" --implement-tmpdir "$tmp" \
+  --merge true --draft false --forked false --repo owner/repo >"$tmp/out" 2>&1)
+printf '%s' "$?" >"$tmp/rc"
+set -e
+assert_rc "$tmp/rc" 4 "per-job push failure exhausts outer retries without same-attempt vendor fallback"
+launch_count=$(wc -l < "$call_dir/launcher-calls.txt" 2>/dev/null | tr -d ' ')
+if [ "${launch_count:-0}" = "0" ]; then
+    ok "per-job push failure skips same-attempt vendor launcher"
+else
+    fail "per-job push failure should skip same-attempt vendor launcher"
+    sed 's/^/    launcher: /' "$call_dir/launcher-calls.txt" 2>/dev/null || true
+fi
 rm -rf "$call_dir"
 
 # 1) Cursor wins on first tier — Codex/Claude not invoked.
