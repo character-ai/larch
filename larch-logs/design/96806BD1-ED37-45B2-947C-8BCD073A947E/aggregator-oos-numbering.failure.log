@@ -1,0 +1,6 @@
+Aggregator emitted 3 duplicate `### OOS_1:` headings in ballot.txt at offsets ~249/257/265.
+Reviewers: Cursor-Edge, Cursor-Pragmatic, Cursor-dyn-schema-wire-consistency.
+The aggregator preserved verbatim per-reviewer OOS blocks without global renumbering, even after a prose note claiming no OOS blocks existed.
+Tally exited rc=2 ("duplicate or malformed FINDING/OOS headings in ballot").
+Fix applied: orchestrator manually renumbered OOS_1/OOS_2/OOS_3 in ballot.txt, then re-ran tally-plan-review.sh directly with 3 voter files. TALLY_PLAN_REVIEW_STATUS=ok on re-run.
+Follow-up issue should be filed against /design aggregator OOS numbering after this run completes.

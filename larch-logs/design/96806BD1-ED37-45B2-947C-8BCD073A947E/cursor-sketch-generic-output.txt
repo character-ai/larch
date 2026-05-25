@@ -1,0 +1,7 @@
+Exploring the codebase for plan-review voting, tallying, and design-log publishing to ground a high-level implementation plan.
+
+Checking how `reviewer_for_block` maps to slot labels and whether a `plan-review` subdirectory exists elsewhere.
+
+Noting `design-log-publish.sh` stages only top-level files under `$DESIGN_TMPDIR` (see `find ... -maxdepth 1`); nested `plan-review/round-N/` requires the recursive staging work referenced as #2666.
+
+

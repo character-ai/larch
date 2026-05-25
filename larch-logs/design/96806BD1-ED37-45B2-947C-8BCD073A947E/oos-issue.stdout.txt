@@ -1,0 +1,8 @@
+ISSUE_1_NUMBER=2770
+ISSUE_1_URL=https://github.com/character-ai/larch/issues/2770
+ISSUE_1_ID=4514557589
+ISSUE_1_TITLE=[OOS] Code retry prefix names only FINDING_N while code ballots stay finding-only…
+ISSUE_1_BLOCKER_LINKS_APPLIED=1
+ISSUES_CREATED=1
+ISSUES_FAILED=0
+ISSUES_DEDUPLICATED=0

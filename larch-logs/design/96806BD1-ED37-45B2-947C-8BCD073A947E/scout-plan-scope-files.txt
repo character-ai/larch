@@ -1,0 +1,14 @@
+scripts/parse-judge-vote-and-rating.sh
+scripts/parse-judge-vote-and-rating.md
+skills/design/scripts/test-findings-classification.sh
+skills/design/scripts/test-findings-classification.md
+skills/shared/scripts/render-voter-prompt.sh
+scripts/lib-voter-parse-rate.sh
+skills/design/references/plan-review.md
+skills/design/scripts/tally-plan-review.sh
+skills/design/scripts/plan-review-loop.sh
+scripts/design-log-publish.sh
+docs/run-logs.md
+Makefile
+scripts/test-render-voter-prompt.sh
+skills/design/scripts/test-tally-plan-review.sh

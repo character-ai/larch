@@ -1,0 +1,15 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/dispatch-plan-voters.sh:129-164	The proposed vN mapping derives slots from a strict *-vote-output.txt filename shape, but current waterfall voters can emit codex-vote-output-phase2.txt or codex-vote-output-phase3.txt while still being valid voter slots.	A Codex or Cursor voter that succeeds through phase 2/3 is written to VOTER_PATHS_FILE, then tally-plan-review.sh would reject the path as unrecognized or mis-map it, turning a degraded-but-valid panel into tally-error and suppressing findings-classification.tsv.	Map v1/v2/v3 by voter slot identity, not only exact basename. Accept canonical slot prefixes with optional -phase2/-phase3 suffixes, or pass slot metadata alongside paths. Add harness fixtures for phase2/phase3 paths and for a truly malformed filename that must error.
+1	in_scope	important	correctness	skills/design/scripts/tally-plan-review.sh:142-145	The planned harness text conflates reviewer_slots with missing voter slots, but current tally reviewer attribution comes from the ballot block proposer, not from voting judges.	A degraded panel with missing Cursor could incorrectly change reviewer_slots or assert an empty reviewer cell, corrupting the first three TSV columns while v3_* is the only place the missing voter should appear.	Revise the plan/harness so reviewer_slots is derived from reviewer_for_block and remains stable regardless of missing voters; missing judges should only produce empty vN_* cells.
+
+1. **correctness** — `scripts/dispatch-plan-voters.sh:129-164`, `scripts/dispatch-with-waterfall.sh:138-147`, `scripts/dispatch-with-waterfall.sh:278-318`, `scripts/dispatch-plan-voters.sh:207-216`
+
+   The 18-column header and parser KV names line up mechanically, but the proposed row assembly is not deterministic for real fallback paths. The plan says tally extracts a tool name from `*-vote-output.txt` and errors on unrecognized filenames, while current dispatch can produce valid `codex-vote-output-phase2.txt`, `codex-vote-output-phase3.txt`, and equivalent Cursor paths. The plan also notes no fixture for the unrecognized-filename error path.
+
+   Suggested revision: define vN as slot identity (`claude`, `codex`, `cursor` primary slot), accept phase suffixes for those slots, and add tests for phase2/phase3 plus a malformed filename error.
+
+2. **correctness** — `skills/design/scripts/tally-plan-review.sh:142-145`, `scripts/lib-vote-tally.sh:32-53`
+
+   The plan’s missing-judge harness case says `reviewer_slots` should reflect the missing voter via an empty cell. In current tally code, reviewer attribution is extracted from each finding block and used for scoring; it is not the voting panel slot list. That would make the TSV schema internally inconsistent: missing voters belong in empty `vN_*` fields, not in `reviewer_slots`.
+
+   Suggested revision: make the harness assert that `reviewer_slots` remains the ballot reviewer/proposer attribution, with missing judge state represented only by the corresponding empty vN group.

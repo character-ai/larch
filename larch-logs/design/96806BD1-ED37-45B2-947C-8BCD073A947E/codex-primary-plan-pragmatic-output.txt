@@ -1,0 +1,10 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/dispatch-with-waterfall.sh:140-145; scripts/dispatch-plan-voters.sh:207-218	Plan derives classification slots from exact *-vote-output.txt filenames but real voter paths can be phase-suffixed fallback outputs and the paths file carries no tool metadata	A degraded or waterfall run can pass codex-vote-output-phase2.txt or cursor-vote-output-phase3.txt into tally-plan-review.sh, causing the proposed strict filename parser to reject a valid voter or put ratings in the wrong vN column	Pass slot/tool metadata to tally or normalize phase/retry suffixes and map by fixed voter slot; add a fallback-path harness case
+1	in_scope	important	code-quality	.claude/rules/script-md-siblings.md:7-12	Plan changes several existing scripts but omits their required sibling contract docs	The PR can land behavior changes to tally-plan-review.sh, plan-review-loop.sh, render-voter-prompt.sh, lib-voter-parse-rate.sh, and design-log-publish.sh while their .md contracts still document the old CLI and artifacts	Add updates for each touched script sibling .md or explicitly point stub siblings at the primary updated contract
+1	in_scope	latent	correctness	scripts/parse-judge-vote-and-rating.sh:new	Parser contract says axis values are case-insensitive but also case-preserved, conflicting with the lowercase stdout schema	A voter emitting SEVERITY=MAJOR could produce MAJOR in the TSV or be treated inconsistently by future consumers expecting the documented lowercase enum	Normalize axis values to lowercase after case-insensitive validation and document that emitted PARSED_* values always use the schema enums
+
+1. [correctness] The proposed tally slot derivation is not compatible with existing waterfall fallback output paths.
+
+2. [code-quality] The plan misses required sibling documentation updates for behavior-changing script edits.
+
+3. [correctness] The new parser contract should remove the case-preservation ambiguity for axis values.

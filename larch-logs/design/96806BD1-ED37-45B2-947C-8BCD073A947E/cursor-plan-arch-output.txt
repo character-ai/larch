@@ -1,0 +1,77 @@
+Reading the plan and referenced code paths.
+
+Validating the plan against the codebase: reading key files referenced in the plan.
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan.txt:91-93 / skills/design/scripts/tally-plan-review.sh:105-110	0-judge TSV voting_result tied to existing tally semantics	Plan claims voting_result reflects main-agent-required while existing tally never emits per-item results when eligible_count is 0; classify_result with eligible<=0 prints rejected (scripts/lib-vote-tally.sh:126-127) which mislabels pending panel work as rejected in analytics	Define an explicit voting_result string for the 0-judge path (e.g. main-agent-vote-required or pending) and add a harness assertion; do not infer from classify_result(…, eligible=0) without documenting that semantic break from rejected
+1	in_scope	important	architecture	plan.txt:77-79 vs scripts/lib-voter-parse-rate.sh:10-12	Retry-prefix edit anchored at wrong line	Implementers editing only the kind branch around line 186 will miss the real retry prose in VOTER_PARSE_RATE_RETRY_PREFIX_PLAN and VOTER_PARSE_RATE_RETRY_PREFIX_CODE	Revise the plan to name the top-of-file prefix constants (lines 10-12) as the single source of truth for retry wording updates
+1	in_scope	important	risk-integration	skills/design/scripts/tally-plan-review.sh:68 / plan.txt:89-90	Default nested findings-classification path lacks mkdir guarantee	Tally only mkdir -p DESIGN_TMPDIR today; writing plan-review/round-1/findings-classification.tsv without ensuring parents fails under set -e when the flag is omitted	Specify mkdir -p on the parent of the default output path inside tally before redirect (mirror plan-review-loop mkdir for explicit --out)
+1	in_scope	nit	correctness	plan.txt:14-16 / plan.txt:97-100	JUDGE_ERROR vs empty vN_vote not pinned to one wire value	Empty PARSED_VOTE equals JUDGE_ERROR in prose but TSV schema says empty cells; consumers cannot tell missing vote from malformed vote if both render empty	Document whether vN_vote stays empty for JUDGE_ERROR or emits the literal JUDGE_ERROR and align parser plus harness fixtures with that choice
+1	in_scope	important	security	plan.txt:94-100 / scripts/design-log-publish.sh:246-251	Unescaped judge-supplied axis text written into TSV	Malicious or sloppy judge output with embedded tabs or newlines breaks column alignment or injects extra logical rows into naive TSV consumers	Extend the plan to require tab/newline stripping or replacement in all TSV cells sourced from voter files (axes and votes) before write, with a harness case if feasible
+1	in_scope	latent	correctness	plan.txt:36-37 / skills/design/scripts/tally-plan-review.sh:103-110	0 judges plus empty ballot not classified	Early exit on eligible_count==0 skips clarifying whether Decision 1 (per-row) or Decision 2 (header-only) wins when block_files is also empty	Decide expected artifact (header-only vs rows) and encode it in tally plus a harness case so the intersection is deterministic
+1	in_scope	nit	code-quality	plan.txt:87-93	Section header says three additive changes but lists four numbered items	Readers mis-estimate scope and reviewers may miss one required delta	Rename the heading to four changes or merge items for accurate checklist parity
+
+[OUT_OF_SCOPE] Consider updating [scripts/lib-vote-tally.md](scripts/lib-vote-tally.md) (contract file alongside lib-vote-tally.sh) to reference the new parser and TSV so vote_for_id and PARSED_VOTE semantics stay documented in one discovery path for #2675 consumers; lines ~1-30 typical header section — coordinate with any concurrent doc edits.
+
+1. **[correctness]** [plan.txt](~<TMPDIR>/plan.txt) / [skills/design/scripts/tally-plan-review.sh](skills/design/scripts/tally-plan-review.sh):105-110 — The plan states the 0-judge TSV `voting_result` reflects “main-agent-required” and claims the existing tally already classifies these rows; today the script exits before any per-block classification, and `classify_result` maps `eligible<=0` to `rejected` in [scripts/lib-vote-tally.sh](scripts/lib-vote-tally.sh):126-127. **Revision:** Pick and document an explicit per-row label for the degraded path (distinct from normal `rejected`), lock it in acceptance criteria and harness expectations, and avoid implying parity with current `voting-tally.md` rows that do not exist for this case.
+
+2. **[architecture]** [plan.txt](~<TMPDIR>/plan.txt):77-79 vs [scripts/lib-voter-parse-rate.sh](scripts/lib-voter-parse-rate.sh):10-12 — Retry text lives in `VOTER_PARSE_RATE_RETRY_PREFIX_*` constants, not near `LARCH_VPR_RETRY_PREFIX_KIND` at line 186. **Revision:** Point implementers at lines 10-12 (and any sibling `.md` if present) so plan and code edits stay aligned.
+
+3. **[risk-integration]** [plan.txt](~<TMPDIR>/plan.txt):89-90 / [skills/design/scripts/tally-plan-review.sh](skills/design/scripts/tally-plan-review.sh):68 — Default output under `plan-review/round-1/` requires nested directories that tally does not create today. **Revision:** Require `mkdir -p` for the default classification path inside `tally-plan-review.sh`, not only in `plan-review-loop.sh`.
+
+4. **[correctness]** [plan.txt](~<TMPDIR>/plan.txt):14-20,97-100 — Ambiguity between “empty `PARSED_VOTE` means JUDGE_ERROR” and “TSV cells are empty strings” for `vN_vote`. **Revision:** Specify the on-wire representation for `JUDGE_ERROR` (literal vs blank) and keep parser, tally, and docs consistent.
+
+5. **[security]** [plan.txt](~<TMPDIR>/plan.txt):94-100 — TSV rows will embed parsed axis strings without a stated sanitization policy; tabs/newlines in judge output corrupt structure. **Revision:** Add normalization rules for all externally sourced TSV fields and cover at least tab-injection in a harness.
+
+6. **[correctness]** [plan.txt](~<TMPDIR>/plan.txt):36-37 / [skills/design/scripts/tally-plan-review.sh](skills/design/scripts/tally-plan-review.sh):103-110 — Intersection of Decision 1 (0 judges, rows per ballot id) and Decision 2 (empty ballot, header-only) when both `eligible_count` and `block_files` are empty is unstated; current early exit fires first. **Revision:** Declare expected behavior and add a small harness case.
+
+7. **[code-quality]** [plan.txt](~<TMPDIR>/plan.txt):87-93 — Heading says “Three additive changes” while four numbered items follow. **Revision:** Fix the heading or merge bullets so the checklist matches narrative.
+
+The user asked repo-relative paths in findings — for plan-only items I used plan.txt which is outside the repo. I should use a phrasing like "design plan artifact" or note path. Actually the instruction says "repo-relative file:line when applicable". For plan deficiencies, location might be "plan artifact (session)" - but TSV location field should be useful. I'll use `plan.txt` as the user gave absolute path - for repo review, findings about proposed files could reference `skills/design/scripts/tally-plan-review.sh` etc.
+
+Let me fix TSV location column - use repo paths where possible:
+- Row 1: plan artifact + scripts/lib-vote-tally.sh:124-128 + tally-plan-review.sh:105-110 - combine? Use "plan.txt;scripts/lib-vote-tally.sh:124-128" with spaces not tabs
+
+Actually replace newlines/tabs in fields with spaces - use semicolon.
+
+I'll fix row 1 location to `plan.txt;scripts/lib-vote-tally.sh:124-128;skills/design/scripts/tally-plan-review.sh:105-110`
+
+Row 2 location: `plan.txt:77-79;scripts/lib-voter-parse-rate.sh:10-12`
+
+Also first finding - user wanted repo-relative - the plan is in cache not repo. I'll use `session-plan` or keep as plan.txt per user path basename.
+
+Re-output TSV with cleaned locations (repo-first).
+
+Actually re-read user message: "repo-relative file:line when applicable" - for plan gaps, applicable might be the codebase files that prove the gap. Good.
+
+I'll update the response - the TSV in the final channel must have REAL tab characters. I'll type them in the compose - in XML I might need to use actual tabs between columns.
+
+Let me produce final answer with literal tabs between TSV columns - in Cursor markdown might collapse tabs - user asked no fences for TSV so raw TSV in code block might help readability but user said NO markdown fences around TSV. So plain text TSV in the response - tabs might render.
+
+I'll output as the user requested without code fence for TSV.
+
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/lib-vote-tally.sh:124-128;skills/design/scripts/tally-plan-review.sh:105-110	0-judge per-row voting_result not defined by existing tally semantics	Plan ties TSV voting_result to main-agent-required but tally exits before per-block work; classify_result(eligible<=0) yields rejected mislabeling pending main-agent work	Choose an explicit voting_result string for the 0-judge path (distinct from normal rejected), document it in acceptance plus harness; do not claim current tally already emits those rows
+1	in_scope	important	architecture	plan.txt:77-79;scripts/lib-voter-parse-rate.sh:10-12	Retry-prefix edits mis-anchored near line 186	Editors who touch only the kind switch miss VOTER_PARSE_RATE_RETRY_PREFIX_PLAN and VOTER_PARSE_RATE_RETRY_PREFIX_CODE where prose actually lives	Name the prefix constants at scripts/lib-voter-parse-rate.sh:10-12 as the required edit sites in the plan
+1	in_scope	important	risk-integration	skills/design/scripts/tally-plan-review.sh:68;plan.txt:89-90	Default nested classification output path may lack parent dirs	Tally only mkdir -p DESIGN_TMPDIR; default plan-review/round-1/findings-classification.tsv can fail under set -e when flag omitted	Require mkdir -p for the default output directory inside tally-plan-review.sh before writing the TSV
+1	in_scope	nit	correctness	plan.txt:14-20;plan.txt:97-100	JUDGE_ERROR versus empty vN_vote unspecified	Consumers cannot distinguish missing vote token from malformed vote if both map to blank cells	Document whether vN_vote emits literal JUDGE_ERROR or stays empty and align parser tally and fixtures
+1	in_scope	important	security	plan.txt:94-100	Judge-supplied axis strings lack output escaping rules	Tabs or newlines in axis values break TSV columns or spoof extra rows for naive parsers	Specify tab newline normalization for all voter-sourced TSV fields and add a harness case where practical
+1	in_scope	latent	correctness	plan.txt:36-37;skills/design/scripts/tally-plan-review.sh:103-110	0 judges plus empty ballot intersection unstated	Early exit on eligible_count==0 precedes empty ballot handling; Decision 1 versus Decision 2 outcome is ambiguous	Declare expected TSV shape for simultaneous zero judges and zero findings and add a harness assertion
+1	in_scope	nit	code-quality	plan.txt:87-93	Heading says three additive changes but lists four items	Scope checklist does not match narrative risking a missed implementation step	Rename to four changes or merge bullets so numbering matches prose
+
+[OUT_OF_SCOPE] Update [scripts/lib-vote-tally.md](scripts/lib-vote-tally.md) (companion to [scripts/lib-vote-tally.sh](scripts/lib-vote-tally.sh), roughly lines 1-80 for contract overview) to cross-link `parse-judge-vote-and-rating.sh` and the new TSV so shared-library consumers for #2675 have one canonical doc trail; watch merge overlap with any concurrent doc refactors.
+
+1. **[correctness]** [scripts/lib-vote-tally.sh](scripts/lib-vote-tally.sh):124-128 and [skills/design/scripts/tally-plan-review.sh](skills/design/scripts/tally-plan-review.sh):105-110 — The plan claims the 0-judge TSV’s `voting_result` reflects a main-agent-required disposition and that the existing tally already classifies those rows, but the current early exit never runs `classify_result` per block, and `classify_result` with `eligible<=0` prints `rejected`. **Suggested revision:** Define an explicit per-row `voting_result` value for the degraded path, align acceptance criteria and harness expectations, and drop the implication that today’s `voting-tally.md` already provides that per-row signal.
+
+2. **[architecture]** Session plan §`lib-voter-parse-rate.sh` vs [scripts/lib-voter-parse-rate.sh](scripts/lib-voter-parse-rate.sh):10-12 — Retry wording is authored in `VOTER_PARSE_RATE_RETRY_PREFIX_PLAN` and `VOTER_PARSE_RATE_RETRY_PREFIX_CODE`, not in the `LARCH_VPR_RETRY_PREFIX_KIND` branch near line 186. **Suggested revision:** Update the plan’s file anchor so implementers edit the prefix constants directly.
+
+3. **[risk-integration]** [skills/design/scripts/tally-plan-review.sh](skills/design/scripts/tally-plan-review.sh):68 and the default-path portion of the session plan — Nested default output `plan-review/round-1/findings-classification.tsv` is not covered by the existing top-level `mkdir -p`. **Suggested revision:** Document `mkdir -p` inside `tally-plan-review.sh` for the default output directory, not only in `plan-review-loop.sh`.
+
+4. **[correctness]** Session plan stdout schema and TSV schema sections — `PARSED_VOTE` empty is described as `JUDGE_ERROR` while TSV cells are described as empty strings, without stating how `vN_vote` encodes `JUDGE_ERROR`. **Suggested revision:** Pick one wire representation and propagate it through parser, tally, docs, and tests.
+
+5. **[security]** Session plan TSV emit and ingest path — Parsed axis values are copied into committed logs without a stated normalization policy. **Suggested revision:** Require stripping or replacing tabs and newlines (and document any other delimiter hygiene) for all voter-sourced TSV fields, with harness coverage if feasible.
+
+6. **[correctness]** Session plan Decisions 1 and 2 versus [skills/design/scripts/tally-plan-review.sh](skills/design/scripts/tally-plan-review.sh):103-110 — When both `eligible_count` and the ballot-derived block list are empty, the script’s control flow favors the 0-judge early exit; the plan does not say whether the artifact should be header-only or absent. **Suggested revision:** Specify the combined edge case and lock it in a harness.
+
+7. **[code-quality]** Session plan `tally-plan-review.sh` change list — The prose says “Three additive changes” but enumerates four numbered items. **Suggested revision:** Reconcile the heading with the checklist count.

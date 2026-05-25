@@ -1,0 +1,27 @@
+Reading the plan and tracing cited paths in the codebase.
+
+Tracing integration points: reading cited files and adjacent contracts.
+
+.schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	architecture	skills/design/scripts/plan-review-loop.sh:485-689	skipped-empty-findings path never runs tally-plan-review.sh	Loop exits after write_empty_review_artifacts with TALLY_PLAN_REVIEW_STATUS=skipped-empty-findings per plan-review-loop.md and SKILL.md; header-only findings-classification.tsv from tally Decision 2 is never produced so publish/docs acceptance for zero-finding rounds fails unless loop or write_empty_review_artifacts emits the file	Invoke tally with empty ballot plus out path write header-only TSV in the early-exit block or update loop SKILL contracts together
+1	in_scope	important	risk-integration	skills/design/scripts/test-tally-plan-review.sh:44-67	skills/design/SKILL.md:682	Proposed strict derive tool from *-vote-output.txt filenames breaks existing harness voter paths v1.txt v2.txt v3.txt and documented main-agent re-tally using voter-main-agent.txt	Relax mapping rule allowlisted basename prefixes or single-slot fallback document renames for tests and SKILL
+1	in_scope	nit	security	skills/design/scripts/tally-plan-review.sh:94-145	Tab-only sanitizer for reviewer_slots	Plan edge case covers embedded tabs only reviewer_for_block or future columns can contain newlines breaking TSV rows or merging rows silently	Extend row writer to strip or replace newlines across all variable-width fields
+1	in_scope	latent	correctness	scripts/parse-judge-vote-and-rating.sh:new	Multiple same-id vote lines tie-break	 vote_for_id awk keeps last matching line parser contract does not specify same rule divergence yields different vN_vote vs voting_result	Document and implement last-line-wins identical to vote_for_id or error on duplicates
+1	in_scope	latent	correctness	skills/design/scripts/plan-review-loop.sh:604-607	tally non-zero exit	Plan adds findings-classification-out before tally failure may leave absent or stale TSV versus voting-tally.md semantics	Define whether to delete target path on tally-error or write partial row set document in harness
+1	in_scope	nit	security	scripts/design-log-publish.sh:278-322	render-cache symlink guard	New plan-review staging omits symlink-forbid parity shown for render-cache	Match render-cache checks for plan-review directory before enumeration
+
+1. **architecture** — [skills/design/scripts/plan-review-loop.sh:485-489](skills/design/scripts/plan-review-loop.sh) / [skills/design/SKILL.md:688-688](skills/design/SKILL.md): Zero-finding flow documents tally not executed; plan Decision 2 and acceptance require a header-only TSV every round — extend this early exit (and contract docs) or the artifact is missing for the common “no findings” path.
+
+2. **risk-integration** — [skills/design/scripts/test-tally-plan-review.sh:44-67](skills/design/scripts/test-tally-plan-review.sh), [skills/design/SKILL.md:682](skills/design/SKILL.md): Strict `*-vote-output.txt` tool-name extraction conflicts with all current tally harness fixtures and the documented `voter-main-agent.txt` re-tally; narrow the rule (prefix map, optional env, or explicit `--voter-tool` list) or require coordinated renames across tests and SKILL.
+
+3. **security** — Proposed TSV writer in [skills/design/scripts/tally-plan-review.sh](skills/design/scripts/tally-plan-review.sh): Tab replacement alone leaves newline injection in `reviewer_slots` (and any later free-text columns) as a silent row-merging / parser-break risk — expand sanitization beyond tabs.
+
+4. **correctness** — New [scripts/parse-judge-vote-and-rating.sh](scripts/parse-judge-vote-and-rating.sh): Duplicate `<ID>:` vote lines make `vote_for_id`’s last-match behavior load-bearing; if the parser picks the first line or merges axes differently, `vN_vote` can disagree with `voting_result` — pin identical scan semantics or reject duplicates.
+
+5. **correctness** — [skills/design/scripts/plan-review-loop.sh:604-607](skills/design/scripts/plan-review-loop.sh): On `tally-error`, the new `--findings-classification-out` path is undefined (stale file from an earlier attempt vs no file); specify truncate/remove behavior and assert it in the extended harness.
+
+6. **security** — [scripts/design-log-publish.sh](scripts/design-log-publish.sh) proposed `plan-review/` block: Mirror the `render-cache` symlink / root-resolution guards before staging so a symlinked `plan-review` cannot widen readable paths.
+
+7. **code-quality** — [scripts/lib-voter-parse-rate.sh:10-12](scripts/lib-voter-parse-rate.sh): Plan anchor “~186” points at `local kind=`; the user-facing retry strings live in `VOTER_PARSE_RATE_RETRY_PREFIX_*` at the file top — fix the citation so implementers edit the right constants.
+
+[OUT_OF_SCOPE] Future wiring of `scripts/parse-judge-vote-and-rating.sh` into [skills/review/scripts/tally-code-votes.sh](skills/review/scripts/tally-code-votes.sh) (issue #2675) and any Codex waterfall `*-phase*.txt` paths — same filename-strictness risk as plan-review tests; track when L6 lands.
