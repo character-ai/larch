@@ -1,0 +1,71 @@
+# Implementation Plan — Fix 4 accept-path tests that invoke real codex/cursor CLI
+
+## Files to modify/create
+
+### UPDATED: `scripts/test-launch-review.sh`
+
+Prepend a `PATH="$STUB_BIN:$PATH" USER="larch-test-<section-key>-$$" \` line and re-indent the existing `"$LAUNCHER"` invocation underneath it in each of the four accept-path sections. The four sections are identified by their comment headers (line numbers drift; comments are stable):
+
+1. Codex `--token-budget-cap` accept path (currently lines ~694–697; comment "# --token-budget-cap accept path: flag recognized (not \"unknown flag\"), binary"). Section key: `budget-accept-codex`.
+2. Codex `--diff-file` accept path (currently lines ~737–740; comment "# --diff-file accept path: flag recognized (not \"unknown flag\")."). Section key: `diff-file-accept-codex`.
+3. Cursor `--token-budget-cap` accept path (currently lines ~1889–1892; comment "# Accept path: flag recognized (not \"unknown flag\"), binary absence or other"). Section key: `budget-accept-cursor`.
+4. Cursor `--diff-file` accept path (currently lines ~1900–1903; comment "# --diff-file accept path: flag recognized (not \"unknown flag\")."). Section key: `diff-file-accept-cursor`.
+
+Each edit shape (no functional change to the body of the test, only the launcher invocation line):
+
+```
+set +e
+PATH="$STUB_BIN:$PATH" USER="larch-test-<section-key>-$$" \
+    "$LAUNCHER" --output "$TMPDIR/<artifact>.txt" --timeout 5 --prompt "x" \
+    --<flag> <value> >/dev/null 2>"$TMPDIR/<artifact>.stderr"
+set -e
+```
+
+Where `<section-key>` is one of `budget-accept-codex`, `diff-file-accept-codex`, `budget-accept-cursor`, `diff-file-accept-cursor`, and `<flag>`/`<artifact>` come from the existing line.
+
+`STUB_BIN` is defined twice in the file (line 137 in the codex section, line 1144 in the cursor section), both as `"$TMPDIR/bin"`. Both codex edits use the in-scope codex-section `STUB_BIN`; both cursor edits use the in-scope cursor-section `STUB_BIN`. No new definitions are introduced.
+
+## Approach
+
+This is a surgical four-section edit. Each edit adds exactly one new line (`PATH=... USER=... \`) and re-indents the existing `"$LAUNCHER" ...` line by four spaces under the continuation. The `PATH="$STUB_BIN:$PATH"` prefix forces the launcher to find the local fake-binary scripts before any real `codex` / `cursor` on the developer's `PATH`. The `USER="larch-test-<section-key>-$$"` override gives each test a private serial-lock path under `/tmp/larch-${tool}-serial-larch-test-<section-key>-<pid>.lock` instead of the global `/tmp/larch-${tool}-serial-${USER}.lock` keyed on the OS user — so two clones on the same Mac running this harness in parallel no longer block each other (each clone runs under a different shell PID, yielding different `$$` values).
+
+Pattern parity: the file already uses the `PATH="$STUB_BIN:$PATH"` + `USER="..."` shape at multiple existing sites (e.g. the lock-test block starting at line 313 sets `CODEX_LOCK_USER="larch-test-codex-$$"`, the cap-hit block at lines 714–722, and the cursor `--diff-file` specialist block at lines 1916–1924). The fix copies that shape.
+
+Distinct `USER` keys per section ensure the four tests within a single harness invocation do not collide on the same lock either (defense-in-depth — the four sections run sequentially in the same shell, so they could share a lock without contention, but distinct keys cost nothing and make each section self-describing).
+
+## Edge cases
+
+- **`$STUB_BIN` not exported**: `STUB_BIN` is a regular local-to-script variable, not exported. Prefix-form `PATH="$STUB_BIN:$PATH" USER=... "$LAUNCHER"` correctly expands `$STUB_BIN` in the parent shell before invoking `"$LAUNCHER"` as a child process; the launcher's child env sees the expanded `PATH`.
+- **`$$` per-clone uniqueness**: `$$` is the PID of the running shell (the test script itself). Two clones on the same machine run different shells → different PIDs → different lock paths. The `$$` value is stable across all four sections within a single harness invocation, which is intentional (no need for distinct PIDs per section within one run).
+- **CI Linux behavior unchanged**: on Linux runners without brew-installed codex/cursor, the launcher still fails with `command not found` — the only assertion (`grep -Fq "unknown flag: ..."` against stderr) still passes because the stderr message does not contain "unknown flag". The `PATH` prefix simply ensures the stub binaries are preferred on macOS.
+- **Non-Darwin serial-lock short-circuit**: `scripts/lib-external-launcher-common.sh` already short-circuits the serial lock on non-Darwin (`return 0`). The `USER` override is a no-op on Linux but harmless. Mac is the only platform where this matters.
+- **Existing env blocks**: the four target sections currently have NO env prefix at all. The edit adds the prefix in front; no existing env-var continuation lines are removed or reordered.
+
+## Failure modes
+
+1. **Forgotten section**: if any of the four sections is missed, that section still contends on the global lock and still invokes the real CLI on dev Macs. Mitigation: each section's distinct `USER` key acts as a per-section grep target — a sweep of `grep -n '"\$LAUNCHER"' scripts/test-launch-review.sh` after the edit must show every accept-path `"$LAUNCHER"` invocation has a `PATH="$STUB_BIN:$PATH"` prefix line immediately above it.
+2. **Wrong `STUB_BIN` scope**: the file defines `STUB_BIN` twice (codex section line 137, cursor section line 1144). Editing a codex section but accidentally using the cursor `STUB_BIN` (or vice versa) would silently work because both expand to `"$TMPDIR/bin"`. Earliest signal: nothing functional breaks, but the edit becomes inconsistent with the file's organizational convention. Mitigation: edit each section in place — `STUB_BIN` reference is the same identifier; the in-scope expansion is correct by construction.
+3. **`$$` collision across concurrent clones**: PIDs are recycled across processes after wrap. In practice on macOS the PID space is large enough that two concurrent test runs effectively never collide; even if they did, the worst case is the same as the pre-fix behavior for one of them. No mitigation needed.
+
+## Testing strategy
+
+Manual verification on the dev Mac (CI is already green):
+
+1. **Baseline**: run `time bash scripts/test-launch-review.sh` once on the dev Mac with brew-installed codex/cursor; record wall-clock time.
+2. **Apply the four edits**.
+3. **Re-run** `time bash scripts/test-launch-review.sh`; expect ~20 s reduction (4 sections × ~5 s launcher timeout each per Acceptance #5).
+4. **Concurrent-clone test** (Acceptance #4): in two parallel terminals from two different clones on the same Mac, run `bash scripts/test-launch-review.sh` simultaneously; both should complete in roughly the wall-clock of a single solo run.
+5. **No-real-CLI probe** (Acceptance #2): while the test is running, in a third terminal run `pgrep -f '/opt/homebrew/bin/codex|node /opt/homebrew/bin/codex'` and `pgrep -f '/Applications/Cursor.app|cursor-agent'`; both must return no matches.
+6. **Global-lock absence probe** (Acceptance #3): while the test is running, `ls /tmp/larch-codex-serial-${USER}.lock /tmp/larch-cursor-serial-${USER}.lock 2>/dev/null` (where `${USER}` is the OS user) must produce no output; `ls /tmp/larch-codex-serial-larch-test-*.lock /tmp/larch-cursor-serial-larch-test-*.lock 2>/dev/null` may transiently list per-test lock files.
+7. **CI Linux**: push the PR; the existing `scripts/test-launch-review.sh` job in CI must remain green (no behavioral change for Linux where codex/cursor are absent from `PATH`).
+
+No new tests are added: the existing assertions in each section continue to verify the "flag recognized" property; the fix is purely a non-functional hardening of how the assertion is set up.
+
+## Out of scope
+
+(Carried forward from the issue.)
+- Top-of-file global fake-binary `PATH` injection (per the issue, this is a separate question).
+- Updating `.claude/rules/launcher-argv-test-coverage.md` to require `PATH` stub + `USER` override on every accept-path assertion (out of scope).
+- Broader rule that every launcher-touching test uses a per-test `USER` override (out of scope).
+
+diff_lines: 12

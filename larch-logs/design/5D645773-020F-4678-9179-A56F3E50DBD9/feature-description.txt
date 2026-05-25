@@ -1,0 +1,69 @@
+# [DESIGNING] [BUG] (URGENT) test-launch-review.sh: 4 accept-path tests invoke real codex/cursor CLI
+
+## Problem
+
+Four sections of `scripts/test-launch-review.sh` invoke `$LAUNCHER` (= `launch-review.sh --tool codex|cursor`) **without a `PATH="$STUB_BIN:$PATH"` prefix and without overriding `USER`**, so on hosts that have a real `codex` or `cursor` CLI installed the test falls through to the real binary instead of the test stub, AND acquires the global serial lock at `/tmp/larch-${tool}-serial-${USER}.lock` (see `scripts/lib-external-launcher-common.sh:47`) under the default OS user identity. The launcher runs with `--timeout 5` so each call eventually returns, but during that 5 s it (a) holds the global serial lock against any other process on the same host, (b) opens a network connection / spawns the real LLM agent process, and (c) may produce billable API calls.
+
+On dev Macs with `brew install codex` the test still passes (it only asserts that stderr does not contain the literal "unknown flag" string) but it does so slowly and after invoking a real LLM. Worse, **parallel clone sessions running these harnesses queue up on the same `/tmp/larch-${tool}-serial-${USER}.lock`** — the lock path is keyed by OS user, not by clone, so two clones on the same Mac under the same user account block each other on every accept-path invocation.
+
+The four affected sections, all of the same shape — "test that a feature flag is recognized by argv parsing, then let the launcher proceed":
+
+| File:line                                                            | Section                                                          |
+| -------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| `scripts/test-launch-review.sh:695` (codex)                          | `# --token-budget-cap accept path: flag recognized (not "unknown flag")` |
+| `scripts/test-launch-review.sh:738` (codex)                          | `# --diff-file accept path: flag recognized (not "unknown flag")` |
+| `scripts/test-launch-review.sh:1895` (cursor)                        | `# Accept path: flag recognized (not "unknown flag")` (`--token-budget-cap`) |
+| `scripts/test-launch-review.sh:1906` (cursor)                        | `# --diff-file accept path: flag recognized (not "unknown flag")` |
+
+Every other `$LAUNCHER` invocation in the file is either (a) preceded by `PATH="$STUB_BIN:$PATH"` AND uses a per-test `USER=...$$` override (via a `\`-continued env block), or (b) is a rejection test where the launcher fails argv validation before invoking the binary or acquiring the lock. The file already contains an example of the correct shape: e.g. the lock test block starting at `scripts/test-launch-review.sh:313` sets `CODEX_LOCK_USER="larch-test-codex-$$"` and forwards it as `USER="$CODEX_LOCK_USER"`.
+
+## Why CI hasn't caught this
+
+CI Linux runners do not have the `codex` or `cursor` Homebrew binaries on `PATH`. When the launcher tries to invoke them they exit with `command not found`, the test's only assertion (`grep -Fq "unknown flag: ..."` against stderr) passes, and the test runs in well under a second. Separately, the serial-lock code in `scripts/lib-external-launcher-common.sh:40` short-circuits to `return 0` on any non-Darwin platform, so Linux CI never exercises the lock-contention surface. Both failure modes are macOS-dev-only.
+
+The reason this surfaced now: an experimental parallel test runner (queue + N workers across all 264 leaf harnesses) on a multi-core Mac with multiple parallel clones exposed that several `make test-*` harnesses queue up on `/tmp/larch-codex-serial-${USER}.lock` and `/tmp/larch-cursor-serial-${USER}.lock`. Investigation traced the lock contention to these four unguarded `$LAUNCHER` calls.
+
+## Fix
+
+Each of the four sections needs a one-line edit: prepend `PATH="$STUB_BIN:$PATH" USER="larch-test-<section-key>-$$"` before the `"$LAUNCHER"` invocation. The `PATH` prefix prevents real-binary invocation; the `USER` override gives the test a private serial-lock path so concurrent clones do not contend. `$$` is the test process PID, which is per-clone (different shells = different PIDs).
+
+Example diff for the first section (codex `--token-budget-cap` accept path):
+
+```diff
+ # --token-budget-cap accept path: flag recognized (not "unknown flag"), binary
+ # absence or other required-flag errors cause non-0 exit from later checks.
++# PATH stub prevents the launcher from invoking the real codex CLI on dev Macs.
++# USER override gives this test a private serial-lock path so parallel clone
++# sessions running the same harness do not queue on /tmp/larch-codex-serial-${USER}.lock.
+ set +e
+-"$LAUNCHER" --output "$TMPDIR/budget-accept.txt" --timeout 5 --prompt "x" \
++PATH="$STUB_BIN:$PATH" USER="larch-test-budget-accept-codex-$$" \
++    "$LAUNCHER" --output "$TMPDIR/budget-accept.txt" --timeout 5 --prompt "x" \
+     --token-budget-cap 9999999 >/dev/null 2>"$TMPDIR/budget-accept.stderr"
+ set -e
+ if grep -Fq "unknown flag: --token-budget-cap" "$TMPDIR/budget-accept.stderr" 2>/dev/null; then
+     fail "token-budget-cap flag not recognized (got 'unknown flag' rejection)"
+ else
+     pass
+ fi
+```
+
+Apply the same shape to the other three sections with distinct `USER` keys: e.g. `larch-test-diff-file-codex-$$`, `larch-test-budget-accept-cursor-$$`, `larch-test-diff-file-cursor-$$`. `STUB_BIN` is defined twice in this file — at line 137 (codex section) and at line 1149 (cursor section) — both as `"$TMPDIR/bin"` containing the local fake-binary scripts. Both edits use the in-scope `STUB_BIN`.
+
+## Acceptance
+
+1. `bash scripts/test-launch-review.sh` continues to pass on macOS and on CI Linux.
+2. While `scripts/test-launch-review.sh` is running, `pgrep -f '/opt/homebrew/bin/codex|node /opt/homebrew/bin/codex'` returns no matches (no real codex spawned). Same probe for cursor: `pgrep -f '/Applications/Cursor.app|cursor-agent'` returns no matches.
+3. While `scripts/test-launch-review.sh` is running on macOS, the global serial-lock paths `/tmp/larch-codex-serial-${USER}.lock` and `/tmp/larch-cursor-serial-${USER}.lock` (where `${USER}` is the OS user, e.g. the developer's login) do NOT exist at any moment. Only per-test variants matching `/tmp/larch-(codex|cursor)-serial-larch-test-*-[0-9]*.lock` may exist briefly.
+4. Two concurrent invocations of `bash scripts/test-launch-review.sh` from two different clones of this repo on the same Mac do not block each other on lock acquisition — each completes in roughly the same wall-clock time as a single solo invocation.
+5. With the fix in place, the four affected sections each shave roughly the launcher's `--timeout 5` cost — total ~20 s — off the wall-clock of `scripts/test-launch-review.sh` on dev Macs that have brew-installed codex/cursor.
+
+## Out of scope
+
+- The wider question of whether tests should explicitly prepend a global fake-binary `PATH` at the top of every test file (or whether the Makefile harness should inject one) is separate; this issue is the surgical fix for the four known stub-missing sections.
+- The harness rule `.claude/rules/launcher-argv-test-coverage.md` ("Changing argv validation, output grammar, or rejection messages…") covers harness coverage for accept/reject paths but does not currently require a PATH stub OR a USER override on every accept-path assertion. That guidance refresh is out of scope for this issue.
+- The clone-isolation property is enforced surgically in this fix; a broader rule that EVERY launcher-touching test must use a per-test `USER` override is out of scope.
+
+## How this was discovered
+
+Experimental parallel test runner (queue + N workers across all 264 leaf harnesses) was added in a separate local-only experiment file (`parallel-tests.py` at repo root). When sweeping worker counts on macOS, several `test-*` harnesses exceeded the 300 s timeout while a `pgrep` snapshot showed a real codex subprocess (`node /opt/homebrew/bin/codex exec ... -m gpt-5.5 --output-last-message /tmp/larch-test-launch-review-*/diff-file-accept.txt`). Tracing the `--output-last-message` path back to the harness identified `scripts/test-launch-review.sh:738` (and the three siblings) as the source.
