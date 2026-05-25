@@ -1,0 +1,134 @@
+[DESIGNING] Codex writes wrong manifest schema at end of long runs (schema_version missing, commit_message missing), causing manifest-schema-invalid bail and wasted work
+
+Codex writes wrong manifest schema at end of long runs (schema_version missing, commit_message missing), causing manifest-schema-invalid bail and wasted work
+
+## Summary
+
+After a long Codex implementation run, the model writes a JSON manifest with a completely wrong schema — omitting all required fields (`schema_version`, `commit_message`, `files_touched`, `summary_bullets`, `tests_added_or_modified`, `todos_left`, `oos_observations`) and inventing two fields not in the schema (`summary`, `checks`). The dispatcher's `step2-implement.sh` schema validation rejects it with `manifest-schema-invalid`, bailing the entire run and losing all implementation work (which remains in the git working tree unstaged).
+
+**Observed outcome**: `STATUS=bailed REASON=manifest-schema-invalid`, working tree changes stashed, issue renamed `[STALLED]`, run cost ~$5–6 wasted.
+
+---
+
+## Reproduction Context
+
+| | larch1 | larch2 |
+|---|---|---|
+| Issue | #2671 | #2736 |
+| Run ID | `4361072A-5613-4AFB-9FD7-B5E6EC8EBD77` | `80D7AF3E-6853-4FC9-B95D-9AF232596C16` |
+| Codex model | gpt-5.5, `high` reasoning effort | gpt-5.5, `high` reasoning effort |
+| Log lines | ~133,000 | ~75,000 (estimate) |
+| Codex cost | $0.50 | $0.37 |
+| Total cost | $5.84 | $4.89 |
+| Outcome | bailed, stashed | bailed, stashed |
+| Duration | N/A (bailed before ship-pr) | N/A (bailed before ship-pr) |
+
+Both runs: implementation was **complete** (all plan files modified/created in the working tree, harnesses passing per Codex's own validation pass), but the manifest file was wrong.
+
+---
+
+## Root Cause
+
+### The wrong manifest Codex wrote (larch1)
+
+```json
+{
+  "status": "complete",
+  "summary": "Implemented per-finding forensic vote/rating parsing...",
+  "checks": "bash scripts/relevant-checks.sh; make test-findings-classification..."
+}
+```
+
+### The correct schema v1 required by the dispatcher
+
+```json
+{
+  "schema_version": "1",
+  "status": "complete",
+  "files_touched": [{"path": "...", "lines_added": N, "lines_removed": N}],
+  "tests_added_or_modified": ["..."],
+  "summary_bullets": ["...", "...", "..."],
+  "commit_message": "...",
+  "todos_left": [],
+  "oos_observations": [],
+  "bail_reason": "",
+  "needs_qa": {"questions": []}
+}
+```
+
+### Missing required fields
+
+`schema_version` (causes `SCHEMA_VERSION != "1"` check to fail), `commit_message`, `files_touched`, `summary_bullets`, `tests_added_or_modified`, `todos_left`, `oos_observations`.
+
+### Invented fields (not in schema)
+
+`summary` (appears to be a conflation of `summary_bullets`), `checks` (the validation command Codex ran, not a schema field at all).
+
+### The exact jq command Codex ran (from `codex-impl.log` line 139533, larch1)
+
+```bash
+jq -n \
+  --arg status complete \
+  --arg summary 'Implemented per-finding forensic vote/rating parsing...' \
+  --arg checks 'bash scripts/relevant-checks.sh; make test-findings-classification...' \
+  '{status:$status, summary:$summary, checks:$checks}'
+```
+
+Codex knew it needed to write `manifest.json` atomically but produced a completely wrong JSON shape.
+
+### Why this happened
+
+The Codex agent prompt (`agents/codex-implementer.md`) clearly specifies the manifest schema and includes a pre-exit checklist. However, after a very long run (~133k sidecar log lines), the model appears to have lost track of the exact required schema and improvised a simplified format. The model retained knowledge that it needed to write `status: complete` and something about a summary, but forgot the full schema structure including the critical `schema_version: "1"` gate field and `commit_message` (which is the dispatcher's only mechanism to commit the changes on Codex's behalf).
+
+This is a **long-context schema drift failure**: the further into the implementation Codex gets, the more likely it forgets the precise manifest format it needs to write at the end. The model "remembers the concept" (write a JSON with status=complete) but loses fidelity on the exact required shape.
+
+### Why this is expensive
+
+The manifest is the LAST thing Codex writes. By the time it fails:
+- All implementation work is done and in the working tree
+- Harnesses have been run and validated
+- All the Codex API cost has been spent
+- The run bails with `ORCHESTRATOR_EDIT_AUTHORITY=forbidden`, so the orchestrator cannot commit the existing working tree changes
+
+The user loses $5–6 worth of Codex work and must manually unstash and re-run.
+
+---
+
+## Evidence: larch2 Confirmed Same Pattern
+
+The larch2 run (`80D7AF3E`, issue #2736) shows identical fingerprint:
+- `Duration: N/A` — bailed before `ship-pr.sh` ran (same as larch1)
+- `Code review: N/A` — never reached Step 5 (same as larch1)  
+- Working tree changes stashed as `larch-stalled-sergey-zhupanov/implementing-phase-2-4-phase-tracking-ab-2736-claude-implement-larch2-qOxoM6`
+- 11 files matching the plan in the stash (implementation complete, just no manifest commit)
+
+The larch2 session directory (`qOxoM6`) was cleaned up so the raw manifest is unavailable, but all observable indicators match `manifest-schema-invalid`: same duration=N/A pattern, same stash-of-complete-work outcome, same cost level for a long run that bailed before code review.
+
+---
+
+## Suggested Fix Directions (not a design, just ideas)
+
+1. **Inline the schema in the manifest-writing instructions section** of `agents/codex-implementer.md` — currently the prompt directs Codex to "see `skills/implement/references/codex-manifest-schema.md`" but in a very long context run, that pointer degrades. Embedding the full required JSON template (with all field names) immediately before the "How to declare completion" section gives Codex a proximal, high-salience reference at the exact moment it needs it.
+
+2. **Add a jq self-validation step in the Codex prompt** — before renaming `manifest.json.tmp → manifest.json`, Codex should run:
+   ```bash
+   jq -e '
+     .schema_version == "1" and
+     (.status == "complete" or .status == "needs_qa" or .status == "bailed") and
+     (.commit_message | type == "string" and length > 0)
+   ' manifest.json.tmp
+   ```
+   If this fails, Codex sees the error immediately and can rewrite the manifest before exiting. This is cheap (one jq invocation) and catches the class of schema-drift errors in-process.
+
+3. **Dispatcher recovery path for `manifest-schema-invalid` with uncommitted working tree** — when the dispatcher detects `manifest-schema-invalid` but `git diff --stat HEAD` shows unstaged changes (indicating the implementer completed its work), the dispatcher could fall back to emitting `STATUS=claude_fallback` with `ORCHESTRATOR_EDIT_AUTHORITY=allowed`, allowing the orchestrator to commit the existing changes and continue. This treats the manifest failure as a "commit metadata only" failure rather than an "implementation failed" failure. Requires careful security analysis (only if diff is non-empty and the changes look like intentional edits, not accidental drift).
+
+4. **Periodic manifest-template echo in long-run sidecar logs** — the dispatcher could emit the manifest schema template to a file in `$IMPLEMENT_TMPDIR` that Codex can `cat` at any time. This doesn't change the agent prompt but gives Codex a fresh copy of the schema to reference just before writing the manifest.
+
+---
+
+## Files Involved
+
+- `agents/codex-implementer.md` — Codex agent prompt; manifest-writing instructions + checklist
+- `skills/implement/references/codex-manifest-schema.md` — normative schema definition
+- `skills/implement/scripts/step2-implement.sh:487` — `schema_version != "1"` gate (first failure point)
+- `skills/implement/scripts/step2-implement.sh:502` — `commit_message` + `files_touched` validation

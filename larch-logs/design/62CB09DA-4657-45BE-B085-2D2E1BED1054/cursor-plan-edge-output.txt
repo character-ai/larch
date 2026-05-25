@@ -1,0 +1,41 @@
+Reading the implementation plan and exploring referenced codebase paths.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/implement/scripts/step2-implement.sh:485-548	Recovery gate blocks only prior status=bailed	not needs_qa	Implementer emits needs_qa with partial WT edits but manifest fails repair at :534; STATUS stays needs_qa, diff non-empty → claude_fallback commits and skips §2.3 Q/A	Treat prior status needs_qa like bailed (no recovery), or require valid qa-pending.json before recover; add Test M6
+2	in_scope	important	risk-integration	skills/implement/scripts/step2-implement.sh:552-590	emit_manifest_invalid_or_recover exits before Step 6 post-validation	Recovery on schema-invalid never runs branch-changed, protected-path-modified, submodule-dirty, or *-modified-history checks; bad WT can reach Step 4 commit	Run the same Step 6 subset (or git status --porcelain + plugin/submodule/HEAD probes) inside recover before emitting claude_fallback; bail forbidden if any probe fails
+3	in_scope	important	correctness	skills/implement/scripts/step2-implement.sh:75	RECOVERY_PRIOR_TOOL uses undefined TOOL_LABEL	Variable is TOOL_TAG in this script; empty/wrong RECOVERY_PRIOR_TOOL breaks §2.4 message prefix and Test M1	Emit RECOVERY_PRIOR_TOOL from TOOL_TAG (codex/cursor); optionally also emit TOOL= for §2.1 parsing
+4	in_scope	important	correctness	skills/implement/SKILL.md:1050-1140	Recovery sub-branch jumps to Step 4 without Step 3	Recovered external work never runs run-relevant-checks-captured.sh before first commit; broken code can land on branch	After recovery sanity in §2.4, continue through Step 3 (or a documented recovery-only checks gate) before Step 4
+5	in_scope	important	risk-integration	skills/implement/scripts/step2-implement.sh:70-71	Working-tree gate uses only git diff HEAD --stat	Untracked-only implementer output yields empty --stat → no recovery despite real work	Use git status --porcelain or combine diff --stat with ls-files --others --exclude-standard (mirror Step 7a.1)
+6	in_scope	important	risk-integration	skills/implement/scripts/step2-implement.sh:70-71	Diff gate does not attribute changes to the implementer	Pre-existing operator dirty files plus malformed manifest trigger recovery and commit unrelated paths	Require diff since step2-baseline.txt / spawn HEAD, or intersect changed paths with transcript-sidecar hints; document residual risk in §2.4
+7	in_scope	important	architecture	skills/implement/scripts/step2-implement.md:21-44	Stdout contract omits RECOVERY_FROM and RECOVERY_PRIOR_TOOL	Edit-in-sync list requires KV envelope parity; parsers/docs drift from SKILL.md §2.1.5	Add optional RECOVERY_* lines to stdout contract and edit-in-sync bullets; cross-link recovery gating
+8	in_scope	important	architecture	skills/implement/SKILL.md:937-943	Entry matrix still requires full §2.4 re-implementation on all claude_fallback	Contradicts recovery sub-branch (no re-implement); matrix wins per NEVER #10	Add matrix row or footnote: claude_fallback + RECOVERY_FROM=manifest-schema-invalid → commit-only §2.4 sub-branch
+9	in_scope	latent	correctness	agents/_implementer-base.md:32-48	Implementer jq self-check weaker than dispatcher	files_touched object shape not validated; implementer passes self-check then still hits manifest-schema-invalid	Extend jq block to match step2-implement.sh:500-507 (path objects, arrays)
+10	in_scope	latent	security	skills/implement/SKILL.md:88-92	Recovered commit message not redacted	Dispatcher complete path pipes commit_message through redact-secrets.sh; plan-derived recovery message goes straight to commit-implementation.sh	Pipe composed message through redact-secrets.sh (or write $IMPLEMENT_TMPDIR/recovery-commit-message.txt via same path as Step 7b)
+11	in_scope	latent	correctness	skills/implement/SKILL.md:989-1139	§2.1 parse list omits RECOVERY_* KVs	RECOVERY_FROM unread after dispatch → recovery sub-branch never taken	Add RECOVERY_FROM and RECOVERY_PRIOR_TOOL to §2.1 parse list; persist recovery commit subject to tmpdir for Step 4
+12	in_scope	nit	code-quality	skills/implement/scripts/test-step2-dispatch.md:1-40	Harness doc not updated for Tests M1–M5	Offline contract doc drifts from test-step2-dispatch.sh header	Mirror M1–M5 scenarios in test-step2-dispatch.md
+13	out_of_scope	latent	risk-integration	skills/implement/scripts/step2-implement.sh:473-475	No recovery on launcher non-zero with WT edits	Runtime failure after partial implementer work still bails without claude_fallback (separate from schema-invalid)	[OUT_OF_SCOPE] Track as follow-up if cap/runtime failures should share recovery gate
+
+1. **[correctness]** `skills/implement/scripts/step2-implement.sh:485-548` — Recovery must not run when the raw manifest’s `status` is `needs_qa` (only `bailed` is excluded today). Otherwise a failed `needs_qa` repair with partial edits commits via fallback and skips the Q/A loop.
+
+2. **[risk-integration]** `skills/implement/scripts/step2-implement.sh:552-590` — `emit_manifest_invalid_or_recover` returns before Step 6, so branch/plugin/submodule/HEAD guards never run on the recovery path. Add those probes before emitting `claude_fallback`, or bail with `forbidden`.
+
+3. **[correctness]** `skills/implement/scripts/step2-implement.sh:75` — Use `TOOL_TAG`, not `TOOL_LABEL`, for `RECOVERY_PRIOR_TOOL`.
+
+4. **[correctness]** `skills/implement/SKILL.md:1050-1140` — Recovery must not skip Step 3 relevant-checks before Step 4 commit.
+
+5. **[risk-integration]** `skills/implement/scripts/step2-implement.sh:70-71` — Replace or augment `git diff HEAD --stat` so untracked-only work still enables recovery.
+
+6. **[risk-integration]** `skills/implement/scripts/step2-implement.sh:70-71` — Diff gate should not treat pre-existing operator dirt as implementer evidence.
+
+7. **[architecture]** `skills/implement/scripts/step2-implement.md:21-44` — Document `RECOVERY_FROM` / `RECOVERY_PRIOR_TOOL` in the dispatcher stdout contract.
+
+8. **[architecture]** `skills/implement/SKILL.md:937-943` — Add an explicit matrix exception for recovery `claude_fallback` (commit-only §2.4).
+
+9. **[correctness]** `agents/_implementer-base.md:32-48` — Align implementer `jq -e` self-validation with dispatcher structural rules.
+
+10. **[security]** `skills/implement/SKILL.md:88-92` — Redact recovery-composed commit messages like dispatcher `commit_message`.
+
+11. **[correctness]** `skills/implement/SKILL.md:989-1139` — Parse and persist `RECOVERY_*` KVs (and recovery commit message) for Step 4.
+
+12. **[code-quality]** `skills/implement/scripts/test-step2-dispatch.md:1-40` — Document Tests M1–M5.
+
+13. **[OUT_OF_SCOPE]** `skills/implement/scripts/step2-implement.sh:473-475` — Launcher/runtime failure with a dirty tree still has no recovery (outside schema-invalid scope).

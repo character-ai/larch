@@ -1,0 +1,165 @@
+# Plan: Manifest-schema-drift hardening + dispatcher recovery (issue #2803)
+
+## Goal
+
+After a long Codex `/implement` run, Codex sometimes writes a malformed `manifest.json` (e.g. `{status, summary, checks}` missing `schema_version`, `commit_message`, `files_touched`, ...), the dispatcher bails with `manifest-schema-invalid`, and ~$5–6 of working-tree work is stashed and lost. Reduce both the **probability** of the drift (prompt-contract hardening) and the **cost when it happens** (dispatcher recovery path), without weakening the existing `ORCHESTRATOR_EDIT_AUTHORITY` trust boundary, the post-implementer mechanical safety rails, or the secrets-redaction surface for committed text.
+
+## Approach
+
+Three-layer defense in depth, scoped narrowly:
+
+1. **Prevention — inline schema template** in the shared implementer base prompt so Codex/Cursor see the exact required JSON shape at the moment they write the manifest (proximity beats pointer in long contexts).
+2. **Prevention — `jq -e` self-validation** in the implementer base prompt before the atomic `mv manifest.json.tmp manifest.json`, mirroring the dispatcher's `complete`-branch predicate (including `files_touched | all(. | type == "object" and (.path | type == "string"))`).
+3. **Recovery — dispatcher fallback** in `step2-implement.sh`: when `manifest-schema-invalid` AND the prior `.status` was either `complete` or missing (NOT `needs_qa` or `bailed`) AND the post-launch working-tree delta is non-empty AND the post-implementer mechanical guards (branch unchanged, `.claude-plugin/plugin.json` baseline, submodule clean, Cursor HEAD-unchanged) all pass, emit the existing `STATUS=claude_fallback` + `ORCHESTRATOR_EDIT_AUTHORITY=allowed` envelope plus new `RECOVERY_FROM=manifest-schema-invalid` and `RECOVERY_PRIOR_TOOL=$TOOL_TAG` KVs. The orchestrator's Step 2.4 reads RECOVERY_FROM and, instead of re-implementing from scratch, composes a recovery commit message — pipes it through `scripts/redact-secrets.sh` — and lets Step 4's existing `claude_fallback` commit path commit the prior implementer's already-completed work.
+
+The pair invariant (`ORCHESTRATOR_EDIT_AUTHORITY=allowed` iff `STATUS=claude_fallback`) is preserved by construction — RECOVERY_FROM is an additive marker, not a new STATUS.
+
+## Files to modify/create
+
+### UPDATED: `agents/_implementer-base.md`
+
+Add an `## Manifest JSON template` subsection between the existing `## How to declare completion` heading and the `If git commit fails …` paragraph that closes that section (immediately before the `If git commit fails (e.g., a pre-commit hook rejects the change …` line — re-anchor against THIS literal, not against stale line numbers, since the base file has shifted across edits). Body:
+
+- Open with one short paragraph: "Read this template once now and write the manifest in this exact shape. Do not invent fields; do not omit required fields. The schema reference at `skills/implement/references/codex-manifest-schema.md` is the contract — this template is duplicated here because long-context runs lose fidelity to the schema reference."
+- A fenced ```json block containing the complete schema_version=1 manifest as a fill-in template, identical in field names and shape to the canonical schema in `skills/implement/references/codex-manifest-schema.md` (`files_touched[].path/lines_added/lines_removed`, `summary_bullets`, `commit_message`, `todos_left`, `oos_observations`, `bail_reason`, `needs_qa.questions[].id/text`).
+- A short "Required fields per status" table mirroring the digest's required-keys table (3 rows: complete / needs_qa / bailed).
+
+Add a `## Self-validate before atomic rename` subsection immediately AFTER the JSON template and BEFORE the `If git commit fails …` paragraph (i.e., the template and the self-validate subsection together form a contiguous pair sitting at the tail of `## How to declare completion`). Body:
+
+- One paragraph: "Before you `mv <MANIFEST_PATH>.tmp <MANIFEST_PATH>`, run `jq -e` on the tmp file to verify the required structural invariants. If `jq -e` exits non-zero, rewrite the tmp file with the correct schema and re-validate before renaming. Do not rename a manifest that fails this check; the dispatcher's validation is the same predicate and will bail with `manifest-schema-invalid` if you do."
+- A fenced ```bash block with this exact check (the `complete` branch mirrors the dispatcher predicate at `step2-implement.sh:496-508` including the per-element `files_touched` object/path check; `needs_qa` and `bailed` branches use their minimal invariants):
+
+```bash
+jq -e '
+  .schema_version == "1" and
+  (.status == "complete" or .status == "needs_qa" or .status == "bailed") and
+  (if .status == "complete" then
+     (.commit_message | type == "string" and length > 0) and
+     (.files_touched | type == "array" and length > 0) and
+     (.files_touched | all(. | type == "object" and (.path | type == "string"))) and
+     (.summary_bullets | type == "array" and length >= 1 and length <= 5) and
+     (.tests_added_or_modified | type == "array") and
+     (.todos_left | type == "array") and
+     (.oos_observations | type == "array")
+   elif .status == "needs_qa" then
+     (.needs_qa.questions | type == "array" and length > 0)
+   else
+     (.bail_reason | type == "string" and length > 0)
+   end)
+' "<MANIFEST_PATH>.tmp" > /dev/null
+```
+
+Extend the existing `## Manifest checklist before exit` with one final checklist line: `[ ] Ran the jq -e self-validation block from the "Self-validate before atomic rename" section against <MANIFEST_PATH>.tmp; jq exited 0.`
+
+### UPDATED: `agents/codex-implementer.md`
+
+Regenerated from `_implementer-base.md` via `bash scripts/generate-codex-implementer.sh`. No hand edits. The generator's sed substitutions (TOOL_COMMIT_STDERR, NEVER #2 wording) continue to apply.
+
+### UPDATED: `agents/cursor-implementer.md`
+
+Regenerated from `_implementer-base.md` via `bash scripts/generate-cursor-implementer.sh`. No hand edits. Cursor's `composer-2.5 max-mode` context is more resilient than Codex's at present, but the symmetric inline template + jq self-validation costs nothing and protects against future drift.
+
+### UPDATED: `skills/implement/references/codex-manifest-schema.md`
+
+Add a short `## Edit-in-sync note` subsection near the top (right after the **Contract** / **When to load** front matter, before the `## Schema` header) noting that `agents/_implementer-base.md` carries an inline copy of the schema template under its `## Manifest JSON template` heading and that any schema change here MUST be mirrored there. Reason: the inline template duplicates this file's normative shape for long-context proximity; drift between the two will cause real implementer regressions.
+
+### UPDATED: `skills/implement/scripts/step2-implement.sh`
+
+Introduce a shell function `emit_manifest_invalid_or_recover` and route the **four** post-prior-validation `manifest-schema-invalid` call sites at lines 486, 490, 507, and 548 through it. **Do NOT consolidate the call site at line 357** (corrupt resume-counter) — that is a different mechanical failure (state file, not manifest validation) and must remain a raw `emit_bailed "manifest-schema-invalid"`. Add an inline comment at line 357 documenting the carve-out so future edits do not re-fold it. The call site at line 534 (`needs_qa` repair branch) is also NOT routed through recovery (FINDING_3 / FINDING_7 rationale below) — `needs_qa` failures keep their existing behavior.
+
+The `emit_manifest_invalid_or_recover` function:
+
+1. **Read prior status safely**: reuse the already-derived `$STATUS` variable from line 481 (preferred — no fresh `jq` call). If unavailable, run `jq -r 'if type=="object" then .status // "" else "" end' "$MANIFEST_RAW_PATH" 2>/dev/null || true` (the `2>/dev/null || true` guard prevents `set -e` from aborting on malformed JSON).
+2. **Gate on prior status**: recover ONLY when `$STATUS` is empty (no status field — the larch1 fingerprint) OR `$STATUS == "complete"`. If `$STATUS` is `needs_qa` or `bailed`, do NOT recover — `emit_bailed "manifest-schema-invalid"` and exit (preserves Q/A loop and explicit implementer bails).
+3. **Gate on post-launch tree delta**: run `git -C "$REPO_ROOT" status --porcelain --untracked-files=all` capturing stdout (this sees both modified-tracked and untracked-new files; FINDING_2 fix). Compare against a pre-launch baseline snapshot the dispatcher already writes (see `step2-implement.sh` baseline-file machinery in §"Test 1 baseline" of `test-step2-dispatch.sh` — same `step2-baseline.txt` mechanism). If the delta is empty (no post-launch additions or modifications), do NOT recover — `emit_bailed "manifest-schema-invalid"`. If the dispatcher does not yet write a pre-launch porcelain baseline (today it only writes the line-anchored baseline used by `--cursor` `HEAD-unchanged` check), add that baseline at the top of the cursor/codex launch path in the same edit; new key `$TMPDIR_ARG/step2-prelaunch-porcelain.txt`.
+4. **Run post-implementer mechanical guards** (FINDING_4 fix). Before emitting the recovery envelope, run the same read-only guards that `step2-implement.sh` lines 562-590 run on the `complete` path: spawn-branch equality, `.claude-plugin/plugin.json` baseline check, submodule clean check, and (for the cursor branch only) Cursor HEAD-unchanged check. Factor these four guards into a shared internal function `run_post_implementer_safety_gates` that both the success path and the recovery path call. If any guard fails, do NOT recover — emit the same `emit_bailed <reason>` the success path would (`branch-changed`, `protected-path-modified`, `submodule-modified`, or `cursor-modified-history`), so recovery cannot launder a forbidden change through `claude_fallback`.
+5. **Emit recovery envelope** (only when steps 2-4 all pass):
+   - `emit_kv STATUS claude_fallback`
+   - `emit_kv ORCHESTRATOR_EDIT_AUTHORITY allowed`
+   - `emit_kv RECOVERY_FROM manifest-schema-invalid`
+   - `emit_kv RECOVERY_PRIOR_TOOL "$TOOL_TAG"` (use the existing `TOOL_TAG` variable — FINDING_1 fix; the previous draft incorrectly named `TOOL_LABEL`).
+   - `exit 0`
+
+The function MUST emit exactly one `ORCHESTRATOR_EDIT_AUTHORITY=` line (preserves the `grep -c == 1` invariant pinned by `test-step2-dispatch.sh` Test 11a/11b). The existing `claude_fallback` early-returns at lines 169-170 and 190-191 (cursor-unavailable and `--coder claude`) are unaffected; they do not emit RECOVERY_FROM. Document the pair invariant and the gating rules in a comment block above the function.
+
+### UPDATED: `skills/implement/scripts/step2-implement.md`
+
+Update the stdout-contract / outcomes section to document the new optional KVs (`RECOVERY_FROM`, `RECOVERY_PRIOR_TOOL`), the gating rules (status in {empty, complete}; non-empty post-launch porcelain delta; all post-implementer safety gates pass), and an Edit-in-sync pointer to `agents/_implementer-base.md` (`## Manifest JSON template`) and to SKILL.md §2.1.5 / §2.4 recovery sub-branch.
+
+### UPDATED: `skills/implement/SKILL.md`
+
+Extend §2.1's KV parse list to include `RECOVERY_FROM` and `RECOVERY_PRIOR_TOOL`. They are optional; their absence is normal. §2.1.5 envelope validation: when STATUS=claude_fallback, RECOVERY_FROM is optionally present; when present, its value must equal `manifest-schema-invalid` (the only currently-defined recovery reason). RECOVERY_PRIOR_TOOL must equal `codex` or `cursor` when present. These do NOT participate in the pair invariant; their absence does not invalidate the envelope.
+
+Extend §2.4 (the Claude-fallback main-agent code-edit section) with a recovery sub-branch: when `RECOVERY_FROM` is present, the main agent MUST NOT re-implement from the plan — the working tree already carries the prior implementer's edits. Instead:
+
+1. Read the plan and `git status --porcelain --untracked-files=all` / `git diff HEAD` to confirm the working tree is consistent with the plan's scope (sanity check). If the post-launch porcelain delta references a file outside the plan's "Files to modify" section, **fail closed** — print `**⚠ /implement Step 2.4: recovery aborted; post-launch tree references files outside plan scope.**`, append a `Warnings` entry to `$IMPLEMENT_TMPDIR/execution-issues.md` describing the out-of-scope files, set `FINAL_BAIL_REASON=recovery-out-of-scope`, and bail to Step 12d. Do NOT commit a synthesized message over out-of-scope changes (FINDING_9 / FINDING_4 rationale; the dispatcher's pre-emit guard catches `.claude-plugin/plugin.json` / submodule / branch-changed, but plan-scope alignment is a Step 2.4 concern).
+2. Compose a commit message from the plan title + summary bullets derived from the plan's Approach section, prefixed with `Recovered from manifest-schema-invalid (prior tool: ${RECOVERY_PRIOR_TOOL}): `.
+3. **Pipe the composed message through `scripts/redact-secrets.sh`** before committing (FINDING_12 fix) — the same redactor the external-implementer commit path uses on `manifest.commit_message`. This MUST happen even though the message is orchestrator-synthesized: plan text and diff-derived summaries can carry secret-shaped substrings.
+4. Proceed to Step 4. Step 4's existing `claude_fallback` path runs `commit-implementation.sh --message "<the redacted message>" <files-from-porcelain>` as today; no changes to Step 4 required. (The orchestrator must use the porcelain output from step 1 as the file list, not a `git add -A`; this scopes the commit to the prior-implementer's deltas and keeps the recovery commit narrow.)
+
+Add a NEVER-style invariant under the §2.4 recovery sub-branch: NEVER use `git reset --hard` / `git restore` / `git checkout -- <path>` to discard the prior implementer's working-tree edits before committing — those edits are the implementation we are trying to preserve.
+
+### UPDATED: `skills/implement/scripts/test-step2-dispatch.sh`
+
+Add the following new tests:
+
+- **Test M1**: scratch repo with a modified tracked file (`git status --porcelain` shows ` M file`) and a manifest of shape `{"status":"complete","summary":"...","checks":"..."}` (the larch1 fingerprint). Assert `STATUS=claude_fallback`, `ORCHESTRATOR_EDIT_AUTHORITY=allowed`, `RECOVERY_FROM=manifest-schema-invalid`, `RECOVERY_PRIOR_TOOL=codex` (and a parallel sub-test for `cursor`), `grep -c '^ORCHESTRATOR_EDIT_AUTHORITY=' == 1`.
+- **Test M2**: scratch repo with empty working tree and the same malformed manifest. Assert `STATUS=bailed`, `REASON=manifest-schema-invalid`, no `RECOVERY_FROM` line.
+- **Test M3**: scratch repo with non-empty working tree and a manifest with `{"status":"bailed","bail_reason":"submodule-edit-required-out-of-scope"}` that fails some other structural check. Assert no recovery (bailed prior status excluded).
+- **Test M4**: scratch repo, missing `schema_version` entirely on the manifest (the canonical larch1 case). Assert recovery activates as M1 does.
+- **Test M5**: pair-invariant regression — exactly one `ORCHESTRATOR_EDIT_AUTHORITY=allowed` line and zero `=forbidden` lines on the recovery branch.
+- **Test M6** (FINDING_3): scratch repo with non-empty working tree (modified or new file) AND a manifest of `{"status":"needs_qa","needs_qa":{}}` that fails repair at the existing `needs_qa.questions` check. Assert `STATUS=bailed`, `REASON=manifest-schema-invalid`, no `RECOVERY_FROM` line (needs_qa is excluded from recovery to preserve the Q/A loop).
+- **Test M7** (FINDING_2): scratch repo with ONLY untracked new files (no modified tracked files) and a malformed-shape manifest. Assert recovery activates (porcelain-based gate sees untracked; the prior `git diff HEAD --stat`-based gate would miss this).
+- **Test M8** (FINDING_4 — `.claude-plugin/plugin.json` guard preserved through recovery): scratch repo where the post-launch porcelain delta includes `.claude-plugin/plugin.json`. Assert `STATUS=bailed`, `REASON=protected-path-modified` (not `manifest-schema-invalid` and NOT `claude_fallback`) — the safety gate runs before recovery emit.
+- **Test M9** (FINDING_4 — submodule guard preserved): scratch repo where the post-launch porcelain delta touches a submodule path. Assert `STATUS=bailed`, `REASON=submodule-modified`, no recovery.
+- **Test M10** (FINDING_4 — branch-changed guard preserved): scratch repo where the post-launch HEAD is on a different branch than `$SPAWN_BRANCH`. Assert `STATUS=bailed`, `REASON=branch-changed`, no recovery.
+- **Test M11** (FINDING_9 — line 357 carve-out): pre-seed a corrupt resume counter; assert the line-357 emission stays `STATUS=bailed REASON=manifest-schema-invalid` with no `RECOVERY_FROM` (this is a state-file failure, not a manifest validation failure).
+- **Test M12** (FINDING_8 — malformed JSON in manifest): scratch repo with non-empty working tree and a truncated/non-JSON `manifest.json`. Assert the dispatcher emits a clean `STATUS=bailed REASON=manifest-schema-invalid` (or recovery if applicable), NOT a `set -e`-induced abort with non-zero exit and no envelope.
+
+### UPDATED: `skills/implement/scripts/test-codex-implementer.sh` and `skills/implement/scripts/test-cursor-implementer.sh`
+
+Add a content-presence regression to each: the generated agent file MUST contain the literal substrings `"schema_version": "1"`, `## Manifest JSON template`, and `## Self-validate before atomic rename`. Implementation: simple `grep -F -q` on the file contents. Catches a hand-edit that omits the regeneration step.
+
+### Required validation step (no Makefile changes)
+
+After regenerating implementer prompts, contributors MUST run `bash scripts/check-generators.sh` to verify `agents/codex-implementer.md` and `agents/cursor-implementer.md` byte-match the regenerated output of `_implementer-base.md` + the generator scripts (FINDING_10 fix). The CHANGELOG / PR description must call this out explicitly so reviewers see it; do NOT silently rely on `make lint` or `make test-check-generators` — the latter exercises the walker, not actual parity. (The plan does not add a new Makefile target; `bash scripts/check-generators.sh` is the explicit invocation reviewers run alongside `bash scripts/relevant-checks.sh`.)
+
+## Edge cases
+
+- **Empty working tree on a needs_qa cycle**: implementer wrote `qa-pending.json` with a needs_qa manifest, dispatcher detects malformed needs_qa shape at line 534. Recovery MUST NOT activate (Test M2 + M6 cover this; gate 2 excludes needs_qa status, gate 3 excludes empty tree).
+- **Implementer-declared bail with diff**: implementer wrote a `bailed` manifest but also left edits in the tree. Recovery MUST NOT activate (Test M3); the implementer chose to bail explicitly.
+- **Untracked-only implementation**: prior implementer added new files but modified no tracked files. `git diff HEAD --stat` would miss this. The recovery gate uses `git status --porcelain --untracked-files=all` which catches untracked entries (Test M7).
+- **Protected-path / submodule / branch change in the recovered tree**: the `run_post_implementer_safety_gates` helper runs before the recovery emit; any failure bails with the matching reason and skips recovery (Tests M8, M9, M10).
+- **Pre-existing dirty user file before launch**: the porcelain gate compares against a pre-launch snapshot, so only post-launch deltas are eligible for recovery. Pre-existing dirty user files are NOT swept into the synthesized commit. The Step 2.4 recovery sub-branch's plan-scope alignment check (fail-closed on out-of-plan paths) is the second layer.
+- **Malformed JSON / truncated manifest**: the existing `STATUS` derivation at line 481 already uses `2>/dev/null || true`; the recovery function reuses that variable and never does an additional unguarded `jq` read (Test M12).
+- **Line 357 (corrupt resume counter)**: not a manifest validation failure; it must remain raw `emit_bailed` (Test M11).
+- **Line 534 (needs_qa repair branch)**: same — needs_qa repair failure is not a recovery path. Routed via raw `emit_bailed`.
+- **commit_message redaction**: synthesized recovery messages go through `scripts/redact-secrets.sh` exactly like external-implementer `commit_message` (no new secret-leak surface).
+- **Multiple post-launch deltas spanning plan + out-of-plan files**: §2.4 recovery sub-branch fails closed (FINAL_BAIL_REASON=recovery-out-of-scope) rather than committing a partial subset; operator inspects the working tree manually.
+
+## Failure modes
+
+1. **Inline template drifts from canonical schema in `codex-manifest-schema.md`**. **Earliest signal**: a real `/implement` run fails because Codex follows the inline template (which is now wrong) and the dispatcher's `jq -e` validation against the canonical rejects it. **Mitigation**: the Edit-in-sync note in `codex-manifest-schema.md` and the inline-content presence test in `test-{codex,cursor}-implementer.sh` flag obvious omissions. For deeper schema drift (e.g. a renamed field), future maintainers must update both files; the schema reference's Edit-in-sync list is the human-readable contract. The prompt-side jq predicate now exactly mirrors the dispatcher's `complete`-branch predicate so prevention is no longer weaker than dispatcher validation.
+2. **Recovery branch activates on legitimate implementer bails or accidental working-tree noise**. **Earliest signal**: false-positive recoveries land bad commits or commit unrelated changes. **Mitigation**: the recovery gate is (manifest-schema-invalid) AND (prior status in {empty, complete}) AND (non-empty post-launch porcelain delta) AND (post-implementer safety gates pass) AND (Step 2.4 plan-scope alignment passes). Tests M2 (empty tree), M3 (bailed prior status), M6 (needs_qa prior status), M7 (untracked-only), M8/M9/M10 (safety gates), M11 (line 357 carve-out) pin these gates.
+3. **Pair invariant broken by a sloppy edit to the recovery function**. **Earliest signal**: `test-step2-dispatch.sh` Tests 11a/11b/M5 fail in CI. **Mitigation**: the existing Test 11a/11b are pinned (NEVER #10 / §2.1.5 / issue #1058). Test M5 adds the recovery-specific pair-invariant assertion. The function emits each KV exactly once and exits 0; reviewers must verify no fall-through to the `forbidden` emit sites at lines 262/841/850/867.
+
+## Testing strategy
+
+Offline harness (no live Codex/Cursor invocation):
+
+- `make test-step2-dispatch` (existing target) runs the new Tests M1–M12 alongside the existing 21+ tests. All twelve tests use synthetic manifest fixtures and the existing stub-launcher harness; no live external dependencies.
+- `make test-codex-implementer` and `make test-cursor-implementer` (existing targets) run the new inline-content regression assertions.
+- `bash scripts/check-generators.sh` (existing script — NOT a `make` target wrapper) verifies that `agents/codex-implementer.md` and `agents/cursor-implementer.md` byte-match the regenerated output of `_implementer-base.md`. This MUST be run after regenerating implementer prompts. Document the invocation in the PR description so reviewers see it; the offline harnesses do not exercise actual parity (FINDING_10).
+- `bash scripts/relevant-checks.sh` runs shellcheck / markdownlint / agent-lint over the touched files (existing behavior).
+
+No new test harness file is created — every test is added to existing harness scripts.
+
+## Out-of-scope
+
+- Fix #4 (periodic schema echo to a file in `$IMPLEMENT_TMPDIR` that Codex can `cat`). User Round 1 decision: defer.
+- Tightening the schema reference (`codex-manifest-schema.md`) itself — schema_version stays "1"; no fields added or removed.
+- Retry-cap / opt-out env var (`LARCH_DISABLE_MANIFEST_RECOVERY`). User Round 1 decision: not needed.
+- Separate `SECURITY.md` update. The recovery path is narrowly gated (prior status complete-or-empty, non-empty post-launch delta, all post-implementer mechanical guards pass, plan-scope alignment in §2.4), and the synthesized commit_message is redacted through the same scrubber as external-implementer messages; no broader security advisory is warranted.
+- A new `make check-generators` Makefile target. FINDING_10 recommended this; the plan instead requires the explicit `bash scripts/check-generators.sh` call alongside `bash scripts/relevant-checks.sh` so the existing make graph stays untouched.
+
+diff_lines: 480

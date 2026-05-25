@@ -1,0 +1,4 @@
+warning: unknown From slot label 'Cursor-Arch, Cursor-Innovation' in FINDING_1 (not present on any input finding)
+warning: unknown From slot label 'Codex-Arch, Codex-Edge, Codex-Innovation' in FINDING_2 (not present on any input finding)
+warning: unknown From slot label 'Cursor-Pragmatic, Cursor-dyn-generator-contract' in FINDING_4 (not present on any input finding)
+warning: unknown From slot label 'Codex-Edge, Codex-Requirements' in FINDING_7 (not present on any input finding)

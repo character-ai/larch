@@ -1,0 +1,15 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: EXONERATE -- existing STATUS extraction at line 482 already uses guarded jq; recovery helper can mirror that one-liner
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: EXONERATE -- plan already requires regenerating codex/cursor implementers from _implementer-base.md
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: EXONERATE -- verification-only note, not a plan defect; line-357 exclusion is covered by FINDING_9
+OOS_1: YES

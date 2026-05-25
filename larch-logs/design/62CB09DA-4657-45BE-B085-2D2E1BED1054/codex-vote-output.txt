@@ -1,0 +1,15 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: EXONERATE -- structural drift checks are legitimate hardening but add more parser/test complexity than this narrow fix warrants.
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: EXONERATE -- the resume-counter call site should remain excluded, and the plan already scopes recovery to the five manifest-validation sites.
+FINDING_10: YES
+FINDING_11: NO -- the plan already lists both generated implementer files as updated and regenerated from the base prompt.
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: NO -- this is supporting verification, not a defect requiring a plan change.
+OOS_1: YES

@@ -1,0 +1,9 @@
+agents/_implementer-base.md
+agents/codex-implementer.md
+agents/cursor-implementer.md
+skills/implement/references/codex-manifest-schema.md
+skills/implement/scripts/step2-implement.sh
+skills/implement/SKILL.md
+skills/implement/scripts/test-step2-dispatch.sh
+skills/implement/scripts/test-codex-implementer.sh
+skills/implement/scripts/test-cursor-implementer.sh
