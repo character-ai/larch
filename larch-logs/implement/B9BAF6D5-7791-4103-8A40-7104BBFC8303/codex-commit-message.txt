@@ -1,0 +1,3 @@
+Fail closed on empty aggregate output
+
+Reject merged outputs with zero FINDING blocks when input findings existed, even if the empty-merge attestation token is present. Retry the outer aggregation waterfall on that validation token and update the aggregate harness plus SECURITY.md coverage.

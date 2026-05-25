@@ -1,0 +1,78 @@
+I have everything I need. Here is the complete plan-fidelity review.
+
+---
+
+## Plan-Fidelity Review — Issue #2782
+
+**Implementation plan source**: `larch:plan` block in issue #2782  
+**Branch**: `sergey-zhupanov/implementing-bug-design-step-3-aggregato-2782`  
+**Review scope**: plan-to-implementation traceability; correctness against stated intent
+
+---
+
+### Acceptance Criteria Walkthrough
+
+| Plan requirement | Status |
+|---|---|
+| `aggregate-findings.sh` Python validator rejects with `AGGREGATOR_VALIDATION_FAILED=empty_merge_from_nonempty_input` when input had ≥1 FINDING and output has 0 | ✅ |
+| Outer waterfall grep updated to match new token (alternation + `^...$` anchors) | ✅ |
+| `SECURITY.md` aggregator paragraph updated; old "attestation as guardrail" wording replaced | ✅ |
+| 7 existing tests flipped to `AGGREGATED=false REASON=validation-failed` + `findings.md` unchanged assertion | ✅ |
+| New regression test `zero_findings_input_nonempty rejected` (#2782) | ✅ |
+| New regression test `zero_findings_input_nonempty progresses outer waterfall` (#2782) | ✅ |
+| `bash skills/review/scripts/test-aggregate-findings.sh` passes | Not verified (read-only reviewer) |
+| `bash scripts/relevant-checks.sh` passes | Not verified (read-only reviewer) |
+
+---
+
+### In-Scope Findings
+
+**FINDING 1 — Nit — Correct deviation from plan print spec**  
+`skills/review/scripts/aggregate-findings.sh` (diff line ~4806)
+
+The plan specifies a single combined `print()` call:
+```python
+print(
+    "AGGREGATOR_VALIDATION_FAILED=empty_merge_from_nonempty_input "
+    "input had %d FINDING blocks; merged output has zero "
+    "(attestation present is not sufficient when inputs were nonempty)"
+    % (input_finding_count,),
+    file=sys.stderr,
+)
+```
+This would emit `AGGREGATOR_VALIDATION_FAILED=empty_merge_from_nonempty_input input had N FINDING blocks...` as a **single line** with trailing text.
+
+The implementation splits into two `print()` calls — token alone on one line, human explanation on the next.
+
+**Why the split is required**: The plan also specifies the outer waterfall grep as `grep -Eq '^AGGREGATOR_VALIDATION_FAILED=(preamble_finding_substring|empty_merge_from_nonempty_input)$'` — `$`-end-anchored. The combined print would fail this grep (trailing text after the token). The plan contains an internal inconsistency; the implementation resolves it correctly. No change needed.
+
+---
+
+**FINDING 2 — Nit — Waterfall stub helper differs from plan sketch**  
+`skills/review/scripts/test-aggregate-findings.sh` (diff line ~4909, ~5229)
+
+The plan says: *"if the existing test harness does not already have a per-phase stub helper, inline a minimal one... that selects `AGGREGATE_STUB_MERGE_KIND` based on a `STUB_PHASE_COUNTER` env var."*
+
+The implementation instead adds a new `zero_findings_waterfall_ctr` case arm to the dispatch stub's existing `case` block, using a file-based counter at `$LARCH_AGGREGATE_WATERFALL_CTR`. The waterfall test then sets `AGGREGATE_STUB_MERGE_KIND=zero_findings_waterfall_ctr` and `LARCH_AGGREGATE_WATERFALL_CTR="$ZWF/ctr"` directly — no separate helper function.
+
+**Assessment**: Functionally equivalent. The file-counter approach is actually cleaner than the env-var-counter the plan sketched because it avoids state leakage between parallel test sections. The plan explicitly left the helper implementation open ("reuse it" / "keep the helper local"). No change needed.
+
+---
+
+### Out-of-Scope Observations
+
+The diff contains approximately 3,000 lines of changes belonging to issue #2749 (breadcrumb propagation infrastructure: `scripts/breadcrumb-monitor.sh`, `scripts/lib-quiet.sh`, `scripts/lint-foreground-markers.sh`, `hooks/hooks.json`, related docs). These predate the #2782 plan — the branch was cut before PR #2786 landed. They are not evaluated here.
+
+---
+
+### Structured Findings
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in-scope	nit	plan-fidelity	skills/review/scripts/aggregate-findings.sh	Split print() deviates from plan's combined print() spec	Combined print would emit token + human text on one line, failing the $-anchored grep that the plan also specifies; plan is internally inconsistent	No fix needed — split is correct
+1	in-scope	nit	plan-fidelity	skills/review/scripts/test-aggregate-findings.sh	Waterfall stub uses file-counter mode (zero_findings_waterfall_ctr) rather than write_stub_dispatch_waterfall_2782 helper	No behavioral difference; plan explicitly left helper implementation open	No fix needed — approach is equivalent
+```
+
+---
+
+**Verdict**: Implementation is plan-faithful. Both deviations are technical corrections of latent spec bugs, not gaps or omissions. All material acceptance criteria (validator rejection path, grep extension, SECURITY.md, 7 existing test flips with `findings.md` unchanged checks, 2 new regression tests) are present and correctly implemented.
