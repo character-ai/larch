@@ -1,0 +1,1 @@
+{"schema_version":2,"phase":"plan-review","batch":"plan-review-tally","mode":"hard","rounds":0,"accepted_count":0,"rejected_count":0,"exonerated_count":0,"body":"Plan read from issue #2692 larch:plan block (issue-anchored run). No separate /design voting tally; plan adequacy verified by /implement Preflight audit.\n"}
