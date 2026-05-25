@@ -66,14 +66,31 @@
    Reasoning effort is handled by the launcher wrappers (`--risk high` by default).
 
 4. **Collect** dialectic debate outputs (Option B enforcement):
-   **⚠ Foreground required — do NOT set `run_in_background: true`.**
+   **⚠ Background required — must be paired with breadcrumb-monitor.sh.**
 
    ```bash
-   # Foreground required: see BASH_AUTHORING.md §4
-   ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1860 \
-     <each launched output path>
-   ```
-   The collector no longer updates cross-skill reviewer state; the dialectic phase keeps debate failures scoped to its local availability variables. Block on this call (do NOT use `run_in_background`).
+mkdir -p "$DESIGN_TMPDIR/breadcrumbs"
+_launch_id="collect-agent-results.$$"
+export LARCH_BREADCRUMB_STREAM="$DESIGN_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.ndjson"
+: > "$LARCH_BREADCRUMB_STREAM"
+export LARCH_DONE_SENTINEL="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.done.XXXXXX")"
+export LARCH_STATUS_FILE="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.status.XXXXXX")"
+export LARCH_QUIET_LOG_FILE="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.quiet.XXXXXX")"
+export LARCH_BREADCRUMBS_SURFACED_FILE="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.surfaced.XXXXXX")"
+touch "$LARCH_DONE_SENTINEL" "$LARCH_BREADCRUMBS_SURFACED_FILE"
+# Tool JSON: run_in_background: true
+# Background pair required: see BASH_AUTHORING.md §4
+${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1860 \
+  <each launched output path>
+
+"${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh" \
+  --stream "$LARCH_BREADCRUMB_STREAM" \
+  --done-sentinel "$LARCH_DONE_SENTINEL" \
+  --status-file "$LARCH_STATUS_FILE" \
+  --quiet-log "$LARCH_QUIET_LOG_FILE" \
+  --surfaced-sentinel "$LARCH_BREADCRUMBS_SURFACED_FILE"
+```
+   The collector no longer updates cross-skill reviewer state; the dialectic phase keeps debate failures scoped to its local availability variables. Background the collector launch (`run_in_background: true`) and foreground `breadcrumb-monitor.sh` in the same Bash message.
 
    Immediately after this collection returns, run the Mid-Run Dirty-Tree Probe Contract from `${CLAUDE_PLUGIN_ROOT}/skills/review/references/heavy-worker.md` for `STAGE=dialectic-debate-collection`.
 
@@ -185,16 +202,33 @@ External judge outputs are collected via `collect-agent-results.sh` using its se
 
 When at least one external judge was launched, after all external judges return:
 
-**⚠ Foreground required — do NOT set `run_in_background: true`.**
+**⚠ Background required — must be paired with breadcrumb-monitor.sh.**
 
 ```bash
-# Foreground required: see BASH_AUTHORING.md §4
+mkdir -p "$DESIGN_TMPDIR/breadcrumbs"
+_launch_id="collect-agent-results.$$"
+export LARCH_BREADCRUMB_STREAM="$DESIGN_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.ndjson"
+: > "$LARCH_BREADCRUMB_STREAM"
+export LARCH_DONE_SENTINEL="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.done.XXXXXX")"
+export LARCH_STATUS_FILE="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.status.XXXXXX")"
+export LARCH_QUIET_LOG_FILE="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.quiet.XXXXXX")"
+export LARCH_BREADCRUMBS_SURFACED_FILE="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.surfaced.XXXXXX")"
+touch "$LARCH_DONE_SENTINEL" "$LARCH_BREADCRUMBS_SURFACED_FILE"
+# Tool JSON: run_in_background: true
+# Background pair required: see BASH_AUTHORING.md §4
 ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1860 \
    \
   <each launched external-judge output path>
+
+"${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh" \
+  --stream "$LARCH_BREADCRUMB_STREAM" \
+  --done-sentinel "$LARCH_DONE_SENTINEL" \
+  --status-file "$LARCH_STATUS_FILE" \
+  --quiet-log "$LARCH_QUIET_LOG_FILE" \
+  --surfaced-sentinel "$LARCH_BREADCRUMBS_SURFACED_FILE"
 ```
 
-Blocking `collect-agent-results.sh` ensures the judge phase never mutates unrelated session-env files. Block on this call (do NOT use `run_in_background`).
+Blocking `collect-agent-results.sh` ensures the judge phase never mutates unrelated session-env files. Background the collector launch (`run_in_background: true`) and foreground `breadcrumb-monitor.sh` in the same Bash message.
 
 For each external judge, parse its `STATUS` and `REVIEWER_FILE`. An external judge with `STATUS != OK` is ineligible for every decision on the ballot. For inline Agent-tool judges (primary Claude subagent + any Claude replacements), parse votes directly from the Agent return text; inline judges are always eligible.
 

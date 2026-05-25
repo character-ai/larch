@@ -12,8 +12,10 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 ROOT="$REPO_ROOT"
 VIOLATIONS=0
 
-BANNER="**⚠ Foreground required — do NOT set \`run_in_background: true\`.**"
-COMMENT='# Foreground required: see BASH_AUTHORING.md §4'
+BANNER='**⚠ Background required — must be paired with breadcrumb-monitor.sh.**'
+COMMENT='# Background pair required: see BASH_AUTHORING.md §4'
+OLD_BANNER='**⚠ Foreground required'
+OLD_COMMENT='# Foreground required:'
 
 read -r -d '' DENYLIST <<'DENYLIST_EOF' || true
 ship-pr.sh
@@ -25,9 +27,6 @@ step2-implement.sh
 collect-agent-results.sh
 dispatch-with-waterfall.sh
 dispatch-plan-voters.sh
-implement-bootstrap.sh
-rebase-checkpoint-probe.sh
-phantom-probe-with-warn.sh
 DENYLIST_EOF
 
 usage() {
@@ -124,6 +123,17 @@ comment_ok_before_anchor_idx() {
             return 0
         fi
     done
+    return 1
+}
+
+fence_stale_foreground_markers() {
+    local joined=$1 win_txt=$2
+    if [[ "$joined" == *"$OLD_BANNER"* ]] || [[ "$joined" == *"$OLD_COMMENT"* ]]; then
+        return 0
+    fi
+    if [[ "$win_txt" == *"$OLD_BANNER"* ]] || [[ "$win_txt" == *"$OLD_COMMENT"* ]]; then
+        return 0
+    fi
     return 1
 }
 
@@ -296,12 +306,34 @@ scan_fence_buffer_for_anchors() {
             [[ -n "$bn" ]] || continue
             if is_anchor_for_basename "$mline" "$bn"; then
                 local abs_anchor=$((open_fence_line + merge_start_phy))
+                local joined="" win_txt=""
+                joined=$(printf '%s\n' "${FG_FENCE_LINES[@]}")
+                win_txt=$(printf '%s\n' "${pre_fence_window[@]}")
+                local has_rb=0 has_c=0
+                [[ "$joined" == *"run_in_background: true"* ]] && has_rb=1
+                if [[ "$joined" == *"breadcrumb-monitor.sh"* ]] && [[ "$joined" == *"--stream"* ]]; then
+                    has_c=1
+                fi
+                if ((has_rb == 1 && has_c == 1)); then
+                    if fence_stale_foreground_markers "$joined" "$win_txt"; then
+                        printf '%s:%s: stale foreground-marker phrase (Family B now uses background+breadcrumb-monitor pair) for %s\n' "$rel" "$abs_anchor" "$bn" >&2
+                        VIOLATIONS=$((VIOLATIONS + 1))
+                    fi
+                fi
                 if ! banner_ok_in_window "${pre_fence_window[@]}"; then
-                    printf '%s:%s: missing banner for %s\n' "$rel" "$abs_anchor" "$bn" >&2
+                    printf '%s:%s: missing background-pair banner for %s\n' "$rel" "$abs_anchor" "$bn" >&2
                     VIOLATIONS=$((VIOLATIONS + 1))
                 fi
                 if ! comment_ok_before_anchor_idx "$merge_start_phy"; then
-                    printf '%s:%s: missing comment for %s\n' "$rel" "$abs_anchor" "$bn" >&2
+                    printf '%s:%s: missing background-pair comment for %s\n' "$rel" "$abs_anchor" "$bn" >&2
+                    VIOLATIONS=$((VIOLATIONS + 1))
+                fi
+                if ((has_rb == 0)); then
+                    printf '%s:%s: missing background-pair half (launch) for %s\n' "$rel" "$abs_anchor" "$bn" >&2
+                    VIOLATIONS=$((VIOLATIONS + 1))
+                fi
+                if ((has_c == 0)); then
+                    printf '%s:%s: missing background-pair half (consumer) for %s\n' "$rel" "$abs_anchor" "$bn" >&2
                     VIOLATIONS=$((VIOLATIONS + 1))
                 fi
             fi

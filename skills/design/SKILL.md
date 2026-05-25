@@ -379,31 +379,67 @@ If `sketch_budget=0`, skip this section entirely. Do NOT call `collect-agent-res
 
 **Regular mode** (4 external output files when both tools available):
 
-**⚠ Foreground required — do NOT set `run_in_background: true`.**
+**⚠ Background required — must be paired with breadcrumb-monitor.sh.**
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-# Foreground required: see BASH_AUTHORING.md §4
+
+mkdir -p "$DESIGN_TMPDIR/breadcrumbs"
+_launch_id="collect-agent-results.$$"
+export LARCH_BREADCRUMB_STREAM="$DESIGN_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.ndjson"
+: > "$LARCH_BREADCRUMB_STREAM"
+export LARCH_DONE_SENTINEL="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.done.XXXXXX")"
+export LARCH_STATUS_FILE="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.status.XXXXXX")"
+export LARCH_QUIET_LOG_FILE="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.quiet.XXXXXX")"
+export LARCH_BREADCRUMBS_SURFACED_FILE="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.surfaced.XXXXXX")"
+touch "$LARCH_DONE_SENTINEL" "$LARCH_BREADCRUMBS_SURFACED_FILE"
+# Tool JSON: run_in_background: true
+# Background pair required: see BASH_AUTHORING.md §4
 ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1260 \
   "$DESIGN_TMPDIR/cursor-sketch-arch-output.txt" \
   "$DESIGN_TMPDIR/cursor-sketch-edge-output.txt" \
   "$DESIGN_TMPDIR/codex-sketch-innovation-output.txt" \
   "$DESIGN_TMPDIR/codex-sketch-pragmatic-output.txt"
+
+"${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh" \
+  --stream "$LARCH_BREADCRUMB_STREAM" \
+  --done-sentinel "$LARCH_DONE_SENTINEL" \
+  --status-file "$LARCH_STATUS_FILE" \
+  --quiet-log "$LARCH_QUIET_LOG_FILE" \
+  --surfaced-sentinel "$LARCH_BREADCRUMBS_SURFACED_FILE"
 ```
 
 **Quick mode** (2 external output files when both tools available; `sketch_budget=2`):
 
-**⚠ Foreground required — do NOT set `run_in_background: true`.**
+**⚠ Background required — must be paired with breadcrumb-monitor.sh.**
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-# Foreground required: see BASH_AUTHORING.md §4
+
+mkdir -p "$DESIGN_TMPDIR/breadcrumbs"
+_launch_id="collect-agent-results.$$"
+export LARCH_BREADCRUMB_STREAM="$DESIGN_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.ndjson"
+: > "$LARCH_BREADCRUMB_STREAM"
+export LARCH_DONE_SENTINEL="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.done.XXXXXX")"
+export LARCH_STATUS_FILE="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.status.XXXXXX")"
+export LARCH_QUIET_LOG_FILE="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.quiet.XXXXXX")"
+export LARCH_BREADCRUMBS_SURFACED_FILE="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.surfaced.XXXXXX")"
+touch "$LARCH_DONE_SENTINEL" "$LARCH_BREADCRUMBS_SURFACED_FILE"
+# Tool JSON: run_in_background: true
+# Background pair required: see BASH_AUTHORING.md §4
 ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1260 \
   "$DESIGN_TMPDIR/cursor-sketch-generic-output.txt" \
   "$DESIGN_TMPDIR/codex-sketch-generic-output.txt"
+
+"${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh" \
+  --stream "$LARCH_BREADCRUMB_STREAM" \
+  --done-sentinel "$LARCH_DONE_SENTINEL" \
+  --status-file "$LARCH_STATUS_FILE" \
+  --quiet-log "$LARCH_QUIET_LOG_FILE" \
+  --surfaced-sentinel "$LARCH_BREADCRUMBS_SURFACED_FILE"
 ```
 
-Use `timeout: 1260000` on the Bash tool call. **Do NOT** set `run_in_background: true` — this call must block. Only include output paths for slots that were actually launched as external reviewers — omit any slot whose tool was unavailable (its fallback comes back via the Agent tool).
+Use `timeout: 1260000` on the Bash tool call. Set `run_in_background: true` on the long-script Bash tool call and pair with foreground `breadcrumb-monitor.sh`. Only include output paths for slots that were actually launched as external reviewers — omit any slot whose tool was unavailable (its fallback comes back via the Agent tool).
 
 Note: This is a separate `collect-agent-results.sh` call from the one in Step 3. Both are permitted because they operate on completely distinct output file sets (`*-sketch-*-output.txt` vs `*-plan-output.txt`).
 

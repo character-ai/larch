@@ -185,11 +185,28 @@ COLLECT_ARGS=()
 
 Otherwise invoke the collector with substantive validation:
 
-**⚠ Foreground required — do NOT set `run_in_background: true`.**
+**⚠ Background required — must be paired with breadcrumb-monitor.sh.**
 
 ```bash
-# Foreground required: see BASH_AUTHORING.md §4
+mkdir -p "$RESEARCH_TMPDIR/breadcrumbs"
+_launch_id="collect-agent-results.$$"
+export LARCH_BREADCRUMB_STREAM="$RESEARCH_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.ndjson"
+: > "$LARCH_BREADCRUMB_STREAM"
+export LARCH_DONE_SENTINEL="$(mktemp "$RESEARCH_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.done.XXXXXX")"
+export LARCH_STATUS_FILE="$(mktemp "$RESEARCH_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.status.XXXXXX")"
+export LARCH_QUIET_LOG_FILE="$(mktemp "$RESEARCH_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.quiet.XXXXXX")"
+export LARCH_BREADCRUMBS_SURFACED_FILE="$(mktemp "$RESEARCH_TMPDIR/breadcrumbs/collect-agent-results.${_launch_id}.surfaced.XXXXXX")"
+touch "$LARCH_DONE_SENTINEL" "$LARCH_BREADCRUMBS_SURFACED_FILE"
+# Tool JSON: run_in_background: true
+# Background pair required: see BASH_AUTHORING.md §4
 ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1860 --substantive-validation "${COLLECT_ARGS[@]}"
+
+"${CLAUDE_PLUGIN_ROOT}/scripts/breadcrumb-monitor.sh" \
+  --stream "$LARCH_BREADCRUMB_STREAM" \
+  --done-sentinel "$LARCH_DONE_SENTINEL" \
+  --status-file "$LARCH_STATUS_FILE" \
+  --quiet-log "$LARCH_QUIET_LOG_FILE" \
+  --surfaced-sentinel "$LARCH_BREADCRUMBS_SURFACED_FILE"
 ```
 
 Use `timeout: 1860000` on the Bash tool call. Do NOT set `run_in_background: true`.
