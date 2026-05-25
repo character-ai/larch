@@ -1,0 +1,32 @@
+Reviewing the implementation plan and validating it against the codebase.
+
+Compiling findings from plan vs. codebase validation.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/scripts/plan-review-loop.sh:566-603	Loop only ingests VOTER_PATHS_FILE, not per-slot dispatch KVs	When Codex (slot 2) fails, plan-voter-paths.txt omits that line but still lists Claude then Cursor; passing those paths as ordered --voter-files (or basename inference) shifts Cursor votes into v2 and corrupts v1/v2/v3 forensic columns while vote counts may still look plausible	Parse VOTER_1_PATH/VOTER_2_PATH/VOTER_3_PATH and VOTER_*_STATUS from dispatch stdout; emit --voter Claude:/Codex:/Cursor: only for non-failed substantive paths; add loop harness stub case with middle slot failed
+2	in_scope	important	correctness	skills/design/scripts/tally-plan-review.sh:34-40;plan.txt:101	Plan claims legacy --voter-files uses basename inference as current behavior	Current tally has no basename→slot map—only ordered VOTER_FILES[] used for vote_for_id; new basename inference would mis-slot harness fixtures (v1.txt/v2.txt/v3.txt) and any caller relying on positional order	Define legacy --voter-files as positional v1/v2/v3 assignment (index 0→Claude, 1→Codex, 2→Cursor) with optional basename override only when basename matches claude|codex|cursor; document in tally-plan-review.md and harness case 2
+3	in_scope	important	risk-integration	skills/design/SKILL.md:758	Main-agent re-tally step not updated for new argv/TSV contract	SKILL still reruns tally with lone --voter-files voter-main-agent.txt; after 0-judge run the TSV already has rejected rows and empty vN columns, but re-tally without --findings-classification-out/--voter MainAgent: leaves stale classification or skips overwrite	Extend SKILL.md (and plan-review.md if needed): rerun with --voter MainAgent:$DESIGN_TMPDIR/voter-main-agent.txt plus --findings-classification-out plan-review/round-N/findings-classification.tsv; state MainAgent does not populate vN_* and re-tally overwrites voting_result
+4	in_scope	important	security	scripts/design-log-publish.sh:plan.txt:146	Allowlist regex permits round-0 despite positive-round prose	^round-[0-9]+/findings-classification\.tsv$ accepts round-0/…; contradicts plan-review-loop ROUND_NUM validation (>0) and could stage invalid round dirs	Tighten to ^round-[1-9][0-9]*/findings-classification\.tsv$ (or explicit awk check that round>0) in publisher, .md sibling, and test-design-log-publish deny case
+5	in_scope	important	risk-integration	plan.txt:241-252;Files to modify	scripts/test-design-log-publish.sh extensions listed only under Testing strategy, not Files to modify	Failure-mode mitigation and acceptance depend on publisher harness cases (stage TSV, reject unexpected.txt, empty plan-review/, symlink root) but implementer checklist omits the harness file—regression risk for FINDING_12	Add scripts/test-design-log-publish.sh (and sibling .md if cases grow) to Files to modify with explicit cases (a)-(d) from Failure modes §2
+6	in_scope	important	correctness	plan.txt:127-129;skills/design/scripts/plan-review-loop.sh:494-643	_dedup_failed=1 misclassified as tally-bypass early exit	_dedup_failed only sets DEGRADED_PANEL=1; flow still builds ballot and runs tally—header-only TSV shortcut on that branch would diverge from normal per-round TSV and double-write on success	Limit header-only TSV to write_empty_review_artifacts paths (panel-failed, skipped-empty-findings); let _dedup_failed runs use standard tally emission; adjust FINDING_15 wording and loop harness expectations
+7	in_scope	latent	correctness	plan.txt:241;skills/design/scripts/test-findings-classification.sh:57	Failure mode §1 cross-parser parity not in enumerated harness cases	Parser vs vote_for_id drift on edge lines would leave vN_vote inconsistent with voting_result without a dedicated assertion	Add harness case running vote_for_id and parse-judge-vote-and-rating.sh on shared fixtures (incl. duplicate-ID, MAYBE vote, axis tails) asserting PARSED_VOTE aligns with vote_for_id mapping to empty vs token
+8	in_scope	nit	architecture	skills/design/scripts/tally-plan-review.sh:plan.txt:100	Default findings-classification-out hardcodes round-1	Direct tally/harness calls without --findings-classification-out write plan-review/round-1/… even when loop uses --round-num 2+	Accept round-1 default only for harnesses or add optional --round-num to tally default path builder; document in tally-plan-review.md
+
+1. [correctness] `skills/design/scripts/plan-review-loop.sh:566-603` — Loop must source per-slot paths from dispatch KVs, not compacted `VOTER_PATHS_FILE`, or degraded panels mis-assign v2/v3.
+
+2. [correctness] `skills/design/scripts/tally-plan-review.sh:34-40` — Legacy `--voter-files` is positional today, not basename inference; specify positional v1/v2/v3 mapping to avoid breaking `v1.txt` harnesses.
+
+3. [risk-integration] `skills/design/SKILL.md:758` — Main-agent re-tally needs `--voter MainAgent:…` and `--findings-classification-out` so TSV `voting_result` updates after adjudication.
+
+4. [security] `plan.txt:146` — Publish allowlist regex should reject `round-0`, not only prose.
+
+5. [risk-integration] `plan.txt:241-252` — Add `scripts/test-design-log-publish.sh` to Files to modify so publisher allowlist stays harness-locked.
+
+6. [architecture] `plan.txt:127-129` — Remove `_dedup_failed` from zero-findings/header-only TSV branches; tally still runs on that path.
+
+7. [correctness] `plan.txt:241` — Add explicit parser/`vote_for_id` parity harness case called out in Failure modes §1.
+
+8. [architecture] `plan.txt:100` — Reconcile default `round-1` TSV path with `plan-review-loop.sh` `--round-num`.
+
+[OUT_OF_SCOPE] `agent-lint.toml` — New `scripts/parse-judge-vote-and-rating.sh` / `skills/design/scripts/test-findings-classification.sh` may need registry entries if `make agent-lint` flags them; confirm during implementation.
+
+[OUT_OF_SCOPE] `skills/design/scripts/tally-plan-review.md:30` — Doc says harness shard 1 but Makefile wires `test-tally-plan-review` into shard 9; unrelated doc drift unless touched for FINDING_9.

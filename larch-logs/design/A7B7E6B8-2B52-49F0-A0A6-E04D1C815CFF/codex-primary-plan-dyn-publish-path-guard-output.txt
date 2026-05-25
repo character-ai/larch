@@ -1,0 +1,10 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	<TMPDIR>/plan.txt:145-146,163	Allowlist regex contradicts the stated round grammar	^round-[0-9]+/findings-classification\.tsv$ accepts round-0 and round-01 even though the prose says positive integer, no leading zero, and 0 invalid	Use ^round-[1-9][0-9]*/findings-classification\.tsv$ everywhere in the plan, docs, and harness assertions
+1	in_scope	important	security	<TMPDIR>/plan.txt:145,149,157-160; scripts/design-log-publish.sh:289-296	The proposed enumeration does not reject symlinked intermediate directories	A plan-review/round-1 symlink is not followed by default find -type f traversal, so the publish can succeed silently instead of fail-publishing on a symlink under the strict allowlist tree	Before file enumeration, scan find "$pr_root" -type l and fail with larch_err plus emit_publish_result false for any symlink under plan-review; add a harness case for plan-review/round-1 as a symlink
+1	in_scope	important	correctness	<TMPDIR>/plan.txt:141; scripts/design-log-publish.sh:254-322	The missing plan-review guard uses continue outside any enclosing loop	In the current script the render-cache/publish staging region is top-level, so continue would error when plan-review is absent, breaking the plan's stated empty/missing success behavior	Use an if [[ -e "$DESIGN_TMPDIR/plan-review" ]]; then ... fi block, or make the absent case a no-op with :, not continue
+
+1. [correctness] `plan.txt:145-146,163`: the regex should be changed to `^round-[1-9][0-9]*/findings-classification\.tsv$`.
+
+2. [security] `plan.txt:145,149,157-160`: reject any symlink found below `plan-review/`, including symlinked `round-N` directories, before enumerating files.
+
+3. [correctness] `plan.txt:141`: replace the top-level `continue`; current `scripts/design-log-publish.sh:254-322` has no surrounding loop there.
