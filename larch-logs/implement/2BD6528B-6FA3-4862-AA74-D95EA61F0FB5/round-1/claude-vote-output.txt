@@ -1,0 +1,24 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: EXONERATE -- case-statement dispatcher is the actual defense; IMPLEMENT_TMPDIR revalidation is over-engineering for this threat model
+FINDING_11: EXONERATE -- args file is written from fixed case-statement arrays, not untrusted input; control-char check guards the one external input path
+FINDING_12: EXONERATE -- detail log is for human display only and not executed or interpreted by downstream shell paths
+FINDING_13: EXONERATE -- pushing without a new commit when the tree is clean is valid behavior; it re-triggers CI without creating an empty commit
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: EXONERATE -- last-statement implicit return is idiomatic bash; `set -e` is disabled at call sites via `if` context, so the exit code propagates correctly
+FINDING_18: EXONERATE -- not a current bug; ship-pr constructs bail tokens with hyphens so colon stripping has no effect on actual tokens
+FINDING_19: YES
+FINDING_20: NO -- no problem described; the finding asserts the code is correct, not that a bug exists
+FINDING_21: NO -- no problem described; finding confirms state resets are covered
+FINDING_22: NO -- no problem described; finding confirms TSV parsing handles empty shards correctly
+FINDING_23: NO -- no problem described; finding confirms paste behavior is correct
+FINDING_24: NO -- no problem described; finding confirms the colon-stripping concern does not apply

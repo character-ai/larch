@@ -1,0 +1,16 @@
+Reviewing sanitization in the branch diff: reading the precomputed diff and the relevant ship-pr/ci-failed-jobs code.
+### In-Scope Findings
+
+- **correctness** `scripts/ship-pr.sh:1726-1733` — The plan says both `BAIL_REASON` and `BAIL_FAILURE_DETAIL_LOG` are sanitized with `tr -cd '[:alnum:]_-,'`, but only the comma-joined bail string passes `_sanitize_bail_list`; the detail file still gets raw `job_token` values via `printf '%s\n' "$job_token" >> "$detail_file"`. For malformed GH job names (e.g. `test-harnesses (7); echo pwn`), `BAIL_REASON` becomes `ci-local-unfixable:test-harnesses7echopwn` while the detail file keeps `test-harnesses (7); echo pwn`, so the two surfaces disagree and the operator cannot reliably join bail tokens to detail lines. **Suggested fix:** Write the same canonical tokens to both surfaces (sanitize each line written to the detail file, or build the detail file from the same sanitized comma-list after splitting), and add a harness assertion that `BAIL_REASON` tokens match detail-file lines for a malformed-job fixture.
+
+- **correctness** `scripts/ci-failed-jobs.sh:25-27` vs `scripts/ship-pr.sh:1642-1644` — `sanitize_list` keeps `=:` (so FD-3 emits `test-harnesses:7` and `job=reason`), while `_sanitize_bail_list` omits them. That is not a colon-stripping bug on the ship-pr bail path because `run_per_job_local_fix_loop` uses hyphen shards (`test-harnesses-3` at `scripts/ship-pr.sh:1661-1662`), not colons; however, any consumer that copies `FAILED_JOBS_FIXABLE`/`FAILED_JOBS_UNFIXABLE` KV text into bail prose without normalizing separators will drop shard colons and `=` reason tuples. **Suggested fix:** Document the deliberate `job:shard` (KV) vs `job-shard` (bail/detail) split in `scripts/ci-failed-jobs.md` and `scripts/ship-pr.md`, or normalize to one separator before all sanitization passes.
+
+### Out-of-Scope Observations
+
+- **TSV parsing** (`scripts/ship-pr.sh:1657-1659`): Tab-delimited `awk` extraction is correct for empty shard rows; `scripts/test-ci-failed-jobs.sh:88` pins `lint\t\tfixable` and shard `test-harnesses\t7\tfixable`.
+
+- **`paste -sd, -`** (`scripts/ship-pr.sh:1732`): Single-element and multi-element unfixable arrays behave as expected; the bail block is guarded by `${#unfixable[@]} -gt 0`.
+
+- **Scout colon hypothesis**: Stripping `:` in `_sanitize_bail_list` does not remove matrix shard info from `BAIL_REASON` in the current implementation, because ship-pr never puts colons in `job_token` (hyphen only). The original scout concern does not apply to the implemented bail path.
+
+- **Test gap**: Several plan-listed ship-pr cases (cap-exhausted, verification regression, gh-failure degrade, shard-validation bail text) are not present in `scripts/test-ship-pr.sh` beyond happy-path and `gitleaks` unfixable; no test asserts `BAIL_REASON` for a sharded cap-exhausted job.
