@@ -1,0 +1,8 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	nit	correctness	plan.txt:97-97	Risk 3 post-rename grep expects exactly three hits for zero_findings_padded_attest_rejected	Only two sites carry the kind string (write_stub_dispatch case label and AGGREGATE_STUB_MERGE_KIND); the echo title rename does not include the kind name, so implementers following the plan may think a third rename site was missed	Update the verification step to expect two grep hits for the kind string (plus zero for the old name), or add a third explicit check for the echo title text if three checks are desired
+
+1. **[correctness]** `plan.txt:97` — Risk 3 mitigation says `grep -n "zero_findings_padded_attest_rejected"` should return **exactly three hits**, but Change C only renames the kind string in **two** places (case label ~225, invocation ~696); C.2 only changes the echo wording and does not contain the kind name. **Suggested revision:** Expect **two** kind-string hits (and zero for the old name), or add a separate grep for the updated echo title.
+
+2. **[correctness]** `plan.txt:97` — The same Risk 3 bullet references `STUB_DISPATCH unknown merge_kind`; the harness actually emits `stub: bad AGGREGATE_STUB_MERGE_KIND` on unknown kinds (`test-aggregate-findings.sh:351-352`). **Suggested revision:** Align the failure-mode text with the real stderr message so rename-miss debugging is accurate.
+
+3. **[OUT_OF_SCOPE] [architecture]** `skills/review/scripts/test-aggregate-findings.sh` (no sibling) — `.claude/rules/script-md-siblings.md` expects a `test-aggregate-findings.md`; the plan explicitly defers it. Worth a follow-up issue if harness docs are being normalized repo-wide.

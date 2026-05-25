@@ -1,0 +1,14 @@
+{"slot":"cursor-plan-arch","tool":"cursor","output":"<TMPDIR>/cursor-plan-arch-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-arch.prompt"}
+{"slot":"codex-plan-arch","tool":"codex","output":"<TMPDIR>/codex-primary-plan-arch-output.txt","prompt_file":"<TMPDIR>/render-plan-codex-arch.prompt"}
+{"slot":"cursor-plan-edge","tool":"cursor","output":"<TMPDIR>/cursor-plan-edge-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-edge.prompt"}
+{"slot":"codex-plan-edge","tool":"codex","output":"<TMPDIR>/codex-primary-plan-edge-output.txt","prompt_file":"<TMPDIR>/render-plan-codex-edge.prompt"}
+{"slot":"cursor-plan-innovation","tool":"cursor","output":"<TMPDIR>/cursor-plan-innovation-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-innovation.prompt"}
+{"slot":"codex-plan-innovation","tool":"codex","output":"<TMPDIR>/codex-primary-plan-innovation-output.txt","prompt_file":"<TMPDIR>/render-plan-codex-innovation.prompt"}
+{"slot":"cursor-plan-pragmatic","tool":"cursor","output":"<TMPDIR>/cursor-plan-pragmatic-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-pragmatic.prompt"}
+{"slot":"codex-plan-pragmatic","tool":"codex","output":"<TMPDIR>/codex-primary-plan-pragmatic-output.txt","prompt_file":"<TMPDIR>/render-plan-codex-pragmatic.prompt"}
+{"slot":"cursor-plan-requirements","tool":"cursor","output":"<TMPDIR>/cursor-plan-requirements-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-requirements.prompt"}
+{"slot":"codex-plan-requirements","tool":"codex","output":"<TMPDIR>/codex-primary-plan-requirements-output.txt","prompt_file":"<TMPDIR>/render-plan-codex-requirements.prompt"}
+{"slot":"dyn-cursor-plan-sut-line-claim","tool":"cursor","output":"<TMPDIR>/cursor-plan-dyn-sut-line-claim-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-dyn-sut-line-claim.prompt"}
+{"slot":"dyn-codex-plan-sut-line-claim","tool":"codex","output":"<TMPDIR>/codex-primary-plan-dyn-sut-line-claim-output.txt","prompt_file":"<TMPDIR>/render-plan-codex-dyn-sut-line-claim.prompt"}
+{"slot":"dyn-cursor-plan-rename-sweep","tool":"cursor","output":"<TMPDIR>/cursor-plan-dyn-rename-sweep-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-dyn-rename-sweep.prompt"}
+{"slot":"dyn-codex-plan-rename-sweep","tool":"codex","output":"<TMPDIR>/codex-primary-plan-dyn-rename-sweep-output.txt","prompt_file":"<TMPDIR>/render-plan-codex-dyn-rename-sweep.prompt"}
