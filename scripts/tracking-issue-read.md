@@ -121,9 +121,10 @@ Each invocation of combination 1 appends a new prompt comment. Retrying the same
 
 ## `--sentinel` mode parser
 
-Reads a local markdown file (typically `$IMPLEMENT_TMPDIR/parent-issue.md`) and grep-extracts two keys:
+Reads a local markdown file (typically `$IMPLEMENT_TMPDIR/parent-issue.md`) and grep-extracts three keys:
 
 - `ISSUE_NUMBER=<value>`
+- `RUN_ID=<value>`
 - `ADOPTED=true|false|` (strict contract — see `ADOPTED=` field contract above)
 
 Parser behavior:

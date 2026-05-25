@@ -39,6 +39,19 @@ assert_not_contains() {
     fi
 }
 
+assert_line() {
+    local needle=$1 haystack=$2 label=$3
+    if printf '%s\n' "$haystack" | grep -qxF -- "$needle"; then
+        PASS=$((PASS + 1))
+        echo "PASS: $label"
+    else
+        FAIL=$((FAIL + 1))
+        echo "FAIL: $label"
+        echo "  expected exact line: $needle"
+        printf '%s\n' "$haystack" | sed 's/^/    /'
+    fi
+}
+
 assert_rc() {
     local actual=$1 expected=$2 label=$3
     if [ "$actual" -eq "$expected" ]; then
@@ -52,7 +65,7 @@ assert_rc() {
 
 build_sandbox() {
     SANDBOX=$(mktemp -d /tmp/larch-ib-test.XXXXXX)
-    mkdir -p "$SANDBOX/scripts" "$SANDBOX_TMP"
+    mkdir -p "$SANDBOX/scripts" "$SANDBOX/skills/implement/scripts" "$SANDBOX_TMP"
     cp "$REPO_ROOT/scripts/lib-quiet.sh" "$SANDBOX/scripts/"
     cp "$REPO_ROOT/scripts/lib-execution-issues.sh" "$SANDBOX/scripts/"
     cp "$REAL_SCRIPT" "$SANDBOX/scripts/implement-bootstrap.sh"
@@ -99,6 +112,16 @@ STUB
 
     cat >"$SANDBOX/scripts/append-tool-failure.sh" <<'STUB'
 #!/usr/bin/env bash
+log=""
+site=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --log) log=$2; shift 2 ;;
+    --site) site=$2; shift 2 ;;
+    *) shift ;;
+  esac
+done
+[ -n "$log" ] && { mkdir -p "$(dirname "$log")"; printf '%s\n' "$site" >> "$log"; }
 exit 0
 STUB
     chmod +x "$SANDBOX/scripts/append-tool-failure.sh"
@@ -114,6 +137,144 @@ STUB
 exit 0
 STUB
     chmod +x "$SANDBOX/scripts/timing-ledger.sh"
+
+    cat >"$SANDBOX/scripts/tracking-issue-read.sh" <<'STUB'
+#!/usr/bin/env bash
+sentinel=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --sentinel) sentinel=$2; shift 2 ;;
+    *) shift ;;
+  esac
+done
+if [ -z "$sentinel" ] || [ ! -f "$sentinel" ]; then
+  echo FAILED=true
+  echo ERROR=sentinel-not-found
+  exit 1
+fi
+issue=$(awk -F= '$1=="ISSUE_NUMBER"{print substr($0,index($0,"=")+1); exit}' "$sentinel")
+run_id=$(awk -F= '$1=="RUN_ID"{print substr($0,index($0,"=")+1); exit}' "$sentinel")
+adopted=$(awk -F= '$1=="ADOPTED"{print substr($0,index($0,"=")+1); exit}' "$sentinel")
+case "$adopted" in
+  ""|true|false) ;;
+  *) echo FAILED=true; echo "ERROR=invalid ADOPTED value"; exit 1 ;;
+esac
+echo "ISSUE_NUMBER=$issue"
+echo "RUN_ID=$run_id"
+echo "ADOPTED=$adopted"
+exit 0
+STUB
+    chmod +x "$SANDBOX/scripts/tracking-issue-read.sh"
+
+    cat >"$SANDBOX/scripts/get-issue-state.sh" <<'STUB'
+#!/usr/bin/env bash
+if [ "${LARCH_TEST_GET_ISSUE_FAILED:-false}" = "true" ]; then
+  echo FAILED=true
+  echo "ERROR=failed=value"
+  exit 1
+fi
+echo "STATE=${LARCH_TEST_ISSUE_STATE:-OPEN}"
+echo "URL=https://example.test/${LARCH_TEST_URL_KIND:-issues}/123"
+echo "IS_PR=${LARCH_TEST_IS_PR:-false}"
+exit 0
+STUB
+    chmod +x "$SANDBOX/scripts/get-issue-state.sh"
+
+    cat >"$SANDBOX/scripts/larch-log.sh" <<'STUB'
+#!/usr/bin/env bash
+if [ "${LARCH_TEST_LARCH_LOG_FAIL:-false}" = "true" ]; then
+  echo LOG_WRITTEN=false
+  echo LOG_PATH=
+  echo BYTES=0
+  echo SHA256=
+  echo COMMIT_SHA=
+  echo UNCHANGED=false
+  echo "ERROR=init failed"
+  exit 1
+fi
+run_id=""
+log_root=""
+skill=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --log-root) log_root=$2; shift 2 ;;
+    --skill) skill=$2; shift 2 ;;
+    --run-id) run_id=$2; shift 2 ;;
+    *) shift ;;
+  esac
+done
+path="$log_root/$skill/$run_id/manifest.json"
+mkdir -p "$(dirname "$path")"
+printf '{}\n' > "$path"
+echo LOG_WRITTEN=true
+echo "LOG_PATH=$path"
+echo BYTES=3
+echo SHA256=dummy
+echo COMMIT_SHA=
+echo UNCHANGED=false
+exit 0
+STUB
+    chmod +x "$SANDBOX/scripts/larch-log.sh"
+
+    cat >"$SANDBOX/skills/implement/scripts/post-tracking-issue.sh" <<'STUB'
+#!/usr/bin/env bash
+tmpdir=""
+issue=""
+run_id=""
+adopted="true"
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --implement-tmpdir) tmpdir=$2; shift 2 ;;
+    --issue-number) issue=$2; shift 2 ;;
+    --run-id) run_id=$2; shift 2 ;;
+    --adopted) adopted=$2; shift 2 ;;
+    *) shift ;;
+  esac
+done
+if [ "${LARCH_TEST_POSTED:-true}" != "true" ]; then
+  echo POSTED=false
+  echo COMMENT_URL=
+  echo "ERROR=post failed"
+  exit 1
+fi
+printf 'ISSUE_NUMBER=%s\nRUN_ID=%s\nADOPTED=%s\n' "$issue" "$run_id" "$adopted" > "$tmpdir/parent-issue.md"
+echo POSTED=true
+echo COMMENT_URL=https://example.test/comment
+exit 0
+STUB
+    chmod +x "$SANDBOX/skills/implement/scripts/post-tracking-issue.sh"
+
+    cat >"$SANDBOX/scripts/tracking-issue-write.sh" <<'STUB'
+#!/usr/bin/env bash
+if [ "${LARCH_TEST_RENAME_FAILED:-false}" = "true" ]; then
+  echo FAILED=true
+  echo "ERROR=rename failed"
+  exit 1
+fi
+echo RENAMED=true
+echo "NEW_TITLE=[IMPLEMENTING] test"
+exit 0
+STUB
+    chmod +x "$SANDBOX/scripts/tracking-issue-write.sh"
+
+    cat >"$SANDBOX/scripts/get-issue-context.sh" <<'STUB'
+#!/usr/bin/env bash
+tmpdir=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --tmpdir) tmpdir=$2; shift 2 ;;
+    --issue|--repo) shift 2 ;;
+    *) shift ;;
+  esac
+done
+mkdir -p "$tmpdir"
+printf 'title\n' > "$tmpdir/upstream-issue-title.txt"
+printf 'body\n' > "$tmpdir/upstream-issue-body.txt"
+echo "TITLE_FILE=$tmpdir/upstream-issue-title.txt"
+echo "BODY_FILE=$tmpdir/upstream-issue-body.txt"
+exit 0
+STUB
+    chmod +x "$SANDBOX/scripts/get-issue-context.sh"
 
     : >"$SANDBOX/invoke-log.txt"
 }
@@ -137,8 +298,12 @@ STUB
 run_bootstrap() {
     (
         cd "$SANDBOX" || exit 1
-        export CLAUDE_PLUGIN_ROOT="$REPO_ROOT"
-        bash "$SANDBOX/scripts/implement-bootstrap.sh" "$@"
+        env \
+            CLAUDE_PLUGIN_ROOT="$SANDBOX" \
+            LARCH_BREADCRUMB_STREAM= \
+            LARCH_QUIET_BREADCRUMBS="${LARCH_QUIET_BREADCRUMBS:-}" \
+            LARCH_QUIET_BREADCRUMB_FD="${LARCH_QUIET_BREADCRUMB_FD:-}" \
+            bash "$SANDBOX/scripts/implement-bootstrap.sh" "$@"
     )
 }
 
@@ -156,6 +321,69 @@ assert_contains "SESSION_ID=sessstub" "$out" "GP1 SESSION_ID"
 assert_contains "codex_available=true" "$out" "GP1 codex_available"
 assert_contains "IMPLEMENT_BAIL_REASON=" "$out" "GP1 IMPLEMENT_BAIL_REASON tail present"
 assert_not_contains "STEP_FAILED=" "$out" "GP1 no STEP_FAILED"
+rm -rf "$SANDBOX" "$SANDBOX_TMP"
+
+# --- GP-adopt ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+write_gp1_session_setup
+out=$(run_bootstrap --up-to-phase tracking --issue-number 123 --run-id runA 2>/dev/null) && rc=$? || rc=$?
+assert_rc "$rc" 0 "GP-adopt exit 0"
+assert_contains "BRANCH_SELECTED=branch-2-adopt" "$out" "GP-adopt branch"
+assert_contains "ISSUE_NUMBER=123" "$out" "GP-adopt issue"
+assert_contains "RUN_ID=runA" "$out" "GP-adopt run id"
+assert_contains "DEFERRED=false" "$out" "GP-adopt not deferred"
+assert_contains "STALL_TRACKING=false" "$out" "GP-adopt no stall"
+assert_contains "RUN_ID=runA" "$(cat "$SANDBOX_TMP/parent-issue.md")" "GP-adopt sentinel run id"
+assert_contains "FORKED_TARGET=false" "$(cat "$SANDBOX_TMP/session-env.sh")" "GP-adopt session-env fork default"
+rm -rf "$SANDBOX" "$SANDBOX_TMP"
+
+# --- GP2 sentinel resume ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+write_gp1_session_setup
+printf 'ISSUE_NUMBER=123\nRUN_ID=resume1\nADOPTED=true\n' > "$SANDBOX_TMP/parent-issue.md"
+out=$(run_bootstrap --up-to-phase tracking --issue-number 123 2>/dev/null) && rc=$? || rc=$?
+assert_rc "$rc" 0 "GP2 exit 0"
+assert_contains "BRANCH_SELECTED=branch-1-resume" "$out" "GP2 branch"
+assert_contains "ISSUE_NUMBER=123" "$out" "GP2 issue"
+assert_contains "RUN_ID=resume1" "$out" "GP2 run id"
+assert_contains "DEFERRED=false" "$out" "GP2 not deferred"
+rm -rf "$SANDBOX" "$SANDBOX_TMP"
+
+# --- GP3 forked_target ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+write_gp1_session_setup
+out=$(run_bootstrap --up-to-phase tracking --issue-number 123 --forked-target true --upstream-repo upstream/repo 2>/dev/null) && rc=$? || rc=$?
+assert_rc "$rc" 0 "GP3 exit 0"
+assert_contains "BRANCH_SELECTED=forked-target-skip" "$out" "GP3 branch"
+assert_line "ISSUE_NUMBER=" "$out" "GP3 empty issue"
+assert_contains "DEFERRED=true" "$out" "GP3 deferred"
+assert_contains "FORKED_TARGET=true" "$(cat "$SANDBOX_TMP/session-env.sh")" "GP3 session-env fork true"
+rm -rf "$SANDBOX" "$SANDBOX_TMP"
+
+# --- GP-repo-unavail-tracking ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+cat >"$SANDBOX/scripts/session-setup.sh" <<STUB
+#!/usr/bin/env bash
+echo SESSION_TMPDIR=$SANDBOX_TMP
+echo SESSION_ID=sessstub
+echo REPO=
+echo REPO_UNAVAILABLE=true
+echo CODEX_PRESENT=true
+echo CURSOR_PRESENT=true
+echo CODEX_BINARY_FOUND=true
+echo CURSOR_BINARY_FOUND=true
+exit 0
+STUB
+chmod +x "$SANDBOX/scripts/session-setup.sh"
+out=$(run_bootstrap --up-to-phase tracking --issue-number 123 2>/dev/null) && rc=$? || rc=$?
+assert_rc "$rc" 0 "GP-repo-unavail-tracking exit 0"
+assert_contains "BRANCH_SELECTED=repo-unavailable-skip" "$out" "GP-repo-unavail-tracking branch"
+assert_line "ISSUE_NUMBER=" "$out" "GP-repo-unavail-tracking empty issue"
+assert_contains "DEFERRED=true" "$out" "GP-repo-unavail-tracking deferred"
 rm -rf "$SANDBOX" "$SANDBOX_TMP"
 
 # --- GP4 repo_unavailable ---
@@ -181,6 +409,90 @@ rm -f "$stderrf"
 assert_rc "$rc" 0 "GP4 exit 0"
 assert_contains "REPO_UNAVAILABLE=true" "$out" "GP4 REPO_UNAVAILABLE in stdout"
 assert_contains "**⚠ Could not determine repository name." "$err" "GP4 repo warning on stderr"
+rm -rf "$SANDBOX" "$SANDBOX_TMP"
+
+# --- B1 sentinel mismatch fall-through ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+write_gp1_session_setup
+printf 'ISSUE_NUMBER=999\nRUN_ID=oldrun\nADOPTED=true\n' > "$SANDBOX_TMP/parent-issue.md"
+out=$(run_bootstrap --up-to-phase tracking --issue-number 123 --run-id runB 2>/dev/null) && rc=$? || rc=$?
+assert_rc "$rc" 0 "B1 exit 0"
+assert_contains "BRANCH_SELECTED=branch-2-adopt" "$out" "B1 fall-through branch"
+assert_contains "RUN_ID=runB" "$out" "B1 fresh run id"
+assert_contains "ISSUE_NUMBER=123" "$(cat "$SANDBOX_TMP/parent-issue.md")" "B1 sentinel replaced"
+rm -rf "$SANDBOX" "$SANDBOX_TMP"
+
+# --- B2 CLOSED bail ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+write_gp1_session_setup
+out=$(LARCH_TEST_ISSUE_STATE=CLOSED run_bootstrap --up-to-phase tracking --issue-number 123 2>/dev/null) && rc=$? || rc=$?
+assert_rc "$rc" 0 "B2 exit 0"
+assert_contains "IMPLEMENT_BAIL_REASON=adopted-issue-closed" "$out" "B2 bail reason"
+assert_line "BRANCH_SELECTED=" "$out" "B2 no branch"
+rm -rf "$SANDBOX" "$SANDBOX_TMP"
+
+# --- B3 IS_PR bail ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+write_gp1_session_setup
+out=$(LARCH_TEST_IS_PR=true run_bootstrap --up-to-phase tracking --issue-number 123 2>/dev/null) && rc=$? || rc=$?
+assert_rc "$rc" 0 "B3 exit 0"
+assert_contains "IMPLEMENT_BAIL_REASON=adopted-issue-is-pr" "$out" "B3 bail reason"
+assert_line "BRANCH_SELECTED=" "$out" "B3 no branch"
+rm -rf "$SANDBOX" "$SANDBOX_TMP"
+
+# --- B4 POSTED=false deferred ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+write_gp1_session_setup
+out=$(LARCH_TEST_POSTED=false run_bootstrap --up-to-phase tracking --issue-number 123 --run-id runD 2>/dev/null) && rc=$? || rc=$?
+assert_rc "$rc" 0 "B4 exit 0"
+assert_contains "BRANCH_SELECTED=branch-2-adopt" "$out" "B4 branch"
+assert_contains "DEFERRED=true" "$out" "B4 deferred"
+if [ ! -f "$SANDBOX_TMP/parent-issue.md" ]; then
+    PASS=$((PASS + 1))
+    echo "PASS: B4 no sentinel"
+else
+    FAIL=$((FAIL + 1))
+    echo "FAIL: B4 sentinel should not exist"
+fi
+rm -rf "$SANDBOX" "$SANDBOX_TMP"
+
+# --- B5 larch-log init fail ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+write_gp1_session_setup
+out=$(LARCH_TEST_LARCH_LOG_FAIL=true run_bootstrap --up-to-phase tracking --issue-number 123 --run-id runE 2>/dev/null) && rc=$? || rc=$?
+assert_rc "$rc" 0 "B5 exit 0"
+assert_contains "IMPLEMENT_BAIL_REASON=tracking-init-failed" "$out" "B5 bail reason"
+assert_contains "STALL_TRACKING=true" "$out" "B5 stall"
+assert_contains "BRANCH_SELECTED=branch-2-adopt" "$out" "B5 branch"
+rm -rf "$SANDBOX" "$SANDBOX_TMP"
+
+# --- B6 get-issue-state FAILED=true ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+write_gp1_session_setup
+set +e
+out=$(LARCH_TEST_GET_ISSUE_FAILED=true run_bootstrap --up-to-phase tracking --issue-number 123 2>/dev/null)
+rc=$?
+set -e
+assert_rc "$rc" 2 "B6 exit 2"
+assert_contains "STEP_FAILED=get-issue-state" "$out" "B6 STEP_FAILED"
+rm -rf "$SANDBOX" "$SANDBOX_TMP"
+
+# --- B-sentinel-malformed ---
+SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
+build_sandbox
+write_gp1_session_setup
+printf 'ISSUE_NUMBER=123\nRUN_ID=bad1\nADOPTED=yes\n' > "$SANDBOX_TMP/parent-issue.md"
+out=$(run_bootstrap --up-to-phase tracking --issue-number 123 --run-id runF 2>/dev/null) && rc=$? || rc=$?
+assert_rc "$rc" 0 "B-sentinel-malformed exit 0"
+assert_contains "BRANCH_SELECTED=branch-2-adopt" "$out" "B-sentinel-malformed fall-through branch"
+assert_contains "RUN_ID=runF" "$out" "B-sentinel-malformed fresh run id"
+assert_contains "RUN_ID=runF" "$(cat "$SANDBOX_TMP/parent-issue.md")" "B-sentinel-malformed sentinel replaced"
 rm -rf "$SANDBOX" "$SANDBOX_TMP"
 
 # --- B-preflight ---
@@ -246,13 +558,11 @@ SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
 build_sandbox
 write_gp1_session_setup
 bc=$(mktemp "${TMPDIR:-/tmp}/larch-ib-bc.XXXXXX")
-exec 9>"$bc"
 export LARCH_QUIET_BREADCRUMBS=1
-export LARCH_QUIET_BREADCRUMB_FD=9
+export LARCH_QUIET_BREADCRUMB_FD=1
 out=$(run_bootstrap --up-to-phase infra 2>/dev/null) && rc=$? || rc=$?
 unset LARCH_QUIET_BREADCRUMBS LARCH_QUIET_BREADCRUMB_FD
-exec 9>&-
-n=$(grep -cF '→ step0: infra ready' "$bc" 2>/dev/null || true)
+n=$(printf '%s\n' "$out" | grep -cF '→ step0: infra ready' || true)
 rm -f "$bc"
 assert_rc "$rc" 0 "Edge-breadcrumb-count exit 0"
 if [ "$n" -eq 1 ]; then

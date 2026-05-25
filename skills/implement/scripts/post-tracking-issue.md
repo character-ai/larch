@@ -5,7 +5,7 @@ Publishes the Step 0 `larch:metadata` tracking-issue summary.
 Usage:
 
 ```bash
-post-tracking-issue.sh --implement-tmpdir PATH [--issue-number N] [--adopted true|false]
+post-tracking-issue.sh --implement-tmpdir PATH [--issue-number N] [--run-id ID] [--adopted true|false]
 ```
 
 All session state is read from files under `IMPLEMENT_TMPDIR` rather than
@@ -13,7 +13,10 @@ CLI arguments to reduce non-determinism and context bloat:
 
 - `parent-issue.md` → `ISSUE_NUMBER`, `RUN_ID` (when `--issue-number` absent)
 - `session-env.sh` → `REPO`, `AGENT`, `CODER`
-- `session-id` → `RUN_ID` fallback when `parent-issue.md` is absent
+- `session-id` → `RUN_ID` fallback when `--run-id` and `parent-issue.md` are absent
+
+`RUN_ID` precedence is: `--run-id` > `parent-issue.md` `RUN_ID` > `session-id`.
+`--run-id`, when present, must match `^[A-Za-z0-9._-]+$`.
 
 When `--issue-number N` is provided, `N` is used directly for `ISSUE_NUMBER`
 and `parent-issue.md` is written after a successful metadata post (with
