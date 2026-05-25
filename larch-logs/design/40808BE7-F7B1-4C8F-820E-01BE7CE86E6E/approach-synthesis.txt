@@ -1,0 +1,38 @@
+## Approach Synthesis
+
+Both sketches (Cursor-Generic and Codex-Generic) converge on essentially the same approach. There were no meaningful divergences.
+
+### Agreement (both sketches)
+
+1. **Single-file scope**: changes live entirely in `skills/review/scripts/test-aggregate-findings.sh`. No modification of the SUT (`aggregate-findings.sh`).
+2. **New stub kind name**: `merge_plus_impure_attest` — placed near existing `merge_plus_spurious_attest` (line 233) for symmetric pairing.
+3. **Stub data**: emit a valid merged `### FINDING_1:` block plus a `LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED junk-suffix` impure-attestation line.
+4. **Test stanza**: placed near the contrasting `merge_plus_spurious_attest` block (line 708) — pairs success-path impure stripping with rejection of pure tokens alongside merged blocks.
+5. **Assertions** for the success-path test:
+   - `AGGREGATED=true`
+   - `REASON=ok`
+   - `junk-suffix` is absent from the rewritten findings file (`grep -Fq 'junk-suffix' ... && fail`)
+   - The exact `LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED` token is also absent from the rewritten findings file
+   - The merged FINDING_1 block survives in the rewritten findings file
+6. **Misleading title fix**: rename echo at test-aggregate-findings.sh:691 from "accepts whitespace-padded…" to "rejects whitespace-padded…" wording, AND rename the underlying stub kind `zero_findings_padded_attest` and all callers (per user's Round 1 answer).
+7. **LOC budget**: < 30 LOC total per OOS estimate — fits comfortably (stub kind ~7 LOC + test stanza ~15 LOC + rename ~3 touch-ups).
+
+### Cursor-specific notes (incorporated)
+
+- "Keep assertions focused on persisted `findings.md`; the current rejection test already proves validation preserves the original file on failure." — Reinforces that the new test should validate the strip predicate's behavior on the success path, not duplicate rejection-path coverage.
+- Cursor flagged the risk of accidentally testing the wrong path (e.g., using a pure exact-token line in the new stub would fail validation, not test the strip predicate). The plan must use ONLY the impure suffixed line — not both forms.
+
+### Codex-specific notes (incorporated)
+
+- Codex correctly identified that the strip predicate at `aggregate-findings.sh:668` (in the heredoc passed to `python3 - "$cand"`) is the actual code path being covered by the new test.
+- Codex noted to run `bash scripts/relevant-checks.sh` per repo instructions after implementation.
+
+### Failure-mode considerations (additive)
+
+- Risk: stub data must produce merged output that the validator accepts. The validator at `aggregate-findings.sh:506` calls `drop_impure_empty_merge_attestation_lines(outtext)` BEFORE checking the "blocks + exact-attest" rule at line 536. So merged blocks + impure-line → impure line is pre-stripped from the validator's view → validation succeeds → `AGGREGATED=true`. The persistence strip at line 665-678 then drops the impure line via `startswith()`.
+- Risk: the test must use the same `LARCH_AGGREGATE_MAX_OUTER_PHASES=1` env (as other zero-findings tests do) to keep timing/retries stable. Codex did not explicitly mention this; the new test stanza in `merge_plus_*` family does NOT set it (see line 708-722), so we follow that pattern (no MAX_OUTER_PHASES override needed for success-path merge tests).
+- Risk: when renaming the stub kind `zero_findings_padded_attest`, we must update all THREE references: the case label (line 225), the test invocation `AGGREGATE_STUB_MERGE_KIND=` (line 696), and the echo title (line 691). Missing any one would break the test or leave a dangling reference.
+
+### Contested decisions
+
+None. The OOS body is very narrow; both sketches and Round 1 user answers fully resolved naming and scope. No dialectic debate needed.

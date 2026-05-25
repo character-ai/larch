@@ -1,0 +1,18 @@
+Reviewing the plan and verifying `zero_findings_padded_attest` occurrences across the codebase.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan.txt:65-69,97-97	Post-rename verification expects exactly three grep hits for zero_findings_padded_attest_rejected but the kind literal appears on only two harness lines (case label and AGGREGATE_STUB_MERGE_KIND); the third edit site (echo at skills/review/scripts/test-aggregate-findings.sh:691) changes prose only	Implementer runs grep -n zero_findings_padded_attest_rejected ... expecting three hits gets two thinks a rename site was missed or adds a spurious third occurrence	Update Risk 3 and Testing strategy to expect two literal kind-name hits after rename; add a separate check that line 691 echo contains rejects and that grep -n zero_findings_padded_attest returns zero
+2	in_scope	nit	correctness	plan.txt:97-97	Risk 3 cites STUB_DISPATCH unknown merge_kind as the miss-rename failure mode	Actual stub default is stub: bad AGGREGATE_STUB_MERGE_KIND at skills/review/scripts/test-aggregate-findings.sh:350-352 which can mislead debugging	Align failure-mode text with the harness message at test-aggregate-findings.sh:350-352
+
+1. **[correctness]** Rename-sweep count vs plan wording (`plan.txt:65-69`, `plan.txt:97`): The plan lists three edit locations (C.1 case at `skills/review/scripts/test-aggregate-findings.sh:225`, C.2 echo at `:691`, C.3 env at `:696`), which is complete for the rename work. For the identifier `zero_findings_padded_attest` itself, the harness currently has **exactly two** literal occurrences (`:225`, `:696`); `:691` only contains the substring `padded` inside the echo title, not the kind name. After rename, `zero_findings_padded_attest_rejected` will likewise appear on **two** lines, not three. The plan’s grep gate (“returning exactly three hits”) is incorrect and should be revised to two kind-literal hits plus an echo assertion.
+
+2. **[correctness]** `aggregate-findings.sh` carries **no** reference to `zero_findings_padded_attest` / `_rejected` or `AGGREGATE_STUB_MERGE_KIND` (confirmed via repo search under `skills/review/scripts/aggregate-findings.sh`). No dangling SUT literal after rename; confining changes to the harness is sound.
+
+3. **[correctness]** No extra harness occurrences in Makefile (`Makefile:648-649` only invokes the script), `scripts/`, heredoc fixture bodies, or comments beyond the two kind literals and the separate “padded” prose at `test-aggregate-findings.sh:227` (narrative text, not the kind name). Fail messages at `:704-706` use `padded-attest` shorthand only; leaving them unchanged is consistent.
+
+4. **[nit]** `plan.txt:97` misstates the unknown-kind error as `STUB_DISPATCH unknown merge_kind`; the stub emits `stub: bad AGGREGATE_STUB_MERGE_KIND` at `test-aggregate-findings.sh:350-352`.
+
+5. **[architecture]** Proposed `merge_plus_impure_attest` stub mirrors `merge_plus_spurious_attest` (`:233-244`) and reuses the same three-reviewer attribution pattern as the existing merge stub; validator `drop_impure_empty_merge_attestation_lines` at `aggregate-findings.sh:506` plus persistence `startswith` at `:675` supports the claimed success-path contract. No architectural conflict identified.
+
+6. **[security]** Test-only harness change; no new trust boundary or secret handling.
+
+[OUT_OF_SCOPE] Historical run logs under `larch-logs/` still mention `zero_findings_padded_attest` (e.g. `larch-logs/implement/E2F77A04-C842-401F-8BD2-B56B47CC7A6A/plan-goals-test.md:21`); harmless for `make test-aggregate-findings` but may confuse repo-wide greps until logs age out.

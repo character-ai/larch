@@ -1,0 +1,34 @@
+v1	mark	1779748688	design	design Step 1c — questions	-	-	-	-	-	-	-	-
+v1	mark	1779749041	design	design Step 1d — discussion r1	-	-	-	-	-	-	-	-
+v1	mark	1779749051	design	design Step 1d.5 — brainstorm	-	-	-	-	-	-	-	-
+v1	mark	1779749060	design	design Step 1e — gate A	-	-	-	-	-	-	-	-
+v1	mark	1779749234	design	design Step 2a — sketches	-	-	-	-	-	-	-	-
+v1	vendor	1779749341	implement	-	codex	codex-sketch-generic	1779749291	1779749341	50	codex-sketch-generic-output.txt	0	complete
+v1	vendor	1779749358	implement	-	cursor	cursor-sketch-generic	1779749287	1779749358	71	cursor-sketch-generic-output.txt	0	complete
+v1	mark	1779749415	design	design Step 2a.5 — dialectic	-	-	-	-	-	-	-	-
+v1	mark	1779749421	design	design Step 2b — plan	-	-	-	-	-	-	-	-
+v1	mark	1779749548	design	design Step 3 — plan review	-	-	-	-	-	-	-	-
+v1	vendor	1779749662	implement	-	codex	codex-phase1-dyn-codex-plan-sut-line-claim	1779749609	1779749662	53	codex-primary-plan-dyn-sut-line-claim-output.txt	0	complete
+v1	vendor	1779749700	implement	-	cursor	cursor-phase1-cursor-plan-requirements	1779749609	1779749700	91	cursor-plan-requirements-output.txt	0	complete
+v1	vendor	1779749701	implement	-	codex	codex-phase1-dyn-codex-plan-rename-sweep	1779749609	1779749701	92	codex-primary-plan-dyn-rename-sweep-output.txt	0	complete
+v1	vendor	1779749709	implement	-	codex	codex-phase1-codex-plan-arch	1779749608	1779749709	101	codex-primary-plan-arch-output.txt	0	complete
+v1	vendor	1779749710	implement	-	codex	codex-phase1-codex-plan-requirements	1779749609	1779749710	101	codex-primary-plan-requirements-output.txt	0	complete
+v1	vendor	1779749720	implement	-	cursor	cursor-phase1-cursor-plan-arch	1779749608	1779749720	112	cursor-plan-arch-output.txt	0	complete
+v1	vendor	1779749722	implement	-	cursor	cursor-phase1-dyn-cursor-plan-sut-line-claim	1779749609	1779749721	112	cursor-plan-dyn-sut-line-claim-output.txt	0	complete
+v1	vendor	1779749722	implement	-	cursor	cursor-phase1-dyn-cursor-plan-rename-sweep	1779749609	1779749722	113	cursor-plan-dyn-rename-sweep-output.txt	0	complete
+v1	vendor	1779749732	implement	-	codex	codex-phase1-codex-plan-edge	1779749609	1779749732	123	codex-primary-plan-edge-output.txt	0	complete
+v1	vendor	1779749743	implement	-	codex	codex-phase1-codex-plan-innovation	1779749609	1779749743	134	codex-primary-plan-innovation-output.txt	0	complete
+v1	vendor	1779749743	implement	-	cursor	cursor-phase1-cursor-plan-innovation	1779749609	1779749743	134	cursor-plan-innovation-output.txt	0	complete
+v1	vendor	1779749750	implement	-	codex	codex-phase1-codex-plan-pragmatic	1779749609	1779749750	141	codex-primary-plan-pragmatic-output.txt	0	complete
+v1	vendor	1779749754	implement	-	cursor	cursor-phase1-cursor-plan-pragmatic	1779749609	1779749754	145	cursor-plan-pragmatic-output.txt	0	complete
+v1	vendor	1779749822	implement	-	cursor	cursor-phase1-cursor-plan-edge	1779749608	1779749822	214	cursor-plan-edge-output.txt	0	complete
+v1	vendor	1779749938	implement	-	cursor	cursor-review	1779749827	1779749938	111	cursor-plan-requirements-output-ns-retry.txt	0	complete
+v1	vendor	1779749978	implement	-	cursor	cursor-review	1779749826	1779749978	152	cursor-plan-pragmatic-output-ns-retry.txt	0	complete
+v1	vendor	1779750036	implement	-	cursor	cursor-phase1-aggregator	1779749985	1779750036	51	aggregator-output.txt	0	complete
+v1	vendor	1779750194	implement	-	cursor	cursor-phase1-voter-3	1779750144	1779750194	50	cursor-vote-output.txt	0	complete
+v1	vendor	1779750204	implement	-	codex	codex-phase1-voter-2	1779750143	1779750204	61	codex-vote-output.txt	0	complete
+v1	mark	1779750265	design	design Step 3.5 — gate B	-	-	-	-	-	-	-	-
+v1	mark	1779750678	design	design Step 3b — arch diagram	-	-	-	-	-	-	-	-
+v1	mark	1779750684	design	design Step 4 — rejected findings	-	-	-	-	-	-	-	-
+v1	mark	1779750696	design	design Step 4b — gate C	-	-	-	-	-	-	-	-
+v1	mark	1779751157	design	design Step 5 — finalize	-	-	-	-	-	-	-	-

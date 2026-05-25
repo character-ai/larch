@@ -1,0 +1,22 @@
+Reviewing the plan and verifying cited line numbers in the aggregate-findings script.
+Checking whether the plan's SUT path resolves and whether the proposed test could pass without hitting line 675.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan.txt:7,36,61,77-79,96,103	All SUT citations omit the scripts/ directory segment (e.g. aggregate-findings.sh:675)	Reviewer or implementer opens skills/review/aggregate-findings.sh (file does not exist); line numbers only apply to skills/review/scripts/aggregate-findings.sh where $AGG points (test-aggregate-findings.sh:11)	Rewrite every SUT reference to skills/review/scripts/aggregate-findings.sh and keep the existing line numbers (506, 536, 665-678, 675 verified there)
+1	in_scope	nit	correctness	plan.txt:97	Risk 3 claims failure text STUB_DISPATCH unknown merge_kind	Actual unknown-kind failure is stub: bad AGGREGATE_STUB_MERGE_KIND (test-aggregate-findings.sh:350-352); misleads triage when rename misses a call site	Update Risk 3 to the real stderr string or reference the *) case at test-aggregate-findings.sh:350-352
+
+1. **[correctness]** `plan.txt` (SUT path) — Every plan citation uses `aggregate-findings.sh` without `scripts/`, but the only on-disk SUT is [`skills/review/scripts/aggregate-findings.sh`](skills/review/scripts/aggregate-findings.sh) (`$AGG` at [`skills/review/scripts/test-aggregate-findings.sh:11`](skills/review/scripts/test-aggregate-findings.sh:11)). Line-number claims themselves are accurate on that file: `drop_impure_empty_merge_attestation_lines(outtext)` at 506, `if blocks and has_attest_line:` at 536, persistence-strip inline Python at 665–678 with `stripped.startswith(EMPTY_MERGE_ATTESTATION)` at 675. **Revision:** Normalize all SUT paths to `skills/review/scripts/aggregate-findings.sh`.
+
+2. **[correctness]** `plan.txt:97` (Risk 3) — Documented failure string does not match the harness. **Revision:** Replace with `stub: bad AGGREGATE_STUB_MERGE_KIND` per [`skills/review/scripts/test-aggregate-findings.sh:350-352`](skills/review/scripts/test-aggregate-findings.sh:350-352).
+
+**Line-claim verification (no offset issues on canonical path):**
+
+| Plan claim | Actual at `skills/review/scripts/aggregate-findings.sh` | Match |
+|---|---|---|
+| `drop_impure_empty_merge_attestation_lines` @ 506 | `outtext = drop_impure_empty_merge_attestation_lines(outtext)` in embedded validator `main()` | Yes |
+| blocks + pure-attest rule @ 536 | `if blocks and has_attest_line:` rejects pure token when merged blocks exist | Yes |
+| persistence-strip @ 665–678 | `python3 - "$cand" <<'PY'` strip loop writing `merged_tmp` | Yes |
+| `startswith` @ 675 | `if stripped.startswith(EMPTY_MERGE_ATTESTATION): continue` | Yes |
+
+**Proposed test path (no vacuous-pass concern):** Validator `drop_impure` at 506 strips impure lines in memory only; the on-disk candidate still carries `LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED junk-suffix` until the persistence strip runs, so failure of line 675 surfaces via the planned `junk-suffix` grep. Harness line anchors for the test file edits (225, 233–244, 691, 696, 708–722, 724) match current [`skills/review/scripts/test-aggregate-findings.sh`](skills/review/scripts/test-aggregate-findings.sh).
+
+**Areas without findings:** code-quality and architecture of the proposed harness-only change look sound; security N/A for test-only diff; risk-integration (validator strip vs persistence strip) is correctly reasoned in the plan aside from the path typo.
