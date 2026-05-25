@@ -36,7 +36,7 @@ On cold start (no state file yet, or `--force-init-state true`), `ship-pr.sh` wr
 
 **Backward compatibility**: callers that pre-compose `ship-pr-state.sh` and invoke `ship-pr.sh` without the new flags are unchanged — the writer is skipped when the file exists and `--force-init-state` is not `true`.
 
-**Schema note**: `skills/implement/SKILL.md` echoes the full key list; `write_initial_state()` is the runtime source of truth. The `require_key` loop validates a subset so legacy state files missing newer informational keys are not rejected (asymmetry tracked in issue #2752). Drift-detection automation between the writer and docs is out of scope for issue #2742 (issue #2753).
+**Schema note**: `skills/implement/SKILL.md` echoes the full key list; `write_initial_state()` is the runtime source of truth. The `require_key` loop validates the full key set written by `write_initial_state()`, so mid-session `ship-pr.sh` upgrades against a state file produced by an older version may need `--force-init-state true` to regenerate the file. Drift-detection automation between the writer and docs is out of scope for issue #2742 (issue #2753).
 
 ## State
 
