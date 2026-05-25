@@ -657,8 +657,10 @@ grep -Fq '**`--trivial` + `--brainstorm`** uses' "$SKILL_MD" \
   || fail "(2754) SKILL.md missing trivial+brainstorm upgrade-flow prose"
 grep -Fq '<!-- step:1d.5 — Brainstorm Panel -->' "$SKILL_MD" \
   || fail "(2754) SKILL.md missing Step 1d.5 anchor"
-grep -Fq '> **🔶 /design 1d.5: brainstorm**' "$SKILL_MD" \
-  || fail "(2754) SKILL.md missing 1d.5 brainstorm breadcrumb"
+grep -Fq '> **🔶 /design 1d.5: brainstorm**' "$BRAINSTORM_MD" \
+  || fail "(2754) brainstorm.md missing 1d.5 brainstorm breadcrumb"
+grep -Fq '⏩ 1d.5: brainstorm — skipped (already complete; .brainstorm-done present)' "$BRAINSTORM_MD" \
+  || fail "(2754) brainstorm.md missing sentinel-hit skip breadcrumb"
 grep -Fq $'1d.5\tbrainstorm' "$REPO_ROOT/skills/design/scripts/step-name-registry.tsv" \
   || fail "(2754) step-name-registry.tsv missing 1d.5 brainstorm row"
 grep -Fq '<BRAINSTORM_FRAMING_PROMPT>' "$BRAINSTORM_PROMPTS" \

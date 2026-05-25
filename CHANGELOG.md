@@ -72,6 +72,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **`/design --brainstorm`**: public `--brainstorm` flag, Step **1d.5** brainstorm panel between Round 1 and Gate A, `brainstorm_requested` in `run-params.json`, additive `brainstorm.md` reads in Steps 2a / 2a.5 / 2b / 3 (including plan-review feature-context merge).
 - Catch drift between documented ship-pr state keys and write_initial_state emits before it confuses operators.
 - Anchor the Required keys bullet list with stable HTML comment markers for deterministic extraction.
 - Document the two-source set-equality contract in the implement-structure harness readme.

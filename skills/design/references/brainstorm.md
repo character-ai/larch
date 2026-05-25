@@ -26,7 +26,7 @@ Step 1d.5 **overrides** the generic “never halt after Bash” anxiety **only**
 
 1. Read `$DESIGN_TMPDIR/run-params.json` → boolean `brainstorm_requested` (default **false** when absent).
 2. If `brainstorm_requested` is not true: print `⏩ 1d.5: brainstorm — skipped` and **skip** this entire step (go to Step **1e**).
-3. If `$DESIGN_TMPDIR/.brainstorm-done` exists: skip (already completed this invocation).
+3. If `$DESIGN_TMPDIR/.brainstorm-done` exists: print `⏩ 1d.5: brainstorm — skipped (already complete; .brainstorm-done present)` and **skip** this entire step (go to Step **1e**).
 4. Print `> **🔶 /design 1d.5: brainstorm**`.
 
 ---
@@ -41,15 +41,15 @@ If `$DESIGN_TMPDIR/discussion-round1.md` exists and is non-empty, read it and pr
 
 | Slot | Tool order | Output file (deterministic) | Timing kind | Prompt body token |
 |------|------------|------------------------------|-------------|-------------------|
-| Framing | Cursor → Codex → Claude | `$DESIGN_TMPDIR/cursor-brainstorm-output.txt` when Cursor runs; parent may route Codex/Claude fallbacks per waterfall | `cursor-brainstorm` / `codex-brainstorm` | `<BRAINSTORM_FRAMING_PROMPT>` |
-| Scope | Codex → Cursor → Claude | `$DESIGN_TMPDIR/codex-brainstorm-output.txt` when Codex runs first for this slot; adjust if lane swaps | `codex-brainstorm` / `cursor-brainstorm` | `<BRAINSTORM_SCOPE_PROMPT>` |
+| Framing | Cursor → Codex → Claude | **`$DESIGN_TMPDIR/cursor-brainstorm-output.txt`** — canonical **framing** staging file; parent **Write**s here no matter which external actually ran (waterfall / Agent fallback). | `cursor-brainstorm` / `codex-brainstorm` | `<BRAINSTORM_FRAMING_PROMPT>` |
+| Scope | Codex → Cursor → Claude | **`$DESIGN_TMPDIR/codex-brainstorm-output.txt`** — canonical **scope** staging file; parent **Write**s here no matter which external actually ran. | `codex-brainstorm` / `cursor-brainstorm` | `<BRAINSTORM_SCOPE_PROMPT>` |
 | Pragmatic | Always Claude (primary) | in-session compose (no external path) | _(none)_ | `<BRAINSTORM_PRAGMATIC_PROMPT>` |
 
 Spawn slowest-first when two externals are queued in one wave: **Cursor**, then **Codex**, then Claude Agent text generation if used as fallback.
 
 ### Agent-returns-text + parent-writes-file (mandatory)
 
-External review **Agent** fallbacks return **text only** to the parent session. The parent MUST **Write** that returned text to the deterministic slot output file (`cursor-brainstorm-output.txt`, `codex-brainstorm-output.txt`, or the active slot path) **before** synthesis — never instruct a subagent to write these files directly.
+External review **Agent** fallbacks return **text only** to the parent session. The parent MUST **Write** that returned text to the canonical staging file for that ideation slot (`cursor-brainstorm-output.txt` for framing, `codex-brainstorm-output.txt` for scope) **before** synthesis — never instruct a subagent to write these files directly.
 
 ---
 
@@ -76,6 +76,19 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/launch-review.sh --tool codex --output "$DESIGN_TM
 ## Collection (`collect-agent-results.sh`) — externals only
 
 **⚠ Foreground required — do NOT set `run_in_background: true`.**
+
+**Do not copy-paste a fence verbatim.** The argv below is illustrative only: list **only** the canonical staging paths (`cursor-brainstorm-output.txt` / `codex-brainstorm-output.txt`) for slots you **actually launched as externals** this wave (parent-only / Agent-text fallbacks are **not** launches). Match Step 2a.3-style dynamic argv — one path when a single external ran, two when both ran.
+
+**Example — one external** (e.g. Cursor framing ran; Codex scope was parent-written in-session):
+
+```bash
+[ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
+# Foreground required: see BASH_AUTHORING.md §4
+${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1260 \
+  "$DESIGN_TMPDIR/cursor-brainstorm-output.txt"
+```
+
+**Example — two externals** (both Cursor framing and Codex scope launched as externals):
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh

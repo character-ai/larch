@@ -45,20 +45,24 @@ write_dispatch_one_slot() {
 set -euo pipefail
 DESIGN_TMPDIR=""
 PLAN_FILE=""
+FEATURE_FILE=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --design-tmpdir) DESIGN_TMPDIR="${2:?}"; shift 2 ;;
         --plan-file) PLAN_FILE="${2:?}"; shift 2 ;;
-        --feature-file|--codex-present|--cursor-present|--timeout) shift 2 ;;
+        --feature-file) FEATURE_FILE="${2:?}"; shift 2 ;;
+        --codex-present|--cursor-present|--timeout) shift 2 ;;
         *) shift 1 ;;
     esac
 done
-[[ -n "$DESIGN_TMPDIR" && -n "$PLAN_FILE" ]] || exit 2
+[[ -n "$DESIGN_TMPDIR" && -n "$PLAN_FILE" && -n "$FEATURE_FILE" ]] || exit 2
 OUT="$DESIGN_TMPDIR/cursor-plan-arch-output.txt"
 PROMPT="$DESIGN_TMPDIR/render-plan-cursor-arch.prompt"
 printf '%s\n' '{"slot":"cursor-plan-arch","tool":"cursor","output":"'"$OUT"'","prompt_file":"'"$PROMPT"'"}' >"$DESIGN_TMPDIR/plan-review-slots.ndjson"
 : >"$OUT"
 : >"$PROMPT"
+cp "$FEATURE_FILE" "$DESIGN_TMPDIR/feature-file-seen.txt"
+printf '%s\n' "$FEATURE_FILE" >"$DESIGN_TMPDIR/feature-file-path.txt"
 PATHS="$DESIGN_TMPDIR/panel-paths.txt"
 printf '%s\n' "$OUT" >"$PATHS"
 printf 'DISPATCH_OK=true\nFALLBACK_COUNT=0\nSTATIC_DISPATCH_OK=true\nPANEL_PATHS_FILE=%s\nALL_OUTPUT_FILES_PATH=%s\n' "$PATHS" "$PATHS"
@@ -232,6 +236,7 @@ EOS
 run_loop() {
     local d="$1"
     export CLAUDE_PLUGIN_ROOT="$ROOT"
+    export LARCH_QUIET_DISABLE=1
     export LARCH_PLAN_REVIEW_SCOUT_SH="$STUB/scout-plan-archetypes-wrapper.sh"
     export LARCH_PLAN_REVIEW_DISPATCH_PANEL_SH="$STUB/dispatch-plan-review-panel.sh"
     export LARCH_PLAN_REVIEW_COLLECT_SH="$STUB/collect-agent-results.sh"
@@ -274,6 +279,29 @@ out1=$(run_loop "$D1")
 printf '%s\n' "$out1" | grep -q '^TALLY_PLAN_REVIEW_STATUS=ok$' || fail "expected ok tally status"
 printf '%s\n' "$out1" | grep -q '^LOOP_STATUS=complete$' || fail "expected complete loop"
 grep -q 'FINDING_1' "$D1/accepted-plan-findings.md" || fail "accepted finding missing"
+
+echo "=== brainstorm context merges into feature file before dispatch ==="
+DB="$TMP/zb"
+mkdir -p "$DB"
+printf 'plan\n' >"$DB/plan.txt"
+printf 'feat base\n' >"$DB/feature-description.txt"
+cat >"$DB/brainstorm.md" <<'EOS'
+## Brainstorm Synthesis
+
+### Idea
+**Source:** claude-brainstorm
+extra context
+EOS
+write_scout
+write_dispatch_one_slot
+write_collect one
+write_voters_three
+outb=$(run_loop "$DB")
+printf '%s\n' "$outb" | grep -q '^TALLY_PLAN_REVIEW_STATUS=ok$' || fail "expected ok tally status with brainstorm merge"
+grep -Fq '## Feature / issue context (base)' "$DB/feature-file-seen.txt" || fail "merged feature file missing base header"
+grep -Fq 'feat base' "$DB/feature-file-seen.txt" || fail "merged feature file missing base content"
+grep -Fq '## Brainstorm synthesis (additive; optional)' "$DB/feature-file-seen.txt" || fail "merged feature file missing brainstorm header"
+grep -Fq 'extra context' "$DB/feature-file-seen.txt" || fail "merged feature file missing brainstorm content"
 
 echo "=== stubbed tally failure still emits loop KVs ==="
 D2="$TMP/z2"
