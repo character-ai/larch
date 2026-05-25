@@ -1,0 +1,2 @@
+DECISION_1: ANTI_THESIS — Defense B better shows that per-job repair is a local retry loop and that reusing `run_ci_fix_vendor` imports broad CI recovery semantics that do not fit the narrower contract.
+DECISION_2: THESIS — Defense B makes the stronger case that shared invariant mechanics can be factored while preserving phase-specific delta and failure handling at call sites.

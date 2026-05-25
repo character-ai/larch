@@ -1,0 +1,5 @@
+Here are the votes:
+
+DECISION_1: ANTI_THESIS — The alternative side better grounds the *per-job* contract (cap-3 local retry) in the existing `lint-fix-loop` loop and shows that reusing the full `run_ci_fix_vendor` path drags in rollback, tier policy, and an extra `run_checks_with_lint_fix_loop` pass that are poorly matched to a single mapped job; the counter that this is a localized prompt/site-label problem is more proportionate than the thesis’s “launchers already have `--failure-log`” pipeline argument alone.
+
+DECISION_2: THESIS — The factoring side answers the duplication defense with a concrete middle path (narrow shared primitive plus call-site callbacks or outputs for `record_failure`, delta paths, and staging) while the anti-thesis leans on “drift is manageable” and understates long-term divergence on redaction, caps, and status handling that the thesis’s risk section states more credibly.

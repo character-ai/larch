@@ -1,0 +1,113 @@
+Gathering the plan and codebase evidence for emit_kv, LARCH_QUIET_PID, and run_evaluate_failure invocation patterns.
+
+Checking how `run_ci_fix_vendor` uses `gh_logs_capture` to confirm overwriting `fail_file` would break the flow.
+
+Evidence: `emit_kv` writes to `>&3` only when `LARCH_QUIET_PID` equals the current shell’s `$$` after that process’s own `larch_quiet_init`; otherwise it writes to stdout ([`scripts/lib-quiet.sh`](scripts/lib-quiet.sh) 50–57, 105–111). `larch_quiet_init` duplicates the **current** FD1 to FD3 before redirecting FD1/2 to the quiet log (lines 70–75), which is exactly the “command substitution / grandparent” case described in comments 50–54. `ci-rerun-failed.sh` uses quiet + `emit_kv` and is invoked with command substitution ([`scripts/ship-pr.sh`](scripts/ship-pr.sh) 1500). `gh-run-logs.sh` does not use lib-quiet; its human output is normal stdout redirected to `fail_file` ([`scripts/ship-pr.sh`](scripts/ship-pr.sh) 1530–1533). `run_ci_fix_vendor` reads `gh_logs_capture` for redaction ([`scripts/ship-pr.sh`](scripts/ship-pr.sh) 1358–1360).
+
+The plan ([`<TMPDIR>/plan.txt`](file:///Users/zhupanov/.cache/larch/sessions/claude-design-larch9-LWwpEQ/plan.txt)) proposes `ci-failed-jobs.sh` with `emit_kv` (lines 38–42, 82–83) but does not tie the caller pattern to `ci-rerun-failed` vs `gh-run-logs`, nor protect `gh_logs_capture`.
+
+I'll produce the required output: start with TSV header, numbered findings, TSV records.
+
+For security focus area: [OUT_OF_SCOPE] low — no new secret channel identified beyond normal contract output discipline.
+
+Findings count: I'll do 4 in-scope TSV rows (2 important, 2 nit) + 1 out_of_scope optional.
+
+Actually re-read user instruction: "Prefix out-of-scope but worth-tracking items with [OUT_OF_SCOPE]"
+
+I'll include one [OUT_OF_SCOPE] in numbered list for security if nothing else - e.g. future KV could embed untrusted job names in BAIL_REASON - latent.
+
+Numbered findings:
+1. correctness - overwrite gh log
+2. correctness - parse/invocation empty FAILED_JOBS_COUNT  
+3. risk-integration - same as 2 could merge - user asked distinct numbered - I'll make 2 risk-integration about vendor path depending on intact log file
+4. architecture - terminology in plan
+5. code-quality - tests
+
+Actually 1 and 2 overlap file overwrite which is correctness+integration. I'll keep:
+1 correctness: overwrite fail_file breaks run_ci_fix_vendor log input
+2 correctness: ambiguous "parse FD-3" without ci-rerun-failed vs redirect-from-file contract → empty count
+3 risk-integration: graceful degrade path still needs correct rc; if count parse wrong might skip per-job or mis-skip vendor - link to 2
+4 architecture: plan NEW script "stdout via FD-3" wording
+5 [OUT_OF_SCOPE] security: job names in KV/TSV to logs - document redaction if needed
+
+I'll avoid duplicate TSV rows - one row for overwrite, one for capture/parsing ambiguity, one nit architecture, one nit code-quality.
+
+TSV: 4 records or 3? User said "For each finding, add one record" matching numbered findings.
+
+I'll use 5 numbered findings and 5 TSV lines (schema 1 each).
+
+Finding 3 risk-integration: Overwriting or wrong parse interacts with "skip run_ci_fix_vendor" (plan line 83) — wrong count could skip per-job when jobs exist.
+
+Finding 4 architecture nit
+Finding 5 [OUT_OF_SCOPE] security - document whether job names in TSV need redaction before prompts
+
+Let me finalize TSV - use tabs literally in my output between fields.
+
+Actually the user said "no markdown fences around the TSV" - I'll output raw TSV after numbered list.
+
+Structure:
+1. TSV header line first (user: "first non-whitespace character must be either `s` (start of schema_version)" - so **TSV header must be first** when findings exist)
+
+Wait: user also said "Your response MUST begin with either the TSV header line (when you have findings) or the literal single-line JSON"
+
+And "When you have findings, include a TSV structured-record block with this exact header"
+
+But also "numbered findings" and "Walk five focus areas" - does numbered list come before or after TSV?
+
+Re-read: "Return numbered findings with focus-area tag..." AND "When you have findings, include a TSV structured-record block"
+
+Order ambiguity. User said "The first non-whitespace character of your response must be either `s` (start of `schema_version`) or `{`"
+
+So **TSV header is first**, then presumably numbered findings, then TSV records? Or TSV block includes header once then records?
+
+"Acceptable TSV block example (one finding): schema_version ... header then record line"
+
+I'll do:
+Line 1: TSV header
+Line 2+: TSV data rows (one per finding)
+Then numbered findings in prose?
+
+But then first char is `s` - good.
+
+If numbered findings come first, first char would be `1` - wrong.
+
+So order: 
+1) TSV header + all TSV record lines immediately? 
+2) Then numbered findings?
+
+User: "Return numbered findings" - typically human wants findings first. But hard constraint "first non-whitespace = s or {". So TSV header must be line 1.
+
+I'll put:
+- Line 1: header
+- Lines 2-6: 5 data rows (if 5 findings)
+- Blank line
+- Numbered findings 1-5 with details
+
+Actually re-read again - "include a TSV structured-record block with this exact header" and "For each finding, add one record" - the example shows header then one record. So the block is header + records.
+
+I'll start with schema_version header, then 5 tab-separated rows, then numbered narrative.
+
+Wait - if I have 5 findings but some are OUT_OF_SCOPE, do they get TSV rows? User said "scope in_scope or out_of_scope" - so yes.
+
+Finding 5 OUT_OF_SCOPE with scope out_of_scope in TSV.
+
+Let me verify tab characters - I need to use real tabs in the message.
+
+I'll write the response carefully.
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	<TMPDIR>/plan.txt:82-83 plus scripts/ship-pr.sh:1529-1537 vs 1358-1360	Proposed insert does not require a sink disjoint from gh_logs_capture	Redirecting ci-failed-jobs stdout to the same path as gh_logs_capture truncates or replaces the captured gh-run-logs payload before run_ci_fix_vendor may read it for redaction and --failure-log	run_ci_fix_vendor needs a non-empty gh log file when gh_logs_rc=0; pin a separate KV sink path or use command substitution so gh_logs_capture stays the sole gh-run-logs artifact until vendor dispatch or skip
+1	in_scope	important	correctness	<TMPDIR>/plan.txt:38-42 and 82-83	FD-3 wording without mandating a caller capture contract consistent with lib-quiet init order	Implementer may mix gh-run-logs-style shell stdout redirect with parsing FAILED_JOBS_COUNT from an unset or wrong buffer hybrid e.g. command substitution while also redirecting child FD1 before init yields empty capture and FAILED_JOBS_COUNT defaults to empty so the per-job loop is skipped while jobs still failed	Spell the ship-pr wiring as either ci-rerun-failed-style rerun_out=$(ci-failed-jobs ... 2>err) plus kv_value on rerun_out or redirect-only with awk or kv_value from that same file after confirming emit_kv lines land there per scripts/lib-quiet.sh:70-75
+1	in_scope	important	risk-integration	<TMPDIR>/plan.txt:82-84 and scripts/ship-pr.sh:1500 vs 1530	Adjacent patterns differ structured vs human capture without an explicit choice for the new helper	ci-rerun-failed uses emit after quiet init with stdout tied to the substitution pipe scripts/ship-pr.sh:1500 gh-run-logs uses plain stdout scripts/gh-run-logs.sh:41-56 with scripts/ship-pr.sh:1530 no lib-quiet New helper uses emit_kv scripts/lib-quiet.sh:105-111 so blind copy of either line alone mis-routes contract lines	Document in the plan ship-pr step which of the two established patterns is canonical for ci-failed-jobs and add a test assertion that FAILED_JOBS_COUNT is non-empty when the mock gh payload reports failures
+1	in_scope	nit	architecture	<TMPDIR>/plan.txt:21	Phrases default stdout via FD-3 emit	Readers may think post-init POSIX stdout carries KV lib-quiet contract is caller-visible stream duped to FD3 before FD1 moves to the log scripts/lib-quiet.md:14-19 scripts/lib-quiet.sh:70-75	In ci-failed-jobs.md say contract lines are emitted on the preserved caller-visible FD after larch_quiet_init not on the quiet log FD1
+1	out_of_scope	latent	security	<TMPDIR>/plan.txt:39-42 and proposed scripts/ci-failed-jobs.sh KV and TSV rows	FAILED_JOBS and reasons may echo untrusted CI job names into logs or bail strings	If a job name or matrix label were crafted to contain newlines or control bytes parsers or downstream prompts could mis-split lines	Treat as follow-up harden kv and TSV field charset or document trusted boundary same as other gh JSON consumers
+
+1. **correctness** — [`plan.txt`](file:///Users/zhupanov/.cache/larch/sessions/claude-design-larch9-LWwpEQ/plan.txt) change 4 (lines 82–83) adds `ci-failed-jobs.sh` immediately after `gh-run-logs.sh` but does not require a capture path separate from `gh_logs_capture`. Reusing the same `fail_file` with a truncating `>` would wipe the log that [`scripts/ship-pr.sh`](scripts/ship-pr.sh) later passes to `run_ci_fix_vendor` as `gh_logs_capture` (assignment at 1533; consumer at 1358–1360). Suggested revision: require a disjoint sink (or `$(...)` so `gh_logs_capture` is never overwritten) and state that invariant explicitly in the plan and `ship-pr.md` wiring.
+
+2. **correctness** — The plan says to emit and parse `FAILED_JOBS_COUNT` via FD-3 / `emit_kv` ([`plan.txt`](file:///Users/zhupanov/.cache/larch/sessions/claude-design-larch9-LWwpEQ/plan.txt) lines 38–42, 82–83) without binding that to one of the two valid caller contracts implied by [`scripts/lib-quiet.sh`](scripts/lib-quiet.sh) lines 70–75 and 105–111. After `larch_quiet_init`, contract lines go to FD 3, which is a dup of whatever FD 1 was **before** the quiet redirect; mixing a `$(...)` capture with an extra child-level `>` on stdout before init yields an empty substitution buffer and a false zero or empty count, skipping `run_per_job_local_fix_loop` when it should run. Suggested revision: mandate either the [`scripts/ship-pr.sh`](scripts/ship-pr.sh) `ci-rerun-failed` pattern (1500: `rerun_out=$(... 2>"$fail_file")` + `kv_value` on `rerun_out`) or a dedicated file redirect where parsing reads that same file, and add a harness assertion for non-empty KV when failures exist.
+
+3. **risk-integration** — [`scripts/ship-pr.sh`](scripts/ship-pr.sh) uses two different capture idioms in the same function: command substitution for structured `ci-rerun-failed.sh` output (1500) versus full stdout/stderr redirect for human `gh-run-logs.sh` (1530). The new `ci-failed-jobs.sh` matches the quiet-helper family, not `gh-run-logs.sh`; the plan never states which idiom to mirror, so an implementer can pick the wrong one and silently drop `FAILED_JOBS_COUNT`. Suggested revision: name `ci-rerun-failed.sh` as the canonical analogue in the plan’s `run_evaluate_failure` bullet and in the proposed `ci-failed-jobs.md` “callers” section.
+
+4. **architecture** — [`plan.txt`](file:///Users/zhupanov/.cache/larch/sessions/claude-design-larch9-LWwpEQ/plan.txt) line 21 (“default stdout via FD-3 emit”) blurs POSIX stdout with the post-init contract stream described in [`scripts/lib-quiet.md`](scripts/lib-quiet.md) lines 14–19. Suggested revision: align wording with “caller-visible stream preserved at FD 3” to reduce mis-wiring.
+
+5. **[OUT_OF_SCOPE] security** — Proposed KV and TSV fields that include remote job names ([`plan.txt`](file:///Users/zhupanov/.cache/larch/sessions/claude-design-larch9-LWwpEQ/plan.txt) lines 39–42) could feed logs or `BAIL_REASON` strings; exotic names are a low-probability injection/mis-splitting surface compared to the capture bugs above. Track for a follow-up on field sanitization or documentation of trust boundaries alongside other `gh` JSON consumers.

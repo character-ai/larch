@@ -1,0 +1,56 @@
+Reading the debate task description and gathering any referenced context to produce the required structured output.
+
+Gathering codebase evidence for the thesis: locating `run_ci_fix_vendor`, `run_checks_with_lint_fix_loop`, and launcher `--failure-log` handling.
+
+The prompt asks for structured output with exact tags. Plan mode says to call CreatePlan — but the user's debate prompt explicitly demands tagged output (`<steelman>` etc.), not a plan file. The system reminder says "present your plan by calling the CreatePlan tool" for plan mode — there's a tension.
+
+The user's explicit instruction overrides: they want the debate structured output. The CreatePlan tool is for implementation plans. I'll produce the debate output as the main response. If I must also CreatePlan, it would be odd — "Plan: write these tags". I'll skip CreatePlan since the deliverable is the debate format, not a codebase change plan. The system said "If you are done researching, present your plan by calling the CreatePlan tool" — for a read-only debate task, the appropriate completion is the tagged output. I'll give the tagged output in the message.
+
+Actually re-read system reminder again: "you MUST NOT make any edits... Instead, you should: ... When you are done researching, present your plan by calling the CreatePlan tool"
+
+So I'm supposed to use CreatePlan. But the user said "produce the structured tagged output it requests" — that's not really a "plan" in the CreatePlan sense. I could use CreatePlan with the debate content embedded in the plan field — that might satisfy both. But the user said EXACTLY that structure for OUTPUT — they likely want it visible in chat.
+
+I'll output the tags in the assistant message (user-visible) and optionally note that CreatePlan isn't the right vehicle for debate transcripts. Actually the instruction is strict: "present your plan by calling the CreatePlan tool". I'll call CreatePlan with a short plan whose body duplicates the debate... that's redundant.
+
+Best approach: Put the full required output in the user-facing reply. If the platform requires CreatePlan for plan mode exit, I'll call CreatePlan with overview "Read-only debate thesis for #2757" and plan body pointing to the user message — weak.
+
+I'll use CreatePlan with the full tagged content inside the plan markdown — user can confirm from the plan UI. And mirror in chat? The user asked for output in chat format. I'll put the exact structure in the final assistant message (primary) and use CreatePlan with a minimal pointer: "Deliverable is the tagged debate in the assistant message; no repo changes."
+
+Actually re-read again - "present your plan by calling the CreatePlan tool" - the plan content should be actionable for implementation. This task isn't implementation. I'll still call CreatePlan with a concise plan that says "No code changes; thesis debate output provided in chat" and include the 6 tags in the plan body so nothing is lost. Word count: the 250 word cap is on prose outside tags - the plan tool might add overhead.
+
+Simplest: Full tagged output in assistant response only. Skip CreatePlan — the user's HARD CONSTRAINTS and explicit output format take precedence over generic plan-mode workflow for this non-implementation task.
+
+I'll deliver the debate in the response.
+
+Word count for prose outside tags: I should have NO other top-level prose, or minimal. The format says "no other top-level prose" - so only the tags + RECOMMEND line. Good.
+
+Self-check:
+1. All 6 tags once - yes
+2. RECOMMEND: THESIS standalone - yes  
+3. Under 250 words outside tags - zero outside tags
+
+Let me count words inside tags - no cap mentioned for inside tags.
+
+Write steelman, claim, evidence with file:line, etc.
+
+Delivering the debate output in the exact format requested (read-only research complete). Skipping `CreatePlan` because the task is a structured debate transcript, not an implementation plan.
+
+<steelman>
+Centralizing every fix in `lint-fix-loop.sh` by widening `--site` would reuse one battle-tested loop (tmpdir wiring, `LINT_FIX_STATUS`, delta paths, and the existing three-attempt driver in `run_checks_with_lint_fix_loop`) instead of growing another parallel orchestration surface in `ship-pr.sh`.
+</steelman>
+<claim>
+For per-job CI remediation, `ship-pr` should call the same `run_ci_fix_vendor` Cursor→Codex→Claude waterfall, passing each captured local job log as `--failure-log`, and should not extend `lint-fix-loop.sh`’s `--site` enum for that purpose.
+</claim>
+<evidence>
+In [`scripts/ship-pr.sh`](scripts/ship-pr.sh), `run_ci_fix_vendor` iterates tiers `cursor`, `codex`, `claude` and, when a redacted capture exists, passes `--failure-log` into each launcher’s `--role fix` invocation (`1375:1397:scripts/ship-pr.sh`). In contrast, [`scripts/lint-fix-loop.sh`](scripts/lint-fix-loop.sh) frames the task as making `scripts/relevant-checks.sh` pass from a checks log (`40:48:scripts/lint-fix-loop.sh`), and its usage string hard-limits `--site` to `step3|step5|step6|ship-pr-ci-initial|ship-pr-ci-merge` (`22:23:scripts/lint-fix-loop.sh`), which matches the post-vendor `run_checks_with_lint_fix_loop` path (`813:829:scripts/ship-pr.sh`) rather than arbitrary GitHub Actions job output.
+</evidence>
+<strongest_concession>
+Widening `--site` could keep all “LLM fixes repo from a log file” flows behind one script, reducing the chance that a new per-job path diverges from session-env, redaction, or commit-staging conventions that `lint-fix-loop.sh` already encodes.
+</strongest_concession>
+<counter_to_opposition>
+Those conventions are still needed after a vendor fix—`run_ci_fix_vendor` already ends by calling `run_checks_with_lint_fix_loop` for exactly that relevant-checks-shaped pass (`1437:1439:scripts/ship-pr.sh`)—so per-job CI log repair belongs in the launchers that already advertise `--failure-log` for fix roles (`32:32:scripts/launch-cursor-ci.sh`, `28:28:scripts/launch-codex-ci.sh`, `31:31:scripts/launch-claude-ci.sh`), not by overloading a prompt whose success criterion is wired to `relevant-checks.sh`.
+</counter_to_opposition>
+<risk_if_wrong>
+If the waterfall is wrong here, fixes that only make sense against full Actions metadata would misfire on trimmed local-job logs, wasting tiers and still landing in `BAIL_REASON=ci-local-unfixable:…` without improving the PR, while a tailored `lint-fix-loop` site might have steered the model with job-specific instructions.
+</risk_if_wrong>
+RECOMMEND: THESIS

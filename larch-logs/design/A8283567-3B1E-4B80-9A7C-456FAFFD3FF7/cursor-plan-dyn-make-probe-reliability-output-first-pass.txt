@@ -1,0 +1,7 @@
+Gathering the plan and Makefile evidence for the test-harnesses / sharding / `make -n` review.
+
+Verifying `make -n` exit codes for existing vs non-existent targets and reading the Makefile `.PHONY` / rule structure.
+
+Providing the review output: verified GNU Make 3.81 on this host (`make -n` exit 0 for `test-harnesses-7`, exit 2 for missing targets). Sharded targets are explicit rules, not pattern rules.
+
+
