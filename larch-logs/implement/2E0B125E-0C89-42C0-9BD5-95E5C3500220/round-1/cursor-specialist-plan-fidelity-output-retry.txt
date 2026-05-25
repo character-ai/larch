@@ -1,0 +1,38 @@
+Performing a read-only Plan Fidelity review: reading the precomputed diff and commit history, then tracing each plan requirement against the implementation.
+Verifying plan completeness: searching for stale references and reading key implementation sections.
+Checking whether the precomputed diff omits any planned file changes:
+## Plan Fidelity Review — issue #2787
+
+**Branch commits** (since `main`):
+- `266e265c` Remove aggregate attestation repair synthesis
+- `823a847c` chore(larch-logs): flush implement run E5C4F830-…
+
+**Scope:** 3 planned files + `SECURITY.md` policy sync + implement run logs.
+
+### Requirement traceability
+
+| Plan requirement | Status |
+|------------------|--------|
+| Delete `_attempt_attestation_repair`, `repair_attestation_main`, `--repair-attestation` dispatch | Done — removed from embedded Python in `aggregate-findings.sh` |
+| Collapse `_agg_pipeline_for_candidate` to validate `$cand` directly | Done |
+| Extend inline strip to drop impure attestation prefixes | Done (`stripped.startswith(EMPTY_MERGE_ATTESTATION)`) |
+| Drop success-path `mv` of repaired temp / `agg_dest` param | Done — only `mv` of `merged_tmp` → `FINDINGS_FILE` |
+| Remove `aggregate-repair-failed.stderr` branch in outer loop | Done |
+| Keep validator helpers + post-#2782 rejection paths | Unchanged in `main()` |
+| Test harness updates (5 stanzas + remove passthrough) | Done |
+| `aggregate-findings.md` synthesis removal + #2801 narrow-trigger doc | Done — both tokens documented; empty-merge section expanded to three rejection paths (exceeds “single short bullet” but matches edge cases) |
+| Grep cleanup in `scripts/ skills/ docs/ .claude/` | Verified zero hits |
+
+### In-Scope Findings
+
+No in-scope issues found.
+
+The implementation matches the plan’s intent: dead synthesis/repair paths are removed, the impure-line strip invariant is preserved in the surviving strip step, BSD `mv` self-move is avoided, and the #2801 doc-code mismatch is closed. Test changes align with the plan’s edge-case table (including `empty_merge_negative_finding_prose` expecting the missing-attestation diagnostic rather than `preamble_finding_substring` for `### FINDING_ids` prose).
+
+### Out-of-Scope Observations
+
+1. **`SECURITY.md` update** — Not listed under “Files to modify/create,” but the diff correctly removes synthesis/repair prose and documents both narrow-trigger tokens. Good hygiene; not a plan gap.
+
+2. **Plan internal inconsistency** — The plan’s test bullet for `zero_findings_prose_finding_ids` says `preamble_finding_substring` “still fires,” but the same plan’s edge cases say `### FINDING_ids` does not trip preamble. The branch correctly follows edge cases; no code change needed.
+
+3. **Runtime acceptance** — `make test-aggregate-findings` / `make lint` success is required by acceptance criteria but cannot be confirmed from the diff alone in this read-only review.

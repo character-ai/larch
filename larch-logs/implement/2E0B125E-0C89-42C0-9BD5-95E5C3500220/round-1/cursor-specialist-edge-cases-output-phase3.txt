@@ -1,0 +1,14 @@
+I have enough context. Let me compile the review.
+
+### In-Scope Findings
+
+- **correctness** `skills/review/scripts/test-aggregate-findings.sh:605-621` — The `zero_findings_impure_attest` stanza's key assertion (`grep -Fq 'junk-suffix' "$TMP/in3-zero-impure.md" && fail`) holds vacuously after this change, not because the new strip-step predicate works. The fixture has zero FINDING blocks, so `main()` drops the impure line in-memory and rejects with the non-token "output must include a line..." diagnostic (MERGE_PIPELINE_RC=2); `findings.md` is never replaced; `in3-zero-impure.md` retains original clean content. The new `stripped.startswith(EMPTY_MERGE_ATTESTATION)` branch in the inline strip heredoc is unreachable from any test stanza — it only fires when validation passes (requires valid FINDING blocks on-disk in `$cand`). The plan states "this assertion continues to hold via the strip step's extended predicate" but that is incorrect: no test stanza exercises the (valid FINDING blocks + impure attestation line) code path that the `startswith` branch guards. A silent regression in that branch (e.g., the `startswith` check accidentally deleted) would leave `junk-suffix` variants in successfully merged `findings.md` and would not be caught by the harness. **Suggested fix:** Add a fixture variant — e.g., `merge_impure_attest_with_findings` — that outputs valid FINDING block(s) alongside `LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED junk-suffix`, then assert `AGGREGATED=true` and `grep -Fq 'junk-suffix' "$TMP/<work>.md" && fail "impure suffix must not appear in successfully merged findings.md"`. This exercises the exact `startswith` filter path the plan describes.
+
+### Out-of-Scope Observations
+
+No out-of-scope observations.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	latent	correctness	skills/review/scripts/test-aggregate-findings.sh:605-621	zero_findings_impure_attest "junk-suffix must not survive" assertion is vacuous after cleanup — strip step never runs for this fixture	Model emits valid FINDING blocks alongside LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED junk-suffix; validator drops impure line in-memory and passes; strip step reads $cand from disk with impure line; new startswith branch must filter it. No existing stanza reaches this path — fixture has zero FINDING blocks so validation fails first. Breaking the startswith check would silently leak impure attestation variants into persisted findings.md.	Add a fixture with valid FINDING block(s) + impure attestation line; assert AGGREGATED=true and that junk-suffix does not appear in merged findings.md. This exercises the startswith filter in the inline strip heredoc.
+```
