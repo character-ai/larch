@@ -86,7 +86,41 @@ split
 MD
 _out2=$("$DFI" prepare --design-tmpdir "$D2" --partition-file "$D2/bad.md" 2>/dev/null || true)
 printf '%s\n' "$_out2" | grep -Fq 'DECOMPOSE_PARTITION_STATUS=cycle-detected' || fail "expected cycle"
+grep -Fq 'DECOMPOSE_PARTITION_CYCLE_WITNESS=' "$D2/decompose/prepare-python.log" || fail "expected cycle witness in prepare log"
 [[ ! -f "$D2/decompose/partition-input.txt" ]] || fail "partition-input should not exist on cycle"
+
+echo "=== prepare neutralizes embedded ^### in feature excerpt ==="
+D2b="$TMP/p2b"
+mkdir -p "$D2b"
+printf $'intro\n\n### Not a batch item\n\nmore\n' >"$D2b/feature-description.txt"
+cat >"$D2b/part.md" <<'MD'
+## Recommendation
+split
+
+## Pieces
+
+### Piece 1: Alpha
+- Scope: a
+- Dependencies: none
+- Diff_lines estimate: 1
+- Why independently mergeable: x
+
+### Piece 2: Beta
+- Scope: b
+- Dependencies: blocked-by Piece 1
+- Diff_lines estimate: 2
+- Why independently mergeable: y
+MD
+"$DFI" prepare --design-tmpdir "$D2b" --partition-file "$D2b/part.md" --issue-number 1 >/dev/null 2>&1 || true
+python3 - "$D2b" <<'PY' || fail "expected neutralized ### in batch body"
+import pathlib
+import sys
+
+root = pathlib.Path(sys.argv[1])
+text = (root / "decompose" / "partition-input.txt").read_text(encoding="utf-8")
+if "\u200b### Not a batch item" not in text:
+    sys.exit(1)
+PY
 
 echo "=== annotate + idempotent second run ==="
 D3="$TMP/p3"
@@ -104,6 +138,19 @@ before=$(wc -c <"$D3/decompose/partition-filed.md")
 "$DFI" annotate --design-tmpdir "$D3" --issue-stdout-file "$D3/issue.stdout"
 after=$(wc -c <"$D3/decompose/partition-filed.md")
 [[ "$before" == "$after" ]] || fail "annotate idempotency broke file size"
+
+echo "=== annotate partial batch: no filing sentinel ==="
+D3p="$TMP/p3p"
+mkdir -p "$D3p/decompose"
+cat >"$D3p/issue.stdout" <<'OUT'
+ISSUES_CREATED=1
+ISSUES_FAILED=2
+ISSUE_1_URL=https://example.com/1
+OUT
+"$DFI" annotate --design-tmpdir "$D3p" --issue-stdout-file "$D3p/issue.stdout"
+[[ -f "$D3p/decompose/partition-filed.md" ]] || fail "partition-filed missing for partial"
+grep -Fq '**ISSUES_FAILED**: 2' "$D3p/decompose/partition-filed.md" || fail "expected ISSUES_FAILED in record"
+[[ ! -f "$D3p/.decompose-issues-filed" ]] || fail "sentinel must not exist when ISSUES_FAILED>0"
 
 echo "=== close-original redaction + gh body-file ==="
 D4="$TMP/p4"
@@ -131,17 +178,66 @@ mkdir -p "$D5/decompose"
 cp "$D4/decompose/partition-filed.md" "$D5/decompose/partition-filed.md"
 : >"$D5/execution-issues.md"
 : >"$TMP/gh2.log"
+set +e
 PATH="$BIN:$PATH" \
     GH_STUB_LOG="$TMP/gh2.log" \
     GH_STUB_RC=1 \
     REDACT_TOUCH="$TMP/redact2.touch" \
     DECOMPOSE_REDACT_SH="$BIN/redact-stub.sh" \
-    set +e
-"$DFI" close-original --design-tmpdir "$D5" --original-issue 7 --repo "o/r" >"$D5/close.kv" 2>/dev/null
+    "$DFI" close-original --design-tmpdir "$D5" --original-issue 7 --repo "o/r" >"$D5/close.kv" 2>/dev/null
 _close_rc=$?
 set -e
 [[ "$_close_rc" != 0 ]] || fail "expected close-original to fail when gh returns non-zero"
 grep -Fq 'CLOSE_ORIGINAL_STATUS=failed' "$D5/close.kv" || fail "expected failed close status"
-[[ ! -f "$D5/.decompose-original-closed" ]] || fail "close sentinel should not exist on gh failure"
+BIN2="$TMP/bin2"
+mkdir -p "$BIN2"
+cat >"$BIN2/gh" <<'GH2'
+#!/usr/bin/env bash
+set -euo pipefail
+log="${GH_STUB_LOG:?}"
+printf '%s\n' "gh $*" >>"$log"
+if [[ "$*" == issue\ comment\ * ]]; then
+  exit "${GH_COMMENT_RC:-0}"
+fi
+if [[ "$*" == issue\ close\ * ]]; then
+  exit "${GH_CLOSE_RC:-0}"
+fi
+exit 0
+GH2
+chmod +x "$BIN2/gh"
+
+echo "=== close-original skips duplicate comment after close failure ==="
+D6="$TMP/p6"
+mkdir -p "$D6/decompose"
+cp "$D4/decompose/partition-filed.md" "$D6/decompose/partition-filed.md"
+: >"$D6/execution-issues.md"
+: >"$TMP/gh3.log"
+hash -r
+set +e
+PATH="$BIN2:$PATH" \
+    GH_STUB_LOG="$TMP/gh3.log" \
+    GH_COMMENT_RC=0 \
+    GH_CLOSE_RC=1 \
+    REDACT_TOUCH="$TMP/redact3.touch" \
+    DECOMPOSE_REDACT_SH="$BIN/redact-stub.sh" \
+    "$DFI" close-original --design-tmpdir "$D6" --original-issue 99 --repo "o/r" >/dev/null 2>&1
+set -e
+[[ ! -f "$D6/.decompose-original-closed" ]] || fail "expected no close sentinel when gh close fails"
+grep -Fq 'gh issue close' "$TMP/gh3.log" || fail "expected close attempt"
+_c0=$(grep -c 'issue comment' "$TMP/gh3.log" || true)
+[[ "$_c0" -eq 1 ]] || fail "expected single comment invocation before close failure"
+
+hash -r
+PATH="$BIN2:$PATH" \
+    GH_STUB_LOG="$TMP/gh3.log" \
+    GH_COMMENT_RC=0 \
+    GH_CLOSE_RC=0 \
+    REDACT_TOUCH="$TMP/redact3b.touch" \
+    DECOMPOSE_REDACT_SH="$BIN/redact-stub.sh" \
+    "$DFI" close-original --design-tmpdir "$D6" --original-issue 99 --repo "o/r" >/dev/null
+[[ -f "$D6/.decompose-original-closed" ]] || fail "close sentinel after retry"
+_c1=$(grep -c 'issue comment' "$TMP/gh3.log" || true)
+[[ "$_c1" -eq 1 ]] || fail "expected no second gh issue comment on retry got $_c1"
+grep -Fq 'gh issue close' "$TMP/gh3.log" || fail "expected close on retry"
 
 echo "PASS: test-decompose-file-issues.sh"

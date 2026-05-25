@@ -33,7 +33,7 @@ done
 [ -n "$MODE_STR" ] || { usage; exit 2; }
 
 case "$OUTCOME" in
-    approved|cancelled-clarify|cancelled-already-planned|cancelled-tier-gate|cancelled-sprawl|cancelled-plan-size-hard|failed-plan-write) ;;
+    approved|approved-partition|cancelled-clarify|cancelled-already-planned|cancelled-tier-gate|cancelled-sprawl|cancelled-plan-size-hard|cancelled-decompose|failed-plan-write) ;;
     *)
         printf '%s\n' "render-final-summary.sh: outcome not in enumeration: $OUTCOME" >&2
         exit 2

@@ -128,14 +128,18 @@ _archetypes=(decomposition-specialist dependency-analyst scope-minimalist risk-i
 for _a in "${_archetypes[@]}"; do
     render_prompt "$_a" "$DECOMP_DIR/render-decomp-cursor-${_a}.prompt"
     render_prompt "$_a" "$DECOMP_DIR/render-decomp-codex-${_a}.prompt"
-    printf '{"slot":"decomp-cursor-%s","tool":"cursor","output":"%s","prompt_file":"%s"}\n' \
-        "$_a" \
-        "$DECOMP_DIR/decomp-cursor-${_a}-output.txt" \
-        "$DECOMP_DIR/render-decomp-cursor-${_a}.prompt" >>"$_manifest"
-    printf '{"slot":"decomp-codex-%s","tool":"codex","output":"%s","prompt_file":"%s"}\n' \
-        "$_a" \
-        "$DECOMP_DIR/decomp-codex-${_a}-output.txt" \
-        "$DECOMP_DIR/render-decomp-codex-${_a}.prompt" >>"$_manifest"
+    jq -nc \
+        --arg slot "decomp-cursor-${_a}" \
+        --arg tool cursor \
+        --arg output "$DECOMP_DIR/decomp-cursor-${_a}-output.txt" \
+        --arg prompt_file "$DECOMP_DIR/render-decomp-cursor-${_a}.prompt" \
+        '{slot:$slot,tool:$tool,output:$output,prompt_file:$prompt_file}' >>"$_manifest"
+    jq -nc \
+        --arg slot "decomp-codex-${_a}" \
+        --arg tool codex \
+        --arg output "$DECOMP_DIR/decomp-codex-${_a}-output.txt" \
+        --arg prompt_file "$DECOMP_DIR/render-decomp-codex-${_a}.prompt" \
+        '{slot:$slot,tool:$tool,output:$output,prompt_file:$prompt_file}' >>"$_manifest"
 done
 
 WATERFALL_SH="${DECOMPOSE_PANEL_WATERFALL_SH:-$PLUGIN_ROOT/scripts/dispatch-with-waterfall.sh}"
@@ -221,8 +225,12 @@ while IFS= read -r row || [[ -n "$row" ]]; do
     elif [[ -f "$_outp" ]]; then
         _status="unparsed"
     fi
-    printf '{"archetype":"%s","vendor":"%s","output":"%s","status":"%s"}\n' \
-        "$_arch" "$_tool" "$_outp" "$_status" >>"$_panel_rows"
+    jq -nc \
+        --arg archetype "$_arch" \
+        --arg vendor "$_tool" \
+        --arg output "$_outp" \
+        --arg status "$_status" \
+        '{archetype:$archetype,vendor:$vendor,output:$output,status:$status}' >>"$_panel_rows"
 done <"$_manifest"
 
 PANEL_STATUS="ok"
@@ -233,8 +241,10 @@ elif [[ "$DEGRADED_PANEL" == true ]]; then
 fi
 
 if [[ "$_wf_rc" != 0 ]]; then
-    PANEL_STATUS="panel-failed"
     DEGRADED_PANEL=true
+    if (( usable > 0 )) && [[ "$PANEL_STATUS" == "ok" ]]; then
+        PANEL_STATUS="degraded"
+    fi
 fi
 
 printf '%s\n' "$_dispatch_out"

@@ -60,6 +60,7 @@ printf 'FALLBACK_COUNT=%s\n' "$fc"
 printf 'STATIC_DISPATCH_OK=%s\n' "$static_ok"
 printf 'DYNAMIC_DISPATCH_OK=true\n'
 printf 'ALL_OUTPUT_FILES_PATH=%s\n' "$paths_out"
+exit "${W_STUB_EXIT_CODE:-0}"
 STUB
 }
 
@@ -133,5 +134,28 @@ DECOMPOSE_PANEL_WATERFALL_SH="$STUB3" \
     --discussion-round1-file "$D3/discussion-round1.md" \
     --timeout 30 >"$D3/out.kv"
 grep -Fq 'PANEL_STATUS=panel-failed' "$D3/out.kv" || fail "expected panel-failed"
+
+echo "=== degraded when waterfall non-zero but proposals parse ==="
+D4="$TMP/m4"
+prep_common "$D4"
+STUB4="$TMP/stub4.sh"
+make_stub >"$STUB4"
+chmod +x "$STUB4"
+: >"$D4/wf.log"
+DECOMPOSE_PANEL_WATERFALL_SH="$STUB4" \
+    WATERFALL_STUB_LOG="$D4/wf.log" \
+    WATERFALL_STUB_PATHS_OUT="$D4/paths.out" \
+    W_STUB_MODE=ok \
+    W_STUB_EXIT_CODE=3 \
+    CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+    "$PANEL" \
+    --design-tmpdir "$D4" \
+    --codex-present true \
+    --cursor-present true \
+    --mode plan \
+    --plan-file "$D4/plan.txt" \
+    --timeout 30 >"$D4/out.kv"
+grep -Fq 'PANEL_STATUS=degraded' "$D4/out.kv" || fail "expected degraded when waterfall fails with usable outputs"
+grep -Fq 'DEGRADED_PANEL=true' "$D4/out.kv" || fail "expected DEGRADED_PANEL true"
 
 echo "PASS: test-decompose-panel-dispatch.sh"

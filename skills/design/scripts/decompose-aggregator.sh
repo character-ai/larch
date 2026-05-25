@@ -103,7 +103,12 @@ TAIL
 
 AGG_OUT="$DECOMP_DIR/aggregator-raw-output.txt"
 _slots="$DECOMP_DIR/aggregator-slots.ndjson"
-printf '{"slot":"decompose-aggregator","tool":"cursor","output":"%s","prompt_file":"%s"}\n' "$AGG_OUT" "$MERGE_PROMPT" >"$_slots"
+jq -nc \
+    --arg slot decompose-aggregator \
+    --arg tool cursor \
+    --arg output "$AGG_OUT" \
+    --arg prompt_file "$MERGE_PROMPT" \
+    '{slot:$slot,tool:$tool,output:$output,prompt_file:$prompt_file}' >"$_slots"
 
 WATERFALL_SH="${DECOMPOSE_AGGREGATE_WATERFALL_SH:-$PLUGIN_ROOT/scripts/dispatch-with-waterfall.sh}"
 

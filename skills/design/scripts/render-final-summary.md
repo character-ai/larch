@@ -7,16 +7,17 @@ phase) prints the body to chat and upserts `<!-- larch:final-summary v1 runid=�
 via `scripts/tracking-issue-summary.sh` **internally** (SKILL.md references only
 this helper).
 
-## Callers (seven)
+## Callers (nine)
 
 Step 0b clarify exit, already-planned cancel, tier-gate cancel; Step 1c/1d sprawl
-cancel; Step 2b.5 hard cancel; Step 5c happy path (two-phase: `--pre-publish-only`
+cancel; Step 2b.5 hard cancel; Step 2b.5 Split-path terminal cancels / successful
+partition filing (`cancelled-decompose`, `approved-partition`); Step 5c happy path (two-phase: `--pre-publish-only`
 before `design-log-publish.sh`, `--post-publish-only` after); Step 5c
 plan-block-write failure (`--outcome failed-plan-write`).
 
 ## Split-path / pre–Step 0a
 
-Step 2b.5 Split-path preserves `$DESIGN_TMPDIR` and **does not** call this helper.
+Step 2b.5 Split-path calls this helper on **`SUMMARY_OUTCOME=approved-partition`** and **`SUMMARY_OUTCOME=cancelled-decompose`** terminal exits (same `### Final summary block` fence as other single-phase cancels). Other Split-path branches preserve `$DESIGN_TMPDIR` without invoking `render-final-summary.sh` until a terminal outcome is chosen.
 Pre–Step 0a aborts have no `$DESIGN_TMPDIR`.
 
 ## Two-phase drift trade-off

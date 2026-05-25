@@ -12,7 +12,7 @@
 
 If `$DESIGN_TMPDIR/.decompose-original-closed` exists, print `⏩ 2b.5: decompose — original issue already closed; nothing to do.` and exit **0** (preserve tmpdir).
 
-If `$DESIGN_TMPDIR/.decompose-issues-filed` exists but the original is not closed, continue in **resume-close** mode: skip re-dispatch and re-filing; only rerun `close-original` when the operator is ready (GitHub/API hiccup recovery).
+If `$DESIGN_TMPDIR/.decompose-issues-filed` exists (full batch: `ISSUES_FAILED=0` in the captured `/larch:issue` stdout that produced it) but the original is not closed, continue in **resume-close** mode: skip re-dispatch and re-filing; only rerun `close-original` when the operator is ready (GitHub/API hiccup recovery). If `partition-filed.md` shows `ISSUES_FAILED>0`, treat the state as **partial filing** — no filing sentinel; do not enter resume-close until a successful annotate run clears failures.
 
 ---
 

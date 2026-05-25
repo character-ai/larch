@@ -38,6 +38,7 @@ cmd_prepare() {
     DESIGN_TMPDIR=$(cd "$DESIGN_TMPDIR" && pwd -P)
     local dec="$DESIGN_TMPDIR/decompose"
     mkdir -p "$dec"
+    rm -f "$dec/partition-input.txt" "$dec/partition-deps.tsv"
     local _plog="$dec/prepare-python.log"
     set +e
     python3 - "$partition_file" "$dec/partition-input.txt" "$dec/partition-deps.tsv" "$DESIGN_TMPDIR/feature-description.txt" "${ISSUE_NUMBER:-}" >"$_plog" 2>&1 <<'PY'
@@ -59,6 +60,13 @@ if "## Pieces" not in text:
 
 piece_rx = re.compile(r"(?m)^###\s+Piece\s+(\d+)\s*:\s*([^\n]+)$")
 pieces = []
+
+
+def neutralize_markdown_h3_line_starts(text: str) -> str:
+    """Avoid embedded lines matching ^### so generic /larch:issue batch parsers do not split items."""
+    return re.sub(r"(?m)^###", "\u200b###", text)
+
+
 for m in piece_rx.finditer(text):
     idx = int(m.group(1))
     title = m.group(2).strip()
@@ -110,10 +118,16 @@ while q:
         if indeg[v] == 0:
             q.append(v)
 if seen != n:
+    w_parts = []
+    for a, b in edges:
+        w_parts.append(f"Piece {pieces[a][0]}→Piece {pieces[b][0]}")
+    witness = "; ".join(w_parts) if w_parts else "(edges unavailable)"
+    print(f"DECOMPOSE_PARTITION_CYCLE_WITNESS={witness}", flush=True)
     print("DECOMPOSE_PARTITION_STATUS=cycle-detected", flush=True)
     sys.exit(0)
 
 feat = feat_path.read_text(encoding="utf-8") if feat_path.is_file() else ""
+feat = neutralize_markdown_h3_line_starts(feat)
 orig = f"#{issue_num}" if issue_num.isdigit() else "(original issue — set ISSUE_NUMBER in session)"
 
 lines = []
@@ -125,16 +139,18 @@ for i, (pnum, title, body) in enumerate(pieces):
             break
     lines.append(f"### {title}\n")
     lines.append(
-        f"Partition piece {pnum} of {n} split from {orig}.\n\n"
-        f"**Scope**: {scope or '(see parent partition file)'}\n\n"
-        f"**Dependencies (from panel)**: {dep_lines[i]}\n\n"
-        "```\n"
-        "<!-- larch:plan:start -->\n"
-        "## Plan\n\n"
-        "(needs /design — operator runs `/design` on this issue after partition lands.)\n\n"
-        "<!-- larch:plan:end -->\n"
-        "```\n\n"
-        f"**Original feature context (excerpt)**:\n\n{feat[:4000]}\n"
+        neutralize_markdown_h3_line_starts(
+            f"Partition piece {pnum} of {n} split from {orig}.\n\n"
+            f"**Scope**: {scope or '(see parent partition file)'}\n\n"
+            f"**Dependencies (from panel)**: {dep_lines[i]}\n\n"
+            "```\n"
+            "<!-- larch:plan:start -->\n"
+            "## Plan\n\n"
+            "(needs /design — operator runs `/design` on this issue after partition lands.)\n\n"
+            "<!-- larch:plan:end -->\n"
+            "```\n\n"
+            f"**Original feature context (excerpt)**:\n\n{feat[:4000]}\n"
+        )
     )
 
 out_input.write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -151,6 +167,14 @@ PY
     _st=$(grep -E '^DECOMPOSE_PARTITION_STATUS=' "$_plog" | tail -1 || true)
     if [[ -n "$_st" ]]; then
         emit_kv DECOMPOSE_PARTITION_STATUS "${_st#DECOMPOSE_PARTITION_STATUS=}"
+    fi
+    local _pv=""
+    _pv=$(grep -E '^DECOMPOSE_PARTITION_CYCLE_WITNESS=' "$_plog" | tail -1 || true)
+    if [[ -n "$_pv" ]]; then
+        emit_kv DECOMPOSE_PARTITION_CYCLE_WITNESS "${_pv#DECOMPOSE_PARTITION_CYCLE_WITNESS=}"
+    fi
+    if [[ "$_prc" != 0 ]] || [[ -n "$_st" && "${_st#DECOMPOSE_PARTITION_STATUS=}" != "ok" ]]; then
+        rm -f "$dec/partition-input.txt" "$dec/partition-deps.tsv"
     fi
     if [[ "$_prc" != 0 ]]; then
         exit "$_prc"
@@ -192,13 +216,14 @@ def kv(pat, s):
 
 created = kv(r"(?m)^ISSUES_CREATED=([0-9]+)\s*$", text) or "0"
 failed = kv(r"(?m)^ISSUES_FAILED=([0-9]+)\s*$", text) or "0"
+failed_n = int(failed)
 urls = {}
 for m in re.finditer(r"(?m)^ISSUE_([0-9]+)_URL=(.+)\s*$", text):
     urls[int(m.group(1))] = m.group(2).strip()
 
 if sent_path.is_file():
     prev = sent_path.read_text(encoding="utf-8")
-    if prev.strip() and filed_path.is_file():
+    if prev.strip() and filed_path.is_file() and failed_n == 0:
         # Idempotent no-op when sentinel already records the same URLs
         ok = True
         for i, u in sorted(urls.items()):
@@ -218,9 +243,12 @@ for i in sorted(urls):
     lines.append("")
 filed_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
-with sent_path.open("w", encoding="utf-8") as fh:
-    for i in sorted(urls):
-        fh.write(f"PARTITION_FILE_MAP\t{i}\t{urls[i]}\n")
+if failed_n == 0:
+    with sent_path.open("w", encoding="utf-8") as fh:
+        for i in sorted(urls):
+            fh.write(f"PARTITION_FILE_MAP\t{i}\t{urls[i]}\n")
+elif sent_path.is_file():
+    sent_path.unlink()
 PY
 }
 
@@ -244,6 +272,7 @@ cmd_close_original() {
     [[ -f "$filed" ]] || { larch_err "close-original: missing partition-filed.md (run annotate first)"; exit 2; }
 
     local body="$dec/close-comment-draft.md"
+    local comment_sent="$dec/.decompose-close-comment-posted"
     {
         printf 'This issue is **obviated by a partition** into follow-up work.\n\n'
         printf '## New pieces\n\n'
@@ -271,18 +300,42 @@ cmd_close_original() {
         exit 1
     fi
 
+    if [[ ! -f "$comment_sent" ]]; then
+        set +e
+        gh issue comment "$original" --repo "$repo" --body-file "$redacted"
+        _c_rc=$?
+        set -e
+        if [[ "$_c_rc" != 0 ]]; then
+            if [[ -x "$APPEND_FAIL_SH" ]]; then
+                set +e
+                bash "$APPEND_FAIL_SH" \
+                    --log "$DESIGN_TMPDIR/execution-issues.md" \
+                    --site "design decompose close-original" \
+                    --tool "gh issue comment" \
+                    --exit-code "$_c_rc" \
+                    --category "External Reviewer Issues" \
+                    --output-file "$redacted" \
+                    --redact || true
+                set -e
+            fi
+            emit_kv CLOSE_ORIGINAL_STATUS failed
+            exit 1
+        fi
+        : >"$comment_sent"
+    fi
+
     set +e
-    gh issue comment "$original" --repo "$repo" --body-file "$redacted"
-    _c_rc=$?
+    gh issue close "$original" --repo "$repo"
+    _cl_rc=$?
     set -e
-    if [[ "$_c_rc" != 0 ]]; then
+    if [[ "$_cl_rc" != 0 ]]; then
         if [[ -x "$APPEND_FAIL_SH" ]]; then
             set +e
             bash "$APPEND_FAIL_SH" \
                 --log "$DESIGN_TMPDIR/execution-issues.md" \
                 --site "design decompose close-original" \
-                --tool "gh issue comment" \
-                --exit-code "$_c_rc" \
+                --tool "gh issue close" \
+                --exit-code "$_cl_rc" \
                 --category "External Reviewer Issues" \
                 --output-file "$redacted" \
                 --redact || true
@@ -292,15 +345,7 @@ cmd_close_original() {
         exit 1
     fi
 
-    set +e
-    gh issue close "$original" --repo "$repo"
-    _cl_rc=$?
-    set -e
-    if [[ "$_cl_rc" != 0 ]]; then
-        emit_kv CLOSE_ORIGINAL_STATUS failed
-        exit 1
-    fi
-
+    rm -f "$comment_sent"
     : >"$DESIGN_TMPDIR/.decompose-original-closed"
     emit_kv CLOSE_ORIGINAL_STATUS ok
     exit 0
