@@ -1,0 +1,3 @@
+[OOS] Drift guard between SKILL.md key bullets and ship-pr.sh emitted keys
+
+`skills/implement/SKILL.md:1550-1559` key bullets and `scripts/ship-pr.sh:239-298` `write_initial_state` are now two parallel sources of truth. Consider extending `scripts/test-implement-structure.sh` to assert they match. Not blocking this PR.
