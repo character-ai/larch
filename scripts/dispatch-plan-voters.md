@@ -22,6 +22,8 @@ The script writes per-slot prompt files, builds a two-slot NDJSON manifest (Vote
 
 Sources `scripts/lib-voter-parse-rate.sh` with `LARCH_VPR_*` set for plan ballots (`finding-oos`, `plan` retry prefix). Runs `check_and_retry_voter_parse_rate` for all three voters when a slot is not already `failed`.
 
+Substantive parse-rate success requires only a parseable `YES`/`NO`/`EXONERATE` vote token for each ballot id. Missing rating axes leave blank forensic TSV cells later, but they do not by themselves downgrade the slot to `NOT_SUBSTANTIVE`.
+
 ## DISPATCH_OK
 
 `DISPATCH_OK` mirrors the waterfall value but is forced to `false` when **Voter 1** ends in `failed` (parity with `dispatch-code-voters.sh`).

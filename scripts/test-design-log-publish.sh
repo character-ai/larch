@@ -214,6 +214,20 @@ for denied in \
 done
 [[ ! -f "$clone/larch-logs/design/RUNPUB1/render-cache/cached-output.txt.sidecar" ]] || fail "denied basename leaked into render-cache"
 
+echo "=== symlinked findings-classification.tsv is rejected ==="
+TMPSYM=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-symlink.XXXXXX")
+clone_sym=$(setup_clone_with_origin_head "$TMPSYM")
+stub_sym="$TMPSYM/stub"
+make_gh_stub "$stub_sym"
+export PATH="$stub_sym:$PATH"
+mkdir -p "$TMPSYM/design/plan-review/round-1"
+printf 'safe\n' >"$TMPSYM/design/real.tsv"
+ln -sf "$TMPSYM/design/real.tsv" "$TMPSYM/design/plan-review/round-1/findings-classification.tsv"
+out_sym=$(
+    (cd "$clone_sym" && bash "$PUBLISH" --design-tmpdir "$TMPSYM/design" --run-id "RUNSYML1" --issue 8 --repo owner/repo) 2>/dev/null || true
+)
+[[ "$out_sym" == *"PUBLISH_OK=false"* ]] || fail "symlinked findings-classification.tsv should fail publish"
+
 echo "=== pr create non-zero with pr list/view recovery (plan publish path) ==="
 TMPCR=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-createfail.XXXXXX")
 clone_cr=$(setup_clone_with_origin_head "$TMPCR")

@@ -151,7 +151,7 @@ split_ballot_to_blocks() {
 classify_result() {
     local yes="$1" no="$2" exonerate="$3" eligible="$4"
     if (( eligible <= 0 )); then
-        printf 'rejected'
+        printf 'main-agent-vote-required'
     elif (( eligible == 1 )); then
         if (( yes > 0 )); then
             printf 'accepted'

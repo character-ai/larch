@@ -92,7 +92,8 @@ is_substantive_vote_for_id() {
             PARSED_UNCERTAIN) parsed_uncertain="$value" ;;
         esac
     done <<< "$parsed"
-    [[ -n "$parsed_vote" && -n "$parsed_correctness" && -n "$parsed_severity" && -n "$parsed_quality" && -n "$parsed_uncertain" ]]
+    : "$parsed_correctness" "$parsed_severity" "$parsed_quality" "$parsed_uncertain"
+    [[ -n "$parsed_vote" ]]
 }
 
 # Globals (callers set before invoking substantive checks):

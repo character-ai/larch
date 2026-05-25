@@ -9,6 +9,8 @@
 | Function | Inputs | Output | Exit |
 |---|---|---|---|
 | `vote_for_id <id> <voter_file>` | finding/oos id (e.g. `FINDING_3`), voter output file | stdout: `YES` \| `NO` \| `EXONERATE` \| `JUDGE_ERROR` | 0 |
+| `count_votes_for_id <id> <voter_file...>` | finding/oos id plus zero or more voter output files | stdout: tab-separated `yes no exonerate judge_error` counts | 0 |
+| `findings_classification_header` | none | stdout: canonical 18-column `findings-classification.tsv` header row | 0 |
 | `reviewer_for_block <block_file>` | per-block markdown file | stdout: reviewer attribution string (or `unknown`) | 0 |
 | `is_security_block <block_file>` | per-block markdown file | — | 0 (security tag found, unfenced) \| 1 (not found) |
 | `accept_finding <yes> <no> <exonerate> <eligible>` | vote counts and eligible voter count | — | 0 (accept) \| 1 (reject) |
@@ -27,7 +29,7 @@
 
 The `eligible` argument is the panel-level count of available voter files (non-failed voter outputs), not the per-finding count of YES/NO/EXONERATE responses. Missing votes from available judges produce `JUDGE_ERROR` (parser fallback — ballot entry absent or unparseable) and do not reduce the panel tier.
 
-`classify_result` uses the same tiers. In a single-judge panel, `YES` is `accepted`, `NO` is `rejected`, and `EXONERATE` is `exonerated` for scoreboard purposes even though the finding is not accepted for implementation.
+`classify_result` uses the same tiers. In a zero-judge panel it returns `main-agent-vote-required` so downstream forensic TSV consumers do not confuse pending adjudication with a final rejection. In a single-judge panel, `YES` is `accepted`, `NO` is `rejected`, and `EXONERATE` is `exonerated` for scoreboard purposes even though the finding is not accepted for implementation.
 
 For multi-voter panels, `classify_result` applies exoneration after acceptance and `YES==NO` neutral checks when `EXONERATE > 0` and either there are no `NO` votes, or `EXONERATE` meets or beats `NO` while strictly exceeding `YES` (mixed panels). For example, `0Y/0N/3E` exonerates; `0Y/2N/1E` stays rejected because exonerations do not outvote `NO`.
 

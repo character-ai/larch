@@ -80,7 +80,7 @@ remote branch and stdout may include `RECOVERY_BRANCH=…` for automation. See
 
 ## plan-review allowlist
 
-`plan-review/` is a strict allowlist surface. Missing or empty `plan-review/` is success and stages nothing. A symlinked root or non-directory root fails publish. Files are enumerated under the physical root with symlink files excluded, then each relativized path must match `^round-[1-9][0-9]*/findings-classification\.tsv$`. Any other regular file under `plan-review/` emits `larch_err`, `PUBLISH_OK=false`, and exits 0. Allowed files pass through the same trim/redact pipeline as other staged artifacts.
+`plan-review/` is a strict allowlist surface. Missing or empty `plan-review/` is success and stages nothing. A symlinked root or non-directory root fails publish. Files are enumerated under the physical root, but allowlisted `round-<N>/findings-classification.tsv` paths must also remain regular files at staging time; symlinked allowlist matches now fail closed instead of being silently skipped. Any other file under `plan-review/` emits `larch_err`, `PUBLISH_OK=false`, and exits 0. Allowed files pass through the same trim/redact pipeline as other staged artifacts.
 
 ## Tests
 

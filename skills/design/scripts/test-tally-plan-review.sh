@@ -173,7 +173,28 @@ mkdir -p "$DESIGN_ZERO"
 out_zero=$("$SUBJECT" --ballot-file "$BALLOT" --design-tmpdir "$DESIGN_ZERO")
 printf '%s\n' "$out_zero" | grep -q '^TALLY_PLAN_REVIEW_STATUS=main-agent-vote-required$' || fail "zero voter status missing"
 [[ ! -s "$DESIGN_ZERO/accepted-plan-findings.md" ]] || fail "zero voter accepted file should be empty"
-grep -q $'FINDING_1\tCursor-Arch\trejected\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t' "$DESIGN_ZERO/plan-review/round-1/findings-classification.tsv" || fail "zero voter classification row should be rejected with empty voter cells"
+grep -q $'FINDING_1\tCursor-Arch\tmain-agent-vote-required\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t' "$DESIGN_ZERO/plan-review/round-1/findings-classification.tsv" || fail "zero voter classification row should remain pending with empty voter cells"
+
+echo "=== MainAgent cannot be combined with panel slots ==="
+DESIGN_MAIN_AGENT_MIX="$TMPROOT/design-main-agent-mix"
+mkdir -p "$DESIGN_MAIN_AGENT_MIX"
+set +e
+"$SUBJECT" --ballot-file "$BALLOT" --voter "Claude:$V1" --voter "MainAgent:$V2" --design-tmpdir "$DESIGN_MAIN_AGENT_MIX" >/tmp/larch-tally-plan-review-main-agent.out 2>&1
+rc_main_agent_mix=$?
+set -e
+[[ "$rc_main_agent_mix" -eq 2 ]] || fail "MainAgent+panel mix should exit 2"
+grep -q 'MainAgent cannot be combined with panel voter slots' /tmp/larch-tally-plan-review-main-agent.out || fail "MainAgent mix diagnostic missing"
+
+echo "=== symlinked voter file is rejected ==="
+DESIGN_VOTER_SYMLINK="$TMPROOT/design-voter-symlink"
+mkdir -p "$DESIGN_VOTER_SYMLINK"
+ln -sf "$V1" "$TMPROOT/v1-link.txt"
+set +e
+"$SUBJECT" --ballot-file "$BALLOT" --voter-files "$TMPROOT/v1-link.txt" --design-tmpdir "$DESIGN_VOTER_SYMLINK" >/tmp/larch-tally-plan-review-symlink.out 2>&1
+rc_voter_symlink=$?
+set -e
+[[ "$rc_voter_symlink" -eq 2 ]] || fail "symlinked voter file should exit 2"
+grep -q 'voter file is missing or unreadable' /tmp/larch-tally-plan-review-symlink.out || fail "symlinked voter diagnostic missing"
 
 V_NEUTRAL="$TMPROOT/v-neutral.txt"
 : > "$V_NEUTRAL"

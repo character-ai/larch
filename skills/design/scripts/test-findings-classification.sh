@@ -121,12 +121,12 @@ assert_cell "$OUT1" FINDING_2 v1_quality ""
 assert_cell "$OUT1" FINDING_2 v1_uncertain true
 assert_cell "$OUT1" FINDING_2 v1_vote YES
 
-echo "=== zero judges writes rejected rows with empty voter columns ==="
+echo "=== zero judges writes main-agent-required rows with empty voter columns ==="
 W3="$TMPROOT/zero"
 mkdir -p "$W3"
 zero_out=$("$TALLY" --ballot-file "$BALLOT1" --design-tmpdir "$W3/design" --findings-classification-out "$W3/out.tsv")
 printf '%s\n' "$zero_out" | grep -q '^TALLY_PLAN_REVIEW_STATUS=main-agent-vote-required$' || fail "zero-judge status missing"
-assert_cell "$W3/out.tsv" FINDING_1 voting_result rejected
+assert_cell "$W3/out.tsv" FINDING_1 voting_result main-agent-vote-required
 assert_cell "$W3/out.tsv" FINDING_1 v1_vote ""
 assert_cell "$W3/out.tsv" OOS_1 v3_uncertain ""
 

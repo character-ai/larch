@@ -187,7 +187,7 @@ v3="$DESIGN_TMPDIR/vstub3.txt"
 vp="$DESIGN_TMPDIR/voter-paths.list"
 for f in "$v1" "$v2" "$v3"; do
     cat >"$f" <<'INNER'
-FINDING_1: YES
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
 INNER
 done
 printf '%s\n' "$v1" "$v2" "$v3" >"$vp"
@@ -214,7 +214,7 @@ v1="$DESIGN_TMPDIR/vstub1.txt"
 v2="$DESIGN_TMPDIR/vstub2.txt"
 v3="$DESIGN_TMPDIR/vstub3.txt"
 vp="$DESIGN_TMPDIR/voter-paths.list"
-_vote_body=$'FINDING_1: YES\nFINDING_2: YES\nFINDING_3: YES\nOOS_1: YES\nOOS_2: YES\nOOS_3: YES\n'
+_vote_body=$'FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false\nFINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false\nFINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false\nOOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false\nOOS_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false\nOOS_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false\n'
 for f in "$v1" "$v2" "$v3"; do
     printf '%s' "$_vote_body" >"$f"
 done
@@ -304,6 +304,9 @@ out1=$(run_loop "$D1")
 printf '%s\n' "$out1" | grep -q '^TALLY_PLAN_REVIEW_STATUS=ok$' || fail "expected ok tally status"
 printf '%s\n' "$out1" | grep -q '^LOOP_STATUS=complete$' || fail "expected complete loop"
 grep -q 'FINDING_1' "$D1/accepted-plan-findings.md" || fail "accepted finding missing"
+awk -F '\t' '$1=="FINDING_1" && $3=="accepted" && $4=="YES" && $5=="true" && $6=="major" && $7=="good" && $8=="false" { found=1 } END { exit(found ? 0 : 1) }' \
+    "$D1/plan-review/round-1/findings-classification.tsv" \
+    || fail "happy-path classification TSV missing populated FINDING_1 row"
 
 echo "=== brainstorm context merges into feature file before dispatch ==="
 DB="$TMP/zb"

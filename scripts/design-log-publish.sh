@@ -294,7 +294,7 @@ if [[ -e "$DESIGN_TMPDIR/plan-review" ]]; then
     }
     _pr_files=$(mktemp "${TMPDIR:-/tmp}/design-log-publish-pr.XXXXXX")
     ENUM_PR_TMP="$_pr_files"
-    if ! find "$pr_root" -type f ! -type l | LC_ALL=C sort >"$_pr_files"; then
+    if ! find "$pr_root" \( -type f -o -type l \) | LC_ALL=C sort >"$_pr_files"; then
         rm -f "$_pr_files"
         ENUM_PR_TMP=""
         larch_err "design-log-publish: failed to enumerate plan-review files"
@@ -314,6 +314,11 @@ if [[ -e "$DESIGN_TMPDIR/plan-review" ]]; then
         rel=${f#"$pr_root/"}
         if ! [[ "$rel" =~ ^round-[1-9][0-9]*/findings-classification\.tsv$ ]]; then
             larch_err "design-log-publish: unexpected file under plan-review: $rel"
+            emit_publish_result false
+            exit 0
+        fi
+        if [[ -L "$f" || ! -f "$f" ]]; then
+            larch_err "design-log-publish: findings-classification.tsv must be a regular file: $rel"
             emit_publish_result false
             exit 0
         fi

@@ -58,6 +58,27 @@ case_finding_oos() {
         || { echo "FAIL: finding-oos plan verification allowance missing" >&2; exit 1; }
 }
 
+case_rating_tokens_all_contexts() {
+    local grammar context out
+    for grammar in finding-only finding-oos; do
+        for context in plan diff-plan; do
+            out=$("$RENDER" \
+                --ballot-file "$BALLOT" \
+                --panel-role "matrix panel role" \
+                --id-grammar "$grammar" \
+                --verification-context "$context")
+            grep -Fq 'CORRECTNESS=<true|partially-true|false-positive|uncertain>' <<< "$out" \
+                || { echo "FAIL: $grammar/$context missing correctness enum" >&2; exit 1; }
+            grep -Fq 'SEVERITY=<blocker|major|minor|nit|uncertain>' <<< "$out" \
+                || { echo "FAIL: $grammar/$context missing severity enum" >&2; exit 1; }
+            grep -Fq 'QUALITY=<excellent|good|adequate|weak|no-fix|uncertain>' <<< "$out" \
+                || { echo "FAIL: $grammar/$context missing quality enum" >&2; exit 1; }
+            grep -Fq 'UNCERTAIN=<true|false>' <<< "$out" \
+                || { echo "FAIL: $grammar/$context missing uncertain enum" >&2; exit 1; }
+        done
+    done
+}
+
 case_canonical_text_drift_guard() {
     local f
     for f in \
@@ -104,6 +125,7 @@ case_argument_validation() {
 
 case_finding_only
 case_finding_oos
+case_rating_tokens_all_contexts
 case_canonical_text_drift_guard
 case_executable_bit
 case_lib_quiet_isolation

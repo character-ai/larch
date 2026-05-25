@@ -12,7 +12,7 @@
 ## Invariants
 
 - Required arguments are `--ballot-file FILE` and `--design-tmpdir DIR`; `--voter SLOT:FILE` may repeat with `SLOT` in `Claude`, `Codex`, `Cursor`, or `MainAgent`. `--voter-files FILE...` remains as a deprecated compatibility fallback and emits a stderr warning.
-- Repeating the same `--voter SLOT:FILE` slot is invalid and exits 2 before tallying; otherwise panel outcomes can diverge from the fixed `vN_*` forensic columns.
+- Repeating the same `--voter SLOT:FILE` slot is invalid and exits 2 before tallying; `MainAgent` is also exclusive and cannot be combined with panel slots because the forensic TSV has only one fixed three-slot panel surface.
 - `--findings-classification-out FILE` optionally selects the forensic TSV path. Without it, the script writes `$DESIGN_TMPDIR/plan-review/round-1/findings-classification.tsv` and creates the parent directory internally.
 - The parser supports design-local `### FINDING_N:` and `### OOS_N:` blocks. Voter files use anchored `ID: VOTE` lines (e.g. `FINDING_1: YES`); substring matching is rejected to prevent `FINDING_10` matching inside `FINDING_100`.
 - Acceptance threshold comes from `scripts/lib-vote-tally.sh::classify_result`: 3+ eligible voters require 2+ YES; 2 eligible voters require unanimous YES; 1 eligible voter is a binding single-judge decision; 0 eligible voters emit `TALLY_PLAN_REVIEW_STATUS=main-agent-vote-required` for main-agent adjudication.
@@ -24,9 +24,9 @@
 - Accepted OOS blocks with an unfenced `focus-area = security` token are excluded from all public OOS outputs. Fenced occurrences (inside backtick or triple-backtick regions) are not load-bearing (Match discrimination false-positive guard).
 - Scoreboard score formula: `accepted + oos_accepted - rejected - oos_rejected` (+1 per accepted item, -1 per rejected item).
 - The rendered scoreboard columns are `Reviewer`, `Proposed`, `Accepted`, `Exonerated`, `Rejected`, `OOS-Proposed`, `OOS-Accepted`, `OOS-Exonerated`, `OOS-Rejected`, and `Score`.
-- `findings-classification.tsv` schema is `finding_id`, `finding_reviewers`, `voting_result`, then five columns for each fixed voter slot: `v1_*` = Claude, `v2_*` = Codex, `v3_*` = Cursor. `MainAgent` votes contribute to tally outcomes but do not populate vN forensic columns. The `vN_vote` cells reuse the same anchored vote parser as panel tallies; the rating-axis cells come from `parse-judge-vote-and-rating.sh`.
+- `findings-classification.tsv` schema is `finding_id`, `finding_reviewers`, `voting_result`, then five columns for each fixed voter slot: `v1_*` = Claude, `v2_*` = Codex, `v3_*` = Cursor. Main-agent-only adjudication reuses `v1_*` so single-voter forensic rows remain populated. The tally now derives both `voting_result` and `vN_vote` from `parse-judge-vote-and-rating.sh`; partial rows may leave rating cells blank without changing the parsed vote token.
 - `finding_reviewers` is reviewer attribution from the ballot block; vN columns are voter/judge identity. Missing slots leave empty vN cells; slots are never compacted.
-- Zero-judge fallback writes one TSV row per ballot entry with `voting_result=classify_result(0,0,0,0)` (`rejected`) and all vN cells empty. Empty ballots write the header only.
+- Zero-judge fallback writes one TSV row per ballot entry with `voting_result=main-agent-vote-required` and all vN cells empty. Empty ballots write the header only.
 - TSV rows are sorted numerically by `FINDING_*` first, then `OOS_*`. Voter-sourced cells and `finding_reviewers` are normalized for TSV by replacing tabs with spaces and stripping newlines.
 - Whenever `--design-tmpdir` has been validated, `voting-tally.md` is materialized with at least the degraded header (`# Plan Review Voting Tally` plus a one-line abort note) before any non-zero exit. The missing-required-args and unknown-argument branches are exempt because `$DESIGN_TMPDIR` may be empty.
 - Once `--design-tmpdir` and the classification output path are known, abort paths rewrite `findings-classification.tsv` to the canonical header-only form so stale forensic rows from a prior successful tally cannot survive a later failure.

@@ -287,7 +287,11 @@ fi
 
 out=$(PATH="$STUB_BIN:$PATH" CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT_STUB" CODEX_STUB_MODE=vote_only PLAN_VOTER_STUB_MODE=vote-only PLAN_VOTER_STUB_LOG="$TMP/stub-vote-only.log" \
     "$SCRIPT" --ballot-file "$BALLOT_PARSE_IDS" --design-tmpdir "$TMP/vote-only" --codex-available true --cursor-available true)
-grep -Fq 'VOTER_2_STATUS=failed' <<< "$out" || { echo "FAIL: vote-only output should mark voter 2 failed" >&2; exit 1; }
-grep -Fq 'DEGRADED_PANEL_WARNING=' <<< "$out" || { echo "FAIL: vote-only output should emit degraded warning" >&2; exit 1; }
+grep -Fq 'VOTER_2_STATUS=launched' <<< "$out" || { echo "FAIL: vote-only output should remain eligible" >&2; exit 1; }
+grep -Fq 'VOTER_2_PARSE_RATE_STATUS=OK' <<< "$out" || { echo "FAIL: vote-only output should parse as substantive" >&2; exit 1; }
+if grep -Fq 'DEGRADED_PANEL_WARNING=' <<< "$out"; then
+    echo "FAIL: vote-only output should not emit degraded warning" >&2
+    exit 1
+fi
 
 echo "PASS: test-dispatch-plan-voters.sh"

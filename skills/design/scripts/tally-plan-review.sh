@@ -39,6 +39,10 @@ add_voter_slot() {
             larch_err "tally-plan-review.sh: duplicate --voter slot: $slot"
             exit 2
         fi
+        if [[ "$slot" == "MainAgent" || "$existing" == "MainAgent" ]]; then
+            larch_err "tally-plan-review.sh: MainAgent cannot be combined with panel voter slots"
+            exit 2
+        fi
     done
     VOTER_SLOTS+=("$slot")
     VOTER_FILES+=("$file")
@@ -136,13 +140,13 @@ write_tally_stub() {
     } > "$tally_file"
 }
 reset_findings_classification
-if [[ ! -r "$BALLOT_FILE" ]]; then
+if [[ -L "$BALLOT_FILE" || ! -r "$BALLOT_FILE" ]]; then
     larch_err "tally-plan-review.sh: ballot file is missing or unreadable: $BALLOT_FILE"
     write_tally_stub "**⚠ Tally aborted: ballot file unreadable: $BALLOT_FILE; no votes tallied.**"
     exit 2
 fi
 for voter_file in "${VOTER_FILES[@]+"${VOTER_FILES[@]}"}"; do
-    if [[ ! -r "$voter_file" ]]; then
+    if [[ -L "$voter_file" || ! -r "$voter_file" ]]; then
         larch_err "tally-plan-review.sh: voter file is missing or unreadable: $voter_file"
         write_tally_stub "**⚠ Tally aborted: voter file unreadable: $voter_file; no votes tallied.**"
         exit 2
@@ -216,6 +220,7 @@ sanitize_tsv_cell() {
 
 parse_rating_cell_values() {
     local voter_file="$1" id="$2" parsed line key value
+    PARSED_VOTE=""
     PARSED_CORRECTNESS=""
     PARSED_SEVERITY=""
     PARSED_QUALITY=""
@@ -226,12 +231,29 @@ parse_rating_cell_values() {
         key="${line%%=*}"
         value="${line#*=}"
         case "$key" in
+            PARSED_VOTE) PARSED_VOTE="$value" ;;
             PARSED_CORRECTNESS) PARSED_CORRECTNESS="$value" ;;
             PARSED_SEVERITY) PARSED_SEVERITY="$value" ;;
             PARSED_QUALITY) PARSED_QUALITY="$value" ;;
             PARSED_UNCERTAIN) PARSED_UNCERTAIN="$value" ;;
         esac
     done <<< "$parsed"
+}
+
+count_parsed_votes_for_id() {
+    local id="$1"
+    shift || true
+    local voter_file yes=0 no=0 exonerate=0 judge_error=0
+    for voter_file in "$@"; do
+        parse_rating_cell_values "$voter_file" "$id"
+        case "$PARSED_VOTE" in
+            YES) yes=$((yes + 1)) ;;
+            NO) no=$((no + 1)) ;;
+            EXONERATE) exonerate=$((exonerate + 1)) ;;
+            *) judge_error=$((judge_error + 1)) ;;
+        esac
+    done
+    printf '%s\t%s\t%s\t%s\n' "$yes" "$no" "$exonerate" "$judge_error"
 }
 
 write_findings_classification() {
@@ -244,20 +266,19 @@ write_findings_classification() {
         claude_file=$(find_voter_file_for_slot Claude)
         codex_file=$(find_voter_file_for_slot Codex)
         cursor_file=$(find_voter_file_for_slot Cursor)
+        if [[ -z "$claude_file$codex_file$cursor_file" ]]; then
+            claude_file=$(find_voter_file_for_slot MainAgent)
+        fi
         for block in "${block_files[@]+"${block_files[@]}"}"; do
             id=$(basename "$block" .md)
-            IFS=$'\t' read -r yes no exonerate judge_error <<< "$(count_votes_for_id "$id" "${VOTER_FILES[@]+"${VOTER_FILES[@]}"}")"
+            IFS=$'\t' read -r yes no exonerate judge_error <<< "$(count_parsed_votes_for_id "$id" "${VOTER_FILES[@]+"${VOTER_FILES[@]}"}")"
             : "$judge_error"
             result=$(classify_result "$yes" "$no" "$exonerate" "$eligible_count")
             reviewer=$(sanitize_tsv_cell "$(reviewer_for_block "$block")")
             printf '%s\t%s\t%s' "$id" "$reviewer" "$result"
             for slot in "$claude_file" "$codex_file" "$cursor_file"; do
                 parse_rating_cell_values "$slot" "$id"
-                slot_vote=""
-                if [[ -n "$slot" ]]; then
-                    slot_vote=$(vote_for_id "$id" "$slot")
-                    [[ "$slot_vote" == "JUDGE_ERROR" ]] && slot_vote=""
-                fi
+                slot_vote="$PARSED_VOTE"
                 printf '\t%s\t%s\t%s\t%s\t%s' \
                     "$(sanitize_tsv_cell "$slot_vote")" \
                     "$(sanitize_tsv_cell "$PARSED_CORRECTNESS")" \
@@ -292,7 +313,7 @@ fi
 
     for block in "${block_files[@]+"${block_files[@]}"}"; do
         id=$(basename "$block" .md)
-        IFS=$'\t' read -r yes no exonerate judge_error <<< "$(count_votes_for_id "$id" "${VOTER_FILES[@]}")"
+        IFS=$'\t' read -r yes no exonerate judge_error <<< "$(count_parsed_votes_for_id "$id" "${VOTER_FILES[@]}")"
         result=$(classify_result "$yes" "$no" "$exonerate" "$eligible_count")
         printf '| %s | %s | %s | %s | %s | %s |\n' "$id" "$yes" "$no" "$exonerate" "$judge_error" "$result"
 
