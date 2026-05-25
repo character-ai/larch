@@ -105,7 +105,7 @@ When `$DESIGN_TMPDIR/accepted-plan-findings.md` is empty (no accepted in-scope f
 
 ### Gate B plan revision and Step 2b.5
 
-Gate B's plan revision may cause Step 2b.5 to prompt the operator (soft: Split / Continue with current scope; hard: Split / Cancel only). If Step 2b.5 exits the skill on **Cancel** (cost line + exit 0) or **Split** (Split-path: decomposition panel stub + exit 1), `$DESIGN_TMPDIR` is preserved and the operator can re-run after addressing sprawl.
+Gate B's plan revision may cause Step 2b.5 to branch: partition flag (`--partition`) routes directly to Split-path with no `AskUserQuestion`; hard trigger (`PLAN_LINES > 800` or `DIFF_LINES > 1500`) fires an `AskUserQuestion` with Split / Cancel only (no Continue option); otherwise Step 2b.5 returns silently. If Step 2b.5 exits the skill on **Cancel** (cost line + exit 0) or **Split** (Split-path: decomposition panel + exit 1), `$DESIGN_TMPDIR` is preserved and the operator can re-run after addressing sprawl.
 
 ---
 

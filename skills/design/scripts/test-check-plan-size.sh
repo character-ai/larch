@@ -7,6 +7,7 @@ export LARCH_QUIET_DISABLE=1
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd -P)
 SUBJECT="$SCRIPT_DIR/check-plan-size.sh"
+# Split-string to avoid literal match in grep-based drift-detection checks.
 SOFT_KEY="SOFT_TRIGGER""_FIRED"
 FILES_KEY="FILES""_COUNT"
 
