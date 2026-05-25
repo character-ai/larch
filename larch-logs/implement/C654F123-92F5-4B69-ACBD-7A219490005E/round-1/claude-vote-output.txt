@@ -1,0 +1,1 @@
+The ballot file at the specified path contains no `FINDING_N:` items — only a metadata line about aggregation. There are no ballot items to vote on.

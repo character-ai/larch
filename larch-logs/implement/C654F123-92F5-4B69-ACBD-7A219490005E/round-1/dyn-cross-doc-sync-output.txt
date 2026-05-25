@@ -1,0 +1,17 @@
+Gathering the branch diff, commit list, and cross-doc grep results for the architecture-focused review.
+
+Checking `skills/design` for stale count strings and whether `plan-review.md`'s top-level "aggregate" wording conflicts with the new semantic-dedup rule.
+
+Verifying how `aggregate-findings.sh` is used in the design plan-review loop — it may contradict NEVER rule #6.
+
+### In-Scope Findings
+
+- **architecture** `skills/design/SKILL.md:101` — NEVER rule #6’s **Why** clause claims the `/design` plan-review path has **no** `aggregate-findings.sh` helper while `/review` does, but the full plan-review driver already calls `skills/review/scripts/aggregate-findings.sh` with `--input-mode plan` (`skills/design/scripts/plan-review-loop.sh:513-521`, documented in `skills/design/scripts/plan-review-loop.md:20-24`). That makes the new rule text contradict the shipped pipeline architecture. **Suggested fix:** Rewrite that sentence so it no longer asserts `/design` never uses `aggregate-findings.sh` (for example, distinguish orchestrator-side semantic clustering of raw reviewer rows from the loop’s downstream `aggregate-findings.sh` pass, or drop the inaccurate comparison entirely).
+
+- **architecture** `skills/design/references/plan-review.md:107-108` — Steps 2–3 now insist dedup is **“semantic … main-agent judgment”**, but on `review_budget=full` the orchestrator delegates the structured path to `plan-review-loop.sh`, which first runs an **embedded Python** Jaccard/token-overlap dedup over `Concern`/`Description` text (`skills/design/scripts/plan-review-loop.sh:373-482`) and then optional `aggregate-findings.sh` (`skills/design/scripts/plan-review-loop.sh:513-538`) before voting. The updated reference therefore conflicts with the actual automation boundary. **Suggested fix:** Align the steps with reality: either scope “main-agent judgment” explicitly to modes/paths where the loop is not authoritative, or rephrase steps 2–3 as requirements on the **loop’s** dedup quality (and/or replace the heuristic) so the normative doc matches `plan-review-loop.md:20-24`.
+
+### Out-of-Scope Observations
+
+- The branch diff also adds large `larch-logs/design/5D373FCB-41CD-40B8-88D3-750D58BB4608/` and `larch-logs/implement/C654F123-92F5-4B69-ACBD-7A219490005E/` trees (session metadata, partial plans, token/timing artifacts). That is orthogonal to the semantic-dedup doc fix unless the project intentionally commits every flushed run; worth reconciling with `docs/run-logs.md` and whether those paths should ride along with a narrow `skills/design/` change.
+
+- Under `skills/design/` there are **no** remaining `five rules` / `five NEVER` strings after the count bump (`skills/design/SKILL.md:85` reads “six rules”); remaining `five rules` hits live only under historical `larch-logs/**` snapshots from earlier plans, not in the live skill subtree.

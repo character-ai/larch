@@ -1,0 +1,11 @@
+Verifying TSV column names against the plan-review wording: reading the diff and locating where the sidecar TSV is defined and written.
+
+Checking how the loop handles missing TSVs and whether OOS rows share the same column contract.
+
+Checking how JSONL records name fields relative to the TSV header:
+
+### In-Scope Findings
+- **correctness** `skills/design/references/plan-review.md:107` — Step 2 tells the orchestrator to read `what`, `scenario_or_breakage`, and `suggested_fix` “from the structured sidecar **TSV**,” but structured sidecars are not always TSV: `collect-agent-results.sh` sets `STRUCTURED_SIDECAR="${REVIEWER_FILE}.tsv"` only for `cursor|codex` and `${REVIEWER_FILE}.jsonl` for other tools (e.g. Claude subprocess slots). The JSONL schema still uses the same keys (`what`, `scenario_or_breakage`, `suggested_fix` per `validate-research-output.sh`’s jq filter), so the **field names** are right but the **container** is misnamed and can mislead anyone hand-inspecting sidecars on non-Cursor/Codex paths. **Suggested fix:** Rephrase to “structured sidecar (`.tsv` or `.jsonl` per `STRUCTURED_SIDECAR=` / collector tool routing)” or “structured sidecar fields” without implying TSV-only, keeping the same three field names.
+
+### Out-of-Scope Observations
+- The precomputed `diff.txt` bundles large `larch-logs/design/...` and `larch-logs/implement/...` additions alongside the `skills/design/*` edits; that log surface is outside this TSV-schema review but may deserve a separate hygiene pass if those paths were not meant to ship on the branch.
