@@ -1,0 +1,3 @@
+Normalizing the 42 reviewer inputs into a merged structured finding list. Grouping by behavioral risk and preserving verbatim revision bullets per slot.
+Producing the normalized aggregator output from the supplied reviewer findings (read-only; no file writes).
+
