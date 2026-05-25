@@ -1,0 +1,88 @@
+{
+  "vendors": [
+    "claude"
+  ],
+  "claude": {
+    "per_step": [
+      {
+        "step": "design Step 0 — session setup",
+        "totals": {
+          "input": 103,
+          "cache_read": 15151772,
+          "cache_create": 592853,
+          "cache_create_5m": 592853,
+          "cache_create_1h": 0,
+          "output": 77816,
+          "total": 15822544
+        },
+        "skills": [
+          {
+            "skill": "inferred:design Step 0 — session setup",
+            "totals": {
+              "input": 10,
+              "cache_read": 1323575,
+              "cache_create": 5076,
+              "cache_create_5m": 5076,
+              "cache_create_1h": 0,
+              "output": 3726,
+              "total": 1332387
+            }
+          },
+          {
+            "skill": "larch:design",
+            "totals": {
+              "input": 78,
+              "cache_read": 11074890,
+              "cache_create": 544187,
+              "cache_create_5m": 544187,
+              "cache_create_1h": 0,
+              "output": 63274,
+              "total": 11682429
+            }
+          },
+          {
+            "skill": "larch:issue",
+            "totals": {
+              "input": 15,
+              "cache_read": 2753307,
+              "cache_create": 43590,
+              "cache_create_5m": 43590,
+              "cache_create_1h": 0,
+              "output": 10816,
+              "total": 2807728
+            }
+          }
+        ]
+      }
+    ],
+    "totals": {
+      "input": 103,
+      "cache_read": 15151772,
+      "cache_create": 592853,
+      "cache_create_5m": 592853,
+      "cache_create_1h": 0,
+      "output": 77816,
+      "total": 15822544
+    }
+  },
+  "BUCKETS_claude": {
+    "input": 103,
+    "cache_read": 15151772,
+    "cache_create_5m": 592853,
+    "cache_create_1h": 0,
+    "output": 77816,
+    "total": 15822544
+  },
+  "BUCKETS_codex": {
+    "input": 0,
+    "cached_input": 0,
+    "output": 0,
+    "total": 0
+  },
+  "BUCKETS_cursor": {
+    "input": 0,
+    "cache_read": 0,
+    "output": 0,
+    "total": 0
+  }
+}
