@@ -1,0 +1,54 @@
+[BUG] /design Step 3 plan-review: dedup prompt allows mechanical clustering instead of semantic main-agent dedup
+
+[BUG] /design Step 3 plan-review dedup: orchestrator wrote a Python string-key clustering parser instead of semantic main-agent dedup
+
+## Problem
+
+During a `/design --simple` run on issue #2661, after the 14-reviewer plan-review panel completed and produced 47 raw findings across structured sidecar TSVs, the orchestrator (main agent) wrote a custom Python script (`$DESIGN_TMPDIR/parse-findings.py`) to mechanically deduplicate findings by clustering on the tuple `(focus_area, location-file, normalized-what-prefix[:40])`. The script produced **46 "deduped" clusters from 47 raw findings** — essentially zero dedup — because reviewers phrase the same concern differently across slots (different file:line citations, different prefix wording, different focus_area assignment), and string-key clustering misses semantic equivalence.
+
+The user interrupted and pointed out this was wrong: the skill expects **semantic main-agent dedup** (read each finding's body, recognize equivalent concerns by meaning, group accordingly), not a syntactic clustering heuristic. After re-reading the raw findings by hand, the orchestrator was able to collapse 47 raw findings to **13 semantically distinct concerns** — e.g., 13 separate findings all said "drift guard only checks voting-protocol.md, not the two SKILL.md MAV copies"; 6 separate findings all said "verification-context plan branch drops the plan/repo inspection allowance"; 7 separate findings all said "test harness PLUGIN_ROOT stub lacks the new helper".
+
+## Root cause analysis
+
+**Trigger condition**: voluminous reviewer output (47 raw findings) tempted the orchestrator to "automate" the dedup step.
+
+**Prompt gap**: `skills/design/references/plan-review.md` Step "Collecting External Reviewer Results" says:
+> "2. Deduplicate in-scope findings separately. Assign each a stable sequential ID (`FINDING_1`, `FINDING_2`, etc.) and note which reviewer(s) proposed each."
+> "3. Deduplicate out-of-scope observations separately. Assign each an `OOS_` prefixed ID..."
+
+The instruction is one sentence. It does NOT make explicit:
+- That this is a **semantic** task (read finding bodies, recognize meaning) rather than a **syntactic** clustering task.
+- That string-key clustering on `(focus_area, location, what-prefix)` is insufficient because reviewers phrase the same concern differently.
+- That the orchestrator should NOT delegate this to a custom Python/shell script.
+
+By contrast, `skills/review/scripts/aggregate-findings.sh` exists for the `/review` code-review path — it uses an LLM-based aggregator with explicit prompts. The `/design` plan-review path has no analogous helper; the dedup is owned entirely by the orchestrator's main-agent judgment, but the prompt doesn't say this.
+
+**Secondary trigger**: the structured sidecar TSV format (with `focus_area`, `location`, `what`, `scenario_or_breakage`, `suggested_fix` columns) **looks** machine-processable — encouraging mechanical clustering. The structured format is correct for cheap initial parsing; the bug is in expecting the structured fields to be a sufficient dedup key.
+
+**Why string-key clustering failed here**: Among 47 raw findings, 12+ raised "drift guard only covers 2 of 4 canonical copies" but with distinct `location` values (some cited `scripts/test-render-voter-prompt.sh:1`, some cited `plan.txt:43-47;119-135;skills/design/SKILL.md:598;skills/implement/SKILL.md:1238`, some cited just `voting-protocol.md:93`). Similarly, `focus_area` varied across reviewers (architecture vs correctness vs risk-integration vs code-quality) for the same underlying concern. And the `what` prefix was reworded in every reviewer's output.
+
+## Suggested fix outline
+
+Update `skills/design/references/plan-review.md` (and parallel `skills/review/references/*` if symmetric) so the dedup step:
+
+1. **Explicit semantic instruction**: rewrite step 2 ("Deduplicate in-scope findings separately") to read approximately:
+   > "Deduplicate in-scope findings **semantically using main-agent judgment**. Read each finding's `what`, `scenario_or_breakage`, and `suggested_fix` fields (from the structured sidecar TSV) and group findings whose underlying concern is the same — even when phrased differently, cited with different file:line locations, or tagged with different focus_areas. **Do NOT mechanically cluster by string keys on `(focus_area, location, what-prefix)`** — reviewers routinely phrase the same concern differently, and string-key clustering yields near-zero dedup when applied to 30+ reviewers. Assign each cluster a stable sequential ID (`FINDING_1`, `FINDING_2`, etc.) and note which reviewer(s) proposed each."
+
+2. **NEVER rule**: add to `skills/design/SKILL.md` Anti-patterns:
+   > "**NEVER mechanically dedupe plan-review findings by string-key clustering** (e.g., grouping by `(focus_area, location, what-prefix)`). **Why**: reviewers phrase the same concern differently across slots; string-key clustering produces near-zero dedup and inflates ballot size with semantic duplicates. **How to apply**: read each finding's body fields semantically and group by meaning. If the count exceeds ~30 raw findings and the orchestrator is tempted to write a Python/shell helper, that temptation itself signals the wrong approach — proceed by reading."
+
+3. **Optional helper (future work)**: consider adding a `skills/design/scripts/aggregate-plan-findings.sh` analogous to `skills/review/scripts/aggregate-findings.sh` (LLM-based aggregation). This would let `/design` Step 3 mechanically aggregate without orchestrator hand-deduping, mirroring the `/review` code-review flow. Out of scope for the immediate fix; the prompt clarification + NEVER rule are sufficient.
+
+## Reproduction context
+
+- Run: `/larch:design 2661` with tier `simple` (sketch_budget=2, review_budget=full)
+- Cursor unavailable → all 5 Cursor-assigned static slots + 2 Cursor-assigned dynamic slots fell back to Codex via waterfall → 14 Codex outputs total
+- Raw finding count: 47 across the 14 sidecar TSVs
+- Custom Python script clustering: 47 → 46 (one-pair dedup at best)
+- Semantic main-agent rereading: 47 → 13 distinct concerns
+
+## Out of scope for this bug
+
+- Whether `/design` Step 3 should gain a permanent LLM-based aggregator helper (mention but defer).
+- Changes to the sidecar TSV format itself.
+- Changes to the per-reviewer prompt template (the verbosity is independent of dedup logic).
