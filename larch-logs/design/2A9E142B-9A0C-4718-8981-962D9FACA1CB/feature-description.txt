@@ -1,0 +1,98 @@
+Lesson 3: Decomposition / break-up analysis panel for /design
+
+
+## Lesson 3 — Decomposition / break-up analysis panel for `/design`
+
+**Origin**: post-mortem of #2644 (closed). The 3-way partition of #2644 was discovered manually after 4 review rounds; an earlier mechanical decomposition step would have caught the scope sprawl in round 0 and saved most of the design budget. This issue adds that step.
+
+**Depends on #L1-issue** (size thresholds + `-p`/`--partition` flag). The decomposition panel is triggered either by L1's thresholds firing (soft / hard / Q/A sprawl heuristic) OR by the operator passing `-p`/`--partition`.
+
+## Scope
+
+### Panel composition
+
+**Fixed 4 archetypes** (hand-picked for decomposition reasoning; not scout-generated):
+
+1. **decomposition-specialist** — "where are the natural fault lines in this plan? Identify pieces that could ship as independent PRs."
+2. **dependency-analyst** — "what depends on what? Build a directed dependency graph of the proposed work; identify cycles or shared infrastructure that would couple pieces."
+3. **scope-minimalist** — "what is the minimum viable independent ship? If we had to land ONE piece first, what is it and what does it leave behind?"
+4. **risk-isolation** — "which pieces have the largest blast radius? Group changes so each piece's revert/rollback is localized."
+
+Each archetype runs as one Cursor + one Codex slot (8 reviewer invocations total) with the standard Cursor → Codex → Claude waterfall fallback (same machinery as the existing plan-review panel — `dispatch-with-waterfall.sh`).
+
+### Panel prompt invariants
+
+Every reviewer prompt MUST include:
+
+1. **"Independently mergeable" constraint**: each proposed piece must be a self-contained PR that lands on main before its dependents are designed or implemented. A → B is fine (A blocks B; A must merge first). Circular blocks are forbidden. The panel must explicitly verify this for any proposed partition.
+2. **Cap guidance**: "Recommend 2-5 pieces" (soft guidance, not a hard ceiling). If a reviewer recommends >5, they must justify in their proposal.
+3. **Output format**: each reviewer produces a structured proposal:
+   ```
+   ## Recommendation
+   <split | no-split>
+   
+   ## Pieces (if split recommended)
+   
+   ### Piece 1: <title>
+   - Scope: <files / behaviors covered>
+   - Dependencies: <none | blocked-by Piece N>
+   - Diff_lines estimate: <integer>
+   - Why independently mergeable: <prose>
+   
+   ### Piece 2: ...
+   ```
+
+### User-presentation flow (`AskUserQuestion`)
+
+After all 4 archetypes complete and their proposals are collected:
+
+- Present **all 4 raw proposals** to the user side-by-side (via `AskUserQuestion` options).
+- Add an **additional option**: "Let aggregator pick optimal split" — delegates the choice to an aggregator run that merges/picks across the 4 proposals.
+- Standard escape options: "Refine plan myself (return to Step 2b)" and "Cancel".
+
+User chooses: one of the 4 raw proposals OR the aggregator-picked merge OR refine OR cancel.
+
+### On user-approved split
+
+1. File N new GitHub issues (via `gh issue create`; see #2644's close-comment for the proven shape) using the chosen partition. Each issue body includes: original-issue context, this-piece scope, dependencies, draft larch:plan block (or "needs /design" marker if the piece needs further design).
+2. Use `/larch:block-issue` to express the dependency graph from the proposal.
+3. Close the original issue with a comment that explains the partition and links to each new issue (e.g., "Obviated by partition into #N, #M, #K").
+4. **Exit `/design`** — do not auto-continue on Piece 1. User runs `/design` on each new issue independently. (Matches what was done for #2644.)
+
+### Aggregator-picked-optimal-split mechanism
+
+When user delegates: run the orchestrator-aggregator (Cursor → Codex → Claude waterfall, same as `aggregate-findings.sh`) with all 4 reviewer proposals as input. The aggregator's prompt asks it to merge / select the partition that best satisfies the "independently mergeable" constraint and minimizes inter-piece dependencies. Its output is a single canonical partition that the operator can then approve (one more `AskUserQuestion` showing the aggregator's pick + Approve / Cancel).
+
+### Trigger sources
+
+- L1 soft threshold fires (Step 2b or per-round velocity) → main agent offers `AskUserQuestion`: "Plan exceeds soft threshold. Run break-up analysis panel?" → if yes, run this panel.
+- L1 hard threshold fires (Step 2b) → `AskUserQuestion`: Split (runs this panel) / Cancel.
+- L1 Q/A-time sprawl heuristic fires (Step 1c/1d) → similar offer, before any plan-writing.
+- `-p`/`--partition` flag on `/design` → unconditional panel run after Step 2b.
+
+## Files to modify (sketch — needs `/design`)
+
+- New helper: `skills/design/scripts/decompose-panel-dispatch.sh` (+ `.md`) — renders 8 prompts (4 archetypes × 2 vendors), builds NDJSON manifest, calls `dispatch-with-waterfall.sh`. Mirrors `dispatch-plan-review-panel.sh` shape.
+- New: `skills/design/scripts/decompose-prompts/` directory holding archetype prompt templates (decomposition-specialist, dependency-analyst, scope-minimalist, risk-isolation).
+- New helper: `skills/design/scripts/decompose-aggregator.sh` (+ `.md`) — wraps `aggregate-findings.sh` for the optimal-split delegation path.
+- New helper: `skills/design/scripts/decompose-file-issues.sh` (+ `.md`) — files N issues + sets dependencies + closes original. Reusable across L1's hard-threshold path and `-p` flag path.
+- `skills/design/SKILL.md` — Step 2c (between 2b and 3) for decomposition; integration with L1's trigger points.
+- `skills/design/references/plan-review.md` — cross-reference decomposition flow.
+- Harnesses: `test-decompose-panel-dispatch.sh`, `test-decompose-aggregator.sh`, `test-decompose-file-issues.sh`.
+- `Makefile`, `agent-lint.toml`, `topology.tsv`.
+
+## Dependencies
+
+- **Blocked by #L1-issue** (size thresholds + `-p`/`--partition` flag). L1 provides the trigger signals; this panel consumes them.
+- Independent of #L2-issue, #L4-issue, #L5-issue.
+
+## Acceptance (sketch)
+
+- 4 archetype prompt templates exist; each instructs the reviewer on the "independently mergeable" constraint and the structured output format.
+- `decompose-panel-dispatch.sh` runs 8 reviewers in parallel via waterfall.
+- All 4 proposals + "aggregator picks optimal" delegation option presented via `AskUserQuestion`.
+- On user-approved split: N issues filed; `/larch:block-issue` dependencies set; original issue closed with cross-references. `/design` exits.
+- `-p`/`--partition` flag triggers the panel unconditionally.
+- L1's soft and hard triggers route to this panel through the documented offer flow.
+- Harnesses cover: panel dispatch with all-OK reviewers; degraded panel; aggregator delegation; multi-piece filing flow with proper `blocked-by` edges; original-issue close path.
+

@@ -1,0 +1,32 @@
+Reading the plan and tracing cited paths in the codebase.
+
+Tracing cited scripts, contracts, and integration points in the repo.
+
+Checking `tracking-issue-summary` invocation in `render-final-summary.sh` for early-exit compatibility:
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/scripts/render-final-summary.sh:35-41	New Split-path outcomes `approved-partition` and `cancelled-decompose` are not in the allowed `case "$OUTCOME"` list.	Final summary block from the proposed SKILL body calls `render-final-summary.sh` and exits 2 with `outcome not in enumeration`, blocking terminal split success and cancel paths.	Add both outcomes to the enumeration (and extend `skills/design/scripts/test-render-final-summary.sh` invalid-outcome coverage if a positive-path smoke test is added).
+1	in_scope	important	architecture	skills/design/SKILL.md:243-246	The `### Final summary block` **When** paragraph still states Split-path never runs this block.	Contradicts the proposed Split-path body that runs the Final summary on `approved-partition` and `cancelled-decompose`, leaving two normative contracts in conflict.	Rewrite the **When** clause to state which Split-path exits invoke the block (and that return-to-caller paths do not), matching `references/decompose-panel.md`.
+1	in_scope	important	risk-integration	skills/design/references/approval-gates.md:106-108	Gate B prose still ties **Split** to `exit 1` stub semantics.	Operators and Gate B implementers assume Split always fails the skill; post-PR successful partition is `exit 0`.	Update the sentence to distinguish terminal partition-filed close (`exit 0` + summary) from `panel-failed` / retry exhaustion (`exit 1`) and remove stub wording.
+1	in_scope	important	correctness	plan.txt:188-189 (Failure modes)	Failure mode 1 cites `collect-agent-results.sh` as the earliest `panel-failed` signal.	Proposed pipeline is `decompose-panel-dispatch.sh` → `dispatch-with-waterfall.sh` with file-parse checks; there may be no `collect-agent-results.sh` pass, so implementers may wire the wrong detector or omit collection validation.	Align failure-mode text with the dispatcher script (e.g. waterfall KVs + `## Recommendation` parse over written output files, or explicitly add a collector step if parity with Step 3 is required).
+1	in_scope	latent	risk-integration	plan.txt:84-92 (decompose-file-issues.sh)	Batch filing omits an explicit `--blocked-by-issue <original>` (or equivalent) linkage for new pieces.	New issues may not be recorded as blocked by the original tracking issue, weakening dependency visibility versus typical /design → /implement workflows.	Document accept/reject in Round-1 decisions and, if accepted, extend `prepare` to pass `--blocked-by-issue` when the original issue remains open pre-close, or justify omission.
+1	in_scope	nit	correctness	skills/design/references/discussion-rounds.md:25-46	Still references `decomposition panel stub until #2672` after the feature ships unless edited.	Sprawl entry prose contradicts live behavior; operators follow stale stub guidance.	Add `### UPDATED: discussion-rounds.md` (or equivalent grep-sync in `test-design-structure.sh`) to drop stub wording and point at `references/decompose-panel.md`.
+1	in_scope	nit	code-quality	skills/design/scripts/render-final-summary.md:17-19	Claims Split-path never calls `render-final-summary.sh`.	Conflicts with the proposed post-change behavior.	Update the Split-path subsection to match the new callsites.
+
+[OUT_OF_SCOPE] Optional follow-up: if partition-created issues must appear in generated topology or consumer docs beyond `skills/shared/topology.tsv`, extend `docs/topology.md` regeneration workflow separately (`docs/topology.md`).
+
+1. **correctness** — [`skills/design/scripts/render-final-summary.sh`](skills/design/scripts/render-final-summary.sh) (lines 35–41): new outcomes `approved-partition` and `cancelled-decompose` are rejected by the hard-coded enumeration, so the proposed Final summary runs on success/cancel would fail closed; extend the case list and refresh [`skills/design/scripts/test-render-final-summary.sh`](skills/design/scripts/test-render-final-summary.sh) / [`skills/design/SKILL.md`](skills/design/SKILL.md) orchestrator contract list (line 247) accordingly.
+
+2. **architecture** — [`skills/design/SKILL.md`](skills/design/SKILL.md) (lines 243–246): the `### Final summary block` preamble still forbids Split-path from invoking the block; reconcile with the new Split-path behavior so a single normative contract remains.
+
+3. **risk-integration** — [`skills/design/references/approval-gates.md`](skills/design/references/approval-gates.md) (lines 106–108): Gate B still documents Split as stub + `exit 1`; update for `exit 0` terminal partition outcomes vs `exit 1` hard failures.
+
+4. **correctness** — [plan.txt](plan.txt) Failure modes §1 (lines 188–189): `collect-agent-results.sh` may not belong in the decompose panel signal path; align documentation with the proposed `decompose-panel-dispatch.sh` + waterfall + parse contract.
+
+5. **risk-integration** (latent) — [plan.txt](plan.txt) `decompose-file-issues.sh` / `/larch:issue` batch (lines 84–92): no `--blocked-by-issue` for new pieces vs original issue; call out an explicit product decision and wire if required.
+
+6. **correctness** — [`skills/design/references/discussion-rounds.md`](skills/design/references/discussion-rounds.md) (lines 25–46): remove or replace “stub until #2672” once the panel exists (not listed in the plan’s file matrix).
+
+7. **code-quality** — [`skills/design/scripts/render-final-summary.md`](skills/design/scripts/render-final-summary.md) (lines 17–19): update the Split-path non-caller claim to match post-PR behavior.
+
+[OUT_OF_SCOPE] Broader doc regeneration (e.g. [`docs/topology.md`](docs/topology.md)) if required beyond TSV rows — track separately for issue filing.

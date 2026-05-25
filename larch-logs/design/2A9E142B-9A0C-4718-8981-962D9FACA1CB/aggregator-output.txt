@@ -1,0 +1,5 @@
+Producing the normalized structured finding list from the supplied reviewer inputs: merging duplicate themes, preserving verbatim revisions per slot, and applying the severity merge rule (important > latent > nit). Calling CreatePlan to satisfy plan-mode with a concise summary; the full aggregator output is the primary deliverable below.
+
+
+
+LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED

@@ -1,0 +1,9 @@
+Reading the plan and inspecting referenced code paths.
+
+Validating the plan against existing scripts, contracts, and integration points.
+
+Checking `create-one.sh` redaction mention and `aggregate-findings` input expectations:
+
+Having findings: `render-final-summary.sh` rejects new outcomes; FINDING_19 / docs conflict with running the Final summary from Split-path; several normative docs omitted from the plan's file list.
+
+
