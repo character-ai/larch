@@ -1,0 +1,20 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: EXONERATE -- argv-table and ci-failed-jobs drift pins already cover most rename drift risk
+FINDING_7: EXONERATE -- TSV is written by ci-failed-jobs in the same trusted run; read-side revalidation is defense-in-depth only
+FINDING_8: YES
+FINDING_9: EXONERATE -- relies on speculative gh omission of failed secret-scan jobs, not observed behavior
+FINDING_10: EXONERATE -- unused tuning knob today; hardcoded 1-2-3 matches the only cap in use
+FINDING_11: EXONERATE -- cosmetic KV vs path separator mismatch with no functional impact
+FINDING_12: EXONERATE -- nit-level test gap; stub always passes make so stronger ordering assertions are low value
+FINDING_13: EXONERATE -- plan accepted Makefile/agent-lint coverage instead of a dedicated harness
+FINDING_14: EXONERATE -- argv tokens come from fixed dispatcher today, not untrusted input
+FINDING_15: EXONERATE -- ship-pr.md already documents shared push helper running relevant-checks when checks_site is set
+FINDING_16: EXONERATE -- generic maintainability concern, not a concrete defect worth an OOS issue
+FINDING_17: NO -- intentional defense-in-depth gate, exercised by happy-path harness
+FINDING_18: EXONERATE -- documented outer-retry behavior with existing regression coverage
+FINDING_19: NO -- describes correct behavior, not a problem to file
+FINDING_20: NO -- contextual metadata, not a code finding
