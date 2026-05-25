@@ -4,6 +4,8 @@
 
 **Contract**: byte-stable token bodies keyed by `<BRAINSTORM_FRAMING_PROMPT>`, `<BRAINSTORM_SCOPE_PROMPT>`, and `<BRAINSTORM_PRAGMATIC_PROMPT>`. The orchestrator substitutes these into per-slot prompts; do not rename tokens without updating `skills/design/scripts/test-brainstorm-prompts.sh`.
 
+**When to load**: only from `references/brainstorm.md` during `/design` Step **1d.5**, before rendering per-slot brainstorm prompts.
+
 ---
 
 ## `<BRAINSTORM_FRAMING_PROMPT>`
