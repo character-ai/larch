@@ -6,13 +6,13 @@
 export LARCH_TITLE_ARCHIVAL_PREFIX_JQ_FILTER='select((.title // "" | ascii_downcase | sub("^[[:space:]]+"; "")) as $t | (($t | startswith("research ")) or ($t | startswith("[research] ")) or ($t | startswith("investigate ")) or ($t | startswith("[investigate] ")) or ($t | test("^\\[.*report\\] "))) | not)'
 
 # Report-only bash ERE (/design Step 0b archival-report reject).
-LARCH_TITLE_ARCHIVAL_REPORT_REGEX_BASH='^\[.*[Rr][Ee][Pp][Oo][Rr][Tt]\] '
+export LARCH_TITLE_ARCHIVAL_REPORT_REGEX_BASH='^\[.*[Rr][Ee][Pp][Oo][Rr][Tt]\] '
 
 # Lifecycle bracket tokens that refuse /design.
-LARCH_TITLE_LIFECYCLE_REJECT_REGEX='^\[(IMPLEMENTING|DONE|DESIGNING|DESIGNED)\]'
+export LARCH_TITLE_LIFECYCLE_REJECT_REGEX='^\[(IMPLEMENTING|DONE|DESIGNING|DESIGNED)\]'
 
 # Brainstorm leading word (non-letter or EOS after token).
-LARCH_TITLE_BRAINSTORM_REGEX='^[Bb][Rr][Aa][Ii][Nn][Ss][Tt][Oo][Rr][Mm]([^A-Za-z]|$)'
+export LARCH_TITLE_BRAINSTORM_REGEX='^[Bb][Rr][Aa][Ii][Nn][Ss][Tt][Oo][Rr][Mm]([^A-Za-z]|$)'
 
 larch_title_trim_leading_ws() {
     local title="$1"

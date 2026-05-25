@@ -768,6 +768,8 @@ if (( fetch_line >= filter_line || filter_line >= clarify_line )); then
 fi
 grep -Fq 'title_has_lifecycle_reject_prefix' "$SKILL_MD" \
   || fail "(20) SKILL.md missing title_has_lifecycle_reject_prefix"
+grep -Fq "Source \`\${CLAUDE_PLUGIN_ROOT}/scripts/lib-title-eligibility.sh\`." "$SKILL_MD" \
+  || fail "(20) SKILL.md missing lib-title-eligibility.sh source line"
 grep -Fq 'title_has_archival_report_prefix' "$SKILL_MD" \
   || fail "(20) SKILL.md missing title_has_archival_report_prefix"
 grep -Fq 'title_starts_with_brainstorm' "$SKILL_MD" \
