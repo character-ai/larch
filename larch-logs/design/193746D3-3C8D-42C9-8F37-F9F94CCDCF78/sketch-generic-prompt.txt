@@ -1,0 +1,32 @@
+Propose a high-level implementation approach for this feature: Add a `--brainstorm` flag to /design (the Larch implementation-design skill at skills/design/SKILL.md in this repo) that introduces a multi-agent brainstorm session AFTER all clarifying questions but BEFORE any design proposals (sketches).
+
+Original GitHub issue (#2754) text:
+"Add --brainstorm flag to /design and figure out appropriate modifications to the skill when this flag is passed. The intent is to introduce a brainstorm session at the start when the flag is passed."
+
+Round 1 design discussion decisions (resolved with the user — these are SCOPE/REQUIREMENTS constraints, treat as hard constraints):
+
+1. Brainstorm kind: multi-agent ideation panel — Codex/Cursor/Claude agents independently propose feature-level interpretations and alternatives (NOT architectural sketches like Step 2a; brainstorm operates at a higher abstraction level — feature meaning / framing / alternative scopes / acceptance shapes).
+
+2. Brainstorm position: a NEW step that fires AFTER Step 1c (clarifying questions) and AFTER Step 1d (Round 1 discussion), but BEFORE Step 1e Gate A approval and BEFORE Step 2a (architectural sketches). Brainstorm output is part of the context Gate A's "Ready for review" / "Discuss more" approval considers.
+
+3. Brainstorm output: writes $DESIGN_TMPDIR/brainstorm.md (markdown file). Downstream steps (Step 2a sketches, Step 2a.5 dialectic, Step 2b plan) read brainstorm.md as additional context, similar to how Step 2b currently reads approach-synthesis.txt and discussion-round1.md. The GitHub issue body is NOT mutated by brainstorm.
+
+4. Tier flag compat: --brainstorm is an additive modifier independent of tier. `--brainstorm --simple` and `--brainstorm --hard` both valid. `--brainstorm` alone is valid (combines with the standard tier-gate AskUserQuestion in Step 0b). `--brainstorm --partition` is allowed.
+
+5. --trivial + --brainstorm collision: Pre-Step-0 fires an interactive AskUserQuestion (`Upgrade to --simple` / `Cancel`) rather than a hard error. This is a deliberate divergence from the existing --trivial + --partition collision rule (which is a non-interactive hard error in Pre-Step-0).
+
+6. Already-planned router: when the issue body already contains a larch:plan block, brainstorm STILL fires unconditionally when --brainstorm is on argv. Brainstorm fires on BOTH the "replace via full flow" branch AND the "ad-hoc Q&A only" branch of the already-planned router. Only the user-pick "cancel" branch skips brainstorm (because /design exits).
+
+7. Panel shape: exactly 3 agents — 1 Codex + 1 Cursor + 1 Claude. Per-slot Claude fallback maintains the 3-agent count when an external is unavailable. When BOTH Codex AND Cursor are unavailable, all 3 slots are filled by Claude subagents with DISTINCT prompts (the user mentioned framings like "contrarian / pragmatic / explorer" or similar to retain diversity).
+
+8. Backward compat: NOT strict byte-identity. Small ergonomic refactors of existing Step 1c/1d/1e prose / helpers are permitted if they make brainstorm integration cleaner. Existing tier flows must remain FUNCTIONALLY equivalent (existing tests pass) when --brainstorm is NOT on argv.
+
+9. User interaction model: main agent synthesizes, deduplicates, and sorts the 3 brainstorm outputs into an optimal ordering (per main agent's judgment), presents the synthesis to the user, and enters an **open free-form discussion** with the user. User can react, refine, add ideas, override the ordering, or signal completion in natural language. Main agent updates the synthesis based on user input. Discussion continues until user signals ready to proceed. NOT a synthesis-only path; NOT a one-shot AskUserQuestion path — it is a free-form conversational loop with eventual termination.
+
+10. Re-fire policy: ONE-SHOT per /design invocation. Sentinel (e.g., $DESIGN_TMPDIR/.brainstorm-done) marks completion. Gate A's "Discuss more" branch re-enters Step 1c/1d only — brainstorm does NOT re-fire. Gate B and Gate C also do not re-run brainstorm. brainstorm.md is written exactly once per /design invocation.
+
+11. Externals-unavailable failure mode: all-Claude fallback. Three Claude subagents with distinct prompts fill the 3 slots. brainstorm.md is always produced (no skip path, no abort).
+
+12. Public flag exposure: list --brainstorm alongside --trivial/--simple/--hard/--partition/--no-dedup/--run-id in the SKILL.md compact table and in skills/design/references/flags.md.
+
+Explore the codebase (especially skills/design/SKILL.md, skills/design/references/, skills/design/scripts/, scripts/session-setup.sh, scripts/launch-review.sh, scripts/collect-agent-results.sh, references/sketch-launch.md and sketch-prompts.md, references/approval-gates.md, references/discussion-rounds.md, references/flags.md). Write 2-3 paragraphs covering: (1) Key architectural decisions and approach for integrating --brainstorm into the existing /design skill flow — including where the new step body lives (new SKILL.md section + a new references/brainstorm.md? new scripts/ helpers?), how the 3-agent panel is dispatched (parallel similar to Step 2a sketches? a new dedicated launcher?), and how the open free-form discussion loop is structured mechanically (free-text turn exchange + termination signal?), (2) Which files/modules to modify and why — be specific about skills/design/SKILL.md sections (Pre-Step-0, Step 0b argv parser, new step-name registry entry, new step body, downstream-reader updates in Step 2a/2b/2a.5/2b.5), references files (flags.md table + brainstorm.md if new, sketch-prompts.md if reusing prompt placeholders), scripts (any new helpers, write-run-params.sh for persistence, write-design-current-env.sh for env propagation if needed), and tests/harness updates (test-write-run-params.sh, test-design-structure.sh, etc.), (3) Main tradeoffs and risks — including: how to keep the existing tier flows byte-identically unchanged when --brainstorm is OFF, how to handle the --trivial collision prompt without disturbing the existing non-interactive Pre-Step-0 gate code, how the open free-form discussion loop interacts with the orchestrator's turn-boundary semantics and the anti-halt continuation rule, how brainstorm.md is consumed downstream without breaking existing artifact assumptions (e.g., approach-synthesis.txt downstream readers), and what the rollout/test story looks like. Do NOT modify files — your job is to sketch the approach in prose.

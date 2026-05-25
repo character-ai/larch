@@ -1,0 +1,11 @@
+skills/design/references/brainstorm.md
+skills/design/references/brainstorm-prompts.md
+skills/design/scripts/test-brainstorm-prompts.sh
+.md
+skills/design/SKILL.md
+skills/design/references/flags.md
+skills/design/scripts/step-name-registry.tsv
+scripts/write-run-params.sh
+scripts/test-write-run-params.sh
+scripts/lib-timing-kinds.sh
+scripts/test-design-structure.sh

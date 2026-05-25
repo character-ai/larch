@@ -1,0 +1,19 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: EXONERATE -- Runtime fallback is a legitimate robustness concern, but relaunching replacement slots adds too much machinery for a best-effort brainstorm panel.
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: YES
+FINDING_18: YES
+FINDING_19: YES

@@ -1,0 +1,57 @@
+## Dialectic Ballot
+
+You are a judge on a 3-panel adjudicating contested design decisions. For each `DECISION_N` below, read both Defense A and Defense B, then cast exactly one binary vote: `THESIS` or `ANTI_THESIS`. THESIS means the side labeled as defending the synthesis's CHOSEN option on that decision wins; ANTI_THESIS means the side defending the ALTERNATIVE option wins. Judge on argument quality — not on which defense "sounds more confident." Vote on every decision. Do not modify files.
+
+The tool that produced each defense is hidden (Defense A / Defense B labels are anonymous). Which side defends CHOSEN vs. ALTERNATIVE is disclosed on each decision's header because that information is semantic, not tool-attributive.
+
+### DECISION_1: Brainstorm step position relative to Gate A
+
+Feature context: adding a `--brainstorm` flag to the larch /design skill (skills/design/SKILL.md) that inserts a new multi-agent ideation step somewhere between Step 1d (Round 1 discussion) and Step 2a (sketches). The contested decision is whether the new step fires BEFORE or AFTER Step 1e Gate A.
+
+**CHOSEN (Defense A defends)**: Step 1d.5 — insert AFTER Step 1d and BEFORE Step 1e Gate A. Brainstorm output is part of the context Gate A's "Ready for review" / "Discuss more" approval considers.
+
+**ALTERNATIVE (Defense B defends)**: Step 1f — insert AFTER Step 1e Gate A's first-time "Ready" exit and BEFORE Step 2a. Brainstorm fires only after the user has approved leaving the clarification phase.
+
+Defense A (defends CHOSEN — Step 1d.5):
+<defense_content>
+<steelman>
+Step 1f has a coherent case: Gate A is the existing boundary where the user explicitly says clarification is complete, so brainstorm after Gate A avoids asking the user to evaluate ideation before they have formally approved leaving discussion mode.
+</steelman>
+<claim>
+The brainstorm step should be inserted as Step 1d.5, after Round 1 discussion and before Step 1e Gate A, because brainstorm findings must be part of the user's first readiness decision rather than a post-approval surprise.
+</claim>
+<evidence>
+The current order is Step 1c, Step 1d, Step 1e, then Step 2a in `skills/design/scripts/step-name-registry.tsv:3`, `skills/design/scripts/step-name-registry.tsv:4`, `skills/design/scripts/step-name-registry.tsv:5`, and `skills/design/scripts/step-name-registry.tsv:6`. Gate A first-time entry is explicitly "after Step 1d Round 1 settles" and offers "Ready for review" to proceed to Step 2a or "Discuss more" to remain in Gate A, per `skills/design/references/approval-gates.md:17`, `skills/design/references/approval-gates.md:23`, and `skills/design/references/approval-gates.md:24`.
+</evidence>
+<strongest_concession>
+The strongest opposing point is that "after all clarifying questions" can reasonably mean after the user has passed Gate A, because Gate A is the established readiness checkpoint before sketches.
+</strongest_concession>
+<counter_to_opposition>
+Gate A is not itself a clarifying-question step; it is the readiness chooser whose first-time prompt exists before sketches and still supports "Discuss more," so placing brainstorm before it preserves the existing pre-plan re-entry path when ideation exposes missing scope.
+</counter_to_opposition>
+<risk_if_wrong>
+If Step 1d.5 loses, brainstorm-raised scope questions arrive only after the user has already approved leaving first-time Gate A, and later Gate A re-entry is post-plan, writes `discussion-round2.md`, and does not re-run sketches, as shown in `skills/design/references/approval-gates.md:49` and `skills/design/references/approval-gates.md:56`.
+</risk_if_wrong>
+</defense_content>
+
+Defense B (defends ALTERNATIVE — Step 1f):
+<defense_content>
+<steelman>
+Step 1d.5 gives the user the cleanest clarification re-entry: brainstorm happens while Gate A is still ahead, so any new scope uncertainty can use Gate A's existing Discuss more loop before sketches begin.
+</steelman>
+<claim>
+Step 1f should ship because it preserves Gate A as the existing "done with clarification" boundary and adds brainstorm as a narrow post-approval, pre-sketch ideation step with less semantic churn.
+</claim>
+<evidence>
+Current control flow already treats Gate A first-time Ready as the transition from clarification to sketches: `skills/design/SKILL.md:296` defines Step 1e, `skills/design/SKILL.md:307` says first-time Ready proceeds to Step 2a, and `skills/design/references/approval-gates.md:23` / `:55-56` repeat that exit contract. The registry is equally linear, with `1e gate A` immediately followed by `2a sketches` at `skills/design/scripts/step-name-registry.tsv:5-6`, so Step 1f only inserts one additive step on that edge instead of changing what Gate A means.
+</evidence>
+<strongest_concession>
+The opposing case is strongest when brainstorm output reveals new scope questions: Step 1d.5 lets Gate A's existing Discuss more option absorb those questions before Round 1 closes.
+</strongest_concession>
+<counter_to_opposition>
+That benefit is not proportional to the added coupling because the chosen feature already includes an open user discussion loop inside brainstorm and writes additive context for downstream steps; requiring Gate A to evaluate brainstorm content turns an approval gate into a brainstorm-aware state machine without a current requirement that Gate A ratify ideation output.
+</counter_to_opposition>
+<risk_if_wrong>
+If Step 1f is wrong, brainstorm-raised scope gaps may be handled later than ideal, forcing either resolution inside the brainstorm loop or post-plan Gate B/C re-entry instead of the cleaner pre-plan Gate A Discuss more path.
+</risk_if_wrong>
+</defense_content>
