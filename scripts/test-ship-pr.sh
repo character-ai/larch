@@ -3001,6 +3001,7 @@ cat > "$root/scripts/env" <<STUB
 #!/usr/bin/env bash
 set -euo pipefail
 printf '%s\n' "env \$*" >> "$call_dir/make-calls.txt"
+printf 'mock lint failure\n'
 exit 1
 STUB
 chmod +x "$root/scripts/ci-wait.sh" "$root/scripts/gh" "$root/scripts/env"
@@ -3056,9 +3057,12 @@ count_file="$call_dir/lint-count"
 count=\$(cat "\$count_file" 2>/dev/null || echo 0)
 printf '%s\n' "\$((count + 1))" > "\$count_file"
 printf '%s\n' "env \$*" >> "$call_dir/make-calls.txt"
-if [ "\$count" -eq 0 ]; then
+# Alternate per outer attempt: Phase A iter 1 fails (triggers lint-fix dispatch),
+# Phase A iter 2 succeeds (the "fix" applied), Phase B fails (verification regression).
+if [ "\$((count % 3))" -eq 1 ]; then
   exit 0
 fi
+printf 'mock lint failure\n'
 exit 1
 STUB
 cat > "$root/scripts/launch-cursor-ci.sh" <<STUB
@@ -3074,6 +3078,7 @@ awk '/^TRANSIENT_RETRIES=/ {print "TRANSIENT_RETRIES=1"; next}
      {print}' "$tmp/ship-pr-state.sh" > "$tmp/ship-pr-state.sh.new" && mv "$tmp/ship-pr-state.sh.new" "$tmp/ship-pr-state.sh"
 set +e
 (cd "$root" && PATH="$root/scripts:$PATH" IMPLEMENT_TMPDIR="$tmp" CLAUDE_PLUGIN_ROOT="$root" \
+  SHIP_PR_LAUNCH_SENTINEL_DIR="$call_dir" \
   STUB_LINT_FIX_STATUS=applied \
   "$root/scripts/ship-pr.sh" --state-file "$tmp/ship-pr-state.sh" --implement-tmpdir "$tmp" \
   --merge true --draft false --forked false --repo owner/repo >"$tmp/out" 2>&1)
