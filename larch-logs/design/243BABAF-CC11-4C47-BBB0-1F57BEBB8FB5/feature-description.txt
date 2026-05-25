@@ -1,0 +1,60 @@
+[DESIGNING] Phase 2/4: phase_tracking — absorb tracking issue adoption (umbrella #2732)
+
+## Context
+
+Phase 2 of 4. Blocked by Phase 1 (which establishes `scripts/implement-bootstrap.sh` skeleton + `phase_infra`). See umbrella #2732 and Phase 1 (filed alongside this one).
+
+This phase extends `implement-bootstrap.sh` with the `phase_tracking` function, replacing Step 0 calls #6–#9 in `skills/implement/SKILL.md`.
+
+## phase_tracking contents
+
+Absorbs:
+
+6. Orchestrator-improvised sentinel check + `tracking-issue-read.sh` (Branch 1 resume)
+7. `get-issue-state.sh` (Branch 2 — verify issue is OPEN, not a PR)
+8a. `larch-log.sh init` (initialize run manifest)
+8b. `post-tracking-issue.sh` (write metadata summary comment)
+9. `tracking-issue-write.sh rename --state implementing` (best-effort)
+
+Honors `forked_target=true` (skip Branches 1+2, call `get-issue-context.sh --repo $UPSTREAM_REPO` for upstream design context, leave `ISSUE_NUMBER` empty). Honors `repo_unavailable=true` (skip tracking entirely).
+
+Bail signals:
+
+- `STATE=CLOSED` → `IMPLEMENT_BAIL_REASON=adopted-issue-closed`, exit 0.
+- `IS_PR=true` → `IMPLEMENT_BAIL_REASON=adopted-issue-is-pr`, exit 0.
+- `larch-log.sh init` non-zero → `STALL_TRACKING=true` + `IMPLEMENT_BAIL_REASON=tracking-init-failed`.
+- metadata-summary upsert failure → `DEFERRED=true`, continue (no sentinel written).
+- rename failure → best-effort, log to Tool Failures, continue.
+
+Branch 1 mismatch handling: when sentinel `ISSUE_NUMBER` differs from argv `TARGET_ISSUE_NUMBER`, atomically `rm` the sentinel, preserve existing `larch-logs/<RUN_ID>/`, emit operator-visible warning, fall through to Branch 2.
+
+Emits breadcrumb: `→ step0: tracking adopted #$ISSUE_NUMBER (run=$RUN_ID branch=$BRANCH_SELECTED)`.
+
+## Files to modify
+
+#### UPDATED: `scripts/implement-bootstrap.sh`
+
+Replace `phase_tracking` stub with the full implementation. Emit the new KV keys (`ISSUE_NUMBER`, `RUN_ID`, `BRANCH_SELECTED`, `DEFERRED`).
+
+#### UPDATED: `scripts/implement-bootstrap.md`
+
+Update phase mapping + bail-reason enum (remove `not-yet-implemented-phase-2`, add the real tracking bails listed above).
+
+#### UPDATED: `skills/implement/scripts/test-implement-bootstrap.sh`
+
+Add cases: GP2 (sentinel resume), GP3 (forked_target), B1 (sentinel mismatch), B2 (CLOSED), B3 (IS_PR), B5 (larch-log init fail).
+
+#### UPDATED: `skills/implement/SKILL.md`
+
+Replace Step 0 calls #6–#9 fenced blocks with continued use of `implement-bootstrap.sh`'s extended output. The single Bash invocation block from Phase 1 now produces tracking-state KV keys too.
+
+## Acceptance
+
+- New harness cases pass.
+- `/implement <issue>` transcript shows the same single Bash call covering calls #1–#9 (down from 9 separate calls in pre-Phase-1 state).
+- `IMPLEMENT_BAIL_REASON` enum tested for all listed bail paths.
+- Branch 1 resume + Branch 1 mismatch + Branch 2 fresh all covered in harness.
+
+## Out of scope
+
+Phase 3 (plan materialization), Phase 4 (waterfall), structural pin, aggressive SKILL.md collapse.

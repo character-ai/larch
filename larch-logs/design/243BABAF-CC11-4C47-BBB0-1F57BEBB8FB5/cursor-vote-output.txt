@@ -1,0 +1,30 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: EXONERATE -- redundant if get-issue-state output is already structured and failures bail earlier
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: YES
+FINDING_18: YES
+FINDING_19: YES
+FINDING_20: YES
+FINDING_21: YES
+FINDING_22: YES
+FINDING_23: EXONERATE -- tee/extra logging is optional noise control unless resume failures are observed
+FINDING_24: EXONERATE -- broaden stub only when tests assert UNCHANGED or richer manifest behavior
+FINDING_25: EXONERATE -- phase_tracking currently ignores that stdout so contract fidelity is low leverage
+FINDING_26: YES
+OOS_1: YES
+OOS_2: YES
+OOS_3: YES
+OOS_4: EXONERATE -- same RUN_ID header/contract gap as the prior OOS block; one issue suffices

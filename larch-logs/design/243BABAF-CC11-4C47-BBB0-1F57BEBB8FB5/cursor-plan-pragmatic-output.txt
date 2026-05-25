@@ -1,0 +1,27 @@
+Reading the plan and inspecting referenced code paths.
+
+Validating the plan against the codebase: reading referenced files and integration points.
+
+Checking `larch_log_emit_success` for init stdout redirection and Branch 1 `larch-log` invocation.
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan.txt (emit_final_tail pseudo ~L195-197) vs skills/implement/SKILL.md:646-648	Proposed ISSUE_NUMBER tail uses ISSUE_NUMBER_RESOLVED with fallback to ISSUE_NUMBER_OPT but GP3 and fork semantics require KV ISSUE_NUMBER empty when forked_target skips adopt	Fork PR flows that pass --issue-number for upstream design context would still surface ISSUE_NUMBER=42 in bootstrap stdout; downstream parsers or Step 9a could treat it as a local tracking issue (SKILL explicitly requires ISSUE_NUMBER unset for fork)	Define tail emission rule: e.g. emit empty ISSUE_NUMBER when BRANCH_SELECTED=forked-target-skip (or when FORKED_TARGET=true), and align GP3 + implement-bootstrap.md + SKILL fork note with that rule
+1	in_scope	important	correctness	plan.txt Branch1 pseudo ~L72-99 vs scripts/tracking-issue-read.sh:28-42	Branch 1 else-path resumes whenever sentinel mismatch guard is false; it does not treat FAILED=true, empty ISSUE_NUMBER, or empty/unusable ADOPTED as hard fall-through	tracking-issue-read --sentinel contract says empty ADOPTED means sentinel unusable and consumers must take fresh-creation path; read failures emit FAILED=true — current pseudocode would run larch-log init / rename with empty or stale fields instead of falling through to Branch 2 as Edge cases L310 claims	Mirror SKILL Branch1 logic: parse FAILED; require non-empty ISSUE_NUMBER and valid ADOPTED; otherwise rm sentinel (optional) and fall through to Branch 2 without early return
+1	in_scope	important	risk-integration	skills/implement/SKILL.md:644-658 vs plan.txt ~L59-66 and ~L190	Plan makes get-issue-context best-effort with || true while SKILL currently aborts fork upstream context fetch failures to Step 18	Silent loss of upstream TITLE/BODY context on transient gh errors; operator loses the explicit failure signal the live SKILL promises	Make this an explicit voted behavior change: update SKILL fork section and implement-bootstrap.md risk notes accordingly, or preserve abort semantics inside phase_tracking when context fetch fails
+1	in_scope	important	architecture	skills/implement/SKILL.md:296-339	Adding STEP_FAILED=get-issue-state exit 2 inside phase_tracking is not reflected in the infra bootstrap exit-2 operator table or the _ib_rc==2 branching (only session-entry-gate and session-setup are keyed today)	Operators get generic exit 2 without the documented print-raw-stdout-first guidance for the new failure class; easy to mis-triage vs preflight	Extend SKILL infra block (and implement-bootstrap.md exit table) with a third keyed STEP_FAILED=get-issue-state path plus normalized message; ensure collapsed Step0 tracking section references it
+1	in_scope	nit	code-quality	plan.txt ~L239-265 vs ~L322-333	Plan text alternates between seven new harness cases and eight named scenarios; references setup_sandbox() while the harness defines build_sandbox()	Implementers may ship an incomplete matrix or grep the wrong helper name	Reconcile counts (GP-adopt GP2 GP3 B1 B2 B3 B5 B6 = 8) and use the real harness function name throughout
+1	in_scope	nit	correctness	scripts/implement-bootstrap.sh:57-59	usage()/die_usage strings are not listed for --forked-target and --upstream-repo	Omitted flags still exit via die_usage but operators lack discoverability	Add argv rows to usage() alongside implement-bootstrap.md table per repo convention
+
+[OUT_OF_SCOPE] Potential divergence between SKILL.md RUN_ID uuid/od fallbacks (~L551-556) and plan Branch2 RUN_ID derivation (session-id + LARCH_TOKEN_SESSION_ID only) — files skills/implement/SKILL.md:549-557 vs plan.txt Branch2 pseudo ~L137-145; accept explicit alignment or document as orchestrator-owned once bootstrap absorbs init.
+
+1. **correctness** — [plan emit_final_tail vs](plan internal) [skills/implement/SKILL.md:646-648](skills/implement/SKILL.md): fork mode must not emit adopted `ISSUE_NUMBER` via `ISSUE_NUMBER_OPT` fallback; revise tail rule and tests.
+
+2. **correctness** — [plan Branch 1 pseudo ~L72-99](plan internal) vs [scripts/tracking-issue-read.sh:28-42](scripts/tracking-issue-read.sh): handle `FAILED=true`, empty `ISSUE_NUMBER`, and unusable `ADOPTED` with fall-through to Branch 2, not the resume `else`.
+
+3. **risk-integration** — [plan L59-66 / L190](plan internal) vs [skills/implement/SKILL.md:644-658](skills/implement/SKILL.md): silent `get-issue-context` vs current abort-on-failure fork semantics; document as intentional or keep stricter behavior.
+
+4. **architecture** — [skills/implement/SKILL.md:296-339](skills/implement/SKILL.md): add `STEP_FAILED=get-issue-state` to exit-2 operator handling when bootstrap gains that path.
+
+5. **code-quality** — [plan.txt](plan internal): fix harness case count (7 vs 8) and `setup_sandbox` vs `build_sandbox` naming.
+
+6. **correctness (nit)** — [scripts/implement-bootstrap.sh:57-59](scripts/implement-bootstrap.sh): extend `usage()` for new argv flags in the implementation checklist.

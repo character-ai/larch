@@ -1,0 +1,27 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: YES
+FINDING_5: YES
+FINDING_6: YES
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: EXONERATE -- get-issue-state already documents OPEN/CLOSED on success; extra guarding is defensive rather than plan-critical.
+FINDING_12: YES
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: YES
+FINDING_17: YES
+FINDING_18: YES
+FINDING_19: YES
+FINDING_20: YES
+FINDING_21: YES
+FINDING_22: YES
+FINDING_23: EXONERATE -- useful for debugging, but fail-closed stdout parsing is the material fix and stderr capture is not worth requiring here.
+FINDING_24: EXONERATE -- fuller stub fidelity is legitimate, but planned code does not consume the larch-log envelope.
+FINDING_25: EXONERATE -- production emits those keys, but the planned fork context call redirects and ignores stdout.
+FINDING_26: YES
+OOS_1: NO -- no problem is described.
