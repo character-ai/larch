@@ -1,0 +1,22 @@
+Issue #2757: When CI fails, ship-pr should iteratively run and fix all CI steps that failed locally before pushing to CI again.
+
+CONTEXT — existing surface:
+- scripts/ship-pr.sh `run_evaluate_failure` (line ~1493) is the post-CI-fail recovery path. After `ci-wait.sh` returns ACTION=evaluate_failure, it fetches the failed run's log via scripts/gh-run-logs.sh (which is `gh run view --log-failed | tail -100`), then `run_ci_fix_vendor` dispatches a 3-tier waterfall (Cursor/Codex/Claude) launcher (scripts/launch-{cursor,codex,claude}-ci.sh --role fix) to fix the failure. After the vendor reports success, `run_checks_with_lint_fix_loop` runs scripts/relevant-checks.sh locally, with inner scripts/lint-fix-loop.sh dispatch on failures. If relevant-checks passes, ship-pr commits ("Fix CI failure") and pushes.
+- Outer `_max_fix=3` cap with jittered backoff in run_evaluate_failure.
+- Remote CI (.github/workflows/ci.yaml) runs ~10 jobs in parallel: lint (pre-commit), lint-mermaid, shellcheck, test-harnesses, agent-lint, agnix, gitleaks, trufflehog, agent-sync, smoke-dialectic. relevant-checks.sh today runs only `pre-commit` + `agent-lint` — so it misses parity with the other 8.
+
+ROUND-1 DECISIONS (must respect):
+1. Identify only the jobs that failed remotely (parse `gh run view <RUN_ID> --json jobs`); do NOT run a full local-CI mirror every time, do NOT pre-flight before the first push.
+2. Map each failed remote job name → one local command (JOB-level granularity, not step-within-job). The mapping table for known jobs covers lint, lint-mermaid, shellcheck, test-harnesses, agent-lint, agnix, smoke-dialectic, agent-sync. Jobs with no clean local equivalent (gitleaks history scan, trufflehog history scan, runner-env-specific) are tagged as `no-local-equivalent`.
+3. Per failed job with a local equivalent: run the mapped local command. On non-zero exit, dispatch a fix-loop (reuse lint-fix-loop.sh or run_ci_fix_vendor's per-tier waterfall) on the captured local-run log. Iterate (re-run → fix → re-run) until the local re-run passes or a per-job inner cap is reached (probably 3 to mirror existing _max_fix). Push only when every formerly-failed job with a local equivalent passes locally.
+4. Jobs with no-local-equivalent OR jobs that exhaust the per-job inner cap without passing → collect into an "unfixable" set. After processing every locally-fixable job, if the unfixable set is non-empty, ship-pr exits 3 with BAIL_REASON enumerating the unfixable job names (so main agent picks them up); otherwise re-push.
+5. Scope: ONLY the run_evaluate_failure / run_ci_fix_vendor CI-fail recovery path in scripts/ship-pr.sh. No new top-level orchestrator script, no new sub-skill — extend existing scripts plus a small new helper.
+
+HARD CONSTRAINTS:
+- lint-fix-loop.sh site enum (`step3|step5|step6|ship-pr-ci-initial|ship-pr-ci-merge`), `set -uo pipefail` (no -e in ship-pr.sh), lib-quiet FD-3 emit_kv contract, lib-net transient retry classification, record_failure/exit_stall/record_ci_counters envelopes, lib-finalize-state-keys.sh must remain intact for the non-CI-fail callers.
+- Every new .sh under scripts/ needs a sibling .md (rule script-md-siblings.md) and a regression harness (scripts/test-*.sh).
+- Bash 3.2 portability (BASH_AUTHORING.md §3), shell strict mode (.claude/rules/shell-strict-mode.md), foreground-marker rules for any SKILL.md fenced bash that calls ship-pr.sh (BASH_AUTHORING.md §4).
+- gh CLI assumed available; gh --json jobs schema must be validated against gh --help (rule verify-external-tool-invocations.md).
+- External tool launcher parity rule (.claude/rules/external-tool-launcher-parity.md) applies if you touch launch-*-ci.sh families.
+
+DELIVERABLE: a high-level implementation approach: which files to modify/create, the shape of the per-job local-CI loop, how the failed-jobs list is extracted from gh, how the mapping table is structured, where the bail-on-unfixable signal is produced, and main risks/tradeoffs.

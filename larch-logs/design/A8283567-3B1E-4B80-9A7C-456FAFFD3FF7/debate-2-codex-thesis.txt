@@ -1,0 +1,19 @@
+<steelman>
+Keeping the existing lint-fix loop intact avoids refactoring code that already has focused tests and phase-specific behavior. A separate per-job loop can be easier to reason about initially because CI job repair may need semantics that differ from relevant-checks repair.
+</steelman>
+<claim>
+The plan should factor a private helper in `scripts/ship-pr.sh` so the new per-job CI loop and `run_checks_with_lint_fix_loop` share the capture, redaction, fixer dispatch, rerun, and attempt-count primitive.
+</claim>
+<evidence>
+`scripts/ship-pr.sh:813-870` already performs the repeated structure: capture checks, extract/resolve the redacted log, call `run_lint_fix_loop_capture`, rerun checks, and cap attempts at three. `scripts/ship-pr.sh:1357-1363` separately redacts CI failure logs before `run_ci_fix_vendor` passes them into the waterfall at `scripts/ship-pr.sh:1391-1397`, showing the same log-to-fixer contract the new per-job loop would otherwise duplicate.
+</evidence>
+<strongest_concession>
+The strongest opposing point is that `run_checks_with_lint_fix_loop` has important details beyond the generic loop, including `record_failure` category handling and `LAST_LINT_FIX_DELTA_PATHS_FILE` staging behavior at `scripts/ship-pr.sh:844-849`.
+</strongest_concession>
+<counter_to_opposition>
+That argues for a narrow helper with explicit callbacks or status outputs, not duplication: preserve phase-specific recording and delta-path handling at the call site while centralizing only the invariant loop mechanics that are already shared with per-job CI repair.
+</counter_to_opposition>
+<risk_if_wrong>
+If this position loses, two near-identical retry engines will diverge: one may update redaction, retry caps, or terminal status handling while the other silently keeps old behavior, making remote-CI repair unreliable and harder to test over the next month.
+</risk_if_wrong>
+RECOMMEND: THESIS

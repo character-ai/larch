@@ -1,0 +1,2 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	risk-integration	plan.txt:101-102	Probe spells make -n with stderr-only redirection	Dry-run recipe lines still hit stdout and can interleave with non–FD-3 logging or any caller expecting a quiet FD-1 contract when enumerating many shards	Use >/dev/null 2>&1 (or an equivalent subshell) for the existence probe so neither stream leaks

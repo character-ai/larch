@@ -1,0 +1,28 @@
+Reading the plan and inspecting referenced code paths (read-only).
+
+Validating plan claims against the codebase: reading referenced files and adjacent integration points.
+
+Findings: the plan’s drift pin and `lint`→`make lint` mapping don’t match the repo; the empty-log edge case misreads `lint-fix-loop` vs `run_checks_with_lint_fix_loop`; skipping `run_ci_fix_vendor` drops the waterfall; test coverage omits `test-lint-fix-loop.sh`.
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/ship-pr.sh:833-854	Edge case maps lint-fix-loop no-changes to per-job success	Failed mapped command with empty/redacted log yields LINT_FIX_STATUS=no-changes exit 0; treating that as ok skips record_failure path and can exit before cap or mis-report fixed	After dispatch treat no-changes like run_checks_with_lint_fix_loop: if rerun command still non-zero record failure or exhausted status; do not fold into ok
+1	in_scope	important	correctness	.github/workflows/ci.yaml:71-73 Makefile:15-18 plan:L27-28	Remote lint job runs make lint-only with SKIP hooks not make lint	Local gate runs full lint (harnesses lint-bash32 lint-foreground-markers lint-only) so failures noise and fixes diverge from the job that failed CI	Map CI job lint to SKIP=agnix,lint-mermaid-fences,shellcheck make lint-only (or equivalent) and document parity in ci-failed-jobs.md
+1	in_scope	important	correctness	.github/workflows/ci.yaml:3-44 plan:L56	Drift pin regex ^  [a-z][a-z0-9_-]+:$ matches on: keys not jobs	Grep flags workflow_dispatch pull_request push as pseudo-jobs; harness fails or forces bogus mappings	Restrict extraction to the jobs: block (awk range) or match job keys only (e.g. four-space id lines under jobs)
+1	in_scope	important	risk-integration	scripts/ship-pr.sh:1375-1432 plan:L81-84	Per-job success skips entire run_ci_fix_vendor	Waterfall fixers append-token-record and tier-specific recovery never run when only per-job path succeeds; some CI-only failures never get failure-log-driven fix	Document explicit trade-off or run a narrowed post-pass (e.g. token append) and when to still invoke vendor path
+1	in_scope	nit	code-quality	scripts/test-lint-fix-loop.sh plan:L120-121	Integration tests for new site not listed in Files to modify	--site ship-pr-ci-per-job and --target-cmd may ship without harness updates promised in Testing strategy	Add scripts/test-lint-fix-loop.sh (and .md if any) to plan file list and cases for prompt body and validation
+1	in_scope	nit	architecture	plan:L101-103 scripts/ship-pr.sh:795-871	HEAD guard described as existing ship-pr pattern between iterations	run_checks_with_lint_fix_loop has no HEAD compare across attempts; only lint-fix-loop.sh post-dispatch does	Attribute to lint-fix-loop.sh:272-275 or specify new explicit rev-parse checks in run_captured_cmd_then_fix_loop
+1	out_of_scope	latent	risk-integration	scripts/ship-pr.sh:1429-1432	Skipping run_ci_fix_vendor omits append-token-record after tier win	Token/timing artifacts may diverge from historical ship-pr runs for billing or audit	Add follow-up issue if parity matters
+
+1. **[correctness]** [scripts/ship-pr.sh:833-854](scripts/ship-pr.sh) — The plan’s edge case (plan ~L103–104) treats `lint-fix-loop.sh` exiting 0 with `no-changes` as overall success; the existing checks loop instead treats `no-changes` after a still-failing `run-relevant-checks-captured.sh` as failure (`record_failure` / return 1). The new helper must preserve that contract or local “pass” can be wrong.
+
+2. **[correctness]** [.github/workflows/ci.yaml:71-73](.github/workflows/ci.yaml) / [Makefile:15-18](Makefile) — CI `lint` runs `make lint-only` with `SKIP=agnix,lint-mermaid-fences,shellcheck`, not `make lint`. Mapping to `make lint` widens scope (harnesses, bash32, foreground markers) and mis-targets the failing job.
+
+3. **[correctness]** [.github/workflows/ci.yaml:3-17](.github/workflows/ci.yaml) vs [jobs](.github/workflows/ci.yaml) — The proposed drift pin regex (`plan` ~L56) matches `on:` entries (`workflow_dispatch`, `pull_request`, `push`) as well as job IDs; the harness needs a jobs-scoped extractor, not a whole-file `^  …:$` grep.
+
+4. **[risk-integration]** [scripts/ship-pr.sh:1375-1432](scripts/ship-pr.sh) — When every fixable job passes, skipping `run_ci_fix_vendor` (plan ~L81–84) also skips the 3-tier launchers and `append-token-record.sh`; recovery and observability diverge from today’s path. Worth an explicit product decision or follow-up in the plan.
+
+5. **[code-quality]** [scripts/test-lint-fix-loop.sh](scripts/test-lint-fix-loop.sh) — Testing strategy cites lint-fix-loop integration tests but the “Files to modify/create” list does not include this harness; `make_repo` fixtures will need `--target-cmd` / new site coverage or the promise is incomplete.
+
+6. **[architecture]** [scripts/ship-pr.sh:795-871](scripts/ship-pr.sh) / [scripts/lint-fix-loop.sh:272-275](scripts/lint-fix-loop.sh) — The plan attributes HEAD checks to an existing ship-pr loop pattern; `run_checks_with_lint_fix_loop` does not re-validate HEAD each attempt. Cite `lint-fix-loop.sh` post-dispatch behavior or specify new checks in the helper.
+
+**[OUT_OF_SCOPE]** [scripts/ship-pr.sh:1429-1432](scripts/ship-pr.sh) — Per-job-only success may omit `append-token-record.sh` side effects; file for a separate issue if token/timing parity with the vendor path is required.

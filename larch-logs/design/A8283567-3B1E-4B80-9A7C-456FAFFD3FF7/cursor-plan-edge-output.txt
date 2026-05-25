@@ -1,0 +1,36 @@
+Reading the plan and inspecting referenced code paths for edge-case and failure-mode review.
+
+Inspecting referenced scripts and integration points to validate the proposed design.
+
+Verifying the success-path state update when `run_ci_fix_vendor` is skipped:
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+
+1. **correctness** — [scripts/ship-pr.sh](scripts/ship-pr.sh):1537-1539 — Skipping `run_ci_fix_vendor` on per-job success omits the only `state_set_many TRANSIENT_RETRIES 0 FIX_ATTEMPTS …` success path today — Successful push/fix never bumps `FIX_ATTEMPTS` or clears `TRANSIENT_RETRIES`, breaking persisted counters and any downstream logic that assumes post-fix state matches the vendor path — After `_stage_and_push_ci_fixes` (or equivalent) succeeds on the per-job-only branch, invoke the same `state_set_many` as the current `run_ci_fix_vendor` success arm before `return 0`.
+
+2. **correctness** — [Makefile](Makefile):12-18, [.github/workflows/ci.yaml](.github/workflows/ci.yaml):72-73 — Planned mapping `lint` → `make lint` diverges from CI, which runs `make lint-only` (Makefile documents `lint` as the superset that includes `test-harnesses`) — Local “lint job” repair can run full `make lint` (including harnesses) while CI’s `lint` job did not, or pass/fail on different surfaces than the failed remote job — Map failed GitHub job `lint` to `make lint-only` (and document parity with the workflow’s `run:` line and `SKIP` env), not `make lint`.
+
+3. **correctness** — [scripts/ship-pr.sh](scripts/ship-pr.sh):851-854, [scripts/lint-fix-loop.sh](scripts/lint-fix-loop.sh):209-213 — Plan “Edge cases” claims empty per-job log yields `_RCC_STATUS=ok` via `LINT_FIX_STATUS=no-changes` — For a failing command, `no-changes` means no fixer ran; `run_checks_with_lint_fix_loop` treats `no-changes` after a still-failing re-check as `record_failure` and `return 1`, not success — Align `run_captured_cmd_then_fix_loop` with existing semantics: treat `no-changes` after a failed rerun as failure/exhaustion (or synthesize minimal log), and remove the incorrect edge-case note from the plan.
+
+4. **code-quality** — Plan `scripts/test-ci-failed-jobs.sh` drift pin — Drift grep `^  [a-z][a-z0-9_-]+:$` on whole `ci.yaml` matches `on:` entries (e.g. `pull_request`, `push`) not just `jobs:` — False positives force bogus “job” names into the mapping table or make the pin fail for the wrong reason — Restrict extraction to the `jobs:` block (awk range, yq, or similar) before applying the job-name pattern.
+
+5. **risk-integration** — [scripts/ship-pr.sh](scripts/ship-pr.sh):1478-1485 — `_stage_and_push_ci_fixes` factoring called out as lines ~1441-1490 may omit `refresh-run-logs.sh` (“Trigger B”) if the split is too tight — Per-job-only pushes could skip token/timing refresh that always precedes `git-push.sh` today — Define `_stage_and_push_ci_fixes` (or a companion) to include the same `refresh-run-logs.sh` then `git-push.sh` sequence as `run_ci_fix_vendor`’s tail.
+
+6. **architecture** — [scripts/ship-pr.sh](scripts/ship-pr.sh):1429-1432 — Per-job-only success skips the CI-tier launcher and thus skips `append-token-record.sh --input …token-record` — Token/cost ledger continuity differs from the vendor waterfall path; operators lose comparable telemetry for that fix episode — Document the gap or add an explicit no-op / alternate token-record path consistent with `scripts/larch-log.md` / run-log contracts.
+
+7. **correctness** — [scripts/gh-run-logs.sh](scripts/gh-run-logs.sh):50-51 vs planned `scripts/ci-failed-jobs.sh` — `ci-failed-jobs.sh` must classify “run still in progress” as exit 3 mirroring `gh-run-logs.sh` — `gh run view --json` may surface different stderr text than `--log-failed`, risking wrong rc (1 vs 3) and wrong branch (degrade vs wait) — Share a single classification helper or add a contract test that pins the substring(s) against recorded stubs for both subcommands.
+
+8. **security** — Planned `scripts/ship-pr.sh` (`run_per_job_local_fix_loop`) — `eval "$LOCAL_CMD"` on values ultimately keyed off API-returned job names — A mapping bug or unexpected `gh` payload could widen execution beyond the intended make targets — Keep `LOCAL_CMD` to a fixed allowlist of literal command strings (no `eval`; `case` dispatch to hard-coded `make …` lines) or validate against an anchored regex before execution.
+
+[OUT_OF_SCOPE] Optional structural pin: add `ship-pr-ci-per-job` to `scripts/test-implement-structure.sh` greps alongside `ship-pr-ci-initial` / `merge` so the new site stays discoverable — [scripts/test-implement-structure.sh](scripts/test-implement-structure.sh):165-172
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/ship-pr.sh:1537-1539	Per-job-only success skips run_ci_fix_vendor success state	FIX_ATTEMPTS not incremented TRANSIENT_RETRIES not cleared on successful per-job push	Mirror state_set_many TRANSIENT_RETRIES FIX_ATTEMPTS on new success branch after push
+1	in_scope	important	correctness	Makefile:12-18 .github/workflows/ci.yaml:72-73	Planned lint job maps to make lint	CI lint job runs make lint-only local gate mis-mirrors remote job	Change mapping to make lint-only document SKIP parity in ci-failed-jobs.md
+1	in_scope	important	correctness	scripts/ship-pr.sh:851-854 scripts/lint-fix-loop.sh:209-213	Plan treats empty CHECKS_LOG as ok after failed command	no-changes skips fixer then conflicts with ship-pr failure handling	Map no-changes after failed rerun to failure update plan edge-case prose
+1	in_scope	important	code-quality	.github/workflows/ci.yaml (planned test-ci-failed-jobs.sh)	Drift pin regex on full ci.yaml	False positives from on: keys break drift test	Scope grep to jobs block only
+1	in_scope	important	risk-integration	scripts/ship-pr.sh:1478-1485	Factor boundary may drop refresh-run-logs before push	Missing Trigger B refresh on per-job-only path	Include refresh-run-logs in shared push helper with git-push
+1	in_scope	latent	architecture	scripts/ship-pr.sh:1429-1432	Skipping run_ci_fix_vendor skips append-token-record	Incomplete token ledger for per-job fix episode	Document or add alternate token-record hook per run-log contract
+1	in_scope	nit	correctness	scripts/gh-run-logs.sh:50-51 planned scripts/ci-failed-jobs.sh	In-progress rc=3 string parity across gh subcommands	Wrong exit classifies transient run as hard gh failure	Shared classifier or stubbed substring contract test
+1	in_scope	latent	security	scripts/ship-pr.sh (planned run_per_job_local_fix_loop)	eval LOCAL_CMD	Unexpected payload widens command execution	Replace eval with allowlisted dispatch or strict validation
+1	out_of_scope	nit	architecture	scripts/test-implement-structure.sh:165-172	Optional grep pin for ship-pr-ci-per-job	New site not structurally pinned	Consider extending test-implement-structure greps after landing

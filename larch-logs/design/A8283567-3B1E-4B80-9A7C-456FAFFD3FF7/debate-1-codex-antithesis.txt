@@ -1,0 +1,19 @@
+<steelman>
+The thesis is strongest where it says CI launchers already accept `--failure-log` and are prompt-shaped for GitHub Actions logs, so reusing `run_ci_fix_vendor` avoids teaching `lint-fix-loop.sh` about non-relevant-checks failures. It also preserves the existing Cursor/Codex/Claude waterfall without another dispatch abstraction.
+</steelman>
+<claim>
+The proportional implementation is to wrap and slightly widen `lint-fix-loop.sh`, because the requested per-job inner loop is a local-command retry loop, not the full ship-pr CI vendor recovery path.
+</claim>
+<evidence>
+`scripts/ship-pr.sh:827-840` already implements the exact cap-3 fix-then-rerun loop around `lint-fix-loop.sh`, while `scripts/lint-fix-loop.sh:195-202` shows the only site coupling is a small enum/label switch. By contrast, `scripts/ship-pr.sh:1375-1397` runs a three-launcher CI waterfall, `scripts/ship-pr.sh:1402-1422` adds rollback and first-fixer bail semantics, and `scripts/ship-pr.sh:1437-1439` unconditionally re-enters `run_checks_with_lint_fix_loop`, which is unnecessary and potentially wrong for a single mapped local job.
+</evidence>
+<strongest_concession>
+The opposing point is real: `scripts/lint-fix-loop.sh:45-48` currently tells the fixer to make `scripts/relevant-checks.sh` pass, while `scripts/launch-codex-ci.sh:82-119` validates and embeds a failure log directly for CI-fix prompts.
+</strongest_concession>
+<counter_to_opposition>
+That mismatch is a localized prompt/site-label problem, whereas reusing `run_ci_fix_vendor` imports phase-level CI recovery, rollback, launcher-tier policy, token recording, and whole-relevant-checks verification into a job-local loop whose contract is only “run this mapped command, fix, retry up to three times, mark unfixable.”
+</counter_to_opposition>
+<risk_if_wrong>
+If the wrapper path loses, ship-pr’s per-job repair can become coupled to broad CI-vendor semantics, making unfixable-set handling and per-job retry accounting harder to reason about and easier to break when the existing waterfall changes for unrelated CI recovery reasons.
+</risk_if_wrong>
+RECOMMEND: ANTI_THESIS

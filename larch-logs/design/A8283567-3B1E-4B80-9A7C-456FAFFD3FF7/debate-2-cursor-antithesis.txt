@@ -1,0 +1,25 @@
+Reading the debate task description and gathering any referenced context from the repo (read-only).
+
+Gathering concrete line citations from the referenced files for evidence.
+
+Delivering the debate output as specified (read-only review complete; no `CreatePlan` — your deliverable is the tagged dialectic text, not an implementation plan).
+
+<steelman>
+Factoring a single `run_captured_cmd_then_fix_waterfall` keeps one authoritative implementation of capture, redaction, vendor dispatch, re-run, and attempt counting, so any correction to that spine fixes both the existing CI merge-path and the new per-job path and avoids silent divergence when one copy is updated and the other is not.
+</steelman>
+<claim>
+Given current requirements, leaving `run_checks_with_lint_fix_loop` untouched and adding a separate per-job loop that repeats the capture-or-dispatch skeleton is the proportionate choice because it avoids refactoring behavior that is already regression-locked and materially more specialized than a generic waterfall wrapper.
+</claim>
+<evidence>
+In [`scripts/ship-pr.sh`](scripts/ship-pr.sh), `run_checks_with_lint_fix_loop` (lines 795–871) is not a bare retry loop: it snapshots vendor dirty paths before the loop (`capture_dirty_paths` into `vendor_dirty_paths_file` at 825–826), merges lint-fix delta paths into `ALL_LINT_FIX_DELTA_PATHS_FILE`, sets `LAST_LINT_FIX_DELTA_PATHS_FILE` on success (844–848), and treats `no-changes` as an immediate failure with `record_failure` (851–853), while `run_ci_fix_vendor` wires this function as the post-waterfall verification gate at 1437–1439; that coupling is exactly where a shared helper can accidentally change staging semantics that downstream `git add` logic in the same file depends on (1445–1456).
+</evidence>
+<strongest_concession>
+A duplicated loop really can drift if someone edits the per-job path’s redact-or-rerun sequencing without mirroring `run_checks_with_lint_fix_loop`, producing inconsistent caps or logging behavior between the two flows.
+</strongest_concession>
+<counter_to_opposition>
+Drift is manageable with tests and code review, whereas a forced abstraction across two contexts that already differ—lint-fix-loop’s `LINT_FIX_STATUS` / delta-path side effects versus a future per-job path driven by `run_ci_fix_vendor` and job-scoped failure logs—usually reintroduces complexity as conditional branches or extra parameters that are harder to reason about than two explicit, locally similar blocks.
+</counter_to_opposition>
+<risk_if_wrong>
+If the anti-thesis loses, the only real downside is maintaining two parallel implementations of the same mechanical steps, which increases the chance a bugfix lands in one loop but not the other until a test or production failure exposes the gap.
+</risk_if_wrong>
+RECOMMEND: ANTI_THESIS

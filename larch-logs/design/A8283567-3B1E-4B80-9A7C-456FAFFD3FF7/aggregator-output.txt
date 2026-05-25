@@ -1,0 +1,210 @@
+Here is the normalized aggregator output. No `### OOS_N:` blocks were present in the input. There is at least one in-scope merged finding, so **`LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED` must not appear.**
+
+---
+
+### FINDING_1: Silent failing per-job command plus empty log treated as success via no-changes
+- **Reviewer(s)**: Cursor-Arch, Codex-Arch, Codex-Requirements, Codex-dyn-eval-injection, Cursor-Edge, Codex-Edge, Cursor-Innovation, Codex-Innovation, Cursor-Pragmatic, Codex-Pragmatic, Codex-dyn-make-probe-reliability
+- **Severity**: important
+- **Concern**: When a mapped per-job command fails (non-zero exit) but produces an empty or redacted capture log, `lint-fix-loop` can return `LINT_FIX_STATUS=no-changes` with exit 0. The planned helper path risks treating that as `_RCC_STATUS=ok` or otherwise folding “no-changes” into success without a successful rerun, diverging from `run_checks_with_lint_fix_loop` behavior and allowing a push path that never proves the command actually passes locally.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: After dispatch treat no-changes like run_checks_with_lint_fix_loop: if rerun command still non-zero record failure or exhausted status; do not fold into ok
+  - From Codex-Arch: Only set _RCC_STATUS=ok after the rerun command exits 0. If the command failed and lint-fix-loop reports no-changes, classify that job as exhausted or unfixable and preserve the failed command rc/log path.
+  - From Codex-Requirements: Only set _RCC_STATUS=ok after the rerun command exits 0. If the command failed and lint-fix-loop reports no-changes, classify that job as exhausted or unfixable and preserve the failed command rc/log path.
+  - From Codex-dyn-eval-injection: Only set _RCC_STATUS=ok after the rerun command exits 0. If the command failed and lint-fix-loop reports no-changes, classify that job as exhausted or unfixable and preserve the failed command rc/log path.
+  - From Cursor-Edge: Map no-changes after failed rerun to failure update plan edge-case prose
+  - From Codex-Edge: Treat command exit status as authoritative: empty log after nonzero exit should become exhausted or unfixable after bounded retries, not ok; preserve the existing no-changes then rerun then fail behavior
+  - From Cursor-Innovation: Revise helper contract rerun after dispatch treat no-changes plus failing rerun as exhausted or failed align with run_checks_with_lint_fix_loop
+  - From Codex-Innovation: Make _RCC_STATUS=ok only when the rerun function exits 0; no-changes after a failed command should count as exhausted or unfixable
+  - From Cursor-Pragmatic: Teach run_captured_cmd_then_fix_loop to re-run the command after no-changes or treat empty log plus failing rc as exhausted or inject a one line synthetic failure log before dispatch
+  - From Codex-Pragmatic: In run_captured_cmd_then_fix_loop, only set ok after the captured command itself exits 0. If a failed command yields an empty log and lint-fix-loop returns no-changes, re-run once and then mark exhausted or unfixable when it still fails.
+  - From Codex-dyn-make-probe-reliability: Revise the helper contract so ok is set only after the rerun command exits 0; no-changes on a failed command should record or exhaust the job, and add a silent-failure test
+
+### FINDING_2: Local `lint` job mirror diverges from CI (`make lint` vs `SKIP=… make lint-only`)
+- **Reviewer(s)**: Cursor-Arch, Cursor-Edge, Codex-Edge, Cursor-Innovation, Cursor-Pragmatic, Codex-Pragmatic
+- **Severity**: important
+- **Concern**: The remote CI `lint` job is described as running `make lint-only` with specific `SKIP` hook omissions, while the plan maps failures to `make lint` (or a generic pre-commit path). Local reruns can therefore pass or fail on phases the failing GitHub job never ran, wasting cycles, misclassifying jobs as unfixable, or producing fixes that do not match the failing CI surface.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Map CI job lint to SKIP=agnix,lint-mermaid-fences,shellcheck make lint-only (or equivalent) and document parity in ci-failed-jobs.md
+  - From Cursor-Edge: Change mapping to make lint-only document SKIP parity in ci-failed-jobs.md
+  - From Codex-Edge: Map lint to the actual CI command, for example env SKIP=agnix,lint-mermaid-fences,shellcheck make lint-only, preferably via a dedicated Makefile ci-lint target
+  - From Cursor-Innovation: Use CI-equivalent command for the lint job e.g. env SKIP=agnix,lint-mermaid-fences,shellcheck make lint-only per Makefile comment at Makefile:12-18
+  - From Cursor-Pragmatic: Change the mapping table and tests to use make lint-only (and document the SKIP hook split vs dedicated jobs)
+  - From Codex-Pragmatic: Map each job to the exact local equivalent: lint should use SKIP=agnix,lint-mermaid-fences,shellcheck make lint-only; add or map a lint-mermaid command for scripts/lint-mermaid-fences.sh --changed-only plus scripts/test-pipe-sigpipe-safety.sh; add an agent-sync target or direct command sequence matching the workflow.
+
+### FINDING_3: Drift-pin extraction regex matches non-job YAML keys (e.g. under `on:`)
+- **Reviewer(s)**: Cursor-Arch, Cursor-Pragmatic, Cursor-Edge, Cursor-Innovation, Cursor-Requirements
+- **Severity**: important
+- **Concern**: A line-based pattern such as `^ [a-z][a-z0-9_-]+:$` applied to the whole workflow file can match `workflow_dispatch`, `pull_request`, `push`, and similar keys outside `jobs:`, producing phantom “job” names, brittle harness failures, bogus mapping requirements, or incorrect drift pins.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Restrict extraction to the jobs: block (awk range) or match job keys only (e.g. four-space id lines under jobs)
+  - From Cursor-Edge: Scope grep to jobs block only
+  - From Cursor-Innovation: Scope the scan to the jobs: block only e.g. awk sed between jobs and next top-level key or maintain explicit job list
+  - From Cursor-Innovation: Parse .github/workflows/ci.yaml structurally with Python/PyYAML or constrain awk/grep to direct children of the jobs: mapping only
+  - From Cursor-Requirements: Scope the pin to the jobs: block only (awk range sed n /^jobs:/,/^[^ ]/ or parse with yq) or maintain an explicit allowlist of job keys.
+  - From Cursor-Requirements: Limit extraction to the jobs: block only or use an explicit job-name list instead of a whole-file line regex.
+
+### FINDING_4: Per-job-only success path omits vendor/tail behaviors (refresh-run-logs, token record, counters, broader gates)
+- **Reviewer(s)**: Cursor-Arch, Cursor-Edge, Cursor-Innovation, Cursor-Pragmatic, Cursor-Requirements, Codex-Requirements
+- **Severity**: important
+- **Concern**: When only the per-job local loop succeeds, the flow may skip `run_ci_fix_vendor` and related waterfall behavior. Reviewers flag multiple distinct side effects at risk: missing `refresh-run-logs` before push, missing `append-token-record` / Trigger B bookkeeping, missing `FIX_ATTEMPTS` / `TRANSIENT_RETRIES` updates, and omission of `run_checks_with_lint_fix_loop` as a post-fix gate compared to today’s successful vendor path—creating behavioral drift in recovery, reporting, and retry semantics.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Document explicit trade-off or run a narrowed post-pass (e.g. token append) and when to still invoke vendor path
+  - From Cursor-Edge: Include refresh-run-logs in shared push helper with git-push
+  - From Cursor-Edge: Document or add alternate token-record hook per run-log contract
+  - From Cursor-Innovation: Per-job-only CI fix pushes may drop token normalization or drift from Trigger B docs unless explicitly re-homed into _stage_and_push_ci_fixes or a no-op append path
+  - From Cursor-Pragmatic: After per-job success either call run_checks_with_lint_fix_loop once before _stage_and_push_ci_fixes or document and accept the weaker gate explicitly in ship-pr.md
+  - From Cursor-Requirements: Specify whether to call append-token-record.sh refresh-run-logs and state_set_many from the per-job-only exit path or document intentional omission and adjust any dependents tests.
+  - From Cursor-Requirements: Spell out calling append-token-record.sh refresh-run-logs and state_set_many from the per-job-only path or justify omission and update tests or dependents.
+  - From Codex-Requirements: Add an agent-sync Makefile target or direct mapping that mirrors scripts/check-generators.sh, python3 scripts/check-topology-rule-paths.py, and the focus-area enum assertion; add ship-pr and ci-failed-jobs tests for this mapping
+
+### FINDING_5: `lint-mermaid` mapping points at a nonexistent `make lint-mermaid` target
+- **Reviewer(s)**: Codex-Arch, Codex-Requirements, Codex-dyn-eval-injection, Codex-Edge, Codex-Innovation, Codex-Pragmatic
+- **Severity**: important
+- **Concern**: The plan maps `lint-mermaid` failures to `make lint-mermaid`, but no such Makefile target exists (per reviewers). Local recovery then fails for “missing target” instead of exercising the real Mermaid fence / SIGPIPE checks implied by CI, sending fixers after the wrong failure mode.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: Add a Makefile lint-mermaid target that mirrors the CI steps, or map directly to the existing local commands: scripts/lint-mermaid-fences.sh --changed-only and bash scripts/test-pipe-sigpipe-safety.sh, with any required npm setup documented.
+  - From Codex-Requirements: Add a Makefile lint-mermaid target that mirrors the CI steps, or map directly to the existing local commands: scripts/lint-mermaid-fences.sh --changed-only and bash scripts/test-pipe-sigpipe-safety.sh, with any required npm setup documented.
+  - From Codex-dyn-eval-injection: Add a Makefile lint-mermaid target that mirrors the CI steps, or map directly to the existing local commands: scripts/lint-mermaid-fences.sh --changed-only and bash scripts/test-pipe-sigpipe-safety.sh, with any required npm setup documented.
+  - From Codex-Edge: Add a lint-mermaid target mirroring CI, including npm dependency setup as needed, scripts/lint-mermaid-fences.sh --changed-only, and bash scripts/test-pipe-sigpipe-safety.sh; otherwise classify it as no-local-equivalent
+  - From Codex-Innovation: Add a make lint-mermaid target that runs scripts/lint-mermaid-fences.sh --changed-only and bash scripts/test-pipe-sigpipe-safety.sh, then map to that target
+  - From Codex-Pragmatic: Map each job to the exact local equivalent: lint should use SKIP=agnix,lint-mermaid-fences,shellcheck make lint-only; add or map a lint-mermaid command for scripts/lint-mermaid-fences.sh --changed-only plus scripts/test-pipe-sigpipe-safety.sh; add an agent-sync target or direct command sequence matching the workflow.
+
+### FINDING_6: `agent-sync` treated as `no-local-equivalent` despite being locally scriptable
+- **Reviewer(s)**: Codex-Arch, Cursor-Innovation, Codex-Innovation, Codex-Requirements, Codex-Pragmatic
+- **Severity**: important
+- **Concern**: `agent-sync` is described as mirrorable in spirit, but the mapping falls back to “no local equivalent” when no Makefile target exists. Reviewers argue the workflow is composed of local repo commands (e.g. generator/topology checks), so failures may be incorrectly classified as `ci-local-unfixable` instead of driving a meaningful local rerun/fix loop.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: Add an agent-sync Makefile target or explicit ci-failed-jobs mapping that mirrors scripts/check-generators.sh, python3 scripts/check-topology-rule-paths.py, and the focus-area enum assertion; include dependency setup or document prerequisites.
+  - From Cursor-Innovation: Stronger option add make agent-sync that runs check-generators check-topology-rule-paths and the inline focus-area bash or invoke scripts/check-generators.sh etc. to mirror the job
+  - From Codex-Innovation: Add a make agent-sync target mirroring the CI steps and map agent-sync to it
+  - From Codex-Requirements: Add an agent-sync Makefile target or direct mapping that mirrors scripts/check-generators.sh, python3 scripts/check-topology-rule-paths.py, and the focus-area enum assertion; add ship-pr and ci-failed-jobs tests for this mapping
+  - From Codex-Pragmatic: Map each job to the exact local equivalent: lint should use SKIP=agnix,lint-mermaid-fences,shellcheck make lint-only; add or map a lint-mermaid command for scripts/lint-mermaid-fences.sh --changed-only plus scripts/test-pipe-sigpipe-safety.sh; add an agent-sync target or direct command sequence matching the workflow.
+
+### FINDING_7: `eval` on `LOCAL_CMD` / serialized shell strings crossing a TSV boundary (injection and quoting risk)
+- **Reviewer(s)**: Cursor-Arch, Cursor-Edge, Codex-Edge, Cursor-Innovation, Cursor-Pragmatic, Cursor-Requirements, Codex-Requirements, Codex-dyn-eval-injection, Codex-dyn-make-probe-reliability
+- **Severity**: important
+- **Concern**: The planned per-job runner executes `LOCAL_CMD` from parsed/handoff data via `eval` (or equivalent serialized shell execution). Reviewers treat this as a data/control boundary: parser drift, malformed shards, tampered TSVs, or future dynamic mappings can turn metadata or file contents into unintended shell execution and complicate quoting audits—even if today’s mapping is mostly fixed strings.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Do not store executable shell strings in the TSV or eval them. Store job id, shard, and class, then dispatch through a case statement using argv arrays, validating shard as digits only before constructing make target names.
+  - From Cursor-Edge: Replace eval with allowlisted dispatch or strict validation
+  - From Codex-Edge: Do not use eval; encode mapped commands as fixed case branches or argv fields, validate test-harness shard with ^[0-9]+$, and run make -- "$target" or other fixed commands directly
+  - From Cursor-Innovation: Prefer explicit per-target runner functions or a case-dispatched runner without eval
+  - From Cursor-Pragmatic: Avoid eval; invoke via a case table of allowed make targets or bash -c with a fixed wrapper per job class
+  - From Cursor-Requirements: Document that LOCAL_CMD must come only from the internal case table never interpolated from raw names or add a strict allowlist gate before eval
+  - From Cursor-Requirements: Require LOCAL_CMD from the fixed case table only document that raw gh job names never reach eval or add a strict token allowlist before eval
+  - From Codex-Requirements: Do not eval TSV content; dispatch by normalized job token to fixed argv arrays or a case statement, preserving Bash 3.2 compatibility and quoting each argv element explicitly
+  - From Codex-dyn-eval-injection: Carry structured fields instead of shell strings and dispatch with argv arrays in ship-pr, e.g. case job plus validated shard then run make "test-harnesses-$shard"; if LOCAL_CMD remains for display, never eval it
+  - From Codex-dyn-make-probe-reliability: Store command kind plus validated shard number, dispatch with case and argv arrays, and pass a separate redacted display string to lint-fix-loop --target-cmd
+
+### FINDING_8: TSV encoding and shard normalization can shift fields or construct dangerous `LOCAL_CMD` before dispatch
+- **Reviewer(s)**: Codex-dyn-eval-injection
+- **Severity**: important
+- **Concern**: Raw `JOB_NAME` / workflow-controlled strings in tab-separated output without escaping can split columns on embedded tabs/newlines; permissive suffix parsing can mis-extract “shard” text from malicious or odd job names, causing the consumer to associate the wrong `CLASS`/`LOCAL_CMD` fields and magnifying impact if combined with shell execution boundaries.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-dyn-eval-injection: Reject or normalize fields (strip/replace `\t` `\n` `\r`; or emit ASCII RS/FS; or JSON-lines instead of TSV); add a harness case with embedded tab in `.name`
+  - From Codex-dyn-eval-injection: Add an explicit normalization contract and tests: only accept exactly ^test-harnesses \(([0-9]+)\)$, require a nonempty digit-only shard, and classify malformed suffixes like test-harnesses () or test-harnesses (7; rm -rf /) as no-local-equivalent or parser-error before LOCAL_CMD construction
+  - From Codex-dyn-eval-injection: Do not use raw tab-delimited job names for this trust boundary; use JSON with jq, NUL-delimited records, or percent/base64 encode every field, and add regression tests with literal tab and newline job names proving CLASS and LOCAL_CMD cannot be field-shifted
+
+### FINDING_9: New `test-ci-failed-jobs` harness may not run under shard coverage / lint matrices / agent-lint registration
+- **Reviewer(s)**: Cursor-Arch, Cursor-Pragmatic, Codex-Requirements, Codex-Pragmatic
+- **Severity**: important
+- **Concern**: A standalone Makefile target and script can exist but never be pulled into `test-harnesses-*` shard prerequisites or broader lint/relevant-check paths, leaving the drift pin ineffective in practice; separately, `agent-lint.toml` may need explicit registration consistent with repo patterns for new scripts.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Add test-ci-failed-jobs to one explicit test-harnesses-N dependency line and update the shard coverage expectations, not just .PHONY and a standalone target.
+  - From Cursor-Pragmatic: Add scripts test-ci-failed-jobs.sh and sibling md to agent-lint.toml with the same Makefile-only note pattern as test-gh-run-logs
+  - From Codex-Requirements: Add test-ci-failed-jobs to .PHONY and to one test-harnesses-N dependency line, update shard coverage expectations if needed, and remove the claim that agent-lint executes the harness
+  - From Codex-Pragmatic: Add test-ci-failed-jobs to .PHONY, define the target, and append it to an existing test-harnesses-N line unless it is deliberately documented as a carve-out.
+
+### FINDING_10: `scripts/test-lint-fix-loop.sh` / fixtures / plan file lists may omit required harness updates
+- **Reviewer(s)**: Cursor-Arch, Cursor-Innovation, Cursor-Requirements
+- **Severity**: nit
+- **Concern**: Changes to `lint-fix-loop` flags/sites (`--site ship-pr-ci-per-job`, `--target-cmd`) and fixture-copy wiring risk shipping without updating the offline harness copies/assertions, causing false passes or CI breaks.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Add scripts/test-lint-fix-loop.sh (and .md if any) to plan file list and cases for prompt body and validation
+  - From Cursor-Innovation: Extend make_fixture_scripts to copy any new sourced helpers and add assertions for ship-pr-ci-per-job prompt shape
+  - From Cursor-Requirements: Name scripts/test-lint-fix-loop.sh and required fixture copies flags for --target-cmd validation and ship-pr-ci-per-job prompt text.
+  - From Cursor-Requirements: Name scripts/test-lint-fix-loop.sh and list required assertions for --site ship-pr-ci-per-job and --target-cmd validation and prompt body.
+
+### FINDING_11: Plan prose misattributes HEAD guard coverage vs `run_checks_with_lint_fix_loop`
+- **Reviewer(s)**: Cursor-Arch, Cursor-Requirements
+- **Severity**: latent
+- **Concern**: Documentation/plan text implies an “existing ship-pr pattern” of HEAD comparison between helper iterations for `run_captured_cmd_then_fix_loop`, but reviewers argue `run_checks_with_lint_fix_loop` does not perform comparable `git rev-parse` checks between attempts—risking overstated concurrency safety unless explicitly implemented or wording is corrected.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Attribute to lint-fix-loop.sh:272-275 or specify new explicit rev-parse checks in run_captured_cmd_then_fix_loop
+  - From Cursor-Requirements: Concurrent pushes could slip between command reruns without the claimed guard. Implement an explicit HEAD compare at the start of each helper iteration or drop the existing wording.
+
+### FINDING_12: `_RCC_STATUS=head-changed` vs actual `lint-fix-loop` KV contract (`LINT_FIX_STATUS=failed` + `FAILURE_REASON`)
+- **Reviewer(s)**: Cursor-Pragmatic, Cursor-Requirements
+- **Severity**: latent
+- **Concern**: The plan names `_RCC_STATUS=head-changed`, but reviewers note `lint-fix-loop` surfaces head-changed-after-dispatch as a failure path with `FAILURE_REASON` rather than a distinct “head-changed” status—risking incorrect helper mapping unless keyed off the emitted KV pairs.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Pragmatic: Align ship-pr.md and plan prose with actual record_failure plus outer retry behavior or add explicit head-changed handling if stall was intended
+  - From Cursor-Requirements: Map failed plus FAILURE_REASON=head-changed-after-dispatch to the stall head-changed path or update the plan contract to match emitted KV pairs
+  - From Cursor-Requirements: Map failed plus FAILURE_REASON=head-changed-after-dispatch to the stall path or rename the planned status to match emitted keys
+
+### FINDING_13: `gh` in-progress / exit-code semantics and “mirror gh-run-logs/lib-net” documentation accuracy
+- **Reviewer(s)**: Cursor-Edge, Cursor-Innovation, Cursor-Requirements
+- **Severity**: important
+- **Concern**: `ci-failed-jobs` is expected to mirror `gh-run-logs`-like semantics (notably in-progress `rc=3` string handling), but reviewers warn substring differences across `gh` subcommands can misclassify in-flight runs. Separately, plan text claiming additional `lib-net` mirroring may be overstated versus `scripts/gh-run-logs.sh` behavior, misleading implementers about exit-code contracts.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Edge: Shared classifier or stubbed substring contract test
+  - From Cursor-Innovation: Confirm gh error text for jobs JSON while run pending align grep marker or add dedicated status probe
+  - From Cursor-Requirements: Align wording with gh-run-logs (grep in-progress rc=3 else rc=1) or explicitly document any new lib-net-based rc=1 subclassification and how ship-pr consumes it.
+  - From Cursor-Requirements: Match documented exit codes to gh-run-logs or explicitly add and document any new lib-net-driven behavior and ship-pr handling.
+
+### FINDING_14: Gate `ci-failed-jobs` invocation on successful log capture (`gh_logs_rc`) to avoid noisy/misclassified reads mid-run
+- **Reviewer(s)**: Cursor-Requirements
+- **Severity**: important
+- **Concern**: Wiring that always runs `ci-failed-jobs` immediately after `gh-run-logs` without requiring the same “logs available” success condition can contradict the stated skip behavior for unavailable logs (`rc=3`) and add incorrect classification/noise while CI is still in flight.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Requirements: Gate the ci-failed-jobs.sh invocation on gh_logs_rc -eq 0 mirroring the vendor skip when rc=3 (scripts/ship-pr.sh:1530-1537).
+
+### FINDING_15: `lib-quiet` / FD-3 capture contract for `ci-failed-jobs` (avoid wrong sink, stale parses, and mixing patterns)
+- **Reviewer(s)**: Cursor-dyn-fd3-capture, Codex-dyn-fd3-capture
+- **Severity**: important
+- **Concern**: Under `larch_quiet_init`, naive stdout redirects can route `emit_kv` machine-readable lines to the quiet log FD, collide with the `gh-run-logs` artifact path (truncation/replacement risk), or hybrid-parse buffers incorrectly—yielding empty/stale `FAILED_JOBS_COUNT` and silently skipping per-job recovery. Reviewers also warn against blindly copying either the `ci-rerun-failed`-style substitution pattern or the plain `gh-run-logs` stdout pattern without an explicit canonical choice tested for this insertion site.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-dyn-fd3-capture: run_ci_fix_vendor needs a non-empty gh log file when gh_logs_rc=0; pin a separate KV sink path or use command substitution so gh_logs_capture stays the sole gh-run-logs artifact until vendor dispatch or skip
+  - From Cursor-dyn-fd3-capture: Spell the ship-pr wiring as either ci-rerun-failed-style rerun_out=$(ci-failed-jobs ... 2>err) plus kv_value on rerun_out or redirect-only with awk or kv_value from that same file after confirming emit_kv lines land there per scripts/lib-quiet.sh:70-75
+  - From Cursor-dyn-fd3-capture: Document in the plan ship-pr step which of the two established patterns is canonical for ci-failed-jobs and add a test assertion that FAILED_JOBS_COUNT is non-empty when the mock gh payload reports failures
+  - From Codex-dyn-fd3-capture: Revise the run_evaluate_failure wiring to use the ci-rerun-failed.sh style: failed_jobs_out=$("$SCRIPT_DIR/ci-failed-jobs.sh" --run-id "$failed_run" --repo "$(read_state REPO)" --output-tsv "$failed_jobs_tsv" 2>"$fail_file"); rc=$?; append failed_jobs_out to the failure file for diagnostics; parse kv_value FAILED_JOBS_COUNT "$failed_jobs_out". Alternatively explicitly redirect stdout to a fresh capture file and parse that file, but do not rely on inherited stdout or the gh-run-logs capture file.
+
+### FINDING_16: Tests may not catch quiet-active FD-3 mis-wiring because harness disables quiet mode globally
+- **Reviewer(s)**: Codex-dyn-fd3-capture
+- **Severity**: latent
+- **Concern**: Proposed tests may pass under `LARCH_QUIET_DISABLE=1` or simplistic stubs while production quiet-active behavior drops KV output to the wrong stream—reproducing the “empty `FAILED_JOBS_COUNT` → skip loop” failure mode.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-dyn-fd3-capture: Add a focused regression with quiet mode enabled for this path, using either the real ci-failed-jobs.sh with mocked gh or a stub that sources lib-quiet.sh and calls larch_quiet_init before emit_kv. Assert that run_evaluate_failure captures FAILED_JOBS_COUNT from stdout command substitution and invokes run_per_job_local_fix_loop; make the test fail if the helper is called bare or parsed from the previous gh-run-logs file.
+
+### FINDING_17: `lib-quiet` contract wording: caller-visible FD vs post-init POSIX stdout
+- **Reviewer(s)**: Cursor-dyn-fd3-capture
+- **Severity**: nit
+- **Concern**: Documentation phrasing like “default stdout via FD-3 emit” can mislead readers about which stream is caller-visible after quiet initialization versus the quiet log sink.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-dyn-fd3-capture: In ci-failed-jobs.md say contract lines are emitted on the preserved caller-visible FD after larch_quiet_init not on the quiet log FD1
+
+### FINDING_18: `make -n` existence probe redirects stderr-only, risking stdout leakage into machine-readable consumers
+- **Reviewer(s)**: Cursor-dyn-make-probe-reliability, Codex-dyn-make-probe-reliability
+- **Severity**: important
+- **Concern**: `make -n` can print recipe lines to stdout; stderr-only redirection (or quiet-disabled environments) can interleave or contaminate KV/TSV consumers enumerating shards.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-dyn-make-probe-reliability: Use >/dev/null 2>&1 (or an equivalent subshell) for the existence probe so neither stream leaks
+  - From Codex-dyn-make-probe-reliability: Probe with make -n "$target" >/dev/null 2>&1 or parse explicit Makefile target rules; add a LARCH_QUIET_DISABLE=1 harness assertion
+
+### FINDING_19: Per-job loop lacks final cross-job verification after sequential fixes
+- **Reviewer(s)**: Codex-Edge
+- **Severity**: important
+- **Concern**: Fixing later jobs (e.g. harness shards) can modify files and invalidate earlier jobs (e.g. lint) that already “passed” in-turn; a single forward pass without a final sweep can return success prematurely.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Edge: Add a final verification sweep over all fixable mapped commands after all fixes, or loop over the full failed-job set until every mapped command passes in the same clean iteration before staging and pushing
+
+### FINDING_20: Repeated identical `LOCAL_CMD` / full-matrix fallback can amplify work under shard drift or mis-probing
+- **Reviewer(s)**: Codex-dyn-make-probe-reliability
+- **Severity**: latent
+- **Concern**: Without deduplication/coalescing, many failed matrix rows could rerun the same local command multiple times within an attempt and again across outer retries; combined with fallback-to-full-matrix behavior, this can explode runtime under drift or false probes.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-dyn-make-probe-reliability: Deduplicate per-job commands before execution, coalesce all test-harnesses fallback rows into one run, and cap full-matrix fallback to once per outer attempt or bail on shard drift after one diagnostic
+
+---
+
+**Notes for downstream voters (non-binding):** This merge intentionally keeps **FINDING_8** separate from **FINDING_7** because mitigations differ (encoding/normalization/transport format vs dispatch mechanism), even though reviewers often chain them as one threat model. **FINDING_6** reuses one long revision bullet from **FINDING_2**’s Codex-Pragmatic entry verbatim; per instructions, duplicate wording is not merged across findings here because it is not literally identical across the two `### FINDING_N:` blocks.

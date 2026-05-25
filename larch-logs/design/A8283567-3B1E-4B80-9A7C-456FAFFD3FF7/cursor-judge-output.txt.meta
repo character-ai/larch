@@ -1,0 +1,5 @@
+TOOL=cursor
+TIMEOUT=1800
+CAPTURE_STDOUT=true
+CAPTURE_STDOUT_ONLY=false
+OUTPUT_FILE=<TMPDIR>/cursor-judge-output.txt

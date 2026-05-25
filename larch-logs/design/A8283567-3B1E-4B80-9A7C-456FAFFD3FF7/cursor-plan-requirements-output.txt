@@ -1,0 +1,104 @@
+Reading the plan and referenced codebase paths to verify completeness against stated requirements.
+
+Verifying cited line numbers, contracts, and integration points against the codebase.
+
+Findings: several plan–code mismatches (silent-log / `no-changes`, `gh_logs_rc=3` gating vs wiring, drift-pin scope), missing behavior when skipping `run_ci_fix_vendor` (token record and counters), and a few contract/clarity issues.
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan.txt:103-104	Empty per-job failure log is equated to _RCC_STATUS=ok via lint-fix-loop no-changes.lint-fix-loop exits 0 with LINT_FIX_STATUS=no-changes before any dispatch when CHECKS_LOG is empty (scripts/lint-fix-loop.sh:209-213) while the mapped command still failed; treating that as overall ok skips retries and can mark a failed job as fixed.	Map no-changes after a non-zero command run as not-ok (retry or exhausted) unless the command reran clean; align run_captured_cmd_then_fix_loop with run_checks_with_lint_fix_loop behavior for no-changes after failure (scripts/ship-pr.sh:851-853).
+1	in_scope	important	correctness	plan.txt:56	Drift pin regex is applied to the whole ci.yaml file.	Pattern ^  [a-z][a-z0-9_-]+:$ also matches workflow keys under on: (e.g. workflow_dispatch pull_request push) producing false job names and brittle harness failures or wrong required mappings.	Scope the pin to the jobs: block only (awk range sed n /^jobs:/,/^[^ ]/ or parse with yq) or maintain an explicit allowlist of job keys.
+1	in_scope	important	risk-integration	plan.txt:82-86 scripts/ship-pr.sh:1429-1538	Skipping run_ci_fix_vendor when the per-job loop succeeds omits append-token-record.sh and the FIX_ATTEMPTS TRANSIENT_RETRIES success side effects that only run after a successful run_ci_fix_vendor (scripts/ship-pr.sh:1429-1439 1537-1538).	Per-job-only fixes may ship without token-record bookkeeping and without bumping FIX_ATTEMPTS or clearing TRANSIENT_RETRIES breaking Trigger B reporting and retry semantics.	Specify whether to call append-token-record.sh refresh-run-logs and state_set_many from the per-job-only exit path or document intentional omission and adjust any dependents tests.
+1	in_scope	important	correctness	plan.txt:14 vs plan.txt:82-83	Wiring inserts ci-failed-jobs immediately after gh-run-logs without requiring gh_logs_rc=0.	Approach says skip the new path when logs are unavailable (rc=3) but wiring can still run gh run view and mis-classify or add noise while CI is in flight.	Gate the ci-failed-jobs.sh invocation on gh_logs_rc -eq 0 mirroring the vendor skip when rc=3 (scripts/ship-pr.sh:1530-1537).
+1	in_scope	nit	correctness	plan.txt:102-103 scripts/lint-fix-loop.sh:26-30 272-275	Plan names _RCC_STATUS=head-changed for lint-fix-loop head guard.	head-changed-after-dispatch surfaces as LINT_FIX_STATUS=failed with FAILURE_REASON not a distinct head-changed status; helper mapping will be wrong unless it keys off FAILURE_REASON.	Map failed plus FAILURE_REASON=head-changed-after-dispatch to the stall head-changed path or update the plan contract to match emitted KV pairs.
+1	in_scope	nit	correctness	plan.txt:24 scripts/gh-run-logs.sh:50-56	ci-failed-jobs exit semantics claim to mirror gh-run-logs plus lib-net classification.	gh-run-logs.sh does not source lib-net.sh; transient-net-specific exits are not actually mirrored today so implementers may invent new rc behavior vs the cited mirror.	Align wording with gh-run-logs (grep in-progress rc=3 else rc=1) or explicitly document any new lib-net-based rc=1 subclassification and how ship-pr consumes it.
+1	in_scope	latent	architecture	plan.txt:102 scripts/ship-pr.sh:827-867	HEAD re-check between helper iterations is described as an existing ship-pr pattern.	run_checks_with_lint_fix_loop has no git rev-parse between attempts; only lint-fix-loop checks after dispatch.	Concurrent pushes could slip between command reruns without the claimed guard.	Implement an explicit HEAD compare at the start of each helper iteration or drop the existing wording.
+1	in_scope	nit	security	plan.txt:80	Per-job rerun uses eval on LOCAL_CMD built from API job names.	Malicious or unexpected job names could widen injection surface if mapping ever becomes dynamic.	Document that LOCAL_CMD must come only from the internal case table never interpolated from raw names or add a strict allowlist gate before eval.
+1	in_scope	nit	code-quality	plan.txt:120	Integration tests cite generic existing harnesses for lint-fix-loop.	Implementers may miss updating scripts/test-lint-fix-loop.sh which copies a fixture lint-fix-loop.sh and asserts dispatch behavior (scripts/test-lint-fix-loop.sh:36-51).	Name scripts/test-lint-fix-loop.sh and required fixture copies flags for --target-cmd validation and ship-pr-ci-per-job prompt text.
+
+[OUT_OF_SCOPE] Consumer-facing docs (e.g. README.md or docs referencing ship-pr CI recovery) are not listed in the plan file list; if users expect user-visible runbook updates add a follow-up or extend [scripts/ship-pr.md](scripts/ship-pr.md) only scope: README.md:1-200 optional.
+
+Numbered findings (same content):
+
+1. **correctness** — `plan.txt:103-104` / `scripts/lint-fix-loop.sh:209-213`: Treating empty failure logs as `_RCC_STATUS=ok` is wrong; `no-changes` exits before dispatch while the job command still failed—mirror `run_checks_with_lint_fix_loop`’s handling of `no-changes` after a failed capture (`scripts/ship-pr.sh:851-853`).
+
+2. **correctness** — `plan.txt:56`: Drift-pin regex over the full `ci.yaml` false-matches `on:` keys (`workflow_dispatch`, `pull_request`, `push`); restrict parsing to the `jobs:` section or use an explicit job list.
+
+3. **risk-integration** — `plan.txt:82-86` vs `scripts/ship-pr.sh:1429-1538`: Skipping `run_ci_fix_vendor` omits `append-token-record.sh` and `FIX_ATTEMPTS` / `TRANSIENT_RETRIES` updates; specify the per-job-only success path for token records and state counters.
+
+4. **correctness** — `plan.txt:14` vs `plan.txt:82-83` / `scripts/ship-pr.sh:1530-1537`: Gate `ci-failed-jobs.sh` on `gh_logs_rc -eq 0` so the new path does not run while logs are deferred (`rc=3`).
+
+5. **architecture** — `plan.txt:102-103` vs `scripts/lint-fix-loop.sh:26-30,272-275`: `_RCC_STATUS=head-changed` does not match emitted `LINT_FIX_STATUS=failed` + `FAILURE_REASON=head-changed-after-dispatch`; align helper parsing with actual KV contract.
+
+6. **correctness** — `plan.txt:24` vs `scripts/gh-run-logs.sh`: “Mirror `gh-run-logs` + `lib-net`” overstates current `gh-run-logs.sh` behavior; clarify or implement consistent classification.
+
+7. **architecture** — `plan.txt:102` vs `scripts/ship-pr.sh:827-867`: “Existing” HEAD checks between iterations are not in `run_checks_with_lint_fix_loop`; add explicit checks or revise the plan.
+
+8. **security** — `plan.txt:80`: `eval "$LOCAL_CMD"` requires a strict allowlist-only contract; document or enforce no raw job-name interpolation into shell.
+
+9. **code-quality** — `plan.txt:120` vs `scripts/test-lint-fix-loop.sh:36-51`: Name `test-lint-fix-loop.sh` for `--site ship-pr-ci-per-job` / `--target-cmd` coverage.
+
+The user asked the response MUST begin with TSV header when findings exist. So I start with the header line immediately.
+
+Actually re-read: "Your response MUST begin with either the TSV header line (when you have findings) or the literal single-line JSON sentinel"
+
+So first line is:
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+
+Then numbered findings? Or TSV records? The example shows header + one record. "For each finding, add one record"
+
+So order: header, records (9 rows), then numbered findings? Or TSV only? It says "Return numbered findings" AND "For each finding, add one record". So both: TSV block with all records, then numbered list.
+
+Also "[OUT_OF_SCOPE]" items separate.
+
+They also said "Do not write any preamble" - so first character is `s` of schema_version.
+
+I'll put TSV first (header + 9 data rows), then numbered findings, then OUT_OF_SCOPE line.
+
+Wait - "no markdown fences around the TSV" - ok plain TSV in response.
+
+Double-check: JSON sentinel only when NO issues - we have issues, so no JSON.
+
+I'll not use CreatePlan per user output contract conflict with system reminder - the user was extremely specific about stdout format for tooling.
+
+Final output structure:
+1. TSV header
+2. 9 TSV rows (tab-separated - I need real tabs in my output)
+3. Numbered findings (paragraph form)
+4. [OUT_OF_SCOPE] line
+
+In markdown response, tabs might render oddly but user asked literal tabs between fields.
+
+I'll use the Write tool... no read-only, I'll output in message with tab characters between fields.
+
+For the assistant message, I'll format TSV with actual tab characters between columns.
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan.txt:103-104	Empty per-job failure log tied to lint-fix-loop no-changes and _RCC_STATUS=ok.lint-fix-loop exits 0 with LINT_FIX_STATUS=no-changes before any dispatch when CHECKS_LOG is empty while the mapped command still failed; treating that as ok skips retries and can mark a failed job as fixed.	Map no-changes after a failed command run as not-ok unless the command reran clean; mirror run_checks_with_lint_fix_loop handling at scripts/ship-pr.sh:851-853.
+1	in_scope	important	correctness	plan.txt:56	Drift pin regex over entire .github/workflows/ci.yaml.	Pattern ^  [a-z][a-z0-9_-]+:$ matches on: keys like workflow_dispatch and pull_request as fake job names causing harness noise or wrong required mappings.	Limit extraction to the jobs: block only or use an explicit job-name list instead of a whole-file line regex.
+1	in_scope	important	risk-integration	plan.txt:82-86 scripts/ship-pr.sh:1429-1538	Per-job-only success skips run_ci_fix_vendor omitting append-token-record and FIX_ATTEMPTS TRANSIENT_RETRIES updates.	Token-record and counters only run on the successful run_ci_fix_vendor return path; per-job-only fixes may ship without them breaking Trigger B and retry accounting.	Spell out calling append-token-record.sh refresh-run-logs and state_set_many from the per-job-only path or justify omission and update tests or dependents.
+1	in_scope	important	correctness	plan.txt:14 vs plan.txt:82-83	Wiring runs ci-failed-jobs immediately after gh-run-logs without gating on gh_logs_rc=0.	While gh-run-logs returns rc=3 the approach says skip the new path but wiring can still hit gh run view and add wrong classify noise mid-flight.	Run ci-failed-jobs.sh only when gh_logs_rc -eq 0 aligned with scripts/ship-pr.sh:1530-1537 vendor deferral.
+1	in_scope	nit	correctness	plan.txt:102-103 scripts/lint-fix-loop.sh:26-30 272-275	_RCC_STATUS=head-changed does not match lint-fix-loop KV contract.	head-changed-after-dispatch emits LINT_FIX_STATUS=failed and FAILURE_REASON not a distinct head-changed status; helper mapping will miss stall handling unless it reads FAILURE_REASON.	Map failed plus FAILURE_REASON=head-changed-after-dispatch to the stall path or rename the planned status to match emitted keys.
+1	in_scope	nit	correctness	plan.txt:24 scripts/gh-run-logs.sh:50-56	Exit semantics claim mirrors gh-run-logs plus lib-net.	gh-run-logs.sh never sources lib-net.sh so transient-net mirroring is overstated versus real rc=1 rc=3 behavior.	Match documented exit codes to gh-run-logs or explicitly add and document any new lib-net-driven behavior and ship-pr handling.
+1	in_scope	latent	architecture	plan.txt:102 scripts/ship-pr.sh:827-867	HEAD re-check between helper iterations called an existing ship-pr pattern.	run_checks_with_lint_fix_loop never runs git rev-parse between attempts; only lint-fix-loop checks after dispatch.	HEAD can move between command reruns without the described guard.	Add an explicit rev-parse compare each helper iteration or drop the existing wording.
+1	in_scope	nit	security	plan.txt:80	eval on LOCAL_CMD from failed job context.	If LOCAL_CMD ever incorporated unvalidated strings the shell injection surface grows.	Require LOCAL_CMD from the fixed case table only document that raw gh job names never reach eval or add a strict token allowlist before eval.
+1	in_scope	nit	code-quality	plan.txt:120	Integration tests only mention generic lint-fix-loop harnesses.	Fixture harness scripts/test-lint-fix-loop.sh copies lint-fix-loop.sh and must be extended for new flags and sites.	Name scripts/test-lint-fix-loop.sh and list required assertions for --site ship-pr-ci-per-job and --target-cmd validation and prompt body.
+
+1. **correctness** — `plan.txt:103-104` (see `scripts/lint-fix-loop.sh:209-213`, `scripts/ship-pr.sh:851-853`): Interpreting an empty per-job log through `lint-fix-loop`’s `no-changes` path as overall `_RCC_STATUS=ok` is incorrect; that path exits before any fixer runs while the mapped command can still be failing. The helper must treat `no-changes` after a failed command like today’s checks loop does.
+
+2. **correctness** — `plan.txt:56` (`.github/workflows/ci.yaml:3-17` vs `jobs:` block): The proposed whole-file `grep` drift pin matches `on:` entries such as `workflow_dispatch` / `pull_request` / `push`, not just workflow jobs. Restrict the scan to the `jobs:` section or replace the regex with an explicit job list.
+
+3. **risk-integration** — `plan.txt:82-86` (`scripts/ship-pr.sh:1429-1439`, `1537-1538`): Skipping `run_ci_fix_vendor` when the per-job loop “wins” bypasses `append-token-record.sh` and the success `state_set_many` that increments `FIX_ATTEMPTS` and resets `TRANSIENT_RETRIES`. The plan should specify equivalent calls from the per-job-only path or document a deliberate contract change and adjust tests.
+
+4. **correctness** — `plan.txt:14` vs `plan.txt:82-83` (`scripts/ship-pr.sh:1530-1537`): The approach gates the new path on `gh-run-logs` succeeding, but the wiring paragraph inserts `ci-failed-jobs.sh` unconditionally after `gh-run-logs.sh`. When `gh_logs_rc=3`, the per-job probe should be skipped in sync with the deferred vendor path.
+
+5. **correctness** — `plan.txt:102-103` (`scripts/lint-fix-loop.sh:26-30`, `272-275`): Head guard failures surface as `LINT_FIX_STATUS=failed` with `FAILURE_REASON=head-changed-after-dispatch`, not a literal `_RCC_STATUS=head-changed`. The refactor contract should name the KV fields the helper must parse.
+
+6. **correctness** — `plan.txt:24` (`scripts/gh-run-logs.sh:50-56`): `gh-run-logs.sh` does not use `lib-net.sh`; claiming the new script “mirrors” transient-net classification that exists in `gh-run-logs` is inaccurate unless you add new behavior and document it.
+
+7. **architecture** — `plan.txt:102` (`scripts/ship-pr.sh:827-867`): `run_checks_with_lint_fix_loop` does not re-check `HEAD` on each outer iteration—only `lint-fix-loop.sh` checks after a dispatch. Calling that an “existing” inter-iteration guard in `ship-pr` is misleading; specify new logic if required.
+
+8. **security** — `plan.txt:80`: Using `eval` on `LOCAL_CMD` needs a hard rule that commands come only from the internal mapping table (never from raw `gh` job names or free-form strings).
+
+9. **code-quality** — `plan.txt:120` (`scripts/test-lint-fix-loop.sh:36-51`): The testing strategy should explicitly require updating `scripts/test-lint-fix-loop.sh` (fixture copy + assertions) for `--target-cmd` and the new `--site`, not only `test-ship-pr.sh`.
+
+[OUT_OF_SCOPE] User-visible runbooks outside `scripts/ship-pr.md` (for example top-level `README.md` ship-pr / CI recovery prose) are not in the plan’s file list; consider a short follow-up if external operators need the same contract. Affected paths: `README.md:1-200` (optional narrative only).

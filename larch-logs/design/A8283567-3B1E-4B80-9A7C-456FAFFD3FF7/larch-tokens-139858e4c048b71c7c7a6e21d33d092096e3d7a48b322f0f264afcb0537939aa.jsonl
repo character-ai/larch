@@ -1,0 +1,26 @@
+{"type":"mark","step":"design Step 0 — session setup","ts":"2026-05-25T06:54:27Z"}
+{"type":"vendor","vendor":"codex","input":0,"output":0,"cache_read":0,"cache_create":0,"total":64803,"raw":"codex_review","ts":"2026-05-25T07:24:43Z"}
+{"type":"vendor","vendor":"codex","input":0,"output":0,"cache_read":0,"cache_create":0,"total":25940,"raw":"codex_review","ts":"2026-05-25T07:36:23Z"}
+{"type":"vendor","vendor":"codex","input":0,"output":0,"cache_read":0,"cache_create":0,"total":26910,"raw":"codex_review","ts":"2026-05-25T07:36:40Z"}
+{"type":"vendor","vendor":"cursor","input":17316,"output":2669,"cache_read":56832,"cache_create":0,"total":76817,"raw":"cursor_review","ts":"2026-05-25T07:38:18Z"}
+{"type":"vendor","vendor":"cursor","input":21598,"output":2299,"cache_read":91648,"cache_create":0,"total":115545,"raw":"cursor_review","ts":"2026-05-25T07:38:55Z"}
+{"type":"vendor","vendor":"cursor","input":29995,"output":6793,"cache_read":140288,"cache_create":0,"total":177076,"raw":"cursor_review","ts":"2026-05-25T15:52:52Z"}
+{"type":"vendor","vendor":"codex","input":0,"output":0,"cache_read":0,"cache_create":0,"total":78909,"raw":"codex_review","ts":"2026-05-25T15:53:01Z"}
+{"type":"vendor","vendor":"cursor","input":33803,"output":6812,"cache_read":195584,"cache_create":0,"total":236199,"raw":"cursor_review","ts":"2026-05-25T15:53:02Z"}
+{"type":"vendor","vendor":"cursor","input":88804,"output":8929,"cache_read":536064,"cache_create":0,"total":633797,"raw":"cursor_review","ts":"2026-05-25T15:53:13Z"}
+{"type":"vendor","vendor":"codex","input":0,"output":0,"cache_read":0,"cache_create":0,"total":88828,"raw":"codex_review","ts":"2026-05-25T15:53:20Z"}
+{"type":"vendor","vendor":"codex","input":0,"output":0,"cache_read":0,"cache_create":0,"total":111087,"raw":"codex_review","ts":"2026-05-25T15:53:24Z"}
+{"type":"vendor","vendor":"codex","input":0,"output":0,"cache_read":0,"cache_create":0,"total":86798,"raw":"codex_review","ts":"2026-05-25T15:53:33Z"}
+{"type":"vendor","vendor":"codex","input":0,"output":0,"cache_read":0,"cache_create":0,"total":75956,"raw":"codex_review","ts":"2026-05-25T15:53:33Z"}
+{"type":"vendor","vendor":"cursor","input":30582,"output":10964,"cache_read":171264,"cache_create":0,"total":212810,"raw":"cursor_review","ts":"2026-05-25T15:53:44Z"}
+{"type":"vendor","vendor":"cursor","input":43040,"output":12287,"cache_read":459008,"cache_create":0,"total":514335,"raw":"cursor_review","ts":"2026-05-25T15:53:51Z"}
+{"type":"vendor","vendor":"cursor","input":43397,"output":10116,"cache_read":893440,"cache_create":0,"total":946953,"raw":"cursor_review","ts":"2026-05-25T15:54:00Z"}
+{"type":"vendor","vendor":"cursor","input":49512,"output":10661,"cache_read":651264,"cache_create":0,"total":711437,"raw":"cursor_review","ts":"2026-05-25T15:54:03Z"}
+{"type":"vendor","vendor":"codex","input":0,"output":0,"cache_read":0,"cache_create":0,"total":122738,"raw":"codex_review","ts":"2026-05-25T15:54:10Z"}
+{"type":"vendor","vendor":"cursor","input":79089,"output":13142,"cache_read":613888,"cache_create":0,"total":706119,"raw":"cursor_review","ts":"2026-05-25T15:54:10Z"}
+{"type":"vendor","vendor":"codex","input":0,"output":0,"cache_read":0,"cache_create":0,"total":77058,"raw":"codex_review","ts":"2026-05-25T15:54:12Z"}
+{"type":"vendor","vendor":"codex","input":0,"output":0,"cache_read":0,"cache_create":0,"total":61789,"raw":"codex_review","ts":"2026-05-25T15:54:42Z"}
+{"type":"vendor","vendor":"cursor","input":32181,"output":9271,"cache_read":218112,"cache_create":0,"total":259564,"raw":"cursor_review","ts":"2026-05-25T15:57:30Z"}
+{"type":"vendor","vendor":"cursor","input":20767,"output":12832,"cache_read":7680,"cache_create":0,"total":41279,"raw":"cursor_review","ts":"2026-05-25T15:59:44Z"}
+{"type":"vendor","vendor":"cursor","input":29966,"output":4433,"cache_read":102144,"cache_create":0,"total":136543,"raw":"cursor_review","ts":"2026-05-25T16:04:49Z"}
+{"type":"vendor","vendor":"codex","input":0,"output":0,"cache_read":0,"cache_create":0,"total":64805,"raw":"codex_review","ts":"2026-05-25T16:05:29Z"}
