@@ -1,0 +1,42 @@
+## Plan Fidelity Review
+
+### In-Scope Findings
+
+**1. [important / correctness] `scripts/test-design-structure.sh:690`**
+
+Check 19's stub-absence assertion is semantically broken. The line:
+
+```bash
+grep -vq 'decomposition panel is in development' "$SKILL_MD" || fail "(19) SKILL.md must not retain the pre-panel stub string"
+```
+
+`grep -vq` exits 0 whenever *any* line in the file does not match the pattern. Since `SKILL.md` has hundreds of lines, this exits 0 unconditionally — regardless of whether the stub is present. The plan's acceptance criterion explicitly requires this check to work. Any future commit re-introducing the stub will silently pass.
+
+**Fix:** Replace with `! grep -Fq 'decomposition panel is in development' "$SKILL_MD" || fail "(19) ..."`
+
+---
+
+**2. [latent / correctness] `skills/design/scripts/test-decompose-panel-dispatch.sh:108-131`**
+
+`feature-only` mode is exercised only in the `panel-failed` path (`W_STUB_MODE=nop`). There is no successful `feature-only` run that verifies `{DISCUSSION_BLOCK}` substitution actually injects discussion file content into the rendered prompt. The plan states: "Prompt template substitution resolved correctly in **both** `plan` and `feature-only` modes." The plan-mode test (D1) verifies `"Plan body."` appears in the rendered output; no equivalent check exists for discussion content in feature-only mode.
+
+**Fix:** Add a sub-case with `W_STUB_MODE=ok`, `--discussion-round1-file` pointing to a non-empty file, and an assertion that its content appears in the rendered prompt.
+
+---
+
+### Out-of-Scope Observations
+
+**1. [nit / code-quality] `skills/design/scripts/dispatch-plan-review-panel.sh:85-118`**
+
+File is not in the plan's files-to-modify list. It was refactored to replace `printf '{"slot":...}\n'` NDJSON emission with `jq -nc` calls, preventing JSON corruption when tmpdir paths contain special characters. `test-dispatch-plan-review-panel.sh` also received two unplanned tests (jq validity + quoted-path case D6). The change is correct and makes this file consistent with the new `decompose-panel-dispatch.sh` (which used `jq -nc` from the start), but it is unplanned scope creep.
+
+---
+
+### TSV
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/test-design-structure.sh:690	Check 19 stub-absence uses grep -vq which always exits 0 on a multi-line file	Any future commit re-introducing 'decomposition panel is in development' passes silently; assertion never fires	Replace with: ! grep -Fq 'decomposition panel is in development' "$SKILL_MD" || fail "(19) SKILL.md must not retain the pre-panel stub string"
+1	in_scope	latent	correctness	skills/design/scripts/test-decompose-panel-dispatch.sh:108-131	feature-only mode tested only via panel-failed path (W_STUB_MODE=nop); {DISCUSSION_BLOCK} substitution with a real discussion file is never verified in a passing run	If render_prompt() silently drops discussion content in feature-only mode, no test catches it; plan requires coverage in both modes	Add a W_STUB_MODE=ok feature-only sub-case with --discussion-round1-file and assert discussion content appears in the rendered prompt
+1	out_of_scope	nit	code-quality	skills/design/scripts/dispatch-plan-review-panel.sh:85-118	File not in plan's files-to-modify list; refactored to jq -nc for NDJSON slot rows; test file also received two unplanned tests	Pre-existing file touched outside plan scope; benign and consistent with new scripts	No action required; change is correct
+```

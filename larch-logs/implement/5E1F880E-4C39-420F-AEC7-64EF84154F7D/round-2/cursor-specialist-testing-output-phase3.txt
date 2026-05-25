@@ -1,0 +1,66 @@
+### In-Scope Findings
+
+---
+
+**[1] Important — `scripts/test-design-structure.sh:695`**
+
+Check 19's stub-removal assertion uses `grep -vq 'decomposition panel is in development' "$SKILL_MD" || fail`. `grep -vq PATTERN FILE` returns 0 whenever **any** line does not match the pattern — which is trivially true for any file with more than one line. The check never fails even if the stub string is still present, making the regression guard a no-op.
+
+*Breakage scenario:* A future commit that restores the stub string would not be caught by CI.
+
+*Suggested fix:*
+```bash
+! grep -Fq 'decomposition panel is in development' "$SKILL_MD" \
+  || fail "(19) SKILL.md must not retain the pre-panel stub string"
+```
+
+---
+
+**[2] Latent — `skills/design/scripts/test-decompose-panel-dispatch.sh`**
+
+No test case exercises `--mode feature-only` **without** `--discussion-round1-file`. The code path that sets `_disc_arg="-"` and renders the "(none — discussion-round1 artifact not passed or absent.)" placeholder in the Python prompt renderer is only reached when the flag is absent. The single `feature-only` test (m3) passes `--discussion-round1-file "$D3/discussion-round1.md"`, so the no-file branch is untested.
+
+*Breakage scenario:* A change to the `_disc_arg="-"` sentinel branch or the Python renderer's handling of it would not be detected by CI.
+
+*Suggested fix:* Add a test case that calls the panel with `--mode feature-only --feature-file …` but omits `--discussion-round1-file`, asserting the rendered prompt contains the no-discussion placeholder rather than an empty string or an error.
+
+---
+
+**[3] Latent — `skills/design/scripts/test-decompose-aggregator.sh`**
+
+The plan acceptance criteria specify "8-panel-output concatenation into `combined-proposals.txt`" as a testable behavior. The harness's `panel.ndjson` fixture contains only 2 rows (both for the `decomposition-specialist` archetype), not the full 8-row (4 archetypes × 2 vendors) scenario. Concatenation or loop logic that breaks with more than two rows (e.g., an ordering issue or a shell loop buffering edge case) would not be detected.
+
+*Breakage scenario:* If the concatenation loop in `decompose-aggregator.sh` silently drops rows past the second, or if archetype-name variation triggers an unguarded branch, CI would still pass.
+
+*Suggested fix:* Expand the panel fixture to 8 rows covering all four archetype names (`decomposition-specialist`, `integration-risk-analyst`, `domain-boundary-mapper`, `dependency-graph-reviewer`) so the concatenation is exercised at realistic scale.
+
+---
+
+**[4] Nit — `skills/design/scripts/test-decompose-file-issues.sh`**
+
+The `close-original` sub-command has an explicit guard:
+```bash
+[[ -f "$filed" ]] || { larch_err "…missing partition-filed.md"; exit 2; }
+```
+This error path (operator calls `close-original` before `annotate`) has no harness coverage. As a newly introduced exit path, accidental removal of the guard or a change to its exit code would not be caught.
+
+*Suggested fix:* Add a short test case that invokes `close-original` on a fresh tmpdir (no prior `annotate` run) and asserts exit code 2.
+
+---
+
+### Out-of-Scope Observations
+
+**[O1] — `skills/design/scripts/dispatch-plan-review-panel.sh`**
+
+The switch from `printf '{"slot":…}'` to `jq -nc --arg …` for NDJSON manifest generation (pre-existing file, modified by this PR as an incidental improvement) makes `jq` a hard dependency for manifest creation where previously none was required. The rest of the codebase already assumes `jq`, so this is not a new practical constraint. Out of scope because the change is correct and the new `jq -e .` validation in `test-dispatch-plan-review-panel.sh` provides a validity check. Worth noting for any future portability or minimal-environment review.
+
+---
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	risk-integration	scripts/test-design-structure.sh:695	grep -vq used for stub-absence assertion always returns 0 for any non-empty file	A future commit restoring the stub string "decomposition panel is in development" would not be caught by CI; the plan-required regression guard is a no-op	Replace with: ! grep -Fq 'decomposition panel is in development' "$SKILL_MD" || fail "(19) SKILL.md must not retain the pre-panel stub string"
+1	in_scope	latent	risk-integration	skills/design/scripts/test-decompose-panel-dispatch.sh	No test case for feature-only mode without --discussion-round1-file; the _disc_arg="-" sentinel path is untested	If the no-discussion-file code path in the Python prompt renderer changes, CI will not detect the regression	Add a test case with --mode feature-only --feature-file … omitting --discussion-round1-file and asserting the rendered prompt contains the no-discussion placeholder
+1	in_scope	latent	risk-integration	skills/design/scripts/test-decompose-aggregator.sh	Panel fixture has 2 rows (same archetype) instead of the plan-required 8 rows covering 4 archetypes × 2 vendors	Concatenation or loop logic that breaks at more than 2 rows would not be detected	Expand panel.ndjson to 8 rows covering all four archetype names to exercise concatenation at realistic scale
+1	in_scope	nit	risk-integration	skills/design/scripts/test-decompose-file-issues.sh	close-original "missing partition-filed.md" guard (exit 2) has no harness test case	Accidental removal of the guard or exit-code change would not be caught by CI	Add a test case calling close-original on a fresh tmpdir before annotate and asserting exit code 2
+1	out_of_scope	latent	risk-integration	skills/design/scripts/dispatch-plan-review-panel.sh	Printf-to-jq manifest switch adds implicit hard jq dependency for manifest creation (pre-existing file modified by this PR)	Execution in a minimal jq-free environment would fail at manifest creation	Pre-existing design choice; document jq as a required runtime dependency if not already stated; out of scope as the change is correct and validated by new jq -e . check
+```

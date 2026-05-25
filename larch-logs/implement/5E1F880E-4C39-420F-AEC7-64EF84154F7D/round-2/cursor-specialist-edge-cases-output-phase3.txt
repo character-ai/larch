@@ -1,0 +1,45 @@
+### In-Scope Findings
+
+**Finding 1 — Important | correctness**
+`skills/design/scripts/decompose-file-issues.sh:312-315`
+
+**Sentinel write ordering in `close-original` creates a duplicate-comment window.** In `cmd_close_original`, `rm -f "$comment_sent"` executes *before* `: >"$DESIGN_TMPDIR/.decompose-original-closed"`. If the process is killed between these two lines (SIGKILL, OOM), the per-run comment guard is gone but the overall-success sentinel was never written. A subsequent retry invokes `close-original` again; the `[[ ! -f "$comment_sent" ]]` guard no longer exists, so the script re-posts the close comment on GitHub — accepted silently because GitHub allows comments on closed issues.
+
+**Suggested fix:** Swap the two lines: write `.decompose-original-closed` first, then `rm -f "$comment_sent"`. Alternatively, omit the `rm` entirely — the tmpdir is session-scoped and cleanup is irrelevant to correctness.
+
+---
+
+**Finding 2 — Latent | architecture**
+`skills/design/scripts/decompose-file-issues.sh` — `cmd_close_original` function
+
+**`close-original` has no self-contained idempotency guard; it delegates entirely to orchestrator prose.** The `.decompose-original-closed` early-exit check lives only in `decompose-panel.md §0`, not in the script itself. Any caller that bypasses the orchestrator — a manual operator retry, a future partial-recovery path, a test harness — will re-execute unconditionally and post a duplicate comment with no warning.
+
+**Suggested fix:** Add an early exit at the top of `cmd_close_original`:
+```bash
+[[ -f "${DESIGN_TMPDIR}/.decompose-original-closed" ]] && { emit_kv CLOSE_ORIGINAL_STATUS ok; exit 0; }
+```
+This mirrors the orchestrator prose guard but enforces it at the script boundary, making the function safe to call from any context.
+
+---
+
+**Finding 3 — Nit | code-quality**
+`skills/design/scripts/decompose-panel-dispatch.sh:193-194`
+
+**Dual prefix-strip for archetype name extraction is order-sensitive.** The pattern `_arch="${_slot#decomp-cursor-}"; _arch="${_arch#decomp-codex-}"` works for all current archetype names, but silently produces a wrong value if a future archetype slug begins with `cursor-` or `codex-`. For example, a hypothetical `cursor-aware` archetype in slot `decomp-cursor-cursor-aware` would yield `_arch=aware` rather than `cursor-aware`, silently corrupting the `archetype` field in panel-outputs NDJSON.
+
+**Suggested fix:** Either add a comment documenting the naming constraint (no archetype slug may start with `cursor-` or `codex-`), or use a single robust sed pass: `_arch="$(sed 's/^decomp-[a-z]*-//' <<< "$_slot")"`.
+
+---
+
+### Out-of-Scope Observations
+
+None identified.
+
+---
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/scripts/decompose-file-issues.sh:312-315	`rm -f "$comment_sent"` executes before writing `.decompose-original-closed` sentinel in `cmd_close_original`	Process killed between the rm and the sentinel write; next retry finds no `comment_sent` guard so re-posts a duplicate GitHub close-comment (GitHub accepts comments on closed issues)	Swap lines: write `.decompose-original-closed` first, then `rm -f "$comment_sent"`; or omit the cleanup entirely since tmpdir is session-scoped
+1	in_scope	latent	architecture	skills/design/scripts/decompose-file-issues.sh:cmd_close_original	`close-original` has no self-contained idempotency check for `.decompose-original-closed`; guard lives only in `decompose-panel.md §0` orchestrator prose	Direct invocation of `decompose-file-issues.sh close-original` without the orchestrator pre-check (e.g., manual retry, future code path) re-executes even after a fully-successful prior run and posts a duplicate comment	Add early exit at top of `cmd_close_original`: `[[ -f "$DESIGN_TMPDIR/.decompose-original-closed" ]] && { emit_kv CLOSE_ORIGINAL_STATUS ok; exit 0; }`
+1	in_scope	nit	code-quality	skills/design/scripts/decompose-panel-dispatch.sh:193-194	Dual prefix-strip for archetype name extraction is order-sensitive and breaks if future archetypes start with `cursor-` or `codex-`	A hypothetical `cursor-aware` archetype in slot `decomp-cursor-cursor-aware` yields `_arch=aware` instead of `cursor-aware`, silently corrupting panel-outputs NDJSON archetype field	Add naming constraint comment, or use single `sed 's/^decomp-[a-z]*-//'` pass
+```

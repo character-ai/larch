@@ -1,0 +1,31 @@
+Reading the ballot and session context files to verify findings.
+
+Reading `diff-context.txt` and `plan-context.txt` for verification (only file reads per instructions).
+
+Scanning `diff-context.txt` for sections relevant to the ballot (read-only).
+
+FINDING_1: EXONERATE -- Split-path SKILL text now runs Final summary for partition/cancel; no remaining contradiction shown in the provided hunks.
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: EXONERATE -- Plan commits to intra-batch deps; optional doc alignment only.
+FINDING_5: EXONERATE -- Plan allowed waterfall-only aggregator; implementation matches that fork.
+FINDING_6: EXONERATE -- Thinner close body is real but acceptable nit-level polish versus mandated #2644 prose.
+FINDING_7: YES
+FINDING_8: YES
+FINDING_9: YES
+FINDING_10: EXONERATE -- close-original tests export PATH on the same invocations that run close-original.
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: EXONERATE -- Missing feature-only substitution assertion is low-impact optional coverage.
+FINDING_14: YES
+FINDING_15: YES
+FINDING_16: EXONERATE -- Env-based redactor override is an explicit harness/operator hook, not an unexpected trust break.
+FINDING_17: YES
+FINDING_18: YES
+FINDING_19: EXONERATE -- Malformed stdout desync is a narrow edge versus stricter validation cost.
+FINDING_20: YES
+OOS_1: YES
+OOS_2: YES
+OOS_3: YES
+OOS_4: EXONERATE -- Dispatcher RC vs DISPATCH_OK mismatch is known context, not a discrete actionable defect.
+OOS_5: YES

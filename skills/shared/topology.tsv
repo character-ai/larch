@@ -5,6 +5,13 @@ design.plan_review.cursor_archetypes	5 Cursor	Architecture/Standards Edge-cases/
 design.plan_review.codex_archetypes	5 Codex	Architecture/Standards Edge-cases/Failure-modes Innovation/Exploration Pragmatism/Safety Requirements/Completeness	skills/design/references/plan-review.md
 design.plan_review.dynamic_archetypes	up to 6	scout proposes specialists fanned into Cursor+Codex dyn slots	skills/design/references/plan-review.md
 design.plan_review.panel_slots	10 static + up to 12 dynamic	NDJSON manifest from dispatch-plan-review-panel.sh via paths-file sidecar	skills/design/references/plan-review.md
+design.decompose.panel_slots	8 fixed	4 archetypes x 2 vendors via decompose-panel-dispatch.sh	skills/design/references/decompose-panel.md
+design.decompose.dispatch	decompose-panel-dispatch.sh	renders prompts + dispatch-with-waterfall	skills/design/scripts/decompose-panel-dispatch.sh
+design.decompose.aggregator	decompose-aggregator.sh	single-slot merge of eight proposals	skills/design/scripts/decompose-aggregator.sh
+design.decompose.file_issues	decompose-file-issues.sh	prepare annotate close-original	skills/design/scripts/decompose-file-issues.sh
+design.decompose.harness_panel	test-decompose-panel-dispatch.sh	offline panel regression harness	skills/design/scripts/test-decompose-panel-dispatch.sh
+design.decompose.harness_agg	test-decompose-aggregator.sh	offline aggregator merge harness	skills/design/scripts/test-decompose-aggregator.sh
+design.decompose.harness_file	test-decompose-file-issues.sh	offline prepare annotate close-original harness	skills/design/scripts/test-decompose-file-issues.sh
 design.plan_review.quick_mode	Claude-only	1 Claude	skills/design/references/plan-review-quick.md
 design.plan.preview_emit	Step 3 plan-candidate preview	Gate C final-plan preview	skills/design/scripts/emit-design-plan-preview.sh
 design.plan_commands.validate	Tier2+opt-in Tier3	plan fenced bash/sh	skills/design/scripts/validate-plan.sh

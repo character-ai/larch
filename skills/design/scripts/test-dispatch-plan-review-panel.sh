@@ -106,6 +106,7 @@ grep -Fq 'DYNAMIC_SLOT_COUNT=4' "$D2/out.env" || fail "expected 4 dynamic slot r
 [[ "$(grep -c . "$D2/plan-review-slots.ndjson")" == "14" ]] || fail "expected 14 ndjson lines"
 grep -Fq 'dyn-cursor-plan-alpha' "$D2/plan-review-slots.ndjson" || fail "dyn cursor alpha"
 grep -Fq 'dyn-codex-plan-beta' "$D2/plan-review-slots.ndjson" || fail "dyn codex beta"
+jq -e . "$D2/plan-review-slots.ndjson" >/dev/null || fail "manifest must remain valid ndjson"
 
 echo "=== prompts must not demand **Reviewer** attribution line ==="
 if grep -Rq '\*\*Reviewer\*\*' "$D2"/render-plan-*.prompt "$D2"/render-plan-cursor-dyn-*.prompt 2>/dev/null; then
@@ -167,5 +168,23 @@ DISPATCH_PLAN_REVIEW_WATERFALL_SH="$STUB" \
     --plan-file "$D5/plan.txt" \
     --timeout 60 >"$D5/out.env"
 grep -Fq 'DEGRADED_ROUND=true' "$D5/out.env" || fail "static dispatch false should degrade"
+
+echo "=== quoted tmpdir path keeps ndjson valid ==="
+D6="$TMP/quote\"dir"
+prep "$D6"
+printf '{"archetypes":[]}\n' >"$D6/scout-plan-manifest.json"
+log6="$D6/wf.log"
+: >"$log6"
+DISPATCH_PLAN_REVIEW_WATERFALL_SH="$STUB" \
+    WATERFALL_STUB_LOG="$log6" \
+    WATERFALL_STUB_PATHS_OUT="$D6/paths.out" \
+    CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+    "$PANEL" \
+    --design-tmpdir "$D6" \
+    --codex-present true \
+    --cursor-present true \
+    --plan-file "$D6/plan.txt" \
+    --timeout 60 >"$D6/out.env"
+jq -e . "$D6/plan-review-slots.ndjson" >/dev/null || fail "quoted tmpdir path must not corrupt ndjson"
 
 echo "All dispatch-plan-review-panel harness assertions passed."

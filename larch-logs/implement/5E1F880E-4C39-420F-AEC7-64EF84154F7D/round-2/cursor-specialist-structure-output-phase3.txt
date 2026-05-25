@@ -1,0 +1,59 @@
+## Structure / KISS / Maintainability Review
+
+**Branch:** `sergey-zhupanov/lesson-3-decomposition-break-up-analysis-2672` vs `main`
+
+---
+
+### In-Scope Findings
+
+**Finding 1 — Important | code-quality**
+`skills/design/scripts/dispatch-plan-review-panel.sh:85-140`
+
+The plan does not list `dispatch-plan-review-panel.sh` as a file to modify, yet the diff switches all NDJSON manifest row generation from `printf '{"slot":"...","output":"..."}'` to `jq -nc --arg slot ... --arg output ...` and adds a quoted-tmpdir NDJSON-validity test case to `test-dispatch-plan-review-panel.sh`. The change is technically correct (the `printf` approach would produce malformed JSON for paths containing `"` or `\`), but it is unplanned scope expansion that silently modifies a file the plan does not mention. A reviewer cannot distinguish intentional repair from accidental drift without an explicit note.
+
+**Suggested fix:** Either note the fix explicitly in the plan/PR description and extract it as a preparatory commit, or confirm the diff intent includes this repair so reviewers do not treat it as accidental scope drift.
+
+---
+
+**Finding 2 — Latent | correctness**
+`skills/design/scripts/decompose-file-issues.sh:117-127`
+
+The embedded Python in `cmd_prepare` uses `sys.exit(0)` for cycle-detected but `sys.exit(2)` for all other error conditions (`invalid-partition-file`, `no-pieces`, `bad-dependency-ref`). The bash wrapper correctly handles the asymmetry via the `_st` KV check, but callers must always parse `DECOMPOSE_PARTITION_STATUS` from stdout — they cannot rely on exit code alone to distinguish "cycle found (exit 0)" from "successful preparation (exit 0)". The sibling `decompose-file-issues.md` does not document this asymmetry. If a future caller adds a bare `"$DFI" prepare … || die` guard, cycle-detected silently passes the guard.
+
+**Suggested fix:** Document the asymmetry explicitly in `decompose-file-issues.md`; consider changing the cycle-detected case to also use a non-zero exit code (e.g., `exit 1`) while still printing the KV, so exit-code-only guards fail safely.
+
+---
+
+**Finding 3 — Nit | code-quality**
+`skills/design/scripts/decompose-panel-dispatch.sh:189-202`
+
+`render_prompt` is called twice per archetype — once for the cursor output file and once for the codex output file — but both invocations read the same archetype template and produce byte-identical content. The files differ only in their names (`render-decomp-cursor-<arch>.prompt` vs `render-decomp-codex-<arch>.prompt`). Vendor differentiation is handled by the downstream waterfall, not the prompt content, so the duplication is intentional at a functional level, but a reader expecting "one Cursor variant + one Codex variant per the plan language" may expect the content to differ.
+
+**Suggested fix:** Add a brief inline comment explaining why both variants use the same template (e.g., `# same prompt body for both vendors — vendor differentiation is the waterfall's responsibility`), or eliminate the duplication by reusing one rendered path for both manifest slots.
+
+---
+
+**Finding 4 — Nit | code-quality**
+`skills/design/scripts/decompose-file-issues.sh:288`
+
+The comment-deduplication sentinel `.decompose-close-comment-posted` is placed at `$DESIGN_TMPDIR/decompose/.decompose-close-comment-posted` (inside the `decompose/` subdirectory), whereas all other decompose sentinels (`.decompose-issues-filed`, `.decompose-original-closed`) live at the `$DESIGN_TMPDIR/` root. This inconsistency is undocumented in `decompose-file-issues.md` and could confuse an operator scanning `$DESIGN_TMPDIR/` for sentinels during manual recovery.
+
+**Suggested fix:** Move the comment sentinel to `$DESIGN_TMPDIR/.decompose-close-comment-posted` to match the existing convention, or add a note in the `.md` sibling explaining the placement difference.
+
+---
+
+### Out-of-Scope Observations
+
+- `larch-logs/design/` entries (`193746D3-…`, `9D599588-…`, `9FDD11DD-…`): intentional run-log flush commits per `docs/run-logs.md` convention. Not a code defect.
+
+---
+
+### TSV
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	code-quality	skills/design/scripts/dispatch-plan-review-panel.sh:85-140	Unplanned modification switching printf NDJSON row generation to jq -nc	Plan does not list this file as a modification target; reviewer cannot distinguish intentional repair from accidental scope drift	Add PR description note or preparatory commit explaining the NDJSON escaping fix; confirm diff intent explicitly in the plan
+1	in_scope	latent	correctness	skills/design/scripts/decompose-file-issues.sh:117-127	prepare cycle-detected exits 0 while other errors exit 2; callers must parse DECOMPOSE_PARTITION_STATUS KV and cannot rely on exit code alone	Future bare guard `"$DFI" prepare ... || die` passes silently when cycle is detected	Document asymmetry in decompose-file-issues.md; optionally change cycle-detected to exit 1 while still printing the KV so exit-code-only guards fail safely
+1	in_scope	nit	code-quality	skills/design/scripts/decompose-panel-dispatch.sh:189-202	render_prompt called twice per archetype producing byte-identical cursor and codex prompt files	Reader expecting vendor-differentiated prompts per plan language may be confused; minor wasted I/O at render time	Add inline comment explaining same template is intentional (vendor differentiation is the waterfall's job) or reuse one rendered path for both manifest slots
+1	in_scope	nit	code-quality	skills/design/scripts/decompose-file-issues.sh:288	.decompose-close-comment-posted sentinel in $DESIGN_TMPDIR/decompose/ subdir while all other decompose sentinels are at $DESIGN_TMPDIR/ root	Operator scanning $DESIGN_TMPDIR/ root for sentinels during manual recovery will miss this sentinel	Move sentinel to $DESIGN_TMPDIR/.decompose-close-comment-posted (root level) or document the placement difference in decompose-file-issues.md
+```

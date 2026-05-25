@@ -82,14 +82,18 @@ for _archetype in arch edge innovation pragmatic requirements; do
 done
 
 for _archetype in arch edge innovation pragmatic requirements; do
-    printf '{"slot":"cursor-plan-%s","tool":"cursor","output":"%s","prompt_file":"%s"}\n' \
-        "$_archetype" \
-        "$DESIGN_TMPDIR/cursor-plan-${_archetype}-output.txt" \
-        "$DESIGN_TMPDIR/render-plan-cursor-${_archetype}.prompt" >>"$_manifest"
-    printf '{"slot":"codex-plan-%s","tool":"codex","output":"%s","prompt_file":"%s"}\n' \
-        "$_archetype" \
-        "$DESIGN_TMPDIR/codex-primary-plan-${_archetype}-output.txt" \
-        "$DESIGN_TMPDIR/render-plan-codex-${_archetype}.prompt" >>"$_manifest"
+    jq -nc \
+        --arg slot "cursor-plan-${_archetype}" \
+        --arg tool cursor \
+        --arg output "$DESIGN_TMPDIR/cursor-plan-${_archetype}-output.txt" \
+        --arg prompt_file "$DESIGN_TMPDIR/render-plan-cursor-${_archetype}.prompt" \
+        '{slot:$slot,tool:$tool,output:$output,prompt_file:$prompt_file}' >>"$_manifest"
+    jq -nc \
+        --arg slot "codex-plan-${_archetype}" \
+        --arg tool codex \
+        --arg output "$DESIGN_TMPDIR/codex-primary-plan-${_archetype}-output.txt" \
+        --arg prompt_file "$DESIGN_TMPDIR/render-plan-codex-${_archetype}.prompt" \
+        '{slot:$slot,tool:$tool,output:$output,prompt_file:$prompt_file}' >>"$_manifest"
 done
 
 if [[ -s "$_scout_manifest" ]] && jq -e '.archetypes | type == "array"' "$_scout_manifest" >/dev/null 2>&1; then
@@ -102,14 +106,18 @@ if [[ -s "$_scout_manifest" ]] && jq -e '.archetypes | type == "array"' "$_scout
         write_dynamic_prompt "$_slug" "$PLAN_FILE" "$_body_tmp" "$DESIGN_TMPDIR/render-plan-cursor-dyn-${_slug}.prompt"
         write_dynamic_prompt "$_slug" "$PLAN_FILE" "$_body_tmp" "$DESIGN_TMPDIR/render-plan-codex-dyn-${_slug}.prompt"
         rm -f "$_body_tmp"
-        printf '{"slot":"dyn-cursor-plan-%s","tool":"cursor","output":"%s","prompt_file":"%s"}\n' \
-            "$_slug" \
-            "$DESIGN_TMPDIR/cursor-plan-dyn-${_slug}-output.txt" \
-            "$DESIGN_TMPDIR/render-plan-cursor-dyn-${_slug}.prompt" >>"$_manifest"
-        printf '{"slot":"dyn-codex-plan-%s","tool":"codex","output":"%s","prompt_file":"%s"}\n' \
-            "$_slug" \
-            "$DESIGN_TMPDIR/codex-primary-plan-dyn-${_slug}-output.txt" \
-            "$DESIGN_TMPDIR/render-plan-codex-dyn-${_slug}.prompt" >>"$_manifest"
+        jq -nc \
+            --arg slot "dyn-cursor-plan-${_slug}" \
+            --arg tool cursor \
+            --arg output "$DESIGN_TMPDIR/cursor-plan-dyn-${_slug}-output.txt" \
+            --arg prompt_file "$DESIGN_TMPDIR/render-plan-cursor-dyn-${_slug}.prompt" \
+            '{slot:$slot,tool:$tool,output:$output,prompt_file:$prompt_file}' >>"$_manifest"
+        jq -nc \
+            --arg slot "dyn-codex-plan-${_slug}" \
+            --arg tool codex \
+            --arg output "$DESIGN_TMPDIR/codex-primary-plan-dyn-${_slug}-output.txt" \
+            --arg prompt_file "$DESIGN_TMPDIR/render-plan-codex-dyn-${_slug}.prompt" \
+            '{slot:$slot,tool:$tool,output:$output,prompt_file:$prompt_file}' >>"$_manifest"
     done < <(jq -c '.archetypes[]?' "$_scout_manifest")
 fi
 

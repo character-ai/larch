@@ -1,0 +1,7 @@
+All checks pass. Three fixes applied:
+
+1. **`scripts/test-design-structure.sh:680`** — Replaced `grep -vq` (which always returned 0 for any multi-line file) with `! grep -q`, making the "must not contain" assertion actually work.
+
+2. **`skills/design/scripts/decompose-aggregator.sh:152`** — `AGGREGATOR_OUTPUT` now only emitted when `AGGREGATOR_STATUS=ok`, preventing callers from consuming a potentially non-existent or malformed file.
+
+3. **`skills/design/scripts/decompose-file-issues.sh`** — Added `try/except ValueError` around both `int(failed)` and `int(created)` calls in the `cmd_annotate` Python block to avoid unhandled exceptions from unexpected string content.

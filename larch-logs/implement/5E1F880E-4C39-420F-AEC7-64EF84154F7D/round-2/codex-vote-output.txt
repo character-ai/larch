@@ -1,0 +1,18 @@
+FINDING_1: EXONERATE -- Env override risk is real, but these are documented offline harness hooks and gating them adds more machinery than the concern warrants.
+FINDING_2: EXONERATE -- Large-input reads are a legitimate robustness concern, but not concrete enough for this scoped change.
+FINDING_3: NO -- Generic committed-log secret risk is already documented as best-effort redaction and is not a concrete new issue to file.
+FINDING_4: NO -- The item itself says these are intentional run-log commits, not a defect.
+FINDING_5: NO -- This describes a fix that is already present, not a remaining review finding.
+FINDING_6: NO -- This describes correct existing behavior, not a defect.
+FINDING_7: NO -- This describes a defensive fix that is already present, not a remaining issue.
+FINDING_8: NO -- The current test uses `! grep -q`, so the claimed `grep -vq` no-op is not present.
+FINDING_9: EXONERATE -- The untested no-discussion feature-only path is real but low-risk relative to the added harness coverage.
+FINDING_10: EXONERATE -- The two-row aggregator fixture is thinner than ideal, but expanding it is not worth blocking this change.
+FINDING_11: NO -- The missing guard test is a narrow harness gap for a straightforward argument check, not worth raising.
+FINDING_12: NO -- `jq` is already a documented runtime prerequisite, so this is not a new OOS issue.
+FINDING_13: YES
+FINDING_14: YES
+FINDING_15: EXONERATE -- The prefix stripping is hypothetically fragile for future archetype names, but current fixed names make it too speculative.
+FINDING_16: NO -- The current assertion already uses `! grep -q`, so the claimed regression is absent.
+FINDING_17: YES
+FINDING_18: NO -- The item states the change is benign and needs no action, so it is not worth filing as an OOS issue.

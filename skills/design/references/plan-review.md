@@ -217,3 +217,9 @@ If no findings were rejected, write an empty `$DESIGN_TMPDIR/rejected-findings.m
 **Finding**: <thorough description of the finding — include what aspect of the plan the reviewer questioned, the specific concern raised, and what revision they suggested. Must be detailed enough to serve as an actionable TODO item if later prioritized. Do NOT use a terse one-liner — a reader who has never seen the original review must be able to understand the concern and act on it.>
 **Reason not implemented**: <complete justification for why this finding was not accepted — include the specific technical reasoning, any relevant context about project conventions or design decisions, and why the current plan is acceptable despite the finding. Do NOT abbreviate — preserve all important details from the evaluation.>
 ```
+
+---
+
+## Related: decomposition panel
+
+Step **2b.5 Split-path** reuses the same **`scripts/dispatch-with-waterfall.sh`** three-tier per-slot contract (Cursor → alternate external → Claude) as this Step 3 plan-review panel, but with a **fixed 8-slot** manifest (four decomposition archetypes × two vendors) built by `skills/design/scripts/decompose-panel-dispatch.sh`. Normative orchestration, degraded presentation, aggregator merge, `/larch:issue` batch filing, and original-issue close live in `skills/design/references/decompose-panel.md` — read that file on Split-path entry, not this plan-review reference.
