@@ -12,9 +12,6 @@ Mechanical plan-size detector for `/design` **Step 2b.5** (issue #2670). Thresho
 - Plan file MUST exist (otherwise exit **2**, `PLAN_SIZE_STATUS=missing-plan` on the contract stream — see **Exit codes**).
 - The **final non-empty line** MUST match `emit-plan.sh` grammar: the literal prefix `diff_lines:` followed by **exactly one ASCII space** and then ASCII digits only to end-of-line — same rule as `skills/design/scripts/emit-plan.sh` (`case "$last_line" in diff_lines:\ *)` + digit validation). Tabs, multiple spaces after the colon, or other whitespace variants are rejected so the helper never accepts a trailer `emit-plan.sh` would refuse.
 - **Plan body line count (`PLAN_LINES`)** is the number of physical lines **before** that final non-empty trailer line (blank lines count; the trailer line itself is excluded).
-- **Files count (`FILES_COUNT`)** counts lines matching the scout-tolerant heading regex (at least one whitespace after `###` before the keyword):
-
-  `^###[[:space:]]+(NEW|UPDATED|REWRITTEN)[[:space:]]*:`
 
 ## Output contract (`emit_kv` on FD 3)
 
@@ -26,14 +23,10 @@ Emitted keys (exit **0** only):
 |-----|---------|
 | `PLAN_LINES` | Body lines excluding the trailer line |
 | `DIFF_LINES` | Integer from the trailer |
-| `FILES_COUNT` | Heading count per regex above |
-| `SOFT_TRIGGER_FIRED` | `true` or `false` |
 | `HARD_TRIGGER_FIRED` | `true` or `false` |
-| `TRIGGER_REASONS` | Comma-separated tokens in **fixed priority order** `plan-body-lines`, `diff-lines`, `files-count` (matches threshold evaluation order in this helper — **not** lexicographic). Empty string when no threshold crossing. The orchestrator may append display-only context such as `trigger=partition-flag` for `--partition`; this helper does **not** emit that token. |
+| `TRIGGER_REASONS` | Comma-separated tokens in **fixed priority order** `plan-body-lines`, `diff-lines` (matches hard-threshold evaluation order in this helper — **not** lexicographic). Empty string when no hard threshold crossing. |
 
-**Strict `>` boundary semantics** (250/600/8 soft; 800/1500 hard): equality does **not** trip — see `flags.md`.
-
-**Hard precedence**: when any hard threshold trips, `HARD_TRIGGER_FIRED=true` and `SOFT_TRIGGER_FIRED=false` even if soft thresholds would also have fired. `TRIGGER_REASONS` still lists every crossed dimension in fixed-priority order.
+**Strict `>` boundary semantics** (800/1500 hard): equality does **not** trip — see `flags.md`.
 
 ## Exit codes
 
