@@ -97,6 +97,16 @@ mkdir -p "$DESIGN_LEGACY_WARN"
 "$SUBJECT" --ballot-file "$BALLOT" --voter-files "$V1" "$V2" "$V3" --design-tmpdir "$DESIGN_LEGACY_WARN" >/dev/null 2>"$TMPROOT/legacy-warning.err"
 grep -q -- '--voter-files is deprecated' "$TMPROOT/legacy-warning.err" || fail "legacy --voter-files deprecation warning missing"
 
+echo "=== duplicate --voter slot is rejected ==="
+DESIGN_DUP_SLOT="$TMPROOT/design-dup-slot"
+mkdir -p "$DESIGN_DUP_SLOT"
+set +e
+"$SUBJECT" --ballot-file "$BALLOT" --voter "Claude:$V1" --voter "Claude:$V2" --design-tmpdir "$DESIGN_DUP_SLOT" >/tmp/larch-tally-plan-review-dup-slot.out 2>&1
+rc_dup_slot=$?
+set -e
+[[ "$rc_dup_slot" -eq 2 ]] || fail "duplicate --voter slot should exit 2"
+grep -q 'duplicate --voter slot' /tmp/larch-tally-plan-review-dup-slot.out || fail "duplicate slot diagnostic missing"
+
 # Rejected OOS subtracts one point.
 BALLOT_OOS_REJECTED="$TMPROOT/ballot-oos-rejected.md"
 cat > "$BALLOT_OOS_REJECTED" <<'EOF'
@@ -247,6 +257,7 @@ set -e
 [[ -s "$DESIGN_MALFORMED/voting-tally.md" ]] || fail "voting-tally.md missing or empty on malformed ballot"
 grep -q '# Plan Review Voting Tally' "$DESIGN_MALFORMED/voting-tally.md" || fail "degraded header missing"
 grep -q '\*\*⚠ Tally aborted:' "$DESIGN_MALFORMED/voting-tally.md" || fail "abort prefix missing"
+[[ "$(wc -l < "$DESIGN_MALFORMED/plan-review/round-1/findings-classification.tsv" | tr -d ' ')" == "1" ]] || fail "malformed ballot should rewrite classification TSV header only"
 
 echo "=== ballot-file unreadable abort still writes voting-tally.md ==="
 NONEXIST="$TMPROOT/no-such-ballot-2720.md"
@@ -258,5 +269,6 @@ rc_noballot=$?
 set -e
 [[ "$rc_noballot" -eq 2 ]] || fail "missing ballot should exit 2"
 [[ -s "$DESIGN_NOBALLOT/voting-tally.md" ]] || fail "voting-tally.md missing or empty on unreadable ballot"
+[[ "$(wc -l < "$DESIGN_NOBALLOT/plan-review/round-1/findings-classification.tsv" | tr -d ' ')" == "1" ]] || fail "missing ballot should rewrite classification TSV header only"
 
 echo "PASS: test-tally-plan-review.sh"

@@ -14,6 +14,8 @@ PLAN_REVIEW_TALLY_SH="${LARCH_PLAN_REVIEW_TALLY_SH:-$PLUGIN_ROOT/skills/design/s
 # shellcheck source=scripts/lib-quiet.sh
 source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
+# shellcheck source=scripts/lib-vote-tally.sh
+source "$PLUGIN_ROOT/scripts/lib-vote-tally.sh"
 _dedup_failed=0
 
 usage() {
@@ -92,7 +94,7 @@ write_empty_review_artifacts() {
     : > "$DESIGN_TMPDIR/oos.md"
     : > "$DESIGN_TMPDIR/oos-accepted-design.md"
     mkdir -p "$(dirname "$classification_out")"
-    printf 'finding_id\tfinding_reviewers\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\tv1_quality\tv1_uncertain\tv2_vote\tv2_correctness\tv2_severity\tv2_quality\tv2_uncertain\tv3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain\n' > "$classification_out"
+    findings_classification_header > "$classification_out"
     {
         printf '# Plan Review Voting Tally\n\n'
         printf '%s\n' "$tally_note"

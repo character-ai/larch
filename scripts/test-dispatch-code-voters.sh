@@ -74,7 +74,7 @@ case "${CODEX_STUB_MODE:-ok}" in
     if [[ "$count" -eq 1 ]]; then
       printf 'Narrative codex output without structured votes.\n' > "$out"
     else
-      printf 'FINDING_1: YES\n' > "$out"
+      printf 'FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false\n' > "$out"
     fi
     ;;
   parse_retry_fail)
@@ -86,7 +86,7 @@ case "${CODEX_STUB_MODE:-ok}" in
     printf 'Narrative codex output without structured votes.\n' > "$out"
     ;;
   *)
-    printf 'FINDING_1: YES\n' > "$out"
+    printf 'FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false\n' > "$out"
     ;;
 esac
 STUB
@@ -104,7 +104,7 @@ case "${CURSOR_STUB_MODE:-ok}" in
     if [[ "$count" -eq 1 ]]; then
       printf '{"result":"Narrative cursor output without structured votes.","usage":{"inputTokens":1,"outputTokens":1,"cacheReadTokens":0,"cacheWriteTokens":0}}\n'
     else
-      printf '{"result":"FINDING_1: NO -- cursor","usage":{"inputTokens":1,"outputTokens":1,"cacheReadTokens":0,"cacheWriteTokens":0}}\n'
+      printf '{"result":"FINDING_1: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=weak UNCERTAIN=false","usage":{"inputTokens":1,"outputTokens":1,"cacheReadTokens":0,"cacheWriteTokens":0}}\n'
     fi
     ;;
   parse_retry_fail)
@@ -116,7 +116,7 @@ case "${CURSOR_STUB_MODE:-ok}" in
     printf '{"result":"Narrative cursor output without structured votes.","usage":{"inputTokens":1,"outputTokens":1,"cacheReadTokens":0,"cacheWriteTokens":0}}\n'
     ;;
   *)
-    printf '{"result":"FINDING_1: NO -- cursor","usage":{"inputTokens":1,"outputTokens":1,"cacheReadTokens":0,"cacheWriteTokens":0}}\n'
+    printf '{"result":"FINDING_1: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=weak UNCERTAIN=false","usage":{"inputTokens":1,"outputTokens":1,"cacheReadTokens":0,"cacheWriteTokens":0}}\n'
     ;;
 esac
 STUB
@@ -140,7 +140,7 @@ case "${CLAUDE_STUB_MODE:-ok}" in
     if [[ "$count" -eq 1 ]]; then
       printf 'I reviewed the ballot and here is my narrative instead of votes.\n'
     else
-      printf 'FINDING_1: YES\n'
+      printf 'FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false\n'
     fi
     exit 0 ;;
   parse_retry_fail)
@@ -152,7 +152,7 @@ case "${CLAUDE_STUB_MODE:-ok}" in
     printf 'I reviewed the ballot and here is my narrative instead of votes.\n'
     exit 0 ;;
 esac
-printf 'FINDING_1: YES\n'
+printf 'FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false\n'
 STUB
 chmod +x "$STUB_BIN/codex" "$STUB_BIN/cursor" "$STUB_BIN/claude"
 
@@ -444,7 +444,7 @@ grep -Fq 'VOTER_3_TOOL=cursor' <<< "$out" \
     || { echo "FAIL: cursor retry fixture expected voter 3 to stay on cursor" >&2; exit 1; }
 grep -Fq 'VOTER_3_PARSE_RATE_STATUS=OK' <<< "$out" \
     || { echo "FAIL: cursor parse-rate retry success expected VOTER_3_PARSE_RATE_STATUS=OK" >&2; exit 1; }
-grep -Fq 'FINDING_1: NO -- cursor' "$retry_success_cursor_tmp/cursor-vote-output.txt" \
+grep -Fq 'FINDING_1: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=weak UNCERTAIN=false' "$retry_success_cursor_tmp/cursor-vote-output.txt" \
     || { echo "FAIL: cursor parse-rate retry success expected structured final voter output" >&2; exit 1; }
 [[ -f "$retry_success_cursor_tmp/cursor-vote-output-first-pass.txt" ]] \
     || { echo "FAIL: cursor parse-rate retry success expected first-pass sidecar" >&2; exit 1; }

@@ -29,6 +29,33 @@ vote_for_id() {
     ' "$file"
 }
 
+# count_votes_for_id: prints a tab-separated `yes no exonerate judge_error`
+# tally for one ballot id across the supplied voter files. Callers should keep
+# the authoritative vote semantics centralized here instead of open-coding vote
+# loops in multiple artifact writers.
+count_votes_for_id() {
+    local id="$1"
+    shift || true
+    local voter_file vote yes=0 no=0 exonerate=0 judge_error=0
+    for voter_file in "$@"; do
+        vote=$(vote_for_id "$id" "$voter_file")
+        case "$vote" in
+            YES) yes=$((yes + 1)) ;;
+            NO) no=$((no + 1)) ;;
+            EXONERATE) exonerate=$((exonerate + 1)) ;;
+            *) judge_error=$((judge_error + 1)) ;;
+        esac
+    done
+    printf '%s\t%s\t%s\t%s\n' "$yes" "$no" "$exonerate" "$judge_error"
+}
+
+# findings_classification_header: prints the canonical findings-classification
+# TSV header. Keep empty-artifact writers and tally writers aligned by calling
+# this helper instead of duplicating the literal schema.
+findings_classification_header() {
+    printf '%s\n' 'finding_id	finding_reviewers	voting_result	v1_vote	v1_correctness	v1_severity	v1_quality	v1_uncertain	v2_vote	v2_correctness	v2_severity	v2_quality	v2_uncertain	v3_vote	v3_correctness	v3_severity	v3_quality	v3_uncertain'
+}
+
 # reviewer_for_block: extracts the reviewer attribution from a `### FINDING_N:`
 # or `### OOS_N:` block file. Matches lines anchored at the start after optional
 # leading `-`/whitespace, with optional `**Reviewer**:` / `**Reviewers**:` or

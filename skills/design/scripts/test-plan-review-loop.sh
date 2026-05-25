@@ -233,6 +233,15 @@ EOS
     chmod +x "$STUB/tally-plan-review.sh"
 }
 
+write_dispatch_fail() {
+    cat >"$STUB/dispatch-plan-review-panel.sh" <<'EOS'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'DISPATCH_OK=false\n'
+EOS
+    chmod +x "$STUB/dispatch-plan-review-panel.sh"
+}
+
 run_loop() {
     local d="$1"
     export CLAUDE_PLUGIN_ROOT="$ROOT"
@@ -266,6 +275,21 @@ printf '%s\n' "$out0" | grep -q '^WARN=plan-review-tsv:' || fail "expected WARN 
 [[ -f "$D0/ballot.txt" ]] || fail "ballot.txt missing on zero-findings path"
 grep -q 'No findings were raised' "$D0/voting-tally.md" || fail "expected zero-findings tally prose"
 [[ "$(wc -l < "$D0/plan-review/round-1/findings-classification.tsv" | tr -d ' ')" == "1" ]] || fail "zero-findings path should write header-only classification TSV"
+
+echo "=== panel dispatch failure still writes header-only TSV ==="
+DP="$TMP/zp"
+mkdir -p "$DP"
+printf 'plan\n' >"$DP/plan.txt"
+printf 'feat\n' >"$DP/feature-description.txt"
+write_scout
+write_dispatch_fail
+set +e
+outp=$(run_loop "$DP")
+rcp=$?
+set -e
+[[ "$rcp" -eq 1 ]] || fail "panel dispatch failure should exit 1"
+printf '%s\n' "$outp" | grep -q '^LOOP_STATUS=panel-failed$' || fail "panel-failed loop status missing"
+[[ "$(wc -l < "$DP/plan-review/round-1/findings-classification.tsv" | tr -d ' ')" == "1" ]] || fail "panel-failed path should write header-only classification TSV"
 
 echo "=== stubbed driver: one finding + real tally ==="
 D1="$TMP/z1"

@@ -76,6 +76,25 @@ should_suppress_parse_rate_issue_append() {
     is_harness_review_path "$base_tmp" || is_harness_review_path "$voter_path"
 }
 
+is_substantive_vote_for_id() {
+    local parser="$1" voter_path="$2" id_line="$3" parsed line key value
+    local parsed_vote="" parsed_correctness="" parsed_severity="" parsed_quality="" parsed_uncertain=""
+    [[ -x "$parser" ]] || return 1
+    parsed=$("$parser" "$voter_path" "$id_line" 2>/dev/null || true)
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        key="${line%%=*}"
+        value="${line#*=}"
+        case "$key" in
+            PARSED_VOTE) parsed_vote="$value" ;;
+            PARSED_CORRECTNESS) parsed_correctness="$value" ;;
+            PARSED_SEVERITY) parsed_severity="$value" ;;
+            PARSED_QUALITY) parsed_quality="$value" ;;
+            PARSED_UNCERTAIN) parsed_uncertain="$value" ;;
+        esac
+    done <<< "$parsed"
+    [[ -n "$parsed_vote" && -n "$parsed_correctness" && -n "$parsed_severity" && -n "$parsed_quality" && -n "$parsed_uncertain" ]]
+}
+
 # Globals (callers set before invoking substantive checks):
 #   LARCH_VPR_BALLOT_FILE — path to ballot markdown
 #   LARCH_VPR_ID_GRAMMAR — finding-only | finding-oos
@@ -90,8 +109,9 @@ check_voter_parse_rate() {
     local id_grammar="${LARCH_VPR_ID_GRAMMAR:-finding-only}"
     local base_tmp="${LARCH_VPR_REVIEW_TMPDIR:?LARCH_VPR_REVIEW_TMPDIR must be set}"
     local plugin_root="${LARCH_VPR_PLUGIN_ROOT:-${CLAUDE_PLUGIN_ROOT:-}}"
-    local diag_file
+    local diag_file parser_script
     diag_file="$(voter_parse_rate_diag_path "$voter_path")"
+    parser_script="$plugin_root/scripts/parse-judge-vote-and-rating.sh"
     [[ -s "$voter_path" ]] || { printf 'PARSE_RATE_STATUS=OK\n'; return 0; }
     local ids_list ids_count judge_error_count
     if [[ "$id_grammar" == "finding-oos" ]]; then
@@ -120,22 +140,11 @@ check_voter_parse_rate() {
     local id_line one
     while IFS= read -r id_line || [[ -n "$id_line" ]]; do
         [[ -z "$id_line" ]] && continue
-        one=$(
-            awk -v id="$id_line" '
-              BEGIN { result="JUDGE_ERROR" }
-              {
-                upper=toupper($0)
-                prefix="^" toupper(id) ":[[:space:]]*"
-                if (upper ~ (prefix "(YES|NO|EXONERATE)([[:space:]-]|$)")) {
-                    rest=upper; sub(prefix, "", rest)
-                    if (rest ~ /^YES([[:space:]-]|$)/) result="YES"
-                    else if (rest ~ /^NO([[:space:]-]|$)/) result="NO"
-                    else if (rest ~ /^EXONERATE([[:space:]-]|$)/) result="EXONERATE"
-                }
-              }
-              END { print result }
-            ' "$voter_path"
-        )
+        if is_substantive_vote_for_id "$parser_script" "$voter_path" "$id_line"; then
+            one="SUBSTANTIVE"
+        else
+            one="JUDGE_ERROR"
+        fi
         [[ "$one" == "JUDGE_ERROR" ]] && judge_error_count=$((judge_error_count + 1))
     done <<< "$ids_list"
     # >=80% JUDGE_ERROR threshold

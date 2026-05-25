@@ -339,6 +339,25 @@ out_pr=$(
 )
 [[ "$out_pr" == *"PUBLISH_OK=false"* ]] || fail "unexpected plan-review file should fail publish: $out_pr"
 
+echo "=== absent or empty plan-review succeeds ==="
+TMPPRE=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-planreview-empty.XXXXXX")
+clone_pre=$(setup_clone_with_origin_head "$TMPPRE")
+stub_pre="$TMPPRE/stub"
+make_gh_stub "$stub_pre"
+export PATH="$stub_pre:$PATH"
+unset TEST_CLONE_ROOT TEST_MERGE_BRANCH GH_STUB_LOG GH_STUB_CREATE_RC GH_STUB_CREATE_NO_URL GH_STUB_MERGE_RC
+mkdir -p "$TMPPRE/design-no-plan-review" "$TMPPRE/design-empty-plan-review/plan-review"
+printf 'body\n' >"$TMPPRE/design-no-plan-review/plan.txt"
+printf 'body\n' >"$TMPPRE/design-empty-plan-review/plan.txt"
+out_pre_absent=$(
+    (cd "$clone_pre" && bash "$PUBLISH" --design-tmpdir "$TMPPRE/design-no-plan-review" --run-id "RUNPRNONE1" --issue 12 --repo owner/repo) 2>/dev/null || true
+)
+[[ "$out_pre_absent" == *"PUBLISH_OK=true"* ]] || fail "absent plan-review should publish successfully: $out_pre_absent"
+out_pre_empty=$(
+    (cd "$clone_pre" && bash "$PUBLISH" --design-tmpdir "$TMPPRE/design-empty-plan-review" --run-id "RUNPREMPTY1" --issue 13 --repo owner/repo) 2>/dev/null || true
+)
+[[ "$out_pre_empty" == *"PUBLISH_OK=true"* ]] || fail "empty plan-review should publish successfully: $out_pre_empty"
+
 echo "=== plan-review symlink root fails publish ==="
 TMPPRL=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-planreview-link.XXXXXX")
 clone_prl=$(setup_clone_with_origin_head "$TMPPRL")

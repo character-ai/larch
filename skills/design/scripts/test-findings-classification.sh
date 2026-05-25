@@ -119,6 +119,7 @@ assert_cell "$W2/out.tsv" FINDING_1 v3_vote EXONERATE
 echo "=== partial row uncertainty dominates explicit false ==="
 assert_cell "$OUT1" FINDING_2 v1_quality ""
 assert_cell "$OUT1" FINDING_2 v1_uncertain true
+assert_cell "$OUT1" FINDING_2 v1_vote YES
 
 echo "=== zero judges writes rejected rows with empty voter columns ==="
 W3="$TMPROOT/zero"
@@ -173,6 +174,23 @@ assert_parser_cell "$PARSER_FIX" FINDING_5 PARSED_CORRECTNESS true
 assert_parser_cell "$PARSER_FIX" FINDING_3 PARSED_SEVERITY ""
 assert_parser_cell "$PARSER_FIX" FINDING_3 PARSED_UNCERTAIN true
 assert_parser_cell "$PARSER_FIX" FINDING_4 PARSED_VOTE YES
+
+echo "=== voter-sourced TSV cells are sanitized ==="
+W7="$TMPROOT/sanitize"
+mkdir -p "$W7"
+SANITIZE_BALLOT="$W7/ballot.md"
+cat > "$SANITIZE_BALLOT" <<'EOF'
+### FINDING_1: Sanitized
+- **Reviewer**: Reviewer	A
+- focus-area = correctness
+EOF
+SANITIZE_CLAUDE="$W7/claude.txt"
+printf 'FINDING_1: YES CORRECTNESS=true\tjunk SEVERITY=major QUALITY=good UNCERTAIN=false\n' > "$SANITIZE_CLAUDE"
+run_tally --ballot-file "$SANITIZE_BALLOT" --design-tmpdir "$W7/design" --findings-classification-out "$W7/out.tsv" --voter "Claude:$SANITIZE_CLAUDE"
+assert_cell "$W7/out.tsv" FINDING_1 finding_reviewers "Reviewer A"
+assert_cell "$W7/out.tsv" FINDING_1 v1_vote YES
+assert_cell "$W7/out.tsv" FINDING_1 v1_correctness true
+awk -F '\t' 'NR == 2 { exit (NF == 18 ? 0 : 1) }' "$W7/out.tsv" || fail "sanitized row should preserve 18 TSV columns"
 
 echo "=== reviewer tab normalization and sorted row order ==="
 W6="$TMPROOT/sort"

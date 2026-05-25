@@ -2,6 +2,7 @@
 # Regression harness for scripts/dispatch-plan-voters.sh waterfall wiring.
 
 set -euo pipefail
+export LARCH_QUIET_DISABLE=1
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 SCRIPT="$REPO_ROOT/scripts/dispatch-plan-voters.sh"
@@ -26,8 +27,10 @@ done
 [[ -n "$output" ]] || exit 2
 if [[ "${CODEX_STUB_MODE:-primary}" == "narrative" ]]; then
     printf 'Narrative output that should trigger retry.\n' > "$output"
+elif [[ "${CODEX_STUB_MODE:-primary}" == "vote_only" ]]; then
+    printf 'FINDING_1: YES\nOOS_1: NO\n' > "$output"
 else
-    printf 'FINDING_1: YES\nOOS_1: NO -- codex primary ok\n' > "$output"
+    printf 'FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false\nOOS_1: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false\n' > "$output"
 fi
 printf '0\n' > "${output}.done"
 STUB
@@ -37,13 +40,13 @@ log="${CURSOR_STUB_LOG:-}"
 for arg in "$@"; do
     [[ -n "$log" ]] && printf '%s\n' "$arg" >> "$log"
 done
-printf '{"result":"FINDING_1: NO -- cursor","usage":{"inputTokens":1,"outputTokens":1,"cacheReadTokens":0,"cacheWriteTokens":0}}\n'
+printf '{"result":"FINDING_1: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=weak UNCERTAIN=false\nOOS_1: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false","usage":{"inputTokens":1,"outputTokens":1,"cacheReadTokens":0,"cacheWriteTokens":0}}\n'
 STUB
 cat > "$STUB_BIN/claude" <<'STUB'
 #!/usr/bin/env bash
 prompt="$(cat)"
 if grep -Fq 'previous attempt produced narrative output' <<< "$prompt"; then
-printf 'FINDING_1: YES\nOOS_1: NO -- claude retry ok\n'
+printf 'FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false\nOOS_1: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false\n'
 else
 printf 'Narrative output that should trigger retry.\n'
 fi
@@ -53,7 +56,10 @@ chmod +x "$STUB_BIN/codex" "$STUB_BIN/cursor" "$STUB_BIN/claude"
 PLUGIN_ROOT_STUB="$TMP/plugin-root"
 mkdir -p "$PLUGIN_ROOT_STUB/scripts" "$PLUGIN_ROOT_STUB/skills/shared/scripts"
 cp "$REPO_ROOT/skills/shared/scripts/render-voter-prompt.sh" "$PLUGIN_ROOT_STUB/skills/shared/scripts/render-voter-prompt.sh"
+cp "$REPO_ROOT/scripts/parse-judge-vote-and-rating.sh" "$PLUGIN_ROOT_STUB/scripts/parse-judge-vote-and-rating.sh"
+cp "$REPO_ROOT/scripts/lib-quiet.sh" "$PLUGIN_ROOT_STUB/scripts/lib-quiet.sh"
 chmod +x "$PLUGIN_ROOT_STUB/skills/shared/scripts/render-voter-prompt.sh"
+chmod +x "$PLUGIN_ROOT_STUB/scripts/parse-judge-vote-and-rating.sh"
 
 cat > "$PLUGIN_ROOT_STUB/scripts/launch-claude-review.sh" <<'STUB'
 #!/usr/bin/env bash
@@ -71,17 +77,17 @@ done
 [[ -n "$OUTPUT" ]] || exit 2
 mkdir -p "$(dirname "$OUTPUT")"
 case "${LAUNCH_CLAUDE_REVIEW_STUB_MODE:-ok}" in
-    ok) printf 'FINDING_1: YES\nOOS_1: NO -- claude voter1 ok\n' > "$OUTPUT" ;;
+    ok) printf 'FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false\nOOS_1: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false\n' > "$OUTPUT" ;;
     fail) exit 99 ;;
     empty) : > "$OUTPUT" ;;
     narrative_then_ok)
         if [[ -n "$PROMPT_FILE" ]] && grep -Fq 'previous attempt produced narrative output' "$PROMPT_FILE" 2>/dev/null; then
-            printf 'FINDING_1: YES\nOOS_1: NO -- claude voter1 retry ok\n' > "$OUTPUT"
+            printf 'FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false\nOOS_1: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false\n' > "$OUTPUT"
         else
             printf 'Narrative output that should trigger retry.\n' > "$OUTPUT"
         fi
         ;;
-    *) printf 'FINDING_1: YES\nOOS_1: NO -- claude voter1 ok\n' > "$OUTPUT" ;;
+    *) printf 'FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false\nOOS_1: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false\n' > "$OUTPUT" ;;
 esac
 printf '0\n' > "${OUTPUT}.done"
 exit 0
@@ -123,14 +129,14 @@ while IFS= read -r row || [[ -n "$row" ]]; do
     case "$mode:$slot" in
         healthy:*)
             if [[ "$effective_tool" == "codex" ]]; then
-                printf 'FINDING_1: YES\nOOS_1: NO -- codex primary ok\n' > "$output"
+                printf 'FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false\nOOS_1: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false\n' > "$output"
             elif [[ "$effective_tool" == "cursor" ]]; then
-                printf 'FINDING_1: NO -- cursor\nOOS_1: NO -- cursor\n' > "$output"
+                printf 'FINDING_1: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=weak UNCERTAIN=false\nOOS_1: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false\n' > "$output"
             else
                 prompt_body=""
                 [[ -f "$prompt_file" ]] && prompt_body=$(cat "$prompt_file")
                 if grep -Fq 'previous attempt produced narrative output' <<< "$prompt_body"; then
-                    printf 'FINDING_1: YES\nOOS_1: NO -- claude retry ok\n' > "$output"
+                    printf 'FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false\nOOS_1: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false\n' > "$output"
                 else
                     printf 'Narrative output that should trigger retry.\n' > "$output"
                 fi
@@ -141,18 +147,18 @@ while IFS= read -r row || [[ -n "$row" ]]; do
         retry-waterfall:voter-2)
             # Historical harness name: keep substantive output so parse-rate does not
             # depend on the unused voter-2-retry stub branch (manifest has only two slots).
-            printf 'FINDING_1: YES\nOOS_1: NO -- codex primary ok\n' > "$output"
+            printf 'FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false\nOOS_1: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false\n' > "$output"
             all_outputs+=("$output")
             all_tools+=("$effective_tool")
             ;;
         retry-waterfall:voter-3)
-            printf 'FINDING_1: NO -- cursor\nOOS_1: NO -- cursor\n' > "$output"
+            printf 'FINDING_1: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=weak UNCERTAIN=false\nOOS_1: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false\n' > "$output"
             all_outputs+=("$output")
             all_tools+=("$effective_tool")
             ;;
         retry-waterfall:voter-2-retry)
             phase2_output="${output%.txt}-phase2.txt"
-            printf 'FINDING_1: NO -- cursor\nOOS_1: NO -- cursor\n' > "$phase2_output"
+            printf 'FINDING_1: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=weak UNCERTAIN=false\nOOS_1: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false\n' > "$phase2_output"
             all_outputs+=("$phase2_output")
             all_tools+=("cursor")
             ;;
@@ -167,8 +173,13 @@ while IFS= read -r row || [[ -n "$row" ]]; do
             all_outputs+=("$phase2_output")
             all_tools+=("cursor")
             ;;
+        vote-only:voter-2)
+            printf 'FINDING_1: YES\nOOS_1: NO\n' > "$output"
+            all_outputs+=("$output")
+            all_tools+=("$effective_tool")
+            ;;
         *)
-            printf 'FINDING_1: YES\nOOS_1: NO -- fallback\n' > "$output"
+            printf 'FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false\nOOS_1: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false\n' > "$output"
             all_outputs+=("$output")
             all_tools+=("$effective_tool")
             ;;
@@ -273,5 +284,10 @@ if grep -Fxq "$v2_failed" "$pv_ns"; then
     echo "FAIL: substantive-fail paths file must omit failed voter 2" >&2
     exit 1
 fi
+
+out=$(PATH="$STUB_BIN:$PATH" CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT_STUB" CODEX_STUB_MODE=vote_only PLAN_VOTER_STUB_MODE=vote-only PLAN_VOTER_STUB_LOG="$TMP/stub-vote-only.log" \
+    "$SCRIPT" --ballot-file "$BALLOT_PARSE_IDS" --design-tmpdir "$TMP/vote-only" --codex-available true --cursor-available true)
+grep -Fq 'VOTER_2_STATUS=failed' <<< "$out" || { echo "FAIL: vote-only output should mark voter 2 failed" >&2; exit 1; }
+grep -Fq 'DEGRADED_PANEL_WARNING=' <<< "$out" || { echo "FAIL: vote-only output should emit degraded warning" >&2; exit 1; }
 
 echo "PASS: test-dispatch-plan-voters.sh"
