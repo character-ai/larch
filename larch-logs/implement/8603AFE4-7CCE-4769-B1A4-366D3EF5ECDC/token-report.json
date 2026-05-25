@@ -33,25 +33,25 @@
       {
         "step": "Step 0 — tracking issue",
         "totals": {
-          "input": 11,
-          "cache_read": 3094501,
-          "cache_create": 7866,
-          "cache_create_5m": 7866,
+          "input": 17,
+          "cache_read": 4483783,
+          "cache_create": 8820,
+          "cache_create_5m": 8820,
           "cache_create_1h": 0,
-          "output": 4834,
-          "total": 3107212
+          "output": 5536,
+          "total": 4498156
         },
         "skills": [
           {
             "skill": "inferred:Step 0 — tracking issue",
             "totals": {
-              "input": 6,
-              "cache_read": 1384590,
-              "cache_create": 1087,
-              "cache_create_5m": 1087,
+              "input": 12,
+              "cache_read": 2773872,
+              "cache_create": 2041,
+              "cache_create_5m": 2041,
               "cache_create_1h": 0,
-              "output": 548,
-              "total": 1386231
+              "output": 1250,
+              "total": 2777175
             }
           },
           {
@@ -70,22 +70,22 @@
       }
     ],
     "totals": {
-      "input": 12,
-      "cache_read": 3432607,
-      "cache_create": 8821,
-      "cache_create_5m": 8821,
+      "input": 18,
+      "cache_read": 4821889,
+      "cache_create": 9775,
+      "cache_create_5m": 9775,
       "cache_create_1h": 0,
-      "output": 6028,
-      "total": 3447468
+      "output": 6730,
+      "total": 4838412
     }
   },
   "BUCKETS_claude": {
-    "input": 12,
-    "cache_read": 3432607,
-    "cache_create_5m": 8821,
+    "input": 18,
+    "cache_read": 4821889,
+    "cache_create_5m": 9775,
     "cache_create_1h": 0,
-    "output": 6028,
-    "total": 3447468
+    "output": 6730,
+    "total": 4838412
   },
   "BUCKETS_codex": {
     "input": 0,
