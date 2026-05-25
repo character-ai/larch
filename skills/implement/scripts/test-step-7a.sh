@@ -123,6 +123,10 @@ case "${STEP7A_GEN_MODE:-ok}" in
         printf 'generator sanitizer rejected\n' >&2
         printf 'STATUS=skipped\nDIAGRAM_FILE=\nSKIP_REASON=pipe-in-node-label\n'
         ;;
+    skipped)
+        printf 'generator skipped without sanitizer rejection\n' >&2
+        printf 'STATUS=skipped\nDIAGRAM_FILE=\nSKIP_REASON=small-graph\n'
+        ;;
     failed)
         printf 'generator helper failed\n' >&2
         printf 'STATUS=failed\nDIAGRAM_FILE=\nSKIP_REASON=helper-error\n'
@@ -288,6 +292,19 @@ run_helper() {
     )
 }
 
+run_helper_quiet() {
+    local workdir=$1
+    shift
+    (
+        cd "$workdir"
+        unset LARCH_QUIET_DISABLE
+        CLAUDE_PLUGIN_ROOT="$TMP_ROOT/plugin" \
+        STEP7A_CALLS_LOG="$CASE_DIR/calls.log" \
+        STEP7A_FLUSH_COUNT_FILE="$CASE_DIR/flush-count" \
+        "$HELPER" "$@"
+    )
+}
+
 make_skip_repo() {
     local repo=$1
     mkdir -p "$repo"
@@ -324,6 +341,8 @@ assert_contains "COMMENT_URL=https://example.test/comment/1" "$out" "green emits
 assert_contains "LOG_FLUSH_STATUS=ok" "$out" "green emits log flush ok"
 assert_contains "STEP_7A_BAIL_REASON=" "$out" "green emits empty bail reason"
 assert_contains "REBASE_OUTCOME=ok" "$out" "green emits rebase outcome"
+assert_call_order "$CASE_DIR/calls.log" "token-ledger.sh mark Step 7a — code flow diagram" "generate-code-flow-diagram.sh" "green marks token ledger before generator"
+assert_call_order "$CASE_DIR/calls.log" "timing-ledger.sh mark Step 7a — code flow diagram" "generate-code-flow-diagram.sh" "green marks timing ledger before generator"
 assert_call_order "$CASE_DIR/calls.log" "generate-code-flow-diagram.sh" "compose-summary-diagrams" "green generate before compose"
 assert_call_order "$CASE_DIR/calls.log" "compose-summary-diagrams" "tracking-issue-summary.sh" "green compose before upsert"
 assert_call_order "$CASE_DIR/calls.log" "tracking-issue-summary.sh" "rebase-checkpoint-probe.sh" "green upsert before rebase"
@@ -354,6 +373,16 @@ assert_not_contains "tracking-issue-summary.sh" "$(cat "$CASE_DIR/calls.log")" "
 assert_contains "COMMENT_URL=" "$out" "diagram-rejected emits empty comment URL"
 assert_contains "LOG_FLUSH_STATUS=ok" "$out" "diagram-rejected keeps flush ok"
 assert_not_contains "### Warnings" "$(cat "$CASE_DIR/tmp/execution-issues.md")" "diagram-rejected does not append warning"
+
+new_case diagram-skipped-non-sanitizer
+set +e
+out=$(STEP7A_GEN_MODE=skipped run_helper "$CASE_DIR" --implement-tmpdir "$CASE_DIR/tmp" --issue-number 42 --run-id run-001 --no-logs-commit false --forked-target false 2>&1)
+rc=$?
+set -e
+assert_equals 0 "$rc" "diagram-skipped-non-sanitizer exits 0"
+assert_contains "DIAGRAM_STATUS=skipped" "$out" "diagram-skipped-non-sanitizer emits skipped"
+assert_contains "tracking-issue-summary.sh" "$(cat "$CASE_DIR/calls.log")" "diagram-skipped-non-sanitizer still upserts"
+assert_contains "COMMENT_URL=https://example.test/comment/1" "$out" "diagram-skipped-non-sanitizer emits comment URL"
 
 new_case diagram-failure
 set +e
@@ -441,7 +470,27 @@ rc=$?
 set -e
 assert_equals 1 "$rc" "rebase-conflict exits 1"
 assert_contains "REBASE_OUTCOME=conflict" "$out" "rebase-conflict emits conflict outcome"
+assert_contains "LOG_FLUSH_STATUS=skipped-rebase-checkpoint" "$out" "rebase-conflict emits skipped rebase flush status"
 assert_not_contains "flush-execution-issues.sh" "$(cat "$CASE_DIR/calls.log")" "rebase-conflict skips flush"
+
+new_case rebase-failed
+set +e
+out=$(STEP7A_REBASE_MODE=failed run_helper "$CASE_DIR" --implement-tmpdir "$CASE_DIR/tmp" --issue-number 42 --run-id run-001 --no-logs-commit false --forked-target false 2>&1)
+rc=$?
+set -e
+assert_equals 3 "$rc" "rebase-failed exits 3"
+assert_contains "REBASE_OUTCOME=failed" "$out" "rebase-failed emits failed outcome"
+assert_contains "LOG_FLUSH_STATUS=skipped-rebase-checkpoint" "$out" "rebase-failed emits skipped rebase flush status"
+assert_not_contains "flush-execution-issues.sh" "$(cat "$CASE_DIR/calls.log")" "rebase-failed skips flush"
+
+new_case quiet-rebase-contract
+set +e
+out=$(run_helper_quiet "$CASE_DIR" --implement-tmpdir "$CASE_DIR/tmp" --issue-number 42 --run-id run-001 --no-logs-commit false --forked-target false 2>&1)
+rc=$?
+set -e
+assert_equals 0 "$rc" "quiet-rebase-contract exits 0"
+assert_contains "REBASE_OUTCOME=ok" "$out" "quiet-rebase-contract preserves rebase outcome on contract stream"
+assert_contains "LOG_FLUSH_STATUS=ok" "$out" "quiet-rebase-contract emits final tail"
 
 new_case argv-error
 set +e

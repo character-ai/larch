@@ -22,16 +22,18 @@ skills/implement/scripts/step-7a.sh \
 | `DIAGRAM_STATUS` | `ok`, `skipped`, `failed`, or `skip` (`skip` means the small/non-runtime classifier skipped generation) |
 | `DIAGRAM_PATH` | Absolute path to `code-flow-diagram.md`, or empty |
 | `COMMENT_URL` | Tracking issue comment URL, or empty when upsert is gated, skipped, or failed |
-| `LOG_FLUSH_STATUS` | `ok`, `degraded`, or `skipped-no-logs-commit` |
+| `LOG_FLUSH_STATUS` | `ok`, `degraded`, `skipped-no-logs-commit`, or `skipped-rebase-checkpoint` |
 | `STEP_7A_BAIL_REASON` | Empty on non-argv paths; `argv` on usage errors |
 
-The helper also lets the `rebase-checkpoint-probe.sh` KV envelope pass through before its final KV tail.
+The helper re-emits the `rebase-checkpoint-probe.sh` KV envelope onto the caller-visible contract stream before its final KV tail.
 
 ## Exit Codes
 
 | Code | Meaning |
 | --- | --- |
 | `0` | Step completed or degraded non-fatally |
+| `1` | Rebase checkpoint reported a conflict and Step 7a preserved that exit |
+| `3` | Rebase checkpoint reported a non-conflict failure and Step 7a preserved that exit |
 | `2` | Argument validation failed |
 
 ## Bail Reasons
@@ -43,7 +45,7 @@ The helper also lets the `rebase-checkpoint-probe.sh` KV envelope pass through b
 - Phases stay in the same order as the previous Step 7a `SKILL.md` body: rehydrate, token/timing marks, classifier, diagram generation, comment composition/upsert, 7a.r rebase probe, pre-bump flush, final KV tail.
 - `summary-diagrams.md` preserves the existing `larch:diagrams` content shape: Architecture Diagram content or placeholder, blank line, then Code Flow content or placeholder.
 - Empty `ISSUE_NUMBER` still gates the tracking-issue upsert.
-- Sanitizer rejection suppresses the `larch:diagrams` upsert; ordinary generation failure still posts the placeholder comment.
+- Sanitizer rejection suppresses the `larch:diagrams` upsert; other `STATUS=skipped` paths still post the placeholder comment.
 - `LARCH_QUIET_BREADCRUMBS=1` is exported for the 7a.r rebase checkpoint probe.
 - The helper does not write a `diagrams` larch-log batch.
 

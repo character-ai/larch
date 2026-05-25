@@ -55,6 +55,13 @@ append_best_effort_failure() {
     append_failure "Tool Failures" "$site" "$tool" "$exit_code" "$output_file"
 }
 
+should_skip_diagram_upsert() {
+    case "${1:-}" in
+        pipe-in-node-label|sanitizer-*|*sanitiz*|*reject*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 kv_value() {
     local key=$1 file=$2
     awk -F= -v key="$key" '$1==key{print substr($0, index($0, "=") + 1); exit}' "$file" 2>/dev/null
@@ -325,6 +332,9 @@ if [ "$FORKED_TARGET_SET" != "true" ]; then
 fi
 export ISSUE_NUMBER RUN_ID
 
+"$PLUGIN_ROOT/scripts/token-ledger.sh" mark "Step 7a — code flow diagram" || true
+"$PLUGIN_ROOT/scripts/timing-ledger.sh" mark "Step 7a — code flow diagram" || true
+
 if is_small_non_runtime_change; then
     DIAGRAM_STATUS=skip
     DIAGRAM_PATH=""
@@ -349,24 +359,23 @@ else
             DIAGRAM_STATUS=skipped
             DIAGRAM_PATH=""
             CODE_FLOW_SKIP_REASON="Code flow diagram not available."
-            COMMENT_UPSERT_SKIP=true
             ;;
         failed)
             DIAGRAM_STATUS=failed
             DIAGRAM_PATH=""
             CODE_FLOW_SKIP_REASON="Code flow diagram not available."
-            append_failure "Warnings" "7a" "generate-code-flow-diagram.sh" "$gen_rc" "$gen_err"
+            append_failure "Warnings" "step-7a" "generate-code-flow-diagram.sh" "$gen_rc" "$gen_err"
             ;;
         *)
             DIAGRAM_STATUS=failed
             DIAGRAM_PATH=""
             CODE_FLOW_SKIP_REASON="Code flow diagram not available."
-            append_failure "Warnings" "7a" "generate-code-flow-diagram.sh" "$gen_rc" "$gen_err"
+            append_failure "Warnings" "step-7a" "generate-code-flow-diagram.sh" "$gen_rc" "$gen_err"
             ;;
     esac
-    case "$gen_skip_reason" in
-        *sanitiz*|*reject*) COMMENT_UPSERT_SKIP=true ;;
-    esac
+    if should_skip_diagram_upsert "$gen_skip_reason"; then
+        COMMENT_UPSERT_SKIP=true
+    fi
 fi
 
 compose_summary_diagrams
@@ -399,8 +408,12 @@ rebase_out="$IMPLEMENT_TMPDIR/rebase-checkpoint-probe.stdout"
 "$PLUGIN_ROOT/scripts/rebase-checkpoint-probe.sh" 7a.r 'diagrams' "${BASE_ARGS[@]+"${BASE_ARGS[@]}"}" >"$rebase_out"
 rebase_rc=$?
 set -e
-cat "$rebase_out"
+while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    emit "$line"
+done <"$rebase_out"
 if [ "$rebase_rc" -ne 0 ]; then
+    LOG_FLUSH_STATUS=skipped-rebase-checkpoint
     emit_tail
     exit "$rebase_rc"
 fi
