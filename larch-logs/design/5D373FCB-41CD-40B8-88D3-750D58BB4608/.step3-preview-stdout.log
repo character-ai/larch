@@ -1,0 +1,23 @@
+
+## Plan Candidate for Review
+
+# Plan
+
+**Section outline:**
+
+## Files to modify/create
+### UPDATED: `skills/design/scripts/tally-plan-review.sh`
+### UPDATED: `skills/design/scripts/finalize-plan.sh`
+### UPDATED: `skills/design/scripts/plan-review-loop.sh`
+### UPDATED: `skills/design/scripts/test-tally-plan-review.sh`
+### UPDATED: `skills/design/scripts/test-finalize-plan.sh`
+### UPDATED: `skills/design/scripts/test-plan-review-loop.sh`
+### UPDATED: `skills/design/scripts/tally-plan-review.md`
+### UPDATED: `skills/design/scripts/finalize-plan.md`
+### UPDATED: `skills/design/scripts/plan-review-loop.md`
+## Approach
+## Edge cases
+## Testing strategy
+
+**The plan is very large (126 lines, 11706 bytes). Only the title and section outline are shown above. The full plan is at $DESIGN_TMPDIR/plan.txt — say "show full plan" to see the body in chat before voting begins.**
+
