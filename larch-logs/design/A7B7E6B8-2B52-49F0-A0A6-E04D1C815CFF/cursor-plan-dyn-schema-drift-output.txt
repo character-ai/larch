@@ -1,0 +1,47 @@
+Reading the plan and tracing referenced files for schema-drift consistency.
+Checking how the loop consumes voter dispatch output versus the proposed slot-tagged argv:
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	architecture	skills/design/scripts/plan-review-loop.sh:567-603	Loop tally argv will not preserve vN slots when a middle judge fails	`dispatch-plan-voters.sh` writes `plan-voter-paths.txt` without failed slots (lines 210-217), but the loop only reads that file and will pass `--voter` args in file order; if Codex fails, Cursor’s path becomes the second argv and would map to v2 instead of v3	Parse `VOTER_1_PATH` / `VOTER_2_PATH` / `VOTER_3_PATH` (and status) from dispatch stdout and emit `--voter Claude:…` / `--voter Codex:…` / `--voter Cursor:…` only for non-failed slots; document in `plan-review-loop.md`
+2	in_scope	important	correctness	plan.txt:50-51 vs plan.txt:103-104	Harness case 11 contradicts MainAgent vN semantics	Case 11 requires `voter-main-agent.txt` land in the “correct vN column”, but tally text says `MainAgent` is not mapped to any `vN_*` column	For `MainAgent`, assert acceptance without a vN column (and define `eligible_count` / `voting_result` behavior); for phase2/phase3 paths assert `v1`/`v2`/`v3` via explicit `--voter Claude|Codex|Cursor:` only
+3	in_scope	important	correctness	skills/design/SKILL.md:758	Main-agent re-tally still uses legacy `--voter-files` only	After 0-judge adjudication, SKILL instructs `tally-plan-review.sh` with `--voter-files "$DESIGN_TMPDIR/voter-main-agent.txt"`; basename inference would not assign `MainAgent`, and TSV is not mentioned for the second pass	Add `skills/design/SKILL.md` to Files: re-run with `--voter MainAgent:…` (or documented alternative), refresh `findings-classification.tsv`, and state whether `MainAgent` counts toward `eligible_count` while leaving all `vN_*` empty
+4	in_scope	important	architecture	plan.txt:34,61,94,119,167,210,262; scripts/parse-judge-vote-and-rating.md (proposed)	vN→tool map restated in many places without one authority	`parse-judge-vote-and-rating.md`, `plan-review.md`, harness `.md`, `docs/run-logs.md`, and Approach all restate `v1=Claude v2=Codex v3=Cursor`; drift vector per review directive	Make `skills/design/scripts/tally-plan-review.md` (+ a single `VN_SLOT_MAP` constant or comment in `tally-plan-review.sh`) normative; other docs cite “see tally-plan-review.md” instead of re-listing the triple
+5	in_scope	important	correctness	plan.txt:102-103; skills/design/scripts/tally-plan-review.md (proposed)	No explicit PARSED_* → vN_* assembly contract	Tally section says to call the parser but does not map `PARSED_VOTE`→`vN_vote`, `PARSED_CORRECTNESS`→`vN_correctness`, etc., or require empty string (not `JUDGE_ERROR`) in TSV cells	Add a normative mapping table to the tally sibling `.md` and a harness assertion that empty parser vote yields an empty `vN_vote` field
+6	in_scope	important	correctness	plan.txt:119,167-168	Empty-cell semantics specified only for docs, not tally contract	Parser uses empty `PARSED_*`; harness cases 3/5 imply empty TSV fields; `tally-plan-review.md` update list omits “consecutive tabs / empty fields, never absent columns or literal JUDGE_ERROR”	Pin empty-cell semantics in `tally-plan-review.md` and `test-findings-classification.md`; mirror a short normative summary in `docs/run-logs.md` by reference
+7	in_scope	important	correctness	plan.txt:129 vs skills/design/scripts/plan-review-loop.sh:491-643	`_dedup_failed=1` misclassified as tally-bypass early exit	Dedup failure sets `DEGRADED_PANEL=1` and still runs voters/tally; only `write_empty_review_artifacts` + `skipped-empty-findings` skips tally (lines 500-504)	Limit FINDING_15 header-only TSV writes to paths that actually skip tally (`write_empty_review_artifacts`, panel-failed if applicable); do not require header-only TSV on dedup-failed runs that still tally
+8	in_scope	important	correctness	plan.txt:101-102	Harness case 11 vs `--voter-files` “basename inference (current behavior)”	Current `tally-plan-review.sh` has no basename inference—only ordered `VOTER_FILES` (`:34-39`, `:138-146`); legacy harness uses `v1.txt`/`v4.txt`	Specify new inference rules (e.g. `claude-vote-output*`→Claude) in `tally-plan-review.md` and case 2 of `test-tally-plan-review.sh`, or require explicit `--voter` in all harnesses
+9	in_scope	latent	plan.txt:241	Failure mode 1 lacks a harness case for parser/`vote_for_id` parity	Cross-fixture equality is described but not among the 16 enumerated harness cases	Add case 17 (or extend case 14): same voter lines through `vote_for_id` and `parse-judge-vote-and-rating.sh`; assert equal vote tokens
+10	in_scope	nit	architecture	plan.txt:9-185 vs plan.txt:251	`scripts/test-design-log-publish.sh` required in Testing but absent from Files list	Publish allowlist regressions are mitigated via harness (Failure mode 2) but the file is not listed under Files to modify	Add `### UPDATED: scripts/test-design-log-publish.sh` with the four cases from Failure mode 2
+11	in_scope	latent	architecture	plan.txt:126-127	Dual header-line sources risk column drift	Fallback `emit_findings_classification_header` in `plan-review-loop.sh` can diverge from tally’s header constant	Export one `FINDINGS_CLASSIFICATION_HEADER` (shell variable or shared snippet) sourced by tally and loop fallback path (b)
+12	in_scope	nit	correctness	plan.txt:165-167; docs/run-logs.md:14-18	Design log tree omits `plan-review/round-N/` artifact	Proposed paragraph documents `findings-classification.tsv` but the directory diagram still shows only depth-1 `$DESIGN_TMPDIR` files	Extend the `larch-logs/design/<RUN_ID>/` tree with `plan-review/round-<N>/findings-classification.tsv` and `finding_reviewers` column name
+13	in_scope	nit	correctness	plan.txt:42	Harness case 2 asserts `PARSED_*` inside a TSV end-to-end harness	Case 2 wording targets parser KVs while the harness file is TSV-focused per line 57	Either call `parse-judge-vote-and-rating.sh` directly in case 2 (per emit_kv pattern) or assert via `vN_*` columns and rename the case
+14	in_scope	latent	security	skills/design/scripts/plan-review-loop.sh:218-222	Panel-failed early exit not in FINDING_15 audit	`write_empty_review_artifacts` at lines 219-222 skips tally and clears ballot; no header-only TSV mentioned	Include panel-failed in FINDING_15 paths or document why no TSV is written when voting never ran
+
+1. **[architecture]** `skills/design/scripts/plan-review-loop.sh:567-603` — Slot-tagged `--voter` cannot be built from `VOTER_PATHS_FILE` line order alone when a middle judge fails; bind paths from per-slot dispatch KVs.
+
+2. **[correctness]** `plan.txt:50-51` vs `plan.txt:103-104` — Case 11’s “correct vN column” for `voter-main-agent.txt` conflicts with `MainAgent` not mapping to `vN_*`.
+
+3. **[correctness]** `skills/design/SKILL.md:758` — Main-agent re-tally and TSV refresh are missing from the Files list and still specify `--voter-files`.
+
+4. **[architecture]** `plan.txt:34,61,94,119,167,210,262` — v1/v2/v3 map is re-stated in many contracts; designate `tally-plan-review.md` (+ one code constant) as sole authority.
+
+5. **[correctness]** `plan.txt:102-103` — Add explicit `PARSED_*`→`vN_*` mapping and empty-string (not `JUDGE_ERROR`) TSV vote cells in the tally contract.
+
+6. **[correctness]** `plan.txt:119,167-168` — Pin empty-cell semantics in `tally-plan-review.md`, not only in `docs/run-logs.md`.
+
+7. **[correctness]** `plan.txt:129` — Remove `_dedup_failed=1` from “bypass tally” header-only TSV paths; dedup failure still runs tally.
+
+8. **[correctness]** `plan.txt:101-102` — Basename inference is new behavior; define rules and align `test-tally-plan-review.sh` `v1.txt` fixtures.
+
+9. **[latent]** `plan.txt:241` — Add harness case for parser vs `vote_for_id` parity on shared fixtures.
+
+10. **[architecture]** `plan.txt:251` — Add `scripts/test-design-log-publish.sh` to Files to modify.
+
+11. **[architecture]** `plan.txt:126-127` — Single shared header constant for tally vs loop fallback.
+
+12. **[correctness]** `docs/run-logs.md:14-18` — Update design log directory tree for `plan-review/round-<N>/findings-classification.tsv`.
+
+13. **[correctness]** `plan.txt:42` — Clarify whether case 2 tests parser KVs directly or via TSV columns.
+
+14. **[latent]** `skills/design/scripts/plan-review-loop.sh:218-222` — Panel-failed exit should be included in zero-findings/header-only TSV audit or explicitly excluded.
+
+**[OUT_OF_SCOPE]** `docs/run-logs.md:156` — Existing JSONL `reviewer_slots` field name differs from TSV `finding_reviewers`; when editing `docs/run-logs.md`, add one sentence distinguishing JSONL compose rows from plan-review TSV columns to avoid downstream parser confusion.

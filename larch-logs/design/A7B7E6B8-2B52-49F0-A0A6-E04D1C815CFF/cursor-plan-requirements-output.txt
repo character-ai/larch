@@ -1,0 +1,72 @@
+Reviewing the plan against stated requirements and validating proposed changes against the codebase.
+Validating the plan against current code paths and integration points.
+Checking a few more integration details:
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	architecture	skills/design/scripts/plan-review-loop.sh:567-606	Plan cites VOTER_1/2/3_PATH for --voter assembly but loop only parses VOTER_PATHS_FILE	Dispatch emits per-slot KVs (scripts/dispatch-plan-voters.sh:221-233) yet loop never binds them; middle-judge failure compacts paths in plan-voter-paths.txt and breaks fixed v1/v2/v3 mapping (FINDING_16)	Extend voter-dispatch KV parsing to capture VOTER_N_PATH/STATUS/TOOL; build --voter Claude|Codex|Cursor:PATH only for non-failed slots; document fallback when only VOTER_PATHS_FILE is present
+2	in_scope	important	correctness	skills/design/scripts/tally-plan-review.sh:34-40	Legacy --voter-files basename inference is unspecified and mislabeled as current behavior	Current tally uses positional VOTER_FILES order only; harness uses v1.txt/vstub*.txt so legacy deprecation path has no normative slot map and vN columns can mis-assign	Define explicit legacy inference (e.g. claude|codex|cursor substring rules plus positional fallback) in tally-plan-review.md; add harness fixtures for non-canonical basenames or migrate tests to --voter SLOT:PATH
+3	in_scope	important	integration	skills/design/SKILL.md:758	Main-agent re-tally orchestration not updated for new argv rating format or TSV lifecycle	SKILL still instructs --voter-files voter-main-agent.txt with YES/NO/EXONERATE only; no --voter MainAgent:PATH --findings-classification-out; post-adjudication TSV may stay at 0-judge rejected rows	Update SKILL.md Step 3 main-agent branch: 4-axis lowercase line shape from render-voter-prompt; re-tally with --voter MainAgent:PATH and --findings-classification-out for round-N path; state TSV overwrite semantics after adjudication (tally-plan-review.md Edit In Sync)
+4	in_scope	important	correctness	plan Failure modes §1 vs skills/design/scripts/test-findings-classification.sh	Failure mode 1 requires exhaustive vote_for_id vs parser parity; harness only spot-checks	Cases 9/14 guard one regression each; drift between lib-vote-tally.sh vote_for_id and parse-judge-vote-and-rating.sh could leave vN_vote diverging from voting_result undetected	Add dedicated parity case (or scripts/test-parse-judge-vote-and-rating.sh) iterating all fixture lines asserting vote_for_id output matches PARSED_VOTE normalization
+5	in_scope	important	integration	skills/design/scripts/test-plan-review-loop.sh:171-267	Loop harness/stubs not planned for --voter SLOT:PATH migration	Stubs emit only VOTER_PATHS_FILE with vstub*.txt paths and no VOTER_1/2/3_PATH KVs; plan adds zero-findings TSV assertion but test still only greps WARN=plan-review-tsv: (reviewer TSV) not findings-classification.tsv	Update dispatch stubs to emit production KVs; assert plan-review/round-1/findings-classification.tsv header-only on zero-findings and panel-failed paths; verify real-tally path receives expected --voter argv
+6	in_scope	nit	architecture	plan FINDING_15 paragraph (plan-review-loop)	_dedup_failed incorrectly listed as tally-bypass branch	plan-review-loop.sh:491-605 sets _dedup_failed=1 then continues to tally; only write_empty_review_artifacts callers (lines 219 501) bypass tally	Remove _dedup_failed from bypass audit; explicitly list panel-failed (line 219) alongside zero-findings (line 501) for header-only TSV writes
+7	in_scope	nit	security	scripts/design-log-publish.sh:278-321	Proposed plan-review publish block omits render-cache path-prefix guard	Render-cache loop rejects paths outside resolved root (lines 305-311); proposed plan-review enumeration lacks equivalent check	Mirror case "$pr_root"/* guard in the new plan-review staging loop after find enumeration
+8	in_scope	nit	correctness	scripts/test-render-voter-prompt.sh:18-39	Testing strategy promises both verification contexts; plan assertions cover plan context only	diff-plan + finding-only render path (line 18-19) lacks planned CORRECTNESS=/SEVERITY=/QUALITY=/UNCERTAIN= lowercase assertions	Add symmetric axis-token assertions for --verification-context diff-plan in test-render-voter-prompt.sh UPDATED bullets
+9	in_scope	latent	integration	skills/design/scripts/plan-review-loop.sh:218-222	Panel-failed early exit bypasses tally; header-only TSV not named	Panel dispatch failure writes empty artifacts and exits before tally; FINDING_15 audit omits this path	Extend write_empty_review_artifacts at line 219 to emit header-only findings-classification.tsv (or invoke tally with empty ballot) per Decision 2
+10	out_of_scope	nit	architecture	skills/design/SKILL.md:760	Step 3 artifact inventory omits findings-classification.tsv	Operators following SKILL Step 3 prose may miss the new forensic artifact despite docs/run-logs.md coverage	[OUT_OF_SCOPE] Add findings-classification.tsv to Step 3 artifact list and publish pointer when editing SKILL.md for main-agent branch
+
+## 1. [architecture] `plan-review-loop.sh` slot metadata wiring
+
+The plan says to emit `--voter Claude:$VOTER_1_PATH` etc., but `plan-review-loop.sh` only reads `VOTER_PATHS_FILE` (lines 587–606) and never binds `VOTER_1_PATH` / `VOTER_2_PATH` / `VOTER_3_PATH` from dispatch output, even though `dispatch-plan-voters.sh` emits them (lines 221–233). When a middle judge fails, `plan-voter-paths.txt` drops that slot but preserves order, so positional mapping would collapse v3 into v2 (violating FINDING_16 fixed canonical slots).
+
+**Suggested revision:** Extend the dispatch KV parse block (~567–576) to capture per-slot path/status; assemble `--voter` args from slot metadata, skipping failed slots without compaction.
+
+## 2. [correctness] Legacy `--voter-files` inference contract missing
+
+The plan describes legacy `--voter-files` as “basename inference (current behavior),” but `tally-plan-review.sh` today uses plain array order with no basename logic (lines 34–40, 138–146). Harness fixtures use `v1.txt` / `vstub*.txt`, which cannot map to Claude/Codex/Cursor without explicit rules.
+
+**Suggested revision:** Normatively specify legacy inference rules in `tally-plan-review.md` (substring patterns + positional fallback) and add harness coverage for non-canonical basenames or migrate all callers to `--voter SLOT:PATH`.
+
+## 3. [integration] `skills/design/SKILL.md` main-agent path stale
+
+Line 758 still instructs `--voter-files "$DESIGN_TMPDIR/voter-main-agent.txt"` with vote-only lines. The plan adds 4-axis ratings, `--voter MainAgent:PATH`, and per-round TSV output but does not update this orchestrator contract. `tally-plan-review.md:38` explicitly requires SKILL.md sync on format changes.
+
+**Suggested revision:** Update the main-agent branch for the new line shape, `--voter MainAgent:…`, `--findings-classification-out`, and document that re-tally overwrites the 0-judge `rejected` TSV rows with adjudicated `voting_result` values (vN columns remain empty per MainAgent exclusion).
+
+## 4. [correctness] Parser/`vote_for_id` parity not harness-locked
+
+Failure mode 1 calls for a cross-fixture sanity case asserting equal outputs from `vote_for_id` and the new parser on every line. Harness cases 9 and 14 only spot-check anchored votes and last-line-wins.
+
+**Suggested revision:** Add an exhaustive parity case to `test-findings-classification.sh` or a dedicated `scripts/test-parse-judge-vote-and-rating.sh` Makefile target.
+
+## 5. [integration] `test-plan-review-loop.sh` stub drift
+
+Dispatch stubs emit `vstub*.txt` paths without `VOTER_1/2/3_PATH` KVs (lines 171–225). The plan adds zero-findings TSV assertions but the existing test only checks `WARN=plan-review-tsv:` (reviewer collection TSV at loop line 375), not `findings-classification.tsv`.
+
+**Suggested revision:** Update stubs to match production KVs; assert header-only `plan-review/round-1/findings-classification.tsv` on zero-findings exits; optionally capture tally argv in stub/real-tally cases.
+
+## 6. [architecture] Misidentified `_dedup_failed` bypass
+
+FINDING_15 lists `_dedup_failed=1` among tally-bypass branches, but dedup failure (line 494) retains findings and proceeds to tally. Only `write_empty_review_artifacts` at lines 219 and 501 bypass tally.
+
+**Suggested revision:** Correct the audit list to the two actual bypass callers; add panel-failed (line 219) explicitly.
+
+## 7. [security] Publish hardening incomplete vs render-cache
+
+The proposed `plan-review/` block mirrors symlink rejection and regex allowlisting but omits render-cache’s `$rc_root/*` prefix guard (lines 305–311).
+
+**Suggested revision:** Add the same path-prefix validation in the plan-review enumeration loop.
+
+## 8. [correctness] `diff-plan` verification context untested for axis tokens
+
+Testing strategy line 249 requires axis assertions for both verification contexts, but the UPDATED `test-render-voter-prompt.sh` bullets only detail `plan` context. The harness already renders `diff-plan` (line 18–19) without planned axis checks.
+
+**Suggested revision:** Add explicit diff-plan axis-token assertions to the UPDATED section.
+
+## 9. [integration] Panel-failed path missing header-only TSV
+
+Panel dispatch failure (lines 218–222) calls `write_empty_review_artifacts` and exits before tally. FINDING_15 covers zero-findings but not this bypass.
+
+**Suggested revision:** Emit header-only `findings-classification.tsv` on panel-failed the same way as zero-findings (Decision 2).
+
+## 10. [OUT_OF_SCOPE] Step 3 artifact list
+
+`skills/design/SKILL.md:760` lists tally artifacts but not `findings-classification.tsv`. Worth updating when touching SKILL.md for finding 3; not blocking if `docs/run-logs.md` is sufficient for your workflow.

@@ -1,0 +1,84 @@
+Reviewing the plan and related codebase paths for the argv-migration focus areas.
+Compiling findings from the plan and codebase cross-check.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan.txt:99-101	No mutual-exclusion rule when both --voter and --voter-files appear	Argv parse order is undefined: legacy inference vs explicit slots could mix, double-count voters, or assign wrong vN columns	Specify precedence (reject with exit 2 and larch_err, or ignore --voter-files when any --voter is present) in tally-plan-review.sh change item 2 and tally-plan-review.md
+2	in_scope	important	correctness	plan.txt:99	Unrecognized SLOT values have no error contract	--voter Robot:/tmp/x is not listed as exit 2 / larch_err; implementers may silently drop ratings or mis-map columns	Add normative handling: reject unknown SLOT at argv parse (mirror unknown-argument exit 2) and add test-tally-plan-review.sh + tally-plan-review.md coverage
+3	in_scope	important	correctness	plan.txt:100-103	MainAgent behavior outside 0-judge fallback is undefined	Plan says MainAgent is not mapped to vN and flags 0-judge path, but SKILL.md main-agent re-run passes a single voter file; unclear if MainAgent counts toward eligible_count/vote_for_id while vN stays empty	Define explicitly: --voter MainAgent:path participates in vote tally and eligible_count=1 but never fills vN_*; add harness case; update skills/design/SKILL.md:758 to use --voter MainAgent:... not --voter-files
+4	in_scope	important	risk-integration	skills/design/scripts/plan-review-loop.sh:567-606	Loop migration cites VOTER_1_PATH but never requires parsing dispatch slot KVs	Loop only reads VOTER_PATHS_FILE (586-592); dispatch emits VOTER_1/2/3_PATH (scripts/dispatch-plan-voters.sh:221-226). Sparse plan-voter-paths.txt drops failed middle slots, so positional remapping would put Cursor votes in v2	Extend plan-review-loop.sh to capture VOTER_1_PATH VOTER_2_PATH VOTER_3_PATH from dispatch stdout and emit --voter Claude:/Codex:/Cursor: only when each path is non-empty; do not infer slot from paths-file line order
+5	in_scope	important	correctness	plan.txt:199	skills/design/scripts/test-tally-plan-review.sh case 2 lacks stderr assertion	Case 2 only says deprecation warning is emitted; no required grep on merged stderr like existing missing-voter test (test-tally-plan-review.sh:206-209)	Require capture to a temp file and grep -q deprecation (or exact larch_err substring) on stderr; pin substring in test-tally-plan-review.md
+6	in_scope	important	correctness	plan.txt:99,234	Legacy --voter-files basename inference algorithm is unspecified	Edge case references inference for claude-vote-output-phase2.txt but no prefix/suffix rules; today tally-plan-review.sh has no inference (positional VOTER_FILES only at 112-138)	Document exact mapping (e.g. basename prefix claude|codex|cursor before first -) and behavior for unmatched basenames (exit 2 vs warn-and-skip); add harness for legacy path with phase2 filename
+7	in_scope	latent	correctness	skills/design/scripts/plan-review-loop.sh:218-222	FINDING_15 audit omits panel-failed early exit that skips tally	write_empty_review_artifacts at 218-222 exits before voters/tally; no header-only findings-classification.tsv	Add header-only TSV write to that branch (or shared helper) per FINDING_15; extend test-plan-review-loop.sh zero/panel-failed paths
+8	in_scope	nit	correctness	plan.txt:252	test-plan-review-loop.sh migration check is non-mechanical	Testing strategy says argv flowed correctly but lists no assertion (stub tally double cannot verify --voter flags)	Add integration case with real tally or tally stub that records argv and asserts --voter Claude: --voter Codex: --findings-classification-out present
+9	out_of_scope	important	integration	skills/design/SKILL.md:758	Second production tally caller still prescribed --voter-files after main-agent adjudication	0-judge recovery re-run will keep deprecated argv and bypass explicit MainAgent slot metadata until SKILL is updated	Add skills/design/SKILL.md (and plan-review.md if it quotes the command) to Files to modify: re-run tally with --voter MainAgent:$DESIGN_TMPDIR/voter-main-agent.txt --findings-classification-out ...
+10	out_of_scope	nit	architecture	skills/design/scripts/tally-plan-review.md:9-14	tally-plan-review.md still documents only --voter-files; design-driver ACTION=TALLY passthrough undocumented	Manual ACTION=TALLY invocations may omit slot metadata after loop migrates	Update tally-plan-review.md invariants and note ACTION=TALLY passthrough should use --voter shape
+
+1. **[correctness]** `plan.txt:99-101` — No rule when both `--voter` and `--voter-files` are passed; argv precedence is undefined and could double-count or mis-assign vN columns. Specify mutual exclusion or strict precedence in `tally-plan-review.sh` item 2.
+
+2. **[correctness]** `plan.txt:99` — Unrecognized SLOT values (e.g. `Robot`) have no error path. Add exit-2 `larch_err` at parse time plus harness coverage.
+
+3. **[correctness]** `plan.txt:100-103`, `skills/design/SKILL.md:758` — `MainAgent` outside the 0-judge branch is unspecified (quorum vs vN columns). Define MainAgent as tally-eligible but never vN-mapped; migrate SKILL main-agent re-run to `--voter MainAgent:...`.
+
+4. **[risk-integration]** `skills/design/scripts/plan-review-loop.sh:567-606` — Plan requires `--voter Claude:$VOTER_1_PATH` but loop never parses `VOTER_1/2/3_PATH` from dispatch; relying on `plan-voter-paths.txt` order mis-assigns slots when a middle judge fails (`scripts/dispatch-plan-voters.sh:210-218`).
+
+5. **[correctness]** `plan.txt:199` — Deprecation backstop case 2 lacks a stderr assertion; only TSV behavior is listed. Mirror `test-tally-plan-review.sh:206-209` pattern with `grep` on captured stderr.
+
+6. **[correctness]** `plan.txt:99,234` — Legacy basename inference rules are not defined (current `tally-plan-review.sh` has no inference). Pin prefix rules and failure mode for `claude-vote-output-phase2.txt`-style paths.
+
+7. **[correctness]** `skills/design/scripts/plan-review-loop.sh:218-222` — Panel-failed early exit bypasses tally but is missing from FINDING_15 audit; no header-only TSV on that path.
+
+8. **[correctness]** `plan.txt:252` — `test-plan-review-loop.sh` argv migration is asserted only in prose; no mechanical check specified.
+
+**[OUT_OF_SCOPE]** `skills/design/SKILL.md:758` — Main-agent re-run caller not in plan’s file list; will keep `--voter-files` after loop migrates.
+
+**[OUT_OF_SCOPE]** `skills/design/scripts/tally-plan-review.md:14` — Contract doc still `--voter-files`-only; update when tally argv changes.
+
+Wait - the user said output MUST begin with TSV OR sentinel only. They also said "Return numbered findings" - I'll include numbered findings after TSV since the wrapper asks for both. But "If no issues" entire response is ONLY sentinel.
+
+For findings case, first line is TSV header. The instruction about numbered findings suggests both. Let me not duplicate too much - TSV is primary, numbered list is secondary summary.
+
+Actually re-read again - "Do NOT write any preamble" and first non-whitespace must be s or {. So my numbered list after TSV is OK.
+
+But I should NOT use CreatePlan - user wanted review output not implementation plan.
+
+Let me trim - user might want ONLY TSV? "Return numbered findings with focus-area tag" - I'll keep brief numbered list after TSV.
+
+Remove duplicate prose - the numbered section repeats TSV. Keep concise numbered list.
+
+Also fix: I should not have called CreatePlan. Good.
+
+Double-check plan line 121 says "around plan-review-loop.sh:580-583" but actual code is 594-606 - minor, not a finding unless nit.
+
+For finding 3 - harness case 11 says phase2 and voter-main-agent with --voter slot - doesn't specify MainAgent slot for main-agent file explicitly in one bullet - plan line 50 case 11.
+
+Output final response.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan.txt:99-101	No mutual-exclusion rule when both --voter and --voter-files appear	Argv precedence is undefined: voters may be double-counted, legacy inference may fight explicit slots, or vN assignment becomes nondeterministic	Specify in tally item 2: reject combined use (exit 2 + larch_err) or define strict precedence; document in tally-plan-review.md and add a harness case
+2	in_scope	important	correctness	plan.txt:99	Unrecognized SLOT values have no error contract	--voter Robot:/tmp/x is outside Claude/Codex/Cursor/MainAgent with no stated exit code; implementers may ignore, mis-map, or still count the file in eligible_count	Add argv-time rejection (exit 2, larch_err naming the bad SLOT) plus test-tally-plan-review.sh and tally-plan-review.md coverage
+3	in_scope	important	correctness	plan.txt:100-103	MainAgent behavior outside 0-judge fallback is undefined	Plan excludes MainAgent from vN mapping and ties it to 0-judge fallback, but production main-agent re-run (skills/design/SKILL.md:758) supplies one voter file; unclear if votes affect classify_result/eligible_count while vN_* stay empty	Normative rule: MainAgent participates in vote_for_id and eligible_count but never populates vN_*; harness with --voter MainAgent:path and 1-judge quorum; migrate SKILL re-run off --voter-files
+4	in_scope	important	risk-integration	skills/design/scripts/plan-review-loop.sh:567-606	Loop migration cites VOTER_N_PATH but omits dispatch KV parsing	Loop only ingests VOTER_PATHS_FILE (586-592); dispatch emits VOTER_1/2/3_PATH (scripts/dispatch-plan-voters.sh:221-226). plan-voter-paths.txt omits failed slots (210-218), so positional line-order mapping assigns Cursor to v2 when Codex failed	Parse VOTER_1_PATH VOTER_2_PATH VOTER_3_PATH from dispatch stdout; emit --voter Claude:/Codex:/Cursor: per non-empty path; stop using paths-file order for slot identity
+5	in_scope	important	correctness	plan.txt:199	test-tally-plan-review.sh case 2 lacks stderr assertion	Case 2 only requires legacy fallback plus a deprecation warning with no grep on captured stderr (contrast test-tally-plan-review.sh:206-209)	Capture stdout+stderr to a temp file; assert deprecation substring on stderr; pin wording in test-tally-plan-review.md
+6	in_scope	important	correctness	plan.txt:99,234	Legacy --voter-files basename inference is unspecified	Edge case assumes inference for claude-vote-output-phase2.txt; current tally-plan-review.sh has no basename inference (only ordered VOTER_FILES at 112-138)	Define prefix/suffix rules and unmatched-basename behavior (exit 2 vs warn-skip); add legacy-path harness with phase2 filename
+7	in_scope	latent	correctness	skills/design/scripts/plan-review-loop.sh:218-222	FINDING_15 audit misses panel-failed early exit	write_empty_review_artifacts at 218-222 skips tally entirely; no header-only findings-classification.tsv unlike zero-findings path (500-504)	Include panel-failed in FINDING_15 branches; write header-only TSV via shared helper; assert in test-plan-review-loop.sh
+8	in_scope	nit	correctness	plan.txt:252	test-plan-review-loop.sh argv migration is non-mechanical	Testing strategy says --voter flowed correctly but lists no capture/assertion; stub tally path cannot verify argv	Add case with argv-recording tally stub or real tally plus grep for --voter Claude: and --findings-classification-out
+9	out_of_scope	important	integration	skills/design/SKILL.md:758	Second production tally caller still uses --voter-files	After loop migrates, 0-judge recovery re-run keeps deprecated argv and never supplies MainAgent slot metadata	Add SKILL.md (and plan-review.md if it quotes the command) to the change set: --voter MainAgent:$DESIGN_TMPDIR/voter-main-agent.txt plus --findings-classification-out
+10	out_of_scope	nit	architecture	skills/design/scripts/tally-plan-review.md:14	tally-plan-review.md documents only --voter-files	Manual ACTION=TALLY and docs drift from new contract after implementation	Update invariants for --voter / deprecation backstop per plan item FINDING_9
+
+1. **[correctness]** `plan.txt:99-101` — Combined `--voter` + `--voter-files` precedence is undefined; specify reject or strict ordering.
+
+2. **[correctness]** `plan.txt:99` — Unknown SLOT values (e.g. `Robot`) lack an exit-2 error contract and harness.
+
+3. **[correctness]** `plan.txt:100-103`, `skills/design/SKILL.md:758` — `MainAgent` quorum vs vN mapping outside 0-judge path is unspecified; SKILL still mandates `--voter-files` for re-run.
+
+4. **[risk-integration]** `skills/design/scripts/plan-review-loop.sh:567-606` — Migration must parse `VOTER_1/2/3_PATH` from dispatch, not `plan-voter-paths.txt` line order, or degraded panels mis-map Codex/Cursor columns.
+
+5. **[correctness]** `plan.txt:199` — Deprecation backstop needs an explicit stderr `grep`, not only TSV assertions.
+
+6. **[correctness]** `plan.txt:99,234` — Legacy basename inference rules for `--voter-files` are not defined against current positional-only tally.
+
+7. **[correctness]** `skills/design/scripts/plan-review-loop.sh:218-222` — Panel-failed early exit omitted from FINDING_15 header-only TSV coverage.
+
+8. **[correctness]** `plan.txt:252` — Loop harness lacks mechanical `--voter` argv checks.
+
+**[OUT_OF_SCOPE]** `skills/design/SKILL.md:758` — Main-agent re-run caller not scheduled for argv migration.
+
+**[OUT_OF_SCOPE]** `skills/design/scripts/tally-plan-review.md:14` — Sibling contract still `--voter-files`-only.

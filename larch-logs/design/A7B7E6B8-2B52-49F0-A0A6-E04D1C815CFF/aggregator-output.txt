@@ -1,0 +1,2 @@
+Normalizing the 47 reviewer inputs into merged findings with stable IDs, merged severity, and verbatim revision bullets per slot.
+
