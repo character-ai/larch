@@ -367,4 +367,46 @@ if grep -Fq '### /fix-issue coordination' "$SKILL_MD"; then
   fail "SKILL.md must not contain /fix-issue coordination subsection"
 fi
 
+# Drift guard: ship-pr write_initial_state printf keys vs SKILL.md Required keys bullets
+# (pinned region between <!-- write-initial-state-keys:begin/end --> markers).
+if ! grep -Fq '<!-- write-initial-state-keys:begin -->' "$SKILL_MD"; then
+  fail "skills/implement/SKILL.md missing <!-- write-initial-state-keys:begin --> marker (ship-pr state-key drift guard)"
+fi
+if ! grep -Fq '<!-- write-initial-state-keys:end -->' "$SKILL_MD"; then
+  fail "skills/implement/SKILL.md missing <!-- write-initial-state-keys:end --> marker (ship-pr state-key drift guard)"
+fi
+
+skill_keys=$(
+  awk '/<!-- write-initial-state-keys:begin -->/{flag=1; next} /<!-- write-initial-state-keys:end -->/{flag=0} flag' "$SKILL_MD" \
+    | sed 's/^- //' \
+    | grep -oE '`[A-Z_][A-Z0-9_]*' | tr -d '`' | sort -u
+)
+
+ship_keys=$(
+  awk '/^write_initial_state\(\) \{/,/\} > "\$tmp" && mv/' "$SHIP_PR_SH" \
+    | grep -E "^[[:space:]]*printf '[A-Z_][A-Z0-9_]*=" \
+    | sed -E "s/^[[:space:]]*printf '//; s/=.*//" | sort -u
+)
+
+skill_n=$(printf '%s\n' "$skill_keys" | grep -c . || true)
+ship_n=$(printf '%s\n' "$ship_keys" | grep -c . || true)
+[[ "$skill_n" -ge 20 ]] \
+  || fail "write-initial-state drift guard: extracted only ${skill_n} SKILL.md keys (<20) — parser regression or empty marker region"
+[[ "$ship_n" -ge 20 ]] \
+  || fail "write-initial-state drift guard: extracted only ${ship_n} ship-pr.sh keys (<20) — write_initial_state() structure may have changed"
+
+diff_ship_not_skill=$(comm -23 <(printf '%s\n' "$ship_keys") <(printf '%s\n' "$skill_keys") || true)
+diff_skill_not_ship=$(comm -13 <(printf '%s\n' "$ship_keys") <(printf '%s\n' "$skill_keys") || true)
+if [[ -n "$diff_ship_not_skill" ]]; then
+  echo "Keys in ship-pr.sh missing from SKILL.md:" >&2
+  printf '%s\n' "$diff_ship_not_skill" >&2
+fi
+if [[ -n "$diff_skill_not_ship" ]]; then
+  echo "Keys in SKILL.md missing from ship-pr.sh:" >&2
+  printf '%s\n' "$diff_skill_not_ship" >&2
+fi
+if [[ -n "$diff_ship_not_skill" || -n "$diff_skill_not_ship" ]]; then
+  fail "write_initial_state key set drift between skills/implement/SKILL.md (write-initial-state-keys region) and scripts/ship-pr.sh write_initial_state()"
+fi
+
 echo "All assertions passed."
