@@ -3151,7 +3151,11 @@ set +e
 printf '%s' "$?" >"$tmp/rc"
 set -e
 assert_rc "$tmp/rc" 4 "per-job push failure exhausts outer retries without same-attempt vendor fallback"
-launch_count=$(wc -l < "$call_dir/launcher-calls.txt" 2>/dev/null | tr -d ' ')
+if [ -f "$call_dir/launcher-calls.txt" ]; then
+    launch_count=$(wc -l < "$call_dir/launcher-calls.txt" | tr -d ' ')
+else
+    launch_count=0
+fi
 if [ "${launch_count:-0}" = "0" ]; then
     ok "per-job push failure skips same-attempt vendor launcher"
 else

@@ -115,65 +115,129 @@ _RCC_TARGET_CMD_ARGS_FILE=""
 _RCC_MAX_ITER=3
 _RCC_CMD_RC=1
 _RCC_RAW_LOG_PATH=""
+_RCC_DISPATCH_FIRST=0
+_RCC_INITIAL_REDACTED_LOG=""
+_RCC_LAST_FIX_STATUS=""
+_RCC_LAST_FIX_RC=0
+
+# Parses lint-fix-loop output and updates accumulated delta paths or terminal _RCC_STATUS.
+# Returns 0 if status is applied/no-changes (caller continues), 1 if a terminal status was set.
+_rcc_handle_fix_status() {
+    local fix_out=$1 fix_rc=$2
+    local fix_status fix_delta_paths_file failure_reason
+    fix_status=$(printf '%s\n' "$fix_out" | awk -F= '/^LINT_FIX_STATUS=/ { print $2; exit }')
+    fix_delta_paths_file=$(printf '%s\n' "$fix_out" | awk -F= '/^LINT_FIX_DELTA_PATHS_FILE=/ { print substr($0, index($0,"=")+1); exit }')
+    failure_reason=$(printf '%s\n' "$fix_out" | awk -F= '/^FAILURE_REASON=/ { print substr($0, index($0,"=")+1); exit }')
+    _RCC_LAST_FIX_STATUS="$fix_status"
+    _RCC_LAST_FIX_RC="$fix_rc"
+    case "$fix_status" in
+        applied|no-changes)
+            if [[ "$fix_status" == "applied" && -n "$fix_delta_paths_file" && -f "$fix_delta_paths_file" ]]; then
+                append_unique_paths_file "$_RCC_DELTA_PATHS_FILE" "$fix_delta_paths_file"
+            fi
+            return 0
+            ;;
+        main-agent-required)
+            _RCC_STATUS=main-agent-required
+            return 1
+            ;;
+        failed)
+            if [[ "$failure_reason" == "head-changed-after-dispatch" ]]; then
+                _RCC_STATUS=head-changed
+            else
+                _RCC_STATUS=dispatch-failed
+            fi
+            return 1
+            ;;
+        *)
+            _RCC_STATUS=dispatch-failed
+            return 1
+            ;;
+    esac
+}
 
 run_captured_cmd_then_fix_loop() {
-    local attempt max_iter fail_file redacted_log fix_out fix_rc fix_status fix_delta_paths_file failure_reason
+    local attempt max_iter fail_file redacted_log fix_out fix_rc
     local empty_failures=0
+    local dispatch_first="${_RCC_DISPATCH_FIRST:-0}"
+    local redacted_log_for_dispatch=""
 
     _RCC_STATUS=exhausted
     _RCC_LAST_LOG_PATH=""
+    _RCC_LAST_FIX_STATUS=""
+    _RCC_LAST_FIX_RC=0
     _RCC_DELTA_PATHS_FILE="$IMPLEMENT_TMPDIR/rcc-delta-paths-$$-$RANDOM.txt"
     : > "$_RCC_DELTA_PATHS_FILE"
     max_iter=${_RCC_MAX_ITER:-3}
 
+    if [ "$dispatch_first" = "1" ]; then
+        redacted_log_for_dispatch="${_RCC_INITIAL_REDACTED_LOG:-}"
+    fi
+
     for attempt in 1 2 3; do
         [ "$attempt" -le "$max_iter" ] || break
-        "$_RCC_RERUN_FN"
-        _RCC_LAST_LOG_PATH="$_RCC_RAW_LOG_PATH"
-        if [ "${_RCC_CMD_RC:-1}" -eq 0 ]; then
-            _RCC_STATUS=ok
-            return 0
-        fi
-        if [ -z "${_RCC_RAW_LOG_PATH:-}" ] || [ ! -s "$_RCC_RAW_LOG_PATH" ]; then
-            empty_failures=$((empty_failures + 1))
-            [ "$empty_failures" -ge 2 ] && { _RCC_STATUS=exhausted; return 1; }
-            continue
-        fi
-        empty_failures=0
-        redacted_log="${_RCC_RAW_LOG_PATH}.redacted"
-        if ! "$SCRIPT_DIR/redact-secrets.sh" < "$_RCC_RAW_LOG_PATH" > "$redacted_log" 2>/dev/null; then
-            _RCC_STATUS=dispatch-failed
-            return 1
-        fi
-        fail_file=$(failure_capture_path "${_RCC_PHASE:-evaluate-failure}")
-        run_lint_fix_loop_capture "$fail_file" "$_RCC_SITE" "$redacted_log" fix_out fix_rc "$_RCC_TARGET_CMD_ARGS_FILE"
-        printf '%s\n' "$fix_out" >> "$fail_file"
-        fix_status=$(printf '%s\n' "$fix_out" | awk -F= '/^LINT_FIX_STATUS=/ { print $2; exit }')
-        fix_delta_paths_file=$(printf '%s\n' "$fix_out" | awk -F= '/^LINT_FIX_DELTA_PATHS_FILE=/ { print substr($0, index($0,"=")+1); exit }')
-        failure_reason=$(printf '%s\n' "$fix_out" | awk -F= '/^FAILURE_REASON=/ { print substr($0, index($0,"=")+1); exit }')
-        case "$fix_status" in
-            applied|no-changes)
-                if [[ "$fix_status" == "applied" && -n "$fix_delta_paths_file" && -f "$fix_delta_paths_file" ]]; then
-                    append_unique_paths_file "$_RCC_DELTA_PATHS_FILE" "$fix_delta_paths_file"
-                fi
-                ;;
-            main-agent-required)
-                _RCC_STATUS=main-agent-required
-                return 1
-                ;;
-            failed)
-                if [[ "$failure_reason" == "head-changed-after-dispatch" ]]; then
-                    _RCC_STATUS=head-changed
-                else
-                    _RCC_STATUS=dispatch-failed
-                fi
-                return 1
-                ;;
-            *)
+
+        if [ "$dispatch_first" = "1" ]; then
+            # dispatch-first pattern: lint-fix dispatch on the prior redacted log, then rerun the captured cmd
+            if [ -z "$redacted_log_for_dispatch" ] || [ ! -f "$redacted_log_for_dispatch" ]; then
                 _RCC_STATUS=dispatch-failed
                 return 1
-                ;;
-        esac
+            fi
+            fail_file=$(failure_capture_path "${_RCC_PHASE:-evaluate-failure}")
+            run_lint_fix_loop_capture "$fail_file" "$_RCC_SITE" "$redacted_log_for_dispatch" fix_out fix_rc "$_RCC_TARGET_CMD_ARGS_FILE"
+            printf '%s\n' "$fix_out" >> "$fail_file"
+            if ! _rcc_handle_fix_status "$fix_out" "$fix_rc"; then
+                return 1
+            fi
+            # Re-run the captured command to verify the dispatched fix
+            "$_RCC_RERUN_FN"
+            _RCC_LAST_LOG_PATH="$_RCC_RAW_LOG_PATH"
+            if [ "${_RCC_CMD_RC:-1}" -eq 0 ]; then
+                _RCC_STATUS=ok
+                return 0
+            fi
+            # Rerun still failing after a no-changes dispatch is a stale-fix signal —
+            # repeating won't help. Match the original run_checks_with_lint_fix_loop semantics.
+            if [ "$_RCC_LAST_FIX_STATUS" = "no-changes" ]; then
+                _RCC_STATUS=no-changes-stale
+                return 1
+            fi
+            # applied + still failing → set up the next iteration's redacted log
+            if [ -z "${_RCC_RAW_LOG_PATH:-}" ] || [ ! -f "$_RCC_RAW_LOG_PATH" ]; then
+                _RCC_STATUS=exhausted
+                return 1
+            fi
+            redacted_log_for_dispatch="${_RCC_RAW_LOG_PATH}.redacted"
+            if ! "$SCRIPT_DIR/redact-secrets.sh" < "$_RCC_RAW_LOG_PATH" > "$redacted_log_for_dispatch" 2>/dev/null; then
+                _RCC_STATUS=dispatch-failed
+                return 1
+            fi
+        else
+            # check-first pattern: rerun the captured cmd, dispatch lint-fix on failure
+            "$_RCC_RERUN_FN"
+            _RCC_LAST_LOG_PATH="$_RCC_RAW_LOG_PATH"
+            if [ "${_RCC_CMD_RC:-1}" -eq 0 ]; then
+                _RCC_STATUS=ok
+                return 0
+            fi
+            if [ -z "${_RCC_RAW_LOG_PATH:-}" ] || [ ! -s "$_RCC_RAW_LOG_PATH" ]; then
+                empty_failures=$((empty_failures + 1))
+                [ "$empty_failures" -ge 2 ] && { _RCC_STATUS=exhausted; return 1; }
+                continue
+            fi
+            empty_failures=0
+            redacted_log="${_RCC_RAW_LOG_PATH}.redacted"
+            if ! "$SCRIPT_DIR/redact-secrets.sh" < "$_RCC_RAW_LOG_PATH" > "$redacted_log" 2>/dev/null; then
+                _RCC_STATUS=dispatch-failed
+                return 1
+            fi
+            fail_file=$(failure_capture_path "${_RCC_PHASE:-evaluate-failure}")
+            run_lint_fix_loop_capture "$fail_file" "$_RCC_SITE" "$redacted_log" fix_out fix_rc "$_RCC_TARGET_CMD_ARGS_FILE"
+            printf '%s\n' "$fix_out" >> "$fail_file"
+            if ! _rcc_handle_fix_status "$fix_out" "$fix_rc"; then
+                return 1
+            fi
+        fi
     done
     _RCC_STATUS=exhausted
     return 1
@@ -870,9 +934,31 @@ lint_fix_site_for_phase() {
     esac
 }
 
+# Rerun callback used by run_checks_with_lint_fix_loop via run_captured_cmd_then_fix_loop.
+# Reads $_RCWL_CHECKS_SITE for the --site arg. Sets _RCC_RAW_LOG_PATH to the script's
+# REDACTED_LOG_FILE and _RCC_CMD_RC to 0/1 based on RELEVANT_CHECKS_OK.
+_RCWL_CHECKS_SITE=""
+
+_run_relevant_checks_capture() {
+    local out rc redacted_log fail_file
+    fail_file=$(failure_capture_path "${_RCC_PHASE:-evaluate-failure}")
+    capture_command_output out "$fail_file" "$SCRIPT_DIR/run-relevant-checks-captured.sh" --site "$_RCWL_CHECKS_SITE" --tmpdir "$IMPLEMENT_TMPDIR"
+    rc=$?
+    printf '%s\n' "$out" >> "$fail_file"
+    if [ "$rc" -eq 0 ] && is_relevant_checks_clean "$out"; then
+        _RCC_RAW_LOG_PATH=""
+        _RCC_CMD_RC=0
+        return
+    fi
+    redacted_log=$(printf '%s\n' "$out" | awk -F= '/^REDACTED_LOG_FILE=/ { print substr($0, index($0,"=")+1); exit }')
+    redacted_log=$(resolve_checks_log_path "$redacted_log") || redacted_log=""
+    _RCC_RAW_LOG_PATH="$redacted_log"
+    _RCC_CMD_RC=1
+}
+
 run_checks_with_lint_fix_loop() {
-    local phase=$1 checks_site=$2 fix_site redacted_log fix_out fix_status fix_rc
-    local fail_category fail_file out rc attempt fix_delta_paths_file vendor_dirty_paths_file
+    local phase=$1 checks_site=$2 fix_site redacted_log
+    local fail_category fail_file out rc vendor_dirty_paths_file
 
     LAST_LINT_FIX_DELTA_PATHS_FILE=""
     ALL_LINT_FIX_DELTA_PATHS_FILE="$IMPLEMENT_TMPDIR/${phase}-lint-fix-delta-paths.txt"
@@ -902,50 +988,48 @@ run_checks_with_lint_fix_loop() {
     }
     vendor_dirty_paths_file="$IMPLEMENT_TMPDIR/${phase}-vendor-dirty-paths.txt"
     capture_dirty_paths > "$vendor_dirty_paths_file"
-    for attempt in 1 2 3; do
-        fail_file=$(failure_capture_path "$phase")
-        run_lint_fix_loop_capture "$fail_file" "$fix_site" "$redacted_log" fix_out fix_rc
-        printf '%s\n' "$fix_out" >> "$fail_file"
-        fix_status=$(printf '%s\n' "$fix_out" | awk -F= '/^LINT_FIX_STATUS=/ { print $2; exit }')
-        fix_delta_paths_file=$(printf '%s\n' "$fix_out" | awk -F= '/^LINT_FIX_DELTA_PATHS_FILE=/ { print substr($0, index($0,"=")+1); exit }')
-        case "$fix_status" in
-            applied|no-changes)
-                if [[ "$fix_status" == "applied" && -n "$fix_delta_paths_file" && -f "$fix_delta_paths_file" ]]; then
-                    append_unique_paths_file "$ALL_LINT_FIX_DELTA_PATHS_FILE" "$fix_delta_paths_file"
-                fi
-                printf 'ship-pr %s: lint fix %s (attempt %d/3), re-running checks...\n' "$phase" "$fix_status" "$attempt"
-                fail_file=$(failure_capture_path "$phase")
-                capture_command_output out "$fail_file" "$SCRIPT_DIR/run-relevant-checks-captured.sh" --site "$checks_site" --tmpdir "$IMPLEMENT_TMPDIR"
-                rc=$?
-                printf '%s\n' "$out" >> "$fail_file"
-                if [ "$rc" -eq 0 ] && is_relevant_checks_clean "$out"; then
-                    if [[ -s "$ALL_LINT_FIX_DELTA_PATHS_FILE" ]]; then
-                        LAST_LINT_FIX_DELTA_PATHS_FILE="$ALL_LINT_FIX_DELTA_PATHS_FILE"
-                    elif [[ "$fix_status" == "applied" && -n "$fix_delta_paths_file" ]]; then
-                        LAST_LINT_FIX_DELTA_PATHS_FILE="$fix_delta_paths_file"
-                    fi
-                    return 0
-                fi
-                if [ "$fix_status" = "no-changes" ]; then
-                    record_failure "$phase" "run-relevant-checks-captured.sh" "$rc" "$fail_file" "$fail_category"
-                    return 1
-                fi
-                redacted_log=$(printf '%s\n' "$out" | awk -F= '/^REDACTED_LOG_FILE=/ { print substr($0, index($0,"=")+1); exit }')
-                redacted_log=$(resolve_checks_log_path "$redacted_log") || {
-                    record_failure "$phase" "run-relevant-checks-captured.sh" "$rc" "$fail_file" "$fail_category"
-                    return 1
-                }
-                ;;
-            *)
-                record_failure "$phase" "lint-fix-loop.sh" "${fix_rc:-1}" "$fail_file" "$fail_category"
-                printf 'ship-pr %s: lint fix %s (attempt %d/3, rc=%s), stalling.\n' "$phase" "${fix_status:-unknown}" "$attempt" "${fix_rc:-unknown}"
-                return 1
-                ;;
-        esac
-    done
 
-    record_failure "$phase" "run-relevant-checks-captured.sh" "$rc" "$fail_file" "$fail_category"
-    return 1
+    # Delegate the inner dispatch+recheck loop to the shared capture/fix helper.
+    # _RCC_DISPATCH_FIRST=1 routes through the dispatch-then-rerun pattern that matches
+    # this site's original semantics (initial check happened above; loop body re-checks
+    # after each lint-fix dispatch and short-circuits on no-changes-then-fail).
+    _RCWL_CHECKS_SITE="$checks_site"
+    _RCC_PHASE="$phase"
+    _RCC_RERUN_FN=_run_relevant_checks_capture
+    _RCC_SITE="$fix_site"
+    _RCC_TARGET_CMD_ARGS_FILE=""
+    _RCC_MAX_ITER=3
+    _RCC_DISPATCH_FIRST=1
+    _RCC_INITIAL_REDACTED_LOG="$redacted_log"
+    run_captured_cmd_then_fix_loop
+    # Reset dispatch-first so subsequent (per-job) calls inherit defaults.
+    _RCC_DISPATCH_FIRST=0
+    _RCC_INITIAL_REDACTED_LOG=""
+
+    case "$_RCC_STATUS" in
+        ok)
+            if [[ -s "$_RCC_DELTA_PATHS_FILE" ]]; then
+                cp "$_RCC_DELTA_PATHS_FILE" "$ALL_LINT_FIX_DELTA_PATHS_FILE"
+                LAST_LINT_FIX_DELTA_PATHS_FILE="$ALL_LINT_FIX_DELTA_PATHS_FILE"
+            fi
+            return 0
+            ;;
+        no-changes-stale|exhausted)
+            fail_file=$(failure_capture_path "$phase")
+            record_failure "$phase" "run-relevant-checks-captured.sh" 1 "$fail_file" "$fail_category"
+            return 1
+            ;;
+        main-agent-required|dispatch-failed|head-changed)
+            fail_file=$(failure_capture_path "$phase")
+            record_failure "$phase" "lint-fix-loop.sh" "${_RCC_LAST_FIX_RC:-1}" "$fail_file" "$fail_category"
+            return 1
+            ;;
+        *)
+            fail_file=$(failure_capture_path "$phase")
+            record_failure "$phase" "lint-fix-loop.sh" 1 "$fail_file" "$fail_category"
+            return 1
+            ;;
+    esac
 }
 
 run_bump_phase() {
