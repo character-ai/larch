@@ -612,7 +612,18 @@ def main():
                 file=sys.stderr,
             )
             return 1
-        return 0
+        input_finding_count = len(input_blocks(intext))
+        print(
+            "AGGREGATOR_VALIDATION_FAILED=empty_merge_from_nonempty_input",
+            file=sys.stderr,
+        )
+        print(
+            "input had %d FINDING blocks; merged output has zero "
+            "(attestation present is not sufficient when inputs were nonempty)"
+            % (input_finding_count,),
+            file=sys.stderr,
+        )
+        return 1
     seen_merge_ids = set()
     for b in blocks:
         mid = finding_id_from_block(b)
@@ -714,7 +725,7 @@ _agg_pipeline_for_candidate() {
     fi
 
     if ! python3 "$validate_py" "$FINDINGS_FILE" "$cand_repaired_tmp" 2>"$REVIEW_TMPDIR/aggregator-validate.stderr"; then
-        if grep -q '^AGGREGATOR_VALIDATION_FAILED=preamble_finding_substring' "$REVIEW_TMPDIR/aggregator-validate.stderr" 2>/dev/null; then
+        if grep -Eq '^AGGREGATOR_VALIDATION_FAILED=(preamble_finding_substring|empty_merge_from_nonempty_input)$' "$REVIEW_TMPDIR/aggregator-validate.stderr" 2>/dev/null; then
             rm -f "$cand_repaired_tmp"
             MERGE_PIPELINE_RC=1
             return 0
