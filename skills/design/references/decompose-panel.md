@@ -1,6 +1,6 @@
 # Decomposition panel (Step 2b.5 Split-path)
 
-**Consumer**: `/design` Step **2b.5 Split-path** only — after the operator chooses **Split** from a plan-size sprawl offer (hard trigger, soft trigger, semantic soft estimate, or `--partition` / `-p`). This file is **not** loaded during routine Step 2b plan emission, Step 3 plan review, or Gate A/B/C flows unless Split-path runs.
+**Consumer**: `/design` Step **2b.5 Split-path** only — after a hard trigger or `--partition` / `-p`. This file is **not** loaded during routine Step 2b plan emission, Step 3 plan review, or Gate A/B/C flows unless Split-path runs.
 
 **Contract**: single normative source for **panel input selection**, **8-slot external dispatch** (`scripts/dispatch-with-waterfall.sh`), **3-stage `AskUserQuestion` presentation** (path → archetype → vendor), **aggregator delegation**, **cycle-checked batch filing** via `/larch:issue`, **annotating filed URLs**, **redacted original-issue close**, and **sentinel idempotency** under `$DESIGN_TMPDIR`. <!-- topology: 8 fixed -->
 

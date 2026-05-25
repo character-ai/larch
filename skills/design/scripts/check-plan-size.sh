@@ -85,42 +85,23 @@ if [[ "$plan_lines" -lt 0 ]]; then
     plan_lines=0
 fi
 
-FILES_COUNT=$(grep -cE '^###[[:space:]]+(NEW|UPDATED|REWRITTEN)[[:space:]]*:' "$PLAN_FILE" || true)
-
-soft_plan=0
 hard_plan=0
-if [[ "$plan_lines" -gt 250 ]]; then soft_plan=1; fi
 if [[ "$plan_lines" -gt 800 ]]; then hard_plan=1; fi
 
-soft_diff=0
 hard_diff=0
-if [[ "$diff_lines" -gt 600 ]]; then soft_diff=1; fi
 if [[ "$diff_lines" -gt 1500 ]]; then hard_diff=1; fi
-
-soft_files=0
-if [[ "$FILES_COUNT" -gt 8 ]]; then soft_files=1; fi
 
 hard_trigger=0
 if [[ "$hard_plan" -eq 1 || "$hard_diff" -eq 1 ]]; then
     hard_trigger=1
 fi
 
-soft_trigger=0
-if [[ "$hard_trigger" -eq 0 ]]; then
-    if [[ "$soft_plan" -eq 1 || "$soft_diff" -eq 1 || "$soft_files" -eq 1 ]]; then
-        soft_trigger=1
-    fi
-fi
-
 reasons=()
-if [[ "$soft_plan" -eq 1 || "$hard_plan" -eq 1 ]]; then
+if [[ "$hard_plan" -eq 1 ]]; then
     reasons+=("plan-body-lines")
 fi
-if [[ "$soft_diff" -eq 1 || "$hard_diff" -eq 1 ]]; then
+if [[ "$hard_diff" -eq 1 ]]; then
     reasons+=("diff-lines")
-fi
-if [[ "$soft_files" -eq 1 ]]; then
-    reasons+=("files-count")
 fi
 
 TRIGGER_REASONS=""
@@ -132,18 +113,11 @@ fi
 
 if [[ "$hard_trigger" -eq 1 ]]; then
     emit_kv HARD_TRIGGER_FIRED true
-    emit_kv SOFT_TRIGGER_FIRED false
 else
     emit_kv HARD_TRIGGER_FIRED false
-    if [[ "$soft_trigger" -eq 1 ]]; then
-        emit_kv SOFT_TRIGGER_FIRED true
-    else
-        emit_kv SOFT_TRIGGER_FIRED false
-    fi
 fi
 
 emit_kv TRIGGER_REASONS "$TRIGGER_REASONS"
 emit_kv PLAN_LINES "$plan_lines"
 emit_kv DIFF_LINES "$diff_lines"
-emit_kv FILES_COUNT "$FILES_COUNT"
 exit 0

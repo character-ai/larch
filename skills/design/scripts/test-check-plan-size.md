@@ -4,24 +4,19 @@ Offline regression harness for [`check-plan-size.sh`](check-plan-size.sh). Captu
 
 ## Cases exercised
 
-1. No triggers — medium plan, few headings, moderate `diff_lines`.
-2. Plan-body soft — 251 body lines (strict `>` past 250).
-3. Diff-lines soft — `diff_lines` past 600.
-4. Files-count soft — nine `### NEW/UPDATED/REWRITTEN` headings.
-5. Multiple soft reasons — combined crossings; `TRIGGER_REASONS` uses fixed priority `plan-body-lines,diff-lines,files-count`.
-6. Plan-body hard — 801 body lines.
-7. Diff-lines hard — `diff_lines` past 1500.
-8. Hard + multiple soft crossings — hard precedence (`SOFT_TRIGGER_FIRED=false`) with full `TRIGGER_REASONS` list.
-9. Missing plan file — exit 2, `PLAN_SIZE_STATUS=missing-plan`.
-10. Unknown argv / missing `--design-tmpdir` — exit **3**, no `PLAN_SIZE_STATUS` lines.
-11. Malformed trailer — exit 2, `PLAN_SIZE_STATUS=missing-diff-lines`.
-12. Boundary equalities — 250 / 600 / 8 / 800 / 1500 do not trip (five sub-cases); plus **`diff_lines: 0`** as a valid trailer with no soft diff from zero alone.
-13. Zero headings — `FILES_COUNT=0`, no `set -e` abort from `grep -c`.
-14. Multiple `diff_lines:` lines — rejects when final non-empty line is not the trailer; accepts when trailer is last non-empty line.
-15. Whitespace-tolerant headings — `###  NEW:` and `### UPDATED :` count.
-16. Concatenated `###NEW:` (no whitespace after `###`) — does **not** count toward `FILES_COUNT` (matches scout / plan heading contract).
-17. Strict `diff_lines:` trailer — tab or extra ASCII spaces after the colon fail closed (`missing-diff-lines`), matching `emit-plan.sh`.
-18. Hard at 801 lines — same as helper-level hard detection (orchestrator `--partition` + hard interaction is pinned in `scripts/test-design-structure.sh`).
+1. No triggers — medium plan and moderate `diff_lines`; asserts the retired optional-prompt and file-count keys are not emitted.
+2. Plan-body hard — 801 body lines.
+3. Diff-lines hard — `diff_lines` past 1500.
+4. Hard plan with former soft dimensions — only hard reasons are emitted.
+5. Ten file headings — no retired file-count key emission and no trigger.
+6. Missing plan file — exit 2, `PLAN_SIZE_STATUS=missing-plan`.
+7. Unknown argv / missing `--design-tmpdir` — exit **3**, no `PLAN_SIZE_STATUS` lines.
+8. Malformed trailer — exit 2, `PLAN_SIZE_STATUS=missing-diff-lines`.
+9. Hard boundary equalities — 800 body lines and `diff_lines: 1500` do not trip.
+10. Zero headings — valid plan with no `set -e` regression.
+11. Multiple `diff_lines:` lines — rejects when final non-empty line is not the trailer; accepts when trailer is last non-empty line.
+12. Strict `diff_lines:` trailer — tab or extra ASCII spaces after the colon fail closed (`missing-diff-lines`), matching `emit-plan.sh`.
+13. `--plan-file` override — non-default path still parses and emits hard-only keys.
 
 ## Run
 

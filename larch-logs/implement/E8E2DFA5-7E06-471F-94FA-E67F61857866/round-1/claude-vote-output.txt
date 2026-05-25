@@ -1,0 +1,13 @@
+FINDING_1: YES
+FINDING_2: YES
+FINDING_3: YES
+FINDING_4: NO -- not a real finding; the concern field just restates a commit SHA with no actionable defect
+FINDING_5: NO -- not a real finding; the concern field is a scope exclusion note and diff summary, not a defect
+FINDING_6: NO -- positive security observation; no defect or required change stated
+FINDING_7: EXONERATE -- residual risk is pre-existing and explicitly bounded by the same trust boundary; --partition skipping AskUserQuestion is intentional design
+FINDING_8: NO -- reviewer explicitly states the issue is unchanged from main and not introduced by this branch
+FINDING_9: YES
+FINDING_10: YES
+FINDING_11: YES
+FINDING_12: YES
+FINDING_13: YES
