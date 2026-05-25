@@ -1,0 +1,36 @@
+v1	mark	1779682942	design	design Step 1d — discussion r1	-	-	-	-	-	-	-	-
+v1	mark	1779684139	design	design Step 2a — sketches	-	-	-	-	-	-	-	-
+v1	vendor	1779684392	implement	-	codex	codex-sketch-generic	1779684261	1779684392	131	codex-sketch-generic-output.txt	0	complete
+v1	mark	1779684583	design	design Step 2a.5 — dialectic	-	-	-	-	-	-	-	-
+v1	vendor	1779684770	implement	-	codex	codex-debate-thesis	1779684729	1779684770	41	debate-1-codex-thesis.txt	0	complete
+v1	vendor	1779684782	implement	-	codex	codex-debate-antithesis	1779684732	1779684782	50	debate-1-codex-antithesis.txt	0	complete
+v1	vendor	1779684785	implement	-	codex	codex-debate-thesis	1779684735	1779684785	50	debate-2-codex-thesis.txt	0	complete
+v1	vendor	1779684788	implement	-	codex	codex-debate-antithesis	1779684737	1779684788	51	debate-2-codex-antithesis.txt	0	complete
+v1	vendor	1779684976	implement	-	codex	codex-judge	1779684936	1779684976	40	codex-judge-output.txt	0	complete
+v1	vendor	1779685033	implement	-	cursor	cursor-judge	1779684931	1779685033	102	cursor-judge-output.txt	0	complete
+v1	mark	1779685087	design	design Step 2b — plan	-	-	-	-	-	-	-	-
+v1	mark	1779685404	design	design Step 3 — plan review	-	-	-	-	-	-	-	-
+v1	vendor	1779685703	implement	-	codex	codex-phase1-dyn-codex-plan-env-signal-coherence	1779685592	1779685703	111	codex-primary-plan-dyn-env-signal-coherence-output.txt	0	complete
+v1	vendor	1779685705	implement	-	codex	codex-phase1-dyn-codex-plan-lint-migration-scope	1779685592	1779685705	113	codex-primary-plan-dyn-lint-migration-scope-output.txt	0	complete
+v1	vendor	1779685723	implement	-	codex	codex-phase1-dyn-codex-plan-monitor-shell-bridge	1779685592	1779685722	130	codex-primary-plan-dyn-monitor-shell-bridge-output.txt	0	complete
+v1	vendor	1779685746	implement	-	codex	codex-phase1-codex-plan-edge	1779685592	1779685746	154	codex-primary-plan-edge-output.txt	0	complete
+v1	vendor	1779685756	implement	-	codex	codex-phase1-codex-plan-pragmatic	1779685592	1779685756	164	codex-primary-plan-pragmatic-output.txt	0	complete
+v1	vendor	1779685794	implement	-	codex	codex-phase1-codex-plan-requirements	1779685592	1779685794	202	codex-primary-plan-requirements-output.txt	0	complete
+v1	vendor	1779685794	implement	-	codex	codex-phase1-codex-plan-arch	1779685592	1779685794	202	codex-primary-plan-arch-output.txt	0	complete
+v1	vendor	1779685806	implement	-	codex	codex-phase1-codex-plan-innovation	1779685592	1779685806	214	codex-primary-plan-innovation-output.txt	0	complete
+v1	vendor	1779685942	implement	-	codex	codex-phase2-dyn-cursor-plan-env-signal-coherence	1779685807	1779685942	135	cursor-plan-dyn-env-signal-coherence-output-phase2.txt	0	complete
+v1	vendor	1779685951	implement	-	codex	codex-phase2-cursor-plan-pragmatic	1779685807	1779685951	144	cursor-plan-pragmatic-output-phase2.txt	0	complete
+v1	vendor	1779685951	implement	-	codex	codex-phase2-dyn-cursor-plan-monitor-shell-bridge	1779685807	1779685951	144	cursor-plan-dyn-monitor-shell-bridge-output-phase2.txt	0	complete
+v1	vendor	1779685969	implement	-	codex	codex-phase2-cursor-plan-innovation	1779685807	1779685969	162	cursor-plan-innovation-output-phase2.txt	0	complete
+v1	vendor	1779685969	implement	-	codex	codex-phase2-cursor-plan-arch	1779685807	1779685969	162	cursor-plan-arch-output-phase2.txt	0	complete
+v1	vendor	1779685978	implement	-	codex	codex-phase2-cursor-plan-edge	1779685807	1779685978	171	cursor-plan-edge-output-phase2.txt	0	complete
+v1	vendor	1779685980	implement	-	codex	codex-phase2-cursor-plan-requirements	1779685807	1779685980	173	cursor-plan-requirements-output-phase2.txt	0	complete
+v1	vendor	1779685991	implement	-	codex	codex-phase2-dyn-cursor-plan-lint-migration-scope	1779685807	1779685991	184	cursor-plan-dyn-lint-migration-scope-output-phase2.txt	0	complete
+v1	vendor	1779686141	implement	-	codex	codex-phase1-aggregator	1779686000	1779686141	141	aggregator-output-codex.txt	0	complete
+v1	vendor	1779686296	implement	-	codex	codex-phase1-voter-2	1779686205	1779686296	91	codex-vote-output.txt	0	complete
+v1	vendor	1779686367	implement	-	codex	codex-phase2-voter-3	1779686296	1779686367	71	cursor-vote-output-phase2.txt	0	complete
+v1	mark	1779686435	design	design Step 3.5 — gate B	-	-	-	-	-	-	-	-
+v1	mark	1779687019	design	design Step 3b — arch diagram	-	-	-	-	-	-	-	-
+v1	mark	1779687079	design	design Step 4 — rejected findings	-	-	-	-	-	-	-	-
+v1	mark	1779687097	design	design Step 4b — gate C	-	-	-	-	-	-	-	-
+v1	mark	1779687482	design	design Step 5 — finalize	-	-	-	-	-	-	-	-
