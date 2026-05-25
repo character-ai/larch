@@ -103,7 +103,7 @@ ensure_mermaid_cli() {
     if [ ! -f "$REPO_ROOT/package.json" ]; then
         return 0
     fi
-    if [ -x "$REPO_ROOT/node_modules/.bin/mmdc" ]; then
+    if [ -f "$REPO_ROOT/node_modules/.bin/mmdc" ]; then
         return 0
     fi
     if ! command -v npm >/dev/null 2>&1; then
@@ -115,6 +115,10 @@ ensure_mermaid_cli() {
         echo "ERROR: npm ci failed"
         exit 1
     }
+    if [ ! -f "$REPO_ROOT/node_modules/.bin/mmdc" ]; then
+        echo "ERROR: npm ci finished but node_modules/.bin/mmdc is missing (check package-lock.json / @mermaid-js/mermaid-cli)"
+        exit 1
+    fi
 }
 
 # ---------------------------------------------------------------------------
@@ -135,7 +139,7 @@ fi
 markdown_in_scope=false
 for f in "${files[@]}"; do
     case "$f" in
-        *.md) markdown_in_scope=true; break ;;
+        *.md|*.markdown|*.mdown|*.mkdn) markdown_in_scope=true; break ;;
     esac
 done
 if [ "$markdown_in_scope" = true ]; then
