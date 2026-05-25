@@ -1,3 +1,3 @@
-Aggregating reviewer findings: checking for source output files with verbatim revision text.
-Producing the normalized aggregator output: excluding security slots 8–12 (affirmations, not behavioral risks) and merging duplicate harness/predicate findings.
+Normalizing reviewer findings into a structured list. Verifying key code locations cited across reviewers (read-only).
+Confirming the branch already documents three empty-merge paths in `aggregate-findings.md` and `SECURITY.md`; including reviewer findings as normalized input for voters. Producing the structured aggregator output.
 
