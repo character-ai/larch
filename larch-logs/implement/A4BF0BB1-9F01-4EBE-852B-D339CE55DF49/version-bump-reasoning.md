@@ -1,12 +1,12 @@
 # Version Bump Reasoning
 
-- **Base commit**: `f36a8206` (Fixes #2805: Remove FILES_COUNT and soft-trigger machinery from /design plan-size check (#2818))
-- **Current version**: `42.5.2`
+- **Base commit**: `0f8f790d` (Bump version to 42.5.3 (#2820))
+- **Current version**: `42.5.3`
 - **Classification scope**: `skills/**` and `agents/**` only (public plugin surface).
 
 ## Result: PATCH
 
-- **New version**: `42.5.3`
+- **New version**: `42.5.4`
 
 ### PATCH rationale
 
