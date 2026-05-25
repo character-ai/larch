@@ -1,0 +1,28 @@
+Reading the plan and tracing cited code paths for edge-case review.
+
+Tracing cited scripts and contracts against the proposed design.
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/scripts/render-final-summary.sh:35-40	Hard-coded --outcome allow-list omits planned SUMMARY_OUTCOME values	Running the Final summary block after Split-path success or decompose cancel passes approved-partition or cancelled-decompose into render-final-summary.sh and exits 2 before any summary file or tracking upsert	Add approved-partition and cancelled-decompose to the case list and extend any sibling contract tests or docs that pin the enumeration
+1	in_scope	important	correctness	skills/design/SKILL.md:247	Explicit SUMMARY_OUTCOME union excludes new outcomes	Orchestrator prose contradicts implementation and hides the render-final-summary coupling	Update the union in the Final summary orchestrator contract to include the new outcomes in the same change set as render-final-summary.sh
+1	in_scope	important	architecture	skills/design/references/approval-gates.md:106-108	Gate B still documents Split-path as stub plus exit 1	Post-merge docs tell operators Gate B Split still aborts with exit 1 even when filing succeeds	Replace stub plus exit 1 wording with partition success exit 0 plus tmpdir preservation semantics and pointer to references/decompose-panel.md
+1	in_scope	important	risk-integration	skills/design/references/discussion-rounds.md:25-25	Step 1c sprawl Split still references decomposition panel stub until 2672	Early sprawl entry keeps routing operators to obsolete stub language	Replace stub sentence with a pointer to references/decompose-panel.md and the real Split-path contract
+1	in_scope	nit	architecture	skills/design/scripts/render-final-summary.md:17-19	Callers list claims Split-path never invokes render-final-summary.md	Contradicts the proposed SKILL Split-path body that runs Final summary on partition cancel or success	Update the Split-path bullet to describe the new terminal-summary paths and when the helper is skipped
+1	in_scope	important	correctness	plan.txt:88-90 plus Failure modes 2	When annotate writes .decompose-issues-filed is underspecified relative to partial batch failure	If sentinel is written after only some ISSUE URLs exist a re-run skips filing and strands missing pieces	Spell out write .decompose-issues-filed only when ISSUES_FAILED is 0 and created count equals intended N use temp-plus-rename or document explicit recovery edit of partition-input.txt before re-run
+1	in_scope	important	correctness	plan.txt:90-91	close-original retry can duplicate the GitHub close comment	Comment posts then gh issue close fails no sentinel re-run close-original posts the same prose again spamming the original issue	Use a sub-sentinel after successful gh issue comment or detect existing close-comment hash before re-posting or use one idempotent gh update path
+
+[OUT_OF_SCOPE] scripts/render-run-summary.md:78 — outcome table omits any new /design outcomes; update when render-final-summary enumeration changes to avoid consumer-doc drift.
+
+1. **architecture** — [skills/design/references/approval-gates.md](skills/design/references/approval-gates.md):106-108 — Gate B still says Split-path is a stub with exit 1 — Conflicts with the plan’s exit 0 plus filing flow — Update that paragraph and cross-link `references/decompose-panel.md`.
+
+2. **risk-integration** — [skills/design/references/discussion-rounds.md](skills/design/references/discussion-rounds.md):25 — Step 1c sprawl still tells the orchestrator to use the “decomposition panel stub until #2672” — After the PR, early sprawl still reads as intentionally blocked — Replace with the real Split-path reference to `decompose-panel.md`.
+
+3. **correctness** — [skills/design/scripts/render-final-summary.sh](skills/design/scripts/render-final-summary.sh):35-40 — Outcome enumeration is fail-closed — `approved-partition` / `cancelled-decompose` from the proposed SKILL body will abort the Final summary block — Extend the `case "$OUTCOME"` list (and any tests that pin it).
+
+4. **correctness** — [skills/design/SKILL.md](skills/design/SKILL.md):247 — Documented `SUMMARY_OUTCOME` union omits the new values — Same runtime break as (3) plus normative drift — Expand the union in the same edit as `render-final-summary.sh`.
+
+5. **architecture** — [skills/design/scripts/render-final-summary.md](skills/design/scripts/render-final-summary.md):17-19 — Still states Split-path never calls the final-summary helper — Misleading once partition paths run the Final summary block — Refresh the caller list for partition success and decompose-cancel paths.
+
+6. **correctness** — plan: `decompose-file-issues.sh annotate` / idempotency — `.decompose-issues-filed` write conditions vs partial `/larch:issue` batch failure are not pinned — A too-eager sentinel makes re-runs skip creating missing pieces while GitHub already has a subset — Specify “write sentinel only on full success” (and align the harness) or document a deterministic repair edit to `partition-input.txt` before re-run.
+
+7. **correctness** — plan: `close-original` — Retry after “comment succeeded, close failed” can call `gh issue comment` again — Duplicate close comments on the original issue — Add a comment-posted sub-sentinel, idempotent body detection, or a single atomic flow that cannot double-post the same prose.

@@ -1,0 +1,2 @@
+OOS_1: EXONERATE -- `--blocked-by-issue` already exists in batch mode; omitting it from the decompose filing recipe is a caller/plan choice, not a product defect that merits its own issue.
+OOS_2: EXONERATE -- the plan's testing text already references `test-design-structure.sh`; a missing `### UPDATED` line is list hygiene, not a concrete gap worth a standalone tracking issue.

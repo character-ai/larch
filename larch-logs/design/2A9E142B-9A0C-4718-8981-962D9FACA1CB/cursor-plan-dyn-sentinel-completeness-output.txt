@@ -1,0 +1,69 @@
+Reading the plan and tracing proposed sentinels and orchestration paths in the codebase.
+
+Tracing existing sentinel patterns and the issue skill's batch contract to compare with the plan's proposed semantics.
+
+Checking the issue skill's post-invocation stdout contract and whether the plan references `prepare` idempotency.
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan (session plan.txt):87-92,180-182,188-189	`.decompose-issues-filed` plus edge-case-7 skip semantics are not reconciled with partial batch failure	If `annotate` writes `.decompose-issues-filed` whenever any piece URLs exist (mirroring `file-design-oos.sh` which always writes `oos-issues-created.md` before exiting 1 on partial lines 409-422), a re-run that treats a non-empty sentinel like edge case 7 would skip `/larch:issue` entirely and never create missing pieces; if instead partial runs omit the file, there is no durable map for which indices already exist after a crash before `annotate`	Spell the contract in `decompose-file-issues.sh` and `decompose-panel.md`: either (a) two-phase sentinel e.g. `.decompose-issues-partial` vs full `.decompose-issues-filed`, or (b) `prepare` must rebuild a reduced `--input-file` from `partition-filed.md` plus sentinel lines and never short-circuit on partial, or (c) document the same operator escape as OOS (`--clear-*` equivalent) with explicit breadcrumbs
+1	in_scope	important	architecture	plan (session plan.txt):87-88,99-102,165-166	No durable boundary between successful `prepare` and `/larch:issue`	Crash or halt after `partition-input.txt` exists but before stdout is captured leaves no sentinel; next `/design` re-enters Step 2b.5 and may repeat the full AskUserQuestion or panel path even though the partition graph was already validated	Add a post-`prepare` marker e.g. `.decompose-partition-prepared` or KV `DECOMPOSE_PREPARE_OK` consumed by `decompose-panel.md` entry so re-run jumps to issue capture or shows a single resume AskUserQuestion instead of re-validating the same partition from scratch
+1	in_scope	important	risk-integration	plan (session plan.txt):106-116 vs 188-189	Manual `partition-input.txt` surgery after `ISSUES_FAILED>0` is only in Failure Modes prose	Operator sees generic panel copy from the proposed SKILL Split-path body with no mandatory breadcrumb parallel to `skills/design/SKILL.md:853` for OOS partial failures	Require `references/decompose-panel.md` plus the SKILL Split-path exit branches to print an explicit line when `ISSUES_FAILED>0` naming `partition-input.txt`, that succeeded indices are recorded in `.decompose-issues-filed` or `partition-filed.md`, and the exact edit expectation (trim to remaining pieces or regenerate deps TSV)
+1	in_scope	nit	correctness	plan (session plan.txt):188-189	Instructions contradict each other	"complete only the failed pieces" conflicts with "remove the failed-piece entries" and mis-routes implementers	Replace with one normative recipe e.g. "drop succeeded `###` blocks from the batch input (or regenerate from `partition-filed.md`) so `/larch:issue` sees only unfired indices; rebuild `--intra-batch-deps-file` for the reduced index set"
+1	in_scope	latent	security	plan (session plan.txt):83-92,91	`close-original` and `annotate` parse machine stdout and call `gh` without a stated trust boundary for captured paths	`partition-filed.md` and stdout fixtures could be swapped or poisoned in shared tmpdirs; low likelihood but same class as other design helpers	Note in the proposed `decompose-file-issues.md` to treat `--issue-stdout-file` and `partition-filed.md` as session-private, validate GitHub URLs like `file-design-oos.sh` recovery does, and redact `gh` stderr via existing `append-tool-failure.sh` patterns
+
+Numbered findings:
+
+1. **[correctness]** Proposed [`skills/design/scripts/decompose-file-issues.sh`](skills/design/scripts/decompose-file-issues.sh) (per plan lines 87-92, 180-182, 188-189): The interaction among `annotate`, `.decompose-issues-filed`, edge case 7’s “skip re-filing”, and failure mode 2’s “complete failed pieces” is underspecified relative to the proven OOS pattern in [`skills/design/scripts/file-design-oos.sh`](skills/design/scripts/file-design-oos.sh) (non-empty `oos-issues-created.md` forces `prepare` to emit `skip-sentinel` at lines 231-233, which skips a second `/larch:issue` entirely). Without a distinct partial-complete contract, implementers either skip needed refills or double-file pieces.
+
+2. **[architecture]** Proposed [`skills/design/references/decompose-panel.md`](skills/design/references/decompose-panel.md) and `prepare` (plan lines 87-88, 99-102): There is no sentinel between a passing cycle check (`DECOMPOSE_PARTITION_STATUS` success) and `/larch:issue`. A restart repeats user-facing validation and risks conflicting with a half-edited `partition-input.txt` during manual recovery.
+
+3. **[risk-integration]** Proposed [`skills/design/SKILL.md`](skills/design/SKILL.md) Split-path replacement (plan lines 106-116) vs failure mode prose (188-189): The SKILL excerpt does not require an operator-visible breadcrumb for the mandatory manual batch-input edit; contrast [`skills/design/SKILL.md`](skills/design/SKILL.md) lines 853-854 which explicitly surface partial `/larch:issue` outcomes.
+
+4. **[correctness] [nit]** Plan failure mode 2 (plan lines 188-189): “remove the failed-piece entries” vs “complete only the failed pieces” is internally inconsistent; fix the wording before implementation.
+
+5. **[security] [latent]** Proposed close/annotate pipeline (plan lines 83-92): Consider documenting URL validation and session-local path discipline for `partition-filed.md` and captured stdout, aligned with recovery cautions already documented for OOS in [`skills/design/scripts/file-design-oos.sh`](skills/design/scripts/file-design-oos.sh) (lines 143-157).
+
+[OUT_OF_SCOPE] [`skills/design/scripts/test-design-structure.sh`](skills/design/scripts/test-design-structure.sh) anchor update (plan lines 198-199): reasonable follow-up for CI but not sentinel completeness; touch only alongside the SKILL body change to avoid merge contention.
+
+Wait - user said first non-whitespace must be TSV header or JSON. So I start with schema_version line directly.
+
+Also "Return numbered findings with focus-area tag" - I used bracket format like [correctness] - good.
+
+Double-check: For issue skill line 468 - sentinel on issue side only when ISSUES_FAILED=0 - the decompose flow might pass `--sentinel-file` to /issue - partial won't write issue sentinel. Good.
+
+I'll remove duplicate between TSV and numbered list - user asked both. Keep both.
+
+Verify no "I'll" preamble - start with schema_version tab line.
+
+Actually re-read - "When you have findings, include a TSV structured-record block" AND "Return numbered findings" - so both.
+
+First line must be TSV header - good.
+
+Let me also add one more finding: crash between /larch:issue completion and annotate - if stdout not flushed to disk - latent.
+
+Actually keep 5 in-scope TSV rows - I had 5 rows. Good.
+
+Let me verify TSV has literal tabs - in my message I need to use real tab characters between fields. The tool might convert - I'll use \t in the thinking but in actual response I need tabs. In markdown user might see spaces - typically I type tab character between schema_version and scope etc.
+
+I'll output with actual tabs in the content.
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan (session plan.txt):87-92,180-182,188-189	`.decompose-issues-filed` contract is not aligned with edge case 6 partial success vs edge case 7 skip-refile semantics	Mirroring `file-design-oos.sh` (writes `oos-issues-created.md` then exits 1 when `ISSUES_FAILED>0` at lines 409-422) while also treating any non-empty `.decompose-issues-filed` like edge case 7 would skip `/larch:issue` and strand unfired pieces; omitting the file on partial loses a durable index map after a crash before `annotate`	Define explicit states: e.g. append-only `PARTITION_FILE_MAP` lines plus a `DECOMPOSE_ISSUES_COMPLETE=true|false` tail or separate sentinels; require `prepare` to rebuild or subset the batch from `partition-filed.md` and never use a single-file skip that blocks partial completion
+1	in_scope	important	architecture	plan (session plan.txt):87-88,99-102	No durable machine boundary after a passing cycle check and before `/larch:issue`	Orchestrator crash leaves `partition-input.txt` without a paired “issue launched” marker; next `/design` repeats Step 2b.5 user flow and may re-prompt over an already validated partition	Add `.decompose-partition-prepared` or equivalent after `prepare` succeeds and teach `decompose-panel.md` entry to resume at capture-or-reinvoke with a one-line breadcrumb instead of full re-panel
+1	in_scope	important	risk-integration	plan (session plan.txt):106-116 vs 188-189	Manual `partition-input.txt` editing for `ISSUES_FAILED>0` is not mandated in the proposed SKILL or reference excerpt	Operator only sees Failure Modes buried in the plan file, not chat-level guidance unlike `skills/design/SKILL.md:853-854` for OOS partial filing	Mirror the OOS partial pattern: mandatory stderr-or-chat line naming the file path, `ISSUES_FAILED`, and the exact edit-or-regenerate steps when `annotate` exits non-zero
+1	in_scope	nit	correctness	plan (session plan.txt):188-189	Failure mode 2 text contradicts itself	“complete only the failed pieces” vs “remove the failed-piece entries” sends implementers toward opposite batch edits	Replace with one normative procedure tied to 1-based indices and deps TSV regeneration
+1	in_scope	latent	security	plan (session plan.txt):83-92,91	`annotate` and `close-original` trust captured stdout and composed markdown without stated validation	Shared-tmp tampering or malformed URLs could mis-associate pieces in `partition-filed.md` or the close comment	Document strict GitHub URL checks and session-private tmp assumptions consistent with `skills/design/scripts/file-design-oos.sh:143-157`
+
+1. **[correctness]** The proposed `annotate` behavior and `.decompose-issues-filed` (plan lines 87-92, 180-182, 188-189) do not resolve how partial `/larch:issue` runs coexist with edge case 7’s “re-run skips re-filing.” The closest existing pattern is [`skills/design/scripts/file-design-oos.sh`](skills/design/scripts/file-design-oos.sh), where `annotate` still materializes `oos-issues-created.md` before exiting non-zero on partial failure (lines 409-422), while `prepare` immediately short-circuits with `skip-sentinel` whenever that file is non-empty (lines 231-233), meaning a naïve port strands follow-up creates unless the plan adds a different `prepare` contract or a second sentinel phase.
+
+2. **[architecture]** The plan sequences cycle check inside `prepare` (lines 87-88) then prompt-side `/larch:issue` (line 9) with no intervening sentinel. Any halt after `partition-input.txt` exists but before stdout is persisted forces a full Step 2b.5 re-entry and repeats operator validation, which is exactly the gap you called out; [`skills/design/references/decompose-panel.md`](skills/design/references/decompose-panel.md) as sketched (lines 94-104) needs an explicit resume graph keyed off a new marker file.
+
+3. **[risk-integration]** The proposed [`skills/design/SKILL.md`](skills/design/SKILL.md) Split-path replacement (plan lines 106-116) never binds failure mode 2’s manual batch-input requirement into operator-visible text. Compare the explicit partial-filing operator breadcrumb already required for OOS in [`skills/design/SKILL.md`](skills/design/SKILL.md) at lines 853-854.
+
+4. **[correctness]** Failure mode 2 prose (plan lines 188-189) contradicts itself (“complete only the failed pieces” versus “remove the failed-piece entries”), so implementers cannot derive unambiguous re-run semantics from the plan alone.
+
+5. **[security] [latent]** The proposed `annotate`/`close-original` surfaces (plan lines 83-92, 91) parse `/larch:issue` stdout and compose GitHub comments without calling out URL validation or tmpdir exclusivity; the OOS helper already documents why naive URL pairing is unsafe in [`skills/design/scripts/file-design-oos.sh`](skills/design/scripts/file-design-oos.sh) at lines 143-157, and the decomposition path should inherit that discipline in its sibling `.md`.
+
+**Code-quality:** No separate finding beyond the failure-mode wording nit (finding 4); the proposed harness list (plan lines 193-197) still omits an automated assertion for partial-resume vs sentinel skip, which would have caught finding 1—consider extending `test-decompose-file-issues.sh` when implementing.
+
+[OUT_OF_SCOPE] [`skills/design/scripts/test-design-structure.sh`](skills/design/scripts/test-design-structure.sh) updates (plan lines 198-199) are reasonable CI hygiene for the new Split-path anchor but do not address sentinel boundaries; track as a dependent edit to avoid merge churn with the SKILL swap.

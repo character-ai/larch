@@ -1,0 +1,560 @@
+### FINDING_1:
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/design/scripts/render-final-summary.sh:35-41
+- **Concern**: New SUMMARY_OUTCOME values approved-partition and cancelled-decompose are not in the allowed case list. Scenario: Final summary block invokes render-final-summary.sh and exits 2 before printing any terminal summary
+- **Proposed resolution**: Extend the outcome enumeration (and add harness coverage in skills/design/scripts/test-render-final-summary.sh) for both values
+
+### FINDING_2:
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: important
+- **Focus area**: architecture
+- **Location**: skills/design/SKILL.md:243-247
+- **Concern**: Final summary When block and orchestrator contract still say Split-path never runs Final summary and list only legacy SUMMARY_OUTCOME values. Scenario: Implementer follows SKILL as written and either skips the new terminal summary or rejects the new outcomes
+- **Proposed resolution**: Replace the Split-path exception prose expand the orchestrator union and keep it synchronized with render-final-summary.sh
+
+### FINDING_3:
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: skills/design/references/approval-gates.md:106-108
+- **Concern**: Gate B prose still claims Split-path exits 1 with the decomposition stub. Scenario: Operators and agents trust approval-gates for exit semantics and mis-handle automation or re-run guidance
+- **Proposed resolution**: Update the paragraph to match post-PR Split-path outcomes exit 0 vs exit 1 and point at references/decompose-panel.md
+
+### FINDING_4:
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: nit
+- **Focus area**: architecture
+- **Location**: skills/design/references/discussion-rounds.md:25-25
+- **Concern**: Step 1c sprawl Split option still normatively references a decomposition stub until issue 2672. Scenario: Stale cross-reference after the panel ships
+- **Proposed resolution**: Replace the stub sentence with a pointer to references/decompose-panel.md and the real Split-path contract
+
+### FINDING_5:
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/design/scripts/decompose-panel-dispatch.sh:planned
+- **Concern**: Edge case PANEL_VERDICT unanimous-no-split is named in the plan but the dispatcher contract lists only PANEL_OUTPUTS_FILE DEGRADED_PANEL PANEL_STATUS. Scenario: Orchestrator cannot read a KV that is never emitted and must guess unanimity by ad hoc parsing
+- **Proposed resolution**: Either emit PANEL_VERDICT (and document it in the sibling .md) or delete that symbol from edge cases and define unanimity detection purely from PANEL_OUTPUTS_FILE
+
+### FINDING_6:
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/design/scripts/file-design-oos.sh:85-170
+- **Concern**: Partial batch filing plus annotate idempotency omits a concrete resume contract versus ISSUES_FAILED mid-batch. Scenario: The plan tells the operator to edit the batch input while also describing a filing sentinel that may prevent safe partial retries
+- **Proposed resolution**: Specify whether annotate writes a partial PARTITION_FILE_MAP how prepare skips only succeeded indices and how a second run avoids duplicate issues mirroring recover_oos_accepted_from_sentinel_urls semantics
+
+### OOS_1:
+- **Description**: Decompose filing plan uses only --input-file and --intra-batch-deps-file and never --blocked-by-issue. Scenario: New partition issues are not automatically linked as blocked by the original tracking issue unless filed manually
+- **Reviewer**: Cursor-Arch
+- **Severity**: latent
+- **Focus area**: architecture
+- **Location**: skills/issue/SKILL.md:44-45
+- **Phase**: design
+
+### FINDING_1:
+- **Reviewer(s)**: Codex-Arch
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/design/SKILL.md:243-247; skills/design/scripts/render-final-summary.sh:36-39
+- **Concern**: Proposed Split-path uses SUMMARY_OUTCOME values that the final summary contract rejects. Scenario: Approved partition or decomposition cancel runs the Final summary block with approved-partition or cancelled-decompose and render-final-summary.sh exits 2 instead of cleanly exiting /design
+- **Proposed resolution**: Add render-final-summary.sh, render-final-summary.md, tests, and SKILL.md outcome contract updates for the new outcomes, or reuse existing accepted outcomes and avoid introducing new enum values
+
+### FINDING_2:
+- **Reviewer(s)**: Codex-Arch
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/issue/SKILL.md:111; skills/issue/scripts/parse-input.md:9
+- **Concern**: Partition batch input uses generic ### item blocks while embedding larch:plan markdown that can contain ### headings. Scenario: /issue generic-mode parsing silently splits embedded plan sections into extra issues or malformed items
+- **Proposed resolution**: Generate an input format that escapes or downgrades body ### lines, use an OOS-style absorbed body format, or extend the issue parser contract; add a harness case with embedded ### NEW/UPDATED plan headings
+
+### FINDING_3:
+- **Reviewer(s)**: Codex-Arch
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: Makefile:15; Makefile:38-40
+- **Concern**: The plan says to wire new harnesses into lint directly instead of the test-harness shard aggregate used by CI split targets. Scenario: make test-harnesses can miss the new decompose tests, or shard coverage fails once targets exist but are not assigned to a shard
+- **Proposed resolution**: Add each new test target to .PHONY and a test-harnesses-N shard line, then let lint pick them up through test-harnesses
+
+### FINDING_4:
+- **Reviewer(s)**: Codex-Arch
+- **Severity**: important
+- **Focus area**: code-quality
+- **Location**: agent-lint.toml:819-834; agent-lint.toml:1169-1184
+- **Concern**: The agent-lint update omits the new Makefile-only decompose harness scripts and sibling md contracts. Scenario: agent-lint can flag the new test scripts or docs as orphaned even though Makefile invokes them, matching the existing design harness exclusion pattern
+- **Proposed resolution**: Add test-decompose-panel-dispatch.sh, test-decompose-aggregator.sh, test-decompose-file-issues.sh and their .md siblings to the same agent-lint sections as the existing design test harnesses; include _common-tail.txt in the prompt/template registration if that section requires explicit prompt files
+
+### FINDING_5:
+- **Reviewer(s)**: Codex-Arch
+- **Severity**: important
+- **Focus area**: security
+- **Location**: SECURITY.md:114-120
+- **Concern**: The plan adds a new public gh issue comment close path with redaction but does not update SECURITY.md. Scenario: The shipped security model will document existing gh write helpers while omitting the new decomposition close-original writer and its redaction/failure boundary
+- **Proposed resolution**: Add SECURITY.md coverage for decompose-file-issues.sh close-original, including body-file redaction, gh stderr handling, and residual non-secret sensitive-content limits
+
+### FINDING_1:
+- **Reviewer(s)**: Cursor-Edge
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/design/scripts/render-final-summary.sh:35-40
+- **Concern**: Hard-coded --outcome allow-list omits planned SUMMARY_OUTCOME values. Scenario: Running the Final summary block after Split-path success or decompose cancel passes approved-partition or cancelled-decompose into render-final-summary.sh and exits 2 before any summary file or tracking upsert
+- **Proposed resolution**: Add approved-partition and cancelled-decompose to the case list and extend any sibling contract tests or docs that pin the enumeration
+
+### FINDING_2:
+- **Reviewer(s)**: Cursor-Edge
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/design/SKILL.md:247
+- **Concern**: Explicit SUMMARY_OUTCOME union excludes new outcomes. Scenario: Orchestrator prose contradicts implementation and hides the render-final-summary coupling
+- **Proposed resolution**: Update the union in the Final summary orchestrator contract to include the new outcomes in the same change set as render-final-summary.sh
+
+### FINDING_3:
+- **Reviewer(s)**: Cursor-Edge
+- **Severity**: important
+- **Focus area**: architecture
+- **Location**: skills/design/references/approval-gates.md:106-108
+- **Concern**: Gate B still documents Split-path as stub plus exit 1. Scenario: Post-merge docs tell operators Gate B Split still aborts with exit 1 even when filing succeeds
+- **Proposed resolution**: Replace stub plus exit 1 wording with partition success exit 0 plus tmpdir preservation semantics and pointer to references/decompose-panel.md
+
+### FINDING_4:
+- **Reviewer(s)**: Cursor-Edge
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: skills/design/references/discussion-rounds.md:25-25
+- **Concern**: Step 1c sprawl Split still references decomposition panel stub until 2672. Scenario: Early sprawl entry keeps routing operators to obsolete stub language
+- **Proposed resolution**: Replace stub sentence with a pointer to references/decompose-panel.md and the real Split-path contract
+
+### FINDING_5:
+- **Reviewer(s)**: Cursor-Edge
+- **Severity**: nit
+- **Focus area**: architecture
+- **Location**: skills/design/scripts/render-final-summary.md:17-19
+- **Concern**: Callers list claims Split-path never invokes render-final-summary.md. Scenario: Contradicts the proposed SKILL Split-path body that runs Final summary on partition cancel or success
+- **Proposed resolution**: Update the Split-path bullet to describe the new terminal-summary paths and when the helper is skipped
+
+### FINDING_6:
+- **Reviewer(s)**: Cursor-Edge
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: plan.txt:88-90 plus Failure modes 2
+- **Concern**: When annotate writes .decompose-issues-filed is underspecified relative to partial batch failure. Scenario: If sentinel is written after only some ISSUE URLs exist a re-run skips filing and strands missing pieces
+- **Proposed resolution**: Spell out write .decompose-issues-filed only when ISSUES_FAILED is 0 and created count equals intended N use temp-plus-rename or document explicit recovery edit of partition-input.txt before re-run
+
+### FINDING_7:
+- **Reviewer(s)**: Cursor-Edge
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: plan.txt:90-91
+- **Concern**: close-original retry can duplicate the GitHub close comment. Scenario: Comment posts then gh issue close fails no sentinel re-run close-original posts the same prose again spamming the original issue
+- **Proposed resolution**: Use a sub-sentinel after successful gh issue comment or detect existing close-comment hash before re-posting or use one idempotent gh update path
+
+### FINDING_1:
+- **Reviewer(s)**: Codex-Edge
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: <TMPDIR>/plan.txt:115; skills/design/SKILL.md:243-247; skills/design/scripts/render-final-summary.sh:36
+- **Concern**: Finding 1: Split-path success/cancel calls the Final summary block with new outcomes that are not registered. Scenario: The proposed `approved-partition` and `cancelled-decompose` paths would make `render-final-summary.sh` exit with outcome not in enumeration after filing/closing or cancellation, so `/design` would not exit cleanly
+- **Proposed resolution**: Update the Final summary block contract, `render-final-summary.sh`, and its tests to include the new outcomes, or keep Split-path out of final-summary as the current contract states
+
+### FINDING_2:
+- **Reviewer(s)**: Codex-Edge
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: <TMPDIR>/plan.txt:9,87-91,182; skills/issue/SKILL.md:41,310-312; skills/design/SKILL.md:844
+- **Concern**: Finding 3: Partition filing leaves `/larch:issue` LLM dependency analysis enabled, allowing unapproved edges. Scenario: The user-approved partition deps can be merged with LLM-proposed `BLOCKED_BY` or `BLOCKS` edges to existing issues or siblings; those edges can silently alter scheduling or cause dep-link failures unrelated to the chosen split
+- **Proposed resolution**: Invoke `/larch:issue` with `--no-dep-llm` when passing `--intra-batch-deps-file`, mirroring design OOS filing, and add a harness assertion for the exact invocation
+
+### FINDING_3:
+- **Reviewer(s)**: Codex-Edge
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: <TMPDIR>/plan.txt:128-130; Makefile:15,40-50; scripts/test-harness-shards-coverage.sh:35-66
+- **Concern**: Finding 5: The Makefile plan says to wire new tests into `lint` instead of the shard aggregate used by the repo. Scenario: New `test-decompose-*` targets added as direct `lint` prerequisites but not to a `test-harnesses-N` shard will be reported as unsharded by `test-harness-shards-coverage.sh`, making `make lint` fail
+- **Proposed resolution**: Add recipes and `.PHONY` entries, then place each new target on one existing `test-harnesses-N` line; only use a carve-out if it is documented in the coverage script, which these normal harnesses should not be
+
+### FINDING_4:
+- **Reviewer(s)**: Codex-Edge
+- **Severity**: latent
+- **Focus area**: security
+- **Location**: <TMPDIR>/plan.txt:83-91; SECURITY.md:120-124,158
+- **Concern**: Finding 6: Security documentation is omitted for the new public GitHub write and external prompt surfaces. Scenario: The plan adds dynamic partition issue bodies, a dynamic close-original comment, and a pre-plan external decomposition panel, but only documents one redaction call; maintainers will not see the residual limits around non-secret sensitive content or external reviewer exposure
+- **Proposed resolution**: Add a `SECURITY.md` note covering decompose-panel external prompts, partition issue body filing via `/larch:issue`, close-original redaction, and residual non-coverage such as internal URLs, PII, and domain-specific sensitive content
+
+### FINDING_1:
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/design/scripts/render-final-summary.sh:35-40
+- **Concern**: Proposed SKILL exports `SUMMARY_OUTCOME=approved-partition` and `cancelled-decompose` but renderer allows only the existing outcome union. Scenario: Running the Final summary block after partition success or decompose cancel exits 2 from `render-final-summary.sh: outcome not in enumeration`
+- **Proposed resolution**: Add `approved-partition` and `cancelled-decompose` to the allowed `--outcome` case (and any downstream summary behavior); list this file explicitly in the PR plan section
+
+### FINDING_2:
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Focus area**: architecture
+- **Location**: skills/design/SKILL.md:245-247
+- **Concern**: Step 0b `SUMMARY_OUTCOME` orchestrator union and explicit Split-path carve-out still say Split-path never invokes `### Final summary block`. Scenario: Proposed Split-path body requires Final summary + new outcomes; current contract forbids or omits them, leaving contradictory normative text for operators and CI greps
+- **Proposed resolution**: Update the Step 0b union to include the new outcomes; replace the FINDING_19 Split-path exclusion with precise rules per exit branch (success vs cancel vs panel-failed)
+
+### FINDING_3:
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Focus area**: architecture
+- **Location**: skills/design/references/approval-gates.md:106-108
+- **Concern**: Gate B prose still says Split-path is a stub that exits 1. Scenario: Gate B doc contradicts post-PR exit 0 + filed-issues flow; misleads recovery narrative
+- **Proposed resolution**: Revise the Gate B / Step 2b.5 cross-reference to match live Split-path and exit codes
+
+### FINDING_4:
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Focus area**: architecture
+- **Location**: skills/design/references/discussion-rounds.md:25-25
+- **Concern**: Step 1c sprawl heuristic still mandates `Split-path` stub until #2672. Scenario: Normative discussion doc diverges from SKILL after decomposition lands
+- **Proposed resolution**: Point sprawl Split entry at `references/decompose-panel.md` and remove stub-only wording
+
+### FINDING_5:
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: skills/design/scripts/decompose-file-issues.sh (planned annotate + sentinels)
+- **Concern**: Edge case 6 skips `.decompose-original-closed` on partial batch but leaves `.decompose-issues-filed` timing ambiguous vs failure mode 2 manual batch edits. Scenario: If issues-filed sentinel is written when any URL exists, a re-run skips creation and cannot complete missing pieces; if it is withheld until all succeed, a re-run may duplicate already-filed pieces
+- **Proposed resolution**: Specify exact conditions for creating or appending `PARTITION_FILE_MAP` lines and how `annotate` merges partial stdout on retry (contradicts naive same-stdout idempotency test unless scoped)
+
+### FINDING_6:
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: nit
+- **Focus area**: risk-integration
+- **Location**: skills/design/scripts/dispatch-plan-review-panel.sh:171-179 vs plan decompose dispatcher
+- **Concern**: Plan Decision 7 says mirror Step 3 degraded semantics using `DEGRADED_PANEL=true|false` but `dispatch-plan-review-panel.sh` emits `DEGRADED_ROUND` for the same threshold math. Scenario: Orchestrator or future shared parsers may look for the wrong KV name when copying the plan-review pattern
+- **Proposed resolution**: Emit both KVs or match `DEGRADED_ROUND` naming and document the mapping in `decompose-panel-dispatch.md`
+
+### OOS_1:
+- **Description**: Testing strategy calls out harness anchor updates but the formal file list omits this script. Scenario: Implementer may ship SKILL/reference changes without refreshing structure assertions
+- **Reviewer**: Cursor-Innovation
+- **Severity**: latent
+- **Focus area**: architecture
+- **Location**: scripts/test-design-structure.sh (not listed in plan `### UPDATED`)
+- **Phase**: design
+
+### FINDING_1:
+- **Reviewer(s)**: Codex-Innovation
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/issue/SKILL.md:111; plan.txt:87
+- **Concern**: FINDING_1: Partition batch input embeds draft larch:plan blocks inside generic ### items. Scenario: The /issue generic batch parser treats any body line starting with ### as a new item boundary; embedded plan headings like ### NEW: or ### UPDATED: can create spurious partition issues, malformed items, and wrong dependency indices
+- **Proposed resolution**: Demote, quote, or indent embedded plan headings so no body line starts with ### , or add an explicit parser mode/delimiter that safely carries nested markdown; add a harness fixture with an embedded larch:plan block containing ### UPDATED:
+
+### FINDING_2:
+- **Reviewer(s)**: Codex-Innovation
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/issue/SKILL.md:386-414; plan.txt:88-90
+- **Concern**: FINDING_2: Annotate expects actual persisted dependency edges from /issue stdout, but normal /issue output does not emit them. Scenario: Normal creates emit ISSUE_i_URL and ISSUE_i_BLOCKER_LINKS_APPLIED count, while final BLOCKED_BY/BLOCKS lists are only documented for dry-run; close comments can omit edges /issue added via dep analysis or report edges that SCC or duplicate handling removed
+- **Proposed resolution**: Either extend /issue to emit final ISSUE_i_BLOCKED_BY and ISSUE_i_BLOCKS on non-dry-run, or make decompose filing deterministic with --no-dep-llm and document that partition-filed records caller-declared edges only; cover LLM-added and SCC-removed edge cases
+
+### FINDING_3:
+- **Reviewer(s)**: Codex-Innovation
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: skills/design/SKILL.md:245-247; skills/design/scripts/render-final-summary.sh:35-39; plan.txt:115
+- **Concern**: FINDING_3: New Split-path terminal outcomes are not added to the final-summary contract. Scenario: The plan calls Final summary block with approved-partition and cancelled-decompose, but SKILL.md and render-final-summary.sh only allow the existing outcome enum; a successful partition or cancel path would fail with outcome not in enumeration before the terminal message
+- **Proposed resolution**: Update SKILL.md final-summary prose, render-final-summary.sh enum, render-final-summary.md caller list, and test-render-final-summary.sh for approved-partition and cancelled-decompose
+
+### FINDING_4:
+- **Reviewer(s)**: Codex-Innovation
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: skills/issue/SKILL.md:457-499; plan.txt:88-90
+- **Concern**: FINDING_4: Filing idempotency starts only after annotate parses /issue stdout. Scenario: If /issue creates issues and then the orchestrator crashes or is interrupted before annotate writes .decompose-issues-filed, the preserved DESIGN_TMPDIR has no parent sentinel and a rerun can re-file duplicates or close the original against incomplete state
+- **Proposed resolution**: Invoke /larch:issue with an explicit --sentinel-file under DESIGN_TMPDIR, capture stdout to a durable file before annotate, and make recovery require either the explicit sentinel plus stdout map or a deterministic batch id marker in created issue bodies
+
+### FINDING_5:
+- **Reviewer(s)**: Codex-Innovation
+- **Severity**: latent
+- **Focus area**: security
+- **Location**: SECURITY.md:114-120; plan.txt:91
+- **Concern**: FINDING_5: Security-relevant GitHub write path is not added to SECURITY.md. Scenario: The new close-original command posts public comments derived from partition artifacts and adds a redaction boundary, but SECURITY.md only documents existing issue-anchored write helpers; future audits will miss this publication path and its residual limits
+- **Proposed resolution**: Add a SECURITY.md paragraph for /design decomposition issue filing and original-close comments, including redact-secrets failure-closed behavior, use of --body-file, and the residual non-coverage for PII/internal URLs/domain-sensitive content
+
+### FINDING_1:
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/design/scripts/render-final-summary.sh:35-41
+- **Concern**: New Split-path outcomes `approved-partition` and `cancelled-decompose` are not in the allowed `case "$OUTCOME"` list.. Scenario: Final summary block from the proposed SKILL body calls `render-final-summary.sh` and exits 2 with `outcome not in enumeration`, blocking terminal split success and cancel paths.
+- **Proposed resolution**: Add both outcomes to the enumeration (and extend `skills/design/scripts/test-render-final-summary.sh` invalid-outcome coverage if a positive-path smoke test is added).
+
+### FINDING_2:
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: important
+- **Focus area**: architecture
+- **Location**: skills/design/SKILL.md:243-246
+- **Concern**: The `### Final summary block` **When** paragraph still states Split-path never runs this block.. Scenario: Contradicts the proposed Split-path body that runs the Final summary on `approved-partition` and `cancelled-decompose`, leaving two normative contracts in conflict.
+- **Proposed resolution**: Rewrite the **When** clause to state which Split-path exits invoke the block (and that return-to-caller paths do not), matching `references/decompose-panel.md`.
+
+### FINDING_3:
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: skills/design/references/approval-gates.md:106-108
+- **Concern**: Gate B prose still ties **Split** to `exit 1` stub semantics.. Scenario: Operators and Gate B implementers assume Split always fails the skill; post-PR successful partition is `exit 0`.
+- **Proposed resolution**: Update the sentence to distinguish terminal partition-filed close (`exit 0` + summary) from `panel-failed` / retry exhaustion (`exit 1`) and remove stub wording.
+
+### FINDING_4:
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: plan.txt:188-189 (Failure modes)
+- **Concern**: Failure mode 1 cites `collect-agent-results.sh` as the earliest `panel-failed` signal.. Scenario: Proposed pipeline is `decompose-panel-dispatch.sh` → `dispatch-with-waterfall.sh` with file-parse checks; there may be no `collect-agent-results.sh` pass, so implementers may wire the wrong detector or omit collection validation.
+- **Proposed resolution**: Align failure-mode text with the dispatcher script (e.g. waterfall KVs + `## Recommendation` parse over written output files, or explicitly add a collector step if parity with Step 3 is required).
+
+### FINDING_5:
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: latent
+- **Focus area**: risk-integration
+- **Location**: plan.txt:84-92 (decompose-file-issues.sh)
+- **Concern**: Batch filing omits an explicit `--blocked-by-issue <original>` (or equivalent) linkage for new pieces.. Scenario: New issues may not be recorded as blocked by the original tracking issue, weakening dependency visibility versus typical /design → /implement workflows.
+- **Proposed resolution**: Document accept/reject in Round-1 decisions and, if accepted, extend `prepare` to pass `--blocked-by-issue` when the original issue remains open pre-close, or justify omission.
+
+### FINDING_6:
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: nit
+- **Focus area**: correctness
+- **Location**: skills/design/references/discussion-rounds.md:25-46
+- **Concern**: Still references `decomposition panel stub until #2672` after the feature ships unless edited.. Scenario: Sprawl entry prose contradicts live behavior; operators follow stale stub guidance.
+- **Proposed resolution**: Add `### UPDATED: discussion-rounds.md` (or equivalent grep-sync in `test-design-structure.sh`) to drop stub wording and point at `references/decompose-panel.md`.
+
+### FINDING_7:
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: nit
+- **Focus area**: code-quality
+- **Location**: skills/design/scripts/render-final-summary.md:17-19
+- **Concern**: Claims Split-path never calls `render-final-summary.sh`.. Scenario: Conflicts with the proposed post-change behavior.
+- **Proposed resolution**: Update the Split-path subsection to match the new callsites.
+
+### FINDING_1:
+- **Reviewer(s)**: Codex-Pragmatic
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/design/SKILL.md:243-263; skills/design/scripts/render-final-summary.sh:35-40
+- **Concern**: FINDING_1: Split path adds approved-partition and cancelled-decompose final-summary outcomes but does not update the summary contract or renderer enum. Scenario: The proposed Split-path runs the Final summary block with outcomes that render-final-summary.sh currently rejects, so a successful partition filing or cancel can exit 2 after side effects
+- **Proposed resolution**: Extend the Final summary block outcome list, render-final-summary.sh enum, and test-render-final-summary.sh coverage for the new outcomes, or reuse an existing accepted outcome
+
+### FINDING_2:
+- **Reviewer(s)**: Codex-Pragmatic
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/design/SKILL.md:585-586
+- **Concern**: FINDING_2: Refine plan myself returns to Step 3 even after a hard plan-size trigger. Scenario: A hard-triggered plan can choose Split, then Refine plan myself, and continue to review/finalize despite the existing hard branch explicitly allowing no Continue path
+- **Proposed resolution**: Carry trigger origin into decompose-panel.md; for hard Step 2b.5 entries make Refine return to a real plan-rewrite/Gate A path or Cancel, not to Step 3
+
+### FINDING_3:
+- **Reviewer(s)**: Codex-Pragmatic
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: skills/design/scripts/decompose-file-issues.sh (proposed annotate/prepare); skills/issue/SKILL.md:443-454
+- **Concern**: FINDING_3: Partial batch filing sentinel semantics can make retries skip missing pieces. Scenario: The plan says annotate writes .decompose-issues-filed, but edge-case prose also says partial /larch:issue failures are retried; if the sentinel exists after a partial stdout parse, re-entry can treat filing as complete and never create failed pieces
+- **Proposed resolution**: Make the sentinel distinguish complete vs partial, skip all filing only when ISSUES_FAILED=0 and all piece mappings exist, and regenerate a failed-piece-only batch from the recorded mapping on retry
+
+### FINDING_4:
+- **Reviewer(s)**: Codex-Pragmatic
+- **Severity**: nit
+- **Focus area**: code-quality
+- **Location**: skills/design/references/discussion-rounds.md:25; skills/design/references/discussion-rounds.md:46
+- **Concern**: FINDING_4: Step 1c/1d sprawl docs remain stale while the plan claims no reference update is needed. Scenario: The loaded discussion reference will still tell operators the Split-path is a stub until #2672 even after the real panel lands, creating contradictory runtime instructions
+- **Proposed resolution**: Update the two sprawl references to point at the real decomposition panel while preserving the existing Split-path call wiring
+
+### FINDING_1:
+- **Reviewer(s)**: Cursor-Requirements
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/design/scripts/render-final-summary.sh:35-41
+- **Concern**: Outcome allowlist omits new SUMMARY_OUTCOME values the plan exports before Final summary (approved-partition cancelled-decompose). Scenario: render-final-summary.sh exits 2 outcome not in enumeration before any summary file is written blocking successful Split-path exits that call Final summary
+- **Proposed resolution**: Add approved-partition and cancelled-decompose to the case allowlist extend skills/design/scripts/test-render-final-summary.sh with at least one happy-path invocation per new outcome
+
+### FINDING_1:
+- **Reviewer(s)**: Codex-Requirements
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/design/SKILL.md:243-247; skills/design/scripts/render-final-summary.sh:36-40
+- **Concern**: Plan adds Split-path final-summary outcomes but does not update the existing final-summary contract or renderer enum. Scenario: Approved partition or decomposition cancel calls render-final-summary.sh with approved-partition or cancelled-decompose and exits 2 instead of cleanly exiting /design
+- **Proposed resolution**: Update the Final summary block prose to allow Split-path summaries, add approved-partition and cancelled-decompose to render-final-summary.sh, and extend test-render-final-summary.sh for both outcomes
+
+### FINDING_2:
+- **Reviewer(s)**: Codex-Requirements
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: plan.txt:5-22
+- **Concern**: Plan omits the feature-described per-round velocity trigger source. Scenario: The feature description says L1 soft threshold can fire from Step 2b or per-round velocity, but the plan only wires Step 2b.5, Step 1c, Step 1d, and partition flag paths, so a velocity-based split offer would still have no decomposition-panel route
+- **Proposed resolution**: Either add explicit per-round velocity routing to the Split-path body or state and justify it as out of scope with a follow-up issue
+
+### FINDING_3:
+- **Reviewer(s)**: Codex-Requirements
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/design/references/discussion-rounds.md:24-25; plan.txt:30-31; plan.txt:175
+- **Concern**: Feature-only mode is ambiguous for Step 1c where discussion-round1.md does not exist. Scenario: Step 1c sprawl can trigger before Step 1d writes discussion-round1.md, but the plan’s no-plan edge case says the dispatcher reads feature-description.txt plus discussion-round1.md, risking a missing-file failure before the panel launches
+- **Proposed resolution**: Specify that --discussion-round1-file is optional and absent in Step 1c, render an empty or omitted discussion block in that case, and add a feature-only-without-discussion-round1 harness case
+
+### FINDING_4:
+- **Reviewer(s)**: Codex-Requirements
+- **Severity**: important
+- **Focus area**: security
+- **Location**: SECURITY.md:114-120; plan.txt:91
+- **Concern**: New dynamic GitHub close-comment path is security-relevant but SECURITY.md is not in the plan. Scenario: The plan adds a public-boundary gh issue comment/close path using dynamic partition content and redaction, but repository instructions require SECURITY.md updates for security-relevant behavior changes
+- **Proposed resolution**: Add a SECURITY.md subsection documenting decompose close-original outbound redaction, --body-file use, failure posture, sentinel idempotency, and residual risks
+
+### FINDING_5:
+- **Reviewer(s)**: Codex-Requirements
+- **Severity**: important
+- **Focus area**: architecture
+- **Location**: plan.txt:74-80; plan.txt:94-102
+- **Concern**: The aggregator-picked flow lacks the required post-aggregator approval prompt. Scenario: The feature requires one more AskUserQuestion showing the aggregator’s canonical partition with Approve / Cancel before filing, but the plan only says the aggregator emits a canonical partition and references generic aggregator mechanics
+- **Proposed resolution**: Make decompose-panel.md explicitly show the aggregator output and ask Approve / Pick raw proposal / Cancel before cycle check and issue filing, with a harness or structure pin for that prompt path
+
+### FINDING_1:
+- **Reviewer(s)**: Cursor-dyn-integration-contracts
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/review/scripts/aggregate-findings.sh:96-152
+- **Concern**: Primary decompose-aggregator path cannot reuse aggregate-findings on raw concatenated partition markdown. Scenario: `count_finding_blocks` only counts `^### FINDING_[0-9]` lines; combined `## Recommendation` / `## Pieces` text yields INPUT_COUNT 0 (or 1), so the script exits at lines 148-151 with REASON=insufficient-input and never runs the inner dispatch-with-waterfall merge pipeline
+- **Proposed resolution**: Spell out a mandatory adapter: wrap each archetype output as synthetic `### FINDING_*` blocks matching the aggregator contract (and default INPUT_MODE or severity rules), or treat single-slot `dispatch-with-waterfall.sh` as the default primary path instead of optional fallback
+
+### FINDING_2:
+- **Reviewer(s)**: Cursor-dyn-integration-contracts
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: skills/review/scripts/aggregate-findings.sh:42-59
+- **Concern**: `--findings-file` must resolve under `--review-tmpdir`. Scenario: Wrapper that writes `combined-proposals.txt` outside the directory passed as `--review-tmpdir` gets exit 2 from aggregate-findings before any merge attempt
+- **Proposed resolution**: In decompose-aggregator spec, require both paths under the same canonical tmpdir (e.g. `$DESIGN_TMPDIR/decompose/`) and document the pairing explicitly
+
+### FINDING_3:
+- **Reviewer(s)**: Cursor-dyn-integration-contracts
+- **Severity**: important
+- **Focus area**: architecture
+- **Location**: plan.txt:29-32 and skills/design/scripts/dispatch-plan-review-panel.sh:126-138
+- **Concern**: Proposed decompose waterfall argv contradicts the script’s own one-of rule and diverges from the existing plan-review integration. Scenario: Plan requires exactly one of `--plan-file` or `--feature-file` for `decompose-panel-dispatch.sh` yet shows a template that always supplies `--feature-file` plus optional `--plan-file`; established caller always passes `--plan-file` and only adds `--feature-file` when present
+- **Proposed resolution**: Align the spec with `dispatch-plan-review-panel.sh`: in plan mode pass `--plan-file` as the required context flag; in feature-only sprawl mode pass `--feature-file` only; reserve optional second artifact only when both files exist and the prompt needs both
+
+### FINDING_4:
+- **Reviewer(s)**: Cursor-dyn-integration-contracts
+- **Severity**: nit
+- **Focus area**: code-quality
+- **Location**: plan.txt:74-80
+- **Concern**: Wording understates aggregate-findings mismatch. Scenario: Operators may treat fallback as rare edge case while the naive concatenate path fails deterministically at insufficient-input
+- **Proposed resolution**: Replace “may have incompatible input contract” with explicit INPUT_COUNT / FINDING-heading prerequisites or mark aggregate-findings reuse as requiring a structured rewrite step
+
+### FINDING_1:
+- **Reviewer(s)**: Codex-dyn-integration-contracts
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: skills/review/scripts/aggregate-findings.sh:12-14,145-151,167-171,581-657
+- **Concern**: Plan still describes invoking aggregate-findings.sh with a partition-merge prompt, but the current CLI has no custom prompt or output flag and the implementation is hard-wired to FINDING_N input/output validation.. Scenario: Calling aggregate-findings.sh on concatenated ## Recommendation / ## Pieces proposals will hit insufficient-input or validation-failed paths instead of producing a canonical partition; fallback may not fire if the wrapper only treats nonzero exit as incompatibility.
+- **Proposed resolution**: Make the single-slot dispatch-with-waterfall fallback the primary path for partition proposals, or specify an adapter that emits valid FINDING_N blocks and treats AGGREGATED!=true / REASON=insufficient-input as incompatible.
+
+### FINDING_2:
+- **Reviewer(s)**: Codex-dyn-integration-contracts
+- **Severity**: latent
+- **Focus area**: correctness
+- **Location**: scripts/dispatch-with-waterfall.sh:68-100,170-197
+- **Concern**: The single-slot waterfall fallback is valid only with the existing slot NDJSON schema, but the plan does not pin the required row shape.. Scenario: A manifest using tool:"claude", inline prompt text, or omitting output/prompt_file exits 2 before the fallback can run.
+- **Proposed resolution**: Specify the fallback manifest exactly, e.g. one row with slot:"decompose-aggregator", tool:"cursor", output:"$DESIGN_TMPDIR/decompose/aggregator-output.txt", prompt_file:"$DESIGN_TMPDIR/decompose/aggregator.prompt".
+
+### FINDING_3:
+- **Reviewer(s)**: Codex-dyn-integration-contracts
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: scripts/dispatch-with-waterfall.sh:329-383
+- **Concern**: Current dispatch-with-waterfall reports failed reviewers via DISPATCH_OK=false and STATIC_DISPATCH_OK=false while still emitting normal KV output and paths.. Scenario: A decompose-aggregator fallback that keys only on process exit or presence of ALL_OUTPUT_FILES_PATH can misclassify an all-tier failure as usable and then parse a missing or failed output.
+- **Proposed resolution**: Require decompose-aggregator.sh to parse DISPATCH_OK and treat DISPATCH_OK!=true as AGGREGATOR_STATUS=failed; add this assertion to test-decompose-aggregator.sh.
+
+### FINDING_1:
+- **Reviewer(s)**: Cursor-dyn-step-wiring
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/design/SKILL.md:567-569; skills/design/references/approval-gates.md:86-87; skills/design/references/discussion-rounds.md:124
+- **Concern**: Proposed Split-path refine prose collapses all Step 2b.5 callers to Step 3 then Gate B. Scenario: After Gate B re-emit approval-gates.md requires proceed to Step 3b when 2b.5 returns; post-plan discussion requires return to invoking Gate A not Step 3
+- **Proposed resolution**: Replace parenthetical with caller matrix: initial 2b emit to Step 3; Gate B re-emit path to Step 3b; post-plan discussion re-emit to Gate A per discussion-rounds.md
+
+### FINDING_2:
+- **Reviewer(s)**: Cursor-dyn-step-wiring
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/design/references/discussion-rounds.md:22-47; skills/design/SKILL.md:283-294
+- **Concern**: Proposed text sends Step 1c sprawl refine to Step 1d and Step 1d sprawl refine to Step 1e Gate A. Scenario: Sprawl fires inside Step 1c/1d bodies mid Q&A; returning to Step 1d or Gate A skips unfinished clarifying questions or Round 1 walk
+- **Proposed resolution**: Say resume the invoking Step 1c or Step 1d body per discussion-rounds.md until that step completes then follow SKILL 1c to 1d to 1e order
+
+### FINDING_3:
+- **Reviewer(s)**: Cursor-dyn-step-wiring
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: skills/design/references/approval-gates.md:106-108
+- **Concern**: Plan file list omits approval-gates.md while Gate B still documents Split-path as stub plus exit 1. Scenario: Operators and tests following approval-gates see a contract that contradicts non-terminal decomposition exits
+- **Proposed resolution**: Add UPDATED approval-gates.md entry and align Split-path cancel or success semantics with Gate B and Step 3b sequencing
+
+### FINDING_4:
+- **Reviewer(s)**: Cursor-dyn-step-wiring
+- **Severity**: important
+- **Focus area**: architecture
+- **Location**: skills/design/SKILL.md:245-247; skills/design/scripts/render-final-summary.md:17-19
+- **Concern**: Plan adds Final summary runs from Split-path without reconciling global invariants. Scenario: SKILL forbids Final summary on any Split-path; render-final-summary.md states Split-path never calls the helper; new SUMMARY_OUTCOME values are absent from the exported enum at SKILL.md:247
+- **Proposed resolution**: Update When clause and SUMMARY_OUTCOME list; extend render-final-summary.md callers and Split-path section for the new exit branches
+
+### FINDING_5:
+- **Reviewer(s)**: Cursor-dyn-step-wiring
+- **Severity**: latent
+- **Focus area**: correctness
+- **Location**: skills/design/references/discussion-rounds.md:25-26; plan.txt:4
+- **Concern**: Plan claims no discussion-rounds.md edits while file still says decomposition stub until #2672. Scenario: Post-merge docs still describe stub Split-path for Step 1c entry
+- **Proposed resolution**: Add one-line refresh of the Split-path parenthetical or drop plan line 4 claim of zero discussion-rounds edits
+
+### FINDING_1:
+- **Reviewer(s)**: Codex-dyn-step-wiring
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: <TMPDIR>/plan.txt:113-115; skills/design/SKILL.md:243-247; skills/design/scripts/render-final-summary.sh:35-39
+- **Concern**: New Split-path outcomes are not wired into the final-summary contract. Scenario: The proposed body exports approved-partition or cancelled-decompose and runs Final summary block, but the current contract says Split-path does not invoke it and render-final-summary.sh rejects both outcomes with exit 2
+- **Proposed resolution**: Update the plan to modify the Final summary block contract plus render-final-summary.sh enum and tests/docs, or avoid new outcomes and keep the existing no-summary Split-path behavior
+
+### FINDING_2:
+- **Reviewer(s)**: Codex-dyn-step-wiring
+- **Severity**: nit
+- **Focus area**: correctness
+- **Location**: <TMPDIR>/plan.txt:115; skills/design/references/discussion-rounds.md:25-46
+- **Concern**: The shared return option is mislabeled for pre-plan sprawl entries. Scenario: Step 1c and Step 1d sprawl fire before plan.txt exists, so a user-facing pick named Refine plan myself is inaccurate even though the prose correctly returns Step 1c to Step 1d and Step 1d to Step 1e Gate A
+- **Proposed resolution**: Make the no-split return label source-aware or neutral, e.g. Continue without splitting, with body prose mapping Step 2b.5 to Step 3/Gate B, Step 1c to Step 1d, and Step 1d to Step 1e Gate A
+
+### FINDING_3:
+- **Reviewer(s)**: Codex-dyn-step-wiring
+- **Severity**: nit
+- **Focus area**: correctness
+- **Location**: skills/design/references/discussion-rounds.md:25-46; <TMPDIR>/plan.txt:5
+- **Concern**: The plan leaves stale discussion-round prose after replacing the stub. Scenario: Step 1c currently tells operators Split-path is a decomposition panel stub until #2672; after the proposed SKILL.md replacement, that statement becomes false even though the wiring converges on the same anchor
+- **Proposed resolution**: Add a small discussion-rounds.md prose update removing the stub-until-#2672 parenthetical and pointing Step 1c/1d sprawl at the real Split-path panel
+
+### FINDING_1:
+- **Reviewer(s)**: Cursor-dyn-sentinel-idempotency
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/design/scripts/file-design-oos.sh:416-421
+- **Concern**: `annotate` always `mv`s `oos-issues-created.md` before `ISSUES_FAILED` gate. Scenario: If `decompose-file-issues.sh` copies this, `.decompose-issues-filed` can exist while `ISSUES_FAILED>0`, yet Failure mode 7 says sentinel present implies skip re-filing—blocking Failure mode 2’s trim-and-re-file repair
+- **Proposed resolution**: Specify invariant: only write or honor `.decompose-issues-filed` as “filing complete” when `ISSUES_FAILED=0` and `ISSUES_CREATED=ISSUES_TOTAL` (or split partial vs complete sentinels) and align `references/decompose-panel.md` + `prepare` skip logic
+
+### FINDING_1:
+- **Reviewer(s)**: Codex-dyn-sentinel-idempotency
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: <TMPDIR>/plan.txt:88-91; skills/design/scripts/file-design-oos.sh:318-423
+- **Concern**: Plan says decompose annotate mirrors file-design-oos but does not gate .decompose-issues-filed on all pieces succeeding. Scenario: file-design-oos uses $DESIGN_TMPDIR/oos-issues-created.md and OOS_FILE_MAP lines, then moves the sentinel before checking ISSUES_FAILED; copying that shape with PARTITION_FILE_MAP would allow ISSUES_CREATED < ISSUES_TOTAL to write .decompose-issues-filed, so failure mode 7 would skip re-filing and close the original with unfiled pieces hidden
+- **Proposed resolution**: Add an explicit annotate invariant: write .decompose-issues-filed atomically only when ISSUES_FAILED=0 and every partition piece has a URL or duplicate URL; on partial success write only partition-filed.md/partial progress and return non-zero
+
+### FINDING_2:
+- **Reviewer(s)**: Codex-dyn-sentinel-idempotency
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: <TMPDIR>/plan.txt:180-189; skills/design/scripts/file-design-oos.sh:231-233
+- **Concern**: Failure mode 6 suppresses the filing sentinel without defining mechanical partial-progress recovery. Scenario: If ISSUES_FAILED > 0 after some issues were created, both .decompose-issues-filed and .decompose-original-closed can be absent; a rerun regenerates the full batch and can duplicate already-filed pieces unless /larch:issue dedup happens to catch them
+- **Proposed resolution**: Define a partial-progress contract: persist PARTITION_FILE_MAP rows for successes in a non-terminal progress file, have prepare/annotate trim already-filed pieces and rewrite dependency indices for remaining pieces, and reserve .decompose-issues-filed for complete success only
+

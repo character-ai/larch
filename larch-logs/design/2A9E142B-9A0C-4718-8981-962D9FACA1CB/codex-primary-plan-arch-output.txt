@@ -1,0 +1,21 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/SKILL.md:243-247; skills/design/scripts/render-final-summary.sh:36-39	Proposed Split-path uses SUMMARY_OUTCOME values that the final summary contract rejects	Approved partition or decomposition cancel runs the Final summary block with approved-partition or cancelled-decompose and render-final-summary.sh exits 2 instead of cleanly exiting /design	Add render-final-summary.sh, render-final-summary.md, tests, and SKILL.md outcome contract updates for the new outcomes, or reuse existing accepted outcomes and avoid introducing new enum values
+1	in_scope	important	correctness	skills/issue/SKILL.md:111; skills/issue/scripts/parse-input.md:9	Partition batch input uses generic ### item blocks while embedding larch:plan markdown that can contain ### headings	/issue generic-mode parsing silently splits embedded plan sections into extra issues or malformed items	Generate an input format that escapes or downgrades body ### lines, use an OOS-style absorbed body format, or extend the issue parser contract; add a harness case with embedded ### NEW/UPDATED plan headings
+1	in_scope	important	risk-integration	Makefile:15; Makefile:38-40	The plan says to wire new harnesses into lint directly instead of the test-harness shard aggregate used by CI split targets	make test-harnesses can miss the new decompose tests, or shard coverage fails once targets exist but are not assigned to a shard	Add each new test target to .PHONY and a test-harnesses-N shard line, then let lint pick them up through test-harnesses
+1	in_scope	important	code-quality	agent-lint.toml:819-834; agent-lint.toml:1169-1184	The agent-lint update omits the new Makefile-only decompose harness scripts and sibling md contracts	agent-lint can flag the new test scripts or docs as orphaned even though Makefile invokes them, matching the existing design harness exclusion pattern	Add test-decompose-panel-dispatch.sh, test-decompose-aggregator.sh, test-decompose-file-issues.sh and their .md siblings to the same agent-lint sections as the existing design test harnesses; include _common-tail.txt in the prompt/template registration if that section requires explicit prompt files
+1	in_scope	important	security	SECURITY.md:114-120	The plan adds a new public gh issue comment close path with redaction but does not update SECURITY.md	The shipped security model will document existing gh write helpers while omitting the new decomposition close-original writer and its redaction/failure boundary	Add SECURITY.md coverage for decompose-file-issues.sh close-original, including body-file redaction, gh stderr handling, and residual non-secret sensitive-content limits
+
+1. **[correctness]** `skills/design/SKILL.md:243-247`, `skills/design/scripts/render-final-summary.sh:36-39`  
+   The plan introduces `approved-partition` and `cancelled-decompose` outcomes but does not update the final-summary enum or contract. Either add those outcomes everywhere, with tests, or use existing accepted outcome values.
+
+2. **[correctness]** `skills/issue/SKILL.md:111`, `skills/issue/scripts/parse-input.md:9`  
+   The proposed generic `### <title>` batch file can be broken by embedded `larch:plan` sections containing `###` headings. The filing helper needs an escaping or alternate structured format before handing off to `/larch:issue`.
+
+3. **[risk-integration]** `Makefile:15`, `Makefile:38-40`  
+   New harnesses should be assigned to the `test-harnesses-N` shard system, not only attached to `lint`. That keeps local lint and CI split targets aligned.
+
+4. **[code-quality]** `agent-lint.toml:819-834`, `agent-lint.toml:1169-1184`  
+   Add agent-lint registrations/exclusions for the new decompose harness scripts and sibling docs, following the existing design harness pattern. Also account for `_common-tail.txt` wherever prompt templates are registered.
+
+5. **[security]** `SECURITY.md:114-120`  
+   Since the plan adds a new outbound GitHub comment/close path with redaction behavior, SECURITY.md needs the corresponding trust-model update.

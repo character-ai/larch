@@ -1,0 +1,2 @@
+OOS_1: YES
+OOS_2: EXONERATE -- omitting a test-harness script from the plan's UPDATED list is a minor plan hygiene nit, not a concrete implementation risk worth a standalone issue
