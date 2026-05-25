@@ -11,8 +11,8 @@
 
 ## Invariants
 
-- `rejected-findings.md`, `accepted-plan-findings.md`, and `oos.md` are required manifest artifacts but may be empty. The script creates missing regular files for those names.
-- `plan.txt`, `diff-lines.txt`, and `voting-tally.md` must exist and be non-empty.
+- `rejected-findings.md`, `accepted-plan-findings.md`, `oos.md`, and `voting-tally.md` are required manifest artifacts but may be empty. The script creates missing regular files for those names.
+- `plan.txt` and `diff-lines.txt` must exist and be non-empty.
 - May-be-empty artifact paths must be regular files, not symlinks or directories.
 
 ## Makefile Wiring
@@ -21,7 +21,7 @@ The regression harness is `make test-finalize-plan`, wired into `test-harnesses-
 
 ## Harness
 
-`test-finalize-plan.sh` covers all-present, missing may-be-empty files, missing required files, missing design tmpdir, and idempotent re-runs.
+`test-finalize-plan.sh` covers all-present, missing may-be-empty files, missing required files, missing design tmpdir, idempotent re-runs, auto-created empty `voting-tally.md`, permissive empty `voting-tally.md`, and symlink `voting-tally.md` rejection.
 
 ## Edit In Sync
 

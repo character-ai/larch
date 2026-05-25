@@ -55,17 +55,26 @@ if [[ -z "$DESIGN_TMPDIR" || -z "$BALLOT_FILE" ]]; then
     usage
     exit 2
 fi
+mkdir -p "$DESIGN_TMPDIR"
+tally_file="$DESIGN_TMPDIR/voting-tally.md"
+write_tally_stub() {
+    {
+        printf '# Plan Review Voting Tally\n\n'
+        printf '%s\n' "$1"
+    } > "$tally_file"
+}
 if [[ ! -r "$BALLOT_FILE" ]]; then
     larch_err "tally-plan-review.sh: ballot file is missing or unreadable: $BALLOT_FILE"
+    write_tally_stub "**⚠ Tally aborted: ballot file unreadable: $BALLOT_FILE; no votes tallied.**"
     exit 2
 fi
 for voter_file in "${VOTER_FILES[@]+"${VOTER_FILES[@]}"}"; do
     if [[ ! -r "$voter_file" ]]; then
         larch_err "tally-plan-review.sh: voter file is missing or unreadable: $voter_file"
+        write_tally_stub "**⚠ Tally aborted: voter file unreadable: $voter_file; no votes tallied.**"
         exit 2
     fi
 done
-mkdir -p "$DESIGN_TMPDIR"
 
 WORKDIR=$(mktemp -d "${TMPDIR:-/tmp}/larch-tally-plan-review.XXXXXX")
 cleanup() {
@@ -76,6 +85,7 @@ trap cleanup EXIT
 BLOCK_DIR="$WORKDIR/blocks"
 if ! split_ballot_to_blocks "$BALLOT_FILE" "$BLOCK_DIR"; then
     larch_err "tally-plan-review.sh: duplicate or malformed FINDING/OOS headings in ballot"
+    write_tally_stub "**⚠ Tally aborted: duplicate or malformed FINDING/OOS headings in ballot; no votes tallied.**"
     exit 2
 fi
 
@@ -87,7 +97,6 @@ accepted_plan="$DESIGN_TMPDIR/accepted-plan-findings.md"
 rejected_plan="$DESIGN_TMPDIR/rejected-findings.md"
 oos_file="$DESIGN_TMPDIR/oos.md"
 oos_accepted_local="$DESIGN_TMPDIR/oos-accepted-design.md"
-tally_file="$DESIGN_TMPDIR/voting-tally.md"
 accepted_count=0
 rejected_count=0
 : > "$accepted_plan"

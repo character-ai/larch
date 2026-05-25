@@ -22,6 +22,8 @@
 - Accepted OOS blocks with an unfenced `focus-area = security` token are excluded from all public OOS outputs. Fenced occurrences (inside backtick or triple-backtick regions) are not load-bearing (Match discrimination false-positive guard).
 - Scoreboard score formula: `accepted + oos_accepted - rejected - oos_rejected` (+1 per accepted item, -1 per rejected item).
 - The rendered scoreboard columns are `Reviewer`, `Proposed`, `Accepted`, `Exonerated`, `Rejected`, `OOS-Proposed`, `OOS-Accepted`, `OOS-Exonerated`, `OOS-Rejected`, and `Score`.
+- Whenever `--design-tmpdir` has been validated, `voting-tally.md` is materialized with at least the degraded header (`# Plan Review Voting Tally` plus a one-line abort note) before any non-zero exit. The missing-required-args and unknown-argument branches are exempt because `$DESIGN_TMPDIR` may be empty.
+- `mkdir -p "$DESIGN_TMPDIR"` runs as the first action after argv validation so all subsequent exit paths (including the ballot/voter-unreadable and split-failure branches) can safely write to it.
 
 ## Makefile Wiring
 
@@ -29,7 +31,7 @@ The regression harness is `make test-tally-plan-review`, wired into `test-harnes
 
 ## Harness
 
-`test-tally-plan-review.sh` covers all-yes, mixed votes, split-panel ties, single-judge YES/NO/EXONERATE, 0-judge main-agent-required, no quorum reduction for per-judge `JUDGE_ERROR` fallbacks, OOS accepted/rejected, security-tagged OOS exclusion, and scoreboard rendering.
+`test-tally-plan-review.sh` covers all-yes, mixed votes, split-panel ties, single-judge YES/NO/EXONERATE, 0-judge main-agent-required, no quorum reduction for per-judge `JUDGE_ERROR` fallbacks, OOS accepted/rejected, security-tagged OOS exclusion, scoreboard rendering, malformed-ballot abort tally stub, and missing-ballot abort tally stub.
 
 ## Edit In Sync
 

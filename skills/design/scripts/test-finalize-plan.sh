@@ -55,4 +55,32 @@ make_tree "$DESIGN2"
 "$SUBJECT" --design-tmpdir "$DESIGN2" >/dev/null
 "$SUBJECT" --design-tmpdir "$DESIGN2" >/dev/null
 
+echo "=== missing voting-tally.md is auto-created ==="
+DESIGN_MISS_TALLY="$TMPROOT/design-miss-tally"
+make_tree "$DESIGN_MISS_TALLY"
+rm -f "$DESIGN_MISS_TALLY/voting-tally.md"
+out_miss_tally=$("$SUBJECT" --design-tmpdir "$DESIGN_MISS_TALLY")
+printf '%s\n' "$out_miss_tally" | grep -q '^FINALIZE_PLAN_STATUS=ok$' || fail "missing voting-tally should yield ok"
+[[ -f "$DESIGN_MISS_TALLY/voting-tally.md" ]] || fail "voting-tally.md not auto-created"
+[[ ! -s "$DESIGN_MISS_TALLY/voting-tally.md" ]] || fail "voting-tally.md should be empty after auto-create"
+
+echo "=== empty voting-tally.md passes ==="
+DESIGN_EMPTY_TALLY="$TMPROOT/design-empty-tally"
+make_tree "$DESIGN_EMPTY_TALLY"
+: > "$DESIGN_EMPTY_TALLY/voting-tally.md"
+out_empty_tally=$("$SUBJECT" --design-tmpdir "$DESIGN_EMPTY_TALLY")
+printf '%s\n' "$out_empty_tally" | grep -q '^FINALIZE_PLAN_STATUS=ok$' || fail "empty voting-tally should yield ok"
+
+echo "=== voting-tally.md as a symlink rejected ==="
+DESIGN_SYM_TALLY="$TMPROOT/design-sym-tally"
+make_tree "$DESIGN_SYM_TALLY"
+rm -f "$DESIGN_SYM_TALLY/voting-tally.md"
+printf 'x' > "$DESIGN_SYM_TALLY/voting-tally-target.txt"
+ln -s voting-tally-target.txt "$DESIGN_SYM_TALLY/voting-tally.md"
+if "$SUBJECT" --design-tmpdir "$DESIGN_SYM_TALLY" >/tmp/larch-finalize-plan-sym.out 2>&1; then
+    fail "symlink voting-tally should be rejected"
+fi
+grep -q '^FINALIZE_PLAN_STATUS=invalid-artifact$' /tmp/larch-finalize-plan-sym.out || fail "invalid-artifact not emitted for symlink tally"
+grep -q '^FINALIZE_PLAN_ARTIFACT=voting-tally.md$' /tmp/larch-finalize-plan-sym.out || fail "artifact name wrong for symlink tally"
+
 echo "PASS: test-finalize-plan.sh"

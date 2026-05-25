@@ -45,7 +45,7 @@ if [[ ! -d "$DESIGN_TMPDIR" ]]; then
     exit 1
 fi
 
-for may_be_empty in rejected-findings.md accepted-plan-findings.md oos.md; do
+for may_be_empty in rejected-findings.md accepted-plan-findings.md oos.md voting-tally.md; do
     path="$DESIGN_TMPDIR/$may_be_empty"
     if [[ ! -e "$path" ]]; then
         : > "$path"
@@ -56,7 +56,7 @@ for may_be_empty in rejected-findings.md accepted-plan-findings.md oos.md; do
     fi
 done
 
-for required in plan.txt diff-lines.txt voting-tally.md; do
+for required in plan.txt diff-lines.txt; do
     if [[ ! -s "$DESIGN_TMPDIR/$required" ]]; then
         emit_kv FINALIZE_PLAN_STATUS missing-artifact
         emit_kv FINALIZE_PLAN_ARTIFACT "$required"

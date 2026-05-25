@@ -605,6 +605,12 @@ if [[ "$_tally_rc" -ne 0 ]]; then
     emit_kv WARN "plan-review-tally: tally-plan-review.sh exited with rc=$_tally_rc"
     TALLY_PLAN_REVIEW_STATUS="tally-error"
     [[ -z "$VOTING_TALLY_FILE" ]] && VOTING_TALLY_FILE="$DESIGN_TMPDIR/voting-tally.md"
+    if [[ ! -s "$VOTING_TALLY_FILE" ]]; then
+        {
+            printf '# Plan Review Voting Tally\n\n'
+            printf '**⚠ Tally aborted (rc=%s); no votes tallied.**\n' "$_tally_rc"
+        } > "$VOTING_TALLY_FILE"
+    fi
 fi
 
 printf '%s\n' "$_tally_raw"
