@@ -192,7 +192,7 @@ EOF
                 ;;
             zero_findings_impure_attest)
                 cat > "$out" <<'EOF'
-Aggregator narrative: near-attestation line should be dropped before synthesis.
+Aggregator narrative: near-attestation line should be dropped before strip.
 
 LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED junk-suffix
 
@@ -200,7 +200,7 @@ EOF
                 ;;
             zero_findings_nonconforming_heading)
                 cat > "$out" <<'EOF'
-Aggregator narrative: pseudo-heading blocks synthesis rescue.
+Aggregator narrative: pseudo-heading should fail validation.
 
 ### FINDING_1 not-a-valid-heading-line
 
@@ -208,7 +208,7 @@ EOF
                 ;;
             zero_findings_nospace_pseudo_heading)
                 cat > "$out" <<'EOF'
-Aggregator narrative: tight ###FINDING_ typo blocks synthesis rescue.
+Aggregator narrative: tight ###FINDING_ typo should fail validation.
 
 ###FINDING_1: not a strict heading (no space after ###)
 
@@ -565,7 +565,7 @@ grep -Fq 'REASON=validation-failed' "$TMP/out-zero.env" || fail "zero-findings R
 grep -Fq 'INPUT_COUNT=3' "$TMP/out-zero.env" || fail "zero-findings INPUT_COUNT"
 cmp -s "$TMP/in3.md" "$TMP/in3-zero.md" || fail "findings unchanged on zero-findings validator rejection"
 
-echo "=== zero output without model attestation: script synthesizes token (#2563) ==="
+echo "=== zero output without model attestation: validator rejects empty-merge (#2563) ==="
 cp "$TMP/in3.md" "$TMP/in3-zero-na.md"
 write_stub_dispatch
 AGGREGATE_DISPATCH_SH="$TMP/stub-dispatch.sh" \
@@ -578,11 +578,10 @@ LARCH_AGGREGATE_MAX_OUTER_PHASES=1 \
     --codex-present true \
     --cursor-present true \
     --mode diff >"$TMP/out-zero-na.env"
-grep -Fq 'AGGREGATED=false' "$TMP/out-zero-na.env" || fail "synth no-attest AGGREGATED"
-grep -Fq 'REASON=validation-failed' "$TMP/out-zero-na.env" || fail "synth no-attest REASON"
-grep -Eq '^ATTESTATION_SYNTHESIZED=true unique_input_reviewers=3 input_slots=3 input_findings=3$' "$TMP/aggregator-repair.stderr" || fail "missing or malformed synthesis breadcrumb"
-cmp -s "$TMP/in3.md" "$TMP/in3-zero-na.md" || fail "findings unchanged on synthesized empty-merge validator rejection"
-EX="$TMP/exec-issues-synth-ok"
+grep -Fq 'AGGREGATED=false' "$TMP/out-zero-na.env" || fail "no-attest AGGREGATED"
+grep -Fq 'REASON=validation-failed' "$TMP/out-zero-na.env" || fail "no-attest REASON"
+cmp -s "$TMP/in3.md" "$TMP/in3-zero-na.md" || fail "findings unchanged on empty-merge validator rejection"
+EX="$TMP/exec-issues-no-attest"
 mkdir -p "$EX"
 cp "$TMP/in3.md" "$EX/in.md"
 : >"$EX/execution-issues.md"
@@ -598,12 +597,12 @@ LARCH_AGGREGATE_MAX_OUTER_PHASES=1 \
     --codex-present true \
     --cursor-present true \
     --mode diff >"$TMP/out-zero-na-exec.env"
-grep -Fq 'AGGREGATED=false' "$TMP/out-zero-na-exec.env" || fail "synth exec-isolation AGGREGATED"
-grep -Fq 'REASON=validation-failed' "$TMP/out-zero-na-exec.env" || fail "synth exec-isolation REASON"
-grep -Fq 'merged output failed validation' "$EX/execution-issues.md" || fail "synthesis rejection must log merged-output validation failure to execution-issues.md"
-cmp -s "$TMP/in3.md" "$EX/in.md" || fail "findings unchanged on synthesized exec-isolation validator rejection"
+grep -Fq 'AGGREGATED=false' "$TMP/out-zero-na-exec.env" || fail "no-attest exec-isolation AGGREGATED"
+grep -Fq 'REASON=validation-failed' "$TMP/out-zero-na-exec.env" || fail "no-attest exec-isolation REASON"
+grep -Fq 'merged output failed validation' "$EX/execution-issues.md" || fail "empty-merge rejection must log merged-output validation failure to execution-issues.md"
+cmp -s "$TMP/in3.md" "$EX/in.md" || fail "findings unchanged on no-attest exec-isolation validator rejection"
 
-echo "=== zero_findings_impure_attest: drop near-token line then synthesize ==="
+echo "=== zero_findings_impure_attest: validator rejects and findings stay clean ==="
 cp "$TMP/in3.md" "$TMP/in3-zero-impure.md"
 write_stub_dispatch
 AGGREGATE_DISPATCH_SH="$TMP/stub-dispatch.sh" \
@@ -621,10 +620,9 @@ grep -Fq 'REASON=validation-failed' "$TMP/out-zero-impure.env" || fail "impure-a
 grep -Fq 'junk-suffix' "$TMP/in3-zero-impure.md" && fail "impure attestation suffix must not survive into findings.md"
 cmp -s "$TMP/in3.md" "$TMP/in3-zero-impure.md" || fail "findings unchanged on impure-attest validator rejection"
 
-echo "=== zero_findings_nonconforming_heading: validation-failed, no synthesis breadcrumb ==="
+echo "=== zero_findings_nonconforming_heading: validation-failed ==="
 cp "$TMP/in3.md" "$TMP/in3-nonconf.md"
 write_stub_dispatch
-rm -f "$TMP/aggregator-repair.stderr"
 AGGREGATE_DISPATCH_SH="$TMP/stub-dispatch.sh" \
 AGGREGATE_STUB_MODE=ok \
 AGGREGATE_STUB_MERGE_KIND=zero_findings_nonconforming_heading \
@@ -636,14 +634,10 @@ AGGREGATE_STUB_MERGE_KIND=zero_findings_nonconforming_heading \
     --mode diff >"$TMP/out-nonconf.env"
 grep -Fq 'AGGREGATED=false' "$TMP/out-nonconf.env" || fail "nonconforming-heading AGGREGATED"
 grep -Fq 'REASON=validation-failed' "$TMP/out-nonconf.env" || fail "nonconforming-heading REASON"
-[[ -f "$TMP/aggregator-repair.stderr" ]] || fail "expected aggregator-repair.stderr after nonconforming-heading run"
-grep -Fq 'ATTESTATION_SYNTHESIZED=true' "$TMP/aggregator-repair.stderr" && fail "unexpected synthesis breadcrumb when pseudo-heading blocks rescue"
-grep -Fq 'AGGREGATOR_SYNTHESIS_SUPPRESSED=nonconforming_finding_heading_markers' "$TMP/aggregator-repair.stderr" || fail "expected synthesis-suppressed breadcrumb on aggregator-repair.stderr"
 
-echo "=== zero_findings_nospace_pseudo_heading: validation-failed, synthesis suppressed ==="
+echo "=== zero_findings_nospace_pseudo_heading: validation-failed ==="
 cp "$TMP/in3.md" "$TMP/in3-nospace-pseudo.md"
 write_stub_dispatch
-rm -f "$TMP/aggregator-repair.stderr"
 AGGREGATE_DISPATCH_SH="$TMP/stub-dispatch.sh" \
 AGGREGATE_STUB_MODE=ok \
 AGGREGATE_STUB_MERGE_KIND=zero_findings_nospace_pseudo_heading \
@@ -655,13 +649,10 @@ AGGREGATE_STUB_MERGE_KIND=zero_findings_nospace_pseudo_heading \
     --mode diff >"$TMP/out-nospace-pseudo.env"
 grep -Fq 'AGGREGATED=false' "$TMP/out-nospace-pseudo.env" || fail "nospace-pseudo AGGREGATED"
 grep -Fq 'REASON=validation-failed' "$TMP/out-nospace-pseudo.env" || fail "nospace-pseudo REASON"
-grep -Fq 'AGGREGATOR_SYNTHESIS_SUPPRESSED=nonconforming_finding_heading_markers' "$TMP/aggregator-repair.stderr" || fail "expected synthesis-suppressed for ###FINDING_ typo"
-grep -Fq 'ATTESTATION_SYNTHESIZED=true' "$TMP/aggregator-repair.stderr" && fail "unexpected synthesis when ###FINDING_ pseudo-heading blocks rescue"
 
-echo "=== zero_findings_prose_finding_ids: FINDING_ids prose does not suppress synthesis ==="
+echo "=== zero_findings_prose_finding_ids: validation-failed ==="
 cp "$TMP/in3.md" "$TMP/in3-finding-ids-prose.md"
 write_stub_dispatch
-rm -f "$TMP/aggregator-repair.stderr"
 AGGREGATE_DISPATCH_SH="$TMP/stub-dispatch.sh" \
 AGGREGATE_STUB_MODE=ok \
 AGGREGATE_STUB_MERGE_KIND=zero_findings_prose_finding_ids \
@@ -674,33 +665,7 @@ LARCH_AGGREGATE_MAX_OUTER_PHASES=1 \
     --mode diff >"$TMP/out-finding-ids-prose.env"
 grep -Fq 'AGGREGATED=false' "$TMP/out-finding-ids-prose.env" || fail "finding-ids-prose AGGREGATED"
 grep -Fq 'REASON=validation-failed' "$TMP/out-finding-ids-prose.env" || fail "finding-ids-prose REASON"
-grep -Fq 'AGGREGATOR_SYNTHESIS_SUPPRESSED=' "$TMP/aggregator-repair.stderr" && fail "prose FINDING_ids must not trigger synthesis-suppressed breadcrumb"
-grep -Eq '^ATTESTATION_SYNTHESIZED=true unique_input_reviewers=3 input_slots=3 input_findings=3$' "$TMP/aggregator-repair.stderr" || fail "expected synthesis breadcrumb for prose FINDING_ids empty merge"
 cmp -s "$TMP/in3.md" "$TMP/in3-finding-ids-prose.md" || fail "findings unchanged on prose FINDING_ids validator rejection"
-
-echo "=== empty_merge_existing_token_passthrough: model token present, no synthesis stderr ==="
-RR="$TMP/empty-merge-passthrough"
-mkdir -p "$RR"
-rm -f "$RR/aggregator-repair.stderr"
-cp "$TMP/in3.md" "$RR/in3.md"
-cp "$RR/in3.md" "$RR/in3-work.md"
-write_stub_dispatch
-AGGREGATE_DISPATCH_SH="$TMP/stub-dispatch.sh" \
-AGGREGATE_STUB_MODE=ok \
-AGGREGATE_STUB_MERGE_KIND=zero_findings \
-LARCH_AGGREGATE_MAX_OUTER_PHASES=1 \
-"$AGG" \
-    --findings-file "$RR/in3-work.md" \
-    --review-tmpdir "$RR" \
-    --codex-present true \
-    --cursor-present true \
-    --mode diff >"$TMP/out-empty-merge-pass.env"
-grep -Fq 'AGGREGATED=false' "$TMP/out-empty-merge-pass.env" || fail "passthrough AGGREGATED"
-grep -Fq 'REASON=validation-failed' "$TMP/out-empty-merge-pass.env" || fail "passthrough REASON"
-if [[ -f "$RR/aggregator-repair.stderr" ]]; then
-    grep -Fq 'ATTESTATION_SYNTHESIZED=true' "$RR/aggregator-repair.stderr" && fail "unexpected synthesis when model already emitted attestation"
-fi
-cmp -s "$RR/in3.md" "$RR/in3-work.md" || fail "findings unchanged on passthrough validator rejection"
 
 echo "=== zero_findings_input_nonempty rejected: input had findings, output empty + attestation => validation-failed (#2782) ==="
 cp "$TMP/in3.md" "$TMP/in3-zfn.md"
@@ -1221,7 +1186,7 @@ LARCH_AGGREGATE_MAX_OUTER_PHASES=1 \
 grep -Fq 'AGGREGATED=false' "$TMP/out-negprose.env" || fail "FINDING_ids prose empty-merge must fail closed"
 grep -Fq 'REASON=validation-failed' "$TMP/out-negprose.env" || fail "FINDING_ids prose empty-merge must fail validation"
 grep -Fq 'AGGREGATOR_VALIDATION_FAILED=preamble_finding_substring' "$TMP/aggregator-validate.stderr" 2>/dev/null && fail "FINDING_ids prose must not emit preamble_finding_substring"
-grep -Fq 'AGGREGATOR_VALIDATION_FAILED=empty_merge_from_nonempty_input' "$TMP/aggregator-validate.stderr" || fail "FINDING_ids prose must emit empty_merge_from_nonempty_input"
+grep -Fq 'output must include a line whose trimmed text equals' "$TMP/aggregator-validate.stderr" || fail "FINDING_ids prose must emit missing-attestation diagnostic"
 cmp -s "$TMP/in3.md" "$TMP/in3-negprose.md" || fail "findings unchanged on FINDING_ids prose validator rejection"
 
 echo "=== merged output must include - **Severity**: line ==="

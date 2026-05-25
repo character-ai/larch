@@ -297,16 +297,16 @@ def line_opens_valid_finding_block(line):
 
 # Drifted pseudo-heading: ### optional spaces FINDING_<digit>… but not the strict
 # "### FINDING_<digits>:" block opener (e.g. ###FINDING_1: typo, or ### FINDING_1 x).
-# Require a digit after FINDING_ so prose like "### FINDING_ids …" does not suppress
-# empty-merge synthesis (issue: FINDING_ids line with zero real blocks).
+# Require a digit after FINDING_ so prose like "### FINDING_ids …" does not trigger
+# the preamble drift guard (issue: FINDING_ids line with zero real blocks).
 _PSEUDO_FINDING_HEADING = re.compile(r"^###\s*FINDING_[0-9]")
 
 
 def has_nonconforming_finding_heading_markers(text):
     """
     True when a line looks like a FINDING heading but is not ### FINDING_<digits>:
-    (prevents empty-merge synthesis from rescuing narrative that contains drifted
-    pseudo-headings that no longer parse as structured blocks).
+    (detects narrative that contains drifted pseudo-headings that no longer parse
+    as structured blocks).
     """
     for line in text.splitlines():
         ls = line.lstrip("\t ")
@@ -499,58 +499,6 @@ def check_revision_traceability(input_text, output_blocks_list):
     return warnings
 
 
-def _attempt_attestation_repair(raw_text, input_text):
-    """If merge output is empty-merge shaped but missing the attestation line, append it."""
-    raw_text = drop_impure_empty_merge_attestation_lines(raw_text)
-    blocks = output_blocks(raw_text)
-    input_slot_set = set()
-    for block in input_blocks(input_text):
-        _line, slots = reviewer_line_slots(block)
-        for sl in slots:
-            input_slot_set.add(normalize_slot(sl))
-    has_attest_line = any(
-        line.strip() == EMPTY_MERGE_ATTESTATION for line in raw_text.splitlines()
-    )
-    n_findings = len(input_blocks(input_text))
-    if not blocks and input_slot_set and not has_attest_line:
-        if has_nonconforming_finding_heading_markers(raw_text):
-            print(
-                "AGGREGATOR_SYNTHESIS_SUPPRESSED=nonconforming_finding_heading_markers",
-                file=sys.stderr,
-            )
-            return raw_text, False, len(input_slot_set), n_findings
-        if has_preamble_finding_signal(raw_text) and not has_nonconforming_finding_heading_markers(
-            raw_text
-        ):
-            print(
-                "AGGREGATOR_SYNTHESIS_SUPPRESSED=preamble_finding_substring",
-                file=sys.stderr,
-            )
-            return raw_text, False, len(input_slot_set), n_findings
-        return (
-            raw_text + "\n" + EMPTY_MERGE_ATTESTATION + "\n",
-            True,
-            len(input_slot_set),
-            n_findings,
-        )
-    return raw_text, False, len(input_slot_set), n_findings
-
-
-def repair_attestation_main():
-    input_path, output_path = sys.argv[2], sys.argv[3]
-    intext = open(input_path, encoding="utf-8").read()
-    raw = open(output_path, encoding="utf-8").read()
-    repaired, synthesized, nslots, n_findings = _attempt_attestation_repair(raw, intext)
-    sys.stdout.write(repaired)
-    if synthesized:
-        print(
-            "ATTESTATION_SYNTHESIZED=true unique_input_reviewers=%d input_slots=%d input_findings=%d"
-            % (nslots, nslots, n_findings),
-            file=sys.stderr,
-        )
-    return 0
-
-
 def main():
     input_path, output_path = sys.argv[1], sys.argv[2]
     intext = open(input_path, encoding="utf-8").read()
@@ -677,8 +625,6 @@ def main():
 
 
 if __name__ == "__main__":
-    if len(sys.argv) >= 4 and sys.argv[1] == "--repair-attestation":
-        raise SystemExit(repair_attestation_main())
     raise SystemExit(main())
 PY
 
@@ -703,66 +649,48 @@ merge_succeeded=false
 
 _agg_pipeline_for_candidate() {
     local cand="$1"
-    local agg_dest="$2"
-    local repair_err_tmp merged_tmp cand_repaired_tmp
+    local merged_tmp
     MERGE_PIPELINE_RC=2
-    rm -f "$REVIEW_TMPDIR/aggregator-repair.stderr" "$REVIEW_TMPDIR/aggregate-repair-failed.stderr"
-    repair_err_tmp="$(mktemp "$REVIEW_TMPDIR/aggregate-repair-err.XXXXXX")"
-    cand_repaired_tmp="$(mktemp "$REVIEW_TMPDIR/aggregate-repair-out.XXXXXX")"
-    if ! python3 "$validate_py" --repair-attestation "$FINDINGS_FILE" "$cand" >"$cand_repaired_tmp" 2>"$repair_err_tmp"; then
-        rm -f "$repair_err_tmp" "$cand_repaired_tmp"
-        MERGE_PIPELINE_RC=2
-        printf '%s\n' "aggregate-validate.py --repair-attestation exited non-zero" >"$REVIEW_TMPDIR/aggregate-repair-failed.stderr"
-        return 0
-    fi
-    if [[ -s "$repair_err_tmp" ]]; then
-        grep -E '^(ATTESTATION_SYNTHESIZED=|AGGREGATOR_SYNTHESIS_SUPPRESSED=)' "$repair_err_tmp" \
-            >"$REVIEW_TMPDIR/aggregator-repair.stderr" \
-            || rm -f "$REVIEW_TMPDIR/aggregator-repair.stderr"
-        rm -f "$repair_err_tmp"
-    else
-        rm -f "$repair_err_tmp" "$REVIEW_TMPDIR/aggregator-repair.stderr"
-    fi
 
-    if ! python3 "$validate_py" "$FINDINGS_FILE" "$cand_repaired_tmp" 2>"$REVIEW_TMPDIR/aggregator-validate.stderr"; then
+    if ! python3 "$validate_py" "$FINDINGS_FILE" "$cand" 2>"$REVIEW_TMPDIR/aggregator-validate.stderr"; then
         if grep -Eq '^AGGREGATOR_VALIDATION_FAILED=(preamble_finding_substring|empty_merge_from_nonempty_input)$' "$REVIEW_TMPDIR/aggregator-validate.stderr" 2>/dev/null; then
-            rm -f "$cand_repaired_tmp"
             MERGE_PIPELINE_RC=1
             return 0
         fi
-        rm -f "$cand_repaired_tmp"
         MERGE_PIPELINE_RC=2
         return 0
     fi
 
     merged_tmp="$(mktemp "$REVIEW_TMPDIR/findings.md.merged.XXXXXX")"
-    if ! python3 - "$cand_repaired_tmp" <<'PY' >"$merged_tmp" 2>"$REVIEW_TMPDIR/aggregator-strip.stderr"
+    if ! python3 - "$cand" <<'PY' >"$merged_tmp" 2>"$REVIEW_TMPDIR/aggregator-strip.stderr"
 import sys
 
 EMPTY_MERGE_ATTESTATION = "LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED"
 path = sys.argv[1]
 with open(path, encoding="utf-8") as f:
     for line in f:
-        if line.strip() == EMPTY_MERGE_ATTESTATION:
+        stripped = line.strip()
+        if stripped == EMPTY_MERGE_ATTESTATION:
+            continue
+        if stripped.startswith(EMPTY_MERGE_ATTESTATION):
             continue
         sys.stdout.write(line)
 PY
     then
-        rm -f "$cand_repaired_tmp" "$merged_tmp"
+        rm -f "$merged_tmp"
         MERGE_PIPELINE_RC=2
         return 0
     fi
-    if [[ "$(count_finding_blocks "$cand_repaired_tmp")" -eq 0 ]]; then
+    if [[ "$(count_finding_blocks "$cand")" -eq 0 ]]; then
         [[ -s "$merged_tmp" ]] || printf '\n' >"$merged_tmp"
     fi
     if [[ ! -s "$merged_tmp" ]]; then
-        rm -f "$cand_repaired_tmp" "$merged_tmp"
+        rm -f "$merged_tmp"
         printf '%s\n' "staged merge output empty after successful strip (zero FINDING blocks in vendor output; expected narrative or whitespace)" >"$REVIEW_TMPDIR/aggregator-empty-merge.stderr"
         MERGE_PIPELINE_RC=2
         return 0
     fi
     mv -f "$merged_tmp" "$FINDINGS_FILE"
-    mv -f "$cand_repaired_tmp" "$agg_dest"
     MERGE_PIPELINE_RC=0
 }
 
@@ -853,7 +781,7 @@ for idx in "${!outer_names[@]}"; do
         continue
     fi
 
-    _agg_pipeline_for_candidate "$cand" "$out_path"
+    _agg_pipeline_for_candidate "$cand"
     case "${MERGE_PIPELINE_RC:-2}" in
         0)
             MERGED_COUNT="$(count_finding_blocks "$FINDINGS_FILE")"
@@ -877,13 +805,6 @@ for idx in "${!outer_names[@]}"; do
             break
             ;;
         2)
-            if [[ -f "$REVIEW_TMPDIR/aggregate-repair-failed.stderr" ]]; then
-                REASON="validation-failed"
-                FAILURE_LOG="$REVIEW_TMPDIR/aggregate-repair-failed.stderr"
-                append_warning "- **findings aggregator**: empty-merge attestation repair step failed; leaving findings.md unchanged. $(failure_see_phrase "$FAILURE_LOG")"
-                emit_result
-                exit 0
-            fi
             REASON="validation-failed"
             FAILURE_LOG="$REVIEW_TMPDIR/aggregator-validate.stderr"
             if [[ ! -f "$FAILURE_LOG" || ! -s "$FAILURE_LOG" ]]; then
