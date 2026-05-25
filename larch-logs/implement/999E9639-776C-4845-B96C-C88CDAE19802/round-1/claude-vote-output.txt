@@ -1,0 +1,1 @@
+The ballot at `<TMPDIR>/round-1/findings.md` contains no `### FINDING_N:` items — the aggregator emitted `LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED` with no structured finding blocks. There are no ballot items to vote on.
