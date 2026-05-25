@@ -681,9 +681,9 @@ grep -Fq 'skills/design/references/brainstorm-prompts.md' "$BRAINSTORM_MD" \
 grep -Fq 'ScheduleWakeup' "$BRAINSTORM_MD" \
   || fail "(2754) brainstorm.md missing ScheduleWakeup prohibition anchor"
 # shellcheck disable=SC2016 # Markdown fence literal in brainstorm.md
-grep -Fq '**⚠ Foreground required — do NOT set `run_in_background: true`.**' "$BRAINSTORM_MD" \
-  || fail "(2754) brainstorm.md missing foreground banner in collector fence"
-grep -Fq '# Foreground required: see BASH_AUTHORING.md §4' "$BRAINSTORM_MD" \
+grep -Fq '**⚠ Background required — must be paired with breadcrumb-monitor.sh.**' "$BRAINSTORM_MD" \
+  || fail "(2754) brainstorm.md missing background-pair banner in collector fence"
+grep -Fq '# Background pair required: see BASH_AUTHORING.md §4' "$BRAINSTORM_MD" \
   || fail "(2754) brainstorm.md missing BASH_AUTHORING §4 in-fence comment"
 # shellcheck disable=SC2016 # SKILL.md bash excerpt; quotes are literal
 grep -Fq -- '--brainstorm-requested "$brainstorm_requested"' "$SKILL_MD" \
