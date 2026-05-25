@@ -8,6 +8,7 @@ PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd -P)}"
 # shellcheck source=scripts/lib-quiet.sh
 source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
+larch_quiet_append_done_trap
 # shellcheck source=scripts/lib-voter-parse-rate.sh
 source "$SCRIPT_DIR/lib-voter-parse-rate.sh"
 

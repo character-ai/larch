@@ -182,6 +182,7 @@ if [[ "${BASH_SOURCE[0]}" != "$0" && "${1:-}" == "--source-only" ]]; then
 fi
 
 larch_quiet_init
+larch_quiet_append_done_trap
 
 TIMEOUT=""
 SUBSTANTIVE_VALIDATION="false"

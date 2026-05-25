@@ -2444,6 +2444,7 @@ run_postmerge_phase() {
 
 main() {
     larch_quiet_init
+    larch_quiet_append_done_trap
     while [ $# -gt 0 ]; do
         case "$1" in
             --state-file) [ $# -ge 2 ] || die_usage "--state-file requires a value"; STATE_FILE=$2; shift 2 ;;

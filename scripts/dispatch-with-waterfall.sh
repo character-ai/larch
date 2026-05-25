@@ -7,6 +7,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 # shellcheck source=scripts/lib-quiet.sh
 source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
+larch_quiet_append_done_trap
 
 usage() {
     larch_err "Usage: dispatch-with-waterfall.sh --slots-file FILE --codex-present true|false --cursor-present true|false --mode diff|description [--paths-file FILE] [context flags]. Default paths-file is SLOTS_FILE.output-files; its parent directory must already exist. Stdout KVs include ALL_OUTPUT_FILES_PATH, ALL_OUTPUT_FILES, ALL_OUTPUT_TOOLS, DISPATCH_OK, WARN, …"

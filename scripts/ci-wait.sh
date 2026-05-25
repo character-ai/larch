@@ -65,6 +65,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=scripts/lib-quiet.sh
 source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
+larch_quiet_append_done_trap
 
 usage() { larch_err "Usage: ci-wait.sh --pr NUMBER --repo OWNER/REPO [--rebase-count N] [--fix-attempts N] [--iteration N] [--timeout SECONDS] [--output-file PATH] [--base-remote NAME] [--base-ref BRANCH] [--empty-checks-grace SECONDS]"; }
 
