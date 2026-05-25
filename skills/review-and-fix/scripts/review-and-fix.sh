@@ -249,7 +249,18 @@ run_coder_dispatch() {
     local round_dir="$1" prompt_body="$2" tool_log="$3" tool_stdout="$4"
     local _SERIAL_LOCK=""
 
+    _SERIAL_LOCK=""
+    external_serial_lock_acquire _SERIAL_LOCK "codex"
+    external_serial_lock_release_after "$_SERIAL_LOCK" "${LARCH_EXTERNAL_SERIAL_LOCK_DELAY:-0.5}"
+    if "$RUN_EXTERNAL_AGENT_SH" --tool codex --output "$round_dir/coder-codex.log" --timeout 1800 --capture-stdout -- \
+        codex exec --full-auto -C "$PWD" --add-dir "$round_dir" --add-dir "$PWD" "$prompt_body" > "$round_dir/coder-codex.wrapper.log" 2>&1; then
+        cp "$round_dir/coder-codex.log" "$tool_log" 2>/dev/null || : > "$tool_log"
+        printf 'codex\n' > "$tool_stdout"
+        return 0
+    fi
+
     if cursor_launcher_load_model_args && cursor_launcher_setup_auth_argv; then
+        _SERIAL_LOCK=""
         external_serial_lock_acquire _SERIAL_LOCK "cursor"
         external_serial_lock_release_after "$_SERIAL_LOCK" "${LARCH_EXTERNAL_SERIAL_LOCK_DELAY:-0.5}"
         if "$RUN_EXTERNAL_AGENT_SH" --tool cursor --output "$round_dir/coder-cursor.log" --timeout 1800 --capture-stdout -- \
@@ -262,16 +273,6 @@ run_coder_dispatch() {
             printf 'cursor\n' > "$tool_stdout"
             return 0
         fi
-    fi
-
-    _SERIAL_LOCK=""
-    external_serial_lock_acquire _SERIAL_LOCK "codex"
-    external_serial_lock_release_after "$_SERIAL_LOCK" "${LARCH_EXTERNAL_SERIAL_LOCK_DELAY:-0.5}"
-    if "$RUN_EXTERNAL_AGENT_SH" --tool codex --output "$round_dir/coder-codex.log" --timeout 1800 --capture-stdout -- \
-        codex exec --full-auto -C "$PWD" --add-dir "$round_dir" --add-dir "$PWD" "$prompt_body" > "$round_dir/coder-codex.wrapper.log" 2>&1; then
-        cp "$round_dir/coder-codex.log" "$tool_log" 2>/dev/null || : > "$tool_log"
-        printf 'codex\n' > "$tool_stdout"
-        return 0
     fi
 
     emit_breadcrumb "⚠ review-and-fix: coder dispatch failed (both codex and cursor)"

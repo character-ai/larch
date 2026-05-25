@@ -2,7 +2,7 @@
 
 **Coverage**:
 1. `--coder claude` emits `STATUS=claude_fallback` and `ORCHESTRATOR_EDIT_AUTHORITY=allowed` (and no other KV keys — no `MANIFEST=`, no `TRANSCRIPT=`, etc.), and writes no baseline files.
-1b. Default coder (no flag) is cursor — verified via non-git cwd with no `--cursor-present`: dispatcher exits 0 with `STATUS=claude_fallback` (cursor presence check fires before git-tree lookup; codex default would exit 2 instead).
+1b. Default coder (no flag) is codex — verified via non-git cwd: dispatcher exits 2 with `must be invoked from within a git working tree` because the codex path runs `git rev-parse --show-toplevel` (cursor default would exit 0 with `STATUS=claude_fallback` instead via the cursor-present gate).
 1c. Legacy `--codex-available false` still emits `STATUS=claude_fallback` and prints a deprecation warning to stderr.
 2. `step2-implement.sh` does not accept `--auto-mode` (removed per issue #2497); passing it exits 2 with `unknown flag: --auto-mode`.
 3b. `--coder cursor --cursor-present false` emits `STATUS=claude_fallback` with no baseline-file leak (`coder_explicit=true` with unhealthy Cursor — Step 2 backstop gate; Option A still allows Step 1 to bail early when the explicit tool fails its runtime probe).

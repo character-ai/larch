@@ -36,8 +36,8 @@ Behavior:
    `scripts/relevant-checks.sh` to pass. The prompt forbids commits; the helper owns any
    allowed commit. Literal ````` fence lines in the log are sanitized before
    embedding.
-5. Dispatch Cursor first via `scripts/run-external-agent.sh` when Cursor is
-   present; if Cursor is absent or fails and Codex is present, dispatch Codex.
+5. Dispatch Codex first via `scripts/run-external-agent.sh` when Codex is
+   present; if Codex is absent or fails and Cursor is present, dispatch Cursor.
    Both `run_cursor()` and `run_codex()` acquire the
    per-tool KeyChain serial lock (`external_serial_lock_acquire` from
    `scripts/lib-cursor-launcher-common.sh` → `lib-external-launcher-common.sh`)
