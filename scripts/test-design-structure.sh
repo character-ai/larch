@@ -113,8 +113,11 @@ launch_output_count=$(printf '%s\n' "$regular_launch_section" | { grep -F -- '--
 [[ "$launch_output_count" == "4" ]] \
   || fail "(4b) sketch-launch.md Regular Mode must contain exactly 4 regular --output paths; found $launch_output_count"
 
+# Count only collector output paths (`*-sketch-*-output.txt`); excludes
+# breadcrumb-monitor pair env-var paths (`$DESIGN_TMPDIR/breadcrumbs/...`)
+# introduced by issue #2749 Family B background+monitor wiring.
 # shellcheck disable=SC2016 # fixed-string grep literal intentionally contains shell syntax from markdown examples.
-collector_output_count=$(printf '%s\n' "$regular_collector_section" | { grep -F -- '"$DESIGN_TMPDIR/' || true; } | wc -l | tr -d ' ')
+collector_output_count=$(printf '%s\n' "$regular_collector_section" | { grep -E -- '"\$DESIGN_TMPDIR/[a-zA-Z0-9_-]+-sketch-[a-zA-Z0-9_-]+-output\.txt"' || true; } | wc -l | tr -d ' ')
 [[ "$collector_output_count" == "4" ]] \
   || fail "(4b) SKILL.md Step 2a.3 regular collector must contain exactly 4 output paths; found $collector_output_count"
 
