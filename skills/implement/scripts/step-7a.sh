@@ -60,19 +60,6 @@ kv_value() {
     awk -F= -v key="$key" '$1==key{print substr($0, index($0, "=") + 1); exit}' "$file" 2>/dev/null
 }
 
-is_sanitizer_skip_reason() {
-    local reason=${1:-}
-    case "$reason" in
-        "" ) return 1 ;;
-        sanitizer-rejected|sanitizer-*|*sanitizer-reject*|*pipe-in-node-label*|*br-in-participant-alias*|*dollar-in-participant-alias*|*unclosed-frontmatter*)
-            return 0
-            ;;
-        *)
-            return 1
-            ;;
-    esac
-}
-
 is_non_runtime_path() {
     local path=$1 base ext
     case "$path" in
@@ -260,7 +247,6 @@ COMMENT_URL=""
 LOG_FLUSH_STATUS=""
 STEP_7A_BAIL_REASON=""
 CODE_FLOW_SKIP_REASON=""
-COMMENT_UPSERT_SKIP=false
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -352,20 +338,15 @@ if is_small_non_runtime_change; then
     DIAGRAM_STATUS=skip
     DIAGRAM_PATH=""
     CODE_FLOW_SKIP_REASON="(Code Flow Diagram skipped — small/non-runtime change)"
-    printf '⏩ 7a: diagrams status=skip reason=small-non-runtime-change elapsed=%s\n' "0s"
+    emit "⏩ 7a: diagrams status=skip reason=small-non-runtime-change elapsed=0s"
 else
     gen_out="$IMPLEMENT_TMPDIR/code-flow-diagram.stdout"
     gen_err="$IMPLEMENT_TMPDIR/code-flow-diagram.stderr"
-    gen_skip_reason=""
     set +e
     "$PLUGIN_ROOT/skills/implement/scripts/generate-code-flow-diagram.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR" >"$gen_out" 2>"$gen_err"
     gen_rc=$?
     set +e
     gen_status=$(kv_value STATUS "$gen_out")
-    gen_skip_reason=$(kv_value SKIP_REASON "$gen_out")
-    if is_sanitizer_skip_reason "$gen_skip_reason"; then
-        COMMENT_UPSERT_SKIP=true
-    fi
     case "$gen_status" in
         ok)
             DIAGRAM_STATUS=ok
@@ -376,7 +357,6 @@ else
             DIAGRAM_STATUS=skipped
             DIAGRAM_PATH=""
             CODE_FLOW_SKIP_REASON="Code flow diagram not available."
-            COMMENT_UPSERT_SKIP=true
             ;;
         failed)
             DIAGRAM_STATUS=failed
@@ -395,7 +375,7 @@ fi
 
 compose_summary_diagrams
 
-if [ -n "$ISSUE_NUMBER" ] && [ "$COMMENT_UPSERT_SKIP" != "true" ]; then
+if [ -n "$ISSUE_NUMBER" ]; then
     upsert_out="$IMPLEMENT_TMPDIR/summary-diagrams-upsert.stdout"
     upsert_err="$IMPLEMENT_TMPDIR/summary-diagrams-upsert.stderr"
     set +e

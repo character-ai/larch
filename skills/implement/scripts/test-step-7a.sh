@@ -90,6 +90,15 @@ graph TD
 EOF
 }
 
+placeholder_expected_summary() {
+    local placeholder=$1
+    cat <<EOF
+Architecture diagram not available.
+
+$placeholder
+EOF
+}
+
 finish() {
     printf 'PASS=%s\n' "$PASS"
     printf 'FAIL=%s\n' "$FAIL"
@@ -170,6 +179,10 @@ case "${STEP7A_REBASE_MODE:-ok}" in
     failed)
         printf 'REBASE_OUTCOME=failed\nREBASE_ERROR=rebase-failed\n'
         exit 3
+        ;;
+    unexpected)
+        printf 'REBASE_OUTCOME=failed\nREBASE_ERROR=unexpected-rc-5\n'
+        exit 5
         ;;
 esac
 STUB
@@ -367,10 +380,11 @@ rc=$?
 set -e
 assert_equals 0 "$rc" "diagram-rejected exits 0"
 assert_contains "DIAGRAM_STATUS=skipped" "$out" "diagram-rejected emits skipped"
-assert_not_contains "tracking-issue-summary.sh" "$(cat "$CASE_DIR/calls.log")" "diagram-rejected skips upsert"
-assert_contains "COMMENT_URL=" "$out" "diagram-rejected emits empty comment URL"
+assert_contains "tracking-issue-summary.sh" "$(cat "$CASE_DIR/calls.log")" "diagram-rejected still posts comment"
+assert_contains "COMMENT_URL=https://example.test/comment/1" "$out" "diagram-rejected emits comment URL"
 assert_contains "LOG_FLUSH_STATUS=ok" "$out" "diagram-rejected keeps flush ok"
 assert_not_contains "### Warnings" "$(cat "$CASE_DIR/tmp/execution-issues.md")" "diagram-rejected does not append warning"
+assert_file_equals "$(placeholder_expected_summary "Code flow diagram not available.")" "$CASE_DIR/tmp/summary-diagrams.md" "diagram-rejected writes expected summary diagrams"
 
 for sanitizer_token in br-in-participant-alias dollar-in-participant-alias unclosed-frontmatter; do
     new_case "diagram-rejected-$sanitizer_token"
@@ -380,8 +394,9 @@ for sanitizer_token in br-in-participant-alias dollar-in-participant-alias unclo
     set -e
     assert_equals 0 "$rc" "diagram-rejected-$sanitizer_token exits 0"
     assert_contains "DIAGRAM_STATUS=skipped" "$out" "diagram-rejected-$sanitizer_token emits skipped"
-    assert_not_contains "tracking-issue-summary.sh" "$(cat "$CASE_DIR/calls.log")" "diagram-rejected-$sanitizer_token skips upsert"
-    assert_contains "COMMENT_URL=" "$out" "diagram-rejected-$sanitizer_token emits empty comment URL"
+    assert_contains "tracking-issue-summary.sh" "$(cat "$CASE_DIR/calls.log")" "diagram-rejected-$sanitizer_token still posts comment"
+    assert_contains "COMMENT_URL=https://example.test/comment/1" "$out" "diagram-rejected-$sanitizer_token emits comment URL"
+    assert_file_equals "$(placeholder_expected_summary "Code flow diagram not available.")" "$CASE_DIR/tmp/summary-diagrams.md" "diagram-rejected-$sanitizer_token writes expected summary diagrams"
 done
 
 new_case diagram-failure
@@ -402,8 +417,9 @@ rc=$?
 set -e
 assert_equals 0 "$rc" "diagram-failure-sanitizer exits 0"
 assert_contains "DIAGRAM_STATUS=failed" "$out" "diagram-failure-sanitizer emits failed"
-assert_not_contains "tracking-issue-summary.sh" "$(cat "$CASE_DIR/calls.log")" "diagram-failure-sanitizer skips upsert"
-assert_contains "COMMENT_URL=" "$out" "diagram-failure-sanitizer emits empty comment URL"
+assert_contains "tracking-issue-summary.sh" "$(cat "$CASE_DIR/calls.log")" "diagram-failure-sanitizer still posts comment"
+assert_contains "COMMENT_URL=https://example.test/comment/1" "$out" "diagram-failure-sanitizer emits comment URL"
+assert_file_equals "$(placeholder_expected_summary "Code flow diagram not available.")" "$CASE_DIR/tmp/summary-diagrams.md" "diagram-failure-sanitizer writes expected summary diagrams"
 
 new_case upsert-failure
 set +e
@@ -493,6 +509,17 @@ assert_contains "REBASE_OUTCOME=failed" "$out" "rebase-failed emits failed outco
 assert_contains "LOG_FLUSH_STATUS=skipped-rebase-checkpoint" "$out" "rebase-failed emits skipped rebase flush status"
 assert_not_contains "flush-execution-issues.sh" "$(cat "$CASE_DIR/calls.log")" "rebase-failed skips flush"
 
+new_case rebase-unexpected-rc
+set +e
+out=$(STEP7A_REBASE_MODE=unexpected run_helper "$CASE_DIR" --implement-tmpdir "$CASE_DIR/tmp" --issue-number 42 --run-id run-001 --no-logs-commit false --forked-target false 2>&1)
+rc=$?
+set -e
+assert_equals 5 "$rc" "rebase-unexpected-rc exits 5"
+assert_contains "REBASE_OUTCOME=failed" "$out" "rebase-unexpected-rc emits failed outcome"
+assert_contains "REBASE_ERROR=unexpected-rc-5" "$out" "rebase-unexpected-rc emits unexpected rc error"
+assert_contains "LOG_FLUSH_STATUS=skipped-rebase-checkpoint" "$out" "rebase-unexpected-rc emits skipped rebase flush status"
+assert_not_contains "flush-execution-issues.sh" "$(cat "$CASE_DIR/calls.log")" "rebase-unexpected-rc skips flush"
+
 new_case quiet-rebase-contract
 set +e
 out=$(run_helper_quiet "$CASE_DIR" --implement-tmpdir "$CASE_DIR/tmp" --issue-number 42 --run-id run-001 --no-logs-commit false --forked-target false 2>&1)
@@ -501,6 +528,15 @@ set -e
 assert_equals 0 "$rc" "quiet-rebase-contract exits 0"
 assert_contains "REBASE_OUTCOME=ok" "$out" "quiet-rebase-contract preserves rebase outcome on contract stream"
 assert_contains "LOG_FLUSH_STATUS=ok" "$out" "quiet-rebase-contract emits final tail"
+
+new_case quiet-diagram-skip-contract
+make_skip_repo "$CASE_DIR/repo"
+set +e
+out=$(run_helper_quiet "$CASE_DIR/repo" --implement-tmpdir "$CASE_DIR/tmp" --issue-number 42 --run-id run-001 --no-logs-commit false --forked-target false 2>&1)
+rc=$?
+set -e
+assert_equals 0 "$rc" "quiet-diagram-skip-contract exits 0"
+assert_contains "⏩ 7a: diagrams status=skip reason=small-non-runtime-change elapsed=0s" "$out" "quiet-diagram-skip-contract preserves skip line on contract stream"
 
 new_case argv-error
 set +e

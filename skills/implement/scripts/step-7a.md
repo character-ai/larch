@@ -35,6 +35,7 @@ The helper re-emits the `rebase-checkpoint-probe.sh` and `capture-session-transc
 | `0` | Step completed or degraded non-fatally |
 | `1` | Rebase checkpoint reported a conflict and Step 7a preserved that exit |
 | `3` | Rebase checkpoint reported a non-conflict failure and Step 7a preserved that exit |
+| Other non-zero | Step 7a preserved the probe exit; the orchestrator uses the macro's `unexpected-rc-<n>` / other-non-zero routing |
 | `2` | Argument validation failed |
 
 ## Bail Reasons
@@ -46,8 +47,9 @@ The helper re-emits the `rebase-checkpoint-probe.sh` and `capture-session-transc
 - Phases stay in the same order as the previous Step 7a `SKILL.md` body: rehydrate, token/timing marks, classifier, diagram generation, comment composition/upsert, 7a.r rebase probe, pre-bump flush, final KV tail.
 - `summary-diagrams.md` preserves the existing `larch:diagrams` content shape: Architecture Diagram content or placeholder, blank line, then Code Flow content or placeholder.
 - Empty `ISSUE_NUMBER` still gates the tracking-issue upsert.
-- Step 7a suppresses the `larch:diagrams` upsert when `generate-code-flow-diagram.sh` reports `STATUS=skipped` or emits a sanitizer rejection token via `SKIP_REASON`, and still writes the placeholder body to `summary-diagrams.md`.
+- Step 7a still upserts the `larch:diagrams` comment with the placeholder body when `generate-code-flow-diagram.sh` reports `STATUS=skipped` or `STATUS=failed`; only empty `ISSUE_NUMBER` gates the upsert.
 - `LARCH_QUIET_BREADCRUMBS=1` is exported for the 7a.r rebase checkpoint probe.
+- Only `REBASE_OUTCOME=ok|skipped` reaches the pre-bump flush phase.
 - The helper does not write a `diagrams` larch-log batch.
 
 ## Edit-in-sync
