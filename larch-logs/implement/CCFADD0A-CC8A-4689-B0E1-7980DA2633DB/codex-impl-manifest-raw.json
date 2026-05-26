@@ -1,0 +1,57 @@
+{
+  "schema_version": "1",
+  "status": "complete",
+  "files_touched": [
+    {"path": "Makefile", "lines_added": 9, "lines_removed": 2},
+    {"path": "SECURITY.md", "lines_added": 2, "lines_removed": 0},
+    {"path": "agent-lint.toml", "lines_added": 7, "lines_removed": 0},
+    {"path": "agents/_implementer-base.md", "lines_added": 66, "lines_removed": 0},
+    {"path": "agents/codex-implementer.md", "lines_added": 66, "lines_removed": 0},
+    {"path": "agents/cursor-implementer.md", "lines_added": 66, "lines_removed": 0},
+    {"path": "docs/linting.md", "lines_added": 2, "lines_removed": 0},
+    {"path": "scripts/extract-plan-scope-paths.md", "lines_added": 24, "lines_removed": 0},
+    {"path": "scripts/extract-plan-scope-paths.sh", "lines_added": 77, "lines_removed": 0},
+    {"path": "scripts/git-commit.md", "lines_added": 2, "lines_removed": 0},
+    {"path": "scripts/git-commit.sh", "lines_added": 50, "lines_removed": 3},
+    {"path": "scripts/test-extract-plan-scope-paths.md", "lines_added": 13, "lines_removed": 0},
+    {"path": "scripts/test-extract-plan-scope-paths.sh", "lines_added": 78, "lines_removed": 0},
+    {"path": "scripts/test-git-commit-only.md", "lines_added": 13, "lines_removed": 0},
+    {"path": "scripts/test-git-commit-only.sh", "lines_added": 64, "lines_removed": 0},
+    {"path": "skills/design/scripts/scout-plan-archetypes-wrapper.sh", "lines_added": 1, "lines_removed": 28},
+    {"path": "skills/implement/SKILL.md", "lines_added": 19, "lines_removed": 3},
+    {"path": "skills/implement/references/codex-manifest-schema.md", "lines_added": 4, "lines_removed": 0},
+    {"path": "skills/implement/scripts/commit-implementation.md", "lines_added": 3, "lines_removed": 0},
+    {"path": "skills/implement/scripts/commit-implementation.sh", "lines_added": 16, "lines_removed": 2},
+    {"path": "skills/implement/scripts/step2-implement.md", "lines_added": 12, "lines_removed": 0},
+    {"path": "skills/implement/scripts/step2-implement.sh", "lines_added": 316, "lines_removed": 40},
+    {"path": "skills/implement/scripts/test-codex-implementer.md", "lines_added": 1, "lines_removed": 0},
+    {"path": "skills/implement/scripts/test-codex-implementer.sh", "lines_added": 35, "lines_removed": 0},
+    {"path": "skills/implement/scripts/test-commit-implementation.md", "lines_added": 2, "lines_removed": 1},
+    {"path": "skills/implement/scripts/test-commit-implementation.sh", "lines_added": 10, "lines_removed": 0},
+    {"path": "skills/implement/scripts/test-cursor-implementer.md", "lines_added": 1, "lines_removed": 0},
+    {"path": "skills/implement/scripts/test-cursor-implementer.sh", "lines_added": 35, "lines_removed": 0},
+    {"path": "skills/implement/scripts/test-step2-dispatch.md", "lines_added": 4, "lines_removed": 0},
+    {"path": "skills/implement/scripts/test-step2-dispatch.sh", "lines_added": 187, "lines_removed": 0}
+  ],
+  "tests_added_or_modified": [
+    "scripts/test-extract-plan-scope-paths.sh",
+    "scripts/test-git-commit-only.sh",
+    "skills/implement/scripts/test-codex-implementer.sh",
+    "skills/implement/scripts/test-commit-implementation.sh",
+    "skills/implement/scripts/test-cursor-implementer.sh",
+    "skills/implement/scripts/test-step2-dispatch.sh"
+  ],
+  "summary_bullets": [
+    "Added inline manifest schema templates and jq self-validation to both generated implementer prompts.",
+    "Added dispatcher recovery for malformed complete manifests with prelaunch baselines, NUL-safe recovery paths, post-implementer safety gates, and manifest quarantine metadata.",
+    "Added shared plan-scope extraction plus pathspec-based commit support so recovery commits can avoid unrelated staged content.",
+    "Documented the recovery trust boundary and covered the prompt, dispatcher, scope extraction, and pathspec commit paths with offline harnesses."
+  ],
+  "commit_message": "Harden implementer manifest schema and recovery\n\nAdd inline manifest templates and jq self-validation to generated implementer prompts, recover malformed complete manifests through a commit-only dispatcher fallback, and support NUL-delimited --only pathspec commits for recovered paths.\n\nAlso share plan-scope extraction with the design scout and add focused offline coverage for recovery gates, generated prompts, scope extraction, and pathspec commit behavior.",
+  "todos_left": [
+    "bash scripts/check-generators.sh was run but fails in a dirty worktree because generated outputs differ from HEAD; individual codex/cursor generator --check invocations passed."
+  ],
+  "oos_observations": [],
+  "bail_reason": "",
+  "needs_qa": {"questions": []}
+}
