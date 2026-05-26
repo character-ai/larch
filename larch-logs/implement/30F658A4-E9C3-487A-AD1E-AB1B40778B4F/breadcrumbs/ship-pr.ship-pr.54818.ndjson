@@ -5,16 +5,3 @@ larch:bc t=2026-05-26T06:23:48Z d=0 p=81774 s=implement-finalize.sh c=progress t
 larch:bc t=2026-05-26T06:23:48Z d=0 p=81774 s=implement-finalize.sh c=progress text=🔃 8b: rebase
 larch:bc t=2026-05-26T06:23:52Z d=0 p=61842 s=ship-pr.sh c=progress text=→ ship-pr: PR prep
 larch:bc t=2026-05-26T06:23:52Z d=0 p=61842 s=ship-pr.sh c=progress text=→ ship-pr: opening PR
-larch:bc t=2026-05-26T06:24:03Z d=0 p=61842 s=ship-pr.sh c=progress text=→ ship-pr: PR #2880 opened
-larch:bc t=2026-05-26T06:24:05Z d=0 p=61842 s=ship-pr.sh c=progress text=→ ship-pr: CI watch (ci-initial)
-larch:bc t=2026-05-26T06:24:05Z d=0 p=84479 s=ci-wait.sh c=wait-ci text=⏳ CI: waiting
-larch:bc t=2026-05-26T06:24:09Z d=0 p=84479 s=ci-wait.sh c=wait-ci text=.
-larch:bc t=2026-05-26T06:24:22Z d=0 p=84479 s=ci-wait.sh c=wait-ci text=.
-larch:bc t=2026-05-26T06:24:36Z d=0 p=84479 s=ci-wait.sh c=wait-ci text=.
-larch:bc t=2026-05-26T06:24:49Z d=0 p=84479 s=ci-wait.sh c=wait-ci text=.
-larch:bc t=2026-05-26T06:25:02Z d=0 p=84479 s=ci-wait.sh c=wait-ci text=.
-larch:bc t=2026-05-26T06:25:16Z d=0 p=84479 s=ci-wait.sh c=wait-ci text=.
-larch:bc t=2026-05-26T06:25:16Z d=0 p=84479 s=ci-wait.sh c=wait-ci text= ⏳ CI: 1m elapsed, 6 polls, status=pending
-larch:bc t=2026-05-26T06:25:29Z d=0 p=84479 s=ci-wait.sh c=wait-ci text=.
-larch:bc t=2026-05-26T06:25:43Z d=0 p=84479 s=ci-wait.sh c=wait-ci text=→ Action: rebase (98s, 7 polls)
-larch:bc t=2026-05-26T06:25:43Z d=0 p=61842 s=ship-pr.sh c=warn text=⚠ ship-pr: rebase + re-bump
