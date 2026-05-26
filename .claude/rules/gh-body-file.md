@@ -146,6 +146,18 @@ When adding a new caller that invokes `gh ... --body`, `gh ... --body-file`,
 contract file to this rule's `paths:` frontmatter so future edits see the
 reminder.
 
+## Dynamic Bodies and Redaction
+
+When the body content derives from session data (implementation plans, token
+reports, reviewer prose, or any execution-derived text), pipe the content
+through `scripts/redact-secrets.sh` (and `scripts/redact-tmpdir-paths.sh` when
+the content may contain local tmpdir paths) before writing it to the body file.
+The shell-layer redaction inside larch scripts does not automatically protect
+prompt-assembled bodies. See `SECURITY.md` for the outbound-redaction policy.
+
+For PR creation specifically, use `scripts/create-pr.sh`; it applies both
+redaction passes internally.
+
 ## Scope
 
 This rule covers GitHub CLI body-like payloads only: `--body` and `--notes`.
