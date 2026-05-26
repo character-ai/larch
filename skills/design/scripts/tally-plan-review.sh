@@ -9,6 +9,9 @@ PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
 # shellcheck disable=SC1091
 source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
+# shellcheck source=skills/design/scripts/lib-findings-classification.sh
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/lib-findings-classification.sh"
 # shellcheck source=scripts/lib-vote-tally.sh
 # shellcheck disable=SC1091
 source "$PLUGIN_ROOT/scripts/lib-vote-tally.sh"
@@ -174,7 +177,6 @@ assign_voter() {
 }
 
 if [[ "$SEEN_VOTER" == true ]]; then
-    next_pos=1
     for spec in "${VOTER_SPECS[@]}"; do
         if [[ "$spec" != *:* ]]; then
             larch_err "error: invalid voter slot: $spec (must be Claude|Codex|Cursor|MainAgent)"
@@ -191,12 +193,7 @@ if [[ "$SEEN_VOTER" == true ]]; then
             assign_voter "$slot" "$path"
             continue
         fi
-        if (( next_pos > 3 )); then
-            larch_err "tally-plan-review.sh: too many voters; expected at most three non-MainAgent voters"
-            exit 2
-        fi
-        assign_voter "$slot" "$path" "$next_pos"
-        next_pos=$((next_pos + 1))
+        assign_voter "$slot" "$path"
     done
 else
     if [[ "$SEEN_VOTER_FILES" == true ]]; then
@@ -276,10 +273,6 @@ fi
 
 sanitize_tsv_cell() {
     printf '%s' "${1:-}" | tr '\t\n' '  '
-}
-
-emit_findings_classification_header() {
-    printf '%s\n' 'finding_id	finding_reviewers	voting_result	v1_vote	v1_correctness	v1_severity	v1_quality	v1_uncertain	v1_tool	v2_vote	v2_correctness	v2_severity	v2_quality	v2_uncertain	v2_tool	v3_vote	v3_correctness	v3_severity	v3_quality	v3_uncertain	v3_tool'
 }
 
 kv_value() {

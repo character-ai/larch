@@ -1050,7 +1050,7 @@ When `VALIDATE_STATUS=defects-found` after `ACTION=VALIDATE_PLAN_COMMANDS`, use 
 - `${CLAUDE_PLUGIN_ROOT}/scripts/dry-runnable-scripts.tsv` — Tier 3 opt-in registry (+ `dry-runnable-scripts.md`).
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/emit-plan.sh` — `ACTION=EMIT_PLAN`. Sibling: `emit-plan.md`.
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/check-plan-size.sh` — Step 2b.5 plan-size thresholds. Sibling: `check-plan-size.md`. Offline harness: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-check-plan-size.sh`, `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-check-plan-size.md`.
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/tally-plan-review.sh` — `ACTION=TALLY`. Sibling: `tally-plan-review.md`.
+- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/tally-plan-review.sh` — `ACTION=TALLY`. Sibling: `tally-plan-review.md`. Shared TSV header helper: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/lib-findings-classification.sh`.
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/finalize-plan.sh` — `ACTION=FINALIZE`. Sibling: `finalize-plan.md`.
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/file-design-oos.sh` — design-phase OOS staging + `/issue` stdout annotation. Sibling: `file-design-oos.md`.
 - `${CLAUDE_PLUGIN_ROOT}/scripts/plan-block-write.sh` — writes the `larch:plan` block into the issue body. Sibling: `plan-block-write.md` (under `scripts/`).

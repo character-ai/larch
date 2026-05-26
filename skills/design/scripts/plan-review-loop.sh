@@ -14,6 +14,9 @@ PLAN_REVIEW_TALLY_SH="${LARCH_PLAN_REVIEW_TALLY_SH:-$PLUGIN_ROOT/skills/design/s
 # shellcheck source=scripts/lib-quiet.sh
 source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
+# shellcheck source=skills/design/scripts/lib-findings-classification.sh
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/lib-findings-classification.sh"
 _dedup_failed=0
 
 usage() {
@@ -82,10 +85,6 @@ emit_loop_kvs() {
     emit_kv TALLY_PLAN_REVIEW_STATUS "$tally_status"
     emit_kv VOTING_TALLY_FILE "$voting_tally_file"
     emit_kv VOTER_1_PARSE_RATE_STATUS "$voter1_parse"
-}
-
-emit_findings_classification_header() {
-    printf '%s\n' 'finding_id	finding_reviewers	voting_result	v1_vote	v1_correctness	v1_severity	v1_quality	v1_uncertain	v1_tool	v2_vote	v2_correctness	v2_severity	v2_quality	v2_uncertain	v2_tool	v3_vote	v3_correctness	v3_severity	v3_quality	v3_uncertain	v3_tool'
 }
 
 write_empty_review_artifacts() {

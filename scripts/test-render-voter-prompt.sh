@@ -55,9 +55,20 @@ case_finding_oos() {
         || { echo "FAIL: finding-oos OOS clause missing" >&2; exit 1; }
     grep -Fq "$CANONICAL_OOS_DRIFT_MARK" <<< "$out" \
         || { echo "FAIL: finding-oos missing canonical OOS body" >&2; exit 1; }
+    grep -Fq 'FINDING_N: YES' <<< "$out" || { echo "FAIL: finding-oos missing FINDING_N example" >&2; exit 1; }
     grep -Fq '  OOS_N: YES' <<< "$out" || { echo "FAIL: finding-oos missing OOS_N example" >&2; exit 1; }
+    grep -Fq 'CORRECTNESS=<true|partially-true|false-positive|uncertain>' <<< "$out" \
+        || { echo "FAIL: finding-oos missing correctness axis enum" >&2; exit 1; }
+    grep -Fq 'SEVERITY=<blocker|major|minor|nit|uncertain>' <<< "$out" \
+        || { echo "FAIL: finding-oos missing severity axis enum" >&2; exit 1; }
+    grep -Fq 'QUALITY=<excellent|good|adequate|weak|no-fix|uncertain>' <<< "$out" \
+        || { echo "FAIL: finding-oos missing quality axis enum" >&2; exit 1; }
+    grep -Fq 'UNCERTAIN=<true|false>' <<< "$out" \
+        || { echo "FAIL: finding-oos missing uncertain axis enum" >&2; exit 1; }
     grep -Fq "Axis tokens must precede any optional \`-- reason\` rationale" <<< "$out" \
         || { echo "FAIL: finding-oos missing rationale delimiter instruction" >&2; exit 1; }
+    grep -Fq '**Output ONLY vote lines.**' <<< "$out" \
+        || { echo "FAIL: finding-oos missing output-only sentinel" >&2; exit 1; }
     grep -Fq 'silently inspect the plan or referenced repo files for verification' <<< "$out" \
         || { echo "FAIL: finding-oos plan verification allowance missing" >&2; exit 1; }
 }

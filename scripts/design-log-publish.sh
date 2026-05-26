@@ -333,6 +333,11 @@ if [[ -e "$DESIGN_TMPDIR/plan-review" ]]; then
             emit_publish_result false
             exit 0
         fi
+        if [[ -L "$f" ]]; then
+            larch_err "design-log-publish: plan-review file became a symlink before staging: $f"
+            emit_publish_result false
+            exit 0
+        fi
         mkdir -p "$RUN_DEST/plan-review/$(dirname "$rel")"
         design_publish_stage_file "$f" "$RUN_DEST/plan-review/$rel" || {
             larch_err "design-log-publish: staging failed for $f"

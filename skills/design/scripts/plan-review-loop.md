@@ -29,9 +29,11 @@ from `dispatch-plan-voters.sh` stdout for N=1..3. The loop does not use the
 legacy compacted `VOTER_PATHS_FILE` for the tally argv. For each non-failed
 slot with a path, it emits `--voter <SLOT>:<PATH>` in slot order plus
 `--findings-classification-out "$DESIGN_TMPDIR/plan-review/round-$ROUND_NUM/findings-classification.tsv"`.
-`<SLOT>` is the actual runtime tool identity, normalized to
-`Claude`/`Codex`/`Cursor`; waterfall Claude fallback for a Codex/Cursor slot is
-therefore visible in the tally TSV as `vN_tool=Claude`.
+Because `dispatch-plan-voters.sh` preserves canonical output basenames
+(`claude-vote-output.txt`, `codex-vote-output.txt`, `cursor-vote-output.txt`),
+`tally-plan-review.sh` can keep `v1/v2/v3` aligned to canonical slots even
+when a middle voter fails. Waterfall fallback tool identity remains visible via
+`vN_tool`.
 
 If the 0-judge main-agent path reruns tally, it uses
 `--voter MainAgent:$DESIGN_TMPDIR/voter-main-agent.txt`. Schema details and

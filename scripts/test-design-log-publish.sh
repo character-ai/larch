@@ -89,6 +89,22 @@ EOF
     chmod +x "$d/find"
 }
 
+make_find_symlink_race_stub() {
+    local d="$1" real_find="$2"
+    mkdir -p "$d"
+    cat >"$d/find" <<EOF
+#!/usr/bin/env bash
+if [[ "\${1:-}" == "\${RACE_FIND_ROOT:-}" && "\${2:-}" == "-type" && "\${3:-}" == "f" ]]; then
+    printf '%s\n' "\${RACE_FIND_PATH:?}"
+    rm -f "\${RACE_FIND_PATH:?}"
+    ln -s "\${RACE_FIND_TARGET:?}" "\${RACE_FIND_PATH:?}"
+    exit 0
+fi
+exec "$real_find" "\$@"
+EOF
+    chmod +x "$d/find"
+}
+
 setup_clone_with_origin_head() {
     local root="$1"
     local bare="$root/upstream.git"
@@ -554,5 +570,25 @@ out_presc=$(
 )
 unset ESCAPE_FIND_ROOT ESCAPE_FIND_PATH
 [[ "$out_presc" == *"PUBLISH_OK=false"* ]] || fail "plan-review path escape should fail publish: $out_presc"
+
+TMPPRRACE=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-pr-race.XXXXXX")
+clone_prrace=$(setup_clone_with_origin_head "$TMPPRRACE")
+stub_prrace="$TMPPRRACE/stub"
+make_gh_stub "$stub_prrace"
+REAL_FIND=$(command -v find)
+make_find_symlink_race_stub "$TMPPRRACE/findstub" "$REAL_FIND"
+export PATH="$TMPPRRACE/findstub:$stub_prrace:$PATH"
+mkdir -p "$TMPPRRACE/design/plan-review/round-1"
+printf 'body\n' >"$TMPPRRACE/design/plan.txt"
+printf 'ok\n' >"$TMPPRRACE/design/plan-review/round-1/findings-classification.tsv"
+RACE_FIND_ROOT="$(cd "$TMPPRRACE/design/plan-review" && pwd -P)"
+export RACE_FIND_ROOT
+export RACE_FIND_PATH="$TMPPRRACE/design/plan-review/round-1/findings-classification.tsv"
+export RACE_FIND_TARGET="$TMPPRRACE/design/plan.txt"
+out_prrace=$(
+    (cd "$clone_prrace" && bash "$PUBLISH" --design-tmpdir "$TMPPRRACE/design" --run-id "RUNPRRACE1" --issue 4 --repo owner/repo) 2>/dev/null || true
+)
+unset RACE_FIND_ROOT RACE_FIND_PATH RACE_FIND_TARGET
+[[ "$out_prrace" == *"PUBLISH_OK=false"* ]] || fail "plan-review symlink race should fail publish: $out_prrace"
 
 echo "All design-log-publish harness assertions passed."

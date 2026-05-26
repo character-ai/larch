@@ -11,6 +11,7 @@ export CLAUDE_PLUGIN_ROOT
 TALLY="$SCRIPT_DIR/tally-plan-review.sh"
 PARSER="$CLAUDE_PLUGIN_ROOT/scripts/parse-judge-vote-and-rating.sh"
 VOTE_LIB="$CLAUDE_PLUGIN_ROOT/scripts/lib-vote-tally.sh"
+HEADER='finding_id	finding_reviewers	voting_result	v1_vote	v1_correctness	v1_severity	v1_quality	v1_uncertain	v1_tool	v2_vote	v2_correctness	v2_severity	v2_quality	v2_uncertain	v2_tool	v3_vote	v3_correctness	v3_severity	v3_quality	v3_uncertain	v3_tool'
 
 fail() {
     printf 'FAIL: %s\n' "$1" >&2
@@ -164,16 +165,16 @@ p6=$("$PARSER" "$PV" FINDING_6)
 p7=$("$PARSER" "$PV" FINDING_7)
 [[ "$(parser_value "$p7" PARSED_QUALITY)" == "weak" ]] || fail "without delimiter last axis token should win"
 
-echo "=== dispatch-order --voter slots ignore basename heuristics ==="
+echo "=== canonical-slot --voter preserves basename slot markers ==="
 W2="$TMPROOT/case2"
 mkdir -p "$W2"
 write_ballot "$W2/ballot.md"
 cp "$CLAUDE" "$W2/slot-2-looking-path.txt"
 cp "$CURSOR" "$W2/slot-3-looking-path.txt"
 "$TALLY" --ballot-file "$W2/ballot.md" --design-tmpdir "$W2/design" --findings-classification-out "$W2/out.tsv" --voter "Claude:$W2/slot-2-looking-path.txt" --voter "Cursor:$W2/slot-3-looking-path.txt" >/dev/null
-assert_cell "$W2/out.tsv" FINDING_1 v1_tool Claude
-assert_cell "$W2/out.tsv" FINDING_1 v2_tool Cursor
-assert_cell "$W2/out.tsv" FINDING_1 v3_tool ""
+assert_cell "$W2/out.tsv" FINDING_1 v1_tool ""
+assert_cell "$W2/out.tsv" FINDING_1 v2_tool Claude
+assert_cell "$W2/out.tsv" FINDING_1 v3_tool Cursor
 assert_all_rows_21_fields "$W2/out.tsv"
 
 echo "=== legacy --voter-files keeps basename fallback ==="
@@ -187,6 +188,22 @@ assert_cell "$W2L/out.tsv" FINDING_1 v1_tool Claude
 assert_cell "$W2L/out.tsv" FINDING_1 v2_tool ""
 assert_cell "$W2L/out.tsv" FINDING_1 v3_tool Cursor
 grep -Fq 'deprecated: --voter-files; use --voter <SLOT>:<PATH>' "$W2L/legacy.err" || fail "legacy deprecation warning missing"
+
+echo "=== quiet-mode parser capture and partial-row TSV ==="
+W2Q="$TMPROOT/case2-quiet"
+mkdir -p "$W2Q/design"
+quiet_votes="$W2Q/quiet-votes.txt"
+cat > "$quiet_votes" <<'EOF'
+FINDING_2: YES SEVERITY=major CORRECTNESS=true UNCERTAIN=false
+EOF
+quiet_out=$(env -u LARCH_QUIET_DISABLE DESIGN_TMPDIR="$W2Q/design" "$PARSER" "$quiet_votes" FINDING_2)
+[[ "$(parser_value "$quiet_out" PARSED_VOTE)" == "YES" ]] || fail "quiet parser vote capture failed"
+[[ "$(parser_value "$quiet_out" PARSED_QUALITY)" == "" ]] || fail "quiet parser missing-quality capture failed"
+[[ "$(parser_value "$quiet_out" PARSED_UNCERTAIN)" == "true" ]] || fail "quiet parser missing-quality uncertain fallback failed"
+"$TALLY" --ballot-file "$BALLOT" --design-tmpdir "$W2Q/design" --findings-classification-out "$W2Q/out.tsv" --voter "Claude:$quiet_votes" >/dev/null
+assert_cell "$W2Q/out.tsv" FINDING_2 v1_vote YES
+assert_cell "$W2Q/out.tsv" FINDING_2 v1_quality ""
+assert_cell "$W2Q/out.tsv" FINDING_2 v1_uncertain true
 
 echo "=== main-agent and empty-ballot fallback rows ==="
 W3="$TMPROOT/case3"
@@ -207,6 +224,14 @@ printf 'stale\n' > "$W3/out.tsv"
 ! grep -q stale "$W3/out.tsv" || fail "classification TSV was not overwritten"
 order=$(awk -F '\t' 'NR > 1 { print $1 }' "$W3/out.tsv" | paste -sd ' ' -)
 [[ "$order" == "FINDING_1 FINDING_2 FINDING_10 OOS_1 OOS_2 OOS_3" ]] || fail "unexpected row order: $order"
+
+echo "=== default output path and shared header ==="
+W3D="$TMPROOT/case3-default"
+mkdir -p "$W3D/design"
+"$TALLY" --ballot-file "$W3/ballot.md" --design-tmpdir "$W3D/design" --voter "Claude:$CLAUDE" >/dev/null
+[[ -f "$W3D/design/plan-review/round-1/findings-classification.tsv" ]] || fail "default findings-classification path missing"
+read -r default_header < "$W3D/design/plan-review/round-1/findings-classification.tsv"
+[[ "$default_header" == "$HEADER" ]] || fail "default findings-classification header drifted"
 
 echo "=== anchored vote helper remains compatible ==="
 vote=$(bash -c 'source "$1"; vote_for_id FINDING_1 "$2"' _ "$VOTE_LIB" "$CLAUDE")
@@ -237,12 +262,26 @@ write_ballot "$W4/ballot.md"
 cp "$CLAUDE" "$W4/claude-vote-output.txt"
 cp "$CODEX" "$W4/codex-vote-output.txt"
 cp "$CURSOR" "$W4/cursor-vote-output.txt"
-"$TALLY" --ballot-file "$W4/ballot.md" --design-tmpdir "$W4/design" --findings-classification-out "$W4/out.tsv" --voter "Claude:$W4/claude-vote-output.txt" --voter "Claude:$W4/codex-vote-output.txt" --voter "Cursor:$W4/cursor-vote-output.txt" >/dev/null
-assert_cell "$W4/out.tsv" FINDING_1 v2_tool Claude
-assert_cell "$W4/out.tsv" FINDING_1 v2_vote YES
+set +e
+"$TALLY" --ballot-file "$W4/ballot.md" --design-tmpdir "$W4/design" --findings-classification-out "$W4/out.tsv" --voter "Claude:$W4/claude-vote-output.txt" --voter "Claude:$W4/claude-vote-output.txt" --voter "Cursor:$W4/cursor-vote-output.txt" >/dev/null 2>"$W4/dup.err"
+rc=$?
+set -e
+[[ "$rc" -ne 0 ]] || fail "duplicate canonical slot should fail"
+grep -Fq 'error: duplicate voter position 1' "$W4/dup.err" || fail "duplicate canonical slot diagnostic missing"
 "$TALLY" --ballot-file "$W4/ballot.md" --design-tmpdir "$W4/legacy-design2" --findings-classification-out "$W4/legacy2.tsv" --voter-files "$W4/claude-vote-output.txt" "$W4/codex-vote-output.txt" "$W4/cursor-vote-output.txt" >/dev/null 2>"$W4/legacy2.err"
 assert_cell "$W4/legacy2.tsv" FINDING_1 v2_tool Codex
 assert_cell "$W4/legacy2.tsv" FINDING_1 v3_tool Cursor
+
+echo "=== middle-slot failure preserves canonical columns ==="
+W4M="$TMPROOT/case4-middle-slot"
+mkdir -p "$W4M"
+write_ballot "$W4M/ballot.md"
+cp "$CLAUDE" "$W4M/claude-vote-output.txt"
+cp "$CURSOR" "$W4M/cursor-vote-output.txt"
+"$TALLY" --ballot-file "$W4M/ballot.md" --design-tmpdir "$W4M/design" --findings-classification-out "$W4M/out.tsv" --voter "Claude:$W4M/claude-vote-output.txt" --voter "Cursor:$W4M/cursor-vote-output.txt" >/dev/null
+assert_cell "$W4M/out.tsv" FINDING_1 v1_tool Claude
+assert_cell "$W4M/out.tsv" FINDING_1 v2_tool ""
+assert_cell "$W4M/out.tsv" FINDING_1 v3_tool Cursor
 
 echo "=== argv diagnostics ==="
 set +e
@@ -281,5 +320,15 @@ echo "=== legacy deprecation path ==="
 grep -Fq 'deprecated: --voter-files; use --voter <SLOT>:<PATH>' "$W4/legacy.err" || fail "legacy deprecation warning missing"
 [[ -s "$W4/legacy.tsv" ]] || fail "legacy classification TSV missing"
 assert_all_rows_21_fields "$W4/legacy.tsv"
+
+echo "=== reverse-order main-agent misuse and legacy header ==="
+set +e
+"$TALLY" --ballot-file "$W4/ballot.md" --design-tmpdir "$W4/bad5" --findings-classification-out "$W4/bad5.tsv" --voter "Claude:$CLAUDE" --voter "MainAgent:$W3/voter-main-agent.txt" 2>"$W4/bad5.err" >/dev/null
+rc=$?
+set -e
+[[ "$rc" -ne 0 ]] || fail "reverse-order MainAgent mix should fail"
+grep -Fq 'error: --voter MainAgent is only valid as the sole voter (0-judge fallback path)' "$W4/bad5.err" || fail "reverse-order MainAgent diagnostic missing"
+read -r legacy_header < "$W4/legacy.tsv"
+[[ "$legacy_header" == "$HEADER" ]] || fail "legacy findings-classification header drifted"
 
 echo "PASS: test-findings-classification.sh"

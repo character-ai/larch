@@ -199,6 +199,36 @@ EOS
     chmod +x "$STUB/dispatch-plan-voters.sh"
 }
 
+write_voters_slot2_failed() {
+    cat >"$STUB/dispatch-plan-voters.sh" <<'EOS'
+#!/usr/bin/env bash
+set -euo pipefail
+DESIGN_TMPDIR=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --design-tmpdir) DESIGN_TMPDIR="${2:?}"; shift 2 ;;
+        --ballot-file|--codex-available|--cursor-available|--session-env-path) shift 2 ;;
+        *) shift 1 ;;
+    esac
+done
+[[ -n "$DESIGN_TMPDIR" ]] || exit 2
+v1="$DESIGN_TMPDIR/claude-vote-output.txt"
+v3="$DESIGN_TMPDIR/cursor-vote-output.txt"
+vp="$DESIGN_TMPDIR/voter-paths.list"
+for f in "$v1" "$v3"; do
+    cat >"$f" <<'INNER'
+FINDING_1: YES
+INNER
+done
+printf '%s\n' "$v1" "$v3" >"$vp"
+printf 'DISPATCH_OK=true\nVOTER_PATHS_FILE=%s\nVOTER_1_PARSE_RATE_STATUS=ok\n' "$vp"
+printf 'VOTER_1_PATH=%s\nVOTER_1_TOOL=claude\nVOTER_1_STATUS=launched\n' "$v1"
+printf 'VOTER_2_PATH=%s\nVOTER_2_TOOL=codex\nVOTER_2_STATUS=failed\n' "$DESIGN_TMPDIR/codex-vote-output.txt"
+printf 'VOTER_3_PATH=%s\nVOTER_3_TOOL=cursor\nVOTER_3_STATUS=launched\n' "$v3"
+EOS
+    chmod +x "$STUB/dispatch-plan-voters.sh"
+}
+
 # Plan ballot after dedup: three FINDING_* and three OOS_* blocks (tally needs one line per id per voter).
 write_voters_plan_six() {
     cat >"$STUB/dispatch-plan-voters.sh" <<'EOS'
@@ -288,6 +318,27 @@ printf '%s\n' "$out1" | grep -q '^TALLY_PLAN_REVIEW_STATUS=ok$' || fail "expecte
 printf '%s\n' "$out1" | grep -q '^LOOP_STATUS=complete$' || fail "expected complete loop"
 grep -q 'FINDING_1' "$D1/accepted-plan-findings.md" || fail "accepted finding missing"
 [[ -f "$D1/plan-review/round-1/findings-classification.tsv" ]] || fail "classification TSV missing for real tally"
+
+echo "=== stubbed driver: failed middle voter preserves canonical tally slot ==="
+D1B="$TMP/z1b"
+mkdir -p "$D1B"
+printf 'plan\n' >"$D1B/plan.txt"
+printf 'feat\n' >"$D1B/feature-description.txt"
+write_scout
+write_dispatch_one_slot
+write_collect one
+write_voters_slot2_failed
+out1b=$(run_loop "$D1B")
+printf '%s\n' "$out1b" | grep -q '^TALLY_PLAN_REVIEW_STATUS=ok$' || fail "expected ok tally status with failed middle voter"
+python3 - "$D1B/plan-review/round-1/findings-classification.tsv" <<'PY'
+import csv, sys
+with open(sys.argv[1], newline="", encoding="utf-8") as fh:
+    row = next(csv.DictReader(fh, delimiter="\t"))
+assert row["finding_id"] == "FINDING_1"
+assert row["v1_tool"] == "Claude"
+assert row["v2_tool"] == ""
+assert row["v3_tool"] == "Cursor"
+PY
 
 echo "=== brainstorm context merges into feature file before dispatch ==="
 DB="$TMP/zb"

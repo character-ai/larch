@@ -53,9 +53,12 @@ finding_id \t finding_reviewers \t voting_result \t v1_vote \t v1_correctness \t
 - `finding_reviewers` is ballot-proposer attribution from
   `reviewer_for_block`; `vN_tool` is the actual runtime voter tool identity
   supplied by `--voter`.
-- With `--voter`, non-`MainAgent` slots fill strictly by argv dispatch order:
-  first voter -> `v1_*`, second -> `v2_*`, third -> `v3_*`. The `<SLOT>` label
-  in `--voter <SLOT>:<PATH>` is recorded only in `vN_tool`.
+- With `--voter`, non-`MainAgent` slots preserve canonical positions. The tally
+  first trusts canonical path markers (`voter-1/2/3`, `slot1/2/3`,
+  `claude-vote-output`, `codex-vote-output`, `cursor-vote-output`), then falls
+  back to canonical tool positions (`Claude` -> `v1_*`, `Codex` -> `v2_*`,
+  `Cursor` -> `v3_*`). Middle failed slots therefore remain empty instead of
+  compacting later voters leftward.
 - With legacy `--voter-files`, slot placement still uses basename/tool
   heuristics (`slotN`/canonical tool names first, then first free slot) because
   tool identity must be inferred from the file path. This file is the schema
@@ -80,14 +83,14 @@ The regression harnesses are `make test-tally-plan-review` and
 
 `test-tally-plan-review.sh` covers all-yes, mixed votes, split-panel ties, single-judge YES/NO/EXONERATE, 0-judge main-agent-required, no quorum reduction for per-judge `JUDGE_ERROR` fallbacks, OOS accepted/rejected, security-tagged OOS exclusion, scoreboard rendering, malformed-ballot abort tally stub, and missing-ballot abort tally stub.
 
-`test-findings-classification.sh` covers complete ratings, dispatch-order
+`test-findings-classification.sh` covers complete ratings, canonical-position
 `--voter` slot filling, legacy `--voter-files` basename fallback, missing
 judges, partial rows, 0-judge and 0-finding TSVs, overwrite behavior, OOS
 rows, anchored-vote compatibility, unrecognized votes, lowercase-only axis
 values, duplicate ID last-line-wins, lowercased ballot ids, tab normalization,
 sorted row order, rationale delimiter scoping, cross-parser vote parity,
-MainAgent rules, argv mutual exclusion, invalid slots, legacy deprecation, and
-21-field row preservation.
+quiet-mode parser capture, MainAgent rules, argv mutual exclusion, invalid
+slots, legacy deprecation, and 21-field row preservation.
 
 ## Edit In Sync
 
