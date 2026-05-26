@@ -151,7 +151,7 @@ run_fail "cache-exceeds-midstream" 1 "$TMP/cache-exceeds-midstream.jsonl" "cache
 run_fail "argv-error" 2 "" "usage error"
 
 set +e
-out=$(PATH="/bin:/usr/bin" "$SCRIPT" "$TMP/cache-math.jsonl" 2>"$TMP/no-jq.err")
+out=$(env -i HOME="${HOME:-}" TMPDIR="${TMPDIR:-/tmp}" bash "$SCRIPT" "$TMP/cache-math.jsonl" 2>"$TMP/no-jq.err")
 rc=$?
 set -e
 eq "jq-missing rc" "1" "$rc"
