@@ -26,6 +26,12 @@ sanitize_list() {
     tr -cd '[:alnum:]_,=:-'
 }
 
+sanitize_diagnostic_line() {
+    # Strip C0 control bytes and DEL from one gh diagnostic line.
+    # LC_ALL=C keeps tr byte-oriented on BSD/macOS with malformed input.
+    LC_ALL=C tr -d '[:cntrl:]'
+}
+
 job_class() {
     case "$1" in
         lint|lint-mermaid|shellcheck|test-harnesses|agent-lint|agnix|smoke-dialectic|agent-sync)
@@ -77,7 +83,7 @@ if [ "$gh_rc" -ne 0 ]; then
         exit 3
     fi
     while IFS= read -r line || [ -n "$line" ]; do
-        larch_err "$line"
+        larch_err "$(printf '%s' "$line" | sanitize_diagnostic_line)"
     done < "$tmp_stderr"
     exit 1
 fi

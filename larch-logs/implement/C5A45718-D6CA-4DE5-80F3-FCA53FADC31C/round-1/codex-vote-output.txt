@@ -1,0 +1,14 @@
+FINDING_1: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- T8 failure labels say the control byte was still present, so a failing assertion does not read like success.
+FINDING_2: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- generate-code-flow-diagram.md already documents POSIX awk compatibility for the extractor.
+FINDING_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_5: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- The SKIP_REASON regression tests use exact-line assertions, so metadata-contaminated output would not pass those cases.
+FINDING_6: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- The regex differs from the literal plan text but matches the documented first-whitespace contract and is not worth raising.
+FINDING_7: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- The stale stub is real, but the impact is speculative future-test drift rather than a concrete issue worth filing now.
+FINDING_8: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- The branch does include unrelated work, but this is a one-off branch hygiene concern rather than a useful follow-up issue.
+FINDING_9: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_10: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- Line splitting is an explicit scope boundary and hardening it would add more complexity than the risk warrants here.
+FINDING_11: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- Current SKIP_REASON values are fixed sanitizer tokens, so this is only defense-in-depth for hypothetical future vocabulary expansion.
+FINDING_12: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Step 7a does not surface the generator token, but the current generic placeholder is acceptable and not worth a separate issue.
+FINDING_13: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- The provided session context includes a relevant-checks log with passing output for the run.
+FINDING_14: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false

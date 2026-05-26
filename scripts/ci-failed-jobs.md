@@ -46,6 +46,19 @@ case-statement argv dispatcher.
 The script does not source `lib-net.sh`; callers decide whether to retry
 transient network failures.
 
+## Diagnostic Sanitization
+
+When `gh run view` fails, stderr is relayed line-by-line through
+`sanitize_diagnostic_line()` before `larch_err`. The helper strips C0 control
+bytes and DEL while preserving printable ASCII prose and punctuation. It uses
+`LC_ALL=C` so `tr` runs byte-wise on BSD/macOS even if `gh` emits malformed
+UTF-8.
+
+This protects the stderr passthrough from intra-line control-byte injection,
+including BEL and ANSI escape sequences. Newline-driven log-line splitting is
+outside this helper's scope: the existing `while IFS= read -r` loop is the
+diagnostic line boundary for `gh` stderr.
+
 ## Mapping
 
 Fixable jobs are `lint`, `lint-mermaid`, `shellcheck`, `test-harnesses`,

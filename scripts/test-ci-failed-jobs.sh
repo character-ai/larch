@@ -42,7 +42,11 @@ case "${GH_MODE:-lines}" in
     exit 1
     ;;
   fail)
-    printf '%s\n' 'HTTP 500' >&2
+    if [ -n "${GH_FAIL_STDERR_FILE:-}" ] && [ -r "${GH_FAIL_STDERR_FILE}" ]; then
+        cat "${GH_FAIL_STDERR_FILE}" >&2
+    else
+        printf '%s\n' 'HTTP 500' >&2
+    fi
     exit 2
     ;;
   lines)
@@ -68,6 +72,7 @@ run_subject() {
     local root=$1 out=$2 err=$3 tsv=$4 rc=0
     PATH="$root/scripts:$PATH" LARCH_QUIET_DISABLE="${LARCH_QUIET_DISABLE:-1}" \
         GH_MODE="${GH_MODE:-lines}" GH_LINES_FILE="${GH_LINES_FILE:-}" \
+        GH_FAIL_STDERR_FILE="${GH_FAIL_STDERR_FILE:-}" \
         "$root/scripts/ci-failed-jobs.sh" --run-id run123 --repo owner/repo --output-tsv "$tsv" \
         > "$out" 2> "$err" || rc=$?
     printf '%s\n' "$rc"
@@ -165,6 +170,29 @@ for row in \
 do
     assert_file_contains "table-driven row $row" "$T7/jobs.tsv" "$row"
 done
+
+T8="$TMPROOT/t8"
+mkdir -p "$T8"
+write_subject "$T8"
+write_gh_lines "$T8"
+printf '%b\n' 'HTTP 500\x07Bad Gateway\x1b[31mred\x1b[0m' > "$T8/stderr.txt"
+GH_MODE=fail
+GH_FAIL_STDERR_FILE="$T8/stderr.txt"
+rc=$(run_subject "$T8" "$T8/out" "$T8/err" "$T8/jobs.tsv")
+assert_rc "control-byte gh failure exits 1" "$rc" 1
+assert_file_contains "control-byte stderr preserves prefix" "$T8/err" "HTTP 500"
+assert_file_contains "control-byte stderr preserves prose" "$T8/err" "Bad Gateway"
+if grep -aF $'\x07' "$T8/err" >/dev/null; then
+    fail "control-byte stderr still contains BEL"
+else
+    ok "control-byte stderr strips BEL"
+fi
+if grep -aF $'\x1b' "$T8/err" >/dev/null; then
+    fail "control-byte stderr still contains ESC"
+else
+    ok "control-byte stderr strips ESC"
+fi
+unset GH_FAIL_STDERR_FILE
 
 workflow_jobs=$(awk '
     /^jobs:$/ { in_jobs=1; next }

@@ -1,0 +1,3 @@
+Merging reviewer inputs into a structured finding list per aggregator rules. Checking a few source files for accurate titles and verbatim revision text.
+Producing the aggregated finding list: excluding plan-fidelity confirmations (FINDING_18–28) and merging duplicates.
+

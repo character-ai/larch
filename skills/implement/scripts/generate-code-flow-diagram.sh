@@ -106,5 +106,5 @@ fi
 rm -f "$candidate"
 emit_kv STATUS skipped
 emit_kv DIAGRAM_FILE ""
-emit_kv SKIP_REASON "$(awk -F= '$1=="REASON_TOKEN"{print $2; exit}' "$sanitize_log" 2>/dev/null || printf 'sanitizer-rejected')"
+emit_kv SKIP_REASON "$(awk '/^REASON_TOKEN=/{sub(/^REASON_TOKEN=/, ""); sub(/[[:space:]].*$/, ""); print; found=1; exit} END{exit !found}' "$sanitize_log" 2>/dev/null || printf 'sanitizer-rejected')"
 exit 0
