@@ -55,13 +55,6 @@ append_best_effort_failure() {
     append_failure "Tool Failures" "$site" "$tool" "$exit_code" "$output_file"
 }
 
-should_skip_diagram_upsert() {
-    case "${1:-}" in
-        pipe-in-node-label|sanitizer-*|*sanitiz*|*reject*) return 0 ;;
-        *) return 1 ;;
-    esac
-}
-
 kv_value() {
     local key=$1 file=$2
     awk -F= -v key="$key" '$1==key{print substr($0, index($0, "=") + 1); exit}' "$file" 2>/dev/null
@@ -348,7 +341,6 @@ else
     gen_rc=$?
     set +e
     gen_status=$(kv_value STATUS "$gen_out")
-    gen_skip_reason=$(kv_value SKIP_REASON "$gen_out")
     case "$gen_status" in
         ok)
             DIAGRAM_STATUS=ok
@@ -359,6 +351,7 @@ else
             DIAGRAM_STATUS=skipped
             DIAGRAM_PATH=""
             CODE_FLOW_SKIP_REASON="Code flow diagram not available."
+            COMMENT_UPSERT_SKIP=true
             ;;
         failed)
             DIAGRAM_STATUS=failed
@@ -373,9 +366,6 @@ else
             append_failure "Warnings" "step-7a" "generate-code-flow-diagram.sh" "$gen_rc" "$gen_err"
             ;;
     esac
-    if should_skip_diagram_upsert "$gen_skip_reason"; then
-        COMMENT_UPSERT_SKIP=true
-    fi
 fi
 
 compose_summary_diagrams
@@ -407,7 +397,6 @@ set +e
 rebase_out="$IMPLEMENT_TMPDIR/rebase-checkpoint-probe.stdout"
 "$PLUGIN_ROOT/scripts/rebase-checkpoint-probe.sh" 7a.r 'diagrams' "${BASE_ARGS[@]+"${BASE_ARGS[@]}"}" >"$rebase_out"
 rebase_rc=$?
-set -e
 while IFS= read -r line; do
     [ -n "$line" ] || continue
     emit "$line"

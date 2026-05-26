@@ -120,12 +120,9 @@ case "${STEP7A_GEN_MODE:-ok}" in
         printf 'STATUS=ok\nDIAGRAM_FILE=%s\nSKIP_REASON=\n' "$tmpdir/code-flow-diagram.md"
         ;;
     rejected)
+        token=${STEP7A_SANITIZER_TOKEN:-pipe-in-node-label}
         printf 'generator sanitizer rejected\n' >&2
-        printf 'STATUS=skipped\nDIAGRAM_FILE=\nSKIP_REASON=pipe-in-node-label\n'
-        ;;
-    skipped)
-        printf 'generator skipped without sanitizer rejection\n' >&2
-        printf 'STATUS=skipped\nDIAGRAM_FILE=\nSKIP_REASON=small-graph\n'
+        printf 'STATUS=skipped\nDIAGRAM_FILE=\nSKIP_REASON=%s fence=mermaid line=7\n' "$token"
         ;;
     failed)
         printf 'generator helper failed\n' >&2
@@ -374,15 +371,17 @@ assert_contains "COMMENT_URL=" "$out" "diagram-rejected emits empty comment URL"
 assert_contains "LOG_FLUSH_STATUS=ok" "$out" "diagram-rejected keeps flush ok"
 assert_not_contains "### Warnings" "$(cat "$CASE_DIR/tmp/execution-issues.md")" "diagram-rejected does not append warning"
 
-new_case diagram-skipped-non-sanitizer
-set +e
-out=$(STEP7A_GEN_MODE=skipped run_helper "$CASE_DIR" --implement-tmpdir "$CASE_DIR/tmp" --issue-number 42 --run-id run-001 --no-logs-commit false --forked-target false 2>&1)
-rc=$?
-set -e
-assert_equals 0 "$rc" "diagram-skipped-non-sanitizer exits 0"
-assert_contains "DIAGRAM_STATUS=skipped" "$out" "diagram-skipped-non-sanitizer emits skipped"
-assert_contains "tracking-issue-summary.sh" "$(cat "$CASE_DIR/calls.log")" "diagram-skipped-non-sanitizer still upserts"
-assert_contains "COMMENT_URL=https://example.test/comment/1" "$out" "diagram-skipped-non-sanitizer emits comment URL"
+for sanitizer_token in br-in-participant-alias dollar-in-participant-alias unclosed-frontmatter; do
+    new_case "diagram-rejected-$sanitizer_token"
+    set +e
+    out=$(STEP7A_GEN_MODE=rejected STEP7A_SANITIZER_TOKEN="$sanitizer_token" run_helper "$CASE_DIR" --implement-tmpdir "$CASE_DIR/tmp" --issue-number 42 --run-id run-001 --no-logs-commit false --forked-target false 2>&1)
+    rc=$?
+    set -e
+    assert_equals 0 "$rc" "diagram-rejected-$sanitizer_token exits 0"
+    assert_contains "DIAGRAM_STATUS=skipped" "$out" "diagram-rejected-$sanitizer_token emits skipped"
+    assert_not_contains "tracking-issue-summary.sh" "$(cat "$CASE_DIR/calls.log")" "diagram-rejected-$sanitizer_token skips upsert"
+    assert_contains "COMMENT_URL=" "$out" "diagram-rejected-$sanitizer_token emits empty comment URL"
+done
 
 new_case diagram-failure
 set +e

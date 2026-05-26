@@ -45,7 +45,7 @@ The helper re-emits the `rebase-checkpoint-probe.sh` KV envelope onto the caller
 - Phases stay in the same order as the previous Step 7a `SKILL.md` body: rehydrate, token/timing marks, classifier, diagram generation, comment composition/upsert, 7a.r rebase probe, pre-bump flush, final KV tail.
 - `summary-diagrams.md` preserves the existing `larch:diagrams` content shape: Architecture Diagram content or placeholder, blank line, then Code Flow content or placeholder.
 - Empty `ISSUE_NUMBER` still gates the tracking-issue upsert.
-- Sanitizer rejection suppresses the `larch:diagrams` upsert; other `STATUS=skipped` paths still post the placeholder comment.
+- `generate-code-flow-diagram.sh` currently emits `STATUS=skipped` only for sanitizer rejection; Step 7a suppresses the `larch:diagrams` upsert on that status and still writes the placeholder body to `summary-diagrams.md`.
 - `LARCH_QUIET_BREADCRUMBS=1` is exported for the 7a.r rebase checkpoint probe.
 - The helper does not write a `diagrams` larch-log batch.
 
