@@ -1,0 +1,4 @@
+scripts/implement-bootstrap.sh
+scripts/implement-bootstrap.md
+skills/implement/scripts/test-implement-bootstrap.sh
+skills/implement/SKILL.md

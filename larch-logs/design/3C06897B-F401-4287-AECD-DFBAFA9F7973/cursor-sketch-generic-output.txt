@@ -1,0 +1,4 @@
+Exploring the codebase for the Phase 3 `phase_plan_materialize` design: current bootstrap stub, Step 0 skill calls, and related scripts.
+Checking how `emit_final_tail` should populate Phase 3 keys and whether a preflight argv pattern exists in design docs.
+I have enough context from the Phase 1–2 bootstrap skeleton, the Step 0 SKILL prose, and review findings on `DEFERRED`/`should_run_post_tracking_phase`. Creating the implementation plan.
+

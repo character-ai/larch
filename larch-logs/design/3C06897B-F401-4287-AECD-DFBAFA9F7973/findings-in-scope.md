@@ -1,0 +1,376 @@
+### FINDING_1:
+- **Reviewer(s)**: Cursor-Arch, Cursor-dyn-sequence-absorb
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: plan.txt:19-21 / skills/implement/SKILL.md:691-701
+- **Concern**: phase_plan_materialize orders gh issue view before cp plan-from-issue.txt. Scenario: Canonical SKILL order is copy plan then compose feature-description; swapping can change failure semantics if gh fails after cp or if downstream assumes plan.txt exists before feature-description.txt
+- **Proposed resolution**: Reorder steps 3-4 to match SKILL: cp plan-from-issue.txt first then gh issue view into feature-description.txt; fix the Failure modes order comment to match
+
+### FINDING_2:
+- **Reviewer(s)**: Codex-Arch
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: scripts/lib-quiet.sh:295-308; <TMPDIR>/plan.txt:94-98
+- **Concern**: Plan emits phase_plan_materialize breadcrumbs unconditionally. Scenario: With LARCH_QUIET_DISABLE=1, emit_breadcrumb prints to stdout when LARCH_QUIET_BREADCRUMBS is unset, polluting the bootstrap KV stream that SKILL.md token-scans
+- **Proposed resolution**: Wrap the two new breadcrumbs in the same larch_quiet_truthy LARCH_QUIET_BREADCRUMBS guard used by existing tracking breadcrumbs, or otherwise ensure they never write to stdout during normal KV capture
+
+### FINDING_3:
+- **Reviewer(s)**: Codex-Arch
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/implement/SKILL.md:420-430; <TMPDIR>/plan.txt:34-39
+- **Concern**: Dirty-tree bail reason is added but not routed by the orchestrator. Scenario: phase_plan_materialize returns IMPLEMENT_BAIL_REASON=dirty-tree with STALL_TRACKING=false; current Step 0 routing only skips for closed PR tracking-init or STALL_TRACKING=true, so the run can continue after a dirty checkpoint
+- **Proposed resolution**: Extend the Step 0 routing guard and table to handle dirty-tree explicitly, invoking the intended recovery path or skipping safely before implementation begins
+
+### FINDING_4:
+- **Reviewer(s)**: Codex-Arch
+- **Severity**: important
+- **Focus area**: architecture
+- **Location**: skills/implement/SKILL.md:783-787; scripts/run-step1-plan-log.md:3-8; <TMPDIR>/plan.txt:77-81
+- **Concern**: The proposed phase omits the plan-review-tally write. Scenario: Current Step 0 writes both plan-goals-test and plan-review-tally, but the plan only calls run-step1-plan-log.sh; that helper writes plan-goals-test and parent-issue, not plan-review-tally, so committed run logs miss plan-review-tally.json
+- **Proposed resolution**: Keep a separate write-tally.sh call in phase_plan_materialize with a short plan-review body and hard mode zero counts, capture tally_rc best-effort, and assert the batch exists or the stub is invoked in B5
+
+### FINDING_5:
+- **Reviewer(s)**: Codex-Arch
+- **Severity**: latent
+- **Focus area**: code-quality
+- **Location**: skills/implement/scripts/test-implement-bootstrap.sh:311-320; <TMPDIR>/plan.txt:137-145
+- **Concern**: The planned gh stub is not wired into PATH. Scenario: The bootstrap implementation must invoke bare gh, but the existing harness run_bootstrap does not prepend a sandbox bin directory to PATH; a stub placed beside script helpers will not be used and tests may hit the developer's real gh or fail nondeterministically
+- **Proposed resolution**: Add a sandbox bin/gh stub and run bootstrap with PATH=$SANDBOX/bin:$PATH, or make the plan explicitly place gh where PATH resolves it
+
+### FINDING_6:
+- **Reviewer(s)**: Cursor-Edge
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/implement/SKILL.md:420-430
+- **Concern**: Removing prompt-side dirty-tree prose without adding orchestrator routing for bootstrap `IMPLEMENT_BAIL_REASON=dirty-tree`. Scenario: `phase_plan_materialize` returns exit 0 with `dirty-tree` and `STALL_TRACKING=false`; the Step 0 guard only jumps to Step 18 for tracking bails or `STALL_TRACKING=true`, so the run can continue to the implementer waterfall and Step 2 on a dirty/unknown working tree
+- **Proposed resolution**: Add a bootstrap bail row and prompt-side recovery block (checkpoint + `AskUserQuestion` + idempotency sentinel, mirroring design skills) keyed on `IMPLEMENT_BAIL_REASON=dirty-tree`; do not rely on the removed L733-735 subsection alone
+
+### FINDING_7:
+- **Reviewer(s)**: Codex-Edge
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: scripts/implement-bootstrap.sh:513-516
+- **Concern**: Planned gh issue view command omits the issue number. Scenario: The proposed phase composes feature-description.txt with gh issue view --json title,body --template ... but no ISSUE_NUMBER_RESOLVED argument; gh can fail or read the wrong context, leaving an empty/partial title and deriving a bad branch slug
+- **Proposed resolution**: Add the explicit issue argument, e.g. gh issue view "$ISSUE_NUMBER_RESOLVED" --json title,body --template ..., and have the gh test stub assert the positional issue plus optional --repo
+
+### FINDING_8:
+- **Reviewer(s)**: Codex-Edge
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: skills/implement/SKILL.md:339-361
+- **Concern**: New bootstrap hard failures are not surfaced by the orchestrator. Scenario: The plan adds STEP_FAILED=copy-plan and STEP_FAILED=gh-issue-view exit 2 paths, but the Step 0 rc=2 handler only recognizes existing failure classes; unmatched failures exit 2 without printing the captured STEP_FAILED or a useful operator message
+- **Proposed resolution**: Add handler branches for copy-plan and gh-issue-view, print the STEP_FAILED line and stderr/log location, and add harness coverage for both failures
+
+### FINDING_9:
+- **Reviewer(s)**: Codex-Edge
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/implement/SKILL.md:783-786
+- **Concern**: Plan-review tally batch is dropped. Scenario: The proposed phase calls run-step1-plan-log.sh and assumes write-tally is internal, but run-step1-plan-log.sh only writes plan-goals-test and parent-issue; issue-anchored runs would miss plan-review-tally.json required by the run-log contract
+- **Proposed resolution**: Compose plan-review-tally-body.md and call scripts/write-tally.sh explicitly with --phase plan-review --rounds 0 --accepted 0 --rejected 0, then assert the invocation/output in test-implement-bootstrap
+
+### FINDING_10:
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: plan.txt:Failure modes §1 vs steps 2–4
+- **Concern**: Proposed step order runs gh compose before cp plan; Failure modes §1 and skills/implement/SKILL.md:691–701 require cp then gh. Scenario: Downstream readers of feature-description vs plan.txt ordering can diverge from today; invoke-log order tests may pass the wrong sequence
+- **Proposed resolution**: Fix the numbered phase_plan_materialize list to match SKILL.md: cp plan-from-issue → gh issue view → timing-ledger workflow-path HARD → persist-implement-run-flags → dirty-tree → branch slug/create → git-current-branch → plan log → larch:plan summary
+
+### FINDING_11:
+- **Reviewer(s)**: Codex-Innovation
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/implement/SKILL.md:783-787, scripts/run-step1-plan-log.sh:131-149
+- **Concern**: The plan drops the explicit plan-review-tally write while assuming run-step1-plan-log covers it. Scenario: run-step1-plan-log only writes plan-goals-test and parent-issue batches, so issue-anchored runs land without plan-review-tally.json despite the Step 0 batch contract
+- **Proposed resolution**: Add the write-tally.sh call to phase_plan_materialize after run-step1-plan-log, compose plan-review-tally-body.md, and assert the invocation/output in B5-plan
+
+### FINDING_12:
+- **Reviewer(s)**: Codex-Innovation
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: skills/implement/scripts/test-implement-bootstrap.sh:311-320
+- **Concern**: The proposed bare gh stub will not be used by the sandbox harness. Scenario: run_bootstrap does not prepend a sandbox bin directory to PATH, while phase_plan_materialize calls gh by bare name, so tests either hit the operator's real gh or fail nondeterministically
+- **Proposed resolution**: Create the gh stub under a sandbox bin directory and run bootstrap with PATH="$SANDBOX/bin:$PATH", then assert --repo handling through the stub log
+
+### FINDING_13:
+- **Reviewer(s)**: Codex-Innovation
+- **Severity**: important
+- **Focus area**: architecture
+- **Location**: skills/implement/SKILL.md:654-685
+- **Concern**: The SKILL.md update misses remaining prompt-side Step 0 materialization blocks. Scenario: The plan promises one bootstrap call for #1-#16, but the plan-materialization ledger block and branch-prefix create-branch.sh --check section remain, causing duplicated branch probing after bootstrap may already have created the branch and overwriting entry-branch KVs
+- **Proposed resolution**: Remove these sections or explicitly migrate the plan-materialization token/timing mark into phase_plan_materialize; rely on the bootstrap final tail for branch facts
+
+### FINDING_14:
+- **Reviewer(s)**: Codex-Innovation
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/implement/SKILL.md:298-304
+- **Concern**: New hard-failure STEP_FAILED values are not added to the caller's exit-2 routing. Scenario: phase_plan_materialize plans STEP_FAILED=gh-issue-view and STEP_FAILED=copy-plan exits, but the orchestrator only normalizes session-entry-gate, session-setup, get-issue-state, and issue-number-required-for-resume, so auth/copy failures abort with generic handling and weak operator guidance
+- **Proposed resolution**: Add explicit SKILL.md cases and implement-bootstrap.md exit-code docs/tests for gh-issue-view and copy-plan
+
+### FINDING_15:
+- **Reviewer(s)**: Codex-Innovation
+- **Severity**: latent
+- **Focus area**: correctness
+- **Location**: scripts/persist-implement-run-flags.sh:15-19
+- **Concern**: The persist-run-flags failure handling is underspecified for non-2 exits. Scenario: The plan says bail on exit 2 while the new bail-reason docs say non-zero; filesystem failures from mktemp/mv can be non-2, letting the phase continue without run-flags.sh if implemented literally
+- **Proposed resolution**: Treat any non-zero persist-implement-run-flags.sh rc as run-flags-persist-failed with STALL_TRACKING=true, and add a harness variant for rc 1
+
+### FINDING_16:
+- **Reviewer(s)**: Codex-Innovation
+- **Severity**: important
+- **Focus area**: security
+- **Location**: skills/implement/SKILL.md:632-634, scripts/redact-secrets.sh:23-29
+- **Concern**: Moving plan-log composition into Bash loses the current prompt-level sanitization requirement. Scenario: The automated phase composes goal/tally/summary inputs from issue title/body/plan; larch-log redaction explicitly does not cover private hostnames or PII, so committed run logs can preserve sensitive plan text that prompt-side sanitization was supposed to catch
+- **Proposed resolution**: Either keep generated Step 0 log bodies pointer-only/static, or add a deterministic sanitizer that covers internal URLs and PII before writing larch-log inputs and summary content; update SECURITY.md if the exposure contract changes
+
+### FINDING_17:
+- **Reviewer(s)**: Cursor-Pragmatic, Cursor-dyn-sequence-absorb
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/implement/SKILL.md:783-787
+- **Concern**: phase_plan_materialize omits write-tally.sh plan-review-tally step. Scenario: Step 0 runs lack plan-review-tally.json required by batch table and downstream log completeness
+- **Proposed resolution**: Add compose plan-review-tally-body.md plus write-tally.sh between run-step1-plan-log and tracking-issue-summary; stub write-tally in harness invoke-log tests
+
+### FINDING_18:
+- **Reviewer(s)**: Codex-Pragmatic
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: scripts/implement-bootstrap.sh:513-516
+- **Concern**: Plan-log phase omits write-tally.sh despite replacing the Step 0 plan-review-tally section. Scenario: After the PR, issue-anchored runs write plan-goals-test but no plan-review-tally batch, regressing the larch-log batch contract described in skills/implement/SKILL.md:783-787
+- **Proposed resolution**: Add the plan-review-tally body composition and scripts/write-tally.sh --phase plan-review --mode hard --rounds 0 --accepted 0 --rejected 0 call to phase_plan_materialize, and assert it in B5
+
+### FINDING_19:
+- **Reviewer(s)**: Codex-Pragmatic
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: scripts/implement-bootstrap.sh:513-516
+- **Concern**: Proposed breadcrumbs are emitted unconditionally through emit_breadcrumb. Scenario: Because implement-bootstrap.sh forces LARCH_QUIET_DISABLE=1, emit_breadcrumb prints to stdout when breadcrumbs are disabled, polluting the KV stream parsed by skills/implement/SKILL.md
+- **Proposed resolution**: Wrap the two new phase_plan_materialize breadcrumbs in the same LARCH_QUIET_BREADCRUMBS guard used by emit_tracking_breadcrumb_if_enabled, or otherwise route them off stdout
+
+### FINDING_20:
+- **Reviewer(s)**: Codex-Pragmatic
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/implement/SKILL.md:298-304
+- **Concern**: New hard-failure STEP_FAILED values are not added to the Step 0 wrapper handling. Scenario: The plan introduces STEP_FAILED=copy-plan and STEP_FAILED=gh-issue-view exit 2 paths, but the wrapper only prints normalized output for existing values; unknown STEP_FAILED exits at line 361 without surfacing the captured stdout diagnostics
+- **Proposed resolution**: Update the SKILL.md failure matrix and Bash handler for copy-plan and gh-issue-view, printing STEP_FAILED and an operator-visible message
+
+### FINDING_21:
+- **Reviewer(s)**: Codex-Pragmatic
+- **Severity**: latent
+- **Focus area**: correctness
+- **Location**: scripts/implement-bootstrap.sh:513-516
+- **Concern**: persist-implement-run-flags failure handling only specifies exit 2. Scenario: The helper documents validation as exit 2, but set -e failures such as mktemp or mv can exit non-2; the parent script has errexit off, so a non-2 failure could continue without run-flags.sh
+- **Proposed resolution**: Set run-flags-persist-failed and STALL_TRACKING=true on any non-zero persist rc, not only rc=2
+
+### FINDING_22:
+- **Reviewer(s)**: Cursor-Requirements
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: scripts/implement-bootstrap.sh:phase_plan_materialize
+- **Concern**: Call #15 omits write-tally.sh and plan-review-tally-body.md composition. Scenario: Feature description and approach-synthesis require run-step1-plan-log plus write-tally.sh; run-step1-plan-log.sh only writes plan-goals-test. verify-run-log-completeness and Step 0 batch table expect plan-review-tally.json.
+- **Proposed resolution**: Add compose plan-review-tally-body.md and invoke write-tally.sh --phase plan-review --mode hard --rounds 0 ... after run-step1-plan-log.sh per skills/implement/SKILL.md:785-786.
+
+### FINDING_23:
+- **Reviewer(s)**: Codex-Requirements
+- **Severity**: important
+- **Focus area**: architecture
+- **Location**: skills/implement/SKILL.md:566-685
+- **Concern**: Plan does not remove all prompt-side Step 0 blocks despite the stated single-bootstrap-call goal. Scenario: After the PR, the post-bootstrap token/timing mark and Branch prefix create-branch.sh --check blocks can remain alongside the new --up-to-phase plan bootstrap path, so Step 0 is not collapsed to one Bash bootstrap call and may duplicate branch probing
+- **Proposed resolution**: Extend the SKILL.md update to remove or explicitly absorb the remaining post-bootstrap Step 0 blocks before Implementer waterfall, or state why each remaining block is intentionally outside the collapse
+
+### FINDING_24:
+- **Reviewer(s)**: Codex-Requirements
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/implement/SKILL.md:783-787
+- **Concern**: Plan omits the explicit write-tally.sh call needed for plan-review-tally. Scenario: Current run-step1-plan-log.sh writes plan-goals-test and parent-issue only, so implementing the plan as written would not produce the required plan-review-tally batch even though the Step 0 batch table requires it
+- **Proposed resolution**: Add the write-tally.sh invocation with the plan-review-tally body file to phase_plan_materialize and assert the batch in test-implement-bootstrap
+
+### FINDING_25:
+- **Reviewer(s)**: Codex-Requirements
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: skills/implement/SKILL.md:298-304
+- **Concern**: Plan adds STEP_FAILED=gh-issue-view and STEP_FAILED=copy-plan paths but does not update caller routing or tests. Scenario: Bootstrap can exit 2 with a new STEP_FAILED value, but the Step 0 caller only documents dedicated handling for session-entry-gate, session-setup, get-issue-state, and issue-number-required-for-resume; operators get a generic abort and regressions are not covered
+- **Proposed resolution**: Add SKILL.md exit-2 branches/messages for gh-issue-view and copy-plan, document them in implement-bootstrap.md, and add harness cases for gh failure and missing plan-from-issue.txt
+
+### FINDING_26:
+- **Reviewer(s)**: Codex-Requirements
+- **Severity**: important
+- **Focus area**: security
+- **Location**: skills/implement/SKILL.md:632-634
+- **Concern**: Plan is silent on required compose-time sanitization for new larch-log and summary content. Scenario: phase_plan_materialize composes goal text from issue title plus plan and writes larch-log/summary artifacts; without an explicit sanitization step, internal URLs or PII from the issue plan can enter committed run logs despite the existing MUST-level sanitization contract
+- **Proposed resolution**: Add a sanitization step before writing plan-goals-test, plan-review-tally body, and larch-plan-summary content, or explicitly route through helpers that perform the required redaction and add tests with representative sensitive strings
+
+### FINDING_27:
+- **Reviewer(s)**: Codex-Requirements
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/implement/scripts/test-implement-bootstrap.sh:76-83
+- **Concern**: Planned slug assertions conflict with the current static create-branch and git-current-branch stubs. Scenario: B5 expects BRANCH_ACTION=created and BRANCH_NAME to contain the derived slug, but the existing create-branch stub emits only --check KVs and the planned git-current-branch stub is described as canned, so the test may either fail for harness reasons or not validate the real slug-to-branch contract
+- **Proposed resolution**: Update the existing create-branch stub to handle --branch, persist the requested branch in sandbox state, and have git-current-branch echo that persisted value before asserting slug variants
+
+### FINDING_28:
+- **Reviewer(s)**: Codex-Requirements
+- **Severity**: latent
+- **Focus area**: code-quality
+- **Location**: skills/implement/SKILL.md:687-700
+- **Concern**: Plan contradicts the current Step 0 ordering it says must be preserved. Scenario: The failure-mode section says preserve exact L686-810 order, but the proposed sequence runs gh issue view before copying plan while the current SKILL.md copies plan first; this makes the plan ambiguous for implementers and reviewers
+- **Proposed resolution**: Choose one canonical order, align the numbered phase_plan_materialize steps with it, and add invoke-log order assertions for snapshot, copy-plan, gh issue view, workflow-path, persist, dirty checkpoint, branch, plan log, tally, and summary upsert
+
+### FINDING_29:
+- **Reviewer(s)**: Cursor-dyn-sequence-absorb
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: skills/implement/SKILL.md:658-673
+- **Concern**: Token/timing mark Step 0 plan materialization not absorbed or listed for removal. Scenario: Collapsing prompt-side blocks drops ledger marks with no bootstrap replacement; timing reports lose the plan-materialization boundary
+- **Proposed resolution**: Add token-ledger.sh and timing-ledger.sh mark calls at phase_plan_materialize entry after snapshot; delete skills/implement/SKILL.md:658-673 in the SKILL.md edit list
+
+### FINDING_30:
+- **Reviewer(s)**: Cursor-dyn-sequence-absorb
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: skills/implement/scripts/test-implement-bootstrap.sh:589-611
+- **Concern**: Proposed B6/B7 case IDs collide with existing B6 get-issue-state and B7 unexpected-state tests. Scenario: Adding plan-phase B6/B7 overwrites or duplicates harness cases; CI becomes ambiguous or breaks tracking regressions
+- **Proposed resolution**: Name new cases B6-plan-flags B7-plan-dirty-tree (or B11/B12); update plan Testing strategy and Failure modes invoke-log references
+
+### FINDING_31:
+- **Reviewer(s)**: Cursor-dyn-sequence-absorb
+- **Severity**: nit
+- **Focus area**: architecture
+- **Location**: plan.txt:194-201
+- **Concern**: SKILL.md removal list incomplete for absorbed Step 0 prose. Scenario: Implementer may leave orphan prompt-side blocks at skills/implement/SKILL.md:658-685 (token marks and second create-branch --check) after partial deletion
+- **Proposed resolution**: Extend removal list to include skills/implement/SKILL.md:658-673 and :675-685 explicitly
+
+### FINDING_32:
+- **Reviewer(s)**: Cursor-dyn-sequence-absorb
+- **Severity**: latent
+- **Focus area**: correctness
+- **Location**: plan.txt:219-221
+- **Concern**: Failure modes cite full invoke-log order tests but plan only asserts post-bail skips. Scenario: Green-path reorder regressions (e.g. dirty-tree before persist) slip past B6/B7-only skip assertions
+- **Proposed resolution**: Add green-path invoke-log ordering assert in B5-plan or dedicated case matching Failure modes section 1 sequence
+
+### FINDING_33:
+- **Reviewer(s)**: Cursor-dyn-sequence-absorb
+- **Severity**: latent
+- **Focus area**: risk-integration
+- **Location**: plan.txt:94-98
+- **Concern**: Success breadcrumbs always emitted after best-effort upsert failure. Scenario: tracking-issue-summary failure still prints step0 larch:plan posted misleading operators
+- **Proposed resolution**: Gate emit_breadcrumb larch:plan posted on summary upsert rc=0 or emit a degraded breadcrumb when append-tool-failure runs
+
+### FINDING_34:
+- **Reviewer(s)**: Codex-dyn-sequence-absorb
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: <TMPDIR>/plan.txt:19-21,221; skills/implement/SKILL.md:691-700
+- **Concern**: The proposed order reverses copy-plan and gh-compose while claiming to preserve exact SKILL.md ordering. Scenario: SKILL.md currently copies $PREFLIGHT_TMPDIR/plan-from-issue.txt to $IMPLEMENT_TMPDIR/plan.txt before gh issue view; the plan runs gh first, so a gh/auth/network failure exits before materializing a valid local plan and the Failure Modes statement about exact L686-810 order is false
+- **Proposed resolution**: Reorder phase_plan_materialize and Failure Modes section 1 to snapshot -> copy-plan -> gh-compose -> workflow-path -> persist-run-flags -> dirty-tree -> slug/branch -> git-current-branch -> plan-log -> plan-review-tally -> larch:plan-summary, or explicitly justify the intentional reorder and update failure semantics
+
+### FINDING_35:
+- **Reviewer(s)**: Codex-dyn-sequence-absorb
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: <TMPDIR>/plan.txt:77-82,130; skills/implement/SKILL.md:783-787; scripts/run-step1-plan-log.sh:135-150
+- **Concern**: The function body skips the plan-review-tally write even though the absorbed SKILL block requires it. Scenario: SKILL.md call #15 writes both plan-goals-test and plan-review-tally via write-tally.sh; run-step1-plan-log.sh only writes plan-goals-test and parent-issue, so the proposed body would omit an always-required plan-review-tally.json batch
+- **Proposed resolution**: Add a write-tally.sh call after run-step1-plan-log.sh and before tracking-issue-summary.sh, compose the plan-review-tally body file, handle it as best-effort with append-tool-failure, and assert invocation order in B5/B6/B7
+
+### FINDING_36:
+- **Reviewer(s)**: Codex-dyn-sequence-absorb
+- **Severity**: latent
+- **Focus area**: architecture
+- **Location**: <TMPDIR>/plan.txt:190-203; skills/implement/SKILL.md:654-685
+- **Concern**: The SKILL.md edit list does not explicitly absorb or remove the plan-materialization ledger and branch-prefix blocks inside the claimed L645-810 collapse. Scenario: If an implementer follows the detailed removal bullets literally, token/timing marks and create-branch.sh --check remain prompt-side after the new --up-to-phase plan bootstrap; that puts branch-prefix probing after branch creation and leaves plan-materialization telemetry outside phase_plan_materialize despite the single-bootstrap phase boundary claim
+- **Proposed resolution**: Explicitly account for SKILL.md:654-685: either move the plan-materialization token/timing marks into phase_plan_materialize at the intended point and remove the prompt-side block, and remove the redundant branch-prefix block because phase_infra owns create-branch.sh --check; add structure tests so these headings cannot linger after the collapse
+
+### FINDING_37:
+- **Reviewer(s)**: Cursor-dyn-kv-tail-contract
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/implement/SKILL.md:783-787
+- **Concern**: phase_plan_materialize step 10 only calls run-step1-plan-log.sh; omits write-tally.sh plan-review-tally sub-step (#16). Scenario: After collapse, plan-review-tally.json is never written; verify-run-log-completeness and Step 0 batch table expect that batch on issue-anchored runs
+- **Proposed resolution**: Add compose plan-review-tally-body.md plus write-tally.sh (same flags as SKILL.md:786) between run-step1-plan-log and tracking-issue-summary; stub write-tally.sh in test-implement-bootstrap.sh and assert batch invocation on B5-plan green path
+
+### FINDING_38:
+- **Reviewer(s)**: Codex-dyn-kv-tail-contract
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/implement/SKILL.md:363-417
+- **Concern**: The plan says to extend the parsed keys list, but the actual KV consumer is the _ib_kv_scan case block plus export list; without explicit BRANCH_NAME, BRANCH_ACTION, and PLAN_FILE case arms and exports, emitted tail keys are silently ignored.. Scenario: phase_plan_materialize emits BRANCH_NAME/BRANCH_ACTION/PLAN_FILE, but the orchestrator variables remain empty; downstream Step 2 branch assertion and ship-pr state paths can receive an empty BRANCH_NAME even on the green path.
+- **Proposed resolution**: Revise the plan to add concrete edits to _ib_kv_scan for BRANCH_NAME=*, BRANCH_ACTION=*, and PLAN_FILE=* and export all three immediately after parsing.
+
+### FINDING_39:
+- **Reviewer(s)**: Codex-dyn-kv-tail-contract
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/implement/SKILL.md:420-429
+- **Concern**: The plan introduces IMPLEMENT_BAIL_REASON=dirty-tree with STALL_TRACKING left false, but does not update the Step 0 routing guard/table to stop after that new bail reason.. Scenario: On B7 dirty-tree, phase_plan_materialize returns before create-branch and git-current-branch; BRANCH_NAME stays empty, yet current routing only stops for adopted-issue-closed, adopted-issue-is-pr, tracking-init-failed, or STALL_TRACKING=true.
+- **Proposed resolution**: Revise SKILL.md routing to handle dirty-tree explicitly before the implementer waterfall, invoking the documented dirty-tree recovery path or routing to cleanup with a clear operator message.
+
+### FINDING_40:
+- **Reviewer(s)**: Codex-dyn-kv-tail-contract
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: scripts/implement-bootstrap.sh:146-150,393-418; skills/implement/scripts/run-step2-dispatch.sh:63-65,89-93
+- **Concern**: The plan preserves the post-tracking guard so FORKED_TARGET sets DEFERRED=true and skips phase_plan_materialize, leaving PLAN_FILE and BRANCH_NAME empty while the run can still continue.. Scenario: Forked runs currently still need conventional files: run-step2-dispatch.sh requires feature-description.txt and plan.txt before dispatch. B8's proposed empty PLAN_FILE makes Step 2 fail before implementation, and an empty BRANCH_NAME is unsafe for later branch-state consumers.
+- **Proposed resolution**: Do not skip all plan materialization for forked_target. Copy plan.txt, compose feature-description.txt with --repo "$UPSTREAM_REPO_OPT", skip only local branch creation, and capture the current branch for BRANCH_NAME; keep BRANCH_ACTION empty.
+
+### FINDING_41:
+- **Reviewer(s)**: Codex-dyn-kv-tail-contract
+- **Severity**: latent
+- **Focus area**: architecture
+- **Location**: scripts/lib-quiet.sh:295-308; scripts/implement-bootstrap.sh:133-143,374-375; scripts/implement-bootstrap.md:54-67
+- **Concern**: The plan calls emit_breadcrumb directly for the new plan breadcrumbs, unlike existing infra/tracking helpers that guard on LARCH_QUIET_BREADCRUMBS. With LARCH_QUIET_DISABLE=1 and no breadcrumb stream, emit_breadcrumb writes plain text to stdout when breadcrumbs are disabled.. Scenario: The bootstrap stdout contract is KV-shaped; unguarded breadcrumb text can appear in the same stream as emit_final_tail and diverges from implement-bootstrap.md's "Breadcrumbs (LARCH_QUIET_BREADCRUMBS=1)" section.
+- **Proposed resolution**: Mirror existing helpers: only call emit_breadcrumb when larch_quiet_truthy "${LARCH_QUIET_BREADCRUMBS:-}", use --category=progress, and keep the exact documented text "→ step0: branch $BRANCH_NAME + plan logged" and "→ step0: larch:plan posted".
+
+### FINDING_42:
+- **Reviewer(s)**: Cursor-dyn-test-gap
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: plan.txt:154-160
+- **Concern**: B5-plan green-path asserts slug appears in BRANCH_NAME while BRANCH_NAME is defined as the canned git-current-branch stub value. Scenario: Three title-parameterized runs cannot observe slug derivation on stdout; slug regressions in the tr/sed/cut pipeline would not fail the harness
+- **Proposed resolution**: Assert derived branch on create-branch.sh --branch in invoke-log.txt (extend the create-branch stub to log --branch) or emit a dedicated KV for the derived name; drop the contradictory BRANCH_NAME slug substring checks
+
+### FINDING_43:
+- **Reviewer(s)**: Codex-dyn-test-gap
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: <TMPDIR>/plan.txt:150-160,213; scripts/create-branch.sh:95-99
+- **Concern**: B5 does not actually guard the deferred empty-title slug path. Scenario: The plan acknowledges empty title yields testuser/-123 but defers it, while create-branch.sh only checks the user-prefix shape and would not reject that suffix before git checkout; B5 also says to assert BRANCH_NAME contains the slug even though BRANCH_NAME is sourced from the canned git-current-branch stub, not from the derived create-branch argument
+- **Proposed resolution**: Add an explicit empty-title case that either fails with STEP_FAILED before branch creation or falls back to a safe slug, and assert the create-branch --branch argument in invoke-log or make git-current-branch reflect the branch just created
+
+### FINDING_44:
+- **Reviewer(s)**: Codex-dyn-test-gap
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: scripts/implement-bootstrap.sh:4-7; <TMPDIR>/plan.txt:21,214,229-232
+- **Concern**: The copy-plan failure path is neither concretely implemented nor covered by a B-case. Scenario: The plan says cp failure should become STEP_FAILED=copy-plan plus exit 2, but the implementation steps only show a bare cp and this script explicitly runs with errexit off, so a missing plan-from-issue.txt can silently continue unless rc is captured; B5-B10 do not exercise this and the test section does not scope the omission out
+- **Proposed resolution**: Add explicit cp rc capture with STEP_FAILED=copy-plan and exit 2, then add a B-case with an existing --preflight-tmpdir that lacks plan-from-issue.txt and assert rc 2 plus STEP_FAILED=copy-plan
+
+### FINDING_45:
+- **Reviewer(s)**: Codex-dyn-test-gap
+- **Severity**: latent
+- **Focus area**: correctness
+- **Location**: <TMPDIR>/plan.txt:34-39,167-170
+- **Concern**: The dirty-tree unknown branch is named but untested. Scenario: The plan treats STATUS=dirty and STATUS=unknown identically, but B7 only configures STATUS=dirty, so a parsing/default bug for unknown can ship without a regression failure
+- **Proposed resolution**: Parameterize B7 over dirty and unknown or add B7-unknown with the same bail and no-subsequent-helper assertions
+
+### FINDING_46:
+- **Reviewer(s)**: Codex-dyn-test-gap
+- **Severity**: latent
+- **Focus area**: risk-integration
+- **Location**: <TMPDIR>/plan.txt:19,137-146,216,229-232
+- **Concern**: gh issue view failure is acknowledged but absent from B5-B10. Scenario: The Edge Cases section requires STEP_FAILED=gh-issue-view plus exit 2, but the concrete function steps only say to use gh issue view and the B-case list has no auth/network failure case; a failed gh call can feed the empty-title path or leave partial feature-description.txt unguarded
+- **Proposed resolution**: Add rc/stderr capture for gh issue view and a B-case that makes the gh stub exit non-zero, asserting rc 2, STEP_FAILED=gh-issue-view, and no copy-plan or branch creation after the failure
+
+### FINDING_47:
+- **Reviewer(s)**: Codex-dyn-test-gap
+- **Severity**: nit
+- **Focus area**: architecture
+- **Location**: <TMPDIR>/plan.txt:148-188,221
+- **Concern**: The order-of-operations failure mode is not translated into concrete test assertions. Scenario: The failure mode says invoke-log order assertions are the warning signal, but B5-B10 only specify success/skip/no-subsequent checks and never require the full snapshot -> gh -> cp -> workflow-path -> persist -> dirty -> branch -> current-branch -> plan-log -> summary order
+- **Proposed resolution**: Add an explicit ordered invoke-log assertion to B5 green-path so reordering the absorbed Step 0 calls fails the harness
+

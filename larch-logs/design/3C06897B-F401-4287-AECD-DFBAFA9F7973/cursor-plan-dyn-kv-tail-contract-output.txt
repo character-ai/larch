@@ -1,0 +1,52 @@
+Reviewing the plan against the codebase for KV tail contracts and breadcrumb alignment.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/implement/SKILL.md:783-787	phase_plan_materialize step 10 only calls run-step1-plan-log.sh; omits write-tally.sh plan-review-tally sub-step (#16)	After collapse, plan-review-tally.json is never written; verify-run-log-completeness and Step 0 batch table expect that batch on issue-anchored runs	Add compose plan-review-tally-body.md plus write-tally.sh (same flags as SKILL.md:786) between run-step1-plan-log and tracking-issue-summary; stub write-tally.sh in test-implement-bootstrap.sh and assert batch invocation on B5-plan green path
+2	in_scope	important	integration	skills/implement/SKILL.md:413-417:781	Plan extends KV parsing for BRANCH_NAME/PLAN_FILE but not the export list; prompt-side Capture branch name block is removed	Post-dispatch branch assertion (line 988) and ship-pr --branch-name (line 1507) read empty BRANCH_NAME even when bootstrap tail populated it	Export BRANCH_NAME and PLAN_FILE (and BRANCH_ACTION if parsed) alongside existing bootstrap exports immediately after _ib_kv_scan
+3	in_scope	important	integration	skills/implement/SKILL.md:420-428:733-735	Removing dirty-tree checkpoint prose with no replacement; IMPLEMENT_BAIL_REASON=dirty-tree does not set STALL_TRACKING	Bootstrap returns dirty-tree with STALL_TRACKING=false; routing guard continues to implementer waterfall on a dirty worktree	Add IMPLEMENT_BAIL_REASON=dirty-tree to bootstrap routing table and post-bootstrap handler (AskUserQuestion recovery per check-mid-run-dirty-tree.md:24, or re-invoke checkpoint after recovery); extend Plan materialization skip guard at line 656
+4	in_scope	important	correctness	plan.txt:150-160	B5-plan asserts BRANCH_NAME contains slug substring while also asserting BRANCH_NAME comes from static git-current-branch stub	Slug pipeline regressions never fail: stub always emits canned BRANCH=test/... regardless of issue title	Wire git-current-branch stub to echo BRANCH=<derived branch from create-branch --branch> or assert slug via invoke-log create-branch --branch line instead of BRANCH_NAME KV
+5	in_scope	important	integration	skills/implement/SKILL.md:298-360	Edge cases promise STEP_FAILED=copy-plan and STEP_FAILED=gh-issue-view exit 2 from bootstrap; SKILL exit-2 handler has no branches	cp/gh failures surface raw stdout then fall through generic exit 2 without operator-normalized messages	Add _ib_sf handlers for copy-plan and gh-issue-view mirroring get-issue-state pattern
+6	in_scope	important	integration	skills/implement/SKILL.md:669-671	Token/timing ledger marks Step 0 — plan materialization live in removed prompt block; not listed in phase_plan_materialize	Timing/token reports lose plan-materialization boundary marker on collapsed path	Call token-ledger.sh and timing-ledger.sh mark Step 0 — plan materialization inside phase_plan_materialize (after successful persist-run-flags, before dirty-tree) or retain one post-bootstrap mark gated like tracking marks
+7	in_scope	latent	correctness	plan.txt:209-209	Approach section documents breadcrumb as branch + plan logged without $BRANCH_NAME while emit_breadcrumb and implement-bootstrap.md update use branch $BRANCH_NAME + plan logged	Doc/implementer drift risks wrong literal breadcrumb string	Align Approach prose with implement-bootstrap.md item 5 and emit strings including $BRANCH_NAME expansion
+8	in_scope	latent	integration	plan.txt:94-98:215-215	Best-effort tracking-issue-summary failure still emits → step0: larch:plan posted breadcrumb	Operator sees plan posted breadcrumb when upsert failed and only Warnings appended	Emit larch:plan posted only on upsert rc 0; or emit a distinct failure breadcrumb and document in implement-bootstrap.md
+
+**1. Missing `plan-review-tally` absorption (correctness)**  
+The plan’s step 10 title says “plan log + tally batch” but only schedules `run-step1-plan-log.sh`. Current SKILL.md still requires a separate `write-tally.sh` call:
+
+```783:787:skills/implement/SKILL.md
+### Larch-log batches — `plan-goals-test` + `plan-review-tally`
+
+1. **`plan-goals-test`** — run `${CLAUDE_PLUGIN_ROOT}/scripts/run-step1-plan-log.sh --implement-tmpdir "$IMPLEMENT_TMPDIR" --goal-text "<one-sentence objective>"` after composing a one-sentence objective from `PLAN_FILE` + issue title.
+2. **`plan-review-tally`** — issue-anchored runs do not re-import the historical `/design` voting tally from GitHub. Compose a short markdown body under `$IMPLEMENT_TMPDIR/plan-review-tally-body.md` stating the plan was read from the issue `larch:plan` block, then run `${CLAUDE_PLUGIN_ROOT}/scripts/write-tally.sh --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --phase plan-review --mode hard --rounds 0 --accepted 0 --rejected 0 --body-file "$IMPLEMENT_TMPDIR/plan-review-tally-body.md"`.
+```
+
+`run-step1-plan-log.sh` does not invoke `write-tally.sh`.
+
+**2. `BRANCH_NAME` / `PLAN_FILE` tail without orchestrator export (integration)**  
+`emit_final_tail` already emits empty placeholders:
+
+```568:569:scripts/implement-bootstrap.sh
+    emit_kv BRANCH_NAME ""
+    emit_kv PLAN_FILE ""
+```
+
+The plan correctly populates these and adds `BRANCH_ACTION`, and proposes SKILL.md KV parsing—but not `export BRANCH_NAME PLAN_FILE` at lines 413–417. After removing the prompt-side capture block (771–781), Step 2’s branch assertion and ship-pr’s `--branch-name "$BRANCH_NAME"` would see empty values unless exported.
+
+**3. `dirty-tree` bail without orchestrator routing (integration)**  
+Plan step 7 sets `IMPLEMENT_BAIL_REASON=dirty-tree` with `STALL_TRACKING` unset. SKILL.md’s mandatory guard only skips remaining Step 0 on `STALL_TRACKING=true` or closed/PR/tracking-init bails (420–428). `dirty-tree` is not listed, so the run would continue to the implementer waterfall after bootstrap—contrary to the plan’s note that “orchestrator handles recovery.” The checkpoint prose being removed (733–735) is not replaced.
+
+**4. B5-plan slug tests vs `BRANCH_NAME` source (correctness)**  
+The plan asserts `BRANCH_NAME=<canned from git-current-branch stub>` and also that `BRANCH_NAME` contains the slug derived from the issue title. With `BRANCH_NAME` assigned only from `git-current-branch.sh` (plan step 9), a static stub cannot satisfy both unless the harness couples stubs.
+
+**5. New `STEP_FAILED` values without SKILL handlers (integration)**  
+Edge cases 2 and 4 add `STEP_FAILED=copy-plan` / `gh-issue-view` + `exit 2`, but the bootstrap exit-2 block (298–360) only handles session-entry-gate, session-setup, get-issue-state, and issue-number-required-for-resume.
+
+**6. Dropped plan-materialization ledger marks (integration)**  
+Token/timing marks at 669–671 are inside the removed section; `phase_plan_materialize` does not re-home them.
+
+**KV / breadcrumb / `BRANCH_ACTION` items that look sound**
+
+- `emit_final_tail` placeholder init + population, including `BRANCH_ACTION` after `BRANCH_NAME`, matches parser-stability intent; empty `BRANCH_ACTION` on `IS_USER_BRANCH` / `FORKED_TARGET` skip paths is safe (no repo consumer of `BRANCH_ACTION`).
+- Proposed breadcrumbs `→ step0: branch $BRANCH_NAME + plan logged` and `→ step0: larch:plan posted` match the planned `implement-bootstrap.md` update (replacing the placeholder at line 67); they append after infra/tracking breadcrumbs and are not displaced.
+- Plan adds `BRANCH_NAME`, `BRANCH_ACTION`, `PLAN_FILE` to the KV parse list; ensure export (finding 2) completes the contract.
+
+**[OUT_OF_SCOPE]** Update `skills/implement/SKILL.md` bootstrap behavior map (593–607) with `dirty-tree`, `run-flags-persist-failed`, and `branch-create-failed` rows for operator clarity (STALL_TRACKING already covers the latter two via line 420).
