@@ -1,0 +1,19 @@
+## Approach Synthesis
+
+Both sketches were generic (quick mode). Cursor's output degenerated to narration only (~306 bytes, no substantive architecture content); the synthesis is therefore anchored on Codex's sketch and the four Round 1 decisions.
+
+### Agreement (Codex + Round 1)
+- **Boundary-local defense-in-depth, not algorithmic redesign**. The two validations live where they protect: at the entry point of each script (`scripts/get-issue-state.sh` post-argv-parse; `scripts/tracking-issue-read.sh` --sentinel branch after `extract_sentinel_key`).
+- **Reuse the canonical Bash 3.2-safe `case` pattern** (`case "$X" in *[!0-9]*|"") ... ;; esac` for numeric; `case "$X" in *[!A-Za-z0-9._-]*) ... ;; esac` for RUN_ID charset). The pattern is used in 94+ places in the tree (e.g., `skills/implement/scripts/post-tracking-issue.sh:74,75`). No new helper / lib-validate file — KISS.
+- **Use the existing `emit_kv FAILED true; emit_kv ERROR ...; exit 1` envelope** matching each script's existing failure contract (`get-issue-state.sh` already uses `emit_kv FAILED true; emit_kv ERROR ...; exit 1` on its non-empty check at lines 47-49; `tracking-issue-read.sh` already uses the same envelope at lines 246-249, 273-275).
+- **Sentinel empty-arm contract**: validate **only non-empty** values. Empty must continue to flow downstream as "sentinel unusable" → caller in `implement-bootstrap.sh:434` falls back to the "malformed tracking sentinel. Clearing sentinel and re-adopting." recovery branch unchanged.
+- **Error message hygiene**: do NOT echo the malformed value back through `ERROR=` (Codex called out: stdout is itself parsed as KEY=VALUE downstream, so a newline-containing malformed value could mask a second key). Use a fixed token like `'malformed-value-omitted'`.
+- **Tests**: add a small dedicated `scripts/test-get-issue-state.sh` (mirroring `test-post-tracking-issue.sh`, ~80 LOC) for Item A; extend `scripts/test-tracking-issue-read-sentinel.sh` with new cases for Item B (natural fit — the harness already owns sentinel-branch contract pinning).
+- **Sibling .md updates**: `scripts/get-issue-state.md` and `scripts/tracking-issue-read.md` get a line noting the new self-validation. New harness gets sibling `scripts/test-get-issue-state.md`.
+- **Makefile**: add `test-get-issue-state` target; wire it into one of the `test-harnesses-N` shards (any low-cost shard is fine — `test-tracking-issue-read-sentinel` is currently in shard 18; placing the new harness in the same shard keeps related coverage co-located, but any shard with budget is acceptable).
+
+### Divergence
+None. Cursor's degenerate sketch did not surface counter-arguments.
+
+### Contested decisions
+None. Round 1 (with codebase verification) and Codex's sketch converged.

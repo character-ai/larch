@@ -1,0 +1,2 @@
+Normalizing 32 reviewer inputs into merged findings (first-seen order), preserving verbatim revision bullets and severity merge rules.
+

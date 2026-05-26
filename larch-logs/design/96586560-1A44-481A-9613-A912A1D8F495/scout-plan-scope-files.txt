@@ -1,0 +1,8 @@
+scripts/get-issue-state.sh
+scripts/tracking-issue-read.sh
+scripts/get-issue-state.md
+scripts/tracking-issue-read.md
+scripts/test-tracking-issue-read-sentinel.sh
+scripts/test-get-issue-state.sh
+scripts/test-get-issue-state.md
+Makefile

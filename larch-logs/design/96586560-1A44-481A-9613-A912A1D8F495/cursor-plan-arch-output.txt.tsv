@@ -1,0 +1,2 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	risk-integration	agent-lint.toml:1334-1340	New Makefile-only harness lacks agent-lint dead-script exclusion	Plan lists make agent-lint but omits agent-lint.toml entries for scripts/test-get-issue-state.sh and scripts/test-get-issue-state.md; sibling Makefile-only harnesses (e.g. test-get-issue-context) are excluded or agent-lint fails	Add exclusion block mirroring scripts/test-get-issue-context.sh/.md (Makefile target + sibling contract rationale)
