@@ -28,6 +28,7 @@ FALLBACK_COUNTER_FILE=""
 COMPETITION_NOTICE=false
 COMPETITION_NOTICE_FILE=""
 WATERFALL_PATHS_FILE=""
+REQUIRE_RESULT_PATTERN=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -46,6 +47,7 @@ while [[ $# -gt 0 ]]; do
         --competition-notice) COMPETITION_NOTICE=true; shift ;;
         --competition-notice-file) COMPETITION_NOTICE_FILE="${2:?--competition-notice-file requires a value}"; shift 2 ;;
         --paths-file) WATERFALL_PATHS_FILE="${2:?--paths-file requires a value}"; shift 2 ;;
+        --require-result-pattern) REQUIRE_RESULT_PATTERN="${2:?--require-result-pattern requires a value}"; shift 2 ;;
         --help) usage; exit 0 ;;
         *) larch_err "dispatch-with-waterfall.sh: unknown option: $1"; usage; exit 2 ;;
     esac
@@ -57,6 +59,20 @@ done
 [[ "$MODE" == "diff" || "$MODE" == "description" ]] || { larch_err "dispatch-with-waterfall.sh: --mode must be diff or description"; exit 2; }
 case "$TIMEOUT" in ''|*[!0-9]*|0) larch_err "dispatch-with-waterfall.sh: --timeout must be a positive integer"; exit 2 ;; esac
 command -v jq >/dev/null 2>&1 || { larch_err "dispatch-with-waterfall.sh: jq is required"; exit 2; }
+
+# Prevalidate --require-result-pattern as ERE once before any slot launches.
+# grep -E on empty stdin returns 1 (no match) for valid patterns and 2 for
+# invalid ERE syntax; only the latter is a caller bug we should refuse upfront.
+if [[ -n "$REQUIRE_RESULT_PATTERN" ]]; then
+    set +e
+    printf '' | grep -E -- "$REQUIRE_RESULT_PATTERN" >/dev/null 2>&1
+    _rrp_rc=$?
+    set -e
+    if (( _rrp_rc > 1 )); then
+        larch_err "dispatch-with-waterfall.sh: --require-result-pattern is not a valid ERE: $REQUIRE_RESULT_PATTERN"
+        exit 2
+    fi
+fi
 
 slot_names=()
 slot_tools=()
@@ -210,7 +226,7 @@ launch_slot() {
 
 collect_phase() {
     local failed_var="$1"
-    local idx output tool block key value status rf
+    local idx output tool block key value status rf check_file
     local -a failed=()
     [[ ${#phase_outputs[@]} -gt 0 ]] || {
         eval "$failed_var=()"
@@ -257,6 +273,20 @@ collect_phase() {
             [[ "$key" == "REVIEWER_FILE" ]] && rf="$value"
         done <<< "$block"
         if [[ "$status" == "OK" || "$status" == "cap_hit" ]]; then
+            # STATUS=cap_hit is a launcher-side budget skip and remains terminal
+            # under the pattern gate (token-budget skip contract preserved).
+            if [[ "$status" == "OK" && -n "$REQUIRE_RESULT_PATTERN" ]]; then
+                check_file="${rf:-$output}"
+                if [[ ! -r "$check_file" ]]; then
+                    larch_err "dispatch-with-waterfall.sh: result file not readable for --require-result-pattern check: $check_file"
+                    failed+=("$idx")
+                    continue
+                fi
+                if ! grep -Eq -- "$REQUIRE_RESULT_PATTERN" "$check_file"; then
+                    failed+=("$idx")
+                    continue
+                fi
+            fi
             # shellcheck disable=SC2004
             final_outputs[$idx]="${rf:-$output}"
             # shellcheck disable=SC2004

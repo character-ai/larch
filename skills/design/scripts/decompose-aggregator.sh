@@ -105,7 +105,7 @@ AGG_OUT="$DECOMP_DIR/aggregator-raw-output.txt"
 _slots="$DECOMP_DIR/aggregator-slots.ndjson"
 jq -nc \
     --arg slot decompose-aggregator \
-    --arg tool cursor \
+    --arg tool codex \
     --arg output "$AGG_OUT" \
     --arg prompt_file "$MERGE_PROMPT" \
     '{slot:$slot,tool:$tool,output:$output,prompt_file:$prompt_file}' >"$_slots"
@@ -119,6 +119,7 @@ _agg_out=$("$WATERFALL_SH" \
     --cursor-present "$CURSOR_PRESENT" \
     --mode description \
     --feature-file "$FEATURE_FILE" \
+    --require-result-pattern '^[[:space:]]*## Recommendation' \
     --timeout "$TIMEOUT")
 _agg_rc=$?
 set -e

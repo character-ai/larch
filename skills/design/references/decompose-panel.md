@@ -104,7 +104,9 @@ Concatenate the eight panel outputs and merge into one canonical partition propo
   --timeout 1800
 ```
 
-`aggregate-findings.sh` remains **finding-shaped** (### `FINDING_N` blocks with voting metadata). Partition merges therefore use this dedicated **single-slot Cursor → Codex → Claude waterfall** merger prompt — **not** the findings aggregator.
+`aggregate-findings.sh` remains **finding-shaped** (### `FINDING_N` blocks with voting metadata). Partition merges therefore use this dedicated **single-slot Codex → Cursor → Claude waterfall** merger prompt — **not** the findings aggregator.
+
+Both the aggregator and the 8-slot panel thread `--require-result-pattern '^[[:space:]]*## Recommendation'` into `dispatch-with-waterfall.sh`, so narration-only `STATUS=OK` outputs (Cursor `--mode plan` abstention, etc.) fall through to the next waterfall phase at the dispatcher boundary instead of settling silently. The panel rows written to `panel-outputs.ndjson` reflect the dispatcher's resolved final paths (`ALL_OUTPUT_FILES_PATH`), so phase-2/phase-3 fallback content reaches operator presentation when the primary tool returns narration-only.
 
 Parse stdout for `AGGREGATOR_STATUS=ok|failed` and consume `AGGREGATOR_OUTPUT` when `ok`.
 

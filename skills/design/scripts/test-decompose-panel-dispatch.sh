@@ -90,6 +90,12 @@ rows=$(grep -c . "$D1/decompose/panel-outputs.ndjson" || true)
 grep -Fq 'Plan body.' "$D1/decompose/render-decomp-cursor-decomposition-specialist.prompt" \
     || fail "plan body missing from rendered prompt"
 
+# Recommendation-heading gate threaded to the waterfall (Fix 2 caller adoption).
+grep -Fq -- '--require-result-pattern' "$D1/wf.log" \
+    || fail "expected --require-result-pattern threaded to waterfall"
+grep -Fq -- '^[[:space:]]*## Recommendation' "$D1/wf.log" \
+    || fail "expected recommendation-heading regex threaded to waterfall"
+
 echo "=== degraded when STATIC_DISPATCH_OK=false ==="
 D2="$TMP/m2"
 prep_common "$D2"
@@ -157,5 +163,78 @@ DECOMPOSE_PANEL_WATERFALL_SH="$STUB4" \
     --timeout 30 >"$D4/out.kv"
 grep -Fq 'PANEL_STATUS=degraded' "$D4/out.kv" || fail "expected degraded when waterfall fails with usable outputs"
 grep -Fq 'DEGRADED_PANEL=true' "$D4/out.kv" || fail "expected DEGRADED_PANEL true"
+
+echo "=== plan mode: resolved-paths panel rows ==="
+# When the dispatcher resolves a slot through phase-2/phase-3 fallback, the
+# `ALL_OUTPUT_FILES_PATH` line for that slot points at the fallback file. The
+# panel must record THAT path in `panel-outputs.ndjson`, not the manifest's
+# original phase-1 path, so operator presentation sees the recovered content.
+D5="$TMP/m5"
+prep_common "$D5"
+STUB5="$TMP/stub5.sh"
+cat >"$STUB5" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+log="${WATERFALL_STUB_LOG:?}"
+paths_out="${WATERFALL_STUB_PATHS_OUT:?}"
+printf '%s\n' "$0 $*" >>"$log"
+slots=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --slots-file) slots="${2:?}"; shift 2 ;;
+        --paths-file) paths_out="${2:?}"; shift 2 ;;
+        --codex-present|--cursor-present|--mode|--timeout|--plan-file|--feature-file) shift 2 ;;
+        *) shift 1 ;;
+    esac
+done
+[[ -n "$slots" ]] || exit 2
+: >"$paths_out"
+first=true
+while IFS= read -r row || [[ -n "$row" ]]; do
+    [[ -n "$row" ]] || continue
+    out=$(printf '%s' "$row" | jq -r '.output // empty')
+    mkdir -p "$(dirname "$out")"
+    if [[ "$first" == true ]]; then
+        printf 'narration only, no heading\n' >"$out"
+        phase2_out="${out%.txt}-phase2.txt"
+        printf '## Recommendation\nsplit\n' >"$phase2_out"
+        printf '%s\n' "$phase2_out" >>"$paths_out"
+        first=false
+    else
+        printf '## Recommendation\nsplit\n' >"$out"
+        printf '%s\n' "$out" >>"$paths_out"
+    fi
+done <"$slots"
+printf 'DISPATCH_OK=true\n'
+printf 'FALLBACK_COUNT=1\n'
+printf 'STATIC_DISPATCH_OK=true\n'
+printf 'DYNAMIC_DISPATCH_OK=true\n'
+printf 'ALL_OUTPUT_FILES_PATH=%s\n' "$paths_out"
+exit 0
+STUB
+chmod +x "$STUB5"
+: >"$D5/wf.log"
+DECOMPOSE_PANEL_WATERFALL_SH="$STUB5" \
+    WATERFALL_STUB_LOG="$D5/wf.log" \
+    WATERFALL_STUB_PATHS_OUT="$D5/paths.out" \
+    CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+    "$PANEL" \
+    --design-tmpdir "$D5" \
+    --codex-present true \
+    --cursor-present true \
+    --mode plan \
+    --plan-file "$D5/plan.txt" \
+    --timeout 30 >"$D5/out.kv"
+first_row=$(sed -n '1p' "$D5/decompose/panel-outputs.ndjson")
+first_status=$(printf '%s' "$first_row" | jq -r '.status')
+first_output=$(printf '%s' "$first_row" | jq -r '.output')
+[[ "$first_status" == "ok" ]] || fail "expected resolved-paths first row status=ok got '$first_status'"
+case "$first_output" in
+    *-phase2.txt) ;;
+    *) fail "expected first row output to point at phase-2 fallback path, got '$first_output'" ;;
+esac
+[[ -f "$first_output" ]] || fail "resolved phase-2 path does not exist: $first_output"
+grep -Fq '## Recommendation' "$first_output" \
+    || fail "resolved phase-2 file missing Recommendation heading"
 
 echo "PASS: test-decompose-panel-dispatch.sh"
