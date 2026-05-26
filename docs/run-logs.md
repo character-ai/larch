@@ -361,7 +361,7 @@ commit.
 
 ## Tracking issue comments
 
-The tracking issue for each run carries four slim marker-keyed summary comments maintained by `/implement` as the run progresses. These are projections only — their content points at the committed `larch-logs/` files rather than embedding bulky payloads inline, with one exception: `larch:diagrams` embeds Mermaid diagram bodies directly (Architecture Diagram + Code Flow Diagram) rather than pointing at a batch file.
+The tracking issue carries marker-keyed summary comments as the workflow progresses. Most are run-scoped projections maintained by `/implement` and point at committed `larch-logs/` files rather than embedding bulky payloads inline. The exception is `larch:diagrams`: it is issue-scoped, jointly maintained by `/design` and `/implement`, and embeds Mermaid diagram bodies directly rather than pointing at a batch file.
 
 ### `larch:metadata`
 
@@ -377,9 +377,9 @@ Content: a slim pointer to `larch-logs/implement/<RUN_ID>/plan-goals-test.md` pl
 
 ### `larch:diagrams`
 
-Written at Step 7a for runs that reach the pre-bump log flush. This comment is posted after implementation-phase artifacts (including the committed diff-derived code-flow diagram) exist.
+Architecture is written by `/design` Step 5c.5 after the `larch:plan` block is successfully written. Code Flow is written by `/implement` Step 7a only when code-flow generation succeeds.
 
-Content: the Architecture Diagram (from `/design`) and Code Flow Diagram (generated at Step 7a from the committed implementation diff), both embedded as Mermaid fences. Diagrams are embedded directly in this comment rather than written as a larch-log batch.
+Content: the Architecture Diagram (from `/design`) and Code Flow Diagram (generated at Step 7a from the committed implementation diff), both embedded as Mermaid fences. The stable marker is `<!-- larch:diagrams v1 -->` with no `runid=` segment. Diagrams are embedded directly in this comment rather than written as a larch-log batch.
 
 ### `larch:final-summary`
 

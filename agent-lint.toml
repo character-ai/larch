@@ -1459,18 +1459,17 @@ exclude = [
   # skills/cleanup/scripts/cleanup.sh. Not cited from SKILL.md by design
   # (contributors discover it by editing the sibling .sh).
   "skills/cleanup/scripts/cleanup.md",
-  # scripts/test-compose-pr-summary.sh and scripts/test-compose-architecture-sketch.sh
-  # are regression harnesses for the new PR-body composer scripts introduced in
-  # issue #2042 (scripts/compose-pr-summary.sh and scripts/compose-architecture-sketch.sh).
-  # Both are referenced from Makefile (test-compose-pr-summary and
-  # test-compose-architecture-sketch targets; test-harnesses-4 shard) and from
-  # the primary scripts' sibling contracts (compose-pr-summary.md,
-  # compose-architecture-sketch.md), but NOT from SKILL.md runtime prose —
+  # scripts/test-compose-pr-summary.sh is the regression harness for the
+  # PR-body summary composer. It is referenced from Makefile and from the
+  # primary script's sibling contract, but NOT from SKILL.md runtime prose —
   # same Makefile-only pattern as the other test-* harnesses above.
   "scripts/test-compose-pr-summary.sh",
   "scripts/test-compose-pr-summary.md",
-  "scripts/test-compose-architecture-sketch.sh",
-  "scripts/test-compose-architecture-sketch.md",
+  # scripts/test-upsert-diagrams-comment.sh is the offline harness for the
+  # shared larch:diagrams helper. It is referenced from Makefile and from the
+  # helper's sibling contract rather than from SKILL.md runtime prose.
+  "scripts/test-upsert-diagrams-comment.sh",
+  "scripts/test-upsert-diagrams-comment.md",
   # scripts/compose-tally-record.sh is the JSON-envelope composer for tally
   # batches. It is invoked internally by scripts/write-tally.sh (the public
   # entry point) rather than directly from SKILL.md orchestrator prose.

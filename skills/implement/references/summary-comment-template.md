@@ -6,10 +6,14 @@
 
 ```text
 <!-- larch:metadata v1 runid=<R> -->
-<!-- larch:diagrams v1 runid=<R> -->
+<!-- larch:diagrams v1 -->
 <!-- larch:plan v1 runid=<R> -->
 <!-- larch:final-summary v1 runid=<R> -->
 ```
+
+`larch:diagrams` is the only marker that intentionally omits `runid=`. It is
+issue-scoped rather than run-scoped, jointly written by `/design` (Architecture)
+and `/implement` (Code Flow). All other markers remain run-scoped.
 
 The `larch:final-summary` body is rich markdown produced by
 `scripts/render-run-summary.sh`: it opens with a `## /…` header and bullet lines,
@@ -24,7 +28,8 @@ standardized block, not the first line of the file).
 Large runtime payloads are not embedded in these comments. They are written to
 `larch-logs/<skill>/<run-id>/` by `scripts/larch-log.sh` and committed at the
 terminal log-flush step. **Exception**: `larch:diagrams` embeds diagram bodies
-directly (Architecture + Code Flow); diagrams are not written as a larch-log
-batch.
+directly in the shared issue comment; diagrams are not written as a larch-log
+batch. `/design` owns the Architecture section and `/implement` owns the Code
+Flow section.
 
 **When to load**: when editing `/implement` tracking-issue publication steps (Step 0 tracking + plan materialization tail, 9a.1, 11, 18).

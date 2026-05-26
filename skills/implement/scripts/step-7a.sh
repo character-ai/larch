@@ -101,19 +101,10 @@ EOF
 }
 
 compose_summary_diagrams() {
-    {
-        if [ -n "${ARCHITECTURE_DIAGRAM_FILE:-}" ] && [ -f "${ARCHITECTURE_DIAGRAM_FILE:-}" ]; then
-            cat "$ARCHITECTURE_DIAGRAM_FILE"
-        else
-            printf 'Architecture diagram not available.'
-        fi
-        printf '\n\n'
-        if [ -f "$IMPLEMENT_TMPDIR/code-flow-diagram.md" ]; then
-            cat "$IMPLEMENT_TMPDIR/code-flow-diagram.md"
-        else
-            printf '%s' "$CODE_FLOW_SKIP_REASON"
-        fi
-    } > "$IMPLEMENT_TMPDIR/summary-diagrams.md"
+    rm -f "$IMPLEMENT_TMPDIR/code-flow-section.md" 2>/dev/null || true
+    if [ -f "$IMPLEMENT_TMPDIR/code-flow-diagram.md" ]; then
+        cat "$IMPLEMENT_TMPDIR/code-flow-diagram.md" > "$IMPLEMENT_TMPDIR/code-flow-section.md"
+    fi
 }
 
 run_larch_log_write() {
@@ -246,7 +237,6 @@ DIAGRAM_PATH=""
 COMMENT_URL=""
 LOG_FLUSH_STATUS=""
 STEP_7A_BAIL_REASON=""
-CODE_FLOW_SKIP_REASON=""
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -343,7 +333,6 @@ fi
 if is_small_non_runtime_change; then
     DIAGRAM_STATUS=skip
     DIAGRAM_PATH=""
-    CODE_FLOW_SKIP_REASON="(Code Flow Diagram skipped — small/non-runtime change)"
     emit "⏩ 7a: diagrams status=skip reason=small-non-runtime-change elapsed=0s"
 else
     gen_out="$IMPLEMENT_TMPDIR/code-flow-diagram.stdout"
@@ -360,33 +349,37 @@ else
         ok)
             DIAGRAM_STATUS=ok
             DIAGRAM_PATH="$IMPLEMENT_TMPDIR/code-flow-diagram.md"
-            CODE_FLOW_SKIP_REASON=""
             ;;
         skipped)
             DIAGRAM_STATUS=skipped
             DIAGRAM_PATH=""
+<<<<<<< HEAD
             _skip_reason=$(kv_value SKIP_REASON "$gen_out")
             if [ -n "$_skip_reason" ]; then
                 CODE_FLOW_SKIP_REASON="$_skip_reason"
             else
                 CODE_FLOW_SKIP_REASON="Code flow diagram not available."
             fi
+=======
+>>>>>>> 03920fdd (Implement shared diagrams upsert helper: /design posts Architecture, /implement posts Code Flow (#2840))
             ;;
         failed)
             DIAGRAM_STATUS=failed
             DIAGRAM_PATH=""
+<<<<<<< HEAD
             _skip_reason=$(kv_value SKIP_REASON "$gen_out")
             if [ -n "$_skip_reason" ]; then
                 CODE_FLOW_SKIP_REASON="$_skip_reason"
             else
                 CODE_FLOW_SKIP_REASON="Code flow diagram not available."
             fi
+=======
+>>>>>>> 03920fdd (Implement shared diagrams upsert helper: /design posts Architecture, /implement posts Code Flow (#2840))
             append_failure "Warnings" "step-7a" "generate-code-flow-diagram.sh" "$gen_rc" "$gen_err"
             ;;
         *)
             DIAGRAM_STATUS=failed
             DIAGRAM_PATH=""
-            CODE_FLOW_SKIP_REASON="Code flow diagram not available."
             append_failure "Warnings" "step-7a" "generate-code-flow-diagram.sh" "$gen_rc" "$gen_err"
             ;;
     esac
@@ -394,17 +387,17 @@ fi
 
 compose_summary_diagrams
 
-if [ -n "$ISSUE_NUMBER" ]; then
-    upsert_out="$IMPLEMENT_TMPDIR/summary-diagrams-upsert.stdout"
-    upsert_err="$IMPLEMENT_TMPDIR/summary-diagrams-upsert.stderr"
+if [ -n "$ISSUE_NUMBER" ] && [ -s "$IMPLEMENT_TMPDIR/code-flow-section.md" ]; then
+    upsert_out="$IMPLEMENT_TMPDIR/code-flow-section-upsert.stdout"
+    upsert_err="$IMPLEMENT_TMPDIR/code-flow-section-upsert.stderr"
     set +e
-    "$PLUGIN_ROOT/scripts/tracking-issue-summary.sh" upsert-summary \
+    "$PLUGIN_ROOT/scripts/upsert-diagrams-comment.sh" \
         --issue "$ISSUE_NUMBER" \
-        --marker "<!-- larch:diagrams v1 runid=$RUN_ID -->" \
-        --content-file "$IMPLEMENT_TMPDIR/summary-diagrams.md" >"$upsert_out" 2>"$upsert_err"
+        --code-flow-file "$IMPLEMENT_TMPDIR/code-flow-section.md" >"$upsert_out" 2>"$upsert_err"
     upsert_rc=$?
     set +e
-    if [ "$upsert_rc" -eq 0 ]; then
+    upsert_status=$(kv_value UPSERT_STATUS "$upsert_out")
+    if [ "$upsert_rc" -eq 0 ] && [ "$upsert_status" != "failed" ]; then
         COMMENT_URL=$(kv_value COMMENT_URL "$upsert_out")
     else
         COMMENT_URL=""
