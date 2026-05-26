@@ -176,7 +176,9 @@ F="$TMPROOT/e.md"
 printf 'ADOPTED=yes\n' > "$F"
 run_sentinel "$F"
 assert_equal_exit "$LAST_EXIT" "1" "(e) exit 1"
-assert_equal_stdout "$LAST_STDOUT" "$(printf "FAILED=true\nERROR=invalid ADOPTED value in sentinel: 'yes' (expected 'true' or 'false' or absent)")" "(e) stdout"
+assert_equal_stdout "$LAST_STDOUT" "$(printf "FAILED=true\nERROR=invalid ADOPTED value in sentinel: ADOPTED: 'malformed-value-omitted'")" "(e) stdout fixed-token envelope"
+assert_not_contains "$LAST_STDOUT" "'yes'" "(e) stdout omits quoted malformed value"
+assert_not_contains "$LAST_STDOUT" "ADOPTED=yes" "(e) stdout omits raw rejected token"
 
 # (f) ADOPTED=TRUE → case-strict rejection
 echo "(f) ADOPTED=TRUE — case-strict reject"
@@ -184,7 +186,9 @@ F="$TMPROOT/f.md"
 printf 'ADOPTED=TRUE\n' > "$F"
 run_sentinel "$F"
 assert_equal_exit "$LAST_EXIT" "1" "(f) exit 1"
-assert_contains "$LAST_STDOUT" "'TRUE'" "(f) stdout names the rejected value"
+assert_equal_stdout "$LAST_STDOUT" "$(printf "FAILED=true\nERROR=invalid ADOPTED value in sentinel: ADOPTED: 'malformed-value-omitted'")" "(f) stdout fixed-token envelope"
+assert_not_contains "$LAST_STDOUT" "'TRUE'" "(f) stdout omits quoted rejected value"
+assert_not_contains "$LAST_STDOUT" "ADOPTED=TRUE" "(f) stdout omits raw rejected token"
 
 # (g) ADOPTED=1 → numeric rejection
 echo "(g) ADOPTED=1 — numeric reject"
@@ -192,7 +196,9 @@ F="$TMPROOT/g.md"
 printf 'ADOPTED=1\n' > "$F"
 run_sentinel "$F"
 assert_equal_exit "$LAST_EXIT" "1" "(g) exit 1"
-assert_contains "$LAST_STDOUT" "'1'" "(g) stdout names the rejected value"
+assert_equal_stdout "$LAST_STDOUT" "$(printf "FAILED=true\nERROR=invalid ADOPTED value in sentinel: ADOPTED: 'malformed-value-omitted'")" "(g) stdout fixed-token envelope"
+assert_not_contains "$LAST_STDOUT" "'1'" "(g) stdout omits quoted rejected value"
+assert_not_contains "$LAST_STDOUT" "ADOPTED=1" "(g) stdout omits raw rejected token"
 
 # (h) ADOPTED=true (trailing space, no \r) → rejected
 echo "(h) ADOPTED=true␠ — trailing space reject"
@@ -200,7 +206,9 @@ F="$TMPROOT/h.md"
 printf 'ADOPTED=true \n' > "$F"
 run_sentinel "$F"
 assert_equal_exit "$LAST_EXIT" "1" "(h) exit 1"
-assert_contains "$LAST_STDOUT" "'true '" "(h) stdout names the rejected value"
+assert_equal_stdout "$LAST_STDOUT" "$(printf "FAILED=true\nERROR=invalid ADOPTED value in sentinel: ADOPTED: 'malformed-value-omitted'")" "(h) stdout fixed-token envelope"
+assert_not_contains "$LAST_STDOUT" "'true '" "(h) stdout omits quoted rejected value"
+assert_not_contains "$LAST_STDOUT" "ADOPTED=true " "(h) stdout omits raw rejected token"
 
 # (i) sentinel file not found
 echo "(i) sentinel file not found"
