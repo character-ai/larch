@@ -23,6 +23,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Migration posture**: legacy `[IN PROGRESS]` and `[PLANNED]` prefixes are stripped by `strip_lifecycle_prefix` for backward compatibility but are no longer accepted as `--state` values by `tracking-issue-write.sh` or as admission-pass prefixes.
 - **Audit scope**: workflow call sites and rename `--state` surfaces in the active runtime tree (`skills/`, `scripts/`, `agents/`, `.claude/`, `docs/`, tests) now use the new prefix set; deliberate legacy bracket literals remain only where migration, admission recovery, strip helpers, or hermetic fixtures require them. This Unreleased section documents the migration and may name the old prefixes. Historical shipped changelog bodies and `larch-logs/` were not bulk-retitled.
 
+## [42.5.10] - 2026-05-25
+
+### Changed
+
+- Implemented the Step 0 phase_tracking state machine in implement-bootstrap.sh, including repo/fork skips, Branch 1 sentinel resume, Branch 2 adoption, deferred metadata handling, tracking bails, and branch-aware final KV output.
+- Added --forked-target session-env propagation and --run-id support in post-tracking-issue.sh so successful adoption writes the selected RUN_ID into parent-issue.md.
+- Updated /implement docs and bootstrap contracts, and expanded the offline bootstrap harness to cover tracking success, skip, bail, deferred, mismatch, and malformed sentinel paths.
+
 ## [42.5.8] - 2026-05-25
 
 ### Changed
