@@ -640,14 +640,75 @@ else
 fi
 
 # Test 10: record-vendor smoke (issue #1351 Gap 1). Stub Codex prints a
-# "tokens used" block to stdout (which run-external-agent.sh routes to the
-# sidecar log); after the launcher returns, dump the per-session ledger and
-# assert a vendor row with vendor=codex, raw=codex_implement, total=7777.
+# Codex --json usage event to stdout; after the launcher returns, dump the
+# per-session ledger and assert a vendor row with per-bucket Codex usage.
 # Skip when jq is unavailable — the assertion uses jq even though the
 # launcher's awk-scrape does not.
 if command -v jq >/dev/null 2>&1; then
     RV_STUB_BIN="$SCRATCH/rv-bin"
     mkdir -p "$RV_STUB_BIN"
+    cat > "$RV_STUB_BIN/codex" <<'STUB_EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+: "${STUB_MANIFEST_PATH:?}"
+output_path=""
+last=""
+for arg in "$@"; do
+    if [[ -n "${CODEX_STUB_ARGV_LOG:-}" ]]; then printf '%s\n' "$arg" >> "$CODEX_STUB_ARGV_LOG"; fi
+    if [[ "$last" == "--output-last-message" ]]; then output_path="$arg"; fi
+    last="$arg"
+done
+[[ -n "$output_path" ]] || { echo "stub codex missing --output-last-message" >&2; exit 9; }
+printf 'stub codex transcript payload\n' > "$output_path"
+cat > "$STUB_MANIFEST_PATH.tmp" <<JSON
+{"schema_version":"1","status":"bailed","bail_reason":"stub-bailed"}
+JSON
+mv "$STUB_MANIFEST_PATH.tmp" "$STUB_MANIFEST_PATH"
+printf '{"msg":{"usage":{"input_tokens":7777,"cached_input_tokens":0,"output_tokens":0}}}\n'
+STUB_EOF
+    chmod +x "$RV_STUB_BIN/codex"
+
+    RV_SESSION_ID="rv-codex-$$"
+    RV_TRANSCRIPT="$SCRATCH/rv-transcript.txt"
+    RV_SIDECAR="$SCRATCH/rv-sidecar.log"
+    RV_MANIFEST="$SCRATCH/rv-manifest.json"
+    RV_QA="$SCRATCH/rv-qa.json"
+    RV_ARGV="$SCRATCH/rv-argv.txt"
+
+    RV_LEDGER="$SCRATCH/rv-codex-token-ledger.jsonl"
+    cd "$REPO_ROOT" && \
+        PATH="$RV_STUB_BIN:$PATH" \
+        STUB_MANIFEST_PATH="$RV_MANIFEST" \
+        CODEX_STUB_ARGV_LOG="$RV_ARGV" \
+        LARCH_CODEX_MODEL="stub-codex-model" \
+        LARCH_TOKEN_SESSION_ID="$RV_SESSION_ID" \
+        LARCH_TOKEN_LEDGER="$RV_LEDGER" \
+        IMPLEMENT_TMPDIR='' \
+        CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+        "$LAUNCHER" \
+            --transcript-path "$RV_TRANSCRIPT" \
+            --sidecar-log "$RV_SIDECAR" \
+            --manifest-path "$RV_MANIFEST" \
+            --qa-pending-path "$RV_QA" \
+            --plan-file "$PLAN" \
+            --feature-file "$FEATURE" \
+            --agent-prompt "$AGENT_PROMPT" \
+            --timeout 30 >/dev/null
+
+    if grep -Fxq -- '--json' "$RV_ARGV"; then
+        pass
+    else
+        fail 10 "--json missing from codex implementer argv; argv=$(cat "$RV_ARGV" 2>/dev/null)"
+    fi
+    if [[ -f "$RV_LEDGER" ]] && jq -e \
+        'select(.type=="vendor" and .vendor=="codex" and .raw=="codex_implement" and .input==7777 and .cache_read==0 and .output==0 and .total==7777)' \
+        "$RV_LEDGER" >/dev/null 2>&1; then
+        pass
+    else
+        fail 10 "codex record-vendor JSONL missing or buckets wrong; ledger=$RV_LEDGER content=$(cat "$RV_LEDGER" 2>/dev/null) sidecar=$(cat "$RV_SIDECAR" 2>/dev/null)"
+    fi
+    rm -f "$RV_LEDGER"
+
     cat > "$RV_STUB_BIN/codex" <<'STUB_EOF'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -664,43 +725,32 @@ cat > "$STUB_MANIFEST_PATH.tmp" <<JSON
 {"schema_version":"1","status":"bailed","bail_reason":"stub-bailed"}
 JSON
 mv "$STUB_MANIFEST_PATH.tmp" "$STUB_MANIFEST_PATH"
-printf 'tokens used\n7,777\n'
 STUB_EOF
     chmod +x "$RV_STUB_BIN/codex"
-
-    RV_SESSION_ID="rv-codex-$$"
-    RV_TRANSCRIPT="$SCRATCH/rv-transcript.txt"
-    RV_SIDECAR="$SCRATCH/rv-sidecar.log"
-    RV_MANIFEST="$SCRATCH/rv-manifest.json"
-    RV_QA="$SCRATCH/rv-qa.json"
-
-    RV_LEDGER="$SCRATCH/rv-codex-token-ledger.jsonl"
+    RV_FAIL_LEDGER="$SCRATCH/rv-codex-fail-token-ledger.jsonl"
+    RV_FAIL_MANIFEST="$SCRATCH/rv-fail-manifest.json"
     cd "$REPO_ROOT" && \
         PATH="$RV_STUB_BIN:$PATH" \
-        STUB_MANIFEST_PATH="$RV_MANIFEST" \
+        STUB_MANIFEST_PATH="$RV_FAIL_MANIFEST" \
         LARCH_CODEX_MODEL="stub-codex-model" \
-        LARCH_TOKEN_SESSION_ID="$RV_SESSION_ID" \
-        LARCH_TOKEN_LEDGER="$RV_LEDGER" \
+        LARCH_TOKEN_SESSION_ID="rv-codex-fail-$$" \
+        LARCH_TOKEN_LEDGER="$RV_FAIL_LEDGER" \
         IMPLEMENT_TMPDIR='' \
         CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
         "$LAUNCHER" \
-            --transcript-path "$RV_TRANSCRIPT" \
-            --sidecar-log "$RV_SIDECAR" \
-            --manifest-path "$RV_MANIFEST" \
-            --qa-pending-path "$RV_QA" \
+            --transcript-path "$SCRATCH/rv-fail-transcript.txt" \
+            --sidecar-log "$SCRATCH/rv-fail-sidecar.log" \
+            --manifest-path "$RV_FAIL_MANIFEST" \
+            --qa-pending-path "$SCRATCH/rv-fail-qa.json" \
             --plan-file "$PLAN" \
             --feature-file "$FEATURE" \
             --agent-prompt "$AGENT_PROMPT" \
             --timeout 30 >/dev/null
-
-    if [[ -f "$RV_LEDGER" ]] && jq -e \
-        'select(.type=="vendor" and .vendor=="codex" and .raw=="codex_implement" and .total==7777)' \
-        "$RV_LEDGER" >/dev/null 2>&1; then
+    if [[ ! -e "$RV_FAIL_LEDGER" ]] || ! jq -e 'select(.type=="vendor" and .vendor=="codex")' "$RV_FAIL_LEDGER" >/dev/null 2>&1; then
         pass
     else
-        fail 10 "codex record-vendor JSONL missing or total wrong; ledger=$RV_LEDGER content=$(cat "$RV_LEDGER" 2>/dev/null) sidecar=$(cat "$RV_SIDECAR" 2>/dev/null)"
+        fail 10 "codex fail-closed no-usage case should not append vendor row; ledger=$(cat "$RV_FAIL_LEDGER" 2>/dev/null)"
     fi
-    rm -f "$RV_LEDGER"
 else
     pass  # jq absent — skip per launcher runtime guard parallel
 fi

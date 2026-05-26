@@ -169,6 +169,8 @@ TRUST_CONFIG_ARG="projects.\"$PROJECT_KEY\".trust_level=\"trusted\""
 TIMING_START_S=$(date +%s)
 LAUNCHER_EXIT=0
 SIDECAR_LOG="${OUTPUT}.sidecar"
+CODEX_EVENTS="${OUTPUT}.events.jsonl"
+: > "${OUTPUT}.token-record" 2>/dev/null || true
 MAX_AUTH_RETRIES=${LARCH_EXTERNAL_AUTH_RETRIES:-5}
 case "$MAX_AUTH_RETRIES" in ''|*[!0-9]*|0) MAX_AUTH_RETRIES=5 ;; esac
 HOLD=${LARCH_EXTERNAL_SERIAL_LOCK_DELAY:-0.5}
@@ -188,6 +190,7 @@ while (( AUTH_ATTEMPT <= MAX_AUTH_RETRIES )); do
     external_serial_lock_acquire _SERIAL_LOCK "codex"
     external_serial_lock_release_after "$_SERIAL_LOCK" "$HOLD"
     LAUNCHER_EXIT=0
+    rm -f "$CODEX_EVENTS"
     CODEX_HOME="$CODEX_HOME_DIR" "$SCRIPT_DIR/run-external-agent.sh" \
         --tool codex \
         --output "$OUTPUT" \
@@ -197,8 +200,9 @@ while (( AUTH_ATTEMPT <= MAX_AUTH_RETRIES )); do
         ${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"} \
         -c "$TRUST_CONFIG_ARG" \
         --output-last-message "$OUTPUT" \
+        --json \
         -- \
-        "$PROMPT" >"$SIDECAR_LOG" 2>&1 || LAUNCHER_EXIT=$?
+        "$PROMPT" >"$CODEX_EVENTS" 2>"$SIDECAR_LOG" || LAUNCHER_EXIT=$?
     if (( LAUNCHER_EXIT != 0 && AUTH_ATTEMPT < MAX_AUTH_RETRIES )) && external_is_auth_failure "codex" "$SIDECAR_LOG"; then
         AUTH_ATTEMPT=$((AUTH_ATTEMPT + 1))
         : > "$SIDECAR_LOG" 2>/dev/null || true
@@ -223,9 +227,22 @@ END_S=$(date +%s)
     --exit-code "$LAUNCHER_EXIT" \
     --status "$([ "$LAUNCHER_EXIT" -eq 0 ] && echo complete || echo signal)" >/dev/null 2>&1 || true
 
-TOKENS=$(awk '/^tokens used$/ { getline n; gsub(",","",n); last=n } END { print last }' "${OUTPUT}.diag" "$OUTPUT" "$SIDECAR_LOG" 2>/dev/null || true)
-if [[ "$TOKENS" =~ ^[0-9]+$ ]]; then
-    printf 'TOOL=codex\nTOTAL=%s\nRAW=codex_ci_fix\n' "$TOKENS" > "${OUTPUT}.token-record"
+_codex_usage=$("$PLUGIN_ROOT/scripts/parse-codex-usage.sh" "$CODEX_EVENTS" 2>/dev/null) || _codex_usage=""
+if [[ -n "$_codex_usage" ]]; then
+    INPUT=0
+    CACHED_INPUT=0
+    OUTPUT_T=0
+    TOTAL=0
+    while IFS='=' read -r k v; do
+        case "$k" in
+            INPUT) INPUT=$v ;;
+            CACHED_INPUT) CACHED_INPUT=$v ;;
+            OUTPUT) OUTPUT_T=$v ;;
+            TOTAL) TOTAL=$v ;;
+        esac
+    done <<< "$_codex_usage"
+    printf 'TOOL=codex\nINPUT=%s\nOUTPUT=%s\nCACHE_READ=%s\nTOTAL=%s\nRAW=codex_ci_fix\n' \
+        "$INPUT" "$OUTPUT_T" "$CACHED_INPUT" "$TOTAL" > "${OUTPUT}.token-record"
 fi
 
 emit_kv LAUNCHER_EXIT "$LAUNCHER_EXIT"

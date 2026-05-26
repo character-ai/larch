@@ -23,28 +23,23 @@ ROOT="${TMPDIR:-/tmp}"
 TMP=$(mktemp -d "$ROOT/test-token-vendor.XXXXXX")
 trap 'rm -rf "$TMP"' EXIT
 
-codex_scrape() {
-    awk '/^tokens used$/ { getline n; gsub(",","",n); last=n } END { print last }' "$1" 2>/dev/null || true
-}
+cat > "$TMP/codex.events.jsonl" <<'JSONL'
+wrapper noise
+{"msg":{"usage":{"input_tokens":1000,"cached_input_tokens":900,"output_tokens":50}}}
+{"usage":{"input_tokens":20,"input_tokens_details":{"cached_tokens":5},"output_tokens":7}}
+JSONL
+codex_usage=$("$REPO_ROOT/scripts/parse-codex-usage.sh" "$TMP/codex.events.jsonl" 2>/dev/null || true)
+eq "codex parse usage" $'INPUT=115\nCACHED_INPUT=905\nOUTPUT=57\nTOTAL=1077' "$codex_usage"
 
-cat > "$TMP/codex.sidecar" <<'EOF'
-noise
-tokens used
-1,234
-more noise
-tokens used
-5,678
-EOF
-eq "codex last block" "5678" "$(codex_scrape "$TMP/codex.sidecar")"
-
-cat > "$TMP/codex-bad.sidecar" <<'EOF'
-tokens used
-123
-tokens used
-not numeric
-EOF
-n=$(codex_scrape "$TMP/codex-bad.sidecar")
-if [[ "$n" =~ ^[0-9]+$ ]]; then fail "codex non-numeric trailing value should be rejected by caller"; else pass; fi
+cat > "$TMP/codex-bad.events.jsonl" <<'JSONL'
+{"msg":{"kind":"started"}}
+JSONL
+set +e
+codex_bad=$("$REPO_ROOT/scripts/parse-codex-usage.sh" "$TMP/codex-bad.events.jsonl" 2>/dev/null)
+codex_bad_rc=$?
+set -e
+eq "codex no-usage fail-closed rc" "1" "$codex_bad_rc"
+eq "codex no-usage stdout empty" "" "$codex_bad"
 
 cat > "$TMP/cursor.json" <<'JSON'
 {"result":"plain reviewer prose","usage":{"inputTokens":1,"outputTokens":2,"cacheReadTokens":3,"cacheWriteTokens":4}}
@@ -113,7 +108,7 @@ cat > "$STUB_MANIFEST_PATH.tmp" <<JSON
 {"schema_version":"1","status":"bailed","bail_reason":"stub-bailed"}
 JSON
 mv "$STUB_MANIFEST_PATH.tmp" "$STUB_MANIFEST_PATH"
-printf 'tokens used\n7,777\n'
+printf '{"type":"token_usage","usage":{"input_tokens":7777,"cached_input_tokens":7000,"output_tokens":222}}\n'
 STUB_EOF
     chmod +x "$LCI_BIN/codex"
 
@@ -137,7 +132,7 @@ STUB_EOF
                 AGENT_PROMPT="$REPO_ROOT/agents/codex-implementer.md"
                 LAUNCHER="$REPO_ROOT/scripts/launch-codex-implement.sh"
                 EXPECTED_RAW="codex_implement"
-                EXPECTED_TOTAL=7777
+                EXPECTED_TOTAL=7999
                 ;;
         esac
 
@@ -186,7 +181,14 @@ STUB_EOF
             rm -f "$LCI_LEDGER"
             continue
         fi
-        if [[ -f "$LCI_LEDGER" ]] && jq -e --arg raw "$EXPECTED_RAW" --argjson total "$EXPECTED_TOTAL" \
+        if [[ "$variant" == "codex" ]]; then
+            if [[ -f "$LCI_LEDGER" ]] && jq -e --arg raw "$EXPECTED_RAW" \
+                'select(.type=="vendor" and .raw==$raw and .vendor=="codex" and .input==777 and .cache_read==7000 and .output==222 and .total==7999)' "$LCI_LEDGER" >/dev/null 2>&1; then
+                pass
+            else
+                fail "launch-${variant}-implement.sh did not record per-bucket codex usage; ledger=$LCI_LEDGER content=$(cat "$LCI_LEDGER" 2>/dev/null)"
+            fi
+        elif [[ -f "$LCI_LEDGER" ]] && jq -e --arg raw "$EXPECTED_RAW" --argjson total "$EXPECTED_TOTAL" \
             'select(.type=="vendor" and .raw==$raw and .total==$total)' "$LCI_LEDGER" >/dev/null 2>&1; then
             pass
         else
@@ -209,6 +211,34 @@ JSONL
     contains "codex-only header" "| Step | Skill | Input | Output | Total |" "$codex_md"
     contains "codex-only step row" "| Step 2 - implement | **step total** | 0 | 0 | 192077 |" "$codex_md"
     contains "codex-only grand total" "| **Grand total** |  | 0 | 0 | 192077 |" "$codex_md"
+
+    PB_LEDGER="$TMP/codex-per-bucket-ledger.jsonl"
+    cat > "$PB_LEDGER" <<'JSONL'
+{"type":"mark","step":"Step 2 - implement","ts":"2026-05-06T00:00:00Z"}
+{"type":"vendor","vendor":"codex","input":100,"output":50,"cache_read":900,"total":1050,"raw":"codex_implement","ts":"2026-05-06T00:00:05Z"}
+JSONL
+    pb_json=$("$REPO_ROOT/scripts/token-report.sh" --ledger "$PB_LEDGER" --transcript "$TR_TRANSCRIPT" --full --format json)
+    if printf '%s\n' "$pb_json" | jq -e '.BUCKETS_codex.input == 100 and .BUCKETS_codex.cached_input == 900 and .BUCKETS_codex.output == 50 and .BUCKETS_codex.total == 1050' >/dev/null; then
+        pass
+    else
+        fail "codex per-bucket BUCKETS regression failed: $pb_json"
+    fi
+    set +e
+    "$REPO_ROOT/scripts/token-cost.sh" --codex-input-tokens 100 --codex-cached-input-tokens 900 --codex-output-tokens 50 >"$TMP/cost.out" 2>"$TMP/cost.err"
+    cost_rc=$?
+    set -e
+    eq "codex per-bucket cost rc" "0" "$cost_rc"
+    if grep -Eq 'BLENDED_WARN|blended rate' "$TMP/cost.err"; then
+        fail "codex per-bucket cost should not warn: $(cat "$TMP/cost.err")"
+    else
+        pass
+    fi
+    set +e
+    "$REPO_ROOT/scripts/token-cost.sh" --codex-tokens 1050 >"$TMP/cost-aggregate.out" 2>"$TMP/cost-aggregate.err"
+    aggregate_cost_rc=$?
+    set -e
+    eq "codex aggregate cost rc" "0" "$aggregate_cost_rc"
+    contains "codex aggregate warning" "blended rate" "$(cat "$TMP/cost-aggregate.err" 2>/dev/null)"
 else
     pass  # jq absent — skip per launcher runtime guard parallel
 fi

@@ -313,11 +313,13 @@ MAX_AUTH_RETRIES=${LARCH_EXTERNAL_AUTH_RETRIES:-5}
 case "$MAX_AUTH_RETRIES" in ''|*[!0-9]*|0) MAX_AUTH_RETRIES=5 ;; esac
 HOLD=${LARCH_EXTERNAL_SERIAL_LOCK_DELAY:-0.5}
 AUTH_ATTEMPT=1
+CODEX_EVENTS="${TRANSCRIPT_PATH}.events.jsonl"
 while (( AUTH_ATTEMPT <= MAX_AUTH_RETRIES )); do
     _SERIAL_LOCK=""
     external_serial_lock_acquire _SERIAL_LOCK "codex"
     external_serial_lock_release_after "$_SERIAL_LOCK" "$HOLD"
     LAUNCHER_EXIT=0
+    rm -f "$CODEX_EVENTS"
     CODEX_HOME="$CODEX_HOME_DIR" "$SCRIPT_DIR/run-external-agent.sh" \
         --tool codex \
         --output "$TRANSCRIPT_PATH" \
@@ -329,9 +331,10 @@ while (( AUTH_ATTEMPT <= MAX_AUTH_RETRIES )); do
         ${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"} \
         -c "$TRUST_CONFIG_ARG" \
         --output-last-message "$TRANSCRIPT_PATH" \
+        --json \
         -- \
         "$PROMPT" \
-        >"$SIDECAR_LOG" 2>&1 || LAUNCHER_EXIT=$?
+        >"$CODEX_EVENTS" 2>"$SIDECAR_LOG" || LAUNCHER_EXIT=$?
     if (( LAUNCHER_EXIT != 0 && AUTH_ATTEMPT < MAX_AUTH_RETRIES )) && external_is_auth_failure "codex" "$SIDECAR_LOG"; then
         AUTH_ATTEMPT=$((AUTH_ATTEMPT + 1))
         : > "$SIDECAR_LOG" 2>/dev/null || true
@@ -351,9 +354,21 @@ QA_PENDING_WRITTEN=false
 [[ -s "$MANIFEST_PATH" ]]   && MANIFEST_WRITTEN=true
 [[ -s "$QA_PENDING_PATH" ]] && QA_PENDING_WRITTEN=true
 
-N=$(awk '/^tokens used$/ { getline n; gsub(",","",n); last=n } END { print last }' "$SIDECAR_LOG" 2>/dev/null || true)
-if [[ "$N" =~ ^[0-9]+$ ]]; then
-    "$PLUGIN_ROOT/scripts/token-ledger.sh" record-vendor codex total="$N" raw="codex_implement" >/dev/null 2>&1 || true
+_codex_usage=$("$PLUGIN_ROOT/scripts/parse-codex-usage.sh" "$CODEX_EVENTS" 2>/dev/null) || _codex_usage=""
+if [[ -n "$_codex_usage" ]]; then
+    INPUT=0
+    CACHED_INPUT=0
+    OUTPUT_T=0
+    TOTAL=0
+    while IFS='=' read -r k v; do
+        case "$k" in
+            INPUT) INPUT=$v ;;
+            CACHED_INPUT) CACHED_INPUT=$v ;;
+            OUTPUT) OUTPUT_T=$v ;;
+            TOTAL) TOTAL=$v ;;
+        esac
+    done <<< "$_codex_usage"
+    "$PLUGIN_ROOT/scripts/token-ledger.sh" record-vendor codex input="$INPUT" output="$OUTPUT_T" cache_read="$CACHED_INPUT" total="$TOTAL" raw="codex_implement" >/dev/null 2>&1 || true
 fi
 emit_timing_record "$LAUNCHER_EXIT"
 

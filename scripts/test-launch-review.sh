@@ -171,7 +171,7 @@ for arg in "$@"; do
 done
 [[ -n "$output" ]] || exit 9
 printf 'codex review ok\n' > "$output"
-printf 'tokens used\n1\n'
+printf '{"msg":{"usage":{"input_tokens":10,"cached_input_tokens":0,"output_tokens":1}}}\n'
 STUB_CODEX
 chmod +x "$CODEX_DEFAULT_STUB"
 ln -sf "$CODEX_DEFAULT_STUB" "$STUB_BIN/codex"
@@ -308,6 +308,7 @@ if grep -Fxq -- "projects.\"$REPO_ROOT\".trust_level=\"trusted\"" "$ARGV"; then
 else
     fail "codex review argv should include trusted-project config override"
 fi
+assert_grep "codex review argv includes --json" "--json" "$ARGV"
 
 CODEX_LOCK_USER="larch-test-codex-$$"
 CODEX_LOCK_PATH="/tmp/larch-codex-serial-${CODEX_LOCK_USER}.lock"
@@ -556,7 +557,7 @@ for arg in "$@"; do
 done
 [[ -n "$output_path" ]] || exit 9
 printf 'stub codex review payload\n' > "$output_path"
-printf 'tokens used\n42\n' >&2
+printf '{"msg":{"usage":{"input_tokens":1000,"cached_input_tokens":900,"output_tokens":50}}}\n'
 STUB_EOF
     chmod +x "$LCR_BIN/codex"
 
@@ -587,21 +588,20 @@ STUB_EOF
     if [[ "$LCR_RC" -ne 0 ]]; then
         fail "launch-review.sh --tool codex smoke exited rc=$LCR_RC; stderr=$(cat "$LCR_STDERR" 2>/dev/null)"
     else
-        EXPECTED_TOTAL=42
         if [[ -s "$LCR_LEDGER" ]] \
-           && jq -e --argjson total "$EXPECTED_TOTAL" \
-               'select(.type=="vendor" and .vendor=="codex" and .raw=="codex_review" and .total==$total)' \
+           && jq -e \
+               'select(.type=="vendor" and .vendor=="codex" and .raw=="codex_review" and .input==100 and .cache_read==900 and .output==50 and .total==1050)' \
                "$LCR_LEDGER" >/dev/null 2>&1; then
             pass
         else
-            fail "launch-review.sh --tool codex did not record vendor=codex raw=codex_review total=$EXPECTED_TOTAL; ledger=$LCR_LEDGER content=$(cat "$LCR_LEDGER" 2>/dev/null) stderr=$(cat "$LCR_STDERR" 2>/dev/null)"
+            fail "launch-review.sh --tool codex did not record per-bucket vendor=codex raw=codex_review; ledger=$LCR_LEDGER content=$(cat "$LCR_LEDGER" 2>/dev/null) stderr=$(cat "$LCR_STDERR" 2>/dev/null)"
         fi
         rm -f "$LCR_LEDGER"
     fi
 
     # Issue #1874 regression: verify ### Codex section appears in token-report.sh output.
-    # Stub writes "tokens used\n42\n" to STDOUT (not stderr) to exercise the
-    # stdout-capture fix (>>"$SIDECAR" 2>&1) in launch-review.sh Codex section.
+    # Stub writes Codex --json usage to stdout, which the launcher captures in
+    # ${OUTPUT}.events.jsonl for per-bucket token accounting.
     LCR_STDOUT_BIN="$TMPDIR/lcr-stdout-bin"
     mkdir -p "$LCR_STDOUT_BIN"
     cat > "$LCR_STDOUT_BIN/codex" <<'STUB_EOF'
@@ -615,7 +615,7 @@ for arg in "$@"; do
 done
 [[ -n "$output_path" ]] || exit 9
 printf 'stub codex review payload\n' > "$output_path"
-printf 'tokens used\n42\n'
+printf '{"msg":{"usage":{"input_tokens":1000,"cached_input_tokens":900,"output_tokens":50}}}\n'
 STUB_EOF
     chmod +x "$LCR_STDOUT_BIN/codex"
 
@@ -646,7 +646,7 @@ STUB_EOF
         fail "issue#1874 codex-stdout-sidecar: launcher exited rc=$LCR_REPORT_RC; stderr=$(cat "$LCR_REPORT_STDERR" 2>/dev/null)"
     else
         if [[ -s "$LCR_REPORT_LEDGER" ]] \
-           && jq -e 'select(.type=="vendor" and .vendor=="codex" and .raw=="codex_review" and .total==42)' \
+           && jq -e 'select(.type=="vendor" and .vendor=="codex" and .raw=="codex_review" and .input==100 and .cache_read==900 and .output==50 and .total==1050)' \
                "$LCR_REPORT_LEDGER" >/dev/null 2>&1; then
             pass
         else
@@ -800,7 +800,7 @@ for arg in "\$@"; do
     fi
     last="\$arg"
 done
-printf 'tokens used\n1\n'
+printf '{"msg":{"usage":{"input_tokens":10,"cached_input_tokens":0,"output_tokens":1}}}\n'
 STUB_TRANSIENT_CODEX7
 chmod +x "$STUB_BIN/codex-transient-7"
 ln -sf "$STUB_BIN/codex-transient-7" "$STUB_BIN/codex"
@@ -869,7 +869,7 @@ for arg in "\$@"; do
     fi
     last="\$arg"
 done
-printf 'tokens used\n1\n'
+printf '{"msg":{"usage":{"input_tokens":10,"cached_input_tokens":0,"output_tokens":1}}}\n'
 STUB_TRANSIENT_AUTH
 chmod +x "$STUB_BIN/codex-transient-auth"
 ln -sf "$STUB_BIN/codex-transient-auth" "$STUB_BIN/codex"
@@ -970,7 +970,7 @@ for arg in "\$@"; do
     fi
     last="\$arg"
 done
-printf 'tokens used\n1\n'
+printf '{"msg":{"usage":{"input_tokens":10,"cached_input_tokens":0,"output_tokens":1}}}\n'
 STUB_OBS_FIRED
 chmod +x "$STUB_BIN/codex-obs-fired"
 ln -sf "$STUB_BIN/codex-obs-fired" "$STUB_BIN/codex"

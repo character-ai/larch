@@ -782,6 +782,13 @@ exclude = [
   "scripts/test-token-cost.md",
   "scripts/test-render-cost-line.sh",
   "scripts/test-render-cost-line.md",
+  # scripts/parse-codex-usage.sh is invoked by Codex launchers through
+  # $PLUGIN_ROOT path composition, which agent-lint's dead-script graph does
+  # not resolve. Its harness is Makefile-only like adjacent token tests.
+  "scripts/parse-codex-usage.sh",
+  "scripts/parse-codex-usage.md",
+  "scripts/test-parse-codex-usage.sh",
+  "scripts/test-parse-codex-usage.md",
   "scripts/test-lint-skill-invocations.sh",
   "scripts/test-lint-literal-counts.sh",
   "scripts/lint-no-raw-stderr-after-quiet-init.md",

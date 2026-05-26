@@ -66,9 +66,12 @@ Codex and Cursor support generic prompts plus specialist `--agent-file` modes;
   `STATUS=clean MODE=baseline REASON=codex-sandbox-read-only` sidecar without
   running the scan — `--sandbox read-only` blocks writes at the syscall level,
   making the after-the-fact scan redundant. Cursor still runs the full scan.
-- Codex captures both stdout AND stderr to `${OUTPUT}.sidecar` (`>>"$SIDECAR" 2>&1`)
-  so that token-usage lines printed to either stream are available for the
-  `token-ledger.sh record-vendor` scraper. Mirrors `launch-codex-implement.sh`.
+- Codex runs with `--json`: stdout JSONL events land in `${OUTPUT}.events.jsonl`,
+  while stderr remains in `${OUTPUT}.sidecar`. Auth and transient
+  classification intentionally inspect stderr only. Token capture is
+  fail-closed through `scripts/parse-codex-usage.sh`: exit 0 records
+  per-bucket `token-ledger.sh record-vendor codex` fields; non-zero writes no
+  Codex token row.
 - `--commit-count <n>` (optional): passed through to `render-specialist-prompt.sh`
   on `--agent-file` paths; when `1 ≤ n ≤ 5`, the rendered specialist prompt omits
   the `git log` instruction from its diff preamble. Stored in the specialist prompt

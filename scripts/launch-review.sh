@@ -470,6 +470,7 @@ while IFS= read -r arg; do
 done < "$MODEL_ARGS_TMP"
 RUN_EXTERNAL="$SCRIPT_DIR/run-external-agent.sh"
 SIDECAR="${OUTPUT}.sidecar"
+CODEX_EVENTS="${OUTPUT}.events.jsonl"
 
 EXIT_CODE=0
 if : > "$SIDECAR" 2>/dev/null; then
@@ -490,6 +491,7 @@ while (( AUTH_ATTEMPT <= MAX_AUTH_RETRIES )); do
     EXIT_CODE=0
     _ATTEMPT_START=$SECONDS
     if [[ "$SIDECAR" != "/dev/null" ]]; then
+        rm -f "$CODEX_EVENTS"
         CODEX_HOME="$CODEX_HOME_DIR" \
         RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX=.inner.done \
         "$RUN_EXTERNAL" \
@@ -502,9 +504,10 @@ while (( AUTH_ATTEMPT <= MAX_AUTH_RETRIES )); do
             ${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"} \
             -c "$TRUST_CONFIG_ARG" \
             --output-last-message "$OUTPUT" \
+            --json \
             -- \
             "$PROMPT" \
-            >>"$SIDECAR" 2>&1 || EXIT_CODE=$?
+            >"$CODEX_EVENTS" 2>"$SIDECAR" || EXIT_CODE=$?
     else
         CODEX_HOME="$CODEX_HOME_DIR" \
         RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX=.inner.done \
@@ -518,6 +521,7 @@ while (( AUTH_ATTEMPT <= MAX_AUTH_RETRIES )); do
             ${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"} \
             -c "$TRUST_CONFIG_ARG" \
             --output-last-message "$OUTPUT" \
+            --json \
             -- \
             "$PROMPT" \
             >/dev/null 2>&1 || EXIT_CODE=$?
@@ -553,9 +557,23 @@ fi
 
 codex_launcher_append_outer_meta "${OUTPUT}.meta" "$SCRIPT_DIR/launch-review.sh" "$PROMPT_FILE_SIDECAR" "$PWD"
 
-N=$(awk '/^tokens used$/ { getline n; gsub(",","",n); last=n } END { print last }' "$SIDECAR" 2>/dev/null || true)
-if [[ "$N" =~ ^[0-9]+$ ]]; then
-    "$PLUGIN_ROOT/scripts/token-ledger.sh" record-vendor codex total="$N" raw="codex_review" >/dev/null 2>&1 || true
+if [[ "$SIDECAR" != "/dev/null" ]]; then
+    _codex_usage=$("$PLUGIN_ROOT/scripts/parse-codex-usage.sh" "$CODEX_EVENTS" 2>/dev/null) || _codex_usage=""
+    if [[ -n "$_codex_usage" ]]; then
+        INPUT=0
+        CACHED_INPUT=0
+        OUTPUT_T=0
+        TOTAL=0
+        while IFS='=' read -r k v; do
+            case "$k" in
+                INPUT) INPUT=$v ;;
+                CACHED_INPUT) CACHED_INPUT=$v ;;
+                OUTPUT) OUTPUT_T=$v ;;
+                TOTAL) TOTAL=$v ;;
+            esac
+        done <<< "$_codex_usage"
+        "$PLUGIN_ROOT/scripts/token-ledger.sh" record-vendor codex input="$INPUT" cache_read="$CACHED_INPUT" output="$OUTPUT_T" total="$TOTAL" raw="codex_review" >/dev/null 2>&1 || true
+    fi
 fi
 
 exit "$EXIT_CODE"
