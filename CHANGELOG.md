@@ -26,11 +26,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Migration posture**: legacy `[IN PROGRESS]` and `[PLANNED]` prefixes are stripped by `strip_lifecycle_prefix` for backward compatibility but are no longer accepted as `--state` values by `tracking-issue-write.sh` or as admission-pass prefixes.
 - **Audit scope**: workflow call sites and rename `--state` surfaces in the active runtime tree (`skills/`, `scripts/`, `agents/`, `.claude/`, `docs/`, tests) now use the new prefix set; deliberate legacy bracket literals remain only where migration, admission recovery, strip helpers, or hermetic fixtures require them. This Unreleased section documents the migration and may name the old prefixes. Historical shipped changelog bodies and `larch-logs/` were not bulk-retitled.
 
-## [42.5.32] - 2026-05-26
+## [42.5.33] - 2026-05-26
 
 ### Changed
 
-- Remove stale amend wording from `scripts/git-commit.md` and `scripts/test-implement-finalize.md` so both contracts describe the current separate `CHANGELOG` commit path after the post-bump flow stopped amending. Closes #2899.
+- `/implement` and `/design` terminal summaries now always surface the per-agent cost breakdown (`💰 TOTAL ~$X.XX — Claude $X.XX, Codex $X.XX, Cursor $X.XX  |  Tokens: Xk`) on every terminal outcome. Adds `--cost-unavailable` to `render-run-summary.sh`, two-stage degraded fallback to `write-final-report.sh`, degraded path and Phase=post single-print to `render-final-summary.sh`, Step 17/18 sentinel mechanics in `skills/implement/SKILL.md`, NEVER #20 forbidding free-form recap summaries, and parameterized regression test matrices. Closes #2837.
 
 ## [42.5.31] - 2026-05-26
 
