@@ -1616,6 +1616,8 @@ rm -rf "$sentinel_dir"
 root=$(make_repo pr_create_body_code_flow_only)
 tmp=$(make_tmpdir)
 write_state "$tmp/ship-pr-state.sh" pr-create
+# Pre-create pr-body.md as run_pr_prep_phase would have — PHASE=pr-create skips that step
+printf '## Summary\n- Implemented changes.\n\n<details><summary>Code Flow Diagram</summary>\n\nCode flow diagram not available.\n\n</details>\n\n<details><summary>Test plan</summary>\n\n- [x] Ran relevant checks.\n\n</details>\n\nCloses #7\n\nGenerated with [Claude Code](https://claude.com/claude-code)\n' > "$tmp/pr-body.md"
 run_subject "$root" "$tmp" "$tmp/rc"
 assert_rc "$tmp/rc" 0 "pr-create body code-flow-only exits 0"
 if grep -Fq '<summary>Code Flow Diagram</summary>' "$tmp/create-pr-body-capture.md" && grep -Fq 'Code flow diagram not available.' "$tmp/create-pr-body-capture.md"; then

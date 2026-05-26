@@ -130,6 +130,12 @@ assert_tmp_scoped_input() {
         larch_err "$label file path is invalid: $path"
         fail 1 "$label file path is invalid"
     }
+    # Fast path: raw path starts with a well-known tmp prefix (handles container
+    # runners where canonical_path("/tmp") may differ from the path prefix).
+    case "$path" in
+        /tmp/*|/private/tmp/*|/var/folders/*)
+            return 0 ;;
+    esac
     session_cache_root="${XDG_CACHE_HOME:-$HOME/.cache}/larch/sessions"
     for tmp_root in "${TMPDIR:-}" /tmp /private/tmp /var/folders "$session_cache_root"; do
         [ -n "$tmp_root" ] || continue

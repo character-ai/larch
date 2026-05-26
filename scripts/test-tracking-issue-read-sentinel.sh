@@ -143,8 +143,10 @@ run_issue_read_with_stub() {
     local stub_dir="$1" out_dir="$2" mode="${3:-stable}" stderr_file body_json
     mkdir -p "$stub_dir" "$out_dir"
     if [[ "$mode" == "legacy" ]]; then
+        # shellcheck disable=SC2016  # \n is JSON-literal backslash-n, not shell escape
         body_json='{"id":101,"body":"<!-- larch:diagrams v1 runid=old -->\n## Code Flow Diagram\n\n```mermaid\ngraph TD\n  A --> B\n```"}'
     else
+        # shellcheck disable=SC2016  # \n is JSON-literal backslash-n, not shell escape
         body_json='{"id":101,"body":"<!-- larch:diagrams v1 -->\n## Code Flow Diagram\n\n```mermaid\ngraph TD\n  A --> B\n```"}'
     fi
     cat > "$stub_dir/gh" <<GHSTUB
