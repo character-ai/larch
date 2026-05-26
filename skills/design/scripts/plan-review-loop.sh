@@ -617,15 +617,15 @@ fi
 
 _vt_args=()
 append_plan_review_voter_arg() {
-    local _vp="$1" _vt="$2" _vs="$3" _tool_label
+    local _slot="$1" _vp="$2" _vt="$3" _vs="$4" _tool_label
     [[ -n "$_vp" ]] || return 0
     [[ "$_vs" != "failed" ]] || return 0
     _tool_label=$(plan_review_voter_tool_label "$_vt")
-    _vt_args+=(--voter "$_tool_label:$_vp")
+    _vt_args+=(--voter "$_slot:$_tool_label:$_vp")
 }
-append_plan_review_voter_arg "$VOTER_1_PATH" "$VOTER_1_TOOL" "$VOTER_1_STATUS"
-append_plan_review_voter_arg "$VOTER_2_PATH" "$VOTER_2_TOOL" "$VOTER_2_STATUS"
-append_plan_review_voter_arg "$VOTER_3_PATH" "$VOTER_3_TOOL" "$VOTER_3_STATUS"
+append_plan_review_voter_arg 1 "$VOTER_1_PATH" "$VOTER_1_TOOL" "$VOTER_1_STATUS"
+append_plan_review_voter_arg 2 "$VOTER_2_PATH" "$VOTER_2_TOOL" "$VOTER_2_STATUS"
+append_plan_review_voter_arg 3 "$VOTER_3_PATH" "$VOTER_3_TOOL" "$VOTER_3_STATUS"
 
 _findings_classification_out="$DESIGN_TMPDIR/plan-review/round-$ROUND_NUM/findings-classification.tsv"
 mkdir -p "$(dirname "$_findings_classification_out")"

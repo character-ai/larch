@@ -26,13 +26,13 @@ SEEN_VOTER_FILES=false
 
 usage() {
     while IFS= read -r line; do larch_err "$line"; done <<'USAGE'
-usage: tally-plan-review.sh --ballot-file FILE [--voter SLOT:FILE...] [--voter-files FILE...] --design-tmpdir DIR [--findings-classification-out FILE]
+usage: tally-plan-review.sh --ballot-file FILE [--voter SLOT:FILE...|POS:TOOL:FILE...] [--voter-files FILE...] --design-tmpdir DIR [--findings-classification-out FILE]
 USAGE
 }
 
 valid_voter_slot() {
     case "$1" in
-        Claude|Codex|Cursor|MainAgent) return 0 ;;
+        1|2|3|Claude|Codex|Cursor|MainAgent) return 0 ;;
         *) return 1 ;;
     esac
 }
@@ -100,9 +100,15 @@ write_tally_stub() {
     } > "$tally_file"
 }
 
+write_findings_classification_stub() {
+    mkdir -p "$(dirname "$FINDINGS_CLASSIFICATION_OUT")"
+    emit_findings_classification_header > "$FINDINGS_CLASSIFICATION_OUT"
+}
+
 if [[ ! -r "$BALLOT_FILE" ]]; then
     larch_err "tally-plan-review.sh: ballot file is missing or unreadable: $BALLOT_FILE"
     write_tally_stub "**⚠ Tally aborted: ballot file unreadable: $BALLOT_FILE; no votes tallied.**"
+    write_findings_classification_stub
     exit 2
 fi
 
@@ -133,10 +139,22 @@ infer_voter_slot() {
 
 canonical_position_for_slot() {
     case "$1" in
-        Claude) printf '1' ;;
-        Codex) printf '2' ;;
-        Cursor) printf '3' ;;
+        1|Claude) printf '1' ;;
+        2|Codex) printf '2' ;;
+        3|Cursor) printf '3' ;;
         *) printf '0' ;;
+    esac
+}
+
+canonical_tool_for_slot() {
+    case "$1" in
+        Claude) printf 'Claude' ;;
+        Codex) printf 'Codex' ;;
+        Cursor) printf 'Cursor' ;;
+        1) printf 'Claude' ;;
+        2) printf 'Codex' ;;
+        3) printf 'Cursor' ;;
+        *) printf '%s' "$1" ;;
     esac
 }
 
@@ -177,10 +195,12 @@ assign_voter() {
     fi
     if [[ "$pos" == "0" ]]; then
         larch_err "tally-plan-review.sh: too many voters; expected at most three non-MainAgent voters"
+        write_findings_classification_stub
         exit 2
     fi
     if [[ -n "${SLOT_FILE[$pos]}" ]]; then
         larch_err "error: duplicate voter position $pos"
+        write_findings_classification_stub
         exit 2
     fi
     SLOT_FILE[pos]="$path"
@@ -220,13 +240,23 @@ tally_votes_for_id() {
 if [[ "$SEEN_VOTER" == true ]]; then
     for spec in "${VOTER_SPECS[@]}"; do
         if [[ "$spec" != *:* ]]; then
-            larch_err "error: invalid voter slot: $spec (must be Claude|Codex|Cursor|MainAgent)"
+            larch_err "error: invalid voter slot: $spec (must be 1|2|3|Claude|Codex|Cursor|MainAgent)"
             exit 2
         fi
-        slot="${spec%%:*}"
-        path="${spec#*:}"
+        slot=""
+        tool=""
+        path=""
+        if [[ "$spec" =~ ^([123]):([^:]+):(.*)$ ]]; then
+            slot="${BASH_REMATCH[1]}"
+            tool="${BASH_REMATCH[2]}"
+            path="${BASH_REMATCH[3]}"
+        else
+            slot="${spec%%:*}"
+            path="${spec#*:}"
+            tool="$(canonical_tool_for_slot "$slot")"
+        fi
         if ! valid_voter_slot "$slot"; then
-            larch_err "error: invalid voter slot: $slot (must be Claude|Codex|Cursor|MainAgent)"
+            larch_err "error: invalid voter slot: $slot (must be 1|2|3|Claude|Codex|Cursor|MainAgent)"
             exit 2
         fi
         VOTER_FILES+=("$path")
@@ -234,7 +264,7 @@ if [[ "$SEEN_VOTER" == true ]]; then
             assign_voter "$slot" "$path"
             continue
         fi
-        assign_voter "$slot" "$path" "$(canonical_position_for_slot "$slot")"
+        assign_voter "$tool" "$path" "$(canonical_position_for_slot "$slot")"
     done
 else
     if [[ "$SEEN_VOTER_FILES" == true ]]; then
@@ -254,6 +284,7 @@ if [[ -n "$MAIN_AGENT_VOTER" ]]; then
     done
     if (( non_main > 0 || ${#VOTER_SPECS[@]} > 1 )); then
         larch_err "error: --voter MainAgent is only valid as the sole voter (0-judge fallback path)"
+        write_findings_classification_stub
         exit 2
     fi
 fi
@@ -271,6 +302,7 @@ for voter_file in "${VOTER_FILES[@]+"${VOTER_FILES[@]}"}"; do
     if [[ ! -r "$voter_file" ]]; then
         larch_err "tally-plan-review.sh: voter file is missing or unreadable: $voter_file"
         write_tally_stub "**⚠ Tally aborted: voter file unreadable: $voter_file; no votes tallied.**"
+        write_findings_classification_stub
         exit 2
     fi
 done
@@ -285,6 +317,7 @@ BLOCK_DIR="$WORKDIR/blocks"
 if ! split_ballot_to_blocks "$BALLOT_FILE" "$BLOCK_DIR"; then
     larch_err "tally-plan-review.sh: duplicate or malformed FINDING/OOS headings in ballot"
     write_tally_stub "**⚠ Tally aborted: duplicate or malformed FINDING/OOS headings in ballot; no votes tallied.**"
+    write_findings_classification_stub
     exit 2
 fi
 
@@ -315,7 +348,12 @@ score_rows="$WORKDIR/score-rows.tsv"
 : > "$score_rows"
 
 sanitize_tsv_cell() {
-    printf '%s' "${1:-}" | tr '\t\n' '  '
+    local cell
+    cell=$(printf '%s' "${1:-}" | tr '\t\n' '  ')
+    case "$cell" in
+        [=+-@]*) printf "'%s" "$cell" ;;
+        *) printf '%s' "$cell" ;;
+    esac
 }
 
 kv_value() {

@@ -16,6 +16,8 @@ The harness verifies:
 - partial rows where a missing axis forces `vN_uncertain=true`;
 - missing judges with preserved empty vN cells and canonical Cursor placement;
 - explicit `--voter` slot labels overriding misleading basenames;
+- waterfall fallback identity where slot 2 is populated by a Claude runtime
+  voter and `v2_tool=Claude` is preserved;
 - 0-judge `MainAgent` fallback TSV rows (`voting_result=rejected`) and
   header-only empty-ballot output;
 - numeric `FINDING_*` rows before numeric `OOS_*` rows;
@@ -24,6 +26,9 @@ The harness verifies:
 - exact diagnostics for MainAgent misuse, `--voter`/`--voter-files` mutual
   exclusion, invalid slots, and legacy `--voter-files` deprecation;
 - parser usage / unreadable-file exit diagnostics;
+- spreadsheet-formula prefixes in TSV cells are escaped with a leading quote;
+- abort paths overwrite stale findings-classification TSVs with header-only
+  output;
 - every data row has exactly 21 tab-separated fields.
 
 Makefile target:

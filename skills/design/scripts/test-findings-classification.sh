@@ -177,6 +177,21 @@ assert_cell "$W2/out.tsv" FINDING_1 v2_tool ""
 assert_cell "$W2/out.tsv" FINDING_1 v3_tool Cursor
 assert_all_rows_21_fields "$W2/out.tsv"
 
+echo "=== waterfall fallback preserves slot index and runtime tool ==="
+W2W="$TMPROOT/case2-waterfall"
+mkdir -p "$W2W"
+write_ballot "$W2W/ballot.md"
+cp "$CLAUDE" "$W2W/voter-1-claude.txt"
+cp "$CLAUDE" "$W2W/voter-2-claude-fallback.txt"
+cp "$CURSOR" "$W2W/voter-3-cursor.txt"
+"$TALLY" --ballot-file "$W2W/ballot.md" --design-tmpdir "$W2W/design" --findings-classification-out "$W2W/out.tsv" --voter "1:Claude:$W2W/voter-1-claude.txt" --voter "2:Claude:$W2W/voter-2-claude-fallback.txt" --voter "3:Cursor:$W2W/voter-3-cursor.txt" >/dev/null
+assert_cell "$W2W/out.tsv" FINDING_1 v1_tool Claude
+assert_cell "$W2W/out.tsv" FINDING_1 v2_tool Claude
+assert_cell "$W2W/out.tsv" FINDING_1 v3_tool Cursor
+assert_cell "$W2W/out.tsv" FINDING_1 v2_vote YES
+assert_cell "$W2W/out.tsv" FINDING_10 v2_vote NO
+assert_all_rows_21_fields "$W2W/out.tsv"
+
 echo "=== explicit slot beats misleading basename heuristic ==="
 W2E="$TMPROOT/case2-explicit"
 mkdir -p "$W2E"
@@ -341,7 +356,9 @@ rc=$?
 set -e
 [[ "$rc" -ne 0 ]] || fail "MainAgent mixed with other voters should fail"
 grep -Fq 'error: --voter MainAgent is only valid as the sole voter (0-judge fallback path)' "$W4/bad1.err" || fail "MainAgent diagnostic missing"
-[[ ! -e "$W4/bad1.tsv" ]] || fail "bad MainAgent invocation wrote TSV"
+read -r bad1_header < "$W4/bad1.tsv"
+[[ "$bad1_header" == "$HEADER" ]] || fail "bad MainAgent invocation should write header-only TSV"
+[[ "$(wc -l < "$W4/bad1.tsv" | tr -d ' ')" == "1" ]] || fail "bad MainAgent invocation TSV should contain header only"
 
 set +e
 "$TALLY" --ballot-file "$W4/ballot.md" --design-tmpdir "$W4/bad2" --findings-classification-out "$W4/bad2.tsv" --voter "Claude:$CLAUDE" --voter-files "$CODEX" 2>"$W4/bad2.err" >/dev/null
@@ -356,7 +373,7 @@ set +e
 rc=$?
 set -e
 [[ "$rc" -ne 0 ]] || fail "invalid voter slot should fail"
-grep -Fq 'error: invalid voter slot: Robot (must be Claude|Codex|Cursor|MainAgent)' "$W4/bad3.err" || fail "invalid slot diagnostic missing"
+grep -Fq 'error: invalid voter slot: Robot (must be 1|2|3|Claude|Codex|Cursor|MainAgent)' "$W4/bad3.err" || fail "invalid slot diagnostic missing"
 [[ ! -e "$W4/bad3.tsv" ]] || fail "invalid slot invocation wrote TSV"
 
 set +e
@@ -381,5 +398,38 @@ set -e
 grep -Fq 'error: --voter MainAgent is only valid as the sole voter (0-judge fallback path)' "$W4/bad5.err" || fail "reverse-order MainAgent diagnostic missing"
 read -r legacy_header < "$W4/legacy.tsv"
 [[ "$legacy_header" == "$HEADER" ]] || fail "legacy findings-classification header drifted"
+read -r bad5_header < "$W4/bad5.tsv"
+[[ "$bad5_header" == "$HEADER" ]] || fail "reverse-order MainAgent invocation should write header-only TSV"
+[[ "$(wc -l < "$W4/bad5.tsv" | tr -d ' ')" == "1" ]] || fail "reverse-order MainAgent invocation TSV should contain header only"
+
+echo "=== aborts overwrite stale findings-classification TSV with header only ==="
+W5="$TMPROOT/case5-stale-abort"
+mkdir -p "$W5"
+write_ballot "$W5/ballot.md"
+printf 'stale\nrow\n' > "$W5/out.tsv"
+set +e
+"$TALLY" --ballot-file "$W5/ballot.md" --design-tmpdir "$W5/design" --findings-classification-out "$W5/out.tsv" --voter "Claude:$W5/missing.txt" >/dev/null 2>"$W5/missing.err"
+rc=$?
+set -e
+[[ "$rc" -ne 0 ]] || fail "missing voter should fail"
+read -r stale_header < "$W5/out.tsv"
+[[ "$stale_header" == "$HEADER" ]] || fail "abort path should rewrite TSV header"
+[[ "$(wc -l < "$W5/out.tsv" | tr -d ' ')" == "1" ]] || fail "abort path TSV should contain header only"
+
+echo "=== spreadsheet formula prefixes are escaped ==="
+W6="$TMPROOT/case6-formula"
+mkdir -p "$W6/design"
+cat > "$W6/ballot.md" <<'EOF'
+### FINDING_1: Formula reviewer
+- **Reviewer**: =HYPERLINK("https://evil.example")
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: src/a
+- **Concern**: formula reviewer.
+EOF
+cp "$CLAUDE" "$W6/claude-vote-output.txt"
+"$TALLY" --ballot-file "$W6/ballot.md" --design-tmpdir "$W6/design" --findings-classification-out "$W6/out.tsv" --voter "Claude:$W6/claude-vote-output.txt" >/dev/null
+reviewer_cell=$(cell "$W6/out.tsv" FINDING_1 finding_reviewers) || fail "missing formula reviewer row"
+[[ "$reviewer_cell" == "'="* ]] || fail "formula-prefixed reviewer cell was not escaped"
 
 echo "PASS: test-findings-classification.sh"

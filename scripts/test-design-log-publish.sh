@@ -498,6 +498,20 @@ out_pre=$(
 )
 [[ "$out_pre" == *"PUBLISH_OK=true"* ]] || fail "empty plan-review dir should publish: $out_pre"
 
+TMPPRU=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-pr-unexpected.XXXXXX")
+clone_pru=$(setup_clone_with_origin_head "$TMPPRU")
+stub_pru="$TMPPRU/stub"
+make_gh_stub "$stub_pru"
+export PATH="$stub_pru:$PATH"
+mkdir -p "$TMPPRU/design/plan-review/round-1"
+printf 'body\n' >"$TMPPRU/design/plan.txt"
+printf 'finding_id\tfinding_reviewers\tvoting_result\n' >"$TMPPRU/design/plan-review/round-1/findings-classification.tsv"
+printf 'unexpected\n' >"$TMPPRU/design/plan-review/round-1/unexpected.txt"
+out_pru=$(
+    (cd "$clone_pru" && bash "$PUBLISH" --design-tmpdir "$TMPPRU/design" --run-id "RUNPRUNEXPECTED1" --issue 4 --repo owner/repo) 2>/dev/null || true
+)
+[[ "$out_pru" == *"PUBLISH_OK=false"* ]] || fail "unexpected plan-review file should fail publish: $out_pru"
+
 TMPPR=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-pr.XXXXXX")
 clone_pr=$(setup_clone_with_origin_head "$TMPPR")
 stub_pr="$TMPPR/stub"
