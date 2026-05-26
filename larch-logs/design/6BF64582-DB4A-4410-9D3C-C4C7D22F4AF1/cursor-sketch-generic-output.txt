@@ -1,0 +1,4 @@
+Exploring the codebase for breadcrumb redaction, run-log contracts, and current documentation so we can propose an accurate implementation plan.
+Noting partial documentation already exists; verifying one more detail on atomic swap and whether `write` path exists.
+Creating the implementation plan from the codebase review.
+
