@@ -138,30 +138,32 @@ if [ -n "$REPLACES_VERSION" ] && [ "$REPLACES_VERSION" != "$VERSION" ]; then
     tmp=$(mktemp "${TMPDIR:-/tmp}/larch-commit-changelog.XXXXXX")
     today=$(date +%Y-%m-%d)
     set +e
+    # Two-pass awk: first pass detects whether NEW heading already exists;
+    # second pass removes OLD section and inserts NEW heading only when absent.
+    # This prevents deleting existing NEW section bullets on 2nd+ CI re-bump.
     awk -v old="$REPLACES_VERSION" -v new="$VERSION" -v today="$today" '
-        BEGIN { replaced = 0; skipping_new = 0 }
-        $0 ~ "^## \\[" new "\\] - " {
-            skipping_new = 1
-            next
-        }
-        skipping_new && /^## \[/ {
-            skipping_new = 0
-        }
-        skipping_new {
+        BEGIN { replaced = 0; skipping_old = 0; has_new = 0 }
+        FNR == NR {
+            if ($0 ~ "^## \\[" new "\\] - ") has_new = 1
             next
         }
         $0 ~ "^## \\[" old "\\] - " {
             if (!replaced) {
-                print "## [" new "] - " today
+                if (!has_new) print "## [" new "] - " today
                 replaced = 1
             }
+            skipping_old = 1
             next
         }
+        skipping_old && /^## \[/ {
+            skipping_old = 0
+        }
+        skipping_old { next }
         { print }
         END {
             if (!replaced) exit 3
         }
-    ' CHANGELOG.md > "$tmp"
+    ' CHANGELOG.md CHANGELOG.md > "$tmp"
     rc=$?
     set -e
     if [ "$rc" -eq 0 ]; then
@@ -177,10 +179,8 @@ if [ -n "$REPLACES_VERSION" ] && [ "$REPLACES_VERSION" != "$VERSION" ]; then
 fi
 
 if git diff --quiet -- CHANGELOG.md && git diff --cached --quiet -- CHANGELOG.md; then
-    if [ -n "$REPLACES_VERSION" ] && [ "$REPLACES_VERSION" != "$VERSION" ]; then
-        emit_no_commit "no changelog changes produced for replaces-version path"
-        exit 1
-    fi
+    # No diff: CHANGELOG already correct (idempotent re-run or content already matches).
+    # Best-effort: report COMMITTED=false without error.
     emit_kv COMMITTED false
     exit 0
 fi

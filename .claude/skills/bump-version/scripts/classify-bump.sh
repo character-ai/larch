@@ -115,7 +115,7 @@ idempotency_commit_is_transparent() {
 
 IDEMPOTENCY_REF="HEAD"
 IDEMPOTENCY_DEPTH=0
-while [[ "$IDEMPOTENCY_DEPTH" -lt 4 ]]; do
+while [[ "$IDEMPOTENCY_DEPTH" -lt 3 ]]; do
   git rev-parse --verify "$IDEMPOTENCY_REF" >/dev/null 2>&1 || break
   if idempotency_commit_is_transparent "$IDEMPOTENCY_REF"; then
     IDEMPOTENCY_DEPTH=$((IDEMPOTENCY_DEPTH + 1))
