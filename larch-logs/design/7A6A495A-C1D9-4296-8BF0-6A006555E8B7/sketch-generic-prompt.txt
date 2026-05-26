@@ -1,0 +1,124 @@
+Propose a high-level implementation approach for this feature:
+
+[DESIGNING] [BUG] (URGENT) decompose-file-issues.sh prepare: multi-blocker dependency lists truncated to…
+
+## Symptom
+
+`skills/design/scripts/decompose-file-issues.sh prepare` silently truncates multi-blocker dependency declarations to the first blocker only. Concretely: when a piece body's `- Dependencies:` field reads `blocked-by Piece 1, Piece 2, Piece 3, Piece 4`, the resulting `partition-deps.tsv` contains exactly one edge (`1→N`) instead of all four (`1→N`, `2→N`, `3→N`, `4→N`).
+
+This is silent — `DECOMPOSE_PARTITION_STATUS=ok`, no warning, no stderr output. The downstream cycle check passes, `/larch:issue --intra-batch-deps-file` receives a truncated DAG, and the published GitHub blocker UI on the dependent piece shows only the first blocker.
+
+## Observation in production
+
+Encountered during `/design --simple 2677` (run id `ED78A5A5-60EF-4296-A6F4-261BA3D8E410`, character-ai/larch). Risk-isolation decompose-panel proposal declared:
+
+```
+### Piece 5: Multi-round design loop integration and publishing
+…
+- Dependencies: blocked-by Piece 1, Piece 2, Piece 3, Piece 4
+```
+
+`prepare` emitted `partition-deps.tsv`:
+
+```
+1	4
+1	5
+```
+
+— only `1→4` (from Piece 4's single-blocker `blocked-by Piece 1`) and `1→5` (the FIRST blocker of Piece 5's four-blocker list). Missing edges: `2→5`, `3→5`, `4→5`. Operator manually augmented the TSV before invoking `/larch:issue` to preserve the original Codex-proposed DAG. The five filed issues (#2867-#2871) ended up with correct blocker links only because of that manual fix-up.
+
+## Root cause
+
+`skills/design/scripts/decompose-file-issues.sh:97`:
+
+```python
+m = re.search(r"blocked-by\s+Piece\s+(\d+)", dep, re.I)
+if m:
+    blocker = int(m.group(1))
+    …
+    edges.append((bi, i))
+```
+
+`re.search` returns the **first** match object only. The pattern `blocked-by\s+Piece\s+(\d+)` matches `blocked-by Piece 1` and captures `1`; the rest of the string (`, Piece 2, Piece 3, Piece 4`) is never examined. There is no loop, no `re.findall`, no comma-split fallback — multi-blocker lists are by construction truncated to the first item.
+
+The bug is **architectural**, not a typo: the single-match assumption is baked into the variable name `blocker` (singular) and the appended-once `edges.append((bi, i))` call.
+
+Reproduction (verified):
+
+```python
+import re
+dep = "blocked-by Piece 1, Piece 2, Piece 3, Piece 4"
+m = re.search(r"blocked-by\s+Piece\s+(\d+)", dep, re.I)
+print(m.group(1))   # → "1"  (only the first)
+```
+
+## Why this slipped through
+
+`skills/design/scripts/test-decompose-file-issues.sh` (the regression harness for this helper) covers only single-blocker shapes:
+
+- `- Dependencies: none`
+- `- Dependencies: blocked-by Piece 1`
+- `- Dependencies: blocked-by Piece 2` (cycle test, two-piece graph)
+
+No test case asserts the multi-blocker comma-list pattern, so the single-match regex passes silently. Codex's risk-isolation archetype prompt naturally produces multi-blocker shapes (e.g., a "final piece blocked by all parallel roots"), but the harness fixture set never exercised that shape.
+
+## Risk impact
+
+- **Silent partition errors**: operators see no warning. The published partition appears coherent (cycle check passes, all issues filed) but topological order is wrong on the affected piece.
+- **GitHub blocker UI mismatch**: the dependent piece's "blocked by" panel shows only the first blocker. Anyone navigating from the closed original via the partition close-comment sees the wrong dep graph.
+- **/larch:issue dep-link failure recovery is degraded**: the orchestrator's transitive-failure propagation assumes the supplied DAG is complete. Missing edges mean a true failure in (say) Piece 3 doesn't propagate `transitive-failure` to Piece 5 because the `3→5` edge is absent.
+- **/implement order**: if operators trust the GitHub blocker UI to decide which sub-issue to `/implement` first, they may pick a piece whose hidden prerequisites haven't actually landed.
+
+The fix is small, but the failure mode is high-impact when it fires because every downstream consumer trusts the TSV as the source of truth.
+
+## Proposed fix
+
+Anchor on the `blocked-by` keyword, then `re.findall` all `Piece <digits>` tokens in the remainder. Sketch (~10 lines replacing the existing 8):
+
+```python
+m_anchor = re.search(r"blocked-by\b(.*)$", dep, re.I)
+if m_anchor:
+    blockers = [int(x) for x in re.findall(r"Piece\s+(\d+)", m_anchor.group(1), re.I)]
+    seen = set()
+    for blocker in blockers:
+        if blocker in seen:
+            continue  # idempotent if a piece is listed twice
+        seen.add(blocker)
+        if blocker not in index_by_num:
+            print("DECOMPOSE_PARTITION_STATUS=bad-dependency-ref", flush=True)
+            sys.exit(2)
+        bi = index_by_num[blocker]
+        edges.append((bi, i))
+```
+
+Verified locally against the same inputs:
+
+```
+blocked-by Piece 1                      → [1]
+blocked-by Piece 1, Piece 2             → [1, 2]
+blocked-by Piece 1 and Piece 2          → [1, 2]
+blocked-by Piece 2, Piece 1             → [2, 1]
+blocked-by Piece 1, Piece 2, Piece 3, Piece 4  → [1, 2, 3, 4]   ← THE BUG
+none                                    → []
+```
+
+### Optional follow-on (not required for this issue)
+
+The plural-no-repeat shape `blocked-by Pieces 1, 2, 3` still returns `[]` with the proposed fix because the regex requires the word `Piece` before each digit. Codex and Cursor have not been observed emitting that shape in practice (always per-item `Piece N`), so adding a secondary parser is optional. If we see it in the wild, extend the regex to `(?:Pieces?\s+)?(\d+)` after the anchor.
+
+## Acceptance
+
+- `skills/design/scripts/decompose-file-issues.sh:97` parses multi-blocker comma/and-separated lists; the existing `(b, i)` edge-append shape is preserved (one edge per blocker).
+- Duplicate blocker entries in the same line (e.g., `blocked-by Piece 1, Piece 1`) are idempotent (single edge, no error).
+- Bad-blocker references (`blocked-by Piece 99` when no Piece 99 exists) still fail closed with `DECOMPOSE_PARTITION_STATUS=bad-dependency-ref` exit **2** — preserve the existing strict-reference rule across ALL blockers in the list, not just the first.
+- `skills/design/scripts/test-decompose-file-issues.sh` gains at least two new test cases:
+  1. **Multi-blocker comma list** — `blocked-by Piece 1, Piece 2, Piece 3, Piece 4` on a 5-piece partition. Assert all 4 edges land in `partition-deps.tsv`. Use the same shape Codex emitted in the risk-isolation observation.
+  2. **Bad-ref inside multi list** — `blocked-by Piece 1, Piece 99`. Assert `DECOMPOSE_PARTITION_STATUS=bad-dependency-ref` and exit 2 (preserves strict-reference behavior — failure on ANY blocker, not just the first).
+- `skills/design/scripts/decompose-file-issues.md` clarifies the multi-blocker contract (one line under "Edge-extraction rules").
+- `make lint` passes (the harness is wired via `test-decompose-file-issues` Makefile target per project convention).
+
+## How to proceed
+
+Run `/larch:design <this-issue-number> --trivial` (small, single-file fix); then `/larch:implement <this-issue-number>`.
+
+Explore the codebase. Write 2-3 paragraphs covering: (1) Key architectural decisions and approach, (2) Which files/modules to modify and why, (3) Main tradeoffs and risks. Do NOT modify files.

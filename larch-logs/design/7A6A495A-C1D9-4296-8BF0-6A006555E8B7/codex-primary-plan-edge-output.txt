@@ -1,0 +1,13 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/scripts/decompose-file-issues.sh:97-104	Proposed parser accepts blocked-by lines with zero parsed blockers as no dependencies	A reviewer emits blocked-by Pieces 1, 2, 3 or another malformed blocked-by declaration; prepare returns ok and files issues without dependency edges, silently corrupting the blocker graph	After m_anchor, if blockers is empty, abort with an explicit invalid dependency status or bad-dependency-ref before serialization
+1	in_scope	latent	risk-integration	skills/design/scripts/decompose-prompts/_common-tail.txt:25-28; skills/design/scripts/decompose-aggregator.sh:93-96	Producer prompts still advertise only the singular dependency grammar	Panel reviewers and the aggregator remain instructed to output none | blocked-by Piece N, so multi-blocker output is unsupported by the normative generation schema even though the parser and docs now accept it	Update both schemas to describe the accepted repeated Piece N form, while explicitly rejecting the deferred plural-no-repeat shape
+
+1. [correctness] `skills/design/scripts/decompose-file-issues.sh:97-104`  
+Concern: the proposed `m_anchor` / `findall` block has no guard for `blocked-by` lines that contain zero valid `Piece N` tokens.  
+Scenario: `- Dependencies: blocked-by Pieces 1, 2, 3` is explicitly called out in the plan as silently producing zero edges. That is a silent dependency drop, not a safe strict-grammar failure.  
+Suggested revision: keep the “no plural support” decision, but reject it. If `m_anchor` is present and `blockers` is empty, emit a non-ok status and exit before writing `partition-input.txt` or `partition-deps.tsv`.
+
+2. [risk-integration] `skills/design/scripts/decompose-prompts/_common-tail.txt:25-28`; `skills/design/scripts/decompose-aggregator.sh:93-96`  
+Concern: the parser contract is widened, but both producer schemas still tell reviewers/aggregator to emit only `none | blocked-by Piece N`.  
+Scenario: external proposals that need multiple blockers are still guided toward an underspecified singular field, while the helper docs say comma/and-separated repeated `Piece N` tokens are valid. This increases inconsistent output and makes future failures harder to classify.  
+Suggested revision: update both prompt schemas to something like `none | blocked-by Piece N[, Piece M...]`, with one sentence requiring each blocker number to be preceded by `Piece` and forbidding `Pieces 1, 2, 3`.

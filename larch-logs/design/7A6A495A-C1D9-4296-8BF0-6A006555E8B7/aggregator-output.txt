@@ -1,0 +1,2 @@
+Merging the 17 reviewer inputs by behavioral risk, then producing the structured aggregator output per the orchestrator spec.
+
